@@ -1,0 +1,19 @@
+Manifest.toml
+.vscode
+.DS_Store
+variable_dump/*
+results/*
+*.cov
+loop_over_sims.jl
+process_results.jl
+sandbox.jl
+docs/build/*
+
+# Logs
+*.log
+
+# Manifest backups / removed copies
+Manifest.toml.*
+
+# Large generated visualization artifacts
+docs/src/*_visualization.html
