@@ -7,6 +7,7 @@
 #
 # Demo keys:
 #   original_baseline   -- vanilla SISL build (no OOD / no respec)          [before]
+#   run_zone            -- OOD 1-2 restriction no-go zone; robots detour (RESPEC off, physical)
 #   wholebuild          -- central forbid zone -> whole-build translate (geom recovery direct)
 #   respec_forbidzone   -- ForbidZone respec pipeline via mock LLM seam
 #   respec_replace      -- OOD 1-1 ReplaceAgent (robot breakdown -> spare) via mock LLM seam
@@ -2230,9 +2231,55 @@ println(">>> done. Open: $htmlpath")
 OPEN_ANIM && isfile(htmlpath) && (try run(`cmd /c start "" $(abspath(htmlpath))`) catch e; @warn "auto-open failed: $e" end)
 end
 
+# =============================================================================
+# run_zone -- full-render visual check of OOD 1-2 (restriction zone). Builds the
+#   tractor with the full motion stack + render, injects a navigation no-go zone
+#   mid-sim (RESPEC OFF), and opens a MeshCat animation so you can SEE robots
+#   detour around the red-disc zone. Isolates the physical/navigation effect.
+#   Tuning: INJECT_STEP (below) and the zone seed/placement.
+# =============================================================================
+function demo_run_zone()
+INJECT_STEP = 150          # sim step at which the no-go zone appears
+
+CB.clear_ood_schedule!()
+CB.clear_restriction_zones!()
+CB.clear_zone_markers!()
+
+CB.schedule_ood!(INJECT_STEP, function (env)
+    # Place a random no-go zone within the current activity area (seeded =
+    # reproducible). Swap for an explicit placement if you want a fixed spot:
+    #     z = CB.add_restriction_zone!(:demo, [x, y], r)
+    z, nl = CB.random_restriction_zone!(env; key = :demo, seed = 7)
+    @info "[OOD] restriction zone injected" center=CB.get_center(z) radius=CB.get_radius(z)
+    return nl     # enqueued for respec (a no-op here: RESPEC disabled). Detour is physical.
+end)
+
+# ---- build + simulate with full motion stack and render --------------------
+pp = CB.get_project_params(4)    # tractor
+
+CB.run_lego_demo(;
+    ldraw_file   = pp[:file_name],
+    project_name = pp[:project_name],
+    model_scale  = pp[:model_scale],
+    num_robots   = pp[:num_robots],
+    assignment_mode      = :greedy,
+    rvo_flag             = true,
+    tangent_bug_flag     = true,
+    dispersion_flag      = true,
+    open_animation_at_end = true,    # opens the MeshCat animation in the browser
+    save_animation        = true,
+    write_results         = false,
+    overwrite_results     = false,
+    log_level             = Logging.Warn,
+)
+
+println(">>> done. The red disc is the injected no-go zone; watch robots route around it.")
+end
+
 # ---- dispatcher -------------------------------------------------------------
 const DEMOS = Dict(
     "original_baseline"    => demo_original_baseline,
+    "run_zone"             => demo_run_zone,
     "wholebuild"           => demo_wholebuild,
     "respec_forbidzone"    => demo_respec_forbidzone,
     "respec_replace"       => demo_respec_replace,
