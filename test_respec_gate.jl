@@ -62,18 +62,22 @@ nid = CB.get_vtx_id(env.sched, 1)
 inv = CB.build_invariant(env)
 println(">>> target node id = $nid")
 
-# --- ADMIT: a huge, non-binding deadline is feasible -------------------------
-good = CB.RespecProposal([CB.Deadline(nid, 1e9)])
+# --- ADMIT: a window entirely in the past is feasible & non-binding -----------
+# ForbidWindow(node, t_lo, t_hi) == tF<=t_lo OR t0>=t_hi. With the window in the
+# past (t_hi=-1) the "start after t_hi" branch is trivially satisfied (t0>=0>=-1).
+good = CB.RespecProposal([CB.ForbidWindow(nid, -2.0, -1.0)])
 vg = CB.verify(good, env, inv)
-println(">>> Deadline(nid, 1e9)  => ", vg isa CB.Admit ? "ADMIT ($(vg.n_constraints) constr)" : "Reject($(vg.reason))")
+println(">>> ForbidWindow(nid, -2, -1)  => ", vg isa CB.Admit ? "ADMIT ($(vg.n_constraints) constr)" : "Reject($(vg.reason))")
 
-# --- REJECT: tF[v] >= 0 always, so tF <= -1 is always infeasible --------------
-bad = CB.RespecProposal([CB.Deadline(nid, -1.0)])
+# --- REJECT: an impossible window is infeasible ------------------------------
+# With t_lo very negative, the disjunction's Big-M (1e5 in compiler.jl) cannot
+# relax tF <= t_lo above 0, so BOTH branches force tF < 0 — impossible (tF>=0).
+bad = CB.RespecProposal([CB.ForbidWindow(nid, -1e6, 1e6)])
 vb = CB.verify(bad, env, inv)
-println(">>> Deadline(nid, -1.0) => ", vb isa CB.Reject ? "REJECT(:$(vb.reason))" : "Admit (UNEXPECTED)")
+println(">>> ForbidWindow(nid, -1e6, 1e6) => ", vb isa CB.Reject ? "REJECT(:$(vb.reason))" : "Admit (UNEXPECTED)")
 
-@assert vg isa CB.Admit  "expected ADMIT for non-binding deadline, got $(typeof(vg))"
-@assert vb isa CB.Reject "expected REJECT for impossible deadline, got $(typeof(vb))"
+@assert vg isa CB.Admit  "expected ADMIT for non-binding window, got $(typeof(vg))"
+@assert vb isa CB.Reject "expected REJECT for impossible window, got $(typeof(vb))"
 @assert vb.reason == :infeasible "expected :infeasible, got :$(vb.reason)"
 
 println("\n==================  GATE TEST PASSED  ==================")
@@ -109,7 +113,7 @@ println(">>> sample pinned closed node: id=$(some_closed[1]) tF>=$(round(some_cl
 # the re-solved schedule does not pull frozen work earlier (satisfies_invariant).
 open_v = first(v for v in Graphs.vertices(env.sched) if !(CB.get_vtx_id(env.sched, v) in inv2.closed_nodes))
 nid2 = CB.get_vtx_id(env.sched, open_v)
-good2 = CB.RespecProposal([CB.Deadline(nid2, 1e9)])
+good2 = CB.RespecProposal([CB.ForbidWindow(nid2, -2.0, -1.0)])
 vg2 = CB.verify(good2, env, inv2)
 println(">>> verify with non-empty freeze => ", vg2 isa CB.Admit ? "ADMIT (freeze respected)" : "Reject(:$(vg2.reason))")
 @assert vg2 isa CB.Admit "expected ADMIT honoring freeze, got $(typeof(vg2))"

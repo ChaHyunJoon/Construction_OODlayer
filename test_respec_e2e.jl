@@ -137,7 +137,7 @@ function live_round(env, title, event)
             optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF,
             extra_constraints=verdict.proposal)
         CB.optimize!(milp)
-        CB.update_project_schedule!(nothing, milp, env.sched, env.scene_tree)
+        CB.commit_respec!(env, milp, verdict.proposal)
         ms1 = CB.makespan(env.sched)
         println("└ RESULT: ADMIT ($(verdict.n_constraints) constr) → re-solved; makespan $(round(ms0,digits=2)) → $(round(ms1,digits=2))")
         return (title, "ADMIT → re-solved", "makespan $(round(ms0,digits=2)) → $(round(ms1,digits=2))")

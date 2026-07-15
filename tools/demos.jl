@@ -17,6 +17,9 @@
 #   energy_adaptive     -- energy-aware adaptive replanning, multi-OOD, NO animation (metrics only)
 #   energy_adaptive_anim-- energy-aware adaptive replanning, VISUAL (battery HUD sidebar)
 #   energy_stall_replace-- closed battery loop: SoC=0 stall -> ReplaceAgent -> depot spare (VISUAL)
+#   debug               -- DIRECT (no stack-task) colored_8x8 run, viz OFF; Ctrl+C shows real backtrace
+#   fast                -- FAST tractor build, physics OFF (straight-line); LIVE MeshCat, waits on Enter
+#   bigstack            -- LARGE x_wing on 4 GB C stack, MILP warm-start, full nav (~minutes)
 #
 # Run:
 #   julia +lts --project=. tools/demos.jl <demo_key>        (or  ENV DEMO=<key>)
@@ -2276,6 +2279,179 @@ CB.run_lego_demo(;
 println(">>> done. The red disc is the injected no-go zone; watch robots route around it.")
 end
 
+# =============================================================================
+# debug -- DIRECT runner (NO run_with_stack task wrapper) so pressing Ctrl+C while
+#   it is stuck prints the backtrace of the ACTUAL runaway loop. Uses the lightest
+#   model (colored_8x8), visualizer OFF. Runs the demo INLINE on purpose (no wrap).
+# =============================================================================
+function demo_debug()
+project_params = get_project_params(1)   # colored_8x8 (가장 가벼움)
+
+env, stats = run_lego_demo(;
+    ldraw_file=project_params[:file_name],
+    project_name=project_params[:project_name],
+    model_scale=project_params[:model_scale],
+    num_robots=project_params[:num_robots],
+    assignment_mode=:greedy,
+    milp_optimizer=:highs,
+    optimizer_time_limit=60,
+    rvo_flag=false,
+    tangent_bug_flag=false,
+    dispersion_flag=false,
+    open_animation_at_end=false,
+    save_animation=false,
+    save_animation_along_the_way=false,
+    anim_active_agents=false,
+    anim_active_areas=false,
+    update_anim_at_every_step=false,
+    save_anim_interval=100,
+    process_updates_interval=100,
+    block_save_anim=false,
+    write_results=false,
+    overwrite_results=false,
+    look_for_previous_milp_solution=false,
+    save_milp_solution=false,
+    previous_found_optimizer_time=30,
+    max_num_iters_no_progress=2500,
+    stop_after_task_assignment=false,
+)
+
+println("DEMO_DONE")
+end
+
+# =============================================================================
+# fast -- FAST tractor build: physics/collision-avoidance OFF (rvo/tangent_bug/
+#   dispersion) so agents move in straight lines and the sim finishes quickly while
+#   the assembly animation is still produced. Keeps the process alive on the LIVE
+#   MeshCat visualizer (http://127.0.0.1:8700) until Enter is pressed (readline).
+# =============================================================================
+function demo_fast()
+project_params = get_project_params(4)   # tractor (원래 목표 모델) — 1로 바꾸면 colored_8x8
+
+# --- FAST settings: physics/collision-avoidance OFF -> agents move in straight lines,
+#     simulation finishes quickly, assembly animation still produced. ---
+open_animation_at_end = true
+save_animation_at_end = true              # also save a standalone HTML
+save_animation_along_the_way = false
+anim_active_agents = true
+anim_active_areas = true
+
+update_anim_at_every_step = true   # record a frame every sim step -> smooth, plenty of keyframes
+save_anim_interval = 100
+process_updates_interval = 100
+block_save_anim = false
+
+tangent_bug_flag = false
+rvo_flag = false
+dispersion_flag = false
+assignment_mode = :greedy
+milp_optimizer = :highs
+optimizer_time_limit = 60
+
+env, stats = run_with_stack(2_000_000_000) do
+    run_lego_demo(;
+        ldraw_file=project_params[:file_name],
+        project_name=project_params[:project_name],
+        model_scale=project_params[:model_scale],
+        num_robots=project_params[:num_robots],
+        assignment_mode=assignment_mode,
+        milp_optimizer=milp_optimizer,
+        optimizer_time_limit=optimizer_time_limit,
+        rvo_flag=rvo_flag,
+        tangent_bug_flag=tangent_bug_flag,
+        dispersion_flag=dispersion_flag,
+        open_animation_at_end=open_animation_at_end,
+        save_animation=save_animation_at_end,
+        save_animation_along_the_way=save_animation_along_the_way,
+        anim_active_agents=anim_active_agents,
+        anim_active_areas=anim_active_areas,
+        update_anim_at_every_step=update_anim_at_every_step,
+        save_anim_interval=save_anim_interval,
+        process_updates_interval=process_updates_interval,
+        block_save_anim=block_save_anim,
+        write_results=false,
+        overwrite_results=false,
+        look_for_previous_milp_solution=false,
+        save_milp_solution=false,
+        previous_found_optimizer_time=30,
+        max_num_iters_no_progress=2500,
+        stop_after_task_assignment=false,
+    )
+end
+
+println("DEMO_DONE")
+
+# Keep the process (and the MeshCat server) alive so the live visualizer stays
+# reachable. The live server fully supports animation playback (play/slider),
+# unlike the exported static HTML. View at http://127.0.0.1:8700, open the
+# controls (top-right), expand "Animations", and press play.
+println("\n=== Visualizer is LIVE at http://127.0.0.1:8700 ===")
+println("Open Controls (top-right) -> Animations -> play to watch the assembly.")
+println("Press Enter in THIS window to quit and shut down the visualizer.")
+readline()
+end
+
+# =============================================================================
+# bigstack -- LARGE x_wing (309 parts x 28 assemblies; README large example, ~minutes)
+#   on a 4 GB C stack. MILP warm-start assignment (:milp_w_greedy_warm_start -- pure
+#   greedy deadlocks at N=9), full nav stack, frames recorded only at node completions
+#   (update_anim_at_every_step=false) so big models stay tractable.
+# =============================================================================
+function demo_bigstack()
+project_params = get_project_params(9)   # x_wing (309 parts x 28 assemblies) — README large example, ~minutes
+
+open_animation_at_end = true
+save_animation_along_the_way = false
+save_animation_at_end = false
+anim_active_agents = true
+anim_active_areas = true
+
+update_anim_at_every_step = false   # fast: record only at node completions (big models). true = smooth motion/RVO but very slow
+save_anim_interval = 100
+process_updates_interval = 100
+block_save_anim = false
+
+tangent_bug_flag = true
+rvo_flag = true
+dispersion_flag = true
+assignment_mode = :milp_w_greedy_warm_start   # at_te_walker(N=9) needs MILP warm-start; pure :greedy deadlocks
+milp_optimizer = :highs
+optimizer_time_limit = 60
+
+env, stats = run_with_stack(4_000_000_000) do
+    run_lego_demo(;
+        ldraw_file=project_params[:file_name],
+        project_name=project_params[:project_name],
+        model_scale=project_params[:model_scale],
+        num_robots=project_params[:num_robots],
+        assignment_mode=assignment_mode,
+        milp_optimizer=milp_optimizer,
+        optimizer_time_limit=optimizer_time_limit,
+        rvo_flag=rvo_flag,
+        tangent_bug_flag=tangent_bug_flag,
+        dispersion_flag=dispersion_flag,
+        open_animation_at_end=open_animation_at_end,
+        save_animation=save_animation_at_end,
+        save_animation_along_the_way=save_animation_along_the_way,
+        anim_active_agents=anim_active_agents,
+        anim_active_areas=anim_active_areas,
+        update_anim_at_every_step=update_anim_at_every_step,
+        save_anim_interval=save_anim_interval,
+        process_updates_interval=process_updates_interval,
+        block_save_anim=block_save_anim,
+        write_results=false,
+        overwrite_results=false,
+        look_for_previous_milp_solution=false,
+        save_milp_solution=false,
+        previous_found_optimizer_time=30,
+        max_num_iters_no_progress=2500,
+        stop_after_task_assignment=false,
+    )
+end
+
+println("DEMO_DONE")
+end
+
 # ---- dispatcher -------------------------------------------------------------
 const DEMOS = Dict(
     "original_baseline"    => demo_original_baseline,
@@ -2289,6 +2465,9 @@ const DEMOS = Dict(
     "energy_adaptive"      => demo_energy_adaptive,
     "energy_adaptive_anim" => demo_energy_adaptive_anim,
     "energy_stall_replace" => demo_energy_stall_replace,
+    "debug"                => demo_debug,
+    "fast"                 => demo_fast,
+    "bigstack"             => demo_bigstack,
 )
 end # module Demos
 

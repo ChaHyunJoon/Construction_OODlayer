@@ -16,6 +16,10 @@
 #                      re-solves the same assignment at several efficiency weights.
 #   dump_fixture    -- build the tractor env, step mid-build, dump the exact /propose request
 #                      body to tools/llm_fixture.json (dump_llm_fixture.jl).
+#   reassign        -- whether ForbidAgent blocked robot 1 / whether slots kept stale ids after
+#                      fault->release->re-solve (diag_reassign.jl): FTU feeders, frontier, backtrace.
+#   eval_ood        -- per-OOD-class reliability eval of the LLM respec layer (eval_respec_ood.jl):
+#                      scores TRANSLATION + BEHAVIOR axes; needs the Python LLM service running.
 #
 # Run:
 #   julia +lts --project=. tools/diagnostics.jl <diag_key>        (or  ENV DIAG=<key>)
@@ -27,7 +31,7 @@
 module Diagnostics
 using ConstructionBots
 using Printf
-import Logging, HiGHS, JuMP, JSON3, Graphs, Random
+import Logging, HiGHS, JuMP, JSON3, Graphs, Random, LazySets
 const CB = ConstructionBots
 
 # ---- runtime-loaded decoupled layers (loaded ONCE, at module load) ----------
@@ -650,6 +654,390 @@ println(">>> wrote $out")
 println("    open_ids=$(length(open_ids)) agents=$(length(agents)) nodes=$(length(nodes)) sub_asm=$(length(asm_map))")
 end
 
+# =============================================================================
+# reassign -- Diagnostic: figure out whether ForbidAgent blocked robot 1 and whether the
+#   FTU slots kept stale ids after fault->release->re-solve. Builds the tractor env ONCE,
+#   faults the first robot on a pending transport team, then dumps the FTU slot feeders,
+#   the ForbidAgent frontier vs R-bound RobotGo nodes, the post-solve feeders, and a
+#   per-node backtrace-to-start (genuine solver routing vs stale-id artifact) (diag_reassign.jl).
+# =============================================================================
+function diag_reassign()
+_setup_milp!(time_limit = 120.0)
+
+pp = get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots],
+        assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
+        log_level=Logging.Error, rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, save_animation_along_the_way=false,
+        write_results=false, overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+sched = env.sched
+println(">>> env: ", Graphs.nv(sched), " nodes")
+
+R = nothing
+for v in Graphs.vertices(sched)
+    n = CB.get_node(sched,v).node
+    CB.matches_template(CB.RobotStart, CB.get_node(sched,v)) || continue
+    id = CB.entity(n).id
+    if !isempty(CB.transport_teams_with_agent(env, id; pending_only=true)); R=id; break; end
+end
+println(">>> faulting robot id = ", R)
+
+# origin vtx (RobotStart node bound to R)
+ov = first(v for v in Graphs.vertices(sched)
+           if CB.matches_template(CB.RobotStart, CB.get_node(sched,v)) && CB.entity(CB.get_node(sched,v).node).id == R)
+println(">>> origin vtx = ", ov, "  out-edges BEFORE release = ", collect(Graphs.outneighbors(sched, ov)))
+
+pred(v) = CB.get_node_from_id(sched, CB.get_vtx_id(sched, v))   # raw predicate at vtx
+rid(v)  = (p=pred(v); p isa CB.RobotGo ? string(CB.get_id(CB.entity(p).id)) : "-")
+isgo(v) = pred(v) isa CB.RobotGo
+
+# record robot R's FTUs and their slot feeders BEFORE
+function ftu_feeders(env, R)
+    sched=env.sched; out=[]
+    for v in Graphs.vertices(sched)
+        CB.matches_template(CB.FormTransportUnit, CB.get_node(sched,v)) || continue
+        for vp in Graphs.inneighbors(sched,v)
+            isgo(vp) || continue
+            if CB.entity(pred(vp)).id == R
+                feeders = [f for f in Graphs.inneighbors(sched, vp) if isgo(f)]
+                push!(out, (ftu=v, slot=vp, feeders=feeders, fids=[rid(f) for f in feeders]))
+            end
+        end
+    end
+    out
+end
+println("\n>>> FTUs robot R is on, BEFORE reassign (slot fed by free node):")
+for t in ftu_feeders(env, R); println("   FTU v$(t.ftu) <- slot v$(t.slot)(id=$(rid(t.slot))) <- feeders $(t.feeders) ids=$(t.fids)"); end
+
+# release
+inv = CB.build_invariant(env)
+removed = CB.release_pending_assignments!(env, inv; faulted = R)
+println("\n>>> released ", length(removed), " edges. origin out-edges AFTER release = ", collect(Graphs.outneighbors(sched, ov)))
+
+# Faithfully reproduce the real path: set the frozen/pinned frontier globals that
+# the ForbidAgent compiler reads (fault_robot_and_reassign! sets these).
+let closed_ids = Set{CB.AbstractID}(CB.get_vtx_id(sched, v) for v in env.cache.closed_set),
+    active_ids = Set{CB.AbstractID}(CB.get_vtx_id(sched, v) for v in env.cache.active_set)
+    CB.RESPEC_FROZEN[] = closed_ids
+    CB.RESPEC_PINNED[] = union(closed_ids, active_ids)
+    println(">>> closed=$(length(closed_ids)) active=$(length(active_ids)) at fault time")
+end
+
+# PRE-SOLVE: list every node the ForbidAgent compiler considers a frontier for R,
+# and (separately) every RobotGo currently still bound to R. If R can reach a slot
+# through a free node that is bound-to-R but NOT a frontier, ForbidAgent misses it.
+let
+    frontier = Int[]; rgo = Int[]
+    for v in Graphs.vertices(sched)
+        n = pred(v)
+        n isa CB.RobotGo || continue
+        CB.bound_to_agent(n, R) || continue
+        push!(rgo, v)
+        CB.is_agent_frontier(sched, v, n, R) && push!(frontier, v)
+    end
+    println(">>> PRE-SOLVE: RobotGo nodes still bound to R = $rgo")
+    println(">>> PRE-SOLVE: ForbidAgent frontier nodes for R = $frontier")
+    for v in rgo
+        outs = [v2 for v2 in Graphs.outneighbors(sched, v)]
+        println("      R-node v$v preds=$(collect(Graphs.inneighbors(sched,v))) outs=$outs frontier=$(v in frontier)")
+    end
+end
+
+# Build milp WITH forbid, inspect compiled count by instrumenting compile_proposal!
+proposal = CB.RespecProposal(CB.ConstraintSpec[CB.ForbidAgent(R, 0.0)], "diag", "diag")
+milp = CB.formulate_milp(CB.SparseAdjacencyMILP(), sched, env.scene_tree;
+    optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF, extra_constraints=proposal)
+CB.optimize!(milp)
+println(">>> primal_status = ", CB.primal_status(milp))
+
+CB.update_project_schedule!(nothing, milp, sched, env.scene_tree)
+CB.reset_cache!(env.cache, sched)
+
+println("\n>>> AFTER reassign: each FTU slot, its id, and the free node feeding it (id):")
+for v in Graphs.vertices(sched)
+    CB.matches_template(CB.FormTransportUnit, CB.get_node(sched,v)) || continue
+    for vp in Graphs.inneighbors(sched,v)
+        isgo(vp) || continue
+        feeders = [f for f in Graphs.inneighbors(sched, vp) if isgo(f)]
+        fids = [rid(f) for f in feeders]
+        if rid(vp) == string(CB.get_id(R)) || any(==(string(CB.get_id(R))), fids)
+            println("   FTU v$v slot v$vp slot_id=$(rid(vp))  feeders=$feeders feeder_ids=$fids")
+        end
+    end
+end
+
+# BACKTRACE: for every node still bound to R after reassign, walk predecessors to
+# the root RobotStart. If it reaches RobotStart(R) the solver genuinely routed R
+# there (ForbidAgent gap). If it reaches a DIFFERENT robot's start, or no start,
+# the id=1 is a stale-propagation artifact (reset/first_valid bug).
+function backtrace_to_start(sched, v; maxdepth=50)
+    chain = Tuple{Int,String,String}[]
+    cur = v
+    for _ in 1:maxdepth
+        n = pred(cur)
+        tname = string(nameof(typeof(n)))
+        idstr = try string(CB.get_id(CB.entity(n).id)) catch; "-" end
+        push!(chain, (cur, tname, idstr))
+        n isa CB.RobotStart && break
+        ins = collect(Graphs.inneighbors(sched, cur))
+        isempty(ins) && break
+        cur = first(ins)
+    end
+    return chain
+end
+println("\n>>> BACKTRACE of R-bound nodes after reassign (vtx, type, id) -> root:")
+for v in Graphs.vertices(sched)
+    n = pred(v)
+    (n isa CB.RobotGo && CB.bound_to_agent(n, R)) || continue
+    println("   from v$v: ", backtrace_to_start(sched, v))
+end
+
+println("\n>>> origin (robot R) out-edges AFTER reassign = ", collect(Graphs.outneighbors(sched, ov)))
+println(">>> teams_after (entity.id based) = ", length(CB.transport_teams_with_agent(env, R; pending_only=true)))
+println(">>> validate = ", CB.validate(sched))
+println(">>> done")
+end
+
+# eval_ood's case spec (a struct cannot be defined inside a function, so it lives at
+# module level with a unique name; it is only referenced by diag_eval_ood).
+Base.@kwdef struct _OODEvalCase
+    id::String
+    klass::Symbol
+    events::Vector{String}                       # NL paraphrases of the SAME event
+    pick_target::Function                         # env -> AbstractID (ground-truth ref)
+    expected_kind::Type                           # ForbidAgent / ForbidWindow
+    gold_runner::Function                         # (env, target) -> outcome  (LLM-FREE)
+    predicates::Vector{Pair{String,Function}}     # name => (env_after, target) -> Bool
+end
+
+# =============================================================================
+# eval_ood -- Per-OOD-class reliability eval of the LLM respec layer. For each OOD case it
+#   scores TWO axes: (a) TRANSLATION -- did the LLM emit the expected DSL kind + the expected
+#   id; (b) BEHAVIOR -- does executing the emitted spec satisfy the gold predicates. Gold
+#   predicates come from an LLM-FREE oracle (never grade the model against itself); the LLM is
+#   stochastic so each event is sampled N times (eval_respec_ood.jl). PREREQ: the Python LLM
+#   service must be running (ANTHROPIC_API_KEY) -- returns early with a note if unreachable.
+# =============================================================================
+function diag_eval_ood()
+_setup_milp!()
+
+# Build the base env ONCE; each trial runs on a deepcopy (rebuilding is minutes).
+function build_eval_env()
+    pp = CB.get_project_params(4)   # tractor
+    run_with_stack(2_000_000_000) do
+        CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+            model_scale=pp[:model_scale], num_robots=pp[:num_robots],
+            assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
+            log_level=Logging.Error, rvo_flag=false, tangent_bug_flag=false,
+            dispersion_flag=false, open_animation_at_end=false, save_animation=false,
+            save_animation_along_the_way=false, write_results=false,
+            overwrite_results=false, look_for_previous_milp_solution=false,
+            save_milp_solution=false, return_env_before_sim=true)
+    end
+end
+
+# LLM-driven candidate: translate the NL event, then APPLY it exactly as the
+# production maybe_respecify! dispatch does. Returns (proposal, status).
+function llm_candidate!(env, event)
+    proposal = CB.llm_to_proposal(event, env;
+        id_resolver = ref -> CB._default_id_resolver(env, ref))
+    inv = CB.build_invariant(env)
+    if CB._is_robot_fault(proposal)
+        res = CB.fault_robot_and_reassign!(env, proposal.constraints[1].agent; verbose=false)
+        return (proposal, res.status)
+    end
+    return (proposal, commit_proposal!(env, proposal, inv))
+end
+
+# Generic verify + commit (NO robot-fault dispatch). Shared by the LLM-driven
+# generic path above and the LLM-FREE gold runner (ForbidWindow).
+function commit_proposal!(env, proposal, inv = CB.build_invariant(env))
+    verdict = CB.verify(proposal, env, inv)
+    verdict isa CB.Admit || return :rejected
+    milp = CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
+        optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF,
+        extra_constraints=verdict.proposal)
+    CB.optimize!(milp)
+    CB.commit_respec!(env, milp, verdict.proposal)
+    return :admitted
+end
+
+# Targets are normalised to a TUPLE so single-id and set-valued specs score
+# uniformly. Single-target cases let pick_target return a bare id; _astuple wraps it.
+_spec_targets(c::CB.ForbidAgent)  = (c.agent,)
+_spec_targets(c::CB.ForbidWindow) = (c.node,)
+_astuple(x) = x isa Tuple ? x : (x,)
+
+function score_translation(proposal, case, target)
+    cs = proposal.constraints
+    if target isa Set                      # multi-node case (e.g. zone closure)
+        kind_ok = !isempty(cs) && all(c -> c isa case.expected_kind, cs)
+        got = Set(_spec_targets(c)[1] for c in cs if c isa case.expected_kind)
+        return (kind_ok = kind_ok, target_ok = kind_ok && got == target)
+    end
+    kind_ok = length(cs) == 1 && cs[1] isa case.expected_kind
+    target_ok = kind_ok && _spec_targets(cs[1]) == _astuple(target)
+    return (kind_ok = kind_ok, target_ok = target_ok)
+end
+
+score_behavior(env_after, case, target) =
+    [name => f(env_after, target) for (name, f) in case.predicates]
+
+# Run one case: first sanity-check the LLM-FREE gold achieves its own predicates,
+# then grade each NL paraphrase x sample against them.
+function run_case(case::_OODEvalCase, base_env; n_samples::Int = 2)
+    println("\n================  CASE $(case.id)  [$(case.klass)]  ================")
+
+    # --- gold sanity: the LLM-free oracle must satisfy its own predicates --------
+    gold_env = deepcopy(base_env)
+    gtarget  = case.pick_target(gold_env)
+    case.gold_runner(gold_env, gtarget)
+    gold_preds = score_behavior(gold_env, case, gtarget)
+    gold_ok = all(p -> p.second, gold_preds)
+    println("GOLD (LLM-free) predicates: ", gold_ok ? "ALL PASS ✓" : "FAIL ✗")
+    for (n, ok) in gold_preds; println("   [$(ok ? "✓" : "✗")] $n"); end
+    gold_ok || @warn "gold oracle does not satisfy its predicates — case is ill-formed!"
+
+    # --- LLM candidates ----------------------------------------------------------
+    rows = NamedTuple[]
+    for event in case.events, s in 1:n_samples
+        env = deepcopy(base_env)
+        target = case.pick_target(env)
+        kind_ok = false; target_ok = false; beh_ok = false; status = :error; preds = Pair[]
+        try
+            proposal, status = llm_candidate!(env, event)
+            tr = score_translation(proposal, case, target)
+            kind_ok, target_ok = tr.kind_ok, tr.target_ok
+            preds = score_behavior(env, case, target)
+            beh_ok = !isempty(preds) && all(p -> p.second, preds)
+        catch err
+            status = :error
+            println("   trial errored: ", first(split(sprint(showerror, err), "\n")))
+        end
+        push!(rows, (event=event, kind=kind_ok, target=target_ok, behavior=beh_ok, status=status))
+        println("  [kind $(kind_ok ? "✓" : "✗") | target $(target_ok ? "✓" : "✗") | behavior $(beh_ok ? "✓" : "✗") | $status]  \"$(first(event, 60))...\"")
+    end
+
+    n = length(rows)
+    pct(f) = "$(count(f, rows))/$n"   # count needs the collection, not just the predicate
+    println("---- $(case.id) summary over $n trials ----")
+    println("  translation kind   : ", pct(r -> r.kind))
+    println("  translation target : ", pct(r -> r.target))
+    println("  behavior (gold pred): ", pct(r -> r.behavior))
+    return rows
+end
+
+# CASE 1 — robot fault -> ForbidAgent -> reassign
+function robot_fault_case()
+    # Behavioral gold predicates (mirror test_respec_reassign.jl asserts).
+    freed = (env, rid) -> isempty(CB.transport_teams_with_agent(env, rid; pending_only=true))
+    valid = (env, _)   -> CB.validate(env.sched)
+    finite = (env, _)  -> isfinite(CB.makespan(env.sched))
+    staffed = function (env, _)
+        for v in Graphs.vertices(env.sched)
+            CB.matches_template(CB.FormTransportUnit, CB.get_node(env.sched, v)) || continue
+            node = CB.get_node(env.sched, v).node
+            need = length(CB.robot_team(CB.entity(node)))
+            have = count(vp -> CB.get_node_from_id(env.sched, CB.get_vtx_id(env.sched, vp)) isa CB.RobotGo,
+                         Graphs.inneighbors(env.sched, v))
+            have >= need || return false
+        end
+        return true
+    end
+    _OODEvalCase(
+        id = "robot_fault_basic",
+        klass = :ForbidAgent,
+        events = [
+            "Robot R3 reports a motor fault and is immobile and cannot perform any task.",
+            "We just lost robot 3 — it's stuck and won't move, so take it out of the plan.",
+            "R3 has broken down and is unavailable for the rest of the build.",
+        ],
+        pick_target = env -> CB.RobotID(3),
+        expected_kind = CB.ForbidAgent,
+        gold_runner = (env, target) -> CB.fault_robot_and_reassign!(env, target; verbose=false),
+        predicates = [
+            "faulted robot on 0 pending transport teams" => freed,
+            "schedule valid"                              => valid,
+            "makespan finite"                             => finite,
+            "all transport tasks fully staffed"           => staffed,
+        ],
+    )
+end
+
+# CASE 2 — zone closure -> ForbidWindow on EVERY node in a spatial zone. The
+# grounding test is SPATIAL: the model must map "the southern area" to the set of
+# south-located assemblies (labelled with their staging direction). SET-valued
+# target. NOTE: AssemblyComplete is an instantaneous milestone, so a window the
+# nodes already avoid is non-binding → behavior can't tell right-set from wrong-set;
+# the grounding signal is the translation-TARGET set-match. (See design doc.)
+function zone_closure_case()
+    T_LO, T_HI = 20.0, 50.0
+    southset = function (env)
+        s = Set{CB.AbstractID}()
+        for v in Graphs.vertices(env.sched)
+            node = CB.get_node(env.sched, v).node
+            node isa CB.AssemblyComplete || continue
+            aid = CB.entity(node).id
+            haskey(env.staging_circles, aid) || continue
+            Float64(LazySets.center(env.staging_circles[aid])[2]) < -0.2 &&
+                push!(s, CB.get_vtx_id(env.sched, v))
+        end
+        return s
+    end
+    _OODEvalCase(
+        id = "zone_closure_south",
+        klass = :ForbidWindow,
+        events = [
+            "A worker has entered the southern staging area. No assembly work may take place in the south between time 20 and time 50.",
+            "Safety lockout: the south staging zone is closed from t=20 to t=50 — keep every southern assembly out of that window.",
+            "There is a spill in the south area; nothing located in the south can be active between t=20 and t=50.",
+        ],
+        pick_target = southset,
+        expected_kind = CB.ForbidWindow,
+        gold_runner = (env, zone) ->
+            commit_proposal!(env, CB.RespecProposal([CB.ForbidWindow(id, T_LO, T_HI) for id in zone])),
+        predicates = [
+            "all south nodes avoid [t_lo,t_hi]" =>
+                (env, zone) -> all(zone) do id
+                    v = CB.get_vtx(env.sched, id)
+                    CB.get_tF(env.sched, v) <= T_LO + 1e-3 || CB.get_t0(env.sched, v) >= T_HI - 1e-3
+                end,
+            "schedule valid"  => (env, _) -> CB.validate(env.sched),
+            "makespan finite" => (env, _) -> isfinite(CB.makespan(env.sched)),
+        ],
+    )
+end
+
+function main()
+    if !CB.respec_service_ready()
+        println("!!! Python LLM service not reachable at $(CB._RESPEC_SERVICE_URL). " *
+                "Start it (see test_respec_e2e.jl header) and re-run.")
+        return
+    end
+    println(">>> building base env (assignment only)...")
+    base_env = build_eval_env()
+    println(">>> base env: $(Graphs.nv(base_env.sched)) nodes")
+    # Step into a mid-build state so the reassign exercises the freeze path too.
+    for _ in 1:4000
+        CB.step_environment!(base_env); CB.update_planning_cache!(base_env, 0.0)
+        length(base_env.cache.closed_set) >= 8 && break
+    end
+    println(">>> stepped: closed=$(length(base_env.cache.closed_set))")
+
+    cases = [robot_fault_case(), zone_closure_case()]
+    for c in cases
+        run_case(c, base_env; n_samples = 2)
+    end
+    println("\n>>>>>>>>>>>>>>  OOD EVAL COMPLETE  <<<<<<<<<<<<<<")
+end
+
+main()
+end
+
 # ---- dispatcher -------------------------------------------------------------
 const DIAGNOSTICS = Dict(
     "rethread"       => diag_rethread,
@@ -657,6 +1045,8 @@ const DIAGNOSTICS = Dict(
     "ood_compare"    => ood_compare,
     "ab_energy"      => ab_energy,
     "dump_fixture"   => dump_fixture,
+    "reassign"       => diag_reassign,
+    "eval_ood"       => diag_eval_ood,
 )
 end # module Diagnostics
 

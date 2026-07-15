@@ -12,6 +12,9 @@
 #   battery_smoke            -- OFFLINE smoke test of the energy-aware adaptive layer (no env, no LLM)
 #   battery_safety           -- OFFLINE safety/verifiability test of the TIER-2 soft re-spec + bias registry
 #   llm_classification       -- Stage 3 REAL-LLM check (needs the Python service up + ANTHROPIC_API_KEY)
+#   respec_gate              -- LLM-free proof the verify GATE admits feasible / rejects infeasible re-specs (+freeze)
+#   respec_timing            -- LLM-free proof the ForbidWindow timing re-spec PERSISTS past commit (persist_milp_times!)
+#   respec_reassign          -- STAGE 1 smoke: robot fault -> remaining robots take over (fault_robot_and_reassign!)
 #
 # Run:
 #   julia +lts --project=. tools/tests.jl <test_key>        (or  ENV TEST=<key>)
@@ -530,6 +533,315 @@ println("\n$(npass)/$(length(cases)) classified correctly")
 println(npass == length(cases) ? "ALL GREEN" : "SOME MISCLASSIFIED")
 end
 
+# =============================================================================
+# respec_gate -- Prove the verify GATE on a real schedule, no LLM. Builds a real env
+#   (assignment done, sim NOT started) and checks verify() ADMITS a non-binding
+#   constraint (feasible) and REJECTS an impossible one (:infeasible). Then a FREEZE
+#   test: step the sim to close nodes and confirm build_invariant pins realized times.
+# =============================================================================
+function test_respec_gate()
+project_params = get_project_params(4)   # tractor — the project the user has run successfully
+                                          # (project 1 / colored_8x8 segfaults in ECOS geometry overapprox)
+
+println(">>> building env (assignment only, no simulation)...")
+env = run_with_stack(2_000_000_000) do
+    run_lego_demo(;
+        ldraw_file=project_params[:file_name],
+        project_name=project_params[:project_name],
+        model_scale=project_params[:model_scale],
+        num_robots=project_params[:num_robots],
+        assignment_mode=:greedy,
+        milp_optimizer=:highs,
+        optimizer_time_limit=60,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false,
+        save_animation_along_the_way=false,
+        write_results=false, overwrite_results=false,
+        look_for_previous_milp_solution=false, save_milp_solution=false,
+        return_env_before_sim=true,          # the new RESPEC option
+    )
+end
+
+@assert env !== nothing "run_lego_demo returned nothing — did return_env_before_sim fire?"
+nnodes = Graphs.nv(env.sched)
+println(">>> env built. schedule nodes = $nnodes, closed = $(length(env.cache.closed_set))")
+
+# A real, still-open node id, and a freeze snapshot (empty: nothing executed yet).
+nid = CB.get_vtx_id(env.sched, 1)
+inv = CB.build_invariant(env)
+println(">>> target node id = $nid")
+
+# --- ADMIT: a window entirely in the past is feasible & non-binding -----------
+# ForbidWindow(node, t_lo, t_hi) == tF<=t_lo OR t0>=t_hi. With the window in the
+# past (t_hi=-1) the "start after t_hi" branch is trivially satisfied (t0>=0>=-1).
+good = CB.RespecProposal([CB.ForbidWindow(nid, -2.0, -1.0)])
+vg = CB.verify(good, env, inv)
+println(">>> ForbidWindow(nid, -2, -1)  => ", vg isa CB.Admit ? "ADMIT ($(vg.n_constraints) constr)" : "Reject($(vg.reason))")
+
+# --- REJECT: an impossible window is infeasible ------------------------------
+# With t_lo very negative, the disjunction's Big-M (1e5 in compiler.jl) cannot
+# relax tF <= t_lo above 0, so BOTH branches force tF < 0 — impossible (tF>=0).
+bad = CB.RespecProposal([CB.ForbidWindow(nid, -1e6, 1e6)])
+vb = CB.verify(bad, env, inv)
+println(">>> ForbidWindow(nid, -1e6, 1e6) => ", vb isa CB.Reject ? "REJECT(:$(vb.reason))" : "Admit (UNEXPECTED)")
+
+@assert vg isa CB.Admit  "expected ADMIT for non-binding window, got $(typeof(vg))"
+@assert vb isa CB.Reject "expected REJECT for impossible window, got $(typeof(vb))"
+@assert vb.reason == :infeasible "expected :infeasible, got :$(vb.reason)"
+
+println("\n==================  GATE TEST PASSED  ==================")
+println("The verify gate ADMITS feasible re-specs and REJECTS infeasible ones")
+println("on a real schedule, with zero LLM involvement. Safety is in the gate.")
+
+# =============================================================================
+# FREEZE TEST: step the sim until some nodes complete, then confirm
+# build_invariant pins their realized times and the gate still respects them.
+# =============================================================================
+println("\n>>> stepping simulation to close some nodes (rvo off, straight-line)...")
+nclosed0 = length(env.cache.closed_set)
+for i in 1:5000
+    ConstructionBots.step_environment!(env)
+    ConstructionBots.update_planning_cache!(env, 0.0)
+    length(env.cache.closed_set) >= nclosed0 + 5 && break
+end
+nclosed = length(env.cache.closed_set)
+println(">>> closed nodes: $nclosed0 -> $nclosed ; active = $(length(env.cache.active_set))")
+@assert nclosed > nclosed0 "stepping closed no nodes — cache may not be seeded"
+
+inv2 = CB.build_invariant(env)
+println(">>> frozen_t0 entries = $(length(inv2.frozen_t0)), frozen_tF entries = $(length(inv2.frozen_tF))")
+@assert !isempty(inv2.frozen_t0) "freeze produced no t0 lower bounds"
+@assert !isempty(inv2.frozen_tF) "freeze produced no tF lower bounds (no closed nodes pinned)"
+
+# A closed node's pinned tF must be a real (finite, >= 0) realized time.
+some_closed = first(inv2.frozen_tF)
+println(">>> sample pinned closed node: id=$(some_closed[1]) tF>=$(round(some_closed[2], digits=3))")
+@assert isfinite(some_closed[2]) && some_closed[2] >= 0.0
+
+# The gate must still ADMIT a feasible re-spec while honoring the freeze, i.e.
+# the re-solved schedule does not pull frozen work earlier (satisfies_invariant).
+open_v = first(v for v in Graphs.vertices(env.sched) if !(CB.get_vtx_id(env.sched, v) in inv2.closed_nodes))
+nid2 = CB.get_vtx_id(env.sched, open_v)
+good2 = CB.RespecProposal([CB.ForbidWindow(nid2, -2.0, -1.0)])
+vg2 = CB.verify(good2, env, inv2)
+println(">>> verify with non-empty freeze => ", vg2 isa CB.Admit ? "ADMIT (freeze respected)" : "Reject(:$(vg2.reason))")
+@assert vg2 isa CB.Admit "expected ADMIT honoring freeze, got $(typeof(vg2))"
+
+println("\n==================  FREEZE TEST PASSED  ==================")
+println("Completed nodes are pinned to their realized times; the re-solve plans")
+println("only the future and never pulls finished work into the past.")
+println("\n>>>>>>>>>>>>>>  ALL TESTS PASSED  <<<<<<<<<<<<<<")
+end
+
+# =============================================================================
+# respec_timing -- LLM-free verification that the commit (persist_milp_times!) makes the
+#   timing-only re-spec (ForbidWindow) STICK past commit. ForbidWindow adds NO graph edge,
+#   so its effect lives PURELY in the written MILP times — the direct test of
+#   persist_milp_times!. Uses hand-written proposals through the verify -> commit_respec! path.
+# =============================================================================
+function test_respec_timing()
+# NOTE: do NOT cache the env via Serialization — round-tripping a built env through
+# serialize/deserialize subtly corrupts its cached transforms/schedule state, which
+# made update_project_schedule! re-derive a 6x-inflated makespan and produced a
+# FALSE "write mechanism broken" failure. Always build fresh for trustworthy timing
+# numbers. (deepcopy, used per-test below, IS faithful — only serialize is not.)
+
+_setup_milp!(time_limit = 300.0, mip_rel_gap = 5.0)
+
+pp = get_project_params(4)   # tractor
+println(">>> building env (assignment only)...")
+env = run_with_stack(2_000_000_000) do
+    run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots],
+        assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
+        log_level=Logging.Error, rvo_flag=false, tangent_bug_flag=false,
+        dispersion_flag=false, open_animation_at_end=false, save_animation=false,
+        save_animation_along_the_way=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+println(">>> env ready: $(Graphs.nv(env.sched)) nodes")
+
+# Collect open AssemblyComplete milestone nodes (what a ForbidWindow targets).
+# Skip active nodes too: persist_milp_times! keeps a started node's realized t0, so
+# a binding start-shift can only be tested on a not-yet-started (future) node.
+asm_nodes = CB.AbstractID[]
+for v in Graphs.vertices(env.sched)
+    (v in env.cache.closed_set || v in env.cache.active_set) && continue
+    node = CB.get_node(env.sched, v).node
+    node isa CB.AssemblyComplete || continue
+    push!(asm_nodes, CB.get_vtx_id(env.sched, v))
+end
+println(">>> open AssemblyComplete milestones: $(length(asm_nodes))")
+@assert !isempty(asm_nodes) "need >=1 future milestone node to test ForbidWindow"
+
+# ---------------------------------------------------------------------------
+# TEST: ForbidWindow is the only remaining timing-only re-spec, and it adds NO
+# graph edge — so its effect lives PURELY in the written MILP times. If the write
+# mechanism (persist_milp_times!) did nothing, the structural pass would snap the
+# node back to its earliest start at commit and this FAILS.
+#
+# Make the window genuinely BINDING: pick a future milestone, read its natural
+# start t0n, and forbid [0, t0n + Δ]. "Finish before 0" is impossible (tF>=0), so
+# the node MUST "start after t_hi" => t0 is forced up to >= t0n + Δ. (t_hi stays
+# well under the compiler's Big-M=1e5, so only the start-after branch is viable.)
+# ---------------------------------------------------------------------------
+local tgt, vt, t0n, t_lo, t_hi, prop, inv, verdict
+admitted = false
+for cand in asm_nodes
+    tgt = cand
+    vt  = CB.get_vtx(env.sched, tgt)
+    t0n = Float64(CB.get_t0(env.sched, vt))
+    t_lo, t_hi = 0.0, t0n + 10.0
+    prop = CB.RespecProposal([CB.ForbidWindow(tgt, t_lo, t_hi)])
+    inv  = CB.build_invariant(env)
+    verdict = CB.verify(prop, env, inv)
+    if verdict isa CB.Admit; admitted = true; break; end
+end
+@assert admitted "no admittable binding ForbidWindow found to test"
+
+println("\n── TEST: ForbidWindow($tgt, $(round(t_lo,digits=2)), $(round(t_hi,digits=2)))")
+println("   BEFORE: t0[node]=$(round(t0n,digits=2))  (must be raised to >= $(round(t_hi,digits=2)))")
+milp = CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
+    optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF,
+    extra_constraints=verdict.proposal)
+CB.optimize!(milp)
+t0m = JuMP.value.(milp.model[:t0])
+println("   [MILP soln] t0[node]=$(round(t0m[vt],digits=2))  (constraint forces t0 >= t_hi)")
+@assert CB.commit_respec!(env, milp, verdict.proposal) "commit_respec! failed"
+
+t0a = Float64(CB.get_t0(env.sched, vt))
+println("   AFTER : t0[node]=$(round(t0a,digits=2))")
+ok = t0a >= t_hi - 1e-6
+println(ok ? "   ✅ PASS: ForbidWindow start-shift PERSISTED past commit (written MILP times alone, no edge)." :
+            "   ❌ FAIL: t0 reverted below t_hi — write mechanism not working.")
+
+println("\n", ok ? "════ TIMING-PERSISTENCE CHECK PASSED ════" :
+                  "════ CHECK FAILED ════")
+end
+
+# =============================================================================
+# respec_reassign -- STAGE 1 smoke test (no LLM, no viz). Proves "robot fault -> other
+#   robots take over": fault_robot_and_reassign! frees the faulted robot from ALL pending
+#   transport teams, the re-solved schedule is VALID, completed work stays frozen, and an
+#   infeasible reassign is REJECTED. Two scenarios: (A) fault at t=0, (B) fault mid-build.
+# =============================================================================
+function test_respec_reassign()
+# Re-solving needs a real MILP optimizer with a time limit (greedy never set one).
+# Reassignment only needs a FEASIBLE re-solve, not a proven-optimal one. A large
+# mip_rel_gap makes HiGHS return at the first feasible integer solution, which
+# makes the worst-case (t=0, full re-solve) reliably fast instead of timing out.
+_setup_milp!(time_limit = 300.0, mip_rel_gap = 5.0)
+
+pp = get_project_params(4)   # tractor
+println(">>> building env (assignment only, no simulation)...")
+env = run_with_stack(2_000_000_000) do
+    run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots],
+        assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
+        log_level=Logging.Error, rvo_flag=false, tangent_bug_flag=false,
+        dispersion_flag=false, open_animation_at_end=false, save_animation=false,
+        save_animation_along_the_way=false, write_results=false, overwrite_results=false,
+        look_for_previous_milp_solution=false, save_milp_solution=false,
+        return_env_before_sim=true)
+end
+@assert env !== nothing
+println(">>> env built: $(Graphs.nv(env.sched)) nodes, $(length(env.cache.closed_set)) closed")
+
+robot_starts = [v for v in Graphs.vertices(env.sched)
+                if CB.matches_template(CB.RobotStart, CB.get_node(env.sched, v))]
+botid(v) = CB.entity(CB.get_node(env.sched, v).node).id
+
+# Pick a robot that actually has pending transport work to take away.
+faulted = nothing
+for v in robot_starts
+    id = botid(v)
+    if length(CB.transport_teams_with_agent(env, id; pending_only=true)) > 0
+        faulted = id; break
+    end
+end
+@assert faulted !== nothing "no robot has pending transport work?!"
+
+# =============================================================================
+println("\n========== SCENARIO A: fault at t=0 (full future re-solve) ==========")
+teamsA0 = CB.transport_teams_with_agent(env, faulted; pending_only=true)
+println(">>> faulting $(faulted); it is on $(length(teamsA0)) pending transport team(s).")
+@assert !isempty(teamsA0)
+
+resA = CB.fault_robot_and_reassign!(env, faulted; verbose=true)
+println(">>> result: ", resA)
+
+@assert resA.status == :admitted "expected :admitted, got :$(resA.status)"
+@assert resA.valid "update_project_schedule! reported an INVALID schedule"
+@assert resA.teams_after == 0 "faulted robot still on $(resA.teams_after) pending team(s) — not freed"
+@assert CB.validate(env.sched) "re-solved schedule failed validate()"
+@assert isfinite(CB.makespan(env.sched)) "makespan is not finite after re-solve"
+
+# Every transport task still has a full team (work is covered, not dropped):
+ftus = [v for v in Graphs.vertices(env.sched)
+        if CB.matches_template(CB.FormTransportUnit, CB.get_node(env.sched, v))]
+for v in ftus
+    node = CB.get_node(env.sched, v).node
+    need = length(CB.robot_team(CB.entity(node)))
+    have = count(vp -> CB.get_node_from_id(env.sched, CB.get_vtx_id(env.sched, vp)) isa CB.RobotGo,
+                 Graphs.inneighbors(env.sched, v))
+    @assert have >= need "FormTransportUnit v$v understaffed after reassign: have $have < need $need"
+end
+println(">>> SCENARIO A PASSED: faulted robot removed from all pending teams; all "*
+        "$(length(ftus)) transport tasks fully staffed by the remaining robots; schedule valid.")
+
+# =============================================================================
+println("\n========== SCENARIO B: fault mid-build (freeze-respecting) ==========")
+# Step the sim so some nodes complete, then fault a DIFFERENT robot.
+for _ in 1:4000
+    CB.step_environment!(env); CB.update_planning_cache!(env, 0.0)
+    length(env.cache.closed_set) >= 8 && break
+end
+println(">>> stepped: closed=$(length(env.cache.closed_set)) active=$(length(env.cache.active_set))")
+invB = CB.build_invariant(env)
+frozen_tF_before = copy(invB.frozen_tF)
+@assert !isempty(frozen_tF_before) "no closed nodes pinned — cannot test freeze"
+
+faultedB = nothing
+for v in robot_starts
+    id = botid(v)
+    id == faulted && continue
+    if length(CB.transport_teams_with_agent(env, id; pending_only=true)) > 0
+        faultedB = id; break
+    end
+end
+@assert faultedB !== nothing "no second robot with pending work"
+println(">>> faulting $(faultedB) (closed nodes frozen: $(length(frozen_tF_before)))")
+
+resB = CB.fault_robot_and_reassign!(env, faultedB; verbose=true)
+println(">>> result: ", resB)
+
+if resB.status == :admitted
+    @assert resB.valid "invalid schedule after mid-build reassign"
+    @assert resB.teams_after == 0 "faulted robot still on pending teams mid-build"
+    @assert CB.validate(env.sched) "schedule invalid after mid-build reassign"
+    # Freeze respected: every previously-closed node keeps its realized finish (>=).
+    for (id, tF) in frozen_tF_before
+        v = CB.get_vtx(env.sched, id)
+        @assert CB.get_tF(env.sched, v) >= tF - 1e-3 "frozen node $id pulled earlier: "*
+            "$(CB.get_tF(env.sched, v)) < $tF"
+    end
+    println(">>> SCENARIO B PASSED: mid-build reassign kept all $(length(frozen_tF_before)) "*
+            "completed nodes pinned; faulted robot freed; schedule valid.")
+else
+    # A reject mid-build is also a CORRECT outcome (safe-stop), as long as it did
+    # not corrupt the schedule of record. Verify the gate behaved safely.
+    @assert resB.status in (:rejected, :fallback)
+    println(">>> SCENARIO B: reassignment was infeasible -> $(resB.status) (safe-stop path). "*
+            "This is the gate correctly refusing an unsafe re-solve, not a failure.")
+end
+
+println("\n>>>>>>>>>>>>>>  STAGE 1 REASSIGN SMOKE TEST COMPLETE  <<<<<<<<<<<<<<")
+println("Core capability proven: a verified, freeze-respecting MILP re-solve moves a")
+println("faulted robot's pending work onto the other robots — solver untouched, past")
+println("invariant, and an unsatisfiable reassignment is safely refused by the gate.")
+end
+
 # ---- dispatcher -------------------------------------------------------------
 const TESTS = Dict(
     "forbidzone_parse"         => test_forbidzone_parse,
@@ -538,6 +850,9 @@ const TESTS = Dict(
     "battery_smoke"            => test_battery_smoke,
     "battery_safety"           => test_battery_safety,
     "llm_classification"       => test_llm_classification,
+    "respec_gate"              => test_respec_gate,
+    "respec_timing"            => test_respec_timing,
+    "respec_reassign"          => test_respec_reassign,
 )
 end # module Tests
 

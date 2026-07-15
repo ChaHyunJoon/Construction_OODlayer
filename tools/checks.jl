@@ -12,6 +12,9 @@
 #   spare_pool    -- OOD 1-1 A1 directional spare-pool storage + geometry helpers (env-free)
 #   hot_swap      -- identity-preserving spare-repository hot-swap bookkeeping + health reset (env-free)
 #   scale_cap     -- per-project/per-scale "root-clear cap" geometry probe (no sim; rvo OFF)
+#   rvo           -- PyCall/rvo2 sanity probe: import rvo2 + construct a PyRVOSimulator
+#   stack         -- measure recursion depth on the main task (+ spawned/big-stack tasks)
+#   stack_task    -- measure recursion depth on a spawned task with an explicit large C stack
 #
 # Run:
 #   julia +lts --project=. tools/checks.jl <check_key>       (or  ENV CHECK=<key>)
@@ -23,6 +26,7 @@
 module Checks
 using ConstructionBots
 import MeshCat, Logging, HiGHS, LinearAlgebra
+import PyCall   # used only by check_rvo; pyimport("rvo2") runs at CALL time, not module load
 const CB = ConstructionBots
 const norm = LinearAlgebra.norm
 
@@ -395,6 +399,126 @@ end
 println("DONE")
 end
 
+# =============================================================================
+# rvo -- PyCall/rvo2 sanity probe: confirm the PyCall python has the `rvo2` module and
+#   that a PyRVOSimulator can be constructed. The pyimport runs at CALL time, so a
+#   missing rvo2 does not break module load. (originally test_rvo.jl)
+# =============================================================================
+function check_rvo()
+    println("PyCall python: ", PyCall.python)
+    rvo = PyCall.pyimport("rvo2")
+    println("rvo2 imported: ", rvo)
+    sim = rvo.PyRVOSimulator(1/60, 1.5, 5, 1.5, 2.0, 0.4, 2.0)
+    println("sim created: ", sim)
+    println("RVO2_OK")
+end
+
+# =============================================================================
+# stack -- measure how deep we can recurse on (a) the main task, (b) a spawned task, and
+#   (c) a low-level task with an explicit large C stack via jl_new_task. Purely diagnostic
+#   (no sim/MILP); `deep` is nested so it stays local to this check. (originally test_stack.jl)
+# =============================================================================
+function check_stack()
+    @noinline function deep(n::Int)
+        n == 0 && return 0
+        return 1 + deep(n - 1)
+    end
+
+    function max_depth()
+        lo, hi = 0, 0
+        # exponential probe
+        d = 1000
+        while true
+            ok = try
+                deep(d); true
+            catch e
+                false
+            end
+            if ok
+                lo = d; d *= 2
+                d > 20_000_000 && return lo
+            else
+                hi = d; break
+            end
+        end
+        # binary search
+        while hi - lo > 1000
+            mid = (lo + hi) ÷ 2
+            ok = try; deep(mid); true catch; false end
+            ok ? (lo = mid) : (hi = mid)
+        end
+        return lo
+    end
+
+    println("MAIN task max depth ~ ", max_depth())
+
+    # Spawned task on a thread
+    t = Threads.@spawn max_depth()
+    println("SPAWNED task max depth ~ ", fetch(t))
+
+    # Low-level: create a task with an explicit large stack via jl_new_task
+    function bigstack_run(f, stacksize::Int)
+        t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int), f, nothing, stacksize)
+        t.sticky = false
+        schedule(t)
+        return fetch(t)
+    end
+    println("BIGSTACK(512MB) max depth ~ ", bigstack_run(max_depth, 512*1024*1024))
+    println("STACK_TEST_DONE")
+end
+
+# =============================================================================
+# stack_task -- measure recursion depth on a freshly created task that has an explicit
+#   (large) C stack. Uses its OWN run_with_stack (verbatim from the source, kept local so it
+#   does not shadow the shared module helper); `deep` is nested. (originally test_stack2.jl)
+# =============================================================================
+function check_stack_task()
+    @noinline function deep(n::Int)
+        n == 0 && return 0
+        return 1 + deep(n - 1)
+    end
+
+    # Run f() on a freshly created task that has an explicit (large) C stack.
+    function run_with_stack(f, stacksize::Int)
+        result = Ref{Any}(nothing)
+        err = Ref{Any}(nothing)
+        done = Threads.Atomic{Bool}(false)
+        wrapper = function ()
+            try
+                result[] = f()
+            catch e
+                err[] = e
+            finally
+                done[] = true
+            end
+        end
+        t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int), wrapper, nothing, stacksize)
+        t.sticky = false
+        schedule(t)
+        while !done[]
+            sleep(0.02)
+        end
+        err[] === nothing || throw(err[])
+        return result[]
+    end
+
+    # Probe max depth with the big stack.
+    function probe(maxtry)
+        d = 1000
+        last = 0
+        while d <= maxtry
+            ok = try; deep(d); true catch; false end
+            ok || break
+            last = d
+            d *= 2
+        end
+        return last
+    end
+
+    println("1GB stack max depth ~ ", run_with_stack(() -> probe(200_000_000), 1024*1024*1024))
+    println("STACK2_DONE")
+end
+
 # ---- dispatcher -------------------------------------------------------------
 const CHECKS = Dict(
     "load"         => check_load,
@@ -403,6 +527,9 @@ const CHECKS = Dict(
     "spare_pool"   => check_spare_pool,
     "hot_swap"     => check_hot_swap,
     "scale_cap"    => check_scale_cap,
+    "rvo"          => check_rvo,
+    "stack"        => check_stack,
+    "stack_task"   => check_stack_task,
 )
 end # module Checks
 

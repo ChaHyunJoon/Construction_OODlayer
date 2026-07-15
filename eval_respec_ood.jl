@@ -35,7 +35,7 @@ Base.@kwdef struct OODEvalCase
     klass::Symbol
     events::Vector{String}                       # NL paraphrases of the SAME event
     pick_target::Function                         # env -> AbstractID (ground-truth ref)
-    expected_kind::Type                           # ForbidAgent / Deadline / ...
+    expected_kind::Type                           # ForbidAgent / ForbidWindow
     gold_runner::Function                         # (env, target) -> outcome  (LLM-FREE)
     predicates::Vector{Pair{String,Function}}     # name => (env_after, target) -> Bool
 end
@@ -88,7 +88,7 @@ function llm_candidate!(env, event)
 end
 
 # Generic verify + commit (NO robot-fault dispatch). Shared by the LLM-driven
-# generic path above and the LLM-FREE gold runners (Deadline/Precede/ForbidWindow).
+# generic path above and the LLM-FREE gold runner (ForbidWindow).
 function commit_proposal!(env, proposal, inv = CB.build_invariant(env))
     verdict = CB.verify(proposal, env, inv)
     verdict isa CB.Admit || return :rejected
@@ -96,20 +96,17 @@ function commit_proposal!(env, proposal, inv = CB.build_invariant(env))
         optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF,
         extra_constraints=verdict.proposal)
     CB.optimize!(milp)
-    CB.update_project_schedule!(nothing, milp, env.sched, env.scene_tree)
-    CB.reset_cache!(env.cache, env.sched)
+    CB.commit_respec!(env, milp, verdict.proposal)
     return :admitted
 end
 
 # ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
-# A constraint can reference more than one id (Precede has two), so the target is a
-# TUPLE. Single-target cases let pick_target return a bare id; _astuple normalises.
+# Targets are normalised to a TUPLE so single-id and set-valued specs score
+# uniformly. Single-target cases let pick_target return a bare id; _astuple wraps it.
 _spec_targets(c::CB.ForbidAgent)  = (c.agent,)
-_spec_targets(c::CB.Deadline)     = (c.node,)
 _spec_targets(c::CB.ForbidWindow) = (c.node,)
-_spec_targets(c::CB.Precede)      = (c.a, c.b)
 _astuple(x) = x isa Tuple ? x : (x,)
 
 function score_translation(proposal, case, target)
@@ -213,81 +210,7 @@ function robot_fault_case()
 end
 
 # ---------------------------------------------------------------------------
-# CASE 2 — rush / expedite order -> Deadline on a named assembly milestone
-# NOTE: with a generous (non-binding) deadline the BEHAVIOR predicates can't tell
-# right-node from wrong-node grounding (the whole build finishes < T regardless),
-# so for Deadline the GROUNDING signal is the translation-target score; behavior
-# just confirms the spec executed feasibly. (See ood_eval_design doc.)
-# ---------------------------------------------------------------------------
-function deadline_case()
-    DEADLINE_T = 100.0
-    find_root = function (env)
-        for v in Graphs.vertices(env.sched)
-            node = CB.get_node(env.sched, v).node
-            node isa CB.AssemblyComplete || continue
-            any(vp -> CB.get_node_from_id(env.sched, CB.get_vtx_id(env.sched, vp)) isa CB.ProjectComplete,
-                Graphs.outneighbors(env.sched, v)) && return CB.get_vtx_id(env.sched, v)
-        end
-        error("no root AssemblyComplete found")
-    end
-    OODEvalCase(
-        id = "deadline_final_assembly",
-        klass = :Deadline,
-        events = [
-            "The final tractor assembly must be completed no later than time 100.",
-            "Operations note: we need the whole build (the root assembly) finished by t=100 at the latest.",
-            "Customer escalation — the final assembly is due by time 100, please prioritize it.",
-        ],
-        pick_target = find_root,
-        expected_kind = CB.Deadline,
-        gold_runner = (env, target) ->
-            commit_proposal!(env, CB.RespecProposal([CB.Deadline(target, DEADLINE_T)])),
-        predicates = [
-            "deadline node finishes by T" =>
-                (env, tgt) -> CB.get_tF(env.sched, CB.get_vtx(env.sched, tgt)) <= DEADLINE_T + 1e-3,
-            "schedule valid"  => (env, _) -> CB.validate(env.sched),
-            "makespan finite" => (env, _) -> isfinite(CB.makespan(env.sched)),
-        ],
-    )
-end
-
-# ---------------------------------------------------------------------------
-# CASE 3 — defect / rework -> Precede (a finishes before b starts). TWO targets.
-# ---------------------------------------------------------------------------
-function precede_case()
-    find_asm = function (env, n)            # sub-assembly whose AssemblyID.id == n
-        for v in Graphs.vertices(env.sched)
-            node = CB.get_node(env.sched, v).node
-            node isa CB.AssemblyComplete || continue
-            (try CB.entity(node).id.id catch; nothing end) == n && return CB.get_vtx_id(env.sched, v)
-        end
-        error("no sub-assembly $n")
-    end
-    A, B = 2, 4                              # rework A before starting B
-    OODEvalCase(
-        id = "precede_rework",
-        klass = :Precede,
-        events = [
-            "Sub-assembly 2 failed quality inspection and must be reworked and completed before sub-assembly 4 is started.",
-            "QC flagged a defect in sub-assembly 2 — finish redoing it before any work begins on sub-assembly 4.",
-            "Hold sub-assembly 4 until sub-assembly 2 (which needs rework) is fully complete.",
-        ],
-        pick_target = env -> (find_asm(env, A), find_asm(env, B)),
-        expected_kind = CB.Precede,
-        gold_runner = (env, target) ->
-            commit_proposal!(env, CB.RespecProposal([CB.Precede(target[1], target[2])])),
-        predicates = [
-            "A finishes before B starts" =>
-                (env, t) -> CB.get_tF(env.sched, CB.get_vtx(env.sched, t[1])) <=
-                            CB.get_t0(env.sched, CB.get_vtx(env.sched, t[2])) + 1e-3,
-            "schedule valid"  => (env, _) -> CB.validate(env.sched),
-            "makespan finite" => (env, _) -> isfinite(CB.makespan(env.sched)),
-        ],
-    )
-end
-
-# ---------------------------------------------------------------------------
-# CASE 4 — zone closure -> ForbidWindow on EVERY node in a spatial zone. The
+# CASE 2 — zone closure -> ForbidWindow on EVERY node in a spatial zone. The
 # grounding test is SPATIAL: the model must map "the southern area" to the set of
 # south-located assemblies (labelled with their staging direction). SET-valued
 # target. NOTE: AssemblyComplete is an instantaneous milestone, so a window the
@@ -348,7 +271,7 @@ function main()
     end
     println(">>> stepped: closed=$(length(base_env.cache.closed_set))")
 
-    cases = [robot_fault_case(), deadline_case(), precede_case(), zone_closure_case()]
+    cases = [robot_fault_case(), zone_closure_case()]
     for c in cases
         run_case(c, base_env; n_samples = 2)
     end
