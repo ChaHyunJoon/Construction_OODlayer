@@ -40,7 +40,8 @@ const CAL_PATH = isempty(ARGS) ?
 banner("SETUP")
 if !isfile(CAL_PATH)
     println("  calibration not found: $CAL_PATH")
-    println("  produce it with:  python export_novelty_calibration.py oracle/out/graded_hs_all.jsonl")
+    println("  produce it with:  python export_novelty_calibration.py")
+    println("  (the dataset it uses is defined in wm4spacecraft_manufacturing/wm_datasets.py)")
     exit(1)
 end
 
@@ -239,6 +240,56 @@ let v = CB.escalation_verdict(descriptors = det.mu,
     check("E3e split ensemble escalates even on an in-distribution input",
           v.escalate && v.reason === :uncertain_decision,
           "disagreement=$(v.disagreement)")
+end
+
+CB.clear_novelty_detector!()
+
+# =============================================================================
+banner("F  --  calibration validation (a WRONG file must fail loudly, not load)")
+# =============================================================================
+# 왜 이 절이 있는가: 교정파일은 "이 분포에서 정상이란 이것"을 굳혀 놓은 물건이다. 서술자 정의나
+# 데이터셋이 바뀌면 그 파일은 '조금 틀린' 게 아니라 **무의미**해지는데, 예전 로더는 아무 검사도
+# 없이 그냥 로드해서 계속 자신 있는 p-value 를 냈다. 그러면 라우터가 존재하지 않는 분포에 맞춘
+# 밴드로 판정을 계속한다 -- 에러도, 경고도 없이. 그래서 아래 여섯 가지 훼손은 전부 즉시
+# CalibrationError 여야 한다. (좋은 파일은 여전히 로드돼야 하므로 그것도 함께 확인한다.)
+let blob = JSON3.read(read(CAL_PATH, String)),
+    base = Dict(String(k) => v for (k, v) in pairs(blob)),
+    tmp  = mktempdir()
+
+    function rejects(name, dict)
+        p = joinpath(tmp, name * ".json")
+        open(io -> JSON3.write(io, dict), p, "w")
+        ok, detail = try
+            CB.load_novelty_detector(p)
+            false, "loaded without error"
+        catch e
+            e isa CB.CalibrationError ? (true, "") : (false, "threw $(typeof(e))")
+        end
+        check(name, ok, detail)
+    end
+
+    rejects("F1 pre-versioning file (no format_version)",
+            filter(kv -> kv.first != "format_version", base))
+    rejects("F2 unknown format_version",
+            merge(base, Dict("format_version" => 99)))
+    rejects("F3 renamed descriptor",
+            merge(base, Dict("feature_names" => ["harm", "work_at_risk", "resource_loss",
+                                                 "recovery_capacity", "progress", "SLACK_v2"])))
+    # 순서만 바뀌어도 mu/sd 가 다른 축에 붙는다 -- 이름 집합만 보면 못 잡는 경우.
+    rejects("F4 reordered descriptors (same names)",
+            merge(base, Dict("feature_names" => ["work_at_risk", "harm", "resource_loss",
+                                                 "recovery_capacity", "progress", "slack"])))
+    rejects("F5 truncated mu (corrupt shape)",
+            merge(base, Dict("mu" => collect(blob.mu)[1:3])))
+    rejects("F6 empty cal_scores (degenerate p-values)",
+            merge(base, Dict("cal_scores" => Float64[])))
+
+    ok = try
+        CB.load_novelty_detector(CAL_PATH); true
+    catch
+        false
+    end
+    check("F7 the real calibration still loads", ok)
 end
 
 CB.clear_novelty_detector!()

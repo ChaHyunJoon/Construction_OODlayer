@@ -38,12 +38,35 @@ WM = os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE)))),
     "wm4spacecraft_manufacturing")
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
-# 어떤 컴파일 산출물을 쓸지. 기본 = sweep_lab 에 있는 그 모델의 프로그램 중 가장 최근 것
-# (현재는 n=44 로 컴파일된 dspy_real_program_gpt4o.json). DSPY_PROGRAM 으로 고정 가능.
+
+# 데이터셋 경로는 wm4 쪽 wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 WM 을 import 경로에
+# 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이 올라오므로
+# WM 을 최우선 경로로 두면 동명 모듈을 가릴 위험이 있다(맨 뒤면 표준 패키지가 항상 먼저 이긴다).
+if WM not in sys.path:
+    sys.path.append(WM)
+import wm_datasets                                            # noqa: E402
+
+
+def _model_tag(model=None):
+    """'gpt-4o' -> 'gpt4o'. 컴파일 산출물 파일명에 쓰는 태그(dspy_real_experiment.py 와 동일 규칙)."""
+    return (model or MODEL).replace(".", "").replace("-", "")
+
+
 def _default_program():
-    pats = os.path.join(WM, "sweep_lab", "dspy_real_program_%s*.json" % MODEL.replace(".", "").replace("-", ""))
-    hits = sorted(glob.glob(pats), key=os.path.getmtime, reverse=True)
-    return hits[0] if hits else ""
+    """이 모델로 컴파일된 프로그램 파일을 **정확한 이름으로** 찾는다.
+
+    FIXED 2026-07-30 -- 예전에는 glob 이었다:
+
+        "dspy_real_program_%s*.json" % _model_tag()      # gpt-4o -> "dspy_real_program_gpt4o*.json"
+
+    끝의 `*` 때문에 그 패턴이 `dspy_real_program_gpt4omini.json` 까지 매칭했고, 그중 **mtime 이
+    최신인 것**을 골랐다. 즉 gpt-4o-mini 프로그램을 새로 컴파일하는 순간, gpt-4o 로 뜬 서비스가
+    조용히 mini 의 지시문·demo 를 쓰기 시작한다 -- 에러도 로그도 없이 벤치마크한 것과 다른 arm 이
+    배포된다. 이제 와일드카드 없이 정확히 일치하는 파일만 쓴다.
+    (와일드카드가 gpt4o 와 gpt4omini 를 함께 잡아 최신 것을 고르던 버그를 제거했다.)
+    """
+    exact = os.path.join(WM, "sweep_lab", "dspy_real_program_%s.json" % _model_tag())
+    return exact if os.path.exists(exact) else ""
 
 
 PROGRAM = os.environ.get("DSPY_PROGRAM") or _default_program()
@@ -93,7 +116,9 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 # n=44 · 220행이라 적합이 1초 미만이므로, 학습 코드를 그대로 재사용하는 편이 정직하고 단순하다.
 # ---------------------------------------------------------------------------------------------
 LAM = 3.0
-SURRO_DATA = os.environ.get("EVAL_DATA", os.path.join(WM, "oracle", "out", "graded_hs_n44.jsonl"))
+# HS_N44 고정: 배포 surrogate 는 n=44 셋으로 적합한 그 모델이어야 벤치마크와 일치한다.
+# EVAL_DATA / WM_DATASET 로 덮어쓸 수 있다(wm_datasets.py 가 우선순위를 정의).
+SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.HS_N44)
 
 
 def _load_surrogate():

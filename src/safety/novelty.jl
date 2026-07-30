@@ -97,18 +97,107 @@ set_novelty_detector!(d) = (NOVELTY_DETECTOR[] = d; nothing)
 clear_novelty_detector!() = (NOVELTY_DETECTOR[] = nothing; nothing)
 
 """
+Calibration blob format this loader understands (`export_novelty_calibration.FORMAT_VERSION`).
+Bump on both sides together when the key layout changes.
+"""
+const NOVELTY_FORMAT_VERSION = 2
+
+"""
+The descriptor contract: the exact feature names, **in order**, that `event_descriptors`
+produces. A calibration fitted to a different list (or the same list in a different order)
+puts mu/sd on the wrong axes, so the loader refuses it rather than scoring nonsense.
+"""
+const NOVELTY_FEATURES = String[
+    "harm", "work_at_risk", "resource_loss", "recovery_capacity", "progress", "slack",
+]
+
+"""
+    CalibrationError
+
+Thrown when a calibration file exists but does not match this build. Deliberately a distinct
+type so callers can tell "no calibration installed" (fine, gate stays off) from "calibration
+present but WRONG" (must not be silently ignored).
+"""
+struct CalibrationError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::CalibrationError) = print(io, "CalibrationError: ", e.msg)
+
+"""
     load_novelty_detector(path) -> NoveltyDetector
 
 Load the calibration JSON produced by `export_novelty_calibration.py`. Installing it is a
 separate step (`set_novelty_detector!`) so loading never has a side effect on a running sim.
+
+VALIDATION (added 2026-07-30) -- the loader used to accept any JSON with the right keys. A
+calibration file freezes "what counts as normal" for one descriptor definition and one
+dataset; change either and the file is not wrong-but-close, it is **meaningless**, yet it
+still loads and still returns confident p-values. Nothing errors, and the router quietly
+routes on a band fitted to a distribution that no longer exists. So three things are checked
+and any mismatch throws `CalibrationError`:
+
+  1. `format_version` -- the blob layout this code knows how to read
+  2. `feature_names`  -- must equal `NOVELTY_FEATURES` exactly (names AND order)
+  3. shape            -- mu/sd lengths agree with the feature list, cal_scores non-empty
+
+`descriptor_fingerprint` and `dataset_fingerprint` are carried for provenance and surfaced by
+`novelty_report()`; the name comparison in (2) already subsumes the descriptor fingerprint.
+
+(요약: 교정파일이 지금 빌드와 안 맞으면 조용히 쓰지 말고 즉시 에러를 던진다. 서술자 정의나
+ 데이터셋이 바뀐 교정은 "조금 틀린" 게 아니라 무의미한데, 예전 로더는 그냥 로드했다.)
 """
 function load_novelty_detector(path::AbstractString)
     blob = JSON3.read(read(path, String))
+
+    # ---- 1. format version -----------------------------------------------------------------
+    if !haskey(blob, :format_version)
+        throw(CalibrationError(
+            "'$path' has no `format_version` (pre-2026-07-30 file). Regenerate it:\n" *
+            "    python export_novelty_calibration.py            # uses the canonical dataset\n" *
+            "  (wm_datasets.py defines which dataset that is.)"))
+    end
+    fv = Int(blob.format_version)
+    if fv != NOVELTY_FORMAT_VERSION
+        throw(CalibrationError(
+            "'$path' is format_version=$fv but this build reads " *
+            "v$NOVELTY_FORMAT_VERSION. Regenerate with export_novelty_calibration.py."))
+    end
+
+    # ---- 2. descriptor contract -------------------------------------------------------------
+    # NOTE: the blob also carries `descriptor_fingerprint` (a hash of the same name list), but
+    # comparing the names directly is strictly stronger than comparing their hash, and it needs
+    # no SHA dependency -- ConstructionBots does not depend on SHA and adding a dep would force
+    # a Pkg resolve on a manifest that is pinned to Julia 1.10.  So the fingerprint is recorded
+    # for provenance only; THIS equality check is the enforcement.
+    feat_names = String[String(s) for s in blob.feature_names]
+    if feat_names != NOVELTY_FEATURES
+        throw(CalibrationError(
+            "'$path' was fitted on features\n    $(feat_names)\nbut this build computes\n" *
+            "    $(NOVELTY_FEATURES)\nmu/sd would land on the wrong axes. Regenerate the " *
+            "calibration, or revert the descriptor change in features_agnostic.py."))
+    end
+
+    # ---- shape sanity: mu/sd must match the declared feature count ---------------------------
+    nf = length(feat_names)
+    if length(blob.mu) != nf || length(blob.sd) != nf
+        throw(CalibrationError(
+            "'$path' declares $nf features but carries $(length(blob.mu)) mu / " *
+            "$(length(blob.sd)) sd entries -- file is corrupt."))
+    end
+    if isempty(blob.cal_scores)
+        throw(CalibrationError("'$path' has an empty `cal_scores` set; every p-value would " *
+                               "be degenerate. Regenerate the calibration."))
+    end
+
     meta = Dict{String,Any}()
     if haskey(blob, :meta)
         for (k, v) in pairs(blob.meta)
             meta[String(k)] = v
         end
+    end
+    meta["format_version"] = fv
+    if haskey(blob, :dataset_fingerprint) && haskey(blob.dataset_fingerprint, :sha16)
+        meta["dataset_fp"] = String(blob.dataset_fingerprint.sha16)
     end
     return NoveltyDetector(
         String[String(s) for s in blob.feature_names],
@@ -442,8 +531,10 @@ One-line summary of the installed detector, for run logs.
 function novelty_report()
     det = NOVELTY_DETECTOR[]
     det === nothing && return "[NOVELTY] no detector installed (gate inactive, fail-open)"
-    return string("[NOVELTY] features=", join(det.feature_names, ","),
+    return string("[NOVELTY] v", get(det.meta, "format_version", "?"),
+                  " features=", join(det.feature_names, ","),
                   " n_cal=", length(det.cal_scores),
                   " alpha=", det.alpha,
+                  " data_fp=", get(det.meta, "dataset_fp", "?"),
                   " src=", get(det.meta, "source", "?"))
 end

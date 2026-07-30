@@ -45,18 +45,46 @@ const DSPY_URL = rstrip(get(ENV, "DSPY_URL", "http://127.0.0.1:8077"), '/')
 const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
 const ROUTER_EPS  = (try parse(Float64, ENV["ROUTER_EPS"]) catch; nothing end)
 
-"낯섦 감지기를 한 번 설치한다. 파일이 없으면 조용히 넘어가고 라우터는 꺼진 채로 남는다(fail-open)."
+"""
+낯섦 감지기를 한 번 설치한다.
+
+두 가지 실패를 **다르게** 다룬다(2026-07-30):
+
+  · 교정파일이 **없다**        -> 경고만 하고 라우터를 끈 채 진행(fail-open).
+    아직 교정을 안 만든 정상적인 상태이고, 데모는 고정 정책으로 계속 돌아야 한다.
+
+  · 교정파일이 **있는데 안 맞는다** -> 즉시 에러를 던져 런을 세운다(fail-loud).
+    예전에는 이것도 `@warn` 후 라우터만 끄고 넘어갔다. 그러면 "라우팅이 되는 줄 알고" 돌린
+    실험이 사실은 라우터 없이 돈 것이 되고, 로그의 경고 한 줄은 긴 출력에 묻힌다. 낡은/깨진
+    교정은 조용히 무시할 대상이 아니라 고쳐야 할 대상이므로 크게 실패시킨다.
+    (정말로 무시하고 싶으면 DEMO_ROUTER=0 으로 명시적으로 끈다.)
+"""
 function install_novelty!()
     (try CB.novelty_detector() catch; nothing end) === nothing || return true
     path = get(ENV, "NOVELTY_CALIB",
                joinpath(@__DIR__, "..", "..", "..", "wm4spacecraft_manufacturing",
                         "novelty_calibration.json"))
-    isfile(path) || (@warn "novelty calibration not found -> router disabled" path; return false)
+    isfile(path) || (@warn "novelty calibration not found -> router disabled (fail-open)" path;
+                     return false)
     try
         CB.set_novelty_detector!(CB.load_novelty_detector(path))
         @info "[ROUTER] " * CB.novelty_report()
         return true
     catch e
+        # 스키마/서술자 불일치는 조용히 넘기지 않는다.
+        if e isa CB.CalibrationError
+            @error """
+            [ROUTER] novelty calibration at
+                $path
+            does not match this build. Refusing to run with a stale gate -- regenerate it:
+
+                cd wm4spacecraft_manufacturing
+                python export_novelty_calibration.py
+
+            (or set DEMO_ROUTER=0 to run deliberately without the router.)
+            """
+            rethrow()
+        end
         @warn "novelty calibration failed to load -> router disabled" exception = e
         return false
     end
