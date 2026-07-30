@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ConstructionBots Monitor</title>
+<!--
+  Local monitoring dashboard.
+  - Replays the JSONL frames emitted by src/monitor/monitor.jl.
+  - Embeds the local MeshCat viewer in the Factory View iframe.
+  Run through tools/monitor/server.jl; direct file:// access blocks JSONL fetches.
+-->
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111823; --panel-2:#0d131c; --inset:#080c12;
+    --border:#1e2734; --border-strong:#2c384a; --text:#cdd6e2; --text-dim:#8695a8;
+    --text-faint:#5c6a7c; --accent:#46c9bd; --accent-dim:#1f5d58;
+    --good:#4cb96b; --warn:#e0a53a; --crit:#ef5b57; --blocked:#59667b; --carryc:#7aa7ff;
+    --grid:rgba(255,255,255,.045);
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme:light){
+    :root{--bg:#e9edf2;--panel:#fff;--panel-2:#f4f7fa;--inset:#eef2f6;--border:#dce2ea;
+      --border-strong:#c4cedb;--text:#17202b;--text-dim:#556274;--text-faint:#8592a2;
+      --accent:#0e968b;--accent-dim:#bde7e2;--good:#2f9e51;--warn:#b47818;--crit:#d1362f;
+      --blocked:#93a0b2;--carryc:#3f74d6;--grid:rgba(15,30,45,.05);--shadow:0 10px 26px rgba(20,40,60,.08);}
+  }
+  :root[data-theme="dark"]{--bg:#0a0e14;--panel:#111823;--panel-2:#0d131c;--inset:#080c12;
+    --border:#1e2734;--border-strong:#2c384a;--text:#cdd6e2;--text-dim:#8695a8;--text-faint:#5c6a7c;
+    --accent:#46c9bd;--accent-dim:#1f5d58;--good:#4cb96b;--warn:#e0a53a;--crit:#ef5b57;--blocked:#59667b;
+    --carryc:#7aa7ff;--grid:rgba(255,255,255,.045);--shadow:0 8px 24px rgba(0,0,0,.35);}
+  :root[data-theme="light"]{--bg:#e9edf2;--panel:#fff;--panel-2:#f4f7fa;--inset:#eef2f6;--border:#dce2ea;
+    --border-strong:#c4cedb;--text:#17202b;--text-dim:#556274;--text-faint:#8592a2;--accent:#0e968b;
+    --accent-dim:#bde7e2;--good:#2f9e51;--warn:#b47818;--crit:#d1362f;--blocked:#93a0b2;--carryc:#3f74d6;
+    --grid:rgba(15,30,45,.05);--shadow:0 10px 26px rgba(20,40,60,.08);}
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:14px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;padding:12px;}
+  .mono{font-family:var(--font-mono);}
+  .num{font-variant-numeric:tabular-nums;}
+
+  .shell{max-width:1560px;margin:0 auto;display:grid;gap:12px;
+    grid-template-columns:290px minmax(0,1fr) 330px;
+    grid-template-areas:"head head head" "ctl ctl ctl" "fleet stage assembly" "gantt gantt gantt" "respec respec respec";}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);min-width:0;}
+  .phead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);}
+  .phead h2{margin:0;font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;color:var(--text-dim);}
+  .phead .count{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);}
+
+  /* header */
+  .head{grid-area:head;}
+  .statusbar{display:flex;align-items:center;gap:18px;padding:11px 16px;flex-wrap:wrap;}
+  .mission{display:flex;align-items:baseline;gap:10px;margin-right:auto;}
+  .mission .kit{font-family:var(--font-mono);font-size:12px;color:var(--accent);}
+  .mission h1{margin:0;font-size:16px;font-weight:650;}
+  .mission .sub{font-size:11px;color:var(--text-faint);letter-spacing:.04em;text-transform:uppercase;}
+  .stat{display:flex;flex-direction:column;line-height:1.15;}
+  .stat .k{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);}
+  .stat .v{font-family:var(--font-mono);font-size:15px;font-variant-numeric:tabular-nums;}
+  .stat .v small{font-size:10px;color:var(--text-dim);}
+  .divider{width:1px;align-self:stretch;background:var(--border);}
+  .clock .v{color:var(--accent);} .oodstat .v{color:var(--warn);}
+  .ghost-btn{font-family:var(--font-mono);font-size:11px;background:transparent;color:var(--text-dim);
+    border:1px solid var(--border-strong);border-radius:6px;padding:4px 9px;cursor:pointer;}
+  .ghost-btn:hover{color:var(--text);border-color:var(--accent-dim);}
+  .ghost-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* controls / replay bar */
+  .ctl{grid-area:ctl;}
+  .ctlbar{display:flex;align-items:center;gap:12px;padding:8px 14px;flex-wrap:wrap;}
+  .ctlbar .src{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);}
+  .ctlbar .src b{color:var(--text-dim);font-weight:600;}
+  .playbtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--border-strong);background:var(--panel-2);
+    color:var(--accent);cursor:pointer;font-size:13px;}
+  .playbtn:hover{border-color:var(--accent);}
+  input[type=range]{flex:1;min-width:140px;accent-color:var(--accent);}
+  .frameidx{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
+  .badge{font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text-dim);}
+  .badge.live{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent);}
+  .badge.replay{color:var(--accent);border-color:var(--accent-dim);}
+  .badge.err{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent);}
+  /* model + OOD-case selector */
+  .casebar{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border);flex-wrap:wrap;}
+  .casebar label{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);display:flex;align-items:center;gap:6px;}
+  .casebar select{font-family:var(--font-mono);font-size:12px;padding:5px 8px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;max-width:230px;}
+  .casebar select:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .oodgroup{display:flex;gap:6px;flex-wrap:wrap;}
+  .caseb{font-family:var(--font-mono);font-size:11px;padding:5px 10px;border-radius:7px;cursor:pointer;
+    background:var(--panel-2);color:var(--text-dim);border:1px solid var(--border-strong);}
+  .caseb:hover{color:var(--text);border-color:var(--accent-dim);}
+  .caseb.active{color:var(--accent-ink);background:var(--accent);border-color:var(--accent);font-weight:600;}
+  .caseb.fault.active{background:var(--crit);border-color:var(--crit);color:#fff;}
+  .caseb.battery.active{background:var(--carryc);border-color:var(--carryc);color:#fff;}
+  .caseb.zone.active{background:var(--warn);border-color:var(--warn);color:#1a1204;}
+  .casebar .genhint{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);margin-left:auto;}
+
+  /* fleet */
+  .fleet{grid-area:fleet;display:flex;flex-direction:column;}
+  .fleet .body{padding:8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:600px;}
+  .robot{display:grid;grid-template-columns:36px 1fr auto;gap:8px;align-items:center;padding:7px 8px;
+    border-radius:8px;background:var(--panel-2);border:1px solid var(--border);}
+  .robot.fault{border-color:var(--crit);background:color-mix(in srgb,var(--crit) 9%,var(--panel-2));}
+  .robot .id{font-family:var(--font-mono);font-size:12px;font-weight:700;text-align:center;overflow:hidden;text-overflow:ellipsis;}
+  .robot .mode{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.06em;}
+  .m-IDLE{color:var(--text-faint);} .m-TRANSIT{color:var(--accent);} .m-CARRY{color:var(--carryc);}
+  .m-MANIPULATE{color:var(--warn);} .m-FAULT,.m-DEPLETED{color:var(--crit);}
+  .robot .act{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .soc{width:54px;display:flex;flex-direction:column;gap:3px;align-items:flex-end;}
+  .soc .val{font-family:var(--font-mono);font-size:10px;font-variant-numeric:tabular-nums;}
+  .bar{width:54px;height:5px;border-radius:3px;background:var(--inset);overflow:hidden;}
+  .bar>i{display:block;height:100%;border-radius:3px;}
+  .soc.ok .val{color:var(--good);} .soc.ok i{background:var(--good);}
+  .soc.warn .val{color:var(--warn);} .soc.warn i{background:var(--warn);}
+  .soc.crit .val{color:var(--crit);} .soc.crit i{background:var(--crit);}
+  .soc.na .val{color:var(--text-faint);}
+
+  /* stage / factory iframe */
+  .stage{grid-area:stage;display:flex;flex-direction:column;}
+  .viewwrap{position:relative;background:var(--inset);border-radius:0 0 0 0;overflow:hidden;}
+  #meshcat{display:block;width:100%;height:600px;border:0;background:var(--inset);}
+  .viewfallback{display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    height:600px;color:var(--text-faint);font-family:var(--font-mono);font-size:12px;text-align:center;padding:20px;}
+  .viewfallback code{color:var(--accent);}
+  .viewtag{position:absolute;right:10px;top:10px;font-family:var(--font-mono);font-size:10px;color:var(--text-faint);
+    border:1px solid var(--border);padding:3px 7px;border-radius:6px;background:color-mix(in srgb,var(--panel) 70%,transparent);}
+  /* forbid-zone inject bar */
+  .injectbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--panel-2);flex-wrap:wrap;}
+  .injectbar label{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:4px;}
+  .injectbar input{width:56px;font-family:var(--font-mono);font-size:11px;padding:3px 5px;background:var(--inset);border:1px solid var(--border-strong);border-radius:5px;color:var(--text);}
+  .injectbar input:focus-visible{outline:2px solid var(--warn);outline-offset:1px;}
+  .injectbar .go{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent);}
+  .injectbar .go:hover{background:color-mix(in srgb,var(--warn) 12%,transparent);}
+  .injectbar .hint{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);margin-left:auto;}
+  .injbtn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:50;font-family:var(--font-mono);font-size:12px;
+    padding:10px 16px;border-radius:8px;background:var(--panel);border:1px solid var(--border-strong);box-shadow:var(--shadow);
+    color:var(--text);opacity:0;pointer-events:none;transition:opacity .25s;max-width:80vw;}
+  .toast.show{opacity:1;}
+  .toast.ok{border-color:color-mix(in srgb,var(--good) 50%,transparent);}
+  .toast.warn{border-color:color-mix(in srgb,var(--warn) 55%,transparent);}
+  /* OOD feed under the view */
+  .feed{border-top:1px solid var(--border);}
+  .feed .body{max-height:180px;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:5px;}
+  .event{display:grid;grid-template-columns:46px 20px 1fr auto;gap:8px;align-items:center;padding:6px 8px;
+    border-radius:7px;background:var(--panel-2);border:1px solid var(--border);border-left-width:3px;}
+  .event.fault{border-left-color:var(--crit);} .event.zone{border-left-color:var(--warn);}
+  .event.battery{border-left-color:var(--carryc);} .event.reform{border-left-color:var(--accent);} .event.other{border-left-color:var(--blocked);}
+  .event .t{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);}
+  .event .ic{text-align:center;font-size:13px;}
+  .event .desc{font-size:11px;overflow:hidden;}
+  .event .desc b{font-family:var(--font-mono);} .event .desc .sub{color:var(--text-dim);font-size:10px;}
+  .event .kindtag{font-family:var(--font-mono);font-size:9px;padding:2px 6px;border-radius:999px;border:1px solid var(--border-strong);color:var(--text-dim);white-space:nowrap;}
+  .empty{padding:14px;color:var(--text-faint);font-size:11px;font-family:var(--font-mono);text-align:center;}
+
+  /* assembly tree */
+  .assembly{grid-area:assembly;display:flex;flex-direction:column;}
+  .legend-status{display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text-dim);flex-wrap:wrap;}
+  .legend-status span{display:inline-flex;align-items:center;gap:5px;}
+  .sw{width:9px;height:9px;border-radius:3px;} .sw.done{background:var(--good);} .sw.open{background:var(--accent);}
+  .sw.eligible{background:var(--warn);} .sw.blocked{background:var(--blocked);}
+  .tree{padding:6px;overflow-y:auto;max-height:560px;display:flex;flex-direction:column;gap:2px;}
+  .node{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;cursor:default;}
+  .node:hover{background:var(--panel-2);}
+  .node.frontier{background:color-mix(in srgb,var(--warn) 12%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 40%,transparent) inset;}
+  .node .name{display:flex;align-items:center;gap:6px;min-width:0;}
+  .node .asm-info{min-width:0;}
+  .node .asm-meta{padding-left:27px;margin-top:2px;font:8.5px var(--font-mono);color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .node .caret{width:12px;font-family:var(--font-mono);font-size:10px;color:var(--text-faint);cursor:pointer;user-select:none;text-align:center;}
+  .node .caret.leaf{visibility:hidden;}
+  .stdot{width:9px;height:9px;border-radius:3px;flex:none;}
+  .stdot.done{background:var(--good);} .stdot.open{background:var(--accent);box-shadow:0 0 6px var(--accent);}
+  .stdot.eligible{background:var(--warn);} .stdot.blocked{background:var(--blocked);}
+  .node .label{font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .node .ncomp{font-size:9.5px;color:var(--text-faint);font-family:var(--font-mono);}
+  .node .prog{display:flex;align-items:center;gap:7px;}
+  .pbar{width:60px;height:5px;border-radius:3px;background:var(--inset);overflow:hidden;}
+  .pbar>i{display:block;height:100%;background:var(--good);}
+  .node .prog span{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);width:30px;text-align:right;}
+
+  /* gantt */
+  .gantt{grid-area:gantt;}
+  .glegend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 14px 2px;font-family:var(--font-mono);font-size:9.5px;color:var(--text-dim);}
+  .glegend span{display:inline-flex;align-items:center;gap:5px;}
+  .glegend i{width:14px;height:8px;border-radius:2px;}
+  .gscroll{overflow-x:auto;padding:4px 0 10px;}
+  .gtrack{min-width:760px;padding:0 14px;}
+  .grow{display:grid;grid-template-columns:120px 1fr;align-items:center;height:24px;}
+  .grow .rlabel{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px;}
+  .lane{position:relative;height:16px;border-radius:4px;background:var(--inset);}
+  .blk{position:absolute;top:1px;height:14px;border-radius:3px;font-family:var(--font-mono);font-size:8px;font-weight:700;
+    color:#08110f;display:flex;align-items:center;justify-content:center;overflow:hidden;min-width:3px;}
+  .blk.go{background:#5f7186;color:#fff;} .blk.carry{background:var(--carryc);} .blk.form{background:var(--accent);}
+  .blk.deposit{background:var(--good);} .blk.lift{background:var(--warn);}
+  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--crit);}
+  .gaxis{display:grid;grid-template-columns:120px 1fr;margin-top:2px;}
+  .gticks{position:relative;height:14px;}
+  .gtick{position:absolute;font-family:var(--font-mono);font-size:8.5px;color:var(--text-faint);transform:translateX(-50%);}
+
+  /* respec */
+  .respec{grid-area:respec;}
+  .rhead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .rhead .trigger{font-family:var(--font-mono);font-size:11px;color:var(--crit);}
+  .rhead .trigger b{background:color-mix(in srgb,var(--crit) 14%,transparent);padding:1px 6px;border-radius:5px;}
+  .decision-history{display:flex;gap:6px;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);overflow-x:auto;font:9.5px var(--font-mono);color:var(--text-dim);}
+  .decision-chip{white-space:nowrap;border:1px solid var(--border);border-radius:6px;padding:4px 7px;background:var(--inset);cursor:pointer;}
+  .decision-chip:hover{border-color:var(--accent-dim);color:var(--text);}
+  .decision-chip.current{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--inset));}
+  .verdict{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;font-weight:600;
+    padding:4px 10px;border-radius:7px;}
+  .verdict.ok{color:var(--good);border:1px solid color-mix(in srgb,var(--good) 45%,transparent);background:color-mix(in srgb,var(--good) 10%,transparent);}
+  .verdict.no{color:var(--crit);border:1px solid color-mix(in srgb,var(--crit) 45%,transparent);background:color-mix(in srgb,var(--crit) 10%,transparent);}
+  .rgrid{display:grid;grid-template-columns:300px minmax(0,1fr) 300px;}
+  .rcol{padding:12px 14px;min-width:0;} .rcol+.rcol{border-left:1px solid var(--border);}
+  .rcol h3{margin:0 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);}
+  pre.code{margin:0;background:var(--inset);border:1px solid var(--border);border-radius:8px;padding:10px 11px;
+    font-family:var(--font-mono);font-size:10.5px;line-height:1.5;color:var(--text-dim);overflow:auto;max-height:230px;white-space:pre;}
+  /* 정책 선택기 (결정 패널 안) — 케이스와 무관하게 "누가 결정했는가"를 고른다 */
+  /* ---- ROUTER 줄: "누가 이 사건을 맡을지"를 시스템이 고른 결과 ---- */
+  .routerbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:8px 11px;
+             border:1px solid var(--border-strong);border-radius:8px;background:var(--panel-2);}
+  .routerbar .rlab{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--text-faint);}
+  .routerbar .rverdict{font-weight:700;font-size:12px;padding:2px 9px;border-radius:999px;}
+  .routerbar .rverdict.novel{background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed66;}
+  .routerbar .rverdict.familiar{background:#05966922;color:#34d399;border:1px solid #05966966;}
+  .routerbar .rwhy{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);}
+  .routerbar .roff{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);}
+  /* p-value 해설 줄: flex-basis 100% 로 항상 새 줄에 붙는다(숫자 옆이 아니라 아래에). */
+  .routerbar .rhint{flex-basis:100%;font-size:10.5px;line-height:1.55;color:var(--text-dim);
+                    margin-top:2px;padding-top:6px;border-top:1px dashed var(--border);}
+  .routerbar .rhint b{color:var(--text);font-weight:600;}
+  /* ---- 두 producer 가 본 입력을 나란히 ---- */
+  .inbox{margin-bottom:9px;}
+  .inbox .inlabel{font-family:var(--font-mono);font-size:9px;letter-spacing:.06em;color:var(--text-faint);
+                  margin-bottom:3px;display:flex;gap:7px;align-items:baseline;}
+  .inbox .inlabel b{color:var(--text);}
+  .inbox .inhint{font-size:9px;color:var(--text-faint);letter-spacing:0;}
+  .inraw summary{font-family:var(--font-mono);font-size:9px;color:var(--text-faint);cursor:pointer;}
+  .policy-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0 2px;}
+  .policy-bar .plabel{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--text-faint);}
+  .policy-bar>div{display:flex;gap:6px;flex-wrap:wrap;}
+  .polb{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;
+    padding:5px 9px;border-radius:7px;border:1px solid var(--border-strong);background:var(--panel-2);
+    color:var(--text);cursor:pointer;}
+  .polb:hover{border-color:var(--accent);}
+  .polb.on{background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:var(--accent);font-weight:600;}
+  .polb.off{opacity:.45;cursor:not-allowed;}
+  .polb .pm{font-weight:700;color:var(--accent);}
+  .polb .en{font-size:8.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+    background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good);}
+  .pill{display:inline-block;font-family:var(--font-mono);font-size:10px;padding:1px 6px;margin-right:5px;
+    border-radius:5px;background:color-mix(in srgb,var(--text-faint) 14%,transparent);}
+  .pill.on{background:color-mix(in srgb,var(--accent) 20%,transparent);}
+  table.cand{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:10.5px;}
+  table.cand th{text-align:right;font-weight:600;color:var(--text-faint);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:4px 6px;border-bottom:1px solid var(--border-strong);}
+  table.cand th:first-child,table.cand td:first-child{text-align:left;}
+  table.cand td{padding:6px 6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+  table.cand tr.chosen td{background:color-mix(in srgb,var(--accent) 12%,transparent);}
+  table.cand tr.chosen td:first-child{box-shadow:-3px 0 0 var(--accent) inset;}
+  .macro .k{color:var(--accent);}
+  .term-help{font-size:9px;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;}
+  .verify-list{display:grid;gap:5px;margin-top:7px;font-family:var(--font-mono);font-size:10px;}
+  .verify-step{display:grid;grid-template-columns:18px 145px 1fr;gap:7px;align-items:start;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--inset);}
+  .verify-step .pass{color:var(--good);font-weight:700}.verify-step .fail{color:var(--crit);font-weight:700}
+  .verify-step .vname{color:var(--text);font-weight:600}.verify-step .vdetail{color:var(--text-dim)}
+
+  @media (max-width:1120px){
+    .shell{grid-template-columns:1fr;grid-template-areas:"head" "ctl" "stage" "fleet" "assembly" "respec";}
+    .rgrid{grid-template-columns:1fr;} .rcol+.rcol{border-left:none;border-top:1px solid var(--border);}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="panel head">
+    <div class="statusbar">
+      <div class="mission">
+        <h1 id="projName">ConstructionBots</h1>
+      </div>
+      <div class="stat clock" title="Simulation time = iteration × dt. This is independent of MeshCat animation playback time."><span class="k">Sim clock</span><span class="v num" id="simT">—</span></div>
+      <div class="stat" title="Completed schedule nodes / currently active schedule nodes."><span class="k">Done / Active</span><span class="v num" id="ca">—</span></div>
+      <div class="stat" title="Number of robots. The value in parentheses is the number of unavailable robots."><span class="k">Fleet</span><span class="v num" id="fleetN">—</span></div>
+      <div class="stat oodstat" title="OOD events that have actually fired in this replay so far (see the OOD Event Feed). This is the live count — the casebar “OOD events” box sets how many to inject when generating."><span class="k">OOD fired</span><span class="v num" id="oodN">—</span></div>
+      <div class="divider"></div>
+      <button class="ghost-btn" id="themeBtn" type="button">◐ Theme</button>
+    </div>
+  </header>
+
+  <section class="panel ctl">
+    <div class="ctlbar">
+      <button class="playbtn" id="playBtn" type="button" aria-label="play/pause">▶</button>
+      <input type="range" id="scrub" min="0" max="0" value="0" />
+      <span class="frameidx mono" id="frameIdx">0 / 0</span>
+      <span class="badge" id="modeBadge">—</span>
+      <span class="src mono">stream <b id="srcName">—</b></span>
+      <button class="ghost-btn" id="reloadBtn" type="button">⟳ reload</button>
+    </div>
+    <div class="casebar">
+      <label>Assembly <select id="modelSel"></select></label>
+      <div class="oodgroup" id="oodGroup"></div>
+      <!-- 실행 정책 축: 케이스와 직교한다.
+           같은 케이스라도 **실제로 실행된** 정책이 다르면 세계가 달라진다(완주/미완주, makespan).
+           그래서 녹화 파일이 (케이스 × 정책) 로 나뉘어 있고, 여기서 그중 하나를 고른다.
+           'auto' = 정책별 녹화가 없던 시절의 기존 파일(tractor__<case>.jsonl). -->
+      <label title="Which recording to view: the one where THIS policy was actually enacted. What each policy WOULD have chosen is switched in the Re-Specification panel below (policy is orthogonal to case).">Enacted policy
+        <select id="enactSel">
+          <option value="">auto (legacy / router run)</option>
+          <option value="canonical">canonical (fixed)</option>
+          <option value="surrogate">surrogate (fixed)</option>
+          <option value="dspy">DSPy (fixed)</option>
+        </select>
+      </label>
+      <label title="How many OOD events to inject when you Start a live session (0 = case default: one per kind). Robot faults/battery events are spread across the build; a zone always fires once up front.">OOD events <input type="number" id="oodCount" value="0" min="0" max="20" step="1" style="width:52px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
+      <!-- OOD 추첨 seed: 로봇 OOD(고장/배터리)가 **언제** 터질지는 이 값으로 뽑는다. 같은 케이스라도
+           seed 가 다르면 발화 시점·종류 순서가 달라져 다른 세계가 된다. zone 은 seed 와 무관하게
+           sim 시작 전 1회 고정(공간 restage 는 빌드가 시작되기 전에만 안전하므로). -->
+      <label title="Random seed for WHEN the robot OOD events fire (and, in mixed cases, in which order). Same case + different seed = a different world. Seed 0 replays the old fixed-slot schedule. A forbid zone is always pre-sim and is not affected by the seed.">OOD seed <input type="number" id="oodSeed" value="1" min="0" max="9999" step="1" style="width:56px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
+      <span class="genhint" id="genHint">Load an existing replay, or start a live session to generate one.</span>
+    </div>
+  </section>
+
+  <section class="panel fleet">
+    <div class="phead"><h2>Fleet States</h2><span class="count mono" id="fleetCount">—</span></div>
+    <div class="body" id="fleetBody"><div class="empty">waiting for stream…</div></div>
+  </section>
+
+  <section class="panel stage">
+    <div class="phead"><h2>Factory View</h2>
+      <button class="ghost-btn" id="startLiveBtn" type="button" style="margin-left:auto">Start live session</button>
+      <span class="count mono">MeshCat</span>
+    </div>
+    <div class="injectbar" id="injectBar">
+      <label>X <input type="number" id="zx" value="0" step="0.1" /></label>
+      <label>Y <input type="number" id="zy" value="0" step="0.1" /></label>
+      <!-- 기본 반지름 0.3 = 내장 ③ Forbid Zone 케이스가 실제로 쓰는 크기(측정: zone_inj_1 r=0.29).
+           예전 기본값 1.5 는 그 5 배로, tractor 공장 바닥의 상당 부분을 덮어 로봇이 우회로를 찾지
+           못하고 빌드가 정지했다. -->
+      <label>R <input type="number" id="zr" value="0.3" step="0.1" min="0.1" /></label>
+      <button class="ghost-btn go" id="zoneGo" type="button">Inject Forbid Zone</button>
+      <span class="hint">human-in-the-loop · inject → verify → automatic replan · r≈0.3 matches the built-in zone; r≥1.0 can cover most of the floor</span>
+    </div>
+    <div class="viewwrap">
+      <iframe id="meshcat" title="MeshCat viewer" allow="fullscreen"></iframe>
+      <div class="viewfallback" id="viewFallback">
+        <div>MeshCat viewer is not connected.</div>
+        <div>Set <code>CONFIG.MESHCAT_URL</code> to the live viewer (<code>http://127.0.0.1:8700</code>)<br>
+             or to a static <code>visualization.html</code> file.</div>
+      </div>
+      <div class="viewtag mono">top-down · live</div>
+    </div>
+    <div class="feed">
+      <div class="phead"><h2>OOD Event Feed</h2><span class="count mono">ood_truth_log</span></div>
+      <div class="body" id="feedBody"><div class="empty">no OOD events yet</div></div>
+    </div>
+  </section>
+
+  <section class="panel assembly">
+    <div class="phead"><h2>Assembly Tree</h2><span class="count mono" id="asmCount">—</span></div>
+    <div class="legend-status">
+      <span><i class="sw done"></i>done</span>
+      <span><i class="sw open"></i>open</span>
+      <span><i class="sw eligible"></i>eligible (frontier)</span>
+      <span><i class="sw blocked"></i>blocked</span>
+    </div>
+    <div class="tree" id="treeBody"><div class="empty">waiting for stream…</div></div>
+  </section>
+
+  <section class="panel gantt">
+    <div class="phead"><h2>Robot Schedule</h2><span class="count mono" id="ganttCount">OperatingSchedule · realized start/end</span></div>
+    <div class="glegend">
+      <span><i class="blk go" style="position:static"></i>GO</span>
+      <span><i class="blk form" style="position:static"></i>FORM</span>
+      <span><i class="blk carry" style="position:static"></i>CARRY</span>
+      <span><i class="blk deposit" style="position:static"></i>DEPOSIT</span>
+      <span><i class="blk lift" style="position:static"></i>LIFT</span>
+      <span style="color:var(--crit)">│ now</span>
+    </div>
+    <div class="gscroll"><div class="gtrack" id="gtrack"><div class="empty">no schedule yet</div></div>
+      <div class="gaxis"><div></div><div class="gticks" id="gticks"></div></div>
+    </div>
+  </section>
+
+  <section class="panel respec">
+    <div class="phead"><h2>Re-Specification · OOD Decision</h2><span class="count mono">event → decision policy → verifier → execution</span></div>
+    <div class="rhead" id="rhead"><span class="trigger mono">no active re-spec</span></div>
+    <!-- ROUTER: 이 사건을 누구에게 보낼지 **시스템이** 판정한 결과. 사람이 정책 버튼을 누른 것이
+         아니라는 점이 핵심이라, 결정 패널 맨 위에 따로 둔다. -->
+    <div class="routerbar" id="routerBar" hidden></div>
+    <div class="decision-history" id="decisionHistory"><span>Each OOD event creates an independently verified decision.</span></div>
+    <!-- 정책 선택기: 같은 사건을 어떤 결정 정책의 눈으로 볼지 고른다(케이스와 직교).
+         ENACTED 배지가 붙은 것이 이 실행에서 실제로 수행된 정책이다. -->
+    <div class="policy-bar"><span class="plabel">DECISION POLICY</span><div id="policySel"></div></div>
+    <div class="rgrid">
+      <div class="rcol">
+        <h3>What each producer actually saw <span class="term-help">they are given different inputs</span></h3>
+        <div class="inbox" id="inLLMBox">
+          <div class="inlabel">LLM <b id="inLLMMode">— </b><span class="inhint">natural-language observation (+ kind-agnostic descriptors)</span></div>
+          <pre class="code mono" id="inLLM">—</pre>
+        </div>
+        <div class="inbox">
+          <div class="inlabel">SURROGATE <span class="inhint">the same schema features it was trained on</span></div>
+          <pre class="code mono" id="inSurro">—</pre>
+        </div>
+        <details class="inraw"><summary>raw record</summary><pre class="code mono" id="inCode">—</pre></details>
+      </div>
+      <div class="rcol"><h3>Candidate actions <span class="term-help">macro = high-level recovery action</span></h3>
+        <table class="cand mono"><thead><tr>
+          <th>#</th><th title="A high-level recovery action template for the OOD event.">action macro</th><th title="canonical = rule policy; margin = DSPy producer's confidence gap between its 1st and 2nd choice.">decision source / score</th><th title="Which decision policies picked this macro for this same event (RULE / SURROGATE / DSPy).">picked by</th><th title="Indicates whether this candidate was sent to the verifier.">selected</th>
+        </tr></thead><tbody id="candBody"><tr><td colspan="5" class="empty">—</td></tr></tbody></table>
+        <h3 style="margin-top:13px">Verifier process <span class="term-help">selected ≠ admitted</span></h3>
+        <div class="verify-list" id="verifyBody"><div class="empty">no verification trace</div></div>
+      </div>
+      <div class="rcol"><h3>Selected RespecProposal</h3><pre class="code mono" id="outCode">—</pre></div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ======================= CONFIG =======================*/
+  const CONFIG = {
+    // MeshCat embedded in Factory View: live server or a static visualization.
+    MESHCAT_URL: "http://127.0.0.1:8700",
+    // JSONL path written by monitor_emit!.
+    STREAM_URL: "monitor_stream.jsonl",
+    LIVE: false,        // true=poll appended frames; false=load once for replay
+    POLL_MS: 1000,
+    PLAY_FPS: 4,
+    // Control server is served from the same origin. POST /run generates streams.
+    CONTROL_URL: ""
+  };
+  /* ==========================================================================*/
+
+  const $ = function(id){ return document.getElementById(id); };
+  const socClass = function(s){ return s == null ? "na" : s <= 0.2 ? "crit" : s <= 0.4 ? "warn" : "ok"; };
+  const esc = function(s){ return String(s).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); };
+  function fmtTime(sec){
+    if(sec == null) return "—";
+    var s = Math.floor(sec), h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+    var pad = function(n){ return (n<10?"0":"")+n; };
+    return (h>0? h+":" : "") + pad(m) + ":" + pad(ss);
+  }
+
+  /* ---- theme ---- */
+  $("themeBtn").addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme");
+    if(!cur) cur = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  });
+
+  /* ---- MeshCat iframe ---- */
+  (function initView(){
+    var f = $("meshcat"), fb = $("viewFallback");
+    if(!CONFIG.MESHCAT_URL){ f.style.display="none"; fb.style.display="flex"; return; }
+    f.src = CONFIG.MESHCAT_URL;
+  })();
+  function showLivePreparing(){
+    // Keep the completed replay visible until the new live MeshCat server is
+    // actually ready. This avoids showing an empty scene during model staging.
+    var tries=0, poll=setInterval(function(){
+      tries++;
+      fetch(CONFIG.CONTROL_URL+"/live/ready", {cache:"no-store"})
+        .then(function(r){return r.json();}).then(function(s){
+          if(s.ready && s.active){
+            clearInterval(poll);
+            var liveFrame=$("meshcat");
+            if(liveFrame){ liveFrame.removeAttribute("srcdoc"); liveFrame.src=CONFIG.MESHCAT_URL; }
+            $("genHint").textContent="live MeshCat connected";
+          } else if(!s.active || tries>1800){ clearInterval(poll); }
+        }).catch(function(){});
+    },2000);
+    return;
+    var f=$("meshcat"); if(!f) return;
+    f.removeAttribute("src");
+    var target=CONFIG.MESHCAT_URL;
+    f.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px}</style><b>Preparing live MeshCat…</b><p>The model is being parsed and staged. This can take several minutes for Passenger Plane.</p>'+
+      '<script>setInterval(function(){fetch('+JSON.stringify(target)+',{mode:"no-cors",cache:"no-store"}).then(function(){location.replace('+JSON.stringify(target)+')}).catch(function(){})},2000)<\/script>';
+  }
+
+  /* ---- toast ---- */
+  var toastEl = $("toast"), toastTimer = null;
+  function toast(msg, kind){
+    toastEl.textContent = msg;
+    toastEl.className = "toast show" + (kind ? " " + kind : "");
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.className = "toast"; }, 3800);
+  }
+
+  /* ---- forbid-zone inject (human-in-the-loop) ---- */
+  $("startLiveBtn").addEventListener("click", function(){
+    CONFIG.LIVE = true;
+    // 직전에 보고 있던 **완성 녹화본**을 그대로 둔 채 LIVE 배지만 달면, 새 세션이 아직 한 프레임도
+    // 쓰지 않은 동안 사용자는 옛 런의 OOD 로그·완료된 조립트리를 지금 세션의 것으로 읽는다.
+    // (실제로 그렇게 오인됐다.) 새 세션은 빈 화면에서 시작해야 한다.
+    clearPanels();
+    setBadge("err", "generating…");
+    $("srcName").textContent = "(waiting for the new session's first frame)";
+    // Generate the CURRENTLY SELECTED case with its OOD-event count (WYSIWYG). Pick
+    // "Nominal" for a clean session for pure human-in-the-loop forbid-zone injection;
+    // any other preset arms its OOD events so the operator watches the automatic
+    // respec/replan. (Manual zone injection still works on top of any running session.)
+    requestGeneration({model:curModel, caseName:curCase, live:true});
+  });
+  $("zoneGo").addEventListener("click", function(){
+    var x = parseFloat($("zx").value), y = parseFloat($("zy").value), r = parseFloat($("zr").value);
+    if(!isFinite(x) || !isFinite(y) || !isFinite(r) || r <= 0){ toast("Check the zone coordinates and radius.", "warn"); return; }
+    // 큰 존은 "어려운 시나리오"가 아니라 **해가 없는 시나리오**가 되기 쉽다. 실제로 r=1.5 를 넣었을 때
+    // 재계획은 정상 수행됐지만 우회로 자체가 없어 빌드가 정지했다. 거절하지는 않고(실험은 사용자의
+    // 권한이다) 무슨 일이 일어날지 미리 말해 준다.
+    if(r >= 1.0 && !window.confirm(
+        "Radius " + r + " is about " + (r/0.3).toFixed(1) + "x the built-in zone (r≈0.3).\n\n" +
+        "On the tractor floor a zone this large can leave no routable path at all: the re-spec still " +
+        "runs and restages, but the build then stalls with robots stuck in TRANSIT.\n\nInject anyway?")){
+      return;
+    }
+    fetch(CONFIG.CONTROL_URL + "/inject/zone", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({x: x, y: y, r: r})
+    })
+      .then(function(res){ if(!res.ok) throw new Error(res.status); return res.text(); })
+      .then(function(){ toast("Forbid zone injected — automatic respec/replan in progress ("+x+", "+y+", r="+r+")", "ok"); })
+      .catch(function(e){ toast("No active live session. Start a live session first ("+e.message+")", "warn"); });
+  });
+
+  /* ---- assembly models + OOD cases ---- */
+  var MODELS = [
+    { file: "tractor.mpd",                                  label: "Tractor (test)" },
+    { file: "21309-1 - NASA Apollo Saturn V.mpd",           label: "Saturn V — Apollo" },
+    { file: "4494-1 - Imperial Shuttle - Mini.mpd",         label: "Imperial Shuttle (mini)" },
+    { file: "30051-1 - X-wing Fighter - Mini.mpd",          label: "X-wing (mini)" },
+    { file: "7140-1 - X-wing Fighter.mpd",                  label: "X-wing (full)" },
+    { file: "8028-1 - TIE Fighter - Mini.mpd",              label: "TIE Fighter (mini)" },
+    { file: "8099-1 - Midi-Scale Imperial Star Destroyer.mpd", label: "Star Destroyer (midi)" },
+    { file: "75054-1 - AT-AT.mpd",                          label: "AT-AT" },
+    { file: "20009-1 - AT-TE Walker - Mini.mpd",            label: "AT-TE Walker (mini)" },
+    { file: "8002 - Destroyer Droid.mpd",                   label: "Destroyer Droid" },
+    { file: "3181 - Passenger Plane.mpd",                   label: "Passenger Plane" }
+  ];
+  var OOD_CASES = [
+    { key: "none",          label: "Nominal",           cls: "" },
+    { key: "battery",       label: "① Battery",         cls: "battery" },
+    { key: "fault",         label: "② Breakdown",       cls: "fault" },
+    { key: "zone",          label: "③ Forbid Zone",     cls: "zone" },
+    { key: "fault_battery", label: "④ Break+Battery",   cls: "fault" },
+    { key: "fault_zone",    label: "⑤ Break+Zone",      cls: "fault" },
+    { key: "battery_zone",  label: "⑥ Battery+Zone",    cls: "battery" },
+    // 애매한 구간(SoC≈0.55)의 배터리 사건 — 세 정책의 답이 갈리는 대표 케이스.
+    // 정책 선택은 케이스가 아니라 아래 RE-SPEC 패널의 정책 선택기에서 한다(정책 ⟂ 케이스).
+    { key: "battery_mild", label: "⑦ Battery (mild)", cls: "battery" }
+  ];
+  // 결정 패널에서 전환해 볼 정책들. 스트림의 각 결정 레코드는 셋 다 담고 있고,
+  // 실제로 실행된 것은 `enacted` 로 표시된다.
+  var POLICIES = [
+    { key: "canonical", label: "Rule (canonical)" },
+    { key: "surrogate", label: "Surrogate (RF)" },
+    { key: "dspy",      label: "DSPy · gpt-4o" }
+  ];
+  var selectedPolicy = null;      // null = 실행된 정책을 따라감
+  function modelBase(file){ return file.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9]+/g, "_"); }
+  function oodCountVal(){ return Math.max(0, parseInt(($("oodCount")||{}).value, 10) || 0); }
+  // OOD 추첨 seed. 1 = 기본 녹화(접미사 없음), 0 = 옛 고정 슬롯, 그 외 = 별도 파일(_sN).
+  // render_demo.jl 의 SSUF / server.jl 의 seed_suffix 와 **규칙이 같아야** 화면이 실제 파일을 가리킨다.
+  function seedVal(){
+    var v = parseInt(($("oodSeed")||{}).value, 10);
+    return isNaN(v) ? 1 : Math.min(9999, Math.max(0, v));
+  }
+  function seedSuffix(s){ return s === 1 ? "" : "_s" + s; }
+  // stream/anim files carry an _nN suffix when OOD-events > 0, so each count is cached separately
+  // (and replaying never shows a stale count). N=0 keeps the original name.
+  // pol 이 있으면 (케이스 × 실행정책) 녹화를, 없으면 기존 이름을 가리킨다.
+  // pol 파일이 없을 수도 있으므로(아직 안 돌린 조합) 로딩 쪽에서 기존 이름으로 폴백한다.
+  function streamFile(base, caseName, n, pol, seed){
+    return "streams/" + base + "__" + caseName + (pol ? "__" + pol : "") +
+           (n>0 ? "_n"+n : "") + seedSuffix(seed === undefined ? seedVal() : seed) + ".jsonl";
+  }
+  var curEnacted = "";                      // "" | canonical | surrogate | dspy
+  function enactedVal(){ var s = $("enactSel"); return s ? s.value : ""; }
+  function refreshModels(){
+    return fetch(CONFIG.CONTROL_URL + "/models", {cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(files){
+        MODELS = files.map(function(file){
+          var known = MODELS.find(function(m){ return m.file === file; });
+          return known || {file:file, label:file.replace(/\.(mpd|ldr)$/i, "")};
+        });
+      }).catch(function(){ /* static dashboard fallback keeps bundled catalog */ });
+  }
+
+  /* ---- stream state ---- */
+  var frames = [];
+  var idx = 0;
+  var playing = false;
+  var timer = null;
+  var collapsed = {};   // assembly id -> true when collapsed
+  var selectedDecisionIdx = null;
+  var curModel = MODELS[0].file;
+  var curCase = "fault";
+  var streamUrl = CONFIG.STREAM_URL;   // compatibility default; selector updates it
+  var genPoll = null;
+  $("srcName").textContent = streamUrl;
+
+  function setBadge(kind, text){
+    var b = $("modeBadge"); b.className = "badge " + kind; b.textContent = text;
+  }
+
+  function parseJSONL(text){
+    var out = [];
+    var lines = text.split("\n");
+    for(var i=0;i<lines.length;i++){
+      var ln = lines[i].trim();
+      if(!ln) continue;
+      try{ out.push(JSON.parse(ln)); }catch(e){ /* Ignore an incomplete trailing line. */ }
+    }
+    return out;
+  }
+
+  function loadStream(){
+    $("srcName").textContent = streamUrl.replace(/^.*\//, "");
+    // 정책별 녹화(…__dspy.jsonl)가 아직 없는 조합이면 조용히 기존 파일로 폴백한다.
+    // 24 조합을 다 돌리기 전에도 대시보드가 쓸 수 있어야 하기 때문.
+    // 후보를 순서대로 시도한다. 어느 방향으로든 비어 있을 수 있기 때문:
+    //   · 정책별 녹화를 아직 안 돌린 조합  -> 기존 이름으로
+    //   · 기존 이름이 없는 케이스           -> 아무 정책 녹화로   (행렬 스크립트가 mv 로 가져간 경우)
+    // 폴백이 일어나면 상단 stream 표시에 그 사실을 적어, 지금 보는 것이 무엇인지 감추지 않는다.
+    function fetchWithFallback(url){
+      var cands = [url];
+      if(curEnacted){ cands.push(url.replace("__" + curEnacted, "")); }
+      else {
+        // 접미사(_nN, _sS)를 떼고 정책 이름을 끼워 넣은 뒤 접미사를 다시 붙인다.
+        // 순서는 render_demo.jl 이 쓰는 규칙과 같아야 한다: base__case[__policy][_nN][_sS].jsonl
+        var stem = url.replace(/\.jsonl$/, "");
+        var suf = "";
+        stem = stem.replace(/((?:_n\d+)?(?:_s\d+)?)$/, function(m){ suf = m; return ""; });
+        ["canonical","dspy","surrogate"].forEach(function(p){
+          cands.push(stem + "__" + p + suf + ".jsonl");
+        });
+      }
+      function tryAt(i){
+        if(i >= cands.length) return Promise.reject(new Error("no stream"));
+        return fetch(cands[i], {cache:"no-store"}).then(function(r){
+          if(!r.ok) return tryAt(i+1);
+          return r.text().then(function(t){
+            // 실패한 렌더가 **0바이트 파일**을 남기는 경우가 있다(200 인데 내용이 없음).
+            // 그것도 '없음'으로 취급해 다음 후보로 넘어가야 화면이 빈 채로 멈추지 않는다.
+            if(!t || !t.trim()) return tryAt(i+1);
+            if(i > 0){
+              $("srcName").textContent = cands[i].replace(/^.*\//, "") +
+                (curEnacted ? " (no per-policy recording -> legacy file)" : " (no legacy file -> per-policy recording)");
+            }
+            return t;
+          });
+        }, function(){ return tryAt(i+1); });
+      }
+      return tryAt(0);
+    }
+    return fetchWithFallback(streamUrl)
+      .then(function(t){
+        var fr = parseJSONL(t);
+        if(!fr.length) throw new Error("empty");
+        frames = fr;
+        $("scrub").max = Math.max(0, frames.length-1);
+        if(idx > frames.length-1) idx = frames.length-1;
+        if(idx < 0) idx = 0;
+        setBadge(CONFIG.LIVE ? "live" : "replay", CONFIG.LIVE ? "LIVE" : "REPLAY");
+        render();
+      })
+      .catch(function(e){
+        setBadge("err", "no stream");
+        $("fleetBody").innerHTML = '<div class="empty">Replay has not been generated: '+esc(streamUrl.replace(/^.*\//,""))+
+          '<br>Start a live session to generate it.</div>';
+        throw e;
+      });
+  }
+
+  /* ---- render one frame ---- */
+  function render(){
+    if(!frames.length) return;
+    if(idx > frames.length-1) idx = frames.length-1;
+    var fr = frames[idx];
+    $("scrub").value = idx;
+    $("frameIdx").textContent = (idx+1) + " / " + frames.length;
+
+    // status
+    $("simT").textContent = fmtTime(fr.sim_t);
+    $("ca").textContent = (fr.n_closed!=null?fr.n_closed:"—") + " / " + (fr.n_active!=null?fr.n_active:"—");
+    var robots = fr.robots || [];
+    var faultN = robots.filter(function(r){ return r.mode==="FAULT"; }).length;
+    $("fleetN").textContent = robots.length + (faultN? " ("+faultN+"✕)" : "");
+    var ood = fr.ood || [];
+    $("oodN").textContent = ood.length;
+
+    renderFleet(robots);
+    renderTree(fr.assemblies || []);
+    renderFeed(ood);
+    renderGantt(fr.schedule || [], fr.now);
+    renderRespec(fr.respec, fr.respec_history || []);
+  }
+
+  /* ---- gantt ---- */
+  function renderGantt(rows, now){
+    var gt = $("gtrack"), gticks = $("gticks");
+    $("ganttCount").textContent = rows.length + " task-spans";
+    if(!rows.length){ gt.innerHTML = '<div class="empty">no schedule yet</div>'; gticks.innerHTML = ""; return; }
+    var tmax = 0;
+    rows.forEach(function(r){ if(r.t1 != null && r.t1 > tmax) tmax = r.t1; });
+    if(now != null && now > tmax) tmax = now;
+    if(tmax <= 0) tmax = 1;
+    var byRobot = {};
+    rows.forEach(function(r){ var k = shortId(r.robot); (byRobot[k] = byRobot[k] || []).push(r); });
+    var robots = Object.keys(byRobot).sort(function(a,b){ return (+a.replace(/\D/g,"")) - (+b.replace(/\D/g,"")); });
+    var pct = function(x){ return (x / tmax * 100); };
+    var lblOf = {go:"GO", carry:"CARRY", form:"FORM", deposit:"DEP", lift:"LIFT"};
+    var html = "";
+    robots.forEach(function(rk){
+      var lane = '<div class="lane">';
+      byRobot[rk].forEach(function(r){
+        var t0 = r.t0 == null ? 0 : r.t0, t1 = r.t1 == null ? (now||t0) : r.t1;
+        lane += '<div class="blk '+esc(r.kind)+'" style="left:'+pct(t0)+'%;width:'+Math.max(pct(t1-t0),0.4)+'%" title="'+esc(r.label||"")+'">'+(lblOf[r.kind]||"")+'</div>';
+      });
+      if(now != null) lane += '<div class="nowline" style="left:'+pct(now)+'%"></div>';
+      lane += '</div>';
+      html += '<div class="grow"><div class="rlabel">'+esc(rk)+'</div>'+lane+'</div>';
+    });
+    gt.innerHTML = html;
+    var tk = "";
+    for(var i=0;i<=6;i++){ tk += '<span class="gtick" style="left:'+(i/6*100)+'%">'+fmtTime(tmax*i/6)+'</span>'; }
+    gticks.innerHTML = tk;
+  }
+
+  function renderFleet(robots){
+    var el = $("fleetBody");
+    $("fleetCount").textContent = robots.length + " robots";
+    if(!robots.length){ el.innerHTML = '<div class="empty">no robots</div>'; return; }
+    var h = "";
+    robots.forEach(function(r){
+      var sc = socClass(r.soc);
+      var pct = r.soc==null ? 0 : Math.round(r.soc*100);
+      h += '<div class="robot'+((r.mode==="FAULT"||r.mode==="DEPLETED")?" fault":"")+'">'
+        + '<div class="id" title="'+esc(r.replacement_for ? "replacement asset for "+shortId(r.replacement_for) : (r.retired?"retired physical asset":""))+'">'+esc(shortId(r.id))+'</div>'
+        + '<div class="mid" style="min-width:0">'
+          + '<div class="mode m-'+esc(r.mode)+'">'+esc(r.mode)+'</div>'
+          + '<div class="act">'+esc(r.action||"")+'</div>'
+        + '</div>'
+        + '<div class="soc '+sc+'" title="Battery state of charge. Runs without the battery layer display n/a."><span class="val">'+(r.soc==null?"n/a":pct+"%")+'</span>'
+          + '<span class="bar"><i style="width:'+pct+'%"></i></span></div>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  }
+
+  // Convert verbose RobotID/BotID strings to compact labels.
+  function shortId(s){
+    var m = String(s).match(/(\d+)\)?\s*$/);
+    return m ? "R"+m[1] : String(s).slice(0,7);
+  }
+
+  function renderFeed(ood){
+    var el = $("feedBody");
+    if(!ood.length){ el.innerHTML = '<div class="empty">no OOD events yet</div>'; return; }
+    var icons = {fault:"⚠", zone:"⛔", battery:"🔋", reform:"◈", other:"•"};
+    var h = "";
+    ood.slice().reverse().forEach(function(e){
+      var sub = e.target ? ("target "+shortId(e.target)) : "";
+      if(e.soc_after!=null) sub += " · SoC "+e.soc_after.toFixed(2);
+      if(e.zone) sub += " · "+esc(e.zone)+(e.radius!=null?(" r="+(+e.radius).toFixed(1)):"");
+      h += '<div class="event '+esc(e.kind)+'">'
+        + '<span class="t">'+fmtTime(e.at)+'</span>'
+        + '<span class="ic">'+(icons[e.kind]||"•")+'</span>'
+        + '<span class="desc"><b>'+esc(e.nl||e.kind)+'</b>'+(sub?'<br><span class="sub">'+sub+'</span>':'')+'</span>'
+        + '<span class="kindtag">'+esc(e.kind)+'</span>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  }
+
+  /* ---- assembly tree (collapsible) ---- */
+  function renderTree(asms){
+    var el = $("treeBody");
+    $("asmCount").textContent = asms.length + " assemblies";
+    if(!asms.length){ el.innerHTML = '<div class="empty">no assemblies</div>'; return; }
+    // children map
+    var byId = {}, children = {}, roots = [];
+    asms.forEach(function(a){ byId[a.id] = a; children[a.id] = []; });
+    asms.forEach(function(a){
+      if(a.parent!=null && children[a.parent]) children[a.parent].push(a);
+      else roots.push(a);
+    });
+    var counts = {done:0,open:0,eligible:0,blocked:0};
+    asms.forEach(function(a){ counts[a.status] = (counts[a.status]||0)+1; });
+
+    var rows = [];
+    function walk(a, depth){
+      var kids = children[a.id] || [];
+      var isCollapsed = collapsed[a.id];
+      rows.push(rowHTML(a, depth, kids.length>0, isCollapsed));
+      if(!isCollapsed) kids.forEach(function(k){ walk(k, depth+1); });
+    }
+    roots.forEach(function(r){ walk(r, 0); });
+    el.innerHTML = rows.join("");
+
+    // caret toggles
+    Array.prototype.forEach.call(el.querySelectorAll(".caret:not(.leaf)"), function(c){
+      c.addEventListener("click", function(){
+        var id = c.getAttribute("data-id");
+        collapsed[id] = !collapsed[id];
+        renderTree(asms);
+      });
+    });
+  }
+  function rowHTML(a, depth, hasKids, isCollapsed){
+    var pct = a.progress==null ? 0 : Math.round(a.progress*100);
+    var progTxt = a.status==="eligible" ? "rdy" : a.status==="blocked" ? "—" : pct+"%";
+    var caret = hasKids ? (isCollapsed? "▸" : "▾") : "";
+    return '<div class="node'+(a.frontier?" frontier":"")+'" style="padding-left:'+(depth*16)+'px">'
+      + '<div class="asm-info" title="Direct components: '+esc((a.component_ids||[]).join(", "))+'">'
+        + '<div class="name">'
+          + '<span class="caret'+(hasKids?"":" leaf")+'" data-id="'+esc(a.id)+'">'+caret+'</span>'
+          + '<span class="stdot '+esc(a.status)+'"></span>'
+          + '<span class="label">'+esc(shortAsm(a.id))+'</span>'
+          + '<span class="ncomp">×'+(a.ncomp!=null?a.ncomp:"?")+'</span>'
+        + '</div>'
+        + '<div class="asm-meta">'+esc(a.role||"assembly")+' · '+(a.direct_parts||0)+' direct parts · '+(a.direct_assemblies||0)+' subassemblies · steps '+(a.build_steps_closed||0)+'/'+(a.build_steps_total||0)+'</div>'
+      + '</div>'
+      + '<div class="prog"><span class="pbar"><i style="width:'+pct+'%"></i></span>'
+        + '<span>'+progTxt+'</span></div>'
+      + '</div>';
+  }
+  function shortAsm(s){
+    var m = String(s).match(/(\d+)\)?\s*$/);
+    return m ? "A"+m[1] : String(s).slice(0,10);
+  }
+
+  /* ---- respec panel ---- */
+  function renderRespec(rs, history){
+    var rhead = $("rhead"), inC = $("inCode"), outC = $("outCode"), cb = $("candBody"), vb = $("verifyBody"), dh = $("decisionHistory");
+    history = history || [];
+    if(!history.length && rs){ history = [rs]; }
+    if(selectedDecisionIdx == null || selectedDecisionIdx >= history.length){
+      selectedDecisionIdx = Math.max(0, history.length - 1);
+    }
+    var selectedDecision = history[selectedDecisionIdx] || rs || null;
+
+    dh.innerHTML = history.length ? '<b>'+history.length+' OOD decision'+(history.length===1?'':'s')+':</b> ' + history.map(function(d,i){
+      var label = (d.input && d.input.event) || d.chosen || 'decision';
+      return '<button type="button" class="decision-chip'+(i===selectedDecisionIdx?' current':'')+'" data-decision-index="'+i+'">#'+(i+1)+' '+esc(String(label).replace(/ConstructionBots\\./g,''))+' · '+esc(d.verdict||'pending')+'</button>';
+    }).join('') : '<span>Each OOD event creates an independently verified decision.</span>';
+
+    Array.prototype.forEach.call(dh.querySelectorAll(".decision-chip"), function(chip){
+      chip.addEventListener("click", function(){
+        selectedDecisionIdx = parseInt(chip.getAttribute("data-decision-index"), 10);
+        renderRespec(frames[idx] && frames[idx].respec, frames[idx] && frames[idx].respec_history || []);
+      });
+    });
+
+    if(!selectedDecision){
+      rhead.innerHTML = '<span class="trigger mono">no active re-spec</span>';
+      var rb0 = $("routerBar"); if(rb0){ rb0.hidden = true; }
+      if($("inLLM")) $("inLLM").textContent = "—";
+      if($("inSurro")) $("inSurro").textContent = "—";
+      inC.textContent = "—"; outC.textContent = "—";
+      cb.innerHTML = '<tr><td colspan="7" class="empty">—</td></tr>';
+      vb.innerHTML = '<div class="empty">no verification trace</div>';
+      return;
+    }
+    var ok = /feasible|admit/i.test(String(selectedDecision.verdict||""));
+    var chosenTxt = String(selectedDecision.chosen != null ? selectedDecision.chosen : "(macro)").replace(/\s+/g," ").trim();
+    // 두 정책(손으로 쓴 규칙 vs DSPy producer)이 이 사건에서 무엇을 골랐는지 나란히 보여준다.
+    // 둘이 갈리는 순간이 데모의 핵심이라 한눈에 보이게 색으로 구분한다.
+    var din = selectedDecision.input || {};
+    var pols = din.policies || null;               // {canonical:{...}, surrogate:{...}, dspy:{...}}
+    var enacted = din.enacted || "canonical";
+    var viewKey = (selectedPolicy && pols && pols[selectedPolicy] && pols[selectedPolicy].available)
+                  ? selectedPolicy : enacted;
+    var view = pols ? pols[viewKey] : null;
+
+    // 정책별 선택을 한 줄로 요약(무엇을 보고 있든 세 답이 다 보이게).
+    var summary = "";
+    if (pols) {
+      summary = POLICIES.filter(function(p){ return pols[p.key] && pols[p.key].available; })
+        .map(function(p){
+          var m = pols[p.key].chosen || "—";
+          return '<span class="pill'+(p.key===viewKey?' on':'')+'">'+esc(p.label.split(" ")[0])+': <b>'+esc(m)+'</b></span>';
+        }).join("");
+      var distinct = {};
+      POLICIES.forEach(function(p){ if(pols[p.key] && pols[p.key].available && pols[p.key].chosen) distinct[pols[p.key].chosen]=1; });
+      var nd = Object.keys(distinct).length;
+      summary = '<span class="verdict '+(nd>1?"no":"ok")+'" title="what each decision policy chose for this same event">'
+              + summary + ' · ' + (nd>1 ? (nd+" DIFFERENT actions") : "all agree") + '</span>';
+    }
+    var shownMacro = view && view.chosen ? view.chosen : chosenTxt;
+    rhead.innerHTML = '<span class="trigger mono">RE-SPEC @ t='+esc(selectedDecision.at)+' &nbsp; <b>'
+      + esc(shownMacro)+'</b>'+(viewKey!==enacted?' <i style="opacity:.7">(not enacted)</i>':'')+'</span>' + summary
+      + '<span class="verdict '+(ok?"ok":"no")+'">'+(ok?"✓ ":"✗ ")+esc(selectedDecision.verdict||"—")+' · auto (no human)</span>';
+
+    // 정책 선택기 — 케이스와 무관하게 "누가 결정했는가"를 여기서 고른다.
+    var psel = $("policySel");
+    if (psel) {
+      psel.innerHTML = POLICIES.map(function(p){
+        var avail = !pols || (pols[p.key] && pols[p.key].available);
+        var mac = pols && pols[p.key] ? (pols[p.key].chosen || "—") : "—";
+        return '<button type="button" class="polb'+(p.key===viewKey?' on':'')+(avail?'':' off')+'"'
+             + ' data-policy="'+p.key+'"'+(avail?'':' disabled')+'>'
+             + esc(p.label)+'<span class="pm">'+esc(mac)+'</span>'
+             + (p.key===enacted?'<span class="en">ENACTED</span>':'')+'</button>';
+      }).join("");
+      Array.prototype.forEach.call(psel.querySelectorAll(".polb"), function(b){
+        b.addEventListener("click", function(){
+          selectedPolicy = (b.getAttribute("data-policy") === viewKey) ? null : b.getAttribute("data-policy");
+          renderRespec(frames[idx] && frames[idx].respec, frames[idx] && frames[idx].respec_history || []);
+        });
+      });
+    }
+    // ---- ROUTER 줄 ---------------------------------------------------------------------
+    // 이 데모의 핵심 주장: 정책을 **사람이 버튼으로 고르는 게 아니라** 시스템이 사건마다 고른다.
+    // 라우터가 꺼진 스트림(예전 녹화본)도 그대로 열려야 하므로 없으면 "off" 로 표시만 한다.
+    var rb = $("routerBar");
+    var rt = din.router || null;
+    // p 는 novelty "점수"가 아니라 conformal p-value 다. 방향이 직관과 반대(작을수록 낯설다)라서
+    // 화면에서 반드시 한 줄로 풀어 준다 -- 숫자만 보면 "novelty 가 0.012 밖에 안 된다"로 읽힌다.
+    function pHint(p, eps, nv){
+      if(p == null) return "";
+      var pct = (Number(p)*100);
+      pct = pct < 1 ? pct.toFixed(1) : Math.round(pct);
+      return '<div class="rhint">Reading this number: <b>p is a conformal p-value, not a novelty score '
+        + '— the LOWER it is, the MORE unfamiliar the event.</b> p=' + Number(p).toFixed(3)
+        + ' means only about ' + pct + '% of the events the surrogate was calibrated on look at least '
+        + 'this unusual. The gate fires when p &lt; eps=' + (eps==null?"—":Number(eps).toFixed(3))
+        + ', i.e. '
+        + (nv ? 'this event sits outside the surrogate’s training support, so it is escalated to the LLM.'
+              : 'this event lies inside familiar territory, so the cheap surrogate is trusted.')
+        + '</div>';
+    }
+    if (rb) {
+      rb.hidden = false;
+      if (!rt) {
+        rb.innerHTML = '<span class="rlab">ROUTER</span><span class="roff">no router record in this stream'
+                     + ' (recorded before routing existed, with DEMO_POLICY fixed).</span>';
+      } else if (!rt.enabled && rt.advisory && rt.p != null) {
+        // 정책 고정 녹화(DEMO_ROUTER=0): 라우터는 실행을 안 했지만 판정은 남아 있다.
+        // "라우터였다면 어디로 보냈을까"를 고정 실행과 나란히 보여주는 것이 이 화면의 값어치다.
+        var wnv = !!rt.novel;
+        rb.innerHTML = '<span class="rlab">ROUTER</span>'
+          + '<span class="rverdict '+(wnv?"novel":"familiar")+'" style="opacity:.65">advisory: '
+          + (wnv ? "never seen before -> would have gone to LLM" : "familiar -> would have gone to SURROGATE") + '</span>'
+          + '<span class="rwhy">novelty p=' + Number(rt.p).toFixed(3)
+          + ' &middot; <b>this recording enacted ' + esc(din.enacted || rt.target || "?") + ' (fixed)</b></span>'
+          + pHint(rt.p, rt.eps, wnv);
+      } else if (!rt.enabled) {
+        rb.innerHTML = '<span class="rlab">ROUTER</span><span class="roff">off · '
+                     + esc(rt.reason || "") + '</span>';
+      } else {
+        var nv = !!rt.novel;
+        var pTxt = (rt.p == null) ? "—" : Number(rt.p).toFixed(3);
+        var eTxt = (rt.eps == null) ? "—" : Number(rt.eps).toFixed(3);
+        rb.innerHTML = '<span class="rlab">ROUTER</span>'
+          + '<span class="rverdict '+(nv?"novel":"familiar")+'">'
+          + (nv ? "never seen before -> LLM" : "familiar -> SURROGATE") + '</span>'
+          + '<span class="rwhy">novelty p=' + pTxt + (nv ? " &lt; " : " &ge; ") + 'eps=' + eTxt
+          + ' &middot; enacted=' + esc(rt.enacted || din.enacted || "?")
+          + (rt.fell_back ? ' <i>(requested policy unavailable -> canonical fallback)</i>' : '')
+          + '</span>'
+          + pHint(rt.p, rt.eps, nv);
+      }
+    }
+
+    // ---- 두 producer 가 본 입력 ----------------------------------------------------------
+    // LLM 은 문장을, surrogate 는 스키마 피처를 본다. 같은 사건에 대해 서로 다른 것을 본다는 사실이
+    // "왜 새 종류에 LLM 인가"의 근거이므로 나란히 보여준다.
+    var llmBox = $("inLLM"), surBox = $("inSurro"), llmMode = $("inLLMMode");
+    if (llmBox) {
+      var li = (rt && rt.llm_input) ? rt.llm_input : (din.nl || din.detail || "—");
+      llmBox.textContent = li;
+      if (llmMode) {
+        var mode = (rt && rt.llm_input_mode) ? rt.llm_input_mode : (din.nl ? "nl" : "—");
+        llmMode.textContent = (mode === "nl") ? "natural language" : (mode === "parsed-fields" ? "parsed fields" : mode);
+        llmMode.style.color = (mode === "nl") ? "" : "var(--warn, #f59e0b)";
+        llmMode.title = (mode === "nl")
+          ? "The LLM read the natural-language observation emitted at injection time."
+          : "The LLM read parsed schema fields \u2014 an input that would not exist for a genuinely new kind of event.";
+      }
+    }
+    if (surBox) {
+      surBox.textContent = (rt && rt.surrogate_input) ? rt.surrogate_input
+        : ("kind=" + (din.event||"?") + " · " + (din.target||""));
+    }
+    inC.textContent = JSON.stringify(selectedDecision.input, null, 2);
+
+    var cands = selectedDecision.candidates || [];
+    // 정책을 골라 보고 있으면 그 정책의 순위표로 갈아끼운다(각 행에 어느 정책이 그걸 골랐는지 표시).
+    if (pols && view && view.ranking && view.ranking.length) {
+      cands = view.ranking.map(function(m, i){
+        var by = POLICIES.filter(function(p){
+          return pols[p.key] && pols[p.key].available && pols[p.key].chosen === m; })
+          .map(function(p){ return p.key; });
+        var sc = (view.scores && view.scores[m] != null) ? ("score " + view.scores[m])
+               : (i === 0 && view.margin != null ? ("margin " + view.margin) : "");
+        return {rank: i+1, macro: m, score: sc, chosen: (m === view.chosen),
+                rule: (pols.canonical && pols.canonical.chosen === m), by: by.join("+"),
+                verified: (m === view.chosen && viewKey === enacted)};
+      });
+    }
+    // 지금 보고 있는 정책이 이 런에서 **실제로 실행된** 정책인가. 아니면 이 표의 선택은 반사실이다:
+    // 실행되지 않았으므로 검증기에 들어간 적도 없다. 예전에는 그 칸에도 "SENT TO VERIFIER" 를 찍어서
+    // 보내지지 않은 후보를 보낸 것처럼 보여 줬다.
+    var isEnactedView = !pols || (viewKey === enacted);
+    if(!cands.length){ cb.innerHTML = '<tr><td colspan="5" class="empty">no candidates recorded</td></tr>'; }
+    else{
+      cb.innerHTML = cands.map(function(c, i){
+        var chosen = c.chosen || (selectedDecision.chosen && c.macro && String(selectedDecision.chosen).indexOf(c.macro)>-1);
+        var rawSource = c.decision_source != null ? c.decision_source : c.score;
+        var source = rawSource === "canonical" ? "Rule policy (canonical)" :
+          (typeof rawSource === "number" ? ("Surrogate score " + rawSource) : (rawSource || "—"));
+        return '<tr'+(chosen?' class="chosen"':'')+'>'
+          + '<td>'+(c.rank!=null?c.rank:(i+1))+'</td>'
+          + '<td class="macro"><span class="k">'+esc(c.macro||"?")+'</span> '+esc(c.args||"")+'</td>'
+          + '<td>'+esc(source)+'</td>'
+          + '<td>'+(c.by ? c.by.split("+").map(function(k){
+                var n = {canonical:"RULE", surrogate:"SURROGATE", dspy:"DSPy"}[k] || k;
+                return '<span class="pill'+(k===viewKey?' on':'')+'">'+n+'</span>'; }).join("")
+              : (c.rule ? '<span class="pill">RULE</span>' : '—'))+'</td>'
+          + '<td>'+(!chosen ? '—' :
+                    c.verified ? '<span title="This candidate was enacted: it went through the verifier and was executed.">✓ VERIFIED</span>' :
+                    isEnactedView ? '<span title="Enacted branch, verifier trace not recorded yet (legacy stream).">→ SENT TO VERIFIER</span>' :
+                    '<span style="color:var(--text-faint)" title="This policy was NOT the enacted one in this recording, so its choice was never sent to the verifier and never executed. It is a counterfactual: what this policy WOULD have done.">not enacted · counterfactual</span>')+'</td>'
+          + '</tr>';
+      }).join("");
+    }
+    // output = chosen macro summary
+    var chosenCand = (cands.filter(function(c){ return c.chosen; })[0]) || null;
+    outC.textContent = JSON.stringify(chosenCand || {chosen: selectedDecision.chosen, verdict: selectedDecision.verdict}, null, 2);
+
+    var verification = selectedDecision.verification || null;
+    if(!verification){ vb.innerHTML = '<div class="empty">legacy stream: verifier trace was not recorded</div>'; }
+    else{
+      var checks = verification.checks || [];
+      var vh = checks.map(function(ch){
+        return '<div class="verify-step"><span class="'+(ch.passed?'pass':'fail')+'">'+(ch.passed?'✓':'✗')+'</span>'
+          + '<span class="vname">'+esc(ch.name||"check")+'</span><span class="vdetail">'+esc(ch.detail||"")+'</span></div>';
+      }).join("");
+      if(verification.execution){
+        vh += '<div class="verify-step"><span class="'+(verification.status==="passed"?'pass':'fail')+'">'+(verification.status==="passed"?'✓':'✗')+'</span>'
+          + '<span class="vname">execution</span><span class="vdetail">'+esc(JSON.stringify(verification.execution))+'</span></div>';
+      }
+      vb.innerHTML = vh || '<div class="empty">no verifier checks recorded</div>';
+    }
+  }
+
+  /* ---- playback controls ---- */
+  function step(){
+    if(idx < frames.length-1){ idx++; render(); }
+    else { setPlaying(false); }
+  }
+  function setPlaying(p){
+    playing = p;
+    $("playBtn").textContent = p ? "⏸" : "▶";
+    if(timer){ clearInterval(timer); timer = null; }
+    if(p) timer = setInterval(step, Math.round(1000/CONFIG.PLAY_FPS));
+  }
+  $("playBtn").addEventListener("click", function(){ setPlaying(!playing); });
+  $("scrub").addEventListener("input", function(){ idx = +this.value; render(); });
+  // reload = re-resolve the CURRENT selection end to end (stream path, 3D animation, badges),
+  // not just re-fetch the same bytes. Re-fetching a finished replay yields an identical file and
+  // leaves the frame index where it was, so the button looked dead. applySelection() also refreshes
+  // the Factory View iframe with a cache-buster and reports failure instead of dying silently.
+  $("reloadBtn").addEventListener("click", function(){
+    toast("Reloading " + streamUrl.replace(/^.*\//, "") + " …");
+    applySelection();
+  });
+
+  /* ---- model + OOD-case selector ---- */
+  function populateSelectors(){
+    var sel = $("modelSel");
+    sel.innerHTML = MODELS.map(function(m){ return '<option value="'+esc(m.file)+'">'+esc(m.label)+'</option>'; }).join("");
+    sel.value = curModel;
+    sel.addEventListener("change", function(){ curModel = this.value; applySelection(); });
+    var g = $("oodGroup");
+    g.innerHTML = OOD_CASES.map(function(c){
+      return '<button class="caseb '+c.cls+'" data-case="'+c.key+'" type="button">'+esc(c.label)+'</button>';
+    }).join("");
+    Array.prototype.forEach.call(g.querySelectorAll(".caseb"), function(b){
+      b.addEventListener("click", function(){ curCase = b.getAttribute("data-case"); applySelection(); });
+    });
+    // Changing the OOD-events count re-points to the _nN stream (loads it if present, else prompts to
+    // Start a live session to generate it) so the top-right OOD counter always matches the field.
+    var oc = $("oodCount");
+    if(oc && !oc._wired){ oc._wired = true; oc.addEventListener("change", function(){ applySelection(); }); }
+    var os = $("oodSeed");
+    if(os && !os._wired){ os._wired = true; os.addEventListener("change", function(){ applySelection(); }); }
+    var es = $("enactSel");
+    if(es && !es._wired){ es._wired = true; es.addEventListener("change", function(){ applySelection(); }); }
+  }
+  function markActiveCase(){
+    Array.prototype.forEach.call($("oodGroup").querySelectorAll(".caseb"), function(b){
+      b.classList.toggle("active", b.getAttribute("data-case") === curCase);
+    });
+  }
+  // Reset every panel to a consistent "not generated" empty state. Called when the
+  // selected (case, OOD-count) has no saved stream, so stale frames from a previous
+  // selection never linger behind a "no replay" badge (which read as a broken screen).
+  function clearPanels(){
+    frames = []; idx = 0; setPlaying(false);
+    var s = $("scrub"); if(s){ s.max = 0; s.value = 0; }
+    $("frameIdx").textContent = "0 / 0";
+    $("simT").textContent = "—";
+    $("ca").textContent = "— / —";
+    $("fleetN").textContent = "0";
+    $("oodN").textContent = "0";
+    renderFleet([]);
+    renderFeed([]);
+    renderTree([]);
+    renderGantt([], null);
+    renderRespec(null, []);
+  }
+  function applySelection(){
+    if(genPoll){ clearInterval(genPoll); genPoll = null; }
+    markActiveCase();
+    var base = modelBase(curModel);
+    var n = oodCountVal();
+    var seed = seedVal();
+    var sfx = (n>0?"_n"+n:"") + seedSuffix(seed);
+    curEnacted = enactedVal();
+    streamUrl = streamFile(base, curCase, n, curEnacted, seed);
+    // Factory View displays the selected case animation.
+    var mc = $("meshcat");
+    if(mc){
+      if(curEnacted){
+        // 정책별 녹화는 control 서버의 /artifact 가 모르는 이름이므로 직접 가리킨다.
+        // 다만 **있는지 먼저 확인**한다: 빌드가 미완주면 렌더가 애니메이션 발행을 거부하므로
+        // (의도된 안전장치) 그 조합에는 파일이 없다. 그냥 src 를 걸면 브라우저 404 페이지가
+        // 뜨는데, 그건 "왜 없는지"를 설명하지 못한다.
+        var animUrl = "anim/" + base + "__" + curCase + "__" + curEnacted + sfx + ".html";
+        fetch(animUrl, {method:"HEAD", cache:"no-store"}).then(function(r){
+          if(r.ok){ mc.removeAttribute("srcdoc"); mc.src = animUrl + "?v=" + Date.now(); }
+          else { throw new Error(r.status); }
+        }).catch(function(){
+          mc.removeAttribute("src");
+          mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.6}'
+            + 'b{color:#334155}</style><b>No 3D animation for this combination.</b>'
+            + '<p>The replay data (stream) is fine &mdash; every panel on the left still works.</p>'
+            + '<p>Most common reason: <b>the build did not finish in this run</b>. The renderer refuses to'
+            + ' publish an incomplete animation (<code>refusing to publish incomplete animation</code>)'
+            + ' &mdash; a deliberate guard, so a half-built scene is never shown as if it were finished.</p>'
+            + '<p>Check: <code>tools/monitor/regen_case_logs/' + curCase + '__' + curEnacted + '.log</code></p>';
+        });
+      } else {
+      fetch(CONFIG.CONTROL_URL + "/artifact", {method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:curModel, "case":curCase, n:n, seed:seed})})
+        .then(function(r){ return r.json(); }).then(function(a){
+          if(a.anim_exists){ mc.removeAttribute("srcdoc"); mc.src=a.anim+"?v="+Date.now(); }
+          else { mc.removeAttribute("src"); mc.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px}</style>'+
+            '<b>3D animation has not been generated yet.</b><p>Replay data is available. Press <i>Start live session</i> to watch MeshCat while generating the missing animation.</p>'; }
+        }).catch(function(){ mc.src="anim/"+base+"__"+curCase+sfx+".html"; });
+      }
+    }
+    idx = 0; setPlaying(false);
+    loadStream().then(function(){ if(frames.length > 1) setPlaying(true); }).catch(function(){
+      clearPanels();
+      setBadge("err", "no replay");
+      var want = n > 0 ? (curCase + " with " + n + " OOD event" + (n===1?"":"s")) : curCase;
+      $("genHint").textContent = "No saved replay for " + want + ". Press “Start live session” to generate it.";
+    });
+  }
+  function requestGeneration(opts){
+    opts = opts || {};
+    var runModel = opts.model || curModel;
+    var runCase = opts.caseName || curCase;
+    var runBase = modelBase(runModel);
+    var runN = oodCountVal();
+    var runSeed = seedVal();
+    var runStreamUrl = streamFile(runBase, runCase, runN, "", runSeed);
+    setBadge("err", "generating…");
+    $("genHint").textContent = "Preparing the environment and simulation (OOD seed " + runSeed +
+      "). This may take several minutes.";
+    fetch(CONFIG.CONTROL_URL + "/run", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({model: runModel, "case": runCase, interactive: !!opts.live, n: runN, seed: runSeed})
+    })
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function(){
+        showLivePreparing();
+        toast("Generation started for " + runCase + ". The replay will load automatically.", "ok");
+        var tries = 0;
+        genPoll = setInterval(function(){
+          tries++;
+          fetch(runStreamUrl, {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; })
+            .then(function(t){
+              if(parseJSONL(t).length > 0){
+                $("genHint").textContent = "Simulation running — replay frames are streaming.";
+                if(runModel===curModel && (runCase===curCase || opts.live)){
+                  streamUrl=runStreamUrl;
+                  // Reload the growing stream, but do NOT restart playback each poll
+                  // (that made the render appear to reset every few seconds). Start
+                  // autoplay only the first time frames arrive.
+                  loadStream().then(function(){ if(frames.length > 1 && !playing) setPlaying(true); }).catch(function(){});
+                }
+              }
+            }).catch(function(){});
+          fetch(CONFIG.CONTROL_URL + "/status", {cache:"no-store"})
+            .then(function(r){ return r.json(); }).then(function(s){
+              var expectedKey=runModel+"__"+runCase;
+              if(!s.last || s.last.key!==expectedKey) return;
+              if(s.last.state==="failed"){
+                CONFIG.LIVE=false; clearInterval(genPoll); genPoll=null;
+                $("genHint").textContent="Generation failed — no incomplete animation was published.";
+                toast("Simulation failed: "+(s.last.error||"unknown error"), "warn");
+              } else if(s.last.state==="complete"){
+                CONFIG.LIVE=false; clearInterval(genPoll); genPoll=null;
+                $("genHint").textContent="Generation complete — replay and 3D animation verified.";
+                if(runModel===curModel && (runCase===curCase || opts.live)){
+                  streamUrl=runStreamUrl;
+                  loadStream().then(function(){ idx=frames.length-1; render(); }).catch(function(){});
+                  fetch(CONFIG.CONTROL_URL+"/artifact", {
+                    method:"POST", headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({model:runModel, "case":runCase, n:runN, seed:runSeed})
+                  }).then(function(r){return r.json();}).then(function(a){
+                    if(a.anim_exists){
+                      var view=$("meshcat");
+                      if(view){ view.removeAttribute("srcdoc"); view.src=a.anim+"?v="+Date.now(); }
+                    }
+                  }).catch(function(){});
+                }
+              }
+            }).catch(function(){});
+          if(tries > 1440){ clearInterval(genPoll); genPoll = null; }  // ~2h for large LDraw models
+        }, 5000);
+      })
+      .catch(function(){
+        toast("The control server is unavailable. Start server.jl and try again.", "warn");
+        $("genHint").textContent = "No replay stream · control server unavailable";
+      });
+  }
+
+  /* ---- boot ---- */
+  refreshModels().then(function(){ populateSelectors(); applySelection(); });
+  // 라이브 폴러 — **영구 설치**하고 매 틱마다 CONFIG.LIVE 를 확인한다.
+  //
+  // 예전에는 이 인터벌을 부팅 시점의 CONFIG.LIVE 로 한 번만 검사해서 설치했다. 부팅 때는 언제나
+  // false 이므로 **실제 라이브 세션에서는 아무도 스트림을 다시 읽지 않았다.** 대신 생성 폴러
+  // (requestGeneration 안의 genPoll)가 읽고 있었는데, 그건 applySelection() 이 맨 처음에
+  // 지워 버린다(케이스/seed 를 바꾸거나 reload 를 누르면 호출된다).
+  // 결과: 화면은 **직전에 로드한 완성 녹화본에 얼어붙은 채 LIVE 배지만** 달고 있었고, 사람이 주입한
+  // forbid zone 은 스트림 파일에는 기록되는데 패널에는 영영 나타나지 않았다.
+  setInterval(function(){
+    if(!CONFIG.LIVE) return;
+    var atEnd = idx >= frames.length-1;   // 끝을 보고 있었으면 계속 끝(=최신)을 따라간다
+    loadStream().then(function(){ if(atEnd){ idx = frames.length-1; render(); } }).catch(function(){});
+  }, CONFIG.POLL_MS);
+})();
+</script>
+</body>
+</html>

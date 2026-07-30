@@ -1,3 +1,26 @@
+# ============================================================================
+#  [한국어 설명] 이 파일은 ConstructionBots 의 "통합 테스트 실행기(test driver)".
+#  · 프로젝트 역할: LLM/surrogate "re-spec" 레이어(OOD 상황에서 계획을 다시 짜는 안전장치)가
+#    제대로 동작하는지 검증하는 여러 테스트를 한 파일(module Tests)에 모아둔 것.
+#  · 원래는 tools/test_*.jl 로 흩어져 있던 개별 스크립트들을 각각 "함수" 하나로 바꾸고,
+#    공통 준비코드(MILP 설정 + run_with_stack + @check 매크로)를 딱 한 번만 정의해 공유함.
+#  · 맨 아래 dispatcher 가 CLI 인자/ENV 로 받은 test_key 하나만 골라 실행함.
+#  각 테스트가 무엇을 검증하는지는 함수마다 위에 한국어 요약을 달아둠(아래 참고).
+#
+#  Julia 문법 참고(처음 보는 사람을 위해):
+#   · module Tests ... end : 이름공간(namespace). 안의 함수/상수는 Tests.xxx 로 접근.
+#   · using / import : 다른 패키지 불러오기. `const CB = ConstructionBots` = 긴 이름의 별칭.
+#   · function f(x::Int) : x 가 Int 타입일 때만 쓰는 메서드(다중 디스패치). 같은 이름을
+#     인자 타입만 바꿔 여러 번 정의할 수 있음(파이썬엔 없는 개념).
+#   · `!` 로 끝나는 함수(예: set_default_milp_optimizer!) = 인자를 직접 바꾼다(in-place)는 관례.
+#   · `macro @check` / `@assert` : `@`로 시작하면 매크로(코드를 코드로 변형). @assert 는 조건이
+#     거짓이면 에러를 던짐. @check 는 아래에서 직접 정의한 pass/fail 집계용 매크로.
+#   · :symbol (예: :greedy, :zone) = 가벼운 이름표(문자열보다 싸고 비교가 빠름).
+#   · Ref(0) = 값을 담는 1칸 상자. ref[] 로 읽고/쓰기(가변 카운터를 만들 때 씀).
+#   · Dict("a"=>1) = 사전(해시맵). `f() do ... end` = do-block, 마지막에 함수를 넘기는 축약문법.
+#   · `cond ? A : B` = 삼항 조건식(파이썬의 A if cond else B).
+#   · ≈ (isapprox) = 부동소수점 "거의 같음" 비교(오차 허용). `≈`, `÷`(정수나눗셈) 등 유니코드 연산자 사용.
+# ============================================================================
 # =============================================================================
 # tools/tests.jl -- consolidated ConstructionBots test/verification driver.
 #
@@ -38,11 +61,13 @@ const CB = ConstructionBots
 # than any test call, exactly reproducing the original top-level-include semantics. navigator.jl
 # is the umbrella loader (it includes metrics/ood_truth/battery/ood_stream/... in dependency
 # order -- see its header), so ONE call covers every navigator-using test.
+# navigator 레이어(배터리/OOD 등)는 패키지에 컴파일돼 있지 않아 여기서 런타임 include 로 한 번만 불러옴.
+# (테스트 함수 "안"에서 include 하면 방금 정의한 메서드를 같은 프레임에서 못 부르는 world-age 에러가 남 → 모듈 로드 시점에 미리 올림.)
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 
 # ---- shared helpers (defined ONCE) ------------------------------------------
-# The set_default_milp_optimizer! block that appears (nearly identically) across the tests.
-# Tests differ only in time_limit (120.0) and mip_rel_gap (5.0 or 0.02) -- passed as kwargs.
+# _setup_milp! : MILP(정수최적화) 솔버(HiGHS)를 기본 옵티마이저로 등록/설정하는 준비함수.
+#   time_limit=풀이 제한시간(초), mip_rel_gap=허용 최적성 오차(클수록 빨리 "그냥 되는" 해로 멈춤). `;` 뒤는 키워드 인자.
 function _setup_milp!(; time_limit = 300.0, mip_rel_gap = 5.0)
     CB.set_default_milp_optimizer!(() -> HiGHS.Optimizer())
     CB.clear_default_milp_optimizer_attributes!()
@@ -51,7 +76,9 @@ function _setup_milp!(; time_limit = 300.0, mip_rel_gap = 5.0)
         CB.MOI.Silent() => true)
 end
 
-# The identical stack-growing task helper from the tests.
+# run_with_stack : f() 를 "C 스택을 크게 잡은 새 태스크"에서 실행하고 결과를 돌려주는 헬퍼.
+#   깊은 재귀가 많은 env 빌드가 스택오버플로 나지 않게 stacksize 바이트만큼 스택을 키움.
+#   내부적으로 새 태스크가 끝날 때까지(done[]) 기다렸다가, 에러가 있었으면 그대로 다시 던짐.
 function run_with_stack(f, stacksize::Int)
     res = Ref{Any}(nothing); err = Ref{Any}(nothing); done = Threads.Atomic{Bool}(false)
     t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int),
@@ -65,6 +92,9 @@ end
 # also referenced by the nested `chk` closure in deprioritize_integration). A macro CANNOT be
 # defined inside a function, so it lives here at module level; it is hygienic, so PASS[]/FAILN[]
 # resolve to these module-level counters (one test runs per process via the dispatcher).
+# PASS/FAILN : 통과/실패 개수를 세는 전역 카운터 상자(모듈당 한 프로세스에서 테스트 하나만 도니 공유 OK).
+# @check ex : ex(조건식)가 참이면 PASS+1, 거짓이면 FAILN+1 하고 "FAIL: <원래 식>"을 출력하는 매크로.
+#   $(esc(ex)) = 매크로 위생(hygiene) 때문에 사용자 식을 원래 스코프에서 평가하도록 이스케이프.
 const PASS = Ref(0); const FAILN = Ref(0)
 macro check(ex)
     quote
@@ -79,6 +109,9 @@ end
 #   open_zone_descriptors -> a fake /propose JSON with a ForbidZone -> _parse_proposal ->
 #   verify_zone (admit), plus negative cases (bad zone key, bad id). No Python service, no nav build.
 # =============================================================================
+# [검증 내용] LLM 없이 ForbidZone(진입금지 구역) DSL 경로를 확인: 중앙에 zone 을 심고 →
+#   zone 서술 추출 → 가짜 /propose JSON 파싱 → verify_zone 이 정상 제안은 "Admit(허용)",
+#   잘못된 zone/assembly id 는 "Reject/throw" 로 막는지 본다(negative case 포함).
 function test_forbidzone_parse()
 _setup_milp!(time_limit = 120.0)
 
@@ -94,14 +127,15 @@ env = run_with_stack(2_000_000_000) do
         save_milp_solution=false, return_env_before_sim=true)
 end
 
+# 이 테스트 전용 로컬 검사 클로저: 조건이 참이면 PASS 카운트+출력, 아니면 FAIL. (@check 와 별개, 이름표 name 을 찍음)
 npass = Ref(0); nfail = Ref(0)
 check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
                             (nfail[] += 1; println("  FAIL: $name")))
 
-# central zone over the root deposit-goal centroid
+# 최종 조립품(root)들의 목표지점 중심(centroid)에 중앙 zone 을 배치 — 빌드 핵심부를 덮는 no-go 구역을 흉내냄.
 gs = CB.root_deposit_goals(env)
-zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
-CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)
+zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)   # 목표들의 평균 위치(없으면 하드코딩 좌표)
+CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)  # 반지름 2.5 짜리 :zone 등록
 
 println("\n[1] open_zone_descriptors")
 zd = CB.open_zone_descriptors(env)
@@ -154,6 +188,9 @@ end
 #   _parse_proposal -> verify_replace (admit), plus negative cases (no spare -> reject, unknown
 #   agent id -> throw). No Python service, no nav build.
 # =============================================================================
+# [검증 내용] LLM 없이 ReplaceAgent(고장난 로봇 → 예비 로봇 교체) DSL 경로를 확인:
+#   고장 로봇 서술 추출 → 가짜 JSON 파싱 → verify_replace 가 spare(예비) 있으면 Admit,
+#   없으면 Reject(:no_spare), 존재하지 않는 agent id 는 파싱 단계에서 막는지(fail closed) 본다.
 function test_replace_parse()
 _setup_milp!(time_limit = 120.0)
 
@@ -192,8 +229,8 @@ check("_is_robot_replace true", CB._is_robot_replace(prop))
 check("NOT misclassified as robot fault (ForbidAgent path)", !CB._is_robot_fault(prop))
 
 println("\n[3] verify_replace — spare available admits")
-CB.clear_spare_pools!()
-CB.register_spare!(:north, CB.get_unique_id(CB.RobotID))   # at least one parked spare
+CB.clear_spare_pools!()                                    # 예비 풀 비우고 시작
+CB.register_spare!(:north, CB.get_unique_id(CB.RobotID))   # 북쪽 풀에 주차된 예비 로봇 1대 등록
 v_ok = CB.verify_replace(prop, env)
 check("verify_replace Admit (spare present)", v_ok isa CB.Admit)
 
@@ -237,9 +274,12 @@ end
 #   Builds ONE small env (greedy) and re-solves; mirrors the maybe_respecify! soft-dispatch
 #   path without the LLM round-trip.
 # =============================================================================
+# [검증 내용] 실제 env 위에서 TIER-2 DeprioritizeAgent(로봇 우선순위 낮추기 = 소프트 re-spec)를 확인:
+#   (1) 실존 로봇은 Admit, 없는 로봇은 Reject, (2) 편향(bias)을 걸고 다시 풀어도 여전히 feasible,
+#   (3) 실제로 우회시켜 그 로봇의 배정 작업량이 baseline 이하로 줄어드는지 본다(LLM 없이 소프트 경로만).
 function test_deprioritize_integration()
-value = JuMP.value
-chk(c, m) = (c ? (PASS[] += 1) : (FAILN[] += 1; println("  FAIL: ", m)))
+value = JuMP.value                    # JuMP 결정변수의 최적해 값을 읽는 함수 별칭
+chk(c, m) = (c ? (PASS[] += 1) : (FAILN[] += 1; println("  FAIL: ", m)))  # 로컬 pass/fail 집계 클로저
 
 _setup_milp!(time_limit = 120.0, mip_rel_gap = 0.02)
 CB.clear_agent_bias!(); CB.EDGE_COST_MULTIPLIER[] = nothing
@@ -263,7 +303,7 @@ robots = sort([CB.node_id(n) for n in CB.get_nodes(env.scene_tree) if CB.matches
 R = robots[1]
 println(">>> env built; $(length(robots)) robots; deprioritizing $(R)\n")
 
-# count selected assignment edges OWNED by robot `rid` in a solved milp
+# owned_edge_usage : 풀린 milp 에서 로봇 rid 가 "소유한" 배정 엣지들의 선택량 합(그 로봇이 맡은 일의 양).
 function owned_edge_usage(milp, sched, rid)
     u = 0.0
     for ((v, v2), _) in CB.LAST_EDGE_COSTS[]
@@ -290,9 +330,9 @@ ms0 = try maximum(value.(milp0.model[:tF])) catch; NaN end
 chk(feas0, "baseline feasible")
 println("   baseline: feasible=$feas0  R-edge-usage=$(round(usage0,digits=2))  makespan=$(round(ms0,digits=2))")
 
-# (3) biased solve: feasibility preserved + R does <= work
+# (3) 편향 건 재풀이: feasibility 유지 + R 의 작업량이 baseline 이하인지 확인
 println("== (3) deprioritize R (factor 1000, clamped) -> re-solve ==")
-f = CB.deprioritize_agent!(R, 1000.0)
+f = CB.deprioritize_agent!(R, 1000.0)                     # R 의 비용을 1000배로(단, 안전상 MAX 로 clamp 됨)
 chk(f == CB.MAX_AGENT_COST_BIAS, "factor clamped to MAX")
 milp1 = CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
     optimizer = CB._respec_optimizer(), t0_ = inv.frozen_t0, tF_ = inv.frozen_tF)
@@ -306,7 +346,7 @@ println("   biased:   feasible=$feas1  R-edge-usage=$(round(usage1,digits=2))  m
 CB.clear_agent_bias!()
 
 println("\n== RESULT: $(PASS[]) passed, $(FAILN[]) failed ==")
-exit(FAILN[] == 0 ? 0 : 1)
+exit(FAILN[] == 0 ? 0 : 1)   # 실패 0 이면 종료코드 0(성공), 아니면 1(CI 가 실패로 인식)
 end
 
 # =============================================================================
@@ -314,6 +354,9 @@ end
 #   Unit-tests the pure pieces of the navigator layer (loaded ONCE at module top):
 #   battery power model · SoC->cost multiplier · metric wiring · OOD-stream scheduling.
 # =============================================================================
+# [검증 내용] env/LLM 없이 에너지 인지(energy-aware) 레이어의 순수 부품들을 단위 검사:
+#   배터리 전력모델, SoC(잔량)->비용 배수, 지표(metric) 배선, OOD-stream 스케줄링이 맞는지 본다.
+#   (@check 로 하나하나 확인; SoC=State of Charge=배터리 잔량 0~1)
 function test_battery_smoke()
 println("== BatteryParams / k_move calibration ==")
 p = CB.BatteryParams()
@@ -349,8 +392,9 @@ CB.BATTERY_STEP_HOOK[] = nothing                       # reset
 @check isa(CB.enable_battery!, Function)               # one-call enable helper exists
 @check isa(CB.rebalance_for_battery!, Function)        # SoC-biased re-solve helper exists
 
+# 함대(fleet) 회계: _debit!(에너지 차감), battery_report(요약), low_soc(잔량낮은 로봇), spread(잔량 편차)
 println("== Fleet accounting: _debit!, report, low_soc, spread ==")
-r1, r2, r3 = CB.RobotID(1), CB.RobotID(2), CB.RobotID(3)
+r1, r2, r3 = CB.RobotID(1), CB.RobotID(2), CB.RobotID(3)   # 테스트용 로봇 3대 id
 fleet = CB.BatteryFleet(p,
     Dict{Any,Float64}(r1 => 1.0, r2 => 0.8, r3 => 0.2),
     Dict{Any,Float64}(r1 => 0.0, r2 => 0.0, r3 => 0.0),
@@ -406,6 +450,10 @@ end
 #   Running it also PRECOMPILES the whole module, so it doubles as an integration check that the
 #   spec_dsl/compiler/verifier/replan + essential_tg_coponents edits all load.
 # =============================================================================
+# [검증 내용] env/LLM 없이 소프트 re-spec(DeprioritizeAgent)와 AGENT_COST_BIAS 편향 레지스트리의
+#   "안전성/검증가능성"을 확인: LLM 이 뽑을 수 있는 건 닫힌 문법(grammar)뿐이고, factor 는 [1,MAX]로
+#   clamp 되어 목적함수를 역이용 못하며, 소프트 스펙은 하드 제약 0개로 컴파일되어 feasibility 를 절대 안 줄임.
+#   (이 테스트를 돌리면 모듈 전체가 precompile 되므로 로드 통합검사도 겸함.)
 function test_battery_safety()
 println("== closed-union: DeprioritizeAgent is a ConstraintSpec (LLM can only emit grammar) ==")
 @check CB.DeprioritizeAgent <: CB.ConstraintSpec
@@ -431,7 +479,8 @@ CB.clear_agent_bias!()
 @check isempty(CB.AGENT_COST_BIAS[])                      # global clear works
 
 println("== SAFETY: feasibility-preserving BY CONSTRUCTION — compiles to ZERO hard constraints ==")
-# The structural proof that a soft re-spec cannot shrink the feasible set / stall the build:
+# 소프트 re-spec 이 feasible 집합을 줄이거나 빌드를 멈출 수 없다는 "구조적 증거":
+# 컴파일 결과 추가된 하드 제약 개수가 0 이어야 함(0이면 절대 계획을 막지 못함).
 @check CB.compile_constraint!(nothing, nothing, nothing, nothing, nothing, da) == 0
 
 println("== objective-bias composition: agent_bias × battery_fn, both default-identity ==")
@@ -480,10 +529,13 @@ end
 #          cd ConstructionBots.jl ; julia +lts --project=. tools/tests.jl llm_classification
 #   (default RESPEC_SERVICE_URL is http://127.0.0.1:8000)
 # =============================================================================
+# [검증 내용] Stage 3 "실제 LLM" 검사: 살아있는 Python 서비스가 자연어 OOD 문장을 올바른 DSL 종류
+#   (ForbidZone / ForbidAgent / ForbidWindow)로 분류하고 유효한 id 에 grounding(연결)하는지 본다.
+#   turn-key: Python 서비스 실행 + ANTHROPIC_API_KEY 가 이 쉘에 있어야 함(없으면 스킵/종료).
 function test_llm_classification()
 _setup_milp!(time_limit = 120.0)
 
-if !CB.respec_service_ready()
+if !CB.respec_service_ready()   # LLM 서비스에 접속 안 되면 안내만 하고 종료(코드1)
     println("LLM service NOT reachable at ", get(ENV, "RESPEC_SERVICE_URL", "http://127.0.0.1:8000"))
     println("Start it first:  cd src/respec/llm_service ; uvicorn server:app --port 8000   (in a shell with ANTHROPIC_API_KEY)")
     exit(1)
@@ -505,9 +557,10 @@ gs = CB.root_deposit_goals(env)
 zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
 CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)
 
-resolver = ref -> CB._default_id_resolver(env, ref)
-kind_of(p) = isempty(p.constraints) ? :none : typeof(p.constraints[1]).name.name
+resolver = ref -> CB._default_id_resolver(env, ref)   # 문자열 참조 -> 실제 id 로 변환하는 함수
+kind_of(p) = isempty(p.constraints) ? :none : typeof(p.constraints[1]).name.name  # 제안의 첫 제약 "타입 이름" 추출
 
+# (자연어 문장, 기대하는 DSL 종류) 쌍들 — LLM 이 각 문장을 맞는 종류로 분류해야 통과.
 cases = [
     ("A safety exclusion zone is now active over the central build area; robots must not enter or pass through it.", :ForbidZone),
     ("Robot R2 has broken down and can no longer move; take it out of service.", :ForbidAgent),
@@ -539,6 +592,9 @@ end
 #   constraint (feasible) and REJECTS an impossible one (:infeasible). Then a FREEZE
 #   test: step the sim to close nodes and confirm build_invariant pins realized times.
 # =============================================================================
+# [검증 내용] 실제 스케줄 위에서 verify GATE 를 증명(LLM 없음): 배정만 끝내고 시뮬은 안 돌린 env 에서
+#   구속력 없는(feasible) 제약은 Admit, 불가능한 제약은 Reject(:infeasible). 이어서 FREEZE 테스트로
+#   시뮬을 조금 돌려 노드를 완료시킨 뒤 build_invariant 가 실현시간을 고정(pin)하는지 확인한다.
 function test_respec_gate()
 project_params = get_project_params(4)   # tractor — the project the user has run successfully
                                           # (project 1 / colored_8x8 segfaults in ECOS geometry overapprox)
@@ -574,6 +630,7 @@ println(">>> target node id = $nid")
 # --- ADMIT: a window entirely in the past is feasible & non-binding -----------
 # ForbidWindow(node, t_lo, t_hi) == tF<=t_lo OR t0>=t_hi. With the window in the
 # past (t_hi=-1) the "start after t_hi" branch is trivially satisfied (t0>=0>=-1).
+# 창(window)이 완전히 과거(t_hi=-1)라 "그 이후에 시작"이 자동 만족(t0>=0>=-1) → 구속력 없이 통과해야 함.
 good = CB.RespecProposal([CB.ForbidWindow(nid, -2.0, -1.0)])
 vg = CB.verify(good, env, inv)
 println(">>> ForbidWindow(nid, -2, -1)  => ", vg isa CB.Admit ? "ADMIT ($(vg.n_constraints) constr)" : "Reject($(vg.reason))")
@@ -581,6 +638,7 @@ println(">>> ForbidWindow(nid, -2, -1)  => ", vg isa CB.Admit ? "ADMIT ($(vg.n_c
 # --- REJECT: an impossible window is infeasible ------------------------------
 # With t_lo very negative, the disjunction's Big-M (1e5 in compiler.jl) cannot
 # relax tF <= t_lo above 0, so BOTH branches force tF < 0 — impossible (tF>=0).
+# 두 갈래 모두 tF<0 을 강요(Big-M 으로도 못 풀어줌) → tF>=0 과 모순이라 불가능 → Reject(:infeasible) 이어야 함.
 bad = CB.RespecProposal([CB.ForbidWindow(nid, -1e6, 1e6)])
 vb = CB.verify(bad, env, inv)
 println(">>> ForbidWindow(nid, -1e6, 1e6) => ", vb isa CB.Reject ? "REJECT(:$(vb.reason))" : "Admit (UNEXPECTED)")
@@ -639,6 +697,9 @@ end
 #   so its effect lives PURELY in the written MILP times — the direct test of
 #   persist_milp_times!. Uses hand-written proposals through the verify -> commit_respec! path.
 # =============================================================================
+# [검증 내용] LLM 없이, commit(persist_milp_times!)이 타이밍-전용 re-spec(ForbidWindow)을 "커밋 후에도
+#   유지"시키는지 증명. ForbidWindow 는 그래프 엣지를 추가하지 않아 효과가 오직 기록된 MILP 시간에만 존재 →
+#   persist_milp_times! 를 직접 겨냥한 테스트. verify -> commit_respec! 경로를 손수 만든 제안으로 태운다.
 function test_respec_timing()
 # NOTE: do NOT cache the env via Serialization — round-tripping a built env through
 # serialize/deserialize subtly corrupts its cached transforms/schedule state, which
@@ -686,7 +747,8 @@ println(">>> open AssemblyComplete milestones: $(length(asm_nodes))")
 # the node MUST "start after t_hi" => t0 is forced up to >= t0n + Δ. (t_hi stays
 # well under the compiler's Big-M=1e5, so only the start-after branch is viable.)
 # ---------------------------------------------------------------------------
-local tgt, vt, t0n, t_lo, t_hi, prop, inv, verdict
+# 후보 milestone 중 "구속력 있게 시작을 미루는" ForbidWindow 가 Admit 되는 첫 노드를 찾는다.
+local tgt, vt, t0n, t_lo, t_hi, prop, inv, verdict   # for 밖에서도 쓰려고 local 로 미리 선언
 admitted = false
 for cand in asm_nodes
     tgt = cand
@@ -710,9 +772,9 @@ t0m = JuMP.value.(milp.model[:t0])
 println("   [MILP soln] t0[node]=$(round(t0m[vt],digits=2))  (constraint forces t0 >= t_hi)")
 @assert CB.commit_respec!(env, milp, verdict.proposal) "commit_respec! failed"
 
-t0a = Float64(CB.get_t0(env.sched, vt))
+t0a = Float64(CB.get_t0(env.sched, vt))                  # 커밋 후 스케줄에서 다시 읽은 시작시간
 println("   AFTER : t0[node]=$(round(t0a,digits=2))")
-ok = t0a >= t_hi - 1e-6
+ok = t0a >= t_hi - 1e-6   # 커밋 뒤에도 시작이 t_hi 위로 밀려 있으면 = 유지 성공(1e-6=부동소수점 여유)
 println(ok ? "   ✅ PASS: ForbidWindow start-shift PERSISTED past commit (written MILP times alone, no edge)." :
             "   ❌ FAIL: t0 reverted below t_hi — write mechanism not working.")
 
@@ -726,6 +788,9 @@ end
 #   transport teams, the re-solved schedule is VALID, completed work stays frozen, and an
 #   infeasible reassign is REJECTED. Two scenarios: (A) fault at t=0, (B) fault mid-build.
 # =============================================================================
+# [검증 내용] Stage 1 스모크(LLM/시각화 없음): "로봇 고장 -> 남은 로봇들이 인수" 를 증명.
+#   fault_robot_and_reassign! 가 고장 로봇을 모든 pending 운반팀에서 빼고, 재풀이한 스케줄이 VALID,
+#   이미 끝난 일은 freeze(고정) 유지, 불가능한 재배정은 Reject. 시나리오 (A) t=0 고장, (B) 빌드 중간 고장.
 function test_respec_reassign()
 # Re-solving needs a real MILP optimizer with a time limit (greedy never set one).
 # Reassignment only needs a FEASIBLE re-solve, not a proven-optimal one. A large
@@ -748,11 +813,12 @@ end
 @assert env !== nothing
 println(">>> env built: $(Graphs.nv(env.sched)) nodes, $(length(env.cache.closed_set)) closed")
 
+# 스케줄 그래프에서 RobotStart 노드(로봇의 시작점)들만 골라내는 comprehension.
 robot_starts = [v for v in Graphs.vertices(env.sched)
                 if CB.matches_template(CB.RobotStart, CB.get_node(env.sched, v))]
-botid(v) = CB.entity(CB.get_node(env.sched, v).node).id
+botid(v) = CB.entity(CB.get_node(env.sched, v).node).id   # 노드 -> 그 로봇의 id 추출
 
-# Pick a robot that actually has pending transport work to take away.
+# 실제로 빼앗을 pending(대기중) 운반 작업이 있는 로봇을 하나 고른다.
 faulted = nothing
 for v in robot_starts
     id = botid(v)
@@ -777,14 +843,14 @@ println(">>> result: ", resA)
 @assert CB.validate(env.sched) "re-solved schedule failed validate()"
 @assert isfinite(CB.makespan(env.sched)) "makespan is not finite after re-solve"
 
-# Every transport task still has a full team (work is covered, not dropped):
+# 모든 운반 작업이 여전히 팀을 꽉 채웠는지(일이 누락 없이 커버됐는지) 확인:
 ftus = [v for v in Graphs.vertices(env.sched)
         if CB.matches_template(CB.FormTransportUnit, CB.get_node(env.sched, v))]
 for v in ftus
     node = CB.get_node(env.sched, v).node
-    need = length(CB.robot_team(CB.entity(node)))
+    need = length(CB.robot_team(CB.entity(node)))    # 이 운반팀이 필요로 하는 로봇 수
     have = count(vp -> CB.get_node_from_id(env.sched, CB.get_vtx_id(env.sched, vp)) isa CB.RobotGo,
-                 Graphs.inneighbors(env.sched, v))
+                 Graphs.inneighbors(env.sched, v))    # 실제 배정된(들어오는 RobotGo) 로봇 수
     @assert have >= need "FormTransportUnit v$v understaffed after reassign: have $have < need $need"
 end
 println(">>> SCENARIO A PASSED: faulted robot removed from all pending teams; all "*
@@ -816,11 +882,12 @@ println(">>> faulting $(faultedB) (closed nodes frozen: $(length(frozen_tF_befor
 resB = CB.fault_robot_and_reassign!(env, faultedB; verbose=true)
 println(">>> result: ", resB)
 
+# 중간 고장에서 재배정이 성공(:admitted)했다면, 스케줄이 valid 하고 freeze 가 지켜졌는지 검사.
 if resB.status == :admitted
     @assert resB.valid "invalid schedule after mid-build reassign"
     @assert resB.teams_after == 0 "faulted robot still on pending teams mid-build"
     @assert CB.validate(env.sched) "schedule invalid after mid-build reassign"
-    # Freeze respected: every previously-closed node keeps its realized finish (>=).
+    # freeze 준수: 이전에 끝난 모든 노드는 실현 종료시간을 그대로(>=) 유지해야 함(과거로 당겨지면 안 됨).
     for (id, tF) in frozen_tF_before
         v = CB.get_vtx(env.sched, id)
         @assert CB.get_tF(env.sched, v) >= tF - 1e-3 "frozen node $id pulled earlier: "*
@@ -843,6 +910,7 @@ println("invariant, and an unsatisfiable reassignment is safely refused by the g
 end
 
 # ---- dispatcher -------------------------------------------------------------
+# TESTS : test_key(문자열) -> 해당 테스트 함수 사전. 아래 진입점이 이 사전에서 하나를 골라 실행.
 const TESTS = Dict(
     "forbidzone_parse"         => test_forbidzone_parse,
     "replace_parse"            => test_replace_parse,
@@ -856,7 +924,9 @@ const TESTS = Dict(
 )
 end # module Tests
 
+# 이 파일을 `julia tools/tests.jl <key>` 로 직접 실행했을 때만(=import 될 때는 X) 아래가 돈다.
 if abspath(PROGRAM_FILE) == @__FILE__
+    # 실행할 테스트 키: 환경변수 TEST 우선, 없으면 첫 CLI 인자, 그것도 없으면 기본값.
     key = get(ENV, "TEST", isempty(ARGS) ? "forbidzone_parse" : ARGS[1])
     haskey(Tests.TESTS, key) || error("unknown test '$key'. Available: $(join(sort(collect(keys(Tests.TESTS))), ", "))")
     println(">>> running test: $key")

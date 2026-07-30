@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/chahj/PythonCodes/venv/hjcnlp/Scripts/python.exe\" \"C:/Users/chahj/PythonCodes/venv/ConstructionBots.jl/.claude/hooks/translate_hook.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

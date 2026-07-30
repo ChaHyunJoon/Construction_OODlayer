@@ -17,3 +17,19 @@ Manifest.toml.*
 
 # Large generated visualization artifacts
 docs/src/*_visualization.html
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Monitor demo artifacts: regenerable MeshCat renders and replay streams.
+# The monitor SOURCE (dashboard.html, policy.jl, server.jl, run_demo.jl, the
+# regen/verify scripts) stays tracked -- only the ~600 MB of generated output
+# below is excluded.  Ignored here means "not in git", NOT deleted: streams/
+# is the per-step log the anticipatory scoring work reads from.
+tools/monitor/anim/
+tools/monitor/streams/
+tools/monitor/_backup_*/
+tools/monitor/regen_case_logs/
+tools/monitor/monitor_stream.jsonl
+tools/monitor/visualization.html

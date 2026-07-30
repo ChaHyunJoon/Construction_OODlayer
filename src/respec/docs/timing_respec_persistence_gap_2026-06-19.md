@@ -1,7 +1,61 @@
 # Respec layer: timing-only re-specs are not persisted at commit (2026-06-19)
 
-**Status: DOCUMENTED, NOT FIXED.** Discovered while building the per-OOD-class
+**Status: ✅ FIXED & VERIFIED 2026-06-22.** Discovered while building the per-OOD-class
 evaluation harness (`eval_respec_ood.jl`, see `ood_eval_design_2026-06-19.md`).
+Everything below the `---` is the original diagnosis (kept for the record); the
+**RESOLUTION** section immediately below describes the fix that closed it.
+
+---
+
+## ✅ RESOLUTION (2026-06-22): hybrid timing-persistent commit
+
+The gap is closed by a single shared commit function `commit_respec!(env, milp, proposal)`
+(in `replan.jl`), now used by the production replan path, the eval-harness gold
+runners, AND the e2e test (the commit logic was previously duplicated in all three).
+It makes a re-spec STICK two complementary ways:
+
+1. **`persist_milp_times!(env, milp)`** — writes the MILP's solved `t0`/`tF` for every
+   future node into the schedule PathSpecs. The structural pass `update_schedule_times!`
+   is monotone-up (starts from the stored value, only raises via `max`), so writing the
+   *full feasible* MILP schedule makes the subsequent `process_schedule!` a **fixed point**
+   instead of snapping times back to earliest-start. Realized history is never
+   overwritten (CLOSED nodes keep both ends; ACTIVE nodes keep their started `t0`).
+   → persists **Deadline / ForbidWindow / the time side of Precede** (no graph edge needed).
+2. **`persist_precede_edges!(sched, proposal)`** — additionally encodes each `Precede(a,b)`
+   as a REAL graph edge `a→b` (cycle-guarded; the verifier's feasibility gate already
+   rejects cyclic precedence). An edge is the one thing that survives *any* from-scratch
+   time recompute, so `Precede` is robust even against paths that reset times.
+
+Why BOTH (belt-and-suspenders): `update_project_schedule!` rebuilds edges from the
+assignment matrix (drops respec edges) but does NOT reset times (keeps written times);
+a hypothetical time-reset path would do the reverse. Each mechanism covers the other's
+blind spot.
+
+### Verification (`test_respec_timing_persist.jl`, LLM-free, `julia +lts`)
+
+On a FRESHLY-BUILT tractor env (289 nodes), hand-written proposals through
+`verify → commit_respec!`:
+
+- **TEST 1 — `Precede(asm3, asm8)` via full `commit_respec!`** (binding: tF[a]=9.37 > t0[b]=2.53
+  before). After commit: tF[a]=9.37, t0[b]=**9.37**, edge present. ✅ PERSISTED — exactly the
+  case the diagnostic below showed reverting to 2.53.
+- **TEST 2 — same Precede via `persist_milp_times!` ALONE (no edge)**, instrumented per stage:
+  ```
+  [MILP soln]            tF[a]=9.37 t0[b]=9.37
+  [after update_project] tF[a]=9.37 t0[b]=2.53   ← the original bug (structural revert)
+  [after persist_times!] tF[a]=9.37 t0[b]=9.37   ← write
+  [after reset_cache!]   tF[a]=9.37 t0[b]=9.37   ← STAYS (process_schedule! is a fixed point)
+  ```
+  ✅ Proves the write mechanism persists timing WITHOUT an edge → Deadline/ForbidWindow covered.
+
+### Gotchas found along the way
+- **`update_schedule_times!` is ALREADY monotone-up** (treats stored t0/tF as lower bounds),
+  so the fix is "write the MILP values in," NOT "modify the recompute logic." The earlier
+  "highest risk / touches core pass" worry applied only to the rewrite-the-pass variant.
+- **Do NOT cache the built env via `Serialization`** for these tests: serialize/deserialize
+  subtly corrupts cached transforms/schedule state, which inflates the committed makespan
+  ~6× and produces a FALSE "write mechanism broken" failure. `deepcopy` IS faithful; only
+  serialize is not. The verification builds fresh every run.
 
 ---
 
@@ -77,16 +131,30 @@ It was invisible earlier because:
 | DSL kind      | LLM translation | MILP enforces | **Persists at commit / execution** |
 |---------------|-----------------|---------------|------------------------------------|
 | `ForbidAgent` | ✅ (6/6)         | ✅             | ✅ (structural reassignment)        |
-| `Deadline`    | ✅ (6/6)         | ✅             | ❌ (timing dropped; passes iff non-binding) |
-| `Precede`     | ⚠️ (3/6, see note) | ✅           | ❌ (timing dropped)                 |
-| `ForbidWindow`| ✅ (6/6, incl. spatial grounding) | ✅ | ❌ (timing dropped; passes iff non-binding) |
+| `Deadline`    | ✅ (6/6)         | ✅             | ✅ FIXED 2026-06-22 (`persist_milp_times!`) |
+| `Precede`     | ✅ FIXED 2026-06-22 (12/12, see note) | ✅ | ✅ FIXED 2026-06-22 (`persist_milp_times!` + edge) |
+| `ForbidWindow`| ✅ (6/6, incl. spatial grounding) | ✅ | ✅ FIXED 2026-06-22 (`persist_milp_times!`) |
+
+> Persistence column was ❌ for the 3 timing kinds before 2026-06-22; see the
+> **RESOLUTION** section at the top.
 
 So the layer's safety story (gate admits only feasible, invariant-preserving specs)
 holds, but its **enactment** story currently only covers structural re-specs.
 
-> Secondary note: `Precede` translation-target regressed from 6/6 (P2 run) to 3/6
-> after P3b appended spatial labels to *all* node labels. Unconfirmed cause
-> (label noise vs a/b order flips); not investigated.
+> Secondary note (RESOLVED 2026-06-22): `Precede` translation-target regressed from
+> 6/6 (P2 run) to 3/6 after P3b appended spatial labels to *all* node labels. The two
+> candidate causes (label noise vs a/b order flips) were finally diagnosed: **a/b
+> order**, NOT label noise. Root cause — the `a`/`b` fields had NO description
+> anywhere the model could see: the Pydantic `Precede` docstring ("a must complete
+> before b") is never sent (only `TOOL_SCHEMA` is), and the prompt said nothing about
+> ordering, so the model guessed a/b from the field names and the sentence's surface
+> word order. Fix: add `a`/`b` field descriptions to `TOOL_SCHEMA` (schema.py) + a
+> PRECEDE ORDERING block to the prompt (propose.py) stating a=prerequisite (finishes
+> first), b=dependent (waits), decided by DEPENDENCY not sentence order. Verified
+> env-free via `tools/translate_eval.py --case precede --samples 4`: **12/12** target
+> (was 3/6), incl. the order-trap paraphrase "hold sub-assembly 4 until sub-assembly 2
+> is complete" → 4/4 Precede(2,4). The spatial labels were still present in the
+> fixture, confirming noise was NOT the cause.
 
 ## Possible fixes (not implemented)
 
