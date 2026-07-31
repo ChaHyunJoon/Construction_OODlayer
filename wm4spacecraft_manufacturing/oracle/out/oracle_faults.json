@@ -1,0 +1,9 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","target":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(7)","solo_target":false,"closed_at_decision":50,"n_spare":1,"maxroll":20000,"smoke":false,"n_candidates":4,"oracle_best_kind":"deprioritize","oracle_best_makespan":10.425},
+  "candidates": [
+    {"kind":"replace","status":"admitted","stopped":"cap","steps":20000,"feasible":false,"completion_rate":0.6363636363636364,"makespan":"Inf","n_nodes":297,"n_closed":189,"error":"","oracle_rank":4,"makespan_regret":"Inf"},
+    {"kind":"forbid","status":"admitted","stopped":"cap","steps":20000,"feasible":false,"completion_rate":0.8383838383838383,"makespan":"Inf","n_nodes":297,"n_closed":249,"error":"","oracle_rank":3,"makespan_regret":"Inf"},
+    {"kind":"deprioritize","status":"admitted","stopped":"complete","steps":887,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":1,"makespan_regret":0.0},
+    {"kind":"noop","status":"noop","stopped":"complete","steps":887,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":2,"makespan_regret":0.0}
+  ]
+}

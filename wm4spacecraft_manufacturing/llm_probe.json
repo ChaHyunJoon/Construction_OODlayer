@@ -1,0 +1,12 @@
+{
+ "model": "gpt-4o-mini",
+ "n": 6,
+ "latency_s_median": 1.0125257999970927,
+ "latency_s_mean": 1.2757349500025157,
+ "in_tok": 156,
+ "out_tok": 26,
+ "usd_per_call_median": 3.9075e-05,
+ "usd_per_call_mean": 3.9625e-05,
+ "price_in_per_M": 0.15,
+ "price_out_per_M": 0.6
+}

@@ -33,9 +33,10 @@ from pydantic import BaseModel
 import dspy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# HERE = <venv>/ConstructionBots.jl/src/respec/llm_service -> 네 단계 위가 venv 루트, 그 옆이 wm4...
+# HERE = <repo>/src/respec/llm_service -> 세 단계 위가 repo 루트, 그 안에 wm4...
+# (2026-07-31: wm4 가 repo 옆의 형제 폴더에서 repo 내부로 이동해 단계가 넷 -> 셋으로 줄었다.)
 WM = os.environ.get("WM_DIR") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE)))),
+    os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
     "wm4spacecraft_manufacturing")
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 

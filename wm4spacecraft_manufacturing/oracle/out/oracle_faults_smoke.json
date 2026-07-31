@@ -1,0 +1,9 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","target":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5)","solo_target":false,"closed_at_decision":283,"n_spare":1,"maxroll":3000,"smoke":true,"n_candidates":4,"oracle_best_kind":"replace","oracle_best_makespan":10.425},
+  "candidates": [
+    {"kind":"replace","status":"noop","stopped":"complete","steps":1,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":1,"makespan_regret":0.0},
+    {"kind":"forbid","status":"admitted","stopped":"complete","steps":1,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":2,"makespan_regret":0.0},
+    {"kind":"deprioritize","status":"admitted","stopped":"complete","steps":1,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":3,"makespan_regret":0.0},
+    {"kind":"noop","status":"noop","stopped":"complete","steps":1,"feasible":true,"completion_rate":0.9528619528619529,"makespan":10.425,"n_nodes":297,"n_closed":283,"error":"","oracle_rank":4,"makespan_regret":0.0}
+  ]
+}

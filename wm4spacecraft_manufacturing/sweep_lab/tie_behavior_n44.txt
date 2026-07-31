@@ -1,0 +1,25 @@
+====================================================================================================
+TIE BEHAVIOUR  (n=44 instances, TIE_EPS=5% of span, lam=3.0)
+====================================================================================================
+instances with MORE THAN ONE optimal action: 1/44 (2%)
+
+  instance                           tied-optimal set             spread of tied outcomes
+  fault_s4_sev1.0_sp0                NOOP, Deprioritize           closed-cost 166.1..167.0
+
+On the 1 ambiguous instances -- did the producer land INSIDE the tied-optimal set?
+  producer                                           in-set     regret   picks when it missed
+  forest RF 60 d6 (deployed)                             0%      1.000   Replace@fault
+  forest HGB d4 lr.08 (eval)                             0%      1.000   Replace@fault
+  gpt-4o | A0 zero-shot (dspy.Predict)                 100%      0.029   -
+  gpt-4o | A1 LabeledFewShot(k=8, random)              100%      0.029   -
+  gpt-4o | A1b LabeledFewShot(k=8, first-8)              0%      0.097   ReformTeam@fault
+  gpt-4o | A2 BootstrapFewShot                           0%      0.097   ReformTeam@fault
+  gpt-4o | A3 BootstrapFewShot+RandomSearch            100%      0.029   -
+  gpt-4o | A4 MIPROv2 (instruction search)               0%      0.097   ReformTeam@fault
+
+----------------------------------------------------------------------------------------------------
+Q2 (does the LLM itself want to name several actions?) is NOT answerable from these dumps:
+  the dspy signature has a single `macro: str` output, so any internal tie is collapsed to
+  one string before we ever see it. Answering it needs a new run with a signature that
+  returns a RANKED LIST + per-action confidence, then measuring how often the top-2 are
+  within a margin and whether those cases coincide with the oracle ties above.

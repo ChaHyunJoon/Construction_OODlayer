@@ -1,0 +1,151 @@
+{
+ "dataset": "graded_hs_all.jsonl",
+ "lam": 15.0,
+ "n_instances": 20,
+ "T_sim": {
+  "median": 81.39300000667572,
+  "mean": 216.39715998888016,
+  "p90": 696.4883998870858,
+  "n": 100,
+  "ci": [
+   64.17199993133545,
+   170.25699996948242
+  ],
+  "total_hours": 6.011032221913338
+ },
+ "T_surr_s": 0.0001007693499996094,
+ "T_llm_s": 1.0125257999970927,
+ "llm_usd_per_call": 3.9075e-05,
+ "llm_source": "LIVE (gpt-4o-mini, n=6)",
+ "accuracy": {
+  "oracle": {
+   "regret": 0.0,
+   "catastrophic": 0,
+   "completion": 0.8,
+   "n": 20
+  },
+  "surrogate": {
+   "regret": 0.25,
+   "catastrophic": 2,
+   "completion": 0.8,
+   "n": 20
+  },
+  "heuristic": {
+   "regret": 0.45,
+   "catastrophic": 0,
+   "completion": 0.8,
+   "n": 20
+  },
+  "always_per_kind": {
+   "regret": 0.7010182607891283,
+   "catastrophic": 4,
+   "completion": 0.55,
+   "n": 20
+  },
+  "random": {
+   "regret": 0.7492921947004609,
+   "catastrophic": 7,
+   "completion": 0.45,
+   "n": 20
+  }
+ },
+ "necessity_ci": {
+  "mean": 0.45101826078912843,
+  "lo": 0.21853177347875813,
+  "hi": 0.679122947080292
+ },
+ "per_decision": {
+  "Oracle (verify all 5)": {
+   "planner": 5,
+   "llm": 0,
+   "surr": 0,
+   "regret": 0.0,
+   "completion": 0.8,
+   "latency_s": 406.9650000333786,
+   "usd": 0.0
+  },
+  "LLM->solver (verify C=3)": {
+   "planner": 3,
+   "llm": 1,
+   "surr": 0,
+   "regret": 0.0,
+   "completion": 0.8,
+   "latency_s": 245.19152582002425,
+   "usd": 3.9075e-05
+  },
+  "LLM-only planner (no verify)": {
+   "planner": 0,
+   "llm": 1,
+   "surr": 0,
+   "regret": 0.7010182607891283,
+   "completion": 0.55,
+   "latency_s": 1.0125257999970927,
+   "usd": 3.9075e-05
+  },
+  "Surrogate->verify-1": {
+   "planner": 1,
+   "llm": 0,
+   "surr": 1,
+   "regret": 0.25,
+   "completion": 0.8,
+   "latency_s": 81.39310077602572,
+   "usd": 0.0
+  },
+  "Surrogate-only (k=0, ours)": {
+   "planner": 0,
+   "llm": 0,
+   "surr": 1,
+   "regret": 0.25,
+   "completion": 0.8,
+   "latency_s": 0.0001007693499996094,
+   "usd": 0.0
+  }
+ },
+ "stream": [
+  "battery",
+  "zone",
+  "fault",
+  "battery"
+ ],
+ "per_build": {
+  "Oracle (verify all 5)": {
+   "total_s": 1627.8600001335144,
+   "usd": 0.0
+  },
+  "LLM->solver (verify C=3)": {
+   "total_s": 980.766103280097,
+   "usd": 0.0001563
+  },
+  "LLM-only planner (no verify)": {
+   "total_s": 4.050103199988371,
+   "usd": 0.0001563
+  },
+  "Surrogate->verify-1": {
+   "total_s": 325.5724031041029,
+   "usd": 0.0
+  },
+  "Surrogate-only (k=0, ours)": {
+   "total_s": 0.0004030773999984376,
+   "usd": 0.0
+  }
+ },
+ "breakeven_decisions": 88.25641432776733,
+ "breakeven_train_hours": 6.011032221913338,
+ "llm_sweep": {
+  "haiku-class": {
+   "latency_s": 1.5,
+   "usd": 0.0024000000000000002,
+   "latency_speedup": 14885.478570674657
+  },
+  "sonnet-class": {
+   "latency_s": 4.0,
+   "usd": 0.009000000000000001,
+   "latency_speedup": 39694.60952179909
+  },
+  "opus-class": {
+   "latency_s": 8.0,
+   "usd": 0.045,
+   "latency_speedup": 79389.21904359818
+  }
+ }
+}

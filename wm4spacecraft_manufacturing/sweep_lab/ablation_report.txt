@@ -1,0 +1,31 @@
+============================================================================
+FEATURE ABLATION on graded_all (31 instances), tuned HGB dNone lr.2
+baseline LOO decision-regret (all features) = 0.150
+============================================================================
+
+(A) leave-one-GROUP-out: regret when a feature group is ZEROED (higher rise = more used)
+  group removed          regret      delta
+  soc                     0.157     +0.006  <- most decision-critical
+  severity                0.154     +0.004
+  macro_in_valid          0.153     +0.003
+  spares                  0.150     +0.000
+  kind(one-hot)           0.150     -0.001
+  progress/active         0.122     -0.028
+  zone_overlap            0.121     -0.030
+
+(B) permutation importance (held-out closed-count MAE increase; top 10 individual features)
+  feature                  MAE-incr
+  soc                         22.18
+  agent_pending               19.87
+  severity                    19.46
+  macro_1                      8.94
+  macro_3                      2.64
+  zone_overlap                 2.04
+  macro_in_valid               1.97
+  n_spare_cfg                  1.35
+  kind_fault                   1.32
+  kind_zoneblk                 1.11
+
+takeaway: if zeroing 'kind' barely moves regret but zeroing soc/severity/spares does, the
+  surrogate is reading WITHIN-KIND state (the E1 'learnable beyond the kind' claim). If only
+  'kind' matters, the task collapses to a per-kind lookup (decision-easy).

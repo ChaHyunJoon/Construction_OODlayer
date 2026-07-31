@@ -1,0 +1,17 @@
+========================================================================================================
+PRODUCER DECISION MATRIX  (n=44 instances, 29 of them rescuable, lam=3.0)
+catastrophic = picked a macro that does NOT complete the build although a completing macro existed
+========================================================================================================
+  producer                                           reg     p90   worst  completion  catastrophic
+  forest RF 60 d6 (deployed)                       0.091   0.000   1.000         66%             0
+  forest HGB d4 lr.08 (eval)                       0.073   0.300   1.000         66%             0
+  gpt-4o | A0 zero-shot (dspy.Predict)             0.338   1.000   1.000         66%             0
+  gpt-4o | A1 LabeledFewShot(k=8, random)          0.246   1.000   1.000         66%             0
+  gpt-4o | A1b LabeledFewShot(k=8, first-8)        0.158   0.982   1.000         61%             2
+  gpt-4o | A2 BootstrapFewShot                     0.189   0.950   1.000         61%             2
+  gpt-4o | A3 BootstrapFewShot+RandomSearch        0.148   0.773   1.000         66%             0
+  gpt-4o | A4 MIPROv2 (instruction search)         0.161   1.000   1.000         66%             0
+
+cost axis (measured, cost_eval_metrics_v2.json):
+  surrogate  0.0999 ms/call        LLM  1.013 s/call  ($0.000039)   planner sim  64.1 s median
+  ratio LLM/surrogate per call = 10137x

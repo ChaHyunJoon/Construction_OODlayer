@@ -1,0 +1,49 @@
+============================================================================================
+MASTER EXPERIMENT  (tie-aware, cost-aware lambda=3.0, TIE_EPS=5% of span)
+============================================================================================
+
+--------------------------------------------------------------------------------------------
+DATASET: e1_dataset (default)   | 32 instances, tie=0 (0%), non-tie=32
+  oracle-best distribution: {'Replace': 23, 'ForbidZone': 9}
+  config                        reg_all reg_NOTIE  reg_tie | top1_all  top1_NT
+  CURRENT-eval  HGB d4 lr.08      0.000    0.000      nan |     1.00     1.00
+  tuned  HGB dNone lr.2           0.000    0.000      nan |     1.00     1.00
+  tuned  HGB dNone lr.08          0.000    0.000      nan |     1.00     1.00
+  ExtraTrees 200                  0.000    0.000      nan |     1.00     1.00
+  CURRENT-deploy RF 60 d6         0.000    0.000      nan |     1.00     1.00
+  (reg_NOTIE is the HONEST number: regret on decision-consequential instances only.
+   reg_tie ~0 for any sane policy -> a low reg_all can be inflated by ties.)
+
+--------------------------------------------------------------------------------------------
+DATASET: graded_hs_all (c-aware)   | 20 instances, tie=0 (0%), non-tie=20
+  oracle-best distribution: {'Replace': 9, 'NOOP': 9, 'ForbidZone': 2}
+  config                        reg_all reg_NOTIE  reg_tie | top1_all  top1_NT
+  CURRENT-eval  HGB d4 lr.08      0.150    0.150      nan |     0.85     0.85
+  tuned  HGB dNone lr.2           0.115    0.115      nan |     0.85     0.85
+  tuned  HGB dNone lr.08          0.150    0.150      nan |     0.85     0.85
+  ExtraTrees 200                  0.100    0.100      nan |     0.90     0.90
+  CURRENT-deploy RF 60 d6         0.250    0.250      nan |     0.75     0.75
+  (reg_NOTIE is the HONEST number: regret on decision-consequential instances only.
+   reg_tie ~0 for any sane policy -> a low reg_all can be inflated by ties.)
+
+--------------------------------------------------------------------------------------------
+DATASET: graded_all (c-aware)   | 31 instances, tie=9 (29%), non-tie=22
+  oracle-best distribution: {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  config                        reg_all reg_NOTIE  reg_tie | top1_all  top1_NT
+  CURRENT-eval  HGB d4 lr.08      0.183    0.161    0.236 |     0.61     0.73
+  tuned  HGB dNone lr.2           0.150    0.120    0.225 |     0.77     0.86
+  tuned  HGB dNone lr.08          0.152    0.122    0.224 |     0.77     0.86
+  ExtraTrees 200                  0.155    0.127    0.222 |     0.84     0.86
+  CURRENT-deploy RF 60 d6         0.192    0.134    0.336 |     0.77     0.86
+  (reg_NOTIE is the HONEST number: regret on decision-consequential instances only.
+   reg_tie ~0 for any sane policy -> a low reg_all can be inflated by ties.)
+
+============================================================================================
+LAMBDA SWEEP on graded_all (cost weight -> restraint vs intervene); tuned HGB dNone lr.2
+  lambda    reg_all  reg_NOTIE       tie%   oracle-best mix
+  0.0         0.161      0.200        52%   {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  1.0         0.158      0.137        32%   {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  3.0         0.150      0.120        29%   {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  6.0         0.138      0.136        23%   {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  10.0        0.125      0.102        10%   {'NOOP': 16, 'Replace': 13, 'ForbidZone': 2}
+  (as lambda rises, intervention must 'pay for itself' -> NOOP wins more -> mix shifts to restraint.)

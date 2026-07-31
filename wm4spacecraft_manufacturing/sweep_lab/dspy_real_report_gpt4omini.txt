@@ -1,0 +1,40 @@
+============================================================================================
+REAL DSPy 3.2.1 PRODUCER EXPERIMENT (gpt-4o-mini, 20 instances, lam=3.0)
+dataset: oracle/out/graded_hs_all.jsonl   |   baseline to beat: forest surrogate reg=0.150 top1=0.85
+============================================================================================
+
+-- arms --
+  A0 zero-shot (dspy.Predict)        reg=0.544  top1=0.45   [LOO(20), 4s]
+  A1 LabeledFewShot(k=8, random)     reg=0.390  top1=0.60   [LOO(20), 0s]
+  A1b LabeledFewShot(k=8, first-8)   reg=0.237  top1=0.75   [LOO(20), 0s]
+  A2 BootstrapFewShot                reg=0.254  top1=0.70   [LOO(20), 2s]
+  A3 BootstrapFewShot+RandomSearch   reg=0.255  top1=0.70   [4-fold, 6s]
+  A4 MIPROv2 (instruction search)    reg=0.223  top1=0.70   [4-fold, 11s]
+
+--------------------------------------------------------------------------------------------
+SUMMARY (lower reg = better)
+  producer                                reg     top1   protocol
+  forest surrogate (trained)            0.150     0.85   LOO(20)
+  A0 zero-shot (dspy.Predict)           0.544     0.45   LOO(20)
+  A1 LabeledFewShot(k=8, random)        0.390     0.60   LOO(20)
+  A1b LabeledFewShot(k=8, first-8)      0.237     0.75   LOO(20)
+  A2 BootstrapFewShot                   0.254     0.70   LOO(20)
+  A3 BootstrapFewShot+RandomSearch      0.255     0.70   4-fold
+  A4 MIPROv2 (instruction search)       0.223     0.70   4-fold
+
+-- MIPROv2-optimized instruction (compiled on all 20, for inspection) --
+You choose ONE recovery macro for an out-of-distribution event during a multi-robot
+assembly build. The 5 candidates (a re-specification DSL action):
+- NOOP: do nothing / restraint. Best when the disruption is absorbed by slack or spares and
+  intervening would waste a scarce resource.
+- Replace: swap the affected robot for a spare from the pool. Best on a real fault or a deeply
+  depleted battery WHEN spares remain. Costs 1 schedule-unit.
+- Deprioritize: lower the affected robot's task priority (mild, cheap=0.3). A middle option.
+- ForbidZone: mark a no-go region and reroute the build around it. Best when a spatial zone is
+  blocked. Costs 1.
+- ReformTeam: re-form the multi-robot assembly team. Costs 1.
+Adaptation cost matters: NOOP is free, Deprioritize=0.3, Replace/ForbidZone/ReformTeam=1.0. An
+intervention must recover more than it costs, otherwise NOOP (restraint) is the right call.
+-- demos kept: 4 --
+
+LM calls this run: 1497   tokens: 0   (cache=on, so repeats across folds are free)

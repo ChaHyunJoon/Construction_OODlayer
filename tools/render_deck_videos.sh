@@ -34,7 +34,7 @@ render () {                     # render <tag> <name> <script> <env...>
 render V4 surrogate_stream demo_surrogate_stream_anim.jl \
        HOT_SWAP=1 CARRIER_RESCUE=1 OOD_N=4 OOD_SEED="${V4_SEED:-3}" NOPROG=20000 \
        ANIM_FPS="${ANIM_FPS:-60}" \
-       SURROGATE="${SURROGATE:-C:/Users/chahj/PythonCodes/venv/wm4spacecraft_manufacturing/surrogate_hotswap.json}"
+       SURROGATE="${SURROGATE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/wm4spacecraft_manufacturing/surrogate_hotswap.json}"
 render V1 baseline_build  demo_wholebuild_anim.jl
 render V2 llm_replace     demo_respec_replace_anim.jl   CARRIER_RESCUE=1
 render V3 rl_replace      demo_rl_replace_anim.jl       CARRIER_RESCUE=1

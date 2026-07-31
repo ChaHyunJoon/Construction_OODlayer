@@ -1,0 +1,37 @@
+dataset: graded_hs_all.jsonl  cost_aware=True lam=3.0
+admissible instances: 20   distinct best-macros: 3
+tie-rate (top-2 within 5% of span): 0/20 = 0%   <- on these, low regret is trivial (argmax arbitrary)
+
+sweeping 33 configs, LOO x 20 instances (single seed) ...
+  ...20/33 configs done (105s)
+  ...33/33 configs done (243s)
+
+=== TOP 12 by LOO decision-regret (single seed) ===
+  # config                                  regret   top1  catas
+  1 HGB  iter=300 depth=4    lr=0.2  msl=3 l2=1.0   0.080   0.85    0.0
+  2 ET   n=200 depth=None msl=1              0.100   0.90    0.0
+  3 HGB  iter=100 depth=4    lr=0.2  msl=3 l2=1.0   0.115   0.85    0.0
+  4 HGB  iter=300 depth=None lr=0.2  msl=3 l2=1.0   0.115   0.85    0.0
+  5 HGB  iter=600 depth=None lr=0.08 msl=3 l2=1.0   0.115   0.85    0.0
+  6 HGB  iter=600 depth=4    lr=0.2  msl=3 l2=1.0   0.115   0.85    0.0
+  7 HGB  iter=600 depth=None lr=0.2  msl=3 l2=1.0   0.115   0.85    0.0
+  8 HGB  iter=100 depth=None lr=0.2  msl=3 l2=1.0   0.150   0.85    0.0
+  9 HGB  iter=300 depth=4    lr=0.08 msl=3 l2=1.0   0.150   0.85    0.0
+ 10 HGB  iter=300 depth=None lr=0.08 msl=3 l2=1.0   0.150   0.85    0.0
+ 11 HGB  iter=600 depth=4    lr=0.03 msl=3 l2=1.0   0.150   0.85    0.0
+ 12 HGB  iter=600 depth=None lr=0.03 msl=3 l2=1.0   0.150   0.85    0.0
+
+=== CURRENT hand-set configs, for comparison ===
+  rank   9/33  EVAL model  (e1_analyze)   HGB  iter=300 depth=4    lr=0.08 msl=3 l2=1.0 regret=0.150 top1=0.85
+  rank  19/33  DEPLOY model (demo)        RF   n=60  depth=6    msl=2            regret=0.250 top1=0.75
+
+=== robustness: top configs re-scored over 5 seeds (mean +/- sd of LOO regret) ===
+  HGB  iter=300 depth=4    lr=0.2  msl=3 l2=1.0 regret=0.080 +/-0.000  top1=0.85
+  ET   n=200 depth=None msl=1            regret=0.100 +/-0.000  top1=0.90
+  HGB  iter=100 depth=4    lr=0.2  msl=3 l2=1.0 regret=0.115 +/-0.000  top1=0.85
+  HGB  iter=300 depth=None lr=0.2  msl=3 l2=1.0 regret=0.115 +/-0.000  top1=0.85
+  HGB  iter=300 depth=4    lr=0.08 msl=3 l2=1.0 regret=0.150 +/-0.000  top1=0.85  <- CURRENT eval
+  RF   n=60  depth=6    msl=2            regret=0.200 +/-0.038  top1=0.73  <- CURRENT deploy
+
+=== best (HGB  iter=300 depth=4    lr=0.2  msl=3 l2=1.0) vs CURRENT eval, paired bootstrap ===
+  mean regret reduction = +0.070  95% CI [+0.000, +0.175]  -> NOT significant (could be noise)

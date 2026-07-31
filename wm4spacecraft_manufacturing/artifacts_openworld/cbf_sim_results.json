@@ -1,0 +1,66 @@
+{
+  "offset_1.1_nonblocking": {
+    "arms": [
+      {
+        "arm": "CBF_OFF",
+        "complete": false,
+        "closed": 223,
+        "total": 289,
+        "zone_snaps": 0,
+        "zone_snap_max_depth": 0.0,
+        "cbf_modified": 0,
+        "cbf_violations": 0,
+        "cbf_infeasible": 0,
+        "final_min_h": 0.14000000419711256,
+        "final_violations": 0,
+        "wall_seconds": 256.3
+      },
+      {
+        "arm": "CBF_ON",
+        "complete": false,
+        "closed": 223,
+        "total": 289,
+        "zone_snaps": 0,
+        "zone_snap_max_depth": 0.0,
+        "cbf_modified": 74,
+        "cbf_violations": 0,
+        "cbf_infeasible": 0,
+        "final_min_h": 0.14000000910628985,
+        "final_violations": 0,
+        "wall_seconds": 57.6
+      }
+    ]
+  },
+  "offset_0.0_blocking": {
+    "arms": [
+      {
+        "arm": "CBF_OFF",
+        "complete": false,
+        "closed": 225,
+        "total": 289,
+        "zone_snaps": 2,
+        "zone_snap_max_depth": 0.5513189724350429,
+        "cbf_modified": 0,
+        "cbf_violations": 0,
+        "cbf_infeasible": 0,
+        "final_min_h": 0.1400000301178903,
+        "final_violations": 0,
+        "wall_seconds": 263.3
+      },
+      {
+        "arm": "CBF_ON",
+        "complete": false,
+        "closed": 225,
+        "total": 289,
+        "zone_snaps": 2,
+        "zone_snap_max_depth": 0.5513189724350429,
+        "cbf_modified": 203,
+        "cbf_violations": 0,
+        "cbf_infeasible": 0,
+        "final_min_h": 0.1400000614144925,
+        "final_violations": 0,
+        "wall_seconds": 62.7
+      }
+    ]
+  }
+}

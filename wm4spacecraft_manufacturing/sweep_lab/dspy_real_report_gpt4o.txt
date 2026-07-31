@@ -1,0 +1,29 @@
+============================================================================================
+REAL DSPy 3.2.1 PRODUCER EXPERIMENT (gpt-4o, 20 instances, lam=3.0)
+dataset: oracle/out/graded_hs_all.jsonl   |   baseline to beat: forest surrogate reg=0.150 top1=0.85
+============================================================================================
+
+-- arms --
+  A0 zero-shot (dspy.Predict)        reg=0.345  top1=0.65   [LOO(20), 4s]
+  A1 LabeledFewShot(k=8, random)     reg=0.289  top1=0.70   [LOO(20), 0s]
+  A1b LabeledFewShot(k=8, first-8)   reg=0.197  top1=0.80   [LOO(20), 0s]
+  A2 BootstrapFewShot                reg=0.263  top1=0.70   [LOO(20), 1s]
+  A3 BootstrapFewShot+RandomSearch   reg=0.222  top1=0.70   [4-fold, 6s]
+  A4 MIPROv2 (instruction search)    reg=0.197  top1=0.80   [4-fold, 11s]
+
+--------------------------------------------------------------------------------------------
+SUMMARY (lower reg = better)
+  producer                                reg     top1   protocol
+  forest surrogate (trained)            0.150     0.85   LOO(20)
+  A0 zero-shot (dspy.Predict)           0.345     0.65   LOO(20)
+  A1 LabeledFewShot(k=8, random)        0.289     0.70   LOO(20)
+  A1b LabeledFewShot(k=8, first-8)      0.197     0.80   LOO(20)
+  A2 BootstrapFewShot                   0.263     0.70   LOO(20)
+  A3 BootstrapFewShot+RandomSearch      0.222     0.70   4-fold
+  A4 MIPROv2 (instruction search)       0.197     0.80   4-fold
+
+-- MIPROv2-optimized instruction (compiled on all 20, for inspection) --
+Based on the current operational parameters, evaluate the state of the robot's battery, considering factors such as the state of charge (SoC), severity, available spares, pending agents, progress, and number of active agents. Determine and provide the most appropriate action to take, including a reasoning statement for your decision and the corresponding macro command from the following options: NOOP, Replace, Deprioritize, ForbidZone, or ReformTeam. Ensure that your chosen intervention recovers more than it costs.
+-- demos kept: 4 --
+
+LM calls this run: 1456   tokens: 0   (cache=on, so repeats across folds are free)

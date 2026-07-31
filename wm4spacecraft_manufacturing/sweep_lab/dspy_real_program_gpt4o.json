@@ -1,0 +1,29 @@
+{
+  "model": "gpt-4o",
+  "instructions": "Given the state of a robot, including factors like the type of issue (e.g., OOD kind=battery), state of charge (SoC), severity level, available spares, agents pending, progress, and the number of active robots, determine the appropriate macro action to take. Evaluate whether the robot's condition requires immediate intervention, such as replacing a battery, or if inaction is preferred to conserve resources. Your response should include a reasoning that explains your decision based on these parameters and then specify the resulting macro action (e.g., \"Replace\", \"NOOP\", etc.) that optimizes resource management while maintaining operational efficiency.",
+  "demos": [
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.05, severity=0.05, spares_left=12, agents_pending=3, progress=0.19, n_active=22",
+      "reasoning": "The battery state of charge is critically low, and with ample spares available, replacing the robot is a prudent choice to avoid disruption.",
+      "macro": "Replace"
+    },
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.20, severity=0.2, spares_left=12, agents_pending=5, progress=0.19, n_active=22",
+      "reasoning": "The battery state of charge is low, but with 12 spares available, replacing the robot is a viable option to maintain progress.",
+      "macro": "Replace"
+    },
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.12, severity=0.12, spares_left=12, agents_pending=5, progress=0.19, n_active=22",
+      "reasoning": "The battery state of charge is low, and with 12 spares available, replacing the affected robot is a cost-effective solution to prevent potential disruptions.",
+      "macro": "Replace"
+    },
+    {
+      "state": "OOD kind=battery, SoC=0.35, severity=0.35, spares_left=12, agents_pending=5, progress=0.19, n_active=22",
+      "macro": "NOOP",
+      "iid": "battery_s1_sev0.35_sp3"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+[model class under test: rf]
+loaded 300 rows, 60 instances, lambda=3.0  (oracle/out/openworld_merged.jsonl)
+
+==============================================================================
+V0  ground-truth isolation -- the LLM never authors a label
+==============================================================================
+  [PASS] full-enumeration labels            60/60 instances have all 5 macro arms rolled out
+  [PASS] labels are rollout facts           label from ['complete', 'closed', 'makespan'] (simulator), not model judgment
+  [PASS] no LLM-authored label column       LLM/proposal fields in schema: none
+  -> ground truth is defined by exhaustive 5-macro enumeration + simulator rollout;
+     the LLM is absent from this dump, so hallucination cannot reach a label.
+[feature representation: legacy]
+
+==============================================================================
+S1  surrogate decision-equivalence (leave-one-instance-out)
+==============================================================================
+  [FAIL] model < always_per_kind            regret 0.172 vs 0.200; advantage +0.028 CI [-0.088,+0.145]
+
+==============================================================================
+S2  level-0 fidelity (is it really a value model?)
+==============================================================================
+  [PASS] held-out closed R2 > 0.5           R2=0.958  MAE=5.4 nodes (held-out (state,macro))
+
+==============================================================================
+S3  monotonicity / sanity of the trained surrogate (gap vs NOOP)
+==============================================================================
+  [ok ] (Replace-NOOP) gap up with agent_pending : mean d-gap=+9.48, pointwise-match 50%
+  [ok ] (Replace-NOOP) gap down with soc           : mean d-gap=-8.47, pointwise-match 42%
+  [ok ] (Replace-NOOP) gap down with severity      : mean d-gap=-0.43, pointwise-match 25%
+  [PASS] decision monotonicity              3/3 core monotone-truth tests pass
+  -- diagnostics (NOT graded: truth is non-monotone or the feature is under-sampled) --
+  [BAD] (Replace-NOOP) gap up with spare_count   : mean d-gap=+0.00, pointwise-match 22%
+  [BAD] (ForbidZone-NOOP) gap up with zone_overlap  : mean d-gap=-0.01, pointwise-match 33%
+     spare_count: fault data covers only {0,12} -> grade DS_SPARES=0,1,3,6 to test this axis.
+     zone_overlap: oracle-best flips NOOP->ForbidZone->NOOP (full overlap can't restage) -> use a
+       band/threshold test, not a monotone one; a correct surrogate is non-monotone here.
+
+==============================================================================
+S4  state-blind ablation (does the surrogate USE state?)
+==============================================================================
+  [PASS] state-reading beats kind-only      full 0.172 vs kind-only 0.500 (state buys +0.328)
+
+==============================================================================
+L1  LLM proposer -- applicability (proposals must be in the valid set)
+==============================================================================
+  ungated proposer: 60/60 instances propose an inapplicable macro
+  with valid_mask gate: 0 inapplicable, oracle-best recall preserved 60/60
+  [PASS] applicability (gated proposer)     gate on valid_mask fixes 60 violations at zero recall cost
+
+==============================================================================
+L2  LLM proposer -- candidate recall (does the set contain the oracle-best?)
+==============================================================================
+    kind=battery   recall 24/24 = 100%
+    kind=fault     recall 18/18 = 100%
+    kind=zoneblk   recall 18/18 = 100%
+  [PASS] oracle-best in candidate set       overall recall 60/60 = 100%
+
+==============================================================================
+L3  fallback safety bound
+==============================================================================
+  If L2 recall < 1, verify-all-5 (enumerate the full closed DSL) recovers the dropped best
+  at cost 5 planner calls, capping worst-case regret at 0. The LLM narrows to |cand|~3.0 but caps achievable quality at the L2 ceiling; the fallback is the safety net.
+  [PASS] fallback available                 verify-all-5 dominates any candidate miss
+
+==============================================================================
+VERIFICATION SUMMARY
+==============================================================================
+  V0: PASS
+  S1: FAIL
+  S2: PASS
+  S3: PASS
+  S4: PASS
+  L1: PASS
+  L2: PASS
+  L3: PASS
+
+  7/8 checks PASS

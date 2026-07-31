@@ -1,0 +1,9 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","n_robots":10,"rvo":true,"n_spare_per_pool":3,"spares":12,"control_complete":true,"control_closed":291,"control_total":313,"control_makespan":19.75,"admissible":true,"oracle_best_action":1,"oracle_best_name":"Replace","oracle_best_makespan":"Inf","n_candidates":4},
+  "candidates": [
+    {"action":0,"name":"NOOP","complete":false,"closed":228,"total":313,"makespan":"Inf","event_type":"fault","agent":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)","oracle_rank":2,"makespan_regret":"Inf"},
+    {"action":1,"name":"Replace","complete":false,"closed":244,"total":313,"makespan":"Inf","event_type":"fault","agent":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)","oracle_rank":1,"makespan_regret":"Inf"},
+    {"action":2,"name":"Deprioritize","complete":false,"closed":228,"total":313,"makespan":"Inf","event_type":"fault","agent":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)","oracle_rank":3,"makespan_regret":"Inf"},
+    {"action":4,"name":"ReformTeam","complete":false,"closed":228,"total":313,"makespan":"Inf","event_type":"fault","agent":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)","oracle_rank":4,"makespan_regret":"Inf"}
+  ]
+}

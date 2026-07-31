@@ -1,0 +1,89 @@
+================================================================================
+SHIM VALIDATION — ood_mdp_shim.jl vs pre-deletion oracle labels
+2026-07-26 · restored labeler after decpomdp/examples was deleted
+================================================================================
+
+GOAL: reproduce the pre-deletion labels (user directive). Achievable target is
+DECISION-EQUIVALENCE (same oracle-best macro, same valid_mask, invalid macros
+collapse to NOOP), not byte-identical `closed` counts — those carry MILP 5%-gap
+and code-version nondeterminism.
+
+--------------------------------------------------------------------------------
+(A) LOGIC UNIT TESTS  — /tmp/shim_unit.jl, 14/14 PASS
+--------------------------------------------------------------------------------
+valid_actions:   fault->[0,1]  battery deep(soc<=.2)->[0,1]  battery mild->[0,2]
+                 zone->[0,3]  reform->[0,4]                              ALL OK
+canonical_action fault->1  batt deep->1  batt mild->2  zone w/asm->3
+                 zone no-asm->0                                          ALL OK
+action_to_proposal gate: invalid-for-type macro -> nothing (== NOOP arm) ALL OK
+
+These rules were DERIVED FROM the existing dumps (oracle/out/graded/*.jsonl),
+which are ground truth — not from baselines.jl's looser {0,1,2} repertoire.
+
+--------------------------------------------------------------------------------
+(B) END-TO-END LABEL REPRODUCTION — battery, seed 1, severity 0.05
+    EXISTING oracle/out/graded/battery0.05_s1.jsonl  vs  NEW shim smoke
+--------------------------------------------------------------------------------
+scenario features:
+                 agent_pending  spare_count  n_active  closed_at_fire  total_nodes
+   EXISTING            4            12          22          58            313
+   NEW (shim)          5            12          22          58            313
+   -> same fire point, same build, same spares; agent_pending off by 1
+      (one-task MILP/version drift) — explains the +/-3 node closed drift.
+
+per-macro outcome (closed nodes, deep-discharge battery soc=0.0499):
+   macro           EXISTING        NEW(shim, pre-fix)   after valid-gate fix
+   0 NOOP             151               154                154
+   1 Replace          172 (BEST)        169 (BEST)         169 (BEST)
+   2 Deprioritize     151 (=NOOP)       154 (ran real)     -> NOOP (gated)
+   3 ForbidZone       151 (=NOOP)       154 (=NOOP)        -> NOOP (gated)
+   4 ReformTeam       151 (=NOOP)       (pending)          -> NOOP (gated)
+
+   DECISION reproduced: Replace is the unique oracle-best in BOTH (+18-21 nodes
+   over the field, far above the +/-3 solver noise).
+   valid_mask BEFORE fix: [0,1,2]  ->  AFTER fix: [0,1]  == EXISTING. FIXED.
+   invalid macros (2,3,4) BEFORE fix ran as real actions; AFTER the validity gate
+   they collapse to the NOOP arm, matching EXISTING (all == NOOP's closed). FIXED.
+
+--------------------------------------------------------------------------------
+VERDICT
+--------------------------------------------------------------------------------
+  * Decision-equivalent labels: YES (oracle-best macro reproduced).
+  * valid_mask + macro_in_valid feature: EXACT match after the two fixes.
+  * Absolute `closed`: +/-3 nodes (agent_pending +/-1 + MILP 5% gap + version).
+    Not byte-identical, and not expected to be — the surrogate consumes the
+    DECISION (feasibility-lexicographic best), which is robust to this noise.
+  * Two fixes applied to the shim after this comparison:
+      1. valid_actions: soc-split battery + tightened per-type masks.
+      2. action_to_proposal: gate on valid_actions -> invalid macro == NOOP.
+
+  The restored labeler is decision-faithful for FAULT and BATTERY.
+
+--------------------------------------------------------------------------------
+(C) ZONE (zoneblk) — shim CORRECT, but CB simulation has DRIFTED  [FLAG]
+--------------------------------------------------------------------------------
+Symptom: new zoneblk runs stall low and ForbidZone == NOOP exactly.
+  new (seed1, sev0.9):  overlap=0.689  NOOP=131  ForbidZone=131  (no recovery)
+  old zoneblk_s1 (seed1,sev0.9): overlap=0.49  NOOP=239  ForbidZone=291 (COMPLETE)
+
+Is it the shim? NO. Proven with DS_SHIM_DEBUG=1:
+  [shim] event_context: matched=true type=zone assembly=ConstructionBots.AssemblyID...
+  [shim] action_to_proposal: a=3 type=zone assembly=AssemblyID -> ForbidZone(...)
+  -> the event IS recovered and the ForbidZone proposal IS built. Invalid macros
+     (Replace/Deprioritize on a zone) correctly collapse to NOOP. The battery case
+     proves the producer->dispatch->enact chain works (Replace changed the outcome).
+
+Root cause = CB code drift, NOT the shim:
+  * NOOP (which NEVER calls action_to_proposal) also stalls at 131 vs 235 old.
+    The shim cannot affect a NOOP run -> the difference is CB-internal.
+  * SAME seed+severity now yields a DIFFERENT overlap (0.689 vs 0.49) -> the zone is
+    PLACED differently by the current CB staging geometry -> different nav wedging ->
+    different completion. place_blocking_zone! and add_restriction_zone! are CB code.
+  * RESPEC_ENABLED=true, reform_interval=120 confirmed (run_one:463,474) — config OK.
+
+Conclusion: fault + battery labeling reproduces the old decisions and is usable now.
+zoneblk RUNS and records HONEST labels, but the current CB does not reproduce the old
+dumps' ForbidZone-recovery completion — a CB-level regression in zone placement /
+restage / nav wedging that post-dates the dumps. This is OUT OF SCOPE for the 4
+adapter functions the shim restores; it needs a separate look at restage_zone.jl and
+the staging-geometry code. Flagged, not silently shipped.

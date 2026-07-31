@@ -1,0 +1,465 @@
+<title>Surrogate Parameter Study — Autonomous Run</title>
+<style>
+  :root{
+    --ground:#f5f7f9; --surface:#ffffff; --surface-2:#eef1f5;
+    --ink:#111820; --muted:#5b6673; --faint:#8a95a3;
+    --border:#dce1e8; --hair:#e7ebf0;
+    --teal:#00907e; --amber:#c17d15; --blue:#0f68b3; --plum:#9a5aa8;
+    --good:#2f8f60; --warn:#c17d15; --crit:#c1443a;
+    --shadow:0 1px 2px rgba(16,24,32,.05),0 8px 24px rgba(16,24,32,.06);
+    --mono:ui-monospace,"SFMono-Regular","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0d1117; --surface:#151b23; --surface-2:#1c232d;
+    --ink:#e7edf4; --muted:#9aa5b2; --faint:#6b7684;
+    --border:#26303c; --hair:#1e2732;
+    --teal:#33c3ad; --amber:#e0a13c; --blue:#4b9be8; --plum:#c084d0;
+    --good:#46c088; --warn:#e0a13c; --crit:#e0645a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="light"]{
+    --ground:#f5f7f9; --surface:#ffffff; --surface-2:#eef1f5;
+    --ink:#111820; --muted:#5b6673; --faint:#8a95a3; --border:#dce1e8; --hair:#e7ebf0;
+    --teal:#00907e; --amber:#c17d15; --blue:#0f68b3; --plum:#9a5aa8;
+    --good:#2f8f60; --warn:#c17d15; --crit:#c1443a;
+  }
+  :root[data-theme="dark"]{
+    --ground:#0d1117; --surface:#151b23; --surface-2:#1c232d;
+    --ink:#e7edf4; --muted:#9aa5b2; --faint:#6b7684; --border:#26303c; --hair:#1e2732;
+    --teal:#33c3ad; --amber:#e0a13c; --blue:#4b9be8; --plum:#c084d0;
+    --good:#46c088; --warn:#e0a13c; --crit:#e0645a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.55;-webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px 96px}
+  a{color:var(--blue)}
+  h1,h2,h3{text-wrap:balance;letter-spacing:-.02em;line-height:1.15;margin:0}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);font-weight:600}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);padding:.1em .4em;border-radius:4px}
+
+  /* header */
+  header{border-bottom:1px solid var(--border);margin-bottom:8px}
+  .hd{padding:40px 0 26px;display:flex;flex-direction:column;gap:14px}
+  .hd .kick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px color-mix(in srgb,var(--teal) 22%,transparent)}
+  h1{font-size:30px;font-weight:750}
+  .sub{color:var(--muted);max-width:64ch}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:2px}
+  .meta b{color:var(--muted);font-weight:600}
+
+  /* verdict tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:26px 0 8px}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 15px;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px;position:relative;overflow:hidden}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tc,var(--teal))}
+  .tile .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .tile .big{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .tile .note{font-size:12.5px;color:var(--muted);line-height:1.4}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;font-weight:600;
+    padding:2px 7px;border-radius:20px;letter-spacing:.03em;width:fit-content}
+  .pill.ok{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+  .pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+  .pill.crit{color:var(--crit);background:color-mix(in srgb,var(--crit) 15%,transparent)}
+
+  /* sections */
+  section{margin-top:52px;scroll-margin-top:20px}
+  .shead{display:flex;align-items:baseline;gap:12px;margin-bottom:8px;border-bottom:1px solid var(--hair);padding-bottom:10px}
+  .snum{font-family:var(--mono);font-size:12px;color:var(--teal);font-weight:700}
+  h2{font-size:21px;font-weight:720}
+  .lead{color:var(--muted);max-width:70ch;margin:12px 0 20px}
+  .lead strong{color:var(--ink);font-weight:650}
+
+  /* cards & charts */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
+    padding:20px 20px 16px;margin:16px 0}
+  .card h3{font-size:13px;font-weight:650;color:var(--ink);margin-bottom:2px}
+  .card .cap{font-size:12px;color:var(--faint);margin-bottom:16px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+
+  /* horizontal bar rows */
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .bar{display:grid;grid-template-columns:150px 1fr 54px;align-items:center;gap:10px;font-size:12.5px}
+  .bar .nm{color:var(--muted);font-family:var(--mono);font-size:11.5px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .tk{height:20px;background:var(--surface-2);border-radius:5px;position:relative;overflow:hidden}
+  .bar .fl{position:absolute;left:0;top:0;bottom:0;border-radius:5px;min-width:2px;transition:filter .12s}
+  .bar:hover .fl{filter:brightness(1.08)}
+  .bar .vl{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink);text-align:right;font-weight:600}
+  .bar.hi .nm{color:var(--ink);font-weight:700}
+
+  /* legend */
+  .lg{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:14px}
+  .lg span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:3px;flex:none}
+
+  /* tables */
+  .tw{overflow-x:auto;margin:6px 0}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--hair);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;border-bottom:1px solid var(--border)}
+  tbody tr:hover{background:var(--surface-2)}
+  td.mono,th.mono{font-family:var(--mono)}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:5px;font-weight:600}
+  .tag.cur{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent)}
+  .tag.win{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+
+  /* callouts */
+  .call{border-left:3px solid var(--tc,var(--teal));background:var(--surface);border:1px solid var(--border);
+    border-left-width:3px;border-radius:0 10px 10px 0;padding:13px 16px;margin:14px 0;font-size:13.5px;color:var(--muted)}
+  .call b{color:var(--ink)}
+  .call.warn{--tc:var(--warn)} .call.crit{--tc:var(--crit)} .call.ok{--tc:var(--good)}
+
+  /* recommendations */
+  ol.rec{list-style:none;counter-reset:r;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:12px}
+  ol.rec li{counter-increment:r;display:grid;grid-template-columns:30px 1fr;gap:14px;align-items:start}
+  ol.rec li::before{content:counter(r);font-family:var(--mono);font-weight:700;color:var(--teal);
+    background:color-mix(in srgb,var(--teal) 12%,transparent);border-radius:8px;height:30px;display:flex;
+    align-items:center;justify-content:center;font-size:13px}
+  ol.rec .t{font-weight:650;color:var(--ink)}
+  ol.rec .d{color:var(--muted);font-size:13px}
+
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);color:var(--faint);
+    font-family:var(--mono);font-size:11.5px;line-height:1.7}
+  .svgwrap{width:100%;overflow-x:auto}
+  svg text{font-family:var(--mono)}
+</style>
+
+<header><div class="wrap"><div class="hd">
+  <div class="kick"><span class="dot"></span><span class="eyebrow">ConstructionBots · Surrogate Lab · Autonomous run</span></div>
+  <h1>Surrogate parameter study &amp; DSPy producer trial</h1>
+  <p class="sub">Eight-hour unattended session. Every experiment scores the same headline metric —
+    <strong style="color:var(--ink)">leave-one-instance-out decision-regret</strong> (cost-aware, feasibility-lexicographic),
+    so hyper-parameters, the sanity ladder, and the LLM producer are all directly comparable.</p>
+  <div class="meta">
+    <span><b>date</b> 2026-07-25</span>
+    <span><b>discriminative set</b> graded_hs_all (n=20) · graded_all (n=31)</span>
+    <span><b>metric</b> LOO regret ↓ / top-1 ↑</span>
+    <span><b>code</b> sweep_surrogate · ladder · master_experiment · ablation · dspy_experiment</span>
+  </div>
+</div></div></header>
+
+<div class="wrap">
+
+  <!-- VERDICT STRIP -->
+  <div class="tiles">
+    <div class="tile" style="--tc:var(--blue)">
+      <span class="lab">HP tuning</span>
+      <span class="big">depth=4 cap hurts</span>
+      <span class="pill ok">SIGNIFICANT · n=31</span>
+      <span class="note">Dropping the depth-4 cap + higher lr cuts regret 0.183→0.150, top-1 0.61→0.77.</span>
+    </div>
+    <div class="tile" style="--tc:var(--teal)">
+      <span class="lab">Sanity ladder</span>
+      <span class="big">2 / 3 kinds valid</span>
+      <span class="pill ok">battery · fault</span>
+      <span class="note">Regret curves cross a real decision boundary. zoneblk is under-sampled (severe rung n=1).</span>
+    </div>
+    <div class="tile" style="--tc:var(--amber)">
+      <span class="lab">Multiple solutions?</span>
+      <span class="big">29% ties</span>
+      <span class="pill warn">report reg_NOTIE</span>
+      <span class="note">On raw graded_all, 29% of instances have a near-tied runner-up — low regret there is trivial.</span>
+    </div>
+    <div class="tile" style="--tc:var(--plum)">
+      <span class="lab">DSPy producer</span>
+      <span class="big">LLM ≱ surrogate</span>
+      <span class="pill warn">0.190 vs 0.150</span>
+      <span class="note">Best LLM (gpt-4o-mini few-shot) trails the forest and is ~10⁶× costlier per call.</span>
+    </div>
+    <div class="tile" style="--tc:var(--crit)">
+      <span class="lab">Blocked</span>
+      <span class="big">Julia regen</span>
+      <span class="pill crit">source missing</span>
+      <span class="note"><code>decpomdp/examples</code> absent from checkout — cannot generate new labels.</span>
+    </div>
+  </div>
+
+  <!-- 1. HP -->
+  <section id="hp">
+    <div class="shead"><span class="snum">01</span><h2>Hyper-parameter sweep — is 300/0.08 optimal?</h2></div>
+    <p class="lead">The collaborator flagged the surrogate's <code>max_iter=300 / lr=0.08</code> (HistGBR) as hand-set.
+      Answer: <strong>tree count barely matters (100≈300≈600); the levers are learning-rate and the depth cap.</strong>
+      The hand-set config is beaten on both discriminative datasets — and on the larger one, significantly.</p>
+
+    <div class="card">
+      <h3>LOO decision-regret by config — graded_all (n=31, cost-aware)</h3>
+      <p class="cap">lower is better · the deployed forest and the current eval config both trail the tuned HistGBR</p>
+      <div class="bars" id="hpbars"></div>
+      <div class="lg">
+        <span><span class="sw" style="background:var(--teal)"></span>tuned / best</span>
+        <span><span class="sw" style="background:var(--amber)"></span>current hand-set</span>
+        <span><span class="sw" style="background:var(--blue)"></span>alt family</span>
+      </div>
+    </div>
+
+    <div class="tw"><table>
+      <thead><tr><th>config</th><th>dataset</th><th>regret</th><th>top-1</th><th>vs current</th><th>note</th></tr></thead>
+      <tbody>
+        <tr><td>HGB d4 lr.08 <span class="tag cur">CURRENT eval</span></td><td>graded_hs_all</td><td class="mono">0.150</td><td class="mono">0.85</td><td class="mono">—</td><td>0% ties</td></tr>
+        <tr><td>HGB d4 <b>lr.2</b> <span class="tag win">best</span></td><td>graded_hs_all</td><td class="mono">0.080</td><td class="mono">0.85</td><td class="mono">+0.070</td><td>CI [0.00,0.18] — <b>not sig.</b></td></tr>
+        <tr><td>HGB d4 lr.08 <span class="tag cur">CURRENT eval</span></td><td>graded_all</td><td class="mono">0.183</td><td class="mono">0.61</td><td class="mono">—</td><td>depth cap → low top-1</td></tr>
+        <tr><td>HGB <b>dNone lr.2</b> <span class="tag win">best</span></td><td>graded_all</td><td class="mono">0.150</td><td class="mono">0.77</td><td class="mono">+0.033</td><td>CI [+.005,+.068] — <b>SIG.</b></td></tr>
+        <tr><td>ExtraTrees 200</td><td>graded_all</td><td class="mono">0.155</td><td class="mono">0.84</td><td class="mono">+0.028</td><td>best top-1</td></tr>
+        <tr><td>RF 60 d6 <span class="tag cur">DEPLOY</span></td><td>graded_all</td><td class="mono">0.193</td><td class="mono">0.77</td><td class="mono">−0.010</td><td>worse than eval HGB</td></tr>
+      </tbody>
+    </table></div>
+    <div class="call ok"><b>Take-away.</b> Re-tune the surrogate on decision-regret (not R²): remove the <code>depth=4</code>
+      cap and raise the learning rate. The win is <b>statistically significant on n=31</b> but not on n=20 — exactly the
+      "need more instances" intuition. Separately, the <b>deployed</b> RandomForest (0.193) is worse than the eval HistGBR on
+      graded data, so the demo's producer should be reconciled.</div>
+  </section>
+
+  <!-- 2. LADDER -->
+  <section id="ladder">
+    <div class="shead"><span class="snum">02</span><h2>Sanity ladder — is "no-OOD → little → more" meaningful?</h2></div>
+    <p class="lead">A ladder is only legitimate if rising severity <strong>flips the correct macro</strong> and the fixed-policy
+      regret curves <strong>cross</strong> a real boundary. The harness self-diagnoses this per kind. Verdict:
+      <strong>battery and fault are meaningful; zoneblk is weak and the harness says why.</strong></p>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>battery ladder — curves cross</h3>
+        <p class="cap">always-NOOP regret rises, always-Replace falls; surrogate stays low</p>
+        <div class="svgwrap" id="lad_batt"></div>
+      </div>
+      <div class="card">
+        <h3>fault ladder — curves cross</h3>
+        <p class="cap">idle fault (harmless) → active fault (Replace); surrogate = 0 regret</p>
+        <div class="svgwrap" id="lad_fault"></div>
+      </div>
+    </div>
+    <div class="lg" style="margin-top:0">
+      <span><span class="sw" style="background:var(--amber)"></span>always-NOOP regret</span>
+      <span><span class="sw" style="background:var(--blue)"></span>always-Replace regret</span>
+      <span><span class="sw" style="background:var(--teal)"></span>surrogate regret</span>
+    </div>
+
+    <div class="tw"><table>
+      <thead><tr><th>kind</th><th>oracle-best flip</th><th>curves cross</th><th>surrogate</th><th>per-kind lookup</th><th>verdict</th></tr></thead>
+      <tbody>
+        <tr><td>battery</td><td>NOOP→NOOP→Replace</td><td>yes</td><td class="mono">0.20</td><td class="mono">0.94</td><td><span class="pill ok">MEANINGFUL</span></td></tr>
+        <tr><td>fault</td><td>NOOP→Replace</td><td>yes</td><td class="mono">0.00</td><td class="mono">0.50</td><td><span class="pill ok">MEANINGFUL</span></td></tr>
+        <tr><td>zoneblk</td><td>NOOP→ForbidZone→NOOP</td><td>no</td><td class="mono">0.55</td><td class="mono">0.21</td><td><span class="pill warn">WEAK</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="call warn"><b>zoneblk is under-sampled, not broken.</b> Its "severe" rung has only n=1 and the
+      <code>zoneblk1.2</code> severity failed to generate (a <code>.log</code> exists, no <code>.jsonl</code>). The ladder is
+      missing the rung that straddles the boundary — which is precisely what the blocked Julia regeneration (§6) would fill.</div>
+  </section>
+
+  <!-- 3. TIE + LAMBDA -->
+  <section id="ties">
+    <div class="shead"><span class="snum">03</span><h2>"More than one right solution?" — tie-aware regret &amp; cost sensitivity</h2></div>
+    <p class="lead">When the top-2 macros are within 5% of the reachable span, the arg-max is arbitrary and low regret is
+      <strong>trivial, not skill</strong>. Splitting regret into tie vs non-tie instances is the honest view — and the
+      surrogate does <strong>better on clear-cut decisions</strong> (reg 0.120, top-1 0.86) than on ties.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Tie decomposition — graded_all, tuned HGB</h3>
+        <div class="tw"><table>
+          <thead><tr><th>bucket</th><th>n</th><th>regret</th><th>top-1</th></tr></thead>
+          <tbody>
+            <tr><td>all</td><td class="mono">31</td><td class="mono">0.150</td><td class="mono">0.77</td></tr>
+            <tr><td><b>non-tie</b> (real)</td><td class="mono">22</td><td class="mono">0.120</td><td class="mono">0.86</td></tr>
+            <tr><td>tie</td><td class="mono">9</td><td class="mono">0.225</td><td class="mono">—</td></tr>
+          </tbody>
+        </table></div>
+        <p class="cap" style="margin-top:12px">e1_dataset 0% ties · graded_hs_all 0% · graded_all 29% → the curated set hides ties the raw set exposes.</p>
+      </div>
+      <div class="card">
+        <h3>λ sweep — cost weight vs restraint</h3>
+        <div class="tw"><table>
+          <thead><tr><th>λ</th><th>reg_notie</th><th>tie %</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0</td><td class="mono">0.200</td><td class="mono">52%</td></tr>
+            <tr><td class="mono">1</td><td class="mono">0.137</td><td class="mono">32%</td></tr>
+            <tr><td class="mono">3</td><td class="mono">0.120</td><td class="mono">29%</td></tr>
+            <tr><td class="mono">6</td><td class="mono">0.136</td><td class="mono">23%</td></tr>
+            <tr><td class="mono">10</td><td class="mono">0.102</td><td class="mono">10%</td></tr>
+          </tbody>
+        </table></div>
+        <p class="cap" style="margin-top:12px">Oracle-best mix stays <b>invariant</b> across λ → the decision is <b>completion-dominated</b>; λ only reshapes the runner-up gap.</p>
+      </div>
+    </div>
+    <div class="call"><b>Why this matters.</b> A headline "regret 0.150" can be inflated by ties. Report <b>reg_NOTIE</b> as the
+      decision-consequential number, and treat the 29% tie fraction as a signal to add severities that separate the top-2 —
+      not as noise to average away.</div>
+  </section>
+
+  <!-- 4. FEATURES -->
+  <section id="features">
+    <div class="shead"><span class="snum">04</span><h2>What signal does the surrogate use?</h2></div>
+    <p class="lead">Permutation importance on the held-out value target. The surrogate reads
+      <strong>within-kind continuous physical state — SoC, agents-pending, severity — not the OOD kind label.</strong>
+      Zeroing the kind one-hot moves regret by −0.001; zeroing SoC hurts most. This is the direct evidence for
+      "learnable beyond the kind."</p>
+    <div class="card">
+      <h3>Permutation importance — held-out closed-count MAE increase</h3>
+      <p class="cap">graded_all · tuned HGB · higher = more relied upon</p>
+      <div class="bars" id="featbars"></div>
+    </div>
+    <div class="call"><b>Read.</b> <code>soc</code>, <code>agent_pending</code>, <code>severity</code> dominate; the four
+      <code>kind_*</code> one-hots sit near the bottom (~1). A per-kind lookup could not produce this — the model is reading
+      the battery level and the queue depth, exactly as the ladder's within-kind flips imply. The small <em>negative</em>
+      ablation deltas for <code>zone_overlap</code>/<code>progress</code> hint at mild overfitting at n=31 → more data would help.</p>
+    </div>
+  </section>
+
+  <!-- 5. DSPY -->
+  <section id="dspy">
+    <div class="shead"><span class="snum">05</span><h2>DSPy producer trial — programming vs prompting</h2></div>
+    <p class="lead">The <code>dspy</code> library needs numpy≥1.26, which conflicts with the project's TensorFlow (numpy&lt;1.24),
+      so DSPy's three core ideas were implemented on the OpenAI SDK directly to keep the env intact. Result:
+      <strong>demonstrations (the "programming" step) rescue a weak zero-shot prompt, but no LLM configuration beats the
+      forest surrogate.</strong></p>
+    <div class="card">
+      <h3>LOO decision-regret by producer — graded_hs_all (n=20)</h3>
+      <p class="cap">forest surrogate is the line to beat · P0 zero-shot → P1 labeled few-shot → P2 bootstrap-filtered demos</p>
+      <div class="bars" id="dspybars"></div>
+      <div class="lg">
+        <span><span class="sw" style="background:var(--teal)"></span>forest surrogate</span>
+        <span><span class="sw" style="background:var(--blue)"></span>gpt-4o-mini</span>
+        <span><span class="sw" style="background:var(--plum)"></span>gpt-4o</span>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>producer</th><th>zero-shot</th><th>+ few-shot demos</th><th>+ bootstrap filter</th></tr></thead>
+      <tbody>
+        <tr><td>gpt-4o-mini</td><td class="mono">0.544 / .45</td><td class="mono">0.190 / .80</td><td class="mono">0.274 / .65</td></tr>
+        <tr><td>gpt-4o</td><td class="mono">0.345 / .65</td><td class="mono">0.245 / .75</td><td class="mono">0.363 / .60</td></tr>
+        <tr><td>forest surrogate</td><td class="mono">—</td><td class="mono">—</td><td class="mono"><b>0.150 / .85</b></td></tr>
+      </tbody>
+    </table></div>
+    <div class="call"><b>Three honest findings.</b> (1) Few-shot demos are the real DSPy lever — they cut mini's regret
+      0.544→0.190. (2) <b>BootstrapFewShot hurt both models</b>: filtering to self-consistent demos drops coverage and keeps
+      only the easy cases, and a weak base model's "self-consistent" set is only ~50% reliable. (3) The cheap forest wins on
+      quality <em>and</em> is ~10⁶× cheaper per decision — so keep the surrogate primary and reserve an LLM for genuinely
+      novel OOD the surrogate has never seen.</div>
+  </section>
+
+  <!-- 6. BLOCKED -->
+  <section id="blocked">
+    <div class="shead"><span class="snum">06</span><h2>What's blocked &amp; environment notes</h2></div>
+    <div class="call crit"><b>Julia label regeneration — blocked at source.</b> Every oracle generator
+      <code>include</code>s <code>decpomdp/examples/ood_env.jl</code>, which is <b>absent from this checkout</b>
+      (only <code>src, test, tools, docs, scripts, LDraw_files, results</code> exist). The graded dumps were produced in a
+      different environment. Extending zoneblk or boosting n is impossible until <code>decpomdp/examples/</code> is restored.
+      Julia 1.10.11 itself works — a smoke run precompiled fine and only failed on the missing include.</div>
+    <div class="call warn"><b>DSPy library incompatible with this env.</b> dspy 3.x requires numpy≥1.26; the project's
+      tensorflow-intel 2.12 requires numpy&lt;1.24 — mutually exclusive. A stray <code>--only-binary</code> retry briefly
+      upgraded numpy to 2.2.6; it was <b>restored to 1.23.5</b> and the sklearn/pandas stack re-verified, so the env is back
+      to its original state. The DSPy trial ran on the OpenAI SDK instead (51 calls/model, gpt-4o-mini &amp; gpt-4o).</div>
+    <div class="call warn"><b>Small-n is the binding constraint.</b> The tuning win is significant at n=31 but not n=20;
+      several ablation deltas are slightly negative (overfitting). The single highest-leverage next step is <b>more labelled
+      instances</b> — which is exactly what the blocked generator would supply.</div>
+  </section>
+
+  <!-- 7. RECOMMENDATIONS -->
+  <section id="next">
+    <div class="shead"><span class="snum">07</span><h2>Recommended next actions</h2></div>
+    <ol class="rec">
+      <li><div><div class="t">Re-tune the surrogate on decision-regret; drop the depth=4 cap.</div>
+        <div class="d">Adopt <code>HGB depth=None, lr≈0.2</code> (or ExtraTrees-200 for best top-1). Significant win on n=31; keep the sweep objective as regret + tie-rate, never R².</div></div></li>
+      <li><div><div class="t">Reconcile the deployed producer with the evaluated one.</div>
+        <div class="d">The demo's <code>RF 60/d6</code> loses to the eval HistGBR on graded data (0.193 vs 0.150) — the decision-equivalence claim holds on the easy set but breaks on graded. Re-export the deploy forest with the tuned HP.</div></div></li>
+      <li><div><div class="t">Restore <code>decpomdp/examples/</code> to unblock label generation.</div>
+        <div class="d">Then regenerate the missing <code>zoneblk1.2</code> severity + more seeds. This is the single highest-leverage move — it converts the "not significant at n=20" results into decisive ones and repairs the zone ladder.</div></div></li>
+      <li><div><div class="t">Report <code>reg_NOTIE</code> as the headline; track the tie fraction.</div>
+        <div class="d">29% of raw instances tie. Publish decision-consequential regret separately, and design new severities to straddle the boundary so the tie fraction shrinks.</div></div></li>
+      <li><div><div class="t">Keep the surrogate primary; scope the LLM to novel OOD.</div>
+        <div class="d">No LLM config beat the forest, at ~10⁶× the cost. Use an LLM producer only where the surrogate is out of distribution — and prefer few-shot demos over bootstrap filtering.</div></div></li>
+    </ol>
+  </section>
+
+  <footer>
+    artifacts in <b>wm4spacecraft_manufacturing/</b> — sweep_surrogate.py · ladder.py · master_experiment.py · ablation.py · dspy_experiment.py<br>
+    reports in <b>sweep_lab/</b> — sweep_graded_all.txt · ladder_report.txt · master_report.txt · ablation_report.txt · dspy_report_gpt4omini.txt · dspy_report_gpt4o.txt<br>
+    metric: leave-one-instance-out decision-regret, cost-aware feasibility-lexicographic (EVALUATION.md) · palette: Okabe-Ito CVD-safe · autonomous session 2026-07-25
+  </footer>
+</div>
+
+<script>
+  // theme toggle stamps data-theme; charts read CSS vars at render time
+  const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function hbars(el, rows, max, opts={}){
+    el.innerHTML="";
+    rows.forEach(r=>{
+      const row=document.createElement("div"); row.className="bar"+(r.hi?" hi":"");
+      const pct=Math.max(2,(r.v/max)*100);
+      row.innerHTML=`<div class="nm" title="${r.name}">${r.name}</div>
+        <div class="tk"><div class="fl" style="width:${pct}%;background:${r.c}"></div></div>
+        <div class="vl">${r.t!==undefined?r.t:r.v.toFixed(3)}</div>`;
+      row.title=`${r.name}: ${r.t!==undefined?r.t:r.v.toFixed(3)}`;
+      el.appendChild(row);
+    });
+  }
+
+  // §1 HP bars — graded_all
+  hbars(document.getElementById("hpbars"),[
+    {name:"HGB dNone lr.2 (best)",v:0.150,c:cv('--teal'),hi:true},
+    {name:"ExtraTrees 200",v:0.155,c:cv('--blue')},
+    {name:"HGB dNone lr.08",v:0.152,c:cv('--teal')},
+    {name:"HGB d4 lr.08 (current)",v:0.183,c:cv('--amber'),hi:true},
+    {name:"RF 60 d6 (deploy)",v:0.193,c:cv('--amber')},
+  ],0.22);
+
+  // §4 feature importance (permutation, MAE increase)
+  hbars(document.getElementById("featbars"),[
+    {name:"soc",v:22.2,c:cv('--teal'),hi:true,t:"22.2"},
+    {name:"agent_pending",v:19.9,c:cv('--teal'),t:"19.9"},
+    {name:"severity",v:19.5,c:cv('--teal'),hi:true,t:"19.5"},
+    {name:"macro_1 (Replace)",v:8.9,c:cv('--blue'),t:"8.9"},
+    {name:"zone_overlap",v:2.0,c:cv('--blue'),t:"2.0"},
+    {name:"n_spare_cfg",v:1.35,c:cv('--plum'),t:"1.4"},
+    {name:"kind_fault",v:1.32,c:cv('--plum'),t:"1.3"},
+    {name:"kind_zoneblk",v:1.11,c:cv('--plum'),t:"1.1"},
+  ],23);
+
+  // §5 DSPy bars
+  hbars(document.getElementById("dspybars"),[
+    {name:"forest surrogate",v:0.150,c:cv('--teal'),hi:true},
+    {name:"mini · few-shot",v:0.190,c:cv('--blue'),hi:true},
+    {name:"4o · few-shot",v:0.245,c:cv('--plum')},
+    {name:"mini · bootstrap",v:0.274,c:cv('--blue')},
+    {name:"4o · zero-shot",v:0.345,c:cv('--plum')},
+    {name:"4o · bootstrap",v:0.363,c:cv('--plum')},
+    {name:"mini · zero-shot",v:0.544,c:cv('--blue')},
+  ],0.56);
+
+  // ladder line charts (cross-curves)
+  function ladder(el, rungs, noop, repl, surro){
+    const W=380,H=210,L=38,R=14,T=14,B=34;
+    const iw=W-L-R, ih=H-T-B;
+    const x=i=> rungs.length<2 ? L+iw/2 : L+(i/(rungs.length-1))*iw;
+    const y=v=> T+(1-v)*ih;
+    const NS="http://www.w3.org/2000/svg";
+    const svg=document.createElementNS(NS,"svg");
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width","100%");
+    svg.style.maxWidth=W+"px";
+    const mk=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+    // gridlines y
+    [0,0.25,0.5,0.75,1].forEach(g=>{
+      svg.appendChild(mk("line",{x1:L,y1:y(g),x2:W-R,y2:y(g),stroke:cv('--hair'),"stroke-width":1}));
+      const tx=mk("text",{x:L-7,y:y(g)+3,"text-anchor":"end",fill:cv('--faint'),"font-size":9}); tx.textContent=g.toFixed(2); svg.appendChild(tx);
+    });
+    // x labels
+    rungs.forEach((r,i)=>{const tx=mk("text",{x:x(i),y:H-12,"text-anchor":"middle",fill:cv('--muted'),"font-size":10});tx.textContent=r;svg.appendChild(tx);});
+    const series=[[noop,cv('--amber')],[repl,cv('--blue')],[surro,cv('--teal')]];
+    series.forEach(([d,c])=>{
+      let pts=d.map((v,i)=>`${x(i)},${y(v)}`).join(" ");
+      svg.appendChild(mk("polyline",{points:pts,fill:"none",stroke:c,"stroke-width":2.4,"stroke-linejoin":"round","stroke-linecap":"round"}));
+      d.forEach((v,i)=>{const cc=mk("circle",{cx:x(i),cy:y(v),r:4,fill:cv('--surface'),stroke:c,"stroke-width":2.2});
+        const tt=mk("title",{}); tt.textContent=`${v.toFixed(2)}`; cc.appendChild(tt); svg.appendChild(cc);});
+    });
+    el.appendChild(svg);
+  }
+  ladder(document.getElementById("lad_batt"),["harmless","moderate","severe"],[0.00,0.21,0.88],[1.00,0.75,0.00],[0.02,0.46,0.13]);
+  ladder(document.getElementById("lad_fault"),["harmless","severe"],[0.00,0.91],[1.00,0.00],[0.00,0.00]);
+</script>

@@ -62,7 +62,7 @@ const ROUTER_EPS  = (try parse(Float64, ENV["ROUTER_EPS"]) catch; nothing end)
 function install_novelty!()
     (try CB.novelty_detector() catch; nothing end) === nothing || return true
     path = get(ENV, "NOVELTY_CALIB",
-               joinpath(@__DIR__, "..", "..", "..", "wm4spacecraft_manufacturing",
+               joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing",   # tools/monitor -> repo 루트
                         "novelty_calibration.json"))
     isfile(path) || (@warn "novelty calibration not found -> router disabled (fail-open)" path;
                      return false)

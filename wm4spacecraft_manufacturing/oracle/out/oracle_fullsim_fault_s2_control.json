@@ -1,0 +1,6 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","n_robots":10,"rvo":true,"seed":2,"n_spare_per_pool":3,"spares":12,"unit":"control"},
+  "candidates": [
+    {"unit":"control","action":-1,"name":"control","complete":true,"closed":291,"total":313,"makespan":16.3,"fault_seen":false,"n_events":0,"event_type":"none","agent":"none"}
+  ]
+}

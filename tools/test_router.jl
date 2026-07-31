@@ -17,7 +17,7 @@ using ConstructionBots
 const CB = ConstructionBots
 
 const CALIB = get(ENV, "NOVELTY_CALIB",
-                  joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing",
+                  joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing",   # tools/ -> repo 루트 (wm4 는 repo 내부)
                            "novelty_calibration.json"))
 
 npass = 0; nfail = 0

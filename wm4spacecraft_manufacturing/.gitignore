@@ -1,0 +1,10 @@
+﻿__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# In-flight generation output (regenerable; merged result is what matters)
+oracle/out/nominal_shard*.jsonl
+
+# 부분 완료 instance 를 잘라낼 때 남긴 원본 스냅샷(재생성 가능, 커밋 불필요)
+*.prefix_backup

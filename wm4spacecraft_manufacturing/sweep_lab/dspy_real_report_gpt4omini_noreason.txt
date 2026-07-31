@@ -1,0 +1,19 @@
+============================================================================================
+REAL DSPy 3.2.1 PRODUCER EXPERIMENT (gpt-4o-mini, 20 instances, lam=3.0)
+dataset: oracle/out/graded_hs_all.jsonl   |   baseline to beat: forest surrogate reg=0.150 top1=0.85
+============================================================================================
+
+-- arms --
+  A0 zero-shot (dspy.Predict)        reg=0.544  top1=0.45   [LOO(20), 18s]
+  A1 LabeledFewShot(k=8)             reg=0.384  top1=0.60   [LOO(20), 13s]
+  A2 BootstrapFewShot                reg=0.252  top1=0.60   [LOO(20), 63s]
+
+--------------------------------------------------------------------------------------------
+SUMMARY (lower reg = better)
+  producer                                reg     top1   protocol
+  forest surrogate (trained)            0.150     0.85   LOO(20)
+  A0 zero-shot (dspy.Predict)           0.544     0.45   LOO(20)
+  A1 LabeledFewShot(k=8)                0.384     0.60   LOO(20)
+  A2 BootstrapFewShot                   0.252     0.60   LOO(20)
+
+LM calls this run: 368   tokens: 78939   (cache=on, so repeats across folds are free)

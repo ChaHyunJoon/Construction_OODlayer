@@ -1,0 +1,39 @@
+================================================================================================
+PAIRED COMPARISON: trained forest vs REAL-DSPy LLM producer (n=20, lam=3.0, 10000 bootstraps)
+positive delta = forest has LOWER regret = forest better;  CI excluding 0 = significant
+================================================================================================
+
+------------------------------------------------------------------------------------------------
+LLM = gpt-4o-mini
+  arm                                     reg | vs forest                        delta 95% CI                
+  A0 zero-shot (dspy.Predict)           0.544 | forest RF 60 d6 (deployed)      +0.294 [+0.000, +0.547] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.394 [+0.195, +0.595] SIGNIFICANT
+  A1 LabeledFewShot(k=8, random)        0.390 | forest RF 60 d6 (deployed)      +0.140 [-0.105, +0.382] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.240 [+0.050, +0.433] SIGNIFICANT
+  A1b LabeledFewShot(k=8, first-8)      0.237 | forest RF 60 d6 (deployed)      -0.013 [-0.308, +0.280] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.087 [-0.162, +0.336] (n.s.)
+  A2 BootstrapFewShot                   0.254 | forest RF 60 d6 (deployed)      +0.004 [-0.260, +0.268] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.104 [-0.135, +0.331] (n.s.)
+  A3 BootstrapFewShot+RandomSearch      0.255 | forest RF 60 d6 (deployed)      +0.005 [-0.252, +0.276] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.105 [-0.109, +0.332] (n.s.)
+  A4 MIPROv2 (instruction search)       0.223 | forest RF 60 d6 (deployed)      -0.027 [-0.273, +0.218] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.073 [-0.125, +0.280] (n.s.)
+
+------------------------------------------------------------------------------------------------
+LLM = gpt-4o
+  arm                                     reg | vs forest                        delta 95% CI                
+  A0 zero-shot (dspy.Predict)           0.345 | forest RF 60 d6 (deployed)      +0.095 [-0.150, +0.339] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.195 [+0.047, +0.389] SIGNIFICANT
+  A1 LabeledFewShot(k=8, random)        0.289 | forest RF 60 d6 (deployed)      +0.039 [-0.254, +0.328] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.139 [-0.106, +0.381] (n.s.)
+  A1b LabeledFewShot(k=8, first-8)      0.197 | forest RF 60 d6 (deployed)      -0.053 [-0.300, +0.197] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.047 [-0.153, +0.250] (n.s.)
+  A2 BootstrapFewShot                   0.263 | forest RF 60 d6 (deployed)      +0.013 [-0.255, +0.271] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.113 [-0.105, +0.346] (n.s.)
+  A3 BootstrapFewShot+RandomSearch      0.222 | forest RF 60 d6 (deployed)      -0.028 [-0.275, +0.216] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.072 [-0.123, +0.276] (n.s.)
+  A4 MIPROv2 (instruction search)       0.197 | forest RF 60 d6 (deployed)      -0.053 [-0.300, +0.197] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.047 [-0.153, +0.250] (n.s.)
+
+Reading: an arm whose CI includes 0 is NOT shown to be worse than the forest on this set --
+say 'not established', not 'the forest wins'. n=20 is small; this is the honest resolution.

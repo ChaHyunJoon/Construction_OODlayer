@@ -1,0 +1,30 @@
+{
+  "model": "gpt-4o-mini",
+  "instructions": "You choose ONE recovery macro for an out-of-distribution event during a multi-robot\nassembly build. The 5 candidates (a re-specification DSL action):\n- NOOP: do nothing / restraint. Best when the disruption is absorbed by slack or spares and\n  intervening would waste a scarce resource.\n- Replace: swap the affected robot for a spare from the pool. Best on a real fault or a deeply\n  depleted battery WHEN spares remain. Costs 1 schedule-unit.\n- Deprioritize: lower the affected robot's task priority (mild, cheap=0.3). A middle option.\n- ForbidZone: mark a no-go region and reroute the build around it. Best when a spatial zone is\n  blocked. Costs 1.\n- ReformTeam: re-form the multi-robot assembly team. Costs 1.\nAdaptation cost matters: NOOP is free, Deprioritize=0.3, Replace/ForbidZone/ReformTeam=1.0. An\nintervention must recover more than it costs, otherwise NOOP (restraint) is the right call.",
+  "demos": [
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.12, severity=0.12, spares_left=12, agents_pending=3, progress=0.19, n_active=22",
+      "reasoning": "The battery's state of charge is low, and since there are sufficient spares available, replacing the affected robot is the most effective recovery action.",
+      "macro": "Replace"
+    },
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.05, severity=0.05, spares_left=12, agents_pending=5, progress=0.19, n_active=22",
+      "reasoning": "The battery's state of charge is critically low, and replacing the affected robot with a spare is necessary to maintain progress in the assembly build.",
+      "macro": "Replace"
+    },
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.12, severity=0.12, spares_left=12, agents_pending=5, progress=0.19, n_active=22",
+      "reasoning": "The battery's state of charge is low, and with sufficient spares available, replacing the affected robot is the best option to maintain progress.",
+      "macro": "Replace"
+    },
+    {
+      "augmented": true,
+      "state": "OOD kind=battery, SoC=0.05, severity=0.05, spares_left=12, agents_pending=3, progress=0.19, n_active=22",
+      "reasoning": "The battery's state of charge is critically low, and replacing it with a spare is necessary to maintain operational efficiency since there are sufficient spares available.",
+      "macro": "Replace"
+    }
+  ]
+}

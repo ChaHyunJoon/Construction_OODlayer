@@ -713,7 +713,7 @@ SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SEED       = parse(Int, get(ENV, "SEED", "1"))
 SEVERITY   = parse(Float64, get(ENV, "SEVERITY", "1.0"))   # zone: overlap frac; fault: 1.0  # 사건 심각도(구역=겹침비율)
 SURRO_PATH = get(ENV, "SURROGATE",                          # 학습된 surrogate JSON 파일 경로
-    joinpath(dirname(pkgdir(CB)), "wm4spacecraft_manufacturing", "surrogate_linear.json"))
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 MACROS = [0, 1, 2, 3, 4]                                    # 가능한 대응 매크로 번호 5개
 MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")  # 번호→이름 매핑
 
@@ -1737,7 +1737,7 @@ RESCUE     = get(ENV, "CARRIER_RESCUE", "0") == "1"   # see force_advance_stuck_
 PROJECT    = "tractor"
 HTMLPATH   = joinpath("results", PROJECT, "greedy_RVO_Dispersion_TangentBug", "visualization.html")
 SURRO_PATH = get(ENV, "SURROGATE",
-    joinpath(dirname(pkgdir(CB)), "wm4spacecraft_manufacturing", "surrogate_linear.json"))
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 MACROS = [0, 1, 2, 3, 4]
 MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")
 

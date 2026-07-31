@@ -1,0 +1,68 @@
+﻿========================================================================================================
+LOKO 2-CLASS DETECTION  (known-disturbance vs OOD)   -- paper Table II format
+========================================================================================================
+  dataset[canonical] oracle/out/openworld_merged.jsonl (ok)
+  300 rows, 60 instances, kinds=['battery', 'fault', 'zoneblk']
+  split per fold: fit 40% / calibration 30% / test 30% of the known kinds; held-out kind = OOD
+  40 repeats per (score, fold); table is mean +/- standard error
+  NOTE: 3-class (nominal/known/OOD) needs kind='none' rows -- dataset has 0. Not claimed.
+
+--------------------------------------------------------------------------------------------------------
+  quantile 90%
+--------------------------------------------------------------------------------------------------------
+  score                family   OOD-recall           known-acc            accuracy             AUROC
+  z_rms                distance   52.9% +/- 4.1        84.1% +/- 1.2        63.5% +/- 2.5      0.641 +/-0.037
+  mahalanobis          distance   54.2% +/- 3.8        86.9% +/- 1.3        65.4% +/- 2.4      0.709 +/-0.030
+  tree_variance        ensemble   24.1% +/- 2.5        85.0% +/- 1.3        48.9% +/- 1.4      0.587 +/-0.024
+  residual_contrast    residual   48.0% +/- 1.7        85.6% +/- 1.2        62.9% +/- 1.1      0.717 +/-0.009
+  train_loss           misc       44.8% +/- 2.2        83.0% +/- 1.3        59.6% +/- 1.3      0.661 +/-0.017
+  decision_margin      margin     16.5% +/- 3.0        84.0% +/- 1.3        43.0% +/- 1.8      0.418 +/-0.029
+
+--------------------------------------------------------------------------------------------------------
+  quantile 95%
+--------------------------------------------------------------------------------------------------------
+  score                family   OOD-recall           known-acc            accuracy             AUROC
+  z_rms                distance   49.4% +/- 3.9        89.2% +/- 1.1        63.7% +/- 2.5      0.641 +/-0.037
+  mahalanobis          distance   53.8% +/- 3.8        91.8% +/- 1.1        67.3% +/- 2.5      0.709 +/-0.030
+  tree_variance        ensemble   18.3% +/- 2.3        90.0% +/- 1.0        47.7% +/- 1.2      0.587 +/-0.024
+  residual_contrast    residual   45.7% +/- 1.7        89.4% +/- 0.9        63.1% +/- 1.1      0.717 +/-0.009
+  train_loss           misc       43.7% +/- 2.1        88.1% +/- 1.2        61.1% +/- 1.3      0.661 +/-0.017
+  decision_margin      margin     14.2% +/- 2.7        89.3% +/- 1.2        44.1% +/- 1.7      0.418 +/-0.029
+
+--------------------------------------------------------------------------------------------------------
+  quantile 100%
+--------------------------------------------------------------------------------------------------------
+  score                family   OOD-recall           known-acc            accuracy             AUROC
+  z_rms                distance   44.8% +/- 3.9        95.0% +/- 0.8        63.5% +/- 2.5      0.641 +/-0.037
+  mahalanobis          distance   53.8% +/- 3.8        95.9% +/- 0.8        68.9% +/- 2.5      0.709 +/-0.030
+  tree_variance        ensemble   11.3% +/- 1.6        94.4% +/- 0.8        45.2% +/- 0.9      0.587 +/-0.024
+  residual_contrast    residual   43.5% +/- 1.7        93.2% +/- 0.8        63.2% +/- 1.1      0.717 +/-0.009
+  train_loss           misc       42.7% +/- 2.0        93.3% +/- 1.0        62.6% +/- 1.3      0.661 +/-0.017
+  decision_margin      margin     10.3% +/- 2.2        96.4% +/- 0.8        44.6% +/- 1.4      0.418 +/-0.029
+
+========================================================================================================
+PER-HELD-KIND BREAKDOWN   (AUROC | OOD-recall at 95%)
+========================================================================================================
+  score                battery                 fault                   zoneblk               
+  z_rms                0.079+/-0.012 |    0%   0.874+/-0.012 |   56%   0.970+/-0.013 |   92% 
+  mahalanobis          0.276+/-0.022 |    1%   0.873+/-0.009 |   68%   0.979+/-0.012 |   92% 
+  tree_variance        0.779+/-0.019 |   32%   0.646+/-0.030 |   18%   0.336+/-0.038 |    5% 
+  residual_contrast    0.713+/-0.019 |   37%   0.731+/-0.019 |   33%   0.707+/-0.005 |   67% 
+  train_loss           0.573+/-0.016 |   29%   0.509+/-0.012 |   32%   0.900+/-0.012 |   70% 
+  decision_margin      0.223+/-0.019 |    1%   0.193+/-0.018 |    0%   0.838+/-0.019 |   42% 
+
+========================================================================================================
+READING
+========================================================================================================
+  highest AUROC (threshold-free separation): residual_contrast  (0.717)
+    z_rms                AUROC 0.641  -> weak
+    mahalanobis          AUROC 0.709  -> carries signal
+    tree_variance        AUROC 0.587  -> weak
+    residual_contrast    AUROC 0.717  -> carries signal   [post-hoc only -- not usable for routing]
+    train_loss           AUROC 0.661  -> carries signal   [post-hoc only -- not usable for routing]
+    decision_margin      AUROC 0.418  -> no better than chance   [orientation flipped by .novelty()]
+
+  Quantile behaves as the paper reports: at 100%% the threshold sits at the
+  calibration maximum, so OOD-recall collapses and known-acc goes to 100%%.
+
+  figure -> C:\Users\chahj\PythonCodes\venv\wm4spacecraft_manufacturing\artifacts_classifier\fig6_score_distributions.png

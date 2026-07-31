@@ -34,7 +34,7 @@ end
 banner(t) = println("\n" * "="^74 * "\n" * t * "\n" * "="^74)
 
 const CAL_PATH = isempty(ARGS) ?
-    joinpath(dirname(pkgdir(CB)), "wm4spacecraft_manufacturing", "novelty_calibration.json") :
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "novelty_calibration.json") :   # wm4 = repo 내부
     ARGS[1]
 
 banner("SETUP")

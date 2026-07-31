@@ -1,0 +1,7 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","n_robots":10,"rvo":false,"n_spare_per_pool":3,"spares":12,"control_complete":true,"control_closed":291,"control_total":313,"control_makespan":13.350000000000001,"admissible":false,"oracle_best_action":0,"oracle_best_name":"NOOP","oracle_best_makespan":13.350000000000001,"n_candidates":2},
+  "candidates": [
+    {"action":0,"name":"NOOP","complete":true,"closed":291,"total":313,"makespan":13.350000000000001,"event_type":"none","agent":"none","oracle_rank":1,"makespan_regret":0.0},
+    {"action":1,"name":"Replace","complete":true,"closed":291,"total":313,"makespan":13.350000000000001,"event_type":"none","agent":"none","oracle_rank":2,"makespan_regret":0.0}
+  ]
+}

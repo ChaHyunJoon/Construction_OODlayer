@@ -1,0 +1,6 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","n_robots":10,"rvo":true,"seed":1,"n_spare_per_pool":3,"spares":12,"unit":"4"},
+  "candidates": [
+    {"unit":"candidate","action":4,"name":"ReformTeam","complete":false,"closed":237,"total":313,"makespan":"Inf","event_type":"reform","agent":"nothing"}
+  ]
+}

@@ -1,0 +1,53 @@
+==============================================================================
+SANITY LADDER REPORT  (cost-aware, lambda=3.0)
+built from 31 dump files, 31 full instances
+surrogate under test: HGB lr=0.20 (sweep winner)
+==============================================================================
+
+------------------------------------------------------------------------------
+LADDER - kind=battery   (16 instances)
+severity axis: SoC at event (LOW = more depleted = more severe)
+rung        n  oracle-best (spread)       NOOP  Replace    Depri   surrog   perkind
+harmless    5  NOOP x5                    0.00     1.00     0.01     0.02      1.00
+moderate    4  NOOP x3, Replace x1        0.21     0.75     0.26     0.46      0.96
+severe      7  Replace x7                 0.88     0.00     0.91     0.13      0.88
+VERDICT(battery): best-macro flips across rungs = YES (NOOP -> NOOP -> Replace)
+  NOOP-regret rises with severity = YES (0.00 -> 0.88) ; Replace-regret falls = YES (1.00 -> 0.00)
+  curves cross (real decision boundary) = YES
+  surrogate mean-regret=0.20  vs  always_per_kind=0.94  (surrogate better by +0.74)
+  => LADDER IS MEANINGFUL for kind=battery
+
+------------------------------------------------------------------------------
+LADDER - kind=zoneblk   (7 instances)
+severity axis: zone_overlap fraction (HIGH = more of build blocked)
+rung        n  oracle-best (spread)       NOOP  Replace    Depri   surrog   perkind
+harmless    3  NOOP x3                    0.00     1.00     0.30     0.00      0.00
+moderate    3  ForbidZone x2, NOOP x1     0.63     0.71     0.65     0.65      0.63
+severe      1  NOOP x1                    0.00     0.03     0.01     1.00      0.00
+VERDICT(zoneblk): best-macro flips across rungs = YES (NOOP -> ForbidZone -> NOOP)
+  NOOP-regret rises with severity = no (0.00 -> 0.00) ; Replace-regret falls = YES (1.00 -> 0.03)
+  curves cross (real decision boundary) = no
+  surrogate mean-regret=0.55  vs  always_per_kind=0.21  (surrogate better by -0.34)
+  => LADDER IS WEAK (kind stays on one side of the boundary) for kind=zoneblk
+
+------------------------------------------------------------------------------
+LADDER - kind=fault   (8 instances)
+severity axis: agent_pending at fault (idle=harmless vs active=severe)
+rung        n  oracle-best (spread)       NOOP  Replace    Depri   surrog   perkind
+harmless    3  NOOP x3                    0.00     1.00     0.30     0.00      1.00
+severe      5  Replace x5                 0.91     0.00     0.94     0.00      0.00
+VERDICT(fault): best-macro flips across rungs = YES (NOOP -> Replace)
+  NOOP-regret rises with severity = YES (0.00 -> 0.91) ; Replace-regret falls = YES (1.00 -> 0.00)
+  curves cross (real decision boundary) = YES
+  surrogate mean-regret=0.00  vs  always_per_kind=0.50  (surrogate better by +0.50)
+  => LADDER IS MEANINGFUL for kind=fault
+
+==============================================================================
+OVERALL LADDER VERDICT
+  battery   meaningful=True  flips=True  crosses=True  surro=0.20 perkind=0.94
+  zoneblk   meaningful=False  flips=True  crosses=False  surro=0.55 perkind=0.21
+  fault     meaningful=True  flips=True  crosses=True  surro=0.00 perkind=0.50
+  2/3 kinds exercise a real decision boundary.
+  A ladder is JUSTIFIED where meaningful=YES: severity flips the answer AND the surrogate
+  tracks the flip better than a per-kind lookup. Where meaningful=NO, add severities that
+  straddle the boundary (that rung is missing) before drawing conclusions.

@@ -1,0 +1,25 @@
+================================================================================================
+PAIRED COMPARISON: trained forest vs REAL-DSPy LLM producer (n=44, lam=3.0, 10000 bootstraps)
+positive delta = forest has LOWER regret = forest better;  CI excluding 0 = significant
+================================================================================================
+
+(gpt4omini: no per-instance dump, skipped)
+
+------------------------------------------------------------------------------------------------
+LLM = gpt-4o
+  arm                                     reg | vs forest                        delta 95% CI                
+  A0 zero-shot (dspy.Predict)           0.338 | forest RF 60 d6 (deployed)      +0.247 [+0.088, +0.406] SIGNIFICANT
+                                              | forest HGB d4 lr.08 (eval)      +0.265 [+0.121, +0.414] SIGNIFICANT
+  A1 LabeledFewShot(k=8, random)        0.246 | forest RF 60 d6 (deployed)      +0.155 [-0.001, +0.309] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.173 [+0.048, +0.301] SIGNIFICANT
+  A1b LabeledFewShot(k=8, first-8)      0.158 | forest RF 60 d6 (deployed)      +0.068 [-0.061, +0.200] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.086 [-0.023, +0.203] (n.s.)
+  A2 BootstrapFewShot                   0.189 | forest RF 60 d6 (deployed)      +0.098 [-0.037, +0.235] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.116 [+0.003, +0.235] SIGNIFICANT
+  A3 BootstrapFewShot+RandomSearch      0.148 | forest RF 60 d6 (deployed)      +0.057 [-0.063, +0.177] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.075 [-0.023, +0.181] (n.s.)
+  A4 MIPROv2 (instruction search)       0.161 | forest RF 60 d6 (deployed)      +0.070 [-0.062, +0.205] (n.s.)
+                                              | forest HGB d4 lr.08 (eval)      +0.089 [-0.021, +0.214] (n.s.)
+
+Reading: an arm whose CI includes 0 is NOT shown to be worse than the forest on this set --
+say 'not established', not 'the forest wins'. Small n is the usual cause -- report n explicitly.

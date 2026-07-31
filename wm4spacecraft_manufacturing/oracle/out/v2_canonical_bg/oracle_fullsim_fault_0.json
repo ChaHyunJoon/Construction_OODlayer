@@ -1,0 +1,6 @@
+{
+  "meta": {"project":"tractor","ood_class":"robot_fault","n_robots":10,"rvo":true,"seed":1,"n_spare_per_pool":3,"spares":12,"unit":"0"},
+  "candidates": [
+    {"unit":"candidate","action":0,"name":"NOOP","complete":false,"closed":237,"total":313,"makespan":"Inf","fault_seen":true,"n_events":75,"event_type":"fault","agent":"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(17)"}
+  ]
+}

@@ -1,0 +1,23 @@
+====================================================================================
+DSPy-STYLE PRODUCER EXPERIMENT (OpenAI gpt-4o, LOO on graded_hs_all, 20 instances)
+baseline to beat: forest surrogate  reg=0.150  top1=0.85  (from sweep)
+====================================================================================
+
+P0 zero-shot        : reg=0.345  top1=0.65
+P1 labeled few-shot : reg=0.245  top1=0.75  (+0.101 vs zero-shot)
+
+Bootstrap: 13/20 instances are self-consistent demos (model's zero-shot == oracle)
+P2 BootstrapFewShot : reg=0.363  top1=0.60  (-0.017 vs zero-shot)
+
+------------------------------------------------------------------------------------
+SUMMARY (lower reg = better; forest surrogate = 0.150 / 0.85)
+  producer                    reg     top1
+  forest surrogate          0.150     0.85
+  P0 zero-shot              0.345     0.65
+  P1 labeled few-shot       0.245     0.75
+  P2 BootstrapFewShot       0.363     0.60
+
+total LLM calls: 51  (model=gpt-4o)
+takeaway: DSPy's optimization = P2-P0 delta of -0.017 regret from FILTERING demos by a metric,
+  not from writing a better prompt. Whether the LLM producer beats the cheap forest surrogate
+  is the cost-of-adaptation question: even if equal quality, the forest is ~1e6x cheaper/call.

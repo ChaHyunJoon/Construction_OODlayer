@@ -1,0 +1,29 @@
+============================================================================================
+REAL DSPy 3.2.1 PRODUCER EXPERIMENT (gpt-4o, 44 instances, lam=3.0)
+dataset: oracle/out/graded_hs_n44.jsonl   |   baseline to beat: forest surrogate reg=0.150 top1=0.85
+============================================================================================
+
+-- arms --
+  A0 zero-shot (dspy.Predict)        reg=0.338  top1=0.64   [LOO(44), 5s]
+  A1 LabeledFewShot(k=8, random)     reg=0.246  top1=0.73   [LOO(44), 53s]
+  A1b LabeledFewShot(k=8, first-8)   reg=0.158  top1=0.82   [LOO(44), 12s]
+  A2 BootstrapFewShot                reg=0.189  top1=0.66   [LOO(44), 61s]
+  A3 BootstrapFewShot+RandomSearch   reg=0.148  top1=0.75   [4-fold, 160s]
+  A4 MIPROv2 (instruction search)    reg=0.161  top1=0.82   [4-fold, 308s]
+
+--------------------------------------------------------------------------------------------
+SUMMARY (lower reg = better)
+  producer                                reg     top1   protocol
+  forest surrogate (trained)            0.150     0.85   LOO(20)
+  A0 zero-shot (dspy.Predict)           0.338     0.64   LOO(44)
+  A1 LabeledFewShot(k=8, random)        0.246     0.73   LOO(44)
+  A1b LabeledFewShot(k=8, first-8)      0.158     0.82   LOO(44)
+  A2 BootstrapFewShot                   0.189     0.66   LOO(44)
+  A3 BootstrapFewShot+RandomSearch      0.148     0.75   4-fold
+  A4 MIPROv2 (instruction search)       0.161     0.82   4-fold
+
+-- MIPROv2-optimized instruction (compiled on all 44, for inspection) --
+Given the state of a robot, including factors like the type of issue (e.g., OOD kind=battery), state of charge (SoC), severity level, available spares, agents pending, progress, and the number of active robots, determine the appropriate macro action to take. Evaluate whether the robot's condition requires immediate intervention, such as replacing a battery, or if inaction is preferred to conserve resources. Your response should include a reasoning that explains your decision based on these parameters and then specify the resulting macro action (e.g., "Replace", "NOOP", etc.) that optimizes resource management while maintaining operational efficiency.
+-- demos kept: 4 --
+
+LM calls this run: 3052   tokens: 1174155   (cache=on, so repeats across folds are free)
