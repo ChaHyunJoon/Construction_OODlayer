@@ -345,6 +345,45 @@ chk(usage1 <= usage0 + 1e-6, "deprioritized robot does <= baseline assignment wo
 println("   biased:   feasible=$feas1  R-edge-usage=$(round(usage1,digits=2))  makespan=$(round(ms1,digits=2))")
 CB.clear_agent_bias!()
 
+# (4) AUTO energy weight — the DEPLOYED configuration. Stages (2)/(3) above hand-set
+#     efficiency=0.01, which no demo ever does: run_demo.jl leaves the default (speed=1,
+#     efficiency=0), and with that `get_objective_expr` DISCARDS edge_costs, so the registered
+#     bias reached nothing and the deprioritize re-solve just re-optimized the same makespan.
+#     AUTO_EFFICIENCY_KAPPA derives a unit-matched weight for that one formulation instead.
+# [검증 내용] 배포 기본 가중치(efficiency=0)에서 (a) κ 미설정이면 목적함수가 예전 그대로이고,
+#     (b) κ 설정 시 에너지 항이 실제로 켜지며(w_eff>0), (c) 실행가능성을 지킨 채 R 의 작업량이 준다.
+println("== (4) AUTO energy weight under DEPLOYED weights (efficiency = 0) ==")
+CB.set_planning_objective_weights!(speed = 1.0, efficiency = 0.0)   # 데모가 실제로 쓰는 값
+CB.clear_agent_bias!(); CB.AUTO_EFFICIENCY_KAPPA[] = nothing
+milpA = CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
+    optimizer = CB._respec_optimizer(), t0_ = inv.frozen_t0, tF_ = inv.frozen_tF)
+chk(CB.LAST_AUTO_EFFICIENCY_W[] == 0.0, "auto path INERT when κ unset (objective preserved)")
+CB.optimize!(milpA)
+usageA = owned_edge_usage(milpA, env.sched, R)
+msA = try maximum(value.(milpA.model[:tF])) catch; NaN end
+
+CB.deprioritize_agent!(R, 1000.0)                       # maybe_respecify! 가 하는 그대로
+prev_k = CB.AUTO_EFFICIENCY_KAPPA[]
+CB.AUTO_EFFICIENCY_KAPPA[] = CB.DEPRIORITIZE_KAPPA[]
+milpB = try
+    CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
+        optimizer = CB._respec_optimizer(), t0_ = inv.frozen_t0, tF_ = inv.frozen_tF)
+finally
+    CB.AUTO_EFFICIENCY_KAPPA[] = prev_k
+end
+wB = CB.LAST_AUTO_EFFICIENCY_W[]
+CB.optimize!(milpB)
+feasB = JuMP.primal_status(milpB.model) == CB.MOI.FEASIBLE_POINT
+usageB = owned_edge_usage(milpB, env.sched, R)
+msB = try maximum(value.(milpB.model[:tF])) catch; NaN end
+chk(wB > 0.0, "energy term ACTIVE under deployed weights (auto w_eff = $(round(wB, sigdigits = 3)))")
+chk(CB.AUTO_EFFICIENCY_KAPPA[] === prev_k, "κ restored after the scoped formulation")
+chk(feasB, "feasibility PRESERVED with the auto weight")
+chk(usageB <= usageA + 1e-6, "auto path REROUTES off R ($(round(usageB,digits=2)) <= $(round(usageA,digits=2)))")
+println("   deployed baseline: R-edge-usage=$(round(usageA,digits=2))  makespan=$(round(msA,digits=2))")
+println("   deployed + auto:   R-edge-usage=$(round(usageB,digits=2))  makespan=$(round(msB,digits=2))  w_eff=$(round(wB,sigdigits=3))")
+CB.clear_agent_bias!(); CB.AUTO_EFFICIENCY_KAPPA[] = nothing
+
 println("\n== RESULT: $(PASS[]) passed, $(FAILN[]) failed ==")
 exit(FAILN[] == 0 ? 0 : 1)   # 실패 0 이면 종료코드 0(성공), 아니면 1(CI 가 실패로 인식)
 end

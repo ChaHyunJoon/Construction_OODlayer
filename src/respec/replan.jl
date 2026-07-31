@@ -57,6 +57,20 @@ poll_ood!(q::OODQueue) = isempty(q.pending) ? nothing : popfirst!(q.pending)
 # 내용물 접근은 `RESPEC_ENABLED[]`(대괄호)로 함. 즉 전역 on/off 플래그(처음엔 false=꺼짐).
 const RESPEC_ENABLED = Ref(false)
 
+"""
+κ for the DeprioritizeAgent re-solve: how much makespan magnitude the energy term is allowed to
+be worth (`w_eff = κ · speed_scale / efficiency_scale`, see AUTO_EFFICIENCY_KAPPA). κ→0 makes the
+bias inert again; κ≈0.25 lets energy decide among equal- and near-equal-makespan assignments
+without overturning a genuinely faster plan. Override with `RESPEC_DEPRIO_KAPPA`.
+"""
+# (한국어) Deprioritize 재풀이에서 에너지 항이 makespan 규모의 몇 배까지 값어치를 갖게 할지. 0 이면
+#   예전처럼 무효과, 0.25 면 makespan 이 (거의) 같은 배정들 사이에서만 에너지가 결정권을 갖는다.
+const DEPRIORITIZE_KAPPA = Ref(try
+        parse(Float64, get(ENV, "RESPEC_DEPRIO_KAPPA", "0.25"))
+    catch
+        0.25
+    end)
+
 # -----------------------------------------------------------------------------
 # PLUGGABLE PROPOSAL PRODUCER — the comparison seam.
 # `maybe_respecify!` normally GENERATES the proposal via the LLM (`llm_to_proposal`).
@@ -656,10 +670,32 @@ function maybe_respecify!(env, ood_queue;
             f = deprioritize_agent!(c.agent, c.factor)   # CLAMPED to [1, MAX_AGENT_COST_BIAS]  # 비용 배수를 [1,상한]으로 클램프해 등록
             @info "[RESPEC] deprioritize $(c.agent): edge-cost ×$(round(f, digits=2)) (soft, feasibility-preserving)"
         end
-        # bias 를 반영해 MILP 재구성(고정 시각 t0/tF 주입) 후 재풀이.
-        milp = formulate_milp(
-            SparseAdjacencyMILP(), env.sched, env.scene_tree;
-            optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
+        # The bias reaches the solver ONLY through the efficiency term, which the default weights
+        # (speed=1, efficiency=0) discard -- registering it and re-solving without this changed
+        # nothing at all (the re-solve just re-optimized the SAME makespan objective). Turn on a
+        # unit-matched weight for THIS formulation only and restore it immediately: the weight is
+        # baked into the model by get_objective_expr during formulate_milp, so optimize! below no
+        # longer reads it, and no other plan/replan in the run is affected. The battery SoC hook
+        # (EDGE_COST_MULTIPLIER, installed by enable_battery!) rides the same term, so the re-solve
+        # simultaneously prices EVERY robot by its charge -- work flows to the healthier ones.
+        # [한국어] 등록한 비용배율은 efficiency 항으로만 솔버에 도달하는데 기본 가중치가 0이라 버려졌다.
+        #   이 정식화 한 번에만 자동 환산 가중치를 켜고 곧바로 원복한다(가중치는 formulate_milp 안에서
+        #   목적식에 구워지므로 이후 optimize! 는 영향 없음). 같은 항에 배터리 SoC 배율도 실려 있어,
+        #   이 재풀이는 모든 로봇을 잔량으로 가격 매긴다 = 일이 잔량 많은 로봇으로 흐른다.
+        prev_kappa = AUTO_EFFICIENCY_KAPPA[]
+        AUTO_EFFICIENCY_KAPPA[] = DEPRIORITIZE_KAPPA[]
+        milp = try
+            formulate_milp(
+                SparseAdjacencyMILP(), env.sched, env.scene_tree;
+                optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
+        finally
+            AUTO_EFFICIENCY_KAPPA[] = prev_kappa         # 반드시 원복(예외가 나도)
+        end
+        if LAST_AUTO_EFFICIENCY_W[] > 0.0
+            @info "[RESPEC] deprioritize re-solve: energy term ON (auto w_eff=$(round(LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3)), κ=$(DEPRIORITIZE_KAPPA[]))"
+        else
+            @warn "[RESPEC] deprioritize re-solve: energy term NOT active -- the bias cannot steer this solve"
+        end
         optimize!(milp)
         if primal_status(milp) != MOI.FEASIBLE_POINT     # bias 는 실행가능성을 보존하는데도 불가능하면(무관한 이유) 방어적 폴백
             @warn "[RESPEC] deprioritize re-solve infeasible (unexpected; bias preserves feasibility) -> fallback"

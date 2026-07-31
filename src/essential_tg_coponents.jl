@@ -1278,6 +1278,38 @@ function set_planning_objective_weights!(; speed = 1.0, efficiency = 0.0, adapta
 end
 
 # -----------------------------------------------------------------------------
+# AUTO efficiency weight (re-spec scoped) -- the seam that lets per-robot ENERGY state
+# actually reach the solver.
+#
+# THE BUG THIS FIXES. The efficiency term carries the ONLY channel through which per-robot
+# energy state reaches the MILP: `edge_costs[(v,v2)] = edge_energy(dt) * edge_cost_multiplier(...)`
+# where the multiplier is `agent_cost_bias(owner) × battery SoC multiplier`. With the default
+# weights (speed=1, efficiency=0) `get_objective_expr` returns the pure makespan term and
+# DISCARDS edge_costs entirely. So a `DeprioritizeAgent` registered a bias nothing ever read,
+# and the SoC hook installed by `enable_battery!` priced edges nobody looked at -- the
+# energy-aware reassignment was inert in every run that never set the weight by hand.
+#
+# WHY NOT JUST SET A CONSTANT WEIGHT. The two terms have different units: speed_term ~ Σ terminal
+# completion times, eff_term ~ Σ selected edge energies. A fixed constant is either inert or it
+# overturns makespan. And enabling it globally changes the FIRST plan of every run, invalidating
+# recorded streams / oracle labels / the surrogate training set.
+#
+# THE SEAM. When `AUTO_EFFICIENCY_KAPPA[]` is set, the weight is derived PER FORMULATION as
+#     w_eff = κ · (speed scale) / (efficiency scale)
+# so the energy term is worth at most ~κ × the makespan magnitude: decisive among equal- and
+# near-equal-makespan assignments, unable to overturn a genuinely faster one. Default `nothing`
+# => the objective is byte-for-byte what it was. The DeprioritizeAgent branch of
+# `maybe_respecify!` sets it around ONE re-solve and restores it in a `finally`.
+# -----------------------------------------------------------------------------
+# (한국어) 에너지 항 가중치 자동 산출 스위치. 기본 가중치(efficiency=0)에서는 목적함수가 edge_costs 를
+#   통째로 버리기 때문에, DeprioritizeAgent 의 비용배율도 배터리 SoC 배율도 솔버에 전달된 적이 없었다.
+#   단위가 다른 두 항이라 상수 가중치는 무의미(무효과 또는 makespan 파괴) → 정식화할 때마다
+#   κ × (속도항 규모)/(에너지항 규모) 로 환산한다. 기본 nothing = 기존 목적함수 그대로.
+const AUTO_EFFICIENCY_KAPPA = Ref{Union{Nothing,Float64}}(nothing)
+"Efficiency weight the AUTO path derived at the last formulation (0.0 = auto path did not fire)."
+const LAST_AUTO_EFFICIENCY_W = Ref(0.0)
+
+# -----------------------------------------------------------------------------
 # Lightweight ENERGY model for the EFFICIENCY objective. Upgrades each edge's cost
 # from raw travel duration (distance proxy) to a tunable ENERGY:
 #     energy(edge) = pickup_overhead + dt_min·(idle_power + load_power·payload_mass)
@@ -1381,7 +1413,30 @@ function get_objective_expr(milp, f::SumOfMakeSpans, model, sched, tF; edge_cost
     # Multi-objective augmentation. Default weights (efficiency=0) return the speed
     # term unchanged, so existing behavior is byte-for-byte preserved.
     w = planning_objective_weights()   # 현재 다목적 가중치(speed/efficiency) 읽기
-    w.efficiency == 0.0 && return speed_term   # 효율 가중치가 0 이면 원래 목적 그대로 반환(동작 보존)
+    w_eff = w.efficiency
+    # AUTO (re-spec scoped): derive a UNIT-MATCHED weight so the energy channel is not discarded.
+    # Only fires when a caller opted in via AUTO_EFFICIENCY_KAPPA[] (see the DeprioritizeAgent
+    # branch of maybe_respecify!). speed scale = the schedule's current terminal completion times;
+    # efficiency scale = the total of the candidate edge energies THIS formulation priced (which
+    # already carry agent_cost_bias × SoC multiplier, so a biased robot's edges stand out against
+    # the normalized scale rather than being normalized away).
+    if w_eff == 0.0 && AUTO_EFFICIENCY_KAPPA[] !== nothing &&
+       edge_costs !== nothing && !isempty(edge_costs)
+        speed_scale = 0.0
+        # terminal_vtxs is a collection of project heads (each a collection of vertices); tolerate a
+        # flat vertex list too, so a scale computation can never throw inside a re-spec formulation.
+        for project_head in terminal_vtxs
+            for v in (project_head isa Integer ? (project_head,) : project_head)
+                speed_scale += get(sched.weights, v, 1.0) * abs(get_tF(sched, v))
+            end
+        end
+        eff_scale = sum(abs, values(edge_costs))
+        if isfinite(speed_scale) && speed_scale > 0.0 && isfinite(eff_scale) && eff_scale > 0.0
+            w_eff = AUTO_EFFICIENCY_KAPPA[] * speed_scale / eff_scale
+        end
+    end
+    LAST_AUTO_EFFICIENCY_W[] = (w_eff == w.efficiency ? 0.0 : w_eff)   # 로깅/테스트용 기록
+    w_eff == 0.0 && return speed_term   # 효율 가중치가 0 이면 원래 목적 그대로 반환(동작 보존)
     # ③ EFFICIENCY = energy / material handling distance: total transport cost of the
     #    CHOSEN assignment edges, Σ d(v,v2)·Xa[v,v2]. Linear over the assignment vars and
     #    ORTHOGONAL to makespan — parallelism cuts time without cutting distance, smarter
@@ -1395,7 +1450,7 @@ function get_objective_expr(milp, f::SumOfMakeSpans, model, sched, tF; edge_cost
     (edge_costs === nothing || isempty(edge_costs)) && return @expression(model, w.speed * speed_term)
     # ③ EFFICIENCY 항 = 선택된 배정 엣지들의 총 운반비용 Σ(비용 c · Xa). makespan 과 직교(병렬화로 시간은 줄어도 거리는 안 줄어듦).
     eff_term = @expression(model, sum(c * Xa[e[1], e[2]] for (e, c) in edge_costs))
-    return @expression(model, w.speed * speed_term + w.efficiency * eff_term)   # 최종 목적 = speed 항 + efficiency 항(가중합)
+    return @expression(model, w.speed * speed_term + w_eff * eff_term)   # 최종 목적 = speed 항 + efficiency 항(가중합)
 end
 
 
