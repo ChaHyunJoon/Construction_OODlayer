@@ -1,0 +1,48 @@
+# Python dependencies for the ANALYSIS / LLM environment.
+#
+# This is NOT the environment the simulator itself uses. Two are needed -- see
+# PYTHON_SETUP.md. In short:
+#
+#   this file  -> surrogate training, oracle analysis, drift/novelty work,
+#                 the DSPy decision service   (Python 3.10 here)
+#   separate   -> rvo2 only, bound to Julia through PyCall (Python 3.7 here)
+#
+# scikit-learn and pandas are pinned exactly because they decide the surrogate's
+# numbers: the deployed model is a RandomForest and its splits (and therefore
+# the reported decision regret) can move between minor releases. The rest are
+# floors, since they only affect plumbing.
+#
+# numpy is the one exception, and it is worth knowing why. The machine that
+# produced the 2026-07 results ran numpy 1.23.5 -- but dspy 3.2.1 declares
+# numpy>=1.26.0, so pip CANNOT resolve that combination. The two coexisted only
+# because they were installed at different times; `pip install -r` on a clean
+# machine would fail. The floor below is therefore the lowest numpy that
+# satisfies every declared constraint (scipy also caps it at <2.5).
+# To reproduce the original interpreter state exactly, see PYTHON_SETUP.md.
+
+# ---- surrogate + analysis (decides published numbers -> pinned) -------------
+scikit-learn==1.6.1
+pandas==2.2.3
+numpy>=1.26,<2.5            # see note above; results were recorded on 1.23.5
+
+# ---- analysis support ------------------------------------------------------
+scipy>=1.15.1
+matplotlib>=3.10.0
+python-pptx>=1.0.2          # make_evolution_deck.py (presentation build only)
+
+# ---- LLM decision service (src/respec/llm_service) -------------------------
+# Kept in sync with src/respec/llm_service/requirements.txt, which lists the
+# subset needed to run the service alone.
+dspy>=3.2.1
+openai>=2.48.0
+anthropic>=0.40
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+psutil>=6.1.1
+
+# ---- optional --------------------------------------------------------------
+# river: ADWIN drift detector. drift_detectors.py imports it LAZILY, so every
+# other detector (and the module itself) works without it. Install only to
+# reproduce the ADWIN comparison in compare_detectors.py.
+# river>=0.21
