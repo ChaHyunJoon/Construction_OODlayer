@@ -1,17 +1,24 @@
 # Python setup
 
-This repo needs **two separate Python environments**. They cannot be merged: the
-RVO2 collision-avoidance binding is a Cython extension built against Python 3.7,
-while the analysis stack needs a modern scikit-learn/pandas that no longer
-supports 3.7.
+Two things need Python: the **analysis stack** (surrogate training, oracle
+analysis, drift/novelty, the DSPy decision service) and the **`rvo2` collision
+-avoidance binding**, which Julia reaches through PyCall.
 
-| | purpose | Python | installed via |
-|---|---|---|---|
-| **analysis env** | surrogate training, oracle analysis, drift/novelty, DSPy decision service | 3.10 | `requirements.txt` |
-| **simulator env** | `rvo2` only — reached from Julia through PyCall | 3.7 | built from Python-RVO2 source |
+Whether that is one environment or two depends on the machine.
 
-On the machine these results were produced on, those were
-`…/venv/hjcrl` (3.10.11) and the conda env `lego_rvo2` (3.7.12).
+| | how it was set up on the original Windows machine | what to do on a fresh machine |
+|---|---|---|
+| analysis | `…/venv/hjcrl`, Python 3.10.11 | one env from `requirements.txt` |
+| `rvo2` | conda `lego_rvo2`, Python **3.7.12** | **same env** — see below |
+
+**The 3.7 was incidental, not a requirement.** Python-RVO2 declares no
+`python_requires`; its classifiers list 2.7/3.4 and the README says it was tested
+on 2.7/3.4/3.6. That environment simply happened to be old. On a new machine,
+build `rvo2` into the analysis environment and keep **one** environment.
+
+The one hard rule is that PyCall's interpreter must be the one `rvo2` is
+installed into, and it must match Julia's architecture (arm64 Julia needs arm64
+Python — not an x86 build under Rosetta).
 
 ---
 
@@ -66,7 +73,46 @@ pip install -r requirements.txt
 pip install --no-deps --force-reinstall numpy==1.23.5   # reproduces the recorded state
 ```
 
-## 2. Simulator environment (rvo2 + PyCall)
+## 1b. macOS / Apple Silicon (Mac Studio) — single environment
+
+Python 3.7 is not available for arm64 (conda-forge's osx-arm64 starts at 3.8),
+so the original two-environment split cannot be reproduced here — and does not
+need to be. Use **Python 3.11**: it is the newest version `Cython 0.29.x`
+supports, and `Cython 3.x` breaks this binding's old-style sources.
+scikit-learn 1.6, pandas 2.2 and numpy ≥1.26 all support 3.11, so one
+environment covers everything.
+
+```bash
+brew install cmake juliaup            # cmake is required to build RVO2
+juliaup add lts
+
+# arm64 Python 3.11 (miniforge, python.org universal2 or brew all work)
+conda create -n cbots python=3.11 -y && conda activate cbots
+python -c "import platform; print(platform.machine())"     # must print arm64
+
+pip install -r requirements.txt
+pip install "Cython<3"                # 0.29.x — Cython 3 breaks the RVO2 sources
+
+git clone https://github.com/sybrenstuvel/Python-RVO2 /tmp/Python-RVO2
+cd /tmp/Python-RVO2 && python setup.py build && python setup.py install && cd -
+python -c "import rvo2; print('rvo2 OK')"
+```
+
+Then bind PyCall to that interpreter, from the repo root:
+
+```bash
+julia +lts --project=. -e 'ENV["PYTHON"]=strip(read(`which python`,String)); using Pkg; Pkg.build("PyCall")'
+julia +lts --project=. -e 'using PyCall; pyimport("rvo2"); println("PyCall+rvo2 OK")'
+```
+
+> Not yet verified on Apple Silicon — the build has only been run on Windows.
+> If `setup.py build` fails, the likely causes in order are: `cmake` missing,
+> Cython 3 installed instead of 0.29.x, or an architecture mismatch between the
+> Python and the compiler. Dropping to Python 3.10 or 3.9 is the next thing to
+> try; falling back to a separate 3.7 environment is a last resort and would
+> require an x86 Julia under Rosetta to match it.
+
+## 2. Simulator environment (rvo2 + PyCall) — Windows / two-environment case
 
 `rvo2` is not on PyPI. It is built from
 [Python-RVO2](https://github.com/sybrenstuvel/Python-RVO2), which is **not

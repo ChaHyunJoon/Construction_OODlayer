@@ -37,10 +37,21 @@
 module Setup
 using Pkg
 
-# machine-specific python for PyCall/rvo2; overridable via ENV["CB_PYTHON"].
-# [KO] PyCall/rvo2 가 쓸 python.exe 경로를 돌려줌. 환경변수 CB_PYTHON 이 있으면 그걸,
-#      없으면 이 컴퓨터의 conda 환경(lego_rvo2) 기본 경로를 사용.
-_python() = get(ENV, "CB_PYTHON", raw"C:\Users\chahj\anaconda3\envs\lego_rvo2\python.exe")
+# Python interpreter PyCall/rvo2 should use. ENV["CB_PYTHON"] wins; otherwise fall back to the
+# interpreter PyCall is ALREADY bound to, which is the only portable default -- the previous one
+# was this machine's Windows conda path and was meaningless on any other host (macOS/Linux, or a
+# different Windows user). If PyCall is not installed yet, `python` from PATH is the last resort.
+# [KO] PyCall/rvo2 가 쓸 파이썬 경로. CB_PYTHON 이 있으면 그걸, 없으면 PyCall 이 이미 묶여 있는
+#      인터프리터를 쓴다(예전 기본값은 이 컴퓨터의 Windows conda 절대경로라 다른 기계에선 무의미했다).
+function _python()
+    haskey(ENV, "CB_PYTHON") && return ENV["CB_PYTHON"]
+    return try
+        @eval Main import PyCall
+        Base.invokelatest(() -> getfield(Main, :PyCall).python)
+    catch
+        Sys.iswindows() ? "python.exe" : "python3"
+    end
+end
 
 # instantiate -- resolve + install the project's dependencies.
 # [KO] 프로젝트의 의존 패키지들을 (Project.toml/Manifest.toml 기준으로) 해석·설치만 함.
