@@ -1,423 +1,229 @@
-# Status — mid-build Replace completion + deck demos
+# STATUS — 현재 상태 · 재개 지점 (2026-08-06)
 
-> Provenance: consolidated from `HANDOFF_2026-07-14.md` (2026-07-14) + `PATH_B_COMPLETE_2026-07-15.md` (2026-07-15).
-
-This document consolidates `HANDOFF_2026-07-14.md` and `PATH_B_COMPLETE_2026-07-15.md` into one current status.
-It is current as of **2026-07-15**. The 07-15 result (mid-build fault→Replace now COMPLETES) supersedes the
-07-14 handoff's core open goal; the still-relevant handoff context (remaining sub-tasks, how-to, gotchas) is
-retained below, with resolved items marked `✅ DONE (see Current state)`.
+> 개념·확정결과·함정 목록은 `README.md`. 이 파일은 **지금 어디까지 왔고 다음에 뭘 하는가**만 적는다.
+> 통합 2026-08-06: `NIGHT_2026-08-04.md` · `PLAN_COMPLETION.md` · `MORNING_2026-08-03.md` ·
+> `PLAN_0804.md` · `NIGHT_2026-08-02.md` 의 상태 부분을 여기로 모았다.
 
 ---
 
-## Current state (2026-07-15)
+## 0. 한 눈에
 
-**Result:** the mid-build robot-breakdown Replace, which every prior session left INCOMPLETE (~172–249
-/305) and the memory `constructionbots-replace-completion-limit` had declared a *structural* hard
-limit, now **COMPLETES the tractor build** — verified **6/6 across 3 seeds × 2 repeats** (closed
-275–280, BoundsError=0). The 3-OOD surrogate stream (fault + battery + zone) also completes end-to-end.
-This **overturns the earlier "structural hard limit"** conclusion.
-
-### What actually fixed it — the pivot
-
-The wedge was chased for many sessions as a *distributed-replace endgame* problem (cyclic OpenBuildStep
-dependencies from splitting the faulted robot's tasks across several spares). This session:
-
-1. **Diagnosed it precisely** (B0–B2, engine changes retained as a safety net):
-   - `is_goal(TransportUnitGo)` for a stuck carrier failed on `within_goal=true` but
-     `next DepositCargo blocked by an OPEN OpenBuildStep` → a **schedule** block, not spatial.
-   - Made the carrier rescue *stick*: teleport + pin RVO speed 0 + **force-close via
-     `update_planning_cache!(env,0.0)`** (before RVO pushes it back). This closed the Object-17
-     keystone (2 carriers force-closed, BoundsError=0) and advanced 200→210 — but a **second-order
-     cyclic wedge** (AssemblyID-7 deposit blocked by an OPEN build step, bots double-owing interlocking
-     chains) remained. Distributed replace inherently creates these interlocks.
-
-2. **Pivoted to the robust enactment (B4).** The engine already had an **identity-preserving
-   scene-tree HOT-SWAP** (`hot_swap_robot!`, `HOT_SWAP_REPLACE` flag, 21/21 unit tests) that keeps the
-   faulted robot's `RobotID` and swaps only its physical body from the depot. **No schedule re-stamp →
-   the cyclic-OpenBuildStep wedge is structurally impossible** (replan.jl:370 says exactly this). It was
-   built earlier but left OFF; the oracle and demos used distributed replace.
-
-   Enacting `ReplaceAgent` via hot-swap makes Replace complete cleanly. A mid-carry victim is healed in
-   place (never disbanded), so no `has_edge` crash.
-
-### Changes made this session (ConstructionBots.jl, uncommitted)
-
-- `src/respec/replace_robot.jl` — `force_advance_stuck_carrier!` now **force-closes** a pinned at-goal
-  carrier (teleport → RVO pin speed 0 → `update_planning_cache!(env,0.0)`), iterates ALL stuck carriers,
-  returns `:carrier_closed` on real progress; enhanced `_carrier_goal_diag` (walks the OPEN-ancestor
-  chain: ACTIVE-wait vs OPEN-cycle). [B1]
-- `src/respec/replace_robot.jl` — `recover_stalled_teams!` resets `SNAP_COUNT` only on `:carrier_closed`
-  (kills the reset-livelock). [B2]
-- `src/respec/replan.jl` — reform-recovery path admits `:carrier_closed`/`:carrier_advanced` and
-  re-derives the frontier (`reset_cache_resume!`). [B1/B2]
-- `tools/demo_respec_replace_anim.jl` — `HOT_SWAP` env hook; `NOPROG` env knob (was hardcoded 30000).
-- `tools/demo_surrogate_stream_anim.jl` — `HOT_SWAP` hook (default **ON**); fault event switched to
-  `clear=false` so the faulted node survives for hot-swap identity preservation.
-- `tools/render_deck_videos.sh` — V4 line passes `HOT_SWAP=1`, `V4_SEED` override (default 3).
-- `tools/verify_fault_completion.sh` — B5 multi-seed completion harness (PASS = all COMPLETE, BoundsError=0,
-  hot-swap admitted).
-
-wm4spacecraft_manufacturing (uncommitted):
-- `oracle/gen_oracle_dataset.jl` — `DS_HOTSWAP` (or `HOT_SWAP`) enacts Replace via hot-swap so fault
-  labels are measured in the SAME completing world the demo runs.
-- `oracle/run_hotswap_relabel.sh` — B6 scoped driver: regenerate only the tags whose label changes under
-  hot-swap (fault_sp3/sp0/faultidle + battery0.05/0.12); mild-battery/zone reused.
-
-### Evidence
-
-- **B5 completion (verify_fault_completion.sh, HOT_SWAP=1):**
-  ```
-  seed rep  outcome    closed  bounderr  hotswap
-   1   1    COMPLETE     280      0        1
-   1   2    COMPLETE     276      0        1
-   2   1    COMPLETE     280      0        1
-   2   2    COMPLETE     275      0        1
-   3   1    COMPLETE     280      0        1
-   3   2    COMPLETE     275      0        1
-   PASS 6/6
-  ```
-- **B7 3-OOD stream (seed 3):** stream `battery@54 zone@105 fault@139 battery@189` → PROJECT COMPLETE
-  (284), 0 planner calls/decision; zone→ForbidZone, fault→Replace→hot-swap(ADMITTED), mild battery→NOOP.
-
-### Why the surrogate story is unchanged (decision-level)
-
-The oracle already labels consequential faults `Replace` (Replace closed more than NOOP even when it
-wedged). Hot-swap turns that Replace from INCOMPLETE(~210) into COMPLETE(~280): the **decision is the
-same**, the **margin is larger and now feasibility-dominant**. So the 3-OOD surrogate demo works with the
-existing surrogate; regenerating labels (B6) only makes the recorded labels honest to the completing world.
-
-### B6 label validation (DS_HOTSWAP=1, seeds 1&2) — the labels are now honest
-
-Per-macro `complete/closed` in the completing world (C = PROJECT COMPLETE):
-```
-fault_sp3    best=Replace | NOOP:x154 Replace:C291 Depri:x154 Forbid:x154 Reform:x154   <- Replace now COMPLETES (was ~172-210 INCOMPLETE)
-fault_sp0    best=Replace | NOOP:x142 Replace:x228 ...   (no spare -> Replace can't fully help; still best, still incomplete)
-faultidle    best=NOOP    | all macros C291            (harmless victim -> restraint; Replace wastes a spare)
-battery0.05  best=Replace | NOOP:x154 Replace:C291 ...  (deep battery -> Replace COMPLETES)
-battery0.12  best=Replace | NOOP:x154 Replace:C291 ...
-```
-So the completing world yields the correct, feasibility-dominant decision structure: consequential
-fault / deep battery -> Replace (complete), harmless fault -> NOOP (restraint), no-spare fault ->
-Replace-but-incomplete. On the fault kind the retrained surrogate scores **regret 0.000, top-1 100%**.
-
-#### Consistent single-world surrogate (deployed) — `surrogate_hotswap.json`
-
-A naive merge of the hot-swap fault/deep-battery rows with OLD-world mild-battery/zone rows gave a weak
-aggregate (Frankenstein of two worlds). Fixed by regenerating **ALL tags under hot-swap** (seeds 1&2,
-`run_hotswap_relabel.sh` + `run_graded.sh` fill-in; mild-battery/zone complete fast, no wedge) →
-`oracle/out/graded_hs_all.jsonl` (20 instances, 100 rows, single world).
-
-Retrained cost-aware forest at **lambda=15** (the cost weight that keeps the SoC ladder sharp now that
-hot-swap makes even a mild-battery Replace *complete*, so only the spare-cost separates it from NOOP):
-- **LOO decision-regret 0.100**, fault regret **0.000 (top-1 100%)**, 0 catastrophic.
-- Forest per-kind choices show the intended structure: battery → {NOOP×5, Replace×5} (**SoC ladder
-  intact**), fault → {Replace×4, NOOP×2}, zone → {ForbidZone×2, NOOP×2}.
-- Beats the strong state-blind `always_per_kind` by **+0.636** (paired-bootstrap significant).
-
-Deployed to the demo via `SURROGATE=surrogate_hotswap.json`. Smoke (seed 5) confirms the clean story in
-one stream: **fault→Replace(hot-swap), zone→ForbidZone, battery SoC 0.52→NOOP, SoC 0.02→Replace** — the
-SoC-ladder flip live — all with 0 planner calls, PROJECT COMPLETE.
-
-#### V4 render settings
-
-Re-rendered `results/deck/V4_surrogate_stream.html` with **OOD_SEED=5**, **ANIM_FPS=60** (matches the
-V1/V2 deck clips: their 868/1716 keyframes → ~15 s / ~29 s at 60 fps; V4's ~1669 → ~28 s) and the
-hot-swap surrogate. `render_deck_videos.sh` V4 line now defaults ANIM_FPS=60 + SURROGATE=hotswap.
-
-### Battery HUD consistency fix (demo integrity)
-
-A deep-battery OOD (e.g. "R15 SoC 0.02 → Replace") was invisible in the live SoC HUD: the injection
-drops the robot to 0.02, but the chosen Replace hot-swap calls `_reset_robot_health!` which sets
-`fleet.soc = 1.0` within the SAME step, and the HUD snapshots `fleet.soc` once per step (after the
-reset) — so 0.02 never lands in a frame, and the target (R13–R22) is scrolled below the visible R1–R12.
-The bars then only ever showed the mild-battery/NOOP'd robots (~50%), contradicting the log.
-
-Demo-only fix (no engine change) in `demo_surrogate_stream_anim.jl`:
-- `BATT_CRIT` records (robot, post-drop SoC, frame) at each battery injection; before building the HUD,
-  the critical SoC is re-injected into `SOC_HISTORY` for a short HOLD (~5% of frames) so the bar visibly
-  slams to red before the replacement refills it.
-- `_battery_live` now lists any robot that hit ≤0.25 anywhere FIRST, so the deep-battery target is
-  visible without scrolling the 22-robot panel.
+| 작업 흐름 | 상태 | 막힌 것 / 다음 한 수 |
+|---|---|---|
+| 구역(zone) 결정 | STEP 1~11 **구현·검증 완료** | 인과 규칙이 **1/2** — 개입의 파괴력을 규칙에 넣어야 함 |
+| battery / fault 라벨 | 피커·심각도 사다리 **재설계 완료** | 조밀한 발화점 격자 라벨링, μ-키용 makespan 헤드 |
+| λ → μ 전환 | **결정 완료, opt-in 구현 완료** | 배포 적용은 makespan 예측 헤드 대기 |
+| 라우터 / novelty | battery FAMILIAR **PASS** | surrogate 재학습 후 "보낸 뒤 실제로 좋아지는가" 미측정 |
+| 무작위 OOD 스트림 평가 | 하니스 완성, **스모크 1판** | `DEMO_POLICY=noop` 이 안 먹는 버그 |
+| 데이터 재생성 | `lad_*` 는 수정 후 데이터 | `hz_*`·`rb_*`·`openworld` 는 shim 버그 시기 |
+| 덱 데모 영상 | V1·V2·V4 완료 | V3(RL) 미렌더 |
 
 ---
 
-## Remaining / how to resume
+## 1. 구역(zone) 결정 — STEP 1~11
 
-### Still-open refinement (from PATH_B_COMPLETE, not blocking)
+**완료.** 전문은 `ZONE_REDESIGN_STEP1_7_2026-08-05.md`(STEP 8~11 포함).
 
-- **B6:** run `DS_HOTSWAP=1 bash oracle/run_hotswap_relabel.sh <seed> oracle/out/graded_hs`, merge with the
-  existing mild-battery/zone rows, `python export_surrogate.py … --cost-aware`, `e1_analyze.py … --cost-aware`.
-  Expected: fault + deep-battery Replace rows flip to COMPLETE; may sharpen the battery decision (the
-  smoke's battery@54→ReformTeam blemish).
-- Optional: re-render V4 after B6 for the cleanest decision narrative.
+- STEP 1~3 배선(위반 술어 계산기 · 최소수복 규칙 · 원시값 관측 어휘)은 전부 작동하고 단위검사 GREEN
+  (`zone_diagnosis` 42/42 · `zone_corridor` 25/25 · `test_policy_zone` 19/19 · `test_router` 8/8).
+- STEP 6 이 그 배선으로 만든 첫 측정이 **STEP 2 규칙을 반증**했다 — `H(best|zone)=0`,
+  8/8 전부 NOOP 최선. 원인은 **덮였다(coverage) ≠ 막혔다(blockage)**.
+- STEP 8 이 그 인과를 코드로 특정했다: 구역은 `enforce_restriction_zone_clearance!` 에서
+  **RVO 에이전트만** 밀어내는데, `root_deposit_goals` 가 세던 목표는 `LiftIntoPlace`(화물 변환을 직접
+  적분, RVO 경유 없음)였다. 구역이 막을 수 있는 것은 `RobotGo`/`TransportUnitGo` 목표뿐이다.
+- STEP 10 이 **같은 kind 안에서 정답이 뒤집히는 두 사건**을 처음 만들었다(복구 사다리 ON, 전 팔 동일):
 
-### The goal (unchanged)
+  | 가족 | 진단 | NOOP | RelocateBuild | 최선 |
+  |---|---|---|---|---|
+  | blocking (nav 목표 위) | root 0/8 · **nav_blocked 3** | stalled 254 | **complete 279** | RelocateBuild |
+  | core zone (root 목표) | root **8**/8 · nav_blocked 1 | stalled 232 | stalled 197 | NOOP |
 
-Four demo clips for `wm4spacecraft_manufacturing/ConstructionBots_evolution.pptx`
-(plan in `ConstructionBots.jl/tools/make_evolution_deck.py`, "VIDEO PLAN"):
-- V1 · baseline healthy build — `tools/demo_wholebuild_anim.jl` (15 s)
-- V2 · LLM repairs a breakdown — `tools/demo_respec_replace_anim.jl` (30 s)
-- V3 · RL on the same fault — `tools/demo_rl_replace_anim.jl` (20 s)
-- V4 · **HEADLINE** surrogate scoring 5 macros over an OOD stream — `tools/demo_surrogate_stream_anim.jl` (45–60 s)
+  `H(best|zone) = 1.000 bits` · 동점률 0%.
+- STEP 11 이 팀 슬롯 술어의 **인과**를 확인했다(런 내 반전: 구역 ON 1200스텝 미형성 → OFF 5스텝 만에 결합).
 
-All four write `results/tractor/greedy_RVO_Dispersion_TangentBug/visualization.html` (they overwrite
-each other — `tools/render_deck_videos.sh` copies each to `results/deck/V<n>_<name>.html`). User then
-screen-records each in a browser → mp4 → Insert ▸ Video into the deck. Only that last step is manual.
+### 남은 문제 — 인과 규칙이 1/2 이다
 
-### Deck demo status
+| 사건 | 실측 최선 | 커버리지 규칙 | 인과 규칙 |
+|---|---|---|---|
+| blocking (root 0, 막힘 3) | RelocateBuild | `:noop` ✗ | `:relocate_build` ✓ |
+| core zone (root 8/8, 막힘 1) | NOOP | `:relocate_build` ✗ | `:relocate_build` ✗ |
 
-- **V1** renders + completes (`results/deck/V1_baseline_build.html`). ✅ done during 07-14 session.
-- **V2** — during 07-14, because no robot-breakdown fault target both fired AND completed, V2 was
-  switched to the LLM ZONE respec demo (`tools/demo_respec_forbidzone_anim.jl`) per the FALLBACK below —
-  zone OOD → mock LLM → `ForbidZone` → restage 7/7 → whole-build translate Δ=[10.4,2.79] → **PROJECT
-  COMPLETE**, RESPEC panel embedded (`results/deck/V2_llm_zone_respec.html`). NOTE (2026-07-15): the
-  robot-breakdown Replace clip is **no longer blocked** — hot-swap makes it complete (see Current state);
-  the V2 substitution can be revisited if the breakdown clip is now preferred.
-- **V3** · RL on the same fault — `tools/demo_rl_replace_anim.jl` (20 s) — still to render.
-- **V4** · surrogate stream — ✅ DONE (see Current state; re-rendered with OOD_SEED=5, ANIM_FPS=60,
-  hot-swap surrogate → `results/deck/V4_surrogate_stream.html`).
+> **막힘 > 0 은 개입의 필요조건이지 충분조건이 아니다.** 수복 자체의 파괴력이 함께 들어가야 한다.
 
-### The core completion goal — ✅ DONE (see Current state)
+그래서 `ZONE_CAUSAL_RULE` 은 **계속 opt-in(기본 OFF)** 이다. 1/2 짜리 규칙을 기본으로 켜는 것은 정직하지 않다.
 
-The 07-14 handoff's central open task was: *make a mid-build robot breakdown (Replace) actually COMPLETE
-the tractor build, regenerate the oracle labels in that completing world, then render the four
-evolution-deck demo videos.* The demo the user watched builds a tractor but ended INCOMPLETE (~184 s,
-~200/305 nodes) after a robot breakdown; the decision (Replace) is correct; the build did not finish.
-**This is now resolved via hot-swap enactment — ✅ DONE (see Current state).** The material below is
-retained for context on what was tried and the traps encountered.
+### 다음 (우선순위)
 
-### CONFIRMED (07-14 facts, verified by runs)
+1. **개입의 비용을 규칙에 넣기.** 임계값 튜닝이 아니라 두 양의 비교다 —
+   (a) 막힌 노드들이 잠그는 **하류 작업량**, (b) `translate_whole_build!` 가 흩뜨리는 **진행 중 작업량**
+   ((b)는 이미 측정 가능: cov 가족 232 → 197 = −35).
+2. **다중 구역 주입기.** `:disconnected`(통로 봉쇄)는 구역이 하나면 무한 평면에서 원리적으로 안 생긴다.
+   고리형(≥3개) 주입을 만들어야 그 가지가 실측에서 처음 발화하고 `:line_stop` 게이트도 의미를 갖는다.
+3. **표본 확대** — 지금 n=2 사건, seed 1, 발화점 1(closed=58).
+4. **라벨·정책 경로에 blockage 원시값 싣기** (`gen_oracle_dataset.jl::capture_features` /
+   `policy.jl::ood_features`) — STEP 3 과 같은 **opt-in 열**로.
 
-1. **A healthy (no-OOD) build COMPLETES**: `PROJECT COMPLETE`, 287/313 closed, seed 1, reform=120,
-   NSPARE=3. So the environment CAN finish; incompletion is caused by the fault response, not the twin.
-   (313 is total nodes; a full build closes ~287–291. "Complete" = the flag, not 313.)
+### 데모 쪽 확정 사항
 
-2. **The LLM Replace demo COMPLETES**: `tools/demo_respec_replace_anim.jl` → `PROJECT COMPLETE`, 275
-   closed, with `CARRIER_RESCUE=1`. This is the reference "Replace that finishes."
-   (Caveat found later 07-14: does NOT reliably reproduce — see UPDATE below.)
+`DEMO_ZONE_MODE` 기본값 = **`blocking`**. 출하 기본값으로 **순차** 실행한 최종 검증:
 
-3. **BUG #1 (FIXED) — RVO registration crash.** A transport unit formed by a respec Replace splice can
-   reach `DepositCargo` without being registered in the RVO sim. Then
-   `apply_cmd!(DepositCargo)` → `rvo_set_agent_max_speed!` → `rvo_get_agent_idx` throws
-   `BoundsError[-1]` and **aborts the whole simulation** — this is what froze the build at ~240/313.
-   Fix in `src/route_planning.jl::apply_cmd!(DepositCargo)`: if `use_rvo() && !has_vertex(rvo_global_id_map(), node_id(agent))`
-   call `update_rvo_sim!(env)`; if still unregistered, skip the RVO speed-set instead of crashing.
-   Verified: `BoundsError=0` everywhere after; LLM demo still completes (no regression).
+| 케이스 | zone 결정 | 결과 |
+|---|---|---|
+| `zone` | rule `NOOP` / surrogate `NOOP` / **LLM `RelocateBuild`** | COMPLETE 275 |
+| `fault_zone` | 〃 + `Replace` | COMPLETE 287 |
+| `battery_zone` | 〃 + `Replace` | COMPLETE 271 |
 
-4. **BUG #2 (FIXED) — oracle used reform interval 400.** The completing demos use `set_reform_interval!(120)`
-   (since 2026-07-09); the oracle and the surrogate stream demo were still on 400, so the background
-   team/nav recovery reacted too slowly and the endgame wedged. Unified to 120:
-   - `oracle/gen_oracle_dataset.jl`: `set_reform_interval!(DS_REFORM, default 120)`
-   - `tools/demo_surrogate_stream_anim.jl`: `set_reform_interval!(REFORM_INTERVAL, default 120)`
-   This lifted oracle Replace from 172 → 200/240. Necessary but NOT sufficient.
+**구역이 들어가는 모든 OOD 가 완주하고, 세 판 모두 규칙은 절제 / LLM 은 개입으로 갈린다.**
 
-5. **ROOT CAUSE of the remaining gap (07-14 identified; superseded by hot-swap fix) — fault TARGET.**
-   The LLM demo's own code comment (`tools/demo_respec_replace_anim.jl`, `_single_solo_fault_target`)
-   says completion is GUARANTEED only when the faulted robot has EXACTLY ONE remaining solo transport
-   task: the spare then inherits a single clean task, `_serialize_spare_frontiers!` adds ZERO
-   serialization gates, and the documented multi-task cyclic-cargo wedge cannot arise. The oracle used
-   `pick_solo_fault_target` (solo TEAM, any number of tasks) → a multi-task victim → spare
-   over-subscribed → Replace stalls at ~191–200/305.
-   **BUT**: the stricter `single_solo_fault_target` finds NO candidate at the fire points (12,20,30,45,60
-   OR 40..150) → `fired=false` → every arm equals the no-fault control (291, no fault happened).
-   So the completing target either doesn't exist at those closed-counts, or the picker/fire-timing is wrong.
-   (This whole line of attack was ultimately bypassed by the hot-swap enactment — see Current state.)
+> ⚠ **컴파일된 DSPy 프로그램은 zone 을 못 읽는다.** `dspy_real_program_gpt4o.json` 은 MIPROv2 가
+> **배터리 전용 데이터셋**에서 뽑은 것이라 zone·기하·RelocateBuild 어휘가 통째로 없고 demo 4개도 전부
+> battery 다. 그 프로그램은 `SEED_DOC` 을 **대체**하므로 zone 데모는 **seed 프로그램으로 돌려야 한다**.
 
-### The key UNRESOLVED question (07-14) — ✅ resolved via hot-swap
+---
 
-The LLM demo fires at the SAME closed-counts `(12,20,30,45,60)` and completes — but it uses
-`_solo_fault_target` (solo team, lowest id), NOT the stricter single-task one. So **why does the LLM
-demo complete with a solo-team fault while the oracle stalls with what should be the same fault?**
+## 2. battery / fault — 표적·심각도 재설계
 
-Leading hypotheses (07-14, tested in this order — each was cheap):
-- **(a) It's the distributed replace, not the picker.** The LLM demo comment says the spare
-  over-subscription is "now handled by the distributed replace (each task → its own nearest spare)".
-  Confirm the oracle's `action_to_proposal(ctx,1)` → `ReplaceAgent` actually routes through
-  `replace_robot_distributed!` and not the single-spare splice. Grep a verbose (`DS_LOG=info`) Replace
-  run for "distributed" / "took over" / nearest-pool evidence. If distributed replace is NOT firing in
-  the oracle, THAT is the bug — align the enactment, don't touch the picker.
-- **(b) NSPARE.** LLM demo default NSPARE=2 (8 spares); oracle DS_SPARES=3 (12). More spares →
-  more endgame congestion. Tested NSPARE=2 single-fire: still 191/305, so probably not the whole story,
-  but retest once (a) is aligned.
-- **(c) sim-step vs closed-count timing.** The LLM demo's default is `OOD_STEP=20` (a raw sim step,
-  very early) when `FAULT_CLOSED=0`; the oracle fires on closed-count. Early sim-step = simpler robot
-  state = single-task victim exists. If (a) and (b) fail, make the oracle fire at an early sim-step.
+**완료.** 전문은 `BATTERY_FAULT_REDESIGN_2026-08-05.md`, 선행 작업은 `FIRE_TIME_RELABEL_2026-08-05.md`.
 
-A scan script to list, per closed-count, how many robots are single-solo vs solo-team vs any-pending
-was attempted (`/tmp/scan_targets.jl`) but produced no output (needs the navigator include + likely a
-world-age fix). Re-do it — it directly answers whether a completing target exists and when.
-(Answered in the UPDATE below; ultimately made moot by the hot-swap pivot.)
+- **표적 피커 고침**: 옛 피커는 진행도 **0.51 부터 100% 주차된 예비**를 쐈다(측정). 새 피커는
+  "안 닫힌 `FormTransportUnit` 팀의 멤버". → `FIRE_TIME_RELABEL` §3-a 의 "후반엔 흡수" 결론 **철회**.
+  재라벨 결과 **NOOP 은 6개 발화점 전부에서 미완주**.
+- **심각도 사다리 재설계**: `0.02 / 0.3 / 0.5` + 엔진에 **감속(derate) 구간** 신설 + 심각도를
+  **결과 SoC 절대값**으로 정의(`DS_BSOC_MODE=abs`). 옛 `0.05/0.12` 는 둘 다 정지 임계(0.15) 아래라
+  **거동이 동일**했다. 세 칸이 이제 각각 다른 기준으로 갈린다:
 
-### UPDATE 2026-07-14 (evening) — target-availability scan DONE; hypothesis (a) ANSWERED
+  | 칸 | 갈리는 기준 |
+  |---|---|
+  | 0.02 | **완주 여부**(feasibility) |
+  | 0.30 | **시간**(완주는 하되 손해) — 단 섭동 바닥(0.775 s)을 확실히 넘는 건 6개 중 1개뿐 |
+  | 0.50 | 사실상 무영향 = **경험적 귀무**(이 칸이 섭동 바닥을 측정해 준다) |
 
-Ran the scan (as `FAULT_DIAG` instrumentation inside `tools/demo_respec_replace_anim.jl::ood_action!`,
-env `FAULT_DIAG=1`, fast `SAVE_ANIM=0`). Findings, all reproduced across ≥3 runs (seed = demo default):
+- **fault 발화점**: `pick_hotswap_fault_target` 신설로 후보가 진행도 전 구간에서 10개(옛 피커는 58 이후 0).
+  6개 발화점 전부에서 `Replace(pending>0) / NOOP(pending=0)` 로 갈리고 **seed 2 로 재현**됐다.
 
-1. **`_solo_fault_target` (solo team + pending assignment) finds NO candidate for the whole build.**
-   At closed 54→77 there ARE pending transporters (10→1) but EVERY one is a multi-robot TEAM
-   (`soloTarget=none` at every probe). After closed=80 `withPending=0`. So the shipped demo, run fresh,
-   **silently no-fires** → a clean ~283 baseline with an EMPTY RESPEC panel (`_PIPE` empty). The
-   handoff's "LLM demo completes at 275 WITH a fault" does NOT reproduce on this seed — it was a lucky
-   RVO draw where a solo-with-pending robot briefly existed at a closed-count trigger.
+### 다음
 
-2. **Solo transport exists but is RARE + TRANSIENT.** A new probe counting active solo `FormTransportUnit`
-   teams (a robot carrying ONE part alone, regardless of pending) shows `soloFTU=1` for a SINGLE probe
-   window (~closed 67, e.g. `DeliveryBot(1)`), zero otherwise. The ~45-node first-iteration batch closes
-   before any closed-count trigger can see the early solo transports, so a closed-count ladder can never
-   catch them. New picker `_solo_ftu_fault_target` + a per-step early trigger ladder DO catch it.
+1. **조밀한 발화점 격자 라벨링** — fault/faultidle 11점, battery 10점(150·160·170 추가). battery 격자가
+   140~180 에 몰린 이유는 정답이 뒤집히는 경계가 progress 0.45~0.58 사이인데 기존 6점 격자에 그 구간
+   점이 **하나도 없기** 때문이다.
+2. **남은 오차 22/108 의 성질 재측정** — 지금은 오답의 실제 손해가 전부 ≤3.0 노드(중앙값 0.9)이고
+   108 중 61 개가 near-tie 다. 유력 가설은 **해상도 문제**(값 회귀의 잡음 > 결정 마진) →
+   레버는 decision-focused 목적함수(SPO+ 계열). 조밀 격자가 쌓인 뒤 "해상도인가 데이터 공백이었나"가 갈린다.
+3. **데모 세계 ≠ 라벨 세계 정렬** (의도적 보류). `tools/demos.jl:2793` 정지 임계 0.02 vs 라벨러 0.15,
+   데모는 감속 미사용. 덱 영상을 다시 렌더링할 때 맞춘다 — **녹화 산출물을 조용히 바꾸지 않으려고** 뒀다.
 
-3. **Hypothesis (a) is CONFIRMED but is NOT the bug.** Faulting via `_solo_ftu_fault_target` (robot R6,
-   which had 3 remaining tasks) fires cleanly and the log shows distributed replace already working:
-   `[REPLACE-DIST] distributed 3 task(s) across 3 nearest spare(s) (1 each); parked-faulted 4. No
-   over-subscription.` → `ADMITTED`. **Yet the build STILL wedges at 249/305** with **514 `ReformTeam`
-   deadlock/recovery cycles** (mock LLM admits ReformTeam over and over; `force_snapped` /
-   `carrier_advanced` fire but never fully unwedge). So the remaining failure is the **endgame
-   team-RE-FORMATION deadlock loop AFTER the replace**, not spare over-subscription and not picker choice.
-   Enactment is already aligned — do NOT keep chasing the picker or the distributed-replace routing.
+---
 
-4. **`_single_solo_fault_target` (the "guaranteed completion", exactly-1-task picker) finds NO candidate
-   at ANY step** even with per-step early firing → confirms the completion-guaranteed target simply does
-   not exist in this build/seed.
+## 3. λ → μ 전환
 
-**Reframed next lever:** the wedge is in `recover_stalled_teams!` / ReformTeam re-formation, which loops
-514× without converging. Investigate why re-formed teams immediately re-deadlock (carrier positions vs
-moved deposit slots?), not the fault target. Fresh repro (fast, ~2 min):
-`env FAULT_TARGET=ftu CARRIER_RESCUE=1 SAVE_ANIM=0 OPEN_ANIM=0 julia +lts --project=. tools/demo_respec_replace_anim.jl`
-→ wedges at 249; grep for `ReformTeam` / `force_snapped` / `carrier_advanced` cycle.
+**결정 완료 · 비파괴 opt-in 구현 완료 · 배포 미적용.** 근거는 `README.md` §4.
 
-#### UPDATE 2026-07-14 (later) — wedge STRUCTURE nailed via WEDGE_DEBUG (add FAULT_TARGET=ftu WEDGE_DEBUG=1)
+`export_surrogate.py --cost-time --mu M` 이 μ-키를 켠다(기본 꺼짐, 기존 `--cost-aware --lam` 경로 불변).
 
-The 249 wedge is STABLE and STRUCTURAL (not RVO jitter). Recovery-status tally over the whole run:
-`193 force_snapped`, `64 carrier_advanced`, **`0 unwedged`**, `1 distributed replace`. `_dump_forming_team_blockers`
-shows the SAME 3 FTUs stuck in all 64 dumps, NO graph cycle (`CYCLE` markers = 0):
+**배포 선행조건**: μ-키는 랭킹에 `makespan` 이 필요한데 현재 배포 surrogate 는 **단일 출력**(`closed`)이다.
+덤프에 `makespan` 열은 이미 있으므로 **두 번째 모델을 export** 하면 되지만 별도 작업이다.
+그때까지 배포 경로는 λ-키(λ=3)를 쓰되 "비용을 학습 목표가 아니라 결정 규칙으로" 만 먼저 적용한다.
 
-- **FTU v124 (KEYSTONE)** — team `1 ready / 0 missing` (spare DeliveryBot 16 already snapped in its slot).
-  Blocked chain: `AssemblyComplete 8 OPEN <- CloseBuildStep v3 <- LiftIntoPlace v5 <- DepositCargo v6 OPEN
-  <- TransportUnitGo v7 ACTIVE (Object 17)`. So v124 CANNOT form until Object 17 is deposited; that carrier
-  (v7) is ACTIVE but its `DepositCargo v6` never closes.
-- **FTU v166 / v177** — team `0 ready / 2 missing`. Blocked on `AssemblyComplete 2 OPEN` via an entirely
-  **OPEN** transport chain (`DepositCargo v175 OPEN <- TransportUnitGo v176 OPEN <- FormTransportUnit v177
-  OPEN <- AssemblyComplete 2`). `force_advance_stuck_carrier!` only touches ACTIVE `TransportUnitGo`, so it
-  NEVER acts on this class — Assembly 2's transport is OPEN, not stuck-en-route.
+> μ 스칼라를 **회귀 목표로 그대로 쓰면 안 된다** — 비용/시간 항이 너무 작아 학습이 안 된다
+> (실측 LOO regret: λ-키 목표 0.148 vs μ-키 스칼라 목표 0.350). 라벨로서의 μ-키와 회귀 목표로서의
+> μ-키는 다른 문제다.
 
-Why the machinery can't fix it:
-1. **`resolve_schedule_wedge!` is a no-op here.** It only dissolves recorded `WEDGE_EDGES` serialization
-   gates. The distributed replace reported "No over-subscription" (3 tasks → 3 DIFFERENT spares, 1 each),
-   so `_serialize_spare_frontiers!` added ZERO gates → `:no_wedge` every time. It was built for the
-   single-spare-multi-task residual, which this isn't.
-2. **`force_advance_stuck_carrier!` reports success but doesn't stick.** `apply_cmd!(DepositCargo)`
-   (route_planning.jl:1100) only closes on `is_goal` — the carrier must reach AND HOLD the deposit site.
-   The rescue teleports v7's RVO agent to goal, but the deposit v6 still never closes over 64 advances →
-   consistent with **SPATIAL GRIDLOCK at the deposit site** (the Assembly-2 tangle congests the goal, RVO
-   pushes the teleported carrier back out before the deposit-check step). i.e. the endgame blocker is
-   physical congestion at Object 17's deposit, not a schedule gate.
-3. **SNAP_COUNT-reset livelock.** `carrier_advanced` sets `SNAP_COUNT=0` (replace_robot.jl:566), so the
-   escalation threshold (`>=SNAP_ESCALATE_AT=3`) is re-hit forever and never sustained; every dump reads
-   "force-snap #3". Escalation therefore never advances past resolve_schedule_wedge!→no_wedge.
+---
 
-**Two candidate fixes (07-14, untested; note the 07-15 fix used a different pivot):**
-- (F1, keystone-first) In `force_advance_stuck_carrier!`, after teleporting a FORMED carrier to its deposit
-  goal, also PIN it (zero RVO speed / lock position) and, if `is_goal` holds, directly close the
-  `TransportUnitGo` so `DepositCargo` activates next step — bypassing the RVO push-back. Test if unblocking
-  Object 17 → AssemblyComplete 8 cascades and lifts the whole wedge. Risk: scene-tree/RVO desync — verify
-  BoundsError=0 and no capture-assert after.
-- (F2, decongest) Before force-advancing, clear a radius around the target deposit site (disperse idle/
-  parked robots out of it) so the carrier can actually hold the goal. Addresses the spatial-gridlock root
-  rather than forcing the node closed.
-The OPEN Assembly-2 chain (FTU v166/v177) may resolve on its own once the keystone frees the robots it's
-starving; if not, it needs its own lever (why is Assembly 2 not being built at the endgame — which robot
-that should build it is trapped in the v124 knot?).
+## 4. 라우터 / novelty
 
-Repro for the dumps: `env FAULT_TARGET=ftu CARRIER_RESCUE=1 WEDGE_DEBUG=1 SAVE_ANIM=0 OPEN_ANIM=0 julia
-+lts --project=. tools/demo_respec_replace_anim.jl` → grep `"what are the forming teams waiting for"`.
+**합격 판정 PASS.** `battery must read FAMILIAR`: p 0.0116 → **0.321**.
+축 감사에서 DEGENERATE 축 소멸(`progress` sd 0.00593 → **0.217**). Julia↔Python 파리티 33/33.
 
-**Deck impact (07-14, done):** V1 renders + completes (`results/deck/V1_baseline_build.html`). Because no fault
-target both fired AND completed at that time, **V2 was switched to the LLM ZONE respec demo**
-(`tools/demo_respec_forbidzone_anim.jl`) per the FALLBACK below — zone OOD → mock LLM → `ForbidZone` →
-restage 7/7 → whole-build translate Δ=[10.4,2.79] → **PROJECT COMPLETE**, RESPEC panel embedded
-(`results/deck/V2_llm_zone_respec.html`). The robot-breakdown Replace clip was then blocked on the
-completion wedge above — **now unblocked by hot-swap (see Current state).**
+배포 파일: `novelty_calibration.json`(126 instance), `novelty_calibration_no_zoneblk.json`(97).
+직전 버전은 `*.bak_2026-08-04` 로 보존. CANONICAL(`openworld_merged.jsonl`)은 **손대지 않았다**
+(발표된 regret/frontier 숫자의 근거).
 
-**Uncommitted demo-script changes (07-14 session):** `tools/demo_respec_replace_anim.jl` now has
-`_solo_ftu_fault_target`, an env-gated `FAULT_DIAG` probe, a `FAULT_TARGET=single|solo|ftu|auto` selector
-(default `auto` → will fire via ftu fallback and wedge — this demo is NO LONGER the deck's V2), and a
-per-step early trigger ladder (`FAULT_STEP0/D/1`). These are diagnostics/levers for the completion work,
-not a demo fix — keep them.
+에스컬레이션 조건은 현재 4개: (a) 상태가 낯설다(novelty) (b) 그 매크로를 학습한 적이 없다(**행동 표현력**)
+(c) 어휘 자체에 수복이 없다(`:line_stop` — 작업공간이 무한이라 거의 잠들어 있음)
+(d) 서로게이트 특징 벡터에 이 위반을 담을 **열 자체가 없다**(**관측 표현력**, `n_nav_blocked > 0`).
 
-### FALLBACK if completion proves too costly (07-14 decision for the user) — no longer needed
+**미측정**: surrogate 재학습을 안 했으므로 "라우터가 surrogate 로 보낸 뒤 실제 결정이 좋아지는가"는 아직 모른다.
+재학습 = 데이터셋을 가리키고 재시작(`EVAL_DATA=oracle/out/firegrid_merged.jsonl` → 108 instance).
+기본값은 벤치마크 일치를 위해 `HS_N44` 로 **핀 고정**되어 있다.
 
-V4 does NOT have to use a fault. Battery and zone OODs do NOT over-subscribe spares, so a surrogate
-stream of **battery + zone events only** completes the build cleanly. Option:
-- V4 = surrogate stream with `OOD_KINDS=battery,zone` (completes, shows the SoC ladder + zone flip).
-- V2 = the LLM Replace demo (already completes at 275) covers the "breakdown → Replace" story.
-This delivers a completing multi-OOD headline demo WITHOUT the full oracle regeneration, if time is short.
-(2026-07-15: hot-swap makes the fault path complete, so this fallback is retained only as a contingency.)
+---
 
-### Files changed 07-14 session (not yet committed)
+## 5. 무작위 OOD 스트림 평가 — **여기가 가장 큰 공백**
 
-Engine (`ConstructionBots.jl/`):
-- `src/route_planning.jl` — apply_cmd!(DepositCargo) RVO-registration guard (**BUG #1 fix**)
-- `src/respec/replace_robot.jl` — `force_advance_stuck_carrier!` (CARRIER_RESCUE, default OFF; a stuck
-  formed carrier is advanced to its deposit; distance-tracked so it only fires when genuinely stuck),
-  wired into `recover_stalled_teams!` at :no_team / after repeated snaps / :stuck; `SNAP_ESCALATE_AT`;
-  WEDGE_DEBUG dumps. NOTE: carrier rescue logs "carrier_advanced" but did NOT by itself complete the
-  oracle Replace — it's a safety net, not the fix. (07-15 extended this to force-close — see Current state.)
-- `tools/demo_surrogate_stream_anim.jl` — reform=120; project_name="tractor" (was writing to
-  results/tractor.mpd/); stale-html delete + idempotent `<!--CB-PANEL-->` injection; SoC playhead uses
-  `animator.time`/`.duration`; SoC-moves sanity print; `zone_overlap` feature; forest surrogate eval.
-- `tools/demo_surrogate_anim.jl` — project_name="tractor"; loud error if handed a forest/interaction surrogate.
-- `tools/render_deck_videos.sh` — renders the 4 clips, copies each to results/deck/ (they share one path).
+> 지금까지 저장소의 **모든** 평가는 사건 시점이 고정이었다(오라클=격자, 데모=슬롯 `[0.10,0.32,0.55]`).
+> 즉 "적응적"이라는 주장의 근거가 사실상 한두 개의 대본이고,
+> **무작위 스트림 위에서 정책을 비교한 적은 한 번도 없다.**
 
-Oracle / analysis (`wm4spacecraft_manufacturing/`):
-- `oracle/gen_oracle_dataset.jl` — DS_REFORM (120); `single_solo_fault_target` + `DS_FAULT_PICK`
-  (auto|single|solo) + `DS_FIRE_FAULT` + `DS_FAULT_CLEAR`; DS_LOG=info toggle; cascade rule; graded
-  variants (faultidle/zoneharm, DS_BSOC ladder, zone_overlap). **The fault-target change was the part
-  still being debugged on 07-14 — resolved 07-15 via hot-swap (DS_HOTSWAP).**
-- `oracle/run_graded.sh` — DS_NOPROG=30000, DS_REFORM=120, CARRIER_RESCUE=1 defaults.
-- `export_surrogate.py` — `--cost-aware`, interaction features, RandomForest export (+ `--linear`).
-- `e1_analyze.py` — `--cost-aware`, `always_per_kind` baseline, difficulty audit, zone_overlap feature.
+하니스는 완성됐다: `run_demo.jl` 의 `DEMO_OOD_SEED`(>0 이면 `schedule_random_ood!` 로 시점·종류·심각도 추첨,
+0=기본은 옛 고정 슬롯 그대로) + `policy.jl` 의 `noop` 바닥선 정책 + `tools/monitor/run_ood_sweep.ps1` +
+`ood_sweep_report.py`(완주율 Wilson CI · **같은 ood_seed 끼리 짝지은** 부호검정 · 결정 분포 · 발화 진행도).
 
-Data / results already in hand (07-14):
-- `oracle/out/graded/*.jsonl` — 31 graded instances (battery ladder + fault + zoneblk/zoneharm),
-  measured under the OLD reform=400 / clear=true world. **These labels must be REGENERATED** once
-  completion is fixed (fault labels especially: Replace was mislabelled ~172–200/INCOMPLETE).
-  ✅ DONE (see Current state): regenerated under hot-swap → `oracle/out/graded_hs_all.jsonl`.
-- `surrogate_linear.json` — cost-aware RandomForest, 26 instances / 130 rows, LOO regret 0.231.
-  (Superseded by `surrogate_hotswap.json` — see Current state.)
+**작동 확인됨**: `DEMO_OOD_SEED=1` 이 fault/battery 3건을 progress 0.15 / 0.39 / 0.60 에 뽑았고 그 판은 완주했다.
 
-### Prior results that still stand (from the graded-OOD work, pre-completion-fix)
+**미해결 버그 — `DEMO_POLICY=noop` 이 안 먹는다.** noop lane 이 3건 모두 `Replace` 를 실행했고
+요약 행의 `policy` 도 `canonical` 로 찍혔다(= Julia 안에서 기본값). 환경변수 전달은 범인이 아니다
+(같은 경로의 `DEMO_N`·`DEMO_OOD`·`DEMO_OOD_SEED` 는 전부 반영됨) → `policy.jl` 의 `noop` 분기,
+또는 그것을 읽기 전에 죽는 무언가를 봐야 한다. exit code 1 의 원인도 같이. 로그가 **UTF-16LE** 라
+grep 이 안 걸리므로 스위프 스크립트에서 인코딩을 UTF-8 로 고정할 것.
 
-The graded-OOD breakthrough is INDEPENDENT of the completion bug and still valid — decisions are
-scored on closed-count, and non-completion is a separate feasibility class:
-- H(best|kind): 0.00 → 0.97 bits; per-kind majority 100% → 57%; model regret 0.000 → 0.181.
-- model beats `always_per_kind` by **+0.481 [+0.261, +0.683]** (was +0.000 [0,0] on the old E1 data).
-- battery SoC ladder (Replace ↔ NOOP flip at ~0.15), zone_overlap flip at ~0.4, fault harmless↔consequential.
-See `GRADED_OOD_DESIGN.md` §6b and memory `constructionbots-graded-ood-breakthrough`.
-(Regenerating labels in the completing world may shift the battery/fault numbers; the METHOD stands.)
+**재개 순서**: 버그 수정 → 4판 스모크로 바닥선(noop)과 상한선(canonical)이 실제로 갈리는지 확인 →
+20 시드. canonical 이 이 스트림에서 완주했으므로, 바닥선이 고쳐진 뒤에도 둘 다 완주하면 난이도
+(스페어 3 / `SWEEP_N` / `severe_frac`)를 올려야 측정이 된다.
+정책 비교 시 라우터는 **끈다**(`DEMO_ROUTER=0`) — 켜두면 "surrogate 를 쟀다"는 판이 사실은 LLM 판이 된다.
 
-### Exact resume steps (07-14 — the completion-search steps are now ✅ DONE via hot-swap; retained for context)
+---
 
-1. Rebuild the target-availability scan (fix the include/world-age) and find a closed-count (or
-   sim-step) where a completing fault target exists. OR go straight to hypothesis (a):
-2. Verbose Replace probe, confirm distributed replace fires:
-   `cd wm4spacecraft_manufacturing && DS_KINDS=fault DS_SEEDS=1 DS_SPARES=3 DS_FAULT_PICK=solo DS_SMOKE=1 \
-    DS_NOPROG=30000 DS_NOCTRL=1 DS_REFORM=120 DS_LOG=info CARRIER_RESCUE=1 \
-    DS_OUT=oracle/out/p.jsonl julia +lts --project=../ConstructionBots.jl oracle/gen_oracle_dataset.jl`
-   Then grep the Replace arm for "distributed"/"took over"/nearest-pool. If absent → fix enactment.
-3. Once a fault config COMPLETES (Replace ~287, fired=true): regenerate all seeds
-   `bash oracle/run_graded.sh 1 oracle/out/graded_v2` (and seeds 2,3 in parallel, ≤2 julia procs — OOM).
-4. Retrain + audit: `python export_surrogate.py oracle/out/graded_v2.jsonl --cost-aware` and
-   `python e1_analyze.py oracle/out/graded_v2.jsonl --cost-aware` (confirm model < always_per_kind holds).
-5. Render V4 (completing): `bash tools/render_deck_videos.sh V4`, then V1/V2/V3.
-6. Verify each results/deck/*.html: one sidebar, SoC bars move, PROJECT COMPLETE, multiple OODs.
+## 6. 데이터 자산 — 무엇을 믿을 수 있나
 
-### Operational traps (bit me during 07-14 — still apply)
-- **Wrong-file trap**: run_lego_demo's `project_name` defaults to the LDRAW filename → animation lands in
-  results/**tractor.mpd**/ while panels go to results/**tractor**/. ALWAYS pass project_name="tractor",
-  delete stale html before a run, verify the html's mtime/size after.
-- **cwd drift**: background bash sometimes loses cwd; use absolute paths for result files.
-- **OOM**: gen_oracle_dataset.jl leaks across instances — one julia process per instance (run_graded.sh),
-  ≤2 concurrent.
-- **Julia docstring before `const`**: errors at load ("cannot document"); use a `#` comment.
-- **Non-determinism**: RVO makes runs vary (force-snap counts 75/64/52/1 across identical seeds);
-  verify completion over a couple of runs, not one.
+| 폴더 | 상태 |
+|---|---|
+| `oracle/out/lad_*` (seed 401~404) | **수정된 shim.** 1사건 사다리 8칸, 32 instance 전부 결정적. 핵심 주장의 근거 |
+| `oracle/out/nom30/` | 무OOD 30 seed (완주 **97%±3**, makespan 21.1±0.3) |
+| `oracle/out/fix_core/` | shim 수정 효과 증명용 |
+| `oracle/out/zcausal_reform/` | zone STEP 10 2차(복구 사다리 ON, 전 팔 동일) |
+| `oracle/out/battgrid_0805_s1.jsonl` | 새 심각도 사다리 18 instance / 54 row |
+| `oracle/out/firegrid_merged.jsonl` | 발화점 재라벨 병합(414행 / 108 instance) |
+| `openworld_merged.jsonl` (CANONICAL) | 발표 숫자의 근거 — **건드리지 않는다** |
+| `oracle/out/hz_k1`, `hz_fb`, `rb_*` | **shim 버그 시기** — 완주율 신뢰 불가, 재생성 대상 |
+| `oracle/out/zgrid_0805/` | zone STEP 6 격자. `admissible` 열은 에피소드 모드라 **구조적으로 무의미** |
+
+재생성 우선순위: `hz_k1`/`hz_fb` 는 비용이 크고 지금 `lad_*` 32 instance 로 핵심 주장이 서므로 **급하지 않다**.
+
+---
+
+## 7. 덱 데모 영상
+
+V1(baseline) · V2(LLM zone respec) · V4(surrogate stream, 헤드라인) **렌더 완료** → `results/deck/`.
+**V3(RL on the same fault) 미렌더** — `tools/demo_rl_replace_anim.jl`.
+
+네 클립 모두 같은 경로(`results/tractor/.../visualization.html`)에 쓰므로
+`tools/render_deck_videos.sh` 가 각각을 `results/deck/V<n>_<name>.html` 로 복사한다.
+브라우저 화면녹화 → mp4 → 덱 삽입만 수동이다.
+
+---
+
+## 8. 압축된 이력 — 어떻게 여기까지 왔나
+
+| 시점 | 사건 |
+|---|---|
+| ~2026-07-14 | mid-build Replace 가 완주 못 함. 엔진 버그 2개 수정(RVO 등록 크래시 / 오라클 reform 400→120). 원인을 fault 타깃·분산 replace 로 추적했으나 **엔드게임 팀 재형성 교착**이 진짜 벽이었다 |
+| 2026-07-15 | **정체성보존 hot-swap** enact 로 우회 — 스케줄 재각인이 없으므로 cyclic OpenBuildStep 교착이 **구조적으로 불가능**. 6/6 완주. "구조적 한계" 결론 뒤집힘 |
+| 2026-07-30~31 | E1~E4 · 비용평가 정리, verify.py 8/8 |
+| 2026-08-02 | md/ 1차 통합(21→4). 동점 85% 의 기전이 **완주율**임을 규명. STEP 6 부정 결과 |
+| 2026-08-03 | 매크로 7 `RelocateBuild` 신설 → zoneblk 동점 100%→0%. 야간 분석: 상태는 정보를 담음(p=0.005), 규칙표는 미돌파(p=0.360) |
+| 2026-08-04 | **shim 버그 발견** — 오라클 자가복구가 통째로 꺼져 있었다. 수정 후 사다리 재생성 → `H(best|zoneblk)=1.00 bits`. "개입이 빌드를 구해내는" 최초의 렌더 판 |
+| 2026-08-05 | 구역 재설계 STEP 1~11(커버리지 → 막힘), 배터리/fault 표적·사다리 재설계, λ→μ 결정, MILP 비결정성 규명 |
+
+---
+
+## 9. 다음 한 수 (사람이 결정할 것)
+
+1. **`DEMO_POLICY=noop` 버그 → 무작위 스트림 스위프** (§5). "적응적"이라는 주장의 유일한 직접 증거가 여기 있다.
+2. **개입의 파괴력을 zone 규칙에 넣기** (§1). 지금 1/2 인 것을 2/2 로.
+3. **makespan 예측 헤드** (§3). μ-키 배포의 유일한 선행조건.
+4. **surrogate 재학습 + 라우터 사후 효과 측정** (§4).
+5. **B1 능력상실 (진짜 미지 사건 만들기)** — 엔진에 "로봇이 특정 능력만 잃는다"는 개념 자체가 없다.
+   훈련 어휘 밖의 사건을 만들려면 여기서 시작해야 하고, 그때라야 §1 용어의 **OOD 실험**이 처음 성립한다.
+6. **A0 다중 spec 디스패처** — 서로 다른 종류의 제약을 묶어 내면 지금은 하나만 실행되고 나머지는 조용히
+   버려진다. 행동공간을 조합으로 넓히는 계획 전체가 여기 막혀 있다(`PLAN_ACTION_GROWTH.md` §2 정정).

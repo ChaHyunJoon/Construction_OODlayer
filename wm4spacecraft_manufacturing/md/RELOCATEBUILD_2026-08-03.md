@@ -26,7 +26,8 @@
 > 반면 데모 설정에서는 정반대다(RB 완주, NOOP 정지). **설정 의존성이 매우 크므로 단일 설정의
 > 결과를 일반화하면 안 된다.**
 >
-> 상세: `md/PLAN_COMPLETION.md`, 메모리 `constructionbots-shim-reform-misclassification`.
+> 상세: `md/README.md` §6·§7 + `md/STATUS.md`(구 `PLAN_COMPLETION.md`, 2026-08-06 통합),
+> 메모리 `constructionbots-shim-reform-misclassification`.
 
 ## 0. 왜 이걸 만들었나
 
