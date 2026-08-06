@@ -27,6 +27,11 @@ def load_training_frame(path, lam=LAM):
 
     df = load(path)
     df = df[df.fired == True].copy()
+    # "랭킹이 정의되는 instance만" 학습에 쓴다. 예전에는 `len(g) == 5` 였는데, DS_VALID_ONLY 로 만든
+    # 라벨은 그 사건의 **유효한 팔만** 돌아 5를 영영 못 채운다 -> EVAL_DATA 를 새 덤프로 바꿔도
+    # 새 instance 가 전부 조용히 버려진다(2026-08-05: firegrid_merged 126개 중 60개만 통과, 그
+    # 60개는 전부 옛 5-arm 덤프였다). 판정은 e1_analyze 의 것을 그대로 쓴다 -- 평가와 배포가
+    # 다른 필터를 쓰면 "벤치마크한 그 모델"이라는 이 파일의 전제가 깨진다.
     full = [i for i, g in df.groupby("instance") if instance_arms_complete(g)]
     df = df[df.instance.isin(full)].reset_index(drop=True)
     X = featurize(df)
