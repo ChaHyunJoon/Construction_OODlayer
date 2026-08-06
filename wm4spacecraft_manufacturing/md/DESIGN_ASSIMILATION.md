@@ -1,5 +1,19 @@
 # 설계: "처음 보는 OOD 는 LLM, 아는 OOD 는 surrogate"
 
+> ⚠️ **2026-08-02 용어 교정 — 이 문서를 읽기 전에 반드시 알 것**
+>
+> 이 문서는 battery / zoneblk / fault 를 "OOD" 라고 부른다. **그 용법은 이제 폐기됐다.**
+> 그 셋은 surrogate 훈련에 쓰이므로 정의상 in-distribution 이며, 지금은 **알려진 고장모드 F**
+> 라고 부른다 (`README.md` §2).
+>
+> 따라서 아래 **C1 은 "처음 보는 OOD" 를 잰 것이 아니라 LOKO(한 종류를 빼고 학습) 를 잰 것**이다.
+> LOKO 는 OOD 의 **대리 실험**이지 OOD 자체가 아니다 — 뺀 종류도 설계자가 미리 아는 어휘 안에 있다.
+> 진짜 OOD(= F 밖의 사건 N)로 C1 을 다시 재는 것이 다음 작업이다(`PLAN_ACTION_GROWTH.md` §6 B1→R5).
+>
+> **이 문서의 유효한 부분**: 하니스 구조(`assimilation_stream.py`, `llm_producer.py`, NL 채널),
+> C1~C4 라는 명제 분해, 그리고 §4-b/4-c/4-d 의 **실측 기록**. 이건 전부 그대로 살아 있다.
+> **무효한 부분**: "OOD" 라는 단어가 가리키는 대상.
+
 작성 2026-07-28. 대상 = `nl_events.py`, `llm_producer.py`, `c1_novel_kind.py`,
 `assimilation_stream.py`, 그리고 `oracle/gen_oracle_dataset.jl` 의 NL 저장 패치.
 
