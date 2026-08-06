@@ -70,7 +70,8 @@ import pandas as pd   # S4 의 kind-only 상대를 표현과 무관하게 직접
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # e1_analyze에서 공용 유틸을 재사용: load(데이터 로드), featurize(특징 벡터화), MACROS(macro 목록),
 # MACRO_NAME/MACRO_COST(이름/비용 표), cost_lex_key(비용 반영 사전식 정렬 키).
-from e1_analyze import load, featurize, MACROS, MACRO_NAME, MACRO_COST, cost_lex_key
+from e1_analyze import (load, featurize, MACROS, MACRO_NAME, MACRO_COST, cost_lex_key,
+                        instance_arms_complete)
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
 from sklearn.model_selection import LeaveOneGroupOut
 
@@ -297,15 +298,20 @@ def main():
     # ---------- V0: GROUND-TRUTH ISOLATION (concern 2) ----------
     # V0: 정답(ground truth)이 LLM 손을 전혀 타지 않았음을 확인 (리뷰어 concern 2).
     banner("V0  ground-truth isolation -- the LLM never authors a label")
-    arm_counts = df.groupby("instance").macro.nunique()          # instance별로 시도된 macro 종류 수
-    full = int((arm_counts == len(MACROS)).sum())                # 5개 macro를 전부 rollout한 instance 수
+    # 완전성 판정은 **배포 필터와 같은 술어**를 쓴다(dspy_service._load_surrogate 가 쓰는 것).
+    # 예전에는 `nunique() == len(MACROS)` = "7팔 전부"였는데, DS_VALID_ONLY 로 만든 라벨은 그 사건에서
+    # 유효한 팔만 돌므로(fault 는 2팔) 그 조건은 원리적으로 충족 불가였다 -- V0 이 2026-08-06 이전부터
+    # 실패하던 이유(RESULTS_LLM7H §6, "Ch-D"). 검증과 배포가 다른 필터를 쓰면 V0 이 배포되지 않는
+    # 무언가를 검증하게 된다.
+    full = sum(1 for _, g in df.groupby("instance") if instance_arms_complete(g))
     # 라벨(정답) 컬럼은 시뮬레이터가 만든 사실이어야 함: complete/closed/makespan 3개인지 확인.
     label_fields = [c for c in ("complete", "closed", "makespan") if c in df.columns]
     # 스키마에 llm/propos/candidate 같은 이름의 컬럼이 있으면 LLM이 라벨을 오염시킨 것 -> 없어야 함.
     llm_fields = [c for c in df.columns if any(t in c.lower() for t in ("llm", "propos", "candidate"))]
     results["V0"] = (
         verdict("full-enumeration labels", full == len(insts),
-                f"{full}/{len(insts)} instances have all {len(MACROS)} macro arms rolled out")
+                f"{full}/{len(insts)} instances rolled out every VALID arm "
+                f"(valid_mask 기준; 전체 어휘는 {MACROS})")
         & verdict("labels are rollout facts", len(label_fields) == 3,
                   f"label from {label_fields} (simulator), not model judgment")
         & verdict("no LLM-authored label column", not llm_fields,
