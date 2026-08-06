@@ -162,7 +162,7 @@ admissibility 도 그렇게 나온다(58~140 은 1/2, 181~260 은 **0/2** = NOOP
 
 교체된 배포 파일: `novelty_calibration.json`(126 instance), `novelty_calibration_no_zoneblk.json`(97)
 — 직전 버전은 `*.bak_2026-08-04` 로 보존. 병합 데이터셋은 `oracle/out/firegrid_merged.jsonl`(414행),
-CANONICAL(`openworld_merged.jsonl`)은 **손대지 않았다**(발표된 regret/frontier 숫자의 근거이므로).
+CANONICAL(`openworld_merged.jsonl`)은 **손대지 않았다**(발표된 subopt_norm/frontier 숫자의 근거이므로).
 
 ## 7. 남은 일 / 권고
 

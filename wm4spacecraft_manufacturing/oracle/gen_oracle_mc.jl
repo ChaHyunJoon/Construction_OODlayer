@@ -1,0 +1,643 @@
+# =============================================================================
+# gen_oracle_mc.jl -- MDP STEP 2: K-rollout MONTE-CARLO Q labeler.
+#   (설계: ../MDP_DESIGN_FROM_SCRATCH.md §7.1, 구현로그 §13)
+#
+# WHAT THIS REPLACES
+# ------------------
+# `gen_oracle_fullsim.jl` produces a ONE-SHOT certainty-equivalent label: enact candidate ω,
+# run once with NO further failures, take the realized makespan. That is not Q(s,ω). It is a
+# myopic value under the assumption "nothing else will ever break", and it is systematically
+# wrong exactly where the interesting decisions are — e.g. "should I spend a spare now?" is
+# priced as free, because the world where you needed that spare later never gets simulated.
+#
+# This file estimates the real thing:
+#
+#     Q(s,ω) = E[ cost(s,ω,τ) + V(s') ]   ≈   (1/K) Σ_k  cost of rollout k
+#
+# by enacting ω at a FIXED decision state s and then rolling out K times with the STEP-1
+# hazard process live, so each rollout samples a different future failure trajectory.
+#
+# TWO THINGS THAT ARE EASY TO GET WRONG (and are the reason this file exists)
+# --------------------------------------------------------------------------
+# (1) THE DECISION STATE MUST BE FIXED ACROSS ROLLOUTS.
+#     If you let the hazard process also generate the STUDIED event, then rollout k faces a
+#     different state s_k, and averaging over k estimates E_s[Q(s,ω)] — an average over a
+#     distribution of states — not Q(s,ω) at the state you are labelling. So: the studied fault
+#     is injected deterministically (same build seed => same s), and the hazard clocks are
+#     ARMED AT THAT INSTANT. Everything before the decision is identical in every rollout and
+#     every arm; everything after is the sampled future. That is exactly `s⁺ = f(s,ω)` then roll.
+#
+# (2) A LEXICOGRAPHIC RANKING CANNOT BE AVERAGED.
+#     The 1-shot labeler ranks by (complete? -> closed -> makespan). You cannot take the mean
+#     of a lexicographic order over K samples. So we scalarize into the finite-penalty SSP cost
+#     of design §6 — and choose the penalty so that at K=1 the argmin REPRODUCES the old
+#     lexicographic winner (asserted by `check_order_equivalence`). The penalty `MC_COST_FAIL`
+#     is then an explicit MODELLING CHOICE: it sets the exchange rate between "risk of not
+#     finishing at all" and "finishing later". Hiding that choice inside a lexicographic rule
+#     did not make it go away; it just made it unstated.
+#
+# COMMON RANDOM NUMBERS (why the CRN work in hazard.jl matters here)
+# ------------------------------------------------------------------
+# Rollout k uses hazard seed `MC_SEED0 + k` for EVERY candidate. Because hazard.jl draws each
+# robot's Exp(1) thresholds and ε_r from a per-robot stream keyed by (seed, robot id), arm A and
+# arm B in rollout k give every robot the SAME luck; the only thing that differs is the λ path
+# each arm drives it down. So we compare arms PAIRED (d_k = cost_A,k − cost_B,k), which cancels
+# the shared trajectory noise. The report prints the achieved variance-reduction factor.
+#
+# RUN (from the ConstructionBots.jl repo root)
+#   julia +lts --project=. wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl
+# ENV
+#   MC_K=5              rollouts per candidate
+#   MC_ACTIONS="0,1"    candidate macro ids (0 NOOP, 1 Replace, 2 Deprioritize, 3 ForbidZone, 4 ReformTeam)
+#   MC_SEED0=1000       hazard seed base; rollout k uses MC_SEED0+k
+#   ORACLE_SEED=1       BUILD seed (fixes the decision state s). Different values = different s.
+#   MC_ONLY="a:k"       run exactly ONE (action, rollout) unit and append a CSV row (for parallel processes)
+#   MC_AGGREGATE=1      read the CSV shards and print/write the summary (no simulation)
+#   MTBF_BREAK / MTBF_CELL / MTBF_ZONE / DRAIN_SIGMA    post-decision hazard model
+#   HOT_SWAP=1          identity-preserving replacement (default ON — see STEP-1 finding #4)
+#   NSPARE=3  RVO=1  SHRINK=200
+# =============================================================================
+#
+# [한국어 요약]
+#  이 파일 = "K회 몬테카를로 Q 라벨러". 기존 gen_oracle_fullsim.jl 은 "앞으로 아무 일도 안 일어난다"
+#  고 가정하고 1회만 돌려 makespan 을 라벨로 썼다(= certainty-equivalent, Q 가 아님). 여기서는
+#  고정된 결정 상태 s 에서 옵션 ω 를 실행한 뒤, STEP-1 의 위험 프로세스를 켠 채 K 번 굴려
+#  서로 다른 미래 고장열을 표집하고 평균낸다.
+#  반드시 지켜야 할 두 가지: (1) 연구 대상 사건은 모든 rollout 에서 동일해야 한다(안 그러면
+#  s 가 rollout 마다 달라져 Q(s,ω) 가 아니라 상태 평균이 된다) → 대상 고장은 결정론적으로 주입하고
+#  바로 그 순간에 위험 시계를 켠다. (2) lexicographic 순위는 평균낼 수 없다 → 유한벌점 스칼라
+#  비용으로 바꾸되, K=1 에서 기존 순위와 동일해지도록 벌점을 고른다(자동 점검 포함).
+
+import ConstructionBots as CB
+import HiGHS, Logging, Random, Graphs
+using Printf
+
+include(joinpath(@__DIR__, "ood_mdp_shim.jl"))                        # event_context / valid_actions /
+                                                                       # canonical_action / action_to_proposal
+CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))   # fault_action / battery (world-age)
+CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))               # hazard process (STEP 1)
+
+CB.set_default_milp_optimizer!(() -> HiGHS.Optimizer())
+CB.clear_default_milp_optimizer_attributes!()
+CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" => 0.05,
+    "output_flag" => false, "presolve" => "on")
+
+# ---- configuration ----------------------------------------------------------------------
+const K        = parse(Int, get(ENV, "MC_K", "5"))
+const ACTIONS  = [parse(Int, strip(s)) for s in split(get(ENV, "MC_ACTIONS", "0,1"), ",") if strip(s) != ""]
+const SEED0    = parse(Int, get(ENV, "MC_SEED0", "1000"))
+const SEED     = parse(Int, get(ENV, "ORACLE_SEED", "1"))     # BUILD seed = fixes the decision state s
+const NSPARE   = parse(Int, get(ENV, "NSPARE", "3"))
+const RVO      = get(ENV, "RVO", "1") == "1"
+const HOT_SWAP = get(ENV, "HOT_SWAP", "1") == "1"
+const SHRINK   = parse(Float64, get(ENV, "SHRINK", "200.0"))
+const ONLY     = get(ENV, "MC_ONLY", "")
+const AGGONLY  = get(ENV, "MC_AGGREGATE", "0") == "1"
+const LOGLVL   = lowercase(get(ENV, "ORACLE_LOG", "warn")) == "info" ? Logging.Info : Logging.Warn
+
+# NO-PROGRESS 상한을 기존 하니스의 30000 에서 크게 줄인다.
+# 이유: 30000 스텝의 무진전 = dt=1/40 에서 **750 시뮬초**인데, 이 하니스의 정상 빌드는 겨우
+# 13~22 시뮬초다. 즉 정체된 실행 하나가 정상 빌드 35배 길이의 "죽은 시간"을 태우고, 그동안
+# 위험 시계는 계속 돌아 사건이 계속 쌓인다(실측: 사후 사건 16건, 벽시계 8분, 미완주).
+# SSP 관점에서 정체는 dead-end 이고, dead-end 는 빨리 인식해서 유한벌점을 물리면 된다.
+# 부작용으로 벽시계도 대폭 줄어 K-rollout 이 현실적인 비용이 된다.
+const NOPROG = parse(Int, get(ENV, "NOPROG", "6000"))    # ≈150 시뮬초 무진전이면 죽은 것으로 판정
+
+# MTBF 는 **이 하니스의 빌드 길이**에 맞춰야 한다(hazard_mdp 데모의 20초짜리 빌드가 아니라).
+# 보정 이력(실측):
+#   60/45   -> 사후 사건 16건, 함대 전멸, 미완주, 벽시계 8분. 라벨 무의미.
+#   150/150 -> 사후 사건 평균 5.3건, 6개 rollout 중 4개가 max_events 상한에 걸림. 여전히 과함.
+#   500/500 -> 아래. `expected_hazard_events` 의 하한 추정 대비 실측이 약 2배로 나오는데,
+#              그 함수가 마모·SoC 가속·carry 배수를 무시한 하한이라고 명시한 그대로다.
+# 목표는 rollout 당 사후 사건 1~2건: 결정을 유의미하게 흔들되 함대를 전멸시키지는 않는 수준.
+const HZ = CB.HazardParams(
+    mtbf_break_s = parse(Float64, get(ENV, "MTBF_BREAK", "500.0")),
+    mtbf_cell_s  = parse(Float64, get(ENV, "MTBF_CELL",  "500.0")),
+    mtbf_zone_s  = parse(Float64, get(ENV, "MTBF_ZONE",  "Inf")),
+    drain_sigma  = parse(Float64, get(ENV, "DRAIN_SIGMA", "0.15")),
+    fire_safe_target = true, fire_require_spare = true,
+    fire_obstacle = false, fire_clear = !HOT_SWAP,
+    # 정체 중에도 시계는 계속 도는 게 물리적으로 맞지만, 라벨링에서는 폭주를 막아야 한다.
+    # 상한에 걸리면 hazard_report().capped=true 로 보고되므로 조용히 잘리지 않는다.
+    max_events = parse(Int, get(ENV, "MC_MAX_EVENTS", "12")))
+
+# 1-shot certainty-equivalent 기준선(= 기존 gen_oracle_fullsim.jl 이 만들던 라벨)을 같이 낼지.
+# 이게 STEP 2 의 존재 이유를 직접 보여주는 열이다: 위험 프로세스를 끄고 한 번만 돌린 값과
+# K 회 평균이 얼마나 다른지, 그리고 1-shot 이 어떤 미래를 통째로 못 본 것인지.
+const WANT_REF = get(ENV, "MC_REFERENCE", "1") == "1"
+
+const ACTION_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")
+const OUTDIR   = joinpath(@__DIR__, "out")
+# MC_SHARD: 병렬 프로세스가 **각자 자기 CSV** 에 쓰게 하는 접미사. 같은 파일에 여러 프로세스가
+# append 하면 Windows 에서 줄이 섞일 수 있어(짧은 줄이라 대개 괜찮지만 보장은 없다) 아예 분리한다.
+# 집계(`read_units`)는 out/ 의 `oracle_mc_units_s<SEED>*.csv` 를 전부 읽어 합친다.
+const SHARD    = get(ENV, "MC_SHARD", "")
+const UNITCSV  = joinpath(OUTDIR, "oracle_mc_units_s$(SEED)$(isempty(SHARD) ? "" : "_" * SHARD).csv")
+const SUMJSON  = joinpath(OUTDIR, "oracle_mc_summary_s$(SEED).json")
+
+# ---- the finite-penalty SSP cost (design §6) --------------------------------------------
+# 완주하면 실현 makespan 이 곧 비용. 완주 못 하면 큰 유한벌점 + 못 닫은 노드 수 벌점(부분 점수),
+# 그리고 아주 작은 가중치의 makespan 으로 동점을 깬다. 이 세 항의 크기 순서가 곧 lexicographic
+# 순서(완주 > 닫힌 노드 수 > makespan)를 스칼라로 옮긴 것이다.
+const COST_FAIL     = parse(Float64, get(ENV, "MC_COST_FAIL", "10000.0"))
+const COST_UNCLOSED = parse(Float64, get(ENV, "MC_COST_UNCLOSED", "100.0"))
+const COST_TIE_EPS  = 1.0e-3
+
+scalar_cost(r) = r.complete ? Float64(r.makespan) :
+    COST_FAIL + COST_UNCLOSED * (r.total - r.closed) +
+    COST_TIE_EPS * (isfinite(r.makespan) ? r.makespan : 0.0)
+
+# --- 기존(legacy) 사전식 비교 -------------------------------------------------------------
+# gen_oracle_fullsim.jl 이 쓰던 규칙 그대로. 참조·호환성 확인용으로만 남긴다.
+better(a, b) = a.complete != b.complete ? a.complete :
+               a.closed   != b.closed   ? a.closed > b.closed :
+               a.makespan < b.makespan
+
+# --- SSP 로 교정한 사전식 비교 (이게 정답 규칙) ---------------------------------------------
+# legacy 규칙과 딱 한 군데에서 다르다: **둘 다 완주한 경우 closed 수를 보지 않는다.**
+#
+# 왜 고쳐야 하는가: 이 하니스에서 `project_complete == true` 인데도 closed < total 이다
+# (오라클 로그 실측: CONTROL(nofault) YES 291/313). 목표에 도달한 뒤 남아 있는 스케줄 노드는
+# 미완의 "작업"이 아니라 장부(유휴 로봇의 종단 노드 등)다. legacy 규칙은 그 장부 노드를 몇 개
+# 더 닫았다는 이유로 **더 느린 실행을 더 낫다고 판정**할 수 있다.
+# SSP 에서 흡수상태(조립 완료)에 도달하면 비용은 경과시간뿐이므로, 완주끼리는 makespan 만 본다.
+# `scalar_cost` 는 이 교정된 규칙과 동치이며, legacy 와 갈리는 경우는 아래에서 따로 보고한다.
+better_ssp(a, b) = a.complete != b.complete ? a.complete :
+                   a.complete               ? a.makespan < b.makespan :
+                   a.closed != b.closed     ? a.closed > b.closed :
+                   a.makespan < b.makespan
+
+_same_outcome(a, b) = a.complete == b.complete && a.closed == b.closed &&
+                      isequal(a.makespan, b.makespan)   # NaN 대비: == 가 아니라 isequal
+
+"""
+    check_order_equivalence(results) -> Bool
+
+`scalar_cost` 의 argmin 이 교정된 사전식 규칙 `better_ssp` 의 1등과 같은지 확인. 다르면
+COST_FAIL/COST_UNCLOSED 가 문제 규모에 비해 너무 작다는 뜻이라 시끄럽게 경고한다
+(조용히 다른 순위를 내보내면 안 됨). legacy `better` 와 갈리는 경우도 함께 알려준다 —
+숨기면 예전 덤프와 라벨이 왜 다른지 아무도 모르게 된다.
+"""
+function check_order_equivalence(results)
+    isempty(results) && return true
+    rs = collect(results)
+    ssp_best = sort(rs, lt = (a, b) -> better_ssp(a, b))[1]
+    sc_best  = argmin(scalar_cost, rs)
+    ok = _same_outcome(ssp_best, sc_best)
+    ok || @warn "[MC] scalar cost is NOT order-equivalent to better_ssp — raise MC_COST_FAIL" ssp_best sc_best
+    leg_best = sort(rs, lt = (a, b) -> better(a, b))[1]
+    _same_outcome(leg_best, ssp_best) ||
+        @info "[MC] legacy `better` 와 정답이 갈림(둘 다 완주인데 closed 수가 다른 경우). " *
+              "SSP 기준이 맞다 — 완주 후 남은 노드는 작업이 아니라 장부." legacy = leg_best ssp = ssp_best
+    return ok
+end
+
+# ---- tiny stats (Statistics 를 Project 의존성으로 끌어들이지 않으려고 직접 계산) ------------
+_mean(v) = isempty(v) ? NaN : sum(v) / length(v)
+function _std(v)
+    length(v) < 2 && return NaN
+    m = _mean(v); return sqrt(sum((x - m)^2 for x in v) / (length(v) - 1))
+end
+_se(v) = length(v) < 2 ? NaN : _std(v) / sqrt(length(v))
+
+# ---- producers (gen_oracle_fullsim.jl 과 동일한 공정성 불변식) ------------------------------
+const SEEN     = Ref{Any}(nothing)
+const N_EVENTS = Ref(0)
+
+# 후보 액션 a 를 "연구 대상 fault 이벤트에서만" 내고, 그 외 모든 배경 이벤트(위험 프로세스가
+# 만든 사후 고장 포함)에는 후보와 무관하게 항상 canonical 대응을 준다.
+# 이게 공정성 불변식이다: 팔 사이에 다른 것은 오직 "연구 대상 사건에서의 결정" 하나뿐이어야 한다.
+# 사후 사건까지 후보 액션으로 덮어버리면 우리가 재는 것이 Q(s,ω) 가 아니라 "그 액션만 반복하는
+# 정책의 가치"가 되어버린다.
+# =========================================================================================
+#  STEP 6 : 확장 행동공간 (원시 파라미터까지 포함) — V^macro − V* 의 gap 측정용
+# -----------------------------------------------------------------------------------------
+#  설계 §4.4: 옵션(macro)으로 행동공간을 제한한 대가를 **숨기지 말고 재라**.
+#  A_macro ⊂ A_raw 이므로 V^macro ≥ V*. 그 차이가 곧 "옵션 근사의 손실" 이다.
+#  여기서는 원시공간 전체(배정 조합)를 뒤지는 대신, 각 옵션의 **연속 파라미터**를 열어 A 를 넓힌다.
+#  이게 정직한 최소 스코프다 — 배정 조합 전수탐색은 이 규모에서 불가능하므로, 측정된 gap 은
+#  **진짜 gap 의 하한(lower bound)** 이라고 보고해야 한다.
+#
+#  arm id 규약: 0~4 = 기존 5개 macro(정확히 동일). 10번대 = Replace(after=…), 20번대 = Deprioritize(factor=…)
+const EXT_ARMS = Dict(
+    10 => (:replace, 0.0),   11 => (:replace, 5.0),   12 => (:replace, 15.0),
+    20 => (:deprio, 10.0),   21 => (:deprio, 50.0),   22 => (:deprio, 200.0),
+)
+EXT_NAME = Dict(10=>"Replace@0", 11=>"Replace@5", 12=>"Replace@15",
+                20=>"Deprio×10", 21=>"Deprio×50", 22=>"Deprio×200")
+arm_name(a::Int) = get(ACTION_NAME, a, get(EXT_NAME, a, "arm$a"))
+
+"확장 arm 을 실제 DSL 제안으로. 기존 macro(0~4)면 기존 경로를 그대로 탄다."
+function arm_to_proposal(ctx, a::Int)
+    haskey(EXT_ARMS, a) || return action_to_proposal(ctx, a)
+    kindsym, p = EXT_ARMS[a]
+    ctx.agent === nothing && return nothing
+    cs = kindsym === :replace ? CB.ConstraintSpec[CB.ReplaceAgent(ctx.agent, p)] :
+                                CB.ConstraintSpec[CB.DeprioritizeAgent(ctx.agent, p)]
+    return CB.RespecProposal(cs, "ext arm $a", String(ctx.source))
+end
+
+mc_prod(a::Int) = (env, ev) -> begin
+    ctx = event_context(env, ev)
+    N_EVENTS[] += 1
+    if ctx.type === :fault && SEEN[] === nothing
+        SEEN[] = (type = String(ctx.type), agent = string(ctx.agent), valid = valid_actions(ctx))
+        a == 0 && return nothing                       # 의도적 NOOP
+        return arm_to_proposal(ctx, a)
+    end
+    return action_to_proposal(ctx, canonical_action(ctx))
+end
+
+function run_with_stack(f, stacksize::Int)
+    res = Ref{Any}(nothing); err = Ref{Any}(nothing); done = Threads.Atomic{Bool}(false)
+    t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int),
+        () -> (try res[] = f() catch e; err[] = (e, catch_backtrace()) finally done[] = true end),
+        nothing, stacksize)
+    t.sticky = false; schedule(t); while !done[]; sleep(0.05); end
+    err[] !== nothing && (showerror(stderr, err[][1], err[][2]); println(stderr); throw(err[][1]))
+    return res[]
+end
+
+# ---- the studied event + hazard arming ---------------------------------------------------
+"""
+    schedule_studied_fault!(hz_seed)
+
+Inject ONE deterministic breakdown (the decision state `s`) and ARM the hazard process at that
+exact instant with `hz_seed`. Everything before this point is identical across rollouts and
+arms; everything after is the sampled future. Returns nothing.
+"""
+# 결정 상태 s 를 만드는 고장 1건을 결정론적으로 주입하고, **바로 그 순간에** 위험 프로세스를 켠다.
+# 이 순서가 핵심 — 켜는 시점이 앞이면 결정 이전 궤적까지 rollout 마다 달라져 s 가 고정되지 않는다.
+function schedule_studied_fault!(hz_seed::Union{Nothing,Int})
+    fired = Ref(false)
+    tf = CB.fault_action(; safe = true, obstacle = false, clear = !HOT_SWAP)
+    act = function (env)
+        fired[] && return nothing
+        nl = tf(env)
+        nl === nothing && return nothing
+        fired[] = true
+        if hz_seed !== nothing
+            CB.enable_hazard!(env; params = HZ, seed = hz_seed)
+            @info "[MC] hazard armed at the decision point (seed=$hz_seed)"
+        end
+        return nl
+    end
+    for c in (12, 20, 30, 45, 60); CB.schedule_ood_at_closed!(c, act); end
+    return nothing
+end
+
+# ---- one full simulation ------------------------------------------------------------------
+"""
+    run_one(prod; inject=true, hz_seed=nothing) -> NamedTuple
+
+One production full-sim with `prod` on the respec seam. `hz_seed=nothing` disables the hazard
+process entirely (that reproduces the OLD 1-shot certainty-equivalent label, which is how the
+K=1/no-hazard reference column is produced).
+"""
+function run_one(prod; inject::Bool = true, hz_seed::Union{Nothing,Int} = nothing)
+    SEEN[] = nothing; N_EVENTS[] = 0
+    CB.RESPEC_ENABLED[] = true
+    try CB.disable_hazard!() catch end          # 이전 실행 잔여 상태 + 스텝 훅 원복
+    for f in (:clear_ood_schedule!, :clear_restriction_zones!, :clear_spare_pools!,
+              :clear_faulted_robots!, :clear_recovery_spares!, :clear_ood_truth_log!,
+              :clear_wedge_edges!, :clear_stalled_robots!)
+        try getproperty(CB, f)() catch end
+    end
+    try CB.set_reform_interval!(400) catch end
+    HOT_SWAP && CB.set_hot_swap!(enabled = true, mode = :via_depot)
+    CB.set_respec_producer!(prod)
+
+    # 배터리 계층은 스텝 1에 켠다(SoC 결합 λ 와 셀 위험에 필요). 위험 프로세스가 켜지기 전까지
+    # 방전 배수는 1.0 이므로 결정 이전 궤적은 완전히 결정론적이다 — s 고정의 전제.
+    CB.schedule_ood!(1, function (env)
+        CB.enable_battery!(env; params = CB.demo_battery_params(shrink = SHRINK))
+        CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3)
+        return nothing
+    end)
+    inject && schedule_studied_fault!(hz_seed)
+
+    # 스택은 **판마다 통째로** 잡히므로 N 병렬이면 N×이 값이 그대로 메모리다.
+    # 실측(2026-08-01 00:25): 데이터셋 생성 6병렬 × 1GB 가 OutOfMemoryError 로 3개 샤드를 죽였다.
+    # 2GB 하드코딩을 그대로 두면 STEP 6 을 3병렬로 띄우는 순간 6GB 라 같은 식으로 터진다.
+    # 1GB 는 동일 시뮬에서 StackOverflow 없이 돈 것이 확인된 값이라(죽은 원인은 스택 깊이가 아니라
+    # 전체 메모리였다) 그대로 기본값으로 쓴다. 더 낮추려면 반드시 1인스턴스 스모크로 확인할 것.
+    res = run_with_stack(parse(Int, get(ENV, "MC_STACK", "1000000000"))) do
+        CB.run_lego_demo(; ldraw_file = "tractor.mpd", num_robots = 10, assignment_mode = :greedy,
+            milp_optimizer = :highs, optimizer_time_limit = 60, log_level = LOGLVL,
+            max_num_iters_no_progress = NOPROG, rvo_flag = RVO, tangent_bug_flag = RVO,
+            dispersion_flag = RVO, n_spare_per_pool = NSPARE, save_animation = false,
+            open_animation_at_end = false, write_results = false, overwrite_results = true,
+            return_env_before_sim = false, rng = Random.MersenneTwister(SEED))
+    end
+    hz = CB.hazard_report()
+    try CB.disable_hazard!() catch end
+    CB.clear_respec_producer!(); CB.RESPEC_ENABLED[] = false
+
+    env   = res isa Tuple ? res[1] : res
+    stats = res isa Tuple ? res[2] : Dict()
+    return (complete = CB.project_complete(env),
+            closed    = length(env.cache.closed_set),
+            total     = length(CB.get_nodes(env.sched)),
+            makespan  = try Float64(get(stats, :Makespan, NaN)) catch; NaN end,
+            seen      = SEEN[], n_events = N_EVENTS[],
+            # 사후(post-decision) 고장 수 — rollout 들이 정말 서로 다른 미래를 겪었는지의 증거
+            hz_break = hz.n_break, hz_cell = hz.n_cell, hz_zone = hz.n_zone,
+            hz_pending_break = hz.n_break_pending, hz_capped = hz.capped,
+            hz_sim_s = hz.t)
+end
+
+# ---- CSV shard I/O (parallel units) -------------------------------------------------------
+const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent"
+function append_unit!(a::Int, k::Int, hz_seed::Int, r)
+    mkpath(OUTDIR)
+    isfile(UNITCSV) || open(io -> println(io, CSV_HEADER), UNITCSV, "w")
+    open(UNITCSV, "a") do io
+        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s\n",
+                a, k, hz_seed, r.complete ? "true" : "false", r.closed, r.total,
+                isfinite(r.makespan) ? r.makespan : -1.0, scalar_cost(r),
+                r.hz_break, r.hz_cell, r.hz_zone, r.hz_pending_break,
+                r.hz_capped ? "true" : "false", r.hz_sim_s,
+                r.seen === nothing ? "none" : r.seen.agent)
+    end
+end
+
+"이 build seed 의 모든 샤드 CSV 경로(병렬 프로세스가 각자 쓴 것들)."
+unit_csv_files() = isdir(OUTDIR) ?
+    sort([joinpath(OUTDIR, f) for f in readdir(OUTDIR)
+          if startswith(f, "oracle_mc_units_s$(SEED)") && endswith(f, ".csv")]) : String[]
+
+function read_units()
+    files = unit_csv_files()
+    isempty(files) && return NamedTuple[]
+    rows = NamedTuple[]
+    for line in Iterators.flatten(eachline(fp) for fp in files)
+        startswith(strip(line), "action,") && continue   # 각 샤드의 헤더 줄 건너뜀
+        f = split(strip(line), ",")
+        length(f) < 15 && continue
+        try
+            push!(rows, (action = parse(Int, f[1]), rollout = parse(Int, f[2]),
+                         hz_seed = parse(Int, f[3]), complete = f[4] == "true",
+                         closed = parse(Int, f[5]), total = parse(Int, f[6]),
+                         makespan = parse(Float64, f[7]), cost = parse(Float64, f[8]),
+                         hz_break = parse(Int, f[9]), hz_cell = parse(Int, f[10]),
+                         hz_zone = parse(Int, f[11]), hz_pending = parse(Int, f[12]),
+                         hz_capped = f[13] == "true", hz_sim_s = parse(Float64, f[14]),
+                         agent = f[15]))
+        catch; end
+    end
+    # (action, rollout) 중복 제거 — 같은 유닛을 재실행했거나 샤드가 겹치면 그대로 두 번 세어져
+    # Q̂ 가 조용히 틀어진다. 나중 것을 채택한다.
+    seen = Dict{Tuple{Int,Int},NamedTuple}()
+    for r in rows; seen[(r.action, r.rollout)] = r; end
+    n_dup = length(rows) - length(seen)
+    n_dup > 0 && @info "[MC] 중복 유닛 $(n_dup)개 제거(같은 action/rollout 재실행분)."
+    return sort(collect(values(seen)), by = r -> (r.action, r.rollout))
+end
+
+# ---- minimal JSON writer (gen_oracle_fullsim.jl 과 동일) ------------------------------------
+jesc(s) = replace(replace(String(s), "\\" => "\\\\"), "\"" => "\\\"")
+jval(x) = x isa Bool ? (x ? "true" : "false") :
+          x isa AbstractString ? "\"$(jesc(x))\"" :
+          x isa Real ? (isfinite(x) ? string(x) : "\"$(x)\"") : "\"$(x)\""
+jobj(nt) = "{" * join(["\"$(k)\":$(jval(getproperty(nt, k)))" for k in propertynames(nt)], ",") * "}"
+function write_json(path, meta, rows)
+    mkpath(dirname(path))
+    open(path, "w") do io
+        println(io, "{"); println(io, "  \"meta\": $(jobj(meta)),"); println(io, "  \"candidates\": [")
+        for (i, c) in enumerate(rows); println(io, "    ", jobj(c), i < length(rows) ? "," : ""); end
+        println(io, "  ]"); println(io, "}")
+    end
+end
+
+# ---- aggregation: Q̂, SE, paired differences, tie detection ---------------------------------
+"""
+    aggregate(rows) -> (summary_rows, meta)
+
+Per candidate: Q̂ = mean cost, unpaired SE, and — vs the best candidate — the PAIRED difference
+`d_k = cost_a,k − cost_best,k` with its own SE. A candidate is declared TIED with the best when
+`|Δ| ≤ 1.96·SE_paired`: reporting a tie as a win is the single easiest way to manufacture fake
+decision quality, so ties are labelled, not broken.
+"""
+# 후보별 Q̂ = 평균 비용, 표준오차, 그리고 최선 후보와의 **짝지은 차이**. |Δ| ≤ 1.96·SE_paired 면
+# 동점으로 표시한다. 동점을 승리로 보고하는 것이 가짜 결정품질을 만드는 가장 쉬운 방법이라,
+# 동점은 깨지 말고 라벨을 붙인다.
+function aggregate(all_rows)
+    # rollout 0 = 1-shot 기준선(위험 프로세스 끔). MC 평균에 섞으면 안 되므로 분리한다.
+    rows = [r for r in all_rows if r.rollout > 0]
+    # MC rollout 이 하나도 없으면(기준선만 있는 경우) 빈 결과를 돌려준다. 반환 개수는 정상 경로와
+    # 반드시 같아야 한다 — 2-튜플로 돌려주면 호출부가 BoundsError 로 죽는다.
+    isempty(rows) && return NamedTuple[], (best_action = -1, best_name = "none", best_Q = NaN,
+        K = 0, n_rows = 0, build_seed = SEED, seed0 = SEED0, mtbf_break = HZ.mtbf_break_s,
+        mtbf_cell = HZ.mtbf_cell_s, hot_swap = HOT_SWAP, rvo = RVO, spares = 4 * NSPARE,
+        cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED, crn_variance_reduction = NaN,
+        ref_best_action = -1, ref_agrees_with_mc = false),
+        [r for r in all_rows if r.rollout == 0]
+    acts = sort(unique(r.action for r in rows))
+    costs = Dict(a => Float64[] for a in acts)
+    byk   = Dict(a => Dict{Int,Float64}() for a in acts)
+    for r in rows
+        push!(costs[r.action], r.cost); byk[r.action][r.rollout] = r.cost
+    end
+    Q  = Dict(a => _mean(costs[a]) for a in acts)
+    best = acts[argmin([Q[a] for a in acts])]
+
+    out = NamedTuple[]
+    vr_factors = Float64[]
+    for a in acts
+        # 두 팔 모두에서 완료된 rollout 만 짝지어 비교(공통 k 집합)
+        ks = sort(collect(intersect(keys(byk[a]), keys(byk[best]))))
+        d  = [byk[a][k] - byk[best][k] for k in ks]
+        se_paired   = _se(d)
+        se_unpaired = sqrt(max(0.0, _se(costs[a])^2 + _se(costs[best])^2))
+        isfinite(se_paired) && se_paired > 0 && isfinite(se_unpaired) &&
+            push!(vr_factors, se_unpaired / se_paired)
+        Δ = _mean(d)
+        tied = a != best && isfinite(se_paired) && abs(Δ) <= 1.96 * se_paired
+        n_complete = count(r -> r.action == a && r.complete, rows)
+        push!(out, (action = a, name = arm_name(a), K = length(costs[a]),
+                    Q = Q[a], se = _se(costs[a]),
+                    delta_vs_best = Δ, se_paired = se_paired,
+                    tied_with_best = tied, is_best = (a == best),
+                    p_complete = n_complete / max(1, length(costs[a])),
+                    mean_hz_events = _mean([Float64(r.hz_break + r.hz_cell + r.hz_zone)
+                                            for r in rows if r.action == a]),
+                    # 사건 상한에 걸린 rollout 수 — >0 이면 그 rollout 의 미래가 잘린 것이라
+                    # 라벨이 낙관적으로 편향된다. 조용히 넘어가면 안 되므로 명시적으로 센다.
+                    n_capped = count(r -> r.action == a && r.hz_capped, rows)))
+    end
+    # --- 1-shot 기준선과의 비교 ---------------------------------------------------------
+    refs = [r for r in all_rows if r.rollout == 0]
+    ref_best = -1
+    if !isempty(refs)
+        ref_best = refs[argmin([r.cost for r in refs])].action
+    end
+    # K 는 ENV 기본값(`MC_K`)이 아니라 **실제 데이터에 있는 rollout 수**로 보고해야 한다.
+    # 집계 모드는 MC_K 를 안 주고 부르는 게 보통이라, ENV 값을 쓰면 헤더에 엉뚱한 K 가 찍힌다.
+    K_actual = maximum(length(costs[a]) for a in acts)
+    meta = (best_action = best, best_name = arm_name(best), best_Q = Q[best],
+            K = K_actual, n_rows = length(rows), build_seed = SEED, seed0 = SEED0,
+            mtbf_break = HZ.mtbf_break_s, mtbf_cell = HZ.mtbf_cell_s,
+            hot_swap = HOT_SWAP, rvo = RVO, spares = 4 * NSPARE,
+            cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED,
+            crn_variance_reduction = isempty(vr_factors) ? NaN : _mean(vr_factors),
+            ref_best_action = ref_best,
+            ref_agrees_with_mc = (ref_best == best))
+    return out, meta, refs
+end
+
+function print_summary(out, meta, refs = NamedTuple[])
+    println("\n" * "="^94)
+    println("K-ROLLOUT MONTE-CARLO Q LABELS   build_seed=$(meta.build_seed)  K=$(meta.K)  " *
+            "hazard mtbf break/cell=$(meta.mtbf_break)/$(meta.mtbf_cell)s")
+    println("="^94)
+    @printf("%-14s %4s %12s %10s %14s %10s %8s %8s\n",
+            "candidate", "K", "Q̂(cost)", "SE", "Δ vs best", "SE(paired)", "P(done)", "hz evts")
+    println("-"^94)
+    for c in sort(out, by = x -> x.Q)
+        tag = c.is_best ? " <-BEST" : (c.tied_with_best ? " (tie)" : "")
+        @printf("%-14s %4d %12.2f %10.2f %14.2f %10.2f %8.2f %8.2f%s\n",
+                "$(c.action):$(c.name)", c.K, c.Q, c.se, c.delta_vs_best, c.se_paired,
+                c.p_complete, c.mean_hz_events, tag)
+    end
+    println("-"^94)
+    @printf("CRN variance-reduction factor (SE_unpaired / SE_paired) = %.2f×\n",
+            meta.crn_variance_reduction)
+    println("  (1.0 이면 짝짓기가 도움이 안 된 것. >1 이면 그만큼 K 를 아낀 셈.)")
+    ties = [c for c in out if c.tied_with_best]
+    isempty(ties) || println("TIED with best (구별 불가, 승리로 세면 안 됨): " *
+                             join(["$(c.action):$(c.name)" for c in ties], ", "))
+    ncap = sum(c.n_capped for c in out; init = 0)
+    ncap == 0 || println("!! 사건 상한(max_events)에 걸린 rollout $(ncap)개 — 그 rollout 은 미래가 " *
+                         "잘려 라벨이 낙관 편향된다. MC_MAX_EVENTS 를 올리거나 MTBF 를 올릴 것.")
+
+    # --- 1-shot 기준선(기존 라벨러)과의 직접 비교 ---------------------------------------
+    if !isempty(refs)
+        println("-"^94)
+        println("1-SHOT certainty-equivalent 기준선 (위험 프로세스 OFF = 기존 gen_oracle_fullsim 라벨):")
+        for r in sort(refs, by = x -> x.cost)
+            @printf("   %-14s cost=%10.2f  complete=%-3s closed=%3d/%3d\n",
+                    "$(r.action):$(arm_name(r.action))", r.cost,
+                    r.complete ? "YES" : "no", r.closed, r.total)
+        end
+        if meta.ref_agrees_with_mc
+            println("   -> 1-shot 과 MC 의 argmin 이 **일치**($(meta.ref_best_action)). 이 상태에서는 두 라벨이 같은 결정을 준다.")
+            println("      (일치한다고 1-shot 이 옳은 건 아니다 — 아래 P(done) 을 보면 1-shot 은 완주 확률을 전혀 못 본다.)")
+        else
+            println("   -> 1-shot 과 MC 의 argmin 이 **불일치**: 1-shot=$(meta.ref_best_action), MC=$(meta.best_action).")
+            println("      1-shot 라벨로 학습한 surrogate 는 이 상태에서 체계적으로 틀린 결정을 배운다.")
+        end
+    end
+    println("="^94)
+end
+
+# ---- entry points --------------------------------------------------------------------------
+# ---- batch mode: 여러 유닛을 **한 프로세스 안에서** 순차 실행 ------------------------------
+# 왜 필요한가: `MC_ONLY` 는 유닛마다 Julia 프로세스를 새로 띄우므로 패키지 로드 + JIT 를 매번
+# 다시 문다. 유닛이 수십 개면 그 고정비가 시뮬레이션 시간 자체를 압도한다(실측: 유닛당 벽시계
+# ~9분인데 그중 상당 부분이 기동 비용). 배치 모드는 기동을 한 번만 치르고 그 뒤로는 순수
+# 시뮬 시간만 든다. 대규모 라벨 생성의 전제 조건.
+#
+#   MC_BATCH="0:1,1:1,0:2,1:2"        # (action:rollout) 목록
+#   MC_BATCH_SEEDS="1,2,3"            # 여러 build seed 를 한 프로세스에서 (선택)
+#
+# 각 유닛이 끝날 때마다 CSV 에 append 하므로 도중에 죽어도 거기까지는 남는다.
+const BATCH       = get(ENV, "MC_BATCH", "")
+const BATCH_SEEDS = get(ENV, "MC_BATCH_SEEDS", "")
+
+function main_batch(spec::String)
+    t_start = time()
+    units = [(parse(Int, split(u, ":")[1]), parse(Int, split(u, ":")[2]))
+             for u in split(spec, ",") if !isempty(strip(u))]
+    seeds = isempty(BATCH_SEEDS) ? [SEED] :
+            [parse(Int, strip(s)) for s in split(BATCH_SEEDS, ",") if !isempty(strip(s))]
+    println("[MC-batch] $(length(seeds)) seed x $(length(units)) unit = $(length(seeds)*length(units)) full-sims")
+    t_ready = time()
+    println("[MC-batch] startup(패키지+JIT) = $(round(t_ready - t_start; digits=1)) s")
+
+    n = 0; t_sims = 0.0
+    for bs in seeds, (a, k) in units
+        # build seed 는 결정 상태 s 를 정한다. 프로세스 안에서 바꾸려면 전역 SEED 가 아니라
+        # 호출 시점에 넘겨야 하는데, 현재 run_one 은 const SEED 를 읽는다 → 배치는 한 seed 씩.
+        bs == SEED || (@warn "[MC-batch] build seed $bs != ORACLE_SEED $SEED — 건너뜀 (seed 는 프로세스당 하나)"; continue)
+        t0 = time()
+        hz_seed = SEED0 + k
+        r = run_one(mc_prod(a); hz_seed = hz_seed)
+        dt = time() - t0; t_sims += dt; n += 1
+        @printf("  [%2d] seed=%d a=%d:%-12s k=%-3d complete=%-3s closed=%3d/%3d cost=%9.2f  brk=%d cell=%d  (%.1f s)\n",
+                n, bs, a, arm_name(a), k, r.complete ? "YES" : "no", r.closed, r.total,
+                scalar_cost(r), r.hz_break, r.hz_cell, dt)
+        append_unit!(a, k, hz_seed, r)
+    end
+    n == 0 && return
+    @printf("[MC-batch] %d sims, 평균 %.1f s/sim, 시뮬 합계 %.1f min, 총 %.1f min (기동 %.1f s)\n",
+            n, t_sims / n, t_sims / 60, (time() - t_start) / 60, t_ready - t_start)
+end
+
+function main_unit(spec::String)
+    parts = split(spec, ":")
+    a = parse(Int, parts[1]); k = parse(Int, parts[2])
+    hz_seed = SEED0 + k
+    println("[MC] unit action=$a rollout=$k hazard_seed=$hz_seed build_seed=$SEED")
+    r = run_one(mc_prod(a); hz_seed = hz_seed)
+    @printf("  -> complete=%s closed=%d/%d makespan=%.1f cost=%.2f  post-decision events: brk=%d cell=%d (pending=%d)\n",
+            r.complete ? "YES" : "no", r.closed, r.total, r.makespan, scalar_cost(r),
+            r.hz_break, r.hz_cell, r.hz_pending_break)
+    append_unit!(a, k, hz_seed, r)
+    println("[MC] appended to $UNITCSV")
+end
+
+function main_aggregate()
+    rows = read_units()
+    isempty(rows) && (println("[MC] no unit rows in $UNITCSV — run some units first."); return)
+    out, meta, refs = aggregate(rows)
+    isempty(out) && (println("[MC] only reference rows found — run MC rollouts (rollout>=1)."); return)
+    print_summary(out, meta, refs)
+    write_json(SUMJSON, meta, out)
+    println("wrote $SUMJSON")
+end
+
+function main_sweep()
+    println("[MC] K=$K rollouts x actions=$(ACTIONS)  build_seed=$SEED  hot_swap=$HOT_SWAP  rvo=$RVO")
+    println("[MC] = $(K * length(ACTIONS)) full simulations. 병렬로 돌리려면 MC_ONLY=\"a:k\" 사용.")
+    # 전체 스윕은 처음부터 다시 만드는 것이므로 이 seed 의 **모든 샤드**를 지운다.
+    # 자기 샤드만 지우면 이전 병렬 실행의 잔여 행이 조용히 집계에 섞인다.
+    mkpath(OUTDIR); for fp in unit_csv_files(); rm(fp); end
+    raw = NamedTuple[]
+
+    # rollout 0 = 1-shot 기준선(위험 OFF). 먼저 돌려두면 뒤의 MC 결과와 나란히 볼 수 있다.
+    if WANT_REF
+        for a in ACTIONS
+            r = run_one(mc_prod(a); hz_seed = nothing)
+            @printf("  a=%d:%-12s REF  complete=%-3s closed=%3d/%3d  mk=%7.1f  cost=%9.2f  (1-shot, 위험 OFF)\n",
+                    a, arm_name(a), r.complete ? "YES" : "no", r.closed, r.total,
+                    r.makespan, scalar_cost(r))
+            append_unit!(a, 0, -1, r)
+        end
+    end
+
+    for k in 1:K, a in ACTIONS
+        hz_seed = SEED0 + k
+        r = run_one(mc_prod(a); hz_seed = hz_seed)
+        @printf("  a=%d:%-12s k=%d  complete=%-3s closed=%3d/%3d  mk=%7.1f  cost=%9.2f  brk=%d cell=%d\n",
+                a, arm_name(a), k, r.complete ? "YES" : "no", r.closed, r.total,
+                r.makespan, scalar_cost(r), r.hz_break, r.hz_cell)
+        append_unit!(a, k, hz_seed, r)
+        push!(raw, r)
+    end
+    check_order_equivalence(raw)      # 스칼라 비용이 기존 사전식 순위를 재현하는지 점검
+    main_aggregate()
+end
+
+# 직접 실행했을 때만 시뮬을 돌린다. 다른 파일이 include 하면(테스트가 그렇게 한다)
+# 함수 정의만 가져가고 아무것도 실행하지 않는다.
+if abspath(PROGRAM_FILE) == @__FILE__
+    if AGGONLY
+        main_aggregate()
+    elseif !isempty(BATCH)
+        main_batch(BATCH)
+    elseif !isempty(ONLY)
+        main_unit(ONLY)
+    else
+        main_sweep()
+    end
+end

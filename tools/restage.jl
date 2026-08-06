@@ -828,6 +828,281 @@ println("=== RESTAGE (single) ==="); restage_check()
 println("=== RESTAGE-ALL (multi, Phase a) ==="); restage_all_check()
 end
 
+# =============================================================================
+# causal -- STEP 10: does the BLOCKAGE predicate pick zones that actually block?
+#
+# STEP 6 measured that the zone family in use is HARMLESS to feasibility: a core zone
+# swallowing 8/8 root delivery goals still closed all 291 nodes (makespan 22.25 -> 47.08), and
+# intervening (RelocateBuild) failed to finish in 7 of 8 runs. So `H(best|zone) = 0`: the answer
+# was always NOOP and there was no decision to learn.
+#
+# `zone_corridor.jl` says why: coverage counts `LiftIntoPlace` goals, which move the CARGO
+# kinematically and are never subject to the zone snap. This diagnostic tests the CONVERSE
+# claim -- that a zone placed on an RVO-DRIVEN goal (`n_nav_blocked > 0`) does stop the build --
+# by running it. If NOOP still completes, the predicate is wrong and must be said so.
+#
+# ONE ARM PER PROCESS (`ZC_ARM`), deliberately: the RVO simulator and its id map are GLOBAL, so
+# two arms in one process would share a mutated motion state and the comparison would be a
+# fiction. Each arm rebuilds the world from the same seed and injects at the same fire point.
+#
+#   ZC_ARM     control | blk_noop | blk_reloc | blk_forbid | cov_noop | cov_reloc
+#   ZC_FIRE    closed-count at injection (default 58 -- the fire point STEP 6 actually observed)
+#   ZC_R       blocking-zone radius as a MULTIPLE of the robot radius (default 0.5)
+#   ZC_CAP / ZC_STALL / ZC_PROJECT / ZC_OUT
+# =============================================================================
+# causal 검증기(STEP 10): "막힘 술어가 고른 구역은 정말로 빌드를 막는가"를 실제로 돌려서 확인한다.
+#   STEP 6 은 지금 쓰는 zone 가족이 완주를 못 막는다는 것(=결정이 사라짐)을 보였고,
+#   zone_corridor.jl 은 그 이유(커버리지가 운동학 목표를 세고 있었다)를 말한다. 여기서는 그 역,
+#   즉 **RVO 구동 목표 위**에 심은 구역은 NOOP 으로 완주가 안 된다는 주장을 검증한다.
+#   팔(arm)마다 프로세스를 새로 띄운다 — RVO 시뮬레이터와 id 맵이 전역이라 한 프로세스에서 두 팔을
+#   돌리면 모션 상태가 섞여 비교가 허구가 되기 때문이다.
+function restage_causal()
+ARM     = get(ENV, "ZC_ARM", "control")
+PROJECT = parse(Int, get(ENV, "ZC_PROJECT", "4"))
+FIRE    = parse(Int, get(ENV, "ZC_FIRE", "58"))
+RFRAC   = parse(Float64, get(ENV, "ZC_R", "0.5"))
+CAP     = parse(Int, get(ENV, "ZC_CAP", "250000"))
+STALL   = parse(Int, get(ENV, "ZC_STALL", "4000"))
+REFORM     = parse(Int, get(ENV, "ZC_REFORM", "400"))      # 무진전 몇 스텝마다 복구 사다리를 걸까(0=끄기)
+REFORM_MAX = parse(Int, get(ENV, "ZC_REFORM_MAX", "3"))    # 진전 없이 연속으로 허용할 복구 횟수
+OUT     = get(ENV, "ZC_OUT", "")
+
+_setup_milp!()
+
+function build_base_env()
+    pp = CB.get_project_params(PROJECT)
+    env = run_with_stack(2_000_000_000) do
+        CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+            model_scale=pp[:model_scale], num_robots=pp[:num_robots],
+            assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
+            log_level=Logging.Error, rvo_flag=true, tangent_bug_flag=true,
+            dispersion_flag=true, open_animation_at_end=false, save_animation=false,
+            save_animation_along_the_way=false, write_results=false,
+            overwrite_results=false, look_for_previous_milp_solution=false,
+            save_milp_solution=false, return_env_before_sim=true)
+    end
+    return env
+end
+
+# 목표 closed 수에 도달할 때까지 전진(도중에 완주하면 멈춤). 반환: 실제 밟은 스텝 수.
+function advance_to!(env, target)
+    it = 0
+    for _ in 1:CAP
+        CB.step_environment!(env); CB.update_planning_cache!(env, 0.0)
+        it += 1
+        (length(env.cache.closed_set) >= target || CB.project_complete(env)) && break
+    end
+    return it
+end
+
+# 트윈 표준 복구 사다리(render_demo.jl::enact_reform! 와 같은 두 단). **모든 팔에 똑같이** 건다.
+#
+# 이걸 안 걸면 이 실험은 아무것도 못 잰다(2026-08-05 실측): reform 없이 돌린 네 팔이 전부
+# closed 254~258 에서 멈췄고, 그중 둘은 같은 258 이었다 — 이 트윈의 완주 실패는 **언제나 루트
+# 엔드게임**(TransportUnitGo/DepositCargo 사슬)에서 나므로, 구역의 효과가 그 교착에 통째로 가려진다.
+# 복구를 팔마다 다르게 주면 그건 실험이 아니라 편들기이므로, 간격·예산·순서를 전부 공통으로 둔다.
+function reform!(env)
+    rec = try CB.recover_stalled_teams!(env; verbose = false) catch e
+        @warn "recover_stalled_teams! 실패" exception = e; (status = :error,)
+    end
+    ok = rec.status in (:snapped, :force_snapped, :restaged, :carrier_closed, :carrier_advanced)
+    ok && CB.reset_cache_resume!(env.cache, env.sched)
+    wedge = (status = :skipped,)
+    if !ok
+        wedge = try CB.resolve_schedule_wedge!(env; verbose = false) catch e
+            @warn "resolve_schedule_wedge! 실패" exception = e; (status = :no_wedge,)
+        end
+        wedge.status == :unwedged && CB.reset_cache_resume!(env.cache, env.sched)
+    end
+    try CB.update_planning_cache!(env, 0.0) catch end
+    println("    [reform] recover=$(rec.status) wedge=$(wedge.status)")
+    return nothing
+end
+
+# 끝까지 돌린다. 반환 (status, closed, iters, n_reform).
+#   status: :complete / :stalled / :capped / :asserted
+#   무진전이 REFORM 스텝 이어지면 복구 사다리를 한 번 건다(예산 REFORM_MAX, 진전이 있으면 예산 복구).
+function run_to_end!(env)
+    prev = length(env.cache.closed_set); stall = 0; it = 0
+    budget = REFORM_MAX; n_reform = 0
+    for _ in 1:CAP
+        CB.step_environment!(env)
+        try CB.update_planning_cache!(env, 0.0) catch
+            return (:asserted, length(env.cache.closed_set), it, n_reform)
+        end
+        it += 1
+        c = length(env.cache.closed_set)
+        if c > prev
+            stall = 0; budget = REFORM_MAX          # 실제로 전진했으면 복구 예산을 되돌린다
+        else
+            stall += 1
+        end
+        prev = c
+        CB.project_complete(env) && return (:complete, c, it, n_reform)
+        if REFORM > 0 && budget > 0 && stall > 0 && stall % REFORM == 0
+            reform!(env); n_reform += 1; budget -= 1
+            prev = length(env.cache.closed_set)
+        end
+        stall >= STALL && return (:stalled, c, it, n_reform)
+    end
+    return (:capped, prev, it, n_reform)
+end
+
+# --- 팔이 심는 구역 -------------------------------------------------------------------------
+# blocking: **RVO 로 움직이는 주체의 목표** 위에 놓는다(=막힘 술어가 n_nav_blocked>0 이라 말하는 자리).
+#   후보는 아직 활성이 아닌(=로봇이 그 목표로 날아가는 중이 아닌) 미래 목표로 한정하고,
+#   RelocateBuild 로 벗어날 수 있는(=복구 가능한) 것만 고른다 — 복구 불가면 결정 문제가 아니라 사고다.
+function place_blocking_zone_on_nav_goal!(env; key = :zblock)
+    rr = Float64(CB.default_robot_radius()); r = RFRAC * rr
+    navs = CB._nav_goal_targets(env)
+    # root = 가장 큰 적치원을 가진 조립체(빌드 전체를 감싸는 기준 프레임). 그 중심을 "빌드 중심"으로 쓴다.
+    root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), collect(keys(env.staging_circles)))
+    c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
+    cand = [t for t in navs if !(t.vtx in env.cache.active_set)]
+    # 운반유닛(배송) 목표를 먼저, 그다음 빌드 중심에 가까운 것부터 — 결정적 순서.
+    sort!(cand; by = t -> (t.kind === :transport ? 0 : 1, norm(t.goal .- c0)))
+    for t in cand
+        CB.zone_relocatable(t.goal, r, env) || continue      # 복구 가능한 것만
+        CB.add_restriction_zone!(key, t.goal, r)
+        b = CB.zone_blockage(env; zone_keys = [key], check_paths = false)
+        if b.n_blocked >= 1
+            println("    [target] $(t.kind) vtx=$(t.vtx) goal=$(round.(t.goal; digits=3)) " *
+                    "r_zone=$(round(r; digits=3)) r_agent=$(round(t.radius; digits=3)) " *
+                    "-> nav_blocked=$(b.n_blocked)")
+            return t
+        end
+        CB.remove_restriction_zone!(key)
+    end
+    return nothing
+end
+
+# harmless: **커버리지는 있는데 막힘은 0** 인 자리에 놓는다. 운동학 목표(LiftIntoPlace) 중 어떤 nav
+#   목표의 배제원에도 안 걸리는 것을 골라 그 위에 아주 작은 구역을 얹는다. 이 가족이 필요한 이유:
+#   두 규칙이 **반대로 답하는** 사건이라야 결정이 존재한다 —
+#     커버리지 규칙: root_covered>0 → 개입   /   인과 규칙: nav_blocked==0 → 절제
+#   어느 쪽이 옳은지는 실행이 정한다(그게 이 실험이다).
+function place_harmless_zone!(env; key = :zsafe)
+    rr = Float64(CB.default_robot_radius()); r = 0.2 * rr
+    tol = Float64(CB.capture_distance_tolerance())
+    navs = CB._nav_goal_targets(env)
+    kins = CB._kinematic_goal_targets(env)
+    best = nothing; bestd = 0.0
+    for g in kins
+        d = isempty(navs) ? Inf : minimum(norm(t.goal .- g) - (r + t.radius + tol) for t in navs)
+        d > bestd && (bestd = d; best = g)
+    end
+    (best === nothing || bestd <= 0.0) && return nothing
+    CB.add_restriction_zone!(key, best, r)
+    b = CB.zone_blockage(env; zone_keys = [key], check_paths = true)
+    println("    [target] harmless zone @$(round.(best; digits=3)) r=$(round(r; digits=3)) " *
+            "여유=$(round(bestd; digits=3)) -> nav_blocked=$(b.n_blocked) " *
+            "kinematic_covered=$(b.n_kinematic_covered)")
+    b.n_blocked == 0 || (CB.remove_restriction_zone!(key); return nothing)   # 막으면 이 가족이 아니다
+    return best
+end
+
+# coverage-only: 지금까지 쓰던 core zone 가족(root 하역목표를 frac 만큼 삼킴) = STEP 6 재현용.
+function place_coverage_zone!(env; key = :zcov, frac = 1.0)
+    sel = CB.core_zone_for_severity(env, frac)
+    (sel === nothing || !sel.relocatable || sel.radius <= 0.0) && return nothing
+    CB.add_restriction_zone!(key, sel.center, sel.radius)
+    println("    [target] core zone @$(round.(sel.center; digits=3)) r=$(round(sel.radius; digits=3)) " *
+            "covers root $(sel.covered)/$(sel.total)")
+    return sel
+end
+
+println(">>> [causal] arm=$(ARM) project=$(PROJECT) fire=$(FIRE) building env (NAV ON)...")
+env = build_base_env()
+total = Graphs.nv(env.sched)
+CB.clear_restriction_zones!()
+it_pre = advance_to!(env, FIRE)
+closed_at_fire = length(env.cache.closed_set)
+println(">>> [causal] fired at closed=$(closed_at_fire)/$(total) after $(it_pre) steps")
+
+zkey = :none; diag = nothing; enacted = "-"
+if startswith(ARM, "blk")
+    t = place_blocking_zone_on_nav_goal!(env)
+    t === nothing && (println("RESULT arm=$(ARM) status=no_target"); return)
+    zkey = :zblock
+elseif startswith(ARM, "cov")
+    place_coverage_zone!(env) === nothing && (println("RESULT arm=$(ARM) status=no_target"); return)
+    zkey = :zcov
+elseif startswith(ARM, "harmless")
+    place_harmless_zone!(env) === nothing && (println("RESULT arm=$(ARM) status=no_target"); return)
+    zkey = :zsafe
+end
+
+if zkey !== :none
+    diag = CB.zone_diagnosis(env, zkey; check_paths = true)
+    causal_verdict = withenv("ZONE_CAUSAL_RULE" => "1") do
+        CB.zone_diagnosis(env, zkey; check_paths = true).verdict
+    end
+    println("    [diag] root_covered=$(diag.root_covered)/$(diag.root_total) " *
+            "domain=$(diag.n_blocked)/feasible=$(diag.n_restage_feasible) " *
+            "nav_goals=$(diag.n_nav_goals) nav_blocked=$(diag.n_nav_blocked) " *
+            "(engulf=$(diag.n_nav_engulfed) disc=$(diag.n_nav_disconnected)) " *
+            "trapped=$(diag.n_agent_trapped) |Δ|=$(round(diag.relocate_norm; digits=3))")
+    println("    [rule] coverage -> $(diag.verdict)   causal -> $(causal_verdict)")
+end
+
+# --- 개입(있는 팔만) -------------------------------------------------------------------------
+if endswith(ARM, "reloc")
+    res = CB.translate_whole_build!(env; zone_keys = [zkey])
+    enacted = "RelocateBuild:$(res.status)"
+    println("    [enact] translate_whole_build! -> $(res.status)")
+elseif endswith(ARM, "forbid")
+    res = CB.restage_all_blocked!(env; zone_keys = [zkey])
+    enacted = "ForbidZone:$(res.status)"
+    println("    [enact] restage_all_blocked! -> $(res.status) moved=$(length(res.moved))")
+end
+
+st, closed, iters, n_reform = run_to_end!(env)
+
+# 정체했으면 **왜** 정체했는지 귀속시킨다. "구역을 심었더니 멈췄다"는 상관이고, "멈춘 프론티어가
+# 바로 그 막힌 노드다"가 인과다. 둘을 구분하지 않으면 이 실험은 아무것도 증명하지 못한다.
+n_frontier_blocked = -1
+if st !== :complete && zkey !== :none
+    b_end = try CB.zone_blockage(env; zone_keys = [zkey], check_paths = true) catch; nothing end
+    blocked_vtx = b_end === nothing ? Set{Int}() : Set(x.vtx for x in b_end.blocked)
+    println("--- 정체 시점 프론티어(활성 EntityGo) ---")
+    n_fr = 0; n_frontier_blocked = 0
+    for v in sort(collect(env.cache.active_set))
+        n = CB.get_node(env.sched, v).node
+        CB.matches_template(CB.EntityGo, n) || continue
+        n_fr += 1
+        isblk = v in blocked_vtx
+        isblk && (n_frontier_blocked += 1)
+        n_fr <= 12 && println("    vtx=$(v) $(typeof(n).name.name) " *
+                              (isblk ? "<- 이 구역이 막고 있는 노드" : ""))
+    end
+    println("    활성 EntityGo $(n_fr)개 중 이 구역이 막는 것 $(n_frontier_blocked)개 " *
+            "(구역이 지금 막는 노드 총 $(length(blocked_vtx))개)")
+end
+
+makespan = (iters + it_pre) * Float64(env.dt)
+println("RESULT arm=$(ARM) status=$(st) closed=$(closed)/$(total) " *
+        "steps=$(iters) makespan=$(round(makespan; digits=2)) enacted=$(enacted) " *
+        "reform=$(n_reform) frontier_blocked=$(n_frontier_blocked) " *
+        "fired_at=$(closed_at_fire) " *
+        "root_covered=$(diag === nothing ? -1 : diag.root_covered) " *
+        "nav_blocked=$(diag === nothing ? -1 : diag.n_nav_blocked)")
+
+if !isempty(OUT)
+    open(OUT, "a") do io
+        println(io, "{\"arm\":\"$(ARM)\",\"status\":\"$(st)\",\"closed\":$(closed),\"total\":$(total)," *
+                    "\"steps\":$(iters),\"makespan\":$(round(makespan; digits=4))," *
+                    "\"reform\":$(n_reform),\"frontier_blocked\":$(n_frontier_blocked)," *
+                    "\"fired_at\":$(closed_at_fire),\"enacted\":\"$(enacted)\"," *
+                    "\"root_covered\":$(diag === nothing ? -1 : diag.root_covered)," *
+                    "\"nav_blocked\":$(diag === nothing ? -1 : diag.n_nav_blocked)," *
+                    "\"nav_engulfed\":$(diag === nothing ? -1 : diag.n_nav_engulfed)," *
+                    "\"nav_disconnected\":$(diag === nothing ? -1 : diag.n_nav_disconnected)," *
+                    "\"verdict\":\"$(diag === nothing ? "-" : diag.verdict)\"}")
+    end
+end
+CB.clear_restriction_zones!()
+end
+
 # ---- dispatcher -------------------------------------------------------------
 # ---- 디스패처: 키 문자열 -> 실행할 검증기 함수 매핑(Dict) --------------------
 const RESTAGES = Dict(
@@ -835,6 +1110,7 @@ const RESTAGES = Dict(
     "fullnav"    => restage_fullnav,
     "navon"      => restage_navon,
     "validate"   => restage_validate,
+    "causal"     => restage_causal,       # STEP 10: 막힘 술어가 고른 구역이 정말 막는가(팔당 프로세스 1개)
 )
 end # module Restage
 

@@ -76,6 +76,11 @@ const norm = LinearAlgebra.norm # 벡터 길이(크기) 계산 함수에 짧은 
 # MODULE load puts it in an OLDER world than any demo call, exactly reproducing
 # the original top-level-include semantics.
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
+# The MDP layer (src/mdp/) is loaded the same way and for the same world-age reason.
+# It DEPENDS on navigator (battery/ood_truth/ood_stream), so it must come after.
+# [한국어] MDP 계층(src/mdp/)도 같은 이유로 모듈 로드 시점에 한 번 불러둔다. navigator 에
+#          의존하므로 반드시 그 다음 줄이어야 한다.
+CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))
 
 # ---- shared helpers (defined ONCE) ------------------------------------------
 # The set_default_milp_optimizer! block that appears (identically) in 8 of the 10
@@ -232,6 +237,147 @@ run_with_stack(2_000_000_000) do
 end
 println(">>> done. The browser tab shows the animation (press the play arrow, bottom-right).")
 end
+
+# =============================================================================
+# respec_relocatebuild -- VISUAL demo of the FULL RelocateBuild respec pipeline (2026-08-03).
+#
+#   WHAT IS DIFFERENT FROM respec_forbidzone. That demo emits `ForbidZone`, whose enactment
+#   (`restage_all_blocked!`) can only move assemblies that have NOT started building. That set
+#   empties at the first batch boundary and never refills (measured: 7 eligible at closed=0, 0
+#   from closed≈46 on), so mid-build it is a silent no-op and the recovery only happens because
+#   replan.jl falls through to a SECOND phase. This demo shows the one-step path: the LLM names
+#   `RelocateBuild` and the whole build shifts, with no per-assembly phase at all.
+#
+#   THE ZONE IS ALSO DIFFERENT. It is sized by SEVERITY, not by a hard-coded radius:
+#   `core_zone_for_severity(env, CORE_FRAC)` picks the radius that swallows CORE_FRAC of the
+#   ROOT's delivery goals — the goals no restage can ever rescue — while checking that a rigid
+#   whole-build shift clearing it still exists. So the demo shows a zone that genuinely DOOMS a
+#   do-nothing run (the harm axis the old non-root zones never had) and is still recoverable.
+#
+#   ENV: USE_MOCK, MOCK_PORT, NAVON_PROJECT, OOD_STEP, CORE_FRAC, GRID_SCALE, OPEN_ANIM.
+# =============================================================================
+# demo_respec_relocatebuild : "자연어 → LLM → DSL(RelocateBuild) → 빌드 전체 평행이동" 시각 데모.
+#   respec_forbidzone 과의 차이 두 가지.
+#   (1) 팔이 다르다: ForbidZone 은 "아직 시작 안 한 조립체"만 옮길 수 있어 빌드 중반엔 조용한 no-op 이고
+#       복구는 replan.jl 의 2단계 폴백 덕에 일어난다. 여기서는 LLM 이 곧바로 RelocateBuild 를 내고
+#       한 단계로 빌드 전체가 비켜난다.
+#   (2) 구역이 다르다: 반지름을 상수로 박지 않고 core_zone_for_severity(env, CORE_FRAC) 로 고른다 —
+#       **root 하역 목표를 CORE_FRAC 만큼 삼키되, 빌드 전체를 옮기면 벗어날 수 있는** 구역.
+#       그래서 "가만히 두면 최종 조립이 불가능하다"는 harm 이 실제로 존재하는 데모다.
+function demo_respec_relocatebuild()
+USE_MOCK  = get(ENV, "USE_MOCK", "1") == "1"
+MOCK_PORT = parse(Int, get(ENV, "MOCK_PORT", "8736"))
+if USE_MOCK
+    ENV["RESPEC_SERVICE_URL"] = "http://127.0.0.1:$MOCK_PORT"
+elseif !haskey(ENV, "RESPEC_SERVICE_URL")
+    ENV["RESPEC_SERVICE_URL"] = "http://127.0.0.1:8000"
+end
+
+PROJECT    = parse(Int, get(ENV, "NAVON_PROJECT", "4"))
+OOD_STEP   = parse(Int, get(ENV, "OOD_STEP", "5"))            # 이 스텝에 구역을 떨어뜨린다
+CORE_FRAC  = parse(Float64, get(ENV, "CORE_FRAC", "0.6"))     # severity = root 하역 목표를 삼키는 비율
+GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
+OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
+
+_setup_milp!()
+
+# 결정적 mock /propose : 요청에 실려온 zones 에서 키만 읽어 RelocateBuild 를 돌려준다.
+# ForbidZone 과 달리 assembly 를 지목하지 않는다 — 빌드 전체가 움직이므로 grounding 대상이 없다.
+function start_mock(port)
+    handler = function (req::HTTP.Request)
+        path = HTTP.URIs.URI(req.target).path
+        if path == "/health"
+            return HTTP.Response(200, JSON3.write(Dict("status" => "ok")))
+        elseif path == "/propose"
+            body  = JSON3.read(String(req.body))
+            zones = haskey(body, "zones") ? body["zones"] : []
+            zkey  = isempty(zones) ? "zonecore" : String(zones[1]["key"])
+            @info "[MOCK-LLM] /propose -> RelocateBuild(zone=$zkey)"
+            return HTTP.Response(200, JSON3.write(Dict(
+                "constraints" => [Dict("kind" => "RelocateBuild", "zone" => zkey)],
+                "rationale" => "mock: zone covers un-relocatable core goals; shift the whole build")))
+        end
+        return HTTP.Response(404, "not found")
+    end
+    return HTTP.serve!(handler, "127.0.0.1", port)
+end
+
+# OOD 동작: 심각도로 고른 core zone 을 실제로 배치하고, 그 사실을 자연어로 돌려준다(→ respec 큐).
+# core_zone_for_severity 가 "복구 불가" 라고 하면 아무것도 넣지 않는다 — 데모가 못 고칠 사건을
+# 보여주면 안 되고, 이 판정은 실행부와 같은 솔버를 쓴다.
+function ood_action!(env)
+    sel = CB.core_zone_for_severity(env, CORE_FRAC)
+    if !sel.relocatable || sel.radius <= 0.0
+        @warn "[DEMO] no relocatable core zone at frac=$CORE_FRAC (goals=$(sel.total)) -> injecting nothing"
+        return nothing
+    end
+    CB.add_restriction_zone!(:zonecore, sel.center, sel.radius)
+    @info "[DEMO] OOD @ step $OOD_STEP: CORE zone@$(round.(sel.center;digits=2)) R=$(round(sel.radius;digits=2)) " *
+          "covers $(sel.covered)/$(sel.total) root delivery goals (frac=$(round(sel.frac;digits=2)))"
+    return "A safety exclusion zone is now active over the central build area and covers " *
+           "$(sel.covered) of the $(sel.total) final-assembly delivery points; " *
+           "the remaining work cannot be delivered where it stands."
+end
+
+# respec_forbidzone 의 _esc/_log_panel 은 그 함수 **안에** 정의된 지역 함수라 여기서 못 쓴다.
+# 같은 모양의 오버레이 패널을 이 데모용으로 따로 둔다(색 규칙도 RelocateBuild 경로에 맞춤).
+_PIPE2 = String[]
+_esc2(s) = replace(string(s), "&" => "&amp;", "<" => "&lt;", ">" => "&gt;")
+function _log_panel2(lines)
+    isempty(lines) && return ""
+    rows = map(lines) do ln
+        c = occursin("OOD event:", ln) ? "#ffd479" :                                   # 자연어 입력(호박색)
+            (occursin("LLM proposal", ln) || occursin("MOCK-LLM", ln)) ? "#7ee787" :   # DSL 출력(녹색)
+            (occursin("WHOLE-BUILD", ln) || occursin("admitted", ln)) ? "#79c0ff" :    # 기하 복구(파랑)
+            "#d8e0ee"
+        "<div style=\"color:$c;margin:2px 0\">$(_esc2(ln))</div>"
+    end
+    return "<div id=\"respec-log\" style=\"position:fixed;top:8px;left:8px;max-width:46vw;max-height:92vh;" *
+        "overflow:auto;background:rgba(16,18,26,.86);font:12px/1.5 ui-monospace,Consolas,monospace;" *
+        "padding:10px 13px;border-radius:9px;z-index:99999;white-space:pre-wrap;box-shadow:0 3px 16px rgba(0,0,0,.55)\">" *
+        "<div style=\"color:#9bd1ff;font-weight:700;margin-bottom:5px\">RESPEC pipeline &nbsp;—&nbsp; " *
+        "natural language → RelocateBuild → whole-build translation</div>" * join(rows, "") * "</div>"
+end
+
+SRV = USE_MOCK ? start_mock(MOCK_PORT) : nothing
+CB.RESPEC_ENABLED[] = true
+CB.clear_ood_schedule!(); CB.clear_restriction_zones!()
+CB.schedule_ood!(OOD_STEP, ood_action!)
+
+pp = CB.get_project_params(PROJECT)
+ready = CB.respec_service_ready()
+println(">>> VISUAL RelocateBuild respec demo: project=$(pp[:project_name]) OOD_STEP=$OOD_STEP " *
+        "CORE_FRAC=$CORE_FRAC mode=$(USE_MOCK ? "MOCK" : "REAL-LLM")")
+println(">>> /propose at $(ENV["RESPEC_SERVICE_URL"])  ready=$ready  RESPEC_ENABLED=$(CB.RESPEC_ENABLED[])")
+(!USE_MOCK && !ready) && @warn "REAL-LLM mode but service not reachable — start the python service first."
+println(">>> building + simulating with FULL NAV + RESPEC SEAM + ANIMATION (slow)...")
+
+run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Info,
+        rvo_flag=true, tangent_bug_flag=true, dispersion_flag=true,
+        save_animation=true, open_animation_at_end=false, update_anim_at_every_step=true,
+        anim_active_agents=true, anim_active_areas=true, grid_scale=GRID_SCALE, log_sink=_PIPE2,
+        save_animation_along_the_way=false, write_results=false, overwrite_results=true,
+        look_for_previous_milp_solution=false, save_milp_solution=false, return_env_before_sim=false)
+end
+try close(SRV) catch end
+CB.RESPEC_ENABLED[] = false; CB.clear_ood_schedule!(); CB.clear_restriction_zones!()
+
+htmlpath = joinpath("results", pp[:project_name], "greedy_RVO_Dispersion_TangentBug", "visualization.html")
+if isfile(htmlpath) && !isempty(_PIPE2)
+    html = read(htmlpath, String)
+    panel = _log_panel2(_PIPE2)
+    html = occursin("</body>", html) ? replace(html, "</body>" => panel * "\n</body>"; count = 1) : html * panel
+    write(htmlpath, html)
+    println(">>> embedded $(length(_PIPE2)) RESPEC pipeline log lines into the HTML.")
+else
+    println(">>> WARNING: no RESPEC log captured to embed.")
+end
+println(">>> done. Open (animation + RESPEC log in ONE file): $htmlpath")
+OPEN_ANIM && isfile(htmlpath) && (try run(`cmd /c start "" $(abspath(htmlpath))`) catch e; @warn "auto-open failed: $e" end)
+end   # demo_respec_relocatebuild 끝
 
 # =============================================================================
 # respec_forbidzone -- VISUAL demo of the FULL ForbidZone respec pipeline, driven
@@ -2535,11 +2681,189 @@ end   # demo_bigstack 끝
 # ---- dispatcher -------------------------------------------------------------
 # DEMOS : "데모키(문자열) → 데모함수" 매핑 딕셔너리. 맨 아래 실행부가 이 표에서 함수를 찾아 부른다.
 #   (여기 값은 함수 자체 — Julia 에선 함수도 값처럼 변수/딕셔너리에 담아 나중에 호출할 수 있다.)
+# =============================================================================
+# hazard_mdp -- MDP STEP 1 end-to-end: OOD events driven by a STATE-DEPENDENT
+#   HAZARD PROCESS instead of a pre-drawn script.
+#
+#   The contrast with every earlier demo is the point. `schedule_random_ood!` draws
+#   n progress points and n kinds ONCE, BEFORE the sim starts — a random SCENARIO,
+#   whose event times do not depend on what the robots are doing. Here nothing is
+#   drawn in advance: each robot carries an exponential clock whose rate
+#     λ_r(t) = (1/mtbf)·mode·f_mode·exp(β_u·û_r + β_s·(1−soc_r))
+#   rises as it works, carries, and drains, and the FIRST clock to cross its Exp(1)
+#   threshold fires. That is the competing-risks construction of design §5, and it
+#   is what makes P(s'|s,a) an actual transition kernel.
+#
+#   What to look for in the output:
+#     * events land at times/robots that DIFFER with SEED (same build, same plan)
+#     * busy/loaded/low-SoC robots break down more than idle ones (λ is state-dependent)
+#     * the respec loop reacts to each one exactly as it does to scripted OODs
+#
+#   ENV: SEED, MTBF_BREAK, MTBF_CELL, MTBF_ZONE, PROJECT, N_SPARE, SHRINK, DRAIN_SIGMA,
+#        STALL (couple SoC=0 to a stop, default off), USE_MOCK, FAST, OPEN_ANIM.
+# =============================================================================
+# demo_hazard_mdp : OOD 를 "미리 뽑아둔 대본"이 아니라 상태의존 위험률(hazard)로 발생시키는 e2e 데모.
+#   로봇마다 지수 시계를 하나씩 들고 있고, 일할수록/무거울수록/방전될수록 λ 가 커진다.
+#   가장 먼저 문턱을 넘는 시계가 발화 = 경쟁 위험(competing risks). SEED 를 바꾸면 사건 시점·대상이 바뀐다.
+function demo_hazard_mdp()
+USE_MOCK  = get(ENV, "USE_MOCK", "1") == "1"
+MOCK_PORT = parse(Int, get(ENV, "MOCK_PORT", "8747"))
+ENV["RESPEC_SERVICE_URL"] = USE_MOCK ? "http://127.0.0.1:$MOCK_PORT" :
+                            get(ENV, "RESPEC_SERVICE_URL", "http://127.0.0.1:8000")
+
+PROJECT    = parse(Int, get(ENV, "PROJECT", "4"))            # 4 = tractor
+N_SPARE    = parse(Int, get(ENV, "N_SPARE", "2"))            # 방위 창고당 예비 수
+SHRINK     = parse(Float64, get(ENV, "SHRINK", "200.0"))     # 배터리 용량 축소(짧은 빌드에서도 방전이 보이게)
+SEED       = parse(Int, get(ENV, "SEED", "1"))               # 위험 프로세스 시드 — 바꾸면 실행이 달라진다
+# MTBF 는 빌드 길이에 맞춰야 한다. 트랙터 빌드는 무사고 시 ~20 시뮬초라, 300~400 s 를 쓰면
+# 기대 사건 수가 1 미만이 되어 "아무 일도 안 일어나는" 실행이 나온다(실측: 19.55 s / 1 event).
+MTBF_BREAK = parse(Float64, get(ENV, "MTBF_BREAK", "60.0"))  # 기준조건 평균 무고장 시간[s]
+MTBF_CELL  = parse(Float64, get(ENV, "MTBF_CELL",  "45.0"))
+MTBF_ZONE  = parse(Float64, get(ENV, "MTBF_ZONE",  "Inf"))
+DRAIN_SIG  = parse(Float64, get(ENV, "DRAIN_SIGMA", "0.15")) # 로봇별 방전 효율 편차 σ
+STALL      = get(ENV, "STALL", "0") == "1"
+# 정체성 보존 hot-swap 을 기본으로 켠다. 이게 꺼져 있으면 교체가 "스케줄 재각인" 경로로 가고,
+# 그 경로는 다인 운반 도중 고장을 소화하지 못해 위험 프로세스가 만든 사건 대부분이 유예된다.
+HOT_SWAP   = get(ENV, "HOT_SWAP", "1") == "1"
+GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
+FAST       = get(ENV, "FAST", "1") == "1"
+OPEN_ANIM  = get(ENV, "OPEN_ANIM", "0") == "1"
+CB.set_spare_pool_margin!(parse(Float64, get(ENV, "SPARE_MARGIN", "12.0")))
+CB.set_reform_interval!(parse(Int, get(ENV, "REFORM_INTERVAL", "300")))
+
+_setup_milp!()
+CB.set_planning_objective_weights!(speed = 1.0, efficiency = parse(Float64, get(ENV, "ENERGY_W", "0.01")))
+CB.set_energy_model!(pickup_overhead = 0.0, idle_power = 1.0, load_power = 0.25)
+
+# --- mock /propose: the SAME NL->DSL mapping the scripted demos use, so the only
+#     thing that changed between this demo and the old ones is WHERE events come from.
+_agent_for_rn(event, agents) = begin
+    m = match(r"[Rr](\d+)", String(event))
+    m === nothing && return (isempty(agents) ? "" : String(agents[1]["id"]))
+    n = m.captures[1]
+    for a in agents
+        endswith(String(a["id"]), "($n)") && return String(a["id"])
+    end
+    isempty(agents) ? "" : String(agents[1]["id"])
+end
+function start_mock(port)
+    handler = function (req::HTTP.Request)
+        path = HTTP.URIs.URI(req.target).path
+        path == "/health" && return HTTP.Response(200, JSON3.write(Dict("status" => "ok")))
+        path == "/propose" || return HTTP.Response(404, "not found")
+        body   = JSON3.read(String(req.body))
+        event  = String(get(body, "event", "")); ev = lowercase(event)
+        agents = get(body, "agents", [])
+        cons =
+            if occursin("broken", ev) || occursin("cannot move", ev) || occursin("critically flat", ev)
+                [Dict("kind" => "ReplaceAgent", "agent" => _agent_for_rn(event, agents), "after" => 0.0)]
+            elseif occursin("deadlock", ev) || occursin("re-establish", ev)
+                [Dict("kind" => "ReformTeam")]
+            elseif occursin("degraded", ev) || occursin("charge", ev)
+                [Dict("kind" => "DeprioritizeAgent", "agent" => _agent_for_rn(event, agents), "factor" => 50.0)]
+            elseif occursin("exclusion zone", ev)
+                []                                   # zone 은 항법 스택이 이미 우회하므로 추가 제약 불필요
+            else
+                []
+            end
+        return HTTP.Response(200, JSON3.write(Dict("constraints" => cons, "rationale" => "mock")))
+    end
+    return HTTP.serve!(handler, "127.0.0.1", port)
+end
+
+SRV = USE_MOCK ? start_mock(MOCK_PORT) : nothing
+CB.RESPEC_ENABLED[] = true
+CB.clear_ood_schedule!(); CB.clear_restriction_zones!(); CB.clear_agent_bias!()
+CB.clear_faulted_robots!(); CB.clear_recovery_spares!(); CB.clear_stalled_robots!()
+CB.disable_hazard!()          # 이전 실행 잔여 상태 정리(훅 원복 포함)
+
+HZ_PARAMS = CB.HazardParams(
+    mtbf_break_s = MTBF_BREAK, mtbf_cell_s = MTBF_CELL, mtbf_zone_s = MTBF_ZONE,
+    drain_sigma = DRAIN_SIG,
+    fire_safe_target = true, fire_require_spare = true,
+    # hot-swap 은 고장 본체를 창고로 되돌려 정체성을 보존하므로 견인(clear)하면 안 된다.
+    fire_obstacle = false, fire_clear = !HOT_SWAP)
+
+# 스텝 1: env 가 있어야 하므로 여기서 배터리 계층 -> 위험 프로세스 순으로 켠다.
+# 순서가 중요: hazard 는 BATTERY_STEP_HOOK 에 "체이닝"되므로 배터리 회계가 먼저 돌아 SoC 가 최신이어야
+# λ(soc) 가 이번 스텝 값으로 계산된다.
+CB.schedule_ood!(1, function (env)
+    CB.enable_battery!(env; params = CB.demo_battery_params(shrink = SHRINK))
+    CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3)
+    STALL && CB.set_battery_stall!(enabled = true, threshold = 0.02, clear = !HOT_SWAP, obstacle = false)
+    HOT_SWAP && CB.set_hot_swap!(enabled = true, mode = Symbol(get(ENV, "HOT_SWAP_MODE", "via_depot")))
+    st = CB.enable_hazard!(env; params = HZ_PARAMS, seed = SEED)
+    # 주차된 예비는 전원이 꺼져 있어 위험이 0 이므로 기대치 계산에서 제외한다(안 그러면 크게 과대추정).
+    n_rob = length(CB.BATTERY_FLEET[].soc) - length(CB.active_spares())
+    e = CB.expected_hazard_events(st, 300.0; n_robots = n_rob, mode = :transit)
+    @info "[HAZARD-MDP] armed: seed=$SEED, working robots=$n_rob (주차 예비 제외), " *
+          "mtbf break/cell/zone = $MTBF_BREAK/$MTBF_CELL/$MTBF_ZONE s, drain σ=$DRAIN_SIG"
+    @info "[HAZARD-MDP] lower-bound expectation over 300 sim-s: " *
+          "breakdown≈$(round(e.breakdown; digits=2)), cell≈$(round(e.cell; digits=2)) " *
+          "(마모·방전 가속을 뺀 하한이므로 실제로는 이보다 많다)"
+    return nothing
+end)
+
+pp = CB.get_project_params(PROJECT)
+_rdy = Ref(false)
+for _ in 1:30
+    if CB.respec_service_ready(); _rdy[] = true; break; end
+    sleep(0.1)
+end
+println(">>> HAZARD-MDP demo: project=$(pp[:project_name])  seed=$SEED  mode=$(USE_MOCK ? "MOCK" : "REAL-LLM")  /propose ready=$(_rdy[])")
+
+_PIPE = String[]
+run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Info,
+        max_num_iters_no_progress=parse(Int, get(ENV, "NOPROG", "10000")),
+        rvo_flag=true, tangent_bug_flag=true, dispersion_flag=true,
+        n_spare_per_pool=N_SPARE,
+        save_animation=!FAST, open_animation_at_end=OPEN_ANIM, update_anim_at_every_step=!FAST,
+        anim_active_agents=true, anim_active_areas=true, grid_scale=GRID_SCALE, log_sink=_PIPE)
+end
+
+SRV === nothing || close(SRV)
+
+# ---- report: the event log IS the evidence that events came from the process ----
+r = CB.hazard_report()
+println("\n" * "="^78)
+println("HAZARD PROCESS REPORT  (seed=$SEED)")
+println("="^78)
+println("sim time elapsed : $(round(r.t; digits=2)) s   ($(r.steps) steps)")
+println("events fired     : breakdown=$(r.n_break)  cell-degradation=$(r.n_cell)  zone=$(r.n_zone)")
+println("clocks CROSSED but not enacted : breakdown=$(r.n_break_pending)  cell=$(r.n_cell_pending)")
+println("  (>0 이면 모형이 사건을 만들었으나 엔진이 안전하게 발화시키지 못한 것 —")
+println("   fire_safe_target/fire_require_spare 가 다인 운반 도중 고장을 거부. 모형 문제가 아님)")
+println("-"^78)
+if isempty(r.events)
+    println("(no events — lower MTBF_BREAK/MTBF_CELL, or the build was shorter than the clocks)")
+else
+    @printf("%8s  %-8s  %-8s  %-9s  %8s  %8s  %10s\n",
+            "t[s]", "kind", "robot", "mode", "soc", "usage[s]", "λ_brk[1/s]")
+    for e in r.events
+        @printf("%8.2f  %-8s  %-8s  %-9s  %8.3f  %8.1f  %10.3e\n",
+                e.t, String(e.kind),
+                (e.robot === nothing ? "-" : "R$(try e.robot.id catch; e.robot end)"),
+                String(e.mode), e.soc, e.usage_s, e.lambda)
+    end
+end
+println("="^78)
+println("재현: 같은 SEED 는 같은 로그를, 다른 SEED 는 다른 로그를 낸다 (같은 빌드/같은 계획인데도).")
+println("확인법:  SEED=1 julia +lts --project=. tools/demos.jl hazard_mdp")
+println("         SEED=2 julia +lts --project=. tools/demos.jl hazard_mdp")
+CB.disable_hazard!()
+return r
+end
+
 const DEMOS = Dict(
+    "hazard_mdp"           => demo_hazard_mdp,
     "original_baseline"    => demo_original_baseline,
     "run_zone"             => demo_run_zone,
     "wholebuild"           => demo_wholebuild,
     "respec_forbidzone"    => demo_respec_forbidzone,
+    "respec_relocatebuild" => demo_respec_relocatebuild,
     "respec_replace"       => demo_respec_replace,
     "energy_adaptive"      => demo_energy_adaptive,
     "energy_adaptive_anim" => demo_energy_adaptive_anim,

@@ -30,6 +30,9 @@
 #
 # Test keys:
 #   forbidzone_parse         -- LLM-free unit test of the ForbidZone bridge+verify path (Stage 1)
+#   zone_diagnosis           -- LLM-free unit test of the zone VIOLATION PREDICATES + minimal-repair rule (STEP 1)
+#   zone_corridor            -- LLM-free unit test of the zone BLOCKAGE predicates: 덮였다 vs 막혔다 (STEP 8)
+#   zone_team_causal         -- NAV-ON reversal test: does a covered team ACTUALLY fail to form? (STEP 11)
 #   replace_parse            -- LLM-free unit test of the ReplaceAgent bridge+verify path (OOD 1-1 Part B)
 #   deprioritize_integration -- TIER-2 DeprioritizeAgent integration on a REAL env (no LLM)
 #   battery_smoke            -- OFFLINE smoke test of the energy-aware adaptive layer (no env, no LLM)
@@ -176,8 +179,839 @@ catch
 end
 check("unknown assembly id throws", threw)
 
+# [6][7] ZONE_DOMAIN_GATE — "조용한 no-op" 을 눈에 보이게 만드는 게이트(verifier.jl).
+#   ForbidZone 은 옮길 수 있는 조립체(non-root ∧ 아직 시작 안 함)가 없으면 실행부가 :none 을 돌려주고
+#   결과가 NOOP 과 바이트 동일해진다 → 오답이 절제와 구별되지 않는다. 그 상태를 명시 거절로 바꾸는 게
+#   이 게이트다. 여기서는 **아무것도 안 덮는 먼 구역**을 심어 도메인을 인위적으로 비운다.
+println("\n[6] zone_domain_size — a zone covering nothing has an EMPTY relocatable domain")
+CB.add_restriction_zone!(:faraway, [500.0, 500.0], 1.0)   # 빌드에서 한참 떨어진 구역(아무 적치원도 안 덮음)
+n_far = CB.zone_domain_size(env, :faraway)
+n_near = CB.zone_domain_size(env, :zone)
+check("faraway zone domain == 0 (got $(n_far))", n_far == 0)
+check("central zone domain > 0 (got $(n_near))", n_near > 0)
+
+println("\n[7] verify_zone — empty domain: admitted with gate OFF, rejected with gate ON")
+prop_far = CB.RespecProposal([CB.ForbidZone(resolver(asm_id), :faraway)], "x", "x")
+CB.set_zone_domain_gate!(false)
+v_off = CB.verify_zone(prop_far, env)
+check("gate OFF -> Admit (옛 의미 보존: 조용한 no-op)", v_off isa CB.Admit)
+CB.set_zone_domain_gate!(true)
+v_on = CB.verify_zone(prop_far, env)
+check("gate ON -> Reject(:empty_domain) (got $(v_on isa CB.Reject ? v_on.reason : typeof(v_on)))",
+      v_on isa CB.Reject && v_on.reason == :empty_domain)
+# 게이트가 켜져 있어도 도메인이 있는 정상 제안은 그대로 통과해야 한다(과잉 거절 방지).
+check("gate ON -> 정상 제안은 여전히 Admit", CB.verify_zone(prop, env) isa CB.Admit)
+CB.set_zone_domain_gate!(false)                            # 기본값(꺼짐)으로 원복 — 다른 테스트에 영향 없게
+
 CB.clear_restriction_zones!()
 println("\n==== ForbidZone parse/verify: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# corezone_guard -- the SEVERITY-GRADED core-zone generation guard (2026-08-03).
+#
+#   The old guard (`zone_clears_root_goals`) was binary and forbade the whole interesting
+#   family: a zone covering the ROOT's delivery goals. It had to, because `restage_all_blocked!`
+#   cannot move the root. The measured cost of that restriction: NOOP was never punished —
+#   seed 301 closed exactly 213/313 at every zone severity — so the zone class could only ever
+#   measure "was intervening worth it", never "must we react".
+#
+#   `core_zone_for_severity` replaces it with a continuous knob (fraction of root delivery goals
+#   swallowed) gated on `zone_relocatable` (a whole-build shift clearing it must exist). This
+#   test asserts the two properties that make it usable as a severity ladder:
+#     (1) MONOTONE — asking for more coverage never returns less.
+#     (2) RECOVERABLE BY CONSTRUCTION — every admitted zone is escapable, verified with the SAME
+#         solver the enactment uses, and the top of the ladder really does cover root goals
+#         (otherwise there is still no harm axis).
+# =============================================================================
+# [검증 내용] 심각도 연속 core zone 가드 검사. (1) frac 을 올리면 실제 커버리지가 줄지 않는다(단조),
+#   (2) 채택된 구역은 전부 "빌드 전체 이동으로 벗어날 수 있음"이 실행부와 같은 솔버로 확인된다,
+#   (3) 사다리 꼭대기는 root 하역 목표를 실제로 덮는다(= harm 이 존재한다).
+function test_corezone_guard()
+_setup_milp!(time_limit = 120.0)
+
+println(">>> building fast geometry env (tractor, rvo off)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+
+CB.clear_restriction_zones!()
+gs0 = CB.root_deposit_goals(env)
+n_root = length(gs0)
+println("\n[1] root delivery goals on record: $n_root")
+check("root deposit goals exist (없으면 harm 축 자체가 불가능)", n_root > 0)
+if n_root > 0
+    # 사다리가 평평해지면 원인은 거의 항상 "거리 분포 대비 여유(margin/pad)가 너무 크다"이다.
+    # 그래서 원자료(무게중심에서 각 목표까지의 거리)를 같이 찍는다.
+    c0 = sum(gs0) ./ length(gs0)
+    d0 = sort([LinearAlgebra.norm(c0 .- g) for g in gs0])
+    println("    centroid=$(round.(c0; digits=3))  robot_radius=$(round(CB.default_robot_radius(); digits=3))")
+    println("    goal distances (sorted) = $(round.(d0; digits=3))")
+end
+
+println("\n[2] severity ladder  (요청 frac -> 실제 커버리지 / 반지름 / 복구가능)")
+fracs = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+sels = map(f -> CB.core_zone_for_severity(env, f), fracs)
+for (f, s) in zip(fracs, sels)
+    println("    frac=$(round(f; digits=1)) -> covered $(s.covered)/$(s.total) " *
+            "($(round(s.frac; digits=2)))  R=$(round(s.radius; digits=2))  relocatable=$(s.relocatable)")
+end
+covs = [s.covered for s in sels]
+check("단조: frac 을 올리면 커버리지가 줄지 않는다", all(covs[i] <= covs[i+1] for i in 1:length(covs)-1))
+check("사다리 꼭대기가 root 목표를 실제로 덮는다(harm 존재)", last(covs) >= 1)
+check("사다리가 실제로 갈라진다(전부 같은 값이면 손잡이가 아니다)", first(covs) < last(covs))
+# 계약은 covered == "k번째 목표까지 품으면 필연적으로 들어오는 목표 수"다. 정확히 k 가 아닌 이유:
+# 트랙터는 좌우대칭이라 목표 거리에 **동률**이 있다(0.16,0.16 / 0.179,0.179 / 0.32,0.32).
+# 동률인 두 목표는 원 하나로 갈라낼 수 없으므로 사다리 칸이 1,3,5,8 로 뭉친다 — 구현 결함이 아니라 기하다.
+# (여유 중복 적용 같은 진짜 버그였다면 모든 칸이 8/8 로 붕괴한다 — 그건 위 '갈라진다' 검사가 잡는다.)
+if n_root > 0
+    c0 = sum(gs0) ./ length(gs0)
+    d0 = sort([LinearAlgebra.norm(c0 .- g) for g in gs0])
+    expect = [count(x -> x <= d0[clamp(ceil(Int, f * n_root), 1, n_root)] + 1e-9, d0) for f in fracs]
+    check("커버리지가 동률을 고려한 기대값과 일치한다  (기대 $expect / 실제 $covs)", covs == expect)
+end
+check("채택된 구역은 전부 relocatable", all(s.relocatable for s in sels if s.radius > 0.0))
+
+println("\n[3] 채택된 구역이 정말 벗어날 수 있는가 — 실행부와 같은 솔버로 재확인")
+ok = all(CB.zone_relocatable(s.center, s.radius, env) for s in sels if s.radius > 0.0)
+check("zone_relocatable 재확인 통과", ok)
+
+println("\n[4] 옛 가드와의 관계: 사다리 위쪽은 zone_clears_root_goals 를 **의도적으로 위반**한다")
+top = last(sels)
+violates = !CB.zone_clears_root_goals(top.center, top.radius, env)
+println("    top zone R=$(round(top.radius;digits=2)) clears_root=$(!violates)")
+check("옛 이진 가드였다면 거부됐을 구역이다(= 새로 열린 영역)", violates)
+
+CB.clear_restriction_zones!()
+println("\n==== core-zone severity guard: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# relocatebuild_parse -- LLM-free unit test of the RelocateBuild bridge+verify+ENACT path.
+#   RelocateBuild is the SECOND spatial spec (added 2026-08-03): it skips the per-assembly
+#   restage and shifts the WHOLE build clear of the zone. It exists because ForbidZone's
+#   repairer can only move assemblies that have not started building, and that set empties
+#   at the first batch boundary and never refills (oracle/out/zdiag*), which made every
+#   mid-build ForbidZone a silent no-op.
+#
+#   Unlike forbidzone_parse this test goes one step further and ENACTS through the production
+#   dispatch (`maybe_respecify!` with a producer), because the whole point of the new spec is
+#   that the enactment does something — a parse-only test would have passed for ForbidZone too.
+#   Asserted: the JSON parses to RelocateBuild, the gate admits it (and rejects an invented
+#   zone), the dispatch returns :admitted, and the staging geometry ACTUALLY MOVED with no
+#   future goal left inside the zone.
+# =============================================================================
+# [검증 내용] LLM 없이 RelocateBuild(빌드 전체 평행이동) 경로를 끝까지 확인: 가짜 JSON 파싱 →
+#   verify_relocate 가 정상은 Admit / 없는 zone 은 Reject → 실제 dispatch(maybe_respecify!)가
+#   :admitted 를 내고 **적치 기하가 진짜로 움직였는지**(구역 안 목표 0개) 본다.
+#   파싱만 보는 테스트는 ForbidZone 도 통과했으므로(그게 조용한 no-op 이었던 이유), 실행까지 본다.
+function test_relocatebuild_parse()
+_setup_milp!(time_limit = 120.0)
+
+println(">>> building fast geometry env (tractor, rvo off)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+
+# 중앙(=root 자신의 하역 목표들 위)에 구역을 심는다. 조립체별 재적치로는 절대 못 비키는 배치 —
+# 바로 이 상황이 whole-build 평행이동이 존재하는 이유다.
+gs = CB.root_deposit_goals(env)
+zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
+CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)
+
+println("\n[1] _parse_proposal with a RelocateBuild JSON")
+resolver = ref -> CB._default_id_resolver(env, ref)
+payload_ok = JSON3.read(JSON3.write(Dict(
+    "constraints" => [Dict("kind" => "RelocateBuild", "zone" => "zone")],
+    "rationale" => "zone covers un-relocatable core goals; shift the whole build")))
+prop = CB._parse_proposal(payload_ok, "A no-go zone is active over the build core."; id_resolver=resolver)
+check("parsed 1 constraint", length(prop.constraints) == 1)
+check("constraint isa RelocateBuild", !isempty(prop.constraints) && prop.constraints[1] isa CB.RelocateBuild)
+check("zone symbol == :zone", !isempty(prop.constraints) && prop.constraints[1].zone == :zone)
+check("_is_relocate_build true", CB._is_relocate_build(prop))
+# ForbidZone 경로로 새지 않아야 한다(둘은 서로 다른 dispatch 분기다).
+check("_is_zone_respec false (별도 분기)", !CB._is_zone_respec(prop))
+
+println("\n[2] verify_relocate — valid proposal admits")
+check("verify_relocate Admit", CB.verify_relocate(prop, env) isa CB.Admit)
+
+println("\n[3] verify_relocate — unknown zone key rejects (LLM 이 없는 구역을 지어낸 경우)")
+v_bad = CB.verify_relocate(CB.RespecProposal([CB.RelocateBuild(:ghost)], "x", "x"), env)
+check("Reject(:no_such_zone)", v_bad isa CB.Reject && v_bad.reason == :no_such_zone)
+
+println("\n[4] ENACT through the production dispatch (maybe_respecify!)")
+# 이동 전 기하를 기록해 둔다: 적치원 중심들과 "구역 안에 남은 미래 목표 수".
+before_centers = Dict(k => Vector{Float64}(CB.get_center(b)[1:2]) for (k, b) in env.staging_circles)
+before_in_zone = CB._count_future_goals_in_zone(env; zone_keys = [:zone])
+println("    이동 전: 구역 안 미래 목표 $(before_in_zone)개, 적치원 $(length(before_centers))개")
+check("사전 조건: 구역이 실제로 미래 목표를 덮고 있다", before_in_zone > 0)
+
+# push_ood! 은 전역 큐(RESPEC_QUEUE)에만 쓰는 1-인자 함수다. 여기서는 이 테스트 전용 큐를 만들어
+# maybe_respecify! 에 직접 넘긴다(전역 큐를 오염시키지 않기 위해 pending 을 직접 채운다).
+q = CB.OODQueue(String["A no-go exclusion zone has appeared over the build core."])
+status = CB.maybe_respecify!(env, q; producer = (_env, _ev) -> prop)
+println("    dispatch status = $(status)")
+check("dispatch -> :admitted", status == :admitted)
+
+after_in_zone = CB._count_future_goals_in_zone(env; zone_keys = [:zone])
+moved = count(k -> haskey(env.staging_circles, k) &&
+                   maximum(abs.(Vector{Float64}(CB.get_center(env.staging_circles[k])[1:2]) .- before_centers[k])) > 1e-6,
+              collect(keys(before_centers)))
+println("    이동 후: 구역 안 미래 목표 $(after_in_zone)개, 움직인 적치원 $(moved)/$(length(before_centers))")
+check("기하가 실제로 움직였다(조용한 no-op 이 아니다)", moved == length(before_centers))
+check("구역 안에 남은 미래 목표 0개", after_in_zone == 0)
+
+CB.clear_restriction_zones!()
+println("\n==== RelocateBuild parse/verify/enact: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# zone_diagnosis -- the VIOLATION PREDICATES layer (src/respec/zone_diagnosis.jl, STEP 1).
+#
+#   `zone_diagnosis(env, :zone)` answers "what does this no-go zone actually INVALIDATE in the
+#   scene tree", returning PRIMITIVES (blocked set, root-goal coverage, work-disc overlap,
+#   minimum clearing shift) plus ONE derived `verdict` — the cheapest repair that clears every
+#   violated predicate. The verdict is the ORACLE LABEL and the gate's justification; it is
+#   deliberately NOT a policy input (a policy given the verdict is reading the answer).
+#
+#   What this test asserts, in order of what could actually break:
+#     (1) the primitives agree with the standalone helpers they compose (no drift between the
+#         diagnosis and the enactment/verify paths that use those same helpers),
+#     (2) the decision rule is INTERNALLY CONSISTENT at every sampled geometry — i.e. the
+#         verdict is a function of the primitives exactly as documented, swept over a radius
+#         ladder so the branch boundaries are actually crossed, and
+#     (3) a zone that covers nothing yields `:noop` with all-zero primitives — the case where
+#         intervening is measurably harmful (231 nodes closed vs 136), so it must not be a
+#         degenerate fallthrough.
+# =============================================================================
+# [검증 내용] 구역 위반 술어 계산기(zone_diagnosis) 단위 검사.
+#   (1) 원시값이 그것을 조합한 기존 함수들(zone_domain_size / root_goal_coverage /
+#       _count_future_work_overlaps / _find_min_translation)과 정확히 일치하는가 — 진단과 실행부가
+#       같은 사실을 보고 있는지(드리프트 없음),
+#   (2) 반지름 사다리를 훑으며 **모든 표본에서** verdict 가 문서대로 원시값의 함수인가(분기 경계를 실제로 넘김),
+#   (3) 아무것도 안 덮는 구역은 원시값 전부 0 에 :noop 인가(여기서 개입하면 순손실 — 231 vs 136 실측).
+function test_zone_diagnosis()
+_setup_milp!(time_limit = 120.0)
+
+println(">>> building fast geometry env (tractor, rvo off)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+
+# 문서화된 결정 규칙 자체를 술어로 옮긴 것. 어떤 기하에서든 이게 깨지면 verdict 는 원시값의 함수가 아니다
+# (= 라벨을 신뢰할 수 없다). 규칙: 국소로 옮길 게 있으면 국소 > root 갇힘이면 전역(가능하면) > 아니면 절제.
+rule_consistent(d) =
+    d.verdict === :forbid_zone    ? d.n_restage_feasible > 0 :
+    d.verdict === :relocate_build ? (d.n_restage_feasible == 0 && (d.root_covered > 0 || d.n_teams_covered > 0) && d.relocate_feasible) :
+    d.verdict === :line_stop      ? (d.n_restage_feasible == 0 && (d.root_covered > 0 || d.n_teams_covered > 0) && !d.relocate_feasible) :
+    d.verdict === :noop           ? (d.n_restage_feasible == 0 && d.root_covered == 0 && d.n_teams_covered == 0) :
+                                    false
+
+CB.clear_restriction_zones!()
+
+println("\n[1] 등록되지 않은 구역 -> :no_such_zone (진단은 절대 throw 하지 않는다)")
+d0 = CB.zone_diagnosis(env, :ghost)
+check("exists == false", d0.exists == false)
+check("verdict == :no_such_zone (got $(d0.verdict))", d0.verdict === :no_such_zone)
+check("원시값 전부 비어 있음", d0.n_blocked == 0 && d0.root_covered == 0 && !d0.relocate_feasible)
+
+println("\n[2] 아무것도 안 덮는 먼 구역 -> :noop (개입이 해로운 경우)")
+CB.add_restriction_zone!(:faraway, [500.0, 500.0], 1.0)
+d1 = CB.zone_diagnosis(env, :faraway)
+println("    -> n_blocked=$(d1.n_blocked) root=$(d1.root_covered)/$(d1.root_total) " *
+        "work_overlap=$(d1.n_work_overlap) verdict=$(d1.verdict)")
+check("verdict == :noop (got $(d1.verdict))", d1.verdict === :noop)
+check("도메인 0 (게이트가 보는 값과 동일)", d1.n_blocked == CB.zone_domain_size(env, :faraway))
+check("root 목표 0개 덮음", d1.root_covered == 0)
+check("미완 작업 디스크 0개 겹침", d1.n_work_overlap == 0)
+check("규칙 일관", rule_consistent(d1))
+
+println("\n[3] 중앙 구역 -> 원시값이 기존 헬퍼들과 일치 + 절제가 정답이 아니다")
+gs = CB.root_deposit_goals(env)
+zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
+CB.add_restriction_zone!(:zone, zc, 2.5)
+d2 = CB.zone_diagnosis(env, :zone)
+println("    -> n_blocked=$(d2.n_blocked) feasible=$(d2.n_restage_feasible) " *
+        "root=$(d2.root_covered)/$(d2.root_total) work_overlap=$(d2.n_work_overlap) " *
+        "|Δ|=$(round(d2.relocate_norm; digits=3)) verdict=$(d2.verdict)")
+rc = CB.root_goal_coverage(zc, 2.5, env)
+check("n_blocked == zone_domain_size", d2.n_blocked == CB.zone_domain_size(env, :zone))
+check("root_covered/root_total == root_goal_coverage", d2.root_covered == rc.covered && d2.root_total == rc.total)
+check("n_work_overlap == _count_future_work_overlaps",
+      d2.n_work_overlap == CB._count_future_work_overlaps(env; zone_keys = [:zone]))
+check("relocate_feasible == (_find_min_translation !== nothing)",
+      d2.relocate_feasible == (CB._find_min_translation(env; zone_keys = [:zone]) !== nothing))
+check("n_restage_feasible <= n_blocked (부분집합)", d2.n_restage_feasible <= d2.n_blocked)
+check("사전 조건: 중앙 구역이 root 하역 목표를 실제로 덮는다(harm 존재)", d2.root_covered > 0)
+check("verdict != :noop (덮는 게 있는데 절제는 오답)", d2.verdict !== :noop)
+check("규칙 일관", rule_consistent(d2))
+
+println("\n[4] 기하 격자(반지름 × 거리) — 모든 표본에서 verdict 가 원시값의 함수인가")
+# 반지름만 키우면 분기가 안 바뀐다: 시뮬 전(closed=0)에는 모든 조립체가 미개시라 도메인이 항상
+# 비어 있지 않고, 그래서 규칙은 언제나 국소 팔을 먼저 고른다. 분기가 실제로 뒤집히는 축은 **거리**다
+# (구역을 빌드에서 멀리 놓을수록 덮는 게 없어진다). 두 축을 다 훑어야 경계를 넘긴 검사가 된다.
+verdicts = Symbol[]
+sweep_at(label, c, r) = begin
+    CB.remove_restriction_zone!(:sweep)
+    CB.add_restriction_zone!(:sweep, c, r)
+    d = CB.zone_diagnosis(env, :sweep)
+    push!(verdicts, d.verdict)
+    println("    $(label): blocked=$(d.n_blocked)/feasible=$(d.n_restage_feasible) " *
+            "root=$(d.root_covered)/$(d.root_total) teams=$(d.n_teams_covered)/$(d.n_teams_forming) " *
+            "|Δ|=$(round(d.relocate_norm; digits=3)) -> $(d.verdict)")
+    check("$(label) 규칙 일관 ($(d.verdict))", rule_consistent(d))
+    d
+end
+for r in [0.5, 1.5, 2.5, 4.0]
+    sweep_at("r=$(r) @center", zc, r)
+end
+for dx in [5.0, 10.0, 25.0, 100.0]
+    sweep_at("d=$(dx) @r=2.5", zc .+ [dx, 0.0], 2.5)
+end
+CB.remove_restriction_zone!(:sweep)
+# 격자가 한 분기에만 머무르면 위 일관성 검사는 사실상 아무것도 안 본 것이다 — 경계를 넘겼는지 확인.
+seen_verdicts = join(unique(verdicts), ", ")
+check("격자가 최소 2개의 서로 다른 분기를 지난다 (got $(seen_verdicts))",
+      length(unique(verdicts)) >= 2)
+check("빌드 위(가장 가까운 표본)에서는 절제가 답이 아니다 (got $(verdicts[1]))", verdicts[1] !== :noop)
+check("충분히 멀면 절제가 답이다 (got $(verdicts[end]))", verdicts[end] === :noop)
+# 남은 두 분기(:relocate_build/:line_stop)는 "도메인이 비었는데 root 나 팀이 갇힘"을 요구하고,
+# 그건 조립이 이미 시작된 빌드 중반 상태에서만 생긴다(시뮬 전 env 로는 원리적으로 도달 불가).
+# 그 두 분기는 STEP 6 의 라벨 격자(진행 중 스냅샷)에서 밟힌다 — 여기서 못 밟는 게 정상이다.
+println("    (참고) 이 env 는 시뮬 전이라 도메인이 절대 비지 않는다 → :relocate_build/:line_stop 은 " *
+        "구조상 도달 불가. STEP 6 격자에서 검증한다.")
+
+println("\n[5] check_restage=false — 값비싼 스캔을 건너뛴 상계(upper bound)")
+d_fast = CB.zone_diagnosis(env, :zone; check_restage = false)
+check("n_restage_feasible == n_blocked (스캔 생략 시 정의)", d_fast.n_restage_feasible == d_fast.n_blocked)
+check("n_blocked 은 스캔 여부와 무관하게 동일", d_fast.n_blocked == d2.n_blocked)
+check("정확한 값의 상계", d_fast.n_restage_feasible >= d2.n_restage_feasible)
+
+# [5b] 팀 슬롯 술어. 이 env 는 시뮬레이션 前(return_env_before_sim)이라 형성 중인 팀이 아직 없다 —
+#   여기서 볼 수 있는 것은 "함수가 안전하고, 팀이 없을 때 완전히 무해하다"까지다. 실제로 팀이 덮이는
+#   분기는 빌드 중간 상태가 있어야 밟히므로 STEP 6 라벨 생성(사다리 스윕)에서 검증한다.
+println("\n[5b] 팀 슬롯 술어 — 팀이 없을 때 완전히 무해한가(그리고 flag 가 라벨을 몰래 안 바꾸는가)")
+tc = CB.zone_team_coverage(env, zc, 1e6)                  # 온 세상을 덮는 원판: 형성 중인 팀은 전부 covered
+println("    -> 형성 중인 팀 $(d2.n_teams_forming)개, 그중 덮인 팀 $(d2.n_teams_covered)개")
+check("zone_team_coverage 가 던지지 않고 팀 수와 일치", length(tc) == d2.n_teams_forming)
+check("무한대 반지름은 모든 형성 팀을 덮는다", count(t -> t.covered, tc) == length(tc))
+check("n_teams_covered <= n_teams_forming", d2.n_teams_covered <= d2.n_teams_forming)
+d_noteam = CB.zone_diagnosis(env, :zone; check_teams = false)
+check("팀 술어 OFF 는 팀 목록을 비운다", d_noteam.n_teams_forming == 0 && d_noteam.n_teams_covered == 0)
+# 덮인 팀이 없으면 새 술어는 정의상 무효 → 옛 규칙과 라벨이 **완전히** 같아야 한다(소급 변경 없음).
+check("덮인 팀이 없으면 verdict 는 옛 규칙과 동일 ($(d2.verdict) vs $(d_noteam.verdict))",
+      d2.n_teams_covered > 0 || d_noteam.verdict === d2.verdict)
+
+println("\n[6] zone_diagnoses — 살아 있는 모든 구역을 빠짐없이 진단")
+all_d = CB.zone_diagnoses(env)
+check("구역 수만큼 진단 (got $(length(all_d)) vs $(length(CB.RESTRICTION_ZONES[])))",
+      length(all_d) == length(CB.RESTRICTION_ZONES[]))
+check("전부 exists == true", all(d -> d.exists, all_d))
+check("전부 규칙 일관", all(rule_consistent, all_d))
+
+# [7] 게이트와 규칙이 **같은 계산기**를 보는가. RELOCATE_GATE(비례성 게이트)는 예전엔 root 하역목표
+#   커버리지만 봤다 — 그러면 "형성 중인 팀이 갇혔다"는 새 위반에서 규칙은 옮기라 하고 게이트는 막는
+#   조용한 불일치가 난다. 이제 둘 다 zone_diagnosis 를 읽는다. 여기서는 그 배선이 살아 있는지 본다.
+println("\n[7] RELOCATE_GATE(비례성) 이 진단과 같은 결론을 내는가")
+CB.set_relocate_gate!(true)
+p_far = CB.RespecProposal([CB.RelocateBuild(:faraway)], "x", "x")
+v_far = CB.verify_relocate(p_far, env)
+check("아무것도 안 덮는 구역: Reject(:disproportionate) (got $(v_far isa CB.Reject ? v_far.reason : typeof(v_far)))",
+      v_far isa CB.Reject && v_far.reason == :disproportionate)
+p_ctr = CB.RespecProposal([CB.RelocateBuild(:zone)], "x", "x")
+check("root 를 덮는 중앙 구역: 여전히 Admit(과잉 거절 아님)", CB.verify_relocate(p_ctr, env) isa CB.Admit)
+CB.set_relocate_gate!(false)                               # 기본값(꺼짐)으로 원복
+check("게이트 OFF 면 먼 구역도 Admit(옛 의미 보존)", CB.verify_relocate(p_far, env) isa CB.Admit)
+
+CB.clear_restriction_zones!()
+check("구역이 없으면 빈 목록(비공간 사건은 자연히 아무것도 못 봄)", isempty(CB.zone_diagnoses(env)))
+
+println("\n==== zone_diagnosis predicates: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# zone_corridor -- the BLOCKAGE predicates (src/respec/zone_corridor.jl, STEP 8).
+#
+#   STEP 6 measured that COVERAGE is not harm: a zone swallowing 8/8 root delivery goals still
+#   let the build close all 291 nodes. This layer computes the thing coverage was standing in
+#   for. Its central claim is a claim ABOUT THE SIMULATOR, so this test is written to be able
+#   to FALSIFY it, not to illustrate it:
+#
+#     (1) the goals `root_goal_coverage` counts are `LiftIntoPlace` goals, and `LiftIntoPlace`
+#         moves the CARGO by integrating a twist directly — no RVO, hence no zone enforcement.
+#         So those goals are UNBLOCKABLE. Asserted here as a set relation on the live schedule,
+#         not as prose.
+#     (2) a zone on such a goal reports coverage > 0 and blockage == 0;
+#         a zone on an RVO-driven goal (RobotGo/TransportUnitGo) reports blockage > 0.
+#         If these two ever agree, the whole distinction is empty.
+#     (3) the corridor case — goal free, route pinched off by a RING of zones — is exactly what
+#         `_minimum_clear_translation` cannot see (Δ clears the goal DISC, never the route).
+#         Tested on pure geometry so it cannot be confounded by the build.
+#     (4) the wiring: `zone_diagnosis` carries the primitives, the opt-in `ZONE_CAUSAL_RULE`
+#         flips a coverage-only zone to `:noop`, and OFF reproduces the old labels byte-for-byte.
+# =============================================================================
+# [검증 내용] 구역 **막힘**(blockage) 술어 단위 검사. 커버리지가 재던 목표(LiftIntoPlace)는 화물을
+#   직접 옮기는 노드라 RVO 를 안 거치고 → 구역이 원리적으로 못 막는다는 주장을, 산문이 아니라
+#   살아 있는 스케줄 위의 **집합 관계**로 검사한다. 또 통로 봉쇄(ring)를 순수 기하로 확인하고,
+#   zone_diagnosis 배선과 opt-in 인과 규칙(ZONE_CAUSAL_RULE)이 라벨을 어떻게 바꾸는지 본다.
+function test_zone_corridor()
+_setup_milp!(time_limit = 120.0)
+
+println(">>> building fast geometry env (tractor, rvo off)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+
+CB.clear_restriction_zones!()
+rr  = Float64(CB.default_robot_radius())
+tol = Float64(CB.capture_distance_tolerance())
+norm = LinearAlgebra.norm       # tests.jl 는 LinearAlgebra 를 import 만 하므로 지역 별칭을 둔다
+
+# ---- [1] 목표 인구를 두 부류로 가른다 -----------------------------------------------------
+println("\n[1] 목표 분류 — RVO 로 움직이는 목표 vs 화물 운동학 목표")
+navs = CB._nav_goal_targets(env)
+kins = CB._kinematic_goal_targets(env)
+roots = CB.root_deposit_goals(env)
+println("    nav(RobotGo/TransportUnitGo) = $(length(navs))개, " *
+        "kinematic(LiftIntoPlace) = $(length(kins))개, root deposit = $(length(roots))개")
+check("막을 수 있는 목표(nav)가 존재한다", !isempty(navs))
+check("운동학 목표(kinematic)도 존재한다", !isempty(kins))
+check("nav 목표의 주체는 로봇 또는 운반유닛뿐", all(t -> t.kind in (:robot, :transport), navs))
+# ★ 이것이 STEP 6 반증의 기계적 근거다: 커버리지가 세던 root 목표는 전부 운동학 부류에 속한다.
+#   (좌표 일치로 확인 — root_deposit_goals 는 LiftIntoPlace 의 goal_config 를 읽는다.)
+root_in_kin = isempty(roots) ? false :
+    all(g -> any(k -> norm(k .- g) < 1e-9, kins), roots)
+check("root 하역목표는 전부 운동학(LiftIntoPlace) 목표다 = 구역이 원리적으로 못 막는 부류",
+      root_in_kin)
+# 그렇다고 root 목표 자리가 전부 "아무도 안 가는 자리"인 것은 아니다: 어떤 자리는 운반유닛의 이동
+# 목표(TransportUnitGo)와 **정확히 겹친다**. 겹치면 그 자리는 막힐 수 있다. 그러므로 커버리지는
+# 막힘의 상계일 뿐 같지 않다 — 몇 개나 겹치는지는 주장하지 말고 **재서** 남긴다.
+n_root_nav = count(roots) do g
+    any(t -> norm(t.goal .- g) < 1e-9, navs)
+end
+println("    root 하역목표 $(length(roots))개 중 nav 목표와 좌표가 일치하는 것: $(n_root_nav)개")
+for (i, g) in enumerate(roots)
+    isempty(navs) && break
+    j = argmin([norm(t.goal .- g) for t in navs])
+    println("      root[$i] @$(round.(g; digits=3)) -> 가장 가까운 nav 목표 " *
+            "$(navs[j].kind) d=$(round(norm(navs[j].goal .- g); digits=4)) r_agent=$(round(navs[j].radius; digits=3))")
+end
+check("root 하역목표 전부가 nav 목표인 것은 아니다(=커버리지 ≠ 막힘의 필요조건)",
+      isempty(roots) || n_root_nav < length(roots))
+
+# ---- [2] 같은 크기의 구역, 다른 자리 — 덮음과 막음이 갈리는가 ------------------------------
+println("\n[2] 결정적 대비 — 운동학 목표 위 vs nav 목표 위 (반지름 동일)")
+zr_small = 1e-3
+# 운동학 목표 중 **어떤 nav 목표와도 충분히 떨어진** 것을 고른다. 그래야 "덮었지만 아무것도 안 막았다"가
+# 기하적으로 성립한다(가까이 있으면 그 nav 목표까지 배제원에 들어가 막히는 게 물리적으로 맞다).
+safe_kin = nothing; safe_d = 0.0
+for g in kins
+    d = isempty(navs) ? Inf : minimum(norm(t.goal .- g) - (zr_small + t.radius + tol) for t in navs)
+    d > safe_d && (safe_d = d; safe_kin = g)
+end
+if safe_kin !== nothing && safe_d > 0.0
+    CB.remove_restriction_zone!(:kin)
+    CB.add_restriction_zone!(:kin, safe_kin, zr_small)
+    bk = CB.zone_blockage(env; zone_keys = [:kin], check_paths = true)
+    println("    운동학 목표 위: covered(kinematic)=$(bk.n_kinematic_covered) " *
+            "blocked(nav)=$(bk.n_blocked) (engulf=$(bk.n_engulfed) disc=$(bk.n_disconnected)) " *
+            "여유=$(round(safe_d; digits=3))")
+    check("운동학 목표를 덮는다(=커버리지는 0 이 아니다)", bk.n_kinematic_covered > 0)
+    check("그런데 막은 것은 없다(=blockage 0) — 덮였다 ≠ 막혔다", bk.n_blocked == 0)
+    CB.remove_restriction_zone!(:kin)
+else
+    println("    (건너뜀) 모든 운동학 목표가 어떤 nav 목표의 배제원 안에 있어 분리 불가")
+    check("운동학 목표를 nav 목표와 분리할 수 있다", false)
+end
+
+# 같은 크기의 구역을 nav 목표 위에 놓으면 그 노드는 절대 못 닫힌다.
+t0 = navs[argmin([t.radius for t in navs])]
+CB.remove_restriction_zone!(:nav)
+CB.add_restriction_zone!(:nav, t0.goal, zr_small)
+bn = CB.zone_blockage(env; zone_keys = [:nav], check_paths = true)
+println("    nav 목표 위: blocked(nav)=$(bn.n_blocked) " *
+        "(engulf=$(bn.n_engulfed) disc=$(bn.n_disconnected)) " *
+        "covered(kinematic)=$(bn.n_kinematic_covered)")
+check("nav 목표 위 구역은 막는다(blockage > 0)", bn.n_blocked > 0)
+check("그 목표가 실제로 blocked 목록에 있다", any(b -> b.vtx == t0.vtx, bn.blocked))
+check("그 상태는 :engulfed (포획볼이 배제원 안)",
+      any(b -> b.vtx == t0.vtx && b.status === :engulfed, bn.blocked))
+check("goal_engulfed 닫힌식과 일치",
+      CB.goal_engulfed(t0.goal, t0.radius, [CB.RESTRICTION_ZONES[][:nav]]))
+CB.remove_restriction_zone!(:nav)
+
+# ---- [3] 통로(corridor) — 순수 기하 위에서 -------------------------------------------------
+# Δ 는 목표 원만 비우고 경로는 안 본다. 여기서는 목표가 완전히 비어 있는데도 길이 끊긴 배치를 만든다.
+println("\n[3] 통로 봉쇄 — 목표는 비었는데 길이 없다 (Δ 가 못 보는 것)")
+ring_zone(n, R, D) = [CB.LazySets.Ball2([D * cos(2π * k / n), D * sin(2π * k / n)], R)
+                      for k in 0:(n-1)]
+goal_in = [0.0, 0.0]; start_far = [50.0, 0.0]
+# 촘촘한 고리: 이웃 원판의 **부풀린**(+로봇반지름) 경계가 서로 겹쳐 틈이 없다.
+D = 5.0; n_ring = 16
+gap = 2 * D * sin(π / n_ring)                      # 이웃 중심 간 거리
+R_tight = gap / 2 - rr + 0.05                      # 부풀리면 겹치도록(틈 < 0)
+tight = ring_zone(n_ring, R_tight, D)
+st_tight = CB.free_space_status(start_far, goal_in, tight, rr; cell = 0.25 * rr)
+println("    촘촘한 고리(n=$(n_ring), R=$(round(R_tight;digits=3)), D=$(D)) -> $(st_tight)")
+check("고리 안의 목표는 :disconnected (통로 봉쇄)", st_tight === :disconnected)
+check("그런데 목표 자체는 어떤 구역 안에도 없다(=engulf 가 아니다)",
+      !CB.goal_engulfed(goal_in, rr, tight))
+# 성긴 고리: 같은 개수·같은 거리인데 반지름만 줄여 로봇이 지나갈 틈을 남긴다.
+loose = ring_zone(n_ring, max(R_tight - 3 * rr, 1e-3), D)
+st_loose = CB.free_space_status(start_far, goal_in, loose, rr; cell = 0.25 * rr)
+println("    성긴 고리(R=$(round(max(R_tight - 3*rr, 1e-3);digits=3))) -> $(st_loose)")
+check("틈이 있으면 :clear (술어가 아무거나 막혔다고 하지 않는다)", st_loose === :clear)
+# 단일 원판은 무한 평면에서 절대 길을 못 막는다 — 우회하면 된다.
+one = [CB.LazySets.Ball2([25.0, 0.0], 3.0)]
+check("가로막은 단일 원판은 :clear (돌아가면 된다)",
+      CB.free_space_status(start_far, goal_in, one, rr; cell = 0.25 * rr) === :clear)
+check("목표가 원판 안이면 :engulfed",
+      CB.free_space_status(start_far, [25.0, 0.0], one, rr; cell = 0.25 * rr) === :engulfed)
+check("출발점이 원판 안이면 :agent_trapped",
+      CB.free_space_status([25.0, 0.0], goal_in, one, rr; cell = 0.25 * rr) === :agent_trapped)
+check("구역이 없으면 언제나 :clear", CB.free_space_status(start_far, goal_in, [], rr) === :clear)
+
+# ---- [4] zone_diagnosis 배선 + opt-in 인과 규칙 --------------------------------------------
+println("\n[4] zone_diagnosis 배선 — 원시값이 실리고, 판정은 기본적으로 안 바뀐다")
+zc = isempty(roots) ? [0.0, 0.0] : sum(roots) ./ length(roots)
+CB.remove_restriction_zone!(:core)
+CB.add_restriction_zone!(:core, zc, 0.5)
+d = CB.zone_diagnosis(env, :core)
+b = CB.zone_blockage(env; zone_keys = [:core], check_paths = false)
+println("    root=$(d.root_covered)/$(d.root_total) nav_goals=$(d.n_nav_goals) " *
+        "nav_blocked=$(d.n_nav_blocked) trapped=$(d.n_agent_trapped) verdict=$(d.verdict)")
+check("n_nav_goals 가 zone_blockage 와 일치", d.n_nav_goals == b.n_nav_goals)
+# ★ STEP 6 반증을 한 줄로: 같은 구역이 root 목표는 8/8 을 덮는데 실제로 못 닫게 만드는 노드는 훨씬 적다.
+check("커버리지가 막힘을 과대평가한다 (root_covered=$(d.root_covered) > nav_blocked=$(d.n_nav_blocked))",
+      d.root_covered > d.n_nav_blocked)
+check("n_nav_blocked 가 zone_blockage 와 일치", d.n_nav_blocked == b.n_blocked)
+check("check_blockage=false 면 센티넬 -1 (계산 안 함을 숨기지 않는다)",
+      CB.zone_diagnosis(env, :core; check_blockage = false).n_nav_blocked == -1)
+check("등록 안 된 구역도 같은 필드 모양을 돌려준다",
+      CB.zone_diagnosis(env, :ghost).n_nav_blocked == 0)
+
+# 인과 규칙 스위치: 덮기만 하고 아무것도 안 막는 구역에서만 판정이 갈려야 한다.
+if safe_kin !== nothing && safe_d > 0.0
+    CB.add_restriction_zone!(:kin, safe_kin, zr_small)
+    d_cov = CB.zone_diagnosis(env, :kin)                          # 기본(커버리지 규칙)
+    # withenv(...) do ... end : 블록 안에서만 환경변수를 세팅하고, 끝나면 원래대로 되돌린다(반환값=블록의 값).
+    d_causal = withenv("ZONE_CAUSAL_RULE" => "1") do
+        CB.zone_diagnosis(env, :kin)
+    end
+    println("    덮기만 하는 구역: 커버리지 규칙 -> $(d_cov.verdict) / 인과 규칙 -> $(d_causal.verdict)")
+    check("인과 규칙은 그런 구역을 :noop 으로 본다", d_causal.verdict === :noop)
+    check("기본(OFF)은 옛 판정을 그대로 재현한다",
+          d_cov.verdict === (d_cov.n_restage_feasible > 0 ? :forbid_zone :
+                             (d_cov.root_covered > 0 || d_cov.n_teams_covered > 0) ?
+                                (d_cov.relocate_feasible ? :relocate_build : :line_stop) : :noop))
+    CB.remove_restriction_zone!(:kin)
+end
+CB.clear_restriction_zones!()
+
+println("\n==== zone blockage predicates: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# zone_team_predicate -- the TEAM-SLOT predicate on a LIVE forming team (STEP 1, 두 번째 검증).
+#
+#   `zone_diagnosis` 의 다른 술어들은 시뮬 전 env 로 전부 검증되지만, 팀 술어만은 그럴 수 없다:
+#   시뮬 전에는 형성 중인 운반팀이 0개라 "팀이 없을 때 무해하다"까지만 볼 수 있다. 그 상태에서
+#   이 술어가 라벨을 바꾸는지는 **아무도 모른다** -- 그건 검증이 아니라 희망이다.
+#
+#   그래서 여기서는 실제로 시뮬을 굴려 팀이 형성되기 시작하는 순간까지 간 다음, 그 팀의 집결지에
+#   구역을 심고 세 가지를 본다:
+#     (1) zone_team_coverage 가 그 팀을 covered 로 잡는가 (그리고 멀리 심으면 안 잡는가),
+#     (2) 그 상황에서 옛 규칙(check_teams=false)은 :noop 이라 답하는가  ← 이게 "거짓 :noop"
+#     (3) 새 규칙은 개입(:relocate_build 또는 :line_stop)으로 뒤집는가  ← 술어의 존재 이유
+#   (2)와 (3)이 같은 상태에서 갈리지 않으면 이 술어는 아무것도 바꾸지 않은 것이다.
+# =============================================================================
+# [검증 내용] 진짜로 형성 중인 운반팀을 만든 뒤, 그 집결지를 덮는 구역에서 팀 술어가
+#   (1) 팀을 잡고 (2) 옛 규칙은 :noop 인데 (3) 새 규칙은 개입으로 뒤집는지 확인한다.
+function test_zone_team_predicate()
+_setup_milp!(time_limit = 120.0)
+
+println(">>> building fast geometry env (tractor, rvo off)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+
+CB.clear_restriction_zones!()
+
+# ---- 팀이 형성되기 시작할 때까지 시뮬을 굴린다 -------------------------------------------
+# 구역은 아직 없다 — 순수 nominal 진행. 팀이 하나라도 잡히면 즉시 멈춘다.
+println("\n[1] 형성 중인 운반팀이 생길 때까지 진행")
+teams = []
+iters = 0
+run_with_stack(2_000_000_000) do
+    for it in 1:20_000
+        CB.step_environment!(env)
+        try CB.update_planning_cache!(env, 0.0) catch; end
+        if it % 25 == 0
+            local t = try CB._forming_teams(env) catch; [] end
+            if !isempty(t)
+                teams = t; iters = it
+                break
+            end
+        end
+    end
+end
+println("    -> $(length(teams)) forming team(s) after $(iters) steps " *
+        "(closed $(length(env.cache.closed_set))/$(length(CB.get_nodes(env.sched))))")
+check("형성 중인 팀을 실제로 만들었다", !isempty(teams))
+
+if isempty(teams)
+    println("\n==== team-slot predicate: 팀을 못 만들어 검증 불가 (SKIP) ====")
+    println("SOME FAILED")
+    return
+end
+
+t1 = teams[1]
+gather = Vector{Float64}(t1.gather)
+println("    대상 팀: ready=$(t1.ready) missing=$(t1.missing) gather=$(round.(gather; digits=3))")
+
+# ---- (1) 커버리지 판정 -------------------------------------------------------------------
+println("\n[2] zone_team_coverage — 집결지 위 / 멀리")
+rr = Float64(CB.default_robot_radius())
+tc_on  = CB.zone_team_coverage(env, gather, 2.0 * rr)
+tc_off = CB.zone_team_coverage(env, gather .+ [500.0, 500.0], 2.0 * rr)
+println("    집결지 위: covered=$(count(t -> t.covered, tc_on))/$(length(tc_on))  " *
+        "슬롯 $(isempty(tc_on) ? 0 : tc_on[1].n_slots_in_zone)/$(isempty(tc_on) ? 0 : tc_on[1].n_slots)")
+check("집결지를 덮으면 그 팀이 covered", any(t -> t.covered, tc_on))
+check("멀리 심으면 아무 팀도 covered 아님", !any(t -> t.covered, tc_off))
+check("팀 목록 길이는 위치와 무관(같은 팀들을 본다)", length(tc_on) == length(tc_off))
+
+# ---- (2)(3) 같은 상태에서 옛 규칙과 새 규칙이 갈리는가 -------------------------------------
+# 집결지 위에 **작은** 구역을 심는다: 적치원·root 목표를 안 건드릴 만큼 작아야 팀 술어만 남는다.
+println("\n[3] 같은 구역에서 옛 규칙(:noop) vs 새 규칙(개입) — 거짓 :noop 이 고쳐졌는가")
+CB.add_restriction_zone!(:teamzone, gather, 2.0 * rr)
+d_new = CB.zone_diagnosis(env, :teamzone; check_teams = true)
+d_old = CB.zone_diagnosis(env, :teamzone; check_teams = false)
+println("    blocked=$(d_new.n_blocked)/feasible=$(d_new.n_restage_feasible) " *
+        "root=$(d_new.root_covered)/$(d_new.root_total) " *
+        "teams=$(d_new.n_teams_covered)/$(d_new.n_teams_forming) " *
+        "reloc=$(d_new.relocate_feasible) |Δ|=$(round(d_new.relocate_norm; digits=3))")
+println("    옛 규칙 -> $(d_old.verdict)   /   새 규칙 -> $(d_new.verdict)")
+check("새 규칙이 팀을 갇힌 것으로 센다", d_new.n_teams_covered > 0)
+check("옛 규칙은 이 팀을 보지 못한다(n_teams_covered == 0)", d_old.n_teams_covered == 0)
+if d_new.n_blocked == 0 && d_new.root_covered == 0
+    # 팀 술어만 남은 깨끗한 조건 — 여기서 갈리지 않으면 술어가 무의미하다.
+    check("옛 규칙은 :noop (거짓 절제)", d_old.verdict === :noop)
+    check("새 규칙은 개입으로 뒤집힘", d_new.verdict in (:relocate_build, :line_stop))
+else
+    # 다른 술어도 함께 위반된 상태라면 두 규칙이 같아도 정상이다. 그 사실을 명시적으로 남긴다.
+    println("    (참고) 다른 술어도 위반됨(blocked=$(d_new.n_blocked), root=$(d_new.root_covered)) " *
+            "→ 팀 술어 단독 효과는 이 배치에서 분리되지 않는다")
+    check("두 규칙 모두 개입을 지시(절제가 아님)",
+          d_old.verdict !== :noop && d_new.verdict !== :noop)
+end
+
+CB.clear_restriction_zones!()
+println("\n==== team-slot predicate: $(npass[]) passed, $(nfail[]) failed ====")
+nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
+end
+
+# =============================================================================
+# zone_team_causal -- STEP 11: the team-slot predicate's CAUSAL check.
+#
+#   `zone_team_predicate` proved a covered team is COVERED (its carrying slots are inside the
+#   disc) and that the rule flips. It did NOT prove the team then fails to FORM — and STEP 6
+#   showed that exact gap is where coverage predicates go wrong. Same criticism, same fix:
+#   run it.
+#
+#   Design: a WITHIN-RUN REVERSAL, not a parallel control. The RVO simulator and its id map are
+#   global, so a `deepcopy` control would silently share motion state; and rebuilding a second
+#   world does not reproduce this one's exact positions. So:
+#
+#       zone ON  -> K steps -> is the team formed?     expect NO
+#       zone OFF -> K steps -> is the team formed?     expect YES
+#
+#   Removal restoring formation is stronger evidence than a parallel arm anyway: the only thing
+#   that changed is the zone. The obvious confound (time) is bounded by giving BOTH windows the
+#   same K, and by recording the members' distance-to-slot in each window.
+#
+#   NAV MUST BE ON. Zone enforcement (`enforce_restriction_zone_clearance!`) only touches agents
+#   in the RVO id map; with `rvo_flag=false` there are none and the zone is inert — the test
+#   would pass vacuously. That is why this is a separate, slower key from `zone_team_predicate`.
+# =============================================================================
+# [검증 내용] 덮인 팀이 **실제로 형성에 실패하는가**(STEP 11). 커버리지 술어가 STEP 6 에서 틀렸던
+#   바로 그 지점이라 같은 방식으로 검증한다: 구역 ON 으로 K 스텝 → 형성 안 됨, 구역 OFF 로 K 스텝 →
+#   형성됨(제거가 복구시키면 원인은 구역이다). RVO 를 반드시 켜야 한다 — 구역 강제는 RVO 에이전트만
+#   밀어내므로 rvo_flag=false 면 구역이 무해해져 검사가 공허해진다.
+function test_zone_team_causal()
+_setup_milp!(time_limit = 120.0)
+K = parse(Int, get(ENV, "ZTC_K", "1200"))          # 각 구간(ON/OFF)에 주는 스텝 수
+
+println(">>> building env with NAVIGATION ON (rvo+tangent_bug+dispersion)...")
+pp = CB.get_project_params(4)
+env = run_with_stack(2_000_000_000) do
+    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
+        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
+        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
+        rvo_flag=true, tangent_bug_flag=true, dispersion_flag=true,
+        open_animation_at_end=false, save_animation=false, write_results=false,
+        overwrite_results=false, look_for_previous_milp_solution=false,
+        save_milp_solution=false, return_env_before_sim=true)
+end
+
+npass = Ref(0); nfail = Ref(0)
+check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
+                            (nfail[] += 1; println("  FAIL: $name")))
+CB.clear_restriction_zones!()
+rr = Float64(CB.default_robot_radius())
+norm = LinearAlgebra.norm       # tests.jl 는 LinearAlgebra 를 import 만 하므로 지역 별칭
+
+# 이 운반유닛이 지금 대형을 갖췄는가(=팀 형성 완료). rvo_add_agents! 가 쓰는 바로 그 판정을 쓴다.
+formed(tu) = try CB.is_in_formation(tu, env.scene_tree) catch; false end
+# 팀원들이 각자 제 슬롯에서 얼마나 떨어져 있나(최대값) — "가까워지고 있는가"를 보는 진행 지표.
+function slot_gap(tu)
+    worst = 0.0
+    team = try CB.robot_team(tu) catch; nothing end
+    team === nothing && return NaN
+    for (mid, _) in team
+        CB.has_component(tu, mid) || continue
+        rn = try CB.get_node(env.scene_tree, mid) catch; continue end
+        p = Vector{Float64}(CB.project_to_2d(CB.global_transform(rn).translation))
+        q = try
+            Vector{Float64}((CB.global_transform(tu) ∘ CB.child_transform(tu, mid)).translation[1:2])
+        catch
+            continue
+        end
+        worst = max(worst, norm(p .- q))
+    end
+    return worst
+end
+
+println("\n[1] 형성 중인 팀이 생길 때까지 진행 (NAV ON)")
+teams = []; iters = 0
+run_with_stack(2_000_000_000) do
+    for it in 1:20_000
+        CB.step_environment!(env)
+        try CB.update_planning_cache!(env, 0.0) catch; end
+        if it % 10 == 0
+            local t = try CB._forming_teams(env) catch; [] end
+            # 아직 아무도 제자리에 없는 팀보다, 이미 모이는 중인 팀(ready>=1)이 인과 검사에 좋다.
+            local pick = [x for x in t if x.missing >= 1]
+            if !isempty(pick)
+                teams = pick; iters = it; break
+            end
+        end
+    end
+end
+println("    -> $(length(teams)) forming team(s) after $(iters) steps " *
+        "(closed $(length(env.cache.closed_set))/$(length(CB.get_nodes(env.sched))))")
+check("형성 중(미완)인 팀을 만들었다", !isempty(teams))
+if isempty(teams)
+    println("\n==== team causal: 팀을 못 만들어 검증 불가 (SKIP) ====\nSOME FAILED"); return
+end
+
+t1 = teams[1]; tu = t1.tu
+gather = Vector{Float64}(t1.gather)
+println("    대상 팀: unit=$(CB.summary(CB.node_id(tu))) ready=$(t1.ready) missing=$(t1.missing) " *
+        "gather=$(round.(gather; digits=3)) formed=$(formed(tu)) slot_gap=$(round(slot_gap(tu); digits=3))")
+check("아직 형성 전이다(사전 조건)", !formed(tu))
+
+# ---- [2] 구역 ON — K 스텝 --------------------------------------------------------------------
+println("\n[2] 집결지를 덮는 구역 ON → $(K) 스텝")
+CB.add_restriction_zone!(:teamzone, gather, 2.0 * rr)
+d_on = CB.zone_diagnosis(env, :teamzone; check_paths = true)
+println("    진단: teams_covered=$(d_on.n_teams_covered)/$(d_on.n_teams_forming) " *
+        "nav_blocked=$(d_on.n_nav_blocked)(engulf=$(d_on.n_nav_engulfed) disc=$(d_on.n_nav_disconnected)) " *
+        "trapped=$(d_on.n_agent_trapped) verdict=$(d_on.verdict)")
+check("술어가 이 팀을 덮인 것으로 잡는다(사전 조건)", d_on.n_teams_covered > 0)
+gap_on_start = slot_gap(tu)
+formed_on = false
+run_with_stack(2_000_000_000) do
+    for _ in 1:K
+        CB.step_environment!(env)
+        try CB.update_planning_cache!(env, 0.0) catch; end
+        if formed(tu); formed_on = true; break; end
+    end
+end
+gap_on_end = slot_gap(tu)
+println("    -> formed=$(formed_on)  slot_gap $(round(gap_on_start; digits=3)) -> $(round(gap_on_end; digits=3))  " *
+        "(closed $(length(env.cache.closed_set)))")
+check("구역이 켜져 있는 동안 팀이 형성되지 않는다", !formed_on)
+
+# ---- [3] 구역 OFF — 같은 K 스텝 ---------------------------------------------------------------
+println("\n[3] 같은 구역 OFF → 같은 $(K) 스텝 (되돌리면 복구되는가)")
+CB.remove_restriction_zone!(:teamzone)
+formed_off = false; steps_off = 0
+run_with_stack(2_000_000_000) do
+    for s in 1:K
+        CB.step_environment!(env)
+        try CB.update_planning_cache!(env, 0.0) catch; end
+        steps_off = s
+        if formed(tu); formed_off = true; break; end
+    end
+end
+println("    -> formed=$(formed_off) after $(steps_off) steps  " *
+        "slot_gap $(round(gap_on_end; digits=3)) -> $(round(slot_gap(tu); digits=3))  " *
+        "(closed $(length(env.cache.closed_set)))")
+check("구역을 없애면 같은 팀이 형성된다(=원인은 구역이었다)", formed_off)
+check("형성이 ON 구간보다 빨리 일어난다(시간 자체가 원인이 아니다)", formed_off && steps_off < K)
+
+CB.clear_restriction_zones!()
+println("\n==== team-slot predicate (causal): $(npass[]) passed, $(nfail[]) failed ====")
 nfail[] == 0 ? println("ALL GREEN") : println("SOME FAILED")
 end
 
@@ -952,6 +1786,12 @@ end
 # TESTS : test_key(문자열) -> 해당 테스트 함수 사전. 아래 진입점이 이 사전에서 하나를 골라 실행.
 const TESTS = Dict(
     "forbidzone_parse"         => test_forbidzone_parse,
+    "relocatebuild_parse"      => test_relocatebuild_parse,
+    "zone_diagnosis"           => test_zone_diagnosis,
+    "zone_corridor"            => test_zone_corridor,
+    "zone_team_predicate"      => test_zone_team_predicate,
+    "zone_team_causal"         => test_zone_team_causal,
+    "corezone_guard"           => test_corezone_guard,
     "replace_parse"            => test_replace_parse,
     "deprioritize_integration" => test_deprioritize_integration,
     "battery_smoke"            => test_battery_smoke,

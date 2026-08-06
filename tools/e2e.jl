@@ -151,14 +151,50 @@ function start_mock(port)
             nodes = haskey(body, "nodes") ? body["nodes"] : []
             zkey  = isempty(zones) ? "zone" : String(zones[1]["key"])     # ground the live zone key
                                                             # [KO] 실제 구역 키를 그대로 사용(없으면 "zone")
-            # prefer an assembly the zone actually covers; else first milestone node
-            # [KO] 구역이 실제로 덮는 조립품(covers)을 우선, 없으면 첫 노드를 대상(assembly)으로
+            # ---- 먼저 사건 **종류**로 분기한다(공간형 vs 팀 교착) ----------------------
+            # 존을 치우고 난 뒤 루트 엔드게임에서 carrier 팀이 끼는 2차 사건이 별도 NL 로 들어온다
+            # (maybe_emit_reform_ood!). 그건 공간 결정이 아니라 기하 재정립이므로 ReformTeam 이다.
+            # tools/demos.jl:560-566 의 mock 과 같은 규칙.
+            ev = haskey(body, "event") ? lowercase(String(body["event"])) : ""
+            if occursin("team", ev) && (occursin("deadlock", ev) || occursin("stalled", ev))
+                return HTTP.Response(200, JSON3.write(Dict(
+                    "constraints" => [Dict("kind" => "ReformTeam")],
+                    "rationale" => "mock: transport team deadlocked while forming -> re-establish it")))
+            end
+            # ---- 정정된 결정 표 (2026-08-05) -------------------------------------------
+            # 이 mock 은 **실제 LLM 이 프롬프트에서 보는 것과 똑같은 두 필드**(covers / covers_root)
+            # 만으로 공간형 팔을 고른다 — `covers` 는 open_zone_descriptors 가 zone_blocked_assemblies
+            # 로 계산한 값이므로 곧 **ForbidZone 이 지금 실제로 옮길 수 있는 도메인**이다.
+            #
+            #   covers 비어있지 않음            -> ForbidZone   (국소 재적치. 부족하면 실행부가
+            #                                                    :residual_blocked 에서 전역 이동으로 자동 격상)
+            #   covers 비었음 ∧ covers_root     -> RelocateBuild(국소로 못 구하는 root 하역 목표가 갇힘.
+            #                                                    도메인이 비면 위 자동 격상이 **도달 불가**하다 —
+            #                                                    restage_all_blocked! 이 :none 으로 조기 반환해
+            #                                                    residual 을 계산조차 안 하기 때문)
+            #   covers 비었음 ∧ ¬covers_root    -> 제약 없음    (구역이 아무 목표도 안 막음 → 항법이 우회.
+            #                                                    개입은 비용만 든다)
+            #
+            # 옛 mock 은 상황과 무관하게 늘 ForbidZone 을 냈고, 주입 시점에 도메인이 이미 비어 있어서
+            # 그 팔이 조용한 no-op 이 됐다(= NOOP 과 바이트 동일) → 빌드가 구역으로 걸어들어가 정지.
+            # 문서상 PASS(완주)였던 이 테스트가 그 사이 회귀해 있었다(forbidzone_llm_layer_status.md).
             cov = isempty(zones) ? [] : zones[1]["covers"]
-            aid = !isempty(cov) ? String(first(cov)) :
-                  (isempty(nodes) ? "" : String(nodes[1]["id"]))
-            # [KO] LLM 이 낼 법한 응답 형태: ForbidZone 제약 1개 + 근거문(rationale).
-            resp = Dict("constraints" => [Dict("kind" => "ForbidZone", "zone" => zkey, "assembly" => aid)],
-                        "rationale" => "mock: spatial no-go zone over the build core")
+            croot = !isempty(zones) && haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
+            if !isempty(cov)
+                aid = String(first(cov))                     # 구역이 실제로 덮는 조립체를 grounding
+                resp = Dict("constraints" => [Dict("kind" => "ForbidZone", "zone" => zkey, "assembly" => aid)],
+                            "rationale" => "mock: zone covers $(length(cov)) relocatable staging area(s) " *
+                                           "-> local restage (escalates to whole-build if residual remains)")
+            elseif croot
+                # RelocateBuild 는 assembly 를 지목하지 않는다(빌드 전체가 움직이므로 grounding 대상이 없음).
+                resp = Dict("constraints" => [Dict("kind" => "RelocateBuild", "zone" => zkey)],
+                            "rationale" => "mock: no relocatable staging area left but the zone traps ROOT " *
+                                           "deposit goals -> only a whole-build translation can clear it")
+            else
+                resp = Dict("constraints" => Any[],
+                            "rationale" => "mock: zone blocks no goal (detour-only) -> restraint is cheaper " *
+                                           "than any intervention")
+            end
             return HTTP.Response(200, JSON3.write(resp))
         end
         return HTTP.Response(404, "not found")              # [KO] 그 외 경로는 404
@@ -210,6 +246,67 @@ CB.schedule_ood!(OOD_STEP, ood_action!)   # [KO] OOD_STEP 스텝에 ood_action! 
 println(">>> mock /propose up at $(ENV["RESPEC_SERVICE_URL"]); respec_service_ready=$(CB.respec_service_ready()); RESPEC_ENABLED=$(CB.RESPEC_ENABLED[])")
 Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Info))   # [KO] 이후 로그를 Info 레벨로 출력
 
+# ---- stall autopsy: WHAT is left and WHY -----------------------------------------------
+# diagnose_transport_stall 은 "팀 교착인가 아닌가"만 가른다. 정체가 팀 교착이 아닐 때(=SCHEDULING
+# wait) 남은 노드가 정확히 무엇이고 무엇을 기다리는지는 안 알려주므로 여기서 직접 덤프한다.
+# [KO] 남은(안 닫힌) 노드를 타입별로 세고, 그중 active 인 것과 "선행작업이 아직 안 끝난 것"을 구분한다.
+#      EntityGo 계열은 목표 좌표·현재 좌표·거리, 그리고 그 목표가 아직 살아있는 구역 안인지까지 찍는다.
+function _dump_stall(env)
+    sched = env.sched
+    println("\n---- STALL AUTOPSY ----")
+    for (k, b) in CB.RESTRICTION_ZONES[]
+        println("  zone :$k  center=$(round.(Vector{Float64}(CB.get_center(b)[1:2]); digits=2))  r=$(round(Float64(CB.get_radius(b)); digits=2))")
+    end
+    open_v = [v for v in Graphs.vertices(sched) if !(v in env.cache.closed_set)]  # 아직 안 닫힌 정점들
+    bytype = Dict{String,Int}()
+    for v in open_v
+        n = CB.get_node(sched, v).node
+        t = string(typeof(n).name.name)
+        bytype[t] = get(bytype, t, 0) + 1
+    end
+    println("  OPEN nodes: $(length(open_v))  by type: $bytype")
+    println("  active_set: $(length(env.cache.active_set))")
+    for v in open_v
+        n = CB.get_node(sched, v).node
+        nid = CB.get_vtx_id(sched, v)
+        act = v in env.cache.active_set
+        # 아직 안 닫힌 선행작업(=이 노드가 열리지 못하는 이유). 0 이면 "열려야 하는데 안 열림".
+        preds = [u for u in Graphs.inneighbors(sched, v) if !(u in env.cache.closed_set)]
+        extra = ""
+        if CB.matches_template(CB.EntityGo, n)
+            g = try Vector{Float64}(CB.project_to_2d(CB.global_transform(CB.goal_config(n)).translation)) catch; nothing end
+            p = try
+                sn = CB.get_node(env.scene_tree, CB.node_id(CB.entity(n)))
+                Vector{Float64}(CB.project_to_2d(CB.global_transform(sn).translation))
+            catch; nothing end
+            d = (g === nothing || p === nothing) ? NaN : norm(g .- p)
+            # 목표가 구역 안이면 TangentBug 가 로봇을 가장자리에 영원히 세운다. 중요한 건 어느 반지름을
+            # 쓰느냐다 — residual 판정(_count_future_goals_in_zone)은 **맨 반지름**을 쓰는데, 로봇이
+            # 실제로 지켜야 하는 경계는 **맨 반지름 + 로봇 반지름**(팽창 반경)이다. 그 사이 띠(band)에
+            # 목표가 놓이면 residual=0 으로 "복구 완료"라 보고되지만 로봇은 영원히 도달하지 못한다.
+            rr = Float64(CB.default_robot_radius())
+            zflag = ""
+            if g !== nothing
+                for (zk, b) in CB.RESTRICTION_ZONES[]
+                    dz = norm(g .- Vector{Float64}(CB.get_center(b)[1:2]))
+                    zr0 = Float64(CB.get_radius(b))
+                    zflag *= "  d_zone=$(round(dz; digits=3)) bare=$(round(zr0; digits=3)) infl=$(round(zr0+rr; digits=3))" *
+                             (dz < zr0 ? "  GOAL-INSIDE-BARE" :
+                              dz < zr0 + rr ? "  ** GOAL-IN-INFLATED-BAND (residual says CLEAR, nav says BLOCKED) **" : "")
+                end
+            end
+            extra = "  goal=$(g === nothing ? "?" : round.(g; digits=2)) pos=$(p === nothing ? "?" : round.(p; digits=2))" *
+                    " dist=$(round(d; digits=2))$(zflag)"
+        end
+        # 후행 노드 목록(타입만). verify_reform / reform_stuck_teams! / diagnose_transport_stall 은
+        # 전부 `outs[1]` 하나만 보고 "FormTransportUnit 인가"를 판단한다 — 후행이 여러 개거나
+        # RobotGo 가 한 번 더 끼어 있으면 팀을 못 찾는다. 그게 실제로 일어나는지 여기서 확인한다.
+        succ = join([string(typeof(CB.get_node(sched, u).node).name.name) for u in Graphs.outneighbors(sched, v)], ",")
+        println("    v$(v) $(typeof(n).name.name) $(nid)  active=$(act) open_preds=$(length(preds)) succ=[$(succ)]$(extra)")
+    end
+    println("---- END AUTOPSY ----\n")
+end
+
 # real seam loop (mirrors simulate!): ood_inject_step! -> step -> respec_step!
 # [KO] 진짜 시뮬 루프(simulate! 를 흉내): 매 스텝 OOD주입 → 물리 한 스텝 → respec 처리 순서.
 #      동시에 로봇이 금지구역을 침범(penetration)하는지 감시하고, 완주/정체(stall) 여부를 판정.
@@ -242,8 +339,15 @@ function run_seam_loop(env; cap=250_000, stall_limit=8000)
         end
         c = length(env.cache.closed_set)   # [KO] 현재까지 완료(closed)된 작업 수
         stall = c > prev ? 0 : stall + 1; prev = c   # 진전 있으면 정체 0, 없으면 +1
+        # 무진전 알람(팀 교착 OOD). 진짜 sim 루프(demo_utils.jl:259)는 이걸 부르는데 이 손수 만든
+        # 루프에는 빠져 있었다 → 존을 다 치운 뒤 루트 엔드게임에서 carrier 팀이 끼면 복구할 방법이
+        # 없어 그대로 정체로 끝났다. zone 대응과 별개의 **2차 사건**이라 별도 알람이 필요하다
+        # (verify_reform 은 "이미 끼인 팀"을 요구하는 사후 반응형이라 zone 결정으로는 못 낸다).
+        CB.maybe_emit_reform_ood!(stall)   # REFORM_INTERVAL(기본 2000) 배수마다 NL 을 respec 큐에 넣음
         CB.project_complete(env) && return (status=:complete, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # 완주
-        stall >= stall_limit && return (status=:stalled, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # 정체 종료
+        # 정체로 끝나기 직전에 "무엇이 왜 남았는지"를 한 번 찍는다(수치만 보고 추측하지 않기 위해).
+        stall >= stall_limit && (_dump_stall(env);
+            return (status=:stalled, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[]))   # 정체 종료
     end
     return (status=:capped, closed=prev, iters=cap, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # cap 소진
 end
@@ -256,10 +360,10 @@ try close(SRV) catch end   # [KO] mock 서버 닫기(실패해도 무시)
 transient = r.viol == 0 || r.last_v < max(2000, 0.1 * r.iters)
 # [KO] PASS 조건: 완주 + respec 발동 + 침범이 일시적(복구 후 재진입 없음).
 pass = r.status == :complete && r.respec && transient
-println("\n==== RESULT (mock e2e ForbidZone) ====")
+println("\n==== RESULT (mock e2e: spatial respec via the covers/covers_root decision table) ====")
 println("closed $n0 -> $(r.closed)/$total  status=$(r.status)  respec_fired=$(r.respec)")
 println("zone penetration: worst_pen=$(round(r.worst;digits=3)) viol_steps=$(r.viol) viol_iters=[$(r.first_v)..$(r.last_v)] of $(r.iters)  evac_transient=$transient")
-println(pass ? "PASS (NL -> mock LLM -> ForbidZone -> verify -> recovery -> complete, no re-entry)" : "FAIL")
+println(pass ? "PASS (NL -> mock LLM -> spatial spec by decision table -> verify -> recovery -> complete, no re-entry)" : "FAIL")
 CB.RESPEC_ENABLED[] = false; CB.clear_ood_schedule!(); CB.clear_restriction_zones!()   # [KO] 전역 상태 원상복구
 end
 

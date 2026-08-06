@@ -73,6 +73,35 @@ class ForbidZone(BaseModel):
     assembly: str  # 그 구역이 덮은 조립체의 노드 id(grounding/교차검증용)
 
 
+# RelocateBuild: 구역이 "국소 재적치로는 못 구하는" 작업(=root 하역 목표)까지 덮은 경우,
+# 빌드 **전체**를 강체 평행이동 한 번으로 비켜 옮긴다. ForbidZone 과 달리 조립체를 지목하지 않는다.
+# 왜 별도 kind 인가: ForbidZone 의 실행부(restage_all_blocked!)는 "아직 시작 안 한 조립체"만 옮길 수
+# 있어서 빌드 중반 이후 도메인이 빈다. 그때도 유효한 유일한 공간형 팔이 이것.
+class RelocateBuild(BaseModel):
+    """A no-go zone covers work that CANNOT be relocated piecemeal -- shift the ENTIRE build clear.
+
+    Emit this ONLY when the zone swallows work no per-assembly restage can rescue -- in
+    practice when the zone's `covers_root` is true (it traps the ROOT assembly's own deposit
+    goals, and the root is the build's reference frame and is never moved).
+
+    Do NOT emit this merely because the zone covers some sub-assembly's staging area: that is
+    repairable locally with ForbidZone, and a whole-build move is a GLOBAL, irreversible shift
+    of every future goal while carriers are mid-transit. Measured on the same seed and zones
+    with only the macro crossed: ForbidZone closed 231 nodes (7/8 assemblies), RelocateBuild
+    closed 136 (1/8). The loss is the macro's, not the policy's.
+
+    Prefer ForbidZone whenever `covers` is non-empty: if a per-assembly restage turns out to be
+    insufficient, the Julia side AUTOMATICALLY escalates to the whole-build translation
+    (`:residual_blocked` -> `translate_whole_build!`), so choosing ForbidZone never forfeits this
+    option -- while choosing RelocateBuild wrongly cannot be undone.
+
+    Echo a zone key the prompt listed; never invent coordinates. No `assembly` field -- the whole
+    build moves, so there is nothing per-assembly to ground.
+    """
+    kind: Literal["RelocateBuild"] = "RelocateBuild"
+    zone: str      # 비켜야 할 구역 키(ZONES 목록의 것 그대로). assembly 필드는 없음 — 빌드 전체가 움직임.
+
+
 # ReplaceAgent: 로봇이 "고장" → 가장 가까운 예비(spare) 로봇이 남은 작업을 1:1 인계.
 # ForbidAgent 와 필드는 같지만 처리 경로가 다른 별도 kind(예비 선택은 줄리아의 기하가 함).
 class ReplaceAgent(BaseModel):
@@ -131,10 +160,36 @@ class DeprioritizeAgent(BaseModel):
     factor: float = 50.0  # 심각도(클수록 더 피함). 줄리아 쪽에서 [1,1000] 로 클램프 → 과·소 조정 불가(안전).
 
 
-# ConstraintSpec: 위 6가지 제약 중 하나를 담는 타입. discriminator="kind" 로 "kind" 값을 보고
+# SwapBattery: 방전된 로봇의 배터리만 현장에서 교체. 같은 본체가 계속 일하고, 창고 예비 "본체"를 안 먹음.
+# ReplaceAgent 와 소모 자원이 다르다는 것이 이 kind 를 따로 두는 이유(귀한 예비를 방전에 낭비하지 않음).
+class SwapBattery(BaseModel):
+    """Robot `agent`'s BATTERY is depleted -- swap the battery IN THE FIELD.
+
+    Emit this when the event says a robot has run out of charge / is flat / stalled because
+    of its battery, and the fix is simply to give it a fresh pack. The SAME physical robot
+    keeps working; NO depot spare body is consumed -- only time.
+
+    Prefer this over ReplaceAgent for a pure BATTERY problem: a depot spare is a scarce
+    chassis that a later MECHANICAL breakdown will need, and spending one on a flat battery
+    wastes it. Conversely, do NOT emit this for a mechanical fault ("cannot move", "broken
+    down", "motor failure") -- a fresh battery does nothing for a broken drivetrain; use
+    ReplaceAgent there.
+
+    Relation to DeprioritizeAgent: use DeprioritizeAgent when the robot is DEGRADED-BUT-USABLE
+    and you only want future work routed away from it; use SwapBattery when you want its
+    charge actually RESTORED now.
+
+    Echo the EXACT agent id (the `id` from the AGENTS section, not 'R3', not a node id).
+    """
+    kind: Literal["SwapBattery"] = "SwapBattery"
+    agent: str   # 배터리를 갈아 끼울 로봇 id
+
+
+# ConstraintSpec: 위 제약 kind 중 하나를 담는 타입. discriminator="kind" 로 "kind" 값을 보고
 # 어느 클래스로 파싱할지 자동 판별(discriminated union). = 이 한 줄이 문법 전체의 합집합 타입.
 ConstraintSpec = Annotated[
-    Union[ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam, DeprioritizeAgent],
+    Union[ForbidWindow, ForbidAgent, ForbidZone, RelocateBuild, ReplaceAgent, ReformTeam,
+          DeprioritizeAgent, SwapBattery],
     Field(discriminator="kind"),
 ]
 
@@ -175,8 +230,9 @@ TOOL_SCHEMA = {
                     "properties": {
                         "kind": {
                             "type": "string",
-                            # enum = 허용된 kind 6종만. 그 밖의 값은 여기서 걸림.
-                            "enum": ["ForbidWindow", "ForbidAgent", "ForbidZone", "ReplaceAgent", "ReformTeam", "DeprioritizeAgent"],
+                            # enum = 허용된 kind 8종만. 그 밖의 값은 여기서 걸림.
+                            "enum": ["ForbidWindow", "ForbidAgent", "ForbidZone", "RelocateBuild",
+                                     "ReplaceAgent", "ReformTeam", "DeprioritizeAgent", "SwapBattery"],
                         },
                         # 아래는 kind 별로 쓰이는 필드들을 한데 나열(모델이 해당 kind 에 맞는 것만 채움).
                         "node": {"type": "string"},

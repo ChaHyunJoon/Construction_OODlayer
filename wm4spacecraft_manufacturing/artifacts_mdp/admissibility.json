@@ -1,0 +1,332 @@
+[
+  {
+    "instance": "ep_s41_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s42_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s43_M3_t1",
+    "kind": "battery",
+    "admissible": true,
+    "best_macro": 1,
+    "gap_q": 24979.65,
+    "gap_pc": 1.0,
+    "significant": true,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s45_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s45_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s46_M3_t1",
+    "kind": "battery",
+    "admissible": true,
+    "best_macro": 1,
+    "gap_q": 1600.0,
+    "gap_pc": 0.0,
+    "significant": true,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s46_M3_t2",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s46_M3_t3",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s47_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s47_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s48_M3_t1",
+    "kind": "battery",
+    "admissible": true,
+    "best_macro": 1,
+    "gap_q": 24770.9,
+    "gap_pc": 1.0,
+    "significant": true,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s48_M3_t2",
+    "kind": "battery",
+    "admissible": true,
+    "best_macro": 1,
+    "gap_q": 24770.9,
+    "gap_pc": 1.0,
+    "significant": true,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s49_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s49_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s49_M3_t3",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s50_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s50_M3_t2",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s52_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s52_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s52_M3_t3",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s53_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s53_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s54_M3_t1",
+    "kind": "battery",
+    "admissible": true,
+    "best_macro": 1,
+    "gap_q": 4300.0,
+    "gap_pc": 0.0,
+    "significant": true,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s54_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s54_M3_t3",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s55_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s55_M3_t2",
+    "kind": "battery",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s56_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s56_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s57_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s57_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s58_M3_t1",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  },
+  {
+    "instance": "ep_s58_M3_t2",
+    "kind": "zoneblk",
+    "admissible": false,
+    "best_macro": 0,
+    "gap_q": 0.0,
+    "gap_pc": 0.0,
+    "significant": false,
+    "n_arms": 2
+  }
+]

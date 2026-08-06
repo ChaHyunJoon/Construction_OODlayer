@@ -1,0 +1,297 @@
+{
+  "frontier": [
+    {
+      "threshold": Infinity,
+      "call_rate": 0.0,
+      "regret": 0.0
+    },
+    {
+      "threshold": 1.937651954313961,
+      "call_rate": 0.2,
+      "regret": 0.0
+    },
+    {
+      "threshold": 1.8265831287096135,
+      "call_rate": 0.4,
+      "regret": 0.0
+    },
+    {
+      "threshold": 1.2078510251659997,
+      "call_rate": 0.6,
+      "regret": 0.0
+    },
+    {
+      "threshold": 1.10316193283273,
+      "call_rate": 0.8,
+      "regret": 0.0
+    },
+    {
+      "threshold": 1.0163769611560223,
+      "call_rate": 0.8,
+      "regret": 0.0
+    },
+    {
+      "threshold": 0.9585203133715505,
+      "call_rate": 1.0,
+      "regret": 0.0
+    }
+  ],
+  "per_instance": {
+    "ep_s41_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 730.1976666666669,
+      "unc": 3848.6102984128743,
+      "voi": 5.270641737293421,
+      "span": 1e-09
+    },
+    "ep_s42_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 71.23633333333419,
+      "unc": 2916.97255536776,
+      "voi": 40.94782000748837,
+      "span": 1e-09
+    },
+    "ep_s43_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 7084.294666666639,
+      "unc": 16145.864076370155,
+      "voi": 2.2791067898880835,
+      "span": 24979.65
+    },
+    "ep_s45_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 72.66666666666788,
+      "unc": 944.5172326872307,
+      "voi": 12.997943568911243,
+      "span": 1e-09
+    },
+    "ep_s45_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 92.66666666666788,
+      "unc": 2738.1589724642336,
+      "voi": 29.54847811979837,
+      "span": 1e-09
+    },
+    "ep_s46_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 4833.031499999994,
+      "unc": 12738.703374882894,
+      "voi": 2.635758400267053,
+      "span": 1600.0
+    },
+    "ep_s46_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 914.363333333331,
+      "unc": 5648.825986287718,
+      "voi": 6.17787894631407,
+      "span": 1e-09
+    },
+    "ep_s46_M3_t3": {
+      "regret_surrogate": 0.0,
+      "margin": 1651.4516666666677,
+      "unc": 6791.235914653286,
+      "voi": 4.112282576429728,
+      "span": 1e-09
+    },
+    "ep_s47_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 276.0,
+      "unc": 2085.9750329204567,
+      "voi": 7.557880554032242,
+      "span": 1e-09
+    },
+    "ep_s47_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 39.0,
+      "unc": 2420.84316030006,
+      "voi": 62.07290154456378,
+      "span": 1e-09
+    },
+    "ep_s48_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 6986.011499999975,
+      "unc": 18170.74268488838,
+      "voi": 2.601018146747374,
+      "span": 24770.9
+    },
+    "ep_s48_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 6350.913666666649,
+      "unc": 15505.601271092868,
+      "voi": 2.4414756812823626,
+      "span": 24770.9
+    },
+    "ep_s49_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 262.80600000000413,
+      "unc": 2897.3713147487833,
+      "voi": 11.02475329611087,
+      "span": 1e-09
+    },
+    "ep_s49_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 730.6608333333352,
+      "unc": 5581.82416159993,
+      "voi": 7.639418875276983,
+      "span": 1e-09
+    },
+    "ep_s49_M3_t3": {
+      "regret_surrogate": 0.0,
+      "margin": 210.90300000000207,
+      "unc": 2474.6399155135223,
+      "voi": 11.733545352611221,
+      "span": 1e-09
+    },
+    "ep_s50_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 29.33333333333576,
+      "unc": 2289.518931315781,
+      "voi": 78.05178174673432,
+      "span": 1e-09
+    },
+    "ep_s50_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 407.9453333333331,
+      "unc": 3769.456039122394,
+      "voi": 9.240100893697742,
+      "span": 1e-09
+    },
+    "ep_s52_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 477.8643333333348,
+      "unc": 2462.3402179864484,
+      "voi": 5.152801843998865,
+      "span": 1e-09
+    },
+    "ep_s52_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 449.08466666666936,
+      "unc": 3936.246402551794,
+      "voi": 8.765042974546015,
+      "span": 1e-09
+    },
+    "ep_s52_M3_t3": {
+      "regret_surrogate": 0.0,
+      "margin": 65.56966666666631,
+      "unc": 2011.7448882648646,
+      "voi": 30.681029666678103,
+      "span": 1e-09
+    },
+    "ep_s53_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 291.3333333333321,
+      "unc": 2386.819122901813,
+      "voi": 8.192742984760745,
+      "span": 1e-09
+    },
+    "ep_s53_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 45.56966666666631,
+      "unc": 2801.2996715335703,
+      "voi": 61.47290240157092,
+      "span": 1e-09
+    },
+    "ep_s54_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 3625.836666666659,
+      "unc": 12410.329637756544,
+      "voi": 3.422749224156948,
+      "span": 4300.0
+    },
+    "ep_s54_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 472.75133333333724,
+      "unc": 4313.002635468019,
+      "voi": 9.123195073926519,
+      "span": 1e-09
+    },
+    "ep_s54_M3_t3": {
+      "regret_surrogate": 0.0,
+      "margin": 6.569666666666308,
+      "unc": 1952.8621095089952,
+      "voi": 297.2543674278524,
+      "span": 1e-09
+    },
+    "ep_s55_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 236.26550000000134,
+      "unc": 1986.9615048617914,
+      "voi": 8.409867309672256,
+      "span": 1e-09
+    },
+    "ep_s55_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 1223.2086666666692,
+      "unc": 6800.838346143577,
+      "voi": 5.559834990926598,
+      "span": 1e-09
+    },
+    "ep_s56_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 79.66666666666424,
+      "unc": 2488.2883274979285,
+      "voi": 31.23374469623561,
+      "span": 1e-09
+    },
+    "ep_s56_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 33.66666666666788,
+      "unc": 1831.6954235990488,
+      "voi": 54.40679475874979,
+      "span": 1e-09
+    },
+    "ep_s57_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 103.66666666666788,
+      "unc": 2775.8159239351317,
+      "voi": 26.776359394614044,
+      "span": 1e-09
+    },
+    "ep_s57_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 112.0,
+      "unc": 1497.560426507719,
+      "voi": 13.371075236556678,
+      "span": 1e-09
+    },
+    "ep_s58_M3_t1": {
+      "regret_surrogate": 0.0,
+      "margin": 177.472666666672,
+      "unc": 3882.367576870708,
+      "voi": 21.875862068048313,
+      "span": 1e-09
+    },
+    "ep_s58_M3_t2": {
+      "regret_surrogate": 0.0,
+      "margin": 109.33333333333576,
+      "unc": 1534.3811430130131,
+      "voi": 14.03397386889279,
+      "span": 1e-09
+    }
+  },
+  "verdict": "VoI 신호가 무작위와 구별되지 않는다 — 게이트 신호를 바꿔야 한다",
+  "baselines": {
+    "always-NOOP(0)": 0.15151515151515152,
+    "always-Replace(1)": 0.0,
+    "canonical(규칙)": 0.0,
+    "random(valid)": 0.030303030303030304,
+    "surrogate(raw)": 0.0,
+    "surrogate(focused)": 0.0,
+    "oracle": 0.0
+  },
+  "best_baseline": {
+    "name": "always-Replace(1)",
+    "regret": 0.0
+  },
+  "surrogate_beats_baseline": false,
+  "paired_sign_test": {
+    "wins": 0,
+    "losses": 0,
+    "delta": 0.0,
+    "p": NaN
+  },
+  "gate_model": "focused",
+  "n_noop_correct": 28,
+  "n_eval": 33,
+  "mean_gain_vs_random": 0.0
+}

@@ -15,8 +15,10 @@ The serialize-ban (timing-persistence gap doc) is about the **PlannerEnv** only.
 ## 1. Build the fixture once (only when the env build or descriptors change)
 
 ```
-julia +lts --project=. tools/dump_llm_fixture.jl
+julia +lts --project=. tools/diagnostics.jl dump_fixture
 ```
+
+> **Currently blocked.** `tools/diagnostics.jl` hard-`include`s `venv/decpomdp/examples/{ood_env,ood_env_mdp,ood_reinforce}.jl` at module load, and `decpomdp/` no longer exists — so *every* diagnostics key fails before dispatch. Only `ood_compare` actually uses those three; `dump_fixture` does not. Use the existing `tools/llm_fixture.json` until the include block is rewired (partial replacement: `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl`).
 
 Builds the tractor env, steps to mid-build (closed≥8), and writes
 `tools/llm_fixture.json` = the exact `/propose` request body (`open_ids`,

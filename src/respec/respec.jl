@@ -21,7 +21,9 @@
 # include("파일.jl") : 그 파일의 코드를 "여기에 그대로 붙여넣는다"(모듈을 여러 파일로 쪼개 관리).
 # 여기 경로는 "이 파일 기준 상대경로" — 이 respec.jl 이 이미 src/respec/ 폴더 안에 있으므로 같은 폴더의 파일을 가리킴.
 # 순서가 중요 — 아래 파일이 위 파일에서 정의한 타입/함수를 쓰므로 정의된 순서대로 불러옴.
-include("spec_dsl.jl")       # 재명세 DSL(문법) 정의 — LLM 이 내놓을 수 있는 제약 타입들 (이 파일이 가장 먼저)
+include("identity.jl")       # 로봇 정체성 4-레지스트리 정합성 불변식(읽기 전용 검사기) — 다른 파일이 호출만 하므로 가장 먼저
+include("asset_ledger.jl")   # 2단 정체성: 역할(RobotID) vs 물리 자산 — append-only 교체/정비 이력
+include("spec_dsl.jl")       # 재명세 DSL(문법) 정의 — LLM 이 내놓을 수 있는 제약 타입들
 include("compiler.jl")       # DSL 제약을 실제 JuMP @constraint 로 변환(컴파일)
 include("verifier.jl")       # 제안된 제약을 받아들일지/거부할지 검증
 include("llm_bridge.jl")     # 별도 파이썬 LLM 서비스와 통신(LLM 이 위 DSL 문법만 내놓도록 강제)
@@ -30,3 +32,5 @@ include("reassign.jl")       # 로봇 고장 시 작업을 다른 로봇에게 �
 include("ood_injection.jl")  # physical OOD event GENERATION (front-end; uses push_ood!)  # 물리 OOD 이벤트 "생성"(앞단; push_ood! 사용)
 include("restage_zone.jl")   # ForbidZone enactment: relocate a staging-blocked assembly  # ForbidZone 실행: 적치공간이 막힌 조립체를 옮김
 include("replace_robot.jl")  # ReplaceAgent enactment: spare 1:1 chain hand-off  # ReplaceAgent 실행: 예비 로봇으로 잔여 작업 인계(고장 대체)
+include("zone_diagnosis.jl") # zone VIOLATION PREDICATES (thin composition over restage_zone.jl) — 구역이 씬트리의 무엇을 무효화하는지 계산(오라클 라벨·게이트 근거)
+include("zone_corridor.jl")  # zone BLOCKAGE predicates: 덮였다(coverage)가 아니라 **막혔다**를 잰다(RVO 구동 목표 + 통로 연결성)

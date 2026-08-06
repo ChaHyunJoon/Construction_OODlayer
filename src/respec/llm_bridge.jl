@@ -286,6 +286,17 @@ function _parse_proposal(payload, event; id_resolver)
             # ForbidAgent 와 필드는 같지만(로봇 id + after) 처리 경로가 다른 별도 종류 — MILP 재배정이 아니라
             # 그래프 splice 로 전용 dispatch(_is_robot_replace). 예비 선택은 LLM 이 아니라 기하(nearest_pool)가 함.
             ReplaceAgent(id_resolver(String(c["agent"])), Float64(get(c, "after", 0.0)))
+        elseif kind == "RelocateBuild"
+            # RelocateBuild(zone키) : 구역이 조각조각 못 옮기는 작업까지 덮은 경우 → 빌드 **전체**를 Δ 하나로
+            # 평행이동(translate_whole_build!). ForbidZone 과 달리 assembly 를 안 지목한다(전체가 움직이므로
+            # per-assembly grounding 자체가 없다). zone 은 RESTRICTION_ZONES 의 키(Symbol) — 존재 여부는
+            # verify_relocate 가 확인한다(LLM 이 없는 구역을 지어내면 거부).
+            RelocateBuild(Symbol(String(c["zone"])))
+        elseif kind == "SwapBattery"
+            # SwapBattery(로봇id) : 방전 → 현장에서 배터리만 교체(swap_battery!). 같은 본체가 계속 일하고
+            # 창고 예비 "본체"를 안 먹는다 — ReplaceAgent 와 소모 자원이 달라서 별도 종류로 둔 것이다.
+            # (기계고장에는 쓰면 안 됨: 구동계가 망가진 로봇은 배터리를 갈아도 안 움직인다.)
+            SwapBattery(id_resolver(String(c["agent"])))
         elseif kind == "ReformTeam"
             # ReformTeam() : 다로봇 운반팀 형성 교착 → 기하 재정립(reform_stuck_teams!). 필드 없음.
             ReformTeam()

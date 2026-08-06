@@ -1,0 +1,412 @@
+Processing file...   3%|██                                                |  ETA: 0:00:27 ( 0.44  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:02 (35.41 ms/it)[K
+Processing file...   8%|█████                                             |  ETA: 0:00:01 (41.00 ms/it)[KProcessing file...  62%|████████████████████████████████                  |  ETA: 0:00:00 (11.61 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 7.22 ms/it)[K
+Processing file...  31%|████████████████                                  |  ETA: 0:00:00 (10.60 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 3.24 ms/it)[K
+Processing file...  59%|██████████████████████████████                    |  ETA: 0:00:00 ( 2.89 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.72 ms/it)[K
+Processing file...  38%|███████████████████                               |  ETA: 0:00:00 ( 4.61 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.74 ms/it)[K
+Processing file...  77%|███████████████████████████████████████           |  ETA: 0:00:00 ( 1.21 ms/it)[KProcessing file...  86%|████████████████████████████████████████████      |  ETA: 0:00:00 ( 2.13 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.84 ms/it)[K
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:55:01 (13.05  s/it)[K
+   step_num: 11[K
+   n_closed: 60[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   2%|██                                                |  ETA: 0:18:52 ( 4.55  s/it)[K
+   step_num: 17[K
+   n_closed: 64[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   7%|████                                              |  ETA: 0:05:52 ( 1.49  s/it)[K
+   step_num: 69[K
+   n_closed: 77[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  13%|███████                                           |  ETA: 0:03:29 ( 0.94  s/it)[K
+   step_num: 86[K
+   n_closed: 90[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  21%|███████████                                       |  ETA: 0:01:56 ( 0.58  s/it)[K
+   step_num: 129[K
+   n_closed: 112[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  34%|█████████████████                                 |  ETA: 0:01:04 ( 0.38  s/it)[K
+   step_num: 175[K
+   n_closed: 144[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  37%|███████████████████                               |  ETA: 0:00:57 ( 0.36  s/it)[K
+   step_num: 204[K
+   n_closed: 153[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  42%|█████████████████████                             |  ETA: 0:00:49 ( 0.33  s/it)[K
+   step_num: 255[K
+   n_closed: 164[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  49%|█████████████████████████                         |  ETA: 0:00:37 ( 0.29  s/it)[K
+   step_num: 315[K
+   n_closed: 184[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  55%|████████████████████████████                      |  ETA: 0:00:30 ( 0.27  s/it)[K
+   step_num: 375[K
+   n_closed: 199[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  61%|███████████████████████████████                   |  ETA: 0:00:24 ( 0.25  s/it)[K
+   step_num: 429[K
+   n_closed: 214[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  70%|████████████████████████████████████              |  ETA: 0:00:17 ( 0.22  s/it)[K
+   step_num: 497[K
+   n_closed: 237[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:17 ( 0.23  s/it)[K
+   step_num: 574[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:18 ( 0.24  s/it)[K
+   step_num: 649[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:19 ( 0.25  s/it)[K
+   step_num: 756[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A┌ Warning: [RESPEC][DIAG] reform declined: 2 forming team(s) — mostly_formed=0 all_ready=2 all_missing=0 (reform only fixes mostly_formed).
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(3): 4 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 3
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 4
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 7
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 6
+│ : READY   Δpos=0.0m (tol=0.01)
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(4): 2 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 8
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 2
+│ : READY   Δpos=0.0m (tol=0.01)
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\verifier.jl:405
+
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:19 ( 0.26  s/it)[K
+   step_num: 769[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:20 ( 0.26  s/it)[K
+   step_num: 872[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A┌ Warning: [RESPEC][DIAG] reform declined: 2 forming team(s) — mostly_formed=0 all_ready=2 all_missing=0 (reform only fixes mostly_formed).
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(3): 4 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 3
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 4
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 7
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 6
+│ : READY   Δpos=0.0m (tol=0.01)
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(4): 2 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 8
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 2
+│ : READY   Δpos=0.0m (tol=0.01)
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\verifier.jl:405
+
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:20 ( 0.27  s/it)[K
+   step_num: 969[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A┌ Warning: [RESPEC][DIAG] reform declined: 2 forming team(s) — mostly_formed=0 all_ready=2 all_missing=0 (reform only fixes mostly_formed).
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(3): 4 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 3
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 4
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 7
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 6
+│ : READY   Δpos=0.0m (tol=0.01)
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(4): 2 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 8
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 2
+│ : READY   Δpos=0.0m (tol=0.01)
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\verifier.jl:405
+
+
+
+[K[A[K[A[K[ASimulating...  71%|████████████████████████████████████              |  ETA: 0:00:20 ( 0.27  s/it)[K
+   step_num: 1068[K
+   n_closed: 238[K
+    n_total: 313[K[A[A[A┌ Warning: [RESPEC][DIAG] reform declined: 2 forming team(s) — mostly_formed=0 all_ready=2 all_missing=0 (reform only fixes mostly_formed).
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(3): 4 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 3
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 4
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 7
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 6
+│ : READY   Δpos=0.0m (tol=0.01)
+│     TransportUnit ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(4): 2 ready / 0 missing  -> all_ready
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 8
+│ : READY   Δpos=0.0m (tol=0.01)
+│       ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 2
+│ : READY   Δpos=0.0m (tol=0.01)
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\verifier.jl:405
+┌ Warning: Disbanding ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│   id: Int64 92
+│ , nothing, TransformNode(36) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 4.85722573273506e-17]), true, 1.512306e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 249.0)), ConstructionBots.AssemblyID
+│   id: Int64 4
+│  => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.056]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(7) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.48000000000000004, -0.16, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(6) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.32, 0.16, 0.0])), ConstructionBots.GeometryHierarchy
+│   graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│   nodes: Array{ConstructionBots.GeomNode}((3,))
+│   vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│   vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│ ) -- ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 7
+│  should be attached, but is not
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\hierarchical_geom_essentials.jl:1024
+┌ Warning: Disbanding ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│   id: Int64 92
+│ , nothing, TransformNode(36) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 4.85722573273506e-17]), true, 1.512306e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 249.0)), ConstructionBots.AssemblyID
+│   id: Int64 4
+│  => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.056]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(7) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.48000000000000004, -0.16, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(6) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.32, 0.16, 0.0])), ConstructionBots.GeometryHierarchy
+│   graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│   nodes: Array{ConstructionBots.GeomNode}((3,))
+│   vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│   vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│ ) -- ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 6
+│  should be attached, but is not
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\hierarchical_geom_essentials.jl:1024
+
+
+
+[K[A[K[A[K[ASimulating...  75%|██████████████████████████████████████            |  ETA: 0:00:17 ( 0.27  s/it)[K
+   step_num: 1135[K
+   n_closed: 250[K
+    n_total: 313[K[A[A[A┌ Warning: Disbanding ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│   id: Int64 99
+│ , nothing, TransformNode(43) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-1.0590986838363041, -0.020251622709907276, 2.7755575615628914e-17]), true, 1.512309e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 270.0)), ConstructionBots.AssemblyID
+│   id: Int64 2
+│  => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.17532]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(2) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.304, 0.141496, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.304, -0.141496, 0.0])), ConstructionBots.GeometryHierarchy
+│   graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│   nodes: Array{ConstructionBots.GeomNode}((3,))
+│   vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│   vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│ ) -- ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 2
+│  should be attached, but is not
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\hierarchical_geom_essentials.jl:1024
+┌ Warning: Disbanding ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│   id: Int64 99
+│ , nothing, TransformNode(43) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-1.0590986838363041, -0.020251622709907276, 2.7755575615628914e-17]), true, 1.512309e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 270.0)), ConstructionBots.AssemblyID
+│   id: Int64 2
+│  => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.17532]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(2) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.304, 0.141496, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.304, -0.141496, 0.0])), ConstructionBots.GeometryHierarchy
+│   graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│   nodes: Array{ConstructionBots.GeomNode}((3,))
+│   vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│   vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│ ) -- ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│   id: Int64 9
+│  should be attached, but is not
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\hierarchical_geom_essentials.jl:1024
+
+
+
+[K[A[K[A[K[ASimulating...  84%|██████████████████████████████████████████        |  ETA: 0:00:10 ( 0.25  s/it)[K
+   step_num: 1222[K
+   n_closed: 271[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  88%|████████████████████████████████████████████      |  ETA: 0:00:07 ( 0.24  s/it)[K
+   step_num: 1304[K
+   n_closed: 282[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:53 ( 0.21  s/it)[K
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 53[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   2%|█                                                 |  ETA: 0:02:45 ( 0.66  s/it)[K
+   step_num: 113[K
+   n_closed: 63[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   7%|████                                              |  ETA: 0:00:53 ( 0.23  s/it)[K
+   step_num: 179[K
+   n_closed: 77[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  13%|███████                                           |  ETA: 0:00:37 ( 0.17  s/it)[K
+   step_num: 239[K
+   n_closed: 90[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  22%|███████████                                       |  ETA: 0:00:22 ( 0.11  s/it)[K
+   step_num: 307[K
+   n_closed: 114[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  24%|████████████                                      |  ETA: 0:00:24 ( 0.12  s/it)[K
+   step_num: 377[K
+   n_closed: 118[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  24%|████████████                                      |  ETA: 0:00:27 ( 0.14  s/it)[K
+   step_num: 449[K
+   n_closed: 118[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  27%|██████████████                                    |  ETA: 0:00:25 ( 0.13  s/it)[K
+   step_num: 526[K
+   n_closed: 128[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  36%|██████████████████                                |  ETA: 0:00:19 ( 0.12  s/it)[K
+   step_num: 608[K
+   n_closed: 149[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  38%|████████████████████                              |  ETA: 0:00:19 ( 0.12  s/it)[K
+   step_num: 687[K
+   n_closed: 156[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  45%|███████████████████████                           |  ETA: 0:00:16 ( 0.11  s/it)[K
+   step_num: 753[K
+   n_closed: 172[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  51%|██████████████████████████                        |  ETA: 0:00:13 ( 0.11  s/it)[K
+   step_num: 820[K
+   n_closed: 187[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  57%|█████████████████████████████                     |  ETA: 0:00:11 ( 0.10  s/it)[K
+   step_num: 883[K
+   n_closed: 204[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  62%|███████████████████████████████                   |  ETA: 0:00:10 ( 0.10  s/it)[K
+   step_num: 954[K
+   n_closed: 216[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  69%|███████████████████████████████████               |  ETA: 0:00:08 (95.16 ms/it)[K
+   step_num: 1017[K
+   n_closed: 234[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  77%|███████████████████████████████████████           |  ETA: 0:00:05 (90.27 ms/it)[K
+   step_num: 1089[K
+   n_closed: 255[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  80%|█████████████████████████████████████████         |  ETA: 0:00:05 (91.85 ms/it)[K
+   step_num: 1178[K
+   n_closed: 263[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|██████████████████████████████████████████        |  ETA: 0:00:04 (93.77 ms/it)[K
+   step_num: 1256[K
+   n_closed: 270[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|██████████████████████████████████████████        |  ETA: 0:00:04 (98.66 ms/it)[K
+   step_num: 1334[K
+   n_closed: 270[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  87%|████████████████████████████████████████████      |  ETA: 0:00:03 ( 0.10  s/it)[K
+   step_num: 1413[K
+   n_closed: 279[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:22 (88.35 ms/it)[K

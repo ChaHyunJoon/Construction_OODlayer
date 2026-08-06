@@ -4,7 +4,7 @@ Ground-truth for the surrogate world model (see `../EVALUATION.md`). For each OO
 decision point it tries **every** candidate DSL macro, rolls each to completion
 through the **production** re-spec dispatch, and records the true outcome +
 feasibility-lexicographic ranking. That ranking is what the surrogate's
-decision-regret / NDCG@k is scored against.
+decision suboptimality / NDCG@k is scored against.
 
 ## Slice 1 — robot-fault class (`gen_oracle_faults.jl`)
 

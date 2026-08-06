@@ -84,7 +84,7 @@ LLM 산이 아님을 보장하지만, 같은 원칙이 **입력 채널**에는 �
 | `observation` | "…blocking a staging area." | **NOOP** ✓ | "harm and work at risk are minimal, and there is high slack … no immediate action is necessary" |
 
 `raw` 쪽 근거를 보면 LLM 은 서술자를 **정확히 읽고도**(harm 최소임을 인정) 문장의 지시를 따랐다.
-지시를 떼자 같은 서술자로 옳은 판단을 했다. C1 에서 `llm:nl` 이 zoneblk 에서 regret 1.000 이었던
+지시를 떼자 같은 서술자로 옳은 판단을 했다. C1 에서 `llm:nl` 이 zoneblk 에서 subopt_norm 1.000 이었던
 것도 이걸로 설명된다 — 모든 zone 문장이 restage 를 지시한다.
 
 **조치**: producer 입력 경계에서 지시 절을 제거하는 `observation_only()` 를 넣었다
@@ -179,11 +179,11 @@ LLM 에 **주지 않는 것**: 종류별 valid mask(종류 이름에서 나온 �
 
 ```
 6 distinct sentences over 60 instances
-best achievable mean regret with NL alone = 0.100
-  그 중 fault/faultidle 그룹(18 instances) 만으로 regret 0.333
+best achievable mean subopt_norm with NL alone = 0.100
+  그 중 fault/faultidle 그룹(18 instances) 만으로 subopt_norm 0.333
 ```
 
-즉 `llm:nl` arm 은 0 이 아니라 **0.100 과 비교**해야 공정하다. 참고로 surrogate 의 LOKO regret 도
+즉 `llm:nl` arm 은 0 이 아니라 **0.100 과 비교**해야 공정하다. 참고로 surrogate 의 LOKO subopt_norm 도
 0.100 이다 — 문장만으로는 원리적으로 surrogate 를 못 이긴다는 뜻이고, 그래서 `nl+state` arm 이
 제안의 핵심이 된다.
 
@@ -209,7 +209,7 @@ best achievable mean regret with NL alone = 0.100
 
 | 정책 | 역할 |
 |---|---|
-| `oracle` | 매 사건 5개 rollout. regret 0, 최대 비용. 품질 상한 |
+| `oracle` | 매 사건 5개 rollout. subopt_norm 0, 최대 비용. 품질 상한 |
 | `frozen` | surrogate 만, 재학습 없음. **새 종류에서 무너지는가** = C1 의 스트림판 |
 | `always_llm` | 매 사건 LLM. 품질 참조 + 비용 상한 |
 | `gated+assim` | **제안 방식** |
@@ -277,14 +277,14 @@ gated_no_assim       0.94      0.94     +0.00     <- 재학습을 끄면 영원�
 그래서 임계 경로에서 오라클을 부르는 경쟁자 `gated_oracle`(= E3 의 ACTIVE)을 같은 표에 넣었다.
 novel=zoneblk, 6시드 실측:
 
-| policy | regret | novel-kind regret | 대기초/사건 | 배치초/사건 |
+| policy | subopt_norm | novel-kind subopt_norm | 대기초/사건 | 배치초/사건 |
 |---|---|---|---|---|
 | `frozen` | 0.248 | 0.500 | 0.00 | 0 |
 | `gated+assim` | 0.203 | 0.426 | **0.21** | 224 |
 | `gated_oracle` | **0.126** | **0.204** | **223.65** | 0 |
 | `oracle` | 0.000 | 0.000 | 1630 | 0 |
 
-**이것이 LLM 의 실제 값어치다**: 결정 품질은 `gated_oracle` 이 더 좋지만(+0.077 regret 차이),
+**이것이 LLM 의 실제 값어치다**: 결정 품질은 `gated_oracle` 이 더 좋지만(+0.077 subopt_norm 차이),
 `gated+assim` 은 그 결정을 **1000배 빠른 임계 경로**로 낸다. 발표에서 주장해야 할 문장은
 "LLM 이 더 잘 결정한다"가 아니라 "**LLM 이 플래너를 임계 경로에서 몰아낸다**"이다.
 
@@ -303,7 +303,7 @@ zoneblk        action-supported    0.000     0.000     1.000      1.000       0.
 읽는 법 — **평균만 보면 결론을 놓친다**:
 
 - 평균으로는 surrogate(0.100)가 최고 LLM arm(0.330)을 유의하게 이긴다 → "C1 평균 미성립".
-- 그러나 **surrogate 가 실패하는 유일한 종류인 `fault` 에서, `llm:nl+state` 는 regret 0.000** 이다.
+- 그러나 **surrogate 가 실패하는 유일한 종류인 `fault` 에서, `llm:nl+state` 는 subopt_norm 0.000** 이다.
   surrogate 는 0.333, 그리고 그 0.333 은 NL-only 상한과 정확히 같다 — 즉 문장만으로는 못 풀고,
   문장+물리서술자를 함께 준 arm 만 풀었다. (`work_at_risk` 가 fault↔faultidle 을 가른다.)
 - 반대로 `zoneblk` 에서는 정답이 언제나 NOOP 인데 LLM 은 계속 개입해서 1.000 으로 최악이다.
@@ -351,7 +351,7 @@ random_router         0.08  0.08  0.17  0.08  0.25  0.08  0.25  0.08  0.25  0.08
 못 짚어서 평평하다(게이트가 실제로 종류를 골라내고 있다는 방증).
 
 동일한 게이트·동일한 LLM 인데 **재학습 유무만으로** 갈린다 → 감소의 원인이 학습임이 분리된다.
-그동안 누적 regret 은 `frozen` 보다 **낮게** 유지된다(오른쪽 패널).
+그동안 누적 subopt_norm 은 `frozen` 보다 **낮게** 유지된다(오른쪽 패널).
 
 ### C3 는 성립하지 않았다 — 그리고 그게 중요한 정보다
 
@@ -360,7 +360,7 @@ CI [-0.102,-0.004] 로 무작위 우세가 유의). 게이트가 새 종류를 �
 
 원인은 명확하다. **이 루프에서 이득을 만드는 것은 라우팅이 아니라 동화(오라클 라벨링 + 재학습)다.**
 무작위 라우터도 똑같이 라벨을 사서 재학습하므로, 라벨을 *어디에* 쓰느냐보다 *얼마나* 사느냐가
-지배적이다. 게다가 LLM 은 `zoneblk` 에서 regret 1.000(항상 개입, 정답은 항상 NOOP)이라, 그 종류로
+지배적이다. 게다가 LLM 은 `zoneblk` 에서 subopt_norm 1.000(항상 개입, 정답은 항상 NOOP)이라, 그 종류로
 결정을 보내는 것 자체가 손해다.
 
 따라서 지금 정직하게 말할 수 있는 것은:
@@ -377,7 +377,7 @@ novel=zoneblk, 12시드:
 
 (서술자 수정 후, novel=zoneblk, 12시드)
 
-| policy | regret | novel-kind regret | 대기초/사건 | 배치초/사건 |
+| policy | subopt_norm | novel-kind subopt_norm | 대기초/사건 | 배치초/사건 |
 |---|---|---|---|---|
 | `frozen` | 0.338 | 0.694 | 0.00 | 0 |
 | `always_llm` | 0.459 | 1.000 | 1.50 | 0 |
@@ -500,7 +500,7 @@ cd oracle && DS_OUT=out/nl_v1.jsonl julia +lts --project=.. gen_oracle_dataset.j
    안에서 같은 instance 는 반복되지 않으므로, "그 종류를 배웠다"는 **같은 종류의 다른 instance 로의
    일반화**를 뜻한다. 옳은 시험이지만 표본이 작다(종류당 18~24).
 3. **onset 이 스크립트다.** 자발적 drift 탐지는 이 하니스가 아니라 `e3_drift.py` 의 역할이다.
-4. **전이가 되는 종류에서는 라우팅이 원리적으로 불필요하다.** 현 데이터의 LOKO regret 은 battery
+4. **전이가 되는 종류에서는 라우팅이 원리적으로 불필요하다.** 현 데이터의 LOKO subopt_norm 은 battery
    0.000 / zoneblk 0.000 / fault 0.333 이다. 즉 battery·zoneblk 는 "처음 봐도" 기존 지식으로
    풀린다. 그런 종류를 무대로 C3/C4 를 보여주면 이득이 없는 게 정상이다. 스크립트가 각 종류마다
    `frozen 여유`(= always-surrogate 가 오라클보다 얼마나 나쁜가)를 먼저 찍고, 0.02 미만이면

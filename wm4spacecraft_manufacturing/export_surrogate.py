@@ -85,7 +85,7 @@ import pandas as pd
 # 이 파일이 있는 폴더를 import 경로 맨 앞에 넣어 옆의 e1_analyze 모듈을 찾을 수 있게 한다.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # e1_analyze의 데이터 로드/자격판정/feature화/정렬키 함수를 그대로 재사용(일관성 유지).
-from e1_analyze import load, instance_admissible, featurize, lex_key
+from e1_analyze import load, instance_admissible, featurize, lex_key, instance_arms_complete
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from surrogate_model import build_model, MODEL_NAME  # 평가·배포 단일 모델 정의
@@ -94,7 +94,9 @@ from sklearn.model_selection import LeaveOneGroupOut
 
 # adaptation cost per macro (OODRewardCfg, decpomdp/examples/ood_env_mdp.jl)
 # macro별 개입 비용(e1_analyze와 동일). NOOP=0, Deprioritize=0.3, 나머지=1.0.
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0}
+# 5·6 = 조합 팔, 7 = RelocateBuild(1.5, 전역 개입). 세 곳(여기·e1_analyze·features_agnostic)과
+# Julia 쪽 gen_oracle_dataset.MACRO_COST 가 **모두 같은 값**이어야 한다(함정 29).
+MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}  # 8=SwapBattery
 
 # State features that must be allowed to INTERACT with the chosen macro. Without these the exported
 # model is purely additive and CANNOT represent the graded flip: on a battery OOD the value of NOOP
@@ -110,9 +112,17 @@ INTERACT = ["soc", "severity", "agent_pending", "spare_count", "zone_overlap",
 
 
 # feature표 F에 "상태 x macro" 교차항(interaction) 열을 추가한다. F[s] * (해당 macro면 1 아니면 0).
+#
+# [2026-08-05] 예전엔 `range(5)` 로 **macro 0~4 만** 교차항을 만들었다. 그래서 나중에 추가된
+# 7(RelocateBuild)·8(SwapBattery)은 교차항이 없었고, 선형 export 는 그 두 팔에 대해 상태 의존적
+# 순위(예: SoC 에 따라 SwapBattery↔NOOP 가 뒤집히는 것)를 **표현할 수 없었다**. 데이터에 실제로
+# 등장하는 macro 로 범위를 잡는다 — macro 0~4 만 있는 옛 덤프에서는 결과가 예전과 **완전히 동일**하고
+# (열 이름·순서까지), 새 덤프에서만 열이 늘어난다. Julia 쪽 조립기는 `feature_names` 를 읽어
+# `<state>__x__macro_<m>` 을 이름으로 파싱하므로 자동으로 따라온다(demos.jl:2030).
 def add_interactions(F, df):
+    macros = sorted({int(m) for m in df.macro})
     for s in INTERACT:
-        for m in range(5):
+        for m in macros:
             # 이름 규칙 <state>__x__macro_<m> 은 Julia 데모의 feature 조립기와 똑같이 맞춰져 있음.
             F[f"{s}__x__macro_{m}"] = F[s].values * (df.macro.values == m).astype(float)
     return F
@@ -124,6 +134,58 @@ def cost_key(complete, closed, makespan, macro, lam):
     adj = closed - lam * MACRO_COST[int(macro)]  # 비용을 뺀 유효 closed 수
     # 튜플 (완주?, adj, -makespan): 앞에서부터 비교, 클수록 좋음.
     return (1 if complete else 0, adj, -(makespan if (complete and math.isfinite(makespan)) else 1e18))
+
+
+# =============================================================================
+#  TIME-PRICED cost (`--cost-time --mu M`) — the lambda-free alternative (2026-08-05)
+# -----------------------------------------------------------------------------
+#  왜 바꾸려 하는가 (측정 근거는 md/BATTERY_FAULT_REDESIGN_2026-08-05.md §3):
+#    (1) lambda 는 **식별되지 않는다.** firegrid_merged(126 instance)에서 lambda 를 0.5 에서 30 까지
+#        60배 움직여도 정답이 바뀌는 instance 가 3~4개(2.4~3.2%)뿐이다. 즉 "lambda=15 로 튜닝했다"는
+#        말은 데이터가 뒷받침하지 않는다. lambda 가 실제로 하는 일은 크기와 무관한 **동점 처리**다
+#        (lambda=0 에서 126 중 58개가 정확히 동점).
+#    (2) lambda 는 **물리적으로 측정된 차이를 덮어쓸 수 있다.** closed 슬롯 안에 비용을 넣기 때문이다.
+#        실측: `battery_s3_sev0.2_sp3` 은 Replace 가 NOOP 보다 12 노드를 더 닫는데(248 vs 260),
+#        lambda=15 는 그 12 노드를 비용 15 로 지워 NOOP 을 정답으로 만든다. 이것은 자제(restraint)가
+#        아니라 **손상**이다.
+#    (3) 단위가 섞인다. "schedule 노드"와 "개입 비용"은 교환비가 정의된 적이 없다.
+#
+#  제안: 비용을 **makespan 초**로 매기고, feasibility 와 closed **아래** 계층에 둔다.
+#        key = (complete, closed, -(makespan + mu * cost))
+#    · mu = "개입 비용 1단위가 빌드 시간 몇 초의 가치인가" — 해석 가능하고 보고 가능한 교환비.
+#    · 비용은 완주 여부도, 닫은 노드 수도 절대 뒤집을 수 없다 -> (2)의 손상이 구조적으로 불가능.
+#    · 그런데도 자제는 표현된다: 무해한 사건에서 두 팔의 closed 가 같으면 시간+비용이 결정한다.
+#    · lambda 와 달리 **식별된다**: 정답 분포가 mu 0.1~2.0 구간에서 실제로 움직이고 그 뒤 안정된다.
+#  기본은 꺼짐 — `--cost-aware` 의 기존 경로는 한 글자도 바뀌지 않는다(핀 고정된 벤치마크 보존).
+MK_INCOMPLETE = 1.0e3   # 미완주 팔의 시간 자리표. complete 항이 이미 졌으므로 순위엔 영향 없고,
+                        # "둘 다 미완주 + closed 동일" 일 때만 비용이 갈라놓게 하는 역할.
+TIME_SCALE = 100.0      # 시간 항을 노드 1개보다 작게 눌러, closed 를 절대 못 뒤집게 하는 나눗수.
+
+
+def _mk(v):
+    """makespan 셀을 float 로. JSON 에서 'Inf'/'NaN' 문자열로 오는 경우를 흡수한다."""
+    if isinstance(v, str):
+        return {"Inf": math.inf, "-Inf": -math.inf, "NaN": math.nan}.get(v, math.nan)
+    return float(v) if v is not None else math.nan
+
+
+def cost_time_key(complete, closed, makespan, macro, mu):
+    """Feasibility > progress > (time + mu*cost). Cost can NEVER override closed or completion."""
+    t = (makespan if (complete and math.isfinite(makespan)) else MK_INCOMPLETE) \
+        + mu * MACRO_COST[int(macro)]
+    return (1 if complete else 0, closed, -t)
+
+
+def cost_time_score(complete, closed, makespan, macro, mu):
+    """Scalar consistent with `cost_time_key` — the regression target AND the regret scale.
+
+    1000*complete dominates closed (max 313), and the time term is divided by TIME_SCALE so it
+    stays below 1 node — i.e. the scalarization reproduces the lexicographic order exactly for
+    every (mu, cost) pair this repo uses.
+    """
+    t = (makespan if (complete and math.isfinite(makespan)) else MK_INCOMPLETE) \
+        + mu * MACRO_COST[int(macro)]
+    return 1000.0 * (1 if complete else 0) + float(closed) - t / TIME_SCALE
 
 
 def export_forest(model, feature_names, meta):
@@ -148,6 +210,16 @@ def export_forest(model, feature_names, meta):
     return {"kind": "forest", "feature_names": list(feature_names), "trees": trees, "meta": meta}
 
 
+# 배포 JSON 의 meta.target 문자열(어떤 목적함수로 학습했는지 파일 안에 남긴다).
+def _target_desc(a):
+    if a.cost_aware and a.cost_time:
+        return ("1000*complete + closed - (makespan + %.2f*adaptation_cost(macro))/%.0f"
+                % (a.mu, TIME_SCALE))
+    if a.cost_aware:
+        return "closed - %.1f*adaptation_cost(macro)" % a.lam
+    return "closed (schedule nodes completed) for this (state, macro)"
+
+
 # 실제 실행 함수: 인자 파싱 → 데이터 로드/필터 → feature화 → LOO 정직성 검사 → 전체 데이터로 최종 학습·저장.
 def main():
     ap = argparse.ArgumentParser()  # 명령줄 인자 파서 생성
@@ -155,6 +227,12 @@ def main():
     ap.add_argument("--cost-aware", action="store_true")  # 비용 반영 모드 on/off 플래그
     ap.add_argument("--linear", action="store_true", help="export Ridge instead of the forest")  # 선형 export
     ap.add_argument("--lam", type=float, default=3.0, help="adaptation cost in schedule-nodes")  # 비용 가중치
+    # lambda-free 대안(2026-08-05). --cost-aware 와 함께 쓴다. 위 cost_time_key 주석 참조.
+    ap.add_argument("--cost-time", action="store_true",
+                    help="price adaptation cost in MAKESPAN SECONDS, strictly below feasibility "
+                         "and closed-node count (lambda-free). Use with --cost-aware.")
+    ap.add_argument("--mu", type=float, default=2.0,
+                    help="makespan seconds per unit adaptation cost (--cost-time only)")
     # 출력 파일 경로. 기본은 이 스크립트 폴더의 surrogate_linear.json.
     ap.add_argument("-o", "--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                         "surrogate_linear.json"))
@@ -164,10 +242,13 @@ def main():
     df = df[df.fired == True].copy()  # OOD가 실제로 발동된 행만 남김
 
     if a.cost_aware:
-        # keep every fired instance (harmless ones carry the restraint signal), but require a full
-        # 5-macro row set so the ranking is well defined.
-        # cost-aware: 무해한 instance도 남기되(자제 신호를 담고 있음), 5개 macro가 다 있는 것만 유지.
-        keep = [i for i, g in df.groupby("instance") if len(g) == 5]
+        # keep every fired instance (harmless ones carry the restraint signal), but require that the
+        # instance's OWN valid action set was fully labeled so the ranking is well defined.
+        # [2026-08-05 버그 수정] 예전엔 `len(g) == 5` 였다. DS_VALID_ONLY 라벨은 그 사건에서 실제로
+        # 실행 가능한 팔만(예: battery deep = NOOP/Replace/SwapBattery = 3팔) 라벨링하므로 5를 영영
+        # 못 채우고 **통째로 버려졌다**. e1_analyze.py / dspy_service.py 는 이미 고쳤는데 이 배포
+        # 경로만 남아 있었다. 판정을 `instance_arms_complete`(= 그 사건의 valid_mask 를 다 덮었는가)로 통일.
+        keep = [i for i, g in df.groupby("instance") if instance_arms_complete(g)]
         dropped_note = "kept all fired instances (incl. harmless: NOOP can win)"
     else:
         # 기본: 고장이 실제로 영향을 준(admissible) instance만.
@@ -180,7 +261,12 @@ def main():
         F = add_interactions(F, df)      # required for the graded flip (see INTERACT)  (그레이드 뒤집힘 표현용 교차항)
     X = F.values
     cost = np.array([MACRO_COST[int(m)] for m in df.macro])  # 행별 macro 비용
-    y = df.closed.astype(float).values - (a.lam * cost if a.cost_aware else 0.0)  # 학습 목표
+    if a.cost_aware and a.cost_time:
+        # 시간가격 모드: 학습 목표도 정렬키와 **같은 스칼라**여야 한다(안 그러면 모델이 다른 것을 배운다).
+        y = np.array([cost_time_score(bool(c), float(cl), _mk(mk), int(m), a.mu)
+                      for c, cl, mk, m in zip(df.complete, df.closed, df.makespan, df.macro)])
+    else:
+        y = df.closed.astype(float).values - (a.lam * cost if a.cost_aware else 0.0)  # 학습 목표
     groups = df.instance.values  # 교차검증 그룹 = instance
 
     # 한 instance의 행들(g)에서 정답 macro를 찾는 헬퍼. 반환: (macro목록, macro별 closed, 정답 macro).
@@ -191,8 +277,13 @@ def main():
         # macro→makespan (JSON에서 "Inf" 문자열로 온 경우 math.inf로 변환)
         mk = {int(x): (float(v) if not isinstance(v, str) else math.inf) for x, v in zip(g.macro, g.makespan)}
         # cost-aware면 비용 반영 키, 아니면 기본 lex_key로 정렬(백슬래시 \는 줄 이어짐).
-        key = (lambda q: cost_key(cp[q], cl[q], mk[q], q, lam)) if a.cost_aware else \
-              (lambda q: lex_key(cp[q], cl[q], mk[q]))
+        # --cost-time 이면 시간가격 키(비용이 closed 를 못 뒤집는 형태)를 쓴다.
+        if a.cost_aware and a.cost_time:
+            key = lambda q: cost_time_key(cp[q], cl[q], mk[q], q, a.mu)
+        elif a.cost_aware:
+            key = lambda q: cost_key(cp[q], cl[q], mk[q], q, lam)
+        else:
+            key = lambda q: lex_key(cp[q], cl[q], mk[q])
         # BUG FIX 2026-07-27: the returned score dict MUST be the one the objective is defined on.
         # It used to return raw `closed` even in cost-aware mode, so regret was measured blind to the
         # adaptation cost -- i.e. blind to exactly the term that makes NOOP-vs-Replace a decision.
@@ -201,7 +292,12 @@ def main():
         # `loo_decision_regret: 0.000` when the true cost-aware value was 0.100 (measured, 20 inst).
         # 한국어: cost-aware 모드에서는 점수도 비용을 뺀 값으로 재야 한다. 예전엔 raw closed 로 재서,
         #   "개입 비용만 다르고 closed 는 같은" 바로 그 결정들이 전부 regret 0 으로 잡혔다.
-        score = {q: (cl[q] - lam * MACRO_COST[int(q)]) for q in ms} if a.cost_aware else dict(cl)
+        if a.cost_aware and a.cost_time:
+            score = {q: cost_time_score(cp[q], cl[q], mk[q], q, a.mu) for q in ms}
+        elif a.cost_aware:
+            score = {q: (cl[q] - lam * MACRO_COST[int(q)]) for q in ms}
+        else:
+            score = dict(cl)
         return ms, score, max(ms, key=key)  # 키가 최대인 macro = 정답
 
     USE_FOREST = not a.linear  # --linear가 없으면 forest, 있으면 선형(Ridge)
@@ -232,10 +328,11 @@ def main():
     # --- final model on ALL data (this is what the demo deploys) ---
     # 최종 모델은 전체 데이터로 학습(위 LOO는 검증용, 이건 실제 배포용). meta에 재현 정보를 담는다.
     meta_common = {
-        "target": ("closed - %.1f*adaptation_cost(macro)" % a.lam) if a.cost_aware
-                  else "closed (schedule nodes completed) for this (state, macro)",
+        "target": _target_desc(a),
         "cost_aware": bool(a.cost_aware),
-        "lambda_nodes": a.lam if a.cost_aware else None,
+        "cost_mode": ("time" if (a.cost_aware and a.cost_time) else ("nodes" if a.cost_aware else None)),
+        "lambda_nodes": a.lam if (a.cost_aware and not a.cost_time) else None,
+        "mu_seconds": a.mu if (a.cost_aware and a.cost_time) else None,
         "trained_on": [os.path.basename(p) for p in a.data],
         "instance_filter": dropped_note,
         "kinds": sorted(set(str(k) for k in df.kind)),
@@ -255,7 +352,11 @@ def main():
         for k, v in sorted(per_kind.items()):  # kind별 regret과 top-1 정확도 출력
             acc = 100.0 * sum(1 for _, ok in v if ok) / len(v)
             print(f"    {k:9s} n={len(v):2d}  regret={np.mean([r for r, _ in v]):.3f}  top1-correct={acc:.0f}%")
-        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam"}
+        # 8 = SwapBattery 가 빠져 있어, macro 8 을 고르는 순간 KeyError 로 죽었다(2026-08-05 실측:
+        # 새 battery 덤프에서 학습은 끝났는데 요약을 찍다가 죽음). Julia 쪽 ACTION_NAME 과 맞춘다.
+        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
+                 5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
+                 8: "SwapBattery"}
         df2 = df.copy(); df2["pred"] = model.predict(X)  # 학습행에 대한 예측을 붙여
         print("  chosen macro per kind (on training rows):")
         for k, gk in df2.groupby("kind"):
@@ -276,11 +377,12 @@ def main():
         "coef": model.coef_.tolist(),       # 학습된 계수
         "intercept": float(model.intercept_),  # 절편
         "meta": {
-            "target": ("closed - %.1f*adaptation_cost(macro)" % a.lam) if a.cost_aware
-                      else "closed (schedule nodes completed) for this (state, macro)",
+            "target": _target_desc(a),
             "model": "StandardScaler + Ridge(alpha=1.0)",
             "cost_aware": bool(a.cost_aware),
-            "lambda_nodes": a.lam if a.cost_aware else None,
+            "cost_mode": ("time" if (a.cost_aware and a.cost_time) else ("nodes" if a.cost_aware else None)),
+            "lambda_nodes": a.lam if (a.cost_aware and not a.cost_time) else None,
+            "mu_seconds": a.mu if (a.cost_aware and a.cost_time) else None,
             "trained_on": [os.path.basename(p) for p in a.data],
             "instance_filter": dropped_note,
             "kinds": sorted(set(str(k) for k in df.kind)),
@@ -306,7 +408,11 @@ def main():
         picks = []
         for _, g in gk.groupby("instance"):
             picks.append(int(g.loc[g.pred.idxmax()].macro))  # instance마다 예측 최대 macro
-        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam"}
+        # 8 = SwapBattery 가 빠져 있어, macro 8 을 고르는 순간 KeyError 로 죽었다(2026-08-05 실측:
+        # 새 battery 덤프에서 학습은 끝났는데 요약을 찍다가 죽음). Julia 쪽 ACTION_NAME 과 맞춘다.
+        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
+                 5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
+                 8: "SwapBattery"}
         cnt = {names[m]: picks.count(m) for m in sorted(set(picks))}  # macro별 선택 횟수 집계
         print(f"    {k:9s} -> {cnt}")
 

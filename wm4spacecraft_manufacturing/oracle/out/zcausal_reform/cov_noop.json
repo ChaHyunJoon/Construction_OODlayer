@@ -1,0 +1,1 @@
+{"arm":"cov_noop","status":"stalled","closed":232,"total":289,"steps":5288,"makespan":132.75,"reform":5,"frontier_blocked":1,"fired_at":58,"enacted":"-","root_covered":8,"nav_blocked":1,"nav_engulfed":1,"nav_disconnected":0,"verdict":"relocate_build"}

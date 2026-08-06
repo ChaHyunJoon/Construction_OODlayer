@@ -95,13 +95,24 @@ include("respec/respec.jl")  # RESPEC: 반드시 마지막 — 위에서 정의�
 # RESPEC: public surface for scripts/tests (Patch 3, step 3 in respec/PATCHES.md).
 export maybe_respecify!, push_ood!, OODQueue, maybe_emit_reform_ood!,  # 재명세(respec) 관련 공개 함수/타입 (+team-deadlock OOD 공유 emit)
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
+       SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
+       RelocateBuild,                                             # 2번째 공간형 spec: 빌드 전체를 구역 밖으로 평행이동
        verify, build_invariant, commit_respec!, reset_cache_resume!,  # 검증·불변식·커밋·재개
        respec_service_ready, fault_robot_and_reassign!,           # LLM 서비스 준비확인·로봇 고장 후 재배정
        replace_robot!, reform_stuck_teams!, hot_swap_robot!,      # OOD 1-1: 예비 로봇 1:1 인계 + 막힌 운반팀 재정립 + 정체성보존 hot-swap
+       identity_violations, identity_summary, check_identity!,    # STEP A-1: 로봇 정체성 4-레지스트리 정합성 검사(읽기 전용)
+       report_identity_delta,                                     # 변경 전/후 짝 보고(개수를 항상 남김)
+       set_identity_check!, clear_identity_seen!,                 # 위 검사기의 스위치·기록 초기화
+       AssetAssignment, asset_ledger, asset_of, asset_generation, # 2단 정체성: 역할 vs 물리 자산(append-only 이력)
+       asset_history, record_asset_swap!, swap_event_kind,        # 교체 기록·물리 사건 분류(:asset_replacement/:battery_swap/:tow_replacement)
+       asset_ledger_summary, reset_asset_ledger!, set_sim_step!,  # 역할별 요약·장부 초기화(캠페인 경계에서만)·전역 스텝 갱신
        restage_assembly!, find_clear_staging_center,              # 조립체 재배치·빈 적치 중심 찾기
        restage_all_blocked!, zone_blocked_assemblies,             # zone이 덮은 모든 assembly 일괄 재배치·검출
        root_deposit_goals, zone_clears_root_goals,                # root 근방 금지(생성 가드: zone이 root deposit goal을 안 덮게)
-       translate_whole_build!                                     # Phase B: root까지 덮였을 때 빌드 전체 평행이동
+       root_goal_coverage, zone_relocatable, core_zone_for_severity,  # 심각도 연속 core zone 생성 가드(harm 축)
+       translate_whole_build!,                                    # Phase B: root까지 덮였을 때 빌드 전체 평행이동
+       zone_diagnosis, zone_diagnoses, zone_team_coverage,        # 구역 위반 술어(원시값) + 최소수복 판정 — 오라클 라벨/게이트 근거 한 곳
+       zone_blockage, goal_engulfed, free_space_status            # 구역 **막힘** 술어(coverage 가 아니라 blockage): RVO 구동 목표 + 통로 연결성
 
 # OOD generation front-end (physical OOD events; src/respec/ood_injection.jl).
 export enable_cbf!, disable_cbf!, cbf_hold!, cbf_filter_velocity, cbf_certificate,  # SAFETY L1/L0: CBF 속도필터·라인스톱·감사

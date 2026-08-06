@@ -1,0 +1,1985 @@
+Processing file...   3%|██                                                |  ETA: 0:00:27 ( 0.44  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:02 (36.68 ms/it)[K
+Processing file...   8%|█████                                             |  ETA: 0:00:02 (44.67 ms/it)[KProcessing file...  62%|████████████████████████████████                  |  ETA: 0:00:00 (12.35 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 7.68 ms/it)[K
+Processing file...  31%|████████████████                                  |  ETA: 0:00:00 (11.60 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 3.63 ms/it)[K
+Processing file...  50%|██████████████████████████                        |  ETA: 0:00:00 ( 3.24 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.82 ms/it)[K
+Processing file...  78%|███████████████████████████████████████           |  ETA: 0:00:00 ( 3.42 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.65 ms/it)[K
+Processing file...  38%|███████████████████                               |  ETA: 0:00:00 ( 4.57 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.73 ms/it)[K
+Processing file...  77%|███████████████████████████████████████           |  ETA: 0:00:00 ( 1.36 ms/it)[KProcessing file...  85%|███████████████████████████████████████████       |  ETA: 0:00:00 ( 2.50 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.12 ms/it)[K
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4disc.dat into C:\Users\chahj\Documents\ldraw\p\stud3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud3.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box4t.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4disc.dat into C:\Users\chahj\Documents\ldraw\p\stud.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud2a.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring4.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring4.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat into C:\Users\chahj\Documents\ldraw\p\stud4od.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\p\stud4od.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4od.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat into C:\Users\chahj\Documents\ldraw\parts\3062b.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\parts\3062b.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring17.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring9.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\empty.dat into C:\Users\chahj\Documents\ldraw\p\1-16chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8disc.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring4.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring3.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16ring2.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16con3.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16con16.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16ring2.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8disc.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2p.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8edge.dat into C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8edge.dat into C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8con4.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8con4.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u2p.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16tndis.dat into C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16tndis.dat into C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat into C:\Users\chahj\Documents\ldraw\parts\3001.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4chrd.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4chrd.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8chrd.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8chrd.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat into C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring12.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring12.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyls.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyls.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin.dat into C:\Users\chahj\Documents\ldraw\p\wpin2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat into C:\Users\chahj\Documents\ldraw\p\wpin2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4chrd.dat into C:\Users\chahj\Documents\ldraw\p\wpin2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin2a.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud3.dat into C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box4t.dat into C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat into C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat into C:\Users\chahj\Documents\ldraw\parts\3004.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4a.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4ndis.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4ndis.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u4a.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box4-4a.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat into C:\Users\chahj\Documents\ldraw\parts\3039.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect1.dat into C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con4.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con10.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4disc.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8chrd.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring4.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring4.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con5.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con12.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4con5.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4con5.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8con12.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8con12.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring11.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring12.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring11.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring12.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring9.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring10.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ndis.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring3.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring3.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat into C:\Users\chahj\Documents\ldraw\parts\6014a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\parts\6014a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\parts\6014a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat into C:\Users\chahj\Documents\ldraw\parts\6014a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con12.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con12.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ndis.dat into C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con7.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con7.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring16.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring16.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat into C:\Users\chahj\Documents\ldraw\parts\3023b.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3023b.dat into C:\Users\chahj\Documents\ldraw\parts\3023.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u8p.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u8p.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u2p.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5-4a.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin2.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin2.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\6014a.dat into C:\Users\chahj\Documents\ldraw\parts\6014.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3039.dat into C:\Users\chahj\Documents\ldraw\parts\6227.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3021.dat into C:\Users\chahj\Documents\ldraw\parts\3021.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3001.dat into C:\Users\chahj\Documents\ldraw\parts\3001.dat
+[ Info: incorporating geometry from rear_axle.ldr into rear_axle.ldr
+[ Info: incorporating geometry from rear_wheel_and_tire.ldr into rear_wheel_and_tire.ldr
+[ Info: incorporating geometry from front_wheel_and_tire.ldr into front_wheel_and_tire.ldr
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\4600.dat into C:\Users\chahj\Documents\ldraw\parts\4600.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3004.dat into C:\Users\chahj\Documents\ldraw\parts\3004.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\87697.dat into C:\Users\chahj\Documents\ldraw\parts\87697.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3062b.dat into C:\Users\chahj\Documents\ldraw\parts\3062b.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\4624.dat into C:\Users\chahj\Documents\ldraw\parts\4624.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\87414.dat into C:\Users\chahj\Documents\ldraw\parts\87414.dat
+[ Info: incorporating geometry from chassis.ldr into chassis.ldr
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3022.dat into C:\Users\chahj\Documents\ldraw\parts\3022.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\6014.dat into C:\Users\chahj\Documents\ldraw\parts\6014.dat
+[ Info: incorporating geometry from front_axle.ldr into front_axle.ldr
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\6227.dat into C:\Users\chahj\Documents\ldraw\parts\6227.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3023.dat into C:\Users\chahj\Documents\ldraw\parts\3023.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con4.dat into C:\Users\chahj\Documents\ldraw\p\4-4con4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyls.dat into C:\Users\chahj\Documents/ldraw\p\8\1-4cyls.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16con16.dat into C:\Users\chahj\Documents\ldraw\p\1-16con16.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-8cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8chrd.dat into C:\Users\chahj\Documents\ldraw\p\1-8chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\3004s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8disc.dat into C:\Users\chahj\Documents\ldraw\p\1-8disc.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring11.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring11.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16con3.dat into C:\Users\chahj\Documents\ldraw\p\1-16con3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring10.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring10.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\3001s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring3.dat into C:\Users\chahj\Documents\ldraw\p\1-4ring3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u8p.dat into C:\Users\chahj\Documents\ldraw\p\box3u8p.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud.dat into C:\Users\chahj\Documents\ldraw\p\stud.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u4a.dat into C:\Users\chahj\Documents\ldraw\p\box3u4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat into C:\Users\chahj\Documents/ldraw\parts\s\3062bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\1-4ndis.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat into C:\Users\chahj\Documents\ldraw\p\1-16cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat into C:\Users\chahj\Documents\ldraw\p\st4jfil4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4chrd.dat into C:\Users\chahj\Documents\ldraw\p\1-4chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\empty.dat into C:\Users\chahj\Documents\ldraw\p\empty.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin2.dat into C:\Users\chahj\Documents\ldraw\p\wpin2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat into C:\Users\chahj\Documents/ldraw\parts\s\3023bs01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring3.dat into C:\Users\chahj\Documents\ldraw\p\3-8ring3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring4.dat into C:\Users\chahj\Documents\ldraw\p\1-8ring4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\4-4ndis.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4ndis.dat into C:\Users\chahj\Documents\ldraw\p\2-4ndis.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\1-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8con4.dat into C:\Users\chahj\Documents\ldraw\p\1-8con4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring4.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8chrd.dat into C:\Users\chahj\Documents\ldraw\p\3-8chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4edge.dat into C:\Users\chahj\Documents\ldraw\p\4-4edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin.dat into C:\Users\chahj\Documents\ldraw\p\wpin.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3039.dat into C:\Users\chahj\Documents\ldraw\parts\3039.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring16.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring16.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat into C:\Users\chahj\Documents/ldraw\p\8\1-4edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat into C:\Users\chahj\Documents\ldraw\p\4-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\87697s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect1.dat into C:\Users\chahj\Documents\ldraw\p\rect1.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring12.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring12.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\6014s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con12.dat into C:\Users\chahj\Documents\ldraw\p\4-4con12.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat into C:\Users\chahj\Documents\ldraw\p\stud4f2w.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-4cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4chrd.dat into C:\Users\chahj\Documents\ldraw\p\2-4chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4disc.dat into C:\Users\chahj\Documents\ldraw\p\4-4disc.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\6014a.dat into C:\Users\chahj\Documents\ldraw\parts\6014a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16ring2.dat into C:\Users\chahj\Documents\ldraw\p\1-16ring2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4con5.dat into C:\Users\chahj\Documents\ldraw\p\1-4con5.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8con12.dat into C:\Users\chahj\Documents\ldraw\p\3-8con12.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con7.dat into C:\Users\chahj\Documents\ldraw\p\4-4con7.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16tndis.dat into C:\Users\chahj\Documents\ldraw\p\1-16tndis.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat into C:\Users\chahj\Documents\ldraw\p\3-8cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5-4a.dat into C:\Users\chahj\Documents\ldraw\p\box5-4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4edge.dat into C:\Users\chahj\Documents\ldraw\p\1-4edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\4624s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8edge.dat into C:\Users\chahj\Documents\ldraw\p\3-8edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat into C:\Users\chahj\Documents\ldraw\p\3-8cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat into C:\Users\chahj\Documents/ldraw\parts\s\6015s02.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\3-8ring12.dat into C:\Users\chahj\Documents\ldraw\p\3-8ring12.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat into C:\Users\chahj\Documents\ldraw\p\1-16cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat into C:\Users\chahj\Documents\ldraw\p\stug-1x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4edge.dat into C:\Users\chahj\Documents\ldraw\p\2-4edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box4-4a.dat into C:\Users\chahj\Documents\ldraw\p\box4-4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat into C:\Users\chahj\Documents\ldraw\p\1-4cylo.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat into C:\Users\chahj\Documents/ldraw\p\8\1-4ndis.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box5.dat into C:\Users\chahj\Documents\ldraw\p\box5.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16chrd.dat into C:\Users\chahj\Documents\ldraw\p\1-16chrd.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2a.dat into C:\Users\chahj\Documents\ldraw\p\rect2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con5.dat into C:\Users\chahj\Documents\ldraw\p\4-4con5.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-16edge.dat into C:\Users\chahj\Documents\ldraw\p\1-16edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\4-4cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\87414s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud2a.dat into C:\Users\chahj\Documents\ldraw\p\stud2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4ring4.dat into C:\Users\chahj\Documents\ldraw\p\1-4ring4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring17.dat into C:\Users\chahj\Documents\ldraw\p\1-8ring17.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\wpin2a.dat into C:\Users\chahj\Documents\ldraw\p\wpin2a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4a.dat into C:\Users\chahj\Documents\ldraw\p\stud4a.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\2-4cyli.dat into C:\Users\chahj\Documents\ldraw\p\2-4cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4ring9.dat into C:\Users\chahj\Documents\ldraw\p\4-4ring9.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\4-4con10.dat into C:\Users\chahj\Documents\ldraw\p\4-4con10.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud3.dat into C:\Users\chahj\Documents\ldraw\p\stud3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat into C:\Users\chahj\Documents/ldraw\parts\s\3039s01.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring3.dat into C:\Users\chahj\Documents\ldraw\p\1-8ring3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8ring9.dat into C:\Users\chahj\Documents\ldraw\p\1-8ring9.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box3u2p.dat into C:\Users\chahj\Documents\ldraw\p\box3u2p.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat into C:\Users\chahj\Documents\ldraw\p\stug-2x2.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-8edge.dat into C:\Users\chahj\Documents\ldraw\p\1-8edge.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4od.dat into C:\Users\chahj\Documents\ldraw\p\stud4od.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat into C:\Users\chahj\Documents\ldraw\p\1-4cyls.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\stud4.dat into C:\Users\chahj\Documents\ldraw\p\stud4.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents/ldraw\p\8\1-4cyli.dat into C:\Users\chahj\Documents/ldraw\p\8\1-4cyli.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\parts\3023b.dat into C:\Users\chahj\Documents\ldraw\parts\3023b.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect2p.dat into C:\Users\chahj\Documents\ldraw\p\rect2p.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect3.dat into C:\Users\chahj\Documents\ldraw\p\rect3.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\box4t.dat into C:\Users\chahj\Documents\ldraw\p\box4t.dat
+[ Info: incorporating geometry from C:\Users\chahj\Documents\ldraw\p\rect.dat into C:\Users\chahj\Documents\ldraw\p\rect.dat
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3023.dat-1
+[ Info: Attaching full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3023.dat-1
+[ Info: full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3023.dat-1 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3023.dat-2
+[ Info: Attaching full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3023.dat-2
+[ Info: full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3023.dat-2 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3062b.dat-1
+[ Info: Attaching full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3062b.dat-1
+[ Info: full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3062b.dat-1 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\6227.dat-1
+[ Info: Attaching full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\6227.dat-1
+[ Info: full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\6227.dat-1 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3004.dat-1
+[ Info: Attaching full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3004.dat-1
+[ Info: full_assembly.ldr => C:\Users\chahj\Documents\ldraw\parts\3004.dat-1 is true
+[ Info: Attaching full_assembly.ldr => front_axle.ldr-2
+[ Info: full_assembly.ldr => front_axle.ldr-2 is true
+[ Info: Attaching full_assembly.ldr => rear_axle.ldr-2
+[ Info: full_assembly.ldr => rear_axle.ldr-2 is true
+[ Info: Attaching full_assembly.ldr => chassis.ldr-2
+[ Info: full_assembly.ldr => chassis.ldr-2 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3001.dat-2
+[ Info: Attaching chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3001.dat-2
+[ Info: chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3001.dat-2 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3004.dat-3
+[ Info: Attaching chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3004.dat-3
+[ Info: chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3004.dat-3 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3021.dat-4
+[ Info: Attaching chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3021.dat-4
+[ Info: chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3021.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3022.dat-2
+[ Info: Attaching chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3022.dat-2
+[ Info: chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3022.dat-2 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\3021.dat-3
+[ Info: Attaching chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3021.dat-3
+[ Info: chassis.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\3021.dat-3 is true
+[ Info: Attaching rear_axle.ldr-2 => rear_wheel_and_tire.ldr-8
+[ Info: rear_axle.ldr-2 => rear_wheel_and_tire.ldr-8 is true
+[ Info: Attaching rear_axle.ldr-2 => rear_wheel_and_tire.ldr-7
+[ Info: rear_axle.ldr-2 => rear_wheel_and_tire.ldr-7 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\4600.dat-3
+[ Info: Attaching rear_axle.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\4600.dat-3
+[ Info: rear_axle.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\4600.dat-3 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\87697.dat-4
+[ Info: Attaching rear_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\87697.dat-4
+[ Info: rear_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\87697.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\6014.dat-4
+[ Info: Attaching rear_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\6014.dat-4
+[ Info: rear_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\6014.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\87697.dat-5
+[ Info: Attaching rear_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\87697.dat-5
+[ Info: rear_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\87697.dat-5 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\6014.dat-5
+[ Info: Attaching rear_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\6014.dat-5
+[ Info: rear_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\6014.dat-5 is true
+[ Info: Attaching front_axle.ldr-2 => front_wheel_and_tire.ldr-8
+[ Info: front_axle.ldr-2 => front_wheel_and_tire.ldr-8 is true
+[ Info: Attaching front_axle.ldr-2 => front_wheel_and_tire.ldr-7
+[ Info: front_axle.ldr-2 => front_wheel_and_tire.ldr-7 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\4600.dat-4
+[ Info: Attaching front_axle.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\4600.dat-4
+[ Info: front_axle.ldr-2 => C:\Users\chahj\Documents\ldraw\parts\4600.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\87414.dat-4
+[ Info: Attaching front_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\87414.dat-4
+[ Info: front_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\87414.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\4624.dat-4
+[ Info: Attaching front_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\4624.dat-4
+[ Info: front_wheel_and_tire.ldr-7 => C:\Users\chahj\Documents\ldraw\parts\4624.dat-4 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\87414.dat-5
+[ Info: Attaching front_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\87414.dat-5
+[ Info: front_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\87414.dat-5 is true
+[ Info: SUB FILE PART: C:\Users\chahj\Documents\ldraw\parts\4624.dat-5
+[ Info: Attaching front_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\4624.dat-5
+[ Info: front_wheel_and_tire.ldr-8 => C:\Users\chahj\Documents\ldraw\parts\4624.dat-5 is true
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 4
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 3
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 4
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 4
+[ Info: number of robots in transport unit: 3
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 2
+[ Info: number of robots in transport unit: 1
+[ Info: number of robots in transport unit: 1
+[ Info: [OOD-1-1] injected 12 spare robots (3/pool x 4 dirs); pools=[:east, :south, :west, :north]
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(17) to TransformNode(133) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.064]), true, 907.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(18) to TransformNode(147) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.064]), true, 962.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(19) to TransformNode(164) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.064]), true, 1034.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(20) to TransformNode(178) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.064]), true, 1089.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(12) to TransformNode(195) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.032, 0.10400000000000001]), true, 1161.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(13) to TransformNode(209) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.08, 0.10400000000000001]), true, 1216.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(14) to TransformNode(226) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.032, 0.10400000000000001]), true, 1288.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(15) to TransformNode(240) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.08, 0.10400000000000001]), true, 1343.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(6) to TransformNode(257) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.32]), true, 1415.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(7) to TransformNode(269) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 -1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0], [0.4, 0.0, 0.32]), true, 1462.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(8) to TransformNode(283) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.24, 0.0, 0.128]), true, 1517.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(9) to TransformNode(295) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.16, 0.0, 0.128]), true, 1564.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(10) to TransformNode(309) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.08, 0.0, 0.064]), true, 1619.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(5) to TransformNode(326) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 -1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0], [0.32, 0.0, -0.064]), true, 1691.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(6) to TransformNode(340) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 1.0 0.0; -1.0 0.0 0.0; 0.0 0.0 1.0], [-0.32, 0.0, -0.064]), true, 1745.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(11) to TransformNode(356) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.08]), true, 1807.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(7) to TransformNode(373) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 -1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0], [0.24, 0.0, -0.04]), true, 1879.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(8) to TransformNode(387) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 1.0 0.0; -1.0 0.0 0.0; 0.0 0.0 1.0], [-0.24, 0.0, -0.04]), true, 1933.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(16) to TransformNode(403) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.064]), true, 1995.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(2) to TransformNode(421) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([-1.0 0.0 0.0; 0.0 -1.0 0.0; 0.0 0.0 1.0], [0.32, 0.08, 0.5760000000000001]), true, 2069.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(3) to TransformNode(433) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.16, 0.0, 0.504]), true, 2116.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(1) to TransformNode(445) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.32, -0.08, 0.5760000000000001]), true, 2163.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(4) to TransformNode(459) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 1.0 0.0; -1.0 0.0 0.0; 0.0 0.0 1.0], [0.24, 0.0, 0.512]), true, 2218.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(5) to TransformNode(471) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 -1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0], [0.4, 0.0, 0.512]), true, 2265.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(3) to TransformNode(485) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 -1.0 0.0; 1.0 0.0 0.0; 0.0 0.0 1.0], [0.32, 0.0, -0.016]), true, 2320.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(2) to TransformNode(499) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([0.0 1.0 0.0; -1.0 0.0 0.0; 0.0 0.0 1.0], [-0.16, 0.0, -0.064]), true, 2374.0)
+[ Info: Staging config: setting GOAL config of ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(4) to TransformNode(515) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), true, 2436.0)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.AssemblyID(4)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(1) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([0.08218207165780246, 0.005455179642220677], 0.5841171287777365) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(19)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(16)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(2) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-6.390481144766688e-15, 4.89909368601588e-14], 0.41697289891955064) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(15)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(2) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([3.741196245405467e-12, 1.428658533795296e-6], 0.9569905384268547) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(14)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(11)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(3) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-6.382629356209068e-15, 4.900453791486866e-14], 0.41697289891955347) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(13)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(3) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([4.455669635640427e-12, 0.03198527608420624], 1.2398662996240015) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(12)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(10)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(4) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-0.03999999987313731, -7.66039067280243e-17], 0.4712166309488203) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(11)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(4) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-0.017830070135163717, -3.356823814195412e-7], 1.3014799914227941) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(10)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(4) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-0.15824181402433618, -3.390472204212868e-7], 1.4418917322601028) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(9)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(1) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([0.19317033534320494, -0.02183746315751334], 1.7397231281105858) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(18)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(15)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(5) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([1.8082837015929101e-12, -0.008000006165778378], 0.25380833233833067) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(8)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(5) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-0.0012714885458574878, -0.29812507757019036], 0.7065742160406853) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(7)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(13)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(6) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([1.8082837015929101e-12, -0.008000006165778378], 0.25380833233833067) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(6)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(6) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-0.0012723575428393583, -0.2981250742220745], 0.7065742160406853) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(5)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(20)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(7) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-1.0094387069708868e-13, 2.1806923168419704e-14], 0.1766120493055417) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(4)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(7) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-4.5348226474614004e-8, 0.24081178121871308], 0.475819255034983) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(3)
+[ Info: Only 1 component to place at first build step--no need for ring optimization - ConstructionBots.ObjectID(18)
+[ Info: Only 1 component to place at first build step--R = 0
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(8) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-1.0094387069708868e-13, 2.1806923168419704e-14], 0.1766120493055417) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(2)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(8) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-4.5348226474614004e-8, 0.24081178121871308], 0.475819255034983) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(1)
+┌ Info: ring placement solution ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(17)
+│   assembly_radius = 0.7829572453142224
+│   radii = 2-element Vector{Float64}: …
+│   θ_des = 2-element Vector{Float64}: …
+│   θ_star = 2-element Vector{Float64}: …
+└   Δθ = 2-element Vector{Float64}: …
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(1) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([0.19317033654748167, -0.02183746351047662], 1.7397231194227356) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(17)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(1) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([0.19317033657346266, -0.021837463496401005], 1.7397231187890927) based on ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(16)
+[ Info: Selecting staging location for ConstructionBots.AssemblyID(3)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(3) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([-8.126172001091285e-5, -0.5827642344594516], 3.7937041622522707)
+[ Info: Selecting staging location for ConstructionBots.AssemblyID(2)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(2) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([4.820788470285298e-8, 0.40245756360580714], 3.0790080149102335)
+[ Info: Selecting staging location for ConstructionBots.AssemblyID(1)
+[ Info: Updating staging_circle for ConstructionBots.AssemblyID(1) to LazySets.Ball2Module.Ball2{Float64, StaticArraysCore.SVector{2, Float64}}([1.4960181398741221, 0.9619411768460536], 9.643081746220613)
+[ Info: Beginning task assignment
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(8). 1/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(2). 2/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(6). 3/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(13). 4/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(1). 5/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(8)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(15). 6/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(11). 7/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(4). 8/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(3). 9/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(7)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(14). 10/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(2)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(10). 11/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(7). 12/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(5)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(9). 13/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(4)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(19). 14/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(5). 15/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(6)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(12). 16/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(3)
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(18). 17/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(17). 18/19 complete. 
+[ Info: Assignment: closing build step ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(16). 19/19 complete. 
+[ Info: Closing Assembly ConstructionBots.AssemblyID(1)
+[ Info: Assignment Complete!
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(19) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(20) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(2) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(6) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(7) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(2) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(15) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(14) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(9) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(3) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(18) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(21) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(3) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(12) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(11) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(2) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(4) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(17) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(19) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(4) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(6) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(5) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(13) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(7) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(6) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(5) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(11) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(10) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(9) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(18) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(16) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(17) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(1) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(20) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(15) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(14) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(22) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(5) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(7) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(1) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(4) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyStart, ConstructionBots.AssemblyID}}(3) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(12) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.RobotStart, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}(16) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(1) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(13) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.ObjectStart, ConstructionBots.ObjectID}}(10) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(19) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(13) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(11) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(6) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(2) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(15) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(4) finished.
+[ Info: [RESPEC] OOD event: A no-go exclusion zone has appeared at (0.39, 0.43) near a staging area; restage the affected assembly out of the restricted region.
+[ Info: [RESPEC] LLM proposal: [RelocateBuild]  rationale: oracle macro 7
+[ Info: [RESPEC] whole-build relocation verified -> translate the entire build clear of the zone
+[ Info: [WHOLE-BUILD] translated Δ=[-1.615, -2.798] |Δ|=3.23 footprint(R=9.64); residual=0 -> translated
+[ Info: [RESPEC] whole-build translated Δ=[-1.615413538328712, -2.7979783236199403] -> admitted
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 57[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.ActionID(16) finished.
+[ Info: node ConstructionBots.ActionID(20) finished.
+[ Info: node ConstructionBots.ActionID(18) finished.
+[ Info: node ConstructionBots.ActionID(8) finished.
+[ Info: node ConstructionBots.ActionID(10) finished.
+[ Info: node ConstructionBots.ActionID(94) finished.
+[ Info: node ConstructionBots.ActionID(93) finished.
+[ Info: New RVO simulation
+
+
+
+[K[A[K[A[K[ASimulating...   3%|██                                                |  ETA: 0:17:38 ( 4.27  s/it)[K
+   step_num: 92[K
+   n_closed: 65[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.ActionID(14) finished.
+[ Info: node ConstructionBots.ActionID(101) finished.
+[ Info: node ConstructionBots.ActionID(102) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.ActionID(82) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(11) finished.
+[ Info: node ConstructionBots.ActionID(81) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16) finished.
+
+
+
+[K[A[K[A[K[ASimulating...   5%|███                                               |  ETA: 0:09:03 ( 2.25  s/it)[K
+   step_num: 95[K
+   n_closed: 72[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(10) finished.
+[ Info: node ConstructionBots.ActionID(4) finished.
+[ Info: node ConstructionBots.ActionID(48) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.ActionID(2) finished.
+[ Info: node ConstructionBots.ActionID(46) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(18) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(17) finished.
+
+
+
+[K[A[K[A[K[ASimulating...   8%|█████                                             |  ETA: 0:06:03 ( 1.55  s/it)[K
+   step_num: 140[K
+   n_closed: 79[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(10) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(10) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(10) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(11)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(11) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(10) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(11) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  11%|██████                                            |  ETA: 0:04:51 ( 1.28  s/it)[K
+   step_num: 168[K
+   n_closed: 85[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(18) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(11) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(11) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(13)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(13) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(12) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(18) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(18) finished.
+[ Info: node ConstructionBots.ActionID(47) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(2)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(2) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(1) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(16) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(15)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(15) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(14) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.ActionID(79) finished.
+[ Info: node ConstructionBots.ActionID(80) finished.
+[ Info: node ConstructionBots.ActionID(78) finished.
+[ Info: node ConstructionBots.ActionID(77) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(9) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  18%|██████████                                        |  ETA: 0:02:37 ( 0.76  s/it)[K
+   step_num: 207[K
+   n_closed: 105[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.ActionID(92) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(17) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(17) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(17) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(1)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(1) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.AssemblyComplete, ConstructionBots.AssemblyID}}(8) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  21%|███████████                                       |  ETA: 0:02:19 ( 0.69  s/it)[K
+   step_num: 230[K
+   n_closed: 111[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.ActionID(98) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(9) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  22%|███████████                                       |  ETA: 0:02:15 ( 0.68  s/it)[K
+   step_num: 240[K
+   n_closed: 114[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(9) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(9) finished.
+[ Info: node ConstructionBots.ActionID(99) finished.
+[ Info: node ConstructionBots.ActionID(52) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(20) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  24%|████████████                                      |  ETA: 0:02:04 ( 0.64  s/it)[K
+   step_num: 277[K
+   n_closed: 119[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(8) finished.
+[ Info: node ConstructionBots.ActionID(76) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(8) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitGo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(20) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  25%|█████████████                                     |  ETA: 0:01:57 ( 0.62  s/it)[K
+   step_num: 297[K
+   n_closed: 123[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.AssemblyID}}(8) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(20) finished.
+[ Info: node ConstructionBots.ActionID(51) finished.
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.LiftIntoPlace, ConstructionBots.ObjectID}}(20) finished.
+[ Info: Closing BuildingStep ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(4)
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.CloseBuildStep}(4) finished.
+[ Info: node ConstructionBots.TemplatedID{ConstructionBots.OpenBuildStep}(3) finished.
+[ Info: New RVO simulation
+
+
+
+[K[A[K[A[K[ASimulating...  28%|██████████████                                    |  ETA: 0:01:46 ( 0.58  s/it)[K
+   step_num: 344[K
+   n_closed: 129[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  28%|██████████████                                    |  ETA: 0:01:49 ( 0.59  s/it)[K
+   step_num: 394[K
+   n_closed: 129[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  28%|██████████████                                    |  ETA: 0:01:54 ( 0.62  s/it)[K
+   step_num: 420[K
+   n_closed: 129[K
+    n_total: 313[K[A[A[A[ Info: node ConstructionBots.ActionID(75) finished.
+[ Info: node ConstructionBots.ActionID(70) finished.
+[ Info: New RVO simulation
+[ Info: node ConstructionBots.TemplatedID{Tuple{ConstructionBots.FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(7) finished.
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:01:50 ( 0.61  s/it)[K
+   step_num: 469[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:01:53 ( 0.62  s/it)[K
+   step_num: 520[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:01:56 ( 0.64  s/it)[K
+   step_num: 574[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:01:58 ( 0.65  s/it)[K
+   step_num: 622[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:01 ( 0.67  s/it)[K
+   step_num: 671[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:03 ( 0.68  s/it)[K
+   step_num: 721[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:06 ( 0.69  s/it)[K
+   step_num: 768[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:08 ( 0.71  s/it)[K
+   step_num: 818[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:11 ( 0.72  s/it)[K
+   step_num: 868[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:13 ( 0.74  s/it)[K
+   step_num: 917[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:16 ( 0.75  s/it)[K
+   step_num: 962[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:18 ( 0.76  s/it)[K
+   step_num: 1010[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:21 ( 0.78  s/it)[K
+   step_num: 1062[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:23 ( 0.79  s/it)[K
+   step_num: 1111[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:26 ( 0.81  s/it)[K
+   step_num: 1164[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:29 ( 0.82  s/it)[K
+   step_num: 1218[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:31 ( 0.83  s/it)[K
+   step_num: 1271[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:34 ( 0.85  s/it)[K
+   step_num: 1318[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:36 ( 0.86  s/it)[K
+   step_num: 1365[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:39 ( 0.88  s/it)[K
+   step_num: 1413[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:41 ( 0.89  s/it)[K
+   step_num: 1462[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:43 ( 0.90  s/it)[K
+   step_num: 1510[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:46 ( 0.92  s/it)[K
+   step_num: 1557[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:48 ( 0.93  s/it)[K
+   step_num: 1607[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:51 ( 0.94  s/it)[K
+   step_num: 1657[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:53 ( 0.96  s/it)[K
+   step_num: 1708[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:56 ( 0.97  s/it)[K
+   step_num: 1757[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:02:59 ( 0.99  s/it)[K
+   step_num: 1808[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:01 ( 1.00  s/it)[K
+   step_num: 1858[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:03 ( 1.01  s/it)[K
+   step_num: 1907[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:06 ( 1.03  s/it)[K
+   step_num: 1954[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:08 ( 1.04  s/it)[K
+   step_num: 2004[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:11 ( 1.05  s/it)[K
+   step_num: 2051[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:13 ( 1.07  s/it)[K
+   step_num: 2100[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:16 ( 1.08  s/it)[K
+   step_num: 2150[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:18 ( 1.10  s/it)[K
+   step_num: 2201[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:21 ( 1.11  s/it)[K
+   step_num: 2252[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:23 ( 1.12  s/it)[K
+   step_num: 2302[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:26 ( 1.14  s/it)[K
+   step_num: 2351[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:28 ( 1.15  s/it)[K
+   step_num: 2399[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:31 ( 1.17  s/it)[K
+   step_num: 2452[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:34 ( 1.18  s/it)[K
+   step_num: 2502[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:36 ( 1.19  s/it)[K
+   step_num: 2549[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:39 ( 1.21  s/it)[K
+   step_num: 2593[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:41 ( 1.22  s/it)[K
+   step_num: 2636[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:43 ( 1.23  s/it)[K
+   step_num: 2682[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:46 ( 1.25  s/it)[K
+   step_num: 2722[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:49 ( 1.26  s/it)[K
+   step_num: 2774[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:51 ( 1.28  s/it)[K
+   step_num: 2827[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:54 ( 1.29  s/it)[K
+   step_num: 2875[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:56 ( 1.30  s/it)[K
+   step_num: 2919[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:03:59 ( 1.32  s/it)[K
+   step_num: 2964[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:01 ( 1.33  s/it)[K
+   step_num: 3013[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:04 ( 1.35  s/it)[K
+   step_num: 3060[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:06 ( 1.36  s/it)[K
+   step_num: 3109[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:09 ( 1.37  s/it)[K
+   step_num: 3156[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:11 ( 1.39  s/it)[K
+   step_num: 3205[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:14 ( 1.40  s/it)[K
+   step_num: 3258[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:16 ( 1.42  s/it)[K
+   step_num: 3310[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:19 ( 1.43  s/it)[K
+   step_num: 3362[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:21 ( 1.44  s/it)[K
+   step_num: 3411[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:24 ( 1.46  s/it)[K
+   step_num: 3460[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:26 ( 1.47  s/it)[K
+   step_num: 3511[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:29 ( 1.48  s/it)[K
+   step_num: 3561[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:31 ( 1.50  s/it)[K
+   step_num: 3612[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:34 ( 1.51  s/it)[K
+   step_num: 3662[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:36 ( 1.53  s/it)[K
+   step_num: 3709[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:39 ( 1.54  s/it)[K
+   step_num: 3759[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:41 ( 1.55  s/it)[K
+   step_num: 3809[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:44 ( 1.57  s/it)[K
+   step_num: 3859[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:46 ( 1.58  s/it)[K
+   step_num: 3908[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:49 ( 1.60  s/it)[K
+   step_num: 3958[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:51 ( 1.61  s/it)[K
+   step_num: 4009[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:54 ( 1.62  s/it)[K
+   step_num: 4063[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:57 ( 1.64  s/it)[K
+   step_num: 4117[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:04:59 ( 1.65  s/it)[K
+   step_num: 4170[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:02 ( 1.67  s/it)[K
+   step_num: 4222[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:04 ( 1.68  s/it)[K
+   step_num: 4272[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:07 ( 1.69  s/it)[K
+   step_num: 4322[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:09 ( 1.71  s/it)[K
+   step_num: 4369[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:12 ( 1.72  s/it)[K
+   step_num: 4418[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:14 ( 1.74  s/it)[K
+   step_num: 4467[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:17 ( 1.75  s/it)[K
+   step_num: 4516[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:19 ( 1.76  s/it)[K
+   step_num: 4563[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:22 ( 1.78  s/it)[K
+   step_num: 4609[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:24 ( 1.79  s/it)[K
+   step_num: 4660[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:27 ( 1.80  s/it)[K
+   step_num: 4711[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:29 ( 1.82  s/it)[K
+   step_num: 4761[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:32 ( 1.83  s/it)[K
+   step_num: 4815[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:34 ( 1.85  s/it)[K
+   step_num: 4868[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:37 ( 1.86  s/it)[K
+   step_num: 4921[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:39 ( 1.88  s/it)[K
+   step_num: 4970[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:42 ( 1.89  s/it)[K
+   step_num: 5020[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:44 ( 1.90  s/it)[K
+   step_num: 5070[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:47 ( 1.92  s/it)[K
+   step_num: 5119[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:49 ( 1.93  s/it)[K
+   step_num: 5168[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:52 ( 1.94  s/it)[K
+   step_num: 5216[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:54 ( 1.96  s/it)[K
+   step_num: 5266[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:57 ( 1.97  s/it)[K
+   step_num: 5312[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:05:59 ( 1.98  s/it)[K
+   step_num: 5361[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:02 ( 2.00  s/it)[K
+   step_num: 5409[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:04 ( 2.01  s/it)[K
+   step_num: 5459[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:07 ( 2.03  s/it)[K
+   step_num: 5513[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:10 ( 2.04  s/it)[K
+   step_num: 5566[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:12 ( 2.06  s/it)[K
+   step_num: 5620[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:15 ( 2.07  s/it)[K
+   step_num: 5672[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:18 ( 2.09  s/it)[K
+   step_num: 5720[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:20 ( 2.10  s/it)[K
+   step_num: 5768[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:23 ( 2.11  s/it)[K
+   step_num: 5816[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:25 ( 2.13  s/it)[K
+   step_num: 5864[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:28 ( 2.14  s/it)[K
+   step_num: 5913[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:30 ( 2.16  s/it)[K
+   step_num: 5964[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:33 ( 2.17  s/it)[K
+   step_num: 6011[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:35 ( 2.18  s/it)[K
+   step_num: 6055[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:38 ( 2.20  s/it)[K
+   step_num: 6106[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:40 ( 2.21  s/it)[K
+   step_num: 6157[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:43 ( 2.23  s/it)[K
+   step_num: 6210[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:46 ( 2.24  s/it)[K
+   step_num: 6261[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:48 ( 2.25  s/it)[K
+   step_num: 6308[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:51 ( 2.27  s/it)[K
+   step_num: 6359[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:53 ( 2.28  s/it)[K
+   step_num: 6407[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:55 ( 2.30  s/it)[K
+   step_num: 6455[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:06:58 ( 2.31  s/it)[K
+   step_num: 6505[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:00 ( 2.32  s/it)[K
+   step_num: 6551[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:03 ( 2.34  s/it)[K
+   step_num: 6599[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:05 ( 2.35  s/it)[K
+   step_num: 6648[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:08 ( 2.36  s/it)[K
+   step_num: 6697[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:11 ( 2.38  s/it)[K
+   step_num: 6748[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:13 ( 2.39  s/it)[K
+   step_num: 6799[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:16 ( 2.41  s/it)[K
+   step_num: 6849[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:18 ( 2.42  s/it)[K
+   step_num: 6901[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:21 ( 2.43  s/it)[K
+   step_num: 6951[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:23 ( 2.45  s/it)[K
+   step_num: 7000[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:26 ( 2.46  s/it)[K
+   step_num: 7049[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:28 ( 2.48  s/it)[K
+   step_num: 7097[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:31 ( 2.49  s/it)[K
+   step_num: 7144[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:33 ( 2.50  s/it)[K
+   step_num: 7195[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:36 ( 2.52  s/it)[K
+   step_num: 7242[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:38 ( 2.53  s/it)[K
+   step_num: 7291[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:41 ( 2.54  s/it)[K
+   step_num: 7340[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:43 ( 2.56  s/it)[K
+   step_num: 7385[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:46 ( 2.57  s/it)[K
+   step_num: 7422[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:48 ( 2.59  s/it)[K
+   step_num: 7454[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:51 ( 2.60  s/it)[K
+   step_num: 7500[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:53 ( 2.61  s/it)[K
+   step_num: 7551[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:56 ( 2.63  s/it)[K
+   step_num: 7594[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:07:58 ( 2.64  s/it)[K
+   step_num: 7644[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:01 ( 2.66  s/it)[K
+   step_num: 7691[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:03 ( 2.67  s/it)[K
+   step_num: 7743[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:06 ( 2.68  s/it)[K
+   step_num: 7788[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:08 ( 2.70  s/it)[K
+   step_num: 7840[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:11 ( 2.71  s/it)[K
+   step_num: 7892[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:13 ( 2.72  s/it)[K
+   step_num: 7940[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:16 ( 2.74  s/it)[K
+   step_num: 7986[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:18 ( 2.75  s/it)[K
+   step_num: 8038[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:21 ( 2.77  s/it)[K
+   step_num: 8090[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:23 ( 2.78  s/it)[K
+   step_num: 8137[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:25 ( 2.79  s/it)[K
+   step_num: 8188[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:28 ( 2.81  s/it)[K
+   step_num: 8239[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:30 ( 2.82  s/it)[K
+   step_num: 8284[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:33 ( 2.83  s/it)[K
+   step_num: 8332[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A[ Info: [RESPEC] OOD event: A multi-robot transport team is deadlocked while forming: some members are waiting in their carrying positions but the team cannot complete and the build has stalled. Re-establish the stuck transport team(s).
+
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:35 ( 2.85  s/it)[K
+   step_num: 8375[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:08:38 ( 2.86  s/it)[K
+   step_num: 8422[K
+   n_closed: 132[K
+    n_total: 313[K[A[A[A┌ Warning: No progress for 8000 iterations. Terminating.
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\demo_utils.jl:213
+
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:03:32 ( 0.83  s/it)[K

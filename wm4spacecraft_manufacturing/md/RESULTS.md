@@ -1,5 +1,13 @@
 # E1–E4 — Results
 
+> ⚠ **Metric rename, 2026-08-06 — values unchanged.** Every number below that used to be labelled
+> *regret* is a **normalized suboptimality** (`subopt_norm`): per-instance loss divided by that
+> instance's best→worst span. The name was changed because the quantity is unitless, span-relative,
+> and λ-contaminated; it is now a **diagnostic**, not a headline. These E1–E4 numbers were measured
+> as `subopt_norm` and are quoted as such — they were **not** re-measured in the new headline units
+> (`optimal_action_rate` / `excess_cost`, see `EVALUATION.md` Level 1). Re-measuring them is
+> pending work, not something this file claims to have done.
+
 > Provenance: Consolidated from four milestone result files —
 > `E1_RESULTS.md` (2026-07-11), `E2_RESULTS.md` (2026-07-12), `E3_RESULTS.md` (2026-07-12),
 > and `E4_RESULTS.md` (2026-07-12). The originals are retained; this file merges them verbatim.
@@ -31,9 +39,9 @@ signal is **GO**.
    **feasibility-lexicographic** scoring (completion → closed-nodes → realized makespan), applies the
    **admissibility filter** (keep an instance only if NOOP is strictly worse than its control), and runs
    **leave-one-instance-out** CV: a feature model (HistGradientBoosting) predicts each macro's outcome
-   and picks the argmax. Reports top-1 decision regret, NDCG@k, top-k recall, agreement, and
+   and picks the argmax. Reports top-1 decision suboptimality, NDCG@k, top-k recall, agreement, and
    catastrophic-choice rate against three baselines: `always-<most-common-best>` (state-blind), `random`,
-   and `oracle` (regret 0).
+   and `oracle` (subopt_norm 0).
 3. **Engine support** — added `pre_sim_hook(env)` to `run_lego_demo` (fires after env build, before the
    sim loop; lets the oracle path enable battery / capture pre-sim state without a separate code path).
 
@@ -43,7 +51,7 @@ The surrogate has something to learn **only if the oracle-best macro varies acro
 on the current environment:
 
 - **`fault` → Replace is ALWAYS best** (verified across spare levels 1/2/6 — Replace never loses to
-  NOOP; the best macro never flips). A state-blind "always Replace" predictor already scores 0 regret on
+  NOOP; the best macro never flips). A state-blind "always Replace" predictor already scores 0 subopt_norm on
   every fault instance.
 - **`zone` and `battery` are HARMLESS as shipped** → inadmissible. `random_restriction_zone!`
   deliberately caps the radius to a *local detour obstacle* ("swallowing a goal region deadlocks the
@@ -73,14 +81,14 @@ Dataset: `oracle/out/e1_dataset.jsonl` (160 rows = 32 instances × 5 macros). Or
 
 #### (a) decision-fidelity (leave-one-instance-out)
 
-| method | mean normalized regret | catastrophic choices |
+| method | mean normalized suboptimality | catastrophic choices |
 |---|---:|---:|
 | **feature model (state-reading)** | **0.000** | **0 / 32** |
 | always-Replace (best state-blind) | 0.281 | 9 / 32 |
 | random | 0.844 | 15 / 32 |
 
 Feature model: **NDCG@2 = 1.00, top-1 recall = 1.00, agreement-with-oracle = 1.00.**
-**Paired bootstrap 95% CI on the regret reduction (always − model): +0.281 [+0.125, +0.438]** — excludes
+**Paired bootstrap 95% CI on the subopt_norm reduction (always − model): +0.281 [+0.125, +0.438]** — excludes
 0, so the state-reading advantage is significant, not noise.
 
 #### (b) Level-0 — the surrogate predicts the OUTCOME, not just a lookup
@@ -89,29 +97,29 @@ Held-out **closed-count prediction: MAE = 13.4 nodes** over range [143, 291], **
 predicts the continuous re-plan outcome well; note it still ranks *perfectly* despite ~13-node
 prediction error — the value-equivalence point (`EVALUATION.md` §1): wrong values, right ranking.
 
-#### (c) HEADLINE — decision-regret vs true-planner compute (`e1_frontier.py`)
+#### (c) HEADLINE — decision suboptimality vs true-planner compute (`e1_frontier.py`)
 
-| k (planner calls) | model regret | random-verify regret |
+| k (planner calls) | model subopt_norm | random-verify subopt_norm |
 |---:|---:|---:|
 | 0 | **0.000** | 0.906 |
 | 1 | 0.000 | 0.906 |
 | 3 | 0.000 | 0.594 |
 | 5 (verify all) | 0.000 | 0.000 |
 
-The surrogate reaches **oracle-quality decisions (regret 0) at 0 planner calls — a 100% compute
+The surrogate reaches **oracle-quality decisions (subopt_norm 0) at 0 planner calls — a 100% compute
 reduction** — while a state-blind policy must verify all 5 macros to match it. **Measured wall-clock:
 each true-planner label is 69.5 s (MILP assignment + full RVO sim); the oracle spends ~348 s per OOD
 decision (5 macros), the surrogate ~0 s.**
 
-**Interpretation.** A state-reading model picks the correct macro per OOD type (regret 0) and predicts
-the continuous outcome (R²=0.83), while the best state-blind baseline suffers 0.281 normalized regret and
+**Interpretation.** A state-reading model picks the correct macro per OOD type (subopt_norm 0) and predicts
+the continuous outcome (R²=0.83), while the best state-blind baseline suffers 0.281 normalized suboptimality and
 **9 catastrophic choices** — it picks Replace on every `zoneblk`, where the oracle-best ForbidZone
 completes. On the compute axis the surrogate makes the oracle's decision at **0 planner calls (~348 s
 saved per OOD)**. E1 is complete: the surrogate reproduces the true planner's decisions at ~0 compute.
 
 **Honest caveat — the task is decision-EASY.** The two classes are separable by the observable OOD type
-(fault→Replace, zone→ForbidZone), so the surrogate's top-1 is always right and the regret-vs-compute
-frontier is a *step* (regret 0 at k=0), not a graded curve. The compute win is real and shippable, but
+(fault→Replace, zone→ForbidZone), so the surrogate's top-1 is always right and the suboptimality-vs-compute
+frontier is a *step* (subopt_norm 0 at k=0), not a graded curve. The compute win is real and shippable, but
 the **Level-3 exploration upside** (LLM+surrogate over many candidates beating LLM+solver over few)
 needs a taxonomy where candidate outcomes are *close* and ranking is non-trivial. **This was attempted:**
 making `battery` consequential (`set_battery_stall!` + `demo_battery_params(shrink)`) — empirically the
@@ -129,7 +137,7 @@ genuine property of the tractor environment, logged by the pipeline's own self-c
 2. **GNN surrogate** — the feature-model milestone (this doc) *gates* the GNN per `PROPOSAL.md`; the
    go-signal is met. A PyG / hand-rolled message-passing GNN over `(scene tree + schedule DAG)` would
    improve Level-0 accuracy (R²) and is the right model once (1) makes ranking non-trivial. On the current
-   easy task it would also score regret 0, so it is deferred as the validated next investment, not a
+   easy task it would also score subopt_norm 0, so it is deferred as the validated next investment, not a
    completion blocker.
 3. **E3/E4** — drift-triggered retraining and the spacecraft-twin ablation grid, per `PROPOSAL.md`.
 
@@ -164,7 +172,7 @@ macros + the do-nothing option + a distractor (`LLM_CANDIDATES`: e.g. fault → 
 Deprioritize}, zone → {NOOP, ForbidZone, Replace}). Two ways to pick the winner:
 
 - **LLM → solver (baseline):** verify **every** proposed candidate with the true planner (one full
-  RVO sim + MILP each), commit to the best. Cost = |candidates| planner calls; regret 0 by construction.
+  RVO sim + MILP each), commit to the best. Cost = |candidates| planner calls; subopt_norm 0 by construction.
 - **LLM → surrogate (ours):** the learned surrogate ranks the candidates in imagination; verify only
   the **top-k** with the true planner; commit to the best-verified. Cost = k planner calls.
 
@@ -173,13 +181,13 @@ candidate set / budget is scored exactly); the surrogate never trains on the hel
 
 ### Result (32 admissible instances; candidate-set size 3)
 
-| policy | planner calls | mean regret |
+| policy | planner calls | mean subopt_norm |
 |---|---:|---:|
 | LLM → solver (verify all) | 3.00 | 0.000 |
 | **LLM → surrogate (top-1)** | **1.00** | **0.000** |
 | LLM → surrogate (top-2) | 2.00 | 0.000 |
 
-**Headline (E2):** LLM→surrogate matches LLM→solver's (zero-regret) decision quality while verifying
+**Headline (E2):** LLM→surrogate matches LLM→solver's (zero-subopt_norm) decision quality while verifying
 only the **top-1** of 3 proposed candidates — **67% fewer true-planner calls at equal decision
 quality.** The surrogate's ranking (Level-0 closed-count prediction: R²≈0.82, MAE≈13 nodes — see
 E1 above) is accurate enough that its top choice is the solver's choice, so the other two
@@ -192,7 +200,7 @@ verifications are pure waste the surrogate eliminates.
   actually simulated.
 - **Caveat (shared with E1):** the current tractor OOD taxonomy is *decision-easy* — the best macro is
   determined by the OOD type (fault→Replace, zone→ForbidZone), so the surrogate's top-1 is always right
-  and the quality–compute curve is a step (regret 0 at k=1). The mechanism and the compute win are real,
+  and the quality–compute curve is a step (subopt_norm 0 at k=1). The mechanism and the compute win are real,
   but the **exploration upside** (Level-3: LLM+surrogate over N_large beats LLM+solver over N_small
   because cheap scoring lets it consider more candidates) needs a taxonomy where candidates are *close*
   and ranking is non-trivial. Making an OOD consequential with a graded, response-dependent outcome
@@ -221,9 +229,9 @@ A **non-stationary stream**: PHASE A = robot-fault OODs (the distribution the su
 then a **DRIFT** into PHASE B where a **novel OOD type** appears — the consequential blocking-zone
 (`zoneblk` → ForbidZone). A frozen surrogate has never seen a zone, so it keeps ranking as if every OOD
 were a fault (picks Replace) and its decisions become catastrophic. Four policies process the stream
-online (decision = best VERIFIED macro, as in E2; regret vs the oracle-best per instance):
+online (decision = best VERIFIED macro, as in E2; subopt_norm vs the oracle-best per instance):
 
-- **ORACLE** — verify every macro every step (regret 0, maximal compute): the ceiling.
+- **ORACLE** — verify every macro every step (subopt_norm 0, maximal compute): the ceiling.
 - **FROZEN** — bootstrap once, never retrain: the do-nothing floor.
 - **PERIODIC** — retrain every P steps regardless (spends planner calls even with no drift).
 - **ACTIVE (ours)** — verify the surrogate's top-1 each step to get a residual; a **Page-Hinkley/CUSUM
@@ -233,7 +241,7 @@ online (decision = best VERIFIED macro, as in E2; regret vs the oracle-best per 
 
 ### Result (stream of 25 steps, drift at step 16; bootstrap 7 faults)
 
-| policy | mean regret (all) | mean regret (post-drift) | planner calls |
+| policy | mean subopt_norm (all) | mean subopt_norm (post-drift) | planner calls |
 |---|---:|---:|---:|
 | oracle | 0.000 | 0.000 | 125 |
 | **frozen** | 0.360 | **1.000** | 25 |
@@ -244,19 +252,19 @@ online (decision = best VERIFIED macro, as in E2; regret vs the oracle-best per 
 > not the value-residual. The residual was **mis-specified**: post-drift residuals are *smaller*, not larger
 > (the surrogate is a good ranker but a noisy value-regressor), so the old CUSUM/residual fired mostly on
 > pre-drift noise — **3 of its 4 fires were spurious**. New default = CUSUM/novelty: **0 spurious fires, 41
-> planner calls (−28%)**, at a slightly higher transient regret (0.222 vs 0.111 — detection is ~1 step
+> planner calls (−28%)**, at a slightly higher transient subopt_norm (0.222 vs 0.111 — detection is ~1 step
 > slower without the residual's accidental early firing). Old residual-signal row was 0.040 / 0.111 / 57.
 > See `FINDINGS_ADWIN.md`, the `E3b` block in `e3_drift.py`, and `compare_detectors.py` (long-stream: ADWIN
 > fires with 0 spurious retrains, CUSUM/residual has a 7.8-spurious tail).
 
-Per-step regret: all policies 0 through phase A; at the drift (step 16) frozen jumps to **1.0 and never
+Per-step subopt_norm: all policies 0 through phase A; at the drift (step 16) frozen jumps to **1.0 and never
 recovers** (picks Replace on every zone), while **ACTIVE spikes briefly, detects the drift,
 relabels+retrains, and returns to ~0** (time-to-recover ≈ 2 steps).
 
 **Headline (E3):** active retraining recovers the near-oracle quality that the frozen surrogate
-catastrophically loses (post-drift regret 0.222 vs 1.000), at **41 planner calls vs the oracle's 125
+catastrophically loses (post-drift subopt_norm 0.222 vs 1.000), at **41 planner calls vs the oracle's 125
 (67% fewer)** and less than periodic's 150 — and periodic still recovers more slowly. The area between
-the frozen and active post-drift regret curves is 7.0 (over 9 post-drift steps).
+the frozen and active post-drift subopt_norm curves is 7.0 (over 9 post-drift steps).
 
 ### Interpretation & honest scope
 
@@ -294,12 +302,12 @@ regime — so the table doubles as the "vs prior art" comparison.
 | **C** | LLM (N candidates) | surrogate (top-1) | frozen | learned surrogate, NO retraining (E2 static) |
 | **D** | LLM (N candidates) | surrogate (top-1) | **active** | **FULL system (ours)** |
 
-Scored on the non-stationary stream (faults → novel blocking-zones) by decision regret
+Scored on the non-stationary stream (faults → novel blocking-zones) by decision suboptimality
 (feasibility-lexicographic, vs oracle-best) and true-planner compute (calls).
 
 ### Result (25-step stream, drift at step 16)
 
-| cell (= prior regime) | regret (all) | regret (post-drift) | planner calls |
+| cell (= prior regime) | subopt_norm (all) | subopt_norm (post-drift) | planner calls |
 |---|---:|---:|---:|
 | A brute-oracle (ceiling) | 0.000 | 0.000 | 125 |
 | B LLM → solver (2506.18178) | 0.000 | 0.000 | 75 |
@@ -312,10 +320,10 @@ Scored on the non-stationary stream (faults → novel blocking-zones) by decisio
 **Headline (E4).** The full system **D** sits on the **quality–compute Pareto front**: no cell beats it
 on both axes.
 - **vs B (LLM→solver, the strong prior-art baseline** that verifies *every* candidate, so is always
-  ~0 regret and drift-robust but expensive): D matches B's quality *trend* at **56% fewer planner calls**
+  ~0 subopt_norm and drift-robust but expensive): D matches B's quality *trend* at **56% fewer planner calls**
   (33 vs 75).
 - **vs C (static surrogate, = E2 without the E3 loop):** C is cheapest (25 calls) but **collapses under
-  drift (post-drift regret 1.000)**; D recovers to 0.222. Retraining is exactly what makes the cheap
+  drift (post-drift subopt_norm 1.000)**; D recovers to 0.222. Retraining is exactly what makes the cheap
   surrogate *safe*.
 - **vs A (brute oracle):** D reaches near-A quality at **1/3 the planner compute**.
 

@@ -1,0 +1,464 @@
+Processing file...   3%|██                                                |  ETA: 0:00:30 ( 0.49  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:02 (37.06 ms/it)[K
+Processing file...   8%|█████                                             |  ETA: 0:00:02 (47.67 ms/it)[KProcessing file...  62%|████████████████████████████████                  |  ETA: 0:00:00 (12.39 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 8.14 ms/it)[K
+Processing file...  31%|████████████████                                  |  ETA: 0:00:00 (10.20 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 3.16 ms/it)[K
+Processing file...  50%|██████████████████████████                        |  ETA: 0:00:00 ( 3.68 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.86 ms/it)[K
+Processing file...  38%|███████████████████                               |  ETA: 0:00:00 ( 3.96 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.50 ms/it)[K
+Processing file...  77%|███████████████████████████████████████           |  ETA: 0:00:00 ( 1.44 ms/it)[KProcessing file...  90%|█████████████████████████████████████████████     |  ETA: 0:00:00 ( 2.34 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.10 ms/it)[K
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:49:39 (11.77  s/it)[K
+   step_num: 11[K
+   n_closed: 60[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:34:48 ( 8.29  s/it)[K
+   step_num: 13[K
+   n_closed: 61[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   9%|█████                                             |  ETA: 0:04:21 ( 1.12  s/it)[K
+   step_num: 50[K
+   n_closed: 81[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  13%|███████                                           |  ETA: 0:03:07 ( 0.84  s/it)[K
+   step_num: 86[K
+   n_closed: 91[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  20%|███████████                                       |  ETA: 0:01:56 ( 0.57  s/it)[K
+   step_num: 126[K
+   n_closed: 109[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  24%|████████████                                      |  ETA: 0:01:37 ( 0.50  s/it)[K
+   step_num: 138[K
+   n_closed: 119[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  27%|██████████████                                    |  ETA: 0:01:26 ( 0.46  s/it)[K
+   step_num: 160[K
+   n_closed: 126[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  37%|███████████████████                               |  ETA: 0:00:56 ( 0.35  s/it)[K
+   step_num: 216[K
+   n_closed: 152[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  42%|█████████████████████                             |  ETA: 0:00:46 ( 0.31  s/it)[K
+   step_num: 266[K
+   n_closed: 165[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  49%|█████████████████████████                         |  ETA: 0:00:37 ( 0.28  s/it)[K
+   step_num: 315[K
+   n_closed: 182[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  53%|███████████████████████████                       |  ETA: 0:00:31 ( 0.26  s/it)[K
+   step_num: 381[K
+   n_closed: 194[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  58%|██████████████████████████████                    |  ETA: 0:00:26 ( 0.25  s/it)[K
+   step_num: 444[K
+   n_closed: 207[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  70%|████████████████████████████████████              |  ETA: 0:00:16 ( 0.21  s/it)[K
+   step_num: 502[K
+   n_closed: 237[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  76%|███████████████████████████████████████           |  ETA: 0:00:12 ( 0.20  s/it)[K
+   step_num: 569[K
+   n_closed: 253[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  80%|█████████████████████████████████████████         |  ETA: 0:00:10 ( 0.19  s/it)[K
+   step_num: 640[K
+   n_closed: 262[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  87%|████████████████████████████████████████████      |  ETA: 0:00:06 ( 0.18  s/it)[K
+   step_num: 721[K
+   n_closed: 281[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:41 ( 0.16  s/it)[K
+┌ Warning: [RESPEC] deprioritize re-solve: energy term NOT active -- the bias cannot steer this solve
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\replan.jl:779
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 119
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(3)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 10
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 122
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(66) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), true, 1.362041e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348943e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1862) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-21.447063483913215, -8.681140637143109, 0.0]), true, 1.362608e6), TransformNode(1863) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-21.447063483913215, -8.681140637143109, 0.0]), true, 1.362606e6), ConstructionBots.ActionID
+│      id: Int64 119
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 86
+│    , nothing, TransformNode(30) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348834e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348835e6)), ConstructionBots.AssemblyID
+│      id: Int64 3
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.216000066874944]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.384, 0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.384, -0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.4, 0.168, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(10) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.4, -0.168, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(500) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.0]), true, 1.356826e6), TransformNode(501) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.216000066874944]), true, 1.356823e6), TransformNode(502) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.623320133749888]), true, 1.355409e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 120
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(3)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 9
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 121
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(65) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.399999976158142, -1.399999976158142, 0.0]), true, 1.36204e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.34894e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1865) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-22.147063483913215, -8.681140637143109, 0.0]), true, 1.362611e6), TransformNode(1866) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-22.147063483913215, -8.681140637143109, 0.0]), true, 1.362609e6), ConstructionBots.ActionID
+│      id: Int64 120
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 86
+│    , nothing, TransformNode(30) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348834e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348835e6)), ConstructionBots.AssemblyID
+│      id: Int64 3
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.216000066874944]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.384, 0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.384, -0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.4, 0.168, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(10) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.4, -0.168, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(500) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.0]), true, 1.356826e6), TransformNode(501) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.216000066874944]), true, 1.356823e6), TransformNode(502) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.623320133749888]), true, 1.355409e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 121
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(3)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 4
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 116
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(60) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.399999976158142, -0.699999988079071, 0.0]), true, 1.362035e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348925e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1868) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-22.847063483913217, -8.681140637143109, 0.0]), true, 1.362614e6), TransformNode(1869) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-22.847063483913217, -8.681140637143109, 0.0]), true, 1.362612e6), ConstructionBots.ActionID
+│      id: Int64 121
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 86
+│    , nothing, TransformNode(30) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348834e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348835e6)), ConstructionBots.AssemblyID
+│      id: Int64 3
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.216000066874944]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.384, 0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.384, -0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.4, 0.168, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(10) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.4, -0.168, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(500) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.0]), true, 1.356826e6), TransformNode(501) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.216000066874944]), true, 1.356823e6), TransformNode(502) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.623320133749888]), true, 1.355409e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 122
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(3)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 5
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 117
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(61) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.699999988079071, -0.699999988079071, 0.0]), true, 1.362036e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348928e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1871) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-23.547063483913213, -8.681140637143109, 0.0]), true, 1.362617e6), TransformNode(1872) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-23.547063483913213, -8.681140637143109, 0.0]), true, 1.362615e6), ConstructionBots.ActionID
+│      id: Int64 122
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.AssemblyID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 86
+│    , nothing, TransformNode(30) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348834e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348835e6)), ConstructionBots.AssemblyID
+│      id: Int64 3
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.216000066874944]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.384, 0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.384, -0.200000024, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(9) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.4, 0.168, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(10) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.4, -0.168, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(500) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.0]), true, 1.356826e6), TransformNode(501) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.216000066874944]), true, 1.356823e6), TransformNode(502) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.3344311798426458, -0.023269545480954102, 0.623320133749888]), true, 1.355409e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 109
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(4)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 1
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 113
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(57) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.699999988079071, 0.699999988079071, 0.0]), true, 1.362032e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348916e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1832) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-19.347063483913217, -8.681140637143109, 0.0]), true, 1.362624e6), TransformNode(1833) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-19.347063483913217, -8.681140637143109, 0.0]), true, 1.362622e6), ConstructionBots.ActionID
+│      id: Int64 109
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 109
+│    , nothing, TransformNode(53) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348903e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348904e6)), ConstructionBots.ObjectID
+│      id: Int64 4
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.248]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(8) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.16, 0.08, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.16, -0.24, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(460) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 0.0]), true, 1.356714e6), TransformNode(461) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 0.248]), true, 1.356711e6), TransformNode(462) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 1.1513201337498882]), true, 1.355583e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 110
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(4)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 8
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 120
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(64) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.699999988079071, -1.399999976158142, 0.0]), true, 1.362039e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348937e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1835) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-20.047063483913213, -8.681140637143109, 0.0]), true, 1.362627e6), TransformNode(1836) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-20.047063483913213, -8.681140637143109, 0.0]), true, 1.362625e6), ConstructionBots.ActionID
+│      id: Int64 110
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 109
+│    , nothing, TransformNode(53) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348903e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348904e6)), ConstructionBots.ObjectID
+│      id: Int64 4
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.248]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(8) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.16, 0.08, 0.0]), ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.16, -0.24, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(460) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 0.0]), true, 1.356714e6), TransformNode(461) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 0.248]), true, 1.356711e6), TransformNode(462) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.293229556370353, -0.39111190895240056, 1.1513201337498882]), true, 1.355583e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 103
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(1)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 6
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 118
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(62) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, -0.699999988079071, 0.0]), true, 1.362037e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348931e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1814) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-17.247063483913216, -8.681140637143109, 0.0]), true, 1.362632e6), TransformNode(1815) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-17.247063483913216, -8.681140637143109, 0.0]), true, 1.36263e6), ConstructionBots.ActionID
+│      id: Int64 103
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 110
+│    , nothing, TransformNode(54) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348906e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348907e6)), ConstructionBots.ObjectID
+│      id: Int64 1
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.12]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(6) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [3.721499089062562e-17, -2.7411810224583734e-17, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(422) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.0944400724729344, -0.4158095015948131, 1.1102230246251565e-16]), true, 1.356602e6), TransformNode(423) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.0944400724729344, -0.4158095015948131, 0.1200000000000001]), true, 1.356599e6), TransformNode(424) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.0944400724729344, -0.4158095015948131, 1.2153201337498882]), true, 1.355467e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 105
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 7
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 119
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(63) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-1.399999976158142, -1.399999976158142, 0.0]), true, 1.362038e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348934e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1820) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-17.947063483913215, -8.681140637143109, 0.0]), true, 1.362635e6), TransformNode(1821) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-17.947063483913215, -8.681140637143109, 0.0]), true, 1.362633e6), ConstructionBots.ActionID
+│      id: Int64 105
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 102
+│    , nothing, TransformNode(46) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348882e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348883e6)), ConstructionBots.ObjectID
+│      id: Int64 3
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.248]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(7) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [5.087715503481874e-14, -4.2149472989565146e-14, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(434) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.9196090033556227, -3.1380092454953897e-7, 0.0]), true, 1.356636e6), TransformNode(435) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.9196090033556227, -3.1380092454953897e-7, 0.248]), true, 1.356633e6), TransformNode(436) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.9196090033556227, -3.1380092454953897e-7, 1.1433201337498882]), true, 1.355525e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 107
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 3
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 115
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(59) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, -1.399999976158142, 0.0]), true, 1.362034e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348922e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1826) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-18.647063483913215, -8.681140637143109, 0.0]), true, 1.362638e6), TransformNode(1827) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-18.647063483913215, -8.681140637143109, 0.0]), true, 1.362636e6), ConstructionBots.ActionID
+│      id: Int64 107
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 112
+│    , nothing, TransformNode(56) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348912e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.348913e6)), ConstructionBots.ObjectID
+│      id: Int64 2
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.12]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(3) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [3.721499089062562e-17, -2.7411810224583734e-17, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(446) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.094440254405022, 0.4158091355825693, 1.1102230246251565e-16]), true, 1.35667e6), TransformNode(447) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.094440254405022, 0.4158091355825693, 0.1200000000000001]), true, 1.356667e6), TransformNode(448) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.094440254405022, 0.4158091355825693, 1.2153201337498882]), true, 1.35576e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+┌ Warning: ConstructionBots.ActionID
+│   id: Int64 113
+│  should be a child of ConstructionBots.TemplatedID{Tuple{ConstructionBots.DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)
+│   node =
+│    ConstructionBots.RobotGo{ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}}(ConstructionBots.RobotNode{ConstructionBots.DeliveryBot}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+│      id: Int64 2
+│    , ConstructionBots.GeomNode{GeometryBasics.Cylinder{Float64}}(ConstructionBots.GeomID
+│      id: Int64 114
+│    , GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), TransformNode(58) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-0.699999988079071, 1.399999976158142, 0.0]), true, 1.362033e6), ConstructionBots.CachedElement{GeometryBasics.Cylinder{Float64}}(GeometryBasics.Cylinder{Float64}([0.0, 0.0, 0.0], [0.0, 0.0, 0.056], 0.13999999999999999), false, 1.348919e6)), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(1844) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-20.747063483913216, -8.681140637143109, 0.0]), true, 1.362641e6), TransformNode(1845) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [-20.747063483913216, -8.681140637143109, 0.0]), true, 1.362639e6), ConstructionBots.ActionID
+│      id: Int64 113
+│    )
+│   pred =
+│    ConstructionBots.DepositCargo(ConstructionBots.TransportUnitNode{ConstructionBots.ObjectID, CoordinateTransformations.AffineMap{StaticArraysCore.SMatrix{3, 3, Float64, 9}, StaticArraysCore.SVector{3, Float64}}}(ConstructionBots.GeomNode{Nothing}(ConstructionBots.GeomID
+│      id: Int64 111
+│    , nothing, TransformNode(55) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.0]), false, 1.348909e6), ConstructionBots.CachedElement{Nothing}(nothing, false, 1.34891e6)), ConstructionBots.ObjectID
+│      id: Int64 5
+│     => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [0.0, 0.0, 0.248]), Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}(ConstructionBots.BotID{ConstructionBots.DeliveryBot}(2) => AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [3.721499089062562e-17, -2.7411810224583734e-17, 0.0])), ConstructionBots.GeometryHierarchy
+│      graph: Graphs.SimpleGraphs.SimpleDiGraph{Int64}
+│      nodes: Array{ConstructionBots.GeomNode}((3,))
+│      vtx_map: Dict{ConstructionBots.GeometryKey, Int64}
+│      vtx_ids: Array{ConstructionBots.GeometryKey}((3,))
+│    ), TransformNode(472) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.1661335834600595, 0.34817415622038267, 0.0]), true, 1.356748e6), TransformNode(473) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.1661335834600595, 0.34817415622038267, 0.248]), true, 1.356745e6), TransformNode(474) - ConstructionBots.CachedElement{CoordinateTransformations.Transformation}(AffineMap([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], [1.1661335834600595, 0.34817415622038267, 1.1513201337498882]), true, 1.355702e6))
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\task_assignment.jl:206
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  11%|██████                                            |  ETA: 0:02:10 ( 0.57  s/it)[K
+   step_num: 68[K
+   n_closed: 85[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  23%|████████████                                      |  ETA: 0:00:55 ( 0.28  s/it)[K
+   step_num: 136[K
+   n_closed: 117[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  33%|█████████████████                                 |  ETA: 0:00:36 ( 0.21  s/it)[K
+   step_num: 195[K
+   n_closed: 141[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  41%|█████████████████████                             |  ETA: 0:00:27 ( 0.18  s/it)[K
+   step_num: 251[K
+   n_closed: 162[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  48%|█████████████████████████                         |  ETA: 0:00:21 ( 0.16  s/it)[K
+   step_num: 303[K
+   n_closed: 181[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  53%|███████████████████████████                       |  ETA: 0:00:18 ( 0.15  s/it)[K
+   step_num: 363[K
+   n_closed: 194[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  57%|█████████████████████████████                     |  ETA: 0:00:16 ( 0.15  s/it)[K
+   step_num: 430[K
+   n_closed: 203[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  68%|██████████████████████████████████                |  ETA: 0:00:11 ( 0.13  s/it)[K
+   step_num: 493[K
+   n_closed: 231[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  76%|███████████████████████████████████████           |  ETA: 0:00:07 ( 0.12  s/it)[K
+   step_num: 557[K
+   n_closed: 252[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  80%|█████████████████████████████████████████         |  ETA: 0:00:06 ( 0.12  s/it)[K
+   step_num: 638[K
+   n_closed: 262[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  87%|████████████████████████████████████████████      |  ETA: 0:00:04 ( 0.12  s/it)[K
+   step_num: 719[K
+   n_closed: 280[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:26 ( 0.10  s/it)[K

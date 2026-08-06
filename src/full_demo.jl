@@ -150,6 +150,7 @@ function run_lego_demo(;
     results_path::String=joinpath(base_results_path, project_name),  # 이 프로젝트 결과 저장 폴더
     assignment_mode::Symbol=:greedy,                 # 작업 배정 방식(:greedy=탐욕, :milp=정수계획)  ※ :이름 은 Symbol(가벼운 상수 문자열)
     open_animation_at_end::Bool=false,               # 끝나면 브라우저로 애니메이션 열기
+    live_view::Bool=false,                           # 애니메이션 없이 MeshCat 라이브 장면만 구동(대시보드 라이브 세션용)
     save_animation::Bool=false,                      # 애니메이션 파일로 저장
     save_animation_along_the_way::Bool=false,        # 진행 중에 주기적으로 애니메이션 저장
     anim_active_agents::Bool=false,                  # 활성 로봇을 초록 원으로 표시
@@ -185,6 +186,16 @@ function run_lego_demo(;
 
     # 셋 중 하나라도 true 면 애니메이션 관련 작업을 처리해야 함. ||=OR, &&=AND, !=NOT (파이썬 or/and/not)
     process_animation_tasks = save_animation || save_animation_along_the_way || open_animation_at_end
+    # 2026-08-04: **시각화기 생성**과 **애니메이션 기록**은 원래 같은 플래그로 묶여 있었다. 그래서
+    # 라이브 세션(save_animation=false 로 두고 MeshCat 을 실시간 구동하려는 런)에서는
+    # process_animation_tasks=false → `visualizer = nothing` → **8700 에 아무것도 뜨지 않았다.**
+    # live_view=true 는 "시각화기는 만들되 애니메이션 기록기는 만들지 말라"를 뜻한다
+    # (anim===nothing 이면 갱신이 atframe 이 아니라 라이브 장면에 직접 적용된다 -- simulate! 참조).
+    need_visualizer = process_animation_tasks || live_view
+    # 2026-08-05: 위 둘은 이제 **동시에** 켤 수 있다. save_animation=true 로 애니를 기록하면서도
+    # live_view=true 면 매 스텝 장면을 MeshCat 에 직접 밀어 준다(LIVE_PUSH; simulate! 참조).
+    # 예전에는 이 조합이 불가능해서 "라이브로 보면 애니 산출물이 없다"는 상호배타가 있었다.
+    LIVE_PUSH[] = live_view
 
     if rvo_flag && !dispersion_flag                  # RVO는 켜고 dispersion은 끈 경우
         @warn "RVO is enabled but dispersion is disabled. This is not recommended."  # @warn: 경고 로그 출력 매크로
@@ -220,7 +231,7 @@ function run_lego_demo(;
     end
 
     visualizer = nothing                             # nothing: 값 없음(파이썬 None). 일단 비워둠
-    if process_animation_tasks                       # 애니메이션이 필요할 때만 시각화 창 생성
+    if need_visualizer                               # 애니메이션이 필요하거나 라이브 시청일 때 시각화 창 생성
         visualizer = MeshCat.Visualizer()            # MeshCat 3D 뷰어(웹브라우저 기반) 생성
     end
 

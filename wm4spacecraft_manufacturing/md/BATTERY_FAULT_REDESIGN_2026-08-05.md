@@ -282,7 +282,7 @@ cost = {NOOP 0, SwapBattery 0.2, Deprioritize 0.3, Replace/ForbidZone/Reform 1.0
 결정론적이므로(대조군 makespan 이 seed 당 값 하나) 이건 잡음이 아니라 **진짜 구별 불가**다.
 
 → λ 를 완전히 없애면 그 46%(= 자제 부류)가 **임의**가 되고, 학습된 정책은 아무 대가 없이 예비를 계속
-태워도 regret 0 을 받는다. **"비용 항 제거"는 기각.**
+태워도 subopt_norm 0 을 받는다. **"비용 항 제거"는 기각.**
 
 ### 3-a-4. 측정 3 — 그런데 지금의 λ 는 측정된 물리를 **덮어쓴다** (두 가지 방식)
 
@@ -320,14 +320,14 @@ closed = 291 이라, 차이가 makespan 에만 존재한다.** 따라서 λ-키�
 | **A (현행)** | `y = closed − λ·cost` | `argmax ŷ` |
 | **B (제안)** | `y = closed` (물리만) | `argmax (ŷ − λ·cost)` — 비용은 **정확히 아는 상수**라 해석적으로 적용 |
 
-| λ | A LOO regret | B LOO regret | 세부 |
+| λ | A LOO subopt_norm | B LOO subopt_norm | 세부 |
 |---|---|---|---|
 | 1 | 0.156 | 0.166 | zoneblk: A 0.089 / **B 0.000** |
 | 3 | 0.042 | 0.051 | zoneblk: A 0.033 / **B 0.000** |
 | 15 | 0.011 | **0.002** | battery: A 0.025(96%) / **B 0.004(98%)** |
 
-> **정직한 단서**: regret 은 `span = score(best) − min(score)` 로 정규화되므로 λ 가 커지면 분모가
-> 커져 regret 이 작아 보인다. **λ 를 가로질러 비교하면 안 된다.** 유효한 비교는 각 행 안의 A vs B
+> **정직한 단서**: subopt_norm 은 `span = score(best) − min(score)` 로 정규화되므로 λ 가 커지면 분모가
+> 커져 subopt_norm 이 작아 보인다. **λ 를 가로질러 비교하면 안 된다.** 유효한 비교는 각 행 안의 A vs B
 > 뿐이고, 거기서 B 는 **한 번도 의미 있게 나쁘지 않으며** λ=15 에서 명확히 낫다.
 
 구조적 이유는 단순하다. `cost(macro)` 는 추정할 대상이 아니라 **이미 아는 상수**다. 학습 목표에 섞으면
@@ -388,7 +388,7 @@ break-even(1.75, 10.5)에서 멀리 떨어진 값으로 **μ = 4** 를 기본값
    export 하면 되지만, 별도 작업이다(§6-2). 그때까지 배포 경로는 λ-키(λ=3)를 쓰되 §3-a-7.2(비용을
    결정 규칙으로)만 먼저 적용하는 것을 권한다.
    · 참고로 μ 스칼라를 **그대로 회귀 목표**로 쓰면 비용/시간 항이 너무 작아 학습이 안 된다. 실측
-   (`export_surrogate.py`, 같은 새 그리드 18 instance): λ-키 목표 → LOO regret **0.148** (top1 78%),
+   (`export_surrogate.py`, 같은 새 그리드 18 instance): λ-키 목표 → LOO subopt_norm **0.148** (top1 78%),
    μ-키 스칼라 목표 → **0.350** (top1 44%). 옛 데이터에서도 같은 방향(0.36–0.39)이었다.
    그래서 3번은 **2번(+ makespan 헤드)과 함께여야만** 의미가 있다. 라벨(오라클 정답)로서의 μ-키와
    회귀 목표로서의 μ-키는 다른 문제다 — 지금 나쁜 것은 후자뿐이다.
@@ -516,7 +516,7 @@ NOOP/Replace/SwapBattery = 3팔) 5를 영영 못 채운다 → **배포 export �
 ### 5-a-2. 배포된 `surrogate_hotswap.json` 은 **지금 코드로 재현되지 않는다** (오늘 이전부터)
 
 같은 데이터(`oracle/out/graded_hs_all.jsonl`, 20 instance)로 다시 export 하면 feature 가 **60 → 63** 개가
-되고 LOO regret 도 0.100 → 0.250 이 된다. 늘어난 3개는 `macro_7`, `macro_8`, `zone_root_cover` — 전부
+되고 LOO subopt_norm 도 0.100 → 0.250 이 된다. 늘어난 3개는 `macro_7`, `macro_8`, `zone_root_cover` — 전부
 `e1_analyze.featurize` 가 그 산출물을 만든 **뒤에** 추가된 열이다. 오늘 바꾼 교차항 범위 때문이 아니다:
 그 데이터셋에는 macro 0~4 밖에 없어 `sorted(set(macro)) == range(5)` 로 **완전히 동일**하다(확인함).
 즉 배포 아티팩트와 featurizer 사이의 **기존 드리프트**이고, 배포 모델을 다시 만들려면 그 시점 featurizer
@@ -530,7 +530,7 @@ V0 는 "모든 instance 가 **7개 macro 팔 전부** 롤아웃되었는가"를 
 
 ### 5-c. `firegrid_merged.jsonl` 에서는 surrogate 가 state-blind 상대를 못 이긴다
 
-`python verify.py oracle/out/firegrid_merged.jsonl` → **6/8** (V0 + **S1 FAIL**: regret 0.362 vs
+`python verify.py oracle/out/firegrid_merged.jsonl` → **6/8** (V0 + **S1 FAIL**: subopt_norm 0.362 vs
 `always_per_kind` 0.322, CI 가 0 을 포함). 같은 검사가 `graded_hs_n44` 에서는 S1 **PASS** 다. 그리고
 `firegrid_merged` 는 §1-c 의 **무의미한 후반 battery instance 를 담고 있는 바로 그 덤프**다. 인과를
 단정하지는 않지만, 재라벨링 뒤 다시 재보는 것이 순서다.
@@ -856,7 +856,7 @@ deterministic (control makespan has one distinct value per seed), so this is not
 genuinely indistinguishable.
 
 → Deleting the cost term makes that 46% (the restraint class) **arbitrary**, and a learned policy could
-burn spares forever at zero regret. **"Remove the cost term" is rejected.**
+burn spares forever at zero subopt_norm. **"Remove the cost term" is rejected.**
 
 ### 3-a-4. Measurement 3 — but λ as placed today **overwrites measured physics**, two ways
 
@@ -894,14 +894,14 @@ Under the same oracle scoring (`score = closed − λ·cost`), leave-one-instanc
 | **A (today)** | `y = closed − λ·cost` | `argmax ŷ` |
 | **B (proposed)** | `y = closed` (physics only) | `argmax (ŷ − λ·cost)` — the cost is a **known constant**, applied analytically |
 
-| λ | A LOO regret | B LOO regret | detail |
+| λ | A LOO subopt_norm | B LOO subopt_norm | detail |
 |---|---|---|---|
 | 1 | 0.156 | 0.166 | zoneblk: A 0.089 / **B 0.000** |
 | 3 | 0.042 | 0.051 | zoneblk: A 0.033 / **B 0.000** |
 | 15 | 0.011 | **0.002** | battery: A 0.025 (96%) / **B 0.004 (98%)** |
 
-> **Honest caveat**: regret is normalized by `span = score(best) − min(score)`, which grows with λ, so
-> regret *looks* smaller at large λ. **Do not compare across λ.** The valid comparison is A vs B within
+> **Honest caveat**: subopt_norm is normalized by `span = score(best) − min(score)`, which grows with λ, so
+> subopt_norm *looks* smaller at large λ. **Do not compare across λ.** The valid comparison is A vs B within
 > a row; there B is never materially worse and at λ=15 is clearly better.
 
 The structural reason is simple: `cost(macro)` is not something to estimate — it is a known constant.
@@ -965,7 +965,7 @@ non-corruption**, not a large accuracy gain, and I will not overstate it.
    keep the λ-key (λ=3) and adopt only item 2.
    · For the record: using the μ scalar **directly as a regression target** does not work — the
    cost/time term is too small to learn. Measured (`export_surrogate.py`, the same 18-instance grid):
-   λ-key target → LOO regret **0.148** (top-1 78%); μ-key scalar target → **0.350** (top-1 44%). The
+   λ-key target → LOO subopt_norm **0.148** (top-1 78%); μ-key scalar target → **0.350** (top-1 44%). The
    old data pointed the same way (0.36–0.39). Item 3 is therefore only meaningful **together with**
    item 2 (+ a makespan head). Note these are two different questions: the μ-key as a *label* (oracle
    ranking) versus the μ-key as a *regression target*. Only the latter is bad.
@@ -1097,7 +1097,7 @@ battery's valid set and let the arms be `NOOP` vs `SwapBattery`.
 ### 5-a-2. The deployed `surrogate_hotswap.json` **cannot be reproduced by current code** (pre-dating today)
 
 Re-exporting from the same data (`oracle/out/graded_hs_all.jsonl`, 20 instances) yields **60 → 63**
-features and LOO regret 0.100 → 0.250. The three extra columns are `macro_7`, `macro_8` and
+features and LOO subopt_norm 0.100 → 0.250. The three extra columns are `macro_7`, `macro_8` and
 `zone_root_cover` — all added to `e1_analyze.featurize` **after** that artifact was produced. This is
 not today's interaction-range change: that dataset contains only macros 0–4, so
 `sorted(set(macro)) == range(5)` and the columns are identical (verified). It is **pre-existing drift**
@@ -1113,7 +1113,7 @@ arms (2–3). So **V0 fails even on the pinned benchmark**:
 
 ### 5-c. On `firegrid_merged.jsonl` the surrogate does not beat the state-blind baseline
 
-`python verify.py oracle/out/firegrid_merged.jsonl` → **6/8** (V0 + **S1 FAIL**: regret 0.362 vs
+`python verify.py oracle/out/firegrid_merged.jsonl` → **6/8** (V0 + **S1 FAIL**: subopt_norm 0.362 vs
 `always_per_kind` 0.322, CI includes 0). The same check **passes** on `graded_hs_n44`. And
 `firegrid_merged` is exactly the dump that contains the vacuous late-progress battery instances of
 §1-c. I am not asserting causation — but re-measuring after re-labelling is the right order.

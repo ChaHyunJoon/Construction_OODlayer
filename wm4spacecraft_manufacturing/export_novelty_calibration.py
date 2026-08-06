@@ -117,10 +117,23 @@ def instance_descriptor_matrix(df):
     return np.asarray(rows, dtype=float), keys
 
 
-def fit_calibration(X, cap=8.0):
-    """평균/표준편차와 in-distribution novelty 점수 집합을 만든다(make_novelty 와 동일한 식)."""
+def fit_calibration(X, cap=8.0, sd_floor=0.0):
+    """평균/표준편차와 in-distribution novelty 점수 집합을 만든다(make_novelty 와 동일한 식).
+
+    `sd_floor` (opt-in, 기본 0 = 예전과 동일): 축별 sd 의 **하한**. 서술자는 모두 [0,1] 범위인데
+    수집 설계 때문에 한 축이 사실상 상수가 되면(2026-08-04 의 `progress` sd=0.005) 그 축 하나가
+    score 를 지배해 종류와 무관하게 novel 이 나온다. 하한을 주면 그 실패 방식이 **점수 단계에서**
+    막힌다. 다만 이건 보험이지 해결책이 아니다 — 진짜 해결은 그 축을 실제로 표집하는 것이고
+    (LABELING_MANUAL §6~§7), 하한은 남은 degenerate 축이 게이트를 삼키는 것을 막을 뿐이다.
+    그래서 기본값은 0 이고, 켰을 때는 어느 축이 몇에서 몇으로 올라갔는지 반드시 찍는다.
+    """
     mu = X.mean(axis=0)
     sd = X.std(axis=0) + 1e-9          # 0 분산 방어 (make_novelty 와 동일한 상수)
+    if sd_floor > 0:
+        raised = [(STATE_DESCRIPTORS[i], float(sd[i])) for i in range(len(sd)) if sd[i] < sd_floor]
+        sd = np.maximum(sd, sd_floor)
+        for name, old in raised:
+            print(f"  [sd-floor] {name}: sd {old:.5f} -> {sd_floor:.5f} (하한 적용)")
     z = np.clip((X - mu) / sd, -cap, cap)
     scores = np.sqrt(np.mean(z * z, axis=1))
     return mu, sd, scores
@@ -139,6 +152,9 @@ def main():
     alpha = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--alpha=")), 0.05)
     cap = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--cap=")), 8.0)
     nprobe = next((int(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--probes=")), 32)
+    # --sd-floor=0.02 : 축별 sd 하한(기본 0 = 끔). 아래 [axis audit] 이 DEGENERATE 로 표시하는 축이
+    # 남아 있는데 당장 데이터를 더 못 만들 때의 임시 보험. 켜면 어느 축이 올라갔는지 로그에 남는다.
+    sd_floor = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--sd-floor=")), 0.0)
 
     # --exclude=zoneblk : 그 종류를 교정에서 **빼고** 맞춘다 = "아직 본 적 없는 종류"를 만드는 스위치.
     #
@@ -161,13 +177,14 @@ def main():
               f"{sorted(df.kind.astype(str).unique())} 만으로 맞춥니다 "
               f"(제외된 종류는 이제 '처음 보는 사건'이 됩니다)")
     X, keys = instance_descriptor_matrix(df)
-    mu, sd, scores = fit_calibration(X, cap=cap)
+    mu, sd, scores = fit_calibration(X, cap=cap, sd_floor=sd_floor)
 
     # ---- parity probes: Julia 가 같은 입력에 같은 값을 내는지 검증할 (입력, 기대출력) 쌍 --------
     # 교정 데이터 자체 + 인위적으로 밀어낸 점들(=novel 이어야 하는 것들)을 섞는다.
     rng = np.random.default_rng(0)
     probes = []
-    for i in range(min(nprobe // 2, len(X))):
+    n_cal_probes = min(nprobe // 2, len(X))     # 앞쪽 n_cal_probes 개 = 교정점 그대로, 나머지 = 밀어낸 점
+    for i in range(n_cal_probes):
         probes.append(X[i].tolist())
     for _ in range(nprobe - len(probes)):
         # [0,1] 범위 밖까지 밀어 극단/이상치도 포함시킨다(클리핑 경로까지 검사).
@@ -198,6 +215,7 @@ def main():
             "n_instances": int(len(X)),
             "kinds": sorted(df.kind.astype(str).unique().tolist()),
             "excluded_kinds": sorted(exclude),      # 이 종류들은 라우터에게 '처음 보는 사건'이다
+            "sd_floor": sd_floor,                   # >0 이면 축별 sd 에 하한을 걸어 맞춘 교정이다
             "generator": "export_novelty_calibration.py",
             "note": "calibrated on KIND-AGNOSTIC state descriptors; see export_novelty_calibration.py",
         },
@@ -223,11 +241,40 @@ def main():
           f"median={np.median(scores):.3f} max={scores.max():.3f}")
     print(f"  {len(probe_out)} parity probes written (Julia must reproduce score+p to 1e-9)")
     # 감지기가 실제로 분별력이 있는지 즉석 확인: 교정점의 p 는 크고, 밀어낸 점의 p 는 작아야 한다.
-    p_in = np.mean([q["p"] for q in probe_out[:len(X) // 2 or 1]])
-    p_out = np.mean([q["p"] for q in probe_out[len(X) // 2 or 1:]])
+    # 경계는 **probe 목록의 구조**(앞 n_cal_probes 개가 교정점)로 잡아야 한다. 예전에는 len(X)//2 로
+    # 잘랐는데, instance 가 probe 수보다 많으면(99 > 32) 뒤쪽 슬라이스가 통째로 비어 mean 이 nan 이
+    # 되고, 아래 분별력 경고가 **조용히 꺼진다**(2026-08-05 실측: n=99 교정에서 nan).
+    p_in = np.mean([q["p"] for q in probe_out[:n_cal_probes or 1]])
+    p_out = np.mean([q["p"] for q in probe_out[n_cal_probes or 1:]]) if len(probe_out) > n_cal_probes else float("nan")
     print(f"  mean p on calibration-like probes = {p_in:.3f};  on shifted probes = {p_out:.3f}")
     if p_out >= p_in:
         print("  WARNING: shifted probes are not scoring as more novel -- calibration may be degenerate")
+
+    # ---- DEGENERATE-AXIS AUDIT (added 2026-08-04) ------------------------------------------
+    # 이 검사가 없어서 생긴 실제 사고: CANONICAL 의 60 instance 는 발화 시점이 closed∈{50,58}
+    # 두 값뿐이라 `progress` 의 sd 가 0.0051 이었다. 서술자는 전부 [0,1] 범위인데 한 축의 sd 만
+    # 0.005 면 그 축은 **초민감 축**이 되고, cap 에 잘리는 순간 혼자 score 를 지배한다:
+    #   6축·cap=8 이면 한 축만 잘려도 score >= 8/sqrt(6) = 3.27 인데 교정 최대 score 는 2.21 →
+    #   나머지 5축이 완벽해도 **자동으로 novel**. 실제로 데모의 battery(progress 0.41)와 후반
+    #   fault(0.66)가 종류와 무관하게 전부 escalate 됐다.
+    # 파일은 정상적으로 만들어지고 에러도 없으므로, 경고를 크게 찍는 것 말고는 잡을 방법이 없다.
+    solo = cap / np.sqrt(len(STATE_DESCRIPTORS))
+    print("\n  [axis audit] 서술자는 모두 [0,1] 범위이므로 sd 가 지나치게 작은 축은 게이트를 지배한다")
+    bad = []
+    for name, m, s in zip(STATE_DESCRIPTORS, mu, sd):
+        rng = float(X[:, STATE_DESCRIPTORS.index(name)].ptp())
+        tag = ""
+        if s < 0.02:
+            tag = "  <-- DEGENERATE"
+            bad.append((name, float(s), rng))
+        print(f"    {name:18s} mu={m:7.4f} sd={s:8.5f} range={rng:6.4f}{tag}")
+    if bad:
+        print(f"\n  WARNING: {[b[0] for b in bad]} 축의 분산이 사실상 0 입니다.")
+        print(f"    한 축만 cap({cap:g}) 에 잘려도 score >= {solo:.2f} 인데 교정 최대는 "
+              f"{scores.max():.2f} 이므로, 그 축이 조금만 달라도 **무조건 escalate** 됩니다.")
+        print("    → 그 축이 실제로 변하는 데이터를 넣어 다시 만드십시오. 발화 시점이 원인이라면:")
+        print("      DS_FIRE_GRID=58,100,140,180,220,260 julia --project=. "
+              "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl")
 
 
 if __name__ == "__main__":

@@ -72,27 +72,69 @@ def _default_program():
 
 PROGRAM = os.environ.get("DSPY_PROGRAM") or _default_program()
 
-MACROS = ["NOOP", "Replace", "Deprioritize", "ForbidZone", "ReformTeam"]
-# 이벤트 종류별로 애초에 legal 한 매크로(gen_oracle_dataset 의 valid_actions 와 동일한 규칙).
-VALID = {
-    "fault":   ["NOOP", "Replace", "Deprioritize"],
-    "battery": ["NOOP", "Replace", "Deprioritize"],
-    "zone":    ["NOOP", "ForbidZone"],
-    "reform":  ["NOOP", "ReformTeam"],
-}
+# ---- 행동 어휘: 레지스트리에서 읽는다 (2026-08-06, Ch-A) ---------------------------------
+# 여기 있던 리터럴에는 SwapBattery 가 없었다. 그래서 이 서비스로 결정하는 **라이브 데모에서는**
+# battery 사건의 싼 정답(현장 배터리 교체, cost 0.2)을 LLM 이 고를 수조차 없었고, 늘 Replace(1.0)
+# 아니면 Deprioritize(0.3) 중에서만 답했다. 어휘가 정답을 담지 못하면 그 사건의 초과비용은
+# 원리적으로 0 이 될 수 없다(PLAN_LLM_INFERENCE_7H Ch-A).
+from action_registry import (MACRO_NAME as _REG_NAME, MACRO_COST as _REG_COST,   # noqa: E402
+                             KIND_VALID as _REG_KIND_VALID, doc_lines as _reg_doc_lines)
 
+MACROS = [_REG_NAME[i] for i in sorted(_REG_NAME)]
+# 이벤트 종류별로 애초에 legal 한 매크로(gen_oracle_dataset 의 valid_actions / ood_mdp_shim 의
+# _zone_arms 와 **같은 규칙이어야 한다**).
+#
+# zone 이 2026-08-03 에 ForbidZone -> RelocateBuild 로 바뀌었다. ForbidZone 의 실행부
+# (restage_all_blocked!)는 "아직 시작 안 한 조립체"만 옮길 수 있는데 그 집합이 빌드 중반에
+# 영구히 비어서, 그 팔은 NOOP 과 바이트 단위로 같은 결과를 냈다(측정: zoneblk 36/36 동점).
+# 여기 목록을 안 고치면 **LLM 에게 조용한 no-op 을 고르라고 시키는 것**이 된다.
+#
+# ---- 2026-08-05: 이 표는 이제 **상태를 모르는 호출자를 위한 폴백**이다 -----------------
+# 위 교체는 오라클 라벨링(=빌드 중반 발화)에서는 옳지만, 그것을 kind 하나로 못박아 두자
+# 라이브 데모까지 같이 바뀌었다: 데모의 zone 은 **아직 시작 안 한 조립체**를 겨냥해 심어지므로
+# ForbidZone 이 실제로 실행 가능한데도 어휘에서 빠져 있어, 모든 zone 사건이 빌드 전체를 통째로
+# 옮기는 RelocateBuild 로 답해졌다(실측: 조립 개시 후 Δ=3.19m 전역 이동 -> 운반체 교착,
+# streams/tractor__zone.jsonl 264/287 미완주. ForbidZone 으로 답하던 옛 녹화는 전부 287 완주).
+# "legal" 은 kind 가 아니라 **그 순간 그 팔이 실제로 무언가를 할 수 있는가**로 정해져야 한다.
+# 그래서 호출자(policy.jl)가 세계를 보고 계산한 목록을 `valid` 로 실어 보내면 그것을 쓴다.
+# 상태를 모르는 호출자에게는 전제조건 없는 팔만 남긴 이 보수적 표를 그대로 준다.
+# 2026-08-06: 이 폴백표도 레지스트리의 kinds 에서 유도한다. 손으로 적으면 레지스트리에 팔을
+# 늘려도 이 표는 옛 목록 그대로라, 상태를 모르는 호출자에게는 새 팔이 영영 안 보인다.
+# zone 만 예외로 ForbidZone 을 뺀다: 그 팔은 "아직 시작 안 한 조립체"라는 전제조건이 있어
+# 상태를 모르면 legal 인지 알 수 없고, 중반에는 조용한 no-op 이 된다(2026-08-03 실측 36/36 동점).
+# 상태를 아는 호출자(policy.jl valid_macros)가 실어 보내면 그쪽이 언제나 이긴다.
+VALID = {k: [_REG_NAME[i] for i in ids] for k, ids in _REG_KIND_VALID.items()}
+VALID["zone"] = [m for m in VALID.get("zone", []) if m != "ForbidZone"]
+VALID["reform"] = ["NOOP", "ReformTeam"]
+
+
+def _valid_for(req) -> List[str]:
+    """이 사건에서 legal 한 매크로. 호출자가 준 목록이 있으면 그것이 우선(어휘 밖은 버림)."""
+    caller = [m for m in (getattr(req, "valid", None) or []) if m in MACROS]
+    return caller if caller else VALID.get(req.kind, MACROS)
+
+# ---- 2026-08-05 (STEP 4): 결정표를 산문으로 주지 않는다 ---------------------------------
+# 이 프롬프트의 마지막 두 문장은 원래 결정 규칙 그 자체였다("빌드 전체를 옮기는 게 그 교란보다
+# 이득인가 -- 적치영역 가장자리만 스치는 구역은 보통 아니다"). 규칙을 문장으로 주면 측정되는 것은
+# **추론이 아니라 프롬프트 준수**다. 같은 파일 아래(_IMPERATIVE 주석)에 그 증거가 이미 있다:
+# 서술자가 harm=0.02 인데도 "restage 하라"는 지시문을 따라 ForbidZone 을 고른 실측.
+# 그래서 남기는 것은 **원리 하나**(위반된 것을 전부 해소하는 가장 싼 개입, 위반이 없으면 NOOP)와
+# 각 액션이 무엇을 해소하는가뿐이다. 어떤 것이 위반됐는지는 모델이 상태(원시값)에서 판단한다.
+# 최소수복 판정 자체(zone_diagnosis 의 verdict)는 오라클/게이트의 것이며 여기 오면 안 된다.
 SEED_DOC = """You choose ONE recovery macro for an out-of-distribution event during a multi-robot
-assembly build. The 5 candidates (a re-specification DSL action):
-- NOOP: do nothing / restraint. Best when the disruption is absorbed by slack or spares and
-  intervening would waste a scarce resource.
-- Replace: swap the affected robot for a spare from the pool. Best on a real fault or a deeply
-  depleted battery WHEN spares remain. Costs 1 schedule-unit.
-- Deprioritize: lower the affected robot's task priority (mild, cheap=0.3). A middle option.
-- ForbidZone: mark a no-go region and reroute the build around it. Best when a spatial zone is
-  blocked. Costs 1.
-- ReformTeam: re-form the multi-robot assembly team. Costs 1.
-Adaptation cost matters: NOOP is free, Deprioritize=0.3, Replace/ForbidZone/ReformTeam=1.0. An
-intervention must recover more than it costs, otherwise NOOP (restraint) is the right call."""
+assembly build. The candidates (a re-specification DSL action):
+%s
+Adaptation cost matters: %s.
+
+THE PRINCIPLE:""" % (
+    # 어휘 설명을 레지스트리에서 렌더링한다. 손으로 적힌 목록이었을 때 SwapBattery 가 빠졌고,
+    # 그 누락은 "LLM 이 못 고른다"가 아니라 "LLM 이 그 팔의 존재를 모른다"였다.
+    "\n".join(_reg_doc_lines()),
+    ", ".join("%s=%.1f" % (_REG_NAME[i], _REG_COST[i]) for i in sorted(_REG_NAME))) + """ choose the CHEAPEST action that resolves every constraint the event actually
+violates. If the event violates nothing the schedule still needs, NOOP is not a cop-out -- it is
+the correct answer, and intervening spends a resource for nothing. Decide which constraints are
+violated from the state you are given; do not assume an event of a given type always violates
+something."""
 
 
 class PickMacro(dspy.Signature):
@@ -125,20 +167,32 @@ SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_dataset
 def _load_surrogate():
     try:
         sys.path.insert(0, WM)
-        from e1_analyze import load, featurize, MACRO_COST      # noqa: E402
+        from e1_analyze import (load, featurize, MACRO_COST,     # noqa: E402
+                                instance_arms_complete)
         from surrogate_model import build_model                 # noqa: E402
         import numpy as np                                      # noqa: E402
 
         df = load(SURRO_DATA)
         df = df[df.fired == True].copy()
-        full = [i for i, g in df.groupby("instance") if len(g) == 5]
+        # "랭킹이 정의되는 instance만" 학습에 쓴다. 예전에는 `len(g) == 5` 였는데, DS_VALID_ONLY 로 만든
+        # 라벨은 그 사건의 **유효한 팔만** 돌아 5를 영영 못 채운다 -> EVAL_DATA 를 새 덤프로 바꿔도
+        # 새 instance 가 전부 조용히 버려진다(2026-08-05: firegrid_merged 126개 중 60개만 통과, 그
+        # 60개는 전부 옛 5-arm 덤프였다). 판정은 e1_analyze 의 것을 그대로 쓴다 -- 평가와 배포가
+        # 다른 필터를 쓰면 "벤치마크한 그 모델"이라는 이 파일의 전제가 깨진다.
+        full = [i for i, g in df.groupby("instance") if instance_arms_complete(g)]
         df = df[df.instance.isin(full)].reset_index(drop=True)
         X = featurize(df)
         y = df.closed.astype(float).values - LAM * np.array([MACRO_COST[int(m)] for m in df.macro])
         model = build_model()
         model.fit(X.values, y)
-        _state.update(surrogate=model, surro_feats=list(X.columns),
-                      surro_data="%s (%d instances)" % (os.path.basename(SURRO_DATA), len(full)))
+        # **학습 근거가 있는 매크로 집합**을 같이 기록한다. 배포 모델은 0~4 만 본 적이 있고
+        # 7(RelocateBuild)은 행이 한 줄도 없다 -> 그 값을 예측하는 것은 근거 없는 외삽이다.
+        # 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
+        # "고를 수조차 없었다"이다. 이 구분이 곧 라우터(낯선 것은 LLM)의 존재 이유다.
+        support = sorted({int(m) for m in df.macro.unique()})
+        _state.update(surrogate=model, surro_feats=list(X.columns), surro_support=set(support),
+                      surro_data="%s (%d instances, macro support %s)"
+                                 % (os.path.basename(SURRO_DATA), len(full), support))
     except Exception as e:
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 
@@ -194,6 +248,41 @@ class MacroRequest(BaseModel):
     #      종류 이름 없이 계산되므로 **처음 보는 종류에도 존재한다** -- 이게 nl+state arm 의 핵심.
     nl: Optional[str] = None
     descriptors: Optional[List[float]] = None
+    # nl_mode : "observation" 이면 관찰문 뒤의 **지시절**을 떼고 준다(raw = 옛 동작).
+    #   서비스는 별도 프로세스라 호출자의 LLM_NL_MODE 가 여기 닿지 않는다 -> 요청에 실어 보낸다.
+    nl_mode: Optional[str] = None
+    # ---- 2026-08-05 (STEP 3): 공간 사건의 기하 **원시값** ---------------------------------
+    # zone_overlap 스칼라 하나로는 "무엇이 왜 막혔는가"를 말할 수 없다. 호출자(policy.jl)가
+    # zone_diagnosis 로 계산한 술어를 그대로 실어 보내면 아래 _llm_input 이 측정 블록으로 렌더링한다.
+    # ★ 최소수복 판정(verdict)은 이 스키마에 **없다**. 그건 정답이라 오라클·게이트의 것이고,
+    #   여기 실으면 모델이 추론이 아니라 답을 베낀다. 필드가 없으면 블록 자체가 생기지 않는다.
+    zone_blocked: Optional[int] = None            # 구역이 덮은 미개시 조립체 수
+    zone_restage_feasible: Optional[int] = None   # 그중 옮길 빈 자리가 있는 수
+    zone_root_covered: Optional[int] = None       # 갇힌 root 하역목표 수(국소 재적치로 못 구함)
+    zone_root_total: Optional[int] = None
+    zone_work_overlap: Optional[int] = None       # 겹친 미완 작업 디스크 수
+    zone_teams_forming: Optional[int] = None      # 지금 형성 중인 운반팀 수
+    zone_teams_covered: Optional[int] = None      # 그중 집결지/슬롯이 구역에 갇힌 팀 수
+    zone_relocatable: Optional[bool] = None       # 구역을 벗어나는 강체이동이 존재하는가
+    zone_relocate_norm: Optional[float] = None    # 그 최소 이동거리(m)
+    # ---- 2026-08-05: 덮임(coverage)이 아니라 **막힘**(blockage) 원시값 -----------------
+    # 위의 값들은 전부 "구역이 무엇을 덮었나"이고, 실측상 덮임은 해로움이 아니다(root 목표를
+    # 8/8 덮어도 완주). 구역 강제는 RVO 에이전트만 스냅하므로 화물을 직접 옮기는 목표는 못 막는다.
+    # 아래 두 값이 "이 구역이 **실제로** 못 닫게 만드는 것"이고, 그게 개입의 유일한 근거다.
+    # ★ Pydantic 은 선언 안 된 키를 조용히 버린다 — 이 선언이 없으면 호출자가 실어 보내도 무효.
+    zone_nav_goals: Optional[int] = None           # 막힐 수 있는 목표(RVO 구동)의 모수
+    zone_nav_blocked: Optional[int] = None         # 그중 지금 못 닫는 것
+    zone_nav_engulfed: Optional[int] = None        #   (감사용 분해) 포획볼이 배제원 안
+    zone_nav_disconnected: Optional[int] = None    #   (감사용 분해) 길이 끊김 — 통로검사 ON 일 때만 잼
+    zone_agent_trapped: Optional[int] = None       # 구역 안에 주차된 이동체 수
+    zone_nav_downstream: Optional[int] = None      # 막힌 노드 뒤에 걸려 함께 얼어붙는 미완 작업 수
+    zone_unfinished_total: Optional[int] = None    # 그 비교 분모(전체 미완 노드 수)
+    # valid : 호출자가 **세계를 보고** 계산한 legal 매크로 목록(2026-08-05 추가).
+    #   kind 만으로 정하면 전제조건이 있는 팔(ForbidZone: 아직 시작 안 한 조립체만 옮길 수 있음)을
+    #   "언제나 불법" 또는 "언제나 합법" 중 하나로만 둘 수 있다. 둘 다 틀린다 — 전자는 실행 가능한
+    #   국소 복구를 어휘에서 지워 매번 전역 이동(RelocateBuild)을 시키고, 후자는 조용한 no-op 을
+    #   고르게 한다. 상태를 아는 쪽(줄리아)이 계산해 실어 보내는 것이 유일하게 옳은 배치다.
+    valid: Optional[List[str]] = None
 
 
 def surrogate_rank(req: "MacroRequest", valid: List[str]):
@@ -209,8 +298,14 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
         # 학습 데이터의 kind 어휘는 fault/battery/zoneblk 이다. 데모의 zone 은 staging 을 막는
         # 사건이므로 zoneblk 로 매핑한다(어휘가 어긋나면 one-hot 이 전부 0이 되어 예측이 무의미해짐).
         kind = "zoneblk" if req.kind == "zone" else req.kind
+        support = _state.get("surro_support") or set(range(5))
+        unsupported = [m for m in valid if m in name2id and name2id[m] not in support]
+        scorable = [name2id[m] for m in valid if m in name2id and name2id[m] in support]
+        if not scorable:
+            return None, ("no training support for any valid macro %s "
+                          "(surrogate saw %s)" % (valid, sorted(support)))
         rows = []
-        for m in range(5):
+        for m in scorable:
             rows.append(dict(
                 kind=kind, macro=m, severity=float(req.severity),
                 n_spare_cfg=float(req.n_spare_cfg), spare_count=float(req.spare_count),
@@ -224,9 +319,11 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
         X = featurize(pd.DataFrame(rows))
         X = X.reindex(columns=_state["surro_feats"], fill_value=0.0)   # 학습 때의 열 순서로 정렬
         pred = model.predict(X.values)
-        scored = [(MN[m], float(pred[m])) for m in range(5) if MN[m] in valid]
+        scored = [(MN[m], float(p)) for m, p in zip(scorable, pred)]
         scored.sort(key=lambda t: -t[1])
-        return scored, None
+        # 근거 없는 매크로는 점수 대신 **없다는 사실**을 돌려준다(호출부가 UI 에 그대로 표시).
+        return scored, (None if not unsupported else
+                        "UNSUPPORTED:" + ",".join(unsupported))
     except Exception as e:
         return None, "%s: %s" % (type(e).__name__, e)
 
@@ -285,9 +382,16 @@ def _observation_only(text: str) -> str:
     return t if len(head) < 20 else head + "."
 
 
-def _nl_for_producer(text: str) -> str:
-    mode = os.environ.get("LLM_NL_MODE", "raw").lower()
-    return _observation_only(text) if mode.startswith("obs") else text
+def _nl_for_producer(text: str, mode: Optional[str] = None) -> str:
+    """지시절 제거 여부. 요청이 mode 를 실어 보내면 그것이 우선하고, 없으면 서비스 환경변수.
+
+    왜 요청 필드가 필요한가(2026-08-05): 서비스는 별도 프로세스(uvicorn)라 데모 스크립트가
+    LLM_NL_MODE 를 export 해도 서비스에는 닿지 않는다. "이 런은 관찰만 준다"가 실험 조건인 이상
+    그 조건은 **호출자가** 정할 수 있어야 한다. 서비스 기본값(raw)은 그대로 두므로 옛 호출자
+    (오프라인 llm_producer.py 등)의 렌더링은 한 글자도 안 바뀐다.
+    """
+    m = (mode or os.environ.get("LLM_NL_MODE", "raw")).lower()
+    return _observation_only(text) if m.startswith("obs") else text
 
 
 def _llm_input(r: MacroRequest) -> str:
@@ -302,15 +406,90 @@ def _llm_input(r: MacroRequest) -> str:
     기존 호출자가 깨지지 않게.
     """
     if not (r.nl and r.nl.strip()):
-        return _state_line(r)
-    lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip())]
+        return _state_line(r) + _geometry_block(r)
+    lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip(), getattr(r, "nl_mode", None))]
     if r.descriptors and len(r.descriptors) == len(DESCRIPTOR_NAMES):
         lines += ["",
                   "MEASURED STATE (computed by the monitor without classifying the event;",
                   "each is in [0,1] and means the same thing for any kind of disruption):"]
         for name, v in zip(DESCRIPTOR_NAMES, r.descriptors):
             lines.append("  %-18s = %.2f   (%s)" % (name, float(v), DESCRIPTOR_DOC[name]))
-    return "\n".join(lines)
+    return "\n".join(lines) + _geometry_block(r)
+
+
+# 각 원시값이 무엇인지 -- 값만 주면 모델이 뜻을 지어낸다. 설명은 **사실**만 적고
+# "그러니 무엇을 하라"는 절대 적지 않는다(그게 STEP 4 가 지운 결정표다).
+#
+# 블록을 **둘로 가른다**(2026-08-05). 이유는 문체가 아니라 측정이다: 아래 첫 묶음은 전부
+# "구역이 무엇을 **덮었나**"(coverage)인데, 덮임은 해로움이 아니다 — root 하역목표를 8/8 삼킨
+# 판이 291 노드를 전부 닫고 완주했다(시간만 2.1배). 구역이 강제되는 곳은
+# enforce_restriction_zone_clearance! 한 곳뿐이고 그 함수는 **RVO 에이전트만** 원 밖으로 밀어내는데,
+# root 하역목표는 LiftIntoPlace 의 목표 = 화물 변환을 직접 적분해 옮기는 노드라 RVO 를 안 거친다.
+# 그래서 한 덩어리로 주면 "8/8 갇힘"이라는 큰 숫자가 모델을 계속 개입 쪽으로 끈다. 두 번째 묶음이
+# 실제로 못 닫게 만드는 것이고, 개입의 근거는 거기에만 있다.
+_GEOM_COVERAGE = [
+    ("zone_blocked", "zone_blocked",
+     "sub-assemblies whose staging area the zone covers AND that have not started building"),
+    ("zone_restage_feasible", "  of which movable",
+     "of those, how many have a zone-clear spot to be restaged into"),
+    ("zone_root_covered", "root_goals_trapped",
+     "delivery goals of the ROOT assembly inside the zone; the root cannot be restaged. These "
+     "are placed by a lift that moves the cargo directly, not by a navigating agent"),
+    ("zone_work_overlap", "work_discs_overlapped",
+     "unfinished work areas the zone intersects"),
+    ("zone_teams_forming", "teams_forming",
+     "transport teams currently gathering"),
+    ("zone_teams_covered", "  of which trapped",
+     "of those, how many must gather inside the zone (they cannot form where they stand)"),
+    ("zone_relocate_norm", "min_shift_to_clear_m",
+     "smallest rigid translation of the whole build that puts every unfinished goal outside "
+     "the zone; -1 means no such shift exists"),
+]
+
+# 두 번째 묶음. `zone_nav_disconnected` 는 일부러 안 싣는다: 결정 경로에서는 통로 flood-fill 을
+# 끄고 부르므로(목표 123개마다 격자를 도는 비용) 그 값이 늘 0 이고, 0 을 보여주면 "재 봤더니 0"
+# 으로 읽힌다. 재지 않은 것을 0 으로 보고하지 않는다 — 대신 `of which blocked` 가 하한임을 명시한다.
+_GEOM_BLOCKAGE = [
+    ("zone_nav_goals", "nav_goals",
+     "unfinished goals whose mover is a navigating agent; the zone is enforced only on "
+     "navigating agents, so these are the only goals it can stop"),
+    ("zone_nav_blocked", "  of which blocked",
+     "their arrival tolerance lies entirely inside the enforced exclusion disc, so the node can "
+     "never close while the zone lives. This is a lower bound: a goal that is still clear but "
+     "has no surviving route to it is not counted here"),
+    ("zone_nav_downstream", "  work frozen by those",
+     "unfinished schedule nodes that are those blocked nodes or wait on them further down the "
+     "precedence graph; none of them can close while the zone lives. Compare this with how much "
+     "of the build is left -- a blocked count that looks small can still freeze most of it"),
+    ("zone_agent_trapped", "agents_parked_inside",
+     "movers standing inside the zone right now (they were parked when it appeared)"),
+]
+
+
+def _rows(r: MacroRequest, spec) -> list:
+    return [(lbl, getattr(r, f), doc) for f, lbl, doc in spec if getattr(r, f, None) is not None]
+
+
+def _geometry_block(r: MacroRequest) -> str:
+    """공간 사건의 기하 원시값 블록. 필드가 하나도 없으면 빈 문자열(= 기존 입력과 동일)."""
+    cov = _rows(r, _GEOM_COVERAGE)
+    blk = _rows(r, _GEOM_BLOCKAGE)
+    if not cov and not blk:
+        return ""
+    out = []
+    if cov:
+        out += ["", "WHAT THIS ZONE COVERS (geometry only):"]
+        for lbl, v, doc in cov:
+            out.append("  %-22s = %-6s (%s)" % (lbl, v, doc))
+        if r.zone_root_total is not None:
+            out.append("  (the root has %s delivery goals in total)" % r.zone_root_total)
+    if blk:
+        out += ["", "WHAT THIS ZONE CAN ACTUALLY BLOCK:"]
+        for lbl, v, doc in blk:
+            out.append("  %-22s = %-6s (%s)" % (lbl, v, doc))
+        if r.zone_unfinished_total is not None:
+            out.append("  (the build has %s unfinished nodes in total)" % r.zone_unfinished_total)
+    return "\n".join(out)
 
 
 @app.get("/health")
@@ -324,7 +503,7 @@ def health():
 
 @app.post("/macro")
 def macro(req: MacroRequest):
-    valid = VALID.get(req.kind, MACROS)
+    valid = _valid_for(req)
     prog = _state["program"] or _load_program()
     line = _llm_input(req)          # 문장(있으면) / 없으면 예전처럼 파싱된 필드
     try:
@@ -360,7 +539,7 @@ def decide(req: MacroRequest):
     """한 번의 호출로 **모든 비-규칙 정책**의 결정을 돌려준다.
     줄리아는 canonical(규칙)을 자기가 계산해 합치므로, 이 응답 + canonical = 세 정책 전부.
     UI 는 이 셋 중 무엇을 볼지 고르고, 실제로 실행된 것은 enacted 로 따로 표시한다."""
-    valid = VALID.get(req.kind, MACROS)
+    valid = _valid_for(req)
     # 두 producer 가 **서로 다른 것을 본다**. UI 가 그 차이를 나란히 보여줄 수 있도록 둘 다 돌려준다.
     #   llm_input       : 자연어 관찰 (+ 종류-무관 서술자 6개)
     #   surrogate_input : 학습 때와 같은 스키마 피처
@@ -384,7 +563,13 @@ def decide(req: MacroRequest):
             "scores": {m: round(s, 2) for m, s in scored},
             # margin = 1·2위 점수차를 전체 폭으로 정규화(0에 가까우면 사실상 동점)
             "margin": round(abs(top - runner) / spread, 3),
-            "policy": "surrogate:RandomForest", "error": None}
+            # 점수는 냈지만 **일부 유효 매크로는 학습 근거가 없어 아예 못 본** 경우를 그대로 싣는다.
+            # 이걸 None 으로 뭉개면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이는데, 실제로는
+            # "새 행동을 고를 수조차 없었다"이다 — 라우터가 LLM 에게 넘겨야 하는 바로 그 상황.
+            "unsupported": ([] if not err or not str(err).startswith("UNSUPPORTED:")
+                            else str(err).split(":", 1)[1].split(",")),
+            "policy": "surrogate:RandomForest",
+            "error": (None if (not err or str(err).startswith("UNSUPPORTED:")) else err)}
     else:
         out["surrogate"] = {"chosen": "", "ranking": [], "scores": {}, "margin": 0.0,
                             "policy": "surrogate:RandomForest", "error": err}

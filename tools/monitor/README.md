@@ -94,7 +94,29 @@ DEMO_MODEL=tractor.mpd DEMO_OOD=fault DEMO_N=3 julia +lts --project=. tools/moni
 **restage 이동거리 튜닝**: no-go zone 발생 시 적치(staging) 재배치 이동거리는 **zone 크기에 비례**한다
 (작은 zone→작은 이동). 노브:
 - `RESTAGE_ZONE_MARGIN_FRAC` (기본 0.5) — zone 여유 = zone반지름×frac. 클수록 이동↑, 작을수록 타이트.
-- `DEMO_ZONE_SCALE` (기본 0.20) — 주입되는 zone 자체 크기(적치반경 대비).
+- `DEMO_ZONE_SCALE` (기본 0.20) — 주입되는 zone 자체 크기(적치반경 대비). **harmless 가족 전용**.
+
+### 구역 사건의 두 가족 (2026-08-05)
+
+`DEMO_ZONE_MODE` 가 zone OOD 의 **성질**을 고른다. 두 가족이 다 있어야 "언제 개입하고 언제 절제하는가"가
+결정 문제가 된다(자세한 근거: `wm4spacecraft_manufacturing/md/ZONE_REDESIGN_STEP1_7_2026-08-05.md` 부록 B).
+
+| 손잡이 | 기본 | 뜻 |
+|---|---|---|
+| `DEMO_ZONE_MODE` | `blocking` | `blocking`=RVO 로 움직이는 주체의 미래 목표 위에 심어 **실제로 못 닫게** 만든다(정답=개입) / `harmless`=옛 주입기, 적치원 가장자리를 스치기만 한다(정답=NOOP) |
+| `DEMO_ZONE_R` | `0.5` | blocking 구역 반지름 = 로봇 반지름 × 이 값 (`tools/restage.jl` 의 `ZC_R` 과 같은 기본값) |
+| `DEMO_ZONE_CLOSED` | `58` | blocking 구역을 심을 시점(닫힌 노드 수). harmless 는 예전대로 sim 전 1회 |
+| `ZONE_RESCUE` | `1` | 정체 시 살아 있는 구역이 항법 목표를 실제로 막고 있으면 복구 사다리가 whole-build 이동을 건다. `0`=옛 동작 |
+| `LLM_NL_MODE` | `observation` | 관찰문 뒤의 **지시절**("...; restage the affected assembly")을 떼고 LLM 에게 준다. 그 절이 곧 canonical 정답이라 그대로 주면 재는 것이 추론이 아니라 프롬프트 준수가 된다. `raw`=옛 동작 |
+
+**★ zone 데모는 seed 프로그램으로 띄운 서비스에 붙여야 한다.** `sweep_lab/dspy_real_program_gpt4o.json`
+은 MIPROv2 가 **배터리 전용 데이터셋**에서 뽑은 프로그램이라 최적화된 instruction 에 zone·기하·
+RelocateBuild 어휘가 통째로 없다(그 instruction 이 `SEED_DOC` 을 대체한다). 실측: 같은 상태에서
+seed 는 RelocateBuild, 컴파일본은 NOOP.
+
+```bash
+cd src/respec/llm_service && DSPY_PROGRAM=/nonexistent python -m uvicorn dspy_service:app --port 8080 &
+```
 
 ## 알려진 한계 / TODO
 - **Factory View(MeshCat)** 는 현재 `visualization.html`(tractor 애니) 고정. 모델별 애니는 별도 생성 필요

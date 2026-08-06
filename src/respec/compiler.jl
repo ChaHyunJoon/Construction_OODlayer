@@ -92,6 +92,16 @@ end
 #   (실제 편향은 여기가 아니라 목적함수/AGENT_COST_BIAS 레지스트리에서 일어남. 이 메서드는 닫힌 합집합 계약 유지용.)
 compile_constraint!(model, t0, tF, Xa, sched, cs::DeprioritizeAgent) = 0
 
+# --- RelocateBuild: SPATIAL — compiles to NOTHING here -------------------------
+# Like ForbidZone/ReplaceAgent/ReformTeam, a whole-build rigid translation is geometric
+# surgery, not a timing/assignment constraint: it is enacted by `translate_whole_build!`
+# at dispatch (replan.jl `_is_relocate_build`) and never reaches the MILP. This no-op
+# keeps the closed-union contract and makes a MIXED proposal that carries a RelocateBuild
+# through the generic compile path harmless (contributes 0 constraints).
+# 공간형 spec 이라 MILP 제약을 하나도 안 더한다(실제 동작은 dispatch 에서 translate_whole_build!).
+# 혼합 제안이 일반 컴파일 경로를 타도 무해하도록 두는 no-op 메서드.
+compile_constraint!(model, t0, tF, Xa, sched, cs::RelocateBuild) = 0
+
 # --- helpers ------------------------------------------------------------------
 
 """

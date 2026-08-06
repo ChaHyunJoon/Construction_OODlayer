@@ -532,7 +532,11 @@ function close_node!(node::CloseBuildStep, env::PlannerEnv)
                 # drift degrades to a completed placement, never a crash. Gated on
                 # RESPEC_ENABLED so NOMINAL runs keep the original assert (bug-catching intact).
                 # (요약) respec 복구(예: restage 로 조립체를 옮겼는데 이미 배달된 부품은 안 따라옴)로 부품이 제 슬롯에서 어긋나 포획이 실패할 수 있음. 이때 부품을 지정 슬롯으로 "스냅"시킨 뒤 다시 포획 → 크래시 대신 배치 완료로 완화. RESPEC_ENABLED 로 게이트해 일반 실행은 원래 @assert(버그 탐지) 유지.
-                if RESPEC_ENABLED[]
+                # 2026-08-06: RESPEC_ENABLED 가 아니라 respec_drift_repair() 를 본다. 큐를 우회해
+                # 직접 복구를 집행하는 수동 루프(tools/monitor/run_demo.jl)도 이 완화가 필요한데,
+                # 그쪽은 큐를 끄려고 RESPEC_ENABLED=false 로 두기 때문이다(replan.jl 의 주석 참조).
+                # 기본값은 여전히 RESPEC_ENABLED 를 따라가므로 일반 실행의 @assert 는 그대로다.
+                if respec_drift_repair()
                     child = get_node(scene_tree, id)
                     set_desired_global_transform!(child, global_transform(assembly) ∘ child_transform(assembly, id))  # 부품을 조립체 기준 지정 슬롯 위치로 강제 이동
                     capture_child!(scene_tree, assembly, id)  # 다시 포획 시도

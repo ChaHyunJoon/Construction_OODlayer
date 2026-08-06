@@ -72,6 +72,7 @@ have and which contains no closed-vocabulary class name. That is the `nl+state` 
 """
 import hashlib
 import math
+import os
 import sys
 
 try:
@@ -128,12 +129,26 @@ def _nl_fault(rid):
 
 
 def _nl_battery(rid, soc):
+    """[2026-08-05] 처방절 제거 — Julia 쪽 `inject_battery_fault!` 와 **문자 단위로 같아야** 한다.
+
+    옛 문구는 "treat it as broken down and hand its work to a backup robot"(= ReplaceAgent 지시)로
+    끝났다. 그것은 관찰이 아니라 정답 지시이고(md/DESIGN_ASSIMILATION.md 오류 1-b), 게다가 그
+    지시가 틀렸다 — 배터리 사건의 올바른 개입은 창고 본체가 아니라 현장 배터리 교체다.
+    옛 문구 재현은 환경변수 OOD_NL_LEGACY=1 (Julia 쪽과 동일한 이름).
+    """
     pct = int(round(100 * soc))
+    legacy = os.environ.get("OOD_NL_LEGACY", "0") == "1"
     if soc <= REPLACE_SOC_THRESHOLD:
-        return (f"Robot R{rid}'s battery is critically flat at about {pct}% charge; it can no longer "
-                f"drive or carry — treat it as broken down and hand its work to a backup robot.")
+        if legacy:
+            return (f"Robot R{rid}'s battery is critically flat at about {pct}% charge; it can no longer "
+                    f"drive or carry — treat it as broken down and hand its work to a backup robot.")
+        return (f"Robot R{rid}'s battery is critically flat at about {pct}% charge; it has stopped "
+                f"where it stands and cannot drive or carry until its charge is restored.")
+    if legacy:
+        return (f"Robot R{rid}'s battery is degraded and now at about {pct}% charge; "
+                f"it should avoid long-distance and heavy-payload hauls so it does not run flat.")
     return (f"Robot R{rid}'s battery is degraded and now at about {pct}% charge; "
-            f"it should avoid long-distance and heavy-payload hauls so it does not run flat.")
+            f"it is moving below its normal speed and will keep draining while it works.")
 
 
 def _nl_zone():

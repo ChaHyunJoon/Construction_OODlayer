@@ -58,6 +58,33 @@ poll_ood!(q::OODQueue) = isempty(q.pending) ? nothing : popfirst!(q.pending)
 const RESPEC_ENABLED = Ref(false)
 
 """
+    RESPEC_DRIFT_REPAIR  ·  respec_drift_repair() -> Bool
+
+"복구가 만든 기하 드리프트를 크래시 대신 스냅으로 완화할 것인가."
+
+왜 `RESPEC_ENABLED` 와 따로 두는가 (2026-08-06)
+------------------------------------------------
+`RESPEC_ENABLED` 는 실제로 **네 가지**를 한꺼번에 켜고 끈다: (1) respec 큐 처리, (2) OOD 이벤트의
+큐 적재, (3) `_enforce_serial_frontiers!`, (4) `close_node!(CloseBuildStep)` 의 포획 드리프트 복구.
+그런데 (4)는 나머지 셋과 성질이 다르다 — "누가 복구를 모는가"가 아니라 "복구가 이미 일어난 뒤의
+씬을 어떻게 다룰 것인가"이기 때문이다.
+
+이 구분이 없어서 실제로 사고가 났다: `tools/monitor/run_demo.jl` 은 큐를 우회해 **자기가 직접**
+복구를 집행하므로 `RESPEC_ENABLED[] = false` 로 둔다. 그러면 (4)도 같이 꺼진다. 그 상태에서
+`RelocateBuild`(빌드 전체 평행이동)가 빌드 중반에 발화하면, 이미 배달됐지만 아직 포획되지 않은
+부품이 조립체를 따라오지 못해 `@assert has_edge(...)` 로 **시뮬 전체가 죽는다**(실측 2026-08-06:
+closed=151, Δ=2.4 m, object 9 ↔ assembly 4). 정작 그 상황을 위해 쓰인 복구 코드가 바로 위에 있는데
+게이트 하나 때문에 도달하지 못했다.
+
+기본값 `nothing` = **예전과 동일**(RESPEC_ENABLED 를 따라간다). 명시적으로 true/false 를 넣은
+호출자만 동작이 달라지므로 기존 실행·덤프의 재현성은 그대로다.
+"""
+# 기본 nothing = RESPEC_ENABLED 를 따름(기존 동작 불변). true 로 두면 큐를 안 쓰는 수동 복구 루프에서도
+# 포획 드리프트가 크래시 대신 스냅으로 완화된다.
+const RESPEC_DRIFT_REPAIR = Ref{Union{Nothing,Bool}}(nothing)
+respec_drift_repair() = RESPEC_DRIFT_REPAIR[] === nothing ? RESPEC_ENABLED[] : RESPEC_DRIFT_REPAIR[]
+
+"""
 κ for the DeprioritizeAgent re-solve: how much makespan magnitude the energy term is allowed to
 be worth (`w_eff = κ · speed_scale / efficiency_scale`, see AUTO_EFFICIENCY_KAPPA). κ→0 makes the
 bias inert again; κ≈0.25 lets energy decide among equal- and near-equal-makespan assignments
@@ -168,10 +195,27 @@ never by the LLM — the spec only names the faulted agent.
 # 제안에 ReplaceAgent(로봇 고장 → 예비 1:1 인계)가 하나라도 있으면 true. 예비 선택은 기하(nearest_pool)로, LLM 이 아님.
 _is_robot_replace(p::RespecProposal) = any(c -> c isa ReplaceAgent, p.constraints)
 
+"""
+    _is_relocate_build(proposal) -> Bool
+
+True iff the proposal carries a `RelocateBuild` — "shift the WHOLE build clear of a no-go
+zone". Checked BEFORE `_is_zone_respec` in `maybe_respecify!` so that a proposal carrying
+both takes the stronger lever: `restage_all_blocked!` can only move assemblies that have
+not started building, and that set is empty from the first batch boundary onward
+(measured 2026-08-03), whereas the whole-build translation has no such precondition.
+"""
+# 제안에 RelocateBuild(빌드 전체를 구역 밖으로 평행이동)가 하나라도 있으면 true. maybe_respecify! 에서
+# ForbidZone 분기보다 **먼저** 검사한다 — 둘 다 들어있으면 전제조건이 없는 쪽(전체 이동)을 써야 하므로.
+_is_relocate_build(p::RespecProposal) = any(c -> c isa RelocateBuild, p.constraints)
+
 # ReformTeam: multi-robot team deadlock -> geometric re-establishment (reform_stuck_teams!),
 # dispatched specially like ReplaceAgent/ForbidZone (no MILP).
 # 제안에 ReformTeam(다중로봇 팀 교착 → 기하적 재구성)이 하나라도 있으면 true. MILP 없이 특수 처리됨.
 _is_reform(p::RespecProposal) = any(c -> c isa ReformTeam, p.constraints)
+
+# SwapBattery 제안인가 — ReplaceAgent 와 마찬가지로 MILP 재풀이가 아니라 전용 실행부로 보낸다.
+# (배터리만 갈면 스케줄도 기하도 안 바뀌므로 재풀이할 게 없음.)
+_is_battery_swap(p::RespecProposal) = any(c -> c isa SwapBattery, p.constraints)
 
 """
     _is_deprioritize(proposal) -> Bool
@@ -347,6 +391,21 @@ function maybe_respecify!(env, ood_queue;
     @info "[RESPEC] LLM proposal: [$(join([string(typeof(c).name.name) for c in proposal.constraints], ", "))]" *
           (isempty(proposal.rationale) ? "" : "  rationale: $(proposal.rationale)")
 
+    # --- empty proposal = RESTRAINT, and it must be sayable ---------------------
+    # An LLM that judges the event absorbable (a zone that blocks no goal, a degradation
+    # with enough slack) has exactly one way to say so in this grammar: `constraints: []`.
+    # Without this guard that fell through every `_is_*` dispatch into the generic MILP
+    # path and paid a full re-solve to add ZERO constraints — i.e. the cheapest correct
+    # answer was the most expensive one to execute, and it was recorded as a re-solve
+    # rather than as restraint. Treat it like `proposal === nothing` above.
+    # [한국어] 빈 제안 = "개입하지 않는다"(절제). 이 문법에서 LLM 이 절제를 표현할 수 있는 유일한 방법이다.
+    #   가드가 없으면 모든 dispatch 를 그냥 통과해 제네릭 MILP 경로로 떨어져서, 제약 0개를 추가하려고
+    #   전체 재풀이 비용을 낸다(가장 싼 정답이 가장 비싸게 실행되고, 기록도 "재풀이"로 남는다).
+    if isempty(proposal.constraints)
+        @info "[RESPEC] empty proposal = deliberate restraint (no constraint) -> noop"
+        return :noop
+    end
+
     # --- robot fault: dispatch to the reassign machinery ----------------------
     # A ForbidAgent re-spec needs schedule surgery (release pending edges) + the
     # frozen/pinned context that the generic verify path does not establish.
@@ -363,6 +422,88 @@ function maybe_respecify!(env, ood_queue;
             engage_fallback!(env)                # 안전 폴백 작동
         end
         return res.status                        # 재배정 결과 상태를 그대로 반환(:admitted / :rejected 등)
+    end
+
+    # --- restriction zone (WHOLE-BUILD): dispatch straight to the rigid translation --
+    # A RelocateBuild skips the per-assembly restage entirely and shifts the WHOLE build by
+    # one Δ. It exists because the per-assembly path (`ForbidZone` -> restage_all_blocked!)
+    # has an EMPTY DOMAIN for most of a run: `restage_assembly!` refuses any assembly whose
+    # build steps have started, and the un-started set drains to zero at the first batch
+    # boundary (closed≈46 on the tractor twin) and never refills. Measured 2026-08-03
+    # (oracle/out/zdiag*): every zone event fired after that point made the ForbidZone arm
+    # byte-identical to NOOP. `translate_whole_build!` reads `_future_work_discs`, which is
+    # gated on `closed_set` only — no `_assembly_started` precondition — so it stays live.
+    # Checked BEFORE the ForbidZone branch: a mixed proposal takes the stronger lever.
+    # [한국어] RelocateBuild = 조립체별 재적치를 건너뛰고 빌드 전체를 Δ 하나로 옮긴다. 조립체별 경로는
+    #   "아직 시작 안 한 조립체"만 옮길 수 있는데 그 집합이 첫 배치 경계에서 비어 영영 안 돌아온다(실측).
+    #   전체 이동은 그 전제조건이 없으므로 빌드 내내 유효하다. ForbidZone 분기보다 먼저 검사한다.
+    if _is_relocate_build(proposal)
+        # verify gate (static + zone-exists + movable) BEFORE any geometric mutation.
+        # 기하 변경 전에 먼저 검증(정적 + 구역 실존 + 옮길 대상 존재).
+        vverdict = verify_relocate(proposal, env)
+        if vverdict isa Reject
+            monitor_record_verification!(status="rejected", checks=Any[
+                Dict("name"=>"past_is_invariant", "passed"=>vverdict.reason != :touches_closed,
+                     "detail"=>vverdict.detail),
+                Dict("name"=>"zone_exists", "passed"=>vverdict.reason != :no_such_zone,
+                     "detail"=>vverdict.detail),
+                Dict("name"=>"build_movable", "passed"=>vverdict.reason != :no_staging,
+                     "detail"=>vverdict.detail),
+                # 비례성: 전역 이동이 이 구역에 값하는가(RELOCATE_GATE, 기본 꺼짐).
+                Dict("name"=>"proportionate", "passed"=>vverdict.reason != :disproportionate,
+                     "detail"=>vverdict.detail),
+            ], execution=Dict("action"=>"safe_fallback"),
+               verdict="REJECTED · $(vverdict.reason)")
+            @warn "[RESPEC] relocate proposal REJECTED ($(vverdict.reason)): $(vverdict.detail) -> fallback"
+            engage_fallback!(env)
+            return :rejected
+        end
+        @info "[RESPEC] whole-build relocation verified -> translate the entire build clear of the zone"
+        rb_checks = Any[
+            Dict("name"=>"typed_proposal", "passed"=>true,
+                 "detail"=>"RespecProposal contains RelocateBuild"),
+            Dict("name"=>"past_is_invariant", "passed"=>true,
+                 "detail"=>"proposal does not modify a closed schedule node"),
+            Dict("name"=>"zone_exists", "passed"=>true,
+                 "detail"=>"named zone exists in live RESTRICTION_ZONES"),
+        ]
+        wb = translate_whole_build!(env; resume = true)   # 빌드 전체를 구역 밖으로 평행이동
+        # :already_clear = Δ0 (구역이 미완 목표를 하나도 안 덮어 옮길 필요가 없었음). 실행가능성 측면에서는
+        # :translated 와 같은 "안전" 상태지만 **한 일이 다르므로** 판정문에 그대로 드러낸다.
+        if wb.status in (:translated, :already_clear)
+            noop = wb.status === :already_clear
+            push!(rb_checks, Dict("name"=>"recovery_feasible", "passed"=>true,
+                "detail"=>(noop ?
+                    "no move required: every unfinished goal was already clear of the zone; residual=$(get(wb,:residual,0))" :
+                    "whole-build translation cleared all future goals; residual=$(get(wb,:residual,0))")))
+            monitor_record_verification!(status="passed", checks=rb_checks,
+                execution=Dict("action"=>(noop ? "no_move_required" : "translate_whole_build"),
+                               "status"=>string(wb.status),
+                               "delta"=>get(wb,:delta,nothing),
+                               "distance"=>norm(get(wb,:delta,[0.0,0.0])),
+                               "geometry_solver"=>string(get(wb,:solver,:legacy)),
+                               "goal_discs"=>get(wb,:n_goal_discs,0),
+                               "work_discs"=>get(wb,:n_work_discs,0),
+                               "residual"=>get(wb,:residual,0)),
+                verdict=(noop ?
+                    "ADMITTED · verified · NO MOVE REQUIRED (build already clear of the zone)" :
+                    "ADMITTED · verified · whole-build translated"))
+            @info(noop ?
+                "[RESPEC] whole-build relocation not required (build already clear of the zone) -> admitted" :
+                "[RESPEC] whole-build translated Δ=$(get(wb,:delta,nothing)) -> admitted")
+            return :admitted
+        end
+        # :no_staging can only appear if the geometry changed between gate and enactment.
+        # :residual_blocked / :infeasible = the zone cannot be cleared by ANY rigid shift.
+        # [한국어] :residual_blocked/:infeasible = 어떤 강체이동으로도 구역을 벗어날 수 없음 → 안전 정지.
+        @warn "[RESPEC] whole-build $(wb.status) (residual $(get(wb,:residual,-1))) -> fallback"
+        push!(rb_checks, Dict("name"=>"recovery_feasible", "passed"=>false,
+            "detail"=>"whole-build recovery $(wb.status); residual=$(get(wb,:residual,-1))"))
+        monitor_record_verification!(status="rejected", checks=rb_checks,
+            execution=Dict("action"=>"safe_fallback", "status"=>string(wb.status)),
+            verdict="REJECTED · recovery infeasible")
+        engage_fallback!(env)
+        return :fallback
     end
 
     # --- restriction zone: dispatch to the geometric multi-assembly relocation --
@@ -383,6 +524,10 @@ function maybe_respecify!(env, ood_queue;
                      "detail"=>zverdict.detail),
                 Dict("name"=>"zone_exists", "passed"=>zverdict.reason != :no_such_zone,
                      "detail"=>zverdict.detail),
+                # 도메인 공백(:empty_domain)은 ZONE_DOMAIN_GATE 가 켜졌을 때만 거절 사유가 된다
+                # (verifier.jl 게이트 주석 참조). 꺼져 있으면 이 항목은 항상 통과로 남는다.
+                Dict("name"=>"zone_domain_nonempty", "passed"=>zverdict.reason != :empty_domain,
+                     "detail"=>zverdict.detail),
             ], execution=Dict("action"=>"safe_fallback"),
                verdict="REJECTED · $(zverdict.reason)")
             @warn "[RESPEC] zone proposal REJECTED ($(zverdict.reason)): $(zverdict.detail) -> fallback"
@@ -390,6 +535,9 @@ function maybe_respecify!(env, ood_queue;
             return :rejected
         end
         @info "[RESPEC] zone re-spec verified -> restage all blocked assemblies"
+        # 실행 **전에** 도메인 크기를 찍어둔다 — restage 가 끝난 뒤에 재면 이미 옮겨져서 0 이 된다.
+        local zone_syms = [c.zone for c in proposal.constraints if c isa ForbidZone]
+        local n_domain = isempty(zone_syms) ? -1 : sum(z -> max(zone_domain_size(env, z), 0), zone_syms)
         res = restage_all_blocked!(env; resume = true)   # 막힌 조립체들의 적치를 전부 이동
         base_checks = Any[
             Dict("name"=>"typed_proposal", "passed"=>true,
@@ -398,6 +546,12 @@ function maybe_respecify!(env, ood_queue;
                  "detail"=>"proposal does not modify a closed schedule node"),
             Dict("name"=>"zone_exists", "passed"=>true,
                  "detail"=>"named zone exists in live RESTRICTION_ZONES"),
+            # 이 팔이 실제로 무언가를 할 수 있었는지의 기록. 0 이면 아래 결과는 NOOP 과 바이트 동일하다
+            # — 결정 품질 채점에서 "행동했다"로 세면 안 되는 행이라는 표식(verifier.jl ZONE_DOMAIN_GATE).
+            Dict("name"=>"zone_domain_nonempty", "passed"=>n_domain != 0,
+                 "detail"=>n_domain == 0 ?
+                    "relocatable domain was EMPTY before enactment — this ForbidZone is a silent no-op" :
+                    "relocatable domain = $(n_domain) assemblies before enactment"),
         ]
         # :residual_blocked = zone also covers the root's OWN (un-relocatable) deposit goals
         # — per-assembly moves can't clear the dense central core. Phase B: translate the
@@ -406,7 +560,9 @@ function maybe_respecify!(env, ood_queue;
         if res.status == :residual_blocked
             @info "[RESPEC] restage_all residual_blocked (residual $(get(res,:residual,0))) -> whole-build translate"
             wb = translate_whole_build!(env; resume = true)  # 빌드 전체를 구역 밖으로 평행이동
-            if wb.status == :translated
+            # :already_clear(Δ0)도 안전 상태다 — 여기까지 왔다면 사실상 나올 수 없지만, 나온다고 해서
+            # 전역 line-stop 을 걸 이유는 없으므로 성공으로 받는다.
+            if wb.status in (:translated, :already_clear)
                 push!(base_checks, Dict("name"=>"recovery_feasible", "passed"=>true,
                     "detail"=>"whole-build translation cleared residual goals; residual=$(get(wb,:residual,0))"))
                 monitor_record_verification!(status="passed", checks=base_checks,
@@ -448,10 +604,49 @@ function maybe_respecify!(env, ood_queue;
         monitor_record_verification!(status="passed", checks=base_checks,
             execution=Dict("action"=>res.status == :none ? "navigation_detour" : "restage_all_blocked",
                            "status"=>string(res.status), "moved"=>length(res.moved),
+                           "domain"=>n_domain,   # 실행 전 도메인 크기(0 = 이 팔은 애초에 no-op 이었다)
                            "residual"=>get(res,:residual,0)),
             verdict=res.status == :none ? "ADMITTED · verified · navigation detour" :
                                           "ADMITTED · verified · assemblies restaged")
         return res.status == :none ? :noop : :admitted   # :none = zone covers no goal (detour-only)  # :none=목표 안 덮음(우회만) → noop
+    end
+
+    # --- battery depletion: swap the pack in the field -------------------------
+    # Dispatched specially (like ReplaceAgent/ForbidZone) because it is not a MILP
+    # constraint: the body, the schedule and the teams are all untouched, so there is
+    # nothing to re-solve. It consumes NO depot spare — that scarcity belongs to
+    # ReplaceAgent, and keeping the two accounts apart is what makes choosing between
+    # them a real decision (see SwapBattery in spec_dsl.jl).
+    # [한국어] 배터리 방전 → 현장 배터리 교체. MILP 제약이 아니라 전용 dispatch(본체·스케줄·팀이
+    #   그대로라 재풀이할 게 없음). 창고 예비 본체를 안 먹는다 — 그 희소성은 ReplaceAgent 의 몫이고,
+    #   두 장부를 분리해야 둘 중 고르는 게 진짜 결정이 된다.
+    if _is_battery_swap(proposal)
+        role = first(c for c in proposal.constraints if c isa SwapBattery).agent
+        bverdict = verify_swap_battery(proposal, env)      # 변경 전 검증(정적 + grounding)
+        if bverdict isa Reject
+            @warn "[RESPEC] swap-battery proposal REJECTED ($(bverdict.reason)): $(bverdict.detail) -> no-op"
+            return :rejected
+        end
+        n_id_before = check_identity!(env, "before SwapBattery($(role))")
+        res = swap_battery!(env, role)
+        if res.status != :battery_swapped
+            @warn "[RESPEC] swap-battery $(res.status) -> no-op" detail = get(res, :detail, "")
+            return :noop
+        end
+        try
+            monitor_record_verification!(status="passed", checks=Any[
+                Dict("name"=>"typed_proposal", "passed"=>true, "detail"=>"SwapBattery target $(role) is valid"),
+                Dict("name"=>"past_is_invariant", "passed"=>true, "detail"=>"completed schedule nodes are not rewritten"),
+                Dict("name"=>"identity_preserved", "passed"=>true, "detail"=>"same physical asset; only the battery changed"),
+            ], execution=Dict("action"=>"swap_battery", "role"=>string(role),
+                              "soc_before"=>res.soc_before === nothing ? "unknown" : res.soc_before),
+            verdict="ADMITTED · verified battery swap")
+        catch
+        end
+        @info "[RESPEC] ADMITTED battery swap: role $(role) recharged in the field (no depot body consumed)."
+        # 본체가 안 바뀌므로 위반이 생길 수가 없다 — 그래도 측정한다(그 주장 자체를 검증하려고).
+        report_identity_delta(env, n_id_before, "swap-battery($(role))")
+        return :admitted
     end
 
     # --- robot breakdown: dispatch to the spare 1:1 chain hand-off -------------
@@ -466,6 +661,13 @@ function maybe_respecify!(env, ood_queue;
         # the faulted agent the LLM named; the SPARE is geometry's call, not the LLM's.
         # 고장 로봇은 LLM 이 지목, 예비(spare)는 기하가 결정. first(...) = 조건 맞는 첫 제약의 .agent 를 꺼냄.
         faulted = first(c for c in proposal.constraints if c isa ReplaceAgent).agent
+        # STEP A-1: BASELINE identity scan taken BEFORE any mutation. Paired with the
+        # post-enactment scan below, it separates "this enactment broke identity" from
+        # "identity was already broken when we got here" — without the pair, a violation
+        # found after a Replace is unattributable. (identity.jl)
+        # [한국어] 변경 "전" 기준선 검사. 아래의 변경 "후" 검사와 짝을 이뤄야, 발견된 위반이
+        #   이번 교체 때문인지 원래 깨져 있던 것인지 구분된다. 짝이 없으면 원인 특정 불가.
+        n_id_before = check_identity!(env, "before ReplaceAgent($(faulted))")
         # verify gate (static + spare-exists) BEFORE any mutation — never trust the LLM.
         # 변경 전 검증(정적 + 예비 존재). LLM 맹신 금지.
         rverdict = verify_replace(proposal, env)
@@ -509,6 +711,12 @@ function maybe_respecify!(env, ood_queue;
                 catch
                 end
                 @info "[RESPEC] ADMITTED hot-swap: robot $(faulted) replaced from :$(hs.depot) depot (mode $(hs.mode))."
+                # STEP A-1: post-enactment scan. hot-swap changes NO id, so this must stay at
+                # the baseline count — any increase means hot-swap is not identity-preserving
+                # after all, which would be a finding, not a nuisance.
+                # [한국어] 변경 후 검사. hot-swap 은 id 를 안 바꾸므로 기준선과 같아야 한다.
+                #   늘었다면 hot-swap 도 정체성 보존이 아니라는 뜻 — 그건 잡음이 아니라 발견이다.
+                report_identity_delta(env, n_id_before, "hot-swap($(faulted))")
                 return :admitted
             end
             # 실패/예비없음이면 얼리지 말고 일반 재분배로 강등.
@@ -525,6 +733,11 @@ function maybe_respecify!(env, ood_queue;
         distres = replace_robot_distributed!(env, faulted; resume = true)
         if distres.status === :distributed
             @info "[RESPEC] ADMITTED distributed replace: robot $(faulted)'s $(distres.n_tasks) task(s) spread across $(distres.n_tasks) nearest spare(s) (no over-subscription)."
+            # STEP A-1: post-enactment scan on the RE-STAMP path. This is the measurement that
+            # decides whether the re-stamp path is deleted: it re-keys ids across registries, so
+            # any violation appearing here (and not in `before`) is CAUSED by the re-stamp.
+            # [한국어] 재각인 경로의 변경 후 검사. 여기서 새로 생긴 위반이 곧 "재각인이 원인"이라는 증거다.
+            report_identity_delta(env, n_id_before, "distributed-replace($(faulted))")
             return :admitted
         end
         # 분산이 안 되면(작업 ≤1 또는 예비 부족) 단일 예비 접합으로 진행.
@@ -552,6 +765,9 @@ function maybe_respecify!(env, ood_queue;
             return _replace_via_reassign!(env, faulted, optimizer, "replace_$(res.status)")
         end
         @info "[RESPEC] ADMITTED replace: spare $(spare) took over robot $(faulted)'s $(res.slots) downstream task(s)."
+        # STEP A-1: post-enactment scan on the single-spare RE-STAMP splice (see above).
+        # [한국어] 단일 예비 접합(재각인)의 변경 후 검사 — 위 분산 경로와 같은 목적.
+        report_identity_delta(env, n_id_before, "splice-replace($(faulted)->$(spare))")
         return :admitted
     end
 

@@ -331,7 +331,12 @@
 
   <section class="panel stage">
     <div class="phead"><h2>Factory View</h2>
+      <!-- 두 버튼의 차이는 "시작 전에 조작자 zone 을 기다리는가" 하나다. zone 주입 여부는 결과를
+           크게 가르는 실험 조건이므로(측정: 같은 fault_battery 가 zone 없으면 완주, 라이브
+           zone→RelocateBuild 가 끼면 134/305 에서 정지) 편의가 아니라 조건으로 노출한다.
+           "no zone" 으로 시작해도 런 도중 아래 inject 바로 zone 을 쏘는 것은 그대로 된다. -->
       <button class="ghost-btn" id="startLiveBtn" type="button" style="margin-left:auto">Start live session</button>
+      <button class="ghost-btn" id="startLiveNoZoneBtn" type="button" title="Start immediately without waiting for a forbid-zone command">Start live (no zone)</button>
       <span class="count mono">MeshCat</span>
     </div>
     <div class="injectbar" id="injectBar">
@@ -356,6 +361,13 @@
     <div class="feed">
       <div class="phead"><h2>OOD Event Feed</h2><span class="count mono">ood_truth_log</span></div>
       <div class="body" id="feedBody"><div class="empty">no OOD events yet</div></div>
+    </div>
+    <!-- 컨트롤러가 스스로 취한 내부 복구 조치. OOD(외부 교란)와 의도적으로 분리한다:
+         팀 교착은 우리 복구가 만든 2차 부작용이라 OOD 로 세면 카운터도 결정 패널도 오염된다. -->
+    <div class="feed" id="recoveryPanel" style="display:none">
+      <div class="phead"><h2>Controller Recovery</h2>
+        <span class="count mono" title="Internal self-healing actions the controller took on its own. These are NOT OOD events and no policy/LLM decision was involved.">self-healing · not OOD</span></div>
+      <div class="body" id="recoveryBody"></div>
     </div>
   </section>
 
@@ -415,7 +427,7 @@
         <h3 style="margin-top:13px">Verifier process <span class="term-help">selected ≠ admitted</span></h3>
         <div class="verify-list" id="verifyBody"><div class="empty">no verification trace</div></div>
       </div>
-      <div class="rcol"><h3>Selected RespecProposal</h3><pre class="code mono" id="outCode">—</pre></div>
+      <div class="rcol"><h3 title="enacted_by = the single policy that actually executed this proposal (and how it was selected: per-event router, or DEMO_POLICY fixed for the run). agreed_by = every policy that happened to pick the same macro.">Selected RespecProposal</h3><pre class="code mono" id="outCode">—</pre></div>
     </div>
   </section>
 </div>
@@ -496,7 +508,8 @@
   }
 
   /* ---- forbid-zone inject (human-in-the-loop) ---- */
-  $("startLiveBtn").addEventListener("click", function(){
+  // 두 라이브 버튼의 공통 본체. waitS = 시작 전에 조작자 zone 명령을 기다릴 초(0 = 안 기다림).
+  function beginLiveSession(waitS){
     CONFIG.LIVE = true;
     // 직전에 보고 있던 **완성 녹화본**을 그대로 둔 채 LIVE 배지만 달면, 새 세션이 아직 한 프레임도
     // 쓰지 않은 동안 사용자는 옛 런의 OOD 로그·완료된 조립트리를 지금 세션의 것으로 읽는다.
@@ -508,8 +521,10 @@
     // "Nominal" for a clean session for pure human-in-the-loop forbid-zone injection;
     // any other preset arms its OOD events so the operator watches the automatic
     // respec/replan. (Manual zone injection still works on top of any running session.)
-    requestGeneration({model:curModel, caseName:curCase, live:true});
-  });
+    requestGeneration({model:curModel, caseName:curCase, live:true, wait:waitS});
+  }
+  $("startLiveBtn").addEventListener("click", function(){ beginLiveSession(300); });
+  $("startLiveNoZoneBtn").addEventListener("click", function(){ beginLiveSession(0); });
   $("zoneGo").addEventListener("click", function(){
     var x = parseFloat($("zx").value), y = parseFloat($("zy").value), r = parseFloat($("zr").value);
     if(!isFinite(x) || !isFinite(y) || !isFinite(r) || r <= 0){ toast("Check the zone coordinates and radius.", "warn"); return; }
@@ -701,6 +716,7 @@
     renderFleet(robots);
     renderTree(fr.assemblies || []);
     renderFeed(ood);
+    renderRecovery(fr.recovery || []);
     renderGantt(fr.schedule || [], fr.now);
     renderRespec(fr.respec, fr.respec_history || []);
   }
@@ -777,6 +793,26 @@
         + '<span class="ic">'+(icons[e.kind]||"•")+'</span>'
         + '<span class="desc"><b>'+esc(e.nl||e.kind)+'</b>'+(sub?'<br><span class="sub">'+sub+'</span>':'')+'</span>'
         + '<span class="kindtag">'+esc(e.kind)+'</span>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  }
+
+  // 컨트롤러 자체 복구 조치. OOD 피드와 분리해서 보여준다 — 이건 외부 교란이 아니고
+  // 어떤 정책/LLM 결정도 거치지 않았다(그래서 "novel event" 로 세면 안 된다).
+  function renderRecovery(rec){
+    var panel = $("recoveryPanel"), el = $("recoveryBody");
+    if(!panel || !el) return;
+    if(!rec || !rec.length){ panel.style.display = "none"; el.innerHTML = ""; return; }
+    panel.style.display = "";
+    var h = "";
+    rec.slice().reverse().forEach(function(r){
+      h += '<div class="event">'
+        + '<span class="t">'+fmtTime(r.at)+'</span>'
+        + '<span class="ic">🛠</span>'
+        + '<span class="desc"><b>'+esc(r.action||"recovery")+'</b>'
+        + (r.detail?'<br><span class="sub">'+esc(r.detail)+'</span>':'')+'</span>'
+        + '<span class="kindtag">'+esc(r.status||"")+'</span>'
         + '</div>';
     });
     el.innerHTML = h;
@@ -1036,7 +1072,30 @@
     }
     // output = chosen macro summary
     var chosenCand = (cands.filter(function(c){ return c.chosen; })[0]) || null;
-    outC.textContent = JSON.stringify(chosenCand || {chosen: selectedDecision.chosen, verdict: selectedDecision.verdict}, null, 2);
+    if(chosenCand){
+      // 후보표의 `by` 는 "이 매크로를 고른 정책 전부"라 picked-by 열에서는 맞지만, 이 패널에서는
+      // **누가 이걸 집행했는가**로 읽힌다 — 전원 동의 사건에서 "canonical+surrogate+dspy" 로 떠서
+      // 실제 집행자(하나)를 가린다. 여기서는 집행 정책 하나만 말하고, 동의 목록은 이름을 바꿔 남긴다.
+      var polLabel = function(k){
+        if(pols && pols[k] && pols[k].label) return pols[k].label;      // 예: "dspy:gpt-4o"
+        var ui = POLICIES.filter(function(p){ return p.key === k; })[0];
+        return ui ? ui.label : k;
+      };
+      // 그 정책이 어떻게 정해졌는가: 사건별 라우터인가, 런 전체 고정(DEMO_POLICY)인가.
+      var how = (rt && rt.enabled)
+        ? ("router" + (rt.escalated_from ? " (escalated from " + rt.escalated_from + ")" : ""))
+        : "DEMO_POLICY (fixed for the run)";
+      outC.textContent = JSON.stringify({
+        rank: chosenCand.rank, macro: chosenCand.macro, score: chosenCand.score,
+        enacted_by: isEnactedView
+          ? (polLabel(enacted) + " · selected by " + how)
+          : (polLabel(viewKey) + " · NOT enacted (counterfactual; this run enacted " + polLabel(enacted) + ")"),
+        agreed_by: chosenCand.by || null,
+        verified: !!chosenCand.verified
+      }, null, 2);
+    } else {
+      outC.textContent = JSON.stringify({chosen: selectedDecision.chosen, verdict: selectedDecision.verdict}, null, 2);
+    }
 
     var verification = selectedDecision.verification || null;
     if(!verification){ vb.innerHTML = '<div class="empty">legacy stream: verifier trace was not recorded</div>'; }
@@ -1116,6 +1175,7 @@
     $("oodN").textContent = "0";
     renderFleet([]);
     renderFeed([]);
+    renderRecovery([]);
     renderTree([]);
     renderGantt([], null);
     renderRespec(null, []);
@@ -1156,6 +1216,17 @@
         body:JSON.stringify({model:curModel, "case":curCase, n:n, seed:seed})})
         .then(function(r){ return r.json(); }).then(function(a){
           if(a.anim_exists){ mc.removeAttribute("srcdoc"); mc.src=a.anim+"?v="+Date.now(); }
+          else if(a.anim_stale){
+            // 파일은 있으나 이번 스트림보다 오래됐다 = 다른(보통 완주한) 런의 애니.
+            // 그대로 띄우면 좌측 패널과 모순되는 장면이 "이번 런"인 척한다.
+            mc.removeAttribute("src");
+            mc.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.6}b{color:#334155}</style>'
+              +'<b>The saved 3D animation is older than this replay &mdash; not shown.</b>'
+              +'<p>The file on disk belongs to an <b>earlier run</b> (often a completed one). Showing it'
+              +' here would contradict the panels on the left.</p>'
+              +'<p>Watch the live view at <code>http://127.0.0.1:8700</code> while a session is running.'
+              +' Runs now publish an animation even in live mode, so re-running this case refreshes it'
+              +' (unless it was started with <code>DEMO_ANIM=0</code>).</p>'; }
           else { mc.removeAttribute("src"); mc.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px}</style>'+
             '<b>3D animation has not been generated yet.</b><p>Replay data is available. Press <i>Start live session</i> to watch MeshCat while generating the missing animation.</p>'; }
         }).catch(function(){ mc.src="anim/"+base+"__"+curCase+sfx+".html"; });
@@ -1182,7 +1253,9 @@
       "). This may take several minutes.";
     fetch(CONFIG.CONTROL_URL + "/run", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({model: runModel, "case": runCase, interactive: !!opts.live, n: runN, seed: runSeed})
+      body: JSON.stringify({model: runModel, "case": runCase, interactive: !!opts.live, n: runN, seed: runSeed,
+                            // wait: 대화형 런이 첫 zone 명령을 기다릴 초. 안 주면 서버 기본(300).
+                            wait: (opts.wait === undefined ? 300 : opts.wait)})
     })
       .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
       .then(function(){

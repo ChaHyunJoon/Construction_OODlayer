@@ -1,6 +1,7 @@
 """steering_signature.py -- the DSPy signature that returns a STEERING VECTOR, not a macro name.
 
-See wm4spacecraft_manufacturing/md/DESIGN_STEERING.md.
+See wm4spacecraft_manufacturing/md/README.md (the DESIGN_STEERING.md design was folded in
+on 2026-08-02; `git show HEAD:wm4spacecraft_manufacturing/md/DESIGN_STEERING.md` for the original).
 
 WHY THIS IS A DIFFERENT SIGNATURE FROM `PickMacro`
 ==================================================
@@ -32,7 +33,22 @@ dspy 는 함수 안에서 늦게 import 한다(환경에 따라 없을 수 있�
 ────────────────────────────────────────────────────────────────────────────────────────────
 """
 
-MACROS = ["NOOP", "Replace", "Deprioritize", "ForbidZone", "ReformTeam"]
+# 2026-08-06 (Ch-A): 여기 있던 5개 리터럴에는 7(RelocateBuild)·8(SwapBattery) 이 둘 다 없었다.
+# 방향 벡터 u 는 매크로 하나당 한 성분이므로, 어휘가 짧으면 그 팔로는 **방향을 낼 수조차 없다**.
+# 레지스트리 순서(id 오름차순)를 그대로 쓴다 -- 순서가 계약이므로 한 곳에서만 정해져야 한다.
+import os as _os                                                            # noqa: E402
+import sys as _sys                                                          # noqa: E402
+
+_WM = _os.environ.get("WM_DIR") or _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.dirname(_os.path.abspath(__file__))))),
+    "wm4spacecraft_manufacturing")
+if _WM not in _sys.path:
+    _sys.path.append(_WM)
+from action_registry import (MACRO_NAME as _REG_NAME,                       # noqa: E402
+                             MACRO_COST as _REG_COST)
+
+MACROS = [_REG_NAME[i] for i in sorted(_REG_NAME)]
 ACTION_DESCRIPTORS = ["a_cost", "a_intervenes", "a_soft",
                       "a_restores_capacity", "a_relocates_work", "a_spatial"]
 
@@ -45,8 +61,8 @@ action-space still transfers where a memorised label does not.
 
 Return exactly these fields:
 
-u  -- 5 numbers in [-1, 1], one per macro, in this fixed order:
-      [NOOP, Replace, Deprioritize, ForbidZone, ReformTeam]
+u  -- %d numbers in [-1, 1], one per macro, in this fixed order:
+      [%s]
       Positive = this response fits the situation; negative = it would make things worse.
 
 w  -- 6 numbers in [-1, 1], preferences over the AXES of an action, in this fixed order:
@@ -64,8 +80,10 @@ confidence -- one number in [0, 1]. Your actual reliability here, not your enthu
 
 rationale -- one sentence. For the human audit log. It does not affect the decision.
 
-Adaptation is not free: NOOP costs 0, Deprioritize 0.3, Replace / ForbidZone / ReformTeam 1.0.
-Restraint is often correct when slack or spares absorb the disruption."""
+Adaptation is not free: %s.
+Restraint is often correct when slack or spares absorb the disruption.""" % (
+    len(MACROS), ", ".join(MACROS),
+    ", ".join("%s %.1f" % (_REG_NAME[i], _REG_COST[i]) for i in sorted(_REG_NAME)))
 
 
 def build_signature():
@@ -81,8 +99,8 @@ def build_signature():
         valid_macros = dspy.InputField(desc="which macros are legal here; entries outside this "
                                             "list will be discarded, so do not favour them")
 
-        u = dspy.OutputField(desc="5 comma-separated numbers in [-1,1], order: "
-                                  "NOOP, Replace, Deprioritize, ForbidZone, ReformTeam")
+        u = dspy.OutputField(desc="%d comma-separated numbers in [-1,1], order: %s"
+                                  % (len(MACROS), ", ".join(MACROS)))
         w = dspy.OutputField(desc="6 comma-separated numbers in [-1,1], order: a_cost, "
                                   "a_intervenes, a_soft, a_restores_capacity, a_relocates_work, "
                                   "a_spatial")

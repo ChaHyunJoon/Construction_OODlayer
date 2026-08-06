@@ -1,0 +1,5 @@
+action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent
+0,4,1004,false,151,313,-1.0000,26200.0000,2,4,0,1,false,160.08,ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)
+1,4,1004,true,291,313,19.2250,19.2250,1,0,0,0,false,19.20,ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)
+0,5,1005,false,151,313,-1.0000,26200.0000,4,4,0,3,false,160.08,ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)
+1,5,1005,true,291,313,20.0750,20.0750,1,2,0,0,false,20.05,ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)

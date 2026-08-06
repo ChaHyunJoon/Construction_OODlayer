@@ -198,8 +198,8 @@ LLM 이 낸 조합을 그대로 실행하면 안 된다. 3층:
 `README.md` §5 의 배포 게이트 G1/G2/G3 를 여기 적용
 (원 설계 `DESIGN_STEP6_7.md` 는 2026-08-02 에 README 로 통합됨):
 
-- **G1**: 기존 $\mathcal{F}$ 에서 regret 이 유의하게 나빠지지 않았는가 (짝지은 검정)
-- **G2**: 새 클러스터에서 regret 이 유의하게 좋아졌는가
+- **G1**: 기존 $\mathcal{F}$ 에서 subopt_norm 이 유의하게 나빠지지 않았는가 (짝지은 검정)
+- **G2**: 새 클러스터에서 subopt_norm 이 유의하게 좋아졌는가
 - **G3**: novelty 게이트 교정이 여전히 유효한가 (호출률이 폭주하지 않는가)
 
 하나라도 실패하면 **롤백**하고 그 행동은 후보 목록에 남긴다(삭제하지 않음).
@@ -216,9 +216,9 @@ $\mathcal{N}$ 은 여러 번 재발해야 한다(안 그러면 편입을 측정�
 
 | 지표 | 무엇을 말하는가 | 성공 형태 |
 |---|---|---|
-| 누적 regret | 전체 결정 품질 | LLM-only / surrogate-only / 규칙표 baseline 보다 낮음 |
+| 누적 subopt_norm | 전체 결정 품질 | LLM-only / surrogate-only / 규칙표 baseline 보다 낮음 |
 | **kind 별 LLM 호출률의 시간 추이** | **편입이 실제로 일어났는가** | $\mathcal{N}$ 첫 등장 후 감쇠, $\mathcal{F}$ 는 계속 0 |
-| $\mathcal{F}$ regret 추이 | 망각 여부 | 평탄 (G1) |
+| $\mathcal{F}$ subopt_norm 추이 | 망각 여부 | 평탄 (G1) |
 | time-to-assimilate | 몇 번 겪어야 넘겨받는가 | 작을수록 좋음 |
 | 총 비용 (LLM 호출 + 라벨링 시뮬) | 실제 운영비 | baseline 대비 |
 

@@ -83,8 +83,12 @@ from sklearn.model_selection import LeaveOneGroupOut
 LLM_CANDIDATES = {
     "fault":   [0, 1, 2],   # 로봇 고장: 후보 = NOOP / Replace(canonical) / distractor
     "battery": [0, 1, 2],   # 배터리 방전: 후보 = NOOP / Replace / distractor
-    "zone":    [0, 3, 1],   # 통행 금지구역: 후보 = NOOP / ForbidZone(canonical) / distractor
-    "zoneblk": [0, 3, 1],   # 금지구역(막힘): 후보 = NOOP / ForbidZone / distractor
+    # zone 계열의 canonical 은 2026-08-03 부터 7(RelocateBuild)이다 — 3(ForbidZone)은 빌드 중반에
+    # 옮길 수 있는 조립체가 없어 NOOP 과 같은 결과로 붕괴한다(md/RELOCATEBUILD_2026-08-03.md).
+    # 3 과 7 을 **둘 다** 남긴다: 아래에서 "그 덤프에 실제로 존재하는 팔"만 골라 쓰므로, 옛 덤프는
+    # 3 을, 새 덤프는 7 을 집는다. 한쪽만 적어두면 다른 쪽 덤프에서 후보가 NOOP 하나로 쪼그라든다.
+    "zone":    [0, 7, 3, 1],   # 통행 금지구역: NOOP / RelocateBuild(canonical) / ForbidZone(구) / distractor
+    "zoneblk": [0, 7, 3, 1],   # 금지구역(막힘): 위와 동일
 }
 # 배포되는 surrogate = RandomForest 설정값(트리 60개, 깊이 6, 재현성 위해 seed 고정, 전 코어 사용).
 # the DEPLOYED surrogate class -- imported, never re-declared here.  (Until 2026-07-27 this
@@ -125,6 +129,134 @@ def norm_regret(g, picked_macro, lam):
     best = max(vals.values()); worst = min(vals.values())
     span = max(best - worst, 1e-9)                     # 0으로 나누기 방지용 하한
     return (best - vals[picked_macro]) / span          # (최선 - 내가 고른 것) / 전체 폭
+
+
+# 같은 함수의 새 이름(2026-08-06). 앞으로 쓰는 코드는 이쪽을 부른다. 옛 이름은 그대로 남긴다
+# — `regret` 은 20개 파일·아티팩트 JSON 키에 박혀 있어 일괄 개명하면 옛 결과를 읽는 코드가 조용히 깨진다.
+subopt_norm = norm_regret
+
+
+# ============================================================================================
+# 초과비용(excess cost) — 2026-08-06 신설.  md/PLAN_LLM_INFERENCE_7H_2026-08-06.md §0-a
+# --------------------------------------------------------------------------------------------
+# 왜 만드는가: 위의 정규화 regret 은 (a) 단위가 없고(노드도 초도 아님), (b) 분모 span 이 사건마다
+# 달라 같은 0.100 이 사건마다 다른 물리량을 뜻하고, (c) lam 정규화 때문에 lam 을 가로질러 비교하면
+# 안 된다(README 함정 21). 튜닝 파라미터에 의존하는 값은 헤드라인이 될 수 없다.
+# 그래서 손해를 **시뮬레이터의 실제 단위**로, 그리고 비용모델의 사전식 층 그대로 쪼개서 잰다.
+#
+# 주의: "정답이 무엇인가" 는 여전히 cost_lex_key(lam) 로 정한다(하니스 전체와 같은 기준).
+#       "손해가 얼마인가" 만 물리 단위로 잰다. 그래서 d_ssp 가 음수일 수 있는데, 그것은
+#       "물리적으로는 나쁘지 않았지만 개입비용(lam) 때문에 오답으로 판정됐다"는 뜻이다(버그 아님).
+# ============================================================================================
+
+# README §4 의 유한벌점 SSP 비용. gen_oracle_mc.jl:146 / overnight_mdp.py:35 와 **같은 값이어야 한다**.
+SSP_STALL_BASE = 10000.0    # 미완주에 붙는 기본 벌점
+SSP_PER_UNCLOSED = 100.0    # 안 닫힌 노드 1개당 벌점
+SSP_MAKESPAN_W = 1e-3       # 미완주일 때 makespan 의 미세 가중치(동점 깨기용)
+
+
+# 한 행의 총 노드 수를 꺼낸다. 덤프 세대에 따라 열 이름이 total / total_nodes 로 갈린다.
+def _total_nodes(r):
+    for k in ("total", "total_nodes"):
+        v = getattr(r, k, None)
+        if v is not None and not (isinstance(v, float) and math.isnan(v)):
+            return float(v)
+    return float("nan")
+
+
+# 한 행의 SSP 비용(낮을수록 좋음). 완주면 makespan 그 자체, 미완주면 큰 벌점 + 안 닫힌 노드 수.
+def ssp_cost(r):
+    mk = float(r.makespan) if math.isfinite(float(r.makespan)) else 0.0
+    if bool(r.complete):
+        return mk
+    unclosed = _total_nodes(r) - float(r.closed)
+    if math.isnan(unclosed):
+        unclosed = 0.0    # total 열이 없는 옛 덤프: 벌점의 노드 항만 빠지고 나머지는 유효
+    return SSP_STALL_BASE + SSP_PER_UNCLOSED * unclosed + SSP_MAKESPAN_W * mk
+
+
+# 고른 팔이 오라클 최선 대비 얼마나 손해였는지를 **사전식 층별로** 돌려준다.
+#   d_feasibility : 완주할 수 있었는데 못 한 결정인가 (0/1)  <- 치명적 선택
+#   d_closed      : 잃은 노드 수                              <- 단위 = 노드
+#   d_makespan    : 잃은 시간(둘 다 완주일 때만 의미 있음)     <- 단위 = 초, 아니면 nan
+#   d_ssp         : 위 셋을 합친 스칼라(비용모델 그대로)
+def excess_cost(g, picked_macro, lam):
+    rows = {int(r.macro): r for r in g.itertuples(index=False)}
+    b = rows[oracle_best_macro(g, lam)]
+    p = rows[int(picked_macro)]
+    both_complete = bool(b.complete) and bool(p.complete)
+    return {
+        "d_feasibility": 1 if (bool(b.complete) and not bool(p.complete)) else 0,
+        "d_closed": float(b.closed) - float(p.closed),
+        # 완주 여부가 갈리면 두 makespan 은 서로 다른 의미의 양이라 빼면 안 된다(EVALUATION.md §2).
+        "d_makespan": (float(p.makespan) - float(b.makespan)) if both_complete else float("nan"),
+        "d_ssp": ssp_cost(p) - ssp_cost(b),
+        # 자원 축: SSP 물리비용은 **소모한 스페어를 보지 않는다**. 그래서 "물리적으로는 같은데
+        # 쓸데없이 개입했다" 는 오답이 d_closed=0 · d_makespan≈0 으로 보인다(실측: always-Replace
+        # 가 정확히 그 모양 — 틀렸을 때 0.0 노드 / 0.1 초). lam 은 이 축을 결정규칙에 섞어 넣어
+        # 감췄었다. 섞지 말고 **따로 센다**.
+        "d_cost": MACRO_COST[int(p.macro)] - MACRO_COST[int(b.macro)],
+    }
+
+
+# 고른 팔이 최적 행동인가. 동점(정답이 여럿)은 따로 표시한다 — 동점을 정답/오답 어느 쪽으로 세도
+# 수치가 왜곡되므로(README 함정 17) 적중률은 **동점을 뺀 분모**로 낸다.
+def optimal_action(g, picked_macro, lam):
+    keys = {int(r.macro): cost_lex_key(r.complete, r.closed, r.makespan, r.macro, lam)
+            for r in g.itertuples(index=False)}
+    top = max(keys.values())
+    winners = [m for m, k in keys.items() if k == top]
+    return {"optimal": int(picked_macro) in winners,
+            "tied": len(winners) > 1,
+            "n_best": len(winners)}
+
+
+# 여러 결정을 모아 헤드라인 세 숫자로 요약한다.
+# decisions = [(instance그룹 g, 고른 macro), ...]
+def decision_report(decisions, lam, label=""):
+    n = len(decisions)
+    if n == 0:
+        return {"n": 0}
+    oa = [optimal_action(g, m, lam) for g, m in decisions]
+    ec = [excess_cost(g, m, lam) for g, m in decisions]
+    sn = [subopt_norm(g, m, lam) for g, m in decisions]
+    decisive = [i for i in range(n) if not oa[i]["tied"]]        # 동점이 아닌 결정만
+    wrong = [i for i in decisive if not oa[i]["optimal"]]        # 그중 틀린 것
+    rep = {
+        "label": label, "n": n, "n_decisive": len(decisive),
+        "tie_rate": (n - len(decisive)) / n,
+        # 헤드라인 ①: 동점을 뺀 결정 중 최적 행동을 고른 비율
+        "optimal_action_rate": (len(decisive) - len(wrong)) / len(decisive) if decisive else float("nan"),
+        # 헤드라인 ②: 틀렸을 때 평균 몇 노드를 잃었나
+        "mean_d_closed_when_wrong": float(np.mean([ec[i]["d_closed"] for i in wrong])) if wrong else 0.0,
+        # ②-b: 노드는 그대로인데 **시간만** 잃는 오답이 있다(README 함정 22 — 구역이 makespan 을
+        #      2.1배로 늘리는데 closed 는 291 로 동일했던 사건). 노드 축만 보면 그런 오답이 통째로
+        #      "손해 0" 으로 보인다. 실측: always-Replace 가 정확히 이 모양이다.
+        "mean_d_makespan_when_wrong": float(np.nanmean([ec[i]["d_makespan"] for i in wrong]))
+                                      if wrong and not all(math.isnan(ec[i]["d_makespan"]) for i in wrong) else 0.0,
+        # 헤드라인 ③: 완주할 수 있었는데 놓친 선택의 비율
+        "infeasible_pick_rate": float(np.mean([e["d_feasibility"] for e in ec])),
+        # 헤드라인 ④: 최선 대비 **더 쓴 개입비용**(≈소모 자원). 위 셋이 물리 결과 축이라면 이건 자원 축.
+        "mean_d_cost": float(np.mean([e["d_cost"] for e in ec])),
+        "mean_d_ssp": float(np.mean([e["d_ssp"] for e in ec])),
+        # 진단용으로만 남기는 옛 지표(발표 문장에는 쓰지 않는다)
+        "subopt_norm": float(np.mean(sn)),
+        "regret": float(np.mean(sn)),   # 별칭 — 옛 아티팩트를 읽는 코드 호환용
+    }
+    return rep
+
+
+# decision_report 결과를 사람이 읽는 세 문장으로 찍는다.
+def print_decision_report(rep):
+    if rep.get("n", 0) == 0:
+        print(f"  {rep.get('label','')}: (결정 0건)")
+        return
+    print(f"  {rep['label']:22s} n={rep['n']:4d} (동점 {rep['tie_rate']*100:.0f}%) | "
+          f"적중률 {rep['optimal_action_rate']*100:5.1f}% | "
+          f"틀렸을 때 {rep['mean_d_closed_when_wrong']:5.1f} 노드 / {rep['mean_d_makespan_when_wrong']:5.1f} 초 손해 | "
+          f"완주 놓침 {rep['infeasible_pick_rate']*100:4.1f}% | "
+          f"과잉개입 {rep['mean_d_cost']:+.2f} | "
+          f"[진단 subopt_norm {rep['subopt_norm']:.3f}]")
 
 
 # paired bootstrap로 mean(a)-mean(b)의 95% 신뢰구간(CI)을 구함. a,b=쌍을 이루는 regret 리스트.

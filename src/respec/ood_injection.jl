@@ -318,6 +318,11 @@ spare_pools() = SPARE_POOLS[]
 spare_pool_centers() = SPARE_POOL_CENTERS[]
 # 두 저장소를 모두 비우기(데모/테스트 사이 초기화). `(A; B; C)` 는 차례로 실행 후 마지막 값을 반환.
 # repository(창고) 부가 상태(DEPOT_INFO/decommissioned/checked-out)도 함께 초기화 — 정의는 아래(late-bound).
+#
+# ASSET_LEDGER 는 여기서 **일부러 안 비운다**(asset_ledger.jl). 그 장부는 빌드 경계를 넘어
+# 살아남아야 하는 유일한 상태다 — 여러 판을 이어 돌리는 캠페인에서 관측하려는 대상이 바로
+# "함대가 늙어간다"는 그 이력이기 때문. 비우려면 `reset_asset_ledger!()` 를 명시적으로 부를 것.
+# (여기에 추가하지 말 것 — 추가하는 순간 캠페인의 시간축이 매 판 리셋된다.)
 clear_spare_pools!() = (empty!(SPARE_POOLS[]); empty!(SPARE_POOL_CENTERS[]);
                         empty!(DEPOT_INFO[]); empty!(DECOMMISSIONED_BODIES[]);
                         empty!(CHECKED_OUT_SPARES[]); empty!(HOT_SWAP_ASSETS[]); nothing)
@@ -504,11 +509,32 @@ depot_available(key::Symbol) = length(get(SPARE_POOLS[], key, RobotID[]))
 
 # --- hot-swap dispatch flag (identity-preserving replacement path) -------------
 # When ON, the ReplaceAgent dispatch (replan.jl) routes to the SCENE-TREE hot-swap
-# (`hot_swap_robot!`) instead of the schedule re-stamp (`replace_robot!`). OFF by
-# default so existing demos/tests keep the proven re-stamp path (A/B toggle).
-# [한국어] hot-swap 켬/끔 플래그. ON 이면 ReplaceAgent 대응이 스케줄 재각인(replace_robot!) 대신
-#          씬트리 hot-swap(hot_swap_robot!, id 유지 교체)으로 감. 기존 데모 호환 위해 기본 OFF(A/B 토글).
-const HOT_SWAP_REPLACE = Ref(false)
+# (`hot_swap_robot!`) instead of the schedule re-stamp (`replace_robot!`).
+#
+# DEFAULT FLIPPED TO ON, 2026-08-04. The two paths were compared on ONE oracle instance
+# with everything else held fixed (seed 1, fault, DS_SPARES=3, reform 120):
+#
+#     macro          re-stamp          hot-swap
+#     NOOP           176 / False       176 / False     <- control arms are IDENTICAL,
+#     Replace        264 / False       291 / TRUE         which is what makes the
+#     Deprioritize   176 / False       176 / False        Replace row attributable
+#     ForbidZone     176 / False       176 / False
+#     ReformTeam     176 / False       176 / False
+#
+# Only the arm the flag touches moved, and it moved from INCOMPLETE to COMPLETE. So every
+# fault label measured on the old default systematically UNDERSTATES Replace: it records
+# "Replace is best but nothing finishes" where the truth is "Replace finishes the build".
+#
+# Note what this is NOT: the identity checker (identity.jl) found ZERO violations on either
+# path, in both the demo and the oracle. The re-stamp path is not deleted and is not known
+# to corrupt identity -- it is simply the arm that does not complete. `LEGACY_RESTAMP=1`
+# (see `set_hot_swap!`) restores it for reproducing pre-2026-08-04 datasets.
+# [한국어] 기본값을 ON 으로 뒤집음(2026-08-04). 같은 오라클 인스턴스에서 이 플래그만 바꿔 비교한 결과,
+#   Replace 팔만 264/미완주 → 291/완주로 바뀌고 나머지 4개 팔은 완전히 동일했다(= 차이의 원인이 이
+#   플래그임을 증명하는 내부 대조군). 따라서 옛 기본값으로 만든 fault 라벨은 Replace 를 과소평가한다.
+#   주의: 정체성 검사기는 두 경로 모두 위반 0 이었다 — 재각인이 "정체성을 깬다"는 근거는 없다.
+#   단지 완주를 못 시킬 뿐이다. 옛 데이터셋 재현이 필요하면 LEGACY_RESTAMP=1 로 되돌린다.
+const HOT_SWAP_REPLACE = Ref(get(ENV, "LEGACY_RESTAMP", "0") != "1")
 # hot-swap 방식: :via_depot(창고에서 새 본체를 몰고 옴) | :in_place(그 자리에서 즉시 치유).
 const HOT_SWAP_MODE    = Ref(:via_depot)   # :via_depot (route from repository) | :in_place (heal where it stands)
 # 현재 hot-swap 이 켜져 있는지 알려주는 한 줄 술어.
@@ -830,6 +856,60 @@ function pick_solo_frontier_target(env)
 end
 
 """
+    pick_hotswap_fault_target(env; prefer_inprogress=true) -> Union{RobotID,Nothing}
+
+A safe fault target **in a HOT-SWAP world**, available at ANY build progress.
+
+Both `pick_solo_*` pickers require `_first_pending_assignment`, which only passes a robot standing at
+a CLEAN TASK BOUNDARY (a non-closed `RobotGo` whose predecessor is its `RobotStart` or an already
+CLOSED node). Once the build is rolling, robots live inside their transport chains
+(`FormTransportUnit` -> `TransportUnitGo` -> `DepositCargo`) and only pass through that boundary
+briefly, so from `closed >= 80` on tractor **no robot qualifies at all** (measured:
+`oracle/out/fire_probe.csv`). That made late-progress faults structurally un-fireable, which in turn
+collapsed the `progress` axis of every fault label to a single point.
+
+What those predicates actually protect is the **schedule re-stamp** path: handing the victim's
+assignment edge to a spare mid multi-robot carry trips
+`@assert has_edge(scene_tree, agent, robot_id)` in `apply_cmd!(::FormTransportUnit)`
+(route_planning.jl). Identity-preserving **hot swap** keeps the id and only exchanges the body, so
+there is no edge to hand over and a mid-carry breakdown is recoverable. The engine already encodes
+exactly this exception in two other places — `_hz_safe_target` (mdp/hazard.jl) and
+`_fire_battery_stall!` (navigator/battery.jl) — this function is the picker form of it.
+
+Candidate = a non-spare robot that is a member of a **non-closed** `FormTransportUnit` team, i.e. it
+still owns carry work, so the breakdown is CONSEQUENTIAL (under NOOP the whole team freezes:
+route_planning.jl immobilizes a transport unit any of whose members is in `FAULTED_ROBOTS`).
+`prefer_inprogress` prefers a team that is currently ACTIVE (mid-carry) — the most consequential and
+the case the strict pickers could never express. Lowest id for determinism; `nothing` if the build
+has no pending carry work left. Caller must ensure `hot_swap_enabled()`; without it, use
+`pick_solo_frontier_target`.
+"""
+# HOT-SWAP 세계에서만 쓰는 "아무 진행도에서나" 안전한 고장 대상 피커.
+# 후보 = 예비가 아니면서 **아직 안 닫힌 운반팀의 멤버**인 로봇(= 남은 운반 일이 있어 고장이 결과를 낳음).
+# prefer_inprogress=true 면 지금 운반 중인 팀의 멤버를 우선(가장 결과가 큰 고장).
+function pick_hotswap_fault_target(env; prefer_inprogress::Bool = true)
+    sched = env.sched
+    cands = RobotID[]; inprog = RobotID[]
+    for v in Graphs.vertices(sched)
+        v in env.cache.closed_set && continue                  # 이미 끝난 운반은 "남은 일"이 아님
+        node = get_node_from_id(sched, get_vtx_id(sched, v))
+        node isa FormTransportUnit || continue                 # 운반팀 형성 노드만 본다
+        team = try robot_team(entity(node)) catch; nothing end
+        team === nothing && continue
+        for (rid, _) in team                                   # 그 팀의 멤버 로봇들
+            rid isa RobotID || continue
+            (try is_spare(rid) || is_recovery_spare(rid) catch; false end) && continue  # 예비/복구예비 제외
+            (try haskey(FAULTED_ROBOTS[], rid) catch; false end) && continue             # 이미 고장난 로봇 제외
+            push!(cands, rid)
+            (v in env.cache.active_set) && push!(inprog, rid)   # 지금 진행 중인 팀의 멤버
+        end
+    end
+    pool = (prefer_inprogress && !isempty(inprog)) ? inprog : cands
+    isempty(pool) && return nothing
+    return sort(unique(pool), by = r -> r.id)[1]               # 재현성 위해 id 최소
+end
+
+"""
     _clear_faulted_robot!(env, faulted; graveyard=(40.0, 40.0)) -> Bool
 
 Visually REMOVE a faulted robot from the build area: teleport its body — and its RVO
@@ -880,9 +960,16 @@ function fault_robot!(env; target::Union{Nothing,RobotID} = nothing,
     # STRICT (all remaining teams solo) is tried first for backward-compat; if none qualifies (the
     # usual case once phantom spares are excluded from assignment), fall back to the correct RELAXED
     # condition (solo FRONTIER carry at a clean task boundary) so a genuine fault can still fire.
+    # `safe=true` 의 3단 사다리: strict(모든 남은 팀이 단독) → relaxed(다음 운반이 단독) →
+    # **hot-swap 폴백**. 세 번째 단은 hot_swap_enabled() 일 때만 켜진다: 앞의 두 피커는 "깨끗한 작업
+    # 경계"를 요구해 중반 이후 후보가 0 이 되는데(측정: oracle/out/fire_probe.csv), 정체성 보존
+    # hot-swap 은 운반 도중 교체도 안전하므로 그 제약이 필요 없다. 앞 단이 성공하면 그 결과를 그대로
+    # 쓰므로 기존(초반) 발화의 대상 선택은 바뀌지 않는다 — 예전엔 그냥 nothing 이던 순간만 채운다.
     faulted = target !== nothing ? target :
               safe ? (let t = pick_solo_fault_target(env)
-                          t !== nothing ? t : pick_solo_frontier_target(env)
+                          t === nothing && (t = pick_solo_frontier_target(env))
+                          t === nothing && hot_swap_enabled() && (t = pick_hotswap_fault_target(env))
+                          t
                       end) :
               _pick_active_robot(env)
     faulted === nothing && return nothing
@@ -962,6 +1049,9 @@ free) when no triggers are scheduled, so existing demos are unaffected.
 """
 # 매 시뮬레이션 스텝마다(respec_step! 직전) 호출되어, 발동 시점이 된 트리거를 실행하는 함수.
 function ood_inject_step!(env, k::Int)           # k = 현재 스텝 번호
+    # 자산 장부가 "언제" 교체됐는지 적을 수 있게 전역 스텝을 갱신(asset_ledger.jl).
+    # 아래 early return 보다 먼저 해야 한다 — 예약이 없어도 스텝은 흘러가기 때문.
+    set_sim_step!(k)
     isempty(OOD_SCHEDULE[]) && return nothing    # 예약된 트리거가 없으면 즉시 종료(평소엔 사실상 비용 0)
     for t in OOD_SCHEDULE[]                       # 각 트리거에 대해
         # 발동 조건: closed_at>0 이면 "완료 노드 수 >= closed_at"(진행도 기준), 아니면 "스텝 >= step".

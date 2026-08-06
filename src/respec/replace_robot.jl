@@ -462,9 +462,10 @@ function reform_stuck_teams!(env; min_ready::Int = 1, snap_all::Bool = false)
     for v in collect(env.cache.active_set)
         n = get_node_from_id(sched, get_vtx_id(sched, v))
         n isa RobotGo || continue
-        outs = Graphs.outneighbors(sched, v); isempty(outs) && continue
-        nxt = get_node_from_id(sched, get_vtx_id(sched, outs[1]))
-        nxt isa FormTransportUnit || continue
+        # 후행 하나만 보면 안 된다 — 활성 RobotGo 의 후행이 또 RobotGo 이고 그 다음이 팀 형성인
+        # 경우가 실제로 있다(루트 엔드게임). _form_unit_after 가 그 체인을 걸어간다(verifier.jl).
+        nxt = _form_unit_after(sched, v)
+        nxt === nothing && continue
         tu = entity(nxt)                         # 이 slot 이 형성하려는 운반유닛(TransportUnit)
         node_id(tu) in seen && continue          # one pass per transport unit
         push!(seen, node_id(tu))
@@ -528,9 +529,11 @@ function _forming_teams(env)
     for v in collect(env.cache.active_set)
         n = get_node_from_id(sched, get_vtx_id(sched, v))
         n isa RobotGo || continue
-        outs = Graphs.outneighbors(sched, v); isempty(outs) && continue
-        nxt = get_node_from_id(sched, get_vtx_id(sched, outs[1]))
-        nxt isa FormTransportUnit || continue
+        # 후행 하나만 보면 팀을 놓친다(활성 RobotGo → RobotGo → FormTransportUnit 인 루트 엔드게임).
+        # 이 함수는 recover_stalled_teams! 사다리 전체의 관문이라, 여기서 놓치면 :no_team 이 되어
+        # 복구가 한 단도 시도되지 않는다(실측: diagnose 는 "1 forming team" 인데 사다리는 :no_team).
+        nxt = _form_unit_after(sched, v)
+        nxt === nothing && continue
         tu = entity(nxt)
         node_id(tu) in seen && continue
         push!(seen, node_id(tu))
@@ -801,6 +804,13 @@ function force_advance_stuck_carrier!(env; verbose::Bool = true, tol::Float64 = 
     get(ENV, "CARRIER_RESCUE", "0") == "1" || return (status = :disabled, moved = 0)  # 환경변수로 켜야만 동작
     sched = env.sched; st = env.scene_tree; cache = env.cache
     dbg = get(ENV, "WEDGE_DEBUG", "0") == "1"
+    # CARRIER_DIAG — "순간이동시켰는데 안 닫혔다"의 **이유 한 줄만** 보고 싶을 때(2026-08-05).
+    #
+    # 왜 WEDGE_DEBUG 로는 안 되는가: 그 플래그는 render_demo.jl 에서 로그 레벨 전체를 Info 로 내린다.
+    # 그러면 LDraw 파싱의 "incorporating geometry ..." 수만 줄까지 다 찍혀 런이 비현실적으로 느려진다
+    # (실측: 그 이유로 진단 런을 중단했다). 여기서 필요한 것은 실패 지점의 딱 한 줄이므로,
+    # 별도 플래그로 켜고 **@warn 으로** 낸다 — 데모 기본 로그 레벨(Warn)을 그대로 통과한다.
+    cdiag = dbg || get(ENV, "CARRIER_DIAG", "0") == "1"
     teleported = Tuple{Int,Any,Float64}[]   # (vtx, unit, dist) of every carrier we snap to its goal (순간이동시킨 목록)
     for v in collect(cache.active_set)
         node = get_node_from_id(sched, get_vtx_id(sched, v))
@@ -879,8 +889,8 @@ function force_advance_stuck_carrier!(env; verbose::Bool = true, tol::Float64 = 
                 try has_vertex(rvo_global_id_map(), node_id(tu)) &&
                         rvo_set_agent_max_speed!(tu, get_rvo_max_speed(tu)) catch end
             end
-            dbg && @info "[carrier-rescue] $(node_id(tu)) teleported+pinned but did NOT close → " *
-                         _carrier_goal_diag(env, get_node_from_id(sched, get_vtx_id(sched, v)))
+            cdiag && @warn "[carrier-rescue] $(node_id(tu)) teleported+pinned but did NOT close → " *
+                           _carrier_goal_diag(env, get_node_from_id(sched, get_vtx_id(sched, v)))
         end
     end
     n_closed > 0 && return (status = :carrier_closed, moved = n_closed)
@@ -968,6 +978,20 @@ the reform path (a genuine endgame scheduling wedge), so nominal builds are unto
 # 막힌 slot 을 다시 frontier 로 살리고 형성시킴. 하나 풀었으면 (:unwedged), 없으면 (:no_wedge) 반환.
 function resolve_schedule_wedge!(env; verbose::Bool = true)
     sched = env.sched; G = get_graph(sched)
+    # HONEST NO-OP vs "checked and found nothing". WEDGE_EDGES is populated ONLY by
+    # `_serialize_spare_frontiers!`, i.e. only by a spare Replace. On a run that never
+    # replaced a robot (a pure zone run, say) this list is empty, so `:no_wedge` was a
+    # CONSTANT, not a diagnosis — yet it was logged next to `:no_team` as if the endgame
+    # scheduling wedge had been ruled out by inspection. Say plainly that this recovery
+    # does not apply here, so the log points at the remaining suspect (a formed carrier
+    # that never reaches its deposit) instead of looking like an exhausted search.
+    # [한] WEDGE_EDGES 는 spare Replace 때만 채워진다. Replace 가 없던 런에서는 비어 있어
+    #      :no_wedge 가 "검사했지만 없음"이 아니라 **상수**였다. 그 둘을 구분해 보고한다.
+    if isempty(WEDGE_EDGES[])
+        verbose && @info "[RESPEC] schedule-wedge recovery does not apply: no serialization gates were " *
+                         "ever recorded (this run performed no spare Replace)."
+        return (status = :not_applicable, removed = 0, moved = 0)
+    end
     # candidate gates: recorded edges still present whose gating DEPOSIT has not closed.
     # 후보 게이트: 아직 그래프에 남아 있고, 그 gating DEPOSIT 이 아직 안 닫힌 기록된 엣지들.
     open_gates = Tuple{Int,Int}[]
@@ -1373,6 +1397,46 @@ function _reset_robot_health!(env, rid::AbstractID)
 end
 
 """
+    swap_battery!(env, role; verbose=true) -> NamedTuple
+
+Enact `SwapBattery` (spec_dsl.jl): restore `role`'s charge IN THE FIELD, keeping the same
+physical body. Status:
+- `:battery_swapped` — done. `soc_before` echoed so the caller can log how flat it was.
+- `:no_robot`        — `role` has no scene node.
+
+Deliberately does NOT call `pop_spare!`: a battery is unmetered (cost only), while a depot
+BODY is the scarce resource `ReplaceAgent` spends. Keeping the two accounts separate is what
+makes choosing between them a real decision rather than a renaming — see `SwapBattery`.
+
+No schedule mutation, no scene-tree surgery, no re-homing: the body never moves and never
+changes, so `role`'s intact task chain simply resumes. This is the least invasive recovery
+in the vocabulary, and structurally cannot produce an identity violation.
+"""
+# SwapBattery 실행: 현장에서 충전 상태만 복구(같은 본체 유지).
+#   일부러 pop_spare! 를 안 부른다 — 배터리는 무제한(비용만)이고, 창고 "본체"는 ReplaceAgent 가 쓰는
+#   희소자원이다. 두 장부를 분리해야 둘 중 고르는 게 진짜 결정이 된다(이름만 바꾸는 게 아니라).
+#   스케줄·씬트리·위치 전부 안 건드리므로 정체성 위반이 원리적으로 불가능하다.
+function swap_battery!(env, role::AbstractID; verbose::Bool = true)
+    has_vertex(env.scene_tree, role) ||
+        return (status = :no_robot, detail = "no scene node for $(role)")
+    soc_before = try                                   # 갈기 전 SoC(배터리 레이어가 없을 수도 있어 방어적으로)
+        fleet = BATTERY_FLEET[]
+        fleet === nothing ? nothing : get(fleet.soc, role, nothing)
+    catch
+        nothing
+    end
+    pos = get(FAULTED_ROBOTS[], role, _robot_scene_pos2d(env, role))  # 교체가 일어난 위치(기록용)
+    _reset_robot_health!(env, role)                    # SoC 완충 + stall/deplete/fault 게이트 해제
+    # 자산은 그대로 — 장부에는 "정비 사건"으로만 남고 세대는 안 오른다(asset_ledger.jl).
+    record_asset_swap!(role, asset_of(role); event = :battery_swap, cause = :battery,
+                       step = _current_sim_step(), soc = soc_before, position = pos)
+    verbose && @info "[BATTERY] role $(role): battery swapped in the field " *
+                     "(soc $(soc_before === nothing ? "?" : round(soc_before, digits=3)) -> 1.0; " *
+                     "no depot body consumed; gen=$(asset_generation(role)))."
+    return (status = :battery_swapped, role = role, soc_before = soc_before)
+end
+
+"""
     hot_swap_robot!(env, faulted; mode=:via_depot, verbose=true) -> NamedTuple
 
 Identity-preserving scene-tree replacement of a faulted/degraded robot from the spare
@@ -1419,6 +1483,16 @@ function hot_swap_robot!(env, faulted::AbstractID;
     cause = failed_soc isa Real && failed_soc <= threshold ? :battery : :fault
     HOT_SWAP_ASSETS[][faulted] = (spare=spare, failed_soc=failed_soc,
                                   position=Vector{Float64}(pos), cause=cause)
+    # TWO-LEVEL IDENTITY (asset_ledger.jl): the ROLE `faulted` is unchanged; what changed is
+    # the physical asset behind it. Recorded append-only so a role swapped twice keeps BOTH
+    # rows -- `HOT_SWAP_ASSETS` above is a dict ASSIGNMENT and silently loses the first one,
+    # which is fatal once builds are chained into a campaign and fleet ageing is the quantity
+    # of interest. `swap_event_kind` is the single place the physical taxonomy lives.
+    # [한국어] 역할(faulted)은 그대로고 그 뒤의 물리 자산이 바뀐 것 — 이력을 append-only 로 남긴다.
+    #   위 HOT_SWAP_ASSETS 는 딕셔너리 대입이라 두 번째 교체 때 첫 기록이 사라진다(캠페인에서 치명적).
+    swap_event = swap_event_kind(cause = cause, captured = captured)
+    record_asset_swap!(faulted, spare; event = swap_event, cause = cause,
+                       step = _current_sim_step(), soc = failed_soc, position = pos)
 
     if use_mode == :via_depot
         _rehome_robot!(env, faulted, dispatch_pt)   # the stable-id robot emerges from the repository (안정 id 로봇이 창고서 등장)
@@ -1430,8 +1504,11 @@ function hot_swap_robot!(env, faulted::AbstractID;
     end
     _reset_robot_health!(env, faulted)              # 배터리·고장 상태 리셋(건강 회복)
 
-    verbose && @info "[HOTSWAP] robot $(faulted) hot-swapped via :$(key) depot " *
-                     "(spare body $(spare) retired; mode=$(use_mode); captured=$(captured))."
+    # 로그에 "무슨 사건이었나(event)"와 "그 자리의 본체 세대(gen)"를 함께 남긴다 — 이 둘이 없으면
+    # 로그만 보고 배터리 교체와 본체 교체를 구분할 수 없다(둘 다 예전엔 그냥 "hot-swapped"였다).
+    verbose && @info "[HOTSWAP] role $(faulted): $(swap_event) via :$(key) depot " *
+                     "(asset -> $(spare); gen=$(asset_generation(faulted)); " *
+                     "mode=$(use_mode); captured=$(captured))."
     return (status = :swapped, faulted = faulted, depot = key, spare = spare,
             mode = use_mode, captured = captured)
 end

@@ -366,6 +366,136 @@ function zone_clears_root_goals(center, r, env; margin::Float64 = default_robot_
     all(g -> norm(c .- g) >= r + margin, root_deposit_goals(env))  # 모든 root 목표점이 (r+margin) 밖에 있으면 true
 end
 
+# =============================================================================
+#  SEVERITY-GRADED CORE ZONE  (RelocateBuild 시대의 생성 가드, 2026-08-03)
+# -----------------------------------------------------------------------------
+#  WHY THESE EXIST. `zone_clears_root_goals` is a BINARY gate that forbids the entire
+#  interesting family: a zone that covers root deposit goals. It had to, because the only
+#  spatial repair used to be `restage_all_blocked!`, which cannot move the root — so such
+#  a zone was unrecoverable and every injected one just killed the build.
+#
+#  `translate_whole_build!` (RelocateBuild) removes that constraint: it moves the ROOT too.
+#  So "covers root goals" is no longer the same thing as "unrecoverable", and the gate can
+#  become a CONTINUOUS severity knob:
+#
+#      severity = what FRACTION of the root's delivery goals the zone swallows   (harm)
+#      gate     = does a rigid whole-build translation clearing it still exist?  (recoverable)
+#
+#  This is what gives the zone family a HARM axis at all. Measured 2026-08-03: with the old
+#  non-root zones, NOOP closed exactly the same node count at every severity (seed 301:
+#  213/313 at offset 0.0, 0.9 and 1.3) — doing nothing was never punished, so the class only
+#  ever measured "was intervening worth it", never "must we react".
+# =============================================================================
+
+"""
+    root_goal_coverage(center, r, env; margin) -> (covered, total, frac)
+
+How many of the ROOT assembly's delivery goals a zone of radius `r` at `center` swallows.
+These are the goals no per-assembly restage can rescue (`root_deposit_goals`), so this
+fraction IS the harm severity of a core zone: at `frac≈1` a do-nothing run cannot finish
+the final assembly at all, because TangentBug parks a carrier at the zone rim forever
+(route_planning.jl:673) instead of entering to deposit.
+
+`margin` defaults to **0** — the STRICT test, deliberately the same one
+`_count_future_goals_in_zone` uses: a goal counts as swallowed exactly when it lies inside the
+BARE zone radius, which is the radius at which TangentBug parks a robot at the rim forever.
+Do not default it to a robot radius: `core_zone_for_severity` sizes the radius FROM these same
+distances, so a nonzero margin here would be applied twice and every rung of the severity
+ladder would report full coverage (observed 2026-08-03: 8/8 at every requested fraction).
+"""
+# 구역이 root(최종 조립물)의 하역 목표를 몇 개나 삼키는가. 이 비율이 곧 core zone 의 harm 심각도다
+# (조립체별 재적치로는 절대 못 구하는 목표들이라, 가만히 두면 그만큼 완주가 불가능해진다).
+# margin 기본값 0 = 엄격 판정(_count_future_goals_in_zone 과 같은 규칙: 맨 반지름 안이면 도달 불가).
+#   여기에 로봇 반지름을 기본으로 넣으면 안 된다 — core_zone_for_severity 가 **같은 거리들**로 반지름을
+#   정하므로 여유가 두 번 적용돼 사다리 모든 칸이 100% 커버로 붕괴한다(2026-08-03 실측).
+function root_goal_coverage(center, r, env; margin::Float64 = 0.0)
+    c = Vector{Float64}(center)[1:2]
+    gs = root_deposit_goals(env)
+    total = length(gs)
+    total == 0 && return (covered = 0, total = 0, frac = 0.0)
+    covered = count(g -> norm(c .- g) < r + margin, gs)
+    return (covered = covered, total = total, frac = covered / total)
+end
+
+"""
+    zone_relocatable(center, r, env; margin, n_angles) -> Bool
+
+True iff a WHOLE-BUILD rigid translation clearing a HYPOTHETICAL zone of radius `r` at
+`center` exists — i.e. `RelocateBuild` could recover from it. This is the generation gate
+that replaces `zone_clears_root_goals` for core zones: it permits any amount of root-goal
+coverage, and forbids only the genuinely unrecoverable (a zone so large that no rigid shift
+puts every remaining work disc outside it).
+
+The zone is NOT registered in `RESTRICTION_ZONES` — this asks a question about geometry that
+does not exist yet, which is exactly what a generator needs before committing to an injection.
+Uses the same solver the enactment will use (`_minimum_clear_translation` over
+`_future_work_discs`), so an admitted zone is recoverable BY CONSTRUCTION rather than by hope.
+"""
+# 아직 만들지도 않은 가상의 구역에 대해 "빌드 전체를 옮겨서 벗어날 수 있는가"를 묻는다.
+# 실제 실행부(translate_whole_build!)와 **같은 솔버**로 판정하므로, 통과한 구역은 원리적으로 복구 가능하다.
+# core zone 생성 가드: root 목표를 얼마나 덮든 허용하되, 어떤 강체이동으로도 못 벗어나는 것만 막는다.
+function zone_relocatable(center, r, env;
+        margin::Float64 = 1e-4, n_angles::Int = 96)
+    ball = LazySets.Ball2(Vector{Float64}(center)[1:2], Float64(r))
+    Δ = _minimum_clear_translation(_future_work_discs(env), [ball];
+                                   margin = margin, n_angles = n_angles)
+    return Δ !== nothing
+end
+
+"""
+    core_zone_for_severity(env, frac; margin, root) -> NamedTuple
+
+Pick a CORE zone whose root-goal coverage is as close as possible to `frac` from BELOW,
+subject to remaining `zone_relocatable`. Returns
+`(center, radius, covered, total, frac, relocatable)`; `relocatable=false` means even the
+smallest single-goal zone cannot be escaped by a rigid shift, so the caller must not inject.
+
+Construction: centre on the centroid of `root_deposit_goals`, then choose the radius just
+BEYOND the k-th smallest goal distance, where `k = ceil(frac * N)`. Radius is therefore a
+DISCRETE, physically-meaningful ladder — "this zone swallows k of the N final-assembly
+delivery points" — instead of an arbitrary length, and `covered == k` by construction.
+If that radius is not relocatable, k is walked down until it is (the returned `frac` is the
+ACTUAL coverage, never the requested one).
+
+`pad` is extra radius ON TOP of the k-th distance and defaults to a hair (1e-3), NOT a robot
+radius: the goal-inside test is strict (`root_goal_coverage` margin 0), and padding by a robot
+radius would push the next goals inside too and flatten the ladder.
+
+TIES ARE REAL, NOT A DEFECT. Symmetric models put goals at equal radii, and one circle cannot
+separate two goals the same distance out — so `covered` is "everything at or inside the k-th
+distance", which can exceed k. On the tractor twin the 8 root goals sit at distances
+[0.08, 0.16, 0.16, 0.179, 0.179, 0.24, 0.32, 0.32], so the ladder has FOUR distinct rungs
+(1, 3, 5, 8 goals), not eight. Callers should treat the returned `frac` as authoritative and
+never assume it equals the requested one.
+"""
+# 요청한 심각도 frac 에 가장 가까우면서 **아래쪽으로** 안전한 core zone 을 고른다.
+#   중심 = root 하역 목표들의 무게중심, 반지름 = k번째로 가까운 목표 **바로 바깥**,  k=ceil(frac*N).
+#   즉 반지름이 "N개 중 정확히 k개를 삼킨다"는 물리적 사다리가 된다(임의의 길이가 아니라).
+#   그 반지름이 복구 불가면 k 를 하나씩 줄여 복구 가능한 최대치를 쓴다. 반환하는 frac 은 **실제** 값이다.
+#   pad 를 로봇 반지름으로 키우면 다음 목표들까지 안으로 들어와 사다리가 평평해진다 → 기본은 1e-3.
+function core_zone_for_severity(env, frac::Real;
+        pad::Float64 = 1e-3,
+        root = isempty(env.staging_circles) ? nothing :
+               argmax(k -> Float64(get_radius(env.staging_circles[k])), collect(keys(env.staging_circles))))
+    gs = root_deposit_goals(env; root = root)
+    isempty(gs) && return (center = Float64[0.0, 0.0], radius = 0.0, covered = 0,
+                           total = 0, frac = 0.0, relocatable = false)
+    c = sum(gs) ./ length(gs)                                  # 목표들의 무게중심
+    d = sort([norm(c .- g) for g in gs])                       # 중심에서 각 목표까지의 거리(오름차순)
+    N = length(d)
+    k = clamp(ceil(Int, clamp(Float64(frac), 0.0, 1.0) * N), 1, N)
+    while k >= 1
+        r = d[k] + pad                                         # k 번째 목표를 막 품는 반지름
+        if zone_relocatable(c, r, env)                         # 실행부와 같은 솔버로 복구 가능성 확인
+            cov = root_goal_coverage(c, r, env)                # 엄격 판정(margin 0) → covered == k
+            return (center = c, radius = r, covered = cov.covered, total = cov.total,
+                    frac = cov.frac, relocatable = true)
+        end
+        k -= 1                                                 # 못 벗어나면 한 단계 약하게
+    end
+    return (center = c, radius = 0.0, covered = 0, total = N, frac = 0.0, relocatable = false)
+end
+
 """
     restage_all_blocked!(env; zone_keys, resume=true, verbose=true) -> NamedTuple
 
@@ -649,7 +779,13 @@ function translate_whole_build!(env;
     _apply_uniform_translation!(env, Δ)                                   # 실제로 빌드 전체를 Δ 만큼 옮김
     resume && reset_cache_resume!(env.cache, env.sched)                   # 요청 시 캐시 재빌드 후 재개
     residual = _count_future_goals_in_zone(env; zone_keys = zone_keys)    # 옮기고도 구역 안에 남은 목표 수
-    status = residual > 0 ? :residual_blocked : :translated               # 남았으면 :residual_blocked, 깨끗하면 :translated
+    # Δ=0 은 "옮겼다"가 아니라 "옮길 필요가 없었다"(이미 모든 미완 목표가 구역 밖). 예전에는 이 경우도
+    # :translated 로 보고해서 모니터 패널이 distance=0.0 인 이동을 "ADMITTED · whole-build translated"
+    # 초록 체크로 보여줬다 — 아무 일도 안 했는데 적응한 것처럼 읽힌다. 실측(2026-08-05): 존이 두 번
+    # 들어온 런에서 두 번째 RelocateBuild 가 정확히 이 경우였다. 상태를 분리하되, 호출자에게는
+    # 둘 다 "성공"으로 취급되게 한다(둘 다 구역이 실제로 비어 있는 상태이므로).
+    status = residual > 0 ? :residual_blocked :
+             norm(Δ) <= 1e-9 ? :already_clear : :translated
     verbose && @info "[WHOLE-BUILD] translated Δ=$(round.(Δ; digits=3)) |Δ|=$(round(norm(Δ); digits=2)) " *
                      "footprint(R=$(round(fR; digits=2))); residual=$residual -> $status"
     return (status = status, delta = Δ, footprint_radius = fR,

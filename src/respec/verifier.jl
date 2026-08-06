@@ -123,6 +123,57 @@ function verify(proposal::RespecProposal, env, invariant::InvariantSpec;
 end
 
 """
+    ZONE_DOMAIN_GATE[] :: Bool   ·   set_zone_domain_gate!(on)
+
+VISIBILITY gate for `ForbidZone` (default **off**).
+
+`ForbidZone` enacts `restage_all_blocked!`, which can only move assemblies that are non-root
+AND not yet started (`zone_blocked_assemblies`). When that set is empty the enactment returns
+`:none` and the run is BYTE-IDENTICAL to `NOOP`. That is the degeneracy that made every
+mid-build zone decision a tie (measured: zoneblk 36/36 tied) — a wrong choice was invisible
+because it looked exactly like restraint.
+
+When ON, a `ForbidZone` naming a zone with an empty relocatable domain is REJECTED
+(`:empty_domain`) instead of silently no-opping, so "the policy picked an arm that could not
+act" becomes a distinguishable outcome in the logs and the labels.
+
+**Off by default on purpose**, for the same reason as [`RELOCATE_GATE`](@ref): existing
+oracle dumps were generated with the silent-no-op semantics, and flipping this globally would
+retroactively change what the `ForbidZone` arm means (`:noop` -> `:rejected` + fallback) and
+corrupt those labels. Turn it on for NEW label generation and for the decision-quality
+measurement; leave it off to reproduce old dumps. `ZONE_DOMAIN_GATE=1` in the environment
+turns it on for a whole process.
+
+The DIAGNOSTIC is unconditional: the domain size is logged and reported on every zone
+verification regardless of the gate, so the degeneracy is observable without changing behaviour.
+"""
+# ForbidZone 의 "조용한 no-op" 을 눈에 보이게 만드는 게이트(기본 꺼짐). 도메인(=옮길 수 있는 조립체 집합)이
+# 비면 실행부가 :none 을 돌려주고 결과가 NOOP 과 바이트 동일해진다 → 오답이 절제와 구별되지 않는다.
+# 켜면 그 경우를 :empty_domain 으로 명시 거절한다. 기본 꺼짐인 이유는 RELOCATE_GATE 와 같다 —
+# 기존 오라클 덤프가 옛 의미(조용한 no-op)로 생성됐으므로 전역으로 켜면 라벨이 오염된다.
+# 진단 로그는 게이트와 무관하게 항상 남는다(동작 변화 없이 관측만 가능).
+const ZONE_DOMAIN_GATE = Ref(get(ENV, "ZONE_DOMAIN_GATE", "0") == "1")
+set_zone_domain_gate!(on::Bool) = (ZONE_DOMAIN_GATE[] = on; nothing)
+
+"""
+    zone_domain_size(env, zone::Symbol) -> Int
+
+How many assemblies a `ForbidZone` on `zone` could actually relocate right now — the size of
+`zone_blocked_assemblies` restricted to that one zone key. `0` means the arm is a no-op.
+Returns `-1` if the geometry query throws (unknown zone, no staging circles), so a caller can
+tell "genuinely empty" from "could not be computed".
+"""
+# 지금 이 순간 ForbidZone 이 실제로 옮길 수 있는 조립체 수(0 이면 그 팔은 no-op). 기하 질의가 실패하면 -1.
+function zone_domain_size(env, zone::Symbol)
+    try
+        return length(zone_blocked_assemblies(env; zone_keys = [zone]))
+    catch e
+        @warn "[VERIFY] zone_domain_size failed for :$(zone)" exception = e
+        return -1
+    end
+end
+
+"""
     verify_zone(proposal, env) -> Verdict
 
 The verify gate for a SPATIAL `ForbidZone` proposal, which bypasses the generic MILP
@@ -133,6 +184,10 @@ The verify gate for a SPATIAL `ForbidZone` proposal, which bypasses the generic 
   (2) ZONE-EXISTS — every `ForbidZone.zone` Symbol is a key actually present in
       `RESTRICTION_ZONES`. The LLM names a zone; the live GEOMETRY is authoritative, so a
       proposal that invents a zone the world doesn't have is rejected (never trust the LLM).
+  (3) DOMAIN (diagnostic always, rejecting only under [`ZONE_DOMAIN_GATE`](@ref)) — how many
+      assemblies this zone could actually relocate (`zone_domain_size`). `0` means the arm is a
+      silent no-op; with the gate on that is `Reject(:empty_domain)` rather than an admit that
+      quietly does nothing.
 Feasibility-of-recovery is NOT decided here: the dispatch (`restage_all_blocked!` →
 `translate_whole_build!`) reports `:infeasible`/`:residual_blocked` and the caller engages
 the safe fallback, so an admissible-but-unrecoverable zone still fails closed.
@@ -148,8 +203,137 @@ function verify_zone(proposal::RespecProposal, env)
         if cs isa ForbidZone                             # ForbidZone 이면
             haskey(RESTRICTION_ZONES[], cs.zone) ||      # 이름댄 구역이 실제 지오메트리에 없으면 거절(LLM 을 믿지 않음)
                 return Reject(:no_such_zone, "ForbidZone names zone :$(cs.zone) absent from RESTRICTION_ZONES")
+            # (3) 도메인 진단: 지금 이 팔이 실제로 옮길 수 있는 조립체가 몇 개인가. 0 이면 실행부가
+            #     :none 을 돌려주고 결과가 NOOP 과 바이트 동일해진다(= 오답이 절제처럼 보인다).
+            #     로그는 게이트와 무관하게 항상 남기고, 거절은 ZONE_DOMAIN_GATE 가 켜졌을 때만 한다
+            #     (기본 꺼짐 — 옛 덤프의 라벨 의미를 소급해서 바꾸지 않기 위해. 위 게이트 주석 참조).
+            local n_dom = zone_domain_size(env, cs.zone)
+            if n_dom == 0
+                @info "[VERIFY] ForbidZone :$(cs.zone) has an EMPTY relocatable domain " *
+                      "-> enactment will be a silent no-op (byte-identical to NOOP)" *
+                      (ZONE_DOMAIN_GATE[] ? " -> REJECTED (ZONE_DOMAIN_GATE on)" :
+                                            " -> admitted anyway (ZONE_DOMAIN_GATE off)")
+                ZONE_DOMAIN_GATE[] &&
+                    return Reject(:empty_domain,
+                        "ForbidZone for zone :$(cs.zone) can relocate 0 assemblies " *
+                        "(none are both non-root and not-yet-started) — the arm cannot act; " *
+                        "a whole-build RelocateBuild is the only spatial lever left, and it is " *
+                        "worth its cost only if the zone swallows root deposit goals")
+            else
+                # 지목한 조립체가 실제 막힌 집합에 없어도 거절하지 않는다 — restage_all_blocked! 는
+                # spec 이 지목한 하나가 아니라 기하로 탐지한 집합 전체를 옮기므로 그래도 동작한다.
+                # 다만 grounding 오류는 기록해 둔다(LLM 품질 신호).
+                @debug "[VERIFY] ForbidZone :$(cs.zone) domain = $(n_dom) relocatable assemblies"
+            end
         end
     end
+    return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
+end
+
+"""
+    RELOCATE_GATE[] :: Bool   ·   set_relocate_gate!(on)
+
+PROPORTIONALITY gate for `RelocateBuild` (default **off**).
+
+A whole-build rigid translation is global and irreversible: it moves every future goal and
+staging circle at once, while carriers are mid-transit. Measured on the tractor twin
+(2026-08-05, same seed, same zones, MACRO CROSSED — `tools/monitor/streams/tractor__zoneA2_forbid`
+vs `…__zoneB_relocate` / `…__zoneBp_forced_relocate`):
+
+| enacted macro | closed | assemblies done |
+|---|---|---|
+| ForbidZone (domain empty ⇒ effectively no-op) | **231** | **7/8** |
+| RelocateBuild (Δ = 3.22 m) | **136** | **1/8** |
+
+The two RelocateBuild runs differ only in WHICH POLICY emitted it (LLM vs a forced rule) and
+came out byte-identical (same Δ to 15 digits), so the loss is the macro's, not the policy's.
+
+When ON, a `RelocateBuild` is admitted only if the named zone actually swallows ROOT deposit
+goals — the goals no per-assembly restage can rescue (`root_goal_coverage`). A zone that only
+clips a sub-assembly's staging area is repairable locally (or absorbed by the motion stack),
+so paying a global move for it is disproportionate and the gate rejects it. Rejection is a
+NO-OP for the geometry: `engage_fallback!` only raises `RESPEC_HOLD` unless the opt-in
+`set_failclosed_stop!(true)` is on, so the build keeps running.
+
+**Off by default on purpose.** The oracle/dataset path (`gen_oracle_dataset.jl`, arms `[0,7]`)
+MEASURES the RelocateBuild arm on exactly these non-core zones and found it ~2x better than
+NOOP in that setting (`md/RELOCATEBUILD_2026-08-03.md`). Turning the gate on globally would
+silently convert that arm into a rejected no-op and corrupt the labels. The live demo turns it
+on explicitly (`tools/monitor/render_demo.jl`), which is also where the harm above was measured.
+`RELOCATE_GATE=1` in the environment turns it on for a whole process.
+"""
+const RELOCATE_GATE = Ref(get(ENV, "RELOCATE_GATE", "0") == "1")
+set_relocate_gate!(on::Bool) = (RELOCATE_GATE[] = on; nothing)
+
+"""
+    verify_relocate(proposal, env) -> Verdict
+
+The verify gate for a `RelocateBuild` proposal (whole-build rigid translation clear of a
+no-go zone), which bypasses the generic MILP `verify` exactly as `verify_zone` does — a
+uniform shift of every `start_config` is geometry, not a scheduling constraint. Cheap,
+authoritative checks before any mutation:
+  (1) STATIC — no constraint references an already-closed node. `RelocateBuild` names no
+      node at all (`referenced_ids` is empty), so this only bites on a MIXED proposal.
+  (2) ZONE-EXISTS — the named `zone` Symbol is a live key of `RESTRICTION_ZONES`. The LLM
+      names a zone; the GEOMETRY is authoritative (never trust the LLM's key).
+  (3) MOVABLE — `env.staging_circles` is non-empty. With no staging circles on record
+      `translate_whole_build!` has nothing to shift (`:no_staging`), so admitting would
+      guarantee a wasted mutation-free fallback.
+Recovery feasibility is deliberately NOT decided here: `translate_whole_build!` reports
+`:residual_blocked` / `:infeasible` and the caller engages the safe fallback, so an
+admissible-but-unrecoverable relocation still fails closed. Same division of labour as
+`verify_zone` — the gate is cheap and static, feasibility is the enactment's answer.
+"""
+# RelocateBuild(빌드 전체 평행이동) 전용 게이트. MILP 대신 기하로 처리하므로 verify_zone 과 같은 구조의 싼 검사만
+# 한다: (1) 과거 노드 참조 금지(RelocateBuild 자체는 노드를 안 지목하므로 혼합 제안에서만 작동),
+# (2) 이름댄 구역이 RESTRICTION_ZONES 에 실제로 존재, (3) 옮길 적치원이 하나라도 있음.
+# 복구가 실제로 성공하는지는 여기서 판단하지 않는다 — translate_whole_build! 가 :residual_blocked/:infeasible
+# 을 돌려주면 호출자가 안전 폴백을 건다(= 허용됐지만 복구 불가한 경우도 결국 닫히는 쪽으로 실패).
+function verify_relocate(proposal::RespecProposal, env)
+    invariant = build_invariant(env)                     # 현재 얼린 과거(완료 노드 등)
+    for cs in proposal.constraints                       # 제안의 각 제약에 대해
+        for id in referenced_ids(cs)                     # 그 제약이 건드리는 노드 ID 들
+            id in invariant.closed_nodes &&              # 이미 끝난 노드를 참조하면 거절
+                return Reject(:touches_closed, "relocate spec references closed node $(id)")
+        end
+        if cs isa RelocateBuild                          # RelocateBuild 이면
+            haskey(RESTRICTION_ZONES[], cs.zone) ||      # 이름댄 구역이 실제 지오메트리에 없으면 거절
+                return Reject(:no_such_zone, "RelocateBuild names zone :$(cs.zone) absent from RESTRICTION_ZONES")
+            # (4) 비례성(opt-in, RELOCATE_GATE 주석 참조): 전역 이동은 **국소 복구로 못 구하는 것**이
+            #     실제로 위협받을 때만 값을 한다. 그 판정은 기하로 한다.
+            #     2026-08-05: 그 "국소로 못 구하는 것"은 root 하역 목표만이 아니다 — 형성 중인 운반팀의
+            #     집결지/운반 슬롯이 구역에 잠기면 그 팀도 제자리에서는 절대 못 모인다(그 경우 snap 은
+            #     recover_stalled_teams! 이 거부하므로 남는 수복은 공간 이동뿐이다). 그래서 두 술어를
+            #     **같은 계산기**(zone_diagnosis)에서 읽는다 — 게이트와 라벨이 서로 다른 기하를 보면
+            #     "규칙은 옮기라는데 게이트가 막는" 조용한 불일치가 난다.
+            #
+            #     2026-08-05(막힘 술어 배선): 여기에 **세 번째 술어**를 더한다 — `n_nav_blocked`.
+            #     위 두 개는 전부 COVERAGE(무엇을 덮었나)이고, 그것만 보는 게이트는 zone_corridor.jl 이
+            #     규명한 케이스를 구조적으로 못 본다: root 를 하나도 안 덮고(root_covered=0) 형성 중인
+            #     팀도 없는데(n_teams_covered=0) **RVO 로 움직이는 주체의 목표를 실제로 막는** 구역이다.
+            #     그 구역에서 유일한 수복이 RelocateBuild 인데 옛 조건은 그걸 :disproportionate 로
+            #     거절했다 = 고칠 수 있는 사건을 게이트가 죽인다. 조건에 ∧ 을 하나 더 붙이는 것이므로
+            #     방향은 **좁아지는 쪽**(과잉 거절만 줄어듦)이고 기존 admit 경로는 그대로다.
+            #     (blockage 계산이 실패하면 -1 이라 이 항은 거짓 → 거절 안 함 = fail-open.)
+            if RELOCATE_GATE[]
+                local zd = try
+                    zone_diagnosis(env, cs.zone; check_restage = false)   # 비싼 스캔은 여기서 불필요
+                catch e
+                    @warn "[VERIFY] zone_diagnosis failed -> proportionality gate skipped" exception = e
+                    nothing
+                end
+                (zd !== nothing && zd.root_covered == 0 && zd.n_teams_covered == 0 &&
+                 zd.n_nav_blocked == 0) &&
+                    return Reject(:disproportionate,
+                        "RelocateBuild for zone :$(cs.zone) swallows 0/$(zd.root_total) root deposit goals, " *
+                        "traps 0/$(zd.n_teams_forming) forming team(s) and blocks 0/$(zd.n_nav_goals) " *
+                        "navigable goals — nothing un-relocatable is threatened, so a whole-build move " *
+                        "costs more than it saves")
+            end
+        end
+    end
+    isempty(env.staging_circles) &&                      # 옮길 대상 자체가 없으면 거절(translate 는 :no_staging 반환)
+        return Reject(:no_staging, "RelocateBuild but env.staging_circles is empty — nothing to translate")
     return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
 end
 
@@ -193,7 +377,41 @@ referenced_ids(cs::ForbidAgent)  = (cs.agent,)   # 로봇금지 제약은 그 �
 referenced_ids(cs::ForbidZone)   = (cs.assembly,)  # 구역 제약은 (grounding 한) 그 막힌 조립체 하나를 건드림
 referenced_ids(cs::ReplaceAgent) = (cs.agent,)   # 교체 제약은 고장난 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::ReformTeam)   = ()            # 팀 재정립은 특정 노드를 안 지목(기하가 막힌 팀을 찾음)
+referenced_ids(cs::RelocateBuild) = ()           # 빌드 전체 평행이동은 특정 노드를 안 지목(구역 키만 지목)
 referenced_ids(cs::DeprioritizeAgent) = (cs.agent,)  # 소프트 회피 제약은 그 로봇(agent) 하나를 건드림
+referenced_ids(cs::SwapBattery)  = (cs.agent,)   # 배터리 교체는 그 로봇(agent) 하나를 건드림
+
+"""
+    verify_swap_battery(proposal, env) -> Verdict
+
+Gate for a `SwapBattery` proposal. Cheaper than [`verify_replace`](@ref) because a battery
+swap consumes NO scarce resource: there is no spare-exists check to make. Two checks:
+  (1) STATIC — the named agent is not an already-closed node ("the past is invariant").
+  (2) GROUNDING — the agent exists as a physical robot in the scene. Never trust the LLM's id.
+
+Note what is deliberately NOT checked: whether the robot is actually low on charge. Swapping
+a healthy robot's battery is WASTEFUL, not UNSAFE — it costs time and changes nothing else.
+Waste belongs in the objective (via the macro cost), not in a safety gate; rejecting it here
+would hide the decision the surrogate is supposed to learn to make.
+"""
+# SwapBattery 전용 게이트. 희소자원을 안 쓰므로 verify_replace 보다 검사가 적다(spare 존재 검사 없음).
+#   (1) 과거(닫힌) 노드 참조 금지  (2) 그 로봇이 실제로 씬에 존재하는지(LLM id 맹신 금지).
+# 일부러 안 보는 것: "정말 방전됐는가". 멀쩡한 로봇의 배터리를 가는 건 낭비지 위험이 아니다 —
+#   낭비는 목적함수(매크로 비용)에서 다뤄야 하고, 여기서 거부하면 surrogate 가 배워야 할 결정을 숨기게 된다.
+function verify_swap_battery(proposal::RespecProposal, env)
+    invariant = build_invariant(env)                     # 현재 얼린 과거
+    for cs in proposal.constraints
+        for id in referenced_ids(cs)
+            id in invariant.closed_nodes &&
+                return Reject(:touches_closed, "swap-battery spec references closed node $(id)")
+        end
+        if cs isa SwapBattery
+            has_vertex(env.scene_tree, cs.agent) ||      # 씬에 없는 로봇 = grounding 실패
+                return Reject(:no_such_agent, "SwapBattery($(cs.agent)) but no such robot in the scene")
+        end
+    end
+    return Admit(proposal, length(proposal.constraints))
+end
 
 """
     verify_deprioritize(proposal, env) -> Verdict
@@ -238,6 +456,51 @@ Otherwise there is nothing to reform → Reject (caller engages the safe fallbac
 the LLM cannot trigger a spurious snap. The actual snap is `reform_stuck_teams!`.
 """
 # 운반팀 교착 → 기하학적 재정립인 ReformTeam 제안 전용 게이트(MILP 우회). 검사: "거의 다 모였는데 막힌(wedged)" 팀이 실제로 있어야 통과.
+"""
+    _form_unit_after(sched, v; max_hops=8) -> FormTransportUnit | nothing
+
+The `FormTransportUnit` a `RobotGo` at vertex `v` is ultimately heading into, following a
+CHAIN of consecutive `RobotGo` nodes — not just the immediate successor.
+
+WHY THIS EXISTS (measured 2026-08-05, `tools/e2e.jl mock_respec`). All three team-detection
+sites in the respec layer (`verify_reform`, `reform_stuck_teams!`,
+`diagnose_transport_stall`) iterated `cache.active_set` and tested `outs[1] isa
+FormTransportUnit` — ONE hop, FIRST successor only. At the root endgame the only ACTIVE
+`RobotGo` was `v246`, whose successor is another `RobotGo` (`v267`), and it is *that* node
+that feeds the `FormTransportUnit`. So all three reported "NO team forming", `ReformTeam` was
+rejected with `:no_wedged_team`, and the build stalled at 270/289 with the one recovery that
+could have fixed it structurally unable to see the team.
+
+The navigation layer already does this correctly: `swap_first_paralyzed_transport_unit!`
+(route_planning.jl) walks `while outdegree >= 1 && matches_template(RobotGo, next_node)`.
+This helper is that traversal, made shared so the three respec sites cannot drift apart again.
+
+Also scans ALL out-neighbours rather than `outs[1]`: a node can have several successors
+(e.g. `DepositCargo -> [LiftIntoPlace, RobotGo]`), so indexing the first is fragile even
+without the chain. `max_hops` bounds the walk so a malformed graph cannot loop forever.
+"""
+# 어떤 RobotGo 가 (연속된 RobotGo 들을 거쳐) 최종적으로 들어가는 FormTransportUnit 을 찾아준다.
+# 왜 필요한가(2026-08-05 실측): respec 층의 팀 탐지 3곳이 전부 "후행 **하나**만" 보고 판단해서,
+# 활성 RobotGo 의 후행이 또 RobotGo 인 루트 엔드게임에서 팀을 못 찾았다 → ReformTeam 이 거절되고
+# 270/289 에서 정체. 항법층(swap_first_paralyzed_transport_unit!)은 원래 체인을 걸어간다 — 그 순회를
+# 공용 헬퍼로 뽑아 세 곳이 다시 어긋나지 않게 한다. 후행이 여러 개일 수 있으므로 outs[1] 대신 전부 훑고,
+# max_hops 로 걸음 수를 묶어 잘못된 그래프에서도 무한루프가 안 나게 한다.
+function _form_unit_after(sched, v; max_hops::Int = 8)
+    outs = Graphs.outneighbors(sched, v)
+    for _ in 1:max_hops
+        isempty(outs) && return nothing
+        nxt_robotgo = nothing
+        for u in outs
+            nu = get_node_from_id(sched, get_vtx_id(sched, u))
+            nu isa FormTransportUnit && return nu          # 찾았다
+            (nxt_robotgo === nothing && nu isa RobotGo) && (nxt_robotgo = u)  # 이어갈 RobotGo 후보
+        end
+        nxt_robotgo === nothing && return nothing          # RobotGo 체인이 끊겼다 → 이 갈래엔 팀이 없음
+        outs = Graphs.outneighbors(sched, nxt_robotgo)     # 한 칸 더 걸어간다
+    end
+    return nothing
+end
+
 function verify_reform(proposal::RespecProposal, env)
     # 제안에 ReformTeam 이 하나도 없으면 검사할 것 없이 통과.
     any(c -> c isa ReformTeam, proposal.constraints) || return Admit(proposal, length(proposal.constraints))
@@ -246,9 +509,9 @@ function verify_reform(proposal::RespecProposal, env)
     for v in env.cache.active_set                        # 진행중 정점들을 순회
         n = get_node_from_id(sched, get_vtx_id(sched, v))
         n isa RobotGo || continue                        # RobotGo 가 아니면 건너뜀
-        outs = Graphs.outneighbors(sched, v); isempty(outs) && continue  # 나가는 이웃(후속)이 없으면 건너뜀
-        nxt = get_node_from_id(sched, get_vtx_id(sched, outs[1]))
-        nxt isa FormTransportUnit || continue            # 후속이 운반팀 형성이 아니면 건너뜀
+        # 후행 "하나"가 아니라 RobotGo 체인을 걸어가 FormTransportUnit 을 찾는다(_form_unit_after 주석 참조).
+        nxt = _form_unit_after(sched, v)
+        nxt === nothing && continue                      # 이 갈래 끝에 운반팀 형성이 없으면 건너뜀
         tu = entity(nxt); team = try robot_team(tu) catch; nothing end  # 운반유닛과 그 팀 명부(없으면 nothing)
         team === nothing && continue
         ready = 0; missing = 0                           # 자리 잡은 팀원 / 아직 안 온 팀원 수
@@ -298,9 +561,8 @@ function diagnose_transport_stall(env)
     for v in collect(env.cache.active_set)
         n = get_node_from_id(sched, get_vtx_id(sched, v))
         n isa RobotGo || continue
-        outs = Graphs.outneighbors(sched, v); isempty(outs) && continue
-        nxt = get_node_from_id(sched, get_vtx_id(sched, outs[1]))
-        nxt isa FormTransportUnit || continue
+        nxt = _form_unit_after(sched, v)                 # RobotGo 체인을 걸어가 팀 형성 노드를 찾음
+        nxt === nothing && continue
         tu = entity(nxt)
         node_id(tu) in seen && continue
         push!(seen, node_id(tu))

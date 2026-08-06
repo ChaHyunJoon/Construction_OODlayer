@@ -16,6 +16,11 @@
 # struct : 새 데이터 타입(구조체) 정의 — 파이썬의 class 와 비슷하지만 "값을 담는 틀".
 #          기본 struct 는 "불변(immutable)" — 한번 만들면 필드 값을 바꿀 수 없음.
 # 이 타입은 시뮬레이션 실행에 필요한 설정값(파라미터)들을 한데 모아둔 묶음.
+# 애니메이션을 기록하는 중에도 MeshCat 라이브 장면을 매 스텝 갱신할지(= 대시보드 라이브 세션).
+# `run_lego_demo(live_view=...)` 가 매 실행 시작에 이 값을 설정한다. 기본 false 이므로 배치
+# 렌더/저장 경로의 동작·산출물은 예전과 완전히 동일하다. (simulate! 의 LIVE VIEW 블록 참조)
+const LIVE_PUSH = Ref(false)
+
 struct SimParameters
     sim_batch_size::Int               # 한 번에 돌릴 시뮬 스텝 묶음 크기. `::Int` = 이 필드 타입은 정수
     max_time_steps::Int               # 최대 시간 스텝 수(이만큼 지나면 강제 종료)
@@ -185,6 +190,53 @@ function simulate!(
                         fac_active_flags_nodes, fac_faulted_flags_nodes, fac_dispatched_flags_nodes,
                         fac_battery_tint_nodes)
                     push!(update_steps, update_tuple)                      # push! : 배열 끝에 추가(파이썬 list.append)
+                end
+                # LIVE VIEW: 이번 스텝의 변환을 **지금 바로** MeshCat 에 밀어 넣는다. 위쪽 atframe
+                # 경로와 달리 deepcopy 가 필요 없다(값을 얼려 나중에 재생하는 게 아니라 즉시 적용).
+                #
+                # 두 경우에 실행된다:
+                #   · process_animation_tasks=false — 기록기가 아예 없는 순수 라이브 세션(옛 동작).
+                #   · LIVE_PUSH[]=true — 기록도 하면서 라이브로도 본다(2026-08-05 추가).
+                #     예전에는 이 조합이 없어서 save_animation=true 로 라이브를 열면 화면이 초기
+                #     배치에서 멈춘 것처럼 보였다(갱신이 atframe 안에서만 일어나 라이브 장면에는
+                #     적용되지 않았기 때문). 이제 기록과 라이브 표시가 서로 독립이다.
+                #
+                # 기록 전용(배치 렌더) 경로는 LIVE_PUSH[]=false 라 이 블록을 타지 않으므로
+                # 기존 산출물은 그대로다.
+                if !process_animation_tasks || LIVE_PUSH[]
+                    if anim_active_areas
+                        for node_i in closed_steps_nodes; setvisible!(node_i, false); end
+                        for node_i in active_build_nodes; setvisible!(node_i, true); end
+                    end
+                    if anim_active_agents
+                        setvisible!(factory_vis.active_flags, false)
+                        for node_key in fac_active_flags_nodes
+                            setvisible!(factory_vis.active_flags[node_key], true)
+                        end
+                    end
+                    setvisible!(factory_vis.faulted_flags, false)          # 고장=빨간 원판
+                    for node_key in fac_faulted_flags_nodes
+                        haskey(factory_vis.faulted_flags, node_key) &&
+                            setvisible!(factory_vis.faulted_flags[node_key], true)
+                    end
+                    setvisible!(factory_vis.dispatched_flags, false)       # 교체 투입=시안 링
+                    for node_key in fac_dispatched_flags_nodes
+                        haskey(factory_vis.dispatched_flags, node_key) &&
+                            setvisible!(factory_vis.dispatched_flags[node_key], true)
+                    end
+                    setvisible!(factory_vis.battery_tints, false)          # 깊은 방전=빨간 본체
+                    for node_key in fac_battery_tint_nodes
+                        haskey(factory_vis.battery_tints, node_key) &&
+                            setvisible!(factory_vis.battery_tints[node_key], true)
+                    end
+                    # cam_tgt 은 위 분기 안에서만 정의되므로 여기서 따로 계산한다.
+                    live_cam = ConstructionBots.CAMERA_FOLLOW[] ?
+                        ConstructionBots._camera_follow_target(env) : nothing
+                    if live_cam !== nothing
+                        settransform!(factory_vis.vis["/Cameras/default"],
+                            CoordinateTransformations.Translation(live_cam...))
+                    end
+                    ConstructionBots.update_visualizer!(factory_vis.vis_nodes, scene_nodes)
                 end
             end
         end

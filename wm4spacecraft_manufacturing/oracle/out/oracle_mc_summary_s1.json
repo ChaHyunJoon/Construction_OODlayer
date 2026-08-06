@@ -1,0 +1,7 @@
+{
+  "meta": {"best_action":1,"best_name":"Replace","best_Q":3555.464999999999,"K":10,"n_rows":20,"build_seed":1,"seed0":1000,"mtbf_break":500.0,"mtbf_cell":500.0,"hot_swap":true,"rvo":true,"spares":12,"cost_fail":10000.0,"cost_unclosed":100.0,"crn_variance_reduction":1.141057137118022,"ref_best_action":1,"ref_agrees_with_mc":true},
+  "candidates": [
+    {"action":0,"name":"NOOP","K":10,"Q":20966.8125,"se":3488.792169280656,"delta_vs_best":17411.347499999996,"se_paired":3690.082668882474,"tied_with_best":false,"is_best":false,"p_complete":0.2,"mean_hz_events":6.1,"n_capped":0},
+    {"action":1,"name":"Replace","K":10,"Q":3555.464999999999,"se":2357.4225014898275,"delta_vs_best":0.0,"se_paired":0.0,"tied_with_best":false,"is_best":true,"p_complete":0.8,"mean_hz_events":2.7,"n_capped":0}
+  ]
+}

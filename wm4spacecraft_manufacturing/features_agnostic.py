@@ -153,8 +153,15 @@ import numpy as np
 import pandas as pd
 
 # 전체 macro 목록과 개입 비용(e1_analyze / export_surrogate 와 동일한 값이어야 함).
-MACROS = [0, 1, 2, 3, 4]
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0}
+MACROS = [0, 1, 2, 3, 4, 7, 8]
+# 5·6 은 조합 팔(DS_COMBO_ARMS=1 일 때만 생성된다). gen_oracle_dataset.jl 의 MACRO_COST 와
+# **같은 값**이어야 한다 — 구성 primitive 비용의 합(_PRIMITIVE_TABLE 참조).
+# 7 = RelocateBuild(빌드 전체 평행이동). zone 사건의 기본 개입 팔로 3(ForbidZone)을 대체한다 —
+# 3 은 closed≈46 이후 옮길 수 있는 조립체가 없어 NOOP 과 동일해지기 때문(oracle/ood_mdp_shim.jl 참조).
+# 전역 개입이라 조립체 하나만 옮기는 ForbidZone(1.0)보다 비싸다.
+# 8 = SwapBattery(현장 배터리 교체). 배터리는 재고 관리를 안 하므로(무제한, 비용만) 개입 중 가장
+# 싸다. Replace(1.0)보다 확실히 싸야 "싸게 살릴까 비싸게 살릴까"가 진짜 선택이 된다.
+MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}
 
 # 참조 함대 크기: slack 을 [0,1] 로 정규화할 때 쓰는 상수(현 트랙터 트윈의 최대 활성 로봇 수 기준).
 FLEET_REF = 30.0
@@ -322,6 +329,7 @@ _ACTION_TABLE = {
     2: (0.3, 1.0, 1.0, 0.0, 0.0, 0.0),   # Deprioritize  : 소프트, 비용만 조정
     3: (1.0, 1.0, 0.0, 0.0, 1.0, 1.0),   # ForbidZone    : 일을 공간적으로 옮김
     4: (1.0, 1.0, 0.0, 0.0, 1.0, 0.0),   # ReformTeam    : 팀 구성을 옮김(비공간)
+    7: (1.5, 1.0, 0.0, 0.0, 1.0, 1.0),   # RelocateBuild : 빌드 전체를 공간적으로 옮김(ForbidZone 의 전역판)
 }
 
 
@@ -332,9 +340,148 @@ def action_descriptors(macro):
 
 
 # ==========================================================================================
+#  조합 행동의 서술자 ψ(a)  — PLAN_ACTION_GROWTH.md §4 [3]
+# ==========================================================================================
+# 왜 필요한가: 지금 액션은 5개 매크로에 대한 one-hot 이라, 6번째 행동을 넣으면 모델 입력 차원이
+# 바뀌어 재학습 없이는 아무것도 못 한다. 이건 이 저장소의 사고가 아니라 one-hot 을 쓰는 모든
+# 시스템의 구조적 귀결이고(Chandak et al., "Lifelong Learning with a Changing Action Set", AAAI'20),
+# 문헌이 제시한 탈출구는 행동을 **id 가 아니라 효과(서술자) 공간의 점**으로 적는 것이다.
+# 그러면 새 행동은 ψ-공간의 새 점일 뿐이고 차원이 바뀌지 않는다.
+#
+# 엔진은 이미 다중 spec 을 받는다 -- RespecProposal.constraints 는 Vector 이고
+# replan.jl 이 `for c in proposal.constraints` 로 순회한다. 즉 조합 행동은 오늘 실행 가능하다.
+#
+# **primitive 6개** (src/respec/spec_dsl.jl). 이 중 ForbidAgent 와 ForbidWindow 는
+# 매크로로 노출조차 안 되어 있다(= 놀고 있는 primitive).
+_PRIMITIVE_TABLE = {
+    #                       cost, intervenes, soft, restores, relocates, spatial, consumes_spare, reversible, scope
+    "ReplaceAgent":        (1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0),
+    "DeprioritizeAgent":   (0.3, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0),
+    "ForbidZone":          (1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 2.0),
+    "ReformTeam":          (1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 3.0),
+    # --- 아직 매크로로 노출되지 않은 primitive ---
+    "ForbidAgent":         (0.8, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0),
+    "ForbidWindow":        (0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0),
+    # RelocateBuild: 구역은 그대로 두고 작업영역 **전체**를 강체이동. ForbidZone 과 같은 공간축이지만
+    # scope 가 전역(3)이고 되돌릴 수 없다(reversible=0) — 이미 옮겨간 자리에서 빌드가 계속되므로.
+    "RelocateBuild":       (1.5, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 3.0),
+    # SwapBattery: 같은 본체에 배터리만 교체. restores=1(건강 회복)이지만 ReplaceAgent 와 달리
+    # consumes_spare=0 (창고 본체를 안 먹음) — 이 한 칸이 두 팔을 가르는 축이다. 되돌릴 필요가
+    # 없는 국소 개입이라 reversible=1, scope=1(로봇 하나).
+    "SwapBattery":         (0.2, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0),
+}
+
+# ψ 의 축. 앞 6개는 기존 ACTION_DESCRIPTORS 와 **완전히 같은 이름·같은 값**이어야 한다
+# (기존 실험과의 비교 가능성 = 회귀 방지). 뒤 3개가 조합을 표현하기 위해 추가된 축이다.
+#   a_n_specs        : 조합의 크기 (1, 2, 3...)
+#   a_consumes_spare : 스페어를 소모하는가 <- **전환비용의 핵심**. "지금 쓰면 다음에 없다"를
+#                      모델이 표현할 수 있게 하는 축(myopia 문제와 여기서 만난다).
+#                      오늘의 5매크로에서는 a_restores_capacity 와 값이 일치하지만, 새 primitive
+#                      에서는 갈라진다(예: 스페어를 안 쓰는 능력복원, 스페어를 쓰는 선제배치).
+#   a_reversible     : 되돌릴 수 있는가 (조합에서는 AND -- 하나라도 비가역이면 비가역)
+#   a_scope          : 영향 범위 (1대=1 / 구역=2 / 전역=3)
+PSI_AXES = ACTION_DESCRIPTORS + ["a_n_specs", "a_consumes_spare", "a_reversible", "a_scope"]
+
+# 매크로 -> primitive 조합. 기존 5개는 전부 **spec 하나**다(그래서 조합축이 통째로 비어 있다).
+MACRO_SPECS = {
+    0: [],                       # NOOP
+    1: ["ReplaceAgent"],
+    2: ["DeprioritizeAgent"],
+    3: ["ForbidZone"],
+    4: ["ReformTeam"],
+    # 조합 행동 예시(A1 스모크 대상). 여기 추가해도 **모델 입력 차원은 변하지 않는다** — 이게 요점.
+    5: ["ForbidAgent", "ReformTeam"],
+    6: ["DeprioritizeAgent", "ForbidWindow"],
+    7: ["RelocateBuild"],        # zone 사건의 기본 개입 팔(3 을 대체). spec 하나짜리.
+}
+
+
+def psi(action):
+    """행동 -> ψ 벡터(dict). action 은 매크로 번호(int)이거나 primitive 이름들의 리스트.
+
+    집계 규칙 -- 왜 이렇게 정했는지가 중요하다(임의로 정하면 조합의 의미가 흐려진다):
+      cost            : 합   (두 제약을 걸면 두 번 개입한 것)
+      intervenes      : max  (하나라도 개입하면 개입)
+      soft            : min  (하나라도 하드 제약이면 그 조합은 더 이상 소프트가 아니다)
+      restores/relocates/spatial/consumes_spare : max (하나라도 그 성질이면 그 성질)
+      reversible      : min  (AND -- 하나라도 못 되돌리면 조합 전체가 비가역)
+      scope           : max  (가장 넓은 범위가 조합의 범위)
+      n_specs         : len
+    """
+    if isinstance(action, (list, tuple)):
+        names = list(action)
+    else:
+        names = MACRO_SPECS.get(int(action), [])
+
+    if not names:                                  # NOOP
+        return dict(zip(PSI_AXES, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)))
+
+    v = [_PRIMITIVE_TABLE[n] for n in names if n in _PRIMITIVE_TABLE]
+    if not v:
+        return dict(zip(PSI_AXES, (0.0,) * len(PSI_AXES)))
+    cols = list(zip(*v))                           # 축별 열
+    out = {
+        "a_cost":              float(sum(cols[0])),
+        "a_intervenes":        float(max(cols[1])),
+        "a_soft":              float(min(cols[2])),
+        "a_restores_capacity": float(max(cols[3])),
+        "a_relocates_work":    float(max(cols[4])),
+        "a_spatial":           float(max(cols[5])),
+        "a_n_specs":           float(len(v)),
+        "a_consumes_spare":    float(max(cols[6])),
+        "a_reversible":        float(min(cols[7])),
+        "a_scope":             float(max(cols[8])),
+    }
+    return {k: out[k] for k in PSI_AXES}
+
+
+def psi_regression_check():
+    """ψ 가 기존 5매크로에서 옛 표와 **한 자리도 다르지 않은지** 검사한다.
+
+    이게 깨지면 조합 확장이 기존 실험 숫자를 조용히 바꾼 것이므로, 비교가 전부 무효가 된다.
+    """
+    bad = []
+    for m in (0, 1, 2, 3, 4):
+        old = action_descriptors(m)
+        new = psi(m)
+        for k in ACTION_DESCRIPTORS:
+            if abs(float(old[k]) - float(new[k])) > 1e-12:
+                bad.append((m, k, old[k], new[k]))
+    return bad
+
+
+# ==========================================================================================
 #  DataFrame 전체 featurize
 # ==========================================================================================
-def featurize_agnostic(df, action_repr="onehot", include_valid=True):
+# ==========================================================================================
+#  STEP 3: 공간 사건의 기하 원시값(primitive) 블록
+# ------------------------------------------------------------------------------------------
+#  `zone_overlap` 스칼라 하나로는 "덮였다"까지만 말할 수 있고 **무엇이 왜 막혔는지**는 표현하지
+#  못한다. 그래서 정책은 구역 사건에서 사실상 종류 이름만 보고 답할 수밖에 없었다.
+#  생성기(gen_oracle_dataset.jl)가 이제 진단기의 술어를 그대로 행에 싣는다. 여기서 그것을 읽는다.
+#
+#  ★ 판정(verdict)은 여기 없다. 그건 정답이므로 오라클/게이트의 것이고, 특징에 넣으면 모델이
+#    추론이 아니라 답을 베끼게 된다(zone_diagnosis.jl 의 note).
+#
+#  기본은 **꺼짐**이다: 이 열을 넣으면 특징 차원이 바뀌어 이미 export 된 서로게이트·novelty 교정과
+#  호환되지 않는다. 옛 덤프에는 열 자체가 없으므로 그때는 -1 sentinel 로 채워져 "모름"이 된다.
+ZONE_PRIMITIVES = ["zone_blocked", "zone_restage_feasible", "zone_work_overlap",
+                   "zone_teams_forming", "zone_teams_covered",
+                   "zone_relocatable", "zone_relocate_norm"]
+
+
+def zone_primitives_from_row(row):
+    """행에서 기하 원시값 7개를 읽는다. 없거나 zone 사건이 아니면 -1(=모름/해당없음)."""
+    out = {}
+    for k in ZONE_PRIMITIVES:
+        out[k] = _f(row.get(k), -1.0)
+        if not math.isfinite(out[k]):
+            out[k] = -1.0
+    return out
+
+
+def featurize_agnostic(df, action_repr="onehot", include_valid=True,
+                       include_zone_primitives=False):
     """kind-agnostic 특징행렬을 만든다.
 
     Parameters
@@ -344,6 +491,8 @@ def featurize_agnostic(df, action_repr="onehot", include_valid=True):
                   "both"       -- 둘 다
     include_valid : `macro_in_valid`(이 상태에서 그 macro 가 적용 가능한가) 열을 넣을지.
                     이건 종류 이름이 아니라 "액션 적용가능성"이라 정당한 정보다.
+    include_zone_primitives : 구역 사건의 기하 원시값 7열(ZONE_PRIMITIVES)을 넣을지.
+                    기본 False = 기존 특징행렬과 **완전히 동일**(배포된 모델과 호환).
 
     반환: pandas DataFrame (행 순서는 입력과 동일)
     """
@@ -362,6 +511,24 @@ def featurize_agnostic(df, action_repr="onehot", include_valid=True):
         adesc = [action_descriptors(m) for m in df.macro.astype(int).values]
         for name in ACTION_DESCRIPTORS:
             X[name] = [a[name] for a in adesc]
+    if action_repr in ("psi", "both_psi"):
+        # ψ: 조합까지 표현하는 확장 서술자. 행에 `spec_seq`(primitive 이름 리스트)가 있으면
+        # 그걸 쓰고, 없으면 매크로 번호로 되돌아간다 -- 옛 덤프도 그대로 읽힌다.
+        seqs = df["spec_seq"] if "spec_seq" in df.columns else [None] * len(df)
+        acts = [s if isinstance(s, (list, tuple)) and len(s) else int(m)
+                for s, m in zip(seqs, df.macro.astype(int).values)]
+        pdesc = [psi(a) for a in acts]
+        for name in PSI_AXES:
+            X[name] = [p[name] for p in pdesc]
+    if action_repr == "both_psi":
+        for m in MACROS:
+            X[f"macro_{m}"] = (df.macro.astype(int) == m).astype(float).values
+
+    # ---- 공간 사건의 기하 원시값(opt-in) --------------------------------------------------
+    if include_zone_primitives:
+        zp = [zone_primitives_from_row(df.iloc[i]) for i in range(len(df))]
+        for name in ZONE_PRIMITIVES:
+            X[name] = [z[name] for z in zp]
 
     # ---- 적용가능성 게이트 --------------------------------------------------------------
     if include_valid:

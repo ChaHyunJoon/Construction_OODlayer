@@ -58,21 +58,30 @@ Usage:  python e1_analyze.py <dataset.jsonl>
 #   * math.inf / math.nan: 무한대 / 숫자아님(NaN). JSON에는 이런 값이 문자열로 저장돼 다시 복원함.
 # =============================================================================
 
-import sys, json, math
+import io, sys, json, math
 import numpy as np
 import pandas as pd
 from surrogate_model import build_model  # 평가·배포가 같은 모델을 쓰도록 단일 정의에서 가져온다
 from sklearn.model_selection import LeaveOneGroupOut
 
-# 후보 macro의 정수 ID 목록(0~4)과 사람이 읽을 이름 매핑. 모델은 이 5개 중 하나를 고른다.
-MACROS = [0, 1, 2, 3, 4]
-MACRO_NAME = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam"}
+# 후보 macro의 정수 ID 목록과 사람이 읽을 이름 매핑.
+# 5·6 = 조합 팔(DS_COMBO_ARMS=1), 7 = RelocateBuild(zone 사건의 기본 개입 팔; 2026-08-03 부터 3 을 대체).
+# MACROS 는 "기본 생성에서 나오는 팔"이라 5·6 을 넣지 않는다. 7 은 zoneblk 덤프에 실제로 나오므로 넣는다.
+MACROS = [0, 1, 2, 3, 4, 7, 8]  # 8 = SwapBattery
+# [2026-08-05] 8 = SwapBattery 가 빠져 있어, macro 8 이 정답이 되는 순간 KeyError 로 죽었다
+# (MACROS 에는 8 이 들어 있는데 이름표만 없었다). Julia 쪽 gen_oracle_dataset.ACTION_NAME 과 맞춘다.
+MACRO_NAME = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
+              5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
+              8: "SwapBattery"}
 
 
 # jsonl 데이터셋 파일(path)을 읽어 DataFrame으로 만드는 함수. 비유한수(Inf/NaN)를 실수로 복원한다.
 def load(path):
     # 파일의 각 줄을 JSON으로 파싱해 dict 리스트로 만든다(빈 줄은 건너뜀).
-    rows = [json.loads(l) for l in open(path) if l.strip()]
+    # encoding="utf-8" 필수: 지정하지 않으면 Windows 기본(cp949)으로 열려 덤프의 UTF-8 문자에서
+    # UnicodeDecodeError 가 난다(2026-08-04, lad_* 새 덤프에서 실측). 모든 분석의 진입점이라 치명적.
+    with io.open(path, encoding="utf-8") as fh:
+        rows = [json.loads(l) for l in fh if l.strip()]
     df = pd.DataFrame(rows)
     # JSON encodes non-finite numbers as strings; bring them back to floats.
     # (JSON은 무한대/NaN을 "Inf"/"NaN" 같은 문자열로 저장하므로 다시 float로 되돌린다.)
@@ -134,6 +143,25 @@ def _valid_list(v):
     return []
 
 
+# 이 instance 의 "랭킹이 정의되는가" 판정 (2026-08-05).
+#
+# 예전 규칙은 `len(g) == 5` 였다 -- 모든 판이 5개 팔을 다 돌던 시절의 규칙이다. `DS_VALID_ONLY=1` 로
+# 만든 라벨은 **그 사건에서 실제로 실행 가능한 팔만** 돈다(fault/battery 는 관측된 valid_mask 가
+# [0,1] 이라 2팔). 그런 instance 는 5를 영원히 못 채우므로 소비 측에서 **조용히 전부 버려졌다**:
+# 실측(firegrid_merged, 2026-08-05) 126 instance 중 60 만 통과했고 그 60 은 전부 옛 5-arm 덤프였다.
+# 즉 발화시점 재라벨링으로 새로 만든 66 instance 가 학습·평가에 하나도 안 들어갔다.
+#
+# 올바른 기준은 "팔이 5개인가"가 아니라 **"그 사건의 유효 행동집합을 다 라벨링했는가"** 다. 유효하지
+# 않은 매크로는 shim 이 NOOP 과 동일하게 취급하므로(ood_mdp_shim.action_to_proposal), 2팔 instance 의
+# 랭킹은 그 자체로 완전하다. valid_mask 가 없는 옛 행은 예전 규칙(5팔)으로 폴백한다.
+def instance_arms_complete(g):
+    vm = set()
+    for v in g.get("valid_mask", pd.Series([], dtype=object)):
+        vm |= {int(x) for x in _valid_list(v)}
+    have = {int(m) for m in g.macro}
+    return vm <= have if vm else len(g) == 5
+
+
 # DataFrame(df)을 모델 입력용 feature 표로 변환. oracle 정답이 새어들지 않는(상태만 읽는) 열들만 만든다.
 def featurize(df):
     kinds = ["fault", "battery", "zone", "zoneblk"]  # OOD 종류들: 고장/배터리/구역/구역차단
@@ -154,6 +182,12 @@ def featurize(df):
     # graded-OOD: how much of the build the no-go zone actually covers (GRADED_OOD_DESIGN.md).
     # -1 when the OOD kind has no zone at all, so the model can tell "no zone" from "zero overlap".
     X["zone_overlap"] = df.get("zone_overlap", pd.Series([-1.0] * len(df))).apply(
+        lambda v: -1.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v))
+    # core zone(:zonecore)의 harm 축. 구역이 **못 옮기는 root 하역 목표**를 삼킨 비율이다.
+    # zone_overlap(staging 원 겹침)으로는 0 으로 보일 수 있어 별도 열이 필요하다 — 그리고 :zoneblk 와
+    # :zonecore 는 일부러 같은 kind 라벨을 달므로, 이 열이 없으면 둘이 상태로 구별되지 않는다.
+    # 옛 덤프에는 이 열이 없다 -> -1(해당없음)로 채워져 결정에 영향을 주지 않는다.
+    X["zone_root_cover"] = df.get("zone_root_cover", pd.Series([-1.0] * len(df))).apply(
         lambda v: -1.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v))
     # is this candidate macro even applicable in this state? (the ground-truth valid set, not the label)
     vmask = df.get("valid_mask", pd.Series([[]] * len(df)))  # 이 상태에서 적용 가능한 macro들의 집합(정답 아님, 규칙상 유효집합)
@@ -181,7 +215,9 @@ def ndcg_at_k(true_scores_by_macro, pred_order, k):
 # so a Replace has to BUY its extra closed-nodes; NOOP is free and Deprioritize is cheap.  This is the
 # decision-relevant version of the task: restraint can be optimal even when Replace closes more nodes.
 # macro별 개입 비용. NOOP는 공짜(0), Deprioritize는 쌈(0.3), 나머지(Replace/ForbidZone/Reform)는 1.0.
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0}
+# 7(RelocateBuild)=1.5 : 빌드 전체를 옮기는 전역 개입이라 조립체 하나만 옮기는 ForbidZone 보다 비싸다.
+# gen_oracle_dataset.jl MACRO_COST / features_agnostic.MACRO_COST 와 **같은 값**이어야 한다(함정 29).
+MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}  # 8=SwapBattery
 
 
 # cost-aware용 정렬키: closed에서 macro 비용(lam*cost)을 빼고 lex_key를 매긴다 → 비싼 개입은 손해를 벌어야 이긴다.
@@ -236,8 +272,9 @@ def main():
     if COST_AWARE:
         # cost-aware scoring already makes NOOP a live option, so the NOOP-worse-than-control
         # admissibility filter is not needed; keep every instance with the full macro sweep.
-        # cost-aware일 땐 admissibility 필터 대신, 5개 macro가 다 있는(랭킹이 정의되는) instance만 남긴다.
-        adm = [i for i, g in df.groupby("instance") if len(g) == 5]
+        # cost-aware일 땐 admissibility 필터 대신, **유효 행동집합을 다 라벨링한**(랭킹이 정의되는)
+        # instance만 남긴다. 예전의 `len(g)==5` 는 VALID_ONLY 라벨을 통째로 버렸다(위 주석 참조).
+        adm = [i for i, g in df.groupby("instance") if instance_arms_complete(g)]
         print(f"loaded {len(df)} rows, {len(instances)} instances, {len(adm)} kept [COST-AWARE, lambda="
               f"{LAM} nodes: y = closed - lambda*cost(macro)]")
     else:
@@ -283,7 +320,16 @@ def main():
     X = featurize(df).values  # feature 표 → numpy 배열
     cost = np.array([MACRO_COST[int(m)] for m in df.macro])  # 행별 macro 비용
     y = df.closed.astype(float).values - (LAM * cost if COST_AWARE else 0.0)  # 학습 목표: closed(-비용 in cost-aware)
-    groups = df.instance.values  # 교차검증 그룹 = instance (같은 instance는 학습/시험에 섞이지 않게)
+    groups = df.instance.values  # 채점 단위는 언제나 instance (baseline 룩업표도 이 축을 쓴다)
+    # --group=seed : 교차검증 **분할** 단위를 시드로 올린다 (leave-one-seed-out, 2026-08-05).
+    #
+    # 왜 필요한가. 기본 LOIO 는 같은 시드의 다른 instance 가 학습에 남는다. 한 시드는 같은 build /
+    # 같은 배치 / 같은 로봇 배치를 공유하므로, "이 세계에서 progress 0.58 이면 흡수된다" 같은
+    # **세계 고유의 규칙**을 모델이 외워도 LOIO 는 그걸 성공으로 채점한다. 시드를 통째로 빼야
+    # "처음 보는 세계로 옮겨가는가"를 묻는 게 된다 -- 시드를 더 뽑을지 말지는 이 숫자로 정한다.
+    cv_groups = (df.seed.astype(str).values
+                 if any(f == "--group=seed" for f in flags) else groups)
+    GROUP_LABEL = "leave-one-seed-out" if cv_groups is not groups else "leave-one-instance-out"
     kind_of = {i: str(g.kind.iloc[0]) for i, g in df.groupby("instance")}  # instance→kind 매핑
     logo = LeaveOneGroupOut()  # 그룹 하나씩 빼는 교차검증기
 
@@ -296,56 +342,58 @@ def main():
     rng = np.random.default_rng(0)  # 재현 가능한 난수 생성기(random 기준선용, seed=0)
     # held-out level-0 accuracy (does the surrogate predict the re-plan OUTCOME, not just the label?)
     l0_true, l0_pred = [], []  # level-0 회귀 품질 측정용: 실제 y와 예측값을 held-out에서 모은다.
-    for tr, te in logo.split(X, y, groups):  # tr=학습 행 인덱스, te=시험(빠진 instance) 행 인덱스
-        iid = groups[te][0]  # 이번에 빠진 instance ID
-        g = df.iloc[te]  # 그 instance의 행들
-        # 트리 부스팅 회귀 모델 생성(과적합 방지용 하이퍼파라미터). E1~E4에서 쓰는 주력 모델.
+    for tr, te_fold in logo.split(X, y, cv_groups):  # tr=학습 행, te_fold=빠진 그룹(instance 또는 시드 전체)
+        # 모델은 fold 당 한 번만 학습한다. 채점은 그 안의 **instance 하나하나**에 대해 따로 한다
+        # (--group=seed 면 한 fold 에 instance 가 여럿이므로 이 안쪽 루프가 필요하다).
         model = build_model()   # 배포되는 것과 "같은" 모델(surrogate_model.py에 단일 정의)
-        model.fit(X[tr], y[tr])  # 나머지 instance들로 학습
-        pred = model.predict(X[te])  # 빠진 instance의 각 macro 행에 대해 값 예측
-        l0_true.extend(list(y[te])); l0_pred.extend(list(pred))  # 회귀 정확도 평가용으로 축적
-        macros = g.macro.values
-        # the TRUE score of every candidate macro on this held-out instance (same scale as y)
-        # 이 instance에서 macro별 "실제" 점수(y와 같은 척도). 채점 기준.
-        closed_by_macro = {int(m): float(c) - (LAM * MACRO_COST[int(m)] if COST_AWARE else 0.0)
-                           for m, c in zip(macros, g.closed.values)}
-        best_macro = best[iid]  # 정답 macro
-        best_closed = closed_by_macro[best_macro]  # 정답의 점수
-        worst_closed = min(closed_by_macro.values())  # 최악 점수
-        span = max(best_closed - worst_closed, 1e-9)  # 정규화용 폭(0 나눗셈 방지로 최소 1e-9)
+        model.fit(X[tr], y[tr])  # 남은 그룹들로 학습
+        for iid in pd.unique(groups[te_fold]):     # 이 fold 에 들어 있는 instance 들
+            te = te_fold[groups[te_fold] == iid]   # 그 instance 의 행 인덱스만
+            g = df.iloc[te]  # 그 instance의 행들
+            pred = model.predict(X[te])  # 빠진 instance의 각 macro 행에 대해 값 예측
+            l0_true.extend(list(y[te])); l0_pred.extend(list(pred))  # 회귀 정확도 평가용으로 축적
+            macros = g.macro.values
+            # the TRUE score of every candidate macro on this held-out instance (same scale as y)
+            # 이 instance에서 macro별 "실제" 점수(y와 같은 척도). 채점 기준.
+            closed_by_macro = {int(m): float(c) - (LAM * MACRO_COST[int(m)] if COST_AWARE else 0.0)
+                               for m, c in zip(macros, g.closed.values)}
+            best_macro = best[iid]  # 정답 macro
+            best_closed = closed_by_macro[best_macro]  # 정답의 점수
+            worst_closed = min(closed_by_macro.values())  # 최악 점수
+            span = max(best_closed - worst_closed, 1e-9)  # 정규화용 폭(0 나눗셈 방지로 최소 1e-9)
 
-        # the model's ranking of the macros on this instance
-        # 예측값 pred를 내림차순 정렬(-pred의 argsort)해 모델의 macro 순위를 만든다. order[0]=모델의 최종 선택.
-        order = [int(m) for m in macros[np.argsort(-pred)]]
-        pick = order[0]
-        # state-blind baselines (상태를 안 보는 기준선들)
-        apick = global_best_macro if global_best_macro in closed_by_macro else macros[0]  # always: 전역 최빈 정답
-        rpick = int(rng.choice(macros))  # random: 무작위 선택
-        # the STRONG state-blind opponent: the best macro for this OOD *kind*, learned from the
-        # training instances only (a per-kind lookup table).  If the model cannot beat this, the
-        # signal it found is just "which kind is it", not the within-kind state.
-        # always_per_kind: 학습 데이터에서 "같은 kind"인 instance들의 정답만 모아 다수결로 고른다(kind별 룩업표).
-        # 이걸 못 이기면 모델이 찾은 신호는 그냥 "kind가 뭔지"일 뿐, kind 안의 상태 차이는 못 읽은 것.
-        tr_best = [best[i] for i in set(groups[tr]) if kind_of[i] == kind_of[iid]]
-        kpick = int(pd.Series(tr_best).mode().iloc[0]) if tr_best else apick  # 같은 kind가 없으면 always로 대체
-        kpick = kpick if kpick in closed_by_macro else apick  # 이 instance에 없는 macro면 always로 대체
+            # the model's ranking of the macros on this instance
+            # 예측값 pred를 내림차순 정렬(-pred의 argsort)해 모델의 macro 순위를 만든다. order[0]=모델의 최종 선택.
+            order = [int(m) for m in macros[np.argsort(-pred)]]
+            pick = order[0]
+            # state-blind baselines (상태를 안 보는 기준선들)
+            apick = global_best_macro if global_best_macro in closed_by_macro else macros[0]  # always: 전역 최빈 정답
+            rpick = int(rng.choice(macros))  # random: 무작위 선택
+            # the STRONG state-blind opponent: the best macro for this OOD *kind*, learned from the
+            # training instances only (a per-kind lookup table).  If the model cannot beat this, the
+            # signal it found is just "which kind is it", not the within-kind state.
+            # always_per_kind: 학습 데이터에서 "같은 kind"인 instance들의 정답만 모아 다수결로 고른다(kind별 룩업표).
+            # 이걸 못 이기면 모델이 찾은 신호는 그냥 "kind가 뭔지"일 뿐, kind 안의 상태 차이는 못 읽은 것.
+            tr_best = [best[i] for i in set(groups[tr]) if kind_of[i] == kind_of[iid]]
+            kpick = int(pd.Series(tr_best).mode().iloc[0]) if tr_best else apick  # 같은 kind가 없으면 always로 대체
+            kpick = kpick if kpick in closed_by_macro else apick  # 이 instance에 없는 macro면 always로 대체
 
-        # 네 방법 각각의 regret과 치명적 오선택을 기록.
-        for name, p in (("model", pick), ("always", apick), ("always_per_kind", kpick), ("random", rpick)):
-            reg = closed_regret(closed_by_macro[p], best_closed)
-            regrets[name].append(reg / span)  # span으로 나눠 instance 간 비교 가능하게 정규화
-            # catastrophic = the pick loses >15% of the reachable closed-count vs the oracle
-            # 치명적 = oracle 대비 도달 가능 closed의 15% 넘게 손해 본 경우.
-            if (best_closed - closed_by_macro[p]) / max(best_closed, 1) > 0.15:
-                catastrophic[name] += 1
+            # 네 방법 각각의 regret과 치명적 오선택을 기록.
+            for name, p in (("model", pick), ("always", apick), ("always_per_kind", kpick), ("random", rpick)):
+                reg = closed_regret(closed_by_macro[p], best_closed)
+                regrets[name].append(reg / span)  # span으로 나눠 instance 간 비교 가능하게 정규화
+                # catastrophic = the pick loses >15% of the reachable closed-count vs the oracle
+                # 치명적 = oracle 대비 도달 가능 closed의 15% 넘게 손해 본 경우.
+                if (best_closed - closed_by_macro[p]) / max(best_closed, 1) > 0.15:
+                    catastrophic[name] += 1
 
-        ndcgs.append(ndcg_at_k(closed_by_macro, order, k=2))  # 이 instance의 랭킹 품질
-        topk_recall[1].append(1.0 if best_macro == order[0] else 0.0)  # 정답이 1위인가
-        topk_recall[2].append(1.0 if best_macro in order[:2] else 0.0)  # 정답이 상위 2위 안인가
-        agree.append(1.0 if pick == best_macro else 0.0)  # 모델 선택 = 정답인가
+            ndcgs.append(ndcg_at_k(closed_by_macro, order, k=2))  # 이 instance의 랭킹 품질
+            topk_recall[1].append(1.0 if best_macro == order[0] else 0.0)  # 정답이 1위인가
+            topk_recall[2].append(1.0 if best_macro in order[:2] else 0.0)  # 정답이 상위 2위 안인가
+            agree.append(1.0 if pick == best_macro else 0.0)  # 모델 선택 = 정답인가
 
     n = len(agree)  # 평가한 instance 수
-    print(f"\n=== leave-one-instance-out ({n} instances, {n_classes} distinct best-macros) ===")
+    print(f"\n=== {GROUP_LABEL} ({n} instances, {n_classes} distinct best-macros) ===")
     print(f"{'method':<18}{'mean norm-regret':>18}{'catastrophic':>14}")
     for name in METHODS:
         print(f"{name:<18}{np.mean(regrets[name]):>18.3f}{catastrophic[name]:>10}/{n}")

@@ -70,6 +70,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CANONICAL = "oracle/out/openworld_merged.jsonl"
 
 # ==========================================================================================
+#  FIREGRID — CANONICAL + 발화 시점을 흩뿌린 인스턴스들 (2026-08-04)
+# ==========================================================================================
+# 왜 별도 파일인가.  CANONICAL 의 60 instance 는 `closed_at_fire` 가 {50,58} 두 값뿐이라
+# `progress` 의 sd 가 0.005 다(= 사실상 점 하나).  그 위에 맞춘 novelty 교정은 중반에 터지는
+# 사건을 **종류와 무관하게** novel 로 판정한다 -- 배포 데모의 battery(progress 0.41)와 후반
+# fault(0.66)가 실제로 그렇게 뒤집혔다.  FIREGRID 는 DS_FIRE_GRID 로 발화 시점을 instance
+# 차원으로 올려 progress 를 0.19~0.83 에 흩뿌린 행들을 CANONICAL 에 **덧붙인** 파일이다.
+#
+# CANONICAL 을 덮어쓰지 않는 이유: 발표된 숫자(regret/frontier)는 전부 그 분포에서 측정됐다.
+# 교정만 새 분포로 옮기고, 기존 결과는 기존 파일 위에서 그대로 재현되게 둔다.
+FIREGRID = "oracle/out/firegrid_merged.jsonl"
+
+# ==========================================================================================
 #  Legacy pins — kept so published numbers stay reproducible.  Do not "upgrade" these.
 # ==========================================================================================
 HS_ALL = "oracle/out/graded_hs_all.jsonl"    # 20 instances; cost_eval / dspy experiment baselines
@@ -79,6 +92,7 @@ HS_V2  = "oracle/out/graded_hs_v2.jsonl"     # cost artifact + e1_frontier figur
 #: Every dataset this module knows about, for `--list` style diagnostics.
 KNOWN = {
     "canonical": CANONICAL,
+    "firegrid": FIREGRID,
     "hs_all": HS_ALL,
     "hs_n44": HS_N44,
     "hs_v2": HS_V2,

@@ -1,0 +1,57 @@
+{
+  "_doc": [
+    "행동 어휘의 단일 진실원 (PLAN_LLM_INFERENCE_7H §P2 / Ch-A).",
+    "지금까지 매크로 id-이름-비용 표가 6곳에 따로 박혀 있었고 서로 달랐다:",
+    "  llm_producer.MACRO_NAME 에 8(SwapBattery) 없음 -> LLM 이 battery 의 기본 정답을 발화할 수 없었다",
+    "  dspy_service.MACROS 6개 / steering_signature.MACROS 5개 -> 서비스마다 다른 어휘",
+    "정답이 어휘 밖이면 초과비용은 원리적으로 0 이 될 수 없다. 그래서 이 파일 하나만 고치면",
+    "모든 소비처가 같이 바뀌도록 배선하고, audit_action_vocab.py 가 그 일치를 테스트로 강제한다.",
+    "cost 는 gen_oracle_dataset.jl MACRO_COST / e1_analyze.MACRO_COST / features_agnostic.MACRO_COST",
+    "와 **같은 값이어야 한다**(README 함정 29). 여기 값은 그 세 곳에서 그대로 옮긴 것이다.",
+    "kinds = 그 팔이 전제조건상 말이 되는 사건 종류(상태를 아는 호출자가 준 valid 가 언제나 우선)."
+  ],
+  "macros": {
+    "0": {
+      "name": "NOOP",
+      "cost": 0.0,
+      "kinds": ["fault", "battery", "zone", "reform"],
+      "doc": "do nothing / restraint. Free. Best when the disruption is absorbed by slack or spares and intervening would waste a scarce resource."
+    },
+    "1": {
+      "name": "Replace",
+      "cost": 1.0,
+      "kinds": ["fault", "battery"],
+      "doc": "swap the affected robot for a spare BODY from the depot pool. Consumes one spare robot. Best on a real fault, or on a depleted battery when no cheaper repair applies."
+    },
+    "2": {
+      "name": "Deprioritize",
+      "cost": 0.3,
+      "kinds": ["fault", "battery"],
+      "doc": "lower the affected robot's task priority and route heavy work away from it. Cheap, reversible, keeps the robot in the fleet. The middle option for a degraded-but-alive robot."
+    },
+    "3": {
+      "name": "ForbidZone",
+      "cost": 1.0,
+      "kinds": ["zone"],
+      "doc": "relocate the staging areas of the sub-assemblies blocked by a no-go zone. Only works while those sub-assemblies have not started building; once they are under way its domain is empty and it silently does nothing."
+    },
+    "4": {
+      "name": "ReformTeam",
+      "cost": 1.0,
+      "kinds": ["reform", "fault"],
+      "doc": "re-form a deadlocked multi-robot transport team geometrically so the carrier can close."
+    },
+    "7": {
+      "name": "RelocateBuild",
+      "cost": 1.5,
+      "kinds": ["zone"],
+      "doc": "shift the ENTIRE build by one rigid translation so the whole work region clears the no-go zone. No precondition, works at any build stage, but it is a global move that disturbs every robot already in transit -- the most expensive action in the repertoire."
+    },
+    "8": {
+      "name": "SwapBattery",
+      "cost": 0.2,
+      "kinds": ["battery"],
+      "doc": "swap only the depleted battery in the field, keeping the same robot body and its identity. Does NOT consume a depot spare body, so it is far cheaper than Replace; it restores charge but not a broken robot."
+    }
+  }
+}

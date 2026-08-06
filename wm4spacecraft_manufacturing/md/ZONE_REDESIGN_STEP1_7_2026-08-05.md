@@ -424,8 +424,8 @@ powershell -File oracle\run_step6_zonegrid.ps1 -Lanes 2 -MaxMinutes 145
 [data] 8 file(s), 184 rows, 4 instance(s), macros=[0, 7]
 [schema] STEP3 원시값 열 0/5 존재: []        <- 옛 덤프에는 없다(정상)
 H(best|zone) = 1.000 bits  PASS   동점률 0.0%  PASS
-always NOOP          mean regret= 5.50 (max 16)
-always RelocateBuild mean regret=28.50 (max 100)
+always NOOP          mean subopt_norm= 5.50 (max 16)
+always RelocateBuild mean subopt_norm=28.50 (max 100)
 ```
 
 즉 **옛 데이터에서도 "항상 개입" 이 평균 28.5 노드를 잃는다**. STEP 2 가 canonical 을
@@ -457,7 +457,7 @@ macro=0  valid_mask=[0,7]  closed_at_fire=58  complete=true  closed=291
 
 1. `H(best | zone) > 0` — kind 내부에서 정답이 갈릴 것
 2. 동점률 < 30%
-3. 완주/진행 격차가 **regret 으로** 드러날 것 ← 이 설계가 쓸모 있다는 유일한 직접 증거
+3. 완주/진행 격차가 **subopt_norm 으로** 드러날 것 ← 이 설계가 쓸모 있다는 유일한 직접 증거
 
 ### ★ 결과 — 규칙이 **반증**됐다 (8/8 job 확정, `oracle/out/zgrid_0805/REPORT.txt`)
 
@@ -475,10 +475,10 @@ macro=0  valid_mask=[0,7]  closed_at_fire=58  complete=true  closed=291
 [gate] valid_mask 밖 팔 8/24 행 제외 (ForbidZone -- NOOP 과 바이트 동일)
 기준 (1) H(best|zone) = 0.000 bits            FAIL   (정답이 NOOP 하나뿐)
 기준 (2) 동점률       = 0/8 = 0.0%             PASS
-기준 (3-a) closed    always NOOP          mean regret =  0.00
-                     always RelocateBuild mean regret = 77.62  (max 146)
-기준 (3-b) makespan  always NOOP          regret = 0.00   미완주 0/8
-                     always RelocateBuild regret = 1.65   **미완주 7/8**
+기준 (3-a) closed    always NOOP          mean subopt_norm =  0.00
+                     always RelocateBuild mean subopt_norm = 77.62  (max 146)
+기준 (3-b) makespan  always NOOP          subopt_norm = 0.00   미완주 0/8
+                     always RelocateBuild subopt_norm = 1.65   **미완주 7/8**
 최소수복 규칙 vs 실측 최선: 일치 0/8 = 0.0%
 ```
 
@@ -515,7 +515,7 @@ RelocateBuild (구역 있음)     complete=False  closed=173  makespan=Inf     <
 같은 종류의 대리지표다.
 
 **따라서 STEP 6 은 "규칙 검증"이 아니라 "규칙 반증"으로 결론난다.** 이건 실패가 아니라 이 단계가
-존재하는 이유다 — 계획서 3번 기준("완주 격차가 regret 으로 드러날 것")이 정확히 이걸 잡아냈다.
+존재하는 이유다 — 계획서 3번 기준("완주 격차가 subopt_norm 으로 드러날 것")이 정확히 이걸 잡아냈다.
 
 **그런데도 개입은 답이 아니다.** 구역이 시간을 두 배로 늘리는 것은 사실이지만, 그 대응으로
 빌드를 통째로 옮기면 **8판 중 7판이 완주에 실패한다**(makespan 채널). 즉 이 결정의 구조는
@@ -559,7 +559,7 @@ zone 의 정답이 **항상 NOOP** 이 되어(H=0) 결정 자체가 사라진다
 |---|---|---|
 | (1) `H(best\|zone) > 0` | **FAIL** (0.000 bits) | 이 격자 안에서는 정답이 항상 NOOP → 상태를 읽는 모델이 배울 게 없다 |
 | (2) 동점률 < 30% | **PASS** (0%) | valid 게이트를 걸면 동점은 사라진다(게이트 없으면 100%) |
-| (3) 격차가 regret 으로 | **PASS** | closed 77.6 · makespan 채널에서 개입 7/8 미완주 |
+| (3) 격차가 subopt_norm 으로 | **PASS** | closed 77.6 · makespan 채널에서 개입 7/8 미완주 |
 
 **결론**: 배선(STEP 1~3)은 전부 작동하고, 그 배선이 만들어낸 첫 측정이 **STEP 2 규칙을 반증**했다.
 계획서가 STEP 6 을 "이 설계가 쓸모 있다는 유일한 직접 증거"라고 한 그 자리에서, 증거는
@@ -1177,7 +1177,7 @@ ZONE_CAUSAL_RULE=1:
 ```
 기준 (1) H(best|zone) = 1.000 bits   PASS      (분포: RelocateBuild 1, NOOP 1)
 기준 (2) 동점률        = 0/2 = 0.0%  PASS
-기준 (3) regret(closed): blocking·NOOP = 25 오답 / core·RelocateBuild = 35 오답
+기준 (3) subopt_norm(closed): blocking·NOOP = 25 오답 / core·RelocateBuild = 35 오답
 ```
 
 **STEP 6 이 실패했던 기준 (1)이 성립한다** — 같은 kind 안에서 정답이 뒤집히는 두 사건을 처음으로 만들었다.
@@ -1199,8 +1199,8 @@ control:   reform 0회, 완주
 
 | 사건 | 실측 최선 | 커버리지 규칙 | 인과 규칙 |
 |---|---|---|---|
-| blocking (root 0, 막힘 3) | RelocateBuild | `:noop` ✗ (regret 25) | `:relocate_build` ✓ |
-| core zone (root 8/8, 막힘 1) | NOOP | `:relocate_build` ✗ (regret 35) | `:relocate_build` ✗ |
+| blocking (root 0, 막힘 3) | RelocateBuild | `:noop` ✗ (subopt_norm 25) | `:relocate_build` ✓ |
+| core zone (root 8/8, 막힘 1) | NOOP | `:relocate_build` ✗ (subopt_norm 35) | `:relocate_build` ✗ |
 | | | **0/2** | **1/2** |
 
 인과 규칙은 **커버리지가 원리적으로 볼 수 없는 사건**(root_covered=0인데 실제로 막는 구역)을 고쳤다.

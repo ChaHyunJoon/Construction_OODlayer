@@ -183,6 +183,33 @@ CB.SOC_SPEED_HOOK[] = nothing
 CB.set_battery_stall!(enabled = false); CB.clear_stalled_robots!()
 check("hook cleared", CB.SOC_SPEED_HOOK[] === nothing)
 
+# [5] GRADED derate band (2026-08-05 심각도 구간 재설계). 사다리 0.02 / 0.3 / 0.5 가 실제로
+#     서로 다른 거동(정지 / 감속 / 무영향)을 갖는지, 그리고 꺼 두면 예전 계단 함수 그대로인지.
+println("[5] graded derate band (0.02 stall / 0.3 degraded / 0.5 nominal)")
+check("set_battery_derate! fn", isa(CB.set_battery_derate!, Function))
+thr = 0.15
+CB.set_battery_derate!(enabled = false)                       # 기본(꺼짐) = 예전 계단 함수
+check("derate off: 0.02 -> 0.0", CB._soc_speed_of(0.02, thr) == 0.0)
+check("derate off: 0.30 -> 1.0", CB._soc_speed_of(0.30, thr) == 1.0)
+check("derate off: 0.50 -> 1.0", CB._soc_speed_of(0.50, thr) == 1.0)
+CB.set_battery_derate!(enabled = true, hi = 0.5, min_factor = 0.35)
+f02, f30, f50 = CB._soc_speed_of(0.02, thr), CB._soc_speed_of(0.30, thr), CB._soc_speed_of(0.50, thr)
+check("derate on: 0.02 stalls (0.0)",        f02 == 0.0)
+check("derate on: 0.30 degraded (0<f<1)",    0.0 < f30 < 1.0)
+check("derate on: 0.50 nominal (1.0)",       f50 == 1.0)
+check("three rungs are DISTINCT",            f02 != f30 && f30 != f50)
+check("monotone in SoC",                     CB._soc_speed_of(0.20, thr) < f30 < CB._soc_speed_of(0.40, thr))
+check("just above thr -> min_factor",        isapprox(CB._soc_speed_of(nextfloat(thr), thr), 0.35; atol = 1e-6))
+check("degenerate hi<=thr is inert",         (CB.set_battery_derate!(enabled = true, hi = 0.1);
+                                              CB._soc_speed_of(0.30, thr) == 1.0))
+# 사다리 설계값이 실제로 어떤 속도 배율이 되는지 표로 찍는다(문서에 인용되는 수치의 출처).
+CB.set_battery_derate!(enabled = true, hi = 0.5, min_factor = 0.35)
+println("  [derate table] thr=$(thr) hi=0.5 min_factor=0.35")
+for s in (0.02, 0.15, 0.16, 0.20, 0.30, 0.40, 0.50, 0.60)
+    println("     SoC=$(rpad(s, 5))  speed_factor=", round(CB._soc_speed_of(s, thr), digits = 4))
+end
+CB.set_battery_derate!(enabled = false)                       # teardown
+
 println("\n$(fail == 0 ? "ALL GREEN" : "HAS FAILURES") — pass=$pass fail=$fail")
 exit(fail == 0 ? 0 : 1)
 end
@@ -279,7 +306,11 @@ CB.clear_spare_pools!()
 CB.clear_faulted_robots!()
 
 # --- hot-swap flag toggle -------------------------------------------------------
-check("hot-swap OFF by default", CB.hot_swap_enabled() == false)
+# [2026-08-05] 이 단정문은 낡아 있었다("OFF by default"). 2026-08-04 에 기본값이 의도적으로 ON 으로
+# 뒤집혔고(ood_injection.jl:537 `Ref(get(ENV,"LEGACY_RESTAMP","0") != "1")` + 그 위 주석), 옛 동작은
+# LEGACY_RESTAMP=1 로만 되돌린다. 검사를 실제 계약(= 환경변수로만 꺼진다)에 맞춘다.
+check("hot-swap ON by default (LEGACY_RESTAMP=1 로만 꺼짐)",
+      CB.hot_swap_enabled() == (get(ENV, "LEGACY_RESTAMP", "0") != "1"))
 CB.set_hot_swap!(enabled = true, mode = :via_depot)
 check("set_hot_swap! turns it on", CB.hot_swap_enabled() == true)
 check("mode recorded", CB.HOT_SWAP_MODE[] == :via_depot)

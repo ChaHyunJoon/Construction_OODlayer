@@ -17,6 +17,7 @@
 const MONITOR_IO      = Ref{Union{Nothing,IO}}(nothing)  # 열린 스트림 파일 핸들
 const MONITOR_RESPEC  = Ref{Any}(nothing)                # 최근 respec 결정(선택)
 const MONITOR_RESPEC_HISTORY = Any[]                     # every OOD decision in this run
+const MONITOR_RECOVERY_LOG   = Any[]                     # 컨트롤러 자체 복구 조치(OOD 아님) — monitor_record_recovery!
 const MONITOR_FAULTED = Set{Any}()                       # FAULT 로 표시할 로봇 id(선택)
 const MONITOR_NODE_T  = Dict{Int,Any}()                  # Gantt: 스케줄 정점 v => {t0,t1,kind,label,robots}
 const MONITOR_HANDOFF_T = Dict{Any,Float64}()            # logical robot id => physical spare handoff time
@@ -25,7 +26,7 @@ const MONITOR_HANDOFF_T = Dict{Any,Float64}()            # logical robot id => p
 """    monitor_enable!(path) — JSONL 스트림 파일을 연다. run 시작 전에 호출."""
 function monitor_enable!(path::AbstractString)
     monitor_disable!()
-    empty!(MONITOR_NODE_T); empty!(MONITOR_HANDOFF_T); MONITOR_RESPEC[] = nothing; empty!(MONITOR_RESPEC_HISTORY); empty!(MONITOR_FAULTED)  # 새 run 이면 상태 초기화
+    empty!(MONITOR_NODE_T); empty!(MONITOR_HANDOFF_T); MONITOR_RESPEC[] = nothing; empty!(MONITOR_RESPEC_HISTORY); empty!(MONITOR_RECOVERY_LOG); empty!(MONITOR_FAULTED)  # 새 run 이면 상태 초기화
     mkpath(dirname(path))
     MONITOR_IO[] = open(path, "w")
     @info "[monitor] streaming → $path"
@@ -352,6 +353,23 @@ function monitor_record_respec!(; at, input=nothing, candidates=Any[], chosen=no
     return nothing
 end
 
+"""
+    monitor_record_recovery!(; at, action, detail="", status="")
+
+컨트롤러가 **스스로** 취한 내부 복구 조치를 기록한다(팀 재정립 등).
+
+OOD 결정(`monitor_record_respec!`)과 의도적으로 분리돼 있다. 팀 교착 알람은 외부 교란이 아니라
+**우리 복구가 만든 2차 부작용**이라, OOD 로 취급하면 (a) OOD 카운터가 오염되고 (b) novelty 교정에
+그 종류가 없어 항상 "처음 보는 사건"으로 뜨며 (c) 액션이 [NOOP, ReformTeam] 뿐이라 결정 패널에
+정보량 0 인 항목만 쌓인다. 그래서 별도 타임라인으로 뺀다.
+"""
+function monitor_record_recovery!(; at, action, detail="", status="")
+    push!(MONITOR_RECOVERY_LOG, Dict{String,Any}(
+        "at" => at, "action" => String(action),
+        "detail" => String(detail), "status" => String(status)))
+    return nothing
+end
+
 "Record the authoritative verifier/recovery trace for the current respec decision."
 function monitor_record_verification!(; status, checks=Any[], execution=nothing, verdict=nothing)
     rs = MONITOR_RESPEC[]
@@ -465,6 +483,7 @@ function monitor_emit!(env, iter::Integer; dt=nothing)
         "ood"        => _mon_ood(),
         "respec"     => MONITOR_RESPEC[],
         "respec_history" => copy(MONITOR_RESPEC_HISTORY),
+        "recovery"   => copy(MONITOR_RECOVERY_LOG),   # 내부 복구 조치(OOD 피드와 분리)
         "handoffs"   => [Dict("failed"=>string(rid), "spare"=>string(info.spare),
                               "at"=>MONITOR_HANDOFF_T[rid], "failed_soc"=>info.failed_soc)
                          for (rid, info) in swaps],

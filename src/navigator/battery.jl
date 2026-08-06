@@ -131,11 +131,29 @@ function init_battery_fleet!(env; params::BatteryParams=BatteryParams(), soc0::F
     return fleet
 end
 
+# Per-robot DRAIN-EFFICIENCY hook (MDP layer). `nothing` (default) => factor 1.0, so the drain is
+# exactly the deterministic model above and nominal runs are byte-for-byte unchanged. mdp/hazard.jl
+# points this at `hazard_drain_factor(id)`, a per-robot random efficiency deviation ε_r — the term
+# that makes battery depletion genuinely STOCHASTIC (a deterministic drain makes the SoC-crossing
+# time a function of the plan alone, i.e. not a random variable at all). Same inert-by-default Ref
+# pattern as BATTERY_STEP_HOOK / SOC_SPEED_HOOK / EDGE_COST_MULTIPLIER.
+# [한국어] 로봇별 "방전 효율 편차" 훅. 기본 nothing = 배수 1.0(기존 동작 그대로). mdp/hazard.jl 이
+#          여기에 ε_r 을 꽂으면 같은 계획이라도 방전 시점이 로봇마다/실행마다 달라진다(확률화의 핵심).
+const DRAIN_FACTOR_HOOK = Ref{Any}(nothing)
+
+# 훅이 없으면 1.0, 있으면 그 함수가 준 배수(음수/NaN 은 1.0 으로 안전 폴백).
+function _drain_factor(id)
+    h = DRAIN_FACTOR_HOOK[]
+    h === nothing && return 1.0
+    f = try Float64(h(id)) catch; 1.0 end
+    return (isfinite(f) && f >= 0.0) ? f : 1.0
+end
+
 # Debit one robot: energy = power·dt, SoC drops by energy/capacity. Clamp at floor; record depletion.
 # 로봇 한 대 배터리 깎기: 에너지=전력×시간, SoC 는 에너지/용량 만큼 하락. 바닥(floor) 에 닿으면 depleted 로 기록.
 function _debit!(fleet::BatteryFleet, id, power_W::Float64, dt_s::Float64)
     haskey(fleet.soc, id) || return            # unknown id (e.g. transient respec spare) -> skip  # 모르는 id 면 건너뜀
-    e = power_W * dt_s                         # 이번 스텝 소비 에너지[J]
+    e = power_W * dt_s * _drain_factor(id)     # 이번 스텝 소비 에너지[J] × 로봇별 효율 편차(ε_r; 훅 없으면 1.0)
     fleet.energy_J[id] += e                    # 누적 소비에 더함
     s = fleet.soc[id] - e / fleet.params.capacity_J   # 잔량 = 기존 - (소비/용량)
     if s <= fleet.params.floor_soc
@@ -333,22 +351,50 @@ the soft-bias path and any NL parsers are unchanged above the threshold.
 """
 # 배터리-건강 OOD 주입: 한 로봇의 SoC 를 soc_drop 만큼 뚝 떨어뜨림(셀 열화/고장). enqueue 면 자연어 사건을 재명세 큐에 넣음.
 # 반환값은 자연어(NL) 문자열(함대/대상 없으면 ""). 심각도에 따라 문구가 갈린다(깊은 방전=고장 취급 / 가벼운 열화=먼거리 피하기).
-function inject_battery_fault!(env; target=nothing, soc_drop::Float64=0.6, enqueue::Bool=true)
+function inject_battery_fault!(env; target=nothing, soc_drop::Float64=0.6,
+                               soc_target::Union{Nothing,Float64}=nothing, enqueue::Bool=true)
     fleet = BATTERY_FLEET[]; fleet === nothing && return ""
     id = target === nothing ? _pick_battery_target(env, fleet) : target  # 대상 미지정 시 알아서 고름
     (id === nothing || !haskey(fleet.soc, id)) && return ""
-    fleet.soc[id] = max(fleet.params.floor_soc, fleet.soc[id] - soc_drop)  # 잔량 하락(바닥 아래로는 안 감)
+    # soc_target 이 주어지면 **결과 SoC 를 그 값으로 확정**한다(뺄셈이 아니라 대입).
+    # [2026-08-05] 심각도 사다리(0.02 / 0.3 / 0.5)는 "떨어뜨릴 양"이 아니라 "떨어진 뒤의 잔량"으로
+    # 정의된다 — 감속/정지 구간의 경계가 결과 SoC 로 정해지기 때문이다. 뺄셈이면 사건 시점까지
+    # 그 로봇이 이미 얼마나 썼는지에 따라 결과가 흔들려 사다리 칸이 설계값에서 벗어난다
+    # (실측: 목표 0.02 인데 기록된 soc 가 0.0 — 이미 소모분이 있어 바닥에 눌렸다).
+    fleet.soc[id] = soc_target === nothing ?
+        max(fleet.params.floor_soc, fleet.soc[id] - soc_drop) :         # 기존 경로(바이트 동일)
+        clamp(soc_target, fleet.params.floor_soc, 1.0)                  # 결과 SoC 를 직접 지정
     soc_after = fleet.soc[id]
     soc_pct = round(Int, 100 * soc_after)                # 퍼센트 표기용 반올림
     # Guard the threshold: REPLACE_SOC_THRESHOLD lives in ood_truth.jl; fall back to 0.2 if a demo
     # include'd battery.jl standalone (matches the file's other isdefined cross-layer guards).
     # 임계값은 ood_truth.jl 소속; 이 파일만 단독 include 된 데모 대비해 없으면 0.2 로 폴백(isdefined 로 존재 확인).
     thr = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.2
-    nl = soc_after <= thr ?                              # 깊은 방전이면 "고장 취급" 문구, 아니면 "부담 줄이기" 문구
-        "Robot R$(id.id)'s battery is critically flat at about $(soc_pct)% charge; it can no longer " *
-        "drive or carry — treat it as broken down and hand its work to a backup robot." :
-        "Robot R$(id.id)'s battery is degraded and now at about $(soc_pct)% charge; " *
-        "it should avoid long-distance and heavy-payload hauls so it does not run flat."
+    # =========================================================================
+    #  NL 은 **증상만** 말한다 — 처방을 말하지 않는다 (2026-08-05)
+    # -------------------------------------------------------------------------
+    #  예전 깊은-방전 문구는 "treat it as broken down and **hand its work to a backup robot**" 이었다.
+    #  이것은 사건 서술이 아니라 **정답 지시**다. 결과가 둘이나 어긋난다:
+    #   (1) LLM 대조군이 부당하게 유리해진다 — 프롬프트가 답을 알려주므로 "LLM vs surrogate" 비교가
+    #       무효가 된다(이 저장소의 여러 baseline 이 이 문구를 읽는다).
+    #   (2) 그 지시가 **틀렸다.** 배터리 사건에서 창고 본체(ReplaceAgent)를 쓰는 것은 과잉이고,
+    #       현장 배터리 교체(SwapBattery)가 같은 결과를 더 싸게 낸다(측정: 같은 문서 §4).
+    #  그래서 문구를 증상 서술로 바꾼다. 옛 문구가 필요한 재현 작업은 OOD_NL_LEGACY=1.
+    # =========================================================================
+    legacy = get(ENV, "OOD_NL_LEGACY", "0") == "1"
+    nl = if soc_after <= thr                             # 깊은 방전(정지) / 아니면 열화(감속)
+        legacy ?
+            "Robot R$(id.id)'s battery is critically flat at about $(soc_pct)% charge; it can no longer " *
+            "drive or carry — treat it as broken down and hand its work to a backup robot." :
+            "Robot R$(id.id)'s battery is critically flat at about $(soc_pct)% charge; it has stopped " *
+            "where it stands and cannot drive or carry until its charge is restored."
+    else
+        legacy ?
+            "Robot R$(id.id)'s battery is degraded and now at about $(soc_pct)% charge; " *
+            "it should avoid long-distance and heavy-payload hauls so it does not run flat." :
+            "Robot R$(id.id)'s battery is degraded and now at about $(soc_pct)% charge; " *
+            "it is moving below its normal speed and will keep draining while it works."
+    end
     enqueue && push_ood!(nl)                             # enqueue 참이면 재명세 큐에 자연어 사건 투입
     return nl
 end
@@ -359,21 +405,40 @@ end
 # battery layer is on and the spare depots are provisioned — is always a PARKED SPARE (idle => never
 # drains, and it owns no tasks). Same class of bug as the fault injector's target picker.
 # Order: (1) a cleanly-replaceable working robot (solo transport frontier — Replace can actually
-# hand its chain over), (2) any non-spare robot with a pending assignment, (3) the legacy fallback.
+# hand its chain over), (2) NEW: any non-spare robot that still OWNS CARRY WORK (member of a
+# non-closed FormTransportUnit team), (3) the legacy fallback, spares excluded.
 # 배터리 OOD 를 "대응 가능한" 로봇에게 꽂는 대상 선택. (남은 일이 있는 로봇이어야 교체/우선순위낮춤이 의미 있음)
-# 순서: (1) 깔끔히 교체 가능한 작업 로봇 -> (2) 예비 아니고 남은 배정 있는 로봇 -> (3) 옛 폴백.
+# 순서: (1) 깔끔히 교체 가능한 작업 로봇 -> (2) 안 닫힌 운반팀 멤버(= 남은 일 있음) -> (3) 예비 제외 폴백.
+#
+# [2026-08-05 수정 — 발화시점 재라벨링에서 fault 쪽에 적용한 것과 **같은 술어 버그**]
+# 예전 (2) 순위는 `_first_pending_assignment(env, id) !== nothing` 이었다. 그 술어는 "남은 일이
+# 있는가"가 아니라 "지금 **깨끗한 작업 경계**(선행 노드가 RobotStart 이거나 이미 closed)에 서
+# 있는가"를 묻는다. 빌드가 굴러가면 로봇은 운반 사슬(FormTransportUnit → TransportUnitGo →
+# DepositCargo) 안에 들어가 있어 그 경계를 스쳐 지나갈 뿐이므로, closed≳80 부터는 **후보가 0** 이
+# 된다(측정: oracle/out/fire_probe_batt.csv 의 batt_old 열, 활성 로봇 19~23 대인데도 0). 그러면 (1)(2)가 모두
+# 실패하고 옛 폴백 `_pick_low_margin_robot` 으로 떨어지는데, 그것은 "SoC 최고 로봇"을 고른다 =
+# 주차된 예비(idle 이라 안 닳는다). 즉 **후반 battery 사건은 놀고 있는 로봇을 때려 무해해졌다**:
+# NOOP / Replace / SwapBattery 가 전부 같은 결과가 되어 라벨이 vacuous 해진다.
+#
+# 올바른 판정은 스케줄 구조에서 직접 읽는다: **아직 안 닫힌 FormTransportUnit 팀의 멤버인가**
+# (= 앞으로 할 운반 일이 남았는가). `pick_hotswap_fault_target` 이 정확히 그 술어이며 진행도와
+# 무관하게 후보를 낸다. 여기서 그것을 쓰는 것은 안전하다 — 배터리 사건 자체는 스케줄을 건드리지
+# 않고 SoC 만 떨어뜨리며, 그 뒤 재각인(re-stamp) 경로를 타는 stall→고장 발화는
+# `_fire_battery_stall!` 이 이미 hot-swap 여부로 자체 게이트한다.
 function _pick_battery_target(env, fleet::BatteryFleet)
     isempty(fleet.soc) && return nothing
     for f in (:pick_solo_fault_target, :pick_solo_frontier_target)   # 이 헬퍼들이 있으면 우선 사용(없으면 catch)
         rid = try getproperty(@__MODULE__, f)(env) catch; nothing end
         rid !== nothing && haskey(fleet.soc, rid) && return rid
     end
-    # 남은 일(pending) 있고, 예비 아니고, 아직 방전 안 된 로봇들만 후보로.
-    working = [id for (id, s) in fleet.soc
-               if s > fleet.params.floor_soc &&
-                  !(try is_spare(id) catch; false end) &&
-                  (try _first_pending_assignment(env, id) !== nothing catch; false end)]
-    isempty(working) || return argmax(id -> fleet.soc[id], working)  # 그 중 SoC 가장 높은(=오폭 아닌) 로봇
+    # (2) FTU 멤버십 = "남은 운반 일이 있음". 진행도와 무관하게 후보가 나온다.
+    rid = try pick_hotswap_fault_target(env; prefer_inprogress = true) catch; nothing end
+    rid !== nothing && haskey(fleet.soc, rid) && return rid
+    # (3) 폴백: 방전 안 됐고 **예비가 아닌** 로봇 중 SoC 최고. 예비를 절대 고르지 않는 것이 요점.
+    nonspare = [id for (id, s) in fleet.soc
+                if s > fleet.params.floor_soc &&
+                   !(try is_spare(id) || is_recovery_spare(id) catch; false end)]
+    isempty(nonspare) || return argmax(id -> fleet.soc[id], nonspare)
     return _pick_low_margin_robot(fleet)                              # 다 실패하면 옛 방식 폴백
 end
 
@@ -447,23 +512,77 @@ set_battery_stall!(; enabled::Bool = true, threshold::Real = 0.001,
                         clear = clear, obstacle = obstacle);
      empty!(STALLED_ROBOTS[]); nothing)
 
+# =================================================================================
+# BATTERY DERATE: a GRADED low-charge speed band between "nominal" and "dead".
+# ---------------------------------------------------------------------------------
+# 왜 필요한가 (2026-08-05, 심각도 구간 재설계).
+#   `soc_speed_factor` 는 원래 계단 함수였다 — SoC ≤ stall 임계면 0.0, 아니면 1.0. 그래서 심각도
+#   사다리 0.05 / 0.12 는 (둘 다 임계 0.15 아래라) **행동이 완전히 같은 두 점**이었다: 둘 다 즉시
+#   정지. 사다리가 "심각도"를 재는 게 아니라 같은 사건을 두 번 재고 있었던 셈이다.
+#
+#   고침은 심각도 값만 바꾸는 것으로는 안 된다. 값을 0.3 으로 올려도 계단 함수 아래에서는
+#   0.3 과 0.5 가 **똑같이 1.0** (아무 영향 없음)이라 여전히 두 점이 겹친다. 그래서 정지 경계 바로
+#   위에 **감속 구간**을 둔다:
+#       SoC ≤ thr            -> 0.0            (죽음: 그 자리에 멈춤)
+#       thr < SoC < hi       -> min_f ~ 1.0 선형   (성능 저하: 느리지만 계속 일함)
+#       SoC ≥ hi             -> 1.0            (사실상 무영향)
+#   이러면 0.02 / 0.3 / 0.5 세 점이 **서로 다른 거동**을 갖는다(정지 / 감속 / 무영향)는 것이
+#   설계이자 검증 대상이 된다.
+#
+#   물리적 정당화: 저 SoC 에서 셀 전압이 떨어져 최대 출력(=최대 속도/가속)이 제한되는 것은 실제
+#   배터리 시스템의 표준적인 거동(power derating)이다. 그래서 "느려지지만 계속 일한다"는 중간
+#   단계가 인위적인 손잡이가 아니라 물리적으로 자연스러운 상태다.
+#
+#   기본은 **꺼짐**(enabled=false) — 켜기 전에는 예전과 바이트 단위로 같은 계단 함수다(기존 덤프
+#   재현성 보존). 라벨러/데모는 `set_battery_derate!(enabled=true, ...)` 로 명시적으로 켠다.
+# 감속 설정: enabled=켜기, hi=이 값 이상이면 무영향, min_factor=정지 직전의 최저 속도 배율.
+const BATTERY_DERATE = Ref((enabled = false, hi = 0.5, min_factor = 0.35))
+
+"""
+    set_battery_derate!(; enabled=true, hi=0.5, min_factor=0.35)
+
+Arm the GRADED low-charge speed band (see `soc_speed_factor`). A robot between the stall
+threshold and `hi` moves at a fraction of its max speed that ramps linearly from `min_factor`
+(just above the stall threshold) to 1.0 (at `hi`). Off by default, so the gate stays the
+original step function unless a caller asks for the graded band.
+"""
+set_battery_derate!(; enabled::Bool = true, hi::Real = 0.5, min_factor::Real = 0.35) =
+    (BATTERY_DERATE[] = (enabled = enabled, hi = Float64(hi),
+                         min_factor = clamp(Float64(min_factor), 0.0, 1.0)); nothing)
+
+# 한 로봇의 SoC -> 속도 배율. 정지 임계 이하면 0, 감속 꺼져 있으면 1, 켜져 있으면 위 선형 구간.
+function _soc_speed_of(soc::Float64, thr::Float64)
+    soc <= thr && return 0.0                              # 죽음
+    d = BATTERY_DERATE[]
+    d.enabled || return 1.0                               # 감속 안 쓰면 예전과 동일한 계단 함수
+    soc >= d.hi && return 1.0                             # 충분히 남았으면 무영향
+    d.hi <= thr && return 1.0                             # 잘못 설정된 구간(hi<=thr)은 무동작
+    frac = (soc - thr) / (d.hi - thr)                     # 0(정지 직전) ~ 1(hi)
+    return d.min_factor + (1.0 - d.min_factor) * frac     # min_factor ~ 1.0 선형
+end
+
 """
     soc_speed_factor(node) -> Float64
 
-Motion-layer battery gate (installed as route_planning.SOC_SPEED_HOOK): 0.0 if ANY physical
-robot responsible for `node` (a RobotGo robot, or a TransportUnit team) is at/below the stall
-threshold, else 1.0. So a flat robot's whole unit physically stops. Inert (1.0) unless stall
-is enabled and a fleet exists.
+Motion-layer battery gate (installed as route_planning.SOC_SPEED_HOOK): the MINIMUM speed
+factor over every physical robot responsible for `node` (a RobotGo robot, or a TransportUnit
+team). 0.0 for a robot at/below the stall threshold, so a flat robot's whole unit physically
+stops. With `set_battery_derate!(enabled=true)` a robot between the stall threshold and `hi`
+returns a fraction in `[min_factor, 1.0]` — degraded but still working. Inert (1.0) unless
+stall is enabled and a fleet exists.
 """
-# 모션 계층 배터리 게이트: node 를 맡은 로봇 중 하나라도 정지 임계 이하면 0.0(그 유닛 전체가 물리적으로 멈춤), 아니면 1.0.
+# 모션 계층 배터리 게이트: node 를 맡은 로봇들의 속도 배율 중 **최솟값**(가장 약한 로봇이 팀 속도를 정한다).
 function soc_speed_factor(node)
     BATTERY_STALL[].enabled || return 1.0                # 정지 기능 꺼져 있으면 항상 정상속도(1.0)
     fleet = BATTERY_FLEET[]; fleet === nothing && return 1.0
     thr = BATTERY_STALL[].threshold
+    f = 1.0
     for id in _responsible_robots(node)
-        (haskey(fleet.soc, id) && fleet.soc[id] <= thr) && return 0.0   # 방전 로봇 포함 -> 속도 0
+        haskey(fleet.soc, id) || continue
+        f = min(f, _soc_speed_of(fleet.soc[id], thr))    # 하나라도 방전이면 0 -> 유닛 전체 정지
+        f == 0.0 && return 0.0                            # 더 낮아질 수 없으니 조기 반환
     end
-    return 1.0
+    return f
 end
 
 # route_planning.SOC_SPEED_HOOK 를 위 함수로 연결(여러 번 호출해도 안전). 정지 켜지기 전엔 무동작.

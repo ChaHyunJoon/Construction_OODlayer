@@ -100,6 +100,53 @@ struct ForbidZone <: ConstraintSpec
 end
 
 """
+    RelocateBuild(zone)
+
+"A no-go zone covers work the build CANNOT relocate piecemeal, so shift the ENTIRE
+build clear of it." The SECOND spatial spec, and the one that exists because
+`ForbidZone` has an empty domain for most of a run.
+
+WHY A SEPARATE KIND (measured 2026-08-03, oracle/out/zdiag*). `ForbidZone` enacts
+`restage_all_blocked!`, which can only move an assembly whose build steps have not
+started (`_assembly_started` ⇒ `restage_assembly!` refuses with `:already_started`).
+Counting that predicate along a real build: 7 non-root staging circles are eligible at
+`closed=0` and **zero** from `closed≈46` onward — the restageable set empties at the
+first batch boundary and never returns. Every `ForbidZone` fired after that point is a
+silent no-op (byte-identical to NOOP; `[RESTAGE-ALL]` never logs). No firing WINDOW
+fixes this, because the precondition is destroyed by build progress itself, not by
+timing.
+
+`translate_whole_build!` (restage_zone.jl) has NO such precondition: it reads
+`_future_work_discs` — goals the unfinished schedule still has to reach plus non-root
+staging workspaces — which is gated on `closed_set` only, never on `_assembly_started`.
+So it stays non-empty for essentially the whole build. The mechanism is a single rigid
+Δ applied to every assembly's `start_config` (each subtree carries its staging AND its
+components' deposit goals), so the schedule shifts with no internal desync and NO MILP
+re-solve; the zone itself is left exactly where it is.
+
+Tier: SPATIAL, like `ForbidZone` — not a MILP `@constraint` over (t0,tF,Xa). Dispatched
+specially in `maybe_respecify!` (`_is_relocate_build`, checked BEFORE the ForbidZone
+branch so a mixed proposal takes the stronger lever). Safety is in the gate
+(`verify_relocate`): admitted only if the named zone exists AND the geometry can be
+moved at all; enactment then fails closed on `:residual_blocked`/`:infeasible`.
+
+`zone` is the key in `RESTRICTION_ZONES`, echoed exactly as `ForbidZone.zone` is.
+Unlike `ForbidZone` it names NO assembly — the whole build moves, so there is no
+per-assembly grounding for the LLM to get wrong.
+"""
+# 의미: "no-go 구역이 조각조각 옮길 수 없는 작업까지 덮었으니, 빌드 **전체**를 통째로 비켜 옮긴다."
+#   왜 ForbidZone 과 별도 종류인가(2026-08-03 실측): ForbidZone→restage_all_blocked! 은 "아직 build step 이
+#   하나도 안 열린 조립체"만 옮길 수 있는데, 그 집합이 closed≈46(첫 배치 경계)에서 전멸하고 다시 돌아오지
+#   않는다 → 그 뒤의 ForbidZone 은 전부 조용한 no-op(=NOOP 과 바이트 동일). 창을 어디로 옮겨도 안 되는 이유는
+#   전제조건을 시점이 아니라 "빌드 진행 자체"가 파괴하기 때문.
+#   translate_whole_build! 은 그 전제조건이 없다: _future_work_discs 는 closed_set 만 보고
+#   _assembly_started 게이트가 없어서 빌드 내내 비지 않는다. 구역은 그대로 두고 작업영역 전체가 Δ 만큼
+#   평행이동한다(MILP 재풀이 없음). 안전은 verify_relocate 게이트 + 실행 결과(:residual_blocked/:infeasible)에서.
+struct RelocateBuild <: ConstraintSpec
+    zone::Symbol          # 비켜야 할 대상 제한구역의 키(RESTRICTION_ZONES 의 키). ForbidZone.zone 과 같은 규약.
+end
+
+"""
     ReplaceAgent(agent, after)
 
 "Robot/agent `agent` has BROKEN DOWN and must be REPLACED by a backup (spare)
@@ -129,6 +176,46 @@ if the agent exists (not closed) AND a spare is available; else safe fallback.
 struct ReplaceAgent <: ConstraintSpec
     agent::AbstractID   # 고장나서 교체될 로봇/에이전트의 ID
     after::Float64      # 이 시각 이후로 불가(보통 0.0) — ForbidAgent 와 동일 필드
+end
+
+"""
+    SwapBattery(agent)
+
+"Robot `agent`'s battery is depleted; swap the battery IN THE FIELD." The SAME physical
+body keeps working with a fresh pack — no depot spare is consumed, only time and cost.
+
+WHY THIS IS A SEPARATE ACTION FROM `ReplaceAgent`
+-------------------------------------------------
+The two consume DIFFERENT resources, so preferring one over the other is a genuine
+decision rather than a relabelling:
+
+    ReplaceAgent — consumes a depot BODY (a scarce, counted spare), asset generation +1
+    SwapBattery  — consumes a BATTERY (unmetered, cost only), asset generation unchanged
+
+That difference is the whole point. A depleted robot can be revived cheaply; spending a
+scarce chassis on a flat battery wastes the spare that a later MECHANICAL failure will
+need. Conversely a battery swap does nothing for a broken drivetrain. So the right answer
+depends on the failure's cause AND on how much of the build is left — which is exactly the
+kind of within-kind decision structure the surrogate is supposed to learn.
+
+Enacted by `swap_battery!` (replace_robot.jl): restore SoC, clear the stall/deplete gates,
+record a `:battery_swap` row in the asset ledger. No schedule mutation and no scene-tree
+surgery — the body never changes, so this is the least invasive recovery in the vocabulary.
+"""
+# 의미: "로봇 `agent` 의 배터리가 방전됐다 → 현장에서 배터리만 교체한다." 같은 본체가 새 팩으로 계속 일함.
+#   창고 예비 "본체"를 안 먹고 시간·비용만 든다.
+#
+#   왜 ReplaceAgent 와 별개의 액션인가: 둘은 소모 자원이 다르다 —
+#     ReplaceAgent = 창고 본체(희소·개수 셈) 소모, 자산 세대 +1
+#     SwapBattery  = 배터리(무제한, 비용만) 소모, 세대 그대로
+#   방전된 로봇은 싸게 살릴 수 있는데 거기에 귀한 본체를 쓰면, 나중에 진짜 기계고장이 났을 때 쓸
+#   예비가 없어진다. 반대로 구동계가 망가진 로봇에 배터리를 갈아봐야 소용없다. 그래서 정답이
+#   "원인 + 남은 빌드량"에 따라 갈리고, 이게 surrogate 가 배워야 할 kind 내부 결정 구조다.
+#
+#   실행: swap_battery!(replace_robot.jl) — SoC 복구 + stall 게이트 해제 + 장부에 :battery_swap 기록.
+#   스케줄도 씬트리도 안 건드림(본체가 안 바뀌므로) = 어휘 중 가장 침습적이지 않은 복구.
+struct SwapBattery <: ConstraintSpec
+    agent::AbstractID   # 배터리를 갈아 끼울 로봇 ID
 end
 
 """

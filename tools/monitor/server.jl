@@ -55,7 +55,7 @@ end
 "OOD 추첨 seed → 스트림/애니 파일 접미사. seed=1(기본)은 접미사 없음 = 기존 이름 그대로."
 seed_suffix(seed::Int) = seed == 1 ? "" : "_s$(seed)"
 
-function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1)
+function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, wait_s::Float64=300.0)
     key = "$(model)__$(case)"
     key in RUNNING && return "already running"
     isempty(RUNNING) || return "busy — 다른 렌더 진행 중(동시 1개; MeshCat 포트 충돌 방지). 잠시 후 재시도."
@@ -84,6 +84,9 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1)
                 "DEMO_SEED" => string(seed),
                 "MONITOR_COMMAND_FILE" => cmdfile,
                 "MONITOR_INTERACTIVE" => (interactive ? "1" : "0"),
+                # 첫 조작자 명령(zone)을 기다리는 시간[초]. 0 = 기다리지 않음 = zone 없이 시작.
+                # zone 주입 여부는 결과를 크게 가르는 실험 조건이므로 호출자가 명시적으로 고른다.
+                "MONITOR_WAIT" => string(wait_s),
                 extra..., stream_override...)
             run(cmd)                                    # @async 안이라 다른 요청 처리를 막지 않음
             println("[server] done: model=$model case=$case")
@@ -115,9 +118,12 @@ function router(req)
             interactive = Bool(get(b, :interactive, false))
             n = try clamp(Int(get(b, :n, 0)), 0, 20) catch; 0 end   # OOD event count (0 = case default; capped at 20)
             seed = try clamp(Int(get(b, :seed, 1)), 0, 9999) catch; 1 end  # OOD draw seed (0 = legacy fixed slots)
+            # wait: 대화형 런이 첫 zone 명령을 기다릴 초. 0 = 기다리지 않고 zone 없이 시작.
+            wait_s = try clamp(Float64(get(b, :wait, 300.0)), 0.0, 3600.0) catch; 300.0 end
             model in available_models() || return HTTP.Response(400, cors(), "unknown model")
             case in VALID_CASES || return HTTP.Response(400, cors(), "unknown OOD case")
-            return HTTP.Response(200, cors(), spawn_run(model, case; interactive=interactive, n=n, seed=seed))
+            return HTTP.Response(200, cors(),
+                                 spawn_run(model, case; interactive=interactive, n=n, seed=seed, wait_s=wait_s))
         end
         if req.method == "POST" && path == "/inject/zone"
             key = ACTIVE_KEY[]
@@ -163,9 +169,19 @@ function router(req)
             base = safe_base(model)
             stream = "streams/$(base)__$(case)$(nsuf).jsonl"
             anim = "anim/$(base)__$(case)$(nsuf).html"
+            # 2026-08-04: 존재검사만으로는 **옛 애니가 새 런을 가장한다**. 라이브 인터랙티브 런은
+            # 애니 산출물을 만들지 않고(save_animation=!INTERACTIVE) 라이브 MeshCat 을 직접 몰기
+            # 때문에, 같은 이름의 낡은 anim/*.html 이 남아 있으면 대시보드가 그걸 Factory View 에
+            # 끼워 넣는다. 실측: 07-29 완주 애니(34.7초에 완성)가 08-04 미완주 런 화면에 떠서
+            # 데이터 패널(7/8, 95.8초)과 정면으로 모순됐다. → **스트림보다 오래된 애니는 없는 것으로 취급**.
+            streamp, animp = joinpath(ROOT, stream), joinpath(ROOT, anim)
+            has_anim = isfile(animp)
+            fresh = has_anim && (!isfile(streamp) || mtime(animp) >= mtime(streamp))
             return HTTP.Response(200, [cors(); "Content-Type" => "application/json"],
-                JSON3.write((stream=stream, stream_exists=isfile(joinpath(ROOT, stream)),
-                             anim=anim, anim_exists=isfile(joinpath(ROOT, anim)))))
+                JSON3.write((stream=stream, stream_exists=isfile(streamp),
+                             anim=anim, anim_exists=fresh,
+                             # 낡아서 숨긴 것인지(=이번 런이 애니를 안 만든 것) UI 가 구분할 수 있게.
+                             anim_stale=(has_anim && !fresh))))
         end
 
         rel = path == "/" ? "dashboard.html" : lstrip(path, '/')

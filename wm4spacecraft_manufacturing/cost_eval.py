@@ -67,7 +67,7 @@ Writes: cost_eval_metrics.json  (+ prints a full report)
   - time.perf_counter()          : 고정밀 시간 측정용(추론 latency 재는 데 사용).
   - dict(a=1, b=2)               : 키워드로 dict 만들기. **spec 등은 이 파일엔 없지만 dict 언팩 관용구.
 """
-import sys, os, json, math, time, argparse
+import io, sys, os, json, math, time, argparse
 import numpy as np
 import pandas as pd
 # 같은 폴더의 모듈들을 import 할 수 있게 이 파일 위치를 경로에 추가.
@@ -103,7 +103,7 @@ LLM_CAND_COUNT = 3                           # candidates an LLM proposes per ev
 # ---------- forest inference (faithful to the deployed surrogate_hotswap.json) ----------
 # 배포된 forest surrogate JSON 파일을 읽어 dict(spec)로 반환. path=json 경로.
 def load_forest(path):
-    spec = json.load(open(path))
+    spec = json.load(io.open(path, encoding="utf-8"))
     assert spec["kind"] == "forest", "expected a forest surrogate"   # forest 형식인지 확인(아니면 중단)
     return spec
 
@@ -176,7 +176,11 @@ def evaluate_accuracy(df, lam):
     global_best = int(pd.Series(list(best.values())).mode().iloc[0])   # 전체에서 가장 흔한 정답(폴백용)
     # heuristic textbook rule: fault->Replace, battery->Replace, zone->ForbidZone, else NOOP
     # 교과서적 휴리스틱 규칙(비교용 baseline): 고장/배터리->Replace(1), 구역->ForbidZone(3), 그 외 NOOP.
-    HEUR = {"fault": 1, "battery": 1, "zone": 3, "zoneblk": 3}
+    # 값을 **선호 순서 리스트**로 둔다. zone 계열의 개입 팔이 2026-08-03 부터 3(ForbidZone) →
+    # 7(RelocateBuild)로 바뀌었는데, 단일 번호로 두면 새 덤프에서 3 이 없어 아래 `in val` 검사가
+    # 조용히 NOOP 으로 떨어진다 — 그러면 "교과서 규칙" 베이스라인이 사실은 noop_always 가 되어
+    # 비교가 거짓말을 한다. 리스트로 두고 **그 덤프에 실제로 있는 첫 팔**을 쓴다.
+    HEUR = {"fault": [1], "battery": [1], "zone": [7, 3], "zoneblk": [7, 3]}
 
     POLICIES = ["surrogate", "always_per_kind", "heuristic", "random", "oracle"]   # 비교할 정책들
     reg = {p: [] for p in POLICIES}            # 정책 -> instance별 regret 리스트
@@ -208,7 +212,8 @@ def evaluate_accuracy(df, lam):
         tr_same = [best[i] for i in set(groups[tr]) if kind_of[i] == kind_of[iid]]
         k_pick = int(pd.Series(tr_same).mode().iloc[0]) if tr_same else global_best
         k_pick = k_pick if k_pick in val else global_best        # 이번 instance에 없는 macro면 폴백
-        h_pick = HEUR.get(kind_of[iid], 0); h_pick = h_pick if h_pick in val else 0   # 휴리스틱 선택
+        # 선호 순서대로 훑어 이 instance 에서 유효한 첫 팔을 쓰고, 하나도 없으면 NOOP.
+        h_pick = next((m for m in HEUR.get(kind_of[iid], []) if m in val), 0)   # 휴리스틱 선택
         r_pick = int(rng.choice(macros))                         # random 정책: 무작위 macro
 
         picks = {"surrogate": s_pick, "always_per_kind": k_pick, "heuristic": h_pick,

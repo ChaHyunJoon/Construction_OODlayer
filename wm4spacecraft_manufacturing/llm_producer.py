@@ -79,30 +79,33 @@ from nl_events import event_nl, nl_for_producer
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(HERE, "llm_cache")
 
-MACRO_NAME = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam"}
+# ---- 행동 어휘: 리터럴이 아니라 레지스트리에서 읽는다 (2026-08-06, Ch-A) ------------------
+# 여기 있던 표에는 8(SwapBattery) 이 **없었다**. README §4 가 battery 의 기본 정답이라 못박은 팔을
+# LLM 이 발화할 방법이 아예 없었다는 뜻이고, 정답이 어휘 밖이면 적중률은 원리적으로 100% 가 못 된다.
+# 조합 팔 5·6 은 레지스트리에 없으므로(생성기가 DS_COMBO_ARMS=1 일 때만 만든다) 여기서 보강한다 --
+# 옛 덤프를 읽는 경로가 KeyError 로 죽지 않게 하는 하위호환이고, 새 어휘의 진실원은 레지스트리다.
+from action_registry import MACRO_NAME as _REG_NAME, doc_lines as _reg_doc_lines
+
+MACRO_NAME = dict(_REG_NAME)
+MACRO_NAME.setdefault(5, "ForbidAgent+ReformTeam")
+MACRO_NAME.setdefault(6, "Deprioritize+ForbidWindow")
 NAME2ID = {v.lower(): k for k, v in MACRO_NAME.items()}
 
 # 같은 문구를 dspy_real_experiment.py 가 쓰던 것과 맞춘다. 행동 어휘 설명은 시스템의 DSL 문서이지
 # 사건 종류에 대한 힌트가 아니므로, 새 종류 실험에서도 주는 것이 맞다.
+# 어휘 설명 줄도 레지스트리에서 만든다. 예전에는 5개 팔이 산문으로 박혀 있어서, 레지스트리에
+# 팔을 늘려도 프롬프트는 옛 5개만 말하는 어긋남이 생겼다(그게 Ch-A 의 정확한 모양이다).
 MACRO_DOC = """You are the recovery controller of a multi-robot LEGO-assembly build. Something
 unexpected has happened. Choose EXACTLY ONE recovery macro from this fixed repertoire:
 
-- NOOP          : do nothing. Free (cost 0). Correct whenever the disruption is absorbed by slack
-                  or spare capacity and intervening would burn a scarce resource for nothing.
-- Replace       : swap the affected robot for a spare from the depot pool. Cost 1.0. Correct for a
-                  genuine loss of a robot that still owed work, WHEN spares remain.
-- Deprioritize  : lower the affected robot's task priority / route heavy work away from it.
-                  Cheap (cost 0.3). The middle option for a degraded-but-alive robot.
-- ForbidZone    : declare a no-go region and re-route / re-stage the build around it. Cost 1.0.
-                  Correct when a spatial region has become unusable and it blocks pending work.
-- ReformTeam    : re-form the multi-robot transport team geometrically. Cost 1.0.
+%s
 
 An intervention must recover MORE than it costs, otherwise NOOP is the right call. Restraint is a
-real answer, not a failure to answer."""
+real answer, not a failure to answer.""" % "\n".join(_reg_doc_lines())
 
 ANSWER_FORMAT = """Answer in exactly two lines:
-MACRO: <one of NOOP|Replace|Deprioritize|ForbidZone|ReformTeam>
-WHY: <one sentence>"""
+MACRO: <one of %s>
+WHY: <one sentence>""" % "|".join(MACRO_NAME[i] for i in sorted(_REG_NAME))
 
 
 # ==========================================================================================

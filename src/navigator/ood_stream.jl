@@ -58,12 +58,15 @@ resolved from the recorded `soc_after` by `truth_key(::BatteryTruth)`.
 # 시뮬레이션 도중 한 로봇의 배터리 SoC를 떨어뜨리는 스케줄용 액션. env를 받는 클로저를 반환한다.
 # 자연어 사건설명(nl)을 돌려주고, 동시에 정답 라벨 BatteryTruth(robot, soc_after)를 로그에 기록해 채점에 씀.
 # 인자: target(대상 로봇, 없으면 발화 시점에 자동 선택), soc_drop(떨어뜨릴 양).
-function battery_action(; target=nothing, soc_drop::Float64=0.6)
+function battery_action(; target=nothing, soc_drop::Float64=0.6,
+                        soc_target::Union{Nothing,Float64}=nothing)
     return function (env)                                 # 나중에 env를 받아 실행될 내부 함수(클로저)
         fleet  = BATTERY_FLEET[]                          # 배터리 fleet(전역 Ref) 꺼내기(없으면 nothing)
         before = fleet === nothing ? Dict{Any,Float64}() : copy(fleet.soc)  # 드롭 전 SoC 스냅샷(누가 떨어졌는지 비교용)
         # enqueue=false: 주입기(ood_inject_step!)가 이 nl을 넣어주므로 여기서 또 넣으면 이중 push가 됨→막음.
-        nl = inject_battery_fault!(env; target=target, soc_drop=soc_drop, enqueue=false)
+        # soc_target 을 주면 "떨어뜨릴 양"이 아니라 "떨어진 뒤 잔량"을 확정한다(심각도 사다리용).
+        nl = inject_battery_fault!(env; target=target, soc_drop=soc_drop,
+                                   soc_target=soc_target, enqueue=false)
         (nl === nothing || isempty(nl)) && return nl        # no fleet / no eligible robot -> no truth  # fleet/대상 없으면 정답도 없음
         # Identify the robot that was hit (the given target, or the one whose SoC just dropped) and
         # log its POST-drop SoC so the evaluator can score the right severity class.

@@ -1,0 +1,1099 @@
+Processing file...   3%|██                                                |  ETA: 0:00:29 ( 0.48  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:02 (37.22 ms/it)[K
+Processing file...   8%|█████                                             |  ETA: 0:00:02 (52.33 ms/it)[KProcessing file...  62%|████████████████████████████████                  |  ETA: 0:00:00 (13.52 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 8.43 ms/it)[K
+Processing file...  31%|████████████████                                  |  ETA: 0:00:00 (11.33 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 3.47 ms/it)[K
+Processing file...  78%|███████████████████████████████████████           |  ETA: 0:00:00 ( 3.45 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.67 ms/it)[K
+Processing file...  81%|█████████████████████████████████████████         |  ETA: 0:00:00 ( 2.10 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.31 ms/it)[K
+Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 58[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:47:48 (11.33  s/it)[K
+   step_num: 13[K
+   n_closed: 60[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:33:09 ( 7.89  s/it)[K
+   step_num: 15[K
+   n_closed: 61[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+[shim] combo arm 5 -> 2 specs: ConstructionBots.ConstraintSpec[ConstructionBots.ForbidAgent(ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+, 0.0), ConstructionBots.ReformTeam()]
+
+
+
+[K[A[K[A[K[ASimulating...   8%|████                                              |  ETA: 0:05:56 ( 1.52  s/it)[K
+   step_num: 27[K
+   n_closed: 78[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   9%|█████                                             |  ETA: 0:05:02 ( 1.31  s/it)[K
+   step_num: 76[K
+   n_closed: 82[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  12%|██████                                            |  ETA: 0:04:08 ( 1.10  s/it)[K
+   step_num: 93[K
+   n_closed: 88[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  20%|███████████                                       |  ETA: 0:02:16 ( 0.67  s/it)[K
+   step_num: 134[K
+   n_closed: 109[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  28%|███████████████                                   |  ETA: 0:01:29 ( 0.49  s/it)[K
+   step_num: 190[K
+   n_closed: 130[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  34%|█████████████████                                 |  ETA: 0:01:11 ( 0.42  s/it)[K
+   step_num: 228[K
+   n_closed: 144[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  35%|██████████████████                                |  ETA: 0:01:09 ( 0.42  s/it)[K
+   step_num: 234[K
+   n_closed: 148[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  39%|████████████████████                              |  ETA: 0:01:02 ( 0.39  s/it)[K
+   step_num: 260[K
+   n_closed: 157[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  41%|█████████████████████                             |  ETA: 0:00:57 ( 0.38  s/it)[K
+   step_num: 298[K
+   n_closed: 163[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  45%|███████████████████████                           |  ETA: 0:00:51 ( 0.36  s/it)[K
+   step_num: 341[K
+   n_closed: 172[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  47%|████████████████████████                          |  ETA: 0:00:48 ( 0.35  s/it)[K
+   step_num: 398[K
+   n_closed: 177[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  47%|████████████████████████                          |  ETA: 0:00:49 ( 0.36  s/it)[K
+   step_num: 450[K
+   n_closed: 177[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  50%|██████████████████████████                        |  ETA: 0:00:44 ( 0.35  s/it)[K
+   step_num: 488[K
+   n_closed: 186[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  53%|███████████████████████████                       |  ETA: 0:00:41 ( 0.34  s/it)[K
+   step_num: 530[K
+   n_closed: 192[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:36 ( 0.32  s/it)[K
+   step_num: 580[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:37 ( 0.33  s/it)[K
+   step_num: 641[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:38 ( 0.34  s/it)[K
+   step_num: 691[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:39 ( 0.35  s/it)[K
+   step_num: 697[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:40 ( 0.36  s/it)[K
+   step_num: 766[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:41 ( 0.36  s/it)[K
+   step_num: 825[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:41 ( 0.37  s/it)[K
+   step_num: 885[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:42 ( 0.38  s/it)[K
+   step_num: 954[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:43 ( 0.38  s/it)[K
+   step_num: 1012[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:44 ( 0.39  s/it)[K
+   step_num: 1074[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:45 ( 0.40  s/it)[K
+   step_num: 1132[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:45 ( 0.41  s/it)[K
+   step_num: 1199[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:46 ( 0.41  s/it)[K
+   step_num: 1261[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:47 ( 0.42  s/it)[K
+   step_num: 1326[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:48 ( 0.43  s/it)[K
+   step_num: 1379[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:49 ( 0.43  s/it)[K
+   step_num: 1443[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:49 ( 0.44  s/it)[K
+   step_num: 1505[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:50 ( 0.45  s/it)[K
+   step_num: 1565[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:51 ( 0.45  s/it)[K
+   step_num: 1627[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:52 ( 0.46  s/it)[K
+   step_num: 1685[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:52 ( 0.47  s/it)[K
+   step_num: 1755[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:53 ( 0.48  s/it)[K
+   step_num: 1816[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:54 ( 0.48  s/it)[K
+   step_num: 1871[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:55 ( 0.49  s/it)[K
+   step_num: 1928[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:56 ( 0.50  s/it)[K
+   step_num: 1989[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:56 ( 0.50  s/it)[K
+   step_num: 2047[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:57 ( 0.51  s/it)[K
+   step_num: 2108[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:58 ( 0.52  s/it)[K
+   step_num: 2168[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:00:59 ( 0.53  s/it)[K
+   step_num: 2239[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:00 ( 0.53  s/it)[K
+   step_num: 2299[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:00 ( 0.54  s/it)[K
+   step_num: 2360[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:01 ( 0.55  s/it)[K
+   step_num: 2419[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:02 ( 0.55  s/it)[K
+   step_num: 2486[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:03 ( 0.56  s/it)[K
+   step_num: 2545[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:04 ( 0.57  s/it)[K
+   step_num: 2600[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:04 ( 0.57  s/it)[K
+   step_num: 2659[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:05 ( 0.58  s/it)[K
+   step_num: 2726[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:06 ( 0.59  s/it)[K
+   step_num: 2789[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:07 ( 0.60  s/it)[K
+   step_num: 2845[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:08 ( 0.60  s/it)[K
+   step_num: 2904[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:08 ( 0.61  s/it)[K
+   step_num: 2969[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:09 ( 0.62  s/it)[K
+   step_num: 3031[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:10 ( 0.62  s/it)[K
+   step_num: 3092[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:11 ( 0.63  s/it)[K
+   step_num: 3153[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:12 ( 0.64  s/it)[K
+   step_num: 3213[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:12 ( 0.65  s/it)[K
+   step_num: 3277[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:13 ( 0.65  s/it)[K
+   step_num: 3332[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:14 ( 0.66  s/it)[K
+   step_num: 3392[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:15 ( 0.67  s/it)[K
+   step_num: 3452[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:16 ( 0.67  s/it)[K
+   step_num: 3522[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:16 ( 0.68  s/it)[K
+   step_num: 3586[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:17 ( 0.69  s/it)[K
+   step_num: 3647[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:18 ( 0.70  s/it)[K
+   step_num: 3711[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:19 ( 0.70  s/it)[K
+   step_num: 3774[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:20 ( 0.71  s/it)[K
+   step_num: 3840[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:20 ( 0.72  s/it)[K
+   step_num: 3898[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:21 ( 0.72  s/it)[K
+   step_num: 3954[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:22 ( 0.73  s/it)[K
+   step_num: 4015[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:23 ( 0.74  s/it)[K
+   step_num: 4080[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:24 ( 0.75  s/it)[K
+   step_num: 4141[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:24 ( 0.75  s/it)[K
+   step_num: 4200[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:25 ( 0.76  s/it)[K
+   step_num: 4261[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:26 ( 0.77  s/it)[K
+   step_num: 4328[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:27 ( 0.77  s/it)[K
+   step_num: 4389[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:27 ( 0.78  s/it)[K
+   step_num: 4446[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:28 ( 0.79  s/it)[K
+   step_num: 4505[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:29 ( 0.79  s/it)[K
+   step_num: 4575[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:30 ( 0.80  s/it)[K
+   step_num: 4636[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:31 ( 0.81  s/it)[K
+   step_num: 4696[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:31 ( 0.82  s/it)[K
+   step_num: 4751[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:32 ( 0.82  s/it)[K
+   step_num: 4815[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:33 ( 0.83  s/it)[K
+   step_num: 4868[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:34 ( 0.84  s/it)[K
+   step_num: 4922[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:35 ( 0.84  s/it)[K
+   step_num: 4985[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:35 ( 0.85  s/it)[K
+   step_num: 5048[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:36 ( 0.86  s/it)[K
+   step_num: 5107[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:37 ( 0.87  s/it)[K
+   step_num: 5175[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:38 ( 0.87  s/it)[K
+   step_num: 5235[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:39 ( 0.88  s/it)[K
+   step_num: 5301[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:39 ( 0.89  s/it)[K
+   step_num: 5375[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:40 ( 0.89  s/it)[K
+   step_num: 5438[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:41 ( 0.90  s/it)[K
+   step_num: 5502[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:42 ( 0.91  s/it)[K
+   step_num: 5567[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:42 ( 0.92  s/it)[K
+   step_num: 5635[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:43 ( 0.92  s/it)[K
+   step_num: 5702[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:44 ( 0.93  s/it)[K
+   step_num: 5774[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:45 ( 0.94  s/it)[K
+   step_num: 5833[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:46 ( 0.94  s/it)[K
+   step_num: 5898[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:46 ( 0.95  s/it)[K
+   step_num: 5960[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:47 ( 0.96  s/it)[K
+   step_num: 6024[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:48 ( 0.97  s/it)[K
+   step_num: 6087[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:49 ( 0.97  s/it)[K
+   step_num: 6150[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:50 ( 0.98  s/it)[K
+   step_num: 6213[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:50 ( 0.99  s/it)[K
+   step_num: 6277[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:51 ( 0.99  s/it)[K
+   step_num: 6345[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:52 ( 1.00  s/it)[K
+   step_num: 6417[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:53 ( 1.01  s/it)[K
+   step_num: 6480[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:54 ( 1.02  s/it)[K
+   step_num: 6545[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:55 ( 1.02  s/it)[K
+   step_num: 6613[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:55 ( 1.03  s/it)[K
+   step_num: 6678[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:56 ( 1.04  s/it)[K
+   step_num: 6747[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:57 ( 1.04  s/it)[K
+   step_num: 6815[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:58 ( 1.05  s/it)[K
+   step_num: 6877[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:58 ( 1.06  s/it)[K
+   step_num: 6938[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:01:59 ( 1.07  s/it)[K
+   step_num: 7004[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:00 ( 1.07  s/it)[K
+   step_num: 7071[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:01 ( 1.08  s/it)[K
+   step_num: 7142[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:02 ( 1.09  s/it)[K
+   step_num: 7205[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:02 ( 1.09  s/it)[K
+   step_num: 7268[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:03 ( 1.10  s/it)[K
+   step_num: 7331[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:04 ( 1.11  s/it)[K
+   step_num: 7390[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:05 ( 1.11  s/it)[K
+   step_num: 7461[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:06 ( 1.12  s/it)[K
+   step_num: 7528[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:06 ( 1.13  s/it)[K
+   step_num: 7593[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:07 ( 1.14  s/it)[K
+   step_num: 7656[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:08 ( 1.14  s/it)[K
+   step_num: 7719[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:09 ( 1.15  s/it)[K
+   step_num: 7790[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:10 ( 1.16  s/it)[K
+   step_num: 7857[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:10 ( 1.16  s/it)[K
+   step_num: 7923[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:11 ( 1.17  s/it)[K
+   step_num: 7988[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:12 ( 1.18  s/it)[K
+   step_num: 8050[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:13 ( 1.19  s/it)[K
+   step_num: 8115[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:14 ( 1.19  s/it)[K
+   step_num: 8190[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:14 ( 1.20  s/it)[K
+   step_num: 8255[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:15 ( 1.21  s/it)[K
+   step_num: 8320[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:16 ( 1.21  s/it)[K
+   step_num: 8382[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:17 ( 1.22  s/it)[K
+   step_num: 8442[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A[shim] event_context: matched=true type=fault agent=ConstructionBots.BotID{ConstructionBots.DeliveryBot}
+  id: Int64 1
+ zone=nothing assembly=nothing soc=NaN log_n=1
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:18 ( 1.23  s/it)[K
+   step_num: 8507[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A┌ Warning: No progress for 8000 iterations. Terminating.
+└ @ ConstructionBots C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\demo_utils.jl:213
+
+
+
+[K[A[K[A[K[ASimulating...  56%|█████████████████████████████                     |  ETA: 0:02:19 ( 1.24  s/it)[K
+   step_num: 8576[K
+   n_closed: 201[K
+    n_total: 313[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:02:57 ( 0.70  s/it)[K
+ERROR: LoadError: KeyError: key 5 not found
+Stacktrace:
+ [1] getindex
+   @ .\dict.jl:498 [inlined]
+ [2] run_episodes(io::IOStream)
+   @ Main C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\wm4spacecraft_manufacturing\oracle\gen_oracle_dataset.jl:1228
+ [3] main()
+   @ Main C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\wm4spacecraft_manufacturing\oracle\gen_oracle_dataset.jl:1300
+ [4] top-level scope
+   @ C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\wm4spacecraft_manufacturing\oracle\gen_oracle_dataset.jl:1463
+in expression starting at C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\wm4spacecraft_manufacturing\oracle\gen_oracle_dataset.jl:1463

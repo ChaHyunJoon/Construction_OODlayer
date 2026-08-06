@@ -13,6 +13,7 @@ using ConstructionBots
 using Random
 using JSON3
 import Graphs
+import Logging
 const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 
@@ -57,6 +58,37 @@ const SSUF   = DEMO_SEED == 1 ? "" : "_s$(DEMO_SEED)"
 const NSUF   = (DEMO_N > 0 ? "_n$(DEMO_N)" : "") * SSUF   # stream/anim name suffix so each (count, seed) caches separately
 const COMMAND_FILE = get(ENV, "MONITOR_COMMAND_FILE", "")
 const INTERACTIVE = get(ENV, "MONITOR_INTERACTIVE", "0") == "1"
+# 대화형 세션이 **첫 조작자 명령(보통 forbid zone)** 을 기다리는 시간[초]. 0 = 기다리지 않고
+# 곧바로 시작한다 = "zone 없이 이 케이스만 돌려 본다".
+#   왜 필요한가: 예전에는 300 초가 하드코딩이라, zone 을 넣을 생각이 없어도 5 분을 앉아 있거나
+#   창을 닫아야 했다. 그런데 zone 주입 여부는 결과를 크게 가른다(2026-08-05 실측: 같은
+#   fault_battery 판이 zone 없으면 완주, 라이브 zone→RelocateBuild 가 끼면 134/305 에서 정지).
+#   그래서 "기다린다/안 기다린다"는 실험 조건이지 편의 옵션이 아니다 — 명시적으로 고를 수 있어야 한다.
+#   0 으로 시작해도 조작 훅은 그대로 살아 있어서, 런 도중 대시보드에서 zone 을 쏘는 것은 여전히 된다.
+const MONITOR_WAIT = try max(0.0, parse(Float64, get(ENV, "MONITOR_WAIT", "300"))) catch; 300.0 end
+# 애니메이션(anim/*.html) 산출물을 남길지. 기본 켜짐 — 라이브 세션에서도 남는다(아래 주석 참조).
+const DEMO_ANIM = get(ENV, "DEMO_ANIM", "1") != "0"
+# 팀 교착(reform) OOD 발화 간격 = 연속 무진전 스텝 수. 프레임워크 기본은 2000 인데 이 데모의
+# 종료 한계가 3000 이라 **단 한 번** 쏘고 실패하면 그대로 죽는다(실측: 7/8 에서 PROJECT INCOMPLETE).
+# 400 이면 종료 전에 여러 번 시도할 수 있다. reform 은 교착이 없으면 안전한 no-op 이므로 낮춰도
+# 정상 런에 영향이 없다(ood_injection.jl REFORM_INTERVAL 주석과 같은 논리). 0 = 프레임워크 기본 유지.
+const DEMO_REFORM = try max(0, parse(Int, get(ENV, "DEMO_REFORM", "400"))) catch; 400 end
+# 발화 횟수 상한. 상한이 없으면 교착이 reform 으로 안 풀리는 판에서 400 스텝마다 계속 쏴서
+# (실측 9회) **LLM 을 9번 부르고** recover 가 :snapped → :force_snapped 로 굳어진다.
+# force snap 은 팀 구성을 강제로 바꾸므로 반복하면 함대를 휘저을 뿐 진전을 만들지 못한다.
+const DEMO_REFORM_MAX = try max(1, parse(Int, get(ENV, "DEMO_REFORM_MAX", "3"))) catch; 3 end
+const _REFORM_CT = Ref(0)
+# ---------------------------------------------------------------------------------------------
+# 로그 레벨. run_lego_demo 의 기본값은 Logging.Warn 이라 시뮬레이션 안의 **모든 @info 가 버려진다**.
+# 2026-08-05 규명: 그래서 WEDGE_DEBUG=1 / NAV_DEBUG=1 을 켜도 이 경로에서는 아무것도 안 찍혔다 —
+# 진단 덤프(_dump_forming_team_blockers, [carrier-rescue] is_goal 분석)가 전부 @info 이기 때문이다.
+# 두 플래그는 "진단을 보겠다"는 뜻이므로, 켜져 있으면 로그 레벨도 같이 Info 로 내린다.
+# (동시에 [RESPEC] OOD event / [WHOLE-BUILD] Δ / [ROUTER] 도 그제야 보인다.)
+const DEMO_DEBUG = get(ENV, "WEDGE_DEBUG", "0") == "1" || get(ENV, "NAV_DEBUG", "0") == "1" ||
+                   get(ENV, "DEMO_VERBOSE", "0") == "1"
+const DEMO_LOGLEVEL = DEMO_DEBUG ? Logging.Info : Logging.Warn
+# 직전 reform 시점의 closed 노드 수. "이번 reform 이 실제로 빌드를 전진시켰나"를 판정하는 기준선.
+const _REFORM_LAST_CLOSED = Ref(-1)
 
 # per-model 파라미터: project_params 에서 파일명으로 찾음(scale·robot 수).
 function find_params(model)
@@ -108,10 +140,11 @@ function inject_live_zone!(env, x, y, r, command_id, iter)
     key = Symbol("live_zone_", replace(String(command_id), r"[^A-Za-z0-9]" => "_"))
     z = CB.add_restriction_zone!(key, c, r)
     aid = assembly_at_zone(env, c, r)
+    # 관찰만 적는다 — 뒷절("reroute" / "restage that assembly")은 곧 정답이라 지시가 된다.
     nl = "A human operator injected a no-go exclusion zone at ($(round(x; digits=2)), " *
          "$(round(y; digits=2))) with radius $(round(r; digits=2))." *
-         (aid === nothing ? " Reroute robots around the forbidden region." :
-          " It overlaps staging for assembly $aid; restage that assembly.")
+         (aid === nothing ? " Robots that enter the disc are pushed back out of it." :
+          " It overlaps the staging area of assembly $aid.")
     CB.record_ood_truth!(nl, CB.ZoneTruth(key, c, Float64(CB.get_radius(z)), aid); at=iter)
     # Scheduled OOD wrappers enqueue automatically, but a live command bypasses
     # that scheduler. Explicitly enqueue so respec_step! handles it immediately.
@@ -142,6 +175,91 @@ function command_file_hook(path)
         return nothing
     end
 end
+
+# =============================================================================================
+#  구역 OOD 의 **두 가족** (2026-08-05)
+# =============================================================================================
+# 지금까지 이 데모의 zone 은 `inject_staging_zone!` 하나였고, 그 함수는 읽어 보면 **무해하도록
+# 설계돼 있다**: 후보를 `zone_clears_root_goals` 로 걸러 root 목표를 일부러 피하고(195줄),
+# 미완 작업 디스크와 겹침이 최소인 후보를 고르며(197-201줄), sim 시작 **전에** 심는다.
+# 그래서 "적치원 가장자리를 스치는, 최대한 안 겹치는 작은 원"이 되고 — 완주는 늘 확인됐지만
+# 그건 결정이 옳아서가 아니라 **애초에 아무것도 안 막았기 때문**이다(zone_corridor.jl 의 측정:
+# 구역 강제는 RVO 에이전트만 스냅하므로 화물 운동학 목표는 원리적으로 못 막는다).
+#
+# 두 가족이 다 있어야 "언제 개입하고 언제 절제하는가"가 비로소 결정 문제가 된다:
+#   DEMO_ZONE_MODE=blocking (기본) — RVO 로 움직이는 주체의 **미래 목표** 위에 심는다.
+#       개입하지 않으면 그 노드는 구역이 살아 있는 한 절대 못 닫는다 → 개입이 정답.
+#   DEMO_ZONE_MODE=harmless — 옛 주입기 그대로. 아무것도 막지 않으므로 NOOP 이 정답이고,
+#       "막힘을 보이기 시작한 정책이 개입 쪽으로 쏠리지 않았는지" 재는 반대 방향 대조군.
+#
+# ★ 완주 검증(2026-08-05): 세 zone 케이스 모두 blocking 으로 완주한다. 한때 `battery_zone` 이
+#   미완주해 기본값을 harmless 로 두었었는데, 그건 구역 탓이 아니라 **두 시뮬을 동시에 돌린 탓**이었다:
+#   run_lego_demo 는 HiGHS MILP 로 스케줄을 푸는데 CPU 경합이 다르면 다른 해를 돌려준다(같은 목표
+#   좌표인데 vtx 148 vs 143). 단독 실행 3/3 완주(277·275·277). 그래서 **런은 절대 병렬로 돌리지 말 것** —
+#   병렬로 비교하면 정책 비교가 아니라 서로 다른 두 세계의 비교가 된다.
+#   자세한 기록: wm4spacecraft_manufacturing/md/ZONE_REDESIGN_STEP1_7_2026-08-05.md 부록 C.
+const DEMO_ZONE_MODE = lowercase(get(ENV, "DEMO_ZONE_MODE", "blocking"))
+# 막는 구역의 반지름 = 로봇 반지름의 배수. tools/restage.jl 의 causal 하니스(ZC_R)와 같은 기본값.
+const DEMO_ZONE_R = try max(0.05, parse(Float64, get(ENV, "DEMO_ZONE_R", "0.5"))) catch; 0.5 end
+# 발화 시점(닫힌 노드 수). restage.jl causal 이 blk_reloc 완주를 얻은 그 지점(ZC_FIRE=58)과 동일.
+#
+# 왜 sim 전이 아니라 **발화 시점**인가: `_nav_goal_targets` 는 살아 있는 env 에서 평가해야 뜻이 있고
+# (아직 활성이 아닌 미래 목표를 골라야 한다), 어차피 ForbidZone 의 "미시작 조립체" 전제는 respec 이
+# 처리되는 시점(closed≈54)이면 이미 깨져 있다. 그래서 로봇 OOD 와 같은 스케줄러 경로에 얹는다.
+const DEMO_ZONE_CLOSED = try max(0, parse(Int, get(ENV, "DEMO_ZONE_CLOSED", "58"))) catch; 58 end
+
+"""
+    inject_blocking_zone!(env; frac) -> Union{Nothing,String}
+
+**실제로 막는** no-go 구역을 하나 심고 그 관찰문을 돌려준다.
+`tools/restage.jl::place_blocking_zone_on_nav_goal!` 의 절차를 그대로 옮긴 것(이미 검증된 순서):
+
+1. 후보 = `_nav_goal_targets` 중 **아직 활성이 아닌** 목표(로봇이 이미 그리로 날아가는 중이면
+   구역이 그 로봇을 원 밖으로 밀어내 사고가 된다 — 결정 문제가 아니다).
+2. 운반유닛 목표를 먼저, 그다음 빌드 중심에 가까운 순 — **결정적** 정렬(재현 가능).
+3. `zone_relocatable` 을 통과한 것만 = **복구 가능한 것만** 심는다. 복구 불가한 구역을 심는 것은
+   결정을 재는 게 아니라 사고를 연출하는 것이다.
+4. 심은 뒤 `zone_blockage(...).n_blocked >= 1` 로 **실제로 막혔는지 확인**하고, 아니면 지우고 다음 후보.
+
+관찰문에는 "그러니 무엇을 하라"를 붙이지 않는다(STEP 4). 무엇이 막혔는지는 정책이 기하 원시값에서
+읽어야 하고, 문장이 답을 흘리면 재는 것이 추론이 아니라 프롬프트 준수가 된다.
+"""
+function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
+    isempty(env.staging_circles) && return nothing
+    r = frac * Float64(CB.default_robot_radius())
+    navs = try CB._nav_goal_targets(env) catch e
+        @warn "[zone] _nav_goal_targets 실패" exception = e; return nothing
+    end
+    isempty(navs) && return nothing
+    ks = collect(keys(env.staging_circles))
+    root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), ks)
+    c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
+    cand = [t for t in navs if !(t.vtx in env.cache.active_set)]
+    sort!(cand; by = t -> (t.kind === :transport ? 0 : 1, hypot(t.goal[1] - c0[1], t.goal[2] - c0[2])))
+    _ZONE_CT[] += 1; key = Symbol("zone_blk_$(_ZONE_CT[])")
+    for t in cand
+        CB.zone_relocatable(t.goal, r, env) || continue          # 복구 가능한 것만
+        z = CB.add_restriction_zone!(key, t.goal, r)
+        b = try CB.zone_blockage(env; zone_keys = [key], check_paths = false) catch e
+            @warn "[zone] zone_blockage 실패" exception = e; nothing
+        end
+        if b !== nothing && b.n_blocked >= 1
+            c = Vector{Float64}(t.goal)
+            println("[zone] blocking zone on $(t.kind) vtx=$(t.vtx) @$(round.(c; digits = 3)) " *
+                    "r=$(round(r; digits = 3)) -> nav_blocked=$(b.n_blocked)/$(b.n_nav_goals)")
+            nl = "A no-go exclusion zone has appeared at ($(round(c[1]; digits = 2)), " *
+                 "$(round(c[2]; digits = 2))) with radius $(round(r; digits = 2)). " *
+                 "Robots that enter the disc are pushed back out of it."
+            try CB.record_ood_truth!(nl,
+                CB.ZoneTruth(key, Float64[c[1], c[2]], Float64(CB.get_radius(z)), nothing)) catch end
+            return nl
+        end
+        CB.remove_restriction_zone!(key)
+    end
+    println("[zone] no blocking placement found (every candidate was active or unrecoverable)")
+    return nothing
+end
+
 function inject_staging_zone!(env; frac = parse(Float64, get(ENV, "DEMO_ZONE_SCALE", "0.20")))
     isempty(env.staging_circles) && return nothing
     ks   = collect(keys(env.staging_circles))
@@ -170,8 +288,12 @@ function inject_staging_zone!(env; frac = parse(Float64, get(ENV, "DEMO_ZONE_SCA
         end
         _ZONE_CT[] += 1; key = Symbol("zone_inj_$(_ZONE_CT[])")
         z = CB.add_restriction_zone!(key, c, zr)
+        # 관찰만. 예전 문장의 뒷절("restage the affected assembly out of the restricted region")은
+        # 그 자체가 canonical 정답이라, 주는 순간 재는 것이 추론이 아니라 지시 준수가 된다.
+        # 서비스 쪽 정규식(_IMPERATIVE)으로 떼는 길도 있지만 문장 형태에 의존해 취약하므로,
+        # 애초에 안 붙인다(LLM_NL_MODE=observation 은 옛 녹화·다른 하니스를 위한 백스톱으로 남긴다).
         nl = "A no-go exclusion zone has appeared at ($(round(c[1]; digits = 2)), $(round(c[2]; digits = 2))) " *
-             "blocking a staging area; restage the affected assembly out of the restricted region."
+             "overlapping the staging area of an assembly that has not started building."
         try CB.record_ood_truth!(nl, CB.ZoneTruth(key, Float64[c[1], c[2]], Float64(CB.get_radius(z)), aid)) catch end
         return nl
     end
@@ -195,8 +317,12 @@ function truth_for_event(event)
     ev = String(event)
     log = CB.ood_truth_log()
     i = findlast(e -> String(e.nl) == ev, log)
-    return i === nothing ? nothing : log[i]
+    i === nothing || return log[i]
+    return nothing
 end
+
+"이 이벤트가 컨트롤러 **자기 자신이 낸** 팀 교착 알람인가(외부 교란 OOD 가 아니라)."
+is_reform_alarm(ev::AbstractString) = occursin("transport team is deadlocked", ev)
 
 # respec 패널 캡처. source="canonical" 또는 "claude-opus-4-8"(진짜 LLM). rationale 는 LLM 경로에서만 채워짐.
 function capture!(env, truth, prop, nl; source = "canonical", rationale = "")
@@ -214,6 +340,122 @@ function capture!(env, truth, prop, nl; source = "canonical", rationale = "")
             input = Dict("event" => kind, "target" => tgt, "detail" => first(split(String(nl), "\n"))),
             candidates = [cand], chosen = strip("$(macro_name) $(tgt)"), verdict = verdict)
     catch end
+end
+
+# 루트 엔드게임 교착 복구(run_demo.jl handle_ood! 의 ReformTeam 분기와 동일한 사다리).
+# 규명된 사실: 이 트윈의 완주 실패는 **전부 루트 조립체에서만** 일어나고(하위는 항상 7/7 done),
+# 얼어붙는 것은 TransportUnitGo/DepositCargo 사슬이다. 단계적으로 올린다:
+#   ① recover_stalled_teams!  — 낙오 멤버를 운반 슬롯에 스냅해 팀 재정립
+#   ② 안 되면 resolve_schedule_wedge! — 직렬화 관문 해소
+# 어느 쪽이든 성공하면 planning cache 를 resume 시켜 얼어붙은 프론티어를 다시 연다.
+function enact_reform!(env)
+    _REFORM_CT[] += 1
+    println("[reform] attempt $(_REFORM_CT[])/$(DEMO_REFORM_MAX)")
+    # 진단을 **먼저** 찍는다. 프레임워크의 ReformTeam 분기(replan.jl)는 복구를 시도하기 전에
+    # diagnose_transport_stall 로 "형성 중 팀이 몇 개인지 / 항법 정체인지 스케줄 대기인지"를 남기는데,
+    # policy_producer 가 reform 알람을 가로채 이 함수로 직접 처리하면서 그 진단이 통째로 사라졌다.
+    # 그래서 로그에는 정보량 0 인 "recover=no_team · wedge=no_wedge" 만 남고 진짜 원인(하역 목표에
+    # 못 닿는 운반체)은 기록조차 되지 않았다. 읽기 전용이라 세계를 바꾸지 않는다.
+    try CB.diagnose_transport_stall(env) catch e
+        @warn "[reform] diagnose_transport_stall 실패" exception = e
+    end
+    # NAV_DEBUG=1 이면 **매 reform 마다** 이동체별 목표거리를 찍는다. diagnose_transport_stall 은
+    # "형성 중 팀이 하나도 없을 때"만 at-goal/en-route 분해를 내주는데, 실제 정체에서는 팀이 몇 개
+    # 잡혀 있어서 그 분기를 안 타고 → 정작 필요한 "누가 얼마나 멀리 있나"가 안 나왔다.
+    # 항법 정체(멀리서 못 옴)와 스케줄 대기(도착했는데 is_goal 이 false)를 가르는 유일한 측정이다.
+    if get(ENV, "NAV_DEBUG", "0") == "1"
+        try CB._dump_nav_stall(env) catch e; @warn "[reform] nav dump 실패" exception = e end
+    end
+    rec = try CB.recover_stalled_teams!(env; verbose = false) catch e
+        @warn "recover_stalled_teams! 실패" exception = e; (status = :error,)
+    end
+    println("[reform] recover=$(rec.status)")
+    ok = rec.status in (:snapped, :force_snapped, :restaged, :carrier_closed, :carrier_advanced)
+    ok && CB.reset_cache_resume!(env.cache, env.sched)
+    # 2026-08-04 실측 교훈: `recover` 가 :snapped/:force_snapped 를 돌려줘도 **빌드가 재개된다는
+    # 보장이 없다**. fault_battery 판에서 9회 연속 "성공" 을 보고하고도 closed 는 121 에 고정,
+    # 8개 조립체 전부 frontier=false(5개 blocked) 였다 — 팀이 아니라 **스케줄이 물린 것**이다.
+    # 그런데 옛 사다리는 recover 성공 시 wedge 해소를 아예 건너뛰어, 진짜 원인을 영영 안 건드렸다.
+    # → 첫 시도가 지났는데도 또 불려 왔다는 것 자체가 "직전 복구가 안 먹혔다"는 증거이므로,
+    #    2회차부터는 recover 결과와 무관하게 wedge 해소까지 같이 올린다.
+    attempt = _REFORM_CT[]
+    unwedged = false
+    if !ok || attempt >= 2
+        local wedge = try CB.resolve_schedule_wedge!(env; verbose = false) catch e
+            @warn "resolve_schedule_wedge! 실패" exception = e; (status = :no_wedge,)
+        end
+        println("[reform] wedge=$(wedge.status)")
+        unwedged = wedge.status == :unwedged
+        unwedged && CB.reset_cache_resume!(env.cache, env.sched)
+        wedge_status = string(wedge.status)
+        # 두 단이 모두 "해당 없음"으로 떨어진 fall-through = 진짜 원인이 팀도 스케줄도 아닌 경우.
+        # 여기서 이동체별 목표거리 덤프를 남긴다(프레임워크 경로의 NAV_DEBUG 와 같은 증거).
+        if !ok && !unwedged
+            try CB._dump_nav_stall(env) catch e; @warn "[reform] nav dump 실패" exception = e end
+        end
+    else
+        wedge_status = "skipped"
+    end
+    # ---- ③ 공간 수복 (2026-08-05) ----------------------------------------------------------
+    # 위 두 단은 **팀**과 **스케줄**을 고친다. 세 번째 정체 원인이 있다: 살아 있는 no-go 구역이
+    # 아직 안 닫힌 항법 목표를 실제로 막고 있는 경우다. 그때는 팀도 스케줄도 멀쩡하고
+    # (recover=:no_team, wedge=:no_wedge) 막힌 것이 **공간**이라 두 단이 구조적으로 아무것도 못 한다.
+    #
+    # 왜 결정 레이어가 아니라 여기인가: 결정(개입할까 절제할까)은 정책의 몫이고, 정책이 절제를
+    # 골랐다면 그 판단은 기록에 그대로 남아야 한다. 하지만 그 결과가 **영구 정체**여서는 안 된다 —
+    # 완주는 데모의 전제 조건이다. 그래서 이건 판정이 아니라 carrier-rescue 와 같은 급의 **복구 사다리**
+    # 마지막 칸이고, recovery 타임라인에 따로 남아 "정책이 뭘 골랐나"와 섞이지 않는다.
+    # ZONE_RESCUE=0 으로 끄면 옛 동작(구역 정체를 그대로 둠).
+    #
+    # 조건에 `attempt >= 2` 를 함께 두는 이유: `recover_stalled_teams!` 은 :force_snapped 를
+    # 돌려줄 때 **항상** ok=true 라(위 예산 주석의 실측) `!ok` 만 보면 이 단이 영영 도달 불가가 된다.
+    # _REFORM_CT 는 실제로 노드가 닫히면 0 으로 되돌아가므로, attempt>=2 는 "복구 알람이 두 번
+    # 울리는 동안 한 노드도 안 닫혔다" = 진짜 정체를 뜻한다.
+    zone_status = "skipped"
+    if ((!ok && !unwedged) || attempt >= 2) && get(ENV, "ZONE_RESCUE", "1") != "0"
+        local blk = try CB.zone_blockage(env; check_paths = false) catch e
+            @warn "[reform] zone_blockage 실패" exception = e; nothing
+        end
+        if blk !== nothing && blk.n_blocked > 0
+            local wb = try CB.translate_whole_build!(env; resume = true, verbose = false) catch e
+                @warn "translate_whole_build! 실패" exception = e; (status = :error,)
+            end
+            zone_status = "blocked $(blk.n_blocked)/$(blk.n_nav_goals) → $(wb.status)"
+            println("[reform] zone-rescue: $(zone_status)")
+            if wb.status in (:translated, :residual_blocked)
+                CB.reset_cache_resume!(env.cache, env.sched)
+                unwedged = true          # 이 사다리에서 "무언가를 실제로 했다"로 센다
+            end
+        else
+            # 아무것도 안 했을 때도 **무엇을 보고 안 했는지** 남긴다. 첫 라이브 런에서 이 줄이 없어
+            # "구역이 정체의 원인인가"를 로그만으로는 가릴 수 없었다.
+            zone_status = blk === nothing ? "unavailable" :
+                          "no live zone blocks a navigable goal (0/$(blk.n_nav_goals))"
+            println("[reform] zone-rescue: $(zone_status)")
+        end
+    end
+    acted = ok || unwedged
+    CB.update_planning_cache!(env, 0.0)
+    # OOD 결정이 아니라 **복구 타임라인**에 남긴다(대시보드가 OOD 피드와 분리해 보여준다).
+    try CB.monitor_record_recovery!(; at = length(env.cache.closed_set),
+        action = "ReformTeam",
+        detail = "attempt $(attempt)/$(DEMO_REFORM_MAX) · " *
+                 "stalled-team recovery=$(rec.status) · schedule-wedge=$(wedge_status) · " *
+                 "zone-rescue=$(zone_status)",
+        status = acted ? "recovered" : "no-op") catch end
+    # 시도 예산을 되돌리는 기준 = **직전 reform 이후 실제로 작업이 닫혔는가**.
+    #
+    # 왜 rec.status 가 기준이 아닌가(2026-08-05 실측): 판정을 "뭔가 했다(acted)"로 두면
+    # force_snapped 가 항상 참이라 예산이 영영 안 줄고 reform 이 400 스텝마다 무한 반복된다
+    # (측정: 한 런에서 12회, closed 는 263 에서 제자리). DEMO_REFORM_MAX 가 원래 막으려던 것이
+    # 바로 그 "함대만 휘젓는 반복"이다. 반대로 예전처럼 모든 시도를 깎으면 진짜로 복구가 되고 있는
+    # 중에도 3회에서 끊긴다. 두 실패 사이의 올바른 기준은 상태 이름이 아니라 **진전**이다.
+    nc = length(env.cache.closed_set)
+    if nc > _REFORM_LAST_CLOSED[]
+        _REFORM_LAST_CLOSED[] = nc
+        _REFORM_CT[] = 0                 # 빌드가 실제로 전진했다 → 예산 복구
+    end
+    return nothing
 end
 
 # 완주 보장 enactment(검증된 manual-loop 경로). truth(고장/배터리/존)와 — 있으면 — LLM 이 고른 macro 를 반영.
@@ -297,6 +539,16 @@ include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/s
 # DSL 제안으로 바꿔 프레임워크 dispatcher 에 넘긴다(검증된 restage/translate 경로를 그대로 씀).
 # run_demo.jl 의 수동 루프와 동일한 decide_all 을 쓰므로 두 엔진의 결정이 어긋날 수 없다.
 function policy_producer(env, event)
+    # 팀 교착 알람은 **OOD 가 아니라 내부 복구 조치**다. 결정 레이어를 태우지 않는다.
+    #   · 외부 교란이 아니라 우리 복구(hot-swap 등)가 만든 2차 부작용이다.
+    #   · novelty 교정에 이 종류가 없어 항상 p=0.012 "처음 보는 사건"으로 뜬다(발견이 아니라 아티팩트).
+    #   · 액션이 [NOOP, ReformTeam] 뿐이라 세 정책이 늘 일치 — 결정 패널에 정보량 0 인 항목만 쌓인다.
+    #   · NL 이 고정 템플릿이고 ReformTruth 에 팀 식별자가 없어 LLM 이 읽을 것도 없다.
+    # → 여기서 직접 복구하고 recovery 타임라인에만 기록한다(LLM 호출 0).
+    if is_reform_alarm(String(event))
+        _REFORM_CT[] < DEMO_REFORM_MAX && enact_reform!(env)
+        return nothing
+    end
     rec = truth_for_event(event)
     rec === nothing && return nothing
     truth = rec.truth
@@ -307,7 +559,10 @@ function policy_producer(env, event)
     println("[policy] $(typeof(truth).name.name) → $(decision.macro_name) " *
             "(enacted=$(decision.enacted); rule=$(decision.rule_macro), " *
             "surro=$(decision.policies["surrogate"]["chosen"]), dspy=$(decision.policies["dspy"]["chosen"]))")
-    return macro_to_proposal(truth, decision.macro_name)
+    # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
+    # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.
+    # 직접 집행하므로 dispatch 는 생략(nothing) — canonical_producer 와 같은 패턴.
+    return macro_to_proposal(truth, decision.macro_name; env = env)
 end
 
 # producer(canonical): 최근 OOD truth → canonical 휴리스틱 분석 캡처 + 직접 복구 → nothing(dispatch 생략).
@@ -356,6 +611,34 @@ pre = function (env)
     try CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3) catch end
     CB.RESPEC_ENABLED[] = true
     CB.set_hot_swap!(enabled = true, mode = :via_depot)
+    # ---------------------------------------------------------------------------------------
+    # CARRIER_RESCUE — 2026-08-05 규명. 이 데모만 이 손잡이가 꺼진 채 돌고 있었다.
+    #
+    # 측정된 endgame 정체의 실체는 "팀 교착"이 아니라 **이미 형성된 운반체(TransportUnit)가
+    # 하역 목표에 영영 못 닿는 것**이다(스트림 증거: 정체 구간 내내 TransportUnitGo 2~3 개가
+    # CARRY 상태로 얼어 있고 형성 중인 팀은 0). 그 상태에서
+    #   · recover_stalled_teams! 는 형성 중 팀이 없으니 :no_team
+    #   · resolve_schedule_wedge! 는 WEDGE_EDGES 가 (Replace 가 없었으므로) 비어 있어 무조건 :no_wedge
+    # 라서 reform 사다리가 **구조적으로** 아무것도 못 한다. 그 상황을 위해 만들어진 유일한 단
+    # (force_advance_stuck_carrier!)이 CARRIER_RESCUE 환경변수로 잠겨 있었고, 오라클/덱 스크립트는
+    # 전부 CARRIER_RESCUE=1 을 켜는데(run_graded.sh, run_parallel*.ps1, verify_fault_completion.sh,
+    # render_deck_videos.sh …) 모니터 데모 경로만 빠져 있었다 = 데모만 완주를 못 하던 이유.
+    # 여기서 기본값을 켠다(명시적으로 CARRIER_RESCUE=0 을 주면 옛 동작 재현). 데이터셋 생성 경로는
+    # 자기 스크립트에서 이미 값을 정하므로 이 줄에 영향받지 않는다.
+    haskey(ENV, "CARRIER_RESCUE") || (ENV["CARRIER_RESCUE"] = "1")
+    # ---------------------------------------------------------------------------------------
+    # RelocateBuild 비례성 게이트 — 이 데모 경로에서만 기본 ON (verifier.jl RELOCATE_GATE 주석).
+    # 근거(2026-08-05, 같은 seed·같은 존·매크로만 교차): 전역 이동 closed 136(조립체 1/8) vs
+    # 국소/무개입 231(7/8). 정책만 다르고 매크로가 같은 두 런은 Δ 15자리까지 동일 = 손해는
+    # 매크로의 것이다. 오라클/데이터셋 경로는 이 팔을 **측정 대상**으로 쓰므로 기본값은 꺼져 있고,
+    # 여기서만 켠다. 명시적으로 RELOCATE_GATE=0 을 주면 옛 동작(무조건 허용) 재현.
+    try CB.set_relocate_gate!(get(ENV, "RELOCATE_GATE", "1") == "1") catch end
+    # 런 사이에 새는 전역 카운터 초기화. 두 함수는 정의만 되어 있고 **아무도 부르지 않았다** —
+    # 한 프로세스에서 여러 케이스를 도는 하니스(regen_all_cases.sh)에서 직전 런의 force-snap 횟수와
+    # carrier 거리 기록이 그대로 이월돼 복구 사다리의 격상 시점이 런마다 달라졌다.
+    try CB.reset_snap_count!() catch end
+    try CB.clear_carrier_progress!() catch end
+    DEMO_REFORM > 0 && try CB.set_reform_interval!(DEMO_REFORM) catch end
     CB.set_respec_producer!(USE_LLM ? llm_producer : policy_producer)
     CB.clear_ood_schedule!()
     empty!(CB.RESPEC_QUEUE.pending)
@@ -372,11 +655,30 @@ pre = function (env)
     # across the build. A zone always fires ONCE up front: spatial re-staging is only transform-safe
     # before any build step opens.
     demo_n = DEMO_N
+    zone_at = 0
     if has_zone
-        # Queue the zone before the first simulation step, while all affected assemblies
-        # can still be safely re-staged.
-        nl = inject_staging_zone!(env)
-        nl === nothing || CB.push_ood!(nl)
+        if DEMO_ZONE_MODE == "blocking"
+            # 발화 시점에 심는다(위 inject_blocking_zone! 주석 참조). 최소 몇 스텝은 굴린 뒤에
+            # 골라야 `_nav_goal_targets` 의 "활성/비활성" 구분과 실제 위치가 뜻을 갖는다.
+            zone_at = max(DEMO_ZONE_CLOSED, initial_closed + 4)
+            # 후보를 하나도 못 찾으면(전부 활성이거나 복구 불가) 사건이 **통째로 사라진다** —
+            # zone 케이스인데 zone 이 없는 런이 조용히 성립한다. 그건 결과가 아니라 사고이므로
+            # 무해 가족으로 폴백해 사건 자체는 반드시 존재하게 하고, 그 사실을 로그에 남긴다.
+            CB.schedule_ood_at_closed!(zone_at, function (e)
+                nl = inject_blocking_zone!(e)
+                nl === nothing || return nl
+                println("[zone] blocking placement failed → falling back to the harmless injector")
+                return inject_staging_zone!(e)
+            end)
+            println("    · zone(blocking) armed at closed=$(zone_at) " *
+                    "(r=$(DEMO_ZONE_R)×robot radius)")
+        else
+            # Queue the zone before the first simulation step, while all affected assemblies
+            # can still be safely re-staged.
+            nl = inject_staging_zone!(env)
+            nl === nothing || CB.push_ood!(nl)
+            println("    · zone(harmless) injected pre-sim")
+        end
     end
     n_robot = demo_n > 0 ? demo_n : length(robot_kinds)   # DEMO_N overrides the robot-OOD count
     # 로봇 OOD 가 들어갈 수 있는 진척 구간 [lo, hi] (닫힌 노드 수 단위).
@@ -423,6 +725,14 @@ pre = function (env)
         #   · fault(safe) : 단독 운반체(또는 solo frontier carry)가 있어야 하는데, tractor 에서 그 조건은
         #     step 2~20 에만 성립하고 그 뒤로는 전 구간 불가능하다. 창을 넓게 잡으면 사건이 통째로
         #     사라진다(실제로 첫 확률 실행이 그렇게 불발했다).
+        #
+        #     [2026-08-05 갱신] 위 (2,20) 은 **hot-swap 이전 조건**이다. 이 데모는 426 줄에서
+        #     `set_hot_swap!(enabled=true)` 를 켜므로, `fault_robot!(safe=true)` 의 3단 사다리 마지막
+        #     칸(`pick_hotswap_fault_target`)이 살아 있어 **빌드 중반·후반에도 안전한 대상이 있다**
+        #     (측정: wm4.../oracle/out/fire_probe_hotswap.csv 의 n_hotswap 열 = closed 58~240 에서 10).
+        #     후반 고장을 보고 싶으면 DEMO_FAULT_SAFE=1 과 함께 창을 넓히면 된다:
+        #         DEMO_FAULT_SAFE=1 DEMO_FAULT_STEPS=60,600
+        #     기본값은 바꾸지 않았다 — 녹화된 데모 스트림의 재현성을 지키기 위해서다.
         # 창 밖으로 뽑혀도 아래 retrying_action 이 **다음 가능한 순간까지 미룬다**.
         parse_win = function (s, dflt)
             try
@@ -475,20 +785,28 @@ pre = function (env)
             end
         end
     end
-    n_zone = (:zone in kinds) ? 1 : 0                     # zone is ALWAYS fixed at 1 (transform-safe)
+    n_zone = (:zone in kinds) ? 1 : 0                     # zone is ALWAYS fixed at 1
+    zone_tag = n_zone == 0 ? "" :
+               DEMO_ZONE_MODE == "blocking" ? " [blocking, @closed=$(zone_at)]" : " [harmless, pre-sim]"
     rk_str = isempty(robot_kinds) ? "none" : join(string.(robot_kinds), "/")
     n_tag = demo_n > 0 ? " (DEMO_N)" : ""
     sched_tag = DEMO_SEED > 0 ? "stochastic seed=$(DEMO_SEED), step-window draw" : "fixed slots (legacy)"
-    println(">>> OOD armed: zone×$(n_zone) [pre-sim, fixed] + $(rk_str)×$(n_robot)$(n_tag) [$sched_tag]" *
+    println(">>> OOD armed: zone×$(n_zone)$(zone_tag) + $(rk_str)×$(n_robot)$(n_tag) [$sched_tag]" *
             "  model=$MODEL scale=$SCALE robots=$NROB")
     if !isempty(COMMAND_FILE)
         control = command_file_hook(COMMAND_FILE)
         CB.monitor_set_control_hook!(control)
         if INTERACTIVE
-            println(">>> interactive ready: waiting for first operator command")
-            deadline = time() + 300.0
-            while (!isfile(COMMAND_FILE) || filesize(COMMAND_FILE) == 0) && time() < deadline
-                sleep(0.2)
+            if MONITOR_WAIT > 0
+                println(">>> interactive ready: waiting up to $(round(Int, MONITOR_WAIT))s for the " *
+                        "first operator command (MONITOR_WAIT=0 to start immediately with no zone)")
+                deadline = time() + MONITOR_WAIT
+                while (!isfile(COMMAND_FILE) || filesize(COMMAND_FILE) == 0) && time() < deadline
+                    sleep(0.2)
+                end
+            else
+                println(">>> interactive ready: MONITOR_WAIT=0 — starting immediately, no pre-sim zone " *
+                        "(zones injected later in the run still take effect)")
             end
             # Apply the initial zone before the first motion/planning step. This
             # keeps all physical parts relocatable by the production respec path.
@@ -500,23 +818,27 @@ end
 render_result = Ref{Any}(nothing)
 try
     # -----------------------------------------------------------------------------------------
-    # save_animation 은 **라이브 시청과 상호배타적**이다.
+    # save_animation 과 라이브 시청은 **더 이상 상호배타가 아니다** (2026-08-05).
     #
-    # animate_update_visualizer!(render_tools.jl) 은 anim 이 있으면 갱신을 `atframe(...)` 안에서
-    # 수행한다 = 그 스텝의 변환을 **애니메이션에 기록만 하고 라이브 장면에는 적용하지 않는다.**
-    # 그래서 save_animation=true 로 라이브 세션을 열면 MeshCat 화면은 초기 배치 이후 그대로 멈춰
-    # 있고, 브라우저는 주기적으로 발행되는 짧은 녹화(예: 5.4 초짜리)를 재생할 뿐이다 --
-    # "시뮬레이션이 5 초 만에 멈춘 것처럼" 보이는 정체가 이것이다.
+    # 과거 이력: animate_update_visualizer!(render_tools.jl) 은 anim 이 있으면 갱신을 `atframe(...)`
+    # 안에서 수행한다 = 그 스텝의 변환을 애니메이션에 기록만 하고 라이브 장면에는 적용하지 않는다.
+    # 그래서 save_animation=true 로 라이브 세션을 열면 MeshCat 화면이 초기 배치에서 멈춘 것처럼
+    # 보였고, 그 때문에 대화형 세션은 애니메이션을 아예 끄고 돌렸다 — 대신 anim 산출물이 없어서
+    # "라이브로 본 런은 나중에 3D 로 다시 볼 수 없다"는 대가를 치렀다.
     #
-    # 그래서 사람이 개입하는 세션(MONITOR_INTERACTIVE=1)에서는 애니메이션을 끄고 라이브 장면을
-    # 직접 구동한다. 대신 그 런은 anim html 산출물을 남기지 않는다(스트림은 그대로 기록되므로
-    # 왼쪽 패널 재생·검증에는 아무 지장이 없다). 배치 렌더(비대화형)는 예전과 동일하다.
+    # 이제 demo_utils.simulate! 이 기록(atframe)과 라이브 표시(update_visualizer!)를 **독립적으로**
+    # 수행한다(LIVE_PUSH). 그래서 두 개를 같이 켤 수 있고, 애니메이션이 기본값이다.
+    # 끄려면 DEMO_ANIM=0.
     render_result[] = CB.run_lego_demo(;
         ldraw_file = MODEL, project_name = "$(model_base)_render", num_robots = NROB,
         model_scale = SCALE, assignment_mode = :greedy,
-        save_animation = !INTERACTIVE, anim_active_agents = true, anim_active_areas = true,
+        save_animation = DEMO_ANIM, anim_active_agents = true, anim_active_areas = true,
+        # live_view: MeshCat 장면을 매 스텝 직접 구동한다(기록 여부와 무관). 애니메이션을 끈 런
+        # (DEMO_ANIM=0)에서는 이게 없으면 시각화기 자체가 안 만들어져 **8700 에 아무것도 없다**.
+        live_view = INTERACTIVE,
         update_anim_at_every_step = INTERACTIVE,   # 라이브에서는 매 스텝 장면을 밀어 준다
         overwrite_results = true, n_spare_per_pool = 2, pre_sim_hook = pre,
+        log_level = DEMO_LOGLEVEL,                 # WEDGE_DEBUG/NAV_DEBUG 켜면 Info 까지 통과(위 주석 참조)
         max_num_iters_no_progress = 3000, rng = Random.MersenneTwister(1))
 finally
     CB.monitor_disable!()
@@ -528,25 +850,37 @@ end
 render_result[] === nothing && error("render did not return a simulation environment")
 render_env, _render_stats = render_result[]
 
-# 대화형 세션은 애니메이션을 만들지 않는다(위 주석). 사람이 개입하는 런은 완주하지 않는 것이 정상이므로
-# (원하는 지점에서 멈추거나, 주입한 존이 감당 못 할 만큼 클 수도 있다) 미완주를 오류로 보지 않는다.
+# 이번 런이 만든 visualization.html 을 anim/ 로 퍼블리시한다. DEMO_ANIM=0 이면 아무것도 안 한다.
+function publish_anim!()
+    DEMO_ANIM || return false
+    viz = joinpath(dirname(pathof(CB)), "..", "results", "$(model_base)_render",
+                   "greedy_RVO_Dispersion_TangentBug", "visualization.html")
+    if isfile(viz)
+        cp(viz, joinpath(anim_dir, "$(model_base)__$(CASE_TAG)$(NSUF).html"); force = true)
+        println("[render] anim → anim/$(model_base)__$(CASE_TAG)$(NSUF).html")
+        return true
+    end
+    println("[render] visualization.html not found at ", viz)
+    return false
+end
+
+# 대화형 세션은 사람이 개입하므로 완주하지 않는 것이 정상이다(원하는 지점에서 멈추거나, 주입한
+# 존이 감당 못 할 만큼 클 수도 있다). 그래서 미완주를 오류로 보지 않는다.
+#
+# 2026-08-05: 예전에는 여기서 애니메이션 없이 그냥 나갔다("no anim artifact"). 이제 라이브
+# 세션도 기록을 남기므로 같이 퍼블리시한다. **이번 런이 만든** 파일이라 왼쪽 패널의 스트림과
+# 같은 런이며, 대시보드가 경고하던 "옛 런의 애니가 지금 런인 척하는" 상황이 되지 않는다.
 if INTERACTIVE
+    ok = publish_anim!()
     n_live = isfile(stream_path) ? countlines(stream_path) : 0
     println("[render] DONE (interactive) — case=$CASE_TAG  $n_live frames, live view driven directly " *
-            "(no anim artifact)  complete=$(CB.project_complete(render_env))")
+            "$(ok ? "+ anim" : "(no anim artifact)")  complete=$(CB.project_complete(render_env))")
     exit(0)
 end
 
 CB.project_complete(render_env) ||
     error("refusing to publish incomplete animation for model=$MODEL case=$OODC")
 
-viz = joinpath(dirname(pathof(CB)), "..", "results", "$(model_base)_render",
-               "greedy_RVO_Dispersion_TangentBug", "visualization.html")
-if isfile(viz)
-    cp(viz, joinpath(anim_dir, "$(model_base)__$(CASE_TAG)$(NSUF).html"); force = true)
-    println("[render] anim → anim/$(model_base)__$(CASE_TAG)$(NSUF).html")
-else
-    println("[render] visualization.html not found at ", viz)
-end
+publish_anim!()
 n = isfile(stream_path) ? countlines(stream_path) : 0
 println("[render] DONE — case=$OODC  $n frames + anim")

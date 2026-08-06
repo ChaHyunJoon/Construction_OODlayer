@@ -1,0 +1,1 @@
+{"arm":"blk_reloc","status":"complete","closed":279,"total":289,"steps":1393,"makespan":35.375,"reform":1,"frontier_blocked":-1,"fired_at":58,"enacted":"RelocateBuild:translated","root_covered":0,"nav_blocked":3,"nav_engulfed":3,"nav_disconnected":0,"verdict":"noop"}
