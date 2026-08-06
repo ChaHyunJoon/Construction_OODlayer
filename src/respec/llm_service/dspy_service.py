@@ -159,40 +159,28 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 # n=44 · 220행이라 적합이 1초 미만이므로, 학습 코드를 그대로 재사용하는 편이 정직하고 단순하다.
 # ---------------------------------------------------------------------------------------------
 LAM = 3.0
-# HS_N44 고정: 배포 surrogate 는 n=44 셋으로 적합한 그 모델이어야 벤치마크와 일치한다.
-# EVAL_DATA / WM_DATASET 로 덮어쓸 수 있다(wm_datasets.py 가 우선순위를 정의).
-SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.HS_N44)
+# 2026-08-06: 기본 학습셋을 N44_PLUS8 로 옮긴다. HS_N44 는 매크로 8(SwapBattery) 행이 없어
+# 그 팔을 후보에서 탈락시켰다 -- 배포 surrogate 가 5판 전부 규칙과 동일한 결과를 낸 기전
+# (RESULTS_LLM7H §5-f). 옛 모델을 재현하려면 EVAL_DATA=oracle/out/graded_hs_n44.jsonl.
+SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.N44_PLUS8)
 
 
 def _load_surrogate():
     try:
         sys.path.insert(0, WM)
-        from e1_analyze import (load, featurize, MACRO_COST,     # noqa: E402
-                                instance_arms_complete)
+        from surrogate_data import load_training_frame          # noqa: E402
         from surrogate_model import build_model                 # noqa: E402
-        import numpy as np                                      # noqa: E402
 
-        df = load(SURRO_DATA)
-        df = df[df.fired == True].copy()
-        # "랭킹이 정의되는 instance만" 학습에 쓴다. 예전에는 `len(g) == 5` 였는데, DS_VALID_ONLY 로 만든
-        # 라벨은 그 사건의 **유효한 팔만** 돌아 5를 영영 못 채운다 -> EVAL_DATA 를 새 덤프로 바꿔도
-        # 새 instance 가 전부 조용히 버려진다(2026-08-05: firegrid_merged 126개 중 60개만 통과, 그
-        # 60개는 전부 옛 5-arm 덤프였다). 판정은 e1_analyze 의 것을 그대로 쓴다 -- 평가와 배포가
-        # 다른 필터를 쓰면 "벤치마크한 그 모델"이라는 이 파일의 전제가 깨진다.
-        full = [i for i, g in df.groupby("instance") if instance_arms_complete(g)]
-        df = df[df.instance.isin(full)].reset_index(drop=True)
-        X = featurize(df)
-        y = df.closed.astype(float).values - LAM * np.array([MACRO_COST[int(m)] for m in df.macro])
+        X, y, support, n_full = load_training_frame(SURRO_DATA, lam=LAM)
         model = build_model()
         model.fit(X.values, y)
-        # **학습 근거가 있는 매크로 집합**을 같이 기록한다. 배포 모델은 0~4 만 본 적이 있고
-        # 7(RelocateBuild)은 행이 한 줄도 없다 -> 그 값을 예측하는 것은 근거 없는 외삽이다.
-        # 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
+        # **학습 근거가 있는 매크로 집합**을 같이 기록한다. 여기 없는 값을 예측하는 것은 근거 없는
+        # 외삽이고, 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
         # "고를 수조차 없었다"이다. 이 구분이 곧 라우터(낯선 것은 LLM)의 존재 이유다.
-        support = sorted({int(m) for m in df.macro.unique()})
-        _state.update(surrogate=model, surro_feats=list(X.columns), surro_support=set(support),
+        _state.update(surrogate=model, surro_feats=list(X.columns),
+                      surro_support=set(sorted(support)),
                       surro_data="%s (%d instances, macro support %s)"
-                                 % (os.path.basename(SURRO_DATA), len(full), support))
+                                 % (os.path.basename(SURRO_DATA), n_full, sorted(support)))
     except Exception as e:
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 
