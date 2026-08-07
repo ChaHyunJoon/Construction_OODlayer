@@ -58,11 +58,15 @@ function inject_declared_zone!(env; cx::Float64, cy::Float64, r::Float64,
     # 즉 staging 이 실제로 막혀 있다. nothing 을 실으면 그 확인과 모순되는 truth 를 기록하는
     # 셈이라 canonical 규칙이 "이 구역은 아무것도 안 막는다"는, 우리가 방금 반증한 세계에 답한다.
     # d.feasible 은 zone_diagnosis 가 이미 계산해 둔 "실제로 옮길 수 있는" 조립체 목록(그 개수가
-    # n_restage_feasible)이므로 그 첫 원소를 대상으로 싣는다. 순서는 env 구성 순서(고정 시드)에서
-    # 결정적이다 -- zone_blocked_assemblies(restage_zone.jl)가 env.staging_circles 를 그대로
-    # 순회해 만들고 zone_diagnosis 의 filter 는 그 순서를 보존한다(재정렬 없음).
+    # n_restage_feasible)이다. 대상을 `id` 로 정렬해 그 첫 원소를 쓴다 -- Dict(`env.staging_circles`)
+    # 순회 순서는 실행마다 재현되긴 해도 해시 버킷 배치의 우연일 뿐 의미 있는 순서가 아니다(삽입 순서도,
+    # 정렬 순서도 아니다). 이 카탈로그 좌표(n_restage_feasible=1)에서는 고를 게 하나뿐이라 상관없지만,
+    # fz_presim.csv 에는 n_restage_feasible 이 3·7 인 행도 있다 -- 그런 행에 이 주입기를 재사용하면
+    # 정렬 없이는 "우연히 해시 버킷 앞에 온" 조립체를 이유 없이 골라, 무관한 코드 변경에 조용히
+    # 뒤집힐 수 있는 선택이 된다. `id` 정렬은 해싱과 무관하게 안정적이고 사람이 검사할 수 있다.
     try CB.record_ood_truth!(nl,
-        CB.ZoneTruth(key, Float64[cx, cy], Float64(CB.get_radius(z)), first(d.feasible))) catch e
+        CB.ZoneTruth(key, Float64[cx, cy], Float64(CB.get_radius(z)),
+                     first(sort(d.feasible; by = a -> a.id)))) catch e
         @warn "[zone] record_ood_truth! 실패" exception = e
     end
     return nl
