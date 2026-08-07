@@ -23,12 +23,14 @@ def check(name, ok, detail=""):
 
 
 print("== 배포 학습셋의 매크로 지원 ==")
-path = wm_datasets.resolve(None, default=wm_datasets.N44_PLUS8)
+path = wm_datasets.resolve(None, default=wm_datasets.N44_PLUS78)
 X, y, support, n_inst = load_training_frame(path)
 check("데이터셋이 존재한다", os.path.exists(path), path)
 check("instance 수 >= 60", n_inst >= 60, "n=%d" % n_inst)
 check("SwapBattery(8) 학습 근거 있음", 8 in support, "support=%s" % sorted(support))
 check("기존 5팔 보존", {0, 1, 2, 3, 4} <= support, "support=%s" % sorted(support))
 check("X/y 길이 일치", len(X) == len(y), "%d vs %d" % (len(X), len(y)))
+check("RelocateBuild(7) 학습 근거 있음", 7 in support, "support=%s" % sorted(support))
+check("instance 수가 늘었다", n_inst >= 64, "n=%d (n44_plus8 은 62였다)" % n_inst)
 
 sys.exit(1 if FAILED else 0)

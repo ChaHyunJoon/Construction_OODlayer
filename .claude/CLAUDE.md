@@ -18,7 +18,8 @@ python wm4spacecraft_manufacturing/audit_action_vocab.py   # 매크로 추가/�
 Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedence over `ARGS[1]`.
 
 **기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관) ·
-`verify.py` = **7/8**(V0 = Ch-D 구멍). 옛 문서의 "8/8"은 재현되지 않으니 **인용 금지**.
+`verify.py` = **8/8**(2026-08-06 V0 을 valid_mask 기준으로 고친 뒤. 그 이전 문서의 "7/8"·"8/8" 은
+서로 다른 판정이라 함께 인용하면 안 된다).
 
 ## Gotchas
 - **`tools/*.jl` with no key runs a default silently** (`demos.jl` → `original_baseline`) instead of erroring. Read the `DEMOS` dict at the bottom of the file for valid keys.
@@ -34,6 +35,8 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
   zone·RelocateBuild 어휘가 없다 — 그걸로 zone을 재면 어휘 밖 사건을 재는 것이 된다.
 - `DSPY_URL` 포트는 레포에 6종이 흩어져 있다. 문서 숫자 말고 **띄운 uvicorn 포트**에 맞출 것.
 - `_first_pending_assignment`는 "일감 유무"가 아니라 **"작업 경계"** — 중반 이후 조용히 틀림.
+- 배포 surrogate 의 **매크로 지원 집합**은 학습셋이 정한다(`wm_datasets.N44_PLUS78`). 지원 밖 팔은
+  에러 없이 후보에서 탈락해 **성능으로만** 샌다 — `python test_surrogate_support.py` 가 그 계약이다.
 
 ## Layout
 - `src/respec/` — OOD → DSL re-spec layer (`spec_dsl.jl`, `compiler.jl`, `verifier.jl`, `llm_service/`)

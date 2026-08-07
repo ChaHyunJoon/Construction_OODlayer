@@ -159,10 +159,10 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 # n=44 · 220행이라 적합이 1초 미만이므로, 학습 코드를 그대로 재사용하는 편이 정직하고 단순하다.
 # ---------------------------------------------------------------------------------------------
 LAM = 3.0
-# 2026-08-06: 기본 학습셋을 N44_PLUS8 로 옮긴다. HS_N44 는 매크로 8(SwapBattery) 행이 없어
-# 그 팔을 후보에서 탈락시켰다 -- 배포 surrogate 가 5판 전부 규칙과 동일한 결과를 낸 기전
-# (RESULTS_LLM7H §5-f). 옛 모델을 재현하려면 EVAL_DATA=oracle/out/graded_hs_n44.jsonl.
-SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.N44_PLUS8)
+# 2026-08-06: 기본 학습셋을 N44_PLUS78 로 옮긴다. HS_N44 는 매크로 8(SwapBattery)·7(RelocateBuild)
+# 행이 없어 그 팔들을 후보에서 탈락시켰다 -- 배포 surrogate 가 5판 전부 규칙과 동일한 결과를 낸
+# 기전(RESULTS_LLM7H §5-f). 옛 모델을 재현하려면 EVAL_DATA=oracle/out/graded_hs_n44.jsonl.
+SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.N44_PLUS78)
 
 
 def _load_surrogate():

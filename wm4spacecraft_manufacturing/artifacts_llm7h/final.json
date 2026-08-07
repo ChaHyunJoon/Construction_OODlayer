@@ -1430,11 +1430,11 @@
         0.9637768390302125
       ],
       "n_decisions_scored": 19,
-      "n_decisions_correct": 6,
-      "decision_rate": 0.3157894736842105,
+      "n_decisions_correct": 13,
+      "decision_rate": 0.6842105263157895,
       "decision_ci": [
-        0.15364171004428598,
-        0.5398998982493537
+        0.4601001017506463,
+        0.846358289955714
       ],
       "per_kind": {
         "BatteryTruth": {
@@ -1449,24 +1449,24 @@
         },
         "ZoneTruth": {
           "n": 7,
-          "correct": 0,
-          "rate": 0.0
+          "correct": 7,
+          "rate": 1.0
         }
       },
       "chosen": {
         "Replace": 12,
-        "NOOP": 7,
-        "ReformTeam": 30
+        "RelocateBuild": 7,
+        "ReformTeam": 10
       },
-      "sim_seconds_complete": 66.3375,
-      "sim_seconds_sd": 1.3463685726179657,
-      "steps_complete": 2653.5,
-      "wall_seconds": 100.17999999999999,
+      "sim_seconds_complete": 35.5375,
+      "sim_seconds_sd": 4.295031043737248,
+      "steps_complete": 1421.5,
+      "wall_seconds": 96.4,
       "progress": 0.8766773162939296,
-      "energy_per_closed": 971.3696851819808,
-      "total_energy_J": 257365.94337205286,
-      "mean_soc": 0.965108802201457,
-      "min_soc": 0.9066957234867595,
+      "energy_per_closed": 738.8988732154779,
+      "total_energy_J": 189716.93708980054,
+      "mean_soc": 0.9744565781625403,
+      "min_soc": 0.9368429352165131,
       "n_depleted": 0,
       "spares_left": 9.6,
       "detail": [
@@ -1493,76 +1493,26 @@
         {
           "truth": "ZoneTruth",
           "at": 149,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 1
         },
         {
           "truth": "ZoneTruth",
           "at": 184,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 1
         },
         {
           "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
+          "at": 256,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -1673,11 +1623,11 @@
         {
           "truth": "ZoneTruth",
           "at": 133,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 3
         },
         {
@@ -1702,57 +1652,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 3
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 3
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 3
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 3
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 3
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
+          "at": 270,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -1783,76 +1683,26 @@
         {
           "truth": "ZoneTruth",
           "at": 182,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 4
         },
         {
           "truth": "ZoneTruth",
-          "at": 233,
-          "chosen": "NOOP",
+          "at": 231,
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 4
         },
         {
           "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
+          "at": 256,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -1863,16 +1713,16 @@
         {
           "truth": "ZoneTruth",
           "at": 60,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 5
         },
         {
           "truth": "FaultTruth",
-          "at": 123,
+          "at": 121,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -1886,73 +1736,23 @@
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
+          "note": "the faulted robot still owed 1 transport task(s)",
           "correct": true,
           "ood_seed": 5
         },
         {
           "truth": "ZoneTruth",
           "at": 228,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 5
         },
         {
           "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 5
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 5
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 5
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 5
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 5
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
+          "at": 238,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",

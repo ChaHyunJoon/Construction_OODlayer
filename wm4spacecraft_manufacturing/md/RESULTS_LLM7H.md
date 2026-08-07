@@ -157,6 +157,9 @@ DSPY_MODEL=gpt-4o DSPY_PROGRAM=__seed_only__ \
 cd wm4spacecraft_manufacturing
 python audit_action_vocab.py     # 6/6 consistent
 python test_llm7h.py             # 16/16 passed  (기준 정책 vs 오라클 라벨 포함)
+# 2026-08-06 이후: dspy_service.SURRO_DATA 기본값이 wm_datasets.N44_PLUS78 로 바뀌었다(§5-f-이후).
+# 옛 모델(§5의 것)을 재현하려면 서비스에 EVAL_DATA=oracle/out/graded_hs_n44.jsonl 을 준다.
+python test_surrogate_support.py # support=[0,1,2,3,4,7,8], n=68 이어야 한다
 
 # 2) 스위프 (★ 순차 실행 강제 — 병렬로 돌리면 MILP 가 다른 스케줄을 내 비교가 무효)
 python llm_ood_eval.py run --seeds 1,2,3,4,5 --policies noop,canonical,dspy
@@ -197,23 +200,30 @@ producer = DSPy **seed 프로그램** + gpt-4o(temperature 0).
 **20판 (5 시드 × 4 정책).** 표는 `llm_ood_eval.py report --md` 가 아티팩트에서 직접 생성한다
 (`artifacts_llm7h/results_table.md`) — 손으로 옮겨 적지 않는다.
 
+*(2026-08-07 갱신: `surrogate` 행만 재측정 — `n44_plus78.jsonl` 재적합 후. noop/canonical/dspy 는
+Task 6 이 재사용한 옛 행이다 — §5-f-이후 참조. 아래는 `artifacts_llm7h/results_table.md` 를 그대로 옮긴 것이다.)*
+
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
 | `noop` (바닥선) | 5 | **0%** (0/5) [0.00, 0.43] | 0% (0/17) | — (완주 0) | 856 | 0.182 | 12.0 |
 | `canonical` (규칙) | 5 | 80% (4/5) [0.38, 0.96] | 32% (6/19) | 66.3 ± 1.3 | 971 | 0.907 | 9.6 |
-| `surrogate` (RF) | 5 | 80% (4/5) [0.38, 0.96] | 32% (6/19) | 66.3 ± 1.3 | 971 | 0.907 | 9.6 |
+| `surrogate` (RF) | 5 | 80% (4/5) [0.38, 0.96] | **68% (13/19)** | **35.5 ± 4.3** | **739** | 0.937 | 9.6 |
 | **`dspy` (LLM)** | 5 | **100%** (5/5) [0.57, 1.00] | **90%** (18/20) | **41.0 ± 13.9** | **538** | 0.952 | 10.8 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
 | `noop` | NOOP×47 | Battery 0/6, Fault 0/5, Zone 0/6 |
 | `canonical` | ReformTeam×30, Replace×12, NOOP×7 | Battery 0/6, Fault 6/6, Zone 0/7 |
-| `surrogate` | ReformTeam×30, Replace×12, NOOP×7 | Battery 0/6, Fault 6/6, Zone 0/7 |
+| `surrogate` | Replace×12, ReformTeam×10, RelocateBuild×7 | Battery 0/6, Fault 6/6, **Zone 7/7** |
 | `dspy` | ReformTeam×10, SwapBattery×6, Replace×6, RelocateBuild×6, NOOP×2 | Battery 6/6, Fault 6/6, Zone 6/8 |
 
-- 짝지은 비교 `noop` vs `canonical` / `surrogate` / `dspy` — 각각 **0승 5패**, 부호검정 p=0.062
-- 짝지은 비교 `canonical` vs `surrogate` — 0승 0패 **5무**, p=1.000
+- 짝지은 비교 `noop` vs `canonical` — 0승 5패 0무, 부호검정 p=0.062
+- 짝지은 비교 `noop` vs `surrogate` — 0승 5패 0무, 부호검정 p=0.062
+- 짝지은 비교 `noop` vs `dspy` — 0승 5패 0무, 부호검정 p=0.062
+- 짝지은 비교 `canonical` vs `surrogate` — 0승 0패 **5무**, p=1.000 (완주·closed 기준 — §5-f-이후에서 이 통계가
+  왜 여전히 5무인지, 그리고 왜 그것이 "변화 없음"을 뜻하지 않는지 설명한다)
 - 짝지은 비교 `canonical` vs `dspy` — 0승 **1패** 4무, p=1.000 (그 1패가 시드 2)
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 1패 4무, p=1.000 (그 1패도 시드 2 — 배터리 축에서 둘 다 규칙과 같다)
 
 전 판 상세:
 
@@ -225,7 +235,11 @@ producer = DSPy **seed 프로그램** + gpt-4o(temperature 0).
 | 4 | noop / canonical / **dspy** | stall / complete / complete | 266 / 291 / 291 | 4984 / 2633 / **1309** | 721 / 809 / **438** | `NOOP×4` / `Replace,Replace,NOOP,NOOP` / **`SwapBattery,SwapBattery,RelocateBuild,RelocateBuild`** |
 | 5 | noop / canonical / **dspy** | stall / complete / complete | 173 / 291 / 291 | 4644 / 2623 / **1474** | 986 / 811 / **528** | `NOOP×3` / `NOOP,Replace,Replace,NOOP` / **`RelocateBuild,Replace,Replace,RelocateBuild`** |
 
-*(`surrogate` 는 매 사건에서 `canonical` 과 같은 팔을 골라 세계가 동일해졌다 — §5-f.)*
+*(위 표는 재적합 전(§5-f) 세계다. 재적합 후(2026-08-07, §5-f-이후) `surrogate` 는 더 이상 `canonical` 과
+같지 않다 — closed 는 시드별로 완전히 같지만(291/208/291/291/291, `canonical` 과 동일) zone 사건마다
+`RelocateBuild` 를 골라 steps 가 시드 1·3·4·5 에서 거의 절반으로 줄었다(2734→1638, 2624→1324, 2633→1250,
+2623→1474). 시드 2(배터리 축이 미완주를 가르는 판)는 두 정책이 여전히 바이트 단위로 같다 —
+`surrogate` 가 `SwapBattery` 를 여전히 고르지 않기 때문이다.)*
 
 ### 5-a. 완주율 — 적응이 실제로 이득인가
 
@@ -315,6 +329,49 @@ zone 8건 중 2건(시드 1 @150, 시드 3 @133)에서 `NOOP` 을 골랐다. 두
 (b) 라우터가 그 사건을 LLM 으로 올려야 한다. 후자는 이미 구현돼 있고(`DEMO_ROUTER=auto`),
 이 실험은 정책 비교를 위해 일부러 껐다(§1-a).
 
+### 5-f-이후. (a) 를 실제로 했다 — 재적합 후 재측정 (2026-08-07)
+
+위 (a)를 했다. `n44_plus78.jsonl`(68 instance, 매크로 지원 `[0,1,2,3,4,7,8]` — Task 3 의
+`battgrid_0805_s1.jsonl`(8=SwapBattery) 과 Task 5 의 `fzgrid_0806/merged.jsonl`(7=RelocateBuild) 을
+`graded_hs_n44.jsonl` 에 합친 것)로 배포 서로게이트를 재적합하고, **같은 5시드·같은 스트림**에서
+`surrogate` lane 만 다시 돌렸다(`noop`/`canonical`/`dspy` 는 재사용 — §4, 재사용 가능함을 먼저 확인했다).
+
+결과: **더 이상 바이트 단위로 같지 않다.**
+
+| 축 | 재적합 전 | 재적합 후 |
+|---|---|---|
+| 옳은 결정 | 32% (6/19) | **68% (13/19)** |
+| zone 적중 | 0/7 | **7/7** |
+| battery 적중 | 0/6 | 0/6 (불변) |
+| 고른 매크로 | `canonical` 과 완전 동일 | `RelocateBuild×7` 이 `NOOP×7` 을 대체, `ReformTeam` 30→10 |
+| 빌드 시간(완주판) | 66.3 s (`canonical` 과 동일) | **35.5 s** |
+| J/closed | 971 (`canonical` 과 동일) | **739** |
+
+기전은 서비스가 실제로 계산하는 것과 같은 코드 경로(`surrogate_rank`, `e1_analyze.featurize`)를
+그대로 재생해 확인했다 — zone 사건(valid=`[NOOP, RelocateBuild]`)에서 두 팔 모두 점수가 나고
+(`unsupported=[]`, `UNSUPPORTED` 아님), `RelocateBuild` 가 **매번 더 높은 점수**를 받아 선택된다
+(예: 시드 1 @149, `RelocateBuild` 228.79 vs `NOOP` 176.65 — 점수는 학습 시와 동일한
+`closed − λ·cost` 스케일). 즉 지원 집합에 넣는 것만으로 **모델이 스스로 참조 정책과 같은 결론에
+도달했다** — zone 축에서는 "학습 근거 없음"이 진짜 원인이었다는 §5-f 의 진단이 맞았다.
+
+battery 축은 다르다. `SwapBattery`(8)도 이제 점수가 나지만(`unsupported=[]`), **매번 `Replace` 보다
+낮게 랭크된다**(예: 시드 1 @58, `Replace` 248.15 vs `SwapBattery` 223.56) — battery 적중은 여전히
+0/6, `canonical` 과 바이트 단위로 같다. 이건 어휘 문제가 아니라 **모델이 `SwapBattery` 를 진짜로
+선호하지 않는 것**이다(§5-b 가 실측한 대로 두 팔은 closed 가 같고 cost 만 다른데, RF 가 그 불변성을
+이 특징 영역에서 학습하지 못했다는 뜻이다).
+
+**짝지은 비교(완주·closed 기준) `canonical` vs `surrogate` 는 재측정 후에도 0승 0패 5무다.** 이
+통계는 `(완주, closed)` 튜플만 비교하고 steps/energy/매크로를 보지 않으며(`llm_ood_eval.py::paired`),
+이 스트림의 zone 축은 애초에 완주를 가르지 않는다(§5-g: 시드 3 의 LLM 도 zone 에서 `NOOP` 을 골랐지만
+완주했다). 그래서 **§5-f 의 문자 그대로의 주장("완주·closed·steps·에너지·매크로 분포가 전부 같다")은
+반증됐지만**, 이 하니스가 리포트하는 헤드라인 부호검정은 이 스트림에서 그 반증을 승/패로 드러내지
+못한다. 완주율/closed 만 보고 "재적합이 무의미했다"고 읽으면 이 문서 §5-b~§5-d 가 이미 경고한 것과
+같은 함정(집계만 보고 사건별 결정을 안 읽음)에 빠진다.
+
+이것은 계획서 Step 8 의 세 가지 가능한 결론 중 **(2)** 에 해당한다 — 지원 집합은 열렸고 두 팔 다
+점수를 받지만(어느 쪽도 `UNSUPPORTED` 로 탈락하지 않는다), **축마다 모델의 선호가 갈린다**: zone 은
+새 어휘를 실제로 채택했고, battery 는 점수는 내면서도 여전히 채택하지 않는다.
+
 ### 5-g. 기준 규칙 자체의 한계 — zone 축은 이 스트림에서 완전히 전이되지 않았다
 
 정직하게 적어야 할 반증이 하나 있다. 시드 3 의 LLM 은 zone 에 `NOOP` 을 골라 기준 규칙을 어겼지만
@@ -336,9 +393,10 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 |---|---|---|
 | 행동 어휘 일치 | `python audit_action_vocab.py` | **6/6 consistent** (exit 0) |
 | 기준 정책 · 레지스트리 | `python test_llm7h.py` | **16/16 passed** (exit 0) — 그중 3개가 오라클 라벨 62 instance 대조 |
+| 배포 surrogate 지원 계약 | `python test_surrogate_support.py` | **PASS (7/7 checks)** — support=`[0,1,2,3,4,7,8]`, n=68 (2026-08-07 추가) |
 | Julia 패키지 스위트 | `julia +lts --project=. -e 'using Pkg; Pkg.test()'` | **11 pass / 1 error** — 아래 |
-| 스트림 e2e | `llm_ood_eval.py run` 20판 | 20/20 프로세스 exit 0, 요약 20행 |
-| 회귀(파이썬 파이프라인) | `python verify.py oracle/out/graded_hs_n44.jsonl` | **7/8** — 아래 |
+| 스트림 e2e | `llm_ood_eval.py run` 20판 (+ 2026-08-07 surrogate 5판 재측정) | 20/20 + 5/5 프로세스 exit 0 |
+| 회귀(파이썬 파이프라인) | `python verify.py oracle/out/graded_hs_n44.jsonl` | **8/8** — 아래 |
 
 **Julia 1 error 의 정체**: `test/test_demo.jl:61` 의 MILP 블록이
 `Gurobi Error 10009: No Gurobi license found` 로 죽는다. 이 환경에 Gurobi 라이선스가 없다는 뜻이고
@@ -346,11 +404,13 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 `close_node!`/`route_planning.jl` 경로를 실제로 지나가는 블록)는 정상 완주한 뒤 Gurobi 블록에서
 멈췄다. 나머지 11개(IDs · Potential Fields 8 · Twist 3) 전부 통과.
 
-**`verify.py` 7/8 의 정체**: V0 이 `0/44 instances have all **7** macro arms rolled out` 으로 실패한다.
-덤프는 5팔인데 `e1_analyze.MACROS` 는 7개(`[0,1,2,3,4,7,8]`)라 개수가 안 맞는 것이고,
-이 불일치는 **이번 변경 이전부터** 있었다(그 리스트를 건드리지 않았다). 계획서가 **Ch-D**
-("오라클이 7·8 팔을 채점하지 않는다")라고 부른 바로 그 구멍이다. 계획서에 적힌 "베이스라인 8/8"은
-지금 재현되지 않으므로, 그 숫자를 인용하지 말 것.
+**`verify.py` 8/8 의 정체(2026-08-06 Task 2 갱신, 이 문서는 2026-08-07 재확인)**: V0 은 원래
+`0/44 instances have all **7** macro arms rolled out` 으로 실패했다 — 덤프는 5팔인데
+`e1_analyze.MACROS` 는 7개(`[0,1,2,3,4,7,8]`)라 개수가 안 맞았고, 이것이 계획서가 **Ch-D**
+("오라클이 7·8 팔을 채점하지 않는다")라고 부른 구멍이다. Task 2 가 V0 판정을 **팔 개수**가 아니라
+`valid_mask` 기준(그 사건에서 실제로 유효한 팔을 다 굴렸는가)으로 고쳤고, 그 뒤로는 **8/8** 이
+재현된다(Step 4·Step 11 에서 재확인). 이 문서의 옛 버전과 계획서 일부가 인용한 "7/8"은 **그 수정
+이전 시점의 판정**이므로, 지금 값(8/8)과 함께 인용하지 말 것 — 둘은 서로 다른 검사 기준의 결과다.
 
 **기본 경로 불변 증명**: `RESPEC_DRIFT_REPAIR[]` 기본값이 `nothing` 일 때
 `respec_drift_repair() == RESPEC_ENABLED[]` 임을 직접 확인했다(false→false, true→true).
@@ -368,7 +428,7 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 | **Ch-C: 7번째 서술자 `repair_disruption`** | §5-e 가 보여주듯 필요한 정보(frozen 32)는 **이미 프롬프트에 있다**. 축을 더 넣기 전에 "있는 축을 왜 못 읽는가"를 먼저 봐야 한다 |
 | **`verify.py` 8/8** | 실측 **7/8**(canonical set). V0 이 "0/44 instances have all **7** macro arms" 로 실패한다 — 덤프는 5팔이고 `e1_analyze.MACROS` 는 7개다. 이번 변경 **이전부터** 그렇고, 이것이 곧 계획서의 **Ch-D**(오라클이 7·8 팔을 채점하지 않는다)다 |
 | **P1 대량 라벨 잡(~5h)** | 운영규칙 1 과 정면으로 충돌한다 — 스위프의 Julia 실행과 CPU 를 다투면 HiGHS 가 **다른 스케줄**을 내 정책 비교가 무효가 된다(함정 30). 사용자가 요청한 산출물이 스트림 평가였으므로 그쪽에 CPU 를 전부 줬다 |
-| **`ForbidZone` 팔의 실제 발화** | zone 8건 모두 `n_restage_feasible = 0` 이었다 = 국소 재적치 도메인이 비어 메뉴가 `[NOOP, RelocateBuild]` 였다. 데모의 구역이 **빌드 도중** 뜨기 때문이고, 이는 2026-08-03 부터 알려진 구조다. 공간 사건 자체는 매 판 발화한다 |
+| **`ForbidZone` 팔의 실제 발화** | (2026-08-07 갱신) Task 4 의 단일 좌표 사전주입기(`DEMO_ZONE_AT`)로는 **처음으로 메뉴에 올랐고 `canonical` 이 실제로 선택했다** — 이 저장소 최초 기록. 그러나 **§5·본 태스크의 20판이 쓰는 STREAM3 무작위 주입기(`inject_blocking_zone!`)는 손대지 않았고**, 재측정(2026-08-07)에서도 그 사건들은 여전히 `n_restage_feasible=0` 이라 `valid=[NOOP, RelocateBuild]` — **스트림 안에서는 여전히 죽은 팔이다**. 서로게이트 재적합은 점수가 나는 팔을 넓혔을 뿐 기하학적 실현가능성을 바꾸지 않으므로, 이 결과는 예상된 것이다 |
 
 ### 다음 한 수
 
