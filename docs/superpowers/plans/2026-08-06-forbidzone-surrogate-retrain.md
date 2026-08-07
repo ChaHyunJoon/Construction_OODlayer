@@ -971,6 +971,14 @@ git commit -m "feat(zone): 사람이 sim 전에 고른 좌표에 구역을 심�
 
 매크로 7 이 든 **완전한 instance 는 현재 0개**다. surrogate 가 zone 축에서 규칙과 갈리려면 그 행이 있어야 한다. 예산은 순차 ~2시간이므로 격자를 좁게 잡고, **모자란 것을 모자랐다고 적는다**.
 
+> **⚠ Task 1 이후 수정된 방침 (중요).** 이 태스크의 목표는 **매크로 7(RelocateBuild) 하나**다. 매크로 3(ForbidZone)은 **여기서 노리지 않는다.**
+>
+> Task 1 이 실측했다: 라벨러도 데모와 같은 `closed` 카운터로 발화하는데 첫 시뮬 배치가 58 노드를 한꺼번에 닫고, restageable 집합은 그 전에 이미 0 이 된다. 즉 **라벨 경로에서도 매크로 3 의 도메인에 도달할 수 없다.** 계획 초안이 적었던 `DS_ZONE_ELIGIBLE=restageable` 는 바로 그 불가능한 자리를 겨냥한 설정이고, `gen_oracle_dataset.jl:359` 의 주석이 "이 필터는 zone 사건을 빌드 중반에 사실상 발화 불가로 만든다"고 이미 적어 뒀다. 그 설정을 쓰면 격자가 통째로 빈다.
+>
+> 따라서 **`DS_ZONE_ELIGIBLE` 은 기본값 `workdisc` 를 쓴다.** 같은 주석이 그 값을 이렇게 설명한다: "matches macro 7 (RelocateBuild → translate_whole_build!) … This is the default: it is the arm the generator now labels." 수리기와 주입 자격이 맞아야 개입이 실제로 무언가를 한다.
+>
+> **팔은 `0,7` 만 굴린다.** 3 을 끼워 넣으면 도메인이 비어 `restage_all_blocked!` 이 `:none` 으로 조기 반환하고, 그 행은 NOOP 과 바이트 동일해진다 — 결정을 재는 것이 아니라 **동점을 제조**하는 것이다(`ood_mdp_shim.jl:183-185` 가 같은 이유로 행동 불가 팔을 메뉴에서 뺀다). 매크로 3 의 라벨은 pre-sim 주입이 필요하고, 그건 Task 4 가 연 경로이지 이 격자의 일이 아니다.
+
 **Files:**
 - Create: `wm4spacecraft_manufacturing/oracle/run_fzgrid.ps1`
 - Create (산출): `wm4spacecraft_manufacturing/oracle/out/fzgrid_0806/`
@@ -988,45 +996,61 @@ git commit -m "feat(zone): 사람이 sim 전에 고른 좌표에 구역을 심�
 ```bash
 cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
 DS_EPISODE_N=1 DS_EP_KINDS=zoneblk DS_VALID_ONLY=1 DS_EP_MACROS=0 \
-DS_ZONE_DIAG=1 DS_ZONE_ELIGIBLE=restageable DS_SPARES=3 DS_NOPROG=8000 DS_NOCTRL=1 \
+DS_ZONE_DIAG=1 DS_SPARES=3 DS_NOPROG=8000 DS_NOCTRL=1 \
 DS_REFORM=300 CARRIER_RESCUE=1 DS_HOTSWAP=1 DS_SEEDS=1 \
-DS_EP_LO=4 DS_EP_HI=8 \
 DS_OUT=wm4spacecraft_manufacturing/oracle/out/fzgrid_0806/probe_fire.jsonl \
   julia +lts --project=. wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl 2>&1 | tail -30
 ```
-> `DS_EP_LO`/`DS_EP_HI` 는 `gen_oracle_dataset.jl:971-972` 의 실제 이름이다(기본 8/60). 이 값은 **요청한 구간**일 뿐이고, 사건이 실제로 due 되는 `closed` 는 시뮬 배치 경계에 붙는다(D2) — 그 차이를 재는 것이 이 Step 의 전부다.
+> `DS_ZONE_ELIGIBLE` 을 **주지 않는다** = 기본 `workdisc`(매크로 7 의 수리기와 일치). `DS_EP_LO`/`DS_EP_HI` 도 주지 않고 기본값(8/60)을 쓴다 — 어차피 배치 경계로 끌려가므로 좁게 지정하는 것은 의미가 없고, 기본값이 기존 zone 덤프와 같은 세계라 비교가 성립한다.
 
-그 뒤 실제 발화점을 읽는다:
+그 뒤 실제로 무엇이 만들어졌는지 읽는다:
 ```bash
 cd wm4spacecraft_manufacturing && python -c "
 import json
 for ln in open('oracle/out/fzgrid_0806/probe_fire.jsonl',encoding='utf-8'):
     r=json.loads(ln)
-    print('closed_at_fire',r.get('closed_at_fire'),'zone_blocked',r.get('zone_blocked'),
-          'restage_feasible',r.get('zone_restage_feasible'),'valid_mask',r.get('valid_mask'))
+    print('closed_at_fire', r.get('closed_at_fire'),
+          '| zone_blocked', r.get('zone_blocked'),
+          '| restage_feasible', r.get('zone_restage_feasible'),
+          '| nav_blocked', r.get('zone_nav_blocked'),
+          '| relocatable', r.get('zone_relocatable'),
+          '| valid_mask', r.get('valid_mask'))
 "
 ```
-**게이트:** `zone_restage_feasible >= 1` 이고 `valid_mask` 에 `3` 이 들어 있으면 진행한다. 아니면 **여기서 멈추고 Task 1 의 CSV 와 대조해 왜 다른지 적는다** — 두 주입기의 기하가 다르다는 뜻이고, 그건 라벨을 더 만든다고 해결되지 않는다.
+**게이트 — 이 두 가지가 이 Step 의 전부다:**
+1. `valid_mask` 에 **7 이 들어 있는가** (없으면 매크로 7 라벨을 만들 수 없다)
+2. `zone_nav_blocked >= 1` 인가 — 즉 **그 구역이 실제로 막는가**
+
+2번이 핵심이다. STEP 6·8 이 실측한 대로 **덮임은 해로움이 아니다**(root 하역목표를 8/8 삼켜도 완주했다). 안 막는 구역은 NOOP 이 언제나 정답이라 팔 교차가 전부 동점이 되고, 그런 라벨은 surrogate 에게 아무것도 못 가르친다 — 2 시간을 써서 무의미한 행을 만드는 것이다.
+
+`zone_nav_blocked` 열이 아예 없거나 -1 이면 `DS_ZONE_DIAG=1` 이 안 먹은 것이다(그 열은 opt-in 이다). 먼저 그것부터 확인한다.
+
+**게이트 실패 시 멈추고 보고한다.** 특히 2번이 실패하면 — 즉 생성기의 `place_blocking_zone!` 이 이름과 달리 막지 않는 구역을 만들면 — 라벨을 더 만들어도 해결되지 않는다. 그때 남는 선택지는 Task 4 가 연 **선언적 pre-sim 주입 경로를 라벨러에도 붙이는 것**인데, 그건 이 태스크의 범위 밖이므로 발견만 적고 멈춘다.
+
+> `zone_restage_feasible` 은 **게이트가 아니다.** Task 1 이 이미 그것이 0 일 것을 실측했고, 매크로 7 은 그 전제가 필요 없다. 값은 기록만 하고 판단에 쓰지 않는다.
 
 - [ ] **Step 2: 격자 러너를 쓴다**
 
 `wm4spacecraft_manufacturing/oracle/run_fzgrid.ps1` — `run_step6_zonegrid.ps1` 을 원형으로 하되 **세 가지를 바꾼다**:
-1. `$Lanes = 1` 고정 (함정 30 — 팔 교차는 비교다)
-2. `DS_ZONE_ELIGIBLE = "restageable"` (매크로 3 의 수리기와 주입 자격을 맞춘다)
-3. 발화 구간을 Step 1 이 실측한 값으로 (요청값이 아니라 **도달값** 기준)
+1. `$Lanes = 1` 고정 (함정 30 — 팔 교차는 비교다. 병렬이면 HiGHS 가 다른 스케줄을 내 팔끼리 비교가 무효)
+2. `DS_ZONE_ELIGIBLE` 을 **설정하지 않는다** (기본 `workdisc` = 매크로 7 의 수리기와 일치). 원형 스크립트가 `restageable` 을 쓰고 있으면 그 줄을 지운다
+3. `DS_EP_MACROS = "0,7"` (원형의 `"0,3,7"` 에서 3 을 뺀다 — 위 방침 참조)
 
-job 목록(예산 ~2시간, 런당 ~10분 가정 → 12런):
+job 목록(예산 ~2시간, 프로세스당 2팔 × ~10분 = ~20분 가정 → 6 프로세스 ≈ 2시간):
 ```powershell
-# 발화점 2 x 팔 3(0,3,7) x seed 2 = 12 런. 순차. 예산 초과 시 seed 를 1개로 줄인다.
+# seed 3 x zone 위치 2 = 6 job. 각 job 이 팔 2개(0,7)를 한 프로세스 안에서 돈다 = 12런.
+# 발화 구간은 기본값(DS_EP_LO/HI 미지정)을 쓴다 -- 어차피 배치 경계로 끌려간다(Task 1 D2).
+# 대신 zone 위치(DS_EP_ZFRAC)를 축으로 쓴다: 0.9 = 기존 덤프와 같은 자리, 0.5 = 더 안쪽(더 많이 겹침).
 $Jobs = @()
-foreach ($fire in @(@{tag="f1"; lo="4";  hi="8"},
-                    @{tag="f2"; lo="20"; hi="28"})) {
-    foreach ($s in @(1, 2)) {
-        $Jobs += @{ tag = ("fz_{0}_s{1}" -f $fire.tag, $s); seed = $s; lo = $fire.lo; hi = $fire.hi }
+foreach ($zf in @("0.9", "0.5")) {
+    foreach ($s in @(1, 2, 3)) {
+        $Jobs += @{ tag = ("fz_zf{0}_s{1}" -f $zf.Replace(".", ""), $s); seed = $s; zfrac = $zf }
     }
 }
 ```
-각 job 은 `DS_EP_MACROS="0,3,7"` 로 **세 팔을 한 프로세스 안에서** 돌린다(생성기가 팔 루프를 갖고 있다 — 1685·1745행). 즉 job 4개 × 3팔 = 12런이고 프로세스는 4개다.
+각 job 은 `DS_EP_MACROS="0,7"` 로 **두 팔을 한 프로세스 안에서** 돌린다(생성기가 팔 루프를 갖고 있다 — 1685·1745행).
+
+`-MaxMinutes 120` 으로 예산을 강제하고, 초과 시 남은 job 을 건너뛰되 **건너뛴 목록을 stdout 에 찍는다**(조용한 절단 금지 — 무엇을 못 쟀는지가 결과의 일부다).
 
 `-MaxMinutes 120` 을 기본으로 두고, 초과하면 남은 job 을 건너뛰되 **건너뛴 목록을 stdout 에 찍는다**(조용한 절단 금지).
 
@@ -1054,8 +1078,30 @@ print('완전 instance', len(full), '매크로 지원', sorted({int(m) for m in 
 print(d2.groupby(['instance','macro_name']).closed.first().to_string())
 "
 ```
-**성공 기준:** 완전 instance ≥ 2, 매크로 지원에 **7 포함**. 3 이 함께 들어오면 ForbidZone 축의 첫 라벨이다.
-**부분 실패 시:** 매크로 7 만 있고 3 이 없어도 진행한다(§5-f 의 zone 축은 7 이 없어서 막힌 것이다). 그 사실을 적는다.
+**성공 기준:** 완전 instance ≥ 2, 매크로 지원에 **7 포함**.
+
+그리고 **라벨이 실제로 무언가를 가르치는지** 함께 본다 — 팔이 전부 동점이면 지원 집합만 넓어지고 학습 신호는 0 이다:
+```bash
+python -c "
+import sys; sys.path.insert(0,'.')
+from e1_analyze import load, instance_arms_complete
+df=load('oracle/out/fzgrid_0806/merged.jsonl'); df=df[df.fired==True]
+full=[i for i,g in df.groupby('instance') if instance_arms_complete(g)]
+d2=df[df.instance.isin(full)]
+tie=0; flip=0
+for i,g in d2.groupby('instance'):
+    by={int(r.macro):(bool(r.complete), int(r.closed)) for r in g.itertuples()}
+    if 0 in by and 7 in by:
+        if by[0]==by[7]: tie+=1
+        else: flip+=1
+        print(i, 'NOOP', by[0], '| RelocateBuild', by[7], '<-- 갈림' if by[0]!=by[7] else '')
+print()
+print('동점 instance', tie, '/ 갈리는 instance', flip)
+"
+```
+**동점률이 100% 면 이 격자는 실패다.** 그 사실을 그대로 적고, 왜 그런지(구역이 안 막았는가, 아니면 막았는데도 두 팔이 같은 결과를 냈는가)를 `zone_nav_blocked` 값과 함께 기록한다. 동점 라벨을 학습셋에 넣어도 surrogate 의 결정은 안 바뀐다 — 그걸 모르고 Task 6 으로 넘어가면 §5-f 재측정이 "여전히 5무"로 나오고 원인을 못 가른다.
+
+**부분 실패 시:** 갈리는 instance 가 1~2 개뿐이어도 진행하되, n 을 표에 그대로 적는다. 매크로 3 이 없는 것은 실패가 아니라 **예상된 결과**다(위 방침).
 
 - [ ] **Step 5: 커밋**
 
