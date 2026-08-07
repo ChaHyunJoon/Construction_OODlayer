@@ -221,6 +221,8 @@ function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     return nothing
 end
 
+include(joinpath(@__DIR__, "zone_inject.jl"))   # DEMO_ZONE_AT 용 선언적 주입기
+
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
 
 # ---- 캡처: 결정 정책의 출력을 monitor respec 패널로 -------------------------------
@@ -457,7 +459,11 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
                 "(range $lo..$hi of $n_total, severe_frac=$(DEMO_OOD_SEVFRAC))")
     else
     if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
-        nl = inject_staging_zone!(env; frac = 0.20)
+        # DEMO_ZONE_AT 이 있으면 **사람이 고른 좌표**를 심는다(oracle/out/fz_presim.csv 카탈로그).
+        # 없으면 기존 argmin 주입기 그대로 -- 옛 실행의 재현성이 바뀌지 않는다.
+        local spec = declared_zone_spec()
+        nl = spec === nothing ? inject_staging_zone!(env; frac = 0.20) :
+             inject_declared_zone!(env; cx = spec.cx, cy = spec.cy, r = spec.r)
         if nl !== nothing
             log = CB.ood_truth_log(); handle_ood!(env, log[end].truth, nl)
         end
