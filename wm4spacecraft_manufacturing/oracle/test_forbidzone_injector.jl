@@ -89,18 +89,32 @@ truth_ok = !isempty(log) && (try log[end].truth.zone === :zone_declared catch; f
 check("5. 기록된 ZoneTruth 의 zone 키가 방금 심은 키와 같다", truth_ok,
       "got $(isempty(log) ? "log empty" : log[end].truth)")
 
-println("== 6. 좌표가 빗나갔을 때 조용히 성공하지 않는다 ==")
+# Fix round 1: canonical_respec(::ZoneTruth)(baselines.jl:73) 가 assembly 필드로 분기한다 --
+# nothing 이면 "막지 않는다"는 (반증된) 세계에 답한다. assembly 가 채워져 있고, 그 값이
+# zone_diagnosis 가 "실제로 옮길 수 있다"고 계산한 feasible 집합의 원소인지 검사해
+# 이 배선이 조용히 되돌아가지 못하게 한다.
+truth6 = isempty(log) ? nothing : log[end].truth
+check("6. ZoneTruth.assembly 가 nothing 이 아니다",
+      truth6 !== nothing && truth6.assembly !== nothing,
+      "got $(truth6 === nothing ? "log empty" : truth6.assembly)")
+check("7. 그 assembly 가 zone_diagnosis(...).feasible 에 있다",
+      truth6 !== nothing && truth6.assembly !== nothing && d !== nothing &&
+      truth6.assembly in d.feasible,
+      "got assembly=$(truth6 === nothing ? nothing : truth6.assembly) feasible=$(d === nothing ? nothing : d.feasible)")
+
+println("== 좌표가 빗나갔을 때 조용히 성공하지 않는다 ==")
 CB.clear_restriction_zones!()
 CB.clear_ood_truth_log!()
 nl_far = inject_declared_zone!(env; cx = 99.0, cy = 99.0, r = 0.21, key = :zone_far)
-check("6a. 먼 좌표는 nothing 을 돌려준다", nl_far === nothing, "got $(typeof(nl_far))")
-check("6b. 그 키가 RESTRICTION_ZONES[] 에 남아 있지 않다",
+check("8. 먼 좌표는 nothing 을 돌려준다", nl_far === nothing, "got $(typeof(nl_far))")
+check("9. 그 키가 RESTRICTION_ZONES[] 에 남아 있지 않다",
       !haskey(CB.RESTRICTION_ZONES[], :zone_far))
 
 println()
+const N_CHECKS = 9   # check() 호출 총수 — 요약 총계가 실제 호출 수와 어긋나지 않게 상수로 고정
 if FAILED[] == 0
-    println("6/6 PASS — 선언적 ForbidZone 주입기 정상")
+    println("$(N_CHECKS)/$(N_CHECKS) PASS — 선언적 ForbidZone 주입기 정상")
 else
-    println("$(FAILED[]) CHECK(S) FAILED")
+    println("$(FAILED[]) CHECK(S) FAILED (of $(N_CHECKS))")
     exit(1)
 end

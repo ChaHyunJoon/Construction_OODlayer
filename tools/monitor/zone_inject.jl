@@ -52,8 +52,17 @@ function inject_declared_zone!(env; cx::Float64, cy::Float64, r::Float64,
     nl = "A no-go exclusion zone has appeared at ($(round(cx; digits = 2)), " *
          "$(round(cy; digits = 2))) with radius $(round(r; digits = 2)). " *
          "Robots that enter the disc are pushed back out of it."
+    # assembly 를 nothing 으로 남기면 안 된다: canonical_respec(::ZoneTruth)(baselines.jl:73)는
+    # 정확히 이 필드로 분기해서, assembly===nothing 이면 "nav zone -> motion-stack detour(no DSL)"
+    # 라며 빈 제안(NOOP)을 낸다 -- 그런데 우리는 방금 위에서 n_restage_feasible>=1 을 확인했다,
+    # 즉 staging 이 실제로 막혀 있다. nothing 을 실으면 그 확인과 모순되는 truth 를 기록하는
+    # 셈이라 canonical 규칙이 "이 구역은 아무것도 안 막는다"는, 우리가 방금 반증한 세계에 답한다.
+    # d.feasible 은 zone_diagnosis 가 이미 계산해 둔 "실제로 옮길 수 있는" 조립체 목록(그 개수가
+    # n_restage_feasible)이므로 그 첫 원소를 대상으로 싣는다. 순서는 env 구성 순서(고정 시드)에서
+    # 결정적이다 -- zone_blocked_assemblies(restage_zone.jl)가 env.staging_circles 를 그대로
+    # 순회해 만들고 zone_diagnosis 의 filter 는 그 순서를 보존한다(재정렬 없음).
     try CB.record_ood_truth!(nl,
-        CB.ZoneTruth(key, Float64[cx, cy], Float64(CB.get_radius(z)), nothing)) catch e
+        CB.ZoneTruth(key, Float64[cx, cy], Float64(CB.get_radius(z)), first(d.feasible))) catch e
         @warn "[zone] record_ood_truth! 실패" exception = e
     end
     return nl
