@@ -734,217 +734,206 @@ git commit -m "feat(surrogate): 학습셋에 SwapBattery 라벨을 넣어 매크
 
 ---
 
-### Task 4: ForbidZone 이 발화하는 자리를 만든다 (Task 1 결과로 분기)
+### Task 4: 선언적 pre-sim ForbidZone 주입기
 
-**Task 1 Step 3 의 판정을 읽고 해당 분기만 수행한다.** 두 분기의 산출물이 다르다.
+Task 1 이 분기 A 를 확정했고, 조사 결과 **필요한 배선이 이미 대부분 존재한다**. `run_demo.jl:459-464` 의 비-stream3 경로는 이미 sim 전에 구역을 심고 그 자리에서 결정까지 집행한다:
 
-> **✅ Task 1 결과 (2026-08-06 실측) — 분기 A. 인터페이스가 확정됐다.**
->
-> | | pre-sim (closed=0) | scan (closed 58~117, 15지점) |
-> |---|---|---|
-> | `pristine` | **7** | **0** (전 구간) |
-> | `n_restage_feasible ≥ 1` ∧ `n_nav_blocked ≥ 1` | **238 / 426** | **0 / 300** |
-> | `verdict` | `forbid_zone` **238** · `noop` 188 | `noop` 270 · `ERR`(=pristine 없음 sentinel) 30 |
-> | `max_nav_blocked` | 1 | 3 |
->
-> - **절벽은 "closed≈46 부근"이 아니라 관측 불가능하다.** 첫 시뮬 배치가 58 노드를 한꺼번에 닫아 `schedule_ood_at_closed!` 로는 closed<58 에 **도달 자체가 안 된다**. 즉 pre-sim 주입은 선호가 아니라 **유일한 방법**이다.
-> - `max_nav_blocked` 는 전 구간 3 으로 유지된다 → 사라지는 것은 막힘이 아니라 **재적치 도메인**이다("덮임≠막힘"과 다른 별개 기전).
-> - **`n_nav_blocked` 는 presim 에서도 유효하다.** `ZONE_CHECK_PATHS` 가 기본 off 라(`zone_diagnosis.jl:194`) `zone_corridor` 의 연결성 분기가 아예 안 돌고 `n_disconnected ≡ 0` → `n_nav_blocked ≡ n_engulfed` = **로봇 위치와 무관한 신호**. 빈 cache 우려는 닫혔다.
-> - **`target` 은 생성 라벨이지 집행 약속이 아니다.** `zone_blocked_assemblies` 의 겹침 검사는 *후보 조립체 자신의* 적치 반지름 `bR`(0.48~3.79)을 쓰지 프로브 구역 반지름(0.07~0.21)을 쓰지 않는다 — 그래서 작은 구역도 7 을 낸다(단 `n_restage_feasible=7` 은 238 중 22 건뿐).
->   → **주입기는 `(cx, cy, zone_r)` 로 받는다. assembly id 로 받으면 안 된다.**
->
-> **⚠ 아래 분기 A 의 코드는 계획 초안 시점의 런타임 탐색 주입기라 폐기한다.** 사용자 제약(pre-sim · 사람이 결정 · 결정론적)에 따라 실제 구현은 **선언적 주입기**가 된다: Task 1 의 카탈로그에서 고른 한 줄(`target, cx, cy, zone_r`)을 환경변수로 받아 `run_lego_demo` 의 `pre_sim_hook`(`src/full_demo.jl:835`)에서 그대로 심는다. 탐색 루프도, `zone_relocatable` 필터도, 폴백도 없다 — 사람이 이미 골랐기 때문이다. 아래 코드는 **탐색 로직이 아니라 진단 조건(`n_restage_feasible ≥ 1 ∧ n_nav_blocked ≥ 1`)과 nl 문구·`ZoneTruth` 기록 형태를 참고용으로** 남겨 둔 것이다. 카탈로그의 실제 값이 나오면 이 절을 그 값으로 다시 쓴다.
+```julia
+if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
+    nl = inject_staging_zone!(env; frac = 0.20)
+    if nl !== nothing
+        log = CB.ood_truth_log(); handle_ood!(env, log[end].truth, nl)
+    end
+end
+```
 
-**Files (분기 A):**
-- Create: `tools/monitor/zone_inject.jl` — 새 주입기 하나만 담는다(단위검사가 데모를 돌리지 않고 include 할 수 있도록)
-- Modify: `tools/monitor/run_demo.jl` — `zone_inject.jl` include + 호출부에 `DEMO_ZONE_FAMILY` 분기. **기존 `inject_blocking_zone!`(186행)은 이동도 수정도 하지 않는다**
+**그런데도 ForbidZone 은 안 떴다.** 이유는 `inject_staging_zone!`(132행)이 미래 작업과 **가장 적게 겹치는** 자리를 argmin 으로 고르기 때문이다 — 173행 주석이 "설계상 아무것도 막지 않는다"고 그대로 적어 뒀다. 덮되 막지 않으므로 `n_nav_blocked = 0` 이고, `ood_mdp_shim.jl::_zone_arms_for` 는 행동 가능한 팔만 제시하므로 3 이 메뉴에 오르지 않는다.
+
+따라서 이 태스크는 **탐색기를 만드는 일이 아니라, 사람이 고른 좌표를 그대로 심는 일**이다. 루프도, 폴백도, 무작위성도 없다.
+
+**Files:**
+- Create: `tools/monitor/zone_inject.jl` — 선언적 주입기 하나. 별도 파일인 이유는 단위검사가 데모 전체를 돌리지 않고 include 할 수 있어야 해서다
+- Modify: `tools/monitor/run_demo.jl` — `zone_inject.jl` include + `:zone in kinds` 분기에서 `DEMO_ZONE_AT` 이 있으면 선언적 주입기를 쓴다. **기존 `inject_staging_zone!` · `inject_blocking_zone!` 은 한 글자도 고치지 않는다**(§5 의 20판이 그 함수들의 세계다)
 - Create: `wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl`
 
-**Files (분기 B):**
-- Modify: `wm4spacecraft_manufacturing/action_registry.json` (macro 3 의 `doc`)
-- Modify: `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` (§7 마지막 행)
-
 **Interfaces:**
-- Consumes: `oracle/out/fz_domain.csv` (Task 1), `CB.zone_diagnosis(env, key; check_restage=true)`
-- Produces (분기 A): 환경변수 `DEMO_ZONE_FAMILY ∈ {nav, restage, auto}` — 기본 `nav`(= 기존 동작, §5 세계 보존). Task 5·6이 이 값을 쓴다.
+- Consumes: `oracle/out/fz_presim.csv`(Task 1 카탈로그)의 한 행 — `cx, cy, zone_r`
+- Produces:
+  - `inject_declared_zone!(env; cx, cy, r, key) -> Union{String,Nothing}` (nl 또는 실패 시 nothing)
+  - 환경변수 `DEMO_ZONE_AT="<cx>,<cy>,<r>"` — 없으면 기존 동작 그대로
 
-#### 분기 A — `n_restage_feasible ≥ 1 ∧ n_nav_blocked ≥ 1` 인 행이 있었다
+> **카탈로그는 `target` 이 아니라 `(cx, cy, zone_r)` 로 읽는다.** Task 1 이 확인한 대로 `zone_blocked_assemblies` 의 겹침 검사는 *후보 조립체 자신의* 적치 반지름(0.48~3.79)을 쓰지 구역 반지름(0.07~0.21)을 쓰지 않는다. 그래서 `target` 열은 그 행을 만든 라벨일 뿐 집행 대상의 약속이 아니다.
 
-- [ ] **A-Step 1: 주입기 단위검사를 먼저 쓴다**
+**사람이 고른 좌표 (이 태스크의 입력):**
 
-`wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl` — `oracle/test_relocate_build.jl` 의 형식(`check(name, cond, detail)` + 실패 카운터 + 시뮬 없음)을 그대로 따른다. 다만 이 검사는 **씬이 필요하므로** 짧은 시뮬을 Task 1 이 찾은 `closed` 값까지만 돌린 뒤 한 번 검사한다.
+```
+DEMO_ZONE_AT="3.6406,-1.2783,0.21"
+```
+
+`fz_presim.csv` 에서 `n_nav_blocked` 가 가장 큰 행이다(family=nav, target=vtx46): `n_restage_feasible=1` · `n_nav_blocked=5/…` · `relocate_feasible=1`. 세 팔(NOOP · ForbidZone · RelocateBuild)이 **모두 행동 가능한** 유일한 급의 자리라 결정 문제가 성립한다. `n_restage_feasible` 이 정확히 1 인 것도 이점이다 — 재적치 대상이 하나로 정해져 모호함이 없다.
+
+- [ ] **Step 1: 단위검사를 먼저 쓴다**
+
+`wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl`. `oracle/test_relocate_build.jl` 의 형식(`check(name, cond, detail)` + 실패 카운터)을 따른다. 씬이 필요하므로 `run_lego_demo(...; return_env_before_sim = true)` 로 env 만 받아 **시뮬 없이** 검사한다(Task 1 의 `probe_forbidzone_domain.jl` presim 모드와 같은 방식, 수 분).
+
+파일 머리말:
 
 ```julia
 # =============================================================================
-# test_forbidzone_injector.jl -- restage-feasible 구역 주입기가 실제로 ForbidZone 도메인을
-# 만드는지 검사한다. Task 1 의 fz_domain.csv 가 "존재한다"고 말한 그 진행도에서 확인한다.
+# test_forbidzone_injector.jl -- 선언적 pre-sim 구역 주입기 단위검사. 시뮬 없음.
 #
-#   FZ_AT=<closed>  검사할 발화점(기본은 fz_domain.csv 의 첫 hit). 필수는 아님.
+# 왜 이 검사가 필요한가: 주입기가 조용히 실패하면(좌표가 빗나가 아무것도 안 막으면) 팔 게이트가
+# ForbidZone 을 안 내주고, 그러면 "LLM 이 ForbidZone 을 안 골랐다"가 아니라 "고를 수 없었다"가
+# 되는데 요약만 봐서는 구분이 안 된다. 그 구분을 여기서 강제한다.
+#
+#   FZ_AT="cx,cy,r"  검사할 좌표(기본 "3.6406,-1.2783,0.21" = fz_presim.csv 에서 고른 행)
 #   julia +lts --project=. wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl
 # =============================================================================
 ```
-본문(하네스는 `probe_forbidzone_domain.jl` 의 것을 재사용한다 — 같은 import 블록 + 큰 스택 Task):
 
-```julia
-const FZ_AT = parse(Int, get(ENV, "FZ_AT", "12"))   # fz_domain.csv 의 첫 hit 의 closed 값
-const FAILED = Ref(0)
-check(name, cond, detail = "") = (cond ? println("  PASS  $name") :
-    (FAILED[] += 1; println("  FAIL  $name   $detail")))
+검사 항목(env 하나에 대해, 전부 `check(...)` 로):
+1. `inject_declared_zone!` 이 `nothing` 이 아닌 nl 문자열을 돌려준다
+2. 심긴 뒤 `CB.zone_diagnosis(env, key; check_restage = true).n_restage_feasible >= 1`
+3. 같은 진단의 `n_nav_blocked >= 1` (덮기만 하고 안 막으면 결정 문제가 아니다 — STEP 6 실측)
+4. `_zone_arms_for` 가 **3 을 포함**한다 (`oracle/ood_mdp_shim.jl:194` 를 include 해 직접 호출). **이것이 이 태스크의 진짜 산출물이다**
+5. 기록된 `ZoneTruth` 의 `zone` 키가 방금 심은 키와 같다
+6. **좌표가 빗나갔을 때 조용히 성공하지 않는다**: 일부러 먼 좌표 `(99.0, 99.0, 0.21)` 로 부르면 `nothing` 을 돌려주고, 그 키가 `RESTRICTION_ZONES[]` 에 **남아 있지 않다**
 
-# run_demo.jl 을 통째로 include 하면 데모가 돌아버린다. 주입기 함수만 필요하므로
-# 그 함수 정의 블록을 이 파일에서 다시 평가한다 -- 두 곳이 갈리지 않도록 정의는
-# run_demo.jl 을 단일 출처로 두고, 여기서는 include_string 으로 그 범위만 떼어 온다.
-# (더 간단한 대안: 주입기를 tools/monitor/zone_inject.jl 로 빼고 양쪽에서 include.
-#  이번에는 run_demo.jl 한 곳만 건드리는 쪽을 택했다 -- 태스크 3 의 surgical 원칙.)
-include(joinpath(pkgdir(CB), "tools", "monitor", "zone_inject.jl"))
-include(joinpath(@__DIR__, "ood_mdp_shim.jl"))
-
-function probe_inject_once(env)
-    nl = inject_restageable_blocking_zone!(env)
-    check("주입기가 nl 을 돌려준다", nl !== nothing, "nothing = 후보를 못 찾음")
-    nl === nothing && return nothing
-
-    key = last(sort(collect(keys(CB.RESTRICTION_ZONES[])); by = string))
-    d = CB.zone_diagnosis(env, key; check_restage = true)
-    check("ForbidZone 도메인이 비어 있지 않다", d.n_restage_feasible >= 1,
-          "n_restage_feasible=$(d.n_restage_feasible)")
-    check("그 구역이 실제로 막는다", d.n_nav_blocked >= 1,
-          "n_nav_blocked=$(d.n_nav_blocked)/$(d.n_nav_goals)")   # 덮임 != 막힘 (STEP 6/8)
-
-    arms = _zone_arms_for((type = :zone, zone = key))            # shim 의 결정시점 팔 계산
-    check("valid 팔에 3(ForbidZone) 이 들어온다", 3 in arms, "arms=$(arms)")
-
-    tr = last(CB.ood_truth_log())
-    check("ZoneTruth 가 대상 조립체를 지목한다", tr.truth.target !== nothing,
-          "target=nothing 이면 '대상이 없어 조용히 NOOP' 구멍이 열린다")
-    return nothing
-end
-```
-
-> `_zone_arms_for` 의 인자 형태(`ctx`)와 `ood_truth_log()` 의 반환 형태는 `oracle/ood_mdp_shim.jl:194` 와 `src/navigator/ood_truth.jl` 을 읽어 맞춘다. 어긋나면 **테스트가 먼저 죽으므로** 조용히 틀리지 않는다.
->
-> **주입기 정의를 어디 둘지**: 위 코드는 `tools/monitor/zone_inject.jl` 을 가정한다. A-Step 3 에서 주입기를 `run_demo.jl` 안에 쓰면 이 테스트가 그것을 볼 수 없다. **A-Step 3 을 먼저 읽고**, 새 함수를 `tools/monitor/zone_inject.jl` 에 두고 `run_demo.jl` 이 그 파일을 `include` 하도록 한다(기존 `inject_blocking_zone!` 은 이동하지 않는다 — 그 함수를 건드리지 않는 것이 A-Step 6 의 전제다).
-
-- [ ] **A-Step 2: 실패를 확인한다**
+- [ ] **Step 2: 실패를 확인한다**
 
 ```bash
 cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
 julia +lts --project=. wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl
 ```
-기대: `UndefVarError: inject_restageable_blocking_zone! not defined`.
+기대: `UndefVarError: inject_declared_zone! not defined` (또는 include 실패).
 
-- [ ] **A-Step 3: 주입기를 쓴다**
+- [ ] **Step 3: 주입기를 쓴다**
 
-**새 파일** `tools/monitor/zone_inject.jl` 에 쓴다(단위검사가 데모 전체를 돌리지 않고 include 하기 위해서). `run_demo.jl` 의 기존 `inject_blocking_zone!`(186행)은 **한 글자도 고치지 않고 그 자리에 둔다** — §5 의 20판이 그 함수의 세계이고, 그 재현성이 Task 6 A/B 비교의 전제다. 파일 첫 줄에 그 이유를 적는다:
+`tools/monitor/zone_inject.jl`:
 
 ```julia
 # =============================================================================
-# zone_inject.jl -- ForbidZone 도메인을 갖는 구역 주입기.
+# zone_inject.jl -- **사람이 sim 전에 고른** 좌표에 no-go 구역을 심는다.
 #
-# 왜 run_demo.jl 안이 아니라 별도 파일인가: 단위검사(oracle/test_forbidzone_injector.jl)가
-# 데모를 통째로 돌리지 않고 이 함수만 include 할 수 있어야 한다. 기존 주입기
-# (run_demo.jl::inject_blocking_zone!) 는 **옮기지 않는다** -- RESULTS_LLM7H §5 의 20판이
-# 그 함수가 만든 세계이고, Task 6 의 A/B 비교가 그 재현성에 걸려 있다.
+# 왜 탐색을 안 하나: ForbidZone(국소 재적치)의 도메인은 **아직 시작 안 한(pristine) 조립체**뿐인데,
+# tractor 는 첫 시뮬 배치에서 ~58 노드를 닫고 restageable 집합은 그 전에 이미 0 이 된다.
+# 게다가 `schedule_ood_at_closed!` 은 배치 경계에서만 발화하므로 closed<58 에 **도달 자체가 안 된다**
+# (실측: oracle/out/fz_scan.csv, 관측 가능한 전 구간 pristine=0). 즉 이 팔이 살아 있는 시점은
+# sim 시작 전뿐이고, 그 자리는 런타임에 "찾는" 것이 아니라 **미리 정하는** 것이다.
 #
-# 호출부: run_demo.jl 의 stream3 분기 (DEMO_ZONE_FAMILY=restage|auto 일 때만).
-# 전제: 이 파일을 include 하는 쪽에 CB, DEMO_ZONE_R, _ZONE_CT 가 이미 정의돼 있다.
+# 좌표는 oracle/out/fz_presim.csv(Task 1 카탈로그)에서 사람이 고른다. 그 표의 각 행은
+# "이 좌표에 이 반지름으로 심으면 진단이 무엇이 되는가"를 sim 전 기하로 미리 계산해 둔 것이다.
+#
+# 기존 주입기 두 개(inject_staging_zone! / inject_blocking_zone!)는 **건드리지 않는다** --
+# RESULTS_LLM7H §5 의 20판이 그 함수들이 만든 세계이고, 그 재현성이 비교의 전제다.
+#
+# 전제: 이 파일을 include 하는 쪽에 CB 가 정의돼 있다.
 # =============================================================================
-```
 
-그 아래에 함수를 쓴다:
+"""
+    inject_declared_zone!(env; cx, cy, r, key = :zone_declared) -> Union{String,Nothing}
 
-```julia
-# ---- restage-feasible **하면서** 막는 구역 (2026-08-06) ------------------------------------
-# 위 inject_blocking_zone! 은 후보를 `zone_relocatable`(=RelocateBuild 로 벗어날 Δ 가 있는가) 하나로만
-# 거른다. ForbidZone(국소 재적치)의 도메인은 검사조차 안 하므로 zone 메뉴가 구조적으로 [NOOP,
-# RelocateBuild] 였다 -- RESULTS_LLM7H §7 마지막 행의 `n_restage_feasible = 0` 이 그것이다.
-#
-# 도메인이 비는 진짜 이유는 "빌드 도중이라서"가 아니라 **발화점 붕괴**다: tractor 는 첫 시뮬 배치에서
-# ~58 노드를 닫는데 restageable 집합은 closed≈46 부터 0 이므로(gen_oracle_dataset.jl:359),
-# 진척 슬롯으로 잡은 "early" 가 전부 그 절벽 뒤에 떨어졌다(probe_forbidzone_domain.jl 로 재확인).
-#
-# 그래서 이 주입기는 **pristine 조립체의 적치원**을 겨냥하고, 심은 뒤 두 조건을 함께 확인한다:
-#   n_restage_feasible >= 1  (ForbidZone 이 실제로 옮길 자리가 있다)
-#   n_nav_blocked      >= 1  (그런데 실제로 막기도 한다 -- 덮임 != 막힘, STEP 6)
-# 둘 중 하나라도 안 되면 지우고 다음 후보로 간다. 하나도 못 찾으면 nothing 을 돌려주고,
-# 호출부는 기존 nav 가족으로 폴백한다(사건을 조용히 빠뜨리지 않는다).
-function inject_restageable_blocking_zone!(env; frac = DEMO_ZONE_R)
-    isempty(env.staging_circles) && return nothing
-    r = frac * Float64(CB.default_robot_radius())
-    root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])),
-                  collect(keys(env.staging_circles)))
-    # 결정적 정렬: root 에서 가까운 pristine 적치원부터(주입기가 시드에 따라 흔들리면 비교가 무효)
-    c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
-    cand = [aid for (aid, _) in env.staging_circles if aid != root]
-    sort!(cand; by = aid -> hypot(
-        (Vector{Float64}(CB.get_center(env.staging_circles[aid])[1:2]) .- c0)...))
-    _ZONE_CT[] += 1; key = Symbol("zone_fz_$(_ZONE_CT[])")
-    for aid in cand
-        c = Vector{Float64}(CB.get_center(env.staging_circles[aid])[1:2])
-        z = CB.add_restriction_zone!(key, c, r)
-        d = try CB.zone_diagnosis(env, key; check_restage = true) catch e
-            @warn "[zone] zone_diagnosis 실패" exception = e; nothing
-        end
-        if d !== nothing && d.n_restage_feasible >= 1 && d.n_nav_blocked >= 1
-            println("[zone] restageable blocking zone on $(aid) @$(round.(c; digits = 3)) " *
-                    "r=$(round(r; digits = 3)) -> restage_feasible=$(d.n_restage_feasible) " *
-                    "nav_blocked=$(d.n_nav_blocked)/$(d.n_nav_goals)")
-            # 관찰만 남기고 "그러니 무엇을 하라"는 붙이지 않는다(STEP 4).
-            nl = "A no-go exclusion zone has appeared at ($(round(c[1]; digits = 2)), " *
-                 "$(round(c[2]; digits = 2))) with radius $(round(r; digits = 2)). " *
-                 "Robots that enter the disc are pushed back out of it."
-            try CB.record_ood_truth!(nl,
-                CB.ZoneTruth(key, Float64[c[1], c[2]], Float64(CB.get_radius(z)),
-                             first(d.feasible))) catch end
-            return nl
-        end
-        CB.remove_restriction_zone!(key)
+`(cx, cy)` 에 반지름 `r` 의 구역을 심고, **실제로 결정 문제가 되는지 확인한 뒤** truth 를 기록한다.
+
+확인하는 두 조건과 그 이유:
+  · `n_restage_feasible >= 1` — ForbidZone 이 옮길 자리가 실제로 있다. 0 이면 그 팔은 NOOP 과
+    바이트 동일해지고(restage_all_blocked! 이 `:none` 으로 조기 반환), 메뉴에 넣어 봐야 동점을 제조할 뿐이다.
+  · `n_nav_blocked >= 1` — 그 구역이 실제로 항법 목표를 막는다. 덮임은 해로움이 아니다(STEP 6 실측:
+    root 하역목표를 8/8 삼켜도 완주했다). 안 막는 구역은 정답이 언제나 NOOP 이라 결정이 아니다.
+
+둘 중 하나라도 안 되면 **구역을 지우고 `nothing` 을 돌려준다**. 조용히 심어 두면 "LLM 이 ForbidZone 을
+안 골랐다"와 "고를 수 없었다"가 요약에서 구분되지 않는다.
+"""
+function inject_declared_zone!(env; cx::Float64, cy::Float64, r::Float64,
+                               key::Symbol = :zone_declared)
+    c = Float64[cx, cy]
+    z = CB.add_restriction_zone!(key, c, r)
+    d = try CB.zone_diagnosis(env, key; check_restage = true) catch e
+        @warn "[zone] zone_diagnosis 실패" exception = e; nothing
     end
-    println("[zone] no restageable+blocking placement found")
-    return nothing
+    if d === nothing || d.n_restage_feasible < 1 || d.n_nav_blocked < 1
+        CB.remove_restriction_zone!(key)
+        println("[zone] declared zone @($(cx), $(cy)) r=$(r) 은 결정 문제가 아니다 " *
+                "(restage_feasible=$(d === nothing ? -1 : d.n_restage_feasible), " *
+                "nav_blocked=$(d === nothing ? -1 : d.n_nav_blocked)) -> 심지 않음")
+        return nothing
+    end
+    println("[zone] declared zone @($(cx), $(cy)) r=$(r) -> " *
+            "restage_feasible=$(d.n_restage_feasible) nav_blocked=$(d.n_nav_blocked)/$(d.n_nav_goals) " *
+            "verdict=$(d.verdict)")
+    # 관찰만 남기고 "그러니 무엇을 하라"는 붙이지 않는다 -- 뒷절이 곧 정답이라, 주는 순간
+    # 재는 것이 추론이 아니라 프롬프트 준수가 된다(STEP 4).
+    nl = "A no-go exclusion zone has appeared at ($(round(cx; digits = 2)), " *
+         "$(round(cy; digits = 2))) with radius $(round(r; digits = 2)). " *
+         "Robots that enter the disc are pushed back out of it."
+    try CB.record_ood_truth!(nl,
+        CB.ZoneTruth(key, Float64[cx, cy], Float64(CB.get_radius(z)), nothing)) catch e
+        @warn "[zone] record_ood_truth! 실패" exception = e
+    end
+    return nl
+end
+
+"""
+    declared_zone_spec() -> Union{NamedTuple,Nothing}
+
+`DEMO_ZONE_AT="cx,cy,r"` 를 파싱한다. 없거나 형식이 틀리면 `nothing`(= 기존 경로).
+형식 오류를 조용히 무시하지 않고 경고를 찍는 이유: 오타 하나로 "선언적 주입을 켰다"고 적은 판이
+사실은 옛 argmin 주입기 판이 되는데, 요약만 봐서는 구분이 안 되기 때문이다.
+"""
+function declared_zone_spec()
+    s = strip(get(ENV, "DEMO_ZONE_AT", ""))
+    isempty(s) && return nothing
+    parts = split(s, ",")
+    if length(parts) != 3
+        @warn "[zone] DEMO_ZONE_AT 형식은 \"cx,cy,r\" 이다 — 무시하고 기존 주입기를 쓴다" got = s
+        return nothing
+    end
+    return try
+        (cx = parse(Float64, strip(parts[1])),
+         cy = parse(Float64, strip(parts[2])),
+         r  = parse(Float64, strip(parts[3])))
+    catch e
+        @warn "[zone] DEMO_ZONE_AT 파싱 실패 — 무시하고 기존 주입기를 쓴다" got = s exception = e
+        nothing
+    end
 end
 ```
 
-- [ ] **A-Step 4: 호출부에 가족 스위치를 단다**
+- [ ] **Step 4: 호출부를 배선한다**
 
-먼저 `run_demo.jl` 에서 새 파일을 올린다. `inject_blocking_zone!` 정의(186~219행) **바로 뒤**, `include(joinpath(@__DIR__, "policy.jl"))` **앞**에 한 줄:
+`run_demo.jl` 에서 `inject_blocking_zone!` 정의 **뒤**, `include(joinpath(@__DIR__, "policy.jl"))` **앞**에 한 줄:
 ```julia
-include(joinpath(@__DIR__, "zone_inject.jl"))   # DEMO_ZONE_FAMILY=restage 용 주입기
+include(joinpath(@__DIR__, "zone_inject.jl"))   # DEMO_ZONE_AT 용 선언적 주입기
 ```
-(순서가 중요하다 — `zone_inject.jl` 이 `DEMO_ZONE_R`·`_ZONE_CT` 를 참조하므로 그 정의 뒤여야 한다.)
+(순서 중요: `zone_inject.jl` 이 `CB` 를 참조한다.)
 
-그 다음 stream3 분기(약 447행)에서 `inject_blocking_zone!(e)` 를 부르는 자리를:
+그리고 459~460행의 두 줄을:
 ```julia
-                    local nl = inject_blocking_zone!(e)
+    if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
+        nl = inject_staging_zone!(env; frac = 0.20)
 ```
 →
 ```julia
-                    # DEMO_ZONE_FAMILY: nav(기본, RESULTS_LLM7H §5 의 세계) / restage(ForbidZone 도메인
-                    # 을 가진 구역) / auto(restage 먼저, 못 찾으면 nav 로 폴백).
-                    # 기본이 nav 인 이유: §5 의 20판과 **같은 세계**를 유지해야 surrogate 재학습의
-                    # A/B 가 성립한다. 세계와 모델을 한꺼번에 바꾸면 무엇이 원인인지 못 가른다.
-                    local fam = lowercase(get(ENV, "DEMO_ZONE_FAMILY", "nav"))
-                    local nl = if fam == "restage"
-                        inject_restageable_blocking_zone!(e)
-                    elseif fam == "auto"
-                        # something(...) 을 쓰면 안 된다 -- 인자를 **먼저 전부 평가**하므로
-                        # 두 주입기가 다 돌아 구역이 두 개 심긴다. 명시적 단락 평가로 쓴다.
-                        local a = inject_restageable_blocking_zone!(e)
-                        a === nothing ? inject_blocking_zone!(e) : a
-                    else
-                        inject_blocking_zone!(e)
-                    end
+    if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
+        # DEMO_ZONE_AT 이 있으면 **사람이 고른 좌표**를 심는다(oracle/out/fz_presim.csv 카탈로그).
+        # 없으면 기존 argmin 주입기 그대로 -- 옛 실행의 재현성이 바뀌지 않는다.
+        local spec = declared_zone_spec()
+        nl = spec === nothing ? inject_staging_zone!(env; frac = 0.20) :
+             inject_declared_zone!(env; cx = spec.cx, cy = spec.cy, r = spec.r)
 ```
+그 아래 `if nl !== nothing ... handle_ood! ...` 블록은 **그대로 둔다** — 이미 pre-sim 결정 집행 경로다.
 
-- [ ] **A-Step 5: 단위검사를 통과시킨다**
+- [ ] **Step 5: 단위검사를 통과시킨다**
 
 ```bash
 cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
 julia +lts --project=. wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl
 ```
-기대: 5/5 PASS.
+기대: 6/6 PASS. 특히 **4번(팔 목록에 3 포함)** 이 이 태스크의 산출물이다.
 
-- [ ] **A-Step 6: 기본 경로 불변 증명**
+- [ ] **Step 6: 기본 경로 불변 증명**
+
+`DEMO_ZONE_AT` 을 **주지 않은** 실행이 §5 와 같은 세계를 내는지 확인한다.
 
 ```bash
 cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
@@ -953,50 +942,27 @@ DEMO_POLICY=canonical DEMO_ROUTER=0 DEMO_SPARES=3 DEMO_REFORM=300 DEMO_REFORM_MA
 DEMO_SUMMARY="$PWD/wm4spacecraft_manufacturing/results/fam_nav_check.jsonl" \
   julia +lts --project=. tools/monitor/run_demo.jl 2>&1 | tail -20
 ```
-`DEMO_ZONE_FAMILY` 를 **주지 않은** 이 실행의 요약이 §5 표의 `seed 1 / canonical` 행(complete, closed **291**, steps **2734**, 매크로 `Replace,Replace,NOOP,NOOP`)과 일치해야 한다. 어긋나면 기존 함수를 건드린 것이므로 되돌린다.
+`RESULTS_LLM7H.md` §5 표의 `seed 1 / canonical` 행과 일치해야 한다: complete · closed **291** · steps **2734** · 매크로 `Replace,Replace,NOOP,NOOP`. 어긋나면 기존 함수를 건드린 것이므로 되돌린다.
 
-- [ ] **A-Step 7: 커밋**
+- [ ] **Step 7: ForbidZone 이 메뉴에 오른 첫 판**
+
+```bash
+cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
+DEMO_OOD=zone DEMO_ZONE_AT="3.6406,-1.2783,0.21" \
+DEMO_POLICY=canonical DEMO_ROUTER=0 DEMO_SPARES=3 DEMO_REFORM=300 DEMO_REFORM_MAX=6 \
+DEMO_SUMMARY="$PWD/wm4spacecraft_manufacturing/results/fz_declared_s1.jsonl" \
+  julia +lts --project=. tools/monitor/run_demo.jl 2>&1 | tail -30
+```
+요약의 zone 결정에서 `valid` 에 **`ForbidZone` 이 들어 있는지** 확인한다. n=1 이므로 결론이 아니라 **존재 증명**으로만 적는다. 완주 여부는 부수적이다 — 이 Step 이 답하는 질문은 "그 팔이 메뉴에 오르는가" 하나다.
+
+- [ ] **Step 8: 커밋**
 
 ```bash
 cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
 git add tools/monitor/zone_inject.jl tools/monitor/run_demo.jl \
-        wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl
-git commit -m "feat(zone): ForbidZone 도메인을 갖는 구역 주입기 (DEMO_ZONE_FAMILY=restage)"
-```
-
-#### 분기 B — 조건을 만족하는 행이 하나도 없었다
-
-ForbidZone 은 tractor 세계에서 **행동 불가능한 팔**이다. 코드를 늘리지 않고 그 사실을 적는다.
-
-- [ ] **B-Step 1: `action_registry.json` 의 macro 3 `doc` 을 실측으로 교체한다**
-
-```json
-      "doc": "relocate the staging areas of the sub-assemblies blocked by a no-go zone. MEASURED DEAD ON THE TRACTOR TWIN (2026-08-06, oracle/out/fz_domain.csv): its domain (pristine, non-root assemblies whose staging circle a zone can cover) is non-empty only below closed~46, and no such zone also blocks a navigable goal -- so on this model the arm is byte-identical to NOOP wherever an event can fire. Kept in the vocabulary because the domain is model-dependent, not because it has ever acted here."
-```
-
-- [ ] **B-Step 2: 어휘 감사 + 기준 정책 검사**
-
-```bash
-cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl/wm4spacecraft_manufacturing
-python audit_action_vocab.py && python test_llm7h.py
-```
-기대: `6/6 consistent` · `16/16 passed`. (감사는 이름·비용만 보므로 `doc` 변경은 영향 없다 — 그 사실도 확인하는 것이다.)
-
-- [ ] **B-Step 3: `RESULTS_LLM7H.md` §7 마지막 행을 교체한다**
-
-기존:
-> `ForbidZone` 팔의 실제 발화 | zone 8건 모두 `n_restage_feasible = 0` 이었다 = 국소 재적치 도메인이 비어 메뉴가 `[NOOP, RelocateBuild]` 였다. 데모의 구역이 **빌드 도중** 뜨기 때문이고, 이는 2026-08-03 부터 알려진 구조다. 공간 사건 자체는 매 판 발화한다
-
-교체:
-> `ForbidZone` 팔의 실제 발화 | **원인을 특정했고, 그 결과 이 팔은 이 세계에서 죽은 팔이다.** `probe_forbidzone_domain.jl` 이 closed 1~120 을 4 간격으로 훑어 `n_restage_feasible ≥ 1 ∧ n_nav_blocked ≥ 1` 인 (진행도, 배치) 를 **하나도** 찾지 못했다(`oracle/out/fz_domain.csv`). 이전 설명("빌드 도중이라서")은 절반만 맞았다 — restageable 집합은 closed≈46 에서 0 이 되는데, 그 앞 구간에서도 적치원을 덮는 구역이 항법 목표를 막지는 못한다. tractor 에서 공간 수복은 `RelocateBuild` 하나뿐이다
-
-- [ ] **B-Step 4: 커밋**
-
-```bash
-cd /c/Users/chahj/PythonCodes/venv/ConstructionBots.jl
-git add wm4spacecraft_manufacturing/action_registry.json \
-        wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md
-git commit -m "docs(zone): ForbidZone 이 tractor 세계에서 행동 불가임을 실측으로 기록"
+        wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl \
+        wm4spacecraft_manufacturing/results/fz_declared_s1.jsonl
+git commit -m "feat(zone): 사람이 sim 전에 고른 좌표에 구역을 심는 선언적 주입기 (DEMO_ZONE_AT)"
 ```
 
 ---
