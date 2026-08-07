@@ -162,7 +162,7 @@ python test_llm7h.py             # 16/16 passed  (기준 정책 vs 오라클 라
 python test_surrogate_support.py # support=[0,1,2,3,4,7,8], n=68 이어야 한다
 
 # 2) 스위프 (★ 순차 실행 강제 — 병렬로 돌리면 MILP 가 다른 스케줄을 내 비교가 무효)
-python llm_ood_eval.py run --seeds 1,2,3,4,5 --policies noop,canonical,dspy
+python llm_ood_eval.py run --seeds 1,2,3,4,5 --policies noop,canonical,surrogate,dspy
 python llm_ood_eval.py report --json artifacts_llm7h/final.json
 
 # 한 판만 손으로 (LLM lane)
@@ -216,6 +216,10 @@ Task 6 이 재사용한 옛 행이다 — §5-f-이후 참조. 아래는 `artifa
 | `canonical` | ReformTeam×30, Replace×12, NOOP×7 | Battery 0/6, Fault 6/6, Zone 0/7 |
 | `surrogate` | Replace×12, ReformTeam×10, RelocateBuild×7 | Battery 0/6, Fault 6/6, **Zone 7/7** |
 | `dspy` | ReformTeam×10, SwapBattery×6, Replace×6, RelocateBuild×6, NOOP×2 | Battery 6/6, Fault 6/6, Zone 6/8 |
+
+> **주의**: 이 매크로 개수는 정책마다 총 결정 수가 달라(`canonical` 49건, `surrogate` 29건 등) 정책 간
+> 동일 분모가 아니다 — 값의 크고 작음을 행동 성향으로 읽지 말 것. 정책 간 비교가 성립하는 분모는
+> 위 표의 채점된 19~20건뿐이다(§7-a).
 
 - 짝지은 비교 `noop` vs `canonical` — 0승 5패 0무, 부호검정 p=0.062
 - 짝지은 비교 `noop` vs `surrogate` — 0승 5패 0무, 부호검정 p=0.062
@@ -347,12 +351,22 @@ zone 8건 중 2건(시드 1 @150, 시드 3 @133)에서 `NOOP` 을 골랐다. 두
 | 빌드 시간(완주판) | 66.3 s (`canonical` 과 동일) | **35.5 s** |
 | J/closed | 971 (`canonical` 과 동일) | **739** |
 
+> **주의**: `ReformTeam 30→10` 을 정책이 "reform 을 덜 하게 됐다"는 행동 변화로 읽지 말 것 — 재적합
+> 후 세계는 zone 을 더 빨리 치워 완주가 더 빨라지므로 reform 경보 자체가 더 적게 뜬다(총 결정 수
+> 49→29). 매크로 카운트는 정책 간 동일 분모가 아니다(§7-a).
+
 기전은 서비스가 실제로 계산하는 것과 같은 코드 경로(`surrogate_rank`, `e1_analyze.featurize`)를
 그대로 재생해 확인했다 — zone 사건(valid=`[NOOP, RelocateBuild]`)에서 두 팔 모두 점수가 나고
 (`unsupported=[]`, `UNSUPPORTED` 아님), `RelocateBuild` 가 **매번 더 높은 점수**를 받아 선택된다
 (예: 시드 1 @149, `RelocateBuild` 228.79 vs `NOOP` 176.65 — 점수는 학습 시와 동일한
 `closed − λ·cost` 스케일). 즉 지원 집합에 넣는 것만으로 **모델이 스스로 참조 정책과 같은 결론에
 도달했다** — zone 축에서는 "학습 근거 없음"이 진짜 원인이었다는 §5-f 의 진단이 맞았다.
+
+이 결론이 기대는 학습 근거의 크기를 정확히 적어 둔다: `fzgrid_0806/merged.jsonl` 12행(6사건 × 2팔)은
+**전부 `complete=False`** 다. `RelocateBuild` 는 6사건 중 5곳에서 `NOOP` 보다 closed **56~105** 만큼
+더 벌었고(나머지 1곳은 동점, margin 0), **완주 여부를 뒤집은 사건은 0건**이다. 즉 이 라벨이 뒷받침하는
+것은 **닫힌 노드 마진**이지 실현가능성(feasibility)의 개선이 아니다 — 위에서 서술한 행동 변화(모델이
+`RelocateBuild` 를 실제로 채택했다는 것)는 그대로 사실이지만, 그 근거의 강도를 이 이상으로 읽으면 안 된다.
 
 battery 축은 다르다. `SwapBattery`(8)도 이제 점수가 나지만(`unsupported=[]`), **매번 `Replace` 보다
 낮게 랭크된다**(예: 시드 1 @58, `Replace` 248.15 vs `SwapBattery` 223.56) — battery 적중은 여전히
@@ -397,6 +411,7 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 | Julia 패키지 스위트 | `julia +lts --project=. -e 'using Pkg; Pkg.test()'` | **11 pass / 1 error** — 아래 |
 | 스트림 e2e | `llm_ood_eval.py run` 20판 (+ 2026-08-07 surrogate 5판 재측정) | 20/20 + 5/5 프로세스 exit 0 |
 | 회귀(파이썬 파이프라인) | `python verify.py oracle/out/graded_hs_n44.jsonl` | **8/8** — 아래 |
+| 선언적 ForbidZone 주입기 (Task 4) | `julia +lts --project=. wm4spacecraft_manufacturing/oracle/test_forbidzone_injector.jl` | **9/9 PASS** (2026-08-07 재확인) — `zone_inject.jl::inject_declared_zone!` 단위검사, 시뮬 없음 |
 
 **Julia 1 error 의 정체**: `test/test_demo.jl:61` 의 MILP 블록이
 `Gurobi Error 10009: No Gurobi license found` 로 죽는다. 이 환경에 Gurobi 라이선스가 없다는 뜻이고
@@ -416,6 +431,13 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 `respec_drift_repair() == RESPEC_ENABLED[]` 임을 직접 확인했다(false→false, true→true).
 패키지 안에서 이 Ref 를 설정하는 곳은 없고, 오직 `tools/monitor/run_demo.jl` 만 `true` 로 켠다.
 
+**Task 4 배선도 기본 경로를 안 건드린다는 증명**: `zone_inject.jl` include 와 `DEMO_ZONE_AT` 분기를
+추가한 뒤, `DEMO_ZONE_AT` 을 **주지 않고** STREAM3 seed 1 을 `canonical` 로 다시 돌려
+(`results/fam_nav_check.jsonl`) §5 표의 원래 canonical seed-1 행과 대조했다 — closed 291·steps
+2734·결정 시퀀스(각 `at`)까지 바이트 단위로 같다(달라지는 건 wall-clock 뿐). `DEMO_ZONE_AT` 미설정 시
+`declared_zone_spec()` 이 `nothing` 을 돌려주는 코드 경로(`zone_inject.jl:82-98`)가 실제로 아무것도
+바꾸지 않음을 재확인한 것이다.
+
 ---
 
 ## 7. 하지 못한 것과 그 이유
@@ -428,7 +450,30 @@ battery(n=18)·fault(n=42) 축은 근거가 훨씬 두껍고, 실제로 그 두 
 | **Ch-C: 7번째 서술자 `repair_disruption`** | §5-e 가 보여주듯 필요한 정보(frozen 32)는 **이미 프롬프트에 있다**. 축을 더 넣기 전에 "있는 축을 왜 못 읽는가"를 먼저 봐야 한다 |
 | ~~**`verify.py` 8/8**~~ **해결됨(Task 2, 2026-08-06)** | 이 표가 처음 쓰였을 때는 실측 **7/8**(canonical set)이었다 — V0 이 "0/44 instances have all **7** macro arms" 로 실패했다(덤프는 5팔인데 `e1_analyze.MACROS` 는 7개, 계획서의 **Ch-D**). Task 2 가 V0 판정을 팔 개수 대신 `valid_mask` 기준으로 고쳐 **8/8** 이 재현된다 — 지금 값은 §6 을 볼 것. 이 행은 "한때 여기 있었다"는 이력으로만 남긴다 |
 | **P1 대량 라벨 잡(~5h)** | 운영규칙 1 과 정면으로 충돌한다 — 스위프의 Julia 실행과 CPU 를 다투면 HiGHS 가 **다른 스케줄**을 내 정책 비교가 무효가 된다(함정 30). 사용자가 요청한 산출물이 스트림 평가였으므로 그쪽에 CPU 를 전부 줬다 |
-| **`ForbidZone` 팔의 실제 발화** | (2026-08-07 갱신) Task 4 의 단일 좌표 사전주입기(`DEMO_ZONE_AT`)로는 **처음으로 메뉴에 올랐고 `canonical` 이 실제로 선택했다** — 이 저장소 최초 기록. 그러나 **§5·본 태스크의 20판이 쓰는 STREAM3 무작위 주입기(`inject_blocking_zone!`)는 손대지 않았고**, 재측정(2026-08-07)에서도 그 사건들은 여전히 `n_restage_feasible=0` 이라 `valid=[NOOP, RelocateBuild]` — **스트림 안에서는 여전히 죽은 팔이다**. 서로게이트 재적합은 점수가 나는 팔을 넓혔을 뿐 기하학적 실현가능성을 바꾸지 않으므로, 이 결과는 예상된 것이다 |
+| **`ForbidZone` 팔의 실제 발화** | (2026-08-07 갱신) Task 4 의 단일 좌표 사전주입기(`DEMO_ZONE_AT`)로는 **처음으로 메뉴에 올랐고 `canonical` 이 실제로 선택했다** — 이 저장소 최초 기록. 그러나 **§5·본 태스크의 20판이 쓰는 STREAM3 무작위 주입기(`inject_blocking_zone!`)는 손대지 않았고**, 재측정(2026-08-07)에서도 그 사건들은 여전히 `n_restage_feasible=0` 이라 `valid=[NOOP, RelocateBuild]` — **스트림 안에서는 여전히 죽은 팔이다**. 서로게이트 재적합은 점수가 나는 팔을 넓혔을 뿐 기하학적 실현가능성을 바꾸지 않으므로, 이 결과는 예상된 것이다. **메뉴에 오른 것이 옳은 선택이었다는 뜻은 아니다** — 같은 사건에서 `ForbidZone` 은 closed **68** 에서 정지했고 `NOOP` 은 closed **205** 에서 정지했다(`results/fz_declared_s1.jsonl`), 둘 다 미완주(n=1). 이 항목의 성과는 팔이 **발화 가능해졌다**는 것이지, 그 팔이 `NOOP` 보다 나았다는 것이 아니다 |
+
+### 7-a. 알려진 한계 (코드 수정 없음 — 기록만)
+
+**train/serve 특징 불일치 — `zone_root_cover`.** `oracle/out/fzgrid_0806/merged.jsonl` 12행(macro-7
+학습 근거) 전부가 `zone_root_cover` 열을 갖고 실측값(0.0 또는 1.0)을 담는 반면, 기존 zone 계열 20행
+(`graded_hs_n44.jsonl`/`n44_plus8.jsonl` 의 `kind∈{zone,zoneblk,zonecore}`)은 **단 한 행도 이 열이
+없다**. 그런데 배포 서비스 `src/respec/llm_service/dspy_service.py::surrogate_rank`(:296-306)가
+채점용으로 만드는 요청 딕셔너리는 `zone_root_cover` 를 **한 번도 설정하지 않는다** — `e1_analyze.py:190`
+가 없는 열을 `-1.0` 으로 채우므로, 실서비스가 보내는 모든 행은 이 특징에서 항상 `-1` 을 받는다.
+즉 **학습 시엔 실측값(0.0/1.0), 서빙 시엔 언제나 센티넬(-1)** 이라는 분포 불일치가 있다.
+
+이번 패스에서 재확인(probe, 코드 변경 없음): `n44_plus78.jsonl` 로 실제 배포와 동일하게 적합한
+RandomForest 에, `fzgrid_0806/merged.jsonl` 의 실제 zoneblk 행 3개를 기반으로 `zone_root_cover`
+를 `{-1(서빙 값), 0.0, 1.0}` 로 바꿔 가며 `RelocateBuild`(7) vs `NOOP`(0) 점수를 비교했다. 세 사건
+전부, 세 값 전부에서 **`RelocateBuild` 가 이겼다**(margin 31.2~62.4, 방향 반전 없음) — §5-f-이후가
+보고한 결론은 이 열의 값에 좌우되지 않는다. 다만 **이것을 지키는 코드나 검사는 없다** — 앞으로 두
+분포(학습/서빙)를 섞어 다시 만들 덤프가 이 열을 "실제 기하 신호"가 아니라 우연히 "출처 태그"
+(fzgrid 유래=값 있음/1.0 근처, 그 외=-1)로 학습해 버릴 위험은 그대로 남아 있다.
+
+**매크로 개수는 정책 간 동일 분모가 아니다.** §5-f-이후 표의 "고른 매크로" 행(`ReformTeam` 30→10)을
+정책의 행동 변화로 읽으면 안 된다 — `canonical` 은 49개 결정, 재적합된 `surrogate` 는 29개 결정을
+내렸을 뿐이다(더 빠르게 완주하는 세계라 reform 경보 자체가 더 적게 뜬다). 정책 간 비교가 성립하는
+유일한 분모는 §5 본문의 채점된 19~20건이다 — 매크로 카운트 표가 나올 때마다 이 사실을 함께 읽을 것.
 
 ### 다음 한 수
 

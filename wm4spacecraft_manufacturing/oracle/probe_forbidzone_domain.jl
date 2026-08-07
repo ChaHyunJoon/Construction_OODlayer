@@ -17,7 +17,8 @@
 # ENV:
 #   FZ_FROM/FZ_TO/FZ_EVERY  스캔 구간·간격(닫힌 노드 수). 기본 1 / 120 / 4
 #                           -- 46 앞뒤를 촘촘히 봐야 하므로 기본이 probe_fire_points 보다 조밀하다
-#   FZ_R      구역 반지름 배수. 기본 "0.5,0.8" (0.5=데모의 DEMO_ZONE_R, 0.8=라벨러의 rfrac)
+#   FZ_R      구역 반지름 배수. 기본 "0.5,0.8,1.5" (0.5=데모의 DEMO_ZONE_R, 0.8=라벨러의 rfrac,
+#             1.5=더 큰 반지름도 확인해 둔다)
 #   FZ_SPARE / FZ_SEED / FZ_OUT
 # =============================================================================
 import ConstructionBots as CB
@@ -35,9 +36,10 @@ const MODE  = lowercase(get(ENV, "FZ_MODE", "presim"))   # presim | scan
 const FROM  = parse(Int, get(ENV, "FZ_FROM",  "1"))
 const TO    = parse(Int, get(ENV, "FZ_TO",    "120"))
 const EVERY = parse(Int, get(ENV, "FZ_EVERY", "4"))
-# 반지름 후보. 0.5 = 데모의 DEMO_ZONE_R, 0.8 = 라벨러 place_blocking_zone! 의 rfrac(적치원 반지름 배수).
-# 두 스케일이 섞여 있는 것이 아니다 -- 여기서는 둘 다 **로봇 반지름 배수**로 통일해 재고, 적치원
-# 반지름 기준 값은 rstage 열로 따로 싣는다(사람이 카탈로그에서 고를 때 두 기준을 다 보게).
+# 반지름 후보. 0.5 = 데모의 DEMO_ZONE_R, 0.8 = 라벨러 place_blocking_zone! 의 rfrac(적치원 반지름 배수),
+# 1.5 = 더 큰 반지름. 세 스케일이 섞여 있는 것이 아니다 -- 여기서는 전부 **로봇 반지름 배수**로
+# 통일해 잰다. 출력 CSV(16열, 아래 `println(io, "mode,closed,...")` 참고)에는 그 결과 반지름이
+# `zone_r` 한 열로만 실린다 -- 적치원 반지름 기준 값을 담는 별도 `rstage` 열은 없다.
 const RFRACS = [parse(Float64, strip(s)) for s in split(get(ENV, "FZ_R", "0.5,0.8,1.5"), ",")]
 const SPARE = parse(Int, get(ENV, "FZ_SPARE", "3"))
 const SEED  = parse(Int, get(ENV, "FZ_SEED",  "1"))

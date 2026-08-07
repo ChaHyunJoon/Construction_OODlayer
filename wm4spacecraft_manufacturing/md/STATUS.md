@@ -15,7 +15,7 @@
 | λ → μ 전환 | **결정 완료, opt-in 구현 완료** | 배포 적용은 makespan 예측 헤드 대기 |
 | 라우터 / novelty | battery FAMILIAR **PASS** | surrogate 재학습(N44_PLUS78, 2026-08-07) 완료 — zone 은 좋아졌다(옳은 결정 32%→68%, zone 7/7, RESULTS_LLM7H §5-f-이후), battery 는 그대로다(0/6, SwapBattery 는 점수는 나도 덜 선호됨); 라우터 **에스컬레이션 경로**의 실측은 여전히 미측정 |
 | 무작위 OOD 스트림 평가 | **20판 측정 완료** (`md/RESULTS_LLM7H.md`) | zone 기준 라벨 n=2 확대 · Ch-E(자기일관성/기권) |
-| 행동 어휘 (Ch-A) | **단일화 완료** — `action_registry.json` + `audit_action_vocab.py` 6/6 | **완료(우회)** — 기본 `MACROS` 는 그대로 두고 `DS_EP_MACROS="0,3,7"` 로 zone 표적 라벨(Task 5) + `battgrid`(Task 3)로 8 확보 → 배포 surrogate 재학습(`N44_PLUS78`) 완료 |
+| 행동 어휘 (Ch-A) | **단일화 완료** — `action_registry.json` + `audit_action_vocab.py` 6/6 | **완료(우회)** — 기본 `MACROS` 는 그대로 두고 `DS_EP_MACROS="0,7"` 로 zone 표적 라벨(Task 5) + `battgrid`(Task 3)로 8 확보 → 배포 surrogate 재학습(`N44_PLUS78`) 완료. 3(ForbidZone) 은 뺀다 — 라벨 경로에서 도달 불가라(Task 1 실측) 끼워 넣으면 도메인이 비어 NOOP 과 바이트 동일한 행만 제조한다(`oracle/run_fzgrid.ps1:10-13`) |
 | 데이터 재생성 | `lad_*` 는 수정 후 데이터 | `hz_*`·`rb_*`·`openworld` 는 shim 버그 시기 |
 | 덱 데모 영상 | V1·V2·V4 완료 | V3(RL) 미렌더 |
 

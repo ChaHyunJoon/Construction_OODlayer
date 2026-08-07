@@ -104,7 +104,9 @@ FIREGRID = "oracle/out/firegrid_merged.jsonl"
 #  Legacy pins — kept so published numbers stay reproducible.  Do not "upgrade" these.
 # ==========================================================================================
 HS_ALL = "oracle/out/graded_hs_all.jsonl"    # 20 instances; cost_eval / dspy experiment baselines
-HS_N44 = "oracle/out/graded_hs_n44.jsonl"    # 44 instances; the deployed dspy_service surrogate set
+HS_N44 = "oracle/out/graded_hs_n44.jsonl"    # 44 instances; the PREVIOUS dspy_service surrogate set
+                                              # (superseded 2026-08-06 by N44_PLUS78, dspy_service.py:165 --
+                                              # kept here for EVAL_DATA reproduction of the old model)
 HS_V2  = "oracle/out/graded_hs_v2.jsonl"     # cost artifact + e1_frontier figures
 
 #: Every dataset this module knows about, for `--list` style diagnostics.
@@ -114,6 +116,8 @@ KNOWN = {
     "hs_all": HS_ALL,
     "hs_n44": HS_N44,
     "hs_v2": HS_V2,
+    "n44_plus8": N44_PLUS8,
+    "n44_plus78": N44_PLUS78,
 }
 
 

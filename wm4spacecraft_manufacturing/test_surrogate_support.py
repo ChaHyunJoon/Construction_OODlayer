@@ -31,6 +31,6 @@ check("SwapBattery(8) 학습 근거 있음", 8 in support, "support=%s" % sorted
 check("기존 5팔 보존", {0, 1, 2, 3, 4} <= support, "support=%s" % sorted(support))
 check("X/y 길이 일치", len(X) == len(y), "%d vs %d" % (len(X), len(y)))
 check("RelocateBuild(7) 학습 근거 있음", 7 in support, "support=%s" % sorted(support))
-check("instance 수가 늘었다", n_inst >= 64, "n=%d (n44_plus8 은 62였다)" % n_inst)
+check("instance 수 == 68 (n44_plus8 62 + fzgrid_0806 6)", n_inst == 68, "n=%d" % n_inst)
 
 sys.exit(1 if FAILED else 0)
