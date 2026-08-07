@@ -365,6 +365,8 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
 | 파일 | 무엇 |
 |---|---|
 | **`STATUS.md`** | **현재 상태 · 다음 할 일 · 재개 지점** |
+| **`SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md`** | **비전문가용 요약** — ForbidZone 발화 + surrogate 매크로 7·8 재학습. 용어 설명부터 시작하므로 배경지식 없이 읽힌다 |
+| `RESULTS_LLM7H.md` | 확률적 3종 스트림 위 4정책 × 5시드 측정 원본 + 재현 절차 |
 | `RESULTS.md` | E1~E4 측정 원본 |
 | `EVALUATION.md` | 채점 방식 정의(`e1_analyze.py` 등이 참조) |
 | `DESIGN_ASSIMILATION.md` | C1~C4 정의 + LLM 실측 원본 (`policy.jl` 이 참조) |

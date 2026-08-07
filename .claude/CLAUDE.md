@@ -46,6 +46,9 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 ## Docs
 - **`wm4spacecraft_manufacturing/md/README.md` — 재현·실험 전 필수 선독.** §1 용어(F vs OOD) ·
   §6 완주 ≠ `closed==total` · §7 철회된 결론 · §8 함정 35개.
+- `wm4spacecraft_manufacturing/md/SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md` — **비전문가용 요약.**
+  ForbidZone 발화 + surrogate 매크로 7·8 재학습 작업의 배경·원인·결과를 용어 설명부터 적었다.
+  세부 수치는 RESULTS_LLM7H.md 를 볼 것.
 - `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` — 최신 측정(5시드×4정책) + 재현 절차
 - `wm4spacecraft_manufacturing/md/STATUS.md` — current state / resume point
 - `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
