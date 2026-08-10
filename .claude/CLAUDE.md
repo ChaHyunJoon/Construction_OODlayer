@@ -43,11 +43,16 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 **기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관).
 
-`verify.py` 의 "8/8" 은 **더 이상 인용하면 안 된다.** 그 숫자는 매크로 7·8 이전 덤프에서 나온 것이고,
-현행 학습셋으로 실제로 돌리면 완주하지 못한다(2026-08-09 실측):
-`python verify.py oracle/out/n44_plus78.jsonl` → V0 3/3 PASS → **S1 `KeyError: 7`**.
-현재 기계적으로 믿을 수 있는 계약은 `test_surrogate_support.py`(7/7) 와 `audit_action_vocab.py`(6/6,
-단 커버리지 한계는 위 §결과 세대 참조) 둘이다.
+`verify.py` 는 **어느 덤프로 돌리는지에 따라 결과가 갈린다.** 인자를 반드시 같이 인용할 것(2026-08-09 실측):
+
+| 명령 | 결과 |
+|---|---|
+| `python verify.py oracle/out/graded_hs_n44.jsonl` | **8/8 PASS** — 문서의 8/8 은 이 5매크로 덤프 기준이고 재현된다 |
+| `python verify.py oracle/out/n44_plus78.jsonl` | V0 3/3 PASS 후 **S1 `KeyError: 7`** — 현행 7매크로 학습셋은 아직 못 돈다 |
+
+즉 8/8 은 유효하되 **배포 학습셋에서 검증된 값이 아니다**. `norm_regret` 이 baseline 의 선택 팔을
+그 instance 의 `vals` 에서 찾지 못해 죽는다 — 7·8 을 포함한 덤프로 harness 를 올리는 것이 남은 일.
+그 외 기계적 계약: `test_surrogate_support.py`(7/7) · `audit_action_vocab.py`(6/6, 커버리지 한계는 위 참조).
 
 ## Gotchas
 - **`tools/*.jl` with no key runs a default silently** (`demos.jl` → `original_baseline`) instead of erroring. Read the `DEMOS` dict at the bottom of the file for valid keys.
