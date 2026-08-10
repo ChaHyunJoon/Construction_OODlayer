@@ -123,18 +123,42 @@ def run_one(seed, policy, out_path, log_dir, args):
     return p.returncode == 0, time.time() - t0, log
 
 
-def _router_drove(out_path, case, ood_seed, policy):
-    """1-b: `--router != 0` 로 던 판이 실제로 라우터 판정을 남겼는지 사후 확인(최소 판정).
+ROUTER_ENGAGED_TARGETS = {"surrogate", "dspy"}    # route() 가 실제로 고를 수 있는 값은 이 둘뿐(policy.jl:349)
 
-    판정 근거: 이 판의 decisions[] 중 router_target 이 채워진 것이 1개 이상(run_demo.jl:284).
-    요약 파일이 없거나 해당 (case, ood_seed, policy) 행을 못 찾으면 False -- 조용히 통과시키지 않는다.
+
+def _router_drove(out_path, case, ood_seed, policy, want_router):
+    """1-b: `--router != 0` 로 던 판이 실제로 라우터를 구동했는지 사후 확인.
+
+    (2026-08-10 fix round 1 finding 1) 예전 판정은 "router_target 이 non-null 인 결정이 1개
+    이상"이었는데, 이는 **언제나 참**이다: 라우터가 꺼져 있어도(라우터 자체가 없거나 fail-open
+    이어도) route() 는 target 을 base policy 이름으로 채워서 돌려준다(policy.jl:334/338/345/356).
+    즉 라우터가 한 번도 구동되지 않은 판(백업 데이터 = 전부 DEMO_ROUTER=0)에서도 이 조건은
+    통과해, STEP E 가 밤새 fail-open 인 채로 돌아도 전부 "ok" 로 보고될 수 있었다.
+
+    올바른 판정은 두 단계다(실패 원인을 구분해서 알려준다 -- 무엇을 고칠지가 다르다):
+      1) 깃발이 서브프로세스까지 실제로 전달됐는가 -- 요약 행의 최상위 `router` 필드는
+         `DEMO_ROUTER` 값을 그대로 기록한다(run_demo.jl:620). 이게 요청한 --router 값과 다르면
+         애초에 라우터를 켠 적이 없는 것이다.
+      2) 라우터가 실제로 무언가를 골랐는가 -- route() 가 실행을 정할 때(drives=true)만 target 을
+         "surrogate"/"dspy" 로 덮어쓴다(policy.jl:349,356). base policy 이름이 그대로 남아 있다는
+         것은(요청한 --policies 가 surrogate/dspy 자체가 아닌 한) 라우터가 fail-open 이었거나
+         결정마다 매번 advisory 로만 그쳤다는 뜻이다.
+
+    반환: (ok, reason). ok=True 면 reason=None. 판을 못 찾으면 (False, ...).
     """
     if not out_path.exists():
-        return False
+        return False, "no summary file at %s" % out_path
     for r in load_rows(out_path):
         if r.get("case") == case and r.get("ood_seed") == ood_seed and r.get("policy") == policy:
-            return any(d.get("router_target") is not None for d in (r.get("decisions") or []))
-    return False
+            if r.get("router") != want_router:
+                return False, ("flag not passed: summary row's router=%r != requested --router %r"
+                               % (r.get("router"), want_router))
+            targets = {d.get("router_target") for d in (r.get("decisions") or [])}
+            if not (targets & ROUTER_ENGAGED_TARGETS):
+                return False, ("gate failed open: no decision's router_target left the base policy "
+                               "(saw %r) -- see policy.jl:67 fail-open" % sorted(t for t in targets if t))
+            return True, None
+    return False, "no row found for (case=%r, ood_seed=%r, policy=%r) in summary" % (case, ood_seed, policy)
 
 
 def cmd_run(args):
@@ -154,19 +178,30 @@ def cmd_run(args):
     router_on = args.router != "0"
     print("=== %d runs (%d seeds x %d policies), STRICTLY SEQUENTIAL ===" % (total, len(seeds), len(policies)))
     done = 0
+    n_failed = 0
     for seed in seeds:                        # 시드 바깥 / 정책 안쪽 = 같은 스트림을 연달아 비교
         for policy in policies:
             done += 1
             print("[%2d/%2d] seed=%d policy=%-9s ..." % (done, total, seed, policy), end="", flush=True)
             ok, secs, log = run_one(seed, policy, out_path, log_dir, args)
             note = ""
-            if ok and router_on and not _router_drove(out_path, args.case, seed, policy):
-                # 서브프로세스는 성공(returncode 0)했지만 라우터가 실제로 구동됐다는 흔적이
-                # 없다 -- 조용히 "ok" 로 넘기지 않고 이 판을 FAILED 로 뒤집는다(1-b).
-                ok = False
-                note = "  (router did not engage -- see policy.jl:67 fail-open)"
+            if ok and router_on:
+                r_ok, reason = _router_drove(out_path, args.case, seed, policy, args.router)
+                if not r_ok:
+                    # 서브프로세스는 성공(returncode 0)했지만 라우터가 실제로 구동됐다는 흔적이
+                    # 없다 -- 조용히 "ok" 로 넘기지 않고 이 판을 FAILED 로 뒤집는다(1-b).
+                    ok = False
+                    note = "  (router check: %s)" % reason
+            if not ok:
+                n_failed += 1
             print(" %s  %.0f s  -> %s%s" % ("ok" if ok else "FAILED", secs, log.name, note), flush=True)
     print("\nsummaries -> %s" % out_path)
+    if n_failed:
+        # (2026-08-10 fix round 1 finding 2) 예전에는 개별 판이 FAILED 로 찍혀도 cmd_run 이 항상
+        # 0 을 돌려줬다 -- 무인 오케스트레이터는 종료코드만 보므로, 밤새 아무것도 못 재는 채로
+        # "성공"처럼 보였다. 하나라도 실패하면 0 이 아닌 코드로 죽는다.
+        print("%d/%d runs FAILED" % (n_failed, total))
+        return 1
     return 0
 
 
