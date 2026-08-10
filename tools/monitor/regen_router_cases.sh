@@ -143,6 +143,17 @@ sys.exit(0 if all(k in d for k in ("sim_t", "n_closed", "ood")) else 1)
   # ---- (2) 애니메이션: publish_anim! 이 발행했는가(미완주면 거부 -> 파일 없음) -------------------
   if [ -s "$src_anim" ]; then
     mv -f "$src_anim" "$dst_anim"
+    # 대시보드의 **기본 선택**은 `<option value="">auto (legacy / router run)</option>` 이고,
+    # value 가 빈 문자열이라 dashboard.html:1443 의 `if(curEnacted){...}` 가지가 통째로 건너뛰어진다.
+    # 그러면 /artifact 요청에 policy 필드가 빠지고 서버는 접미사 없는 `tractor__<case>.html` 을 푼다
+    # (server.jl:216). 스트림 쪽만 접미사를 떼는 폴백이 있고(dashboard.html:883) 애니에는 없어서,
+    # __router 이름만 두면 좌측 패널은 다 살아 있는데 3D 만 "not generated yet" 으로 뜬다(실측).
+    # → 라우터 런은 **접미사 없는 이름으로도** 낸다. 그 옵션의 이름이 곧 "router run" 인 이유다
+    #   (라우터 런은 사건마다 enacted 가 달라 단일 정책 접미사가 성립하지 않는다).
+    #   ENACTED POLICY 를 명시적으로 `router` 로 고르면 __router 이름이 그대로 쓰인다 — 둘 다 둔다.
+    cp -f "$dst_stream" "$src_stream"          # src_* 가 곧 접미사 없는 legacy 이름이다(92-93행)
+    cp -f "$dst_anim"   "$src_anim"
+    touch "$src_anim"                          # 신선도 검사(server.jl:225): 애니 >= 스트림 이어야 보인다
   else
     rm -f "$dst_anim"      # 옛 실행이 남긴 파일이 있으면 함께 치운다(같은 이유로 비워두는 것)
     case_ok=0
