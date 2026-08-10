@@ -75,8 +75,20 @@ STEP E 와 STEP C 의 선행조건 두 개를 한 파일에서 고친다.
 `--router != 0` 로 돈 판에 대해, 요약 행의 `decisions[]` 를 읽어 **라우터가 실제로 구동됐는지**
 확인하고, 아니면 그 판을 `FAILED` 로 보고한다.
 
-- 판정 근거: 결정 레코드의 `router_target` 이 채워져 있고(`run_demo.jl:284`), 그 값이
-  base policy 와 다를 수 있어야 한다. 최소 판정은 **`router_target` 이 non-null 인 결정이 1개 이상**.
+- **정정 (2026-08-10 01:15, 실측).** 처음 이 문서는 "`router_target` 이 non-null" 을 판정 근거로
+  적었는데 **그건 틀렸다.** 백업 데이터(라우터 OFF, `DEMO_ROUTER=0`)를 실제로 읽어 보니
+  `router_target` 은 **base policy 이름을 그대로 되돌려준다**(`noop`→`"noop"`,
+  `canonical`→`"canonical"`). 즉 라우터가 꺼져 있어도 모든 결정에서 non-null 이라
+  그 판정은 **공허하게 통과**한다. 라우터가 fail-open 으로 꺼진 판을 "ON" 으로 측정하는,
+  바로 이 STEP 이 막으려던 실패를 그대로 통과시켰을 것이다.
+- **올바른 판정**: 라우터가 실제로 구동되면 `route()` 가 `target` 을 `surrogate`/`dspy` 중
+  하나로 **덮어쓴다**(`policy.jl:349`). 따라서 lane 의 base policy 를 `router` 라는 이름으로 두면
+  (`policy.jl` 에 없는 이름이라 라우터가 안 켜지면 그대로 남는다) 다음이 성립한다:
+  - **구동됨** ⟺ 어떤 결정에서 `router_target ∈ {"surrogate","dspy"}` **이고** `router_target != policy`
+  - **fail-open** ⟺ `router_target == "router"` (= base policy 가 그대로 남음)
+  최소 판정은 **`router_target ∈ {"surrogate","dspy"}` 인 결정이 1개 이상**.
+- 요약 행의 최상위 `router` 필드는 `DEMO_ROUTER` 값을 그대로 기록한다(백업 데이터에서 전부 `"0"`).
+  이건 **플래그가 전달됐다**는 증거일 뿐 게이트가 켜졌다는 증거가 아니다 — 둘 다 확인할 것.
 - `DEMO_POLICY` 는 `noop` 이면 안 된다(`policy.jl:332` 가 noop 에서 라우팅을 끈다).
   `--router != 0` 인데 `--policies` 에 `noop` 이 들어 있으면 **에러로 죽을 것.**
 
