@@ -2,6 +2,29 @@
 
 Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded). This file is project context only.
 
+## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
+
+행동 어휘가 **2026-08-06** 에 바뀌었다: `action_registry.json` 이 매크로 **7(RelocateBuild)·8(SwapBattery)**
+를 포함한다. 그 이전 측정치는 **행동집합이 잘린 상태**의 숫자다(zone 은 지원 팔이 `{NOOP}` 뿐이라
+언제나 NOOP, battery 는 `SwapBattery` 미학습으로 적중 0/6). 두 세대가 섞여 있어 실제로 오판이
+일어났기 때문에, 이전 세대 산출물을 **삭제**했다.
+
+- **현행 배포 학습셋** = `oracle/out/n44_plus78.jsonl`. 계약: `python test_surrogate_support.py`
+  → `support=[0, 1, 2, 3, 4, 7, 8]` (7/7 PASS). 이게 "현행 세대인가"의 유일한 기계적 판정이다.
+- **현행 측정 문서는 `md/RESULTS_LLM7H.md` 하나뿐.** 다른 md 의 수치를 현재 성능으로 인용하지 말 것 —
+  구세대 결과 문서 5개에는 🔴 세대 표시 배너가 붙어 있다.
+- **삭제됨**: `oracle/out` 의 08-06 이전 런 전부(145MB→5MB), `artifacts_{mdp,assimilation,openworld,classifier}`,
+  `figs/`, sweep_lab 리포트(LLM 프로그램 `.json` 만 잔존), 루트 `results/`, `docs/src/*_visualization.html`,
+  `tools/monitor/{anim,streams,regen_case_logs}`, 구세대 모델 `surrogate_{linear,hotswap,v2}.json`.
+  복원하지 말 것 — 필요하면 `gen_oracle_dataset.jl` 로 **현재 어휘에서** 새로 만든다.
+- `openworld_merged.jsonl`(= `wm_datasets.CANONICAL`) 은 매크로 7·8 이전 라벨이지만 **novelty 교정용
+  입력으로만** 남겼다(`tools/monitor/README.md` 2026-08-08 이 그 경로를 부른다). **성능 근거 아님.**
+- **`audit_action_vocab.py` 의 "6/6 consistent" 를 "어휘 통일됨"으로 읽지 말 것.** 검사 대상 6곳 밖에
+  구세대 리터럴이 남아 있다: `tools/demos.jl:869,1894`(demo_surrogate 계열 — 이 데모의 결정은 5매크로
+  기준이고 읽던 export 도 삭제됨), `wm4spacecraft_manufacturing/assimilation_gate.py`(자체 검사 입력).
+- 알려진 실패(정리 이전부터 존재, 이번 변경과 무관): `python verify.py oracle/out/n44_plus78.jsonl`
+  → V0 PASS 후 **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다.
+
 ## Environment
 - **`julia +lts` (1.10)** — `Manifest.toml` is pinned to 1.10.11; `Pkg.add` under a newer Julia silently breaks the build.
 - Always pass `--project=.`.
@@ -17,9 +40,13 @@ python wm4spacecraft_manufacturing/audit_action_vocab.py   # 매크로 추가/�
 ```
 Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedence over `ARGS[1]`.
 
-**기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관) ·
-`verify.py` = **8/8**(2026-08-06 V0 을 valid_mask 기준으로 고친 뒤. 그 이전 문서의 "7/8"·"8/8" 은
-서로 다른 판정이라 함께 인용하면 안 된다).
+**기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관).
+
+`verify.py` 의 "8/8" 은 **더 이상 인용하면 안 된다.** 그 숫자는 매크로 7·8 이전 덤프에서 나온 것이고,
+현행 학습셋으로 실제로 돌리면 완주하지 못한다(2026-08-09 실측):
+`python verify.py oracle/out/n44_plus78.jsonl` → V0 3/3 PASS → **S1 `KeyError: 7`**.
+현재 기계적으로 믿을 수 있는 계약은 `test_surrogate_support.py`(7/7) 와 `audit_action_vocab.py`(6/6,
+단 커버리지 한계는 위 §결과 세대 참조) 둘이다.
 
 ## Gotchas
 - **`tools/*.jl` with no key runs a default silently** (`demos.jl` → `original_baseline`) instead of erroring. Read the `DEMOS` dict at the bottom of the file for valid keys.

@@ -1,5 +1,0 @@
-==============================================================================
-SANITY LADDER REPORT  (cost-aware, lambda=3.0)
-built from 26 dump files, 0 full instances
-surrogate under test: RandomForest(60 x depth6, msl2) (unified eval+deploy model)
-==============================================================================

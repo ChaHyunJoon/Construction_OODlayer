@@ -1,1 +1,0 @@
-{"arm":"blk_noop","status":"stalled","closed":254,"total":289,"steps":4668,"makespan":117.25,"reform":3,"frontier_blocked":3,"fired_at":58,"enacted":"-","root_covered":0,"nav_blocked":3,"nav_engulfed":3,"nav_disconnected":0,"verdict":"noop"}

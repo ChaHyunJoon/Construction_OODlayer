@@ -1,133 +1,0 @@
-Processing file...   3%|██                                                |  ETA: 0:00:30 ( 0.50  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:02 (39.41 ms/it)[K
-Processing file...   8%|█████                                             |  ETA: 0:00:01 (42.67 ms/it)[KProcessing file...  62%|████████████████████████████████                  |  ETA: 0:00:00 (12.57 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 7.81 ms/it)[K
-Processing file...  31%|████████████████                                  |  ETA: 0:00:00 (10.60 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 3.24 ms/it)[K
-Processing file...  50%|██████████████████████████                        |  ETA: 0:00:00 ( 3.46 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.96 ms/it)[K
-Processing file...  38%|███████████████████                               |  ETA: 0:00:00 ( 4.54 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 1.96 ms/it)[K
-Processing file...  77%|███████████████████████████████████████           |  ETA: 0:00:00 ( 1.50 ms/it)[KProcessing file...  85%|███████████████████████████████████████████       |  ETA: 0:00:00 ( 2.60 ms/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:00 ( 2.33 ms/it)[K
-Simulating...   0%|█                                                 |  ETA: N/A (  N/A  s/it)[K
-   step_num: 2[K
-   n_closed: 58[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   1%|█                                                 |  ETA: 0:26:43 ( 6.36  s/it)[K
-   step_num: 12[K
-   n_closed: 61[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   2%|█                                                 |  ETA: 0:21:31 ( 5.15  s/it)[K
-   step_num: 15[K
-   n_closed: 62[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   9%|█████                                             |  ETA: 0:03:38 ( 0.94  s/it)[K
-   step_num: 72[K
-   n_closed: 81[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  12%|██████                                            |  ETA: 0:02:58 ( 0.79  s/it)[K
-   step_num: 96[K
-   n_closed: 88[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  18%|██████████                                        |  ETA: 0:01:50 ( 0.53  s/it)[K
-   step_num: 139[K
-   n_closed: 105[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  21%|███████████                                       |  ETA: 0:01:41 ( 0.50  s/it)[K
-   step_num: 150[K
-   n_closed: 111[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  29%|███████████████                                   |  ETA: 0:01:06 ( 0.37  s/it)[K
-   step_num: 199[K
-   n_closed: 133[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  36%|███████████████████                               |  ETA: 0:00:50 ( 0.31  s/it)[K
-   step_num: 249[K
-   n_closed: 151[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  47%|████████████████████████                          |  ETA: 0:00:33 ( 0.24  s/it)[K
-   step_num: 316[K
-   n_closed: 179[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  49%|█████████████████████████                         |  ETA: 0:00:32 ( 0.24  s/it)[K
-   step_num: 322[K
-   n_closed: 183[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  55%|████████████████████████████                      |  ETA: 0:00:26 ( 0.23  s/it)[K
-   step_num: 365[K
-   n_closed: 197[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  60%|██████████████████████████████                    |  ETA: 0:00:22 ( 0.21  s/it)[K
-   step_num: 428[K
-   n_closed: 210[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  64%|█████████████████████████████████                 |  ETA: 0:00:19 ( 0.21  s/it)[K
-   step_num: 475[K
-   n_closed: 222[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  68%|██████████████████████████████████                |  ETA: 0:00:16 ( 0.20  s/it)[K
-   step_num: 525[K
-   n_closed: 231[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  72%|████████████████████████████████████              |  ETA: 0:00:14 ( 0.20  s/it)[K
-   step_num: 580[K
-   n_closed: 241[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  75%|██████████████████████████████████████            |  ETA: 0:00:12 ( 0.19  s/it)[K
-   step_num: 632[K
-   n_closed: 249[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  82%|█████████████████████████████████████████         |  ETA: 0:00:09 ( 0.18  s/it)[K
-   step_num: 693[K
-   n_closed: 266[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  82%|██████████████████████████████████████████        |  ETA: 0:00:08 ( 0.18  s/it)[K
-   step_num: 748[K
-   n_closed: 268[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  85%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.18  s/it)[K
-   step_num: 794[K
-   n_closed: 274[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  90%|█████████████████████████████████████████████     |  ETA: 0:00:05 ( 0.18  s/it)[K
-   step_num: 863[K
-   n_closed: 287[K
-    n_total: 313[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:41 ( 0.16  s/it)[K

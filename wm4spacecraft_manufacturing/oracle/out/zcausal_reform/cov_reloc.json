@@ -1,1 +1,0 @@
-{"arm":"cov_reloc","status":"stalled","closed":197,"total":289,"steps":5626,"makespan":141.2,"reform":4,"frontier_blocked":0,"fired_at":58,"enacted":"RelocateBuild:translated","root_covered":8,"nav_blocked":1,"nav_engulfed":1,"nav_disconnected":0,"verdict":"relocate_build"}

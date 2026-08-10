@@ -67,6 +67,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # novelty_calibration_no_zoneblk.json.  Anything that has to agree with the installed
 # conformal band MUST use this file, or the band is being applied to a different distribution
 # than it was fitted on.
+#
+# ★ 세대 주의 (2026-08-09).  이 파일의 라벨은 매크로 [0,1,2,3,4] 시절 것이다 — 7(RelocateBuild)
+#   도 8(SwapBattery) 도 없다.  그래서 "canonical 에서 잰 surrogate 결과"는 **행동집합이 잘린
+#   상태의 측정치**이고, 배포 surrogate(N44_PLUS78)의 성능과 같은 축에서 비교하면 안 된다.
+#   그런데도 지우지 않고 남긴 단 하나의 이유: 배포된 novelty 교정(novelty_calibration*.json)이
+#   이 분포 위에서 적합됐고, tools/monitor/README.md(2026-08-08)가 교정 재생성 절차에서
+#   이 경로를 그대로 부른다.  즉 **교정용 입력**으로만 살아 있다. 성능 수치의 근거로 쓰지 말 것.
 CANONICAL = "oracle/out/openworld_merged.jsonl"
 
 # ==========================================================================================
@@ -98,16 +105,26 @@ N44_PLUS78 = "oracle/out/n44_plus78.jsonl"
 #
 # CANONICAL 을 덮어쓰지 않는 이유: 발표된 숫자(regret/frontier)는 전부 그 분포에서 측정됐다.
 # 교정만 새 분포로 옮기고, 기존 결과는 기존 파일 위에서 그대로 재현되게 둔다.
+#
+# [삭제됨 2026-08-09] 아래 legacy pin 주석 참조 — 매크로 7·8 이전 세대라 파일을 지웠다.
 FIREGRID = "oracle/out/firegrid_merged.jsonl"
 
 # ==========================================================================================
-#  Legacy pins — kept so published numbers stay reproducible.  Do not "upgrade" these.
+#  Legacy pins — 2026-08-09 에 파일을 **삭제**했다.  이름만 남긴다.
 # ==========================================================================================
-HS_ALL = "oracle/out/graded_hs_all.jsonl"    # 20 instances; cost_eval / dspy experiment baselines
+# 여기 있던 덤프는 전부 매크로 7(RelocateBuild)·8(SwapBattery) 가 어휘에 들어오기 전
+# (action_registry.json, 2026-08-06) 에 측정된 것이라, 지금 코드로 다시 읽으면 잘린 행동집합
+# 위에서 잰 숫자가 현재 결과처럼 보인다.  그 혼동이 실제로 일어났기 때문에 파일을 지웠다.
+#
+# 상수를 지우지 않고 남기는 이유: 지우면 import 시점에 AttributeError 가 나서 "왜 없는지"가
+# 사라진다.  이대로 두면 resolve() 가 실제 경로를 돌려주고 open() 이 FileNotFoundError 로
+# 죽으므로, 스택트레이스에 삭제된 파일 이름이 그대로 찍힌다.  describe() 는 MISSING 을 낸다.
+# 다시 필요하면 gen_oracle_dataset.jl 로 **현재 어휘에서** 새로 만들 것 — 복원하지 말 것.
+HS_ALL = "oracle/out/graded_hs_all.jsonl"    # [삭제됨] 20 instances; cost_eval / dspy experiment baselines
 HS_N44 = "oracle/out/graded_hs_n44.jsonl"    # 44 instances; the PREVIOUS dspy_service surrogate set
                                               # (superseded 2026-08-06 by N44_PLUS78, dspy_service.py:165 --
-                                              # kept here for EVAL_DATA reproduction of the old model)
-HS_V2  = "oracle/out/graded_hs_v2.jsonl"     # cost artifact + e1_frontier figures
+                                              # N44_PLUS8 의 출처라서 남겨 둔 것이지 결과용이 아니다)
+HS_V2  = "oracle/out/graded_hs_v2.jsonl"     # [삭제됨] cost artifact + e1_frontier figures
 
 #: Every dataset this module knows about, for `--list` style diagnostics.
 KNOWN = {

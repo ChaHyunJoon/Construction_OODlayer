@@ -1,5 +1,18 @@
 # 배터리 사건 재설계 + 두 가지 결정 (λ, Replace vs SwapBattery) — 2026-08-05
 
+> ## 🔴 세대 표시 — 이 문서의 수치는 **매크로 7·8 이전**이다 (2026-08-09 부착)
+>
+> 여기 실린 측정치는 `action_registry.json` 이 **7(RelocateBuild)·8(SwapBattery)** 를 갖기 전
+> (2026-08-06) 에 나온 것이다. 그 시절 zone 사건의 메뉴는 `[NOOP, RelocateBuild]` 인데 배포
+> surrogate 가 지원하는 팔은 `{NOOP}` 뿐이어서 **언제나 NOOP** 이 나왔고, battery 는
+> `SwapBattery` 를 한 줄도 못 봐서 적중 0/6 이었다(`wm_datasets.py` 의 N44_PLUS8/78 주석).
+> 즉 **행동집합이 잘린 상태에서 잰 숫자**다. 현재 배포 성능으로 인용하면 안 된다.
+>
+> - **현행 측정** = `RESULTS_LLM7H.md` (학습셋 `oracle/out/n44_plus78.jsonl`, 2026-08-07 재적합)
+> - 이 문서가 근거로 삼은 덤프는 **2026-08-09 정리에서 삭제**됐다. 재현하려면 복원하지 말고
+>   `gen_oracle_dataset.jl` 로 **현재 어휘에서** 새로 생성할 것.
+
+
 > 이 문서는 **한글 전문**과 **English full mirror** 두 벌로 되어 있다. 같은 내용이며 번역본이 아니라
 > 각각 독립적으로 읽히도록 썼다. 숫자·파일명·명령은 양쪽이 동일하다.
 > English version starts at **[PART II](#part-ii--english)**.

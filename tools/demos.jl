@@ -860,6 +860,12 @@ SEED       = parse(Int, get(ENV, "SEED", "1"))
 SEVERITY   = parse(Float64, get(ENV, "SEVERITY", "1.0"))   # zone: overlap frac; fault: 1.0  # 사건 심각도(구역=겹침비율)
 SURRO_PATH = get(ENV, "SURROGATE",                          # 학습된 surrogate JSON 파일 경로
     joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+# ★ 구세대 어휘 (2026-08-09 표시). action_registry.json 은 2026-08-06 부터 7(RelocateBuild)·
+#   8(SwapBattery) 를 포함하는데 여기는 아직 5매크로 리터럴이다. audit_action_vocab.py 는 이
+#   파일을 검사 대상에 넣지 않아 6/6 통과로 뜬다 -- "어휘가 통일됐다"로 읽으면 안 된다.
+#   따라서 이 데모가 내는 결정은 **잘린 행동집합** 위의 것이다. 위 SURRO_PATH 가 가리키는
+#   surrogate_linear.json 도 같은 정리에서 삭제됐다(구세대). 이 데모를 되살리려면 어휘를
+#   registry 에서 읽도록 고치고 현재 학습셋으로 export 를 다시 만들어야 한다.
 MACROS = [0, 1, 2, 3, 4]                                    # 가능한 대응 매크로 번호 5개
 MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")  # 번호→이름 매핑
 
@@ -1884,6 +1890,7 @@ PROJECT    = "tractor"
 HTMLPATH   = joinpath("results", PROJECT, "greedy_RVO_Dispersion_TangentBug", "visualization.html")
 SURRO_PATH = get(ENV, "SURROGATE",
     joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+# ★ 구세대 어휘 (2026-08-09 표시) — 위 demo_surrogate 의 같은 줄 주석 참조.
 MACROS = [0, 1, 2, 3, 4]
 MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")
 
