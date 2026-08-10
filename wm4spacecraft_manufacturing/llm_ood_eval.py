@@ -57,6 +57,34 @@ DEFAULT_OUT = HERE / "results" / "llm_ood_eval.jsonl"
 # =========================================================================================
 #  1. 런 드라이버
 # =========================================================================================
+def _validate_router_args(args):
+    """1-a/1-b: 라우터 옵트인의 안전장치. 서브프로세스가 뜨기 전에 여기서 걸러야 한다.
+
+    - calib 경로를 줬는데 그 파일이 없으면: router 값과 무관하게 즉시 에러(router=0 이어도
+      advisory 판정이 조용히 깨진 채 도는 것을 막는다).
+    - `--router` 가 "0" 이 아닌데 calib 가 없으면: policy.jl:67-68 이 경고만 찍고 라우터를
+      꺼버린다(fail-open). "라우터 ON" 이라는 이름의 판이 실제로는 OFF 로 측정되는, 이번 STEP 이
+      막아야 할 가장 위험한 조용한 실패다.
+    - `--policies` 에 noop 이 섞여 있으면: policy.jl:332 가 POLICY=="noop" 에서 라우팅 자체를
+      끈다(noop 은 "정책 후보" 가 아니라 통제 실험의 바닥선). `--router` 옵트인과 양립 불가.
+    반환: None(통과) 또는 에러 메시지 문자열.
+    """
+    if args.novelty_calib and not Path(args.novelty_calib).exists():
+        return "--novelty-calib 경로에 파일이 없다: %s" % args.novelty_calib
+    if args.router == "0":
+        return None
+    if not args.novelty_calib:
+        return ("--router %s 는 --novelty-calib PATH 가 필요하다. calib 없이 라우터를 켜면 "
+                "policy.jl 이 fail-open 으로 라우터를 꺼버려 'ON' 이라는 이름의 판이 실제로는 "
+                "OFF 로 측정된다." % args.router)
+    policies = [s.strip() for s in args.policies.split(",") if s.strip()]
+    if "noop" in policies:
+        return ("--router %s 와 --policies 의 noop 은 같이 쓸 수 없다 "
+                "(policy.jl:332 가 POLICY==noop 에서 라우팅을 끈다 -- noop 은 통제 바닥선)"
+                % args.router)
+    return None
+
+
 def run_one(seed, policy, out_path, log_dir, args):
     """한 판(= ood_seed 하나 x 정책 하나)을 돌린다. 반환: (ok, wall_seconds, log_path)."""
     env = dict(os.environ)
@@ -69,7 +97,7 @@ def run_one(seed, policy, out_path, log_dir, args):
         DEMO_OOD_SEED=str(seed),
         DEMO_SEED=str(args.world_seed),          # world = 로봇 초기 배치. 고정 축(README: 축 분리)
         DEMO_POLICY=policy,
-        DEMO_ROUTER="0",                         # 정책 비교에서는 라우터를 끈다(STATUS §5)
+        DEMO_ROUTER=args.router,                 # 기본 "0" = 기존 동작(정책 비교, STATUS §5). opt-in: --router
         DEMO_SPARES=str(args.spares),
         DEMO_REFORM=str(args.reform),
         DEMO_REFORM_MAX=str(args.reform_max),
@@ -84,6 +112,9 @@ def run_one(seed, policy, out_path, log_dir, args):
         DEMO_SUMMARY=str(out_path.resolve()),
         MONITOR_STREAM=str((log_dir / ("stream_s%d_%s.jsonl" % (seed, policy))).resolve()),
     )
+    if args.novelty_calib:
+        # 여기도 절대경로로 넘긴다 -- DEMO_SUMMARY 와 같은 함정(julia cwd=repo 루트).
+        env["NOVELTY_CALIB"] = str(Path(args.novelty_calib).resolve())
     log = log_dir / ("run_s%d_%s.log" % (seed, policy))
     t0 = time.time()
     with open(log, "w", encoding="utf-8") as fh:
@@ -92,7 +123,27 @@ def run_one(seed, policy, out_path, log_dir, args):
     return p.returncode == 0, time.time() - t0, log
 
 
+def _router_drove(out_path, case, ood_seed, policy):
+    """1-b: `--router != 0` 로 던 판이 실제로 라우터 판정을 남겼는지 사후 확인(최소 판정).
+
+    판정 근거: 이 판의 decisions[] 중 router_target 이 채워진 것이 1개 이상(run_demo.jl:284).
+    요약 파일이 없거나 해당 (case, ood_seed, policy) 행을 못 찾으면 False -- 조용히 통과시키지 않는다.
+    """
+    if not out_path.exists():
+        return False
+    for r in load_rows(out_path):
+        if r.get("case") == case and r.get("ood_seed") == ood_seed and r.get("policy") == policy:
+            return any(d.get("router_target") is not None for d in (r.get("decisions") or []))
+    return False
+
+
 def cmd_run(args):
+    err = _validate_router_args(args)
+    if err:
+        # stderr 가 아니라 stdout 으로: 이 파일에서 stdout 만 utf-8 로 reconfigure 돼 있다(위,
+        # cp949 콘솔 함정). stderr 에 한글을 쓰면 같은 함정이 그대로 재현된다.
+        print("ERROR: %s" % err)
+        return 1
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     log_dir = out_path.parent / "logs"
@@ -100,6 +151,7 @@ def cmd_run(args):
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     policies = [s.strip() for s in args.policies.split(",") if s.strip()]
     total = len(seeds) * len(policies)
+    router_on = args.router != "0"
     print("=== %d runs (%d seeds x %d policies), STRICTLY SEQUENTIAL ===" % (total, len(seeds), len(policies)))
     done = 0
     for seed in seeds:                        # 시드 바깥 / 정책 안쪽 = 같은 스트림을 연달아 비교
@@ -107,7 +159,13 @@ def cmd_run(args):
             done += 1
             print("[%2d/%2d] seed=%d policy=%-9s ..." % (done, total, seed, policy), end="", flush=True)
             ok, secs, log = run_one(seed, policy, out_path, log_dir, args)
-            print(" %s  %.0f s  -> %s" % ("ok" if ok else "FAILED", secs, log.name), flush=True)
+            note = ""
+            if ok and router_on and not _router_drove(out_path, args.case, seed, policy):
+                # 서브프로세스는 성공(returncode 0)했지만 라우터가 실제로 구동됐다는 흔적이
+                # 없다 -- 조용히 "ok" 로 넘기지 않고 이 판을 FAILED 로 뒤집는다(1-b).
+                ok = False
+                note = "  (router did not engage -- see policy.jl:67 fail-open)"
+            print(" %s  %.0f s  -> %s%s" % ("ok" if ok else "FAILED", secs, log.name, note), flush=True)
     print("\nsummaries -> %s" % out_path)
     return 0
 
@@ -116,7 +174,11 @@ def cmd_run(args):
 #  2. 리포트
 # =========================================================================================
 def load_rows(path):
-    """요약 JSONL. 같은 (ood_seed, policy) 는 **마지막 것**만 쓴다(재실행 = 덮어쓰기)."""
+    """요약 JSONL. 같은 (case, ood_seed, policy) 는 **마지막 것**만 쓴다(재실행 = 덮어쓰기).
+
+    dedup 키에서 case 를 빼면(STEP C 함정 ①) case 스위프를 기본 --out 으로 돌릴 때 나중에
+    쓴 case(예: battery)가 먼저 쓴 case(예: fault)를 에러 없이 지운다.
+    """
     dedup = {}
     with open(path, encoding="utf-8") as fh:
         for line in fh:
@@ -127,7 +189,7 @@ def load_rows(path):
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            dedup[(r.get("ood_seed"), r.get("policy"))] = r
+            dedup[(r.get("case"), r.get("ood_seed"), r.get("policy"))] = r
     return list(dedup.values())
 
 
@@ -141,8 +203,29 @@ def _sd(xs):
     return statistics.stdev(xs) if len(xs) > 1 else 0.0
 
 
+def _risk_coverage(pairs):
+    """1-d: selective-prediction risk-coverage. `pairs` = [(router_p, correct), ...] (채점된 결정만).
+
+    router_p 는 route() 의 novelty p-value(policy.jl) -- 클수록 "익숙하다" = 신뢰도가 높다고 본다.
+    신뢰도 내림차순으로 정렬해 상위 coverage% 구간만 골라 그 구간의 적중률을 낸다. 100% 는
+    "다 받아준다"(= decision_rate 와 같다), 낮은 coverage 일수록 라우터가 자신 있는 결정만
+    남긴 부분집합의 적중률 -- 필터링이 실제로 값을 하는지가 여기서 드러난다.
+    """
+    pairs = [(p, c) for p, c in pairs if p is not None and c is not None]
+    pairs.sort(key=lambda pc: -pc[0])
+    n = len(pairs)
+    out = {}
+    for cov in (100, 75, 50, 25):
+        k = max(1, round(n * cov / 100)) if n else 0
+        subset = pairs[:k]
+        nc = len(subset)
+        correct_n = sum(1 for _, c in subset if c)
+        out[cov] = dict(n=nc, correct=correct_n, rate=(correct_n / nc if nc else None))
+    return out
+
+
 def summarize(rows):
-    """정책별 4개 축 + 결정 분포를 계산한다."""
+    """정책별 4개 축 + 결정 분포 + escalation/novelty/risk-coverage(1-d) 를 계산한다."""
     by = defaultdict(list)
     for r in rows:
         by[r.get("policy", "?")].append(r)
@@ -155,16 +238,35 @@ def summarize(rows):
         per_kind = defaultdict(lambda: [0, 0])
         chosen = Counter()
         detail = []
+        # 1-d: escalation/novelty/risk-coverage -- router 가 실제로 어떻게 움직였는지 재는 축.
+        # score() 는 decisions 와 같은 순서로 rows 를 돌려주므로 zip 으로 원본 결정(escalated,
+        # router_novel, router_p)과 채점 결과(correct)를 짝지을 수 있다.
+        n_escalated = n_scored_router = 0
+        n_novel = n_novel_denom = 0
+        risk_pairs = []                          # (router_p, correct) -- 채점된 결정만
         for r in rs:
-            s, c, drows = reference_policy.score(r.get("decisions") or [])
+            decisions = r.get("decisions") or []
+            s, c, drows = reference_policy.score(decisions)
             scored += s
             correct += c
-            for d in drows:
+            for ev, d in zip(decisions, drows):
                 chosen[d["chosen"]] += 1
                 if d["correct"] is not None:
                     per_kind[d["truth"]][0] += 1
                     per_kind[d["truth"]][1] += int(d["correct"])
-                detail.append(dict(d, ood_seed=r.get("ood_seed")))
+                    # escalation rate 분모 = 채점된 결정 수(브리프 1-d 명시)
+                    n_scored_router += 1
+                    if ev.get("escalated"):
+                        n_escalated += 1
+                    p = ev.get("router_p")
+                    if p is not None:
+                        risk_pairs.append((p, bool(d["correct"])))
+                if ev.get("router_novel") is not None:
+                    n_novel_denom += 1
+                    if ev.get("router_novel"):
+                        n_novel += 1
+                detail.append(dict(d, ood_seed=r.get("ood_seed"), escalated=ev.get("escalated"),
+                                   router_novel=ev.get("router_novel"), router_p=ev.get("router_p")))
         comp = [r for r in rs if r.get("complete")]
         bat = [r.get("battery") or {} for r in rs]
         out[pol] = dict(
@@ -175,6 +277,12 @@ def summarize(rows):
             per_kind={kk: dict(n=v[0], correct=v[1], rate=(v[1] / v[0] if v[0] else None))
                       for kk, v in per_kind.items()},
             chosen=dict(chosen),
+            # 1-d: escalation / novelty / risk-coverage
+            escalation_rate=(n_escalated / n_scored_router if n_scored_router else None),
+            n_escalated=n_escalated, n_scored_router=n_scored_router,
+            novelty_rate=(n_novel / n_novel_denom if n_novel_denom else None),
+            n_novel=n_novel, n_novel_denom=n_novel_denom,
+            risk_coverage=_risk_coverage(risk_pairs),
             # ③ 시간은 **완주한 판만** 평균낸다. 미완주 판의 steps 는 정지 판정 대기(2500 step)를
             #    포함하므로 섞으면 "실패가 느리다"가 아니라 "실패가 빠르다"로 뒤집혀 읽힌다.
             sim_seconds_complete=_mean([r.get("sim_seconds") for r in comp]),
@@ -195,12 +303,16 @@ def summarize(rows):
 
 
 def paired(rows, a, b):
-    """같은 ood_seed 에서 두 정책을 맞대어 승/패/무 (완주 우선, 그다음 closed)."""
-    idx = {(r.get("ood_seed"), r.get("policy")): r for r in rows}
-    seeds = sorted({r.get("ood_seed") for r in rows})
+    """같은 (case, ood_seed) 에서 두 정책을 맞대어 승/패/무 (완주 우선, 그다음 closed).
+
+    case 를 키에서 빼면(STEP C 함정 ①, load_rows 와 같은 이유) 서로 다른 case 의 판을
+    섞어 짝짓게 된다 -- battery seed=1 과 fault seed=1 을 같은 사건처럼 비교하는 꼴.
+    """
+    idx = {(r.get("case"), r.get("ood_seed"), r.get("policy")): r for r in rows}
+    keys = sorted({(r.get("case"), r.get("ood_seed")) for r in rows})
     w = l = t = 0
-    for s in seeds:
-        ra, rb = idx.get((s, a)), idx.get((s, b))
+    for case, s in keys:
+        ra, rb = idx.get((case, s, a)), idx.get((case, s, b))
         if ra is None or rb is None:
             continue
         ka = (1 if ra.get("complete") else 0, ra.get("closed", 0))
@@ -222,9 +334,13 @@ def cmd_report(args):
     rows = load_rows(path)
     res = summarize(rows)
     seeds = sorted({r.get("ood_seed") for r in rows})
+    cases = sorted({str(r.get("case")) for r in rows})
     print("=" * 92)
     print("확률적 OOD 스트림 평가 -- %d 판 / ood_seed %s / world_seed 고정" % (len(rows), seeds))
     print("=" * 92)
+    # 1-c: 이 파일에 섞인 case 를 사람이 한눈에 잡게 한 줄로 찍는다(dedup 이 case 를 지우지
+    # 않는다는 확인이기도 하다 -- 여러 case 가 있는데 1개만 보이면 그게 바로 그 버그다).
+    print("case(s) in this file: %s" % ", ".join(cases))
     print()
     print("%-11s %3s  %-17s  %-18s  %9s  %11s  %8s" %
           ("policy", "n", "1) success", "2) right decision", "3) sim_s", "4) J/closed", "min SoC"))
@@ -247,6 +363,16 @@ def cmd_report(args):
                   ", ".join("%s %d/%d" % (k.replace("Truth", ""), v["correct"], v["n"])
                             for k, v in sorted(d["per_kind"].items())))
         print("      macros chosen: " + ", ".join("%s x%d" % kv for kv in sorted(d["chosen"].items())))
+        # 1-d: escalation / novelty 발화율 / risk-coverage(신뢰도 상위 구간 적중률).
+        esc = ("%.1f%% [%d/%d]" % (100 * d["escalation_rate"], d["n_escalated"], d["n_scored_router"])) \
+            if d["escalation_rate"] is not None else "n/a"
+        nov = ("%.1f%% [%d/%d]" % (100 * d["novelty_rate"], d["n_novel"], d["n_novel_denom"])) \
+            if d["novelty_rate"] is not None else "n/a"
+        rc = ", ".join(
+            "%d%%=%s" % (cov, ("%.0f%%(%d/%d)" % (100 * v["rate"], v["correct"], v["n"]))
+                        if v["rate"] is not None else "n/a")
+            for cov, v in sorted(d["risk_coverage"].items(), reverse=True))
+        print("      escalation %s | novelty %s | risk-coverage acc@cov: %s" % (esc, nov, rc))
     print()
     pols = list(res)
     for i in range(len(pols)):
@@ -287,6 +413,22 @@ def cmd_report(args):
                 ", ".join("%s %d/%d" % (k.replace("Truth", ""), v["correct"], v["n"])
                           for k, v in sorted(d["per_kind"].items())) or "—"))
         L.append("")
+        # 1-d: escalation / novelty 발화율 / risk-coverage. 이게 없으면 STEP E 는 숫자를 못 낸다.
+        L.append("| 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |")
+        L.append("|---|---|---|---|---|---|---|")
+        for pol in order:
+            d = res[pol]
+            esc = ("%.0f%% (%d/%d)" % (100 * d["escalation_rate"], d["n_escalated"], d["n_scored_router"])) \
+                if d["escalation_rate"] is not None else "n/a"
+            nov = ("%.0f%% (%d/%d)" % (100 * d["novelty_rate"], d["n_novel"], d["n_novel_denom"])) \
+                if d["novelty_rate"] is not None else "n/a"
+            covs = []
+            for cov in (100, 75, 50, 25):
+                v = d["risk_coverage"][cov]
+                covs.append(("%.0f%% (%d/%d)" % (100 * v["rate"], v["correct"], v["n"]))
+                            if v["rate"] is not None else "n/a")
+            L.append("| `%s` | %s | %s | %s | %s | %s | %s |" % (pol, esc, nov, *covs))
+        L.append("")
         for i in range(len(order)):
             for j in range(i + 1, len(order)):
                 w, l, t, p = paired(rows, order[i], order[j])
@@ -322,6 +464,13 @@ def main():
     r.add_argument("--bsoc", type=float, default=0.9)
     r.add_argument("--sev-frac", type=float, default=0.5)
     r.add_argument("--dspy-url", default="http://127.0.0.1:8090")
+    r.add_argument("--router", choices=["0", "1", "auto"], default="0",
+                   help="DEMO_ROUTER 로 전달. 기본 0 = 정책 고정(기존 동작). 0 이 아니면 "
+                        "--novelty-calib 가 필수다(1-a) -- 없으면 policy.jl 이 fail-open 으로 "
+                        "라우터를 꺼서 'ON' 이라는 판이 실제로는 OFF 로 측정된다.")
+    r.add_argument("--novelty-calib", default="",
+                   help="NOVELTY_CALIB 경로. 기본은 빈 문자열(환경변수를 건드리지 않음). "
+                        "--router != 0 이면 필수이고, 그 경로에 파일이 있어야 한다.")
     r.set_defaults(func=cmd_run)
 
     p = sub.add_parser("report")
