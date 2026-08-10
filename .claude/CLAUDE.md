@@ -19,9 +19,10 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   복원하지 말 것 — 필요하면 `gen_oracle_dataset.jl` 로 **현재 어휘에서** 새로 만든다.
 - `openworld_merged.jsonl`(= `wm_datasets.CANONICAL`) 은 매크로 7·8 이전 라벨이지만 **novelty 교정용
   입력으로만** 남겼다(`tools/monitor/README.md` 2026-08-08 이 그 경로를 부른다). **성능 근거 아님.**
-- **`audit_action_vocab.py` 의 "6/6 consistent" 를 "어휘 통일됨"으로 읽지 말 것.** 검사 대상 6곳 밖에
-  구세대 리터럴이 남아 있다: `tools/demos.jl:869,1894`(demo_surrogate 계열 — 이 데모의 결정은 5매크로
-  기준이고 읽던 export 도 삭제됨), `wm4spacecraft_manufacturing/assimilation_gate.py`(자체 검사 입력).
+- **`audit_action_vocab.py` 의 "6/6 consistent" 는 검사 대상 6곳만 본다** — 그 밖의 복제본은 안 잡힌다.
+  `tools/demos.jl` 의 두 surrogate 데모는 2026-08-09 에 리터럴을 없애고 `Demos.load_action_vocab()`
+  으로 registry 를 직접 읽게 고쳤다(파생이라 감사할 복제본이 없다. 검증: `[0,1,2,3,4,7,8]`).
+  아직 남은 리터럴은 `wm4spacecraft_manufacturing/assimilation_gate.py`(자체 검사 고정 입력, 동작 무영향).
 - 알려진 실패(정리 이전부터 존재, 이번 변경과 무관): `python verify.py oracle/out/n44_plus78.jsonl`
   → V0 PASS 후 **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다.
 

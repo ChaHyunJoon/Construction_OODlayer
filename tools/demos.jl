@@ -83,6 +83,26 @@ CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))
 
 # ---- shared helpers (defined ONCE) ------------------------------------------
+# 행동 어휘의 단일 진실원은 `wm4spacecraft_manufacturing/action_registry.json` 이다(CLAUDE.md).
+# 여기 있던 `MACROS = [0,1,2,3,4]` 리터럴이 실제로 사고를 냈다: 2026-08-06 에 매크로 7(RelocateBuild)·
+# 8(SwapBattery) 가 registry 에 들어왔는데 이 파일만 5개짜리로 남아, 두 surrogate 데모가 **잘린
+# 행동집합** 위에서 결정하면서도 아무 에러를 내지 않았다. `audit_action_vocab.py` 는 이 파일을
+# 검사 대상에 넣지 않아 6/6 으로 통과했다. 그래서 리터럴을 없애고 registry 에서 읽는다 —
+# 이제 매크로를 추가하면 데모가 자동으로 따라가고, 감사가 지켜야 할 복제본이 하나 줄어든다.
+const _ACTION_REGISTRY = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "action_registry.json")
+
+# load_action_vocab : registry 를 읽어 (매크로 id 오름차순 벡터, id=>이름 Dict) 를 돌려준다.
+#   JSON3 는 객체의 키를 Symbol 로 준다 — registry 의 키가 "0","1",... 이라 String 으로 되돌려 파싱한다.
+#   파일이 없거나 깨졌으면 **조용히 옛 어휘로 떨어지지 않고 에러를 낸다**. 이 데모의 결정이 어느
+#   행동집합 위의 것인지 모른 채 결과가 나오는 상황이 애초의 문제였기 때문이다.
+function load_action_vocab(path::AbstractString = _ACTION_REGISTRY)
+    isfile(path) || error("action registry not found: $path — 데모의 행동 어휘를 확정할 수 없다.")
+    macros = JSON3.read(read(path, String)).macros
+    ids   = sort!([parse(Int, String(k)) for k in keys(macros)])
+    names = Dict(i => String(macros[Symbol(string(i))].name) for i in ids)
+    return ids, names
+end
+
 # The set_default_milp_optimizer! block that appears (identically) in 8 of the 10
 # demos. The two surrogate demos use a DIFFERENT attribute set (output_flag instead
 # of MOI.Silent, 60s/0.05 gap) and keep their block inline -- see those functions.
@@ -860,14 +880,12 @@ SEED       = parse(Int, get(ENV, "SEED", "1"))
 SEVERITY   = parse(Float64, get(ENV, "SEVERITY", "1.0"))   # zone: overlap frac; fault: 1.0  # 사건 심각도(구역=겹침비율)
 SURRO_PATH = get(ENV, "SURROGATE",                          # 학습된 surrogate JSON 파일 경로
     joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
-# ★ 구세대 어휘 (2026-08-09 표시). action_registry.json 은 2026-08-06 부터 7(RelocateBuild)·
-#   8(SwapBattery) 를 포함하는데 여기는 아직 5매크로 리터럴이다. audit_action_vocab.py 는 이
-#   파일을 검사 대상에 넣지 않아 6/6 통과로 뜬다 -- "어휘가 통일됐다"로 읽으면 안 된다.
-#   따라서 이 데모가 내는 결정은 **잘린 행동집합** 위의 것이다. 위 SURRO_PATH 가 가리키는
-#   surrogate_linear.json 도 같은 정리에서 삭제됐다(구세대). 이 데모를 되살리려면 어휘를
-#   registry 에서 읽도록 고치고 현재 학습셋으로 export 를 다시 만들어야 한다.
-MACROS = [0, 1, 2, 3, 4]                                    # 가능한 대응 매크로 번호 5개
-MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")  # 번호→이름 매핑
+# 행동 어휘는 registry 에서 읽는다(리터럴 복붙 금지 — load_action_vocab 주석 참조).
+#   ★ SURRO_PATH 의 export 와 어휘가 맞아야 한다: features() 가 만드는 one-hot 이 `macro_<id>` 라서,
+#     registry 가 7·8 을 포함하면 export 도 그 어휘로 학습된 것이어야 점수가 의미를 갖는다.
+#     실행 자체는 안전하다 — action_to_proposal 이 7·8 을 지원하고, valid_actions 가 그 사건에서
+#     불가능한 팔을 NOOP 으로 걸러낸다(ood_mdp_shim.jl).
+MACROS, MACRO_NAME = load_action_vocab()                    # 매크로 id 벡터, id=>이름
 
 # NOTE: surrogate demos use a DIFFERENT MILP config than _setup_milp! (kept verbatim).
 CB.set_default_milp_optimizer!(() -> HiGHS.Optimizer())
@@ -1890,9 +1908,7 @@ PROJECT    = "tractor"
 HTMLPATH   = joinpath("results", PROJECT, "greedy_RVO_Dispersion_TangentBug", "visualization.html")
 SURRO_PATH = get(ENV, "SURROGATE",
     joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
-# ★ 구세대 어휘 (2026-08-09 표시) — 위 demo_surrogate 의 같은 줄 주석 참조.
-MACROS = [0, 1, 2, 3, 4]
-MACRO_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam")
+MACROS, MACRO_NAME = load_action_vocab()   # 행동 어휘 = action_registry.json (위 demo_surrogate 주석 참조)
 
 # NOTE: surrogate demos use a DIFFERENT MILP config than _setup_milp! (kept verbatim).
 CB.set_default_milp_optimizer!(() -> HiGHS.Optimizer())
