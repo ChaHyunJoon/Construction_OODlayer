@@ -24,6 +24,10 @@ mkpath(COMMAND_DIR)
 
 safe_base(s) = replace(splitext(basename(String(s)))[1], r"[^A-Za-z0-9]+" => "_")
 command_path(key) = joinpath(COMMAND_DIR, "$(safe_base(key)).jsonl")
+# render_demo.jl 의 layout_path 와 **같은 규칙**이어야 한다(둘이 어긋나면 평면도가 영영 안 뜬다).
+layout_path(key) = joinpath(COMMAND_DIR, "$(safe_base(key)).layout.json")
+# 구역이 사람이 정의하는 사건인 케이스. 이 셋은 조작자가 그리기 전에는 시뮬레이션을 시작하지 않는다.
+has_zone(case) = occursin("zone", String(case))
 available_models() = filter(f -> endswith(lowercase(f), ".mpd") || endswith(lowercase(f), ".ldr"),
                             readdir(joinpath(REPO, "LDraw_files")))
 const VALID_CASES = Set(["none", "battery", "fault", "zone", "fault_battery", "fault_zone",
@@ -55,6 +59,21 @@ end
 "OOD 추첨 seed → 스트림/애니 파일 접미사. seed=1(기본)은 접미사 없음 = 기존 이름 그대로."
 seed_suffix(seed::Int) = seed == 1 ? "" : "_s$(seed)"
 
+"""
+애니 파일을 이름으로 찾되, **앞에 접두사가 붙은 보관본까지** 찾는다(예: `2026-08-08_tractor__zone__router.html`).
+녹화를 날짜별로 구분해 두면 정확한 이름 검사만으로는 화면에서 사라지기 때문. 여러 개면 가장 최근 것.
+
+접두사 뒤에 `_` 를 요구하는 이유: 그냥 `endswith` 로 하면 `tractor__zone__router.html` 이
+`tractor__fault_zone__router.html` 에도 걸려 **다른 케이스의 애니가 조용히 대신 뜬다**.
+"""
+function resolve_anim(name::AbstractString)
+    dir = joinpath(ROOT, "anim")
+    isdir(dir) || return name
+    cands = filter(f -> f == name || endswith(f, "_" * name), readdir(dir))
+    isempty(cands) && return name
+    return argmax(f -> mtime(joinpath(dir, f)), cands)
+end
+
 function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, wait_s::Float64=300.0)
     key = "$(model)__$(case)"
     key in RUNNING && return "already running"
@@ -64,6 +83,9 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, 
     cmdfile = command_path(key)
     LAST_RUN[] = (state="starting", key=key, error=nothing, log=nothing)
     open(cmdfile, "w") do io end
+    # 직전 세션의 평면도를 지운다. 안 지우면 대시보드가 **옛 배치 위에** 구역을 그리게 되는데,
+    # 모델이나 로봇 수가 바뀌었으면 그건 이 런에 없는 자리다(그리고 화면상으로는 구분이 안 된다).
+    try rm(layout_path(key); force=true) catch end
     @async begin
         try
             println("[server] spawn: model=$model case=$case")
@@ -84,6 +106,9 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, 
                 "DEMO_SEED" => string(seed),
                 "MONITOR_COMMAND_FILE" => cmdfile,
                 "MONITOR_INTERACTIVE" => (interactive ? "1" : "0"),
+                # 라이브 zone 케이스(③⑤⑥)는 조작자가 평면도에 구역을 그릴 때까지 **시작하지 않는다**.
+                # MONITOR_WAIT(마감 있는 대기)로는 시간이 지나면 zone 없이 출발해 버린다.
+                "MONITOR_REQUIRE_ZONE" => (interactive && has_zone(case) ? "1" : "0"),
                 # 첫 조작자 명령(zone)을 기다리는 시간[초]. 0 = 기다리지 않음 = zone 없이 시작.
                 # zone 주입 여부는 결과를 크게 가르는 실험 조건이므로 호출자가 명시적으로 고른다.
                 "MONITOR_WAIT" => string(wait_s),
@@ -139,6 +164,24 @@ function router(req)
             end
             return HTTP.Response(202, [cors(); "Content-Type" => "application/json"], JSON3.write(msg))
         end
+        # 활성 세션의 **sim 전 평면도**. 아직 안 쓰였으면 204 — 대시보드는 그동안 "환경 빌드 중"을 보여준다.
+        # (env 빌드에 수 분이 걸리므로 이 사이가 짧지 않다.)
+        if req.method == "GET" && path == "/layout"
+            key = ACTIVE_KEY[]
+            key === nothing && return HTTP.Response(409, cors(), "no active simulation; start a run first")
+            p = layout_path(key)
+            isfile(p) || return HTTP.Response(204, cors())
+            return HTTP.Response(200, [cors(); "Content-Type" => "application/json"], read(p))
+        end
+        # 구역 정의를 그만둔다. 게이트가 마감 없이 기다리므로 취소 경로가 없으면 프로세스가 영영 남는다.
+        if req.method == "POST" && path == "/abort"
+            key = ACTIVE_KEY[]
+            key === nothing && return HTTP.Response(409, cors(), "no active simulation")
+            open(command_path(key), "a") do io
+                println(io, JSON3.write((; id = string(time_ns()), type = "abort", session = key))); flush(io)
+            end
+            return HTTP.Response(202, cors(), "abort requested")
+        end
         if req.method == "GET" && path == "/status"
             return HTTP.Response(200, [cors(); "Content-Type" => "application/json"],
                 JSON3.write((active = ACTIVE_KEY[], running = collect(RUNNING), last = LAST_RUN[])))
@@ -167,8 +210,12 @@ function router(req)
             seed = try clamp(Int(get(b, :seed, 1)), 0, 9999) catch; 1 end
             nsuf = (n > 0 ? "_n$(n)" : "") * seed_suffix(seed)
             base = safe_base(model)
-            stream = "streams/$(base)__$(case)$(nsuf).jsonl"
-            anim = "anim/$(base)__$(case)$(nsuf).html"
+            # 실행정책 녹화(케이스 × 정책)는 이름에 __<policy> 가 붙는다. 예전에는 대시보드가 그 이름을
+            # 직접 만들어 썼는데, 그러면 신선도 검사(아래)와 접두사 해석을 못 받는다 → 여기서 함께 푼다.
+            policy = String(get(b, :policy, ""))
+            psuf = isempty(policy) ? "" : "__$(policy)"
+            stream = "streams/$(base)__$(case)$(psuf)$(nsuf).jsonl"
+            anim = "anim/" * resolve_anim("$(base)__$(case)$(psuf)$(nsuf).html")
             # 2026-08-04: 존재검사만으로는 **옛 애니가 새 런을 가장한다**. 라이브 인터랙티브 런은
             # 애니 산출물을 만들지 않고(save_animation=!INTERACTIVE) 라이브 MeshCat 을 직접 몰기
             # 때문에, 같은 이름의 낡은 anim/*.html 이 남아 있으면 대시보드가 그걸 Factory View 에

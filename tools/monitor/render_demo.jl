@@ -66,6 +66,13 @@ const INTERACTIVE = get(ENV, "MONITOR_INTERACTIVE", "0") == "1"
 #   그래서 "기다린다/안 기다린다"는 실험 조건이지 편의 옵션이 아니다 — 명시적으로 고를 수 있어야 한다.
 #   0 으로 시작해도 조작 훅은 그대로 살아 있어서, 런 도중 대시보드에서 zone 을 쏘는 것은 여전히 된다.
 const MONITOR_WAIT = try max(0.0, parse(Float64, get(ENV, "MONITOR_WAIT", "300"))) catch; 300.0 end
+# MONITOR_REQUIRE_ZONE=1 — **조작자가 구역을 정의하기 전에는 시뮬레이션을 시작하지 않는다.**
+#   왜 MONITOR_WAIT 로 안 되나: 그건 마감이 있는 대기라서, 시간이 지나면 **zone 없이 그냥 출발한다**.
+#   그러면 ③⑤⑥ 은 "구역 사건"이라는 이름만 남고 구역이 없는 런이 조용히 성립한다 — 결과가 아니라
+#   사고다(같은 함정을 zone 자동 주입기에서도 폴백으로 막아 두었다: 683-686 줄).
+#   구역이 사람이 정하는 사건인 케이스에서는 마감이 아니라 **게이트**가 맞다. 무한 대기가 부담이면
+#   조작자가 abort 명령으로 끝낼 수 있다(pending_command_kind 참조).
+const REQUIRE_ZONE = get(ENV, "MONITOR_REQUIRE_ZONE", "0") == "1"
 # 애니메이션(anim/*.html) 산출물을 남길지. 기본 켜짐 — 라이브 세션에서도 남는다(아래 주석 참조).
 const DEMO_ANIM = get(ENV, "DEMO_ANIM", "1") != "0"
 # 팀 교착(reform) OOD 발화 간격 = 연속 무진전 스텝 수. 프레임워크 기본은 2000 인데 이 데모의
@@ -177,6 +184,99 @@ function command_file_hook(path)
 end
 
 # =============================================================================================
+#  평면도 덤프 — 조작자가 **어디에** 구역을 그을지 볼 수 있게 한다 (2026-08-08)
+# =============================================================================================
+# 지금까지 라이브 zone 은 대시보드의 X/Y/R 숫자 칸으로 넣었다. 그런데 그 화면에는 공장 바닥이 어떻게
+# 생겼는지가 **없다** — MeshCat 뷰는 시뮬레이션이 시작돼야 뜨는데, 구역은 시작 전에 정해야 한다.
+# 즉 조작자는 눈을 감고 좌표를 치고 있었고, 그 상태로는 "사람이 구역을 정의한다"가 성립하지 않는다:
+# 아무것도 안 막는 자리를 찍으면 정답이 NOOP 인 판이 되는데, 그건 고른 것이 아니라 뽑기다.
+#
+# sim 전 기하는 이미 전부 정해져 있다(적치원은 env 빌드 때 select_assembly_start_configs_layered! 가
+# 배치한다). 그래서 첫 스텝 전에 한 번 JSON 으로 떨어뜨리면 대시보드가 2D 평면도를 그릴 수 있다.
+# env 를 **읽기만** 한다 — 이 덤프는 시뮬레이션 상태를 바꾸지 않는다.
+layout_path(cmdfile) = isempty(cmdfile) ? "" :
+    joinpath(dirname(cmdfile), splitext(basename(cmdfile))[1] * ".layout.json")
+
+function dump_layout(env, cmdfile)
+    path = layout_path(cmdfile)
+    isempty(path) && return false
+    staging = Vector{Dict{String,Any}}()
+    for (aid, ball) in env.staging_circles
+        c = try Vector{Float64}(CB.get_center(ball)[1:2]) catch; continue end
+        r = try Float64(CB.get_radius(ball)) catch; continue end
+        (length(c) == 2 && all(isfinite, c) && isfinite(r)) || continue
+        push!(staging, Dict{String,Any}("id" => string(aid), "x" => c[1], "y" => c[2], "r" => r))
+    end
+    # 로봇 위치는 있으면 좋은 참고이지 평면도의 필수 요소가 아니다(구역은 적치원·통로에 대해 정한다).
+    # 그래서 여기서 실패해도 덤프 전체를 포기하지 않는다 — 그러면 그리기 화면 자체가 안 뜬다.
+    robots = Vector{Dict{String,Any}}()
+    try
+        for n in CB.get_nodes(env.scene_tree)
+            CB.matches_template(CB.RobotNode, n) || continue
+            p = try collect(CB.global_transform(n).translation)[1:2] catch; continue end
+            (length(p) == 2 && all(isfinite, p)) || continue
+            push!(robots, Dict{String,Any}("id" => _rl(CB.node_id(n)), "x" => p[1], "y" => p[2]))
+        end
+    catch e
+        println("[layout] 로봇 위치 수집 실패 — 적치원만으로 평면도를 그린다: ", sprint(showerror, e))
+    end
+    isempty(staging) && isempty(robots) && return false
+    xs = vcat([s["x"] - s["r"] for s in staging], [s["x"] + s["r"] for s in staging],
+              [r["x"] for r in robots])
+    ys = vcat([s["y"] - s["r"] for s in staging], [s["y"] + s["r"] for s in staging],
+              [r["y"] for r in robots])
+    pad = max(0.5, 0.08 * max(maximum(xs) - minimum(xs), maximum(ys) - minimum(ys)))
+    rr = try Float64(CB.default_robot_radius()) catch; 0.25 end
+    # focus = 화면을 맞출 창. **가장 큰 적치원 하나를 뺀** 나머지에 맞춘다.
+    #   루트 조립체의 적치원은 구성상 현장 전체를 감싼다(실측 tractor: r=9.64 vs 나머지 0.48~3.79).
+    #   거기에 맞추면 실제로 구역을 놓을 자리(로봇 무리·작은 적치원, 반경 0.3 안팎)가 화면의 몇 % 로
+    #   쪼그라들어 사람이 크기를 가늠할 수 없다. 큰 원은 그려지되 화면 밖으로 넘칠 뿐이다.
+    focus = Dict{String,Any}()
+    if length(staging) > 1 || !isempty(robots)
+        keep = length(staging) > 1 ?
+               sort(staging; by = s -> -s["r"])[2:end] : staging   # 최대 반지름 하나 제외
+        fxs = vcat([s["x"] - s["r"] for s in keep], [s["x"] + s["r"] for s in keep],
+                   [r["x"] for r in robots])
+        fys = vcat([s["y"] - s["r"] for s in keep], [s["y"] + s["r"] for s in keep],
+                   [r["y"] for r in robots])
+        if !isempty(fxs)
+            fpad = max(0.5, 0.15 * max(maximum(fxs) - minimum(fxs), maximum(fys) - minimum(fys)))
+            focus = Dict{String,Any}("xmin" => minimum(fxs) - fpad, "xmax" => maximum(fxs) + fpad,
+                                     "ymin" => minimum(fys) - fpad, "ymax" => maximum(fys) + fpad)
+        end
+    end
+    payload = Dict{String,Any}(
+        "model" => MODEL, "case" => CASE_TAG, "requires_zone" => REQUIRE_ZONE,
+        "robot_radius" => rr, "staging" => staging, "robots" => robots,
+        "extent" => Dict{String,Any}("xmin" => minimum(xs) - pad, "xmax" => maximum(xs) + pad,
+                                     "ymin" => minimum(ys) - pad, "ymax" => maximum(ys) + pad),
+        "focus" => isempty(focus) ? nothing : focus)
+    # 대시보드가 폴링으로 읽으므로 **반쯤 쓰인 파일**을 보면 안 된다 → 임시 파일에 쓴 뒤 이름을 바꾼다.
+    tmp = path * ".tmp"
+    open(tmp, "w") do io; JSON3.write(io, payload); end
+    mv(tmp, path; force = true)
+    println("[layout] 평면도 → $(basename(path))  (적치원 $(length(staging)) · 로봇 $(length(robots)))")
+    return true
+end
+
+"명령 파일에 이미 들어와 있는 조작자 명령의 종류. `:abort` 가 하나라도 있으면 그게 이긴다."
+function pending_command_kind(path)
+    (isfile(path) && filesize(path) > 0) || return :none
+    kind = :none
+    try
+        for line in eachline(path)
+            isempty(strip(line)) && continue
+            cmd = try JSON3.read(line) catch; continue end
+            t = try String(cmd[:type]) catch; "" end
+            t == "abort" && return :abort
+            t == "forbid_zone" && (kind = :zone)
+        end
+    catch
+    end
+    return kind
+end
+
+# =============================================================================================
 #  구역 OOD 의 **두 가족** (2026-08-05)
 # =============================================================================================
 # 지금까지 이 데모의 zone 은 `inject_staging_zone!` 하나였고, 그 함수는 읽어 보면 **무해하도록
@@ -207,6 +307,16 @@ const DEMO_ZONE_R = try max(0.05, parse(Float64, get(ENV, "DEMO_ZONE_R", "0.5"))
 # (아직 활성이 아닌 미래 목표를 골라야 한다), 어차피 ForbidZone 의 "미시작 조립체" 전제는 respec 이
 # 처리되는 시점(closed≈54)이면 이미 깨져 있다. 그래서 로봇 OOD 와 같은 스케줄러 경로에 얹는다.
 const DEMO_ZONE_CLOSED = try max(0, parse(Int, get(ENV, "DEMO_ZONE_CLOSED", "58"))) catch; 58 end
+# 존을 **첫 시뮬레이션 스텝 이전**에 심을지(기본 1 = 심는다, 2026-08-08).
+#
+# 왜 바꿨나: 위 예약 방식은 세 zone 케이스(③⑤⑥)에서 "구역이 빌드 도중에 나타난다"를 뜻하지 않았다.
+# tractor 는 첫 배치에서 노드 58 개를 한꺼번에 닫으므로 closed=58 예약은 **시작 직후**에 due 되고
+# (SUMMARY_FORBIDZONE_RETRAIN §1), 그 사이 구간은 예약으로 도달할 수 없다. 게다가 배치 엔진
+# run_demo.jl 은 처음부터 pre-sim 주입이었다 — 같은 케이스를 두 엔진이 다르게 만들고 있었다.
+# 이제 렌더 엔진도 pre-sim 으로 맞춘다: 구역이 먼저 서고, 그 위에서 시뮬레이션이 시작된다.
+# 로봇 OOD(fault/battery)의 확률적 발화 시점은 이 값과 무관하다 — 그쪽은 DEMO_SEED 가 정한다.
+# 0 = 예전 동작(DEMO_ZONE_CLOSED 예약) 재현.
+const DEMO_ZONE_PRESIM = get(ENV, "DEMO_ZONE_PRESIM", "1") != "0"
 
 """
     inject_blocking_zone!(env; frac) -> Union{Nothing,String}
@@ -656,9 +766,28 @@ pre = function (env)
     # before any build step opens.
     demo_n = DEMO_N
     zone_at = 0
-    if has_zone
-        if DEMO_ZONE_MODE == "blocking"
-            # 발화 시점에 심는다(위 inject_blocking_zone! 주석 참조). 최소 몇 스텝은 굴린 뒤에
+    # ---- 라이브 세션에서는 존을 **자동으로 심지 않는다** (2026-08-08) -----------------------
+    # 존은 조작자가 시뮬레이션 시작 전에 ⛔(POST /inject/zone)로 넣는 사건이다. 그런데 이 블록은
+    # 아래의 "interactive ready: waiting for the first operator command" 대기보다 **먼저** 돈다.
+    # 자동 주입을 그대로 두면 사람이 넣기도 전에 존이 하나 서 있고, 사람이 넣은 것은 두 번째 존이
+    # 되어 케이스의 뜻이 바뀐다(존 1개 → 2개). 그래서 대화형 런에서는 건너뛴다.
+    # 로봇 OOD(fault/battery)는 그대로 확률 추첨된다 — 그쪽은 사람이 넣는 사건이 아니다.
+    # 녹화(비대화형) 런은 종전대로 자동 주입한다: 그게 ③⑤⑥ 녹화를 만든 경로다.
+    if has_zone && INTERACTIVE
+        println("    · zone: 자동 주입 생략 — 조작자의 forbid-zone 명령을 기다린다(live session)")
+    elseif has_zone
+        if DEMO_ZONE_PRESIM
+            # 첫 스텝 이전에 심는다 = 구역이 이미 서 있는 현장에서 빌드가 시작된다(케이스 ③⑤⑥ 동일).
+            # blocking 가족을 먼저 시도한다: 후보를 못 찾으면 사건이 통째로 사라지므로(zone 케이스인데
+            # zone 이 없는 런은 결과가 아니라 사고다) 무해 가족으로 폴백하고 그 사실을 남긴다.
+            nl = DEMO_ZONE_MODE == "blocking" ? inject_blocking_zone!(env) : nothing
+            nl === nothing && DEMO_ZONE_MODE == "blocking" &&
+                println("[zone] pre-sim blocking placement failed → falling back to the harmless injector")
+            nl === nothing && (nl = inject_staging_zone!(env))
+            nl === nothing || CB.push_ood!(nl)
+            println("    · zone($(DEMO_ZONE_MODE)) injected pre-sim")
+        elseif DEMO_ZONE_MODE == "blocking"
+            # 옛 동작(DEMO_ZONE_PRESIM=0): 발화 시점에 심는다. 최소 몇 스텝은 굴린 뒤에
             # 골라야 `_nav_goal_targets` 의 "활성/비활성" 구분과 실제 위치가 뜻을 갖는다.
             zone_at = max(DEMO_ZONE_CLOSED, initial_closed + 4)
             # 후보를 하나도 못 찾으면(전부 활성이거나 복구 불가) 사건이 **통째로 사라진다** —
@@ -787,6 +916,7 @@ pre = function (env)
     end
     n_zone = (:zone in kinds) ? 1 : 0                     # zone is ALWAYS fixed at 1
     zone_tag = n_zone == 0 ? "" :
+               DEMO_ZONE_PRESIM ? " [$(DEMO_ZONE_MODE), pre-sim]" :
                DEMO_ZONE_MODE == "blocking" ? " [blocking, @closed=$(zone_at)]" : " [harmless, pre-sim]"
     rk_str = isempty(robot_kinds) ? "none" : join(string.(robot_kinds), "/")
     n_tag = demo_n > 0 ? " (DEMO_N)" : ""
@@ -797,7 +927,33 @@ pre = function (env)
         control = command_file_hook(COMMAND_FILE)
         CB.monitor_set_control_hook!(control)
         if INTERACTIVE
-            if MONITOR_WAIT > 0
+            # 기다리기 **전에** 평면도를 떨어뜨린다 — 대기 중에 조작자가 봐야 할 그림이기 때문.
+            # 실패해도 런을 죽이지 않는다: 평면도는 고르는 것을 **돕는** 그림이고, 대시보드 상단의
+            # 숫자 X/Y/R inject 바로도 구역을 넣을 수 있다(그 경로는 평면도와 무관하게 살아 있다).
+            drew = try dump_layout(env, COMMAND_FILE) catch e
+                println("[layout] 평면도 덤프 실패 — 숫자 X/Y/R inject 바로 넣으면 된다: ",
+                        sprint(showerror, e)); false
+            end
+            if REQUIRE_ZONE
+                # 마감 없는 게이트. 구역이 이 케이스의 사건 그 자체이므로 "시간이 지나서 없이 시작"은
+                # 있을 수 없다. 조작자가 그만두려면 abort 명령을 보낸다(대시보드의 Cancel).
+                println(">>> interactive ready: **waiting for the operator to define a forbid zone** " *
+                        "(MONITOR_REQUIRE_ZONE=1 — no deadline; send an abort command to cancel)" *
+                        (drew ? "" : "  [no floor plan — use the numeric X/Y/R inject bar]"))
+                waited = 0.0
+                while true
+                    k = pending_command_kind(COMMAND_FILE)
+                    k === :zone && break
+                    if k === :abort
+                        println(">>> operator aborted before the first step — no simulation was run")
+                        exit(0)
+                    end
+                    sleep(0.2); waited += 0.2
+                    # 10 초마다 살아 있다는 표시. 로그만 보고 "멈춘 것"과 "기다리는 것"을 구분할 수 있어야 한다.
+                    (waited % 10 < 0.2) && println("    · still waiting for the operator zone " *
+                                                   "($(round(Int, waited))s)")
+                end
+            elseif MONITOR_WAIT > 0
                 println(">>> interactive ready: waiting up to $(round(Int, MONITOR_WAIT))s for the " *
                         "first operator command (MONITOR_WAIT=0 to start immediately with no zone)")
                 deadline = time() + MONITOR_WAIT

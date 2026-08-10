@@ -136,6 +136,26 @@
   .injectbar .go:hover{background:color-mix(in srgb,var(--warn) 12%,transparent);}
   .injectbar .hint{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);margin-left:auto;}
   .injbtn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);}
+  /* ---- 라이브 구역 정의 평면도 (zone picker) --------------------------------------------
+     시뮬레이션이 시작되기 **전에** 조작자가 no-go 구역을 그리는 화면. MeshCat 자리를 덮는다:
+     이 순간에는 3D 뷰에 보여 줄 것이 아직 없고(첫 스텝 전), 정작 필요한 것은 sim 전 배치이기 때문. */
+  .zonepicker{display:none;position:absolute;inset:0;z-index:5;background:var(--inset);}
+  .zonepicker.on{display:block;}
+  #zoneCanvas{display:block;width:100%;height:100%;cursor:crosshair;}
+  .zonehud{position:absolute;left:12px;top:12px;right:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    font-family:var(--font-mono);font-size:11px;color:var(--text-dim);
+    background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--border-strong);
+    border-radius:8px;padding:8px 12px;box-shadow:var(--shadow);}
+  /* HUD 는 캔버스 위쪽을 가로지른다. 클릭을 먹으면 그 띠 아래(화면 상단 ~7%)에는 구역을 놓을 수
+     없게 되므로 클릭은 통과시키고 버튼만 받는다. */
+  .zonehud{pointer-events:none;}
+  .zonehud button{pointer-events:auto;}
+  .zonehud b{color:var(--text);}
+  .zonehud .zval{color:var(--warn);}
+  .zonehud .sp{margin-left:auto;display:flex;gap:8px;}
+  .zonehud button[disabled]{opacity:.45;cursor:not-allowed;}
+  .zonewait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+    font-family:var(--font-mono);font-size:12px;color:var(--text-faint);padding:24px;line-height:1.7;}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:50;font-family:var(--font-mono);font-size:12px;
     padding:10px 16px;border-radius:8px;background:var(--panel);border:1px solid var(--border-strong);box-shadow:var(--shadow);
     color:var(--text);opacity:0;pointer-events:none;transition:opacity .25s;max-width:80vw;}
@@ -313,6 +333,7 @@
           <option value="canonical">canonical (fixed)</option>
           <option value="surrogate">surrogate (fixed)</option>
           <option value="dspy">DSPy (fixed)</option>
+          <option value="router">router (per-event: LLM if novel, surrogate if familiar)</option>
         </select>
       </label>
       <label title="How many OOD events to inject when you Start a live session (0 = case default: one per kind). Robot faults/battery events are spread across the build; a zone always fires once up front.">OOD events <input type="number" id="oodCount" value="0" min="0" max="20" step="1" style="width:52px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
@@ -337,6 +358,10 @@
            "no zone" 으로 시작해도 런 도중 아래 inject 바로 zone 을 쏘는 것은 그대로 된다. -->
       <button class="ghost-btn" id="startLiveBtn" type="button" style="margin-left:auto">Start live session</button>
       <button class="ghost-btn" id="startLiveNoZoneBtn" type="button" title="Start immediately without waiting for a forbid-zone command">Start live (no zone)</button>
+      <!-- zone 케이스에서만 뜬다. ③⑤⑥ 의 기존 녹화는 **자동 주입기**가 만든 것이라 조작자가 정의한
+           구역이 아니다 — 자동으로 틀지 않고, 보겠다고 누를 때만 그 사실을 배지로 달아 보여 준다. -->
+      <button class="ghost-btn" id="loadRecBtn" type="button" style="display:none"
+              title="Play the saved recording for this case. Its zone was placed by the automatic injector, not by an operator.">Load previous recording</button>
       <span class="count mono">MeshCat</span>
     </div>
     <div class="injectbar" id="injectBar">
@@ -350,6 +375,21 @@
       <span class="hint">human-in-the-loop · inject → verify → automatic replan · r≈0.3 matches the built-in zone; r≥1.0 can cover most of the floor</span>
     </div>
     <div class="viewwrap">
+      <!-- 구역 정의 평면도. zone 케이스의 라이브 세션에서만 켜지고, 확정하는 순간 MeshCat 으로 돌아간다. -->
+      <div class="zonepicker" id="zonePicker">
+        <canvas id="zoneCanvas"></canvas>
+        <div class="zonewait" id="zoneWait">Building the environment (parsing the model and staging assemblies).<br>
+          The floor plan appears here as soon as the layout is ready — the simulation will not start until you define a zone.</div>
+        <div class="zonehud" id="zoneHud" style="display:none">
+          <b>Define the forbid zone</b>
+          <span>click = center · drag = radius</span>
+          <span>x <span class="zval" id="zvx">—</span> · y <span class="zval" id="zvy">—</span> · r <span class="zval" id="zvr">—</span></span>
+          <span class="sp">
+            <button class="ghost-btn" id="zoneCancel" type="button" title="Abort this session without running a simulation">Cancel session</button>
+            <button class="ghost-btn go" id="zoneConfirm" type="button" disabled>Confirm zone &amp; start</button>
+          </span>
+        </div>
+      </div>
       <iframe id="meshcat" title="MeshCat viewer" allow="fullscreen"></iframe>
       <div class="viewfallback" id="viewFallback">
         <div>MeshCat viewer is not connected.</div>
@@ -522,6 +562,9 @@
     // any other preset arms its OOD events so the operator watches the automatic
     // respec/replan. (Manual zone injection still works on top of any running session.)
     requestGeneration({model:curModel, caseName:curCase, live:true, wait:waitS});
+    // zone 케이스는 서버가 MONITOR_REQUIRE_ZONE=1 로 띄운다 = 엔진이 첫 스텝 전에 멈춰 기다린다.
+    // 그동안 평면도를 기다렸다가 그리기 화면을 연다.
+    if(isZoneCase(curCase)) startLayoutPolling();
   }
   $("startLiveBtn").addEventListener("click", function(){ beginLiveSession(300); });
   $("startLiveNoZoneBtn").addEventListener("click", function(){ beginLiveSession(0); });
@@ -537,13 +580,202 @@
         "runs and restages, but the build then stalls with robots stuck in TRANSIT.\n\nInject anyway?")){
       return;
     }
-    fetch(CONFIG.CONTROL_URL + "/inject/zone", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({x: x, y: y, r: r})
-    })
-      .then(function(res){ if(!res.ok) throw new Error(res.status); return res.text(); })
+    postZone(x, y, r)
       .then(function(){ toast("Forbid zone injected — automatic respec/replan in progress ("+x+", "+y+", r="+r+")", "ok"); })
       .catch(function(e){ toast("No active live session. Start a live session first ("+e.message+")", "warn"); });
+  });
+  function postZone(x, y, r){
+    return fetch(CONFIG.CONTROL_URL + "/inject/zone", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({x: x, y: y, r: r})
+    }).then(function(res){ if(!res.ok) throw new Error(res.status); return res.text(); });
+  }
+
+  /* =========================================================================================
+     라이브 구역 정의 — sim 전 평면도 위에 사람이 직접 그린다.
+     -----------------------------------------------------------------------------------------
+     엔진은 첫 스텝 **전에** commands/<key>.layout.json 으로 적치원·로봇 배치를 떨어뜨리고,
+     MONITOR_REQUIRE_ZONE=1 로 무한 대기한다. 여기서 그 평면도를 그리고, 확정한 좌표를
+     POST /inject/zone 으로 보내면 그때 비로소 planning 이 돌기 시작한다.
+     ========================================================================================= */
+  var zoneLayout = null, zoneXform = null, zonePick = null, zoneDrag = false, layoutPoll = null;
+
+  function closeZonePicker(){
+    if(layoutPoll){ clearInterval(layoutPoll); layoutPoll = null; }
+    var p = $("zonePicker"); if(p) p.classList.remove("on");
+    zoneLayout = null; zonePick = null; zoneDrag = false;
+  }
+  function shortId(s){ return String(s).replace(/^.*\./, ""); }
+
+  // 케이스만 골랐을 때의 화면: 아무것도 재생하지 않고, 무엇을 해야 하는지만 말한다.
+  function showZoneCaseIdle(){
+    closeZonePicker();
+    clearPanels();
+    setBadge("err", "zone not defined");
+    $("srcName").textContent = "—";
+    $("genHint").textContent = "This case needs an operator-defined zone — press “Start live session”, draw it on the floor plan, and planning starts from what you drew.";
+    var mc = $("meshcat");
+    if(mc){
+      mc.removeAttribute("src");
+      mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.7}b{color:#334155}</style>'
+        + '<b>This case is defined by YOU, not by the injector.</b>'
+        + '<p>Press <i>Start live session</i>. The environment is built, then the simulation <b>stops and waits</b>'
+        + ' while you draw the no-go zone on the floor plan that appears here. Planning runs on the zone you drew.</p>'
+        + '<p>The saved recording for this case was produced by the <i>automatic</i> zone injector — press'
+        + ' <i>Load previous recording</i> if you want to watch that instead.</p>';
+    }
+  }
+  $("loadRecBtn").addEventListener("click", function(){
+    loadSavedArtifacts();
+    $("genHint").textContent = "Saved recording — its zone was placed by the automatic injector, not by an operator.";
+    toast("Saved recording: this zone came from the automatic injector, not from you.", "warn");
+  });
+
+  function startLayoutPolling(){
+    var p = $("zonePicker"); if(!p) return;
+    p.classList.add("on");
+    $("zoneWait").style.display = "";
+    $("zoneHud").style.display = "none";
+    zonePick = null; updateZoneHud();
+    if(layoutPoll) clearInterval(layoutPoll);
+    layoutPoll = setInterval(function(){
+      // 204 = 아직 env 를 빌드하는 중(모델에 따라 수 분). 200 이 오면 시뮬은 이미 멈춰서 기다리고 있다.
+      fetch(CONFIG.CONTROL_URL + "/layout", {cache:"no-store"})
+        .then(function(r){ return r.status === 200 ? r.json() : null; })
+        .then(function(L){
+          if(!L || !L.extent) return;
+          clearInterval(layoutPoll); layoutPoll = null;
+          zoneLayout = L;
+          $("zoneWait").style.display = "none";
+          $("zoneHud").style.display = "";
+          drawZoneCanvas();
+          $("genHint").textContent = "The simulation is waiting for your zone — click a center, drag for the radius, then confirm.";
+        }).catch(function(){});
+    }, 1500);
+  }
+
+  function makeXform(ext, w, h){
+    var pad = 14;
+    var s = Math.min((w - 2*pad) / Math.max(1e-9, ext.xmax - ext.xmin),
+                     (h - 2*pad) / Math.max(1e-9, ext.ymax - ext.ymin));
+    var ox = pad + ((w - 2*pad) - s*(ext.xmax - ext.xmin))/2;
+    var oy = pad + ((h - 2*pad) - s*(ext.ymax - ext.ymin))/2;
+    return {
+      s: s,
+      // 화면 y 는 아래로 자라고 월드 y 는 위로 자란다 → 뒤집는다. 안 뒤집으면 그린 자리와 실제 자리가
+      // y 축 대칭으로 어긋나는데, 화면만 봐서는 알 수 없다(공장 바닥이 대충 대칭이라 그럴듯해 보인다).
+      px: function(x, y){ return [ox + (x - ext.xmin)*s, h - (oy + (y - ext.ymin)*s)]; },
+      world: function(px, py){ return [(px - ox)/s + ext.xmin, (h - py - oy)/s + ext.ymin]; }
+    };
+  }
+
+  function drawZoneCanvas(){
+    var c = $("zoneCanvas"); if(!c || !zoneLayout) return;
+    var w = c.clientWidth || 800, h = c.clientHeight || 600;
+    if(c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+    var g = c.getContext("2d");
+    var css = getComputedStyle(document.documentElement);
+    var pick = function(v, d){ var s = (css.getPropertyValue(v)||"").trim(); return s || d; };
+    var colText = pick("--text-dim", "#64748b"), colLine = pick("--border-strong", "#cbd5e1");
+    var colAcc = pick("--accent", "#0ea5e9"), colWarn = pick("--warn", "#f59e0b");
+    // focus = 큰 적치원 하나를 뺀 창(엔진이 계산해 준다). 루트 적치원은 현장 전체를 감싸므로
+    // 거기에 맞추면 정작 구역을 놓을 자리가 화면의 몇 % 로 쪼그라든다. 큰 원은 화면 밖으로 넘친다.
+    var ext = zoneLayout.focus || zoneLayout.extent;
+    zoneXform = makeXform(ext, w, h);
+    g.clearRect(0, 0, w, h);
+    // 1 m 격자 — 반지름을 눈대중할 기준자가 없으면 "얼마나 큰 구역인가"를 화면에서 읽을 수 없다.
+    g.strokeStyle = colLine; g.lineWidth = 1; g.globalAlpha = .22;
+    var i, a, b;
+    for(i = Math.ceil(ext.xmin); i <= ext.xmax; i++){
+      a = zoneXform.px(i, ext.ymin); b = zoneXform.px(i, ext.ymax);
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+    for(i = Math.ceil(ext.ymin); i <= ext.ymax; i++){
+      a = zoneXform.px(ext.xmin, i); b = zoneXform.px(ext.xmax, i);
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+    g.globalAlpha = 1;
+    (zoneLayout.staging || []).forEach(function(s){
+      var p = zoneXform.px(s.x, s.y), r = Math.max(1, s.r * zoneXform.s);
+      g.beginPath(); g.arc(p[0], p[1], r, 0, 6.28319);
+      g.fillStyle = colAcc; g.globalAlpha = .10; g.fill();
+      g.globalAlpha = .8; g.strokeStyle = colAcc; g.lineWidth = 1.2; g.stroke();
+      g.globalAlpha = 1; g.fillStyle = colText; g.font = "10px ui-monospace, SFMono-Regular, monospace";
+      g.fillText(shortId(s.id), p[0] + 4, p[1] - 4);
+    });
+    g.fillStyle = colText;
+    (zoneLayout.robots || []).forEach(function(rb){
+      var p = zoneXform.px(rb.x, rb.y);
+      g.beginPath(); g.arc(p[0], p[1], Math.max(2, (zoneLayout.robot_radius || 0.25) * zoneXform.s), 0, 6.28319); g.fill();
+    });
+    if(zonePick){
+      var pp = zoneXform.px(zonePick.x, zonePick.y), rr = Math.max(1, zonePick.r * zoneXform.s);
+      g.beginPath(); g.arc(pp[0], pp[1], rr, 0, 6.28319);
+      g.fillStyle = colWarn; g.globalAlpha = .28; g.fill();
+      g.globalAlpha = 1; g.strokeStyle = colWarn; g.lineWidth = 2; g.stroke();
+      g.beginPath(); g.arc(pp[0], pp[1], 2.5, 0, 6.28319); g.fill();
+    }
+  }
+  // 화면에 보이는 숫자가 **곧 전송되는 숫자**여야 한다. 예전에는 표시가 2 자리(-0.45)이고 전송이
+  // 3 자리(-0.448)라 조작자가 기록한 좌표와 시뮬레이션이 받은 좌표가 미세하게 달랐다 — 물리적으로는
+  // 무의미한 차이지만, "내가 그린 그 자리"를 증거로 남기는 화면에서 표시와 실제가 다르면 안 된다.
+  function zround(v){ return Math.round(v * 1000) / 1000; }
+  function updateZoneHud(){
+    $("zvx").textContent = zonePick ? String(zround(zonePick.x)) : "—";
+    $("zvy").textContent = zonePick ? String(zround(zonePick.y)) : "—";
+    $("zvr").textContent = zonePick ? String(zround(zonePick.r)) : "—";
+    var btn = $("zoneConfirm"); if(btn) btn.disabled = !(zonePick && zonePick.r > 0.02);
+  }
+  (function wireZoneCanvas(){
+    var c = $("zoneCanvas"); if(!c) return;
+    function at(ev){
+      var b = c.getBoundingClientRect();
+      return zoneXform.world(ev.clientX - b.left, ev.clientY - b.top);
+    }
+    c.addEventListener("mousedown", function(ev){
+      if(!zoneLayout || !zoneXform) return;
+      var p = at(ev); zonePick = {x: p[0], y: p[1], r: 0}; zoneDrag = true;
+      updateZoneHud(); drawZoneCanvas();
+    });
+    c.addEventListener("mousemove", function(ev){
+      if(!zoneDrag || !zonePick) return;
+      var p = at(ev);
+      zonePick.r = Math.sqrt(Math.pow(p[0]-zonePick.x, 2) + Math.pow(p[1]-zonePick.y, 2));
+      updateZoneHud(); drawZoneCanvas();
+    });
+    window.addEventListener("mouseup", function(){
+      if(!zoneDrag) return;
+      zoneDrag = false;
+      // 끌지 않고 클릭만 한 경우 = 중심만 고른 것. 내장 ③ 케이스가 실제로 쓰는 크기(r≈0.3)를 준다.
+      if(zonePick && zonePick.r < 0.05) zonePick.r = 0.3;
+      updateZoneHud(); drawZoneCanvas();
+    });
+    window.addEventListener("resize", function(){ if(zoneLayout) drawZoneCanvas(); });
+  })();
+  $("zoneConfirm").addEventListener("click", function(){
+    if(!zonePick) return;
+    var x = zround(zonePick.x), y = zround(zonePick.y), r = zround(zonePick.r);
+    // 큰 구역은 "어려운 시나리오"가 아니라 **해가 없는 시나리오**가 되기 쉽다(inject 바와 같은 경고).
+    if(r >= 1.0 && !window.confirm(
+        "Radius " + r + " is about " + (r/0.3).toFixed(1) + "x the built-in zone (r≈0.3).\n\n" +
+        "A zone this large can leave no routable path at all: planning still runs, but the build then " +
+        "stalls with robots stuck in TRANSIT.\n\nUse it anyway?")){
+      return;
+    }
+    postZone(x, y, r).then(function(){
+      closeZonePicker();
+      $("genHint").textContent = "Operator zone (" + x + ", " + y + ", r=" + r + ") accepted — planning and simulation are running.";
+      toast("Zone confirmed at (" + x + ", " + y + ") r=" + r + " — planning starts now.", "ok");
+      showLivePreparing();
+    }).catch(function(e){ toast("Could not send the zone (" + e.message + ")", "warn"); });
+  });
+  $("zoneCancel").addEventListener("click", function(){
+    fetch(CONFIG.CONTROL_URL + "/abort", {method: "POST"}).then(function(){
+      closeZonePicker(); CONFIG.LIVE = false;
+      if(genPoll){ clearInterval(genPoll); genPoll = null; }
+      setBadge("err", "session cancelled");
+      $("genHint").textContent = "Session cancelled before the first step — no simulation was run.";
+    }).catch(function(){ toast("Could not reach the control server.", "warn"); });
   });
 
   /* ---- assembly models + OOD cases ---- */
@@ -655,7 +887,7 @@
         var stem = url.replace(/\.jsonl$/, "");
         var suf = "";
         stem = stem.replace(/((?:_n\d+)?(?:_s\d+)?)$/, function(m){ suf = m; return ""; });
-        ["canonical","dspy","surrogate"].forEach(function(p){
+        ["canonical","dspy","surrogate","router"].forEach(function(p){
           cands.push(stem + "__" + p + suf + ".jsonl");
         });
       }
@@ -1180,9 +1412,25 @@
     renderGantt([], null);
     renderRespec(null, []);
   }
+  // zone 이 들어간 케이스(③⑤⑥)는 **구역이 사람이 정의하는 사건**이다. 그래서 케이스를 고르는 것만으로는
+  // 아무 시뮬레이션도 틀지 않는다. 예전에는 여기서 옛 녹화를 자동 재생했는데, 그 녹화의 구역은
+  // 자동 주입기(render_demo.jl inject_blocking_zone!)가 심은 것이라 조작자가 정의한 적이 없다 —
+  // 화면상으로는 "내가 정의하지도 않은 구역의 시뮬레이션이 그냥 돌아가는" 것으로 보였고, 그게 이 화면의
+  // 원래 문제였다. 이제 zone 케이스는 정의 단계로 들어가고, 옛 녹화는 눌러야만(그리고 배지를 달고) 뜬다.
+  function isZoneCase(c){ return /zone/.test(String(c)); }
   function applySelection(){
     if(genPoll){ clearInterval(genPoll); genPoll = null; }
     markActiveCase();
+    curEnacted = enactedVal();
+    streamUrl = streamFile(modelBase(curModel), curCase, oodCountVal(), curEnacted, seedVal());
+    var zc = isZoneCase(curCase);
+    var lrb = $("loadRecBtn");  if(lrb) lrb.style.display = zc ? "" : "none";
+    // "Start live (no zone)" 는 zone 케이스에서 뜻이 없다(구역이 곧 그 케이스의 사건이다).
+    var nzb = $("startLiveNoZoneBtn"); if(nzb) nzb.style.display = zc ? "none" : "";
+    if(zc && !CONFIG.LIVE){ showZoneCaseIdle(); return; }
+    loadSavedArtifacts();
+  }
+  function loadSavedArtifacts(){
     var base = modelBase(curModel);
     var n = oodCountVal();
     var seed = seedVal();
@@ -1193,15 +1441,23 @@
     var mc = $("meshcat");
     if(mc){
       if(curEnacted){
-        // 정책별 녹화는 control 서버의 /artifact 가 모르는 이름이므로 직접 가리킨다.
-        // 다만 **있는지 먼저 확인**한다: 빌드가 미완주면 렌더가 애니메이션 발행을 거부하므로
-        // (의도된 안전장치) 그 조합에는 파일이 없다. 그냥 src 를 걸면 브라우저 404 페이지가
-        // 뜨는데, 그건 "왜 없는지"를 설명하지 못한다.
-        var animUrl = "anim/" + base + "__" + curCase + "__" + curEnacted + sfx + ".html";
-        fetch(animUrl, {method:"HEAD", cache:"no-store"}).then(function(r){
-          if(r.ok){ mc.removeAttribute("srcdoc"); mc.src = animUrl + "?v=" + Date.now(); }
-          else { throw new Error(r.status); }
-        }).catch(function(){
+        // 정책별 녹화도 /artifact 에 policy 를 넘겨 **서버가 이름을 풀게** 한다. 직접 이름을 만들면
+        // 날짜 접두사를 붙여 보관한 애니(2026-08-08_tractor__zone__router.html)를 못 찾는다.
+        // 컨트롤 서버가 안 떠 있으면 예전처럼 직접 이름으로 폴백한다.
+        // 어느 쪽이든 **있는지 먼저 확인**한다: 빌드가 미완주면 렌더가 애니 발행을 거부하므로
+        // (의도된 안전장치) 그 조합에는 파일이 없고, 그냥 src 를 걸면 브라우저 404 가 뜬다.
+        var directUrl = "anim/" + base + "__" + curCase + "__" + curEnacted + sfx + ".html";
+        fetch(CONFIG.CONTROL_URL + "/artifact", {method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({model:curModel, "case":curCase, n:n, seed:seed, policy:curEnacted})})
+          .then(function(r){ return r.json(); })
+          .then(function(a){ if(!a.anim_exists) throw new Error("no anim"); return a.anim; },
+                function(){ return directUrl; })
+          .then(function(animUrl){
+            return fetch(animUrl, {method:"HEAD", cache:"no-store"}).then(function(r){
+              if(!r.ok) throw new Error(r.status);
+              mc.removeAttribute("srcdoc"); mc.src = animUrl + "?v=" + Date.now();
+            });
+          }).catch(function(){
           mc.removeAttribute("src");
           mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.6}'
             + 'b{color:#334155}</style><b>No 3D animation for this combination.</b>'
@@ -1258,7 +1514,17 @@
                             wait: (opts.wait === undefined ? 300 : opts.wait)})
     })
       .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
-      .then(function(){
+      .then(function(txt){
+        // 서버는 동시 실행을 1 개로 막고 그 사실을 **200 본문**으로 알린다("busy — …"/"already running").
+        // 그걸 성공으로 읽으면 화면은 영원히 "생성 중"이 되고, zone 케이스에서는 오지 않을 평면도를
+        // 기다리는 빈 그리기 화면이 뜬다. 여기서 걸러 낸다.
+        if(/^(busy|already running)/i.test(String(txt || ""))){
+          CONFIG.LIVE = false; closeZonePicker();
+          setBadge("err", "server busy");
+          $("genHint").textContent = "Another run is already in progress — only one simulation runs at a time.";
+          toast(String(txt), "warn");
+          return;
+        }
         showLivePreparing();
         toast("Generation started for " + runCase + ". The replay will load automatically.", "ok");
         var tries = 0;
@@ -1283,6 +1549,8 @@
               if(!s.last || s.last.key!==expectedKey) return;
               if(s.last.state==="failed"){
                 CONFIG.LIVE=false; clearInterval(genPoll); genPoll=null;
+                // 실패했는데 그리기 화면이 남아 있으면 조작자는 영영 오지 않을 평면도를 기다린다.
+                closeZonePicker();
                 $("genHint").textContent="Generation failed — no incomplete animation was published.";
                 toast("Simulation failed: "+(s.last.error||"unknown error"), "warn");
               } else if(s.last.state==="complete"){

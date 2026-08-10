@@ -1,5 +1,45 @@
 # AI&T Monitor — ConstructionBots 자율 multi-robot assembly 관제 대시보드
 
+## 구역은 사람이 정의한다 — 라이브 정의 단계 (v5, 2026-08-08)
+
+**③ Forbid Zone / ⑤ Break+Zone / ⑥ Battery+Zone 은 조작자가 구역을 그리기 전에는 시뮬레이션이 시작되지
+않는다.** 이전에는 두 가지가 이 뜻을 무너뜨리고 있었다:
+
+| 무너뜨린 것 | 결과 |
+|---|---|
+| 케이스 버튼이 옛 녹화를 자동 재생 | 그 녹화의 구역은 **자동 주입기**(`inject_blocking_zone!`)가 심은 것 = 사람이 정의한 적 없는 시뮬레이션이 화면에서 그냥 돌아감 |
+| 라이브 세션의 `MONITOR_WAIT=300` 마감 | 5 분이 지나면 **구역 없이 출발** = "구역 사건"이라는 이름만 남은 런이 조용히 성립 |
+
+### 지금의 흐름
+
+```
+케이스 ③⑤⑥ 선택        → 아무것도 재생하지 않는다. "구역을 정의하라"는 상태.
+                          (옛 녹화를 보려면 `Load previous recording` — "자동 주입" 배지가 붙는다)
+Start live session      → 서버가 MONITOR_REQUIRE_ZONE=1 로 render_demo.jl 을 띄운다
+env 빌드(수 분)          → pre_sim_hook 이 commands/<key>.layout.json 을 쓴다
+                          (적치원 id·중심·반지름, 로봇 시작 위치, 바닥 범위, focus 창)
+                        → **첫 스텝 전에 멈춰 무한 대기**(마감 없음)
+대시보드가 GET /layout   → Factory View 자리에 2D 평면도. 클릭=중심, 드래그=반지름.
+`Confirm zone & start`  → POST /inject/zone → 명령 큐 → control hook 이 첫 스텝 전에 적용
+                        → 그때부터 planning·시뮬레이션이 돈다(ZoneTruth 1 건, 조작자 좌표 그대로)
+`Cancel session`        → POST /abort → 시뮬레이션을 돌리지 않고 프로세스 종료
+```
+
+`focus` 창: 루트 조립체의 적치원은 구성상 현장 전체를 감싸므로(실측 tractor `r=9.64` vs 나머지
+`0.48~3.79`) 거기에 화면을 맞추면 정작 구역을 놓을 자리가 몇 % 로 쪼그라든다. 그래서 **가장 큰 원
+하나를 뺀** 나머지 + 로봇에 맞춘 창을 함께 실어 보내고 대시보드는 그 창에 맞춘다(큰 원은 화면 밖으로
+넘칠 뿐 그려진다). 실측: 같은 캔버스에서 `r=0.3` 구역이 7.7 px → 16.8 px.
+
+**2026-08-08 검증**(tractor, `POST /run {case:"zone", interactive:true, n:1}`):
+env 빌드 210 초 → 평면도 도착 → **30 초간 프레임 0 개**(게이트가 실제로 막는다) →
+`POST /inject/zone {0.9, 0.9, 0.3}` → 44 초 뒤 프레임 시작, OOD 이벤트는 정확히 1 건
+(`"A human operator injected a no-go exclusion zone at (0.9, 0.9) with radius 0.3. It overlaps the
+staging area of assembly …"`).
+
+seed 는 이 흐름과 무관하다 — `DEMO_SEED` 는 **로봇 OOD(배터리·고장)의 발화 시점·종류**를 뽑는
+난수이고, 구역은 언제나 sim 전 1 회이며 이제 사람이 정한다. 로봇 OOD 케이스를 seed 별로 여러 판
+생성하려면 `run_seed_sweep.sh` 를 쓴다(아래).
+
 ## Live control (v4)
 
 Run the control dashboard on port 8080; MeshCat keeps its default live port 8700:
@@ -118,6 +158,25 @@ seed 는 RelocateBuild, 컴파일본은 NOOP.
 cd src/respec/llm_service && DSPY_PROGRAM=/nonexistent python -m uvicorn dspy_service:app --port 8080 &
 ```
 
+## seed 스윕 — 로봇 OOD 를 여러 판 생성 (`run_seed_sweep.sh`)
+
+```bash
+bash tools/monitor/run_seed_sweep.sh                  # battery+fault × seed 1..30 = 60 런 (순차)
+SEEDS="1 2 3" CASES="fault" bash tools/monitor/run_seed_sweep.sh
+```
+
+`DEMO_SEED` 는 **로봇 OOD(배터리 방전·급작 고장)의 발화 시점과 종류**를 뽑는 난수다. 구역은 대상이
+아니다 — 공간 restage 는 build step 이 열리기 전에만 transform-safe 해서 언제나 sim 전 1 회이고,
+이 데모에서는 사람이 정의한다(위 v5). 그래서 스윕 대상은 ① Battery 와 ② Breakdown 뿐이다.
+
+산출물 이름은 `render_demo.jl` 이 seed 로 붙인다(`tractor__battery_s7.jsonl`, seed 1 은 접미사 없음)
+— 대시보드의 `OOD seed` 칸에 값을 넣으면 그 판이 뜬다. 요약은 `seed_sweep_summary.csv`
+(`case,seed,exit,frames,complete,anim,seconds`). **미완주 런은 애니를 발행하지 않는다**(의도된 안전장치)
+— 그래서 `anim=no` 는 고장이 아니라 그 판이 완주하지 못했다는 뜻이다.
+
+★ 반드시 순차 실행이다. 병렬이면 HiGHS 가 런마다 다른 스케줄을 내 비교가 무효가 되고, 프로세스당
+~2.5GB 라 OOM 이 나며, 렌더가 MeshCat 포트(8700)를 공유해 충돌한다.
+
 ## 알려진 한계 / TODO
 - **Factory View(MeshCat)** 는 현재 `visualization.html`(tractor 애니) 고정. 모델별 애니는 별도 생성 필요
   (fault/replace 는 scene-tree 수술이라 save_animation=true 시 애니 업데이터가 크래시 → OOD 런은 애니 off).
@@ -125,6 +184,8 @@ cd src/respec/llm_service && DSPY_PROGRAM=/nonexistent python -m uvicorn dspy_se
   (llm_bridge → Python /propose)로 교체 가능(인터페이스 동일).
 - 큰 모델(Saturn V 1845 parts)은 env 빌드+시뮬이 오래 걸림 — 데모는 소형 모델(tractor/mini kits) 권장.
 - 인간이 존을 **라이브** 주입하는 ⛔ 버튼은 `POST /inject/zone` 명령 큐와 시뮬레이션-thread control hook으로 구현됨.
+  v5(위)에서 ③⑤⑥ 은 **평면도에 그려서** 정의하고, 그리기 전에는 시뮬레이션이 시작되지 않는다.
+  숫자 X/Y/R inject 바는 그대로 남아 있다 — 런 **도중** 두 번째 구역을 쏘는 용도.
 
 ---
 

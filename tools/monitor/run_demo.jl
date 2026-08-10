@@ -182,6 +182,12 @@ end
 # 순서: 아직 활성이 아닌 항법 목표만 후보 → 결정적 정렬 → 복구 가능한 것만 → 심은 뒤 실제로
 # 막혔는지(n_blocked ≥ 1) 확인, 아니면 지우고 다음 후보.
 const DEMO_ZONE_R = try max(0.05, parse(Float64, get(ENV, "DEMO_ZONE_R", "0.5"))) catch; 0.5 end
+# 어느 가족의 구역을 심을지. render_demo.jl 과 **같은 이름·같은 기본값**이어야 한다(두 엔진이 같은
+# 손잡이를 읽어야 같은 세계를 만든다). blocking = 실제로 막는다(개입이 정답) / harmless = 옛 주입기,
+# 적치원 가장자리를 스치기만 한다(NOOP 이 정답).
+const DEMO_ZONE_MODE = lowercase(get(ENV, "DEMO_ZONE_MODE", "blocking"))
+# pre-sim 에 심은 blocking 존의 **결정을 첫 배치 뒤로 미뤘는가**. simulate_case! 가 소비한다.
+const ZONE_DECIDE_DEFERRED = Ref(false)
 
 function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     isempty(env.staging_circles) && return nothing
@@ -460,12 +466,38 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
     else
     if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
         # DEMO_ZONE_AT 이 있으면 **사람이 고른 좌표**를 심는다(oracle/out/fz_presim.csv 카탈로그).
-        # 없으면 기존 argmin 주입기 그대로 -- 옛 실행의 재현성이 바뀌지 않는다.
+        # 카탈로그 재현이 걸린 경로이므로 이 우선순위는 그대로 둔다.
+        #
+        # 없을 때의 기본이 2026-08-08 에 바뀌었다: 옛 기본인 `inject_staging_zone!` 은 **설계상
+        # 아무것도 막지 않는다**(미래 작업과 가장 적게 겹치는 자리를 argmin 으로 고른다). 그래서
+        # 같은 "zone" 케이스인데 렌더 엔진(render_demo.jl)은 막는 구역을, 배치 엔진은 안 막는
+        # 구역을 만들고 있었다 — 두 엔진의 비대칭은 이 저장소가 이미 한 번 크게 데인 종류다.
+        # 이제 둘 다 blocking 을 기본으로 한다. 옛 동작은 DEMO_ZONE_MODE=harmless.
         local spec = declared_zone_spec()
-        nl = spec === nothing ? inject_staging_zone!(env; frac = 0.20) :
-             inject_declared_zone!(env; cx = spec.cx, cy = spec.cy, r = spec.r)
+        nl = if spec !== nothing
+            inject_declared_zone!(env; cx = spec.cx, cy = spec.cy, r = spec.r)
+        elseif DEMO_ZONE_MODE == "blocking"
+            # 후보를 못 찾으면 사건이 통째로 사라지므로(zone 케이스인데 zone 이 없는 런은 결과가
+            # 아니라 사고다) 무해 가족으로 폴백하고 그 사실을 로그에 남긴다.
+            local z = inject_blocking_zone!(env)
+            z === nothing &&
+                println("[zone] pre-sim blocking placement failed → falling back to the harmless injector")
+            z === nothing ? inject_staging_zone!(env; frac = 0.20) : z
+        else
+            inject_staging_zone!(env; frac = 0.20)
+        end
+        # ---- 결정 시점 (2026-08-08) --------------------------------------------------------
+        # 주입은 pre-sim 이지만 **결정은 첫 배치가 닫힌 뒤**에 한다(blocking 가족 한정).
+        # 왜: pre-sim 에는 모든 조립체가 pristine 이라 ForbidZone(매크로 3)이 유효 후보에 들어온다.
+        # 실측(같은 존·같은 seed): 즉시 결정 → ForbidZone → stall 204/313 / 뒤로 미룸 → RelocateBuild.
+        # 렌더 엔진은 push_ood! 로 큐에 넣어 자연히 closed≈58 에 결정했고 거기서 완주했다.
+        # 선언 좌표(DEMO_ZONE_AT)·harmless 경로는 오라클 카탈로그 재현이 걸려 있어 종전대로 즉시 결정.
         if nl !== nothing
-            log = CB.ood_truth_log(); handle_ood!(env, log[end].truth, nl)
+            if spec === nothing && DEMO_ZONE_MODE == "blocking"
+                ZONE_DECIDE_DEFERRED[] = true
+            else
+                log = CB.ood_truth_log(); handle_ood!(env, log[end].truth, nl)
+            end
         end
     end
     n_robot = demo_n > 0 ? demo_n : length(robot_kinds)   # DEMO_N overrides the robot-OOD count
@@ -515,6 +547,14 @@ end
 function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
     CB.step_environment!(env); CB.update_planning_cache!(env, 0.0)   # 초기 1스텝(캐시 채움)
     seen = length(CB.ood_truth_log())
+    # pre-sim 에 심어 두고 결정을 미뤄 둔 존을 **여기서** 정책에 올린다(위 ZONE_DECIDE_DEFERRED 주석).
+    # 첫 배치가 닫힌 뒤라 유효 매크로 집합이 실제 세계와 맞는다. seen 은 이미 이 truth 를 포함하므로
+    # 아래 루프가 중복 처리하지 않는다.
+    if ZONE_DECIDE_DEFERRED[]
+        ZONE_DECIDE_DEFERRED[] = false
+        local log0 = CB.ood_truth_log()
+        isempty(log0) || handle_ood!(env, log0[end].truth, log0[end].nl)
+    end
     last_closed = length(env.cache.closed_set); stall = 0
     for k in 2:max_steps
         CB.ood_inject_step!(env, k)                        # 예약 OOD 발화(truth 기록)
