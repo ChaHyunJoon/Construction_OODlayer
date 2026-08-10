@@ -85,8 +85,10 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 - `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` — 최신 측정(5시드×4정책) + 재현 절차
 - `wm4spacecraft_manufacturing/md/STATUS.md` — current state / resume point
 - `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
-- **`md/ORACLE_REBUILD_2026-08-09.md` — `test_llm7h.py` 게이트가 지금 깨져 있다.** 2026-08-09 정리로
-  fault 축(`firegrid_merged.jsonl`)은 하드 크래시, zone 축(`zcausal_reform/`)은 **조용히 n=0** 이다.
-  결과표를 재측정하기 전에 이 문서대로 두 라벨셋을 먼저 복구할 것.
+- **`md/ORACLE_REBUILD_2026-08-09.md` — 두 문서가 한 파일에 있다(같은 CPU 를 다투므로 순서가 중요).**
+  §I **평가 보강 계획**(baseline 사다리 B0~B9 · case별 격자 · STEP A~F 와 비용) →
+  §II **오라클 라벨 재빌드**(= 그 계획의 STEP D). 2026-08-09 정리로 fault 축
+  (`firegrid_merged.jsonl`)은 하드 크래시, zone 축(`zcausal_reform/`)은 **조용히 n=0** 이므로
+  결과표를 재측정하기 전에 §II 대로 두 라벨셋을 먼저 복구할 것.
 - `tools/README.md` — fast iteration loops
 - `src/SIMULATION_FLOW.md`, `RUN_GUIDE_KR.md`

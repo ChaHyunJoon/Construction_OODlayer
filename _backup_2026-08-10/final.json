@@ -1,0 +1,1771 @@
+{
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "n_runs": 20,
+  "policies": {
+    "canonical": {
+      "n": 5,
+      "n_complete": 4,
+      "success": 0.8,
+      "success_ci": [
+        0.3755282641185388,
+        0.9637768390302125
+      ],
+      "n_decisions_scored": 19,
+      "n_decisions_correct": 6,
+      "decision_rate": 0.3157894736842105,
+      "decision_ci": [
+        0.15364171004428598,
+        0.5398998982493537
+      ],
+      "per_kind": {
+        "BatteryTruth": {
+          "n": 6,
+          "correct": 0,
+          "rate": 0.0
+        },
+        "FaultTruth": {
+          "n": 6,
+          "correct": 6,
+          "rate": 1.0
+        },
+        "ZoneTruth": {
+          "n": 7,
+          "correct": 0,
+          "rate": 0.0
+        }
+      },
+      "chosen": {
+        "Replace": 12,
+        "NOOP": 7,
+        "ReformTeam": 30
+      },
+      "sim_seconds_complete": 66.3375,
+      "sim_seconds_sd": 1.3463685726179657,
+      "steps_complete": 2653.5,
+      "wall_seconds": 109.52,
+      "progress": 0.8766773162939296,
+      "energy_per_closed": 971.3696851819808,
+      "total_energy_J": 257365.94337205286,
+      "mean_soc": 0.965108802201457,
+      "min_soc": 0.9066957234867595,
+      "n_depleted": 0,
+      "spares_left": 9.6,
+      "detail": [
+        {
+          "truth": "BatteryTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 101,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 149,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 184,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 108,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 144,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 204,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 204,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 73,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 133,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 175,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 233,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 66,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 126,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 182,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 233,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 60,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 123,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 149,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 228,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        }
+      ]
+    },
+    "dspy": {
+      "n": 5,
+      "n_complete": 5,
+      "success": 1.0,
+      "success_ci": [
+        0.5655085052479191,
+        1.0
+      ],
+      "n_decisions_scored": 20,
+      "n_decisions_correct": 18,
+      "decision_rate": 0.9,
+      "decision_ci": [
+        0.6989617935882066,
+        0.9721341060158468
+      ],
+      "per_kind": {
+        "BatteryTruth": {
+          "n": 6,
+          "correct": 6,
+          "rate": 1.0
+        },
+        "FaultTruth": {
+          "n": 6,
+          "correct": 6,
+          "rate": 1.0
+        },
+        "ZoneTruth": {
+          "n": 8,
+          "correct": 6,
+          "rate": 0.75
+        }
+      },
+      "chosen": {
+        "SwapBattery": 6,
+        "Replace": 6,
+        "NOOP": 2,
+        "RelocateBuild": 6,
+        "ReformTeam": 10
+      },
+      "sim_seconds_complete": 40.965,
+      "sim_seconds_sd": 13.931603012575405,
+      "steps_complete": 1638.6,
+      "wall_seconds": 90.86,
+      "progress": 0.9297124600638977,
+      "energy_per_closed": 537.91264999131,
+      "total_energy_J": 156532.5811474712,
+      "mean_soc": 0.97894851967619,
+      "min_soc": 0.9518698510494396,
+      "n_depleted": 0,
+      "spares_left": 10.8,
+      "detail": [
+        {
+          "truth": "BatteryTruth",
+          "at": 58,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 101,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 150,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 184,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 256,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 108,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 146,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 225,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 270,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 73,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 133,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 175,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 233,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 66,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 126,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 183,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 231,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 270,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 60,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 121,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 149,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 228,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 238,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        }
+      ]
+    },
+    "noop": {
+      "n": 5,
+      "n_complete": 0,
+      "success": 0.0,
+      "success_ci": [
+        0.0,
+        0.43449149475208104
+      ],
+      "n_decisions_scored": 17,
+      "n_decisions_correct": 0,
+      "decision_rate": 0.0,
+      "decision_ci": [
+        0.0,
+        0.18432366037156456
+      ],
+      "per_kind": {
+        "BatteryTruth": {
+          "n": 6,
+          "correct": 0,
+          "rate": 0.0
+        },
+        "FaultTruth": {
+          "n": 5,
+          "correct": 0,
+          "rate": 0.0
+        },
+        "ZoneTruth": {
+          "n": 6,
+          "correct": 0,
+          "rate": 0.0
+        }
+      },
+      "chosen": {
+        "NOOP": 47
+      },
+      "sim_seconds_complete": null,
+      "sim_seconds_sd": 0.0,
+      "steps_complete": null,
+      "wall_seconds": 137.36,
+      "progress": 0.6638977635782748,
+      "energy_per_closed": 856.2779539235328,
+      "total_energy_J": 174603.884363669,
+      "mean_soc": 0.9412621865351712,
+      "min_soc": 0.1818903141016422,
+      "n_depleted": 0.8,
+      "spares_left": 12,
+      "detail": [
+        {
+          "truth": "BatteryTruth",
+          "at": 58,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 101,
+          "chosen": "NOOP",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 149,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 184,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 202,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 58,
+          "chosen": "NOOP",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 108,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 144,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 174,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 73,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 133,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 175,
+          "chosen": "NOOP",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 224,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 66,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 126,
+          "chosen": "NOOP",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 183,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 233,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 60,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 123,
+          "chosen": "NOOP",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": false,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 149,
+          "chosen": "NOOP",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": false,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 173,
+          "chosen": "NOOP",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        }
+      ]
+    },
+    "surrogate": {
+      "n": 5,
+      "n_complete": 4,
+      "success": 0.8,
+      "success_ci": [
+        0.3755282641185388,
+        0.9637768390302125
+      ],
+      "n_decisions_scored": 19,
+      "n_decisions_correct": 13,
+      "decision_rate": 0.6842105263157895,
+      "decision_ci": [
+        0.4601001017506463,
+        0.846358289955714
+      ],
+      "per_kind": {
+        "BatteryTruth": {
+          "n": 6,
+          "correct": 0,
+          "rate": 0.0
+        },
+        "FaultTruth": {
+          "n": 6,
+          "correct": 6,
+          "rate": 1.0
+        },
+        "ZoneTruth": {
+          "n": 7,
+          "correct": 7,
+          "rate": 1.0
+        }
+      },
+      "chosen": {
+        "Replace": 12,
+        "RelocateBuild": 7,
+        "ReformTeam": 10
+      },
+      "sim_seconds_complete": 35.5375,
+      "sim_seconds_sd": 4.295031043737248,
+      "steps_complete": 1421.5,
+      "wall_seconds": 96.4,
+      "progress": 0.8766773162939296,
+      "energy_per_closed": 738.8988732154779,
+      "total_energy_J": 189716.93708980054,
+      "mean_soc": 0.9744565781625403,
+      "min_soc": 0.9368429352165131,
+      "n_depleted": 0,
+      "spares_left": 9.6,
+      "detail": [
+        {
+          "truth": "BatteryTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 101,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 149,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 184,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 1
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 256,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 1
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 108,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 144,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 204,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 204,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 208,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 73,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 133,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 175,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 233,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 3
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 270,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 66,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 126,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.20): restore charge, cheapest restoring arm",
+          "correct": false,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 182,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 231,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 256,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 4
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 60,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 121,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 149,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 228,
+          "chosen": "RelocateBuild",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": true,
+          "ood_seed": 5
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 238,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5
+        }
+      ]
+    }
+  },
+  "basis": {
+    "battery": "battgrid_0805_s1.jsonl, 18 instances (6 fire points x 3 severities), all 3 arms",
+    "fault": "firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect separation",
+    "zone": "zcausal_reform/ STEP 10, 2 arm-crossed events (n=2 -- weakest axis)"
+  }
+}
