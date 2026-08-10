@@ -45,8 +45,19 @@ set -u
 cd "$(dirname "$0")/../.."                      # ConstructionBots.jl 레포 루트로 이동
 REPO_ROOT="$(pwd)"
 
+# 플래그를 **소비**한다. 예전에는 $1 만 보고 shift 하지 않아서, 뒤에 case 를 붙여 부르면
+# `--dry-run` 자체가 case 이름으로 흘러들어갔다(실측: `== [--dry-run] ==`). 모르는 플래그는
+# 조용히 무시하지 않고 죽인다 — 이 스크립트는 julia 렌더를 띄우므로 오타가 곧 사고다.
 DRY_RUN=0
-[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+POS_ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -*)        echo "[error] 알 수 없는 인자: $1"; echo "사용법: bash regen_router_cases.sh [--dry-run] [case ...]"; exit 1 ;;
+    *)         POS_ARGS+=("$1"); shift ;;
+  esac
+done
+set -- ${POS_ARGS[@]+"${POS_ARGS[@]}"}
 
 LOGD=tools/monitor/regen_router_logs
 STREAMS=tools/monitor/streams
@@ -62,7 +73,12 @@ export DEMO_POLICY=router
 export DEMO_ANIM=1
 export DEMO_MODEL=tractor.mpd
 
-CASES=(battery fault zone)
+# 인자로 case 를 주면 그것만, 없으면 기본 3종. 대시보드 버튼의 key 를 그대로 쓴다
+# (dashboard.html:795-806): none battery fault zone fault_battery fault_zone battery_zone battery_mild.
+# zone 이 들어간 셋(zone·fault_zone·battery_zone)은 운영자가 평면도에 구역을 그려야 시작하므로
+# 미리 렌더해 두는 대상이 아니다 — 자동 injector 녹화만 "Load previous recording" 로 본다.
+CASES=("$@")
+[ ${#CASES[@]} -eq 0 ] && CASES=(battery fault zone)
 
 echo "=== regen_router_cases.sh $([ "$DRY_RUN" -eq 1 ] && echo "(DRY RUN)") ==="
 echo "DEMO_MODEL=$DEMO_MODEL DEMO_ROUTER=$DEMO_ROUTER DEMO_POLICY=$DEMO_POLICY DEMO_ANIM=$DEMO_ANIM"
@@ -89,6 +105,18 @@ ok_cases=()
 fail_cases=()
 
 for case in "${CASES[@]}"; do
+  # ⑦ battery_mild 는 **실행 케이스와 표시 이름이 다르다**: 애매한 SoC(0.45)로 battery 를 돌린 것이다.
+  # render_demo.jl:111 의 DEMO_CASE_TAG 가 산출물 이름을 정하므로, 옛 regen_all_cases.sh 처럼
+  # plain battery 로 낸 뒤 mv 로 바꿔치기할 필요가 없다(그 방식은 battery 산출물을 소비해 버려서
+  # 끝에 battery 를 한 번 더 렌더해 복원해야 했다).
+  run_ood="$case"; extra_env=();
+  if [ "$case" = "battery_mild" ]; then
+    run_ood="battery"
+    extra_env=(DEMO_BSOC=0.45 DEMO_CASE_TAG=battery_mild)
+  fi
+  # Nominal 은 정의상 OOD 사건이 없다 → 라우터가 부를 결정 자체가 없다. 아래 (3) 검사에서 면제한다.
+  expect_router=1; [ "$case" = "none" ] && expect_router=0
+
   src_stream="$STREAMS/tractor__${case}.jsonl"
   src_anim="$ANIM/tractor__${case}.html"
   dst_stream="$STREAMS/tractor__${case}__router.jsonl"
@@ -99,7 +127,7 @@ for case in "${CASES[@]}"; do
 
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] rm -f \"$src_stream\" \"$src_anim\""
-    echo "[dry-run] env DEMO_MODEL=$DEMO_MODEL DEMO_OOD=$case DEMO_POLICY=$DEMO_POLICY" \
+    echo "[dry-run] env DEMO_MODEL=$DEMO_MODEL DEMO_OOD=$run_ood ${extra_env[@]+${extra_env[@]}} DEMO_POLICY=$DEMO_POLICY" \
                  "DEMO_ROUTER=$DEMO_ROUTER DEMO_ANIM=$DEMO_ANIM NOVELTY_CALIB=$NOVELTY_CALIB" \
                  "DSPY_URL=$DSPY_URL julia +lts --project=. tools/monitor/render_demo.jl > $log 2>&1"
     echo "[dry-run] on success -> mv \"$src_stream\" \"$dst_stream\"; mv \"$src_anim\" \"$dst_anim\""
@@ -111,7 +139,7 @@ for case in "${CASES[@]}"; do
   # 붙여 버린다(regen_case_policy_matrix.sh 에서 실제로 겪은 사고와 같은 함정).
   rm -f "$src_stream" "$src_anim"
 
-  env DEMO_OOD="$case" \
+  env DEMO_OOD="$run_ood" "${extra_env[@]}" \
     julia +lts --project=. tools/monitor/render_demo.jl \
     > "$log" 2>&1
   rc=$?
@@ -168,6 +196,13 @@ sys.exit(0 if all(k in d for k in ("sim_t", "n_closed", "ood")) else 1)
   n_routed=$(tr '\r' '\n' < "$log" | grep -ac '^\[router\]')
   if [ "$n_routed" -gt 0 ]; then
     router_state="ENGAGED ($n_routed decisions routed)"
+    # Nominal 인데 라우팅이 일어났다면 "사건 없음" 전제가 깨진 것이다 — 조용히 넘기지 않는다.
+    if [ "$expect_router" -eq 0 ]; then
+      case_ok=0
+      reason="${reason:+$reason; }case=none 인데 라우터가 $n_routed 건 라우팅했다(OOD 가 샜다)"
+    fi
+  elif [ "$expect_router" -eq 0 ]; then
+    router_state="n/a (Nominal — OOD 사건이 없으므로 라우팅할 결정 자체가 없다)"
   else
     router_state="NOT ENGAGED (no '[router] ... -> target' line in log)"
     case_ok=0
