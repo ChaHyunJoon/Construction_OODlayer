@@ -33,7 +33,43 @@ OUT=wm4spacecraft_manufacturing/oracle/out/zcausal_reform
 ARMS=("blk_noop" "blk_reloc" "cov_noop" "cov_reloc")
 REFORM=400
 REFORM_MAX=3
-DRY_RUN="${STEP_D_DRY_RUN:-}"  # --dry-run 이면 명령 출력만(실행 안 함)
+
+# ---- 명령줄 인자 파싱 --------
+# 환경변수와 CLI 둘 다 지원: STEP_D_DRY_RUN 또는 --dry-run 인자
+DRY_RUN="${STEP_D_DRY_RUN:-}"  # 환경변수 기본값
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run)
+                DRY_RUN="1"
+                shift
+                ;;
+            *)
+                echo "[error] 알 수 없는 인자: $1"
+                echo "사용법: bash run_step_d_zcausal.sh [--dry-run]"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+parse_args "$@"
+
+# ---- Julia 프로세스 사전 점검 (Global Constraint 1 방어) --------
+# 이미 실행 중인 Julia가 있으면 중단 — 두 번째 프로세스는 HiGHS 다중 실행으로 비교를 무효화한다.
+check_no_julia_running() {
+    if tasklist 2>/dev/null | grep -qi "julia.exe"; then
+        echo "[FATAL] julia.exe 프로세스가 이미 실행 중입니다!"
+        echo "  → 이미 실행 중인 Julia를 종료한 후 다시 시도하세요."
+        echo "  → HiGHS 다중 실행은 스케줄을 변경하여 비교 실험을 무효화합니다."
+        exit 1
+    fi
+}
+
+# dry-run 아니면 사전 점검
+if [ -z "$DRY_RUN" ]; then
+    check_no_julia_running
+fi
 
 # ---- 준비 --------
 mkdir -p "$OUT"

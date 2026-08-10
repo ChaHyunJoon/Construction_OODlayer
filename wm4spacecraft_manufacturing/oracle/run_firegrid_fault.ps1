@@ -95,6 +95,18 @@ $lanes = @(
                                     DS_BSOC = "0.05,0.35" } }
 )
 
+# 레인 필터 (2026-08-10, 야간 무인 실행용 옵트인). $env:FG_LANES 가 비어 있으면(기본) 하위호환으로
+# 3레인 전부 돈다. 예: $env:FG_LANES = "fault,faultidle" -> battB(= battgrid_0805_s1.jsonl 이 이미
+# 덮는 축, ORACLE_REBUILD_2026-08-09.md §II STEP 1)를 건너뛴다.
+if ($env:FG_LANES) {
+    $wanted = $env:FG_LANES -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+    $lanes  = @($lanes | Where-Object { $wanted -contains $_.name })
+    if ($lanes.Count -eq 0) {
+        throw "FG_LANES='$($env:FG_LANES)' 가 어떤 레인과도 안 맞는다 (유효값: fault, faultidle, battB)"
+    }
+    Write-Host "[firegrid-fault] FG_LANES filter -> $(($lanes | ForEach-Object { $_.name }) -join ', ')"
+}
+
 # 순차 실행이 기본이다 (2026-08-05 실측). 두 lane 을 병렬로 돌렸더니 4번째 instance 에서
 #   ERROR: LoadError: OutOfMemoryError()  @ run_with_stack (gen_oracle_dataset.jl)
 # 가 났다. 판 하나마다 `DS_STACK`(기본 2GB) 스택을 통째로 잡으므로 프로세스 2개 = 4GB 예약인데,
