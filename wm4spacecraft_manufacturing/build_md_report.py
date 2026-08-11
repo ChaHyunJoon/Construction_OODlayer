@@ -641,29 +641,14 @@ def render_validation_section(out_dir: Path):
 # =====================================================================================
 # 한계 (§7)
 # =====================================================================================
-def render_limitations_section():
-    L = []
-    L.append("## 7. 한계")
-    L.append("")
-    items = [
-        "통계적 유의성 없음 -- 시드 5개, 부호검정(sign test) 최소 p=0.062 (`RESULTS_LLM7H.md` 와 같은 한계).",
-        "`world_seed` 고정(=1) -- 다른 공장 배치(레이아웃)에 대한 일반화는 이번에 재지 않는다.",
-        "`zone` 과 `zonecore` 는 별도 스윕 두 번을 돌렸으나 통계치가 완전히 동일하다"
-        "(`diff artifacts_4pol/zone.md artifacts_4pol/zonecore.md` 가 빈 diff) -- "
-        "두 개의 다른 시나리오가 아니라 사실상 하나의 시나리오다.",
-        "shadow 채점은 **상태조건부 결정 충실도**다(\"이 상태에서 이 정책이 a\\* 를 골랐겠는가\"). "
-        "결과 비교가 아니다 -- shadow 숫자로 완주율/시간/에너지 주장을 하면 안 된다.",
-    ]
-    for it in items:
-        L.append("- %s" % it)
-    L.append("")
-    return L
+def render_limitations_section(boards_by_case):
+    return BFT.limitations_lines(boards_by_case)     # 한계 문구의 단일 진실원 (재구현 금지)
 
 
 # =====================================================================================
 # 헤더 (§1)
 # =====================================================================================
-def render_header(results_dir, out_dir, oracle_dir):
+def render_header(results_dir, out_dir, oracle_dir, n_boards, seeds, cases):
     now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     L = []
     L.append("# 4정책 x OOD case 종합 리포트 (자동 생성)")
@@ -672,28 +657,12 @@ def render_header(results_dir, out_dir, oracle_dir):
     L.append("")
     L.append("생성 시각: %s" % now)
     L.append("")
-    L.append("이 문서가 재는 것: 3개 실행 가능 정책(`noop`, `surrogate`, `llm`=dspy) x 8개 OOD case "
-              "(120 판 스윕, `run_4pol.sh`) 의 완주율/결정정확도/빌드시간/에너지 비교, 오라클 결과-천장"
+    L.append("이 문서가 재는 것: 3개 실행 가능 정책(`noop`, `surrogate`, `llm`=dspy) x %d개 OOD case "
+              "(%d 판 스윕, `run_4pol.sh`) 의 완주율/결정정확도/빌드시간/에너지 비교, 오라클 결과-천장"
               "(axis 단위, `oracle/out` 라벨 격자에서 직접 계산), 상태조건부 decision-shadow 비교, "
-              "post-hoc 검증(V1-V4), 알려진 한계.")
+              "post-hoc 검증(V1-V4), 알려진 한계." % (len(cases), n_boards))
     L.append("")
-    L.append("재현 절차:")
-    L.append("")
-    L.append("```bash")
-    L.append("# 1) 120 판 스윕 (순차, ~5h, julia 를 내부에서 부른다 -- 다른 julia 와 동시에 돌리지 말 것)")
-    L.append("bash run_4pol.sh --deadline-seconds <N> --seeds 1,2,3,4,5")
-    L.append("")
-    L.append("# 2) 오라클 라벨(fault/zone 축) 재생성 -- julia, 순차 (README 함정 30)")
-    L.append("bash run_step_d_all.sh")
-    L.append("")
-    L.append("# 3) 스윕 산출물을 case별 report/shadow md+json 으로 조립 (순수 파이썬)")
-    L.append("python build_final_table.py --results-dir results_4pol --out-dir artifacts_4pol")
-    L.append("")
-    L.append("# 4) 이 문서 (순수 파이썬, julia 호출 없음, subprocess 없음)")
-    L.append("python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol "
-              "--oracle-dir oracle/out")
-    L.append("```")
-    L.append("")
+    L.extend(BFT.repro_lines(n_boards, seeds, cases))
     L.append("입력 경로: `--results-dir %s` (raw 판) · `--out-dir %s` (report/shadow 산출물, 이 문서의 "
               "출력 위치이기도 함) · `--oracle-dir %s` (오라클 라벨 격자, Part A 전용)."
               % (results_dir, out_dir, oracle_dir))
@@ -727,8 +696,23 @@ def main():
     cases_info, status_by_case, status_n_bad, status_path = BFT.discover_cases(results_dir, night_dir)
     ceilings = compute_ceilings(oracle_dir)  # 3-C 단일 진실원 -- 헤드라인 표와 Part A 가 같은 dict 를 나눠 쓴다
 
+    # boards_by_case: 표본크기 산문(재현 절차·§7 한계)이 표와 같은 실측에서 나오게 하는 단일 소스.
+    # has_data 인 case 만 담는다 -- render_per_case_details 와 같은 로더(BFT.load_jsonl_lenient +
+    # BFT.dedup_boards)를 써서 두 절이 서로 다른 판 수를 세는 일이 없게 한다.
+    boards_by_case = {}
+    for case in BFT.CASES:
+        ci = cases_info[case]
+        if not ci["has_data"]:
+            continue
+        raw_rows, _ = BFT.load_jsonl_lenient(results_dir / ("%s.jsonl" % case))
+        boards_by_case[case] = BFT.dedup_boards(raw_rows)
+    n_boards = sum(len(bs) for bs in boards_by_case.values())
+    seeds = sorted({b.get("ood_seed") for bs in boards_by_case.values()
+                    for b in bs if b.get("ood_seed") is not None})
+    cases_with_data = [c for c in BFT.CASES if c in boards_by_case]
+
     L = []
-    L.extend(render_header(results_dir, out_dir, oracle_dir))
+    L.extend(render_header(results_dir, out_dir, oracle_dir, n_boards, seeds, cases_with_data))
     L.extend(render_headline_table(cases_info, out_dir, ceilings))
     L.append("---")
     L.append("")
@@ -744,7 +728,7 @@ def main():
     L.extend(render_validation_section(out_dir))
     L.append("---")
     L.append("")
-    L.extend(render_limitations_section())
+    L.extend(render_limitations_section(boards_by_case))
 
     text = "\n".join(L) + "\n"
     out_path = out_dir / "REPORT.md"

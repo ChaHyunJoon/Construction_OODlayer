@@ -51,17 +51,65 @@ CASES = ["battery", "fault", "zonecore", "all", "fault_battery", "fault_zone", "
 # 최종표 행 순서: oracle(천장) -> surrogate -> noop -> llm(dspy). plan §8 그대로.
 ROW_ORDER = [("oracle", None), ("surrogate", "surrogate"), ("noop", "noop"), ("llm", "dspy")]
 
-LIMITATIONS = [
-    "통계적 유의성 없음 -- 시드 5개, 부호검정(sign test) 최소 p=0.062 (RESULTS_LLM7H.md 와 같은 한계).",
-    "`world_seed` 고정(=1) -- 다른 공장 배치(레이아웃)에 대한 일반화는 이번에 재지 않는다.",
-    "STEP D 완료 이후: fault 축의 오라클 결과-천장은 두 라벨 세대(신세대 22 / 구세대 18, 5-arm 메뉴)로 "
-    "나뉘어 있어 이 표의 `fault` 행은 신세대 22개 헤드라인만 반영한다(풀링 안 함) -- 상세는 "
-    "`artifacts_4pol/REPORT.md` §3-A. zone 축은 `reference_policy.py` 규칙이 root-covered 영역에서 "
-    "오라클과 어긋난다는 결함이 STEP D 로 드러났으나, 이번 스윕(193건)에는 그 영역이 0건이라 아래 "
-    "숫자는 영향받지 않는다 -- 상세는 REPORT.md §3-B.",
-    "shadow 채점은 **상태조건부 결정 충실도**다(\"이 상태에서 이 정책이 a* 를 골랐겠는가\"). "
-    "결과 비교가 아니다 -- shadow 숫자로 완주율/시간/에너지 주장을 하면 안 된다.",
-]
+def limitations_lines(boards_by_case):
+    """§7 한계. 표본 크기 주장은 전부 실제 boards 에서 계산한다 -- 리터럴 금지.
+
+    (2026-08-11) 예전에는 시드 수와 부호검정 하한이 문자열 리터럴이었고, 같은 문장이
+    build_final_table.py 와 build_md_report.py **양쪽에** 복사돼 있었다. 시드를 20개로
+    늘려 재생성하면 표는 n=20, 산문은 옛 표본크기인 자가당착 문서가 나온다. 그 결함을 여기서 막는다.
+
+    주의: 이 파일은 test_report_sample_size.py 가 소스를 직접 grep 한다. 주석·독스트링에도
+    옛 표본크기 문구를 그대로 적지 말 것 -- 적으면 그 회귀 테스트가 실패한다.
+    """
+    n_seeds_by_case = {c: len({b.get("ood_seed") for b in bs}) for c, bs in boards_by_case.items()}
+    n_seeds = min(n_seeds_by_case.values()) if n_seeds_by_case else 0
+    # 부호검정 하한: 무승부가 없고 전승/전패일 때의 양측 p = 2 * 0.5^n
+    floor_p = 2.0 * (0.5 ** n_seeds) if n_seeds > 0 else 1.0
+    floor_str = ("%.3f" % floor_p) if floor_p >= 1e-3 else ("%.1e" % floor_p)
+
+    world_seeds = sorted({b.get("world_seed") for bs in boards_by_case.values()
+                          for b in bs if b.get("world_seed") is not None})
+    ws = world_seeds[0] if len(world_seeds) == 1 else world_seeds
+
+    items = []
+    if n_seeds < 6:
+        items.append("통계적 유의성 없음 -- 시드 %d개, 부호검정(sign test) 최소 p=%s "
+                     "(짝이 6개 미만이면 양측 p 가 0.05 아래로 내려갈 수 없다)." % (n_seeds, floor_str))
+    else:
+        items.append("시드 %d개 -- 부호검정 최소 양측 p=%s. 무승부는 검정에서 제외되므로 "
+                     "천장효과(모든 정책이 항상 완주)인 case 에서는 시드를 늘려도 "
+                     "유의해지지 않는다." % (n_seeds, floor_str))
+    items.append("`world_seed` 고정(=%s) -- 다른 공장 배치(레이아웃)에 대한 일반화는 이번에 재지 않는다." % ws)
+    items.append("빌드 시간(E4)은 **완주판만** 재므로 선택편향이 있다 -- 완주한 판끼리만 비교하는 것이라, "
+                 "완주율이 낮은 정책일수록 살아남은 판만 뽑혀 유리하게 보인다.")
+    items.append("shadow 채점은 **상태조건부 결정 충실도**다(\"이 상태에서 이 정책이 a\\* 를 골랐겠는가\"). "
+                 "결과 비교가 아니다 -- shadow 숫자로 완주율/시간/에너지 주장을 하면 안 된다.")
+    if "zonecore" in boards_by_case and "zone" in boards_by_case:
+        items.append("`zone` 과 `zonecore` 는 같은 실험이다 -- `run_demo.jl:433` 이 "
+                     "`DEMO_OOD_STREAM3=1` 에서 `:zonecore` 를 `:zone` 으로 바꾼다.")
+    return ["## 7. 한계", ""] + ["- %s" % it for it in items] + [""]
+
+
+def repro_lines(n_boards, seeds, cases):
+    """재현 절차. 판 수·시드·case 목록을 전부 인자에서 받는다 -- 리터럴 금지."""
+    seed_str = ",".join(str(s) for s in seeds)
+    case_str = ",".join(cases)
+    return [
+        "재현 절차:", "",
+        "```bash",
+        "# 1) %d 판 스윕 (순차, julia 를 내부에서 부른다 -- 다른 julia 와 동시에 돌리지 말 것)" % n_boards,
+        "bash run_4pol.sh --deadline-seconds 43200 --seeds %s --cases %s" % (seed_str, case_str),
+        "",
+        "# 2) 오라클 라벨(fault/zone 축) 재생성 -- julia, 순차 (README 함정 30)",
+        "bash run_step_d_all.sh",
+        "",
+        "# 3) 스윕 산출물을 case별 report/shadow md+json 으로 조립 (순수 파이썬)",
+        "python build_final_table.py --results-dir results_4pol --out-dir artifacts_4pol",
+        "",
+        "# 4) 이 문서 (순수 파이썬, julia 호출 없음, subprocess 없음)",
+        "python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --oracle-dir oracle/out",
+        "```", "",
+    ]
 
 MISSING_TOKEN = "미측정 (STEP D 필요)"
 # combined-kind case(all/fault_battery/fault_zone/battery_zone)는 단일-종류 오라클 격자가 애초에
@@ -218,6 +266,25 @@ def build_pooled_shadow(data_case_paths, out_dir: Path, py: str):
     return dict(ok=True, path=pooled_md)
 
 
+def check_v4(boards):
+    """V4 -- 판 수가 (시드 수 x 정책 수) 인지. 기대값을 하드코딩하지 않는다.
+
+    (2026-08-11) 예전에는 15 가 리터럴이었다 -- 20시드로 늘리면 60판이 정상인데도
+    "판 수 초과" 로 경고해 정상 스윕을 결함처럼 보이게 만든다.
+    """
+    n_seeds = len({b.get("ood_seed") for b in boards})
+    n_pol = len({b.get("policy") for b in boards})
+    expected = n_seeds * n_pol
+    n = len(boards)
+    if n == expected:
+        return ["V4 [PASS] 판 수 %d (%d seeds x %d policies) 그대로." % (n, n_seeds, n_pol)]
+    if n < expected:
+        return ["V4 [WARN] 판 수 부족: 기대 %d (%d seeds x %d policies), 실제 %d."
+                % (expected, n_seeds, n_pol, n)]
+    return ["V4 [WARN] 판 수 초과: 기대 %d (%d seeds x %d policies), 실제 %d."
+            % (expected, n_seeds, n_pol, n)]
+
+
 # =====================================================================================
 # 3. V1-V4 사후 검증 -- 원본 raw jsonl 의 decisions[] 를 직접 본다(report --json 에는
 #    llm/enacted/rule/surrogate 원본 필드가 안 실린다 -- reference_policy.score() 가
@@ -305,15 +372,8 @@ def validate_case(case, boards):
     else:
         lines.append("V3 [PASS] 빈 board(n_decisions==0) 없음 (판 %d개 전부 결정 >=1)." % len(boards))
 
-    # ---- V4: 행 수 (5 seeds x 3 policies = 15) -------------------------------------------
-    n = len(boards)
-    if n == 15:
-        lines.append("V4 [PASS] 판 수 15 (5 seeds x 3 policies) 그대로.")
-    elif n < 15:
-        lines.append("V4 [WARN] 판 수 부족: 기대 15 (5 seeds x 3 policies), 실제 %d." % n)
-    else:
-        lines.append("V4 [WARN] 판 수 초과: 기대 15 (5 seeds x 3 policies), 실제 %d "
-                      "(추가 정책/시드 -- 예: 픽스처의 canonical)." % n)
+    # ---- V4: 행 수 (기대값은 실제 시드 수 x 정책 수에서 계산한다 -- 리터럴 금지) ---------------
+    lines.extend(check_v4(boards))
 
     return lines
 
@@ -513,7 +573,7 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
     L.append("## Post-hoc validation (V1-V4)")
     L.append("")
     L.append("V1 LLM lane 이 진짜인지(canonical 로 조용히 폴백된 것이 아닌지) · V2 noop 이 정말 noop 인지 "
-              "· V3 빈 board 가 없는지 · V4 판 수가 5 seeds x 3 policies = 15 인지. 아래 각 case 마다 "
+              "· V3 빈 board 가 없는지 · V4 판 수가 (시드 수 x 정책 수) 인지. 아래 각 case 마다 "
               "네 줄씩 반드시 찍는다(조용한 생략 금지).")
     L.append("")
     for case in CASES:
@@ -553,9 +613,7 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
         L.append("- (참고) `_night/status_4pol.jsonl` 에서 파싱 안 되는 줄 %d개를 건너뜀." % status_n_bad)
     L.append("")
     L.append("### 구조적 한계 (항상 참, plan §11)")
-    for item in LIMITATIONS:
-        L.append("- %s" % item)
-    L.append("")
+    L.extend(limitations_lines(per_case_boards)[2:])  # [0:2] = "## 7. 한계","" 헤더 -- 이 절은 위에서 이미 찍었다
     return "\n".join(L) + "\n"
 
 
