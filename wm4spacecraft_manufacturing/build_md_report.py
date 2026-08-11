@@ -583,6 +583,7 @@ def render_per_case_details(cases_info, out_dir: Path, results_dir: Path):
     for case in BFT.CASES:
         ci = cases_info[case]
         md_path = out_dir / ("%s.md" % case)
+        json_path = out_dir / ("%s.json" % case)
         L.append("<details>")
         summary_bits = []
         if ci["has_data"]:
@@ -600,8 +601,44 @@ def render_per_case_details(cases_info, out_dir: Path, results_dir: Path):
         else:
             L.append(md_path.read_text(encoding="utf-8").strip())
         L.append("")
+        L.extend(render_paired_tests_table(case, json_path))
         L.append("</details>")
         L.append("")
+    return L
+
+
+def render_paired_tests_table(case, json_path: Path):
+    """task 6 -- E1(부호검정)/E3(에너지)/E4(빌드시간) 짝지은 검정 + Holm 보정 열을 표로 낸다.
+    `<case>.json` 은 `build_final_table.py` 가 `paired_tests`/`holm_adjusted` 로 이미 augment 해
+    놓은 것을 읽기만 한다(재계산/재구현 금지 -- 이 스크립트는 서브프로세스도, 새 통계도 없다)."""
+    if not json_path.exists():
+        return []
+    try:
+        json_data = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    paired = json_data.get("paired_tests") or {}
+    if not paired:
+        return []
+    L = []
+    L.append("| 비교 | E1 완주 (승/패/무, sign p, Holm) | E3 에너지 (Wilcoxon p, Holm) | E4 빌드시간 (Wilcoxon p, Holm) |")
+    L.append("|---|---|---|---|")
+    for pair_key, t in sorted(paired.items()):
+        a, b = pair_key.split("__")
+        hk = "%s__%s" % (case, pair_key)
+        h = json_data.get("holm_adjusted") or {}
+        e1 = "%d승 %d패 %d무, p=%.3f, Holm=%.3f" % (
+            t["e1_wins"], t["e1_losses"], t["e1_ties"], t["e1_sign_p"],
+            (h.get("e1") or {}).get(hk, 1.0))
+        if t["e1_note"]:
+            e1 += " — %s" % t["e1_note"]
+        e3 = "p=%.3f, Holm=%.3f (Δmed=%s, n=%d)" % (
+            t["e3_wilcoxon_p"], (h.get("e3") or {}).get(hk, 1.0),
+            ("%.1f" % t["e3_median_diff"]) if t["e3_median_diff"] is not None else "—", t["e3_n"])
+        e4 = "p=%.3f, Holm=%.3f (n=%d) — %s" % (
+            t["e4_wilcoxon_p"], (h.get("e4") or {}).get(hk, 1.0), t["e4_n"], t["e4_note"])
+        L.append("| `%s` vs `%s` | %s | %s | %s |" % (a, b, e1, e3, e4))
+    L.append("")
     return L
 
 

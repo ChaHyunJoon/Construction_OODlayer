@@ -71,4 +71,26 @@ for fn in ("build_md_report.py", "build_final_table.py"):
           "시드 5개" not in src and "0.062" not in src
           and not re.search(r"5 seeds x 3 policies", src))
 
+_rows = []
+for _s in range(1, 21):
+    _rows.append({"ood_seed": _s, "policy": "noop", "complete": False,
+                  "battery": {"energy_per_closed": 900.0}, "sim_seconds": None})
+    _rows.append({"ood_seed": _s, "policy": "dspy", "complete": True,
+                  "battery": {"energy_per_closed": 400.0}, "sim_seconds": 25.0})
+_out = build_final_table.paired_tests(_rows)
+_k = "noop__dspy"
+check("case 별 짝검정이 나온다",
+      _k in _out                             # 0승 20패 -> 유의 (sign p = 1.9e-06)
+      and _out[_k]["e1_sign_p"] < 0.05
+      and _out[_k]["e3_wilcoxon_p"] < 0.05   # 에너지 일관되게 낮음
+      and bool(_out[_k]["e4_note"]),         # noop 완주 0 -> 빌드시간 정의 불가
+      "e1=%.3g e3=%.3g" % (_out[_k]["e1_sign_p"], _out[_k]["e3_wilcoxon_p"]) if _k in _out else "missing")
+
+_fam = {"battery__noop__dspy": 0.01, "fault__noop__dspy": 0.04, "zone__noop__dspy": 0.5}
+_adj = build_final_table.holm_family(_fam)
+check("Holm 이 case x pair 족 전체에 적용된다",
+      abs(_adj["battery__noop__dspy"] - 0.03) < 1e-9      # 0.01 * 3
+      and abs(_adj["zone__noop__dspy"] - 0.5) < 1e-9,     # 0.5 * 1
+      str(_adj))
+
 sys.exit(1 if FAILED else 0)

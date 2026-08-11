@@ -39,6 +39,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import reference_policy  # noqa: E402  (BASIS 문자열만 읽는다 -- 채점 로직은 쓰지 않는다)
+from stats_paired import paired_wilcoxon, pair_boards, holm, sign_test   # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -190,6 +191,92 @@ def fmt_num(x, nd=1):
 
 
 # =====================================================================================
+# 0b. 짝지은 통계 (E1 부호검정 / E3·E4 Wilcoxon) + Holm 보정 (task 6, 20시드 검증)
+# =====================================================================================
+PAIRS = [("noop", "surrogate"), ("noop", "dspy"), ("surrogate", "dspy")]
+
+
+def _energy(r):
+    return ((r or {}).get("battery") or {}).get("energy_per_closed")
+
+
+def _time_if_complete(r):
+    """E4 는 완주판만 잰다 -- 완주하지 않은 판은 None(짝에서 탈락). 이게 곧 선택편향의 출처다."""
+    return r.get("sim_seconds") if r.get("complete") else None
+
+
+def paired_tests(rows):
+    """case 하나의 판들에 대해 3개 정책쌍 x E1/E3/E4 검정. 반환 {"a__b": {...}}."""
+    out = {}
+    for a, b in PAIRS:
+        ca, cb = pair_boards(rows, a, b, "complete")
+        w = sum(1 for x, y in zip(ca, cb) if bool(x) and not bool(y))
+        l = sum(1 for x, y in zip(ca, cb) if not bool(x) and bool(y))
+        t = sum(1 for x, y in zip(ca, cb) if bool(x) == bool(y))
+        e1 = sign_test(w, l)
+
+        ea = [_energy(r) for r in _rows_for(rows, a)]
+        eb = [_energy(r) for r in _rows_for(rows, b)]
+        e3 = paired_wilcoxon(ea, eb)
+
+        ta = [_time_if_complete(r) for r in _rows_for(rows, a)]
+        tb = [_time_if_complete(r) for r in _rows_for(rows, b)]
+        e4 = paired_wilcoxon(ta, tb)
+        e4_note = e4["note"] or ("완주판 짝 %d개만 비교 -- 선택편향(생존한 판끼리)" % e4["n_used"])
+
+        out["%s__%s" % (a, b)] = {
+            "e1_wins": w, "e1_losses": l, "e1_ties": t, "e1_sign_p": e1,
+            "e1_note": "천장(전부 동점) -- 시드를 늘려도 유의해질 수 없다" if t and not (w or l) else "",
+            "e3_wilcoxon_p": e3["p"], "e3_median_diff": e3["median_diff"], "e3_n": e3["n_used"],
+            "e4_wilcoxon_p": e4["p"], "e4_median_diff": e4["median_diff"], "e4_n": e4["n_used"],
+            "e4_note": e4_note,
+        }
+    return out
+
+
+def _rows_for(rows, policy):
+    """정책 하나의 판을 ood_seed 순으로. 짝맞춤은 pair_boards 와 같은 규칙(빠진 시드는 None)."""
+    idx = {(r.get("ood_seed"), r.get("policy")): r for r in rows}
+    seeds = sorted({r.get("ood_seed") for r in rows if r.get("ood_seed") is not None})
+    return [idx.get((s, policy)) or {} for s in seeds]
+
+
+def holm_family(pmap):
+    """{"case__a__b": p} -> 같은 딕셔너리 모양의 Holm 조정 p. 족(family) 안에서만 조정한다."""
+    keys = sorted(pmap)
+    adj = holm([pmap[k] for k in keys])
+    return dict(zip(keys, adj))
+
+
+def apply_holm_correction(all_artifacts, out_dir: Path):
+    """모든 case 의 paired_tests 가 다 모인 뒤(2-pass 의 2단계)에만 부를 것 -- Holm 은 case 하나가
+    아니라 endpoint 족(7 case x 3 정책쌍 = 21 검정) 전체에 적용된다. E1/E3/E4 는 서로 다른 물음이라
+    **족을 절대 섞지 않는다**(endpoint 별로 따로 21개씩 보정). 조정된 값을 모든 case JSON에 같은
+    딕셔너리로 써 넣고(어느 case 를 읽어도 전체 족을 볼 수 있게), 디스크의 `<case>.json` 도 갱신한다
+    (report --json 이 이미 써 놓은 것을 파이썬으로 다시 연다 -- llm_ood_eval.py 를 다시 부르지 않는다)."""
+    pmap = {"e1": {}, "e3": {}, "e4": {}}
+    for case in CASES:
+        art = all_artifacts.get(case)
+        if not art or not art.get("report_ok"):
+            continue
+        for pair_key, t in (art["json_data"].get("paired_tests") or {}).items():
+            k = "%s__%s" % (case, pair_key)
+            pmap["e1"][k] = t["e1_sign_p"]
+            pmap["e3"][k] = t["e3_wilcoxon_p"]
+            pmap["e4"][k] = t["e4_wilcoxon_p"]
+    holm_adjusted = {ep: holm_family(pm) for ep, pm in pmap.items()}
+
+    for case in CASES:
+        art = all_artifacts.get(case)
+        if not art or not art.get("report_ok"):
+            continue
+        art["json_data"]["holm_adjusted"] = holm_adjusted
+        json_path = art.get("json_path") or (out_dir / ("%s.json" % case))
+        json_path.write_text(json.dumps(art["json_data"], ensure_ascii=False, indent=2), encoding="utf-8")
+    return holm_adjusted
+
+
+# =====================================================================================
 # 1. case 판정 -- status 파일(마지막 줄이 이긴다) x 실제 파일(있으면 그게 이긴다)
 # =====================================================================================
 def load_status(night_dir: Path):
@@ -245,6 +332,12 @@ def build_case_artifacts(case_info, out_dir: Path, py: str):
     except Exception as e:  # noqa: BLE001
         result["report_err"] = "json 파싱 실패 %s: %r" % (json_path, e)
         return result
+
+    # task 6: E1(부호검정)/E3(에너지)/E4(빌드시간) 짝지은 검정 -- case 하나의 3개 정책쌍.
+    # dedup 된 raw board 를 그대로 쓴다(json_data["policies"] 는 이미 집계된 요약이라 짝짓기엔 못 쓴다).
+    boards = dedup_boards(case_info["raw_rows"])
+    result["json_data"]["paired_tests"] = paired_tests(boards)
+    result["json_path"] = json_path
 
     shadow_md = out_dir / ("shadow_%s.md" % case)
     rc2, out2, err2 = run_tool([py, str(HERE / "shadow_score.py"), "--in", str(path), "--md", str(shadow_md)])
@@ -675,6 +768,10 @@ def main():
             print("  shadow OK -> %s/shadow_%s.md" % (out_dir.name, case))
         else:
             print("  shadow FAILED: %s" % (art.get("shadow_err") or "")[:300])
+
+    # task 6, 2-pass: 모든 case 의 paired_tests 가 다 모인 지금에야 Holm 을 족(21 검정) 전체에 적용
+    # 할 수 있다 -- case 하나씩 처리하는 위 루프 안에서는 아직 다른 case 의 p 값을 모른다.
+    apply_holm_correction(all_artifacts, out_dir)
 
     pooled_shadow = build_pooled_shadow(data_case_paths, out_dir, py)
     if pooled_shadow.get("ok"):
