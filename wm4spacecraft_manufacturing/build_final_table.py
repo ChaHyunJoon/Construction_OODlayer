@@ -54,8 +54,11 @@ ROW_ORDER = [("oracle", None), ("surrogate", "surrogate"), ("noop", "noop"), ("l
 LIMITATIONS = [
     "통계적 유의성 없음 -- 시드 5개, 부호검정(sign test) 최소 p=0.062 (RESULTS_LLM7H.md 와 같은 한계).",
     "`world_seed` 고정(=1) -- 다른 공장 배치(레이아웃)에 대한 일반화는 이번에 재지 않는다.",
-    "fault·zone 축의 오라클 결과-천장(B: a* 실행 결과)은 아직 없다 -- STEP D 선행 필요"
-    "(`ORACLE_REBUILD_2026-08-09.md` §II, 추정 2~3시간). 결정-기준(A: a* 적중률)은 세 축 모두 있다.",
+    "STEP D 완료 이후: fault 축의 오라클 결과-천장은 두 라벨 세대(신세대 22 / 구세대 18, 5-arm 메뉴)로 "
+    "나뉘어 있어 이 표의 `fault` 행은 신세대 22개 헤드라인만 반영한다(풀링 안 함) -- 상세는 "
+    "`artifacts_4pol/REPORT.md` §3-A. zone 축은 `reference_policy.py` 규칙이 root-covered 영역에서 "
+    "오라클과 어긋난다는 결함이 STEP D 로 드러났으나, 이번 스윕(193건)에는 그 영역이 0건이라 아래 "
+    "숫자는 영향받지 않는다 -- 상세는 REPORT.md §3-B.",
     "shadow 채점은 **상태조건부 결정 충실도**다(\"이 상태에서 이 정책이 a* 를 골랐겠는가\"). "
     "결과 비교가 아니다 -- shadow 숫자로 완주율/시간/에너지 주장을 하면 안 된다.",
 ]
@@ -319,10 +322,37 @@ ORACLE_NOTE = (
 )
 
 
-def render_row_cells(row_label, case, json_data):
+# case(8개 스윕 case) -> build_md_report.compute_ceilings() 의 축 키. combined case(all/
+# fault_battery/fault_zone/battery_zone)는 단일-종류 오라클 격자가 없다(사건이 섞여서 나온다) --
+# 매핑에 없으면 render_row_cells 가 MISSING_TOKEN 을 낸다(진짜 결측, 지어내지 않는다).
+CASE_TO_CEILING_KEY = {
+    "battery": "battery",
+    "fault": "fault_current",   # 3-A: 헤드라인 = 신세대 22개만 (풀링 n=40 금지)
+    "zonecore": "zone",
+    "zone": "zone",
+}
+
+
+def oracle_ceiling_summary_for_case(case, ceilings):
+    """3-C 단일 진실원: `ceilings`(=`build_md_report.compute_ceilings()` 의 반환값)에서 이 case 에
+    해당하는 축 summary 를 꺼낸다. 재구현하지 않는다 -- 값의 출처는 오직 build_md_report.py 뿐이다."""
+    key = CASE_TO_CEILING_KEY.get(case)
+    if key is None:
+        return None
+    return (ceilings or {}).get(key)
+
+
+def render_row_cells(row_label, case, json_data, ceilings):
     if row_label == "oracle":
-        completion = "실측 n=18" if case == "battery" else MISSING_TOKEN
-        return [completion, "100% (정의상)", DASH, DASH]
+        summary = oracle_ceiling_summary_for_case(case, ceilings)
+        if summary is None:
+            return [MISSING_TOKEN, "100% (정의상)", DASH, DASH]
+        completion = fmt_pct(summary["completion_rate"], summary["n_complete"], summary["n"])
+        if summary.get("mean_makespan") is not None:
+            btime = "%.1f (완주판 n=%d)" % (summary["mean_makespan"], summary["n_makespan_arms"])
+        else:
+            btime = DASH
+        return [completion, "100% (정의상)", btime, DASH]
     pol_key = dict(ROW_ORDER)[row_label]
     policies = (json_data or {}).get("policies") or {}
     d = policies.get(pol_key)
@@ -343,7 +373,7 @@ ROW_LABEL_TEXT = {
 }
 
 
-def render_case_block(case, case_info, artifacts, py):
+def render_case_block(case, case_info, artifacts, py, ceilings):
     lines = []
     has_data = case_info["has_data"]
     status = case_info["status"]
@@ -392,9 +422,28 @@ def render_case_block(case, case_info, artifacts, py):
     lines.append("| 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |")
     lines.append("|---|---|---|---|---|")
     for label, _key in ROW_ORDER:
-        cells = render_row_cells(label, case, json_data)
+        cells = render_row_cells(label, case, json_data, ceilings)
         lines.append("| %s | %s |" % (ROW_LABEL_TEXT[label], " | ".join(cells)))
     lines.append("")
+
+    if case == "fault":
+        fault_legacy = (ceilings or {}).get("fault_legacy")
+        if fault_legacy is not None:
+            lines.append(
+                "> **3-A** -- 위 `oracle` 행의 완주율은 22개 **현재-세대** fault instance 만 반영한다"
+                "(`firegrid_s{fault,faultidle}.jsonl`, NOOP/Replace 2-arm 메뉴). 구세대 18개 instance"
+                "(5-arm 메뉴, macro 7/8 이전 라벨 -- CLAUDE.md \"성능 근거 아님\")는 헤드라인에서 제외"
+                "했다 -- 참고용 완주율 %s. **이 둘을 풀링한 n=40 천장은 이 문서에 없다** "
+                "(`artifacts_4pol/REPORT.md` §3-A 상세)."
+                % fmt_pct(fault_legacy["completion_rate"], fault_legacy["n_complete"], fault_legacy["n"]))
+            lines.append("")
+    elif case in ("zonecore", "zone"):
+        lines.append(
+            "> **3-B 참고** -- `reference_policy.py` 의 zone 규칙은 root-covered 영역(`cov` 계열)에서 "
+            "오라클과 어긋난다는 결함이 STEP D 로 드러났다. 이 case 를 포함한 8-case 스윕 전체에는 그 "
+            "영역의 결정이 0건이라(전부 root_covered==0) 위 표의 zone 관련 숫자는 영향받지 않는다 -- "
+            "결함 상세는 `artifacts_4pol/REPORT.md` §3-B.")
+        lines.append("")
 
     if artifacts["shadow_ok"]:
         lines.append("shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_%s.md` "
@@ -413,7 +462,7 @@ def render_case_block(case, case_info, artifacts, py):
 
 
 def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shadow, status_by_case,
-                    status_n_bad, status_path, py, args):
+                    status_n_bad, status_path, py, args, ceilings):
     now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     L = []
     L.append("# 4정책 x OOD case 비교표 -- FINAL (자동 생성)")
@@ -442,7 +491,8 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
 
     per_case_boards = {}
     for case in CASES:
-        block_lines, boards = render_case_block(case, cases_info[case], all_artifacts.get(case, {}), py)
+        block_lines, boards = render_case_block(case, cases_info[case], all_artifacts.get(case, {}), py,
+                                                  ceilings)
         per_case_boards[case] = boards
         L.extend(block_lines)
         L.append("---")
@@ -504,16 +554,27 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results-dir", default="results_4pol")
     ap.add_argument("--out-dir", default="artifacts_4pol")
+    ap.add_argument("--oracle-dir", default="oracle/out")
     args = ap.parse_args()
 
     results_dir = resolve_path(args.results_dir)
     out_dir = resolve_path(args.out_dir)
+    oracle_dir = resolve_path(args.oracle_dir)
     night_dir = resolve_path("_night")
     out_dir.mkdir(parents=True, exist_ok=True)
     py = sys.executable
 
     print("results-dir = %s" % results_dir)
     print("out-dir     = %s" % out_dir)
+    print("oracle-dir  = %s" % oracle_dir)
+
+    # 3-C 단일 진실원: 오라클 축 천장(battery/fault/zone) 계산은 build_md_report.py 에만 있다 -- 여기서
+    # 재구현하지 않고 지연 import 로 그 함수를 그대로 쓴다. (지연 import 인 이유: build_md_report.py
+    # 는 모듈 최상단에서 `import build_final_table as BFT` 를 하므로, 이 파일이 최상단에서 반대로
+    # build_md_report 를 import 하면 순환 임포트가 된다. 함수 안에서, 즉 이 모듈의 최상단 정의가 모두
+    # 끝난 시점에만 import 하면 어느 쪽이 먼저 실행되든 안전하다.)
+    import build_md_report as BMR  # noqa: E402  (지연 import, 순환 임포트 회피)
+    ceilings = BMR.compute_ceilings(oracle_dir)
 
     cases_info, status_by_case, status_n_bad, status_path = discover_cases(results_dir, night_dir)
 
@@ -545,7 +606,7 @@ def main():
         print("pooled shadow: %s" % pooled_shadow.get("err"))
 
     final_text = build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shadow,
-                                 status_by_case, status_n_bad, status_path, py, args)
+                                 status_by_case, status_n_bad, status_path, py, args, ceilings)
     final_path = out_dir / "FINAL.md"
     final_path.write_text(final_text, encoding="utf-8")
     print("\nFINAL -> %s" % final_path)

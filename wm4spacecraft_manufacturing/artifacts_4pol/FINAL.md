@@ -1,6 +1,6 @@
 # 4정책 x OOD case 비교표 -- FINAL (자동 생성)
 
-생성 시각: 2026-08-10T23:14:06-07:00
+생성 시각: 2026-08-11T00:17:07-07:00
 생성기: `build_final_table.py --results-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/results_4pol --out-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/artifacts_4pol`
 
 > `oracle` 은 실행 가능한 온라인 정책이 아니다(`tools/monitor/policy.jl` 에 oracle 분기 없음, `grep -i oracle` 0건). 이 행은 함께 달리는 네 번째 주자가 아니라 **천장/원점(ceiling)** 이다 -- "옳은 결정 100%"는 성능 주장이 아니라 나머지 세 행이 이 원점에서 얼마나 떨어졌는지 재는 눈금이다.
@@ -24,7 +24,7 @@
 
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 실측 n=18 | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (18/18) | 100% (정의상) | 19.8 (완주판 n=18) | — |
 | `surrogate` | 5/5 | 0% (0/20) | 26.1 ± 3.9 s | 473.9 |
 | `noop` (바닥선) | 5/5 | 0% (0/11) | 21.6 ± 0.0 s | 343.0 |
 | `llm` (dspy) | 5/5 | 100% (20/20) | 21.6 ± 0.0 s | 343.0 |
@@ -65,10 +65,12 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (22/22) | 100% (정의상) | 21.8 (완주판 n=22) | — |
 | `surrogate` | 5/5 | 100% (20/20) | 26.1 ± 3.9 s | 473.9 |
 | `noop` (바닥선) | 0/5 | 0% (0/6) | — | 947.4 |
 | `llm` (dspy) | 5/5 | 100% (20/20) | 26.1 ± 3.9 s | 473.9 |
+
+> **3-A** -- 위 `oracle` 행의 완주율은 22개 **현재-세대** fault instance 만 반영한다(`firegrid_s{fault,faultidle}.jsonl`, NOOP/Replace 2-arm 메뉴). 구세대 18개 instance(5-arm 메뉴, macro 7/8 이전 라벨 -- CLAUDE.md "성능 근거 아님")는 헤드라인에서 제외했다 -- 참고용 완주율 83% (15/18). **이 둘을 풀링한 n=40 천장은 이 문서에 없다** (`artifacts_4pol/REPORT.md` §3-A 상세).
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_fault.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -106,10 +108,12 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (2/2) | 100% (정의상) | 30.3 (완주판 n=2) | — |
 | `surrogate` | 4/5 | 100% (19/19) | 31.2 ± 1.9 s | 639.0 |
 | `noop` (바닥선) | 0/5 | 0% (0/20) | — | 722.0 |
 | `llm` (dspy) | 5/5 | 65% (13/20) | 26.1 ± 1.6 s | 439.3 |
+
+> **3-B 참고** -- `reference_policy.py` 의 zone 규칙은 root-covered 영역(`cov` 계열)에서 오라클과 어긋난다는 결함이 STEP D 로 드러났다. 이 case 를 포함한 8-case 스윕 전체에는 그 영역의 결정이 0건이라(전부 root_covered==0) 위 표의 zone 관련 숫자는 영향받지 않는다 -- 결함 상세는 `artifacts_4pol/REPORT.md` §3-B.
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_zonecore.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -311,10 +315,12 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (2/2) | 100% (정의상) | 30.3 (완주판 n=2) | — |
 | `surrogate` | 4/5 | 100% (19/19) | 31.2 ± 1.9 s | 639.0 |
 | `noop` (바닥선) | 0/5 | 0% (0/20) | — | 722.0 |
 | `llm` (dspy) | 5/5 | 65% (13/20) | 26.1 ± 1.6 s | 439.3 |
+
+> **3-B 참고** -- `reference_policy.py` 의 zone 규칙은 root-covered 영역(`cov` 계열)에서 오라클과 어긋난다는 결함이 STEP D 로 드러났다. 이 case 를 포함한 8-case 스윕 전체에는 그 영역의 결정이 0건이라(전부 root_covered==0) 위 표의 zone 관련 숫자는 영향받지 않는다 -- 결함 상세는 `artifacts_4pol/REPORT.md` §3-B.
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_zone.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -408,6 +414,6 @@ V1 LLM lane 이 진짜인지(canonical 로 조용히 폴백된 것이 아닌지)
 ### 구조적 한계 (항상 참, plan §11)
 - 통계적 유의성 없음 -- 시드 5개, 부호검정(sign test) 최소 p=0.062 (RESULTS_LLM7H.md 와 같은 한계).
 - `world_seed` 고정(=1) -- 다른 공장 배치(레이아웃)에 대한 일반화는 이번에 재지 않는다.
-- fault·zone 축의 오라클 결과-천장(B: a* 실행 결과)은 아직 없다 -- STEP D 선행 필요(`ORACLE_REBUILD_2026-08-09.md` §II, 추정 2~3시간). 결정-기준(A: a* 적중률)은 세 축 모두 있다.
+- STEP D 완료 이후: fault 축의 오라클 결과-천장은 두 라벨 세대(신세대 22 / 구세대 18, 5-arm 메뉴)로 나뉘어 있어 이 표의 `fault` 행은 신세대 22개 헤드라인만 반영한다(풀링 안 함) -- 상세는 `artifacts_4pol/REPORT.md` §3-A. zone 축은 `reference_policy.py` 규칙이 root-covered 영역에서 오라클과 어긋난다는 결함이 STEP D 로 드러났으나, 이번 스윕(193건)에는 그 영역이 0건이라 아래 숫자는 영향받지 않는다 -- 상세는 REPORT.md §3-B.
 - shadow 채점은 **상태조건부 결정 충실도**다("이 상태에서 이 정책이 a* 를 골랐겠는가"). 결과 비교가 아니다 -- shadow 숫자로 완주율/시간/에너지 주장을 하면 안 된다.
 

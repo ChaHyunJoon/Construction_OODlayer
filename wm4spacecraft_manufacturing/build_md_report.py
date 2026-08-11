@@ -153,21 +153,54 @@ def axis_battery(oracle_dir: Path):
     return out
 
 
-def axis_fault(oracle_dir: Path):
+def _fault_current_gen_ids(oracle_dir: Path):
+    """3-A: `firegrid_merged.jsonl` 은 CANONICAL(구세대, 5-arm 메뉴) + 이번 STEP D 런의 fire-grid
+    (신세대, 2-arm 메뉴) 을 합친 것이다(merge_firegrid.py 설계 그대로 -- novelty 교정용 분산을 더하는
+    합병이지, 성능 재는 축을 하나로 합치라는 뜻이 아니다). 두 세대를 arm 개수로 추측해 가르지 않고,
+    이번 런이 실제로 만든 두 원본 파일의 `instance` 필드로 정확히 가른다(브리핑 3-A 확정 사항)."""
+    ids = set()
+    for fn in ("firegrid_sfault.jsonl", "firegrid_sfaultidle.jsonl"):
+        for r in _rows_of(oracle_dir / fn):
+            iid = r.get("instance")
+            if iid is not None:
+                ids.add(iid)
+    return ids
+
+
+def axis_fault_split(oracle_dir: Path):
+    """3-A: fault 천장을 절대 풀링하지 않는다. `firegrid_merged.jsonl` 의 kind=='fault' instance
+    40개는 서로 다른 메뉴로 라벨된 두 세대다 -- 헤드라인은 **현재 세대 22개만**, 구세대 18개는 별도
+    로 계산해 명시적으로 제외 표시한다. 반환: dict(current=summary|None, legacy=summary|None,
+    n_fault_total, n_current, n_legacy)."""
     rows = _rows_of(oracle_dir / "firegrid_merged.jsonl")
     if not rows:
-        return None
+        return dict(current=None, legacy=None, n_fault_total=0, n_current=0, n_legacy=0)
+
+    new_ids = _fault_current_gen_ids(oracle_dir)
     groups = _group_by_instance(rows)
-    star_rows = []
-    for rs in groups.values():
-        if rs[0].get("kind") != "fault":
-            continue
-        star_rows.append(oracle_star_row(rs))
-    if not star_rows:
-        return None
-    out = summarize_star_rows(star_rows)
-    out["source"] = "oracle/out/firegrid_merged.jsonl (kind=='fault' instances only, test_llm7h.py:118-119 미러)"
-    return out
+    fault_groups = {iid: rs for iid, rs in groups.items() if rs[0].get("kind") == "fault"}
+    cur_groups = {iid: rs for iid, rs in fault_groups.items() if iid in new_ids}
+    leg_groups = {iid: rs for iid, rs in fault_groups.items() if iid not in new_ids}
+
+    def _summarize(gs, source):
+        if not gs:
+            return None
+        star_rows = [oracle_star_row(rs) for rs in gs.values()]
+        out = summarize_star_rows(star_rows)
+        out["source"] = source
+        return out
+
+    current = _summarize(
+        cur_groups,
+        "oracle/out/firegrid_s{fault,faultidle}.jsonl 의 instance 로 특정한 22개 현재-세대 fault "
+        "instance (NOOP/Replace 2-arm 메뉴, 이번 STEP D 런) -- 헤드라인")
+    legacy = _summarize(
+        leg_groups,
+        "firegrid_merged.jsonl 의 나머지 18개 구세대 fault instance (CANONICAL=openworld_merged.jsonl "
+        "유래, NOOP/Replace/Deprioritize/ForbidZone/ReformTeam 5-arm 메뉴, macro 7/8 이전 라벨 -- "
+        "CLAUDE.md \"성능 근거 아님\") -- 헤드라인에서 제외, 풀링 금지")
+    return dict(current=current, legacy=legacy, n_fault_total=len(fault_groups),
+                n_current=len(cur_groups), n_legacy=len(leg_groups))
 
 
 def axis_zone(oracle_dir: Path):
@@ -203,9 +236,24 @@ def axis_zone(oracle_dir: Path):
     return out
 
 
-def fmt_axis_row(axis_name, summary):
+def compute_ceilings(oracle_dir: Path):
+    """3-C 단일 진실원. battery/fault(3-A 분할)/zone 세 축의 오라클 결과-천장을 여기 한 곳에서만
+    계산한다 -- `build_final_table.py` 는 이 함수를 (지연) import 해서 쓰고, 재구현하지 않는다.
+    반환 키: battery, fault_current(헤드라인 n=22), fault_legacy(제외 n=18), zone. 값은 각각
+    `summarize_star_rows()` 형식의 summary dict 이거나(라벨 파일이 없으면) None."""
+    fault_split = axis_fault_split(oracle_dir)
+    return dict(
+        battery=axis_battery(oracle_dir),
+        fault_current=fault_split.get("current"),
+        fault_legacy=fault_split.get("legacy"),
+        zone=axis_zone(oracle_dir),
+    )
+
+
+def _summary_cells(summary):
+    """summary -> (완주율, mean(closed/total), mean(makespan)) 문자열 3종. None 이면 결측 그대로."""
     if summary is None:
-        return "| %s | %s | %s | %s | %s |" % (axis_name, MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN)
+        return (MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN)
     n = summary["n"]
     comp = "%.0f%% (%d/%d)" % (100 * summary["completion_rate"], summary["n_complete"], n)
     ct = ("%.1f%%" % (100 * summary["mean_closed_total"])) if summary["mean_closed_total"] is not None else NA
@@ -213,10 +261,73 @@ def fmt_axis_row(axis_name, summary):
         ms = "%.1f (완주판 n=%d)" % (summary["mean_makespan"], summary["n_makespan_arms"])
     else:
         ms = NA
-    return "| %s | %d | %s | %s | %s |" % (axis_name, n, comp, ct, ms)
+    return comp, ct, ms
 
 
-def render_oracle_ceiling_section(oracle_dir: Path):
+def fmt_axis_row(axis_name, summary):
+    if summary is None:
+        return "| %s | %s | %s | %s | %s |" % (axis_name, MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN)
+    comp, ct, ms = _summary_cells(summary)
+    return "| %s | %d | %s | %s | %s |" % (axis_name, summary["n"], comp, ct, ms)
+
+
+def _zone_truth_blast_radius(results_dir: Path):
+    """3-B: results_4pol/*.jsonl 8개 case 파일 전체를 훑어 `truth=='ZoneTruth'` 결정의 zone_primitives
+    (n_nav_blocked/root_covered) 분포를 직접 센다. 남의 말을 인용하지 않고 이 스크립트가 직접 재확인한다."""
+    cases = ("battery", "fault", "zonecore", "all", "fault_battery", "fault_zone", "battery_zone", "zone")
+    total = 0
+    in_blk_regime = 0  # root_covered == 0 and n_nav_blocked > 0 -- blk 계열, 규칙==오라클로 검증된 영역
+    other = []
+    per_case = {}
+    for case in cases:
+        rows = _rows_of(results_dir / ("%s.jsonl" % case))
+        n_this = 0
+        for r in rows:
+            for d in (r.get("decisions") or []):
+                if d.get("truth") != "ZoneTruth":
+                    continue
+                total += 1
+                n_this += 1
+                zp = d.get("zone_primitives") or {}
+                nb, rc = zp.get("n_nav_blocked"), zp.get("root_covered")
+                if rc == 0 and (nb is not None and nb > 0):
+                    in_blk_regime += 1
+                else:
+                    other.append((case, d.get("at"), nb, rc))
+        per_case[case] = n_this
+    return dict(total=total, in_blk_regime=in_blk_regime, other=other, per_case=per_case, cases=cases)
+
+
+def _shadow_zone_fidelity(out_dir: Path):
+    """3-B 문장의 "surrogate 100%, llm 66.3%" 를 하드코딩하지 않고 `shadow.md` 의 producer x kind
+    표(Zone 열)에서 그대로 뽑는다 -- §4 가 이미 이 표를 원문 인용하므로 여기서 숫자가 갈리면 바로
+    드러난다(단일 진실원). 실패해도(파일 없음/형식 변경) None 을 돌려 조용히 죽지 않는다."""
+    path = out_dir / "shadow.md"
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8")
+    marker = "| producer | Battery | Fault | Zone |"
+    if marker not in text:
+        return None
+    tail = text.split(marker, 1)[1]
+    out = {}
+    for line in tail.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            if out:
+                break
+            continue
+        if set(line) <= set("|- "):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) != 4:
+            continue
+        prod = cells[0].strip("`")
+        out[prod] = dict(battery=cells[1], fault=cells[2], zone=cells[3])
+    return out or None
+
+
+def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: Path, ceilings):
     L = []
     L.append("## 3. 오라클 결과-천장 (Part A -- 축 단위)")
     L.append("")
@@ -235,16 +346,17 @@ def render_oracle_ceiling_section(oracle_dir: Path):
     L.append("| 축 | n (instances) | a\\* 완주율 | mean(closed/total) | mean(makespan), 완주판만 |")
     L.append("|---|---|---|---|---|")
 
-    battery = axis_battery(oracle_dir)
-    fault = axis_fault(oracle_dir)
-    zone = axis_zone(oracle_dir)
+    battery = ceilings["battery"]
+    fault_current = ceilings["fault_current"]
+    fault_legacy = ceilings["fault_legacy"]
+    zone = ceilings["zone"]
 
     L.append(fmt_axis_row("battery", battery))
-    L.append(fmt_axis_row("fault", fault))
+    L.append(fmt_axis_row("**fault** (현재 세대, 헤드라인)", fault_current))
     L.append(fmt_axis_row("**zone** (n=2, 최약축)", zone))
     L.append("")
 
-    for name, summary in (("battery", battery), ("fault", fault), ("zone", zone)):
+    for name, summary in (("battery", battery), ("fault (현재 세대, 헤드라인)", fault_current), ("zone", zone)):
         if summary is None:
             L.append("- `%s`: %s -- 라벨 파일이 아직 없거나 비어 있다(STEP D 진행 중/미완료). "
                       "이 스크립트를 STEP D 완료 후 다시 돌리면 코드 변경 없이 실수치가 채워진다." % (name, MISSING_TOKEN))
@@ -257,13 +369,137 @@ def render_oracle_ceiling_section(oracle_dir: Path):
               "완주율이라는 말이 여기서는 \"두 사건군 중 a\\* 가 완주로 끝난 비율\"이라는 뜻이지, "
               "표본이 많은 통계가 아니다.")
     L.append("")
+
+    # ---- 3-A: fault 축은 두 세대다, 절대 풀링하지 않는다 --------------------------------
+    L.append("### 3-A. fault 축은 두 세대다 -- 풀링한 n=40 천장은 어디에도 없다")
+    L.append("")
+    L.append("`oracle/out/firegrid_merged.jsonl` 은 CANONICAL(=`wm_datasets.CANONICAL`, `openworld_merged.jsonl`) "
+              "+ 이번 STEP D 런의 fire-grid 를 합친 것이다(`merge_firegrid.py` docstring 그대로 -- novelty 교정용 "
+              "분산을 더하려고 설계된 합병이지, 성능을 재는 두 세대를 하나로 합쳐도 된다는 뜻이 아니다). "
+              "kind=='fault' instance 40개는 **서로 다른 메뉴로 라벨된 두 그룹**이다:")
+    L.append("")
+    L.append("| 출처 | instances | 라벨된 메뉴 |")
+    L.append("|---|---|---|")
+    L.append("| 신세대 (`firegrid_s{fault,faultidle}.jsonl`, 이번 STEP D 런) | %d | NOOP, Replace |"
+              % (fault_current["n"] if fault_current else 0))
+    L.append("| 구세대 (CANONICAL, macro 7/8 이전 라벨) | %d | NOOP, Replace, Deprioritize, ForbidZone, ReformTeam |"
+              % (fault_legacy["n"] if fault_legacy else 0))
+    L.append("")
+    L.append("두 그룹의 메뉴가 다르므로 a\\* 가 같은 것을 뜻하지 않는다. **위 표의 `fault` 행 = 신세대 "
+              "22개 헤드라인뿐이다.** 구세대 18개는 별도로, 헤드라인에서 제외한다고 명시한다:")
+    L.append("")
+    if fault_legacy is not None:
+        comp, ct, ms = _summary_cells(fault_legacy)
+        L.append("> **제외됨(헤드라인 아님) -- 구세대 fault instance 18개** "
+                  "(5-arm 메뉴, macro 7/8 이전 라벨, CLAUDE.md \"성능 근거 아님\"): "
+                  "a\\* 완주율 %s · mean(closed/total) %s · mean(makespan) %s. "
+                  "**이 18개를 위 22개 헤드라인과 풀링한 n=40 천장은 이 문서 어디에도 없다.**"
+                  % (comp, ct, ms))
+    else:
+        L.append("> 구세대 18개: %s (instance 를 하나도 못 찾았다 -- firegrid_merged.jsonl 내용을 "
+                  "확인할 것)." % MISSING_TOKEN)
+    L.append("")
+    L.append("> **혼동하지 말 것 -- `test_llm7h.py` 의 게이트는 풀링해도 정당하다.** "
+              "`fault 규칙 == 오라클 최선 (firegrid, n=40) PASS 40/40` 는 \"이 instance 에서 규칙이 "
+              "고른 팔과 오라클 최선이 같은가\"라는 **instance 단위 이항 비교**라, 그 instance 의 "
+              "메뉴가 2-arm 이든 5-arm 이든 잘 정의된다(둘 다 채점 가능한 이항 판정). 여기 이 절이 "
+              "재는 것은 그와 다르다 -- **a\\* 를 실제로 실행했을 때 결과(완주율/closed/makespan)** "
+              "는 메뉴가 넓을수록(5-arm) 더 나은 대안을 찾을 기회도 늘어나므로, 서로 다른 메뉴의 "
+              "결과를 한 숫자로 합치면 두 세대의 차이가 아니라 메뉴 폭의 차이를 재게 된다. 게이트가 "
+              "틀린 게 아니라, 게이트와 이 절이 **다른 것**을 재는 것이다.")
+    L.append("")
+    L.extend(render_zone_defect_section(oracle_dir, results_dir, out_dir))
+    return L
+
+
+def render_zone_defect_section(oracle_dir: Path, results_dir: Path, out_dir: Path):
+    """3-B: zone 결정-충실도 게이트가 STEP D 이후 실제로 돌면서 드러낸 규칙 결함을 1급 사실로 보고
+    한다. reference_policy.py 는 고치지 않는다(고치면 리포트 전체가 조용히 재채점된다) -- 여기서는
+    결함, 파급 범위, 그리고 이미 보고된 숫자가 그 결함의 영향을 받지 않는 이유를 셋 다 명시한다."""
+    L = []
+    L.append("### 3-B. zone 규칙 결함 -- STEP D 가 드러낸 것")
+    L.append("")
+    L.append("`test_llm7h.py` 의 zone 결정-충실도 게이트(`zone 규칙 == 오라클 최선 (zcausal, n=2)`)는 "
+              "`zcausal_reform/` 라벨이 없던 이전에는 n=0 로 조용히 PASS 했다. STEP D 가 4개 arm 파일을 "
+              "채운 지금은 실제로 돌고, **FAIL 한다**:")
+    L.append("")
+    L.append("```")
+    L.append("zone 규칙 == 오라클 최선 (zcausal, n=2)   FAIL")
+    L.append("  [('blk', 'RelocateBuild', 'RelocateBuild'),      <- agrees")
+    L.append("   ('cov', 'RelocateBuild', 'NOOP')]               <- oracle says RelocateBuild, rule says NOOP")
+    L.append("```")
+    L.append("")
+
+    zc = oracle_dir / "zcausal_reform"
+    cov_noop = cov_reloc = None
+    try:
+        cov_noop = json.loads((zc / "cov_noop.json").read_text(encoding="utf-8"))
+        cov_reloc = json.loads((zc / "cov_reloc.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    if cov_noop and cov_reloc:
+        L.append("근거(`oracle/out/zcausal_reform/`, 파일을 그대로 읽은 값 -- 재구현 아님):")
+        L.append("")
+        L.append("- `cov_noop.json`: status=%s, closed=%s, nav_blocked=%s, root_covered=%s"
+                  % (cov_noop.get("status"), cov_noop.get("closed"), cov_noop.get("nav_blocked"),
+                     cov_noop.get("root_covered")))
+        L.append("- `cov_reloc.json`: status=%s, closed=%s"
+                  % (cov_reloc.get("status"), cov_reloc.get("closed")))
+        L.append("")
+    L.append("즉 root-covered 계열(`cov`)에서는 **RelocateBuild 가 빌드를 완주시키고 NOOP 은 정지한다** -- "
+              "`reference_policy.py` 의 규칙(\"구역이 root 를 덮으면 NOOP -- 전역 이동이 더 손해\")이 "
+              "이 계열에서는 **틀렸다**. (이 태스크는 `reference_policy.py` 를 고치지 않는다 -- 고치면 "
+              "이 문서의 모든 숫자가 조용히 다시 채점된다. 여기서는 결함을 **보고**만 한다.)")
+    L.append("")
+
+    br = _zone_truth_blast_radius(results_dir)
+    L.append("**파급 범위(blast radius) -- 직접 재확인, 인용 아님.** `results_4pol/*.jsonl` 8개 case "
+              "파일의 `decisions[]` 중 `truth=='ZoneTruth'` 를 전부 훑어 `zone_primitives` 를 직접 "
+              "셌다 (%d건):" % br["total"])
+    L.append("")
+    for case in br["cases"]:
+        L.append("- `%s`: %d건" % (case, br["per_case"].get(case, 0)))
+    L.append("")
+    if br["other"]:
+        L.append("- **root_covered>0 (cov 계열이 실제로 등장하는) 사건 %d건 발견:**" % len(br["other"]))
+        for c, at, nb, rc in br["other"][:20]:
+            L.append("  - case=%s at=%s n_nav_blocked=%s root_covered=%s" % (c, at, nb, rc))
+        L.append("")
+        L.append("  위 사건들은 규칙이 틀린 영역에 실제로 걸렸을 수 있다 -- 아래 \"영향 없음\" 결론은 "
+                  "적용되지 않는다.")
+    else:
+        L.append("결과: **%d/%d 전부** `root_covered == 0` 이고 `n_nav_blocked > 0` 이다 -- 이번 8-case "
+                  "스윕에 등장하는 zone 사건은 전부 규칙이 오라클과 일치하는 것으로 검증된 `blk` 계열 "
+                  "영역뿐이고, 규칙이 틀린 `cov` 계열(root_covered>0)은 **한 건도 없다**."
+                  % (br["in_blk_regime"], br["total"]))
+    L.append("")
+
+    if not br["other"]:
+        shadow_zone = _shadow_zone_fidelity(out_dir)
+        if shadow_zone:
+            L.append("**따라서 이미 보고된 zone 결정-충실도 숫자는 이 결함의 영향을 받지 않는다** "
+                      "(아래 §4 산출 1, Zone 열과 같은 값 -- `shadow.md` 원문에서 그대로 뽑음, 재계산 아님):")
+            L.append("")
+            for prod in ("rule", "surrogate", "llm"):
+                if prod in shadow_zone:
+                    L.append("- `%s`: %s" % (prod, shadow_zone[prod]["zone"]))
+            L.append("")
+        L.append("> 세 문장 모두 참이고 다 필요하다: **(1)** `reference_policy.py` 의 zone 규칙은 "
+                  "root-covered 영역(`cov` 계열)에서 틀렸다. **(2)** 이번 8-case 스윕(193건)에는 그 "
+                  "영역의 결정이 **0건**이다(전부 root_covered==0). **(3)** 따라서 위·§4 에 이미 보고된 "
+                  "zone 숫자는 그대로 유효하다 -- 그러나 규칙 자체는 결함이 있으므로, 스윕을 "
+                  "root-covered 영역으로 넓히기 전에 반드시 고쳐야 한다(이 태스크의 범위 밖)."
+                  " (1)만 적으면 이미 낸 표를 근거 없이 무효화하는 것이고, (3)만 적으면 실제 결함을 "
+                  "묻는 것이다.")
+        L.append("")
     return L
 
 
 # =====================================================================================
 # 헤드라인 표 (8 case x 4 method) -- BFT.render_row_cells 재사용, 새로 계산하지 않는다.
 # =====================================================================================
-def render_headline_table(cases_info, out_dir: Path):
+def render_headline_table(cases_info, out_dir: Path, ceilings):
     L = []
     L.append("## 2. 헤드라인 표 -- 8 case x 4 방법")
     L.append("")
@@ -295,7 +531,7 @@ def render_headline_table(cases_info, out_dir: Path):
         L.append("| 정책 | 완주율 | 옳은 결정 (vs a\\*) | 빌드 시간(완주판) | J/closed |")
         L.append("|---|---|---|---|---|")
         for label, _key in BFT.ROW_ORDER:
-            cells = BFT.render_row_cells(label, case, json_data)
+            cells = BFT.render_row_cells(label, case, json_data, ceilings)
             L.append("| %s | %s |" % (BFT.ROW_LABEL_TEXT[label], " | ".join(cells)))
         L.append("")
     return L
@@ -489,13 +725,14 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cases_info, status_by_case, status_n_bad, status_path = BFT.discover_cases(results_dir, night_dir)
+    ceilings = compute_ceilings(oracle_dir)  # 3-C 단일 진실원 -- 헤드라인 표와 Part A 가 같은 dict 를 나눠 쓴다
 
     L = []
     L.extend(render_header(results_dir, out_dir, oracle_dir))
-    L.extend(render_headline_table(cases_info, out_dir))
+    L.extend(render_headline_table(cases_info, out_dir, ceilings))
     L.append("---")
     L.append("")
-    L.extend(render_oracle_ceiling_section(oracle_dir))
+    L.extend(render_oracle_ceiling_section(oracle_dir, results_dir, out_dir, ceilings))
     L.append("---")
     L.append("")
     L.extend(render_shadow_section(out_dir))

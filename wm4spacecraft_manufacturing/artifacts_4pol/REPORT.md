@@ -2,7 +2,7 @@
 
 ## 1. 헤더
 
-생성 시각: 2026-08-10T23:27:03-07:00
+생성 시각: 2026-08-11T00:17:10-07:00
 
 이 문서가 재는 것: 3개 실행 가능 정책(`noop`, `surrogate`, `llm`=dspy) x 8개 OOD case (120 판 스윕, `run_4pol.sh`) 의 완주율/결정정확도/빌드시간/에너지 비교, 오라클 결과-천장(axis 단위, `oracle/out` 라벨 격자에서 직접 계산), 상태조건부 decision-shadow 비교, post-hoc 검증(V1-V4), 알려진 한계.
 
@@ -41,7 +41,7 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 
 | 정책 | 완주율 | 옳은 결정 (vs a\*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 실측 n=18 | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (18/18) | 100% (정의상) | 19.8 (완주판 n=18) | — |
 | `surrogate` | 5/5 | 0% (0/20) | 26.1 ± 3.9 s | 473.9 |
 | `noop` (바닥선) | 5/5 | 0% (0/11) | 21.6 ± 0.0 s | 343.0 |
 | `llm` (dspy) | 5/5 | 100% (20/20) | 21.6 ± 0.0 s | 343.0 |
@@ -50,7 +50,7 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 
 | 정책 | 완주율 | 옳은 결정 (vs a\*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (22/22) | 100% (정의상) | 21.8 (완주판 n=22) | — |
 | `surrogate` | 5/5 | 100% (20/20) | 26.1 ± 3.9 s | 473.9 |
 | `noop` (바닥선) | 0/5 | 0% (0/6) | — | 947.4 |
 | `llm` (dspy) | 5/5 | 100% (20/20) | 26.1 ± 3.9 s | 473.9 |
@@ -59,7 +59,7 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 
 | 정책 | 완주율 | 옳은 결정 (vs a\*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (2/2) | 100% (정의상) | 30.3 (완주판 n=2) | — |
 | `surrogate` | 4/5 | 100% (19/19) | 31.2 ± 1.9 s | 639.0 |
 | `noop` (바닥선) | 0/5 | 0% (0/20) | — | 722.0 |
 | `llm` (dspy) | 5/5 | 65% (13/20) | 26.1 ± 1.6 s | 439.3 |
@@ -104,7 +104,7 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 
 | 정책 | 완주율 | 옳은 결정 (vs a\*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
-| `oracle` (천장·비실행) | 미측정 (STEP D 필요) | 100% (정의상) | — | — |
+| `oracle` (천장·비실행) | 100% (2/2) | 100% (정의상) | 30.3 (완주판 n=2) | — |
 | `surrogate` | 4/5 | 100% (19/19) | 31.2 ± 1.9 s | 639.0 |
 | `noop` (바닥선) | 0/5 | 0% (0/20) | — | 722.0 |
 | `llm` (dspy) | 5/5 | 65% (13/20) | 26.1 ± 1.6 s | 439.3 |
@@ -120,14 +120,67 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 | 축 | n (instances) | a\* 완주율 | mean(closed/total) | mean(makespan), 완주판만 |
 |---|---|---|---|---|
 | battery | 18 | 100% (18/18) | 93.0% | 19.8 (완주판 n=18) |
-| fault | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) |
-| **zone** (n=2, 최약축) | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) | 미측정 (STEP D 필요) |
+| **fault** (현재 세대, 헤드라인) | 22 | 100% (22/22) | 93.0% | 21.8 (완주판 n=22) |
+| **zone** (n=2, 최약축) | 2 | 100% (2/2) | 96.5% | 30.3 (완주판 n=2) |
 
 - `battery`: oracle/out/battgrid_0805_s1.jsonl (18 instances = 6 fire points x 3 severities, all 3 arms) (n=18)
-- `fault`: 미측정 (STEP D 필요) -- 라벨 파일이 아직 없거나 비어 있다(STEP D 진행 중/미완료). 이 스크립트를 STEP D 완료 후 다시 돌리면 코드 변경 없이 실수치가 채워진다.
-- `zone`: 미측정 (STEP D 필요) -- 라벨 파일이 아직 없거나 비어 있다(STEP D 진행 중/미완료). 이 스크립트를 STEP D 완료 후 다시 돌리면 코드 변경 없이 실수치가 채워진다.
+- `fault (현재 세대, 헤드라인)`: oracle/out/firegrid_s{fault,faultidle}.jsonl 의 instance 로 특정한 22개 현재-세대 fault instance (NOOP/Replace 2-arm 메뉴, 이번 STEP D 런) -- 헤드라인 (n=22)
+- `zone`: oracle/out/zcausal_reform/ STEP 10 (blk, cov 두 arm-crossed 사건군, n=2 -- 가장 약한 축) (n=2)
 
 > zone 축은 n=2(blk, cov 두 사건군)뿐이다 -- **가장 약한 축이고, 과잉해석하지 말 것.** 완주율이라는 말이 여기서는 "두 사건군 중 a\* 가 완주로 끝난 비율"이라는 뜻이지, 표본이 많은 통계가 아니다.
+
+### 3-A. fault 축은 두 세대다 -- 풀링한 n=40 천장은 어디에도 없다
+
+`oracle/out/firegrid_merged.jsonl` 은 CANONICAL(=`wm_datasets.CANONICAL`, `openworld_merged.jsonl`) + 이번 STEP D 런의 fire-grid 를 합친 것이다(`merge_firegrid.py` docstring 그대로 -- novelty 교정용 분산을 더하려고 설계된 합병이지, 성능을 재는 두 세대를 하나로 합쳐도 된다는 뜻이 아니다). kind=='fault' instance 40개는 **서로 다른 메뉴로 라벨된 두 그룹**이다:
+
+| 출처 | instances | 라벨된 메뉴 |
+|---|---|---|
+| 신세대 (`firegrid_s{fault,faultidle}.jsonl`, 이번 STEP D 런) | 22 | NOOP, Replace |
+| 구세대 (CANONICAL, macro 7/8 이전 라벨) | 18 | NOOP, Replace, Deprioritize, ForbidZone, ReformTeam |
+
+두 그룹의 메뉴가 다르므로 a\* 가 같은 것을 뜻하지 않는다. **위 표의 `fault` 행 = 신세대 22개 헤드라인뿐이다.** 구세대 18개는 별도로, 헤드라인에서 제외한다고 명시한다:
+
+> **제외됨(헤드라인 아님) -- 구세대 fault instance 18개** (5-arm 메뉴, macro 7/8 이전 라벨, CLAUDE.md "성능 근거 아님"): a\* 완주율 83% (15/18) · mean(closed/total) 91.9% · mean(makespan) 21.4 (완주판 n=15). **이 18개를 위 22개 헤드라인과 풀링한 n=40 천장은 이 문서 어디에도 없다.**
+
+> **혼동하지 말 것 -- `test_llm7h.py` 의 게이트는 풀링해도 정당하다.** `fault 규칙 == 오라클 최선 (firegrid, n=40) PASS 40/40` 는 "이 instance 에서 규칙이 고른 팔과 오라클 최선이 같은가"라는 **instance 단위 이항 비교**라, 그 instance 의 메뉴가 2-arm 이든 5-arm 이든 잘 정의된다(둘 다 채점 가능한 이항 판정). 여기 이 절이 재는 것은 그와 다르다 -- **a\* 를 실제로 실행했을 때 결과(완주율/closed/makespan)** 는 메뉴가 넓을수록(5-arm) 더 나은 대안을 찾을 기회도 늘어나므로, 서로 다른 메뉴의 결과를 한 숫자로 합치면 두 세대의 차이가 아니라 메뉴 폭의 차이를 재게 된다. 게이트가 틀린 게 아니라, 게이트와 이 절이 **다른 것**을 재는 것이다.
+
+### 3-B. zone 규칙 결함 -- STEP D 가 드러낸 것
+
+`test_llm7h.py` 의 zone 결정-충실도 게이트(`zone 규칙 == 오라클 최선 (zcausal, n=2)`)는 `zcausal_reform/` 라벨이 없던 이전에는 n=0 로 조용히 PASS 했다. STEP D 가 4개 arm 파일을 채운 지금은 실제로 돌고, **FAIL 한다**:
+
+```
+zone 규칙 == 오라클 최선 (zcausal, n=2)   FAIL
+  [('blk', 'RelocateBuild', 'RelocateBuild'),      <- agrees
+   ('cov', 'RelocateBuild', 'NOOP')]               <- oracle says RelocateBuild, rule says NOOP
+```
+
+근거(`oracle/out/zcausal_reform/`, 파일을 그대로 읽은 값 -- 재구현 아님):
+
+- `cov_noop.json`: status=stalled, closed=234, nav_blocked=1, root_covered=8
+- `cov_reloc.json`: status=complete, closed=279
+
+즉 root-covered 계열(`cov`)에서는 **RelocateBuild 가 빌드를 완주시키고 NOOP 은 정지한다** -- `reference_policy.py` 의 규칙("구역이 root 를 덮으면 NOOP -- 전역 이동이 더 손해")이 이 계열에서는 **틀렸다**. (이 태스크는 `reference_policy.py` 를 고치지 않는다 -- 고치면 이 문서의 모든 숫자가 조용히 다시 채점된다. 여기서는 결함을 **보고**만 한다.)
+
+**파급 범위(blast radius) -- 직접 재확인, 인용 아님.** `results_4pol/*.jsonl` 8개 case 파일의 `decisions[]` 중 `truth=='ZoneTruth'` 를 전부 훑어 `zone_primitives` 를 직접 셌다 (193건):
+
+- `battery`: 0건
+- `fault`: 0건
+- `zonecore`: 59건
+- `all`: 22건
+- `fault_battery`: 0건
+- `fault_zone`: 26건
+- `battery_zone`: 27건
+- `zone`: 59건
+
+결과: **193/193 전부** `root_covered == 0` 이고 `n_nav_blocked > 0` 이다 -- 이번 8-case 스윕에 등장하는 zone 사건은 전부 규칙이 오라클과 일치하는 것으로 검증된 `blk` 계열 영역뿐이고, 규칙이 틀린 `cov` 계열(root_covered>0)은 **한 건도 없다**.
+
+**따라서 이미 보고된 zone 결정-충실도 숫자는 이 결함의 영향을 받지 않는다** (아래 §4 산출 1, Zone 열과 같은 값 -- `shadow.md` 원문에서 그대로 뽑음, 재계산 아님):
+
+- `rule`: 0.0% (0/193)
+- `surrogate`: 100.0% (193/193)
+- `llm`: 66.3% (128/193)
+
+> 세 문장 모두 참이고 다 필요하다: **(1)** `reference_policy.py` 의 zone 규칙은 root-covered 영역(`cov` 계열)에서 틀렸다. **(2)** 이번 8-case 스윕(193건)에는 그 영역의 결정이 **0건**이다(전부 root_covered==0). **(3)** 따라서 위·§4 에 이미 보고된 zone 숫자는 그대로 유효하다 -- 그러나 규칙 자체는 결함이 있으므로, 스윕을 root-covered 영역으로 넓히기 전에 반드시 고쳐야 한다(이 태스크의 범위 밖). (1)만 적으면 이미 낸 표를 근거 없이 무효화하는 것이고, (3)만 적으면 실제 결함을 묻는 것이다.
 
 ---
 
