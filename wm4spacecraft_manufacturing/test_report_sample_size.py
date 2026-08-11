@@ -42,6 +42,13 @@ check("world_seed 한계가 남아 있다", "world_seed" in body)
 check("build_md_report 가 단일 진실원에 위임한다",
       build_md_report.BFT.limitations_lines is build_final_table.limitations_lines)
 
+# 빈 case 가 섞여도 n_seeds 가 0 으로 무너지면 안 된다(20시드 스윕이 zonecore 를 일부러 빼므로
+# 실제로 벌어지는 입력이다 -- fix round 2, 2026-08-11 코드리뷰 지적).
+mixed_body = "\n".join(build_final_table.limitations_lines(
+    {"battery": _boards(20), "zonecore": []}))
+check("빈 case 가 섞여도 시드 수가 0 으로 무너지지 않는다",
+      "시드 0개" not in mixed_body and "20" in mixed_body, mixed_body.splitlines()[0])
+
 rb = "\n".join(build_final_table.repro_lines(
     420, list(range(1, 21)),
     ["battery", "fault", "all", "fault_battery", "fault_zone", "battery_zone", "zone"]))

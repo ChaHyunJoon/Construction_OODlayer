@@ -61,7 +61,10 @@ def limitations_lines(boards_by_case):
     주의: 이 파일은 test_report_sample_size.py 가 소스를 직접 grep 한다. 주석·독스트링에도
     옛 표본크기 문구를 그대로 적지 말 것 -- 적으면 그 회귀 테스트가 실패한다.
     """
-    n_seeds_by_case = {c: len({b.get("ood_seed") for b in bs}) for c, bs in boards_by_case.items()}
+    # 데이터 없는 case(boards=[])는 건너뛴다 -- 안 그러면 min() 이 0 으로 무너져 "시드 0개, 최소
+    # p=1.000" 이 나온다(fix round 2, 2026-08-11 코드리뷰 지적). 20시드 스윕이 zonecore 를 일부러
+    # 빼므로(zone 의 증명된 중복) 이건 실제로 벌어질 입력이다 -- 방어를 호출부 하나에만 두지 않는다.
+    n_seeds_by_case = {c: len({b.get("ood_seed") for b in bs}) for c, bs in boards_by_case.items() if bs}
     n_seeds = min(n_seeds_by_case.values()) if n_seeds_by_case else 0
     # 부호검정 하한: 무승부가 없고 전승/전패일 때의 양측 p = 2 * 0.5^n
     floor_p = 2.0 * (0.5 ** n_seeds) if n_seeds > 0 else 1.0
@@ -613,7 +616,11 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
         L.append("- (참고) `_night/status_4pol.jsonl` 에서 파싱 안 되는 줄 %d개를 건너뜀." % status_n_bad)
     L.append("")
     L.append("### 구조적 한계 (항상 참, plan §11)")
-    L.extend(limitations_lines(per_case_boards)[2:])  # [0:2] = "## 7. 한계","" 헤더 -- 이 절은 위에서 이미 찍었다
+    # has-data case 만 넘긴다 -- 데이터 없는 case 가 하나라도 섞이면 그 case 의 boards=[] 가
+    # n_seeds_by_case 에 0 으로 들어가 min() 이 0 으로 무너진다("시드 0개, 최소 p=1.000") --
+    # build_md_report.py:326-333 과 같은 필터링 (fix round 2, 2026-08-11 코드리뷰 지적).
+    populated_boards = {c: bs for c, bs in per_case_boards.items() if bs}
+    L.extend(limitations_lines(populated_boards)[2:])  # [0:2] = "## 7. 한계","" 헤더 -- 이 절은 위에서 이미 찍었다
     return "\n".join(L) + "\n"
 
 
