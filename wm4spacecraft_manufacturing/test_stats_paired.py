@@ -65,4 +65,17 @@ rows = [
 xa, xb = pair_boards(rows, "a", "b", "v")
 check("pair_boards 시드 짝맞춤", xa == [1.0] and xb == [2.0], "%s %s" % (xa, xb))
 
+# 결정을 판별로 묶는 헬퍼가 판 경계를 지키는지 -- 여기가 틀리면 군집 CI 가 결정 단위 CI 로
+# 조용히 되돌아간다(그리고 숫자는 그럴듯해 보인다).
+import shadow_score
+
+_scored = [
+    {"_board": ("battery", 1, "dspy"), "correct": True},
+    {"_board": ("battery", 1, "dspy"), "correct": False},
+    {"_board": ("battery", 2, "dspy"), "correct": True},
+]
+_clusters = shadow_score.group_by_board(_scored)
+check("shadow 결정이 판 단위로 묶인다", sorted(len(c) for c in _clusters) == [1, 2],
+      str(sorted(len(c) for c in _clusters)))
+
 sys.exit(1 if FAILED else 0)

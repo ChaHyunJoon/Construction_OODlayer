@@ -26,6 +26,7 @@ sys.path.insert(0, str(HERE))
 
 import reference_policy                  # noqa: E402  (채점기 재사용 -- 재구현 금지)
 from ood_sweep_report import wilson       # noqa: E402  (CI 재사용)
+from stats_paired import cluster_bootstrap_ci     # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")    # cp949 콘솔에서 한글/기호가 죽는 것 방지
@@ -44,7 +45,11 @@ INTERPRETATION_LIMIT = (
 
 
 def load_rows_and_decisions(paths):
-    """여러 결과 jsonl(case 별) 을 합쳐 (판 목록, 결정 목록 하나) 로 돌려준다."""
+    """여러 결과 jsonl(case 별) 을 합쳐 (판 목록, 결정 목록 하나) 로 돌려준다.
+
+    각 결정에 `_board = (case, ood_seed, policy)` 를 찍어 둔다 -- 같은 판 안의 결정은
+    같은 사건 스트림·같은 정책·같은 상태 궤적을 공유해 서로 독립이 아니다. 이 키가
+    없으면 군집 부트스트랩 CI(group_by_board)가 판 경계를 못 찾는다."""
     rows, decisions = [], []
     for p in paths:
         with open(p, encoding="utf-8") as fh:
@@ -53,13 +58,36 @@ def load_rows_and_decisions(paths):
                 if line:
                     r = json.loads(line)
                     rows.append(r)
-                    decisions.extend(r.get("decisions") or [])
+                    board = (r.get("case"), r.get("ood_seed"), r.get("policy"))
+                    for d in (r.get("decisions") or []):
+                        d["_board"] = board
+                        decisions.append(d)
     return rows, decisions
 
 
 def score_producer(decisions, field):
-    """decisions 의 macro 를 producer 필드로 갈아 끼운 얕은 복사본으로 reference_policy.score 재사용."""
-    return reference_policy.score([dict(d, macro=d.get(field)) for d in decisions])
+    """decisions 의 macro 를 producer 필드로 갈아 끼운 얕은 복사본으로 reference_policy.score 재사용.
+
+    reference_policy.score() 는 내부에서 고정된 키만 담은 새 dict 를 만들어 돌려주므로
+    (재구현 금지 -- 손댈 수 없다) `_board` 가 그 안에서 유실된다. decisions 순서와
+    반환된 rows 순서가 1:1 이라는 score() 의 계약(각 ev 마다 정확히 한 row)에 기대어
+    사후에 다시 붙인다."""
+    n, c, rows = reference_policy.score([dict(d, macro=d.get(field)) for d in decisions])
+    for d, r in zip(decisions, rows):
+        r["_board"] = d.get("_board")
+    return n, c, rows
+
+
+def group_by_board(scored):
+    """채점된 결정들을 판(board) 단위 군집으로 묶는다. 반환: list[list[bool]].
+
+    `_board` 키가 (case, ood_seed, policy) 를 담는다. 같은 판 안의 결정은 서로 독립이 아니다
+    -- 같은 스트림·같은 정책·같은 상태 궤적이다. 그래서 CI 는 결정이 아니라 판을 재표집해야 한다.
+    """
+    buckets = {}
+    for d in scored:
+        buckets.setdefault(d.get("_board"), []).append(bool(d.get("correct")))
+    return list(buckets.values())
 
 
 def per_kind(rows):
@@ -127,11 +155,15 @@ def build_report(rows, decisions):
          "입력: %d rows / %d decisions. 공유 분모 N = %d (kind 는 알지만 필수 상태 필드가 없거나 "
          "ReformTruth 처럼 실측 격자가 없어 unscored 로 빠진 사건은 제외)." % (len(rows), len(decisions), N), "",
          "## 산출 1 -- producer 4개 (동일 사건·동일 분모 N=%d)" % N, "",
-         "| producer | n | 옳은 결정 (95% CI) |", "|---|---|---|"]
+         "| producer | n | 옳은 결정 (Wilson, 결정단위) | 95% CI (군집 부트스트랩, 판단위) |",
+         "|---|---|---|---|"]
     for label, field in PRODUCERS:
-        s, c, _ = score_producer(decisions, field)
+        s, c, prows = score_producer(decisions, field)
         lo, hi = wilson(c, s)
-        L.append("| `%s` | %d | %s [%.2f, %.2f] |" % (label, s, fmt(c, s), lo, hi))
+        rows_scored = [r for r in prows if r["correct"] is not None]
+        _, clo, chi = cluster_bootstrap_ci(group_by_board(rows_scored), reps=10000, seed=0)
+        L.append("| `%s` | %d | %s [%.2f, %.2f] | [%.2f, %.2f] |"
+                 % (label, s, fmt(c, s), lo, hi, clo, chi))
     L += ["", "| producer | Battery | Fault | Zone |", "|---|---|---|---|"]
     for label, field in PRODUCERS:
         pk = per_kind(score_producer(decisions, field)[2])
