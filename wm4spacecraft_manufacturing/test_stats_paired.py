@@ -78,4 +78,34 @@ _clusters = shadow_score.group_by_board(_scored)
 check("shadow 결정이 판 단위로 묶인다", sorted(len(c) for c in _clusters) == [1, 2],
       str(sorted(len(c) for c in _clusters)))
 
+# 위 체크는 _board 를 손으로 이미 박아 넣은 입력만 본다 -- load_rows_and_decisions 가
+# (ood_seed, policy) 만으로 _board 를 만들도록 회귀해도(case 를 빠뜨려도) 저 체크는 여전히
+# 통과한다. 그러면 다른 case 의 판이 seed·policy 만 같으면 한 군집으로 조용히 합쳐진다.
+# 여기서는 case 만 다르고 ood_seed·policy 는 같은 두 판을 실제 파일 ->
+# load_rows_and_decisions -> score_producer 로 흘려 실배선을 검증한다.
+import json
+import tempfile
+
+_tmp_rows = [
+    {"case": "battery", "ood_seed": 1, "policy": "dspy",
+     "decisions": [{"truth": "BatteryTruth", "soc": 0.5, "macro": "NOOP"}]},
+    {"case": "zone", "ood_seed": 1, "policy": "dspy",
+     "decisions": [{"truth": "BatteryTruth", "soc": 0.5, "macro": "NOOP"}]},
+]
+_tmp_path = None
+try:
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8") as fh:
+        _tmp_path = fh.name
+        for _r in _tmp_rows:
+            fh.write(json.dumps(_r) + "\n")
+    _rows2, _decisions2 = shadow_score.load_rows_and_decisions([_tmp_path])
+    _n2, _c2, _prows2 = shadow_score.score_producer(_decisions2, "macro")
+    _scored2 = [r for r in _prows2 if r["correct"] is not None]
+    _clusters2 = shadow_score.group_by_board(_scored2)
+    check("실배선: case 만 다르면 seed·policy 가 같아도 다른 판으로 갈린다",
+          len(_clusters2) == 2, "n_clusters=%d (scored=%d)" % (len(_clusters2), len(_scored2)))
+finally:
+    if _tmp_path:
+        os.remove(_tmp_path)
+
 sys.exit(1 if FAILED else 0)
