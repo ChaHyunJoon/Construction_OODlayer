@@ -30,7 +30,9 @@ DSPY_URL="${DSPY_URL:-http://127.0.0.1:8090}"
 POLICIES="noop,surrogate,dspy"
 
 # ---- 인자 --------------------------------------------------------------
-DEADLINE_SECONDS=18000
+# 기본은 7 case -- zonecore 는 뺐다(run_demo.jl:433 이 :zonecore 를 :zone 으로 바꾸므로 `zone` 과 같은 실험).
+CASES_CSV="battery,fault,all,fault_battery,fault_zone,battery_zone,zone"
+DEADLINE_SECONDS=43200
 SEEDS="1,2,3,4,5"
 RESUME=0
 
@@ -40,6 +42,8 @@ while [ $# -gt 0 ]; do
             DEADLINE_SECONDS="$2"; shift 2 ;;
         --seeds)
             SEEDS="$2"; shift 2 ;;
+        --cases)
+            CASES_CSV="$2"; shift 2 ;;
         --resume)
             RESUME=1; shift ;;
         *)
@@ -53,13 +57,20 @@ N_SEEDS=${#SEED_ARR[@]}
 EXPECTED_ROWS=$(( N_SEEDS * 3 ))
 
 # ---- case 목록: 실행 순서 그대로 (TIER1 -> TIER2 -> TIER3) --------------
-CASES=(battery fault zonecore all fault_battery fault_zone battery_zone zone)
+IFS=',' read -r -a CASES <<< "$CASES_CSV"
 
+# 2026-08-11 재보정: 예전 값(150/160/200)은 실측의 ~2.4배라 20시드에서 총 18.8h 를 추정,
+# 데드라인 가드가 실제로는 끝났을 case 를 건너뛰게 만든다. 아래는 실측 평균 x1.25.
 unit_price_for_case() {
     case "$1" in
-        all) echo 200 ;;
-        fault_battery|fault_zone|battery_zone) echo 160 ;;
-        *) echo 150 ;;  # battery, fault, zonecore, zone (단일 종류)
+        all)           echo 120 ;;   # 실측 94.3
+        fault_zone)    echo 100 ;;   # 실측 76.8
+        fault_battery) echo  90 ;;   # 실측 69.1
+        zone)          echo  85 ;;   # 실측 64.8
+        battery_zone)  echo  80 ;;   # 실측 62.8
+        fault)         echo  75 ;;   # 실측 58.5
+        battery)       echo  60 ;;   # 실측 43.9
+        *)             echo 120 ;;   # 미지의 case 는 가장 비싼 값으로
     esac
 }
 
@@ -112,15 +123,23 @@ if [ "$P1_OK" != "1" ]; then
 fi
 echo "[gate] P1 OK (live LLM probe)"
 
-# P2 -- 헬스체크
+# P2 -- 헬스체크 + 프로그램 신원 기록.
+# (2026-08-11) 예전엔 http_code 만 봤다. dspy_service.py:90 은 DSPY_PROGRAM 이 비면 컴파일된
+# gpt4o 프로그램으로 조용히 폴백하는데, 그건 battery 전용 어휘라 zone 을 재면 어휘 밖을 재게 된다.
+# 어느 프로그램으로 쟀는지 남기지 않으면 사후에 알 방법이 없다.
 set +e
-P2_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$DSPY_URL/health" 2>/dev/null)
+P2_RESP=$(curl -s -w '\n%{http_code}' "$DSPY_URL/health" 2>/dev/null)
 set -e
+P2_CODE=$(printf '%s' "$P2_RESP" | tail -n1)
+P2_BODY=$(printf '%s' "$P2_RESP" | sed '$d')
 if [ "$P2_CODE" != "200" ]; then
     echo "PREREQ FAIL: P2 (health check) -- http_code=$P2_CODE"
     exit 1
 fi
-echo "[gate] P2 OK (health check)"
+mkdir -p "$NIGHT_DIR"
+printf '%s\n' "$P2_BODY" > "$NIGHT_DIR/provenance_4pol.json"
+DSPY_PROGRAM_USED=$(printf '%s' "$P2_BODY" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("program","?"))' 2>/dev/null || echo "?")
+echo "[gate] P2 OK (health check) -- program=$DSPY_PROGRAM_USED"
 
 # P3 -- 행동 어휘 감사
 if ! "$PY" audit_action_vocab.py; then
@@ -158,8 +177,8 @@ mkdir -p "$RESULTS_DIR" "$NIGHT_DIR" "$LOG_DIR"
 
 emit_status() {
     local c="$1" status="$2" rows="$3" wall="$4"
-    printf '{"case":"%s","status":"%s","rows":%d,"wall_seconds":%d,"seeds":"%s","policies":"%s"}\n' \
-        "$c" "$status" "$rows" "$wall" "$SEEDS" "$POLICIES" >> "$STATUS_FILE"
+    printf '{"case":"%s","status":"%s","rows":%d,"wall_seconds":%d,"seeds":"%s","policies":"%s","program":"%s"}\n' \
+        "$c" "$status" "$rows" "$wall" "$SEEDS" "$POLICIES" "$DSPY_PROGRAM_USED" >> "$STATUS_FILE"
     echo "STATUS 4pol $c $status rows=$rows"
 }
 
