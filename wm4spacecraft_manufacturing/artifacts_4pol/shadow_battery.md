@@ -1,0 +1,53 @@
+# Shadow Score -- STEP A (새 시뮬 0회, 동일 사건·동일 분모)
+
+입력: 15 rows / 53 decisions. 공유 분모 N = 51 (kind 는 알지만 필수 상태 필드가 없거나 ReformTruth 처럼 실측 격자가 없어 unscored 로 빠진 사건은 제외).
+
+## 산출 1 -- producer 4개 (동일 사건·동일 분모 N=51)
+
+| producer | n | 옳은 결정 (95% CI) |
+|---|---|---|
+| `rule` | 51 | 0.0% (0/51) [0.00, 0.07] |
+| `surrogate` | 51 | 0.0% (0/51) [0.00, 0.07] |
+| `llm` | 51 | 100.0% (51/51) [0.93, 1.00] |
+| `macro (실제 enacted)` | 51 | 39.2% (20/51) [0.27, 0.53] |
+
+| producer | Battery | Fault | Zone |
+|---|---|---|---|
+| `rule` | 0.0% (0/51) | n/a | n/a |
+| `surrogate` | 0.0% (0/51) | n/a | n/a |
+| `llm` | 100.0% (51/51) | n/a | n/a |
+| `macro (실제 enacted)` | 39.2% (20/51) | n/a | n/a |
+
+## 산출 2 -- B1 kind->macro 룩업표 (leave-one-out, 자기 자신 제외)
+
+| kind | n | 옳음 | rate |
+|---|---|---|---|
+| Battery | 51 | 51 | 100.0% (51/51) |
+| Fault | 0 | 0 | n/a |
+| Zone | 0 | 0 | n/a |
+| **합계** | **51** | **51** | **100.0% (51/51)** |
+
+## 산출 3 -- B2 random-over-valid (해석적 기댓값, 몬테카를로 아님)
+
+| kind | n | 기댓값 합 | rate |
+|---|---|---|---|
+| Battery | 51 | 12.75 | 25.0% |
+| Fault | 0 | 0.00 | 0.0% |
+| Zone | 0 | 0.00 | 0.0% |
+| **합계** | **51** | **12.75** | **25.0%** |
+
+Fault 는 `valid` 가 기록되지 않아(정책 서버가 fault 에는 legal-macro 메뉴를 안 실어 보냄, `policy.jl:248` 의 kind 분기가 battery/zone 만 채운다) B2 기여가 언제나 0 이다 -- 이건 이 스크립트의 버그가 아니라 원본 로그의 공백이다. Zone 은 `valid=[NOOP, RelocateBuild]` 이므로 기댓값 50%가 바닥선 -- surrogate 의 zone 7/7 은 이 50% 에 견줘 읽어야 한다.
+
+## 산출 4 -- novelty 게이트 사후 재생
+
+router flag (판 단위, DEMO_ROUTER): {'0': 15}
+
+router_p: n=53, mean=0.660, range=[0.051, 0.980]
+
+"라우터가 켜졌다면 LLM 으로 올라갔을 결정" 비율 (router_novel==True, 사후 재생): 0.0% (0/53)
+
+## 해석 한계
+
+> 실행된 정책이 이후 세계를 갈라놓으므로 shadow 채점은 "이 상태에서 정책 X 는 a\* 를 골랐겠는가"
+> (상태 조건부 결정 충실도)이지 **결과 비교가 아니다.** 완주·시간·에너지를 shadow 로 말하면 안 된다.
+
