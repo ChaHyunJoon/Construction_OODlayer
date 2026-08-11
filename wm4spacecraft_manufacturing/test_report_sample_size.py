@@ -93,4 +93,22 @@ check("Holm 이 case x pair 족 전체에 적용된다",
       and abs(_adj["zone__noop__dspy"] - 0.5) < 1e-9,     # 0.5 * 1
       str(_adj))
 
+# 코드리뷰 fix round 1: 두 정책이 매판 완주(E1 전부 동점)하고 에너지도 매판 동일(E3 전부 동점)한
+# 픽스처 -- `t and not (w or l)` 이 미래에 느슨해져도(예: `w+l+t`) 조용히 안 깨지게 직접 겨눈다.
+_rows_ceiling = []
+for _s in range(1, 6):
+    for _p in ("noop", "surrogate", "dspy"):
+        _rows_ceiling.append({"ood_seed": _s, "policy": _p, "complete": True,
+                              "battery": {"energy_per_closed": 500.0}, "sim_seconds": 30.0})
+_out_ceiling = build_final_table.paired_tests(_rows_ceiling)
+_kc = "noop__surrogate"
+check("E1 전부 동점이면 천장 문구가 붙는다 (0승0패 만으로는 부족, 무승부 존재까지 본다)",
+      _out_ceiling[_kc]["e1_wins"] == 0 and _out_ceiling[_kc]["e1_losses"] == 0
+      and _out_ceiling[_kc]["e1_ties"] == 5
+      and _out_ceiling[_kc]["e1_note"] == "천장(전부 동점) -- 시드를 늘려도 유의해질 수 없다",
+      str(_out_ceiling[_kc]["e1_note"]))
+check("E3 에너지가 전부 동일하면 천장 문구가 붙는다 (e4 처럼 note 를 흘리지 않는다)",
+      _out_ceiling[_kc]["e3_note"] == "전부 동점 -- 검정 불가(ceiling)",
+      str(_out_ceiling[_kc]["e3_note"]))
+
 sys.exit(1 if FAILED else 0)

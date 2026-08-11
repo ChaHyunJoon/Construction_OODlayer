@@ -635,6 +635,8 @@ def render_paired_tests_table(case, json_path: Path):
         e3 = "p=%.3f, Holm=%.3f (Δmed=%s, n=%d)" % (
             t["e3_wilcoxon_p"], (h.get("e3") or {}).get(hk, 1.0),
             ("%.1f" % t["e3_median_diff"]) if t["e3_median_diff"] is not None else "—", t["e3_n"])
+        if t.get("e3_note"):
+            e3 += " — %s" % t["e3_note"]
         e4 = "p=%.3f, Holm=%.3f (n=%d) — %s" % (
             t["e4_wilcoxon_p"], (h.get("e4") or {}).get(hk, 1.0), t["e4_n"], t["e4_note"])
         L.append("| `%s` vs `%s` | %s | %s | %s |" % (a, b, e1, e3, e4))

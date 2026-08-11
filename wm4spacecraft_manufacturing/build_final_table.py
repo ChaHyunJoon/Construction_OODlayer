@@ -228,6 +228,7 @@ def paired_tests(rows):
             "e1_wins": w, "e1_losses": l, "e1_ties": t, "e1_sign_p": e1,
             "e1_note": "천장(전부 동점) -- 시드를 늘려도 유의해질 수 없다" if t and not (w or l) else "",
             "e3_wilcoxon_p": e3["p"], "e3_median_diff": e3["median_diff"], "e3_n": e3["n_used"],
+            "e3_note": e3["note"],
             "e4_wilcoxon_p": e4["p"], "e4_median_diff": e4["median_diff"], "e4_n": e4["n_used"],
             "e4_note": e4_note,
         }
