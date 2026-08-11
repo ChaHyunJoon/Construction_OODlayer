@@ -32,7 +32,7 @@ POLICIES="noop,surrogate,dspy"
 # ---- 인자 --------------------------------------------------------------
 # 기본은 7 case -- zonecore 는 뺐다(run_demo.jl:433 이 :zonecore 를 :zone 으로 바꾸므로 `zone` 과 같은 실험).
 CASES_CSV="battery,fault,all,fault_battery,fault_zone,battery_zone,zone"
-DEADLINE_SECONDS=43200
+DEADLINE_SECONDS=86400
 SEEDS="1,2,3,4,5"
 RESUME=0
 
@@ -59,18 +59,21 @@ EXPECTED_ROWS=$(( N_SEEDS * 3 ))
 # ---- case 목록: 실행 순서 그대로 (TIER1 -> TIER2 -> TIER3) --------------
 IFS=',' read -r -a CASES <<< "$CASES_CSV"
 
-# 2026-08-11 재보정: 예전 값(150/160/200)은 실측의 ~2.4배라 20시드에서 총 18.8h 를 추정,
-# 데드라인 가드가 실제로는 끝났을 case 를 건너뛰게 만든다. 아래는 실측 평균 x1.25.
+# 2026-08-11 재보정 (2차): 1차 재보정은 results_4pol/*.jsonl 의 `wall_seconds` 필드를 썼는데,
+# 그건 julia 가 자기 시뮬레이션만 잰 값이라 julia 프로세스 기동 + JIT(~100 s/판)이 빠져 있다.
+# 판마다 julia 를 새로 띄우므로 그 시간은 실제 비용이다. 아래는 _night/status_4pol.jsonl 의
+# bash 실측 벽시계(T1-T0, case 당 15판)에서 유도한 값 x1.15.
 unit_price_for_case() {
     case "$1" in
-        all)           echo 120 ;;   # 실측 94.3
-        fault_zone)    echo 100 ;;   # 실측 76.8
-        fault_battery) echo  90 ;;   # 실측 69.1
-        zone)          echo  85 ;;   # 실측 64.8
-        battery_zone)  echo  80 ;;   # 실측 62.8
-        fault)         echo  75 ;;   # 실측 58.5
-        battery)       echo  60 ;;   # 실측 43.9
-        *)             echo 120 ;;   # 미지의 case 는 가장 비싼 값으로
+        all)           echo 245 ;;   # 실측 212.3
+        fault_battery) echo 215 ;;   # 실측 186.2
+        fault_zone)    echo 205 ;;   # 실측 175.4
+        zone)          echo 190 ;;   # 실측 164.3
+        battery_zone)  echo 190 ;;   # 실측 162.1
+        fault)         echo 180 ;;   # 실측 154.6
+        battery)       echo 165 ;;   # 실측 143.9
+        zonecore)      echo 200 ;;   # 실측 172.5 (기본 목록엔 없다 -- zone 과 같은 실험)
+        *)             echo 245 ;;   # 미지의 case 는 가장 비싼 값으로
     esac
 }
 
