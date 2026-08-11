@@ -64,6 +64,12 @@ LIMITATIONS = [
 ]
 
 MISSING_TOKEN = "미측정 (STEP D 필요)"
+# combined-kind case(all/fault_battery/fault_zone/battery_zone)는 단일-종류 오라클 격자가 애초에
+# 존재하지 않는다(사건이 섞여서 나온다) -- MISSING_TOKEN 과는 다른 사실이다. MISSING_TOKEN 은
+# "라벨이 아직 없다, STEP D 를 돌리면 채워진다"는 뜻이라 여기 쓰면 독자에게 끝난 ~2시간짜리 STEP D
+# 를 다시 돌리라고 잘못 지시하게 된다(FIX ROUND 1 리뷰 발견 사항). 절대 채워지지 않는다는 것을
+# 구분해서 말하는 별도 토큰.
+NA_MIXED_KIND_TOKEN = "N/A (혼합종류 case -- 단일축 오라클 격자 없음)"
 DASH = "—"  # —
 
 
@@ -324,7 +330,8 @@ ORACLE_NOTE = (
 
 # case(8개 스윕 case) -> build_md_report.compute_ceilings() 의 축 키. combined case(all/
 # fault_battery/fault_zone/battery_zone)는 단일-종류 오라클 격자가 없다(사건이 섞여서 나온다) --
-# 매핑에 없으면 render_row_cells 가 MISSING_TOKEN 을 낸다(진짜 결측, 지어내지 않는다).
+# 매핑에 없으면 render_row_cells 가 NA_MIXED_KIND_TOKEN 을 낸다(STEP D 로도 못 채우는, 진짜 결측과는
+# 다른 "해당 없음" -- 라벨 파일이 있고 없고와 무관하게 단일축 오라클 격자 자체가 존재하지 않는다).
 CASE_TO_CEILING_KEY = {
     "battery": "battery",
     "fault": "fault_current",   # 3-A: 헤드라인 = 신세대 22개만 (풀링 n=40 금지)
@@ -344,6 +351,11 @@ def oracle_ceiling_summary_for_case(case, ceilings):
 
 def render_row_cells(row_label, case, json_data, ceilings):
     if row_label == "oracle":
+        if case not in CASE_TO_CEILING_KEY:
+            # 다종(kind) 혼합 case -- 단일축 오라클 격자가 아예 없다. STEP D 로도 채울 수 없는
+            # 결측이므로 MISSING_TOKEN 이 아니라 NA_MIXED_KIND_TOKEN (둘 다 REPORT.md/FINAL.md 가
+            # 여기 이 한 함수를 공유해서 렌더링한다 -- 분기 로직을 두 문서에서 중복하지 않는다).
+            return [NA_MIXED_KIND_TOKEN, "100% (정의상)", DASH, DASH]
         summary = oracle_ceiling_summary_for_case(case, ceilings)
         if summary is None:
             return [MISSING_TOKEN, "100% (정의상)", DASH, DASH]
