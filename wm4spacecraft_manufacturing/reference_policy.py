@@ -31,12 +31,40 @@ n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도
 숨기면 하나의 적중률 숫자가 서로 다른 근거를 뭉갠다.
 """
 
-BATTERY_DEEP_SOC = 0.2      # battgrid 사다리에서 완주/미완주가 갈리는 칸 (0.02 vs 0.30)
+BATTERY_DEEP_SOC = 0.3      # n44_plus78_fardepot 사다리에서 완주/미완주가 갈리는 칸 (0.30 vs 0.50)
 
 BASIS = {
-    "battery": "battgrid_0805_s1.jsonl, 18 instances (6 fire points x 3 severities), all 3 arms",
-    "fault": "firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect separation",
-    "zone": "zcausal_reform/ STEP 10, 2 arm-crossed events (n=2 -- weakest axis)",
+    "battery": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 9 instances "
+                "(3 severities x 3 arms). SoC 0.02: NOOP (closed 163/313) and Replace (215/313) "
+                "both FAIL to complete, only SwapBattery completes (291/313, 20.1s). SoC 0.30: "
+                "NOOP and Deprioritize both FAIL (274/313 each, tied), only SwapBattery completes "
+                "(291/313, 20.1s) -> deep side (<=0.30) decided by COMPLETION, not cost. SoC 0.50: "
+                "all three arms complete (291/313); NOOP/Deprioritize tie at 18.3s/253.7 J/closed "
+                "vs SwapBattery 20.1s/273.7 J/closed -> mild side decided by cost. Threshold raised "
+                "from the old battgrid_0805_s1.jsonl derivation (0.2) to 0.3 to match where "
+                "completion actually splits at this geometry: under the OLD near-depot geometry "
+                "both restoring arms (Replace, SwapBattery) completed and SwapBattery won only on "
+                "cost; at D=40 Replace no longer completes at all, so the rule's justification is "
+                "now completion, not cost -- a hardening of the existing rule, not a flip. This "
+                "threshold change is scoring-neutral for results/matrix_fardepot.jsonl: every "
+                "BatteryTruth decision across the 21 evaluation runs has soc <= 0.097, so no cell's "
+                "decision-accuracy score moves.",
+    "fault": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 1 instance only -- "
+              "NEITHER NOOP nor Replace completes (closed 163/313 vs 215/313 of 313 total), so "
+              "there is no completion-based evidence at this geometry and the rule below could NOT "
+              "be re-derived from this grid. Replace closing more nodes than NOOP is directionally "
+              "consistent with 'agent_pending > 0 -> Replace' but does not establish it -- treat as "
+              "unverified-here. Historical provenance (not re-verified in this pass): "
+              "firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect separation "
+              "(agent_pending > 0 -> Replace [24/24], == 0 -> NOOP [18/18]).",
+    "zone": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 1 instance -- NOOP and "
+             "RelocateBuild TIE (both complete, identical makespan 20.1s, identical closed 291/313): "
+             "this instance's zone event never actually blocked navigation, so the grid neither "
+             "confirms nor refutes the rule below. Independent support comes from the evaluation "
+             "runs (results/matrix_fardepot.jsonl): the zone case shows canonical(NOOP) 58.0s / "
+             "500 J/closed with 5 ReformTeam recovery alarms, vs RelocateBuild 39.0s / 492 J/closed "
+             "with 1 alarm. Historical provenance: zcausal_reform/ STEP 10, 2 arm-crossed events "
+             "(n=2 -- weakest axis).",
 }
 
 
@@ -54,9 +82,13 @@ def reference_action(ev):
         if soc is None:
             return None, "battery", "no SoC recorded"
         if float(soc) <= BATTERY_DEEP_SOC:
-            # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. 충전을 되살리는 두 팔은 결과가
-            # 같으므로(closed 291 동일) **싼 쪽**이 정답이다. SwapBattery 가 메뉴에 없는
-            # 옛 배선/옛 녹화에서는 Replace 가 그 자리를 대신한다.
+            # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. 근거리 창고 기하(옛 battgrid_0805_s1)
+            # 에서는 충전을 되살리는 두 팔(Replace, SwapBattery)이 둘 다 완주해 결과가 같았으므로
+            # (closed 291 동일) **싼 쪽**이 정답이었다 -- 그때는 비용이 근거였다. D=40 원거리
+            # 창고(n44_plus78_fardepot)에서는 Replace 가 더 이상 아예 완주하지 못한다(163→215
+            # closed 둘 다 미완주). 그래서 지금 이 규칙의 근거는 **완주 여부**이지 비용이 아니다 --
+            # 이것은 규칙이 뒤집힌 게 아니라 더 강해진 것이다(강화, not flip). SwapBattery 가
+            # 메뉴에 없는 옛 배선/옛 녹화에서는 Replace 가 그 자리를 대신한다.
             return ("SwapBattery" if "SwapBattery" in valid else "Replace"), "battery", \
                    "deep discharge (SoC<=%.2f): restore charge, cheapest restoring arm" % BATTERY_DEEP_SOC
         return "NOOP", "battery", "mild degradation: every arm completes, so the free one wins"
