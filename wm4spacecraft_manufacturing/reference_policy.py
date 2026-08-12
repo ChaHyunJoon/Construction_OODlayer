@@ -13,18 +13,39 @@ reference_policy.py -- 라이브 스트림의 결정을 "옳았는가"로 채점
 
 각 규칙은 추측이 아니라 이 저장소의 특정 실험에 근거한다(아래 BASIS 문자열이 그 출처다):
 
-  battery : oracle/out/n44_plus78_fardepot.jsonl (seed 1, D=40 원거리 창고, 9 instance:
-            3 severity x 3 arm) -- 현재 규칙의 근거, 아래 근거리 기록을 대체함(supersede).
+  battery : oracle/out/n44_plus78_d20.jsonl (seed 1, D=20 근거리 창고, 5 instance / 13 row 전체
+            중 battery 는 3 instance: severity 0.02/0.30/0.50 사다리 한 칸씩, 칸마다 다른 팔을
+            테스트함: 0.02 -> {NOOP, Replace, SwapBattery}, 0.30·0.50 -> {NOOP, Deprioritize,
+            SwapBattery}) -- 현재 규칙의 근거, 아래 D=40 기록을 대체함(supersede).
+            SoC 0.02 -> NOOP(184/313)·Replace(243/313) 둘 다 미완주, SwapBattery만 완주
+                     (291/313, 22.4s) -> **완주 여부**로 갈린다                  [SwapBattery]
+            SoC 0.30 -> 세 팔 전부 완주(291/313): NOOP·Deprioritize 22.7s/261.5 J/cl 동점,
+                     SwapBattery 가 더 빠르다 22.4s/279.7 J/cl -> **makespan(비용)**으로 갈리고
+                     SwapBattery 가 이긴다                                       [SwapBattery]
+            SoC 0.50 -> 세 팔 전부 완주(291/313): NOOP·Deprioritize 22.9s/273.7 J/cl 동점,
+                     SwapBattery 가 다시 더 빠르다 22.4s/279.7 J/cl -> 비용으로 갈리고
+                     SwapBattery 가 다시 이긴다                                  [SwapBattery]
+            => 사다리 세 칸(0.02, 0.30, 0.50) 전부 SwapBattery 가 이긴다 -> BATTERY_DEEP_SOC 를
+            이 사다리의 최고 severity 인 0.5 로 올린다(0.5 초과는 미검증). D=20 근거리에서는
+            창고 왕복이 싸져서, 저하된 로봇을 남은 빌드 내내 느리게 놔두는 쪽이 왕복보다 더 비싸진다
+            -- "mild side 는 공짜라 NOOP 이 이긴다"는 D=40 서술은 이 기하에서 더 이상 성립하지
+            않는다: 이 사다리 안에는 NOOP 이 정답인 severity 가 없다. Replace 는 D=20 에서도
+            완주하는 모습이 관측되지 않았다(SoC 0.02 한 칸에서만 테스트됐고 거기서도 미완주,
+            243/313) -- 이번 태스크가 가정했던 "Replace 가 다시 완주할 것"이라는 가설은 실현되지
+            않았고, 실제로 뒤집힌 것은 이미 완주하던 팔들 사이의 **비용** 경쟁이었다.
+            [SUPERSEDED -- D=40 원거리 창고 기하, 출처 보존용으로만 남김, 더 이상 현재 규칙 아님]
+            oracle/out/n44_plus78_fardepot.jsonl (seed 1, D=40 원거리 창고, 9 instance:
+            3 severity x 3 arm)
             SoC 0.02, 0.30 -> NOOP/Replace/Deprioritize 미완주, SwapBattery만 완주(291/313)
                      -> deep side(<=0.30)는 **완주 여부**로 갈린다(비용 아님)   [SwapBattery]
             SoC 0.50 -> 세 팔 전부 완주(291/313) -> NOOP/Deprioritize 18.3s/253.7 J/cl 동점,
                      SwapBattery 20.1s/273.7 J/cl -> mild side(>0.30)는 비용으로 갈린다 [NOOP]
-            [SUPERSEDED -- 근거리 창고 기하, 출처 보존용으로만 남김, 더 이상 현재 규칙 아님]
+            [SUPERSEDED -- 근거리 창고 기하(구 D 값), 출처 보존용으로만 남김, 더 이상 현재 규칙 아님]
             oracle/out/battgrid_0805_s1.jsonl (18 instance, 3팔 전수)
             SoC 0.02 -> NOOP 미완주 / Replace·SwapBattery 둘 다 완주 closed 291 동일
                      -> 동점은 비용으로 갈린다: SwapBattery(0.2) < Replace(1.0)   [6/6]
             SoC 0.30·0.50 -> 세 팔 전부 완주 291 -> 가장 싼 NOOP                  [12/12]
-            (이 근거는 근거리 기하 한정. D=40 원거리에서는 0.30이 deep 쪽으로 넘어가
+            (이 근거는 그 기하 한정. D=40 원거리에서는 0.30이 deep 쪽으로 넘어가
              위 SwapBattery 규칙으로 대체된다 -- BATTERY_DEEP_SOC 를 0.2->0.3 으로 올린 이유.)
   fault   : oracle/out/firegrid_merged.jsonl (fault 42 instance, seed 1~6)
             agent_pending > 0 -> Replace [24/24] · agent_pending == 0 -> NOOP [18/18]
@@ -42,40 +63,53 @@ n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도
 
 import math
 
-BATTERY_DEEP_SOC = 0.3      # n44_plus78_fardepot 사다리에서 완주/미완주가 갈리는 칸 (0.30 vs 0.50)
+BATTERY_DEEP_SOC = 0.5      # n44_plus78_d20 사다리: SwapBattery가 0.02/0.30/0.50 전부에서 이김
+                             # (0.02=완주 여부, 0.30·0.50=makespan) -> 상한을 사다리 최고 severity로
 
 BASIS = {
-    "battery": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 9 instances "
-                "(3 severities x 3 arms). SoC 0.02: NOOP (closed 163/313) and Replace (215/313) "
-                "both FAIL to complete, only SwapBattery completes (291/313, 20.1s). SoC 0.30: "
-                "NOOP and Deprioritize both FAIL (274/313 each, tied), only SwapBattery completes "
-                "(291/313, 20.1s) -> deep side (<=0.30) decided by COMPLETION, not cost. SoC 0.50: "
-                "all three arms complete (291/313); NOOP/Deprioritize tie at 18.3s/253.7 J/closed "
-                "vs SwapBattery 20.1s/273.7 J/closed -> mild side decided by cost. Threshold raised "
-                "from the old battgrid_0805_s1.jsonl derivation (0.2) to 0.3 to match where "
-                "completion actually splits at this geometry: under the OLD near-depot geometry "
-                "both restoring arms (Replace, SwapBattery) completed and SwapBattery won only on "
-                "cost; at D=40 Replace no longer completes at all, so the rule's justification is "
-                "now completion, not cost -- a hardening of the existing rule, not a flip. This "
-                "threshold change is scoring-neutral for results/matrix_fardepot.jsonl: every "
-                "BatteryTruth decision across the 21 evaluation runs has soc <= 0.097, so no cell's "
-                "decision-accuracy score moves.",
-    "fault": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 1 instance only -- "
-              "NEITHER NOOP nor Replace completes (closed 163/313 vs 215/313 of 313 total), so "
-              "there is no completion-based evidence at this geometry and the rule below could NOT "
-              "be re-derived from this grid. Replace closing more nodes than NOOP is directionally "
-              "consistent with 'agent_pending > 0 -> Replace' but does not establish it -- treat as "
-              "unverified-here. Historical provenance (not re-verified in this pass): "
-              "firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect separation "
-              "(agent_pending > 0 -> Replace [24/24], == 0 -> NOOP [18/18]).",
-    "zone": "oracle/out/n44_plus78_fardepot.jsonl, seed 1, D=40 (far depot), 1 instance -- NOOP and "
-             "RelocateBuild TIE (both complete, identical makespan 20.1s, identical closed 291/313): "
-             "this instance's zone event never actually blocked navigation, so the grid neither "
-             "confirms nor refutes the rule below. Independent support comes from the evaluation "
-             "runs (results/matrix_fardepot.jsonl): the zone case shows canonical(NOOP) 58.0s / "
-             "500 J/closed with 5 ReformTeam recovery alarms, vs RelocateBuild 39.0s / 492 J/closed "
-             "with 1 alarm. Historical provenance: zcausal_reform/ STEP 10, 2 arm-crossed events "
-             "(n=2 -- weakest axis).",
+    "battery": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 5 instances / 13 rows "
+                "in this grid (battery kind = 3 of those instances, one per severity rung; arms "
+                "tested per rung: 0.02 -> {NOOP, Replace, SwapBattery}, 0.30/0.50 -> {NOOP, "
+                "Deprioritize, SwapBattery}). SoC 0.02: NOOP (closed 184/313) and Replace "
+                "(closed 243/313) both FAIL to complete; only SwapBattery completes (291/313, "
+                "22.425s) -> decided by COMPLETION. SoC 0.30: all three tested arms complete "
+                "(291/313 each); NOOP and Deprioritize tie at 22.725s/261.5 J/closed, SwapBattery "
+                "is FASTER at 22.425s/279.7 J/closed -> decided by makespan (COST), and "
+                "SwapBattery wins it. SoC 0.50: all three complete (291/313); NOOP/Deprioritize "
+                "tie at 22.875s/273.7 J/closed, SwapBattery again faster at 22.425s/279.7 "
+                "J/closed -> decided by cost, SwapBattery wins again. SwapBattery is therefore "
+                "correct at every rung tested (0.02, 0.30, 0.50), so BATTERY_DEEP_SOC is raised "
+                "to 0.5, the highest rung in this ladder -- above 0.5 is untested by this grid. "
+                "The basis is COST (makespan), not completion, at 0.30 and 0.50 -- this flips the "
+                "old D=40 mild-side answer from NOOP to SwapBattery: at D=20 the depot round trip "
+                "is cheap enough that swapping now beats tolerating a slower, degraded robot for "
+                "the rest of the build. Replace was NOT observed to complete at this geometry "
+                "(the completion flip this task's brief anticipated for Replace did not happen): "
+                "it was only tested at SoC 0.02, where it still fails (243/313); what actually "
+                "flipped is the cost race among the arms that already completed. This supersedes "
+                "the D=40 threshold of 0.3 and its 'mild side is free, NOOP wins' story -- see the "
+                "SUPERSEDED block in the module docstring for the full D=40/near-depot provenance "
+                "chain this replaces.",
+    "fault": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 1 fault instance only "
+              "(severity 1.0, arms NOOP and Replace) -- NEITHER arm completes (NOOP closed "
+              "184/313, Replace closed 243/313, both makespan Inf), so this grid CANNOT "
+              "re-derive the rule below either (same outcome as the D=40 pass); the rule is left "
+              "unchanged and treated as unverified-here. closed is directionally consistent with "
+              "'agent_pending > 0 -> Replace' (Replace closes more than NOOP, agent_pending=3 on "
+              "this row) but does not establish it. Historical provenance (not re-verified in "
+              "this pass): firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect "
+              "separation (agent_pending > 0 -> Replace [24/24], == 0 -> NOOP [18/18]).",
+    "zone": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 1 zone instance only "
+             "(severity 1.0) -- NOOP and RelocateBuild TIE exactly (both complete, closed "
+             "291/313, identical makespan 22.425s): this grid does not test the rule below, the "
+             "same outcome as the D=40 grid before it, so the rule is left unchanged. Independent "
+             "evaluation-run support was meant to come from Task 3's D=20 sweep "
+             "(results/matrix_d20.jsonl, 42 runs), but that run was still in progress at the time "
+             "of this derivation and its output did not exist yet -- pending, not cited here. "
+             "Historical (D=40, superseded, not yet re-measured at D=20): results/matrix_fardepot"
+             ".jsonl showed canonical(NOOP) 58.0s / 500 J/closed with 5 ReformTeam recovery "
+             "alarms, vs RelocateBuild 39.0s / 492 J/closed with 1 alarm. Grid provenance: "
+             "zcausal_reform/ STEP 10, 2 arm-crossed events (n=2 -- weakest axis).",
 }
 
 
@@ -107,16 +141,18 @@ def reference_action(ev):
         if soc is None:
             return None, "battery", "SoC not a finite number"
         if soc <= BATTERY_DEEP_SOC:
-            # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. 근거리 창고 기하(옛 battgrid_0805_s1)
-            # 에서는 충전을 되살리는 두 팔(Replace, SwapBattery)이 둘 다 완주해 결과가 같았으므로
-            # (closed 291 동일) **싼 쪽**이 정답이었다 -- 그때는 비용이 근거였다. D=40 원거리
-            # 창고(n44_plus78_fardepot)에서는 Replace 가 더 이상 아예 완주하지 못한다(163→215
-            # closed 둘 다 미완주). 그래서 지금 이 규칙의 근거는 **완주 여부**이지 비용이 아니다 --
-            # 이것은 규칙이 뒤집힌 게 아니라 더 강해진 것이다(강화, not flip). SwapBattery 가
-            # 메뉴에 없는 옛 배선/옛 녹화에서는 Replace 가 그 자리를 대신한다.
+            # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. D=20 사다리(n44_plus78_d20)에서는
+            # SoC 0.02 는 SwapBattery만 완주(NOOP·Replace 미완주)해 근거가 **완주 여부**이고,
+            # SoC 0.30·0.50 은 세 팔(NOOP/Deprioritize/SwapBattery) 전부 완주하지만 SwapBattery
+            # 의 makespan 이 더 짧아(22.4s < 22.7~22.9s) 근거가 **비용**이다 -- 두 근거가 섞여
+            # 있고, 사다리 전 구간(0.02/0.30/0.50)에서 SwapBattery 가 이긴다. BATTERY_DEEP_SOC 를
+            # 사다리 최고값인 0.5 로 둔 이유가 이것이다. SwapBattery 가 메뉴에 없는 옛 배선/옛
+            # 녹화에서는 Replace 가 그 자리를 대신한다(Replace 자체는 이 격자에서 완주가 관측되지
+            # 않았다 -- SoC 0.02 에서만 테스트됐고 거기서도 미완주).
             return ("SwapBattery" if "SwapBattery" in valid else "Replace"), "battery", \
-                   "deep discharge (SoC<=%.2f): restore charge, cheapest restoring arm" % BATTERY_DEEP_SOC
-        return "NOOP", "battery", "mild degradation: every arm completes, so the free one wins"
+                   "deep discharge (SoC<=%.2f): restore charge, cheapest/fastest restoring arm" % BATTERY_DEEP_SOC
+        return "NOOP", "battery", \
+               "SoC>%.2f: untested by the d20 ladder (highest rung tested is 0.50)" % BATTERY_DEEP_SOC
 
     if truth == "FaultTruth":
         pend = ev.get("agent_pending")
