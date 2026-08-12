@@ -991,7 +991,9 @@
     var el = $("depotBody");
     if(!depots || !depots.length){ el.innerHTML = '<div class="empty">no depots</div>'; return; }
     var order = {north:0, east:1, south:2, west:3};
-    var sorted = depots.slice().sort(function(a,b){ return (order[a.side]||9)-(order[b.side]||9); });
+    /* `order[side]||9` 는 north=0 이 falsy 라 9 로 튕겨 NORTH 가 맨 뒤로 갔다. 명시적 hasOwnProperty 로 고친다. */
+    var rank = function(s){ return order.hasOwnProperty(s) ? order[s] : 9; };
+    var sorted = depots.slice().sort(function(a,b){ return rank(a.side)-rank(b.side); });
     var h = '<div class="mono" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px">';
     sorted.forEach(function(d){
       var dim = (d.available === 0) ? ';opacity:.45' : '';
