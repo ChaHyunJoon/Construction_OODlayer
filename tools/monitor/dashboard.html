@@ -347,6 +347,7 @@
 
   <section class="panel fleet">
     <div class="phead"><h2>Fleet States</h2><span class="count mono" id="fleetCount">—</span></div>
+    <div class="body" id="depotBody" style="border-bottom:1px solid #e5e5e5;padding:6px 8px"><div class="empty">no depots</div></div>
     <div class="body" id="fleetBody"><div class="empty">waiting for stream…</div></div>
   </section>
 
@@ -946,6 +947,7 @@
     $("oodN").textContent = ood.length;
 
     renderFleet(robots);
+    renderDepots(fr.depots || []);
     renderTree(fr.assemblies || []);
     renderFeed(ood);
     renderRecovery(fr.recovery || []);
@@ -982,6 +984,21 @@
     var tk = "";
     for(var i=0;i<=6;i++){ tk += '<span class="gtick" style="left:'+(i/6*100)+'%">'+fmtTime(tmax*i/6)+'</span>'; }
     gticks.innerHTML = tk;
+  }
+
+  /* 4방위 창고 재고. 응답 직후(재고가 줄어든 창고)를 눈에 띄게 하려고 available==0 을 흐리게 표시한다. */
+  function renderDepots(depots){
+    var el = $("depotBody");
+    if(!depots || !depots.length){ el.innerHTML = '<div class="empty">no depots</div>'; return; }
+    var order = {north:0, east:1, south:2, west:3};
+    var sorted = depots.slice().sort(function(a,b){ return (order[a.side]||9)-(order[b.side]||9); });
+    var h = '<div class="mono" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px">';
+    sorted.forEach(function(d){
+      var dim = (d.available === 0) ? ';opacity:.45' : '';
+      h += '<span title="center ('+d.center[0].toFixed(1)+', '+d.center[1].toFixed(1)+')" style="white-space:nowrap'+dim+'">'
+         + esc(d.side.toUpperCase()) + ' <b>' + d.available + '</b>/' + d.capacity + '</span>';
+    });
+    el.innerHTML = h + '</div>';
   }
 
   function renderFleet(robots){
@@ -1406,6 +1423,7 @@
     $("fleetN").textContent = "0";
     $("oodN").textContent = "0";
     renderFleet([]);
+    renderDepots([]);
     renderFeed([]);
     renderRecovery([]);
     renderTree([]);
