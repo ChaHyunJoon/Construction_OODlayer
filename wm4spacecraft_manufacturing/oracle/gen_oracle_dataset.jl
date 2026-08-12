@@ -1383,10 +1383,16 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
             rng = Random.MersenneTwister(seed))                   # seed 로 난수 고정(재현성)
     end
     label_seconds = time() - t_start                              # 이 라벨 한 개를 얻는 데 걸린 실제 벽시계 시간
-    # efficiency-axis label: worst per-robot SoC at end (battery margin). NaN when battery is off.
-    min_soc = try
-        fl = CB.BATTERY_FLEET[]; fl === nothing ? NaN : Float64(CB.battery_report(fl).min_soc)   # 끝에서 가장 낮은 로봇 잔량
-    catch; NaN end
+    # efficiency-axis labels: 배터리 리포트를 한 번만 읽어 최소 SoC 와 에너지를 같이 뽑는다.
+    # 총 에너지만 보면 미완주가 유리해지므로(일을 덜 해서) 닫힌 노드당 에너지도 같이 남긴다.
+    _batt = try
+        fl = CB.BATTERY_FLEET[]
+        fl === nothing ? nothing : CB.battery_report(fl)
+    catch; nothing end
+    min_soc  = _batt === nothing ? NaN : Float64(_batt.min_soc)
+    mean_soc = _batt === nothing ? NaN : Float64(_batt.mean_soc)
+    total_energy_J = _batt === nothing ? NaN : Float64(_batt.total_energy_J)
+    n_depleted = _batt === nothing ? -1 : Int(_batt.n_depleted)
     n_stalled = try length(CB.stalled_robots()) catch; 0 end      # 끝에 멈춰버린 로봇 수
     hz = try CB.hazard_report() catch
         (n_break=0, n_cell=0, n_zone=0, n_break_pending=0, capped=false, t=0.0)
@@ -1402,6 +1408,9 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
         makespan = (try Float64(get(stats, :Makespan, NaN)) catch; NaN end),   # 실제 makespan(총 소요시간)
         label_seconds = label_seconds,
         min_soc  = min_soc,
+        mean_soc = mean_soc,                                     # 평균 잔량(효율 축)
+        total_energy_J = total_energy_J,                         # 총 구동 에너지[J]
+        n_depleted = n_depleted,                                 # 끝에 방전된 로봇 수
         n_stalled = n_stalled,
         feats    = FEAT[],                                       # capture_features 로 담아둔 결정 순간 특징
         fired    = FEAT[] !== nothing,                           # OOD 가 실제로 터졌는지(특징이 채워졌으면 참)
@@ -1415,8 +1424,11 @@ end
 # 외부 JSON 라이브러리 없이 직접 JSONL 한 줄을 만드는 3개의 작은 도우미.
 jesc(s) = replace(replace(String(s), "\\" => "\\\\"), "\"" => "\\\"")   # 문자열 안 역슬래시/따옴표 escape
 # jval : 값 하나를 JSON 표기로. Bool→true/false, 문자열→따옴표, 배열→[...], 무한/NaN 은 문자열로(JSON 엔 없음).
+# AbstractDict→{...}(중첩 객체) : geometry 필드가 실제 JSON 객체로 나가야 run_demo.jl(JSON3.write) 쪽과
+# byte-identical 하다 -- 이 분기가 없으면 Dict 가 마지막 fallback(문자열화)으로 떨어져 깨진다.
 jval(x) = x isa Bool ? (x ? "true" : "false") :
           x isa AbstractString ? "\"$(jesc(x))\"" :
+          x isa AbstractDict ? "{" * join(["\"$(jesc(string(k)))\":$(jval(v))" for (k,v) in x], ",") * "}" :
           x isa AbstractVector ? "[" * join(jval.(x), ",") * "]" :   # jval.(x) = 각 원소에 jval 적용(브로드캐스트)
           x isa Real ? (isfinite(x) ? string(x) : "\"$(x)\"") : "\"$(x)\""
 jrow(d) = "{" * join(["\"$(k)\":$(jval(v))" for (k,v) in d], ",") * "}"   # (키,값) 쌍들을 {"k":v,...} 한 줄로
@@ -1550,6 +1562,12 @@ function run_episodes(io)
                 "complete"=>r.complete, "closed"=>r.closed, "total"=>r.total,
                 "makespan"=>r.makespan, "label_seconds"=>r.label_seconds,
                 "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
+                "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
+                "n_depleted"=>r.n_depleted,
+                "geometry"=>Dict("depot_mode"=>"fixed",
+                                 "depot_distance"=>CB.spare_depot_distance(),
+                                 "station_keeping"=>true),
                 # control 은 에피소드 모드에서 정의되지 않는다(admissibility 는 cost-aware 라벨이 대신함).
                 "ctrl_complete"=>false, "ctrl_closed"=>-1, "ctrl_makespan"=>Inf,
             ]
@@ -1723,6 +1741,12 @@ function main()
                 "complete"=>ctrl.complete, "closed"=>ctrl.closed, "total"=>ctrl.total,
                 "makespan"=>ctrl.makespan, "label_seconds"=>ctrl.label_seconds,
                 "min_soc"=>ctrl.min_soc, "n_stalled"=>ctrl.n_stalled,
+                "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
+                "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
+                "n_depleted"=>ctrl.n_depleted,
+                "geometry"=>Dict("depot_mode"=>"fixed",
+                                 "depot_distance"=>CB.spare_depot_distance(),
+                                 "station_keeping"=>true),
                 "ctrl_complete"=>ctrl.complete, "ctrl_closed"=>ctrl.closed,
                 "ctrl_makespan"=>ctrl.makespan, "fire_target"=>fire_at,
             ]
@@ -1773,6 +1797,12 @@ function main()
                     "n_spare_cfg"=>n_spare, "macro"=>a, "macro_name"=>ACTION_NAME[a], "fired"=>r.fired,
                     "complete"=>r.complete, "closed"=>r.closed, "total"=>r.total, "makespan"=>r.makespan,
                     "label_seconds"=>r.label_seconds, "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
+                    "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                    "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
+                    "n_depleted"=>r.n_depleted,
+                    "geometry"=>Dict("depot_mode"=>"fixed",
+                                     "depot_distance"=>CB.spare_depot_distance(),
+                                     "station_keeping"=>true),
                     "ctrl_complete"=>ctrl.complete, "ctrl_closed"=>ctrl.closed, "ctrl_makespan"=>ctrl.makespan,
                     # --- MC 라벨링 메타(DS_MC_K=1 이면 rollout=0, hz_* 는 전부 0 = 기존과 구분 가능) ---
                     "rollout"=>(MC_K > 1 ? k : 0), "hz_seed"=>(hz_seed === nothing ? -1 : hz_seed),
