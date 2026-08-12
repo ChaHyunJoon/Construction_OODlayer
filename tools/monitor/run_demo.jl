@@ -659,6 +659,11 @@ let path = get(ENV, "DEMO_SUMMARY", "")
                 catch e
                     @warn "battery_report 실패" exception = e; nothing
                 end),
+            # 기하 세대(provenance). 창고 배치가 바뀌면 makespan·에너지가 전부 달라지므로,
+            # 이 블록 없이 서로 다른 세대의 런을 한 표에 섞으면 조용히 틀린 비교가 된다.
+            "geometry" => Dict("depot_mode" => "fixed",
+                               "depot_distance" => CB.spare_depot_distance(),
+                               "station_keeping" => true),
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")
