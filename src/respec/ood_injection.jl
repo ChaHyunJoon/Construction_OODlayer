@@ -561,7 +561,7 @@ const SPARE_POOL_MARGIN_FACTOR = Ref(6.0)
 # 창고를 놓을 절대 거리 D (world 단위). 4방위 중심 = (0,±D),(±D,0).
 # bbox 기반이던 옛 방식은 로봇 시작 격자만 보고 margin 을 붙여서, 적치 계획이 서기 전에
 # 창고를 놓는 구조 탓에 창고가 빌드 안쪽에 박혔다. 절대 좌표는 그 순서 의존을 없앤다.
-const SPARE_DEPOT_DISTANCE = Ref(25.0)
+const SPARE_DEPOT_DISTANCE = Ref(40.0)
 spare_depot_distance() = SPARE_DEPOT_DISTANCE[]
 set_spare_depot_distance!(d::Real) = (SPARE_DEPOT_DISTANCE[] = Float64(d); nothing)
 
@@ -589,6 +589,9 @@ function warn_depot_clearance(env)
         r = max(r, norm(Float64[get_center(c)[1], get_center(c)[2]]) + Float64(get_radius(c)))
     end
     for node in get_nodes(env.scene_tree)
+        # 아직 파견되지 않은 예비 로봇(is_spare)은 정의상 창고 거리 D 에 주차돼 있으므로 빼야 한다 —
+        # 안 빼면 r 이 항상 D 이상이 되어 아래 D < 1.2*r 이 매 판마다 무조건 참(오탐)이 된다.
+        is_spare(node_id(node)) && continue
         t = try global_transform(node).translation catch; continue end
         r = max(r, norm(Float64[t[1], t[2]]))
     end
