@@ -423,13 +423,18 @@ function nearest_pool(pos; nonempty::Bool = true)
 end
 
 """
-    add_directional_spare_pools!(scene_tree; n_spare, bbox, margin, geom, spacing) -> Dict
+    add_directional_spare_pools!(scene_tree; n_spare, distance, bbox, margin, geom, spacing) -> Dict
 
 Add `n_spare` IDLE backup robots at each of the four cardinal pool centers
-(N/E/S/W), placed `margin` outside `bbox` (default: a box around the existing
-robots). Mirrors `add_robots_to_scene!` (construction_schedule.jl) but CAPTURES
-each new `RobotID` and registers it into `SPARE_POOLS[key]` (and records the pool
-center). Returns the per-key id vectors.
+(N/E/S/W), placed at the ABSOLUTE fixed centers `(0,±distance)` / `(±distance,0)`
+returned by `depot_centers_fixed(distance)` (origin-relative; independent of scene
+content or call order). Mirrors `add_robots_to_scene!` (construction_schedule.jl)
+but CAPTURES each new `RobotID` and registers it into `SPARE_POOLS[key]` (and
+records the pool center). Returns the per-key id vectors.
+
+DEPRECATED no-ops: `bbox` and `margin` are accepted but ignored -- kept only for
+caller compatibility with the earlier bbox-relative placement scheme this function
+used before switching to the absolute-coordinate centers above.
 
 IMPORTANT: call BEFORE `set_robot_start_configs!` so each spare automatically gets
 a free `RobotStart -> RobotGo` with NO task assignment. To keep spares idle through

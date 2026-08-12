@@ -13,10 +13,19 @@ reference_policy.py -- 라이브 스트림의 결정을 "옳았는가"로 채점
 
 각 규칙은 추측이 아니라 이 저장소의 특정 실험에 근거한다(아래 BASIS 문자열이 그 출처다):
 
-  battery : oracle/out/battgrid_0805_s1.jsonl (18 instance, 3팔 전수)
+  battery : oracle/out/n44_plus78_fardepot.jsonl (seed 1, D=40 원거리 창고, 9 instance:
+            3 severity x 3 arm) -- 현재 규칙의 근거, 아래 근거리 기록을 대체함(supersede).
+            SoC 0.02, 0.30 -> NOOP/Replace/Deprioritize 미완주, SwapBattery만 완주(291/313)
+                     -> deep side(<=0.30)는 **완주 여부**로 갈린다(비용 아님)   [SwapBattery]
+            SoC 0.50 -> 세 팔 전부 완주(291/313) -> NOOP/Deprioritize 18.3s/253.7 J/cl 동점,
+                     SwapBattery 20.1s/273.7 J/cl -> mild side(>0.30)는 비용으로 갈린다 [NOOP]
+            [SUPERSEDED -- 근거리 창고 기하, 출처 보존용으로만 남김, 더 이상 현재 규칙 아님]
+            oracle/out/battgrid_0805_s1.jsonl (18 instance, 3팔 전수)
             SoC 0.02 -> NOOP 미완주 / Replace·SwapBattery 둘 다 완주 closed 291 동일
                      -> 동점은 비용으로 갈린다: SwapBattery(0.2) < Replace(1.0)   [6/6]
             SoC 0.30·0.50 -> 세 팔 전부 완주 291 -> 가장 싼 NOOP                  [12/12]
+            (이 근거는 근거리 기하 한정. D=40 원거리에서는 0.30이 deep 쪽으로 넘어가
+             위 SwapBattery 규칙으로 대체된다 -- BATTERY_DEEP_SOC 를 0.2->0.3 으로 올린 이유.)
   fault   : oracle/out/firegrid_merged.jsonl (fault 42 instance, seed 1~6)
             agent_pending > 0 -> Replace [24/24] · agent_pending == 0 -> NOOP [18/18]
             (완전 분리. "고장났으니 무조건 교체"가 아니라 **일을 지고 있었는가**가 가른다)
@@ -30,6 +39,8 @@ reference_policy.py -- 라이브 스트림의 결정을 "옳았는가"로 채점
 n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도는 축마다 다르고, 그 차이를
 숨기면 하나의 적중률 숫자가 서로 다른 근거를 뭉갠다.
 """
+
+import math
 
 BATTERY_DEEP_SOC = 0.3      # n44_plus78_fardepot 사다리에서 완주/미완주가 갈리는 칸 (0.30 vs 0.50)
 
@@ -68,6 +79,17 @@ BASIS = {
 }
 
 
+def _finite_soc(x):
+    """soc 값을 finite float 로 안전하게 바꾼다. 파싱 불가능하거나 NaN/Inf 면 None.
+    float("NaN") <= BATTERY_DEEP_SOC 는 조용히 False 라서 그냥 float(soc) 를 썼다가는
+    NaN 이 "NOOP 이 정답"으로 잘못 채점된다 -- 반드시 이 게이트를 거쳐야 한다."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
+
+
 def reference_action(ev):
     """한 결정 사건의 기준 행동을 돌려준다.
 
@@ -81,7 +103,10 @@ def reference_action(ev):
         soc = ev.get("soc")
         if soc is None:
             return None, "battery", "no SoC recorded"
-        if float(soc) <= BATTERY_DEEP_SOC:
+        soc = _finite_soc(soc)
+        if soc is None:
+            return None, "battery", "SoC not a finite number"
+        if soc <= BATTERY_DEEP_SOC:
             # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. 근거리 창고 기하(옛 battgrid_0805_s1)
             # 에서는 충전을 되살리는 두 팔(Replace, SwapBattery)이 둘 다 완주해 결과가 같았으므로
             # (closed 291 동일) **싼 쪽**이 정답이었다 -- 그때는 비용이 근거였다. D=40 원거리

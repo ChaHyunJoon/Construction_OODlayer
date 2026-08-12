@@ -124,7 +124,8 @@ def cell_from_runs(runs):
 
 
 def cell_from_oracle(labels, kind):
-    """오라클 칸: instance 마다 최선 팔(완주 우선, 동점이면 makespan 최소)을 골라 그 값들을 평균."""
+    """오라클 칸: instance 마다 최선 팔(완주 우선, 그다음 makespan 최소, 그래도 동점이면
+    closed 최대)을 골라 그 값들을 평균."""
     by_inst = {}
     for r in labels:
         if r.get("kind") != kind:
@@ -137,7 +138,13 @@ def cell_from_oracle(labels, kind):
         ms = _num(r.get("makespan"))
         if ms is None:
             ms = float("inf")
-        return (0 if r.get("complete") else 1, ms)      # 완주 우선, 그다음 makespan 최소
+        closed = _num(r.get("closed"))
+        if closed is None:
+            closed = 0.0
+        # 완주 우선, 그다음 makespan 최소, 그래도(둘 다 미완주 + makespan 없음 등으로) 동점이면
+        # closed 가 더 큰(더 멀리 간) 팔이 이긴다 -- closed 는 클수록 좋으므로 오름차순 정렬에
+        # 맞춰 부호를 뒤집는다.
+        return (0 if r.get("complete") else 1, ms, -closed)
 
     best = [sorted(v, key=key)[0] for v in by_inst.values()]
     k = sum(1 for r in best if r.get("complete"))
@@ -145,7 +152,13 @@ def cell_from_oracle(labels, kind):
     done = [r for r in best if r.get("complete")]
     return dict(
         n=n, k=k, success=(k / n if n else None), success_ci=wilson(k, n),
-        acc=1.0, n_scored=n,                            # 정의상 오라클은 a* 를 고른다
+        # 오라클은 "결과가 최선인 팔"을 고르는 것이지 reference_policy 의 기준 행동 a* 와 매칭해
+        # 고르는 게 아니다 -- 그 둘을 같은 잣대로 채점하는 건 범주 오류다. acc=1.0 을 "정의상"이라고
+        # 적어 두는 대신 그냥 채점하지 않는다(None -> fmt 가 em-dash 로 찍는다).
+        # n_scored 도 0 이어야 한다 -- acc=None 과 n_scored>0 이 같이 있으면 "N 개를 채점했는데
+        # 전부 틀렸다"로 읽혀 진실("애초에 채점하지 않았다")과 반대로 보인다. 이 둘은 항상 같이
+        # 움직여야 하는 짝이니 따로 손대지 말 것.
+        acc=None, n_scored=0,
         sim_seconds=_mean([r.get("makespan") for r in done]),
         energy_per_closed=_mean([r.get("energy_per_closed") for r in done]),
         min_soc=_mean([r.get("min_soc") for r in done]),
@@ -218,7 +231,11 @@ def main():
     md += ["",
            "- ORACLE 은 단축 라벨 격자에서 유도한 상한이며 온라인 정책이 아니다. 조합 케이스는 격자가 없어 `—`.",
            "- 빌드 시간은 완주한 판만 평균한다. 완주율이 낮은 칸의 시간은 그만큼 낙관적이다 — k/n 을 같이 볼 것.",
-           "- 에너지 주지표는 닫힌 노드당(J/cl)이다. 총 에너지는 일을 덜 한 미완주에 유리해 쓰지 않는다."]
+           "- 에너지 주지표는 닫힌 노드당(J/cl)이다. 총 에너지는 일을 덜 한 미완주에 유리해 쓰지 않는다.",
+           "- ORACLE 열은 라벨 격자의 심각도별 인스턴스를 모아 평균한 값(예: battery n=3, severity "
+           "0.02/0.30/0.50)이고, 같은 행의 CANONICAL/SURROGATE/LLM 열은 한 심각도에서 돌린 평가 런"
+           "(예: battery n=1, soc<=0.097)이다 — 모집단이 서로 달라 행을 가로질러 짝지어 비교할 수 "
+           "없다. 열 안에서만(같은 컨트롤러끼리) 비교할 것."]
     Path(args.out + ".md").write_text("\n".join(md) + "\n", encoding="utf-8")
 
     print("wrote %s.csv and %s.md" % (args.out, args.out))

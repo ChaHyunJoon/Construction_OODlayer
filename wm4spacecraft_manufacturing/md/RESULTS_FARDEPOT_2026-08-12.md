@@ -7,8 +7,9 @@
 > **한 줄 요약.** 창고를 빌드에서 눈에 띄게 멀리(D=40) 옮긴 기하에서 실패 케이스 7종 × 컨트롤러
 > 3종(규칙/서로게이트/LLM) + 오라클 격자를 재서 4지표(완주율·결정 적중률·빌드 시간·J/closed) 표를
 > 확정했다. 이 과정에서 배터리 기준 규칙의 깊은 방전 임계값을 0.2→0.3 으로 **강화**했다(뒤집은 게
-> 아니다 — 근거는 §4-a). 표는 **셀당 n=1**(단일 OOD 시드·단일 world 시드)이라 신뢰구간이 아니라
-> 점 추정으로만 읽어야 한다(§7).
+> 아니다 — 근거는 §4-a). 두 번째 OOD 시드가 끝나 표는 **셀당 n=2**(OOD 시드 1·2, world 시드 1
+> 고정, 총 42판)로 늘었지만 n=2 는 여전히 작아 Wilson 신뢰구간은 넓다 — 점 추정에 가깝게 읽어야
+> 한다(§8).
 
 ---
 
@@ -22,7 +23,7 @@
 
 ## 1. 기하 세대
 
-세 데이터 파일(`results/matrix_fardepot.jsonl` 21행, `oracle/out/n44_plus78_fardepot.jsonl` 13행)
+세 데이터 파일(`results/matrix_fardepot.jsonl` 42행, `oracle/out/n44_plus78_fardepot.jsonl` 13행)
 모두 레코드마다 동일한 `geometry` 를 갖는다:
 
 ```json
@@ -54,7 +55,7 @@
 
 | 파일 | 행 수 | 무엇 | 시드 |
 |---|---|---|---|
-| `results/matrix_fardepot.jsonl` | 21 | 실패 케이스 7종 × 컨트롤러 3종(canonical/surrogate/dspy) | OOD seed 1, world seed 1, 예비 3 |
+| `results/matrix_fardepot.jsonl` | 42 | 실패 케이스 7종 × 컨트롤러 3종(canonical/surrogate/dspy) | OOD seed 1·2, world seed 1, 예비 3 |
 | `oracle/out/n44_plus78_fardepot.jsonl` | 13 | 오라클 라벨 격자(battery 3중증 × 3팔=9, fault 1×2=2, zone 1×2=2) | seed 1, `DS_VALID_ONLY=1` |
 
 ---
@@ -85,8 +86,13 @@ done
 ```
 
 **순차 실행 강제**: `run_lego_demo` 가 HiGHS MILP 로 스케줄을 푸는데, 동시 실행이면 CPU 경합이
-다른 해를 낼 수 있어(다른 문서에서 반복 확인된 함정) 두 실행을 겹치지 않게 한다. 실제로 이 21행은
-7 케이스를 **한 줄씩** 순서대로 돌려서 만들었다(85~97분 소요, 케이스당 800~930초).
+다른 해를 낼 수 있어(다른 문서에서 반복 확인된 함정) 두 실행을 겹치지 않게 한다. 실제로 이 21행(시드
+1)은 7 케이스를 **한 줄씩** 순서대로 돌려서 만들었다(10:24~12:01, 97분 소요, 케이스당 752~927초).
+
+**두 번째 시드 추가(2026-08-12)**: 스크립트는 `<seed>` 를 인자로 받는다 — `bash run_matrix.sh 1` 로
+위 21행(10:24~12:01)을 만든 뒤 `bash run_matrix.sh 2` 를 이어서 실행해 같은 `OUT` 파일에 21행을 더
+추가했다(12:40~14:13, 93분 소요, 케이스당 753~860초; 두 실행 모두 시작 전 `/health` 통과). seed-major
+순서라 시드 1 의 7 케이스가 전부 끝난 뒤에야 시드 2 가 시작된다 — 21 + 21 = 42행, 21 개 셀 전부 n=2.
 
 ### 3-b. 오라클 라벨 격자 (`oracle/out/n44_plus78_fardepot.jsonl`)
 
@@ -144,10 +150,11 @@ NOOP/Deprioritize 가 더 싸다(18.3s vs 20.1s). 그래서 `BATTERY_DEEP_SOC = 
 **완주 여부**이지 비용이 아니다 — 정답이 바뀐 게 아니라 그 정답을 뒷받침하는 이유가 더 단단해진
 것이다.
 
-**이 임계값 변경은 이 표의 채점에 영향을 주지 않는다.** `results/matrix_fardepot.jsonl` 21판의
-`BatteryTruth` 결정을 전부 확인했다 — soc 값이 전부 **≤0.097**(최댓값 0.0966)이라 새 임계값(0.3)
-이든 옛 임계값(0.2)이든 모두 "깊은 방전" 쪽으로 분류된다. 즉 어떤 칸의 결정 적중률도 이 변경으로
-움직이지 않았다 — 옛 격자 재유도가 "결과를 유리하게 바꿨다"고 읽으면 안 된다.
+**이 임계값 변경은 이 표의 채점에 영향을 주지 않는다.** `results/matrix_fardepot.jsonl` 42판(시드
+1·2)의 `BatteryTruth` 결정을 전부 확인했다 — soc 값이 전부 **≤0.10**(최댓값 0.0999; 시드1 최댓값
+0.0966·시드2 최댓값 0.0999)이라 새 임계값(0.3)이든 옛 임계값(0.2)이든 모두 "깊은 방전" 쪽으로
+분류된다. 즉 어떤 칸의 결정 적중률도 이 변경으로 움직이지 않았다 — 옛 격자 재유도가 "결과를 유리하게
+바꿨다"고 읽으면 안 된다.
 
 ### 4-b. fault — 규칙 유지, **재유도는 불가능**했다 (정직하게 적음)
 
@@ -192,17 +199,28 @@ cat results/matrix_fardepot.md
 
 | FAILURE CASE | ORACLE | CANONICAL | SURROGATE | LLM |
 |---|---|---|---|---|
-| Battery depletion | 3/3 · acc 100% · 19.5s · 267 J/cl · SoC 0.63 | 1/1 · acc 0% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 0% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 100% · 20.1s · 274 J/cl · SoC 0.97 |
-| Robot breakdown | 0/1 · acc 100% · — · — · — | 1/1 · acc 100% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 100% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 100% · 31.1s · 485 J/cl · SoC 0.96 |
-| Keep-out zone | 1/1 · acc 100% · 20.1s · — · — | 1/1 · acc 0% · 58.0s · 500 J/cl · SoC 0.94 | 1/1 · acc 100% · 39.0s · 492 J/cl · SoC 0.95 | 1/1 · acc 100% · 39.0s · 492 J/cl · SoC 0.95 |
-| Breakdown + battery | — | 1/1 · acc 25% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 25% · 31.1s · 485 J/cl · SoC 0.96 | 1/1 · acc 100% · 26.1s · 343 J/cl · SoC 0.97 |
-| Breakdown + zone | — | 1/1 · acc 75% · 79.9s · 927 J/cl · SoC 0.90 | 0/1 · acc 100% · — · — · — | 1/1 · acc 50% · 69.1s · 689 J/cl · SoC 0.92 |
-| Battery + zone | — | 1/1 · acc 0% · 79.9s · 927 J/cl · SoC 0.90 | 0/1 · acc 33% · — · — · — | 1/1 · acc 75% · 58.0s · 500 J/cl · SoC 0.94 |
-| All three at once | — | 1/1 · acc 25% · 74.8s · 790 J/cl · SoC 0.91 | 1/1 · acc 75% · 32.0s · 476 J/cl · SoC 0.96 | 1/1 · acc 100% · 40.8s · 480 J/cl · SoC 0.95 |
+| Battery depletion | 3/3 · acc — · 19.5s · 267 J/cl · SoC 0.63 | 2/2 · acc 0% · 32.2s · 483 J/cl · SoC 0.96 | 2/2 · acc 0% · 32.2s · 483 J/cl · SoC 0.96 | 2/2 · acc 100% · 20.1s · 274 J/cl · SoC 0.97 |
+| Robot breakdown | 0/1 · acc — · — · — · — | 2/2 · acc 100% · 32.2s · 483 J/cl · SoC 0.96 | 2/2 · acc 100% · 31.8s · 473 J/cl · SoC 0.96 | 2/2 · acc 100% · 31.8s · 473 J/cl · SoC 0.96 |
+| Keep-out zone | 1/1 · acc — · 20.1s · — · — | 2/2 · acc 0% · 61.1s · 517 J/cl · SoC 0.94 | 2/2 · acc 100% · 37.6s · 476 J/cl · SoC 0.95 | 2/2 · acc 100% · 37.6s · 476 J/cl · SoC 0.95 |
+| Breakdown + battery | — | 2/2 · acc 50% · 31.8s · 473 J/cl · SoC 0.96 | 2/2 · acc 50% · 31.8s · 473 J/cl · SoC 0.96 | 2/2 · acc 100% · 26.5s · 369 J/cl · SoC 0.97 |
+| Breakdown + zone | — | 2/2 · acc 50% · 74.1s · 784 J/cl · SoC 0.92 | 1/2 · acc 100% · 37.3s · 486 J/cl · SoC 0.95 | 2/2 · acc 75% · 53.2s · 588 J/cl · SoC 0.94 |
+| Battery + zone | — | 2/2 · acc 0% · 74.1s · 784 J/cl · SoC 0.92 | 1/2 · acc 57% · 37.3s · 486 J/cl · SoC 0.95 | 2/2 · acc 88% · 45.9s · 466 J/cl · SoC 0.95 |
+| All three at once | — | 2/2 · acc 25% · 73.8s · 825 J/cl · SoC 0.91 | 2/2 · acc 62% · 29.9s · 452 J/cl · SoC 0.96 | 2/2 · acc 100% · 34.3s · 423 J/cl · SoC 0.96 |
 
 - ORACLE 은 단축 라벨 격자에서 유도한 상한이며 온라인 정책이 아니다. 조합 케이스는 격자가 없어 `—`.
 - 빌드 시간은 완주한 판만 평균한다. 완주율이 낮은 칸의 시간은 그만큼 낙관적이다 — k/n 을 같이 볼 것.
 - 에너지 주지표는 닫힌 노드당(J/cl)이다. 총 에너지는 일을 덜 한 미완주에 유리해 쓰지 않는다.
+- ORACLE 열은 라벨 격자의 심각도별 인스턴스를 모아 평균한 값(예: battery n=3, severity 0.02/0.30/0.50)이고, 같은 행의 CANONICAL/SURROGATE/LLM 열은 한 심각도에서 돌린 평가 런(예: battery n=1, soc<=0.097)이다 — 모집단이 서로 달라 행을 가로질러 짝지어 비교할 수 없다. 열 안에서만(같은 컨트롤러끼리) 비교할 것.
+
+**ORACLE 열의 `acc` 가 `—` 로 바뀐 이유**: 이전 버전은 오라클 셀의 `acc` 를 일괄 100%로 찍었는데,
+이는 실측이 아니라 "오라클은 정의상 최선의 팔을 고른다"는 가정을 그대로 수치로 옮긴 것이었다. 리뷰에서
+이 가정이 실제로 깨지는 사례가 나왔다 — `cell_from_oracle` 의 동점 처리가 (완주 여부, makespan) 두
+키만 봤는데, breakdown 인스턴스에서 이 둘이 동점이 되면서 실제로는 **더 나쁜 팔**을 골랐다. 게다가
+오라클은 "결과가 최선인 팔"을 고르는 것이지 `reference_policy.py` 의 기준 행동(a\*)과 매칭해서 고르는
+게 아니므로, 그 둘을 같은 잣대로 채점하는 것 자체가 범주 오류다. 그래서 동점 처리에 `closed` 를 세
+번째 키로 추가해 정말로 결과가 최선인 팔을 고르도록 고친 뒤, `acc` 자체를 채점하지 않는 것(`None` →
+표에서 em-dash)으로 바꿨다. 위 표의 ORACLE 열 `acc` 가 전부 `—` 인 것은 누락이 아니라 이 수정의
+결과다.
 
 **표 형태 확인**: 7행 × 4열. 조합 케이스 4행(Breakdown+battery, Breakdown+zone, Battery+zone, All
 three)의 ORACLE 칸은 전부 `—`. 완주가 있는 모든 칸은 `k/n` 형태(오라클도 예외 없음: `3/3`, `0/1`,
@@ -210,25 +228,41 @@ three)의 ORACLE 칸은 전부 `—`. 완주가 있는 모든 칸은 `k/n` 형�
 
 ---
 
-## 6. 관찰 — SURROGATE 만 유일하게 미완주, 정확히 두 zone-조합 케이스에서 (n=1, 결론 아님)
+## 6. 관찰 — SURROGATE 만 두 zone-조합 케이스에서 간헐적으로 미완주 (1/2, 결론 아님)
 
-표에서 가장 눈에 띄는 셀은 SURROGATE 열의 `Breakdown + zone`(0/1)과 `Battery + zone`(0/1)이다.
-**네 컨트롤러 열 전체에서 미완주가 나온 것은 이 두 칸뿐**이고, 둘 다 SURROGATE 다.
+표에서 가장 눈에 띄는 셀은 SURROGATE 열의 `Breakdown + zone`(1/2)과 `Battery + zone`(1/2)이다.
+**네 컨트롤러 열 전체에서 미완주가 하나라도 나온 것은 이 두 칸뿐**이고, 둘 다 SURROGATE 다. n=1일
+때는 이 두 칸이 0/1(=매번 실패)이었지만, 시드 2 가 추가되며 1/2(=두 시드 중 하나만 실패)로 바뀌었다
+— **결정론적 실패가 아니라 간헐적 실패**라는 뜻이다.
 
-실측(원본 jsonl, 완주하지 않아도 기록되는 sim_seconds/energy 를 그대로 읽음):
+실측(원본 jsonl, 완주하지 않아도 기록되는 sim_seconds 를 시드별로 그대로 읽음):
 
-| 케이스 | 정책 | complete | sim_seconds | closed/total | J/closed |
-|---|---|---|---|---|---|
-| zone (단독) | surrogate | **True** | 39.0 | 291/313 | 492 |
-| fault_zone | surrogate | **False** | **123.1** | 174/313 | **1437** |
-| battery_zone | surrogate | **False** | **123.1** | 174/313 | **1437** |
+| 케이스 | 정책 | 시드 | complete | sim_seconds | closed/total | J/closed |
+|---|---|---|---|---|---|---|
+| zone (단독) | surrogate | 1 | **True** | 39.0 | 291/313 | 492 |
+| zone (단독) | surrogate | 2 | **True** | 36.3 | 291/313 | 459 |
+| fault_zone | surrogate | 1 | **False** | **123.1** | 174/313 | **1437** |
+| fault_zone | surrogate | 2 | **True** | 37.3 | 291/313 | 486 |
+| battery_zone | surrogate | 1 | **False** | **123.1** | 174/313 | **1437** |
+| battery_zone | surrogate | 2 | **True** | 37.3 | 291/313 | 486 |
 
-SURROGATE 는 zone 을 **단독으로는** 잘 푼다(RelocateBuild, 완주, 표의 다른 어떤 정책보다도 싼 축에
-든다). 그런데 zone 이 **다른 OOD 와 함께** 오는 두 조합 케이스에서만 정확히 실패하고, 그 실패 판의
-비용(123.1s, 1437 J/closed)이 **표 전체에서 가장 나쁜 값**이다.
+SURROGATE 는 zone 을 **단독으로는** 두 시드 모두 잘 푼다(RelocateBuild, 완주, 표의 다른 어떤 정책보다도
+싼 축에 든다). 그런데 zone 이 **다른 OOD 와 함께** 오는 두 조합 케이스에서, 시드 1 에서만 정확히
+실패하고(123.1s, 174/313 로 멈춤, 1437 J/closed — 표 전체에서 가장 나쁜 값) 시드 2 에서는 완주한다
+(37.3s, 486 J/closed).
 
-**이것을 결론으로 읽지 말 것**: 셀당 n=1 이다. "두 번째 OOD 가 겹치면 RelocateBuild 의사결정이
-막힌다"는 가설은 이 표가 시사할 뿐 입증하지 않는다. 반복 시드로 재현되는지가 다음 확인 대상이다.
+**censoring 함정의 실제 사례**: 위 §5 표의 `Breakdown + zone` 행을 액면 그대로 읽으면 SURROGATE(37.3s
+· 486 J/cl)가 CANONICAL(74.1s · 784 J/cl)보다 두 배 가까이 빠르고 싸 보인다. 그런데 그 37.3s·486
+J/cl 은 **완주한 시드 2 하나만의 평균**이다(시드 1 은 미완주라 빌드 시간·에너지 평균에서 빠진다 — §5
+각주 "빌드 시간은 완주한 판만 평균한다"). CANONICAL 의 74.1s·784 J/cl 은 **두 시드 모두**의 평균이다.
+같은 잣대가 아니다 — SURROGATE 의 숫자는 "쉬웠던 절반만" 잰 것이고, 빠진 절반(시드 1)은 123.1s 에
+55%(174/313) 만 닫고 멈췄다. 그 판까지 포함했다면 SURROGATE 가 더 싸 보이지 않았을 것이다. `k/n` 을
+시간·에너지와 같이 읽지 않으면 SURROGATE 가 이긴 것처럼 보이는, 이 표에서 censoring 이 가장 선명하게
+드러나는 자리다.
+
+**이것을 결론으로 읽지 말 것**: 셀당 n=2 는 여전히 작다. "두 번째 OOD 가 겹치면 RelocateBuild 의사결정이
+간헐적으로 막힌다"는 가설은 이 표가 시사할 뿐 입증하지 않는다. 반복 시드로 더 재현되는지가 다음 확인
+대상이다.
 
 ---
 
@@ -239,21 +273,23 @@ SURROGATE 는 zone 을 **단독으로는** 잘 푼다(RelocateBuild, 완주, 표
 하나**를 감사했다:
 
 ```
-21 rows, 129 decisions 전체에서 decisions[].enacted == 그 행의 requested policy: 129/129 일치, 0건 불일치
-dspy 정책 7행의 decisions 40건 전부 enacted == "dspy"
+42 rows, 243 decisions 전체에서 decisions[].enacted == 그 행의 requested policy: 243/243 일치, 0건 불일치
+dspy 정책 14행의 decisions 71건 전부 enacted == "dspy"
 ```
 
-DSPy 서비스(`http://127.0.0.1:8077`)는 이 21판을 도는 내내 응답했다 — 만약 중간에 죽었다면 그
-구간의 `dspy` 결정은 `enacted != "dspy"` 로 남았을 것이고 위 감사가 그것을 잡아냈을 것이다.
+DSPy 서비스(`http://127.0.0.1:8077`)는 이 42판(시드 1·2)을 도는 내내 응답했다 — 만약 중간에 죽었다면
+그 구간의 `dspy` 결정은 `enacted != "dspy"` 로 남았을 것이고 위 감사가 그것을 잡아냈을 것이다.
 
 ---
 
 ## 8. 한계 (정직하게, 묻지 않고 적음)
 
-- **셀당 n=1.** 평가 행렬은 OOD seed 1 · world seed 1 단 한 번씩이다. `results/matrix_fardepot.csv`
-  는 각 셀에 Wilson 95% 신뢰구간(`success_lo`/`success_hi`)을 싣고 있지만, n=1 에서 그 구간은
-  극단적으로 넓다(예: `battery/canonical` 는 `[0.2065, 1.0000]`) — **신뢰구간을 유의성 근거로 인용
-  하지 말 것.** 이 표는 점 추정으로만 읽어야 한다.
+- **셀당 n=2.** 평가 행렬은 OOD seed 1·2 · world seed 1 고정으로 두 번씩이다(총 42판, 시드 2 는
+  2026-08-12 에 추가). `results/matrix_fardepot.csv` 는 각 셀에 Wilson 95% 신뢰구간
+  (`success_lo`/`success_hi`)을 싣고 있지만, n=2 에서도 그 구간은 여전히 넓다(예:
+  `battery/canonical` 는 `[0.3424, 1.0000]`, n=1 때의 `[0.2065, 1.0000]`보다 좁아지긴 했지만 폭
+  0.66 은 그대로 넓다) — **신뢰구간을 유의성 근거로 인용하지 말 것, 좁혀졌다고 촘촘하다고도 읽지
+  말 것.** 이 표는 여전히 점 추정에 가깝게 읽어야 한다.
 - **오라클 격자는 13행, 단일 시드.** `n44_plus78_fardepot.jsonl` 는 seed 1 만 돈다(계획은 4시드를
   요청했었다 — §3-b). battery 만 severity 3단계 × 팔 3개 = 9 instance 로 상대적으로 두껍고,
   fault·zone 은 각 1 instance 뿐이다 — §4-b, §4-c 가 그 결과다.
@@ -266,9 +302,9 @@ DSPy 서비스(`http://127.0.0.1:8077`)는 이 21판을 도는 내내 응답했�
   `wm_datasets.py` 는 **손대지 않았다**(`N44_PLUS78 = "oracle/out/n44_plus78.jsonl"`, 그대로).
   **표의 SURROGATE 열은 근거리 창고 라벨(`n44_plus78.jsonl`)로 학습된 기존 배포 모델을 새
   원거리 기하 아래에서 평가한 것이지, 원거리 기하 라벨로 재학습한 모델이 아니다.** 이것이 §6의
-  관찰(zone-조합에서만 실패)을 해석할 때 반드시 함께 읽어야 할 사실이다 — 모델이 이 기하의
-  zone-조합 특징 영역을 아예 본 적이 없을 가능성이 있다.
+  관찰(zone-조합에서 간헐적으로 실패)을 해석할 때 반드시 함께 읽어야 할 사실이다 — 모델이 이 기하의
+  zone-조합 특징 영역을 아예 본 적이 없어서 그 영역 안에서도 판마다 결과가 갈릴 가능성이 있다.
 - **조합 케이스 4행은 설계상 오라클이 없다.** 오라클 격자는 단일 OOD 사건만 굴린다(계획 범위) —
   `fault_battery`/`fault_zone`/`battery_zone`/`all` 의 ORACLE 칸이 `—` 인 것은 버그가 아니라
   격자의 정의역 밖이라는 뜻이다.
-- **§6 의 관찰은 관찰이지 결론이 아니다.** 위에서 다시 적는다 — n=1, 재현 필요.
+- **§6 의 관찰은 관찰이지 결론이 아니다.** 위에서 다시 적는다 — n=2, 재현 필요.
