@@ -576,6 +576,27 @@ depot_centers_fixed(d::Real = SPARE_DEPOT_DISTANCE[]) = Dict(
     :east  => [Float64(d), 0.0],
     :west  => [-Float64(d), 0.0])
 
+"""
+    warn_depot_clearance(env) -> Float64
+
+빌드 footprint 반경(원점에서 각 적치원의 `center + radius`, 그리고 각 로봇/부품 노드의 전역
+위치까지의 거리 중 최댓값)을 구해, 창고 거리 D 가 그 1.2배보다 작으면 경고한다. **자동 조정은
+하지 않는다** — 절대 좌표 고정이라는 선택을 코드가 뒤집으면 안 된다. 반환값은 계산한 반경.
+"""
+function warn_depot_clearance(env)
+    r = 0.0
+    for (_, c) in env.staging_circles
+        r = max(r, norm(Float64[get_center(c)[1], get_center(c)[2]]) + Float64(get_radius(c)))
+    end
+    for node in get_nodes(env.scene_tree)
+        t = try global_transform(node).translation catch; continue end
+        r = max(r, norm(Float64[t[1], t[2]]))
+    end
+    d = spare_depot_distance()
+    d < 1.2 * r && @warn "창고 거리 D 가 빌드 footprint 안쪽에 가깝다 — 창고가 빌드에 겹칠 수 있다" D=d footprint_radius=round(r; digits=2)
+    return r
+end
+
 # 옛 knob. 절대 좌표 모드에서는 창고 위치에 영향을 주지 않는다(1회만 경고).
 const _SPARE_MARGIN_DEPRECATED = Ref(false)
 function set_spare_pool_margin!(factor::Real)

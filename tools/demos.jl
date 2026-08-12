@@ -1544,13 +1544,13 @@ end   # demo_energy_adaptive_anim 끝
 #   a robot hits 0% and STALLS -> raises a breakdown OOD -> LLM (mock) re-specs ReplaceAgent ->
 #   the NEAREST spare depot dispatches a fresh robot that adopts the dead robot's chain.
 #   ENV: USE_MOCK, MOCK_PORT, PROJECT, N_SPARE, SHRINK, STALL_SOC, ENERGY_W, SEED, GRID_SCALE,
-#        OPEN_ANIM, FAST, SPARE_MARGIN, REFORM_INTERVAL, HOT_SWAP, STALL_CLEAR, DISCHARGE_AT, SIDEBAR_W.
+#        OPEN_ANIM, FAST, SPARE_DEPOT_DIST, REFORM_INTERVAL, HOT_SWAP, STALL_CLEAR, DISCHARGE_AT, SIDEBAR_W.
 # =============================================================================
 # demo_energy_stall_replace : "닫힌 배터리 루프" 시각 데모. 움직임이 SoC 를 소모 → 한 로봇이 0%가 되어 멈춤(stall) →
 #   고장 OOD 발생 → (mock)LLM 이 ReplaceAgent 로 재명세 → 가장 가까운 예비 창고(depot)가 새 로봇을 보내 죽은 로봇의
 #   작업 사슬을 물려받는다. 여기선 OOD 를 미리 예약하지 않고 "움직임 소모"에서 자연히 stall 이 생기게 한다.
 #   ENV: USE_MOCK, MOCK_PORT, PROJECT, N_SPARE, SHRINK, STALL_SOC, ENERGY_W, SEED, GRID_SCALE, OPEN_ANIM,
-#        FAST, SPARE_MARGIN, REFORM_INTERVAL, HOT_SWAP, STALL_CLEAR, DISCHARGE_AT, SIDEBAR_W.
+#        FAST, SPARE_DEPOT_DIST, REFORM_INTERVAL, HOT_SWAP, STALL_CLEAR, DISCHARGE_AT, SIDEBAR_W.
 function demo_energy_stall_replace()
 USE_MOCK  = get(ENV, "USE_MOCK", "1") == "1"
 MOCK_PORT = parse(Int, get(ENV, "MOCK_PORT", "8744"))
@@ -1572,8 +1572,8 @@ SEED       = parse(Int, get(ENV, "SEED", "7"))
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
 FAST       = get(ENV, "FAST", "0") == "1"   # tuning: skip per-step anim frames (much faster, coarse video)
-SPARE_MARGIN = parse(Float64, get(ENV, "SPARE_MARGIN", "18.0"))  # depot distance outside build  # 창고를 빌드에서 얼마나 멀리
-CB.set_spare_pool_margin!(SPARE_MARGIN)           # park the depots FAR from the build (visible re-emergence)  # 예비가 멀리서 등장해 눈에 띔
+SPARE_DEPOT_D = parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "25.0"))  # 원점에서 창고까지 절대 거리  # 창고를 빌드에서 얼마나 멀리
+CB.set_spare_depot_distance!(SPARE_DEPOT_D)       # park the depots FAR from the build (visible re-emergence)  # 예비가 멀리서 등장해 눈에 띔
 # ADAPTIVITY: react to a post-swap team wedge in ~a second, not the old ~50 s.
 # 적응성: 교체 후 팀이 끼는(wedge) 상황을 옛날처럼 ~50초가 아니라 ~1초 만에 감지·복구하도록 점검 간격을 줄임.
 REFORM_INTERVAL = parse(Int, get(ENV, "REFORM_INTERVAL", "300"))
@@ -2751,7 +2751,7 @@ HOT_SWAP   = get(ENV, "HOT_SWAP", "1") == "1"
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 FAST       = get(ENV, "FAST", "1") == "1"
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "0") == "1"
-CB.set_spare_pool_margin!(parse(Float64, get(ENV, "SPARE_MARGIN", "12.0")))
+CB.set_spare_depot_distance!(parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "25.0")))
 CB.set_reform_interval!(parse(Int, get(ENV, "REFORM_INTERVAL", "300")))
 
 _setup_milp!()

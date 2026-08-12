@@ -382,6 +382,8 @@ end
 
 # ============================ 빌드 + 수동 루프 =====================================
 println(">>> build: model=$MODEL  case=$OODC  robots=$NROB")
+haskey(ENV, "SPARE_DEPOT_DIST") &&
+    CB.set_spare_depot_distance!(parse(Float64, ENV["SPARE_DEPOT_DIST"]))
 env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood", num_robots = NROB,
     model_scale = SCALE,
     assignment_mode = :greedy, save_animation = false, write_results = false, overwrite_results = true,
