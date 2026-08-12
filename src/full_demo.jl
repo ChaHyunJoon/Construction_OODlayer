@@ -432,7 +432,6 @@ function run_lego_demo(;
         ConstructionBots.clear_spare_pools!()        # 이전 빌드의 풀 기록 초기화(전역 Ref)
         ConstructionBots.add_directional_spare_pools!(scene_tree;
             n_spare=n_spare_per_pool,
-            margin=ConstructionBots.SPARE_POOL_MARGIN_FACTOR[]*robot_radius,   # env/demo-tunable depot distance
             spacing=3*robot_radius)
         @info "[OOD-1-1] injected $(4*n_spare_per_pool) spare robots ($(n_spare_per_pool)/pool x 4 dirs); pools=$(keys(ConstructionBots.spare_pools()))"
     end

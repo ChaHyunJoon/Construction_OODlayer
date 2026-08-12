@@ -46,7 +46,7 @@
 # =============================================================================
 module Checks
 using ConstructionBots
-import MeshCat, Logging, HiGHS, LinearAlgebra
+import MeshCat, Logging, HiGHS, LinearAlgebra, CoordinateTransformations
 import PyCall   # used only by check_rvo; pyimport("rvo2") runs at CALL time, not module load
 const CB = ConstructionBots
 const norm = LinearAlgebra.norm
@@ -376,6 +376,53 @@ println("\nhot-swap check: $(npass[]) PASS / $(nfail[]) FAIL")
 nfail[] == 0 || error("hot-swap check had $(nfail[]) failure(s)")
 end
 
+# [점검 내용] 절대 좌표 창고 기하: 4방위 중심이 (0,±D),(±D,0) 인지, 로봇 위치와 무관한지,
+#   그리고 그 중심들로 nearest_pool 이 발생 좌표에서 올바른 방위를 고르는지(요구사항 2).
+function check_depot_geometry()
+npass = Ref(0); nfail = Ref(0)
+check(msg, cond) = (cond ? (npass[] += 1; println("  PASS  $msg")) :
+                           (nfail[] += 1; println("  FAIL  $msg")))
+
+CB.clear_spare_pools!()
+CB.set_spare_depot_distance!(30.0)
+check("spare_depot_distance reflects the setter", CB.spare_depot_distance() == 30.0)
+
+c = CB.depot_centers_fixed()
+check("north center is (0, D)",  c[:north] == [0.0, 30.0])
+check("south center is (0, -D)", c[:south] == [0.0, -30.0])
+check("east center is (D, 0)",   c[:east]  == [30.0, 0.0])
+check("west center is (-D, 0)",  c[:west]  == [-30.0, 0.0])
+
+# 로봇을 한쪽으로 치우쳐 놓아도 창고 중심은 절대 좌표라 흔들리지 않아야 한다.
+st = CB.SceneTree()
+for xy in ([5.0, 5.0], [6.0, 5.5], [5.5, 6.0])
+    rid = CB.get_unique_id(CB.RobotID)
+    node = CB.add_node!(st, CB.RobotNode(rid, CB.GeomNode(CB.default_robot_geom())))
+    CB.set_local_transform!(node,
+        CoordinateTransformations.Translation(xy[1], xy[2], 0.0) ∘ CB.identity_linear_map())
+end
+CB.add_directional_spare_pools!(st; n_spare = 2)
+check("placement ignores robot bbox (north)", CB.spare_pool_centers()[:north] == [0.0, 30.0])
+check("placement ignores robot bbox (west)",  CB.spare_pool_centers()[:west]  == [-30.0, 0.0])
+check("each pool holds 2 spares",
+    all(length(CB.spare_pools()[k]) == 2 for k in (:north, :south, :east, :west)))
+
+# 요구사항 2: 발생 좌표에서 직선거리가 가장 가까운 창고가 뽑혀야 한다.
+check("fault at +x picks :east",  CB.nearest_pool([9.0, 0.5]) == :east)
+check("fault at -y picks :south", CB.nearest_pool([0.5, -9.0]) == :south)
+check("fault at -x picks :west",  CB.nearest_pool([-9.0, 0.5]) == :west)
+check("fault at +y picks :north", CB.nearest_pool([0.5, 9.0]) == :north)
+
+# 가장 가까운 창고가 비면 그 다음으로 가까운 창고가 응답해야 한다.
+CB.pop_spare!(:east); CB.pop_spare!(:east)
+np = CB.nearest_pool([9.0, 0.5]; nonempty = true)
+check("drained :east falls through to another depot", np !== :east && np !== nothing)
+
+CB.clear_spare_pools!()
+println("\ndepot geometry check: $(npass[]) PASS / $(nfail[]) FAIL")
+nfail[] == 0 || error("depot geometry check had $(nfail[]) failure(s)")
+end
+
 # =============================================================================
 # scale_cap -- per-project, per-scale measurement of the "root-clear cap" (max distance
 #   from any relocatable sub-assembly's staging center to the nearest UN-RELOCATABLE root
@@ -604,6 +651,7 @@ const CHECKS = Dict(
     "stall_gate"   => check_stall_gate,
     "spare_pool"   => check_spare_pool,
     "hot_swap"     => check_hot_swap,
+    "depot_geometry" => check_depot_geometry,
     "scale_cap"    => check_scale_cap,
     "rvo"          => check_rvo,
     "stack"        => check_stack,

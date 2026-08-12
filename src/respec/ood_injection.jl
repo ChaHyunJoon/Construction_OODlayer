@@ -408,18 +408,6 @@ function nearest_pool(pos; nonempty::Bool = true)
     return best                                      # 가장 가까운(예비 남은) 풀 키 또는 nothing
 end
 
-# 씬트리에 이미 있는 로봇들의 위치를 둘러싸는 2D 경계상자(예비 풀을 빌드 영역 바깥에 두기 위함).
-function _scene_robot_bbox(scene_tree)
-    xs = Float64[]; ys = Float64[]
-    for node in get_nodes(scene_tree)                # 씬트리의 모든 노드 순회
-        matches_template(RobotNode, node) || continue  # 로봇 노드가 아니면 건너뜀
-        t = global_transform(node).translation       # 그 로봇의 전역 위치(평행이동분)
-        push!(xs, t[1]); push!(ys, t[2])
-    end
-    isempty(xs) && return (-1.0, 1.0, -1.0, 1.0)      # 로봇이 없으면 기본 상자
-    return (minimum(xs), maximum(xs), minimum(ys), maximum(ys))
-end
-
 """
     add_directional_spare_pools!(scene_tree; n_spare, bbox, margin, geom, spacing) -> Dict
 
@@ -438,11 +426,12 @@ their free->slot edges from that solve (wired in the A1b integration step).
 # add_robots_to_scene!(construction_schedule.jl:1519) 와 같은 방식이되, "만든 id 를 붙잡아" 풀에 넣는 게 핵심.
 function add_directional_spare_pools!(scene_tree;
         n_spare::Int = 2,                                  # 방위당 예비 로봇 수
-        bbox = nothing,                                    # 경계상자(없으면 기존 로봇 범위로 자동)
-        margin::Real = 6 * default_robot_radius(),         # 빌드영역 바깥으로 띄울 거리
-        geom = default_robot_geom(),                       # 예비 로봇 형상(기본 로봇 형상)
+        distance::Real = SPARE_DEPOT_DISTANCE[],           # 원점에서 창고까지의 절대 거리 D
+        bbox = nothing,                                    # (무시됨: 절대 좌표 모드)
+        margin::Real = 0,                                  # (무시됨: 절대 좌표 모드)
+        geom = default_robot_geom(),                       # 예비 로봇 형상
         spacing::Real = 3 * default_robot_radius())        # 클러스터 내 로봇 간격
-    centers = pool_centers(bbox === nothing ? _scene_robot_bbox(scene_tree) : bbox; margin = margin)
+    centers = depot_centers_fixed(distance)
     out = Dict{Symbol,Vector{RobotID}}()                   # 방위 → 만든 id 들(반환용)
     for (key, c) in centers                                # 4방위 각각에 대해
         ids = RobotID[]
@@ -546,8 +535,35 @@ hot_swap_enabled() = HOT_SWAP_REPLACE[]
 # [한국어] 창고를 빌드 영역 바깥으로 얼마나 띄울지(로봇 반지름 배수). 값이 클수록 창고가 멀리 놓여,
 #          hot-swap 때 예비가 멀리서 몰고 들어오는 게 눈에 보임.
 const SPARE_POOL_MARGIN_FACTOR = Ref(6.0)
-# 위 배수를 바꾸는 세터(`!`=전역 수정). Float64 로 변환해 저장.
-set_spare_pool_margin!(factor::Real) = (SPARE_POOL_MARGIN_FACTOR[] = Float64(factor); nothing)
+
+# 창고를 놓을 절대 거리 D (world 단위). 4방위 중심 = (0,±D),(±D,0).
+# bbox 기반이던 옛 방식은 로봇 시작 격자만 보고 margin 을 붙여서, 적치 계획이 서기 전에
+# 창고를 놓는 구조 탓에 창고가 빌드 안쪽에 박혔다. 절대 좌표는 그 순서 의존을 없앤다.
+const SPARE_DEPOT_DISTANCE = Ref(25.0)
+spare_depot_distance() = SPARE_DEPOT_DISTANCE[]
+set_spare_depot_distance!(d::Real) = (SPARE_DEPOT_DISTANCE[] = Float64(d); nothing)
+
+"""
+    depot_centers_fixed(d = SPARE_DEPOT_DISTANCE[]) -> Dict{Symbol,Vector{Float64}}
+
+원점 기준 절대 좌표 4방위 창고 중심. 씬 내용과 무관하다(= 호출 시점 의존이 없다).
+"""
+depot_centers_fixed(d::Real = SPARE_DEPOT_DISTANCE[]) = Dict(
+    :north => [0.0,  Float64(d)],
+    :south => [0.0, -Float64(d)],
+    :east  => [Float64(d), 0.0],
+    :west  => [-Float64(d), 0.0])
+
+# 옛 knob. 절대 좌표 모드에서는 창고 위치에 영향을 주지 않는다(1회만 경고).
+const _SPARE_MARGIN_DEPRECATED = Ref(false)
+function set_spare_pool_margin!(factor::Real)
+    SPARE_POOL_MARGIN_FACTOR[] = Float64(factor)
+    if !_SPARE_MARGIN_DEPRECATED[]
+        _SPARE_MARGIN_DEPRECATED[] = true
+        @warn "set_spare_pool_margin! 는 절대좌표 창고에서 무시된다. set_spare_depot_distance!(d) 를 쓸 것."
+    end
+    return nothing
+end
 
 # How many CONSECUTIVE no-progress steps before the self-healing "team deadlocked" OOD
 # fires (demo_utils.jl). The old hard-coded 2000 (~50 s at dt=1/40) is why a post-swap team
