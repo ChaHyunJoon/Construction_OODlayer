@@ -566,7 +566,7 @@ const SPARE_POOL_MARGIN_FACTOR = Ref(6.0)
 # 창고를 놓을 절대 거리 D (world 단위). 4방위 중심 = (0,±D),(±D,0).
 # bbox 기반이던 옛 방식은 로봇 시작 격자만 보고 margin 을 붙여서, 적치 계획이 서기 전에
 # 창고를 놓는 구조 탓에 창고가 빌드 안쪽에 박혔다. 절대 좌표는 그 순서 의존을 없앤다.
-const SPARE_DEPOT_DISTANCE = Ref(40.0)
+const SPARE_DEPOT_DISTANCE = Ref(20.0)
 spare_depot_distance() = SPARE_DEPOT_DISTANCE[]
 set_spare_depot_distance!(d::Real) = (SPARE_DEPOT_DISTANCE[] = Float64(d); nothing)
 

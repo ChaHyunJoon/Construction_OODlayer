@@ -1572,7 +1572,7 @@ SEED       = parse(Int, get(ENV, "SEED", "7"))
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
 FAST       = get(ENV, "FAST", "0") == "1"   # tuning: skip per-step anim frames (much faster, coarse video)
-SPARE_DEPOT_D = parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "40.0"))  # 원점에서 창고까지 절대 거리  # 창고를 빌드에서 얼마나 멀리
+SPARE_DEPOT_D = parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "20.0"))  # 원점에서 창고까지 절대 거리  # 창고를 빌드에서 얼마나 멀리
 CB.set_spare_depot_distance!(SPARE_DEPOT_D)       # park the depots FAR from the build (visible re-emergence)  # 예비가 멀리서 등장해 눈에 띔
 # ADAPTIVITY: react to a post-swap team wedge in ~a second, not the old ~50 s.
 # 적응성: 교체 후 팀이 끼는(wedge) 상황을 옛날처럼 ~50초가 아니라 ~1초 만에 감지·복구하도록 점검 간격을 줄임.
@@ -2751,7 +2751,7 @@ HOT_SWAP   = get(ENV, "HOT_SWAP", "1") == "1"
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 FAST       = get(ENV, "FAST", "1") == "1"
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "0") == "1"
-CB.set_spare_depot_distance!(parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "40.0")))
+CB.set_spare_depot_distance!(parse(Float64, get(ENV, "SPARE_DEPOT_DIST", "20.0")))
 CB.set_reform_interval!(parse(Int, get(ENV, "REFORM_INTERVAL", "300")))
 
 _setup_milp!()
