@@ -313,6 +313,20 @@ const SPARE_POOLS = Ref(Dict{Symbol,Vector{RobotID}}())
 # 각 풀의 중심 좌표(거리 계산 = 가장 가까운 풀 선택에 사용). 키=방위, 값=2D 중심 [x,y].
 const SPARE_POOL_CENTERS = Ref(Dict{Symbol,Vector{Float64}}())
 
+# 예비 로봇별 "주차 슬롯" 절대 좌표. 창고 중심이 아니라 그 로봇이 실제로 서 있어야 할 자리다
+# (한 창고에 여러 대가 줄지어 서므로 중심과 다르다).
+const SPARE_SLOTS = Ref(Dict{AbstractID,Vector{Float64}}())
+spare_slots() = SPARE_SLOTS[]
+
+"""
+    station_keeping_goal(rid) -> Union{Vector{Float64},Nothing}
+
+`rid` 가 **아직 파견되지 않은** 예비 로봇이면 그 주차 슬롯 좌표, 아니면 `nothing`.
+`pop_spare!` 가 풀에서 빼는 순간 `is_spare` 가 false 가 되므로, 파견된 로봇은 별도 플래그 없이
+자동으로 정상 주행으로 돌아온다.
+"""
+station_keeping_goal(rid) = (is_spare(rid) ? get(SPARE_SLOTS[], rid, nothing) : nothing)
+
 # 상자 안 딕셔너리를 그대로 돌려주는 한 줄 접근자(zone 의 restriction_zones() 와 동형).
 spare_pools() = SPARE_POOLS[]
 spare_pool_centers() = SPARE_POOL_CENTERS[]
@@ -323,7 +337,7 @@ spare_pool_centers() = SPARE_POOL_CENTERS[]
 # 살아남아야 하는 유일한 상태다 — 여러 판을 이어 돌리는 캠페인에서 관측하려는 대상이 바로
 # "함대가 늙어간다"는 그 이력이기 때문. 비우려면 `reset_asset_ledger!()` 를 명시적으로 부를 것.
 # (여기에 추가하지 말 것 — 추가하는 순간 캠페인의 시간축이 매 판 리셋된다.)
-clear_spare_pools!() = (empty!(SPARE_POOLS[]); empty!(SPARE_POOL_CENTERS[]);
+clear_spare_pools!() = (empty!(SPARE_POOLS[]); empty!(SPARE_POOL_CENTERS[]); empty!(SPARE_SLOTS[]);
                         empty!(DEPOT_INFO[]); empty!(DECOMMISSIONED_BODIES[]);
                         empty!(CHECKED_OUT_SPARES[]); empty!(HOT_SWAP_ASSETS[]); nothing)
 
@@ -434,10 +448,15 @@ function add_directional_spare_pools!(scene_tree;
     centers = depot_centers_fixed(distance)
     out = Dict{Symbol,Vector{RobotID}}()                   # 방위 → 만든 id 들(반환용)
     for (key, c) in centers                                # 4방위 각각에 대해
+        # north/south 는 x축 상에 나란히(y=D 고정), east/west 는 y축 상에 나란히(x=D 고정) 줄지어
+        # 서야 창고 "그 자리"가 방사(radial) 좌표에서 흔들리지 않는다(station_keeping_goal 이
+        # 검사하는 것도 바로 그 좌표). 이전엔 모든 방위에 x축 오프셋을 썼는데, east/west 는 그러면
+        # 로봇이 창고 중심에서 방사 방향으로 어긋난다.
+        along_x = key in (:north, :south)
         ids = RobotID[]
         for i in 1:n_spare                                 # 그 풀에 n_spare 대 배치
-            off = (i - (n_spare + 1) / 2) * Float64(spacing)  # 클러스터를 x축 따라 중앙정렬로 한 줄 배치
-            pos = [c[1] + off, c[2]]
+            off = (i - (n_spare + 1) / 2) * Float64(spacing)  # 클러스터를 중앙정렬로 한 줄 배치
+            pos = along_x ? [c[1] + off, c[2]] : [c[1], c[2] + off]
             rid = get_unique_id(RobotID)                   # 새 고유 로봇 id 발급
             node = add_node!(scene_tree, RobotNode(rid, GeomNode(geom)))  # 씬트리에 로봇 노드 추가
             # (x,y,0) 평행이동 변환을 만들어 로봇을 그 위치에 둠(add_robots_to_scene! 와 동일 형식).
@@ -445,13 +464,16 @@ function add_directional_spare_pools!(scene_tree;
             set_local_transform!(node, tform)
             push!(ids, rid)
             register_spare!(key, rid)                      # 이 방위 풀에 등록
+            SPARE_SLOTS[][rid] = Float64[pos[1], pos[2]]   # 이 로봇이 지켜야 할 주차 자리
         end
         SPARE_POOL_CENTERS[][key] = Vector{Float64}(c)     # 풀 중심 기록(nearest_pool 용)
-        # repository 시각화용 패드 크기 기록: n_spare 대가 spacing 간격으로 x축에 한 줄 배치되므로
-        # 그 클러스터를 감싸는 반폭(halfw)/반깊이(halfd)를 함께 저장. draw_spare_depots! 가 소비.
+        # repository 시각화용 패드 크기 기록: n_spare 대가 spacing 간격으로 (along_x ? x축 : y축) 따라
+        # 한 줄 배치되므로 그 클러스터를 감싸는 반폭(halfw)/반깊이(halfd)를 함께 저장(축에 맞춰 교대).
+        # draw_spare_depots! 가 소비.
         rr = default_robot_radius()
-        halfw = ((n_spare - 1) / 2) * Float64(spacing) + 2 * rr
-        halfd = 2 * rr
+        spread = ((n_spare - 1) / 2) * Float64(spacing) + 2 * rr
+        thin = 2 * rr
+        halfw, halfd = along_x ? (spread, thin) : (thin, spread)
         DEPOT_INFO[][key] = (capacity = n_spare, halfw = Float64(halfw), halfd = Float64(halfd))
         out[key] = ids
     end

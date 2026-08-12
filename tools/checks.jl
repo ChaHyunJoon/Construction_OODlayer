@@ -423,6 +423,46 @@ println("\ndepot geometry check: $(npass[]) PASS / $(nfail[]) FAIL")
 nfail[] == 0 || error("depot geometry check had $(nfail[]) failure(s)")
 end
 
+# [점검 내용] 정박(station-keeping): 스페어마다 슬롯 좌표가 기록되는지, station_keeping_goal 이
+#   미파견 스페어에만 슬롯을 주고 파견(pop) 후에는 nothing 을 주는지(= 파견 로봇은 정상 주행 복귀).
+function check_station_keeping()
+npass = Ref(0); nfail = Ref(0)
+check(msg, cond) = (cond ? (npass[] += 1; println("  PASS  $msg")) :
+                           (nfail[] += 1; println("  FAIL  $msg")))
+
+CB.clear_spare_pools!()
+CB.set_spare_depot_distance!(25.0)
+st = CB.SceneTree()
+ids = CB.add_directional_spare_pools!(st; n_spare = 2)
+
+check("a slot is recorded for every spare",
+    all(haskey(CB.spare_slots(), r) for v in values(ids) for r in v))
+check("slot count equals spare count", length(CB.spare_slots()) == 8)
+
+east1 = ids[:east][1]
+slot = CB.station_keeping_goal(east1)
+check("station_keeping_goal returns a 2D slot for a parked spare",
+    slot !== nothing && length(slot) == 2)
+check("the east slot sits on the east depot (x = D)", slot[1] == 25.0)
+check("the slot matches the recorded body position",
+    slot == CB.spare_slots()[east1])
+
+# 파견되면(풀에서 제거되면) 더 이상 정박 대상이 아니다.
+while CB.is_spare(east1); CB.pop_spare!(:east); end
+check("a dispatched spare is no longer station-kept",
+    CB.station_keeping_goal(east1) === nothing)
+
+rid_other = CB.get_unique_id(CB.RobotID)
+check("a non-spare robot is never station-kept",
+    CB.station_keeping_goal(rid_other) === nothing)
+
+CB.clear_spare_pools!()
+check("clear_spare_pools! empties the slot store", isempty(CB.spare_slots()))
+
+println("\nstation-keeping check: $(npass[]) PASS / $(nfail[]) FAIL")
+nfail[] == 0 || error("station-keeping check had $(nfail[]) failure(s)")
+end
+
 # =============================================================================
 # scale_cap -- per-project, per-scale measurement of the "root-clear cap" (max distance
 #   from any relocatable sub-assembly's staging center to the nearest UN-RELOCATABLE root
@@ -652,6 +692,7 @@ const CHECKS = Dict(
     "spare_pool"   => check_spare_pool,
     "hot_swap"     => check_hot_swap,
     "depot_geometry" => check_depot_geometry,
+    "station_keeping" => check_station_keeping,
     "scale_cap"    => check_scale_cap,
     "rvo"          => check_rvo,
     "stack"        => check_stack,
