@@ -103,13 +103,21 @@ BASIS = {
              "(severity 1.0) -- NOOP and RelocateBuild TIE exactly (both complete, closed "
              "291/313, identical makespan 22.425s): this grid does not test the rule below, the "
              "same outcome as the D=40 grid before it, so the rule is left unchanged. Independent "
-             "evaluation-run support was meant to come from Task 3's D=20 sweep "
-             "(results/matrix_d20.jsonl, 42 runs), but that run was still in progress at the time "
-             "of this derivation and its output did not exist yet -- pending, not cited here. "
-             "Historical (D=40, superseded, not yet re-measured at D=20): results/matrix_fardepot"
-             ".jsonl showed canonical(NOOP) 58.0s / 500 J/closed with 5 ReformTeam recovery "
-             "alarms, vs RelocateBuild 39.0s / 492 J/closed with 1 alarm. Grid provenance: "
-             "zcausal_reform/ STEP 10, 2 arm-crossed events (n=2 -- weakest axis).",
+             "evaluation-run support: results/matrix_d20.jsonl, case=='zone', ood_seed 1 (seed 1 "
+             "rows only, n=3, one per policy -- seed 2 was still appending when this was written; "
+             "full 42-row confirmation happens in Task 5). All three policies COMPLETE the build. "
+             "canonical enacts NOOP on every ZoneTruth decision (4x) and then needs 5 ReformTeam "
+             "recovery decisions later in the run (a team got stuck), finishing in 58.55s. "
+             "surrogate and dspy both enact RelocateBuild on every ZoneTruth decision (4x each) "
+             "and need ZERO ReformTeam recoveries, finishing in 30.875s each -- about 53% of the "
+             "NOOP arm's wall-clock time (30.875s vs 58.55s). This D=20 evaluation run reproduces "
+             "the same pattern the D=40 evaluation run showed (NOOP finishes but drags in "
+             "stall/recovery alarms; RelocateBuild finishes faster and clean), so it "
+             "independently supports keeping the rule even though the oracle grid itself ties. "
+             "Historical (D=40, now superseded by the D=20 evaluation-run numbers above): "
+             "results/matrix_fardepot.jsonl showed canonical(NOOP) 58.0s / 500 J/closed with 5 "
+             "ReformTeam alarms, vs RelocateBuild 39.0s / 492 J/closed with 1 alarm. Grid "
+             "provenance: zcausal_reform/ STEP 10, 2 arm-crossed events (n=2 -- weakest axis).",
 }
 
 
