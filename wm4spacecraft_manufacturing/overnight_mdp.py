@@ -24,24 +24,30 @@ except Exception:
     pass
 
 import numpy as np
+import objective          # 목적함수 상수·J 의 단일 진실원 (objective.json; spec §5)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUTDIR = os.path.join(HERE, "artifacts_mdp")
 
 # 유한벌점 SSP 비용 — gen_oracle_mc.jl 의 scalar_cost 와 **같은 정의**여야 한다.
-COST_FAIL, COST_UNCLOSED, COST_TIE_EPS = 10000.0, 100.0, 1.0e-3
+# [2026-08-13] 그 "같아야 한다"를 주석이 아니라 코드로 만든다: 값의 출처는 objective.json 하나다.
+# 이 세 상수는 하위호환용 별칭이고(이름으로 읽는 코드가 있을 수 있다), J 는 objective 가 계산한다.
+COST_FAIL = float(objective.load()["C_fail"])
+COST_UNCLOSED = float(objective.load()["C_unclosed"])
+COST_TIE_EPS = float(objective.load()["tie_eps"])
 
 
 def scalar_cost(r):
-    mk = r.get("makespan", float("nan"))
-    try:
-        mk = float(mk)
-    except Exception:
-        mk = float("nan")
-    if r.get("complete"):
-        return mk if math.isfinite(mk) else COST_FAIL
-    unclosed = int(r.get("total", 0)) - int(r.get("closed", 0))
-    return COST_FAIL + COST_UNCLOSED * unclosed + COST_TIE_EPS * (mk if math.isfinite(mk) else 0.0)
+    """행 하나의 J (spec §3). gen_oracle_mc.scalar_cost 와 **같은 함수**를 부른다.
+
+    [2026-08-13] 예전에는 이 식을 여기 통째로 복붙해 두었다(리터럴 상수 포함) — 목적함수
+    상수의 다섯 번째 복사본이었고, 이름이 `scalar_cost` 라 cost_lex_key 를 찾는 감사에도
+    안 잡혔다. 달라진 동작 두 가지, 둘 다 spec §5 가 요구하는 방향이다:
+      - 완주 런에 w_E·energy_J 가 더해진다(§3.1). energy_J 가 없으면 ObjectiveError —
+        구세대 mcds 덤프에 신세대 J 를 적용하려는 시도이므로 조용히 넘기지 않는다(§7).
+      - 완주인데 makespan 이 비유한이면 예전엔 조용히 COST_FAIL 을 돌려줬다. 이제는
+        ObjectiveError 다 — "완주했다는데 시간이 없다"는 장부 모순이지 비용이 아니다."""
+    return objective.J_row(r)
 
 
 def _is_state_feature(k):

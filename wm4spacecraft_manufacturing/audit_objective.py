@@ -38,22 +38,62 @@ def func_body(src, name):
     return m.group(0) if m else ""
 
 
+def code_lines(path):
+    """문자열 리터럴과 주석을 지운 소스 줄. 독스트링에 옛 규칙을 **설명**해 둔 것까지 결함으로
+    세면 감사가 자기 문서를 물어뜯는다 — 실제 코드만 본다."""
+    import tokenize
+    with open(path, "rb") as fh:
+        src = fh.read().decode("utf-8")
+    out = src.splitlines()
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return out
+    for t in toks:
+        if t.type not in (tokenize.STRING, tokenize.COMMENT):
+            continue
+        (r0, c0), (r1, c1) = t.start, t.end
+        for r in range(r0, r1 + 1):
+            line = out[r - 1]
+            a = c0 if r == r0 else 0
+            b = c1 if r == r1 else len(line)
+            out[r - 1] = line[:a] + " " * (b - a) + line[b:]
+    return out
+
+
 # --- 1) 목적함수 상수를 리터럴로 대입하는 파일이 있는가 ---------------------------------------
 # objective.py 만 보면 부족하다: 2026-08-13 리뷰에서 verify.py 가 같은 세 상수를
 # (SSP_STALL_BASE/SSP_PER_UNCLOSED/SSP_MAKESPAN_W) 리터럴로 들고 있는 **네 번째 복사본**으로
 # 발견됐다. 감사가 "consistent" 를 찍으면서 살아 있는 복제를 놓치면 없는 것만 못하다.
 LITERAL_SCAN = ("objective.py", "verify.py", "e1_analyze.py", "ladder.py",
                 "firegrid_report.py", "dspy_real_experiment.py", "build_md_report.py",
-                "figures.py", "test_llm7h.py")
+                "figures.py", "test_llm7h.py", "overnight_mdp.py", "export_surrogate.py",
+                "cost_eval.py")
+# C_fail / C_unclosed / tie_eps 를 적어 넣는 여러 표기. `=` 오른쪽의 **한 항 전체**가 이 중
+# 하나면 대입으로 본다 — 그래서 `X = 100.0 * y` 같은 정상 산술은 걸리지 않고,
+# **튜플 대입** `A, B, C = 10000.0, 100.0, 1.0e-3` 은 걸린다(2026-08-13 리뷰: 이 형태가
+# 정규식의 사각지대였고 overnight_mdp.py 가 실제로 그 형태였다).
+OBJ_LITERALS = {"10000.0", "100.0", "1e-3", "1.0e-3", "0.001", "1e-03"}
+_ASSIGN_TAIL = ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^")
+# 이름이 목적함수 상수를 자처하면 값 하나만으로도 복사본이다. (100.0 같은 흔한 수가 다른 뜻으로
+# 쓰이는 경우 — 예: export_surrogate.TIME_SCALE — 를 오검출하지 않으려면 이름을 봐야 한다.)
+_OBJNAME = re.compile(r"(COST_FAIL|COST_UNCLOSED|COST_TIE|TIE_EPS|C_fail|C_unclosed|"
+                      r"SSP_STALL|STALL_BASE|PER_UNCLOSED|SSP_MAKESPAN|UNCLOSED|PENALTY)", re.I)
 bad = []
 "objective.json" in read(HERE, "objective.py") or bad.append("objective.py 가 objective.json 을 안 읽는다")
 for fname in LITERAL_SCAN:
-    for i, line in enumerate(read(HERE, fname).splitlines(), 1):
-        s = line.split("#", 1)[0]
-        for lit in ("10000.0", "100.0", "1e-3", "1.0e-3"):
-            if re.search(r"=\s*%s\s*$" % re.escape(lit), s.rstrip()):
-                bad.append("%s:%d 리터럴 %s 대입: %s" % (fname, i, lit, line.strip()))
-check("목적함수 상수 리터럴 복붙 (%d 파일 스캔)" % len(LITERAL_SCAN), bad)
+    for i, line in enumerate(code_lines(os.path.join(HERE, fname)), 1):
+        if line.lstrip().startswith(("def ", "class ")):
+            continue          # 키워드 기본값(n=10000)은 모듈 상수가 아니다
+        lhs, sep, rhs = line.partition("=")
+        if not sep or lhs.rstrip().endswith(_ASSIGN_TAIL) or rhs.startswith("="):
+            continue          # ==, <=, +=, ... 는 대입이 아니다
+        hits = [p.strip() for p in rhs.split(",") if p.strip() in OBJ_LITERALS]
+        # 하나라도 + 이름이 목적함수 상수를 자처하면 복사본. 두 개 이상이면 이름과 무관하게
+        # **튜플 대입으로 세 상수를 한 줄에 박은 것**이므로 그 자체가 증거다.
+        if hits and (len(hits) >= 2 or _OBJNAME.search(lhs)):
+            bad.append("%s:%d 목적함수 상수를 리터럴로 대입: %s" % (fname, i, line.strip()[:88]))
+check("목적함수 상수 리터럴 복붙 (%d 파일 스캔, 튜플 대입 포함)" % len(LITERAL_SCAN), bad)
 
 # --- 2) objective.jl 도 같은 파일을 읽는가 -----------------------------------------------
 jsrc = read(HERE, "objective.jl")
@@ -96,29 +136,6 @@ _RANKING = re.compile(r"\b(lex_key|cost_key|_key)\s*\(|\bkey\s*=|\bmax\s*\(|\bmi
 _TRAIN_TARGET = re.compile(r"^\s*y\s*=\s*.*closed")
 
 INVENTORY = []   # 남아 있는 λ·MACRO_COST 스칼라 사용처 (실패가 아니라 가시성용 목록)
-
-
-def code_lines(path):
-    """문자열 리터럴과 주석을 지운 소스 줄. 독스트링에 옛 규칙을 **설명**해 둔 것까지 결함으로
-    세면 감사가 자기 문서를 물어뜯는다 — 실제 코드만 본다."""
-    import tokenize
-    with open(path, "rb") as fh:
-        src = fh.read().decode("utf-8")
-    out = src.splitlines()
-    try:
-        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
-    except (tokenize.TokenError, IndentationError, SyntaxError):
-        return out
-    for t in toks:
-        if t.type not in (tokenize.STRING, tokenize.COMMENT):
-            continue
-        (r0, c0), (r1, c1) = t.start, t.end
-        for r in range(r0, r1 + 1):
-            line = out[r - 1]
-            a = c0 if r == r0 else 0
-            b = c1 if r == r1 else len(line)
-            out[r - 1] = line[:a] + " " * (b - a) + line[b:]
-    return out
 
 
 PY_FILES = sorted(os.path.basename(p) for p in glob.glob(os.path.join(HERE, "*.py")))

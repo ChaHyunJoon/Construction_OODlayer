@@ -32,7 +32,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from e1_analyze import MACRO_COST, MACRO_NAME, cost_lex_key_row
+from e1_analyze import MACRO_NAME, cost_lex_key_row
 
 LAM = 3.0   # 개입 비용의 환산 가중치(e1_analyze / export_surrogate 와 같은 값)
 

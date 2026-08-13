@@ -230,7 +230,19 @@ function check_order_equivalence(results)
     rs = collect(results)
 
     viol_bound = Tuple{Any,Any}[]   # 경계/미완주 위반 -> C_fail·C_unclosed 문제
-    viol_energy = Tuple{Any,Any}[]  # 완주끼리, 예산 **밖** 역전 -> kappa 문제
+    # viol_energy 는 **현재의 J 형태에서는 증명 가능하게 도달 불가**다. 완주 두 런에 대해
+    #     J(a) - J(b) = (mk_a - mk_b) + w_E·(E_a - E_b)
+    # 이므로 `better_ssp`(= mk_a < mk_b)와 부호가 갈리려면 에너지 항이 makespan 차를 덮어야 하고,
+    # 그것은 곧 |Δmk| ≤ w_E·|ΔE| = energy_budget 이다 — `explained_by_energy` 의 조건과 항등적으로
+    # 같다. (2026-08-13 리뷰 실측: 무작위 쌍 20만 개 -> 불일치 1677 건, 설명 안 되는 것 0 건.)
+    #
+    # 그래도 지운다면 그건 "지금의 J 형태"에만 기대는 것이다. 다음 중 하나라도 생기면 도달 가능해진다:
+    #   - 완주 분기가 makespan 에 선형이 아니게 되거나(예: 로그·포화 항),
+    #   - w_E 가 두 런에서 다른 값이 되거나(런별 κ·스케일),
+    #   - better_ssp 가 makespan 외의 축을 다시 보게 되거나,
+    #   - energy_budget 이 |ΔE| 가 아닌 다른 양으로 계산되면.
+    # 방어선으로 남긴다 — 계약을 코드로 적어 두는 값이 죽은 분기 한 개 값보다 크다.
+    viol_energy = Tuple{Any,Any}[]  # 완주끼리, 예산 **밖** 역전 -> kappa 문제 (현재 J 에서는 도달 불가)
     n_flip = 0                      # 예산 안의 정당한 에너지 역전(정상)
     for i in 1:length(rs), j in (i + 1):length(rs)
         a, b = rs[i], rs[j]

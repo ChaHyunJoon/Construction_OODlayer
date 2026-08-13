@@ -41,7 +41,7 @@ import os, sys, json, time, warnings
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 warnings.filterwarnings("ignore")
 
-from e1_analyze import load, cost_lex_key_row, MACRO_COST, MACRO_NAME
+from e1_analyze import load, cost_lex_key_row, MACRO_NAME
 import objective                     # 아티팩트에 objective_hash 를 박기 위해 (spec §7)
 import dspy
 from dspy.teleprompt import (LabeledFewShot, BootstrapFewShot,
