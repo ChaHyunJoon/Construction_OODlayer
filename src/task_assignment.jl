@@ -478,7 +478,9 @@ function assign_collaborative_tasks!(model,
     # 비용 계산은 model.greedy_cost 로 디스패치한다(essential_tg_coponents.jl 의 greedy_edge_cost).
     # 이 필드는 예전부터 있었으나 읽는 곳이 없어 죽어 있었다(spec §2.4). 기본 타입들은 전부
     # 예전 공식(get_tF + 이동시간)을 그대로 내므로 이 변경만으로는 배정이 바뀌지 않는다 —
-    # test/greedy_assignment_regression.jl 이 그것을 강제한다.
+    # test/greedy_cost_dispatch_equivalence.jl 이 그것을 강제한다(공식 항등성 + 이 콜사이트와
+    # 변경 전 콜사이트의 프로세스 내부 A/B). test/greedy_assignment_regression.jl 은 참고용
+    # 진단으로 강등됐다(프로세스 간 해시 비교가 구조적으로 무의미함이 실측으로 드러남).
     gcost = model.greedy_cost
     cost_func = (v,v2)->begin
         if !haskey(distance_dict,(v,v2))         # 이 쌍의 거리(시간)를 아직 안 구했으면
