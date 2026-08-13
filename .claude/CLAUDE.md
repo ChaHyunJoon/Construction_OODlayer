@@ -41,6 +41,10 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   의 재풀이가 빌드 중간엔 후보 간선이 0개다).
 - **아직 안 한 것**: 630판 스윕 재실행(단계 6), surrogate 재라벨·재학습(단계 7),
   prefix 결정성 재측정(단계 8), DP 계획 재개(단계 9). 그때까지 신세대 성능 수치는 없다.
+  **에너지 결정력(spec §4.2/§9 무력 검사)도 아직 측정 안 됐다** — 지금 있는 모든 덤프는
+  전부 미완주만 있거나(에너지 항이 관여 안 함) energy_J 자체가 없다(구세대). 신세대 덤프가
+  생기면 `wm4spacecraft_manufacturing/report_energy_decisiveness.py` 로 잰다 — "에너지가 a*
+  를 한 번이라도 바꾸는가"를 세고, 0 이면 0 이라고 그대로 보고하는 도구다.
 
 행동 어휘가 **2026-08-06** 에 바뀌었다: `action_registry.json` 이 매크로 **7(RelocateBuild)·8(SwapBattery)**
 를 포함한다. 그 이전 측정치는 **행동집합이 잘린 상태**의 숫자다(zone 은 지원 팔이 `{NOOP}` 뿐이라
@@ -48,12 +52,16 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 일어났기 때문에, 이전 세대 산출물을 **삭제**했다.
 
 - **현행 배포 학습셋** = `oracle/out/n44_plus78.jsonl`. 계약: `python test_surrogate_support.py`
-  → `support=[0, 1, 2, 3, 4, 7, 8]` (7/7 PASS). 이게 "현행 세대인가"의 유일한 기계적 판정이다.
-- **현행 측정 문서는 `md/RESULTS_D20_2026-08-12.md` 하나뿐** (2026-08-12 갱신 — 창고 거리
-  기본값이 `D=20.0`(근거리)로 바뀌었고, 그 기하에서 재유도한 기준 정책 + 4지표 결과 행렬이 이
-  문서다). `md/RESULTS_FARDEPOT_2026-08-12.md`(D=40) 와 `md/RESULTS_LLM7H.md` 는 구세대 수치이며
-  🔴 배너가 붙었다. 다른 md 의 수치를 현재 성능으로 인용하지 말 것 — 구세대 결과 문서에는 전부
-  🔴 세대 표시 배너가 붙어 있다.
+  → `support=[0, 1, 2, 3, 4, 7, 8]` (7/7 PASS). 이게 "**행동 어휘** 세대인가"의 유일한 기계적
+  판정이다 — **목적함수 세대**는 별개 축이다(위 `2026-08-13` 절의 `objective_hash` 계약을 볼 것).
+  실제로 이 학습셋 자체가 목적함수 기준으로는 구세대다: `energy_J` 가 없어 `verify.py` 가
+  하드 스톱한다(위 절 참조). 두 "세대"를 섞지 말 것 — 행동 어휘는 현행, 목적함수는 구세대다.
+- **현행 측정 문서는 없다.** `md/RESULTS_D20_2026-08-12.md` 가 2026-08-12 시점(창고 거리
+  기본값 `D=20.0`, 그 기하에서 재유도한 기준 정책 + 4지표 결과 행렬)엔 유일한 현행 문서였지만,
+  **이 커밋(2026-08-13)에서 그 문서에도 🔴 구세대 배너가 붙었다** — 목적함수가 통일되며 플래너
+  동역학이 바뀌었기 때문이다. `md/RESULTS_FARDEPOT_2026-08-12.md`(D=40) · `md/RESULTS_LLM7H.md`
+  도 마찬가지로 🔴 배너가 붙어 있다. **결과 문서 전부가 구세대다** — 신세대 수치는 630판 스윕
+  재실행(spec §8 단계 6) 뒤에야 나온다. 다른 md 의 수치를 현재 성능으로 인용하지 말 것.
 - **삭제됨**: `oracle/out` 의 08-06 이전 런 전부(145MB→5MB), `artifacts_{mdp,assimilation,openworld,classifier}`,
   `figs/`, sweep_lab 리포트(LLM 프로그램 `.json` 만 잔존), 루트 `results/`, `docs/src/*_visualization.html`,
   `tools/monitor/{anim,streams,regen_case_logs}`, 구세대 모델 `surrogate_{linear,hotswap,v2}.json`.
@@ -65,7 +73,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   으로 registry 를 직접 읽게 고쳤다(파생이라 감사할 복제본이 없다. 검증: `[0,1,2,3,4,7,8]`).
   아직 남은 리터럴은 `wm4spacecraft_manufacturing/assimilation_gate.py`(자체 검사 고정 입력, 동작 무영향).
 - 알려진 실패(2026-08-09 정리 당시): `python verify.py oracle/out/n44_plus78.jsonl` → V0 PASS 후
-  **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다.
+  **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다. `norm_regret` 이
+  baseline 의 선택 팔을 그 instance 의 `vals` 에서 찾지 못해 죽는다 — 7·8 을 포함한 덤프로
+  harness 를 올리는 것이 남은 일이었다(이 문제 자체는 아직 안 고쳐졌다).
   **2026-08-13 목적함수 통일 이후로는 이 지점에 도달하지 못한다** — `verify.py` 가 그보다 먼저
   `ObjectiveError` 로 하드 스톱한다(구세대 덤프에 `energy_J` 가 없어서). 상세는 위 `2026-08-13` 절.
 

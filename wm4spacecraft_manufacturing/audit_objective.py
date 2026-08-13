@@ -211,6 +211,33 @@ for fname, pat in (("e1_analyze.py", r"y\s*=\s*df\.closed\.astype"),
             "채점(-J)의 불일치가 문서화되지 않은 채 남는다" % (fname, i + 1, DEFER_MARK))
 check("학습 타깃 != 채점 J, 단계 7 로 유예 표시됨 (I-3, 고치지 않고 기록)", bad)
 
+# --- 9) CLAUDE.md/배너 문서에 박힌 해시 프로즈가 안 곪았는가 (spec §7-2, 태스크7 리뷰 R-5) ------
+# `generation` 필드가 바뀌면 objective_hash() 도 바뀐다. CLAUDE.md 와 🔴 배너는 그 해시값을
+# 사람이 읽는 산문에 **문자열로** 박아 둔다(``59b1174118b874ed`` 같은 형태) — 이건 objective.json
+# 을 다시 읽지 않으므로, 다음번 generation bump 가 조용히 이 문서들을 거짓으로 만들 수 있다.
+# 기계 검사로 잡는다: 지금 사는 해시와 문서에 박힌 해시가 다르면 실패.
+HASH_DOCS = (
+    ("CLAUDE.md", os.path.join(ROOT, ".claude", "CLAUDE.md")),
+    ("RESULTS_D20_2026-08-12.md", os.path.join(HERE, "md", "RESULTS_D20_2026-08-12.md")),
+)
+_HASH_RE = re.compile(r"`([0-9a-f]{16})`")
+current_hash = objective.objective_hash()
+bad = []
+for label, path in HASH_DOCS:
+    if not os.path.exists(path):
+        bad.append("%s 를 못 찾았다(%s) — 검사가 무력해졌다" % (label, path))
+        continue
+    quoted = set(_HASH_RE.findall(read(path)))
+    if not quoted:
+        bad.append("%s 에 16자 hex objective_hash 인용이 하나도 없다 — "
+                    "세대 판정 계약이 문서에서 빠졌다" % label)
+        continue
+    stale = quoted - {current_hash}
+    if stale:
+        bad.append("%s 가 옛 해시를 인용한다(%s, 현재=%s) — generation bump 후 문서 갱신 누락"
+                   % (label, ", ".join(sorted(stale)), current_hash))
+check("CLAUDE.md/배너 문서의 objective_hash 인용이 최신인가 (R-5)", bad)
+
 # --- 요약 --------------------------------------------------------------------------------
 for where, bad in OK + FAIL:
     print(("OK        " if not bad else "MISMATCH  ") + where)
