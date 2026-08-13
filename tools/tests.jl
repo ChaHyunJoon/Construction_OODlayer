@@ -121,6 +121,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -234,6 +235,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -324,6 +326,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -421,6 +424,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -597,6 +601,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -782,6 +787,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -904,6 +910,7 @@ K = parse(Int, get(ENV, "ZTC_K", "1200"))          # 각 구간(ON/OFF)에 주�
 println(">>> building env with NAVIGATION ON (rvo+tangent_bug+dispersion)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -1031,6 +1038,7 @@ _setup_milp!(time_limit = 120.0)
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -1123,6 +1131,7 @@ CB.set_energy_model!(load_power = 0.25)
 pp = CB.get_project_params(4)   # tractor
 println(">>> building env (greedy)...")
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots],
         assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
@@ -1416,6 +1425,7 @@ end
 println(">>> service ready. building fast env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -1585,6 +1595,7 @@ _setup_milp!(time_limit = 300.0, mip_rel_gap = 5.0)
 pp = get_project_params(4)   # tractor
 println(">>> building env (assignment only)...")
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots],
         assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
@@ -1674,6 +1685,7 @@ _setup_milp!(time_limit = 300.0, mip_rel_gap = 5.0)
 pp = get_project_params(4)   # tractor
 println(">>> building env (assignment only, no simulation)...")
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots],
         assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,

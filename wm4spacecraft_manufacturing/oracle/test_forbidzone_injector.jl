@@ -46,6 +46,7 @@ println("[test] env 준비 중 (시뮬 없음, 수 분) ...")
 res = Ref{Any}(nothing); err = Ref{Any}(nothing); done = Threads.Atomic{Bool}(false)
 t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int),
     () -> (try
+               Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Warn))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
                res[] = CB.run_lego_demo(; ldraw_file = "tractor.mpd", num_robots = 10,
                    assignment_mode = :greedy, milp_optimizer = :highs,
                    optimizer_time_limit = 60, log_level = Logging.Warn,
