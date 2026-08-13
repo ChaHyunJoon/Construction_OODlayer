@@ -571,7 +571,9 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
         CB.monitor_track_schedule_step!(env, k; dt=env.dt)
         (k % 50 == 0) && CB.monitor_emit!(env, k)          # 배치마다 프레임 방출
         nc = length(env.cache.closed_set)
-        if nc > last_closed; last_closed = nc; stall = 0; else; stall += 1; end
+        # 빌드가 실제로 전진했으면 reform 예산도 되돌린다(`render_demo.jl:566-571` 과 동일 규칙).
+        # 즉 DEMO_REFORM_MAX 는 "평생 N 회"가 아니라 "**연속** 무성과 N 회"를 뜻한다.
+        if nc > last_closed; last_closed = nc; stall = 0; _REFORM_CT[] = 0; else; stall += 1; end
         # DEMO_REFORM>0 이면 무진전이 그 간격을 넘을 때마다 팀 교착 사건을 **truth 로그에 올려**
         # 위의 `while seen < length(log)` 가 정책 레이어(canonical/surrogate/LLM)로 라우팅하게 한다.
         # CB.maybe_emit_reform_ood! 를 안 쓰는 이유: 그건 RESPEC_ENABLED 게이트 + 전역 respec 큐로 가는데,
