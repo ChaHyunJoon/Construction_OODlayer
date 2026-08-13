@@ -260,10 +260,15 @@ function dump_layout(env, cmdfile)
     return true
 end
 
-"명령 파일에 이미 들어와 있는 조작자 명령의 종류. `:abort` 가 하나라도 있으면 그게 이긴다."
 include(joinpath(@__DIR__, "run_header.jl"))
 include(joinpath(@__DIR__, "zone_command.jl"))
 
+# 2026-08-13: 아래 독스트링이 이 두 `include` **앞에** 있었다. Julia 는 독스트링 바로 뒤의 식을
+# 문서화 대상으로 삼는데 `include(...)` 는 문서화할 수 없어서, 파일 전체가
+# `ERROR: cannot document the following expression` 로 로드조차 되지 않았다(0063e6a 이후 계속).
+# render_demo.jl 은 3D 애니메이션 경로이자 대시보드의 `POST /run` 이 부르는 파일이므로,
+# 그동안 라이브 렌더도 같이 죽어 있었다. 독스트링을 원래 설명 대상 함수 위로 되돌린다.
+"명령 파일에 이미 들어와 있는 조작자 명령의 종류. `:abort` 가 하나라도 있으면 그게 이긴다."
 function pending_command_kind(path)
     (isfile(path) && filesize(path) > 0) || return :none
     kind = :none
