@@ -20,6 +20,9 @@ const OBJECTIVE_PATH = joinpath(@__DIR__, "objective.json")
 const ENV_OVERRIDES = ("C_fail" => "MC_COST_FAIL", "C_unclosed" => "MC_COST_UNCLOSED")
 const SCALE_KEYS = ("kappa", "M_ref", "E_ref")
 
+# 미완주 분기가 쓰는 상수 — null 이면 그 분기를 계산할 수 없다 (M-5: MethodError 로 새지 않게).
+const INCOMPLETE_KEYS = ("C_fail", "C_unclosed", "tie_eps")
+
 # objective_hash() 가 실제로 해싱하는 J-정의 스칼라 8개, 정렬된 순서. objective.py 와 동일.
 const HASH_SCALAR_KEYS = (
     "C_fail", "C_unclosed", "E_ref", "Eg_scale", "M_ref", "T_scale", "kappa", "tie_eps",
@@ -51,10 +54,27 @@ function load(; path::AbstractString = OBJECTIVE_PATH, refresh::Bool = false)
     return cfg
 end
 
-"해시용 값 포맷. null 은 문자 그대로 \"null\", 그 외에는 %.17g (C printf, Python 과 동일)."
+"""
+해시용 값 포맷. null 은 "null".
+
+NaN/Inf 는 소문자 "nan"/"inf"/"-inf" 로 고정한다 — Julia 의 @sprintf("%.17g", ...) 는
+"NaN"/"Inf" (대문자)를 내지만 Python 의 "%.17g" % v 는 이미 소문자를 낸다. 맞추지 않으면
+(예: MC_COST_FAIL=inf) 두 언어의 해시가 갈린다.
+
+-0.0 은 0.0 으로 정규화한다 — JSON3 는 정수값 float 를 Int64 로 낮춰 읽어 -0.0 을 부호 없는
+0 으로 지워버리지만(이 Julia 쪽에서는 사실 이미 무해하다) Python 의 json 모듈은 부호를
+보존한다. Python 쪽에서도 같은 정규화를 하므로 어느 쪽에서 -0.0 이 들어와도 두 언어가
+합의한 하나의 표기("0")로 수렴한다.
+
+그 외에는 %.17g (C printf 의미, Python 과 바이트가 일치한다).
+"""
 function _fmt_hash_value(v)
     v === nothing && return "null"
-    return @sprintf("%.17g", Float64(v))
+    f = Float64(v)
+    isnan(f) && return "nan"
+    isinf(f) && return f > 0 ? "inf" : "-inf"
+    f == 0.0 && (f = 0.0)  # normalize -0.0 -> +0.0
+    return @sprintf("%.17g", f)
 end
 
 """
@@ -105,8 +125,16 @@ function J(; complete, closed, total, makespan, energy_J = nothing, cfg = nothin
     ms = makespan === nothing ? NaN : Float64(makespan)
     if !complete
         # 미완주 분기에는 에너지가 들어가지 않는다 (spec §3.1).
+        missing = [k for k in INCOMPLETE_KEYS if get(cfg, k, nothing) === nothing]
+        isempty(missing) || throw(ObjectiveError(
+            "objective.json 의 $(join(missing, ", ")) 가 null 이다 — 미완주 분기의 J 를 " *
+            "계산할 수 없다. 0/1 로 조용히 폴백하지 않는다 (spec §5)."))
+        # (total - closed) 를 0 밑으로 클램프한다 (I-1) — complete==true 인데 closed<total 인
+        # 장부 노드가 있을 수 있다는 건 이미 문서화돼 있고(CLAUDE.md §6), 그 역(기록 드리프트로
+        # closed>total)도 배제할 근거가 없다. 클램프가 없으면 미완주 J 가 0 이하로 떨어져
+        # 기록 오류가 세상에서 가장 좋은 결과로 둔갑할 수 있다 — spec §3.1 이 막으려는 결함이다.
         return Float64(cfg["C_fail"]) +
-               Float64(cfg["C_unclosed"]) * (Int(total) - Int(closed)) +
+               Float64(cfg["C_unclosed"]) * max(0, Int(total) - Int(closed)) +
                Float64(cfg["tie_eps"]) * (isfinite(ms) ? ms : 0.0)
     end
     isfinite(ms) || throw(ObjectiveError("완주 런인데 makespan 이 유한하지 않다: $makespan"))

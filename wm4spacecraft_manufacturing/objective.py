@@ -28,6 +28,9 @@ ENV_OVERRIDES = {"C_fail": "MC_COST_FAIL", "C_unclosed": "MC_COST_UNCLOSED"}
 # 스케일 상수 — null 이면 J 의 완주 분기를 계산할 수 없다.
 SCALE_KEYS = ("kappa", "M_ref", "E_ref")
 
+# 미완주 분기가 쓰는 상수 — null 이면 그 분기를 계산할 수 없다 (M-5: TypeError 로 새지 않게).
+INCOMPLETE_KEYS = ("C_fail", "C_unclosed", "tie_eps")
+
 # objective_hash() 가 실제로 해싱하는 J-정의 스칼라 8개, 정렬된 순서.
 # (컨트롤러 재정) _doc/calibrated_from 는 문서·출처일 뿐 J 의 파라미터가 아니므로 뺀다 —
 # 그래야 오타 수정으로 이전 세대 산출물이 전부 무효화되는 일이 없다 (spec §7).
@@ -67,10 +70,27 @@ def load(path=None, refresh=False):
 
 
 def _fmt_hash_value(v):
-    """해시용 값 포맷. null 은 문자 그대로 'null', 그 외에는 %.17g (C printf, Julia 와 동일)."""
+    """해시용 값 포맷. null 은 문자 그대로 'null'.
+
+    NaN/Inf 는 소문자 'nan'/'inf'/'-inf' 로 고정한다 — Python 의 "%.17g" 는 이미 소문자를
+    내지만 Julia 의 @sprintf("%.17g", ...) 는 'NaN'/'Inf' (대문자)를 낸다. 맞추지 않으면
+    (예: MC_COST_FAIL=inf) 두 언어의 해시가 갈린다.
+
+    -0.0 은 0.0 으로 정규화한다 — JSON3(Julia) 는 정수값 float 를 Int64 로 낮춰 읽어 -0.0 을
+    부호 없는 0 으로 지워버리지만 Python 의 json 모듈은 부호를 보존한다. 정규화하지 않으면
+    objective.json 에 우연히 -0.0 이 들어가는 것만으로 두 언어의 해시가 갈린다.
+
+    그 외에는 %.17g (C printf 의미, Python·Julia 모두 이 규약을 따르므로 바이트가 일치한다)."""
     if v is None:
         return "null"
-    return "%.17g" % float(v)
+    f = float(v)
+    if math.isnan(f):
+        return "nan"
+    if math.isinf(f):
+        return "inf" if f > 0 else "-inf"
+    if f == 0.0:
+        f = 0.0  # normalize -0.0 -> +0.0
+    return "%.17g" % f
 
 
 def objective_hash(cfg=None):
@@ -120,8 +140,19 @@ def J(*, complete, closed, total, makespan, energy_J=None, cfg=None):
     if not complete:
         # 미완주 분기: gen_oracle_mc.jl:146 의 scalar_cost 를 그대로 물려받는다.
         # **에너지는 들어가지 않는다** — 일찍 죽는 것이 이득이 되면 안 된다 (spec §3.1).
+        missing = [k for k in INCOMPLETE_KEYS if cfg.get(k) is None]
+        if missing:
+            raise ObjectiveError(
+                "objective.json 의 %s 가 null 이다 — 미완주 분기의 J 를 계산할 수 없다. "
+                "0/1 로 조용히 폴백하지 않는다 (spec §5)." % ", ".join(missing))
+        # (total - closed) 를 0 밑으로 클램프한다 (I-1). 이 하니스에서 complete==true 인데도
+        # closed < total 인 장부 노드가 있을 수 있다는 건 CLAUDE.md(§6 완주 ≠ closed==total)에
+        # 이미 문서화돼 있고, 그 역(記帳 드리프트로 closed > total)도 배제할 근거가 없다.
+        # 클램프가 없으면 (total-closed) 가 음수가 돼 미완주 J 가 0 이하로 떨어질 수 있고,
+        # 그러면 "기록 오류로 닫힌 노드 수가 total 을 넘은 미완주 런"이 세상에서 가장 좋은
+        # 결과로 둔갑한다 — 실패가 전역 최적이 되는 것은 spec §3.1 이 막으려는 바로 그 결함이다.
         return (float(cfg["C_fail"])
-                + float(cfg["C_unclosed"]) * (int(total) - int(closed))
+                + float(cfg["C_unclosed"]) * max(0, int(total) - int(closed))
                 + float(cfg["tie_eps"]) * (ms if math.isfinite(ms) else 0.0))
 
     if not math.isfinite(ms):
@@ -134,15 +165,27 @@ def J(*, complete, closed, total, makespan, energy_J=None, cfg=None):
 
 
 def J_row(row, cfg=None):
-    """JSONL 행 하나에서 J 를 뽑는다. 4pol 레인(battery 하위)과 MC 레인(최상위) 둘 다 읽는다."""
+    """JSONL 행 하나에서 J 를 뽑는다. 4pol 레인(battery 하위)과 MC 레인(최상위) 둘 다 읽는다.
+
+    complete/closed/total 은 J 를 정의하는 필수 필드라 행에 없으면(스키마 드리프트)
+    ObjectiveError — 예전처럼 (False/0/0) 으로 조용히 채우면, 스키마가 깨진 덤프를 배치
+    채점할 때 "그럴듯한 10000.x" 값이 나와 진짜 실패와 구분이 안 된다(I-2). 이 모듈 전체의
+    전제가 "조용한 폴백 금지"(spec §5)인데 그 전제를 배신하는 구멍이었다.
+    makespan/energy_J 는 4pol/MC 두 레인의 키 이름이 달라 폴백이 필요하므로(스키마 드리프트가
+    아니라 알려진 두 스키마 사이의 정상적인 차이) 그대로 둔다."""
+    missing = [k for k in ("complete", "closed", "total") if k not in row]
+    if missing:
+        raise ObjectiveError(
+            "JSONL 행에 %s 가 없다 — 스키마 드리프트다. False/0/0 으로 조용히 채우지 않는다 "
+            "(spec §5)." % ", ".join(missing))
     energy = row.get("energy_J")
     if energy is None:
         energy = (row.get("battery") or {}).get("total_energy_J")
     makespan = row.get("makespan")
     if makespan is None:
         makespan = row.get("sim_seconds")
-    return J(complete=bool(row.get("complete")), closed=int(row.get("closed") or 0),
-             total=int(row.get("total") or 0), makespan=makespan, energy_J=energy, cfg=cfg)
+    return J(complete=bool(row["complete"]), closed=int(row["closed"]), total=int(row["total"]),
+             makespan=makespan, energy_J=energy, cfg=cfg)
 
 
 if __name__ == "__main__":
