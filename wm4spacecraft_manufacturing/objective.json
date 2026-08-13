@@ -1,0 +1,30 @@
+{
+  "_doc": [
+    "목적함수 J 의 단일 진실원. 이 값들이 코드에 리터럴로 복붙되면 조용히 갈린다.",
+    "함정 29(MACRO_COST 가 4곳에 복붙됨)를 목적함수에서 미리 막는다.",
+    "J(run) = complete ? makespan + w_E*energy_J : C_fail + C_unclosed*(total-closed) + tie_eps*makespan",
+    "w_E = kappa * M_ref / E_ref  (무차원 kappa 하나가 greedy/MILP/J 세 자리를 같이 움직인다)",
+    "에너지 항은 완주 분기에만 들어간다 — 실패 분기에 넣으면 '일찍 죽는 것'이 이득이 된다.",
+    "C_fail/C_unclosed 는 ENV(MC_COST_FAIL / MC_COST_UNCLOSED)로 덮어쓸 수 있고, 덮어쓴 런은",
+    "해시가 달라져 다른 세대로 취급된다.",
+    "M_ref/E_ref/T_scale/Eg_scale 이 null 이면 J 계산은 에러다 — 0 이나 1 로 폴백하지 않는다."
+  ],
+  "kappa": 0.01,
+  "C_fail": 10000.0,
+  "C_unclosed": 100.0,
+  "tie_eps": 0.001,
+  "T_scale": 31.225,
+  "Eg_scale": 418.6192887592641,
+  "M_ref": 31.225,
+  "E_ref": 121818.21302894586,
+  "calibrated_from": {
+    "date": "2026-08-13",
+    "n_complete_runs": 1923,
+    "makespan_median": 31.225,
+    "makespan_stdev": 10.337184253881516,
+    "energy_median": 121818.21302894586,
+    "energy_stdev": 29790.74078890007,
+    "source": "measure_objective_scales.py over results_4pol/*.jsonl + results_4pol*/shards/*/*/rows.jsonl + results_oracle*/shards/*/*/rows.jsonl (구세대 — spec §7)",
+    "note": "구세대 런에서 잰 스케일이다(n_rows_scanned=2625, n_complete_runs=1923). 100% 가 makespan 키 없이 sim_seconds 폴백을 탔다 — 즉 구세대 덤프뿐이라는 뜻. Eg_scale 은 직접 계측이 아니라 '런 에너지 / 닫힌 노드 수'의 중앙값 근사다(결정 한 건의 에너지 규모를 계측한 적이 없다). 신세대 스윕(단계 6) 뒤 재교정 대상."
+  }
+}

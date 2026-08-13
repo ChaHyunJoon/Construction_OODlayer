@@ -1,0 +1,119 @@
+# ============================================================================
+#  목적함수 J 의 단일 진실원 로더 (Julia 쪽). objective.py 와 **같은 수식**을 낸다.
+#
+#    J(run) = complete ? makespan + w_E * energy_J
+#                      : C_fail + C_unclosed * (total - closed) + tie_eps * makespan
+#    w_E    = kappa * M_ref / E_ref
+#
+#  두 구현이 갈리면 오라클 라벨과 Python 분석이 다른 것을 최소화하게 된다 —
+#  test_objective.py 가 그 일치를 기계적으로 검사한다.
+#
+#  ENV 우선순위: MC_COST_FAIL / MC_COST_UNCLOSED 가 있으면 ENV 가 이기고 해시가 갈린다.
+# ============================================================================
+module Objective
+
+using JSON3
+using SHA
+using Printf
+
+const OBJECTIVE_PATH = joinpath(@__DIR__, "objective.json")
+const ENV_OVERRIDES = ("C_fail" => "MC_COST_FAIL", "C_unclosed" => "MC_COST_UNCLOSED")
+const SCALE_KEYS = ("kappa", "M_ref", "E_ref")
+
+# objective_hash() 가 실제로 해싱하는 J-정의 스칼라 8개, 정렬된 순서. objective.py 와 동일.
+const HASH_SCALAR_KEYS = (
+    "C_fail", "C_unclosed", "E_ref", "Eg_scale", "M_ref", "T_scale", "kappa", "tie_eps",
+)
+
+struct ObjectiveError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::ObjectiveError) = print(io, "ObjectiveError: ", e.msg)
+
+const _CACHE = Ref{Union{Nothing,Dict{String,Any}}}(nothing)
+
+"objective.json 을 읽고 ENV 덮어쓰기를 적용한 유효 설정."
+function load(; path::AbstractString = OBJECTIVE_PATH, refresh::Bool = false)
+    if _CACHE[] !== nothing && !refresh && path == OBJECTIVE_PATH
+        return _CACHE[]
+    end
+    isfile(path) || throw(ObjectiveError("objective.json 이 없다: $path"))
+    cfg = Dict{String,Any}(JSON3.read(read(path, String), Dict{String,Any}))
+    delete!(cfg, "_doc")
+    ov = Dict{String,String}()
+    for (key, env_name) in ENV_OVERRIDES
+        haskey(ENV, env_name) || continue
+        cfg[key] = parse(Float64, ENV[env_name])
+        ov[env_name] = ENV[env_name]
+    end
+    cfg["_env_overrides"] = ov
+    path == OBJECTIVE_PATH && (_CACHE[] = cfg)
+    return cfg
+end
+
+"해시용 값 포맷. null 은 문자 그대로 \"null\", 그 외에는 %.17g (C printf, Python 과 동일)."
+function _fmt_hash_value(v)
+    v === nothing && return "null"
+    return @sprintf("%.17g", Float64(v))
+end
+
+"""
+    objective_hash(cfg=nothing)
+
+유효 설정의 sha256(앞 16자).
+
+해시 대상: J 를 정의하는 8개 스칼라(C_fail, C_unclosed, E_ref, Eg_scale, M_ref,
+T_scale, kappa, tie_eps, 정렬된 순서)와 실제로 적용된 ENV 덮어쓰기(ENV 변수명
+정렬순, 원본 문자열 그대로)만 "key=value" 줄로 나열해 "\\n" 로 join 하고 끝에
+"\\n" 을 붙인 뒤 UTF-8 로 sha256 한다. `_doc`/`calibrated_from` 은 문서·출처일 뿐
+J 의 파라미터가 아니므로 제외한다 — 두 파일이 파라미터는 같고 출처만 다르면 같은
+목적함수이므로 같은 해시를 내야 한다 (§7 의 "해시가 다르면 다른 세대" 규약이
+문서 오타 수정으로 허투루 깨지지 않게).
+
+Python 과 이 텍스트 규약을 그대로 공유한다(JSON 직렬화 바이트 매칭에 기대지
+않는다) — 그래서 두 언어가 항상 같은 해시를 낸다.
+"""
+function objective_hash(cfg = nothing)
+    cfg = cfg === nothing ? load() : cfg
+    lines = String[]
+    for key in sort(collect(HASH_SCALAR_KEYS))
+        push!(lines, "$(key)=$(_fmt_hash_value(get(cfg, key, nothing)))")
+    end
+    overrides = get(cfg, "_env_overrides", Dict{String,String}())
+    for env_name in sort(collect(keys(overrides)))
+        push!(lines, "ENV:$(env_name)=$(overrides[env_name])")
+    end
+    blob = Vector{UInt8}(join(lines, "\n") * "\n")
+    return bytes2hex(SHA.sha256(blob))[1:16]
+end
+
+"w_E = kappa * M_ref / E_ref. 스케일이 null 이면 에러 — 0/1 로 폴백하지 않는다."
+function energy_weight(cfg = nothing)
+    cfg = cfg === nothing ? load() : cfg
+    missing = [k for k in SCALE_KEYS if get(cfg, k, nothing) === nothing]
+    isempty(missing) || throw(ObjectiveError(
+        "objective.json 의 $(join(missing, ", ")) 가 null 이다 — 파일럿 측정 없이는 완주 런의 J 를 " *
+        "계산할 수 없다. 0 이나 1 로 폴백하지 않는다 (spec §5)."))
+    e_ref = Float64(cfg["E_ref"])
+    (isfinite(e_ref) && e_ref > 0) || throw(ObjectiveError("E_ref 가 양의 유한값이 아니다: $(cfg["E_ref"])"))
+    return Float64(cfg["kappa"]) * Float64(cfg["M_ref"]) / e_ref
+end
+
+"실현된 런 하나의 목적함수 값 (작을수록 좋다)."
+function J(; complete, closed, total, makespan, energy_J = nothing, cfg = nothing)
+    cfg = cfg === nothing ? load() : cfg
+    ms = makespan === nothing ? NaN : Float64(makespan)
+    if !complete
+        # 미완주 분기에는 에너지가 들어가지 않는다 (spec §3.1).
+        return Float64(cfg["C_fail"]) +
+               Float64(cfg["C_unclosed"]) * (Int(total) - Int(closed)) +
+               Float64(cfg["tie_eps"]) * (isfinite(ms) ? ms : 0.0)
+    end
+    isfinite(ms) || throw(ObjectiveError("완주 런인데 makespan 이 유한하지 않다: $makespan"))
+    (energy_J !== nothing && isfinite(Float64(energy_J))) || throw(ObjectiveError(
+        "완주 런인데 energy_J 가 없다/유한하지 않다: $energy_J — 구세대 덤프이거나 배터리가 꺼진 " *
+        "런이다. J 는 이를 조용히 0 으로 두지 않는다 (spec §5)."))
+    return ms + energy_weight(cfg) * Float64(energy_J)
+end
+
+end # module
