@@ -1535,6 +1535,13 @@ function get_best_pair(Ao, Ai, cost_func, filt=(a, b) -> true)
     return a, b, cost   # 최적 쌍과 그 비용 반환
 end
 
+# ⚠️ DEAD CODE (2026-08-13 확인). 이 함수는 도달 불가다:
+#   - 유일한 진입로 JuMP.optimize!(::AbstractGreedyAssignment) 는 언제나 더 구체적인
+#     JuMP.optimize!(::GreedyOrderedAssignment)(task_assignment.jl:378)에 가려진다.
+#   - 유일한 다른 구체 타입 GreedyAssignment 는 저장소 어디서도 생성되지 않는다.
+#   - 그리고 아래 update_greedy_cost_model! 은 저장소에 **정의가 없다** — 도달하면 UndefVarError.
+# 지우지 않고 표시만 하는 이유: TaskGraphs.jl 계열 상위 패키지가 이 이름을 기대할 수 있고,
+# 삭제는 이 계획(목적함수 통일)의 범위 밖이다. spec §11-7 의 "확인" 요구는 이것으로 충족.
 # 탐욕 배정 알고리즘 본체. 매 단계 가장 짧은 거리의 엣지를 추가하며 스케줄을 완성.
 function greedy_assignment!(model)
     sched = model.schedule
