@@ -330,6 +330,7 @@
       <label title="Which recording to view: the one where THIS policy was actually enacted. What each policy WOULD have chosen is switched in the Re-Specification panel below (policy is orthogonal to case).">Enacted policy
         <select id="enactSel">
           <option value="">auto (legacy / router run)</option>
+          <option value="noop">noop (fixed · no-adapt baseline)</option>
           <option value="canonical">canonical (fixed)</option>
           <option value="surrogate">surrogate (fixed)</option>
           <option value="dspy">DSPy (fixed)</option>
@@ -803,11 +804,19 @@
     { key: "battery_zone",  label: "⑥ Battery+Zone",    cls: "battery" },
     // 애매한 구간(SoC≈0.55)의 배터리 사건 — 세 정책의 답이 갈리는 대표 케이스.
     // 정책 선택은 케이스가 아니라 아래 RE-SPEC 패널의 정책 선택기에서 한다(정책 ⟂ 케이스).
-    { key: "battery_mild", label: "⑦ Battery (mild)", cls: "battery" }
+    { key: "battery_mild", label: "⑦ Battery (mild)", cls: "battery" },
+    // 세 종류(고장·배터리·구역)가 **한 스트림 안에서** 섞이는 케이스(run_demo.jl:99).
+    // 조합 케이스(④⑤⑥)는 각 종류가 한 번씩 정해진 순서로 오는 대본이지만, 여기서는
+    // 무엇이 언제 몇 번 오는지가 전부 추첨이다. 30시드 스윕(results_4pol)의 7 케이스 중 하나라
+    // 재생할 녹화는 있지만, server.jl 의 VALID_CASES 에는 없어 라이브 시작은 안 된다(재생 전용).
+    { key: "all",          label: "⑧ All mixed",      cls: "fault" }
   ];
-  // 결정 패널에서 전환해 볼 정책들. 스트림의 각 결정 레코드는 셋 다 담고 있고,
+  // 결정 패널에서 전환해 볼 정책들. 스트림의 각 결정 레코드는 이들의 선택을 모두 담고 있고,
   // 실제로 실행된 것은 `enacted` 로 표시된다.
   var POLICIES = [
+    // no-adapt 바닥선. 스윕(results_4pol)의 기준 레인이고 스트림의 정책 블록에도 늘 들어 있는데
+    // (input.policies.noop), 여기 없으면 화면에서는 **비교 대상 자체가 안 보인다**.
+    { key: "noop",      label: "No-adapt (noop)" },
     { key: "canonical", label: "Rule (canonical)" },
     { key: "surrogate", label: "Surrogate (RF)" },
     { key: "dspy",      label: "DSPy · gpt-4o" }
