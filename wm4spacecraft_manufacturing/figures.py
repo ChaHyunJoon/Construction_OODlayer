@@ -32,7 +32,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from e1_analyze import MACRO_COST, MACRO_NAME
+from e1_analyze import MACRO_COST, MACRO_NAME, cost_lex_key_row
 
 LAM = 3.0   # 개입 비용의 환산 가중치(e1_analyze / export_surrogate 와 같은 값)
 
@@ -129,9 +129,12 @@ def _f(v, d=float("nan")):
 
 
 def value(r, lam=LAM):
-    """비용 반영 스칼라 값(클수록 좋음). 완주가 최우선이고 그 안에서 closed, 개입비용 순."""
-    comp = 1e6 if bool(r.get("complete")) else 0.0
-    return comp + float(r.get("closed", 0)) - lam * MACRO_COST.get(int(r.get("macro", 0)), 0.0)
+    """스칼라 값(클수록 좋음) = -J. 하니스 전체(verify.py / e1_analyze / build_md_report)와 같은 기준.
+
+    [2026-08-13] 예전에는 `1e6*complete + closed - lam*MACRO_COST[macro]` 를 여기 인라인으로
+    복붙해 두었다. 그 상태로 두면 그림이 고르는 oracle 팔과 verify.py 가 고르는 팔이 갈린다
+    (spec §7). `lam` 은 하위호환으로 받되 무시한다 — λ·MACRO_COST 는 J 에 없다(spec §3.2)."""
+    return cost_lex_key_row(r)
 
 
 def by_instance(rows, fired_only=True):

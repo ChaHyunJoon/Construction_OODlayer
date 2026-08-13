@@ -99,14 +99,15 @@ def _group_by_instance(rows):
 
 
 def oracle_star_row(rs):
-    """test_llm7h.py:44-50 lexbest() 와 동일한 사전식 최선이되, macro 이름이 아니라 행 전체를
-    돌려준다(complete/closed/total/makespan 이 다 필요하다)."""
-    def key(r):
-        mk = _makespan_float(r.get("makespan"))
-        if mk is None:
-            mk = -math.inf
-        return E.lex_key(bool(r["complete"]), r["closed"] - LAM * E.MACRO_COST[int(r["macro"])], mk)
-    return max(rs, key=key)
+    r"""a\* = 통일 목적함수 J 의 최선 행(= -J 최대). 행 전체를 돌려준다
+    (complete/closed/total/makespan 이 다 필요하다).
+
+    [2026-08-13] 예전에는 `E.lex_key(complete, closed - LAM*MACRO_COST[macro], makespan)` 을
+    **여기에 인라인으로 복붙**해 두었다. 그래서 verify.py 가 -J 로 옮겨간 뒤에도 이 파일이
+    만드는 **발행 결과표**만 옛 규칙으로 a\* 를 고르는 상태가 될 뻔했다 — 같은 세대의 두 문서가
+    서로 다른 정답을 주장하는 것이 spec §7 이 막으려는 결함 그대로다. 규칙은 한 곳
+    (`e1_analyze.cost_lex_key_row`)에서만 정의한다."""
+    return max(rs, key=E.cost_lex_key_row)
 
 
 def summarize_star_rows(star_rows):
@@ -203,6 +204,14 @@ def axis_fault_split(oracle_dir: Path):
                 n_current=len(cur_groups), n_legacy=len(leg_groups))
 
 
+def _zc_norm(d, macro):
+    """zcausal_reform json -> 하니스 공용 행 스키마. energy_J 가 없으면(구세대 산출물) 완주 행의
+    J 계산이 ObjectiveError 로 멈춘다 — 조용히 0 으로 두지 않는다(spec §5, §7)."""
+    return dict(complete=(d.get("status") == "complete"), closed=d.get("closed"),
+                total=d.get("total"), makespan=d.get("makespan"),
+                energy_J=d.get("energy_J"), macro=macro)
+
+
 def axis_zone(oracle_dir: Path):
     """test_llm7h.py:130-152 미러. n=2 (blk, cov 두 사건군) -- 가장 약한 축."""
     zc = oracle_dir / "zcausal_reform"
@@ -217,15 +226,14 @@ def axis_zone(oracle_dir: Path):
             b = json.loads(pb.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        ka = (1 if a.get("status") == "complete" else 0, a.get("closed", 0) - LAM * 0.0)
-        kb = (1 if b.get("status") == "complete" else 0, b.get("closed", 0) - LAM * E.MACRO_COST[7])
-        star = "RelocateBuild" if kb > ka else "NOOP"
-        winner = b if star == "RelocateBuild" else a
         # zcausal_reform 의 json 은 "complete" 불리언이 아니라 "status" 문자열을 쓴다 --
-        # summarize_star_rows 가 기대하는 정규화 키(complete/closed/total/makespan)로 변환한다.
-        norm = dict(complete=(winner.get("status") == "complete"),
-                    closed=winner.get("closed"), total=winner.get("total"),
-                    makespan=winner.get("makespan"))
+        # 하니스 공용 정렬키(cost_lex_key_row = -J)가 기대하는 키로 먼저 정규화한다.
+        # [2026-08-13] 예전에는 `closed - LAM*MACRO_COST[7]` 2-튜플 비교를 여기 인라인으로
+        # 복붙해 두었다. λ·MACRO_COST 는 J 에 들어가지 않는다(spec §3.2) — 규칙은 한 곳에서만.
+        na, nb = _zc_norm(a, 0), _zc_norm(b, 7)
+        winner = max((na, nb), key=E.cost_lex_key_row)
+        star = "RelocateBuild" if winner is nb else "NOOP"
+        norm = winner
         families.append(dict(fam=fam, star=star, row=norm))
     if not families:
         return None
@@ -339,9 +347,10 @@ def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: 
               "에 oracle 분기 없음) 이 숫자는 8-case 헤드라인 표의 셀이 아니라 별도 참조선이다.")
     L.append("")
     L.append("계산 시맨틱은 `test_llm7h.py` 의 `lexbest()`(줄 44-50) 및 zone 비교식(줄 139-146)을 그대로 "
-              "옮긴 것이다(재구현 아님, `LAM=%.1f`). instance 를 `instance` 필드로 묶고, 각 instance 에서 "
-              "`E.lex_key(complete, closed - LAM*E.MACRO_COST[macro], makespan)` 사전식 최댓값을 고른 "
-              "행이 a\\* 다." % LAM)
+              "옮긴 것이다(재구현 아님). instance 를 `instance` 필드로 묶고, 각 instance 에서 "
+              "`e1_analyze.cost_lex_key_row(row)` (= -J, objective.json 이 단일 진실원) 최댓값을 고른 "
+              "행이 a\\* 다. [2026-08-13] λ·MACRO_COST 항은 J 에서 빠졌다(spec §3.2) — 옛 표는 "
+              "`closed - LAM*MACRO_COST[macro]` 기준이었으므로 세대가 다르다.")
     L.append("")
     L.append("| 축 | n (instances) | a\\* 완주율 | mean(closed/total) | mean(makespan), 완주판만 |")
     L.append("|---|---|---|---|---|")

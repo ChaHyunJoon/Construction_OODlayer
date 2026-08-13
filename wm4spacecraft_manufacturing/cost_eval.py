@@ -76,7 +76,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wm_datasets                      # 데이터셋 경로 단일 정의
 from e1_analyze import (load, featurize, lex_key, MACRO_NAME)
 # surrogate 관련: add_interactions(상호작용 특징 추가), MACRO_COST(행동 비용표), cost_key(비용반영 정렬키).
-from export_surrogate import add_interactions, MACRO_COST, cost_key
+from export_surrogate import add_interactions, MACRO_COST
+from e1_analyze import cost_lex_key_row      # 채점 규칙(-J)의 단일 정의. cost_key 는 삭제됐다.
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import LeaveOneGroupOut
 
@@ -168,10 +169,9 @@ def evaluate_accuracy(df, lam):
     # per-instance oracle-best under cost-aware feasibility-lexicographic
     # 한 instance에서 cost 반영 feasibility-lexicographic 기준 최선 macro 행을 찾음(완주>closed>makespan>비용).
     def best_macro_of(g):
-        return max(g.itertuples(index=False),
-                   key=lambda r: cost_key(r.complete, r.closed,
-                                          (r.makespan if not isinstance(r.makespan, str) else math.inf),
-                                          r.macro, lam))   # makespan이 문자열("inf" 등)이면 math.inf로 대체
+        # [2026-08-13] 예전에는 export_surrogate.cost_key(= 옛 λ·MACRO_COST 규칙)를 썼다.
+        # 정답 기준은 하니스 전체와 같은 -J 하나뿐이다(spec §5.1).
+        return max(g.itertuples(index=False), key=cost_lex_key_row)
     best = {i: int(best_macro_of(g).macro) for i, g in df.groupby("instance")}   # instance -> 정답 macro
     global_best = int(pd.Series(list(best.values())).mode().iloc[0])   # 전체에서 가장 흔한 정답(폴백용)
     # heuristic textbook rule: fault->Replace, battery->Replace, zone->ForbidZone, else NOOP
@@ -198,7 +198,9 @@ def evaluate_accuracy(df, lam):
         # with the oracle (the "decision-easy trap" the graded task is built to avoid); the cost-aware
         # metric is the one the necessity claim (always_per_kind 0.701) uses.
         # macro번호 -> cost-aware value (closed - lam*비용). regret 채점의 기준 값.
-        val = {int(m): float(c) - lam * MACRO_COST[int(m)] for m, c in zip(g.macro.values, g.closed.values)}
+        # 점수축은 argmax 축(-J)과 **같아야** 한다 — 갈리면 bval 이 max(val) 이 아니게 되어
+        # regret 이 음수로 샌다(spec §5.1).
+        val = {int(r.macro): cost_lex_key_row(r) for r in g.itertuples(index=False)}
         comp = {int(m): bool(c) for m, c in zip(g.macro.values, g.complete.values)}   # macro -> 완주여부
         bm = best[iid]; bval = val[bm]; worst = min(val.values()); span = max(bval - worst, 1e-9)  # 정답값/최악값/폭
 

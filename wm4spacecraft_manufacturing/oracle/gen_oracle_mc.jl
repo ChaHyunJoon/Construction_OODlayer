@@ -174,7 +174,11 @@ better(a, b) = a.complete != b.complete ? a.complete :
 # 미완의 "작업"이 아니라 장부(유휴 로봇의 종단 노드 등)다. legacy 규칙은 그 장부 노드를 몇 개
 # 더 닫았다는 이유로 **더 느린 실행을 더 낫다고 판정**할 수 있다.
 # SSP 에서 흡수상태(조립 완료)에 도달하면 비용은 경과시간뿐이므로, 완주끼리는 makespan 만 본다.
-# `scalar_cost` 는 이 교정된 규칙과 동치이며, legacy 와 갈리는 경우는 아래에서 따로 보고한다.
+#
+# [2026-08-13] `better_ssp` 는 **에너지를 모른다**. 목적함수 J 는 완주 분기에 w_E·energy_J 를
+# 더하므로(spec §3.1), 완주끼리는 `scalar_cost` 가 `better_ssp` 와 **의도적으로 갈릴 수 있다**.
+# 따라서 "scalar_cost 는 better_ssp 와 동치" 라는 옛 주장은 더 이상 참이 아니다. 실제 불변식은
+# `check_order_equivalence` 의 독스트링에 적혀 있다 — 그쪽이 검사하는 것이 진짜 계약이다.
 better_ssp(a, b) = a.complete != b.complete ? a.complete :
                    a.complete               ? a.makespan < b.makespan :
                    a.closed != b.closed     ? a.closed > b.closed :
@@ -183,26 +187,81 @@ better_ssp(a, b) = a.complete != b.complete ? a.complete :
 _same_outcome(a, b) = a.complete == b.complete && a.closed == b.closed &&
                       isequal(a.makespan, b.makespan)   # NaN 대비: == 가 아니라 isequal
 
+_energy_of(r) = hasproperty(r, :energy_J) ? Float64(r.energy_J) : NaN
+
+"""
+    energy_budget(a, b) -> Float64
+
+완주 두 런 사이에서 **에너지가 순위를 뒤집어도 되는 makespan 차이의 상한**.
+`w_E·|ΔE| = κ·M_ref·|ΔE| / E_ref` (spec §3.1, §4.1). κ 가 곧 "에너지 1 단위를 몇 초로 살
+것인가"의 환율이므로, 이 예산 안의 makespan 역전은 **결함이 아니라 설계된 동작**이다.
+"""
+energy_budget(a, b) = Objective.energy_weight(OBJ_CFG) * abs(_energy_of(a) - _energy_of(b))
+
+"두 런에서 scalar_cost 가 better_ssp 와 갈리는 것이 **에너지 항으로 설명되는가**."
+function explained_by_energy(a, b)
+    (a.complete && b.complete) || return false      # 에너지는 완주 분기에만 들어간다(§3.1)
+    e = energy_budget(a, b)
+    isfinite(e) || return false
+    return abs(Float64(a.makespan) - Float64(b.makespan)) <= e + 1e-12
+end
+
 """
     check_order_equivalence(results) -> Bool
 
-`scalar_cost` 의 argmin 이 교정된 사전식 규칙 `better_ssp` 의 1등과 같은지 확인. 다르면
-COST_FAIL/COST_UNCLOSED 가 문제 규모에 비해 너무 작다는 뜻이라 시끄럽게 경고한다
-(조용히 다른 순위를 내보내면 안 됨). legacy `better` 와 갈리는 경우도 함께 알려준다 —
-숨기면 예전 덤프와 라벨이 왜 다른지 아무도 모르게 된다.
+**검사하는 실제 불변식** (spec §9. 2026-08-13 에 정정 — 예전의 "전역 순서동치" 주장은
+에너지 항이 생긴 뒤로 틀린 명제가 됐다):
+
+  1. 완주/미완주 **경계**에서, 그리고 **미완주끼리는** `scalar_cost` 의 순위가 `better_ssp` 와
+     정확히 같아야 한다. 여기서 갈리면 C_fail / C_unclosed 가 문제 규모에 비해 작다는 뜻이다.
+  2. **완주끼리는** `better_ssp`(makespan 만 봄)와 갈릴 수 있다 — 단, makespan 차이가
+     `energy_budget = w_E·|ΔE|` **안**일 때만. 예산 안의 역전은 κ 가 사기로 한 거래이므로
+     정상이고, 예산 **밖**의 역전은 κ 가 과대하다는 뜻이다.
+
+옛 코드는 이 구분 없이 argmin 하나만 비교해서, **정당한 에너지 역전**에도
+"raise MC_COST_FAIL" 이라고 경고했다 — 그 조치로는 절대 고쳐지지 않는 경고였다
+(실측 규모: energy 2.1e5~4.4e5 J, w_E=2.56e-6 → 에너지 항 0.53~1.12 s vs 완주 makespan 19~31 s).
+
+legacy `better` 와 갈리는 경우도 함께 알려준다 — 숨기면 예전 덤프와 라벨이 왜 다른지
+아무도 모르게 된다.
 """
 function check_order_equivalence(results)
     isempty(results) && return true
     rs = collect(results)
+
+    viol_bound = Tuple{Any,Any}[]   # 경계/미완주 위반 -> C_fail·C_unclosed 문제
+    viol_energy = Tuple{Any,Any}[]  # 완주끼리, 예산 **밖** 역전 -> kappa 문제
+    n_flip = 0                      # 예산 안의 정당한 에너지 역전(정상)
+    for i in 1:length(rs), j in (i + 1):length(rs)
+        a, b = rs[i], rs[j]
+        _same_outcome(a, b) && continue      # complete/closed/makespan 이 같으면 에너지만 남는다
+        better_ssp(a, b) == (scalar_cost(a) < scalar_cost(b)) && continue
+        if a.complete && b.complete
+            explained_by_energy(a, b) ? (n_flip += 1) : push!(viol_energy, (a, b))
+        else
+            push!(viol_bound, (a, b))
+        end
+    end
+
+    isempty(viol_bound) || @warn "[MC] 완주/미완주 경계(또는 미완주끼리)에서 scalar cost 가 " *
+        "better_ssp 와 갈린다 — 실패 벌점이 문제 규모에 비해 작다. " *
+        "조치: MC_COST_FAIL / MC_COST_UNCLOSED 를 올리거나 objective.json 의 C_fail·C_unclosed 를 " *
+        "키운다(값을 바꾸면 objective_hash 가 갈려 다른 세대가 된다)." n_pairs = length(viol_bound) example = viol_bound[1] objective_hash = OBJ_HASH
+
+    isempty(viol_energy) || @warn "[MC] 완주끼리 scalar cost 가 better_ssp 와 갈리는데 그 폭이 " *
+        "에너지 예산(w_E·|ΔE|)을 넘는다 — kappa 가 과대하다는 뜻이다(MC_COST_FAIL 로는 고쳐지지 않는다). " *
+        "조치: objective.json 의 kappa 를 낮추거나, 이 역전이 의도라면 better_ssp 기준 자체를 " *
+        "에너지를 아는 규칙으로 고친다." n_pairs = length(viol_energy) example = viol_energy[1] w_E = Objective.energy_weight(OBJ_CFG) objective_hash = OBJ_HASH
+
+    n_flip > 0 && @info "[MC] 에너지가 makespan 순위를 뒤집은 쌍 $(n_flip)개 — 예산 안이라 정상이다 " *
+        "(spec §3.1/§4.1: κ 가 정한 환율만큼만 뒤집힌다)."
+
     ssp_best = sort(rs, lt = (a, b) -> better_ssp(a, b))[1]
-    sc_best  = argmin(scalar_cost, rs)
-    ok = _same_outcome(ssp_best, sc_best)
-    ok || @warn "[MC] scalar cost is NOT order-equivalent to better_ssp — raise MC_COST_FAIL" ssp_best sc_best objective_hash = OBJ_HASH
     leg_best = sort(rs, lt = (a, b) -> better(a, b))[1]
     _same_outcome(leg_best, ssp_best) ||
         @info "[MC] legacy `better` 와 정답이 갈림(둘 다 완주인데 closed 수가 다른 경우). " *
               "SSP 기준이 맞다 — 완주 후 남은 노드는 작업이 아니라 장부." legacy = leg_best ssp = ssp_best
-    return ok
+    return isempty(viol_bound) && isempty(viol_energy)
 end
 
 # ---- tiny stats (Statistics 를 Project 의존성으로 끌어들이지 않으려고 직접 계산) ------------
@@ -425,13 +484,15 @@ function read_units()
     # 서로 다른 J 로 계산된 cost 를 섞으면 Q̂ 가 아무것도 뜻하지 않게 된다.
     stale_lines = ["  " * fp * " : objective_hash=" * join(sort(collect(hs)), ", ")
                    for (fp, hs) in sort(collect(stale), by = first)]
+    # 관측된 값이 실제 해시인지 '열 자체가 없음'인지에 따라 원인이 다르므로 그때만 설명한다.
+    saw_none = any(h -> h == "<none>", Iterators.flatten(values(stale)))
     isempty(stale) || throw(Objective.ObjectiveError(
         "[MC] 이 샤드 CSV 들은 현행 목적함수(objective_hash=$OBJ_HASH)로 계산된 cost 가 아니다:\n" *
-        join(stale_lines, "\n") *
-        "\n'<none>' 은 objective_hash 열이 생기기 전의 **구세대** 샤드다(에너지 항 없는 J).\n" *
+        join(stale_lines, "\n") * "\n" *
+        (saw_none ? "'<none>' = objective_hash 열이 생기기 전의 **구세대** 샤드(에너지 항 없는 J).\n" : "") *
         "조치: (1) 그 샤드를 다른 곳으로 옮기거나 지우고 현행 J 로 유닛을 다시 돌린다, 또는\n" *
         "      (2) 그 세대를 재현하려면 당시의 ENV(MC_COST_FAIL/MC_COST_UNCLOSED)와 objective.json 을 되돌린다.\n" *
-        "구세대 cost 를 현행 cost 와 섞어 평균내지 않는다."))
+        "다른 J 로 계산된 cost 를 현행 cost 와 섞어 평균내지 않는다."))
     # (action, rollout) 중복 제거 — 같은 유닛을 재실행했거나 샤드가 겹치면 그대로 두 번 세어져
     # Q̂ 가 조용히 틀어진다. 나중 것을 채택한다.
     seen = Dict{Tuple{Int,Int},NamedTuple}()

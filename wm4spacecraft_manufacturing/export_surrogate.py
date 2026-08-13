@@ -85,7 +85,8 @@ import pandas as pd
 # 이 파일이 있는 폴더를 import 경로 맨 앞에 넣어 옆의 e1_analyze 모듈을 찾을 수 있게 한다.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # e1_analyze의 데이터 로드/자격판정/feature화/정렬키 함수를 그대로 재사용(일관성 유지).
-from e1_analyze import load, instance_admissible, featurize, lex_key, instance_arms_complete
+from e1_analyze import (load, instance_admissible, featurize, lex_key, instance_arms_complete,
+                        cost_lex_key_row)
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from surrogate_model import build_model, MODEL_NAME  # 평가·배포 단일 모델 정의
@@ -128,12 +129,11 @@ def add_interactions(F, df):
     return F
 
 
-# cost-aware 정렬키: closed에서 macro 비용을 뺀 값(adj)으로 feasibility-lexicographic 튜플을 만든다.
-def cost_key(complete, closed, makespan, macro, lam):
-    """Feasibility-lexicographic, with the adaptation cost charged against the closed-node count."""
-    adj = closed - lam * MACRO_COST[int(macro)]  # 비용을 뺀 유효 closed 수
-    # 튜플 (완주?, adj, -makespan): 앞에서부터 비교, 클수록 좋음.
-    return (1 if complete else 0, adj, -(makespan if (complete and math.isfinite(makespan)) else 1e18))
+# [2026-08-13] `cost_key` 를 삭제했다. 그것은 `e1_analyze.cost_lex_key` 와 **같은 옛 규칙의 두 번째
+# 이름**이었고(`closed - lam*MACRO_COST` 로 feasibility-lexicographic 튜플), 이름이 달라서
+# "cost_lex_key" 를 grep 하는 감사에 안 잡혔다 — spec §7 의 세대 혼입이 바로 이 모양이다.
+# cost-aware 정렬키는 이제 하니스 전체와 같은 하나뿐이다: `e1_analyze.cost_lex_key_row` (= -J).
+# (`--cost-time` 의 `cost_time_key` 는 λ 없는 **별도 설계의 대안 목적함수**라 그대로 둔다.)
 
 
 # =============================================================================
@@ -278,10 +278,11 @@ def main():
         mk = {int(x): (float(v) if not isinstance(v, str) else math.inf) for x, v in zip(g.macro, g.makespan)}
         # cost-aware면 비용 반영 키, 아니면 기본 lex_key로 정렬(백슬래시 \는 줄 이어짐).
         # --cost-time 이면 시간가격 키(비용이 closed 를 못 뒤집는 형태)를 쓴다.
+        rowof = {int(r.macro): r for r in g.itertuples(index=False)}   # macro -> 행 전체(J 계산에 필요)
         if a.cost_aware and a.cost_time:
             key = lambda q: cost_time_key(cp[q], cl[q], mk[q], q, a.mu)
         elif a.cost_aware:
-            key = lambda q: cost_key(cp[q], cl[q], mk[q], q, lam)
+            key = lambda q: cost_lex_key_row(rowof[q])       # -J (spec §5.1)
         else:
             key = lambda q: lex_key(cp[q], cl[q], mk[q])
         # BUG FIX 2026-07-27: the returned score dict MUST be the one the objective is defined on.
@@ -295,7 +296,9 @@ def main():
         if a.cost_aware and a.cost_time:
             score = {q: cost_time_score(cp[q], cl[q], mk[q], q, a.mu) for q in ms}
         elif a.cost_aware:
-            score = {q: (cl[q] - lam * MACRO_COST[int(q)]) for q in ms}
+            # 점수축 = 정렬키축 = -J. 위 BUG FIX 주석의 논리가 그대로 적용된다: 점수를 정렬키와
+            # 다른 양으로 재면 regret 이 음수가 되거나 구조적으로 0 이 된다.
+            score = {q: cost_lex_key_row(rowof[q]) for q in ms}
         else:
             score = dict(cl)
         return ms, score, max(ms, key=key)  # 키가 최대인 macro = 정답

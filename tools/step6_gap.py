@@ -20,6 +20,13 @@ STEP 6 재집계 — 옵션(macro) 제한의 대가  V^macro − V*  (설계 §4
 import csv, glob, json, os, sys
 import numpy as np
 
+# 목적함수 상수/해시의 단일 진실원. 이 스크립트는 CSV 의 `cost` 열을 평균하는데, 그 열이 어느 J 로
+# 계산됐는지는 `objective_hash` 열에만 적혀 있다 — 세대가 섞인 CSV 를 그냥 평균하면 gap 이
+# 아무것도 뜻하지 않게 된다(spec §7).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "wm4spacecraft_manufacturing"))
+import objective  # noqa: E402
+
 MACRO = {0, 1, 2, 3, 4}
 CONTROL_PAIR = (1, 10)          # 정의상 동일한 두 arm
 NAME = {0: "NOOP", 1: "Replace(macro)", 10: "Replace@0 [대조군]", 11: "Replace@5",
@@ -30,11 +37,18 @@ PAT = sys.argv[1] if len(sys.argv) > 1 else "oracle/out/oracle_mc_units_s*_s6b_*
 
 def load(pattern):
     rows = []
+    stale = {}          # 파일 -> 그 파일에서 본 (현행이 아닌) objective_hash 들
+    cur = objective.objective_hash()
     for f in sorted(glob.glob(pattern)):
         base = os.path.basename(f)
         seed = base.split("_s")[1].split("_")[0]
         with open(f, encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
+                # 해시 수집은 아래 try 밖이다 — 안에 두면 `except Exception: pass` 가 가드를
+                # 통째로 삼켜 조용히 넘어간다.
+                h = (r.get("objective_hash") or "<none>").strip()
+                if h != cur:
+                    stale.setdefault(f, set()).add(h)
                 try:
                     rows.append(dict(seed=seed, action=int(r["action"]), rollout=int(r["rollout"]),
                                      cost=float(r["cost"]), complete=r["complete"] == "true",
@@ -42,6 +56,17 @@ def load(pattern):
                                      hz_break=int(r["hz_break"]), hz_capped=r["hz_capped"] == "true"))
                 except Exception:
                     pass
+    if stale:
+        lines = "\n".join("  %s : objective_hash=%s" % (f, ", ".join(sorted(hs)))
+                           for f, hs in sorted(stale.items()))
+        saw_none = any("<none>" in hs for hs in stale.values())
+        raise objective.ObjectiveError(
+            "[step6] 이 CSV 들은 현행 목적함수(objective_hash=%s)로 계산된 cost 가 아니다:\n%s\n%s"
+            "조치: (1) 그 CSV 를 빼고 현행 J 로 유닛을 다시 돌린다, 또는 (2) 그 세대를 재현하려면\n"
+            "      당시의 ENV(MC_COST_FAIL/MC_COST_UNCLOSED)와 objective.json 을 되돌린다.\n"
+            "다른 J 로 계산된 cost 를 섞어 gap 을 재지 않는다 (spec §7)."
+            % (cur, lines,
+               "'<none>' = objective_hash 열이 생기기 전의 구세대 CSV.\n" if saw_none else ""))
     # (seed, action, rollout) 중복 제거 — 재실행분이 조용히 두 번 세어지면 Q̂ 가 틀어진다
     seen = {}
     for r in rows:

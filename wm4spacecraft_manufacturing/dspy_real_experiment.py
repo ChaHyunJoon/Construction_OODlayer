@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 warnings.filterwarnings("ignore")
 
 from e1_analyze import load, cost_lex_key_row, MACRO_COST, MACRO_NAME
+import objective                     # 아티팩트에 objective_hash 를 박기 위해 (spec §7)
 import dspy
 from dspy.teleprompt import (LabeledFewShot, BootstrapFewShot,
                              BootstrapFewShotWithRandomSearch, MIPROv2)
@@ -122,10 +123,10 @@ def build_dataset():
     for i in iids:
         g = df[df.instance == i]
         st = state_line(g[g.macro == 0].iloc[0].to_dict())
-        scores[i] = {int(m): float(c) - LAM * MACRO_COST[int(m)]
-                     for m, c in zip(g.macro.values, g.closed.values)}
-        b = max(g.itertuples(index=False), key=cost_lex_key_row)   # -J (spec §5.1)
-        best[i] = int(b.macro)
+        # 점수축 = -J. argmax 축과 **같아야** 한다 — 갈리면 regret 이 음수가 되고
+        # metric(1-regret) 이 1 을 넘어 BootstrapFewShot 의 threshold 가 오염된다(spec §5.1).
+        scores[i] = {int(r.macro): cost_lex_key_row(r) for r in g.itertuples(index=False)}
+        best[i] = max(scores[i], key=lambda m: scores[i][m])
         ex = dspy.Example(state=st, macro=MACRO_NAME[best[i]], iid=i).with_inputs("state")
         examples.append(ex)
     return examples, best, scores
@@ -299,8 +300,10 @@ def main():
             emit("\n(instruction dump failed: %s: %s)" % (type(e).__name__, e))
 
     # 인스턴스별 regret 덤프 -> compare_dspy_vs_forest.py가 forest와 짝지어 부트스트랩한다.
-    json.dump({"model": MODEL, "lam": LAM, "data": DATA, "per_instance_regret": per_inst,
-               "per_instance_pick": per_pick},
+    # objective_hash: 이 숫자들이 어느 목적함수로 채점됐는지 아티팩트에 박는다(spec §7).
+    json.dump({"model": MODEL, "lam": LAM, "data": DATA,
+               "objective_hash": objective.objective_hash(),
+               "per_instance_regret": per_inst, "per_instance_pick": per_pick},
               open(os.path.join(HERE, "sweep_lab", "dspy_real_perinst_%s%s%s.json"
                                 % (tag, os.environ.get("EVAL_TAG", ""), "_noreason" if NOREASON else "")), "w"), indent=1)
 

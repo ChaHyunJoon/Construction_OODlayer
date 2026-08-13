@@ -70,6 +70,7 @@ import pandas as pd   # S4 의 kind-only 상대를 표현과 무관하게 직접
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # e1_analyze에서 공용 유틸을 재사용: load(데이터 로드), featurize(특징 벡터화), MACROS(macro 목록),
 # MACRO_NAME/MACRO_COST(이름/비용 표), cost_lex_key_row(= -J, 통일 목적함수 정렬 키; spec §5.1).
+import objective   # 목적함수 상수의 단일 진실원 (spec §5) — 리터럴 복붙 금지
 from e1_analyze import (load, featurize, MACROS, MACRO_NAME, MACRO_COST, cost_lex_key_row,
                         instance_arms_complete)
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
@@ -108,14 +109,13 @@ def make_model():
 
 
 # 한 행(r)의 decision value를 스칼라로 계산. 인자: r=한 macro의 rollout 결과 행, lam=cost 가중치.
-def val(r, lam):
-    """Decision value scalar. NOTE: 이 값은 더 이상 정렬키(-J)와 같은 양이 아니다 — 정답 판정은
-    cost_lex_key_row 가 하고, 이 함수는 norm_regret 의 **정규화 축**으로만 남았다(spec §3.2 로
-    λ·MACRO_COST 가 J 에서 빠졌지만 자원 축 진단으로는 유지). completion dominates, then cost-adjusted
-    closed. Used for per-instance normalized regret."""
-    # 완주(complete)면 1e6의 큰 보너스로 무조건 우선(feasibility-lexicographic: 완주가 다른 무엇보다 위).
-    # 그 다음 closed(닫힌 노드 수)에서 lam*cost(행동 비용)를 빼서 비교.
-    return (1e6 if bool(r.complete) else 0.0) + float(r.closed) - lam * MACRO_COST[int(r.macro)]
+def val(r, lam=None):
+    """Decision value scalar = -J. 정답 판정(cost_lex_key_row)과 **같은 축**이어야 한다.
+
+    [2026-08-13] 예전에는 `1e6*complete + closed - lam*MACRO_COST[macro]` 였다. 그 상태로 두면
+    `optimal_action`(=-J)이 Replace 를 정답이라 하는 동시에 `norm_regret` 은 NOOP 을 regret 0 인
+    팔로 보고한다 — 한 파일이 두 개의 정답을 주장한다. `lam` 은 하위호환으로 받되 무시한다."""
+    return cost_lex_key_row(r)
 
 
 # 한 instance(그룹 g)에서 oracle(정답) 최선 macro 번호를 찾음. lam=cost 가중치.
@@ -151,10 +151,12 @@ subopt_norm = norm_regret
 #       "물리적으로는 나쁘지 않았지만 개입비용(lam) 때문에 오답으로 판정됐다"는 뜻이다(버그 아님).
 # ============================================================================================
 
-# README §4 의 유한벌점 SSP 비용. gen_oracle_mc.jl:146 / overnight_mdp.py:35 와 **같은 값이어야 한다**.
-SSP_STALL_BASE = 10000.0    # 미완주에 붙는 기본 벌점
-SSP_PER_UNCLOSED = 100.0    # 안 닫힌 노드 1개당 벌점
-SSP_MAKESPAN_W = 1e-3       # 미완주일 때 makespan 의 미세 가중치(동점 깨기용)
+# README §4 의 유한벌점 SSP 비용. **objective.json 이 단일 진실원이다** — 값을 여기 리터럴로
+# 적어 두면(2026-08-13 이전 상태) J 와 조용히 갈린다. 이름은 하위호환으로 남긴다.
+_OBJ = objective.load()
+SSP_STALL_BASE = float(_OBJ["C_fail"])       # 미완주에 붙는 기본 벌점
+SSP_PER_UNCLOSED = float(_OBJ["C_unclosed"]) # 안 닫힌 노드 1개당 벌점
+SSP_MAKESPAN_W = float(_OBJ["tie_eps"])      # 미완주일 때 makespan 의 미세 가중치(동점 깨기용)
 
 
 # 한 행의 총 노드 수를 꺼낸다. 덤프 세대에 따라 열 이름이 total / total_nodes 로 갈린다.
@@ -170,11 +172,14 @@ def _total_nodes(r):
 def ssp_cost(r):
     mk = float(r.makespan) if math.isfinite(float(r.makespan)) else 0.0
     if bool(r.complete):
+        # 완주 분기는 **일부러 J 가 아니다**: d_ssp 는 "잃은 시간"을 초 단위로 재는 축이라
+        # 에너지 항을 섞지 않는다(에너지 손해는 별도 축으로 재야 단위가 유지된다).
         return mk
     unclosed = _total_nodes(r) - float(r.closed)
     if math.isnan(unclosed):
         unclosed = 0.0    # total 열이 없는 옛 덤프: 벌점의 노드 항만 빠지고 나머지는 유효
-    return SSP_STALL_BASE + SSP_PER_UNCLOSED * unclosed + SSP_MAKESPAN_W * mk
+    # 미완주 분기는 J 의 미완주 분기와 **글자 그대로 같은 식**이다 -> 재구현하지 않고 위임한다.
+    return objective.J(complete=False, closed=0, total=int(unclosed), makespan=mk)
 
 
 # 고른 팔이 오라클 최선 대비 얼마나 손해였는지를 **사전식 층별로** 돌려준다.

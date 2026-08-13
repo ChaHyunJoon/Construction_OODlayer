@@ -17,6 +17,7 @@
 using ConstructionBots
 using Test
 using Random
+using Logging   # @test_logs min_level=Logging.Warn — "경고가 나지 않는다"를 단언하려면 필요
 const CB = ConstructionBots
 
 # 라벨러 스크립트를 include 하면 함수 정의만 들어온다(직접 실행이 아니면 main 을 안 돌림).
@@ -61,6 +62,38 @@ _res(; complete, closed, total = 300, makespan, energy_J = 0.0) =
         (x.complete == y.complete && x.closed == y.closed && x.makespan == y.makespan) && continue
         @test better_ssp(x, y) == (scalar_cost(x) < scalar_cost(y))
     end
+end
+
+@testset "에너지 축: 예산 안의 역전은 정상, 예산 밖은 위반 (spec §3.1/§4.1)" begin
+    # 위 testset 은 energy_J 를 0.0 으로 고정해 에너지 축을 **제거**한다. 그래서 에너지가 만드는
+    # better_ssp 와의 정당한 불일치를 하나도 검사하지 못했다 — 그 사각지대를 여기서 메운다.
+    wE = Objective.energy_weight(OBJ_CFG)
+    E_lo, E_hi = 1.0e5, 4.0e5
+    budget = wE * (E_hi - E_lo)          # 이 안의 makespan 차이는 에너지가 뒤집어도 정상
+    @test budget > 0.0                   # kappa/스케일이 채워져 있어야 이 검사가 의미를 갖는다
+
+    fast_hungry = _res(complete = true, closed = 300, makespan = 20.0, energy_J = E_hi)
+    slow_lean   = _res(complete = true, closed = 300, makespan = 20.0 + 0.5budget, energy_J = E_lo)
+
+    @test better_ssp(fast_hungry, slow_lean)                      # better_ssp 는 에너지를 모른다
+    @test scalar_cost(slow_lean) < scalar_cost(fast_hungry)       # J 는 에너지를 보고 뒤집는다
+    @test explained_by_energy(fast_hungry, slow_lean)             # 예산 안 = 설명되는 역전
+    # 예산 안의 역전은 **경고 없이** 통과해야 한다. 옛 코드는 여기서 "raise MC_COST_FAIL" 을
+    # 띄웠고, 그 조치로는 절대 고쳐지지 않는 거짓경보였다.
+    @test (@test_logs min_level = Logging.Warn check_order_equivalence([fast_hungry, slow_lean])) == true
+
+    # 예산 **밖**이면 속도가 이겨야 하고 better_ssp 와도 일치한다(= 위반 아님)
+    slow_lean_far = _res(complete = true, closed = 300, makespan = 20.0 + 2budget, energy_J = E_lo)
+    @test scalar_cost(fast_hungry) < scalar_cost(slow_lean_far)
+    @test better_ssp(fast_hungry, slow_lean_far)
+    @test !explained_by_energy(fast_hungry, slow_lean_far)
+    @test check_order_equivalence([fast_hungry, slow_lean_far]) == true
+
+    # 미완주 쌍에는 에너지가 아예 들어가지 않는다(§3.1) — 에너지를 100배 줘도 J 가 같아야 한다.
+    u1 = _res(complete = false, closed = 250, makespan = 500.0, energy_J = E_lo)
+    u2 = _res(complete = false, closed = 250, makespan = 500.0, energy_J = 100E_hi)
+    @test scalar_cost(u1) == scalar_cost(u2)
+    @test !explained_by_energy(u1, u2)                            # 완주가 아니면 설명 대상 아님
 end
 
 @testset "legacy `better` 와 의도적으로 갈리는 지점 (문서화된 편차)" begin

@@ -383,6 +383,10 @@ def main():
     # surrogate의 핵심 아이디어: (상태, macro)마다 "닫을 노드 수"를 예측하고, 그 예측값으로 macro를 랭킹.
     df = df.reset_index(drop=True)  # 인덱스를 0부터 다시 매김(뒤의 위치 기반 인덱싱과 맞추기 위해)
     X = featurize(df).values  # feature 표 → numpy 배열
+    # !! 학습/채점 목적함수 불일치 (spec §8 단계 7 에서 해소 — 이 계획의 범위 밖) !!
+    # 채점(정답 라벨·regret)은 이제 -J 인데 학습 타깃은 아직 `closed - λ·MACRO_COST` 다.
+    # surrogate 가 채점되는 것과 **다른 양**을 예측하도록 학습되는 조용한 성능 누수다.
+    # audit_objective.py 가 이 표식의 존재를 기계로 확인한다 — 없어지면 감사가 실패한다.
     cost = np.array([MACRO_COST[int(m)] for m in df.macro])  # 행별 macro 비용
     y = df.closed.astype(float).values - (LAM * cost if COST_AWARE else 0.0)  # 학습 목표: closed(-비용 in cost-aware)
     groups = df.instance.values  # 채점 단위는 언제나 instance (baseline 룩업표도 이 축을 쓴다)
@@ -420,8 +424,11 @@ def main():
             macros = g.macro.values
             # the TRUE score of every candidate macro on this held-out instance (same scale as y)
             # 이 instance에서 macro별 "실제" 점수(y와 같은 척도). 채점 기준.
-            closed_by_macro = {int(m): float(c) - (LAM * MACRO_COST[int(m)] if COST_AWARE else 0.0)
-                               for m, c in zip(macros, g.closed.values)}
+            # COST_AWARE 에서는 점수축이 정답축(-J)과 **같아야** 한다 — 갈리면 best_closed 가
+            # max(closed_by_macro) 가 아니게 되어 regret 이 음수로 샌다(spec §5.1).
+            closed_by_macro = ({int(r.macro): cost_lex_key_row(r) for r in g.itertuples(index=False)}
+                               if COST_AWARE else
+                               {int(m): float(c) for m, c in zip(macros, g.closed.values)})
             best_macro = best[iid]  # 정답 macro
             best_closed = closed_by_macro[best_macro]  # 정답의 점수
             worst_closed = min(closed_by_macro.values())  # 최악 점수

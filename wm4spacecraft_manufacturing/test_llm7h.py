@@ -42,11 +42,20 @@ def rows_of(path):
 
 
 def lexbest(rs):
-    """이 instance 에서 오라클이 고른 팔(비용을 뺀 사전식 최선) = 정답 라벨."""
-    def key(r):
-        mk = float("inf") if r["makespan"] == "Inf" else float(r["makespan"])
-        return E.lex_key(r["complete"], r["closed"] - LAM * E.MACRO_COST[int(r["macro"])], mk)
-    return E.MACRO_NAME[int(max(rs, key=key)["macro"])]
+    """이 instance 에서 오라클이 고른 팔 = 정답 라벨. 기준은 하니스 전체와 같은 -J 다(spec §5.1).
+
+    [2026-08-13] 예전에는 `E.lex_key(complete, closed - LAM*MACRO_COST[macro], makespan)` 을
+    여기 인라인으로 복붙해 두었다. 이 함수의 출력이 "정답 라벨"이므로, 옛 규칙으로 남았다면
+    reference_policy 검증이 verify.py 와 **다른 정답**을 기준으로 채점하게 된다(spec §7)."""
+    return E.MACRO_NAME[int(max(rs, key=E.cost_lex_key_row)["macro"])]
+
+
+def _zc_norm(d, macro):
+    """zcausal_reform json -> 하니스 공용 행 스키마(build_md_report._zc_norm 과 같은 모양).
+    energy_J 가 없으면 완주 행의 J 계산이 ObjectiveError 로 멈춘다(spec §5, §7)."""
+    return dict(complete=(d.get("status") == "complete"), closed=d.get("closed"),
+                total=d.get("total"), makespan=d.get("makespan"),
+                energy_J=d.get("energy_J"), macro=macro)
 
 
 def group(rs):
@@ -145,9 +154,10 @@ for fam, noop_f, act_f in (("blk", "blk_noop.json", "blk_reloc.json"),
         b = json.load(open(zc / act_f, encoding="utf-8"))
     except OSError:
         continue
-    ka = (1 if a["status"] == "complete" else 0, a["closed"] - LAM * 0.0)
-    kb = (1 if b["status"] == "complete" else 0, b["closed"] - LAM * AR.MACRO_COST[7])
-    star = "RelocateBuild" if kb > ka else "NOOP"
+    # [2026-08-13] 여기에도 옛 규칙(`closed - LAM*MACRO_COST[7]`)이 인라인으로 복붙돼 있었다.
+    # 정답 기준은 하니스 전체와 같은 -J 하나뿐이다(spec §3.2, §5.1).
+    na, nb = _zc_norm(a, 0), _zc_norm(b, 7)
+    star = "RelocateBuild" if max((na, nb), key=E.cost_lex_key_row) is nb else "NOOP"
     got = RP.reference_action(dict(truth="ZoneTruth", valid=["NOOP", "RelocateBuild"],
                                    zone_primitives=dict(n_nav_blocked=a["nav_blocked"],
                                                         root_covered=a["root_covered"])))[0]

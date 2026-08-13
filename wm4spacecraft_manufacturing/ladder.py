@@ -41,16 +41,16 @@ LAM = 3.0
 SURR = dict(max_iter=300, max_depth=4, learning_rate=0.2, min_samples_leaf=3, l2_regularization=1.0)
 
 
-def adj_closed(row_closed, macro):
-    """cost-aware value of a (macro) outcome: closed nodes minus the macro's adaptation cost."""
-    return float(row_closed) - LAM * MACRO_COST[int(macro)]
-
-
 def instance_scores(g):
-    """dict macro-> cost-aware value, plus the oracle-best macro (feasibility-lexicographic)."""
-    cbm = {int(m): adj_closed(c, m) for m, c in zip(g.macro.values, g.closed.values)}
-    best = max(g.itertuples(index=False), key=cost_lex_key_row)   # -J (spec §5.1)
-    return cbm, int(best.macro)
+    """dict macro -> 값(= -J, 클수록 좋음) + 오라클 최선 macro.
+
+    [2026-08-13] 예전에는 값이 `closed - LAM*MACRO_COST[macro]` 였는데 최선 macro 는 이미 -J 의
+    argmax 였다. 두 축이 갈리면 `regret()` 의 기준선 `cbm[best]` 가 `max(cbm.values())` 가 아니게
+    되어 **regret 이 음수**가 된다(그리고 dspy 의 `1-regret` 이 1 을 넘어 BootstrapFewShot 의
+    threshold 를 오염시킨다). 값과 argmax 는 반드시 같은 축이어야 한다."""
+    cbm = {int(r.macro): cost_lex_key_row(r) for r in g.itertuples(index=False)}
+    best = max(cbm, key=lambda m: cbm[m])
+    return cbm, int(best)
 
 
 def rung_of(kind, row):
@@ -108,6 +108,10 @@ def main():
 
     # ---------- surrogate LOO predictions (trained across ALL kinds, judged per rung) ----------
     X = featurize(df).values
+    # !! 학습/채점 목적함수 불일치 (spec §8 단계 7 에서 해소 — 이 계획의 범위 밖) !!
+    # 학습 타깃은 아직 `closed - λ·MACRO_COST` 이고, 채점은 -J(= makespan + w_E·energy) 다.
+    # 즉 surrogate 는 채점되는 것과 **다른 양**을 예측하도록 학습된다. 조용한 성능 누수이므로
+    # 여기에 명시하고 audit_objective.py 가 이 표식을 기계로 확인한다. 고치는 것 = 재학습.
     cost = np.array([MACRO_COST[int(m)] for m in df.macro])
     y = df.closed.astype(float).values - LAM * cost
     groups = df.instance.values
