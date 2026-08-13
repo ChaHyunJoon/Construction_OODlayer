@@ -1484,6 +1484,7 @@ project_params = get_project_params(4)   # tractor — the project the user has 
 
 println(">>> building env (assignment only, no simulation)...")
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Warn))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다. log_level 을 안 넘기므로 이 레인의 '선언'은 기본값 Warn 이다(run_demo.jl:462 와 같은 취급).
     run_lego_demo(;
         ldraw_file=project_params[:file_name],
         project_name=project_params[:project_name],
