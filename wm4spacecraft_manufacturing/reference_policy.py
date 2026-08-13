@@ -89,7 +89,20 @@ BASIS = {
                 "flipped is the cost race among the arms that already completed. This supersedes "
                 "the D=40 threshold of 0.3 and its 'mild side is free, NOOP wins' story -- see the "
                 "SUPERSEDED block in the module docstring for the full D=40/near-depot provenance "
-                "chain this replaces.",
+                "chain this replaces. "
+                "FRAGILITY (disclosed, not corrected -- the derivation rule was applied correctly, "
+                "its margin is simply thin): the 0.02 rung is decided by COMPLETION and is robust, "
+                "but the two upper rungs are decided by makespan margins of 0.300s (22.425 vs "
+                "22.725 at SoC 0.30) and 0.450s (22.425 vs 22.875 at SoC 0.50), at n=1 per "
+                "instance x arm -- this grid holds exactly one row per cell, so there is no "
+                "repeat to average. A same-session control re-run of an identical configuration "
+                "(results/control_d40_samesession.jsonl, canonical, D=40, ood_seed 2) measured "
+                "68.175s in one session and 71.300s in another: a run-to-run spread of 3.125s "
+                "(+4.6%), an order of magnitude LARGER than the 0.300/0.450s margins that decide "
+                "rungs 0.30 and 0.50. Those two rungs should therefore be read as 'SwapBattery was "
+                "not worse', not as an established win; only the 0.02 rung (completion) carries "
+                "the threshold on its own. Above SoC 0.5 nothing is tested at all, and "
+                "reference_action() returns None (unscored) there rather than inventing NOOP.",
     "fault": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 1 fault instance only "
               "(severity 1.0, arms NOOP and Replace) -- NEITHER arm completes (NOOP closed "
               "184/313, Replace closed 243/313, both makespan Inf), so this grid CANNOT "
@@ -110,7 +123,9 @@ BASIS = {
              "recovery decisions later in the run (a team got stuck), finishing in 58.55s. "
              "surrogate and dspy both enact RelocateBuild on every ZoneTruth decision (4x each) "
              "and need ZERO ReformTeam recoveries, finishing in 30.875s each -- about 53% of the "
-             "NOOP arm's wall-clock time (30.875s vs 58.55s). This D=20 evaluation run reproduces "
+             "NOOP arm's SIMULATED build time (sim_seconds 30.875 vs 58.55; these are sim seconds, "
+             "NOT wall clock -- the runs' wall_seconds are a different field entirely). This D=20 "
+             "evaluation run reproduces "
              "the same pattern the D=40 evaluation run showed (NOOP finishes but drags in "
              "stall/recovery alarms; RelocateBuild finishes faster and clean), so it "
              "independently supports keeping the rule even though the oracle grid itself ties. "
@@ -159,8 +174,15 @@ def reference_action(ev):
             # 않았다 -- SoC 0.02 에서만 테스트됐고 거기서도 미완주).
             return ("SwapBattery" if "SwapBattery" in valid else "Replace"), "battery", \
                    "deep discharge (SoC<=%.2f): restore charge, cheapest/fastest restoring arm" % BATTERY_DEEP_SOC
-        return "NOOP", "battery", \
-               "SoC>%.2f: untested by the d20 ladder (highest rung tested is 0.50)" % BATTERY_DEEP_SOC
+        # SoC > 0.5 는 이 격자가 테스트한 사다리(최고 rung 0.50) **바깥**이다. 근거가 없는
+        # 구간에서 NOOP 을 정답이라고 채점하면 없는 정답을 지어내는 것이 된다 -- 아래 reform 축과
+        # **같은 이유로 채점하지 않는다**(unscored). 임계값이 0.3 이던 시절에는 0.50 rung 이
+        # 이 가지 안에 있어서 채점할 근거가 있었지만, 0.5 로 올린 지금은 이 가지 위에 테스트된
+        # rung 이 하나도 없다. 현재 42판 데이터에서는 BatteryTruth 56건의 soc 최댓값이 0.09999
+        # 라 아무도 이 가지에 들어오지 않아 채점이 한 건도 바뀌지 않지만(확인함), mild battery
+        # 를 굴리는 미래 실행에서는 조용한 오채점이 된다.
+        return None, "battery", \
+               "SoC>%.2f: above the highest rung this grid tested (0.50) -- untested regime, unscored" % BATTERY_DEEP_SOC
 
     if truth == "FaultTruth":
         pend = ev.get("agent_pending")
