@@ -1460,6 +1460,24 @@ struct GreedyPathLengthCost <: GreedyCost end   # 경로 길이를 기준으로 
 struct GreedyFinalTimeCost <: GreedyCost end    # 종료 시각을 기준으로
 struct GreedyLowerBoundCost <: GreedyCost end   # 하한값을 기준으로
 
+# ---------------------------------------------------------------------------
+# greedy 배정의 엣지 비용 — 디스패치 확장점 (spec §6.2, 계획 태스크 2)
+#
+# 배경: 위 세 타입은 `GreedyOrderedAssignment.greedy_cost` 에 저장돼 있었지만 **읽는 메서드가
+#   하나도 없었다**. 실제 비용은 assign_collaborative_tasks! 안의 클로저에 하드코딩돼 있었고,
+#   어느 타입을 넘겨도 동작이 같았다. 여기서 그 확장점을 살린다.
+#
+# 계약(중요): 세 기존 타입은 **전부 현행 공식을 그대로** 낸다. GreedyPathLengthCost 는
+#   GreedyOrderedAssignment 의 기본값이므로, 여기에 "거리만" 같은 새 의미를 주면 기본 생성된
+#   모델의 스케줄이 조용히 바뀐다. 구분 불가능한 채로 두는 것이 바이트 보존 계약이다.
+#   에너지를 보는 새 타입은 별도 커밋에서 추가한다(GreedyEnergyAwareCost).
+#
+# 인자: sched=스케줄, v=출발 정점(로봇의 현재 go 노드), v2=도착 정점(일감 슬롯),
+#       dt=v→v2 이동에 걸리는 최소 소요시간(min_duration; 호출자가 캐시해 넘긴다).
+greedy_edge_cost(::GreedyPathLengthCost, sched, v, v2, dt::Float64) = get_tF(sched, v) + dt
+greedy_edge_cost(::GreedyFinalTimeCost,  sched, v, v2, dt::Float64) = get_tF(sched, v) + dt
+greedy_edge_cost(::GreedyLowerBoundCost, sched, v, v2, dt::Float64) = get_tF(sched, v) + dt
+
 """
     GreedyAssignment{C,M} <: TaskGraphsMILP
 

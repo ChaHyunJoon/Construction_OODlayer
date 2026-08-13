@@ -475,14 +475,17 @@ function assign_collaborative_tasks!(model,
     distance_dict = Dict{Tuple{Int,Int},Float64}()  # (정점v, 정점v2) → 이동시간 캐시(같은 계산 반복 방지)
     # cost_func : 로봇 v 가 작업슬롯 v2 를 맡을 때의 "예상 완료시각"을 돌려주는 익명함수.
     # (v,v2)->begin ... end : 여러 줄짜리 익명함수(파이썬의 lambda 를 여러 줄로 쓴 것).
+    # 비용 계산은 model.greedy_cost 로 디스패치한다(essential_tg_coponents.jl 의 greedy_edge_cost).
+    # 이 필드는 예전부터 있었으나 읽는 곳이 없어 죽어 있었다(spec §2.4). 기본 타입들은 전부
+    # 예전 공식(get_tF + 이동시간)을 그대로 내므로 이 변경만으로는 배정이 바뀌지 않는다 —
+    # test/greedy_assignment_regression.jl 이 그것을 강제한다.
+    gcost = model.greedy_cost
     cost_func = (v,v2)->begin
         if !haskey(distance_dict,(v,v2))         # 이 쌍의 거리(시간)를 아직 안 구했으면
             new_node = align_with_successor(get_node(sched,v).node,get_node(sched,v2).node)  # v 를 v2 에 맞춰 정렬한 가상 노드
             distance_dict[(v,v2)] = generate_path_spec(sched,scene_tree,new_node).min_duration  # 그 이동의 최소 소요시간을 캐시
         end
-        return get_tF(sched,v) + distance_dict[(v,v2)]  # 로봇 v 가 지금 끝나는 시각 + 이동시간 = 작업 완료 예상시각
-        # return distance_dict[(v,v2)]
-        # get_edge_cost(model,D,v,v2)
+        return greedy_edge_cost(gcost, sched, v, v2, distance_dict[(v,v2)])
     end
     while !isempty(active_build_steps)          # 진행 가능한 단계가 남아있는 동안 반복(메인 루프)
         # get best possible assignment of robots to a team task
