@@ -29,7 +29,9 @@ const CB = ConstructionBots
     if CB.GREEDY_ENERGY_W[] !== nothing
         @test CB.GREEDY_ENERGY_W[] > 0.0
     end
-    @info "objective weights" kappa = w.kappa w_g = w.w_g
+    # println (not @info): 이 파일의 어느 testset 이든 build_env 뒤로 옮겨지면 @info 는 조용히
+    # 사라진다 — run_lego_demo 이 전역 로거를 Warn 으로 낮추고 원복하지 않는다(아래 finally 주석).
+    println(">>> objective weights: κ=", w.kappa, "  w_g=", w.w_g)
 end
 
 @testset "w_g 가 없으면 GreedyEnergyAwareCost 는 조용히 폴백하지 않고 던진다 (spec §5)" begin
@@ -69,16 +71,33 @@ end
         @info "T_scale/Eg_scale 미측정 — 이 검사 건너뜀"
         @test true
     else
-        base   = fingerprint(build_env(CB.GreedyFinalTimeCost()))
-        energy = fingerprint(build_env(CB.GreedyEnergyAwareCost()))
-        # 다르면 확장점이 살아 있다는 뜻. 같으면 §2.4 의 결함이 되살아난 것 —
-        # 다만 w_g 가 너무 작아 argmin 이 한 번도 안 갈리는 경우도 같은 증상이라, 그때는
-        # w_g 를 크게 키워 다시 본다(디스패치가 살아 있음만 확인하는 목적).
-        if base == energy
-            CB.GREEDY_ENERGY_W[] = 1.0e6   # 확실히 지배적인 값
+        local w_real = CB.GREEDY_ENERGY_W[]
+        local verdict = "?"
+        try
+            base   = fingerprint(build_env(CB.GreedyFinalTimeCost()))
             energy = fingerprint(build_env(CB.GreedyEnergyAwareCost()))
-            @info "w_g 를 1e6 으로 키워 재검사 (원래 w_g 로는 배정이 안 갈렸다 = κ 가 동점해소자 크기)"
+            # 다르면 확장점이 살아 있다는 뜻. 같으면 §2.4 의 결함이 되살아난 것 —
+            # 다만 w_g 가 너무 작아 argmin 이 한 번도 안 갈리는 경우도 같은 증상이라, 그때는
+            # w_g 를 크게 키워 다시 본다(디스패치가 살아 있음만 확인하는 목적).
+            if base != energy
+                verdict = "실제 w_g=$(w_real) 만으로 배정이 갈렸다 (에너지 항이 동점해소자 이상)"
+            else
+                # ⚠️ 이 가지는 **약한 통과**다: 디스패치가 살아 있다는 것만 보이고,
+                #   "실제 w_g 가 배정에 영향을 준다"는 명제는 **포기한 채** 통과한다.
+                CB.GREEDY_ENERGY_W[] = 1.0e6   # 확실히 지배적인 값
+                energy = fingerprint(build_env(CB.GreedyEnergyAwareCost()))
+                verdict = "약한 통과 — 실제 w_g=$(w_real) 로는 배정이 안 갈려 w_g=1e6 으로 " *
+                          "재검사했다 (디스패치 생존만 확인, 실제 w_g 의 실효는 미검증)"
+            end
+            @test base != energy
+        finally
+            CB.GREEDY_ENERGY_W[] = w_real   # 1e6 이 다음 testset/호출자로 새 나가지 않게 원복
+            # ⚠️ 여기서 `@info` 를 쓰면 **출력이 사라진다.** run_lego_demo 이
+            #   `global_logger(ConsoleLogger(stderr, Logging.Warn))` 를 심고 원복하지 않기 때문에
+            #   (src/full_demo.jl:246-248), 첫 build_env 호출 이후의 모든 @info 는 조용히 버려진다.
+            #   실측으로 이 줄이 통째로 안 찍혔다(2026-08-13). println 은 로깅 시스템을 안 탄다.
+            println(">>> greedy 디스패치 판정: ", verdict,
+                    "  (w_g restored = ", CB.GREEDY_ENERGY_W[], ")")
         end
-        @test base != energy
     end
 end

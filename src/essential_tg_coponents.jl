@@ -1479,14 +1479,51 @@ greedy_edge_cost(::GreedyFinalTimeCost,  sched, v, v2, dt::Float64) = get_tF(sch
 greedy_edge_cost(::GreedyLowerBoundCost, sched, v, v2, dt::Float64) = get_tF(sched, v) + dt
 
 """
-에너지를 보는 greedy 비용 (spec §6.2).
+에너지 항을 **형식적으로** 포함하는 greedy 비용 (spec §6.2).
 
     cost = get_tF(v) + dt + w_g · edge_energy(dt) · edge_cost_multiplier(sched, v)
 
-`edge_cost_multiplier` 가 `agent_cost_bias × 배터리 SoC 배율` 을 나른다 — 즉 이 한 항으로
-greedy 경로에서도 `DeprioritizeAgent` 와 배터리 SoC 조향이 살아난다. 지금까지 둘 다 무력이었다.
-
 w_g = κ · T_scale / Eg_scale 이며, objective.json 이 출처다(단일 진실원, spec §5).
+
+# ⚠️ 현행 프로덕션에서 이 타입이 실제로 나르는 것 (2026-08-13 리뷰에서 소스로 확인)
+
+**아무것도 나르지 않는다. 지금 이걸 고르면 `dt` 를 0.075% 재척도하는 것이 전부다.**
+세 인자가 전부 선택 시점에 항등원이기 때문이다:
+
+  1. `edge_cost_multiplier(sched, v)` ≡ **1.0**.
+     `AGENT_COST_BIAS[]` 는 비어 있다 — 편향은 `deprioritize_agent!` 가 OOD 처리 **도중에**
+     등록하는데, greedy 는 그보다 한참 전에 이미 끝나 있다.
+     `EDGE_COST_MULTIPLIER[]` 는 `nothing` 이다 — `enable_battery!` 는 두 레인
+     (`tools/monitor/run_demo.jl`, `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl`)에서
+     모두 `run_lego_demo` **뒤에** 실행된다.
+  2. `edge_energy(dt)` == **`dt`**. `ENERGY_MODEL` 이 두 레인 모두 기본값
+     `(pickup_overhead=0, idle_power=1, load_power=0)` 이라 에너지 = 이동시간 그대로다.
+  3. greedy 는 **초기 계획에서 딱 한 번** 돈다. `GreedyOrderedAssignment` 가 만들어지는 곳은
+     `src/full_demo.jl:601`/`:616` 둘뿐이고, 시뮬 도중 재실행되는 경로가 없다.
+
+⇒ 실효 공식은 `get_tF(v) + (1 + w_g)·dt`, 즉 `dt` 의 **단조 재척도**다. 순서를 거의 안 바꾸고,
+바꾸더라도 그 근거는 에너지가 아니라 부동소수 반올림이다.
+
+**따라서 spec §6.2 의 "greedy 경로에서 DeprioritizeAgent 와 배터리 SoC 조향이 살아난다"는
+주장은 아직 이행되지 않았다(not discharged).** 이 타입을 켜고 배정 지문이 움직이는 것을 보고
+"greedy 에서 SoC 조향이 산다"고 기록하면 안 된다 — 그게 spec §4.2 가 금지하는 명목상 주장이다.
+
+# 이 약속이 참이 되려면 무엇이 바뀌어야 하나
+
+셋 중 **하나 이상**이 선행되어야 한다:
+
+  - greedy 를 OOD 이후에 **다시** 돌리는 경로를 만든다(현재는 재계획이 전부 MILP 다). 그때는
+    `AGENT_COST_BIAS`/`EDGE_COST_MULTIPLIER` 가 이미 채워져 있어 배율이 실제로 1.0 이 아니다.
+  - 초기 계획을 `enable_battery!` **뒤로** 옮긴다(= 계획 시점에 SoC 훅이 꽂혀 있게 한다).
+  - `set_energy_model!` 로 `pickup_overhead`/`load_power` 를 켜서 `edge_energy` 가 `dt` 와
+    갈라지게 한다. 이것만으로는 SoC/편향은 못 살리고 "에너지 ≠ 시간"만 얻는다.
+
+그전까지 이 타입은 **선택 가능하지만 어느 레인도 선택하지 않는다**(`run_lego_demo` 의
+`greedy_cost` 기본값은 `GreedyFinalTimeCost`). 기본값을 바꾸면 초기 계획·오라클 라벨·surrogate
+학습셋의 세대만 갈리고 의미상 얻는 것은 0 이다.
+
+디스패치 확장점 자체가 살아 있다는 것(= 타입을 바꾸면 배정이 실제로 달라진다)은
+`test/objective_hooks_smoke.jl` 이 계속 지킨다 — 그건 §2.4 의 회귀 방지이지 위 약속의 이행이 아니다.
 """
 struct GreedyEnergyAwareCost <: GreedyCost end
 

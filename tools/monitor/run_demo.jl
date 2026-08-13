@@ -288,11 +288,16 @@ function handle_ood!(env, truth, nl)
     # spec §9(a) 배터리/에너지 훅 활성 검사. 이 데모는 RESPEC_ENABLED=false 로 두고 복구를 직접
     # 몰기 때문에, replan.jl 의 `[RESPEC] ... energy term` 로그가 있는 maybe_respecify! 경로를
     # 타지 않는다. 그래서 여기서 직접 본다: 매크로 집행이 MILP 를 다시 정식화했다면
-    # (rebalance_for_battery! / restage / ReformTeam 등) LAST_AUTO_EFFICIENCY_W[] > 0 이어야 한다
-    # = 전역 κ 가 그 재풀이에도 실렸다는 뜻. 0 이면 spec §2.2 의 결함이 남아 있는 것이다.
-    # (0.0 으로 먼저 지워야 이전 결정의 값이 새 나가지 않는다 — Ref 는 sticky 하다.)
+    # (rebalance_for_battery! 등) LAST_AUTO_EFFICIENCY_W[] > 0 이어야 한다 = 전역 κ 가 그 재풀이에도
+    # 실렸다는 뜻. (0 으로 먼저 지워야 이전 결정의 값이 새 나가지 않는다 — Ref 는 sticky 하다.)
+    #
+    # ⚠️ 세 상태를 구분해야 한다(리뷰 I-3). n_candidate_edges=0 은 "재풀이는 했는데 후보가 없었다"
+    #   와 "재풀이 자체가 없었다"를 구별하지 못한다 — Replace/ReformTeam/RelocateBuild 는
+    #   formulate_milp 을 아예 안 부르므로 항상 후자다. 그래서 센티넬 Dict 를 심어 둔다:
+    #   formulate_milp 이 돌면 LAST_EDGE_COSTS[] 를 **새 Dict 로 교체**하므로 `===` 가 깨진다.
+    local _milp_sentinel = Dict{Tuple{Int,Int},Float64}()
     CB.LAST_AUTO_EFFICIENCY_W[] = 0.0
-    CB.LAST_EDGE_COSTS[] = Dict{Tuple{Int,Int},Float64}()
+    CB.LAST_EDGE_COSTS[] = _milp_sentinel
     try
         if mac == "NOOP"
             println("[recover] $tag → NOOP (정책이 개입하지 않기로 결정)")
@@ -382,14 +387,19 @@ function handle_ood!(env, truth, nl)
             end
         end
         println("[recover] $tag → $mac  (closed=", length(env.cache.closed_set), ")")
+        local ran_milp = !(CB.LAST_EDGE_COSTS[] === _milp_sentinel)   # 센티넬이 그대로면 재풀이 없음
         if CB.LAST_AUTO_EFFICIENCY_W[] > 0.0
             println("[recover] energy term ON for this re-solve (auto w_eff=",
                     round(CB.LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3),
                     ", κ=", CB.AUTO_EFFICIENCY_KAPPA[], ")")
+        elseif !ran_milp
+            println("[recover] energy term N/A for $mac — 이 분기는 formulate_milp 을 아예 부르지 ",
+                    "않는다(재풀이 없음). κ 와 무관한 상태다")
         else
-            println("[recover] energy term NOT active for $mac (κ=", CB.AUTO_EFFICIENCY_KAPPA[],
-                    ", n_candidate_edges=", (try length(CB.LAST_EDGE_COSTS[]) catch; -1 end),
-                    ") — 후보 엣지가 0 이면 이 분기는 재배정할 것이 없다는 뜻이다")
+            println("[recover] energy term NOT active for $mac — 재풀이는 했다(κ=",
+                    CB.AUTO_EFFICIENCY_KAPPA[], ", n_candidate_edges=",
+                    length(CB.LAST_EDGE_COSTS[]),
+                    "). 후보 엣지가 0 이면 재배정할 자유도가 없어 에너지 항이 실릴 데가 없다는 뜻이다")
         end
     catch e
         println("[recover] $tag ($mac) FAILED: ", first(split(sprint(showerror, e), "\n")))
@@ -401,22 +411,46 @@ end
 println(">>> build: model=$MODEL  case=$OODC  robots=$NROB")
 haskey(ENV, "SPARE_DEPOT_DIST") &&
     CB.set_spare_depot_distance!(parse(Float64, ENV["SPARE_DEPOT_DIST"]))
+
+# ── 목적함수 가중치 (spec §4, §5) ────────────────────────────────────────────────────────
+# **반드시 run_lego_demo 앞에 있어야 한다.** greedy 배정은 run_lego_demo *안에서* 딱 한 번 일어나므로,
+# greedy 비용 타입을 고를 수 있는 지점은 여기뿐이다. 이 블록이 뒤에 있으면 "켜 보자"는 사람이
+# `greedy_cost = CB.GreedyEnergyAwareCost()` 를 호출부에 붙이는 순간 w_g 가 아직 nothing 이라
+# 모델을 다 읽고 배치한 뒤에 하드 에러로 죽는다(2026-08-13 리뷰 C-1).
+#
+# ENERGY_OBJECTIVE 는 **가중치 로딩과 비용 타입 선택을 하나의 조건문으로 묶는다**(리뷰 I-5).
+# 둘이 따로 놀면 =0 인데 에너지 타입이 선택돼 "w_g 가 필요하다" 에러로 죽는 조합이 생긴다.
+# =0 → 항상 동작하는 구세대 경로, =1 → 항상 동작하는 신세대 경로. 껐다는 사실은 로그에 남는다.
+const ENERGY_ON = get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+if ENERGY_ON
+    let w = CB.init_objective_weights!()
+        println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
+    end
+else
+    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
+end
+
+# ⚠️ 신세대 가지도 **지금은 GreedyFinalTimeCost 를 고른다.** GreedyEnergyAwareCost 로 바꿔도
+#   프로덕션에서는 얻는 것이 없기 때문이다(2026-08-13 리뷰, 소스로 확인): greedy 는 초기 계획에서
+#   한 번만 돌고, 그 시점에 AGENT_COST_BIAS 는 비어 있고(편향은 OOD 처리 때 비로소 등록된다),
+#   EDGE_COST_MULTIPLIER 는 nothing 이며(enable_battery! 는 run_lego_demo **뒤에** 돈다),
+#   ENERGY_MODEL 은 기본 (0,1,0) 이라 edge_energy(dt)==dt 다. 따라서 비용은
+#   get_tF(v) + (1+w_g)·dt = dt 의 0.075% 단조 재척도일 뿐, 에너지도 DeprioritizeAgent 도 SoC 도
+#   싣지 않는다. 바꾸면 초기 계획·오라클 라벨·surrogate 학습셋의 세대만 갈리고 의미는 0 이다.
+#   전제와 해제 조건은 essential_tg_coponents.jl 의 GreedyEnergyAwareCost docstring 참조.
+const GREEDY_COST = if ENERGY_ON
+    CB.GreedyFinalTimeCost()
+else
+    CB.GreedyFinalTimeCost()
+end
+
 env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood", num_robots = NROB,
-    model_scale = SCALE,
+    model_scale = SCALE, greedy_cost = GREEDY_COST,
     assignment_mode = :greedy, save_animation = false, write_results = false, overwrite_results = true,
     n_spare_per_pool = DEMO_SPARES, return_env_before_sim = true, rng = Random.MersenneTwister(DEMO_SEED))
 
 n_total = Graphs.nv(env.sched)
 println(">>> env built: $n_total schedule nodes")
-
-# 목적함수 가중치를 objective.json 에서 심는다 (spec §4, §5). ENERGY_OBJECTIVE=0 이면 끈다
-# (구세대 재현용 탈출구 — 껐다는 사실이 아래 로그에 남는다).
-if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
-    local w = CB.init_objective_weights!()
-    println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
-else
-    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
-end
 
 # 배터리 레이어(완만 용량 → 자연 방전이 0에 안 닿게; 주입된 severe 만 저SoC)
 CB.enable_battery!(env; params = CB.demo_battery_params(shrink = 25.0))

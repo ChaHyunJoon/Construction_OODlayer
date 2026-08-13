@@ -97,8 +97,13 @@ without overturning a genuinely faster plan. Override with `RESPEC_DEPRIO_KAPPA`
 #   κ 는 objective.json → `init_objective_weights!` 가 심는 전역 `AUTO_EFFICIENCY_KAPPA[]` 로
 #   승격됐다(예전엔 아래 maybe_respecify! 의 DeprioritizeAgent 분기 한 곳에서만 켰다가 즉시
 #   원복했고, 그래서 다른 모든 매크로의 재풀이가 에너지를 버린 채 돌았다 — spec §2.2).
-#   남은 참조는 `tools/tests.jl:1201`(에너지 항 활성 여부를 보는 진단 테스트) 하나뿐이므로
-#   상수 자체는 지우지 않는다. 이 값을 바꿔도 프로덕션 재풀이의 κ 는 바뀌지 않는다.
+#
+#   ☠️ 이건 **휴면 상태의 두 번째 진실원**이다. 아래 기본값 0.25 는 objective.json 의 kappa=0.01 과
+#   **다르며**, 둘이 같아지도록 맞출 생각도 하지 말 것 — 같은 값을 두 곳에 두는 것이 바로 spec §5 가
+#   금지하는 리터럴 복붙이다. 남은 참조는 `tools/tests.jl:1201` 하나뿐이고, 그 자리는 스스로 κ 를
+#   세팅했다 `finally` 로 원복하는 자립형 진단이라 오염이 없다. **이 상수를 프로덕션 경로에 다시
+#   끌어다 쓰지 말 것.** 그 진단이 사라지면 이 상수도 같이 지운다.
+#   (`RESPEC_DEPRIO_KAPPA` 환경변수도 같이 죽은 손잡이다 — 돌려도 실제 재풀이의 κ 는 안 바뀐다.)
 const DEPRIORITIZE_KAPPA = Ref(try
         parse(Float64, get(ENV, "RESPEC_DEPRIO_KAPPA", "0.25"))
     catch
@@ -894,20 +899,25 @@ function maybe_respecify!(env, ood_queue;
             @info "[RESPEC] deprioritize $(c.agent): edge-cost ×$(round(f, digits=2)) (soft, feasibility-preserving)"
         end
         # The bias reaches the solver ONLY through the efficiency term, which the default weights
-        # (speed=1, efficiency=0) discard -- registering it and re-solving without this changed
-        # nothing at all (the re-solve just re-optimized the SAME makespan objective). Turn on a
-        # unit-matched weight for THIS formulation only and restore it immediately: the weight is
-        # baked into the model by get_objective_expr during formulate_milp, so optimize! below no
-        # longer reads it, and no other plan/replan in the run is affected. The battery SoC hook
-        # (EDGE_COST_MULTIPLIER, installed by enable_battery!) rides the same term, so the re-solve
-        # simultaneously prices EVERY robot by its charge -- work flows to the healthier ones.
-        # [한국어] 등록한 비용배율은 efficiency 항으로만 솔버에 도달하는데 기본 가중치가 0이라 버려졌다.
-        #   이 정식화 한 번에만 자동 환산 가중치를 켜고 곧바로 원복한다(가중치는 formulate_milp 안에서
-        #   목적식에 구워지므로 이후 optimize! 는 영향 없음). 같은 항에 배터리 SoC 배율도 실려 있어,
-        #   이 재풀이는 모든 로봇을 잔량으로 가격 매긴다 = 일이 잔량 많은 로봇으로 흐른다.
-        # κ 는 이제 전역 기본값이다(objective.json → init_objective_weights!, spec §6.3).
-        # 예전에는 이 한 정식화에만 켰다가 즉시 원복했고, 그래서 **나머지 모든 매크로의 재풀이가
-        # 에너지를 버린 채** 돌았다(spec §2.2). 배터리 SoC 훅도 같은 항에 실려 있어 함께 무력이었다.
+        # (speed=1, efficiency=0) discard. κ is now a GLOBAL default (objective.json ->
+        # init_objective_weights!, spec §6.3), so this formulation simply inherits it -- the old
+        # scoped enable/restore around this one call is gone, because scoping it here meant every
+        # OTHER macro's re-solve ran with energy discarded (spec §2.2).
+        #
+        # MEASURED CAVEAT (2026-08-13): κ reaching this call does NOT mean the energy term
+        # materializes here. formulate_milp only creates Xa variables (and edge_costs) for edges
+        # that could still be ADDED -- outdegree(v) < n_eligible_successors[v]. Mid-build the
+        # schedule is already fully assigned, so this re-solve typically prices ZERO candidate
+        # edges and get_objective_expr returns the pure makespan term. The path where the term is
+        # genuinely live is the one that RELEASES edges first: release_pending_assignments!
+        # (reassign.jl:121) via fault_robot_and_reassign!. Do not read the log line below as
+        # "battery SoC pricing is live" -- it is not, for lack of anything to price.
+        # [한국어] κ 는 이제 전역 기본값이라 이 정식화가 그냥 물려받는다(예전엔 여기서만 켰다 원복해서
+        #   다른 모든 매크로의 재풀이가 에너지를 버렸다 — spec §2.2).
+        #   다만 **κ 가 닿는 것과 에너지 항이 실제로 생기는 것은 다르다**: formulate_milp 은 아직
+        #   추가 가능한 엣지에만 Xa/edge_costs 를 만드는데, 빌드 중반 스케줄은 이미 전부 배정돼 있어
+        #   후보가 0 인 경우가 보통이다. 엣지를 실제로 풀어 주는 경로(release_pending_assignments!)
+        #   에서만 항이 산다. 아래 로그를 "SoC 가격책정이 살아났다"로 읽으면 안 된다.
         milp = formulate_milp(
             SparseAdjacencyMILP(), env.sched, env.scene_tree;
             optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
