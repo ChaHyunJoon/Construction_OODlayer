@@ -24,7 +24,7 @@ def check(name, ok, detail=""):
         FAILED += 1
 
 
-def run_checker(rows, policies=None):
+def run_checker(rows, policies=None, min_rows=None):
     """rows 를 임시 디렉토리의 case.jsonl 로 쓰고 검사기를 돌린다. 반환: (returncode, stdout)."""
     with tempfile.TemporaryDirectory() as d:
         with open(os.path.join(d, "case.jsonl"), "w", encoding="utf-8") as fh:
@@ -33,6 +33,8 @@ def run_checker(rows, policies=None):
         cmd = [PY, CHECKER, "--results-dir", d]
         if policies is not None:
             cmd += ["--policies", policies]
+        if min_rows is not None:
+            cmd += ["--min-rows", str(min_rows)]
         p = subprocess.run(cmd, capture_output=True, text=True)
         return p.returncode, p.stdout + p.stderr
 
@@ -66,14 +68,22 @@ rc, out = run_checker([CONSISTENT_NOOP, FALLEN_BACK])
 check("surrogate 행이 전부 canonical 이면 실패", rc == 1, "rc=%d" % rc)
 check("surrogate 를 찍는다", "surrogate" in out, out.strip()[-300:])
 check("canonical 을 찍는다", "canonical" in out, out.strip()[-300:])
-check("ood_seed=42 를 찍는다", "ood_seed=42" in out or "42" in out, out.strip()[-300:])
+# `"42" in out` 로 느슨하게 두면 makespan 이든 행 번호든 어디에 42 가 있기만 해도 통과한다
+# (거의 반증 불가능한 단언이었다). 검사기가 실제로 찍는 필드 형태를 그대로 못 박는다.
+check("폴백한 행의 ood_seed 를 `ood_seed=42` 형태로 찍는다", "ood_seed=42" in out,
+      out.strip()[-300:])
 
 rc, out = run_checker([CONSISTENT_NOOP, PARTIAL_FALLBACK])
 check("일부만 canonical 로 떨어진 혼합 행도 실패", rc == 1, "rc=%d" % rc)
 
 rc, out = run_checker([CONSISTENT_NOOP, NO_DECISIONS])
 check("decisions=[] 행은 그 자체로는 위반이 아니다", rc == 0, "rc=%d" % rc)
-check("결정 없음 카운트가 1", "1" in out, out.strip()[-300:])
+# `"1" in out` 은 거의 모든 출력에서 참이라 아무것도 재지 않았다. 검사기가 찍는 카운트 필드
+# 문자열 자체를 확인한다(형식이 바뀌면 이 테스트가 깨져야 한다).
+check("결정 없음 행 카운트를 `결정 없음 행 1개` 로 찍는다", "결정 없음 행 1개" in out,
+      out.strip()[-300:])
+check("그리고 그 행도 전체 행 수에는 들어간다(`행 2개`)", "행 2개," in out,
+      out.strip()[-300:])
 
 rc, out = run_checker([CONSISTENT_NOOP, NO_DECISIONS_MISSING])
 check("decisions 필드 자체가 없어도 위반이 아니다", rc == 0, "rc=%d" % rc)
@@ -86,5 +96,26 @@ check("--policies 목록 밖의 policy 값은 실패", rc == 1, "rc=%d" % rc)
 
 rc, out = run_checker([])
 check("빈 디렉토리는 통과", rc == 0, "rc=%d" % rc)
+
+# ---- --min-rows: 공허한 통과 막기 (2026-08-13) -----------------------------------------
+# 위반 0건이라는 이유로 0행짜리(혹은 경로가 틀린) 디렉토리가 PASS 를 내면, 630판을 인증하는
+# 게이트가 아무것도 인증하지 않는다. 두 방향을 모두 못 박는다.
+rc, out = run_checker([], min_rows=1)
+check("--min-rows 아래면 빈 디렉토리도 실패", rc == 1, "rc=%d" % rc)
+check("실제 행 수와 기대 하한을 함께 찍는다",
+      "행이 0개뿐이다" in out and "최소 1개" in out, out.strip()[-300:])
+
+rc, out = run_checker([CONSISTENT_NOOP, CONSISTENT_SURROGATE], min_rows=3)
+check("행이 하한보다 적으면 위반이 없어도 실패", rc == 1, "rc=%d" % rc)
+check("실제 행 수(2)를 찍는다", "행이 2개뿐이다" in out, out.strip()[-300:])
+
+rc, out = run_checker([CONSISTENT_NOOP, CONSISTENT_SURROGATE], min_rows=2)
+check("행이 하한과 같으면 영향 없음", rc == 0, "rc=%d" % rc)
+
+rc, out = run_checker([CONSISTENT_NOOP, CONSISTENT_SURROGATE], min_rows=1)
+check("행이 하한보다 많으면 영향 없음", rc == 0, "rc=%d" % rc)
+
+rc, out = run_checker([CONSISTENT_NOOP, FALLEN_BACK], min_rows=2)
+check("--min-rows 를 넘겨도 레인 폴백은 여전히 실패", rc == 1, "rc=%d" % rc)
 
 sys.exit(1 if FAILED else 0)

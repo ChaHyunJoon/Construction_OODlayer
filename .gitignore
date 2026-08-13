@@ -33,3 +33,27 @@ tools/monitor/_backup_*/
 tools/monitor/regen_case_logs/
 tools/monitor/monitor_stream.jsonl
 tools/monitor/visualization.html
+
+# Python virtualenv (2026-08-12 부터 `.venv/` 가 표준 인터프리터 자리다 -- 커밋 대상 아님)
+.venv/
+
+# ---- 스윕 산출물 (2026-08-13) ---------------------------------------------------------
+# 주의: `results_4pol/*.jsonl` 은 **이미 추적·커밋된 그날 밤의 산출물**이다. 디렉토리를 통째로
+# (`results_4pol/`) 무시하면 부모가 배제돼 `!` 로 되살릴 수 없으므로(git: "It is not possible to
+# re-include a file if a parent directory of that file is excluded"), 디렉토리가 아니라 **그 안의
+# 항목**(`/*`)을 배제하고 병합 결과 `.jsonl` 만 되살린다. 무시되는 건 수백 MB 짜리 `shards/`·
+# `logs/` 트리뿐이고, 표를 만드는 병합본은 그대로 추적된다.
+wm4spacecraft_manufacturing/results_4pol/*
+!wm4spacecraft_manufacturing/results_4pol/*.jsonl
+wm4spacecraft_manufacturing/results_oracle/*
+!wm4spacecraft_manufacturing/results_oracle/*.jsonl
+# 게이트 실측은 통째로 재생성 가능(loaded/ · solo/ 하위에 샤드 로그만 있다).
+wm4spacecraft_manufacturing/results_gate/
+# D=40 구세대 격리 스냅샷 -- 보관용이지 커밋 대상이 아니다.
+wm4spacecraft_manufacturing/_quarantine_D40_2026-08-12/
+
+# 오케스트레이터의 런타임 상태(락 · 작업 목록). `_night/status_*.jsonl` 과
+# `_night/provenance_4pol.json` 은 산출물이므로 여기서 무시하지 않는다.
+wm4spacecraft_manufacturing/_night/.status.lock
+wm4spacecraft_manufacturing/_night/joblist.txt
+wm4spacecraft_manufacturing/_night/oracle_joblist.txt

@@ -20,15 +20,16 @@ def check(name, ok, detail=""):
         FAILED += 1
 
 
-def run_checker(rows, expect="20.0"):
+def run_checker(rows, expect="20.0", min_rows=None):
     """rows 를 임시 디렉토리의 case.jsonl 로 쓰고 검사기를 돌린다. 반환: (returncode, stdout)."""
     with tempfile.TemporaryDirectory() as d:
         with open(os.path.join(d, "battery.jsonl"), "w", encoding="utf-8") as fh:
             for r in rows:
                 fh.write(json.dumps(r) + "\n")
-        p = subprocess.run([PY, CHECKER, "--results-dir", d,
-                            "--expect-depot-distance", expect],
-                           capture_output=True, text=True)
+        cmd = [PY, CHECKER, "--results-dir", d, "--expect-depot-distance", expect]
+        if min_rows is not None:
+            cmd += ["--min-rows", str(min_rows)]
+        p = subprocess.run(cmd, capture_output=True, text=True)
         return p.returncode, p.stdout + p.stderr
 
 
@@ -55,5 +56,26 @@ check("구세대 행임을 명시한다", "geometry" in out, out.strip()[-200:])
 
 rc, out = run_checker([])
 check("빈 파일은 통과", rc == 0, "rc=%d" % rc)
+
+# ---- --min-rows: 공허한 통과 막기 (2026-08-13) -----------------------------------------
+# 위반 0건이라는 이유로 0행짜리 디렉토리가 PASS 를 내면, 630판을 인증하는 게이트가 오타 하나로
+# 아무것도 인증하지 않게 된다. 아래 두 방향을 모두 못 박는다.
+rc, out = run_checker([], min_rows=1)
+check("--min-rows 아래면 빈 디렉토리도 실패", rc == 1, "rc=%d" % rc)
+check("실제 행 수와 기대 하한을 함께 찍는다",
+      "행이 0개뿐이다" in out and "최소 1개" in out, out.strip()[-300:])
+
+rc, out = run_checker([GOOD, GOOD], min_rows=3)
+check("행이 하한보다 적으면 위반이 없어도 실패", rc == 1, "rc=%d" % rc)
+check("실제 행 수(2)를 찍는다", "행이 2개뿐이다" in out, out.strip()[-300:])
+
+rc, out = run_checker([GOOD, GOOD], min_rows=2)
+check("행이 하한과 같으면 영향 없음", rc == 0, "rc=%d" % rc)
+
+rc, out = run_checker([GOOD, GOOD], min_rows=1)
+check("행이 하한보다 많으면 영향 없음", rc == 0, "rc=%d" % rc)
+
+rc, out = run_checker([GOOD, D40], min_rows=2)
+check("--min-rows 를 넘겨도 D=40 혼입은 여전히 실패", rc == 1, "rc=%d" % rc)
 
 sys.exit(1 if FAILED else 0)

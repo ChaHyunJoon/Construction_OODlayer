@@ -8,6 +8,11 @@ DSPy 서비스 안의 surrogate 모델 로드를 깨뜨렸을 때, 갓 돈 보�
 달고 `decisions[*].enacted == ["canonical","canonical","canonical","canonical"]` 를
 기록했다. 서비스 쪽 버그는 고쳤고 런 시작 시점 게이트(P9)도 추가했지만, 한 번만 도는
 게이트는 3시간짜리 630보드 스윕 도중 서비스가 죽는 걸 못 잡는다. 결과 자체를 검사해야 한다.
+
+`--min-rows N`(2026-08-13): 이 검사기는 위반이 없으면 통과한다 -- **행이 0개여도** 통과한다.
+`--results-dir /nonexistent_dir_xyz` 가 실제로 `PASS`(rc=0)를 냈다. 630판을 인증하는 게이트가
+오타 하나로 공허하게 통과하면 인증이 아니다. `--min-rows` 를 주면 훑은 행 수가 그 아래일 때
+실패한다. 기본값 0 은 기존 동작 그대로다(빈 디렉토리는 기본값에서 의도적으로 통과한다).
 """
 import argparse, json, sys
 from pathlib import Path
@@ -63,6 +68,9 @@ def main():
     ap.add_argument("--results-dir", required=True)
     ap.add_argument("--policies", default="noop,surrogate,dspy",
                      help="허용할 policy 값 목록 (콤마 구분)")
+    ap.add_argument("--min-rows", type=int, default=0,
+                     help="훑은 행이 이 수보다 적으면 실패한다(기본 0 = 공허한 통과 허용). "
+                          "630판 인증처럼 '몇 행이 있어야 하는지' 를 아는 자리에서 반드시 줄 것.")
     args = ap.parse_args()
 
     policies = [p.strip() for p in args.policies.split(",") if p.strip()]
@@ -76,6 +84,11 @@ def main():
         print("  FAIL  " + v)
     if violations:
         print("  위반 %d건" % len(violations))
+        return 1
+    if n_rows < args.min_rows:
+        print("  FAIL  행이 %d개뿐이다 -- 최소 %d개를 기대했다 (--results-dir %s). "
+              "검사할 게 없으면 통과가 아니라 실패다: 디렉토리가 비었거나 경로가 틀렸을 수 있다."
+              % (n_rows, args.min_rows, args.results_dir))
         return 1
     print("  PASS  모든 행에서 policy == enacted")
     return 0

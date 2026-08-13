@@ -2,7 +2,7 @@
 
 ## 1. 헤더
 
-생성 시각: 2026-08-13T02:24:49-07:00
+생성 시각: 2026-08-13T02:40:11-07:00
 
 이 문서가 재는 것: 3개 실행 가능 정책(`noop`, `surrogate`, `llm`=dspy) x 7개 OOD case (630 판 스윕, `run_4pol.sh`) 의 완주율/결정정확도/빌드시간/에너지 비교, 오라클 결과-천장(axis 단위, `oracle/out` 라벨 격자에서 직접 계산), 상태조건부 decision-shadow 비교, post-hoc 검증(V1-V4), 알려진 한계.
 
@@ -33,7 +33,12 @@ python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --
 
 ## 2. 헤드라인 표 -- 8 case x 4 방법
 
-> `oracle` 은 실행 가능한 온라인 정책이 아니다(`tools/monitor/policy.jl` 에 oracle 분기 없음, `grep -i oracle` 0건). 이 행은 함께 달리는 네 번째 주자가 아니라 **천장/원점(ceiling)** 이다 -- "옳은 결정 100%"는 성능 주장이 아니라 나머지 세 행이 이 원점에서 얼마나 떨어졌는지 재는 눈금이다.
+> **`oracle` 행은 이 스윕이 실행한 판이 아니다 -- 오프라인 라벨 격자에서 유도한 천장/원점(ceiling)이다.**
+> 
+> - `oracle` 은 이제 `tools/monitor/policy.jl` 의 **실제로 실행되는 레인**이다(`oracle_macro()` 가 결정시점에 기준 행동 a* 를 계산하고 `pol["oracle"]` 로 집행한다; 2026-08-13 커밋 `d318d1d` 에서 신설). "policy.jl 에 oracle 분기가 없다"는 과거 서술은 그 커밋 이후로 사실이 아니다.
+> - **그러나 이 630판 스윕에는 그 레인이 들어 있지 않다.** 이 스윕이 돌린 정책 집합은 `noop,surrogate,dspy` 셋뿐이다. 따라서 아래 표에 보이는 `oracle` 행의 값은 실행된 판에서 나온 것이 아니라 **오프라인 라벨 격자**(`reference_policy.py` 의 기준 행동 a*)에서 나온 것이다. "옳은 결정 100%"는 성능 주장이 아니라 나머지 세 행이 이 원점에서 얼마나 떨어졌는지 재는 눈금이다.
+> - 조합 case(`fault_battery`/`fault_zone`/`battery_zone`/`all`)의 `oracle` 칸이 `0,0` 으로 읽힌다면 그것은 "모든 판이 실패했다"가 **아니라 "해당 격자가 아예 없다"** 는 뜻이다 -- `results_matrix.py:44` 의 `ORACLE_KIND` 에는 조합 키가 없다(사건이 섞여서 나오므로 단일-종류 격자가 성립하지 않는다).
+> - 실행 레인의 ZoneTruth 가지는 `reference_policy.py` 와 **의도적으로 갈린다**: Julia 쪽은 Python 채점기가 관측할 수 없는 `RECOVERY_SPARES` 상태로 게이트를 건다(요약의 `zone_primitives` 에 그런 칸이 없다). 그래서 `score()` 기준 결정 적중률은 84/84 가 아니라 **80/84** 다. 완주(completion)는 Julia 쪽이 authoritative 이고, 발행되는 `decision_acc` 열은 Python 쪽 값을 그대로 유지한다.
 
 실행 가능한 lane 은 `noop` / `surrogate` / `dspy`(=`llm`) 셋뿐이다. `oracle` 행은 case 마다 별도 계산되는 상한선(정의상 100%)으로만 들어간다 -- "oracle 이 이겼다"는 주장은 정의상 항상 참이라 정보가 없다. 승자를 굵게 표시하지 않는다: 예를 들어 `zonecore` 는 surrogate 가 결정 100% 지만 완주 4/5, llm 은 결정 65% 지만 완주 5/5 에 에너지도 더 낮다 -- 어느 쪽도 무조건 '이겼다' 라고 적을 수 없다(아래 §5 zonecore 상세 참조).
 
@@ -283,27 +288,7 @@ zone 규칙 == 오라클 최선 (zcausal, n=2)   FAIL
 <details>
 <summary>case = <code>zonecore</code></summary>
 
-| 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
-|---|---|---|---|---|---|---|---|
-| `noop` | 5 | 0% (0/5) [0.00, 0.43] | 0% (0/20) | — (완주 0) | 722 | 0.945 | 12.0 |
-| `surrogate` | 5 | 80% (4/5) [0.38, 0.96] | 100% (19/19) | 31.2 ± 1.9 | 639 | 0.952 | 12.0 |
-| `dspy` | 5 | 100% (5/5) [0.57, 1.00] | 65% (13/20) | 26.1 ± 1.6 | 439 | 0.965 | 12.0 |
-
-| 정책 | 고른 매크로 | 종류별 적중 |
-|---|---|---|
-| `noop` | NOOP×50 | Zone 0/20 |
-| `surrogate` | RelocateBuild×19, ReformTeam×6 | Zone 19/19 |
-| `dspy` | RelocateBuild×13, NOOP×7 | Zone 13/20 |
-
-| 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
-|---|---|---|---|---|---|---|
-| `noop` | 0% (0/20) | 0% (0/50) | 0% (0/20) | 0% (0/15) | 0% (0/10) | 0% (0/5) |
-| `surrogate` | 0% (0/19) | 0% (0/25) | 100% (19/19) | 100% (14/14) | 100% (10/10) | 100% (5/5) |
-| `dspy` | 0% (0/20) | 0% (0/20) | 65% (13/20) | 53% (8/15) | 40% (4/10) | 60% (3/5) |
-
-- 짝지은 비교 `noop` vs `surrogate` — 1승 4패 0무, 부호검정 p=0.375
-- 짝지은 비교 `noop` vs `dspy` — 0승 5패 0무, 부호검정 p=0.062
-- 짝지은 비교 `surrogate` vs `dspy` — 0승 1패 4무, 부호검정 p=1.000
+데이터 없음 -- `zonecore.md` 가 아직 없다.
 
 </details>
 

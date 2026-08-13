@@ -33,7 +33,13 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 - **`julia +lts` (1.10)** — `Manifest.toml` is pinned to 1.10.11; `Pkg.add` under a newer Julia silently breaks the build.
 - Always pass `--project=.`.
 - PyCall's interpreter must be the one `rvo2` is installed into (`ENV["PYTHON"]` / `CB_PYTHON`). See `PYTHON_SETUP.md`.
-- Python stack = `venv/hjcrl` (dspy 3.2.1). 데모/렌더 재현엔 `DSPY_URL` + `NOVELTY_CALIB`(repo 내 경로) 필요.
+- Python stack = **`.venv/`(레포 루트)**, 즉 `/home/chahj578/Construction_OODlayer/.venv/bin/python`
+  — **dspy 3.3.0**. (`venv/hjcrl` 은 존재하지 않는 경로다: 2026-08-13 정정.)
+  데모/렌더 재현엔 `DSPY_URL` + `NOVELTY_CALIB`(repo 내 경로) 필요.
+- **dspy 3.3.0 은 `import dspy` 시점에 `numpy` 를 lazy 프록시로 갈아 끼운다** — 그래서
+  `src/respec/llm_service/dspy_service.py:44` 의 `import numpy, sklearn.ensemble` 는 `import dspy`
+  **앞에** 있어야 한다(지우면 numpy 반쪽 초기화로 surrogate 로드가 죽고, 레인이 조용히 canonical
+  로 폴백한다 — 커밋 `f43ad79` 가 고친 회귀다).
 
 ## Commands
 ```bash
