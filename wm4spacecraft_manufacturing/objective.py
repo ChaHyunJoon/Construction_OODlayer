@@ -38,6 +38,24 @@ _HASH_SCALAR_KEYS = (
     "C_fail", "C_unclosed", "E_ref", "Eg_scale", "M_ref", "T_scale", "kappa", "tie_eps",
 )
 
+# 문자열로 해싱하는 키 (숫자 포맷을 거치지 않고 **원문 그대로**).
+#
+# 왜 필요한가 (2026-08-13 컨트롤러 재정): 스칼라만 해싱하면 **목적함수의 유효 의미가 바뀌었는데
+# 스칼라는 그대로인 변경**을 해시가 표현하지 못한다. 실제로 그런 일이 났다 — 태스크 6 이 κ 를
+# DeprioritizeAgent 국소 스코프에서 전역 기본값으로 승격하면서 오라클 fault 재풀이
+# (release_pending_assignments! → verifier/커밋 풀이)가 이전 라벨과 **다른 목적함수**를
+# 최적화하게 됐는데, objective.json 의 스칼라는 하나도 안 바뀌어 해시가 동일했다.
+# spec §7 은 "해시가 다르면 다른 세대"라는 기계적 판정을 약속하는데, 그 판정이 이 단절을
+# 볼 수 없었다. `generation` 은 그 판정을 사람이 선언하고 기계가 검사하는 형태로 만든다.
+#
+# 규칙: **목적함수의 유효 의미가 바뀌면 스칼라가 그대로여도 bump 한다.** 플래너 재배선 포함.
+_HASH_STRING_KEYS = ("generation",)
+
+# 실제 해싱 순서 = 스칼라 + 문자열 키를 합쳐 한 번 정렬한 것.
+# ASCII 정렬이라 대문자 키가 먼저 온다: C_fail, C_unclosed, E_ref, Eg_scale, M_ref, T_scale,
+# generation, kappa, tie_eps. Julia 쪽도 같은 코드포인트 정렬이라 순서가 일치한다.
+_HASH_KEYS = tuple(sorted(_HASH_SCALAR_KEYS + _HASH_STRING_KEYS))
+
 
 class ObjectiveError(RuntimeError):
     """목적함수 설정이 불완전하거나 입력이 J 를 정의하지 못할 때."""
@@ -93,24 +111,36 @@ def _fmt_hash_value(v):
     return "%.17g" % f
 
 
+def _fmt_hash_entry(key, v):
+    """키 하나의 해시 표기. 문자열 키는 원문 그대로, 그 외는 %.17g 숫자 규약."""
+    if key in _HASH_STRING_KEYS:
+        return "null" if v is None else str(v)
+    return _fmt_hash_value(v)
+
+
 def objective_hash(cfg=None):
     """유효 설정의 sha256(앞 16자).
 
     해시 대상: J 를 정의하는 8개 스칼라(C_fail, C_unclosed, E_ref, Eg_scale, M_ref,
-    T_scale, kappa, tie_eps, 정렬된 순서)와 실제로 적용된 ENV 덮어쓰기(ENV 변수명
-    정렬순, 원본 문자열 그대로)만 "key=value" 줄로 나열해 "\\n" 로 join 하고 끝에
-    "\\n" 을 붙인 뒤 UTF-8 로 sha256 한다. `_doc`/`calibrated_from` 은 문서·출처일 뿐
-    J 의 파라미터가 아니므로 제외한다 — 두 파일이 파라미터는 같고 출처만 다르면 같은
-    목적함수이므로 같은 해시를 내야 한다 (§7 의 "해시가 다르면 다른 세대" 규약이
-    문서 오타 수정으로 허투루 깨지지 않게).
+    T_scale, kappa, tie_eps) **+ 세대 딱지 `generation`**(문자열, 원문 그대로) 를
+    합쳐 한 번 정렬한 순서로, 그리고 실제로 적용된 ENV 덮어쓰기(ENV 변수명 정렬순,
+    원본 문자열 그대로)를 "key=value" 줄로 나열해 "\\n" 로 join 하고 끝에 "\\n" 을
+    붙인 뒤 UTF-8 로 sha256 한다.
+
+    `_doc`/`calibrated_from` 은 문서·출처일 뿐 J 의 파라미터가 아니므로 제외한다 —
+    두 파일이 파라미터는 같고 출처만 다르면 같은 목적함수이므로 같은 해시를 내야 한다
+    (§7 의 "해시가 다르면 다른 세대" 규약이 문서 오타 수정으로 허투루 깨지지 않게).
+
+    `generation` 은 그 반대쪽 구멍을 막는다: **스칼라가 그대로인데 유효 의미가 바뀐**
+    변경(플래너 재배선 등)을 해시가 볼 수 있게 한다. 그런 변경을 했으면 반드시 bump 할 것.
 
     Python 과 Julia 는 이 텍스트 규약을 그대로 공유한다(JSON 직렬화 바이트 매칭에
     기대지 않는다) — 그래서 두 언어가 항상 같은 해시를 낸다.
     """
     cfg = cfg if cfg is not None else load()
     lines = []
-    for key in sorted(_HASH_SCALAR_KEYS):
-        lines.append("%s=%s" % (key, _fmt_hash_value(cfg.get(key))))
+    for key in _HASH_KEYS:
+        lines.append("%s=%s" % (key, _fmt_hash_entry(key, cfg.get(key))))
     overrides = cfg.get("_env_overrides", {})
     for env_name in sorted(overrides):
         lines.append("ENV:%s=%s" % (env_name, overrides[env_name]))

@@ -128,13 +128,39 @@ Keyword arguments:
 - `ignore_rot_matrix_warning::Bool`: whether to ignore the rotation matrix warning (default: true)
 - `rng::Random.AbstractRNG`: random number generator to use (default: MersenneTwister(1))
 """
+# ---------------------------------------------------------------------------
+# 공개 진입점 = **전역 로거를 원복하는 얇은 래퍼**.
+#
+# 왜 있는가 (2026-08-13): 아래 구현부는 `global_logger(ConsoleLogger(stderr, log_level))` 를
+# 심는데(기본 log_level=Warn), 예전에는 **그걸 원복하지 않았다.** 그래서 env 를 한 번이라도
+# 빌드한 프로세스는 그 뒤로 **모든 `@info` 를 조용히 잃었다** — 함수 하나의 로컬 설정이
+# 프로세스 전역으로 샜다. 실제 피해: 태스크 6 에서 스모크 테스트의 진단 `@info` 가 통째로
+# 사라졌고, 그 로그의 부재를 근거로 "폴백이 발화하지 않았다"는 **틀린 결론**을 보고했다.
+# 로그의 부재가 증거로 쓰이는 순간 이건 조용한 오염이 아니라 오답 생산기다.
+#
+# 고친 방식: 억제 자체는 그대로 둔다(빌드/시뮬 중 소음은 여전히 Warn 이상만). 다만 그 범위를
+# 이 함수 호출 **안쪽으로 한정**한다 — 들어올 때 이전 로거를 저장하고, 예외로 빠져나가도
+# `finally` 로 반드시 되돌린다. 기본 log_level 은 안 건드렸다.
+#
+# 키워드는 `kwargs...` 로 그대로 전달한다(이 함수는 키워드 전용이라 위치인자 손실이 없고,
+# 기본값은 전부 구현부가 그대로 들고 있다).
+# ---------------------------------------------------------------------------
+function run_lego_demo(; kwargs...)
+    _prev_logger = global_logger()          # 호출자의 로거를 기억
+    try
+        return _run_lego_demo_impl(; kwargs...)
+    finally
+        global_logger(_prev_logger)         # 예외가 나도 반드시 원복(전역 누수 차단)
+    end
+end
+
 # 이 함수가 데모의 "진입점". 레고 모델을 불러와 → 스케줄을 만들고 → 로봇에 작업을 배정하고
 # → 시뮬레이션 루프를 돌리고 → 3D 애니메이션으로 렌더링하는 전체 파이프라인을 한 번에 실행함.
 #
 # function f(; ...) 처럼 인자목록 맨 앞이 세미콜론(;)이면, 그 뒤는 전부 "키워드 인자"(이름을 적어 호출).
 #   파이썬의 def f(*, a=1, b=2) 처럼 위치가 아니라 이름으로 넘기는 인자라는 뜻.
 # 각 인자의 `name::Type=기본값` 은 "타입 표기 + 기본값"으로, 파이썬의 name: Type = 기본값 과 같음.
-function run_lego_demo(;
+function _run_lego_demo_impl(;
     ldraw_file::String="tractor.mpd",                # 입력 LDraw(레고 도면) 파일 이름
     project_name::String=ldraw_file,                 # 프로젝트 이름(기본은 파일 이름과 동일)
     model_scale::Float64=0.008,                      # 모델 전체 크기 배율(작게 줄여서 시뮬레이션)
@@ -241,7 +267,10 @@ function run_lego_demo(;
     filename = joinpath(dirname(pathof(ConstructionBots)), "..", "LDraw_files", ldraw_file)  # 입력 파일 절대경로 조립
     @assert ispath(filename) "File $(filename) does not exist."  # @assert: 조건이 거짓이면 메시지와 함께 중단
 
-    # 전역 로거 설정. log_sink 가 주어지면 콘솔 출력은 그대로 + RESPEC 파이프라인 라인을 sink 로 캡처.
+    # 로거 설정. log_sink 가 주어지면 콘솔 출력은 그대로 + RESPEC 파이프라인 라인을 sink 로 캡처.
+    # ⚠️ 이 설정은 **이 호출 안에서만** 유효하다 — 공개 래퍼 run_lego_demo 가 반환 시
+    #    `finally` 로 이전 로거를 되돌린다. 예전에는 원복이 없어 전역으로 샜고, 그래서 env 를
+    #    빌드한 프로세스는 이후 모든 @info 를 잃었다(위 래퍼 주석에 사고 경위).
     _prime_ldraw_part_index!(filename)
     _base_logger = ConsoleLogger(stderr, log_level)
     global_logger(log_sink === nothing ? _base_logger :

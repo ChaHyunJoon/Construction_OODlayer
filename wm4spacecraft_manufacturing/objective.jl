@@ -28,6 +28,23 @@ const HASH_SCALAR_KEYS = (
     "C_fail", "C_unclosed", "E_ref", "Eg_scale", "M_ref", "T_scale", "kappa", "tie_eps",
 )
 
+# 문자열로 해싱하는 키 (숫자 포맷을 거치지 않고 **원문 그대로**). objective.py 와 동일.
+#
+# 왜 필요한가 (2026-08-13 컨트롤러 재정): 스칼라만 해싱하면 **목적함수의 유효 의미가 바뀌었는데
+# 스칼라는 그대로인 변경**을 해시가 표현하지 못한다. 실제로 그런 일이 났다 — 태스크 6 이 κ 를
+# DeprioritizeAgent 국소 스코프에서 전역 기본값으로 승격하면서 오라클 fault 재풀이
+# (release_pending_assignments! → verifier/커밋 풀이)가 이전 라벨과 **다른 목적함수**를
+# 최적화하게 됐는데, objective.json 의 스칼라는 하나도 안 바뀌어 해시가 동일했다.
+# spec §7 의 "해시가 다르면 다른 세대" 기계적 판정이 그 단절을 볼 수 없었다.
+#
+# 규칙: **목적함수의 유효 의미가 바뀌면 스칼라가 그대로여도 bump 한다.** 플래너 재배선 포함.
+const HASH_STRING_KEYS = ("generation",)
+
+# 실제 해싱 순서 = 스칼라 + 문자열 키를 합쳐 한 번 정렬한 것.
+# 코드포인트 정렬이라 대문자 키가 먼저 온다: C_fail, C_unclosed, E_ref, Eg_scale, M_ref,
+# T_scale, generation, kappa, tie_eps. Python 의 sorted() 와 같은 순서다.
+const HASH_KEYS = Tuple(sort(collect(String[HASH_SCALAR_KEYS..., HASH_STRING_KEYS...])))
+
 struct ObjectiveError <: Exception
     msg::String
 end
@@ -77,18 +94,29 @@ function _fmt_hash_value(v)
     return @sprintf("%.17g", f)
 end
 
+"키 하나의 해시 표기. 문자열 키는 원문 그대로, 그 외는 %.17g 숫자 규약."
+function _fmt_hash_entry(key, v)
+    key in HASH_STRING_KEYS && return v === nothing ? "null" : string(v)
+    return _fmt_hash_value(v)
+end
+
 """
     objective_hash(cfg=nothing)
 
 유효 설정의 sha256(앞 16자).
 
 해시 대상: J 를 정의하는 8개 스칼라(C_fail, C_unclosed, E_ref, Eg_scale, M_ref,
-T_scale, kappa, tie_eps, 정렬된 순서)와 실제로 적용된 ENV 덮어쓰기(ENV 변수명
-정렬순, 원본 문자열 그대로)만 "key=value" 줄로 나열해 "\\n" 로 join 하고 끝에
-"\\n" 을 붙인 뒤 UTF-8 로 sha256 한다. `_doc`/`calibrated_from` 은 문서·출처일 뿐
-J 의 파라미터가 아니므로 제외한다 — 두 파일이 파라미터는 같고 출처만 다르면 같은
-목적함수이므로 같은 해시를 내야 한다 (§7 의 "해시가 다르면 다른 세대" 규약이
-문서 오타 수정으로 허투루 깨지지 않게).
+T_scale, kappa, tie_eps) **+ 세대 딱지 `generation`**(문자열, 원문 그대로) 을 합쳐
+한 번 정렬한 순서로, 그리고 실제로 적용된 ENV 덮어쓰기(ENV 변수명 정렬순, 원본
+문자열 그대로)를 "key=value" 줄로 나열해 "\\n" 로 join 하고 끝에 "\\n" 을 붙인 뒤
+UTF-8 로 sha256 한다.
+
+`_doc`/`calibrated_from` 은 문서·출처일 뿐 J 의 파라미터가 아니므로 제외한다 —
+두 파일이 파라미터는 같고 출처만 다르면 같은 목적함수이므로 같은 해시를 내야 한다
+(§7 의 "해시가 다르면 다른 세대" 규약이 문서 오타 수정으로 허투루 깨지지 않게).
+
+`generation` 은 그 반대쪽 구멍을 막는다: **스칼라가 그대로인데 유효 의미가 바뀐**
+변경(플래너 재배선 등)을 해시가 볼 수 있게 한다. 그런 변경을 했으면 반드시 bump 할 것.
 
 Python 과 이 텍스트 규약을 그대로 공유한다(JSON 직렬화 바이트 매칭에 기대지
 않는다) — 그래서 두 언어가 항상 같은 해시를 낸다.
@@ -96,8 +124,8 @@ Python 과 이 텍스트 규약을 그대로 공유한다(JSON 직렬화 바이�
 function objective_hash(cfg = nothing)
     cfg = cfg === nothing ? load() : cfg
     lines = String[]
-    for key in sort(collect(HASH_SCALAR_KEYS))
-        push!(lines, "$(key)=$(_fmt_hash_value(get(cfg, key, nothing)))")
+    for key in HASH_KEYS
+        push!(lines, "$(key)=$(_fmt_hash_entry(key, get(cfg, key, nothing)))")
     end
     overrides = get(cfg, "_env_overrides", Dict{String,String}())
     for env_name in sort(collect(keys(overrides)))
