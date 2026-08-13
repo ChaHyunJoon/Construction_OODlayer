@@ -4,13 +4,14 @@
 # 똑같은 결정을 내리도록 한 곳에 모은 파일. 여기만 고치면 두 엔진이 함께 바뀐다.
 #
 #   canonical : CB.canonical_respec 규칙 lookup (줄리아 내부)
+#   oracle    : reference_policy.py 의 기준행동 a* 를 결정시점에 재계산해 집행(비교용 상한 lane)
 #   surrogate : 배포 RandomForest      ┐ 파이썬 서비스 POST /decide 로 한 번에 받음
 #   dspy      : MIPROv2 컴파일 gpt-4o  ┘
 #
 # 매 OOD 사건마다 **셋을 모두 계산해 기록**하고(UI 가 전환해 볼 수 있게), 실제로 실행되는 것은
 # DEMO_POLICY 하나뿐이다. 서비스가 없으면 canonical 로 폴백하고 그 사실을 verdict 에 남긴다.
 #
-# ENV: DEMO_POLICY(canonical|surrogate|dspy) · DSPY_URL · DEMO_ALL_POLICIES(0 이면 비교값 수집 생략)
+# ENV: DEMO_POLICY(canonical|noop|oracle|surrogate|dspy) · DSPY_URL · DEMO_ALL_POLICIES(0 이면 비교값 수집 생략)
 # =============================================================================
 import HTTP, JSON3
 
@@ -445,6 +446,69 @@ function canonical_macro(env, truth)
     return "NOOP"      # 규칙이 고른 팔이 지금 도메인이 비었다 = 규칙은 할 말이 없다
 end
 
+# ---- oracle lane: 기준 행동 a* 의 실행판 (2026-08-12) -----------------------------------
+# `wm4spacecraft_manufacturing/reference_policy.py` 의 a* 규칙을 **결정 시점에** 계산한 것.
+# 저쪽은 판이 끝난 뒤 decisions[] 를 읽는 사후 채점기라 실행 lane 이 될 수 없다.
+#
+# 왜 신설했는가(2026-08-12 진단): 이 함수가 없던 동안 `DEMO_POLICY=oracle` 은 아래 decide_all 의
+# `enacted = "canonical"` 폴백(존재하지 않는 정책 키)으로 **조용히** 떨어졌다. 경고도 종료코드도
+# 없이 요약 행만 `"policy":"oracle"` 로 남아, 이름만 oracle 인 canonical 판이 만들어졌다.
+# 실측 증상은 a* 대비 결정 적중률 0/4 였다(정의상 4/4 여야 하는 lane).
+#
+# 매크로 이름 문자열은 일부러 reference_policy.py 와 **같은 리터럴**을 쓴다(레지스트리 경유 금지 —
+# 경유하면 두 파일이 다른 이름 체계를 쓰게 된다). 두 구현이 갈려도 에러는 안 난다: 표의 `oracle`
+# 행이 "a* 를 집행했다"는 이름으로 다른 것을 집행할 뿐이다.
+#
+# ★ a* 가 미정의인 자리에서는 **언제나 `canonical_macro` 로 위임한다. NOOP 이 아니다.**
+#   (reform 사건 · 근거 없는 SoC 구간 · agent_pending 미기록 · zone_diagnosis 실패)
+#   두 가지 이유가 겹친다:
+#     1) reference_policy 는 정확히 같은 자리에서 a*=None(unscored)을 낸다. "Julia 가 위임한 사건"
+#        과 "Python 이 채점에서 뺀 사건" 이 겹쳐야 "채점된 사건에서 oracle 적중률 1.0" 계약이 선다.
+#     2) NOOP 으로 떨어지면 재형성이 필요한 교착을 그대로 두게 되고 **그것이 곧 미완주다**
+#        (md/README.md §6: 복구를 되살린 처방이 DEMO_REFORM). canonical_macro 는 규칙의 답을 지금
+#        실행 가능한 어휘로 투영하므로(바로 위 함수) 실행 불가능한 팔은 절대 내지 않는다.
+#
+# 아래 상수는 reference_policy.py:71 의 `BATTERY_DEEP_SOC` 와 **같은 값이어야 한다**. 갈리면 그
+# 사이 SoC 구간에서 두 구현이 다른 팔을 내고, 증상은 에러가 아니라 **oracle 레인의 결정 적중률이
+# 1.0 미만**으로 나타난다. tools/test_policy_oracle.jl 의 0절이 두 파일을 직접 대조한다.
+const ORACLE_BATTERY_DEEP_SOC = 0.5      # = reference_policy.py:71 BATTERY_DEEP_SOC
+
+function oracle_macro(env, truth)
+    vm = valid_macros(env, truth)
+    if truth isa CB.BatteryTruth
+        local soc = try Float64(truth.soc_after) catch; nothing end
+        # NaN <= x 는 조용히 false 라 mild 가지로 새어 들어간다 -- reference_policy._finite_soc 와
+        # 같은 게이트를 여기서도 통과시킨다.
+        (soc === nothing || !isfinite(soc)) && return canonical_macro(env, truth)
+        # 깊은 방전. D=20 사다리(n44_plus78_d20)에서 SwapBattery 가 세 칸 전부에서 이긴다
+        # (0.02 = 완주 여부, 0.30·0.50 = makespan). SwapBattery 가 메뉴에 없는 배선에서는
+        # Replace 가 그 자리를 대신한다 -- reference_policy.py:175 와 같은 규칙.
+        soc <= ORACLE_BATTERY_DEEP_SOC && return ("SwapBattery" in vm ? "SwapBattery" : "Replace")
+        # SoC > 0.5 는 격자가 테스트한 사다리(최고 rung 0.50) **바깥**이라 근거가 없다.
+        # reference_policy.py:184 가 이 구간을 unscored 로 뺀다 -- 없는 정답을 지어내지 않는다.
+        return canonical_macro(env, truth)
+    elseif truth isa CB.FaultTruth
+        local pend = try _agent_pending(env, truth.robot) catch; -1 end
+        pend < 0 && return canonical_macro(env, truth)   # 미기록 = reference_policy.py:190 도 unscored
+        # firegrid 실측은 완전 분리다(24/24, 18/18): "고장났으니 교체" 가 아니라 **일을 지고
+        # 있었는가** 가 가른다.
+        return pend > 0 ? "Replace" : "NOOP"
+    elseif truth isa CB.ZoneTruth
+        local zdg = try CB.zone_diagnosis(env, truth.zone) catch; nothing end
+        # 진단이 없거나 구역이 죽었으면 run_demo 요약의 zone_primitives 도 비고(아래 zone 블록이
+        # 같은 조건으로 기록한다) reference_policy.py:199 가 그 사건을 unscored 로 뺀다.
+        (zdg === nothing || !zdg.exists) && return canonical_macro(env, truth)
+        # 막힌 것이 **항법 목표**이고 root 하역목표는 안 걸렸을 때만 전역 이동이 값을 한다
+        # (zcausal_reform STEP 10: blk 279 완주 vs NOOP 254 정지 / cov 는 반대로 뒤집힌다).
+        # 막힘>0 하나만 보는 규칙은 2사건 중 1개만 맞는다.
+        (zdg.n_nav_blocked > 0 && zdg.root_covered == 0) &&
+            return ("RelocateBuild" in vm ? "RelocateBuild" : "ForbidZone")
+        return "NOOP"
+    end
+    # reform 등: 실측 격자가 없어 a* 가 미정의다(reference_policy.py:208 이 unscored 로 뺀다).
+    return canonical_macro(env, truth)
+end
+
 # ---- 통제 실험용 강제 매크로 -----------------------------------------------------------
 # DEMO_FORCE_MACRO=<이름> 이면 **어느 정책이 실행되든** 그 매크로를 집행한다.
 # 용도는 하나뿐이다: "결과가 갈린 이유가 매크로인가 정책인가"를 가르는 교차 대조
@@ -479,11 +543,22 @@ function decide_all(env, truth; nl::AbstractString = "")
     pol["noop"] = Dict("chosen" => "NOOP", "ranking" => ["NOOP"], "margin" => nothing,
                        "rationale" => "no-adapt floor (never intervenes)",
                        "label" => "no-adapt", "available" => true)
+    # ---- a* 집행 lane (2026-08-12) ----------------------------------------------------------
+    # "천장을 정말 달릴 수 있었나"를 재는 다섯 번째 주자. 이 lane 의 **결정 적중률은 정의상 1.0**
+    # 이라 성능 정보가 없다 -- 그 숫자는 Julia oracle_macro 와 Python reference_policy 가 일치하는지
+    # 보는 자기검사 계기판이다. 정보가 있는 것은 그 결정을 실제로 집행했을 때의 완주율·시간·에너지다.
+    # 라우터는 이쪽으로 보내지 않는다(target 은 surrogate/dspy 뿐) — noop 과 같은 통제 대조 lane 이다.
+    local a_star = oracle_macro(env, truth)
+    pol["oracle"] = Dict("chosen" => a_star, "ranking" => [a_star], "margin" => nothing,
+                         "rationale" => "reference action a* (measured grids; see reference_policy.py)",
+                         "label" => "oracle", "available" => true)
 
     rt = route(env, truth)                        # ← 이 사건을 누구에게 보낼지, 시스템이 판정
     desc = get(rt, "descriptors", nothing)
 
-    j = (POLICY in ("canonical", "noop") && !get(rt, "enabled", false) &&
+    # oracle 은 canonical/noop 과 마찬가지로 DSPy 서비스 없이도 결정을 내야 한다(a* 는 상태에서
+    # 곧바로 나온다). 여기 빠져 있으면 DEMO_ALL_POLICIES=0 인 oracle 판이 사건마다 서비스를 부른다.
+    j = (POLICY in ("canonical", "noop", "oracle") && !get(rt, "enabled", false) &&
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
         nothing : service_decide(env, truth; nl = nl, descriptors = desc)
 
