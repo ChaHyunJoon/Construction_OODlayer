@@ -92,6 +92,13 @@ without overturning a genuinely faster plan. Override with `RESPEC_DEPRIO_KAPPA`
 """
 # (한국어) Deprioritize 재풀이에서 에너지 항이 makespan 규모의 몇 배까지 값어치를 갖게 할지. 0 이면
 #   예전처럼 무효과, 0.25 면 makespan 이 (거의) 같은 배정들 사이에서만 에너지가 결정권을 갖는다.
+#
+# ⚠️ 2026-08-13 (계획 태스크 6, spec §6.3): **프로덕션 경로는 더 이상 이 값을 읽지 않는다.**
+#   κ 는 objective.json → `init_objective_weights!` 가 심는 전역 `AUTO_EFFICIENCY_KAPPA[]` 로
+#   승격됐다(예전엔 아래 maybe_respecify! 의 DeprioritizeAgent 분기 한 곳에서만 켰다가 즉시
+#   원복했고, 그래서 다른 모든 매크로의 재풀이가 에너지를 버린 채 돌았다 — spec §2.2).
+#   남은 참조는 `tools/tests.jl:1201`(에너지 항 활성 여부를 보는 진단 테스트) 하나뿐이므로
+#   상수 자체는 지우지 않는다. 이 값을 바꿔도 프로덕션 재풀이의 κ 는 바뀌지 않는다.
 const DEPRIORITIZE_KAPPA = Ref(try
         parse(Float64, get(ENV, "RESPEC_DEPRIO_KAPPA", "0.25"))
     catch
@@ -898,19 +905,16 @@ function maybe_respecify!(env, ood_queue;
         #   이 정식화 한 번에만 자동 환산 가중치를 켜고 곧바로 원복한다(가중치는 formulate_milp 안에서
         #   목적식에 구워지므로 이후 optimize! 는 영향 없음). 같은 항에 배터리 SoC 배율도 실려 있어,
         #   이 재풀이는 모든 로봇을 잔량으로 가격 매긴다 = 일이 잔량 많은 로봇으로 흐른다.
-        prev_kappa = AUTO_EFFICIENCY_KAPPA[]
-        AUTO_EFFICIENCY_KAPPA[] = DEPRIORITIZE_KAPPA[]
-        milp = try
-            formulate_milp(
-                SparseAdjacencyMILP(), env.sched, env.scene_tree;
-                optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
-        finally
-            AUTO_EFFICIENCY_KAPPA[] = prev_kappa         # 반드시 원복(예외가 나도)
-        end
+        # κ 는 이제 전역 기본값이다(objective.json → init_objective_weights!, spec §6.3).
+        # 예전에는 이 한 정식화에만 켰다가 즉시 원복했고, 그래서 **나머지 모든 매크로의 재풀이가
+        # 에너지를 버린 채** 돌았다(spec §2.2). 배터리 SoC 훅도 같은 항에 실려 있어 함께 무력이었다.
+        milp = formulate_milp(
+            SparseAdjacencyMILP(), env.sched, env.scene_tree;
+            optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
         if LAST_AUTO_EFFICIENCY_W[] > 0.0
-            @info "[RESPEC] deprioritize re-solve: energy term ON (auto w_eff=$(round(LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3)), κ=$(DEPRIORITIZE_KAPPA[]))"
+            @info "[RESPEC] deprioritize re-solve: energy term ON (auto w_eff=$(round(LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3)), κ=$(AUTO_EFFICIENCY_KAPPA[]))"
         else
-            @warn "[RESPEC] deprioritize re-solve: energy term NOT active -- the bias cannot steer this solve"
+            @warn "[RESPEC] deprioritize re-solve: energy term NOT active -- the bias cannot steer this solve. init_objective_weights! 를 불렀는가?"
         end
         optimize!(milp)
         if primal_status(milp) != MOI.FEASIBLE_POINT     # bias 는 실행가능성을 보존하는데도 불가능하면(무관한 이유) 방어적 폴백

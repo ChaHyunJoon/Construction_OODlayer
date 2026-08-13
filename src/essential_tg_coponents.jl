@@ -1479,6 +1479,64 @@ greedy_edge_cost(::GreedyFinalTimeCost,  sched, v, v2, dt::Float64) = get_tF(sch
 greedy_edge_cost(::GreedyLowerBoundCost, sched, v, v2, dt::Float64) = get_tF(sched, v) + dt
 
 """
+에너지를 보는 greedy 비용 (spec §6.2).
+
+    cost = get_tF(v) + dt + w_g · edge_energy(dt) · edge_cost_multiplier(sched, v)
+
+`edge_cost_multiplier` 가 `agent_cost_bias × 배터리 SoC 배율` 을 나른다 — 즉 이 한 항으로
+greedy 경로에서도 `DeprioritizeAgent` 와 배터리 SoC 조향이 살아난다. 지금까지 둘 다 무력이었다.
+
+w_g = κ · T_scale / Eg_scale 이며, objective.json 이 출처다(단일 진실원, spec §5).
+"""
+struct GreedyEnergyAwareCost <: GreedyCost end
+
+# w_g 의 전역 상자. objective.json 에서 채워진다(init_objective_weights!).
+# nothing 이면 GreedyEnergyAwareCost 를 쓰는 것 자체가 에러다 — 0 으로 조용히 폴백하지 않는다.
+const GREEDY_ENERGY_W = Ref{Union{Nothing,Float64}}(nothing)
+
+function greedy_edge_cost(::GreedyEnergyAwareCost, sched, v, v2, dt::Float64)
+    w = GREEDY_ENERGY_W[]
+    w === nothing && error("GreedyEnergyAwareCost 를 쓰려면 w_g 가 필요하다 — objective.json 의 " *
+                           "kappa/T_scale/Eg_scale 로 init_objective_weights! 를 먼저 부를 것 (spec §5).")
+    return get_tF(sched, v) + dt + w * edge_energy(dt) * edge_cost_multiplier(sched, v)
+end
+
+"""
+    init_objective_weights!(; path = <repo>/wm4spacecraft_manufacturing/objective.json)
+
+목적함수 상수를 **한 파일에서** 읽어 두 자리에 심는다 (spec §4, §5):
+
+  - `AUTO_EFFICIENCY_KAPPA[]` ← `kappa`  (MILP 의 에너지 항; 정식화마다 자기 스케일로 환산됨)
+  - `GREEDY_ENERGY_W[]`       ← `kappa · T_scale / Eg_scale`  (greedy 의 에너지 항)
+
+둘 다 "에너지 항은 시간 항 크기의 약 κ 배만큼 가치가 있다"를 뜻한다 —
+κ 하나만 돌리면 세 자리(greedy, MILP, J)가 같이 움직인다.
+
+스케일이 null 이면 던진다. 조용히 0/1 로 폴백하면 "energy 도 최소화한다"가 명목상 주장이 된다.
+
+**모듈 `__init__` 에서 자동 호출하지 않는다**(계획자 ruling). 명시적 opt-in 이며, 호출 지점은
+`tools/monitor/run_demo.jl` 과 `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl` 두 레인이다.
+"""
+function init_objective_weights!(; path::AbstractString = joinpath(@__DIR__, "..",
+        "wm4spacecraft_manufacturing", "objective.json"))
+    isfile(path) || error("objective.json 이 없다: $path")
+    cfg = JSON3.read(read(path, String), Dict{String,Any})
+    kappa = get(cfg, "kappa", nothing)
+    kappa === nothing && error("objective.json 에 kappa 가 없다")
+    AUTO_EFFICIENCY_KAPPA[] = Float64(kappa)
+    T_scale, Eg_scale = get(cfg, "T_scale", nothing), get(cfg, "Eg_scale", nothing)
+    if T_scale === nothing || Eg_scale === nothing
+        GREEDY_ENERGY_W[] = nothing
+        @warn "objective.json 의 T_scale/Eg_scale 이 null — greedy 에너지 항은 비활성. " *
+              "GreedyEnergyAwareCost 를 쓰면 에러가 난다 (spec §5)."
+    else
+        Float64(Eg_scale) > 0 || error("Eg_scale 이 양수가 아니다: $Eg_scale")
+        GREEDY_ENERGY_W[] = Float64(kappa) * Float64(T_scale) / Float64(Eg_scale)
+    end
+    return (kappa = AUTO_EFFICIENCY_KAPPA[], w_g = GREEDY_ENERGY_W[])
+end
+
+"""
     GreedyAssignment{C,M} <: TaskGraphsMILP
 
 GreedyAssignment maintains three sets: The "satisfied set" `C`, the "required

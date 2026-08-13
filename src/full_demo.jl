@@ -149,6 +149,8 @@ function run_lego_demo(;
     base_results_path::String=joinpath(dirname(pathof(ConstructionBots)), "..", "results"),  # 결과 저장 최상위 폴더
     results_path::String=joinpath(base_results_path, project_name),  # 이 프로젝트 결과 저장 폴더
     assignment_mode::Symbol=:greedy,                 # 작업 배정 방식(:greedy=탐욕, :milp=정수계획)  ※ :이름 은 Symbol(가벼운 상수 문자열)
+    greedy_cost::GreedyCost=GreedyFinalTimeCost(),   # greedy 배정의 엣지 비용 기준(spec §6.2). 기본값은 종전 하드코딩 값 그대로 = 동작 불변.
+                                                     #   GreedyEnergyAwareCost() 를 주면 에너지 항이 켜진다(init_objective_weights! 선행 필요).
     open_animation_at_end::Bool=false,               # 끝나면 브라우저로 애니메이션 열기
     live_view::Bool=false,                           # 애니메이션 없이 MeshCat 라이브 장면만 구동(대시보드 라이브 세션용)
     save_animation::Bool=false,                      # 애니메이션 파일로 저장
@@ -597,7 +599,7 @@ function run_lego_demo(;
         ## Greedy Assignment with enforced build-step ordering
         # 키워드 인자로 비용함수를 지정해 탐욕 배정기 생성(조립 단계 순서를 강제).
         milp_model = ConstructionBots.GreedyOrderedAssignment(
-            greedy_cost=GreedyFinalTimeCost(),       # 최종 완료시간을 줄이는 방향의 비용
+            greedy_cost=greedy_cost,                 # 기본 GreedyFinalTimeCost() = 최종 완료시간을 줄이는 방향의 비용
         )
         milp_model = formulate_milp(milp_model, tg_sched, scene_tree)  # 모델 정식화
         optimize!(milp_model)                        # 배정 실행
@@ -612,7 +614,7 @@ function run_lego_demo(;
         else
             greedy_sched = deepcopy(tg_sched)        # deepcopy: 완전 복사(원본 보호, 파이썬 copy.deepcopy)
             greedy_model = ConstructionBots.GreedyOrderedAssignment(  # 먼저 greedy로 초기해 구하기
-                greedy_cost=GreedyFinalTimeCost(),
+                greedy_cost=greedy_cost,
             )
             greedy_model = formulate_milp(greedy_model, greedy_sched, scene_tree)
             optimize!(greedy_model)

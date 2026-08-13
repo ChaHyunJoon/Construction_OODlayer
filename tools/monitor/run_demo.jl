@@ -285,6 +285,14 @@ function handle_ood!(env, truth, nl)
         "escalated"     => (try haskey(decision.router, "escalated_from") catch; false end),
         "soc"      => (truth isa CB.BatteryTruth ? (try Float64(truth.soc_after) catch; nothing end) : nothing),
         "nl"       => String(nl)))
+    # spec §9(a) 배터리/에너지 훅 활성 검사. 이 데모는 RESPEC_ENABLED=false 로 두고 복구를 직접
+    # 몰기 때문에, replan.jl 의 `[RESPEC] ... energy term` 로그가 있는 maybe_respecify! 경로를
+    # 타지 않는다. 그래서 여기서 직접 본다: 매크로 집행이 MILP 를 다시 정식화했다면
+    # (rebalance_for_battery! / restage / ReformTeam 등) LAST_AUTO_EFFICIENCY_W[] > 0 이어야 한다
+    # = 전역 κ 가 그 재풀이에도 실렸다는 뜻. 0 이면 spec §2.2 의 결함이 남아 있는 것이다.
+    # (0.0 으로 먼저 지워야 이전 결정의 값이 새 나가지 않는다 — Ref 는 sticky 하다.)
+    CB.LAST_AUTO_EFFICIENCY_W[] = 0.0
+    CB.LAST_EDGE_COSTS[] = Dict{Tuple{Int,Int},Float64}()
     try
         if mac == "NOOP"
             println("[recover] $tag → NOOP (정책이 개입하지 않기로 결정)")
@@ -374,6 +382,15 @@ function handle_ood!(env, truth, nl)
             end
         end
         println("[recover] $tag → $mac  (closed=", length(env.cache.closed_set), ")")
+        if CB.LAST_AUTO_EFFICIENCY_W[] > 0.0
+            println("[recover] energy term ON for this re-solve (auto w_eff=",
+                    round(CB.LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3),
+                    ", κ=", CB.AUTO_EFFICIENCY_KAPPA[], ")")
+        else
+            println("[recover] energy term NOT active for $mac (κ=", CB.AUTO_EFFICIENCY_KAPPA[],
+                    ", n_candidate_edges=", (try length(CB.LAST_EDGE_COSTS[]) catch; -1 end),
+                    ") — 후보 엣지가 0 이면 이 분기는 재배정할 것이 없다는 뜻이다")
+        end
     catch e
         println("[recover] $tag ($mac) FAILED: ", first(split(sprint(showerror, e), "\n")))
     end
@@ -391,6 +408,15 @@ env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood",
 
 n_total = Graphs.nv(env.sched)
 println(">>> env built: $n_total schedule nodes")
+
+# 목적함수 가중치를 objective.json 에서 심는다 (spec §4, §5). ENERGY_OBJECTIVE=0 이면 끈다
+# (구세대 재현용 탈출구 — 껐다는 사실이 아래 로그에 남는다).
+if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+    local w = CB.init_objective_weights!()
+    println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
+else
+    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
+end
 
 # 배터리 레이어(완만 용량 → 자연 방전이 0에 안 닿게; 주입된 severe 만 저SoC)
 CB.enable_battery!(env; params = CB.demo_battery_params(shrink = 25.0))

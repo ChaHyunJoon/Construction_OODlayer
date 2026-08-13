@@ -152,6 +152,17 @@ const COST_FAIL     = Float64(OBJ_CFG["C_fail"])
 const COST_UNCLOSED = Float64(OBJ_CFG["C_unclosed"])
 const COST_TIE_EPS  = Float64(OBJ_CFG["tie_eps"])
 
+# 플래너(greedy/MILP)의 목적함수 가중치도 같은 objective.json 에서 심는다 (spec §4, §5) —
+# 라벨을 매기는 J 와 그 라벨을 만들어 낸 플래너가 같은 κ 를 쓰게 하는 자리다.
+# ENERGY_OBJECTIVE=0 이면 끈다(구세대 재현용 탈출구 — 껐다는 사실이 로그에 남는다).
+if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+    let w = CB.init_objective_weights!()
+        println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
+    end
+else
+    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
+end
+
 # 목적함수 J (spec §3). 완주 분기에만 에너지가 들어간다.
 # 주의: r 에 energy_J 가 없거나 NaN 이면(구세대 레코드/배터리 레이어 OFF) Objective.J 가
 # 던진다 — 조용히 0 이 되지 않는다(§5, §7).
