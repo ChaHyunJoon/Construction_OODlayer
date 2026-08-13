@@ -473,6 +473,68 @@ end
 # 1.0 미만**으로 나타난다. tools/test_policy_oracle.jl 의 0절이 두 파일을 직접 대조한다.
 const ORACLE_BATTERY_DEEP_SOC = 0.5      # = reference_policy.py:71 BATTERY_DEEP_SOC
 
+# ---- "지금 운반체가 이동 중인가" 술어 (2026-08-13) ------------------------------------------
+# **oracle 레인 전용이다.** 이 함수는 `oracle_macro` 만 부른다 — 공유 장부(RECOVERY_SPARES)를
+# 건드리지 않으므로 noop/surrogate/dspy/canonical 의 결정은 한 비트도 바뀌지 않는다.
+#
+# 무엇을 재는가: RelocateBuild 는 **남아 있는 항법 목표 전부를 한 번에 평행이동**시킨다
+# (verifier.jl RELOCATE_GATE: "it moves every future goal and staging circle at once, while
+# carriers are mid-transit"). 그래서 위험한 상태는 "이 판에서 Replace 가 있었는가"(래치)가 아니라
+# **복구 임무 중인 로봇이 지금 자기 발로 목표를 향해 가고 있는가** 다.
+#
+# 어느 로봇을 보는가: RECOVERY_SPARES 는 세 경로에서 채워지는데(replace_robot.jl:1182 · :1271 ·
+# :1503) **창고 왕복이 있는 것은 :1503(hot_swap_robot! :via_depot) 하나뿐**이다. 앞의 둘은 이미
+# 현장에 있던 예비를 스케줄에 접합할 뿐이라 "먼 창고에서 걸어 돌아오는 중" 이 아니다. 그 셋을
+# 가르는 표식이 `DECOMMISSIONED_BODIES` 다 -- :via_depot 가지에서만(replace_robot.jl:1499)
+# `mark_recovery_spare!` 와 **같은 자리에서** 기록된다. 그래서 게이트는
+# `RECOVERY_SPARES ∩ keys(decommissioned_bodies())` 만 본다(읽기 전용 조회, 공유 상태 불변).
+#
+# 그 로봇이 아직 오는 중인가(`_nav_goal_targets` 로 — zone_diagnosis 가 이미 쓰는 같은 계산기다.
+# 게이트와 진단이 서로 다른 기하를 보면 안 된다, verifier.jl:307 과 같은 원칙):
+#   · 남은 항법 목표가 **없다**                    -> 도착(더 갈 곳이 없다)
+#   · 운반팀에 **포획돼 있다**(_transport_unit_parent) -> 도착. 인계가 끝나 팀의 일부로 실려 간다;
+#     이 상태에서는 RVO 주체도 팀이라 "혼자 걸어오는 중"이 아니다.
+#   · 그 외: 남은 목표 중 **가장 가까운 것까지의 거리**가 제 몸 반경보다 멀면 = 아직 오는 중.
+#     임의 상수가 아니라 그 에이전트의 반경(`_nav_goal_targets` 가 실어 주는 값)을 쓴다.
+#
+# 왜 "빌드 프레임 밖" 이 아닌가(2026-08-13 실측으로 기각): 프레임(남은 항법 목표의 중심·최대
+# 이심거리)은 R≈20 으로 커서 depot(D=20)에서 나온 로봇도 몇 걸음 만에 안쪽으로 들어온다. 그
+# 술어로 5판을 재보니 게이트가 **한 번도 발화하지 않아** 사실상 게이트 없는 상태(= df92c37
+# 이전)로 되돌아갔고, 그 조건에서 완주하던 fault_zone s1/s5 가 다시 186/185 에서 멎었다.
+#   실측(s1 closed=99):  spare R1 pos=[-8.01,0.93] 가장 가까운 목표까지 5.72, 팀 미포획 → 오는 중
+#   실측(s14 closed=189): spare R5 팀에 포획됨, dgoal=0.0                       → 인계 완료
+#
+# 실패 시 **true(=이동 중)로 폴백**한다: 못 읽는 상태에서 전역 이동을 허용하는 쪽이 더 위험하다.
+# ENV ORACLE_TRANSIT_DEBUG=1 이면 판정 근거를 남긴다(진단용, 동작 무영향).
+function _recovery_in_transit(env)
+    local spares = try CB.recovery_spares() catch; return true end
+    isempty(spares) && return false                 # 복구 임무 중인 로봇이 아예 없다
+    local navs = try CB._nav_goal_targets(env) catch; return true end
+    local depot = try CB.decommissioned_bodies() catch; return true end
+    local dbg = get(ENV, "ORACLE_TRANSIT_DEBUG", "0") == "1"
+    local intransit = false
+    for rid in spares
+        local viadepot = haskey(depot, rid)          # 창고 왕복이 있었던 역할만 "돌아오는 중" 후보
+        if !viadepot
+            dbg && println("[oracle-transit]   R$(try rid.id catch; "?" end) via_depot=false -> moving=false")
+            continue
+        end
+        local mine = [t for t in navs if t.kind === :robot && t.id == rid]
+        isempty(mine) && continue                                  # 남은 항법 목표 없음 = 도착
+        local captured = try CB._transport_unit_parent(env.scene_tree, rid) !== nothing catch; false end
+        local dmin = minimum(t -> hypot(t.pos[1] - t.goal[1], t.pos[2] - t.goal[2]), mine)
+        local tol  = max(maximum(t -> Float64(t.radius), mine), CB.capture_distance_tolerance())
+        local mv   = !captured && dmin > tol
+        mv && (intransit = true)
+        # println 이다(@info 가 아니다): 실판은 log_level=Logging.Error 로 돌아 @info 가 삼켜진다.
+        dbg && println("[oracle-transit]   R$(try rid.id catch; "?" end) goals=$(length(mine)) " *
+                       "dmin=$(round(dmin,digits=2)) tol=$(round(tol,digits=2)) captured=$(captured) -> moving=$(mv)")
+        (mv && !dbg) && return true
+    end
+    dbg && println("[oracle-transit] spares=$(length(spares)) -> in_transit=$(intransit)")
+    return intransit
+end
+
 function oracle_macro(env, truth)
     vm = valid_macros(env, truth)
     if truth isa CB.BatteryTruth
@@ -523,9 +585,9 @@ function oracle_macro(env, truth)
         #        RECOVERY_SPARES 에 남는다. 그 상태에서 빌드를 통째로 옮기면 그 로봇의 목표가
         #        발밑에서 사라진다.
         #
-        #        ‼ 그러나 **아래 543행의 술어는 그 문장을 구현하지 않는다**(2026-08-13 정정).
-        #          `!isempty(CB.recovery_spares())` 가 실제로 뜻하는 것은 "지금 돌아오는 중인
-        #          로봇이 있다" 가 아니라 **"이 판에서 Replace 가 한 번이라도 일어났는가"** 다.
+        #        ‼ **[해소됨 2026-08-13] 이 자리에 있던 술어는 그 문장을 구현하지 않았다.**
+        #          `!isempty(CB.recovery_spares())` 가 실제로 뜻한 것은 "지금 돌아오는 중인
+        #          로봇이 있다" 가 아니라 **"이 판에서 Replace 가 한 번이라도 일어났는가"** 였다.
         #          런 범위(run-scoped)의 **단방향 래치**다. 근거:
         #            · ood_injection.jl:787-795 의 RECOVERY_SPARES 인터페이스는 `push!`
         #              (mark_recovery_spare!) 와 `empty!`(clear_recovery_spares!) 뿐이다 --
@@ -533,20 +595,25 @@ function oracle_macro(env, truth)
         #              (demos.jl:792/1636/1744/2800)에서만 불린다.
         #            · 표식을 다는 곳도 depot 스왑만이 아니다: 평범한 예비 접합(spare-splice)
         #              Replace 경로인 replace_robot.jl:1182 와 :1271 이 이미 단다. depot 스왑
-        #              (:1503)은 셋 중 하나일 뿐이다. 즉 창고 왕복이 없는 Replace 도 래치를 건다.
+        #              (:1503)은 셋 중 하나일 뿐이다. 즉 창고 왕복이 없는 Replace 도 래치를 걸었다.
         #
-        #          ⇒ **결과(알려진 대가):** Replace 가 한참 전에 끝나 예비가 이미 슬롯에 도착했고
-        #            빌드가 정상 진행 중이어도, 그 뒤에 오는 zone 사건은 여전히 `NOOP` 을 받는다.
-        #            그러면 `n_nav_blocked > 0` 이 수복되지 않은 채 남고, 이 게이트가 막으려던
-        #            바로 그 교착이 **반대편에서** 생긴다(전역 이동으로 로봇 목표를 지워 stall 하는
-        #            대신, 아무것도 안 해서 막힌 채로 stall 한다).
-        #          ⇒ tools/test_policy_oracle.jl:181-193 은 이 사실을 못 본다. 그 절은
-        #            mark_ → NOOP, clear_ → RelocateBuild 로 **래치 자체만** 확인하므로, "래치가
-        #            언제 풀려야 하는가"(도착 시점)를 묻지 않는다. 통과해도 위 대가는 그대로 있다.
+        #          ⇒ **대가(실측 v1, results_oracle/ 210판):** `fault_zone` 22/30. 8개 미완주 중
+        #            7개가 정확히 `Replace → ZoneTruth→NOOP` 모양으로 closed=285 에 멎었다.
+        #            Replace 가 한참 전에 끝나 예비가 이미 도착했는데도 뒤따르는 zone 사건이
+        #            전부 NOOP 을 받아 `n_nav_blocked > 0` 이 수복되지 않았고, 이 게이트가
+        #            막으려던 바로 그 교착이 **반대편에서** 생겼다(전역 이동으로 목표를 지워
+        #            stall 하는 대신, 아무것도 안 해서 막힌 채로 stall).
         #
-        #          지금 고치지 않는 이유: 이 규칙 아래에서 210판짜리 oracle 스윕이 막 돌았고 그
-        #          결과를 분석 중이다. 술어를 조용히 바꾸면 그 판들이 무효가 된다. **먼저 정확히
-        #          적어 두고, 바꾸는 것은 측정과 함께 나중에.**
+        #          ⇒ **고친 방식: `_recovery_in_transit(env)` (위 정의).** RECOVERY_SPARES 에
+        #            "도착하면 뺀다" 경로를 넣는 쪽이 '진짜' 수정이지만 **그 집합은 oracle 만
+        #            읽는 것이 아니다**: route_planning.jl:200(RVO alpha) · ood_injection.jl:869
+        #            /918/968(고장 표적 선정) · navigator/battery.jl:440 · mdp/hazard.jl:453 ·
+        #            replace_robot.jl:1070 이 전부 읽는다. 원소를 빼면 **모든 레인의 물리와 고장
+        #            표적이 바뀌어** 이미 커밋된 630판 noop/surrogate/dspy 스윕이 조용히 무효가
+        #            된다. 그래서 술어를 **oracle 레인 안에서만** 다시 계산한다(공유 상태 불변).
+        #            새 술어의 뜻: "복구 임무 중인 로봇이 지금 **혼자 목표를 향해 오는 중인가**"
+        #            (팀에 포획됐거나 제 몸 반경 안에 목표가 있으면 도착). 인계가 끝나면 스스로
+        #            풀리므로 래치가 아니다.
         #
         #        아래 실측은 위 정정과 무관하게 유효하다(둘 다 Replace 직후의 zone 사건이다):
         #        2026-08-13 실측(seed 1, 같은 구역·같은 Δ=[-1.75984, -1.60557]):
@@ -567,9 +634,9 @@ function oracle_macro(env, truth)
         #       그러면 이미 발행된 표의 decision_acc 열이 전부 조용히 재채점된다
         #       (build_md_report.py:417 이 같은 이유로 그 파일을 고정해 뒀다). 그래서 **여기만**
         #       고치고 갈림을 보고서에 명시한다.
-        # 이름은 `returning` 이지만 위 ‼ 대로 실제 의미는 "이 판에서 Replace 가 한 번이라도
-        # 있었는가" 다(도착해도 안 풀리는 단방향 래치). 동작은 의도적으로 그대로 둔다.
-        local returning = try !isempty(CB.recovery_spares()) catch; false end
+        # `returning` = "복구 임무 중인 로봇이 지금 빌드 프레임 밖에서 돌아오는 중인가".
+        # 도착하면 스스로 풀린다(래치 아님). 정의는 위 `_recovery_in_transit` 참조.
+        local returning = _recovery_in_transit(env)
         (!returning && zdg.relocate_feasible && "RelocateBuild" in vm) && return "RelocateBuild"
         (zdg.n_restage_feasible > 0 && "ForbidZone" in vm) && return "ForbidZone"
         return "NOOP"

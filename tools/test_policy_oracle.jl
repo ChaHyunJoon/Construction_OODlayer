@@ -21,6 +21,10 @@
 #   (3) 상수 `ORACLE_BATTERY_DEEP_SOC` 가 `reference_policy.py` 의 `BATTERY_DEEP_SOC` 와 같은가
 #       (갈리면 SoC 중간 구간에서 두 구현이 다른 팔을 낸다 = oracle 적중률이 1.0 이 아니게 된다)
 #   (4) `decide_all` 이 `pol["oracle"]` 을 채우되 **다른 정책의 화면/스트림에는 안 새는가**
+#   (5) zone 가지의 상태 게이트가 **래치가 아니라 술어인가**(3b절) -- Replace 가 일어난 상태
+#       (RECOVERY_SPARES 가 비어 있지 않다)에서 **예비가 도착했으면** NOOP 이 아니라 RelocateBuild
+#       가 나와야 한다. 옛 술어 `!isempty(recovery_spares())` 는 도착해도 안 풀리는 단방향 래치라
+#       이 검사에서 떨어진다.
 #
 # 실행:  julia +lts --project=. tools/test_policy_oracle.jl
 # =============================================================================
@@ -143,12 +147,20 @@ check("등록 안 된 구역(진단 불가) -> canonical 에 위임",
       oracle_macro(env, t_ghost) == canonical_macro(env, t_ghost),
       "oracle=$(oracle_macro(env, t_ghost)) canonical=$(canonical_macro(env, t_ghost))")
 
-println("\n== 3b. zone 축 -- 전역 이동은 '빌드 밖에 돌아올 로봇' 이 없을 때만 legal (2026-08-13) ==")
+println("\n== 3b. zone 축 -- 전역 이동은 '지금 돌아오는 중인 운반체' 가 없을 때만 legal ==")
 # 왜 이 절이 있는가: 2026-08-13 실측에서 `fault_zone` seed 1 이 a* 를 그대로 집행하면 closed=186 에서
 # 멎었다(2판 소수점까지 동일). 같은 구역·같은 Δ 인데 `battery_zone` seed 1 은 완주(291)한다. 두 판의
 # zone_primitives 는 n_teams_forming 말고 전부 같다 -- 구역 기하로는 구분이 불가능하고, 구분하는 것은
 # **closed=58 의 Replace 가 로봇을 depot 으로 빼돌렸는가**(RECOVERY_SPARES)라는 상태다.
 # ⚠ 그래서 이 가지는 reference_policy.py 와 **의도적으로 갈린다**(그쪽은 이 상태를 볼 칸이 없다).
+#
+# ★ 2026-08-13(2차): 처음 배선한 술어 `!isempty(recovery_spares())` 는 **런 범위 단방향 래치**였다
+#   (도착해도 원소를 빼는 경로가 없다). 그 아래에서 돈 210판(results_oracle/)에서 `fault_zone` 이
+#   22/30 이었고, 8개 미완주 중 7개가 `Replace → zone→NOOP` 모양으로 closed=285 에 멎었다.
+#   그래서 술어를 `_recovery_in_transit(env)` 로 바꿨다 -- "복구 임무 중인 로봇이 **지금** 남은
+#   항법 목표들이 이루는 프레임 **밖**에 있는가".
+#   ⇒ 이 절의 핵심 검사는 **래치와 갈리는 자리**다: RECOVERY_SPARES 가 비어 있지 **않은데도**
+#     그 로봇이 이미 빌드 안에 있으면 답은 NOOP 이 아니라 RelocateBuild 여야 한다.
 CB.clear_recovery_spares!()
 navs = try CB._nav_goal_targets(env) catch; NamedTuple[] end
 # ★ 이 탐색은 **함수 안**에 있어야 한다. 스크립트 최상위의 `for` 는 soft scope 라 루프 안에서
@@ -181,12 +193,105 @@ else
     CB.clear_recovery_spares!()
     check("돌아올 로봇이 없으면 전역 이동(= reference_policy 와 같은 답)",
           oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
-    CB.mark_recovery_spare!(CB.RobotID(1))       # depot 에서 몸체를 갈고 돌아오는 중인 역할이 하나 생겼다
-    check("depot 에서 돌아올 로봇이 있으면 전역 이동은 legal 이 아니다 -> NOOP",
-          oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
-    check("그리고 그 답은 여전히 메뉴 안이다",
-          oracle_macro(env, t_blk) in valid_macros(env, t_blk),
-          "menu=$(valid_macros(env, t_blk))")
+
+    # 두 종류의 로봇을 **env 를 건드리지 않고** 고른다(기하 조작은 start_config 가 goal_config 를
+    # 함께 끌고 가서 상대거리가 안 바뀐다 -- 2026-08-13 실측으로 접었다):
+    #   arrived : 남은 목표 중 가장 가까운 것이 제 몸 반경 안 = 도착
+    #   enroute : 가장 가까운 목표도 제 몸 반경 밖   = 아직 오는 중
+    # 술어(`_recovery_in_transit`)와 **같은 계산**을 여기서 독립적으로 다시 한다.
+    # (루프가 함수 안에 있어야 하는 이유는 위 _find_blocking_zone 주석과 같다 -- soft scope.)
+    function _dmin_by_robot(env)
+        acc = Dict{Any,Vector{Float64}}()
+        for t in CB._nav_goal_targets(env)
+            t.kind === :robot || continue
+            local d = hypot(t.pos[1] - t.goal[1], t.pos[2] - t.goal[2])
+            local tol = max(Float64(t.radius), CB.capture_distance_tolerance())
+            if haskey(acc, t.id)
+                acc[t.id] = [min(acc[t.id][1], d), max(acc[t.id][2], tol)]
+            else
+                acc[t.id] = [d, tol]
+            end
+        end
+        arrived = nothing; enroute = nothing; best = 0.0
+        for (rid, v) in acc
+            if v[1] <= v[2]
+                arrived === nothing && (arrived = rid)
+            elseif v[1] - v[2] > best
+                best = v[1] - v[2]; enroute = rid
+            end
+        end
+        return (arrived = arrived, enroute = enroute, acc = acc)
+    end
+    pick = _dmin_by_robot(env)
+    println("    이동체 로봇 $(length(pick.acc))대 · arrived=$(pick.arrived === nothing ? "없음" : "R" * string(pick.arrived.id)) " *
+            "· enroute=$(pick.enroute === nothing ? "없음" : "R" * string(pick.enroute.id))")
+    # 시뮬 전 env 라 로봇들은 아직 출발하지 않았다 = 전부 "도착"(dmin≈0)으로 읽힌다.
+    # "오는 중" 상태는 실판과 **같은 경로**로 만든다: 그 로봇을 RVO id 맵에 등록하면
+    # `_nav_goal_targets` 가 live=true 로 보고 **씬트리 몸체의 실제 위치**를 읽는다
+    # (zone_corridor.jl:120-126 -- 실판은 rvo 가 켜져 있어 언제나 이 경로다). 그 상태에서 몸체를
+    # 멀리 옮기면 "목표에서 먼 로봇" 이 된다.
+    if pick.arrived === nothing
+        check("사전조건: 이동체 로봇을 하나 찾는다", false, "acc=$(length(pick.acc))")
+    else
+        rid = pick.arrived
+        CB.mark_recovery_spare!(rid)                # 이 판에서 Replace 가 일어났다
+        # 그 Replace 가 **창고 왕복(:via_depot)** 이었다는 표식. 실판에서는 replace_robot.jl:1499 가
+        # mark_recovery_spare! 와 같은 자리에서 이걸 남긴다(현장 예비 접합 Replace 는 안 남긴다).
+        CB.decommissioned_bodies()[rid] = [0.0, 0.0]
+        check("사전조건: Replace 가 일어난 상태다(RECOVERY_SPARES 가 비어 있지 않다)",
+              !isempty(CB.recovery_spares()), "n=$(length(CB.recovery_spares()))")
+
+        # (i) 그 예비를 목표에서 멀리 떨어뜨린다 = "아직 오는 중".
+        body = CB.get_node(env.scene_tree, rid)
+        body_tf = CB.global_transform(body)
+        CB.rvo_reset_agent_map!()                   # 이 판은 rvo 를 안 쓰므로 맵은 비어 있다
+        CB.set_rvo_id_map!(rid, 0)                  # -> live=true 경로를 켠다(실판과 같은 읽기)
+        CB.set_local_transform!(body, CB.CoordinateTransformations.Translation(500.0, 500.0, 0.0), true)
+        local zd_now = try CB.zone_diagnosis(env, :blocker) catch; nothing end
+        check("사전조건: 구역은 여전히 항법 목표를 막는다(개입 이유는 그대로)",
+              zd_now !== nothing && zd_now.n_nav_blocked > 0 && zd_now.root_covered == 0,
+              "nav_blocked=$(zd_now === nothing ? "?" : zd_now.n_nav_blocked)")
+        check("사전조건: 오는 중으로 읽힌다", _recovery_in_transit(env) == true)
+        check("돌아오는 중인 운반체가 있으면 전역 이동은 legal 이 아니다 -> NOOP",
+              oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
+        check("그리고 그 답은 여전히 메뉴 안이다",
+              oracle_macro(env, t_blk) in valid_macros(env, t_blk),
+              "menu=$(valid_macros(env, t_blk))")
+
+        # (ii) ★★ 래치 vs 술어를 가르는 검사 ★★
+        # 몸체를 **자기 목표 위**에 세운다 = 그 예비가 **도착**했다. RECOVERY_SPARES 는
+        # **그대로 비어 있지 않다**(= Replace 는 여전히 일어난 상태). 바뀐 것은 도착 여부뿐이다.
+        # 래치라면 여기서도 NOOP 이고, 진짜 술어라면 RelocateBuild 다.
+        function _one_goal_of(env, rid)
+            for t in CB._nav_goal_targets(env)
+                (t.kind === :robot && t.id == rid) && return t.goal
+            end
+            return nothing
+        end
+        gpt = _one_goal_of(env, rid)
+        check("사전조건: 그 예비의 목표 지점을 하나 읽는다", gpt !== nothing)
+        gpt !== nothing && CB.set_local_transform!(body,
+            CB.CoordinateTransformations.Translation(gpt[1], gpt[2], body_tf.translation[3]), true)
+        check("사전조건: 도착으로 읽힌다", _recovery_in_transit(env) == false)
+        check("★ Replace 는 있었지만 예비가 도착했다 -> NOOP 이 아니라 RelocateBuild (래치가 아니다)",
+              oracle_macro(env, t_blk) == "RelocateBuild" && !isempty(CB.recovery_spares()),
+              "got=$(oracle_macro(env, t_blk)) n_spares=$(length(CB.recovery_spares()))")
+        # (iii) 같은 상태에서 **창고 왕복 표식만** 지운다 = 현장 예비 접합 Replace(replace_robot.jl:
+        #       1182/1271). 돌아올 길이 없었으므로 게이트는 걸리지 않아야 한다.
+        gpt !== nothing && CB.set_local_transform!(body,
+            CB.CoordinateTransformations.Translation(500.0, 500.0, body_tf.translation[3]), true)
+        check("사전조건: 다시 멀리 세웠다(창고 표식이 있으면 잠긴다)",
+              oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
+        delete!(CB.decommissioned_bodies(), rid)
+        check("창고 왕복이 없던 Replace(현장 예비 접합)는 게이트를 걸지 않는다",
+              _recovery_in_transit(env) == false && oracle_macro(env, t_blk) == "RelocateBuild",
+              "in_transit=$(_recovery_in_transit(env)) got=$(oracle_macro(env, t_blk))")
+
+        CB.set_local_transform!(body, CB.CoordinateTransformations.Translation(  # 몸체 원복
+            body_tf.translation[1], body_tf.translation[2], body_tf.translation[3]), true)
+        CB.rvo_reset_agent_map!()                   # 전역 RVO 맵 원복(다른 절에 새지 않게)
+        empty!(CB.decommissioned_bodies())
+    end
     CB.clear_recovery_spares!()
     check("복귀 상태를 지우면 원래 답으로 돌아온다(상태 의존이지 영구 변경이 아니다)",
           oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
