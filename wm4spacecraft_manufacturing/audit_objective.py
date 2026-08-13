@@ -101,15 +101,30 @@ bad = []
 "objective.json" in jsrc or bad.append("objective.json 을 안 읽는다")
 check("objective.jl", bad)
 
-# --- 3) gen_oracle_mc.jl 이 objective.jl 을 include 하고 리터럴을 안 쓰는가 -----------------
+# --- 3) 두 Julia 라벨 생산기가 같은 objective.json 을 보는가 ---------------------------------
+# [2026-08-13 최종 리뷰 C-1] 원래 이 항목은 gen_oracle_mc.jl 만 봤다. 그래서 **두 번째 라벨
+# 생산기**인 gen_oracle_dataset.jl(= 배포 학습셋 n44_plus78.jsonl 을 만드는 파일, spec §5.1 이
+# 이름으로 지목한 소비처)이 배선되지 않은 채 다른 플래너 목적함수로 라벨을 만들고 있는 것을
+# 감사가 구조적으로 볼 수 없었다. 둘 다 본다 — 라벨 생산기가 하나 더 생기면 여기 추가할 것.
 mc = read(HERE, "oracle", "gen_oracle_mc.jl")
 bad = []
-"objective.jl" in mc or bad.append("objective.jl 을 include 하지 않는다")
+"objective.jl" in mc or bad.append("gen_oracle_mc.jl: objective.jl 을 include 하지 않는다")
 re.search(r'get\(ENV,\s*"MC_COST_FAIL",\s*"10000', mc) and bad.append(
-    "COST_FAIL 을 아직 리터럴 기본값으로 파싱한다 (objective.json 이 출처여야 함)")
-"objective_hash" in mc or bad.append("산출물에 objective_hash 를 기록하지 않는다 (spec §7)")
-"Objective.J(" in mc or bad.append("scalar_cost 가 Objective.J 로 위임하지 않는다 (spec §3)")
-check("oracle/gen_oracle_mc.jl", bad)
+    "gen_oracle_mc.jl: COST_FAIL 을 아직 리터럴 기본값으로 파싱한다 (objective.json 이 출처여야 함)")
+"objective_hash" in mc or bad.append("gen_oracle_mc.jl: 산출물에 objective_hash 를 기록하지 않는다 (spec §7)")
+"Objective.J(" in mc or bad.append("gen_oracle_mc.jl: scalar_cost 가 Objective.J 로 위임하지 않는다 (spec §3)")
+
+ds = read(HERE, "oracle", "gen_oracle_dataset.jl")
+"objective.jl" in ds or bad.append("gen_oracle_dataset.jl: objective.jl 을 include 하지 않는다 (spec §5.1)")
+"objective_hash" in ds or bad.append(
+    "gen_oracle_dataset.jl: 산출물 행에 objective_hash 를 기록하지 않는다 (spec §7)")
+"init_objective_weights!" in ds or bad.append(
+    "gen_oracle_dataset.jl: init_objective_weights! 를 부르지 않는다 — 이 라벨러의 재풀이가 "
+    "gen_oracle_mc.jl 과 **다른 플래너 목적함수**로 돈다 (spec §4/§6.3)")
+re.search(r'"energy_J"\s*=>', ds) or bad.append(
+    "gen_oracle_dataset.jl: 행에 energy_J 키를 내지 않는다 — objective.J_row 가 읽는 이름이다 "
+    "(total_energy_J 만 내면 J 가 '구세대 덤프'라는 틀린 진단으로 멈춘다)")
+check("oracle/gen_oracle_mc.jl + oracle/gen_oracle_dataset.jl (Julia 라벨 생산기 2곳)", bad)
 
 # --- 4) 채점 규칙이 한 곳에서만 정의되는가 (이름으로도, 형태로도) ------------------------------
 # [2026-08-13 리뷰] "cost_lex_key 를 부르는 곳" 만 세면 부족하다 — 옛 **규칙**이 이름 없이
@@ -211,7 +226,7 @@ for fname, pat in (("e1_analyze.py", r"y\s*=\s*df\.closed\.astype"),
             "채점(-J)의 불일치가 문서화되지 않은 채 남는다" % (fname, i + 1, DEFER_MARK))
 check("학습 타깃 != 채점 J, 단계 7 로 유예 표시됨 (I-3, 고치지 않고 기록)", bad)
 
-# --- 9) CLAUDE.md/배너 문서에 박힌 해시 프로즈가 안 곪았는가 (spec §7-2, 태스크7 리뷰 R-5) ------
+# --- 9) 문서에 박힌 해시 **와 계약 개수**가 안 곪았는가 (spec §7-2, 태스크7 리뷰 R-5 + 최종 I-2) --
 # `generation` 필드가 바뀌면 objective_hash() 도 바뀐다. CLAUDE.md 와 🔴 배너는 그 해시값을
 # 사람이 읽는 산문에 **문자열로** 박아 둔다(``59b1174118b874ed`` 같은 형태) — 이건 objective.json
 # 을 다시 읽지 않으므로, 다음번 generation bump 가 조용히 이 문서들을 거짓으로 만들 수 있다.
@@ -236,7 +251,29 @@ for label, path in HASH_DOCS:
     if stale:
         bad.append("%s 가 옛 해시를 인용한다(%s, 현재=%s) — generation bump 후 문서 갱신 누락"
                    % (label, ", ".join(sorted(stale)), current_hash))
-check("CLAUDE.md/배너 문서의 objective_hash 인용이 최신인가 (R-5)", bad)
+
+# 계약 **개수**도 같이 못 박는다 (2026-08-13 최종 I-2). 해시는 이미 검사되고 있었는데 실제로
+# 곪은 것은 개수였다: 이 검사(9번)가 추가되면서 8/8 → 9/9 가 됐는데 CLAUDE.md 두 곳이 계속
+# `audit_objective.py`(8/8) 이라고 광고했고, 아무도 그걸 보지 않았다. 개수는 검사를 하나
+# 더할 때마다 반드시 낡으므로 정확히 이 검사가 지켜야 할 대상이다.
+# n_checks: 지금까지 등록된 것 + **아직 등록 안 된 이 검사 자신** 1개.
+n_checks = len(OK) + len(FAIL) + 1
+_COUNT_RE = re.compile(r"audit_objective\.py`?\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)")
+_COUNT_REQUIRED = {"CLAUDE.md"}    # 여기엔 반드시 개수 문자열이 있어야 한다(없으면 검사가 무력)
+for label, path in HASH_DOCS:
+    if not os.path.exists(path):
+        continue               # 위에서 이미 보고했다
+    found = _COUNT_RE.findall(read(path))
+    if not found and label in _COUNT_REQUIRED:
+        bad.append("%s 에 `audit_objective.py`(N/N) 형태의 계약 개수 문자열이 없다 — "
+                   "개수 검사가 무력해졌다 (현재 %d/%d)" % (label, n_checks, n_checks))
+        continue
+    for a, b in found:
+        if (int(a), int(b)) != (n_checks, n_checks):
+            bad.append("%s 가 audit_objective.py(%s/%s) 라고 적었는데 실제는 %d/%d 다 — "
+                       "검사를 추가/삭제한 뒤 문서 갱신 누락" % (label, a, b, n_checks, n_checks))
+check("문서의 objective_hash 인용 + audit 계약 개수(%d/%d)가 최신인가 (R-5, I-2)"
+      % (n_checks, n_checks), bad)
 
 # --- 요약 --------------------------------------------------------------------------------
 for where, bad in OK + FAIL:

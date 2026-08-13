@@ -439,6 +439,17 @@ else
     println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
 end
 
+# 세대 딱지(spec §7). **시작 시점에 한 번** 읽어 DEMO_SUMMARY 레코드에 박는다 — gen_oracle_mc.jl
+# 과 같은 패턴이다. 이게 없으면 이 레인(=630판 스윕이 헤드라인 숫자를 만드는 레인)의 행이
+# `objective_hash` 없는 행으로 남아, report_energy_decisiveness.py 는 방금 만든 신세대를
+# "배선 전 구세대" 로 판정하고 measure_objective_scales.py 는 구·신세대를 한 중앙값으로
+# 섞는다 — 그 중앙값이 다시 objective.json 의 M_ref/E_ref 가 되므로 조용한 세대 혼입이
+# 상수 자체를 오염시킨다(2026-08-13 최종 리뷰 I-1).
+include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "objective.jl"))
+using .Objective
+const OBJ_HASH = Objective.objective_hash()
+println(">>> objective_hash: $(OBJ_HASH)")
+
 # ⚠️ 신세대 가지도 **지금은 GreedyFinalTimeCost 를 고른다.** GreedyEnergyAwareCost 로 바꿔도
 #   프로덕션에서는 얻는 것이 없기 때문이다(2026-08-13 리뷰, 소스로 확인): greedy 는 초기 계획에서
 #   한 번만 돌고, 그 시점에 AGENT_COST_BIAS 는 비어 있고(편향은 OOD 처리 때 비로소 등록된다),
@@ -747,6 +758,11 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             "geometry" => Dict("depot_mode" => "fixed",
                                "depot_distance" => CB.spare_depot_distance(),
                                "station_keeping" => true),
+            # 목적함수 세대(provenance). geometry 와 같은 이유로 필요하다 — 목적함수가 바뀌면
+            # makespan·에너지가 전부 달라지므로, 이 블록 없이 서로 다른 세대의 런을 한 표에
+            # 섞으면 조용히 틀린 비교가 된다(spec §7). 소비처: report_energy_decisiveness.py,
+            # measure_objective_scales.py --require-generation.
+            "objective_hash" => OBJ_HASH,
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")

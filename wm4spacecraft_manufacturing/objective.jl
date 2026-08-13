@@ -9,6 +9,24 @@
 #  test_objective.py 가 그 일치를 기계적으로 검사한다.
 #
 #  ENV 우선순위: MC_COST_FAIL / MC_COST_UNCLOSED 가 있으면 ENV 가 이기고 해시가 갈린다.
+#
+#  ── 두 구현의 **타입 수준** 차이 (2026-08-13 최종 리뷰 M-3, 기록용) ──────────────────────
+#  값 수준(수식·해시)은 test_objective.py 가 기계적으로 맞춘다. 아래 셋은 그 검사에 걸리지
+#  않는 차이이고, **현재는 전부 도달 불가**하다 — 모든 호출자가 J 에 넘기기 전에 값을
+#  정규화하기 때문이다(J_row 가 int()/bool() 을 씌우고, scalar_cost 는 run_one 의 named
+#  tuple 을 넘기는데 그 필드가 이미 Int/Bool 이다). 정규화하지 않는 호출자가 새로 생기면
+#  같은 입력에 두 언어가 다르게 반응한다:
+#
+#    1. `total`/`closed` 가 비정수 실수일 때 — Julia `Int(31.5)` 는 InexactError 로 **던지고**,
+#       Python `int(31.5)` 는 조용히 31 로 **버린다**. 즉 Julia 는 멈추고 Python 은 답을 낸다.
+#    2. `complete` 가 Bool 이 아닐 때 — Julia 의 `!complete` 는 Bool 을 요구하므로 0/1 이나
+#       "true" 를 주면 MethodError. Python 의 `not complete` 는 모든 값에 대해 동작한다.
+#       (J_row/cost_lex_key_row 는 bool() 을 씌우므로 그 경로로는 못 온다.)
+#    3. `load(path = OBJECTIVE_PATH)` 의 캐시 의미 — 경로를 **명시해서** 기본 경로를 넘기면
+#       Julia 는 `path == OBJECTIVE_PATH` 라 **캐시를 돌려주고**, Python 은 `path is None` 이
+#       아니므로 **파일을 다시 읽는다**. 즉 런 중에 objective.json 이 바뀌면 같은 호출이
+#       Julia 에서는 옛 값을, Python 에서는 새 값을 낸다. 인자 없이 부르면 양쪽 다 캐시다.
+#       (강제 갱신은 양쪽 모두 `refresh=true`.)
 # ============================================================================
 module Objective
 

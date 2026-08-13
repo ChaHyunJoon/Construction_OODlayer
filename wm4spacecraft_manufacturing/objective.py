@@ -209,8 +209,18 @@ def J_row(row, cfg=None):
     채점할 때 "그럴듯한 10000.x" 값이 나와 진짜 실패와 구분이 안 된다(I-2). 이 모듈 전체의
     전제가 "조용한 폴백 금지"(spec §5)인데 그 전제를 배신하는 구멍이었다.
     makespan/energy_J 는 4pol/MC 두 레인의 키 이름이 달라 폴백이 필요하므로(스키마 드리프트가
-    아니라 알려진 두 스키마 사이의 정상적인 차이) 그대로 둔다."""
-    missing = [k for k in ("complete", "closed", "total") if k not in row]
+    아니라 알려진 두 스키마 사이의 정상적인 차이) 그대로 둔다.
+
+    `total` 도 같은 부류다: `total_nodes` 가 **문서화된 별칭**이고 verify.py 의 `_total_nodes`
+    가 이미 둘 다 받아 준다(M-1). 여기서만 `total` 을 강제하면 `total_nodes` 만 있는 덤프에서
+    두 소비처가 서로 다른 판정을 내고, 그 raise 가 "스키마 드리프트"라는 **틀린 진단**을
+    단다 — 실제로는 알려진 세대 차이일 뿐이다."""
+    total = row.get("total")
+    if total is None:
+        total = row.get("total_nodes")      # 문서화된 별칭 (verify.py `_total_nodes` 와 동일 규약)
+    missing = [k for k in ("complete", "closed") if k not in row]
+    if total is None:
+        missing.append("total (또는 별칭 total_nodes)")
     if missing:
         raise ObjectiveError(
             "JSONL 행에 %s 가 없다 — 스키마 드리프트다. False/0/0 으로 조용히 채우지 않는다 "
@@ -221,7 +231,7 @@ def J_row(row, cfg=None):
     makespan = row.get("makespan")
     if makespan is None:
         makespan = row.get("sim_seconds")
-    return J(complete=bool(row["complete"]), closed=int(row["closed"]), total=int(row["total"]),
+    return J(complete=bool(row["complete"]), closed=int(row["closed"]), total=int(total),
              makespan=makespan, energy_J=energy, cfg=cfg)
 
 

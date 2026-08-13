@@ -14,8 +14,14 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 본다. 설계: `docs/superpowers/specs/2026-08-13-unified-objective-design.md`.
 
 - **세대 판정 계약**: 산출물의 `objective_hash` 필드가 현재 `objective.json` 의 해시와 같은가.
-  `.venv/bin/python wm4spacecraft_manufacturing/audit_objective.py` (exit 0 = 소비처 전부 일치).
-- **기계적 계약**: `test_objective.py`(29/29) · `audit_objective.py`(8/8) · `test_surrogate_support.py`(7/7)
+  `.venv/bin/python wm4spacecraft_manufacturing/audit_objective.py` (exit 0 = **감사가 보는 것들**이
+  일치. "소비처 전부"가 아니다 — spec §5.1 이 이름으로 지목한 6곳 중 이 감사가 실제로 검사하는 것은
+  **5곳**이다: greedy `GreedyEnergyAwareCost`·MILP 전역 κ(둘 다 `essential_tg_coponents.jl` 검사로
+  커버) · `gen_oracle_mc.jl` · `gen_oracle_dataset.jl` · `e1_analyze.py`. 나머지 `dp_solve.py` 는
+  아직 레포에 존재하지 않는다(spec §8 단계 9). 그 밖에 감사가 보는 것: 목적함수 상수 리터럴 복붙
+  12파일 스캔 · Julia/Python 해시 일치 · 스케일 null 여부 · 학습타깃 유예 표식 · 문서에 박힌
+  해시·계약개수.)
+- **기계적 계약**: `test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
   · `audit_action_vocab.py`(6/6) · `test/greedy_cost_dispatch_equivalence.jl`(실제 게이트 — 인프로세스
   포뮬러 동치 + 변경 전 함수의 축자 사본과의 인프로세스 A/B). `test/greedy_assignment_regression.jl`
   은 비게이팅 진단용으로 격하됐다 — 이유는 아래 Gotchas.
@@ -31,6 +37,12 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   에 게이트돼 있다. (`ladder.py` 는 이것과 무관한 기존 empty-glob `ValueError` 로 더 일찍 죽는다.)
 - 이 날 이전의 모든 결과 문서(= `RESULTS_D20_2026-08-12.md` 포함)는 구세대다 — 🔴 배너 붙음.
 - `ENERGY_OBJECTIVE=0` 으로 구세대 동작을 재현할 수 있다(끈 사실이 로그에 남는다).
+- **세대 딱지를 찍는 산출 레인 3곳**: `tools/monitor/run_demo.jl`(`DEMO_SUMMARY` 레코드) ·
+  `oracle/gen_oracle_mc.jl`(유닛 CSV) · `oracle/gen_oracle_dataset.jl`(JSONL 행). 전부
+  `objective_hash` 필드를 낸다. 스케일 재교정(`measure_objective_scales.py`)은 그 필드로
+  **세대를 가른다** — 표본에 세대가 둘 이상이면 exit 1 이고, `--generation current|none|<hash>`
+  로 하나를 고르거나 `--allow-mixed` 로 명시적으로 섞어야 한다. 이 도구의 중앙값이 그대로
+  `objective.json` 의 `M_ref`/`E_ref` 가 되므로, 여기서 섞이면 혼입이 상수에 각인된다.
 - **와이어링은 됐지만 아직 안 켜진 것**: `GreedyEnergyAwareCost` 는 존재하고 맞지만 **어느 레인도
   아직 고르지 않는다** — greedy 는 t=0 에만 도는데 그 시점엔 `AGENT_COST_BIAS[]` 가 비어 있고
   `EDGE_COST_MULTIPLIER[]` 가 `nothing` 이라, 항이 있어도 에너지·SoC·DeprioritizeAgent 정보 없이
@@ -39,6 +51,25 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   `release_pending_assignments!`, `RESPEC_ENABLED=true` 오라클 레인에서 도달)에서 에너지 항이
   실제로 새로 살아 있지만, battery-SoC 가격 책정은 아직 부활하지 않았다(`rebalance_for_battery!`
   의 재풀이가 빌드 중간엔 후보 간선이 0개다).
+- **알려진 한계 — 고치지 않고 기록한 것 (2026-08-13 최종 리뷰).** 아래 넷은 전부 "조용히 새는"
+  종류라 반드시 알고 볼 것:
+  1. **`n44_plus78.jsonl` 은 키를 고쳐도 대부분 채점 불가다.** `gen_oracle_dataset.jl` 이 이제
+     행에 `energy_J` 를 낸다(예전엔 `total_energy_J` 라는 다른 이름만 내서 `J_row` 가 "구세대
+     덤프다"라는 **틀린 진단**으로 멈췄다). 그러나 배터리 레이어(`_arm_battery!`)는
+     `kind === :battery` instance 의 pre_sim 훅에서만 켜지므로 **fault/faultidle/zone/zoneharm/
+     zoneblk/zonecore instance 의 `energy_J` 는 NaN** 이고, 그 행의 완주 J 는 여전히 정의되지
+     않는다(= 라벨 격자의 대다수). 키를 고친 것이 데이터셋을 채점 가능하게 만들었다고 읽지 말 것.
+     그 kind 들에 배터리 레이어를 켜는 것은 동작 변경이라 이 계획의 범위 밖이다.
+  2. **네 번째 κ 가 `objective.json` 밖에 산다.** `tools/e2e.jl:674`, `tools/demos.jl:1110`·`:1279`
+     이 `efficiency` 를 자기 리터럴로 켠다. `get_objective_expr` 의 auto 경로는 `w_eff == 0.0`
+     일 때만 도므로 **그 레인들은 전역 κ 를 영원히 못 본다** — spec §4 의 "κ 하나만 돌리면 세
+     곳이 같이 움직인다"가 그 레인에서는 거짓이다. 범위 밖으로 남겼다.
+  3. **surrogate 학습 목표는 아직 `closed − λ·MACRO_COST` 다**(채점은 `−J`). spec §8 단계 7 의
+     재학습으로 닫힌다. `audit_objective.py` 항목 8 이 그 유예 표식을 기계로 지킨다.
+  4. **`ENERGY_OBJECTIVE=0` 으로 돌린 런도 현행 `objective_hash` 를 찍는다.** 세 레인
+     (`run_demo.jl`·`gen_oracle_mc.jl`·`gen_oracle_dataset.jl`) 모두 그렇다. 껐다는 사실은
+     **stdout 로그에만** 남고 행에는 안 남으므로, `ENERGY_OBJECTIVE=0` 산출물을 신세대 덤프와
+     섞으면 해시 검사가 그것을 못 잡는다. 껐으면 출력 경로를 분리할 것.
 - **아직 안 한 것**: 630판 스윕 재실행(단계 6), surrogate 재라벨·재학습(단계 7),
   prefix 결정성 재측정(단계 8), DP 계획 재개(단계 9). 그때까지 신세대 성능 수치는 없다.
   **에너지 결정력(spec §4.2/§9 무력 검사)도 아직 측정 안 됐다** — 지금 있는 모든 덤프는
@@ -115,7 +146,7 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 (= 모든 구세대 덤프) 조용히 넘어가지 않고 죽는다(spec §5, §7). 신세대 덤프(spec §8 단계 6 재실행
 후)에서 기대값은 **6/8**(S1·S4 FAIL) — surrogate 가 아직 `closed − λ·MACRO_COST` 로 학습돼 있는데
 채점 기준은 `-J` 로 바뀌었기 때문이다. 둘이 닫히는 시점은 spec §8 단계 7(surrogate 재라벨·재학습).
-그 외 기계적 계약: `test_objective.py`(29/29) · `audit_objective.py`(8/8) · `test_surrogate_support.py`(7/7)
+그 외 기계적 계약: `test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
 · `audit_action_vocab.py`(6/6, 커버리지 한계는 위 참조).
 
 ## Gotchas

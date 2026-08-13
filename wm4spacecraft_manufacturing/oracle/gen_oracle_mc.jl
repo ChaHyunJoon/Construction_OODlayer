@@ -459,15 +459,19 @@ function append_unit!(a::Int, k::Int, hz_seed::Int, r)
     mkpath(OUTDIR)
     isfile(UNITCSV) || open(io -> println(io, CSV_HEADER), UNITCSV, "w")
     open(UNITCSV, "a") do io
-        # energy_J 는 makespan 과 같은 컨벤션으로 미완주/비유한 값을 -1.0 로 센티넬한다(CSV 는
-        # 헤더 이름으로 읽는 소비처(step6_gap.py)와 위치로 읽는 read_units() 양쪽에 안전해야 한다).
-        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%.4f,%s\n",
+        # energy_J 가 비유한이면 **빈 필드**를 쓴다(M-2). 예전에는 makespan 과 같은 -1.0 센티넬을
+        # 썼는데, read_units() 가 그것을 유한한 -1.0 으로 되읽어 왔다. 그 행이 Objective.J 에
+        # 들어가면 설계된 하드 에러("energy_J 가 유한하지 않다") 대신 makespan + w_E·(−1.0) 이
+        # 조용히 나온다 — 즉 센티넬이 데이터로 둔갑한다. 빈 필드는 되읽을 때 NaN 이 되고 NaN 은
+        # J 에서 정확히 에러를 낸다. 열 개수는 그대로라 위치로 읽는 read_units() 와 헤더 이름으로
+        # 읽는 step6_gap.py(DictReader) 양쪽에 안전하다.
+        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%s,%s\n",
                 a, k, hz_seed, r.complete ? "true" : "false", r.closed, r.total,
                 isfinite(r.makespan) ? r.makespan : -1.0, scalar_cost(r),
                 r.hz_break, r.hz_cell, r.hz_zone, r.hz_pending_break,
                 r.hz_capped ? "true" : "false", r.hz_sim_s,
                 r.seen === nothing ? "none" : r.seen.agent,
-                isfinite(r.energy_J) ? r.energy_J : -1.0, OBJ_HASH)
+                isfinite(r.energy_J) ? @sprintf("%.4f", r.energy_J) : "", OBJ_HASH)
     end
 end
 
@@ -475,6 +479,15 @@ end
 unit_csv_files() = isdir(OUTDIR) ?
     sort([joinpath(OUTDIR, f) for f in readdir(OUTDIR)
           if startswith(f, "oracle_mc_units_s$(SEED)") && endswith(f, ".csv")]) : String[]
+
+"CSV 의 energy_J 필드 하나를 되읽는다. 빈 필드/파싱 불가/옛 -1.0 센티넬 → NaN (M-2)."
+function _parse_energy(s::AbstractString)
+    t = strip(s)
+    isempty(t) && return NaN
+    v = tryparse(Float64, t)
+    v === nothing && return NaN
+    (isfinite(v) && v >= 0.0) ? v : NaN
+end
 
 function read_units()
     files = unit_csv_files()
@@ -491,6 +504,9 @@ function read_units()
         h == OBJ_HASH || push!(get!(stale, fp, Set{String}()), h)
         try
             # f[16](energy_J) 는 이 필드가 추가되기 전 샤드 CSV 에는 없다 — 있으면 파싱, 없으면 NaN.
+            # 빈 필드 = "비유한이라 기록 못 함" → NaN (M-2). 옛 -1.0 센티넬로 쓰인 샤드도 NaN 으로
+            # 되돌린다: 음의 구동에너지는 물리적으로 불가능하므로 그 값은 데이터가 아니라 센티넬이고,
+            # 유한한 -1.0 로 넘기면 Objective.J 가 던져야 할 자리에서 조용히 답을 내 버린다.
             push!(rows, (action = parse(Int, f[1]), rollout = parse(Int, f[2]),
                          hz_seed = parse(Int, f[3]), complete = f[4] == "true",
                          closed = parse(Int, f[5]), total = parse(Int, f[6]),
@@ -499,7 +515,7 @@ function read_units()
                          hz_zone = parse(Int, f[11]), hz_pending = parse(Int, f[12]),
                          hz_capped = f[13] == "true", hz_sim_s = parse(Float64, f[14]),
                          agent = f[15],
-                         energy_J = length(f) >= 16 ? parse(Float64, f[16]) : NaN,
+                         energy_J = _parse_energy(length(f) >= 16 ? f[16] : ""),
                          objective_hash = h))
         catch; end
     end

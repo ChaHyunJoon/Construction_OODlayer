@@ -66,6 +66,29 @@ CB.clear_default_milp_optimizer_attributes!()
 CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" => 0.05,   # 60초 제한 / 5% 오차 허용(속도↑)
     "output_flag" => false, "presolve" => "on")
 
+# ---- 목적함수 J 의 단일 진실원 (spec §5.1 — 이 라벨러도 소비처다) ---------------------------
+# 2026-08-13 최종 리뷰 C-1: 이 파일은 spec §5.1 이 이름으로 지목한 소비처인데 계획의 태스크 5 가
+# 조용히 목록에서 빼는 바람에 **한 번도 배선되지 않았다**. 결과가 두 가지였다:
+#   (a) 행이 `total_energy_J` 만 냈고 objective.J_row 는 `energy_J` 를 읽는다 → 데이터가
+#       있는데도 "구세대 덤프다" 라는 **틀린 진단**으로 하드 스톱했다. 아래 emit 지점에서
+#       `energy_J` 를 같이 낸다(옛 키는 다른 소비처가 쓸 수 있어 남긴다).
+#   (b) 이 라벨러는 RESPEC_ENABLED[]=true 로 재풀이를 돌리면서 init_objective_weights! 를
+#       부르지 않아, AUTO_EFFICIENCY_KAPPA[] 가 nothing 인 채 = gen_oracle_mc.jl 과 **다른
+#       플래너 목적함수**로 라벨을 만들고 있었다. spec §4/§6.3 이 요구하는 "κ 하나"가 아니었다.
+# ENERGY_OBJECTIVE=0 이면 끈다(구세대 동작 재현용 탈출구 — 껐다는 사실이 로그에 남는다).
+include(joinpath(@__DIR__, "..", "objective.jl"))
+using .Objective
+const OBJ_CFG  = Objective.load()
+const OBJ_HASH = Objective.objective_hash(OBJ_CFG)   # 모든 행에 박는다 (spec §7 세대 판정)
+if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+    let w = CB.init_objective_weights!()
+        println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
+    end
+else
+    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
+end
+println(">>> objective_hash: $(OBJ_HASH)")
+
 # ---- config ----------------------------------------------------------------------------
 # 아래 상수들은 전부 환경변수(ENV)로 덮어쓸 수 있음. get(ENV,"이름",기본값) = 환경변수 없으면 기본값 사용.
 const SEEDS  = [parse(Int, s) for s in split(get(ENV, "DS_SEEDS", "1,2,3"), ",")]   # "1,2,3" → [1,2,3] (난수 씨앗 목록)
@@ -1472,6 +1495,12 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
     catch; nothing end
     min_soc  = _batt === nothing ? NaN : Float64(_batt.min_soc)
     mean_soc = _batt === nothing ? NaN : Float64(_batt.mean_soc)
+    # 알려진 한계(2026-08-13 최종 리뷰, 고치지 않고 기록): BATTERY_FLEET[] 가 nothing 이면 NaN 이다.
+    # 배터리 레이어(_arm_battery!)는 build_injection 이 kind===:battery 에서만 pre_sim 훅으로
+    # 돌려주므로, **fault/faultidle/zone/zoneharm/zoneblk/zonecore instance 는 전부 NaN** 이다
+    # (= 라벨 격자의 대다수). 즉 energy_J 키를 맞춰도(C-1a) 완주한 그 행들의 J 는
+    # 여전히 정의되지 않는다(Objective.J 가 "energy_J 가 유한하지 않다"로 던진다 — 이제는 그
+    # 진단이 **맞다**). 이 kind 들에 배터리 레이어를 켜는 것은 동작 변경이라 이 계획의 범위 밖.
     total_energy_J = _batt === nothing ? NaN : Float64(_batt.total_energy_J)
     n_depleted = _batt === nothing ? -1 : Int(_batt.n_depleted)
     n_stalled = try length(CB.stalled_robots()) catch; 0 end      # 끝에 멈춰버린 로봇 수
@@ -1644,6 +1673,10 @@ function run_episodes(io)
                 "makespan"=>r.makespan, "label_seconds"=>r.label_seconds,
                 "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
                 "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                # `energy_J` = objective.J_row 가 읽는 이름. 값은 total_energy_J 와 같고 옛 키는
+                # 다른 소비처를 위해 남긴다 — 행 스키마는 `energy_J` 하나로 수렴시킨다(C-1a).
+                "energy_J"=>r.total_energy_J,
+                "objective_hash"=>OBJ_HASH,
                 "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                 "n_depleted"=>r.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1676,7 +1709,8 @@ function run_episodes(io)
             println(io, jrow(row)); flush(io); n_rows += 1
             for (pi, p) in enumerate(PROBE_TRACE[])
                 prow = Pair{String,Any}["episode"=>eid, "branch_t"=>t, "macro"=>a,
-                                        "probe_idx"=>pi, "closed_at"=>p.closed_at]
+                                        "probe_idx"=>pi, "closed_at"=>p.closed_at,
+                                        "objective_hash"=>OBJ_HASH]   # 라벨은 아니지만 세대 표식은 붙인다
                 for k in propertynames(p.raw); push!(prow, String(k)=>getproperty(p.raw, k)); end
                 println(pio, jrow(prow)); n_probe += 1
             end
@@ -1823,6 +1857,8 @@ function main()
                 "makespan"=>ctrl.makespan, "label_seconds"=>ctrl.label_seconds,
                 "min_soc"=>ctrl.min_soc, "n_stalled"=>ctrl.n_stalled,
                 "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
+                "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
+                "objective_hash"=>OBJ_HASH,
                 "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
                 "n_depleted"=>ctrl.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1879,6 +1915,8 @@ function main()
                     "complete"=>r.complete, "closed"=>r.closed, "total"=>r.total, "makespan"=>r.makespan,
                     "label_seconds"=>r.label_seconds, "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
                     "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                    "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
+                    "objective_hash"=>OBJ_HASH,
                     "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                     "n_depleted"=>r.n_depleted,
                     "geometry"=>Dict("depot_mode"=>"fixed",

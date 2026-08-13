@@ -35,6 +35,21 @@ using Graphs
 using SHA
 const CB = ConstructionBots
 
+# ⚠️ 이 배너는 지워도 되는 장식이 아니다. 이 파일은 아래에서 `@testset` 을 쓰기 때문에 끝에
+#    초록색 `Test Summary: ... Pass` 를 찍는다 — **게이트와 똑같이 생긴 출력**이다. 이 레포에는
+#    초록 출력을 게이트 통과로 오독한 전력이 있다(CLAUDE.md 함정 목록). 그래서 실행하는 순간
+#    가장 먼저 "이건 게이트가 아니다"를 말하게 한다 (2026-08-13 최종 리뷰 M-5).
+println("""
+################################################################################
+#  ⚠️  NON-GATING DIAGNOSTIC — 이 스크립트는 pass/fail 게이트가 **아니다**.
+#
+#  프로세스 간 골든 해시 비교는 재컴파일만으로 지문이 바뀌는 것이 실측됐다(5회 통제 실험).
+#  따라서 여기서 나오는 불일치는 코드 회귀의 증거가 아니며, 아래 `Test Summary` 의 초록색도
+#  변경이 안전하다는 증거가 아니다. 두 경우 모두 아무것도 증명하지 않는다.
+#
+#  실제 게이트: julia +lts --project=. test/greedy_cost_dispatch_equivalence.jl
+################################################################################""")
+
 const GOLDEN_PATH = joinpath(@__DIR__, "greedy_assignment_golden.txt")
 const SEED = 3
 const NROB = 12

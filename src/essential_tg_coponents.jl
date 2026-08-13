@@ -1298,8 +1298,19 @@ end
 #     w_eff = κ · (speed scale) / (efficiency scale)
 # so the energy term is worth at most ~κ × the makespan magnitude: decisive among equal- and
 # near-equal-makespan assignments, unable to overturn a genuinely faster one. Default `nothing`
-# => the objective is byte-for-byte what it was. The DeprioritizeAgent branch of
-# `maybe_respecify!` sets it around ONE re-solve and restores it in a `finally`.
+# => the objective is byte-for-byte what it was.
+#
+# WHO SETS IT (2026-08-13). `init_objective_weights!` (this file, below) reads κ from
+# `wm4spacecraft_manufacturing/objective.json` and sets this Ref **globally, for the whole
+# process**. It is an explicit opt-in: nothing calls it automatically, so a lane that never
+# calls it runs with κ = `nothing` and the AUTO path never fires — that is the failure mode to
+# check FIRST when the energy term looks dead in a lane. Call sites: `tools/monitor/run_demo.jl`,
+# `oracle/gen_oracle_mc.jl`, `oracle/gen_oracle_dataset.jl` (all three gated on
+# `ENERGY_OBJECTIVE`). `tools/tests.jl:1210` sets this Ref by hand instead — a self-contained
+# A/B diagnostic that restores the previous value in a `finally`; not a production lane.
+# The old scoped enable — the DeprioritizeAgent branch of `maybe_respecify!` setting κ around
+# ONE re-solve and restoring it in a `finally` — WAS REMOVED (spec §6.3 promoted it to the
+# global default). Do not go looking for it in `replan.jl`; it is not there any more.
 # -----------------------------------------------------------------------------
 # (한국어) 에너지 항 가중치 자동 산출 스위치. 기본 가중치(efficiency=0)에서는 목적함수가 edge_costs 를
 #   통째로 버리기 때문에, DeprioritizeAgent 의 비용배율도 배터리 SoC 배율도 솔버에 전달된 적이 없었다.
@@ -1414,9 +1425,14 @@ function get_objective_expr(milp, f::SumOfMakeSpans, model, sched, tF; edge_cost
     # term unchanged, so existing behavior is byte-for-byte preserved.
     w = planning_objective_weights()   # 현재 다목적 가중치(speed/efficiency) 읽기
     w_eff = w.efficiency
-    # AUTO (re-spec scoped): derive a UNIT-MATCHED weight so the energy channel is not discarded.
-    # Only fires when a caller opted in via AUTO_EFFICIENCY_KAPPA[] (see the DeprioritizeAgent
-    # branch of maybe_respecify!). speed scale = the schedule's current terminal completion times;
+    # AUTO (process-global since 2026-08-13): derive a UNIT-MATCHED weight so the energy channel
+    # is not discarded. Only fires when someone opted in by setting AUTO_EFFICIENCY_KAPPA[] —
+    # in practice `init_objective_weights!` (below), which every energy-objective lane calls at
+    # startup. It is NOT set by `maybe_respecify!` any more: that DeprioritizeAgent-scoped enable
+    # was removed when spec §6.3 promoted κ to the global default. If the energy term looks dead
+    # in your lane, the answer is almost always "this lane never called init_objective_weights!",
+    # not "the Deprioritize branch didn't fire". speed scale = the schedule's current terminal
+    # completion times;
     # efficiency scale = the total of the candidate edge energies THIS formulation priced (which
     # already carry agent_cost_bias × SoC multiplier, so a biased robot's edges stand out against
     # the normalized scale rather than being normalized away).
