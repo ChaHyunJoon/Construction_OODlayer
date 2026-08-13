@@ -244,10 +244,69 @@ def load_rows(pattern):
     return rows
 
 
+_PRESCAN_SHOW = 20      # 메시지에 나열할 최대 행 수. 총계는 **항상** 따로 찍는다(조용한 절삭 금지).
+
+
+def _row_has_energy(r):
+    e = r.get("energy_J")
+    if e is None:
+        e = (r.get("battery") or {}).get("total_energy_J")
+    try:
+        return e is not None and math.isfinite(float(e))
+    except (TypeError, ValueError):
+        return False
+
+
+def prescan_objective(rows):
+    """집계를 시작하기 **전에** 모든 행을 J 로 평가해 보고, 거부된 행을 한 번에 전부 보고한다.
+
+    왜 미리 훑는가 (2026-08-13 리뷰 N-6): `aggregate()` 는 `stage()` 의 단일 try/except 안에서
+    돌기 때문에, 계산 도중 한 행이 던지면 **B~E 단계가 통째로** 취소된다 — 문제 행 하나 때문에
+    모든 instance·macro 의 분석이 날아가고, 운영자는 한 번에 한 행씩 고치게 된다.
+    그래서 실제 계산 전에 전수 검사해서 **문제 행 전체와 그 정체(instance/macro/rollout)** 를
+    한 번에 보여준다.
+
+    **중단 결정 자체는 그대로다** (spec §5, §7): 건너뛰기 모드도, 0 에너지 기본값도, 부분 결과
+    경로도 만들지 않는다. 세대가 섞인 집계는 Q̂ 를 아무 뜻도 없는 수로 만든다.
+    """
+    bad, n_complete, n_complete_no_energy = [], 0, 0
+    for r in rows:
+        if r.get("complete"):
+            n_complete += 1
+            if not _row_has_energy(r):
+                n_complete_no_energy += 1
+        try:
+            objective.J_row(r)
+        except objective.ObjectiveError as e:
+            bad.append(("%s macro=%s rollout=%s" % (r.get("instance"), r.get("macro"),
+                                                    r.get("rollout")), str(e).split("\n")[0]))
+    if not bad:
+        return
+
+    shown = "\n".join("  %s\n      %s" % (who, why) for who, why in bad[:_PRESCAN_SHOW])
+    tail = ("\n  ... +%d개 더" % (len(bad) - _PRESCAN_SHOW)) if len(bad) > _PRESCAN_SHOW else ""
+    # 운영자의 대응이 갈리므로 세대 전체인지 몇 건인지 말해 준다.
+    if n_complete and n_complete_no_energy == n_complete:
+        diag = ("진단: **완주 행 %d개가 전부** energy_J 를 안 갖고 있다 = 세대 전체 문제 "
+                "(에너지 축 이전에 만든 구세대 mcds 덤프).\n"
+                "조치: 이 덤프 전체를 현행 라벨러로 다시 만든다. 일부만 고치는 것은 의미가 없다."
+                % n_complete)
+    else:
+        diag = ("진단: 완주 행 %d개 중 %d개만 energy_J 가 없다 = **국소 문제** "
+                "(그 런들만 배터리 레이어가 꺼졌거나 기록이 깨졌다).\n"
+                "조치: 위에 나열된 (instance, macro, rollout) 만 다시 돌린다."
+                % (n_complete, n_complete_no_energy))
+    raise objective.ObjectiveError(
+        "[overnight] 목적함수 J 로 평가할 수 없는 행 %d개 / 전체 %d개. 집계를 중단한다.\n%s%s\n%s\n"
+        "세대가 섞인 집계는 하지 않는다 (spec §5, §7) — 건너뛰기·0 에너지 폴백·부분 결과 없음."
+        % (len(bad), len(rows), shown, tail, diag))
+
+
 def aggregate(rows):
     """rollout 단위 행 -> (instance, macro) 당 Q̂ / SE / P(complete). 상태 스냅샷은 첫 행에서 승계."""
     # nominal(사건 없는 관측) 행은 macro 가 없다 -> 제외
     rows = [r for r in rows if r.get("macro") is not None and r.get("fired")]
+    prescan_objective(rows)     # 한 행 때문에 B~E 가 통째로 날아가지 않도록 **먼저** 전수 검사
     groups = {}
     for r in rows:
         groups.setdefault((r["instance"], int(r["macro"])), []).append(r)
