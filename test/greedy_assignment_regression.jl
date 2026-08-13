@@ -1,19 +1,31 @@
 # ============================================================================
-#  greedy 배정 회귀 게이트 (spec §9 "greedy 회귀 검사", 계획 태스크 2)
+#  greedy 배정 지문 — 참고용 진단 스크립트 (더 이상 pass/fail 게이트 아님)
 #
-#  assign_collaborative_tasks! 는 이 저장소의 모든 숫자가 올라앉은 핵심 스케줄링 함수다.
-#  비용 클로저를 greedy_cost 디스패치로 바꾸는 변경이 배정을 **한 엣지도** 바꾸지 않았음을
-#  기계적으로 증명한다.
+#  ⚠️ 2026-08-13 실측으로 강등됨. 이 파일은 원래 "코드변경 전 골든 해시 vs 코드변경 후 해시"를
+#  서로 다른 julia 프로세스 두 개로 비교해 배선 변경이 배정을 안 바꿨음을 증명하려 했다.
+#  실측 5회:
+#    1 golden   (변경 전)                          c95e4c72…
+#    2 repro    (변경 전, 재실행)                    c95e4c72…  = 1  (Step 3 는 이걸로 "통과"라고 판단했었음)
+#    3 gate     (디스패치 배선 후)                   20d5fe75…
+#    4 control  (배선을 stash 로 되돌린, 1과 바이트 동일한 코드) 5640226b…
+#    5 control  (4 와 동일 코드, 재확인)              5640226b…  = 4
+#  4·5 는 "코드가 1·2 와 완전히 동일"한데도 다른 해시를 낸다. 즉 **재컴파일(=julia 프로세스가
+#  바뀜)이 그 자체로 배정 지문을 바꾼다** — Set/Dict 순회 순서 등 시드로 통제되지 않는 무언가가
+#  프로세스마다 갈리는 것으로 보인다. 따라서 "다른 두 프로세스의 해시 비교"는 코드 변경 유무와
+#  무관하게 통과할 수도 실패할 수도 있는, 구조적으로 무의미한 게이트였다(같은 프로세스 안에서는
+#  결정적이다 — 1=2, 4=5. 그 성질은 여전히 유효하고 아래에서 그대로 씀).
 #
-#  왜 시뮬레이션이 아니라 배정만 보는가:
-#    이 하니스의 시뮬레이션은 런간 재현성이 없다(makespan 노이즈 ~4.6%, spec §4.2).
-#    반면 **배정 단계는 결정적이다** — run_lego_demo(return_env_before_sim=true) 는
-#    고정 rng 로 스케줄을 세우고 거기서 멈춘다. 그러므로 게이트는 시뮬 결과가 아니라
-#    배정 그래프 자체에 건다.
+#  **진짜 게이트는 `test/greedy_cost_dispatch_equivalence.jl` 이다.** 그 파일은 프로세스 간
+#  비교를 하지 않고, (a) 모든 정점×dt 스프레드에 대한 공식 항등성(===)과 (b) 같은 프로세스 안에서
+#  같은 pre-assignment 스케줄로 디스패치 vs 변경 전 클로저를 직접 A/B 비교한다 — 둘 다 spec §6.2
+#  "GreedyFinalTimeCost 는 클로저와 바이트 단위로 같다"를 프로세스 재현성 문제 없이 직접 증명한다.
+#
+#  이 파일은 "그 진단을 남겨 재발 방지"용으로만 유지한다: 골든과 다시 비교하되, 다르면 **경고만**
+#  출력하고 테스트를 실패시키지 않는다(위 이유로 실패가 코드 문제를 의미하지 않으므로).
 #
 #  사용법:
-#    골든 생성:  GREEDY_GOLDEN_WRITE=1 julia +lts --project=. test/greedy_assignment_regression.jl
-#    검사:       julia +lts --project=. test/greedy_assignment_regression.jl
+#    골든 재생성: GREEDY_GOLDEN_WRITE=1 julia +lts --project=. test/greedy_assignment_regression.jl
+#    진단 실행:   julia +lts --project=. test/greedy_assignment_regression.jl
 # ============================================================================
 
 using ConstructionBots
@@ -67,19 +79,26 @@ if get(ENV, "GREEDY_GOLDEN_WRITE", "0") == "1"
     println("[greedy-reg] GOLDEN WRITTEN: $digest -> $GOLDEN_PATH")
     println("[greedy-reg] edges+tF lines = ", count(==('\n'), body))
 else
-    @testset "greedy 배정 회귀 (디스패치 배선이 배정을 바꾸지 않는다)" begin
+    # 더 이상 hard-fail 게이트가 아니다(위 헤더 참조 — 프로세스 간 해시 비교는 구조적으로
+    # 무의미함이 실측으로 드러났다). isfile 만 진짜 @test 로 남기고, 해시 불일치는 진단
+    # 정보로만 출력한다. 진짜 게이트는 test/greedy_cost_dispatch_equivalence.jl.
+    @testset "greedy 배정 지문 진단 (golden 파일 존재 여부만 검증; 해시 비교는 참고용)" begin
         @test isfile(GOLDEN_PATH)
         golden_lines = readlines(GOLDEN_PATH)
         golden_digest = first(golden_lines)
         if digest != golden_digest
             # 어디가 갈렸는지 알려준다 — 해시만 다르다고 하면 디버깅이 불가능하다.
+            # (참고: 2026-08-13 실측상 이 불일치는 코드 변경이 아니라 프로세스 재컴파일만으로도
+            # 발생한다 — 헤더의 5회 실측 참조. 여기서 실패시키지 않는 이유.)
             golden_body = join(golden_lines[2:end], "\n") * "\n"
             gl = split(golden_body, '\n'); nl = split(body, '\n')
             for i in 1:min(length(gl), length(nl))
                 gl[i] == nl[i] || (println("[greedy-reg] 첫 불일치 line $i: golden=$(gl[i]) new=$(nl[i])"); break)
             end
             println("[greedy-reg] golden lines=$(length(gl)) new lines=$(length(nl))")
+            println("[greedy-reg] WARN: digest != golden_digest (참고용 — 프로세스 간 비교는 무의미함이 실측됨, 위 헤더 참조). digest=$digest golden=$golden_digest")
+        else
+            println("[greedy-reg] digest == golden_digest (이번 프로세스에서는 우연히 일치)")
         end
-        @test digest == golden_digest
     end
 end
