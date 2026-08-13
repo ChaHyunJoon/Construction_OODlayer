@@ -12,10 +12,14 @@ failure / OOD 발생
    ↓
 [ respec 제안자 ]  ←  DP (기준·최적)  |  surrogate (익숙한 case)  |  LLM (처음 보는 OOD)
    ↓  scene tree 수정안 (매크로)
-verify  →  MILP 재풀이 (`replan.jl:942`)  →  commit
+verify  →  MILP 재풀이 (`replan.jl:942`)  →  commit          ← MILP = respec safety layer
    ↓
 실현 결과 (complete, makespan, energy_J)
 ```
+
+상시 배정은 greedy 가 맡고, MILP 는 respec 경로에서만 돈다(§6.1). 목적함수는 **양쪽 모두**에
+들어가야 한다 — greedy 에 없으면 런 전체가 에너지를 못 보고, MILP 에 없으면 제안이 실행 단계에서
+지워진다(§2.2).
 
 셋은 **동급**이다. 같은 입력(failure 상황)을 받아 같은 출력(수정안)을 내며, 그 뒤 파이프라인은
 동일하다. DP 는 그중 최적을 내는 기준선이고, surrogate·LLM 은 그 기준에 얼마나 근접하느냐로
@@ -54,6 +58,27 @@ objective = w.speed · Σ tF[v]·weight  +  w_eff · Σ edge_energy(v,v2) · Xa[
 
 **단, 수정 재풀이는 MILP 를 푼다** (`replan.jl:942`, 그리고 `verify()` 의 시험 풀이). 즉 목적함수는
 이미 매 결정 지점에 도달하고 있으며, 거기서 에너지가 버려지고 있었다.
+
+### 2.4 greedy 의 비용 확장점이 배선되지 않았다
+
+`GreedyOrderedAssignment` 는 `greedy_cost` 필드를 갖고(`task_assignment.jl:275`),
+`abstract type GreedyCost` 아래 구체 타입 3개가 정의돼 있으며(`essential_tg_coponents.jl:1459-1461`),
+`full_demo.jl:600` 이 `GreedyFinalTimeCost()` 를 넘긴다. **그런데 그 값을 읽는 메서드가 하나도 없다.**
+
+실제 배정 비용은 `assign_collaborative_tasks!` 안의 클로저에 하드코딩돼 있다
+(`task_assignment.jl:46-51`):
+
+```julia
+cost_func = (v,v2) -> get_tF(sched,v) + distance_dict[(v,v2)]   # 끝나는 시각 + 이동시간
+```
+
+팀 비용은 슬롯 중 최댓값(가장 늦게 도착하는 로봇)이고, 그중 argmin 을 고른다. **순수 시간 지표이며
+에너지가 들어갈 자리가 없다.** 세 `GreedyCost` 타입은 아무것도 디스패치하지 않는 죽은 마커이고,
+어느 것을 넘겨도 동작이 같다. `update_greedy_cost_model!`(`essential_tg_coponents.jl:1543` 에서 호출)
+은 저장소 어디에도 정의가 없다 — 그 경로는 죽은 코드이거나 도달하면 던진다.
+
+따라서 greedy 에 에너지를 넣는 작업은 클로저를 해킹하는 것이 아니라 **설계돼 있었으나 배선되지
+않은 확장점을 살리는 것**이다(§6.2).
 
 ### 2.2 이미 일어난 사고 — 제안이 실행 단계에서 지워졌다
 
@@ -119,15 +144,17 @@ MILP 의 에너지 항(`Σ edge_energy·Xa`, 계획 시점 운반에너지)과 J
 
 > The two terms have different units... A fixed constant is either inert or it overturns makespan.
 
-해법은 **양쪽 모두 자기 스케일로 정규화하고 무차원 κ 하나만 공유**하는 것이다.
+해법은 **각자 자기 스케일로 정규화하고 무차원 κ 하나만 공유**하는 것이다. κ 를 쓰는 자리는 셋이다:
 
-| 자리 | 가중치 |
-|---|---|
-| MILP | `w_eff = κ · speed_scale / eff_scale` (`essential_tg_coponents.jl:1435`, 이미 구현됨) |
-| J | `w_E = κ · M_ref / E_ref` |
+| 자리 | 가중치 | 스케일 |
+|---|---|---|
+| greedy (상시 배정) | `w_g = κ · T_scale / Eg_scale` | 시간/에너지 스케일 — §8-0 에서 측정 |
+| MILP (respec 재풀이) | `w_eff = κ · speed_scale / eff_scale` | 정식화마다 자동 산출 (`essential_tg_coponents.jl:1435`, 이미 구현됨) |
+| J (제안자 셋의 판단 기준) | `w_E = κ · M_ref / E_ref` | 완주 런의 makespan/energy_J 중앙값 |
 
-`M_ref` / `E_ref` 는 **완주한 런들의 makespan / energy_J 중앙값**이며, §8 의 파일럿에서 측정해
-`objective.json` 에 박는다. 둘 다 "에너지 항은 makespan 크기의 약 κ 배만큼 가치가 있다"를 뜻한다.
+셋 다 "에너지 항은 시간 항 크기의 약 κ 배만큼 가치가 있다"를 뜻한다. **κ 하나만 돌리면 세 곳이
+같이 움직인다** — 이것이 `objective.json` 을 진짜 단일 진실원으로 만드는 조건이다. 스케일 상수
+(`T_scale`, `Eg_scale`, `M_ref`, `E_ref`)는 파일럿에서 측정해 `objective.json` 에 박는다.
 
 ### 4.1 κ 는 동점해소자다
 
@@ -163,6 +190,8 @@ assignments, unable to overturn a genuinely faster one"*). 초기값 κ = 0.01 �
   "C_fail": 10000.0,
   "C_unclosed": 100.0,
   "tie_eps": 1.0e-3,
+  "T_scale": null,
+  "Eg_scale": null,
   "M_ref": null,
   "E_ref": null,
   "calibrated_from": null
@@ -184,20 +213,52 @@ assignments, unable to overturn a genuinely faster one"*). 초기값 κ = 0.01 �
 
 | 소비처 | 무엇을 읽나 |
 |---|---|
+| greedy `GreedyEnergyAwareCost` | `kappa`, `T_scale`, `Eg_scale` |
 | MILP 전역 κ (`AUTO_EFFICIENCY_KAPPA` 기본값) | `kappa` |
 | `gen_oracle_mc.jl` `scalar_cost` | 전부 |
 | `gen_oracle_dataset.jl` (surrogate 라벨러) | 전부 |
 | `dp_solve.py` | 전부 |
 | `e1_analyze.py` (`cost_lex_key` 대체) | 전부 |
 
-`audit_action_vocab.py` 와 같은 형식의 감사 스크립트를 붙여, 이 다섯 곳이 같은 파일을 읽는지
+`audit_action_vocab.py` 와 같은 형식의 감사 스크립트를 붙여, 이 여섯 곳이 같은 파일을 읽는지
 기계적으로 검사한다. 리터럴 복붙은 에러 없이 성능으로만 새는 종류의 결함이다.
 
 ## 6. 각 자리가 J 를 쓰는 방법
 
-- **MILP** — κ 를 `DeprioritizeAgent` 국소 스코프에서 **전역 기본값으로 승격**한다. 이 한 변경이
-  모든 매크로의 재풀이에 에너지 항과 배터리 SoC 가격책정을 되살린다(§2.2). `replan.jl:901-908` 의
-  국소 스코프는 제거하고 전역 κ 로 대체한다.
+### 6.1 역할 분담 — MILP 는 상시 풀이가 아니라 safety layer 다
+
+**초기 계획은 greedy 로 유지한다.** `assignment_mode = :milp` 로 전환하지 않는다. 이유:
+
+- 에너지를 greedy 비용에 직접 넣으면 목적함수가 **런 전체**에 닿는다 — `:milp` 전환이 주는 것과
+  같은 도달 범위를, HiGHS 없이 얻는다.
+- `:milp` 상시 풀이는 비용이 미측정이고, 이 저장소는 MILP 병렬 실행에서 OOM 과 비교 무효를 겪은
+  실측 기록이 있다(CLAUDE.md 함정 30). 630판 스윕의 병렬성이 greedy 라서 성립한다
+  (`run_4pol_parallel.sh:8`).
+- MILP 는 respec 경로에서 **verify(시험 풀이) + 재풀이**라는 안전 역할을 계속 맡는다. 제안이
+  실행가능한지 판정하고 제약을 지킨 해를 내는 것이 MILP 가 잘하는 일이다.
+
+### 6.2 greedy — 죽은 확장점을 살린다
+
+`GreedyEnergyAwareCost <: GreedyCost` 를 추가하고, `assign_collaborative_tasks!` 의 하드코딩된
+`cost_func` 을 `model.greedy_cost` 로 **디스패치**하게 바꾼다:
+
+```
+GreedyFinalTimeCost     →  get_tF(v) + dt                                   # 현행 동작을 정확히 보존
+GreedyEnergyAwareCost   →  get_tF(v) + dt + w_g · edge_energy(dt) · edge_cost_multiplier(sched, v)
+```
+
+`edge_energy(dt_min)` 는 이미 있고(`essential_tg_coponents.jl:1337`), `edge_cost_multiplier` 도 이미
+있으며 — **그것이 `agent_cost_bias × 배터리 SoC 배율` 을 나르는 바로 그 함수**다. 즉 이 변경 하나로
+greedy 경로에서도 `DeprioritizeAgent` 와 배터리 SoC 조향이 살아난다. 지금은 둘 다 완전히 무력이다.
+
+기존 동작 보존이 계약이다: `GreedyFinalTimeCost` 분기는 현행 클로저와 **바이트 단위로 같은 값**을
+내야 하며, §9 의 회귀 검사가 이를 강제한다.
+
+### 6.3 MILP (respec 재풀이)
+
+κ 를 `DeprioritizeAgent` 국소 스코프에서 **전역 기본값으로 승격**한다. 이 한 변경이 모든 매크로의
+재풀이에 에너지 항과 배터리 SoC 가격책정을 되살린다(§2.2). `replan.jl:901-908` 의 국소 스코프는
+제거하고 전역 κ 로 대체한다.
 - **DP** — `Q(s̃,a) = E[J]`, `a*(s̃) = argmin_a Q`. 동점 집합(paired SE 밴드)은 **J 의 일부가 아니라**
   표집 노이즈 하에서 a\* 를 보고하는 방법이며, dp-oracle spec §7 을 그대로 따른다.
 - **surrogate** — J 를 회귀하고 지원 팔 중 argmin 을 고른다. 학습셋을 새 J 와 새 플래너 설정에서
@@ -219,17 +280,22 @@ assignments, unable to overturn a genuinely faster one"*). 초기값 κ = 0.01 �
 
 | # | 단계 | 게이트 / 중단 조건 |
 |---|---|---|
-| 0 | **MILP 실행가능성 파일럿** — 몇 판을 `:milp` 와 `:milp_w_greedy_warm_start` 로 돌려 판당 시간·메모리를 실측 | 630판 환산이 비현실적이면 warm-start 로, 그것도 아니면 **멈추고 보고**한다. CLAUDE.md 함정 30: MILP 병렬은 OOM + 비교 무효 |
-| 1 | 런 레벨에 `total_energy_J` 와 `makespan` 기록 추가 | 지금 둘 다 없다(§2.3) |
-| 2 | `objective.json` + 다섯 소비처 + 감사 스크립트 | 감사 통과 |
-| 3 | 파일럿에서 `M_ref`/`E_ref` 측정, κ 확정 | `null` 인 채로 J 계산 시 에러 |
-| 4 | 630판 스윕 재실행 (`:milp` + 전역 κ) — **신세대** | |
-| 5 | surrogate 재라벨 + 재학습 | `test_surrogate_support.py` 재검증 |
-| 6 | prefix 결정성 재측정 — **주입점 4개 전부**(`closed ≈ 55/141/204/274`) | 깨지면 DP 표집이 `measured` 경로(K 2배). fork 는 구조적으로 불가(§11-2) |
-| 7 | DP 계획(`2026-08-13-dp-oracle.md` Task 2~12) 재개 | |
+| 1 | 런 레벨에 `total_energy_J` 와 `makespan` 기록 추가 | 지금 둘 다 없다(§2.3). 이 단계는 동작을 바꾸지 않으므로 기존 세대에서 먼저 돌려 스케일을 잰다 |
+| 2 | greedy 비용을 `greedy_cost` 디스패치로 배선 (`GreedyFinalTimeCost` 는 현행 동작 보존) | **회귀 검사 통과 전에는 다음으로 안 간다** — 같은 시드에서 배정이 바이트 단위로 같아야 한다 |
+| 3 | 스케일 측정 — 기존 세대 몇 판에서 `T_scale`/`Eg_scale`/`M_ref`/`E_ref` 수집 | 에너지가 한 번도 기록된 적 없으므로 이 측정이 κ 의 유일한 근거다 |
+| 4 | `objective.json` + 여섯 소비처 + 감사 스크립트, κ 확정 | 감사 통과. 스케일이 `null` 인 채로 J 계산 시 에러 |
+| 5 | `GreedyEnergyAwareCost` 활성화 + MILP 전역 κ 승격 | **배터리 훅 활성 검사**(§9): 모든 재풀이에서 `LAST_AUTO_EFFICIENCY_W[] > 0` |
+| 6 | 630판 스윕 재실행 — **신세대** | greedy 라 병렬 유지, 비용은 현행과 동급 |
+| 7 | surrogate 재라벨 + 재학습 | `test_surrogate_support.py` 재검증 |
+| 8 | prefix 결정성 재측정 — **주입점 4개 전부**(`closed ≈ 55/141/204/274`) | 깨지면 DP 표집이 `measured` 경로(K 2배). fork 는 구조적으로 불가(§11-2) |
+| 9 | DP 계획(`2026-08-13-dp-oracle.md` Task 2~12) 재개 | |
 
-**단계 0 은 차단성이다.** `:milp` 의 비용은 지금 미측정이며, 이 저장소는 MILP 병렬 실행에서
-OOM 과 비교 무효를 겪은 실측 기록이 있다. 며칠~주 단위 잡을 눈감고 던지지 않는다.
+**단계 2 가 차단성이다.** `assign_collaborative_tasks!` 는 핵심 스케줄링 함수이고, 여기서 조용한
+회귀가 나면 이후 모든 숫자가 오염된다. 에너지 항을 켜기 **전에**, 디스패치로 바꾸기만 한 상태에서
+기존 동작이 정확히 보존되는지부터 확인한다. 두 변경을 한 커밋에 섞지 않는다.
+
+**단계 3 이 단계 6 보다 앞서는 이유**: κ 를 정하려면 에너지 스케일을 알아야 하고, 에너지 스케일을
+알려면 에너지를 먼저 기록해야 한다. 순서를 뒤집으면 자리표시자 κ 로 630판을 굴리게 된다.
 
 ## 9. 검증
 
@@ -239,6 +305,8 @@ OOM 과 비교 무효를 겪은 실측 기록이 있다. 며칠~주 단위 잡�
 | **무력 검사** — 에너지 항이 a\* 를 한 번이라도 바꾸는가 | κ 가 노이즈에 묻혀 "energy 도 최소화"가 명목상 주장이 되는 것. **0 이면 0 이라고 보고한다** |
 | **실패 보상 검사** — 미완주 런의 J 가 완주 런보다 낮은 경우가 있는가 | §3.1 위반. 있으면 즉시 실패 |
 | **배터리 훅 활성 검사** — 모든 재풀이에서 `LAST_AUTO_EFFICIENCY_W[] > 0` 인가 | §2.2 의 결함이 남아 있는 것. 지금은 Deprioritize 에서만 참 |
+| **greedy 회귀 검사** — `GreedyFinalTimeCost` 디스패치가 현행 클로저와 같은 배정을 내는가 | 확장점 배선(§6.2)이 조용히 스케줄을 바꾸는 것. **단계 2 의 게이트** |
+| **greedy 디스패치 생존 검사** — `greedy_cost` 를 바꾸면 배정이 실제로 달라지는가 | §2.4 의 결함(값이 저장만 되고 안 읽힘)이 되살아나는 것 |
 | **objective.json 해시 일치** — 산출물의 해시가 현재와 같은가 | 세대 혼입(§7) |
 
 ## 10. 범위 밖 (의도)
@@ -256,9 +324,15 @@ OOM 과 비교 무효를 겪은 실측 기록이 있다. 며칠~주 단위 잡�
    `BATTERY_FLEET`(`battery.jl:111`), `HAZARD_STATE`, `OOD_SCHEDULE`, `SIM_STEP` 이 전부 프로세스
    전역 싱글턴이라 `deepcopy(env)` 로 두 계보를 갈라도 같은 물리를 공유한다. 단계 6 에서 결정성이
    깨지면 `measured` 경로밖에 없고 표집 비용이 2배가 된다.
-3. **`M_ref`/`E_ref` 는 파일럿 표본에 의존한다.** 표본이 작으면 κ 의 실효 크기가 흔들린다. 파일럿
+3. **스케일 상수는 파일럿 표본에 의존한다.** 표본이 작으면 κ 의 실효 크기가 흔들린다. 파일럿
    판수와 그때의 분산을 `objective.json` 의 `calibrated_from` 에 기록한다.
-4. **`:milp` 재실행 비용이 미측정이다.** 단계 0 이 이를 재며, 비현실적이면 설계가 아니라 **일정**을
-   다시 논의한다.
-5. **에너지가 지금까지 한 번도 기록된 적이 없다.** 따라서 `E_ref` 의 크기에 대한 사전 지식이 전혀
+4. **greedy 의 에너지 항은 근시안적(myopic)이다.** 매 배정 한 건을 국소적으로 고를 뿐 전역 최적이
+   아니다. 다만 greedy 의 makespan 항도 이미 그러하므로 **새로 생기는 성질은 아니다** — greedy 를
+   쓰는 대가일 뿐이고, 그 대가는 이미 치르고 있었다. 전역 최적이 필요한 자리(respec 재풀이)는
+   MILP 가 맡는다(§6.1).
+5. **에너지가 지금까지 한 번도 기록된 적이 없다.** 따라서 에너지 스케일에 대한 사전 지식이 전혀
    없고, κ 초기값 0.01 은 근거 있는 값이 아니라 **자리표시자**다. 단계 3 이 이를 대체한다.
+6. **`assign_collaborative_tasks!` 수정은 회귀 위험이 있다.** 핵심 스케줄링 함수이며, 이 저장소의
+   모든 숫자가 그 위에 있다. 단계 2 의 회귀 검사가 유일한 방어선이다.
+7. **`update_greedy_cost_model!` 이 정의 없이 호출된다**(`essential_tg_coponents.jl:1543`). 그 경로가
+   죽은 코드인지 도달 시 던지는지 확인하지 않았다. §6.2 작업 중에 확인하고, 죽은 코드면 지운다.
