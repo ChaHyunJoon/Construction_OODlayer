@@ -74,9 +74,15 @@ print("=" * 78)
 print("2. 기준 정책의 형태 (규칙이 실제로 갈리는가)")
 print("=" * 78)
 deep = dict(truth="BatteryTruth", soc=0.02, valid=["NOOP", "Replace", "Deprioritize", "SwapBattery"])
-mild = dict(truth="BatteryTruth", soc=0.45, valid=["NOOP", "Replace", "Deprioritize", "SwapBattery"])
+# BATTERY_DEEP_SOC 가 0.3 -> 0.5 로 오른 뒤에는 0.45 도 **깊은 방전 쪽**이다(이 검사는 그때
+# 갱신되지 않아 조용히 FAIL 하고 있었다). 그리고 임계값 위에는 격자가 테스트한 rung 이 하나도
+# 없으므로(최고 rung = 0.50) 그 구간은 정답을 지어내지 않고 **채점 제외**한다 -- reform 과 같다.
+mild = dict(truth="BatteryTruth", soc=0.70, valid=["NOOP", "Replace", "Deprioritize", "SwapBattery"])
 check("깊은 방전 -> SwapBattery", RP.reference_action(deep)[0] == "SwapBattery")
-check("완만한 열화 -> NOOP", RP.reference_action(mild)[0] == "NOOP")
+check("사다리 안(0.45<=0.5) 도 깊은 방전 -> SwapBattery",
+      RP.reference_action(dict(mild, soc=0.45))[0] == "SwapBattery")
+check("사다리 밖(SoC>0.5, 미검증 구간) -> 채점 제외(None)",
+      RP.reference_action(mild)[0] is None)
 check("SwapBattery 가 메뉴에 없으면 Replace 로 대체",
       RP.reference_action(dict(deep, valid=["NOOP", "Replace"]))[0] == "Replace")
 check("fault pending>0 -> Replace",

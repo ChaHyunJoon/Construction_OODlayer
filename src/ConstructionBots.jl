@@ -127,6 +127,9 @@ export add_restriction_zone!, random_restriction_zone!, restriction_zones,      
        SPARE_POOLS, SPARE_POOL_CENTERS, spare_pools, spare_pool_centers,  # OOD 1-1: 방위별 예비 로봇 풀(저장소/접근자)
        clear_spare_pools!, register_spare!, pop_spare!, active_spares,    # 풀 비우기/등록/꺼내기/전체목록
        pool_centers, nearest_pool, add_directional_spare_pools!,         # 풀 중심계산/최근접풀/4방위 배치
+       spare_depot_distance, set_spare_depot_distance!, depot_centers_fixed,  # 절대좌표 창고 거리 knob + 중심 계산
+       SPARE_SLOTS, spare_slots, station_keeping_goal,                        # 정박(station-keeping) 슬롯 저장소/술어
+       warn_depot_clearance,                                                  # 창고-빌드 간격 경고(자동 조정 없음)
        fault_robot!, faulted_robots, clear_faulted_robots!,              # OOD 1-1: 로봇 고장 주입/조회/초기화
        set_hot_swap!, hot_swap_enabled, set_spare_pool_margin!, set_reform_interval!,  # OOD 1-1: hot-swap 토글 + 창고 거리 + reform 반응주기(무진전 self-heal 간격)
        depot_available, depot_info,                                      # 창고(repository) 재고/메타

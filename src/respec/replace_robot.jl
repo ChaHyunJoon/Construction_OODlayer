@@ -1482,7 +1482,7 @@ function hot_swap_robot!(env, faulted::AbstractID;
     threshold = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.2
     cause = failed_soc isa Real && failed_soc <= threshold ? :battery : :fault
     HOT_SWAP_ASSETS[][faulted] = (spare=spare, failed_soc=failed_soc,
-                                  position=Vector{Float64}(pos), cause=cause)
+                                  position=Vector{Float64}(pos), cause=cause, depot=key)
     # TWO-LEVEL IDENTITY (asset_ledger.jl): the ROLE `faulted` is unchanged; what changed is
     # the physical asset behind it. Recorded append-only so a role swapped twice keeps BOTH
     # rows -- `HOT_SWAP_ASSETS` above is a dict ASSIGNMENT and silently loses the first one,

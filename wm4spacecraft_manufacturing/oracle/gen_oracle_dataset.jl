@@ -428,6 +428,64 @@ function place_core_zone!(env; key::Symbol = :zonecore, frac::Float64 = 0.6)
     return nl
 end
 
+# --- EVAL-MATCHED zone injector: 평가 런과 **같은 사건**을 오라클에도 심는다 (2026-08-12) ----------
+# 왜 필요한가. 이 파일의 `:zone` 가지는 그동안 `CB.zone_action(:zone_ds)` = `random_restriction_zone!`
+# 을 썼는데, 그 함수는 **설계상 아무것도 막지 않는다**: 반지름을 2×로봇반지름으로 캡하고, 선분 양끝이
+# 구역 밖에 남는 자리만 고른다(위 325행 주석이 "inadmissible for the oracle" 이라고 못박아 둔 그
+# 함수다). 실측(n44_plus78_d20.jsonl): zone_blocked=0 · zone_overlap=0.0 · zone_work_overlap=0 이고
+# NOOP 과 RelocateBuild 가 무사고 대조군과 **바이트 동일**(closed 291 / 22.425s)이었다. 즉 그
+# 1/1 완주는 "오라클이 zone 을 풀었다"가 아니라 "zone 이 사건이 아니었다"였다.
+#
+# 더 큰 문제는 평가 런이 **다른 주입기를 다른 시점에** 쓴다는 것이었다(run_demo.jl:192
+# `inject_blocking_zone!`, 스텝 전 1회). 두 열이 다른 사건을 겪으면 "오라클이 최적인가"라는 질문
+# 자체가 성립하지 않는다. 이 함수는 그 절차를 그대로 옮긴 것이다 — 원본 계보는
+# render_demo.jl / tools/restage.jl::place_blocking_zone_on_nav_goal! 이고, 셋이 갈리면 두 엔진이
+# 다시 다른 세계를 만든다. 셋을 같이 고칠 것.
+#
+# 절차: 아직 활성이 아닌 항법 목표만 후보 → 결정적 정렬(transport 우선, root staging 중심에서 가까운
+#      순) → 복구 가능한 것만 → 심은 뒤 **실제로 막혔는지**(n_blocked ≥ 1) 확인, 아니면 지우고 다음.
+#
+# `record_ood_truth!` 은 여기서 하지 않는다. 구역은 pre-sim 에 심되(=평가와 같은 물리), 결정은
+# 발화점에서 나야 한다(평가도 ZONE_DECIDE_DEFERRED 로 첫 배치가 닫힌 뒤 결정한다). shim 의
+# `event_context` 가 NL 문자열로 truth 를 찾으므로 그 기록은 발화 시점에 한 번만 남긴다.
+# 반환: `(nl, key, center, radius)` 또는 nothing.
+function place_eval_matched_zone!(env; key::Symbol = :zone_ds,
+        frac::Float64 = try parse(Float64, get(ENV, "DS_ZONE_R", get(ENV, "DEMO_ZONE_R", "0.5"))) catch; 0.5 end)
+    isempty(env.staging_circles) && return nothing
+    r = frac * Float64(CB.default_robot_radius())
+    navs = try CB._nav_goal_targets(env) catch e
+        @warn "[zone] _nav_goal_targets 실패" exception = e; return nothing
+    end
+    isempty(navs) && return nothing
+    ks = collect(keys(env.staging_circles))
+    root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), ks)   # 가장 큰 staging 원 = root
+    c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
+    cand = [t for t in navs if !(t.vtx in env.cache.active_set)]             # 아직 활성이 아닌 목표만
+    sort!(cand; by = t -> (t.kind === :transport ? 0 : 1, hypot(t.goal[1] - c0[1], t.goal[2] - c0[2])))
+    for t in cand
+        CB.zone_relocatable(t.goal, r, env) || continue                      # 복구 가능한 것만 심는다
+        z = CB.add_restriction_zone!(key, t.goal, r)
+        b = try CB.zone_blockage(env; zone_keys = [key], check_paths = false) catch e
+            @warn "[zone] zone_blockage 실패" exception = e; nothing
+        end
+        if b !== nothing && b.n_blocked >= 1
+            c = Vector{Float64}(t.goal)
+            println("[zone] eval-matched blocking zone on $(t.kind) vtx=$(t.vtx) " *
+                    "@$(round.(c; digits = 3)) r=$(round(r; digits = 3)) -> " *
+                    "nav_blocked=$(b.n_blocked)/$(b.n_nav_goals)")
+            # 관찰만 남기고 "그러니 무엇을 하라"는 붙이지 않는다(뒷절이 곧 정답이 되므로).
+            # 문구는 run_demo.jl 과 **글자까지 같아야** 한다 — 정책이 NL 을 읽는다.
+            nl = "A no-go exclusion zone has appeared at ($(round(c[1]; digits = 2)), " *
+                 "$(round(c[2]; digits = 2))) with radius $(round(r; digits = 2)). " *
+                 "Robots that enter the disc are pushed back out of it."
+            return (nl = nl, key = key, center = Float64[c[1], c[2]], radius = Float64(CB.get_radius(z)))
+        end
+        CB.remove_restriction_zone!(key)                                     # 안 막혔으면 지우고 다음 후보
+    end
+    println("[zone] no blocking placement found (every candidate was active or unrecoverable)")
+    return nothing
+end
+
 "구역이 root 하역 목표를 삼킨 비율(0~1). 구역이 없으면 -1(파이썬 쪽이 '해당없음'으로 읽는 센티넬)."
 # zone_overlap_frac 이 staging 원 겹침을 재는 것과 달리, 이건 **못 옮기는 root 목표**를 몇 개 삼켰나를 잰다.
 # core zone 의 harm 은 여기에만 나타난다 — staging 겹침으로는 0 으로 보일 수 있다.
@@ -1181,7 +1239,10 @@ end
 
 # build_injection : OOD 종류별로 "언제·어떻게 사건을 터뜨릴지"를 담은 (schedule 함수, pre_sim 훅) 짝을 만든다.
 #   schedule 함수 = 시뮬 시작 전 OOD 발화 예약. pre_sim 훅 = 시뮬 전 사전 설정(battery만 사용, 나머지는 nothing).
-function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0)
+#   inject = 이 판이 OOD 판인가(false = 대조군). pre_sim 훅은 control 판에도 돌기 때문에(run_one 참조)
+#     "사건을 심는" 훅은 이 값으로 막아야 한다. battery 의 훅(_arm_battery!)은 계측 설정이라 양쪽에
+#     그대로 도는 것이 맞지만, zone 의 훅은 **사건 그 자체**라 control 에 들어가면 대조군이 오염된다.
+function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject::Bool = true)
     # fire_at>0 이면 그 목표점 위쪽으로만 짧게 재시도(= 발화 시점이 instance 차원).
     # fire_at=0 이면 예전 그대로 그 종류의 FIRE_POINTS 사다리.
     fire = fire_ladder(kind, fire_at)                    # 이 instance 의 발화 시점(closed 노드 수) 목록
@@ -1270,13 +1331,30 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0)
         end
         return (sched_fn, nothing)
     elseif kind === :zone
+        # 2026-08-12: 평가 런과 **같은 사건**으로 맞춘다(그 전에는 `CB.zone_action(:zone_ds)` =
+        # `random_restriction_zone!` 로, 설계상 아무것도 막지 않는 구역이었다 —
+        # place_eval_matched_zone! 의 주석에 실측과 함께 적어 뒀다).
+        #   · 구역은 pre_sim 훅에서 심는다 = 평가와 같은 단계(full_demo.jl:836 이 env 완성 직후,
+        #     sim 루프 직전에 훅을 부른다. 평가는 return_env_before_sim 으로 받은 env 에 같은 자리에서 심는다).
+        #   · 결정은 종전대로 발화점에서 낸다 — 평가도 ZONE_DECIDE_DEFERRED 로 첫 배치가 닫힌 뒤
+        #     (closed≈58) 결정하고, 이 파일의 FIRE_POINTS[:zone] 도 첫 배치에서 같은 지점으로 모인다.
+        #   · 훅은 control 판에도 돌므로 `inject` 로 막는다(대조군 = 같은 세계 minus 이 사건).
+        stash = Ref{Any}(nothing)
+        hook = inject ? (env -> (stash[] = place_eval_matched_zone!(env); nothing)) : nothing
         sched_fn = () -> begin
             fired = Ref(false)
-            zf = CB.zone_action(key = :zone_ds)          # 기본 zone 액션(navigator 제공)
-            act = e -> fired[] ? nothing : (nl = zf(e); nl === nothing ? nothing : (fired[] = true; nl))
+            act = e -> begin
+                (fired[] || stash[] === nothing) && return nothing   # 주입 실패면 사건 없음(조용히 안 터짐)
+                fired[] = true
+                z = stash[]
+                # truth 는 여기서 한 번만 남긴다 — shim 의 event_context 가 NL 문자열로 찾는다.
+                try CB.record_ood_truth!(z.nl,
+                        CB.ZoneTruth(z.key, z.center, z.radius, nothing)) catch end
+                return z.nl
+            end
             for c in fire; CB.schedule_ood_at_closed!(c, act); end
         end
-        return (sched_fn, nothing)
+        return (sched_fn, hook)
     elseif kind === :zoneblk
         off = Float64(severity)                           # severity carries the zone-offset (severity knob)
         sched_fn = () -> begin
@@ -1359,11 +1437,14 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
     try CB.set_battery_derate!(enabled = false) catch end         # reset graded derate band too
     CB.set_respec_producer!(prod)                                 # 개입 지점(seam)에 정책 prod 를 꽂음
     # plan 이 있으면 에피소드(다중 사건) 예약, 없으면 기존 단일 사건 예약. 기본값 nothing = 기존 동작.
-    sched_fn, hook = plan === nothing ? build_injection(kind, severity, seed; fire_at = fire_at) :
-                                        build_episode_injection(plan)
+    sched_fn, hook = plan === nothing ?
+        build_injection(kind, severity, seed; fire_at = fire_at, inject = inject) :
+        build_episode_injection(plan)
     # the pre_sim setup (e.g. enable_battery!) applies to BOTH the OOD runs AND the control, so the
     # control is the SAME world minus the fired OOD (fair admissibility). `inject` only gates whether
-    # the OOD trigger is actually scheduled. (hook is `nothing` for fault/zone -> inert there.)
+    # the OOD trigger is actually scheduled. (hook is `nothing` for fault -> inert there.)
+    # 예외: zone 의 훅은 계측 설정이 아니라 **사건 그 자체**(구역을 심는다)라 control 에 들어가면
+    # 대조군이 오염된다. 그래서 build_injection 에 `inject` 를 넘겨 그쪽에서 훅을 nothing 으로 만든다.
     inject && sched_fn()                                          # inject 가 참일 때만 OOD 발화를 예약(control 은 안 함)
     # control 판(=교란 없는 세계)에서만 nominal 관찰 지점을 심는다. OOD 판에는 절대 넣지 않는다:
     # 그러면 같은 판에서 두 종류의 캡처가 경쟁하게 되고, 교란 런의 특징이 오염된다.
@@ -1383,10 +1464,16 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
             rng = Random.MersenneTwister(seed))                   # seed 로 난수 고정(재현성)
     end
     label_seconds = time() - t_start                              # 이 라벨 한 개를 얻는 데 걸린 실제 벽시계 시간
-    # efficiency-axis label: worst per-robot SoC at end (battery margin). NaN when battery is off.
-    min_soc = try
-        fl = CB.BATTERY_FLEET[]; fl === nothing ? NaN : Float64(CB.battery_report(fl).min_soc)   # 끝에서 가장 낮은 로봇 잔량
-    catch; NaN end
+    # efficiency-axis labels: 배터리 리포트를 한 번만 읽어 최소 SoC 와 에너지를 같이 뽑는다.
+    # 총 에너지만 보면 미완주가 유리해지므로(일을 덜 해서) 닫힌 노드당 에너지도 같이 남긴다.
+    _batt = try
+        fl = CB.BATTERY_FLEET[]
+        fl === nothing ? nothing : CB.battery_report(fl)
+    catch; nothing end
+    min_soc  = _batt === nothing ? NaN : Float64(_batt.min_soc)
+    mean_soc = _batt === nothing ? NaN : Float64(_batt.mean_soc)
+    total_energy_J = _batt === nothing ? NaN : Float64(_batt.total_energy_J)
+    n_depleted = _batt === nothing ? -1 : Int(_batt.n_depleted)
     n_stalled = try length(CB.stalled_robots()) catch; 0 end      # 끝에 멈춰버린 로봇 수
     hz = try CB.hazard_report() catch
         (n_break=0, n_cell=0, n_zone=0, n_break_pending=0, capped=false, t=0.0)
@@ -1402,6 +1489,9 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
         makespan = (try Float64(get(stats, :Makespan, NaN)) catch; NaN end),   # 실제 makespan(총 소요시간)
         label_seconds = label_seconds,
         min_soc  = min_soc,
+        mean_soc = mean_soc,                                     # 평균 잔량(효율 축)
+        total_energy_J = total_energy_J,                         # 총 구동 에너지[J]
+        n_depleted = n_depleted,                                 # 끝에 방전된 로봇 수
         n_stalled = n_stalled,
         feats    = FEAT[],                                       # capture_features 로 담아둔 결정 순간 특징
         fired    = FEAT[] !== nothing,                           # OOD 가 실제로 터졌는지(특징이 채워졌으면 참)
@@ -1415,8 +1505,11 @@ end
 # 외부 JSON 라이브러리 없이 직접 JSONL 한 줄을 만드는 3개의 작은 도우미.
 jesc(s) = replace(replace(String(s), "\\" => "\\\\"), "\"" => "\\\"")   # 문자열 안 역슬래시/따옴표 escape
 # jval : 값 하나를 JSON 표기로. Bool→true/false, 문자열→따옴표, 배열→[...], 무한/NaN 은 문자열로(JSON 엔 없음).
+# AbstractDict→{...}(중첩 객체) : geometry 필드가 실제 JSON 객체로 나가야 run_demo.jl(JSON3.write) 쪽과
+# byte-identical 하다 -- 이 분기가 없으면 Dict 가 마지막 fallback(문자열화)으로 떨어져 깨진다.
 jval(x) = x isa Bool ? (x ? "true" : "false") :
           x isa AbstractString ? "\"$(jesc(x))\"" :
+          x isa AbstractDict ? "{" * join(["\"$(jesc(string(k)))\":$(jval(v))" for (k,v) in x], ",") * "}" :
           x isa AbstractVector ? "[" * join(jval.(x), ",") * "]" :   # jval.(x) = 각 원소에 jval 적용(브로드캐스트)
           x isa Real ? (isfinite(x) ? string(x) : "\"$(x)\"") : "\"$(x)\""
 jrow(d) = "{" * join(["\"$(k)\":$(jval(v))" for (k,v) in d], ",") * "}"   # (키,값) 쌍들을 {"k":v,...} 한 줄로
@@ -1550,6 +1643,12 @@ function run_episodes(io)
                 "complete"=>r.complete, "closed"=>r.closed, "total"=>r.total,
                 "makespan"=>r.makespan, "label_seconds"=>r.label_seconds,
                 "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
+                "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
+                "n_depleted"=>r.n_depleted,
+                "geometry"=>Dict("depot_mode"=>"fixed",
+                                 "depot_distance"=>CB.spare_depot_distance(),
+                                 "station_keeping"=>true),
                 # control 은 에피소드 모드에서 정의되지 않는다(admissibility 는 cost-aware 라벨이 대신함).
                 "ctrl_complete"=>false, "ctrl_closed"=>-1, "ctrl_makespan"=>Inf,
             ]
@@ -1723,6 +1822,12 @@ function main()
                 "complete"=>ctrl.complete, "closed"=>ctrl.closed, "total"=>ctrl.total,
                 "makespan"=>ctrl.makespan, "label_seconds"=>ctrl.label_seconds,
                 "min_soc"=>ctrl.min_soc, "n_stalled"=>ctrl.n_stalled,
+                "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
+                "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
+                "n_depleted"=>ctrl.n_depleted,
+                "geometry"=>Dict("depot_mode"=>"fixed",
+                                 "depot_distance"=>CB.spare_depot_distance(),
+                                 "station_keeping"=>true),
                 "ctrl_complete"=>ctrl.complete, "ctrl_closed"=>ctrl.closed,
                 "ctrl_makespan"=>ctrl.makespan, "fire_target"=>fire_at,
             ]
@@ -1773,6 +1878,12 @@ function main()
                     "n_spare_cfg"=>n_spare, "macro"=>a, "macro_name"=>ACTION_NAME[a], "fired"=>r.fired,
                     "complete"=>r.complete, "closed"=>r.closed, "total"=>r.total, "makespan"=>r.makespan,
                     "label_seconds"=>r.label_seconds, "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
+                    "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
+                    "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
+                    "n_depleted"=>r.n_depleted,
+                    "geometry"=>Dict("depot_mode"=>"fixed",
+                                     "depot_distance"=>CB.spare_depot_distance(),
+                                     "station_keeping"=>true),
                     "ctrl_complete"=>ctrl.complete, "ctrl_closed"=>ctrl.closed, "ctrl_makespan"=>ctrl.makespan,
                     # --- MC 라벨링 메타(DS_MC_K=1 이면 rollout=0, hz_* 는 전부 0 = 기존과 구분 가능) ---
                     "rollout"=>(MC_K > 1 ? k : 0), "hz_seed"=>(hz_seed === nothing ? -1 : hz_seed),

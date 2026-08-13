@@ -432,7 +432,6 @@ function run_lego_demo(;
         ConstructionBots.clear_spare_pools!()        # 이전 빌드의 풀 기록 초기화(전역 Ref)
         ConstructionBots.add_directional_spare_pools!(scene_tree;
             n_spare=n_spare_per_pool,
-            margin=ConstructionBots.SPARE_POOL_MARGIN_FACTOR[]*robot_radius,   # env/demo-tunable depot distance
             spacing=3*robot_radius)
         @info "[OOD-1-1] injected $(4*n_spare_per_pool) spare robots ($(n_spare_per_pool)/pool x 4 dirs); pools=$(keys(ConstructionBots.spare_pools()))"
     end
@@ -746,6 +745,7 @@ function run_lego_demo(;
         max_robot_go_id=max_robot_go_id,             # 로봇 이동 최대 ID
         max_cargo_id=max_cargo_id,                   # 화물 최대 ID
     )
+    ConstructionBots.warn_depot_clearance(env)   # 창고가 빌드 안쪽인지 1회 점검(경고만)
 
     if rvo_flag                                      # RVO를 쓰면 각 로봇을 RVO 에이전트로 등록
         ConstructionBots.rvo_add_agents!(scene_tree)

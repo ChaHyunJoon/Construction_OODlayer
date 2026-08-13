@@ -1018,6 +1018,22 @@ function get_twist_cmd(node, env::PlannerEnv)
         end
         ############ Potential Field Policy #############
         policy = agent_policies[node_id(agent)].dispersion_policy  # 분산(포텐셜장) 정책
+        # 미파견 스페어는 창고 슬롯에 정박시킨다. 이 줄이 없으면 유휴 스페어는
+        # `!(build_step_active && ready_for_pickup)` 에 영구히 걸려 분산 포텐셜장에 계속 밀리고,
+        # 결국 창고를 떠나 한쪽 구석에 어깨를 맞대고 정체한다(2026-08-12 스트림 실측).
+        # policy 를 nothing 으로 만들면 아래 포텐셜장 블록이 통째로 건너뛰어진다.
+        slot = station_keeping_goal(node_id(agent))
+        if slot !== nothing
+            policy = nothing
+            spos = project_to_2d(global_transform(agent).translation)
+            if norm(spos .- slot) <= default_robot_radius()
+                twist = Twist(0.0 * twist.vel, twist.ω)          # 슬롯 안 → 정지
+            else
+                slot_goal = CoordinateTransformations.Translation(slot[1], slot[2], 0.0) ∘
+                            identity_linear_map()
+                twist = compute_twist_from_goal(agent, slot_goal, dt)   # 슬롯으로 복귀
+            end
+        end
         # For RobotGo node, ensure that parent assembly is "pickup-able"
         ready_for_pickup = cargo_ready_for_pickup(node, env)  # 화물이 집을 준비 됐나
         #? Can we use the cached version here?

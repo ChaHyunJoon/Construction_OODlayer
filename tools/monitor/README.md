@@ -15,14 +15,19 @@
 ```
 케이스 ③⑤⑥ 선택        → 아무것도 재생하지 않는다. "구역을 정의하라"는 상태.
                           (옛 녹화를 보려면 `Load previous recording` — "자동 주입" 배지가 붙는다)
-Start live session      → 서버가 MONITOR_REQUIRE_ZONE=1 로 render_demo.jl 을 띄운다
+Start live session      → 서버가 run_id 를 발급하고 MONITOR_REQUIRE_ZONE=1 로 render_demo.jl 을 띄운다
+                          (직전 런의 layout.json·run.json 을 지운다)
 env 빌드(수 분)          → pre_sim_hook 이 commands/<key>.layout.json 을 쓴다
                           (적치원 id·중심·반지름, 로봇 시작 위치, 바닥 범위, focus 창)
                         → **첫 스텝 전에 멈춰 무한 대기**(마감 없음)
-대시보드가 GET /layout   → Factory View 자리에 2D 평면도. 클릭=중심, 드래그=반지름.
-`Confirm zone & start`  → POST /inject/zone → 명령 큐 → control hook 이 첫 스텝 전에 적용
+                        → 이 시점까지 **스트림 파일은 손대지 않는다** = 옛 녹화본이 살아 있다
+대시보드                 → GET /layout 으로 평면도. 클릭=중심, 드래그=반지름. GET /runinfo 는 아직 204.
+                          (평면도 이전에 POST /inject/zone 이 오면 409 — 사람이 고른 것일 수 없다)
+`Confirm zone & start`  → POST /inject/zone → 게이트 통과 → 그때 스트림을 열고
+                          commands/<key>.run.json 에 {run_id, zone} 을 남긴다
+                        → 대시보드는 그 run_id 가 자기 것일 때만 프레임을 화면에 올린다
                         → 그때부터 planning·시뮬레이션이 돈다(ZoneTruth 1 건, 조작자 좌표 그대로)
-`Cancel session`        → POST /abort → 시뮬레이션을 돌리지 않고 프로세스 종료
+`Cancel session`        → POST /abort → 시뮬레이션을 돌리지 않고 종료. 옛 녹화본 보존.
 ```
 
 `focus` 창: 루트 조립체의 적치원은 구성상 현장 전체를 감싸므로(실측 tractor `r=9.64` vs 나머지

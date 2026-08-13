@@ -485,9 +485,26 @@ function monitor_emit!(env, iter::Integer; dt=nothing)
         "respec_history" => copy(MONITOR_RESPEC_HISTORY),
         "recovery"   => copy(MONITOR_RECOVERY_LOG),   # 내부 복구 조치(OOD 피드와 분리)
         "handoffs"   => [Dict("failed"=>string(rid), "spare"=>string(info.spare),
-                              "at"=>MONITOR_HANDOFF_T[rid], "failed_soc"=>info.failed_soc)
+                              "at"=>MONITOR_HANDOFF_T[rid], "failed_soc"=>info.failed_soc,
+                              "depot"=>string(hasproperty(info, :depot) ? info.depot : ""))
                          for (rid, info) in swaps],
     )
+    # 창고(depot) 상태: 중심 좌표 + 남은 재고 + 그 창고에 아직 주차된 예비 id.
+    # 이게 없으면 대시보드가 "어느 창고가 응답했는지"를 보여줄 방법이 없고, 정박 회귀
+    # 검증기(verify_depot_station.py)도 무엇을 검사해야 할지 알 수 없다.
+    let centers = try spare_pool_centers() catch; Dict{Symbol,Vector{Float64}}() end,
+        pools = try spare_pools() catch; Dict{Symbol,Vector{Any}}() end,
+        info = try depot_info() catch; Dict{Symbol,NamedTuple}() end
+        if !isempty(centers)
+            frame["depots"] = [Dict{String,Any}(
+                "side"      => String(side),
+                "center"    => [_mon_finite(c[1]), _mon_finite(c[2])],
+                "available" => length(get(pools, side, [])),
+                "capacity"  => (haskey(info, side) ? info[side].capacity : -1),
+                "spares"    => [string(r) for r in get(pools, side, [])],
+            ) for (side, c) in centers]
+        end
+    end
     fleet = _mon_fleet()
     if fleet !== nothing && !isempty(fleet.soc)
         socs = collect(values(fleet.soc))

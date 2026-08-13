@@ -382,6 +382,8 @@ end
 
 # ============================ 빌드 + 수동 루프 =====================================
 println(">>> build: model=$MODEL  case=$OODC  robots=$NROB")
+haskey(ENV, "SPARE_DEPOT_DIST") &&
+    CB.set_spare_depot_distance!(parse(Float64, ENV["SPARE_DEPOT_DIST"]))
 env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood", num_robots = NROB,
     model_scale = SCALE,
     assignment_mode = :greedy, save_animation = false, write_results = false, overwrite_results = true,
@@ -659,6 +661,11 @@ let path = get(ENV, "DEMO_SUMMARY", "")
                 catch e
                     @warn "battery_report 실패" exception = e; nothing
                 end),
+            # 기하 세대(provenance). 창고 배치가 바뀌면 makespan·에너지가 전부 달라지므로,
+            # 이 블록 없이 서로 다른 세대의 런을 한 표에 섞으면 조용히 틀린 비교가 된다.
+            "geometry" => Dict("depot_mode" => "fixed",
+                               "depot_distance" => CB.spare_depot_distance(),
+                               "station_keeping" => true),
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")

@@ -46,7 +46,7 @@
 # =============================================================================
 module Checks
 using ConstructionBots
-import MeshCat, Logging, HiGHS, LinearAlgebra
+import MeshCat, Logging, HiGHS, LinearAlgebra, CoordinateTransformations
 import PyCall   # used only by check_rvo; pyimport("rvo2") runs at CALL time, not module load
 const CB = ConstructionBots
 const norm = LinearAlgebra.norm
@@ -376,6 +376,93 @@ println("\nhot-swap check: $(npass[]) PASS / $(nfail[]) FAIL")
 nfail[] == 0 || error("hot-swap check had $(nfail[]) failure(s)")
 end
 
+# [점검 내용] 절대 좌표 창고 기하: 4방위 중심이 (0,±D),(±D,0) 인지, 로봇 위치와 무관한지,
+#   그리고 그 중심들로 nearest_pool 이 발생 좌표에서 올바른 방위를 고르는지(요구사항 2).
+function check_depot_geometry()
+npass = Ref(0); nfail = Ref(0)
+check(msg, cond) = (cond ? (npass[] += 1; println("  PASS  $msg")) :
+                           (nfail[] += 1; println("  FAIL  $msg")))
+
+CB.clear_spare_pools!()
+CB.set_spare_depot_distance!(30.0)
+check("spare_depot_distance reflects the setter", CB.spare_depot_distance() == 30.0)
+
+c = CB.depot_centers_fixed()
+check("north center is (0, D)",  c[:north] == [0.0, 30.0])
+check("south center is (0, -D)", c[:south] == [0.0, -30.0])
+check("east center is (D, 0)",   c[:east]  == [30.0, 0.0])
+check("west center is (-D, 0)",  c[:west]  == [-30.0, 0.0])
+
+# 로봇을 한쪽으로 치우쳐 놓아도 창고 중심은 절대 좌표라 흔들리지 않아야 한다.
+st = CB.SceneTree()
+for xy in ([5.0, 5.0], [6.0, 5.5], [5.5, 6.0])
+    rid = CB.get_unique_id(CB.RobotID)
+    node = CB.add_node!(st, CB.RobotNode(rid, CB.GeomNode(CB.default_robot_geom())))
+    CB.set_local_transform!(node,
+        CoordinateTransformations.Translation(xy[1], xy[2], 0.0) ∘ CB.identity_linear_map())
+end
+CB.add_directional_spare_pools!(st; n_spare = 2)
+check("placement ignores robot bbox (north)", CB.spare_pool_centers()[:north] == [0.0, 30.0])
+check("placement ignores robot bbox (west)",  CB.spare_pool_centers()[:west]  == [-30.0, 0.0])
+check("each pool holds 2 spares",
+    all(length(CB.spare_pools()[k]) == 2 for k in (:north, :south, :east, :west)))
+
+# 요구사항 2: 발생 좌표에서 직선거리가 가장 가까운 창고가 뽑혀야 한다.
+check("fault at +x picks :east",  CB.nearest_pool([9.0, 0.5]) == :east)
+check("fault at -y picks :south", CB.nearest_pool([0.5, -9.0]) == :south)
+check("fault at -x picks :west",  CB.nearest_pool([-9.0, 0.5]) == :west)
+check("fault at +y picks :north", CB.nearest_pool([0.5, 9.0]) == :north)
+
+# 가장 가까운 창고가 비면 그 다음으로 가까운 창고가 응답해야 한다.
+CB.pop_spare!(:east); CB.pop_spare!(:east)
+np = CB.nearest_pool([9.0, 0.5]; nonempty = true)
+check("drained :east falls through to another depot", np !== :east && np !== nothing)
+
+CB.clear_spare_pools!()
+println("\ndepot geometry check: $(npass[]) PASS / $(nfail[]) FAIL")
+nfail[] == 0 || error("depot geometry check had $(nfail[]) failure(s)")
+end
+
+# [점검 내용] 정박(station-keeping): 스페어마다 슬롯 좌표가 기록되는지, station_keeping_goal 이
+#   미파견 스페어에만 슬롯을 주고 파견(pop) 후에는 nothing 을 주는지(= 파견 로봇은 정상 주행 복귀).
+function check_station_keeping()
+npass = Ref(0); nfail = Ref(0)
+check(msg, cond) = (cond ? (npass[] += 1; println("  PASS  $msg")) :
+                           (nfail[] += 1; println("  FAIL  $msg")))
+
+CB.clear_spare_pools!()
+CB.set_spare_depot_distance!(25.0)
+st = CB.SceneTree()
+ids = CB.add_directional_spare_pools!(st; n_spare = 2)
+
+check("a slot is recorded for every spare",
+    all(haskey(CB.spare_slots(), r) for v in values(ids) for r in v))
+check("slot count equals spare count", length(CB.spare_slots()) == 8)
+
+east1 = ids[:east][1]
+slot = CB.station_keeping_goal(east1)
+check("station_keeping_goal returns a 2D slot for a parked spare",
+    slot !== nothing && length(slot) == 2)
+check("the east slot sits on the east depot (x = D)", slot[1] == 25.0)
+check("the slot matches the recorded body position",
+    slot == CB.spare_slots()[east1])
+
+# 파견되면(풀에서 제거되면) 더 이상 정박 대상이 아니다.
+while CB.is_spare(east1); CB.pop_spare!(:east); end
+check("a dispatched spare is no longer station-kept",
+    CB.station_keeping_goal(east1) === nothing)
+
+rid_other = CB.get_unique_id(CB.RobotID)
+check("a non-spare robot is never station-kept",
+    CB.station_keeping_goal(rid_other) === nothing)
+
+CB.clear_spare_pools!()
+check("clear_spare_pools! empties the slot store", isempty(CB.spare_slots()))
+
+println("\nstation-keeping check: $(npass[]) PASS / $(nfail[]) FAIL")
+nfail[] == 0 || error("station-keeping check had $(nfail[]) failure(s)")
+end
+
 # =============================================================================
 # scale_cap -- per-project, per-scale measurement of the "root-clear cap" (max distance
 #   from any relocatable sub-assembly's staging center to the nearest UN-RELOCATABLE root
@@ -604,6 +691,8 @@ const CHECKS = Dict(
     "stall_gate"   => check_stall_gate,
     "spare_pool"   => check_spare_pool,
     "hot_swap"     => check_hot_swap,
+    "depot_geometry" => check_depot_geometry,
+    "station_keeping" => check_station_keeping,
     "scale_cap"    => check_scale_cap,
     "rvo"          => check_rvo,
     "stack"        => check_stack,

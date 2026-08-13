@@ -347,6 +347,7 @@
 
   <section class="panel fleet">
     <div class="phead"><h2>Fleet States</h2><span class="count mono" id="fleetCount">—</span></div>
+    <div class="body" id="depotBody" style="border-bottom:1px solid #e5e5e5;padding:6px 8px"><div class="empty">no depots</div></div>
     <div class="body" id="fleetBody"><div class="empty">waiting for stream…</div></div>
   </section>
 
@@ -946,6 +947,7 @@
     $("oodN").textContent = ood.length;
 
     renderFleet(robots);
+    renderDepots(fr.depots || []);
     renderTree(fr.assemblies || []);
     renderFeed(ood);
     renderRecovery(fr.recovery || []);
@@ -982,6 +984,23 @@
     var tk = "";
     for(var i=0;i<=6;i++){ tk += '<span class="gtick" style="left:'+(i/6*100)+'%">'+fmtTime(tmax*i/6)+'</span>'; }
     gticks.innerHTML = tk;
+  }
+
+  /* 4방위 창고 재고. 응답 직후(재고가 줄어든 창고)를 눈에 띄게 하려고 available==0 을 흐리게 표시한다. */
+  function renderDepots(depots){
+    var el = $("depotBody");
+    if(!depots || !depots.length){ el.innerHTML = '<div class="empty">no depots</div>'; return; }
+    var order = {north:0, east:1, south:2, west:3};
+    /* `order[side]||9` 는 north=0 이 falsy 라 9 로 튕겨 NORTH 가 맨 뒤로 갔다. 명시적 hasOwnProperty 로 고친다. */
+    var rank = function(s){ return order.hasOwnProperty(s) ? order[s] : 9; };
+    var sorted = depots.slice().sort(function(a,b){ return rank(a.side)-rank(b.side); });
+    var h = '<div class="mono" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px">';
+    sorted.forEach(function(d){
+      var dim = (d.available === 0) ? ';opacity:.45' : '';
+      h += '<span title="center ('+d.center[0].toFixed(1)+', '+d.center[1].toFixed(1)+')" style="white-space:nowrap'+dim+'">'
+         + esc(d.side.toUpperCase()) + ' <b>' + d.available + '</b>/' + d.capacity + '</span>';
+    });
+    el.innerHTML = h + '</div>';
   }
 
   function renderFleet(robots){
@@ -1406,6 +1425,7 @@
     $("fleetN").textContent = "0";
     $("oodN").textContent = "0";
     renderFleet([]);
+    renderDepots([]);
     renderFeed([]);
     renderRecovery([]);
     renderTree([]);
@@ -1504,9 +1524,12 @@
     var runN = oodCountVal();
     var runSeed = seedVal();
     var runStreamUrl = streamFile(runBase, runCase, runN, "", runSeed);
+    // 이 런의 토큰. 서버가 발급하고 엔진이 사이드카에 남긴다. 화면에 올릴 프레임을 이걸로 고른다.
+    var myRunId = null;
     setBadge("err", "generating…");
     $("genHint").textContent = "Preparing the environment and simulation (OOD seed " + runSeed +
-      "). This may take several minutes.";
+      "). This may take several minutes." +
+      (isZoneCase(runCase) ? " Nothing is recorded until you confirm a zone on the floor plan." : "");
     fetch(CONFIG.CONTROL_URL + "/run", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({model: runModel, "case": runCase, interactive: !!opts.live, n: runN, seed: runSeed,
@@ -1525,14 +1548,25 @@
           toast(String(txt), "warn");
           return;
         }
+        // 성공 응답만 JSON 이다(busy/already running 은 위에서 평문으로 걸러졌다).
+        try { myRunId = JSON.parse(txt).run_id || null; } catch(e){ myRunId = null; }
         showLivePreparing();
         toast("Generation started for " + runCase + ". The replay will load automatically.", "ok");
         var tries = 0;
         genPoll = setInterval(function(){
           tries++;
-          fetch(runStreamUrl, {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; })
+          // 옛 녹화가 디스크에 그대로 있는 동안(env 빌드에 3~4분) "파일이 비었나"만 보면 그 옛 녹화를
+          // 라이브로 착각한다 — 실측: 존 케이스에서 사람이 그리기도 전에 자동 주입기의 구역이 피드에
+          // 떴다. 그래서 **내 런의 사이드카가 뜬 뒤에만** 스트림을 읽는다.
+          fetch(CONFIG.CONTROL_URL + "/runinfo", {cache:"no-store"})
+            .then(function(r){ return r.status === 200 ? r.json() : null; })
+            .then(function(info){
+              if(!info) return "";                                  // 아직 스트림이 안 열렸다
+              if(myRunId && info.run_id !== myRunId) return "";      // 다른 런의 것 — 화면에 올리지 않는다
+              return fetch(runStreamUrl, {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; });
+            })
             .then(function(t){
-              if(parseJSONL(t).length > 0){
+              if(t && parseJSONL(t).length > 0){
                 $("genHint").textContent = "Simulation running — replay frames are streaming.";
                 if(runModel===curModel && (runCase===curCase || opts.live)){
                   streamUrl=runStreamUrl;

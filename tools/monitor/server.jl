@@ -18,6 +18,7 @@ const PORT = parse(Int, get(ENV, "MONITOR_PORT", "8080"))
 const RUNNING = Set{String}()                           # 중복 스폰 방지
 
 const ACTIVE_KEY = Ref{Union{Nothing,String}}(nothing)
+const ACTIVE_RUN_ID = Ref{Union{Nothing,String}}(nothing)
 const LAST_RUN = Ref{Any}((state="idle", key=nothing, error=nothing, log=nothing))
 const COMMAND_DIR = joinpath(ROOT, "commands")
 mkpath(COMMAND_DIR)
@@ -26,6 +27,11 @@ safe_base(s) = replace(splitext(basename(String(s)))[1], r"[^A-Za-z0-9]+" => "_"
 command_path(key) = joinpath(COMMAND_DIR, "$(safe_base(key)).jsonl")
 # render_demo.jl 의 layout_path 와 **같은 규칙**이어야 한다(둘이 어긋나면 평면도가 영영 안 뜬다).
 layout_path(key) = joinpath(COMMAND_DIR, "$(safe_base(key)).layout.json")
+# run_header.jl 의 run_info_path_of(cmdfile) 와 **같은 파일**을 가리켜야 한다(어긋나면 엔진은
+# 사이드카를 쓰는데 서버는 다른 자리를 봐서 대시보드가 영영 기다린다). 이름을 일부러 다르게 둔다 —
+# 둘 다 문자열을 받으므로 같은 이름이면 디스패치가 구분하지 못한다.
+run_info_path(key) = joinpath(COMMAND_DIR, "$(safe_base(key)).run.json")
+new_run_id() = string(time_ns())
 # 구역이 사람이 정의하는 사건인 케이스. 이 셋은 조작자가 그리기 전에는 시뮬레이션을 시작하지 않는다.
 has_zone(case) = occursin("zone", String(case))
 available_models() = filter(f -> endswith(lowercase(f), ".mpd") || endswith(lowercase(f), ".ldr"),
@@ -53,7 +59,10 @@ _ctype(p) = endswith(p, ".html") ? "text/html; charset=utf-8" :
 
 function serve_file(path)
     isfile(path) || return HTTP.Response(404, cors(), "not found: $(basename(path))")
-    return HTTP.Response(200, [cors(); "Content-Type" => _ctype(path)], read(path))
+    hdrs = [cors(); "Content-Type" => _ctype(path)]
+    # 대시보드를 고쳐도 브라우저가 옛 파일을 쓰면 소용이 없다. html 은 항상 새로 받는다.
+    endswith(path, ".html") && push!(hdrs, "Cache-Control" => "no-store")
+    return HTTP.Response(200, hdrs, read(path))
 end
 
 "OOD 추첨 seed → 스트림/애니 파일 접미사. seed=1(기본)은 접미사 없음 = 기존 이름 그대로."
@@ -80,12 +89,16 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, 
     isempty(RUNNING) || return "busy — 다른 렌더 진행 중(동시 1개; MeshCat 포트 충돌 방지). 잠시 후 재시도."
     push!(RUNNING, key)
     ACTIVE_KEY[] = key
+    run_id = new_run_id()
+    ACTIVE_RUN_ID[] = run_id
     cmdfile = command_path(key)
     LAST_RUN[] = (state="starting", key=key, error=nothing, log=nothing)
     open(cmdfile, "w") do io end
     # 직전 세션의 평면도를 지운다. 안 지우면 대시보드가 **옛 배치 위에** 구역을 그리게 되는데,
     # 모델이나 로봇 수가 바뀌었으면 그건 이 런에 없는 자리다(그리고 화면상으로는 구분이 안 된다).
     try rm(layout_path(key); force=true) catch end
+    # 직전 런의 사이드카도 지운다. 남겨 두면 대시보드가 옛 런의 토큰을 보고 옛 녹화를 새 런으로 오인한다.
+    try rm(run_info_path(key); force=true) catch end
     @async begin
         try
             println("[server] spawn: model=$model case=$case")
@@ -106,6 +119,7 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, 
                 "DEMO_SEED" => string(seed),
                 "MONITOR_COMMAND_FILE" => cmdfile,
                 "MONITOR_INTERACTIVE" => (interactive ? "1" : "0"),
+                "MONITOR_RUN_ID" => run_id,
                 # 라이브 zone 케이스(③⑤⑥)는 조작자가 평면도에 구역을 그릴 때까지 **시작하지 않는다**.
                 # MONITOR_WAIT(마감 있는 대기)로는 시간이 지나면 zone 없이 출발해 버린다.
                 "MONITOR_REQUIRE_ZONE" => (interactive && has_zone(case) ? "1" : "0"),
@@ -128,7 +142,9 @@ function spawn_run(model, case; interactive::Bool=false, n::Int=0, seed::Int=1, 
             ACTIVE_KEY[] == key && (ACTIVE_KEY[] = nothing)
         end
     end
-    return "started"
+    # 성공 응답만 JSON 이다. "busy — …" / "already running" 은 평문으로 남겨야 한다 —
+    # dashboard.html:1541 이 그 두 문자열을 정규식으로 판별한다.
+    return JSON3.write((; status = "started", run_id = run_id))
 end
 
 function router(req)
@@ -153,6 +169,11 @@ function router(req)
         if req.method == "POST" && path == "/inject/zone"
             key = ACTIVE_KEY[]
             key === nothing && return HTTP.Response(409, cors(), "no active simulation; start a run first")
+            # 평면도가 나오기 전에 도착한 주입은 조작자가 고른 것일 수 없다(평면도는 env 빌드 뒤에 나온다).
+            # 2026-08-12 실측: 런 시작 14ms 뒤에 도착한 구역이 존 케이스를 사람이 정의하지 않은 런으로
+            # 만들었다. 출처는 규명하지 못했으므로 조건을 막는다.
+            isfile(layout_path(key)) || return HTTP.Response(409, cors(),
+                "floor plan not published yet — draw the zone after it appears")
             b = JSON3.read(String(req.body))
             x = Float64(b[:x]); y = Float64(b[:y]); r = Float64(b[:r])
             all(isfinite, (x, y, r)) || return HTTP.Response(400, cors(), "x, y and r must be finite")
@@ -173,6 +194,15 @@ function router(req)
             isfile(p) || return HTTP.Response(204, cors())
             return HTTP.Response(200, [cors(); "Content-Type" => "application/json"], read(p))
         end
+        # 활성 런의 사이드카. 대시보드는 이 토큰이 자기 것과 같을 때만 스트림을 화면에 올린다.
+        # 아직 스트림이 열리지 않았으면 204 — 존 런에서는 조작자가 구역을 확정할 때까지 그렇다.
+        if req.method == "GET" && path == "/runinfo"
+            key = ACTIVE_KEY[]
+            key === nothing && return HTTP.Response(409, cors(), "no active simulation; start a run first")
+            p = run_info_path(key)
+            isfile(p) || return HTTP.Response(204, cors())
+            return HTTP.Response(200, [cors(); "Content-Type" => "application/json"], read(p))
+        end
         # 구역 정의를 그만둔다. 게이트가 마감 없이 기다리므로 취소 경로가 없으면 프로세스가 영영 남는다.
         if req.method == "POST" && path == "/abort"
             key = ACTIVE_KEY[]
@@ -184,7 +214,8 @@ function router(req)
         end
         if req.method == "GET" && path == "/status"
             return HTTP.Response(200, [cors(); "Content-Type" => "application/json"],
-                JSON3.write((active = ACTIVE_KEY[], running = collect(RUNNING), last = LAST_RUN[])))
+                JSON3.write((active = ACTIVE_KEY[], run_id = ACTIVE_RUN_ID[],
+                             running = collect(RUNNING), last = LAST_RUN[])))
         end
         if req.method == "GET" && path == "/live/ready"
             ready = false
@@ -239,6 +270,10 @@ function router(req)
     end
 end
 
-println("[server] http://127.0.0.1:$PORT   (dashboard + streams + POST /run)")
-println("[server] root=$ROOT")
-HTTP.serve(router, "127.0.0.1", PORT)
+# 스크립트로 실행할 때만 포트를 연다. 검사에서 include 할 수 있어야 하기 때문
+# (include 하면 라우터 함수만 쓰고 서버는 안 띄운다).
+if abspath(PROGRAM_FILE) == @__FILE__
+    println("[server] http://127.0.0.1:$PORT   (dashboard + streams + POST /run)")
+    println("[server] root=$ROOT")
+    HTTP.serve(router, "127.0.0.1", PORT)
+end
