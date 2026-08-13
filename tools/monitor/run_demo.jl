@@ -645,6 +645,10 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             #      에너지(energy_per_closed)를 같이 남긴다. min_soc 는 마모 신호(가장 나쁜 로봇).
             "dt" => (try Float64(env.dt) catch; nothing end),
             "sim_seconds" => (try Float64(env.dt) * result.steps catch; nothing end),
+            # 실현 makespan[sim s] — 이 레인은 return_env_before_sim=true 로 수동 루프를 돌기 때문에
+            # 플래너의 stats[:Makespan] 이 존재하지 않는다. 실현 시간 = dt × steps 가 곧 makespan 이다.
+            # sim_seconds 와 같은 값이지만, 목적함수 J 의 소비처가 이름으로 읽게 하려고 별도 키로 낸다.
+            "makespan" => (try Float64(env.dt) * result.steps catch; nothing end),
             "wall_seconds" => round(WALL_S; digits = 1),
             "spares_left" => (try length(CB.active_spares()) catch; -1 end),
             "battery" => (try

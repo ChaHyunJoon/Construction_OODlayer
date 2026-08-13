@@ -339,6 +339,15 @@ function run_one(prod; inject::Bool = true, hz_seed::Union{Nothing,Int} = nothin
             closed    = length(env.cache.closed_set),
             total     = length(CB.get_nodes(env.sched)),
             makespan  = try Float64(get(stats, :Makespan, NaN)) catch; NaN end,
+            # 실현 구동에너지[J] — 목적함수 J 의 완주 분기가 쓰는 값(objective.json, spec §3).
+            # 배터리 레이어가 꺼져 있거나 report 가 실패하면 NaN(J 계산 시 에러로 드러난다).
+            energy_J  = (try
+                    local _fl = CB.BATTERY_FLEET[]
+                    _fl === nothing ? NaN : Float64(CB.battery_report(_fl).total_energy_J)
+                catch e
+                    @warn "[MC] battery_report 실패 — energy_J=NaN" exception = e
+                    NaN
+                end),
             seen      = SEEN[], n_events = N_EVENTS[],
             # 사후(post-decision) 고장 수 — rollout 들이 정말 서로 다른 미래를 겪었는지의 증거
             hz_break = hz.n_break, hz_cell = hz.n_cell, hz_zone = hz.n_zone,
@@ -347,17 +356,20 @@ function run_one(prod; inject::Bool = true, hz_seed::Union{Nothing,Int} = nothin
 end
 
 # ---- CSV shard I/O (parallel units) -------------------------------------------------------
-const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent"
+const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent,energy_J"
 function append_unit!(a::Int, k::Int, hz_seed::Int, r)
     mkpath(OUTDIR)
     isfile(UNITCSV) || open(io -> println(io, CSV_HEADER), UNITCSV, "w")
     open(UNITCSV, "a") do io
-        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s\n",
+        # energy_J 는 makespan 과 같은 컨벤션으로 미완주/비유한 값을 -1.0 로 센티넬한다(CSV 는
+        # 헤더 이름으로 읽는 소비처(step6_gap.py)와 위치로 읽는 read_units() 양쪽에 안전해야 한다).
+        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%.4f\n",
                 a, k, hz_seed, r.complete ? "true" : "false", r.closed, r.total,
                 isfinite(r.makespan) ? r.makespan : -1.0, scalar_cost(r),
                 r.hz_break, r.hz_cell, r.hz_zone, r.hz_pending_break,
                 r.hz_capped ? "true" : "false", r.hz_sim_s,
-                r.seen === nothing ? "none" : r.seen.agent)
+                r.seen === nothing ? "none" : r.seen.agent,
+                isfinite(r.energy_J) ? r.energy_J : -1.0)
     end
 end
 
@@ -375,6 +387,7 @@ function read_units()
         f = split(strip(line), ",")
         length(f) < 15 && continue
         try
+            # f[16](energy_J) 는 이 필드가 추가되기 전 샤드 CSV 에는 없다 — 있으면 파싱, 없으면 NaN.
             push!(rows, (action = parse(Int, f[1]), rollout = parse(Int, f[2]),
                          hz_seed = parse(Int, f[3]), complete = f[4] == "true",
                          closed = parse(Int, f[5]), total = parse(Int, f[6]),
@@ -382,7 +395,8 @@ function read_units()
                          hz_break = parse(Int, f[9]), hz_cell = parse(Int, f[10]),
                          hz_zone = parse(Int, f[11]), hz_pending = parse(Int, f[12]),
                          hz_capped = f[13] == "true", hz_sim_s = parse(Float64, f[14]),
-                         agent = f[15]))
+                         agent = f[15],
+                         energy_J = length(f) >= 16 ? parse(Float64, f[16]) : NaN))
         catch; end
     end
     # (action, rollout) 중복 제거 — 같은 유닛을 재실행했거나 샤드가 겹치면 그대로 두 번 세어져
