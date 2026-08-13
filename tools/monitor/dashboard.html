@@ -329,11 +329,15 @@
            'auto' = 정책별 녹화가 없던 시절의 기존 파일(tractor__<case>.jsonl). -->
       <label title="Which recording to view: the one where THIS policy was actually enacted. What each policy WOULD have chosen is switched in the Re-Specification panel below (policy is orthogonal to case).">Enacted policy
         <select id="enactSel">
+          <!-- 2026-08-13: 기본 선택을 'auto' 에서 'dspy' 로 옮긴다. 'auto' 는 정책 접미사가 없는
+               옛 파일(tractor__<case>.jsonl)을 찾는데, 30시드 스윕 녹화는 전부
+               tractor__<case>__<policy>.jsonl 이라 기본 상태로 열면 "stream not found" 가 떴다.
+               정책 선택기를 바꾸면 같은 케이스의 noop / surrogate / dspy 녹화로 즉시 전환된다. -->
           <option value="">auto (legacy / router run)</option>
           <option value="noop">noop (fixed · no-adapt baseline)</option>
           <option value="canonical">canonical (fixed)</option>
           <option value="surrogate">surrogate (fixed)</option>
-          <option value="dspy">DSPy (fixed)</option>
+          <option value="dspy" selected>DSPy (fixed)</option>
           <option value="router">router (per-event: LLM if novel, surrogate if familiar)</option>
         </select>
       </label>

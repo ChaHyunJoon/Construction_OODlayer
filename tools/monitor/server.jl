@@ -36,8 +36,11 @@ new_run_id() = string(time_ns())
 has_zone(case) = occursin("zone", String(case))
 available_models() = filter(f -> endswith(lowercase(f), ".mpd") || endswith(lowercase(f), ".ldr"),
                             readdir(joinpath(REPO, "LDraw_files")))
+# 2026-08-13: `all` 을 넣는다. `run_demo.jl:99` 가 이미 `[:fault, :battery, :zone]` 로 지원하는데
+# 이 집합에만 빠져 있어서, 대시보드가 그 케이스를 **재생은 하고 라이브 실행은 400** 으로 거절했다
+# (30시드 스윕이 `all` 을 포함해 녹화를 남기면서 드러났다).
 const VALID_CASES = Set(["none", "battery", "fault", "zone", "fault_battery", "fault_zone",
-                         "battery_zone", "battery_mild"])
+                         "battery_zone", "battery_mild", "all"])
 
 # 정책 비교용 케이스: 같은 "애매한" 배터리 사건(SoC≈0.55)을 규칙 / DSPy 가 각각 결정한다.
 # 케이스 이름 → run_demo.jl 에 넘길 (실제 OOD 케이스, 추가 환경변수).
