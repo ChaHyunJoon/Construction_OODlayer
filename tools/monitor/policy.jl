@@ -498,11 +498,51 @@ function oracle_macro(env, truth)
         # 진단이 없거나 구역이 죽었으면 run_demo 요약의 zone_primitives 도 비고(아래 zone 블록이
         # 같은 조건으로 기록한다) reference_policy.py:199 가 그 사건을 unscored 로 뺀다.
         (zdg === nothing || !zdg.exists) && return canonical_macro(env, truth)
-        # 막힌 것이 **항법 목표**이고 root 하역목표는 안 걸렸을 때만 전역 이동이 값을 한다
-        # (zcausal_reform STEP 10: blk 279 완주 vs NOOP 254 정지 / cov 는 반대로 뒤집힌다).
-        # 막힘>0 하나만 보는 규칙은 2사건 중 1개만 맞는다.
-        (zdg.n_nav_blocked > 0 && zdg.root_covered == 0) &&
-            return ("RelocateBuild" in vm ? "RelocateBuild" : "ForbidZone")
+        # (1) **개입할 이유가 있는가** -- 여기까지는 reference_policy.py:203 과 글자 그대로 같다.
+        #     막힌 것이 **항법 목표**이고 root 하역목표는 안 걸렸을 때만 공간형 팔이 값을 한다
+        #     (zcausal_reform STEP 10: blk 279 완주 vs NOOP 254 정지 / cov 는 반대로 뒤집힌다).
+        (zdg.n_nav_blocked > 0 && zdg.root_covered == 0) || return "NOOP"
+        # ---------------------------------------------------------------------------------
+        # (2) **그 팔이 지금 실제로 무엇을 할 수 있는가** (2026-08-13 추가)
+        #     원칙은 이 저장소가 이미 적어 둔 것이다(dspy_service.py:96):
+        #     "legal 은 kind 가 아니라 그 순간 그 팔이 실제로 무언가를 할 수 있는가로 정해져야 한다."
+        #
+        #     ⓐ ForbidZone 은 도메인이 비면 **별개의 팔이 아니다.** restage_all_blocked! 이
+        #        :residual_blocked 를 내면 maybe_respecify! 가 자동으로 whole-build 평행이동으로
+        #        격상한다. 2026-08-13 실측(zone s1, DEMO_FORCE_MACRO 교차): ForbidZone 판과
+        #        RelocateBuild 판이 closed 270 · sim 138.425 · steps 5537 로 **완전히 같았고**,
+        #        로그에 `[zone] staging=none final=translated` 가 남았다. 그래서 실제 선택지는
+        #        "전역 평행이동인가 아닌가" 둘뿐이며, ForbidZone 은 `n_restage_feasible > 0`
+        #        (= 실제로 옮길 조립체가 있다) 일 때만 자기 이름값을 한다.
+        #
+        #     ⓑ 전역 평행이동은 **빌드 프레임 밖에 돌아올 로봇이 없을 때만** 수복이다.
+        #        verifier.jl RELOCATE_GATE 독스트링이 이미 그 위험을 적어 뒀다("it moves every
+        #        future goal and staging circle at once, while carriers are mid-transit").
+        #        depot 에서 몸체를 갈아 끼운 역할(hot_swap_robot! :via_depot)은 창고 자리에서 다시
+        #        등장해 빌드까지 **걸어 돌아와야** 하고, 그 사실이 `mark_recovery_spare!` 로
+        #        RECOVERY_SPARES 에 남는다. 그 상태에서 빌드를 통째로 옮기면 그 로봇의 목표가
+        #        발밑에서 사라진다.
+        #        2026-08-13 실측(seed 1, 같은 구역·같은 Δ=[-1.75984, -1.60557]):
+        #          battery_zone: closed=58 에 SwapBattery(창고 왕복 없음) → RECOVERY_SPARES 빈 채로
+        #                        closed=100 에 RelocateBuild → **완주 291/313** (30.3 s)
+        #          fault_zone  : closed=58 에 Replace(:via_depot)         → closed=99 에
+        #                        RelocateBuild → **stall 186/313** (2판 소수점까지 동일)
+        #        두 판의 zone_primitives 는 n_teams_forming(3 vs 5) 말고 **전부 동일**하다
+        #        (nav_goals 112 · nav_blocked 3 · root 0/8 · n_restage_feasible 0 · relocate_feasible).
+        #        즉 구역 기하만으로는 두 사건을 구분할 수 없다 — 구분하는 것은 "빌드 밖에 돌아올
+        #        로봇이 있는가" 라는 **상태**다. 복구 사다리로는 못 푼다(DEMO_REFORM_MAX 6 → 186,
+        #        12 → 191, 둘 다 stall).
+        #
+        #     ⚠ 이 가지는 **reference_policy.py 와 의도적으로 갈린다.** 저쪽은 RECOVERY_SPARES 를
+        #       볼 수 없어(요약의 zone_primitives 에 그 칸이 없다) 언제나 RelocateBuild 를 낸다.
+        #       그래서 Replace 가 선행한 zone 사건에서 oracle 레인의 결정 적중률은 1.0 미만이 된다.
+        #       그 값을 1.0 으로 되돌리려면 reference_policy.py 의 zone 규칙도 같이 고쳐야 하는데,
+        #       그러면 이미 발행된 표의 decision_acc 열이 전부 조용히 재채점된다
+        #       (build_md_report.py:417 이 같은 이유로 그 파일을 고정해 뒀다). 그래서 **여기만**
+        #       고치고 갈림을 보고서에 명시한다.
+        local returning = try !isempty(CB.recovery_spares()) catch; false end
+        (!returning && zdg.relocate_feasible && "RelocateBuild" in vm) && return "RelocateBuild"
+        (zdg.n_restage_feasible > 0 && "ForbidZone" in vm) && return "ForbidZone"
         return "NOOP"
     end
     # reform 등: 실측 격자가 없어 a* 가 미정의다(reference_policy.py:208 이 unscored 로 뺀다).

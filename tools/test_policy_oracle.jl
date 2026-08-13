@@ -143,6 +143,57 @@ check("등록 안 된 구역(진단 불가) -> canonical 에 위임",
       oracle_macro(env, t_ghost) == canonical_macro(env, t_ghost),
       "oracle=$(oracle_macro(env, t_ghost)) canonical=$(canonical_macro(env, t_ghost))")
 
+println("\n== 3b. zone 축 -- 전역 이동은 '빌드 밖에 돌아올 로봇' 이 없을 때만 legal (2026-08-13) ==")
+# 왜 이 절이 있는가: 2026-08-13 실측에서 `fault_zone` seed 1 이 a* 를 그대로 집행하면 closed=186 에서
+# 멎었다(2판 소수점까지 동일). 같은 구역·같은 Δ 인데 `battery_zone` seed 1 은 완주(291)한다. 두 판의
+# zone_primitives 는 n_teams_forming 말고 전부 같다 -- 구역 기하로는 구분이 불가능하고, 구분하는 것은
+# **closed=58 의 Replace 가 로봇을 depot 으로 빼돌렸는가**(RECOVERY_SPARES)라는 상태다.
+# ⚠ 그래서 이 가지는 reference_policy.py 와 **의도적으로 갈린다**(그쪽은 이 상태를 볼 칸이 없다).
+CB.clear_recovery_spares!()
+navs = try CB._nav_goal_targets(env) catch; NamedTuple[] end
+# ★ 이 탐색은 **함수 안**에 있어야 한다. 스크립트 최상위의 `for` 는 soft scope 라 루프 안에서
+#   전역에 대입하면 새 지역변수가 만들어지고(비대화형에서는 경고만 나고 전역은 nothing 그대로),
+#   "구역을 못 만들었다"는 거짓 실패가 난다 -- 실제로 처음 작성했을 때 그 함정에 빠졌다.
+# 찾는 상태: 항법 목표를 실제로 막고(n_nav_blocked>0), root 하역목표는 안 걸리고(root_covered==0),
+#   전역 이동이 가능하고(relocate_feasible), **국소 재적치 도메인은 비어 있는**(n_restage_feasible==0)
+#   구역 -- 실판에서 관측된 zone 사건이 정확히 이 모양이다(fault_zone/battery_zone/zone 전부).
+function _find_blocking_zone(env, navs)
+    for t in navs, r in (0.07, 0.15, 0.3)
+        CB.clear_restriction_zones!()
+        CB.add_restriction_zone!(:blocker, [t.goal[1], t.goal[2]], r)
+        zd = try CB.zone_diagnosis(env, :blocker) catch; nothing end
+        zd === nothing && continue
+        (zd.n_nav_blocked > 0 && zd.root_covered == 0 && zd.relocate_feasible &&
+         zd.n_restage_feasible == 0) && return zd
+    end
+    return nothing
+end
+zd_blk = _find_blocking_zone(env, navs)
+if zd_blk === nothing
+    check("사전조건: 항법 목표를 실제로 막는 구역을 만들 수 있다", false,
+          "nav_goal 후보 $(length(navs))개로 못 만들었다")
+else
+    t_blk = CB.ZoneTruth(:blocker, Vector{Float64}(zd_blk.center), zd_blk.radius, nothing)
+    println("    :blocker -> nav_blocked=$(zd_blk.n_nav_blocked) root_covered=$(zd_blk.root_covered) " *
+            "restage_feasible=$(zd_blk.n_restage_feasible) relocate_feasible=$(zd_blk.relocate_feasible)")
+    check("사전조건: 막힘>0 & root 0 (개입할 이유가 있는 상태)",
+          zd_blk.n_nav_blocked > 0 && zd_blk.root_covered == 0)
+    CB.clear_recovery_spares!()
+    check("돌아올 로봇이 없으면 전역 이동(= reference_policy 와 같은 답)",
+          oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
+    CB.mark_recovery_spare!(CB.RobotID(1))       # depot 에서 몸체를 갈고 돌아오는 중인 역할이 하나 생겼다
+    check("depot 에서 돌아올 로봇이 있으면 전역 이동은 legal 이 아니다 -> NOOP",
+          oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
+    check("그리고 그 답은 여전히 메뉴 안이다",
+          oracle_macro(env, t_blk) in valid_macros(env, t_blk),
+          "menu=$(valid_macros(env, t_blk))")
+    CB.clear_recovery_spares!()
+    check("복귀 상태를 지우면 원래 답으로 돌아온다(상태 의존이지 영구 변경이 아니다)",
+          oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
+end
+CB.clear_restriction_zones!()
+CB.add_restriction_zone!(:faraway, [500.0, 500.0], 1.0)   # 5절이 t_far 를 다시 쓰므로 복원
+
 println("\n== 4. reform 축 -- 실측 격자가 없으므로 canonical 에 위임 ==")
 # ★ 이 lane 의 핵심. NOOP 으로 떨어지면 재형성이 필요한 교착을 그대로 두게 되고, 그것이 곧
 #   미완주다(README §6: 복구를 되살린 처방이 DEMO_REFORM). reference_policy.py:208 은 이 사건을
