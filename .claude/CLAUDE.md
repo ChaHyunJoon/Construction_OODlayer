@@ -11,11 +11,11 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 - **현행 배포 학습셋** = `oracle/out/n44_plus78.jsonl`. 계약: `python test_surrogate_support.py`
   → `support=[0, 1, 2, 3, 4, 7, 8]` (7/7 PASS). 이게 "현행 세대인가"의 유일한 기계적 판정이다.
-- **현행 측정 문서는 `md/RESULTS_FARDEPOT_2026-08-12.md` 하나뿐** (2026-08-12 갱신 — 창고 거리
-  기본값이 `D=40.0`(원거리)로 바뀌었고, 그 기하에서 재유도한 기준 정책 + 4지표 결과 행렬이 이
-  문서다). `md/RESULTS_LLM7H.md` 는 **가까운 창고 기하**에서 잰 구세대 수치이며 🔴 배너가 붙었다.
-  다른 md 의 수치를 현재 성능으로 인용하지 말 것 — 구세대 결과 문서에는 전부 🔴 세대 표시 배너가
-  붙어 있다.
+- **현행 측정 문서는 `md/RESULTS_D20_2026-08-12.md` 하나뿐** (2026-08-12 갱신 — 창고 거리
+  기본값이 `D=20.0`(근거리)로 바뀌었고, 그 기하에서 재유도한 기준 정책 + 4지표 결과 행렬이 이
+  문서다). `md/RESULTS_FARDEPOT_2026-08-12.md`(D=40) 와 `md/RESULTS_LLM7H.md` 는 구세대 수치이며
+  🔴 배너가 붙었다. 다른 md 의 수치를 현재 성능으로 인용하지 말 것 — 구세대 결과 문서에는 전부
+  🔴 세대 표시 배너가 붙어 있다.
 - **삭제됨**: `oracle/out` 의 08-06 이전 런 전부(145MB→5MB), `artifacts_{mdp,assimilation,openworld,classifier}`,
   `figs/`, sweep_lab 리포트(LLM 프로그램 `.json` 만 잔존), 루트 `results/`, `docs/src/*_visualization.html`,
   `tools/monitor/{anim,streams,regen_case_logs}`, 구세대 모델 `surrogate_{linear,hotswap,v2}.json`.

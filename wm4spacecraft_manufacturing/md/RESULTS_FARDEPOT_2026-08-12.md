@@ -1,5 +1,7 @@
 # 원거리 창고 기하 — 4지표 결과 행렬 (2026-08-12)
 
+> 🔴 **구세대(D=40) 측정치.** 현재 성능은 `RESULTS_D20_2026-08-12.md` 를 볼 것.
+
 작성 2026-08-12. 선행: `DEPOT_DISTANCE_SWEEP_2026-08-12.md`(D=40 결정) · `ORACLE_REBUILD_2026-08-09.md`
 (격자 파라미터 단일 진실원) · `RESULTS_LLM7H.md`(구세대, 가까운 창고 — 이제 이 문서로 대체됨).
 계획: `.superpowers/sdd/2026-08-12-far-depots-and-metric-matrix/`(task-1 ~ task-10 브리프).
