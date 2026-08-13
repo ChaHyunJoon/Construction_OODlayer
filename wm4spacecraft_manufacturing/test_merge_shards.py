@@ -91,4 +91,56 @@ with tempfile.TemporaryDirectory() as tmp:
     check("두 번 돌려도 같은 파일 (덮어쓰기, 이어붙이기 아님)", first == second,
           "len %d vs %d" % (len(first), len(second)))
 
+# ---- 행의 자기 신고 검사 (2026-08-13) --------------------------------------------------
+# 병합기는 오래 행을 **디렉토리 이름**으로만 키잉했다. 샤드가 엉뚱한 자리에 놓이면 한 시드가
+# 중복되고 다른 시드가 통째로 빠지는데, 행 수는 그대로 90 이라 `OK 90/90` 이 나온다.
+with tempfile.TemporaryDirectory() as tmp:
+    shards = os.path.join(tmp, "shards"); out = os.path.join(tmp, "out")
+    build_shards(shards, "battery", [1, 2, 3], POLICIES)
+    # s3/ 자리에 seed=1 을 신고하는 행을 넣는다 (= s1 샤드를 s3 로 복사한 꼴).
+    d = os.path.join(shards, "battery", "s3")
+    with open(os.path.join(d, "rows.jsonl"), "w", encoding="utf-8") as fh:
+        for p in POLICIES:
+            fh.write(json.dumps(row("battery", 1, p)) + "\n")
+    rc, log = run_merge(shards, out, "battery", "1,2,3", ",".join(POLICIES))
+    check("자리를 잘못 잡은 샤드(행의 ood_seed 불일치)는 실패", rc == 1, "rc=%d" % rc)
+    check("행이 신고한 ood_seed 를 찍는다", "ood_seed=1" in log, log.strip()[-400:])
+    check("행 수만으로 OK 를 내지 않는다", "OK " not in log, log.strip()[-400:])
+
+with tempfile.TemporaryDirectory() as tmp:
+    shards = os.path.join(tmp, "shards"); out = os.path.join(tmp, "out")
+    build_shards(shards, "battery", [1, 2], POLICIES)
+    # battery/s2 안에 case=fault 를 신고하는 행을 심는다.
+    d = os.path.join(shards, "battery", "s2")
+    with open(os.path.join(d, "rows.jsonl"), "w", encoding="utf-8") as fh:
+        for p in POLICIES:
+            fh.write(json.dumps(row("fault", 2, p)) + "\n")
+    rc, log = run_merge(shards, out, "battery", "1,2", ",".join(POLICIES))
+    check("자리를 잘못 잡은 샤드(행의 case 불일치)도 실패", rc == 1, "rc=%d" % rc)
+    check("행이 신고한 case 를 찍는다", "case='fault'" in log, log.strip()[-400:])
+
+# ---- 불완전 병합은 출력 파일을 남기지 않는다 (2026-08-13) --------------------------------
+# rc=1 을 내기 전에 이미 <case>.jsonl 을 써 두면, rc 를 보지 않는 다음 도구가 그 부분 파일을
+# 완전한 결과인 양 먹는다.
+with tempfile.TemporaryDirectory() as tmp:
+    shards = os.path.join(tmp, "shards"); out = os.path.join(tmp, "out")
+    build_shards(shards, "battery", [1, 2, 3], POLICIES, skip={(2, "dspy")})
+    rc, log = run_merge(shards, out, "battery", "1,2,3", ",".join(POLICIES))
+    check("불완전 병합은 rc=1", rc == 1, "rc=%d" % rc)
+    check("불완전 병합은 <case>.jsonl 을 만들지 않는다",
+          not os.path.exists(os.path.join(out, "battery.jsonl")),
+          "존재 여부=%s" % os.path.exists(os.path.join(out, "battery.jsonl")))
+
+with tempfile.TemporaryDirectory() as tmp:
+    shards = os.path.join(tmp, "shards"); out = os.path.join(tmp, "out")
+    build_shards(shards, "battery", [1, 2, 3], POLICIES)
+    rc, _ = run_merge(shards, out, "battery", "1,2,3", ",".join(POLICIES))
+    good = open(os.path.join(out, "battery.jsonl"), encoding="utf-8").read()
+    # 같은 out 디렉토리에 대고 이번엔 망가진 샤드 트리로 병합한다.
+    os.remove(os.path.join(shards, "battery", "s2", "rows.jsonl"))
+    rc2, _ = run_merge(shards, out, "battery", "1,2,3", ",".join(POLICIES))
+    after = open(os.path.join(out, "battery.jsonl"), encoding="utf-8").read()
+    check("실패한 재병합이 기존 완전본을 덮어쓰지 않는다", rc2 == 1 and after == good,
+          "rc2=%d, 같은 내용=%s" % (rc2, after == good))
+
 sys.exit(1 if FAILED else 0)

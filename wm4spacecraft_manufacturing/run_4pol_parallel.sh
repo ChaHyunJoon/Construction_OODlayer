@@ -108,10 +108,22 @@ worker() {
     bash "$HERE/run_shard.sh" "$case" "$seed" "$outdir"
     rc=$?
     dt=$(( $(date +%s) - t0 ))
-    rows=0
-    [ -f "$outdir/rows.jsonl" ] && rows=$(grep -c . "$outdir/rows.jsonl" 2>/dev/null || echo 0)
+    rows=$(count_rows "$outdir/rows.jsonl")
     record_status "$case" "$seed" "$([ $rc -eq 0 ] && echo ok || echo fail)" "$rows" "$dt"
     return 0        # 샤드 하나가 죽어도 스윕 전체는 계속 간다. 집계는 병합기가 판정한다.
+}
+
+# 파일이 없거나 비어도 **정수 하나만** 낸다(run_shard.sh 와 같은 헬퍼).
+# 여기 있던 `rows=$(grep -c . "$f" 2>/dev/null || echo 0)` 는 조용히 틀렸다: grep -c 는 매치가
+# 0건이어도 stdout 에 "0" 을 찍고 rc=1 로 끝나므로 `|| echo 0` 까지 같이 터져 rows 가 "0\n0"
+# 두 줄이 된다. 그 값이 record_status 의 printf 로 들어가면 JSON 한 줄이 두 줄로 쪼개져
+# 둘 다 파싱 불가가 되고, 아래 요약 파서는 JSONDecodeError 를 그냥 continue 로 삼킨다 --
+# 그래서 **실패한 샤드가 리포트에서 통째로 사라지고** 운영자는 fail 0 을 읽는다.
+count_rows() {
+    local f="$1" n
+    [ -f "$f" ] || { echo 0; return; }
+    n=$(grep -c . "$f" 2>/dev/null)
+    echo "${n:-0}"
 }
 
 # status 한 줄은 200 B 미만이라 O_APPEND 로 원자적이지만, flock 을 걸어 확실히 한다.
@@ -124,7 +136,7 @@ record_status() {
     ) 9>"$LOCK_FILE"
 }
 
-export -f worker record_status
+export -f worker record_status count_rows
 
 # ---- 실행 --------------------------------------------------------------
 echo "=== 시작 $(date +%F' '%H:%M:%S) ==="
@@ -132,11 +144,15 @@ xargs -a "$JOBLIST" -n 2 -P "$JOBS" bash -c 'worker "$@"' _
 echo "=== 종료 $(date +%F' '%H:%M:%S) ==="
 
 # ---- 요약 --------------------------------------------------------------
+# 요약은 **끝까지 다 찍고 나서** 종료 코드를 정한다. 예전에는 마지막이 무조건 `exit 0` 이라
+# 실패 샤드가 몇 개든, `기록된 샤드 N / 계획 M` 이 어긋나든 오케스트레이터는 성공을 보고했다.
+# 밤새 도는 스윕을 rc 로 감시하는 쪽에서는 그게 곧 "문제 없음" 이라 아무도 재시도하지 않는다.
 "$REPO/.venv/bin/python" - "$STATUS_FILE" "$TOTAL" <<'PYEOF'
 import json, sys
 from collections import Counter
 path, total = sys.argv[1], int(sys.argv[2])
 seen, counts = {}, Counter()
+bad_lines = 0
 with open(path, encoding="utf-8") as fh:
     for line in fh:
         line = line.strip()
@@ -145,6 +161,9 @@ with open(path, encoding="utf-8") as fh:
         try:
             r = json.loads(line)
         except json.JSONDecodeError:
+            # 예전에는 여기서 조용히 continue 했다. record_status 가 깨진 줄을 쓰면(과거의
+            # rows="0\n0" 버그) 그 샤드가 리포트에서 통째로 사라졌다 -- 이제는 세어서 알린다.
+            bad_lines += 1
             continue
         seen[(r["case"], r["seed"])] = r["status"]      # 재실행 시 마지막 기록이 이긴다
 for st in seen.values():
@@ -153,11 +172,35 @@ print("===== 샤드 요약 =====")
 for st in ("ok", "fail", "deadline"):
     print("  %-9s %d" % (st, counts[st]))
 print("  기록된 샤드 %d / 계획 %d" % (len(seen), total))
+if bad_lines:
+    print("  파싱 불가한 status 줄 %d개 -- 그만큼의 샤드가 이 요약에서 빠져 있다: %s"
+          % (bad_lines, path))
 if counts["fail"]:
     print("  실패 샤드:")
     for (c, s), st in sorted(seen.items()):
         if st == "fail":
             print("    case=%s seed=%s" % (c, s))
-PYEOF
+if counts["deadline"]:
+    print("  데드라인으로 투입되지 않은 샤드:")
+    for (c, s), st in sorted(seen.items()):
+        if st == "deadline":
+            print("    case=%s seed=%s" % (c, s))
 
-exit 0
+problems = []
+if counts["fail"]:
+    problems.append("실패 샤드 %d개" % counts["fail"])
+if counts["deadline"]:
+    problems.append("데드라인으로 못 돈 샤드 %d개" % counts["deadline"])
+if len(seen) < total:
+    problems.append("기록된 샤드가 %d개로 계획(%d)보다 모자람" % (len(seen), total))
+if bad_lines:
+    problems.append("파싱 불가한 status 줄 %d개" % bad_lines)
+if problems:
+    print("\n[verdict] 스윕 미완: " + ", ".join(problems)
+          + " -- 병합/리포트 전에 재시도할 것.")
+    sys.exit(1)
+print("\n[verdict] 계획한 샤드 %d개 전부 ok." % total)
+PYEOF
+summary_rc=$?
+
+exit "$summary_rc"

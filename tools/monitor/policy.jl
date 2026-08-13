@@ -522,6 +522,33 @@ function oracle_macro(env, truth)
         #        등장해 빌드까지 **걸어 돌아와야** 하고, 그 사실이 `mark_recovery_spare!` 로
         #        RECOVERY_SPARES 에 남는다. 그 상태에서 빌드를 통째로 옮기면 그 로봇의 목표가
         #        발밑에서 사라진다.
+        #
+        #        ‼ 그러나 **아래 543행의 술어는 그 문장을 구현하지 않는다**(2026-08-13 정정).
+        #          `!isempty(CB.recovery_spares())` 가 실제로 뜻하는 것은 "지금 돌아오는 중인
+        #          로봇이 있다" 가 아니라 **"이 판에서 Replace 가 한 번이라도 일어났는가"** 다.
+        #          런 범위(run-scoped)의 **단방향 래치**다. 근거:
+        #            · ood_injection.jl:787-795 의 RECOVERY_SPARES 인터페이스는 `push!`
+        #              (mark_recovery_spare!) 와 `empty!`(clear_recovery_spares!) 뿐이다 --
+        #              **도착했다고 원소를 빼는 경로가 아예 없다.** clear_ 는 판 시작 시 초기화
+        #              (demos.jl:792/1636/1744/2800)에서만 불린다.
+        #            · 표식을 다는 곳도 depot 스왑만이 아니다: 평범한 예비 접합(spare-splice)
+        #              Replace 경로인 replace_robot.jl:1182 와 :1271 이 이미 단다. depot 스왑
+        #              (:1503)은 셋 중 하나일 뿐이다. 즉 창고 왕복이 없는 Replace 도 래치를 건다.
+        #
+        #          ⇒ **결과(알려진 대가):** Replace 가 한참 전에 끝나 예비가 이미 슬롯에 도착했고
+        #            빌드가 정상 진행 중이어도, 그 뒤에 오는 zone 사건은 여전히 `NOOP` 을 받는다.
+        #            그러면 `n_nav_blocked > 0` 이 수복되지 않은 채 남고, 이 게이트가 막으려던
+        #            바로 그 교착이 **반대편에서** 생긴다(전역 이동으로 로봇 목표를 지워 stall 하는
+        #            대신, 아무것도 안 해서 막힌 채로 stall 한다).
+        #          ⇒ tools/test_policy_oracle.jl:181-193 은 이 사실을 못 본다. 그 절은
+        #            mark_ → NOOP, clear_ → RelocateBuild 로 **래치 자체만** 확인하므로, "래치가
+        #            언제 풀려야 하는가"(도착 시점)를 묻지 않는다. 통과해도 위 대가는 그대로 있다.
+        #
+        #          지금 고치지 않는 이유: 이 규칙 아래에서 210판짜리 oracle 스윕이 막 돌았고 그
+        #          결과를 분석 중이다. 술어를 조용히 바꾸면 그 판들이 무효가 된다. **먼저 정확히
+        #          적어 두고, 바꾸는 것은 측정과 함께 나중에.**
+        #
+        #        아래 실측은 위 정정과 무관하게 유효하다(둘 다 Replace 직후의 zone 사건이다):
         #        2026-08-13 실측(seed 1, 같은 구역·같은 Δ=[-1.75984, -1.60557]):
         #          battery_zone: closed=58 에 SwapBattery(창고 왕복 없음) → RECOVERY_SPARES 빈 채로
         #                        closed=100 에 RelocateBuild → **완주 291/313** (30.3 s)
@@ -540,6 +567,8 @@ function oracle_macro(env, truth)
         #       그러면 이미 발행된 표의 decision_acc 열이 전부 조용히 재채점된다
         #       (build_md_report.py:417 이 같은 이유로 그 파일을 고정해 뒀다). 그래서 **여기만**
         #       고치고 갈림을 보고서에 명시한다.
+        # 이름은 `returning` 이지만 위 ‼ 대로 실제 의미는 "이 판에서 Replace 가 한 번이라도
+        # 있었는가" 다(도착해도 안 풀리는 단방향 래치). 동작은 의도적으로 그대로 둔다.
         local returning = try !isempty(CB.recovery_spares()) catch; false end
         (!returning && zdg.relocate_feasible && "RelocateBuild" in vm) && return "RelocateBuild"
         (zdg.n_restage_feasible > 0 && "ForbidZone" in vm) && return "ForbidZone"
