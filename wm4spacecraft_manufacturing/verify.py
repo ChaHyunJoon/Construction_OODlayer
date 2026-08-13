@@ -69,8 +69,8 @@ import pandas as pd   # S4 의 kind-only 상대를 표현과 무관하게 직접
 # 이 파일이 있는 폴더를 import 경로에 추가 -> 같은 폴더의 e1_analyze 등을 불러올 수 있게 함.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # e1_analyze에서 공용 유틸을 재사용: load(데이터 로드), featurize(특징 벡터화), MACROS(macro 목록),
-# MACRO_NAME/MACRO_COST(이름/비용 표), cost_lex_key(비용 반영 사전식 정렬 키).
-from e1_analyze import (load, featurize, MACROS, MACRO_NAME, MACRO_COST, cost_lex_key,
+# MACRO_NAME/MACRO_COST(이름/비용 표), cost_lex_key_row(= -J, 통일 목적함수 정렬 키; spec §5.1).
+from e1_analyze import (load, featurize, MACROS, MACRO_NAME, MACRO_COST, cost_lex_key_row,
                         instance_arms_complete)
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
 from sklearn.model_selection import LeaveOneGroupOut
@@ -109,7 +109,9 @@ def make_model():
 
 # 한 행(r)의 decision value를 스칼라로 계산. 인자: r=한 macro의 rollout 결과 행, lam=cost 가중치.
 def val(r, lam):
-    """Decision value scalar consistent with cost_lex_key: completion dominates, then cost-adjusted
+    """Decision value scalar. NOTE: 이 값은 더 이상 정렬키(-J)와 같은 양이 아니다 — 정답 판정은
+    cost_lex_key_row 가 하고, 이 함수는 norm_regret 의 **정규화 축**으로만 남았다(spec §3.2 로
+    λ·MACRO_COST 가 J 에서 빠졌지만 자원 축 진단으로는 유지). completion dominates, then cost-adjusted
     closed. Used for per-instance normalized regret."""
     # 완주(complete)면 1e6의 큰 보너스로 무조건 우선(feasibility-lexicographic: 완주가 다른 무엇보다 위).
     # 그 다음 closed(닫힌 노드 수)에서 lam*cost(행동 비용)를 빼서 비교.
@@ -118,9 +120,8 @@ def val(r, lam):
 
 # 한 instance(그룹 g)에서 oracle(정답) 최선 macro 번호를 찾음. lam=cost 가중치.
 def oracle_best_macro(g, lam):
-    # cost_lex_key 기준으로 가장 큰 행을 고름 (완주>closed>makespan>비용 순의 사전식 비교).
-    b = max(g.itertuples(index=False),
-            key=lambda r: cost_lex_key(r.complete, r.closed, r.makespan, r.macro, lam))
+    # -J 가 가장 큰(= J 가 가장 작은) 행을 고름. lam 은 J 에 들어가지 않는다(spec §3.2).
+    b = max(g.itertuples(index=False), key=cost_lex_key_row)
     return int(b.macro)
 
 
@@ -145,7 +146,7 @@ subopt_norm = norm_regret
 # 안 된다(README 함정 21). 튜닝 파라미터에 의존하는 값은 헤드라인이 될 수 없다.
 # 그래서 손해를 **시뮬레이터의 실제 단위**로, 그리고 비용모델의 사전식 층 그대로 쪼개서 잰다.
 #
-# 주의: "정답이 무엇인가" 는 여전히 cost_lex_key(lam) 로 정한다(하니스 전체와 같은 기준).
+# 주의: "정답이 무엇인가" 는 여전히 cost_lex_key_row(= -J) 로 정한다(하니스 전체와 같은 기준).
 #       "손해가 얼마인가" 만 물리 단위로 잰다. 그래서 d_ssp 가 음수일 수 있는데, 그것은
 #       "물리적으로는 나쁘지 않았지만 개입비용(lam) 때문에 오답으로 판정됐다"는 뜻이다(버그 아님).
 # ============================================================================================
@@ -203,8 +204,7 @@ def excess_cost(g, picked_macro, lam):
 # 고른 팔이 최적 행동인가. 동점(정답이 여럿)은 따로 표시한다 — 동점을 정답/오답 어느 쪽으로 세도
 # 수치가 왜곡되므로(README 함정 17) 적중률은 **동점을 뺀 분모**로 낸다.
 def optimal_action(g, picked_macro, lam):
-    keys = {int(r.macro): cost_lex_key(r.complete, r.closed, r.makespan, r.macro, lam)
-            for r in g.itertuples(index=False)}
+    keys = {int(r.macro): cost_lex_key_row(r) for r in g.itertuples(index=False)}
     top = max(keys.values())
     winners = [m for m, k in keys.items() if k == top]
     return {"optimal": int(picked_macro) in winners,

@@ -31,7 +31,7 @@ try:
 except Exception:
     pass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from e1_analyze import load, featurize, cost_lex_key, MACRO_COST, MACRO_NAME
+from e1_analyze import load, featurize, cost_lex_key_row, MACRO_COST, MACRO_NAME
 from surrogate_model import build_model, MODEL_NAME
 from sklearn.model_selection import LeaveOneGroupOut
 import pandas as pd
@@ -49,8 +49,7 @@ def adj_closed(row_closed, macro):
 def instance_scores(g):
     """dict macro-> cost-aware value, plus the oracle-best macro (feasibility-lexicographic)."""
     cbm = {int(m): adj_closed(c, m) for m, c in zip(g.macro.values, g.closed.values)}
-    best = max(g.itertuples(index=False),
-               key=lambda r: cost_lex_key(r.complete, r.closed, r.makespan, r.macro, LAM))
+    best = max(g.itertuples(index=False), key=cost_lex_key_row)   # -J (spec §5.1)
     return cbm, int(best.macro)
 
 

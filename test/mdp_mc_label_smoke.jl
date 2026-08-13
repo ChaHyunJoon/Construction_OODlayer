@@ -23,8 +23,13 @@ const CB = ConstructionBots
 const MC = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "gen_oracle_mc.jl")
 include(MC)
 
-_res(; complete, closed, total = 300, makespan) =
-    (complete = complete, closed = closed, total = total, makespan = makespan)
+# energy_J = 0.0 은 **이 테스트가 명시적으로 고른 상수**다(조용한 폴백이 아니다). 이 테스트가
+# 검사하는 축은 완주/닫힌노드/makespan 의 순서동치이지 에너지 축이 아니므로 에너지를 0 으로
+# 고정해 그 축을 제거한다. objective.json 의 스케일이 null 이면 Objective.energy_weight 가
+# 던져 완주 케이스가 실패하는데, 그때는 이 테스트가 "스케일이 안 채워졌다"고 알려주는 것이 맞다.
+_res(; complete, closed, total = 300, makespan, energy_J = 0.0) =
+    (complete = complete, closed = closed, total = total, makespan = makespan,
+     energy_J = energy_J)
 
 @testset "스칼라 비용 == lexicographic 순위" begin
     # 완주가 항상 미완주를 이긴다 (makespan 이 훨씬 길어도)

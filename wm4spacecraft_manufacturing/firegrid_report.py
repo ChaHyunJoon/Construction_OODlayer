@@ -36,7 +36,7 @@ import sys
 from collections import Counter, defaultdict
 
 import wm_datasets
-from e1_analyze import MACRO_NAME, lex_key, cost_lex_key   # 채점 규칙은 한 곳에서만 정의한다(EVALUATION.md)
+from e1_analyze import MACRO_NAME, lex_key, cost_lex_key_row   # 채점 규칙은 한 곳에서만 정의한다(EVALUATION.md)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -84,8 +84,7 @@ def best_rows(rs):
 
 def best_row_cost_aware(rs, lam=LAM):
     """비용 인지 채점(y = closed - λ·cost(macro))의 최선 행. 동점을 깨는 것이 이 채점의 요점이다."""
-    return max(rs, key=lambda r: cost_lex_key(bool(r.get("complete")), int(r.get("closed", -1)),
-                                              fnum(r.get("makespan")), int(r.get("macro", 0)), lam))
+    return max(rs, key=cost_lex_key_row)   # -J (spec §5.1). λ·MACRO_COST 는 J 에 없다(§3.2).
 
 
 def admissible(rs):

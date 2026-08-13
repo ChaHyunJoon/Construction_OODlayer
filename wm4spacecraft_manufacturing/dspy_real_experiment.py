@@ -41,7 +41,7 @@ import os, sys, json, time, warnings
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 warnings.filterwarnings("ignore")
 
-from e1_analyze import load, cost_lex_key, MACRO_COST, MACRO_NAME
+from e1_analyze import load, cost_lex_key_row, MACRO_COST, MACRO_NAME
 import dspy
 from dspy.teleprompt import (LabeledFewShot, BootstrapFewShot,
                              BootstrapFewShotWithRandomSearch, MIPROv2)
@@ -124,8 +124,7 @@ def build_dataset():
         st = state_line(g[g.macro == 0].iloc[0].to_dict())
         scores[i] = {int(m): float(c) - LAM * MACRO_COST[int(m)]
                      for m, c in zip(g.macro.values, g.closed.values)}
-        b = max(g.itertuples(index=False),
-                key=lambda r: cost_lex_key(r.complete, r.closed, r.makespan, r.macro, LAM))
+        b = max(g.itertuples(index=False), key=cost_lex_key_row)   # -J (spec §5.1)
         best[i] = int(b.macro)
         ex = dspy.Example(state=st, macro=MACRO_NAME[best[i]], iid=i).with_inputs("state")
         examples.append(ex)

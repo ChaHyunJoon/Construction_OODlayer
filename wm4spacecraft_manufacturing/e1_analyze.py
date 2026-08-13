@@ -58,9 +58,10 @@ Usage:  python e1_analyze.py <dataset.jsonl>
 #   * math.inf / math.nan: 무한대 / 숫자아님(NaN). JSON에는 이런 값이 문자열로 저장돼 다시 복원함.
 # =============================================================================
 
-import io, sys, json, math
+import io, sys, json, math, warnings
 import numpy as np
 import pandas as pd
+import objective                        # 목적함수 J 의 단일 진실원 (objective.json; spec §5)
 from surrogate_model import build_model  # 평가·배포가 같은 모델을 쓰도록 단일 정의에서 가져온다
 from sklearn.model_selection import LeaveOneGroupOut
 
@@ -220,9 +221,74 @@ def ndcg_at_k(true_scores_by_macro, pred_order, k):
 MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}  # 8=SwapBattery
 
 
-# cost-aware용 정렬키: closed에서 macro 비용(lam*cost)을 빼고 lex_key를 매긴다 → 비싼 개입은 손해를 벌어야 이긴다.
-def cost_lex_key(complete, closed, makespan, macro, lam):
-    return lex_key(complete, closed - lam * MACRO_COST[int(macro)], makespan)
+# ---- 정렬키 = -J (spec §3, §5.1) ------------------------------------------------------------
+# 채점 기준을 하나의 목적함수 J 로 통일한다. J 는 **최소화** 대상이고 호출자들은 전부
+# `max(rows, key=...)` 로 쓰므로 부호를 뒤집어 돌려준다.
+#
+# 옛 cost_lex_key 와 무엇이 달라졌나:
+#   - λ·MACRO_COST 항이 사라졌다 (spec §3.2). MC 오라클은 개입에 비용을 매긴 적이 없고 발행된
+#     오라클 숫자 전부가 그 기준으로 나왔다 — 통일 방향은 오라클 쪽이다. MACRO_COST 표 자체는
+#     특징량·진단으로 계속 쓰이므로 위에 그대로 남아 있다.
+#   - 완주 런은 makespan 대신 makespan + w_E·energy_J 로 순위가 매겨진다 (spec §3.1).
+#   - 미완주 런은 C_fail + C_unclosed·(total-closed) + tie_eps·makespan.
+# 상수는 objective.json 하나에서만 온다 — 리터럴 복붙 금지.
+def _as_row_dict(r):
+    """dict 행과 pandas `itertuples()` 의 NamedTuple 행을 같은 모양(dict)으로 만든다.
+
+    소비처 5곳 중 firegrid_report 는 dict 행을, 나머지는 itertuples 행을 넘긴다. 여기서 한 번만
+    정규화하고 실제 필드 추출은 objective.J_row 가 한다 — 행→J 매핑이 여러 곳에 복제되면
+    한 곳만 옛 의미로 남는 사고(spec §7 세대 혼입)가 그대로 재현된다."""
+    if isinstance(r, dict):
+        return r
+    if hasattr(r, "_asdict"):
+        return r._asdict()
+    return dict(r)
+
+
+def cost_lex_key_row(row, lam=None):
+    """행 하나의 정렬키 = -J(row). 클수록 좋다(호출자들이 max 로 쓴다).
+
+    `lam` 인자는 호출자 이식을 쉽게 하려고 받기만 하고 **무시한다** — λ 는 J 에 들어가지
+    않는다(spec §3.2).
+
+    구세대 덤프(완주 런인데 energy_J 가 없는 행)에는 J 를 적용할 수 없다. 0 으로 폴백하지
+    않고 시끄럽게 멈춘다 (spec §5, §7)."""
+    d = _as_row_dict(row)
+    try:
+        return -objective.J_row(d)
+    except objective.ObjectiveError as e:
+        raise objective.ObjectiveError(
+            "%s\n"
+            "  문제의 행: instance=%r macro=%r complete=%r closed=%r total=%r makespan=%r "
+            "energy_J=%r\n"
+            "  진단: 완주 런의 energy_J(또는 battery.total_energy_J)가 없는 덤프 = **구세대 덤프**다.\n"
+            "        에너지 축이 생기기 전에 만든 라벨에 새 목적함수 J 를 적용하려는 시도다.\n"
+            "  조치: (1) 현행 라벨러로 덤프를 다시 만든다 — 그래야 energy_J 가 들어간다:\n"
+            "            julia +lts --project=. wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl\n"
+            "        (2) 이 덤프의 옛 숫자를 재현하는 것이 목적이라면 이 커밋 이전의 e1_analyze.py 를 쓴다.\n"
+            "        구세대 덤프에 신세대 기준을 조용히 적용하지 않는다 (spec §5, §7)."
+            % (e, d.get("instance"), d.get("macro"), d.get("complete"), d.get("closed"),
+               d.get("total"), d.get("makespan", d.get("sim_seconds")),
+               d.get("energy_J", (d.get("battery") or {}).get("total_energy_J")
+                     if isinstance(d.get("battery"), dict) else None))) from e
+
+
+def cost_lex_key(complete, closed, makespan, macro, lam, total=None, energy_J=None):
+    """DEPRECATED (2026-08-13) — `cost_lex_key_row(row)` 를 쓸 것.
+
+    이름과 자리인자는 하위호환으로 남기지만 **의미가 바뀌었다**: 반환값은 -J 이고, λ 와 macro 는
+    무시된다(spec §3.2). J 의 미완주 분기는 total 이 필요한데 옛 시그니처에는 없으므로,
+    total 없이 부르면 조용히 답을 내지 않고 ObjectiveError 를 던진다 — 옛 의미로 남은 호출자가
+    하나라도 있으면 그것이 세대 혼입이다(spec §7)."""
+    warnings.warn("cost_lex_key() 는 deprecated 다 — cost_lex_key_row(row) 를 쓸 것 "
+                  "(λ·MACRO_COST 제거, 에너지 항 추가; spec §3.2)",
+                  DeprecationWarning, stacklevel=2)
+    if total is None:
+        raise objective.ObjectiveError(
+            "cost_lex_key(...) 에 total 이 없다 — J 의 미완주 분기는 (total - closed) 가 필요하다. "
+            "호출자를 cost_lex_key_row(row) 로 옮기거나 total=r.total 을 넘길 것 (spec §5).")
+    return -objective.J(complete=bool(complete), closed=int(closed), total=int(total),
+                        makespan=makespan, energy_J=energy_J)
 
 
 # 모델을 학습하기 전에 "이 문제가 과연 어려운(=학습할 가치 있는) 문제인가"를 진단해 출력하는 함수.
@@ -296,8 +362,7 @@ def main():
     for iid in df.instance.unique():
         g = df[df.instance == iid]
         if COST_AWARE:
-            b = max(g.itertuples(index=False),
-                    key=lambda r: cost_lex_key(r.complete, r.closed, r.makespan, r.macro, LAM))
+            b = max(g.itertuples(index=False), key=cost_lex_key_row)
         else:
             b = oracle_best_row(g)
         best[iid] = int(b.macro)

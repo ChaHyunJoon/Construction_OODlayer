@@ -139,13 +139,26 @@ const SUMJSON  = joinpath(OUTDIR, "oracle_mc_summary_s$(SEED).json")
 # 완주하면 실현 makespan 이 곧 비용. 완주 못 하면 큰 유한벌점 + 못 닫은 노드 수 벌점(부분 점수),
 # 그리고 아주 작은 가중치의 makespan 으로 동점을 깬다. 이 세 항의 크기 순서가 곧 lexicographic
 # 순서(완주 > 닫힌 노드 수 > makespan)를 스칼라로 옮긴 것이다.
-const COST_FAIL     = parse(Float64, get(ENV, "MC_COST_FAIL", "10000.0"))
-const COST_UNCLOSED = parse(Float64, get(ENV, "MC_COST_UNCLOSED", "100.0"))
-const COST_TIE_EPS  = 1.0e-3
+# 목적함수 상수의 단일 진실원 — 리터럴 복붙 금지(spec §5). ENV 덮어쓰기(MC_COST_FAIL /
+# MC_COST_UNCLOSED)는 Objective.load 안에서 처리되고, 덮어쓴 런은 objective_hash 가 달라져
+# **다른 세대**로 취급된다(§7). 완주 분기의 에너지 항도 여기서 같이 들어온다(§3.1).
+include(joinpath(@__DIR__, "..", "objective.jl"))
+using .Objective
 
-scalar_cost(r) = r.complete ? Float64(r.makespan) :
-    COST_FAIL + COST_UNCLOSED * (r.total - r.closed) +
-    COST_TIE_EPS * (isfinite(r.makespan) ? r.makespan : 0.0)
+const OBJ_CFG  = Objective.load()
+const OBJ_HASH = Objective.objective_hash(OBJ_CFG)
+# 아래 세 상수는 하위호환용 별칭이다(로그·요약 meta 가 이름으로 읽는다). 값의 출처는 objective.json.
+const COST_FAIL     = Float64(OBJ_CFG["C_fail"])
+const COST_UNCLOSED = Float64(OBJ_CFG["C_unclosed"])
+const COST_TIE_EPS  = Float64(OBJ_CFG["tie_eps"])
+
+# 목적함수 J (spec §3). 완주 분기에만 에너지가 들어간다.
+# 주의: r 에 energy_J 가 없거나 NaN 이면(구세대 레코드/배터리 레이어 OFF) Objective.J 가
+# 던진다 — 조용히 0 이 되지 않는다(§5, §7).
+scalar_cost(r) = Objective.J(complete = r.complete, closed = r.closed, total = r.total,
+                             makespan = r.makespan,
+                             energy_J = hasproperty(r, :energy_J) ? r.energy_J : nothing,
+                             cfg = OBJ_CFG)
 
 # --- 기존(legacy) 사전식 비교 -------------------------------------------------------------
 # gen_oracle_fullsim.jl 이 쓰던 규칙 그대로. 참조·호환성 확인용으로만 남긴다.
@@ -184,7 +197,7 @@ function check_order_equivalence(results)
     ssp_best = sort(rs, lt = (a, b) -> better_ssp(a, b))[1]
     sc_best  = argmin(scalar_cost, rs)
     ok = _same_outcome(ssp_best, sc_best)
-    ok || @warn "[MC] scalar cost is NOT order-equivalent to better_ssp — raise MC_COST_FAIL" ssp_best sc_best
+    ok || @warn "[MC] scalar cost is NOT order-equivalent to better_ssp — raise MC_COST_FAIL" ssp_best sc_best objective_hash = OBJ_HASH
     leg_best = sort(rs, lt = (a, b) -> better(a, b))[1]
     _same_outcome(leg_best, ssp_best) ||
         @info "[MC] legacy `better` 와 정답이 갈림(둘 다 완주인데 closed 수가 다른 경우). " *
@@ -356,20 +369,23 @@ function run_one(prod; inject::Bool = true, hz_seed::Union{Nothing,Int} = nothin
 end
 
 # ---- CSV shard I/O (parallel units) -------------------------------------------------------
-const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent,energy_J"
+# objective_hash 는 **cost 열이 어느 목적함수로 계산됐는지**를 행에 박는다(spec §7).
+# 이게 없으면 다른 J 로 만든 샤드가 read_units() 에서 조용히 한 Q̂ 로 평균된다 — 이 저장소가
+# 실제로 겪은 "두 세대 혼입" 결함 그대로다.
+const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent,energy_J,objective_hash"
 function append_unit!(a::Int, k::Int, hz_seed::Int, r)
     mkpath(OUTDIR)
     isfile(UNITCSV) || open(io -> println(io, CSV_HEADER), UNITCSV, "w")
     open(UNITCSV, "a") do io
         # energy_J 는 makespan 과 같은 컨벤션으로 미완주/비유한 값을 -1.0 로 센티넬한다(CSV 는
         # 헤더 이름으로 읽는 소비처(step6_gap.py)와 위치로 읽는 read_units() 양쪽에 안전해야 한다).
-        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%.4f\n",
+        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%.4f,%s\n",
                 a, k, hz_seed, r.complete ? "true" : "false", r.closed, r.total,
                 isfinite(r.makespan) ? r.makespan : -1.0, scalar_cost(r),
                 r.hz_break, r.hz_cell, r.hz_zone, r.hz_pending_break,
                 r.hz_capped ? "true" : "false", r.hz_sim_s,
                 r.seen === nothing ? "none" : r.seen.agent,
-                isfinite(r.energy_J) ? r.energy_J : -1.0)
+                isfinite(r.energy_J) ? r.energy_J : -1.0, OBJ_HASH)
     end
 end
 
@@ -382,10 +398,15 @@ function read_units()
     files = unit_csv_files()
     isempty(files) && return NamedTuple[]
     rows = NamedTuple[]
-    for line in Iterators.flatten(eachline(fp) for fp in files)
+    stale = Dict{String,Set{String}}()   # 파일 -> 그 파일에서 본 (현행이 아닌) objective_hash 들
+    for fp in files, line in eachline(fp)
         startswith(strip(line), "action,") && continue   # 각 샤드의 헤더 줄 건너뜀
         f = split(strip(line), ",")
         length(f) < 15 && continue
+        # f[17](objective_hash) 는 이 필드가 추가되기 전 샤드에는 없다. 없거나 현행과 다르면
+        # 그 행의 cost 열은 **다른 목적함수로 계산된 값**이다 — 아래에서 시끄럽게 멈춘다(§7).
+        h = length(f) >= 17 ? String(f[17]) : "<none>"
+        h == OBJ_HASH || push!(get!(stale, fp, Set{String}()), h)
         try
             # f[16](energy_J) 는 이 필드가 추가되기 전 샤드 CSV 에는 없다 — 있으면 파싱, 없으면 NaN.
             push!(rows, (action = parse(Int, f[1]), rollout = parse(Int, f[2]),
@@ -396,9 +417,21 @@ function read_units()
                          hz_zone = parse(Int, f[11]), hz_pending = parse(Int, f[12]),
                          hz_capped = f[13] == "true", hz_sim_s = parse(Float64, f[14]),
                          agent = f[15],
-                         energy_J = length(f) >= 16 ? parse(Float64, f[16]) : NaN))
+                         energy_J = length(f) >= 16 ? parse(Float64, f[16]) : NaN,
+                         objective_hash = h))
         catch; end
     end
+    # 세대 혼입은 조용히 넘어가지 않는다(spec §7). cost 열끼리 평균내는 것이 이 함수의 전부인데,
+    # 서로 다른 J 로 계산된 cost 를 섞으면 Q̂ 가 아무것도 뜻하지 않게 된다.
+    stale_lines = ["  " * fp * " : objective_hash=" * join(sort(collect(hs)), ", ")
+                   for (fp, hs) in sort(collect(stale), by = first)]
+    isempty(stale) || throw(Objective.ObjectiveError(
+        "[MC] 이 샤드 CSV 들은 현행 목적함수(objective_hash=$OBJ_HASH)로 계산된 cost 가 아니다:\n" *
+        join(stale_lines, "\n") *
+        "\n'<none>' 은 objective_hash 열이 생기기 전의 **구세대** 샤드다(에너지 항 없는 J).\n" *
+        "조치: (1) 그 샤드를 다른 곳으로 옮기거나 지우고 현행 J 로 유닛을 다시 돌린다, 또는\n" *
+        "      (2) 그 세대를 재현하려면 당시의 ENV(MC_COST_FAIL/MC_COST_UNCLOSED)와 objective.json 을 되돌린다.\n" *
+        "구세대 cost 를 현행 cost 와 섞어 평균내지 않는다."))
     # (action, rollout) 중복 제거 — 같은 유닛을 재실행했거나 샤드가 겹치면 그대로 두 번 세어져
     # Q̂ 가 조용히 틀어진다. 나중 것을 채택한다.
     seen = Dict{Tuple{Int,Int},NamedTuple}()
@@ -443,7 +476,8 @@ function aggregate(all_rows)
     isempty(rows) && return NamedTuple[], (best_action = -1, best_name = "none", best_Q = NaN,
         K = 0, n_rows = 0, build_seed = SEED, seed0 = SEED0, mtbf_break = HZ.mtbf_break_s,
         mtbf_cell = HZ.mtbf_cell_s, hot_swap = HOT_SWAP, rvo = RVO, spares = 4 * NSPARE,
-        cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED, crn_variance_reduction = NaN,
+        cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED, objective_hash = OBJ_HASH,
+        crn_variance_reduction = NaN,
         ref_best_action = -1, ref_agrees_with_mc = false),
         [r for r in all_rows if r.rollout == 0]
     acts = sort(unique(r.action for r in rows))
@@ -492,7 +526,7 @@ function aggregate(all_rows)
             K = K_actual, n_rows = length(rows), build_seed = SEED, seed0 = SEED0,
             mtbf_break = HZ.mtbf_break_s, mtbf_cell = HZ.mtbf_cell_s,
             hot_swap = HOT_SWAP, rvo = RVO, spares = 4 * NSPARE,
-            cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED,
+            cost_fail = COST_FAIL, cost_unclosed = COST_UNCLOSED, objective_hash = OBJ_HASH,
             crn_variance_reduction = isempty(vr_factors) ? NaN : _mean(vr_factors),
             ref_best_action = ref_best,
             ref_agrees_with_mc = (ref_best == best))
