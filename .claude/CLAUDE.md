@@ -4,6 +4,44 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
+### 2026-08-13 — 목적함수 통일로 또 한 번 세대가 갈렸다
+
+`wm4spacecraft_manufacturing/objective.json` 이 목적함수 J 의 단일 진실원이고, `objective_hash()` =
+**`59b1174118b874ed`**. 파일에 `generation` 필드(현재 `"2026-08-13-energy-activation"`)가 있고
+해시에 들어간다 — **규칙: 스칼라가 하나도 안 바뀌어도 목적함수의 유효 의미가 바뀌면(플래너
+재배선 포함) 반드시 올린다.** greedy(`GreedyEnergyAwareCost`) · MILP(전역 `AUTO_EFFICIENCY_KAPPA`) ·
+오라클 라벨(`gen_oracle_mc.scalar_cost`) · Python 분석(`e1_analyze.cost_lex_key`) 이 전부 그 J 를
+본다. 설계: `docs/superpowers/specs/2026-08-13-unified-objective-design.md`.
+
+- **세대 판정 계약**: 산출물의 `objective_hash` 필드가 현재 `objective.json` 의 해시와 같은가.
+  `.venv/bin/python wm4spacecraft_manufacturing/audit_objective.py` (exit 0 = 소비처 전부 일치).
+- **기계적 계약**: `test_objective.py`(29/29) · `audit_objective.py`(8/8) · `test_surrogate_support.py`(7/7)
+  · `audit_action_vocab.py`(6/6) · `test/greedy_cost_dispatch_equivalence.jl`(실제 게이트 — 인프로세스
+  포뮬러 동치 + 변경 전 함수의 축자 사본과의 인프로세스 A/B). `test/greedy_assignment_regression.jl`
+  은 비게이팅 진단용으로 격하됐다 — 이유는 아래 Gotchas.
+- **`verify.py` 는 이제 구세대 덤프(`graded_hs_n44.jsonl`·`n44_plus78.jsonl` 둘 다)에서 exit 1 로
+  하드 스톱한다**(`ObjectiveError: 완주 런인데 energy_J 가 없다`) — 아래 Commands 절의 표를 이
+  값으로 교체했다. **"8/8 PASS" 는 더 이상 어떤 기존 덤프로도 유효하지 않다.** 신세대 덤프(단계 6
+  재실행 후)에서 기대값은 **6/8**(S1·S4 FAIL) — surrogate 가 아직 `closed − λ·MACRO_COST` 로
+  학습돼 있는데 채점 기준은 `-J` 로 바뀌었기 때문이다. 둘이 닫히는 시점은 spec §8 단계 7(surrogate
+  를 J 로 재라벨·재학습)이다.
+- 같은 이유로 구세대 덤프에서 하드 스톱하는 것: `verify.py`(양쪽 덤프) · `firegrid_report.py` ·
+  `build_md_report.py` · `test_llm7h.py` · `export_surrogate.py --cost-aware` · `cost_eval.py` ·
+  MC 집계 · `tools/step6_gap.py`. 발행된 `md/RESULTS_*.md` 표 재생성은 그래서 세대 재구축(단계 6)
+  에 게이트돼 있다. (`ladder.py` 는 이것과 무관한 기존 empty-glob `ValueError` 로 더 일찍 죽는다.)
+- 이 날 이전의 모든 결과 문서(= `RESULTS_D20_2026-08-12.md` 포함)는 구세대다 — 🔴 배너 붙음.
+- `ENERGY_OBJECTIVE=0` 으로 구세대 동작을 재현할 수 있다(끈 사실이 로그에 남는다).
+- **와이어링은 됐지만 아직 안 켜진 것**: `GreedyEnergyAwareCost` 는 존재하고 맞지만 **어느 레인도
+  아직 고르지 않는다** — greedy 는 t=0 에만 도는데 그 시점엔 `AGENT_COST_BIAS[]` 가 비어 있고
+  `EDGE_COST_MULTIPLIER[]` 가 `nothing` 이라, 항이 있어도 에너지·SoC·DeprioritizeAgent 정보 없이
+  `dt` 를 0.075% 재스케일할 뿐이다. 그래서 **spec §6.2 는 아직 미이행**이고 **§6.3 은 절반만
+  참**이다 — κ 는 전역으로 배선됐고, fault 재배정 경로(`fault_robot_and_reassign!` →
+  `release_pending_assignments!`, `RESPEC_ENABLED=true` 오라클 레인에서 도달)에서 에너지 항이
+  실제로 새로 살아 있지만, battery-SoC 가격 책정은 아직 부활하지 않았다(`rebalance_for_battery!`
+  의 재풀이가 빌드 중간엔 후보 간선이 0개다).
+- **아직 안 한 것**: 630판 스윕 재실행(단계 6), surrogate 재라벨·재학습(단계 7),
+  prefix 결정성 재측정(단계 8), DP 계획 재개(단계 9). 그때까지 신세대 성능 수치는 없다.
+
 행동 어휘가 **2026-08-06** 에 바뀌었다: `action_registry.json` 이 매크로 **7(RelocateBuild)·8(SwapBattery)**
 를 포함한다. 그 이전 측정치는 **행동집합이 잘린 상태**의 숫자다(zone 은 지원 팔이 `{NOOP}` 뿐이라
 언제나 NOOP, battery 는 `SwapBattery` 미학습으로 적중 0/6). 두 세대가 섞여 있어 실제로 오판이
@@ -26,8 +64,10 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   `tools/demos.jl` 의 두 surrogate 데모는 2026-08-09 에 리터럴을 없애고 `Demos.load_action_vocab()`
   으로 registry 를 직접 읽게 고쳤다(파생이라 감사할 복제본이 없다. 검증: `[0,1,2,3,4,7,8]`).
   아직 남은 리터럴은 `wm4spacecraft_manufacturing/assimilation_gate.py`(자체 검사 고정 입력, 동작 무영향).
-- 알려진 실패(정리 이전부터 존재, 이번 변경과 무관): `python verify.py oracle/out/n44_plus78.jsonl`
-  → V0 PASS 후 **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다.
+- 알려진 실패(2026-08-09 정리 당시): `python verify.py oracle/out/n44_plus78.jsonl` → V0 PASS 후
+  **S1 에서 `KeyError: 7`**. baseline 이 고른 팔이 그 instance 의 `vals` 에 없다.
+  **2026-08-13 목적함수 통일 이후로는 이 지점에 도달하지 못한다** — `verify.py` 가 그보다 먼저
+  `ObjectiveError` 로 하드 스톱한다(구세대 덤프에 `energy_J` 가 없어서). 상세는 위 `2026-08-13` 절.
 
 ## Environment
 - **`julia +lts` (1.10)** — `Manifest.toml` is pinned to 1.10.11; `Pkg.add` under a newer Julia silently breaks the build.
@@ -52,16 +92,21 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 **기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관).
 
-`verify.py` 는 **어느 덤프로 돌리는지에 따라 결과가 갈린다.** 인자를 반드시 같이 인용할 것(2026-08-09 실측):
+`verify.py` 는 **어느 덤프로 돌리는지에 따라 결과가 갈린다.** 인자를 반드시 같이 인용할 것
+(2026-08-13 재측정 — 목적함수 통일 이후 상태로 8/8 표는 더 이상 유효하지 않다):
 
 | 명령 | 결과 |
 |---|---|
-| `python verify.py oracle/out/graded_hs_n44.jsonl` | **8/8 PASS** — 문서의 8/8 은 이 5매크로 덤프 기준이고 재현된다 |
-| `python verify.py oracle/out/n44_plus78.jsonl` | V0 3/3 PASS 후 **S1 `KeyError: 7`** — 현행 7매크로 학습셋은 아직 못 돈다 |
+| `python verify.py oracle/out/graded_hs_n44.jsonl` | **exit 1** — `ObjectiveError`(완주 런인데 `energy_J` 없음). 구세대 덤프라 하드 스톱 |
+| `python verify.py oracle/out/n44_plus78.jsonl` | **exit 1** — 위와 동일 이유로 하드 스톱 |
 
-즉 8/8 은 유효하되 **배포 학습셋에서 검증된 값이 아니다**. `norm_regret` 이 baseline 의 선택 팔을
-그 instance 의 `vals` 에서 찾지 못해 죽는다 — 7·8 을 포함한 덤프로 harness 를 올리는 것이 남은 일.
-그 외 기계적 계약: `test_surrogate_support.py`(7/7) · `audit_action_vocab.py`(6/6, 커버리지 한계는 위 참조).
+**"8/8 PASS" 는 이제 어떤 기존 덤프로도 재현되지 않는다** — `graded_hs_n44.jsonl` 에서 예전엔
+8/8 이 났지만, `verify.py` 가 이제 `objective.J`/`J_row` 를 거치므로 완주 런에 `energy_J` 가 없으면
+(= 모든 구세대 덤프) 조용히 넘어가지 않고 죽는다(spec §5, §7). 신세대 덤프(spec §8 단계 6 재실행
+후)에서 기대값은 **6/8**(S1·S4 FAIL) — surrogate 가 아직 `closed − λ·MACRO_COST` 로 학습돼 있는데
+채점 기준은 `-J` 로 바뀌었기 때문이다. 둘이 닫히는 시점은 spec §8 단계 7(surrogate 재라벨·재학습).
+그 외 기계적 계약: `test_objective.py`(29/29) · `audit_objective.py`(8/8) · `test_surrogate_support.py`(7/7)
+· `audit_action_vocab.py`(6/6, 커버리지 한계는 위 참조).
 
 ## Gotchas
 - **`tools/*.jl` with no key runs a default silently** (`demos.jl` → `original_baseline`) instead of erroring. Read the `DEMOS` dict at the bottom of the file for valid keys.
@@ -79,6 +124,18 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 - `_first_pending_assignment`는 "일감 유무"가 아니라 **"작업 경계"** — 중반 이후 조용히 틀림.
 - 배포 surrogate 의 **매크로 지원 집합**은 학습셋이 정한다(`wm_datasets.N44_PLUS78`). 지원 밖 팔은
   에러 없이 후보에서 탈락해 **성능으로만** 샌다 — `python test_surrogate_support.py` 가 그 계약이다.
+- **컴파일을 다시 하면 배정이 재현되지 않는다.** 5회 반복 통제 실험에서, 바이트 동일한 소스가
+  무관한 편집 후 재컴파일을 거치면 다른 배정 지문을 냈다(단, 한 번 컴파일된 상태 안에서는
+  결정적이다). 따라서 **프로세스 간 golden-hash 비교는 코드 변경 검증 게이트가 될 수 없다** —
+  차이가 코드 때문인지 재컴파일 때문인지 구분이 안 된다. 실제로 게이팅하는 것은
+  `test/greedy_cost_dispatch_equivalence.jl`(인프로세스 포뮬러 항등성 + 변경 전 함수의 축자
+  사본과의 인프로세스 A/B)이다. `test/greedy_assignment_regression.jl` 은 비게이팅 진단용으로
+  남아 있다 — 실패해도 게이트가 아니다.
+- **`@info` 가 프로세스 전역에서 조용히 사라진 적이 있었다.** `run_lego_demo` 가
+  `global_logger(…, Logging.Warn)` 을 설치하고 복구를 안 해서, 첫 env 빌드 이후의 모든 `@info` 가
+  안 찍혔다. 이 작업 도중 실제로 이걸로 오판을 냈다("폴백이 안 탔다" — 사실은 탔었다). `finally`
+  블록에서 복구하도록 고쳤지만, 이 레포의 다른 진단 로직 중 "로그에 안 떴다"로 추론하는 것은
+  아직 감사 안 됐다 — 의심하고 볼 것.
 
 ## Layout
 - `src/respec/` — OOD → DSL re-spec layer (`spec_dsl.jl`, `compiler.jl`, `verifier.jl`, `llm_service/`)
