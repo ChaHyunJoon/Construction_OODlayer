@@ -1,0 +1,1 @@
+{"status":"ok","policy":"dspy:gpt-4o","program":"(seed only)","demos":0,"calls":1435,"surrogate":"n44_plus78.jsonl (68 instances, macro support [0, 1, 2, 3, 4, 7, 8])","policies":["dspy","surrogate"]}
