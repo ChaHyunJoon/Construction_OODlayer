@@ -1524,9 +1524,12 @@
     var runN = oodCountVal();
     var runSeed = seedVal();
     var runStreamUrl = streamFile(runBase, runCase, runN, "", runSeed);
+    // 이 런의 토큰. 서버가 발급하고 엔진이 사이드카에 남긴다. 화면에 올릴 프레임을 이걸로 고른다.
+    var myRunId = null;
     setBadge("err", "generating…");
     $("genHint").textContent = "Preparing the environment and simulation (OOD seed " + runSeed +
-      "). This may take several minutes.";
+      "). This may take several minutes." +
+      (isZoneCase(runCase) ? " Nothing is recorded until you confirm a zone on the floor plan." : "");
     fetch(CONFIG.CONTROL_URL + "/run", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({model: runModel, "case": runCase, interactive: !!opts.live, n: runN, seed: runSeed,
@@ -1545,14 +1548,25 @@
           toast(String(txt), "warn");
           return;
         }
+        // 성공 응답만 JSON 이다(busy/already running 은 위에서 평문으로 걸러졌다).
+        try { myRunId = JSON.parse(txt).run_id || null; } catch(e){ myRunId = null; }
         showLivePreparing();
         toast("Generation started for " + runCase + ". The replay will load automatically.", "ok");
         var tries = 0;
         genPoll = setInterval(function(){
           tries++;
-          fetch(runStreamUrl, {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; })
+          // 옛 녹화가 디스크에 그대로 있는 동안(env 빌드에 3~4분) "파일이 비었나"만 보면 그 옛 녹화를
+          // 라이브로 착각한다 — 실측: 존 케이스에서 사람이 그리기도 전에 자동 주입기의 구역이 피드에
+          // 떴다. 그래서 **내 런의 사이드카가 뜬 뒤에만** 스트림을 읽는다.
+          fetch(CONFIG.CONTROL_URL + "/runinfo", {cache:"no-store"})
+            .then(function(r){ return r.status === 200 ? r.json() : null; })
+            .then(function(info){
+              if(!info) return "";                                  // 아직 스트림이 안 열렸다
+              if(myRunId && info.run_id !== myRunId) return "";      // 다른 런의 것 — 화면에 올리지 않는다
+              return fetch(runStreamUrl, {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; });
+            })
             .then(function(t){
-              if(parseJSONL(t).length > 0){
+              if(t && parseJSONL(t).length > 0){
                 $("genHint").textContent = "Simulation running — replay frames are streaming.";
                 if(runModel===curModel && (runCase===curCase || opts.live)){
                   streamUrl=runStreamUrl;

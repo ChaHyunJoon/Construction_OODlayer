@@ -58,6 +58,7 @@ const SSUF   = DEMO_SEED == 1 ? "" : "_s$(DEMO_SEED)"
 const NSUF   = (DEMO_N > 0 ? "_n$(DEMO_N)" : "") * SSUF   # stream/anim name suffix so each (count, seed) caches separately
 const COMMAND_FILE = get(ENV, "MONITOR_COMMAND_FILE", "")
 const INTERACTIVE = get(ENV, "MONITOR_INTERACTIVE", "0") == "1"
+const RUN_ID = get(ENV, "MONITOR_RUN_ID", "")
 # 대화형 세션이 **첫 조작자 명령(보통 forbid zone)** 을 기다리는 시간[초]. 0 = 기다리지 않고
 # 곧바로 시작한다 = "zone 없이 이 케이스만 돌려 본다".
 #   왜 필요한가: 예전에는 300 초가 하드코딩이라, zone 을 넣을 생각이 없어도 5 분을 앉아 있거나
@@ -260,6 +261,9 @@ function dump_layout(env, cmdfile)
 end
 
 "명령 파일에 이미 들어와 있는 조작자 명령의 종류. `:abort` 가 하나라도 있으면 그게 이긴다."
+include(joinpath(@__DIR__, "run_header.jl"))
+include(joinpath(@__DIR__, "zone_command.jl"))
+
 function pending_command_kind(path)
     (isfile(path) && filesize(path) > 0) || return :none
     kind = :none
@@ -752,7 +756,20 @@ pre = function (env)
     CB.set_respec_producer!(USE_LLM ? llm_producer : policy_producer)
     CB.clear_ood_schedule!()
     empty!(CB.RESPEC_QUEUE.pending)
-    CB.monitor_enable!(stream_path)
+    # 스트림을 **여는 순간** 옛 녹화가 0바이트로 잘린다(monitor.jl 이 "w" 로 연다). 그래서 존 런은
+    # 조작자가 구역을 확정한 뒤에야 연다 — 확정 전에 취소하면 기존 녹화본이 그대로 살아남아야 한다.
+    # 스트림을 열면서 사이드카를 남긴다: 대시보드는 이 토큰으로 "내가 시작한 런"만 화면에 올린다.
+    stream_opened = Ref(false)
+    function enable_stream!(zone = nothing)
+        stream_opened[] && return nothing
+        CB.monitor_enable!(stream_path)
+        write_run_info(run_info_path_of(COMMAND_FILE),
+                       run_info(; run_id = RUN_ID, case = CASE_TAG, requires_zone = REQUIRE_ZONE,
+                                started_at = time(), stream = basename(stream_path), zone = zone))
+        stream_opened[] = true
+        return nothing
+    end
+    REQUIRE_ZONE || enable_stream!()
     n_total = Graphs.nv(env.sched)
     fr(f) = max(4, round(Int, f * n_total))
     slots = [0.10, 0.32, 0.55]
@@ -953,6 +970,8 @@ pre = function (env)
                     (waited % 10 < 0.2) && println("    · still waiting for the operator zone " *
                                                    "($(round(Int, waited))s)")
                 end
+                # 조작자가 확정한 구역을 사이드카에 실어 남기고, 그때 비로소 스트림을 연다.
+                enable_stream!(last_zone_command(COMMAND_FILE))
             elseif MONITOR_WAIT > 0
                 println(">>> interactive ready: waiting up to $(round(Int, MONITOR_WAIT))s for the " *
                         "first operator command (MONITOR_WAIT=0 to start immediately with no zone)")
@@ -964,6 +983,9 @@ pre = function (env)
                 println(">>> interactive ready: MONITOR_WAIT=0 — starting immediately, no pre-sim zone " *
                         "(zones injected later in the run still take effect)")
             end
+            # 게이트가 없는 대화형 런(MONITOR_WAIT 경로)도 첫 명령 적용 전에는 스트림이 열려 있어야
+            # 한다 — control 이 inject_live_zone! 을 부르고 그것이 OOD 를 기록하기 때문.
+            enable_stream!()
             # Apply the initial zone before the first motion/planning step. This
             # keeps all physical parts relocatable by the production respec path.
             control(env, nothing, nothing, 0)
