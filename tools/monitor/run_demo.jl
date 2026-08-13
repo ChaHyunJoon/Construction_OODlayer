@@ -34,6 +34,7 @@ using ConstructionBots
 using Random
 import Graphs
 import HTTP, JSON3                                    # DSPy producer 와 통신하는 HTTP 클라이언트
+import Logging                                        # 이 레인의 로그 레벨을 명시적으로 심기 위해(아래 run_lego_demo 호출부)
 const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))   # battery/ood_stream/ood_truth/baselines
 
@@ -418,6 +419,14 @@ haskey(ENV, "SPARE_DEPOT_DIST") &&
 # `greedy_cost = CB.GreedyEnergyAwareCost()` 를 호출부에 붙이는 순간 w_g 가 아직 nothing 이라
 # 모델을 다 읽고 배치한 뒤에 하드 에러로 죽는다(2026-08-13 리뷰 C-1).
 #
+# ⚠️ 하이스팅이 **동작 중립인 것은 이 레인이 `assignment_mode=:greedy` 이기 때문**이다.
+#    greedy 는 `formulate_milp(::GreedyOrderedAssignment, …)` 로 디스패치되는데 그 메서드는
+#    `get_objective_expr` 를 부르지 않아서, 호출 전에 AUTO_EFFICIENCY_KAPPA[] 가 심겨 있어도
+#    초기 스케줄이 달라지지 않는다. **이 레인을 `:milp` 나 `:milp_w_greedy_warm_start` 로
+#    바꾸는 순간 그 전제가 깨진다** — 그때는 init 이 호출 앞에 있다는 사실만으로 초기 계획의
+#    목적함수에 에너지 항이 실려 초기 스케줄 자체가 바뀐다(= 세대가 갈린다). 모드를 바꾸려면
+#    이 블록의 위치를 함께 재검토할 것.
+#
 # ENERGY_OBJECTIVE 는 **가중치 로딩과 비용 타입 선택을 하나의 조건문으로 묶는다**(리뷰 I-5).
 # 둘이 따로 놀면 =0 인데 에너지 타입이 선택돼 "w_g 가 필요하다" 에러로 죽는 조합이 생긴다.
 # =0 → 항상 동작하는 구세대 경로, =1 → 항상 동작하는 신세대 경로. 껐다는 사실은 로그에 남는다.
@@ -438,12 +447,18 @@ end
 #   get_tF(v) + (1+w_g)·dt = dt 의 0.075% 단조 재척도일 뿐, 에너지도 DeprioritizeAgent 도 SoC 도
 #   싣지 않는다. 바꾸면 초기 계획·오라클 라벨·surrogate 학습셋의 세대만 갈리고 의미는 0 이다.
 #   전제와 해제 조건은 essential_tg_coponents.jl 의 GreedyEnergyAwareCost docstring 참조.
+#
+# 📌 아래 if/else 는 **지금은 두 가지가 같다 — 의도된 항등 분기이지 버그가 아니다.** 골격을
+#    남겨 두는 이유는 I-5(가중치 로딩과 타입 선택을 한 조건문 아래 묶기)의 구조를 보이게 하고,
+#    나중에 켤 때 고칠 곳이 여기 한 군데임을 명확히 하기 위해서다. "중복이니 접자"고 지우면
+#    ENERGY_OBJECTIVE 가 다시 절반짜리 스위치가 된다.
 const GREEDY_COST = if ENERGY_ON
-    CB.GreedyFinalTimeCost()
+    CB.GreedyFinalTimeCost()   # ← 켤 때 바꿀 유일한 자리 (GreedyEnergyAwareCost())
 else
-    CB.GreedyFinalTimeCost()
+    CB.GreedyFinalTimeCost()   # 구세대 경로는 언제나 이 타입
 end
 
+Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Warn))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
 env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood", num_robots = NROB,
     model_scale = SCALE, greedy_cost = GREEDY_COST,
     assignment_mode = :greedy, save_animation = false, write_results = false, overwrite_results = true,

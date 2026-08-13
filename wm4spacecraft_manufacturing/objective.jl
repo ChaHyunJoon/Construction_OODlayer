@@ -60,6 +60,13 @@ function load(; path::AbstractString = OBJECTIVE_PATH, refresh::Bool = false)
     isfile(path) || throw(ObjectiveError("objective.json 이 없다: $path"))
     cfg = Dict{String,Any}(JSON3.read(read(path, String), Dict{String,Any}))
     delete!(cfg, "_doc")
+    # `generation` 은 해시에 **문자열 그대로** 들어간다. 문자열이 아니면 두 언어의 표기가
+    # 갈릴 수 있다 — 특히 JSON 불리언은 Julia 가 "true", Python 이 "True" 를 내서 해시가
+    # 조용히 달라진다(이미 닫은 -0.0 발산과 같은 부류). 타입을 여기서 못 박아 원천 봉쇄한다.
+    if haskey(cfg, "generation") && !(cfg["generation"] isa AbstractString)
+        throw(ObjectiveError("objective.json 의 generation 은 문자열이어야 한다 (해시에 원문 " *
+            "그대로 들어가므로 Python/Julia 표기가 갈릴 수 있다): $(repr(cfg["generation"]))"))
+    end
     ov = Dict{String,String}()
     for (key, env_name) in ENV_OVERRIDES
         haskey(ENV, env_name) || continue

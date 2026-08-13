@@ -72,30 +72,41 @@ end
         @test true
     else
         local w_real = CB.GREEDY_ENERGY_W[]
-        local verdict = "?"
+        # 기본값은 **실패 쪽**이다: 예외로 빠져나가면 그대로 찍힌다. 판정 문자열이 결과보다
+        # 낙관적이면 안 된다 — 실패를 "통과"로 인쇄하는 것이 이 파일에서 가장 나쁜 버그다.
+        local verdict = "❌ 판정 불가 — 예외로 중단됨"
         try
             base   = fingerprint(build_env(CB.GreedyFinalTimeCost()))
             energy = fingerprint(build_env(CB.GreedyEnergyAwareCost()))
             # 다르면 확장점이 살아 있다는 뜻. 같으면 §2.4 의 결함이 되살아난 것 —
             # 다만 w_g 가 너무 작아 argmin 이 한 번도 안 갈리는 경우도 같은 증상이라, 그때는
             # w_g 를 크게 키워 다시 본다(디스패치가 살아 있음만 확인하는 목적).
-            if base != energy
-                verdict = "실제 w_g=$(w_real) 만으로 배정이 갈렸다 (에너지 항이 동점해소자 이상)"
-            else
-                # ⚠️ 이 가지는 **약한 통과**다: 디스패치가 살아 있다는 것만 보이고,
-                #   "실제 w_g 가 배정에 영향을 준다"는 명제는 **포기한 채** 통과한다.
+            local boosted = false
+            if base == energy
                 CB.GREEDY_ENERGY_W[] = 1.0e6   # 확실히 지배적인 값
                 energy = fingerprint(build_env(CB.GreedyEnergyAwareCost()))
-                verdict = "약한 통과 — 실제 w_g=$(w_real) 로는 배정이 안 갈려 w_g=1e6 으로 " *
-                          "재검사했다 (디스패치 생존만 확인, 실제 w_g 의 실효는 미검증)"
+                boosted = true
             end
-            @test base != energy
+            # 판정은 **실제 결과에서** 유도한다. 예전에는 1e6 재검사가 실패해도 finally 가
+            # "약한 통과"를 찍었다 — @test 는 실패를 기록만 하고 던지지 않기 때문이다.
+            local ok = base != energy
+            verdict = if !ok
+                "❌ 실패 — w_g=1e6 으로 키워도 배정이 안 갈렸다. greedy_cost 디스패치 확장점이 " *
+                "죽었다(§2.4 결함 재발): 값이 저장만 되고 아무도 안 읽는 상태로 되돌아갔다."
+            elseif boosted
+                "약한 통과 — 실제 w_g=$(w_real) 로는 배정이 안 갈려 w_g=1e6 으로 " *
+                "재검사했다 (디스패치 생존만 확인, 실제 w_g 의 실효는 미검증)"
+            else
+                "강한 통과 — 실제 w_g=$(w_real) 만으로 배정이 갈렸다 (에너지 항이 동점해소자 이상)"
+            end
+            @test ok
         finally
             CB.GREEDY_ENERGY_W[] = w_real   # 1e6 이 다음 testset/호출자로 새 나가지 않게 원복
-            # ⚠️ 여기서 `@info` 를 쓰면 **출력이 사라진다.** run_lego_demo 이
-            #   `global_logger(ConsoleLogger(stderr, Logging.Warn))` 를 심고 원복하지 않기 때문에
-            #   (src/full_demo.jl:246-248), 첫 build_env 호출 이후의 모든 @info 는 조용히 버려진다.
-            #   실측으로 이 줄이 통째로 안 찍혔다(2026-08-13). println 은 로깅 시스템을 안 탄다.
+            # `@info` 가 아니라 `println` 을 쓴다(방어적). run_lego_demo 이 예전에는
+            # `global_logger(ConsoleLogger(stderr, Warn))` 를 심고 **원복하지 않아서** 첫
+            # build_env 이후의 모든 @info 가 조용히 사라졌고, 실제로 이 줄이 통째로 안 찍혀
+            # 라운드 1 에서 틀린 결론을 보고했다. 그 누수는 고쳤지만(래퍼가 finally 로 원복),
+            # 진단 출력이 로깅 설정에 의존하지 않는 편이 낫다 — println 은 그 층을 안 탄다.
             println(">>> greedy 디스패치 판정: ", verdict,
                     "  (w_g restored = ", CB.GREEDY_ENERGY_W[], ")")
         end

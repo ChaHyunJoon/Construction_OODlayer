@@ -228,6 +228,7 @@ println(">>> building nav-ON env (tractor)...")
 pp = CB.get_project_params(4)   # [KO] 4 = tractor 프로젝트 파라미터(파일/스케일/로봇수 등) 묶음
 # [KO] 시뮬 시작 직전 상태의 env 를 큰 스택 태스크에서 빌드. do...end = run_with_stack 에 넘기는 함수블록.
 ENV0 = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,   # greedy=탐욕 배정
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -441,6 +442,7 @@ pp = CB.get_project_params(4)
 # [KO] 스페어풀/고장로봇/구역/OOD예약을 전부 초기화(깨끗한 시작 보장)
 CB.clear_spare_pools!(); CB.clear_faulted_robots!(); CB.clear_restriction_zones!(); CB.clear_ood_schedule!()
 ENV0 = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -533,6 +535,7 @@ STEP_CAP         = 100_000 # hard cap on sim steps (build completes well before)
 function build_env()
     pp = CB.get_project_params(4)   # tractor
     return run_with_stack(2_000_000_000) do
+        Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
         CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
             model_scale=pp[:model_scale], num_robots=pp[:num_robots],
             assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
@@ -891,6 +894,7 @@ pp = CB.get_project_params(PROJECT)
 println(">>> building nav-ON env ($(pp[:project_name])) WITH $(4*NSPARE) spares ($(NSPARE)/pool)...")
 CB.clear_spare_pools!(); CB.clear_faulted_robots!(); CB.clear_restriction_zones!()
 ENV0 = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
@@ -1327,6 +1331,7 @@ project_params = get_project_params(4)   # tractor
 
 println(">>> building env (assignment only, no simulation)...")
 env = run_with_stack(2_000_000_000) do   # [KO] 시뮬 없이 배정까지만 된 env 를 큰 스택에서 빌드
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     run_lego_demo(;
         ldraw_file=project_params[:file_name],
         project_name=project_params[:project_name],

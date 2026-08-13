@@ -55,6 +55,7 @@ CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" =>
 println(">>> building fast geometry env (tractor, rvo off)...")
 pp = CB.get_project_params(4)
 env = run_with_stack(2_000_000_000) do
+    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
     CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
         model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
         milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,

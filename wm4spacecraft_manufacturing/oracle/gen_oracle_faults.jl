@@ -100,6 +100,7 @@ end
 function build_base_env()
     pp = CB.get_project_params(4)   # tractor  # 4번 프로젝트 = tractor(견인차) 모델의 파라미터 묶음
     run_with_stack(2_000_000_000) do           # 20억 바이트 큰 스택으로 아래 데모를 실행(do-블록 = 익명함수)
+        Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
         CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
             model_scale=pp[:model_scale], num_robots=pp[:num_robots],
             assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,

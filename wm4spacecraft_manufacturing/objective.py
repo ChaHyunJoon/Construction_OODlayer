@@ -75,6 +75,13 @@ def load(path=None, refresh=False):
     with open(p) as fh:
         cfg = json.load(fh)
     cfg.pop("_doc", None)
+    # `generation` 은 해시에 **문자열 그대로** 들어간다. 문자열이 아니면 두 언어의 표기가
+    # 갈릴 수 있다 — 특히 JSON 불리언은 Python 이 "True", Julia 가 "true" 를 내서 해시가
+    # 조용히 달라진다(이미 닫은 -0.0 발산과 같은 부류). 타입을 여기서 못 박아 원천 봉쇄한다.
+    if "generation" in cfg and not isinstance(cfg["generation"], str):
+        raise ObjectiveError(
+            "objective.json 의 generation 은 문자열이어야 한다 (해시에 원문 그대로 들어가므로 "
+            "Python/Julia 표기가 갈릴 수 있다): %r" % (cfg["generation"],))
     cfg["_env_overrides"] = {}
     for key, env_name in ENV_OVERRIDES.items():
         raw = os.environ.get(env_name)
