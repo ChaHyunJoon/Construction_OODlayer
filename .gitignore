@@ -34,6 +34,10 @@ tools/monitor/regen_case_logs/
 tools/monitor/monitor_stream.jsonl
 tools/monitor/visualization.html
 
+# render_all.sh 가 워커마다 만드는 모델 별칭(심링크). 원본 도면의 사본이 아니라 링크뿐이고,
+# 워커 수만큼만 생긴다 -- 커밋 대상 아님 (tools/monitor/README_RENDER_3D.md §5).
+LDraw_files/_render_workers/
+
 # Python virtualenv (2026-08-12 부터 `.venv/` 가 표준 인터프리터 자리다 -- 커밋 대상 아님)
 .venv/
 
@@ -57,3 +61,7 @@ wm4spacecraft_manufacturing/_quarantine_D40_2026-08-12/
 wm4spacecraft_manufacturing/_night/.status.lock
 wm4spacecraft_manufacturing/_night/joblist.txt
 wm4spacecraft_manufacturing/_night/oracle_joblist.txt
+wm4spacecraft_manufacturing/_night/.render.lock*
+wm4spacecraft_manufacturing/_night/.render_cursor
+wm4spacecraft_manufacturing/_night/render_joblist.txt
+wm4spacecraft_manufacturing/_night/render_logs/
