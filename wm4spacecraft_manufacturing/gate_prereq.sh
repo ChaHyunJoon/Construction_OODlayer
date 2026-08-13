@@ -70,6 +70,26 @@ printf '%s\n' "$P2_BODY" > "$NIGHT_DIR/provenance_4pol.json"
 DSPY_PROGRAM=$(printf '%s' "$P2_BODY" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("program","?"))' 2>/dev/null || echo "?")
 echo "[gate] P2 OK (health) -- program=$DSPY_PROGRAM"
 
+# ---- P9 surrogate 레인이 실제로 로드됐는가 -------------------------------
+# 2026-08-12: dspy 3.3.0 의 lazy numpy 프록시가 sklearn 경유로 재진입하면 _load_surrogate() 가
+# 예외를 삼켜서 서비스는 정상 기동하고 P1/P2 도 통과하지만, surrogate 는 조용히 미로드 상태로
+# 남는다. 그러면 policy.jl 이 surrogate 정책을 canonical 로 폴백시키는데, summary 에는 여전히
+# policy="surrogate" 로 찍혀 회귀를 알아챌 수 없다. P2 와 같은 health 응답을 다시 확인해
+# surrogate 필드가 비어있거나 "ERROR"로 시작하면 여기서 막는다.
+P9_RESP=$(curl -s -w '\n%{http_code}' "$DSPY_URL/health" 2>/dev/null)
+P9_CODE=$(printf '%s' "$P9_RESP" | tail -n1)
+P9_BODY=$(printf '%s' "$P9_RESP" | sed '$d')
+if [ "$P9_CODE" != "200" ]; then
+    echo "PREREQ FAIL: P9 -- http_code=$P9_CODE"
+    exit 1
+fi
+P9_SURRO=$(printf '%s' "$P9_BODY" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("surrogate") or "")' 2>/dev/null || echo "")
+if [ -z "$P9_SURRO" ] || [ "${P9_SURRO#ERROR}" != "$P9_SURRO" ]; then
+    echo "PREREQ FAIL: P9 -- surrogate 미로드/에러: $P9_SURRO"
+    exit 1
+fi
+echo "[gate] P9 OK (surrogate=$P9_SURRO)"
+
 # ---- P3 행동 어휘 감사 --------------------------------------------------
 if ! "$PY" audit_action_vocab.py; then
     echo "PREREQ FAIL: P3 (audit_action_vocab.py)"

@@ -30,6 +30,19 @@ from typing import List, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+# 2026-08-12 FIX -- 이 두 줄은 지울 수 있는 "우연히 딸려온" import 가 아니다. 순서가 계약이다.
+# dspy 3.3.0(3.2.1 에서 업그레이드)은 `import dspy` 시점에 sys.modules["numpy"] 를
+# `dspy/utils/lazy_import.py` 의 lazy-import 프록시로 바꿔치기한다. 이후 `_load_surrogate()`
+# 가 sklearn -> joblib -> numpy 로 그 프록시를 건드리면, numpy 가 절반만 초기화된 자기 자신
+# (numpy._core)으로 재진입하며 `numpy/_core/_methods.py:17: TypeError: data type 'bool' not
+# understood` 로 죽는다. `_load_surrogate()` 는 그 예외를 삼켜 `_state["surro_error"]` 에 담기
+# 때문에 서비스 자체는 정상 기동하지만, /health 의 surrogate 필드가 "ERROR: ..." 가 되고
+# tools/monitor/policy.jl 이 이를 보고 surrogate 정책을 조용히 canonical 로 폴백시킨다
+# (summary 에는 policy="surrogate" 로 찍히지만 실제 enacted 는 전부 canonical). 진짜 numpy/
+# sklearn 을 dspy 보다 먼저 정상적으로 import 해 두면 dspy 가 프록시를 심을 이유가 없어져서
+# 이 재진입 자체가 발생하지 않는다. 절대 "정리"한다고 아래 줄을 지우거나 dspy 뒤로 옮기지 말 것.
+import numpy, sklearn.ensemble  # noqa: F401  -- 순서 고정: dspy 보다 먼저 진짜 numpy/sklearn 을 초기화
+
 import dspy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
