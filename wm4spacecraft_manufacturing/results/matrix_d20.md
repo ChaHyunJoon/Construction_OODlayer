@@ -7,8 +7,8 @@
 | FAILURE CASE | ORACLE | CANONICAL | SURROGATE | LLM |
 |---|---|---|---|---|
 | Battery depletion | 3/3 · acc — · 22.4s · 280 J/cl · SoC 0.75 | 2/2 · acc 0% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 0% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 22.4s · 280 J/cl · SoC 0.97 |
-| Robot breakdown | 0/1 · acc — · — · — · — | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 |
-| Keep-out zone | 1/1 · acc — · 22.4s · — · — | 2/2 · acc 0% · 58.6s · 510 J/cl · SoC 0.94 | 2/2 · acc 100% · 30.6s · 419 J/cl · SoC 0.96 | 2/2 · acc 88% · 29.8s · 398 J/cl · SoC 0.96 |
+| Robot breakdown | 1/1 · acc — · 22.8s · — · — | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 30.0s · 447 J/cl · SoC 0.96 |
+| Keep-out zone | 1/1 · acc — · 24.6s · — · — | 2/2 · acc 0% · 58.6s · 510 J/cl · SoC 0.94 | 2/2 · acc 100% · 30.6s · 419 J/cl · SoC 0.96 | 2/2 · acc 88% · 29.8s · 398 J/cl · SoC 0.96 |
 | Breakdown + battery | — | 2/2 · acc 50% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 50% · 30.0s · 447 J/cl · SoC 0.96 | 2/2 · acc 100% · 26.5s · 350 J/cl · SoC 0.97 |
 | Breakdown + zone | — | 0/2 · acc 50% · — · — · — | 1/2 · acc 100% · 38.0s · 456 J/cl · SoC 0.96 | 1/2 · acc 86% · 27.7s · 359 J/cl · SoC 0.96 |
 | Battery + zone | — | 0/2 · acc 0% · — · — · — | 1/2 · acc 57% · 38.0s · 456 J/cl · SoC 0.96 | 2/2 · acc 75% · 43.0s · 424 J/cl · SoC 0.95 |
