@@ -72,11 +72,8 @@ def main():
 
     mks, ens, per_closed = [], [], []
     n_total = n_complete = 0
-    files = []
     for row, path in _rows(patterns):
         n_total += 1
-        if path not in files:
-            files.append(os.path.relpath(path, HERE))
         if not row.get("complete"):
             continue
         m, e = _makespan(row), _energy(row)
@@ -88,6 +85,9 @@ def main():
         closed = row.get("closed") or 0
         if closed > 0:
             per_closed.append(e / closed)
+    # _rows() sets this attribute once fully drained: one relpath entry per
+    # file it opened (glob order), already deduplicated — no per-row rebuild needed.
+    files = _rows.files
 
     if n_complete == 0:
         print(json.dumps({"error": "완주 + makespan + energy 를 모두 가진 행이 하나도 없다",
