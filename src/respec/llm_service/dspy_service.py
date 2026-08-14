@@ -193,6 +193,24 @@ SURRO_DATA = wm_datasets.abspath(wm_datasets.RELABEL_20260814)
 # 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
 # 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
 # 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.
+#
+# ⚠️ 이 선택의 대가를 여기 같이 적는다 (2026-08-14 최종 리뷰). 위 근거는 전부 **LOIO(G1)의
+# 2차 지표**다. **일반화의 유일한 근거라고 하니스 자신이 부르는 지표는 LOKO(G2)** 이고,
+# 거기서 이 규칙은 **자기가 대체한 전임(deadband_B)을 빼면 비교 대상 전부보다 나쁘다**:
+#
+#     G2 (LOKO, 평균 regret; 낮을수록 좋다)      G1 (LOIO, 평균 regret)
+#       max-cost 바닥선     169.48 (학습 0)          169.48
+#       argmin_jhat        169.48                  223.50
+#       linear2h           169.31   <- 최선         686.29
+#       deadband_Jbar    ** 924.96 **              223.33   <- 최선
+#       deadband_B        1158.73                  600.07
+#
+# 즉 **처음 보는 kind 에서는 상태를 한 비트도 안 보는 max-cost 규칙(과 선형 바닥선)이 이
+# 규칙을 5.5배 차이로 이긴다.** 그래도 이 규칙을 배포한 이유: 배포 레인이 실제로 마주치는 것은
+# 학습된 세 kind 이고(새 kind 는 novelty 라우터가 LLM 으로 보낸다), G1 에서 이 규칙만이
+# `{0,1,8}` 의 신호를 맞힌다(Replace 5 · Swap 10, 최빈답 오라클 일치). 그러나 이것은
+# **트레이드오프이지 우세가 아니다** — kind 일반화를 근거로 이 규칙을 인용하지 말 것.
+# 근거·전체 표: wm4spacecraft_manufacturing/md/RESULTS_SURROGATE_REBUILD_2026-08-14.md §3.
 SURRO_RULE = "deadband_Jbar"
 
 

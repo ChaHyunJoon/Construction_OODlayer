@@ -1,22 +1,36 @@
 #!/usr/bin/env python3
-"""eval_deployed_gates.py -- G3(LOIO)/G4/G4b 게이트를 실제 배포 모델에 물리는 고정된 계측기.
+"""eval_deployed_gates.py -- **2026-08-13 기준선 모델**에 G3(LOIO)/G4/G4b 를 물리는 동결 계측기.
 
-Task 2 Step 4 의 최종 형태(2026-08-13, 컨트롤러 판정 반영)를 재현 가능한 스크립트로 고정한다.
-Task 6 이 이 파일을 그대로 재사용해 같은 숫자를 다시 뽑는다 -- 측정 방법을 바꿀 일이 있으면
-이 파일을 고치고, 새 리포트에서 새 숫자를 인용한다. 임시 heredoc 스크립트로 남겨두면 다음
-사람이 "그 숫자 어떻게 나왔더라"를 다시 손으로 재구성해야 한다 -- 그게 이 파일이 있는 이유다.
+⚠️ 이 파일은 "지금 배포된 모델"을 재지 않는다 (2026-08-14 최종 리뷰에서 제목·설명을 정정).
+=================================================================================================
+Task 2(2026-08-13)에 쓰였을 때는 **그때 배포돼 있던** 모델을 쟀다. 그 뒤 배포가 갈렸다:
+  · 모델   RandomForest(`closed − λ·MACRO_COST` 회귀)  ->  `SurrogateV2`(2-헤드 조립 Ĵ)
+  · 학습셋 `wm_datasets.N44_PLUS78`                     ->  `wm_datasets.RELABEL_20260814`
+  · 타깃   `closed − λ·MACRO_COST` (아래 LAM)           ->  J 자신 (식별할 λ 가 없다)
+이 스크립트는 아직 옛 쪽을 쓴다(`surrogate_model.build_model` · `N44_PLUS78` · `LAM = 3.0`).
+**그것이 의도다**: 이 파일의 값어치는 "2026-08-13 기준선이 무엇이었는지"를 바이트 단위로
+재현하는 데 있다. 현행 모델로 겨누지 말 것 — 그러면 기준선이 사라지고, 이후 결과 문서가
+인용하는 숫자를 다시 만들 수 없게 된다. **현행 모델의 게이트는 `eval_surrogate_v2.py` 다.**
+
+그래서 아래 G3 팔을 "배포 모델"이라고 부르지 않는다 — **2026-08-13 기준선 모델**이다.
+(파일 이름의 `deployed` 는 그 시점의 잔재다. 이름을 바꾸지 않은 이유: Task 2·6 리포트와
+결과 문서가 이 경로로 숫자의 출처를 지목한다 — 경로가 바뀌면 그 인용이 끊긴다.)
 
 측정 대상 셋은 성격이 다르다:
-  G3 (LOIO)   -- 라벨셋(`wm_datasets.N44_PLUS78`) 위에서 leave-one-instance-out 으로 측정한다.
+  G3 (LOIO)   -- 라벨셋(`wm_datasets.N44_PLUS78`, = 그 기준선의 학습셋) 위에서
+                leave-one-instance-out 으로 측정한다.
                 G3 는 팔마다의 반사실적(counterfactual) truth 점수가 있어야 하는데, 배포
                 로그에는 "실제로 실행한 팔의 결과"만 있고 안 고른 팔의 점수는 없다. 그래서
                 G3 는 항상 라벨셋 위에서만, 그것도 **out-of-sample**로만 잰다 -- 라벨셋
                 전체로 학습한 모델을 그 라벨셋에 그대로 물리는 것(in-sample)은 무효다:
                 2026-08-13 에 그렇게 했다가 `kind_*` one-hot 특징 때문에 G3·G4 가 둘 다
                 거짓 통과했고, 원인을 되짚어 이 스크립트로 되돌렸다.
-  G4 / G4b    -- 실제 배포 서비스가 낸 스윕 로그(`--sweep-dir`, 기본 `results_4pol/*.jsonl`,
-                `policy=="surrogate"` 행만) 위에서 잰다. G4 는 truth kind 별 답 분포,
-                G4b 는 legal menu(그 상황에서 쓸 수 있던 팔의 집합) 별 답 분포를 본다.
+  G4 / G4b    -- **그 시점의** 배포 서비스가 낸 스윕 로그(`--sweep-dir`, 기본
+                `results_4pol/*.jsonl`, `policy=="surrogate"` 행만) 위에서 잰다. 아래
+                SHA256_ANCHOR 가 그 바이트를 고정한다 — 스윕이 갱신되면 이 팔이 재는 것도
+                더 이상 2026-08-13 기준선이 아니므로, 해시 경고를 무시하지 말 것.
+                G4 는 truth kind 별 답 분포, G4b 는 legal menu(그 상황에서 쓸 수 있던 팔의
+                집합) 별 답 분포를 본다.
                 G4b 가 필요한 이유: kind 마다 legal menu 자체가 겹치지 않으면(zone/reform
                 이 그랬다) G4 는 "menu 가 갈려서 답도 갈렸다"는 착시로 통과해 버릴 수 있다 --
                 실측 결함은 kind 판별 실패가 아니라 **menu 안에서 항상 MACRO_COST 최댓값
@@ -141,7 +155,11 @@ def load_deployed_decisions(sweep_dir, files):
 
 
 def run_g3_loio():
-    """G3: leave-one-instance-out, 라벨셋(n44_plus78) 위, out-of-sample 만."""
+    """G3: leave-one-instance-out, 라벨셋(n44_plus78) 위, out-of-sample 만.
+
+    여기서 적합하는 것은 **2026-08-13 기준선 모델**(RandomForest / `closed − λ·MACRO_COST`)이다.
+    현행 배포 모델이 아니다 — 위 파일 머리말 참조.
+    """
     path = wm_datasets.N44_PLUS78
     df = load(path)
     df = df[df.fired == True].copy()
@@ -171,7 +189,8 @@ def run_g3_loio():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="G3(LOIO)/G4/G4b 를 배포 모델에 물린다.")
+    ap = argparse.ArgumentParser(
+        description="G3(LOIO)/G4/G4b 를 **2026-08-13 기준선 모델**에 물린다 (현행 배포 모델이 아니다).")
     ap.add_argument("--sweep-dir", default=os.path.join(HERE, "results_4pol"),
                      help="results_4pol/*.jsonl 이 있는 디렉토리 (기본: wm4spacecraft_manufacturing/results_4pol)")
     ap.add_argument("--out", default=None, help="JSON 출력 경로 (기본: stdout)")

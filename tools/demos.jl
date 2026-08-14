@@ -1895,9 +1895,20 @@ OOD_SEED   = parse(Int, get(ENV, "OOD_SEED", "3"))
 NSPARE     = parse(Int, get(ENV, "NSPARE", "3"))
 SEED       = parse(Int, get(ENV, "SEED", "1"))
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
-# MUST match the oracle data-gen's battery physics (DS_SHRINK / DS_STALL).
-SHRINK     = parse(Float64, get(ENV, "SHRINK", "200.0"))    # == DS_SHRINK
-STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.15"))  # == DS_STALL
+# ⚠️ STALE — 이 주석이 원래 하던 말("오라클 데이터젠의 배터리 물리(DS_SHRINK/DS_STALL)와 반드시
+# 일치해야 한다")은 **더 이상 참이 아니다**. 2026-08-13 에 라벨러가 축소를 버렸다:
+# `gen_oracle_dataset.jl:1214` 의 `DS_SHRINK` 기본값은 이제 **1.0**(축소 없음)이다 — 스펙 2.3 kWh
+# 는 최대부하에서 2.30 시간이고, 200 은 41초짜리 배터리라 자연 방전만으로 로봇이 죽는 세계였다.
+# 여기 200.0 은 그래서 라벨러와 **다르다**. 이 데모 레인의 기본값을 1.0 으로 맞추는 것은
+# 데모 동작을 바꾸는 일이라(짧은 데모에서 방전이 아예 안 보이게 된다) 자체 검증이 필요하고,
+# **추적 중인 후속 작업**으로 남아 있다(RESULTS_SURROGATE_REBUILD_2026-08-14.md §7).
+# 이 주석을 "일치시켜야 한다" 로 되돌리지 말 것 — 그 말을 따르면 라벨러를 200 으로 되돌리게 된다.
+# (같은 상태의 자매 자리 — 전부 그대로 둔 것이다:
+#  `grep -n 'ENV, "SHRINK"' tools/demos.jl` 의 나머지 두 곳, 그리고
+#  `wm4spacecraft_manufacturing/oracle/probe_fire_points.jl` 의 `DS_SHRINK` 기본값 200.0.)
+# STALL_SOC 0.15 는 여전히 라벨러의 `DS_STALL` 기본값과 같다.
+SHRINK     = parse(Float64, get(ENV, "SHRINK", "200.0"))    # 라벨러(DS_SHRINK=1.0)와 다르다 — 위 참조
+STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.15"))  # == DS_STALL (여전히 일치)
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
 SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SIDEBAR_W  = parse(Int, get(ENV, "SIDEBAR_W", "380"))
