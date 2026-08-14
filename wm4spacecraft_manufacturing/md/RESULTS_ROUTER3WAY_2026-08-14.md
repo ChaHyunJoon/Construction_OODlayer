@@ -113,9 +113,24 @@ bash finish_tables.sh
 ### 5-C. ★ DP 는 backward induction 이 **아니다** — 이 문서에서 가장 중요한 편차
 
 원 설계 §7 은 결정 epoch 마다 `(c, s̃′)` 를 재고 Bellman 으로 뒤에서 풀어 올라간다. 그러려면
-**epoch 단위 비용 분해**가 필요한데, 이 하니스가 J 를 내는 단위는 **판**이다 — `makespan`·
+**epoch 단위 비용 분해**가 필요한데, 이 하니스는 J 를 **판 단위로 낸다** — `makespan`·
 `energy_J`·`complete` 가 전부 판 단위 집계다. 판 단위 J 를 결정 개수로 임의 배분하면 그 배분
 규칙이 곧 결과가 되므로, **배분하지 않았다.**
+
+> **정정 (2026-08-14 말미).** 이 절의 초고는 "분해가 **존재하지 않는다**" 고 적었는데 그건 과했다.
+> 정확히는 **"지금 기록되지 않는다"** 이다. `CB.battery_report().total_energy_J` 는 임의 시점의
+> 누적 에너지를 주고(`render_demo.jl` 이 실제로 그렇게 읽어 화면에 싣는다), `sim_t` 와 `closed`
+> 도 결정 시점에 읽힌다. 결정마다 이 셋을 기록하면 구간 비용 `c_k` 와 다음 칸 `s̃′` 가 **진짜로
+> 만들어진다.** 즉 backward induction 은 원리적 불가가 아니라 **계측 추가 + 전면 재실행**이
+> 필요한 작업이고, 이 사이클(7시간)에서 선택하지 않았을 뿐이다.
+>
+> 다만 분해에는 함정이 하나 있다 — `objective.J` 의 **두 분기는 러닝 코스트가 다르다**:
+> 완주는 `makespan + w_E·energy`(구간에 가법적), 미완주는
+> `C_fail + C_unclosed·unclosed + tie_eps·makespan`(**에너지가 아예 안 들어간다**).
+> 그래서 러닝 코스트를 완주 분기로 고정하고 종단에서 차액을 정산해야 하며, 그 정의가
+> 발명이 아님을 `Σ c_k + terminal == J_row(row)` 라는 **분해 충실성 검사**로 못박아야 한다.
+>
+> 실행 계획: [`docs/superpowers/plans/2026-08-15-dp-backward-induction.md`](../../docs/superpowers/plans/2026-08-15-dp-backward-induction.md)
 
 그래서 이 표의 DP 가 실제로 푸는 것은:
 
@@ -168,8 +183,13 @@ V(s̃)    = min_a Q(s̃, a)          a*(s̃) = argmin_a Q(s̃, a)
 
 ## 7. 이 사이클에서 하지 않은 것
 
-- 라벨 재생성(energy-only 모드로 fault/zone 라벨을 다시 내기). §5-A.
-- 진짜 backward induction. §5-C — 이건 계획서가 2일로 잡은 캠페인이다.
+- 라벨 재생성 — **범위를 정정한다.** surrogate 학습셋(`RELABEL_20260814`)은 이미 재라벨돼
+  있다(365행 전부 `energy_J` 보유, fault 110 · battery 135 · zoneblk 120, 현행 해시). 남은 것은
+  **oracle 천장 격자**(`battgrid_0805_s1` · `firegrid_merged` · `zcausal_reform`)뿐이고, 그것은
+  `FINAL.md` 의 oracle 천장 행에만 영향을 준다 — **COMPARE 4열은 바뀌지 않는다.** §5-A.
+- 진짜 backward induction. §5-C — **다음 세션으로 인계**했다(계획서
+  `docs/superpowers/plans/2026-08-15-dp-backward-induction.md`, 약 4~5시간 · 네 열 전부 재스윕).
+  계측 변경이 코드 세대를 가르므로 DP 열만 따로 고칠 수 없다.
 - `zone_s=cov` 주입 격자. §5-D.
 - `reference_policy.py` 대체와 DISAGREEMENT 리포트 (원 설계 §8.6 — 계획서 §5.6 이 이미 범위 밖).
 - surrogate 를 φ̃ 위에서 재학습 (원 설계 §9).

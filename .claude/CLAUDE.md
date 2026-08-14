@@ -7,7 +7,7 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 ### 2026-08-13 — 목적함수 통일로 또 한 번 세대가 갈렸다
 
 `wm4spacecraft_manufacturing/objective.json` 이 목적함수 J 의 단일 진실원이고, `objective_hash()` =
-**`59b1174118b874ed`**. 파일에 `generation` 필드(현재 `"2026-08-13-energy-activation"`)가 있고
+**`19819377a7f8ebb2`**. 파일에 `generation` 필드(현재 `"2026-08-13-global-kappa-precedence"`)가 있고
 해시에 들어간다 — **규칙: 스칼라가 하나도 안 바뀌어도 목적함수의 유효 의미가 바뀌면(플래너
 재배선 포함) 반드시 올린다.** greedy(`GreedyEnergyAwareCost`) · MILP(전역 `AUTO_EFFICIENCY_KAPPA`) ·
 오라클 라벨(`gen_oracle_mc.scalar_cost`) · Python 분석(`e1_analyze.cost_lex_key`) 이 전부 그 J 를
@@ -86,12 +86,94 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
      소비처가 없으며, `tools/step6_gap.py` 는 그 열을 읽지 않는다. 위험한 것은 **비대칭
      그 자체**다 — CSV 재채점(행에서 J 를 다시 계산하는 코드)이 들어오는 순간 이 버그가 되살아난다.
      `energy_J` 와 같은 2줄 스타일(`%s` + 빈 필드, `_parse_energy` 류 되읽기)로 닫을 것.
-- **아직 안 한 것**: 630판 스윕 재실행(단계 6), surrogate 재라벨·재학습(단계 7),
-  prefix 결정성 재측정(단계 8), DP 계획 재개(단계 9). 그때까지 신세대 성능 수치는 없다.
-  **에너지 결정력(spec §4.2/§9 무력 검사)도 아직 측정 안 됐다** — 지금 있는 모든 덤프는
-  전부 미완주만 있거나(에너지 항이 관여 안 함) energy_J 자체가 없다(구세대). 신세대 덤프가
-  생기면 `wm4spacecraft_manufacturing/report_energy_decisiveness.py` 로 잰다 — "에너지가 a*
-  를 한 번이라도 바꾸는가"를 세고, 0 이면 0 이라고 그대로 보고하는 도구다.
+- **⚠️ 단계 6 1차 스윕(19:33 완료)은 이미 구세대다** — `generation=2026-08-13-energy-activation`
+  (그 세대의 해시는 아래 결과 문서에 적혀 있다. 여기 옛 해시를 문자열로 다시 적지 않는다 —
+  `audit_objective.py` 항목 9 가 CLAUDE.md 안의 옛 해시 인용을 **스테일 문서로 판정**한다).
+  같은 날 저녁 **배터리 물리 복구 + 전역 κ 우선순위**
+  변경으로 세대가 또 갈렸다(아래). 1차 결과 문서
+  `md/RESULTS_STAGE6_ENERGY_2026-08-13.md` 는 그 세대의 기록으로 남긴다 — 특히 §5.1
+  ("battery case 가 물리적으로 무해했다")이 **이번 변경의 동기**이므로 지우지 않는다.
+  1차 스윕은 210 샤드 ok 210/fail 0, 60분, 630행 전부 `energy_J > 0` 이었다.
+  구세대 샤드는 `results_4pol_gen_energyactivation/`(1차) · `results_4pol_oldgen_2026-08-13/`(그 이전).
+
+- **✅ 현행 세대 = 단계 6 2차 스윕 (2026-08-13 22:43).** 결과 문서는
+  **`md/RESULTS_STAGE6_BATTERY_PHYSICS_2026-08-13.md`**. 210 샤드 **ok 210/fail 0**, 62분,
+  630행 전부 해시 단일 + `battery_physics` 설정 단일. **정지 105행/126회.** 완주 388행 전부
+  `energy_J > 0`.
+  - **고친 것 (1차에서 드러난 결함):**
+    (a) `run_demo.jl`·`render_demo.jl` 이 `enable_battery!` 만 부르고 `set_battery_stall!`/
+    `set_battery_derate!` 를 안 불러 **방전이 로봇을 멈추지도 늦추지도 않았다** → 둘 다 켰다
+    (threshold 0.15 · derate hi 0.5/min 0.35, **라벨러 `_arm_battery!` 와 같은 값**).
+    (b) 용량이 `demo_battery_params(shrink=25)` 로 25배 축소돼 있었다(= 최대부하 5.5분짜리
+    배터리) → **축소를 없앴다.** 스펙 2.3 kWh 는 최대부하 1000 W 에서 **2.30시간**이라 실제
+    작업로봇과 맞다. 귀결: 자연 방전이 무시할 수준이 되어 **SoC 를 떨어뜨리는 것은 주입된
+    OOD 뿐**이고, `battery_edge_multiplier` 도 평상시 정확히 1.0 이다.
+    (c) `get_objective_expr` 의 auto 경로에서 `w_eff == 0.0 &&` 를 제거해 **전역 κ 가 레인별
+    `ENERGY_W` 를 이긴다.** 단 그 5개 레인은 `init_objective_weights!` 를 안 불러 κ 가
+    `nothing` 이므로 **당장 그 레인 숫자는 안 바뀐다**(미래 대비 + `demos.jl:1420·1748` 의
+    의도적 OFF 가 κ 설정 시 덮인다는 점이 실효).
+  - **battery case 가 드디어 정책을 가른다**: `noop` 30/30 완주 → **0/30**(정지 43회),
+    `dspy` 는 30/30 유지(J 19.79). 예전엔 **"아무것도 안 하는 것"이 공동 1위**였다.
+    정지는 배터리가 낀 case 에서만·`noop` 에서만 난다 — `surrogate`/`dspy` 는 전 case 정지 0회
+    (방전 **전에** 개입해 예방한다).
+  - **에너지 결정력 12/204 (5.88%)**, 오류 0 (1차에서는 15/204 = 7.35%).
+  - **`n_stalled` 가 정지의 유일한 기계적 증거다.** 이 레인은 `run_demo.jl:472` 가
+    `global_logger` 를 `Logging.Warn` 으로 심어 `battery.jl:297` 의 `[STALL]`(`@info`)이 통째로
+    버려진다 — **"로그에 STALL 이 없다"를 "정지가 없었다"로 읽으면 안 된다.**
+  - ⚠️ **surrogate 는 여전히 battery/fault/fault_battery 를 구분하지 못한다** — 세 case 에서
+    완주 29/30 · 고유 makespan 23 · 중앙 J 23.26 이 **완전히 같다**(fault_zone·battery_zone 도
+    서로 같다). 물리를 고친 뒤에도 남았으므로 **배터리 결함의 부산물이 아니라 surrogate 자체의
+    결함**이다. 단계 7 이 겨냥할 지점.
+  - ⚠️ **라벨러 레인은 아직 `DS_SHRINK=200`**(최대부하 41초짜리 배터리). 같은 물리 논증이
+    그대로 적용되지만 고치면 `n44_plus78` 이 무효가 되므로 **단계 7 의 첫 항목**이다.
+  - **스케일 재교정은 측정만 하고 적용하지 않았다**(신세대 `M_ref`=25.8625 · `E_ref`=111127.7,
+    각각 −17.2% · −8.8%). **순환이기 때문이다**: 그 둘은 `objective_hash` 의 입력이라 쓰는 순간
+    방금 만든 630행이 구세대로 재분류된다. 적용하려면 **재교정 + 재스윕**을 한 묶음으로 결정할 것.
+
+### ✅ 2026-08-14 — 4정책 비교표가 나왔다 (라우터 3-way · DP 레인 · 화면의 목적함수)
+
+**현행 세대 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md` + `artifacts_4pol/COMPARE.md`.**
+7 case x 30 seed x **4 policy = 840판**, 샤드 420/420 ok·fail 0, 세대 단일. 정책은
+`canonical` · `surrogate` · `dspy` · **`dp`**(신규). 완주 합계 207 / 190 / 198 / 206 (/210).
+
+- **여기서 읽어야 할 것은 완주율이 아니라 에너지다.** 세 사건이 겹친 case 에서 canonical 은
+  30/30 완주하지만 62.7s·733 J/closed 를 쓰고, llm 은 28/30 을 32.3s·468 J 로 낸다.
+  완주율만 보면 이 대비가 통째로 안 보인다.
+- **`dp` 열은 "천장" 이 아니다.** 원 설계 §8.7 게이트가 실측에서 발화했다 — 실행 정책의 평균 J 가
+  DP 의 V 보다 좋은 (칸,정책) 쌍이 **108/121 = 89.3%**. 원인은 V 가 **상수-팔** 표집에서 나오기
+  때문이고(사건 셋이 섞인 판을 한 팔로 처리할 수 없다), 이 gap 은 `build_compare_table.py` 가
+  표를 만들 때마다 다시 잰다. 단, dp **레인**은 칸마다 a* 를 갈아 쓰므로 **그 열의 실현 결과
+  자체는 유효한 실행 결과**다. 천장이 아닌 것은 V 다.
+- **surrogate 열이 약한 이유는 판단 오류가 아니다.** 배포 학습셋 `RELABEL_20260814` 의 macro
+  support 가 `{0,1,2,7,8}` 이라 **ReformTeam(4)·ForbidZone(3) 행이 0줄**이고, reform 사건에서
+  surrogate 는 NOOP 밖에 **고를 수가 없다**(`dspy_service.py:189`). 조합 case 붕괴(21/30)가 그것이다.
+- **화면에서 목적함수를 볼 수 있다**: `server.jl` 의 `GET /objective` + 대시보드 OBJECTIVE 스트립이
+  `objective.json` 을 **그대로 읽어** J 와 상수를 띄우고(복붙 금지), 결정마다 누적 에너지·κ·
+  worst SoC 를 싣는다. **UI 는 `render_demo.jl` 을 쓴다**(`run_demo.jl` 이 아니다 — POST /run 도
+  `regen_router_cases.sh` 도 그쪽이다).
+- 신규 계약: `test_ceilings_degrade.py` · `dp_oracle/test_dp_solve.py` ·
+  **`dp_oracle/test_cellkey_parity.py`**(Julia↔Python 칸키 동치, 13,720 경계 상태) ·
+  `tools/monitor/test_narrate.jl` · `tools/monitor/test_lane_select.jl`.
+- **라벨 재생성의 범위 정정**: surrogate 학습셋은 **이미 재라벨돼 있다**(365행 전부 `energy_J`,
+  fault 110 · battery 135 · zoneblk 120). 남은 것은 **oracle 천장 격자**뿐이고 그것은
+  `FINAL.md` 의 oracle 행에만 영향을 준다 — COMPARE 4열은 안 바뀐다.
+
+**다음 작업(인계됨): `docs/superpowers/plans/2026-08-15-dp-backward-induction.md`** — DP 를 진짜
+backward induction 으로 바꾼다. 계측(`sim_t`·누적 energy·closed 를 결정마다 기록)이 코드 세대를
+가르므로 **네 열 전부 재스윕**이 필요하다(약 4~5시간). 그 계획서에 2026-08-14 에 실제로 데인
+함정들(스윕 중 코드 수정 금지 · `xargs` 가 pkill 에서 살아남음 · dp 샤드는 별도 트리 · J 의 두
+분기가 러닝 코스트가 다르다)이 Global Constraints 로 적혀 있다.
+
+- **아직 안 한 것**: prefix 결정성 재측정(단계 8), oracle 천장 격자 재라벨,
+  `reference_policy.py` 대체(원 설계 §8.6), surrogate 를 φ̃ 위에 재학습(원 설계 §9).
+  - ~~단계 7 이 `build_final_table.py` 를 막고 있다~~ — **2026-08-14 해소.** 이제 J 를 계산할 수
+    없는 행에서 죽지 않고 **미측정으로 낮춘다**(`compute_ceilings` + `test_ceilings_degrade.py`).
+    다만 그 귀결로 **oracle 천장 행은 전 축이 미측정**이다: battery 18 · fault_current 22 ·
+    zone 2 instance 가 **전부** J 채점 불가(`energy_J` 없음). 그 축들을 되살리려면 oracle 천장
+    격자를 energy-only 모드로 재라벨해야 한다 — 배경은
+    **`md/STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md`**(`battery.jl:486` 의 energy-only 모드는
+    `enable_battery!` 만 켜고 stall/derate 는 끄므로 **동역학을 바꾸지 않는다**).
+    ⚠️ 이것은 **COMPARE 4열을 바꾸지 않는다** — oracle 은 그 표에 없는 별도 행이다.
 
 행동 어휘가 **2026-08-06** 에 바뀌었다: `action_registry.json` 이 매크로 **7(RelocateBuild)·8(SwapBattery)**
 를 포함한다. 그 이전 측정치는 **행동집합이 잘린 상태**의 숫자다(zone 은 지원 팔이 `{NOOP}` 뿐이라
