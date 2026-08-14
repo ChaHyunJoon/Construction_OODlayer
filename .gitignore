@@ -65,3 +65,7 @@ wm4spacecraft_manufacturing/_night/.render.lock*
 wm4spacecraft_manufacturing/_night/.render_cursor
 wm4spacecraft_manufacturing/_night/render_joblist.txt
 wm4spacecraft_manufacturing/_night/render_logs/
+# Task 4 재라벨 캠페인의 샤드 산출물(2026-08-14). 병합본 `oracle/out/relabel_2026-08-14.jsonl`
+# 이 커밋돼 있고 샤드는 그것과 정확히 중복이다 — 재현에 필요한 것은 커밋된 병합본과
+# 리포트에 적힌 DS_* 설정이지 샤드 파일이 아니다.
+wm4spacecraft_manufacturing/oracle/out/shards_relabel_2026-08-14/

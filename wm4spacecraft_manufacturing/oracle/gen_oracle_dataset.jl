@@ -1656,7 +1656,26 @@ jval(x) = x isa Bool ? (x ? "true" : "false") :
           x isa AbstractDict ? "{" * join(["\"$(jesc(string(k)))\":$(jval(v))" for (k,v) in x], ",") * "}" :
           x isa AbstractVector ? "[" * join(jval.(x), ",") * "]" :   # jval.(x) = 각 원소에 jval 적용(브로드캐스트)
           x isa Real ? (isfinite(x) ? string(x) : "\"$(x)\"") : "\"$(x)\""
-jrow(d) = "{" * join(["\"$(k)\":$(jval(v))" for (k,v) in d], ",") * "}"   # (키,값) 쌍들을 {"k":v,...} 한 줄로
+# jrow : (키,값) 쌍들을 {"k":v,...} 한 줄로. **같은 키가 두 번 들어오면 마지막 것만 남긴다.**
+#
+# 왜 여기서 막는가. 행은 `Pair` **벡터**를 push! 로 쌓아 만든다 — 명시 필드를 먼저 넣고 그 뒤에
+# `for k in propertynames(feats)` 로 특징을 통째로 덧붙인다. feats 가 `kind`·`severity`·
+# `n_spare_cfg` 처럼 행이 이미 쓴 이름을 가지면 같은 키가 두 번 찍힌다(실측 2026-08-14:
+# relabel_2026-08-14.jsonl 365행 중 355행). JSON 객체에 중복 키를 쓰는 것은 RFC 8259 위반이고,
+# 파서마다 first-wins/last-wins 가 갈려 **조용히 다른 데이터**가 된다.
+#
+# last-wins 를 고른 이유: 파이썬 `json.loads` 가 그렇게 동작하므로, 이 저장소의 모든 소비처가
+# 지금까지 실제로 봐 온 값과 정확히 같다. 즉 이 변경은 기존 해석을 바꾸지 않고 표기만 맞춘다.
+# (실측: 지금까지 중복된 키들은 값이 전부 동일했으므로 어느 규칙이든 결과가 같았다 — 그래도
+# 다음에 값이 갈리는 키가 생기면 조용히 오염되므로 지금 규칙을 고정한다.)
+function jrow(d)
+    seen = Set{String}(); out = String[]
+    for (k, v) in Iterators.reverse(d)                # 뒤에서부터 훑어 첫 등장(=원래의 마지막)만 채택
+        s = String(k); s in seen && continue
+        push!(seen, s); push!(out, "\"$(s)\":$(jval(v))")
+    end
+    return "{" * join(Iterators.reverse(out), ",") * "}"   # 원래 순서로 되돌려 출력
+end
 
 # main : 전체 흐름 — instance 목록을 만들고, 각각 control 1판 + 매크로 5판을 돌려 JSONL 로 기록.
 """
@@ -2037,7 +2056,6 @@ function main()
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
-                "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
                     "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
                     "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                     "n_depleted"=>r.n_depleted,
