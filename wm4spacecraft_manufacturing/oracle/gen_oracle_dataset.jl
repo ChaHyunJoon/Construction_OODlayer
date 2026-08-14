@@ -1187,8 +1187,21 @@ end
 #  `BATTERY_DERATE` 는 기본이 꺼짐(battery.jl:489/:539)이고 run_one 이 판마다 둘을 다시 끄므로
 #  (:1465-1467), 안 부르는 것으로 충분하다 — 켜 놓고 끄는 것이 아니라 처음부터 안 켠다.
 #  용도: fault/zoneblk 처럼 배터리가 사건이 아닌 kind 에서도 energy_J 를 유한하게 남겨 완주 행의
-#  J(= makespan + w_E·energy_J)를 채점 가능하게 만든다. 동역학은 바뀌지 않는다(soc_speed_factor
-#  는 stall 이 꺼져 있으면 언제나 1.0, battery.jl:576).
+#  J(= makespan + w_E·energy_J)를 채점 가능하게 만든다.
+#
+#  **동역학 불변 주장의 정확한 범위: `DS_MC_K=1`(기본, = 위험 프로세스가 꺼진 결정론 모드).**
+#  그 조건에서는 회계만 켜도 거동이 안 바뀐다(soc_speed_factor 는 stall 이 꺼져 있으면 언제나
+#  1.0, battery.jl:576). 실측도 그렇다(2026-08-14 BEFORE/AFTER 파일럿: makespan·closed·complete
+#  전부 동일). 그러나 `DS_MC_K>1` 에서는 **거짓이다** — 함대를 무장하는 것 자체가 위험 프로세스를
+#  바꾼다:
+#    · mdp/hazard.jl:412 — `soc = (fleet === nothing) ? 1.0 : get(fleet.soc, id, 1.0)` 이
+#      `λ = … · exp(β_s·(1 − soc))`(β_s = 1.2)에 들어간다. 무장하면 soc 가 1.0 폴백에서
+#      ≈0.995 로 내려가 λ 가 ~0.6% 오르고 **모든 위험 발화 시각이 밀린다**.
+#    · mdp/hazard.jl:509 — `BATTERY_FLEET[] === nothing && return nothing` 이 셀 열화 위험을
+#      통째로 게이팅한다. 무장하면 fault/zoneblk 판에서 **구조적으로 못 터지던 위험 종류가
+#      터질 수 있게 된다**.
+#  그래서 `_energy_only_hook` 은 MC_K>1 이면 계측을 아예 켜지 않는다(아래). 안 쓰는 모드에서
+#  energy_J 를 잃는 편이, 에너지 계측과 위험 프로세스가 조용히 교락되는 것보다 훨씬 싸다.
 function _arm_battery!(env; dynamics::Bool = true)
     try
         # 용량은 **배포 레인(tools/monitor/run_demo.jl)과 같아야 한다** — 라벨과 평가가 다른
@@ -1213,14 +1226,44 @@ end
 비-battery kind 의 pre_sim 훅. **energy-only 계측**(회계만)을 먼저 무장하고, 그 kind 가 이미
 가지고 있던 훅(`inner`, 예: zone 의 구역 심기)이 있으면 이어서 그대로 돌린다 — 대체가 아니라
 합성이다. `inner === nothing` 이면 계측만 돈다.
+
+`DS_MC_K>1`(위험 프로세스 표집 모드)에서는 **계측조차 켜지 않는다**: 함대를 무장하면
+hazard.jl:412 의 λ 와 :509 의 셀 열화 게이트가 같이 움직여 "에너지 계측"과 "위험 전이"가
+교락된다(`_arm_battery!` 위 주석 참조). 그 모드의 행은 energy_J 가 NaN 으로 남는다 — 의도된
+비용이고, 조용한 교락보다 싸다.
 """
 _energy_only_hook(inner = nothing) = env -> begin
-    _arm_battery!(env; dynamics = false)
+    MC_K > 1 || _arm_battery!(env; dynamics = false)
     inner === nothing || inner(env)
     return nothing
 end
 
-"계획대로 M 개 트리거를 예약. 배터리가 하나라도 있으면 pre_sim 훅(배터리 회계+stall)을 함께 돌려준다."
+"""
+행에 박는 **배터리 물리 지문** = 세대의 세 번째 축. 배포 레인(`tools/monitor/run_demo.jl:822`)의
+`battery_physics` 와 **같은 이름·같은 필드**라 두 레인의 행을 나란히 비교할 수 있다.
+
+왜 objective_hash 가 아닌 별도 필드인가: 정지/감속을 켜거나 용량을 줄이는 것은 objective.json 의
+스칼라를 하나도 바꾸지 않으므로 해시가 표현하지 못한다. 그렇다고 해시에 접으면 생산자 손잡이
+하나(`DS_SHRINK` 등)가 **기존 덤프 전체를 다른 세대로 재분류**해 버린다(`ENERGY_OBJECTIVE` 를
+해시가 아닌 별도 필드로 둔 것과 정확히 같은 이유, 이 파일 머리말 F-1 참조).
+
+값은 ENV 를 되읽지 않고 **이 판이 실제로 무엇이었는지**를 살아 있는 전역에서 읽는다(ENV 는
+"무엇을 요청했나"이고 세대를 가르는 것은 "무엇이 실제로 켜졌나"다). `capacity_J` 는 스펙
+기본값이 아니라 이 판이 실제로 무장한 함대의 값이다 — 라벨러는 `demo_battery_params(shrink=…)`
+로 무장하므로 둘이 다를 수 있다. 배터리 레이어가 아예 없던 판은 `capacity_J = NaN` 이다.
+"""
+battery_physics_row() = Dict(
+    "stall"      => (try CB.BATTERY_STALL[].enabled   catch; false end),
+    "stall_soc"  => (try CB.BATTERY_STALL[].threshold catch; NaN end),
+    "derate"     => (try CB.BATTERY_DERATE[].enabled  catch; false end),
+    "derate_hi"  => (try CB.BATTERY_DERATE[].hi       catch; NaN end),
+    "capacity_J" => (try (fl = CB.BATTERY_FLEET[];
+                          fl === nothing ? NaN : Float64(fl.params.capacity_J)) catch; NaN end),
+    "n_stalled"  => (try length(CB.stalled_robots()) catch; -1 end),
+)
+
+"계획대로 M 개 트리거를 예약. pre_sim 훅은 배터리가 하나라도 있으면 완전 무장(회계+stall+derate),
+없으면 energy-only 계측(회계만)이다."
 function build_episode_injection(plan)
     sched_fn = () -> begin
         for (i, (c, kind, sev)) in enumerate(plan)
@@ -1303,10 +1346,13 @@ function single_solo_fault_target(env)
 end
 
 # build_injection : OOD 종류별로 "언제·어떻게 사건을 터뜨릴지"를 담은 (schedule 함수, pre_sim 훅) 짝을 만든다.
-#   schedule 함수 = 시뮬 시작 전 OOD 발화 예약. pre_sim 훅 = 시뮬 전 사전 설정(battery만 사용, 나머지는 nothing).
+#   schedule 함수 = 시뮬 시작 전 OOD 발화 예약. pre_sim 훅 = 시뮬 전 사전 설정.
+#   [2026-08-14] 훅은 이제 **모든 kind 에 있다**: battery 는 완전 무장(_arm_battery!), 나머지는
+#     energy-only 계측(_energy_only_hook, 회계만 = 동역학 불변). nothing 을 돌려주는 kind 는 없다.
 #   inject = 이 판이 OOD 판인가(false = 대조군). pre_sim 훅은 control 판에도 돌기 때문에(run_one 참조)
-#     "사건을 심는" 훅은 이 값으로 막아야 한다. battery 의 훅(_arm_battery!)은 계측 설정이라 양쪽에
-#     그대로 도는 것이 맞지만, zone 의 훅은 **사건 그 자체**라 control 에 들어가면 대조군이 오염된다.
+#     "사건을 심는" 훅은 이 값으로 막아야 한다. 배터리 훅(_arm_battery!/_energy_only_hook)은 계측
+#     설정이라 양쪽에 그대로 도는 것이 맞지만, zone 의 구역 심기는 **사건 그 자체**라 control 에
+#     들어가면 대조군이 오염된다 — 그래서 계측은 늘 돌되 구역 심기만 `inject` 로 막는다(합성).
 function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject::Bool = true)
     # fire_at>0 이면 그 목표점 위쪽으로만 짧게 재시도(= 발화 시점이 instance 차원).
     # fire_at=0 이면 예전 그대로 그 종류의 FIRE_POINTS 사다리.
@@ -1509,7 +1555,8 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
         build_episode_injection(plan)
     # the pre_sim setup (e.g. enable_battery!) applies to BOTH the OOD runs AND the control, so the
     # control is the SAME world minus the fired OOD (fair admissibility). `inject` only gates whether
-    # the OOD trigger is actually scheduled. (hook is `nothing` for fault -> inert there.)
+    # the OOD trigger is actually scheduled. (2026-08-14: every kind now has a hook — battery arms the
+    # full layer, the rest arm energy-only accounting; the old "nothing for fault" case is gone.)
     # 예외: zone 의 훅은 계측 설정이 아니라 **사건 그 자체**(구역을 심는다)라 control 에 들어가면
     # 대조군이 오염된다. 그래서 build_injection 에 `inject` 를 넘겨 그쪽에서 훅을 nothing 으로 만든다.
     inject && sched_fn()                                          # inject 가 참일 때만 OOD 발화를 예약(control 은 안 함)
@@ -1527,7 +1574,7 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
             max_num_iters_no_progress = NOPROG, rvo_flag = true, tangent_bug_flag = true,   # RVO=충돌회피 켜기(끄면 정답이 뒤집힘)
             dispersion_flag = true, n_spare_per_pool = n_spare, save_animation = false,
             open_animation_at_end = false, write_results = false, overwrite_results = true,
-            return_env_before_sim = false, pre_sim_hook = hook,   # 위에서 만든 pre_sim 훅(battery만 유효)
+            return_env_before_sim = false, pre_sim_hook = hook,   # 위에서 만든 pre_sim 훅(모든 kind 에 있다)
             rng = Random.MersenneTwister(seed))                   # seed 로 난수 고정(재현성)
     end
     label_seconds = time() - t_start                              # 이 라벨 한 개를 얻는 데 걸린 실제 벽시계 시간
@@ -1720,6 +1767,7 @@ function run_episodes(io)
                 # 다른 소비처를 위해 남긴다 — 행 스키마는 `energy_J` 하나로 수렴시킨다(C-1a).
                 "energy_J"=>r.total_energy_J,
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
+                "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                 "n_depleted"=>r.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1902,6 +1950,7 @@ function main()
                 "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
                 "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
+                "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
                 "n_depleted"=>ctrl.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1960,6 +2009,7 @@ function main()
                     "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
+                    "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                     "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                     "n_depleted"=>r.n_depleted,
                     "geometry"=>Dict("depot_mode"=>"fixed",
