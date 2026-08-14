@@ -443,12 +443,29 @@
     </div>
   </section>
 
+  <!-- narrative / router 배지 스타일. 나머지 패널 규약(mono, --warn)을 그대로 따른다. -->
+  <style>
+    .narrative{margin:8px 0;padding:10px 12px;border-left:3px solid var(--accent,#8a7a4a);
+               background:rgba(138,122,74,.07);line-height:1.5;font-size:13.5px}
+    .narrative .nlab{display:block;font-size:10.5px;letter-spacing:.12em;opacity:.6;margin-bottom:4px}
+    .rbadge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:3px;
+            font-size:10.5px;letter-spacing:.08em;background:rgba(120,120,120,.2)}
+    .rbadge.warn{background:var(--warn,#f59e0b);color:#1a1a1a;font-weight:600}
+    .whyrow{margin-top:2px;font-size:12px;opacity:.85}
+    .whyrow .wk{display:inline-block;min-width:74px;opacity:.6}
+    .whyrow .wdown{color:var(--warn,#f59e0b)}
+    .whyrow .wnone{opacity:.55;font-style:italic}
+  </style>
   <section class="panel respec">
     <div class="phead"><h2>Re-Specification · OOD Decision</h2><span class="count mono">event → decision policy → verifier → execution</span></div>
     <div class="rhead" id="rhead"><span class="trigger mono">no active re-spec</span></div>
     <!-- ROUTER: 이 사건을 누구에게 보낼지 **시스템이** 판정한 결과. 사람이 정책 버튼을 누른 것이
          아니라는 점이 핵심이라, 결정 패널 맨 위에 따로 둔다. -->
     <div class="routerbar" id="routerBar" hidden></div>
+    <!-- 자연어 해석(spec §4.1). 문장은 **녹화 시점의 코드가 스트림에 찍은 것**이고 화면은 그대로
+         표시만 한다. 옛 녹화에는 이 필드가 없다 -> 자리를 비운다(화면이 문장을 지어내면 그건
+         측정이 아니라 창작이다). -->
+    <div class="narrative" id="narrative" hidden></div>
     <div class="decision-history" id="decisionHistory"><span>Each OOD event creates an independently verified decision.</span></div>
     <!-- 정책 선택기: 같은 사건을 어떤 결정 정책의 눈으로 볼지 고른다(케이스와 직교).
          ENACTED 배지가 붙은 것이 이 실행에서 실제로 수행된 정책이다. -->
@@ -1164,6 +1181,7 @@
     if(!selectedDecision){
       rhead.innerHTML = '<span class="trigger mono">no active re-spec</span>';
       var rb0 = $("routerBar"); if(rb0){ rb0.hidden = true; }
+      var nb0 = $("narrative"); if(nb0){ nb0.hidden = true; nb0.textContent = ""; }
       if($("inLLM")) $("inLLM").textContent = "—";
       if($("inSurro")) $("inSurro").textContent = "—";
       inC.textContent = "—"; outC.textContent = "—";
@@ -1199,7 +1217,16 @@
     var shownMacro = view && view.chosen ? view.chosen : chosenTxt;
     rhead.innerHTML = '<span class="trigger mono">RE-SPEC @ t='+esc(selectedDecision.at)+' &nbsp; <b>'
       + esc(shownMacro)+'</b>'+(viewKey!==enacted?' <i style="opacity:.7">(not enacted)</i>':'')+'</span>' + summary
-      + '<span class="verdict '+(ok?"ok":"no")+'">'+(ok?"✓ ":"✗ ")+esc(selectedDecision.verdict||"—")+' · auto (no human)</span>';
+      + '<span class="verdict '+(ok?"ok":"no")+'">'+(ok?"✓ ":"✗ ")+esc(selectedDecision.verdict||"—")+' · auto (no human)</span>'
+      // NOVELTY_CALIB 이 없으면 install_novelty! 이 실패하고 라우터가 **꺼진 채로** DEMO_POLICY 가
+      // 고정 실행된다(policy.jl:335-339, fail-open). 그 사실이 화면에 안 보이면 "라우터 ON" 인
+      // 판으로 오독된다 -- fail-open 을 fail-visible 로 바꾸는 것이 이 배지다(spec §3.3).
+      + (function(){
+          var rr = din.router;
+          if (!rr) return '<span class="rbadge warn">ROUTER: no record</span>';
+          return rr.enabled ? '<span class="rbadge">ROUTER ON</span>'
+                            : '<span class="rbadge warn">ROUTER OFF (advisory only)</span>';
+        })();
 
     // 정책 선택기 — 케이스와 무관하게 "누가 결정했는가"를 여기서 고른다.
     var psel = $("policySel");
@@ -1219,6 +1246,35 @@
         });
       });
     }
+    // ---- 자연어 해석 (spec §4.1) --------------------------------------------------------
+    // narrative 는 녹화 시점의 코드가 스트림에 찍은 문장이다. 옛 녹화에는 없다 --
+    // 그 경우 자리를 **비운다**(화면이 문장을 지어내면 그건 측정이 아니라 창작이다).
+    var nb = $("narrative");
+    if (nb) {
+      var nar = din.narrative;
+      if (nar) {
+        // 레인별 근거를 같이 싣되, **서비스 다운과 근거 없음을 다르게** 쓴다. 같게 쓰면
+        // LLM 레인이 죽은 판을 "근거를 안 낸 판" 으로 오독한다.
+        function whyText(pp){
+          if(!pp) return '<span class="wnone">(lane not recorded)</span>';
+          if(pp.available === false) return '<span class="wdown">(lane unavailable — no decision was made)</span>';
+          if(!pp.rationale) return '<span class="wnone">(no reason recorded)</span>';
+          return esc(pp.rationale);
+        }
+        var whyRows = "";
+        if (pols) {
+          whyRows = POLICIES.map(function(pp){
+            return pols[pp.key] === undefined ? "" :
+              '<div class="whyrow"><span class="wk">'+esc(pp.key)+'</span>'+whyText(pols[pp.key])+'</div>';
+          }).join("");
+        }
+        nb.innerHTML = '<span class="nlab">WHAT HAPPENED</span>' + esc(nar) + whyRows;
+        nb.hidden = false;
+      } else {
+        nb.hidden = true; nb.textContent = "";
+      }
+    }
+
     // ---- ROUTER 줄 ---------------------------------------------------------------------
     // 이 데모의 핵심 주장: 정책을 **사람이 버튼으로 고르는 게 아니라** 시스템이 사건마다 고른다.
     // 라우터가 꺼진 스트림(예전 녹화본)도 그대로 열려야 하므로 없으면 "off" 로 표시만 한다.
