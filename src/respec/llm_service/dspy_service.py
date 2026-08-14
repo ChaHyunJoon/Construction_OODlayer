@@ -648,12 +648,19 @@ def decide(req: MacroRequest):
     if scored:
         top = scored[0][1]
         runner = scored[1][1] if len(scored) > 1 else top
-        spread = max(abs(top - scored[-1][1]), 1e-9)
+        # 정규화 분모는 **실제 점수 범위**(max-min)여야 한다 (2026-08-14 수정).
+        # 예전에는 `abs(top - scored[-1][1])` 이었다 — 순위가 점수 오름차순일 때는 그것이 곧
+        # 전체 폭이었지만, 이제 1위 자리는 규칙(`deadband_Jbar`)이 고른 팔이라 꼴찌가 극값이
+        # 아닐 수 있다. 그러면 분모가 실제 폭보다 작아져 margin 이 1 을 넘는다
+        # (실측: 점수 [+5, −7, 0] 에서 2.4). 아래 형태면 |top−runner| ≤ max−min 이 항상
+        # 성립하므로 0..1 불변식이 정의상 복원된다.
+        _vals = [s for _, s in scored]
+        spread = max(max(_vals) - min(_vals), 1e-9)
         out["surrogate"] = {
             "chosen": scored[0][0],
             "ranking": [m for m, _ in scored],
             "scores": {m: round(s, 2) for m, s in scored},
-            # margin = 1·2위 점수차를 전체 폭으로 정규화(0에 가까우면 사실상 동점)
+            # margin = 1·2위 점수차를 전체 점수 폭으로 정규화한 0..1 값(0 이면 사실상 동점).
             "margin": round(abs(top - runner) / spread, 3),
             # 점수는 냈지만 **일부 유효 매크로는 학습 근거가 없어 아예 못 본** 경우를 그대로 싣는다.
             # 이걸 None 으로 뭉개면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이는데, 실제로는

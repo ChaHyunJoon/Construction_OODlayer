@@ -167,5 +167,31 @@ check("total_nodes 미전달 시 closed/progress 로 복원",
 # soc 가 없는 사건(fault)은 NaN 이어야 한다 — -1 로 채우면 descriptors 가 kind 를 되읽는다.
 check("soc 없는 사건은 NaN", math.isnan(S._surro_row(_req(kind="fault", soc=None), 1)["soc"]))
 
+# ---- 6. /decide 의 margin 이 0..1 을 벗어나지 않는다 (2026-08-14) -------------------------
+# 왜 깨졌었나: 정규화 분모가 `abs(top - scored[-1])` 였다. 순위가 점수 오름차순이던 시절에는
+# 그게 곧 전체 폭이었지만, 이제 1위는 규칙(`deadband_Jbar`)이 고른 팔이라 꼴찌가 극값이
+# 아닐 수 있다. 그러면 분모가 실제 폭보다 작아져 margin 이 1 을 넘는다.
+# 아래 픽스처가 정확히 그 배치다: 점수 [+5, −7, 0] 에 pick=Replace(=+5) -> 옛 식은 2.4.
+print("\n== /decide 의 margin 계약 (0..1) ==")
+# LLM 분기는 잘라낸다. 이 검사의 대상은 surrogate 쪽 margin 하나뿐인데, 그대로 두면 dspy 가
+# 설정된 환경에서 이 단위검사가 유료 API 를 때린다(설정 안 된 환경에서는 조용히 예외로 떨어져
+# 통과한다 — 환경에 따라 동작이 갈리는 검사는 검사가 아니다).
+S.macro = lambda req: {"chosen": "", "ranking": [], "margin": 0.0, "reasoning": "",
+                       "policy": "dspy:stub", "coerced": False, "error": "stubbed in unit test"}
+_install(StubModel({0: 0.0, 1: +5.0, 8: -7.0}, pick=1), {0, 1, 8})
+_dec = S.decide(_req())
+_m = _dec["surrogate"]["margin"]
+check("margin 이 0..1 안에 있다", 0.0 <= _m <= 1.0,
+      "margin=%s scores=%s" % (_m, _dec["surrogate"]["scores"]))
+check("1위가 규칙의 답인 배치에서도 계약이 성립한다",
+      _dec["surrogate"]["chosen"] == "Replace", "chosen=%s" % _dec["surrogate"]["chosen"])
+
+# 오름차순 배치(1위 = 최소)에서도 0..1 이고, 동점이면 0 에 가깝다는 원래 의미가 남는다.
+_install(StubModel({0: 0.0, 1: +5.0, 8: -7.0}), {0, 1, 8})
+_dec2 = S.decide(_req())
+_m2 = _dec2["surrogate"]["margin"]
+check("오름차순 배치에서도 0..1", 0.0 <= _m2 <= 1.0,
+      "margin=%s scores=%s" % (_m2, _dec2["surrogate"]["scores"]))
+
 print("\n%s" % ("전부 통과" if not FAILED else "%d개 실패" % FAILED))
 sys.exit(1 if FAILED else 0)

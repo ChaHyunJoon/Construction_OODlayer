@@ -664,6 +664,36 @@ _macro_label(s) = s == "ReplaceAgent" ? "Replace" :
                   s == "ReformTeam" ? "ReformTeam" : s
 
 """
+    escalation_target(pol, requested, allowed) -> (target::String, missing::Vector{String})
+
+**표현력 격상** 판정. `requested` 정책이 이 사건의 유효 매크로 중 일부를 **표현조차 못 하면**
+(학습 근거 0) LLM 으로 올린다. `target` 이 `"dspy"` 면 격상, `""` 면 그대로 둔다.
+
+왜 순수 함수로 뽑았는가 (2026-08-14)
+------------------------------------
+이 판정이 `decide_all` 안에 인라인으로 있는 동안에는 env·truth·파이썬 서비스가 전부 살아
+있어야만 검사할 수 있었고, 그래서 **한 번도 검사되지 않았다**. 그 사이 조건이
+`pol[enacted]["available"]` 를 요구한 채로 남아 회귀가 조용히 들어왔다:
+surrogate 가 "개입 후보가 전멸했다"(UNSUPPORTED)를 알리는 방법은 빈 chosen 이라
+`available=false` 이고, 그러면 `enacted` 는 이 판정 **전에** 이미 canonical 로 떨어져 있다.
+`pol["canonical"]` 에는 `unsupported` 키가 없으므로 게이트는 영원히 안 열렸다 —
+격상이 존재하는 이유가 바로 그 사건인데도. 순수 함수면 Dict 만으로 검사된다
+(`tools/test_policy_escalation.jl`).
+
+판정 기준은 **요청된** 정책이다(enacted 가 아니다). 못 골라서 아예 못 쓰는 것은 격상의
+**더 강한** 근거이지 약한 근거가 아니므로, `available` 은 요구하지 않는다.
+"""
+function escalation_target(pol, requested, allowed)
+    haskey(pol, requested) || return ("", String[])
+    local missing = String.(collect(get(pol[requested], "unsupported", String[])))
+    isempty(missing) && return ("", String[])
+    (allowed && requested != "dspy" &&
+     haskey(pol, "dspy") && pol["dspy"]["available"]) || return ("", missing)
+    return ("dspy", missing)
+end
+
+
+"""
     decide_all(env, truth; nl="") -> (policies, enacted, router, ...)
 
 **세 정책을 모두 계산**해 기록용 구조를 만든다. UI 가 "규칙이라면 / surrogate 라면 / LLM 이라면
@@ -723,8 +753,21 @@ function decide_all(env, truth; nl::AbstractString = "")
                 continue
             end
         end
+        # ---- 폴백 dict 도 `unsupported` 와 **사유**를 싣는다 (2026-08-14 회귀 수정) ----------
+        # 왜: 서비스가 "개입 후보가 전멸했다"를 알리는 방법은 `UNSUPPORTED:` + 빈 chosen 이라
+        # 이 분기로 떨어진다. 여기서 unsupported 를 버리면 아래 **표현력 격상 게이트**가
+        # 정확히 그 사건에서 근거를 잃는다 — 게이트가 존재하는 이유가 그 사건인데도.
+        # rationale 도 남긴다: 기록에 `fell_back=true` 만 있고 **어느 팔이 없었는지**가 없으면,
+        # 나중에 이 폴백을 디버깅할 사람이 제일 먼저 찾을 정보가 빠져 있다.
+        local b0 = (j !== nothing && haskey(j, Symbol(key))) ? j[Symbol(key)] : nothing
+        local miss0 = b0 === nothing ? String[] :
+                      String.(collect(get(b0, :unsupported, String[])))
+        local err0 = b0 === nothing ? "" : String(something(get(b0, :error, nothing), ""))
         pol[key] = Dict("chosen" => "", "ranking" => String[], "margin" => nothing,
-                        "rationale" => "", "label" => label, "available" => false)
+                        "rationale" => (isempty(miss0) ? err0 :
+                                        "no training support for " * join(miss0, ",")),
+                        "unsupported" => miss0, "error" => err0,
+                        "label" => label, "available" => false)
     end
 
     # 실행할 정책: 라우터가 켜져 있으면 라우터가, 아니면 DEMO_POLICY. 쓸 수 없으면 canonical 폴백.
@@ -751,16 +794,18 @@ function decide_all(env, truth; nl::AbstractString = "")
     # "익숙함 → surrogate" 로 갔고, surrogate 는 RelocateBuild 를 못 봐서 NOOP 을 냈다.
     # 상태가 익숙한 것과 행동을 표현할 수 있는 것은 **다른 조건**이므로, 후자가 깨지면 novelty 와
     # 무관하게 LLM 으로 올린다. 이게 "새 행동은 LLM, 익숙한 것은 surrogate" 분담의 정확한 형태다.
-    if escalation_allowed && enacted != "dspy" && haskey(pol, enacted) && pol[enacted]["available"] &&
-       !isempty(get(pol[enacted], "unsupported", String[])) &&
-       haskey(pol, "dspy") && pol["dspy"]["available"]
-        local miss = join(get(pol[enacted], "unsupported", String[]), ",")
-        rt["escalated_from"] = enacted
+    local esc_tgt, esc_missing = escalation_target(pol, requested, escalation_allowed)
+    isempty(esc_missing) || (rt["requested_unsupported"] = esc_missing)
+    if esc_tgt == "dspy"
+        local miss = join(esc_missing, ",")
+        rt["escalated_from"] = requested
         rt["escalation_reason"] = "no training support for $(miss)"
         rt["reason"] = get(rt, "reason", "") *
-            " · ESCALATED: $(enacted) cannot represent [$(miss)] → dspy"
-        @info "[router] escalate $(enacted) → dspy: 학습 근거 없는 매크로 [$(miss)]"
+            " · ESCALATED: $(requested) cannot represent [$(miss)] → dspy"
+        @info "[router] escalate $(requested) → dspy: 학습 근거 없는 매크로 [$(miss)]"
         enacted = "dspy"
+        # canonical 로 **떨어진** 게 아니라 LLM 으로 **올라갔다**. 플래그를 정직하게 되돌린다.
+        fell_back = false
     end
     # ---- 어휘 밖 수복 에스컬레이션 (2026-08-05, STEP 7) -------------------------------------
     # 위 블록은 "싼 정책이 그 매크로를 학습한 적이 없다"를 본다. 그 위에 한 겹 더 있다:
@@ -876,7 +921,11 @@ function decide_all(env, truth; nl::AbstractString = "")
                 "ROUTED→$(rt["escalated_from"]) (familiar) → ESCALATED→LLM ($(rt["escalation_reason"])) · " :
               rt["novel"] ? "ROUTED→LLM (novel) · " : "ROUTED→surrogate (familiar) · ") : ""
     verdict = routed * "ADMITTED · $(pol[enacted]["label"])" *
-              (fell_back ? " (requested $(requested) unavailable)" : "") *
+              # 폴백 사유를 같이 적는다: "requested surrogate unavailable" 만으로는 **왜**
+              # 못 썼는지가 안 남아, 나중에 이 줄을 읽는 사람이 로그를 다시 파야 한다.
+              (fell_back ? " (requested $(requested) unavailable" *
+                           (haskey(pol, requested) && !isempty(get(pol[requested], "rationale", "")) ?
+                            ": $(pol[requested]["rationale"])" : "") * ")" : "") *
               (forced ? " · FORCED→$(FORCE_MACRO) (control run; policy chose $(rt["forced_from"]))" : "") *
               (isempty(others) ? " · all policies agree" :
                " · DIFFERS from " * join(["$(k)=$(pol[k]["chosen"])" for k in others], ", "))
