@@ -31,6 +31,33 @@ from collections import Counter, defaultdict
 from action_registry import MACRO_COST  # 단일 진실원(action_registry.json) — 리터럴 복붙 금지
 
 
+def _menu_costs(menu):
+    """menu -> {팔: MACRO_COST}.  **이 저장소에서 MACRO_COST 를 순위 목적으로 읽는 유일한 자리다.**
+
+    복사본을 만들지 말 것: `audit_objective.py` 항목 "채점 규칙 단일 정의" 가 잡는 부류이고,
+    실제로 정의가 둘로 갈리면 "G4b 진단이 말하는 규칙"과 "평가가 바닥선으로 실행하는 규칙"이
+    조용히 달라져 둘을 비교한 숫자가 무의미해진다.
+    """
+    return {m: MACRO_COST[m] for m in menu if m in MACRO_COST}
+
+
+def max_cost_menu_policy(menu):
+    """legal menu 안에서 `MACRO_COST` 가 최대인 팔 하나. **2026-08-13 배포 결함 그 자체의 규칙**.
+
+    학습이 0 이고 상태를 한 비트도 안 본다. 배포 surrogate 의 861/861 결정이 이 규칙과
+    일치했으므로, 재구축된 모델이 **J 로 이것을 이기지 못하면 학습에 값이 없다** — Task 6 의
+    평가가 이것을 상태맹 바닥선으로 채점한다.
+
+    동률은 팔 번호가 작은 쪽으로 결정적으로 깬다(아래 G4b 진단의 동률-관용 hit 판정과 다르다:
+    진단은 "최댓값 팔들 중 하나면 hit", 이 함수는 "실행 가능한 정책이므로 팔 하나").
+    """
+    costs = _menu_costs(menu)
+    if not costs:
+        return None
+    best = max(costs.values())
+    return sorted(m for m, c in costs.items() if c == best)[0]
+
+
 def _regret(chosen, truth_scores):
     """truth_scores = {macro: 점수(높을수록 좋음)}. regret = 최적 − 선택."""
     if not truth_scores:
@@ -124,12 +151,49 @@ def gate_g4_kind_discrimination(instances, choices, min_kinds=2, tau=0.05):
                 "by_kind": {k: dict(v) for k, v in by_kind.items()}}
 
 
-def gate_g4b_menu_invariance(decisions, min_group=5):
+def _modal(counts):
+    """분포의 최빈값. 동률은 팔 번호(문자열 정렬)로 결정적으로 깬다 — 게이트가 입력 순서에
+    따라 판정을 바꾸면 재현되지 않는 게이트가 된다."""
+    return sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0])))[0][0]
+
+
+def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
     """G4b: 선택이 legal menu 의 **순수 함수**인가 — 즉 state 를 전혀 안 쓰는가.
 
     decisions: [{"instance": id, "menu": iterable[legal 팔], "choice": 선택한 팔}]
     menu 는 frozenset 으로 묶는다(순서·중복 무관 — "이 상황에서 쓸 수 있던 팔의 집합"만 본다).
 
+    ------------------------------------------------------------------------------------
+    2026-08-14 수정 — `oracle_choices` (선택 인자). 두 가지가 **추가**된다.
+    ------------------------------------------------------------------------------------
+    `oracle_choices`: {instance: 정답 팔}. 주지 않으면 **동작이 이전과 완전히 같다**(하위호환).
+
+    왜 고치는가. 원래 G4b 는 **다름(distinctness)만 재고 옳음(correctness)은 전혀 안 잰다.**
+    Task 6 실측에서 그 구멍 두 개가 동시에 터졌다:
+
+      (거짓 양성) menu {0,1,8} 에서 모델이 퇴화했다고 실패 판정했는데, **오라클도 그 menu 에서
+        퇴화한다** — 그 menu 에서는 정답 자체가 상수라, 어떤 모델도 비퇴화로 만들 수 없다.
+        판별 불가능한 것을 못 했다고 벌하는 것은 잘못된 진단이다.
+      (거짓 음성) 같은 menu 에서 모델은 15/15 Replace 를 냈고 정답은 15/15 SwapBattery 였다 —
+        **데이터셋에서 노이즈를 넘는 유일한 신호를 100% 뒤집었는데** G4b 는 이것을 **원리적으로**
+        못 본다. 분포가 하나로 퇴화했다는 사실만 보고 그 답이 무엇인지는 안 보기 때문이다.
+
+    그래서 두 절(clause)을 더한다:
+      (1) **정보성 조건** — 오라클이 스스로 퇴화하는 menu 는 `uninformative` 로 기록하고
+          **합·불 판정에서 뺀다**. 그 그룹에서의 퇴화는 증거가 아니다.
+      (2) **최빈답 일치 조건** — n >= min_group 인 **모든** 그룹에서(정보성 여부와 무관하게)
+          모델의 최빈답 != 오라클의 최빈답이면 실패. (1)이 안 보게 된 자리를 정확히 이것이 막는다.
+
+    (2)를 정보성 그룹에만 걸지 않는 이유: 위의 거짓 음성이 난 곳이 바로 **비정보성** 그룹이다.
+    정답이 상수인 menu 는 "갈리는가"를 물을 수 없을 뿐이고, "그 상수를 맞혔는가"는 물을 수 있다 —
+    오히려 그쪽이 더 쉬운 질문이라 틀리면 더 나쁘다.
+
+    검증됨: 배포 max-cost 정책은 정보성 menu 3/3 에서 계속 실패하고, 완벽한 오라클은 통과한다.
+    (즉 거짓 양성만 없애고 게이트를 약화시키지 않는다.)
+
+    ------------------------------------------------------------------------------------
+    원래 근거 (2026-08-13) — 아래는 그대로 유효하다.
+    ------------------------------------------------------------------------------------
     왜 필요한가(2026-08-13 재조사): kind 별 legal menu 가 서로 다르면(zone 은 {NOOP,
     RelocateBuild}, reform 은 {NOOP,ReformTeam} 처럼 menu 자체가 겹치지 않으면), G4(kind
     판별) 는 menu 차이만으로 통과할 수 있다 — 모델이 상태를 하나도 안 보고 "이번엔 무슨
@@ -148,10 +212,15 @@ def gate_g4b_menu_invariance(decisions, min_group=5):
     구체적인 모양("최댓값 규칙")을 숫자로 보여주기 위한 것이지, 통과/실패 판정에는 안 쓴다.
     """
     groups = defaultdict(Counter)
+    oracle_groups = defaultdict(Counter)
     for d in decisions:
-        groups[frozenset(d["menu"])][d["choice"]] += 1
+        key = frozenset(d["menu"])
+        groups[key][d["choice"]] += 1
+        if oracle_choices is not None and d["instance"] in oracle_choices:
+            oracle_groups[key][oracle_choices[d["instance"]]] += 1
 
     per_menu, skipped, degenerate = {}, [], []
+    uninformative, modal_mismatch, degenerate_informative = [], [], []
     for menu, counts in groups.items():
         n = sum(counts.values())
         label = "{%s}" % ", ".join(str(m) for m in sorted(menu, key=str))
@@ -159,22 +228,44 @@ def gate_g4b_menu_invariance(decisions, min_group=5):
             skipped.append({"menu": label, "n": n})
             continue
         is_degenerate = len(counts) == 1
-        per_menu[label] = {"menu": sorted(menu, key=str), "n": n,
-                            "choice_dist": dict(counts), "degenerate": is_degenerate}
+        entry = {"menu": sorted(menu, key=str), "n": n,
+                 "choice_dist": dict(counts), "degenerate": is_degenerate}
         if is_degenerate:
             degenerate.append(label)
+
+        if oracle_choices is not None:
+            ocounts = oracle_groups.get(menu, Counter())
+            # (1) 정보성: 오라클이 갈리는 menu 에서만 "퇴화"가 증거가 된다.
+            informative = len(ocounts) > 1
+            entry["oracle_dist"] = dict(ocounts)
+            entry["informative"] = informative
+            if not informative:
+                uninformative.append(label)
+            elif is_degenerate:
+                degenerate_informative.append(label)
+            # (2) 최빈답 일치: 정보성과 무관하게 n >= min_group 인 모든 그룹에서 검사한다.
+            if ocounts:
+                mm, om = _modal(counts), _modal(ocounts)
+                entry["model_modal"], entry["oracle_modal"] = mm, om
+                entry["modal_agrees"] = (mm == om)
+                if mm != om:
+                    modal_mismatch.append(label)
+        per_menu[label] = entry
 
     if not per_menu:
         return False, {"reason": "min_group=%d 이상인 menu 그룹이 없다 — 판별 불가" % min_group,
                         "per_menu": {}, "degenerate_menus": [], "skipped_small_menus": skipped,
                         "min_group": min_group, "max_cost_rule_hit_rate": None,
-                        "max_cost_rule_hits": 0, "max_cost_rule_n": 0}
+                        "max_cost_rule_hits": 0, "max_cost_rule_n": 0,
+                        "oracle_aware": oracle_choices is not None,
+                        "uninformative_menus": [], "degenerate_informative_menus": [],
+                        "modal_mismatch_menus": []}
 
     # 진단: 선택이 "legal menu 안에서 MACRO_COST 최댓값" 규칙과 얼마나 일치하는가(동률은 hit).
     hits, n_scored = 0, 0
     for d in decisions:
         menu = frozenset(d["menu"])
-        costs = {m: MACRO_COST[m] for m in menu if m in MACRO_COST}
+        costs = _menu_costs(menu)
         if not costs:
             continue
         n_scored += 1
@@ -183,8 +274,17 @@ def gate_g4b_menu_invariance(decisions, min_group=5):
             hits += 1
     max_cost_rule_hit_rate = (hits / n_scored) if n_scored else None
 
-    ok = not degenerate
+    # `oracle_choices` 를 안 주면 판정식이 이전과 **글자 그대로 같다**(하위호환).
+    # 주면 (1) 정보성 menu 에서의 퇴화 + (2) 최빈답 불일치, 둘 중 하나라도 있으면 실패.
+    if oracle_choices is None:
+        ok = not degenerate
+    else:
+        ok = (not degenerate_informative) and (not modal_mismatch)
     return ok, {"per_menu": per_menu, "degenerate_menus": degenerate,
                 "skipped_small_menus": skipped, "min_group": min_group,
                 "max_cost_rule_hit_rate": max_cost_rule_hit_rate,
-                "max_cost_rule_hits": hits, "max_cost_rule_n": n_scored}
+                "max_cost_rule_hits": hits, "max_cost_rule_n": n_scored,
+                "oracle_aware": oracle_choices is not None,
+                "uninformative_menus": uninformative,
+                "degenerate_informative_menus": degenerate_informative,
+                "modal_mismatch_menus": modal_mismatch}

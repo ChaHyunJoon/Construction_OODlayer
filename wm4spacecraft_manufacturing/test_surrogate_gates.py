@@ -68,6 +68,36 @@ MENU_COLLAPSED = (
     [{"instance": "e%d" % i, "menu": [0, 2], "choice": 2} for i in range(2)]
 )
 
+# ---------------------------------------------------------------------------
+# G4b 2026-08-14: oracle_choices 를 주면 두 절이 켜진다.
+#   (1) 오라클이 스스로 퇴화하는 menu 는 판정에서 뺀다 (거짓 양성 제거)
+#   (2) n>=min_group 인 모든 그룹에서 최빈답이 오라클과 달라도 실패 (거짓 음성 제거)
+# 실제 Task 6 데이터의 모양을 그대로 축소한 격자를 쓴다.
+#   menu {0,1,8}: 정답이 **상수 8** (비정보성)          <- 실측 15/15
+#   menu {0,7}:   정답이 7 40 / 0 20 으로 갈린다 (정보성) <- 실측 그대로
+# ---------------------------------------------------------------------------
+ORACLE_MENUS = (
+    [{"instance": "u%d" % i, "menu": [0, 1, 8]} for i in range(10)] +
+    [{"instance": "w%d" % i, "menu": [0, 7]} for i in range(10)]
+)
+# 오라클: {0,1,8} 에서는 항상 8(정답이 상수), {0,7} 에서는 7 이 6개·0 이 4개.
+ORACLE_TRUTH = {}
+for _i in range(10):
+    ORACLE_TRUTH["u%d" % _i] = 8
+    ORACLE_TRUTH["w%d" % _i] = 7 if _i < 6 else 0
+
+def _menu_choices(pick):
+    """pick(instance_id) -> 팔.  ORACLE_MENUS 에 choice 를 채운 decisions 를 만든다."""
+    return [dict(d, choice=pick(d["instance"])) for d in ORACLE_MENUS]
+
+PERFECT_MENU = _menu_choices(lambda i: ORACLE_TRUTH[i])
+# 오라클과 같은 상수(8)를 내지만 {0,7} 에서는 갈린다 = 비정보성 menu 의 퇴화만 남은 정책.
+RIGHT_CONSTANT = _menu_choices(lambda i: ORACLE_TRUTH[i] if i.startswith("w") else 8)
+# Task 6 실측 결함: {0,1,8} 에서 15/15 Replace(1) — 정답 8 을 100% 뒤집는다.
+INVERTED_CONSTANT = _menu_choices(lambda i: ORACLE_TRUTH[i] if i.startswith("w") else 1)
+# 배포 max-cost 정책: menu 안 MACRO_COST 최댓값. {0,1,8}->1(1.0), {0,7}->7(1.5).
+MAXCOST_POLICY = _menu_choices(lambda i: 1 if i.startswith("u") else 7)
+
 
 def main():
     print("== surrogate_gates 단위검사 ==")
@@ -132,6 +162,52 @@ def main():
           str(info["skipped_small_menus"]))
     check("G4b: max_cost_rule_hit_rate 진단이 1.0 이다(둘 다 menu 최댓값 팔만 골랐다)",
           info["max_cost_rule_hit_rate"] == 1.0, str(info["max_cost_rule_hit_rate"]))
+
+    # -- 2026-08-14: oracle_choices 를 안 주면 판정이 **이전과 동일**해야 한다(하위호환) ----
+    ok_old, i_old = gate_g4b_menu_invariance(MENU_COLLAPSED, min_group=5)
+    ok_none, i_none = gate_g4b_menu_invariance(MENU_COLLAPSED, min_group=5, oracle_choices=None)
+    check("G4b 하위호환: oracle_choices=None 은 인자를 안 준 것과 판정·degenerate_menus 가 같다",
+          (ok_old == ok_none) and (i_old["degenerate_menus"] == i_none["degenerate_menus"]),
+          "ok=%s/%s" % (ok_old, ok_none))
+    check("G4b 하위호환: oracle 없이 부르면 oracle_aware=False 로 표시된다",
+          i_old["oracle_aware"] is False, str(i_old["oracle_aware"]))
+
+    # -- 절 (1) 정보성 조건: 오라클이 퇴화하는 menu 의 퇴화는 증거가 아니다 ------------------
+    ok, info = gate_g4b_menu_invariance(PERFECT_MENU, min_group=5, oracle_choices=ORACLE_TRUTH)
+    check("G4b(1): 완벽한 오라클 정책은 **통과**한다 (거짓 양성 제거)", ok,
+          "uninformative=%s modal_mismatch=%s"
+          % (info["uninformative_menus"], info["modal_mismatch_menus"]))
+    check("G4b(1): 정답이 상수인 menu 는 uninformative 로 기록되고 판정에서 빠진다",
+          info["uninformative_menus"] == ["{0, 1, 8}"], str(info["uninformative_menus"]))
+    check("G4b(1): 그 menu 는 degenerate_menus 에는 여전히 남는다(진단은 잃지 않는다)",
+          "{0, 1, 8}" in info["degenerate_menus"], str(info["degenerate_menus"]))
+
+    ok, info = gate_g4b_menu_invariance(RIGHT_CONSTANT, min_group=5, oracle_choices=ORACLE_TRUTH)
+    check("G4b(1): 비정보성 menu 에서만 퇴화한(정답과 같은) 정책도 통과한다", ok,
+          str(info["degenerate_informative_menus"]))
+
+    # -- 절 (2) 최빈답 일치: 15/15 뒤집기는 (1) 이 안 보는 자리라 (2) 가 잡아야 한다 ---------
+    ok, info = gate_g4b_menu_invariance(INVERTED_CONSTANT, min_group=5, oracle_choices=ORACLE_TRUTH)
+    check("G4b(2): 비정보성 menu 에서 정답을 100% 뒤집으면 **실패**한다 (거짓 음성 제거)",
+          not ok, "modal_mismatch=%s" % info["modal_mismatch_menus"])
+    check("G4b(2): 그 실패는 최빈답 불일치로 잡힌 것이지 퇴화로 잡힌 것이 아니다",
+          info["modal_mismatch_menus"] == ["{0, 1, 8}"]
+          and info["degenerate_informative_menus"] == [],
+          "mismatch=%s deg_inf=%s"
+          % (info["modal_mismatch_menus"], info["degenerate_informative_menus"]))
+    check("G4b(2): 절(1) 단독이면 이 정책을 통과시킨다는 것 자체를 고정한다(회귀 방지)",
+          gate_g4b_menu_invariance(INVERTED_CONSTANT, min_group=5)[0] is False
+          and not info["degenerate_informative_menus"],
+          "구 게이트는 퇴화로 잡지만 정보성 조건만 켜면 못 잡는다")
+
+    # -- 게이트가 약해지지 않았는가: 배포 max-cost 정책은 여전히 실패해야 한다 ---------------
+    ok, info = gate_g4b_menu_invariance(MAXCOST_POLICY, min_group=5, oracle_choices=ORACLE_TRUTH)
+    check("G4b: 배포 max-cost 정책은 오라클을 줘도 **여전히 실패**한다 (게이트 약화 없음)",
+          not ok, "deg_inf=%s mismatch=%s"
+          % (info["degenerate_informative_menus"], info["modal_mismatch_menus"]))
+    check("G4b: max-cost 는 정보성 menu {0, 7} 에서 퇴화로 잡힌다",
+          info["degenerate_informative_menus"] == ["{0, 7}"],
+          str(info["degenerate_informative_menus"]))
 
     print("\n%s" % ("전부 통과" if not FAILS else "실패 %d개: %s" % (len(FAILS), FAILS)))
     return 1 if FAILS else 0

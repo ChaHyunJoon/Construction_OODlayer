@@ -60,7 +60,8 @@ import wm_datasets                                       # noqa: E402
 from surrogate_features import build_features            # noqa: E402
 from surrogate_gates import (gate_g3_beats_constant,     # noqa: E402
                              gate_g4_kind_discrimination,
-                             gate_g4b_menu_invariance)
+                             gate_g4b_menu_invariance,
+                             max_cost_menu_policy)
 from surrogate_v2 import SurrogateV2                     # noqa: E402
 
 # scipy/sklearn 버전 궁합에서 나오는 무해한 경고. 폴드가 310개라 이걸 안 막으면 실제 결과가
@@ -161,11 +162,27 @@ def truth_table(rows):
 # ==========================================================================================
 #  폴드 실행
 # ==========================================================================================
-def run_folds(rows, group_key, model_name):
+def max_cost_policy(rows_by_inst):
+    """**진짜 바닥선**: legal menu 안에서 `MACRO_COST` 가 최대인 팔을 고르는 상태맹 규칙.
+
+    이것이 2026-08-13 배포 결함 그 자체다(861/861 결정이 이 규칙과 일치했다). 학습이 0 이고
+    상태를 한 비트도 안 보므로, **모델이 이것을 J 로 이기지 못하면 학습에 값이 없다.**
+
+    G3 로는 이 바닥선을 볼 수 없다: G3 는 단일 팔 상수 정책만 열거하고 그 팔이 불법인
+    instance 에는 최대 regret 을 물린다. 팔 1 은 155개 중 90개에서 불법이라, G3 의 "최고 상수"
+    는 실제로 아무도 쓰지 않을 정책이고 그에 대한 마진은 사실상 공허하다.
+    규칙 자체는 재구현하지 않고 `surrogate_gates.max_cost_menu_policy` 를 부른다 — 그 모듈이
+    이 규칙의 단일 정의를 갖고 있고, 복사본을 만들면 G4b 진단과 이 바닥선이 조용히 갈린다.
+    """
+    return {iid: int(max_cost_menu_policy(sorted(set(g[0]["valid_mask"]))))
+            for iid, g in rows_by_inst.items()}
+
+
+def run_folds(rows, group_key, model_name, rule="argmin_jhat"):
     """`LeaveOneGroupOut` 으로 out-of-sample 결정을 만든다.
 
-    반환: {instance: 고른 macro}.  팔 선택은 그 instance 의 legal 행에 대한 `argmin ΔĴ`.
-    (그 instance 의 행 집합 == `valid_mask` 임은 아래 sanity 검사가 확인한다.)
+    반환: {instance: 고른 macro}.  팔 선택은 그 instance 의 legal 행에 대해 `rule` 로 한다
+    (`SurrogateV2.choose`). (행 집합 == `valid_mask` 임은 main 의 sanity 검사가 확인한다.)
     """
     groups = np.array([r[group_key] for r in rows])
     idx = np.arange(len(rows))
@@ -179,12 +196,7 @@ def run_folds(rows, group_key, model_name):
             train = [rows[i] for i in tr]
             test = [rows[i] for i in te]
             model = MODELS[model_name]().fit(train)
-            d = model.predict_delta_J(test, ref_macro=0)
-            by_inst = defaultdict(list)
-            for k, r in enumerate(test):
-                by_inst[r["instance"]].append(k)
-            for iid, ks in by_inst.items():
-                choices[iid] = int(test[ks[int(np.argmin(d[ks]))]]["macro"])
+            choices.update(model.choose(test, rule=rule))
     return choices
 
 
@@ -214,16 +226,37 @@ def summarize(reg, rows_by_inst, choices, truth):
             "choice_dist": dict(Counter(choices[i] for i in ids)),
             "truth_argmax_dist": dict(Counter(max(truth[i], key=truth[i].get) for i in ids)),
         }
-    # 완주 절벽을 넘긴 결정(= C_fail 규모의 regret)만 따로 센다. 이것만은 노이즈가 아니다.
-    cliff = float(objective.load()["C_fail"]) / 2.0
+    # **완주 레짐별 분해** — 이 데이터에서 가장 중요한 층위다.
+    # 155개 중 53개는 **어떤 팔로도 완주하지 못한다**. 그 instance 에서는 모든 팔의 P(complete)
+    # 가 사실상 0 이라 헤드 A 가 상수이고(2-헤드 전제가 죽어 있다), 팔 간 진짜 J 차이는 전부
+    # C_unclosed·Δ(미닫힘 노드) 다 — 즉 **헤드 C 만이 순위를 매길 수 있다**. 두 레짐을 섞어
+    # 평균 내면 서로 다른 두 문제의 성적이 하나의 숫자로 뭉개진다.
+    regime = {}
+    for tag, want in (("has_completing_arm", True), ("no_completing_arm", False)):
+        ids = [i for i in sorted(reg)
+               if any(bool(r["complete"]) for r in rows_by_inst[i]) is want]
+        v = np.array([reg[i] for i in ids], dtype=float)
+        regime[tag] = {"n": len(ids),
+                       "mean_regret": float(v.mean()) if len(v) else None,
+                       "median_regret": float(np.median(v)) if len(v) else None}
+
+    # 큰 regret 을 세되 **이름을 조심한다**. 2026-08-14 정정: 이 데이터에서 큰 regret 은
+    # 완주 절벽(C_fail)을 넘어서 생긴 것이 **아니다** — 그런 instance 들은 어떤 팔로도 완주하지
+    # 못하므로 두 팔 모두 미완주 분기에 있고, regret 은 전부 C_unclosed × Δ(미닫힘 노드) 다.
+    # 예전 이름 `n_completion_decided_losses` 는 "완주가 갈랐다"는 **틀린 서사**를 심었다.
+    big = float(objective.load()["C_fail"]) / 2.0
     return {
+        "by_completion_regime": regime,
         "mean_regret": float(vals.mean()),
         "median_regret": float(np.median(vals)),
         "n_instances": int(len(vals)),
         "exact_match_rate": float(np.mean(vals <= 0.0)),
         "match_rate_within_noise": float(np.mean(vals <= NOISE_EPS)),
         "mean_regret_above_noise": float(np.mean(np.maximum(vals - NOISE_EPS, 0.0))),
-        "n_completion_decided_losses": int(np.sum(vals > cliff)),
+        "n_regret_above_half_C_fail": int(np.sum(vals > big)),
+        "n_regret_above_half_C_fail_note": (
+            "완주로 갈린 것이 아니다 — 이 instance 들은 어느 팔로도 완주하지 못하고, "
+            "regret 은 전부 C_unclosed × Δ(미닫힘 노드) 다."),
         "per_kind": per_kind,
     }
 
@@ -339,64 +372,69 @@ def main():
                  "누출된다 — G2 는 그만큼 낙관적이다."),
     }
 
+    # ---- 상태맹 바닥선: menu 안 max-MACRO_COST 규칙 (학습 0, 배포 결함 그 자체) ---------
+    mc_choices = max_cost_policy(by_inst)
+    result["baseline_max_cost_rule"] = dict(
+        summarize(regrets(truth, mc_choices), by_inst, mc_choices, truth),
+        note=("legal menu 안 MACRO_COST 최댓값 팔. 학습이 0 이고 상태를 안 본다. "
+              "**모델이 이겨야 하는 실제 바닥선** — G3 의 단일팔 상수 정책은 이것을 못 본다."))
+
     # ---- 모델별 G1 / G2 -------------------------------------------------------------
-    for name in ("tree2h", "ridge", "linear2h"):
+    # tree2h 는 두 결정 규칙 모두로 돈다: argmin Ĵ (원래 규칙, 기준선으로 계속 보고) 와
+    # deadband_B (조립식 증폭 교정). 베이스라인 모델은 원래 규칙만 — RidgeJ 에는 헤드 A/B 가 없다.
+    runs = [("tree2h", "argmin_jhat", ""), ("tree2h", "deadband_B", "_deadband"),
+            ("ridge", "argmin_jhat", ""), ("linear2h", "argmin_jhat", "")]
+    choices_by_run = {}
+    for name, rule, suffix in runs:
         for gate, key in (("instance", "G1"), ("kind", "G2")):
-            print("  ... %s %s (leave-one-%s-out)" % (name, key, gate))
-            ch = run_folds(rows, gate, name)
+            print("  ... %s / %s %s (leave-one-%s-out)" % (name, rule, key, gate))
+            ch = run_folds(rows, gate, name, rule=rule)
+            choices_by_run[(name, rule, gate)] = ch
             s = summarize(regrets(truth, ch), by_inst, ch, truth)
-            if name == "tree2h":
-                result[key] = s
-                if gate == "instance":
-                    loio_choices = ch
-                else:
-                    loko_choices = ch
-            else:
-                result["%s_%s" % ("ridge" if name == "ridge" else "linear2h", key)] = s
+            base = key if name == "tree2h" else ("%s_%s" % (name, key))
+            result[base + suffix] = s
+    loio_choices = choices_by_run[("tree2h", "argmin_jhat", "instance")]
+    loko_choices = choices_by_run[("tree2h", "argmin_jhat", "kind")]
+    dead_loio = choices_by_run[("tree2h", "deadband_B", "instance")]
 
     # ---- G3 / G4 / G4b — 게이트는 import 해서 **그대로** 부른다 -----------------------
     inst_recs = [{"instance": i, "kind": g[0]["kind"], "truth": truth[i],
                   "valid": sorted(set(g[0]["valid_mask"]))} for i, g in sorted(by_inst.items())]
-    decisions = [{"instance": i, "menu": sorted(set(g[0]["valid_mask"])),
-                  "choice": loio_choices[i]} for i, g in sorted(by_inst.items())]
+    oracle_choices = {i: max(t, key=t.get) for i, t in truth.items()}
+
+    def _dec(ch):
+        return [{"instance": i, "menu": sorted(set(g[0]["valid_mask"])), "choice": ch[i]}
+                for i, g in sorted(by_inst.items())]
 
     ok3, i3 = gate_g3_beats_constant(inst_recs, loio_choices)
     ok4, i4 = gate_g4_kind_discrimination(inst_recs, loio_choices, tau=args.g4_tau)
-    ok4b, i4b = gate_g4b_menu_invariance(decisions, min_group=args.g4b_min_group)
+    # G4b 는 2026-08-14 부터 오라클을 받는다: 정보성 조건 + 최빈답 일치 절이 켜진다.
+    ok4b, i4b = gate_g4b_menu_invariance(_dec(loio_choices), min_group=args.g4b_min_group,
+                                         oracle_choices=oracle_choices)
     _basis = "leave-one-instance-out choices"
     result["G3"] = dict(i3, **{"pass": ok3, "basis": _basis})
     result["G4"] = dict(i4, **{"pass": ok4, "basis": _basis})
     result["G4b"] = dict(i4b, **{"pass": ok4b, "basis": _basis})
 
-    # G4b 는 이 평가의 결론이므로 LOKO 결정에 대해서도 낸다(일반화 조건에서도 menu 를 넘는가).
-    ok4b_k, i4b_k = gate_g4b_menu_invariance(
-        [{"instance": i, "menu": sorted(set(g[0]["valid_mask"])), "choice": loko_choices[i]}
-         for i, g in sorted(by_inst.items())], min_group=args.g4b_min_group)
+    # G4b 는 이 평가의 결론이므로 LOKO 결정과 **교정된 결정 규칙**에 대해서도 낸다.
+    ok4b_k, i4b_k = gate_g4b_menu_invariance(_dec(loko_choices), min_group=args.g4b_min_group,
+                                             oracle_choices=oracle_choices)
     result["G4b_loko"] = dict(i4b_k, **{"pass": ok4b_k, "basis": "leave-one-KIND-out choices"})
 
-    # **G4b 를 읽기 위한 필수 대조군**: 완벽한 오라클(argmax 진실점수)에 같은 게이트를 건다.
-    # 어떤 menu 에서 오라클마저 답이 하나로 퇴화한다면, 그 menu 에서는 **정답 자체가 상수**라서
-    # 어떤 모델도 그 그룹을 비퇴화로 만들 수 없다 — 그 그룹의 실패는 모델의 state-blindness 가
-    # 아니라 라벨셋의 성질이다. 이 대조군 없이 G4b 를 pass/fail 로만 읽으면 두 원인을 구분할 수
-    # 없고, 그것이 바로 이 계획이 없애려던 종류의 잘못된 진단이다.
-    ok4b_o, i4b_o = gate_g4b_menu_invariance(
-        [{"instance": i, "menu": sorted(set(g[0]["valid_mask"])),
-          "choice": max(truth[i], key=truth[i].get)} for i, g in sorted(by_inst.items())],
-        min_group=args.g4b_min_group)
+    ok4b_d, i4b_d = gate_g4b_menu_invariance(_dec(dead_loio), min_group=args.g4b_min_group,
+                                             oracle_choices=oracle_choices)
+    result["G4b_deadband"] = dict(i4b_d, **{
+        "pass": ok4b_d, "basis": "leave-one-instance-out choices, deadband_B 결정 규칙"})
+
+    # 오라클 대조군은 게이트가 그것을 내부에서 쓰게 된 뒤에도 **따로 낸다** — 어떤 menu 가
+    # 왜 판정에서 빠졌는지가 출력에 남아야 읽는 사람이 검증할 수 있다.
+    ok4b_o, i4b_o = gate_g4b_menu_invariance(_dec(oracle_choices), min_group=args.g4b_min_group,
+                                             oracle_choices=oracle_choices)
     result["G4b_oracle"] = dict(i4b_o, **{
         "pass": ok4b_o, "basis": "oracle (argmax -J) choices — 게이트의 달성 가능 상한",
-        "note": ("여기서 퇴화한 menu 는 정답이 상수인 menu 다. 그 그룹에서 모델이 퇴화한 것은 "
-                 "증거가 아니다. 모델의 퇴화가 **오라클은 갈리는** menu 에서 났을 때만 "
-                 "state-blindness 의 증거가 된다.")})
-    informative = [m for m, v in i4b_o["per_menu"].items() if not v["degenerate"]]
-    result["G4b_verdict"] = {
-        "informative_menus": sorted(informative),
-        "uninformative_menus": sorted(i4b_o["degenerate_menus"]),
-        "model_degenerate_on_informative_menus":
-            sorted(m for m in i4b["degenerate_menus"] if m in informative),
-        "note": ("`model_degenerate_on_informative_menus` 가 비어 있어야 '모델이 상태를 쓴다'는 "
-                 "주장이 성립한다. 비어 있지 않으면 그 menu 들이 정확히 결함이 남아 있는 자리다."),
-    }
+        "note": ("여기서 퇴화한 menu 는 정답이 상수인 menu 다. 게이트가 이제 그 menu 를 "
+                 "uninformative 로 판정에서 빼므로 오라클은 **통과해야 한다** — 통과하지 "
+                 "않으면 게이트에 아직 거짓 양성이 남아 있다는 뜻이다.")})
 
     # ---- 집계 방향 (per-instance 라벨이 아니라 이것이 살아남는 신호다) -----------------
     result["aggregate_direction"] = {
@@ -405,21 +443,28 @@ def main():
         "note": ("진실 라벨의 집계 방향. 모델이 같은 방향을 내는지는 G1/G2 의 "
                  "per_kind.choice_dist 와 대조한다."),
     }
-    print("\n  G1 (LOIO)  mean regret = %.4f   (ridge %.4f, linear2h %.4f)"
-          % (result["G1"]["mean_regret"], result["ridge_G1"]["mean_regret"],
-             result["linear2h_G1"]["mean_regret"]))
-    print("  G2 (LOKO)  mean regret = %.4f   (ridge %.4f, linear2h %.4f)"
-          % (result["G2"]["mean_regret"], result["ridge_G2"]["mean_regret"],
-             result["linear2h_G2"]["mean_regret"]))
-    print("  G3  pass=%s  model=%.4f vs best-constant=%.4f (arm %s)"
+    mc = result["baseline_max_cost_rule"]["mean_regret"]
+    print("\n  ** 바닥선 ** 상태맹 max-MACRO_COST 규칙 (학습 0)   mean regret = %.4f" % mc)
+    for key, label in (("G1", "G1  (LOIO, argmin Jhat  = 기준선)"),
+                       ("G1_deadband", "G1  (LOIO, deadband_B  = 교정)"),
+                       ("ridge_G1", "G1  ridge"), ("linear2h_G1", "G1  linear2h"),
+                       ("G2", "G2  (LOKO, argmin Jhat  = 기준선)"),
+                       ("G2_deadband", "G2  (LOKO, deadband_B  = 교정)"),
+                       ("ridge_G2", "G2  ridge"), ("linear2h_G2", "G2  linear2h")):
+        v = result[key]["mean_regret"]
+        rg = result[key]["by_completion_regime"]
+        print("  %-34s mean regret = %10.4f   바닥선 대비 %-18s | 완주팔있음(n=%d) %8.3f  없음(n=%d) %9.3f"
+              % (label, v, "이김 (-%.4f)" % (mc - v) if v < mc else "**짐** (+%.4f)" % (v - mc),
+                 rg["has_completing_arm"]["n"], rg["has_completing_arm"]["mean_regret"],
+                 rg["no_completing_arm"]["n"], rg["no_completing_arm"]["mean_regret"]))
+    print("  G3  pass=%s  model=%.4f vs best-constant=%.4f (arm %s)  [단일팔 상수만 열거 — 바닥선을 못 본다]"
           % (ok3, i3["model_regret"], i3["best_constant_regret"], i3["best_constant_arm"]))
     print("  G4  pass=%s  by_kind=%s" % (ok4, i4["by_kind"]))
-    print("  G4b pass=%s  degenerate_menus=%s  max_cost_rule_hit_rate=%.4f"
-          % (ok4b, i4b["degenerate_menus"], i4b["max_cost_rule_hit_rate"]))
-    print("      오라클 대조군: pass=%s  정답이 상수인(판별 불가) menu=%s"
-          % (ok4b_o, i4b_o["degenerate_menus"]))
-    print("      >> 오라클은 갈리는데 모델이 퇴화한 menu = %s   (비어 있어야 상태를 쓴다고 말할 수 있다)"
-          % result["G4b_verdict"]["model_degenerate_on_informative_menus"])
+    for tag, ok, info in (("G4b (기준선)", ok4b, i4b), ("G4b (deadband)", ok4b_d, i4b_d),
+                          ("G4b (오라클)", ok4b_o, i4b_o)):
+        print("  %-16s pass=%-5s  정보성 menu 에서 퇴화=%s  최빈답 불일치=%s  (판정제외 %s)"
+              % (tag, ok, info["degenerate_informative_menus"], info["modal_mismatch_menus"],
+                 info["uninformative_menus"]))
 
     blob = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True, default=str)
     if args.out:

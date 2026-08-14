@@ -32,6 +32,11 @@ from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostin
 _HP = dict(max_depth=3, max_iter=300, learning_rate=0.05,
            min_samples_leaf=5, l2_regularization=1.0, early_stopping=True, random_state=0)
 
+# 헤드 A(완주 분류기)의 **교정 오차**. 독립 검증(2026-08-14)의 실측값 ~1e-2 다.
+# 임계값을 고르는 손잡이가 아니라 측정된 물리량이라 여기 상수로 박는다 — 이 값을 데이터에
+# 맞춰 흔드는 순간 그것은 게이트 맞추기다(Task 6 fix round 1 의 명시 지시).
+P_CALIBRATION_ERROR = 0.01
+
 
 def _w_E(cfg):
     """w_E = kappa * M_ref / E_ref. 스케일이 null 이면 에러(0/1 로 폴백하지 않는다)."""
@@ -93,7 +98,17 @@ class SurrogateV2:
         return p * b + (1.0 - p) * (C_fail + C_unclosed * c + tie_eps * b)
 
     def predict_delta_J(self, rows, ref_macro=0):
-        """같은 instance 의 ref_macro 행을 기준으로 뺀다. 기준 행이 없으면 그 instance 의 평균."""
+        """같은 instance 의 ref_macro 행을 기준으로 뺀다. 기준 행이 없으면 그 instance 의 평균.
+
+        ⚠️ **결정에는 영향이 없다** (2026-08-14 확인, spec §3.2 의 설계 결함).
+        같은 instance 안에서 빼는 값은 팔에 무관한 **상수**이므로
+        `argmin_a (Ĵ(a) − const) ≡ argmin_a Ĵ(a)` 다. 그리고 헤드 B·C 는 ΔJ 가 아니라
+        **절대 타깃**(makespan+에너지, 미닫힘 노드 수)에 적합된다. 즉 "타깃 분산의 78% 인
+        instance 난이도 성분이 정의상 소거된다"는 §3.2 의 근거는 이 구현에서 **실현되지
+        않는다** — 소거는 학습이 아니라 출력 후처리에서 일어나고, 학습은 그 이득을 못 본다.
+        ΔJ 를 실제로 실현하려면 헤드가 instance 내 차분 타깃에 적합돼야 한다.
+        이 값은 여전히 해석·보고용으로는 쓸모가 있다("이 개입은 NOOP 대비 3.2초 개선").
+        """
         J = self.predict_J(rows)
         by_inst = {}
         for i, r in enumerate(rows):
@@ -103,4 +118,51 @@ class SurrogateV2:
             ref = [i for i in idx if int(rows[i]["macro"]) == int(ref_macro)]
             base = J[ref[0]] if ref else float(np.mean(J[idx]))
             out[idx] = J[idx] - base
+        return out
+
+    # ---- 결정 규칙 (2026-08-14 추가) -------------------------------------------
+    def predict_B(self, rows):
+        """헤드 B 의 원값 = E[makespan + w_E*energy_J | 완주].  J 의 완주 분기 그 자체."""
+        if not getattr(self, "_fitted_b", False):
+            return np.full(len(rows), self._b_fallback, dtype=float)
+        return np.asarray(self.head_b.predict(build_features(rows).values), dtype=float)
+
+    def choose(self, rows, rule="argmin_jhat", deadband=P_CALIBRATION_ERROR):
+        """instance -> 고른 macro.  `rows` 는 그 instance 의 legal 팔 행만 담고 있어야 한다.
+
+        rule="argmin_jhat"  (기준선) 조립된 Ĵ 의 argmin. spec §3.2 의 원래 규칙.
+
+        rule="deadband_B"   2단 규칙: ① P̂ 가 최댓값에서 `deadband` 안에 드는 팔만 남기고
+                            ② 그중 B̂ 가 가장 작은 팔을 고른다.
+
+        왜 2단인가 — 이것은 임계값 탐색이 아니라 **알려진 증폭의 교정**이다.
+        조립식 Ĵ = P·B + (1−P)·(C_fail + C_unclosed·C + tie_eps·B) 를 P 로 미분하면
+        dĴ/dP ≈ −20,500 J 다. 즉 완주확률 **1%p** 차이가 Ĵ 를 200 J 넘게 움직인다.
+        그런데 헤드 A 의 교정 오차는 ~1e-2 (=1%p) 라, **정보가 아닌 잡음이 헤드 B 가 직접
+        재는 몇 J 짜리 진짜 차이를 두 자릿수 차이로 압도한다.** 2026-08-14 독립 검증 실측:
+        문제의 15 instance 에서 헤드 B 단독은 SwapBattery 를 15/15 로 옳게 고르는데,
+        조립된 Ĵ 는 0/15 다 — 신호는 있고 조립이 그것을 파괴한다.
+        원칙: **P̂ 차이가 분류기의 교정 오차보다 작으면 그 차이는 정보를 담고 있지 않으므로,
+        회귀 헤드가 직접 측정한 J 차이를 뒤집도록 허용해서는 안 된다.**
+        """
+        if rule not in ("argmin_jhat", "deadband_B"):
+            raise ValueError("알 수 없는 결정 규칙: %r" % (rule,))
+        # 규칙이 필요로 하는 것만 계산한다 — 헤드 A/B 가 없는 베이스라인(RidgeJ 등)도
+        # "argmin_jhat" 으로는 그대로 돌아야 하기 때문이다.
+        if rule == "argmin_jhat":
+            score = self.predict_J(rows)
+        else:
+            p = self.predict_complete_proba(rows)
+            b = self.predict_B(rows)
+        by_inst = {}
+        for i, r in enumerate(rows):
+            by_inst.setdefault(r.get("instance"), []).append(i)
+        out = {}
+        for iid, idx in by_inst.items():
+            if rule == "argmin_jhat":
+                pick = idx[int(np.argmin(score[idx]))]
+            else:
+                keep = [i for i in idx if p[i] >= p[idx].max() - deadband]
+                pick = keep[int(np.argmin(b[keep]))]
+            out[iid] = int(rows[pick]["macro"])
         return out
