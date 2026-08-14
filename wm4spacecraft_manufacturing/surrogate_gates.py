@@ -192,6 +192,30 @@ def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
     (즉 거짓 양성만 없애고 게이트를 약화시키지 않는다.)
 
     ------------------------------------------------------------------------------------
+    2026-08-14 (최종 리뷰) — **부분 커버리지가 게이트를 무장해제하던 것을 막는다.**
+    ------------------------------------------------------------------------------------
+    위 두 절은 "오라클이 그 menu 에서 무엇을 했나"를 보는데, 지도(`oracle_choices`)에 없는
+    instance 는 `oracle_groups` 에 아무것도 더하지 않는다. 그래서 오라클 항목이 하나도 없는
+    그룹은 `ocounts = Counter()` 가 되어
+      · `len(ocounts) > 1` 이 거짓 -> `informative = False` -> 절(1)의 판정에서 빠지고,
+      · `if ocounts:` 가드가 거짓 -> 절(2)의 최빈답 비교도 통째로 건너뛴다.
+    **두 절이 동시에 사라진다.** 실측 시연: menu {0,1,8} 20결정 전부 Replace(완전 퇴화),
+    오라클은 8/0 으로 10/10 갈리는데(명백한 정보성 menu), 지도가 그 20개 중 0개를 덮으면
+    게이트가 **통과**했다. 잘린 지도를 넘기는 것만으로 판정이 뒤집히는 게이트는 게이트가 아니다.
+
+    고친 방식 — **없는 데이터로는 면제하지 않는다**:
+      `informative = (오라클 답이 둘 이상) or (그 그룹의 커버리지가 완전하지 않다)`
+    즉 "오라클도 여기서는 퇴화한다"는 면제는 그 그룹의 **모든** 결정에 오라클 답이 있을 때만
+    준다. 부분/무 커버리지에서는 면제가 없으므로 퇴화가 그대로 증거로 남고, 그 결과
+    **불완전한 지도의 판정은 오라클 없는 판정보다 절대 느슨할 수 없다**(테스트가 이 불변식을
+    직접 못박는다). 커버리지는 숨기지 않고 info 에 낸다: 전체 `oracle_coverage`, 그룹별
+    `oracle_covered`/`oracle_coverage`, 그리고 불완전한 그룹 목록 `partial_coverage_menus`.
+
+    예외를 던지지 않는 이유: 이 게이트는 **판정을 내는 것이 일**이라, 지도가 부실할 때 죽으면
+    호출자가 오라클 인자를 빼는 것으로 손쉽게 회피한다(그러면 절(2)가 통째로 사라진다).
+    판정은 항상 내되, 없는 근거로 모델을 면제하지 않는 편이 더 안전하다.
+
+    ------------------------------------------------------------------------------------
     원래 근거 (2026-08-13) — 아래는 그대로 유효하다.
     ------------------------------------------------------------------------------------
     왜 필요한가(2026-08-13 재조사): kind 별 legal menu 가 서로 다르면(zone 은 {NOOP,
@@ -213,14 +237,20 @@ def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
     """
     groups = defaultdict(Counter)
     oracle_groups = defaultdict(Counter)
+    oracle_covered = Counter()      # menu -> 오라클 답이 실제로 있는 decision 수(커버리지)
     for d in decisions:
         key = frozenset(d["menu"])
         groups[key][d["choice"]] += 1
         if oracle_choices is not None and d["instance"] in oracle_choices:
             oracle_groups[key][oracle_choices[d["instance"]]] += 1
+            oracle_covered[key] += 1
+
+    total_covered = sum(oracle_covered.values())
+    overall_coverage = ((total_covered / len(decisions)) if decisions else None) \
+        if oracle_choices is not None else None
 
     per_menu, skipped, degenerate = {}, [], []
-    uninformative, modal_mismatch, degenerate_informative = [], [], []
+    uninformative, modal_mismatch, degenerate_informative, partial_coverage = [], [], [], []
     for menu, counts in groups.items():
         n = sum(counts.values())
         label = "{%s}" % ", ".join(str(m) for m in sorted(menu, key=str))
@@ -235,10 +265,18 @@ def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
 
         if oracle_choices is not None:
             ocounts = oracle_groups.get(menu, Counter())
+            covered = oracle_covered.get(menu, 0)
+            full_coverage = (covered == n)
             # (1) 정보성: 오라클이 갈리는 menu 에서만 "퇴화"가 증거가 된다.
-            informative = len(ocounts) > 1
+            #     단 **면제는 완전한 커버리지 위에서만** 준다 — 지도에 없는 결정으로
+            #     "오라클도 여기서는 퇴화한다"를 주장할 수 없다(위 2026-08-14 절 참조).
+            informative = (len(ocounts) > 1) or (not full_coverage)
             entry["oracle_dist"] = dict(ocounts)
+            entry["oracle_covered"] = covered
+            entry["oracle_coverage"] = covered / n
             entry["informative"] = informative
+            if not full_coverage:
+                partial_coverage.append({"menu": label, "covered": covered, "n": n})
             if not informative:
                 uninformative.append(label)
             elif is_degenerate:
@@ -258,6 +296,8 @@ def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
                         "min_group": min_group, "max_cost_rule_hit_rate": None,
                         "max_cost_rule_hits": 0, "max_cost_rule_n": 0,
                         "oracle_aware": oracle_choices is not None,
+                        "oracle_coverage": overall_coverage,
+                        "partial_coverage_menus": [],
                         "uninformative_menus": [], "degenerate_informative_menus": [],
                         "modal_mismatch_menus": []}
 
@@ -285,6 +325,8 @@ def gate_g4b_menu_invariance(decisions, min_group=5, oracle_choices=None):
                 "max_cost_rule_hit_rate": max_cost_rule_hit_rate,
                 "max_cost_rule_hits": hits, "max_cost_rule_n": n_scored,
                 "oracle_aware": oracle_choices is not None,
+                "oracle_coverage": overall_coverage,
+                "partial_coverage_menus": partial_coverage,
                 "uninformative_menus": uninformative,
                 "degenerate_informative_menus": degenerate_informative,
                 "modal_mismatch_menus": modal_mismatch}

@@ -98,6 +98,23 @@ INVERTED_CONSTANT = _menu_choices(lambda i: ORACLE_TRUTH[i] if i.startswith("w")
 # 배포 max-cost 정책: menu 안 MACRO_COST 최댓값. {0,1,8}->1(1.0), {0,7}->7(1.5).
 MAXCOST_POLICY = _menu_choices(lambda i: 1 if i.startswith("u") else 7)
 
+# ---------------------------------------------------------------------------
+# G4b 2026-08-14 (최종 리뷰 #2): **부분 커버리지 oracle_choices 가 게이트를 무장해제한다.**
+#
+# 실측한 결함: 지도에 없는 instance 는 oracle_groups 에 아무것도 더하지 않는다. 그래서 오라클
+# 항목이 하나도 없는 menu 그룹은 `ocounts = Counter()` -> `len(ocounts) > 1` 이 거짓 ->
+# `informative = False` -> 절(1)의 판정에서 **빠지고**, `if ocounts:` 가드가 절(2)의 최빈답
+# 비교도 건너뛴다. 두 절이 동시에 사라져, **완전히 퇴화하고 완전히 틀린 정책이 통과**했다.
+#
+# 아래 격자가 그 시연이다: 20개 결정 전부 menu {0,1,8}, 모델은 언제나 1(Replace), 오라클은
+# 8 과 0 으로 10/10 갈린다(= 명백히 정보성 menu). 커버리지 20/20 · 1/20 · 0/20 세 지점에서
+# 전부 실패해야 한다 — 지도를 잘라내는 것으로 판정이 약해지면 안 된다.
+# ---------------------------------------------------------------------------
+COVERAGE_DECISIONS = [{"instance": "p%d" % i, "menu": [0, 1, 8], "choice": 1} for i in range(20)]
+COVERAGE_ORACLE_FULL = {"p%d" % i: (8 if i < 10 else 0) for i in range(20)}   # 10/10 로 갈린다
+COVERAGE_ORACLE_ONE = {"p0": 8}                                              # 1/20 만 덮는다
+COVERAGE_ORACLE_NONE = {"zz": 8}                                             # 0/20 (키가 안 맞는다)
+
 
 def main():
     print("== surrogate_gates 단위검사 ==")
@@ -208,6 +225,42 @@ def main():
     check("G4b: max-cost 는 정보성 menu {0, 7} 에서 퇴화로 잡힌다",
           info["degenerate_informative_menus"] == ["{0, 7}"],
           str(info["degenerate_informative_menus"]))
+
+    # -- 부분 커버리지: 잘린 oracle_choices 가 판정을 **약화시키면 안 된다** (2026-08-14) ------
+    ok_full, i_full = gate_g4b_menu_invariance(COVERAGE_DECISIONS, min_group=5,
+                                               oracle_choices=COVERAGE_ORACLE_FULL)
+    check("G4b 커버리지 20/20: 퇴화 + 최빈답 불일치로 실패한다(기준점)", not ok_full,
+          "deg_inf=%s mismatch=%s cov=%s" % (i_full["degenerate_informative_menus"],
+                                             i_full["modal_mismatch_menus"],
+                                             i_full["oracle_coverage"]))
+    check("G4b 커버리지 20/20: oracle_coverage == 1.0 으로 보고된다",
+          i_full["oracle_coverage"] == 1.0, str(i_full["oracle_coverage"]))
+
+    ok_one, i_one = gate_g4b_menu_invariance(COVERAGE_DECISIONS, min_group=5,
+                                             oracle_choices=COVERAGE_ORACLE_ONE)
+    check("G4b 커버리지 1/20: 지도를 잘라도 **여전히 실패**한다", not ok_one,
+          "deg_inf=%s mismatch=%s cov=%s" % (i_one["degenerate_informative_menus"],
+                                             i_one["modal_mismatch_menus"],
+                                             i_one["oracle_coverage"]))
+    check("G4b 커버리지 1/20: 없는 데이터로 uninformative 를 선언하지 않는다",
+          i_one["uninformative_menus"] == [], str(i_one["uninformative_menus"]))
+    check("G4b 커버리지 1/20: 부분 커버리지가 명시적으로 기록된다(침묵 안 함)",
+          i_one["partial_coverage_menus"] == [{"menu": "{0, 1, 8}", "covered": 1, "n": 20}],
+          str(i_one["partial_coverage_menus"]))
+
+    ok_zero, i_zero = gate_g4b_menu_invariance(COVERAGE_DECISIONS, min_group=5,
+                                               oracle_choices=COVERAGE_ORACLE_NONE)
+    check("G4b 커버리지 0/20 (**시연된 결함**): 오라클 항목이 0 개여도 실패해야 한다", not ok_zero,
+          "deg_inf=%s mismatch=%s cov=%s" % (i_zero["degenerate_informative_menus"],
+                                             i_zero["modal_mismatch_menus"],
+                                             i_zero["oracle_coverage"]))
+    check("G4b 커버리지 0/20: oracle_coverage == 0.0 으로 보고된다",
+          i_zero["oracle_coverage"] == 0.0, str(i_zero["oracle_coverage"]))
+    # 불변식: 커버리지가 완전하지 않으면 오라클 인지 판정이 오라클 없는 판정보다 **느슨할 수 없다**.
+    ok_blind, _ = gate_g4b_menu_invariance(COVERAGE_DECISIONS, min_group=5)
+    check("G4b 커버리지 불변식: 불완전한 지도의 판정 <= 오라클 없는 판정",
+          (ok_zero <= ok_blind) and (ok_one <= ok_blind),
+          "blind=%s one=%s zero=%s" % (ok_blind, ok_one, ok_zero))
 
     print("\n%s" % ("전부 통과" if not FAILS else "실패 %d개: %s" % (len(FAILS), FAILS)))
     return 1 if FAILS else 0
