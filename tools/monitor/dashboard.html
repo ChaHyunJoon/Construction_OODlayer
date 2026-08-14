@@ -455,9 +455,19 @@
     .whyrow .wk{display:inline-block;min-width:74px;opacity:.6}
     .whyrow .wdown{color:var(--warn,#f59e0b)}
     .whyrow .wnone{opacity:.55;font-style:italic}
+    .objbar{margin:6px 0 10px;padding:8px 11px;border:1px solid var(--rule,#333);border-radius:4px;
+            font-size:12px;line-height:1.7}
+    .objbar .olab{font-size:10px;letter-spacing:.14em;opacity:.6;margin-right:8px}
+    .objbar .oform{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+    .objbar .oe{color:var(--warn,#f59e0b);font-weight:700}
+    .objbar .ok2{opacity:.75;margin-left:6px}
   </style>
   <section class="panel respec">
     <div class="phead"><h2>Re-Specification · OOD Decision</h2><span class="count mono">event → decision policy → verifier → execution</span></div>
+    <!-- OBJECTIVE: 이 판이 **무엇을 최소화하고 있는가**. 값은 전부 objective.json 에서
+         GET /objective 로 읽는다 -- 화면이 상수를 복붙하면 그 파일이 바뀌는 순간 화면만
+         옛 값을 주장한다(audit_objective.py 항목 1 이 잡는 결함). 여기서는 읽기만 한다. -->
+    <div class="objbar" id="objBar">objective: loading…</div>
     <div class="rhead" id="rhead"><span class="trigger mono">no active re-spec</span></div>
     <!-- ROUTER: 이 사건을 누구에게 보낼지 **시스템이** 판정한 결과. 사람이 정책 버튼을 누른 것이
          아니라는 점이 핵심이라, 결정 패널 맨 위에 따로 둔다. -->
@@ -1157,6 +1167,32 @@
   }
 
   /* ---- respec panel ---- */
+  // ---- 목적함수 스트립 -----------------------------------------------------------------
+  // "energy 가 목적함수에 실제로 들어 있다" 는 주장을 화면에서 **검증 가능**하게 만든다:
+  // 상수를 복붙하지 않고 objective.json 을 그대로 읽어 그 항을 강조해 보여준다.
+  (function loadObjective(){
+    var el = document.getElementById("objBar");
+    if(!el) return;
+    fetch("/objective").then(function(r){ return r.ok ? r.json() : null; }).then(function(o){
+      if(!o){ el.textContent = "objective: /objective unavailable (server route missing)"; return; }
+      function g(k){ return (o[k] !== undefined && o[k] !== null) ? o[k] : "—"; }
+      // J 의 형태는 objective.py 가 정의한다. 여기서는 **항의 이름과 그 파일의 값**만 보여준다.
+      el.innerHTML =
+        '<span class="olab">OBJECTIVE J (minimised)</span>'
+        + '<span class="oform">J = makespan/M_ref + <span class="oe">&kappa; &middot; energy_J / E_ref</span>'
+        + ' + C_unclosed &middot; unclosed + C_fail &middot; [not complete]</span>'
+        + '<span class="ok2">&mdash; every lane below is ranked by this same J.</span>'
+        + '<div class="ok2">'
+        + '<b>&kappa;</b>=' + g("kappa")
+        + ' &nbsp; <b>E_ref</b>=' + g("E_ref") + ' J'
+        + ' &nbsp; <b>M_ref</b>=' + g("M_ref") + ' s'
+        + ' &nbsp; <b>C_fail</b>=' + g("C_fail")
+        + ' &nbsp; <b>C_unclosed</b>=' + g("C_unclosed")
+        + ' &nbsp; generation <code>' + g("generation") + '</code>'
+        + '</div>';
+    }).catch(function(){ el.textContent = "objective: fetch failed"; });
+  })();
+
   function renderRespec(rs, history){
     var rhead = $("rhead"), inC = $("inCode"), outC = $("outCode"), cb = $("candBody"), vb = $("verifyBody"), dh = $("decisionHistory");
     history = history || [];
