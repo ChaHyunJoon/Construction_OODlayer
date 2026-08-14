@@ -393,6 +393,11 @@ MACRO_SPECS = {
     5: ["ForbidAgent", "ReformTeam"],
     6: ["DeprioritizeAgent", "ForbidWindow"],
     7: ["RelocateBuild"],        # zone 사건의 기본 개입 팔(3 을 대체). spec 하나짜리.
+    # 8 = SwapBattery. _PRIMITIVE_TABLE 에는 처음부터 있었는데 이 매핑만 빠져 있었다 —
+    # psi() 는 MACRO_SPECS.get(m, []) 로 조회하므로 8 은 빈 리스트가 되어 **NOOP 의 ψ 를
+    # 그대로 돌려줬다**(실측: psi(8) == psi(0) -> True). 그 상태로 agnostic 표현을 학습하면
+    # 모델은 "배터리 교체 = 아무것도 안 하기" 로 배운다. test_features_agnostic.py 가 계약.
+    8: ["SwapBattery"],
 }
 
 
