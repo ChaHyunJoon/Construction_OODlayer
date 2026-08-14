@@ -310,6 +310,55 @@ for label, path in HASH_DOCS:
 check("문서의 objective_hash 인용 + audit 계약 개수(%d/%d)가 최신인가 (R-5, I-2)"
       % (n_checks, n_checks), bad)
 
+# --- 9-b) **커밋된 라벨 파일**의 objective_hash — 경고만, 실패로 세지 않는다 -------------------
+# 왜 항목 9 에 붙였나: 항목 9 는 "지금 사는 해시와 **기록에 박힌** 해시가 갈렸는가" 를 보는
+# 검사다. 문서만 보고 라벨 파일을 안 보는 것은 같은 결함의 절반만 보는 것이다 — 라벨 행의
+# `objective_hash` 는 그 행이 **어느 목적함수로 채점됐는지**를 말하는 세대 딱지이고, 현재
+# objective.json 이 그 해시를 못 내면 그 라벨로 학습한 모델의 채점 기준이 현행과 다르다.
+#
+# 왜 **경고**인가 (2026-08-14 최종 리뷰, 정직하게 적는다): 지금 이 레포에서 이 검사는 실제로
+# 갈려 있다. 커밋된 `objective.json` 은 `generation=2026-08-13-energy-activation` 이라
+# `59b1174118b874ed` 를 내는데, 커밋된 라벨셋 365행은 전부 `19819377a7f8ebb2` 를 달고 있다.
+# 그 해시를 내는 generation(`2026-08-13-global-kappa-precedence`)은 **다른 작업자의
+# 커밋되지 않은 objective.json 편집에만** 존재한다. 두 세대는 J 스칼라 8개가 전부 같고
+# `generation` 문자열만 다르므로 **수치적으로는 무해**하지만, 이 브랜치는 그 generation bump
+# 와 **함께 또는 그 뒤에** 머지돼야 한다. 그 파일은 이 작업의 것이 아니라 고칠 수 없고,
+# 여기서 하드 실패로 만들면 커밋된 트리에서 감사가 항상 빨개진다. 그래서 **보이게 하되
+# 게이트하지는 않는다** — 핸드셰이크가 끝나면 이 블록을 실패로 승격할 것.
+WARN = []
+try:
+    import wm_datasets  # noqa: E402
+    _committed = subprocess.run(["git", "-C", ROOT, "show", "HEAD:wm4spacecraft_manufacturing/objective.json"],
+                                capture_output=True, text=True, timeout=60)
+    if _committed.returncode == 0:
+        _cm_hash = objective.objective_hash(json.loads(_committed.stdout))
+        if _cm_hash != current_hash:
+            WARN.append("커밋된 objective.json 의 해시(%s, generation=%s)가 작업 트리의 해시(%s)와 "
+                        "다르다 — 작업 트리 편집이 아직 커밋되지 않았다"
+                        % (_cm_hash, json.loads(_committed.stdout).get("generation"), current_hash))
+    for _name, _rel in sorted(wm_datasets.KNOWN.items()):
+        _p = wm_datasets.abspath(_rel)
+        if not os.path.exists(_p):
+            continue
+        if subprocess.run(["git", "-C", ROOT, "ls-files", "--error-unmatch", _p],
+                          capture_output=True).returncode != 0:
+            continue                                     # 커밋 안 된 파일은 머지 대상이 아니다
+        _hashes = set()
+        with open(_p, encoding="utf-8") as fh:
+            for _line in fh:
+                _line = _line.strip()
+                if not _line.startswith("{") or '"objective_hash"' not in _line:
+                    continue
+                try:
+                    _hashes.add(json.loads(_line).get("objective_hash"))
+                except ValueError:
+                    pass
+        if _hashes and _hashes != {current_hash}:
+            WARN.append("커밋된 라벨셋 %s 의 objective_hash %s 를 현재 objective.json(%s)이 "
+                        "내지 못한다" % (_name, sorted(_hashes), current_hash))
+except Exception as e:                                    # 경고 블록이 감사를 죽이면 안 된다
+    WARN.append("라벨셋 objective_hash 확인 실패: %r" % (e,))
+
 # --- 요약 --------------------------------------------------------------------------------
 for where, bad in OK + FAIL:
     print(("OK        " if not bad else "MISMATCH  ") + where)
@@ -317,6 +366,11 @@ for where, bad in OK + FAIL:
         print("            - " + b)
 print("\n%d/%d consistent" % (len(OK), len(OK) + len(FAIL)))
 print("objective_hash:", objective.objective_hash())
+# 항목 9-b: 커밋된 라벨셋의 세대 딱지. **게이트가 아니다**(위 블록의 이유 참조).
+print("WARN(9-b) %s" % ("커밋된 라벨셋의 objective_hash 가 현재 objective.json 과 일치한다"
+                        if not WARN else "머지 핸드셰이크 필요:"))
+for _w in WARN:
+    print("            - " + _w)
 print("NOTE  학습 타깃은 아직 `closed - λ·MACRO_COST`, 채점은 -J 다 (알려진 불일치, "
       "spec §8 단계 7 재학습으로 해소). 위 항목 8 이 그 유예 표식을 지킨다.")
 if INVENTORY:

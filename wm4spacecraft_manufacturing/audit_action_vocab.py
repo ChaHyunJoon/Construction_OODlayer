@@ -36,9 +36,14 @@ FAIL = []
 OK = []
 
 
-def check(where, names=None, costs=None):
-    """이 소비처의 이름표/비용표가 레지스트리와 같은지. 레지스트리에 없는 id 는 건너뛴다."""
-    bad = []
+def check(where, names=None, costs=None, extra=None):
+    """이 소비처의 이름표/비용표가 레지스트리와 같은지. 레지스트리에 없는 id 는 건너뛴다.
+
+    `extra`: 이 소비처에만 있는 추가 불일치 목록(이름/비용 표가 아닌 매핑을 검사할 때).
+    소비처 하나가 한 항목이므로 여기 합친다 — 항목을 쪼개면 "6/6" 계약 문자열이 문서 전반에서
+    낡는다(그 낡음을 audit_objective.py 항목 9 가 별도로 지킨다).
+    """
+    bad = list(extra or [])
     for i, nm in (names or {}).items():
         if i in REG.MACRO_NAME and REG.MACRO_NAME[i] != nm:
             bad.append("id %d name %r != %r" % (i, nm, REG.MACRO_NAME[i]))
@@ -59,9 +64,32 @@ check("llm_producer.MACRO_NAME", names=llm_producer.MACRO_NAME)
 import e1_analyze                                                   # noqa: E402
 check("e1_analyze.MACRO_NAME/COST", names=e1_analyze.MACRO_NAME, costs=e1_analyze.MACRO_COST)
 
-# ---- 3. features_agnostic (서술자·비용) ---------------------------------------------------
+# ---- 3. features_agnostic (서술자·비용 + MACRO_SPECS) --------------------------------------
+# MACRO_SPECS 를 왜 여기서 같이 보는가 (2026-08-14 최종 리뷰, 함정 29 의 모양 그대로):
+#   features_agnostic.psi() 는 `MACRO_SPECS.get(int(action), [])` 로 조회하고, **비면 NOOP 의
+#   ψ 를 돌려준다**(features_agnostic.py:419-422). 즉 레지스트리에 매크로를 추가하고 이 매핑을
+#   빼먹으면 `psi(new) == psi(NOOP)` 이 되어 모델은 "그 행동 = 아무것도 안 하기" 로 배운다 —
+#   에러도 경고도 없이 성능으로만 샌다. 이것이 정확히 Task 1 이 고친 결함(매크로 8)이고,
+#   test_features_agnostic.py 는 그 **한 인스턴스(8)** 만 못박으므로 다음 매크로에서 재발한다.
+#   그래서 여기서 어휘 전체에 대해 기계로 본다: 매핑 존재 · primitive 표 등재 · NOOP 과 구별.
 import features_agnostic                                            # noqa: E402
-check("features_agnostic.MACRO_COST", costs=features_agnostic.MACRO_COST)
+_specs_bad = []
+_psi_noop = features_agnostic.psi(0)
+for _i in REG.MACROS:
+    if _i not in features_agnostic.MACRO_SPECS:
+        _specs_bad.append("MACRO_SPECS 에 id %d(%s) 가 없다 -> psi 가 NOOP 으로 접힌다"
+                          % (_i, REG.MACRO_NAME[_i]))
+        continue
+    _unknown = [n for n in features_agnostic.MACRO_SPECS[_i]
+                if n not in features_agnostic._PRIMITIVE_TABLE]
+    if _unknown:
+        _specs_bad.append("id %d(%s) 의 primitive %s 가 _PRIMITIVE_TABLE 에 없다 -> psi 가 0 벡터"
+                          % (_i, REG.MACRO_NAME[_i], _unknown))
+        continue
+    if _i != 0 and features_agnostic.psi(_i) == _psi_noop:
+        _specs_bad.append("psi(%d)(%s) 가 psi(NOOP) 과 **같다** — 모델이 그 행동을 "
+                          "'아무것도 안 하기' 로 배운다" % (_i, REG.MACRO_NAME[_i]))
+check("features_agnostic.MACRO_COST/SPECS", costs=features_agnostic.MACRO_COST, extra=_specs_bad)
 
 # ---- 4. dspy_service (라이브 데모의 LLM producer) ------------------------------------------
 # dspy 가 없는 환경에서도 어휘만은 검사할 수 있게, import 대신 소스에서 MACROS 계산식을 확인한다.
