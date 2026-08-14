@@ -16,10 +16,14 @@ J/closed 는 미완주 판에서도 정의되므로 완주 0/30 인 칸에서도
 
 정책 열의 성격이 서로 다르다 — 표에 그렇게 적는다
 ================================================
-  · `dp`        : **천장(ceiling)**. 실행 가능한 온라인 정책이 아니다. 오프라인 반사실 표집의
-                  산물이라 결정 시점에 표가 있다는 것 자체가 "그 사건을 미리 굴려봤다" 는 뜻이다.
-                  게다가 이 표의 DP 는 **상수-팔 정책군** 안의 최선이다(dp_solve.py 머리말).
-                  실행 정책이 V 를 넘는 칸이 있으면 "천장" 이라는 이름을 쓰지 않는다(원 설계 §8.7).
+  · `dp`        : 오프라인 value-table 을 결정마다 조회해 a* 를 집행하는 레인. **천장이 아니다.**
+                  원 설계 §8.7 은 "실행 정책이 V 를 넘으면 천장이라 부르지 않는다" 고 못박았고,
+                  2026-08-14 실측에서 그 조건이 **실제로 발화했다**(아래 주석의 gap 수치).
+                  이유는 dp_solve.py 머리말에 적힌 그대로다 — V 는 **상수-팔** 표집에서 나오는데,
+                  사건이 셋 섞인 판을 한 팔로 처리할 수는 없어서 그 정책군이 실행 레인보다 훨씬
+                  약하다. 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 실제로는 팔을 바꾼다 —
+                  그래서 이 열의 **실현 결과는 유효한 실행 결과**이고, V 만 천장이 아니다.
+                  여전히 오프라인 표집이라는 정보 우위가 있으므로 온라인 정책과 동렬은 아니다.
   · `canonical` : 손으로 쓴 규칙 lookup. 적응 없음.
   · `surrogate` : 배포 RandomForest.
   · `llm(dspy)` : LLM 레인.
@@ -45,7 +49,7 @@ CASES = [
 
 # 표 열: (아티팩트의 정책 키, 화면 이름, 부제)
 COLUMNS = [
-    ("dp",        "DP",        "ceiling · not an online policy"),
+    ("dp",        "DP",        "offline value-table lookup · NOT a ceiling (§8.7)"),
     ("canonical", "CANONICAL", "hand-written rule"),
     ("surrogate", "SURROGATE", "random forest"),
     ("dspy",      "LLM",       "DSPy"),
@@ -195,6 +199,63 @@ def main():
     meta.append("> build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 "
                 "`—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.")
 
+    # ---- §8.7 gap 을 **여기서 계산해** 표에 싣는다 -----------------------------------------
+    # 이 수치가 DP 열의 이름을 정한다. 손으로 적으면 다음 스윕에서 조용히 거짓이 되므로,
+    # 표를 만들 때마다 다시 잰다. 비교는 **평균 대 평균**이다 — 개별 실현 J 를 평균 V 와 대면
+    # J 가 이봉분포(완주 ~20 / 미완주 ~15000)라 좋은 판이 자동으로 이기고, 그건 비교가 아니다.
+    gap_note = ""
+    try:
+        import collections as _c
+        import statistics as _st
+        import glob as _g
+        sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
+        from derive_grid import cell_key as _ck, state_of as _so
+        _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
+        _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
+        _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
+        _per = _c.defaultdict(lambda: _c.defaultdict(list))
+        for _p in _g.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
+            for _l in open(_p):
+                _l = _l.strip()
+                if not _l:
+                    continue
+                _r = json.loads(_l)
+                if _r.get("policy") not in ("canonical", "surrogate", "dspy"):
+                    continue
+                try:
+                    _J = objective.J_row(_r)
+                except Exception:
+                    continue
+                _seen = set()
+                for _d in (_r.get("decisions") or []):
+                    _s = _so(_d, _g_spec["axes"])
+                    if _s is None:
+                        continue
+                    _k = _ck(_s)
+                    if _k in _seen or _k not in _V:
+                        continue
+                    _seen.add(_k)
+                    _per[_k][_r["policy"]].append(_J)
+        _w = _t = 0
+        for _k, _bp in _per.items():
+            for _pol, _Js in _bp.items():
+                if len(_Js) < 3:
+                    continue
+                _t += 1
+                if _st.mean(_Js) < _V[_k] - 1e-9:
+                    _w += 1
+        if _t:
+            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개).** 실행 정책의 "
+                        "평균 J 가 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s"
+                        % (_t, _w, 100.0 * _w / _t,
+                           ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** V 는 "
+                            "상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 없어 그 "
+                            "정책군이 실행 레인보다 약하기 때문이다. 다만 dp **레인**은 칸마다 a* 를 "
+                            "갈아 쓰므로 이 열의 실현 결과 자체는 유효한 실행 결과다."
+                            if _w else "0 이므로 이 격자 위에서는 천장이라는 이름이 유지된다.")))
+    except Exception as _e:                       # 계산 실패를 조용히 넘기지 않는다
+        gap_note = "§8.7 gap 을 계산하지 못했다: %r" % (_e,)
+
     vpath = os.path.join(HERE, "dp_oracle", "value.json")
     gpath = os.path.join(HERE, "dp_oracle", "grid_spec.json")
     if os.path.exists(vpath) and os.path.exists(gpath):
@@ -207,6 +268,9 @@ def main():
                     % (v.get("n_cells", 0), g.get("n_observed_cells", 0), cov,
                        v.get("n_tie_unresolved", 0), v.get("n_cells_unscorable", 0),
                        v.get("n_cells_single_arm", 0)))
+    if gap_note:
+        meta.append("")
+        meta.append("> " + gap_note)
     if a.dp_note:
         meta.append("")
         meta.append("> " + a.dp_note)
