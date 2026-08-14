@@ -72,6 +72,11 @@ const DEMO_OOD_SEVFRAC = try clamp(parse(Float64, get(ENV, "DEMO_OOD_SEVFRAC", "
 const _REFORM_CT = Ref(0)   # 발화 횟수(상한 초과 시 더는 안 올림 → 진짜 정지가 정지로 보이게)
 # 사건마다의 결정 기록(요약 JSONL 용). 스위프 하니스가 이걸 읽어 정책별 결정을 비교한다.
 const _DECISIONS = Vector{Any}()
+# 지금까지 **실행된** 시뮬 스텝 수. 결정 시점의 sim_t = dt × 이 값이다 (2026-08-15).
+# ⚠️ `CB.sim_time(env)` 같은 함수는 이 레포에 없다 — 이 레인은 return_env_before_sim=true 로
+# 수동 루프를 돌기 때문에 시간이 루프 안에만 있다. 종단 요약의 `makespan` = dt × result.steps 와
+# **같은 출처**를 쓰려고 여기서 스텝을 센다(다른 시계를 만들면 Σc_k 가 makespan 과 안 맞는다).
+const _SIM_STEP = Ref(0)
 const NSUF   = DEMO_N > 0 ? "_n$(DEMO_N)" : ""   # stream name gets _nN so each count caches separately
 const PARAMS = try CB.get_project_params(MODEL) catch; nothing end
 const NROB   = haskey(ENV, "DEMO_ROBOTS") ? parse(Int, ENV["DEMO_ROBOTS"]) :
@@ -262,6 +267,18 @@ function handle_ood!(env, truth, nl)
         "truth"    => tag,
         "at"       => length(env.cache.closed_set),
         "macro"    => mac,
+        # ---- 구간 비용 c_k 의 원자료 (2026-08-15) -----------------------------------------
+        # 연속한 두 결정 사이의 Δmakespan·Δenergy 를 만들려면 결정 시점의 이 셋이 필요하다.
+        # 그게 backward induction 이 요구하는 분해다. 세 값 모두 **이미 계산돼 있는 것**을 읽을
+        # 뿐이고 새로 재지 않는다.
+        #   sim_t_at    : dt × 실행된 스텝 수. 종단 `makespan` 과 같은 출처(위 _SIM_STEP 주석).
+        #   energy_at_J : battery_report() 는 임의 시점의 누적 소비를 준다(render_demo.jl 이 이미
+        #                 그렇게 읽어 화면에 싣는다). enable_battery! 는 이 파일 최상위에서
+        #                 무조건 돌므로 함대는 항상 있다.
+        #   closed_at   : "at" 과 같은 값이지만, 소비처가 이름으로 읽게 별도 키로 낸다.
+        "sim_t_at"      => (try Float64(env.dt) * _SIM_STEP[] catch; nothing end),
+        "energy_at_J"   => (try Float64(CB.battery_report().total_energy_J) catch; nothing end),
+        "closed_at"     => length(env.cache.closed_set),
         # ---- 채점에 필요한 결정-시점 상태 (2026-08-06) ------------------------------------
         # "옳은 결정 비율"을 나중에 파이썬에서 계산하려면 **결정 순간의 공개 상태**가 그대로
         # 남아 있어야 한다. 사후에 스트림에서 복원하려 하면 시점이 어긋난다(shim 오분류 사고와
@@ -683,7 +700,8 @@ end
 
 # 수동 루프를 함수로 감싼다(Julia 최상위 for-루프 soft-scope 회피).
 function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
-    CB.step_environment!(env); CB.update_planning_cache!(env, 0.0)   # 초기 1스텝(캐시 채움)
+    CB.step_environment!(env); _SIM_STEP[] = 1                       # 초기 1스텝(캐시 채움)
+    CB.update_planning_cache!(env, 0.0)
     seen = length(CB.ood_truth_log())
     # pre-sim 에 심어 두고 결정을 미뤄 둔 존을 **여기서** 정책에 올린다(위 ZONE_DECIDE_DEFERRED 주석).
     # 첫 배치가 닫힌 뒤라 유효 매크로 집합이 실제 세계와 맞는다. seen 은 이미 이 truth 를 포함하므로
@@ -702,7 +720,7 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
             handle_ood!(env, log[seen].truth, log[seen].nl)
             stall = 0                                      # 복구 직후 교착 카운터 리셋
         end
-        CB.step_environment!(env)
+        CB.step_environment!(env); _SIM_STEP[] = k
         CB.update_planning_cache!(env, 0.0)
         CB.monitor_track_schedule_step!(env, k; dt=env.dt)
         (k % 50 == 0) && CB.monitor_emit!(env, k)          # 배치마다 프레임 방출
