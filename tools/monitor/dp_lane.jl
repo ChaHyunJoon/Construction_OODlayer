@@ -165,8 +165,13 @@ function dp_macro(env, truth)
     cell = cells[Symbol(key)]
     (haskey(cell, :n) && !isempty(cell[:n])) || return ("", "unreachable")
     a = get(cell, :a_star, nothing)
-    # tie 를 tie 로 보고하는 것이 채점에서 중요하다(원문 §7). 없는 확신을 만들지 않는다.
-    a === nothing && return ("", "tie_unresolved")
+    # 미확정 이유를 **구분해서** 돌려준다. "비교했는데 못 갈랐다"(tie)와 "비교 자체가 없었다"
+    # (single_arm)는 전혀 다른 사건이라, 뭉뚱그리면 표집 부족이 알고리즘의 신중함으로 오독된다.
+    if a === nothing
+        local why = get(cell, :unresolved_reason, nothing)
+        return ("", why === nothing ? "tie_unresolved" :
+                    (String(why) == "single_arm" ? "single_arm" : "tie_unresolved"))
+    end
     return (dp_macro_name(a), "dp_cell=" * key)
 end
 

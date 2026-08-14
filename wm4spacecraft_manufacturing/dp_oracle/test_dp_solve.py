@@ -63,7 +63,23 @@ def main():
     check("채점 불가 팔은 Q 에 없다", set(v["c4"]["Q"]) == {"8"}, str(v["c4"]["Q"]))
     check("채점 불가 개수를 센다", v["c4"]["n_unscorable"].get("1") == 3,
           str(v["c4"]["n_unscorable"]))
-    check("채점 불가 팔이 0.0 으로 이기지 않는다", v["c4"]["a_star"] == 8, str(v["c4"]["a_star"]))
+    # 채점 불가 팔이 **0.0 으로 이기지 않는다**: Q 에 없고, V 는 채점된 팔의 값이다.
+    check("채점 불가 팔이 0.0 으로 이기지 않는다", abs(v["c4"]["V"] - 5.0) < 1e-9,
+          str(v["c4"]["V"]))
+    # 그러나 a* 도 주장하지 않는다 — 채점된 팔이 하나뿐이면 argmin 이 아니다.
+    check("채점된 팔이 하나뿐이면 a* 를 주장하지 않는다", v["c4"]["a_star"] is None,
+          str(v["c4"]["a_star"]))
+    check("그 이유가 single_arm 으로 남는다",
+          v["c4"]["unresolved_reason"] == "single_arm", str(v["c4"].get("unresolved_reason")))
+
+    # (6b) 팔이 둘 이상이고 격차가 크면 a* 가 나온다 -- 위 규칙이 전부를 막지 않는다는 확인.
+    s5b = ([row("c4b", 8, k, c) for k, c in enumerate([1.0, 1.01, 0.99])] +
+           [row("c4b", 1, k, c) for k, c in enumerate([50.0, 50.1, 49.9])] +
+           [row("c4b", 2, k, None) for k in range(2)])
+    v = solve(s5b)
+    check("채점 팔 2개 + 큰 격차면 a* 가 나온다", v["c4b"]["a_star"] == 8, str(v["c4b"]["a_star"]))
+    check("채점 불가 팔은 그래도 세어진다", v["c4b"]["n_unscorable"].get("2") == 2,
+          str(v["c4b"]["n_unscorable"]))
 
     # (7) 전부 채점 불가인 칸은 V 가 None 이다 (0.0 이 아니다).
     v = solve([row("c5", 8, k, None) for k in range(3)])
@@ -74,6 +90,8 @@ def main():
     s6 = [row("c6", 8, 0, 1.0), row("c6", 1, 0, 99.0)]
     v = solve(s6)
     check("표본 1개면 tie 로 남는다(a* 미확정)", v["c6"]["a_star"] is None, str(v["c6"]["tie"]))
+    check("표본 1개짜리 2팔은 single_arm 이 아니라 tie 다",
+          v["c6"]["unresolved_reason"] == "tie", str(v["c6"].get("unresolved_reason")))
 
     print("\n%s" % ("전부 통과" if not FAILS else "실패 %d개: %s" % (len(FAILS), FAILS)))
     return 1 if FAILS else 0

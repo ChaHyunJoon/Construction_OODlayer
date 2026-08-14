@@ -101,11 +101,21 @@ def solve(samples, grid=None, cfg=None):
                 tie.append(a)
         tie = sorted(tie)
 
+        # ---- 팔이 하나뿐인 칸에서는 a* 를 **주장하지 않는다** -------------------------------
+        # a* 는 정의상 팔들 사이의 argmin 이다. 그 칸에 팔이 하나만 착지했다면 비교가 없었던
+        # 것이고, 그 하나를 a* 라고 부르는 순간 "DP 가 이걸 골랐다" 는 **없는 확신**이 된다.
+        # (실측 2026-08-14: 43칸 중 26칸이 이 상태였고, 고치기 전에는 전부 a* 를 달고 있었다.
+        #  팔을 고정해 굴리면 궤적이 갈려 서로 다른 칸에 착지하기 때문에 생기는 구조적 현상이다.)
+        # tie 와 구분해 이유를 따로 남긴다 — "비교했는데 못 갈랐다" 와 "비교 자체가 없었다" 는
+        # 전혀 다른 사건이고, 뭉뚱그리면 커버리지 부족이 알고리즘의 신중함으로 오독된다.
+        single_arm = (len(qs) == 1)
+        resolved = (len(tie) == 1) and not single_arm
         out[c] = {
             "V": best_q,
             "Q": {str(a): _mean(v) for a, v in sorted(qs.items())},
-            # tie 가 둘 이상이면 단일 a* 를 뽑지 않는다 — 없는 확신을 만들지 않는다.
-            "a_star": (best_arm if len(tie) == 1 else None),
+            "a_star": (best_arm if resolved else None),
+            "unresolved_reason": (None if resolved else
+                                  ("single_arm" if single_arm else "tie")),
             "tie": tie,
             "se": {str(a): (_se(v) if math.isfinite(_se(v)) else None) for a, v in sorted(qs.items())},
             "n": {str(a): len(v) for a, v in sorted(qs.items())},
@@ -135,9 +145,10 @@ def main():
         sys.exit("표본의 objective_hash 가 현행과 다르다(구세대 표본): %s" % hashes)
 
     val = solve(rows, grid=json.load(open(a.grid)), cfg=objective.load())
-    n_tie = sum(1 for v in val.values() if v["a_star"] is None and v.get("V") is not None)
+    n_tie = sum(1 for v in val.values() if v.get("unresolved_reason") == "tie")
     n_dead = sum(1 for v in val.values() if v.get("V") is None)
-    n_1arm = sum(1 for v in val.values() if len(v.get("Q") or {}) == 1)
+    n_1arm = sum(1 for v in val.values() if v.get("unresolved_reason") == "single_arm")
+    n_resolved = sum(1 for v in val.values() if v.get("a_star") is not None)
 
     with open(a.out, "w") as f:
         json.dump({
@@ -148,6 +159,7 @@ def main():
             "n_tie_unresolved": n_tie,
             "n_cells_unscorable": n_dead,
             "n_cells_single_arm": n_1arm,
+            "n_cells_resolved": n_resolved,
             # 이 표가 무엇인지 **표 안에** 적는다. 소비처가 문서를 안 읽어도 오해하지 않게.
             "method": "constant-arm counterfactual on the measured phi-tilde grid; "
                       "Q(s,a)=E[J(board) | board visited s, all its decisions forced to a]. "
@@ -158,10 +170,12 @@ def main():
                 "the constant-arm policy class is NARROWER than the executing policies (which may "
                 "switch arms per event), so V can be WORSE than a realized policy — if that happens "
                 "the ceiling name must not be used (design §8.7)",
+                "single-arm cells claim NO a*: forcing an arm changes the trajectory, so arms land "
+                "in different cells and many cells see only one arm. One arm is not an argmin.",
             ],
         }, f, indent=1, ensure_ascii=False)
-    print("cells=%d  tie(a* 미확정)=%d  전부채점불가=%d  단일팔=%d  -> %s"
-          % (len(val), n_tie, n_dead, n_1arm, a.out))
+    print("cells=%d  a* 확정=%d  tie 미확정=%d  단일팔(비교없음)=%d  전부채점불가=%d  -> %s"
+          % (len(val), n_resolved, n_tie, n_1arm, n_dead, a.out))
 
 
 if __name__ == "__main__":
