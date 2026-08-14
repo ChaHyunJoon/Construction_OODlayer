@@ -80,17 +80,20 @@ def gate_g3_beats_constant(instances, choices, margin=0.0):
 def gate_g4_kind_discrimination(instances, choices, min_kinds=2, tau=0.05):
     """G4: kind 마다 실제로 다른 답 분포를 내는가.
 
-    통과 조건: 모든 kind 쌍의 답 분포가 **total variation distance >= tau** 만큼 벌어져야
-    한다. tau=0 이면 "완전히 같지만 않으면 통과"(예전 동작, 정확한 동등성의 퇴화 경우)로
-    되돌아간다 — 그러나 그 기본값은 **knife-edge** 다: 2026-08-13 결함은 238/238 대 238/238
-    이라는 산술적으로 완벽한 동률이었기에 정확한 동등성 검사(`pa == pb`)로 잡혔지만, 예를
-    들어 237/238 대 238/238 처럼 딱 하나만 어긋나는 거의-상수 정책은 `pa != pb` 라서
-    **통과해 버린다** — 같은 결함인데 지표가 못 잡는다. 그래서 기본값을 tau=0.05(정규화
-    분포가 5% 미만으로만 벌어지면 "사실상 같다"로 판정)로 올렸다. tau 는 파라미터로
-    노출돼 있으니 더 엄격하게/느슨하게 검사하고 싶으면 호출자가 override 한다.
+    통과 조건: 모든 kind 쌍의 답 분포가 **total variation distance > tau** 만큼 벌어져야
+    한다(즉 `tv <= tau` 면 "사실상 같은 정책"으로 실패 처리). tau=0 이면 "완전히 같으면
+    실패"(예전 `pa == pb` 검사와 동치인 퇴화 경우)로 정확히 되돌아간다 — **`tv < tau` 로
+    쓰면 안 된다**: tau=0 일 때 `tv < 0` 은 부동소수 거리(항상 >= 0)에 대해 절대 참이 될 수
+    없어서, 정확히 그 원래 결함(238/238 대 238/238, tv=0.0 인 완벽한 동률)조차 못 잡는
+    회귀가 생긴다(2026-08-14 재검증에서 실측 발견 — `<=` 로 고쳤고 tau=0.0 회귀 검사를
+    추가했다). 기본값은 tau=0.05(정규화 분포가 5% 이하로만 벌어지면 "사실상 같다"로 판정) —
+    2026-08-13 결함은 238/238 대 238/238 이라는 산술적으로 완벽한 동률이었지만, 예를 들어
+    237/238 대 238/238 처럼 딱 하나만 어긋나는 거의-상수 정책은 tv>0 이라 tau=0 이면
+    통과해 버린다 — 같은 결함인데 지표가 못 잡는다. tau 는 파라미터로 노출돼 있으니 더
+    엄격하게/느슨하게 검사하고 싶으면 호출자가 override 한다.
 
     TV distance(전변동 거리) = 0.5 * sum(|p(m) - q(m)| for m in 팔 전체). 0=완전히 같은 분포,
-    1=서로 겹치는 팔이 하나도 없는 분포. 임계값 미만이면 "사실상 같은 정책"으로 취급해 실패.
+    1=서로 겹치는 팔이 하나도 없는 분포. 임계값 이하면 "사실상 같은 정책"으로 취급해 실패.
     """
     by_kind = defaultdict(Counter)
     for r in instances:
@@ -101,8 +104,8 @@ def gate_g4_kind_discrimination(instances, choices, min_kinds=2, tau=0.05):
     if len(kinds) < min_kinds:
         return False, {"reason": "kind 가 %d개뿐이라 판별을 검사할 수 없다" % len(kinds),
                        "by_kind": {k: dict(v) for k, v in by_kind.items()},
-                       "tau": tau, "pairwise_tv_distance": [], "identical_kind_pairs": []}
-    too_similar = []
+                       "tau": tau, "pairwise_tv_distance": [], "collapsed_kind_pairs": []}
+    collapsed = []
     pairwise = []
     for i in range(len(kinds)):
         for j in range(i + 1, len(kinds)):
@@ -114,10 +117,10 @@ def gate_g4_kind_discrimination(instances, choices, min_kinds=2, tau=0.05):
             arms = set(pa) | set(pb)
             tv = 0.5 * sum(abs(pa.get(m, 0.0) - pb.get(m, 0.0)) for m in arms)
             pairwise.append({"a": a, "b": b, "tv_distance": tv})
-            if tv < tau:
-                too_similar.append((a, b))
-    ok = not too_similar
-    return ok, {"identical_kind_pairs": too_similar, "pairwise_tv_distance": pairwise, "tau": tau,
+            if tv <= tau:      # <=, 절대로 < 로 바꾸지 말 것 -- tau=0 에서 tv=0(완전 동률)을 놓친다.
+                collapsed.append((a, b))
+    ok = not collapsed
+    return ok, {"collapsed_kind_pairs": collapsed, "pairwise_tv_distance": pairwise, "tau": tau,
                 "by_kind": {k: dict(v) for k, v in by_kind.items()}}
 
 

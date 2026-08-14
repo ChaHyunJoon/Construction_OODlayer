@@ -202,7 +202,7 @@ def main():
     print("\nG3  pass=%s  model_regret=%.3f  best_constant=%.3f  observed_margin=%.3f"
           % (ok3, i3["model_regret"], i3["best_constant_regret"], i3["observed_margin"]),
           file=sys.stderr)
-    print("G4  pass=%s  identical_kind_pairs=%s" % (ok4, i4["identical_kind_pairs"]), file=sys.stderr)
+    print("G4  pass=%s  collapsed_kind_pairs=%s" % (ok4, i4["collapsed_kind_pairs"]), file=sys.stderr)
     print("G4b pass=%s  degenerate_menus=%s  max_cost_rule_hit_rate=%s"
           % (ok4b, i4b["degenerate_menus"], i4b["max_cost_rule_hit_rate"]), file=sys.stderr)
 

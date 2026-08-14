@@ -102,13 +102,19 @@ def main():
 
     ok, info = gate_g4_kind_discrimination(INSTANCES, ALWAYS_1)
     check("G4: 모든 kind 에 같은 답이면 **실패**", not ok,
-          str(info["identical_kind_pairs"]))
+          str(info["collapsed_kind_pairs"]))
     check("G4: 완전 동률일 때 tv_distance == 0.0",
           info["pairwise_tv_distance"][0]["tv_distance"] == 0.0,
           str(info["pairwise_tv_distance"]))
 
     ok, info = gate_g4_kind_discrimination(NEAR_CONST_INSTANCES, NEAR_CONST_CHOICES)
     check("G4 knife-edge: 237/238 vs 238/238(거의-상수) 도 tau 임계로 **실패**해야 한다",
+          not ok, "tv=%s tau=%s" % (info["pairwise_tv_distance"], info["tau"]))
+
+    # 2026-08-14 회귀: tau=0.0 에서 `tv < tau` 로 잘못 쓰면 tv=0.0(완전 동률)조차 못 잡는다
+    # (`0.0 < 0.0` 은 항상 거짓이므로). `<=` 로 고정 -- 이 경계가 다시 깨지면 안 된다.
+    ok, info = gate_g4_kind_discrimination(INSTANCES, ALWAYS_1, tau=0.0)
+    check("G4 tau=0.0 회귀: 완전 동률(tv=0.0)은 tau=0 에서도 **실패**해야 한다(<=, < 아님)",
           not ok, "tv=%s tau=%s" % (info["pairwise_tv_distance"], info["tau"]))
 
     ok, info = gate_g4_kind_discrimination(NORM_INSTANCES, NORM_CHOICES)
