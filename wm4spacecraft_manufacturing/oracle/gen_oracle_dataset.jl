@@ -57,6 +57,14 @@ using Printf                                       # @printf(형식화 출력)�
 include(joinpath(@__DIR__, "ood_mdp_shim.jl"))    # was: decpomdp/examples/ood_env.jl + ood_env_mdp.jl
 # navigator.jl 은 CB 모듈 안에서 include 해야 함(world-age 문제 회피: 런타임에 정의되는 함수들이라 CB 스코프 필요).
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))   # fault_action / zone_action / battery (world-age)
+# run_one 의 판간 배터리 초기화(:1465-1467 부근)는 이 include 가 정의하는 심볼들에 걸려 있고
+# `try ... catch end` 로 감싸여 있다. include 가 실패하거나 순서가 바뀌면 그 세 줄이 **조용한
+# 무동작**이 되어 stall/derate 가 판 사이로 새고, 캠페인 전체가 오류 없이 오염된다(DS_SHARD 가
+# instance 를 라운드로빈으로 쪼개므로 오염이 샤드 배치에 따라 달라져 재현조차 안 된다).
+# 그래서 여기서 한 번, 크게 죽인다.
+for s in (:BATTERY_FLEET, :set_battery_stall!, :set_battery_derate!)
+    isdefined(CB, s) || error("navigator.jl 로드 실패: CB.$(s) 가 정의되지 않았다 — run_one 의 판간 배터리 초기화가 조용한 무동작이 된다")
+end
 # MDP STEP 1 의 확률적 고장 프로세스. DS_MC_K=1(기본)이면 절대 켜지지 않으므로 기존 실행은 불변.
 CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))
 
@@ -1173,16 +1181,42 @@ end
 #  가운데 칸이 의미를 가지려면 엔진에 **감속 구간**이 있어야 한다(navigator/battery.jl
 #  `set_battery_derate!`). 없으면 0.3 과 0.5 가 둘 다 속도배율 1.0 이라 다시 한 점으로 겹친다.
 #  DS_DERATE=0 으로 끄면 예전(계단 함수) 거동으로 돌아간다.
-function _arm_battery!(env)
+#  [2026-08-14 energy-only 모드] `dynamics=false` 면 **회계만** 켠다(= enable_battery! 만 부르고
+#  stall/derate 는 아예 손대지 않는다). battery.jl:486 이 이름으로 부르는 그 모드이고, 배포
+#  레인(tools/monitor/run_demo.jl)도 비-battery 사건에서 이 모드로 돈다. `BATTERY_STALL`/
+#  `BATTERY_DERATE` 는 기본이 꺼짐(battery.jl:489/:539)이고 run_one 이 판마다 둘을 다시 끄므로
+#  (:1465-1467), 안 부르는 것으로 충분하다 — 켜 놓고 끄는 것이 아니라 처음부터 안 켠다.
+#  용도: fault/zoneblk 처럼 배터리가 사건이 아닌 kind 에서도 energy_J 를 유한하게 남겨 완주 행의
+#  J(= makespan + w_E·energy_J)를 채점 가능하게 만든다. 동역학은 바뀌지 않는다(soc_speed_factor
+#  는 stall 이 꺼져 있으면 언제나 1.0, battery.jl:576).
+function _arm_battery!(env; dynamics::Bool = true)
     try
+        # 용량은 **배포 레인(tools/monitor/run_demo.jl)과 같아야 한다** — 라벨과 평가가 다른
+        # 물리에서 나오면 라벨은 "그 세계의 정답" 일 뿐이다(2026-08-13 실측: DS_SHRINK=200 은
+        # 최대부하 41초짜리 배터리라 자연 방전만으로 로봇이 죽는 세계였고, 그 라벨을 배운
+        # surrogate 가 배포 물리에서 틀린 팔을 골랐다. spec D3).
+        # 기본값을 1.0(축소 없음)으로 둔다: 스펙 2.3 kWh 는 최대부하 1000 W 에서 2.30 시간이라
+        # 실제 작업로봇의 지속시간과 맞는다. 옛 라벨을 재현하려면 DS_SHRINK=200 을 준다.
         CB.enable_battery!(env; params = CB.demo_battery_params(
-            shrink = parse(Float64, get(ENV, "DS_SHRINK", "200.0"))))          # 용량 축소(짧은 빌드에서 소모가 보이게)
+            shrink = parse(Float64, get(ENV, "DS_SHRINK", "1.0"))))
+        dynamics || return nothing                                            # energy-only: 여기서 끝
         CB.set_battery_stall!(enabled = true,
             threshold = parse(Float64, get(ENV, "DS_STALL", "0.15")), clear = true, obstacle = false)
         CB.set_battery_derate!(enabled  = get(ENV, "DS_DERATE", "1") == "1",   # 감속 구간(기본 ON)
                                hi       = parse(Float64, get(ENV, "DS_DERATE_HI",  "0.5")),
                                min_factor = parse(Float64, get(ENV, "DS_DERATE_MIN", "0.35")))
     catch e; @warn "enable_battery/stall/derate failed" exception = e end
+    return nothing
+end
+
+"""
+비-battery kind 의 pre_sim 훅. **energy-only 계측**(회계만)을 먼저 무장하고, 그 kind 가 이미
+가지고 있던 훅(`inner`, 예: zone 의 구역 심기)이 있으면 이어서 그대로 돌린다 — 대체가 아니라
+합성이다. `inner === nothing` 이면 계측만 돈다.
+"""
+_energy_only_hook(inner = nothing) = env -> begin
+    _arm_battery!(env; dynamics = false)
+    inner === nothing || inner(env)
     return nothing
 end
 
@@ -1203,7 +1237,8 @@ function build_episode_injection(plan)
             end
         end
     end
-    hook = any(p -> p[2] === :battery, plan) ? (env -> _arm_battery!(env)) : nothing
+    # 배터리 사건이 있으면 완전 무장(회계+stall+derate), 없으면 energy-only 계측만(동역학 불변).
+    hook = any(p -> p[2] === :battery, plan) ? (env -> _arm_battery!(env)) : _energy_only_hook()
     return (sched_fn, hook)
 end
 
@@ -1343,7 +1378,8 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
             end
             for c in fire; CB.schedule_ood_at_closed!(c, act); end   # 각 발화 시점 c 에 이 액션을 예약
         end
-        return (sched_fn, nothing)                       # fault 는 pre_sim 훅 불필요 → nothing
+        # fault 자체는 pre_sim 설정이 필요 없지만, energy-only 계측은 켠다(동역학 불변, energy_J 확보).
+        return (sched_fn, _energy_only_hook())
     elseif kind === :faultidle                          # harmless breakdown (victim owns no work)
         sched_fn = () -> begin
             fired = Ref(false)
@@ -1351,7 +1387,7 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
             act = e -> fired[] ? nothing : (nl = tf(e); nl === nothing ? nothing : (fired[] = true; nl))
             for c in fire; CB.schedule_ood_at_closed!(c, act); end
         end
-        return (sched_fn, nothing)
+        return (sched_fn, _energy_only_hook())
     elseif kind === :zoneharm                           # harmless zone (over a FINISHED staging area)
         sched_fn = () -> begin
             fired = Ref(false)
@@ -1359,7 +1395,7 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
                 (nl = place_harmless_zone!(e); nl === nothing ? nothing : (fired[] = true; nl))   # 빈 바닥에 무해 zone
             for c in fire; CB.schedule_ood_at_closed!(c, act); end
         end
-        return (sched_fn, nothing)
+        return (sched_fn, _energy_only_hook())
     elseif kind === :zone
         # 2026-08-12: 평가 런과 **같은 사건**으로 맞춘다(그 전에는 `CB.zone_action(:zone_ds)` =
         # `random_restriction_zone!` 로, 설계상 아무것도 막지 않는 구역이었다 —
@@ -1370,7 +1406,8 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
         #     (closed≈58) 결정하고, 이 파일의 FIRE_POINTS[:zone] 도 첫 배치에서 같은 지점으로 모인다.
         #   · 훅은 control 판에도 돌므로 `inject` 로 막는다(대조군 = 같은 세계 minus 이 사건).
         stash = Ref{Any}(nothing)
-        hook = inject ? (env -> (stash[] = place_eval_matched_zone!(env); nothing)) : nothing
+        # energy-only 계측을 앞에 두고 **기존 훅을 이어서** 돈다(합성 — 구역 심기는 그대로 살아 있다).
+        hook = _energy_only_hook(inject ? (env -> (stash[] = place_eval_matched_zone!(env); nothing)) : nothing)
         sched_fn = () -> begin
             fired = Ref(false)
             act = e -> begin
@@ -1392,7 +1429,7 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
             act = e -> fired[] ? nothing : (nl = place_blocking_zone!(e; offset = off); nl === nothing ? nothing : (fired[] = true; nl))   # 실제 막는 zone
             for c in fire; CB.schedule_ood_at_closed!(c, act); end
         end
-        return (sched_fn, nothing)
+        return (sched_fn, _energy_only_hook())
     elseif kind === :battery
         # severity = target post-drop SoC. The ladder is designed to STRADDLE the stall boundary
         # (2026-08-05 redesign, see `_arm_battery!`):
@@ -1502,12 +1539,11 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
     catch; nothing end
     min_soc  = _batt === nothing ? NaN : Float64(_batt.min_soc)
     mean_soc = _batt === nothing ? NaN : Float64(_batt.mean_soc)
-    # 알려진 한계(2026-08-13 최종 리뷰, 고치지 않고 기록): BATTERY_FLEET[] 가 nothing 이면 NaN 이다.
-    # 배터리 레이어(_arm_battery!)는 build_injection 이 kind===:battery 에서만 pre_sim 훅으로
-    # 돌려주므로, **fault/faultidle/zone/zoneharm/zoneblk/zonecore instance 는 전부 NaN** 이다
-    # (= 라벨 격자의 대다수). 즉 energy_J 키를 맞춰도(C-1a) 완주한 그 행들의 J 는
-    # 여전히 정의되지 않는다(Objective.J 가 "energy_J 가 유한하지 않다"로 던진다 — 이제는 그
-    # 진단이 **맞다**). 이 kind 들에 배터리 레이어를 켜는 것은 동작 변경이라 이 계획의 범위 밖.
+    # [2026-08-14 해소] 예전에는 배터리 레이어가 kind===:battery 에서만 켜져서
+    # fault/faultidle/zone/zoneharm/zoneblk/zonecore instance 의 energy_J 가 전부 NaN 이었고
+    # (= 라벨 격자의 대다수) 그 행의 완주 J 가 정의되지 않았다. 이제 비-battery kind 는
+    # `_energy_only_hook` 으로 **회계만** 무장하므로(stall/derate 는 안 켠다 = 동역학 불변)
+    # 모든 kind 에서 유한한 energy_J 가 나온다. BATTERY_FLEET[] 가 nothing 일 때만 NaN 이다.
     total_energy_J = _batt === nothing ? NaN : Float64(_batt.total_energy_J)
     n_depleted = _batt === nothing ? -1 : Int(_batt.n_depleted)
     n_stalled = try length(CB.stalled_robots()) catch; 0 end      # 끝에 멈춰버린 로봇 수
