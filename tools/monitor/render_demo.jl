@@ -106,6 +106,40 @@ pp    = find_params(MODEL)
 NROB  = pp === nothing ? parse(Int, get(ENV, "DEMO_ROBOTS", "10")) : pp[:num_robots]
 SCALE = pp === nothing ? 0.008 : pp[:model_scale]
 model_base  = replace(splitext(basename(MODEL))[1], r"[^A-Za-z0-9]+" => "_")
+
+# ── 목적함수 가중치 (spec §5·§6.3, 계획 단계 6) ────────────────────────────────
+# run_demo.jl:430-440 과 같은 스위치를 이 레인에도 둔다. 이것이 없으면
+# `AUTO_EFFICIENCY_KAPPA[]` 가 기본값 `nothing` 으로 남고(essential_tg_coponents.jl:1319),
+# `get_objective_expr` 의 auto 경로는 `w_eff == 0.0 && AUTO_EFFICIENCY_KAPPA[] !== nothing`
+# 일 때만 발화하므로(:1439) **에너지 항이 이 레인에서 영영 안 실린다.**
+#
+# ⚠️ run_demo.jl 과 달리 여기서는 이 블록이 **동작 중립이 아니다.**
+#    · 초기 배정은 여기서도 안 바뀐다 — `assignment_mode=:greedy` 이고 greedy 는
+#      `get_objective_expr` 를 부르지 않는다(run_demo.jl:422 의 논증과 동일).
+#    · 그러나 이 레인은 :731 에서 `RESPEC_ENABLED[] = true` 로 두고 **respec 재풀이를 돌린다.**
+#      그 재풀이가 `get_objective_expr` 를 타므로 κ 가 OOD 이후의 계획을 실제로 바꾼다.
+#      run_demo.jl 은 :484 에서 `RESPEC_ENABLED[] = false` 라 그 경로가 없다 — 그래서 저쪽은
+#      중립이고 이쪽은 아니다. 이 차이 때문에 대시보드에 올라가는 판은 이 블록이 없으면
+#      **구세대 동역학으로 렌더된다.**
+const ENERGY_ON = get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+if ENERGY_ON
+    let w = CB.init_objective_weights!()
+        println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
+    end
+else
+    println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
+end
+# 세대 딱지. 이 렌더가 어느 목적함수로 만들어졌는지 로그에 남긴다(spec §7) — 산출물이
+# 스트림/애니 뿐이라 행에 박을 자리가 없으므로 로그가 유일한 provenance 다.
+let _objjl = joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "objective.jl")
+    try
+        Base.include(Main, _objjl)
+        println(">>> objective_hash: $(Main.Objective.objective_hash())  energy_objective=$(ENERGY_ON ? 1 : 0)")
+    catch e
+        @warn "objective_hash 를 읽지 못했다 — 이 렌더의 세대를 로그로 판정할 수 없다" exception = e
+    end
+end
+
 # 산출물 이름에 쓰는 케이스 이름. 보통 DEMO_OOD 와 같지만, 프리셋 케이스(⑦ battery_mild = battery 를
 # 애매한 SoC 로 돌린 것)는 **실행 케이스와 표시 이름이 다르다**. 그때 서버가 DEMO_CASE_TAG 로 표시
 # 이름을 넘겨 주지 않으면 ⑦ 의 녹화가 ① battery 파일을 덮어썼다.
@@ -672,6 +706,25 @@ function policy_producer(env, event)
     rec === nothing && return nothing
     truth = rec.truth
     decision = decide_all(env, truth; nl = rec.nl)   # nl = LLM 이 읽을 자연어 관찰
+    # ---- 결정 시점의 **에너지 상태와 그 가격**을 레코드에 싣는다 (2026-08-14) ----------------
+    # 요구: "UI 에서 목적함수에 energy 가 고려된 제어를 본다". 화면의 OBJECTIVE 스트립이
+    # J = makespan/M_ref + κ·energy_J/E_ref + … 를 objective.json 에서 읽어 보여주는데, 거기
+    # **실제로 들어가는 두 수**(지금까지 쓴 에너지, 그것을 매기는 κ)가 결정마다 없으면 그 식은
+    # 화면에서 여전히 주장으로만 남는다. 둘 다 이미 계산돼 있으므로 새로 재지 않고 읽어 싣는다.
+    #
+    # 이 파일에만 넣는 이유: 대시보드의 라이브 런(server.jl POST /run)과 녹화(regen_router_cases.sh)
+    # 가 **둘 다 render_demo.jl** 을 쓴다. policy.jl 을 건드리면 지금 도는 비교 스윕의 코드
+    # 세대가 갈리므로 건드리지 않는다 — 이 값은 비교 숫자가 아니라 화면 표시용이다.
+    try
+        local br = CB.battery_report()
+        decision.router["energy_so_far_J"] = br.total_energy_J
+        decision.router["energy_min_soc"]  = br.min_soc
+        # κ 는 목적함수가 에너지에 매기는 가격. nothing 이면 이 레인에 전역 κ 가 안 걸린 것이고,
+        # 그 사실도 그대로 남긴다(0 으로 채우지 않는다 — 안 걸린 것과 0 은 다르다).
+        decision.router["energy_kappa"] = CB.AUTO_EFFICIENCY_KAPPA[]
+    catch e
+        @warn "[energy] battery_report failed -> 화면에 에너지 상태를 싣지 않는다" exception = e
+    end
     record_decision!(env, truth, decision, rec.nl)
     rt = decision.router
     get(rt, "enabled", false) && println("[router] $(rt["reason"]) → $(rt["target"])")
@@ -726,8 +779,22 @@ end
 const USE_LLM = get(ENV, "DEMO_LLM", "0") == "1"   # DEMO_LLM=1 → 진짜 Claude, 기본(0) → canonical 휴리스틱
 
 pre = function (env)
-    CB.enable_battery!(env; params = CB.demo_battery_params(shrink = 25.0))
+    # 배터리 물리는 run_demo.jl(:482 부근)과 **같아야 한다** — 두 엔진이 다른 물리를 쓰면
+    # 대시보드에 보이는 판과 논문 표의 근거(results_4pol)가 다른 세계가 된다.
+    # 용량 축소(shrink)는 하지 않는다: 스펙 2.3 kWh 가 최대부하에서 2.30시간이라 실제
+    # 작업로봇의 지속시간과 맞고, shrink=25 는 5.5분짜리 배터리라 물리적으로 말이 안 됐다.
+    CB.enable_battery!(env; params = CB.BatteryParams())
     try CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3) catch end
+    # 방전 → 정지 / 감속. 이게 없으면 배터리가 방전돼도 로봇이 멈추지 않아서, 대시보드가
+    # "로봇이 그 자리에 멈췄다"는 NL 을 띄우면서 화면에서는 멀쩡히 계속 움직인다.
+    CB.set_battery_stall!(enabled = get(ENV, "DEMO_STALL", "1") == "1",
+                          threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.15")) catch; 0.15 end),
+                          clear = true, obstacle = false)
+    CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
+                           hi = 0.5, min_factor = 0.35)
+    println(">>> battery: capacity=", CB.BatteryParams().capacity_J, " J (spec, no shrink)",
+            "  stall=", CB.BATTERY_STALL[].enabled, "@", CB.BATTERY_STALL[].threshold,
+            "  derate=", CB.BATTERY_DERATE[].enabled)
     CB.RESPEC_ENABLED[] = true
     CB.set_hot_swap!(enabled = true, mode = :via_depot)
     # ---------------------------------------------------------------------------------------

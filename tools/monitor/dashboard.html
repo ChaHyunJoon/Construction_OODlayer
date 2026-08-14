@@ -1304,7 +1304,22 @@
               '<div class="whyrow"><span class="wk">'+esc(pp.key)+'</span>'+whyText(pols[pp.key])+'</div>';
           }).join("");
         }
-        nb.innerHTML = '<span class="nlab">WHAT HAPPENED</span>' + esc(nar) + whyRows;
+        // 결정 시점의 에너지 상태 + 그 가격(κ). OBJECTIVE 스트립이 보여주는 J 의 energy 항에
+        // **실제로 들어가는 두 수**다 — 이게 없으면 그 식은 화면에서 주장으로만 남는다.
+        // 값이 없는 녹화(이 기능 이전)에서는 줄을 아예 그리지 않는다. 지어내지 않는다.
+        var eRow = "";
+        if (rt && rt.energy_so_far_J != null) {
+          var kj = (rt.energy_kappa == null)
+                 ? '<span class="wnone">(no global &kappa; on this lane — energy is not priced here)</span>'
+                 : ('&kappa; = ' + rt.energy_kappa);
+          eRow = '<div class="whyrow"><span class="wk">energy</span>'
+               + '<b>' + Math.round(rt.energy_so_far_J).toLocaleString() + ' J</b> drawn by the fleet '
+               + 'at this decision &middot; ' + kj
+               + (rt.energy_min_soc != null
+                  ? (' &middot; worst SoC ' + Number(rt.energy_min_soc).toFixed(3)) : '')
+               + ' &mdash; this is the <i>energy_J</i> term the objective above is minimising.</div>';
+        }
+        nb.innerHTML = '<span class="nlab">WHAT HAPPENED</span>' + esc(nar) + eRow + whyRows;
         nb.hidden = false;
       } else {
         nb.hidden = true; nb.textContent = "";
