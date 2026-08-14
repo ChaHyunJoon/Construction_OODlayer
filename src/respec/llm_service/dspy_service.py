@@ -166,34 +166,63 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
           "surrogate": None, "surro_feats": None, "surro_data": None, "surro_error": None}
 
 # ---------------------------------------------------------------------------------------------
-# surrogate 정책: **배포 모델(RandomForest)을 여기서 직접 적합**시켜 서비스한다.
+# surrogate 정책: **배포 모델(SurrogateV2, 2-헤드 ΔĴ)을 여기서 직접 적합**시켜 서비스한다.
 # 왜 JSON export 를 읽지 않는가: export 포맷(선형/forest)이 평가에 쓴 모델과 어긋난 전력이 있어서
 # (surrogate_model.py 의 기록 참조), 데모가 "벤치마크한 그 모델"과 다른 걸 보여줄 위험이 있다.
-# n=44 · 220행이라 적합이 1초 미만이므로, 학습 코드를 그대로 재사용하는 편이 정직하고 단순하다.
+# 355행이라 적합이 1초 미만이므로, 학습 코드를 그대로 재사용하는 편이 정직하고 단순하다.
+#
+# 2026-08-14 (spec §6 단계 6) -- 무엇이 바뀌었나
+# ----------------------------------------------
+#  · 모델   : RandomForest(`closed − λ·MACRO_COST` 회귀) -> `SurrogateV2`(2-헤드 조립 Ĵ).
+#             옛 모델은 861/861 결정을 "menu 안 최대 MACRO_COST 팔"로 냈다 = 상태를 한 비트도
+#             안 봤다. λ 는 함께 사라진다(타깃이 J 자신이라 식별할 λ 가 없다).
+#  · 학습셋 : n44_plus78 -> RELABEL_20260814. **`wm_datasets.resolve()` 를 쓰지 않는다** —
+#             그 함수는 $WM_DATASET/EVAL_DATA 를 읽으므로 환경변수 하나로 조용히 옛 라벨
+#             (= 이 계획이 제거하려는 결함을 가르치는 파일)이 다시 들어온다. Task 6 의
+#             `eval_surrogate_v2.py` 와 같은 결정이고, 그래야 배포 모델과 평가 모델이 같다.
+#  · 부호   : ΔĴ 는 **낮을수록 좋다**. 아래 `surrogate_rank` 의 오름차순 정렬이 그 계약이고,
+#             `test_service_surrogate_rank.py` 가 그것을 검사로 못박는다.
+#  · feature: `surrogate_features.build_features`(22차원)를 **import 해서** 쓴다. 여기서
+#             재조립하면 학습/배포가 조용히 갈린다 — 이 저장소의 반복된 사고다.
+#
+# 알려진 능력 회귀(문서화된 것, 숨기지 않는다): 새 라벨셋의 macro support 는 {0,1,2,7,8} 이라
+# **ReformTeam(4)·ForbidZone(3) 행이 0줄**이다. 아래 support 필터가 그 팔을 후보에서 떨어뜨리므로
+# reform 사건에서 surrogate 는 NOOP 밖에 못 낸다(`unsupported` 로 그 사실이 응답에 남는다).
 # ---------------------------------------------------------------------------------------------
-LAM = 3.0
-# 2026-08-06: 기본 학습셋을 N44_PLUS78 로 옮긴다. HS_N44 는 매크로 8(SwapBattery)·7(RelocateBuild)
-# 행이 없어 그 팔들을 후보에서 탈락시켰다 -- 배포 surrogate 가 5판 전부 규칙과 동일한 결과를 낸
-# 기전(RESULTS_LLM7H §5-f). 옛 모델을 재현하려면 EVAL_DATA=oracle/out/graded_hs_n44.jsonl.
-SURRO_DATA = wm_datasets.resolve(os.environ.get("EVAL_DATA"), default=wm_datasets.N44_PLUS78)
+SURRO_DATA = wm_datasets.abspath(wm_datasets.RELABEL_20260814)
+# 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
+# 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
+# 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.
+SURRO_RULE = "deadband_Jbar"
 
 
 def _load_surrogate():
     try:
         sys.path.insert(0, WM)
-        from surrogate_data import load_training_frame          # noqa: E402
-        from surrogate_model import build_model                 # noqa: E402
+        # 로딩·필터링 계약(`e1_analyze.load()` 로 읽기 · `fired==False` stub 10행 제거)은
+        # Task 6 하니스에 **단일 정의**로 있다. 여기서 다시 쓰면 배포가 학습과 다른 행으로
+        # 적합될 수 있으므로 그 함수를 그대로 부른다.
+        from eval_surrogate_v2 import load_rows                 # noqa: E402
+        from surrogate_features import FEATURE_NAMES            # noqa: E402
+        from surrogate_v2 import SurrogateV2                    # noqa: E402
+        from threadpoolctl import threadpool_limits             # noqa: E402
 
-        X, y, support, n_full = load_training_frame(SURRO_DATA, lam=LAM)
-        model = build_model()
-        model.fit(X.values, y)
+        rows, meta = load_rows(SURRO_DATA)
+        support = sorted({int(r["macro"]) for r in rows})
+        # 스레드를 1로 묶는다. 공유 서버(56코어)에서 OpenMP 가 코어 수만큼 스레드를 띄우면
+        # 355행짜리 적합이 0.58s -> 132.6s 로 늘어난다(Task 6 실측 227배). 결과는 안 바뀐다.
+        with threadpool_limits(limits=1):
+            model = SurrogateV2().fit(rows)
         # **학습 근거가 있는 매크로 집합**을 같이 기록한다. 여기 없는 값을 예측하는 것은 근거 없는
         # 외삽이고, 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
         # "고를 수조차 없었다"이다. 이 구분이 곧 라우터(낯선 것은 LLM)의 존재 이유다.
-        _state.update(surrogate=model, surro_feats=list(X.columns),
-                      surro_support=set(sorted(support)),
-                      surro_data="%s (%d instances, macro support %s)"
-                                 % (os.path.basename(SURRO_DATA), n_full, sorted(support)))
+        _state.update(surrogate=model, surro_feats=list(FEATURE_NAMES),
+                      surro_support=set(support),
+                      surro_data="%s (%d rows / %d instances, macro support %s, rule %s, "
+                                 "objective_hash %s)"
+                                 % (os.path.basename(SURRO_DATA),
+                                    meta["rows_after_fired_filter"], meta["instances"],
+                                    support, SURRO_RULE, meta["objective_hash"]))
     except Exception as e:
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 
@@ -226,7 +255,7 @@ def _startup():
     lm = dspy.LM("openai/%s" % MODEL, temperature=0.0, max_tokens=300, cache=True)
     dspy.configure(lm=lm)
     _load_program()
-    _load_surrogate()      # 배포 RandomForest 적합(220행이라 1초 미만)
+    _load_surrogate()      # 배포 SurrogateV2 적합(355행이라 1초 미만)
 
 
 class MacroRequest(BaseModel):
@@ -241,6 +270,12 @@ class MacroRequest(BaseModel):
     n_spare_cfg: int = 3                       # surrogate 피처(설정된 spare 수준)
     closed_at_fire: int = 0                    # surrogate 피처(발화 시점 닫힌 노드 수)
     zone_radius: Optional[float] = None        # surrogate 피처(zone 반경)
+    # total_nodes : 빌드 전체 노드 수. **2026-08-14 추가** — 새 22차원 조립기의 work_at_risk
+    #   분모(`pending_total = total_nodes − closed_at_fire`)가 이 값이다. 라벨 행에는 처음부터
+    #   있었지만 이 스키마에 없어서, 선언하지 않으면 Pydantic 이 조용히 버리고 서비스는 0 으로
+    #   본다 -> pending_total 이 1.0 으로 접혀 work_at_risk 가 포화 = 학습과 다른 feature.
+    #   없으면 `_total_nodes()` 가 closed_at_fire/progress 로 복원한다.
+    total_nodes: Optional[int] = None
     # ---- 아래 둘은 2026-07-28 추가: LLM 에게 **문장**을 주기 위한 채널 --------------------
     # nl : 주입 시점에 만들어진 자연어 관찰(OOD_TRUTH_LOG 의 nl 쪽). 없으면 예전처럼 파싱된
     #      필드로 렌더링한다(하위호환). 있으면 LLM 은 이 문장을 읽는다.
@@ -286,42 +321,82 @@ class MacroRequest(BaseModel):
     valid: Optional[List[str]] = None
 
 
+_SURRO_INSTANCE = "live"        # 요청 하나 = instance 하나. `choose`/`predict_delta_J` 의 그룹 키.
+
+
+def _total_nodes(req: "MacroRequest") -> float:
+    """이 빌드의 전체 노드 수. `descriptors_from_row` 의 work_at_risk 분모다.
+
+    호출자(policy.jl `ood_features`)가 실어 보내는 것이 정답이다. 안 보내는 옛 호출자를 위해
+    `closed_at_fire / progress` 로 복원한다 — `ood_features` 가 `progress = closed/total` 로
+    정의하므로 이건 근사가 아니라 **항등식**이다. 둘 다 없으면 0.0 을 돌려주고,
+    `descriptors_from_row` 가 그 경우를 pending_total=1.0 으로 처리한다(그 함수의 계약).
+    왜 이 값이 중요한가: 0 으로 두면 pending_total 이 1.0 으로 접혀 work_at_risk 가 거의 항상
+    1.0 으로 포화한다 = 학습 때와 다른 feature 로 배포되는 조용한 발산.
+    """
+    if req.total_nodes is not None and float(req.total_nodes) > 0:
+        return float(req.total_nodes)
+    if req.progress and float(req.progress) > 0:
+        return float(req.closed_at_fire) / float(req.progress)
+    return 0.0
+
+
+def _surro_row(req: "MacroRequest", macro: int) -> dict:
+    """요청 + 팔 하나 -> **라벨 행과 같은 스키마**의 dict.
+
+    `surrogate_features.build_features` 가 읽는 필드만 채운다(그 함수가 `psi(macro)` 와
+    `features_agnostic.descriptors_from_row` 만 부른다). kind 는 **일부러 넣지 않는다** —
+    새 표현은 종류 이름을 한 번도 읽지 않으므로, 예전의 `zone -> zoneblk` 매핑 같은
+    어휘 정렬 자체가 필요 없어졌다(그 매핑이 어긋나면 one-hot 이 전부 0이 되던 실패 모드가
+    구조적으로 사라진 것).
+    """
+    return dict(
+        instance=_SURRO_INSTANCE, macro=int(macro),
+        severity=float(req.severity),
+        soc=(math.nan if req.soc is None else float(req.soc)),
+        zone_overlap=(-1.0 if req.zone_overlap is None else float(req.zone_overlap)),
+        agent_pending=float(req.agent_pending),
+        n_active=float(req.n_active),
+        spare_count=float(req.spare_count),
+        closed_at_fire=float(req.closed_at_fire),
+        total_nodes=_total_nodes(req),
+        progress=float(req.progress))
+
+
 def surrogate_rank(req: "MacroRequest", valid: List[str]):
-    """배포 RF 로 5개 매크로를 점수화해 순위를 낸다. 학습 때와 같은 featurize 를 쓴다."""
+    """배포 SurrogateV2 로 legal 매크로를 점수화해 순위를 낸다.
+
+    **부호 규약: ΔĴ 는 낮을수록 좋다.** 그래서 오름차순으로 정렬한다.
+    2026-08-14 이전 이 함수는 `scored.sort(key=lambda t: -t[1])`(내림차순)이었다 — 옛 모델의
+    타깃이 `closed − λ·MACRO_COST`(높을수록 좋음)였기 때문이다. 새 모델을 그 정렬에 그대로
+    꽂으면 서비스는 에러도 경고도 없이 **legal 팔 중 가장 나쁜 것**을 고른다.
+    `wm4spacecraft_manufacturing/test_service_surrogate_rank.py` 가 이 방향을 검사로 못박는다.
+
+    1위는 `argmin ΔĴ` 가 아니라 **배포 규칙(`SurrogateV2.choose(rule=SURRO_RULE)`)의 답**이다.
+    둘은 갈릴 수 있다 — `deadband_Jbar` 는 완주확률 차이가 헤드 A 의 교정오차 밖인 팔을 먼저
+    떨어낸 뒤 공유 P̄ 로 J 를 조립하기 때문이다. 규칙을 여기서 다시 쓰지 않고 그 메서드를
+    부르는 이유가 그것이다: 배포된 정책과 평가한 정책이 같아야 한다.
+    """
     model = _state["surrogate"]
     if model is None:
         return None, _state["surro_error"] or "surrogate not loaded"
     try:
-        import pandas as pd
-        from e1_analyze import featurize, MACRO_NAME as MN
+        from e1_analyze import MACRO_NAME as MN
         name2id = {v: k for k, v in MN.items()}
-        valid_ids = [name2id[m] for m in valid if m in name2id]
-        # 학습 데이터의 kind 어휘는 fault/battery/zoneblk 이다. 데모의 zone 은 staging 을 막는
-        # 사건이므로 zoneblk 로 매핑한다(어휘가 어긋나면 one-hot 이 전부 0이 되어 예측이 무의미해짐).
-        kind = "zoneblk" if req.kind == "zone" else req.kind
         support = _state.get("surro_support") or set(range(5))
         unsupported = [m for m in valid if m in name2id and name2id[m] not in support]
         scorable = [name2id[m] for m in valid if m in name2id and name2id[m] in support]
         if not scorable:
             return None, ("no training support for any valid macro %s "
                           "(surrogate saw %s)" % (valid, sorted(support)))
-        rows = []
-        for m in scorable:
-            rows.append(dict(
-                kind=kind, macro=m, severity=float(req.severity),
-                n_spare_cfg=float(req.n_spare_cfg), spare_count=float(req.spare_count),
-                progress=float(req.progress), agent_pending=float(req.agent_pending),
-                closed_at_fire=float(req.closed_at_fire), n_active=float(req.n_active),
-                soc=(math.nan if req.soc is None else float(req.soc)),
-                zone_radius=(math.nan if req.zone_radius is None else float(req.zone_radius)),
-                zone_overlap=(-1.0 if req.zone_overlap is None else float(req.zone_overlap)),
-                valid_mask=valid_ids,
-            ))
-        X = featurize(pd.DataFrame(rows))
-        X = X.reindex(columns=_state["surro_feats"], fill_value=0.0)   # 학습 때의 열 순서로 정렬
-        pred = model.predict(X.values)
-        scored = [(MN[m], float(p)) for m, p in zip(scorable, pred)]
-        scored.sort(key=lambda t: -t[1])
+        rows = [_surro_row(req, m) for m in scorable]
+        pick = int(model.choose(rows, rule=SURRO_RULE)[_SURRO_INSTANCE])
+        # 표시·margin 용 점수. NOOP 이 legal 이면 그 팔이 정확히 0 이 되어 읽기 쉽다
+        # ("이 개입은 아무것도 안 하는 것보다 ΔĴ 만큼 낫다/나쁘다").
+        dj = model.predict_delta_J(rows, ref_macro=0)
+        order = sorted(range(len(rows)),
+                       key=lambda i: (int(rows[i]["macro"]) != pick, float(dj[i])))
+        scored = [(MN[int(rows[i]["macro"])], float(dj[i])) for i in order]
         # 근거 없는 매크로는 점수 대신 **없다는 사실**을 돌려준다(호출부가 UI 에 그대로 표시).
         return scored, (None if not unsupported else
                         "UNSUPPORTED:" + ",".join(unsupported))
@@ -553,7 +628,7 @@ def decide(req: MacroRequest):
                    "rationale": d["reasoning"], "policy": d["policy"],
                    "coerced": d["coerced"], "error": d["error"]}
 
-    scored, err = surrogate_rank(req, valid)         # surrogate 정책(배포 RandomForest)
+    scored, err = surrogate_rank(req, valid)         # surrogate 정책(배포 SurrogateV2)
     if scored:
         top = scored[0][1]
         runner = scored[1][1] if len(scored) > 1 else top
@@ -569,9 +644,9 @@ def decide(req: MacroRequest):
             # "새 행동을 고를 수조차 없었다"이다 — 라우터가 LLM 에게 넘겨야 하는 바로 그 상황.
             "unsupported": ([] if not err or not str(err).startswith("UNSUPPORTED:")
                             else str(err).split(":", 1)[1].split(",")),
-            "policy": "surrogate:RandomForest",
+            "policy": "surrogate:SurrogateV2",
             "error": (None if (not err or str(err).startswith("UNSUPPORTED:")) else err)}
     else:
         out["surrogate"] = {"chosen": "", "ranking": [], "scores": {}, "margin": 0.0,
-                            "policy": "surrogate:RandomForest", "error": err}
+                            "policy": "surrogate:SurrogateV2", "error": err}
     return out

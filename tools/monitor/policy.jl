@@ -167,6 +167,11 @@ function ood_features(env, truth)
         "progress"      => total > 0 ? closed / total : 0.0,
         "n_active"      => length(env.cache.active_set),
         "closed_at_fire"=> closed,          # surrogate 피처
+        # 2026-08-14: 새 22차원 조립기(surrogate_features.build_features)의 work_at_risk 분모가
+        # `total_nodes - closed_at_fire` 다. 라벨 행에는 처음부터 있던 필드인데 이 payload 에만
+        # 없었다 -- 안 보내면 서비스가 progress 에서 역산하고(항등식이라 값은 같다), closed=0 인
+        # 순간에는 역산이 불가능해 work_at_risk 가 1.0 으로 포화한다. 그냥 실어 보낸다.
+        "total_nodes"   => total,           # surrogate 피처
         "n_spare_cfg"   => 3,               # surrogate 피처(데모의 spare 설정 수준)
     )
     if truth isa CB.BatteryTruth
