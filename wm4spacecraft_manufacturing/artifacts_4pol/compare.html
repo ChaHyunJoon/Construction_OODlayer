@@ -1,0 +1,33 @@
+<title>Four controllers, seven failure cases</title>
+<style>
+  :root{ --ink:#1a1a1a; --dim:#6b6b6b; --faint:#9a9a9a; --rule:#d8d5cc;
+         --accent:#8a7a4a; --band:#f4f2ec; --bg:#ffffff; }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --ink:#ececec; --dim:#a8a8a8; --faint:#7d7d7d;
+      --rule:#3a3a3a; --accent:#c9b579; --band:#1e1e1e; --bg:#141414; }
+  }
+  :root[data-theme="dark"]{ --ink:#ececec; --dim:#a8a8a8; --faint:#7d7d7d;
+      --rule:#3a3a3a; --accent:#c9b579; --band:#1e1e1e; --bg:#141414; }
+  body{ background:var(--bg); color:var(--ink); margin:0; padding:32px 28px 48px;
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .kicker{ font-size:11px; letter-spacing:.34em; text-transform:uppercase; color:var(--faint); }
+  h1{ font-size:34px; font-weight:400; margin:.28em 0 .18em; letter-spacing:-.01em; }
+  .sub{ color:var(--dim); font-size:13.5px; margin-bottom:26px; }
+  .wrap{ overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; min-width:720px; }
+  th,td{ text-align:center; padding:13px 10px; vertical-align:middle; }
+  th.case,td.case{ text-align:left; padding-left:2px; font-size:15px; }
+  thead th{ border-bottom:1.5px solid var(--rule); }
+  .colname{ color:var(--accent); font-weight:700; font-size:12.5px; letter-spacing:.1em; }
+  .colsub{ display:block; color:var(--faint); font-weight:400; font-size:10.5px;
+           letter-spacing:0; margin-top:3px; }
+  tbody tr:nth-child(even){ background:var(--band); }
+  .top{ font-weight:700; font-size:15px; }
+  .bot{ color:var(--dim); font-size:11.5px; margin-top:2px; }
+  .ceil .top,.ceil .bot{ color:var(--faint); font-weight:400; }
+  .foot{ margin-top:22px; color:var(--accent); font-weight:600; font-size:14px; }
+  .note{ margin-top:12px; color:var(--faint); font-size:11.5px; line-height:1.65; max-width:70em; }
+  .note b{ color:var(--dim); }
+</style>
+<div class="kicker">Current Status</div><h1>Four controllers, seven failure cases</h1><div class="sub">Each cell — top: builds finished out of 30 seeds &nbsp;|&nbsp; bottom: build time (finished runs, sim s) · energy (J/closed)</div><div class="wrap"><table><thead><tr><th class="case">FAILURE CASE</th><th><span class="colname">DP</span><span class="colsub">offline value-table lookup · NOT a ceiling (§8.7)</span></th><th><span class="colname">CANONICAL</span><span class="colsub">hand-written rule</span></th><th><span class="colname">SURROGATE</span><span class="colsub">random forest</span></th><th><span class="colname">LLM</span><span class="colsub">DSPy</span></th></tr></thead><tbody><tr><td class="case">Battery depletion</td><td class="ceil"><div class="top">30/30</div><div class="bot">19.6 s · 265 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">30/30</div><div class="bot">19.6 s · 261 J</div></td></tr><tr><td class="case">Robot breakdown</td><td class="ceil"><div class="top">30/30</div><div class="bot">19.6 s · 264 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">26/30</div><div class="bot">32.4 s · 599 J</div></td></tr><tr><td class="case">Keep-out zone</td><td class="ceil"><div class="top">29/30</div><div class="bot">27.4 s · 426 J</div></td><td class=""><div class="top">30/30</div><div class="bot">56.4 s · 492 J</div></td><td class=""><div class="top">30/30</div><div class="bot">28.8 s · 418 J</div></td><td class=""><div class="top">30/30</div><div class="bot">28.6 s · 390 J</div></td></tr><tr><td class="case">Breakdown + battery</td><td class="ceil"><div class="top">30/30</div><div class="bot">19.6 s · 264 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">29/30</div><div class="bot">26.0 s · 451 J</div></td><td class=""><div class="top">28/30</div><div class="bot">24.0 s · 394 J</div></td></tr><tr><td class="case">Breakdown + zone</td><td class="ceil"><div class="top">29/30</div><div class="bot">22.9 s · 350 J</div></td><td class=""><div class="top">30/30</div><div class="bot">59.8 s · 656 J</div></td><td class=""><div class="top">26/30</div><div class="bot">26.9 s · 597 J</div></td><td class=""><div class="top">26/30</div><div class="bot">37.9 s · 639 J</div></td></tr><tr><td class="case">Battery + zone</td><td class="ceil"><div class="top">29/30</div><div class="bot">22.9 s · 352 J</div></td><td class=""><div class="top">30/30</div><div class="bot">59.8 s · 656 J</div></td><td class=""><div class="top">26/30</div><div class="bot">26.9 s · 597 J</div></td><td class=""><div class="top">30/30</div><div class="bot">25.1 s · 334 J</div></td></tr><tr><td class="case">All three at once</td><td class="ceil"><div class="top">29/30</div><div class="bot">21.4 s · 319 J</div></td><td class=""><div class="top">30/30</div><div class="bot">62.7 s · 733 J</div></td><td class=""><div class="top">21/30</div><div class="bot">25.5 s · 789 J</div></td><td class=""><div class="top">28/30</div><div class="bot">32.3 s · 468 J</div></td></tr></tbody></table></div><div class="foot">실행 가능한 세 레인의 완주 합계 — CANONICAL 207/210 · SURROGATE 190/210 · LLM 198/210  →  최고 CANONICAL</div><div class="note">**읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장**이다 — 실행 가능한 온라인 정책이 아니고, 이 표의 DP 는 상수-팔 반사실 표집의 최선이다(backward induction 이 아니다: 이 하니스는 J 를 판 단위로 낸다). 자세한 정의와 한계는 `dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.<br>build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 `—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.<br>**DP 격자 커버리지** 64 / 65 관측 칸 = 98.5% · a\* 미확정(동점) 9칸 · 전부 채점불가 0칸 · 단일팔 16칸.<br>**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 121개).** 실행 정책의 평균 J 가 DP 의 V 보다 **좋은** 쌍 108개 = **89.3%**. 0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 없어 그 정책군이 실행 레인보다 약하기 때문이다. 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 이 열의 실현 결과 자체는 유효한 실행 결과다.<br>목적함수 세대: `2026-08-13-global-kappa-precedence`. 지표는 `llm_ood_eval.py report` 가 계산한 값을 그대로 읽는다(이 스크립트는 배치만 한다).</div>

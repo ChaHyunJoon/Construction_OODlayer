@@ -20,7 +20,31 @@
 
 ## 2. 비교표
 
-<!--TABLE-->
+
+각 칸 — 위: 30 시드 중 완주한 판 수 · 아래: 완주판 평균 build time(sim 초) · 에너지(J/closed)
+
+| FAILURE CASE | **DP**<br><sub>offline value-table lookup · NOT a ceiling (§8.7)</sub> | **CANONICAL**<br><sub>hand-written rule</sub> | **SURROGATE**<br><sub>random forest</sub> | **LLM**<br><sub>DSPy</sub> |
+|---|---|---|---|---|
+| Battery depletion | **30/30**<br><sub>19.6 s · 265 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **30/30**<br><sub>19.6 s · 261 J</sub> |
+| Robot breakdown | **30/30**<br><sub>19.6 s · 264 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **26/30**<br><sub>32.4 s · 599 J</sub> |
+| Keep-out zone | **29/30**<br><sub>27.4 s · 426 J</sub> | **30/30**<br><sub>56.4 s · 492 J</sub> | **30/30**<br><sub>28.8 s · 418 J</sub> | **30/30**<br><sub>28.6 s · 390 J</sub> |
+| Breakdown + battery | **30/30**<br><sub>19.6 s · 264 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **29/30**<br><sub>26.0 s · 451 J</sub> | **28/30**<br><sub>24.0 s · 394 J</sub> |
+| Breakdown + zone | **29/30**<br><sub>22.9 s · 350 J</sub> | **30/30**<br><sub>59.8 s · 656 J</sub> | **26/30**<br><sub>26.9 s · 597 J</sub> | **26/30**<br><sub>37.9 s · 639 J</sub> |
+| Battery + zone | **29/30**<br><sub>22.9 s · 352 J</sub> | **30/30**<br><sub>59.8 s · 656 J</sub> | **26/30**<br><sub>26.9 s · 597 J</sub> | **30/30**<br><sub>25.1 s · 334 J</sub> |
+| All three at once | **29/30**<br><sub>21.4 s · 319 J</sub> | **30/30**<br><sub>62.7 s · 733 J</sub> | **21/30**<br><sub>25.5 s · 789 J</sub> | **28/30**<br><sub>32.3 s · 468 J</sub> |
+
+| 합계 (7 case) | 206/210 | 207/210 | 190/210 | 198/210 |
+|---|---|---|---|---|
+
+> **읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장**이다 — 실행 가능한 온라인 정책이 아니고, 이 표의 DP 는 상수-팔 반사실 표집의 최선이다(backward induction 이 아니다: 이 하니스는 J 를 판 단위로 낸다). 자세한 정의와 한계는 `dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.
+
+> build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 `—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.
+
+> **DP 격자 커버리지** 64 / 65 관측 칸 = 98.5% · a\* 미확정(동점) 9칸 · 전부 채점불가 0칸 · 단일팔 16칸.
+
+> **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 121개).** 실행 정책의 평균 J 가 DP 의 V 보다 **좋은** 쌍 108개 = **89.3%**. 0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 없어 그 정책군이 실행 레인보다 약하기 때문이다. 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 이 열의 실현 결과 자체는 유효한 실행 결과다.
+
+> 목적함수 세대: `2026-08-13-global-kappa-precedence`. 지표는 `llm_ood_eval.py report` 가 계산한 값을 그대로 읽는다(이 스크립트는 배치만 한다).
 
 ## 3. 재현 절차
 
@@ -46,7 +70,18 @@ bash finish_tables.sh
 
 ## 4. 게이트
 
-<!--GATES-->
+| 게이트 | 결과 |
+|---|---|
+| `audit_objective.py (9/9)` | exit 0 ✅ |
+| `audit_action_vocab.py (6/6)` | exit 0 ✅ |
+| `test_surrogate_support.py` | exit 0 ✅ |
+| `test_ceilings_degrade.py (신규)` | exit 0 ✅ |
+| `dp_oracle/test_dp_solve.py (신규)` | exit 0 ✅ |
+| `dp_oracle/test_cellkey_parity.py (신규, Julia↔Python)` | exit 0 ✅ |
+| `dp_oracle/test_derive_grid.py 대체: derive_grid 재실행 결정성` | exit 0 ✅ |
+| `tools/monitor/test_narrate.jl (신규)` | exit 0 ✅ |
+| `tools/monitor/test_lane_select.jl (신규)` | exit 0 ✅ |
+| `tools/test_policy_escalation.jl (기존 회귀)` | exit 0 ✅ |
 
 ## 5. 계획 대비 의도적 편차 — 전부 실측이 강제한 것
 
@@ -118,7 +153,18 @@ V(s̃)    = min_a Q(s̃, a)          a*(s̃) = argmin_a Q(s̃, a)
 
 ## 6. 알려진 구멍 (숨기지 않고 재서 적는다)
 
-<!--HOLES-->
+1. **DP 격자 커버리지.** 표에 오른 칸 64 / 관측 칸 65 = **98.5%**. 다만 결정 빈도가 편중돼 있어 **결정 기준 커버리지는 3951/3953 = 99.9%** 다. 둘 중 하나만 적으면 오독을 만든다.
+   - a\* 미확정(동점) **9칸** · 전부 J 채점불가 **0칸** · 팔이 하나뿐 **16칸**. 동점은 실패가 아니라 *없는 확신을 만들지 않은 것*이다.
+2. **dp 레인이 표를 실제로 쓴 비율.** 결정 864건 중:
+   - `표 조회 성공` 814건 (94.2%)
+   - `tie_unresolved` 32건 (3.7%)
+   - `single_arm` 18건 (2.1%)
+   조용한 폴백이 없도록 이유를 네 가지로 구분해 행에 남긴다 — `not_in_table`(표집이 그 칸에 안 닿음)과 `tie_unresolved`(닿았지만 동점)는 전혀 다른 사건이라, 뭉뚱그리면 낮은 커버리지가 '알고리즘이 판단을 보류했다' 로 오독된다.
+3. **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 121개).** 실행 정책의 평균 J 가 DP 의 V 보다 **더 좋은** 쌍 108개 = **89.3%**.
+   > 0 이 아니므로 **DP 열을 '천장' 이라고 부르지 않는다.** V 는 **상수-팔** 표집에서 나오는데, 사건이 셋 섞인 판을 한 팔로 처리할 수 없어 그 정책군이 실행 레인보다 훨씬 약하다(§5-C).
+   > **구분할 것**: dp *레인*은 칸마다 a\* 를 갈아 쓰므로 실제로는 팔을 바꾼다. 그래서 표의 dp 열 **실현 결과는 유효한 실행 결과**이고, 천장이 아닌 것은 V 다. 다만 오프라인 표집이라는 정보 우위가 있으므로 온라인 정책과 동렬에 놓지는 않는다.
+4. **`zone_s=cov` 는 표본 0.** §5-D. 기존 zone 규칙의 알려진 결함을 이 DP 도 못 고친다.
+5. **credit assignment.** 판 하나가 여러 칸에 같은 J 를 나눠 준다. §5-C.
 
 ## 7. 이 사이클에서 하지 않은 것
 

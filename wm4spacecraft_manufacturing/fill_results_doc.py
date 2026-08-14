@@ -111,13 +111,18 @@ def holes_section():
                  "로 오독된다.")
 
     # (3) §8.7 gap -- 실행 정책이 DP 의 V 를 넘는가. 넘으면 "천장" 이라는 이름을 쓰지 않는다.
+    #
+    # **평균 대 평균**으로 잰다. 처음엔 개별 판의 J 를 평균 V 와 비교했는데 그건 비교가 아니다:
+    # J 가 이봉분포(완주 ~20 / 미완주 ~15000)라 완주한 판은 어떤 평균이든 자동으로 이긴다.
+    # 표본이 얇은 쌍(n<3)은 평균이 의미 없으므로 뺀다.
     if os.path.exists(vp):
+        import statistics
         v = json.load(open(vp))
         Vs = {c: d["V"] for c, d in v["cells"].items() if d.get("V") is not None}
-        worse = tot = 0
-        sp = os.path.join(DPD, "samples.jsonl")
-        exec_J = collections.defaultdict(list)
         gspec = json.load(open(gp))
+        from derive_grid import cell_key, state_of  # noqa
+        import objective
+        per = collections.defaultdict(lambda: collections.defaultdict(list))
         for p in glob.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
             for line in open(p):
                 line = line.strip()
@@ -127,31 +132,40 @@ def holes_section():
                 if r.get("policy") not in ("canonical", "surrogate", "dspy"):
                     continue
                 try:
-                    import objective
                     J = objective.J_row(r)
                 except Exception:
                     continue
-                from derive_grid import cell_key, state_of  # noqa
+                seen = set()
                 for d in (r.get("decisions") or []):
                     st = state_of(d, gspec["axes"])
                     if st is None:
                         continue
-                    exec_J[cell_key(st)].append((r["policy"], J))
-        for c, lst in exec_J.items():
-            if c not in Vs:
-                continue
-            for _pol, J in lst:
+                    k = cell_key(st)
+                    # 한 판이 같은 칸을 여러 번 지나도 그 판의 J 는 하나다 — 중복 계상 금지.
+                    if k in seen or k not in Vs:
+                        continue
+                    seen.add(k)
+                    per[k][r["policy"]].append(J)
+        worse = tot = 0
+        for k, bypol in per.items():
+            for _pol, Js in bypol.items():
+                if len(Js) < 3:
+                    continue
                 tot += 1
-                if J < Vs[c] - 1e-9:
+                if statistics.mean(Js) < Vs[k] - 1e-9:
                     worse += 1
         if tot:
-            L.append("3. **원 설계 §8.7 gap.** 실행 정책의 실현 J 가 DP 의 V 보다 **더 좋은** "
-                     "경우 %d / %d (%.1f%%)." % (worse, tot, 100.0 * worse / tot))
+            L.append("3. **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개).** 실행 정책의 "
+                     "평균 J 가 DP 의 V 보다 **더 좋은** 쌍 %d개 = **%.1f%%**."
+                     % (tot, worse, 100.0 * worse / tot))
             if worse:
-                L.append("   > 0 이 아니므로 이 표에서 **DP 열을 '천장' 이라고 부르지 않는다.** "
-                         "원인은 §5-C 에 적힌 그대로다 — 상수-팔 정책군은 실행 정책보다 좁아서, "
-                         "사건마다 팔을 바꿀 수 있는 정책이 더 잘할 수 있다. 이름을 유지하면 "
-                         "그 자체가 거짓 주장이 된다.")
+                L.append("   > 0 이 아니므로 **DP 열을 '천장' 이라고 부르지 않는다.** V 는 "
+                         "**상수-팔** 표집에서 나오는데, 사건이 셋 섞인 판을 한 팔로 처리할 수 "
+                         "없어 그 정책군이 실행 레인보다 훨씬 약하다(§5-C).")
+                L.append("   > **구분할 것**: dp *레인*은 칸마다 a\* 를 갈아 쓰므로 실제로는 팔을 "
+                         "바꾼다. 그래서 표의 dp 열 **실현 결과는 유효한 실행 결과**이고, 천장이 "
+                         "아닌 것은 V 다. 다만 오프라인 표집이라는 정보 우위가 있으므로 온라인 "
+                         "정책과 동렬에 놓지는 않는다.")
             else:
                 L.append("   > 0 건이므로 이 격자 위에서는 '천장' 이라는 이름이 유지된다.")
 
