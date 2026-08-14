@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""SurrogateV2 — J 의 분기 구조를 그대로 모사하는 2-헤드 예측기 (spec §3.3).
+
+    A: P(complete | s,a)                                 분류
+    B: E[makespan + w_E*energy_J | s,a, complete]         회귀
+    C: E[total - closed | s,a, not complete]              회귀
+
+    Ĵ = P*B + (1-P)*(C_fail + C_unclosed*C + tie_eps*B)
+    ΔĴ(a) = Ĵ(a) - Ĵ(NOOP)      <- 결정에 쓰는 값(낮을수록 좋음)
+
+왜 2-헤드인가: J 는 완주 여부에서 C_fail(=10000) 짜리 절벽이 있다. 이봉분포를 하나의
+제곱오차 회귀로 넘으면 안 된다. 나누면 절벽이 분류기로 흡수되고, "이 개입이 빌드를
+완주시키는가" 가 독립된 학습 문제가 된다 — 2026-08-13 결함이 정확히 그 지점이었다.
+
+왜 ΔJ 인가: 학습셋에서 타깃 분산의 78% 가 'instance 난이도' 다(between 2130 vs within 612).
+같은 instance 안에서 빼면 그 성분이 정의상 소거되고, 모델 용량 전부가 팔 간 차이에 간다.
+
+상수는 전부 objective.json 에서 읽는다 — 리터럴 복붙 금지(audit_objective 항목 1).
+"""
+import os
+import sys
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import objective                                        # noqa: E402
+from surrogate_features import build_features           # noqa: E402
+
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+# 286행 예산에 맞춘 하이퍼파라미터. max_depth=3 이 핵심 — 현행 배포의 6 은 instance 를 암기한다.
+_HP = dict(max_depth=3, max_iter=300, learning_rate=0.05,
+           min_samples_leaf=5, l2_regularization=1.0, early_stopping=True, random_state=0)
+
+
+def _w_E(cfg):
+    """w_E = kappa * M_ref / E_ref. 스케일이 null 이면 에러(0/1 로 폴백하지 않는다)."""
+    for k in ("kappa", "M_ref", "E_ref"):
+        if cfg.get(k) is None:
+            raise objective.ObjectiveError("objective.json 의 %s 가 null 이라 w_E 를 만들 수 없다" % k)
+    return float(cfg["kappa"]) * float(cfg["M_ref"]) / float(cfg["E_ref"])
+
+
+class SurrogateV2:
+    def __init__(self, cfg=None):
+        self.cfg = cfg or objective.load()
+        self.w_E = _w_E(self.cfg)
+        self.head_a = HistGradientBoostingClassifier(**_HP)
+        self.head_b = HistGradientBoostingRegressor(loss="absolute_error", **_HP)
+        self.head_c = HistGradientBoostingRegressor(loss="absolute_error", **_HP)
+        self._b_fallback = 0.0
+        self._c_fallback = 0.0
+
+    # ---- 학습 ----------------------------------------------------------------
+    def fit(self, rows):
+        X = build_features(rows).values
+        comp = np.array([bool(r.get("complete")) for r in rows])
+
+        self.head_a.fit(X, comp.astype(int))
+
+        # B: 완주 행만. 시간 + 에너지 (= J 의 완주 분기)
+        if comp.any():
+            yb = np.array([float(r["makespan"]) + self.w_E * float(r["energy_J"])
+                           for r, c in zip(rows, comp) if c])
+            self.head_b.fit(X[comp], yb)
+            self._b_fallback = float(np.median(yb))
+        # C: 미완주 행만. 남은 노드 수
+        if (~comp).any():
+            yc = np.array([float(r["total"]) - float(r["closed"])
+                           for r, c in zip(rows, comp) if not c])
+            self.head_c.fit(X[~comp], yc)
+            self._c_fallback = float(np.median(yc))
+        self._fitted_b = bool(comp.any())
+        self._fitted_c = bool((~comp).any())
+        return self
+
+    # ---- 예측 ----------------------------------------------------------------
+    def predict_complete_proba(self, rows):
+        X = build_features(rows).values
+        p = self.head_a.predict_proba(X)
+        # 한 클래스만 본 경우 predict_proba 가 1열이다.
+        return p[:, 1] if p.shape[1] == 2 else np.full(len(rows), float(self.head_a.classes_[0]))
+
+    def predict_J(self, rows):
+        X = build_features(rows).values
+        p = self.predict_complete_proba(rows)
+        b = self.head_b.predict(X) if self._fitted_b else np.full(len(rows), self._b_fallback)
+        c = self.head_c.predict(X) if self._fitted_c else np.full(len(rows), self._c_fallback)
+        c = np.clip(c, 0.0, None)
+        C_fail = float(self.cfg["C_fail"])
+        C_unclosed = float(self.cfg["C_unclosed"])
+        tie_eps = float(self.cfg["tie_eps"])
+        return p * b + (1.0 - p) * (C_fail + C_unclosed * c + tie_eps * b)
+
+    def predict_delta_J(self, rows, ref_macro=0):
+        """같은 instance 의 ref_macro 행을 기준으로 뺀다. 기준 행이 없으면 그 instance 의 평균."""
+        J = self.predict_J(rows)
+        by_inst = {}
+        for i, r in enumerate(rows):
+            by_inst.setdefault(r.get("instance"), []).append(i)
+        out = np.array(J, dtype=float)
+        for _, idx in by_inst.items():
+            ref = [i for i in idx if int(rows[i]["macro"]) == int(ref_macro)]
+            base = J[ref[0]] if ref else float(np.mean(J[idx]))
+            out[idx] = J[idx] - base
+        return out
