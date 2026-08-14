@@ -1,0 +1,177 @@
+{
+ "axes": {
+  "prog_b": {
+   "bins": [
+    0.1853035143769968,
+    0.4536741214057508,
+    0.6421725239616614,
+    0.9105431309904153
+   ],
+   "source": "results_4pol 결정 3953건의 progress 지지집합 + 분위 4구간"
+  },
+  "soc_b": {
+   "bins": [
+    0.02,
+    0.05,
+    0.1,
+    1.0
+   ],
+   "source": "실측 지지 0~0.0999 + 한 칸 밖. 0.02 는 완주가 갈리는 경계라 유지"
+  },
+  "spares_b": {
+   "bins": [
+    8.0,
+    9.0,
+    11.0,
+    12.0
+   ],
+   "source": "실측 spare_count 지지집합"
+  },
+  "pend_f": {
+   "bins": [
+    0,
+    1,
+    99
+   ],
+   "extra_values": [
+    "na"
+   ],
+   "source": "agent_pending 을 {0, 1, >=2} 로, 영향 로봇이 없는 사건(zone/reform)은 'na'. 원문의 '미해결 고장 수' 는 이 하니스에 존재하지 않는 변수라 실측 가능한 축으로 대체(편차 D-a)"
+  },
+  "zone_s": {
+   "values": [
+    "none",
+    "blk",
+    "cov"
+   ],
+   "source": "zone_primitives (root_covered>0 -> cov, n_nav_blocked>0 -> blk)"
+  },
+  "evt": {
+   "values": [
+    "Battery",
+    "Fault",
+    "Zone",
+    "Reform"
+   ],
+   "source": "결정 레코드의 truth 타입"
+  }
+ },
+ "prune": [
+  {
+   "name": "battery_but_high_soc",
+   "cond": {
+    "evt": "Battery",
+    "soc_b": "max"
+   }
+  },
+  {
+   "name": "zone_but_no_zone",
+   "cond": {
+    "evt": "Zone",
+    "zone_s": "none"
+   }
+  },
+  {
+   "name": "nonzone_but_zone_set",
+   "cond": {
+    "evt": "Battery",
+    "zone_s": "cov"
+   }
+  },
+  {
+   "name": "early_but_no_spares",
+   "cond": {
+    "prog_b": 0,
+    "spares_b": 0
+   }
+  }
+ ],
+ "axis_order": [
+  "prog_b",
+  "soc_b",
+  "spares_b",
+  "pend_f",
+  "zone_s",
+  "evt"
+ ],
+ "generation": "2026-08-13-global-kappa-precedence",
+ "objective_hash": "19819377a7f8ebb2",
+ "n_cells_raw": 3072,
+ "n_feasible_cells": 2280,
+ "n_observed_cells": 65,
+ "observed_cells": {
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": 774,
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": 420,
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": 294,
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=na|zone_s=none|evt=Reform": 175,
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": 170,
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": 156,
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=none|evt=Reform": 146,
+  "prog_b=1|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 131,
+  "prog_b=0|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": 117,
+  "prog_b=1|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault": 117,
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": 112,
+  "prog_b=1|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 105,
+  "prog_b=0|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": 105,
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=none|evt=Reform": 84,
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault": 77,
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": 75,
+  "prog_b=3|soc_b=3|spares_b=0|pend_f=na|zone_s=none|evt=Reform": 70,
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": 64,
+  "prog_b=0|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 63,
+  "prog_b=1|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": 53,
+  "prog_b=0|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 51,
+  "prog_b=2|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 49,
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault": 48,
+  "prog_b=1|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 45,
+  "prog_b=1|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 38,
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault": 38,
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": 33,
+  "prog_b=2|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 26,
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault": 26,
+  "prog_b=2|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery": 25,
+  "prog_b=2|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 24,
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": 22,
+  "prog_b=2|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault": 21,
+  "prog_b=2|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 20,
+  "prog_b=3|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery": 13,
+  "prog_b=2|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery": 12,
+  "prog_b=2|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery": 12,
+  "prog_b=3|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery": 12,
+  "prog_b=3|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 11,
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=2|zone_s=none|evt=Fault": 11,
+  "prog_b=3|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 10,
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault": 9,
+  "prog_b=3|soc_b=2|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 8,
+  "prog_b=2|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 7,
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=blk|evt=Zone": 7,
+  "prog_b=3|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": 6,
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault": 6,
+  "prog_b=3|soc_b=2|spares_b=1|pend_f=2|zone_s=none|evt=Battery": 5,
+  "prog_b=3|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery": 5,
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault": 5,
+  "prog_b=2|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery": 4,
+  "prog_b=2|soc_b=2|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 4,
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault": 4,
+  "prog_b=2|soc_b=3|spares_b=1|pend_f=2|zone_s=none|evt=Fault": 4,
+  "prog_b=3|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 4,
+  "prog_b=3|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery": 3,
+  "prog_b=1|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault": 3,
+  "prog_b=3|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery": 3,
+  "prog_b=2|soc_b=0|spares_b=1|pend_f=2|zone_s=none|evt=Battery": 2,
+  "prog_b=2|soc_b=2|spares_b=1|pend_f=2|zone_s=none|evt=Battery": 2,
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": 2,
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=0|zone_s=none|evt=Fault": 2,
+  "prog_b=1|soc_b=2|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 1,
+  "prog_b=3|soc_b=0|spares_b=1|pend_f=2|zone_s=none|evt=Battery": 1,
+  "prog_b=1|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery": 1
+ },
+ "n_decisions": 3953,
+ "n_unstateable_decisions": 0,
+ "source_results": "/home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/results_4pol",
+ "deviations": [
+  "D-a: pend_f = agent_pending 의 버킷. 원문의 '미해결 고장 수' 는 이 하니스에 존재하지 않는 변수다.",
+  "D-b: 원문 §3.2 의 'evt=Fault & pend_f=0 -> INFEASIBLE' 을 뺐다. D-a 의 정의에서는 실재하고 이미 측정된 칸이다(faultidle 계열).",
+  "D-c: pend_f 에 'na' 칸을 뒀다. zone/reform 사건에는 영향 로봇이 없어 agent_pending=-1 인데, 이를 결측으로 버리면 결정 3953건 중 2568건(zone+reform 전부)이 사라져 격자에서 zone 축이 증발한다."
+ ]
+}

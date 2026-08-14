@@ -28,6 +28,9 @@ DEADLINE_SECONDS=28800          # 8 h
 SHARDS_DIR="results_4pol/shards"
 SKIP_GATES=0
 DRY_RUN=0
+# 정책 목록은 인자로 받는다. run_shard.sh 의 기본값(noop,surrogate,dspy)을 여기서 다시 적지
+# 않고 그대로 물려준다 -- 두 곳에 적으면 조용히 갈린다.
+POLICIES="noop,surrogate,dspy"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +39,7 @@ while [ $# -gt 0 ]; do
         --cases)             CASES="$2"; shift 2 ;;
         --deadline-seconds)  DEADLINE_SECONDS="$2"; shift 2 ;;
         --shards-dir)        SHARDS_DIR="$2"; shift 2 ;;
+        --policies)          POLICIES="$2"; shift 2 ;;
         --skip-gates)        SKIP_GATES=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         *) echo "[error] 알 수 없는 인자: $1" >&2; exit 2 ;;
@@ -50,6 +54,12 @@ mkdir -p "$NIGHT_DIR" "$SHARDS_DIR"
 IFS=',' read -r -a SEED_ARR <<< "$SEEDS"
 IFS=',' read -r -a CASE_ARR <<< "$CASES"
 TOTAL=$(( ${#SEED_ARR[@]} * ${#CASE_ARR[@]} ))
+# 하드코딩 3 을 없앤다: 정책을 늘리면 판 수 기대값이 **조용히** 틀린다.
+N_POLICIES=$(printf '%s' "$POLICIES" | tr ',' '\n' | grep -c . )
+if [ "${N_POLICIES:-0}" -lt 1 ]; then
+    echo "[error] --policies 에서 정책 이름을 하나도 뽑지 못했다: $POLICIES" >&2
+    exit 2
+fi
 
 # ---- 작업 목록 ----------------------------------------------------------
 # seed 를 바깥, case 를 안쪽에 둔다. case 를 바깥에 두면 한 case 가 통째로 같은 시간대에
@@ -66,7 +76,8 @@ done
 echo "=== run_4pol_parallel.sh ==="
 echo "  case  ${#CASE_ARR[@]}개: $CASES"
 echo "  seed  ${#SEED_ARR[@]}개: ${SEED_ARR[0]}..${SEED_ARR[${#SEED_ARR[@]}-1]}"
-echo "  샤드  $TOTAL개 (판 $(( TOTAL * 3 ))개), 병렬 K=$JOBS"
+echo "  정책  ${N_POLICIES}개: $POLICIES"
+echo "  샤드  $TOTAL개 (판 $(( TOTAL * N_POLICIES ))개), 병렬 K=$JOBS"
 echo "  데드라인 ${DEADLINE_SECONDS}s, 샤드 트리 $SHARDS_DIR"
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -86,7 +97,7 @@ else
 fi
 
 START_TIME=$(date +%s)
-export START_TIME DEADLINE_SECONDS SHARDS_DIR STATUS_FILE LOCK_FILE HERE
+export START_TIME DEADLINE_SECONDS SHARDS_DIR STATUS_FILE LOCK_FILE HERE POLICIES
 
 # ---- 워커 --------------------------------------------------------------
 # xargs 가 부르는 함수. 인자: CASE SEED
@@ -105,7 +116,7 @@ worker() {
 
     local t0 rc dt rows
     t0=$(date +%s)
-    bash "$HERE/run_shard.sh" "$case" "$seed" "$outdir"
+    bash "$HERE/run_shard.sh" "$case" "$seed" "$outdir" "$POLICIES"
     rc=$?
     dt=$(( $(date +%s) - t0 ))
     rows=$(count_rows "$outdir/rows.jsonl")

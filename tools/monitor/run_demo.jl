@@ -285,6 +285,13 @@ function handle_ood!(env, truth, nl)
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
         "escalated"     => (try haskey(decision.router, "escalated_from") catch; false end),
         "soc"      => (truth isa CB.BatteryTruth ? (try Float64(truth.soc_after) catch; nothing end) : nothing),
+        # 자연어 해석도 요약 행에 남긴다 -- 스트림 없이 결과 jsonl 만 읽는 분석기(파이썬 표
+        # 조립기)가 같은 문장을 볼 수 있어야 화면과 표가 갈리지 않는다.
+        "narrative" => (try decision.narrative catch; nothing end),
+        # DP 레인이 표를 못 읽었으면 그 **이유**를 행에 남긴다(조용한 폴백 금지).
+        # not_in_table / infeasible / unreachable / tie_unresolved 는 전혀 다른 사건이라,
+        # 뭉뚱그리면 낮은 커버리지가 "알고리즘이 판단을 보류했다" 로 오독된다.
+        "dp_miss"  => (try get(decision.policies["dp"], "dp_miss", nothing) catch; nothing end),
         "nl"       => String(nl)))
     # spec §9(a) 배터리/에너지 훅 활성 검사. 이 데모는 RESPEC_ENABLED=false 로 두고 복구를 직접
     # 몰기 때문에, replan.jl 의 `[RESPEC] ... energy term` 로그가 있는 maybe_respecify! 경로를
@@ -478,9 +485,52 @@ env = CB.run_lego_demo(; ldraw_file = MODEL, project_name = "$(model_base)_ood",
 n_total = Graphs.nv(env.sched)
 println(">>> env built: $n_total schedule nodes")
 
-# 배터리 레이어(완만 용량 → 자연 방전이 0에 안 닿게; 주입된 severe 만 저SoC)
-CB.enable_battery!(env; params = CB.demo_battery_params(shrink = 25.0))
+# ── 배터리 레이어 ─────────────────────────────────────────────────────────────
+# 용량은 **실제 스펙 그대로**(shrink 없음). 예전에는 `demo_battery_params(shrink = 25.0)` 로
+# 용량을 25배 줄였는데, 그건 "짧은 데모에서 방전이 눈에 보이게" 하려는 **시각화용 해킹**이지
+# 물리가 아니다(battery.jl:85-91 이 그렇게 적고 있다). 그 값에서는 지속 가동시간이 이렇게 된다:
+#
+#   부하                     전력      shrink=25    shrink 없음(=스펙)
+#   조작(manipulate, 최대)   1000 W     5.5 분       **2.30 시간**
+#   운반(carry, 짐 100kg)    ~833 W     6.6 분         2.76 시간
+#   보행(무부하)              500 W      11 분          4.60 시간
+#   실측 함대평균             394 W      14 분          5.8 시간
+#
+# 30~40초짜리 tractor 빌드에서 배터리가 눈에 띄게 닳는 것은 물리적으로 말이 안 된다. 실제
+# 작업로봇은 충전 없이 두어 시간 일한다 — 스펙 기본값(2.3 kWh)이 최대부하에서 정확히 2.3시간이라
+# 이미 그 요구를 만족한다. 그래서 축소하지 않는다.
+#
+# 귀결(의도한 것): 자연 방전은 한 빌드에서 SoC 의 0.1~0.5% 뿐이라 SoC ≈ 0.995 로 유지된다.
+# 따라서 **SoC 를 떨어뜨리는 유일한 원인이 주입된 배터리 OOD** 가 된다 — 그것이 실제 상황이고,
+# 부수적으로 `battery_edge_multiplier` 도 (soc ≥ soc_target 이라) 정확히 1.0 이라 평상시
+# 목적식을 건드리지 않는다.
+CB.enable_battery!(env; params = CB.BatteryParams())
 try CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3) catch end
+
+# ── 방전 → 정지 / 감속을 실제로 켠다 (2026-08-13) ─────────────────────────────
+# 예전에는 이 두 줄이 없어서 **배터리가 방전돼도 로봇이 멈추지도 느려지지도 않았다.**
+# `enable_battery!` 는 모션 게이트를 깔아만 두고(`install_soc_speed_hook!`) 무동작으로 남기며,
+# `BATTERY_STALL`/`BATTERY_DERATE` 는 둘 다 기본값이 `enabled=false` 다(battery.jl:489, :539).
+# 그래서 `soc_speed_factor` 가 항상 1.0 을 돌려줬고(:576), 배터리 OOD 는 NL 로 "로봇이 그 자리에
+# 멈췄다"고 말하면서 실제로는 아무 일도 일어나지 않았다 — noop 이 battery case 를 30/30 완주하고
+# 고유 makespan 이 1개뿐이던 것이 그 증거다.
+#
+# 임계값은 라벨러 레인(`gen_oracle_dataset.jl:_arm_battery!`)과 **같은 값**을 쓴다. 두 레인이
+# 다른 물리를 쓰면 오라클 라벨과 4pol 평가가 같은 축에 못 올라간다.
+#   · threshold 0.15 — 주입 OOD 의 결과 SoC 는 DEMO_BSOC=0.9 → ≈0.10 이므로 확실히 정지한다.
+#   · derate hi=0.5, min_factor=0.35 — 정지 경계 위의 **감속 구간**. 이게 없으면 심각도
+#     0.3 과 0.5 가 둘 다 속도배율 1.0 으로 겹쳐 사다리가 한 점으로 무너진다(battery.jl:518-534).
+#
+# ⚠️ 알려진 결합: `soc_speed_factor` 는 첫 줄에서 stall 여부로 조기반환하므로 **derate 는 stall 이
+#    켜져 있을 때만 동작한다.** derate 만 켜는 조합은 조용히 무동작이다.
+CB.set_battery_stall!(enabled = get(ENV, "DEMO_STALL", "1") == "1",
+                      threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.15")) catch; 0.15 end),
+                      clear = true, obstacle = false)
+CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
+                       hi = 0.5, min_factor = 0.35)
+println(">>> battery: capacity=", CB.BatteryParams().capacity_J, " J (spec, no shrink)",
+        "  stall=", CB.BATTERY_STALL[].enabled, "@", CB.BATTERY_STALL[].threshold,
+        "  derate=", CB.BATTERY_DERATE[].enabled)
 CB.RESPEC_ENABLED[] = false   # 우리가 직접 복구하므로 프레임워크 respec-루프는 끔
 # ...하지만 **드리프트 완화는 켠다**(2026-08-06). 이 루프는 respec 을 안 하는 게 아니라 큐를 안 쓸
 # 뿐이고, 실제로 RelocateBuild 같은 기하 복구를 집행한다. 두 스위치가 한 플래그에 묶여 있어서,
@@ -770,6 +820,25 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             # 읽는 값이라 생산자 손잡이를 거기 접으면 읽는 쪽에서 오발한다.
             "objective_hash" => OBJ_HASH,
             "energy_objective" => (ENERGY_ON ? 1 : 0),
+            # `battery_physics` 는 **세 번째 축**이다(2026-08-13). 방전→정지/감속을 켜는 것은
+            # objective.json 의 스칼라를 하나도 안 바꾸고 ENERGY_OBJECTIVE 도 아니므로, 위 두
+            # 필드만으로는 "배터리가 물리적으로 무해했던 판"과 구분할 수 없다. 그런데 그 둘은
+            # 완주 여부부터 다르다(무해했던 세대에서는 noop 이 battery case 를 30/30 완주했다).
+            # 값은 실제로 켜진 설정을 그대로 읽어 적는다 — ENV 를 되읽지 않는다(껐다 켠 사실이
+            # 아니라 **이 런이 실제로 무엇이었는지**가 세대를 가른다).
+            "battery_physics" => Dict(
+                "stall"        => CB.BATTERY_STALL[].enabled,
+                "stall_soc"    => CB.BATTERY_STALL[].threshold,
+                "derate"       => CB.BATTERY_DERATE[].enabled,
+                "derate_hi"    => CB.BATTERY_DERATE[].hi,
+                "capacity_J"   => CB.BatteryParams().capacity_J,
+                # 실제로 몇 대가 방전 정지했나. **로그로는 이걸 확인할 수 없다** — 이 레인은
+                # :472 에서 global_logger 를 Logging.Warn 으로 심는데 battery.jl:297 의
+                # "[STALL] ..." 는 @info 라 통째로 버려진다. 그래서 "로그에 STALL 이 없다"는
+                # "정지가 없었다"의 증거가 되지 못한다(CLAUDE.md Gotchas: @info 가 조용히
+                # 사라져 실제로 오판을 낸 전력이 있다). 이 필드가 유일한 기계적 증거다.
+                "n_stalled"    => (try length(CB.stalled_robots()) catch; -1 end),
+            ),
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")

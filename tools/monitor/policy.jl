@@ -18,6 +18,16 @@ import HTTP, JSON3
 const POLICY   = lowercase(get(ENV, "DEMO_POLICY", "canonical"))
 const DSPY_URL = rstrip(get(ENV, "DSPY_URL", "http://127.0.0.1:8077"), '/')
 
+# ---- 순수 함수로 분리한 조각들 (2026-08-14) -------------------------------------------------
+# 이 파일은 67KB 에 ENV·ConstructionBots 의존이라 **통째로는 단위검사가 안 된다.** 그래서
+# 단위검사가 가능한 판단만 의존성 0 인 파일로 뺐다:
+#   lane_select.jl : 레인 선택 분기표(3-way)        -> test_lane_select.jl
+#   narrate.jl     : 레코드 -> 자연어 문장           -> test_narrate.jl
+#   dp_lane.jl     : DEMO_POLICY=dp 전용 표 조회     (라우터/UI 에는 들어가지 않는다)
+include(joinpath(@__DIR__, "lane_select.jl"))
+include(joinpath(@__DIR__, "narrate.jl"))
+include(joinpath(@__DIR__, "dp_lane.jl"))
+
 # =============================================================================
 #  라우터 (2026-07-28 추가)
 # =============================================================================
@@ -771,6 +781,26 @@ function decide_all(env, truth; nl::AbstractString = "")
                          "rationale" => "reference action a* (measured grids; see reference_policy.py)",
                          "label" => "oracle", "available" => true)
 
+    # ---- DP 레인 (2026-08-14) -- **스윕 전용**, 라우터·UI 에서 제외 ---------------------------
+    # `pol["dp"]` 를 DEMO_POLICY=dp 일 때만 만든다. 그러면 대시보드가 도는 판(router/canonical/…)
+    # 에는 이 키가 아예 없어서 화면이 DP 를 그릴 수 없다 — Global Constraint 10 을 구조로 지킨다.
+    # (조건을 안 걸고 매번 만들면 "화면에 안 그리기로 했다" 는 규약이 렌더러 쪽 약속으로만 남는다.)
+    if POLICY == "dp"
+        local dp_m, dp_why = dp_macro(env, truth)
+        if isempty(dp_m)
+            # 조용한 폴백 금지: 표를 못 읽은 **이유**를 그대로 rationale 에 싣는다. 그래야
+            # FINAL.md 가 "커버리지가 낮아서" 와 "동점이라 보류" 를 구분해 셀 수 있다.
+            pol["dp"] = Dict("chosen" => canon, "ranking" => [canon], "margin" => nothing,
+                             "rationale" => "DP table miss (" * dp_why * ") → canonical rule",
+                             "label" => "dp:table-miss→canonical", "available" => true,
+                             "dp_miss" => dp_why)
+        else
+            pol["dp"] = Dict("chosen" => dp_m, "ranking" => [dp_m], "margin" => nothing,
+                             "rationale" => "DP backward induction a* (" * dp_why * ")",
+                             "label" => "dp", "available" => true, "dp_miss" => nothing)
+        end
+    end
+
     rt = route(env, truth)                        # ← 이 사건을 누구에게 보낼지, 시스템이 판정
     desc = get(rt, "descriptors", nothing)
 
@@ -790,10 +820,32 @@ function decide_all(env, truth; nl::AbstractString = "")
                                 label)
     end
 
-    # 실행할 정책: 라우터가 켜져 있으면 라우터가, 아니면 DEMO_POLICY. 쓸 수 없으면 canonical 폴백.
+    # ---- 실행할 레인: 3-way 분기표 (2026-08-14, spec §3) --------------------------------------
+    # 예전에는 `would = novel ? dspy : surrogate` 뿐이었고(:355 — 그 **판정**은 그대로 둔다,
+    # 기존 녹화와의 비교 가능성이 거기 걸려 있다), canonical 은 아래 폴백에서만 등장했다.
+    # 즉 canonical 은 **이미 사실상 세 번째 주자인데 판정에는 그 사실이 안 적혔다.**
+    # select_lane 이 그 규칙을 명시적으로 적는다(의존성 0 · 전수 단위검사 대상).
     requested = get(rt, "enabled", false) ? String(rt["target"]) : POLICY
+    local avail = Dict{String,Bool}(k => (haskey(pol, k) && pol[k]["available"] === true)
+                                    for k in ("canonical", "surrogate", "dspy", "noop"))
+    # surrogate 가 이 사건의 팔을 학습셋에서 지원하는가 = 기존 에스컬레이션 판정과 **같은 근거**
+    # (`escalation_target` 의 `unsupported` 목록). 프로브 대상은 **언제나 surrogate** 다 —
+    # `requested` 로 물으면 라우터가 이미 dspy 를 고른 사건에서 "지원됨" 이 나와 분기가 뒤집힌다.
+    local _esc_probe, _esc_miss = escalation_target(pol, "surrogate", true)
+    local supported = isempty(_esc_miss)
+
     enacted = requested
     fell_back = false
+    if get(rt, "enabled", false)
+        local sel = select_lane(novel = get(rt, "novel", false) === true, available = avail,
+                                supported = supported, policy = POLICY)
+        enacted = sel.lane
+        # 기존 문구를 **덮어쓰지 않고 덧붙인다** — novelty 수치가 든 줄이 화면에서 사라지면 안 된다.
+        rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason
+        rt["lane_reason"] = sel.reason
+        fell_back = (enacted != requested && enacted == "canonical")
+    end
+    # 고정 정책 실행(라우터 OFF)이거나, 고른 레인이 실제로는 쓸 수 없을 때의 마지막 그물.
     if !(haskey(pol, enacted) && pol[enacted]["available"])
         enacted = "canonical"; fell_back = (requested != "canonical")
     end
@@ -950,9 +1002,35 @@ function decide_all(env, truth; nl::AbstractString = "")
               (isempty(others) ? " · all policies agree" :
                " · DIFFERS from " * join(["$(k)=$(pol[k]["chosen"])" for k in others], ", "))
 
+    # ---- 자연어 서술 (2026-08-14, spec §4.1) --------------------------------------------------
+    # 결정적 템플릿이다(LLM 호출 없음). 여기서 **찍어 넣는** 이유: 대시보드는 스트림을 그대로
+    # 재생하므로, 화면(JS)에서 문장을 조립하면 단위검사 대상이 되지 않는다. 키 이름은 narrate.jl
+    # 이 읽는 것과 정확히 같아야 한다.
+    local _f = try ood_features(env, truth) catch; Dict{String,Any}() end
+    local narrative = try
+        narrate_event(Dict{String,Any}(
+            "kind"          => get(_f, "kind", string(typeof(truth).name.name)),
+            "severity"      => get(_f, "severity", nothing),
+            "soc"           => get(_f, "soc", nothing),
+            "spare_count"   => get(_f, "spare_count", nothing),
+            "agent_pending" => get(_f, "agent_pending", nothing),
+            "progress"      => get(_f, "progress", nothing),
+            "enacted"       => enacted,
+            "macro_name"    => chosen,
+            "fell_back"     => fell_back,
+            "requested"     => requested,
+            "policies"      => pol))
+    catch e
+        # 서술이 실패해도 결정은 계속한다. 다만 **빈 문자열로 조용히 덮지 않는다** — 화면이
+        # "서술 없음" 과 "서술기가 죽었음" 을 구분할 수 있어야 한다.
+        @warn "[narrate] narrate_event failed" exception = e
+        ""
+    end
+
     return (macro_name = chosen, candidates = cands, policies = pol, enacted = enacted,
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],
             llm_macro = pol["dspy"]["chosen"], verdict = verdict, router = rt,
+            narrative = narrative,
             detail = pol[enacted]["rationale"], agree = isempty(others))
 end
 
@@ -1018,6 +1096,10 @@ function record_decision!(env, truth, decision, nl)
                          "enacted"    => decision.enacted,
                          # router = 이 사건을 왜 그쪽으로 보냈는지(p, eps, 판정, 각 producer 의 입력).
                          "router"     => (hasproperty(decision, :router) ? decision.router : nothing),
+                         # 자연어 해석(spec §4.1). 결정 시점에 **찍어 넣는다** — 화면(JS)에서
+                         # 조립하면 단위검사 대상이 되지 않고, 파이썬 후처리로 만들면 라이브
+                         # 화면에 안 뜬다. 재스윕 이전 녹화에는 이 키가 없다(화면이 자리를 비운다).
+                         "narrative"  => (hasproperty(decision, :narrative) ? decision.narrative : nothing),
                          "rationale" => decision.detail,
                          "agrees_with_rule" => decision.agree),
             candidates = decision.candidates,
