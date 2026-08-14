@@ -126,15 +126,81 @@ def solve(samples, grid=None, cfg=None):
     return out
 
 
+# =====================================================================================
+# 계층 백오프 — 정밀한 칸이 못 갈랐을 때 **한 단계 거친 칸**으로 물러난다
+# =====================================================================================
+# 왜 필요한가 (실측 2026-08-14): 팔을 고정해 굴리면 궤적이 갈려 서로 다른 칸에 착지한다.
+# 그래서 6축 정밀 격자에서는 한 칸에 팔이 하나만 오는 경우가 다수이고(43칸 중 26칸),
+# argmin 을 낼 수가 없다. 축을 덜어내면 팔이 같은 칸에 모인다 — 실측 co-occurrence:
+#     6축 그대로            : 43칸 중 팔>=2 인 칸 17
+#     -spares_b             : 22칸 중 19
+#     -spares_b, -prog_b    :  8칸 중  8
+#
+# 대가는 **편향**이다: 거친 칸은 서로 다른 상태를 한 평균에 섞는다. 그래서
+#   (1) 언제나 **가장 정밀한 레벨부터** 시도하고, 갈린 순간 멈춘다.
+#   (2) 어느 레벨이 답했는지를 **칸마다 기록**한다(`dp_level`). 레벨을 안 남기면 정밀한 답과
+#       거친 답이 표에서 구별되지 않아, 편향이 정확도로 위장된다.
+#
+# 왜 **평평한** 표로 내보내는가: 조회는 Julia(`dp_lane.jl`)가 한다. 계층 구조를 표에 담으면
+# 투영 규칙이 두 언어에 각각 생겨 갈릴 수 있다(그게 test_cellkey_parity.py 가 막는 결함이다).
+# 그래서 백오프는 **여기서 전부 풀어** 놓고, 표는 정밀 칸 키 하나로만 조회되게 만든다.
+# Julia 쪽은 한 줄도 바뀌지 않는다.
+BACKOFF_LEVELS = [
+    (),                          # L0: 6축 그대로
+    ("spares_b",),               # L1: 스페어 수를 덜어낸다 (개입으로 가장 잘 갈리는 축)
+    ("spares_b", "prog_b"),      # L2: 진행도까지 덜어낸다
+]
+
+
+def _project(cell, drop):
+    return "|".join(p for p in cell.split("|") if p.split("=", 1)[0] not in drop)
+
+
+def solve_hierarchical(samples, all_cells=None):
+    """정밀 칸 키 -> 답. 갈리는 가장 정밀한 레벨을 골라 그 답을 **정밀 키에** 적는다."""
+    tables = []
+    for drop in BACKOFF_LEVELS:
+        proj = [dict(r, cell=_project(r["cell"], set(drop))) for r in samples] if drop else samples
+        tables.append(solve(proj))
+
+    cells = set(all_cells or [])
+    cells |= {r["cell"] for r in samples}
+
+    out = {}
+    for c in sorted(cells):
+        entry = None
+        for lvl, (drop, tab) in enumerate(zip(BACKOFF_LEVELS, tables)):
+            key = _project(c, set(drop))
+            d = tab.get(key)
+            if d is None:
+                continue
+            if entry is None:                       # 가장 정밀한 "존재하는" 칸을 기본으로 둔다
+                entry = dict(d, dp_level=lvl, dp_level_key=key)
+            if d.get("a_star") is not None:         # 갈린 순간 멈춘다
+                entry = dict(d, dp_level=lvl, dp_level_key=key)
+                break
+        if entry is not None:
+            out[c] = entry
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--samples", default=os.path.join(HERE, "samples.jsonl"))
+    ap.add_argument("--samples", default=os.path.join(HERE, "samples.jsonl"),
+                    help="쉼표로 여러 개 줄 수 있다(표집 라운드를 나눠 돌렸을 때)")
     ap.add_argument("--grid", default=os.path.join(HERE, "grid_spec.json"))
     ap.add_argument("--out", default=os.path.join(HERE, "value.json"))
     a = ap.parse_args()
 
     import objective
-    rows = [json.loads(l) for l in open(a.samples) if l.strip()]
+    rows = []
+    for sp in a.samples.split(","):
+        sp = sp.strip()
+        if not sp:
+            continue
+        n0 = len(rows)
+        rows += [json.loads(l) for l in open(sp) if l.strip()]
+        print("  표본 %s: %d행" % (os.path.basename(sp), len(rows) - n0))
 
     # 세대 단일성: 표본이 두 세대에서 왔으면 멈춘다. 섞인 값을 표에 각인시키지 않는다.
     hashes = {r.get("objective_hash") for r in rows if r.get("objective_hash")}
@@ -144,11 +210,17 @@ def main():
     if hashes and cur not in hashes:
         sys.exit("표본의 objective_hash 가 현행과 다르다(구세대 표본): %s" % hashes)
 
-    val = solve(rows, grid=json.load(open(a.grid)), cfg=objective.load())
+    grid = json.load(open(a.grid))
+    # 정밀 칸부터 시도하고 못 갈리면 한 단계 거친 칸으로 물러난다. 스윕이 실제로 지나는 칸
+    # (grid_spec 의 observed_cells)도 열쇠 목록에 넣어, 표집이 못 닿은 칸도 거친 레벨로는
+    # 답이 나오게 한다.
+    val = solve_hierarchical(rows, all_cells=list(grid.get("observed_cells") or {}))
     n_tie = sum(1 for v in val.values() if v.get("unresolved_reason") == "tie")
     n_dead = sum(1 for v in val.values() if v.get("V") is None)
     n_1arm = sum(1 for v in val.values() if v.get("unresolved_reason") == "single_arm")
     n_resolved = sum(1 for v in val.values() if v.get("a_star") is not None)
+    by_level = collections.Counter(v.get("dp_level") for v in val.values()
+                                   if v.get("a_star") is not None)
 
     with open(a.out, "w") as f:
         json.dump({
@@ -160,6 +232,9 @@ def main():
             "n_cells_unscorable": n_dead,
             "n_cells_single_arm": n_1arm,
             "n_cells_resolved": n_resolved,
+            "resolved_by_level": {str(k): v for k, v in sorted(by_level.items())},
+            "backoff_levels": [{"level": i, "dropped_axes": list(d)}
+                               for i, d in enumerate(BACKOFF_LEVELS)],
             # 이 표가 무엇인지 **표 안에** 적는다. 소비처가 문서를 안 읽어도 오해하지 않게.
             "method": "constant-arm counterfactual on the measured phi-tilde grid; "
                       "Q(s,a)=E[J(board) | board visited s, all its decisions forced to a]. "
@@ -172,10 +247,16 @@ def main():
                 "the ceiling name must not be used (design §8.7)",
                 "single-arm cells claim NO a*: forcing an arm changes the trajectory, so arms land "
                 "in different cells and many cells see only one arm. One arm is not an argmin.",
+                "hierarchical backoff: a cell answered at dp_level>0 was resolved on a COARSER "
+                "projection (dropped axes listed in backoff_levels), which averages over "
+                "heterogeneous states and is therefore MORE BIASED. dp_level is recorded per cell "
+                "so a coarse answer is never mistaken for a precise one.",
             ],
         }, f, indent=1, ensure_ascii=False)
     print("cells=%d  a* 확정=%d  tie 미확정=%d  단일팔(비교없음)=%d  전부채점불가=%d  -> %s"
           % (len(val), n_resolved, n_tie, n_1arm, n_dead, a.out))
+    print("  확정된 칸의 레벨 분포(0=6축 정밀, 클수록 거칠고 편향): %s"
+          % {("L%s" % k): v for k, v in sorted(by_level.items())})
 
 
 if __name__ == "__main__":
