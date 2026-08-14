@@ -109,6 +109,12 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes):
             # 채점 불가 판은 **버리지 않고 이름으로 남긴다.** 조용히 빼면 표가 낙관 편향된다.
             cost, unscorable = None, str(e)[:160]
         terminal = "goal" if r.get("complete") else "dead_end"
+        # 4pol 레인은 에너지를 **최상위가 아니라 `battery` 하위**에 낸다(objective.J_row 가
+        # 두 스키마를 다 읽는 이유가 이것이다). 최상위만 보면 조용히 None 이 되어 표에서
+        # 에너지 열이 통째로 비는데, 그건 "에너지를 안 썼다" 가 아니라 "잘못된 키를 봤다" 다.
+        _bat = r.get("battery") or {}
+        _energy = r.get("energy_J", _bat.get("total_energy_J"))
+        _epc = _bat.get("energy_per_closed")
         for d in (r.get("decisions") or []):
             st = state_of(d, axes)
             if st is None:
@@ -122,7 +128,7 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes):
                 "enacted_macro": d.get("macro"),
                 "complete": bool(r.get("complete")), "closed": r.get("closed"),
                 "total": r.get("total"), "makespan": r.get("makespan"),
-                "energy_J": r.get("energy_J"),
+                "energy_J": _energy, "energy_per_closed": _epc,
                 "objective_hash": r.get("objective_hash"),
                 "energy_objective": r.get("energy_objective"),
                 # 한 판이 n 칸에 같은 J 를 나눠 주는 것을 표에서 볼 수 있게 남긴다.
