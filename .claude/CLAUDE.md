@@ -38,11 +38,19 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 - 이 날 이전의 모든 결과 문서(= `RESULTS_D20_2026-08-12.md` 포함)는 구세대다 — 🔴 배너 붙음.
 - `ENERGY_OBJECTIVE=0` 으로 구세대 동작을 재현할 수 있다(끈 사실이 로그에 남는다).
 - **세대 딱지를 찍는 산출 레인 3곳**: `tools/monitor/run_demo.jl`(`DEMO_SUMMARY` 레코드) ·
-  `oracle/gen_oracle_mc.jl`(유닛 CSV) · `oracle/gen_oracle_dataset.jl`(JSONL 행). 전부
-  `objective_hash` 필드를 낸다. 스케일 재교정(`measure_objective_scales.py`)은 그 필드로
-  **세대를 가른다** — 표본에 세대가 둘 이상이면 exit 1 이고, `--generation current|none|<hash>`
-  로 하나를 고르거나 `--allow-mixed` 로 명시적으로 섞어야 한다. 이 도구의 중앙값이 그대로
-  `objective.json` 의 `M_ref`/`E_ref` 가 되므로, 여기서 섞이면 혼입이 상수에 각인된다.
+  `oracle/gen_oracle_mc.jl`(유닛 CSV 17·18열) · `oracle/gen_oracle_dataset.jl`(JSONL 라벨 행).
+  전부 **`objective_hash` 와 `energy_objective`(0|1) 두 필드**를 낸다. 세대 키는 그 **쌍**이다:
+  `ENERGY_OBJECTIVE` 는 플래너 손잡이라 `objective.json` 의 스칼라를 하나도 안 바꿔 해시로는
+  껐는지 알 수 없는데, 끈 런은 다른 플래너 목적함수가 만든 것이라 세대가 실제로 갈린다.
+  **해시에 접지 않은 이유**: 해시는 `verify.py`·`e1_analyze.py`·`step6_gap.py` 같은 **분석
+  소비처**가 읽는 값이라, 생산자 손잡이를 거기 접으면 `ENERGY_OBJECTIVE=0 python verify.py`
+  한 줄이 기존 덤프 전체를 조용히 구세대로 재분류한다.
+  스케일 재교정(`measure_objective_scales.py`)이 그 쌍으로 **세대를 가른다** — 표본에 세대가
+  둘 이상이면 exit 1 이고, `--generation current|none|<hash>|<hash>|eo=<0|1>` 로 하나를 고르거나
+  `--allow-mixed` 로 명시적으로 섞어야 한다. 이 도구의 중앙값이 그대로 `objective.json` 의
+  `M_ref`/`E_ref` 가 되므로, 여기서 섞이면 혼입이 상수에 각인된다.
+  `read_units()`(MC 레인)도 같은 쌍으로 판정한다 — **`energy_objective` 열이 없는 옛 샤드는
+  하드 스톱한다**(그 런이 ON 이었는지 OFF 였는지 기록이 없어 추정할 수 없다).
 - **와이어링은 됐지만 아직 안 켜진 것**: `GreedyEnergyAwareCost` 는 존재하고 맞지만 **어느 레인도
   아직 고르지 않는다** — greedy 는 t=0 에만 도는데 그 시점엔 `AGENT_COST_BIAS[]` 가 비어 있고
   `EDGE_COST_MULTIPLIER[]` 가 `nothing` 이라, 항이 있어도 에너지·SoC·DeprioritizeAgent 정보 없이
@@ -60,16 +68,24 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
      zoneblk/zonecore instance 의 `energy_J` 는 NaN** 이고, 그 행의 완주 J 는 여전히 정의되지
      않는다(= 라벨 격자의 대다수). 키를 고친 것이 데이터셋을 채점 가능하게 만들었다고 읽지 말 것.
      그 kind 들에 배터리 레이어를 켜는 것은 동작 변경이라 이 계획의 범위 밖이다.
-  2. **네 번째 κ 가 `objective.json` 밖에 산다.** `tools/e2e.jl:674`, `tools/demos.jl:1110`·`:1279`
-     이 `efficiency` 를 자기 리터럴로 켠다. `get_objective_expr` 의 auto 경로는 `w_eff == 0.0`
-     일 때만 도므로 **그 레인들은 전역 κ 를 영원히 못 본다** — spec §4 의 "κ 하나만 돌리면 세
-     곳이 같이 움직인다"가 그 레인에서는 거짓이다. 범위 밖으로 남겼다.
+  2. **네 번째 κ 가 `objective.json` 밖에 산다 — 활성화 지점 5곳.**
+     `grep -n "set_planning_objective_weights!" tools/e2e.jl tools/demos.jl` 로 재확인한 목록:
+     `tools/e2e.jl:685`(ENV `ENERGY_W`, 기본 0.01) · `tools/demos.jl:1123`·`:1288`·`:1586`
+     (전부 `ENERGY_W`, 기본 1.0e-3, `demos.jl:1110` 에서 정의) · `tools/demos.jl:2759`
+     (`ENERGY_W` 기본 0.01 을 그 자리에서 파싱). `get_objective_expr` 의 auto 경로는
+     `w_eff == 0.0` 일 때만 도므로 **그 다섯 레인은 전역 κ 를 영원히 못 본다** — spec §4 의
+     "κ 하나만 돌리면 세 곳이 같이 움직인다"가 거기서는 거짓이다. 범위 밖으로 남겼다.
+     (`demos.jl:1420`·`:1748` 은 반대로 `efficiency = 0.0` 으로 **끄는** 자리다.)
   3. **surrogate 학습 목표는 아직 `closed − λ·MACRO_COST` 다**(채점은 `−J`). spec §8 단계 7 의
      재학습으로 닫힌다. `audit_objective.py` 항목 8 이 그 유예 표식을 기계로 지킨다.
-  4. **`ENERGY_OBJECTIVE=0` 으로 돌린 런도 현행 `objective_hash` 를 찍는다.** 세 레인
-     (`run_demo.jl`·`gen_oracle_mc.jl`·`gen_oracle_dataset.jl`) 모두 그렇다. 껐다는 사실은
-     **stdout 로그에만** 남고 행에는 안 남으므로, `ENERGY_OBJECTIVE=0` 산출물을 신세대 덤프와
-     섞으면 해시 검사가 그것을 못 잡는다. 껐으면 출력 경로를 분리할 것.
+  4. **`makespan` 의 `-1.0` 센티넬 (명명된 부채, CSV 재채점 전에 닫을 것).**
+     `gen_oracle_mc.jl` 의 `append_unit!` 은 이제 한 `@printf` 안에서 **두 규약**을 쓴다 —
+     `energy_J` 는 빈 필드(→ 되읽으면 NaN, `Objective.J` 가 설계대로 던진다), `makespan` 은
+     아직 `-1.0`(→ 되읽으면 유한한 −1.0). 오늘 착취 경로는 **닫혀 있다**: `aggregate()` 는
+     미리 계산된 `cost` 열만 평균하고, `read_units().makespan` 을 `Objective.J` 로 넘기는
+     소비처가 없으며, `tools/step6_gap.py` 는 그 열을 읽지 않는다. 위험한 것은 **비대칭
+     그 자체**다 — CSV 재채점(행에서 J 를 다시 계산하는 코드)이 들어오는 순간 이 버그가 되살아난다.
+     `energy_J` 와 같은 2줄 스타일(`%s` + 빈 필드, `_parse_energy` 류 되읽기)로 닫을 것.
 - **아직 안 한 것**: 630판 스윕 재실행(단계 6), surrogate 재라벨·재학습(단계 7),
   prefix 결정성 재측정(단계 8), DP 계획 재개(단계 9). 그때까지 신세대 성능 수치는 없다.
   **에너지 결정력(spec §4.2/§9 무력 검사)도 아직 측정 안 됐다** — 지금 있는 모든 덤프는

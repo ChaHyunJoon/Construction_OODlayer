@@ -761,8 +761,15 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             # 목적함수 세대(provenance). geometry 와 같은 이유로 필요하다 — 목적함수가 바뀌면
             # makespan·에너지가 전부 달라지므로, 이 블록 없이 서로 다른 세대의 런을 한 표에
             # 섞으면 조용히 틀린 비교가 된다(spec §7). 소비처: report_energy_decisiveness.py,
-            # measure_objective_scales.py --require-generation.
+            # measure_objective_scales.py(`--generation` 으로 이 값을 고른다).
+            #
+            # `energy_objective` 는 해시가 표현하지 못하는 두 번째 축이다(F-1): ENERGY_OBJECTIVE
+            # 는 플래너 손잡이라 objective.json 의 스칼라를 하나도 안 바꾼다 — 즉 껐다 켜도
+            # objective_hash 가 같다. 그런데 끈 런은 다른 플래너 목적함수로 만들어진 것이므로
+            # 세대가 실제로 갈린다. 해시에 접지 않은 이유: 해시는 분석 소비처(verify.py 등)가
+            # 읽는 값이라 생산자 손잡이를 거기 접으면 읽는 쪽에서 오발한다.
             "objective_hash" => OBJ_HASH,
+            "energy_objective" => (ENERGY_ON ? 1 : 0),
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")

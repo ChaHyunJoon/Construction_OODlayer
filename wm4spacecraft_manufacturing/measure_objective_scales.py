@@ -16,14 +16,20 @@ M_ref/E_ref 로 되박힌다 — 즉 **다음 세대의 상수를 정의하는 �
 검사로도 드러나지 않는다. spec §7 의 `generation`/`objective_hash` 필드가 막으려는 바로 그
 경로다. 그래서 기본 동작은 **섞이면 멈춘다**:
 
-  · 스캔한 행의 `objective_hash` 분포를 항상 리포트에 낸다(`generation_breakdown`).
+  · 스캔한 행의 세대 분포를 항상 리포트에 낸다(`generation_breakdown`).
   · 표본에 서로 다른 세대가 둘 이상이면 exit 1. `--generation <hash|current|none>` 로 하나만
     고르거나, 의도적으로 섞을 때만 `--allow-mixed` 를 준다(그 사실이 notes 에 남는다).
-  · `objective_hash` 필드가 없는 행은 `"<none>"` 세대다 = 그 필드가 배선되기 전의 구세대.
+
+**세대 키는 `objective_hash` 하나가 아니라 `(objective_hash, energy_objective)` 쌍이다** (F-1).
+`ENERGY_OBJECTIVE` 는 플래너 손잡이라 `objective.json` 의 스칼라를 하나도 바꾸지 않는다 — 즉
+껐다 켜도 `objective_hash` 가 같다. 그런데 끈 런은 다른 플래너 목적함수가 만든 스케줄이므로
+makespan·에너지 분포가 다르고, 그것을 한 중앙값에 섞으면 그 혼입이 `M_ref`/`E_ref` 에 각인된다.
+쌍을 키로 쓰면 위의 혼입 가드가 그대로 이 축까지 막아 준다. 필드가 없는 행은 `<none>` 이다 =
+그 필드가 배선되기 전의 구세대(= 값을 추정하지 않는다).
 
 사용:
     .venv/bin/python measure_objective_scales.py -o /path/to/report.json
-    .venv/bin/python measure_objective_scales.py --generation current   # 신세대만
+    .venv/bin/python measure_objective_scales.py --generation current   # 신세대(에너지 ON)만
 """
 import argparse, glob, json, math, os, statistics, sys
 
@@ -31,13 +37,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import objective  # noqa: E402
 
-NO_GEN = "<none>"   # objective_hash 필드가 아예 없는 행의 세대 딱지
+NO_GEN = "<none>"   # 그 필드가 아예 없는 행의 딱지
+
+
+def _gen_key(obj_hash, energy_objective):
+    """세대 키 문자열. gen_oracle_mc.jl 의 GEN_KEY 와 같은 표기를 쓴다."""
+    return "%s|eo=%s" % (obj_hash, energy_objective)
 
 
 def _generation(row):
-    """행이 스스로 밝힌 목적함수 세대. 없으면 NO_GEN(= 배선 전 구세대)."""
-    v = row.get("objective_hash")
-    return str(v) if isinstance(v, str) and v else NO_GEN
+    """행이 스스로 밝힌 세대 = (objective_hash, energy_objective). 없는 축은 NO_GEN."""
+    h = row.get("objective_hash")
+    h = str(h) if isinstance(h, str) and h else NO_GEN
+    eo = row.get("energy_objective")
+    eo = str(int(eo)) if isinstance(eo, (int, float)) and not isinstance(eo, bool) else NO_GEN
+    return _gen_key(h, eo)
 
 
 def _rows(patterns):
@@ -90,18 +104,23 @@ def main():
     ap.add_argument("--glob", action="append", default=None,
                     help="스캔할 glob 패턴 (반복 가능). 기본: results_4pol 계열 전부")
     ap.add_argument("--generation", default=None,
-                    help="이 세대의 행만 측정한다. 16자 objective_hash, 또는 'current'"
-                         "(= 현재 objective.json 의 해시), 또는 'none'(= objective_hash 필드가 "
-                         "없는 배선 전 구세대).")
+                    help="이 세대의 행만 측정한다. 'current'(= 현재 objective.json 해시 + "
+                         "energy_objective=1), 'none'(= 두 필드가 다 없는 배선 전 구세대), "
+                         "16자 objective_hash(= 그 해시 + energy_objective=1), 또는 "
+                         "'<hash>|eo=<0|1>' 전체 키.")
     ap.add_argument("--allow-mixed", action="store_true",
                     help="세대가 섞여 있어도 진행한다. 기본은 exit 1 로 멈춘다 (spec §7).")
     args = ap.parse_args()
 
     want_gen = args.generation
     if want_gen == "current":
-        want_gen = objective.objective_hash()
+        want_gen = _gen_key(objective.objective_hash(), "1")
     elif want_gen == "none":
-        want_gen = NO_GEN
+        want_gen = _gen_key(NO_GEN, NO_GEN)
+    elif want_gen is not None and "|eo=" not in want_gen:
+        # 해시만 준 것은 "그 해시 + 에너지 ON" 으로 읽는다(가장 흔한 의도). 다른 조합이 필요하면
+        # 전체 키를 그대로 넘길 것 — 조용히 어느 한쪽으로 뭉개지 않는다.
+        want_gen = _gen_key(want_gen, "1")
 
     patterns = args.glob or [
         "results_4pol/*.jsonl",
@@ -134,10 +153,13 @@ def main():
     # _rows() sets this attribute once fully drained: one relpath entry per
     # file it opened (glob order), already deduplicated — no per-row rebuild needed.
     files = _rows.files
-    breakdown = {"scanned": dict(sorted(scanned_gens.items())),
+    breakdown = {"key": "objective_hash|eo=energy_objective",
+                 "scanned": dict(sorted(scanned_gens.items())),
                  "sample": dict(sorted(sample_gens.items())),
+                 "current_generation": _gen_key(objective.objective_hash(), "1"),
                  "current_objective_hash": objective.objective_hash(),
-                 "filter": args.generation, "n_filtered_out": n_gen_filtered}
+                 "filter": args.generation, "resolved_filter": want_gen,
+                 "n_filtered_out": n_gen_filtered}
 
     if n_complete == 0:
         print(json.dumps({"error": "완주 + makespan + energy 를 모두 가진 행이 하나도 없다",
@@ -168,9 +190,9 @@ def main():
     notes.append("Eg_scale 은 직접 계측이 아니라 '런 에너지 / 닫힌 노드 수'의 중앙값 근사다 "
                  "(greedy 결정 한 건의 에너지 규모를 계측한 적이 없다).")
     notes.append("구세대 행은 makespan 키가 없어 sim_seconds(= dt × steps, 같은 계산)를 썼다.")
-    notes.append("표본의 목적함수 세대: %s (현재 해시=%s)"
+    notes.append("표본의 세대(objective_hash|eo=energy_objective): %s (현재=%s)"
                  % (", ".join("%s×%d" % (g, n) for g, n in sorted(sample_gens.items())),
-                    breakdown["current_objective_hash"]))
+                    breakdown["current_generation"]))
     if len(sample_gens) > 1:
         notes.append("⚠️ --allow-mixed 로 **서로 다른 세대를 한 중앙값에 섞었다**. 이 상수를 "
                      "objective.json 에 박으면 혼입이 그대로 각인된다 (spec §7).")

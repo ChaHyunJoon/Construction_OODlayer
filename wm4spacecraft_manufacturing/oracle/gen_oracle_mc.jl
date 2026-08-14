@@ -154,8 +154,12 @@ const COST_TIE_EPS  = Float64(OBJ_CFG["tie_eps"])
 
 # 플래너(greedy/MILP)의 목적함수 가중치도 같은 objective.json 에서 심는다 (spec §4, §5) —
 # 라벨을 매기는 J 와 그 라벨을 만들어 낸 플래너가 같은 κ 를 쓰게 하는 자리다.
-# ENERGY_OBJECTIVE=0 이면 끈다(구세대 재현용 탈출구 — 껐다는 사실이 로그에 남는다).
-if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+# ENERGY_OBJECTIVE=0 이면 끈다(구세대 재현용 탈출구). 껐다는 사실은 로그**와 산출물 행**에
+# 남는다 — 이 손잡이는 objective.json 의 스칼라를 하나도 안 바꾸므로 objective_hash 로는
+# 껐는지 알 수 없는데, 끈 런은 다른 플래너 목적함수로 만들어진 것이라 세대가 실제로 갈린다.
+# 해시에 접지 않고 별도 열(`energy_objective`)로 각인하는 이유는 append_unit! 주석 참조 (F-1).
+const ENERGY_ON = get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+if ENERGY_ON
     let w = CB.init_objective_weights!()
         println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
     end
@@ -454,7 +458,17 @@ end
 # objective_hash 는 **cost 열이 어느 목적함수로 계산됐는지**를 행에 박는다(spec §7).
 # 이게 없으면 다른 J 로 만든 샤드가 read_units() 에서 조용히 한 Q̂ 로 평균된다 — 이 저장소가
 # 실제로 겪은 "두 세대 혼입" 결함 그대로다.
-const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent,energy_J,objective_hash"
+#
+# `energy_objective`(18열)는 objective_hash 가 표현하지 **못하는** 두 번째 세대 축이다(F-1):
+# ENERGY_OBJECTIVE 는 플래너 손잡이라 objective.json 의 스칼라를 하나도 안 바꾼다 — 껐다 켜도
+# 해시가 같다. 그런데 끈 런은 다른 플래너 목적함수가 만든 스케줄이라 Q̂ 를 섞으면 안 된다.
+# **해시에 접지 않은 이유**: objective_hash 는 verify.py / e1_analyze.py / step6_gap.py 같은
+# **분석 소비처**가 읽는 값이다. 생산자 손잡이를 거기 접으면 `ENERGY_OBJECTIVE=0 python verify.py`
+# 한 줄이 기존 덤프 전체를 조용히 "구세대"로 재분류한다. 열은 기계로 보이고 읽는 쪽에서 오발하지
+# 않는다. 아래 read_units() 의 세대 판정 키는 (objective_hash, energy_objective) **쌍**이다.
+const CSV_HEADER = "action,rollout,hz_seed,complete,closed,total,makespan,cost,hz_break,hz_cell,hz_zone,hz_pending,hz_capped,hz_sim_s,agent,energy_J,objective_hash,energy_objective"
+"이 프로세스가 낸 행의 세대 키 = (목적함수 해시, 플래너 에너지항 on/off)."
+const GEN_KEY = OBJ_HASH * "|eo=" * (ENERGY_ON ? "1" : "0")
 function append_unit!(a::Int, k::Int, hz_seed::Int, r)
     mkpath(OUTDIR)
     isfile(UNITCSV) || open(io -> println(io, CSV_HEADER), UNITCSV, "w")
@@ -465,13 +479,14 @@ function append_unit!(a::Int, k::Int, hz_seed::Int, r)
         # 조용히 나온다 — 즉 센티넬이 데이터로 둔갑한다. 빈 필드는 되읽을 때 NaN 이 되고 NaN 은
         # J 에서 정확히 에러를 낸다. 열 개수는 그대로라 위치로 읽는 read_units() 와 헤더 이름으로
         # 읽는 step6_gap.py(DictReader) 양쪽에 안전하다.
-        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%s,%s\n",
+        @printf(io, "%d,%d,%d,%s,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%.2f,%s,%s,%s,%d\n",
                 a, k, hz_seed, r.complete ? "true" : "false", r.closed, r.total,
                 isfinite(r.makespan) ? r.makespan : -1.0, scalar_cost(r),
                 r.hz_break, r.hz_cell, r.hz_zone, r.hz_pending_break,
                 r.hz_capped ? "true" : "false", r.hz_sim_s,
                 r.seen === nothing ? "none" : r.seen.agent,
-                isfinite(r.energy_J) ? @sprintf("%.4f", r.energy_J) : "", OBJ_HASH)
+                isfinite(r.energy_J) ? @sprintf("%.4f", r.energy_J) : "", OBJ_HASH,
+                ENERGY_ON ? 1 : 0)
     end
 end
 
@@ -493,15 +508,18 @@ function read_units()
     files = unit_csv_files()
     isempty(files) && return NamedTuple[]
     rows = NamedTuple[]
-    stale = Dict{String,Set{String}}()   # 파일 -> 그 파일에서 본 (현행이 아닌) objective_hash 들
+    stale = Dict{String,Set{String}}()   # 파일 -> 그 파일에서 본 (현행이 아닌) 세대 키들
     for fp in files, line in eachline(fp)
         startswith(strip(line), "action,") && continue   # 각 샤드의 헤더 줄 건너뜀
         f = split(strip(line), ",")
         length(f) < 15 && continue
-        # f[17](objective_hash) 는 이 필드가 추가되기 전 샤드에는 없다. 없거나 현행과 다르면
-        # 그 행의 cost 열은 **다른 목적함수로 계산된 값**이다 — 아래에서 시끄럽게 멈춘다(§7).
-        h = length(f) >= 17 ? String(f[17]) : "<none>"
-        h == OBJ_HASH || push!(get!(stale, fp, Set{String}()), h)
+        # 세대 키 = (f[17] objective_hash, f[18] energy_objective). 둘 다 그 필드가 추가되기 전
+        # 샤드에는 없다. 키가 현행과 다르면 그 행의 cost 는 **다른 목적함수로 계산된 값**이거나
+        # **다른 플래너 설정이 만든 스케줄**이다 — 아래에서 시끄럽게 멈춘다(§7).
+        h  = length(f) >= 17 ? String(f[17]) : "<none>"
+        eo = length(f) >= 18 ? String(strip(f[18])) : "<none>"
+        key = h * "|eo=" * eo
+        key == GEN_KEY || push!(get!(stale, fp, Set{String}()), key)
         try
             # f[16](energy_J) 는 이 필드가 추가되기 전 샤드 CSV 에는 없다 — 있으면 파싱, 없으면 NaN.
             # 빈 필드 = "비유한이라 기록 못 함" → NaN (M-2). 옛 -1.0 센티넬로 쓰인 샤드도 NaN 으로
@@ -516,22 +534,28 @@ function read_units()
                          hz_capped = f[13] == "true", hz_sim_s = parse(Float64, f[14]),
                          agent = f[15],
                          energy_J = _parse_energy(length(f) >= 16 ? f[16] : ""),
-                         objective_hash = h))
+                         objective_hash = h, energy_objective = eo))
         catch; end
     end
     # 세대 혼입은 조용히 넘어가지 않는다(spec §7). cost 열끼리 평균내는 것이 이 함수의 전부인데,
     # 서로 다른 J 로 계산된 cost 를 섞으면 Q̂ 가 아무것도 뜻하지 않게 된다.
-    stale_lines = ["  " * fp * " : objective_hash=" * join(sort(collect(hs)), ", ")
+    stale_lines = ["  " * fp * " : " * join(sort(collect(hs)), ", ")
                    for (fp, hs) in sort(collect(stale), by = first)]
-    # 관측된 값이 실제 해시인지 '열 자체가 없음'인지에 따라 원인이 다르므로 그때만 설명한다.
-    saw_none = any(h -> h == "<none>", Iterators.flatten(values(stale)))
+    # 관측된 값이 실제 값인지 '열 자체가 없음'인지에 따라 원인이 다르므로 그때만 설명한다.
+    all_keys = collect(Iterators.flatten(values(stale)))
+    saw_none_hash = any(k -> startswith(k, "<none>|"), all_keys)
+    saw_none_eo   = any(k -> endswith(k, "|eo=<none>"), all_keys)
     isempty(stale) || throw(Objective.ObjectiveError(
-        "[MC] 이 샤드 CSV 들은 현행 목적함수(objective_hash=$OBJ_HASH)로 계산된 cost 가 아니다:\n" *
+        "[MC] 이 샤드 CSV 들은 현행 세대(=$GEN_KEY)의 행이 아니다:\n" *
         join(stale_lines, "\n") * "\n" *
-        (saw_none ? "'<none>' = objective_hash 열이 생기기 전의 **구세대** 샤드(에너지 항 없는 J).\n" : "") *
-        "조치: (1) 그 샤드를 다른 곳으로 옮기거나 지우고 현행 J 로 유닛을 다시 돌린다, 또는\n" *
-        "      (2) 그 세대를 재현하려면 당시의 ENV(MC_COST_FAIL/MC_COST_UNCLOSED)와 objective.json 을 되돌린다.\n" *
-        "다른 J 로 계산된 cost 를 현행 cost 와 섞어 평균내지 않는다."))
+        (saw_none_hash ? "'<none>|…' = objective_hash 열이 생기기 전의 **구세대** 샤드(에너지 항 없는 J).\n" : "") *
+        (saw_none_eo ? "'…|eo=<none>' = energy_objective 열이 생기기 전의 샤드 — 그 런이 " *
+                       "ENERGY_OBJECTIVE=1 이었는지 0 이었는지 **기록이 없어 알 수 없다**. " *
+                       "추정해서 섞지 않는다(spec §5).\n" : "") *
+        "조치: (1) 그 샤드를 다른 곳으로 옮기거나 지우고 현행 설정으로 유닛을 다시 돌린다, 또는\n" *
+        "      (2) 그 세대를 재현하려면 당시의 ENV(MC_COST_FAIL/MC_COST_UNCLOSED/ENERGY_OBJECTIVE)와\n" *
+        "          objective.json 을 되돌린다.\n" *
+        "다른 목적함수/다른 플래너 설정이 만든 cost 를 현행 cost 와 섞어 평균내지 않는다."))
     # (action, rollout) 중복 제거 — 같은 유닛을 재실행했거나 샤드가 겹치면 그대로 두 번 세어져
     # Q̂ 가 조용히 틀어진다. 나중 것을 채택한다.
     seen = Dict{Tuple{Int,Int},NamedTuple}()

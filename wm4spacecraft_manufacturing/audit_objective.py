@@ -101,11 +101,12 @@ bad = []
 "objective.json" in jsrc or bad.append("objective.json 을 안 읽는다")
 check("objective.jl", bad)
 
-# --- 3) 두 Julia 라벨 생산기가 같은 objective.json 을 보는가 ---------------------------------
+# --- 3) 세대 딱지를 찍는 산출 레인 3곳 -------------------------------------------------------
 # [2026-08-13 최종 리뷰 C-1] 원래 이 항목은 gen_oracle_mc.jl 만 봤다. 그래서 **두 번째 라벨
 # 생산기**인 gen_oracle_dataset.jl(= 배포 학습셋 n44_plus78.jsonl 을 만드는 파일, spec §5.1 이
 # 이름으로 지목한 소비처)이 배선되지 않은 채 다른 플래너 목적함수로 라벨을 만들고 있는 것을
-# 감사가 구조적으로 볼 수 없었다. 둘 다 본다 — 라벨 생산기가 하나 더 생기면 여기 추가할 것.
+# 감사가 구조적으로 볼 수 없었다. 이제 세 레인(MC 라벨러 · 데이터셋 라벨러 · 4pol 데모)을
+# 전부 본다 — 산출 레인이 하나 더 생기면 여기 추가할 것.
 mc = read(HERE, "oracle", "gen_oracle_mc.jl")
 bad = []
 "objective.jl" in mc or bad.append("gen_oracle_mc.jl: objective.jl 을 include 하지 않는다")
@@ -116,15 +117,49 @@ re.search(r'get\(ENV,\s*"MC_COST_FAIL",\s*"10000', mc) and bad.append(
 
 ds = read(HERE, "oracle", "gen_oracle_dataset.jl")
 "objective.jl" in ds or bad.append("gen_oracle_dataset.jl: objective.jl 을 include 하지 않는다 (spec §5.1)")
-"objective_hash" in ds or bad.append(
-    "gen_oracle_dataset.jl: 산출물 행에 objective_hash 를 기록하지 않는다 (spec §7)")
 "init_objective_weights!" in ds or bad.append(
     "gen_oracle_dataset.jl: init_objective_weights! 를 부르지 않는다 — 이 라벨러의 재풀이가 "
     "gen_oracle_mc.jl 과 **다른 플래너 목적함수**로 돈다 (spec §4/§6.3)")
-re.search(r'"energy_J"\s*=>', ds) or bad.append(
-    "gen_oracle_dataset.jl: 행에 energy_J 키를 내지 않는다 — objective.J_row 가 읽는 이름이다 "
-    "(total_energy_J 만 내면 J 가 '구세대 덤프'라는 틀린 진단으로 멈춘다)")
-check("oracle/gen_oracle_mc.jl + oracle/gen_oracle_dataset.jl (Julia 라벨 생산기 2곳)", bad)
+
+# 3-b) **개수로** 센다, 부분문자열로 세지 않는다 (F-4).
+#   부분문자열 검사("energy_J 가 한 번이라도 나오는가")는 C-1 을 다시 통과시킨다: emit 사이트가
+#   네 번째로 하나 더 생기면서 옛 패턴만 복사해도 앞의 세 곳에 energy_J 가 있으니 초록이 된다.
+#   그게 정확히 C-1 이 생긴 방식이다(복사된 emit 블록).
+#   라벨 emit 사이트의 정의: 행 리터럴 안에서 `"total_energy_J" =>` 를 내는 자리. 이 파일에서
+#   그 표기는 emit 사이트에서만 쓰인다(값 생산부는 named tuple 필드라 `=>` 가 없다). 그 개수를
+#   기준선으로 삼아, 세대·에너지 키가 **같은 수만큼** 있는지 본다.
+#   `"energy_J" =>` 는 앞의 큰따옴표 때문에 `"total_energy_J" =>` 에 절대 매칭되지 않는다.
+_n = lambda pat, src: len(re.findall(pat, src))
+n_emit = _n(r'"total_energy_J"\s*=>', ds)
+if n_emit == 0:
+    bad.append("gen_oracle_dataset.jl: 라벨 emit 사이트를 하나도 못 찾았다 "
+               "(`\"total_energy_J\" =>` 기준) — 이 검사가 무력해졌다. 패턴을 갱신할 것")
+else:
+    for key, why in (("energy_J",
+                      "objective.J_row 가 읽는 이름이다 (total_energy_J 만 내면 J 가 "
+                      "'구세대 덤프'라는 틀린 진단으로 멈춘다)"),
+                     ("energy_objective",
+                      "ENERGY_OBJECTIVE 는 objective_hash 를 안 바꾸므로 이 필드가 없으면 "
+                      "에너지 항을 끈 런이 신세대 행으로 위장한다 (F-1)")):
+        got = _n(r'"%s"\s*=>' % key, ds)
+        got == n_emit or bad.append(
+            "gen_oracle_dataset.jl: 라벨 emit 사이트는 %d 곳인데 `\"%s\" =>` 는 %d 곳뿐이다 — "
+            "%s" % (n_emit, key, got, why))
+# objective_hash 는 라벨 행 + probe 행에도 붙으므로 emit 수 **이상**이면 된다.
+_n(r'"objective_hash"\s*=>', ds) >= n_emit or bad.append(
+    "gen_oracle_dataset.jl: 라벨 emit 사이트(%d)보다 objective_hash 각인이 적다 (spec §7)" % n_emit)
+
+# 3-c) 4pol 레인도 세대 딱지를 찍는가 (최종 리뷰 I-1 이 배선한 자리).
+rd = read(ROOT, "tools", "monitor", "run_demo.jl")
+for key in ("objective_hash", "energy_objective"):
+    re.search(r'"%s"\s*=>' % key, rd) or bad.append(
+        "tools/monitor/run_demo.jl: DEMO_SUMMARY 레코드에 %s 를 안 찍는다 — 630판 스윕이 "
+        "헤드라인 숫자를 내는 레인이다 (spec §7)" % key)
+# MC 레인의 CSV 열도 같이 못 박는다(헤더 문자열이 곧 계약이다).
+"energy_objective" in mc or bad.append(
+    "gen_oracle_mc.jl: CSV 에 energy_objective 열이 없다 (F-1)")
+check("세대 딱지 산출 레인 3곳 (gen_oracle_mc.jl / gen_oracle_dataset.jl / tools/monitor/run_demo.jl)",
+      bad)
 
 # --- 4) 채점 규칙이 한 곳에서만 정의되는가 (이름으로도, 형태로도) ------------------------------
 # [2026-08-13 리뷰] "cost_lex_key 를 부르는 곳" 만 세면 부족하다 — 옛 **규칙**이 이름 없이

@@ -80,14 +80,21 @@ include(joinpath(@__DIR__, "..", "objective.jl"))
 using .Objective
 const OBJ_CFG  = Objective.load()
 const OBJ_HASH = Objective.objective_hash(OBJ_CFG)   # 모든 행에 박는다 (spec §7 세대 판정)
-if get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+# ENERGY_OBJECTIVE 는 **플래너 쪽 손잡이**라 objective.json 의 어떤 스칼라도 바꾸지 않는다 —
+# 즉 objective_hash 로는 껐는지 켰는지 알 수 없다. 그런데 끄면 재풀이가 다른 목적함수를 풀므로
+# 라벨의 세대는 실제로 갈린다. 그래서 **해시에 접지 않고 별도 필드로 각인**한다(F-1):
+# 해시는 verify.py/e1_analyze.py/step6_gap.py 같은 **분석 소비처**가 읽는 값이라, 생산자 손잡이를
+# 거기 접으면 `ENERGY_OBJECTIVE=0 python verify.py` 한 줄이 기존 덤프 전체를 구세대로 재분류해
+# 버린다. 필드는 기계로 보이고, 값싸고, 읽는 쪽에서 오발할 수 없다.
+const ENERGY_ON = get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
+if ENERGY_ON
     let w = CB.init_objective_weights!()
         println(">>> objective weights: κ=$(w.kappa) w_g=$(w.w_g)")
     end
 else
     println(">>> objective weights: DISABLED (ENERGY_OBJECTIVE=0) — 구세대 동작")
 end
-println(">>> objective_hash: $(OBJ_HASH)")
+println(">>> objective_hash: $(OBJ_HASH)  energy_objective: $(ENERGY_ON ? 1 : 0)")
 
 # ---- config ----------------------------------------------------------------------------
 # 아래 상수들은 전부 환경변수(ENV)로 덮어쓸 수 있음. get(ENV,"이름",기본값) = 환경변수 없으면 기본값 사용.
@@ -1676,7 +1683,7 @@ function run_episodes(io)
                 # `energy_J` = objective.J_row 가 읽는 이름. 값은 total_energy_J 와 같고 옛 키는
                 # 다른 소비처를 위해 남긴다 — 행 스키마는 `energy_J` 하나로 수렴시킨다(C-1a).
                 "energy_J"=>r.total_energy_J,
-                "objective_hash"=>OBJ_HASH,
+                "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                 "n_depleted"=>r.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1858,7 +1865,7 @@ function main()
                 "min_soc"=>ctrl.min_soc, "n_stalled"=>ctrl.n_stalled,
                 "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
                 "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
-                "objective_hash"=>OBJ_HASH,
+                "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
                 "n_depleted"=>ctrl.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1916,7 +1923,7 @@ function main()
                     "label_seconds"=>r.label_seconds, "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
                     "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
-                    "objective_hash"=>OBJ_HASH,
+                    "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                     "n_depleted"=>r.n_depleted,
                     "geometry"=>Dict("depot_mode"=>"fixed",
