@@ -1262,6 +1262,31 @@ battery_physics_row() = Dict(
     "n_stalled"  => (try length(CB.stalled_robots()) catch; -1 end),
 )
 
+"""
+행에 박는 **hot-swap 지문** = 세대의 네 번째 축. `battery_physics` 와 **정확히 같은 이유**로
+별도 필드다(F-1): `set_hot_swap!` 은 objective.json 의 스칼라를 하나도 안 바꾸므로
+`objective_hash` 가 표현하지 못하는데, Replace(1) 가 **무엇으로 집행되는가**를 바꾼다 —
+분산 재각인(off) 이냐 정체성 보존 창고 교체(on) 이냐.
+
+실측(2026-08-14 파일럿, 같은 instance `fault_s1_sev1.0_sp3_f140`):
+  · off → Replace 미완주. 게다가 closed>=80 에서는 희생양 피커가 후보를 못 찾아 **사건이
+    발화조차 안 한다**(`build_injection` 의 pick_hotswap 폴백이 이 플래그에 걸려 있다) —
+    `fired=false`, `valid_mask=[0]`, 라벨 없음.
+  · on  → 발화하고 NOOP 219/313 미완주 vs Replace **291/313 완주**. 라벨이 뒤집힌다.
+스탬프가 없으면 두 세계의 행을 사후에 구별할 방법이 없다.
+
+배포 레인(`tools/monitor/run_demo.jl:533`)은 `set_hot_swap!(enabled = true, mode = :via_depot)`
+로 **항상 켠다**. 라벨러 기본값은 꺼짐이었다 = `DS_SHRINK` 와 같은 종류의 라벨러/배포 물리
+어긋남이고, 같은 이유로 닫는다.
+
+값은 ENV 가 아니라 **살아 있는 전역**에서 읽는다(ENV 는 "무엇을 요청했나", 세대를 가르는 것은
+"무엇이 실제로 켜졌나"). `battery_physics_row` 와 같은 규약이다.
+"""
+hot_swap_row() = Dict(
+    "enabled" => (try CB.hot_swap_enabled()      catch; false end),
+    "mode"    => (try String(CB.HOT_SWAP_MODE[]) catch; "" end),
+)
+
 "계획대로 M 개 트리거를 예약. pre_sim 훅은 배터리가 하나라도 있으면 완전 무장(회계+stall+derate),
 없으면 energy-only 계측(회계만)이다."
 function build_episode_injection(plan)
@@ -1768,6 +1793,7 @@ function run_episodes(io)
                 "energy_J"=>r.total_energy_J,
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
+                "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
                 "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                 "n_depleted"=>r.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -1951,6 +1977,7 @@ function main()
                 "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
+                "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
                 "energy_per_closed"=>(ctrl.closed > 0 ? ctrl.total_energy_J / ctrl.closed : NaN),
                 "n_depleted"=>ctrl.n_depleted,
                 "geometry"=>Dict("depot_mode"=>"fixed",
@@ -2010,6 +2037,8 @@ function main()
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
+                "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
+                    "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
                     "energy_per_closed"=>(r.closed > 0 ? r.total_energy_J / r.closed : NaN),
                     "n_depleted"=>r.n_depleted,
                     "geometry"=>Dict("depot_mode"=>"fixed",
