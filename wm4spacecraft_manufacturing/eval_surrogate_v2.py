@@ -261,6 +261,29 @@ def summarize(reg, rows_by_inst, choices, truth):
     }
 
 
+def compare_to_baseline(reg_model, reg_base, top=5):
+    """모델 regret 을 바닥선 regret 과 **instance 단위로** 분해한다.
+
+    왜 평균만으로는 안 되는가: 이 데이터에서 총 regret 은 소수의 거대 항이 지배한다. 평균 차이
+    하나만 보면 "전반적으로 못한다"와 "한 건에서 크게 틀렸다"가 구분되지 않는데, 둘은 전혀
+    다른 진단이고 처방도 다르다. 그래서 이긴/진/비긴 instance 수와 가장 큰 손실을 같이 낸다.
+    (해석 주의: 최악의 한 건을 빼면 이긴다는 것은 **변명이 아니다** — 그 한 건이 데이터셋에서
+    가장 큰 오차이고 바닥선은 그것을 피한다.)
+    """
+    ids = sorted(reg_model)
+    diff = {i: reg_model[i] - reg_base[i] for i in ids}
+    losses = sorted(((d, i) for i, d in diff.items() if d > 0), reverse=True)[:top]
+    return {
+        "total_regret_model": float(sum(reg_model.values())),
+        "total_regret_baseline": float(sum(reg_base.values())),
+        "total_gap": float(sum(diff.values())),
+        "n_worse_than_baseline": int(sum(1 for d in diff.values() if d > 0)),
+        "n_better_than_baseline": int(sum(1 for d in diff.values() if d < 0)),
+        "n_tied": int(sum(1 for d in diff.values() if d == 0)),
+        "largest_losses": [{"instance": i, "excess_regret": float(d)} for d, i in losses],
+    }
+
+
 def noise_floor_block(truth):
     """라벨 자체의 노이즈 바닥 — per-instance 수치를 읽을 때 **반드시 옆에 두어야 하는 값**.
 
@@ -374,8 +397,9 @@ def main():
 
     # ---- 상태맹 바닥선: menu 안 max-MACRO_COST 규칙 (학습 0, 배포 결함 그 자체) ---------
     mc_choices = max_cost_policy(by_inst)
+    mc_reg = regrets(truth, mc_choices)
     result["baseline_max_cost_rule"] = dict(
-        summarize(regrets(truth, mc_choices), by_inst, mc_choices, truth),
+        summarize(mc_reg, by_inst, mc_choices, truth),
         note=("legal menu 안 MACRO_COST 최댓값 팔. 학습이 0 이고 상태를 안 본다. "
               "**모델이 이겨야 하는 실제 바닥선** — G3 의 단일팔 상수 정책은 이것을 못 본다."))
 
@@ -383,6 +407,7 @@ def main():
     # tree2h 는 두 결정 규칙 모두로 돈다: argmin Ĵ (원래 규칙, 기준선으로 계속 보고) 와
     # deadband_B (조립식 증폭 교정). 베이스라인 모델은 원래 규칙만 — RidgeJ 에는 헤드 A/B 가 없다.
     runs = [("tree2h", "argmin_jhat", ""), ("tree2h", "deadband_B", "_deadband"),
+            ("tree2h", "deadband_Jbar", "_deadbandJbar"),
             ("ridge", "argmin_jhat", ""), ("linear2h", "argmin_jhat", "")]
     choices_by_run = {}
     for name, rule, suffix in runs:
@@ -390,12 +415,15 @@ def main():
             print("  ... %s / %s %s (leave-one-%s-out)" % (name, rule, key, gate))
             ch = run_folds(rows, gate, name, rule=rule)
             choices_by_run[(name, rule, gate)] = ch
-            s = summarize(regrets(truth, ch), by_inst, ch, truth)
+            reg = regrets(truth, ch)
+            s = summarize(reg, by_inst, ch, truth)
+            s["vs_max_cost_baseline"] = compare_to_baseline(reg, mc_reg)
             base = key if name == "tree2h" else ("%s_%s" % (name, key))
             result[base + suffix] = s
     loio_choices = choices_by_run[("tree2h", "argmin_jhat", "instance")]
     loko_choices = choices_by_run[("tree2h", "argmin_jhat", "kind")]
     dead_loio = choices_by_run[("tree2h", "deadband_B", "instance")]
+    deadj_loio = choices_by_run[("tree2h", "deadband_Jbar", "instance")]
 
     # ---- G3 / G4 / G4b — 게이트는 import 해서 **그대로** 부른다 -----------------------
     inst_recs = [{"instance": i, "kind": g[0]["kind"], "truth": truth[i],
@@ -426,6 +454,11 @@ def main():
     result["G4b_deadband"] = dict(i4b_d, **{
         "pass": ok4b_d, "basis": "leave-one-instance-out choices, deadband_B 결정 규칙"})
 
+    ok4b_dj, i4b_dj = gate_g4b_menu_invariance(_dec(deadj_loio), min_group=args.g4b_min_group,
+                                               oracle_choices=oracle_choices)
+    result["G4b_deadband_jbar"] = dict(i4b_dj, **{
+        "pass": ok4b_dj, "basis": "leave-one-instance-out choices, deadband_Jbar 결정 규칙"})
+
     # 오라클 대조군은 게이트가 그것을 내부에서 쓰게 된 뒤에도 **따로 낸다** — 어떤 menu 가
     # 왜 판정에서 빠졌는지가 출력에 남아야 읽는 사람이 검증할 수 있다.
     ok4b_o, i4b_o = gate_g4b_menu_invariance(_dec(oracle_choices), min_group=args.g4b_min_group,
@@ -446,21 +479,30 @@ def main():
     mc = result["baseline_max_cost_rule"]["mean_regret"]
     print("\n  ** 바닥선 ** 상태맹 max-MACRO_COST 규칙 (학습 0)   mean regret = %.4f" % mc)
     for key, label in (("G1", "G1  (LOIO, argmin Jhat  = 기준선)"),
-                       ("G1_deadband", "G1  (LOIO, deadband_B  = 교정)"),
+                       ("G1_deadband", "G1  (LOIO, deadband_B)"),
+                       ("G1_deadbandJbar", "G1  (LOIO, deadband_Jbar = 통합식)"),
                        ("ridge_G1", "G1  ridge"), ("linear2h_G1", "G1  linear2h"),
                        ("G2", "G2  (LOKO, argmin Jhat  = 기준선)"),
-                       ("G2_deadband", "G2  (LOKO, deadband_B  = 교정)"),
+                       ("G2_deadband", "G2  (LOKO, deadband_B)"),
+                       ("G2_deadbandJbar", "G2  (LOKO, deadband_Jbar = 통합식)"),
                        ("ridge_G2", "G2  ridge"), ("linear2h_G2", "G2  linear2h")):
         v = result[key]["mean_regret"]
         rg = result[key]["by_completion_regime"]
+        vb = result[key]["vs_max_cost_baseline"]
         print("  %-34s mean regret = %10.4f   바닥선 대비 %-18s | 완주팔있음(n=%d) %8.3f  없음(n=%d) %9.3f"
               % (label, v, "이김 (-%.4f)" % (mc - v) if v < mc else "**짐** (+%.4f)" % (v - mc),
                  rg["has_completing_arm"]["n"], rg["has_completing_arm"]["mean_regret"],
                  rg["no_completing_arm"]["n"], rg["no_completing_arm"]["mean_regret"]))
+        print("  %-34s   instance 단위 바닥선 대비: 나쁨 %d · 좋음 %d · 동률 %d   최대손실 %s"
+              % ("", vb["n_worse_than_baseline"], vb["n_better_than_baseline"], vb["n_tied"],
+                 ("%s +%.1f" % (vb["largest_losses"][0]["instance"],
+                                vb["largest_losses"][0]["excess_regret"]))
+                 if vb["largest_losses"] else "없음"))
     print("  G3  pass=%s  model=%.4f vs best-constant=%.4f (arm %s)  [단일팔 상수만 열거 — 바닥선을 못 본다]"
           % (ok3, i3["model_regret"], i3["best_constant_regret"], i3["best_constant_arm"]))
     print("  G4  pass=%s  by_kind=%s" % (ok4, i4["by_kind"]))
-    for tag, ok, info in (("G4b (기준선)", ok4b, i4b), ("G4b (deadband)", ok4b_d, i4b_d),
+    for tag, ok, info in (("G4b (기준선)", ok4b, i4b), ("G4b (deadband_B)", ok4b_d, i4b_d),
+                          ("G4b (deadband_Jbar)", ok4b_dj, i4b_dj),
                           ("G4b (오라클)", ok4b_o, i4b_o)):
         print("  %-16s pass=%-5s  정보성 menu 에서 퇴화=%s  최빈답 불일치=%s  (판정제외 %s)"
               % (tag, ok, info["degenerate_informative_menus"], info["modal_mismatch_menus"],

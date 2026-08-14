@@ -119,12 +119,15 @@ class _StubHeads(SurrogateV2):
     아니라 **조립식의 증폭 그 자체**이므로 헤드 출력을 실측 수치로 고정하는 편이 정직하다.
     """
 
-    def __init__(self, p, b):
+    def __init__(self, p, b, c=None):
         SurrogateV2.__init__(self)
         self._p = np.asarray(p, dtype=float)
         self.head_b = _Fixed(b)
-        self._fitted_b, self._fitted_c = True, False
+        self._fitted_b = True
+        self._fitted_c = c is not None
         self._c_fallback = 0.0
+        if c is not None:
+            self.head_c = _Fixed(c)
 
     def predict_complete_proba(self, rows):
         return self._p
@@ -161,6 +164,29 @@ def check_assembly_amplification():
     pick_big = m2.choose(rows, rule="deadband_B")["a"]
     check("deadband 는 교정 오차보다 큰 P̂ 격차는 존중한다(P 를 버리는 게 아니다)",
           pick_big == 1, "picked=%d (P 격차 0.46)" % pick_big)
+
+    # ---- 통합식 deadband_Jbar (fix round 2) --------------------------------------------
+    # 같은 상황에서 통합식도 옳은 팔을 고른다: 공유 P̄ 가 P̂ **차이**만 지우기 때문이다.
+    m3 = _StubHeads(p=[0.96, 0.95], b=[22.6, 22.0], c=[40.0, 40.0])
+    check("deadband_Jbar 도 옳은 팔(8)을 고른다", m3.choose(rows, rule="deadband_Jbar")["a"] == 8,
+          "picked=%d" % m3.choose(rows, rule="deadband_Jbar")["a"])
+
+    # **이 라운드의 핵심 성질**: P̄≈0 이면(어떤 팔로도 완주 못 하면) 통합식은 argmin Ĉ 로
+    # 환원돼야 한다. deadband_B 는 이 자리에서 헤드 C 를 버려서 무너졌다(실측 675 -> 1734).
+    # B̂ 는 8 이 낫다고 하지만 Ĉ 는 1 이 훨씬 낫다(잔여 노드 10 vs 90) -> 1 이 정답이다.
+    m4 = _StubHeads(p=[0.001, 0.001], b=[22.6, 22.0], c=[10.0, 90.0])
+    check("P̄≈0 이면 deadband_Jbar 가 argmin Ĉ 로 환원된다(헤드 C 가 살아 있다)",
+          m4.choose(rows, rule="deadband_Jbar")["a"] == 1,
+          "picked=%d" % m4.choose(rows, rule="deadband_Jbar")["a"])
+    check("같은 상황에서 deadband_B 는 헤드 C 를 버려 **틀린** 팔을 고른다(회귀의 모양)",
+          m4.choose(rows, rule="deadband_B")["a"] == 8,
+          "picked=%d" % m4.choose(rows, rule="deadband_B")["a"])
+
+    # P̄≈1 이면 argmin B̂ 로 환원된다 — 두 레짐이 분기 없이 따라 나온다는 주장의 나머지 절반.
+    m5 = _StubHeads(p=[1.0, 1.0], b=[22.6, 22.0], c=[10.0, 90.0])
+    check("P̄≈1 이면 deadband_Jbar 가 argmin B̂ 로 환원된다(Ĉ 가 무시된다)",
+          m5.choose(rows, rule="deadband_Jbar")["a"] == 8,
+          "picked=%d" % m5.choose(rows, rule="deadband_Jbar")["a"])
 
 
 def main():

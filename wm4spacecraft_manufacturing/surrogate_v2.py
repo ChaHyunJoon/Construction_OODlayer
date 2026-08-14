@@ -127,6 +127,18 @@ class SurrogateV2:
             return np.full(len(rows), self._b_fallback, dtype=float)
         return np.asarray(self.head_b.predict(build_features(rows).values), dtype=float)
 
+    def predict_C(self, rows):
+        """헤드 C 의 원값 = E[total − closed | 미완주].  J 의 **미완주** 분기 그 자체.
+
+        `predict_J` 과 같이 0 밑으로 클램프한다 — 음수 잔여 노드는 미완주 J 를 0 이하로
+        떨어뜨려 '실패가 전역 최적'이 되게 만든다(objective.J 의 I-1 클램프와 같은 이유).
+        """
+        if not getattr(self, "_fitted_c", False):
+            c = np.full(len(rows), self._c_fallback, dtype=float)
+        else:
+            c = np.asarray(self.head_c.predict(build_features(rows).values), dtype=float)
+        return np.clip(c, 0.0, None)
+
     def choose(self, rows, rule="argmin_jhat", deadband=P_CALIBRATION_ERROR):
         """instance -> 고른 macro.  `rows` 는 그 instance 의 legal 팔 행만 담고 있어야 한다.
 
@@ -134,6 +146,25 @@ class SurrogateV2:
 
         rule="deadband_B"   2단 규칙: ① P̂ 가 최댓값에서 `deadband` 안에 드는 팔만 남기고
                             ② 그중 B̂ 가 가장 작은 팔을 고른다.
+                            **알려진 결함**: ②가 헤드 C 를 통째로 버린다. 어떤 팔로도 완주하지
+                            못하는 instance(이 데이터의 53/155)에서는 모든 팔이 deadband 안에
+                            들어오고, 그때 팔 간 진짜 J 차이는 전부 C_unclosed·ΔĈ 인데 B̂ 는
+                            완주 행에만 적합돼 그 정보를 갖고 있지 않다. 실측 675 → 1734.
+                            아래 deadband_Jbar 가 이것을 분기 없이 고친다.
+
+        rule="deadband_Jbar"  2단 규칙이되 ②를 **목적함수 자신의 구조**로 바꾼다:
+                            ① 은 동일. ② 는 deadband 집합 전체에 **공유된** 완주확률 P̄
+                            (= 그 집합의 max P̂) 하나로 J 를 조립해 argmin 한다.
+
+                                Ĵ_db(a) = P̄·B̂(a) + (1−P̄)·(C_fail + C_unclosed·Ĉ(a) + tie_eps·B̂(a))
+
+                            왜 이것이 두 번째 추측이 아닌가: ①이 이미 "이 집합 안의 P̂ **차이**는
+                            교정 오차 아래라 정보가 없다"를 확정했다. 그러면 ②가 지워야 할 것은
+                            정확히 그 **차이**뿐이고 그 이상도 이하도 아니다. 공통 P̄ 를 대입하는
+                            것이 바로 그 연산이다 — P̂ 의 **수준**(=진짜 정보)은 남기고 **차이**만
+                            소거한다. 두 헤드가 모두 제 가중치로 살아 있다.
+                            분기 없이 두 레짐이 따라 나온다: P̄≈1 이면 argmin B̂ 로,
+                            P̄≈0 이면 argmin Ĉ 로 자동 환원된다. 새 자유 파라미터는 없다.
 
         왜 2단인가 — 이것은 임계값 탐색이 아니라 **알려진 증폭의 교정**이다.
         조립식 Ĵ = P·B + (1−P)·(C_fail + C_unclosed·C + tie_eps·B) 를 P 로 미분하면
@@ -145,15 +176,16 @@ class SurrogateV2:
         원칙: **P̂ 차이가 분류기의 교정 오차보다 작으면 그 차이는 정보를 담고 있지 않으므로,
         회귀 헤드가 직접 측정한 J 차이를 뒤집도록 허용해서는 안 된다.**
         """
-        if rule not in ("argmin_jhat", "deadband_B"):
+        if rule not in ("argmin_jhat", "deadband_B", "deadband_Jbar"):
             raise ValueError("알 수 없는 결정 규칙: %r" % (rule,))
-        # 규칙이 필요로 하는 것만 계산한다 — 헤드 A/B 가 없는 베이스라인(RidgeJ 등)도
+        # 규칙이 필요로 하는 것만 계산한다 — 헤드 A/B/C 가 없는 베이스라인(RidgeJ 등)도
         # "argmin_jhat" 으로는 그대로 돌아야 하기 때문이다.
         if rule == "argmin_jhat":
             score = self.predict_J(rows)
         else:
             p = self.predict_complete_proba(rows)
             b = self.predict_B(rows)
+            c = self.predict_C(rows) if rule == "deadband_Jbar" else None
         by_inst = {}
         for i, r in enumerate(rows):
             by_inst.setdefault(r.get("instance"), []).append(i)
@@ -163,6 +195,18 @@ class SurrogateV2:
                 pick = idx[int(np.argmin(score[idx]))]
             else:
                 keep = [i for i in idx if p[i] >= p[idx].max() - deadband]
-                pick = keep[int(np.argmin(b[keep]))]
+                if rule == "deadband_B":
+                    pick = keep[int(np.argmin(b[keep]))]
+                else:
+                    # 공유 P̄ 로 조립한다. P̄ 는 deadband 집합의 max P̂ — 그 집합의 정의상
+                    # instance 전체의 max 와 같다. 상수는 objective.json 에서 읽는다.
+                    p_bar = float(p[idx].max())
+                    C_fail = float(self.cfg["C_fail"])
+                    C_unclosed = float(self.cfg["C_unclosed"])
+                    tie_eps = float(self.cfg["tie_eps"])
+                    j_db = np.array(
+                        [p_bar * b[i] + (1.0 - p_bar) * (C_fail + C_unclosed * c[i]
+                                                         + tie_eps * b[i]) for i in keep])
+                    pick = keep[int(np.argmin(j_db))]
             out[iid] = int(rows[pick]["macro"])
         return out
