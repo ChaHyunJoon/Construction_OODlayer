@@ -42,6 +42,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import e1_analyze as E                       # noqa: E402  (lex_key, MACRO_COST, MACRO_NAME)
+import objective                              # noqa: E402  (ObjectiveError — 채점 불가 행 판정)
 import reference_policy as RP                 # noqa: E402  (BASIS 문자열)
 import build_final_table as BFT               # noqa: E402  (입력 파싱 관례 재사용 -- 재구현 금지)
 
@@ -110,8 +111,48 @@ def oracle_star_row(rs):
     return max(rs, key=E.cost_lex_key_row)
 
 
-def summarize_star_rows(star_rows):
-    """n / a* 완주율 / mean(closed/total) / 완주판 mean(makespan)."""
+def _instance_is_scorable(rs):
+    """이 instance 의 **모든** 팔이 J 로 채점되는가.
+
+    [2026-08-14] fault/zone kind 라벨 행은 `energy_J` 가 없다 — 배터리 레이어(`_arm_battery!`,
+    gen_oracle_dataset.jl:1176)가 `kind === :battery` instance 에서만 켜지기 때문이다.
+    `objective.J` 는 그런 행을 설계대로 던지고, 그 예외 하나가 `build_final_table.py` 전체를
+    죽여 **표가 하나도 안 나왔다**.
+
+    왜 "일부만 채점되면 그 instance 를 통째로 뺀다" 인가
+    --------------------------------------------------
+    a\* 는 팔들 사이의 **argmax** 다. 채점되는 팔만 남겨 argmax 를 돌리면 메뉴가 조용히 잘린
+    상태로 천장을 뽑게 되고, 진짜 최선이 잘려나간 팔이었다면 천장이 **낙관 편향**된다
+    (`build_final_table.py` 머리말: "결측은 절대 0 도 빈칸도 아니다"). 그래서 부분 채점은
+    채점으로 치지 않고 `unscorable` 로 **세어서 이름으로 남긴다.**
+    """
+    for r in rs:
+        try:
+            E.cost_lex_key_row(r)
+        except objective.ObjectiveError:
+            return False
+    return True
+
+
+def _star_rows_with_counts(groups):
+    r"""instance 그룹 목록 -> (a\* 행 목록, scored 수, unscorable 수).
+
+    채점 불가 instance 는 **버리지 않고 센다.** 호출자가 그 수를 축 summary 에 실어 보내고,
+    `build_final_table.py` 가 그것을 미측정 표기로 렌더한다."""
+    star_rows, n_unscorable = [], 0
+    for rs in groups:
+        if not _instance_is_scorable(rs):
+            n_unscorable += 1
+            continue
+        star_rows.append(oracle_star_row(rs))
+    return star_rows, len(star_rows), n_unscorable
+
+
+def summarize_star_rows(star_rows, n_unscorable=0):
+    """n / a* 완주율 / mean(closed/total) / 완주판 mean(makespan) + scored·unscorable.
+
+    `scored == 0` 이면 통계는 전부 `None` 이다 — **0.0 이 아니다.** 채점 0건을 0% 완주로 쓰면
+    "천장이 0%" 라는 거짓 주장이 표에 실린다."""
     n = len(star_rows)
     completes = [bool(r.get("complete")) for r in star_rows]
     n_complete = sum(completes)
@@ -138,7 +179,8 @@ def summarize_star_rows(star_rows):
 
     return dict(n=n, n_complete=n_complete, completion_rate=completion_rate,
                 mean_closed_total=mean_closed_total, missing_total=missing_total,
-                mean_makespan=mean_makespan, n_makespan_arms=len(ms))
+                mean_makespan=mean_makespan, n_makespan_arms=len(ms),
+                scored=n, unscorable=int(n_unscorable))
 
 
 def axis_battery(oracle_dir: Path):
@@ -146,10 +188,10 @@ def axis_battery(oracle_dir: Path):
     if not rows:
         return None
     groups = _group_by_instance(rows)
-    star_rows = [oracle_star_row(rs) for rs in groups.values()]
-    if not star_rows:
-        return None
-    out = summarize_star_rows(star_rows)
+    star_rows, n_scored, n_unscorable = _star_rows_with_counts(groups.values())
+    # 채점 0건이어도 None 을 돌리지 않는다 — 파일이 **있는데** 하나도 못 쟀다는 사실 자체가
+    # 표에 남아야 한다(파일 부재와 다른 상태다).
+    out = summarize_star_rows(star_rows, n_unscorable)
     out["source"] = "oracle/out/battgrid_0805_s1.jsonl (18 instances = 6 fire points x 3 severities, all 3 arms)"
     return out
 
@@ -186,8 +228,8 @@ def axis_fault_split(oracle_dir: Path):
     def _summarize(gs, source):
         if not gs:
             return None
-        star_rows = [oracle_star_row(rs) for rs in gs.values()]
-        out = summarize_star_rows(star_rows)
+        star_rows, n_scored, n_unscorable = _star_rows_with_counts(gs.values())
+        out = summarize_star_rows(star_rows, n_unscorable)
         out["source"] = source
         return out
 
@@ -216,6 +258,7 @@ def axis_zone(oracle_dir: Path):
     """test_llm7h.py:130-152 미러. n=2 (blk, cov 두 사건군) -- 가장 약한 축."""
     zc = oracle_dir / "zcausal_reform"
     families = []
+    n_unscorable_fams = 0
     for fam, noop_f, act_f in (("blk", "blk_noop.json", "blk_reloc.json"),
                                 ("cov", "cov_noop.json", "cov_reloc.json")):
         pa, pb = zc / noop_f, zc / act_f
@@ -231,14 +274,19 @@ def axis_zone(oracle_dir: Path):
         # [2026-08-13] 예전에는 `closed - LAM*MACRO_COST[7]` 2-튜플 비교를 여기 인라인으로
         # 복붙해 두었다. λ·MACRO_COST 는 J 에 들어가지 않는다(spec §3.2) — 규칙은 한 곳에서만.
         na, nb = _zc_norm(a, 0), _zc_norm(b, 7)
+        # 두 팔 중 하나라도 J 로 못 재면 이 계열의 a* 를 뽑지 않는다 — 재는 팔만 남겨 argmax 를
+        # 돌리면 메뉴가 잘린 채 천장이 나온다(`_instance_is_scorable` 의 같은 논거).
+        if not _instance_is_scorable([na, nb]):
+            n_unscorable_fams += 1
+            continue
         winner = max((na, nb), key=E.cost_lex_key_row)
         star = "RelocateBuild" if winner is nb else "NOOP"
         norm = winner
         families.append(dict(fam=fam, star=star, row=norm))
-    if not families:
+    if not families and not n_unscorable_fams:
         return None
     star_rows = [f["row"] for f in families]
-    out = summarize_star_rows(star_rows)
+    out = summarize_star_rows(star_rows, n_unscorable_fams)
     out["source"] = "oracle/out/zcausal_reform/ STEP 10 (blk, cov 두 arm-crossed 사건군, n=2 -- 가장 약한 축)"
     out["families"] = families
     return out
@@ -263,7 +311,13 @@ def _summary_cells(summary):
     if summary is None:
         return (MISSING_TOKEN, MISSING_TOKEN, MISSING_TOKEN)
     n = summary["n"]
+    # [2026-08-14] 라벨 파일은 있는데 J 로 잰 instance 가 0 인 축. 0% 로 렌더하면 거짓이다.
+    if summary.get("scored", n) == 0:
+        return ("%s (J 채점 불가 %d)" % (MISSING_TOKEN, summary.get("unscorable", 0)),
+                MISSING_TOKEN, MISSING_TOKEN)
     comp = "%.0f%% (%d/%d)" % (100 * summary["completion_rate"], summary["n_complete"], n)
+    if summary.get("unscorable", 0):
+        comp += " ⚠︎J채점불가 %d 제외" % summary["unscorable"]
     ct = ("%.1f%%" % (100 * summary["mean_closed_total"])) if summary["mean_closed_total"] is not None else NA
     if summary["mean_makespan"] is not None:
         ms = "%.1f (완주판 n=%d)" % (summary["mean_makespan"], summary["n_makespan_arms"])

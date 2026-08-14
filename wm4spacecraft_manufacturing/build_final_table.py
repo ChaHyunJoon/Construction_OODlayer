@@ -538,7 +538,17 @@ def render_row_cells(row_label, case, json_data, ceilings):
         summary = oracle_ceiling_summary_for_case(case, ceilings)
         if summary is None:
             return [MISSING_TOKEN, "100% (정의상)", DASH, DASH]
+        # [2026-08-14] 라벨 파일은 있는데 그 축의 instance 를 하나도 J 로 못 잰 경우.
+        # fault/zone kind 라벨 행에는 energy_J 가 없다(배터리 레이어가 battery instance 에서만
+        # 켜진다) -- 그런 축을 0% 완주로 렌더하면 "천장이 0%" 라는 거짓 주장이 표에 실린다.
+        # 채점 불가 수를 이름으로 남긴다.
+        if summary.get("scored", summary["n"]) == 0:
+            return ["%s — J 채점 불가 %d instance (energy_J 없음)"
+                    % (MISSING_TOKEN, summary.get("unscorable", 0)),
+                    "100% (정의상)", DASH, DASH]
         completion = fmt_pct(summary["completion_rate"], summary["n_complete"], summary["n"])
+        if summary.get("unscorable", 0):
+            completion += " ⚠︎J채점불가 %d 제외" % summary["unscorable"]
         if summary.get("mean_makespan") is not None:
             btime = "%.1f (완주판 n=%d)" % (summary["mean_makespan"], summary["n_makespan_arms"])
         else:
