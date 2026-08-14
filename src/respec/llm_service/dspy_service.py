@@ -389,6 +389,22 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
         if not scorable:
             return None, ("no training support for any valid macro %s "
                           "(surrogate saw %s)" % (valid, sorted(support)))
+        # ---- 개입이 하나도 안 남았으면 그것은 예측이 아니다 (2026-08-14, Task 7) ------------
+        # `supported ∩ legal` 이 {NOOP} 하나면 랭커는 후보가 하나뿐이라 그것을 "골랐다"고
+        # 답한다 — **빈 후보 집합이 예측의 옷을 입은 것**이다. 그리고 그 답은 확신에 차서
+        # 나가므로 호출부는 폴백할 기회조차 얻지 못한다.
+        # 실측 대가(battery seed 1, reform 메뉴 {NOOP, ReformTeam}, support {0,1,2,7,8}):
+        #   ReformTeam 이 탈락 -> NOOP -> 팀 교착이 안 풀려 같은 사건이 6회 재발화 ->
+        #   complete True->False, closed 291/313 -> 260/313, J 35.42 -> 15300.13.
+        # 그래서 여기서는 NOOP 을 답하지 않고 **UNSUPPORTED 규약으로 되돌린다** — 이미 있는
+        # 그 규약이 정확히 이 상황을 위한 것인데 지금까지 도달하지 못하고 있었다. 모델은
+        # reform 사건에 대해 할 말이 정말로 없고, 없다고 말하는 편이 "아무것도 하지 말라"보다
+        # 정직하다. 호출부(policy.jl)는 이걸 보고 명시적으로 폴백하고 그 사실을 기록한다.
+        # 주의: `unsupported` 가 비어 있으면 이 분기로 오지 않는다 — legal 이 처음부터 {NOOP}
+        # 뿐이었던 경우(보류할 개입 자체가 없다)에는 NOOP 이 정직한 답이기 때문이다.
+        noop_id = name2id.get("NOOP")
+        if unsupported and all(m == noop_id for m in scorable):
+            return None, "UNSUPPORTED:" + ",".join(unsupported)
         rows = [_surro_row(req, m) for m in scorable]
         pick = int(model.choose(rows, rule=SURRO_RULE)[_SURRO_INSTANCE])
         # 표시·margin 용 점수. NOOP 이 legal 이면 그 팔이 정확히 0 이 되어 읽기 쉽다
@@ -647,6 +663,12 @@ def decide(req: MacroRequest):
             "policy": "surrogate:SurrogateV2",
             "error": (None if (not err or str(err).startswith("UNSUPPORTED:")) else err)}
     else:
+        # 점수를 못 낸 경우에도 `unsupported` 를 **반드시 실어 보낸다** (2026-08-14).
+        # 여기 오는 주된 이유가 "개입 후보가 support 밖이라 전멸했다"인데, 그 목록을 빼면
+        # 호출부는 왜 못 골랐는지 알 수 없고 라우터의 '표현력 격상'(unsupported -> dspy)도
+        # 근거를 잃는다. 위 분기와 같은 규약을 그대로 쓴다.
         out["surrogate"] = {"chosen": "", "ranking": [], "scores": {}, "margin": 0.0,
+                            "unsupported": ([] if not err or not str(err).startswith("UNSUPPORTED:")
+                                            else str(err).split(":", 1)[1].split(",")),
                             "policy": "surrogate:SurrogateV2", "error": err}
     return out

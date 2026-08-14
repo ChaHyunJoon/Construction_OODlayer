@@ -105,14 +105,37 @@ if scored2:
     check("나머지는 ΔĴ 오름차순", vals2[1:] == sorted(vals2[1:]), "scores=%s" % vals2)
 
 # ---- 3. support 기반 후보 탈락 + UNSUPPORTED 규약이 그대로다 -----------------------------
+# 개입이 **하나라도** 살아남으면 순위를 내되, 탈락한 팔은 UNSUPPORTED 로 보고한다.
 _install(StubModel({0: 0.0, 1: +5.0}), {0, 1})     # macro 4(ReformTeam) 학습 근거 없음
-scored3, err3 = S.surrogate_rank(_req(kind="reform"), ["NOOP", "ReformTeam"])
+scored3, err3 = S.surrogate_rank(_req(kind="fault"), ["NOOP", "Replace", "ReformTeam"])
 check("지원 밖 팔은 UNSUPPORTED 로 보고된다",
       isinstance(err3, str) and err3.startswith("UNSUPPORTED:") and "ReformTeam" in err3,
       "err=%r" % (err3,))
 check("지원 밖 팔은 순위에서 빠진다",
-      scored3 is not None and [m for m, _ in scored3] == ["NOOP"],
+      scored3 is not None and sorted(m for m, _ in scored3) == ["NOOP", "Replace"],
       "ranking=%s" % ([m for m, _ in (scored3 or [])],))
+
+# ---- 3b. 개입이 하나도 안 남으면 NOOP 이 아니라 UNSUPPORTED 다 (2026-08-14, Task 7) --------
+# 이것이 reform 붕괴의 정확한 자리다. `supported ∩ legal` = {NOOP} 은 예측이 아니라 빈 후보
+# 집합이고, 그때 NOOP 을 확신에 차서 답하면 호출부가 폴백할 기회를 잃는다.
+# 실측 대가: complete True->False, closed 291/313 -> 260/313, J 35.42 -> 15300.13.
+_install(StubModel({0: 0.0}), {0, 1, 2, 7, 8})     # 실제 배포 support. ReformTeam(4) 없음
+scored3b, err3b = S.surrogate_rank(_req(kind="reform"), ["NOOP", "ReformTeam"])
+check("reform 메뉴 + 실제 support -> UNSUPPORTED (NOOP 아님)",
+      scored3b is None and isinstance(err3b, str) and err3b.startswith("UNSUPPORTED:"),
+      "scored=%r err=%r" % (scored3b, err3b))
+check("UNSUPPORTED 목록이 탈락한 팔을 지목한다",
+      isinstance(err3b, str) and err3b.split(":", 1)[1].split(",") == ["ReformTeam"],
+      "err=%r" % (err3b,))
+check("NOOP 이 chosen 으로 새어나가지 않는다",
+      not (scored3b and scored3b[0][0] == "NOOP"), "scored=%r" % (scored3b,))
+
+# 반대쪽 계약: legal 이 처음부터 {NOOP} 뿐이면 보류할 개입이 없으므로 NOOP 이 정직한 답이다.
+_install(StubModel({0: 0.0}), {0, 1, 2, 7, 8})
+scored3c, err3c = S.surrogate_rank(_req(kind="fault"), ["NOOP"])
+check("legal 이 {NOOP} 뿐이면 UNSUPPORTED 가 아니라 NOOP 이다",
+      scored3c is not None and [m for m, _ in scored3c] == ["NOOP"] and err3c is None,
+      "scored=%r err=%r" % (scored3c, err3c))
 
 # ---- 4. 점수 낼 팔이 하나도 없으면 None + 사유 (기존 규약 그대로) --------------------------
 _install(StubModel({}), {7})
