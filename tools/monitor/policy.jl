@@ -694,6 +694,53 @@ end
 
 
 """
+    policy_entry(b, label) -> Dict
+
+서비스 응답 하나(`b`, 없으면 `nothing`)를 **`decide_all` 이 `pol[key]` 에 넣는 dict** 로 바꾼다.
+
+왜 함수로 뽑았는가 (2026-08-14 최종 리뷰)
+----------------------------------------
+`escalation_target` 은 순수 함수로 뽑혀 검사되고 있었는데, **그 함수가 읽는 dict 를 만드는
+쪽**은 `decide_all` 안에 인라인이라 검사되지 않았다. 그래서 `tools/test_policy_escalation.jl`
+의 `unavail()` 은 이 dict 의 **손으로 쓴 복제본**이었고, 실측 확인: 아래 폴백 분기에서
+`"unsupported" => miss0` 를 지워도 9개 검사가 전부 초록이었다(= 회귀가 그대로 복원된다).
+복제본을 검사하면 복제본만 지켜진다 — 그래서 테스트가 **실제 생산자**를 부르도록 여기 뽑았다.
+
+`b` 는 서비스 응답(JSON3 object) 또는 `nothing`. `get(b, :key, default)` 만 쓰므로 NamedTuple
+로도 부를 수 있다(테스트가 그렇게 부른다).
+"""
+function policy_entry(b, label)
+    if b !== nothing
+        local err = get(b, :error, nothing)
+        if err === nothing && !isempty(String(get(b, :chosen, "")))
+            return Dict("chosen" => String(b.chosen),
+                        "ranking" => String.(collect(get(b, :ranking, String[]))),
+                        "margin" => (try Float64(b.margin) catch; nothing end),
+                        "rationale" => String(get(b, :rationale, "")),
+                        "scores" => get(b, :scores, nothing),
+                        # 이 정책이 **아예 고를 수 없었던** 유효 매크로들(학습 근거 0).
+                        # "NOOP 을 골랐다"와 "새 행동을 못 본다"는 전혀 다른 사건이다.
+                        "unsupported" => String.(collect(get(b, :unsupported, String[]))),
+                        "label" => String(get(b, :policy, label)), "available" => true)
+        end
+    end
+    # ---- 폴백 dict 도 `unsupported` 와 **사유**를 싣는다 (2026-08-14 회귀 수정) ----------
+    # 왜: 서비스가 "개입 후보가 전멸했다"를 알리는 방법은 `UNSUPPORTED:` + 빈 chosen 이라
+    # 이 분기로 떨어진다. 여기서 unsupported 를 버리면 **표현력 격상 게이트**가
+    # 정확히 그 사건에서 근거를 잃는다 — 게이트가 존재하는 이유가 그 사건인데도.
+    # rationale 도 남긴다: 기록에 `fell_back=true` 만 있고 **어느 팔이 없었는지**가 없으면,
+    # 나중에 이 폴백을 디버깅할 사람이 제일 먼저 찾을 정보가 빠져 있다.
+    local miss0 = b === nothing ? String[] : String.(collect(get(b, :unsupported, String[])))
+    local err0 = b === nothing ? "" : String(something(get(b, :error, nothing), ""))
+    return Dict("chosen" => "", "ranking" => String[], "margin" => nothing,
+                "rationale" => (isempty(miss0) ? err0 :
+                                "no training support for " * join(miss0, ",")),
+                "unsupported" => miss0, "error" => err0,
+                "label" => label, "available" => false)
+end
+
+
+"""
     decide_all(env, truth; nl="") -> (policies, enacted, router, ...)
 
 **세 정책을 모두 계산**해 기록용 구조를 만든다. UI 가 "규칙이라면 / surrogate 라면 / LLM 이라면
@@ -736,38 +783,11 @@ function decide_all(env, truth; nl::AbstractString = "")
     # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
     # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로
     # 띄웠을 때 UI 가 거짓말을 한다.
+    # dict 조립은 `policy_entry`(위) 한 곳에만 있다 — 여기서 다시 쓰면 테스트가 검사하는 것과
+    # 실행되는 것이 갈린다(그게 정확히 이 회귀가 검사를 빠져나간 방식이다).
     for (key, label) in (("dspy", "dspy:LLM"), ("surrogate", "surrogate:RandomForest"))
-        if j !== nothing && haskey(j, Symbol(key))
-            local b = j[Symbol(key)]
-            local err = get(b, :error, nothing)
-            if err === nothing && !isempty(String(get(b, :chosen, "")))
-                pol[key] = Dict("chosen" => String(b.chosen),
-                                "ranking" => String.(collect(get(b, :ranking, String[]))),
-                                "margin" => (try Float64(b.margin) catch; nothing end),
-                                "rationale" => String(get(b, :rationale, "")),
-                                "scores" => get(b, :scores, nothing),
-                                # 이 정책이 **아예 고를 수 없었던** 유효 매크로들(학습 근거 0).
-                                # "NOOP 을 골랐다"와 "새 행동을 못 본다"는 전혀 다른 사건이다.
-                                "unsupported" => String.(collect(get(b, :unsupported, String[]))),
-                                "label" => String(get(b, :policy, label)), "available" => true)
-                continue
-            end
-        end
-        # ---- 폴백 dict 도 `unsupported` 와 **사유**를 싣는다 (2026-08-14 회귀 수정) ----------
-        # 왜: 서비스가 "개입 후보가 전멸했다"를 알리는 방법은 `UNSUPPORTED:` + 빈 chosen 이라
-        # 이 분기로 떨어진다. 여기서 unsupported 를 버리면 아래 **표현력 격상 게이트**가
-        # 정확히 그 사건에서 근거를 잃는다 — 게이트가 존재하는 이유가 그 사건인데도.
-        # rationale 도 남긴다: 기록에 `fell_back=true` 만 있고 **어느 팔이 없었는지**가 없으면,
-        # 나중에 이 폴백을 디버깅할 사람이 제일 먼저 찾을 정보가 빠져 있다.
-        local b0 = (j !== nothing && haskey(j, Symbol(key))) ? j[Symbol(key)] : nothing
-        local miss0 = b0 === nothing ? String[] :
-                      String.(collect(get(b0, :unsupported, String[])))
-        local err0 = b0 === nothing ? "" : String(something(get(b0, :error, nothing), ""))
-        pol[key] = Dict("chosen" => "", "ranking" => String[], "margin" => nothing,
-                        "rationale" => (isempty(miss0) ? err0 :
-                                        "no training support for " * join(miss0, ",")),
-                        "unsupported" => miss0, "error" => err0,
-                        "label" => label, "available" => false)
+        pol[key] = policy_entry((j !== nothing && haskey(j, Symbol(key))) ? j[Symbol(key)] : nothing,
+                                label)
     end
 
     # 실행할 정책: 라우터가 켜져 있으면 라우터가, 아니면 DEMO_POLICY. 쓸 수 없으면 canonical 폴백.

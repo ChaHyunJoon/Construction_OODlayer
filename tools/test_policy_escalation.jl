@@ -32,21 +32,48 @@ function check(name, ok, detail = "")
     println("  [", ok ? "PASS" : "FAIL", "] ", name, isempty(detail) ? "" : "  -- " * detail)
 end
 
-# decide_all 이 만드는 것과 **같은 모양**의 dict 들.
+# ---------------------------------------------------------------------------------------------
+# dict 는 **실제 생산자**(`policy.policy_entry`)로 만든다 — 손으로 쓴 복제본이 아니다.
+#
+# 2026-08-14 최종 리뷰가 잡은 것: 이 파일의 `unavail()` 은 원래 `decide_all` 이 만드는 dict 의
+# 축자 복제본이었다. 실측 — `policy.jl` 의 폴백 분기에서 `"unsupported" => miss0` 를 지워도
+# 여기 9개 검사가 **전부 초록**이었고 회귀(격상이 영원히 안 열림)가 그대로 복원됐다.
+# 복제본을 검사하면 복제본만 지켜진다. 그래서 `decide_all` 의 dict 조립부를 `policy_entry`
+# 로 뽑아 여기서 그 함수를 부른다: 이제 그 줄을 지우면 T0/T1 이 즉시 빨개진다.
+#
+# 인자는 서비스 응답(JSON3 object)의 자리에 NamedTuple 을 넣는다 — `policy_entry` 는
+# `get(b, :key, default)` 와 `b.chosen` 만 쓰므로 둘의 인터페이스가 같다.
+# ---------------------------------------------------------------------------------------------
 avail(chosen; unsup = String[]) =
-    Dict("chosen" => chosen, "ranking" => [chosen], "margin" => 0.5, "rationale" => "",
-         "unsupported" => unsup, "label" => "x", "available" => true)
-# ↓ Ruling 1 이후 surrogate 가 "개입 전멸" 을 알릴 때의 모양 (chosen 이 비고 available=false,
-#   그러나 unsupported 는 실려 있다). 이 모양이 곧 회귀의 현장이다.
+    policy_entry((chosen = chosen, ranking = [chosen], margin = 0.5, rationale = "",
+                  unsupported = unsup, policy = "x"), "surrogate:RandomForest")
+# ↓ Ruling 1 이후 surrogate 가 "개입 전멸" 을 알릴 때 서비스가 보내는 것: chosen 이 비어 있고
+#   unsupported 만 실려 있다. `policy_entry` 는 이것을 available=false dict 로 바꾼다.
+#   이 모양이 곧 회귀의 현장이다.
 unavail(; unsup = String[]) =
-    Dict("chosen" => "", "ranking" => String[], "margin" => nothing,
-         "rationale" => (isempty(unsup) ? "" : "no training support for " * join(unsup, ",")),
-         "unsupported" => unsup, "error" => "", "label" => "x", "available" => false)
+    policy_entry((chosen = "", ranking = String[], unsupported = unsup, error = nothing), "x")
 canon(chosen) =
     Dict("chosen" => chosen, "ranking" => [chosen], "margin" => nothing, "rationale" => "",
          "label" => "canonical", "available" => true)          # ← unsupported 키가 **없다**
 
 println("== 표현력 격상 게이트 ==")
+
+# ---------------------------------------------------------------------------------------------
+# T0  (생산자 계약) `policy_entry` 의 폴백 dict 가 `unsupported` 를 **싣는다**.
+#     이것이 위 unavail() 이 fixture 가 아니라 출력이라는 사실 그 자체의 검사다 — 이 키를
+#     policy.jl 에서 지우면 여기서 먼저 죽는다.
+# ---------------------------------------------------------------------------------------------
+u0 = unavail(unsup = ["ReformTeam"])
+check("T0 생산자가 낸 폴백 dict 에 unsupported 가 실려 있다",
+      haskey(u0, "unsupported") && u0["unsupported"] == ["ReformTeam"] &&
+      u0["available"] == false && isempty(u0["chosen"]),
+      "dict=$(u0)")
+check("T0b 폴백 dict 의 rationale 이 어느 팔이 없었는지 말한다",
+      occursin("ReformTeam", u0["rationale"]), u0["rationale"])
+a0 = avail("ReformTeam", unsup = ["RelocateBuild"])
+check("T0c 생산자가 낸 available dict 도 unsupported 를 보존한다",
+      a0["available"] == true && a0["chosen"] == "ReformTeam" &&
+      a0["unsupported"] == ["RelocateBuild"] && a0["label"] == "x", "dict=$(a0)")
 
 # ---------------------------------------------------------------------------------------------
 # T1  (회귀의 현장) surrogate 가 available=false 로 와도, unsupported 가 있으면 격상한다.
