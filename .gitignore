@@ -69,3 +69,7 @@ wm4spacecraft_manufacturing/_night/render_logs/
 # 이 커밋돼 있고 샤드는 그것과 정확히 중복이다 — 재현에 필요한 것은 커밋된 병합본과
 # 리포트에 적힌 DS_* 설정이지 샤드 파일이 아니다.
 wm4spacecraft_manufacturing/oracle/out/shards_relabel_2026-08-14/
+
+# dp_oracle 표집 작업 디렉토리 (--keep-work). 판당 rows.jsonl + board.log 로 588판이면 ~2.4GB.
+# 표본 자체는 samples.jsonl 에 있고 이건 재현·사후진단용 원자료라 레포에 넣지 않는다.
+wm4spacecraft_manufacturing/dp_oracle/_sample_work/

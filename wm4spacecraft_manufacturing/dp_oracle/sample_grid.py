@@ -48,13 +48,36 @@ complete=False` 였다 — "둘 다 canonical 과 바이트 동일" 이면 있�
 1,2,3,7,8 이 B) **owner 와 중복인 판을 대표로 남기고 유일한 canonical 판을 버린다.**
 
 그래서 둘을 **별개의 등가류**로 다룬다(상세: `_deviation_class`·`_pick_deviation_representatives`
-·`rows_to_samples` 의 docstring). 대표 규칙 자체는 두 클래스에 **하나**다 — **그 세계를 이미
-`i=0` 부터 전부 내고 있는 판이 있으면 대표를 두지 않고, 없을 때만 하나(arm_id 최솟값)를 남긴다.**
-다른 것은 "누가 그 세계를 들고 있느냐" 뿐이다:
+·`rows_to_samples` 의 docstring). 중복 제거 규칙 자체는 두 클래스에 **하나**다 — **그 세계를
+이미 `i=0` 부터 전부 내고 있는 판이 있으면 꼬리 대표를 두지 않고, 없을 때만 하나(arm_id
+최솟값)에 꼬리를 남긴다.** 다른 것은 "누가 그 세계를 들고 있느냐" 뿐이다:
   · 클래스 A 의 그 판 = **owner 가 클래스 A 일 때의 owner**.
   · 클래스 B 의 그 판 = **NOOP 팔 판** 또는 **owner 가 클래스 B 일 때의 owner**.
 `deviate_valid` 로는 어느 쪽도 못 거른다 — fault·reform 축은 `valid_macros` 가 항상 빈 리스트라
 `deviate_valid` 가 사실상 항상 true 다(2026-08-17 2차 리뷰).
+
+★ 2026-08-15 7차 수정 — **deviation 행은 중복이 아니다. 중복 제거는 꼬리에만 한다.**
+6차까지는 클래스 A/B 로 판정된 비owner 판을 (대표 하나를 빼고) **판 통째로** 뺐다. 그 배제가
+같이 버린 것이 **결정 k 행**이고, 그 행은 그 판이 만드는 관측 중 유일무이한 것이다: 판마다
+자기 팔을 k 에서 강제하므로 그 행의 라벨(`d["macro"]`)이 그 팔이고, **같은 칸에서 그 팔을 내는
+판은 다른 데 없다.** 보존된 588판 실측:
+
+    판 all_s11_a1  k=8  macro=Replace       deviate_arm=Replace       deviated=True enact_applied=False
+    판 all_s11_a2  k=8  macro=Deprioritize  deviate_arm=Deprioritize  deviated=True enact_applied=False
+    판 all_s11_a3  k=8  macro=ForbidZone    deviate_arm=ForbidZone    deviated=True enact_applied=False
+
+같은 칸·같은 k 에 **서로 다른 세 팔**이다(전부 클래스 B). 이걸 버리는 것은 중복 제거가 아니라
+§1-B(한 칸이 여러 팔을 보게 한다)가 겨냥한 바로 그 관측을 버리는 것이었다 — 실측 귀결이 단일팔
+칸 27/49 → 23/48(목표 ≤5)로 사실상 안 움직인 것이다.
+
+진짜 중복은 **꼬리(`decision_index > k`)뿐**이다: 무동작 deviation 뒤에는 결정 k 에서 세계가
+안 바뀌었으니 꼬리가 NOOP 팔 판(클래스 B) 또는 canonical(클래스 A)의 궤적을 그대로 되밟는다.
+
+**그래서 규칙을 이렇게 고쳐 적는다 — `deviation 행은 절대 중복이 아니다. 발화한 판은 전부 자기
+결정 k 행을 낸다. 중복 제거는 꼬리에만 적용한다.`** `se` 팽창 논증은 그대로 산다: 서로 다른 팔
+라벨은 서로 **다른 (cell, arm) 버킷**에 들어가므로 `_se = std/√n`(`dp_solve.py:242-247`)이 안
+흔들린다. 그리고 여러 팔이 그 자리에서 실제로 무동작이라 값이 같다면 그건 제조된 동점이 아니라
+**진짜 동점**이고, 그대로 기록하는 것이 정직한 결과다.
 
 2026-08-15 부터 `run_demo.jl` 이 **결정마다 (sim_t, 누적 energy, closed)** 를
 남기므로, 연속한 두 결정 사이의 구간 비용 `c_k` 와 다음 칸 `s̃′` 가 실제로 만들어진다. 그래서
@@ -280,21 +303,33 @@ def new_report():
     필드는 owner 가 아닌 판에서 무엇을 얼마나 뺐는지를 센다. 전부 **다른 사건**이라 따로 센다:
       - `boards_no_deviation`/`no_deviation_by_arm` : owner 아닌 판인데 deviation 이 한 번도
         안 걸림(k > 그 판의 결정 수, "미발화") → owner 도 그 k 에서 안 걸렸을 것이므로 owner 가
-        이미 canonical 이다. **대표 후보에 안 넣는다.**
+        이미 canonical 이다. 낼 `k` 행 자체가 없다. **대표 후보에 안 넣는다.**
+      ★ **2026-08-15 7차: 아래 클래스 카운터는 판이 아니라 그 판의 꼬리를 센다.** 발화한 판은
+        클래스와 무관하게 **전부 자기 결정 k 행을 낸다**(그 행은 중복이 아니다 — 머리말 ★7차).
+        갈리는 것은 꼬리(`decision_index > k`)를 냈느냐뿐이다. "판을 배제했다"고 읽히는 이름은
+        이제 거짓이라 전부 `..._tail_dropped` 로 바꿨다.
       - **클래스 A**(`deviated == False`, = canonical 과 바이트 동일. 2026-08-17 4차 수정에서
         클래스 B 와 분리했다 — 머리말 참조):
           · `boards_class_a_representative`/`class_a_representative_by_arm` : 그 (case,seed) 의
-            클래스 A 대표로 뽑혀 **정상 방출한** 판(비owner 규칙 그대로 `i >= k`).
-          · `boards_class_a_duplicate`/`class_a_duplicate_by_arm` : 대표가 아니라서 뺀 클래스 A
-            판. 대표와 바이트 동일한 중복이다. (owner 자신이 클래스 A 면 대표를 **아예 안 뽑으므로**
+            클래스 A **꼬리 대표**로 뽑혀 꼬리까지 낸 판(비owner 규칙 그대로 `i >= k`).
+          · `boards_class_a_tail_dropped`/`class_a_tail_dropped_by_arm` : 꼬리 대표가 아니라서
+            **꼬리만** 뺀 클래스 A 판(결정 k 행은 냈다). 그 꼬리는 대표(또는 owner)의 꼬리와
+            바이트 동일한 중복이다. (owner 자신이 클래스 A 면 꼬리 대표를 **아예 안 뽑으므로**
             그 (case,seed) 의 클래스 A 판은 전부 여기로 온다 — owner 가 canonical 을 `i=0` 부터
             이미 전부 내고 있다.)
-      - **클래스 B**(`enact_applied == False` 이고 `deviated != False`, = **NOOP 팔 판과** 바이트
-        동일하지 canonical 과는 아니다):
+      - **클래스 B**(`enact_applied == False` 이고 `deviated != False`, = 꼬리가 **NOOP 팔 판과**
+        바이트 동일하지 canonical 과는 아니다):
           · `boards_class_b_representative`/`class_b_representative_by_arm` : 그 세계를 들고 있는
-            판(NOOP 팔 판 · owner 가 클래스 B 면 owner)이 **둘 다 없을 때만** 뽑히는 대표(방출한 판).
-          · `boards_class_b_redundant`/`class_b_redundant_by_arm` : 그 세계를 이미 들고 있는 판
-            (NOOP 팔 판 또는 클래스 B 인 owner)이 있어서 뺀 판.
+            판(NOOP 팔 판 · owner 가 클래스 B 면 owner)이 **둘 다 없을 때만** 뽑히는 꼬리 대표.
+          · `boards_class_b_tail_dropped`/`class_b_tail_dropped_by_arm` : 그 세계를 이미 들고 있는
+            판(NOOP 팔 판 또는 클래스 B 인 owner)이 있어서 **꼬리만** 뺀 판(결정 k 행은 냈다).
+      - `deviation_rows_kept_from_suppressed`/`deviation_rows_kept_by_arm` : 위 두
+        `..._tail_dropped` 판에서 **실제로 살아남은 결정 k 행**의 수(팔 이름별). 6차까지는 이
+        행들이 통째로 사라졌다 — 이 카운터가 "꼬리만 뺐지 판을 뺀 게 아니다"를 로그에서 직접
+        보이는 자리다. 칸으로 라벨할 수 없거나(`cells[i] is None`) 집행 이름이 `arm_menu` 밖이면
+        그 행은 여전히 안 나가므로, 이 수는 `boards_*_tail_dropped` 합보다 작을 수 있다.
+      - `decisions_dropped_tail_dup` : 위 판들에서 중복이라 뺀 **꼬리 결정** 수(판이 아니라 결정
+        단위). `decisions_dropped_prefix_dup`(비owner 의 `< k` prefix)과는 다른 사건이다.
         ⚠️ **`deviate_valid` 로는 어느 클래스도 못 거른다** — `deviate_valid` 는 `isempty(valid_macros)
         || dev in valid_macros`(policy.jl:413·:556 규약: 빈 메뉴 = 제한 없음)라서, `valid_macros`
         가 FaultTruth·ReformTruth 에 **항상 빈 리스트**를 주는 한 그 두 축에서 `deviate_valid` 는
@@ -318,14 +353,19 @@ def new_report():
             "boards_no_deviation": 0, "no_deviation_by_arm": collections.Counter(),
             "boards_class_a_representative": 0,
             "class_a_representative_by_arm": collections.Counter(),
-            "boards_class_a_duplicate": 0, "class_a_duplicate_by_arm": collections.Counter(),
+            "boards_class_a_tail_dropped": 0,
+            "class_a_tail_dropped_by_arm": collections.Counter(),
             "boards_class_b_representative": 0,
             "class_b_representative_by_arm": collections.Counter(),
-            "boards_class_b_redundant": 0, "class_b_redundant_by_arm": collections.Counter(),
+            "boards_class_b_tail_dropped": 0,
+            "class_b_tail_dropped_by_arm": collections.Counter(),
+            "deviation_rows_kept_from_suppressed": 0,
+            "deviation_rows_kept_by_arm": collections.Counter(),
             "boards_deviate_valid_false": 0,
             "deviate_valid_false_by_arm": collections.Counter(),
             "enact_applied_missing": 0, "owner_boards": 0, "non_owner_transitions": 0,
-            "decisions_dropped_prefix_dup": 0, "dropped_unknown_macro": collections.Counter()}
+            "decisions_dropped_prefix_dup": 0, "decisions_dropped_tail_dup": 0,
+            "dropped_unknown_macro": collections.Counter()}
 
 
 def decompose_board(row, w_E=None, cfg=None):
@@ -433,23 +473,27 @@ def decompose_board(row, w_E=None, cfg=None):
                 terminal_value=tv, resid_telescope=resid_tel, resid_settle=resid_set)
 
 
-# ---- 두 등가류(클래스 A/B)의 대표 선정 (2026-08-17 4차 수정) -----------------------------
-# 라벨이 판이 아니라 결정을 따르게 된 뒤(Critical 1), owner 가 아닌 판들의 `i >= k` 꼬리가
+# ---- 두 등가류(클래스 A/B)의 **꼬리** 대표 선정 (2026-08-17 4차 · 2026-08-15 7차 수정) ------
+# ★ 이 절이 정하는 것은 **꼬리(`decision_index > k`)를 누가 내느냐** 뿐이다. 결정 k 행은 어떤
+# 선정 결과와도 무관하게 **발화한 판이 전부 낸다** — 그 행은 그 판이 k 에서 강제한 팔로
+# 라벨되므로 어느 판과도 중복이 아니다(머리말 ★7차 수정, 실측 세 판 인용).
+#
+# 라벨이 판이 아니라 결정을 따르게 된 뒤(Critical 1), owner 가 아닌 판들의 `i > k` 꼬리가
 # **서로 바이트 동일**하면 그 행들은 같은 (cell,arm) 버킷에 정보 0 인 중복으로 쌓인다 —
 # dp_solve._decide 의 `se = std/√n` 을 정보 없이 낮춰 tie 를 가짜 a* 로 뒤집는다(§1-B 재발).
-# 그래서 "서로 바이트 동일한 판" 마다 대표 하나만 남긴다. 문제는 **무엇과 동일한가**이고,
-# 3차까지 그것을 하나로 합쳐 뒀던 것이 이번에 고치는 결함이다(머리말 ★4차 수정 참조):
+# 그래서 "꼬리가 서로 바이트 동일한 판" 마다 꼬리 대표 하나만 남긴다. 문제는 **무엇과 동일한가**
+# 이고, 3차까지 그것을 하나로 합쳐 뒀던 것이 4차에서 고친 결함이다(머리말 ★4차 수정 참조):
 #
 #   · 클래스 A (`deviated is False`) — 강제한 팔이 canonical 이 이미 고르려던 것과 같았다.
-#     이 판은 **canonical 과** 바이트 동일하다.
+#     이 판의 꼬리는 **canonical 과** 바이트 동일하다.
 #   · 클래스 B (`enact_applied is False`) — 집행 사슬이 어떤 분기도 안 탔다. 결정 k 에서 세계가
-#     안 바뀌었으므로 이 판은 **NOOP 팔 판과** 바이트 동일하다. canonical 과는 다르다(canonical
-#     이었다면 자기 매크로의 분기를 실제로 탔을 것이다).
+#     안 바뀌었으므로 이 판의 꼬리는 **NOOP 팔 판과** 바이트 동일하다. canonical 과는 다르다
+#     (canonical 이었다면 자기 매크로의 분기를 실제로 탔을 것이다).
 #
-# 대표 규칙은 두 클래스에 **하나**다: **그 세계를 이미 `i=0` 부터 전부 내고 있는 판이 있으면
-# 대표를 두지 않는다**(있으면 대표는 그 판 꼬리의 정확한 복제일 뿐이다). 없을 때만 하나
-# (arm_id 최솟값)를 남긴다 — 안 그러면 그 세계가 통째로 안 잡힌다. 클래스마다 다른 것은
-# "누가 그 세계를 들고 있느냐" 뿐이다:
+# 꼬리 대표 규칙은 두 클래스에 **하나**다: **그 세계를 이미 `i=0` 부터 전부 내고 있는 판이
+# 있으면 꼬리 대표를 두지 않는다**(있으면 대표 꼬리는 그 판 꼬리의 정확한 복제일 뿐이다).
+# 없을 때만 하나(arm_id 최솟값)에 꼬리를 남긴다 — 안 그러면 그 세계가 통째로 안 잡힌다.
+# 클래스마다 다른 것은 "누가 그 세계를 들고 있느냐" 뿐이다:
 #   · A 의 그 판 = **owner 가 클래스 A 일 때의 owner**(owner 는 항상 전 결정을 낸다). 반대로
 #     owner 가 실제로 deviate 했으면 owner 의 `i >= k` 는 canonical 이 아니므로 클래스 A 판이
 #     canonical 연속의 유일한 운반자다 — 그때 하나를 남긴다.
@@ -458,7 +502,8 @@ def decompose_board(row, w_E=None, cfg=None):
 #     (2026-08-17 5차: owner 쪽 대칭 예외가 빠져 있어, NOOP 판이 크래시하고 owner 가 클래스 B 인
 #     (case,seed) 에서 대표 하나가 owner 꼬리의 복제로 남았다 — A 쪽에서 이미 막은 것과 같은 결함.)
 #
-# 미발화 판(발화한 결정이 아예 없음, k > 결정 수)은 어느 클래스도 아니고 대표 후보가 **아니다**
+# 미발화 판(발화한 결정이 아예 없음, k > 결정 수)은 낼 **결정 k 행 자체가 없고**(그래서 ★7차의
+# "발화한 판은 전부 k 행을 낸다"에 걸리지 않는다) 어느 클래스도 아니라 대표 후보가 **아니다**
 # — 그 경우 owner 도 같은 k 에서 안 걸렸으므로 owner 자체가 이미 canonical 이다.
 def _fired_decision(ds):
     """이 판의 decisions 리스트에서 deviation 게이트가 걸린 결정 하나(있으면)를 돌려준다.
@@ -538,11 +583,14 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
         `boards_no_deviation`) — owner 도 같은 k 에서 안 걸렸을 것이므로 owner 가 이미
         canonical 이고, 대표가 따로 필요 없다.
       - 걸렸는데 **클래스 A 또는 B**(`_deviation_class`, 아래 §등가류 절)면, `main()` 이 넘긴
-        `is_class_representative`(= 그 (case,seed) 에서 **자기 클래스의** 대표로 뽑혔는가)를 본다:
-          - **True** — 비owner 규칙 그대로(`i >= k`) 정상 방출한다
+        `is_class_representative`(= 그 (case,seed) 에서 **자기 클래스의 꼬리 대표**로 뽑혔는가)를
+        본다. ★ **어느 쪽이든 결정 k 행은 낸다**(2026-08-15 7차) — 갈리는 것은 꼬리뿐이다:
+          - **True** — 비owner 규칙 그대로(`i >= k`) 꼬리까지 낸다
             (`boards_class_a_representative` / `boards_class_b_representative`).
-          - **False** — 대표(A) 또는 NOOP 팔 판(B)과 바이트 동일한 중복이므로 **아무것도 안
-            낸다**(`boards_class_a_duplicate` / `boards_class_b_redundant`).
+          - **False** — 꼬리(`i > k`)는 대표(A) 또는 NOOP 팔 판(B)의 꼬리와 바이트 동일한
+            중복이라 뺀다. **결정 k 행 하나만 낸다**
+            (`boards_class_a_tail_dropped` / `boards_class_b_tail_dropped` +
+            `deviation_rows_kept_from_suppressed` · `decisions_dropped_tail_dup`).
         `enact_applied` 키가 아예 없고 `deviated` 도 False 가 아니면(Task 1 미완료 구세대
         산출물) 어느 클래스도 아니라 배제하지 않고 통과시키되 `enact_applied_missing` 으로
         센다(모르는 것을 아는 척 배제하지 않는다).
@@ -560,28 +608,41 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
         어긋나는 사건(`valid=True, applied=False`, §1-B 가 묻는 것)을 로그만으로 답할 수 있어야
         한다.
 
-    § 등가류 A/B (2026-08-17 4차 수정). **라벨이 실제 집행 매크로가 된 뒤로는**(위 Critical 1)
-    서로 바이트 동일한 판들의 `i >= k` 꼬리가 **같은 (cell,arm) 버킷에 정보 0 인 중복으로
-    쌓인다** — `dp_solve._decide` 의 `se = std/√n` 을 인위적으로 낮춰 tie 를 가짜 a* 로
-    뒤집는다(§1-B 재발). 그래서 대표를 하나만 남기는데, 규칙은 두 클래스에 **하나**다 —
-    **그 세계를 이미 `i=0` 부터 전부 내고 있는 판이 있으면 대표를 두지 않는다**(그러면 대표는
-    그 판 꼬리의 정확한 복제다). 클래스마다 다른 것은 **무엇과 동일한가 = 누가 그 세계를 들고
-    있느냐** 뿐이다:
+    § 등가류 A/B (2026-08-17 4차 수정) — **중복 제거는 꼬리에만 적용한다(2026-08-15 7차).**
+    ★ **지배 문장: deviation 행은 절대 중복이 아니다 — 발화한 판은 전부 자기 결정 k 행을 낸다.
+    중복 제거되는 것은 꼬리(`decision_index > k`)뿐이다.** 판마다 자기 팔을 k 에서 강제하므로
+    그 행의 라벨(`d["macro"]`)이 그 팔이고, 같은 칸에서 그 팔을 내는 판이 다른 데 없다 —
+    보존된 588판에서 같은 칸·같은 k 에 클래스 B 판 셋이 `Replace`/`Deprioritize`/`ForbidZone`
+    **서로 다른 세 라벨**로 앉아 있었다(머리말 ★7차 인용). 6차까지 이 판들을 통째로 뺀 것이
+    §1-B(한 칸이 여러 팔을 보게 한다)가 겨냥한 관측을 그대로 버리고 있었다.
+    서로 다른 팔 라벨은 서로 **다른 (cell, arm) 버킷**에 들어가므로 `_se = std/√n` 논증은 이
+    행들에 걸리지 않고, 여러 팔이 그 자리에서 실제로 무동작이라 값이 같다면 그건 **진짜 동점**
+    이다(제조된 동점이 아니다).
 
-      · **클래스 A**(`deviated is False`) = **canonical 과** 바이트 동일. 그 세계를 들고 있는
-        판은 **owner 가 클래스 A 일 때의 owner** 다 — 그러면 대표 **0개**. 반대로 owner 자신이
-        실제로 deviate 했다면 canonical 연속을 들고 있는 건 클래스 A 판들뿐이라 하나(arm_id
-        최솟값)를 남긴다.
-      · **클래스 B**(`enact_applied is False`, A 가 아닐 때) = **NOOP 팔 판과** 바이트 동일.
-        canonical 과는 다르다 — canonical 이었다면 자기 매크로의 집행 분기(hot-swap·rebalance·
-        restage·reform)를 탔을 것이다. 그 세계를 들고 있는 판은 **NOOP 팔 판** 또는 **owner 가
-        클래스 B 일 때의 owner** 이고, 둘 다 없을 때만 하나를 남긴다.
+    **라벨이 실제 집행 매크로가 된 뒤로는**(위 Critical 1) 서로 바이트 동일한 판들의 `i > k`
+    **꼬리**가 **같은 (cell,arm) 버킷에 정보 0 인 중복으로 쌓인다** — `dp_solve._decide` 의
+    `se = std/√n` 을 인위적으로 낮춰 tie 를 가짜 a* 로 뒤집는다(§1-B 재발). 그래서 **꼬리** 대표를
+    하나만 남기는데, 규칙은 두 클래스에 **하나**다 — **그 세계를 이미 `i=0` 부터 전부 내고 있는
+    판이 있으면 꼬리 대표를 두지 않는다**(그러면 대표 꼬리는 그 판 꼬리의 정확한 복제다).
+    클래스마다 다른 것은 **무엇과 동일한가 = 누가 그 세계를 들고 있느냐** 뿐이다:
+
+      · **클래스 A**(`deviated is False`) = 꼬리가 **canonical 과** 바이트 동일. 그 세계를 들고
+        있는 판은 **owner 가 클래스 A 일 때의 owner** 다 — 그러면 꼬리 대표 **0개**. 반대로
+        owner 자신이 실제로 deviate 했다면 canonical 연속을 들고 있는 건 클래스 A 판들뿐이라
+        하나(arm_id 최솟값)에 꼬리를 남긴다. (한 (case,seed) 에 클래스 A 판은 최대 하나다 —
+        판마다 강제하는 팔이 다르고 `deviated is False` 는 그 팔이 canonical 의 **유일한** 선택과
+        같았다는 뜻이므로.)
+      · **클래스 B**(`enact_applied is False`, A 가 아닐 때) = 꼬리가 **NOOP 팔 판과** 바이트
+        동일. canonical 과는 다르다 — canonical 이었다면 자기 매크로의 집행 분기(hot-swap·
+        rebalance·restage·reform)를 탔을 것이다. 그 세계를 들고 있는 판은 **NOOP 팔 판** 또는
+        **owner 가 클래스 B 일 때의 owner** 이고, 둘 다 없을 때만 하나에 꼬리를 남긴다.
 
     3차까지는 이 둘을 "무집행" 하나로 묶어 통째로 `min()` 을 취했다 — 클래스 B 의 팔 id 가 대체로
     더 작아서 **owner 와 중복인 판을 대표로 남기고 유일한 canonical 판을 버렸다**(zone 축·reform
     축에서 사실상 상시 발생). 실측 반증은 머리말 ★4차 수정 절에 있다.
-    대표 선정 자체는 `main()` 이 `_pick_deviation_representatives` 로 (owner 선정과 같은 결정론:
-    풀 전체에서 `min()`) 하고, 이 함수는 그 결과를 `is_class_representative` 로 받기만 한다.
+    꼬리 대표 선정 자체는 `main()` 이 `_pick_deviation_representatives` 로 (owner 선정과 같은
+    결정론: 풀 전체에서 `min()`) 하고, 이 함수는 그 결과를 `is_class_representative` 로 받기만
+    한다.
 
     `id_by_name` 은 실제 집행 매크로 이름 -> id 사전(`main()` 이 `arm_menu()` 결과로 만든다,
     기본값은 `_default_id_by_name()`). 거기 없는 이름이 나온 결정은 **그 행만** 버리고
@@ -629,7 +690,10 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
         rep["decisions"] += len(ds)
         rep["decisions_unstateable"] += sum(1 for c in cells if c is None)
 
-        # ---- owner/R3/클래스 대표: 어느 결정 범위를 낼지 결정한다 (Critical 1 + 4차 수정) -----
+        # ---- owner/R3/클래스 대표: 어느 결정 범위를 낼지 결정한다 (Critical 1 + 4·7차 수정) --
+        # `drop_tail` = 이 판의 꼬리(`decision_index > k`)가 다른 판 꼬리의 복제라서 뺀다.
+        # 결정 k 행 자체는 **어떤 경우에도 안 뺀다**(2026-08-15 7차, 위 §등가류 지배 문장).
+        drop_tail = False
         if is_owner:
             rep["owner_boards"] += 1
             start_i = 0                       # owner 는 항상 전 결정을 낸다
@@ -657,28 +721,30 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
                 rep["enact_applied_missing"] += 1
             cls = _deviation_class(fired_d)
             if cls == "A":
-                # canonical 과 바이트 동일한 판. 대표 하나만 남긴다(위 §등가류 docstring) —
-                # owner 자신이 클래스 A 면 main() 이 대표를 아예 안 뽑아 전부 여기 duplicate 로
-                # 온다(owner 가 이미 canonical 을 i=0 부터 전부 내고 있다).
+                # 꼬리가 canonical 과 바이트 동일한 판. 꼬리 대표 하나만 남긴다(위 §등가류
+                # docstring) — owner 자신이 클래스 A 면 main() 이 꼬리 대표를 아예 안 뽑아 전부
+                # 여기로 온다(owner 가 이미 canonical 을 i=0 부터 전부 내고 있다).
+                # ★ 어느 쪽이든 결정 k 행은 낸다 — 그 행은 이 판이 k 에서 강제한 팔로 라벨되고
+                # 그 (칸,팔) 을 내는 판이 다른 데 없다(2026-08-15 7차).
                 if is_class_representative:
                     rep["boards_class_a_representative"] += 1
                     rep["class_a_representative_by_arm"][arm_name] += 1
-                    # 대표는 비owner 규칙 그대로(i >= k) 정상 방출 — 아래로 흘려보낸다.
+                    # 꼬리 대표는 비owner 규칙 그대로(i >= k) 전부 방출 — 아래로 흘려보낸다.
                 else:
-                    rep["boards_class_a_duplicate"] += 1
-                    rep["class_a_duplicate_by_arm"][arm_name] += 1
-                    continue
+                    rep["boards_class_a_tail_dropped"] += 1
+                    rep["class_a_tail_dropped_by_arm"][arm_name] += 1
+                    drop_tail = True
             elif cls == "B":
-                # **NOOP 팔 판과** 바이트 동일한 판(canonical 과는 다르다). 그 세계를 이미 전부
-                # 내고 있는 판(NOOP 팔 판, 또는 owner 가 클래스 B 면 owner)이 있으면 여기서는
-                # 아무것도 안 낸다 — main() 이 둘 다 없을 때만 대표를 하나 뽑는다.
+                # 꼬리가 **NOOP 팔 판과** 바이트 동일한 판(canonical 과는 다르다). 그 세계를 이미
+                # 전부 내고 있는 판(NOOP 팔 판, 또는 owner 가 클래스 B 면 owner)이 있으면 꼬리를
+                # 뺀다 — main() 이 둘 다 없을 때만 꼬리 대표를 하나 뽑는다. 결정 k 행은 낸다.
                 if is_class_representative:
                     rep["boards_class_b_representative"] += 1
                     rep["class_b_representative_by_arm"][arm_name] += 1
                 else:
-                    rep["boards_class_b_redundant"] += 1
-                    rep["class_b_redundant_by_arm"][arm_name] += 1
-                    continue
+                    rep["boards_class_b_tail_dropped"] += 1
+                    rep["class_b_tail_dropped_by_arm"][arm_name] += 1
+                    drop_tail = True
             start_i = None
             for i, d in enumerate(ds):
                 didx = d.get("decision_index")
@@ -699,6 +765,11 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
             if i < start_i:
                 # owner 아닌 판에서 owner 의 prefix 와 중복이라 뺀 결정(판이 아니라 결정 단위).
                 rep["decisions_dropped_prefix_dup"] += 1
+                continue
+            if drop_tail and i > start_i:
+                # 클래스 A/B 인데 꼬리 대표가 아닌 판의 꼬리 — 다른 판 꼬리의 바이트 복제라 뺀다.
+                # `i == start_i`(= 결정 k)는 여기 안 걸린다: 그 행은 중복이 아니다(§등가류).
+                rep["decisions_dropped_tail_dup"] += 1
                 continue
             if cells[i] is None:
                 continue                       # 이 결정은 칸이 없다(표본이 안 된다). 위에서 셌다.
@@ -745,13 +816,27 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
             })
         if not is_owner:
             rep["non_owner_transitions"] += len(out) - n_before
+            if drop_tail:
+                # 꼬리를 뺀 판에서 **실제로** 살아남은 결정 k 행의 수(0 또는 1). 0 이 되는 경우가
+                # 있다: 그 결정이 칸으로 라벨이 안 되거나(cells[i] is None) 집행 이름이 arm_menu
+                # 밖이면 그 행은 위에서 이미 빠진다. 판 수가 아니라 **행 수**를 세는 이유가 그것
+                # 이다 — "꼬리만 뺐다"는 주장을 로그가 실제 행으로 뒷받침해야 한다.
+                kept = len(out) - n_before
+                rep["deviation_rows_kept_from_suppressed"] += kept
+                if kept:
+                    rep["deviation_rows_kept_by_arm"][arm_name] += kept
     return out
 
 
 def _pick_deviation_representatives(boards, owner_arm, noop_arm_id):
-    """(case, seed) 마다 **클래스 A·B 각각의 대표**를 고른다(2026-08-17 4차 수정) — owner 선정
-    (`main()` 의 `owner_arm`)과 같은 결정론 원칙: 후보를 다 모은 뒤 `min()` 으로 고르지,
-    도착 순서·첫 발견 순서에 기대지 않는다. 입력 순서를 섞어도 결과가 같다.
+    """(case, seed) 마다 **클래스 A·B 각각의 꼬리 대표**를 고른다(2026-08-17 4차 · 2026-08-15
+    7차 수정) — owner 선정(`main()` 의 `owner_arm`)과 같은 결정론 원칙: 후보를 다 모은 뒤
+    `min()` 으로 고르지, 도착 순서·첫 발견 순서에 기대지 않는다. 입력 순서를 섞어도 결과가 같다.
+
+    ★ **이 함수가 정하는 것은 꼬리(`decision_index > k`)를 누가 내느냐 뿐이다**(2026-08-15 7차).
+    결정 k 행은 이 반환값과 무관하게 **발화한 판이 전부 낸다** — 판마다 자기 팔을 k 에서
+    강제하므로 그 행의 라벨이 그 팔이고, 그 (칸,팔) 을 내는 판이 다른 데 없어 중복이 아니다.
+    "대표로 안 뽑혔다" = "꼬리를 안 낸다" 이지 "그 판을 뺀다" 가 아니다.
 
     `boards`: `[(case, seed, arm_id, rows_path), ...]` — **엔진이 성공한 판 전부**(owner 포함).
     owner 를 미리 빼면 안 된다: "owner 자신이 클래스 A 인가"(A 대표를 뽑을지 말지)와 "NOOP 팔
@@ -759,23 +844,25 @@ def _pick_deviation_representatives(boards, owner_arm, noop_arm_id):
     owner 를 미리 걸러 넘긴 것이 owner 상태를 영영 못 보게 만든 원인이었다.
     `owner_arm`: `{(case,seed): arm_id}`. `noop_arm_id`: `arm_menu()` 에서 **이름이 "NOOP" 인**
     팔의 id(숫자를 하드코딩하지 않는다. 메뉴에 NOOP 이 없으면 `None` — 그러면 "NOOP 판 없음"
-    으로 취급되어 클래스 B 대표가 하나 남는다).
+    으로 취급되어 클래스 B 꼬리 대표가 하나 남는다).
 
-    반환: `{(case, seed): {"A": arm_id, "B": arm_id}}` — 대표가 있는 클래스의 키만 들어간다.
+    반환: `{(case, seed): {"A": arm_id, "B": arm_id}}` — 꼬리 대표가 있는 클래스의 키만 들어간다.
 
-    ★ **두 클래스는 규칙이 하나다: 그 세계를 이미 전부 내고 있는 판이 있으면 대표를 두지 않는다.**
-    (두 예외가 서로 다른 특칙처럼 보이면 다음 사람이 하나를 지운다 — 같은 원칙의 두 얼굴이다.)
-    어느 판이 그 세계를 들고 있느냐만 클래스마다 다르다:
-      · A(= canonical 과 바이트 동일) — 그 세계를 들고 있는 판은 **owner 가 클래스 A 일 때의
-        owner** 다. 그러면 0개. 아니면 비owner 클래스 A 중 arm_id 최솟값 하나.
-      · B(= NOOP 팔 판과 바이트 동일) — 그 세계를 들고 있는 판은 **NOOP 팔 판**이거나
+    ★ **두 클래스는 규칙이 하나다: 그 세계를 이미 전부 내고 있는 판이 있으면 꼬리 대표를 두지
+    않는다.** (두 예외가 서로 다른 특칙처럼 보이면 다음 사람이 하나를 지운다 — 같은 원칙의 두
+    얼굴이다.) 어느 판이 그 세계를 들고 있느냐만 클래스마다 다르다:
+      · A(= 꼬리가 canonical 과 바이트 동일) — 그 세계를 들고 있는 판은 **owner 가 클래스 A 일
+        때의 owner** 다. 그러면 0개. 아니면 비owner 클래스 A 중 arm_id 최솟값 하나. (한
+        (case,seed) 에 클래스 A 판은 최대 하나다 — 판마다 강제하는 팔이 다르고 `deviated is
+        False` 는 그 팔이 canonical 의 유일한 선택과 같았다는 뜻이므로.)
+      · B(= 꼬리가 NOOP 팔 판과 바이트 동일) — 그 세계를 들고 있는 판은 **NOOP 팔 판**이거나
         **owner 가 클래스 B 일 때의 owner** 다. 둘 중 하나라도 있으면 0개. 둘 다 없을 때만
         비owner 클래스 B 중 arm_id 최솟값 하나(2026-08-17 5차: owner 쪽 대칭 예외를 추가했다 —
-        NOOP 판이 크래시하고 owner 가 클래스 B 면 대표가 owner 꼬리의 정확한 복제였다).
-    **미발화 판**(`_board_deviation_status` == "no_fire")은 어느 클래스도 아니라 후보에 안
-    들어간다 — 그 경우 owner 도 같은 k 에서 안 걸렸을 것이므로 owner 자체가 이미 canonical 이다.
-    한 (case,seed) 에 대표가 하나도 없으면 그 키가 반환 dict 에 아예 없다(호출자는 `.get(cs, {})`
-    로 물어야 한다)."""
+        NOOP 판이 크래시하고 owner 가 클래스 B 면 대표 꼬리가 owner 꼬리의 정확한 복제였다).
+    **미발화 판**(`_board_deviation_status` == "no_fire")은 낼 결정 k 행 자체가 없고 어느 클래스도
+    아니라 후보에 안 들어간다 — 그 경우 owner 도 같은 k 에서 안 걸렸을 것이므로 owner 자체가 이미
+    canonical 이다. 한 (case,seed) 에 꼬리 대표가 하나도 없으면 그 키가 반환 dict 에 아예 없다
+    (호출자는 `.get(cs, {})` 로 물어야 한다) — 그래도 그 판들은 각자 결정 k 행을 낸다."""
     cand = collections.defaultdict(lambda: {"A": [], "B": []})
     owner_class = {}
     noop_board_alive = {(c, s) for c, s, aid, p in boards if aid == noop_arm_id}
@@ -791,7 +878,7 @@ def _pick_deviation_representatives(boards, owner_arm, noop_arm_id):
             cand[(c, s)][status].append(aid)
     # GC10: 오늘 도달 불가한 배치(NOOP 팔 판이 살아 있는데 owner 가 아니다)를 코드로 방어하지는
     # 않되, 일어나면 조용히 넘어가지 않도록 이름으로 남긴다 — 그 경우 "NOOP 판이 그 세계를 낸다"
-    # 는 전제가 깨진다(비owner NOOP 판은 대표가 아니면 아무것도 안 내기 때문).
+    # 는 전제가 깨진다(비owner NOOP 판은 꼬리 대표가 아니면 자기 결정 k 행만 내고 꼬리를 안 낸다).
     stray = sorted(cs for cs in noop_board_alive if owner_arm.get(cs) != noop_arm_id)
     if stray:
         print("[표집] ⚠️ NOOP 팔 판(id=%s)이 살아 있는데 owner 가 아닌 (case,seed) %d개: %s%s"
@@ -880,19 +967,22 @@ def main():
             by_cs[(c, s)].append(aid)
     owner_arm = {cs: min(aids) for cs, aids in by_cs.items()}
 
-    # ---- 클래스 A/B 대표 결정 (2026-08-17 4차 수정) -----------------------------------------
-    # 성공한 판을 **owner 포함해서 전부** 넘긴다 — "owner 자신이 클래스 A 인가"(A 대표를 뽑을지)
-    # 와 "NOOP 팔 판이 살아 있는가"(B 대표를 뽑을지)를 그 함수가 알아야 하기 때문이다(3차
-    # 구현은 owner 를 미리 걸러 넘겨 owner 상태를 영영 못 봤다). 실제 클래스 판정은
+    # ---- 클래스 A/B **꼬리** 대표 결정 (2026-08-17 4차 · 2026-08-15 7차 수정) ----------------
+    # ★ 여기서 정하는 것은 꼬리(`decision_index > k`)를 누가 내느냐 뿐이다 — 결정 k 행은 발화한
+    # 판이 전부 낸다(그 행은 그 판이 강제한 팔로 라벨돼 중복이 아니다).
+    #
+    # 성공한 판을 **owner 포함해서 전부** 넘긴다 — "owner 자신이 클래스 A 인가"(A 꼬리 대표를
+    # 뽑을지)와 "NOOP 팔 판이 살아 있는가"(B 꼬리 대표를 뽑을지)를 그 함수가 알아야 하기
+    # 때문이다(3차 구현은 owner 를 미리 걸러 넘겨 owner 상태를 영영 못 봤다). 실제 클래스 판정은
     # `_fired_decision`/`_deviation_class` 하나만 쓰므로 rows_to_samples 와 드리프트가 없다.
     #
     # NOOP 팔 id 는 **이름으로** 메뉴에서 찾는다(Global Constraint 4 — 매크로 id 를 하드코딩하지
     # 않는다). 메뉴에 NOOP 이 없으면 그 사실을 이름으로 찍는다(GC10): 그때는 "NOOP 판 없음" 이
-    # 되어 클래스 B 대표가 하나씩 남는다.
+    # 되어 클래스 B 꼬리 대표가 하나씩 남는다.
     noop_arm_id = next((i for i, n in arms if n == "NOOP"), None)
     if noop_arm_id is None:
         print("[표집] ⚠️ arm_menu() 에 NOOP 팔이 없다 — 클래스 B(집행 사슬 무동작) 판의 세계를 "
-              "들고 있는 판이 없으므로 (case,seed) 마다 클래스 B 대표를 하나씩 남긴다")
+              "들고 있는 판이 없으므로 (case,seed) 마다 클래스 B 꼬리 대표를 하나씩 남긴다")
     all_success = [(c, s, aid, p) for (c, s, aid, an), p, k in results if p is not None]
     representative_arm = _pick_deviation_representatives(all_success, owner_arm, noop_arm_id)
 
@@ -904,8 +994,9 @@ def main():
             continue
         n_boards_ok += 1
         is_owner = (aid == owner_arm[(c, s)])
-        # 자기 클래스(A 든 B 든)의 대표로 뽑혔는가. 한 판은 클래스가 하나뿐이라
-        # (`_deviation_class` 에서 A 가 우선) 두 값 중 하나와만 일치할 수 있다.
+        # 자기 클래스(A 든 B 든)의 **꼬리 대표**로 뽑혔는가. 한 판은 클래스가 하나뿐이라
+        # (`_deviation_class` 에서 A 가 우선) 두 값 중 하나와만 일치할 수 있다. False 여도 그
+        # 판은 자기 결정 k 행을 낸다 — 안 내는 것은 꼬리뿐이다(2026-08-15 7차).
         is_rep = (not is_owner) and aid in representative_arm.get((c, s), {}).values()
         samples.extend(rows_to_samples(p, c, s, aid, an, axes, k, is_owner=is_owner,
                                         is_class_representative=is_rep,
@@ -913,30 +1004,42 @@ def main():
 
     # 위 rows_to_samples 가 이미 표본에서 뺀 것들을 조용히 넘기지 않고 이름·수로 찍는다
     # (Global Constraint 4). 전부 서로 다른 사건이라 따로 찍는다 — fail_by_arm(엔진 크래시),
-    # no_deviation(owner 아닌 판에서 게이트 미발화), 클래스 A 중복(canonical 대표와 동일),
-    # 클래스 B 중복(NOOP 팔 판과 동일), dropped_unknown_macro(집행된 이름이 arm_menu 밖).
+    # no_deviation(owner 아닌 판에서 게이트 미발화 = 낼 k 행 자체가 없다), 클래스 A/B 의 **꼬리**
+    # 중복(판이 아니라 꼬리만 뺀다), dropped_unknown_macro(집행된 이름이 arm_menu 밖).
+    #
+    # ★ 2026-08-15 7차: "판 배제" 라고 찍던 줄을 전부 "꼬리 배제" 로 고쳤다. 그 판들은 자기
+    # 결정 k 행을 내고 있으므로 배제됐다고 찍으면 그건 로그의 거짓말이다.
     if rep["boards_no_deviation"]:
-        print("\n[표집] deviation 미발화로 제외한 판(owner 아님) %d개 (k > 결정 수):"
-              % rep["boards_no_deviation"])
+        print("\n[표집] deviation 미발화로 제외한 판(owner 아님) %d개 (k > 결정 수 — 낼 결정 k "
+              "행 자체가 없다):" % rep["boards_no_deviation"])
         for name, n in sorted(rep["no_deviation_by_arm"].items(), key=lambda t: -t[1]):
             print("[표집]   %-14s %d" % (name, n))
 
-    print("\n[표집] 클래스 A (deviated=False, **canonical 과** 바이트 동일) — 대표 %d개 방출 · "
-          "중복 %d개 배제 (owner 자신이 클래스 A 면 대표를 안 뽑으므로 전부 중복이 된다):"
-          % (rep["boards_class_a_representative"], rep["boards_class_a_duplicate"]))
+    print("\n[표집] 클래스 A (deviated=False, 꼬리가 **canonical 과** 바이트 동일) — 꼬리 대표 "
+          "%d판 · 꼬리를 뺀 판 %d개 (owner 자신이 클래스 A 면 꼬리 대표를 안 뽑는다). "
+          "**두 경우 다 결정 k 행은 낸다.**"
+          % (rep["boards_class_a_representative"], rep["boards_class_a_tail_dropped"]))
     for name, n in sorted(rep["class_a_representative_by_arm"].items(), key=lambda t: -t[1]):
-        print("[표집]   대표 %-14s %d" % (name, n))
-    for name, n in sorted(rep["class_a_duplicate_by_arm"].items(), key=lambda t: -t[1]):
-        print("[표집]   중복 %-14s %d" % (name, n))
+        print("[표집]   꼬리 대표 %-14s %d" % (name, n))
+    for name, n in sorted(rep["class_a_tail_dropped_by_arm"].items(), key=lambda t: -t[1]):
+        print("[표집]   꼬리 배제 %-14s %d" % (name, n))
 
-    print("\n[표집] 클래스 B (enact_applied=False, **NOOP 팔 판과** 바이트 동일 — canonical 과는 "
-          "다르다) — 대표 %d개 방출(NOOP 판도 없고 owner 도 클래스 B 가 아닌 (case,seed) 뿐) · "
-          "그 세계를 이미 들고 있는 판(NOOP 팔 판 또는 owner)이 있어 배제 %d개:"
-          % (rep["boards_class_b_representative"], rep["boards_class_b_redundant"]))
+    print("\n[표집] 클래스 B (enact_applied=False, 꼬리가 **NOOP 팔 판과** 바이트 동일 — "
+          "canonical 과는 다르다) — 꼬리 대표 %d판(NOOP 판도 없고 owner 도 클래스 B 가 아닌 "
+          "(case,seed) 뿐) · 그 세계를 이미 들고 있는 판(NOOP 팔 판 또는 owner)이 있어 꼬리를 "
+          "뺀 판 %d개. **두 경우 다 결정 k 행은 낸다.**"
+          % (rep["boards_class_b_representative"], rep["boards_class_b_tail_dropped"]))
     for name, n in sorted(rep["class_b_representative_by_arm"].items(), key=lambda t: -t[1]):
-        print("[표집]   대표 %-14s %d" % (name, n))
-    for name, n in sorted(rep["class_b_redundant_by_arm"].items(), key=lambda t: -t[1]):
-        print("[표집]   배제 %-14s %d" % (name, n))
+        print("[표집]   꼬리 대표 %-14s %d" % (name, n))
+    for name, n in sorted(rep["class_b_tail_dropped_by_arm"].items(), key=lambda t: -t[1]):
+        print("[표집]   꼬리 배제 %-14s %d" % (name, n))
+
+    # 6차까지 통째로 사라지던 행들. 이 줄이 "판을 뺀 게 아니라 꼬리만 뺐다"의 기계적 증거다.
+    print("\n[표집] 꼬리를 뺀 판에서 **살려 둔 deviation 행**(그 판이 k 에서 강제한 팔로 라벨 — "
+          "그 (칸,팔) 을 내는 판이 다른 데 없다) %d행 · 뺀 꼬리 결정 %d개:"
+          % (rep["deviation_rows_kept_from_suppressed"], rep["decisions_dropped_tail_dup"]))
+    for name, n in sorted(rep["deviation_rows_kept_by_arm"].items(), key=lambda t: -t[1]):
+        print("[표집]   %-14s %d" % (name, n))
 
     if rep["enact_applied_missing"]:
         print("\n[표집] enact_applied 키 없음(Task 1 run_demo.jl 구세대) %d판 — "

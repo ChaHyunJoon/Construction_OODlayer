@@ -67,16 +67,28 @@ def test_all_arms_share_k_somewhere():
 #     complete=True 인데 B 판은 n_decisions=14·complete=False 였다.
 # 합쳐서 `min()` 을 취하면 클래스 B 의 팔 id 가 대체로 더 작아(zone: 1,2,8 이 B / reform:
 # 1,2,3,7,8 이 B) **owner 와 중복인 판을 대표로 남기고 유일한 canonical 판을 버린다.**
-# 대표 규칙은 두 클래스에 원칙이 **하나**다(`_pick_deviation_representatives`) — **그 세계를
-# 이미 i=0 부터 전부 내고 있는 판이 있으면 대표를 두지 않고, 없을 때만 하나(arm_id 최솟값)를
-# 남긴다.** 다른 것은 "누가 그 세계를 들고 있느냐" 뿐이다:
-#   · A(= canonical 과 바이트 동일): 그 세계를 들고 있는 판은 **owner 가 클래스 A 일 때의
+# 꼬리 대표 규칙은 두 클래스에 원칙이 **하나**다(`_pick_deviation_representatives`) — **그 세계를
+# 이미 i=0 부터 전부 내고 있는 판이 있으면 꼬리 대표를 두지 않고, 없을 때만 하나(arm_id 최솟값)에
+# 꼬리를 남긴다.** 다른 것은 "누가 그 세계를 들고 있느냐" 뿐이다:
+#   · A(= 꼬리가 canonical 과 바이트 동일): 그 세계를 들고 있는 판은 **owner 가 클래스 A 일 때의
 #     owner** 다 — 그러면 0개(owner 가 canonical 을 i=0 부터 전부 낸다). 아니면 비owner 클래스
 #     A 중 arm_id 최솟값 하나.
-#   · B(= NOOP 팔 판과 바이트 동일): 그 세계를 들고 있는 판은 **NOOP 팔 판**이거나 **owner 가
-#     클래스 B 일 때의 owner** 다 — 둘 중 하나라도 있으면 0개. NOOP 판이 크래시했고 owner 도
-#     클래스 B 가 아닐 때만 비owner 클래스 B 중 arm_id 최솟값 하나(2026-08-17 5차).
+#   · B(= 꼬리가 NOOP 팔 판과 바이트 동일): 그 세계를 들고 있는 판은 **NOOP 팔 판**이거나
+#     **owner 가 클래스 B 일 때의 owner** 다 — 둘 중 하나라도 있으면 0개. NOOP 판이 크래시했고
+#     owner 도 클래스 B 가 아닐 때만 비owner 클래스 B 중 arm_id 최솟값 하나(2026-08-17 5차).
 #   · 둘 다 False 인 판은 **A** 다(A 우선 — 강제 대입 자체가 무변경이므로).
+#
+# ★★ 2026-08-15 7차 — **지배 문장: deviation 행은 절대 중복이 아니다. 발화한 판은 전부 자기
+# 결정 k 행을 내고, 중복 제거는 꼬리(`decision_index > k`)에만 적용한다.**
+# 6차까지는 클래스 A/B 판을 (대표 하나를 빼고) **판 통째로** 뺐고, 그때 같이 사라진 결정 k 행이
+# 그 판의 유일무이한 관측이었다 — 판마다 자기 팔을 k 에서 강제하므로 그 행의 라벨이 그 팔이고,
+# 같은 칸에서 그 팔을 내는 판이 다른 데 없다. 보존된 588판 실측(같은 칸·같은 k, 전부 클래스 B):
+#     판 all_s11_a1  k=8  macro=Replace / a2  Deprioritize / a3  ForbidZone
+# 이걸 버린 귀결이 단일팔 칸 27/49 → 23/48(목표 ≤5)로 사실상 안 움직인 것이었다. 진짜 중복은
+# 꼬리뿐이다(무동작 deviation 뒤에는 세계가 안 바뀌어 꼬리가 NOOP 판/canonical 을 되밟는다).
+# `se` 논증은 그대로 산다 — 서로 다른 팔 라벨은 서로 **다른 (cell, arm) 버킷**에 들어간다.
+# 아래 테스트에서 "억제된 판" 이 0행이 아니라 **정확히 1행(decision_index == k)** 을 요구하는
+# 것이 그 계약이다.
 # =====================================================================================
 AXES = load_grid()["axes"]
 
@@ -189,28 +201,34 @@ def test_owner_emits_all_even_if_deviation_never_fired():
     assert rep["owner_boards"] == 1, rep
 
 
-def test_non_owner_class_b_emits_nothing_when_not_representative():
-    """owner 아닌 판에서 게이트는 걸렸지만 run_demo.jl 집행 사슬이 그 이름에 대해 분기를 안
-    탔으면(`enact_applied == False`, `deviated=True`) **클래스 B** 다 — NOOP 팔 판과 바이트
-    동일하다. 그 판이 살아 있으면 대표가 아니므로(`is_class_representative=False`, 기본값 —
-    이 테스트가 명시적으로 검사하는 계약) 아무것도 안 낸다. `deviate_valid` 는 **True** 로
-    둔다 — fault/reform 축에서는 그게 항상 true 라(빈 메뉴=제한없음) 판정 신호가 될 수 없다는
-    것을 바로 이 조합으로 보인다.
+def test_non_owner_class_b_emits_only_the_deviation_row_when_tail_dropped():
+    """(1, 2026-08-15 7차) owner 아닌 판에서 게이트는 걸렸지만 run_demo.jl 집행 사슬이 그 이름에
+    대해 분기를 안 탔으면(`enact_applied == False`, `deviated=True`) **클래스 B** 다 — 꼬리가
+    NOOP 팔 판과 바이트 동일하다. NOOP 판이 살아 있으면 이 판은 대표가 아니므로
+    (`is_class_representative=False`) **꼬리를 뺀다. 그러나 결정 k 행은 낸다** — 그 행의 라벨은
+    이 판이 k 에서 강제한 팔(`d["macro"]` = ForbidZone)이고, 그 칸에서 그 팔을 내는 판은 다른
+    데 없다(6차까지는 판 통째로 빼서 이 관측을 잃었다 = §1-B 가 안 움직인 원인).
 
-    (2026-08-17 4차 수정으로 카운터가 `boards_noop_duplicate` → `boards_class_b_redundant` 로
-    갈라졌다. 단언은 느슨해지지 않았다 — 오히려 "클래스 A 카운터는 안 걸린다"가 추가됐다.)"""
+    `deviate_valid` 는 **True** 로 둔다 — fault/reform 축에서는 그게 항상 true 라(빈 메뉴=제한
+    없음) 판정 신호가 될 수 없다는 것을 바로 이 조합으로 보인다."""
     ds = [_decision(10, 2.0, 1000.0, decision_index=1),
-          _decision(50, 8.0, 40000.0, decision_index=2, deviate_at=2,
+          _decision(50, 8.0, 40000.0, macro="ForbidZone", decision_index=2, deviate_at=2,
                     deviate_arm="ForbidZone", deviated=True, deviate_from="NOOP",
                     deviate_valid=True, enact_applied=False),
           _decision(90, 15.0, 90000.0, decision_index=3)]
     out, rep = _rows_to_samples_for_one_board(_board(ds), "fault", 1, 3, "ForbidZone", 2,
                                                is_owner=False, is_class_representative=False)
-    assert out == [], out
-    assert rep["boards_class_b_redundant"] == 1, rep
-    assert rep["class_b_redundant_by_arm"]["ForbidZone"] == 1, rep["class_b_redundant_by_arm"]
-    assert rep["boards_class_b_representative"] == 0, rep   # 대표가 아니었다
-    assert rep["boards_class_a_duplicate"] == 0, rep        # 클래스 A 로 세면 안 된다
+    assert len(out) == 1, out                               # 결정 k 행 하나만
+    assert out[0]["decision_index"] == 2, out               # == k
+    assert out[0]["arm_name"] == "ForbidZone", out          # 이 판이 강제한 팔로 라벨된다
+    assert out[0]["arm"] == ID_BY_NAME["ForbidZone"], out
+    assert rep["boards_class_b_tail_dropped"] == 1, rep
+    assert rep["class_b_tail_dropped_by_arm"]["ForbidZone"] == 1, rep["class_b_tail_dropped_by_arm"]
+    assert rep["decisions_dropped_tail_dup"] == 1, rep      # decision_index 3 하나
+    assert rep["deviation_rows_kept_from_suppressed"] == 1, rep
+    assert rep["deviation_rows_kept_by_arm"]["ForbidZone"] == 1, rep["deviation_rows_kept_by_arm"]
+    assert rep["boards_class_b_representative"] == 0, rep   # 꼬리 대표는 아니었다
+    assert rep["boards_class_a_tail_dropped"] == 0, rep     # 클래스 A 로 세면 안 된다
     assert rep["boards_class_a_representative"] == 0, rep
     assert rep["boards_no_deviation"] == 0, rep             # 다른 사건 — 미발화가 아니라 클래스 B
     assert rep["boards_deviate_valid_false"] == 0, rep      # deviate_valid=True 였다(정보성 카운터)
@@ -218,11 +236,12 @@ def test_non_owner_class_b_emits_nothing_when_not_representative():
 
 
 def test_non_owner_class_b_representative_emits_normally():
-    """클래스 B 판이라도 그 (case,seed) 의 **대표**로 뽑혔으면(NOOP 팔 판이 크래시해 그 세계를
-    아무도 안 들고 있는 경우, `is_class_representative=True`) 비owner 규칙 그대로(i >= k)
-    정상 방출한다 — 그 세계가 통째로 안 잡히는 걸 막기 위해서다."""
+    """클래스 B 판이라도 그 (case,seed) 의 **꼬리 대표**로 뽑혔으면(NOOP 팔 판이 크래시해 그
+    세계를 아무도 안 들고 있는 경우, `is_class_representative=True`) 비owner 규칙 그대로(i >= k)
+    꼬리까지 낸다 — 그 세계가 통째로 안 잡히는 걸 막기 위해서다. 위 테스트(꼬리 배제)와 이
+    테스트의 차이는 **꼬리뿐**이다: 결정 k 행은 둘 다 낸다."""
     ds = [_decision(10, 2.0, 1000.0, decision_index=1),
-          _decision(50, 8.0, 40000.0, decision_index=2, deviate_at=2,
+          _decision(50, 8.0, 40000.0, macro="ForbidZone", decision_index=2, deviate_at=2,
                     deviate_arm="ForbidZone", deviated=True, deviate_from="NOOP",
                     deviate_valid=True, enact_applied=False),
           _decision(90, 15.0, 90000.0, decision_index=3)]
@@ -230,9 +249,12 @@ def test_non_owner_class_b_representative_emits_normally():
                                                is_owner=False, is_class_representative=True)
     assert len(out) == 2, out                                # decision_index 2,3
     assert [t["decision_index"] for t in out] == [2, 3], out
+    assert out[0]["arm_name"] == "ForbidZone", out           # 결정 k 행의 라벨은 강제한 팔
     assert rep["boards_class_b_representative"] == 1, rep
     assert rep["class_b_representative_by_arm"]["ForbidZone"] == 1, rep
-    assert rep["boards_class_b_redundant"] == 0, rep
+    assert rep["boards_class_b_tail_dropped"] == 0, rep
+    assert rep["decisions_dropped_tail_dup"] == 0, rep       # 꼬리 대표라 뺀 꼬리가 없다
+    assert rep["deviation_rows_kept_from_suppressed"] == 0, rep   # 억제된 판이 아니었다
     assert rep["boards_class_a_representative"] == 0, rep    # 클래스 A 로 세면 안 된다
 
 
@@ -250,8 +272,9 @@ def test_non_owner_emits_when_valid_false_but_applied_true():
                                                is_owner=False, is_class_representative=False)
     assert len(out) == 2, out                               # decision_index 2,3
     assert [t["decision_index"] for t in out] == [2, 3], out
-    assert rep["boards_class_b_redundant"] == 0, rep
-    assert rep["boards_class_a_duplicate"] == 0, rep
+    assert rep["boards_class_b_tail_dropped"] == 0, rep
+    assert rep["boards_class_a_tail_dropped"] == 0, rep
+    assert rep["decisions_dropped_tail_dup"] == 0, rep      # 어느 클래스도 아니라 꼬리가 산다
     # 어느 클래스도 아니었으니 대표 집계도 0
     assert rep["boards_class_a_representative"] == 0, rep
     assert rep["boards_class_b_representative"] == 0, rep
@@ -271,8 +294,9 @@ def test_non_owner_enact_applied_missing_not_excluded_but_counted():
     out, rep = _rows_to_samples_for_one_board(_board(ds), "fault", 1, 1, "Replace", 2,
                                                is_owner=False, is_class_representative=False)
     assert len(out) == 2, out                               # decision_index 2,3 — 배제 안 됨
-    assert rep["boards_class_a_duplicate"] == 0, rep
-    assert rep["boards_class_b_redundant"] == 0, rep
+    assert rep["boards_class_a_tail_dropped"] == 0, rep
+    assert rep["boards_class_b_tail_dropped"] == 0, rep
+    assert rep["decisions_dropped_tail_dup"] == 0, rep      # 꼬리도 안 뺐다
     assert rep["enact_applied_missing"] == 1, rep
 
 
@@ -391,9 +415,10 @@ def test_mixed_pool_class_a_is_representative_and_class_b_is_dropped():
     assert "B" not in rep_map[("fault", 1)], rep_map
 
 
-def test_mixed_pool_emission_class_a_emits_and_class_b_emits_nothing():
-    """(1-b) 위 대표 선정을 `rows_to_samples` 까지 흘려서 **실제 방출**로 확인한다 —
-    클래스 A 대표는 `i >= k` 를 내고, 클래스 B 판은 아무것도 안 낸다."""
+def test_mixed_pool_emission_class_a_emits_tail_and_class_b_emits_only_deviation_row():
+    """(1-b) 위 꼬리 대표 선정을 `rows_to_samples` 까지 흘려서 **실제 방출**로 확인한다 —
+    클래스 A 꼬리 대표는 `i >= k` 를 전부 내고, 꼬리 대표가 아닌 클래스 B 판은 **결정 k 행
+    하나만** 낸다(2026-08-15 7차 이전에는 0행이었다)."""
     ds_a = [_decision(10, 2.0, 1000.0, macro="Replace", decision_index=1),
             _decision(50, 8.0, 40000.0, macro="Replace", decision_index=2, deviate_at=2,
                       deviate_arm="Replace", deviated=False, deviate_from="Replace",
@@ -410,15 +435,59 @@ def test_mixed_pool_emission_class_a_emits_and_class_b_emits_nothing():
                                                    is_owner=False, is_class_representative=False)
     assert [t["decision_index"] for t in out_a] == [2, 3], out_a
     assert rep_a["boards_class_a_representative"] == 1, rep_a
-    assert out_b == [], out_b
-    assert rep_b["boards_class_b_redundant"] == 1, rep_b
-    assert rep_b["class_b_redundant_by_arm"]["ForbidZone"] == 1, rep_b["class_b_redundant_by_arm"]
+    assert [t["decision_index"] for t in out_b] == [2], out_b        # 결정 k 행 하나만
+    assert out_b[0]["arm_name"] == "ForbidZone", out_b               # 그 판이 강제한 팔
+    assert rep_b["boards_class_b_tail_dropped"] == 1, rep_b
+    assert rep_b["class_b_tail_dropped_by_arm"]["ForbidZone"] == 1, \
+        rep_b["class_b_tail_dropped_by_arm"]
+    assert rep_b["deviation_rows_kept_from_suppressed"] == 1, rep_b
+    assert rep_b["decisions_dropped_tail_dup"] == 1, rep_b           # decision_index 3
 
 
-def test_no_class_a_representative_when_owner_itself_is_class_a():
-    """(2) owner 자신이 클래스 A 면(= canonical 의 매크로가 그 결정에서 owner 의 강제 팔과
-    같았다) owner 가 canonical 궤적을 `i=0` 부터 전부 내고 있으므로 클래스 A 대표를 **하나도**
-    안 뽑는다 — 뽑으면 owner 꼬리의 정확한 복제가 된다."""
+def test_two_class_b_boards_at_same_cell_give_two_distinct_arms():
+    """(5, 2026-08-15 7차 — 이 사이클이 존재하는 이유) 같은 (case,seed,k) 의 클래스 B 판 둘이
+    **서로 다른 팔**을 강제하면, 둘 다 꼬리 대표가 아니어도 그 칸에 **팔이 둘** 생긴다.
+    보존된 588판의 실측(all_s11_a1/a2/a3, k=8 에 Replace/Deprioritize/ForbidZone)이 이 모양이다.
+
+    6차까지는 두 판이 통째로 빠져 그 칸이 단일팔로 남았다 — §1-B(한 칸이 여러 팔을 본다)가
+    27/49 → 23/48 로 안 움직인 원인이 정확히 이것이다.
+
+    `c` 와 `next_cell` 이 **같다**는 것도 같이 못박는다: 둘 다 그 결정에서 무동작이라 세계가
+    안 바뀌었으니 값이 같은 게 맞다. 그건 제조된 동점이 아니라 **진짜 동점**이고, 라벨이 달라
+    `(cell, arm)` 버킷이 **갈리므로** `dp_solve._decide` 의 `se = std/√n` 도 안 흔들린다."""
+    def _class_b_board(forced):
+        return _board([_decision(10, 2.0, 1000.0, macro="NOOP", decision_index=1),
+                       _decision(50, 8.0, 40000.0, macro=forced, decision_index=2, deviate_at=2,
+                                 deviate_arm=forced, deviated=True, deviate_from="NOOP",
+                                 deviate_valid=True, enact_applied=False),
+                       _decision(90, 15.0, 90000.0, macro="NOOP", decision_index=3)])
+
+    out1, _ = _rows_to_samples_for_one_board(_class_b_board("Replace"), "all", 11, 1,
+                                             "Replace", 2, is_owner=False,
+                                             is_class_representative=False)
+    out2, _ = _rows_to_samples_for_one_board(_class_b_board("Deprioritize"), "all", 11, 2,
+                                             "Deprioritize", 2, is_owner=False,
+                                             is_class_representative=False)
+    assert len(out1) == 1 and len(out2) == 1, (out1, out2)
+    r1, r2 = out1[0], out2[0]
+    assert r1["arm"] != r2["arm"], (r1["arm"], r2["arm"])          # 팔이 실제로 갈린다
+    assert (r1["arm_name"], r2["arm_name"]) == ("Replace", "Deprioritize"), (r1, r2)
+    assert r1["cell"] == r2["cell"], (r1["cell"], r2["cell"])      # 같은 칸
+    assert r1["c"] == r2["c"], (r1["c"], r2["c"])                  # 무동작이라 구간비용이 같다
+    assert r1["next_cell"] == r2["next_cell"], (r1["next_cell"], r2["next_cell"])
+    # 그래서 이 칸의 (cell, arm) 버킷은 **둘**이다 — se 를 낮추는 같은 버킷 중복이 아니다.
+    assert len({(r1["cell"], r1["arm"]), (r2["cell"], r2["arm"])}) == 2, (r1, r2)
+
+
+def test_no_class_a_tail_representative_when_owner_itself_is_class_a():
+    """(3) owner 자신이 클래스 A 면(= canonical 의 매크로가 그 결정에서 owner 의 강제 팔과
+    같았다) owner 가 canonical 궤적을 `i=0` 부터 전부 내고 있으므로 클래스 A **꼬리** 대표를
+    **하나도** 안 뽑는다 — 뽑으면 owner 꼬리의 정확한 복제가 된다.
+
+    ★ 2026-08-15 7차: 그래도 그 비owner 클래스 A 판은 **결정 k 행 하나를 낸다**(예전엔 0행).
+    그 행은 이 판이 k 에서 강제한 팔로 라벨되므로 owner 행과 같은 (칸,팔) 이 아니다.
+    (실판에서 한 (case,seed) 에 클래스 A 판은 최대 하나라 이 배치 자체가 합성이지만, 규칙이
+    꼬리에만 걸린다는 것을 이 자리에서 못박는다.)"""
     with tempfile.TemporaryDirectory() as td:
         own = _write_board_file(_board([_CLASS_A_DECISION]), td, "a0.jsonl")
         a3 = _write_board_file(_board([_CLASS_A_DECISION]), td, "a3.jsonl")
@@ -427,17 +496,42 @@ def test_no_class_a_representative_when_owner_itself_is_class_a():
             [("fault", 1, 0, own), ("fault", 1, 3, a3), ("fault", 1, 5, a5)],
             {("fault", 1): 0}, NOOP_ARM_ID)
     assert rep_map == {}, rep_map
-    # 그 결과 비owner 클래스 A 판은 아무것도 안 낸다(중복으로 세어진다).
+    # 그 결과 비owner 클래스 A 판은 결정 k 행만 내고 꼬리(decision_index 3)를 뺀다.
     ds = [_decision(10, 2.0, 1000.0, macro="Replace", decision_index=1),
           _decision(50, 8.0, 40000.0, macro="Replace", decision_index=2, deviate_at=2,
                     deviate_arm="Replace", deviated=False, deviate_from="Replace",
-                    deviate_valid=True, enact_applied=True)]
+                    deviate_valid=True, enact_applied=True),
+          _decision(90, 15.0, 90000.0, macro="Deprioritize", decision_index=3)]
     out, rep = _rows_to_samples_for_one_board(_board(ds), "fault", 1, 3, "Replace", 2,
                                                is_owner=False, is_class_representative=False)
-    assert out == [], out
-    assert rep["boards_class_a_duplicate"] == 1, rep
-    assert rep["class_a_duplicate_by_arm"]["Replace"] == 1, rep["class_a_duplicate_by_arm"]
+    assert [t["decision_index"] for t in out] == [2], out
+    assert out[0]["arm_name"] == "Replace", out
+    assert rep["boards_class_a_tail_dropped"] == 1, rep
+    assert rep["class_a_tail_dropped_by_arm"]["Replace"] == 1, rep["class_a_tail_dropped_by_arm"]
+    assert rep["decisions_dropped_tail_dup"] == 1, rep
+    assert rep["deviation_rows_kept_from_suppressed"] == 1, rep
+    assert rep["deviation_rows_kept_by_arm"]["Replace"] == 1, rep["deviation_rows_kept_by_arm"]
     assert rep["boards_class_a_representative"] == 0, rep
+
+
+def test_class_a_non_owner_emits_k_row_and_tail_when_owner_deviated():
+    """(2) owner 가 실제로 갈린(real) (case,seed) 에서는 canonical 연속을 들고 있는 판이 클래스
+    A 판뿐이라 그 판이 **꼬리 대표**가 되고, 결정 k 행 + 꼬리를 전부 낸다. 위 (3) 과 같은
+    픽스처·같은 판인데 `is_class_representative` 만 다르다 = 갈리는 것이 꼬리뿐임을 보인다."""
+    ds = [_decision(10, 2.0, 1000.0, macro="Replace", decision_index=1),
+          _decision(50, 8.0, 40000.0, macro="Replace", decision_index=2, deviate_at=2,
+                    deviate_arm="Replace", deviated=False, deviate_from="Replace",
+                    deviate_valid=True, enact_applied=True),
+          _decision(90, 15.0, 90000.0, macro="Deprioritize", decision_index=3)]
+    out, rep = _rows_to_samples_for_one_board(_board(ds), "fault", 1, 3, "Replace", 2,
+                                               is_owner=False, is_class_representative=True)
+    assert [t["decision_index"] for t in out] == [2, 3], out
+    assert [t["arm_name"] for t in out] == ["Replace", "Deprioritize"], out
+    assert rep["boards_class_a_representative"] == 1, rep
+    assert rep["class_a_representative_by_arm"]["Replace"] == 1, rep
+    assert rep["boards_class_a_tail_dropped"] == 0, rep
+    assert rep["decisions_dropped_tail_dup"] == 0, rep
+    assert rep["deviation_rows_kept_from_suppressed"] == 0, rep
 
 
 def test_class_b_representative_kept_when_noop_board_absent():
@@ -484,15 +578,19 @@ def test_no_class_b_representative_when_owner_itself_is_class_b():
             {("zone", 5): 1}, NOOP_ARM_ID)
     assert rep_owner_b == {}, rep_owner_b                        # (a) owner 가 B류 ⇒ 0개
     assert rep_owner_real == {("zone", 5): {"B": 2}}, rep_owner_real   # (b) 대조군 ⇒ 정확히 1개
-    # 그 결과 비owner 클래스 B 판은 아무것도 안 낸다(잉여로 세어진다).
+    # 그 결과 비owner 클래스 B 판은 꼬리를 안 내지만 **결정 k 행은 낸다**(2026-08-15 7차).
     ds = [_decision(10, 2.0, 1000.0, macro="Replace", decision_index=1),
           _decision(50, 8.0, 40000.0, macro="ForbidZone", decision_index=2, deviate_at=2,
                     deviate_arm="ForbidZone", deviated=True, deviate_from="Replace",
-                    deviate_valid=True, enact_applied=False)]
+                    deviate_valid=True, enact_applied=False),
+          _decision(90, 15.0, 90000.0, macro="Replace", decision_index=3)]
     out, rep = _rows_to_samples_for_one_board(_board(ds), "zone", 5, 2, "Deprioritize", 2,
                                                is_owner=False, is_class_representative=False)
-    assert out == [], out
-    assert rep["boards_class_b_redundant"] == 1, rep
+    assert [t["decision_index"] for t in out] == [2], out
+    assert out[0]["arm_name"] == "ForbidZone", out          # 그 결정에서 실제 집행된 매크로
+    assert rep["boards_class_b_tail_dropped"] == 1, rep
+    assert rep["decisions_dropped_tail_dup"] == 1, rep
+    assert rep["deviation_rows_kept_from_suppressed"] == 1, rep
     assert rep["boards_class_b_representative"] == 0, rep
 
 
@@ -519,7 +617,7 @@ def test_both_flags_false_is_class_a_and_not_double_counted():
     assert len(out) == 1, out
     assert rep["boards_class_a_representative"] == 1, rep
     assert rep["boards_class_b_representative"] == 0, rep
-    assert rep["boards_class_b_redundant"] == 0, rep
+    assert rep["boards_class_b_tail_dropped"] == 0, rep
 
 
 def test_mixed_pool_selection_is_order_independent():
