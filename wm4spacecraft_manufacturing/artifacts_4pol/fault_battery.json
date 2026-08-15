@@ -95,7 +95,7 @@
       "sim_seconds_complete": 25.95344827586207,
       "sim_seconds_sd": 6.911254163558196,
       "steps_complete": 1038.1379310344828,
-      "wall_seconds": 61.29333333333334,
+      "wall_seconds": 68.66333333333333,
       "progress": 0.921618743343983,
       "energy_per_closed": 450.860748879306,
       "total_energy_J": 126652.75777355008,
@@ -1896,67 +1896,68 @@
         1.0
       ],
       "n_decisions_scored": 120,
-      "n_decisions_correct": 58,
-      "decision_rate": 0.48333333333333334,
+      "n_decisions_correct": 54,
+      "decision_rate": 0.45,
       "decision_ci": [
-        0.3958348942305447,
-        0.5718657814713197
+        0.3639158452162006,
+        0.5391861818893925
       ],
       "per_kind": {
         "BatteryTruth": {
           "n": 60,
-          "correct": 55,
-          "rate": 0.9166666666666666
+          "correct": 29,
+          "rate": 0.48333333333333334
         },
         "FaultTruth": {
           "n": 60,
-          "correct": 3,
-          "rate": 0.05
+          "correct": 25,
+          "rate": 0.4166666666666667
         }
       },
       "chosen": {
-        "SwapBattery": 112,
-        "Replace": 8
+        "SwapBattery": 64,
+        "Replace": 56,
+        "ReformTeam": 4
       },
       "escalation_rate": 0.0,
       "n_escalated": 0,
       "n_scored_router": 120,
       "novelty_rate": 0.0,
       "n_novel": 0,
-      "n_novel_denom": 120,
+      "n_novel_denom": 124,
       "risk_coverage": {
         "100": {
           "n": 120,
-          "correct": 58,
-          "rate": 0.48333333333333334
+          "correct": 54,
+          "rate": 0.45
         },
         "75": {
           "n": 90,
-          "correct": 45,
-          "rate": 0.5
+          "correct": 38,
+          "rate": 0.4222222222222222
         },
         "50": {
           "n": 60,
-          "correct": 33,
-          "rate": 0.55
+          "correct": 26,
+          "rate": 0.43333333333333335
         },
         "25": {
           "n": 30,
-          "correct": 23,
-          "rate": 0.7666666666666667
+          "correct": 15,
+          "rate": 0.5
         }
       },
-      "sim_seconds_complete": 19.6,
-      "sim_seconds_sd": 0.0,
-      "steps_complete": 784,
-      "wall_seconds": 38.11,
+      "sim_seconds_complete": 21.933333333333334,
+      "sim_seconds_sd": 4.738749531937384,
+      "steps_complete": 877.3333333333334,
+      "wall_seconds": 58.35333333333333,
       "progress": 0.9297124600638977,
-      "energy_per_closed": 264.0812196880824,
-      "total_energy_J": 76847.63492923198,
-      "mean_soc": 0.9996114202913255,
-      "min_soc": 0.9989247972154203,
+      "energy_per_closed": 315.00907763018046,
+      "total_energy_J": 91667.64159038251,
+      "mean_soc": 0.9995348352467098,
+      "min_soc": 0.9988619779895208,
       "n_depleted": 0,
-      "spares_left": 11.733333333333333,
+      "spares_left": 10.133333333333333,
       "detail": [
         {
           "truth": "BatteryTruth",
@@ -1987,11 +1988,11 @@
         {
           "truth": "BatteryTruth",
           "at": 149,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
@@ -2000,15 +2001,15 @@
         {
           "truth": "BatteryTruth",
           "at": 185,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.4763779527559055
+          "router_p": 0.6181102362204725
         },
         {
           "truth": "FaultTruth",
@@ -2039,11 +2040,11 @@
         {
           "truth": "FaultTruth",
           "at": 144,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 2,
           "escalated": false,
           "router_novel": false,
@@ -2091,11 +2092,11 @@
         {
           "truth": "FaultTruth",
           "at": 178,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
@@ -2112,7 +2113,7 @@
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.41338582677165353
         },
         {
           "truth": "BatteryTruth",
@@ -2143,19 +2144,6 @@
         {
           "truth": "BatteryTruth",
           "at": 181,
-          "chosen": "SwapBattery",
-          "reference": "SwapBattery",
-          "basis": "battery",
-          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
-          "ood_seed": 4,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.6496062992125984
-        },
-        {
-          "truth": "BatteryTruth",
-          "at": 231,
           "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
@@ -2164,7 +2152,20 @@
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.42913385826771655
+          "router_p": 0.6496062992125984
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 232,
+          "chosen": "SwapBattery",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": true,
+          "ood_seed": 4,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "BatteryTruth",
@@ -2195,11 +2196,11 @@
         {
           "truth": "FaultTruth",
           "at": 149,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
@@ -2208,24 +2209,24 @@
         {
           "truth": "BatteryTruth",
           "at": 228,
-          "chosen": "Replace",
-          "reference": "SwapBattery",
-          "basis": "battery",
-          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": false,
-          "ood_seed": 5,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.468503937007874
-        },
-        {
-          "truth": "BatteryTruth",
-          "at": 58,
           "chosen": "SwapBattery",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
           "correct": true,
+          "ood_seed": 5,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.46062992125984253
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 58,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
@@ -2233,42 +2234,55 @@
         },
         {
           "truth": "BatteryTruth",
-          "at": 90,
-          "chosen": "SwapBattery",
+          "at": 88,
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
+          "ood_seed": 6,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.6732283464566929
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 176,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 2 transport task(s)",
           "correct": true,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.562992125984252
+          "router_p": 0.610236220472441
         },
         {
           "truth": "FaultTruth",
-          "at": 178,
+          "at": 186,
           "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
+          "note": "the faulted robot still owed 1 transport task(s)",
           "correct": false,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6023622047244095
+          "router_p": 0.39763779527559057
         },
         {
-          "truth": "FaultTruth",
-          "at": 185,
-          "chosen": "SwapBattery",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.42913385826771655
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "BatteryTruth",
@@ -2299,11 +2313,11 @@
         {
           "truth": "BatteryTruth",
           "at": 158,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
@@ -2312,58 +2326,19 @@
         {
           "truth": "BatteryTruth",
           "at": 188,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6181102362204725
+          "router_p": 0.594488188976378
         },
         {
           "truth": "BatteryTruth",
           "at": 58,
-          "chosen": "SwapBattery",
-          "reference": "SwapBattery",
-          "basis": "battery",
-          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
-          "ood_seed": 8,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.8543307086614174
-        },
-        {
-          "truth": "BatteryTruth",
-          "at": 129,
-          "chosen": "SwapBattery",
-          "reference": "SwapBattery",
-          "basis": "battery",
-          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
-          "ood_seed": 8,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.8464566929133859
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 178,
-          "chosen": "SwapBattery",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
-          "ood_seed": 8,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.6023622047244095
-        },
-        {
-          "truth": "BatteryTruth",
-          "at": 223,
           "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
@@ -2372,7 +2347,46 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.8543307086614174
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 127,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
+          "ood_seed": 8,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.8464566929133859
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 180,
+          "chosen": "SwapBattery",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
+          "ood_seed": 8,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.4921259842519685
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 224,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
+          "ood_seed": 8,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.3661417322834646
         },
         {
           "truth": "BatteryTruth",
@@ -2403,11 +2417,11 @@
         {
           "truth": "FaultTruth",
           "at": 149,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
@@ -2424,7 +2438,7 @@
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "BatteryTruth",
@@ -2455,11 +2469,11 @@
         {
           "truth": "FaultTruth",
           "at": 151,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
@@ -2468,15 +2482,15 @@
         {
           "truth": "BatteryTruth",
           "at": 186,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.4763779527559055
+          "router_p": 0.6181102362204725
         },
         {
           "truth": "BatteryTruth",
@@ -2507,11 +2521,11 @@
         {
           "truth": "BatteryTruth",
           "at": 178,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
@@ -2520,15 +2534,15 @@
         {
           "truth": "BatteryTruth",
           "at": 217,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.42913385826771655
         },
         {
           "truth": "FaultTruth",
@@ -2559,11 +2573,11 @@
         {
           "truth": "BatteryTruth",
           "at": 158,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
@@ -2572,15 +2586,15 @@
         {
           "truth": "FaultTruth",
           "at": 209,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.452755905511811
+          "router_p": 0.4763779527559055
         },
         {
           "truth": "FaultTruth",
@@ -2676,15 +2690,28 @@
         {
           "truth": "FaultTruth",
           "at": 187,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.42913385826771655
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 243,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 14,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.20078740157480315
         },
         {
           "truth": "FaultTruth",
@@ -2728,11 +2755,11 @@
         {
           "truth": "FaultTruth",
           "at": 214,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
@@ -2767,11 +2794,11 @@
         {
           "truth": "BatteryTruth",
           "at": 158,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
@@ -2788,15 +2815,28 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6338582677165354
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "BatteryTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.8543307086614174
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 109,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 3 transport task(s)",
           "correct": true,
           "ood_seed": 17,
           "escalated": false,
@@ -2805,42 +2845,42 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 108,
-          "chosen": "SwapBattery",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
-          "ood_seed": 17,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.8464566929133859
-        },
-        {
-          "truth": "FaultTruth",
           "at": 152,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7440944881889764
+          "router_p": 0.6338582677165354
         },
         {
           "truth": "FaultTruth",
-          "at": 211,
-          "chosen": "SwapBattery",
+          "at": 214,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "FaultTruth",
@@ -2871,11 +2911,11 @@
         {
           "truth": "BatteryTruth",
           "at": 166,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
@@ -2884,15 +2924,28 @@
         {
           "truth": "BatteryTruth",
           "at": 217,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.41338582677165353
+          "router_p": 0.421259842519685
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 18,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "FaultTruth",
@@ -2923,11 +2976,11 @@
         {
           "truth": "FaultTruth",
           "at": 178,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
@@ -2936,15 +2989,15 @@
         {
           "truth": "FaultTruth",
           "at": 219,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.22440944881889763
+          "router_p": 0.21653543307086615
         },
         {
           "truth": "BatteryTruth",
@@ -2975,11 +3028,11 @@
         {
           "truth": "BatteryTruth",
           "at": 160,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -2988,11 +3041,11 @@
         {
           "truth": "FaultTruth",
           "at": 209,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -3053,11 +3106,11 @@
         {
           "truth": "BatteryTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
@@ -3065,42 +3118,42 @@
         },
         {
           "truth": "BatteryTruth",
-          "at": 90,
-          "chosen": "SwapBattery",
+          "at": 88,
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6732283464566929
+          "router_p": 0.7834645669291339
         },
         {
           "truth": "FaultTruth",
           "at": 139,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6968503937007874
+          "router_p": 0.6496062992125984
         },
         {
           "truth": "FaultTruth",
-          "at": 209,
-          "chosen": "SwapBattery",
+          "at": 208,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.452755905511811
+          "router_p": 0.22440944881889763
         },
         {
           "truth": "FaultTruth",
@@ -3131,11 +3184,11 @@
         {
           "truth": "BatteryTruth",
           "at": 154,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
@@ -3144,15 +3197,15 @@
         {
           "truth": "BatteryTruth",
           "at": 217,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.41338582677165353
+          "router_p": 0.421259842519685
         },
         {
           "truth": "FaultTruth",
@@ -3183,11 +3236,11 @@
         {
           "truth": "FaultTruth",
           "at": 178,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
@@ -3196,11 +3249,11 @@
         {
           "truth": "BatteryTruth",
           "at": 209,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
@@ -3235,11 +3288,11 @@
         {
           "truth": "BatteryTruth",
           "at": 178,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
@@ -3248,15 +3301,15 @@
         {
           "truth": "BatteryTruth",
           "at": 191,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6496062992125984
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "FaultTruth",
@@ -3300,11 +3353,11 @@
         {
           "truth": "FaultTruth",
           "at": 214,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
@@ -3339,11 +3392,11 @@
         {
           "truth": "BatteryTruth",
           "at": 185,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 27,
           "escalated": false,
           "router_novel": false,
@@ -3360,7 +3413,7 @@
           "ood_seed": 27,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.452755905511811
+          "router_p": 0.4763779527559055
         },
         {
           "truth": "FaultTruth",
@@ -3391,11 +3444,11 @@
         {
           "truth": "FaultTruth",
           "at": 150,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
@@ -3404,11 +3457,11 @@
         {
           "truth": "FaultTruth",
           "at": 209,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
@@ -3443,11 +3496,11 @@
         {
           "truth": "FaultTruth",
           "at": 149,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
@@ -3456,15 +3509,15 @@
         {
           "truth": "BatteryTruth",
           "at": 191,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6496062992125984
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "FaultTruth",
@@ -3495,11 +3548,11 @@
         {
           "truth": "BatteryTruth",
           "at": 154,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
@@ -3516,7 +3569,7 @@
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.4921259842519685
         }
       ]
     },
@@ -3584,7 +3637,7 @@
       "sim_seconds_complete": 24.01517857142857,
       "sim_seconds_sd": 12.185148328261992,
       "steps_complete": 960.6071428571429,
-      "wall_seconds": 64.26,
+      "wall_seconds": 69.40666666666667,
       "progress": 0.9242811501597444,
       "energy_per_closed": 393.72164243731896,
       "total_energy_J": 112500.9272742237,
@@ -5659,7 +5712,7 @@
       "sim_seconds_complete": 25.95344827586207,
       "sim_seconds_sd": 6.911254163558196,
       "steps_complete": 1038.1379310344828,
-      "wall_seconds": 63.09,
+      "wall_seconds": 68.42333333333333,
       "progress": 0.921618743343983,
       "energy_per_closed": 450.860748879306,
       "total_energy_J": 126652.75777355008,

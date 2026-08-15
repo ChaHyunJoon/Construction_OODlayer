@@ -63,11 +63,22 @@ Z = 1.96
 
 
 def _bucket(cell):
-    """prog_b 는 cell key 의 첫 성분이다 (derive_grid.cell_key 규약)."""
-    try:
-        return int(str(cell).split("|", 1)[0].split("=", 1)[-1])
-    except Exception:
-        return 0
+    """cell key 에서 `prog_b` 성분을 **이름으로** 찾는다. 없으면 0(= 버킷이 하나).
+
+    ⚠️ 2026-08-15 수정. 예전에는 "첫 성분이 prog_b 다" 라는 위치 규약을 썼는데, 계층 백오프의
+    L2 는 `prog_b` 를 덜어내므로 첫 성분이 `soc_b` 가 된다 — 그러면 솔버가 **SoC 를 진행도로
+    착각**한다. SoC 는 단조가 아니므로 buckets 사이 DAG 전제가 깨지고, backward induction 이
+    실재하지 않는 역방향 간선(`backward_edge`)을 136건 보고했다(실측). 이름으로 찾으면
+    prog_b 가 없는 투영에서는 버킷이 하나가 되어 **전부 value iteration** 으로 풀린다 —
+    그게 그 격자에서 옳은 처리다(진행도 축이 없으면 DAG 논증 자체가 없다)."""
+    for part in str(cell).split("|"):
+        k, _, v = part.partition("=")
+        if k == "prog_b":
+            try:
+                return int(v)
+            except ValueError:
+                return 0
+    return 0
 
 
 def _mean(xs):
@@ -380,6 +391,57 @@ def _project(cell, drop):
     return "|".join(p for p in cell.split("|") if p.split("=", 1)[0] not in drop)
 
 
+def solve_backward_hierarchical(samples, all_cells=None):
+    """backward induction 용 계층 백오프. **cell 과 next_cell 을 같은 규칙으로 함께 투영한다.**
+
+    왜 함께 투영해야 하는가: 전이는 (칸 -> 다음칸) 쌍이다. 한쪽만 투영하면 다음칸이 표에 없어
+    전부 dangling 이 되고, 백오프가 커버리지를 **떨어뜨린다.** 둘 다 투영하면 그 레벨은 그냥
+    **거친 격자 위의 같은 MDP** 이고 새 규칙을 지어낸 것이 아니다.
+
+    대가는 L0 때와 똑같은 **편향**이다: 거친 칸은 물리적으로 다른 상태를 한 평균에 섞는다.
+    그래서 (1) 언제나 가장 정밀한 레벨부터 시도하고 갈린 순간 멈추며, (2) 어느 레벨이 답했는지
+    `dp_level` 로 칸마다 남긴다. 레벨을 안 남기면 거친 답이 정밀한 답으로 위장한다.
+
+    ⚠️ L2 는 `prog_b` 를 덜어내므로 버킷이 하나가 된다 — 버킷 사이 DAG 가 사라지고 전부 한
+    덩어리의 value iteration 이 된다. 수렴은 그대로 보장되지만(비용 >= 0 인 SSP) 반복수가 는다.
+    """
+    tables, stats_all = [], collections.Counter()
+    for drop in BACKOFF_LEVELS:
+        if drop:
+            d = set(drop)
+            proj = [dict(r, cell=_project(r["cell"], d),
+                         next_cell=(None if r.get("next_cell") is None
+                                    else _project(r["next_cell"], d)))
+                    for r in samples]
+        else:
+            proj = samples
+        t, s = solve_backward(proj)
+        tables.append(t)
+        for k, v in s.items():
+            stats_all[k] = max(stats_all[k], v) if k == "vi_iters_max" else stats_all[k] + v
+
+    cells = set(all_cells or [])
+    cells |= {r["cell"] for r in samples}
+
+    out = {}
+    for c in sorted(cells):
+        entry = None
+        for lvl, (drop, tab) in enumerate(zip(BACKOFF_LEVELS, tables)):
+            key = _project(c, set(drop))
+            d = tab.get(key)
+            if d is None:
+                continue
+            if entry is None:                       # 가장 정밀한 "존재하는" 칸을 기본으로 둔다
+                entry = dict(d, dp_level=lvl, dp_level_key=key)
+            if d.get("a_star") is not None:         # 갈린 순간 멈춘다
+                entry = dict(d, dp_level=lvl, dp_level_key=key)
+                break
+        if entry is not None:
+            out[c] = entry
+    stats_all["cells"] = len(out)
+    return out, dict(stats_all)
+
+
 def solve_hierarchical(samples, all_cells=None):
     """정밀 칸 키 -> 답. 갈리는 가장 정밀한 레벨을 골라 그 답을 **정밀 키에** 적는다."""
     tables = []
@@ -449,9 +511,10 @@ def main():
             sys.exit("표본에 구간 비용 `c` 가 하나도 없다 — 구세대(판 단위 J) 표본이다. "
                      "sample_grid.py 를 다시 돌리거나 --method constant_arm 을 쓸 것.")
         if a.backoff:
-            sys.exit("backward 는 아직 계층 백오프를 지원하지 않는다. 거친 칸으로 투영하면 "
-                     "next_cell 도 같이 투영해야 하는데 그 규칙을 지어내지 않는다.")
-        val, stats = solve_backward(rows)
+            val, stats = solve_backward_hierarchical(
+                rows, all_cells=list(grid.get("observed_cells") or {}))
+        else:
+            val, stats = solve_backward(rows)
         method_note = (
             "TRUE Bellman backward induction on the measured phi-tilde grid. "
             "V(goal)=0; V(dead_end)=terminal_value (the settlement carried by the sample); "
@@ -529,10 +592,22 @@ def main():
         }, f, indent=1, ensure_ascii=False)
 
     n_obs = grid.get("n_observed_cells") or 0
+    # 커버리지는 **칸 기준과 결정 가중을 둘 다** 낸다. 칸 기준만 적으면 낮아 보이는데 결정
+    # 빈도가 편중돼 있어 실제 조회 성공률이 다르고, 결정 가중만 적으면 격자의 빈 곳이 안 보인다.
+    _oc = grid.get("observed_cells") or {}
+    _dtot = sum(_oc.values())
+    _have = set(val)
+    _res = {c for c, d in val.items() if d.get("a_star") is not None}
+    _dhave = sum(n for k, n in _oc.items() if k in _have)
+    _dres = sum(n for k, n in _oc.items() if k in _res)
     print("[%s] cells=%d  a* 확정=%d  tie 미확정=%d  단일팔(비교없음)=%d  "
           "값없음=%d  팔없음=%d" % (a.method, len(val), n_resolved, n_tie, n_1arm, n_dead, n_noarm))
-    print("  결정 기준 커버리지: a* 확정 %d / 관측격자 %d = %.1f%%  (표에 오른 칸 %d)"
-          % (n_resolved, n_obs, 100.0 * n_resolved / max(n_obs, 1), len(val)))
+    print("  표에 오른 칸  : %d / %d 칸 = %.1f%%   ·  결정 가중 %d / %d = %.1f%%"
+          % (len(val), n_obs, 100.0 * len(val) / max(n_obs, 1),
+             _dhave, _dtot, 100.0 * _dhave / max(_dtot, 1)))
+    print("  a* 확정 커버리지: %d / %d 칸 = %.1f%%   ·  결정 가중 %d / %d = %.1f%%"
+          % (n_resolved, n_obs, 100.0 * n_resolved / max(n_obs, 1),
+             _dres, _dtot, 100.0 * _dres / max(_dtot, 1)))
     print("  dangling 전이 %d  사유별 %s" % (stats.get("dangling_transitions", 0),
                                              dang_by_reason or "{}"))
     print("  수렴 실패 칸 %d  (value iteration 최대 반복 %d / 상한 %d, tol %.0e)"

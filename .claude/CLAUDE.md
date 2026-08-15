@@ -130,7 +130,56 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
     각각 −17.2% · −8.8%). **순환이기 때문이다**: 그 둘은 `objective_hash` 의 입력이라 쓰는 순간
     방금 만든 630행이 구세대로 재분류된다. 적용하려면 **재교정 + 재스윕**을 한 묶음으로 결정할 것.
 
-### ✅ 2026-08-14 — 4정책 비교표가 나왔다 (라우터 3-way · DP 레인 · 화면의 목적함수)
+### ✅ 2026-08-15 — DP 가 진짜 backward induction 이 됐다 (현행 세대)
+
+**현행 세대 결과 = `md/RESULTS_DP_BACKWARD_2026-08-15.md` + `artifacts_4pol/COMPARE.md`.**
+아래 2026-08-14 절은 **직전 세대**다(지우지 않았다 — 두 세대를 나란히 놔야 §5-C 의 진단이
+어디까지 맞았는지 보인다). 목적함수 세대는 안 갈렸다(`objective.json` 무변경).
+
+- **무엇이 세대를 갈랐나**: `run_demo.jl` 이 결정마다 `sim_t_at`·`energy_at_J`·`closed_at` 을
+  남긴다. 그것으로 구간 비용 `c_k` 와 다음 칸이 만들어져 `dp_solve.solve_backward()` 가
+  Bellman 을 푼다. 구세대는 `solve_constant_arm()` 으로 **보존**돼 있다(비교용, 지우지 말 것).
+- **분해 충실성 게이트가 이 작업 전체의 근거다**: 판마다
+  `c_prefix + Σc_k + terminal == objective.J_row(row)`. 위반 시 `sample_grid.py` 가 exit 1.
+  실측 420판 위반 0 · 최대잔차 3.6e-12. 합성 판 단위검사 = `dp_oracle/test_cost_decomposition.py`.
+  ⚠️ **기준값을 `T + w_E·E_T` 로 직접 쓰면 게이트가 무력해진다** — 양변이 같은 `w_E` 를 써
+  잔차가 항상 0 이 되고, 미완주 분기는 `terminal_value` 가 차액을 흡수해 통째로 무검사가 된다.
+  `objective.J(complete=True, ...)` 를 **불러서** 기준을 받아야 한다(단위검사 T-06d 가 그 경계).
+- **`c_prefix` 는 DP 가 쓰지 않는다**: `[0, t_1]`(첫 결정 이전)은 어떤 정책도 못 바꾸는 상수다.
+  `c_1` 에 접으면 결정 이전 비용이 첫 팔에 귀속돼 Q 에 편향이 실린다. 분리하되 항등식에는 넣는다.
+- **비교표 4열 (7 case x 30 seed)**: dp **209**/210 · canonical 207 · surrogate 190 · llm 198.
+  실행 레인 세 열은 2026-08-14 와 **case 별 수치까지 완전히 동일** — 계측이 동역학을 안 건드렸다는
+  기계적 증거다. dp 열만 바뀌었고 그건 `value.json` 이 바뀌었기 때문이다.
+- **`dp` 열은 여전히 "천장" 이 아니다. 그런데 이유가 달라졌다.** §8.7 gap 89.3% → **87.6%**
+  (106/121). 거의 안 줄었고, 원인이 셋으로 갈렸다(`dp_oracle/gap_breakdown.py`):
+  ① **행동집합 불일치** — 표집 팔 메뉴는 배포 학습셋 지원집합 `{0,1,2,7,8}` 이라 `ForbidZone(3)`
+  ·`ReformTeam(4)` 이 없는데, 실행 레인은 Reform 사건에서 `ReformTeam` 을 **1182회** 집행한다.
+  Reform 축 gap 은 13/13 = 100% 이고 전부 여기서 나온다. 그 축은 **비교 자체가 성립하지 않는다.**
+  ② φ̃ 추상화 손실(원 설계 §2.1 이 미리 인정한 대가). ③ **전이 표본이 여전히 상수-팔 rollout
+  에서만 나온다** — 비용 분해는 결정 단위가 됐지만 표본을 만든 궤적은 판 전체가 한 팔이다.
+  ③ 을 고치려면 1-step deviation 표집이 필요하고 그건 다음 사이클 거리다.
+- **★ §8.7 gap 의 비교 단위가 솔버에 묶여 있다.** backward 의 `V` 는 **그 칸부터의 cost-to-go**
+  라, 실행 정책도 같은 분해로 `J − c_prefix − Σ_{k<i} c_k` 를 뽑아 비교해야 한다. 판 전체 J 와
+  대면 `V` 가 구조적으로 작아 gap 이 **100% 로 자동 발화**한다(측정이 아니라 단위 오류).
+  `build_compare_table.py` 와 `fill_results_doc.py` 가 `value.json` 의 `solver` 필드를 읽어
+  단위를 고른다 — 두 소비처의 규칙이 어긋나면 표와 문서가 갈린다.
+- **`dp_solve._bucket()` 은 이름 규약이다**(2026-08-15 수정). 예전엔 "prog_b 는 cell key 의 첫
+  성분" 이라는 **위치** 규약이었는데, 계층 백오프 L2 가 `prog_b` 를 덜어내면 첫 성분이 `soc_b`
+  가 되어 솔버가 **SoC 를 진행도로 착각**한다. SoC 는 단조가 아니라 DAG 전제가 깨지고, 실측
+  `backward_edge` 136 · `next_undefined` 580 이 나왔다. 이름으로 찾게 고치니 **dangling 716 → 0**,
+  a\* 확정 11 → 18.
+- **계층 백오프는 켜져 있다**(`value.json`). L0 만으로는 a\* 확정이 6칸(결정 가중 16.4%)뿐이라
+  계획의 조건부 지시대로 켰다. 끈 표는 `dp_oracle/value_L0_nobackoff.json` 에 남겼다.
+  역설적이지만 백오프가 gap 을 **줄인다**(L0 만 94.6% → 백오프 87.6%) — 정밀 칸에서 팔이
+  하나뿐이라 비교가 없던 자리에 비교를 만들기 때문이다.
+- **dp 레인이 표를 쓰는 비율은 낮다**: 결정 1202건 중 조회 성공 351(29.2%) ·
+  `tie_unresolved` 469(39.0%) · `single_arm` 382(31.8%). tie 가 는 것은 단위가 바뀐 귀결이다 —
+  판 전체 J 는 이봉분포(완주 ~20 / 미완주 ~15000)라 팔이 크게 갈렸지만 cost-to-go 는 종단
+  벌점이 구간에 퍼져 격차가 SE 안에 든다. **옛 표의 a\* 39칸 중 29칸이 가장 거친 L2 였다.**
+- 신규 계약: `dp_oracle/test_cost_decomposition.py`(차단 게이트) · `test_dp_solve.py` 에
+  Bellman 검사 30건 추가 · `dp_oracle/gap_breakdown.py`(진단, 비게이팅).
+
+### 2026-08-14 — 4정책 비교표가 나왔다 (라우터 3-way · DP 레인 · 화면의 목적함수) — **직전 세대**
 
 **현행 세대 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md` + `artifacts_4pol/COMPARE.md`.**
 7 case x 30 seed x **4 policy = 840판**, 샤드 420/420 ok·fail 0, 세대 단일. 정책은

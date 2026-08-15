@@ -131,6 +131,21 @@ bash finish_tables.sh
 > 발명이 아님을 `Σ c_k + terminal == J_row(row)` 라는 **분해 충실성 검사**로 못박아야 한다.
 >
 > 실행 계획: [`docs/superpowers/plans/2026-08-15-dp-backward-induction.md`](../../docs/superpowers/plans/2026-08-15-dp-backward-induction.md)
+>
+> **★ 후속 (2026-08-15) — 이 한계는 해소됐다. 다만 gap 은 안 줄었다.**
+> 결과: [`md/RESULTS_DP_BACKWARD_2026-08-15.md`](RESULTS_DP_BACKWARD_2026-08-15.md).
+> 계측을 넣자 구간 비용 `c_k` 와 다음 칸이 실제로 만들어졌고, DP 는 진짜 Bellman backward
+> induction 이 됐다 — **아래 1번(credit assignment)은 닫혔다.** 판마다
+> `c_prefix + Σc + terminal == J` 가 기계 검사되고, 420판에서 위반 0·최대잔차 3.6e-12 였다.
+> 그런데 **§8.7 gap 은 89.3% → 87.6% 로 거의 안 줄었다.** 아래 2번의 진단("상수-팔 정책군이
+> 좁아서")은 **원인의 일부일 뿐이었다.** 실측으로 갈린 세 원인 중 가장 큰 것은 새로 드러난
+> 것이다 — 표집 팔 메뉴 `{0,1,2,7,8}` 에 실행 레인이 Reform 사건에서 1182회 집행하는
+> `ReformTeam(4)` 이 **없다.** 그 축에서는 V 가 "정답이 메뉴에 없는 정책군의 최선" 이라
+> 비교 자체가 성립하지 않는다. 나머지 둘은 φ̃ 추상화 손실과, 전이 표본이 여전히 상수-팔
+> rollout 에서만 나온다는 구조적 한계다. 쪼갠 수치: `dp_oracle/gap_breakdown.py`.
+>
+> **이 문서를 지우지 않는다** — 위 §5-C 의 진단이 어디까지 맞았고 어디서 틀렸는지가
+> 두 세대를 나란히 놔야만 보인다.
 
 그래서 이 표의 DP 가 실제로 푸는 것은:
 

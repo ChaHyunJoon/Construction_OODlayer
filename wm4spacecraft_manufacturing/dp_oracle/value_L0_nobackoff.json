@@ -1,0 +1,1647 @@
+{
+ "cells": {
+  "prog_b=3|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 10.902388111996606,
+   "Q": {
+    "1": 10.902388111996606
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 0.9322672279355454
+   },
+   "n": {
+    "1": 5
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 5
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 14986.500852925363,
+   "Q": {
+    "1": 14986.500852925363
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": null
+   },
+   "n": {
+    "1": 1
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 1
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 4203.537746755796,
+   "Q": {
+    "0": 14688.741665993333,
+    "1": 14862.665037537185,
+    "2": 14688.741665993333,
+    "7": 14692.88825472595,
+    "8": 4203.537746755796
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    1,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": null,
+    "1": null,
+    "2": null,
+    "7": null,
+    "8": 2707.476726709761
+   },
+   "n": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 7
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 7
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 6172.769440063905,
+   "Q": {
+    "1": 6172.769440063905
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1947.3429700169854
+   },
+   "n": {
+    "1": 9
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 9
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 14863.328252428417,
+   "Q": {
+    "1": 14863.328252428417
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": null
+   },
+   "n": {
+    "1": 1
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 1
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=2|spares_b=3|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 2455.588843043458,
+   "Q": {
+    "8": 2455.588843043458
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    8
+   ],
+   "se": {
+    "8": 2446.7239734318
+   },
+   "n": {
+    "8": 6
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "8": 6
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=2|spares_b=3|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 9.638250908518437,
+   "Q": {
+    "8": 9.638250908518437
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    8
+   ],
+   "se": {
+    "8": 0.12646385394547677
+   },
+   "n": {
+    "8": 4
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "8": 4
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=3|soc_b=3|spares_b=0|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 11085.976596350014,
+   "Q": {
+    "1": 11085.976596350014
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 341.24313366403396
+   },
+   "n": {
+    "1": 87
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 17
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=0|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 3035.543158698235,
+   "Q": {
+    "1": 3035.543158698235
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1561.5531932792253
+   },
+   "n": {
+    "1": 11
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 11
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 14988.120002934102,
+   "Q": {
+    "1": 14988.120002934102
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1.0444644843200876
+   },
+   "n": {
+    "1": 2
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 2
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 14973.693994653544,
+   "Q": {
+    "1": 14973.693994653544
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 13.521246812774832
+   },
+   "n": {
+    "1": 84
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 14
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=1|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 14956.053652096067,
+   "Q": {
+    "1": 14956.053652096067
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 30.912463293567754
+   },
+   "n": {
+    "1": 4
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 4
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 14862.699960833894,
+   "Q": {
+    "1": 14862.699960833894
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 0.5068312552928512
+   },
+   "n": {
+    "1": 7
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 7
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 14849.987221182066,
+   "Q": {
+    "1": 14849.987221182066
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 11.076798676334723
+   },
+   "n": {
+    "1": 103
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 17
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=2|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 5347.27331897703,
+   "Q": {
+    "0": 14688.741665993333,
+    "1": 14862.665037537783,
+    "2": 14688.741665993333,
+    "7": 14692.78802900324,
+    "8": 5347.27331897703
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    1,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": null,
+    "1": null,
+    "2": null,
+    "7": null,
+    "8": 2233.184445389562
+   },
+   "n": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 11
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 11
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 2945.8810417135364,
+   "Q": {
+    "8": 2945.8810417135364
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    8
+   ],
+   "se": {
+    "8": 2936.1163291298835
+   },
+   "n": {
+    "8": 5
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "8": 5
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 4414.239883144602,
+   "Q": {
+    "0": 14689.559540333725,
+    "1": 14689.540962806623,
+    "2": 14689.559540333725,
+    "7": 4414.239883144602,
+    "8": 14689.564218427326
+   },
+   "a_star": 7,
+   "unresolved_reason": null,
+   "tie": [
+    7
+   ],
+   "se": {
+    "0": 0.128611160462038,
+    "1": 0.16762119034139306,
+    "2": 0.128611160462038,
+    "7": 2242.349919314787,
+    "8": 0.11525112439261938
+   },
+   "n": {
+    "0": 9,
+    "1": 7,
+    "2": 9,
+    "7": 10,
+    "8": 16
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 9,
+    "1": 7,
+    "2": 9,
+    "7": 10,
+    "8": 16
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 14676.796768230033,
+   "Q": {
+    "0": 14969.943757894109,
+    "1": 14676.796768230033,
+    "2": 14969.943757894109,
+    "7": 15145.632373440769,
+    "8": 14676.796768230035
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    1,
+    8
+   ],
+   "se": {
+    "0": 84.47458863954193,
+    "1": 1.9953949571996799,
+    "2": 84.47458863954193,
+    "7": 159.85991746627792,
+    "8": 1.0487971125390836
+   },
+   "n": {
+    "0": 144,
+    "1": 72,
+    "2": 144,
+    "7": 72,
+    "8": 258
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 3,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 24,
+    "1": 12,
+    "2": 24,
+    "7": 12,
+    "8": 43
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=3|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=2|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 2784.7665544720926,
+   "Q": {
+    "1": 2784.7665544720926
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 2772.203642148531
+   },
+   "n": {
+    "1": 4
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 4
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=0|spares_b=1|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 8385.79538761453,
+   "Q": {
+    "1": 8385.79538761453
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 2201.373408205155
+   },
+   "n": {
+    "1": 4
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 4
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=0|spares_b=2|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 5017.257389194778,
+   "Q": {
+    "1": 5017.257389194778
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 2042.4038356079957
+   },
+   "n": {
+    "1": 5
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 5
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 11.381181301653603,
+   "Q": {
+    "8": 11.381181301653603
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    8
+   ],
+   "se": {
+    "8": null
+   },
+   "n": {
+    "8": 1
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "8": 1
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=0|spares_b=3|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 3346.565021654272,
+   "Q": {
+    "0": 26085.141377347954,
+    "2": 26085.141377347954,
+    "7": 26085.141377347954,
+    "8": 3346.565021654272
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": null,
+    "2": null,
+    "7": null,
+    "8": 1119.350737769989
+   },
+   "n": {
+    "0": 1,
+    "2": 1,
+    "7": 1,
+    "8": 12
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 1,
+    "2": 1,
+    "7": 1,
+    "8": 9
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 11104.113041445562,
+   "Q": {
+    "1": 11104.113041445562
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 0.021978338791018574
+   },
+   "n": {
+    "1": 4
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 4
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=2|spares_b=1|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery": {
+   "V": 8846.999958168819,
+   "Q": {
+    "1": 8846.999958168819
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1463.7548426859416
+   },
+   "n": {
+    "1": 15
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 14
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=2|spares_b=2|pend_f=1|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 6794.338985913683,
+   "Q": {
+    "1": 6794.338985913683
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1866.8006732784443
+   },
+   "n": {
+    "1": 5
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 5
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 3794.1979926158947,
+   "Q": {
+    "0": 4418.882080303765,
+    "1": 14867.34974707189,
+    "2": 4418.882080303765,
+    "7": 4418.5812195389335,
+    "8": 3794.1979926158947
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    1,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": null,
+    "1": null,
+    "2": null,
+    "7": null,
+    "8": 903.6711319259091
+   },
+   "n": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 25
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "7": 1,
+    "8": 22
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=2|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 5557.850675077403,
+   "Q": {
+    "1": 5557.850675077403
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 2095.773189809108
+   },
+   "n": {
+    "1": 8
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 8
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=1|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 6253.09150601737,
+   "Q": {
+    "1": 6253.09150601737
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1581.7032496077381
+   },
+   "n": {
+    "1": 14
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 13
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=2|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 6814.000991590606,
+   "Q": {
+    "1": 6814.000991590606
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 878.3395244229786
+   },
+   "n": {
+    "1": 17
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 17
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=2|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 13980.319919325988,
+   "Q": {
+    "1": 13980.319919325988
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 460.0247171217522
+   },
+   "n": {
+    "1": 22
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "1": 16
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault": {
+   "V": 11.381181301653603,
+   "Q": {
+    "8": 11.381181301653603
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    8
+   ],
+   "se": {
+    "8": 0.0
+   },
+   "n": {
+    "8": 3
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "8": 3
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=3|pend_f=1|zone_s=none|evt=Fault"
+  },
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 4418.580924991699,
+   "Q": {
+    "0": 15254.0390939616,
+    "1": 14867.34974707189,
+    "2": 15254.0390939616,
+    "7": 4418.580924991699,
+    "8": 4562.049971533308
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    1,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": 10835.157013657836,
+    "1": null,
+    "2": 10835.157013657836,
+    "7": null,
+    "8": 668.2547890829442
+   },
+   "n": {
+    "0": 2,
+    "1": 1,
+    "2": 2,
+    "7": 1,
+    "8": 37
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 2,
+    "1": 1,
+    "2": 2,
+    "7": 1,
+    "8": 30
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 8131.111302836067,
+   "Q": {
+    "0": 12002.197361721866,
+    "1": 8138.126649209271,
+    "2": 12002.197361721866,
+    "7": 9380.386688431508,
+    "8": 8131.111302836067
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    1,
+    7,
+    8
+   ],
+   "se": {
+    "0": 1384.8603744097056,
+    "1": 989.4222491525187,
+    "2": 1384.8603744097056,
+    "7": 1624.9092170726492,
+    "8": 679.3152822303376
+   },
+   "n": {
+    "0": 30,
+    "1": 19,
+    "2": 30,
+    "7": 29,
+    "8": 41
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 23,
+    "1": 14,
+    "2": 23,
+    "7": 22,
+    "8": 30
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 26074.50648022603,
+   "Q": {
+    "0": 26074.50648022603,
+    "2": 26074.50648022603,
+    "7": 26086.74759382065
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    2,
+    7
+   ],
+   "se": {
+    "0": 15.043869204370328,
+    "2": 15.043869204370328,
+    "7": 4.92105649814776
+   },
+   "n": {
+    "0": 318,
+    "2": 318,
+    "7": 318
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 2,
+   "converged": true,
+   "vi_iters": 161,
+   "n_boards": {
+    "0": 53,
+    "2": 53,
+    "7": 53
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=2|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=1|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 8651.23705155106,
+   "Q": {
+    "1": 8651.23705155106
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 790.5318778296485
+   },
+   "n": {
+    "1": 15
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "1": 15
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=0|spares_b=2|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=1|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 4848.653237588415,
+   "Q": {
+    "0": 22650.76742777413,
+    "1": 8844.173913734086,
+    "2": 22650.76742777413,
+    "7": 22650.76742777413,
+    "8": 4848.653237588415
+   },
+   "a_star": 8,
+   "unresolved_reason": null,
+   "tie": [
+    8
+   ],
+   "se": {
+    "0": 1694.7549274380121,
+    "1": 677.0325807305712,
+    "2": 1694.7549274380121,
+    "7": 1694.7549274380121,
+    "8": 420.28452106513436
+   },
+   "n": {
+    "0": 18,
+    "1": 2,
+    "2": 18,
+    "7": 18,
+    "8": 17
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "0": 18,
+    "1": 2,
+    "2": 18,
+    "7": 18,
+    "8": 17
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=1|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 8163.800337211859,
+   "Q": {
+    "1": 8163.800337211859
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 632.0068172398906
+   },
+   "n": {
+    "1": 12
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "1": 12
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=2|spares_b=2|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=1|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 4928.749464053554,
+   "Q": {
+    "0": 9308.838007010707,
+    "1": 8850.813111526923,
+    "2": 9308.838007010707,
+    "7": 9308.941499754976,
+    "8": 4928.749464053554
+   },
+   "a_star": 8,
+   "unresolved_reason": null,
+   "tie": [
+    8
+   ],
+   "se": {
+    "0": 1901.3307907168635,
+    "1": 366.0997238828204,
+    "2": 1901.3307907168635,
+    "7": 1901.3272416322216,
+    "8": 246.91677918962765
+   },
+   "n": {
+    "0": 19,
+    "1": 16,
+    "2": 19,
+    "7": 19,
+    "8": 28
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "0": 19,
+    "1": 16,
+    "2": 19,
+    "7": 19,
+    "8": 21
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=1|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 8307.964163859155,
+   "Q": {
+    "1": 8307.964163859155
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 632.8762313097765
+   },
+   "n": {
+    "1": 26
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "1": 26
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=3|spares_b=2|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=1|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 9517.865498673002,
+   "Q": {
+    "1": 9517.865498673002
+   },
+   "a_star": null,
+   "unresolved_reason": "single_arm",
+   "tie": [
+    1
+   ],
+   "se": {
+    "1": 1006.9304853809251
+   },
+   "n": {
+    "1": 12
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "1": 12
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=3|spares_b=2|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 5375.96630195093,
+   "Q": {
+    "0": 15727.406136812911,
+    "1": 8949.656534030206,
+    "2": 15727.406136812911,
+    "7": 16849.960942446796,
+    "8": 5375.96630195093
+   },
+   "a_star": 8,
+   "unresolved_reason": null,
+   "tie": [
+    8
+   ],
+   "se": {
+    "0": 2634.368088365272,
+    "1": 506.9941581393967,
+    "2": 2634.368088365272,
+    "7": 2657.4771376251224,
+    "8": 243.02772468297613
+   },
+   "n": {
+    "0": 16,
+    "1": 12,
+    "2": 16,
+    "7": 16,
+    "8": 38
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "0": 14,
+    "1": 12,
+    "2": 14,
+    "7": 14,
+    "8": 32
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 6540.092933495444,
+   "Q": {
+    "0": 11437.679080272077,
+    "1": 7103.702819442769,
+    "2": 11437.679080272077,
+    "7": 11439.275179966113,
+    "8": 6540.092933495444
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    1,
+    8
+   ],
+   "se": {
+    "0": 1338.4910113684284,
+    "1": 286.23893701991767,
+    "2": 1338.4910113684284,
+    "7": 1338.3237328578693,
+    "8": 300.4134194276763
+   },
+   "n": {
+    "0": 36,
+    "1": 24,
+    "2": 36,
+    "7": 36,
+    "8": 36
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "0": 31,
+    "1": 19,
+    "2": 31,
+    "7": 31,
+    "8": 31
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone"
+  },
+  "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform": {
+   "V": 27685.2250262397,
+   "Q": {
+    "0": 27685.2250262397,
+    "2": 27685.2250262397,
+    "7": 27685.2250262397
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    2,
+    7
+   ],
+   "se": {
+    "0": 2.6649061033837964,
+    "2": 2.6649061033837964,
+    "7": 2.6649061033837964
+   },
+   "n": {
+    "0": 48,
+    "2": 48,
+    "7": 48
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 1,
+   "converged": true,
+   "vi_iters": 186,
+   "n_boards": {
+    "0": 7,
+    "2": 7,
+    "7": 7
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=1|soc_b=3|spares_b=3|pend_f=na|zone_s=none|evt=Reform"
+  },
+  "prog_b=0|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 5221.2337742161235,
+   "Q": {
+    "0": 19842.148171940913,
+    "1": 8741.633409617889,
+    "2": 19842.148171940913,
+    "7": 19842.148171940913,
+    "8": 5221.2337742161235
+   },
+   "a_star": 8,
+   "unresolved_reason": null,
+   "tie": [
+    8
+   ],
+   "se": {
+    "0": 2668.6358476402343,
+    "1": 111.67928138751641,
+    "2": 2668.6358476402343,
+    "7": 2668.6358476402343,
+    "8": 187.39549039522433
+   },
+   "n": {
+    "0": 12,
+    "1": 12,
+    "2": 12,
+    "7": 12,
+    "8": 12
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 0,
+   "converged": true,
+   "vi_iters": 2,
+   "n_boards": {
+    "0": 12,
+    "1": 12,
+    "2": 12,
+    "7": 12,
+    "8": 12
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=0|soc_b=0|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=0|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery": {
+   "V": 5190.472478326353,
+   "Q": {
+    "0": 5190.472478326353,
+    "1": 8730.571048889618,
+    "2": 5190.472478326353,
+    "7": 5190.472478326353,
+    "8": 5206.102637350836
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    2,
+    7,
+    8
+   ],
+   "se": {
+    "0": 225.4986732179154,
+    "1": 146.00524413484607,
+    "2": 225.4986732179154,
+    "7": 225.4986732179154,
+    "8": 223.08051509272335
+   },
+   "n": {
+    "0": 10,
+    "1": 10,
+    "2": 10,
+    "7": 10,
+    "8": 10
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 0,
+   "converged": true,
+   "vi_iters": 2,
+   "n_boards": {
+    "0": 10,
+    "1": 10,
+    "2": 10,
+    "7": 10,
+    "8": 10
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=0|soc_b=2|spares_b=3|pend_f=2|zone_s=none|evt=Battery"
+  },
+  "prog_b=0|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault": {
+   "V": 5423.918658577059,
+   "Q": {
+    "0": 22425.89989115254,
+    "1": 8378.079192614174,
+    "2": 22425.89989115254,
+    "7": 22425.89989115254,
+    "8": 5423.918658577059
+   },
+   "a_star": 8,
+   "unresolved_reason": null,
+   "tie": [
+    8
+   ],
+   "se": {
+    "0": 1975.986367300811,
+    "1": 76.72387689424939,
+    "2": 1975.986367300811,
+    "7": 1975.986367300811,
+    "8": 79.62939198275603
+   },
+   "n": {
+    "0": 16,
+    "1": 16,
+    "2": 16,
+    "7": 16,
+    "8": 16
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 0,
+   "converged": true,
+   "vi_iters": 2,
+   "n_boards": {
+    "0": 16,
+    "1": 16,
+    "2": 16,
+    "7": 16,
+    "8": 16
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=0|soc_b=3|spares_b=3|pend_f=2|zone_s=none|evt=Fault"
+  },
+  "prog_b=0|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone": {
+   "V": 6543.356186408721,
+   "Q": {
+    "0": 6543.356186408721,
+    "1": 6543.356186408721,
+    "2": 6543.356186408721,
+    "7": 6545.465896688661,
+    "8": 6543.356186408721
+   },
+   "a_star": null,
+   "unresolved_reason": "tie",
+   "tie": [
+    0,
+    1,
+    2,
+    8
+   ],
+   "se": {
+    "0": 0.19739258952210303,
+    "1": 0.19739258952210303,
+    "2": 0.19739258952210303,
+    "7": 0.2780537289882861,
+    "8": 0.19739258952210303
+   },
+   "n": {
+    "0": 11,
+    "1": 11,
+    "2": 11,
+    "7": 11,
+    "8": 11
+   },
+   "n_unscorable": {},
+   "n_dangling": {},
+   "prog_bucket": 0,
+   "converged": true,
+   "vi_iters": 2,
+   "n_boards": {
+    "0": 11,
+    "1": 11,
+    "2": 11,
+    "7": 11,
+    "8": 11
+   },
+   "dp_level": 0,
+   "dp_level_key": "prog_b=0|soc_b=3|spares_b=3|pend_f=na|zone_s=blk|evt=Zone"
+  }
+ },
+ "generation": "2026-08-13-global-kappa-precedence",
+ "objective_hash": "19819377a7f8ebb2",
+ "solver": "backward",
+ "n_cells": 48,
+ "n_tie_unresolved": 12,
+ "n_cells_unscorable": 0,
+ "n_cells_single_arm": 30,
+ "n_cells_no_scorable_arm": 0,
+ "n_cells_resolved": 6,
+ "n_cells_not_converged": 0,
+ "n_dangling_transitions": 0,
+ "dangling_by_reason": {},
+ "vi_max_iterations_used": 186,
+ "vi_tol": 1e-09,
+ "vi_max_iter": 10000,
+ "backoff_enabled": false,
+ "resolved_by_level": {
+  "0": 6
+ },
+ "backoff_levels": [
+  {
+   "level": 0,
+   "dropped_axes": []
+  },
+  {
+   "level": 1,
+   "dropped_axes": [
+    "spares_b"
+   ]
+  },
+  {
+   "level": 2,
+   "dropped_axes": [
+    "spares_b",
+    "prog_b"
+   ]
+  }
+ ],
+ "method": "TRUE Bellman backward induction on the measured phi-tilde grid. V(goal)=0; V(dead_end)=terminal_value (the settlement carried by the sample); Q(s,a)=mean_k[c_k + V(s'_k)]; V(s)=min_a Q(s,a). Running cost c_k is FIXED to J's complete branch (energy included) and the two branches are reconciled by one terminal settlement. That decomposition is machine-checked per board by sample_grid.py's fidelity gate (c_prefix + sum(c) + terminal == objective.J_row) and by test_cost_decomposition.py. Buckets are solved in DESCENDING prog_b (progress is monotone, so buckets form a DAG); within a bucket, value iteration handles self-loops.",
+ "known_limits": [
+  "phi-tilde abstraction loss remains: two physically different states that map to the same cell share one V. backward induction does NOT remove this (design 2.1).",
+  "single-arm cells claim NO a*: forcing an arm changes the trajectory, so arms land in different cells and some cells see only one arm. One arm is not an argmin.",
+  "dangling transitions make a (cell,arm) Q UNDEFINED rather than assuming V=0 for the unknown successor — assuming 0 would make an unknown future free. Counts and reasons are in dangling_by_reason.",
+  "c_prefix (the interval BEFORE the first decision) is excluded from the DP by construction: no policy can change it. It is measured and included in the fidelity identity, not silently dropped.",
+  "hierarchical backoff is OFF in this table (dp_level==0 everywhere). Coverage was measured with it off; see resolved_by_level."
+ ]
+}

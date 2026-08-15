@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RESULTS_ROUTER3WAY_2026-08-14.md 의 <!--TABLE--> / <!--GATES--> / <!--HOLES--> 를 채운다.
+"""결과 문서의 <!--TABLE--> / <!--GATES--> / <!--HOLES--> 를 채운다. 대상은 `--doc` 으로 준다.
 
 왜 스크립트인가: 결과 문서의 숫자를 손으로 옮겨 적으면 다음 스윕에서 조용히 거짓이 된다.
 이 저장소가 이미 그 사고를 겪었고(`limitations_lines` 독스트링), `test_report_sample_size.py`
@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 # dp_oracle 는 패키지가 아니다(__init__.py 없음). 경로로 붙여 모듈로 직접 import 한다.
 sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
-DOC = os.path.join(HERE, "md", "RESULTS_ROUTER3WAY_2026-08-14.md")
+DEFAULT_DOC = os.path.join(HERE, "md", "RESULTS_ROUTER3WAY_2026-08-14.md")
 ART = os.path.join(HERE, "artifacts_4pol")
 DPD = os.path.join(HERE, "dp_oracle")
 
@@ -35,7 +35,10 @@ def gates_section():
         ("audit_action_vocab.py (6/6)", "%s audit_action_vocab.py" % py),
         ("test_surrogate_support.py", "%s test_surrogate_support.py" % py),
         ("test_ceilings_degrade.py (신규)", "%s test_ceilings_degrade.py" % py),
-        ("dp_oracle/test_dp_solve.py (신규)", "%s dp_oracle/test_dp_solve.py" % py),
+        ("dp_oracle/test_dp_solve.py (backward induction 포함)",
+         "%s dp_oracle/test_dp_solve.py" % py),
+        ("dp_oracle/test_cost_decomposition.py (신규, 분해 충실성 차단 게이트)",
+         "%s dp_oracle/test_cost_decomposition.py" % py),
         ("dp_oracle/test_cellkey_parity.py (신규, Julia↔Python)",
          "%s dp_oracle/test_cellkey_parity.py" % py),
         ("dp_oracle/test_derive_grid.py 대체: derive_grid 재실행 결정성",
@@ -86,6 +89,20 @@ def holes_section():
                  "동점은 실패가 아니라 *없는 확신을 만들지 않은 것*이다."
                  % (v.get("n_tie_unresolved", 0), v.get("n_cells_unscorable", 0),
                     v.get("n_cells_single_arm", 0)))
+        if v.get("solver") == "backward":
+            # backward induction 에만 있는 실패 모드들. 조용히 넘기면 낙관 편향이 된다.
+            L.append("   - **solver = backward induction.** dangling 전이 **%d건**(사유별 %s) · "
+                     "값을 못 낸 칸 **%d칸** · value iteration 수렴 실패 **%d칸**(최대 반복 %d, "
+                     "tol %g) · 계층 백오프 **%s**."
+                     % (v.get("n_dangling_transitions", 0),
+                        v.get("dangling_by_reason") or "{}",
+                        v.get("n_cells_no_scorable_arm", 0),
+                        v.get("n_cells_not_converged", 0),
+                        v.get("vi_max_iterations_used", 0), v.get("vi_tol", 0),
+                        "ON" if v.get("backoff_enabled") else "OFF"))
+            L.append("   - dangling 은 다음 칸의 V 를 **0 으로 두지 않은 결과**다. 0 으로 두면 "
+                     "미지의 미래가 공짜가 되어 표 밖으로 나가는 팔이 언제나 이긴다. 그 (칸,팔) 의 "
+                     "Q 를 미정의로 남기는 쪽을 택했고, 그래서 커버리지가 그만큼 낮게 나온다.")
 
     # (2) dp 레인이 실제로 표를 얼마나 썼는가 -- dp_miss 를 이유별로 센다.
     miss = collections.Counter()
@@ -115,14 +132,22 @@ def holes_section():
     # **평균 대 평균**으로 잰다. 처음엔 개별 판의 J 를 평균 V 와 비교했는데 그건 비교가 아니다:
     # J 가 이봉분포(완주 ~20 / 미완주 ~15000)라 완주한 판은 어떤 평균이든 자동으로 이긴다.
     # 표본이 얇은 쌍(n<3)은 평균이 의미 없으므로 뺀다.
+    #
+    # ★ 2026-08-15: **비교 단위를 솔버에 맞춘다.** backward 의 V 는 그 칸부터의 cost-to-go 이므로
+    # 실행 정책도 같은 분해로 realized cost-to-go 를 뽑아야 한다. 판 전체 J 와 대면 V 가
+    # 구조적으로 작아 gap 이 100% 로 자동 발화한다 — 측정이 아니라 단위 오류다.
+    # (build_compare_table.py 의 같은 블록과 규칙이 일치해야 두 산출물이 안 갈린다.)
     if os.path.exists(vp):
         import statistics
         v = json.load(open(vp))
+        backward = v.get("solver") == "backward"
         Vs = {c: d["V"] for c, d in v["cells"].items() if d.get("V") is not None}
         gspec = json.load(open(gp))
         from derive_grid import cell_key, state_of  # noqa
+        from sample_grid import decompose_board     # noqa
         import objective
         per = collections.defaultdict(lambda: collections.defaultdict(list))
+        skipped = collections.Counter()
         for p in glob.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
             for line in open(p):
                 line = line.strip()
@@ -131,21 +156,34 @@ def holes_section():
                 r = json.loads(line)
                 if r.get("policy") not in ("canonical", "surrogate", "dspy"):
                     continue
-                try:
-                    J = objective.J_row(r)
-                except Exception:
-                    continue
+                if backward:
+                    dec = decompose_board(r)
+                    if not dec["ok"]:
+                        skipped[str(dec["reason"]).split(":")[0]] += 1
+                        continue
+                    run = dec["c_prefix"]
+                else:
+                    try:
+                        J = objective.J_row(r)
+                    except Exception as e:
+                        skipped[type(e).__name__] += 1
+                        continue
                 seen = set()
-                for d in (r.get("decisions") or []):
+                for i, d in enumerate(r.get("decisions") or []):
                     st = state_of(d, gspec["axes"])
+                    if backward:
+                        val = dec["J"] - run       # 이 결정 시점의 **실현 cost-to-go**
+                        run += dec["cs"][i]        # 칸을 못 세워도 러닝코스트는 누적한다
+                    else:
+                        val = J
                     if st is None:
                         continue
                     k = cell_key(st)
-                    # 한 판이 같은 칸을 여러 번 지나도 그 판의 J 는 하나다 — 중복 계상 금지.
+                    # 한 판이 같은 칸을 여러 번 지나도 한 번만 센다 — 중복 계상 금지.
                     if k in seen or k not in Vs:
                         continue
                     seen.add(k)
-                    per[k][r["policy"]].append(J)
+                    per[k][r["policy"]].append(val)
         worse = tot = 0
         for k, bypol in per.items():
             for _pol, Js in bypol.items():
@@ -155,32 +193,49 @@ def holes_section():
                 if statistics.mean(Js) < Vs[k] - 1e-9:
                     worse += 1
         if tot:
-            L.append("3. **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개).** 실행 정책의 "
-                     "평균 J 가 DP 의 V 보다 **더 좋은** 쌍 %d개 = **%.1f%%**."
-                     % (tot, worse, 100.0 * worse / tot))
-            if worse:
+            L.append("3. **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s).** "
+                     "실행 정책이 DP 의 V 보다 **더 좋은** 쌍 %d개 = **%.1f%%**.%s"
+                     % (tot, "그 칸부터의 실현 cost-to-go" if backward else "판 전체 J",
+                        worse, 100.0 * worse / tot,
+                        "" if not skipped else "  (분해 불가로 제외한 행: %s)" % dict(skipped)))
+            if worse and backward:
+                L.append("   > 0 이 아니므로 **DP 열을 '천장' 이라고 부르지 않는다.** 원인이 "
+                         "상수-팔은 **아니다** — V 는 진짜 backward induction 에서 나온다. "
+                         "그러나 남는 원인이 φ̃ 추상화 손실 **하나가 아니다**: 2026-08-15 실측에서 "
+                         "셋으로 갈렸다 — ① 표집 팔 메뉴에 실행 레인이 쓰는 매크로가 없는 축"
+                         "(ReformTeam) · ② φ̃ 추상화 손실 · ③ 전이 표본이 여전히 상수-팔 rollout "
+                         "에서만 나온다는 구조적 한계. 쪼갠 수치는 `dp_oracle/gap_breakdown.py` 가 "
+                         "내고, 해석은 결과 문서 §4-D 에 있다.")
+                L.append("   > **구분할 것**: dp *레인*은 칸마다 a\\* 를 갈아 쓰므로 표의 dp 열 "
+                         "**실현 결과는 유효한 실행 결과**이고, 천장이 아닌 것은 V 다.")
+            elif worse:
                 L.append("   > 0 이 아니므로 **DP 열을 '천장' 이라고 부르지 않는다.** V 는 "
                          "**상수-팔** 표집에서 나오는데, 사건이 셋 섞인 판을 한 팔로 처리할 수 "
                          "없어 그 정책군이 실행 레인보다 훨씬 약하다(§5-C).")
-                L.append("   > **구분할 것**: dp *레인*은 칸마다 a\* 를 갈아 쓰므로 실제로는 팔을 "
-                         "바꾼다. 그래서 표의 dp 열 **실현 결과는 유효한 실행 결과**이고, 천장이 "
-                         "아닌 것은 V 다. 다만 오프라인 표집이라는 정보 우위가 있으므로 온라인 "
-                         "정책과 동렬에 놓지는 않는다.")
             else:
                 L.append("   > 0 건이므로 이 격자 위에서는 '천장' 이라는 이름이 유지된다.")
 
     L.append("4. **`zone_s=cov` 는 표본 0.** §5-D. 기존 zone 규칙의 알려진 결함을 이 DP 도 못 고친다.")
-    L.append("5. **credit assignment.** 판 하나가 여러 칸에 같은 J 를 나눠 준다. §5-C.")
+    if os.path.exists(vp) and json.load(open(vp)).get("solver") == "backward":
+        L.append("5. **credit assignment 는 닫혔다.** 판 단위 J 를 결정 개수로 나눠 쓰던 문제는 "
+                 "구간 비용 `c_k` 로 해소됐고, 그 분해는 판마다 `c_prefix + Σc + terminal == J` 로 "
+                 "기계 검사된다. 대신 새로 생긴 실패 모드가 **dangling**(위 1번)이다.")
+    else:
+        L.append("5. **credit assignment.** 판 하나가 여러 칸에 같은 J 를 나눠 준다. §5-C.")
     return "\n".join(L)
 
 
 def main():
-    doc = open(DOC).read()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--doc", default=DEFAULT_DOC)
+    a = ap.parse_args()
+    doc = open(a.doc).read()
     doc = doc.replace("<!--TABLE-->", table_section())
     doc = doc.replace("<!--GATES-->", gates_section())
     doc = doc.replace("<!--HOLES-->", holes_section())
-    open(DOC, "w").write(doc)
-    print("-> %s" % DOC)
+    open(a.doc, "w").write(doc)
+    print("-> %s" % a.doc)
 
 
 if __name__ == "__main__":
