@@ -1,6 +1,6 @@
 # 행동집합을 닫았다 — 2026-08-16 결과
 
-> 계획서: `docs/superpowers/plans/2026-08-16-action-set-closure.md`
+> 계획서: `2026-08-16-action-set-closure` (실행 완료·아카이브 — `docs/superpowers/plans/README.md`)
 > 직전 세대: `md/RESULTS_DP_BACKWARD_2026-08-15.md` (지우지 않는다 — §4-D 가 이 작업의 동기다)
 > 코드 세대: 커밋 `ff602d52`(어휘 파생) + `5dd29dae`(라벨셋·캐스케이드 수정).
 > 목적함수 세대는 **안 갈렸다** (`objective.json` 무변경).

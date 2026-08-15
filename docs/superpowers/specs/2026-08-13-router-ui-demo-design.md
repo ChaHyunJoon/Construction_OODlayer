@@ -3,7 +3,8 @@
 - 날짜: 2026-08-13
 - 대상 저장소: `Construction_OODlayer`, 브랜치 `oracle-rebuild-night-2026-08-10`
 - 기한: **2026-08-15** (2일). 이 제약이 §5 의 스코프 컷과 §8 의 순서를 정한다.
-- 선행 작업: surrogate 재구축(`docs/superpowers/plans/2026-08-13-surrogate-rebuild.md`)이
+- 선행 작업: surrogate 재구축(계획서 `2026-08-13-surrogate-rebuild` — 실행 완료·아카이브,
+  `docs/superpowers/plans/README.md`)이
   **2026-08-13 밤에 별 세션에서 진행 중**이다. 이 설계는 그것이 끝난 뒤의 세계를 가정한다.
 - 개정 대상: `docs/superpowers/specs/2026-08-13-dp-oracle-design.md` (§5 가 그 문서의 §4·§6 을
   뒤집는다. 그 문서 머리에 개정 배너를 붙였다.)

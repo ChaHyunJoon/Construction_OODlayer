@@ -288,7 +288,7 @@ greedy 경로에서도 `DeprioritizeAgent` 와 배터리 SoC 조향이 살아난
 | 6 | 630판 스윕 재실행 — **신세대** | greedy 라 병렬 유지, 비용은 현행과 동급 |
 | 7 | surrogate 재라벨 + 재학습 | `test_surrogate_support.py` 재검증 |
 | 8 | prefix 결정성 재측정 — **주입점 4개 전부**(`closed ≈ 55/141/204/274`) | 깨지면 DP 표집이 `measured` 경로(K 2배). fork 는 구조적으로 불가(§11-2) |
-| 9 | DP 계획(`2026-08-13-dp-oracle.md` Task 2~12) 재개 | |
+| 9 | DP 계획(`2026-08-13-dp-oracle` Task 2~12 — 실행 완료·아카이브, `docs/superpowers/plans/README.md`) 재개 | |
 
 **단계 2 가 차단성이다.** `assign_collaborative_tasks!` 는 핵심 스케줄링 함수이고, 여기서 조용한
 회귀가 나면 이후 모든 숫자가 오염된다. 에너지 항을 켜기 **전에**, 디스패치로 바꾸기만 한 상태에서

@@ -1,6 +1,7 @@
 # 라우터 3-way · 자연어 해석 · DP 천장 — 2026-08-14 결과
 
-> 이 문서는 `docs/superpowers/plans/2026-08-14-router-ui-demo.md` 실행 결과다.
+> 이 문서는 계획서 `2026-08-14-router-ui-demo` 실행 결과다
+> (계획서는 아카이브 — `docs/superpowers/plans/README.md`).
 > 계획 대비 **의도적 편차**가 여러 개 있고, 전부 §5 에 이름과 이유를 적었다.
 > **숫자를 인용하기 전에 §5 와 §6 을 먼저 읽을 것.**
 
@@ -130,7 +131,7 @@ bash finish_tables.sh
 > 그래서 러닝 코스트를 완주 분기로 고정하고 종단에서 차액을 정산해야 하며, 그 정의가
 > 발명이 아님을 `Σ c_k + terminal == J_row(row)` 라는 **분해 충실성 검사**로 못박아야 한다.
 >
-> 실행 계획: [`docs/superpowers/plans/2026-08-15-dp-backward-induction.md`](../../docs/superpowers/plans/2026-08-15-dp-backward-induction.md)
+> 실행 계획: `2026-08-15-dp-backward-induction` (실행 완료·아카이브 — [`docs/superpowers/plans/README.md`](../../docs/superpowers/plans/README.md))
 >
 > **★ 후속 (2026-08-15) — 이 한계는 해소됐다. 다만 gap 은 안 줄었다.**
 > 결과: [`md/RESULTS_DP_BACKWARD_2026-08-15.md`](RESULTS_DP_BACKWARD_2026-08-15.md).
@@ -203,7 +204,8 @@ V(s̃)    = min_a Q(s̃, a)          a*(s̃) = argmin_a Q(s̃, a)
   **oracle 천장 격자**(`battgrid_0805_s1` · `firegrid_merged` · `zcausal_reform`)뿐이고, 그것은
   `FINAL.md` 의 oracle 천장 행에만 영향을 준다 — **COMPARE 4열은 바뀌지 않는다.** §5-A.
 - 진짜 backward induction. §5-C — **다음 세션으로 인계**했다(계획서
-  `docs/superpowers/plans/2026-08-15-dp-backward-induction.md`, 약 4~5시간 · 네 열 전부 재스윕).
+  `2026-08-15-dp-backward-induction` — 아카이브, `docs/superpowers/plans/README.md`,
+  약 4~5시간 · 네 열 전부 재스윕).
   계측 변경이 코드 세대를 가르므로 DP 열만 따로 고칠 수 없다.
 - `zone_s=cov` 주입 격자. §5-D.
 - `reference_policy.py` 대체와 DISAGREEMENT 리포트 (원 설계 §8.6 — 계획서 §5.6 이 이미 범위 밖).

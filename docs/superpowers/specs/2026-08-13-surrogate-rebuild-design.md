@@ -241,4 +241,4 @@ HistGradientBoostingRegressor(loss="absolute_error", max_depth=3, max_iter=300,
 
 - 신경망 (데이터 부족, §3.1)
 - λ 재튜닝 (식별되지 않음, D2 — J 단위 전환으로 λ 자체를 없앤다)
-- DP/오라클 계획(`2026-08-13-dp-oracle.md`)
+- DP/오라클 계획(`2026-08-13-dp-oracle` — 실행 완료·아카이브, `docs/superpowers/plans/README.md`)

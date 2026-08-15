@@ -380,7 +380,8 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   fault 110 · battery 135 · zoneblk 120). 남은 것은 **oracle 천장 격자**뿐이고 그것은
   `FINAL.md` 의 oracle 행에만 영향을 준다 — COMPARE 4열은 안 바뀐다.
 
-**다음 작업(인계됨): `docs/superpowers/plans/2026-08-15-dp-backward-induction.md`** — DP 를 진짜
+**다음 작업(인계됨): `2026-08-15-dp-backward-induction`**(실행 완료·아카이브 —
+`docs/superpowers/plans/README.md`) — DP 를 진짜
 backward induction 으로 바꾼다. 계측(`sim_t`·누적 energy·closed 를 결정마다 기록)이 코드 세대를
 가르므로 **네 열 전부 재스윕**이 필요하다(약 4~5시간). 그 계획서에 2026-08-14 에 실제로 데인
 함정들(스윕 중 코드 수정 금지 · `xargs` 가 pkill 에서 살아남음 · dp 샤드는 별도 트리 · J 의 두
@@ -504,13 +505,25 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 - `wm4spacecraft_manufacturing/` — Python analysis stack (surrogate, drift, DSPy service)
 
 ## Docs
+
+**먼저 읽을 네 개만 현행이다** (2026-08-17 정리 — 나머지는 `md/README.md` §9 문서 지도가 분류한다):
+
+- **`wm4spacecraft_manufacturing/md/RESULTS.md` — 현행 결과의 단일 진입점.**
+  3레인(canonical·surrogate·llm) × 7 failure case × 30 seed. 세대 상세는 위 §★ 결과 세대.
 - **`wm4spacecraft_manufacturing/md/README.md` — 재현·실험 전 필수 선독.** §1 용어(F vs OOD) ·
-  §6 완주 ≠ `closed==total` · §7 철회된 결론 · §8 함정 35개.
+  §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 · §8 함정 43개 · §9 문서 지도.
+- `wm4spacecraft_manufacturing/md/STATUS.md` — current state / resume point
+- `wm4spacecraft_manufacturing/md/ARCHIVE.md` — 내린 문서 · 왜 · 꺼낼 SHA.
+  실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브).
+  설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.
+
+그 밖에:
 - `wm4spacecraft_manufacturing/md/SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md` — **비전문가용 요약.**
   ForbidZone 발화 + surrogate 매크로 7·8 재학습 작업의 배경·원인·결과를 용어 설명부터 적었다.
-  세부 수치는 RESULTS_LLM7H.md 를 볼 것.
-- `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` — 최신 측정(5시드×4정책) + 재현 절차
-- `wm4spacecraft_manufacturing/md/STATUS.md` — current state / resume point
+  다루는 작업은 옛것이지만 **배경 없이 읽히는 유일한 문서**다. 세부 수치는 `RESULTS_LLM7H.md`.
+- `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` — 🔴 **구세대**(4정책×5시드). 수치를 현재
+  성능으로 인용하지 말 것 — 그 자리는 `md/RESULTS.md` 다. 재현 절차와 §5-f·§6 의 진단은 유효하고,
+  `wm_datasets.py`·`verify.py`·`zone_inject.jl` 등이 절 번호로 인용한다.
 - `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
 - **`md/ORACLE_REBUILD_2026-08-09.md` — 두 문서가 한 파일에 있다(같은 CPU 를 다투므로 순서가 중요).**
   §I **평가 보강 계획**(baseline 사다리 B0~B9 · case별 격자 · STEP A~F 와 비용) →

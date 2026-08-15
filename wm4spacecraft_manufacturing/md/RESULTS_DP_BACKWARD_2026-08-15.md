@@ -1,6 +1,7 @@
 # DP 를 진짜 backward induction 으로 — 2026-08-15 결과
 
-> 이 문서는 `docs/superpowers/plans/2026-08-15-dp-backward-induction.md` 실행 결과다.
+> 이 문서는 계획서 `2026-08-15-dp-backward-induction` 실행 결과다
+> (계획서는 아카이브 — `docs/superpowers/plans/README.md`).
 > 앞 세대 문서 `RESULTS_ROUTER3WAY_2026-08-14.md` 를 **지우지 않았다** — 두 세대의 기록이
 > 나란히 남아야 이번 작업이 무엇을 바꿨는지 말할 수 있다. 그 문서 §5-C 가 이 작업의 출발점이다.
 >
@@ -164,7 +165,7 @@ gap 이 82~100% 다. 한 칸에 물리적으로 다른 상태가 섞여 한 평�
 기준 정책으로 굴리는** 방식(1-step deviation)으로 바꿔야 하고, 그건 이 계획의 범위 밖이다.
 
 > **[2026-08-16 후속] 원인 ① 은 해소했다. ③ 이 혼자 남아 지배한다.**
-> `docs/superpowers/plans/2026-08-16-action-set-closure.md` 를 실행한 결과가
+> 계획서 `2026-08-16-action-set-closure`(아카이브 — `docs/superpowers/plans/README.md`)를 실행한 결과가
 > **`md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md`** 다. 결말만 한 줄로 잇는다:
 >
 > · **①** — `arm_menu()` 의 하드코딩과 `ood_mdp_shim.valid_actions` 의 리터럴 `[0,1]` 을 둘 다

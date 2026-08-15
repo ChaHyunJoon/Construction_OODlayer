@@ -1,7 +1,8 @@
 # wm4spacecraft_manufacturing — 단일 진입점
 
-*통합 2026-08-06. 이전 통합(2026-08-02) 이후 쌓인 야간·작업 로그 7개를 여기 흡수했다(§9 목록).
-현재 상태와 다음 할 일은 `STATUS.md`, 개념·결과·함정은 이 파일이다.*
+*통합 2026-08-06. 이전 통합(2026-08-02) 이후 쌓인 야간·작업 로그 7개를 여기 흡수했다
+(목록·SHA 는 `ARCHIVE.md` §2). 2026-08-17 에 §9 문서 지도를 다시 쓰고 함정 36~43 을 추가했다.
+현재 상태와 다음 할 일은 `STATUS.md`, 현행 결과는 `RESULTS.md`, 개념·결과·함정은 이 파일이다.*
 
 **읽는 순서**: §1 용어 → §2 아키텍처 → §3 확정 결과 → §8 함정목록.
 그 다음 필요할 때만 §9 의 문서 지도를 따라간다.
@@ -68,7 +69,10 @@ LOKO(한 종류 빼고 학습)는 OOD 의 **대리 실험**이지 OOD 자체가 
 
 ## 3. 확정된 측정 결과
 
-### E1~E4 (원본 `RESULTS.md`)
+### E1~E4 (원본은 옛 `RESULTS.md` — 아카이브, `ARCHIVE.md` §2)
+
+> ⚠️ **`RESULTS.md` 는 2026-08-17 에 현행 3레인 × 7 case 결과의 단일 진입점으로 새로 쓰였다.**
+> 아래 E1~E4 는 그 이전 판의 내용이고, 이 절이 그 요약이다. 원문은 `ARCHIVE.md` §2 의 SHA 로 꺼낸다.
 
 | | |
 |---|---|
@@ -249,6 +253,11 @@ G2 새 클러스터에서 좋아졌는가 / G3 novelty 교정이 여전히 유�
 zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이 바뀌어 이미 export 된 서로게이트·novelty
 교정과 호환되지 않는다. 옛 덤프에는 열이 없어 `-1`(=모름) 센티넬로 채워진다.
 
+**요약 행(런 JSONL 한 줄)에서 틀리기 쉬운 이름 셋** — 닫힌 노드 수는 `n_closed` 가 아니라
+**`closed`**, 시드는 `seed` 가 아니라 **`ood_seed`**, `geometry`(`depot_mode`·`depot_distance`·
+`station_keeping`)는 **2026-08-12 이후 생성 행에만** 있다. 없는 이름으로 뽑으면 에러가 아니라
+빈 집계가 나온다.
+
 ---
 
 ## 6. 완주(completion)에 대해 반드시 알아야 할 것
@@ -307,6 +316,24 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
    박는다 → 그 덤프의 `admissible` 열은 **구조적으로 무의미**하다. 유해성 판정은 단일사건 모드로.
 9. **`@info` 가 안 찍힌 0 은 "안 일어났다"가 아니다.** `DS_LOG` 기본값(warn)에서 오염 카운터가 전부
    0 으로 보인다. 확인하려면 `DS_LOG=info` 로 따로 돌릴 것.
+36. **★ 라벨 레인과 평가 레인은 사건뿐 아니라 *복구 손잡이*까지 같아야 한다.** 라벨러는
+    `DS_HOTSWAP`·`CARRIER_RESCUE` 가 기본 **꺼짐**인데 평가(`run_demo.jl`)는 **켜짐**이라, 같은 seed ·
+    같은 매크로가 반대 결과를 냈다(격자 `Replace` = 미완주 243, 평가 = 완주 291/22.75 s). 규칙이
+    "로봇을 대열에서 빼는 팔은 전부 미완주"로 붕괴해 **이기는 팔이 존재할 수 없는 격자**가 된다.
+    같은 세션 A/B 로 확인됨. 라벨 레인은 `DS_HOTSWAP=1 CARRIER_RESCUE=1`.
+    (`DS_HOTSWAP` 을 빼면 fault 대상 피커가 죽어 발화율이 100% → 23% 로 조용히 샌다.)
+37. **`random_restriction_zone!`(`:zone_ds`)은 오라클에 쓰면 안 된다.** 설계상 반지름을 상한
+    (2 × robot radius = 0.28)으로 깎아 **아무것도 안 막는** 국소 우회로다 — 실측 `zone_blocked 0`,
+    NOOP 과 RelocateBuild 가 바이트 동일. `gen_oracle_dataset.jl:325` 가 스스로 *"inadmissible for
+    the oracle"* 이라 적어 뒀는데도 격자가 그걸 쓰고 있었다. 게다가 시드를 안 받아 재현도 안 된다.
+    평가와 맞추려면 `place_eval_matched_zone!`(= `run_demo.jl` 의 `inject_blocking_zone!` 절차).
+38. **fault 의 `severity` 는 강도 축이 아니라 *표적 선정* 축이다.** 학습셋에서 값이 `{0.0, 1.0}`
+    두 점뿐이고, 그 `1.0` 은 "얼마나 심하게 고장났나"가 아니라 **"일을 쥔 로봇을 때렸나(1.0) /
+    노는 로봇을 때렸나(0.0)"** 라는 실험자 라벨이다(`fault` vs `faultidle`). featurizer 가 이 값을
+    **일부러 안 읽고** `harm = 1.0` 상수를 쓴다 — 배포 경로에는 그 값이 없기 때문이고, 읽게 하면
+    평가에서만 좋아 보인다(실측 LOIO regret 0.067 → 0.167). **fault 의 OOD 를 severity 로 정의하려는
+    시도는 여기서 먼저 막힌다.** 덧붙여 고장 로봇이 만드는 정적 장애물의 공간 피해는 어느 열에도
+    안 들어간다(fault 행의 `zone_overlap = -1.0`).
 
 ### φ / 학습
 10. **`decision_idx` 를 φ 에 넣지 말 것** — 이력 요약이다. 이거 하나로 "surrogate 가 baseline 을 이긴다"는 결론이 뒤집혔다.
@@ -334,6 +361,10 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
     closed 는 291 로 동일했다. 채널을 하나만 보면 통째로 안 보인다.
     실측 재확인(2026-08-06): `always-Replace` 의 오답은 **노드 손해 0.0 · 시간 손해 0.1 s** 이고
     실제 대가는 전부 `d_cost`(스페어) 쪽에 있었다. **네 축을 다 찍어야 한다.**
+39. **평가 런과 오라클 격자는 사건 *개수* 가 다르다.** `llm_ood_eval.py:494` 의 `--events` 기본값이
+    **4** 라 zone case 는 구역을 4개 뿌리는데(closed 58/100/150/184, 매번 새 좌표) 격자는 **1개**다.
+    첫 결정의 상태는 같아도 그 뒤 셋이 더 온다 — 즉 **오라클이 더 쉬운 문제를 풀고 있다.**
+    ORACLE 의 makespan 을 같은 행의 컨트롤러 열과 나란히 놓으면 안 된다. 맞추려면 `--events 1`.
 
 ### 시뮬 설정
 23. **배치 경계 58** — 이 빌드는 첫 배치에서 closed 0→58 로 점프한다. `closed∈[10,16]` 을 예약해도
@@ -357,35 +388,88 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
     (Windows 기본 cp949 로 열려 `UnicodeDecodeError`).
 34. **PowerShell `Tee-Object` 로그는 UTF-16LE** — bash `tail`/`grep` 이 안 걸린다.
 35. **패치는 heredoc `assert` 말고 Edit 도구로** — 백그라운드에서 assert 실패가 묻힌다.
+40. **긴 런의 로그를 `| head` 나 `| grep -m` 으로 파이프하지 말 것.** 파이프가 닫히면 SIGPIPE 로
+    Julia 가 죽는다 — 2026-08-12 에 이걸로 오라클 격자를 통째로 날렸다. `> file 2>&1` 로 받고
+    나중에 읽는다.
+41. **`git stash -u` 를 쓰지 말 것.** `.venv/` 와 `results_4pol/` 이 `.gitignore` 에 없어
+    **16,833개 파일이 함께 쓸려 간다**(2026-08-12 실측). 커밋은 경로를 명시해 `git add` 한다.
+42. **★ DSPy 서비스가 꺼져 있으면 `dspy` 라는 이름으로 canonical 이 기록된다.** `policy.jl` 이
+    **에러 없이** canonical 로 폴백하는데 요약 행의 `policy` 필드는 그대로 `"dspy"` 로 남는다 →
+    surrogate/LLM 열이 조용히 canonical 복제본이 되고, 몇 시간 뒤 "LLM 이 canonical 과 성능이
+    같다"는 표를 받는다(사실은 **같은 정책을 두 번 잰 것**). 방어: 매 런에 `--dspy-url` 을 명시,
+    시작 전 `curl -s 127.0.0.1:8090/health` 와 `echo $OPENAI_API_KEY`, 사후에
+    `decisions[].producer` 에 `llm` 이 1개 이상 있는지 확인. **`dspy` 와 `canonical` 의 매크로
+    시퀀스가 완전히 같으면 폴백을 의심할 것.**
+43. **`zonecore` 는 `zone` 과 다른 case 가 아니다.** `run_demo.jl:433` 이 `DEMO_OOD_STREAM3=1`
+    에서 `:zonecore` 를 `:zone` 으로 바꾼다. 둘 다 돌리면 같은 실험을 두 번 한 것이고, case 를
+    8개 잰 줄 알지만 7개다. 표준 7 case = `battery, fault, all, fault_battery, fault_zone,
+    battery_zone, zone`.
 
 ---
 
-## 9. 문서 지도
+## 9. 문서 지도 (2026-08-17 갱신)
+
+**먼저 읽을 네 개만 현행이다. 나머지는 필요할 때만 펼친다.**
 
 | 파일 | 무엇 |
 |---|---|
+| **`RESULTS.md`** | **현행 결과의 단일 진입점** — 3레인 × 7 failure case × 30 seed |
+| **이 파일(`README.md`)** | 용어 · 함정 · 철회된 결론. **재현 전 필수 선독** |
 | **`STATUS.md`** | **현재 상태 · 다음 할 일 · 재개 지점** |
-| **`SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md`** | **비전문가용 요약** — ForbidZone 발화 + surrogate 매크로 7·8 재학습. 용어 설명부터 시작하므로 배경지식 없이 읽힌다 |
-| `RESULTS_LLM7H.md` | 확률적 3종 스트림 위 4정책 × 5시드 측정 원본 + 재현 절차 |
-| `RESULTS.md` | E1~E4 측정 원본 |
-| `EVALUATION.md` | 채점 방식 정의(`e1_analyze.py` 등이 참조) |
-| `DESIGN_ASSIMILATION.md` | C1~C4 정의 + LLM 실측 원본 (`policy.jl` 이 참조) |
-| `PLAN_ACTION_GROWTH.md` | 다음 계획 (행동공간 성장 폐루프) |
-| `RELOCATEBUILD_2026-08-03.md` | 매크로 7 구현·검증 (`verifier.jl` 이 참조) |
-| `ZONE_REDESIGN_STEP1_7_2026-08-05.md` | 구역 결정 재설계 STEP 1~11 전문 (`render_demo.jl` 이 참조) |
-| `BATTERY_FAULT_REDESIGN_2026-08-05.md` | 배터리 재설계 + λ/SwapBattery 결정 (한글·영문 병기) |
-| `FIRE_TIME_RELABEL_2026-08-05.md` | 발화 시점 재라벨링 (`LABELING_MANUAL.md` 이 참조) |
+| **`ARCHIVE.md`** | 내린 문서가 어디 갔는지 + 꺼내는 SHA |
 
-**상위 문서**: `../MDP_DESIGN_FROM_SCRATCH.md`(MDP 정식화) · `../LABELING_MANUAL.md`(라벨링 절차) ·
-`../artifacts_mdp/OVERNIGHT_REPORT.md` · `../artifacts_openworld/README.md`
+### 현행 세대 상세
 
-**이번 통합(2026-08-06)에서 흡수·삭제한 것 (7개)** — 전부 git 에 있으므로
-`git checkout HEAD~1 -- wm4spacecraft_manufacturing/md/<파일>` 로 복구 가능:
+| 파일 | 무엇 |
+|---|---|
+| `RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` | **현행 세대** 상세 — DP 가 왜 천장이 아닌가 |
+| `RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` | **직전 세대** — 행동 어휘를 닫은 작업 |
+| `COMPARE_ACTIONSET_DELTA_2026-08-16.md` | 직전 세대 표의 독립 재계산 검증 + 전/후 델타 |
+| `STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md` | **아직 안 한 일**(단계 7)의 조사 노트 — energy-only 모드가 동역학을 안 바꾼다는 근거 |
 
-`NIGHT_2026-08-02.md` `MORNING_2026-08-03.md` `PLAN_0804.md` `NIGHT_2026-08-04.md`
-`PLAN_COMPLETION.md` `DUMP_SCHEMA.md` `ZONE_BLOCKAGE_STEP8_11_2026-08-05.md`
+### 처음 읽는 사람
 
-흡수 위치: 야간·아침 로그의 확정 결과 → §3 / 정정 → §7 / 함정 → §8;
-`DUMP_SCHEMA` → §5(2026-08-02 이후 스키마가 바뀌어 원문은 이미 틀린 상태였다);
-`PLAN_COMPLETION`(완주 조사 S0~S4) → §6 + `STATUS.md`;
-`ZONE_BLOCKAGE_STEP8_11` → `ZONE_REDESIGN_STEP1_7` 의 STEP 8~11 절로 이어붙임(원래 연속된 문서).
+| 파일 | 무엇 |
+|---|---|
+| **`SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md`** | **비전문가용 요약.** 용어 설명부터 시작하므로 배경지식 없이 읽힌다. 다루는 작업은 옛것이지만 **이 트리에서 유일하게 배경 없이 읽히는 문서**다 |
+| `../MDP_DESIGN_FROM_SCRATCH.md` | MDP 정식화 (md/ 가 아니라 한 단계 위) |
+| `../LABELING_MANUAL.md` | 라벨링 절차 (md/ 가 아니라 한 단계 위) |
+
+### 정의·설계 — 코드가 이 문서들을 이름으로 인용한다 (지우면 코드 주석이 끊긴다)
+
+| 파일 | 무엇 | 누가 가리키나 |
+|---|---|---|
+| `EVALUATION.md` | 채점 방식 정의 | `e1_analyze.py` · `verify.py` · `ladder.py` · `firegrid_report.py` · `export_surrogate.py` |
+| `DESIGN_ASSIMILATION.md` | C1~C4 정의 + LLM 실측 원본 | `policy.jl` · `nl_events.py` |
+| `PLAN_ACTION_GROWTH.md` | 행동공간 성장 폐루프 | `safety_filter.py` · `features_agnostic.py` · `assimilation_gate.py` · `ood_mdp_shim.jl` |
+| `PLAN_LLM_INFERENCE_7H_2026-08-06.md` | 초과비용 지표 · Ch-A | `verify.py` · `action_registry.py` · `audit_action_vocab.py` |
+| `RELOCATEBUILD_2026-08-03.md` | 매크로 7 구현·검증 | `verifier.jl` · `verify.py` |
+| `ZONE_REDESIGN_STEP1_7_2026-08-05.md` | 구역 결정 재설계 STEP 1~11 전문 | `render_demo.jl` · `tools/monitor/README.md` |
+| `BATTERY_FAULT_REDESIGN_2026-08-05.md` | 배터리 재설계 + λ/SwapBattery 결정 | `export_surrogate.py` |
+| `FIRE_TIME_RELABEL_2026-08-05.md` | 발화 시점 재라벨링 | `../LABELING_MANUAL.md` |
+| `ORACLE_REBUILD_2026-08-09.md` | **한 파일에 두 문서** — §I 평가 보강 계획(B0~B9), §II 오라클 라벨 재빌드(= §I 의 STEP D) | `run_step_d_firegrid.sh` · `.claude/CLAUDE.md` |
+| `NIGHT_PLAN_2026-08-10.md` | 야간 실행 Global Constraints | `verify_night.py` |
+| `RESULTS_D20_2026-08-12.md` 🔴 | D=20 결과 행렬 | **`audit_objective.py` 항목 9 가 이 파일의 존재를 요구한다** |
+| `RESULTS_LLM7H.md` 🔴 | 4정책 × 5시드 측정 원본 | `wm_datasets.py` · `surrogate_data.py` · `verify.py` · `test_surrogate_support.py` · `zone_inject.jl` |
+| `RESULTS_DP_BACKWARD_2026-08-15.md` | DP backward induction 세대 | `wm_datasets.py` · `dp_oracle/sample_grid.py` |
+| `RESULTS_ROUTER3WAY_2026-08-14.md` | 라우터 3-way 세대 | `fill_results_doc.py`(기본 대상 문서) |
+| `RESULTS_SURROGATE_REBUILD_2026-08-14.md` | surrogate 재구축 | `dspy_service.py` · `tools/demos.jl` |
+| `RESULTS_30SEED_D20_2026-08-13.md` | 30시드 세대 | `tools/monitor/README_RENDER_3D.md` |
+
+### 🔴 구세대 — 수치를 현재 성능으로 인용하지 말 것
+
+`BATTERY_FAULT_REDESIGN_2026-08-05` · `DEPOT_DISTANCE_SWEEP_2026-08-12` ·
+`FIRE_TIME_RELABEL_2026-08-05` · `RELOCATEBUILD_2026-08-03` · `RESULTS_D20_2026-08-12` ·
+`RESULTS_FARDEPOT_2026-08-12` · `RESULTS_LLM7H` · `ZONE_REDESIGN_STEP1_7_2026-08-05`.
+전부 문서 맨 위에 🔴 배너가 있다. **설계 근거로는 유효하고 수치만 구세대다.**
+
+### 목적함수 통일(2026-08-13) 세대의 측정 기록
+
+`RESULTS_STAGE6_ENERGY_2026-08-13.md`(1차) · `RESULTS_STAGE6_BATTERY_PHYSICS_2026-08-13.md`(2차).
+1차는 구세대지만 그 §5.1("battery case 가 물리적으로 무해했다")이 2차의 **동기**라 지우지 않는다.
+
+### 내린 문서
+
+**`ARCHIVE.md`** 를 볼 것 — 파일명 · 무엇이었나 · 왜 내렸나 · `git show` 할 SHA 가 한 줄씩 있다.
+실행이 끝난 계획서는 **`docs/superpowers/plans/README.md`** 가 같은 형식으로 갖고 있다.
+설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 그 결정들이 아직 유효하기 때문이다.

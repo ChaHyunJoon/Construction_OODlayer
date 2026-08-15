@@ -1,8 +1,34 @@
-# STATUS — 현재 상태 · 재개 지점 (2026-08-06)
+# STATUS — 현재 상태 · 재개 지점
 
 > 개념·확정결과·함정 목록은 `README.md`. 이 파일은 **지금 어디까지 왔고 다음에 뭘 하는가**만 적는다.
 > 통합 2026-08-06: `NIGHT_2026-08-04.md` · `PLAN_COMPLETION.md` · `MORNING_2026-08-03.md` ·
-> `PLAN_0804.md` · `NIGHT_2026-08-02.md` 의 상태 부분을 여기로 모았다.
+> `PLAN_0804.md` · `NIGHT_2026-08-02.md` 의 상태 부분을 여기로 모았다
+> (그 다섯은 아카이브 — `ARCHIVE.md` §2).
+
+## ★ 지금 재개하려면 (2026-08-17)
+
+**아래 §0~ 는 2026-08-06 시점의 상태다.** 그 뒤로 세대가 다섯 번 갈렸으므로 **현행 상태는
+`.claude/CLAUDE.md` §★ 결과 세대 맨 위 절이 진실원**이고, 현행 결과는 **`RESULTS.md`** 다.
+아래 표는 zone/battery 설계 흐름의 기록으로 남긴다.
+
+| 지금 무엇을 알고 싶은가 | 어디를 볼 것인가 |
+|---|---|
+| 현행 결과 (3레인 × 7 case × 30 seed) | **`RESULTS.md`** |
+| 현행 세대가 무엇을 바꿨나 · 다음 한 수 | **`.claude/CLAUDE.md` §★ 결과 세대** |
+| 함정 · 용어 · 철회된 결론 · 문서 지도 | **`README.md`** §1·§7·§8·§9 |
+| 내린 문서가 어디 갔나 | **`ARCHIVE.md`** · `docs/superpowers/plans/README.md` |
+
+**열려 있는 큰 항목 셋** (전부 `.claude/CLAUDE.md` 에 근거가 있다):
+1. **`ReformTeam` 축 완주율 68.7%** — 엔진이 `AssertionError: has_edge(...)` 로 죽는다.
+   별도 작업으로 올릴 것. 현행 세대 판정 #1·#2 미달의 실질적 원인이다.
+2. **`objective.json` 이 커밋되지 않은 채 작업 트리에만 있다** — 깨끗이 체크아웃하면 재현 절차가
+   `dp_solve.py` 하드 스톱으로 죽는다. `audit_objective.py` 의 `WARN(9-b)` 가 그 전조다.
+3. **단계 7(surrogate 를 J 로 재라벨·재학습)은 보류** — 조사 결과는
+   `STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md`(선택지 C 가 유일하게 교락 없다).
+
+> **문서 정리 (2026-08-17).** `md/` 31 → 29(+`ARCHIVE.md`), 실행 완료 계획서 14개를 내렸다.
+> 잃은 것은 없다 — 전부 `ARCHIVE.md` · `docs/superpowers/plans/README.md` 의 SHA 로 꺼낸다.
+> 내린 문서에서 건진 함정 여덟은 `README.md` §8 함정 36~43 이다.
 
 ---
 

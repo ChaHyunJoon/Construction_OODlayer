@@ -2,7 +2,8 @@
 
 작성 2026-08-07. **이 문서는 배경지식이 없는 사람이 읽어도 이해되도록** 쓴 것이다.
 정밀한 수치와 절차는 `RESULTS_LLM7H.md`, 재개 지점은 `STATUS.md`, 계획 전문은
-`docs/superpowers/plans/2026-08-06-forbidzone-surrogate-retrain.md` 에 있다.
+계획서 `2026-08-06-forbidzone-surrogate-retrain`(아카이브 — `docs/superpowers/plans/README.md`)
+에 있다.
 
 ---
 
