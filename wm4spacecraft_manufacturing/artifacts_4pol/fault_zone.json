@@ -96,7 +96,7 @@
       "sim_seconds_complete": 59.778333333333336,
       "sim_seconds_sd": 9.679336623512189,
       "steps_complete": 2391.133333333333,
-      "wall_seconds": 99.0,
+      "wall_seconds": 120.63,
       "progress": 0.9297124600638977,
       "energy_per_closed": 655.6628347940646,
       "total_energy_J": 190797.88492507278,
@@ -3665,79 +3665,78 @@
         1.0
       ],
       "n_decisions_scored": 120,
-      "n_decisions_correct": 35,
-      "decision_rate": 0.2916666666666667,
+      "n_decisions_correct": 47,
+      "decision_rate": 0.39166666666666666,
       "decision_ci": [
-        0.21781442705981954,
-        0.3784440192134845
+        0.30899055515182583,
+        0.4810638369102923
       ],
       "per_kind": {
         "FaultTruth": {
           "n": 60,
-          "correct": 24,
-          "rate": 0.4
+          "correct": 47,
+          "rate": 0.7833333333333333
         },
         "ZoneTruth": {
           "n": 60,
-          "correct": 11,
-          "rate": 0.18333333333333332
+          "correct": 0,
+          "rate": 0.0
         }
       },
       "chosen": {
-        "SwapBattery": 36,
-        "NOOP": 49,
-        "Replace": 24,
-        "ReformTeam": 88,
-        "RelocateBuild": 11
+        "Replace": 47,
+        "NOOP": 60,
+        "SwapBattery": 13,
+        "ReformTeam": 150
       },
       "escalation_rate": 0.0,
       "n_escalated": 0,
       "n_scored_router": 120,
       "novelty_rate": 0.0,
       "n_novel": 0,
-      "n_novel_denom": 208,
+      "n_novel_denom": 270,
       "risk_coverage": {
         "100": {
           "n": 120,
-          "correct": 35,
-          "rate": 0.2916666666666667
+          "correct": 47,
+          "rate": 0.39166666666666666
         },
         "75": {
           "n": 90,
-          "correct": 24,
-          "rate": 0.26666666666666666
+          "correct": 47,
+          "rate": 0.5222222222222223
         },
         "50": {
           "n": 60,
-          "correct": 24,
-          "rate": 0.4
+          "correct": 47,
+          "rate": 0.7833333333333333
         },
         "25": {
           "n": 30,
-          "correct": 3,
-          "rate": 0.1
+          "correct": 30,
+          "rate": 1.0
         }
       },
-      "sim_seconds_complete": 41.735,
-      "sim_seconds_sd": 19.87162202913908,
-      "steps_complete": 1669.4,
-      "wall_seconds": 77.76333333333334,
+      "sim_seconds_complete": 58.72166666666667,
+      "sim_seconds_sd": 10.921693718382736,
+      "steps_complete": 2348.866666666667,
+      "wall_seconds": 98.98666666666666,
       "progress": 0.9297124600638977,
-      "energy_per_closed": 453.4092511011637,
-      "total_energy_J": 131942.09207043864,
-      "mean_soc": 0.9992967416496007,
-      "min_soc": 0.9979997122687727,
+      "energy_per_closed": 617.9497287813691,
+      "total_energy_J": 179823.3710753784,
+      "mean_soc": 0.9990368429601598,
+      "min_soc": 0.9972634565814695,
       "n_depleted": 0,
-      "spares_left": 11.2,
+      "spares_left": 10.433333333333334,
       "detail": [
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
@@ -3754,16 +3753,16 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1220472440944882
+          "router_p": 0.1141732283464567
         },
         {
           "truth": "FaultTruth",
           "at": 149,
-          "chosen": "Replace",
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
@@ -3771,16 +3770,16 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 185,
-          "chosen": "Replace",
+          "at": 184,
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.4763779527559055
+          "router_p": 0.4921259842519685
         },
         {
           "truth": "ReformTruth",
@@ -3832,7 +3831,7 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -3845,7 +3844,7 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -3980,11 +3979,11 @@
         {
           "truth": "FaultTruth",
           "at": 132,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
@@ -4001,29 +4000,94 @@
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ZoneTruth",
           "at": 233,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
         },
         {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
           "truth": "FaultTruth",
           "at": 66,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
@@ -4031,20 +4095,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 129,
-          "chosen": "SwapBattery",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
-          "ood_seed": 4,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.8464566929133859
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 181,
+          "at": 126,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -4053,7 +4104,20 @@
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6496062992125984
+          "router_p": 0.8543307086614174
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 183,
+          "chosen": "SwapBattery",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
+          "ood_seed": 4,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.42913385826771655
         },
         {
           "truth": "FaultTruth",
@@ -4066,16 +4130,16 @@
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.41338582677165353
+          "router_p": 0.39763779527559057
         },
         {
           "truth": "FaultTruth",
           "at": 60,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
@@ -4083,7 +4147,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 123,
+          "at": 121,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4105,7 +4169,7 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "FaultTruth",
@@ -4118,7 +4182,7 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.42913385826771655
+          "router_p": 0.39763779527559057
         },
         {
           "truth": "ReformTruth",
@@ -4161,7 +4225,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 285,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -4183,16 +4247,29 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 5,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
@@ -4200,20 +4277,20 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 90,
-          "chosen": "SwapBattery",
+          "at": 88,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.562992125984252
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "ZoneTruth",
-          "at": 178,
+          "at": 176,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4226,7 +4303,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 185,
+          "at": 186,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4236,6 +4313,19 @@
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 6,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "ReformTruth",
@@ -4248,7 +4338,7 @@
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -4261,7 +4351,7 @@
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -4274,11 +4364,11 @@
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
-          "at": 285,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -4300,16 +4390,29 @@
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 6,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
           "at": 73,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
@@ -4326,7 +4429,7 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1220472440944882
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "FaultTruth",
@@ -4352,7 +4455,7 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.594488188976378
+          "router_p": 0.46062992125984253
         },
         {
           "truth": "ReformTruth",
@@ -4404,7 +4507,7 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ReformTruth",
@@ -4417,16 +4520,16 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
@@ -4434,12 +4537,12 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 129,
-          "chosen": "SwapBattery",
+          "at": 127,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": true,
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
@@ -4447,7 +4550,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 178,
+          "at": 180,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4460,7 +4563,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 223,
+          "at": 224,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -4469,7 +4572,7 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.3661417322834646
         },
         {
           "truth": "ReformTruth",
@@ -4495,7 +4598,7 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -4508,7 +4611,20 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 8,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -4521,7 +4637,7 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -4534,16 +4650,16 @@
           "ood_seed": 8,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "FaultTruth",
           "at": 68,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
@@ -4551,7 +4667,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 95,
+          "at": 97,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4560,11 +4676,11 @@
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1220472440944882
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
-          "at": 149,
+          "at": 147,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4577,7 +4693,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 195,
+          "at": 196,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -4599,7 +4715,7 @@
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -4612,7 +4728,7 @@
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -4625,7 +4741,7 @@
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -4656,11 +4772,11 @@
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
@@ -4669,15 +4785,15 @@
         {
           "truth": "FaultTruth",
           "at": 100,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7519685039370079
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "ZoneTruth",
@@ -4695,15 +4811,28 @@
         {
           "truth": "FaultTruth",
           "at": 186,
-          "chosen": "Replace",
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.42913385826771655
+          "router_p": 0.452755905511811
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 10,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "ReformTruth",
@@ -4746,7 +4875,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 285,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -4768,16 +4897,29 @@
           "ood_seed": 10,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 10,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
@@ -4785,42 +4927,42 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 108,
-          "chosen": "SwapBattery",
+          "at": 109,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": true,
+          "ood_seed": 11,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.8543307086614174
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 177,
+          "chosen": "SwapBattery",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
           "correct": false,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8464566929133859
+          "router_p": 0.42913385826771655
         },
         {
           "truth": "FaultTruth",
-          "at": 178,
+          "at": 216,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
+          "note": "the faulted robot still owed 1 transport task(s)",
           "correct": true,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6023622047244095
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 217,
-          "chosen": "Replace",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
-          "ood_seed": 11,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.42913385826771655
         },
         {
           "truth": "ZoneTruth",
@@ -4864,15 +5006,80 @@
         {
           "truth": "ZoneTruth",
           "at": 209,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 12,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 12,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 12,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 12,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 12,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -4890,11 +5097,11 @@
         {
           "truth": "FaultTruth",
           "at": 132,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 13,
           "escalated": false,
           "router_novel": false,
@@ -4911,20 +5118,85 @@
           "ood_seed": 13,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "ZoneTruth",
           "at": 231,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 13,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 13,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 13,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 13,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 13,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 13,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -4942,11 +5214,11 @@
         {
           "truth": "FaultTruth",
           "at": 132,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
@@ -4989,7 +5261,7 @@
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5002,7 +5274,7 @@
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5015,7 +5287,7 @@
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5059,11 +5331,11 @@
         {
           "truth": "FaultTruth",
           "at": 106,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
@@ -5080,29 +5352,107 @@
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
-          "at": 214,
-          "chosen": "RelocateBuild",
+          "at": 212,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
         },
         {
+          "truth": "ReformTruth",
+          "at": 242,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.20078740157480315
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 15,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
           "truth": "FaultTruth",
           "at": 62,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
@@ -5110,7 +5460,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 113,
+          "at": 111,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -5124,19 +5474,6 @@
         {
           "truth": "FaultTruth",
           "at": 158,
-          "chosen": "Replace",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
-          "ood_seed": 16,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.7519685039370079
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 192,
           "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
@@ -5145,7 +5482,20 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.562992125984252
+          "router_p": 0.6732283464566929
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 194,
+          "chosen": "SwapBattery",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
+          "ood_seed": 16,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "ReformTruth",
@@ -5215,11 +5565,11 @@
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
@@ -5227,7 +5577,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 108,
+          "at": 109,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -5249,20 +5599,85 @@
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ZoneTruth",
-          "at": 211,
-          "chosen": "RelocateBuild",
+          "at": 214,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -5280,11 +5695,11 @@
         {
           "truth": "FaultTruth",
           "at": 129,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
@@ -5293,19 +5708,19 @@
         {
           "truth": "FaultTruth",
           "at": 166,
-          "chosen": "Replace",
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6496062992125984
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "FaultTruth",
-          "at": 217,
+          "at": 218,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -5314,37 +5729,11 @@
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.421259842519685
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 260,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 18,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "ReformTruth",
           "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 18,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -5423,11 +5812,11 @@
         {
           "truth": "FaultTruth",
           "at": 95,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
@@ -5444,29 +5833,94 @@
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ZoneTruth",
           "at": 219,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
         },
         {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -5474,38 +5928,103 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 132,
-          "chosen": "SwapBattery",
+          "at": 131,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": true,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.8464566929133859
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 162,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": true,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.6181102362204725
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 207,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
           "correct": false,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7362204724409449
+          "router_p": 0.051181102362204724
         },
         {
-          "truth": "FaultTruth",
-          "at": 160,
-          "chosen": "Replace",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": true,
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6732283464566929
+          "router_p": 0.12992125984251968
         },
         {
-          "truth": "ZoneTruth",
-          "at": 209,
-          "chosen": "RelocateBuild",
-          "reference": "RelocateBuild",
-          "basis": "zone",
-          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -5527,11 +6046,11 @@
         {
           "truth": "FaultTruth",
           "at": 100,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
@@ -5539,7 +6058,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 142,
+          "at": 144,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -5548,11 +6067,11 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
-          "at": 199,
+          "at": 200,
           "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
@@ -5561,7 +6080,7 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.4921259842519685
         },
         {
           "truth": "ReformTruth",
@@ -5574,7 +6093,7 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5587,7 +6106,7 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5600,7 +6119,7 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
@@ -5631,11 +6150,11 @@
         {
           "truth": "FaultTruth",
           "at": 58,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 4 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
@@ -5643,16 +6162,16 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 90,
-          "chosen": "SwapBattery",
+          "at": 88,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "note": "the faulted robot still owed 4 transport task(s)",
+          "correct": true,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.562992125984252
+          "router_p": 0.6732283464566929
         },
         {
           "truth": "ZoneTruth",
@@ -5665,20 +6184,111 @@
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ZoneTruth",
           "at": 209,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 22,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ZoneTruth",
@@ -5852,11 +6462,11 @@
         {
           "truth": "FaultTruth",
           "at": 209,
-          "chosen": "Replace",
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "correct": false,
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
@@ -5873,7 +6483,7 @@
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -5886,7 +6496,7 @@
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "ReformTruth",
@@ -5899,7 +6509,7 @@
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "ReformTruth",
@@ -5930,11 +6540,11 @@
         {
           "truth": "FaultTruth",
           "at": 72,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
@@ -5951,7 +6561,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "FaultTruth",
@@ -5964,7 +6574,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6023622047244095
+          "router_p": 0.6496062992125984
         },
         {
           "truth": "FaultTruth",
@@ -5977,7 +6587,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.5787401574803149
+          "router_p": 0.4921259842519685
         },
         {
           "truth": "ReformTruth",
@@ -6003,7 +6613,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -6016,7 +6626,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -6029,7 +6639,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -6042,7 +6652,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ZoneTruth",
@@ -6060,11 +6670,11 @@
         {
           "truth": "FaultTruth",
           "at": 95,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
@@ -6081,20 +6691,85 @@
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.1141732283464567
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "ZoneTruth",
           "at": 214,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -6138,15 +6813,80 @@
         {
           "truth": "ZoneTruth",
           "at": 203,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 27,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 27,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 27,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 27,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 27,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 27,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -6164,11 +6904,11 @@
         {
           "truth": "FaultTruth",
           "at": 117,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
@@ -6185,20 +6925,85 @@
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "ZoneTruth",
           "at": 209,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 28,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 28,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 28,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 28,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 28,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -6216,11 +7021,11 @@
         {
           "truth": "FaultTruth",
           "at": 114,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
@@ -6228,7 +7033,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 149,
+          "at": 147,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -6237,20 +7042,20 @@
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "FaultTruth",
-          "at": 191,
-          "chosen": "Replace",
+          "at": 190,
+          "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": false,
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.4921259842519685
+          "router_p": 0.39763779527559057
         },
         {
           "truth": "ReformTruth",
@@ -6333,11 +7138,11 @@
         {
           "truth": "FaultTruth",
           "at": 105,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
@@ -6349,16 +7154,16 @@
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
+          "note": "the faulted robot still owed 3 transport task(s)",
           "correct": true,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6023622047244095
+          "router_p": 0.6968503937007874
         },
         {
           "truth": "FaultTruth",
-          "at": 197,
+          "at": 200,
           "chosen": "SwapBattery",
           "reference": "Replace",
           "basis": "fault",
@@ -6367,7 +7172,7 @@
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.452755905511811
         },
         {
           "truth": "ReformTruth",
@@ -6419,7 +7224,7 @@
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ReformTruth",
@@ -6432,83 +7237,82 @@
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.05905511811023622
         }
       ]
     },
     "dspy": {
       "n": 30,
-      "n_complete": 26,
-      "success": 0.8666666666666667,
+      "n_complete": 29,
+      "success": 0.9666666666666667,
       "success_ci": [
-        0.7031831605558306,
-        0.9469043057578189
+        0.8332924860304112,
+        0.9940915620051425
       ],
-      "n_decisions_scored": 118,
-      "n_decisions_correct": 95,
-      "decision_rate": 0.8050847457627118,
+      "n_decisions_scored": 119,
+      "n_decisions_correct": 79,
+      "decision_rate": 0.6638655462184874,
       "decision_ci": [
-        0.7244709740380223,
-        0.8664602021776543
+        0.5750467790074236,
+        0.7424352466255866
       ],
       "per_kind": {
         "FaultTruth": {
-          "n": 58,
-          "correct": 53,
-          "rate": 0.9137931034482759
+          "n": 60,
+          "correct": 59,
+          "rate": 0.9833333333333333
         },
         "ZoneTruth": {
-          "n": 60,
-          "correct": 42,
-          "rate": 0.7
+          "n": 59,
+          "correct": 20,
+          "rate": 0.3389830508474576
         }
       },
       "chosen": {
-        "Replace": 53,
-        "RelocateBuild": 42,
-        "ReformTeam": 89,
-        "Deprioritize": 5,
-        "NOOP": 18
+        "Replace": 59,
+        "NOOP": 39,
+        "ReformTeam": 99,
+        "RelocateBuild": 20
       },
       "escalation_rate": 0.0,
       "n_escalated": 0,
-      "n_scored_router": 118,
+      "n_scored_router": 119,
       "novelty_rate": 0.0,
       "n_novel": 0,
-      "n_novel_denom": 207,
+      "n_novel_denom": 217,
       "risk_coverage": {
         "100": {
-          "n": 118,
-          "correct": 95,
-          "rate": 0.8050847457627118
+          "n": 119,
+          "correct": 79,
+          "rate": 0.6638655462184874
         },
         "75": {
-          "n": 88,
-          "correct": 73,
-          "rate": 0.8295454545454546
+          "n": 89,
+          "correct": 65,
+          "rate": 0.7303370786516854
         },
         "50": {
-          "n": 59,
-          "correct": 54,
-          "rate": 0.9152542372881356
+          "n": 60,
+          "correct": 59,
+          "rate": 0.9833333333333333
         },
         "25": {
           "n": 30,
-          "correct": 30,
-          "rate": 1.0
+          "correct": 29,
+          "rate": 0.9666666666666667
         }
       },
-      "sim_seconds_complete": 37.87307692307692,
-      "sim_seconds_sd": 18.995394077350596,
-      "steps_complete": 1514.923076923077,
-      "wall_seconds": 91.38,
-      "progress": 0.8907348242811501,
-      "energy_per_closed": 638.7085402024857,
-      "total_energy_J": 164315.69321113866,
-      "mean_soc": 0.999121456956745,
-      "min_soc": 0.9973193911751356,
+      "sim_seconds_complete": 45.63103448275862,
+      "sim_seconds_sd": 29.546329128388425,
+      "steps_complete": 1825.2413793103449,
+      "wall_seconds": 106.39,
+      "progress": 0.9159744408945687,
+      "energy_per_closed": 577.1540233713285,
+      "total_energy_J": 160850.90190165053,
+      "mean_soc": 0.9991429280691787,
+      "min_soc": 0.9975693055300943,
       "n_depleted": 0,
-      "spares_left": 10.233333333333333,
+      "spares_left": 10.033333333333333,
       "detail": [
         {
           "truth": "FaultTruth",
@@ -6526,11 +7330,11 @@
         {
           "truth": "ZoneTruth",
           "at": 100,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
@@ -6542,16 +7346,29 @@
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
+          "note": "the faulted robot still owed 1 transport task(s)",
           "correct": true,
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7519685039370079
+          "router_p": 0.6811023622047244
+        },
+        {
+          "truth": "FaultTruth",
+          "at": 184,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
+          "ood_seed": 1,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.421259842519685
         },
         {
           "truth": "ReformTruth",
-          "at": 150,
+          "at": 260,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6560,11 +7377,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.37401574803149606
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
-          "at": 150,
+          "at": 266,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6573,11 +7390,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.37401574803149606
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
-          "at": 160,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6586,11 +7403,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6599,11 +7416,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6612,11 +7429,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6625,11 +7442,11 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6638,42 +7455,16 @@
           "ood_seed": 1,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 161,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.3188976377952756
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 161,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 1,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 2,
           "escalated": false,
           "router_novel": false,
@@ -6681,12 +7472,12 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 109,
-          "chosen": "RelocateBuild",
+          "at": 108,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 2,
           "escalated": false,
           "router_novel": false,
@@ -6694,25 +7485,25 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 145,
-          "chosen": "RelocateBuild",
+          "at": 144,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 2,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.1220472440944882
         },
         {
           "truth": "FaultTruth",
-          "at": 228,
-          "chosen": "Deprioritize",
+          "at": 227,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 1 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 2,
           "escalated": false,
           "router_novel": false,
@@ -6720,7 +7511,46 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 282,
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 2,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -6825,19 +7655,6 @@
         {
           "truth": "FaultTruth",
           "at": 183,
-          "chosen": "Deprioritize",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 1 transport task(s)",
-          "correct": false,
-          "ood_seed": 4,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.42913385826771655
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 232,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -6846,33 +7663,20 @@
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.42913385826771655
         },
         {
-          "truth": "ReformTruth",
-          "at": 260,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
+          "truth": "FaultTruth",
+          "at": 231,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "FaultTruth",
@@ -6890,11 +7694,11 @@
         {
           "truth": "ZoneTruth",
           "at": 121,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
@@ -6902,7 +7706,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 149,
+          "at": 150,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -6915,7 +7719,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 228,
+          "at": 229,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -6924,7 +7728,7 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.39763779527559057
         },
         {
           "truth": "FaultTruth",
@@ -6955,11 +7759,11 @@
         {
           "truth": "ZoneTruth",
           "at": 176,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 6,
           "escalated": false,
           "router_novel": false,
@@ -6977,6 +7781,19 @@
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 6,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
         },
         {
           "truth": "ReformTruth",
@@ -7098,11 +7915,11 @@
         {
           "truth": "FaultTruth",
           "at": 188,
-          "chosen": "Deprioritize",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 1 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
@@ -7110,7 +7927,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 230,
+          "at": 266,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7119,11 +7936,11 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.20866141732283464
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
-          "at": 240,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7132,11 +7949,11 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.20078740157480315
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 240,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7145,11 +7962,11 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.20078740157480315
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 240,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7158,11 +7975,11 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.20078740157480315
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 261,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7171,72 +7988,7 @@
           "ood_seed": 7,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 261,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 7,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 261,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 7,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 261,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 7,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 261,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 7,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 261,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 7,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "FaultTruth",
@@ -7566,11 +8318,11 @@
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
@@ -7578,12 +8330,12 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 131,
-          "chosen": "RelocateBuild",
+          "at": 132,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
@@ -7600,11 +8352,11 @@
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.4763779527559055
+          "router_p": 0.7519685039370079
         },
         {
           "truth": "ZoneTruth",
-          "at": 208,
+          "at": 209,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -7644,11 +8396,11 @@
         {
           "truth": "ZoneTruth",
           "at": 139,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 13,
           "escalated": false,
           "router_novel": false,
@@ -7656,7 +8408,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 229,
+          "at": 231,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -7670,45 +8422,6 @@
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
-          "reference": "RelocateBuild",
-          "basis": "zone",
-          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.1141732283464567
-        },
-        {
-          "truth": "FaultTruth",
-          "at": 135,
-          "chosen": "Replace",
-          "reference": "Replace",
-          "basis": "fault",
-          "note": "the faulted robot still owed 3 transport task(s)",
-          "correct": true,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.8228346456692913
-        },
-        {
-          "truth": "ZoneTruth",
-          "at": 165,
-          "chosen": "RelocateBuild",
-          "reference": "RelocateBuild",
-          "basis": "zone",
-          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.1141732283464567
-        },
-        {
-          "truth": "ZoneTruth",
-          "at": 187,
           "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -7717,94 +8430,55 @@
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.1141732283464567
         },
         {
-          "truth": "ReformTruth",
-          "at": 242,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
+          "truth": "FaultTruth",
+          "at": 132,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 2 transport task(s)",
+          "correct": true,
           "ood_seed": 14,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.20078740157480315
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 14,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.7362204724409449
         },
         {
           "truth": "ZoneTruth",
-          "at": 58,
+          "at": 165,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
+          "ood_seed": 14,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 187,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
           "correct": true,
+          "ood_seed": 14,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ZoneTruth",
+          "at": 58,
+          "chosen": "NOOP",
+          "reference": "RelocateBuild",
+          "basis": "zone",
+          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
+          "correct": false,
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
@@ -7821,16 +8495,16 @@
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8464566929133859
+          "router_p": 0.8700787401574803
         },
         {
           "truth": "ZoneTruth",
           "at": 135,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 15,
           "escalated": false,
           "router_novel": false,
@@ -7848,19 +8522,6 @@
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 243,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 15,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.20078740157480315
         },
         {
           "truth": "FaultTruth",
@@ -7878,45 +8539,19 @@
         {
           "truth": "ZoneTruth",
           "at": 111,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.12992125984251968
         },
         {
-          "truth": "ReformTruth",
-          "at": 150,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 16,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.39763779527559057
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 150,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 16,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.39763779527559057
-        },
-        {
           "truth": "FaultTruth",
-          "at": 160,
+          "at": 158,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -7928,21 +8563,21 @@
           "router_p": 0.6732283464566929
         },
         {
-          "truth": "ReformTruth",
-          "at": 160,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
+          "truth": "FaultTruth",
+          "at": 194,
+          "chosen": "Replace",
+          "reference": "Replace",
+          "basis": "fault",
+          "note": "the faulted robot still owed 1 transport task(s)",
+          "correct": true,
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 266,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7951,11 +8586,11 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7964,11 +8599,11 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 274,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7977,11 +8612,11 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -7990,11 +8625,11 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
-          "at": 161,
+          "at": 285,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -8003,20 +8638,7 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.3188976377952756
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 161,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 16,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.3188976377952756
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "FaultTruth",
@@ -8034,32 +8656,45 @@
         {
           "truth": "ZoneTruth",
           "at": 109,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.12992125984251968
         },
         {
-          "truth": "ZoneTruth",
-          "at": 152,
-          "chosen": "RelocateBuild",
-          "reference": "RelocateBuild",
-          "basis": "zone",
-          "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "truth": "ReformTruth",
+          "at": 146,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.39763779527559057
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 150,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.39763779527559057
         },
         {
           "truth": "ZoneTruth",
-          "at": 212,
+          "at": 154,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -8068,7 +8703,111 @@
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.051181102362204724
+          "router_p": 0.1141732283464567
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 160,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 160,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 162,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.38976377952755903
         },
         {
           "truth": "ZoneTruth",
@@ -8112,54 +8851,15 @@
         {
           "truth": "FaultTruth",
           "at": 217,
-          "chosen": "Deprioritize",
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 1 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 18,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.41338582677165353
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 257,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 18,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.16141732283464566
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 263,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 18,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 18,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -8203,15 +8903,93 @@
         {
           "truth": "ZoneTruth",
           "at": 219,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 19,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 19,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "FaultTruth",
@@ -8333,11 +9111,11 @@
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
@@ -8345,7 +9123,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 98,
+          "at": 100,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -8354,11 +9132,11 @@
           "ood_seed": 21,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8700787401574803
+          "router_p": 0.7519685039370079
         },
         {
           "truth": "ZoneTruth",
-          "at": 141,
+          "at": 144,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -8424,11 +9202,11 @@
         {
           "truth": "ZoneTruth",
           "at": 209,
-          "chosen": "NOOP",
+          "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": false,
+          "correct": true,
           "ood_seed": 22,
           "escalated": false,
           "router_novel": false,
@@ -8436,7 +9214,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 260,
+          "at": 257,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -8448,91 +9226,13 @@
           "router_p": 0.16141732283464566
         },
         {
-          "truth": "ReformTruth",
-          "at": 266,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 274,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.05905511811023622
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 285,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 22,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.05905511811023622
-        },
-        {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
@@ -8540,12 +9240,12 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 109,
-          "chosen": "RelocateBuild",
+          "at": 113,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
@@ -8562,7 +9262,7 @@
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6732283464566929
+          "router_p": 0.6023622047244095
         },
         {
           "truth": "FaultTruth",
@@ -8575,16 +9275,94 @@
           "ood_seed": 23,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.421259842519685
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 23,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         },
         {
           "truth": "ZoneTruth",
           "at": 76,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
@@ -8593,11 +9371,11 @@
         {
           "truth": "ZoneTruth",
           "at": 132,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
@@ -8605,7 +9383,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 177,
+          "at": 178,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -8614,11 +9392,11 @@
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.05905511811023622
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "FaultTruth",
-          "at": 211,
+          "at": 208,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -8627,7 +9405,7 @@
           "ood_seed": 24,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.4763779527559055
         },
         {
           "truth": "FaultTruth",
@@ -8645,11 +9423,11 @@
         {
           "truth": "ZoneTruth",
           "at": 85,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
@@ -8657,7 +9435,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 177,
+          "at": 178,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -8666,7 +9444,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6732283464566929
+          "router_p": 0.6496062992125984
         },
         {
           "truth": "FaultTruth",
@@ -8680,6 +9458,71 @@
           "escalated": false,
           "router_novel": false,
           "router_p": 0.4921259842519685
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 25,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 25,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 25,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 25,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 25,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ZoneTruth",
@@ -8710,11 +9553,11 @@
         {
           "truth": "ZoneTruth",
           "at": 139,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
@@ -8722,16 +9565,81 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 212,
-          "chosen": "RelocateBuild",
+          "at": 214,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 26,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 26,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "ZoneTruth",
@@ -8749,11 +9657,11 @@
         {
           "truth": "ZoneTruth",
           "at": 132,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 27,
           "escalated": false,
           "router_novel": false,
@@ -8774,7 +9682,7 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 204,
+          "at": 203,
           "chosen": "RelocateBuild",
           "reference": "RelocateBuild",
           "basis": "zone",
@@ -8788,11 +9696,11 @@
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
@@ -8800,7 +9708,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 116,
+          "at": 117,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -8809,7 +9717,7 @@
           "ood_seed": 28,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8543307086614174
+          "router_p": 0.7519685039370079
         },
         {
           "truth": "ZoneTruth",
@@ -8957,11 +9865,11 @@
         {
           "truth": "ZoneTruth",
           "at": 58,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
@@ -8969,7 +9877,7 @@
         },
         {
           "truth": "FaultTruth",
-          "at": 106,
+          "at": 105,
           "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
@@ -8978,133 +9886,29 @@
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8464566929133859
+          "router_p": 0.8700787401574803
         },
         {
           "truth": "FaultTruth",
           "at": 154,
-          "chosen": "Replace",
+          "chosen": "ReformTeam",
           "reference": "Replace",
           "basis": "fault",
-          "note": "the faulted robot still owed 2 transport task(s)",
-          "correct": true,
+          "note": "the faulted robot still owed 3 transport task(s)",
+          "correct": false,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6259842519685039
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 161,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.3188976377952756
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 161,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.3188976377952756
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 187,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 187,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 193,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 193,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 193,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 193,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 30,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.22440944881889763
+          "router_p": 0.6968503937007874
         },
         {
           "truth": "FaultTruth",
-          "at": 199,
-          "chosen": "Deprioritize",
+          "at": 197,
+          "chosen": "Replace",
           "reference": "Replace",
           "basis": "fault",
           "note": "the faulted robot still owed 1 transport task(s)",
-          "correct": false,
+          "correct": true,
           "ood_seed": 30,
           "escalated": false,
           "router_novel": false,
@@ -9125,7 +9929,20 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 202,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.20866141732283464
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9138,7 +9955,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9151,7 +9968,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9164,7 +9981,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9177,7 +9994,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9190,7 +10007,7 @@
         },
         {
           "truth": "ReformTruth",
-          "at": 215,
+          "at": 210,
           "chosen": "ReformTeam",
           "reference": null,
           "basis": "reform",
@@ -9200,6 +10017,123 @@
           "escalated": false,
           "router_novel": false,
           "router_p": 0.20078740157480315
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 219,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.21653543307086615
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 228,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.20078740157480315
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 234,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 256,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.16141732283464566
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 271,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 30,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.05905511811023622
         }
       ]
     },
@@ -9212,11 +10146,11 @@
         0.9469043057578189
       ],
       "n_decisions_scored": 117,
-      "n_decisions_correct": 117,
-      "decision_rate": 1.0,
+      "n_decisions_correct": 113,
+      "decision_rate": 0.9658119658119658,
       "decision_ci": [
-        0.9682096231761248,
-        1.0
+        0.9153808812238059,
+        0.9866263745556608
       ],
       "per_kind": {
         "FaultTruth": {
@@ -9226,26 +10160,27 @@
         },
         "ZoneTruth": {
           "n": 59,
-          "correct": 59,
-          "rate": 1.0
+          "correct": 55,
+          "rate": 0.9322033898305084
         }
       },
       "chosen": {
         "Replace": 58,
-        "RelocateBuild": 59,
-        "ReformTeam": 45
+        "RelocateBuild": 55,
+        "ReformTeam": 61,
+        "NOOP": 4
       },
       "escalation_rate": 0.0,
       "n_escalated": 0,
       "n_scored_router": 117,
       "novelty_rate": 0.0,
       "n_novel": 0,
-      "n_novel_denom": 162,
+      "n_novel_denom": 178,
       "risk_coverage": {
         "100": {
           "n": 117,
-          "correct": 117,
-          "rate": 1.0
+          "correct": 113,
+          "rate": 0.9658119658119658
         },
         "75": {
           "n": 88,
@@ -9263,15 +10198,15 @@
           "rate": 1.0
         }
       },
-      "sim_seconds_complete": 26.890384615384615,
-      "sim_seconds_sd": 4.836672807432176,
-      "steps_complete": 1075.6153846153845,
-      "wall_seconds": 86.18666666666667,
+      "sim_seconds_complete": 31.267307692307693,
+      "sim_seconds_sd": 12.802307934959948,
+      "steps_complete": 1250.6923076923076,
+      "wall_seconds": 107.73333333333333,
       "progress": 0.8801916932907348,
-      "energy_per_closed": 597.3865507165904,
-      "total_energy_J": 145896.91064157907,
-      "mean_soc": 0.9992305656451701,
-      "min_soc": 0.9976890154085032,
+      "energy_per_closed": 624.2245206604051,
+      "total_energy_J": 153706.75989522916,
+      "mean_soc": 0.999187692076587,
+      "min_soc": 0.9975470425118252,
       "n_depleted": 0,
       "spares_left": 10.066666666666666,
       "detail": [
@@ -9512,11 +10447,11 @@
         {
           "truth": "ZoneTruth",
           "at": 175,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
@@ -9524,16 +10459,94 @@
         },
         {
           "truth": "ZoneTruth",
-          "at": 233,
-          "chosen": "RelocateBuild",
+          "at": 234,
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 3,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "FaultTruth",
@@ -9837,15 +10850,80 @@
         {
           "truth": "ZoneTruth",
           "at": 195,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
           "ood_seed": 9,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 9,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 9,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 9,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 9,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 9,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
         },
         {
           "truth": "FaultTruth",
@@ -10656,11 +11734,76 @@
         {
           "truth": "ZoneTruth",
           "at": 207,
-          "chosen": "RelocateBuild",
+          "chosen": "NOOP",
           "reference": "RelocateBuild",
           "basis": "zone",
           "note": "zone blocks 3 navigable goal(s) and no root delivery goal",
-          "correct": true,
+          "correct": false,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 266,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.12992125984251968
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 274,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 20,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 285,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -11421,26 +12564,26 @@
       "e4_note": "정의 불가 (짝 0개)"
     },
     "surrogate__dspy": {
-      "e1_wins": 1,
-      "e1_losses": 1,
-      "e1_ties": 28,
-      "e1_sign_p": 1.0,
+      "e1_wins": 0,
+      "e1_losses": 3,
+      "e1_ties": 27,
+      "e1_sign_p": 0.25,
       "e1_note": "",
-      "e3_wilcoxon_p": 0.29542405582364173,
+      "e3_wilcoxon_p": 0.975736119417176,
       "e3_median_diff": 0.0,
       "e3_n": 30,
       "e3_note": "",
-      "e4_wilcoxon_p": 0.017378363446698287,
+      "e4_wilcoxon_p": 0.1789561131984324,
       "e4_median_diff": 0.0,
-      "e4_n": 25,
-      "e4_note": "완주판 짝 25개만 비교 -- 선택편향(생존한 판끼리)"
+      "e4_n": 26,
+      "e4_note": "완주판 짝 26개만 비교 -- 선택편향(생존한 판끼리)"
     }
   },
   "holm_adjusted": {
     "e1": {
       "all__noop__dspy": 1.0,
       "all__noop__surrogate": 1.0,
-      "all__surrogate__dspy": 0.328125,
+      "all__surrogate__dspy": 1.0,
       "battery__noop__dspy": 1.0,
       "battery__noop__surrogate": 1.0,
       "battery__surrogate__dspy": 1.0,
@@ -11463,25 +12606,25 @@
     "e3": {
       "all__noop__dspy": 1.0,
       "all__noop__surrogate": 1.0,
-      "all__surrogate__dspy": 0.06567915156206418,
+      "all__surrogate__dspy": 1.0,
       "battery__noop__dspy": 1.0,
       "battery__noop__surrogate": 1.0,
-      "battery__surrogate__dspy": 3.91155481338501e-08,
+      "battery__surrogate__dspy": 0.003848478835232861,
       "battery_zone__noop__dspy": 1.0,
       "battery_zone__noop__surrogate": 1.0,
-      "battery_zone__surrogate__dspy": 1.1436641216278076e-05,
+      "battery_zone__surrogate__dspy": 1.0,
       "fault__noop__dspy": 1.0,
       "fault__noop__surrogate": 1.0,
-      "fault__surrogate__dspy": 0.4758608632563177,
+      "fault__surrogate__dspy": 1.0,
       "fault_battery__noop__dspy": 1.0,
       "fault_battery__noop__surrogate": 1.0,
-      "fault_battery__surrogate__dspy": 0.03008239157497883,
+      "fault_battery__surrogate__dspy": 0.17549266120202345,
       "fault_zone__noop__dspy": 1.0,
       "fault_zone__noop__surrogate": 1.0,
       "fault_zone__surrogate__dspy": 1.0,
       "zone__noop__dspy": 1.0,
       "zone__noop__surrogate": 1.0,
-      "zone__surrogate__dspy": 0.6177128294788812
+      "zone__surrogate__dspy": 0.2762223072350025
     },
     "e4": {
       "all__noop__dspy": 1.0,
@@ -11489,22 +12632,22 @@
       "all__surrogate__dspy": 1.0,
       "battery__noop__dspy": 1.0,
       "battery__noop__surrogate": 1.0,
-      "battery__surrogate__dspy": 0.0003111406552398347,
+      "battery__surrogate__dspy": 0.2667792436188937,
       "battery_zone__noop__dspy": 1.0,
       "battery_zone__noop__surrogate": 1.0,
-      "battery_zone__surrogate__dspy": 0.03346149444304633,
+      "battery_zone__surrogate__dspy": 1.0,
       "fault__noop__dspy": 1.0,
       "fault__noop__surrogate": 1.0,
       "fault__surrogate__dspy": 1.0,
       "fault_battery__noop__dspy": 1.0,
       "fault_battery__noop__surrogate": 1.0,
-      "fault_battery__surrogate__dspy": 0.17028571143878338,
+      "fault_battery__surrogate__dspy": 1.0,
       "fault_zone__noop__dspy": 1.0,
       "fault_zone__noop__surrogate": 1.0,
-      "fault_zone__surrogate__dspy": 0.3128105420405692,
+      "fault_zone__surrogate__dspy": 1.0,
       "zone__noop__dspy": 1.0,
       "zone__noop__surrogate": 1.0,
-      "zone__surrogate__dspy": 1.0
+      "zone__surrogate__dspy": 0.8097944408655167
     }
   }
 }

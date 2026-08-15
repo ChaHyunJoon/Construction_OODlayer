@@ -142,13 +142,18 @@ def main():
             print("      답한 칸: %s" % r["dp_level_key"])
 
     print("\n== 3b) 사건(evt)별 gap — 표집 팔 메뉴가 그 사건의 정답을 갖고 있는가 ==")
-    # `arm_menu()` 는 배포 학습셋 지원집합 {0,1,2,7,8} 을 쓴다. 거기엔 ForbidZone(3) 도
-    # ReformTeam(4) 도 **없다.** 그런데 실행 레인은 그 둘을 실제로 집행한다. 그러면 그 사건의
-    # 칸에서 V 는 "정답이 메뉴에 없는 정책군의 최선" 이라 실행 레인보다 나쁠 수밖에 없다.
-    # φ̃ 추상화 손실과는 **다른 원인**이므로 뭉뚱그리지 않는다.
+    # 이 절이 답하는 질문: **그 사건의 정답이 표집 팔 메뉴에 있었는가.** 없으면 그 칸의 V 는
+    # "정답이 메뉴에 없는 정책군의 최선" 이라 실행 레인보다 나쁠 수밖에 없다 — φ̃ 추상화
+    # 손실과는 **다른 원인**이므로 뭉뚱그리지 않는다.
+    #
+    # 2026-08-16: 메뉴를 `("0","1","2","7","8")` 로 하드코딩하고 있었다. 그 다섯은 배포 학습셋의
+    # 지원집합을 베낀 것이고, 바로 그 하드코딩이 이 진단이 지목하던 병의 원인이었다. 이제
+    # `sample_grid.arm_menu()` 에서 받는다 — 표집이 실제로 쓴 그 함수다. 여기서 다시 쓰면
+    # 진단과 표집이 갈려, 메뉴를 고친 뒤에도 이 절이 옛 목록으로 "메뉴 밖" 을 찍는다.
     import re
+    from sample_grid import arm_menu                                   # noqa: E402
     reg = json.load(open(os.path.join(WM, "action_registry.json")))["macros"]
-    menu = {int(k) for k in ("0", "1", "2", "7", "8") if k in reg}
+    menu = {i for i, _ in arm_menu()}
     print("  표집 팔 메뉴: %s" % sorted("%d:%s" % (k, reg[str(k)]["name"]) for k in menu))
     print("  메뉴 밖 매크로: %s"
           % sorted("%s:%s" % (k, m["name"]) for k, m in reg.items() if int(k) not in menu))

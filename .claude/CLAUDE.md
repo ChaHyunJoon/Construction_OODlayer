@@ -130,9 +130,52 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
     각각 −17.2% · −8.8%). **순환이기 때문이다**: 그 둘은 `objective_hash` 의 입력이라 쓰는 순간
     방금 만든 630행이 구세대로 재분류된다. 적용하려면 **재교정 + 재스윕**을 한 묶음으로 결정할 것.
 
-### ✅ 2026-08-15 — DP 가 진짜 backward induction 이 됐다 (현행 세대)
+### ✅ 2026-08-16 — 행동집합을 닫았다 (현행 세대)
 
-**현행 세대 결과 = `md/RESULTS_DP_BACKWARD_2026-08-15.md` + `artifacts_4pol/COMPARE.md`.**
+**현행 세대 결과 = `md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` + `artifacts_4pol/COMPARE.md`.**
+목적함수 세대는 안 갈렸다(`objective.json` 무변경). 코드 세대는 `ff602d52`+`5dd29dae`.
+
+- **무엇이 세대를 갈랐나**: 행동 어휘의 소비처 셋이 서로 다른 집합을 보고 있었다. 이제 전부
+  `action_registry.json` 파생이다. 배포 라벨셋 = **`wm_datasets.RELABEL_20260816`**
+  (872행/260 instance), support `{0,1,2,7,8}` → **`{0,1,2,4,5,6,7,8}`**.
+  `test_surrogate_support.py` §B 가 그 계약이다(12/12).
+- **★ `ood_mdp_shim.valid_actions` 는 팔 메뉴가 아니라 문지기다.** `action_to_proposal` 이
+  `a in valid_actions(ctx) || return nothing` 으로 거른다 — fault 가 리터럴 `[0,1]` 인 한
+  라벨 생성기에 매크로 4 를 시켜도 **조용히 NOOP 으로 무너진다.** 팔을 늘리려면 여기부터다.
+  옛 고정 집합 재현은 `DS_ARMS_LEGACY=1`.
+- **★ 라벨 레인은 `DS_HOTSWAP=1` 이어야 한다.** 실행 레인(`run_demo.jl:557`)이 hot-swap ON 이고,
+  안 켜면 fault 대상 피커가 죽어 **발화율이 100% → 23%** 로 무너진다(실측). 발화율이 조용히
+  떨어지는 형태라 로그만 보면 정상으로 보인다.
+- **★ `maybe_emit_reform_ood!` 에는 dedup 이 없다.** 무진전이 이어지면 `REFORM_INTERVAL`(120)
+  배수마다 재발화한다. 그래서 `gen_oracle_dataset.jl` 의 캐스케이드 예외
+  `ctx.type === :reform && canonical` 이 조건 없이 걸려 있으면 **NOOP 팔 판에도 배경 정책이
+  나중에 ReformTeam 을 집행해** 팔이 바이트 동일해진다. `kind !== :reform` 조건이 그 방어다
+  (고친 뒤: 팔이 갈린 reform instance 1/7 → 17/27, completion flip 0 → 7).
+- **§8.7 gap 은 87.6% → 89.3% 로 안 줄었다. 그러나 원인 구성이 바뀌었다.**
+  Reform 축 **100% → 92.3%**(비교가 성립하는 축이 됐다) · Fault 81.8% → 75.8% ·
+  Battery 82.7% → 92.3% · Zone 100% 유지. 원인 ①(행동집합 불일치) 해소, **③(상수-팔 표집)이
+  혼자 남아 지배한다** — 표집 판 완주율 19.5% → 16.9%, V 중앙값 4418.6 → 4743.6.
+  **다음 사이클 1순위 = 1-step deviation 표집.**
+- **비교표 4열 (7 case x 30 seed)**: dp 207/210 · canonical **207**(2026-08-15 과 동일 = 세계가
+  안 바뀌었다는 통제) · surrogate 190 → **198** · llm 198 → **203**.
+- **조합 팔 5·6 은 정보량이 0이다** — 65/65 instance 에서 5≡4, 6≡2. 추가 primitive 가 엔진에서
+  집행되지 않는다(`ForbidAgent` 는 집행 경로 없음, `ForbidWindow` 는 non-binding·commit 시 drop).
+  `sample_grid.arm_menu()` 가 이 둘을 제외하고 **제외 사실을 이름으로 찍는다**. 다음 라벨
+  생성에서는 `DS_COMBO_ARMS=0` 이 옳다.
+- **`ForbidZone(3)` 은 라벨에 0행** — 이유가 바뀌었다. 메뉴가 아니라 **도메인이 비어 있다**
+  (`n_restage_feasible == 0`, zone 160행 전부). `DS_FIRE_GRID` 에 20 을 넣어도 못 잡는다:
+  트랙터가 첫 배치에서 ~58 노드를 닫고 재시도 사다리는 위쪽으로만 간다(실측 발화점 {46,58,250,…}).
+- ⚠️ **`ReformTeam` 팔이 표집 판의 15.5% 에서 엔진을 죽인다**(`AssertionError: has_edge(...)`).
+  표집 실패 13건이 전부 arm 4 였다 — Reform 축이 그만큼 얇게 표집됐다.
+- ⚠️ **kind 상수정책이 NOOP→oracle 밴드의 97.7% 를 먹는다.** "모델이 상태를 보고 배웠다" 는
+  주장은 이 라벨로 세울 수 없다. 상세는 결과 문서 §6-E.
+- ⚠️ **라벨 레인의 재현성 결함은 살아 있다** — 08-14 와 겹치는 365행 중 4행이 다른 결과.
+  표집 레인은 재현됐다(팔별 완주율이 다섯 팔 모두 소수점까지 일치).
+
+### 2026-08-15 — DP 가 진짜 backward induction 이 됐다 — **직전 세대**
+
+**직전 세대 결과 = `md/RESULTS_DP_BACKWARD_2026-08-15.md`.** §4-D 에 2026-08-16 의 결말이
+한 줄로 이어져 있다.
 아래 2026-08-14 절은 **직전 세대**다(지우지 않았다 — 두 세대를 나란히 놔야 §5-C 의 진단이
 어디까지 맞았는지 보인다). 목적함수 세대는 안 갈렸다(`objective.json` 무변경).
 
