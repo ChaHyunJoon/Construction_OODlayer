@@ -38,10 +38,32 @@ MACRO_NAME = {i: m["name"] for i, m in REGISTRY.items()}
 MACRO_COST = {i: float(m["cost"]) for i, m in REGISTRY.items()}
 NAME2ID = {m["name"]: i for i, m in REGISTRY.items()}
 MACROS = sorted(REGISTRY)
+# ---- 실험 팔 게이트 (2026-08-15) ------------------------------------------------------------
+# 매크로에 `"experimental": "<ENV 이름>"` 이 있으면 그 환경변수가 "1" 일 때만 **제안 대상**이 된다.
+# 왜 이 구조인가: 조합 팔 5·6 은 `oracle/ood_mdp_shim.jl` 의 `DS_COMBO_ARMS` 뒤에 실재하는데
+# 레지스트리에는 없어서, 이름·비용만 소비처 네 곳에 유령으로 복사돼 있었다(2026-08-15 감사가 적발).
+# 그렇다고 그냥 등록만 하면 **끄고도 메뉴에 뜬다** — shim 이 명시한 "OFF BY DEFAULT 면 기존 덤프
+# 경로와 byte-identical" 계약이 깨진다. 그래서 어휘(이름·비용)에는 **언제나 있고**, 제안 메뉴에는
+# **플래그가 켜졌을 때만** 오르게 나눈다. 이름표가 항상 있어야 하는 이유는 따로 있다: 그 행을
+# 쓰는 순간 KeyError 로 죽는 사고가 2026-08-02 에 실제로 났다(gen_oracle_dataset.jl:118).
+EXPERIMENTAL = {i: m["experimental"] for i, m in REGISTRY.items() if m.get("experimental")}
+
+
+def is_active(i):
+    """이 매크로를 지금 **제안해도 되는가**. 실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    flag = EXPERIMENTAL.get(i)
+    return flag is None or os.environ.get(flag, "0") == "1"
+
+
+ACTIVE_MACROS = [i for i in MACROS if is_active(i)]
+
 # 사건 종류별로 전제조건상 말이 되는 팔. 상태를 아는 호출자(policy.jl)가 `valid` 를 실어 보내면
 # 언제나 그쪽이 이긴다 -- 이 표는 상태를 모르는 호출자를 위한 폴백일 뿐이다.
+# 실험 팔은 위 게이트가 꺼져 있으면 여기 안 오른다(= 폴백 메뉴가 예전과 같다).
 KIND_VALID = {}
 for _i, _m in REGISTRY.items():
+    if not is_active(_i):
+        continue
     for _k in _m.get("kinds", []):
         KIND_VALID.setdefault(_k, []).append(_i)
 for _k in KIND_VALID:

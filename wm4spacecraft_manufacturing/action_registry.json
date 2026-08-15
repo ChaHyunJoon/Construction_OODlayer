@@ -41,6 +41,20 @@
       "kinds": ["reform", "fault"],
       "doc": "re-form a deadlocked multi-robot transport team geometrically so the carrier can close."
     },
+    "5": {
+      "name": "ForbidAgent+ReformTeam",
+      "cost": 1.8,
+      "kinds": ["fault"],
+      "experimental": "DS_COMBO_ARMS",
+      "doc": "COMPOSITE (two specs): retire the agent WITHOUT spending a depot spare, then reform teams around the loss. The spare-preserving alternative to Replace. cost = ForbidAgent 0.8 + ReformTeam 1.0. GATED: the generator only offers this when DS_COMBO_ARMS=1 (oracle/ood_mdp_shim.jl COMBO_IDS); with the flag unset it collapses to the NOOP arm."
+    },
+    "6": {
+      "name": "Deprioritize+ForbidWindow",
+      "cost": 0.8,
+      "kinds": ["fault"],
+      "experimental": "DS_COMBO_ARMS",
+      "doc": "COMPOSITE (two specs): soft-shed the agent's work AND close a time window on the affected node -- two soft levers instead of one. cost = DeprioritizeAgent 0.3 + ForbidWindow 0.5. GATED by DS_COMBO_ARMS=1, same as macro 5."
+    },
     "7": {
       "name": "RelocateBuild",
       "cost": 1.5,

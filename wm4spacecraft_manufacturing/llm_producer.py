@@ -82,13 +82,15 @@ CACHE_DIR = os.path.join(HERE, "llm_cache")
 # ---- 행동 어휘: 리터럴이 아니라 레지스트리에서 읽는다 (2026-08-06, Ch-A) ------------------
 # 여기 있던 표에는 8(SwapBattery) 이 **없었다**. README §4 가 battery 의 기본 정답이라 못박은 팔을
 # LLM 이 발화할 방법이 아예 없었다는 뜻이고, 정답이 어휘 밖이면 적중률은 원리적으로 100% 가 못 된다.
-# 조합 팔 5·6 은 레지스트리에 없으므로(생성기가 DS_COMBO_ARMS=1 일 때만 만든다) 여기서 보강한다 --
-# 옛 덤프를 읽는 경로가 KeyError 로 죽지 않게 하는 하위호환이고, 새 어휘의 진실원은 레지스트리다.
+# 2026-08-15: 여기 있던 `setdefault(5, ...)` · `setdefault(6, ...)` 보강을 **없앴다.** 조합 팔
+# 5·6 이 레지스트리에 없어서 KeyError 를 막으려고 이름을 여기서 되살리던 자리인데, 그 보강이
+# 곧 "소비처마다 다른 어휘" 였다(같은 유령이 e1_analyze·features_agnostic·gen_oracle_dataset.jl
+# 에도 따로 복사돼 있었다). 이제 레지스트리가 5·6 을 정식으로 선언하므로 파생 하나로 끝난다.
+# 제안 메뉴에 올릴지는 `action_registry.is_active`(DS_COMBO_ARMS)가 따로 정한다 — 이름표는
+# 언제나 있고, 메뉴는 플래그가 정한다.
 from action_registry import MACRO_NAME as _REG_NAME, doc_lines as _reg_doc_lines
 
 MACRO_NAME = dict(_REG_NAME)
-MACRO_NAME.setdefault(5, "ForbidAgent+ReformTeam")
-MACRO_NAME.setdefault(6, "Deprioritize+ForbidWindow")
 NAME2ID = {v.lower(): k for k, v in MACRO_NAME.items()}
 
 # 같은 문구를 dspy_real_experiment.py 가 쓰던 것과 맞춘다. 행동 어휘 설명은 시스템의 DSL 문서이지

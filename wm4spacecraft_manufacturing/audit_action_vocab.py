@@ -10,8 +10,16 @@ audit_action_vocab.py -- 행동 어휘(id<->이름<->비용)가 **모든 소비�
     어휘 불일치는 조용히 성능 저하로만 나타나므로(에러가 안 난다) 테스트로 만들어야 한다.
 
 무엇을 검사하나: 각 소비처의 (id -> 이름) 과 (id -> 비용) 이 action_registry.json 과 같은가.
-    레지스트리에 없는 조합 팔(5·6)은 **무시**한다 -- 그건 DS_COMBO_ARMS=1 일 때만 생성되는
-    별도 어휘이고, 옛 덤프를 읽는 하위호환 항목이라 있어도 정상이다.
+    **레지스트리에 없는 id 도 실패다** (2026-08-15 부터).
+
+    예전에는 "레지스트리에 없는 조합 팔(5·6)은 무시한다 — DS_COMBO_ARMS=1 일 때만 생성되는
+    별도 어휘라 있어도 정상" 이라고 적혀 있었다. 그 예외가 정확히 이 감사가 막으려던 결함을
+    통과시켰다: 5·6 의 이름·비용이 **네 소비처에 따로따로** 복사돼 있었고(llm_producer 는
+    setdefault 로, e1_analyze·features_agnostic·gen_oracle_dataset.jl 은 리터럴로) 감사는
+    6/6 통과를 냈다. "별도 어휘" 라는 말 자체가 이 파일의 전제("어휘는 하나")를 부정한다.
+    2026-08-15 에 5·6 을 레지스트리에 **정식 등록**하고 이 예외를 없앴다. 플래그로 켜고 끄는
+    것은 `action_registry.is_active`(= 제안 메뉴)가 하고, **이름·비용은 언제나 어휘에 있다** —
+    행을 쓰는 순간 KeyError 로 죽는 사고(2026-08-02)를 그 분리가 막는다.
 
 실행:  python audit_action_vocab.py        (repo 의 wm4spacecraft_manufacturing 에서)
 종료코드 0 = 전부 일치. 1 = 하나라도 어긋남.
@@ -53,6 +61,17 @@ def check(where, names=None, costs=None, extra=None):
     for i, c in (costs or {}).items():
         if i in REG.MACRO_COST and abs(float(c) - REG.MACRO_COST[i]) > 1e-9:
             bad.append("id %d cost %s != %s" % (i, c, REG.MACRO_COST[i]))
+    # ---- 여분 id (2026-08-15 추가) --------------------------------------------------------
+    # 위 두 루프는 **레지스트리에 있는 id 만** 본다. 그래서 소비처에만 있고 어휘에는 없는 id 를
+    # 조용히 건너뛰었다 — 실제로 `5: 1.8, 6: 0.8`(레지스트리 통합 때 사라진 조합 팔)이 파이썬
+    # 세 곳과 Julia 라벨러에 **이름 없이 비용만** 남아 있었는데 이 감사는 6/6 통과를 냈다.
+    # 왜 실패로 다루나: 이름 없는 id 에 비용이 붙어 있으면 (a) 그 팔이 지원되는 것처럼 읽히고,
+    # (b) 어휘를 늘릴 때 그 번호가 **다른 매크로에 재배정**되면 옛 비용이 새 팔에 조용히 붙는다.
+    # 어휘에는 세대 해시가 없어서(목적함수와 달리) 그 오염을 잡아 줄 다른 장치가 없다.
+    for label, tbl, ref in (("name", names, REG.MACRO_NAME), ("cost", costs, REG.MACRO_COST)):
+        stray = sorted(set(tbl or {}) - set(ref))
+        if stray:
+            bad.append("레지스트리에 없는 id %s 가 %s 표에 있다 (유령 어휘)" % (stray, label))
     (FAIL if bad else OK).append((where, bad))
 
 

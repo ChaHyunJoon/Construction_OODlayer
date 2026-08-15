@@ -161,7 +161,12 @@ MACROS = [0, 1, 2, 3, 4, 7, 8]
 # 전역 개입이라 조립체 하나만 옮기는 ForbidZone(1.0)보다 비싸다.
 # 8 = SwapBattery(현장 배터리 교체). 배터리는 재고 관리를 안 하므로(무제한, 비용만) 개입 중 가장
 # 싸다. Replace(1.0)보다 확실히 싸야 "싸게 살릴까 비싸게 살릴까"가 진짜 선택이 된다.
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}
+# 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다(단일 진실원). 예전 리터럴에는
+# `5: 1.8, 6: 0.8` 이 남아 있었는데 그 둘은 레지스트리에 없는 유령이다 — 근거는
+# e1_analyze.MACRO_COST 위 주석. 아래 MACRO_SPECS 에서도 같은 이유로 5·6 을 뺐다.
+import action_registry as _reg                                      # noqa: E402
+
+MACRO_COST = dict(_reg.MACRO_COST)
 
 # 참조 함대 크기: slack 을 [0,1] 로 정규화할 때 쓰는 상수(현 트랙터 트윈의 최대 활성 로봇 수 기준).
 FLEET_REF = 30.0
@@ -389,7 +394,10 @@ MACRO_SPECS = {
     2: ["DeprioritizeAgent"],
     3: ["ForbidZone"],
     4: ["ReformTeam"],
-    # 조합 행동 예시(A1 스모크 대상). 여기 추가해도 **모델 입력 차원은 변하지 않는다** — 이게 요점.
+    # 조합 행동(A1 스모크 대상). 여기 추가해도 **모델 입력 차원은 변하지 않는다** — 이게 요점.
+    # 2026-08-15: 이 둘은 2026-08-06 레지스트리 통합 때 어휘에서 누락돼 이름·비용만 소비처 네 곳에
+    # 유령으로 남아 있었다(감사가 "5·6 은 무시" 라고 예외 처리하고 있었다). 같은 날 정식 등록해
+    # 어휘가 다시 하나가 됐고, 제안 메뉴에는 `DS_COMBO_ARMS=1` 일 때만 오른다(action_registry.is_active).
     5: ["ForbidAgent", "ReformTeam"],
     6: ["DeprioritizeAgent", "ForbidWindow"],
     7: ["RelocateBuild"],        # zone 사건의 기본 개입 팔(3 을 대체). spec 하나짜리.

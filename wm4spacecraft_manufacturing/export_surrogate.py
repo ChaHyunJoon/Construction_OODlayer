@@ -95,9 +95,14 @@ from sklearn.model_selection import LeaveOneGroupOut
 
 # adaptation cost per macro (OODRewardCfg, decpomdp/examples/ood_env_mdp.jl)
 # macro별 개입 비용(e1_analyze와 동일). NOOP=0, Deprioritize=0.3, 나머지=1.0.
-# 5·6 = 조합 팔, 7 = RelocateBuild(1.5, 전역 개입). 세 곳(여기·e1_analyze·features_agnostic)과
-# Julia 쪽 gen_oracle_dataset.MACRO_COST 가 **모두 같은 값**이어야 한다(함정 29).
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}  # 8=SwapBattery
+# 7 = RelocateBuild(1.5, 전역 개입).
+#
+# 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다. 예전 주석은 "5·6 = 조합 팔"
+# 이라고 적고 있었는데, 그 둘은 레지스트리 통합(2026-08-06) 때 어휘에서 빠졌고 이 표에만
+# 이름 없이 비용으로 남아 있었다. 근거는 e1_analyze.MACRO_COST 위 주석 참조.
+import action_registry as _reg                                      # noqa: E402
+
+MACRO_COST = dict(_reg.MACRO_COST)
 
 # State features that must be allowed to INTERACT with the chosen macro. Without these the exported
 # model is purely additive and CANNOT represent the graded flip: on a battery OOD the value of NOOP

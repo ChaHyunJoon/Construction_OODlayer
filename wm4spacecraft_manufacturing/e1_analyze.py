@@ -71,9 +71,13 @@ from sklearn.model_selection import LeaveOneGroupOut
 MACROS = [0, 1, 2, 3, 4, 7, 8]  # 8 = SwapBattery
 # [2026-08-05] 8 = SwapBattery 가 빠져 있어, macro 8 이 정답이 되는 순간 KeyError 로 죽었다
 # (MACROS 에는 8 이 들어 있는데 이름표만 없었다). Julia 쪽 gen_oracle_dataset.ACTION_NAME 과 맞춘다.
-MACRO_NAME = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
-              5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
-              8: "SwapBattery"}
+# 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다. 이 표에는 5·6(조합 팔)이
+# 레지스트리에 없는 채로 복사돼 있었다 — 같은 유령이 llm_producer·features_agnostic·
+# gen_oracle_dataset.jl 에도 따로 있었고, 감사가 "레지스트리에 있는 id 만" 비교해서 놓쳤다.
+# 5·6 을 레지스트리에 정식 등록했으므로 이제 파생 하나로 네 곳이 같아진다.
+import action_registry as _reg                                      # noqa: E402
+
+MACRO_NAME = dict(_reg.MACRO_NAME)
 
 
 # jsonl 데이터셋 파일(path)을 읽어 DataFrame으로 만드는 함수. 비유한수(Inf/NaN)를 실수로 복원한다.
@@ -217,8 +221,17 @@ def ndcg_at_k(true_scores_by_macro, pred_order, k):
 # decision-relevant version of the task: restraint can be optimal even when Replace closes more nodes.
 # macro별 개입 비용. NOOP는 공짜(0), Deprioritize는 쌈(0.3), 나머지(Replace/ForbidZone/Reform)는 1.0.
 # 7(RelocateBuild)=1.5 : 빌드 전체를 옮기는 전역 개입이라 조립체 하나만 옮기는 ForbidZone 보다 비싸다.
-# gen_oracle_dataset.jl MACRO_COST / features_agnostic.MACRO_COST 와 **같은 값**이어야 한다(함정 29).
-MACRO_COST = {0: 0.0, 1: 1.0, 2: 0.3, 3: 1.0, 4: 1.0, 5: 1.8, 6: 0.8, 7: 1.5, 8: 0.2}  # 8=SwapBattery
+#
+# 2026-08-15: 리터럴 복붙을 없애고 **action_registry.json 에서 파생**시킨다(단일 진실원).
+# 왜 지금 고치는가 — 이 리터럴에는 `5: 1.8, 6: 0.8` 이 남아 있었다. 5·6 은 레지스트리 통합
+# (2026-08-06) 때 사라진 **조합 팔**(5 = ForbidAgent+ReformTeam, 6 = Deprioritize+ForbidWindow)
+# 이고, 그 뒤로 이름 없이 비용만 네 파일에 유령으로 남아 있었다. `audit_action_vocab.py` 는
+# "레지스트리에 있는 id 만" 비교했기 때문에 그 여분 키를 **조용히 건너뛰었다**(6/6 통과).
+# 어느 데이터에도 macro 5·6 은 없다(전수 확인: 0/12248행). 파생으로 바꾸면 이런 유령이
+# 원리적으로 생기지 않고, 강화된 감사가 남은 복제본에서 같은 결함을 잡는다.
+import action_registry as _reg                                      # noqa: E402
+
+MACRO_COST = dict(_reg.MACRO_COST)
 
 
 # ---- 정렬키 = -J (spec §3, §5.1) ------------------------------------------------------------

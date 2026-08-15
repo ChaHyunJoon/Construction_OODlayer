@@ -1076,6 +1076,11 @@ const EP_SEV    = Dict(:fault   => 1.0,
 const MACRO_COST = Dict(0 => 0.0, 1 => 1.0, 2 => 0.3, 3 => 1.0, 4 => 1.0,
     # 조합 팔의 비용 = 구성 primitive 비용의 합. features_agnostic.psi 의 a_cost 와 같은 값이어야 한다
     # (ForbidAgent 0.8 + ReformTeam 1.0 = 1.8 / Deprioritize 0.3 + ForbidWindow 0.5 = 0.8).
+    # 2026-08-15: 이 둘은 2026-08-06 레지스트리 통합 때 `action_registry.json` 에서 누락돼,
+    # 이름·비용만 여기와 파이썬 세 곳에 **유령으로** 남아 있었다(감사가 "5·6 은 무시" 라고 예외
+    # 처리하던 자리). 같은 날 정식 등록했으므로 이제 이 표는 레지스트리와 **일치해야 하고**,
+    # `audit_action_vocab.py` 항목 6 이 그것을 지킨다(그날부터 **여분 id 도** 잡는다 — 예전엔
+    # 레지스트리에 있는 id 만 봐서 이 유령을 조용히 건너뛰었다).
     5 => 1.8, 6 => 0.8,
     # RelocateBuild = 빌드 전체를 옮기는 전역 개입. ForbidZone(조립체 하나 이동, 1.0)보다 영향 범위가
     # 넓으므로 더 비싸게 매긴다. features_agnostic.MACRO_COST[7] / _PRIMITIVE_TABLE["RelocateBuild"] 와
