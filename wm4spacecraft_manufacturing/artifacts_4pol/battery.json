@@ -1891,23 +1891,22 @@
         0.9940915620051425
       ],
       "n_decisions_scored": 120,
-      "n_decisions_correct": 11,
-      "decision_rate": 0.09166666666666666,
+      "n_decisions_correct": 0,
+      "decision_rate": 0.0,
       "decision_ci": [
-        0.0519566467894248,
-        0.15670990790625097
+        0.0,
+        0.031020271055929513
       ],
       "per_kind": {
         "BatteryTruth": {
           "n": 120,
-          "correct": 11,
-          "rate": 0.09166666666666666
+          "correct": 0,
+          "rate": 0.0
         }
       },
       "chosen": {
-        "Replace": 109,
-        "ReformTeam": 17,
-        "SwapBattery": 11
+        "Replace": 120,
+        "ReformTeam": 17
       },
       "escalation_rate": 0.0,
       "n_escalated": 0,
@@ -1918,18 +1917,18 @@
       "risk_coverage": {
         "100": {
           "n": 120,
-          "correct": 11,
-          "rate": 0.09166666666666666
+          "correct": 0,
+          "rate": 0.0
         },
         "75": {
           "n": 90,
-          "correct": 4,
-          "rate": 0.044444444444444446
+          "correct": 0,
+          "rate": 0.0
         },
         "50": {
           "n": 60,
-          "correct": 2,
-          "rate": 0.03333333333333333
+          "correct": 0,
+          "rate": 0.0
         },
         "25": {
           "n": 30,
@@ -1937,17 +1936,17 @@
           "rate": 0.0
         }
       },
-      "sim_seconds_complete": 25.610344827586207,
-      "sim_seconds_sd": 7.091183904156032,
-      "steps_complete": 1024.4137931034484,
-      "wall_seconds": 68.65333333333334,
+      "sim_seconds_complete": 25.95344827586207,
+      "sim_seconds_sd": 6.911254163558196,
+      "steps_complete": 1038.1379310344828,
+      "wall_seconds": 69.07,
       "progress": 0.921618743343983,
-      "energy_per_closed": 440.0109238663498,
-      "total_energy_J": 123495.45869477982,
-      "mean_soc": 0.999366101767776,
-      "min_soc": 0.9985328602640531,
+      "energy_per_closed": 450.860748879306,
+      "total_energy_J": 126652.75777355008,
+      "mean_soc": 0.999349007932729,
+      "min_soc": 0.9985248781991934,
       "n_depleted": 0,
-      "spares_left": 8.366666666666667,
+      "spares_left": 8,
       "detail": [
         {
           "truth": "BatteryTruth",
@@ -2069,11 +2068,11 @@
         {
           "truth": "BatteryTruth",
           "at": 73,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
@@ -2090,7 +2089,7 @@
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.8858267716535433
+          "router_p": 0.9803149606299213
         },
         {
           "truth": "BatteryTruth",
@@ -2103,7 +2102,7 @@
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6496062992125984
+          "router_p": 0.594488188976378
         },
         {
           "truth": "BatteryTruth",
@@ -2116,7 +2115,7 @@
           "ood_seed": 3,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.39763779527559057
+          "router_p": 0.2559055118110236
         },
         {
           "truth": "BatteryTruth",
@@ -2160,28 +2159,15 @@
         {
           "truth": "BatteryTruth",
           "at": 231,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 4,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.20078740157480315
-        },
-        {
-          "truth": "ReformTruth",
-          "at": 260,
-          "chosen": "ReformTeam",
-          "reference": null,
-          "basis": "reform",
-          "note": "no measured grid for this event class",
-          "correct": null,
-          "ood_seed": 4,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.12992125984251968
         },
         {
           "truth": "BatteryTruth",
@@ -2225,11 +2211,11 @@
         {
           "truth": "BatteryTruth",
           "at": 229,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
@@ -2246,7 +2232,7 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "ReformTruth",
@@ -2259,7 +2245,7 @@
           "ood_seed": 5,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "BatteryTruth",
@@ -2589,11 +2575,11 @@
         {
           "truth": "BatteryTruth",
           "at": 216,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
@@ -2610,7 +2596,7 @@
           "ood_seed": 11,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.12992125984251968
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "BatteryTruth",
@@ -2654,11 +2640,11 @@
         {
           "truth": "BatteryTruth",
           "at": 207,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 12,
           "escalated": false,
           "router_novel": false,
@@ -2706,11 +2692,11 @@
         {
           "truth": "BatteryTruth",
           "at": 231,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 13,
           "escalated": false,
           "router_novel": false,
@@ -2849,19 +2835,6 @@
         {
           "truth": "BatteryTruth",
           "at": 62,
-          "chosen": "SwapBattery",
-          "reference": "SwapBattery",
-          "basis": "battery",
-          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
-          "ood_seed": 16,
-          "escalated": false,
-          "router_novel": false,
-          "router_p": 0.6968503937007874
-        },
-        {
-          "truth": "BatteryTruth",
-          "at": 113,
           "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
@@ -2870,7 +2843,20 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.9960629921259843
+          "router_p": 0.6968503937007874
+        },
+        {
+          "truth": "BatteryTruth",
+          "at": 111,
+          "chosen": "Replace",
+          "reference": "SwapBattery",
+          "basis": "battery",
+          "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
+          "correct": false,
+          "ood_seed": 16,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.9881889763779528
         },
         {
           "truth": "BatteryTruth",
@@ -2883,11 +2869,11 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.9015748031496063
+          "router_p": 0.7362204724409449
         },
         {
           "truth": "BatteryTruth",
-          "at": 192,
+          "at": 194,
           "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
@@ -2896,7 +2882,7 @@
           "ood_seed": 16,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6181102362204725
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "BatteryTruth",
@@ -2940,15 +2926,28 @@
         {
           "truth": "BatteryTruth",
           "at": 214,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 17,
           "escalated": false,
           "router_novel": false,
           "router_p": 0.39763779527559057
+        },
+        {
+          "truth": "ReformTruth",
+          "at": 260,
+          "chosen": "ReformTeam",
+          "reference": null,
+          "basis": "reform",
+          "note": "no measured grid for this event class",
+          "correct": null,
+          "ood_seed": 17,
+          "escalated": false,
+          "router_novel": false,
+          "router_p": 0.051181102362204724
         },
         {
           "truth": "BatteryTruth",
@@ -3096,11 +3095,11 @@
         {
           "truth": "BatteryTruth",
           "at": 207,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 20,
           "escalated": false,
           "router_novel": false,
@@ -3317,11 +3316,11 @@
         {
           "truth": "BatteryTruth",
           "at": 72,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
@@ -3338,7 +3337,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6732283464566929
+          "router_p": 0.8228346456692913
         },
         {
           "truth": "BatteryTruth",
@@ -3351,7 +3350,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7519685039370079
+          "router_p": 0.6811023622047244
         },
         {
           "truth": "BatteryTruth",
@@ -3364,7 +3363,7 @@
           "ood_seed": 25,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.6338582677165354
+          "router_p": 0.43700787401574803
         },
         {
           "truth": "BatteryTruth",
@@ -3629,11 +3628,11 @@
         {
           "truth": "BatteryTruth",
           "at": 80,
-          "chosen": "SwapBattery",
+          "chosen": "Replace",
           "reference": "SwapBattery",
           "basis": "battery",
           "note": "deep discharge (SoC<=0.50): restore charge, cheapest/fastest restoring arm",
-          "correct": true,
+          "correct": false,
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
@@ -3663,7 +3662,7 @@
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.7677165354330708
+          "router_p": 0.6496062992125984
         },
         {
           "truth": "BatteryTruth",
@@ -3676,7 +3675,7 @@
           "ood_seed": 29,
           "escalated": false,
           "router_novel": false,
-          "router_p": 0.43700787401574803
+          "router_p": 0.41338582677165353
         },
         {
           "truth": "BatteryTruth",

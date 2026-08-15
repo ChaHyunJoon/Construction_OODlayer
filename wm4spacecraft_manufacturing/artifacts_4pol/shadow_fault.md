@@ -1,6 +1,6 @@
 # Shadow Score -- STEP A (새 시뮬 0회, 동일 사건·동일 분모)
 
-입력: 120 rows / 557 decisions. 공유 분모 N = 480 (kind 는 알지만 필수 상태 필드가 없거나 ReformTruth 처럼 실측 격자가 없어 unscored 로 빠진 사건은 제외).
+입력: 120 rows / 559 decisions. 공유 분모 N = 480 (kind 는 알지만 필수 상태 필드가 없거나 ReformTruth 처럼 실측 격자가 없어 unscored 로 빠진 사건은 제외).
 
 ## 산출 1 -- producer 4개 (동일 사건·동일 분모 N=480)
 
@@ -9,14 +9,14 @@
 | `rule` | 480 | 100.0% (480/480) [0.99, 1.00] | [1.00, 1.00] |
 | `surrogate` | 480 | 100.0% (480/480) [0.99, 1.00] | [1.00, 1.00] |
 | `llm` | 480 | 99.2% (476/480) [0.98, 1.00] | [0.98, 1.00] |
-| `macro (실제 enacted)` | 480 | 95.0% (456/480) [0.93, 0.97] | [0.93, 0.97] |
+| `macro (실제 enacted)` | 480 | 99.8% (479/480) [0.99, 1.00] | [0.99, 1.00] |
 
 | producer | Battery | Fault | Zone |
 |---|---|---|---|
 | `rule` | n/a | 100.0% (480/480) | n/a |
 | `surrogate` | n/a | 100.0% (480/480) | n/a |
 | `llm` | n/a | 99.2% (476/480) | n/a |
-| `macro (실제 enacted)` | n/a | 95.0% (456/480) | n/a |
+| `macro (실제 enacted)` | n/a | 99.8% (479/480) | n/a |
 
 ## 산출 2 -- B1 kind->macro 룩업표 (leave-one-out, 자기 자신 제외)
 
@@ -42,9 +42,9 @@ Fault 는 `valid` 가 기록되지 않아(정책 서버가 fault 에는 legal-ma
 
 router flag (판 단위, DEMO_ROUTER): {'0': 120}
 
-router_p: n=557, mean=0.535, range=[0.051, 0.870]
+router_p: n=559, mean=0.531, range=[0.051, 0.870]
 
-"라우터가 켜졌다면 LLM 으로 올라갔을 결정" 비율 (router_novel==True, 사후 재생): 0.0% (0/557)
+"라우터가 켜졌다면 LLM 으로 올라갔을 결정" 비율 (router_novel==True, 사후 재생): 0.0% (0/559)
 
 ## 해석 한계
 
