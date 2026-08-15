@@ -43,12 +43,19 @@ def check(name, cond, detail=""):
 
 
 def decision(at, t, e, *, truth="BatteryTruth", prog=0.5, spares=10, pend=1,
-             soc=0.03, macro="NOOP"):
-    """합성 결정 하나. `state_of` 가 읽는 축 + 구간 비용의 원자료를 전부 갖춘다."""
+             soc=0.03, macro="NOOP", deviate_at=None):
+    """합성 결정 하나. `state_of` 가 읽는 축 + 구간 비용의 원자료를 전부 갖춘다.
+
+    `deviate_at` 키는 **항상** 낸다(기본값 None) — 실측(2026-08-17 스모크)한 policy.jl 의 실제
+    계약이 그렇다: 게이트가 안 걸린 결정도 키는 있고 값이 null 이다(키가 빠지는 게 아니다).
+    이 파일의 `rows_to_samples` 호출은 전부 `is_owner=True`(기본값)라 R3(owner 가 아닌 판만
+    본다)는 안 걸린다 — owner 는 deviation 발화 여부와 무관하게 전 결정을 낸다. 그래도 키를
+    항상 내는 건 실제 policy.jl 계약과 fixture 를 맞추기 위해서다(owner/비-owner 전용 검사는
+    `test_deviation_plan.py`)."""
     return {"at": at, "closed_at": at, "sim_t_at": t, "energy_at_J": e,
             "truth": truth, "progress": prog, "spare_count": spares,
             "agent_pending": pend, "soc": soc, "macro": macro,
-            "zone_primitives": None}
+            "zone_primitives": None, "deviate_at": deviate_at}
 
 
 def board(decs, *, complete, makespan, energy, closed=250, total=300):
@@ -189,8 +196,13 @@ check("T-05e next_cell 이 다음 전이의 cell 과 같다",
       (tr[0]["next_cell"], tr[1]["cell"]))
 check("T-05f c 가 분해의 cs 와 같다",
       all(abs(tr[i]["c"] - d["cs"][i]) < TOL for i in range(3)), [t["c"] for t in tr])
-check("T-05g 팔이 전이마다 실린다",
-      all(t["arm"] == 7 and t["arm_name"] == "RelocateBuild" for t in tr), tr[0]["arm"])
+# T-05g (2026-08-17 리뷰 Critical 1 갱신): 라벨은 판에 넘긴 arm_id/arm_name(여기서는 7/
+# "RelocateBuild", 실제로 집행된 팔이 아니라 owner 판을 부를 때 쓰는 식별자일 뿐이다) 이
+# **아니다** — 그 결정에서 실제로 집행된 매크로(`d["macro"]`, 이 fixture 는 전부 기본값
+# "NOOP")를 따른다. 판의 arm 인자와 라벨이 일부러 다르게 설정돼 있으므로 둘이 섞이면 이
+# 단언이 바로 깨진다.
+check("T-05g 라벨은 판의 arm 인자가 아니라 그 결정에서 실제로 집행된 매크로를 따른다",
+      all(t["arm"] == 0 and t["arm_name"] == "NOOP" for t in tr), [t["arm_name"] for t in tr])
 check("T-05h 판 단위 J 도 남는다(상수-팔 판과의 대조용)",
       all(abs(t["cost"] - objective.J_row(b_ok)) < TOL for t in tr), tr[0]["cost"])
 check("T-05i c 의 합 + c_prefix == 러닝코스트",
