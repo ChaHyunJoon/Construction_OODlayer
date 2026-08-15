@@ -59,27 +59,6 @@ objective = w.speed · Σ tF[v]·weight  +  w_eff · Σ edge_energy(v,v2) · Xa[
 **단, 수정 재풀이는 MILP 를 푼다** (`replan.jl:942`, 그리고 `verify()` 의 시험 풀이). 즉 목적함수는
 이미 매 결정 지점에 도달하고 있으며, 거기서 에너지가 버려지고 있었다.
 
-### 2.4 greedy 의 비용 확장점이 배선되지 않았다
-
-`GreedyOrderedAssignment` 는 `greedy_cost` 필드를 갖고(`task_assignment.jl:275`),
-`abstract type GreedyCost` 아래 구체 타입 3개가 정의돼 있으며(`essential_tg_coponents.jl:1459-1461`),
-`full_demo.jl:600` 이 `GreedyFinalTimeCost()` 를 넘긴다. **그런데 그 값을 읽는 메서드가 하나도 없다.**
-
-실제 배정 비용은 `assign_collaborative_tasks!` 안의 클로저에 하드코딩돼 있다
-(`task_assignment.jl:46-51`):
-
-```julia
-cost_func = (v,v2) -> get_tF(sched,v) + distance_dict[(v,v2)]   # 끝나는 시각 + 이동시간
-```
-
-팀 비용은 슬롯 중 최댓값(가장 늦게 도착하는 로봇)이고, 그중 argmin 을 고른다. **순수 시간 지표이며
-에너지가 들어갈 자리가 없다.** 세 `GreedyCost` 타입은 아무것도 디스패치하지 않는 죽은 마커이고,
-어느 것을 넘겨도 동작이 같다. `update_greedy_cost_model!`(`essential_tg_coponents.jl:1543` 에서 호출)
-은 저장소 어디에도 정의가 없다 — 그 경로는 죽은 코드이거나 도달하면 던진다.
-
-따라서 greedy 에 에너지를 넣는 작업은 클로저를 해킹하는 것이 아니라 **설계돼 있었으나 배선되지
-않은 확장점을 살리는 것**이다(§6.2).
-
 ### 2.2 이미 일어난 사고 — 제안이 실행 단계에서 지워졌다
 
 `replan.jl:888` 의 주석이 이 설계의 존재 이유를 직접 적고 있다:
@@ -108,6 +87,27 @@ cost_func = (v,v2) -> get_tF(sched,v) + distance_dict[(v,v2)]   # 끝나는 시�
 
 또한 기존 에너지 A/B 하니스 `tools/diagnostics.jl` 은 **로드조차 되지 않는다**(64번째 줄에서 실패,
 실행으로 확인). 재사용할 수 없다.
+
+### 2.4 greedy 의 비용 확장점이 배선되지 않았다
+
+`GreedyOrderedAssignment` 는 `greedy_cost` 필드를 갖고(`task_assignment.jl:275`),
+`abstract type GreedyCost` 아래 구체 타입 3개가 정의돼 있으며(`essential_tg_coponents.jl:1459-1461`),
+`full_demo.jl:600` 이 `GreedyFinalTimeCost()` 를 넘긴다. **그런데 그 값을 읽는 메서드가 하나도 없다.**
+
+실제 배정 비용은 `assign_collaborative_tasks!` 안의 클로저에 하드코딩돼 있다
+(`task_assignment.jl:46-51`):
+
+```julia
+cost_func = (v,v2) -> get_tF(sched,v) + distance_dict[(v,v2)]   # 끝나는 시각 + 이동시간
+```
+
+팀 비용은 슬롯 중 최댓값(가장 늦게 도착하는 로봇)이고, 그중 argmin 을 고른다. **순수 시간 지표이며
+에너지가 들어갈 자리가 없다.** 세 `GreedyCost` 타입은 아무것도 디스패치하지 않는 죽은 마커이고,
+어느 것을 넘겨도 동작이 같다. `update_greedy_cost_model!`(`essential_tg_coponents.jl:1543` 에서 호출)
+은 저장소 어디에도 정의가 없다 — 그 경로는 죽은 코드이거나 도달하면 던진다.
+
+따라서 greedy 에 에너지를 넣는 작업은 클로저를 해킹하는 것이 아니라 **설계돼 있었으나 배선되지
+않은 확장점을 살리는 것**이다(§6.2).
 
 ## 3. 목적함수 J
 
