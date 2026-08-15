@@ -4,6 +4,69 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
+### ✅ 2026-08-17 — 표집을 1-step deviation 으로 바꿨다 (현행 세대)
+
+**현행 세대 결과 = `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` + `artifacts_4pol/COMPARE.md`.**
+목적함수 세대는 안 갈렸다(`objective.json` 무변경). 코드 세대는 `c5c4fb63`+`28158a49`+`aff13715`+`3e492c21`.
+
+- **무엇이 세대를 갈랐나**: 한 rollout 이 `DEMO_FORCE_MACRO` 로 **판 전체**를 한 팔로 굴린 것에서,
+  `DS_DEVIATE_AT=k` + `DS_DEVIATE_ARM=<이름>` 으로 **k 번째 결정만** 갈아쓴 판으로 바뀌었다.
+  prefix 재현은 replay 로 한다 — 결정성 게이트 실측 PASS(`DS_DEVIATE_AT=999` 판이 순수 canonical
+  판과 종단 지표·`energy_J`·결정 열까지 동일). 그래서 `k=1` 고정 축소판은 쓰지 않았다.
+- **판정(계획 §3): #6 만 PASS, 나머지 다섯은 미달.** 그러나 **메커니즘은 작동했다.**
+
+  | # | 지표 | 08-16 | 이번 | 목표 |
+  |---|---|---|---|---|
+  | 1 | 표집 판 완주율 | 16.9% | **86.0%** | ≥90% |
+  | 2 | V 중앙값 | 4743.6 | **2483.7** | 20~200 |
+  | 3 | 단일팔 칸 | 27/49 | 23/48 | ≤5 |
+  | 4 | dp 표 조회 | 7.7% | **19.3%** | ≥50% |
+  | 5 | §8.7 gap | 89.3% | **83.5%** | ≤20% |
+  | 6 | 충실성 위반 | 0 | **0** | 0 |
+
+- **★ #3 은 수치가 아니라 분포를 봐야 한다: `1팔 23칸 / 7팔 25칸` 으로 완전 이봉이 됐다**
+  (구세대 `{1팔 27, 2팔 4, 5팔 2, 6팔 1, 7팔 15}`). **deviation 이 일어난 칸은 예외 없이 일곱
+  팔을 전부 본다.** 남은 단일팔 23칸은 **전부 꼬리로만 도달하는 칸**이라 비교 대상이 원리적으로
+  없다(그 한 팔은 `Replace 18 · ReformTeam 3 · NOOP 2` = canonical 이 고르는 매크로). 전이
+  가중으로는 단일팔이 15.7%. deviation 행 447개는 일곱 팔에 64·64·64·64·64·64·63 으로 고르게 섞였다.
+- **★ dp 레인의 `single_arm` 이 56.0% → 8.3% 로 무너졌다.** #4 가 50% 를 못 넘긴 것은 실패가
+  **`tie_unresolved` 로 옮겨갔기** 때문이다(36.3% → **72.4%**). **그 tie 는 참이다** — 한 칸이
+  일곱 팔을 다 보는데 그중 다수가 그 사건에서 실제로 no-op 이라 Q 가 진짜로 같다.
+  **다음 사이클 1순위 = tie-break 규칙**(예: 동점이면 `MACRO_COST` 최소).
+- **1-step deviation 의 구성상 한계**: 결정 `k` 가 떨어진 칸만 다팔 관측을 얻고, `k` 이후에만
+  도달하는 칸은 canonical 한 팔만 본다. `k` 는 `pick_k(case,seed)` 가 `n_hint=8` 안에서 흩뿌리고
+  (case,seed) 조합이 84개라 deviation 지점도 최대 84곳이다. **#3 을 더 내리려면 `pick_k` 분포를
+  바꿔야 하고 그건 재시뮬레이션이다**(`--n-hint` 를 CLI 인자로 노출해 뒀다).
+- **★ 배제는 꼬리에만 적용한다.** 발화한 판은 **전부** 자기 결정 `k` 행을 낸다 — 모든 판이 `k` 에서
+  자기 팔을 강제하므로 그 행은 그 팔로 라벨된 고유 관측이고 그 행을 내는 판은 하나뿐이다.
+  판을 통째로 배제하면 칸이 여러 팔을 보게 만드는 바로 그 관측이 사라진다(실측: 통째 배제 시
+  전이 2045·(칸,팔) 130 → 꼬리만 배제 시 **2258·198**). 중복은 꼬리뿐이다(무집행 후 세계가 안
+  바뀌어 NOOP 판 궤적을 되밟는다). 서로 다른 팔 라벨은 서로 다른 `(cell,arm)` 버킷에 들어가므로
+  `se = std/√n` 은 영향받지 않는다.
+- **★ `deviate_valid` 와 `enact_applied` 는 다른 것을 잰다 — 혼동하면 축이 통째로 샌다.**
+  `deviate_valid` 는 메뉴 소속인데 `valid_macros` 가 `BatteryTruth`·`ZoneTruth` 에만 리스트를 주고
+  **빈 배열 = 제한 없음**이 규약이라(`policy.jl:413`·`:460`) **fault·reform 에서는 언제나 true** 다.
+  진실원은 `enact_applied`(집행 사슬이 실제로 분기를 탔는가)이고, **플래그를 각 분기의 내부 실행
+  가드 안에서** 세워야 한다 — 분기 진입만으로 세우면 `ReformTruth`(필드 없는 struct)·`ZoneTruth`
+  에서 `Replace`/`SwapBattery`/`Deprioritize` 가 아무 일도 안 하고 true 를 보고한다.
+  ⚠️ `enact_applied=true` 는 "효과 지점에 도달했다" 이지 "세계가 바뀌었다" 가 아니다 —
+  `ForbidZone`/`RelocateBuild` 의 `already_clear`, `ReformTeam` 의 `:error`+`:no_wedge` 는
+  도달하고도 아무것도 안 바꾼다(**선행 결함**).
+- **엔진 크래시 91판(15.5%) → 1판.** 판당 한 번만 집행되므로 `has_edge` 어서션 도달이 준다.
+  ⚠️ **그러나 `ReformTeam` 축 완주율은 68.7% 로 최저**이고 이것이 #1·#2 미달의 실질적 원인이다
+  (Replace·SwapBattery 는 100%). **엔진 결함으로 별도 작업에 올릴 것.**
+- **비교표 4열**: dp 207 · canonical **207** · surrogate **198** · llm **203** — 세 실행 레인이
+  2026-08-16 과 동일하다(= 세계가 안 바뀌었다는 통제). 표는 원자료에서 28칸+4합계 재검증했다.
+  ⚠️ **DP 열은 전 case 에서 canonical 과 자릿수까지 같다** — 결정의 80.7% 가 canonical 폴백이라
+  실현 궤적이 같아진다. 그 열이 좋아 보이는 것은 DP 가 잘해서가 아니다.
+  **DP 열 부제를 "ceiling" 으로 되돌리지 않는다**(gap 83.5%).
+- ⚠️ **`objective.json` 이 2026-08-13 이후 커밋되지 않은 채 작업 트리에만 있다.** 작업 트리가
+  현행 세대 값이라 이번 산출물은 올바르게 도장됐지만, **이 커밋들을 깨끗이 체크아웃하면 결과를
+  git 만으로 재현할 수 없다.** `audit_objective.py` 의 `WARN(9-b)` 가 그것이다. 별도 커밋 필요.
+- ⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
+  로 돌린다(인터프리터는 `.venv` 유지). `dp_oracle/_sample_work/`(=`--keep-work` 산출, 2.4GB)는 gitignore.
+- 신규 계약: `tools/monitor/test_deviation.jl`(5+4+7) · `dp_oracle/test_deviation_plan.py`(28).
+
 ### 2026-08-13 — 목적함수 통일로 또 한 번 세대가 갈렸다
 
 `wm4spacecraft_manufacturing/objective.json` 이 목적함수 J 의 단일 진실원이고, `objective_hash()` =
@@ -130,9 +193,10 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
     각각 −17.2% · −8.8%). **순환이기 때문이다**: 그 둘은 `objective_hash` 의 입력이라 쓰는 순간
     방금 만든 630행이 구세대로 재분류된다. 적용하려면 **재교정 + 재스윕**을 한 묶음으로 결정할 것.
 
-### ✅ 2026-08-16 — 행동집합을 닫았다 (현행 세대)
+### 2026-08-16 — 행동집합을 닫았다 — **직전 세대**
 
-**현행 세대 결과 = `md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` + `artifacts_4pol/COMPARE.md`.**
+**직전 세대 결과 = `md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md`.** 이 절의 §4-B(표집 완주율이
+안 올랐다)가 2026-08-17 작업의 동기다 — **지우지 않는다.**
 목적함수 세대는 안 갈렸다(`objective.json` 무변경). 코드 세대는 `ff602d52`+`5dd29dae`.
 
 - **무엇이 세대를 갈랐나**: 행동 어휘의 소비처 셋이 서로 다른 집합을 보고 있었다. 이제 전부
