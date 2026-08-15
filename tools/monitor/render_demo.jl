@@ -687,6 +687,12 @@ function retrying_action(inner; at::Int, every::Int, max_tries::Int = 200, tag::
 end
 
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
+# ⚠️ `run_demo.jl:248` 과 달리 여기서는 `_reset_decision_counter!()` 를 부르지 않는다. 그래도
+# 안전한 이유는 **하나뿐이다**: 이 스크립트의 유일한 호출자인 `server.jl:117` 이 실행마다
+# `julia … render_demo.jl` **새 프로세스**를 띄우므로 `policy.jl:711` 의 `_DECISION_N[]` 이
+# 언제나 0 에서 시작한다. 이 파일을 같은 프로세스 안에서 두 번 굴리는 호출자가 생기면
+# `DS_DEVIATE_AT=k` 가 두 번째 판에서 어긋난다 — 그때는 여기에 리셋을 넣을 것.
+# (2026-08-17 최종 리뷰: 동작 변경 없음, 근거 기록만.)
 
 # producer(정책): 매 OOD 마다 **세 정책을 모두 계산·기록**하고, DEMO_POLICY 가 고른 매크로를
 # DSL 제안으로 바꿔 프레임워크 dispatcher 에 넘긴다(검증된 restage/translate 경로를 그대로 씀).

@@ -1,6 +1,6 @@
 # 4정책 x OOD case 비교표 -- FINAL (자동 생성)
 
-생성 시각: 2026-08-15T13:09:07-07:00
+생성 시각: 2026-08-15T13:57:35-07:00
 생성기: `build_final_table.py --results-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/results_4pol --out-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/artifacts_4pol`
 
 > **`oracle` 행은 이 스윕이 실행한 판이 아니다 -- 오프라인 라벨 격자에서 유도한 천장/원점(ceiling)이다.**

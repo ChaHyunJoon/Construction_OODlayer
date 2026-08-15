@@ -4,6 +4,12 @@
 
 무엇을 재는가 (이름을 정확히 붙인다)
 ====================================
+★ 이 머리말의 날짜 표기에 대하여 — **같은 날의 수정이 "2026-08-17" 과 "2026-08-15" 두 이름으로
+적혀 있다.** 오타가 아니라 이 레포의 규약이다: 결과 세대 번호(문서·계획서의 날짜)가 시스템
+시계보다 앞서 있어, 같은 작업일의 수정이 계획서 날짜(2026-08-17)로도 시스템 시각(2026-08-15)
+으로도 적힌다. 결과 문서 `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` 머리말이 같은 사실을
+적어 두었다. **두 날짜를 서로 다른 세대로 읽지 말 것** — 순서는 "n차 수정" 번호가 정한다.
+
 ★ 2026-08-17: 판 전체 고정(`DEMO_FORCE_MACRO`)에서 **1-step deviation** 으로 바꿨다.
 한 rollout 은 canonical 정책으로 굴러가되, `pick_k(case, seed)` 가 그 (case, seed) 에서
 결정론적으로 고른 **k 번째 결정 하나만** 지정한 팔로 갈아 집행한다(`DS_DEVIATE_AT=k` ·
@@ -74,10 +80,35 @@ complete=False` 였다 — "둘 다 canonical 과 바이트 동일" 이면 있�
 안 바뀌었으니 꼬리가 NOOP 팔 판(클래스 B) 또는 canonical(클래스 A)의 궤적을 그대로 되밟는다.
 
 **그래서 규칙을 이렇게 고쳐 적는다 — `deviation 행은 절대 중복이 아니다. 발화한 판은 전부 자기
-결정 k 행을 낸다. 중복 제거는 꼬리에만 적용한다.`** `se` 팽창 논증은 그대로 산다: 서로 다른 팔
-라벨은 서로 **다른 (cell, arm) 버킷**에 들어가므로 `_se = std/√n`(`dp_solve.py:242-247`)이 안
-흔들린다. 그리고 여러 팔이 그 자리에서 실제로 무동작이라 값이 같다면 그건 제조된 동점이 아니라
-**진짜 동점**이고, 그대로 기록하는 것이 정직한 결과다.
+결정 k 행을 낸다. 중복 제거는 꼬리에만 적용한다.`** 서로 다른 팔 라벨은 서로 **다른 (cell, arm)
+버킷**에 들어가므로 팔이 갈린 행끼리는 `_se = std/√n`(`dp_solve.py:88`, `_se()`)을 흔들지 않는다.
+
+⚠️ **그러나 "그러므로 `se` 팽창이 없다" 는 말은 틀렸다 — 아래 §꼬리 중복 잔여를 볼 것.**
+같은 팔 라벨을 단 중복 꼬리는 같은 버킷에 쌓이므로 `n` 을 부풀리고 `se` 를 줄인다.
+
+§꼬리 중복 잔여 — 이 dedup 은 새는다 (2026-08-17 최종 리뷰, **고치지 않고 이름 붙인다**)
+====================================================================================
+dedup 의 술어는 `enact_applied` 인데(`_deviation_class` 의 클래스 B), §5-E 가 적어 둔 대로
+그 플래그는 **"효과 지점에 도달했다"** 이지 **"세계가 바뀌었다"** 가 아니다. 분기를 타고도
+아무것도 안 바꾼 판(`ForbidZone`/`RelocateBuild` 의 `already_clear`, `ReformTeam` 의
+`:error`+`:no_wedge`)은 `"real"` 로 분류돼 **꼬리를 전부 낸다.**
+
+이번 세대 실측(`_sample_work/` 587판 + `samples.jsonl` 2258행, 재현 스크립트는 결과 문서 §5-G):
+
+  · `"real"` 로 분류된 판 **170**개 중 **107**개가 같은 (case,seed) 의 다른 발화 판과
+    **바이트 동일한 꼬리**를 낸다(deviation 전용 필드 제외 후 결정 열 비교).
+  · 꼬리 행 1521개 중, 같은 (case,seed) 안에서 `(cell, arm, c, next_cell, terminal_value)` 가
+    다른 판의 행과 **똑같은** 행이 **601행**(= 중복군 370개의 여분 사본 합). 중복을 만드는
+    팔 조합은 `(0,2)·(0,2,4)·(0,4)·(3,7)` — §5-E 가 "도달했지만 안 바꿨다" 로 지목한 바로 그
+    분기들이다.
+  · **현행 표에 대한 영향은 0칸이다.** 중복 꼬리를 합쳐서 `solve_backward_hierarchical` 을
+    다시 풀면 66칸 전부에서 `a_star`·`unresolved_reason` 이 그대로다(확정 19칸 유지). 그래서
+    **재표집은 필요 없다** — 술어를 넓히는 것은 표집 의미를 바꾸는 변경이라 별도 결정 사항이다.
+
+즉 남은 잔여는 **`n` 과 `se` 의 과신**이지 `a_star` 의 오류가 아니다. 그리고 여러 팔이 그
+자리에서 실제로 무동작이라 값이 같다면 그건 제조된 동점이 아니라 **진짜 동점**이고, 그대로
+기록하는 것이 정직한 결과다 — 다만 현행 표의 동점 대다수는 그것이 아니라 `n=1` 자동 동점이다
+(결과 문서 §3-D).
 
 2026-08-15 부터 `run_demo.jl` 이 **결정마다 (sim_t, 누적 energy, closed)** 를
 남기므로, 연속한 두 결정 사이의 구간 비용 `c_k` 와 다음 칸 `s̃′` 가 실제로 만들어진다. 그래서
@@ -217,6 +248,68 @@ def _default_id_by_name():
     return {reg.MACRO_NAME[i]: i for i in reg.ACTIVE_MACROS if reg.MACRO_NAME[i] in ENACTABLE_NAMES}
 
 
+# ---- §8.7 gap 의 원인 문장 — **표본이 스스로 말하게 한다** ---------------------------------
+# (2026-08-17 최종 리뷰 Critical 3)
+#
+# 무엇이 잘못이었나. 이 문장이 `build_compare_table.py` 와 `fill_results_doc.py` 에 **리터럴로**
+# 박혀 있었다. 그래서 원인 ①(표집 팔 메뉴에 실행 레인의 ReformTeam 이 없다)이 2026-08-16 에
+# 닫히고, 원인 ③(전이 표본이 상수-팔 rollout 에서만 나온다)이 **바로 이 표집기의 이번 세대로
+# 제거된** 뒤에도, 헤드라인 아티팩트(`artifacts_4pol/COMPARE.md`·`compare.html`)가 **자기가
+# 이미 없앤 전제를 계속 주장했다.** 손으로 적은 해석은 데이터가 바뀌어도 안 바뀐다.
+#
+# 그래서 문장을 데이터에서 유도한다. 판정 입력은 표본 행의 `sampling_mode` 다 —
+# `rows_to_samples` 가 행마다 찍고(`"one_step_deviation"`), 구세대 표본은 `"transition"` 이다.
+# 솔버 종류(`value.json` 의 `solver`)와는 **다른 축**이라 둘을 섞지 않는다.
+SAMPLING_MODE = "one_step_deviation"          # 이 표집기가 행에 찍는 값(단일 진실원)
+SAMPLING_MODE_CONSTANT_ARM = "transition"     # 구세대(판 전체 한 팔) 표본이 찍던 값
+
+
+def samples_sampling_mode(path=None):
+    """`samples.jsonl` 이 어느 표집 세대인가. 반환: 모드 문자열 · `"mixed:<...>"` · `None`.
+
+    세대가 섞여 있으면 **하나를 골라 주지 않는다** — 그 자체가 보고해야 할 사실이다
+    (Global Constraint 10). 파일이 없거나 필드가 없으면 None."""
+    path = path or os.path.join(HERE, "samples.jsonl")
+    modes = set()
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                m = json.loads(line).get("sampling_mode")
+                if m:
+                    modes.add(m)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not modes:
+        return None
+    if len(modes) > 1:
+        return "mixed:" + ",".join(sorted(modes))
+    return modes.pop()
+
+
+def gap_cause_note(sampling_mode):
+    """§8.7 gap 의 **아직 살아 있는** 원인 목록. 소비처 두 곳이 같은 문장을 쓰게 하는 진실원."""
+    if sampling_mode == SAMPLING_MODE:
+        return ("남은 원인은 **둘**이다 — ② φ̃ 추상화 손실 · ④ **deviation 칸 밖은 여전히 한 팔만 "
+                "본다**(결정 `k` 이전·이후에만 닿는 칸은 canonical 이 고른 팔 하나뿐이라 argmin 이 "
+                "없다). 처음 적었던 세 원인 중 ①(표집 팔 메뉴에 실행 레인이 쓰는 매크로가 없다)은 "
+                "2026-08-16 에 `arm_menu()` 가 `action_registry.json` 에서 7팔을 받으며 닫혔고, "
+                "③(전이 표본이 상수-팔 rollout 에서만 나온다)은 **이 표집 세대**"
+                "(`sampling_mode=one_step_deviation`)가 없앴다 — 그 둘을 아직 원인으로 적으면 "
+                "이 아티팩트가 자기가 이미 없앤 전제를 주장하는 것이 된다. 쪼갠 수치는 "
+                "`dp_oracle/gap_breakdown.py`, 해석은 "
+                "`md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` §3-E·§4.")
+    if sampling_mode == SAMPLING_MODE_CONSTANT_ARM:
+        return ("2026-08-15 실측에서 셋으로 갈렸다 — ① 표집 팔 메뉴에 실행 레인이 쓰는 매크로가 "
+                "없는 축(ReformTeam) · ② φ̃ 추상화 손실 · ③ 전이 표본이 여전히 상수-팔 rollout "
+                "에서만 나온다는 구조적 한계. 쪼갠 수치는 `dp_oracle/gap_breakdown.py`, 해석은 "
+                "`md/RESULTS_DP_BACKWARD_2026-08-15.md` §4-D.")
+    return ("표본의 `sampling_mode` 가 %r 라 원인 목록을 유도할 수 없다 — 원인 구성은 "
+            "`dp_oracle/gap_breakdown.py` 를 직접 볼 것." % (sampling_mode,))
+
+
 # ---- deviation 위치 배분 -----------------------------------------------------------------
 # 판마다 deviation 을 **하나만** 넣는다. 판 수를 늘리지 않기 위해서다(588판 = 현행과 동일 비용).
 # 그 대신 위치 k 를 (case, seed) 에서 흩뿌려 깊이를 덮고, **한 (case,seed) 안에서는 모든 팔이
@@ -268,6 +361,83 @@ def run_board(case, seed, arm_id, arm_name, outroot, world_seed=1, n_hint=DEFAUL
     if rc != 0 or not os.path.exists(rows) or os.path.getsize(rows) == 0:
         return None, k
     return rows, k
+
+
+# ---- 판별 매니페스트 (2026-08-17 최종 리뷰 Important 4) -----------------------------------
+# 왜 필요한가. 판정 #1(표집 판 완주율 505/587 = 86.0%)은 **판 단위** 지표인데, 그 근거가 오직
+# `_sample_work/*/rows.jsonl` 에만 있었고 그 디렉토리는 2.4GB 라 `.gitignore:73` 이 뺀다.
+# `samples.jsonl` 로는 복원되지 않는다 — 꼬리 중복 제거 때문에 587판 중 **467판만** 표본에
+# 나타나고(82.4%) 팔별 분포도 다르다. 즉 레포를 clone 한 사람은 헤드라인 판정을 **검증할 수
+# 없었다.** 그래서 판마다 한 줄짜리 요약을 `samples.jsonl` 옆에 같이 낸다(수백 KB).
+#
+# 표본을 만들지 않고 매니페스트만 다시 낼 수도 있다: `--manifest-only`. 보존된 판 원자료를
+# 다시 읽을 뿐이라 **재시뮬레이션이 아니다.**
+MANIFEST_FIELDS = ("board_id", "case", "seed", "arm_id", "arm_name", "complete",
+                   "n_decisions", "crashed", "deviate_at", "deviation_fired",
+                   "closed", "total", "objective_hash", "energy_objective")
+
+
+def write_board_manifest(out_path, workroot, jobs, n_hint=DEFAULT_N_HINT):
+    """판별 한 줄 매니페스트를 쓴다. 반환: (총 판 수, 완주 판 수).
+
+    `jobs` 가 기대 목록(진실원)이고, 그 밖에 workroot 에 남은 디렉토리는 **조용히 넘기지 않고**
+    이름과 수로 찍는다(Global Constraint 10). 판 원자료가 없거나 비어 있으면 `crashed=true` 로
+    적는다 — 엔진이 죽은 판을 "완주 안 함" 과 섞지 않기 위해서다."""
+    expected, recs = set(), []
+    for case, seed, arm_id, arm_name in jobs:
+        bid = "%s_s%d_a%d" % (case, seed, arm_id)
+        expected.add(bid)
+        p = os.path.join(workroot, bid, "rows.jsonl")
+        rec = dict.fromkeys(MANIFEST_FIELDS)
+        rec.update(board_id=bid, case=case, seed=seed, arm_id=arm_id, arm_name=arm_name,
+                   crashed=True, deviate_at=pick_k(case, seed, arm_id, n_hint),
+                   deviation_fired=False)
+        row = None
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            try:
+                row = json.loads(open(p).readline())
+            except (OSError, json.JSONDecodeError):
+                row = None
+        if row is not None:
+            ds = list(row.get("decisions") or [])
+            fired = _fired_decision(ds)
+            rec.update(crashed=False, complete=bool(row.get("complete")), n_decisions=len(ds),
+                       deviation_fired=fired is not None,
+                       closed=row.get("closed"), total=row.get("total"),
+                       objective_hash=row.get("objective_hash"),
+                       energy_objective=row.get("energy_objective"))
+            if fired is not None and fired.get("deviate_at") is not None:
+                rec["deviate_at"] = fired["deviate_at"]
+        recs.append(rec)
+
+    stray = sorted(d for d in (os.listdir(workroot) if os.path.isdir(workroot) else [])
+                   if d not in expected and os.path.isdir(os.path.join(workroot, d)))
+    if stray:
+        print("[매니페스트] ⚠️ 기대 목록 밖 작업 디렉토리 %d개 — 매니페스트에 넣지 않는다: %s%s"
+              % (len(stray), ", ".join(stray[:8]), " …" if len(stray) > 8 else ""))
+
+    with open(out_path, "w") as f:
+        for r in recs:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    # 판정 #1 의 분모는 **엔진이 실제로 판을 낸 수**다(크래시 판은 "완주 못 함" 이 아니라
+    # "굴러가지도 못함" 이라 별도 사건이다 — §5-B). 두 분모를 다 찍어 오독을 막는다.
+    n_crash = sum(1 for r in recs if r["crashed"])
+    n_ran = len(recs) - n_crash
+    n_ok = sum(1 for r in recs if r["complete"])
+    by_arm = collections.defaultdict(lambda: [0, 0])
+    for r in recs:
+        if r["crashed"]:
+            continue
+        by_arm[r["arm_name"]][1] += 1
+        if r["complete"]:
+            by_arm[r["arm_name"]][0] += 1
+    print("\n[매니페스트] 계획 %d판 · 엔진이 낸 판 %d · 완주 %d = **%.1f%%**(판정 #1 의 분모) · "
+          "크래시 %d  ->  %s"
+          % (len(recs), n_ran, n_ok, 100.0 * n_ok / max(n_ran, 1), n_crash, out_path))
+    for name, (ok, tot) in sorted(by_arm.items(), key=lambda t: (-t[1][0] / max(t[1][1], 1), t[0])):
+        print("[매니페스트]   %-14s %d/%d = %.1f%%" % (name, ok, tot, 100.0 * ok / max(tot, 1)))
+    return n_ran, n_ok
 
 
 def _terminal_energy(row):
@@ -798,7 +968,7 @@ def rows_to_samples(rows_path, case, seed, arm_id, arm_name, axes, k=None, is_ow
                 # 비교할 수 있어야 이번 작업이 무엇을 바꿨는지 말할 수 있다(계획 Task 7).
                 "cost": dec["J"], "unscorable": (None if dec["J"] is not None else dec["reason"]),
                 "c_prefix": dec["c_prefix"], "board_sum_c": dec["sum_c"],
-                "capped": False, "sampling_mode": "one_step_deviation",
+                "capped": False, "sampling_mode": SAMPLING_MODE,
                 # ---- 진단 전용(2026-08-17 리뷰). dp_solve.py 는 이 키들을 안 읽는다 ----------
                 "board_deviate_at": k, "is_owner": is_owner,
                 "decision_index": d.get("decision_index"),
@@ -906,6 +1076,9 @@ def main():
     ap.add_argument("--n-hint", type=int, default=DEFAULT_N_HINT,
                      help="pick_k 의 n_hint — deviation 미발화(R3) 제외율을 결정하는 유일한 "
                           "손잡이(기본 %d = 실측 결정 수 중앙값)" % DEFAULT_N_HINT)
+    ap.add_argument("--manifest-only", action="store_true",
+                     help="시뮬레이션을 돌리지 않고 보존된 --work 의 rows.jsonl 만 훑어 "
+                          "판별 매니페스트(boards.jsonl)를 다시 낸다. 표본 파일은 안 건드린다.")
     a = ap.parse_args()
 
     seeds = [int(x) for x in a.seeds.split(",") if x.strip()]
@@ -920,6 +1093,12 @@ def main():
           % (len(cases), len(seeds), len(arms), len(jobs), a.jobs, a.n_hint))
     print("팔 메뉴 (action_registry.json):", ", ".join("%d:%s" % x for x in arms))
     os.makedirs(a.work, exist_ok=True)
+
+    if a.manifest_only:
+        # 보존된 판 원자료만 다시 읽는다 — 시뮬레이션도, 표본 재생성도 하지 않는다.
+        write_board_manifest(os.path.join(os.path.dirname(a.out) or ".", "boards.jsonl"),
+                             a.work, jobs, n_hint=a.n_hint)
+        return
 
     t0 = time.time()
     done = {"n": 0, "fail": 0}
@@ -1048,8 +1227,12 @@ def main():
     # 정보성(클래스 판정에는 안 씀): deviate_valid==False 자체의 빈도 — 메뉴 멤버십과 실제
     # 집행이 어긋나는 사건(valid=True, applied=False)이 몇 개인지 로그로 답할 수 있게.
     if rep["boards_deviate_valid_false"]:
+        # "주로 zone 사건" 이라고 적어 뒀던 줄을 고쳤다(2026-08-17 최종 리뷰). 587판 실측 분포는
+        # ForbidZone 29 · ReformTeam 28 · Replace/SwapBattery/Deprioritize 각 16 · RelocateBuild 13
+        # 으로 **어느 축에도 쏠려 있지 않다** — zone 만의 현상이라고 읽으면 안 된다.
         print("\n[표집] deviate_valid=False 인 판(정보성, 배제 안 함) %d개 "
-              "(메뉴 밖 — 주로 zone 사건):" % rep["boards_deviate_valid_false"])
+              "(메뉴 밖 — 특정 축에 쏠리지 않는다. 아래 팔별 분포를 볼 것):"
+              % rep["boards_deviate_valid_false"])
         for name, n in sorted(rep["deviate_valid_false_by_arm"].items(), key=lambda t: -t[1]):
             print("[표집]   %-14s %d" % (name, n))
 
@@ -1069,9 +1252,35 @@ def main():
     if len(gens) > 1:
         sys.exit("표본에 세대가 %d 종 섞여 있다: %s" % (len(gens), gens))
 
+    # ---- §충실성 게이트 -------------------------------------------------------------------
+    # 배분 규칙을 지어내면 그 규칙이 곧 결과가 된다. 그래서 "지어내지 않았다"를 여기서 기계로
+    # 못박는다. 어긋난 판이 하나라도 있으면 뒤의 모든 숫자가 무효이므로 exit 1 이다.
+    #
+    # ★ 2026-08-17 최종 리뷰 — **게이트를 출력·정리 앞으로 옮겼다.** 예전에는 이 검사가
+    # `open(a.out,"w")` 와 `shutil.rmtree(a.work)` **뒤에** 있었다. 그래서 위반한 런이
+    #   (1) 직전의 **정상 `samples.jsonl` 을 덮어쓰고**,
+    #   (2) `--keep-work` 없이 돌았다면 위반을 진단할 **판 원자료까지 지운 뒤**
+    # exit 1 했다 — 게이트가 자기 증거를 파괴한 셈이다. 이제 위반이면 **아무것도 쓰지 않고
+    # 아무것도 지우지 않고** 멈춘다. 종료 코드와 메시지는 그대로다.
+    print("\n§분해 충실성: 판 %d 중 어긋남 %d · 최대잔차 %.3e (허용 %.0e) · 미상태화 결정 %d/%d"
+          % (rep["boards"], rep["boards_bad"], rep["max_resid"], FIDELITY_TOL,
+             rep["decisions_unstateable"], rep["decisions"]))
+    for k, v in sorted(rep["by_reason"].items()):
+        print("    %-24s %d" % (k, v))
+    for bid, why in rep["examples"]:
+        print("    예: %s -> %s" % (bid, why))
+
+    if rep["boards_bad"]:
+        print("[표집] 위반이므로 %s 를 쓰지 않고 작업 디렉토리(%s)도 지우지 않는다 — "
+              "직전 표본과 진단용 판 원자료를 보존한다." % (a.out, a.work))
+        sys.exit("분해 충실성 위반 %d판 — 그 뒤의 모든 숫자가 무효다(exit 1)." % rep["boards_bad"])
+
     with open(a.out, "w") as f:
         for r in samples:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    write_board_manifest(os.path.join(os.path.dirname(a.out) or ".", "boards.jsonl"),
+                         a.work, jobs, n_hint=a.n_hint)
 
     by_cell = collections.Counter(r["cell"] for r in samples)
     by_cell_arm = collections.Counter((r["cell"], r["arm"]) for r in samples)
@@ -1086,24 +1295,10 @@ def main():
           % (len(by_cell), grid["n_observed_cells"],
              100.0 * len(by_cell) / max(grid["n_observed_cells"], 1)))
 
-    # ---- §충실성 게이트 -------------------------------------------------------------------
-    # 배분 규칙을 지어내면 그 규칙이 곧 결과가 된다. 그래서 "지어내지 않았다"를 여기서 기계로
-    # 못박는다. 어긋난 판이 하나라도 있으면 뒤의 모든 숫자가 무효이므로 exit 1 이다.
-    print("\n§분해 충실성: 판 %d 중 어긋남 %d · 최대잔차 %.3e (허용 %.0e) · 미상태화 결정 %d/%d"
-          % (rep["boards"], rep["boards_bad"], rep["max_resid"], FIDELITY_TOL,
-             rep["decisions_unstateable"], rep["decisions"]))
-    for k, v in sorted(rep["by_reason"].items()):
-        print("    %-24s %d" % (k, v))
-    for bid, why in rep["examples"]:
-        print("    예: %s -> %s" % (bid, why))
-
     print("벽시계 %.1f분  ->  %s" % ((time.time() - t0) / 60, a.out))
 
     if not a.keep_work:
         shutil.rmtree(a.work, ignore_errors=True)
-
-    if rep["boards_bad"]:
-        sys.exit("분해 충실성 위반 %d판 — 그 뒤의 모든 숫자가 무효다(exit 1)." % rep["boards_bad"])
 
 
 if __name__ == "__main__":

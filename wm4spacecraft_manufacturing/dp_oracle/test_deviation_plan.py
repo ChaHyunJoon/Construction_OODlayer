@@ -688,3 +688,52 @@ def test_run_board_env_wires_deviation_not_force_macro(tmp_path, monkeypatch):
     assert env["DS_DEVIATE_AT"] == str(k), env.get("DS_DEVIATE_AT")
     assert env["DS_DEVIATE_ARM"] == "Replace", env.get("DS_DEVIATE_ARM")
     assert "DEMO_FORCE_MACRO" not in env, env.get("DEMO_FORCE_MACRO")
+
+
+# =====================================================================================
+# 2026-08-17 최종 리뷰 Important 3·4 — 게이트가 자기 증거를 파괴하지 않는다 + 판별 매니페스트
+# =====================================================================================
+
+def test_fidelity_gate_runs_before_output_and_cleanup():
+    """충실성 위반 시 exit 1 이 **표본 쓰기와 작업 디렉토리 삭제보다 먼저** 나야 한다.
+
+    왜 소스 순서를 보나: 이 불변식은 `main()` 안의 **문장 순서** 그 자체이고, 실제로 위반을
+    재현하려면 588판 표집을 굴려야 한다(51분·비가역). 예전 순서는 위반한 런이
+    (1) 직전의 정상 `samples.jsonl` 을 덮어쓰고 (2) `--keep-work` 없으면 진단용 판 원자료까지
+    지운 뒤에 죽는 것이었다 — 게이트가 자기 증거를 파괴했다. 순서가 되돌아가면 여기서 잡힌다."""
+    import inspect
+    src = inspect.getsource(SG.main)
+    # 주석 안에도 같은 표현이 있으므로(왜 옮겼는지를 적어 둔 자리) **실제 호출 형태**로 찾는다.
+    i_gate = src.index('sys.exit("분해 충실성 위반')
+    i_write = src.index('with open(a.out, "w") as f:')
+    i_rm = src.index("shutil.rmtree(a.work, ignore_errors=True)")
+    assert i_gate < i_write, "충실성 게이트가 samples.jsonl 쓰기보다 뒤에 있다"
+    assert i_gate < i_rm, "충실성 게이트가 작업 디렉토리 rmtree 보다 뒤에 있다"
+
+
+def test_board_manifest_records_every_board_including_crashes(tmp_path):
+    """`write_board_manifest` 는 판을 하나도 빠뜨리지 않고, 크래시 판을 완주 실패와 구분한다.
+
+    판정 #1(표집 판 완주율)의 유일한 레포 내 근거가 이 파일이다 — `_sample_work/` 는
+    gitignore 이고 `samples.jsonl` 로는 꼬리 중복 제거 때문에 판 목록이 복원되지 않는다."""
+    work = tmp_path / "work"
+    (work / "fault_s1_a1").mkdir(parents=True)
+    (work / "fault_s1_a1" / "rows.jsonl").write_text(json.dumps({
+        "complete": True, "closed": 10, "total": 10, "objective_hash": "x", "energy_objective": 1,
+        "decisions": [{"decision_index": 1, "deviate_at": 3}, {"decision_index": 2}],
+    }) + "\n")
+    (work / "fault_s1_a4").mkdir(parents=True)          # 디렉토리는 있는데 rows 가 없다 = 크래시
+
+    out = tmp_path / "boards.jsonl"
+    n_ran, n_ok = SG.write_board_manifest(
+        str(out), str(work), [("fault", 1, 1, "Replace"), ("fault", 1, 4, "ReformTeam")])
+
+    recs = {r["board_id"]: r for r in map(json.loads, open(out))}
+    assert set(recs) == {"fault_s1_a1", "fault_s1_a4"}, sorted(recs)
+    assert (n_ran, n_ok) == (1, 1), (n_ran, n_ok)       # 크래시 판은 #1 의 분모에서 빠진다
+    ok = recs["fault_s1_a1"]
+    assert ok["crashed"] is False and ok["complete"] is True
+    assert ok["n_decisions"] == 2 and ok["arm_name"] == "Replace"
+    assert ok["deviate_at"] == 3                        # 판이 실제로 발화한 k 를 쓴다
+    bad = recs["fault_s1_a4"]
+    assert bad["crashed"] is True and bad["complete"] is None

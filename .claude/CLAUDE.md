@@ -25,24 +25,60 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   | 6 | 충실성 위반 | 0 | **0** | 0 |
 
 - **★ #3 은 수치가 아니라 분포를 봐야 한다: `1팔 23칸 / 7팔 25칸` 으로 완전 이봉이 됐다**
-  (구세대 `{1팔 27, 2팔 4, 5팔 2, 6팔 1, 7팔 15}`). **deviation 이 일어난 칸은 예외 없이 일곱
-  팔을 전부 본다.** 남은 단일팔 23칸은 **전부 꼬리로만 도달하는 칸**이라 비교 대상이 원리적으로
-  없다(그 한 팔은 `Replace 18 · ReformTeam 3 · NOOP 2` = canonical 이 고르는 매크로). 전이
-  가중으로는 단일팔이 15.7%. deviation 행 447개는 일곱 팔에 64·64·64·64·64·64·63 으로 고르게 섞였다.
+  (구세대 `{1팔 27, 2팔 4, 5팔 2, 6팔 1, 7팔 15}`). **그 이봉은 한 술어로 예외 없이 갈린다** —
+  "그 칸에 `decision_index == board_deviate_at` 행이 있는가" 로 나누면 `{(7팔, deviation 칸): 25,
+  (1팔, 비-deviation 칸): 23}` 이고, 7팔 칸 중 **일곱 팔이 deviation 행으로 안 덮인 칸은 0개**다.
+  남은 단일팔 23칸은 **deviation 결정 밖(prefix 또는 꼬리)에서만 도달하는 칸**이다 —
+  ~~전부 꼬리~~ 가 아니라 **꼬리만 11 · prefix+꼬리 8 · prefix만 4**(355행: `>` 297 · `<` 58 ·
+  `==` 0). 결론(구조적 미달)은 그대로지만 근거 문장이 틀렸었다. 그 한 팔은
+  `Replace 18 · ReformTeam 3 · NOOP 2` = canonical 이 고르는 매크로. 전이 가중으로는 15.7%.
+  ⚠️ **"deviation 행 447개가 64·64·64·64·64·64·63 으로 고르게 흩어졌다 = 설계가 작동했다"는
+  항진명제다** — `pick_k` 가 `arm_id` 를 안 쓰므로 발화는 `(case,seed)` 마다 전부/전무이고
+  발화 판은 정확히 한 개의 `k` 행을 낸다. `64 = 84 − 20`(미발화 그룹)으로 셈이 이미 정해져
+  있다. 정보를 나르는 숫자는 `63`(ReformTeam 크래시 1판) 하나뿐이다.
 - **★ dp 레인의 `single_arm` 이 56.0% → 8.3% 로 무너졌다.** #4 가 50% 를 못 넘긴 것은 실패가
-  **`tie_unresolved` 로 옮겨갔기** 때문이다(36.3% → **72.4%**). **그 tie 는 참이다** — 한 칸이
-  일곱 팔을 다 보는데 그중 다수가 그 사건에서 실제로 no-op 이라 Q 가 진짜로 같다.
-  **다음 사이클 1순위 = tie-break 규칙**(예: 동점이면 `MACRO_COST` 최소).
-- **1-step deviation 의 구성상 한계**: 결정 `k` 가 떨어진 칸만 다팔 관측을 얻고, `k` 이후에만
-  도달하는 칸은 canonical 한 팔만 본다. `k` 는 `pick_k(case,seed)` 가 `n_hint=8` 안에서 흩뿌리고
+  **`tie_unresolved` 로 옮겨갔기** 때문이다(36.3% → **72.4%**).
+  ⚠️ **~~그 tie 는 참이다~~ — 아니다. 대다수가 `n=1` 자동 동점이다.** tie 칸 24개의 비-최선 동점
+  슬롯 122개를 분류하면 **정확히 같은 `Q` 10 · 유한 `se` 안에서 가까움 58 · `n<2` 라 `se=inf`
+  로 무조건 동점 54**(최대 격차 **11259**: `q=13185.3` vs 최선 `1926.1`). 메커니즘은
+  `dp_solve.py:88-93` 의 `_se()` 가 `n<2` 에서 `inf` 를 돌려주고 `dp_solve.py:246` 이
+  `not isfinite(se_d)` 로 단락하는 것 — **표본 하나뿐인 팔은 Q 와 무관하게 무조건 동점**이다.
+  1-step deviation 에서는 deviation 칸의 거의 모든 팔이 `n=1` 이라 **동점이 구성상 제조된다**.
+  자동 동점을 빼면 24칸 중 **9칸이 확정**된다. 원자료로도 같다: deviation 그룹 64개 중 일곱 팔이
+  `c`·`next_cell` 을 모두 공유하는 **진짜 동점 그룹은 9개(≈14%)** 뿐이다.
+  **그래서 다음 사이클 1순위는 ~~tie-break 규칙~~ 이 아니다** — `MACRO_COST` 로 가르면 자릿수가
+  넷 다른 `Q` 를 매크로 비용으로 중재하게 된다. 실제 지렛대는 **(칸,팔)당 표본 깊이**(같은
+  `(case,seed)` 를 여러 `k` 로) 또는 **`n=1` 에 유한 `se` 를 주는 정책**이다.
+  (이번 사이클에서 `dp_solve.py` 는 **고치지 않았다** — 메커니즘 명명이 산출물이다.)
+- 🔴 **★ #4 의 7.7% → 19.3% 를 진전으로만 읽으면 안 된다 — 표의 행동 다양성이 매크로 하나로
+  붕괴했다.** 새 표의 **확정 19칸이 전부 `Replace`**(구세대 17칸은 `SwapBattery 11 ·
+  ReformTeam 3 · Replace 3`). 조회 성공 **291건도 전부 `Replace`** 이고 그 291건에서 canonical
+  규칙의 선택도 전부 `Replace`(불일치 0). 귀결: **dp 판 210개가 canonical 210개와 완전히
+  동일**하다(makespan·closed·complete·매크로 열). 대가는 이 브랜치 diff 안에 있다 —
+  `artifacts_4pol/FINAL.md` 의 dp battery 매크로 정확도 **9% (11/120) → 0% (0/120)**,
+  `SwapBattery×11 → 0`. 즉 **조회율을 행동 다양성으로 샀다.** 상세·재현: 결과 문서 §3-D.
+- **1-step deviation 의 구성상 한계**: 결정 `k` 가 떨어진 칸만 다팔 관측을 얻고, `k` 밖(prefix ·
+  꼬리)에만 도달하는 칸은 한 팔만 본다. `k` 는 `pick_k(case,seed)` 가 `n_hint=8` 안에서 흩뿌리고
   (case,seed) 조합이 84개라 deviation 지점도 최대 84곳이다. **#3 을 더 내리려면 `pick_k` 분포를
-  바꿔야 하고 그건 재시뮬레이션이다**(`--n-hint` 를 CLI 인자로 노출해 뒀다).
+  바꿔야 하고 그건 재시뮬레이션이다.**
+  ⚠️ **`--n-hint` 를 키우는 것은 방향이 반대다**(실측): 판의 결정 수 중앙값이 **9** 인데
+  `n_hint=8` 에서 평균 `k` 가 이미 **4.7** 이고 84그룹 중 **20그룹이 미발화**다. 키우면 미발화가
+  늘고 prefix-only 단일팔 영역이 커진다. 옳은 방향은 **같은 `(case,seed)` 를 서로 다른 `k` 로
+  여러 번 굴려 표본 수를 늘리는 것** — 그게 `n=1` 자동 동점(위)도 같이 없앤다.
 - **★ 배제는 꼬리에만 적용한다.** 발화한 판은 **전부** 자기 결정 `k` 행을 낸다 — 모든 판이 `k` 에서
   자기 팔을 강제하므로 그 행은 그 팔로 라벨된 고유 관측이고 그 행을 내는 판은 하나뿐이다.
   판을 통째로 배제하면 칸이 여러 팔을 보게 만드는 바로 그 관측이 사라진다(실측: 통째 배제 시
   전이 2045·(칸,팔) 130 → 꼬리만 배제 시 **2258·198**). 중복은 꼬리뿐이다(무집행 후 세계가 안
   바뀌어 NOOP 판 궤적을 되밟는다). 서로 다른 팔 라벨은 서로 다른 `(cell,arm)` 버킷에 들어가므로
-  `se = std/√n` 은 영향받지 않는다.
+  **팔이 갈린 행끼리는** `se = std/√n` 이 안 흔들린다.
+  ⚠️ **그러나 "그러므로 `se` 팽창이 없다" 는 틀렸다 — 그 dedup 은 샌다.** 술어가 `enact_applied`
+  인데 그건 "세계가 바뀌었다" 가 아니라 "효과 지점에 도달했다" 라, 분기를 타고 아무것도 안 바꾼
+  판이 `"real"` 로 분류돼 꼬리를 전부 낸다. 실측: `"real"` 170판 중 **107판**이 다른 발화 판과
+  바이트 동일한 꼬리를 내고, 꼬리 1521행 중 **601행**이 같은 `(case,seed)` 의 다른 판과
+  `(cell,arm,c,next_cell,terminal_value)` 가 같은 여분 사본이다(중복군 370, 팔 조합
+  `(0,2)·(0,2,4)·(0,4)·(3,7)`). **현행 표에 대한 영향은 0칸**(중복을 합쳐 다시 풀면 66칸 전부
+  `a_star`·`unresolved_reason` 동일) 이라 재표집은 필요 없다 — 잔여는 `n`·`se` 의 과신이다.
+  술어는 **넓히지 않았다**(표집 의미가 바뀐다). 상세: 결과 문서 §5-G · `sample_grid.py` 머리말.
 - **★ `deviate_valid` 와 `enact_applied` 는 다른 것을 잰다 — 혼동하면 축이 통째로 샌다.**
   `deviate_valid` 는 메뉴 소속인데 `valid_macros` 가 `BatteryTruth`·`ZoneTruth` 에만 리스트를 주고
   **빈 배열 = 제한 없음**이 규약이라(`policy.jl:413`·`:460`) **fault·reform 에서는 언제나 true** 다.
@@ -57,15 +93,40 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   (Replace·SwapBattery 는 100%). **엔진 결함으로 별도 작업에 올릴 것.**
 - **비교표 4열**: dp 207 · canonical **207** · surrogate **198** · llm **203** — 세 실행 레인이
   2026-08-16 과 동일하다(= 세계가 안 바뀌었다는 통제). 표는 원자료에서 28칸+4합계 재검증했다.
-  ⚠️ **DP 열은 전 case 에서 canonical 과 자릿수까지 같다** — 결정의 80.7% 가 canonical 폴백이라
-  실현 궤적이 같아진다. 그 열이 좋아 보이는 것은 DP 가 잘해서가 아니다.
+  ⚠️ **DP 열은 canonical 과 "자릿수까지 같은" 정도가 아니라 판이 같다** — 210/210 조합에서
+  makespan·closed·complete·매크로 열까지 동일. 흔히 적히는 "결정의 80.7% 가 canonical 폴백이라"
+  는 **절반만 맞다**: 나머지 19.3%(조회 성공 291건)도 canonical 과 같은 매크로를 골랐다.
   **DP 열 부제를 "ceiling" 으로 되돌리지 않는다**(gap 83.5%).
+- **★ 결정성 게이트의 강한 판은 n=1 이 아니라 n=84 다.** 발행된 게이트는 한 case/seed·결정
+  5개짜리인데, 보존된 587판을 `(case,seed)` 로 묶으면 **84그룹 전부에서 일곱 개의 독립
+  프로세스가 pre-`k` 결정 열을 바이트 동일하게 냈다(갈린 그룹 0).** 이 브랜치에서 가장 강한
+  단일 결과다 — 재현 스크립트는 결과 문서 §5-A.
 - ⚠️ **`objective.json` 이 2026-08-13 이후 커밋되지 않은 채 작업 트리에만 있다.** 작업 트리가
-  현행 세대 값이라 이번 산출물은 올바르게 도장됐지만, **이 커밋들을 깨끗이 체크아웃하면 결과를
-  git 만으로 재현할 수 없다.** `audit_objective.py` 의 `WARN(9-b)` 가 그것이다. 별도 커밋 필요.
+  현행 세대 값이라 이번 산출물은 올바르게 도장됐지만, 🔴 **깨끗이 체크아웃하면 결과가 "덜
+  정확하게 재현" 되는 것이 아니라 재현 절차가 그냥 실패한다** — `dp_solve.py:499-504` 의
+  `main()` 이 `sys.exit("표본의 objective_hash 가 현행과 다르다(구세대 표본)…")` 로 **하드
+  스톱**(rc 1)해 결과 문서 §6 의 3단계에서 죽는다. `audit_objective.py` 의 `WARN(9-b)` 가 그
+  전조다. **별도 커밋 필요**(컨트롤러 결정 사항).
 - ⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
   로 돌린다(인터프리터는 `.venv` 유지). `dp_oracle/_sample_work/`(=`--keep-work` 산출, 2.4GB)는 gitignore.
-- 신규 계약: `tools/monitor/test_deviation.jl`(5+4+7) · `dp_oracle/test_deviation_plan.py`(28).
+  ⚠️ **pytest 로는 `test_deviation_plan.py` 만 잡힌다(30건).** `test_cost_decomposition.py` ·
+  `test_dp_solve.py` · `test_cellkey_parity.py` 는 `def test_*` 가 없고 모듈 수준 `check()` +
+  `sys.exit(1)` 로 게이팅하므로 pytest 에서 **0건**(`no tests ran`, rc 5)이다 —
+  **인터프리터로 직접 실행할 것.** 두 파일을 pytest 한 줄에 묶어 `# 28 passed` 를 달면 충실성
+  게이트가 돈 것처럼 보이지만 안 돈다.
+- **★ 판 단위 완주 기록은 `dp_oracle/boards.jsonl`**(판당 한 줄, 168KB, 커밋됨). `_sample_work/`
+  가 gitignore 라 판정 #1(86.0%)이 레포에서 검증 불가였고, `samples.jsonl` 로는 587판 중 467판만
+  복원된다(82.4%, 팔별 분포도 다르다). 재시뮬레이션 없이 다시 내려면
+  `sample_grid.py --manifest-only`.
+- **★ 충실성 게이트는 출력 앞에서 친다.** 예전에는 `samples.jsonl` 쓰기와 `rmtree(work)` **뒤에**
+  `sys.exit` 해서, 위반한 런이 **직전의 정상 표본을 덮어쓰고 진단용 판까지 지운 뒤** 죽었다.
+  이제 위반이면 아무것도 쓰지 않고 아무것도 지우지 않는다(종료 코드·메시지 동일).
+- **★ §8.7 gap 의 원인 문장을 하드코딩하지 않는다.** `sample_grid.gap_cause_note()` 가
+  `samples.jsonl` 의 `sampling_mode`(`one_step_deviation` | `transition`)에서 유도하고
+  `build_compare_table.py`·`fill_results_doc.py` 가 그것을 쓴다. 리터럴이었을 때 원인 ①(팔 메뉴)
+  이 08-16 에 닫히고 ③(상수-팔 rollout)이 이 브랜치로 제거된 뒤에도 **헤드라인 아티팩트가 자기가
+  없앤 전제를 계속 주장했다.** 지금 살아 있는 원인은 ② φ̃ 추상화 손실 · ④ deviation 칸 밖 단일팔.
+- 신규 계약: `tools/monitor/test_deviation.jl`(5+4+7) · `dp_oracle/test_deviation_plan.py`(30 — 충실성 게이트 순서·판별 매니페스트 2건 추가).
 
 ### 2026-08-13 — 목적함수 통일로 또 한 번 세대가 갈렸다
 
@@ -159,7 +220,11 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   1차 스윕은 210 샤드 ok 210/fail 0, 60분, 630행 전부 `energy_J > 0` 이었다.
   구세대 샤드는 `results_4pol_gen_energyactivation/`(1차) · `results_4pol_oldgen_2026-08-13/`(그 이전).
 
-- **✅ 현행 세대 = 단계 6 2차 스윕 (2026-08-13 22:43).** 결과 문서는
+- **단계 6 2차 스윕 (2026-08-13 22:43) — 그 날의 현행 세대였다. 지금은 아니다.**
+  (2026-08-17 정정: 이 파일에 "현행 세대" 표식이 **둘** 있었다. 현행은 맨 위 2026-08-17 절이고,
+  이 절은 그 날짜 시점의 기록이다. 목적함수 세대는 여전히 같지만 코드 세대·결과 문서는 갈렸다 —
+  아래 내용은 지우지 않는다. 배터리 물리·전역 κ 논증이 그 뒤 세대들의 전제이기 때문이다.)
+  결과 문서는
   **`md/RESULTS_STAGE6_BATTERY_PHYSICS_2026-08-13.md`**. 210 샤드 **ok 210/fail 0**, 62분,
   630행 전부 해시 단일 + `battery_physics` 설정 단일. **정지 105행/126회.** 완주 388행 전부
   `energy_J > 0`.
@@ -288,7 +353,8 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ### 2026-08-14 — 4정책 비교표가 나왔다 (라우터 3-way · DP 레인 · 화면의 목적함수) — **직전 세대**
 
-**현행 세대 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md` + `artifacts_4pol/COMPARE.md`.**
+**그 날의 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md`.** (2026-08-17 정정: 여기도 "현행 세대"
+라고 적혀 있었다 — 절 제목이 이미 **직전 세대**라 자기모순이었다. 현행은 맨 위 2026-08-17 절.)
 7 case x 30 seed x **4 policy = 840판**, 샤드 420/420 ok·fail 0, 세대 단일. 정책은
 `canonical` · `surrogate` · `dspy` · **`dp`**(신규). 완주 합계 207 / 190 / 198 / 206 (/210).
 

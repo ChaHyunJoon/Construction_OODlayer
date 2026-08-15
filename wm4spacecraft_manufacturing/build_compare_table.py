@@ -234,6 +234,10 @@ def main():
         sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
         from derive_grid import cell_key as _ck, state_of as _so
         from sample_grid import decompose_board as _dec
+        # gap 의 **원인 문장**은 손으로 적지 않는다 — 표본의 `sampling_mode` 에서 유도한다.
+        # (2026-08-17 최종 리뷰 Critical 3: 하드코딩된 원인 ①·③ 이 이미 닫힌 뒤에도 헤드라인
+        #  아티팩트가 자기 전제를 계속 주장했다. 진실원은 `sample_grid.gap_cause_note`.)
+        from sample_grid import gap_cause_note as _gcn, samples_sampling_mode as _ssm
         _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
         _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
         _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
@@ -287,16 +291,14 @@ def main():
                 if _st.mean(_Js) < _V[_k] - 1e-9:
                     _w += 1
         _unit = ("그 칸부터의 **실현 cost-to-go**" if _backward else "판 전체의 평균 J")
+        _mode = _ssm(os.path.join(HERE, "dp_oracle", "samples.jsonl"))
         if _t:
-            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s).** "
+            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s; "
+                        "표집 모드 = `%s`).** "
                         "실행 정책이 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s%s"
-                        % (_t, _unit, _w, 100.0 * _w / _t,
+                        % (_t, _unit, _mode, _w, 100.0 * _w / _t,
                            ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** "
-                            + ("원인은 상수-팔이 아니다(V 는 진짜 backward induction 이다). 2026-08-15 "
-                               "실측에서 셋으로 갈렸다 — ① 표집 팔 메뉴에 실행 레인이 쓰는 매크로가 "
-                               "없는 축(ReformTeam) · ② φ̃ 추상화 손실 · ③ 전이 표본이 여전히 상수-팔 "
-                               "rollout 에서만 나온다는 구조적 한계. 쪼갠 수치는 "
-                               "`dp_oracle/gap_breakdown.py`, 해석은 `md/RESULTS_DP_BACKWARD_2026-08-15.md` §4-D."
+                            + ("원인은 상수-팔이 아니다(V 는 진짜 backward induction 이다). " + _gcn(_mode)
                                if _backward else
                                "V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 "
                                "없어 그 정책군이 실행 레인보다 약하기 때문이다.")

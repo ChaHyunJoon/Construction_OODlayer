@@ -145,6 +145,8 @@ def holes_section():
         gspec = json.load(open(gp))
         from derive_grid import cell_key, state_of  # noqa
         from sample_grid import decompose_board     # noqa
+        # 원인 문장은 표본에서 유도한다(2026-08-17 최종 리뷰 Critical 3) — 아래 참조.
+        from sample_grid import gap_cause_note, samples_sampling_mode   # noqa
         import objective
         per = collections.defaultdict(lambda: collections.defaultdict(list))
         skipped = collections.Counter()
@@ -199,13 +201,14 @@ def holes_section():
                         worse, 100.0 * worse / tot,
                         "" if not skipped else "  (분해 불가로 제외한 행: %s)" % dict(skipped)))
             if worse and backward:
+                # ★ 2026-08-17 최종 리뷰 Critical 3 — 원인 목록을 **하드코딩하지 않는다.**
+                # 예전에는 여기 세 원인이 리터럴로 박혀 있었는데, ① 은 2026-08-16 에 닫혔고
+                # ③ 은 이 브랜치의 1-step deviation 표집이 없앴다. 그래서 발행된 문서가 자기가
+                # 이미 제거한 전제를 계속 주장했다. 이제 표본의 `sampling_mode` 에서 유도한다.
+                mode = samples_sampling_mode(os.path.join(DPD, "samples.jsonl"))
                 L.append("   > 0 이 아니므로 **DP 열을 '천장' 이라고 부르지 않는다.** 원인이 "
                          "상수-팔은 **아니다** — V 는 진짜 backward induction 에서 나온다. "
-                         "그러나 남는 원인이 φ̃ 추상화 손실 **하나가 아니다**: 2026-08-15 실측에서 "
-                         "셋으로 갈렸다 — ① 표집 팔 메뉴에 실행 레인이 쓰는 매크로가 없는 축"
-                         "(ReformTeam) · ② φ̃ 추상화 손실 · ③ 전이 표본이 여전히 상수-팔 rollout "
-                         "에서만 나온다는 구조적 한계. 쪼갠 수치는 `dp_oracle/gap_breakdown.py` 가 "
-                         "내고, 해석은 결과 문서 §4-D 에 있다.")
+                         "표집 모드 `%s` 기준으로 %s" % (mode, gap_cause_note(mode)))
                 L.append("   > **구분할 것**: dp *레인*은 칸마다 a\\* 를 갈아 쓰므로 표의 dp 열 "
                          "**실현 결과는 유효한 실행 결과**이고, 천장이 아닌 것은 V 다.")
             elif worse:
