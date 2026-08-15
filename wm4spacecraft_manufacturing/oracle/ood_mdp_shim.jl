@@ -26,6 +26,11 @@
 # Replace == ReplaceAgent (gen:474-481; hot-swap is a separate ENACTMENT toggle).
 # =============================================================================
 
+# 행동 어휘의 단일 진실원(action_registry.json)을 Julia 쪽에서 파생으로 받는다 (2026-08-16).
+# 아래 `valid_actions` 가 이 표를 읽는다 — 그 전에는 kind 별 legal 집합이 이 파일에 리터럴로
+# 박혀 있었고, 그게 `ReformTeam(4)` 이 fault 사건에서 라벨될 수 없었던 직접 원인이다.
+include(joinpath(@__DIR__, "action_registry.jl"))
+
 # ---- event_context: (type, agent, zone, assembly, soc, after) from the fired OOD --------
 # ev is only the natural-language string (replan.jl seam). The structured event lives in the
 # OOD truth log, which every injector auto-records at fire time. Match the LAST entry whose
@@ -201,20 +206,48 @@ function _zone_arms_for(ctx)
     return arms
 end
 
+# ---- 레지스트리 파생으로 전환 (2026-08-16) ---------------------------------------------
+# 무엇이 바뀌었나. 위 두 절(2026-08-03 / 08-05)이 고친 것은 **zone 축**이었고, fault·battery 는
+# 삭제 이전 덤프에서 베낀 리터럴 그대로였다: fault -> [0,1]. 그런데 이 집합은 `valid_actions` 를
+# 지나는 **문지기**이기도 하다(`action_to_proposal`: `a in valid_actions(ctx) || return nothing`).
+# 그래서 fault 사건에 매크로 2·4 를 요청하면 조용히 NOOP 팔로 무너졌고, `ReformTeam(4)` 은
+# **라벨 격자에 오를 수가 없었다** — 2026-08-15 실측에서 실행 레인은 같은 사건에 ReformTeam 을
+# 1182회 집행하는데 배포 라벨셋의 support 는 {0,1,2,7,8} 이었던 이유가 이것이다.
+# 이제 kind 별 상한을 `action_registry.json` 에서 받는다(Global Constraint 4). 상태를 아는
+# 쪽이 더 **좁히는** 것은 그대로다 — zone 은 결정 시점 기하로, battery 는 아래 SoC 분할로.
+#
+# 하위호환. `DS_ARMS_LEGACY=1` 이면 2026-08-15 이전의 고정 집합으로 되돌아간다(옛 덤프 재현용).
+_legacy_arms() = get(ENV, "DS_ARMS_LEGACY", "0") == "1"
+
 function valid_actions(ctx)
     if ctx.type === :fault
-        return [0, 1]
+        _legacy_arms() && return [0, 1]
+        # {0,1,2,4} (+ DS_COMBO_ARMS=1 이면 5,6). 4 = ReformTeam 이 여기 들어오는 것이
+        # 2026-08-16 계획의 1차 목표다 — 실행 레인이 이 사건에서 실제로 쓰는 팔이다.
+        return ActionRegistry.kind_valid(:fault)
     elseif ctx.type === :battery
+        _legacy_arms() && begin
+            thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+            return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 8] : [0, 2, 8]
+        end
+        # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 {0,1,2,8} 의 부분집합).
+        #   8 = SwapBattery 는 심각도와 무관하게 항상 실행 가능하다 — 방전은 배터리를 갈면 풀리기
+        #   때문. 양쪽 칸에 모두 넣어야 "얼마나 방전됐는가"가 팔을 고르는 축이 된다: deep 은
+        #   {아무것도 안 함, 본체교체, 배터리교체}, mild 는 {아무것도, 회피, 배터리교체}.
+        #   fault 에는 일부러 안 넣는다 — 구동계가 망가진 로봇은 배터리를 갈아도 안 움직인다.
+        # DS_BATTERY_SOC_SPLIT=0 이면 분할을 끄고 상한 {0,1,2,8} 을 통째로 제시한다. 그러면
+        # "깊은 방전에서도 Deprioritize 가 이기는가" 를 라벨이 직접 답한다(팔 3 -> 4).
+        up = ActionRegistry.kind_valid(:battery)
+        get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1" || return up
         thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
-        # 8 = SwapBattery 는 심각도와 무관하게 battery 사건에서 항상 실행 가능하다 — 방전은 배터리를
-        # 갈면 풀리기 때문. 이걸 양쪽 칸(deep/mild)에 모두 넣어야 "얼마나 방전됐는가"가 팔을 고르는
-        # 축이 된다: deep 은 {아무것도 안 함, 본체교체, 배터리교체}, mild 는 {아무것도, 회피, 배터리교체}.
-        # fault 에는 일부러 안 넣는다 — 구동계가 망가진 로봇은 배터리를 갈아도 안 움직인다.
-        return (isfinite(ctx.soc) && ctx.soc <= thr) ? [0, 1, 8] : [0, 2, 8]
+        keep = (isfinite(ctx.soc) && ctx.soc <= thr) ? (0, 1, 8) : (0, 2, 8)
+        return [a for a in up if a in keep]
     elseif ctx.type === :zone
+        # 결정 시점 기하로 좁힌 집합(_zone_arms_for). 레지스트리 상한 {0,3,7} 의 부분집합이다.
         return _zone_arms_for(ctx)
     elseif ctx.type === :reform
-        return [0, 4]
+        _legacy_arms() && return [0, 4]
+        return ActionRegistry.kind_valid(:reform)          # {0,4}
     end
     return [0]
 end

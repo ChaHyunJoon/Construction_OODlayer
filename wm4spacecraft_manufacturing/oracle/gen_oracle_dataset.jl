@@ -111,9 +111,13 @@ const KINDS  = [Symbol(s) for s in split(get(ENV, "DS_KINDS", "fault,zone,batter
 const SPARES = [parse(Int, s) for s in split(get(ENV, "DS_SPARES", "3"), ",")]   # n_spare_per_pool levels (fault only varies this)
 const NOPROG = parse(Int, get(ENV, "DS_NOPROG", "8000"))     # no-progress cap: lower = faster data-gen, coarser stall labels
 const SMOKE  = get(ENV, "DS_SMOKE", "0") == "1"              # smoke=참이면 딱 1개 instance만 돌려 빠르게 점검
-const MACROS = [0, 1, 2, 3, 4, 8]                             # NOOP, Replace, Deprioritize, ForbidZone, ReformTeam, SwapBattery
+# 라벨링할 매크로 메뉴 = 레지스트리의 **활성 팔**(action_registry.json, Global Constraint 4).
+# 2026-08-16 이전에는 `[0,1,2,3,4,8]` 리터럴이었고, 거기 **7(RelocateBuild)이 빠져 있었다** —
+# zone 의 정식 개입 팔인데 기본 메뉴에 없어서 DS_MACROS 로 따로 넣어 준 격자에서만 라벨됐다.
+# 실험 팔(5·6)은 `is_active()` 가 DS_COMBO_ARMS 로 건다.
 # 8 = SwapBattery(현장 배터리 교체). battery 사건에서만 valid 이므로 다른 kind 에서는 valid_actions 가
 # 걸러 NOOP 팔로 무너진다(action_to_proposal). VALID_ONLY 모드에서는 valid_mask 가 알아서 고른다.
+const MACROS = ActionRegistry.active_ids()
 const ACTION_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam",
     # 조합 팔(ood_mdp_shim.jl 의 COMBO_IDS). DS_COMBO_ARMS=1 일 때만 요청될 수 있다.
     # 이 항목이 없으면 시뮬은 정상인데 **행을 쓰는 순간** KeyError 로 죽는다(2026-08-02 실측).
@@ -161,7 +165,10 @@ _fire_fault() = (pts = get(ENV, "DS_FIRE_FAULT", ""); isempty(pts) ? (12,20,30,4
 const FIRE_POINTS = Dict(:fault => _fire_fault(), :zone => (12,20,30),
                          :battery => (12,20,30), :zoneblk => (8,14,20,28),
                          :faultidle => (12,20,30,45,60), :zoneharm => (8,14,20,28),
-                         :zonecore => (8,14,20,28))
+                         :zonecore => (8,14,20,28),
+                         # :reform 의 발화점은 **선행 fault** 의 발화점이다(연구 대상인 교착
+                         # 알람은 그 뒤에 2차로 뜬다). 그래서 fault 와 같은 사다리를 쓴다.
+                         :reform => _fire_fault())
 
 # =========================================================================================
 #  DS_FIRE_GRID : 발화 시점을 **instance 차원**으로 올린다 (2026-08-04)
@@ -1018,6 +1025,15 @@ studied_prod(a::Int, kind::Symbol, severity, n_spare_cfg; hz_seed = nothing) = (
         a == 0 && return nothing                        # a==0(NOOP)이면 아무 개입도 안 함
         return action_to_proposal(ctx, a)               # 그 외엔 매크로 a 를 실제 DSL 제안으로 변환해 적용
     end
+    # ---- 상류(연구 대상 **이전**) 사건 -> 배경 정책 (2026-08-16, :reform 전용) ---------------
+    # 아래 CASCADE RULE 은 "후속 알람은 NOOP" 이고, 그것이 옳은 이유는 후속 알람이 연구 대상 결정의
+    # **결과**이기 때문이다. 그런데 :reform 의 연구 대상은 2차 실패라 **다른 사건 뒤에** 온다.
+    # 그 선행 사건은 결정의 결과가 아니라 **설정**이므로 NOOP 으로 두면 교착이 아예 형성되지 않고
+    # (선행 fault 를 방치하면 스페어 인계가 없어 운반팀이 못 짜일 일도 없다) 연구 대상 사건이 영영
+    # 안 뜬다. 그래서 FEAT[] 가 아직 비어 있는 동안(= 연구 대상 이전)은 배경 정책으로 답한다.
+    # 다른 kind 는 이 줄을 타지 않으므로 기존 경로는 한 글자도 바뀌지 않는다.
+    kind === :reform && FEAT[] === nothing &&
+        return action_to_proposal(ctx, canonical_action(ctx))
     # ---- 위험 프로세스가 만든 **독립적인** 후속 고장 -> 배경(canonical) 정책으로 대응 ----------
     # 아래 CASCADE RULE 은 "후속 알람은 전부 NOOP" 이지만, 그건 후속 알람이 연구 대상 사건의
     # 직접적 결과일 때의 이야기다(방전된 그 로봇이 멈춰서 내는 2차 알람 등). MC 모드에서 위험
@@ -1387,7 +1403,19 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
     # fire_at>0 이면 그 목표점 위쪽으로만 짧게 재시도(= 발화 시점이 instance 차원).
     # fire_at=0 이면 예전 그대로 그 종류의 FIRE_POINTS 사다리.
     fire = fire_ladder(kind, fire_at)                    # 이 instance 의 발화 시점(closed 노드 수) 목록
-    if kind === :fault
+    # :reform 은 fault 와 **같은 트리거**를 쓴다 (2026-08-16).
+    #
+    # 왜 별도 주입기를 만들지 않는가. 팀 교착은 심을 수 있는 사건이 아니라 **2차 실패**다 —
+    # 스페어 인계(Replace) 뒤에 다중로봇 운반팀이 형성을 못 끝내면서 생긴다. 엔진은 이미 그것을
+    # 감지해 발화한다: `maybe_emit_reform_ood!`(ood_injection.jl:645)가 시뮬 루프에서 매 스텝
+    # 돌며(`demo_utils.jl:259`) 무진전이 `REFORM_INTERVAL` 배수에 닿으면 respec 큐에 NL 을 넣는다.
+    # `run_one` 은 그 간격을 `DS_REFORM=120` 으로 **데모와 같은 값**에 맞춰 놓았고, NL 문자열도
+    # `run_demo.jl:739` 의 것과 한 글자도 같다 = 계획서가 요구한 "같은 조건" 이 이미 성립한다.
+    # 그래서 이 kind 가 하는 일은 교착을 **만드는** 것이 아니라, 선행 fault 를 심어 교착이 생길
+    # 상황을 만들고 그 뒤 뜨는 알람을 **연구 대상으로 잡는** 것뿐이다(`_event_type(:reform)=:reform`
+    # 이라 `studied_prod` 가 첫 :reform 알람에서 특징을 캡처한다).
+    # 선행 fault 를 무엇으로 답하는가는 `studied_prod` 의 "상류는 배경 정책" 규칙이 정한다.
+    if kind === :fault || kind === :reform
         sched_fn = () -> begin
             fired = Ref(false)                          # 한 번만 터지게 하는 플래그 상자
             # Target a robot with EXACTLY ONE remaining solo transport task. The spare then inherits a
@@ -1898,6 +1926,11 @@ function main()
             # DS_SPARES may include 0 -> no spare exists, so Replace degenerates and the correct macro
             # moves to ReformTeam/NOOP. The model must read `spare_count`, not just the kind.
             for ns in SPARES; push!(instances, (:fault, 1.0, seed, ns)); end   # 예비 수준별로 하나씩
+        elseif kind === :reform
+            # 팀 교착은 **스페어 인계의 2차 실패**다 — 그러니 예비 수준이 그 사건의 severity 축이다
+            # (스페어가 없으면 Replace 가 성립하지 않아 교착도 그 경로로는 안 생긴다). fault 와 같은
+            # 축을 훑는 이유가 그것이고, severity 1.0 = 선행 fault 가 실질적 작업 사슬을 문다는 뜻.
+            for ns in SPARES; push!(instances, (:reform, 1.0, seed, ns)); end
         elseif kind === :faultidle
             # severity = 0.0: SAME kind label, but the victim owns no work -> NOOP is correct.
             for ns in SPARES; push!(instances, (:faultidle, 0.0, seed, ns)); end

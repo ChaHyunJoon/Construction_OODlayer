@@ -82,11 +82,23 @@ CASES = ["battery", "fault", "all", "fault_battery", "fault_zone", "battery_zone
 
 # 팔 메뉴는 `action_registry.json` 에서 온다 — 630판 로그의 `valid` 를 읽으면 FaultTruth/
 # ReformTruth 가 빈 리스트라 그 축이 **조용히 0팔**이 된다(원 설계 §3.3).
+#
+# ---- 2026-08-16: 하드코딩한 5팔을 없앴다 -------------------------------------------------
+# 무엇이 잘못이었나. 예전 메뉴는 `want = ("0","1","2","7","8")` = **배포 학습셋의 support 를
+# 그대로 베낀 것**이었다. 그런데 그 support 는 "이긴 팔"이 아니라 "굴려서 라벨한 팔"이고
+# (`dspy_service.py:229` 가 학습 행의 macro 열에서 유도한다), 재라벨(2026-08-14)이 reform
+# 인스턴스를 0건 만들면서 `ReformTeam(4)` 과 `ForbidZone(3)` 이 거기서 빠져 있었다.
+#
+# 그래서 DP 는 **셋 중 가장 좁은 레인(surrogate)에 메뉴를 맞춘 셈**이 됐고, 그러면 천장이 될 수
+# 없다: 2026-08-15 실측에서 실행 레인은 Reform 사건에 `ReformTeam` 을 1182회 집행하는데 DP 는
+# 그 팔을 볼 수조차 없어 Reform 축 gap 이 13/13 = 100% 였고, 표집 판 338개가 전부 reform 에서
+# 죽었다(V 중앙값 4418.6). 비교가 성립하지 않는 축이었다.
+#
+# 이제 어휘의 진실원에서 받는다. 실험 팔(5·6)은 `is_active()` 가 DS_COMBO_ARMS 로 건다 —
+# 즉 이 함수는 **환경이 정한 활성 집합**을 그대로 따르고, 여기서 다시 좁히지 않는다.
 def arm_menu():
-    reg = json.load(open(os.path.join(WM, "action_registry.json")))
-    # 배포 학습셋이 지원하는 집합과 같은 5팔을 쓴다(test_surrogate_support.py 의 현행 계약).
-    want = ("0", "1", "2", "7", "8")
-    return [(int(k), reg["macros"][k]["name"]) for k in want if k in reg["macros"]]
+    import action_registry as reg
+    return [(i, reg.MACRO_NAME[i]) for i in reg.ACTIVE_MACROS]
 
 
 def run_board(case, seed, arm_id, arm_name, outroot, world_seed=1):
