@@ -338,6 +338,17 @@
           <option value="canonical">canonical (fixed)</option>
           <option value="surrogate">surrogate (fixed)</option>
           <option value="dspy" selected>DSPy (fixed)</option>
+          <!-- 2026-08-16: dp 레인 재생을 연다. **이것은 천장이 아니다** — 오프라인 value table
+               (dp_oracle/value.json)을 칸마다 조회해 a* 를 집행한 판이고, 표를 못 읽은 결정은
+               canonical 로 떨어진다(그 사실은 verdict 에 남는다). 실측 §8.7 gap 89.3% =
+               실행 정책이 V 보다 좋은 (칸,정책) 쌍의 비율이므로, 이 열을 '상한' 으로 읽으면 안 된다.
+               그럼에도 재생을 여는 이유: 이 판의 **실현 결과 자체는 유효한 실행 결과**이고
+               (칸마다 팔을 갈아 쓴다), 네 레인을 같은 케이스에서 나란히 보는 것이 목적이기 때문.
+               근거: md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md §4.
+               ⚠️ 아래 Re-Specification 패널의 "picked by" 에는 dp 가 **안 뜬다** — policy.jl 이
+               `pol["dp"]` 를 DEMO_POLICY=dp 인 런에서만 만들기 때문이고, 그건 의도된 설계다
+               (라이브 판에서 dp 를 동료 결정원처럼 보여주지 않는다). -->
+          <option value="dp">dp (fixed · offline value-table lookup — NOT a ceiling)</option>
           <option value="router">router (per-event: LLM if novel, surrogate if familiar)</option>
         </select>
       </label>
