@@ -190,11 +190,27 @@ def main():
     import objective
 
     # 세대·커버리지 같은 메타는 **파일에서 읽는다.** 문서에 손으로 적으면 갈린다.
+    # DP 열이 무엇인지는 **value.json 이 스스로 말하게** 한다. 여기 손으로 적으면 솔버를 바꾼
+    # 날 이 문장이 조용히 거짓이 된다(2026-08-14 -> 08-15 에 실제로 그럴 뻔했다).
+    _solver = "constant_arm"
+    try:
+        _solver = json.load(open(os.path.join(HERE, "dp_oracle", "value.json"))).get(
+            "solver", "constant_arm")
+    except Exception:
+        pass
     meta = []
-    meta.append("> **읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장**이다 — 실행 가능한 온라인 "
-                "정책이 아니고, 이 표의 DP 는 상수-팔 반사실 표집의 최선이다(backward induction "
-                "이 아니다: 이 하니스는 J 를 판 단위로 낸다). 자세한 정의와 한계는 "
-                "`dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.")
+    if _solver == "backward":
+        meta.append("> **읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장 후보**다 — 실행 가능한 "
+                    "온라인 정책이 아니다. 이 표의 DP 는 측정된 φ̃ 격자 위의 **진짜 Bellman "
+                    "backward induction** 이다(`V(goal)=0`, `Q(s,a)=mean[c + V(s')]`). 구간 비용 "
+                    "`c` 는 J 의 완주 분기 형태로 고정되고 두 분기의 차액은 종단에서 정산되며, "
+                    "그 분해는 판마다 `Σc + terminal == J` 로 기계 검사된다. 자세한 정의와 한계는 "
+                    "`dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.")
+    else:
+        meta.append("> **읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장**이다 — 실행 가능한 온라인 "
+                    "정책이 아니고, 이 표의 DP 는 상수-팔 반사실 표집의 최선이다(backward induction "
+                    "이 아니다: 이 하니스는 J 를 판 단위로 낸다). 자세한 정의와 한계는 "
+                    "`dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.")
     meta.append("")
     meta.append("> build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 "
                 "`—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.")
@@ -203,6 +219,13 @@ def main():
     # 이 수치가 DP 열의 이름을 정한다. 손으로 적으면 다음 스윕에서 조용히 거짓이 되므로,
     # 표를 만들 때마다 다시 잰다. 비교는 **평균 대 평균**이다 — 개별 실현 J 를 평균 V 와 대면
     # J 가 이봉분포(완주 ~20 / 미완주 ~15000)라 좋은 판이 자동으로 이기고, 그건 비교가 아니다.
+    #
+    # ★ 2026-08-15 — **비교의 단위를 솔버에 맞춘다.** 이걸 안 맞추면 gap 이 무의미해진다:
+    #   · constant_arm 의 V 는 **판 전체 J** 의 평균이다  -> 실행 정책도 판 전체 J 로 잰다.
+    #   · backward 의 V 는 **그 칸부터의 cost-to-go** 다   -> 실행 정책도 cost-to-go 로 재야 한다.
+    # 섞으면 backward 쪽에서 V 가 구조적으로 더 작아 gap 이 100% 로 자동 발화한다 — 그건 측정이
+    # 아니라 단위 오류다. 실행 정책의 cost-to-go 는 DP 표본과 **같은 분해**로 뽑는다:
+    #       ctg_i = Σ_{k>=i} c_k + terminal_value  =  J_row − c_prefix − Σ_{k<i} c_k
     gap_note = ""
     try:
         import collections as _c
@@ -210,10 +233,13 @@ def main():
         import glob as _g
         sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
         from derive_grid import cell_key as _ck, state_of as _so
+        from sample_grid import decompose_board as _dec
         _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
         _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
         _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
+        _backward = _v.get("solver") == "backward"
         _per = _c.defaultdict(lambda: _c.defaultdict(list))
+        _skipped = _c.Counter()
         for _p in _g.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
             for _l in open(_p):
                 _l = _l.strip()
@@ -222,20 +248,36 @@ def main():
                 _r = json.loads(_l)
                 if _r.get("policy") not in ("canonical", "surrogate", "dspy"):
                     continue
-                try:
-                    _J = objective.J_row(_r)
-                except Exception:
-                    continue
+                if _backward:
+                    _d0 = _dec(_r)
+                    if not _d0["ok"]:
+                        # 조용히 넘기지 않는다 — 아래 gap_note 가 이 수를 같이 싣는다.
+                        _skipped[str(_d0["reason"]).split(":")[0]] += 1
+                        continue
+                    _run = _d0["c_prefix"]            # 결정 i 이전까지의 누적 러닝코스트
+                else:
+                    try:
+                        _J = objective.J_row(_r)
+                    except Exception as _e2:
+                        _skipped[type(_e2).__name__] += 1
+                        continue
                 _seen = set()
-                for _d in (_r.get("decisions") or []):
+                for _i, _d in enumerate(_r.get("decisions") or []):
                     _s = _so(_d, _g_spec["axes"])
+                    if _backward:
+                        # 이 칸에서의 **실현 cost-to-go**. 칸을 못 세워도 러닝코스트는 누적한다 —
+                        # 안 그러면 뒤 결정들의 ctg 가 통째로 어긋난다.
+                        _val = _d0["J"] - _run
+                        _run += _d0["cs"][_i]
+                    else:
+                        _val = _J
                     if _s is None:
                         continue
                     _k = _ck(_s)
                     if _k in _seen or _k not in _V:
                         continue
                     _seen.add(_k)
-                    _per[_k][_r["policy"]].append(_J)
+                    _per[_k][_r["policy"]].append(_val)
         _w = _t = 0
         for _k, _bp in _per.items():
             for _pol, _Js in _bp.items():
@@ -244,15 +286,23 @@ def main():
                 _t += 1
                 if _st.mean(_Js) < _V[_k] - 1e-9:
                     _w += 1
+        _unit = ("그 칸부터의 **실현 cost-to-go**" if _backward else "판 전체의 평균 J")
         if _t:
-            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개).** 실행 정책의 "
-                        "평균 J 가 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s"
-                        % (_t, _w, 100.0 * _w / _t,
-                           ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** V 는 "
-                            "상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 없어 그 "
-                            "정책군이 실행 레인보다 약하기 때문이다. 다만 dp **레인**은 칸마다 a* 를 "
-                            "갈아 쓰므로 이 열의 실현 결과 자체는 유효한 실행 결과다."
-                            if _w else "0 이므로 이 격자 위에서는 천장이라는 이름이 유지된다.")))
+            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s).** "
+                        "실행 정책이 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s%s"
+                        % (_t, _unit, _w, 100.0 * _w / _t,
+                           ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** "
+                            + ("남은 원인은 상수-팔이 아니라 φ̃ 추상화 손실이다 — 한 칸에 물리적으로 "
+                               "다른 상태가 섞여 평균되기 때문이고, backward induction 은 그것을 "
+                               "없애지 않는다(원 설계 §2.1)."
+                               if _backward else
+                               "V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 "
+                               "없어 그 정책군이 실행 레인보다 약하기 때문이다.")
+                            + " 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 이 열의 실현 결과 "
+                              "자체는 유효한 실행 결과다."
+                            if _w else "0 이므로 이 격자 위에서는 천장이라는 이름이 유지된다."),
+                           ("" if not _skipped else
+                            " (분해 불가로 제외한 행: %s)" % dict(_skipped))))
     except Exception as _e:                       # 계산 실패를 조용히 넘기지 않는다
         gap_note = "§8.7 gap 을 계산하지 못했다: %r" % (_e,)
 
