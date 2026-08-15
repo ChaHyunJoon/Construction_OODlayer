@@ -309,12 +309,18 @@ end
 #                                           that is not exposed as any macro today.
 #   6 = [DeprioritizeAgent, ForbidWindow] -- soft-shed the agent's work AND close a time window
 #                                           on the affected node. Two soft levers instead of one.
-const COMBO_ARMS = get(ENV, "DS_COMBO_ARMS", "0") == "1"
+# 2026-08-16: `const` 에서 **함수**로 바꿨다. 아래 `valid_actions` 는 이제
+# `ActionRegistry.is_active` 를 통해 이 플래그를 **호출 시점**에 읽는데, 여기만 include 시점에
+# 읽으면 둘이 갈리는 창이 생긴다: 플래그를 로드 뒤에 켜면 `valid_actions(:fault)` 는 5·6 을
+# 제시하는데 `action_to_proposal` 의 조합 분기는 안 타고, 그 다음 문지기는 통과하며
+# (5 ∈ valid_actions), 어느 `a == ...` 분기에도 안 걸려 `cs === nothing` 으로 **조용히 NOOP** 이
+# 된다. 두 곳 다 호출 시점에 읽으면 그 창이 닫힌다.
+combo_arms_on() = get(ENV, "DS_COMBO_ARMS", "0") == "1"
 const COMBO_IDS  = [5, 6]
 
 function action_to_proposal(ctx, a::Int)
     a == 0 && return nothing
-    if COMBO_ARMS && a in COMBO_IDS
+    if combo_arms_on() && a in COMBO_IDS
         return combo_to_proposal(ctx, a)
     end
     a in valid_actions(ctx) || return nothing   # macro invalid for this event type -> NOOP arm

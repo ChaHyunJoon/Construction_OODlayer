@@ -37,10 +37,26 @@ export DS_VALID_ONLY=1            # kind 별 legal 팔만 (이제 레지스트�
 export DS_SEEDS=1,2,3,4,5
 export DS_KINDS=fault,faultidle,battery,zoneblk,zoneharm,reform
 export DS_SPARES=0,3
-export DS_FIRE_GRID=58,140,220
+# ---- 발화점 격자 -------------------------------------------------------------------------
+# 2026-08-14 판은 {58,140,220} 이었다. 여기에 **20** 을 더한다.
+# 왜: `ForbidZone(3)` 은 `restage_assembly!` 가 이미 시작된 조립체를 거부하므로 도메인이
+# closed≈46 부터 비고(ood_mdp_shim.jl `_zone_arms` 실측), 그래서 {58,140,220} 격자에서는
+# `_zone_arms_for` 가 3 을 **한 번도 제시할 수 없다** — 08-16 1차 런의 zoneblk support 가
+# {0,7} 뿐이었던 이유가 이것이다. 이른 발화점 하나가 그 팔이 실재하는 유일한 구간이다.
+export DS_FIRE_GRID=20,58,140,220
 export DS_BSOC=0.02,0.3,0.5
 export DS_ZFRACS=0.5,0.9,1.3
 export DS_REFORM=120              # run_demo.jl 과 같은 교착 감지 간격 (run_one 기본값과 동일, 명시)
+# ---- ★ hot-swap: 실행 레인과 같은 세계에서 라벨한다 ---------------------------------------
+# `run_demo.jl:557` · `render_demo.jl:799` 가 `set_hot_swap!(enabled=true, mode=:via_depot)` 다.
+# 이걸 안 켜면 두 가지가 동시에 어긋난다:
+#   (1) Replace 의 **실행 방식**이 다르다(스케줄 재각인 vs 정체성 보존) = 다른 목적함수 값.
+#   (2) fault 대상 피커가 죽는다 — `pick_hotswap_fault_target` 은 hot_swap_on 일 때만 폴백으로
+#       쓰이는데, 나머지 피커들은 `_first_pending_assignment` 를 요구해 closed>=80 에서 후보를
+#       하나도 못 찾는다. 실측(08-16 1차 런, 이 줄이 없던 판): fault 발화율 100% -> **23%**,
+#       그리고 reform 은 fault 주입을 재사용하므로 같이 23% 로 주저앉았다.
+# RELABEL_20260814 도 `hot_swap.enabled=true` 로 만들어졌다(행에 도장이 찍혀 있다).
+export DS_HOTSWAP=1
 
 echo "[relabel] shards=$NSHARD  kinds=$DS_KINDS  combos=$DS_COMBO_ARMS"
 echo "[relabel] -> $OUTDIR"

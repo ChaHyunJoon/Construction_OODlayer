@@ -130,7 +130,23 @@ delete!(ENV, "DS_ZONE_ARMS")
 println("== 5. 다른 종류의 팔은 건드리지 않았는가(회귀) ==")
 ctx_fault = (type = :fault, agent = CB.RobotID(1), zone = nothing, assembly = nothing,
              soc = NaN, after = 0.0, source = "broken")
-check("valid_actions(:fault) == [0,1]", valid_actions(ctx_fault) == [0, 1])
+# 2026-08-16: fault 의 팔이 `[0,1]` 리터럴에서 **레지스트리 파생**으로 바뀌었다.
+#   왜 기대값을 고치는가(코드가 아니라): `[0,1]` 은 삭제 이전 덤프에서 베낀 리터럴인데,
+#   `valid_actions` 는 `action_to_proposal` 의 문지기이기도 해서 그 리터럴이 fault 사건에
+#   `ReformTeam(4)`·`Deprioritize(2)` 를 **원리적으로 못 쓰게** 막고 있었다. 실행 레인은 같은
+#   사건에 ReformTeam 을 1182회 집행하는데(2026-08-15 실측) 라벨 격자에는 그 팔이 없었고,
+#   그게 Reform 축 gap 이 13/13 = 100% 였던 원인이다.
+#   옛 고정 집합 재현은 `DS_ARMS_LEGACY=1` 로 남아 있고, 아래에서 그것도 함께 검사한다.
+check("valid_actions(:fault) == kind_valid(:fault) (레지스트리 파생)",
+      valid_actions(ctx_fault) == ActionRegistry.kind_valid(:fault),
+      "got $(valid_actions(ctx_fault))  expected $(ActionRegistry.kind_valid(:fault))")
+check("그 집합이 조합 팔 없이는 [0,1,2,4] 다",
+      (get(ENV, "DS_COMBO_ARMS", "0") == "1") || valid_actions(ctx_fault) == [0, 1, 2, 4],
+      "got $(valid_actions(ctx_fault))")
+ENV["DS_ARMS_LEGACY"] = "1"
+check("DS_ARMS_LEGACY=1 이 옛 고정 집합 [0,1] 을 되돌린다",
+      valid_actions(ctx_fault) == [0, 1], "got $(valid_actions(ctx_fault))")
+delete!(ENV, "DS_ARMS_LEGACY")
 ctx_batt_mild = (type = :battery, agent = CB.RobotID(1), zone = nothing, assembly = nothing,
                  soc = 0.55, after = 0.0, source = "battery")
 # 2026-08-04 SwapBattery(8) 도입 후 battery 의 팔은 양쪽 칸 모두 8 을 포함한다(shim 주석 참조).
@@ -160,7 +176,16 @@ gen_src = read(joinpath(@__DIR__, "gen_oracle_dataset.jl"), String)
 check("gen 의 ACTION_NAME 에 7=>\"RelocateBuild\"", occursin("7=>\"RelocateBuild\"", gen_src))
 check("gen 의 MACRO_COST 에 7 => 1.5", occursin(r"7\s*=>\s*1\.5", gen_src))
 py_src = read(joinpath(@__DIR__, "..", "features_agnostic.py"), String)
-check("features_agnostic.MACRO_COST[7] == 1.5", occursin(r"7:\s*1\.5", py_src))
+# 2026-08-16: 이 검사는 `features_agnostic.py` 안에 `7: 1.5` **리터럴**이 있는지를 봤는데,
+#   2026-08-15 에 그 표가 `MACRO_COST = dict(_reg.MACRO_COST)` 로 **레지스트리 파생**이 되면서
+#   리터럴이 사라져 그날부터 계속 FAIL 하고 있었다(실제 값은 1.5 로 맞다 — 검사가 낡은 것이다).
+#   리터럴을 되살리는 것은 정확히 반대 방향이므로, **파생을 하고 있는지**를 검사한다.
+#   값 자체는 레지스트리에서 직접 확인한다(그게 단일 진실원이다).
+check("features_agnostic 가 MACRO_COST 를 레지스트리에서 파생한다",
+      occursin("import action_registry as _reg", py_src) &&
+      occursin(r"MACRO_COST\s*=\s*dict\(_reg\.MACRO_COST\)", py_src))
+check("레지스트리의 7(RelocateBuild) 비용이 1.5 다",
+      ActionRegistry.COST[7] == 1.5, "got $(ActionRegistry.COST[7])")
 check("features_agnostic._ACTION_TABLE 에 7 행", occursin("RelocateBuild", py_src))
 
 println("== 7b. 배경 알람(팀 교착)이 마지막 truth 로 오분류되지 않는가 ==")

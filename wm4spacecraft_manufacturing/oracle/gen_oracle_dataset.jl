@@ -1051,7 +1051,16 @@ studied_prod(a::Int, kind::Symbol, severity, n_spare_cfg; hz_seed = nothing) = (
     # NOOP and Replace both closed=172). The studied decision must own its own consequences, so
     # downstream alarms get NOOP. Only :reform (the background navigation/team-wedge recovery, which is
     # not an OOD response) stays canonical — that is the "hold the background policy fixed" rule.
-    ctx.type === :reform && return action_to_proposal(ctx, canonical_action(ctx))   # 배경 재정렬(:reform)만 평소대로 처리
+    #
+    # ⚠️ 단, **연구 대상이 reform 자신일 때는 그 예외를 끄지 않으면 팔이 안 갈린다** (2026-08-16).
+    #   `maybe_emit_reform_ood!`(ood_injection.jl:645)에는 dedup 이 없어, 무진전이 이어지는 한
+    #   `REFORM_INTERVAL`(=120) 배수마다 **다시** 발화한다. 그래서 이 줄을 조건 없이 두면
+    #   NOOP 팔의 판에서도 배경 정책이 120스텝 뒤에 ReformTeam 을 집행한다 — 팔 0 이
+    #   "지연된 팔 4" 가 되어 위 주석이 막으려던 바로 그 실패(팔이 바이트 동일해짐)를 재현한다.
+    #   실측(고치기 전): reform 7 instance 중 6개가 두 팔의 closed 가 같았다.
+    #   reform 이 연구 대상이면 후속 reform 알람은 **그 결정의 결과**이므로 캐스케이드 규칙을 따른다.
+    (ctx.type === :reform && kind !== :reform) &&
+        return action_to_proposal(ctx, canonical_action(ctx))   # 배경 재정렬은 평소대로(연구 대상이 아닐 때만)
     return nothing                                      # 그 밖의 후속 알람은 NOOP(연구 대상 결정이 자기 결과를 책임지게)
 end
 # canonical_bg : 개입 없는 "정상 배경 정책". control 런(OOD 안 터뜨림)에 쓰이며 모든 이벤트를 표준 방식으로 처리.
@@ -1792,7 +1801,10 @@ function run_episodes(io)
             VALID_ONLY || return MACROS
             t <= length(plan) || return MACROS
             (_, k, sev) = plan[t]
-            k === :fault && return [0, 1]
+            # 2026-08-16: `[0,1]` 리터럴을 레지스트리 파생으로 바꿨다. 이 줄이 리터럴로 남아
+            # 있으면 에피소드 모드와 단일사건 모드가 fault 의 팔 집합에 대해 **서로 다른 말을
+            # 한다** — 같은 저장소 안에서 어휘가 둘로 갈리는 것이 이 계획이 없애려는 병이다.
+            k === :fault && return ActionRegistry.kind_valid(:fault)
             # zone 팔은 shim 의 _zone_arms() 단일 출처를 따른다(기본 [0,7]=NOOP/RelocateBuild).
             # 여기 [0,3] 을 하드코딩해 두면 shim 과 어긋나 "덤프에는 3, 실행은 7" 같은 조용한 불일치가 난다.
             #

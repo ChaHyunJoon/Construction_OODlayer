@@ -185,11 +185,23 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 #  · feature: `surrogate_features.build_features`(22차원)를 **import 해서** 쓴다. 여기서
 #             재조립하면 학습/배포가 조용히 갈린다 — 이 저장소의 반복된 사고다.
 #
-# 알려진 능력 회귀(문서화된 것, 숨기지 않는다): 새 라벨셋의 macro support 는 {0,1,2,7,8} 이라
-# **ReformTeam(4)·ForbidZone(3) 행이 0줄**이다. 아래 support 필터가 그 팔을 후보에서 떨어뜨리므로
-# reform 사건에서 surrogate 는 NOOP 밖에 못 낸다(`unsupported` 로 그 사실이 응답에 남는다).
+# 알려진 능력 회귀 — **2026-08-16 에 해소했다. 이력으로 남긴다(왜 있었는지가 다음 사람에게
+# 필요하다).** 2026-08-14 ~ 08-15 동안 배포 학습셋(RELABEL_20260814)의 macro support 는
+# {0,1,2,7,8} 이었고 **ReformTeam(4)·ForbidZone(3) 행이 0줄**이었다. 아래 support 필터가 그
+# 팔을 후보에서 떨어뜨리므로 reform 사건에서 surrogate 는 NOOP 밖에 못 냈다(`unsupported` 로
+# 그 사실이 응답에 남았다). 원인은 "진 팔"이 아니라 **시험지에 나온 적이 없는 팔**이었다:
+# support 는 학습 행의 `macro` 열에서 유도되는데(아래 `_load_surrogate`), 재라벨 격자에
+# reform 인스턴스가 0건이었고 fault 의 팔 메뉴가 shim 리터럴 `[0,1]` 로 잘려 있었다.
+# 그 대가는 DP 표집까지 번졌다 — 2026-08-15 판에서 Reform 축 §8.7 gap 이 13/13 = 100%.
+#
+# 2026-08-16: 라벨셋을 RELABEL_20260816 으로 바꾼다. shim 의 `valid_actions` 가 이제
+# `action_registry.json` 파생이라 kind 마다 legal 한 팔을 전부 굴렸고, `reform` kind 가
+# 격자에 들어왔다. 그래서 3·4 가 support 에 있다(조합 팔 5·6 도 — DS_COMBO_ARMS=1 로 생성).
+#
+# ⚠️ `wm_datasets.resolve()` 를 **쓰지 않는다** — 그 함수는 $WM_DATASET/$EVAL_DATA 를 읽으므로
+# 환경변수 하나로 옛 라벨이 조용히 들어온다. 상수를 직접 가리킨다.
 # ---------------------------------------------------------------------------------------------
-SURRO_DATA = wm_datasets.abspath(wm_datasets.RELABEL_20260814)
+SURRO_DATA = wm_datasets.abspath(wm_datasets.RELABEL_20260816)
 # 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
 # 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
 # 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.

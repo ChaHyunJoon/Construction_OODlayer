@@ -96,9 +96,31 @@ CASES = ["battery", "fault", "all", "fault_battery", "fault_zone", "battery_zone
 #
 # 이제 어휘의 진실원에서 받는다. 실험 팔(5·6)은 `is_active()` 가 DS_COMBO_ARMS 로 건다 —
 # 즉 이 함수는 **환경이 정한 활성 집합**을 그대로 따르고, 여기서 다시 좁히지 않는다.
+# ---- 실행 레인이 **집행할 수 있는** 이름 (2026-08-16) --------------------------------------
+# 이 표집의 한 판 = `DEMO_FORCE_MACRO=<이름>` 으로 굴린 판이고, 그 이름을 실제로 해석하는 것은
+# `tools/monitor/run_demo.jl` 의 `handle_ood!` 문자열 디스패치다. 거기 분기가 없는 이름을 주면
+# if-사슬을 그냥 통과해 **아무 일도 일어나지 않는다** = 그 판은 NOOP 판과 바이트 동일해진다.
+# 그건 결정을 재는 게 아니라 동점을 제조하는 것이고(ood_mdp_shim `_zone_arms` 가 같은 이유로
+# arm 3 을 뺐던 그 실패), DP 의 (칸,팔) 표본만 얇아진다.
+#
+# 조합 팔 5·6 이 정확히 이 경우다: 오라클 라벨 레인에는 `combo_to_proposal` 이 있어 실재하지만
+# 실행 레인에는 구현이 없다. 그래서 `DS_COMBO_ARMS=1` 이어도 여기서는 뺀다 — 다만 **조용히**
+# 빼지 않는다(Global Constraint 10). 아래 arm_menu 가 제외 사실을 이름으로 찍는다.
+ENACTABLE_NAMES = {"NOOP", "Replace", "Deprioritize", "ForbidZone",
+                   "ReformTeam", "RelocateBuild", "SwapBattery"}
+
+
 def arm_menu():
     import action_registry as reg
-    return [(i, reg.MACRO_NAME[i]) for i in reg.ACTIVE_MACROS]
+    active = [(i, reg.MACRO_NAME[i]) for i in reg.ACTIVE_MACROS]
+    menu = [(i, n) for i, n in active if n in ENACTABLE_NAMES]
+    dropped = [(i, n) for i, n in active if n not in ENACTABLE_NAMES]
+    if dropped:
+        print("[arm_menu] 실행 레인이 집행할 수 없어 제외: %s"
+              % ", ".join("%d=%s" % (i, n) for i, n in dropped))
+        print("[arm_menu]   (run_demo.jl handle_ood! 에 그 이름의 분기가 없다 — 넣으면 NOOP 판의 사본이 된다)")
+    print("[arm_menu] 팔 %d개: %s" % (len(menu), ", ".join("%d=%s" % t for t in menu)))
+    return menu
 
 
 def run_board(case, seed, arm_id, arm_name, outroot, world_seed=1):
