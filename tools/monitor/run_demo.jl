@@ -237,6 +237,16 @@ include(joinpath(@__DIR__, "zone_inject.jl"))   # DEMO_ZONE_AT 용 선언적 주
 
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
 
+# 판 시작 = 여기다, `simulate_case!` 가 아니다. pre-sim OOD arming 블록(아래, DEMO_ZONE_AT 설정
+# 시나 DEMO_ZONE_MODE != "blocking" 일 때)이 `simulate_case!` **호출 전에** `handle_ood!` 를 불러
+# 첫 결정을 만들 수 있다(:662 부근). 리셋이 `simulate_case!` 안에 있으면 그 pre-sim 결정이
+# decision_index=1 을 받고, simulate_case! 가 다시 0 으로 되감아 첫 in-sim 결정도 1 을 받는다 —
+# 행 두 개가 인덱스를 공유해 DS_DEVIATE_AT=1 이 두 번 발화한다(R3 가 막으려던 오염의 한 형태).
+# 이 include 직후 자리는 이 판(=이 프로세스)에서 나올 수 있는 **첫** handle_ood! 호출보다 앞이라
+# pre-sim·in-sim 두 경로를 전부 덮는다 — 이 시점과 첫 결정 사이에는 env 빌드·배터리 레이어
+# 설정뿐이고 정책 결정은 없다(아래 573행부터 시작하는 "OOD 예약" 절 이전 코드를 확인했다).
+_reset_decision_counter!()
+
 # ---- 캡처: 결정 정책의 출력을 monitor respec 패널로 -------------------------------
 # capture! 는 policy.jl 의 record_decision! 을 그대로 부른다.
 #
@@ -263,7 +273,9 @@ function handle_ood!(env, truth, nl)
     tag = string(typeof(truth).name.name)
     mac = decision.macro_name
     # 스위프 요약용 기록. UI(monitor 스트림)와 별개로, 정책 비교를 기계가 읽을 수 있게 남긴다.
-    push!(_DECISIONS, Dict(
+    # `this_decision` 으로 참조를 들고 있는다 — 아래 집행 사슬이 끝난 뒤 `enact_applied` 를
+    # **같은 행**에 덧붙여 써야 하기 때문이다(mac 실행은 이 push! 뒤에 일어난다).
+    local this_decision = Dict(
         "truth"    => tag,
         "at"       => length(env.cache.closed_set),
         "macro"    => mac,
@@ -301,6 +313,15 @@ function handle_ood!(env, truth, nl)
         "router_p"     => (try get(decision.router, "p", nothing) catch; nothing end),
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
         "escalated"     => (try haskey(decision.router, "escalated_from") catch; false end),
+        # 1-step deviation (2026-08-17): policy.jl 이 rt 에 심은 것을 그대로 옮긴다. Task 2 의
+        # sample_grid.py 는 스트림이 아니라 **이 decisions 목록**을 읽으므로, 여기 없으면 게이트가
+        # 걸렸다는 사실 자체가 소비처에 조용히 안 보인다(§R3 의 오염 시나리오와 같은 종류의 함정).
+        "decision_index" => (try get(decision.router, "decision_index", nothing) catch; nothing end),
+        "deviate_at"    => (try get(decision.router, "deviate_at", nothing) catch; nothing end),
+        "deviate_arm"   => (try get(decision.router, "deviate_arm", nothing) catch; nothing end),
+        "deviated"      => (try get(decision.router, "deviated", nothing) catch; nothing end),
+        "deviate_from"  => (try get(decision.router, "deviate_from", nothing) catch; nothing end),
+        "deviate_valid" => (try get(decision.router, "deviate_valid", nothing) catch; nothing end),
         "soc"      => (truth isa CB.BatteryTruth ? (try Float64(truth.soc_after) catch; nothing end) : nothing),
         # 자연어 해석도 요약 행에 남긴다 -- 스트림 없이 결과 jsonl 만 읽는 분석기(파이썬 표
         # 조립기)가 같은 문장을 볼 수 있어야 화면과 표가 갈리지 않는다.
@@ -309,7 +330,8 @@ function handle_ood!(env, truth, nl)
         # not_in_table / infeasible / unreachable / tie_unresolved 는 전혀 다른 사건이라,
         # 뭉뚱그리면 낮은 커버리지가 "알고리즘이 판단을 보류했다" 로 오독된다.
         "dp_miss"  => (try get(decision.policies["dp"], "dp_miss", nothing) catch; nothing end),
-        "nl"       => String(nl)))
+        "nl"       => String(nl))
+    push!(_DECISIONS, this_decision)
     # spec §9(a) 배터리/에너지 훅 활성 검사. 이 데모는 RESPEC_ENABLED=false 로 두고 복구를 직접
     # 몰기 때문에, replan.jl 의 `[RESPEC] ... energy term` 로그가 있는 maybe_respecify! 경로를
     # 타지 않는다. 그래서 여기서 직접 본다: 매크로 집행이 MILP 를 다시 정식화했다면
@@ -323,11 +345,23 @@ function handle_ood!(env, truth, nl)
     local _milp_sentinel = Dict{Tuple{Int,Int},Float64}()
     CB.LAST_AUTO_EFFICIENCY_W[] = 0.0
     CB.LAST_EDGE_COSTS[] = _milp_sentinel
+    # 이 사슬은 최종 `else` 가 없고 두 분기는 `truth isa CB.ZoneTruth` 가드가 걸려 있다 — 그래서
+    # 지원 안 하는 매크로(예: fault 사건에 ForbidZone)로 deviate 하면 사슬을 아무 일 없이 통과해
+    # 세계가 안 바뀌는데도 verdict 는 "집행했다"고 말할 수 있다(2026-08-17 재리뷰 F2). 각 분기가
+    # 실제로 탔는지를 여기 플래그로 남긴다 — 조건·순서·본문은 그대로, 계측만 얹는다.
+    local enact_applied = false
     try
         if mac == "NOOP"
+            enact_applied = true
             println("[recover] $tag → NOOP (정책이 개입하지 않기로 결정)")
         elseif mac == "Replace"
+            # ⚠️ 2026-08-17 재리뷰 C1(B): `enact_applied` 는 **가드 안쪽**이어야 한다. `ReformTruth`
+            # 는 필드가 없는 struct 이고(`src/navigator/ood_truth.jl:97-98`) `ZoneTruth` 에는
+            # `robot` 필드가 없다(`:67-72`) — 가드 밖에 두면 reform/zone 사건에 Replace 로
+            # deviate 했을 때 이 분기가 매치는 됐지만 `hasproperty` 가 false 라 아무 일도 안
+            # 일어났는데 `enact_applied=true` 로 거짓 보고한다.
             if hasproperty(truth, :robot)
+                enact_applied = true
                 CB.hot_swap_robot!(env, truth.robot; mode = :via_depot, verbose = false)
                 if truth isa CB.BatteryTruth
                     local f = CB.BATTERY_FLEET[]                   # 스왑된 본체=새 배터리 → SoC 회복
@@ -338,19 +372,27 @@ function handle_ood!(env, truth, nl)
             # 2026-08-06 (Ch-A): 현장 배터리 교체. Replace 와 달리 **창고 예비 본체를 안 먹는다** —
             # 그게 두 팔을 따로 두는 이유이고(spec_dsl.jl), 방전 사건에서 싼 정답이 되는 근거다.
             # 씬트리·스케줄을 안 건드리므로 정체성 위반이 원리적으로 불가능하다.
+            # `enact_applied` 는 Replace 와 같은 이유로 가드 안쪽(2026-08-17 재리뷰 C1(B)).
             if hasproperty(truth, :robot)
+                enact_applied = true
                 local sw = CB.swap_battery!(env, truth.robot; verbose = false)
                 println("[battery] swap=$(sw.status) soc_before=$(get(sw, :soc_before, nothing))")
             end
         elseif mac == "Deprioritize"
+            # `enact_applied` 를 두 팔(BatteryTruth 분기·hasproperty 분기) 각각에 복제한다 —
+            # 어느 쪽도 안 타는 경우(예: ReformTruth, 필드 없는 struct)가 실제로 있다
+            # (2026-08-17 재리뷰 C1(B)).
             if truth isa CB.BatteryTruth
+                enact_applied = true
                 CB.rebalance_for_battery!(env)
             elseif hasproperty(truth, :robot)
+                enact_applied = true
                 try CB.deprioritize_agent!(truth.robot, 0.25) catch e
                     @warn "deprioritize_agent! failed" exception = e
                 end
             end
         elseif mac == "ForbidZone" && truth isa CB.ZoneTruth
+            enact_applied = true
             # A zone can cover several staging workspaces. Relocate every
             # blocked subassembly, then minimally translate the whole build
             # only if fixed/root goals remain covered. Keep the zone active so
@@ -379,6 +421,7 @@ function handle_ood!(env, truth, nl)
             # 좁은 공장에선 지속 존이 로봇 경로를 막아 nav 교착 → 조립체를 안전지대로 옮긴 뒤
             # 일시 장애를 해제(transient obstruction)해 완주시킨다. respec(ForbidZone)은 이미 기록됨.
         elseif mac == "RelocateBuild" && truth isa CB.ZoneTruth
+            enact_applied = true
             # 2026-08-04: zone 사건의 기본 개입 팔. ForbidZone 분기와 달리 **조립체별 재적치를
             # 아예 건너뛰고** 빌드 전체를 한 번에 옮긴다(그 전제조건이 빌드 중반에 사라지므로).
             # 이 분기가 없으면 LLM 이 RelocateBuild 를 골라도 아무 일도 안 일어나고, UI 에는
@@ -393,6 +436,7 @@ function handle_ood!(env, truth, nl)
             wb.status in (:translated, :already_clear) ||
                 @warn "RelocateBuild 가 구역을 못 벗어남" status=wb.status residual=left
         elseif mac == "ReformTeam"
+            enact_applied = true
             # 루트 엔드게임 교착 복구. 2026-08-04 규명: 이 트윈의 완주 실패는 **전부 루트에서만**
             # 일어나고(하위 조립체는 항상 7/7 done), 얼어붙는 것은 TransportUnitGo/DepositCargo 사슬이다.
             # 오라클 생성기는 set_reform_interval! 로 배경 재정렬을 도는데 이 데모는 그게 없어서
@@ -411,7 +455,12 @@ function handle_ood!(env, truth, nl)
                 wedge.status == :unwedged && CB.reset_cache_resume!(env.cache, env.sched)
             end
         end
-        println("[recover] $tag → $mac  (closed=", length(env.cache.closed_set), ")")
+        # enact_applied 가 false 면 위 "→ $mac" 은 거짓말이다 — 어느 분기도 안 탔다는 뜻이므로
+        # 그 사실을 로그 문구 자체에 남긴다(2026-08-17 재리뷰 F2). 사슬의 조건·순서·본문은
+        # 그대로다 — 이 줄만 계측이다.
+        local _applied_note = enact_applied ? "" :
+            " [집행 사슬 무동작: 이 사건 타입엔 $(mac) 분기가 없거나 가드에 안 걸렸다]"
+        println("[recover] $tag → $mac$(_applied_note)  (closed=", length(env.cache.closed_set), ")")
         local ran_milp = !(CB.LAST_EDGE_COSTS[] === _milp_sentinel)   # 센티넬이 그대로면 재풀이 없음
         if CB.LAST_AUTO_EFFICIENCY_W[] > 0.0
             println("[recover] energy term ON for this re-solve (auto w_eff=",
@@ -429,6 +478,15 @@ function handle_ood!(env, truth, nl)
     catch e
         println("[recover] $tag ($mac) FAILED: ", first(split(sprint(showerror, e), "\n")))
     end
+    # 이 결정 행에 "집행 사슬이 실제로 뭔가 했는가" 를 남긴다 — `deviate_valid`(메뉴 질문)와는
+    # 다른 질문이다(2026-08-17 재리뷰 F2, "Critical" 수정). deviate 로 갈아 끼운 팔이 메뉴에는
+    # 있었는데(deviate_valid=true) 사슬의 truth-타입 가드에 안 걸려 무동작으로 통과할 수 있다 —
+    # 그 판이 Task 2 에 "이 팔의 표본"으로 잘못 들어가지 않게, 여기서 조용히 넘기지 않는다.
+    this_decision["enact_applied"] = enact_applied
+    (!enact_applied && get(decision.router, "deviated", false)) &&
+        @warn "[recover] DEVIATE #$(get(decision.router, "deviate_at", "?")): " *
+              "$(mac) 가 $(tag) 사건에서 집행 사슬을 무동작으로 통과했다(enact_applied=false) " *
+              "— 세계가 canonical 과 안 바뀌었을 수 있다"
     CB.update_planning_cache!(env, 0.0)
 end
 
@@ -700,6 +758,10 @@ end
 
 # 수동 루프를 함수로 감싼다(Julia 최상위 for-루프 soft-scope 회피).
 function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
+    # ⚠️ 카운터 리셋은 **여기 없다, 일부러다.** pre-sim OOD arming(이 함수 호출 전, :662 부근의
+    # handle_ood!)이 이미 결정을 낼 수 있어서, 여기서 또 리셋하면 그 결정과 첫 in-sim 결정이
+    # 인덱스를 나눠 갖는다. 리셋은 `policy.jl` include 직후(이 파일 위쪽)로 옮겼다 — 그 자리가
+    # 이 프로세스(=이 판)에서 나올 수 있는 첫 handle_ood! 호출보다 앞이라 pre-sim·in-sim 둘 다 덮는다.
     CB.step_environment!(env); _SIM_STEP[] = 1                       # 초기 1스텝(캐시 채움)
     CB.update_planning_cache!(env, 0.0)
     seen = length(CB.ood_truth_log())

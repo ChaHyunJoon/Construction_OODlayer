@@ -667,6 +667,59 @@ end
 # 기록이 "canonical 이 RelocateBuild 를 골랐다"로 읽히면 그게 곧 거짓말이 되기 때문.
 const FORCE_MACRO = strip(get(ENV, "DEMO_FORCE_MACRO", ""))
 
+# ---- 1-step deviation (DP 표집 전용) ---------------------------------------------------
+# DS_DEVIATE_AT=k · DS_DEVIATE_ARM=<이름> 이면 **k 번째 결정에서만** 그 팔을 집행하고
+# 나머지 결정은 실행 정책(canonical)이 고른 것을 그대로 쓴다.
+#
+# 왜 FORCE_MACRO 와 따로 두는가: FORCE_MACRO 는 판 전체를 덮는 통제 실험용이고, 그 의미는
+# 그대로 남겨야 한다(기존 교차 대조가 그걸 쓴다). 여기서 조건을 붙이면 그 용도가 조용히
+# 바뀐다. 두 손잡이가 동시에 켜지면 예외를 던진다 — 어느 쪽이 이겼는지 모르는 판을 만드는
+# 것이 이 표집에서 제일 비싼 실패다.
+#
+# DS_DEVIATE_AT 파싱은 **끄는 것과 오타 낸 것이 같은 코드 경로여선 안 된다.** 이 레포에는
+# 정확히 이 모양의 폴백(파싱 실패를 조용히 기본값으로 삼는 것)이 DS_HOTSWAP 하나만 빠뜨려도
+# fault 발화율을 100%→23% 로 조용히 무너뜨린 전례가 있다(CLAUDE.md 2026-08-16). 빈 문자열/
+# 미설정만 정상 OFF 다. 그 외(정수로 안 읽히는 값·0·음수)는 죽는다 — `something(tryparse(...), 0)`
+# 은 그 셋을 전부 "OFF" 로 뭉갠다.
+const _DEVIATE_AT_RAW = get(ENV, "DS_DEVIATE_AT", "")
+const DEVIATE_AT = if isempty(_DEVIATE_AT_RAW)
+    0
+else
+    local _v = tryparse(Int, _DEVIATE_AT_RAW)
+    (_v === nothing || _v <= 0) &&
+        error("DS_DEVIATE_AT=\"$(_DEVIATE_AT_RAW)\" 는 정수로 파싱되지 않거나 0 이하다 — " *
+              "손잡이를 끄려면 아예 미설정/빈 문자열로 둬라.")
+    _v
+end
+const DEVIATE_ARM = strip(get(ENV, "DS_DEVIATE_ARM", ""))
+
+# ARM 만 있고 AT 이 없으면 언제나 설정 실수다(어느 결정에서 갈아 쓸지가 없다) — 조용한 완전
+# canonical 판으로 새지 않게 여기서 잡는다.
+!isempty(DEVIATE_ARM) && DEVIATE_AT <= 0 &&
+    error("DS_DEVIATE_ARM=\"$(DEVIATE_ARM)\" 만 설정되고 DS_DEVIATE_AT 이 없다 — " *
+          "그 조합은 언제나 설정 실수로 본다.")
+
+if !isempty(FORCE_MACRO) && DEVIATE_AT > 0
+    error("DEMO_FORCE_MACRO 와 DS_DEVIATE_AT 를 같이 켤 수 없다 — 집행 규칙이 둘이 된다.")
+end
+
+# 이 프로세스(=이 판)가 어느 레인인지 board.log 각각이 스스로 말하게 한다.
+@info (DEVIATE_AT > 0 ? "[policy] deviation ON: at=$(DEVIATE_AT) arm=$(DEVIATE_ARM)" :
+                        "[policy] deviation OFF (DS_DEVIATE_AT unset)")
+
+const _DECISION_N = Ref(0)
+_reset_decision_counter!() = (_DECISION_N[] = 0)
+_next_decision_index!()    = (_DECISION_N[] += 1; _DECISION_N[])
+
+"""
+    should_deviate(at, arm, idx) -> String | nothing
+
+`idx` 번째 결정에서 집행을 `arm` 으로 갈아쓸지. 갈아쓰지 않으면 `nothing`.
+순수 함수다 — env·시뮬레이터 없이 검사된다(2026-08-14 의 `escalation_target` 과 같은 이유).
+"""
+should_deviate(at::Int, arm::AbstractString, idx::Int) =
+    (at > 0 && !isempty(arm) && idx == at) ? String(arm) : nothing
+
 # ConstraintSpec 타입 이름 → 매크로 이름 정규화(ReplaceAgent → Replace 등).
 _macro_label(s) = s == "ReplaceAgent" ? "Replace" :
                   s == "DeprioritizeAgent" ? "Deprioritize" :
@@ -952,6 +1005,12 @@ function decide_all(env, truth; nl::AbstractString = "")
     rt["enacted"] = enacted
     rt["fell_back"] = fell_back
     chosen = pol[enacted]["chosen"]
+
+    # 이 판에서 몇 번째 결정인가. deviation 이 꺼져 있어도 센다 — 행에 남겨 두면
+    # 나중에 "왜 그 칸에 표본이 없나" 를 로그만으로 답할 수 있다.
+    didx = _next_decision_index!()
+    rt["decision_index"] = didx
+
     # 통제 실험(FORCE_MACRO): 정책의 결정은 그대로 기록하고 집행만 덮어쓴다.
     forced = !isempty(FORCE_MACRO) && FORCE_MACRO != chosen
     if forced
@@ -959,6 +1018,38 @@ function decide_all(env, truth; nl::AbstractString = "")
         rt["forced_from"] = chosen
         @info "[policy] FORCED enactment $(chosen) → $(FORCE_MACRO) (DEMO_FORCE_MACRO, 통제 실험)"
         chosen = String(FORCE_MACRO)
+    end
+
+    # 1-step deviation: k 번째 결정에서만 갈아쓴다.
+    dev = should_deviate(DEVIATE_AT, DEVIATE_ARM, didx)
+    if dev !== nothing
+        # 게이트가 이 인덱스에 걸렸다는 사실은 **팔이 바뀌었는지와 무관하게** 남긴다.
+        # 안 남기면 "k 가 결정 수보다 커서 한 번도 안 걸린 판" 과 "걸렸는데 canonical 이 이미
+        # 그 팔이었던 판" 이 로그에서 구분되지 않고, 둘 다 그 팔의 표본으로 잘못 라벨된다.
+        rt["deviate_at"] = didx
+        rt["deviate_arm"] = dev
+        rt["deviated"] = (dev != chosen)
+        rt["deviate_from"] = chosen
+        # 이 사건에 그 팔이 **메뉴에 있는지**를 같이 남긴다. `valid_macros` 는 빈 배열로
+        # "메뉴 없음(=서비스의 kind 기본표를 쓰라)"을 뜻한다 — `String[]` 을 "아무것도 유효하지
+        # 않다"로 읽으면 안 된다. 그 규약은 `:413`(`isempty(vm) || (payload["valid"] = vm)`)과
+        # `:460`(`(isempty(vm) || m in vm) && return m`)이 이미 쓰고 있다. FaultTruth·ReformTruth
+        # 는 `valid_macros` 가 항상 `String[]` 을 돌려주므로(전용 메뉴가 없다는 뜻), 여기서
+        # `isempty` 를 "유효" 로 안 세면 그 두 축의 deviation 이 무조건 invalid 로 찍힌다.
+        # ⚠️ 이 키는 "메뉴 안에 있는가" 만 답한다 — "집행 사슬이 실제로 뭔가 했는가" 는 다른
+        # 질문이고 `run_demo.jl` 의 `enact_applied` 가 그 진실원이다(메뉴가 비어 valid=true 인데
+        # 사슬은 truth 타입 가드로 무동작일 수 있다, 예: fault 사건에 ForbidZone).
+        local _vm = try valid_macros(env, truth) catch; String[] end
+        rt["deviate_valid"] = isempty(_vm) || dev in _vm
+        rt["deviate_valid"] ||
+            @warn "[policy] DEVIATE #$(didx): $(dev) 는 이 사건($(typeof(truth).name.name))의 " *
+                  "메뉴 $(_vm) 밖이다 — 정책이 애초에 고를 수 없는 팔로 갈아 끼웠다"
+        if dev != chosen
+            @info "[policy] DEVIATE #$(didx): $(chosen) → $(dev) (DS_DEVIATE_AT, 1-step)"
+            chosen = dev
+        else
+            @info "[policy] DEVIATE #$(didx): 이미 $(chosen) — 집행 무변경 (DS_DEVIATE_AT, 1-step)"
+        end
     end
 
     # 서비스가 돌려준 "각 producer 가 실제로 본 것" -- UI 가 나란히 보여줄 두 입력.
@@ -974,6 +1065,7 @@ function decide_all(env, truth; nl::AbstractString = "")
         (isempty(m) || m in ranking) || push!(ranking, m)
     end
     (forced && !(chosen in ranking)) && push!(ranking, chosen)   # 강제 집행 매크로도 표에 보이게
+    (get(rt, "deviated", false) && !(chosen in ranking)) && push!(ranking, chosen)   # deviate 로 갈아 쓴 매크로도 표에 보이게
     cands = [Dict("rank" => i, "macro" => m,
                   "score" => (i == 1 && pol[enacted]["margin"] !== nothing ?
                               "margin $(round(pol[enacted]["margin"]; digits = 2))" : ""),
@@ -999,6 +1091,7 @@ function decide_all(env, truth; nl::AbstractString = "")
                            (haskey(pol, requested) && !isempty(get(pol[requested], "rationale", "")) ?
                             ": $(pol[requested]["rationale"])" : "") * ")" : "") *
               (forced ? " · FORCED→$(FORCE_MACRO) (control run; policy chose $(rt["forced_from"]))" : "") *
+              (get(rt, "deviated", false) ? " · DEVIATE→$(rt["deviate_arm"]) (1-step; policy chose $(rt["deviate_from"]))" : "") *
               (isempty(others) ? " · all policies agree" :
                " · DIFFERS from " * join(["$(k)=$(pol[k]["chosen"])" for k in others], ", "))
 
