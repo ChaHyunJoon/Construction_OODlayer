@@ -215,6 +215,13 @@ def main():
     meta.append("> build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 "
                 "`—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.")
 
+    # dp 레인이 이번 스윕에 있는지는 **finish_tables.sh 2단계와 같은 신호**로 판정한다 — 그
+    # 스크립트는 `results_4pol/shards_dp` 디렉터리 유무로 dp 샤드 병합 여부를 정하고, 없으면
+    # dp 열은 이미 `cell()` 의 결측 분기에서 "이 레인은 스윕에 없음" 으로 표에 남는다(위 참조).
+    # 새 신호를 만들지 않는 이유: 여기서 따로 판정하면 칸과 각주가 다른 결론을 낼 수 있고,
+    # 바로 그 갈림이 이번에 고치는 결함이다(아래 2026-08-16 주석).
+    dp_lane_swept = os.path.isdir(os.path.join(HERE, "results_4pol", "shards_dp"))
+
     # ---- §8.7 gap 을 **여기서 계산해** 표에 싣는다 -----------------------------------------
     # 이 수치가 DP 열의 이름을 정한다. 손으로 적으면 다음 스윕에서 조용히 거짓이 되므로,
     # 표를 만들 때마다 다시 잰다. 비교는 **평균 대 평균**이다 — 개별 실현 J 를 평균 V 와 대면
@@ -226,93 +233,118 @@ def main():
     # 섞으면 backward 쪽에서 V 가 구조적으로 더 작아 gap 이 100% 로 자동 발화한다 — 그건 측정이
     # 아니라 단위 오류다. 실행 정책의 cost-to-go 는 DP 표본과 **같은 분해**로 뽑는다:
     #       ctg_i = Σ_{k>=i} c_k + terminal_value  =  J_row − c_prefix − Σ_{k<i} c_k
+    #
+    # ★ 2026-08-16 — **dp 레인이 이번 스윕에 없으면(`dp_lane_swept` False) 이 블록 전체를
+    # 건너뛴다.** 이유: 아래 계산은 **현재** `results_4pol/*.jsonl`(이번 세대의
+    # canonical/surrogate/dspy 행)을 `dp_oracle/value.json` 의 V 와 무조건 대면시킨다. dp 열이
+    # 스윕에서 빠졌다는 것은 — 이번 courier 리스윕이 실제로 그렇듯 — `value.json` 이 결과와는
+    # **다른 코드 세대**(SwapBattery 가 물리 배터리 배송으로 바뀌기 이전)에 표집된 채 남아 있을
+    # 수 있다는 뜻이다. 그 상태에서 조건 없이 돌리면 dp **열**(칸)은 `cell()` 이 이미 올바르게
+    # "이 레인은 스윕에 없음" 으로 비워 두는데도, **그 옆 각주에는 세대가 섞인 gap 수치가
+    # 발행된다** — 칸은 맞고 각주만 새는 형태라 표를 훑는 것만으로는 안 잡힌다(리뷰에서 실제로
+    # 새어 나간 결함, CLAUDE.md 의 "헤드라인 아티팩트가 자기가 없앤 전제를 계속 주장했다" 와
+    # 같은 종류). dp 샤드가 다시 이 트리에 들어오면(`shards_dp` 가 재생성되면) 이 블록은 자동으로
+    # 되살아난다 — 이건 삭제가 아니라 조건문이다. 되살리기 전에 `dp_oracle/value.json` 이 실제로
+    # 그 시점의 `results_4pol` 과 같은 코드 세대인지부터 확인할 것(단순히 파일이 있다고 세대가
+    # 맞는다는 뜻은 아니다).
     gap_note = ""
-    try:
-        import collections as _c
-        import statistics as _st
-        import glob as _g
-        sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
-        from derive_grid import cell_key as _ck, state_of as _so
-        from sample_grid import decompose_board as _dec
-        # gap 의 **원인 문장**은 손으로 적지 않는다 — 표본의 `sampling_mode` 에서 유도한다.
-        # (2026-08-17 최종 리뷰 Critical 3: 하드코딩된 원인 ①·③ 이 이미 닫힌 뒤에도 헤드라인
-        #  아티팩트가 자기 전제를 계속 주장했다. 진실원은 `sample_grid.gap_cause_note`.)
-        from sample_grid import gap_cause_note as _gcn, samples_sampling_mode as _ssm
-        _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
-        _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
-        _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
-        _backward = _v.get("solver") == "backward"
-        _per = _c.defaultdict(lambda: _c.defaultdict(list))
-        _skipped = _c.Counter()
-        for _p in _g.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
-            for _l in open(_p):
-                _l = _l.strip()
-                if not _l:
-                    continue
-                _r = json.loads(_l)
-                if _r.get("policy") not in ("canonical", "surrogate", "dspy"):
-                    continue
-                if _backward:
-                    _d0 = _dec(_r)
-                    if not _d0["ok"]:
-                        # 조용히 넘기지 않는다 — 아래 gap_note 가 이 수를 같이 싣는다.
-                        _skipped[str(_d0["reason"]).split(":")[0]] += 1
+    if dp_lane_swept:
+        try:
+            import collections as _c
+            import statistics as _st
+            import glob as _g
+            sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
+            from derive_grid import cell_key as _ck, state_of as _so
+            from sample_grid import decompose_board as _dec
+            # gap 의 **원인 문장**은 손으로 적지 않는다 — 표본의 `sampling_mode` 에서 유도한다.
+            # (2026-08-17 최종 리뷰 Critical 3: 하드코딩된 원인 ①·③ 이 이미 닫힌 뒤에도 헤드라인
+            #  아티팩트가 자기 전제를 계속 주장했다. 진실원은 `sample_grid.gap_cause_note`.)
+            from sample_grid import gap_cause_note as _gcn, samples_sampling_mode as _ssm
+            _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
+            _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
+            _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
+            _backward = _v.get("solver") == "backward"
+            _per = _c.defaultdict(lambda: _c.defaultdict(list))
+            _skipped = _c.Counter()
+            for _p in _g.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
+                for _l in open(_p):
+                    _l = _l.strip()
+                    if not _l:
                         continue
-                    _run = _d0["c_prefix"]            # 결정 i 이전까지의 누적 러닝코스트
-                else:
-                    try:
-                        _J = objective.J_row(_r)
-                    except Exception as _e2:
-                        _skipped[type(_e2).__name__] += 1
+                    _r = json.loads(_l)
+                    if _r.get("policy") not in ("canonical", "surrogate", "dspy"):
                         continue
-                _seen = set()
-                for _i, _d in enumerate(_r.get("decisions") or []):
-                    _s = _so(_d, _g_spec["axes"])
                     if _backward:
-                        # 이 칸에서의 **실현 cost-to-go**. 칸을 못 세워도 러닝코스트는 누적한다 —
-                        # 안 그러면 뒤 결정들의 ctg 가 통째로 어긋난다.
-                        _val = _d0["J"] - _run
-                        _run += _d0["cs"][_i]
+                        _d0 = _dec(_r)
+                        if not _d0["ok"]:
+                            # 조용히 넘기지 않는다 — 아래 gap_note 가 이 수를 같이 싣는다.
+                            _skipped[str(_d0["reason"]).split(":")[0]] += 1
+                            continue
+                        _run = _d0["c_prefix"]            # 결정 i 이전까지의 누적 러닝코스트
                     else:
-                        _val = _J
-                    if _s is None:
+                        try:
+                            _J = objective.J_row(_r)
+                        except Exception as _e2:
+                            _skipped[type(_e2).__name__] += 1
+                            continue
+                    _seen = set()
+                    for _i, _d in enumerate(_r.get("decisions") or []):
+                        _s = _so(_d, _g_spec["axes"])
+                        if _backward:
+                            # 이 칸에서의 **실현 cost-to-go**. 칸을 못 세워도 러닝코스트는
+                            # 누적한다 — 안 그러면 뒤 결정들의 ctg 가 통째로 어긋난다.
+                            _val = _d0["J"] - _run
+                            _run += _d0["cs"][_i]
+                        else:
+                            _val = _J
+                        if _s is None:
+                            continue
+                        _k = _ck(_s)
+                        if _k in _seen or _k not in _V:
+                            continue
+                        _seen.add(_k)
+                        _per[_k][_r["policy"]].append(_val)
+            _w = _t = 0
+            for _k, _bp in _per.items():
+                for _pol, _Js in _bp.items():
+                    if len(_Js) < 3:
                         continue
-                    _k = _ck(_s)
-                    if _k in _seen or _k not in _V:
-                        continue
-                    _seen.add(_k)
-                    _per[_k][_r["policy"]].append(_val)
-        _w = _t = 0
-        for _k, _bp in _per.items():
-            for _pol, _Js in _bp.items():
-                if len(_Js) < 3:
-                    continue
-                _t += 1
-                if _st.mean(_Js) < _V[_k] - 1e-9:
-                    _w += 1
-        _unit = ("그 칸부터의 **실현 cost-to-go**" if _backward else "판 전체의 평균 J")
-        _mode = _ssm(os.path.join(HERE, "dp_oracle", "samples.jsonl"))
-        if _t:
-            gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s; "
-                        "표집 모드 = `%s`).** "
-                        "실행 정책이 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s%s"
-                        % (_t, _unit, _mode, _w, 100.0 * _w / _t,
-                           ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** "
-                            + ("원인은 상수-팔이 아니다(V 는 진짜 backward induction 이다). " + _gcn(_mode)
-                               if _backward else
-                               "V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 "
-                               "없어 그 정책군이 실행 레인보다 약하기 때문이다.")
-                            + " 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 이 열의 실현 결과 "
-                              "자체는 유효한 실행 결과다."
-                            if _w else "0 이므로 이 격자 위에서는 천장이라는 이름이 유지된다."),
-                           ("" if not _skipped else
-                            " (분해 불가로 제외한 행: %s)" % dict(_skipped))))
-    except Exception as _e:                       # 계산 실패를 조용히 넘기지 않는다
-        gap_note = "§8.7 gap 을 계산하지 못했다: %r" % (_e,)
+                    _t += 1
+                    if _st.mean(_Js) < _V[_k] - 1e-9:
+                        _w += 1
+            _unit = ("그 칸부터의 **실현 cost-to-go**" if _backward else "판 전체의 평균 J")
+            _mode = _ssm(os.path.join(HERE, "dp_oracle", "samples.jsonl"))
+            if _t:
+                gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s; "
+                            "표집 모드 = `%s`).** "
+                            "실행 정책이 DP 의 V 보다 **좋은** 쌍 %d개 = **%.1f%%**. %s%s"
+                            % (_t, _unit, _mode, _w, 100.0 * _w / _t,
+                               ("0 이 아니므로 이 표에서 **DP 열을 '천장' 이라 부르지 않는다.** "
+                                + ("원인은 상수-팔이 아니다(V 는 진짜 backward induction 이다). " + _gcn(_mode)
+                                   if _backward else
+                                   "V 는 상수-팔 표집에서 나오는데 사건이 섞인 판을 한 팔로 처리할 수 "
+                                   "없어 그 정책군이 실행 레인보다 약하기 때문이다.")
+                                + " 다만 dp **레인**은 칸마다 a* 를 갈아 쓰므로 이 열의 실현 결과 "
+                                  "자체는 유효한 실행 결과다."
+                                if _w else "0 이므로 이 격자 위에서는 천장이라는 이름이 유지된다."),
+                               ("" if not _skipped else
+                                " (분해 불가로 제외한 행: %s)" % dict(_skipped))))
+        except Exception as _e:                       # 계산 실패를 조용히 넘기지 않는다
+            gap_note = "§8.7 gap 을 계산하지 못했다: %r" % (_e,)
+    else:
+        gap_note = ("dp 레인은 이번 스윕에 없다(`results_4pol/shards_dp` 없음) — §8.7 gap 은 "
+                    "**측정하지 않았다.** 위 dp 열이 전 case 에서 `이 레인은 스윕에 없음` 인 것과 "
+                    "같은 이유다. 과거 스윕의 gap 수치를 이어 붙이지 않는 이유는, 그 값이 다른 "
+                    "코드 세대의 `results_4pol/*.jsonl` 로 잰 것이라 지금 세대와 대면시키면 두 "
+                    "세대가 섞인 숫자가 되기 때문이다 — 빈 열을 보고 '천장이 닫혔다' 나 "
+                    "'gap 이 줄었다' 로 읽지 말 것.")
 
     vpath = os.path.join(HERE, "dp_oracle", "value.json")
     gpath = os.path.join(HERE, "dp_oracle", "grid_spec.json")
-    if os.path.exists(vpath) and os.path.exists(gpath):
+    # dp 열이 스윕에 없을 때 이 커버리지 줄도 §8.7 gap 과 같은 이유로 같이 죽인다 — 커버리지는
+    # value.json 이 **어느 세대의 결과에 대해** 격자를 얼마나 채웠는지를 말하는데, 결과가 없는
+    # 세대의 value.json 을 놓고 "66/65 = 101.5%" 를 발행하면 이번 스윕과 무관한 숫자가 된다.
+    if dp_lane_swept and os.path.exists(vpath) and os.path.exists(gpath):
         v = json.load(open(vpath))
         g = json.load(open(gpath))
         cov = 100.0 * v.get("n_cells", 0) / max(g.get("n_observed_cells", 1), 1)
