@@ -1436,7 +1436,22 @@ function get_objective_expr(milp, f::SumOfMakeSpans, model, sched, tF; edge_cost
     # efficiency scale = the total of the candidate edge energies THIS formulation priced (which
     # already carry agent_cost_bias × SoC multiplier, so a biased robot's edges stand out against
     # the normalized scale rather than being normalized away).
-    if w_eff == 0.0 && AUTO_EFFICIENCY_KAPPA[] !== nothing &&
+    # PRECEDENCE (2026-08-13, changed): the global κ now WINS over a per-lane `efficiency` weight.
+    # It used to be gated on `w_eff == 0.0`, i.e. an explicitly-set weight silently suppressed the
+    # global κ. That made spec §4's claim — "turn κ once and greedy/MILP/J move together" — FALSE
+    # in the five lanes that set `efficiency` by hand from an `ENERGY_W` env var
+    # (`tools/e2e.jl:685`; `tools/demos.jl:1123`, `:1288`, `:1586`, `:2759`): those lanes could
+    # never see the global κ, so a repo-wide κ change left them on their own constant.
+    # κ is the single dimensionless coefficient of the shared objective; it should not vary by lane.
+    #
+    # What this changes in practice: only lanes that BOTH set an explicit weight AND call
+    # `init_objective_weights!`. The five ENERGY_W lanes above do not call it, so κ stays `nothing`
+    # there and their explicit weight is still used — this is future-proofing plus a real fix for
+    # any lane that does both. ⚠️ It also means a deliberate `efficiency = 0.0` OFF-switch
+    # (`tools/demos.jl:1420`, `:1748`) is overridden once κ is set in that process; to turn the
+    # energy term off under a global κ, set `AUTO_EFFICIENCY_KAPPA[] = nothing` (or
+    # `ENERGY_OBJECTIVE=0`, which makes the lane skip `init_objective_weights!` entirely).
+    if AUTO_EFFICIENCY_KAPPA[] !== nothing &&
        edge_costs !== nothing && !isempty(edge_costs)
         speed_scale = 0.0
         # terminal_vtxs is a collection of project heads (each a collection of vertices); tolerate a
