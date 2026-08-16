@@ -656,7 +656,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 >
 > **검증 게이트(원안 Step 4 확장):** 360 판에서 `battery tint frames` 의 `red>0` **그리고**
 > `green(courier)>0` 을 센다. `green=0` 인 판은 그 판의 정책이 SwapBattery 를 안 골랐다는
-> 뜻이므로 결함이 아니다 — 스윕 실측상 **canonical 은 SwapBattery 를 0/3795 회 고른다**
+> 뜻이므로 결함이 아니다 — 스윕 실측상 **canonical 은 SwapBattery 를 0/1533 회 고른다**
+> (⚠️ 2026-08-16 정정: 이 자리에 원래 적혀 있던 분모 `3795` 는 **구세대 3레인 합**이었다.
+> 이번 세대 canonical 의 결정 수는 **1533**, 3레인 합은 **4027** 이다)
 > (구조적). 즉 **canonical 120 판은 green=0 이 정상**이고, surrogate·dspy 240 판에서
 > green>0 이 나와야 한다. 이 기대를 미리 적어 두지 않으면 "1/3 이 실패했다" 로 오독한다.
 >
@@ -760,7 +762,10 @@ Expected: battery 가 낀 판에서 `red>0` **그리고** `green(courier)>0`.
 - 스윕: **210/210 샤드 ok · fail 0 · deadline 0**, 630행, 1h47m, 전 샤드 `commit=ec8cf495`.
 - 배송: **277 dispatched · 폴백 0** (구세대 dispatched 0 · 폴백 267). 레인 `surrogate 165 ·
   dspy 112 · **canonical 0**`. canonical 이 SwapBattery 를 안 고르는 것은 **구조적**이다
-  (매크로 히스토그램 `Replace 561 / ReformTeam 693 / NOOP 279`, 0/3795).
+  (그 레인의 결정 **1533개** 전체가 `Replace 561 / ReformTeam 693 / NOOP 279`, `SwapBattery`
+  **0회**. 3레인 합은 4027. ⚠️ 초판이 적었던 분모 `3795` 는 **구세대** 3레인 합이다 —
+  스윕 **전에** 보존 트리로 쓴 Ruling P-11 의 숫자가 그대로 흘러들어온 것이고, 히스토그램
+  합(1533)과 문장 안에서 산술이 어긋났다).
 - **헤드라인 귀속은 "정책 고정 · case 간 용량-반응"** 이다(레인 간 비교는 zone 반례로 무효):
   surrogate `fault`(배송 0회) −0.8% → `fault_battery`(33회) +26.3% → `battery`(74회) +54.9%;
   dspy −2.2% → +15.0% → +32.6%. **`battery_zone`·`all` 은 교란되어 배송 크기로 인용 금지.**
@@ -769,7 +774,10 @@ Expected: battery 가 낀 판에서 `red>0` **그리고** `green(courier)>0`.
 - surrogate 라벨: **낡았다**. 단 **−8.3pp 는 결정가중 아티팩트라 발행 금지** — 보드 단위로는
   1.8pp 이고 surrogate 120판 중 **52판이 두 팔을 모두 쓴다**. 유효한 근거는 makespan 쪽의
   **case 층화 용량-반응**(0회 +0.00 → 1회 +3.90 → 2회 +6.45 → 3회+ +9.13초, canonical 동일
-  시드 기준). dspy 는 makespan 만 복제되고 완주율 격차는 보드 단위로 0.0pp 다.
+  시드 기준, n 7/20/15/12). ⚠️ 여기서 "층화" 는 **zone 이 낀 case 를 뺐다**는 뜻이고 남은 두
+  case(`battery`·`fault_battery`)는 **풀링**돼 있다 — 그 아래로 case 별·결정 수별로 더 쪼개면
+  칸이 n=1~4 가 되고 **단조성이 깨진다**(2026-08-16 실측). **"쪼개도 유지된다" 는 측정된 적이
+  없다.** dspy 는 makespan 만 복제되고 완주율 격차는 보드 단위로 0.0pp 다.
 - 발행 표의 **세대 누수 2건**을 닫았다(`build_compare_table.py`): §8.7 gap 각주가 새 행을
   `aff13715` 세대 `value.json` 과 재계산하던 것(`1bfbcaf8`), 그리고 **숫자가 없어서 grep 을
   통과하던** "이 표의 DP 는 진짜 Bellman backward induction 이다" 주장(`7eddb629`).

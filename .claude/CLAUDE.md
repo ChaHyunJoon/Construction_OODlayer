@@ -23,7 +23,8 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   세 단 전부에 적용): 주차된 창고 예비가 고장 대상에서 빠진다. 예전엔 `failed=R16, spare=R16`
   처럼 **자기 자신으로 교체**하는 무의미(vacuous) 사건이 났다 — `safe=true` 경로는 이미 제외를
   갖고 있었고 데모 기본값인 `safe=false` 경로만 뚫려 있었다.
-- **구세대 재현: `DEMO_BATTERY_COURIER=0`**(`tools/monitor/run_demo.jl:612`).
+- **구세대 재현: `DEMO_BATTERY_COURIER=0`**(호출은 `tools/monitor/run_demo.jl:613-616` 의
+  `set_battery_courier!`, `:610-612` 가 그 손잡이를 주석으로 문서화한다).
   ⚠️ **배송만 끈다 — `_faultable` 수정은 되돌아가지 않는다.** 그래서 이 플래그로 만든 판은
   구세대와 **같지 않다**.
 - **★ `objective_hash` 는 안 바뀐다 — `19819377a7f8ebb2` 그대로다.** 갈린 것은 **동역학**이지
@@ -38,8 +39,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   dispatched 0 · 폴백 267). 레인은 `surrogate 165 / dspy 112 / canonical 0`.
   ⚠️ **277 이라는 수 자체는 세대를 나르지 않는다** — 구세대 집행도 267 로 거의 같다.
   세대를 가르는 것은 `dispatched/fallback` 의 **반전**이다(같은 `println`, `run_demo.jl:379`).
-- **★ canonical 이 `SwapBattery` 를 한 번도 안 고르는 것은 구조적이다** — 210판 매크로 전체가
-  `Replace 561 / ReformTeam 693 / NOOP 279` 이고 3795 결정 중 **0회**다. 그 귀결이 위험하다:
+- **★ canonical 이 `SwapBattery` 를 한 번도 안 고르는 것은 구조적이다** — 210판에서 낸 결정
+  **1533개**의 매크로 전체가 `Replace 561 / ReformTeam 693 / NOOP 279` 이고 `SwapBattery` 는
+  **0회**다(세 레인 합은 4027). 그 귀결이 위험하다:
   **배송을 태우는 레인은 surrogate·dspy 둘뿐인데, 그 둘이 바로 DSPy 서비스가 죽으면 조용히
   canonical 로 내려앉는 레인**이다. 게이트의 `/health` 는 **시작 시점만** 본다 → 스윕마다
   `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것(이번 실측: 교차 레인 폴백 0).
@@ -52,8 +54,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   0건**인데도 surrogate **+33.9%** · dspy **+46.0%** 가 그대로 나온다. 그 패턴은 배송 없이도 난다.
   🔴 `battery_zone`(+48.6%/+53.1%) · `all`(+50.8%/+42.6%) 은 zone 축과 겹쳐 **교란**돼 있다 —
   **배송 크기로 인용 금지**(배송 없는 대조항 `fault_zone` 이 이미 surrogate +27.1%).
-- **★ zone 축 이동은 귀속되지 않았다.** 보존된 구세대는 `commit=5dd29dae` 도장이고 HEAD 와
-  **14 커밋** 차이라 **배송 단독 대조군이 아니다.** `_faultable` 로도 설명되지 않는다 — 그건
+- **★ zone 축 이동은 귀속되지 않았다.** 보존된 구세대는 `commit=5dd29dae` 도장이고
+  **스윕 도장(`5dd29dae..ec8cf495`) 기준 14 커밋** 차이라 **배송 단독 대조군이 아니다**
+  (⚠️ 분모는 앵커에 딸린다 — 현재 HEAD 기준으로는 19 다). `_faultable` 로도 설명되지 않는다 — 그건
   고장 **대상 선정**을 바꾸는데 순수 zone 에는 고장 사건이 없다(`_faultable` 이 설명으로
   정당한 자리는 고장 축 미완주 **감소**다). 옳은 통제는 **같은 커밋에서
   `DEMO_BATTERY_COURIER=0` 으로 630판을 다시 굴리는 것**이고 **이번 사이클은 돌리지 않았다.**
@@ -86,8 +89,14 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   규칙이 그 52판을 통째로 한쪽으로 몰아 Replace 쪽 n 이 18판밖에 안 남는다).
   **살아남은 근거는 case 층화 makespan 용량-반응**이다 — **같은 시드의 canonical** 과 짝지어 뺀
   Δmakespan 중앙이 판당 `SwapBattery` 집행 `0회 +0.00 → 1회 +3.90 → 2회 +6.45 → 3회 이상
-  +9.13 s`. **case 별로 쪼개도 유지**되고 **판당 총 배터리 결정 수를 고정해도 유지**된다
-  (= 용량이 난이도 대리변수가 아니다). 집행 0회 판의 Δ 가 **정확히 0.00** 인 것이 내부 통제다.
+  +9.13 s`(n 7/20/15/12). 집행 0회 판의 Δ 가 **정확히 0.00** 인 것이 내부 통제다.
+  ⚠️ **그 사다리는 zone 이 안 낀 두 case(`battery`·`fault_battery`)를 풀링해서 잰 값이다** —
+  `measure_swap_staleness.py` 는 그 층화까지만 하고 그 아래로는 쪼개지 않는다.
+  **case 별로 또는 판당 총 배터리 결정 수로 더 쪼개면 칸이 n=1~4 로 얇아지고 단조성이 깨진다**
+  (실측: surrogate `fault_battery` 3회+ **−0.50**(n=1), dspy `fault_battery` 2회 **+2.06**;
+  결정 수 고정 시 surrogate n_bat=4 → **+3.92/+3.36/+9.13**, dspy n_bat=2 → **−2.54/+6.52**).
+  🔴 **"쪼개도 유지된다" 를 이 사다리의 강건성 근거로 쓰지 말 것 — 그 분석은 측정된 적이 없고
+  실제로 재현되지 않는다.** 이 판정은 이미 한 번(−8.3pp) 과대주장으로 재작성됐다.
   ⚠️ **dspy 의 "복제" 는 makespan 에서만 성립한다** — 판 단위 완주 격차는 **0.0pp** 다.
   그런데도 surrogate 는 배터리 결정의 60.7%(165/272)를 그 팔에 준다.
 - 신규 계약: `wm4spacecraft_manufacturing/gate_courier_sweep.sh`(**4/4** — 배송 집행 · 고장
@@ -221,9 +230,10 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   스톱**(rc 1)해 결과 문서 §6 의 3단계에서 죽는다. `audit_objective.py` 의 `WARN(9-b)` 가 그
   전조다. ✅ **2026-08-16 해소: `cf63d760` 이 `objective.json` + `essential_tg_coponents.jl`
   (그 `generation` 이름이 가리키는 코드) + `RESULTS_D20` 해시 1줄을 함께 이력에 넣었고
-  `WARN(9-b)` 가 닫혔다.** ⚠️ 그 커밋 자체가 남긴 교훈이 위 배송 세대 §5 에 있다 —
-  그 diff 는 구세대 스윕 당시 **이미 작업 트리에서 살아 있었으므로**, 그 커밋을 "세대를 가른
-  14 커밋" 후보에서 빼야 한다. **커밋된 SHA 만으로는 그 런이 실제로 쓴 목적함수를 식별할 수
+  `WARN(9-b)` 가 닫혔다.** ⚠️ 그 커밋 자체가 남긴 교훈은
+  `md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md` **§5**(결과 문서의 절 번호이지 이 파일의
+  절이 아니다)에 있다 — 그 diff 는 구세대 스윕 당시 **이미 작업 트리에서 살아 있었으므로**,
+  그 커밋을 "세대를 가른 14 커밋" 후보에서 빼야 한다. **커밋된 SHA 만으로는 그 런이 실제로 쓴 목적함수를 식별할 수
   없다.**
 - ⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
   로 돌린다(인터프리터는 `.venv` 유지). `dp_oracle/_sample_work/`(=`--keep-work` 산출, 2.4GB)는 gitignore.
