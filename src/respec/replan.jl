@@ -641,21 +641,28 @@ function maybe_respecify!(env, ood_queue;
         end
         n_id_before = check_identity!(env, "before SwapBattery($(role))")
         res = swap_battery!(env, role)
-        if res.status != :battery_swapped
+        # :battery_courier_dispatched = 배송 경로(battery_courier.jl). 교체는 예비 로봇이 현장에
+        # 도착하는 스텝에 적용된다 — 제안 자체는 그 순간 이미 ADMIT 된 것이므로 여기서 성공으로 센다.
+        if !(res.status in (:battery_swapped, :battery_courier_dispatched))
             @warn "[RESPEC] swap-battery $(res.status) -> no-op" detail = get(res, :detail, "")
             return :noop
         end
+        deferred = res.status === :battery_courier_dispatched
         try
             monitor_record_verification!(status="passed", checks=Any[
                 Dict("name"=>"typed_proposal", "passed"=>true, "detail"=>"SwapBattery target $(role) is valid"),
                 Dict("name"=>"past_is_invariant", "passed"=>true, "detail"=>"completed schedule nodes are not rewritten"),
                 Dict("name"=>"identity_preserved", "passed"=>true, "detail"=>"same physical asset; only the battery changed"),
             ], execution=Dict("action"=>"swap_battery", "role"=>string(role),
-                              "soc_before"=>res.soc_before === nothing ? "unknown" : res.soc_before),
+                              "soc_before"=>res.soc_before === nothing ? "unknown" : res.soc_before,
+                              "delivery"=>deferred ? "depot courier en route" : "in place",
+                              "courier"=>deferred ? string(res.courier) : ""),
             verdict="ADMITTED · verified battery swap")
         catch
         end
-        @info "[RESPEC] ADMITTED battery swap: role $(role) recharged in the field (no depot body consumed)."
+        @info deferred ?
+            "[RESPEC] ADMITTED battery swap: role $(role) — courier $(res.courier) is driving out from the :$(res.depot) depot (no depot body consumed)." :
+            "[RESPEC] ADMITTED battery swap: role $(role) recharged in the field (no depot body consumed)."
         # 본체가 안 바뀌므로 위반이 생길 수가 없다 — 그래도 측정한다(그 주장 자체를 검증하려고).
         report_identity_delta(env, n_id_before, "swap-battery($(role))")
         return :admitted

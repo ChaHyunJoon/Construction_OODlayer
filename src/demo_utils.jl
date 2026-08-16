@@ -168,10 +168,16 @@ function simulate!(
 
         # `factory_vis.vis` 가 Nothing 이 아닐 때(즉 시각화기가 실제로 켜져 있을 때)만 안쪽 실행
         if !isnothing(factory_vis.vis)
+            # 배터리 배송 중에는 `newly_updated` 만으로 프레임을 찍으면 안 된다: 라인이 의도적으로
+            # 멈춰 있어(battery_swap_halt_active) 닫히는 노드가 없으므로 그 집합이 계속 비고,
+            # **방전(빨강) 구간이 애니에 한 프레임도 안 남는다**(실측: red=0). 그동안에도 씬은
+            # 바뀌고 있다 — 배송 로봇이 주행 중이다. 그래서 그 구간은 고정 간격으로 찍는다.
+            delivering = (try !isempty(ConstructionBots.battery_deliveries()) catch; false end) &&
+                         (sim_process_data.iter % ConstructionBots.BATTERY_DELIVERY_FRAME_EVERY[] == 0)
             # `||` 는 논리 OR. isempty = 비었는지 검사. "새로 갱신된 게 있거나 OR 매스텝갱신 옵션이 켜졌으면"
-            if !isempty(newly_updated) || sim_params.update_anim_at_every_step
+            if !isempty(newly_updated) || sim_params.update_anim_at_every_step || delivering
                 # 함수가 튜플로 반환한 여러 값을 한 줄에서 각 변수로 동시에 풀어 받음(다중 대입)
-                scene_nodes, closed_steps_nodes, active_build_nodes, fac_active_flags_nodes, fac_faulted_flags_nodes, fac_dispatched_flags_nodes, fac_battery_tint_nodes = ConstructionBots.visualizer_update_function!(factory_vis, env, newly_updated)
+                scene_nodes, closed_steps_nodes, active_build_nodes, fac_active_flags_nodes, fac_faulted_flags_nodes, fac_dispatched_flags_nodes, fac_battery_tint_nodes, fac_courier_tint_nodes = ConstructionBots.visualizer_update_function!(factory_vis, env, newly_updated)
                 sim_process_data.num_iters_since_anim_save += 1             # 마지막 저장 이후 카운터 +1
                 if process_animation_tasks                                  # 애니메이션 작업 처리 옵션이 켜져 있으면
                     # NOTE: do NOT deepcopy vis_nodes. A deepcopied MeshCat node carries a
@@ -188,7 +194,7 @@ function simulate!(
                     update_tuple = (sim_process_data.iter, cam_tgt,
                         deepcopy(scene_nodes), closed_steps_nodes, active_build_nodes,
                         fac_active_flags_nodes, fac_faulted_flags_nodes, fac_dispatched_flags_nodes,
-                        fac_battery_tint_nodes)
+                        fac_battery_tint_nodes, fac_courier_tint_nodes)
                     push!(update_steps, update_tuple)                      # push! : 배열 끝에 추가(파이썬 list.append)
                 end
                 # LIVE VIEW: 이번 스텝의 변환을 **지금 바로** MeshCat 에 밀어 넣는다. 위쪽 atframe
@@ -229,6 +235,11 @@ function simulate!(
                         haskey(factory_vis.battery_tints, node_key) &&
                             setvisible!(factory_vis.battery_tints[node_key], true)
                     end
+                    setvisible!(factory_vis.courier_tints, false)          # 배터리 배송 중=초록 본체
+                    for node_key in fac_courier_tint_nodes
+                        haskey(factory_vis.courier_tints, node_key) &&
+                            setvisible!(factory_vis.courier_tints[node_key], true)
+                    end
                     # cam_tgt 은 위 분기 안에서만 정의되므로 여기서 따로 계산한다.
                     live_cam = ConstructionBots.CAMERA_FOLLOW[] ?
                         ConstructionBots._camera_follow_target(env) : nothing
@@ -241,8 +252,14 @@ function simulate!(
             end
         end
 
+        # 배터리 교체 대기 중의 정지는 **의도된 라인 정지**이지 무진전이 아니다. 여기서 세면
+        #   · max_num_iters_no_progress 워치독이 배송 왕복을 "교착"으로 오판해 런을 죽이고,
+        #   · maybe_emit_reform_ood!(REFORM_INTERVAL 배수) 가 있지도 않은 팀 교착 OOD 를 띄운다
+        # (배송 왕복은 창고 거리 D=20·속도 4 m/s 기준 수백 스텝이라 두 임계값 모두 실제로 걸린다).
+        if (try ConstructionBots.battery_swap_halt_active() catch; false end)
+            # 카운터를 그대로 둔다(리셋도 증가도 아님) — 정지 전의 진전 이력을 보존한다.
         # `==` 는 값이 같은지 비교. "이번에 끝난 작업 수가 직전과 똑같으면(= 진전 없음)"
-        if length(cache.closed_set) == sim_process_data.last_iter_num_closed
+        elseif length(cache.closed_set) == sim_process_data.last_iter_num_closed
             sim_process_data.num_iters_no_progress += 1                    # 무진전 카운터 +1
         else
             sim_process_data.num_iters_no_progress = 0                     # 진전이 있었으면 0으로 리셋
@@ -336,6 +353,13 @@ function simulate!(
                     for node_key in fac_battery_tint_nodes_k
                         haskey(factory_vis.battery_tints, node_key) &&
                             setvisible!(factory_vis.battery_tints[node_key], true)
+                    end
+                    # SwapBattery 배송 중인 창고 예비 = 초록 본체(빨강/시안과 다른 사건).
+                    fac_courier_tint_nodes_k = length(step_k) >= 10 ? step_k[10] : []
+                    setvisible!(factory_vis.courier_tints, false)
+                    for node_key in fac_courier_tint_nodes_k
+                        haskey(factory_vis.courier_tints, node_key) &&
+                            setvisible!(factory_vis.courier_tints[node_key], true)
                     end
                     # Use the LIVE vis_nodes (same core as `anim`) so these transforms are
                     # actually recorded into the animation. scene_nodes_k holds the frozen

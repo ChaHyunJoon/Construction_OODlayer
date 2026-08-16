@@ -96,6 +96,10 @@ include("respec/respec.jl")  # RESPEC: 반드시 마지막 — 위에서 정의�
 export maybe_respecify!, push_ood!, OODQueue, maybe_emit_reform_ood!,  # 재명세(respec) 관련 공개 함수/타입 (+team-deadlock OOD 공유 emit)
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
        SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
+       set_battery_courier!, battery_courier_enabled,            # SwapBattery 물리 배송: 창고 예비가 배터리를 들고 왕복
+       battery_deliveries, is_battery_courier, awaiting_battery_swap,
+       battery_swap_pending, battery_swap_halt_active,           # 미적용 교체 존재 여부 / 그동안 라인 정지
+       dispatch_battery_courier!, battery_courier_step!, clear_battery_deliveries!,
        RelocateBuild,                                             # 2번째 공간형 spec: 빌드 전체를 구역 밖으로 평행이동
        verify, build_invariant, commit_respec!, reset_cache_resume!,  # 검증·불변식·커밋·재개
        respec_service_ready, fault_robot_and_reassign!,           # LLM 서비스 준비확인·로봇 고장 후 재배정

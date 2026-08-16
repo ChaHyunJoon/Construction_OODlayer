@@ -325,7 +325,13 @@ spare_slots() = SPARE_SLOTS[]
 `pop_spare!` 가 풀에서 빼는 순간 `is_spare` 가 false 가 되므로, 파견된 로봇은 별도 플래그 없이
 자동으로 정상 주행으로 돌아온다.
 """
-station_keeping_goal(rid) = (is_spare(rid) ? get(SPARE_SLOTS[], rid, nothing) : nothing)
+function station_keeping_goal(rid)
+    # 배터리 배송 중인 예비는 **슬롯이 아니라 배송 목표**를 본다(battery_courier.jl). 이 줄이
+    # 없으면 파견된 예비가 매 스텝 자기 주차 자리로 도로 끌려가 창고를 영영 못 떠난다.
+    g = courier_goal(rid)
+    g === nothing || return g
+    return is_spare(rid) ? get(SPARE_SLOTS[], rid, nothing) : nothing
+end
 
 # 상자 안 딕셔너리를 그대로 돌려주는 한 줄 접근자(zone 의 restriction_zones() 와 동형).
 spare_pools() = SPARE_POOLS[]
@@ -339,7 +345,8 @@ spare_pool_centers() = SPARE_POOL_CENTERS[]
 # (여기에 추가하지 말 것 — 추가하는 순간 캠페인의 시간축이 매 판 리셋된다.)
 clear_spare_pools!() = (empty!(SPARE_POOLS[]); empty!(SPARE_POOL_CENTERS[]); empty!(SPARE_SLOTS[]);
                         empty!(DEPOT_INFO[]); empty!(DECOMMISSIONED_BODIES[]);
-                        empty!(CHECKED_OUT_SPARES[]); empty!(HOT_SWAP_ASSETS[]); nothing)
+                        empty!(CHECKED_OUT_SPARES[]); empty!(HOT_SWAP_ASSETS[]);
+                        clear_battery_deliveries!(); nothing)
 
 """
     register_spare!(key, rid) -> RobotID
@@ -380,7 +387,12 @@ function pop_spare!(key::Symbol)
     haskey(SPARE_POOLS[], key) || return nothing   # 그런 풀이 없으면 없음
     v = SPARE_POOLS[][key]
     isempty(v) && return nothing                   # 풀은 있으나 비었으면 없음
-    return pop!(v)                                 # 하나 꺼내 반환(그 풀에서 영구 제거)
+    # 배터리를 배송하러 나가 있는 예비는 **빌려준 것**이라 여기서 꺼내면 안 된다. 꺼내는 순간
+    # `_retire_spare_body!` 가 그 몸체를 화면 밖으로 은퇴시켜 배송이 조용히 사라진다
+    # (배송 로봇은 풀에 등록된 채로 나간다 — battery_courier.jl 머리말).
+    i = findlast(r -> !is_battery_courier(r), v)
+    i === nothing && return nothing                # 남은 게 전부 배송 중이면 "없음"으로 취급
+    return popat!(v, i)                            # 그 하나를 꺼내 반환(그 풀에서 영구 제거)
 end
 
 """
@@ -804,7 +816,43 @@ function _ood_robot_pos2d(env, agent::RobotID)
     end
 end
 
+"""
+    _faultable(rid) -> Bool
+
+`rid` 가 **고장 사건의 대상이 될 수 있는 로봇**인가. 제외 대상:
+
+- `is_spare`            : 창고에 주차된 예비. **빌드에 투입되지 않은 로봇**이다.
+- `is_recovery_spare`   : 방금 창고에서 파견돼 현장으로 달려오는 교체 로봇(복구 중인 것을 또 깨뜨린다).
+- `checked_out_spares`  : hot-swap 으로 빼내 화면 밖으로 은퇴시킨 몸체(존재하지 않는 로봇).
+- `is_battery_courier`  : 지금 배터리를 배송 중인 예비(배송이 통째로 사라진다).
+- `FAULTED_ROBOTS`      : 이미 고장난 로봇(이중 고장).
+
+**왜 필요한가 (2026-08-15 실측).** `_pick_active_robot` 의 세 단 어디에도 이 제외가 없었다.
+주차된 예비도 자기 `RobotGo` 노드를 갖고 `cache.active_set` 에 들어 있으므로(그래서
+`route_planning.jl:1025` 가 정박 처리를 따로 해야 한다) 세 단 전부에서 **합법 후보**였다.
+실측 결과: `fault_battery` seed 10 에서 **창고 예비 R16 이 고장 대상으로 뽑혀
+`failed=R16, spare=R16`, 즉 자기 자신으로 교체**됐다. 빌드에 투입되지도 않은 로봇의 고장이라
+그 사건은 어떤 정책을 써도 결과가 같다 = 사건이 무의미(vacuous)해진다.
+
+`pick_solo_fault_target`/`pick_hotswap_fault_target` 은 이 제외를 이미 갖고 있었다
+(`ood_injection.jl` 의 `is_spare || is_recovery_spare` 줄). 즉 `safe=true` 경로만 보호돼 있었고
+데모의 기본값인 `safe=false` 경로(`DEMO_FAULT_SAFE=0` → `_pick_active_robot`)가 뚫려 있었다.
+술어를 하나로 뽑아 세 단이 다시 갈리지 못하게 한다.
+"""
+function _faultable(rid)
+    rid isa RobotID || return false
+    haskey(FAULTED_ROBOTS[], rid) && return false
+    try
+        (is_spare(rid) || is_recovery_spare(rid)) && return false
+        (rid in CHECKED_OUT_SPARES[]) && return false
+        is_battery_courier(rid) && return false
+    catch
+    end
+    return true
+end
+
 # 현재 이동/운반 작업 중인(=시각적으로 고장이 드러나는) 로봇 하나를 고른다. 없으면 아무 RobotGo 의 로봇.
+# 세 단 모두 `_faultable` 로 거른다 — 창고 예비/복구중 예비/은퇴 몸체/배송중 예비는 고장 대상이 아니다.
 function _pick_active_robot(env)
     sched = env.sched
     # (0) PREFER a robot that still has a PENDING frontier (non-closed downstream work). A fault on such
@@ -819,7 +867,7 @@ function _pick_active_robot(env)
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue                          # RobotGo 노드가 아니면 건너뜀
         rid = try entity(node).id catch; nothing end          # 그 노드의 로봇 id(실패 시 nothing)
-        rid isa RobotID || continue
+        _faultable(rid) || continue                           # 예비/복구중/은퇴/배송중은 대상이 아니다
         # _first_pending_assignment 가 nothing 이 아니면 = 남은 할 일이 있음 → 이 로봇을 고장 대상으로 반환.
         (try _first_pending_assignment(env, rid) !== nothing catch; false end) && return rid
     end
@@ -827,14 +875,16 @@ function _pick_active_robot(env)
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue
         rid = try entity(node).id catch; nothing end
-        rid isa RobotID && return rid
+        _faultable(rid) && return rid
     end
     for v in Graphs.vertices(sched)                       # 폴백: 임의의 RobotGo 로봇
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue
         rid = try entity(node).id catch; nothing end
-        rid isa RobotID && return rid
+        _faultable(rid) && return rid
     end
+    # 후보가 하나도 없으면 nothing = "지금은 고장낼 로봇이 없다". 호출자(retrying_action)가 조금 뒤로
+    # 미뤄 다시 시도하므로 사건이 조용히 사라지지 않는다(render_demo.jl retrying_action 주석).
     return nothing
 end
 

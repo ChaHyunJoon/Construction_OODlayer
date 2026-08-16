@@ -798,9 +798,25 @@ pre = function (env)
                           clear = true, obstacle = false)
     CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
                            hi = 0.5, min_factor = 0.35)
+    # ---- SwapBattery 를 물리적 배송으로 (respec/battery_courier.jl) -------------------------
+    # 예전 `swap_battery!` 는 같은 스텝에 SoC 만 1.0 으로 찍고 끝나서, 화면에서는 아무 일도
+    # 일어나지 않았고(방전 프레임이 0개라 BATTERY_TINT_HOLD_FRAMES 로 빨강을 연출해야 했다)
+    # 어휘상 가장 싼 팔이 **시간도 자원도 안 드는 공짜 팔**이 되어 있었다. 이제 가장 가까운
+    # 창고의 예비 로봇이 배터리를 들고 나와(초록) 현장에 도착한 순간에 교체가 적용되고, 그때까지
+    # 방전 로봇은 실제로 방전 상태(빨강)이며 조립 라인은 선다.
+    CB.set_battery_courier!(
+        enabled    = get(ENV, "DEMO_BATTERY_COURIER", "1") == "1",
+        speed      = (try parse(Float64, get(ENV, "DEMO_COURIER_SPEED", "0")) catch; 0.0 end),
+        halt_build = get(ENV, "DEMO_SWAP_HALT", "1") == "1")
+    # 배송이 켜지면 방전 구간이 **실재**하므로 연출용 hold 는 필요 없다(그 상수는 방전 프레임이
+    # 하나도 없던 시절의 보정이다). 명시적으로 준 값은 그대로 존중한다.
+    CB.battery_courier_enabled() && !haskey(ENV, "BATTERY_TINT_HOLD_FRAMES") &&
+        (ENV["BATTERY_TINT_HOLD_FRAMES"] = "0")
     println(">>> battery: capacity=", CB.BatteryParams().capacity_J, " J (spec, no shrink)",
             "  stall=", CB.BATTERY_STALL[].enabled, "@", CB.BATTERY_STALL[].threshold,
-            "  derate=", CB.BATTERY_DERATE[].enabled)
+            "  derate=", CB.BATTERY_DERATE[].enabled,
+            "  courier=", CB.battery_courier_enabled(),
+            " halt=", CB.BATTERY_COURIER_CFG[].halt_build)
     CB.RESPEC_ENABLED[] = true
     CB.set_hot_swap!(enabled = true, mode = :via_depot)
     # ---------------------------------------------------------------------------------------
@@ -1140,3 +1156,18 @@ CB.project_complete(render_env) ||
 publish_anim!()
 n = isfile(stream_path) ? countlines(stream_path) : 0
 println("[render] DONE — case=$OODC  $n frames + anim")
+# 진단: 애니 프레임 수 = visualizer_update_function! 호출 횟수(render_tools._VIS_FRAME).
+# 방전 틴트 유지(BATTERY_TINT_HOLD_FRAMES)가 **이 단위**로 세므로, 그 값이 화면에서 몇 초인지
+# 알려면 이 수와 sim 길이의 비를 봐야 한다. 모니터 스트림 프레임 수(n)와는 다른 시계다.
+# ⚠️ Ref 기본값(BATTERY_TINT_HOLD_FRAMES[])이 아니라 **실제 적용값**을 찍는다 — 환경변수
+# BATTERY_TINT_HOLD_FRAMES 가 Ref 를 이기므로, Ref 를 찍으면 3 으로 돌린 런이 17 로 보고된다
+# (2026-08-15 에 실제로 그렇게 오독했다).
+println("[render] anim frames=$(try CB._VIS_FRAME[] catch; "?" end)  " *
+        "battery tint hold=$(try CB._tint_hold_frames() catch; "?" end) frames (적용값)")
+# 화면 사건을 **세어서** 남긴다. MeshCat 정적 HTML 은 노드 경로를 평문으로 담지 않으므로
+# 산출물 grep 으로는 "빨강/초록이 실제로 켜졌나"를 사후 확인할 수 없다.
+#   red   = 방전 로봇 본체가 빨갛던 프레임 수(배송 대기 구간)
+#   green = 배터리 배송 중인 창고 예비가 초록이던 프레임 수(출발~복귀 도킹)
+println("[render] battery tint frames: red=$(try CB._BATTERY_TINT_FRAMES[] catch; "?" end) " *
+        "green(courier)=$(try CB._COURIER_TINT_FRAMES[] catch; "?" end)  " *
+        "courier=$(try CB.battery_courier_enabled() catch; "?" end)")

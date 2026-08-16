@@ -290,6 +290,11 @@ function account_battery_step!(env, prev_pos::Dict{Int,Vector{Float64}})
         retired = Set{Any}(checked_out_spares())   # never re-stall a retired (checked-out) spare  # 은퇴 예비는 재정지 안 함
         for id in active_ids
             (id in retired) && continue
+            # 배터리 배송을 기다리는 중이면 정지 발화를 하지 않는다. 예전에는 교체가 같은 스텝에
+            # 즉시 적용돼 임계 이하로 머무는 스텝이 없었지만, 배송 경로에서는 도착까지 수백 스텝을
+            # 임계 아래로 서 있다 — 그동안 여기서 고장 OOD 가 터지면 이미 처방이 진행 중인 사건에
+            # **두 번째 처방(Replace)** 이 얹혀 배송이 무의미해진다(캐스케이드).
+            (try awaiting_battery_swap(id) catch; false end) && continue
             (id in STALLED_ROBOTS[]) && continue                    # 이미 정지 처리된 로봇은 건너뜀(한 번만)
             (haskey(fleet.soc, id) && fleet.soc[id] <= thr) || continue  # 잔량이 임계값 이하일 때만
             push!(STALLED_ROBOTS[], id)                             # 정지 처리 기록(중복 방지)
@@ -573,6 +578,10 @@ stall is enabled and a fleet exists.
 """
 # 모션 계층 배터리 게이트: node 를 맡은 로봇들의 속도 배율 중 **최솟값**(가장 약한 로봇이 팀 속도를 정한다).
 function soc_speed_factor(node)
+    # ★ 라인 정지 — 배터리 교체를 **기다리는 동안** 조립을 세운다(respec/battery_courier.jl).
+    # 배송 로봇이 현장에 도착해 교체가 적용되는 순간 이 조건이 풀린다. 배송 로봇 자신은
+    # 계획기/RVO 가 아니라 기구학 훅으로 움직이므로 이 게이트에 걸리지 않는다(그래서 교착이 없다).
+    (try battery_swap_halt_active() catch; false end) && return 0.0
     BATTERY_STALL[].enabled || return 1.0                # 정지 기능 꺼져 있으면 항상 정상속도(1.0)
     fleet = BATTERY_FLEET[]; fleet === nothing && return 1.0
     thr = BATTERY_STALL[].threshold

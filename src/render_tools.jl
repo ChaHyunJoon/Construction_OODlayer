@@ -76,6 +76,7 @@ end
     faulted_flags = Dict{AbstractID,Any}() # RED disc under a robot, shown once it is faulted (OOD 1-1)  # 고장난 로봇 표시용(빨간 원판)
     dispatched_flags = Dict{AbstractID,Any}() # CYAN ring under a robot dispatched FROM a depot (hot-swap replacement) — so a distinct unit is visibly tracked driving in
     battery_tints = Dict{AbstractID,Any}() # red body overlays for battery-depleted robots
+    courier_tints = Dict{AbstractID,Any}() # GREEN body overlays for depot spares delivering a battery (SwapBattery)
     staging_nodes = Dict{AbstractID,Any}()  # 적치/조립 위치를 나타내는 표시 노드들
 end
 
@@ -150,6 +151,7 @@ function add_indicator_nodes!(factory_vis;
     faulted_flags = Dict{AbstractID,Any}()
     dispatched_flags = Dict{AbstractID,Any}()
     battery_tints = Dict{AbstractID,Any}()
+    courier_tints = Dict{AbstractID,Any}()
     for n in get_nodes(scene_tree)                   # 장면의 모든 노드 중
         if matches_template(Union{TransportUnitNode,RobotNode}, n)  # 운반유닛 또는 로봇이면
             vis_node = vis_nodes[node_id(n)]         # 그 노드의 표시 노드
@@ -173,6 +175,15 @@ function add_indicator_nodes!(factory_vis;
                         MeshLambertMaterial(color=RGBA{Float32}(1, 0, 0, 0.72)))
                     setvisible!(tint_node, false)
                     battery_tints[node_id(n)] = tint_node
+                    # GREEN body overlay: this robot is a depot spare currently DELIVERING a
+                    # battery (SwapBattery). Distinct from the cyan replacement ring — that one
+                    # marks a body swapped OUT of the depot for good, this one comes back.
+                    # 배터리를 배달 중인 창고 예비 = 초록 본체. 시안 링(창고 본체 교체)과 다른 사건이다.
+                    courier_node = vis_node["battery_courier"]
+                    setobject!(courier_node, body,
+                        MeshLambertMaterial(color=RGBA{Float32}(0.05, 0.9, 0.25, 0.85)))
+                    setvisible!(courier_node, false)
+                    courier_tints[node_id(n)] = courier_node
                 end
                 fcyl = GeometryBasics.Cylinder(
                     Point((mod_center_point .+ [0.0, 0.0, cylinder_depth])...),       # active 원판보다 살짝 위
@@ -197,6 +208,7 @@ function add_indicator_nodes!(factory_vis;
     factory_vis.faulted_flags = faulted_flags        # 고장표시 노드들 기록
     factory_vis.dispatched_flags = dispatched_flags  # 창고 디스패치(교체) 표시 노드들 기록
     factory_vis.battery_tints = battery_tints
+    factory_vis.courier_tints = courier_tints
     factory_vis
 end
 
@@ -740,6 +752,74 @@ function animate_update_visualizer!(args...; anim=nothing, step=1)
     end
 end
 
+"""
+방전 본체 틴트를 **배터리 교체 후에도 몇 스텝 더** 유지할지 (0 = 유지 안 함).
+
+왜 필요한가 (2026-08-15 실측): `swap_battery!` 는 같은 시뮬레이션 스텝 안에서 즉시 적용되고
+프레임 스냅샷은 그 스텝이 끝난 뒤에 찍힌다. 그래서 **로봇이 방전 상태로 존재하는 프레임이
+하나도 없다** — seed 9 의 R1 은 배터리 사건 프레임(t=2.5)에서도 이미 `soc=1.0` 이었다.
+즉 "빨강 → 복구" 를 보여주려면 화면이 그 구간을 만들어야 한다.
+
+`hold` **애니메이션 프레임**(기본 3, 프레임 간격 ≈1.25 sim초라 약 3.8초)만큼 틴트를 붙잡았다가 끈다.
+
+⚠️ 단위는 프레임이지 **sim 스텝이 아니다.** 초판이 `SIM_STEP[] - a.t_in < hold` 로 장부의 스텝을
+직접 비교했는데, 스텝당 ≈0.026 sim초(seed 8 실측: `step≈629` 가 `sim_t=16.3`)라 3스텝은 프레임
+하나의 1/16 도 안 된다 = 사실상 유지 0. 여기서는 이 함수의 **호출 횟수**를 센다 — 호출 1회가
+`update_steps` 항목 1개이고 그것이 `atframe` 프레임 1개이므로(demo_utils.jl:172-192), 그 값이
+곧 화면에서 보이는 프레임 수다.
+
+이것은
+**시뮬레이션이 겪지 않은 지연을 그린 것**이므로 측정값이 아니다 — 사건이 일어난 지점을 눈에
+보이게 하는 표시일 뿐이고, 목적함수에도 스케줄에도 영향이 없다(이 파일은 렌더링 전용).
+0 으로 두면 모델 그대로, 즉 아무 일도 안 일어난 것처럼 보인다.
+
+Replace 경로와 혼동하지 말 것: 그쪽은 원래 본체가 **진짜로 죽은 채** 현장에 남으므로 hold 와
+무관하게 계속 빨갛다(그 행은 `hot_swap_assets()` 로 여기서 제외되고 retired 행으로 따로 그려진다).
+"""
+const BATTERY_TINT_HOLD_FRAMES = Ref(17)
+
+"""
+지금 적용할 hold 프레임 수. `BATTERY_TINT_HOLD_FRAMES` 환경변수가 있으면 그 값이 이긴다.
+
+**환경변수로 뺀 이유**: 이 값은 "발표에서 잘 보이는가" 로 정해지는 연출 손잡이인데, 패키지
+상수를 고치면 재컴파일이 일어나고 이 저장소에서는 **재컴파일이 배정을 바꿔 같은 시드가 다른
+판을 낸다**(CLAUDE.md Gotchas, 2026-08-15 에 seed 8 로 실제로 겪었다). 확정된 녹화를 지키면서
+값만 돌릴 수 있어야 한다.
+
+**기본 17 의 근거(실측, seed 10)**: 애니 프레임 102개 / sim 22.4초 -> 프레임당 ≈0.22 sim초,
+재생은 30 fps 라 전체 3.4초. 17프레임 = ≈3.7 sim초 = 재생 **0.57초**. 3 이었을 때는 0.1초로
+사실상 안 보였다.
+"""
+_tint_hold_frames() =
+    something(tryparse(Int, get(ENV, "BATTERY_TINT_HOLD_FRAMES", "")), BATTERY_TINT_HOLD_FRAMES[])
+
+# 이 함수가 몇 번 불렸는가 = 지금까지 기록된 애니 프레임 수. 아래 hold 계산의 시계다.
+const _VIS_FRAME = Ref(0)
+# 초록(배터리 배송) 로봇이 실제로 켜진 프레임 수 / 빨강(방전) 틴트가 켜진 프레임 수.
+# **왜 세는가**: MeshCat 정적 HTML 은 노드 경로를 평문으로 담지 않아 산출물 grep 으로는
+# "초록이 켜졌나"를 확인할 수 없다. 이 저장소는 "로그에 안 떴다 = 안 일어났다"로 오판한 이력이
+# 있으므로(CLAUDE.md Gotchas), 화면 사건을 **세어서** 런 요약에 남긴다.
+const _COURIER_TINT_FRAMES = Ref(0)
+const _BATTERY_TINT_FRAMES = Ref(0)
+
+"""
+배터리 배송이 진행 중일 때 **몇 스텝마다 애니 프레임을 찍을지**.
+
+왜 필요한가(2026-08-15 실측): `simulate!` 은 `newly_updated` 가 비어 있으면 프레임을 아예 안
+찍는다. 그런데 배송 중에는 라인이 의도적으로 멈춰 있어(`battery_swap_halt_active`) 닫히는
+노드가 없으므로 `newly_updated` 가 계속 비어 있다 — 그래서 **방전 로봇이 빨갛던 구간이 애니에
+한 프레임도 안 남았다**(측정: `red=0 green=22`, 초록만 남은 것은 복귀 구간이 라인 재개 뒤라
+평소 경로로 찍혔기 때문). 화면이 그 사건을 보여주려면 그 구간에도 프레임이 있어야 한다.
+
+값의 근거: 이 데모의 평소 프레임 밀도는 실측 ≈ 12스텝당 1프레임(103프레임/약 1200스텝)이다.
+8 은 그보다 약간 촘촘한 값 — 배송이 눈에 보일 만큼은 찍되, 5초짜리 정지 구간이 영상 전체를
+잡아먹지 않게 한다. 1 로 두면 200스텝 왕복이 200프레임이 되어 재생이 정지 구간에 지배된다.
+"""
+const BATTERY_DELIVERY_FRAME_EVERY = Ref(8)
+# (로봇, 그 스왑의 t_in) => 그 스왑을 **처음 본** 프레임 번호. t_in 을 키에 넣어야 같은 로봇이
+# 두 번 방전·교체될 때 두 번째 스왑에서 hold 가 다시 걸린다(로봇만 키로 쓰면 한 번만 걸린다).
+const _BATTERY_SWAP_FRAME = Dict{Tuple{AbstractID,Int},Int}()
+
 # 시뮬레이션 매 스텝마다 호출 — "지금 화면에 갱신해야 할 노드들"과 활성/비활성 표시 대상들을 추려 반환한다.
 # env 는 시뮬레이션 환경(장면트리·스케줄·캐시 등을 담은 큰 객체).
 function visualizer_update_function!(
@@ -815,20 +895,71 @@ function visualizer_update_function!(
     # monotonically), so the CYAN ring turns on from the swap step onward and tracks the unit
     # driving in from the depot.
     fac_dispatched_flags_nodes = collect(ConstructionBots.recovery_spares())
+    # OOD 1-1: 깊은 방전 본체 틴트. **지금 방전 상태인 로봇만** 칠한다.
+    #
+    # 2026-08-15 수정. 예전에는 판정이 `truth.soc_after <= threshold` 였다 — 사건 시점에 얼어붙은
+    # 관측값이라 **회복해도 영원히 빨갛다**. 제외 목록도 `hot_swap_assets()`(=Replace 로 depot
+    # 본체를 갈아 끼운 장부)뿐이었는데, `swap_battery!` 는 의도적으로 `pop_spare!` 를 안 부르므로
+    # (replace_robot.jl:1407 — 배터리는 unmetered, depot 본체가 희소자원) 그 장부에 **절대 안
+    # 올라간다.** 결과: 어휘에서 가장 싼 수복인 SwapBattery 만 화면에서 아무 일도 안 일어난 것처럼
+    # 보였다(실측: seed 8 에서 R3 가 스왑 후에도 녹화 끝까지 soc 0.099 · 빨강, 그러면서 운반은
+    # 정상 수행). 정확히 그 팔을 보여주려던 데모에서 그 팔만 안 보이는 상태였다.
+    #
+    # 이제 살아 있는 함대 상태를 본다. `swap_battery!` 가 `fleet.soc=1.0` + `depleted` 해제를
+    # 하므로 스왑 순간 틴트가 꺼지고, **재방전하면 자동으로 다시 켜진다**(사건 로그 기반 판정은
+    # 그걸 표현할 수 없었다). Replace 제외는 그대로 둔다 — 그 경우 원래 본체는 진짜로 죽은 채이고
+    # 별도의 retired 행으로 그렇게 보여야 한다.
     fac_battery_tint_nodes = AbstractID[]
     try
+        ledger = ConstructionBots.asset_ledger()
+        # 새 빌드가 시작되면 장부가 비워진다(reset_asset_ledger!) -> 프레임 시계도 같이 리셋한다.
+        # 안 하면 한 프로세스에서 두 판을 렌더할 때 앞 판의 프레임 번호가 남아 hold 가 안 걸린다.
+        isempty(ledger) && (empty!(_BATTERY_SWAP_FRAME); _VIS_FRAME[] = 0;
+                            _COURIER_TINT_FRAMES[] = 0; _BATTERY_TINT_FRAMES[] = 0)
+        _VIS_FRAME[] += 1
+        frame, hold = _VIS_FRAME[], _tint_hold_frames()
+        # 이번 프레임에 처음 보이는 배터리 교체를 등록한다(등록 프레임이 hold 의 기준점).
+        for a in ledger
+            a.event === :battery_swap || continue
+            get!(_BATTERY_SWAP_FRAME, (a.role, a.t_in), frame)
+        end
+
         swapped = ConstructionBots.hot_swap_assets()
+        fleet = ConstructionBots.BATTERY_FLEET[]
         for entry in ConstructionBots.ood_truth_log()
             truth = entry.truth
-            truth isa ConstructionBots.BatteryTruth &&
-                truth.soc_after <= ConstructionBots.REPLACE_SOC_THRESHOLD[] &&
-                !haskey(swapped, truth.robot) &&
-                push!(fac_battery_tint_nodes, truth.robot)
+            truth isa ConstructionBots.BatteryTruth || continue
+            haskey(swapped, truth.robot) && continue
+            # (a) 지금 실제로 방전 상태인가 — 회복하면 저절로 꺼지고 재방전하면 다시 켜진다.
+            soc_now = fleet === nothing ? truth.soc_after :
+                      get(fleet.soc, truth.robot, truth.soc_after)
+            depleted_now = soc_now isa Real && soc_now <= ConstructionBots.REPLACE_SOC_THRESHOLD[]
+            # (a') 배송 대기 중이면 임계값과 무관하게 빨강을 유지한다 — "방전된 순간부터 배터리가
+            #      실제로 갈릴 때까지 빨강" 이라는 것이 배송 경로의 약속이고, 그 약속을 SoC 임계값
+            #      설정(REPLACE_SOC_THRESHOLD)에 의존시키면 임계값을 돌릴 때 조용히 깨진다.
+            depleted_now |= (try ConstructionBots.awaiting_battery_swap(truth.robot) catch; false end)
+            # (b) 최근 hold 프레임 안에 배터리를 갈았는가 — 모델은 같은 스텝에 즉시 갈아서
+            #     방전 프레임이 하나도 안 생기므로, 사건을 보이게 하려면 여기서 붙잡아야 한다.
+            just_swapped = any(((k, f),) -> k[1] == truth.robot && frame - f < hold,
+                               _BATTERY_SWAP_FRAME)
+            (depleted_now || just_swapped) && push!(fac_battery_tint_nodes, truth.robot)
         end
     catch
     end
+    # SwapBattery 배송 중인 창고 예비 = 초록 본체(respec/battery_courier.jl). 출발부터 복귀 도킹까지
+    # 켜져 있으므로, 관객은 "나갔다가 돌아와 충전대에 선다"는 왕복 전체를 한 색으로 따라갈 수 있다.
+    fac_courier_tint_nodes = AbstractID[]
+    try
+        for cid in keys(ConstructionBots.battery_deliveries())
+            push!(fac_courier_tint_nodes, cid)
+        end
+    catch
+    end
+    isempty(fac_courier_tint_nodes) || (_COURIER_TINT_FRAMES[] += 1)
+    isempty(fac_battery_tint_nodes) || (_BATTERY_TINT_FRAMES[] += 1)
     return scene_nodes, closed_steps_nodes, active_build_nodes, fac_active_flags_nodes,
-           fac_faulted_flags_nodes, fac_dispatched_flags_nodes, unique(fac_battery_tint_nodes)
+           fac_faulted_flags_nodes, fac_dispatched_flags_nodes, unique(fac_battery_tint_nodes),
+           fac_courier_tint_nodes
 end
 
 # 노드들의 위치를 갱신하고 화면을 렌더하는 보조 함수(주: 여기 vis 는 외부 스코프 변수).

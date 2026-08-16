@@ -1419,6 +1419,48 @@ in the vocabulary, and structurally cannot produce an identity violation.
 function swap_battery!(env, role::AbstractID; verbose::Bool = true)
     has_vertex(env.scene_tree, role) ||
         return (status = :no_robot, detail = "no scene node for $(role)")
+    # ---- 배송 경로(battery_courier.jl) ----------------------------------------------------
+    # 켜져 있으면 교체는 **여기서 일어나지 않는다**: 가장 가까운 창고의 예비 로봇이 배터리를 들고
+    # 출발하고, 그 로봇이 현장에 도착한 스텝에 `_apply_battery_swap!` 이 불린다. 그래서
+    #   · 방전 로봇은 배송이 끝날 때까지 **실제로** 방전 상태 = 화면이 연출 없이 빨갛다,
+    #   · SwapBattery 가 시간을 쓴다(예전엔 공짜였다).
+    # 배송 가능한 예비가 한 대도 없으면 아래 즉시 교체로 떨어진다 — 빌드가 이 기능 때문에
+    # 막히는 일은 없어야 한다(수복 어휘에서 가장 싼 팔이 실패로 바뀌면 안 된다).
+    if (try battery_courier_enabled() catch; false end)
+        d = try dispatch_battery_courier!(env, role) catch; nothing end
+        if d !== nothing
+            verbose && @info "[BATTERY] role $(role): battery courier $(d.courier) dispatched " *
+                             "from the :$(d.depot) depot (swap applies on arrival; build holds)."
+            return (status = :battery_courier_dispatched, role = role,
+                    courier = d.courier, depot = d.depot, soc_before = _soc_of(role))
+        end
+        verbose && @warn "[BATTERY] role $(role): no depot spare free to deliver a battery " *
+                         "-> falling back to an in-place swap."
+    end
+    return _apply_battery_swap!(env, role; verbose = verbose)
+end
+
+# 로봇의 현재 SoC(배터리 레이어가 런타임 include 라 없을 수도 있으므로 방어적으로 읽는다).
+function _soc_of(role::AbstractID)
+    isdefined(@__MODULE__, :BATTERY_FLEET) || return nothing
+    return try
+        fleet = BATTERY_FLEET[]
+        fleet === nothing ? nothing : get(fleet.soc, role, nothing)
+    catch
+        nothing
+    end
+end
+
+"""
+    _apply_battery_swap!(env, role; courier=nothing, verbose=true) -> NamedTuple
+
+교체를 **실제로 적용**한다(SoC 완충 + stall/deplete/fault 게이트 해제 + 장부 기록).
+예전 `swap_battery!` 의 본체 그대로다 — 갈라 놓은 이유는 배송 경로에서 이 순간이
+"파견 시점"이 아니라 **"배송 로봇이 도착한 시점"** 이 되어야 하기 때문.
+"""
+function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose::Bool = true)
+    has_vertex(env.scene_tree, role) ||
+        return (status = :no_robot, detail = "no scene node for $(role)")
     soc_before = try                                   # 갈기 전 SoC(배터리 레이어가 없을 수도 있어 방어적으로)
         fleet = BATTERY_FLEET[]
         fleet === nothing ? nothing : get(fleet.soc, role, nothing)
@@ -1431,9 +1473,10 @@ function swap_battery!(env, role::AbstractID; verbose::Bool = true)
     record_asset_swap!(role, asset_of(role); event = :battery_swap, cause = :battery,
                        step = _current_sim_step(), soc = soc_before, position = pos)
     verbose && @info "[BATTERY] role $(role): battery swapped in the field " *
+                     (courier === nothing ? "" : "by courier $(courier) ") *
                      "(soc $(soc_before === nothing ? "?" : round(soc_before, digits=3)) -> 1.0; " *
                      "no depot body consumed; gen=$(asset_generation(role)))."
-    return (status = :battery_swapped, role = role, soc_before = soc_before)
+    return (status = :battery_swapped, role = role, soc_before = soc_before, courier = courier)
 end
 
 """

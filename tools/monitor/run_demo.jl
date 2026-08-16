@@ -603,9 +603,22 @@ CB.set_battery_stall!(enabled = get(ENV, "DEMO_STALL", "1") == "1",
                       clear = true, obstacle = false)
 CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
                        hi = 0.5, min_factor = 0.35)
+# ---- SwapBattery 를 물리적 배송으로 (respec/battery_courier.jl) ---------------------------
+# ⚠️ **기본값은 render_demo.jl 과 같아야 한다.** 두 엔진이 다른 배터리 물리를 쓰면 대시보드에
+#    보이는 판과 논문 표의 근거(results_4pol)가 다른 세계가 된다(2026-08-13 에 stall/derate 로
+#    똑같이 데인 자리다 — CLAUDE.md "고친 것 (a)").
+# ⚠️ **이 손잡이는 코드 세대를 가른다.** SwapBattery 가 이제 시간(창고 왕복)과 라인 정지를
+#    비용으로 쓰므로 battery/fault_battery 축의 makespan·완주율이 바뀐다. 구세대 재현은
+#    `DEMO_BATTERY_COURIER=0`(그러면 예전의 즉시 교체 경로로 바이트 동일하게 돌아간다).
+CB.set_battery_courier!(
+    enabled    = get(ENV, "DEMO_BATTERY_COURIER", "1") == "1",
+    speed      = (try parse(Float64, get(ENV, "DEMO_COURIER_SPEED", "0")) catch; 0.0 end),
+    halt_build = get(ENV, "DEMO_SWAP_HALT", "1") == "1")
 println(">>> battery: capacity=", CB.BatteryParams().capacity_J, " J (spec, no shrink)",
         "  stall=", CB.BATTERY_STALL[].enabled, "@", CB.BATTERY_STALL[].threshold,
-        "  derate=", CB.BATTERY_DERATE[].enabled)
+        "  derate=", CB.BATTERY_DERATE[].enabled,
+        "  courier=", CB.battery_courier_enabled(),
+        " halt=", CB.BATTERY_COURIER_CFG[].halt_build)
 CB.RESPEC_ENABLED[] = false   # 우리가 직접 복구하므로 프레임워크 respec-루프는 끔
 # ...하지만 **드리프트 완화는 켠다**(2026-08-06). 이 루프는 respec 을 안 하는 게 아니라 큐를 안 쓸
 # 뿐이고, 실제로 RelocateBuild 같은 기하 복구를 집행한다. 두 스위치가 한 플래그에 묶여 있어서,
@@ -789,7 +802,13 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
         nc = length(env.cache.closed_set)
         # 빌드가 실제로 전진했으면 reform 예산도 되돌린다(`render_demo.jl:566-571` 과 동일 규칙).
         # 즉 DEMO_REFORM_MAX 는 "평생 N 회"가 아니라 "**연속** 무성과 N 회"를 뜻한다.
-        if nc > last_closed; last_closed = nc; stall = 0; _REFORM_CT[] = 0; else; stall += 1; end
+        # 배터리 교체 대기 중의 정지는 **의도된 라인 정지**이지 교착이 아니다(battery_courier.jl).
+        # 여기서 세면 stall_limit 워치독이 배송 왕복(창고 D=20·4 m/s 기준 수백 스텝)을 교착으로
+        # 오판해 판을 STALL 로 끝내고, 위의 reform 발화도 없는 팀 교착을 만들어 낸다.
+        # render_demo.jl 쪽(demo_utils.simulate!)에 넣은 것과 같은 가드다 — 두 엔진이 같은 세계여야 한다.
+        if (try CB.battery_swap_halt_active() catch; false end)
+            # 카운터를 그대로 둔다(리셋도 증가도 아님) — 정지 전의 진전 이력을 보존한다.
+        elseif nc > last_closed; last_closed = nc; stall = 0; _REFORM_CT[] = 0; else; stall += 1; end
         # DEMO_REFORM>0 이면 무진전이 그 간격을 넘을 때마다 팀 교착 사건을 **truth 로그에 올려**
         # 위의 `while seen < length(log)` 가 정책 레이어(canonical/surrogate/LLM)로 라우팅하게 한다.
         # CB.maybe_emit_reform_ood! 를 안 쓰는 이유: 그건 RESPEC_ENABLED 게이트 + 전역 respec 큐로 가는데,

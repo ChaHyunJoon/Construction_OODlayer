@@ -445,6 +445,11 @@ function step_environment!(env::PlannerEnv, sim=rvo_global_sim())
     # (요약) 훅이 설치돼 있으면(nothing 아니면) 실제 이동량(직전→현재 위치)으로 이번 스텝 배터리 소모를 정산. `A === nothing || B` = A 가 nothing 이 아닐 때만 B 실행(단축평가 관용구).
     BATTERY_STEP_HOOK[] === nothing || BATTERY_STEP_HOOK[](env, prev_active_pos_dict)
 
+    # SwapBattery 배송(respec/battery_courier.jl): 창고 예비가 배터리를 들고 현장까지 주행하고,
+    # 도착한 스텝에 교체가 적용된 뒤 창고로 복귀한다. 진행 중인 배송이 없으면 즉시 반환하므로
+    # 평상시 실행은 완전히 동일하다(enforce_restriction_zone_clearance! 와 같은 late-bound 호출).
+    battery_courier_step!(env)
+
     # Set velocities to zero for all agents. The pref velocities are only overwritten if
     # agent is "active" in the next time step
     for id in get_vtx_ids(ConstructionBots.rvo_global_id_map())  # 모든 에이전트의 선호속도를

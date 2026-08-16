@@ -149,7 +149,15 @@ function _mon_robots(env)
         # original physical asset (emitted as the retired row below) is FAULT.
         (rid in MONITOR_FAULTED && swap === nothing) && (mode = "FAULT")
         soc = fleet === nothing ? nothing : _mon_finite(get(fleet.soc, rid, nothing))
-        if swap === nothing && haskey(observed_soc, rid)
+        # 2026-08-15: 이 덮어쓰기에 **회복 조건**을 달았다. 예전에는 조건 없이 사건 시점 관측값
+        # (`truth.soc_after`)이 살아 있는 `fleet.soc` 를 이겼는데, `swap_battery!` 가 현장에서
+        # 충전을 되돌려도(같은 본체, depot 소모 0) 화면은 끝까지 방전으로 보고했다. 아래 `depleted`
+        # 판정이 그 값을 다시 읽으므로 mode 까지 DEPLETED 로 고정됐다(실측: seed 8 의 R3).
+        # 살아 있는 SoC 가 임계 위로 올라왔으면 그 로봇은 실제로 회복한 것이므로 덮어쓰지 않는다.
+        # Replace 경로는 영향 없다 — 그쪽은 `swap !== nothing` 이라 이 가지에 애초에 안 들어오고,
+        # 죽은 원래 본체는 아래 retired 행이 따로 보여준다.
+        if swap === nothing && haskey(observed_soc, rid) &&
+           !(soc isa Real && soc > REPLACE_SOC_THRESHOLD[])
             soc = _mon_finite(observed_soc[rid])
         end
         depleted = fleet !== nothing && rid in fleet.depleted
