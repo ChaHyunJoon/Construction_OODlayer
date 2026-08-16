@@ -160,6 +160,12 @@ function case_kinds(c)
     # health events are scheduled after this pre-build geometry recovery.
     c == "fault_zone"    && return [:zone, :fault]
     c == "battery_zone"  && return [:zone, :battery]
+    # 2026-08-16: run_demo.jl(스윕 엔진)의 case_kinds 와 여기(렌더 엔진)의 표가 갈라져 있었다 —
+    # "all" 분기가 여기 없어서 폴백 [:fault] 로 떨어졌고, all case 72판(canonical/surrogate/dspy
+    # × 30 seed)이 battery(그리고 zone) 사건을 한 번도 armed 하지 않은 채 fault-only 로
+    # 조용히 렌더됐다(courier 자체가 화면에 안 나온 원인). 두 엔진의 케이스 표는 **반드시
+    # 일치**해야 한다 — run_demo.jl:105 와 같은 값을 낸다.
+    c == "all"            && return [:fault, :battery, :zone]
     return [:fault]
 end
 
