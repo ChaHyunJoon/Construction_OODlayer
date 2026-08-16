@@ -427,8 +427,13 @@ def validate_case(case, boards):
                 "선택과 일치) %d/%d." % (len(dspy_seq), len(can_seq), n_enacted_is_dspy, n_dspy_dec,
                                      n_matches_llm, n_dspy_dec))
     else:
-        note = ("canonical 정책이 이 case 에 없다(이번 스윕은 noop,surrogate,dspy 만 돈다 -- 예상된 "
-                "상태). enacted-macro 시퀀스 동일성 검사를 못 하므로 llm-필드 검사로 대체한다.")
+        # 2026-08-16: 여기도 정책 집합을 리터럴로 적지 않는다 -- 이 case 의 행에서 뽑는다.
+        # (예전 문구는 "이번 스윕은 noop,surrogate,dspy 만 돈다" 였는데, 배송 세대 스윕은
+        #  canonical 로 돌아 거짓이 됐다. 이 가지는 이번엔 안 탔지만 같은 결함이다.)
+        _seen = ",".join(sorted(p for p in by_policy if p)) or "없음"
+        note = ("canonical 정책이 이 case 에 없다(이 case 의 행에 있는 정책: %s -- 예상된 "
+                "상태). enacted-macro 시퀀스 동일성 검사를 못 하므로 llm-필드 검사로 대체한다."
+                % _seen)
         if n_dspy_dec == 0:
             lines.append("V1 [WARN] %s dspy 판은 있으나 결정이 0개라 확인 불가." % note)
         elif n_matches_llm == n_dspy_dec and n_enacted_is_dspy == n_dspy_dec:
@@ -482,7 +487,38 @@ def validate_case(case, boards):
 # 단언했다. 커밋 d318d1d(2026-08-13, oracle 실행 레인 신설)가 그 문장을 **거짓**으로 만들었는데도
 # 배너는 그대로 9번 찍혔다. 아래 네 문장이 지금의 사실이다 -- 셋을 구분하지 않으면(레인의 존재 /
 # 이 스윕의 참가 여부 / 격자의 존재) 표를 잘못 읽는다.
-ORACLE_NOTE = (
+# ★ 2026-08-16 -- **스윕 provenance 문장을 데이터에서 유도한다.** 예전에는 이 블록과 아래
+# build_final_md 가 `noop,surrogate,dspy` 를 **리터럴로** 박아 놓고 "이번 스윕이 돌린 정책
+# 집합" 이라고 주장했다. 그런데 배송 세대 스윕은 `canonical,surrogate,dspy` 로 돌았고
+# (`--policies canonical,surrogate,dspy`), FINAL.md 는 이 세대에 재생성·커밋됐다. 즉 발행된
+# 표가 **자기 스윕에 대해 거짓인 문장**을 10곳에 찍고 있었다 -- 정작 같은 파일의 case 상세
+# 블록은 `canonical` 을 올바르게 보여주면서. 이제 `swept_policies()` 가 행에서 뽑는다.
+def swept_policies(cases_info):
+    """이번 스윕이 **실제로** 돌린 정책 집합을 행 데이터에서 뽑아 정렬해 돌려준다.
+
+    provenance 문장에 정책 이름을 리터럴로 적으면 다음 스윕에서 조용히 거짓이 된다
+    (2026-08-16 에 실제로 그랬다). 진실원은 `rows.jsonl` 의 `policy` 필드뿐이다.
+    """
+    pols = set()
+    for ci in (cases_info or {}).values():
+        if not ci.get("has_data"):
+            continue
+        for r in ci.get("raw_rows") or []:
+            p = r.get("policy")
+            if p:
+                pols.add(str(p))
+    return sorted(pols)
+
+
+def _pol_phrase(policies):
+    """정책 집합을 문장에 넣을 조각으로. 못 뽑았으면 수를 주장하지 않는다."""
+    if not policies:
+        return "이 산출물에서 확인되지 않는다(행에 `policy` 필드가 없다)"
+    return "`%s` %d개뿐이다" % (",".join(policies), len(policies))
+
+
+def oracle_note(policies=None):
+    return (
     "> **`oracle` 행은 이 스윕이 실행한 판이 아니다 -- 오프라인 라벨 격자에서 유도한 "
     "천장/원점(ceiling)이다.**\n"
     "> \n"
@@ -490,8 +526,9 @@ ORACLE_NOTE = (
     "(`oracle_macro()` 가 결정시점에 기준 행동 a* 를 계산하고 `pol[\"oracle\"]` 로 집행한다; "
     "2026-08-13 커밋 `d318d1d` 에서 신설). \"policy.jl 에 oracle 분기가 없다\"는 과거 서술은 "
     "그 커밋 이후로 사실이 아니다.\n"
-    "> - **그러나 이 630판 스윕에는 그 레인이 들어 있지 않다.** 이 스윕이 돌린 정책 집합은 "
-    "`noop,surrogate,dspy` 셋뿐이다. 따라서 아래 표에 보이는 `oracle` 행의 값은 실행된 판에서 나온 "
+    "> - **그러나 이 스윕에는 그 레인이 들어 있지 않다.** 이 스윕이 돌린 정책 집합은 "
+    + _pol_phrase(policies) +
+    ". 따라서 아래 표에 보이는 `oracle` 행의 값은 실행된 판에서 나온 "
     "것이 아니라 **오프라인 라벨 격자**(`reference_policy.py` 의 기준 행동 a*)에서 나온 것이다. "
     "\"옳은 결정 100%\"는 성능 주장이 아니라 나머지 세 행이 이 원점에서 얼마나 떨어졌는지 재는 "
     "눈금이다.\n"
@@ -504,7 +541,7 @@ ORACLE_NOTE = (
     "에 그런 칸이 없다). 그래서 `score()` 기준 결정 적중률은 84/84 가 아니라 **80/84** 다. "
     "완주(completion)는 Julia 쪽이 authoritative 이고, 발행되는 `decision_acc` 열은 Python 쪽 "
     "값을 그대로 유지한다."
-)
+    )
 
 
 # case(8개 스윕 case) -> build_md_report.compute_ceilings() 의 축 키. combined case(all/
@@ -574,7 +611,7 @@ ROW_LABEL_TEXT = {
 }
 
 
-def render_case_block(case, case_info, artifacts, py, ceilings):
+def render_case_block(case, case_info, artifacts, py, ceilings, policies=None):
     lines = []
     has_data = case_info["has_data"]
     status = case_info["status"]
@@ -589,7 +626,7 @@ def render_case_block(case, case_info, artifacts, py, ceilings):
             if status else "status_4pol.jsonl 에 이 case 기록 없음 (스윕이 아직 이 case 에 도달하지 않음)."
         lines.append("**데이터 없음.** %s" % status_txt)
         lines.append("")
-        lines.append(ORACLE_NOTE)
+        lines.append(oracle_note(policies))
         lines.append("")
         return lines, boards
 
@@ -607,7 +644,7 @@ def render_case_block(case, case_info, artifacts, py, ceilings):
                       "쓰는 중이라 마지막 줄이 잘렸을 수 있다.)" % case_info["n_bad_lines"])
         lines.append("")
 
-    lines.append(ORACLE_NOTE)
+    lines.append(oracle_note(policies))
     lines.append("")
 
     if not artifacts["report_ok"]:
@@ -671,10 +708,15 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
     L.append("생성 시각: %s" % now)
     L.append("생성기: `build_final_table.py --results-dir %s --out-dir %s`" % (results_dir, out_dir))
     L.append("")
-    L.append(ORACLE_NOTE)
+    # 정책 집합은 **행에서** 뽑는다 -- 리터럴로 적으면 다음 스윕에서 조용히 거짓이 된다(위 주석).
+    policies = swept_policies(cases_info)
+    L.append(oracle_note(policies))
     L.append("")
-    L.append("실행 가능한 lane 은 `noop` / `surrogate` / `dspy`(=`llm`) 셋뿐이다(이번 스윕이 실제로 "
-              "돌린 정책 집합과 같다). `oracle` 행은 매 블록에서 별도 계산되는 상한선으로만 들어간다.")
+    L.append("이번 스윕이 실제로 돌린 정책 집합은 %s -- `rows.jsonl` 의 `policy` 필드에서 "
+              "직접 센 것이지 이 스크립트에 적힌 값이 아니다. `oracle` 행은 매 블록에서 별도 "
+              "계산되는 상한선으로만 들어간다(위 배너)."
+              % (("`" + "` / `".join(policies) + "` 로 %d개다" % len(policies)) if policies
+                 else "이 산출물에서 확인되지 않는다"))
     L.append("")
     L.append("기준 행동 a* 의 출처 (반사실 오라클이 아니라 격자 실측에서 유도한 기준 정책):")
     for k, v in reference_policy.BASIS.items():
@@ -693,7 +735,7 @@ def build_final_md(results_dir, out_dir, cases_info, all_artifacts, pooled_shado
     per_case_boards = {}
     for case in CASES:
         block_lines, boards = render_case_block(case, cases_info[case], all_artifacts.get(case, {}), py,
-                                                  ceilings)
+                                                  ceilings, policies)
         per_case_boards[case] = boards
         L.extend(block_lines)
         L.append("---")

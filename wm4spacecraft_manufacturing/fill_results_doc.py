@@ -69,19 +69,57 @@ def table_section():
 def holes_section():
     L = []
 
+    # 항목 번호는 **자동으로 매긴다.** 아래 블록들이 `dp_lane_swept` 로 조건부가 되면서 리터럴
+    # "1." "3." "5." 를 그대로 두면 dp 없는 스윕에서 번호가 건너뛴다.
+    _n = [0]
+
+    def item(s):
+        _n[0] += 1
+        L.append("%d. %s" % (_n[0], s))
+
+    # ★ 2026-08-16 — **`build_compare_table.py:197` 에 있는 `dp_lane_swept` 가드의 형제다.
+    #   이 둘은 반드시 같이 움직여야 한다.**
+    #
+    # 배경: 커밋 `1bfbcaf8`·`7eddb629` 가 `build_compare_table.py` 에서 세대 누수 셋을 이 신호로
+    # 닫았는데, **이 파일은 그때 같이 안 고쳐졌다.** 그래서 형제 소비처 둘의 규칙이 어긋난
+    # 상태로 남아 있었다(이 파일 머리말과 `.claude/CLAUDE.md` 는 둘이 일치한다고 적고 있었으므로,
+    # 문서화된 불변식이 거짓이 된 상태였다). 이번 배송 세대에서 발행된 문서는 이 스크립트를
+    # 타지 않았지만(현행 결과 문서에 `<!--TABLE/GATES/HOLES-->` 마커가 없다), 다음 스윕에서
+    # 누가 `--doc` 으로 이걸 돌리면 그대로 샌다.
+    #
+    # 무엇이 새는가: 아래 세 블록이 **구세대 `dp_oracle/value.json`** 을 이번 세대 산출물의
+    # 참·거짓 판정에 쓴다 — ① DP 격자 커버리지, ② §8.7 gap(현재 `results_4pol/*.jsonl` 을
+    # 옛 `V` 에 대고 다시 계산 — `1bfbcaf8` 이 막은 것과 **정확히 같은** 누수),
+    # ③ "backward induction · 분해가 기계 검사된다" 주장 블록(`7eddb629` 가 없앤 것과 같은 종류).
+    #
+    # 🔴 **해시로는 못 잡는다.** 이 `value.json` 의 `objective_hash` 는 **현행과 같다** —
+    # 목적함수는 안 갈렸고 갈린 것은 **코드 세대**(SwapBattery 가 물리 배터리 배송이 된 것)이기
+    # 때문이다. 그래서 세대 판정을 해시에 맡길 수 없고, 쓸 수 있는 신호는 `shards_dp` 뿐이다.
+    #
+    # 삭제가 아니라 **조건문**이다 — dp 샤드가 돌아오면 세 블록은 축자 그대로 되살아난다.
+    # 되살리기 전에 `value.json` 이 그 시점 `results_4pol` 과 같은 코드 세대인지 먼저 확인할 것
+    # (파일이 있다고 세대가 맞는다는 뜻이 아니다).
+    dp_lane_swept = os.path.isdir(os.path.join(HERE, "results_4pol", "shards_dp"))
+
     # (1) DP 커버리지 -- 칸 기준과 **결정 기준**을 둘 다 낸다.
     #     칸 커버리지만 적으면 낮아 보이는데, 결정 빈도가 편중돼 있어서 실제로 조회에 성공하는
     #     비율은 다르다. 둘 중 하나만 적는 것이 오독을 만든다.
     gp, vp = os.path.join(DPD, "grid_spec.json"), os.path.join(DPD, "value.json")
-    if os.path.exists(gp) and os.path.exists(vp):
+    if not dp_lane_swept:
+        item("**`dp` 레인이 이번 스윕에 없다**(`results_4pol/shards_dp` 없음). 그래서 이 절은 "
+             "DP 격자 커버리지 · §8.7 gap · 비용 분해 충실성에 대해 **아무것도 주장하지 않는다** "
+             "— `dp_oracle/value.json` 이 이 스윕과 다른 코드 세대에 표집된 채 남아 있을 수 "
+             "있기 때문이다. DP 의 정의와 한계는 `dp_oracle/dp_solve.py` 머리말과 "
+             "`dp_oracle/value.json` 의 `known_limits` 에 있다.")
+    if dp_lane_swept and os.path.exists(gp) and os.path.exists(vp):
         g, v = json.load(open(gp)), json.load(open(vp))
         oc = g["observed_cells"]
         have = set(v["cells"])
         n_dec_tot = sum(oc.values())
         n_dec_cov = sum(n for k, n in oc.items() if k in have)
-        L.append("1. **DP 격자 커버리지.** 표에 오른 칸 %d / 관측 칸 %d = **%.1f%%**. "
-                 "다만 결정 빈도가 편중돼 있어 **결정 기준 커버리지는 %d/%d = %.1f%%** 다. "
-                 "둘 중 하나만 적으면 오독을 만든다."
+        item("**DP 격자 커버리지.** 표에 오른 칸 %d / 관측 칸 %d = **%.1f%%**. "
+             "다만 결정 빈도가 편중돼 있어 **결정 기준 커버리지는 %d/%d = %.1f%%** 다. "
+             "둘 중 하나만 적으면 오독을 만든다."
                  % (len(have), g["n_observed_cells"],
                     100.0 * len(have) / max(g["n_observed_cells"], 1),
                     n_dec_cov, n_dec_tot, 100.0 * n_dec_cov / max(n_dec_tot, 1)))
@@ -119,7 +157,7 @@ def holes_section():
                 n_dp_dec += 1
                 miss[d.get("dp_miss") or "표 조회 성공"] += 1
     if n_dp_dec:
-        L.append("2. **dp 레인이 표를 실제로 쓴 비율.** 결정 %d건 중:" % n_dp_dec)
+        item("**dp 레인이 표를 실제로 쓴 비율.** 결정 %d건 중:" % n_dp_dec)
         for k, n in miss.most_common():
             L.append("   - `%s` %d건 (%.1f%%)" % (k, n, 100.0 * n / n_dp_dec))
         L.append("   조용한 폴백이 없도록 이유를 네 가지로 구분해 행에 남긴다 — "
@@ -136,8 +174,14 @@ def holes_section():
     # ★ 2026-08-15: **비교 단위를 솔버에 맞춘다.** backward 의 V 는 그 칸부터의 cost-to-go 이므로
     # 실행 정책도 같은 분해로 realized cost-to-go 를 뽑아야 한다. 판 전체 J 와 대면 V 가
     # 구조적으로 작아 gap 이 100% 로 자동 발화한다 — 측정이 아니라 단위 오류다.
-    # (build_compare_table.py 의 같은 블록과 규칙이 일치해야 두 산출물이 안 갈린다.)
-    if os.path.exists(vp):
+    # (build_compare_table.py 의 같은 블록과 규칙이 일치해야 두 산출물이 안 갈린다 — 그 "규칙"
+    #  에는 단위 선택뿐 아니라 위의 `dp_lane_swept` 가드도 포함된다. 2026-08-16 부터 둘이 같다.)
+    #
+    # ★ 2026-08-16 — dp 레인이 이번 스윕에 없으면 이 블록 **전체**를 건너뛴다. 아래 계산은
+    # **현재** `results_4pol/*.jsonl`(이번 세대의 canonical/surrogate/dspy 행)을 구세대일 수 있는
+    # `value.json` 의 V 와 무조건 대면시킨다. dp 칸은 이미 올바르게 비는데 각주만 세대가 섞인
+    # 숫자를 발행하는 형태라, 표를 훑는 것만으로는 안 잡힌다. `build_compare_table.py:282` 와 같다.
+    if dp_lane_swept and os.path.exists(vp):
         import statistics
         v = json.load(open(vp))
         backward = v.get("solver") == "backward"
@@ -195,8 +239,8 @@ def holes_section():
                 if statistics.mean(Js) < Vs[k] - 1e-9:
                     worse += 1
         if tot:
-            L.append("3. **원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s).** "
-                     "실행 정책이 DP 의 V 보다 **더 좋은** 쌍 %d개 = **%.1f%%**.%s"
+            item("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s).** "
+                 "실행 정책이 DP 의 V 보다 **더 좋은** 쌍 %d개 = **%.1f%%**.%s"
                      % (tot, "그 칸부터의 실현 cost-to-go" if backward else "판 전체 J",
                         worse, 100.0 * worse / tot,
                         "" if not skipped else "  (분해 불가로 제외한 행: %s)" % dict(skipped)))
@@ -218,13 +262,19 @@ def holes_section():
             else:
                 L.append("   > 0 건이므로 이 격자 위에서는 '천장' 이라는 이름이 유지된다.")
 
-    L.append("4. **`zone_s=cov` 는 표본 0.** §5-D. 기존 zone 규칙의 알려진 결함을 이 DP 도 못 고친다.")
-    if os.path.exists(vp) and json.load(open(vp)).get("solver") == "backward":
-        L.append("5. **credit assignment 는 닫혔다.** 판 단위 J 를 결정 개수로 나눠 쓰던 문제는 "
-                 "구간 비용 `c_k` 로 해소됐고, 그 분해는 판마다 `c_prefix + Σc + terminal == J` 로 "
-                 "기계 검사된다. 대신 새로 생긴 실패 모드가 **dangling**(위 1번)이다.")
+    item("**`zone_s=cov` 는 표본 0.** §5-D. 기존 zone 규칙의 알려진 결함을 이 DP 도 못 고친다.")
+    # ★ 2026-08-16 — 이 "분해 충실성" 주장도 `dp_lane_swept` 로 묶는다. `7eddb629` 가
+    # build_compare_table.py 에서 없앤 것과 **같은 종류**의 주장이다: 숫자가 없어서 수치 그렙에
+    # 안 걸리지만, `Σc + terminal == J` 로 기계 검사된 판이 이 표에 하나도 없을 때 그냥 거짓이다.
+    if dp_lane_swept and os.path.exists(vp) and json.load(open(vp)).get("solver") == "backward":
+        item("**credit assignment 는 닫혔다.** 판 단위 J 를 결정 개수로 나눠 쓰던 문제는 "
+             "구간 비용 `c_k` 로 해소됐고, 그 분해는 판마다 `c_prefix + Σc + terminal == J` 로 "
+             "기계 검사된다. 대신 새로 생긴 실패 모드가 **dangling**(위 DP 격자 커버리지 항목)이다.")
+    elif dp_lane_swept:
+        item("**credit assignment.** 판 하나가 여러 칸에 같은 J 를 나눠 준다. §5-C.")
     else:
-        L.append("5. **credit assignment.** 판 하나가 여러 칸에 같은 J 를 나눠 준다. §5-C.")
+        item("**credit assignment 는 이 스윕에서 판정하지 않는다.** dp 레인이 없으므로 비용 분해가 "
+             "기계 검사됐는지에 대해 이 문서는 주장하지 않는다(위 1번).")
     return "\n".join(L)
 
 

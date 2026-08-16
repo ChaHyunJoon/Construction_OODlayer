@@ -566,9 +566,14 @@ def render_headline_table(cases_info, out_dir: Path, ceilings):
     L = []
     L.append("## 2. 헤드라인 표 -- 8 case x 4 방법")
     L.append("")
-    L.append(BFT.ORACLE_NOTE)
+    # 2026-08-16: `BFT.ORACLE_NOTE`(문자열 상수) -> `BFT.oracle_note(정책집합)`. 스윕 provenance
+    # 문장을 리터럴이 아니라 행 데이터에서 뽑도록 바뀌었다(build_final_table.py 의 같은 날 주석).
+    _pols = BFT.swept_policies(cases_info)
+    L.append(BFT.oracle_note(_pols))
     L.append("")
-    L.append("실행 가능한 lane 은 `noop` / `surrogate` / `dspy`(=`llm`) 셋뿐이다. `oracle` 행은 "
+    _lane_txt = ("실행 가능한 lane 은 `%s` 다(이번 스윕 행에서 직접 센 값)." % "` / `".join(_pols)
+                 if _pols else "실행 가능한 lane 은 이 산출물에서 확인되지 않는다.")
+    L.append(_lane_txt + " `oracle` 행은 "
               "case 마다 별도 계산되는 상한선(정의상 100%)으로만 들어간다 -- \"oracle 이 이겼다\"는 "
               "주장은 정의상 항상 참이라 정보가 없다. 승자를 굵게 표시하지 않는다: 예를 들어 "
               "`zonecore` 는 surrogate 가 결정 100% 지만 완주 4/5, llm 은 결정 65% 지만 완주 5/5 에 "

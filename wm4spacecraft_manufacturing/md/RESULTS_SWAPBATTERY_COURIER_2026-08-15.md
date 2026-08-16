@@ -19,6 +19,8 @@
 `fleet.soc[role] = 1.0` 을 찍고 끝났고, 그래서 그 팔은 시간도 자원도 쓰지 않았다. 이제 가장
 가까운 창고의 예비 로봇이 배터리를 들고 현장까지 **주행**하고, 도착한 순간에 비로소 교체가
 적용된다. 이 스윕에서 배송은 **277회 발화했고 즉시교체 폴백은 0회**다.
+(🔴 **277 은 "파견 요청" 수다 — "적용된 교체" 수가 아니다.** 둘은 §10-G 가 적는 결함에서
+갈리고, 이 세대의 교차검증은 그 격차를 원리적으로 못 본다. §7 을 먼저 읽을 것.)
 
 그 대가가 실측으로 보인다. **그러나 그것을 "추론 레인이 canonical 보다 더 움직였다" 로
 읽으면 안 된다 — 그 논증에는 직접 반례가 있다(§4-B).** 이 문서가 세우는 논증은
@@ -88,6 +90,23 @@ DEMO_BATTERY_COURIER=0 …    # 배송만 끈다 → 예전의 즉시 교체 경
 `tools/monitor/run_demo.jl:612` 가 그 손잡이를 그렇게 문서화한다(`set_battery_courier!` 의
 `enabled` 인자). ⚠️ **이것은 배송만 끈다 — `_faultable` 수정은 되돌아가지 않는다.** 즉 이
 플래그로 만든 판은 **구세대와 같지 않다**(§5 가 이것을 문제 삼는다).
+
+🔴 **되돌아가지 않는 것이 하나 더 있다 — 그래서 섞인 변경은 둘이 아니라 셋이다**
+(2026-08-16 확인). `src/monitor/monitor.jl:159-162` 의 `REPLACE_SOC_THRESHOLD` **회복 조건**은
+세대 커밋 `2b5637c3` 에 배송과 **같이** 실렸는데, `battery_courier_enabled()` 조건문 **밖**에
+있어서 `DEMO_BATTERY_COURIER=0` 으로도 켜진 채 남는다:
+
+```julia
+if swap === nothing && haskey(observed_soc, rid) &&
+   !(soc isa Real && soc > REPLACE_SOC_THRESHOLD[])      # ← 이 조건이 08-15 에 추가됐다
+```
+
+즉 이 문서가 §2-C·§5 에서 "옳은 통제" 라고 부르는 판에는 **배송 · `_faultable` · 이 회복
+조건 셋**이 섞인다. 다만 **범위는 다르다**: 이 셋째 변경은 `_mon_robots` 안에 있고 그것은
+`monitor_emit!` 의 `robots` 블록(`:488`)으로만 나가므로, **모니터 스트림과 보드의 SoC·mode
+표시**에만 영향을 주고 `rows.jsonl` 의 채점 지표(makespan · 완주 · 에너지)에는 닿지 않는다.
+그래서 §4-A 의 Δ 는 이것 때문에 흔들리지 않지만, **630 보드를 세대 간에 눈으로 대조할 때는
+교란 변수**다 — 구세대 보드는 교체 후에도 `DEPLETED` 로 굳어 보이고 신세대 보드는 회복한다.
 
 ---
 
@@ -307,11 +326,22 @@ SwapBattery 집행 (rows.jsonl decisions[].macro) = 277
 courier=true 배너 없는 보드: 0
 ```
 
+🔴 **먼저 읽을 것 — 이 절의 277 은 전부 "파견 요청" 수다.** `swap_battery!` 가
+`:battery_courier_dispatched` 를 돌려준 횟수이지, `_apply_battery_swap!` 이 실제로 돈 횟수가
+아니다. 교체는 배송 로봇이 **도착한 순간에만** 적용된다(`battery_courier.jl:234-237`).
+정상 경로에서는 둘이 같지만, **§10-G 의 결함이 발화하면 파견 요청은 늘고 적용된 교체는 안 는다.**
+
 - **즉시교체 폴백 0회.** 창고에 예비가 없어서 옛 경로로 떨어진 적이 한 번도 없다 —
-  277회 전부 창고 왕복을 거쳤다.
+  277회 전부 **파견 요청이 배송 경로로 받아들여졌다**. (여기서 "277회 전부 창고 왕복을
+  거쳤다" 고 읽으면 안 된다 — 왕복 완료를 세는 신호가 이 산출물에 없다. §10-G.)
 - 교차검증은 샤드 단위로 다시 확인했다: **210 샤드 전부에서 `rows.jsonl` 의 집행 수와 로그의
   `[battery] swap=…` 줄 수가 일치, 불일치 0**. 전체 630판 중 `SwapBattery` 가 한 번이라도
   집행된 판은 **171판**(95 샤드)이다.
+  🔴 **이 교차검증이 무엇을 확인하지 *않는지* 분명히 할 것.** 양쪽 모두 **파견 요청**을 센다 —
+  `rows.jsonl` 의 `decisions[].macro` 도, `run_demo.jl:379` 의 `println` 도 `swap_battery!` 의
+  **반환값**에서 나온다. 그래서 이 검사는 "요청 수 == 요청 수" 이고, **적용된 교체가 요청보다
+  적은 경우에 대해 항진적**이다(§10-G 가 그런 경로를 하나 적는다). 이 검사는 **집행 기록의
+  누락**을 잡지, **집행의 무효(no-op)** 는 못 잡는다.
 - **canonical 의 0 은 구조적이다.** canonical 이 210판에서 집행한 매크로 전체가
   `Replace 561 / ReformTeam 693 / NOOP 279` 이고 `SwapBattery` 는 **0**이다. canonical 은
   그 팔을 고르는 규칙 자체가 없다.
@@ -323,6 +353,8 @@ courier=true 배너 없는 보드: 0
 `[battery] swap=battery_swapped` 를 **267번** 찍었고 `battery_courier_dispatched` 는 **0번**
 찍었다. 신세대는 정확히 뒤집혀 있다(dispatched 277 / swapped 0). **"배송이 277번 돌았다" 를
 세대 증거로 인용하지 말 것 — 증거는 `dispatched/fallback` 의 반전이다.**
+(그리고 "돌았다" 라는 말 자체가 이 수보다 강하다 — 277 은 **파견 요청**이고 왕복 완료가
+아니다. §10-G.)
 
 ---
 
@@ -484,8 +516,13 @@ bash finish_tables.sh
 
 ### 10-B. 구세대는 배송만 다른 통제가 아니다
 
-보존된 구세대는 `5dd29dae` 도장이고 HEAD 와 **14 커밋** 차이다(`cf63d760` 제외 시 13개가
-실질 후보). 이 문서의 모든 "구→신" Δ 는 **그 14 커밋 전부의 합**이다. `_faultable` 이
+보존된 구세대는 `5dd29dae` 도장이고 **스윕 도장 `ec8cf495` 와 14 커밋** 차이다
+(`5dd29dae..ec8cf495` = 14; `cf63d760` 제외 시 13개가 실질 후보).
+⚠️ **이 수는 앵커에 딸린다 — 앵커를 빼고 인용하지 말 것.** 같은 구세대를 **현재 HEAD**
+(`41cf9a26`) 기준으로 재면 `5dd29dae..HEAD` = **21** 이다(2026-08-16 실측). 14 는 스윕 도장까지의
+거리이고, 이 문서가 대면시키는 630판이 그 도장에서 나왔으므로 **Δ 의 분모로 옳은 것은 14** 다.
+21 과의 차이 7 커밋은 스윕 이후의 문서·도구 커밋이라 판에 안 들어갔다.
+이 문서의 모든 "구→신" Δ 는 **그 14 커밋 전부의 합**이다. `_faultable` 이
 설명하는 자리(§6-B 의 고장 축 미완주 감소)와 배송이 설명하는 자리(§4-A)를 제외한 나머지는
 **세대 차이**이지 배송 효과가 아니다.
 
@@ -531,6 +568,90 @@ degraded robot" · "SwapBattery is therefore correct at every rung tested" 로 �
 1순위와 같은 작업), 그건 이 수정 라운드의 범위 밖이다. **그때까지 `decision_acc` 의 battery
 성분은 구세대 기준으로 채점된 값으로 읽을 것.**
 
+### 10-G. 🔴 중복 파견이 "성공" 으로 보고되고 교체는 일어나지 않는다 (코드 결함 — 기록만 함)
+
+`src/respec/battery_courier.jl:169-171`.
+
+```julia
+for d in values(BATTERY_DELIVERIES[])
+    d.target == target && return d      # ← phase 를 안 본다
+end
+```
+
+중복 제거 스캔이 `d.target == target` 을 **phase 무관**하게 맞춘다. 그 로봇에 대한 배송이 이미
+`:returning`(교체를 마치고 창고로 돌아가는 중)이면, 두 번째 `SwapBattery` 는 **그 낡은 배송을
+그대로 돌려준다.** 그러면:
+
+1. `swap_battery!` 가 `:battery_courier_dispatched` 를 돌려주고,
+2. `replan.jl:646` 이 그것을 **성공으로 세고**,
+3. `tools/monitor/run_demo.jl:379` 가 성공 문자열을 찍는다.
+
+그런데 `battery_courier_step!` 은 `:outbound` 가지에서만 `_apply_battery_swap!` 을 부른다
+(`:234-237`). 돌려받은 배송은 이미 `:returning` 이므로 **그 가지에 영원히 다시 들어가지
+않는다** — 즉 **교체가 아예 일어나지 않는다.** 팔은 성공을 보고하고 로봇은 방전인 채 남는다.
+이 저장소의 특징적 실패(성공을 보고하면서 실제로는 아무것도 안 하는 단계)의 교과서적 사례다.
+
+🔴 **이 세대의 교차검증은 이것을 원리적으로 못 잡는다.** §7 이 발행한 검사는 "210 샤드 전부에서
+`rows.jsonl` 집행 수 == 런로그 `[battery] swap=` 줄 수, 불일치 0" 인데, **두 수 모두
+`swap_battery!` 의 반환값에서 나오는 파견 요청 수**다. 이 결함에 대해 **항진적**이다 — 요청이
+둘이면 양쪽 다 둘로 세고 일치한다. 적용된 교체를 세는 신호는 산출물에 없다:
+`_apply_battery_swap!` 의 도착 로그(`[COURIER] … battery swapped`)는 `@info` 라 이 레인의
+`Logging.Warn` 로거가 통째로 버린다(§10-D 와 같은 맹점).
+
+**도달 가능성은 가정이 아니라 실측이다** (2026-08-16, `results_4pol` 630행 재계산):
+
+| 측정 | n | 중앙 | min | 5 s 미만 |
+|---|---:|---:|---:|---:|
+| 연속 `SwapBattery` 결정쌍(같은 판) | 106 | **8.50 s** | 2.95 s | 7쌍 |
+| 그중 **같은 대상 로봇** 쌍 | 60 | **7.90 s** | **4.32 s** | 2쌍 |
+
+아래 줄이 이 결함에 직접적이다 — 중복 제거가 `d.target` 으로 키를 잡기 때문이다. 배송의 복귀
+구간은 D=20 · `v = 4.0 m/s`(`rvo_interface.jl:119` 의 `RVO_MAX_SPEED`)에서 **≈5 s** 이고,
+관측된 최단 간격(4.32 s)이 그 창 **안에** 든다. 즉 이 스윕에서 이미 발화했을 수 있고,
+발화했다면 위 어느 산출물도 그것을 드러내지 않는다.
+
+**고치지 않은 이유**: 고치면 코드 세대가 갈려 방금 발행한 630판이 통째로 무효가 된다.
+**다음 사이클에 재스윕과 묶어서** 고칠 것. 고칠 때 같이 넣을 계측: 적용된 교체를 세는
+**요청과 독립인** 신호(도착 시점 카운터를 `rows.jsonl` 로 내보내기) — 그게 없으면 수정이
+됐는지도 같은 이유로 검증 못 한다.
+
+### 10-H. 🔴 다른 창고의 놀고 있는 예비가 Replace 경로에서 안 보인다 (코드 결함 — 기록만 함)
+
+`src/respec/ood_injection.jl:425-435` (`nearest_pool`).
+
+배송 도입 때 `pop_spare!`(`:386-396`)는 **courier-aware 로 고쳤다** — 배송 나간 예비를 꺼내면
+`_retire_spare_body!` 가 그 몸체를 은퇴시켜 배송이 조용히 사라지므로,
+`findlast(r -> !is_battery_courier(r), v)` 로 건너뛰고 남은 게 전부 배송 중이면 `nothing` 을
+돌려준다. **그런데 `nearest_pool` 은 같이 안 고쳤다** — 여전히
+`isempty(SPARE_POOLS[][key])` 만 본다. 그래서 그 독스트링의 약속이 거짓이 됐다:
+
+> "only pools that still hold an available spare are considered — so the returned key is
+> directly poppable by `pop_spare!`" (`:420-422`)
+
+풀당 기본 예비는 **2대**다. 가장 가까운 창고의 둘이 배터리 배송을 나가 있으면 `nearest_pool`
+은 그 창고가 "안 비었다"고 보고 계속 그것을 고르고, `pop_spare!` 는 `nothing` 을 돌려준다.
+결과는 **다른 창고를 한 번도 안 보고** 강등되는 것이다:
+
+- `src/respec/replan.jl:763-766` → `_replace_via_reassign!(…, "empty_pool")`
+- `src/respec/replace_robot.jl:1516-1520` → `(status = :no_spare, …)`
+
+**비대칭이 핵심이다.** 배송 쪽 `_nearest_courier_depot`(`battery_courier.jl:146-158`)은
+`_free_courier_in` 으로 **모든 창고를 훑어** 자유 예비가 있는 가장 가까운 곳을 고른다.
+Replace 쪽은 최근접 창고 **하나만** 보고 포기한다. 같은 상황에서 배송은 성공하고 교체는
+실패한다.
+
+⚠️ **커밋된 산출물로는 측정 불가다.** 이 경로의 신호는 전부 `@info`/`@warn` 인데 이 레인은
+`verbose=false` + `Logging.Warn` 로거라, 로그 전수 그렙에서 `empty_pool` 과 `no_spare` 가
+**두 세대 모두 0건**이다(2026-08-16 실측: 현행 `results_4pol` 로그 **840개**, 구세대
+`results_4pol_gen_swapfree_2026-08-15` 로그 **1260개**, 두 문자열 모두 매치 파일 0).
+그것은 "안 났다" 가 아니라 **"났는지 볼 수 없다"** 는
+뜻이다 — §10-D 와 같은 종류의 맹점이고, 10-G 와 달리 도달 빈도조차 못 잰다.
+
+**고치지 않은 이유는 10-G 와 같다**(코드 세대가 갈린다). 다음 사이클에 `nearest_pool` 을
+`pop_spare!` 와 같은 술어로 맞추거나(가장 단순), Replace 경로를
+`_nearest_courier_depot` 처럼 전 창고 스캔으로 바꿀 것. 그때 이 두 강등 사유를 **로거가 버리지
+않는 신호로** 같이 올려야 수정 여부를 잴 수 있다.
+
 ---
 
 ## 11. 재현 절차
@@ -553,11 +674,13 @@ bash finish_tables.sh                          # -> artifacts_4pol/{FINAL,COMPAR
 # 4) 배송이 실제로 발화했는지
 ../.venv/bin/python ../.superpowers/sdd/2026-08-15-swapbattery-courier-resweep/count_courier.py \
       results_4pol                             # dispatched 277 / fallback 0
+                                               # (파견 요청 수다 — 적용된 교체 수가 아니다. §10-G)
 
 # 5) 라벨 staleness (§8)
 ../.venv/bin/python measure_swap_staleness.py
 
-# 6) 구세대 재현 (배송만 끈다 — _faultable 은 되돌아가지 않는다)
+# 6) 구세대 재현 (배송만 끈다 — _faultable 도, monitor.jl 의 REPLACE_SOC_THRESHOLD 회복
+#    조건도 되돌아가지 않는다: 섞인 변경은 셋이다. §2-C)
 DEMO_BATTERY_COURIER=0 bash run_4pol_parallel.sh …
 ```
 

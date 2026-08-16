@@ -79,3 +79,20 @@ wm4spacecraft_manufacturing/dp_oracle/_sample_work/
 # 지금까지 **추적도 무시도 되지 않은 상태**여서 `git add -A` 한 번이면 통째로 딸려 들어갔다.
 wm4spacecraft_manufacturing/results_4pol_gen_*/
 wm4spacecraft_manufacturing/artifacts_4pol_gen_*/
+
+# ---- 위 규칙이 못 덮은 나머지 스윕 트리 (2026-08-16) ------------------------------------
+# 위 두 줄은 `*_gen_*` 이름만 잡는다. 그 규약을 안 따르는 옛 실험 트리들이 **추적도 무시도
+# 되지 않은 채** 남아 있었다(실측 2026-08-16: 합계 **6671 MB**). 정확히 그 상태가
+# `git add -A` 한 번으로 통째로 딸려 들어가는 사고이고, 위 규칙이 처음 추가된 이유다.
+#
+# 두 부류를 다르게 다룬다:
+#  (a) 병합본 `.jsonl` 이 **이미 커밋된** 트리 -> `shards/` 하위만 배제한다. 디렉토리를 통째로
+#      무시하면 부모가 배제돼 커밋된 병합본이 인덱스에서 갈릴 수 있다(위 results_4pol 주석의
+#      "re-include" 제약과 같은 이유).
+wm4spacecraft_manufacturing/results_4pol_v2/shards/
+wm4spacecraft_manufacturing/results_oracle_v2/shards/
+wm4spacecraft_manufacturing/results_oracle_v3/shards/
+wm4spacecraft_manufacturing/results_4pol_reformfix/shards/
+#  (b) 커밋된 파일이 **하나도 없는** 트리 -> 통째로 배제한다.
+wm4spacecraft_manufacturing/results_4pol_repro/
+wm4spacecraft_manufacturing/results_4pol_oldgen_2026-08-13/

@@ -27,6 +27,13 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   `set_battery_courier!`, `:610-612` 가 그 손잡이를 주석으로 문서화한다).
   ⚠️ **배송만 끈다 — `_faultable` 수정은 되돌아가지 않는다.** 그래서 이 플래그로 만든 판은
   구세대와 **같지 않다**.
+  ⚠️ **되돌아가지 않는 것이 하나 더 있다(2026-08-16 확인): `src/monitor/monitor.jl:159-162` 의
+  `REPLACE_SOC_THRESHOLD` 회복 조건.** 세대 커밋 `2b5637c3` 에 배송과 **같이** 실렸는데
+  이 플래그의 조건문 밖이라 `DEMO_BATTERY_COURIER=0` 으로도 켜진 채 남는다. 즉 이 손잡이가
+  만드는 "통제"에는 **배송 · `_faultable` · 이 회복 조건 셋이 섞여 있다**(둘이 아니다).
+  다만 blast radius 는 다르다 — 이 셋째 변경은 `_mon_robots`(`monitor_emit!` 의 `robots` 블록,
+  `:488`)만 타므로 **모니터 스트림/보드의 SoC·mode 표시**에만 영향을 주고 `rows.jsonl` 의
+  채점 지표에는 안 닿는다. 그래도 보드를 세대 간에 눈으로 대조할 때는 교란 변수다.
 - **★ `objective_hash` 는 안 바뀐다 — `19819377a7f8ebb2` 그대로다.** 갈린 것은 **동역학**이지
   목적함수가 아니다(`objective.json` 무변경, 630행 전부 세대 쌍 `('19819377a7f8ebb2', 1)`).
   🔴 **여기서 해시를 올리면 배포 라벨셋 전부와 surrogate 가 한꺼번에 구세대로 재분류된다** —
@@ -37,6 +44,12 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   비교표 3열 합계: canonical 207 → **210** · surrogate 198 → **189** · llm 203 → **205**.
 - **배송은 실제로 발화했다: dispatched 277 · 즉시교체 폴백 0**(구세대는 같은 210 샤드에서
   dispatched 0 · 폴백 267). 레인은 `surrogate 165 / dspy 112 / canonical 0`.
+  🔴 **277 은 "파견 요청" 수이지 "적용된 교체" 수가 아니다.** 이 수는 `swap_battery!` 가
+  `:battery_courier_dispatched` 를 돌려준 횟수를 셀 뿐이고, 실제 교체는 배송 로봇이 도착한
+  순간에만 `battery_courier_step!`(`battery_courier.jl:234-237`)에서 적용된다. 아래 한계 5
+  (중복 파견이 조용히 성공으로 보고되는 결함)가 바로 그 둘이 갈리는 자리이고, **이 세대의
+  교차검증은 그 격차를 못 본다** — 두 세는 대상이 모두 파견 요청이라 항진적이다.
+  이 수를 인용할 때는 반드시 **"파견 요청 277"** 으로 적을 것.
   ⚠️ **277 이라는 수 자체는 세대를 나르지 않는다** — 구세대 집행도 267 로 거의 같다.
   세대를 가르는 것은 `dispatched/fallback` 의 **반전**이다(같은 `println`, `run_demo.jl:379`).
 - **★ canonical 이 `SwapBattery` 를 한 번도 안 고르는 것은 구조적이다** — 210판에서 낸 결정
@@ -56,7 +69,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   **배송 크기로 인용 금지**(배송 없는 대조항 `fault_zone` 이 이미 surrogate +27.1%).
 - **★ zone 축 이동은 귀속되지 않았다.** 보존된 구세대는 `commit=5dd29dae` 도장이고
   **스윕 도장(`5dd29dae..ec8cf495`) 기준 14 커밋** 차이라 **배송 단독 대조군이 아니다**
-  (⚠️ 분모는 앵커에 딸린다 — 현재 HEAD 기준으로는 19 다). `_faultable` 로도 설명되지 않는다 — 그건
+  (⚠️ 분모는 앵커에 딸린다 — `5dd29dae..HEAD` 는 **21** 이다, HEAD=`41cf9a26` 2026-08-16 실측.
+  이 괄호가 예전에 적던 19 는 HEAD 가 `2b5a9457` 이던 시점의 값이라 이제 틀리다. 이 수를 옮겨
+  적을 때는 **앵커를 같이** 적을 것). `_faultable` 로도 설명되지 않는다 — 그건
   고장 **대상 선정**을 바꾸는데 순수 zone 에는 고장 사건이 없다(`_faultable` 이 설명으로
   정당한 자리는 고장 축 미완주 **감소**다). 옳은 통제는 **같은 커밋에서
   `DEMO_BATTERY_COURIER=0` 으로 630판을 다시 굴리는 것**이고 **이번 사이클은 돌리지 않았다.**
@@ -121,6 +136,37 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   4. `measure_swap_staleness.py:177-178` 에 **잠재 `ZeroDivisionError`** — 어떤 레인이 두 팔 중
      하나를 한 번도 안 집행하면 `n=0` 으로 나눈다(surrogate 는 앞의 조기 `sys.exit` 로 막히지만
      **dspy 레인은 안 막힌다**). 현재 데이터로는 발화 안 함.
+  5. 🔴 **중복 파견이 "성공" 으로 보고되고 교체는 일어나지 않는다**(`src/respec/battery_courier.jl:169-171`).
+     중복 제거 스캔이 `d.target == target` 을 **phase 무관**하게 맞춘다. 그 로봇의 배송이 이미
+     `:returning` 이면 두 번째 `SwapBattery` 가 **그 낡은 배송을 그대로 돌려주고**,
+     `swap_battery!` 는 `:battery_courier_dispatched` 를, `tools/monitor/run_demo.jl:379` 는
+     성공 문자열을 찍는다. 그런데 `battery_courier_step!` 은 `:outbound` 가지에서만
+     `_apply_battery_swap!` 을 부르므로(`:234-237`) **교체가 아예 안 일어난다** — 팔은 성공을
+     보고하고 로봇은 방전인 채로 남는다.
+     🔴 **이 세대의 교차검증은 이것을 원리적으로 못 잡는다**: 발행된 검사("210 샤드 전부
+     `rows.jsonl` 집행 수 == 런로그 `[battery] swap=` 줄 수, 불일치 0")는 **파견 요청을 두 번
+     세어 맞춰본 것**이라 이 결함에 대해 항진적이다. 적용된 교체를 세는 신호가 산출물에 없다
+     (`_apply_battery_swap!` 의 도착 로그는 `@info` 라 `Logging.Warn` 로거가 버린다).
+     **도달 가능성은 가정이 아니라 실측이다**(2026-08-16, `results_4pol` 재계산): 이 스윕의
+     연속 `SwapBattery` 결정쌍 **106개**의 간격 중앙 **8.50 s**(min 2.95, 5 s 미만 **7쌍**).
+     결함에 더 직접적인 **같은 대상 로봇** 쌍만 보면 **60개** · 중앙 **7.90 s** · min **4.32 s**
+     · 5 s 미만 **2쌍**이다. 배송 복귀 구간은 D=20 · `v=4.0 m/s`(`rvo_interface.jl:119`)에서
+     **≈5 s** 라, 관측된 최단 간격들이 그 창 안에 든다.
+  6. 🔴 **다른 창고의 놀고 있는 예비가 Replace 경로에서 안 보인다**(`src/respec/ood_injection.jl:425-435`).
+     `pop_spare!`(`:386-396`)는 배송 중인 예비를 건너뛰도록 courier-aware 로 고쳤는데
+     (`findlast(r -> !is_battery_courier(r), v)`, 남은 게 전부 배송 중이면 `nothing`),
+     `nearest_pool` 은 여전히 `isempty(SPARE_POOLS[][key])` 만 본다. 그래서 그 독스트링의
+     약속("반환된 키는 `pop_spare!` 로 바로 꺼낼 수 있다")이 **거짓**이 됐다. 풀당 기본 예비가
+     2대뿐이라 가장 가까운 창고의 둘이 배송을 나가면 `nearest_pool` 은 그 창고를 계속 고르고
+     `pop_spare!` 가 `nothing` 을 돌려줘, `replan.jl:763-766` 이 `"empty_pool"` 로,
+     `replace_robot.jl:1516-1520` 이 `:no_spare` 로 강등된다 — **아직 자유 예비가 남은 다른
+     창고를 한 번도 안 보고**. 비대칭이 핵심이다: 배송 쪽 `_nearest_courier_depot`
+     (`battery_courier.jl:146-158`)은 **모든 창고를 훑는데** Replace 쪽은 최근접 하나만 본다.
+     ⚠️ **커밋된 산출물로는 측정 불가**: 신호가 전부 `@info`/`@warn` 인데 이 레인은
+     `verbose=false` + `Logging.Warn` 로거라, 210 샤드 로그 전수 그렙에서
+     `empty_pool`/`no_spare` 가 **두 세대 모두 0건**이다. "안 났다" 가 아니라 "못 본다" 다.
+  ⚠️ **5·6 은 코드를 안 고치고 기록만 했다** — 고치면 코드 세대가 갈려 방금 발행한 630판이
+     통째로 무효가 된다. **다음 사이클에 재스윕과 묶어서** 고칠 것.
 - **다음 사이클 1순위 = 배송 동역학 아래에서 라벨 격자를 다시 만들고 surrogate 를 재학습하는 것.**
   그 작업이 위 3(기준 정책 재유도)과 dp 표 재표집을 같이 닫는다.
 
@@ -464,6 +510,12 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   대면 `V` 가 구조적으로 작아 gap 이 **100% 로 자동 발화**한다(측정이 아니라 단위 오류).
   `build_compare_table.py` 와 `fill_results_doc.py` 가 `value.json` 의 `solver` 필드를 읽어
   단위를 고른다 — 두 소비처의 규칙이 어긋나면 표와 문서가 갈린다.
+  ⚠️ **그 "규칙" 에는 `dp_lane_swept` 가드도 포함된다**(`results_4pol/shards_dp` 존재 여부).
+  `1bfbcaf8`·`7eddb629` 는 `build_compare_table.py:197` 에만 그 가드를 넣었고 형제인
+  `fill_results_doc.py` 는 **빠뜨렸다** — 2026-08-16 에 같은 신호·같은 스타일로 맞췄다
+  (`holes_section()` 의 세 블록: DP 커버리지 · §8.7 gap · 분해 충실성 주장).
+  **둘 중 하나만 고치면 안 된다.** 그리고 이 판정은 **해시로는 못 한다** — 그 `value.json` 의
+  `objective_hash` 는 현행과 같고 갈린 것은 코드 세대라, 쓸 수 있는 신호는 `shards_dp` 뿐이다.
 - **`dp_solve._bucket()` 은 이름 규약이다**(2026-08-15 수정). 예전엔 "prog_b 는 cell key 의 첫
   성분" 이라는 **위치** 규약이었는데, 계층 백오프 L2 가 `prog_b` 를 덜어내면 첫 성분이 `soc_b`
   가 되어 솔버가 **SoC 를 진행도로 착각**한다. SoC 는 단조가 아니라 DAG 전제가 깨지고, 실측
