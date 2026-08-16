@@ -4,9 +4,122 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
-### ✅ 2026-08-17 — 표집을 1-step deviation 으로 바꿨다 (현행 세대)
+### ✅ 2026-08-16 — SwapBattery 가 창고 예비의 물리 배송이 됐다 (현행 세대)
 
-**현행 세대 결과 = `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` + `artifacts_4pol/COMPARE.md`.**
+**이 세대의 결과 = `md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md` + `artifacts_4pol/COMPARE.md`.**
+목적함수 세대는 안 갈렸다(`objective.json` 무변경). 코드 세대는 `2b5637c3`(배송 + 고장 피커)
++ `49cf841f`·`ec8cf495`(사전 게이트) — 샤드 도장은 210/210 전부 `commit=ec8cf495`.
+계획서: `docs/superpowers/plans/2026-08-15-swapbattery-courier-resweep.md`(§실행 중 확정된 사실이
+계획 본문의 오류 8개를 뒤집는다 — 계획서 본문보다 그 절이 맞다).
+
+- **무엇이 세대를 갈랐나 ① 배송**(`src/respec/battery_courier.jl` 신규 + `replace_robot.jl`):
+  `swap_battery!` 가 같은 스텝 안에서 `fleet.soc[role] = 1.0` 을 찍던 **장부 조작**에서, 가장
+  가까운 창고의 예비 로봇이 배터리를 들고 현장까지 **주행**하고 **도착 스텝에서만** 교체가
+  적용되는 물리 배송으로 바뀌었다. 그래서 **방전 구간이 실재하고, 그동안 그 로봇의 작업 라인이
+  선다.** 자원 회계는 어휘의 뜻을 지킨다 — 예비를 `pop_spare!` 로 소비하지 않으므로 창고 재고는
+  안 줄고, 드는 비용은 **시간과 라인 정지**다. 상태 문자열이 갈렸다:
+  `:battery_swapped` → `:battery_courier_dispatched`.
+- **② 고장 피커**(`src/respec/ood_injection.jl` 의 `_faultable` 신규 술어, `_pick_active_robot`
+  세 단 전부에 적용): 주차된 창고 예비가 고장 대상에서 빠진다. 예전엔 `failed=R16, spare=R16`
+  처럼 **자기 자신으로 교체**하는 무의미(vacuous) 사건이 났다 — `safe=true` 경로는 이미 제외를
+  갖고 있었고 데모 기본값인 `safe=false` 경로만 뚫려 있었다.
+- **구세대 재현: `DEMO_BATTERY_COURIER=0`**(`tools/monitor/run_demo.jl:612`).
+  ⚠️ **배송만 끈다 — `_faultable` 수정은 되돌아가지 않는다.** 그래서 이 플래그로 만든 판은
+  구세대와 **같지 않다**.
+- **★ `objective_hash` 는 안 바뀐다 — `19819377a7f8ebb2` 그대로다.** 갈린 것은 **동역학**이지
+  목적함수가 아니다(`objective.json` 무변경, 630행 전부 세대 쌍 `('19819377a7f8ebb2', 1)`).
+  🔴 **여기서 해시를 올리면 배포 라벨셋 전부와 surrogate 가 한꺼번에 구세대로 재분류된다** —
+  갈리지도 않은 축으로 세대를 가르는 것이다. (옛 해시를 이 파일에 문자열로 다시 적지 말 것:
+  `audit_objective.py` 항목 9 가 CLAUDE.md 안의 해시 인용과 계약 개수를 기계로 본다.)
+- **스윕**: 7 case × 30 seed × 3 policy = **630판**, 샤드 **210/210 ok · fail 0 · deadline 0**,
+  **1h47m**, 210 샤드 전부 `commit=ec8cf495` 단일 도장, 630행 전부 한 세대 쌍.
+  비교표 3열 합계: canonical 207 → **210** · surrogate 198 → **189** · llm 203 → **205**.
+- **배송은 실제로 발화했다: dispatched 277 · 즉시교체 폴백 0**(구세대는 같은 210 샤드에서
+  dispatched 0 · 폴백 267). 레인은 `surrogate 165 / dspy 112 / canonical 0`.
+  ⚠️ **277 이라는 수 자체는 세대를 나르지 않는다** — 구세대 집행도 267 로 거의 같다.
+  세대를 가르는 것은 `dispatched/fallback` 의 **반전**이다(같은 `println`, `run_demo.jl:379`).
+- **★ canonical 이 `SwapBattery` 를 한 번도 안 고르는 것은 구조적이다** — 210판 매크로 전체가
+  `Replace 561 / ReformTeam 693 / NOOP 279` 이고 3795 결정 중 **0회**다. 그 귀결이 위험하다:
+  **배송을 태우는 레인은 surrogate·dspy 둘뿐인데, 그 둘이 바로 DSPy 서비스가 죽으면 조용히
+  canonical 로 내려앉는 레인**이다. 게이트의 `/health` 는 **시작 시점만** 본다 → 스윕마다
+  `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것(이번 실측: 교차 레인 폴백 0).
+- **★ 헤드라인 논증은 레인 간 대비가 아니라 레인 내부 · case 간 용량-반응이다.** 레인 · 커밋 ·
+  세대 · 목적함수를 전부 고정하고 **배송이 발화할 수 있는 횟수만** 바꾼다(makespan 중앙 구→신):
+  surrogate `fault`(0회) **−0.8%** → `fault_battery`(33회) **+26.3%** → `battery`(74회) **+54.9%**,
+  dspy **−2.2% → +15.0% → +32.6%**. 에너지도 같은 방향으로 단조다.
+  🔴 **"canonical 은 평평한데 추론 레인이 올랐다" 를 근거로 쓰면 안 된다 — 직접 반례가 있다.**
+  순수 `zone` case 는 세 레인 모두 `SwapBattery` 집행이 0회이고 `BatteryTruth` 사건이 **아예
+  0건**인데도 surrogate **+33.9%** · dspy **+46.0%** 가 그대로 나온다. 그 패턴은 배송 없이도 난다.
+  🔴 `battery_zone`(+48.6%/+53.1%) · `all`(+50.8%/+42.6%) 은 zone 축과 겹쳐 **교란**돼 있다 —
+  **배송 크기로 인용 금지**(배송 없는 대조항 `fault_zone` 이 이미 surrogate +27.1%).
+- **★ zone 축 이동은 귀속되지 않았다.** 보존된 구세대는 `commit=5dd29dae` 도장이고 HEAD 와
+  **14 커밋** 차이라 **배송 단독 대조군이 아니다.** `_faultable` 로도 설명되지 않는다 — 그건
+  고장 **대상 선정**을 바꾸는데 순수 zone 에는 고장 사건이 없다(`_faultable` 이 설명으로
+  정당한 자리는 고장 축 미완주 **감소**다). 옳은 통제는 **같은 커밋에서
+  `DEMO_BATTERY_COURIER=0` 으로 630판을 다시 굴리는 것**이고 **이번 사이클은 돌리지 않았다.**
+- **★ 정지 지표가 둘이다 — 섞으면 틀린다.** `battery_physics.n_stalled > 0` = **신 7판 / 구 0판**
+  (전부 배터리가 낀 case, 전부 미완주; `battery_physics` **설정은 두 세대에서 동일**하므로 설정
+  아티팩트가 아니다). 이것이 "배송이 오는 동안 로봇이 진짜로 방전된 채 서 있다" 의 가장 깨끗한
+  양(陽)의 증거다. 판 미완주 `status=="stall"` 은 **신 26 / 구 22** 이고, **그 7판은 26판의
+  진부분집합**이다 — 19판은 판으로 멈췄지만 기계적으로 멈춰 선 로봇은 없다.
+- **dp 열이 이 표에 없다.** `dp_oracle/value.json` 이 **구세대 동역학**(1-step deviation 세대,
+  `SwapBattery` 가 공짜이던 세계)에서 표집됐기 때문이다 — 그 표로 dp 레인을 굴려 4열에 실으면
+  한 표에 두 세대가 섞인다. **어떻게 뺐나**: `results_4pol/shards_dp` 를 구세대 트리와 함께
+  옮겼고 `finish_tables.sh:32` 가 그 부재를 보고 열을 `이 레인은 스윕에 없음` 으로 **자동으로
+  낮춘다**(표를 손으로 고치지 않았다). **되살리는 법**: 배송 동역학에서
+  `dp_oracle/sample_grid.py` 재표집 → `dp_solve.py --backoff` → dp 레인만 재스윕
+  (**4~5시간**, 표집이 대부분). 절차는 결과 문서 §9.
+- **★ 발행된 표에서 세대 누수를 둘 잡아 닫았다**(`1bfbcaf8`, `7eddb629`). dp **열**은 올바르게
+  비어 있었는데 ① §8.7 gap 각주가 **빌드 시점에 새 행을 구세대 `value.json` 에 대고 다시
+  계산**해 숫자를 하나 찍고 있었고, ② 1차 수정 뒤에도 "이 표의 DP 는 진짜 Bellman backward
+  induction 이다 …" 라는 **주장 블록**이 살아남았다. **살아남은 이유는 그 문장에 숫자가 없어서**
+  1차 수정의 grep 을 전부 통과했기 때문이다.
+  **★ 교훈: 세대 누수는 숫자가 없어도 누수다.** 기준은 "숫자가 나갔는가" 가 아니라
+  **"구세대 파일이 이번 세대 산출물의 참·거짓을 정하는가"** 다.
+  🔴 **잔존 위험**: 그 `value.json` 의 `objective_hash` 는 **현행값과 같다**(목적함수는 안 갈렸고
+  갈린 것은 코드 세대다). **해시만 보고 게이팅하는 다른 소비처는 이 맹점을 그대로 공유한다** —
+  이번엔 호출부 하나만 닫았고, 쓸 수 있었던 신호는 `shards_dp` 디렉토리 존재 여부뿐이었다.
+- **★ surrogate 라벨은 낡았다(stale) — 판정 유지, 근거는 갈아 끼웠다.**
+  🔴 **초판의 `−8.3pp`(완주)·`+13.8%`(makespan)를 인용하지 말 것 — 결정 가중 아티팩트다.**
+  판 하나의 결과를 그 판이 그 팔을 고른 **횟수만큼 반복해서** 센 값이고, 판 단위로는 **1.8pp**
+  다(surrogate 120판 중 **52판이 두 팔을 다 집행한다** — "≥1 SwapBattery ⇒ SwapBattery 판"
+  규칙이 그 52판을 통째로 한쪽으로 몰아 Replace 쪽 n 이 18판밖에 안 남는다).
+  **살아남은 근거는 case 층화 makespan 용량-반응**이다 — **같은 시드의 canonical** 과 짝지어 뺀
+  Δmakespan 중앙이 판당 `SwapBattery` 집행 `0회 +0.00 → 1회 +3.90 → 2회 +6.45 → 3회 이상
+  +9.13 s`. **case 별로 쪼개도 유지**되고 **판당 총 배터리 결정 수를 고정해도 유지**된다
+  (= 용량이 난이도 대리변수가 아니다). 집행 0회 판의 Δ 가 **정확히 0.00** 인 것이 내부 통제다.
+  ⚠️ **dspy 의 "복제" 는 makespan 에서만 성립한다** — 판 단위 완주 격차는 **0.0pp** 다.
+  그런데도 surrogate 는 배터리 결정의 60.7%(165/272)를 그 팔에 준다.
+- 신규 계약: `wm4spacecraft_manufacturing/gate_courier_sweep.sh`(**4/4** — 배송 집행 · 고장
+  피커 · DSPy · `objective_hash`) · `wm4spacecraft_manufacturing/measure_swap_staleness.py`.
+  **★ 게이트가 닫은 함정**: 원안 G2 는 **영원히 실패할 수 없는 검사**였다 — 그렙 대상
+  `Robot R<n> has broken down` 이 **stdout 에 한 번도 안 나온다**(`monitor.jl:354` 가 메모리
+  Dict 에만 쌓고 `MONITOR_STREAM` JSONL 로만 나간다). 실측 **stdout 0/90 · 스트림 90/90**.
+  → 스트림 파일을 직접 그렙하고 "고장 0건이면 실패" 가드를 넣었다. **게이트를 짤 때는 음성
+  대조를 먼저 실측할 것** — 그 문자열이 실제로 쓰인 적이 있는가.
+- **알려진 한계 — 고치지 않고 기록한 것:**
+  1. **zone 축 이동이 귀속되지 않았다**(위). 옳은 통제를 이번 사이클에 돌리지 않았다.
+  2. 🔴 **런 간 재현성 결함이 살아 있다** — `_pick_active_robot`(`src/respec/ood_injection.jl:856`)
+     이 `env.cache.active_set` 을 순회하는데 그것은 **`Set` 이라 순회 순서가 정의돼 있지 않다.**
+     같은 시드·같은 커밋을 다시 굴려도 고장 대상 로봇이 갈릴 수 있다. 이 계획은 **범위에서
+     뺐다**(고치면 그 자체가 세대를 갈라 이번 비교의 교란 변수가 된다). 이 스윕은 반복 측정이
+     없어 위 Δ 중 그 잡음의 몫을 **분리하지 못한다.**
+  3. **발행된 `decision_acc` 는 아직 구세대 기준으로 채점된다** — `reference_policy.py` 의
+     `BASIS["battery"]` 문자열에 `🔴 STALE PREMISE` 표식만 붙였고 **규칙 자체
+     (`BATTERY_DEEP_SOC` · `reference_action()`)는 재유도하지 않았다.** 즉 채점 기준이 여전히
+     "깊은 SoC 에서는 `SwapBattery` 가 옳다" 이고 그것은 이 세대의 측정과 어긋난다
+     (결과 문서 §10-F).
+  4. `measure_swap_staleness.py:177-178` 에 **잠재 `ZeroDivisionError`** — 어떤 레인이 두 팔 중
+     하나를 한 번도 안 집행하면 `n=0` 으로 나눈다(surrogate 는 앞의 조기 `sys.exit` 로 막히지만
+     **dspy 레인은 안 막힌다**). 현재 데이터로는 발화 안 함.
+- **다음 사이클 1순위 = 배송 동역학 아래에서 라벨 격자를 다시 만들고 surrogate 를 재학습하는 것.**
+  그 작업이 위 3(기준 정책 재유도)과 dp 표 재표집을 같이 닫는다.
+
+### ✅ 2026-08-17 — 표집을 1-step deviation 으로 바꿨다 (직전 세대)
+
+**직전 세대 결과 = `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` + 그 세대의 `artifacts_4pol/`
+(현행 트리는 위 배송 세대로 재생성됐고, 그 세대 사본은 `artifacts_4pol_gen_swapfree_2026-08-15/`
+· 원자료는 `results_4pol_gen_swapfree_2026-08-15/` 에 보존).**
 목적함수 세대는 안 갈렸다(`objective.json` 무변경). 코드 세대는 `c5c4fb63`+`28158a49`+`aff13715`+`3e492c21`.
 
 - **무엇이 세대를 갈랐나**: 한 rollout 이 `DEMO_FORCE_MACRO` 로 **판 전체**를 한 팔로 굴린 것에서,
@@ -101,12 +214,17 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   5개짜리인데, 보존된 587판을 `(case,seed)` 로 묶으면 **84그룹 전부에서 일곱 개의 독립
   프로세스가 pre-`k` 결정 열을 바이트 동일하게 냈다(갈린 그룹 0).** 이 브랜치에서 가장 강한
   단일 결과다 — 재현 스크립트는 결과 문서 §5-A.
-- ⚠️ **`objective.json` 이 2026-08-13 이후 커밋되지 않은 채 작업 트리에만 있다.** 작업 트리가
-  현행 세대 값이라 이번 산출물은 올바르게 도장됐지만, 🔴 **깨끗이 체크아웃하면 결과가 "덜
+- ⚠️ **`objective.json` 이 2026-08-13 이후 커밋되지 않은 채 작업 트리에만 있었다.** 작업 트리가
+  그 세대의 해시 값이라 이번 산출물은 올바르게 도장됐지만, 🔴 **깨끗이 체크아웃하면 결과가 "덜
   정확하게 재현" 되는 것이 아니라 재현 절차가 그냥 실패한다** — `dp_solve.py:499-504` 의
   `main()` 이 `sys.exit("표본의 objective_hash 가 현행과 다르다(구세대 표본)…")` 로 **하드
   스톱**(rc 1)해 결과 문서 §6 의 3단계에서 죽는다. `audit_objective.py` 의 `WARN(9-b)` 가 그
-  전조다. **별도 커밋 필요**(컨트롤러 결정 사항).
+  전조다. ✅ **2026-08-16 해소: `cf63d760` 이 `objective.json` + `essential_tg_coponents.jl`
+  (그 `generation` 이름이 가리키는 코드) + `RESULTS_D20` 해시 1줄을 함께 이력에 넣었고
+  `WARN(9-b)` 가 닫혔다.** ⚠️ 그 커밋 자체가 남긴 교훈이 위 배송 세대 §5 에 있다 —
+  그 diff 는 구세대 스윕 당시 **이미 작업 트리에서 살아 있었으므로**, 그 커밋을 "세대를 가른
+  14 커밋" 후보에서 빼야 한다. **커밋된 SHA 만으로는 그 런이 실제로 쓴 목적함수를 식별할 수
+  없다.**
 - ⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
   로 돌린다(인터프리터는 `.venv` 유지). `dp_oracle/_sample_work/`(=`--keep-work` 산출, 2.4GB)는 gitignore.
   ⚠️ **pytest 로는 `test_deviation_plan.py` 만 잡힌다(30건).** `test_cost_decomposition.py` ·
@@ -220,8 +338,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   1차 스윕은 210 샤드 ok 210/fail 0, 60분, 630행 전부 `energy_J > 0` 이었다.
   구세대 샤드는 `results_4pol_gen_energyactivation/`(1차) · `results_4pol_oldgen_2026-08-13/`(그 이전).
 
-- **단계 6 2차 스윕 (2026-08-13 22:43) — 그 날의 현행 세대였다. 지금은 아니다.**
-  (2026-08-17 정정: 이 파일에 "현행 세대" 표식이 **둘** 있었다. 현행은 맨 위 2026-08-17 절이고,
+- **단계 6 2차 스윕 (2026-08-13 22:43) — 그 날의 현행이었다. 지금은 아니다.**
+  (2026-08-17 정정 · 2026-08-16 갱신: 이 파일에 현행 표식이 **둘** 있었다. 현행은 언제나
+  **맨 위 절 하나뿐**이고 지금은 2026-08-16 배송 절이다.
   이 절은 그 날짜 시점의 기록이다. 목적함수 세대는 여전히 같지만 코드 세대·결과 문서는 갈렸다 —
   아래 내용은 지우지 않는다. 배터리 물리·전역 κ 논증이 그 뒤 세대들의 전제이기 때문이다.)
   결과 문서는
@@ -353,8 +472,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ### 2026-08-14 — 4정책 비교표가 나왔다 (라우터 3-way · DP 레인 · 화면의 목적함수) — **직전 세대**
 
-**그 날의 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md`.** (2026-08-17 정정: 여기도 "현행 세대"
-라고 적혀 있었다 — 절 제목이 이미 **직전 세대**라 자기모순이었다. 현행은 맨 위 2026-08-17 절.)
+**그 날의 결과 = `md/RESULTS_ROUTER3WAY_2026-08-14.md`.** (2026-08-17 정정 · 2026-08-16 갱신:
+여기도 현행이라고 적혀 있었다 — 절 제목이 이미 **직전 세대**라 자기모순이었다. 현행은 맨 위
+2026-08-16 배송 절이다.)
 7 case x 30 seed x **4 policy = 840판**, 샤드 420/420 ok·fail 0, 세대 단일. 정책은
 `canonical` · `surrogate` · `dspy` · **`dp`**(신규). 완주 합계 207 / 190 / 198 / 206 (/210).
 
