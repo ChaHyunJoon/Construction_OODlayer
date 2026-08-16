@@ -29,7 +29,7 @@ echo "== G1: 스윕 엔진(run_demo.jl)에서 SwapBattery 가 배송으로 집�
 # DEMO_FORCE_MACRO 로 배터리 사건의 팔을 SwapBattery 로 못박는다(policy.jl:664).
 # 그러지 않으면 시드에 따라 Replace 가 뽑혀 이 게이트가 아무것도 검사하지 못한다.
 #
-# 세 grep 이 각각 무엇을 검사하는지(2026-08-15 실측, file:line):
+# 네 grep 이 각각 무엇을 검사하는지(2026-08-15 실측, 2026-08-16 재리뷰로 4번째 항목 수정, file:line):
 #   1) "courier=true"                  -- run_demo.jl:620 println. DEMO_BATTERY_COURIER
 #      (기본 "1")가 꺼져 있으면 "courier=false" 가 찍혀 이 grep 이 실패한다.
 #   2) "swap=battery_courier_dispatched" -- run_demo.jl:379 println("[battery] swap=$(sw.status) ...").
@@ -40,21 +40,30 @@ echo "== G1: 스윕 엔진(run_demo.jl)에서 SwapBattery 가 배송으로 집�
 #      **예비가 하나도 없으면** swap_battery!(replace_robot.jl:1429-1439)가 즉시 교체 폴백으로
 #      떨어져 _apply_battery_swap!(:1461)의 :battery_swapped 가 대신 찍힌다 — 그러면 이 grep 은
 #      실패하고, 그것이 "이름만 새 세대, 동작은 구세대" 판을 잡는 지점이다.
-#   3) "PROJECT COMPLETE"               -- run_demo.jl:828 println(">>> PROJECT COMPLETE @ step ...").
+#   3) "swap=battery_swapped" **가 없어야 한다** -- 같은 println(:379)의 반대 값. check 2 는
+#      DEMO_N=2(사건 둘) 중 **하나만** 배송에 성공해도 그 사건의 "battery_courier_dispatched" 를
+#      찾아 통과해 버린다 — 나머지 사건이 폴백해도 못 잡는다(부분 폴백). 그 구멍을 이 grep 이
+#      메운다: 배송 실패 시의 @warn(replace_robot.jl:1436-1437, "no depot spare free to deliver
+#      a battery")는 **로거 레벨과 무관하게 절대 안 찍힌다** — 이 스윕의 유일한 호출부
+#      run_demo.jl:378 이 `CB.swap_battery!(env, truth.robot; verbose = false)` 로 부르기 때문에
+#      성공 쪽 @info 와 함께 폴백 쪽 @warn 도 **소스에서** 억제된다(replan.jl:643 의 verbose=true
+#      호출부는 run_demo.jl:622 가 `RESPEC_ENABLED[]=false` 로 꺼 두어 이 레인에서 안 탄다).
+#      그래서 로거를 타지 않는 무조건 println(:379)의 반대 값을 직접 본다 — sw.status 가
+#      :battery_swapped 로 찍힌 사건이 하나라도 있으면 그 사건은 폴백한 것이다.
+#   4) "PROJECT COMPLETE"               -- run_demo.jl:828 println(">>> PROJECT COMPLETE @ step ...").
 #      max_steps 안에 안 끝나면(run_demo.jl:835 "reached max_steps") 안 찍힌다.
 G1LOG=$(mktemp)
 DEMO_MODEL=tractor.mpd DEMO_OOD=battery DEMO_SEED=1 DEMO_OOD_SEED=3 DEMO_N=2 \
 DEMO_POLICY=canonical DEMO_FORCE_MACRO=SwapBattery DEMO_BSOC=0.9 \
 CARRIER_RESCUE=1 RELOCATE_GATE=1 \
   julia +lts --project=. --startup-file=no tools/monitor/run_demo.jl > "$G1LOG" 2>&1
-grep -aq 'courier=true' "$G1LOG"                       || { echo "  !! courier 가 꺼진 채로 돈다"; fail=1; }
-grep -aq 'swap=battery_courier_dispatched' "$G1LOG"    || { echo "  !! SwapBattery 가 배송으로 안 갔다(즉시 교체 폴백?)"; fail=1; }
-# 위 grep 이 실패했을 때 "왜"를 이름으로 남긴다: 폴백 경로는 @warn 을 낸다(replace_robot.jl:1437-1438).
-# 전역 로거가 Warn 이상만 통과시키므로(run_demo.jl:554) 이 문자열은 stdout+stderr 캡처에 실제로 남는다.
-grep -aq 'no depot spare free to deliver a battery' "$G1LOG" \
-  && { echo "  !! 배송 예비가 없어 즉시 교체로 폴백했다 — 창고 예비 재고를 늘리거나 DEMO_SPARES 를 확인할 것"; fail=1; }
-grep -aq 'PROJECT COMPLETE' "$G1LOG"                   || { echo "  !! 이 판이 완주하지 않았다"; fail=1; }
-[ "$fail" -eq 0 ] && echo "  OK  ($G1LOG)"
+g1_fail=0
+grep -aq 'courier=true' "$G1LOG"                       || { echo "  !! courier 가 꺼진 채로 돈다"; fail=1; g1_fail=1; }
+grep -aq 'swap=battery_courier_dispatched' "$G1LOG"    || { echo "  !! SwapBattery 가 배송으로 안 갔다(즉시 교체 폴백?)"; fail=1; g1_fail=1; }
+grep -aq 'swap=battery_swapped' "$G1LOG" \
+  && { echo "  !! 사건 중 하나 이상이 즉시 교체로 폴백했다(배송 예비 소진 또는 courier 비활성)"; fail=1; g1_fail=1; }
+grep -aq 'PROJECT COMPLETE' "$G1LOG"                   || { echo "  !! 이 판이 완주하지 않았다"; fail=1; g1_fail=1; }
+[ "$g1_fail" -eq 0 ] && echo "  OK  ($G1LOG)"
 
 echo "== G2: 창고 예비가 고장 대상에서 빠지는가 =="
 # 예비 id 는 실제 로봇 수보다 크다(tractor: 실로봇 1..10, 예비 11..18).
@@ -70,8 +79,12 @@ MONITOR_STREAM="$G2STREAM" \
 DEMO_MODEL=tractor.mpd DEMO_OOD=fault DEMO_SEED=1 DEMO_OOD_SEED=10 DEMO_N=2 \
 DEMO_POLICY=canonical CARRIER_RESCUE=1 RELOCATE_GATE=1 \
   julia +lts --project=. --startup-file=no tools/monitor/run_demo.jl > "$G2LOG" 2>&1
-n_faults=$(grep -acE 'Robot R[0-9]+ has broken down' "$G2STREAM")
-if [ "${n_faults:-0}" -eq 0 ]; then
+# grep -c 는 매치 "라인" 수다 — 사건 수가 아니다. monitor_emit!(monitor.jl:492)가
+# respec_history 를 매 프레임 통째로 다시 실어 보내므로 같은 사건이 이후 모든 프레임 라인에
+# 반복 등장한다(실측: 사건 2건짜리 판에서 라인 17개). 라벨을 그렙 결과의 실체(라인 수)에 맞춘다 —
+# 아래 두 검사(0건 가드 · id>10 가드) 자체는 이 중복과 무관하게 정확하다.
+n_lines=$(grep -acE 'Robot R[0-9]+ has broken down' "$G2STREAM")
+if [ "${n_lines:-0}" -eq 0 ]; then
   # 고장 사건이 하나도 안 잡혔으면 이 게이트는 아무것도 검사한 게 아니다 — 통과가 아니라 실패로 취급한다
   # (grep 이 아무 것도 못 찾아 무증상 통과하는 바로 그 함정을 여기서도 피한다).
   echo "  !! 고장 사건이 하나도 안 잡혔다 — 게이트가 무의미하다(스트림: $G2STREAM, 로그: $G2LOG)"; fail=1
@@ -79,7 +92,7 @@ elif grep -aoE 'Robot R[0-9]+ has broken down' "$G2STREAM" | grep -oE '[0-9]+' \
      | awk '$1 > 10 {print; found=1} END {exit !found}' >/dev/null; then
   echo "  !! 예비 로봇(id>10)이 고장 대상으로 뽑혔다 — _faultable 회귀"; fail=1
 else
-  echo "  OK  ($n_faults 건 · $G2STREAM)"
+  echo "  OK  ($n_lines 라인 매치(중복 포함, 사건 수 아님) · $G2STREAM)"
 fi
 
 echo "== G3: DSPy 서비스 =="
