@@ -102,7 +102,29 @@ BASIS = {
                 "rungs 0.30 and 0.50. Those two rungs should therefore be read as 'SwapBattery was "
                 "not worse', not as an established win; only the 0.02 rung (completion) carries "
                 "the threshold on its own. Above SoC 0.5 nothing is tested at all, and "
-                "reference_action() returns None (unscored) there rather than inventing NOOP.",
+                "reference_action() returns None (unscored) there rather than inventing NOOP. "
+                # ★ 2026-08-16 — 이 문자열이 **자기가 이미 무너진 전제를 계속 주장**하고 있었다.
+                # 위 유도 전체(특히 "at D=20 the depot round trip is cheap enough that swapping now
+                # beats tolerating a slower, degraded robot" 와 "SwapBattery is therefore correct at
+                # every rung tested")는 `SwapBattery` 가 **시간을 쓰지 않던** 세대의 격자에서 나왔다.
+                # 배송 커밋(`2b5637c3`) 이후 그 팔은 창고 예비 로봇의 실제 주행 시간을 쓴다.
+                # 유도를 다시 돌리려면 배송 동역학 아래에서 격자를 재표집해야 하고(다음 사이클
+                # 1순위), 그것은 이 수정 라운드의 범위 밖이다. 그래서 **규칙도 임계값도 건드리지
+                # 않았다** — `BATTERY_DEEP_SOC` 는 그대로이고 `decision_acc` 열도 안 바뀐다.
+                # 바꾼 것은 발행되는 문장이 자기 세대를 밝히게 만든 것뿐이다.
+                "🔴 STALE PREMISE (2026-08-16, disclosed not corrected): every number and "
+                "conclusion above was measured in the pre-courier generation, where SwapBattery "
+                "applied instantly and consumed NO time. Since commit 2b5637c3 the arm dispatches "
+                "a spare robot from the depot that must physically DRIVE to the site, so the "
+                "'cheap depot round trip' premise and the 'correct at every rung tested' "
+                "conclusion no longer follow from current dynamics. Measured on the current "
+                "generation, the surrogate lane's SwapBattery boards run SLOWER than the "
+                "identical-seed canonical baseline, monotonically in how often the arm fires "
+                "(md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md §8-A). This rule has NOT been "
+                "re-derived: BATTERY_DEEP_SOC and the scored a* are unchanged, so decision_acc "
+                "columns are unaffected -- only this provenance text now states its generation. "
+                "Re-deriving requires re-sampling the label grid under courier dynamics "
+                "(next cycle's #1 item).",
     "fault": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 1 fault instance only "
               "(severity 1.0, arms NOOP and Replace) -- NEITHER arm completes (NOOP closed "
               "184/313, Replace closed 243/313, both makespan Inf), so this grid CANNOT "

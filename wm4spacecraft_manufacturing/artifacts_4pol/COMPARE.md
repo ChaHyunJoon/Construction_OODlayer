@@ -15,7 +15,7 @@
 | 합계 (7 case) | — | 210/210 | 189/210 | 205/210 |
 |---|---|---|---|---|
 
-> **읽는 법.** `dp` 는 네 번째 주자가 아니라 **천장 후보**다 — 실행 가능한 온라인 정책이 아니다. 이 표의 DP 는 측정된 φ̃ 격자 위의 **진짜 Bellman backward induction** 이다(`V(goal)=0`, `Q(s,a)=mean[c + V(s')]`). 구간 비용 `c` 는 J 의 완주 분기 형태로 고정되고 두 분기의 차액은 종단에서 정산되며, 그 분해는 판마다 `Σc + terminal == J` 로 기계 검사된다. 자세한 정의와 한계는 `dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits`.
+> **읽는 법.** `dp` 레인은 이번 스윕에 없다(`results_4pol/shards_dp` 없음) — 위 dp 열이 전 case 에서 비어 있는 것과 같은 이유다. 그래서 이 표는 DP 가 무엇인지(천장인지 · backward induction 인지 · 분해가 기계 검사됐는지)에 대해 **아무것도 주장하지 않는다.** `dp_oracle/value.json` 은 이 스윕과 다른 코드 세대에 표집된 채 남아 있을 수 있으므로, 그 파일의 서술을 이 표의 성질로 옮겨 읽지 말 것. DP 의 정의와 한계 자체는 `dp_oracle/dp_solve.py` 머리말과 `dp_oracle/value.json` 의 `known_limits` 에 있다.
 
 > build time 은 **완주한 판만** 평균한다(생존자 편향). 그래서 완주 0/30 인 칸은 `—` 다. J/closed 는 미완주 판에서도 정의되므로 그 칸에서도 남는다.
 
