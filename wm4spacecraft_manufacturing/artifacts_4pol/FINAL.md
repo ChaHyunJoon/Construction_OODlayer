@@ -1,6 +1,6 @@
 # 4정책 x OOD case 비교표 -- FINAL (자동 생성)
 
-생성 시각: 2026-08-15T13:57:35-07:00
+생성 시각: 2026-08-16T00:44:12-07:00
 생성기: `build_final_table.py --results-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/results_4pol --out-dir /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing/artifacts_4pol`
 
 > **`oracle` 행은 이 스윕이 실행한 판이 아니다 -- 오프라인 라벨 격자에서 유도한 천장/원점(ceiling)이다.**
@@ -35,9 +35,9 @@
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | 미측정 (STEP D 필요) — J 채점 불가 18 instance (energy_J 없음) | 100% (정의상) | — | — |
-| `surrogate` | 30/30 | 60% (72/120) | 21.8 ± 4.6 s | 311.0 |
+| `surrogate` | 26/30 | 62% (74/119) | 30.4 ± 4.6 s | 437.8 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 30/30 | 38% (45/120) | 22.8 ± 5.3 s | 337.9 |
+| `llm` (dspy) | 28/30 | 42% (50/120) | 27.8 ± 5.4 s | 404.6 |
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_battery.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -45,31 +45,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 97% (29/30) [0.83, 0.99] | 0% (0/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
-| `surrogate` | 30 | 100% (30/30) [0.89, 1.00] | 60% (72/120) | 21.8 ± 4.6 | 311 | 0.999 | 10.4 |
-| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 38% (45/120) | 22.8 ± 5.3 | 338 | 0.999 | 9.5 |
-| `dp` | 30 | 97% (29/30) [0.83, 0.99] | 0% (0/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 25.0 ± 5.7 | 400 | 0.999 | 8.0 |
+| `surrogate` | 30 | 87% (26/30) [0.70, 0.95] | 62% (74/119) | 30.4 ± 4.6 | 438 | 0.909 | 10.5 |
+| `dspy` | 30 | 93% (28/30) [0.79, 0.98] | 42% (50/120) | 27.8 ± 5.4 | 405 | 0.969 | 9.7 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | Replace×120, ReformTeam×17 | Battery 0/120 |
-| `surrogate` | SwapBattery×72, Replace×48, ReformTeam×3 | Battery 72/120 |
-| `dspy` | Replace×75, SwapBattery×45, ReformTeam×4 | Battery 45/120 |
-| `dp` | Replace×120, ReformTeam×17 | Battery 0/120 |
+| `canonical` | Replace×120, ReformTeam×7 | Battery 0/120 |
+| `surrogate` | SwapBattery×74, Replace×45, ReformTeam×42 | Battery 74/119 |
+| `dspy` | Replace×70, SwapBattery×50, ReformTeam×19 | Battery 50/120 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/137) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
-| `surrogate` | 0% (0/120) | 0% (0/123) | 60% (72/120) | 62% (56/90) | 80% (48/60) | 97% (29/30) |
-| `dspy` | 0% (0/120) | 0% (0/124) | 38% (45/120) | 39% (35/90) | 52% (31/60) | 50% (15/30) |
-| `dp` | 0% (0/120) | 0% (0/137) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `canonical` | 0% (0/120) | 0% (0/127) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `surrogate` | 0% (0/119) | 0% (0/161) | 62% (74/119) | 64% (57/89) | 80% (48/60) | 97% (29/30) |
+| `dspy` | 0% (0/120) | 0% (0/139) | 42% (50/120) | 40% (36/90) | 57% (34/60) | 50% (15/30) |
 
-- 짝지은 비교 `canonical` vs `surrogate` — 0승 1패 29무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dspy` — 0승 1패 29무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dp` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `dspy` vs `dp` — 1승 0패 29무, 부호검정 p=1.000
+- 짝지은 비교 `canonical` vs `surrogate` — 4승 0패 26무, 부호검정 p=0.125
+- 짝지은 비교 `canonical` vs `dspy` — 2승 0패 28무, 부호검정 p=0.500
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 2패 28무, 부호검정 p=0.500
 
 </details>
 
@@ -87,9 +81,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | 미측정 (STEP D 필요) — J 채점 불가 22 instance (energy_J 없음) | 100% (정의상) | — | — |
-| `surrogate` | 29/30 | 100% (120/120) | 26.0 ± 6.9 s | 450.9 |
+| `surrogate` | 30/30 | 99% (119/120) | 25.0 ± 5.7 s | 399.6 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 28/30 | 99% (119/120) | 26.1 ± 7.0 s | 489.7 |
+| `llm` (dspy) | 29/30 | 98% (118/120) | 24.9 ± 5.7 s | 437.6 |
 
 > **3-A** -- 위 `oracle` 행의 완주율은 22개 **현재-세대** fault instance 만 반영한다(`firegrid_s{fault,faultidle}.jsonl`, NOOP/Replace 2-arm 메뉴). 구세대 18개 instance(5-arm 메뉴, macro 7/8 이전 라벨 -- CLAUDE.md "성능 근거 아님")는 헤드라인에서 제외했다 -- 참고용 완주율 0% (0/3). **이 둘을 풀링한 n=40 천장은 이 문서에 없다** (`artifacts_4pol/REPORT.md` §3-A 상세).
 
@@ -99,31 +93,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 97% (29/30) [0.83, 0.99] | 100% (120/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
-| `surrogate` | 30 | 97% (29/30) [0.83, 0.99] | 100% (120/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
-| `dspy` | 30 | 93% (28/30) [0.79, 0.98] | 99% (119/120) | 26.1 ± 7.0 | 490 | 0.998 | 8.0 |
-| `dp` | 30 | 97% (29/30) [0.83, 0.99] | 100% (120/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 99% (119/120) | 25.0 ± 5.7 | 400 | 0.999 | 8.0 |
+| `surrogate` | 30 | 100% (30/30) [0.89, 1.00] | 99% (119/120) | 25.0 ± 5.7 | 400 | 0.999 | 8.0 |
+| `dspy` | 30 | 97% (29/30) [0.83, 0.99] | 98% (118/120) | 24.9 ± 5.7 | 438 | 0.999 | 8.0 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | Replace×120, ReformTeam×17 | Fault 120/120 |
-| `surrogate` | Replace×120, ReformTeam×17 | Fault 120/120 |
-| `dspy` | Replace×119, ReformTeam×29 | Fault 119/120 |
-| `dp` | Replace×120, ReformTeam×17 | Fault 120/120 |
+| `canonical` | Replace×120, ReformTeam×7 | Fault 119/120 |
+| `surrogate` | Replace×120, ReformTeam×7 | Fault 119/120 |
+| `dspy` | Replace×119, ReformTeam×17 | Fault 118/120 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/137) | 100% (120/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
-| `surrogate` | 0% (0/120) | 0% (0/137) | 100% (120/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
-| `dspy` | 0% (0/120) | 0% (0/148) | 99% (119/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
-| `dp` | 0% (0/120) | 0% (0/137) | 100% (120/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
+| `canonical` | 0% (0/120) | 0% (0/127) | 99% (119/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
+| `surrogate` | 0% (0/120) | 0% (0/127) | 99% (119/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
+| `dspy` | 0% (0/120) | 0% (0/136) | 98% (118/120) | 100% (90/90) | 100% (60/60) | 100% (30/30) |
 
 - 짝지은 비교 `canonical` vs `surrogate` — 0승 0패 30무, 부호검정 p=1.000
 - 짝지은 비교 `canonical` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
 - 짝지은 비교 `surrogate` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `dspy` vs `dp` — 0승 1패 29무, 부호검정 p=1.000
 
 </details>
 
@@ -154,9 +142,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | N/A (혼합종류 case -- 단일축 오라클 격자 없음) | 100% (정의상) | — | — |
-| `surrogate` | 26/30 | 85% (99/117) | 32.3 ± 16.9 s | 595.0 |
+| `surrogate` | 25/30 | 84% (98/116) | 45.0 ± 20.4 s | 708.2 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 28/30 | 61% (73/119) | 37.1 ± 20.9 s | 537.2 |
+| `llm` (dspy) | 30/30 | 65% (78/120) | 43.4 ± 18.2 s | 542.0 |
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_all.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -164,31 +152,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 35% (42/120) | 62.7 ± 14.1 | 733 | 0.997 | 9.3 |
-| `surrogate` | 30 | 87% (26/30) [0.70, 0.95] | 85% (99/117) | 32.3 ± 16.9 | 595 | 0.998 | 10.3 |
-| `dspy` | 30 | 93% (28/30) [0.79, 0.98] | 61% (73/119) | 37.1 ± 20.9 | 537 | 0.998 | 9.7 |
-| `dp` | 30 | 100% (30/30) [0.89, 1.00] | 35% (42/120) | 62.7 ± 14.1 | 733 | 0.997 | 9.3 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 34% (41/120) | 63.3 ± 10.6 | 748 | 0.997 | 9.3 |
+| `surrogate` | 30 | 83% (25/30) [0.66, 0.93] | 84% (98/116) | 45.0 ± 20.4 | 708 | 0.997 | 10.3 |
+| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 65% (78/120) | 43.4 ± 18.2 | 542 | 0.998 | 9.8 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | ReformTeam×164, Replace×81, NOOP×39 | Battery 0/39, Fault 42/42, Zone 0/39 |
-| `surrogate` | ReformTeam×75, Replace×52, RelocateBuild×33, SwapBattery×26, NOOP×6 | Battery 26/37, Fault 40/41, Zone 33/39 |
-| `dspy` | ReformTeam×76, Replace×68, RelocateBuild×21, NOOP×17, SwapBattery×12 | Battery 12/39, Fault 40/42, Zone 21/38 |
-| `dp` | ReformTeam×164, Replace×81, NOOP×39 | Battery 0/39, Fault 42/42, Zone 0/39 |
+| `canonical` | ReformTeam×166, Replace×81, NOOP×39 | Battery 0/39, Fault 41/42, Zone 0/39 |
+| `surrogate` | ReformTeam×114, Replace×52, RelocateBuild×31, SwapBattery×26, NOOP×7 | Battery 26/37, Fault 41/41, Zone 31/38 |
+| `dspy` | ReformTeam×75, Replace×66, RelocateBuild×21, NOOP×18, SwapBattery×15 | Battery 15/39, Fault 42/42, Zone 21/39 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/284) | 35% (42/120) | 47% (42/90) | 50% (30/60) | 27% (8/30) |
-| `surrogate` | 0% (0/117) | 0% (0/192) | 85% (99/117) | 86% (76/88) | 84% (49/58) | 86% (25/29) |
-| `dspy` | 0% (0/119) | 0% (0/194) | 61% (73/119) | 62% (55/89) | 67% (40/60) | 57% (17/30) |
-| `dp` | 0% (0/120) | 0% (0/284) | 35% (42/120) | 47% (42/90) | 50% (30/60) | 27% (8/30) |
+| `canonical` | 0% (0/120) | 0% (0/286) | 34% (41/120) | 46% (41/90) | 48% (29/60) | 27% (8/30) |
+| `surrogate` | 0% (0/116) | 0% (0/230) | 84% (98/116) | 87% (76/87) | 84% (49/58) | 86% (25/29) |
+| `dspy` | 0% (0/120) | 0% (0/195) | 65% (78/120) | 67% (60/90) | 70% (42/60) | 63% (19/30) |
 
-- 짝지은 비교 `canonical` vs `surrogate` — 4승 0패 26무, 부호검정 p=0.125
-- 짝지은 비교 `canonical` vs `dspy` — 2승 0패 28무, 부호검정 p=0.500
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dspy` — 2승 4패 24무, 부호검정 p=0.688
-- 짝지은 비교 `surrogate` vs `dp` — 0승 4패 26무, 부호검정 p=0.125
-- 짝지은 비교 `dspy` vs `dp` — 0승 2패 28무, 부호검정 p=0.500
+- 짝지은 비교 `canonical` vs `surrogate` — 5승 0패 25무, 부호검정 p=0.062
+- 짝지은 비교 `canonical` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 5패 25무, 부호검정 p=0.062
 
 </details>
 
@@ -206,9 +188,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | N/A (혼합종류 case -- 단일축 오라클 격자 없음) | 100% (정의상) | — | — |
-| `surrogate` | 29/30 | 76% (91/120) | 23.3 ± 5.3 s | 402.4 |
+| `surrogate` | 28/30 | 77% (92/119) | 28.3 ± 6.1 s | 446.7 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 28/30 | 69% (83/120) | 24.5 ± 6.3 s | 447.4 |
+| `llm` (dspy) | 30/30 | 68% (82/120) | 27.4 ± 6.6 s | 384.8 |
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_fault_battery.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -216,31 +198,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 97% (29/30) [0.83, 0.99] | 50% (60/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
-| `surrogate` | 30 | 97% (29/30) [0.83, 0.99] | 76% (91/120) | 23.3 ± 5.3 | 402 | 0.999 | 9.0 |
-| `dspy` | 30 | 93% (28/30) [0.79, 0.98] | 69% (83/120) | 24.5 ± 6.3 | 447 | 0.998 | 8.8 |
-| `dp` | 30 | 97% (29/30) [0.83, 0.99] | 50% (60/120) | 26.0 ± 6.9 | 451 | 0.999 | 8.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 49% (59/120) | 25.0 ± 5.7 | 400 | 0.999 | 8.0 |
+| `surrogate` | 30 | 93% (28/30) [0.79, 0.98] | 77% (92/119) | 28.3 ± 6.1 | 447 | 0.939 | 9.1 |
+| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 68% (82/120) | 27.4 ± 6.6 | 385 | 0.999 | 8.8 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | Replace×120, ReformTeam×17 | Battery 0/60, Fault 60/60 |
-| `surrogate` | Replace×89, SwapBattery×31, ReformTeam×14 | Battery 31/60, Fault 60/60 |
-| `dspy` | Replace×95, ReformTeam×28, SwapBattery×24 | Battery 24/60, Fault 59/60 |
-| `dp` | Replace×120, ReformTeam×17 | Battery 0/60, Fault 60/60 |
+| `canonical` | Replace×120, ReformTeam×7 | Battery 0/60, Fault 59/60 |
+| `surrogate` | Replace×86, SwapBattery×33, ReformTeam×26 | Battery 33/60, Fault 59/59 |
+| `dspy` | Replace×97, SwapBattery×23, ReformTeam×8 | Battery 23/60, Fault 59/60 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/137) | 50% (60/120) | 51% (46/90) | 45% (27/60) | 30% (9/30) |
-| `surrogate` | 0% (0/120) | 0% (0/134) | 76% (91/120) | 78% (70/90) | 77% (46/60) | 77% (23/30) |
-| `dspy` | 0% (0/120) | 0% (0/147) | 69% (83/120) | 69% (62/90) | 67% (40/60) | 60% (18/30) |
-| `dp` | 0% (0/120) | 0% (0/137) | 50% (60/120) | 51% (46/90) | 45% (27/60) | 30% (9/30) |
+| `canonical` | 0% (0/120) | 0% (0/127) | 49% (59/120) | 51% (46/90) | 43% (26/60) | 30% (9/30) |
+| `surrogate` | 0% (0/119) | 0% (0/145) | 77% (92/119) | 80% (71/89) | 77% (46/60) | 77% (23/30) |
+| `dspy` | 0% (0/120) | 0% (0/128) | 68% (82/120) | 68% (61/90) | 67% (40/60) | 60% (18/30) |
 
-- 짝지은 비교 `canonical` vs `surrogate` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `dspy` vs `dp` — 0승 1패 29무, 부호검정 p=1.000
+- 짝지은 비교 `canonical` vs `surrogate` — 2승 0패 28무, 부호검정 p=0.500
+- 짝지은 비교 `canonical` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 2패 28무, 부호검정 p=0.500
 
 </details>
 
@@ -258,9 +234,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | N/A (혼합종류 case -- 단일축 오라클 격자 없음) | 100% (정의상) | — | — |
-| `surrogate` | 26/30 | 97% (113/117) | 31.3 ± 12.8 s | 624.2 |
+| `surrogate` | 25/30 | 97% (111/115) | 40.1 ± 17.5 s | 716.1 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 29/30 | 66% (79/119) | 45.6 ± 29.5 s | 577.2 |
+| `llm` (dspy) | 29/30 | 72% (87/120) | 46.1 ± 19.5 s | 599.6 |
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_fault_zone.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -268,31 +244,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 50% (60/120) | 59.8 ± 9.7 | 656 | 0.997 | 10.0 |
-| `surrogate` | 30 | 87% (26/30) [0.70, 0.95] | 97% (113/117) | 31.3 ± 12.8 | 624 | 0.998 | 10.1 |
-| `dspy` | 30 | 97% (29/30) [0.83, 0.99] | 66% (79/119) | 45.6 ± 29.5 | 577 | 0.998 | 10.0 |
-| `dp` | 30 | 100% (30/30) [0.89, 1.00] | 50% (60/120) | 59.8 ± 9.7 | 656 | 0.997 | 10.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 49% (59/120) | 62.4 ± 9.7 | 679 | 0.997 | 10.0 |
+| `surrogate` | 30 | 83% (25/30) [0.66, 0.93] | 97% (111/115) | 40.1 ± 17.5 | 716 | 0.997 | 10.1 |
+| `dspy` | 30 | 97% (29/30) [0.83, 0.99] | 72% (87/120) | 46.1 ± 19.5 | 600 | 0.998 | 10.0 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | ReformTeam×153, Replace×60, NOOP×60 | Fault 60/60, Zone 0/60 |
-| `surrogate` | ReformTeam×61, Replace×58, RelocateBuild×55, NOOP×4 | Fault 58/58, Zone 55/59 |
-| `dspy` | ReformTeam×99, Replace×59, NOOP×39, RelocateBuild×20 | Fault 59/60, Zone 20/59 |
-| `dp` | ReformTeam×153, Replace×60, NOOP×60 | Fault 60/60, Zone 0/60 |
+| `canonical` | ReformTeam×163, Replace×60, NOOP×60 | Fault 59/60, Zone 0/60 |
+| `surrogate` | ReformTeam×96, Replace×56, RelocateBuild×55, NOOP×4 | Fault 56/56, Zone 55/59 |
+| `dspy` | ReformTeam×104, Replace×59, NOOP×31, RelocateBuild×29 | Fault 58/60, Zone 29/60 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/273) | 50% (60/120) | 67% (60/90) | 100% (60/60) | 100% (30/30) |
-| `surrogate` | 0% (0/117) | 0% (0/178) | 97% (113/117) | 100% (88/88) | 100% (58/58) | 100% (29/29) |
-| `dspy` | 0% (0/119) | 0% (0/217) | 66% (79/119) | 73% (65/89) | 98% (59/60) | 97% (29/30) |
-| `dp` | 0% (0/120) | 0% (0/273) | 50% (60/120) | 67% (60/90) | 100% (60/60) | 100% (30/30) |
+| `canonical` | 0% (0/120) | 0% (0/283) | 49% (59/120) | 66% (59/90) | 98% (59/60) | 100% (30/30) |
+| `surrogate` | 0% (0/115) | 0% (0/211) | 97% (111/115) | 100% (86/86) | 100% (58/58) | 100% (29/29) |
+| `dspy` | 0% (0/120) | 0% (0/223) | 72% (87/120) | 77% (69/90) | 97% (58/60) | 97% (29/30) |
 
-- 짝지은 비교 `canonical` vs `surrogate` — 4승 0패 26무, 부호검정 p=0.125
+- 짝지은 비교 `canonical` vs `surrogate` — 5승 0패 25무, 부호검정 p=0.062
 - 짝지은 비교 `canonical` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dspy` — 0승 3패 27무, 부호검정 p=0.250
-- 짝지은 비교 `surrogate` vs `dp` — 0승 4패 26무, 부호검정 p=0.125
-- 짝지은 비교 `dspy` vs `dp` — 0승 1패 29무, 부호검정 p=1.000
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 5패 25무, 부호검정 p=0.062
 
 </details>
 
@@ -310,9 +280,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | N/A (혼합종류 case -- 단일축 오라클 격자 없음) | 100% (정의상) | — | — |
-| `surrogate` | 28/30 | 75% (88/118) | 35.1 ± 18.5 s | 493.9 |
+| `surrogate` | 25/30 | 76% (87/115) | 45.0 ± 18.9 s | 622.6 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 30/30 | 36% (43/120) | 36.8 ± 19.8 s | 440.1 |
+| `llm` (dspy) | 29/30 | 47% (56/119) | 47.3 ± 20.3 s | 537.8 |
 
 shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol/shadow_battery_zone.md` -- 완주/시간/에너지 주장에는 쓰지 말 것.
 
@@ -320,31 +290,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 59.8 ± 9.7 | 656 | 0.997 | 10.0 |
-| `surrogate` | 30 | 93% (28/30) [0.79, 0.98] | 75% (88/118) | 35.1 ± 18.5 | 494 | 0.998 | 11.2 |
-| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 36% (43/120) | 36.8 ± 19.8 | 440 | 0.998 | 10.8 |
-| `dp` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 59.8 ± 9.7 | 656 | 0.997 | 10.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 62.4 ± 9.7 | 679 | 0.997 | 10.0 |
+| `surrogate` | 30 | 83% (25/30) [0.66, 0.93] | 76% (87/115) | 45.0 ± 18.9 | 623 | 0.967 | 11.2 |
+| `dspy` | 30 | 97% (29/30) [0.83, 0.99] | 47% (56/119) | 47.3 ± 20.3 | 538 | 0.998 | 10.8 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | ReformTeam×153, Replace×60, NOOP×60 | Battery 0/60, Zone 0/60 |
-| `surrogate` | ReformTeam×58, RelocateBuild×54, SwapBattery×34, Replace×24, NOOP×6 | Battery 34/58, Zone 54/60 |
-| `dspy` | ReformTeam×64, NOOP×40, Replace×37, SwapBattery×23, RelocateBuild×20 | Battery 23/60, Zone 20/60 |
-| `dp` | ReformTeam×153, Replace×60, NOOP×60 | Battery 0/60, Zone 0/60 |
+| `canonical` | ReformTeam×163, Replace×60, NOOP×60 | Battery 0/60, Zone 0/60 |
+| `surrogate` | ReformTeam×96, RelocateBuild×55, SwapBattery×32, Replace×24, NOOP×4 | Battery 32/56, Zone 55/59 |
+| `dspy` | ReformTeam×90, Replace×35, RelocateBuild×32, NOOP×28, SwapBattery×24 | Battery 24/59, Zone 32/60 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/273) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
-| `surrogate` | 0% (0/118) | 0% (0/176) | 75% (88/118) | 73% (64/88) | 59% (35/59) | 63% (19/30) |
-| `dspy` | 0% (0/120) | 0% (0/184) | 36% (43/120) | 29% (26/90) | 38% (23/60) | 37% (11/30) |
-| `dp` | 0% (0/120) | 0% (0/273) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `canonical` | 0% (0/120) | 0% (0/283) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `surrogate` | 0% (0/115) | 0% (0/211) | 76% (87/115) | 72% (62/86) | 59% (34/58) | 66% (19/29) |
+| `dspy` | 0% (0/119) | 0% (0/209) | 47% (56/119) | 40% (36/89) | 42% (25/60) | 43% (13/30) |
 
-- 짝지은 비교 `canonical` vs `surrogate` — 2승 0패 28무, 부호검정 p=0.500
-- 짝지은 비교 `canonical` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dspy` — 0승 2패 28무, 부호검정 p=0.500
-- 짝지은 비교 `surrogate` vs `dp` — 0승 2패 28무, 부호검정 p=0.500
-- 짝지은 비교 `dspy` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
+- 짝지은 비교 `canonical` vs `surrogate` — 5승 0패 25무, 부호검정 p=0.062
+- 짝지은 비교 `canonical` vs `dspy` — 1승 0패 29무, 부호검정 p=1.000
+- 짝지은 비교 `surrogate` vs `dspy` — 0승 4패 26무, 부호검정 p=0.125
 
 </details>
 
@@ -362,9 +326,9 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 | 정책 | 완주율 | 옳은 결정 (vs oracle a*) | 빌드 시간(완주판) | J/closed |
 |---|---|---|---|---|
 | `oracle` (천장·비실행) | 미측정 (STEP D 필요) — J 채점 불가 2 instance (energy_J 없음) | 100% (정의상) | — | — |
-| `surrogate` | 30/30 | 87% (104/120) | 39.0 ± 21.4 s | 456.1 |
+| `surrogate` | 30/30 | 86% (103/120) | 50.7 ± 23.4 s | 528.9 |
 | `noop` (바닥선) | 정책 없음 (case 데이터에 `noop` 미포함) | — | — | — |
-| `llm` (dspy) | 30/30 | 42% (50/120) | 30.9 ± 18.4 s | 361.8 |
+| `llm` (dspy) | 30/30 | 53% (64/120) | 34.9 ± 15.1 s | 406.4 |
 
 > **3-B 참고** -- `reference_policy.py` 의 zone 규칙은 root-covered 영역(`cov` 계열)에서 오라클과 어긋난다는 결함이 STEP D 로 드러났다. 이 case 를 포함한 8-case 스윕 전체에는 그 영역의 결정이 0건이라(전부 root_covered==0) 위 표의 zone 관련 숫자는 영향받지 않는다 -- 결함 상세는 `artifacts_4pol/REPORT.md` §3-B.
 
@@ -374,31 +338,25 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 
 | 정책 | n | ① 완주율 (95% CI) | ② 옳은 결정 | ③ 빌드 시간 (완주판, sim s) | ④ J/closed | min SoC | 남은 스페어 |
 |---|---|---|---|---|---|---|---|
-| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 56.4 ± 0.0 | 492 | 0.997 | 12.0 |
-| `surrogate` | 30 | 100% (30/30) [0.89, 1.00] | 87% (104/120) | 39.0 ± 21.4 | 456 | 0.998 | 12.0 |
-| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 42% (50/120) | 30.9 ± 18.4 | 362 | 0.998 | 12.0 |
-| `dp` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 56.4 ± 0.0 | 492 | 0.997 | 12.0 |
+| `canonical` | 30 | 100% (30/30) [0.89, 1.00] | 0% (0/120) | 64.5 ± 0.0 | 535 | 0.997 | 12.0 |
+| `surrogate` | 30 | 100% (30/30) [0.89, 1.00] | 86% (103/120) | 50.7 ± 23.4 | 529 | 0.998 | 12.0 |
+| `dspy` | 30 | 100% (30/30) [0.89, 1.00] | 53% (64/120) | 34.9 ± 15.1 | 406 | 0.998 | 12.0 |
 
 | 정책 | 고른 매크로 | 종류별 적중 |
 |---|---|---|
-| `canonical` | ReformTeam×150, NOOP×120 | Zone 0/120 |
-| `surrogate` | RelocateBuild×104, ReformTeam×50, NOOP×16 | Zone 104/120 |
-| `dspy` | NOOP×70, RelocateBuild×50, ReformTeam×40 | Zone 50/120 |
-| `dp` | ReformTeam×150, NOOP×120 | Zone 0/120 |
+| `canonical` | ReformTeam×180, NOOP×120 | Zone 0/120 |
+| `surrogate` | RelocateBuild×103, ReformTeam×91, NOOP×17 | Zone 103/120 |
+| `dspy` | RelocateBuild×64, NOOP×56, ReformTeam×48 | Zone 64/120 |
 
 | 정책 | escalation rate | novelty 발화율 | acc@cov100 | acc@cov75 | acc@cov50 | acc@cov25 |
 |---|---|---|---|---|---|---|
-| `canonical` | 0% (0/120) | 0% (0/270) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
-| `surrogate` | 0% (0/120) | 0% (0/170) | 87% (104/120) | 94% (85/90) | 100% (60/60) | 100% (30/30) |
-| `dspy` | 0% (0/120) | 0% (0/160) | 42% (50/120) | 33% (30/90) | 15% (9/60) | 17% (5/30) |
-| `dp` | 0% (0/120) | 0% (0/270) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `canonical` | 0% (0/120) | 0% (0/300) | 0% (0/120) | 0% (0/90) | 0% (0/60) | 0% (0/30) |
+| `surrogate` | 0% (0/120) | 0% (0/211) | 86% (103/120) | 93% (84/90) | 100% (60/60) | 100% (30/30) |
+| `dspy` | 0% (0/120) | 0% (0/168) | 53% (64/120) | 44% (40/90) | 35% (21/60) | 40% (12/30) |
 
 - 짝지은 비교 `canonical` vs `surrogate` — 0승 0패 30무, 부호검정 p=1.000
 - 짝지은 비교 `canonical` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `canonical` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
 - 짝지은 비교 `surrogate` vs `dspy` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `surrogate` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
-- 짝지은 비교 `dspy` vs `dp` — 0승 0패 30무, 부호검정 p=1.000
 
 </details>
 
@@ -409,49 +367,49 @@ shadow 채점(상태조건부 결정충실도, 새 시뮬 0회): `artifacts_4pol
 V1 LLM lane 이 진짜인지(canonical 로 조용히 폴백된 것이 아닌지) · V2 noop 이 정말 noop 인지 · V3 빈 board 가 없는지 · V4 판 수가 (시드 수 x 정책 수) 인지. 아래 각 case 마다 네 줄씩 반드시 찍는다(조용한 생략 금지).
 
 ### case = battery
-- V1 [PASS] dspy(n=124)/canonical(n=137) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 124/124, macro==llm(자기 shadow 선택과 일치) 124/124.
+- V1 [PASS] dspy(n=139)/canonical(n=127) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 139/139, macro==llm(자기 shadow 선택과 일치) 139/139.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = fault
-- V1 [PASS] dspy(n=148)/canonical(n=137) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 148/148, macro==llm(자기 shadow 선택과 일치) 148/148.
+- V1 [PASS] dspy(n=136)/canonical(n=127) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 136/136, macro==llm(자기 shadow 선택과 일치) 136/136.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = zonecore
 - 데이터 없음 -- V1-V4 해당 없음.
 
 ### case = all
-- V1 [PASS] dspy(n=194)/canonical(n=284) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 194/194, macro==llm(자기 shadow 선택과 일치) 194/194.
+- V1 [PASS] dspy(n=195)/canonical(n=286) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 195/195, macro==llm(자기 shadow 선택과 일치) 195/195.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = fault_battery
-- V1 [PASS] dspy(n=147)/canonical(n=137) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 147/147, macro==llm(자기 shadow 선택과 일치) 147/147.
+- V1 [PASS] dspy(n=128)/canonical(n=127) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 128/128, macro==llm(자기 shadow 선택과 일치) 128/128.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = fault_zone
-- V1 [PASS] dspy(n=217)/canonical(n=273) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 217/217, macro==llm(자기 shadow 선택과 일치) 217/217.
+- V1 [PASS] dspy(n=223)/canonical(n=283) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 223/223, macro==llm(자기 shadow 선택과 일치) 223/223.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = battery_zone
-- V1 [PASS] dspy(n=184)/canonical(n=273) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 184/184, macro==llm(자기 shadow 선택과 일치) 184/184.
+- V1 [PASS] dspy(n=209)/canonical(n=283) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 209/209, macro==llm(자기 shadow 선택과 일치) 209/209.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ### case = zone
-- V1 [PASS] dspy(n=160)/canonical(n=270) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 160/160, macro==llm(자기 shadow 선택과 일치) 160/160.
+- V1 [PASS] dspy(n=168)/canonical(n=300) enacted-macro 시퀀스가 다르다 -- 동일 정책 이중 계측 신호 없음. 참고: dspy 판 중 enacted=='dspy' 168/168, macro==llm(자기 shadow 선택과 일치) 168/168.
 - V2 [WARN] noop 판이 이 case 에 없다 -- 검증 대상 없음.
-- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 120개 전부 결정 >=1).
-- V4 [PASS] 판 수 120 (30 seeds x 4 policies) 그대로.
+- V3 [PASS] 빈 board(n_decisions==0) 없음 (판 90개 전부 결정 >=1).
+- V4 [PASS] 판 수 90 (30 seeds x 3 policies) 그대로.
 
 ---
 

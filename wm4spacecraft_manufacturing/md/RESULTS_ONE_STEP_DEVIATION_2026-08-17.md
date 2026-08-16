@@ -1,3 +1,5 @@
+> 🔴 **구세대** — SwapBattery 가 공짜이던 판. 현행: md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md
+
 # 1-step deviation 표집 — 결과와 판정
 
 > **계획서**: `docs/superpowers/plans/2026-08-17-dp-one-step-deviation.md`

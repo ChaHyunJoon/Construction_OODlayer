@@ -1,8 +1,21 @@
+> 🔴 **아래 §1~§3 의 수치는 구세대다 — SwapBattery 가 공짜이던 판**(코드 세대 `3e492c21`).
+> **현행 수치 = `md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md`**(코드 세대 `ec8cf495`,
+> 원자료 `results_4pol/*.jsonl`, 생성 표 `artifacts_4pol/COMPARE.md`).
+> 이 문서에 🔴 배너 대신 이 안내를 다는 이유: CLAUDE.md 가 이 파일을 **결과의 단일 진입점**
+> 으로 지목하고 있어, 통째로 내리면 레포에 작동하는 진입점이 하나도 남지 않는다.
+> **진입점 역할은 유지하되 수치의 출처는 위 문서로 넘긴다.**
+>
+> 구세대 → 현행에서 무엇이 바뀌었나(요약): 합계 완주 canonical **207 → 210** ·
+> surrogate **198 → 189** · llm **203 → 205**. 배터리가 낀 case 의 makespan 이 오르고
+> (surrogate `battery` 중앙 19.60 → 30.36), `n_stalled > 0` 판이 **0 → 7** 로 처음 나타났다.
+> zone 축도 세 레인 전부에서 움직였는데 **그 이동은 아직 귀속되지 않았다** — 위 문서 §5.
+
 # 결과 — 세 제어기가 일곱 가지 실패 case 에 어떻게 대응하는가
 
-> **이 문서가 현행 결과의 단일 진입점이다.** 7 case × 30 seed = 210판 × 3 레인.
-> 원자료 `results_4pol/*.jsonl`, 생성 표 `artifacts_4pol/COMPARE.md`.
-> 목적함수 세대 `2026-08-13-global-kappa-precedence`. 코드 세대 `3e492c21`.
+> **이 문서는 진입점이고, 아래 표는 구세대(배송 도입 이전)의 기록이다.**
+> 7 case × 30 seed = 210판 × 3 레인. 원자료는
+> `results_4pol_gen_swapfree_2026-08-15/*.jsonl` 에 보존돼 있다.
+> 목적함수 세대 `2026-08-13-global-kappa-precedence`(무변경). 코드 세대 `3e492c21`.
 >
 > **baseline 은 `canonical` 이다. 검증된 천장(ceiling)은 현재 없다** — 아래 §4 참조.
 > 이 문서 이전 판(E1–E4, 매크로 7·8 이전)은 git 이력에 있다.
@@ -24,7 +37,9 @@
 | 7 | All three at once | **30/30** · 62.7 s · 733 J | 26/30 · 32.3 s · 595 J | 28/30 · 37.1 s · 537 J |
 | | **합계** | **207/210** | 198/210 | 203/210 |
 
-**정지(`n_stalled`)는 세 레인 · 전 case 에서 0회다.**
+**정지(`n_stalled`)는 세 레인 · 전 case 에서 0회다.** — ⚠️ **구세대 한정.** 배송 세대에서는
+`n_stalled > 0` 인 판이 **7판** 나온다(전부 배터리가 낀 case).
+`md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md` §6-A.
 
 ---
 
@@ -119,6 +134,7 @@ bash finish_tables.sh                       # -> artifacts_4pol/COMPARE.md
 
 | 무엇을 알고 싶은가 | 어디를 볼 것인가 |
 |---|---|
+| **현행 수치(배송 세대)** | **`md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md`** |
 | 함정 · 용어 · 철회된 결론 | `md/README.md` §1 · §6 · §7 · §8 |
 | DP 가 왜 천장이 아닌가 | `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` |
 | 행동 어휘가 어떻게 닫혔나 | `md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` |

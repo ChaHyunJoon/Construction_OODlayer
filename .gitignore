@@ -73,3 +73,9 @@ wm4spacecraft_manufacturing/oracle/out/shards_relabel_2026-08-14/
 # dp_oracle 표집 작업 디렉토리 (--keep-work). 판당 rows.jsonl + board.log 로 588판이면 ~2.4GB.
 # 표본 자체는 samples.jsonl 에 있고 이건 재현·사후진단용 원자료라 레포에 넣지 않는다.
 wm4spacecraft_manufacturing/dp_oracle/_sample_work/
+
+# 보존된 구세대 스윕/아티팩트 트리 (2026-08-15 배송 세대). `results_4pol_gen_swapfree_2026-08-15/`
+# 같은 트리는 세대 비교용 원자료라 지우지 않지만 커밋 대상도 아니다(둘이 합쳐 ~2.2GB).
+# 지금까지 **추적도 무시도 되지 않은 상태**여서 `git add -A` 한 번이면 통째로 딸려 들어갔다.
+wm4spacecraft_manufacturing/results_4pol_gen_*/
+wm4spacecraft_manufacturing/artifacts_4pol_gen_*/
