@@ -1,14 +1,315 @@
-# wm4spacecraft_manufacturing — 단일 진입점
+# wm4spacecraft_manufacturing — 단일 문서
 
-*통합 2026-08-06. 이전 통합(2026-08-02) 이후 쌓인 야간·작업 로그 7개를 여기 흡수했다
-(목록·SHA 는 `ARCHIVE.md` §2). 2026-08-17 에 §9 문서 지도를 다시 쓰고 함정 36~43 을 추가했다.
-현재 상태와 다음 할 일은 `STATUS.md`, 현행 결과는 `RESULTS.md`, 개념·결과·함정은 이 파일이다.*
+*통합 2026-08-18: `md/` 30개를 **이 파일 하나**로 압축했다. 내린 29개는 전부 커밋돼 있고
+§10 의 SHA 색인이 파일마다 꺼내는 명령을 갖고 있다 — **잃은 것은 없다.**
+이전 통합(2026-08-02 · 2026-08-06 · 2026-08-17)이 흡수한 문서들도 §10 에 같이 있다.*
 
-**읽는 순서**: §1 용어 → §2 아키텍처 → §3 확정 결과 → §8 함정목록.
-그 다음 필요할 때만 §9 의 문서 지도를 따라간다.
+**절 번호는 고정이다.** `.claude/CLAUDE.md` 와 여러 코드 주석이 이 파일을 **절 번호로** 인용한다
+(§1 용어 · §5 데이터 스키마 · §6 완주 · §7 철회된 결론 · §8 함정). 절을 재번호하지 말 것.
+새로 붙은 것은 앞의 **§0(현행 세대 결과)** 과 뒤의 **§9(상태·계약·재현) · §10(아카이브 SHA 색인)** 이다.
+
+**읽는 순서**: §0 현행 결과 → §1 용어 → §8 함정목록. 그 다음 필요할 때만 §3·§4·§7.
 
 ---
 
+## 0. 현행 세대 결과 — SwapBattery 배송 (2026-08-16)
+
+> **현행 세대 = SwapBattery-courier.** 원문 결과 문서는
+> `md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md`(내림 — §10 에서 꺼낸다), 생성 표는
+> **`artifacts_4pol/COMPARE.md`**(레포에 살아 있다).
+> **코드 세대**: `2b5637c3`(배송 + 고장 피커) + `49cf841f`·`ec8cf495`(사전 게이트).
+> 샤드 도장은 210/210 전부 `commit=ec8cf495`.
+> **목적함수 세대**: `2026-08-13-global-kappa-precedence` · `objective_hash` **`19819377a7f8ebb2`**
+> — `objective.json` 무변경. **갈린 것은 동역학이지 목적함수가 아니다.**
+> **스윕**: 7 case × 30 seed × 3 policy = **630판**, 샤드 210/210 ok · fail 0 · deadline 0, 1h47m.
+
+### 0-A. 3레인 × 7 case — **현행 수치**
+
+각 칸 — 완주/30 · **완주판 평균** build time(sim 초) · 에너지(J/closed)
+
+| # | FAILURE CASE | **CANONICAL** | **SURROGATE** | **LLM (DSPy)** |
+|---|---|---|---|---|
+| 1 | Battery depletion | **30/30** · 25.0 s · 400 J | 26/30 · 30.4 s · 438 J | 28/30 · 27.8 s · 405 J |
+| 2 | Robot breakdown | **30/30** · 25.0 s · 400 J | **30/30** · 25.0 s · 400 J | 29/30 · 24.9 s · 438 J |
+| 3 | Keep-out zone | 30/30 · 64.5 s · 535 J | 30/30 · 50.7 s · 529 J | **30/30 · 34.9 s · 406 J** |
+| 4 | Breakdown + battery | **30/30** · 25.0 s · 400 J | 28/30 · 28.3 s · 447 J | 30/30 · 27.4 s · **385 J** |
+| 5 | Breakdown + zone | **30/30** · 62.4 s · 679 J | 25/30 · 40.1 s · 716 J | 29/30 · 46.1 s · 600 J |
+| 6 | Battery + zone | **30/30** · 62.4 s · 679 J | 25/30 · 45.0 s · 623 J | 29/30 · 47.3 s · **538 J** |
+| 7 | All three at once | **30/30** · 63.3 s · 748 J | 25/30 · 45.0 s · 708 J | 30/30 · 43.4 s · **542 J** |
+| | **합계** | **210/210** | **189/210** | **205/210** |
+
+**baseline 은 `canonical` 이다. 검증된 천장(ceiling)은 현재 없다** — 근거는 §0-F.
+표준 7 case 정의는 함정 43 을 볼 것(`zonecore` 는 `zone` 과 같은 case 다).
+
+### 0-B. 무엇이 세대를 갈랐나
+
+- **① 배송**(`src/respec/battery_courier.jl` 신규 + `replace_robot.jl`): `swap_battery!` 가 같은
+  스텝 안에서 `fleet.soc[role] = 1.0` 을 찍던 **장부 조작**에서, 가장 가까운 창고의 예비 로봇이
+  배터리를 들고 현장까지 **주행**하고 **도착 스텝에서만** 교체가 적용되는 물리 배송으로 바뀌었다.
+  그래서 **방전 구간이 실재하고, 그동안 그 로봇의 작업 라인이 선다.** 자원 회계는 어휘의 뜻을
+  지킨다 — 예비를 `pop_spare!` 로 소비하지 않으므로 창고 재고는 안 줄고, 드는 비용은 **시간과
+  라인 정지**다. 상태 문자열이 갈렸다: `:battery_swapped` → `:battery_courier_dispatched`.
+- **② 고장 피커**(`src/respec/ood_injection.jl` 의 `_faultable` 신규 술어, `_pick_active_robot`
+  세 단 전부에 적용): 주차된 창고 예비가 고장 대상에서 빠진다. 예전엔 `failed=R16, spare=R16`
+  처럼 **자기 자신으로 교체**하는 무의미(vacuous) 사건이 났다 — `safe=true` 경로는 이미 제외를
+  갖고 있었고 데모 기본값인 `safe=false` 경로만 뚫려 있었다.
+- **구세대 재현: `DEMO_BATTERY_COURIER=0`**(`tools/monitor/run_demo.jl:613-616` 의
+  `set_battery_courier!`). ⚠️ **배송만 끈다 — `_faultable` 수정은 되돌아가지 않는다.**
+  ⚠️ **되돌아가지 않는 것이 하나 더 있다: `src/monitor/monitor.jl:159-162` 의
+  `REPLACE_SOC_THRESHOLD` 회복 조건.** 세대 커밋 `2b5637c3` 에 배송과 같이 실렸는데 이 플래그의
+  조건문 밖이라 켜진 채 남는다. 즉 이 손잡이가 만드는 "통제" 에는 **배송 · `_faultable` ·
+  이 회복 조건 셋이 섞여 있다**(둘이 아니다). 다만 blast radius 는 다르다 — 셋째 변경은
+  `_mon_robots`(`monitor_emit!` 의 `robots` 블록, `:488`)만 타므로 **모니터 스트림/보드의
+  SoC·mode 표시**에만 영향을 주고 `rows.jsonl` 의 채점 지표에는 안 닿는다. 그래도 보드를 세대
+  간에 눈으로 대조할 때는 교란 변수다.
+
+### 0-C. 헤드라인 — 귀속 논증은 레인 간 대비가 아니라 **레인 내부 · case 간 용량-반응**이다
+
+레인 · 커밋 · 세대 · 목적함수를 전부 고정하고 **배송이 발화할 수 있는 횟수만** 바꾼다
+(makespan 중앙 구→신):
+
+| policy | case | SwapBattery 집행 | makespan 중앙 구→신 | Δ |
+|---|---|---:|---|---:|
+| surrogate | `fault` | **0** | 22.98 → 22.79 | **−0.8%** |
+| surrogate | `fault_battery` | 33 | 21.62 → 27.31 | **+26.3%** |
+| surrogate | `battery` | 74 | 19.60 → 30.36 | **+54.9%** |
+| dspy | `fault` | **0** | 22.99 → 22.48 | **−2.2%** |
+| dspy | `fault_battery` | 23 | 21.73 → 24.99 | **+15.0%** |
+| dspy | `battery` | 50 | 20.76 → 27.52 | **+32.6%** |
+
+같은 레인 · 같은 커밋 · 같은 세대인데 **발화 횟수에 따라 단조로 커진다.** 에너지도 같은 방향으로
+단조다(`epc` Δ: surrogate `fault` +0.28% → `fault_battery` +7.03% → `battery` +13.78%).
+
+🔴 **쓰면 안 되는 논증 둘 — 각각 직접 반례가 있다.**
+
+1. **"canonical 은 평평한데 추론 레인이 올랐다" 를 근거로 쓰면 안 된다.** 순수 `zone` case 는
+   세 레인 모두 `SwapBattery` 집행이 0회이고 `BatteryTruth` 사건이 **아예 0건**인데도
+   surrogate **+33.9%** · dspy **+46.0%** 가 그대로 나온다. **그 패턴은 배송 없이도 난다.**
+2. **`battery_zone`(+48.6%/+53.1%) · `all`(+50.8%/+42.6%) 은 zone 축과 겹쳐 교란돼 있다 —
+   배송 크기로 인용 금지.** 배송 없는 대조항 `fault_zone` 이 이미 surrogate +27.1% 다.
+
+### 0-D. 🔴 귀속되지 않은 축 — zone
+
+**zone 축 이동은 귀속되지 않았다.** 보존된 구세대는 `commit=5dd29dae` 도장이고 **스윕 도장
+(`5dd29dae..ec8cf495`) 기준 14 커밋** 차이라 **배송 단독 대조군이 아니다.**
+⚠️ **분모는 앵커에 딸린다** — `5dd29dae..HEAD` 는 **21** 이다(HEAD=`41cf9a26`, 2026-08-16 실측).
+예전에 적던 19 는 HEAD 가 `2b5a9457` 이던 시점의 값이라 이제 틀리다. **이 수를 옮겨 적을 때는
+앵커를 같이 적을 것.**
+
+`_faultable` 로도 설명되지 않는다 — 그건 고장 **대상 선정**을 바꾸는데 순수 zone 에는 고장
+사건이 없다(`_faultable` 이 설명으로 정당한 자리는 고장 축 미완주 **감소**다). 옳은 통제는
+**같은 커밋에서 `DEMO_BATTERY_COURIER=0` 으로 630판을 다시 굴리는 것**이고 **이번 사이클은
+돌리지 않았다.**
+
+### 0-E. 정지 지표가 둘이다 — 섞으면 틀린다
+
+- **`battery_physics.n_stalled > 0` = 신 7판 / 구 0판** (전부 배터리가 낀 case, 전부 미완주;
+  `battery_physics` **설정은 두 세대에서 동일**하므로 설정 아티팩트가 아니다). 이것이 "배송이
+  오는 동안 로봇이 진짜로 방전된 채 서 있다" 의 가장 깨끗한 양(陽)의 증거다.
+- **판 미완주 `status=="stall"` = 신 26 / 구 22.** 그 7판은 26판의 **진부분집합**이다 —
+  19판은 판으로 멈췄지만 기계적으로 멈춰 선 로봇은 없다.
+- `n_stalled` 말고는 정지의 증거가 없다(함정 9 계열: `run_demo.jl:472` 가 `global_logger` 를
+  `Logging.Warn` 으로 심어 `battery.jl:297` 의 `[STALL]`(`@info`)이 통째로 버려진다).
+
+### 0-F. 배송은 실제로 발화했다 — 그러나 그 수만으로는 아무것도 증명하지 못한다
+
+**dispatched 277 · 즉시교체 폴백 0**(구세대는 같은 210 샤드에서 dispatched 0 · 폴백 267).
+레인은 `surrogate 165 / dspy 112 / canonical 0`.
+
+🔴 **277 은 "파견 요청" 수이지 "적용된 교체" 수가 아니다.** 이 수는 `swap_battery!` 가
+`:battery_courier_dispatched` 를 돌려준 횟수를 셀 뿐이고, 실제 교체는 배송 로봇이 도착한
+순간에만 `battery_courier_step!`(`battery_courier.jl:234-237`)에서 적용된다. **이 수를 인용할
+때는 반드시 "파견 요청 277" 으로 적을 것.**
+⚠️ **277 이라는 수 자체는 세대를 나르지 않는다** — 구세대 집행도 267 로 거의 같다. 세대를
+가르는 것은 `dispatched/fallback` 의 **반전**이다(같은 `println`, `run_demo.jl:379`).
+
+**★ canonical 이 `SwapBattery` 를 한 번도 안 고르는 것은 구조적이다** — 210판에서 낸 결정
+**1533개**의 매크로 전체가 `Replace 561 / ReformTeam 693 / NOOP 279` 이고 `SwapBattery` 는
+**0회**다(세 레인 합은 4027). 그 귀결이 위험하다: **배송을 태우는 레인은 surrogate·dspy
+둘뿐인데, 그 둘이 바로 DSPy 서비스가 죽으면 조용히 canonical 로 내려앉는 레인**이다
+(함정 42). 게이트의 `/health` 는 **시작 시점만** 본다 → 스윕마다 `decisions[].enacted` 레인
+히스토그램으로 사후 확인할 것(이번 실측: 교차 레인 폴백 0).
+
+**검증된 천장이 없는 이유** — 두 후보가 다 못 쓴다:
+- **DP 값표**(`dp_oracle/value.json`)는 구세대 동역학에서 표집됐다(§0-G).
+- **Oracle 라벨 격자**는 조합 case 를 다루지 못한다. 격자의 kind 는 `fault 405 · battery 240 ·
+  zoneblk 160 · reform 67` 로 **전부 단일 사건**이고 `results_matrix.py:44` 의 `ORACLE_KIND` 에
+  조합 키가 없다 → **7 case 중 4개(#4·#5·#6·#7)에 oracle 칸이 아예 없다.** 남은 3개도 천장 행이
+  전부 **미측정**이다(`energy_J` 없어 J 채점 불가: battery 18 · fault 22 · zone 2 instance).
+
+**그러므로 §0-A 표는 "천장 대비 몇 %" 가 아니라 "canonical 대비 어떻게 다른가" 로 읽어야 한다.**
+
+### 0-G. dp 열이 이 표에 없는 이유
+
+`dp_oracle/value.json` 이 **구세대 동역학**(1-step deviation 세대, `SwapBattery` 가 공짜이던
+세계)에서 표집됐기 때문이다 — 그 표로 dp 레인을 굴려 4열에 실으면 한 표에 두 세대가 섞인다.
+**어떻게 뺐나**: `results_4pol/shards_dp` 를 구세대 트리와 함께 옮겼고 `finish_tables.sh:32` 가
+그 부재를 보고 열을 `이 레인은 스윕에 없음` 으로 **자동으로 낮춘다**(표를 손으로 고치지 않았다).
+**되살리는 법**: 배송 동역학에서 `dp_oracle/sample_grid.py` 재표집 → `dp_solve.py --backoff` →
+dp 레인만 재스윕(**4~5시간**, 표집이 대부분).
+
+**★ 발행된 표에서 세대 누수를 둘 잡아 닫았다**(`1bfbcaf8`, `7eddb629`). dp **열**은 올바르게
+비어 있었는데 ① §8.7 gap 각주가 **빌드 시점에 새 행을 구세대 `value.json` 에 대고 다시 계산**해
+숫자를 하나 찍고 있었고, ② 1차 수정 뒤에도 "이 표의 DP 는 진짜 Bellman backward induction 이다
+…" 라는 **주장 블록**이 살아남았다. **살아남은 이유는 그 문장에 숫자가 없어서** 1차 수정의
+grep 을 전부 통과했기 때문이다.
+**★ 교훈: 세대 누수는 숫자가 없어도 누수다.** 기준은 "숫자가 나갔는가" 가 아니라 **"구세대
+파일이 이번 세대 산출물의 참·거짓을 정하는가"** 다.
+🔴 **잔존 위험**: 그 `value.json` 의 `objective_hash` 는 **현행값과 같다**(목적함수는 안 갈렸고
+갈린 것은 코드 세대다). **해시만 보고 게이팅하는 다른 소비처는 이 맹점을 그대로 공유한다** —
+쓸 수 있었던 신호는 `shards_dp` 디렉토리 존재 여부뿐이었다.
+
+### 0-H. ★ surrogate 라벨은 낡았다(stale) — 판정 유지, 근거는 갈아 끼웠다
+
+🔴 **초판의 `−8.3pp`(완주)·`+13.8%`(makespan)를 인용하지 말 것 — 결정 가중 아티팩트다**(§7 에
+철회로 올려 뒀다). 판 하나의 결과를 그 판이 그 팔을 고른 **횟수만큼 반복해서** 센 값이고,
+판 단위로는 **1.8pp** 다(surrogate 120판 중 **52판이 두 팔을 다 집행한다** —
+"≥1 SwapBattery ⇒ SwapBattery 판" 규칙이 그 52판을 통째로 한쪽으로 몰아 Replace 쪽 n 이
+18판밖에 안 남는다).
+
+**살아남은 근거는 case 층화 makespan 용량-반응이다** — `SwapBattery` 를 한 번도 집행하지 않는
+**같은 시드의 canonical** 과 짝지어 뺀 Δmakespan 중앙:
+
+| 판당 SwapBattery 집행 | Δms 중앙 (surrogate − canonical) | n | dspy | n |
+|---|---:|---:|---:|---:|
+| **0 회** | **+0.00 s** | 7 | **+0.00 s** | 14 |
+| 1 회 | **+3.90 s** | 20 | +3.70 s | 26 |
+| 2 회 | **+6.45 s** | 15 | +2.55 s | 15 |
+| 3 회 이상 | **+9.13 s** | 12 | +11.95 s | 3 |
+
+**집행 0회 판의 Δ 가 정확히 0.00 인 것이 내부 통제다** — 같은 팔만 고른 판은 궤적이 바이트
+동일하다. 그러므로 0 이 아닌 Δ 는 갈린 선택에 귀속된다.
+
+⚠️ **그 사다리는 zone 이 안 낀 두 case(`battery`·`fault_battery`)를 풀링해서 잰 값이다** —
+`measure_swap_staleness.py` 는 그 층화까지만 하고 그 아래로는 쪼개지 않는다. **case 별로 또는
+판당 총 배터리 결정 수로 더 쪼개면 칸이 n=1~4 로 얇아지고 단조성이 깨진다**(실측: surrogate
+`fault_battery` 3회+ **−0.50**(n=1), dspy `fault_battery` 2회 **+2.06**; 결정 수 고정 시
+surrogate n_bat=4 → **+3.92/+3.36/+9.13**, dspy n_bat=2 → **−2.54/+6.52**).
+🔴 **"쪼개도 유지된다" 를 이 사다리의 강건성 근거로 쓰지 말 것 — 그 분석은 측정된 적이 없고
+실제로 재현되지 않는다.** 이 판정은 이미 한 번(−8.3pp) 과대주장으로 재작성됐다.
+
+⚠️ **dspy 의 "복제" 는 makespan 에서만 성립한다** — 판 단위 완주 격차는 **0.0pp** 다.
+그런데도 surrogate 는 배터리 결정의 **60.7%(165/272)** 를 그 팔에 준다.
+**선택 편향도 판정을 약화시키지 않는다**: surrogate 가 `SwapBattery` 를 부르는 시점의 `soc`
+중앙은 **0.10**, `Replace` 는 **0.00** 이다 — **덜** 위태로운 상태에서 불려 나오고도 결과가 나쁘다.
+
+**다음 사이클 1순위 = 배송 동역학 아래에서 라벨 격자를 다시 만들고 surrogate 를 재학습하는 것.**
+
+### 0-I. 알려진 한계 — 고치지 않고 기록한 것
+
+1. **zone 축 이동이 귀속되지 않았다**(§0-D). 옳은 통제를 이번 사이클에 돌리지 않았다.
+2. 🔴 **런 간 재현성 결함이 살아 있다** — `_pick_active_robot`(`src/respec/ood_injection.jl:856`)
+   이 `env.cache.active_set` 을 순회하는데 그것은 **`Set` 이라 순회 순서가 정의돼 있지 않다.**
+   같은 시드·같은 커밋을 다시 굴려도 고장 대상 로봇이 갈릴 수 있다. **범위에서 뺐다**(고치면
+   그 자체가 세대를 갈라 이번 비교의 교란 변수가 된다). 이 스윕은 반복 측정이 없어 위 Δ 중
+   그 잡음의 몫을 **분리하지 못한다.**
+3. **발행된 `decision_acc` 는 아직 구세대 기준으로 채점된다** — `reference_policy.py` 의
+   `BASIS["battery"]` 문자열에 `🔴 STALE PREMISE` 표식만 붙였고 **규칙 자체
+   (`BATTERY_DEEP_SOC` · `reference_action()`)는 재유도하지 않았다.** 즉 채점 기준이 여전히
+   "깊은 SoC 에서는 `SwapBattery` 가 옳다" 이고 그것은 이 세대의 측정과 어긋난다.
+4. `measure_swap_staleness.py:177-178` 에 **잠재 `ZeroDivisionError`** — 어떤 레인이 두 팔 중
+   하나를 한 번도 안 집행하면 `n=0` 으로 나눈다(surrogate 는 앞의 조기 `sys.exit` 로 막히지만
+   **dspy 레인은 안 막힌다**). 현재 데이터로는 발화 안 함.
+5. 🔴 **중복 파견이 "성공" 으로 보고되고 교체는 일어나지 않는다**
+   (`src/respec/battery_courier.jl:169-171`). 중복 제거 스캔이 `d.target == target` 을
+   **phase 무관**하게 맞춘다. 그 로봇의 배송이 이미 `:returning` 이면 두 번째 `SwapBattery` 가
+   **그 낡은 배송을 그대로 돌려주고**, `swap_battery!` 는 `:battery_courier_dispatched` 를,
+   `tools/monitor/run_demo.jl:379` 는 성공 문자열을 찍는다. 그런데 `battery_courier_step!` 은
+   `:outbound` 가지에서만 `_apply_battery_swap!` 을 부르므로(`:234-237`) **교체가 아예 안
+   일어난다** — 팔은 성공을 보고하고 로봇은 방전인 채로 남는다.
+   🔴 **이 세대의 교차검증은 이것을 원리적으로 못 잡는다**: 발행된 검사("210 샤드 전부
+   `rows.jsonl` 집행 수 == 런로그 `[battery] swap=` 줄 수, 불일치 0")는 **파견 요청을 두 번
+   세어 맞춰본 것**이라 이 결함에 대해 항진적이다. 적용된 교체를 세는 신호가 산출물에 없다
+   (`_apply_battery_swap!` 의 도착 로그는 `@info` 라 `Logging.Warn` 로거가 버린다).
+   **도달 가능성은 가정이 아니라 실측이다**(2026-08-16 재계산; 2026-08-17 재검산으로 앵커를
+   정정했다 — 원안은 무해한 쪽 값에 걸려 있었다). 연속 `SwapBattery` 결정쌍 **106개**의 간격
+   중앙 **8.50 s**(min 2.95, 5 s 미만 **7쌍**). 결함에 더 직접적인 **같은 대상 로봇** 쌍은
+   **60개**. 배송의 `:outbound`/`:returning` 각 구간은 D=20 · `v=4.0 m/s`
+   (`rvo_interface.jl:119`)에서 **≈5 s** — 처음 ~5 s 가 `:outbound`(재사용돼도 도착 시 정상
+   적용돼 무해), 다음 ~5~10 s 가 `:returning`(결함이 실제로 발화하는 대). 60개를 그 밴드로
+   나누면 `<5 s 2 · [5,10) 50 · [10,15) 7 · ≥15 s 1` — **50/60 이 발화 창 안에 든다**
+   (원안이 앵커로 쓴 "min 4.32 s" 는 무해한 <5 s 쪽 값이었다 — §7 에 철회로 올려 뒀다).
+   ⚠️ **50 은 발화 횟수의 상한이지 실측 발화 횟수가 아니다.**
+6. 🔴 **다른 창고의 놀고 있는 예비가 Replace 경로에서 안 보인다**
+   (`src/respec/ood_injection.jl:425-435`). `pop_spare!`(`:386-396`)는 배송 중인 예비를
+   건너뛰도록 courier-aware 로 고쳤는데(`findlast(r -> !is_battery_courier(r), v)`),
+   `nearest_pool` 은 여전히 `isempty(SPARE_POOLS[][key])` 만 본다. 그래서 그 독스트링의 약속
+   ("반환된 키는 `pop_spare!` 로 바로 꺼낼 수 있다")이 **거짓**이 됐다. 풀당 기본 예비가
+   2대뿐이라 가장 가까운 창고의 둘이 배송을 나가면 `nearest_pool` 은 그 창고를 계속 고르고
+   `pop_spare!` 가 `nothing` 을 돌려줘 `replan.jl:763-766` 이 `"empty_pool"` 로,
+   `replace_robot.jl:1516-1520` 이 `:no_spare` 로 강등된다 — **아직 자유 예비가 남은 다른
+   창고를 한 번도 안 보고**. 비대칭이 핵심이다: 배송 쪽 `_nearest_courier_depot`
+   (`battery_courier.jl:146-158`)은 **모든 창고를 훑는데** Replace 쪽은 최근접 하나만 본다.
+   ⚠️ **커밋된 산출물로는 측정 불가**: 신호가 전부 `@info`/`@warn` 인데 이 레인은
+   `verbose=false` + `Logging.Warn` 로거라 210 샤드 로그 전수 그렙에서 `empty_pool`/`no_spare`
+   가 **두 세대 모두 0건**이다. **"안 났다" 가 아니라 "못 본다" 다.**
+
+⚠️ **5·6 은 코드를 안 고치고 기록만 했다** — 고치면 코드 세대가 갈려 방금 발행한 630판이
+통째로 무효가 된다. **다음 사이클에 재스윕과 묶어서** 고칠 것.
+
+---
+
+## 0-Z. 직전 세대 (2026-08-17) — **발표에 쓰인 표는 이것이다**
+
+> 🔴 **아래 표는 현행이 아니다.** 2026-08-17 의 owner 발표에 쓰인 표이고 그 세대는
+> **1-step deviation 표집 세대**(코드 세대 `3e492c21`, 결과 문서
+> `md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` — 내림, §10)다.
+> **현행 수치는 §0-A(210 / 189 / 205)** 다. 이 표를 현재 성능으로 인용하지 말 것.
+> 원자료는 `results_4pol_gen_swapfree_2026-08-15/*.jsonl` 에 보존돼 있다.
+> **목적함수 세대는 두 세대가 같다**(`objective_hash 19819377a7f8ebb2`) — 갈린 것은 동역학이다.
+> 이 절을 지우지 않는 이유: 그 수치가 실제로 **발표됐으므로**, 어느 세대의 것인지 알 수
+> 있어야 한다.
+
+각 칸 — 완주/30 · 완주판 평균 build time(sim 초) · 에너지(J/closed)
+
+| # | FAILURE CASE | CANONICAL | SURROGATE | LLM (DSPy) |
+|---|---|---|---|---|
+| 1 | Battery depletion | 29/30 · 26.0 s · 451 J | **30/30 · 21.8 s · 311 J** | 30/30 · 22.8 s · 338 J |
+| 2 | Robot breakdown | 29/30 · 26.0 s · 451 J | 29/30 · 26.0 s · 451 J | 28/30 · 26.1 s · 490 J |
+| 3 | Keep-out zone | 30/30 · 56.4 s · 492 J | 30/30 · 39.0 s · 456 J | **30/30 · 30.9 s · 362 J** |
+| 4 | Breakdown + battery | 29/30 · 26.0 s · 451 J | 29/30 · 23.3 s · 402 J | 28/30 · 24.5 s · 447 J |
+| 5 | Breakdown + zone | **30/30** · 59.8 s · 656 J | 26/30 · 31.3 s · 624 J | 29/30 · 45.6 s · 577 J |
+| 6 | Battery + zone | **30/30** · 59.8 s · 656 J | 28/30 · 35.1 s · 494 J | **30/30 · 36.8 s · 440 J** |
+| 7 | All three at once | **30/30** · 62.7 s · 733 J | 26/30 · 32.3 s · 595 J | 28/30 · 37.1 s · 537 J |
+| | **합계 (직전 세대)** | **207/210** | **198/210** | **203/210** |
+
+**그 세대의 dp 열은 207/210 이었고, dp 판 210개가 canonical 210개와 완전히 동일했다**
+(makespan·closed·complete·매크로 열까지). 표가 확정한 19칸이 **전부 `Replace`** 하나로
+붕괴했기 때문이다 — 조회율(7.7% → 19.3%)을 **행동 다양성으로 샀다**
+(`artifacts_4pol/FINAL.md` 의 dp battery 매크로 정확도 9%(11/120) → **0%(0/120)**).
+**"DP 는 천장이다" 로 되돌리지 말 것**(§8.7 gap 83.5%).
+
+**구세대 → 현행 요약**: 합계 완주 canonical **207 → 210** · surrogate **198 → 189** ·
+llm **203 → 205**. 배터리가 낀 case 의 makespan 이 오르고(surrogate `battery` 중앙 19.60 →
+30.36), `n_stalled > 0` 판이 **0 → 7** 로 처음 나타났다. zone 축도 세 레인 전부에서 움직였는데
+**그 이동은 아직 귀속되지 않았다**(§0-D).
+
+### 0-Z-a. 그 세대가 남긴 살아 있는 진단 (지우지 않는다)
+
+- **★ 결정성 게이트의 강한 판은 n=1 이 아니라 n=84 다.** 보존된 587판을 `(case,seed)` 로 묶으면
+  **84그룹 전부에서 일곱 개의 독립 프로세스가 pre-`k` 결정 열을 바이트 동일하게 냈다(갈린 그룹 0).**
+- **★ dp 의 `tie_unresolved` 대다수는 `n=1` 자동 동점이다.** tie 칸 24개의 비-최선 동점 슬롯
+  122개를 분류하면 **정확히 같은 `Q` 10 · 유한 `se` 안에서 가까움 58 · `n<2` 라 `se=inf` 로
+  무조건 동점 54**(최대 격차 **11259**). `dp_solve.py:88-93` 의 `_se()` 가 `n<2` 에서 `inf` 를
+  돌려주고 `:246` 이 `not isfinite(se_d)` 로 단락한다 — **표본 하나뿐인 팔은 Q 와 무관하게
+  무조건 동점**이다. **그래서 다음 지렛대는 tie-break 규칙이 아니라 (칸,팔)당 표본 깊이**
+  (같은 `(case,seed)` 를 여러 `k` 로) 또는 `n=1` 에 유한 `se` 를 주는 정책이다.
+- **★ `deviate_valid` 와 `enact_applied` 는 다른 것을 잰다.** `deviate_valid` 는 메뉴 소속인데
+  `valid_macros` 가 `BatteryTruth`·`ZoneTruth` 에만 리스트를 주고 **빈 배열 = 제한 없음**이
+  규약이라(`policy.jl:413`·`:460`) **fault·reform 에서는 언제나 true** 다. 진실원은
+  `enact_applied` 이고, **플래그를 각 분기의 내부 실행 가드 안에서** 세워야 한다.
+  ⚠️ `enact_applied=true` 는 "효과 지점에 도달했다" 이지 "세계가 바뀌었다" 가 아니다.
+- **★ 충실성 게이트는 출력 앞에서 친다.** 예전에는 `samples.jsonl` 쓰기와 `rmtree(work)`
+  **뒤에** `sys.exit` 해서, 위반한 런이 **직전의 정상 표본을 덮어쓰고 진단용 판까지 지운 뒤**
+  죽었다. 이제 위반이면 아무것도 쓰지 않고 아무것도 지우지 않는다.
+- **★ §8.7 gap 의 원인 문장을 하드코딩하지 않는다.** `sample_grid.gap_cause_note()` 가
+  `samples.jsonl` 의 `sampling_mode` 에서 유도하고 `build_compare_table.py`·`fill_results_doc.py`
+  가 그것을 쓴다. 리터럴이었을 때 **헤드라인 아티팩트가 자기가 없앤 전제를 계속 주장했다.**
+  지금 살아 있는 원인은 ② φ̃ 추상화 손실 · ④ deviation 칸 밖 단일팔.
+- ⚠️ **`ReformTeam` 축 완주율 68.7%** 가 표집 판정 미달의 실질적 원인이다(Replace·SwapBattery
+  는 100%). 엔진이 `AssertionError: has_edge(...)` 로 죽는다 — **별도 작업으로 올릴 것.**
+
+---
 ## 1. 용어 — 이 구분이 없으면 아래 전부가 오해된다
 
 | 용어 | 정의 | 구성 | surrogate 훈련 |
@@ -22,7 +323,7 @@
 LOKO(한 종류 빼고 학습)는 OOD 의 **대리 실험**이지 OOD 자체가 아니다.
 
 **연구 목표**: 미지의 OOD 가 왔을 때 LLM 이 대응을 만들고, 그 대응이 surrogate 의 **행동집합에 편입**되어
-다음부터는 surrogate 가 처리한다 → `PLAN_ACTION_GROWTH.md`
+다음부터는 surrogate 가 처리한다 → `PLAN_ACTION_GROWTH.md`(내림 — §10-A)
 
 ---
 
@@ -69,10 +370,11 @@ LOKO(한 종류 빼고 학습)는 OOD 의 **대리 실험**이지 OOD 자체가 
 
 ## 3. 확정된 측정 결과
 
-### E1~E4 (원본은 옛 `RESULTS.md` — 아카이브, `ARCHIVE.md` §2)
+### E1~E4 (원본은 옛 `RESULTS.md` — 아카이브, §10-C)
 
-> ⚠️ **`RESULTS.md` 는 2026-08-17 에 현행 3레인 × 7 case 결과의 단일 진입점으로 새로 쓰였다.**
-> 아래 E1~E4 는 그 이전 판의 내용이고, 이 절이 그 요약이다. 원문은 `ARCHIVE.md` §2 의 SHA 로 꺼낸다.
+> ⚠️ **`RESULTS.md` 는 2026-08-17 에 현행 3레인 × 7 case 결과의 단일 진입점으로 새로 쓰였다가
+> 2026-08-18 통합으로 내려갔다** — 그 판의 표는 §0-Z 에 **직전 세대**로 보존돼 있다.
+> 아래 E1~E4 는 그보다 더 이전 판의 내용이고, 이 절이 그 요약이다. 원문은 §10-C 의 SHA 로 꺼낸다.
 
 | | |
 |---|---|
@@ -117,7 +419,7 @@ core zone 은 완주하고(4/8, 6/8) 정답이 NOOP, staging zone 은 한 번도
 `Deprio×{10,50,200}` 셋 다 NOOP 값으로 붕괴. → **파라미터 축을 열어도 얻을 것이 없다.**
 (원시 배정공간은 안 열었으므로 이 gap 은 **하한**.)
 
-### Assimilation C1~C4 (원본 `DESIGN_ASSIMILATION.md`)
+### Assimilation C1~C4 (원본 `DESIGN_ASSIMILATION.md` — 내림, §10-A)
 
 | | 명제 | 상태 |
 |---|---|---|
@@ -194,9 +496,10 @@ regret** 이고, 여기서 재는 1회 결정의 손해는 **simple regret / sub
 
 **마이그레이션**: `regret` 은 20개 py 파일·JSON 키에 박혀 있으므로 **일괄 개명하지 않는다.**
 JSON 은 새 키를 추가하고 `regret` 키를 별칭으로 남기며, `verify.norm_regret` 함수명도 그대로 둔다
-(옛 아티팩트를 읽는 코드가 조용히 깨진다). 전문 = `PLAN_LLM_INFERENCE_7H_2026-08-06.md` §0-a.
+(옛 아티팩트를 읽는 코드가 조용히 깨진다). 전문 = `PLAN_LLM_INFERENCE_7H_2026-08-06.md` §0-a (내림 — §10-A).
 
-**개입비용 항은 유지하되, λ 는 학습 목표에서 뺀다** (2026-08-05 결정, 근거 `BATTERY_FAULT_REDESIGN`):
+**개입비용 항은 유지하되, λ 는 학습 목표에서 뺀다** (2026-08-05 결정, 근거
+`BATTERY_FAULT_REDESIGN_2026-08-05.md` — 내림, §10-A):
 
 - λ 는 데이터로 **식별 불가**(0.5→30 에서 답이 2.4~3.2% 만 변화). "λ=15 로 튜닝했다"는 **철회**.
 - 그러나 λ=0 이면 126 중 **58건(46%)이 완전 동점** → 비용 항 제거도 기각.
@@ -293,6 +596,24 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
 덮어썼다 → CASCADE 로 NOOP → **자가복구가 한 번도 안 돌았다**(알람 499 → ReformTeam 0).
 수정 후 같은 seed 에서 NOOP 팔이 245 미완주 → **291 완주**. `hz_*`·`rb_*`·`openworld` 의 완주율과
 그에 의존한 결론은 전부 재생성 대상이다.
+
+
+**2026-08-16~18 에 추가로 철회된 것** (전부 이 레포에서 실제로 인용됐던 수다):
+
+| 철회된 주장 | 어디에 있었나 | 진짜 사실 |
+|---|---|---|
+| surrogate 라벨 staleness = **`−8.3pp` 완주 / `+13.8%` makespan** | `RESULTS_SWAPBATTERY_COURIER` 초판 §8 | **결정 가중 아티팩트.** 판 하나의 결과를 그 판이 그 팔을 고른 횟수만큼 반복해서 셌다. 판 단위로는 **−1.8pp**(≥1 규칙) ~ **−3.5pp**(한 팔만 쓴 판). 살아남은 근거는 §0-H 의 **case 층화 시드 짝 makespan 사다리**(0회 +0.00 → 3회 이상 +9.13 s). **판정(라벨 stale)은 유지, 효과 크기만 작아졌다.** |
+| "교란이 오히려 그 판정을 **강화**한다" | 〃 초판 §8-C | **재계산하면 중립이다.** case 분포로 가중한 기대 baseline 이 Replace 87.2% vs SwapBattery 86.9% — 차이 0.3pp. |
+| "사다리는 더 쪼개도 유지된다" | 구두 · 리뷰 코멘트 | **측정된 적이 없고 재현되지 않는다.** case 별/결정 수별로 쪼개면 칸이 n=1~4 로 얇아지고 단조성이 깨진다(§0-H). |
+| dspy 가 완주에서도 surrogate 를 "복제" 한다 | 〃 초판 §8 | **makespan 에서만 성립.** 판 단위 완주 격차는 **0.0pp**. |
+| 중복 파견 결함의 도달 가능성 앵커 = **"min 4.32 s"** | 〃 초판 §10-G | **무해한 쪽 값이었다.** 같은 대상 로봇 쌍 60개를 배송 밴드로 나누면 `<5s 2 · [5,10) 50 · [10,15) 7 · ≥15s 1` — **50/60 이 발화 창 안**(§0-I 5). 단 50 은 **상한**이지 실측 발화 횟수가 아니다. |
+| zone 축을 가른 커밋 수 = **"19 커밋"** | 〃 초판 §5 | HEAD 가 `2b5a9457` 이던 시점의 값. 스윕 도장 기준은 **14**(`5dd29dae..ec8cf495`), HEAD(`41cf9a26`) 기준은 **21**. **이 수는 앵커를 같이 적어야 한다.** |
+| "이 표의 DP 는 진짜 Bellman backward induction 이다" | 발행된 `artifacts_4pol` 주장 블록 | **세대 누수.** dp 열은 구세대 `value.json` 에 근거했다. 숫자가 없어서 1차 수정의 grep 을 통과해 살아남았다 — **세대 누수는 숫자가 없어도 누수다**(§0-G). |
+| "DP 열은 천장(ceiling)이다" | 초기 4정책 표 부제 | §8.7 gap 이 **83.5%** 다. 천장이 아닌 것은 **V** 이고, dp **레인**의 실현 결과 자체는 유효한 실행 결과다. |
+| "deviation 행 447개가 64×7 로 고르게 흩어졌다 = 설계가 작동했다" | 1-step deviation 세대 §3 | **항진명제.** `pick_k` 가 `arm_id` 를 안 쓰므로 발화는 `(case,seed)` 마다 전부/전무이고 `64 = 84 − 20` 으로 셈이 이미 정해져 있다. 정보를 나르는 숫자는 `63` 하나뿐이다. |
+| "`--n-hint` 를 키우면 단일팔 칸이 준다" | 〃 | **방향이 반대다**(실측). 판의 결정 수 중앙이 9 인데 `n_hint=8` 에서 평균 `k` 가 이미 4.7 이고 84그룹 중 20그룹이 미발화다. 옳은 방향은 **같은 `(case,seed)` 를 서로 다른 `k` 로 여러 번** 굴리는 것. |
+| 꼬리 dedup 이 되니 "`se` 팽창이 없다" | 〃 §5-G | **그 dedup 은 샌다.** 술어가 `enact_applied` 인데 그건 "세계가 바뀌었다" 가 아니라 "효과 지점에 도달했다" 라, `"real"` 170판 중 **107판**이 다른 발화 판과 바이트 동일한 꼬리를 낸다(1521행 중 **601행**이 여분 사본). **현행 표에 대한 영향은 0칸**이라 재표집은 불필요하고, 잔여는 `n`·`se` 의 과신이다. |
+| **아카이브 SHA `4d723935`** 로 2026-08-06 흡수 문서를 꺼낼 수 있다 | 옛 `ARCHIVE.md` §2 | **꺼내지지 않는다.** `4d723935` 는 그 7개를 **지운** 커밋이라 그 트리에 파일이 없다. 올바른 SHA 는 부모 **`7b9ff26e`** 다(§10-C 에서 정정했다). **아카이브 SHA 는 적을 때 반드시 `git show` 로 확인할 것.** |
 
 ---
 
@@ -407,69 +728,295 @@ zone 원시값이 **기본 꺼짐**인 이유: 열을 넣으면 특징 차원이
 
 ---
 
-## 9. 문서 지도 (2026-08-17 갱신)
+## 9. 문서 지도 · 살아 있는 계약 · 재현 · 재개 지점
 
-**먼저 읽을 네 개만 현행이다. 나머지는 필요할 때만 펼친다.**
+### 9-A. 문서 지도 — **이제 이 파일 하나다**
 
-| 파일 | 무엇 |
+2026-08-18 통합으로 `md/` 는 **이 `README.md` 하나**만 남는다. 내린 29개는 §10 의 SHA 로 꺼낸다.
+
+`md/` 밖에서 **살아 있는** 것:
+
+| 경로 | 무엇 |
 |---|---|
-| **`RESULTS.md`** | **현행 결과의 단일 진입점** — 3레인 × 7 failure case × 30 seed |
-| **이 파일(`README.md`)** | 용어 · 함정 · 철회된 결론. **재현 전 필수 선독** |
-| **`STATUS.md`** | **현재 상태 · 다음 할 일 · 재개 지점** |
-| **`ARCHIVE.md`** | 내린 문서가 어디 갔는지 + 꺼내는 SHA |
+| `.claude/CLAUDE.md` §★ 결과 세대 | **세대 판정의 진실원.** 현행은 언제나 **맨 위 절 하나뿐**이다 |
+| `wm4spacecraft_manufacturing/artifacts_4pol/COMPARE.md` | **현행 세대 비교표 생성본**(§0-A 의 출처) |
+| `wm4spacecraft_manufacturing/MDP_DESIGN_FROM_SCRATCH.md` | MDP 정식화 |
+| `wm4spacecraft_manufacturing/LABELING_MANUAL.md` | 라벨링 절차 |
+| `docs/superpowers/specs/` (7개) | 설계 문서 — **안 내렸다**(결정이 아직 유효하다) |
+| `docs/superpowers/plans/README.md` | 실행 완료 계획서 14개의 아카이브 색인(같은 형식·SHA) |
+| `tools/README.md` · `src/SIMULATION_FLOW.md` · `RUN_GUIDE_KR.md` · `PYTHON_SETUP.md` | 그대로 |
 
-### 현행 세대 상세
+⚠️ **코드 주석·독스트링이 내린 문서를 이름으로 인용한다.** 아래 소비처들이 가리키는 이름은
+이제 `md/` 에 없다 — **§10 의 SHA 로 꺼내 읽을 것**(파일명은 바뀌지 않았으므로 grep 은 그대로
+맞는다): `e1_analyze.py`·`verify.py`·`ladder.py`·`firegrid_report.py`·`export_surrogate.py`
+(→ `EVALUATION.md`) · `policy.jl`·`nl_events.py`(→ `DESIGN_ASSIMILATION.md`) ·
+`safety_filter.py`·`features_agnostic.py`·`assimilation_gate.py`·`ood_mdp_shim.jl`
+(→ `PLAN_ACTION_GROWTH.md`) · `action_registry.py`·`audit_action_vocab.py`
+(→ `PLAN_LLM_INFERENCE_7H_2026-08-06.md`) · `verifier.jl`(→ `RELOCATEBUILD_2026-08-03.md`) ·
+`render_demo.jl`·`tools/monitor/README.md`(→ `ZONE_REDESIGN_STEP1_7_2026-08-05.md`) ·
+`wm_datasets.py`·`surrogate_data.py`·`test_surrogate_support.py`·`zone_inject.jl`
+(→ `RESULTS_LLM7H.md`) · `dp_oracle/sample_grid.py`(→ `RESULTS_DP_BACKWARD_2026-08-15.md`) ·
+`fill_results_doc.py`(→ `RESULTS_ROUTER3WAY_2026-08-14.md`) · `dspy_service.py`·`tools/demos.jl`
+(→ `RESULTS_SURROGATE_REBUILD_2026-08-14.md`) · `run_step_d_firegrid.sh`
+(→ `ORACLE_REBUILD_2026-08-09.md`) · `verify_night.py`(→ `NIGHT_PLAN_2026-08-10.md`) ·
+`tools/monitor/README_RENDER_3D.md`(→ `RESULTS_30SEED_D20_2026-08-13.md`).
 
-| 파일 | 무엇 |
-|---|---|
-| `RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` | **현행 세대** 상세 — DP 가 왜 천장이 아닌가 |
-| `RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` | **직전 세대** — 행동 어휘를 닫은 작업 |
-| `COMPARE_ACTIONSET_DELTA_2026-08-16.md` | 직전 세대 표의 독립 재계산 검증 + 전/후 델타 |
-| `STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md` | **아직 안 한 일**(단계 7)의 조사 노트 — energy-only 모드가 동역학을 안 바꾼다는 근거 |
+### 9-B. 세대 판정 계약
 
-### 처음 읽는 사람
+- **세대 키는 `objective_hash` 하나가 아니라 쌍이다**: `(objective_hash, energy_objective)`.
+  `ENERGY_OBJECTIVE` 는 플래너 손잡이라 `objective.json` 의 스칼라를 하나도 안 바꿔 해시로는
+  껐는지 알 수 없는데, 끈 런은 다른 플래너 목적함수가 만든 것이라 세대가 실제로 갈린다.
+  세대 딱지를 찍는 산출 레인 3곳: `tools/monitor/run_demo.jl`(`DEMO_SUMMARY`) ·
+  `oracle/gen_oracle_mc.jl`(유닛 CSV 17·18열) · `oracle/gen_oracle_dataset.jl`(JSONL 라벨 행).
+- **현행 `objective_hash` = `19819377a7f8ebb2`**, `generation` = `2026-08-13-global-kappa-precedence`.
+  🔴 **여기서 해시를 올리면 배포 라벨셋 전부와 surrogate 가 한꺼번에 구세대로 재분류된다.**
+  규칙: 스칼라가 하나도 안 바뀌어도 **목적함수의 유효 의미**가 바뀌면(플래너 재배선 포함) 올린다.
+  **동역학만 바뀌었을 때는 올리지 않는다** — 배송 세대가 그 사례다.
+- 🔴 **해시로는 코드 세대를 못 가린다.** 구세대 `dp_oracle/value.json` 의 `objective_hash` 는
+  현행과 **같다**. 쓸 수 있었던 유일한 신호는 `results_4pol/shards_dp` 디렉토리 존재 여부였다
+  (`build_compare_table.py:197` 과 그 형제 `fill_results_doc.py` 의 `holes_section()` 세 블록 —
+  **둘 중 하나만 고치면 안 된다**).
+- ⚠️ **커밋된 SHA 만으로는 그 런이 실제로 쓴 목적함수를 식별할 수 없다.** `objective.json` 이
+  2026-08-13 이후 한동안 커밋 없이 작업 트리에만 있었다(✅ `cf63d760` 이 `objective.json` +
+  `essential_tg_coponents.jl` + 해시 1줄을 함께 이력에 넣어 해소). 그 diff 는 구세대 스윕
+  당시 **이미 작업 트리에서 살아 있었으므로**, 그 커밋을 "세대를 가른 14 커밋" 후보에서 뺄 것.
 
-| 파일 | 무엇 |
-|---|---|
-| **`SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md`** | **비전문가용 요약.** 용어 설명부터 시작하므로 배경지식 없이 읽힌다. 다루는 작업은 옛것이지만 **이 트리에서 유일하게 배경 없이 읽히는 문서**다 |
-| `../MDP_DESIGN_FROM_SCRATCH.md` | MDP 정식화 (md/ 가 아니라 한 단계 위) |
-| `../LABELING_MANUAL.md` | 라벨링 절차 (md/ 가 아니라 한 단계 위) |
+### 9-C. 살아 있는 기계적 계약
 
-### 정의·설계 — 코드가 이 문서들을 이름으로 인용한다 (지우면 코드 주석이 끊긴다)
-
-| 파일 | 무엇 | 누가 가리키나 |
+| 계약 | 기대값 | 무엇을 지키나 |
 |---|---|---|
-| `EVALUATION.md` | 채점 방식 정의 | `e1_analyze.py` · `verify.py` · `ladder.py` · `firegrid_report.py` · `export_surrogate.py` |
-| `DESIGN_ASSIMILATION.md` | C1~C4 정의 + LLM 실측 원본 | `policy.jl` · `nl_events.py` |
-| `PLAN_ACTION_GROWTH.md` | 행동공간 성장 폐루프 | `safety_filter.py` · `features_agnostic.py` · `assimilation_gate.py` · `ood_mdp_shim.jl` |
-| `PLAN_LLM_INFERENCE_7H_2026-08-06.md` | 초과비용 지표 · Ch-A | `verify.py` · `action_registry.py` · `audit_action_vocab.py` |
-| `RELOCATEBUILD_2026-08-03.md` | 매크로 7 구현·검증 | `verifier.jl` · `verify.py` |
-| `ZONE_REDESIGN_STEP1_7_2026-08-05.md` | 구역 결정 재설계 STEP 1~11 전문 | `render_demo.jl` · `tools/monitor/README.md` |
-| `BATTERY_FAULT_REDESIGN_2026-08-05.md` | 배터리 재설계 + λ/SwapBattery 결정 | `export_surrogate.py` |
-| `FIRE_TIME_RELABEL_2026-08-05.md` | 발화 시점 재라벨링 | `../LABELING_MANUAL.md` |
-| `ORACLE_REBUILD_2026-08-09.md` | **한 파일에 두 문서** — §I 평가 보강 계획(B0~B9), §II 오라클 라벨 재빌드(= §I 의 STEP D) | `run_step_d_firegrid.sh` · `.claude/CLAUDE.md` |
-| `NIGHT_PLAN_2026-08-10.md` | 야간 실행 Global Constraints | `verify_night.py` |
-| `RESULTS_D20_2026-08-12.md` 🔴 | D=20 결과 행렬 | **`audit_objective.py` 항목 9 가 이 파일의 존재를 요구한다** |
-| `RESULTS_LLM7H.md` 🔴 | 4정책 × 5시드 측정 원본 | `wm_datasets.py` · `surrogate_data.py` · `verify.py` · `test_surrogate_support.py` · `zone_inject.jl` |
-| `RESULTS_DP_BACKWARD_2026-08-15.md` | DP backward induction 세대 | `wm_datasets.py` · `dp_oracle/sample_grid.py` |
-| `RESULTS_ROUTER3WAY_2026-08-14.md` | 라우터 3-way 세대 | `fill_results_doc.py`(기본 대상 문서) |
-| `RESULTS_SURROGATE_REBUILD_2026-08-14.md` | surrogate 재구축 | `dspy_service.py` · `tools/demos.jl` |
-| `RESULTS_30SEED_D20_2026-08-13.md` | 30시드 세대 | `tools/monitor/README_RENDER_3D.md` |
+| `python test_objective.py` | 29/29 | 목적함수 J 의 정의 |
+| `python test_surrogate_support.py` | 7/7 (§B 는 12/12) | 배포 surrogate 의 매크로 지원집합 |
+| `python audit_action_vocab.py` | exit 0 = 6/6 | 행동 어휘 단일 진실원(`action_registry.json`) |
+| `test/greedy_cost_dispatch_equivalence.jl` | PASS | greedy 비용 디스패치 동치(**실제 게이트**) |
+| `dp_oracle/test_cost_decomposition.py` | PASS(차단) | `c_prefix + Σc_k + terminal == J_row` |
+| `dp_oracle/test_dp_solve.py` · `test_cellkey_parity.py` | PASS | Bellman · Julia↔Python 칸키(13,720 경계 상태) |
+| `dp_oracle/test_deviation_plan.py` | 30 | 1-step deviation 표집 · 충실성 게이트 순서 |
+| `tools/monitor/test_deviation.jl` | 5+4+7 | deviation 결정성 |
+| `tools/monitor/test_narrate.jl` · `test_lane_select.jl` | PASS | 서술 · 레인 선택 |
+| `wm4spacecraft_manufacturing/gate_courier_sweep.sh` | **4/4** | 배송 집행 · 고장 피커 · DSPy · `objective_hash` |
+| `wm4spacecraft_manufacturing/measure_swap_staleness.py` | — | §0-H 의 측정 스크립트 |
+| `python test_ceilings_degrade.py` | PASS | J 를 못 재는 행에서 죽지 않고 **미측정으로 낮춘다** |
+| `julia +lts --project=. -e 'using Pkg; Pkg.test()'` | 11 pass / **1 error** | 기대 baseline(Gurobi 라이선스 없음 — 실패 아님) |
 
-### 🔴 구세대 — 수치를 현재 성능으로 인용하지 말 것
+**★ 게이트가 닫은 함정**: `gate_courier_sweep.sh` 원안 G2 는 **영원히 실패할 수 없는 검사**였다 —
+그렙 대상 `Robot R<n> has broken down` 이 **stdout 에 한 번도 안 나온다**(`monitor.jl:354` 가
+메모리 Dict 에만 쌓고 `MONITOR_STREAM` JSONL 로만 나간다). 실측 **stdout 0/90 · 스트림 90/90**.
+→ 스트림 파일을 직접 그렙하고 "고장 0건이면 실패" 가드를 넣었다.
+**게이트를 짤 때는 음성 대조를 먼저 실측할 것** — 그 문자열이 실제로 쓰인 적이 있는가.
 
-`BATTERY_FAULT_REDESIGN_2026-08-05` · `DEPOT_DISTANCE_SWEEP_2026-08-12` ·
-`FIRE_TIME_RELABEL_2026-08-05` · `RELOCATEBUILD_2026-08-03` · `RESULTS_D20_2026-08-12` ·
-`RESULTS_FARDEPOT_2026-08-12` · `RESULTS_LLM7H` · `ZONE_REDESIGN_STEP1_7_2026-08-05`.
-전부 문서 맨 위에 🔴 배너가 있다. **설계 근거로는 유효하고 수치만 구세대다.**
+⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
+로 돌린다(인터프리터는 `.venv` 유지). **pytest 로는 `test_deviation_plan.py` 만 잡힌다(30건).**
+`test_cost_decomposition.py` · `test_dp_solve.py` · `test_cellkey_parity.py` 는 `def test_*` 가
+없고 모듈 수준 `check()` + `sys.exit(1)` 로 게이팅하므로 pytest 에서 **0건**(`no tests ran`, rc 5)
+이다 — **인터프리터로 직접 실행할 것.** 두 파일을 pytest 한 줄에 묶어 `# 28 passed` 를 달면
+충실성 게이트가 돈 것처럼 보이지만 안 돈다.
 
-### 목적함수 통일(2026-08-13) 세대의 측정 기록
+⚠️ **`verify.py` 는 어느 덤프로 돌리는지에 따라 결과가 갈린다** — `graded_hs_n44.jsonl` ·
+`n44_plus78.jsonl` 둘 다 **exit 1**(`ObjectiveError: 완주 런인데 energy_J 가 없다`).
+**"8/8 PASS" 는 더 이상 어떤 기존 덤프로도 유효하지 않다.** 신세대 덤프에서 기대값은 **6/8**
+(S1·S4 FAIL — surrogate 가 아직 `closed − λ·MACRO_COST` 로 학습돼 있는데 채점 기준은 `−J` 다).
 
-`RESULTS_STAGE6_ENERGY_2026-08-13.md`(1차) · `RESULTS_STAGE6_BATTERY_PHYSICS_2026-08-13.md`(2차).
-1차는 구세대지만 그 §5.1("battery case 가 물리적으로 무해했다")이 2차의 **동기**라 지우지 않는다.
+### 9-D. 재현
 
-### 내린 문서
+```bash
+cd /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing
+export DSPY_URL=http://127.0.0.1:8090          # :8090 이 떠 있어야 한다
 
-**`ARCHIVE.md`** 를 볼 것 — 파일명 · 무엇이었나 · 왜 내렸나 · `git show` 할 SHA 가 한 줄씩 있다.
-실행이 끝난 계획서는 **`docs/superpowers/plans/README.md`** 가 같은 형식으로 갖고 있다.
-설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 그 결정들이 아직 유효하기 때문이다.
+# 1) 사전 게이트 4종 (배송 집행 · 고장 피커 · DSPy · objective_hash)
+bash gate_courier_sweep.sh                     # rc=0 = GATES PASS
+
+# 2) 스윕 (210 샤드 / K=16 / 약 1h47m)
+nohup bash run_4pol_parallel.sh --jobs 16 --policies canonical,surrogate,dspy \
+      --deadline-seconds 28800 > _night/resweep_courier.log 2>&1 &
+
+# 3) 병합 + 표
+bash finish_tables.sh                          # -> artifacts_4pol/{FINAL,COMPARE}.md
+                                               #    4단계가 세대 단일성을 검사한다
+
+# 4) 배송이 실제로 발화했는지
+../.venv/bin/python ../.superpowers/sdd/2026-08-15-swapbattery-courier-resweep/count_courier.py \
+      results_4pol                             # dispatched 277 / fallback 0
+                                               # (파견 요청 수다 — 적용된 교체 수가 아니다. §0-I 5)
+
+# 5) 라벨 staleness (§0-H)
+../.venv/bin/python measure_swap_staleness.py
+
+# 6) 구세대 재현 (배송만 끈다 — _faultable 도, monitor.jl 의 REPLACE_SOC_THRESHOLD 회복
+#    조건도 되돌아가지 않는다: 섞인 변경은 셋이다. §0-B)
+DEMO_BATTERY_COURIER=0 bash run_4pol_parallel.sh …
+```
+
+⚠️ **3)의 4단계가 "세대가 섞였다" 를 찍으면 멈출 것.** 구세대 샤드가 `results_4pol/shards*`
+아래에 남아 있다는 뜻이다. 통과 시 출력은 `세대 쌍: {('19819377a7f8ebb2', 1): 630}` +
+`정책: {'canonical': 210, 'surrogate': 210, 'dspy': 210}` 다.
+
+**비교 런은 순차 실행**(함정 30). 병렬이면 HiGHS 가 다른 스케줄을 내 비교가 무효 +
+프로세스당 ~2.5GB 라 OOM.
+
+**보존한 세대 트리 (지우지 않는다)**
+
+| 경로 | 무엇 |
+|---|---|
+| `results_4pol_gen_swapfree_2026-08-15/` | §0-Z 가 대면시키는 구세대 630판(+dp 210판). `GENERATION.md` 가 그 세대의 정의를 적는다 |
+| `artifacts_4pol_gen_swapfree_2026-08-15/` | 그 세대의 표·아티팩트 26개. `REPORT.md` 는 **이 트리에만** 남는다 |
+| `results_4pol_gen_energyactivation/` · `results_4pol_oldgen_2026-08-13/` | 목적함수 통일 1차·그 이전 세대 샤드 |
+
+⚠️ **`artifacts_4pol/REPORT.md` 는 현행 세대에 재생성되지 않았다**(유일한 생성자
+`build_md_report.py:836` 이 `finish_tables.sh` 파이프라인에 없다). 구세대 사본이 보존돼 있으므로
+**현행 트리에서는 삭제한다** — 남겨 두면 신세대 표 옆에 구세대 리포트가 붙어 세대가 섞인다.
+
+### 9-E. 재개 지점 — 열려 있는 큰 항목
+
+1. **다음 사이클 1순위 = 배송 동역학 아래에서 라벨 격자를 다시 만들고 surrogate 를 재학습**(§0-H).
+   그 작업이 §0-I 3(기준 정책 재유도)과 dp 표 재표집을 같이 닫는다.
+2. **`ReformTeam` 축 완주율 68.7%** — 엔진이 `AssertionError: has_edge(...)` 로 죽는다.
+   **별도 작업으로 올릴 것.**
+3. **§0-I 의 코드 결함 5·6**(중복 파견 / 다른 창고 예비 미탐색) — **재스윕과 묶어서** 고칠 것.
+4. **단계 7(surrogate 를 J 로 재라벨·재학습)은 보류** — 조사 결과는 내린
+   `STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md`(§10) 에 있다: 선택지 C 가 유일하게 교락 없다.
+   근거는 `battery.jl:486` 의 energy-only 모드가 `enable_battery!` 만 켜고 stall/derate 는
+   끄므로 **동역학을 바꾸지 않는다** 는 것이다.
+5. **`makespan` 의 `-1.0` 센티넬** (명명된 부채) — `gen_oracle_mc.jl` 의 `append_unit!` 이 한
+   `@printf` 안에서 두 규약을 쓴다(`energy_J` 는 빈 필드 → NaN, `makespan` 은 `-1.0` → 유한값).
+   오늘 착취 경로는 닫혀 있지만 **CSV 재채점이 들어오는 순간 버그가 되살아난다.**
+6. **네 번째 κ 가 `objective.json` 밖에 산다 — 활성화 지점 5곳**: `tools/e2e.jl:685` ·
+   `tools/demos.jl:1123`·`:1288`·`:1586`·`:2759` (전부 `ENERGY_W`). `get_objective_expr` 의 auto
+   경로는 `w_eff == 0.0` 일 때만 도므로 **그 다섯 레인은 전역 κ 를 영원히 못 본다.** 범위 밖.
+7. **스케일 재교정은 측정만 하고 적용하지 않았다**(신세대 `M_ref`=25.8625 · `E_ref`=111127.7).
+   **순환이기 때문이다** — 그 둘은 `objective_hash` 의 입력이라 쓰는 순간 방금 만든 630행이
+   구세대로 재분류된다. 적용하려면 **재교정 + 재스윕**을 한 묶음으로 결정할 것.
+
+**설계 흐름별 미결** (근거는 §10 의 원문 SHA):
+
+| 흐름 | 상태 | 다음 한 수 |
+|---|---|---|
+| 구역(zone) 결정 | STEP 1~11 구현·검증 완료 | **인과 규칙이 1/2** — 개입의 파괴력을 규칙에 넣어야 한다(막힘 > 0 은 필요조건이지 충분조건이 아니다). 그래서 `ZONE_CAUSAL_RULE` 은 **계속 opt-in(기본 OFF)** 이다 |
+| battery / fault 라벨 | 피커·심각도 사다리 재설계 완료 | 조밀한 발화점 격자 라벨링, μ-키용 makespan 헤드 |
+| λ → μ 전환 | 결정 완료 · opt-in 구현 완료 | 배포 선행조건 = **makespan 예측 헤드**(현재 배포 surrogate 는 단일 출력). μ 스칼라를 회귀 목표로 그대로 쓰면 안 된다(LOO 0.148 → 0.350) |
+| 라우터 / novelty | battery FAMILIAR PASS(p 0.0116 → 0.321), Julia↔Python 파리티 33/33 | **라우터 에스컬레이션 경로의 사후 효과는 여전히 미측정** |
+| 진짜 OOD 실험 | **한 번도 한 적 없다**(§1) | B1 능력상실 — 엔진에 "로봇이 특정 능력만 잃는다" 는 개념 자체가 없다 |
+| A0 다중 spec 디스패처 | 막혀 있다 | 서로 다른 종류의 제약을 묶어 내면 지금은 하나만 실행되고 나머지는 조용히 버려진다 |
+
+**데이터 자산 — 무엇을 믿을 수 있나**
+
+| 폴더 | 상태 |
+|---|---|
+| `oracle/out/lad_*` (seed 401~404) | **수정된 shim.** 1사건 사다리 8칸, 32 instance 전부 결정적. 핵심 주장의 근거 |
+| `oracle/out/nom30/` | 무OOD 30 seed (완주 **97%±3**, makespan 21.1±0.3) |
+| `oracle/out/battgrid_0805_s1.jsonl` | 새 심각도 사다리 18 instance / 54 row |
+| `oracle/out/firegrid_merged.jsonl` | 발화점 재라벨 병합(414행 / 108 instance) |
+| `openworld_merged.jsonl` (CANONICAL) | 발표 숫자의 근거 — **건드리지 않는다.** 매크로 7·8 이전 라벨이므로 **성능 근거 아님**, novelty 교정 입력으로만 |
+| `oracle/out/n44_plus78.jsonl` | 현행 배포 학습셋(행동 어휘 기준). ⚠️ **목적함수 기준으로는 구세대**(`energy_J` 없어 `verify.py` 하드 스톱) |
+| `dp_oracle/boards.jsonl` | 판 단위 완주 기록(판당 한 줄, 168KB, 커밋됨). `_sample_work/` 는 gitignore |
+| `oracle/out/hz_k1`, `hz_fb`, `rb_*` | **shim 버그 시기** — 완주율 신뢰 불가, 재생성 대상(급하지 않다) |
+| `oracle/out/zgrid_0805/` | zone STEP 6 격자. `admissible` 열은 에피소드 모드라 **구조적으로 무의미**(함정 8) |
+
+---
+
+## 10. 아카이브 — 내린 문서와 꺼내는 법
+
+**전부 커밋돼 있으므로 잃은 것은 없다.**
+
+```bash
+git show <SHA>:wm4spacecraft_manufacturing/md/<파일명>            # 통째로 보기
+git show <SHA>:wm4spacecraft_manufacturing/md/<파일명> > /tmp/x.md
+```
+
+⚠️ **SHA 규약: "그 파일이 마지막으로 살아 있던 커밋" 이다** — 지운 커밋이 아니다. 아래 SHA 는
+전부 `git log -1 --format=%H -- <path>` 로 조회하고 `git show` 로 실제 해석되는지 확인했다.
+(옛 `ARCHIVE.md` 가 지운 커밋을 적어 꺼내지지 않던 건이 하나 있었다 — §10-C 에서 정정했다.)
+
+### 10-A. 2026-08-18 통합에서 내린 것 (29개)
+
+**결과 문서 — 현행 · 직전 세대**
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `RESULTS_SWAPBATTERY_COURIER_2026-08-15.md` | **현행 세대 결과 전문** — 3레인×7case 표, 귀속 논증, 정지 지표 둘, 배송 발화 수, surrogate staleness, 코드 결함 5·6, 재현 절차 | **§0 이 전부 흡수했다.** 원문은 §4-D·§6-B·§8-C 등 세부 유도가 더 길다 | `b9725a30` |
+| `RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` | **직전 세대** — 1-step deviation 표집, 판정 6지표, dp 표 행동 다양성 붕괴, 결정성 게이트 n=84 | §0-Z 가 표와 살아 있는 진단을 흡수. 상세 유도(§3-D·§5-A·§5-G)는 원문에만 | `8d3f1180` |
+| `RESULTS.md` | 옛 **결과 진입점** — 직전 세대 3레인 표(207/198/203) + case 별 매크로 집행 표 + 조합 4 case 집계 | 진입점 역할이 이 파일로 옮겨왔다. **그 표는 §0-Z 에 직전 세대로 명시해 보존했다** | `8d3f1180` |
+| `RESULTS_ACTION_SET_CLOSURE_2026-08-16.md` | 행동집합 폐쇄 세대 — `RELABEL_20260816`(872행/260 instance), support `{0,1,2,7,8}` → `{0,1,2,4,5,6,7,8}`, §4-B 표집 완주율 미개선 | 그 세대는 두 세대 전이다. 살아 있는 함정(`DS_HOTSWAP` · `valid_actions` 문지기 · reform dedup 부재)은 §8·§9 로 옮겼다 | `5960a25b` |
+| `COMPARE_ACTIONSET_DELTA_2026-08-16.md` | 그 세대 표의 **독립 재계산 검증** + 전/후 델타 | 새 측정이 아니라 검증 기록이고, 그 표 자체가 두 세대 전이다 | `a25fa95b` |
+| `RESULTS_DP_BACKWARD_2026-08-15.md` | DP 를 진짜 backward induction 으로 — 분해 충실성 게이트, `_bucket()` 이름 규약, 계층 백오프 | 방법론은 §9-C 의 계약으로 살아 있다. 수치는 두 세대 전 | `5960a25b` |
+| `RESULTS_ROUTER3WAY_2026-08-14.md` | 4정책 비교표 첫 판(840판) — 라우터 3-way · DP 레인 신설 · 화면의 목적함수 | 표가 네 세대 뒤로 대체됐다. `fill_results_doc.py` 의 기본 대상 문서였다(§9-A 경고) | `5960a25b` |
+| `RESULTS_SURROGATE_REBUILD_2026-08-14.md` | surrogate 재구축 — `SurrogateV2`(2-헤드 Ĵ), `relabel_2026-08-14.jsonl`(365행/155 instance), **국소화된 음의 결과** | 그 모델이 이후 세대로 대체됐다. 매크로 지원 `{0,1,2,7,8}` 회귀 기록이 핵심이었고 그것은 폐쇄 세대가 닫았다 | `390bbdf7` |
+
+**목적함수 통일(2026-08-13) 세대의 측정 기록**
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `RESULTS_STAGE6_ENERGY_2026-08-13.md` | 단계 6 **1차** 스윕(630판, 60분). §5.1 "battery case 가 물리적으로 무해했다" | 그 §5.1 이 2차의 **동기**였고 그 동기는 이미 반영됐다(배터리 물리 복구). 수치는 구세대 | `a25fa95b` |
+| `RESULTS_STAGE6_BATTERY_PHYSICS_2026-08-13.md` | 단계 6 **2차** — 배터리 물리 복구(stall/derate 활성, 용량 축소 제거) + 전역 κ 우선순위. 정지 105행/126회 | 그 세대의 판정("battery case 가 드디어 정책을 가른다", noop 30/30 → 0/30)은 이후 세대의 전제로 흡수됐다 | `a25fa95b` |
+| `STAGE7_ENERGY_ONLY_FINDING_2026-08-13.md` | 단계 7 준비 노트 — `energy_J = NaN` 이 막다른 길이 아니라는 조사(선택지 C 가 유일하게 교락 없다) | **아직 안 한 일**의 조사 노트다. 결론 한 줄은 §9-E 4 에 옮겼고, 재개할 때 이 SHA 로 꺼낼 것 | `a25fa95b` |
+| `RESULTS_30SEED_D20_2026-08-13.md` | 30시드 630판 첫 병렬 스윕(D=20) — noop 바닥선이 7 case 중 6개에서 미완주 | 목적함수 통일 **이전** 수치다. 바닥선 논증은 §3 에 남아 있다 | `20380855` |
+
+**🔴 구세대 결과 (수치를 현재 성능으로 인용하지 말 것 — 설계 근거로는 유효)**
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `RESULTS_D20_2026-08-12.md` | 근거리 창고 기하(D=20) 4지표 결과 행렬 | 목적함수 통일로 구세대. ⚠️ `audit_objective.py` 항목 9 가 **이 파일의 존재를 요구**했으나 그 감사는 2026-08-18 정리에서 함께 내려갔다 | `cf63d760` |
+| `RESULTS_FARDEPOT_2026-08-12.md` | 원거리 창고 기하(D=40) 4지표 행렬, 셀당 n=2 | D=40 은 더 이상 배포 기하가 아니다 | `64503835` |
+| `DEPOT_DISTANCE_SWEEP_2026-08-12.md` | 창고 거리 D 스윕 → 그 시점 기본값 40.0 확정 | 현재 배포 기하는 **D=20.0**(성능 근거가 아니라 UI 판단)이다 | `6144cdb4` |
+| `RESULTS_LLM7H.md` | 확률적 OOD 스트림 위의 LLM 재명세 — 구현과 측정(4정책×5시드=20판). 어휘 한 줄이 battery 적중 0/6 → 6/6 을 갈랐다 | 🔴 구세대. **재현 절차와 §5-f·§6 진단은 유효**하고 여러 py 파일이 절 번호로 인용한다(§9-A) | `6144cdb4` |
+
+**정의·설계 — 코드가 이름으로 인용한다(§9-A 의 목록을 같이 볼 것)**
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `EVALUATION.md` | 채점 방식 정의 — 두 원칙(결정을 재라 / 품질과 compute 를 같이 재라), 지표 사다리 Level 0~ | 정의는 §4 "지표 용어" 표로 요약돼 있다. 전문이 필요하면 이 SHA | `042714ff` |
+| `DESIGN_ASSIMILATION.md` | C1~C4 정의 + LLM 실측 원본 | 판정 표는 §3 에 있다 | `042714ff` |
+| `PLAN_ACTION_GROWTH.md` | 행동공간이 자라는 폐루프 설계(LLM 이 새 대응을 발명 → surrogate 가 흡수) | §1 "연구 목표" 가 가리키던 문서다. **A0 다중 spec 디스패처 정정(§2)** 은 §9-E 로 옮겼다 | `042714ff` |
+| `PLAN_LLM_INFERENCE_7H_2026-08-06.md` | 초과비용 지표 설계(§0-a) · Ch-A 행동 어휘 단일화 · 7시간 무인 파이프라인 | 지표 전환의 전문이다. 결론은 §4 "지표 용어" 에 있다 | `042714ff` |
+| `RELOCATEBUILD_2026-08-03.md` | 매크로 7 구현·검증 기록 | 🔴 구세대 수치. 구현 계약은 `verifier.jl`·`verify.py` 에 코드로 있다 | `c91b2a55` |
+| `ZONE_REDESIGN_STEP1_7_2026-08-05.md` | 구역 결정 재설계 **STEP 1~11 전문**(가장 큰 문서, 80KB). 커버리지 ≠ 막힘, STEP 10 의 두 가족 표, STEP 11 팀 슬롯 인과 | 🔴 구세대 수치. **결론(인과 규칙이 1/2, `ZONE_CAUSAL_RULE` opt-in)은 §9-E 에 있다** | `c91b2a55` |
+| `BATTERY_FAULT_REDESIGN_2026-08-05.md` | 배터리 사건 재설계 + λ 와 Replace vs SwapBattery 두 결정(70KB) | 🔴 구세대 수치. **두 결정은 §4 에 그대로 있다** | `c91b2a55` |
+| `FIRE_TIME_RELABEL_2026-08-05.md` | 발화 시점 재라벨링 — fault 를 여러 진행도에서 | §3-a 의 "후반엔 흡수" 결론은 **철회됐다**(§7 표 2행) | `c91b2a55` |
+| `ORACLE_REBUILD_2026-08-09.md` | **한 파일에 두 문서** — §I 평가 보강 계획(baseline 사다리 B0~B9 · case별 격자 · STEP A~F 와 비용), §II 오라클 라벨 재빌드(= §I 의 STEP D) | 계획이 실행됐다. `run_step_d_firegrid.sh` 가 이름으로 인용한다 | `aaa230b4` |
+| `NIGHT_PLAN_2026-08-10.md` | 야간 자동 실행 계획 E→D→A→B→C + **Global Constraints**(스윕 중 코드 수정 금지 · `xargs` 가 pkill 에서 살아남음 등) | 실행이 끝났다. 그 Global Constraints 는 §8 운영 함정(30~35·40~42)으로 이미 승격돼 있다 | `651a4dfd` |
+
+**나머지**
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md` | **비전문가용 요약** — ForbidZone 발화 + surrogate 매크로 7·8 재학습의 배경·원인·결과를 용어 설명부터 | 이 트리에서 **배경 없이 읽히는 유일한 문서**였다. 다루는 작업이 옛것이라 내렸다 — 새로 온 사람에게 줄 문서가 필요하면 **이 SHA 로 꺼낼 것** | `5960a25b` |
+| `STATUS.md` | 현재 상태 · 재개 지점 · 압축된 이력 · 데이터 자산 표 | **§9-E 가 흡수했다.** 2026-08-06 시점의 흐름별 기록(§1~§5 상세)은 원문에만 | `5960a25b` |
+| `ARCHIVE.md` | 내린 문서 색인(이 절의 이전 판) | **§10-B·§10-C 로 흡수했다** | `5960a25b` |
+
+### 10-B. 2026-08-17 정리에서 내린 것 (3개)
+
+| 파일명 | 무엇이 들어 있었나 | 왜 내렸나 | SHA |
+|---|---|---|---|
+| `SESSION_2026-08-12_ORACLE_FIX.md` | 오라클 격자가 평가 런과 **다른 시뮬 설정**에서 돌던 것을 규명·수정한 세션 기록. 격자 v2(13행) 표, 라이브 런 토큰 구현 기록, 런당 비용 모델 | 세션 로그이고 아무도 참조하지 않았다. **측정된 함정 넷은 §8 함정 36·37·39 로 옮겼다** | `fd225836` |
+| `OOD_FAULT_SEVERITY_DESIGN_2026-08-12.md` | robot breakdown 의 OOD 를 무엇으로 정의할지 조사 + 잔존능력 ρ 축 설계 제안 | **제안서이고 실행되지 않았다**(코드 변경 0, 측정 0). 진단부(§1)의 함정은 §8 함정 38 로 옮겼다. **ρ 축을 다시 하려면 이 SHA 에서 꺼내 읽을 것** | `a25fa95b` |
+| `PLAN_4POLICY_5H_2026-08-10.md` | 4정책 비교표 5시간 무인 실행 계획(티어 구성·선행조건 P1~P6·판당 비용 실측) | 실행이 끝났고 그 표는 여러 세대 뒤로 대체됐다. **선행조건 P1/P2 의 함정은 §8 함정 42 로 옮겼다** | `97a0b979` |
+
+### 10-C. 그 이전 정리에서 내린 것
+
+**2026-08-06 통합에서 흡수·삭제한 7개** — 🔴 **SHA 정정**: 옛 `ARCHIVE.md` 는 `4d723935` 를
+적었는데 그것은 이 7개를 **지운** 커밋이라 그 트리에는 파일이 없다(`git show` 가 실패한다).
+올바른 SHA 는 그 부모 **`7b9ff26e`** 다:
+
+```bash
+git show 7b9ff26e:wm4spacecraft_manufacturing/md/<파일명>
+```
+
+| 파일명 | 흡수된 곳 |
+|---|---|
+| `NIGHT_2026-08-02.md` · `MORNING_2026-08-03.md` · `NIGHT_2026-08-04.md` · `PLAN_0804.md` | 확정 결과 → §3 / 정정 → §7 / 함정 → §8 |
+| `PLAN_COMPLETION.md` | 완주 조사 S0~S4 → §6 |
+| `DUMP_SCHEMA.md` | §5 (2026-08-02 이후 스키마가 바뀌어 원문은 이미 틀렸다) |
+| `ZONE_BLOCKAGE_STEP8_11_2026-08-05.md` | `ZONE_REDESIGN_STEP1_7_2026-08-05.md` 의 STEP 8~11 절(원래 연속된 문서) → 이제 §10-A |
+
+**옛 `RESULTS.md`(E1~E4 측정 원본)** — 요약은 §3 에 그대로 있다. 원문:
+`git show 2bde2dd1:wm4spacecraft_manufacturing/md/RESULTS.md`.
+
+**레포 밖으로 나간 상위 문서 2개** — `artifacts_mdp/OVERNIGHT_REPORT.md` 와
+`artifacts_openworld/README.md` 는 2026-08-09 의 "매크로 7·8 이전 세대 산출물 일괄 삭제"
+(`c91b2a55`)에서 디렉터리째 사라졌다. **복원하지 말 것** — 행동 어휘가 잘린 세대의 산출물이다.
+
+### 10-D. 계획서 아카이브
+
+`docs/superpowers/plans/` 의 실행 완료 계획서 14개는 **`docs/superpowers/plans/README.md`** 가
+같은 형식으로 목록·SHA 를 갖고 있다. `docs/superpowers/specs/` 의 설계 문서 7개는 **안 내렸다**
+— 그 결정들이 아직 유효하기 때문이다.
