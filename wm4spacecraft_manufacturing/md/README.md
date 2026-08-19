@@ -859,7 +859,7 @@ DEMO_BATTERY_COURIER=0 bash run_4pol_parallel.sh …
 | 경로 | 무엇 |
 |---|---|
 | `results_4pol_gen_swapfree_2026-08-15/` | §0-Z 가 대면시키는 구세대 630판(+dp 210판). `GENERATION.md` 가 그 세대의 정의를 적는다 |
-| `artifacts_4pol_gen_swapfree_2026-08-15/` | 그 세대의 표·아티팩트 26개. `REPORT.md` 는 **이 트리에만** 남는다 |
+| `artifacts_4pol_gen_swapfree_2026-08-15/` | 그 세대의 표·아티팩트. markdown 18개는 `SNAPSHOT.md` 하나로 접었고(실험 실행일 2026-08-15 을 머리에 적는다), case 별 `*.json` 과 `compare.html` 은 그대로 둔다. `REPORT.md` 는 **이 트리에만** 남으며 이제 그 `SNAPSHOT.md` 안에 있다 |
 | `results_4pol_gen_energyactivation/` · `results_4pol_oldgen_2026-08-13/` | 목적함수 통일 1차·그 이전 세대 샤드 |
 
 ⚠️ **`artifacts_4pol/REPORT.md` 는 현행 세대에 재생성되지 않았다**(유일한 생성자
