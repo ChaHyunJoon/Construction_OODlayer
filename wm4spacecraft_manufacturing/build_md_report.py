@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-build_md_report.py -- 4정책 스윕(run_4pol_parallel.sh, 8 case) + 오라클 결과-천장(STEP D)을
+build_md_report.py -- 3정책 스윕(run_4pol_parallel.sh 기본값 = canonical/surrogate/dspy x 7 case;
+판 수·정책·case 는 전부 인자에서 받는다) + 오라클 결과-천장(STEP D)을
 하나의 자기완결(self-contained) Markdown 파일로 조립한다 (artifacts_4pol/REPORT.md).
 
 ★ julia 를 절대 부르지 않는다. STEP D(오라클 라벨 재생성)가 이 스크립트가 도는 동안 다른
@@ -407,7 +408,7 @@ def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: 
               "단위로 오라클 격자 실측에서 직접 계산한다. `oracle` 은 온라인 정책이 아니므로(`tools/monitor/policy.jl` "
               "에 oracle 분기 없음) 이 숫자는 8-case 헤드라인 표의 셀이 아니라 별도 참조선이다.")
     L.append("")
-    L.append("계산 시맨틱은 %s 의 `lexbest()`(줄 44-50) 및 zone 비교식(줄 139-146)을 그대로 " % GONE_LLM7H +
+    L.append("계산 시맨틱은 %s 의 `lexbest()`(줄 44-50) 및 zone 비교식(줄 145-168)을 그대로 " % GONE_LLM7H +
               "옮긴 것이다(재구현 아님). instance 를 `instance` 필드로 묶고, 각 instance 에서 "
               "`e1_analyze.cost_lex_key_row(row)` (= -J, objective.json 이 단일 진실원) 최댓값을 고른 "
               "행이 a\\* 다. [2026-08-13] λ·MACRO_COST 항은 J 에서 빠졌다(spec §3.2) — 옛 표는 "
@@ -492,7 +493,9 @@ def render_zone_defect_section(oracle_dir: Path, results_dir: Path, out_dir: Pat
     L.append("")
     L.append("%s 의 zone 결정-충실도 게이트(`zone 규칙 == 오라클 최선 (zcausal, n=2)`)는 " % GONE_LLM7H +
               "`zcausal_reform/` 라벨이 없던 이전에는 n=0 로 조용히 PASS 했다. STEP D 가 4개 arm 파일을 "
-              "채운 지금은 실제로 돌고, **FAIL 한다**:")
+              "채운 뒤 **2026-08-11 에 실제로 돌렸을 때 FAIL 했다.** 아래는 그때의 출력을 그대로 "
+              "붙여 둔 **고정 사본**이다 -- 이 문서는 게이트를 다시 돌리지 않으며, 게이트 자체도 "
+              "2026-08-18 정리에서 삭제돼 더 이상 돌지 않는다(결함은 아래 근거로 여전히 확인된다):")
     L.append("")
     L.append("```")
     L.append("zone 규칙 == 오라클 최선 (zcausal, n=2)   FAIL")

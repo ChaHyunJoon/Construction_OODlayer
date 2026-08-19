@@ -8,7 +8,9 @@
 #   · HiGHS 경합 -- 이 경로는 run_demo.jl:387 이 assignment_mode=:greedy 라 MILP 를 안 푼다.
 #   · OOM -- bethpage 가용 121 GB. K=16 이면 약 40 GB.
 #   · MeshCat 포트 8700 -- run_demo.jl 에 MeshCat 이 없다(렌더는 render_demo.jl).
-# 셋 다 이 경로에서 성립하지 않는다. 다만 그것이 "안전의 증명"은 아니므로 P7 게이트가 따로 있다.
+# 셋 다 이 경로에서 성립하지 않는다. 다만 그것이 "안전의 증명"은 아니다 -- 그것을 재던 P7 부하분포
+# 게이트(gate_load_distribution.py)는 2026-08-18 정리에서 삭제됐다
+# (`git show 8e005842:wm4spacecraft_manufacturing/gate_load_distribution.py`). 지금은 아무것도 안 잰다.
 #
 # 사용법
 #   bash run_4pol_parallel.sh --jobs 16

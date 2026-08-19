@@ -327,11 +327,13 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   없다.**
 - ⚠️ **`.venv` 에 pytest 가 없다.** `PYTHONPATH=/usr/lib/python3/dist-packages ../.venv/bin/python -m pytest`
   로 돌린다(인터프리터는 `.venv` 유지). `dp_oracle/_sample_work/`(=`--keep-work` 산출, 2.4GB)는 gitignore.
-  ⚠️ **pytest 로는 `test_deviation_plan.py` 만 잡힌다(30건).** `test_cost_decomposition.py` ·
-  `test_dp_solve.py` · `test_cellkey_parity.py` 는 `def test_*` 가 없고 모듈 수준 `check()` +
-  `sys.exit(1)` 로 게이팅하므로 pytest 에서 **0건**(`no tests ran`, rc 5)이다 —
-  **인터프리터로 직접 실행할 것.** 두 파일을 pytest 한 줄에 묶어 `# 28 passed` 를 달면 충실성
-  게이트가 돈 것처럼 보이지만 안 돈다.
+  ⚠️ **dp 테스트 넷은 2026-08-18 정리에서 삭제됐다**(`test_deviation_plan.py` ·
+  `test_cost_decomposition.py` · `test_dp_solve.py` · `test_cellkey_parity.py` —
+  `git show 8e005842:wm4spacecraft_manufacturing/dp_oracle/<name>`). 되살릴 때를 위해 **그때
+  실측한 사실**을 남긴다: pytest 로는 `test_deviation_plan.py` 만 잡혔고(30건), 나머지 셋은
+  `def test_*` 가 없고 모듈 수준 `check()` + `sys.exit(1)` 로 게이팅해 pytest 에서
+  **0건**(`no tests ran`, rc 5)이었다 — 인터프리터로 직접 실행해야 돌았다. 그 셋을 pytest 한
+  줄에 묶어 `# 28 passed` 를 달면 충실성 게이트가 돈 것처럼 보이지만 안 돈다.
 - **★ 판 단위 완주 기록은 `dp_oracle/boards.jsonl`**(판당 한 줄, 168KB, 커밋됨). `_sample_work/`
   가 gitignore 라 판정 #1(86.0%)이 레포에서 검증 불가였고, `samples.jsonl` 로는 587판 중 467판만
   복원된다(82.4%, 팔별 분포도 다르다). 재시뮬레이션 없이 다시 내려면
@@ -390,12 +392,16 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   **해시에 접지 않은 이유**: 해시는 `verify.py`·`e1_analyze.py`·`step6_gap.py` 같은 **분석
   소비처**가 읽는 값이라, 생산자 손잡이를 거기 접으면 `ENERGY_OBJECTIVE=0 python verify.py`
   한 줄이 기존 덤프 전체를 조용히 구세대로 재분류한다.
-  스케일 재교정(`measure_objective_scales.py`)이 그 쌍으로 **세대를 가른다** — 표본에 세대가
-  둘 이상이면 exit 1 이고, `--generation current|none|<hash>|<hash>|eo=<0|1>` 로 하나를 고르거나
-  `--allow-mixed` 로 명시적으로 섞어야 한다. 이 도구의 중앙값이 그대로 `objective.json` 의
-  `M_ref`/`E_ref` 가 되므로, 여기서 섞이면 혼입이 상수에 각인된다.
-  `read_units()`(MC 레인)도 같은 쌍으로 판정한다 — **`energy_objective` 열이 없는 옛 샤드는
-  하드 스톱한다**(그 런이 ON 이었는지 OFF 였는지 기록이 없어 추정할 수 없다).
+  스케일 재교정도 그 쌍으로 **세대를 갈랐다** — 표본에 세대가 둘 이상이면 exit 1 이고,
+  `--generation current|none|<hash>|<hash>|eo=<0|1>` 로 하나를 고르거나 `--allow-mixed` 로
+  명시적으로 섞어야 했다. 그 재교정 도구(`measure_objective_scales.py`)와 MC 레인의
+  `read_units()`(`oracle/gen_oracle_mc.jl`)는 **둘 다 2026-08-18 정리에서 삭제됐다**
+  (`git show 8e005842:wm4spacecraft_manufacturing/measure_objective_scales.py` ·
+  `…/oracle/gen_oracle_mc.jl`). 규칙 자체는 살아 있다: 재교정 중앙값이 그대로 `objective.json` 의
+  `M_ref`/`E_ref` 가 되므로 **여기서 세대가 섞이면 혼입이 상수에 각인되고**,
+  `energy_objective` 열이 없는 옛 샤드는 그 런이 ON 이었는지 OFF 였는지 기록이 없어 추정할 수
+  없다(그래서 하드 스톱이 옳다). 🔴 **지금은 그 두 규칙을 집행하는 코드가 레포에 없다** —
+  `M_ref`/`E_ref` 를 다시 재려면 위 SHA 에서 도구를 먼저 꺼내야 한다.
 - **와이어링은 됐지만 아직 안 켜진 것**: `GreedyEnergyAwareCost` 는 존재하고 맞지만 **어느 레인도
   아직 고르지 않는다** — greedy 는 t=0 에만 도는데 그 시점엔 `AGENT_COST_BIAS[]` 가 비어 있고
   `EDGE_COST_MULTIPLIER[]` 가 `nothing` 이라, 항이 있어도 에너지·SoC·DeprioritizeAgent 정보 없이
@@ -422,7 +428,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
      "κ 하나만 돌리면 세 곳이 같이 움직인다"가 거기서는 거짓이다. 범위 밖으로 남겼다.
      (`demos.jl:1420`·`:1748` 은 반대로 `efficiency = 0.0` 으로 **끄는** 자리다.)
   3. **surrogate 학습 목표는 아직 `closed − λ·MACRO_COST` 다**(채점은 `−J`). spec §8 단계 7 의
-     재학습으로 닫힌다. `audit_objective.py` 항목 8 이 그 유예 표식을 기계로 지킨다.
+     재학습으로 닫힌다. 유예 표식은 `e1_analyze.py`(현 `:404-408`)에 그대로 있다 —
+     그것을 기계로 지키던 `audit_objective.py` 항목 8 은 2026-08-18 정리에서 삭제됐으므로
+     **표식이 지워져도 이제 아무것도 안 잡는다**(위 §🧹 항목 1).
   4. **`makespan` 의 `-1.0` 센티넬 (명명된 부채, CSV 재채점 전에 닫을 것).**
      `gen_oracle_mc.jl` 의 `append_unit!` 은 이제 한 `@printf` 안에서 **두 규약**을 쓴다 —
      `energy_J` 는 빈 필드(→ 되읽으면 NaN, `Objective.J` 가 설계대로 던진다), `makespan` 은
