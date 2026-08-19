@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_md_report.py -- 5시간 4정책 스윕(run_4pol.sh, 8 case) + 오라클 결과-천장(STEP D)을
+build_md_report.py -- 4정책 스윕(run_4pol_parallel.sh, 8 case) + 오라클 결과-천장(STEP D)을
 하나의 자기완결(self-contained) Markdown 파일로 조립한다 (artifacts_4pol/REPORT.md).
 
 ★ julia 를 절대 부르지 않는다. STEP D(오라클 라벨 재생성)가 이 스크립트가 도는 동안 다른
@@ -13,6 +13,8 @@ build_md_report.py -- 5시간 4정책 스윕(run_4pol.sh, 8 case) + 오라클 �
    `build_final_table.py.render_row_cells` 를 그대로 import 해서 쓴다. 새로 계산하는 것은
    Part A(오라클 결과-천장, 축 단위) 뿐이고, 그 시맨틱은 `test_llm7h.py` 의 `lexbest()` /
    `LAM=3.0` 을 그대로 옮긴 것이다 -- 규칙을 다르게 적으면 문서와 실측이 갈라진다.
+   (`test_llm7h.py` 는 2026-08-18 정리에서 삭제됐다 --
+    `git show 8e005842:wm4spacecraft_manufacturing/test_llm7h.py`. 시맨틱의 출처는 그대로다.)
 
 ★ 결측은 절대 0 도 빈칸도 아니다. `미측정 (STEP D 필요)` 로 명시한다(`build_final_table.MISSING_TOKEN`
    과 동일 문자열). fault/zone 오라클 라벨 파일이 아직 없어도 이 스크립트는 exit 0 으로 끝나야
@@ -37,6 +39,11 @@ import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+# 계산 시맨틱의 출처 표기. 파일은 2026-08-18 정리에서 삭제됐지만 출처는 그대로이므로
+# 이름을 지우지 않고 "어디서 꺼내는가" 를 같이 적는다.
+GONE_LLM7H = ("`test_llm7h.py`(2026-08-18 정리에서 삭제 -- "
+              "`git show 8e005842:wm4spacecraft_manufacturing/test_llm7h.py`)")
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -400,7 +407,7 @@ def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: 
               "단위로 오라클 격자 실측에서 직접 계산한다. `oracle` 은 온라인 정책이 아니므로(`tools/monitor/policy.jl` "
               "에 oracle 분기 없음) 이 숫자는 8-case 헤드라인 표의 셀이 아니라 별도 참조선이다.")
     L.append("")
-    L.append("계산 시맨틱은 `test_llm7h.py` 의 `lexbest()`(줄 44-50) 및 zone 비교식(줄 139-146)을 그대로 "
+    L.append("계산 시맨틱은 %s 의 `lexbest()`(줄 44-50) 및 zone 비교식(줄 139-146)을 그대로 " % GONE_LLM7H +
               "옮긴 것이다(재구현 아님). instance 를 `instance` 필드로 묶고, 각 instance 에서 "
               "`e1_analyze.cost_lex_key_row(row)` (= -J, objective.json 이 단일 진실원) 최댓값을 고른 "
               "행이 a\\* 다. [2026-08-13] λ·MACRO_COST 항은 J 에서 빠졌다(spec §3.2) — 옛 표는 "
@@ -437,7 +444,8 @@ def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: 
     L.append("### 3-A. fault 축은 두 세대다 -- 풀링한 n=40 천장은 어디에도 없다")
     L.append("")
     L.append("`oracle/out/firegrid_merged.jsonl` 은 CANONICAL(=`wm_datasets.CANONICAL`, `openworld_merged.jsonl`) "
-              "+ 이번 STEP D 런의 fire-grid 를 합친 것이다(`merge_firegrid.py` docstring 그대로 -- novelty 교정용 "
+              "+ 이번 STEP D 런의 fire-grid 를 합친 것이다(2026-08-18 정리에서 삭제된 `merge_firegrid.py` 의 "
+              "docstring 그대로 -- `git show 8e005842:wm4spacecraft_manufacturing/merge_firegrid.py`. novelty 교정용 "
               "분산을 더하려고 설계된 합병이지, 성능을 재는 두 세대를 하나로 합쳐도 된다는 뜻이 아니다). "
               "kind=='fault' instance 40개는 **서로 다른 메뉴로 라벨된 두 그룹**이다:")
     L.append("")
@@ -462,7 +470,7 @@ def render_oracle_ceiling_section(oracle_dir: Path, results_dir: Path, out_dir: 
         L.append("> 구세대 18개: %s (instance 를 하나도 못 찾았다 -- firegrid_merged.jsonl 내용을 "
                   "확인할 것)." % MISSING_TOKEN)
     L.append("")
-    L.append("> **혼동하지 말 것 -- `test_llm7h.py` 의 게이트는 풀링해도 정당하다.** "
+    L.append("> **혼동하지 말 것 -- %s 의 게이트는 풀링해도 정당하다.** " % GONE_LLM7H +
               "`fault 규칙 == 오라클 최선 (firegrid, n=40) PASS 40/40` 는 \"이 instance 에서 규칙이 "
               "고른 팔과 오라클 최선이 같은가\"라는 **instance 단위 이항 비교**라, 그 instance 의 "
               "메뉴가 2-arm 이든 5-arm 이든 잘 정의된다(둘 다 채점 가능한 이항 판정). 여기 이 절이 "
@@ -482,7 +490,7 @@ def render_zone_defect_section(oracle_dir: Path, results_dir: Path, out_dir: Pat
     L = []
     L.append("### 3-B. zone 규칙 결함 -- STEP D 가 드러낸 것")
     L.append("")
-    L.append("`test_llm7h.py` 의 zone 결정-충실도 게이트(`zone 규칙 == 오라클 최선 (zcausal, n=2)`)는 "
+    L.append("%s 의 zone 결정-충실도 게이트(`zone 규칙 == 오라클 최선 (zcausal, n=2)`)는 " % GONE_LLM7H +
               "`zcausal_reform/` 라벨이 없던 이전에는 n=0 로 조용히 PASS 했다. STEP D 가 4개 arm 파일을 "
               "채운 지금은 실제로 돌고, **FAIL 한다**:")
     L.append("")
@@ -765,7 +773,8 @@ def render_header(results_dir, out_dir, oracle_dir, n_boards, seeds, cases):
     L.append("생성 시각: %s" % now)
     L.append("")
     L.append("이 문서가 재는 것: 3개 실행 가능 정책(`noop`, `surrogate`, `llm`=dspy) x %d개 OOD case "
-              "(%d 판 스윕, `run_4pol.sh`) 의 완주율/결정정확도/빌드시간/에너지 비교, 오라클 결과-천장"
+              "(%d 판 스윕, `run_4pol_parallel.sh` + `finish_tables.sh`) 의 완주율/결정정확도/"
+              "빌드시간/에너지 비교, 오라클 결과-천장"
               "(axis 단위, `oracle/out` 라벨 격자에서 직접 계산), 상태조건부 decision-shadow 비교, "
               "post-hoc 검증(V1-V4), 알려진 한계." % (len(cases), n_boards))
     L.append("")

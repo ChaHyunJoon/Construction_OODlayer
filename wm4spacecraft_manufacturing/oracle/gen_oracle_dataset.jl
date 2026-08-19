@@ -221,6 +221,7 @@ instance_id(kind, severity, seed, n_spare, fire_at) =
     (fire_at > 0 ? "_f$(fire_at)" : "")
 
 # ---- GRADED severity (GRADED_OOD_DESIGN.md) ---------------------------------------------
+# GRADED_OOD_DESIGN.md 는 2026-08-18 md 통합에서 내려갔다 — 복구 SHA 는 md/README.md §9-A.
 # The generator kind is NOT what the row records. A harmless variant must carry the SAME `kind`
 # label as its consequential sibling — otherwise the one-hot on `kind` determines the best macro
 # again and the task stays trivial (H(best|kind)=0). The harmless/consequential distinction must be
@@ -874,8 +875,8 @@ end
 # =========================================================================================
 #  NOMINAL ARM  (kind = "none") -- 두 번째 결정함수의 재료
 # =========================================================================================
-# 왜 필요한가 (md/README.md §5 "3분류"; 원문 DESIGN_CLASSIFIER.md §2 는 2026-08-02 에 통합됨 —
-#   git show HEAD:wm4spacecraft_manufacturing/md/DESIGN_CLASSIFIER.md):
+# 왜 필요한가 (md/README.md §5 "3분류"; 원문 DESIGN_CLASSIFIER.md §2 는 2026-08-02 에 통합됐고
+#   그 파일 자체는 2026-08-18 md 통합에서 내려갔다 — 복구 SHA 는 md/README.md §9-A):
 #   논문의 3분류는 결정함수가 **두 개**여야 나온다. 하나는 "아는 교란처럼 보이는가", 다른 하나는
 #   "교란 없는 빌드처럼 보이는가". 두 번째를 학습하려면 교란이 없는 런의 상태가 필요한데,
 #   지금 데이터셋에는 그런 행이 0개다. 그래서 그건 빠진 baseline 이 아니라 **빠진 결정함수**다.

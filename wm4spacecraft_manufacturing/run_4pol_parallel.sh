@@ -2,7 +2,7 @@
 # =============================================================================
 # run_4pol_parallel.sh -- 7 case x 30 seed x 3 policy = 630 판을 K 병렬로 돈다.
 #
-# run_4pol.sh 를 대체하지 않는다. 그쪽은 순차 재현 경로로 남겨 둔다.
+# 예전의 순차 러너 run_4pol.sh 는 2026-08-18 정리에서 삭제됐다(`git show 8e005842:wm4spacecraft_manufacturing/run_4pol.sh`).
 #
 # 병렬이 가능한 근거 (docs/superpowers/specs/2026-08-12-parallel-30seed-sweep-design.md §2):
 #   · HiGHS 경합 -- 이 경로는 run_demo.jl:387 이 assignment_mode=:greedy 라 MILP 를 안 푼다.
@@ -26,7 +26,6 @@ SEEDS="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,2
 CASES="battery,fault,all,fault_battery,fault_zone,battery_zone,zone"
 DEADLINE_SECONDS=28800          # 8 h
 SHARDS_DIR="results_4pol/shards"
-SKIP_GATES=0
 DRY_RUN=0
 # 정책 목록은 인자로 받는다. run_shard.sh 의 기본값(noop,surrogate,dspy)을 여기서 다시 적지
 # 않고 그대로 물려준다 -- 두 곳에 적으면 조용히 갈린다.
@@ -40,7 +39,6 @@ while [ $# -gt 0 ]; do
         --deadline-seconds)  DEADLINE_SECONDS="$2"; shift 2 ;;
         --shards-dir)        SHARDS_DIR="$2"; shift 2 ;;
         --policies)          POLICIES="$2"; shift 2 ;;
-        --skip-gates)        SKIP_GATES=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         *) echo "[error] 알 수 없는 인자: $1" >&2; exit 2 ;;
     esac
@@ -84,16 +82,6 @@ if [ "$DRY_RUN" = "1" ]; then
     echo "--- 작업 목록 (앞 10줄 / 총 $(wc -l < "$JOBLIST")줄) ---"
     head -10 "$JOBLIST"
     exit 0
-fi
-
-# ---- 게이트 ------------------------------------------------------------
-if [ "$SKIP_GATES" = "0" ]; then
-    if ! bash gate_prereq.sh "$JOBS"; then
-        echo "게이트 불합격 -- 스윕을 시작하지 않는다."
-        exit 1
-    fi
-else
-    echo "[warn] --skip-gates: 사전 조건 게이트를 건너뛴다."
 fi
 
 START_TIME=$(date +%s)

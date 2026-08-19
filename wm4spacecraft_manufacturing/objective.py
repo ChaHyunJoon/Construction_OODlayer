@@ -161,8 +161,11 @@ def energy_weight(cfg=None):
     missing = [k for k in SCALE_KEYS if cfg.get(k) is None]
     if missing:
         raise ObjectiveError(
-            "objective.json 의 %s 가 null 이다 — 파일럿 측정(measure_objective_scales.py) 없이는 "
-            "완주 런의 J 를 계산할 수 없다. 0 이나 1 로 폴백하지 않는다 (spec §5)." % ", ".join(missing))
+            "objective.json 의 %s 가 null 이다 — 파일럿 측정 없이는 완주 런의 J 를 계산할 수 "
+            "없다. 0 이나 1 로 폴백하지 않는다 (spec §5). 그 측정을 하던 "
+            "measure_objective_scales.py 는 2026-08-18 정리에서 삭제됐다 "
+            "(`git show 8e005842:wm4spacecraft_manufacturing/measure_objective_scales.py`)."
+            % ", ".join(missing))
     e_ref = float(cfg["E_ref"])
     if not (math.isfinite(e_ref) and e_ref > 0):
         raise ObjectiveError("E_ref 가 양의 유한값이 아니다: %r" % cfg["E_ref"])

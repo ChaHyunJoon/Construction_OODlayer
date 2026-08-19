@@ -59,8 +59,9 @@ def limitations_lines(boards_by_case):
     build_final_table.py 와 build_md_report.py **양쪽에** 복사돼 있었다. 시드를 20개로
     늘려 재생성하면 표는 n=20, 산문은 옛 표본크기인 자가당착 문서가 나온다. 그 결함을 여기서 막는다.
 
-    주의: 이 파일은 test_report_sample_size.py 가 소스를 직접 grep 한다. 주석·독스트링에도
-    옛 표본크기 문구를 그대로 적지 말 것 -- 적으면 그 회귀 테스트가 실패한다.
+    주의: 주석·독스트링에도 옛 표본크기 문구를 그대로 적지 말 것. 예전에는 이 파일의 소스를
+    직접 grep 하는 test_report_sample_size.py 가 그 회귀를 잡았지만, 그 회귀 테스트는
+    2026-08-18 정리에서 삭제됐다 -- 지금은 아무것도 안 잡는다(사람이 지킨다).
     """
     # 데이터 없는 case(boards=[])는 건너뛴다 -- 안 그러면 min() 이 0 으로 무너져 "시드 0개, 최소
     # p=1.000" 이 나온다(fix round 2, 2026-08-11 코드리뷰 지적). 20시드 스윕이 zonecore 를 일부러
@@ -101,14 +102,15 @@ def repro_lines(n_boards, seeds, cases):
     return [
         "재현 절차:", "",
         "```bash",
-        "# 1) %d 판 스윕 (순차, julia 를 내부에서 부른다 -- 다른 julia 와 동시에 돌리지 말 것)" % n_boards,
-        "bash run_4pol.sh --deadline-seconds 43200 --seeds %s --cases %s" % (seed_str, case_str),
+        "# 1) %d 판 스윕 (julia 를 내부에서 부른다 -- 다른 julia 와 동시에 돌리지 말 것)" % n_boards,
+        "bash run_4pol_parallel.sh --jobs 50 --deadline-seconds 43200 --seeds %s --cases %s"
+        % (seed_str, case_str),
         "",
-        "# 2) 오라클 라벨(fault/zone 축) 재생성 -- julia, 순차 (README 함정 30)",
-        "bash run_step_d_all.sh",
+        "# 2) 오라클 라벨 재생성 -- julia, 순차 (README 함정 30)",
+        "bash oracle/run_relabel_20260816.sh",
         "",
-        "# 3) 스윕 산출물을 case별 report/shadow md+json 으로 조립 (순수 파이썬)",
-        "python build_final_table.py --results-dir results_4pol --out-dir artifacts_4pol",
+        "# 3) 샤드 병합 -> case별 report/shadow md+json -> FINAL.md/COMPARE.md (순수 파이썬)",
+        "bash finish_tables.sh",
         "",
         "# 4) 이 문서 (순수 파이썬, julia 호출 없음, subprocess 없음)",
         "python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --oracle-dir oracle/out",
@@ -534,8 +536,9 @@ def oracle_note(policies=None):
     "눈금이다.\n"
     "> - 조합 case(`fault_battery`/`fault_zone`/`battery_zone`/`all`)의 `oracle` 칸이 `0,0` 으로 "
     "읽힌다면 그것은 \"모든 판이 실패했다\"가 **아니라 \"해당 격자가 아예 없다\"** 는 뜻이다 -- "
-    "`results_matrix.py:44` 의 `ORACLE_KIND` 에는 조합 키가 없다(사건이 섞여서 나오므로 단일-종류 "
-    "격자가 성립하지 않는다).\n"
+    "오라클 격자에 조합 키가 없다(사건이 섞여서 나오므로 단일-종류 격자가 성립하지 않는다). "
+    "그 키 목록을 들고 있던 `results_matrix.py` 는 2026-08-18 정리에서 삭제됐다"
+    "(`git show 8e005842:wm4spacecraft_manufacturing/results_matrix.py`).\n"
     "> - 실행 레인의 ZoneTruth 가지는 `reference_policy.py` 와 **의도적으로 갈린다**: Julia 쪽은 "
     "Python 채점기가 관측할 수 없는 `RECOVERY_SPARES` 상태로 게이트를 건다(요약의 `zone_primitives` "
     "에 그런 칸이 없다). 그래서 `score()` 기준 결정 적중률은 84/84 가 아니라 **80/84** 다. "

@@ -14,6 +14,9 @@ model is always judged on an OOD instance it did not train on (paired with the o
 
 Usage:  python e1_analyze.py <dataset.jsonl>
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (EVALUATION.md · GRADED_OOD_DESIGN.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 
 # =============================================================================
 # [한국어 설명 - 처음 읽는 사람을 위한 안내]
@@ -405,7 +408,8 @@ def main():
     # !! 학습/채점 목적함수 불일치 (spec §8 단계 7 에서 해소 — 이 계획의 범위 밖) !!
     # 채점(정답 라벨·regret)은 이제 -J 인데 학습 타깃은 아직 `closed - λ·MACRO_COST` 다.
     # surrogate 가 채점되는 것과 **다른 양**을 예측하도록 학습되는 조용한 성능 누수다.
-    # audit_objective.py 가 이 표식의 존재를 기계로 확인한다 — 없어지면 감사가 실패한다.
+    # 이 표식의 존재를 기계로 지키던 audit_objective.py 는 2026-08-18 정리에서 삭제됐다
+    # (`git show 8e005842:wm4spacecraft_manufacturing/audit_objective.py`) — 지금은 사람이 지킨다.
     cost = np.array([MACRO_COST[int(m)] for m in df.macro])  # 행별 macro 비용
     y = df.closed.astype(float).values - (LAM * cost if COST_AWARE else 0.0)  # 학습 목표: closed(-비용 in cost-aware)
     groups = df.instance.values  # 채점 단위는 언제나 instance (baseline 룩업표도 이 축을 쓴다)

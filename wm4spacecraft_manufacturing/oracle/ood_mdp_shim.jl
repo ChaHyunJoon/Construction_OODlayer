@@ -295,6 +295,7 @@ end
 # target/zone the ctx does not carry) collapses to `nothing` == the NOOP arm — matching the
 # generator's full-5-macro sweep, where invalid rows realize the same run as NOOP.
 # ---- COMBINATION ARMS (PLAN_ACTION_GROWTH.md §2 H2, scope (b)) -------------------------
+# PLAN_ACTION_GROWTH.md 는 2026-08-18 md 통합에서 내려갔다 — 복구 SHA 는 md/README.md §9-A.
 # The engine already accepts MULTIPLE specs -- `RespecProposal.constraints` is a Vector and
 # replan.jl iterates `for c in proposal.constraints`. Every macro so far emits exactly ONE
 # spec, so the combination axis has never been exercised. These arms exercise it.

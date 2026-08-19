@@ -53,6 +53,10 @@ Override everything at once with the WM_DATASET environment variable, e.g.
   · os.environ.get(K, D) — 환경변수 K 가 있으면 그 값, 없으면 D.
 ────────────────────────────────────────────────────────────────────────────
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (RESULTS.md · COST_EVAL_RESULTS.md · RESULTS_LLM7H.md ·
+#    RESULTS_DP_BACKWARD_2026-08-15.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))

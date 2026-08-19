@@ -147,6 +147,9 @@ the safety net. LOKO is reported split by regime in `openworld_experiments.py lo
   - df.get("c", default)    : 열이 없으면 default 를 쓰는 안전한 열 접근.
 --------------------------------------------------------------------------------------------
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (PLAN_ACTION_GROWTH.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 import math
 
 import numpy as np

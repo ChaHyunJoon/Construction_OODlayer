@@ -60,6 +60,9 @@ reference_policy.py -- 라이브 스트림의 결정을 "옳았는가"로 채점
 n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도는 축마다 다르고, 그 차이를
 숨기면 하나의 적중률 숫자가 서로 다른 근거를 뭉갠다.
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (md/RESULTS_SWAPBATTERY_COURIER_2026-08-15.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 
 import math
 

@@ -2,6 +2,42 @@
 
 Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded). This file is project context only.
 
+## 🧹 2026-08-18 — 기계 검사를 걷어냈다 (아래 절들을 읽기 전에)
+
+`wm4spacecraft_manufacturing/` 의 코드 123개 중 **87개를 지웠다** — 검사기(`test_*.py`·
+`audit_*.py`·`check_*.py`·`verify*.py`·`measure_*.py`·`probe_*.jl`) · 게이트(`gate_*`) ·
+중복/구세대 러너 · 고아 · Windows 전용(`.ps1`/`.cmd`). 판정 기준은
+**"결과를 만드는가, 보기만 하는가 — 검사기는 나가고 생산자는 남는다"** 였다.
+목록과 근거: `.superpowers/sdd/2026-08-18-repo-file-reduction/CLASSIFY.md`.
+전부 복구된다: `git show 8e005842:wm4spacecraft_manufacturing/<path>`.
+
+🔴 **아래 세대 절들에 남아 있는 `audit_objective.py`(9/9) · `test_objective.py`(29/29) 같은
+문장은 지우지 않았다 — 그 도구들이 그때 실제로 잰 사실의 기록이고 그 사실은 여전히 참이기
+때문이다. 참이 아닌 것은 "지금 그 명령을 돌릴 수 있다" 뿐이다.**
+
+**이제 기계로 감시되지 않는 것 (사람이 봐야 한다):**
+
+1. **`objective_hash` 세대 계약** — 산출물의 해시가 현행 `objective.json` 의 해시와 같은가.
+   리터럴 복붙 12파일 스캔 · Julia↔Python 해시 일치 · 스케일 null 여부 · 학습타깃 유예 표식도
+   같이 나갔다 (`audit_objective.py`).
+2. **행동 어휘 6-소비처 일치** (`audit_action_vocab.py`). 어휘 누락은 에러 없이 **성능으로만**
+   샌다 — `SwapBattery` 한 줄이 battery 적중 0/6 → 6/6 을 갈랐던 그 실패 모양이다.
+3. **dp 비용 분해 충실성**(`c_prefix + Σc_k + terminal == J_row`)과 Bellman·칸키 동치
+   (`dp_oracle/test_cost_decomposition.py` · `test_dp_solve.py` · `test_cellkey_parity.py`).
+   ※ `dp_oracle/sample_grid.py` 안의 **차단 게이트 자체는 살아 있다**(표집이 위반하면 exit 1).
+   없어진 것은 그 게이트를 합성 판으로 검사하던 단위검사다.
+4. **발행 문서의 표본수 문구 회귀**(`test_report_sample_size.py`). 표는 n=30 인데 산문은 n=20
+   인 자가당착 문서가 다시 나올 수 있다.
+5. **스윕 사전 조건 게이트**(`gate_prereq.sh`). `run_4pol_parallel.sh` 는 이제 게이트 없이 바로
+   스윕을 시작한다 — 🔴 **DSPy `/health` 확인이 사라졌다.** 서비스가 죽어 있으면 dspy·surrogate
+   레인이 조용히 canonical 로 내려앉은 채 630판이 다 돌아간다(위 §현행 세대의 "교차 레인 폴백"
+   경고와 같은 실패 모양). 스윕 전에 `DSPY_URL` 을 손으로 확인하고, 스윕 후에는
+   `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것.
+
+**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash finish_tables.sh` 가
+`artifacts_4pol/COMPARE.md` 를 재현하는가(합계 **210/210 · 189/210 · 205/210**) ·
+`julia +lts --project=. -e 'using Pkg; Pkg.test()'`(기대 11 pass / 1 error).
+
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
 ### ✅ 2026-08-16 — SwapBattery 가 창고 예비의 물리 배송이 됐다 (현행 세대)
@@ -37,8 +73,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 - **★ `objective_hash` 는 안 바뀐다 — `19819377a7f8ebb2` 그대로다.** 갈린 것은 **동역학**이지
   목적함수가 아니다(`objective.json` 무변경, 630행 전부 세대 쌍 `('19819377a7f8ebb2', 1)`).
   🔴 **여기서 해시를 올리면 배포 라벨셋 전부와 surrogate 가 한꺼번에 구세대로 재분류된다** —
-  갈리지도 않은 축으로 세대를 가르는 것이다. (옛 해시를 이 파일에 문자열로 다시 적지 말 것:
-  `audit_objective.py` 항목 9 가 CLAUDE.md 안의 해시 인용과 계약 개수를 기계로 본다.)
+  갈리지도 않은 축으로 세대를 가르는 것이다. (옛 해시를 이 파일에 문자열로 다시 적지 말 것.
+  예전에는 `audit_objective.py` 항목 9 가 CLAUDE.md 안의 해시 인용과 계약 개수를 기계로 봤지만
+  그 감사는 2026-08-18 정리에서 삭제됐다 — 이제 아무것도 안 잡으므로 사람이 지킨다.)
 - **스윕**: 7 case × 30 seed × 3 policy = **630판**, 샤드 **210/210 ok · fail 0 · deadline 0**,
   **1h47m**, 210 샤드 전부 `commit=ec8cf495` 단일 도장, 630행 전부 한 세대 쌍.
   비교표 3열 합계: canonical 207 → **210** · surrogate 198 → **189** · llm 203 → **205**.
@@ -319,15 +356,18 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 본다. 설계: `docs/superpowers/specs/2026-08-13-unified-objective-design.md`.
 
 - **세대 판정 계약**: 산출물의 `objective_hash` 필드가 현재 `objective.json` 의 해시와 같은가.
-  `.venv/bin/python wm4spacecraft_manufacturing/audit_objective.py` (exit 0 = **감사가 보는 것들**이
+  이 계약을 기계로 보던 `audit_objective.py` 는 2026-08-18 정리에서 삭제됐다
+  (`git show 8e005842:wm4spacecraft_manufacturing/audit_objective.py`) — **계약은 그대로 유효하고
+  검사만 없다.** 아래는 그 감사가 무엇을 봤는지의 기록이다 (exit 0 = **감사가 보는 것들**이
   일치. "소비처 전부"가 아니다 — spec §5.1 이 이름으로 지목한 6곳 중 이 감사가 실제로 검사하는 것은
   **5곳**이다: greedy `GreedyEnergyAwareCost`·MILP 전역 κ(둘 다 `essential_tg_coponents.jl` 검사로
   커버) · `gen_oracle_mc.jl` · `gen_oracle_dataset.jl` · `e1_analyze.py`. 나머지 `dp_solve.py` 는
   아직 레포에 존재하지 않는다(spec §8 단계 9). 그 밖에 감사가 보는 것: 목적함수 상수 리터럴 복붙
   12파일 스캔 · Julia/Python 해시 일치 · 스케일 null 여부 · 학습타깃 유예 표식 · 문서에 박힌
   해시·계약개수.)
-- **기계적 계약**: `test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
-  · `audit_action_vocab.py`(6/6) · `test/greedy_cost_dispatch_equivalence.jl`(실제 게이트 — 인프로세스
+- **기계적 계약**(앞의 넷은 2026-08-18 정리에서 삭제됐다 — 당시 측정치의 기록이다):
+  `test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
+  · `audit_action_vocab.py`(6/6) · `test/greedy_cost_dispatch_equivalence.jl`(**살아 있는** 게이트 — 인프로세스
   포뮬러 동치 + 변경 전 함수의 축자 사본과의 인프로세스 A/B). `test/greedy_assignment_regression.jl`
   은 비게이팅 진단용으로 격하됐다 — 이유는 아래 Gotchas.
 - **`verify.py` 는 이제 구세대 덤프(`graded_hs_n44.jsonl`·`n44_plus78.jsonl` 둘 다)에서 exit 1 로
@@ -393,7 +433,7 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
      `energy_J` 와 같은 2줄 스타일(`%s` + 빈 필드, `_parse_energy` 류 되읽기)로 닫을 것.
 - **⚠️ 단계 6 1차 스윕(19:33 완료)은 이미 구세대다** — `generation=2026-08-13-energy-activation`
   (그 세대의 해시는 아래 결과 문서에 적혀 있다. 여기 옛 해시를 문자열로 다시 적지 않는다 —
-  `audit_objective.py` 항목 9 가 CLAUDE.md 안의 옛 해시 인용을 **스테일 문서로 판정**한다).
+  그 판정을 하던 `audit_objective.py` 항목 9 는 2026-08-18 정리에서 삭제됐지만 규약은 유지한다).
   같은 날 저녁 **배터리 물리 복구 + 전역 κ 우선순위**
   변경으로 세대가 또 갈렸다(아래). 1차 결과 문서
   `md/RESULTS_STAGE6_ENERGY_2026-08-13.md` 는 그 세대의 기록으로 남긴다 — 특히 §5.1
@@ -592,9 +632,9 @@ backward induction 으로 바꾼다. 계측(`sim_t`·누적 energy·closed 를 �
 언제나 NOOP, battery 는 `SwapBattery` 미학습으로 적중 0/6). 두 세대가 섞여 있어 실제로 오판이
 일어났기 때문에, 이전 세대 산출물을 **삭제**했다.
 
-- **현행 배포 학습셋** = `oracle/out/n44_plus78.jsonl`. 계약: `python test_surrogate_support.py`
-  → `support=[0, 1, 2, 3, 4, 7, 8]` (7/7 PASS). 이게 "**행동 어휘** 세대인가"의 유일한 기계적
-  판정이다 — **목적함수 세대**는 별개 축이다(위 `2026-08-13` 절의 `objective_hash` 계약을 볼 것).
+- **현행 배포 학습셋** = `oracle/out/n44_plus78.jsonl`. 계약: `support=[0, 1, 2, 3, 4, 7, 8]`
+  (`test_surrogate_support.py` 가 7/7 로 지키던 것 — 그 검사는 2026-08-18 정리에서 삭제됐다).
+  이게 "**행동 어휘** 세대인가"의 (이제 기계 검사가 없는) 판정이다 — **목적함수 세대**는 별개 축이다(위 `2026-08-13` 절의 `objective_hash` 계약을 볼 것).
   실제로 이 학습셋 자체가 목적함수 기준으로는 구세대다: `energy_J` 가 없어 `verify.py` 가
   하드 스톱한다(위 절 참조). 두 "세대"를 섞지 말 것 — 행동 어휘는 현행, 목적함수는 구세대다.
 - **현행 측정 문서는 없다.** `md/RESULTS_D20_2026-08-12.md` 가 2026-08-12 시점(창고 거리
@@ -637,13 +677,16 @@ backward induction 으로 바꾼다. 계측(`sim_t`·누적 energy·closed 를 �
 julia +lts --project=. -e 'using Pkg; Pkg.test()'   # full test suite
 julia +lts --project=. tools/demos.jl <key>         # also: tests|checks|restage|e2e|diagnostics|setup
 julia +lts --project=. -i tools/dev_session.jl      # Revise REPL: t() re-checks, rebuild() re-builds env
-python wm4spacecraft_manufacturing/audit_action_vocab.py   # 매크로 추가/수정 후 필수 (exit 0 = 6/6)
+# 매크로를 추가/수정한 뒤 어휘 6-소비처 일치를 보던 audit_action_vocab.py 는 2026-08-18 정리에서
+# 삭제됐다 (git show 8e005842:wm4spacecraft_manufacturing/audit_action_vocab.py). 지금은 손으로
+# action_registry.json 과 소비처를 대조할 것 — 누락은 에러 없이 성능으로만 샌다.
 ```
 Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedence over `ARGS[1]`.
 
 **기대 baseline(실패 아님):** `Pkg.test()` = 11 pass / **1 error**(Gurobi 라이선스 없음, 변경과 무관).
 
-`verify.py` 는 **어느 덤프로 돌리는지에 따라 결과가 갈린다.** 인자를 반드시 같이 인용할 것
+`verify.py` 는 2026-08-18 정리에서 삭제됐다(`git show 8e005842:wm4spacecraft_manufacturing/verify.py`).
+아래 표는 그 도구가 **삭제 전에 실제로 낸 결과의 기록**이다 — 인용할 때 인자를 반드시 같이 적을 것
 (2026-08-13 재측정 — 목적함수 통일 이후 상태로 8/8 표는 더 이상 유효하지 않다):
 
 | 명령 | 결과 |
@@ -656,7 +699,8 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 (= 모든 구세대 덤프) 조용히 넘어가지 않고 죽는다(spec §5, §7). 신세대 덤프(spec §8 단계 6 재실행
 후)에서 기대값은 **6/8**(S1·S4 FAIL) — surrogate 가 아직 `closed − λ·MACRO_COST` 로 학습돼 있는데
 채점 기준은 `-J` 로 바뀌었기 때문이다. 둘이 닫히는 시점은 spec §8 단계 7(surrogate 재라벨·재학습).
-그 외 기계적 계약: `test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
+그 외 기계적 계약(넷 다 2026-08-18 정리에서 삭제 — 당시 측정치의 기록):
+`test_objective.py`(29/29) · `audit_objective.py`(9/9) · `test_surrogate_support.py`(7/7)
 · `audit_action_vocab.py`(6/6, 커버리지 한계는 위 참조).
 
 ## Gotchas
@@ -674,7 +718,8 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 - `DSPY_URL` 포트는 레포에 6종이 흩어져 있다. 문서 숫자 말고 **띄운 uvicorn 포트**에 맞출 것.
 - `_first_pending_assignment`는 "일감 유무"가 아니라 **"작업 경계"** — 중반 이후 조용히 틀림.
 - 배포 surrogate 의 **매크로 지원 집합**은 학습셋이 정한다(`wm_datasets.N44_PLUS78`). 지원 밖 팔은
-  에러 없이 후보에서 탈락해 **성능으로만** 샌다 — `python test_surrogate_support.py` 가 그 계약이다.
+  에러 없이 후보에서 탈락해 **성능으로만** 샌다 — 그 계약을 지키던 `test_surrogate_support.py` 는
+  2026-08-18 정리에서 삭제됐으므로 지금은 학습셋의 support 를 손으로 확인해야 한다.
 - **컴파일을 다시 하면 배정이 재현되지 않는다.** 5회 반복 통제 실험에서, 바이트 동일한 소스가
   무관한 편집 후 재컴파일을 거치면 다른 배정 지문을 냈다(단, 한 번 컴파일된 상태 안에서는
   결정적이다). 따라서 **프로세스 간 golden-hash 비교는 코드 변경 검증 게이트가 될 수 없다** —
@@ -695,29 +740,21 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 ## Docs
 
-**먼저 읽을 네 개만 현행이다** (2026-08-17 정리 — 나머지는 `md/README.md` §9 문서 지도가 분류한다):
+🔴 **2026-08-18 md 통합**: `wm4spacecraft_manufacturing/md/` 의 30개 문서가
+**`md/README.md` 한 파일**로 들어갔다. **이 파일이 여러 곳에서 부르는
+`md/RESULTS_*.md` · `md/STATUS.md` · `md/ARCHIVE.md` · `md/ORACLE_REBUILD_2026-08-09.md` 등은
+이제 `md/` 에 없다** — 무엇이 어디로 갔고 어떤 SHA 로 꺼내는지는 `md/README.md` §9-A(코드가
+이름으로 인용하는 문서 목록)와 §10(아카이브 색인)에 있다. 세대별 수치 자체는 §0(현행) ·
+§0-Z(직전)로 흡수됐다.
 
-- **`wm4spacecraft_manufacturing/md/RESULTS.md` — 현행 결과의 단일 진입점.**
-  3레인(canonical·surrogate·llm) × 7 failure case × 30 seed. 세대 상세는 위 §★ 결과 세대.
-- **`wm4spacecraft_manufacturing/md/README.md` — 재현·실험 전 필수 선독.** §1 용어(F vs OOD) ·
-  §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 · §8 함정 43개 · §9 문서 지도.
-- `wm4spacecraft_manufacturing/md/STATUS.md` — current state / resume point
-- `wm4spacecraft_manufacturing/md/ARCHIVE.md` — 내린 문서 · 왜 · 꺼낼 SHA.
-  실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브).
-  설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.
-
-그 밖에:
-- `wm4spacecraft_manufacturing/md/SUMMARY_FORBIDZONE_RETRAIN_2026-08-07.md` — **비전문가용 요약.**
-  ForbidZone 발화 + surrogate 매크로 7·8 재학습 작업의 배경·원인·결과를 용어 설명부터 적었다.
-  다루는 작업은 옛것이지만 **배경 없이 읽히는 유일한 문서**다. 세부 수치는 `RESULTS_LLM7H.md`.
-- `wm4spacecraft_manufacturing/md/RESULTS_LLM7H.md` — 🔴 **구세대**(4정책×5시드). 수치를 현재
-  성능으로 인용하지 말 것 — 그 자리는 `md/RESULTS.md` 다. 재현 절차와 §5-f·§6 의 진단은 유효하고,
-  `wm_datasets.py`·`verify.py`·`zone_inject.jl` 등이 절 번호로 인용한다.
+- **`wm4spacecraft_manufacturing/md/README.md` — 현행 결과이자 재현·실험 전 필수 선독.**
+  §0 현행 세대(3레인 × 7 case × 30 seed, 합계 210/189/205) · §0-Z 직전 세대 표 ·
+  §1 용어(F vs OOD) · §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 ·
+  §8 함정 43개 · §9 살아 있는 계약·재현 명령·재개 지점 · §10 아카이브 색인.
+  세대 상세는 위 §★ 결과 세대.
 - `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
-- **`md/ORACLE_REBUILD_2026-08-09.md` — 두 문서가 한 파일에 있다(같은 CPU 를 다투므로 순서가 중요).**
-  §I **평가 보강 계획**(baseline 사다리 B0~B9 · case별 격자 · STEP A~F 와 비용) →
-  §II **오라클 라벨 재빌드**(= 그 계획의 STEP D). 2026-08-09 정리로 fault 축
-  (`firegrid_merged.jsonl`)은 하드 크래시, zone 축(`zcausal_reform/`)은 **조용히 n=0** 이므로
-  결과표를 재측정하기 전에 §II 대로 두 라벨셋을 먼저 복구할 것.
+- 실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브),
+  종료된 SDD 세션은 `docs/superpowers/SDD_SESSIONS_ARCHIVE.md`.
+  설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.
 - `tools/README.md` — fast iteration loops
 - `src/SIMULATION_FLOW.md`, `RUN_GUIDE_KR.md`

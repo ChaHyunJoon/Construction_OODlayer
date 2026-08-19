@@ -2,8 +2,9 @@
 """결과 문서의 <!--TABLE--> / <!--GATES--> / <!--HOLES--> 를 채운다. 대상은 `--doc` 으로 준다.
 
 왜 스크립트인가: 결과 문서의 숫자를 손으로 옮겨 적으면 다음 스윕에서 조용히 거짓이 된다.
-이 저장소가 이미 그 사고를 겪었고(`limitations_lines` 독스트링), `test_report_sample_size.py`
-가 그 회귀를 감시한다. 그래서 문서의 수치 부분은 **전부 산출물에서 생성**한다.
+이 저장소가 이미 그 사고를 겪었다(`limitations_lines` 독스트링). 그 회귀를 감시하던
+`test_report_sample_size.py` 는 2026-08-18 정리에서 삭제됐다 — 지금은 사람이 봐야 한다.
+그래서 문서의 수치 부분은 **전부 산출물에서 생성**한다.
 
 `objective_hash` 문자열은 절대 쓰지 않는다 (Global Constraint 4).
 """
@@ -11,50 +12,17 @@ import collections
 import glob
 import json
 import os
-import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 # dp_oracle 는 패키지가 아니다(__init__.py 없음). 경로로 붙여 모듈로 직접 import 한다.
 sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
+# 이 기본 대상 문서는 2026-08-18 md 통합에서 내려갔다(복구 SHA 는 `md/README.md` §9-A).
+# 즉 `--doc` 없이 돌리면 열 파일이 없어 죽는다 — 채울 문서를 명시적으로 줄 것.
 DEFAULT_DOC = os.path.join(HERE, "md", "RESULTS_ROUTER3WAY_2026-08-14.md")
 ART = os.path.join(HERE, "artifacts_4pol")
 DPD = os.path.join(HERE, "dp_oracle")
-
-
-def sh(cmd, cwd=None):
-    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd or HERE)
-    return p.returncode, (p.stdout + p.stderr).strip()
-
-
-def gates_section():
-    py = os.path.join(HERE, "..", ".venv", "bin", "python")
-    checks = [
-        ("audit_objective.py (9/9)", "%s audit_objective.py" % py),
-        ("audit_action_vocab.py (6/6)", "%s audit_action_vocab.py" % py),
-        ("test_surrogate_support.py", "%s test_surrogate_support.py" % py),
-        ("test_ceilings_degrade.py (신규)", "%s test_ceilings_degrade.py" % py),
-        ("dp_oracle/test_dp_solve.py (backward induction 포함)",
-         "%s dp_oracle/test_dp_solve.py" % py),
-        ("dp_oracle/test_cost_decomposition.py (신규, 분해 충실성 차단 게이트)",
-         "%s dp_oracle/test_cost_decomposition.py" % py),
-        ("dp_oracle/test_cellkey_parity.py (신규, Julia↔Python)",
-         "%s dp_oracle/test_cellkey_parity.py" % py),
-        ("dp_oracle/test_derive_grid.py 대체: derive_grid 재실행 결정성",
-         "%s dp_oracle/derive_grid.py --results results_4pol --out /tmp/_grid_recheck.json" % py),
-        ("tools/monitor/test_narrate.jl (신규)",
-         "cd .. && julia +lts --project=. tools/monitor/test_narrate.jl"),
-        ("tools/monitor/test_lane_select.jl (신규)",
-         "cd .. && julia +lts --project=. tools/monitor/test_lane_select.jl"),
-        ("tools/test_policy_escalation.jl (기존 회귀)",
-         "cd .. && julia +lts --project=. tools/test_policy_escalation.jl"),
-    ]
-    L = ["| 게이트 | 결과 |", "|---|---|"]
-    for name, cmd in checks:
-        rc, _ = sh(cmd)
-        L.append("| `%s` | %s |" % (name, "exit 0 ✅" if rc == 0 else "exit %d ❌" % rc))
-    return "\n".join(L)
 
 
 def table_section():
@@ -285,7 +253,12 @@ def main():
     a = ap.parse_args()
     doc = open(a.doc).read()
     doc = doc.replace("<!--TABLE-->", table_section())
-    doc = doc.replace("<!--GATES-->", gates_section())
+    # 게이트 표를 만들던 검사기 7개가 2026-08-18 정리에서 삭제됐다(`git show 8e005842:…`).
+    doc = doc.replace(
+        "<!--GATES-->",
+        "_이 세대에는 게이트 표가 없다 — 표를 채우던 감사·테스트가 2026-08-18 정리에서 "
+        "삭제됐다(`git show 8e005842:wm4spacecraft_manufacturing/<path>`)._",
+    )
     doc = doc.replace("<!--HOLES-->", holes_section())
     open(a.doc, "w").write(doc)
     print("-> %s" % a.doc)

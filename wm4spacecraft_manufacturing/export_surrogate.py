@@ -36,6 +36,9 @@ Prediction = coef · ((x - mean) / scale) + intercept
 Usage:
   python export_surrogate.py <dataset.jsonl> [more.jsonl ...] [--cost-aware] [--lam 3.0] [-o out.json]
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (EVALUATION.md · DESIGN_NEXT.md · md/BATTERY_FAULT_REDESIGN_2026-08-05.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 
 # =============================================================================
 # [한국어 설명 - 처음 읽는 사람을 위한 안내]

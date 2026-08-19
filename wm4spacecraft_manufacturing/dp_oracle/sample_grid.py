@@ -161,6 +161,9 @@ dedup 의 술어는 `enact_applied` 인데(`_deviation_class` 의 클래스 B), 
 사용법
     ../../.venv/bin/python sample_grid.py --jobs 24 --seeds 1,2,3,4,5,6,7,8,9,10
 """
+# ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
+#    (md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md)
+#    복구 SHA 는 `md/README.md` §9-A.
 import argparse
 import collections
 import json
@@ -298,16 +301,17 @@ def gap_cause_note(sampling_mode):
                 "2026-08-16 에 `arm_menu()` 가 `action_registry.json` 에서 7팔을 받으며 닫혔고, "
                 "③(전이 표본이 상수-팔 rollout 에서만 나온다)은 **이 표집 세대**"
                 "(`sampling_mode=one_step_deviation`)가 없앴다 — 그 둘을 아직 원인으로 적으면 "
-                "이 아티팩트가 자기가 이미 없앤 전제를 주장하는 것이 된다. 쪼갠 수치는 "
-                "`dp_oracle/gap_breakdown.py`, 해석은 "
-                "`md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md` §3-E·§4.")
+                "이 아티팩트가 자기가 이미 없앤 전제를 주장하는 것이 된다. **원인별로 쪼갠 "
+                "수치는 이 세대에 없다** — 그 분해를 내던 리포터는 2026-08-18 정리에서 삭제됐다. "
+                "해석은 `md/README.md` §9-A(내린 문서와 복구 SHA).")
     if sampling_mode == SAMPLING_MODE_CONSTANT_ARM:
         return ("2026-08-15 실측에서 셋으로 갈렸다 — ① 표집 팔 메뉴에 실행 레인이 쓰는 매크로가 "
                 "없는 축(ReformTeam) · ② φ̃ 추상화 손실 · ③ 전이 표본이 여전히 상수-팔 rollout "
-                "에서만 나온다는 구조적 한계. 쪼갠 수치는 `dp_oracle/gap_breakdown.py`, 해석은 "
-                "`md/RESULTS_DP_BACKWARD_2026-08-15.md` §4-D.")
-    return ("표본의 `sampling_mode` 가 %r 라 원인 목록을 유도할 수 없다 — 원인 구성은 "
-            "`dp_oracle/gap_breakdown.py` 를 직접 볼 것." % (sampling_mode,))
+                "에서만 나온다는 구조적 한계. **원인별로 쪼갠 수치는 이 세대에 없다** — 그 분해를 "
+                "내던 리포터는 2026-08-18 정리에서 삭제됐다. 해석은 `md/README.md` §9-A.")
+    return ("표본의 `sampling_mode` 가 %r 라 원인 목록을 유도할 수 없다 — 원인 구성을 쪼개던 "
+            "리포터는 2026-08-18 정리에서 삭제됐고 이 세대에는 그 수치가 없다."
+            % (sampling_mode,))
 
 
 # ---- deviation 위치 배분 -----------------------------------------------------------------
