@@ -1,0 +1,10 @@
+[boards] dropped: {'no_rows': 0, 'not_fired': 141, 'bad_json': 0}
+=== G2 coupling (분모 = 선택지 2개 이상인 결정) ===
+  그룹 64 · 자격 19 · 결합 0 · 비율 0.000
+  제외: {'crashed': 0, 'no_next': 17, 'single_option': 308, 'thin': 45}
+    all              0/  2
+    battery          0/  6
+    battery_zone     0/  5
+    fault_battery    0/  2
+    zone             0/  4
+  판정: FAIL — contextual bandit 으로 기술할 것

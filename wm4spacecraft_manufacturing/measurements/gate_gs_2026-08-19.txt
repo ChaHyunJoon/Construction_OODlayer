@@ -1,0 +1,13 @@
+[boards] dropped: {'no_rows': 0, 'not_fired': 141, 'bad_json': 0}
+=== G-S (절단 제외) ===
+  그룹 64개 / board 430개 사용
+  진단: {'censored': 17, 'missing': 0, 'crashed': 0, 'groups_too_thin': 0, 'boards_used': 430}
+  분산비(팔 간 / 그룹 간) = 0.2274
+  SS_arm 관측 62.1690 · 귀무 중앙 18.3070 · p = 0.0025
+  판정: PASS — τ 가 팔에 의존한다 (SMDP)
+=== G-S (절단 포함(makespan 까지)) ===
+  그룹 64개 / board 447개 사용
+  진단: {'censored': 17, 'missing': 0, 'crashed': 0, 'groups_too_thin': 0, 'boards_used': 447}
+  분산비(팔 간 / 그룹 간) = 0.2503
+  SS_arm 관측 34.1780 · 귀무 중앙 19.8546 · p = 0.1544
+  판정: FAIL — τ 가 외생이다. 여기서 멈추고 MDP 로 기술할 것
