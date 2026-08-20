@@ -34,7 +34,7 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
    경고와 같은 실패 모양). 스윕 전에 `DSPY_URL` 을 손으로 확인하고, 스윕 후에는
    `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것.
 
-**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash finish_tables.sh` 가
+**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash reporting/finish_tables.sh` 가
 `artifacts_4pol/COMPARE.md` 를 재현하는가(합계 **210/210 · 189/210 · 205/210**) ·
 `julia +lts --project=. -e 'using Pkg; Pkg.test()'`(기대 11 pass / 1 error).
 
@@ -184,7 +184,7 @@ hazard 는 **opt-in** 이고 기본값이 꺼짐이라, **기본 실행이 만�
 - **dp 열이 이 표에 없다.** `dp_oracle/value.json` 이 **구세대 동역학**(1-step deviation 세대,
   `SwapBattery` 가 공짜이던 세계)에서 표집됐기 때문이다 — 그 표로 dp 레인을 굴려 4열에 실으면
   한 표에 두 세대가 섞인다. **어떻게 뺐나**: `results_4pol/shards_dp` 를 구세대 트리와 함께
-  옮겼고 `finish_tables.sh:32` 가 그 부재를 보고 열을 `이 레인은 스윕에 없음` 으로 **자동으로
+  옮겼고 `reporting/finish_tables.sh:32` 가 그 부재를 보고 열을 `이 레인은 스윕에 없음` 으로 **자동으로
   낮춘다**(표를 손으로 고치지 않았다). **되살리는 법**: 배송 동역학에서
   `dp_oracle/sample_grid.py` 재표집 → `dp_solve.py --backoff` → dp 레인만 재스윕
   (**4~5시간**, 표집이 대부분). 절차는 결과 문서 §9.
@@ -808,11 +808,12 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 ## Layout
 - `src/respec/` — OOD → DSL re-spec layer (`spec_dsl.jl`, `compiler.jl`, `verifier.jl`, `llm_service/`)
-- `src/safety/` — `cbf.jl`, `novelty.jl` · `src/smdp/` — `hazard.jl`, `mdp.jl`, `simstate.jl`,
+- `src/safety/` — `zone_guard.jl`, `novelty.jl` · `src/smdp/` — `hazard.jl`, `mdp.jl`, `simstate.jl`,
   `state_globals.jl` · `src/monitor/`, `src/navigator/`
-  ⏳ 사용자의 index 에 `cbf.jl` 삭제 + `zone_guard.jl` 추가가 staged 로 대기 중이다. 그게 커밋되면
-  이 줄의 `cbf.jl` 은 `zone_guard.jl` 이 된다 — **같은 커밋에서** `test/smdp_global_inventory.jl` 의
-  `CBF_*` 8개 + `FAILCLOSED_STOP` 도 같이 빠져야 한다(안 빼면 그 테스트가 빨개진다).
+  ✅ **2026-08-20 착지**(`9f2859f0`): `src/safety/cbf.jl` 삭제 + `zone_guard.jl` 추가가 커밋됐고,
+  **같은 커밋에서** `STATE_GLOBALS` 의 `CBF_*` 8개 + `FAILCLOSED_STOP` 도 빠졌다
+  (`test/smdp_global_inventory.jl` 의 양방향 집합 등호가 그 동시성을 강제한다 — 안 뺐으면 빨갛다).
+  처분 분포는 140 → **131**(setup 64 · state 29 · log 15 · render 14 · replay 6 · split 2 · meta 1).
 - `wm4spacecraft_manufacturing/` — Python analysis stack (surrogate, drift, DSPy service)
 
 ## Docs
@@ -829,19 +830,19 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
   §1 용어(F vs OOD) · §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 ·
   §8 함정 43개 · §9 살아 있는 계약·재현 명령·재개 지점 · §10 아카이브 색인.
   세대 상세는 위 §★ 결과 세대.
-  ⏳ **§11 폴더 구조 — 아직 커밋 안 됨. 아래 경로 중 일부는 HEAD 에 없다.** 이 재편은
-  사용자의 **index 에 staged 상태로만** 있다(~29 renames). HEAD 에 실제로 있는 것은 `core/` ·
-  `surrogate/` · `md/`(일부) · `measurements/` 뿐이고, **`reporting/` · `novelty/` · `sweep/` ·
-  `render/` 는 없다** — 그 폴더 이름으로 경로를 쓰기 전에 `ls` 로 확인할 것. staged renames 가
-  커밋되면 아래가 전부 참이 된다(그 커밋이 Python 소비처 9개의 ModuleNotFoundError 도 같이 닫는다).
+  ✅ **§11 폴더 구조 — 2026-08-20 착지**(`9f2859f0`). `core/` · `surrogate/` · `novelty/` ·
+  `sweep/` · `reporting/` · `render/` · `md/` · `measurements/` 가 **전부 HEAD 에 있다**.
+  🔴 그 커밋이 닫은 것: HEAD 가 자기 Python 스택을 import 못 하던 결함(9개 소비처
+  `ModuleNotFoundError`; 순정 `git archive` 에서 9/9 OK 로 실측 확인). ⚠️ **이동만으로는 안 닫혔다** —
+  staged rename 은 R100 순수 이동이라 맨이름 import 가 그대로 빗나간다. 실제로 닫은 것은 각 파일
+  머리의 `wmpath` 부트스트랩(= 미스테이지 편집)이고, 그래서 둘을 한 커밋에 같이 실었다.
   요지: 2026-08-18 에 `wm4spacecraft_manufacturing/` 의 평평한 파일 42개를
   역할별 폴더로 나눴다: `core/`(목적함수·어휘·기준정책·데이터셋 정의) · `surrogate/` ·
   `novelty/` · `sweep/`(스윕 실행) · `reporting/`(표·md 생성) · `render/` · `md/` ·
   `measurements/`. 결과 데이터 폴더는 안 건드렸다. **경로를 인용하기 전에 §11 을 볼 것** —
   맨이름 import 는 `core/wmpath.py` 로 유지되고, 데이터 경로의 기준점은 `HERE` 가 아니라
   `wmpath.WM`(= wm4 폴더)다.
-- `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
-  (⏳ staged rename 이 커밋되면 `md/LABELING_MANUAL.md`)
+- `wm4spacecraft_manufacturing/md/LABELING_MANUAL.md` — oracle labeling workflow (2026-08-20 이동)
 - 실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브),
   종료된 SDD 세션은 `docs/superpowers/SDD_SESSIONS_ARCHIVE.md`.
   설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.
