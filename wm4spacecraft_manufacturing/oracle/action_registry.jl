@@ -26,13 +26,32 @@ module ActionRegistry
 import JSON3
 
 const PATH = get(ENV, "ACTION_REGISTRY",
-                 normpath(joinpath(@__DIR__, "..", "action_registry.json")))
+                 normpath(joinpath(@__DIR__, "..", "core", "action_registry.json")))
 
 const _RAW      = JSON3.read(read(PATH, String))
 const REGISTRY  = Dict{Int,Any}(parse(Int, String(k)) => v for (k, v) in pairs(_RAW.macros))
 const IDS       = sort(collect(keys(REGISTRY)))
 const NAME      = Dict(i => String(REGISTRY[i].name)  for i in IDS)
 const COST      = Dict(i => Float64(REGISTRY[i].cost) for i in IDS)
+
+# ---- 어휘 도장 (2026-08-19, spec §2.4·§8) ---------------------------------------------------
+# `action_registry.py:VOCAB` 과 **같은 JSON 필드**를 읽는다. 두 언어가 같은 파일을 보므로
+# 복붙 리터럴이 생기지 않는다.
+const VOCAB = haskey(_RAW, :vocab) ? String(_RAW.vocab) :
+    error("action_registry.json 에 'vocab' 도장이 없다: $(PATH)")
+
+"""
+    require_vocab(obj, where)
+
+산출물의 어휘 도장을 대조한다. 없거나 다르면 **죽는다** — 조용히 remap 하지 않는다.
+remap 하면 구세대 macro 3(`ForbidZone`) 행이 4(`ReformTeam`) 로 에러 없이 재해석된다.
+"""
+function require_vocab(obj, where::AbstractString)
+    got = try obj["vocab"] catch; nothing end
+    got === nothing && error("$(where): 어휘 도장('vocab')이 없다 — 구세대 파일이다. 현행은 $(VOCAB).")
+    String(got) == VOCAB || error("$(where): 어휘 도장 불일치 — 파일 $(got) vs 현행 $(VOCAB).")
+    return nothing
+end
 
 """
     is_active(i) -> Bool

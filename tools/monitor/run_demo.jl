@@ -37,6 +37,9 @@ import HTTP, JSON3                                    # DSPy producer 와 통신
 import Logging                                        # 이 레인의 로그 레벨을 명시적으로 심기 위해(아래 run_lego_demo 호출부)
 const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))   # battery/ood_stream/ood_truth/baselines
+# 동역학 도장(spec §8, 2026-08-19). `run_demo.jl` 은 이 include 없이는 smdp 계층을 안 로드해서
+# `CB.dynamics_stamp()` 가 UndefVarError 로 죽는다 — 월드에이지 때문에 반드시 모듈 최상위에서.
+CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 
 const HERE   = @__DIR__
 const MODEL  = get(ENV, "DEMO_MODEL", "tractor.mpd")
@@ -527,10 +530,13 @@ end
 # "배선 전 구세대" 로 판정하고 measure_objective_scales.py 는 구·신세대를 한 중앙값으로
 # 섞는다 — 그 중앙값이 다시 objective.json 의 M_ref/E_ref 가 되므로 조용한 세대 혼입이
 # 상수 자체를 오염시킨다(2026-08-13 최종 리뷰 I-1).
-include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "objective.jl"))
+include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "core", "objective.jl"))
 using .Objective
 const OBJ_HASH = Objective.objective_hash()
 println(">>> objective_hash: $(OBJ_HASH)")
+
+# 어휘 도장(spec §2.4·§8, 2026-08-19) — objective_hash 가 못 잡는 축이므로 별도로 로드한다.
+include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
 
 # ⚠️ 신세대 가지도 **지금은 GreedyFinalTimeCost 를 고른다.** GreedyEnergyAwareCost 로 바꿔도
 #   프로덕션에서는 얻는 것이 없기 때문이다(2026-08-13 리뷰, 소스로 확인): greedy 는 초기 계획에서
@@ -919,6 +925,11 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             # 읽는 값이라 생산자 손잡이를 거기 접으면 읽는 쪽에서 오발한다.
             "objective_hash" => OBJ_HASH,
             "energy_objective" => (ENERGY_ON ? 1 : 0),
+            # 어휘·동역학은 objective_hash 가 표현하지 못하는 축이다(spec §8). 해시가 같은데
+            # 세대가 갈리는 사고를 dp value.json 에서 이미 한 번 냈다 — 그때 쓸 수 있었던
+            # 신호는 shards_dp 디렉토리 존재 여부뿐이었다. 이번엔 도장으로 닫는다.
+            "vocab"     => ActionRegistry.VOCAB,
+            "dynamics"  => CB.dynamics_stamp(),
             # `battery_physics` 는 **세 번째 축**이다(2026-08-13). 방전→정지/감속을 켜는 것은
             # objective.json 의 스칼라를 하나도 안 바꾸고 ENERGY_OBJECTIVE 도 아니므로, 위 두
             # 필드만으로는 "배터리가 물리적으로 무해했던 판"과 구분할 수 없다. 그런데 그 둘은
