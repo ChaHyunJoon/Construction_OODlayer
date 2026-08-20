@@ -112,6 +112,16 @@ end
 @testset "정준 직렬화는 삽입 순서에 무관하다 — 10원소 (C-1 수정)" begin
     a = _big_state(:fwd)
     b = _big_state(:rev)
+    # 리뷰 라운드 2, NEW-2: 이 fixture 가 "실제로 다른 삽입 순서를 낸다"는 전제 자체는 그동안
+    # 한 번도 단언되지 않았다 — order_a/order_b 를 무해해 보이는 정리(예: 순차 정수 1:10 과
+    # reverse(1:10) 으로 치환)로 갈아치우면 fleet-key 정렬 삭제가 이 테스트에서 조용히 안
+    # 걸리게 된다(측정됨: 그 치환 하에서는 fleet-key sort! 를 지워도 이 testset 이 계속
+    # green 이다). 정렬을 적용하기 **전**의 원본 필드에서 fwd/rev 가 실제로 다른 반복 순서를
+    # 내는지 먼저 확인해서, fixture 가 퇴화하면 (정렬 코드가 아니라) 이 전제 자체가 빨갛게
+    # 죽게 만든다.
+    @test collect(keys(a.fleet)) != collect(keys(b.fleet))    # fleet Dict 원본 순서
+    @test collect(a.g.closed) != collect(b.g.closed)          # Set{Int} 원본 순서
+    @test collect(a.g.binding) != collect(b.g.binding)        # Dict{Int,Int} 원본 순서
     @test CB.canonical(a) == CB.canonical(b)
     @test CB.state_hash(a) == CB.state_hash(b)
 end
@@ -196,18 +206,26 @@ end
 end
 
 @testset "delimiter injection — 오염된 role 이 1로봇 fleet 을 2로봇 fleet 으로 위조하지 못한다 (C-2 수정)" begin
-    # 리뷰가 찾은 가장 강한 사례: role::Symbol 에 두 번째 로봇 레코드 텍스트 전체(세미콜론 포함)를
-    # 심으면, 이스케이프 없는 직렬화에서는 진짜 2로봇 fleet 과 문자열이 같아졌다.
+    # 리뷰 라운드 2, NEW-1: 첫 버전은 `_state(fleet_override=...)` 로 SimState 전체를 비교했다.
+    # `_state` 가 `hazard.lambda0` 를 `keys(fleet)` 에서 유도하므로, 1로봇 vs 2로봇 fleet 은
+    # Hazard 블록 자체가 이미 달라서(엔트리 수가 다르다) role 인코딩과 **무관하게** 항상
+    # canonical 이 갈렸다 — `_c(::Symbol)` 을 `string(x)` 로 되돌려도 통과하는 항진명제였다
+    # (실측: 2 Pass/2). Fleet 블록 문자열만 SimState 조립 없이 직접 비교해서, role 인코딩
+    # 하나에만 결과가 갈리게 만든다 — `_canonical_blocks` 가 Fleet 을 만드는 것과 같은 방식
+    # (`join(canonical.(records), ";")`).
     tail = "transport);R99(pose=(0.0,0.0,0.0),vel=(0.0,0.0),soc=1.0,E=10.0,usage=0.0,eff=1.0," *
            "health=healthy,stalled=false,payload=nothing,role=transport"
-    poisoned = Dict(1 => CB.RobotRec(id = 1, pose = (1.0, 2.0, 0.5), vel = (0.0, 0.0), soc = 1.0,
+    poisoned = CB.RobotRec(id = 1, pose = (1.0, 2.0, 0.5), vel = (0.0, 0.0), soc = 1.0,
+                            energy_J = 10.0, usage_s = 0.0, eff = 1.0, health = :healthy,
+                            stalled = false, payload = nothing, role = Symbol(tail))
+    # 위조된 tail 이 가리키는 정확한 모양(R99, pose=(0,0,0))과 일치하는 "진짜 두 번째 로봇" —
+    # 포즈가 다르면애초에 문자열이 안 겹쳐서 무엇을 고쳐도 테스트가 항상 통과해버린다.
+    r99_matching_shape = CB.RobotRec(id = 99, pose = (0.0, 0.0, 0.0), vel = (0.0, 0.0), soc = 1.0,
                                       energy_J = 10.0, usage_s = 0.0, eff = 1.0, health = :healthy,
-                                      stalled = false, payload = nothing, role = Symbol(tail)))
-    clean = Dict(1 => _rec(1), 99 => _rec(99))
-    a = _state(fleet_override = poisoned)
-    b = _state(fleet_override = clean)
-    @test CB.canonical(a) != CB.canonical(b)
-    @test CB.state_hash(a) != CB.state_hash(b)
+                                      stalled = false, payload = nothing, role = :transport)
+    poisoned_fleet_str = CB.canonical(poisoned)
+    clean_fleet_str = CB.canonical(_rec(1)) * ";" * CB.canonical(r99_matching_shape)
+    @test poisoned_fleet_str != clean_fleet_str
 end
 
 @testset "delimiter injection — 쉼표를 담은 Symbol 이 두 zone 을 위조하지 못한다 (C-2 수정)" begin
@@ -252,6 +270,13 @@ end
 # --- I-4 수정: 자식 프로세스가 canonical 문자열을 건네받아 sha256 만 다시 도는 것은 sha256 이
 # 프로세스 불변이라는 사실만 재확인할 뿐 canonical(s) 자체의 안정성은 묻지 않는다(리뷰가 잡은
 # 항진명제). 이제 자식이 **직접** SimState 를 재구성하고 state_hash 를 스스로 계산한다.
+# ⚠️ 리뷰 라운드 2 (NEW-3, 기록만 — 고치지 않음): 이 테스트는 여전히 C-1 이 잡는 "삽입 순서
+# 누수" 종류를 검출하지 못한다 — 부모·자식이 **똑같은 삽입 순서**로 상태를 짓고, Julia 는
+# 프로세스마다 해시 시드를 무작위화하지 않는다(실측: 같은 삽입열에 대해 서로 다른 julia
+# 프로세스가 바이트 동일한 Set 반복 순서를 낸다). 그래서 이 테스트가 검출할 수 있는 것은
+# "환경 수준의 발산"(예: SHA 라이브러리 버전 차이)뿐이고, 정렬 코드 자체의 버그는 C-1
+# 테스트가 잡지 이 테스트가 잡는 게 아니다. 나중에 이 테스트를 인용해 "삽입 순서 안정성까지
+# 검증됐다"고 말하지 말 것.
 @testset "해시는 한 작업 트리 안에서 프로세스에 걸쳐 안정적이다 (I-4 수정 — 자식이 직접 재구성)" begin
     h_here = CB.state_hash(_state(no_progress = 7, snap = 1))
     proj = joinpath(@__DIR__, "..")

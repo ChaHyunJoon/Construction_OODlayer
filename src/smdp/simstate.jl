@@ -170,6 +170,16 @@ _c(t::Tuple) = "(" * join(map(_c, t), ",") * ")"
 _c(s::AbstractSet) = "[" * join(map(_c, sort!(collect(s); by = string)), ",") * "]"
 _c(d::AbstractDict) = "{" * join(["$(_c(k)):$(_c(v))"
                                   for (k, v) in sort!(collect(d); by = p -> string(p[1]))], ",") * "}"
+# 리뷰 라운드 2 잔여 항목 (기록만 — 사소하고, 지금 고치지 않는다):
+#   - `_c(NaN) == "NaN"` 이라 `NaN` 을 담은 두 상태는 (IEEE754 상 `NaN != NaN` 이지만) 해시가
+#     같다 — 콘텐츠 해시가 원하는 "같은 값이면 같은 문자열" 의미로는 원하는 동작일 가능성이
+#     높지만, 명시적으로 그렇다고 밝혀둔 적은 없었다.
+#   - `_c(::AbstractSet)`/`_c(::AbstractDict)` 는 정렬 키로 `string(elem)`/`string(key)` 를
+#     쓰고 실제로 내보내는 건 `_c(elem)`/`_c(key)` 다 — 오늘의 모든 키 타입(Int, Tuple{Int,Int})
+#     에서는 `string` 이 injective 라 문제가 없지만, `string` 이 non-injective 인 타입이 나중에
+#     Set/Dict 키로 들어오면 total order 가 깨질 수 있다.
+#   - `SHA` 는 여전히 `Base.require` 로 Manifest 전이 의존성을 우회 로드한다 — 근본 해법인
+#     `Project.toml [deps]` 한 줄은 이 태스크 범위 밖으로 아직 안 갚은 채로 남아 있다.
 
 canonical(b::GraphBlock) = "G(n=$(b.n_nodes),edges=$(_c(b.edges)),closed=$(_c(b.closed))," *
     "active=$(_c(b.active)),"  *
@@ -261,5 +271,14 @@ end
 `s` 의 콘텐츠 해시(sha256 앞 32자). dp 격자가 하던 "같은 칸인가" 판정을 이것이 대신한다 —
 롤아웃 dedup · G-M 검사 · 상태 재방문 탐지가 전부 이 위에 선다(spec §3.2). `omit` 은
 `canonical` 로 그대로 전달된다.
+
+**오라클 전제조건 (리뷰 라운드 2, M-3 — 기록만, 아직 안 고침)**: `_c(::Float64)` 의 반올림
+허용오차(`digits=9`)는 **절대값**이다. 그래서 `soc ∈ [0,1]` 은 상대오차 ~1e-10 급 스무딩을
+받지만 `energy_J ≈ 1e5`·`usage_s`·`clock.t` 는 ~1e-15 급(사실상 없음)만 받는다 — 같은
+물리적 상태에 서로 다른 float 누적 순서로 도달한 두 롤아웃은 **다른 해시**를 낸다. 이건
+"조용히 실패하는" 바로 그 방식이다: 아무 데도 에러가 안 나고 오라클의 캐싱·CRN 분산 축소가
+그냥 조용히 멈춘다. 결정론적 replay 하나 안에서 해시를 비교하는 동안은 무해하지만, K-rollout
+오라클이 **서로 다른 실행 경로**로 도달한 상태의 동일성을 이 해시로 판정하려는 순간부터는
+이 전제(절대 허용오차, 균일하지 않은 상대적 스무딩)를 명시적으로 깨야 한다.
 """
 state_hash(s; omit::Set{Symbol} = Set{Symbol}()) = bytes2hex(SHA.sha256(canonical(s; omit = omit)))[1:32]
