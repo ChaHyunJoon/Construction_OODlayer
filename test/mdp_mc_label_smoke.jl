@@ -1,4 +1,23 @@
 # ============================================================================
+#  🔴 KNOWN DEAD AT HEAD — 이 파일은 현재 로드 자체가 안 된다. 고쳐 쓰거나 지울 것.
+#
+#  :24 가 가리키는 `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl` 은 2026-08-18
+#  파일 정리에서 **삭제됐다**. 그래서 이 테스트는 첫 include 에서 죽는다:
+#      rc=1  ERROR: LoadError: SystemError: opening file ".../oracle/gen_oracle_mc.jl"
+#  실측: pristine `git archive` 기준으로 `902f98ca` 에서도 죽었고 지금도 죽는다 —
+#  **이 브랜치가 낸 회귀가 아니다.** 옮겨진 경로가 아니라 지워진 대상이라 경로만 고쳐서는
+#  살아나지 않는다(= `test/mdp_hazard_smoke.jl` 과는 다른 원인, 같은 결과).
+#
+#  ⚠️ 이것이 두 번째 사례다. `Pkg.test()` 의 `runtests.jl` 은 4개 파일만 include 하고
+#  `test/smdp_*.jl`·`test/mdp_*.jl` 를 하나도 안 보므로 **테스트가 썩어도 아무도 모른다.**
+#  `test/mdp_hazard_smoke.jl` 이 HEAD 에서 죽어 있던 것도 같은 구멍이었다. `test/smdp_all.jl`
+#  러너(또는 runtests.jl 에 include 몇 줄)가 아직 빚으로 남아 있다.
+#
+#  되살리려면: `gen_oracle_mc.jl` 을 git 이력에서 복구하거나(K-rollout MC 라벨러),
+#  그 역할을 물려받은 `oracle/gen_oracle_dataset.jl` 의 `DS_MC_K>1` 경로로 이 테스트를
+#  다시 쓸 것. 둘 다 이 태스크의 범위 밖이라 **사실만 적어 둔다.**
+# ============================================================================
+# ============================================================================
 #  MDP STEP 2 — K-rollout 몬테카를로 Q 라벨러의 **집계 수학**만 빠르게 검증하는 테스트.
 #  (전체 시뮬은 후보×K 회 full build 라 몇 십 분 걸린다. 여기서는 시뮬 없이
 #   비용 스칼라화·평균/표준오차·짝지은 차이·동점 판정·CRN 분산감소만 확인한다.)

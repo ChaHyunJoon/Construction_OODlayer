@@ -20,8 +20,10 @@ ReformTeam 으로, 5 행이 SwapBattery 로 **에러 없이** 재해석된다. 3
 하나뿐이다 — 872행의 전체 키 집합에서 리스트 타입 필드를 모두 뽑아보면 `raw_*`(로봇/화물/
 구역/스테이지별 관측 배열)뿐이고 그건 macro id 와 무관하다.
 
-**도장 (2026-08-19)**: 살아남는 행마다 `vocab`(= `action_registry.VOCAB`) 과
-`dynamics`(행의 `hz_seed` 에서 **유도** — `_dynamics_from_row` 참조) 를 찍는다.
+**도장 (2026-08-19)**: 살아남는 행마다 `vocab`(= `action_registry.VOCAB`) 을 찍고,
+`hz_seed` 증거가 있는 행에는 `dynamics` 도 찍는다(행에서 **유도** — `_dynamics_from_row` 참조).
+증거가 없는 구세대 행에서는 키를 **생략**하고 `diag["dynamics_unstamped"]` 로 센다 — 지어내지도
+않고, 이관을 막지도 않는다(재리뷰 N2 의 실측: 죽이면 커밋된 구세대 12파일/1,413행이 이관 불가).
 🔴 **`objective_hash` 는 안 건드린다** — 이 필터는 목적함수를 바꾸지 않았으므로 행이 이미
 가진 (구세대) 해시가 그 행에 대한 참이다. 현행 해시로 갈아 끼우면 구세대 행이 신세대로
 위장한다. 세 도장이 각각 무엇을 주장하는지는 `.claude/CLAUDE.md` §2026-08-19 의 표에 있다.
@@ -59,16 +61,29 @@ def _dynamics_from_row(row):
 
     (`src/smdp/hazard.jl:155`·`:166`).
 
-    🔴 `hz_seed` 가 없는 행에서는 **추측하지 않고 죽는다.** 동역학 도장을 짐작으로 찍으면
-    이 도장이 막으려는 바로 그 실패(낡은 행이 신세대로 위장하는 것)를 이 함수가 만들게 된다.
+    🔴 `hz_seed` 가 없는 행에서는 **추측하지 않는다** — `None` 을 돌려주고 호출부가 `dynamics`
+    키를 **아예 안 찍는다.** 짐작으로 찍으면 이 도장이 막으려는 바로 그 실패(낡은 행이 신세대로
+    위장하는 것)를 이 함수가 만들게 된다.
+
+    ⚠️ **왜 죽이지 않고 생략하는가 (2026-08-20, 재리뷰 N2).** 처음 판은 증거 없는 행에서
+    AssertionError 로 죽였다. 실측하니 그 규칙이 **커밋된 구세대 라벨셋 12개(1,413행)를
+    통째로 이관 불가로 만들었다** — `openworld_merged`(300) · `n44_plus78`(286) ·
+    `n44_plus8`(274) · `graded_hs_n44`(220) + `fzgrid_0806/*.probes.jsonl` 8개(333).
+    전부 `902f98ca` 에서는 깨끗이 필터되던 파일이다(실측: 29 clean → 17 clean / 12 hard-fail).
+    이 모듈의 **존재 이유가 구세대 라벨셋을 6팔 어휘로 이관하는 것**인데, 가장 오래된 구세대
+    넷을 이관 불가로 만드는 것은 그 목적과 정면으로 어긋난다.
+    지켜야 할 규약은 "구세대를 받아주지 마라"가 아니라 **"값을 지어내지 마라"** 다. 키를
+    생략하면 그 규약은 그대로 지켜지고(없는 도장은 거짓말을 못 한다), 행은 이 커밋 이전과
+    **똑같은 모양**으로 나가며, 판정은 `require_dynamics` 가 있는 소비처로 미뤄진다 — 도장을
+    실제로 필요로 하는 자리에서 죽는 것이 옳다.
+    🔴 생략은 **조용하지 않다**: `filter_rows` 가 `diag["dynamics_unstamped"]` 로 세고 CLI 가
+    그 수를 찍는다. 세지 않은 생략은 없다.
     🔴 같은 이유로 이 필터는 `objective_hash` 를 **건드리지 않는다.** 행의 해시는 그 행을 만든
     런의 목적함수 세대이고, 필터는 목적함수를 바꾸지 않았다. 현행 해시로 갈아 끼우면 구세대
     행이 신세대 도장을 달게 된다(`.claude/CLAUDE.md` §2026-08-19). `vocab` 을 찍는 것은 다른
     경우다 — 이 필터가 은퇴 팔을 실제로 걷어내 그 행을 v2-6arms 에 **맞춰 놓았기** 때문이다."""
     if "hz_seed" not in row:
-        raise AssertionError(
-            "행에 hz_seed 가 없어 dynamics 를 유도할 수 없다 — 도장을 짐작으로 찍지 않는다. "
-            "instance=%r" % (_instance_key(row),))
+        return None
     return "hazard-off" if int(row["hz_seed"]) == -1 else "hazard-on"
 
 
@@ -175,7 +190,7 @@ def filter_rows(rows):
     이 assert 가 없으면 세지 않은 drop(예: 조건 없는 continue)이 자기정합적인 요약과 함께
     조용히 통과한다(task-6-review.md 2-c' 의 음성 대조가 실측한 그 실패 모양)."""
     _assert_aggregate_premise(rows)   # 덮어쓰기 **이전**에 전제부터 — 위 docstring 참조
-    kept, dropped = [], {}
+    kept, dropped, unstamped = [], {}, 0
     for row in rows:
         m = row.get("macro")
         if m in RETIRED_MACROS:
@@ -185,9 +200,14 @@ def filter_rows(rows):
         if "valid_mask" in row:
             row["valid_mask"] = _strip_retired(row["valid_mask"])
         row["vocab"] = action_registry.VOCAB
-        row["dynamics"] = _dynamics_from_row(row)
+        dyn = _dynamics_from_row(row)
+        if dyn is None:
+            unstamped += 1          # 증거 없는 행 — 키를 안 찍는다. 세지 않고 넘기지 않는다
+        else:
+            row["dynamics"] = dyn
         kept.append(row)
-    diag = {"kept": len(kept), "dropped_by_macro": dropped, "stamped": len(kept)}
+    diag = {"kept": len(kept), "dropped_by_macro": dropped, "stamped": len(kept),
+            "dynamics_unstamped": unstamped}
     total_dropped = sum(dropped.values())
     if len(kept) + total_dropped != len(rows):
         raise AssertionError(
@@ -218,9 +238,13 @@ def main(argv):
     inst = len({r.get("instance_id", r.get("instance")) for r in kept})
     print("입력 %d행 → 출력 %d행 / instance %d" % (len(rows), diag["kept"], inst))
     print("제거: %s" % diag["dropped_by_macro"])
-    dyn = sorted({r["dynamics"] for r in kept})
+    dyn = sorted({r["dynamics"] for r in kept if "dynamics" in r})
     print("도장: vocab=%s · dynamics=%s (%d행). objective_hash 는 안 건드린다(구세대 행 그대로)."
-          % (action_registry.VOCAB, "|".join(dyn), diag["stamped"]))
+          % (action_registry.VOCAB, "|".join(dyn) or "(없음)", diag["stamped"]))
+    if diag["dynamics_unstamped"]:
+        print("⚠️ dynamics 미각인 %d행 — hz_seed 증거가 없는 구세대 행이다. 짐작으로 찍지 않고 "
+              "키를 생략했다(require_dynamics 가 있는 소비처에서 죽는다)."
+              % diag["dynamics_unstamped"])
     return 0
 
 

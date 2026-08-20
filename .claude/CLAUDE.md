@@ -34,7 +34,7 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
    경고와 같은 실패 모양). 스윕 전에 `DSPY_URL` 을 손으로 확인하고, 스윕 후에는
    `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것.
 
-**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash reporting/finish_tables.sh` 가
+**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash finish_tables.sh` 가
 `artifacts_4pol/COMPARE.md` 를 재현하는가(합계 **210/210 · 189/210 · 205/210**) ·
 `julia +lts --project=. -e 'using Pkg; Pkg.test()'`(기대 11 pass / 1 error).
 
@@ -58,10 +58,22 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 | 소비처 | 지금 무슨 일이 나는가 |
 |---|---|
-| `dp_oracle/dp_solve.py --samples samples.jsonl` | **exit 1** — `표본의 objective_hash 가 현행과 다르다(구세대 표본)`. 실측 재현 |
-| `dp_oracle/value.json` · `samples.jsonl` · `boards.jsonl` | 이 세대에 대해 **죽었다**. 🔴 **단계 (B) 는 `value.json` 을 재사용할 수 없다** — dp 레인 **재표집**이 필요하다(4~5시간, 표집이 대부분). 절차는 위 2026-08-16 절의 "되살리는 법" |
+| `dp_oracle/dp_solve.py --samples samples.jsonl` | **exit 1** — `표본의 objective_hash 가 현행과 다르다(구세대 표본)`. 실측 재현 (`:521`) |
+| `dp_oracle/derive_grid.py` | **exit 1** — `스윕이 구세대다(행 19819377a7f8ebb2 vs 현행 …)`. 실측 재현. 🔴 **같은 레인의 한 단계 앞에서** 먼저 죽는다 — 커밋된 630판 스윕으로는 격자 축을 유도할 수 없다 |
+| `dp_oracle/grid_spec.json` | **죽은 산출물**이다(`objective_hash: 19819377a7f8ebb2` 를 달고 있다). 🔴 **그런데 `sample_grid.py:1103 → load_grid()` 는 해시를 확인하지 않는다** — `derive_grid.py:126` 이 그냥 `json.load` 다. 아래 ⚠️ 참조 |
+| `dp_oracle/value.json` · `samples.jsonl` · `boards.jsonl` | 이 세대에 대해 **죽었다**. 🔴 **단계 (B) 는 `value.json` 을 재사용할 수 없다** |
 | `oracle/out/relabel_2026-08-19.jsonl` (742행) | 구세대 해시를 그대로 단다 — **그게 옳다.** 그 행들은 범프 이전 목적함수에서 나왔다. 필터가 해시를 갈아 끼우면 낡은 행이 신세대로 위장한다 |
 | 커밋된 630판 스윕 · `artifacts_4pol/` · 배포 라벨셋 | 전부 구세대로 재분류됐다 |
+
+⚠️ **dp 레인 복구 비용을 "재표집 4~5시간" 으로 읽지 말 것 — 그건 사슬의 마지막 칸이다.**
+사슬은 `스윕 → derive_grid.py → grid_spec.json → sample_grid.py → dp_solve.py → value.json` 이고
+**앞의 두 칸이 이미 죽어 있다**: `derive_grid.py` 는 커밋된 스윕을 거부하므로 신세대 격자를
+얻으려면 **신세대 630판 스윕부터** 다시 돌려야 한다(그 자체가 1h47m + 세팅).
+🔴 **그리고 `sample_grid.py` 를 그냥 다시 돌리는 것이 가장 위험한 지름길이다.** `load_grid()` 에
+해시 검사가 **없어서**, 낡은 `grid_spec.json` 위에 신세대 표본을 조용히 얹는다 — 에러 없이
+**구세대 축으로 신세대 세계를 칸에 넣는 것**이다. 이 레포가 이미 한 번 당한 실패 모양
+(낡은 파일이 이번 세대의 참/거짓을 결정하는 것) 그대로다. 재표집 전에 `grid_spec.json` 의
+`objective_hash` 를 **손으로 확인**하거나, `load_grid()` 에 `dp_solve.py:521` 과 같은 검사를 달 것.
 
 ### 세 도장이 서로 다른 것을 주장한다 — 하나로 읽으면 틀린다
 
@@ -796,7 +808,11 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 ## Layout
 - `src/respec/` — OOD → DSL re-spec layer (`spec_dsl.jl`, `compiler.jl`, `verifier.jl`, `llm_service/`)
-- `src/safety/` — `zone_guard.jl`, `novelty.jl` · `src/mdp/` — `hazard.jl`, `mdp.jl` · `src/monitor/`, `src/navigator/`
+- `src/safety/` — `cbf.jl`, `novelty.jl` · `src/smdp/` — `hazard.jl`, `mdp.jl`, `simstate.jl`,
+  `state_globals.jl` · `src/monitor/`, `src/navigator/`
+  ⏳ 사용자의 index 에 `cbf.jl` 삭제 + `zone_guard.jl` 추가가 staged 로 대기 중이다. 그게 커밋되면
+  이 줄의 `cbf.jl` 은 `zone_guard.jl` 이 된다 — **같은 커밋에서** `test/smdp_global_inventory.jl` 의
+  `CBF_*` 8개 + `FAILCLOSED_STOP` 도 같이 빠져야 한다(안 빼면 그 테스트가 빨개진다).
 - `wm4spacecraft_manufacturing/` — Python analysis stack (surrogate, drift, DSPy service)
 
 ## Docs
@@ -813,13 +829,19 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
   §1 용어(F vs OOD) · §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 ·
   §8 함정 43개 · §9 살아 있는 계약·재현 명령·재개 지점 · §10 아카이브 색인.
   세대 상세는 위 §★ 결과 세대.
-  🔴 **§11 폴더 구조** — 2026-08-18 에 `wm4spacecraft_manufacturing/` 의 평평한 파일 42개를
+  ⏳ **§11 폴더 구조 — 아직 커밋 안 됨. 아래 경로 중 일부는 HEAD 에 없다.** 이 재편은
+  사용자의 **index 에 staged 상태로만** 있다(~29 renames). HEAD 에 실제로 있는 것은 `core/` ·
+  `surrogate/` · `md/`(일부) · `measurements/` 뿐이고, **`reporting/` · `novelty/` · `sweep/` ·
+  `render/` 는 없다** — 그 폴더 이름으로 경로를 쓰기 전에 `ls` 로 확인할 것. staged renames 가
+  커밋되면 아래가 전부 참이 된다(그 커밋이 Python 소비처 9개의 ModuleNotFoundError 도 같이 닫는다).
+  요지: 2026-08-18 에 `wm4spacecraft_manufacturing/` 의 평평한 파일 42개를
   역할별 폴더로 나눴다: `core/`(목적함수·어휘·기준정책·데이터셋 정의) · `surrogate/` ·
   `novelty/` · `sweep/`(스윕 실행) · `reporting/`(표·md 생성) · `render/` · `md/` ·
   `measurements/`. 결과 데이터 폴더는 안 건드렸다. **경로를 인용하기 전에 §11 을 볼 것** —
   맨이름 import 는 `core/wmpath.py` 로 유지되고, 데이터 경로의 기준점은 `HERE` 가 아니라
   `wmpath.WM`(= wm4 폴더)다.
-- `wm4spacecraft_manufacturing/md/LABELING_MANUAL.md` — oracle labeling workflow
+- `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
+  (⏳ staged rename 이 커밋되면 `md/LABELING_MANUAL.md`)
 - 실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브),
   종료된 SDD 세션은 `docs/superpowers/SDD_SESSIONS_ARCHIVE.md`.
   설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.

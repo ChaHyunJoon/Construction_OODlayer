@@ -141,6 +141,23 @@ end
 # 이름을 하나하나 적는다. 🔴 **여기서 필드를 추가하지 않는다** — 무엇을 어떤 블록에 어떤
 # 타입으로 넣을지는 Task 10 의 설계 작업이다(스펙 §3.5 규칙 1·3).
 #
+#   분할은 30 개를 정확히 덮는다: (0) 8 + (A) 13 + (B) 7 + (C) 2 = 30. `HAZARD_STATE` 는
+#   `:split` 이고 `HazardBlock` 이 담으므로 이 목록에 없다.
+#
+# --- (0) 깨끗이 대응된다 — 8 (Task 10 이 재유도하지 말고 대조할 수 있게 이름으로 적는다) ----
+#
+#   BATTERY_FLEET        → `RobotRec.soc` · `.energy_J` (fleet::Dict{Int,RobotRec})
+#   STALLED_ROBOTS       → `RobotRec.stalled`
+#   FAULTED_ROBOTS       → `RobotRec.health`  (:healthy | :degraded | :dead)
+#   BATTERY_DELIVERIES   → `courier::Vector{CourierRec}`
+#   WEDGE_EDGES          → `GraphBlock.wedge_edges`
+#   DISSOLVED_GATES      → `GraphBlock.dissolved_gates`
+#   SNAP_COUNT           → `AgeBlock.snap_count`
+#   SIM_STEP             → `ClockBlock.step`
+#
+#   ⚠️ "깨끗하다" = **키 공간과 값이 둘 다 살아 있다**는 뜻이지 왕복(round-trip)을 실측했다는
+#   뜻이 아니다. 이 여덟도 `snapshot`/`restore!` 가 생기기 전까지는 종이 위의 대응이다.
+#
 # --- (A) `:state` 로 분류됐는데 대응 필드가 아예 없다 — 13 + 1 = 14 -----------------------
 #
 #   RESPEC_QUEUE          _IDENTITY_SEEN       VALID_ID_COUNTERS   INVALID_ID_COUNTERS

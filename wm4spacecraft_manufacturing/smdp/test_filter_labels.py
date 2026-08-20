@@ -139,11 +139,34 @@ def test_dynamics_stamp_is_derived_from_hz_seed_not_invented():
     assert [r["dynamics"] for r in kept] == ["hazard-off", "hazard-on"]
 
 
-def test_dynamics_stamp_refuses_to_guess():
-    """증거가 없는 행에서는 도장을 짐작으로 찍지 않고 죽는다 — 짐작하면 이 도장이 막으려는
-    바로 그 실패(낡은 행이 신세대로 위장하는 것)를 이 코드가 만들게 된다."""
-    with pytest.raises(AssertionError, match="hz_seed"):
-        filter_labels.filter_rows([{"macro": 0, "kind": "fault"}])
+def test_dynamics_stamp_refuses_to_guess_by_omitting_the_key():
+    """증거가 없는 행에는 도장을 **안 찍는다** — 짐작하면 이 도장이 막으려는 바로 그 실패
+    (낡은 행이 신세대로 위장하는 것)를 이 코드가 만들게 된다. 없는 도장은 거짓말을 못 한다."""
+    kept, diag = filter_labels.filter_rows([{"macro": 0, "kind": "fault"}])
+    assert "dynamics" not in kept[0]
+    assert diag["dynamics_unstamped"] == 1
+
+
+def test_old_generation_sets_without_hz_seed_still_filter(capsys):
+    """🔴 재리뷰 N2 의 회귀 방지. 이 모듈의 존재 이유는 구세대 라벨셋을 6팔 어휘로 **이관**하는
+    것이다. 증거 없는 행에서 죽이면 커밋된 구세대 12파일(1,413행)이 통째로 이관 불가가 된다 —
+    실측: 902f98ca 에서 29파일 clean, 죽이는 판에서는 17 clean / 12 hard-fail.
+    이관은 되어야 하고, 미각인은 **세어져야** 한다."""
+    rows = [{"macro": m, "kind": "fault", "instance": "old"} for m in (0, 1, 5)]
+    kept, diag = filter_labels.filter_rows(rows)          # 죽지 않는다
+    assert len(kept) == 2 and diag["dropped_by_macro"] == {5: 1}
+    assert all("dynamics" not in r for r in kept)         # 지어내지 않는다
+    assert diag["dynamics_unstamped"] == 2                # 조용하지도 않다
+
+
+def test_mixed_witness_stamps_only_the_rows_that_carry_evidence():
+    """한 파일 안에 증거 있는 행과 없는 행이 섞여 있어도(실측: n44_plus78 은 286행 중 66행만
+    hz_seed 를 갖는다) 도장은 증거 있는 행에만 찍힌다."""
+    kept, diag = filter_labels.filter_rows(
+        [_row(macro=0, hz_seed=-1, instance="m"), {"macro": 1, "instance": "m"}])
+    assert kept[0]["dynamics"] == "hazard-off"
+    assert "dynamics" not in kept[1]
+    assert diag["dynamics_unstamped"] == 1
 
 
 def test_objective_hash_is_never_restamped():

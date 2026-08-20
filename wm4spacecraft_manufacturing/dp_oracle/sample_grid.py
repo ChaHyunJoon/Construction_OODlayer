@@ -166,7 +166,18 @@ dedup 의 술어는 `enact_applied` 인데(`_deviation_class` 의 클래스 B), 
 `samples.jsonl`(2258행) · `boards.jsonl` · 그것으로 푼 `dp_oracle/value.json` 은 전부
 **구세대**이고, `dp_solve.py` 가 그 표본을 받으면 exit 1 한다(그 파일 머리말 참조).
 **dp 레인을 되살리려면 여기서부터 다시 표집해야 한다** — 구세대 표본은 이름을 붙여 보존만 하고
-신세대 표에 섞지 말 것. 그리고 이 파일이 쓰는 팔 메뉴는 이제 **6팔**이다(은퇴 id 3·5·6 은
+신세대 표에 섞지 말 것.
+
+🔴 **그런데 "여기서부터" 가 아니다 — 두 칸 앞에서부터다. 이 파일을 그냥 다시 돌리지 말 것.**
+사슬은 `스윕 → derive_grid.py → grid_spec.json → 이 파일 → dp_solve.py → value.json` 이고,
+`derive_grid.py` 는 커밋된 630판 스윕을 이미 거부한다(실측 exit 1, `스윕이 구세대다`). 즉
+`grid_spec.json` 도 구세대 산출물이다(`objective_hash: 19819377a7f8ebb2`).
+그리고 `:1103` 의 `load_grid()` 는 `derive_grid.py:126` 의 맨 `json.load` 라 **해시를 전혀
+확인하지 않는다.** 그래서 이 파일을 그대로 다시 돌리면 **낡은 격자 축 위에 신세대 표본을
+에러 없이 얹는다** — 구세대 파일이 이번 세대의 참/거짓을 결정하는, 이 레포가 이미 한 번 당한
+실패 모양이다. 순서: **신세대 630판 스윕 → derive_grid.py → 새 grid_spec.json → 이 파일.**
+지름길을 쓰려거든 최소한 `grid_spec.json` 의 `objective_hash` 를 손으로 대조하거나
+`load_grid()` 에 `dp_solve.py:521` 과 같은 검사를 달고 쓸 것. 그리고 이 파일이 쓰는 팔 메뉴는 이제 **6팔**이다(은퇴 id 3·5·6 은
 영구 결번, `core/action_registry.RETIRED`).
 """
 # ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
