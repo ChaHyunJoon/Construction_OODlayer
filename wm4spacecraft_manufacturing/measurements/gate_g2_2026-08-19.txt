@@ -1,10 +1,20 @@
 [boards] dropped: {'no_rows': 0, 'not_fired': 141, 'bad_json': 0}
-=== G2 coupling (분모 = 선택지 2개 이상인 결정) ===
-  그룹 64 · 자격 19 · 결합 0 · 비율 0.000
-  제외: {'crashed': 0, 'no_next': 17, 'single_option': 308, 'thin': 45}
-    all              0/  2
-    battery          0/  6
-    battery_zone     0/  5
-    fault_battery    0/  2
-    zone             0/  4
-  판정: FAIL — contextual bandit 으로 기술할 것
+=== G2 coupling — 자격 필터 두 가지를 나란히 보고한다 (2026-08-19 리뷰 라운드 1) ===
+  브리프 필터 (valid==[] 제외, 레거시)   : 자격 19 · 결합 0 · 비율 0.000
+    제외(board 단위): {'crashed': 0, 'no_next': 17, 'single_option': 308} · 제외(group 단위): {'thin': 45}
+  수정 필터 (valid==[]='제한 없음' 포함) : 자격 64 · 결합 13 · 비율 0.203
+    제외(board 단위): {'crashed': 0, 'no_next': 17, 'menu_lt2': 0} · 제외(group 단위): {'thin': 0}
+  case 별 (수정 필터 기준):
+    all              1/ 11
+    battery          3/  8
+    battery_zone     0/ 11
+    fault            3/  5
+    fault_battery    3/  5
+    fault_zone       2/ 12
+    zone             1/ 12
+
+  편차 이후 전체 궤적(suffix: sim_t·truth·macro 열)이 팔에 따라 갈리는 그룹 비율
+  (macro@k+1 라벨 동일성보다 강한 결합 개념 — '미래가 달라지는가' 자체를 본다):
+    63/64 = 0.984
+
+  판정 (수정 필터 기준): PASS — 순차 결정 문제 성립 (수정 필터 기준)

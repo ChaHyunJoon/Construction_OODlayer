@@ -827,11 +827,11 @@ export DSPY_URL=http://127.0.0.1:8090          # :8090 이 떠 있어야 한다
 bash gate_courier_sweep.sh                     # rc=0 = GATES PASS
 
 # 2) 스윕 (210 샤드 / K=16 / 약 1h47m)
-nohup bash run_4pol_parallel.sh --jobs 16 --policies canonical,surrogate,dspy \
+nohup bash sweep/run_4pol_parallel.sh --jobs 16 --policies canonical,surrogate,dspy \
       --deadline-seconds 28800 > _night/resweep_courier.log 2>&1 &
 
 # 3) 병합 + 표
-bash finish_tables.sh                          # -> artifacts_4pol/{FINAL,COMPARE}.md
+bash reporting/finish_tables.sh                # -> artifacts_4pol/{FINAL,COMPARE}.md
                                                #    4단계가 세대 단일성을 검사한다
 
 # 4) 배송이 실제로 발화했는지
@@ -844,7 +844,7 @@ bash finish_tables.sh                          # -> artifacts_4pol/{FINAL,COMPAR
 
 # 6) 구세대 재현 (배송만 끈다 — _faultable 도, monitor.jl 의 REPLACE_SOC_THRESHOLD 회복
 #    조건도 되돌아가지 않는다: 섞인 변경은 셋이다. §0-B)
-DEMO_BATTERY_COURIER=0 bash run_4pol_parallel.sh …
+DEMO_BATTERY_COURIER=0 bash sweep/run_4pol_parallel.sh …
 ```
 
 ⚠️ **3)의 4단계가 "세대가 섞였다" 를 찍으면 멈출 것.** 구세대 샤드가 `results_4pol/shards*`
@@ -911,6 +911,59 @@ DEMO_BATTERY_COURIER=0 bash run_4pol_parallel.sh …
 | `dp_oracle/boards.jsonl` | 판 단위 완주 기록(판당 한 줄, 168KB, 커밋됨). `_sample_work/` 는 gitignore |
 | `oracle/out/hz_k1`, `hz_fb`, `rb_*` | **shim 버그 시기** — 완주율 신뢰 불가, 재생성 대상(급하지 않다) |
 | `oracle/out/zgrid_0805/` | zone STEP 6 격자. `admissible` 열은 에피소드 모드라 **구조적으로 무의미**(함정 8) |
+
+---
+
+### 9-F. SMDP 재정식화 태스크 0 — G-S/G2 하드 게이트 (2026-08-19)
+
+**계획**: `.superpowers/sdd/2026-08-19-smdp-l1-state/task-0-brief.md`(재시뮬 없이 기존
+588-board 1-step-deviation 표집만으로 semi-Markov 성·순차성을 잰다). **코드**:
+`wm4spacecraft_manufacturing/smdp/{boards,gate_gs,gate_g2}.py`. **원자료**:
+`dp_oracle/_sample_work/`(588 폴더, gitignore) + `dp_oracle/boards.jsonl`.
+
+🔴 **1차 구현(커밋 `9aa57677`)의 두 통계량이 자신이 잰다고 주장하는 것을 재지 못했다** —
+독립 리뷰(`.superpowers/sdd/2026-08-19-smdp-l1-state/task-0-review.md`)가 실측
+음성·양성 대조로 반증했고, 컨트롤러가 통계량 교체를 지시했다(수정 커밋은 §9-F 끝 참조).
+
+- **G-S (semi-Markov 검사)**: 브리프의 `block_permutation_p`(그룹 내 순열 + 팔 주효과
+  SS)는 그룹 안에서 팔 라벨만 섞어 그룹의 τ 다중집합 자체를 바꾸지 않는다 — 그래서 "팔
+  순위가 그룹을 가로질러 일관된 가법 주효과인가"만 볼 수 있고 그룹 **내부**의 τ 산포에는
+  원리적으로 눈이 멀어 있다. τ 가 100% 팔로 결정돼도 어느 팔이 느린지 그룹마다 회전하면
+  이 통계량은 "외생"이라고 잘못 선언한다(단위검사
+  `test_spread_test_detects_rotating_arm_effect_that_old_stat_misses` 가 회귀 락).
+  **대체 통계량**: 그룹 내 τ 스프레드 직접 검정(`gate_gs.spread_test`) + 편차 이전
+  결정(k-1, k-2)을 경험적 귀무로 삼은 Fisher exact(`gate_gs.fisher_exact_greater`,
+  `math.comb` 로 직접 구현·scipy/numpy 의존 없음). 실측: **k-1 스프레드 0/58, k-2 스프레드
+  0/48(음성 대조 통과, 하네스 결정성 재확인) · k 에서 스프레드 49/64 · Fisher one-sided
+  p = 4.39e-21 · 효과크기 중앙 34.8%(그룹 평균 대비)·최대 14.4s. 판정: PASS — τ 는
+  팔에 의존한다(SMDP).**
+  ⚠️ 브리프의 `분산비(팔 간/그룹 간) > 1` PASS 조건은 **유효성 기준이 아니다** — 이 블록
+  설계(7 case × 서로 다른 seed, 그룹 간 이질성이 큼)에서는 팔 효과가 100% 지배적이어도
+  이 비가 구조적으로 1 미만이 난다. `variance_ratio` 는 계속 계산·출력하되 서술 통계량일
+  뿐 게이팅에 쓰지 않는다.
+  ⚠️ 브리프가 "절단(censored)"이라 부른 17개 관측은 **전부 `complete=True`** —
+  절단이 아니라 완전관측 종단(terminal) sojourn 이다. 이 17건이 걸린 9개 그룹을 두 처리
+  (포함/제외) 양쪽에서 빼면 **n=55, SS_arm=83.313, p=0.0005 로 완전히 일치**한다(직접
+  재확인함) — 원래 두 처리 간 p-value 불일치는 447개 관측 중 이 17개(3.8%)가 만든 것이었다.
+- **G2 (coupling 검사)**: 브리프의 자격 필터(`len(valid) < 2` 면 제외)는 `valid == []`
+  ('제한 없음'=전체 메뉴, `policy.jl:413`)를 '메뉴 없음'으로 오독해 제외했다. 실측으로
+  그렇게 지워지는 308 board(ReformTruth 272 + FaultTruth 36) 안에 **결합이 관측되는 그룹
+  13개 전부**가 들어 있었다 — 원안 필터는 결합이 있는 관측 100% 를 분모에서 지운다.
+  `coupling_rate`(브리프 원안, 레거시 비교용)와 `coupling_rate_corrected`(수정 필터,
+  `valid==[]` 도 자격에 포함) 를 둘 다 계산해 나란히 보고한다. 실측: **브리프 필터
+  자격 19·결합 0·비율 0.000 vs 수정 필터 자격 64·결합 13·비율 0.203**. 추가로
+  macro@k+1 라벨 동일성보다 강한 개념인 "편차 이후 전체 궤적(suffix)이 팔에 따라
+  갈리는가"를 `suffix_divergence_rate` 로 따로 쟀다: **63/64 = 0.984**. 판정(수정 필터
+  기준): PASS — 순차 결정 문제 성립. (브리프의 "rate≈0 ⇒ contextual bandit" 결론은
+  철회한다 — 0 은 결합의 부재가 아니라 필터가 만든 인공물이었다.)
+- **종합**: **G-S PASS, G2 PASS(수정 필터 기준)** — 계획 취소 근거 없음, 태스크 1로
+  진행한다. 상세 재현·전체 수치는
+  `wm4spacecraft_manufacturing/measurements/gate_{gs,g2}_2026-08-19.txt`(수정판, 2번째
+  실측으로 덮어씀) 와 `.superpowers/sdd/2026-08-19-smdp-l1-state/task-0-report.md`
+  (1차 구현 + 리뷰 라운드 1 수정 전 과정 기록).
+- **아직 안 한 것**: 1차 구현의 브리프 축자 코드(`block_permutation_p`·브리프 필터
+  `coupling_rate`)는 레거시 비교용으로 파일에 남아 있다 — 지우지 않았다(§10 스타일:
+  "무엇이 왜 틀렸는지"를 코드 밖으로 빼면 다음 사람이 같은 실수를 반복한다).
 
 ---
 
@@ -1020,3 +1073,65 @@ git show 7b9ff26e:wm4spacecraft_manufacturing/md/<파일명>
 `docs/superpowers/plans/` 의 실행 완료 계획서 14개는 **`docs/superpowers/plans/README.md`** 가
 같은 형식으로 목록·SHA 를 갖고 있다. `docs/superpowers/specs/` 의 설계 문서 7개는 **안 내렸다**
 — 그 결정들이 아직 유효하기 때문이다.
+
+---
+
+## 11. 폴더 구조 — 파일이 어디 있고 왜 거기 있나 (2026-08-18 분류)
+
+2026-08-18 이전에는 `wm4spacecraft_manufacturing/` 바로 아래에 py 23 · sh 6 · json/txt 10 ·
+md 3 이 **평평하게** 깔려 있었다. 어떤 코드가 결과를 만들고 어떤 코드가 표를 만드는지 이름만
+보고는 알 수 없었다. 역할별로 나눴다. **결과 데이터 폴더(`results_*` · `artifacts_*` ·
+`oracle/out` · `_night` · `sweep_lab` · `baseline_n5`)는 건드리지 않았다.**
+
+| 폴더 | 역할 | 들어 있는 것 |
+|---|---|---|
+| `core/` | **단일 진실원 라이브러리.** 목적함수 · 행동 어휘 · 기준 정책 · 데이터셋 이름 · 덤프 로더/featurizer. 다른 레인 전부가 여기를 import 한다 | `objective.py`·`objective.jl`·`objective.json` · `action_registry.py`·`.json` · `reference_policy.py` · `wm_datasets.py` · `e1_analyze.py` · `features_agnostic.py` · `wmpath.py` |
+| `surrogate/` | surrogate 모델의 정의 · 학습 · 게이트 · 평가 · 배포 export | `surrogate_model.py` · `surrogate_v2.py` · `surrogate_features.py` · `surrogate_gates.py` · `eval_surrogate_v2.py` · `export_surrogate.py` · `surrogate_linear.json` |
+| `novelty/` | drift/novelty 감지기와 그 교정 | `drift_detectors.py` · `export_novelty_calibration.py` · `novelty_calibration.json` · `novelty_calibration_no_zoneblk.json` |
+| `sweep/` | **결과를 만드는 실행 레인.** 스윕 드라이버 · 샤드 러너 · 병합 | `run_4pol_parallel.sh` · `run_shard.sh` · `llm_ood_eval.py` · `merge_shards.py` |
+| `reporting/` | **표·md 를 만드는 레인.** 채점 · 통계 · 표 조립 | `finish_tables.sh` · `build_final_table.py` · `build_compare_table.py` · `build_md_report.py` · `fill_results_doc.py` · `shadow_score.py` · `stats_paired.py` · `ood_sweep_report.py` |
+| `render/` | 보드/스트림 렌더와 대시보드 발행 | `render_all.sh` · `publish_streams.sh` |
+| `md/` | 문서 전부 | 이 파일 · `LABELING_MANUAL.md` · `MDP_DESIGN_FROM_SCRATCH.md` · `PREREG_SEED20.md` |
+| `measurements/` | **읽는 코드가 없는 측정 기록.** 인용은 되지만 파이프라인이 로드하지 않는다 | `cost_eval_metrics.json`·`_v2.json` · `llm_probe.json` · `sweep_results_graded_hs_all.txt` |
+| `oracle/` · `dp_oracle/` | 라벨 레인(julia) · DP 오라클 — **분류 전과 같다** | 그대로 |
+
+### 11-A. import 가 어떻게 계속 도는가 — `core/wmpath.py`
+
+분류 전에는 모든 py 가 한 폴더라 `import objective` 같은 **맨이름 import** 가 그냥 됐다
+(스크립트 자기 폴더 = `sys.path[0]`). 폴더를 나눈 뒤에도 그 관례를 **그대로 유지**한다 —
+자기 폴더 밖 모듈을 쓰는 파일은 머리에 이 세 줄을 갖는다:
+
+```python
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                       # 코드 폴더 전부를 sys.path 에 올린다
+```
+
+패키지(`__init__.py` + 상대 import)로 가지 **않은** 이유: `python llm_ood_eval.py run` 처럼
+스크립트로 직접 실행하는 진입점이 여럿이고(`sweep/run_shard.sh` · `reporting/finish_tables.sh` ·
+`build_final_table.py` 의 서브프로세스 호출), 레포 밖 소비처
+(`src/respec/llm_service/dspy_service.py`)도 경로로 붙는다. 자세한 근거는 `core/wmpath.py` 머리말.
+
+### 11-B. 🔴 기준점이 둘이다 — `HERE` 와 `WM`
+
+분류 전에는 `HERE`(= 이 파일 폴더) 와 "wm4 폴더" 가 같은 값이었다. 이제 다르다.
+
+- `HERE` = **그 파일이 사는 하위 폴더**(`reporting/` 등)
+- `WM` = `wm4spacecraft_manufacturing/` — `results_4pol/` · `artifacts_4pol/` · `dp_oracle/` ·
+  `md/` · `results/` 같은 **데이터 폴더의 기준점은 전부 이쪽**이다
+- `REPO` = 레포 루트 — `.venv/` 와 `git` 이 있고, julia 를 `--project=.` 로 띄울 때의 cwd다
+
+새 코드에서 데이터 경로를 `HERE` 로 잡으면 `reporting/results_4pol/…` 을 찾다 조용히 빈 표를
+낸다. `wmpath.WM` 을 쓸 것.
+
+### 11-C. 레포 밖에서 이 폴더를 보는 곳 (이동 때 같이 고친 것)
+
+| 밖 | 무엇을 보나 |
+|---|---|
+| `src/respec/llm_service/dspy_service.py` | `core/`·`surrogate/` 를 `sys.path` 에 **append**(insert 아님 — dspy/litellm 과 동명 모듈 충돌 회피) |
+| `src/essential_tg_coponents.jl` · `tools/monitor/server.jl` | `core/objective.json` |
+| `tools/monitor/run_demo.jl` · `render_demo.jl` · `oracle/gen_oracle_dataset.jl` | `core/objective.jl` include |
+| `tools/monitor/dp_lane.jl` | `core/action_registry.json` |
+| `tools/test_policy_oracle.jl` | `core/reference_policy.py`(리터럴을 정규식으로 읽는다) |
+| `tools/demos.jl` | `surrogate/surrogate_linear.json` |
+| `tools/test_novelty.jl` · `test_router.jl` · `tools/monitor/regen_router_cases.sh` | `novelty/novelty_calibration*.json` |
+| `tools/regen_d20.sh` | `sweep/llm_ood_eval.py` |
