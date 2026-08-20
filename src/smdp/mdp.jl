@@ -19,6 +19,7 @@
 
 include("state_globals.jl")   # spec §3.6 전역 인벤토리 (hazard 보다 먼저 — 의존 없음)
 include("hazard.jl")   # §5 stochastic failure process (competing-risks point process)
+include("simstate.jl")   # §3 상태 정의 (hazard 뒤 — HazardParams/HazardState 를 참조한다)
 
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true
