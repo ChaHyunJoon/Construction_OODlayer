@@ -201,7 +201,12 @@ function _zone_arms_for(ctx)
     zd = _zd(ctx)
     zd === nothing && return _zone_arms()        # 진단이 없으면(플래그 OFF/실패) 옛 고정 집합
     arms = [0]
-    zd.n_restage_feasible > 0 && push!(arms, 3)
+    # 2026-08-19 (태스크 5, spec §2.1): `ActionRegistry.is_active(3)` 가드를 반드시 앞에 둔다.
+    # 이 함수는 등록부 상한(`ActionRegistry.kind_valid`)을 안 거치고 기하 술어만으로 직접 3 을
+    # 밀어 넣는 유일한 경로다 — 은퇴 표식만으로는 이 push! 를 못 막는다(레지스트리를 안 본다).
+    # 가드가 없으면 macro 3 이 영구 결번인데도 zd.n_restage_feasible>0 인 판에서 조용히
+    # 되살아난다 — "은퇴는 실험 게이트를 이긴다"는 계약이 여기서만 새는 구멍이었다.
+    ActionRegistry.is_active(3) && zd.n_restage_feasible > 0 && push!(arms, 3)
     zd.relocate_feasible     && push!(arms, 7)
     return arms
 end

@@ -53,11 +53,17 @@ WM = os.environ.get("WM_DIR") or os.path.join(
     "wm4spacecraft_manufacturing")
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 
-# 데이터셋 경로는 wm4 쪽 wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 WM 을 import 경로에
-# 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이 올라오므로
-# WM 을 최우선 경로로 두면 동명 모듈을 가릴 위험이 있다(맨 뒤면 표준 패키지가 항상 먼저 이긴다).
-if WM not in sys.path:
-    sys.path.append(WM)
+# 데이터셋 경로는 wm4 쪽 core/wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
+# 경로에 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이
+# 올라오므로 wm4 경로를 최우선으로 두면 동명 모듈을 가릴 위험이 있다(맨 뒤면 표준 패키지가
+# 항상 먼저 이긴다). 그래서 wm4 자신의 부트스트랩(core/wmpath.py, insert(0,...))은 여기서
+# 쓰지 않고 필요한 폴더만 직접 append 한다.
+# 2026-08-18 폴더 분류: wm4 의 py 가 역할별 폴더로 나뉘었다 — 이 프로세스가 쓰는 것은
+# core/(wm_datasets) 과 surrogate/(eval_surrogate_v2 · surrogate_features · surrogate_v2) 둘이다.
+WM_CODE_DIRS = [os.path.join(WM, "core"), os.path.join(WM, "surrogate")]
+for _d in WM_CODE_DIRS:
+    if _d not in sys.path:
+        sys.path.append(_d)
 import wm_datasets                                            # noqa: E402
 
 
@@ -91,9 +97,15 @@ PROGRAM = os.environ.get("DSPY_PROGRAM") or _default_program()
 # 아니면 Deprioritize(0.3) 중에서만 답했다. 어휘가 정답을 담지 못하면 그 사건의 초과비용은
 # 원리적으로 0 이 될 수 없다(PLAN_LLM_INFERENCE_7H Ch-A).
 from action_registry import (MACRO_NAME as _REG_NAME, MACRO_COST as _REG_COST,   # noqa: E402
-                             KIND_VALID as _REG_KIND_VALID, doc_lines as _reg_doc_lines)
+                             KIND_VALID as _REG_KIND_VALID, doc_lines as _reg_doc_lines,
+                             ACTIVE_MACROS as _REG_ACTIVE)
 
-MACROS = [_REG_NAME[i] for i in sorted(_REG_NAME)]
+# 2026-08-19 (태스크 5, spec §2): `sorted(_REG_NAME)` 는 **전체** 레지스트리 항목(이름표는 은퇴
+# 후에도 안 지운다)을 도니 3·5·6 이 그대로 섞여 나온다 — LLM 의 legal 어휘 목록·`_valid_for`의
+# `caller` 필터(`m in MACROS`)가 이 리스트를 멤버십 검사에 쓰므로, 고치지 않으면 은퇴한 macro
+# 이름이 이 서비스의 어휘로 조용히 되살아난다. `ACTIVE_MACROS` 는 은퇴(retired)와 실험 게이트
+# (experimental) 를 **모두** 반영한 진짜 "지금 제안 가능한 팔" 목록이다.
+MACROS = [_REG_NAME[i] for i in _REG_ACTIVE]
 # 이벤트 종류별로 애초에 legal 한 매크로(gen_oracle_dataset 의 valid_actions / ood_mdp_shim 의
 # _zone_arms 와 **같은 규칙이어야 한다**).
 #
@@ -117,6 +129,10 @@ MACROS = [_REG_NAME[i] for i in sorted(_REG_NAME)]
 # 상태를 모르면 legal 인지 알 수 없고, 중반에는 조용한 no-op 이 된다(2026-08-03 실측 36/36 동점).
 # 상태를 아는 호출자(policy.jl valid_macros)가 실어 보내면 그쪽이 언제나 이긴다.
 VALID = {k: [_REG_NAME[i] for i in ids] for k, ids in _REG_KIND_VALID.items()}
+# 2026-08-19 (태스크 5): ForbidZone(3) 은 이제 영구 은퇴라 `_REG_KIND_VALID` 자체가 이미
+# 안 낸다(is_active 가 은퇴를 실험 게이트보다 먼저 본다) — 이 필터는 그래서 지금은 무동작이다.
+# 그래도 남겨 둔다: 위 주석(2026-08-05)의 원래 이유(빌드 중반 조용한 no-op)가 여전히 참이고,
+# 상태를 모르는 호출자 표에 대한 방어를 이중으로 걸어 둬서 나쁠 게 없다.
 VALID["zone"] = [m for m in VALID.get("zone", []) if m != "ForbidZone"]
 VALID["reform"] = ["NOOP", "ReformTeam"]
 
@@ -195,7 +211,7 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 # 그 대가는 DP 표집까지 번졌다 — 2026-08-15 판에서 Reform 축 §8.7 gap 이 13/13 = 100%.
 #
 # 2026-08-16: 라벨셋을 RELABEL_20260816 으로 바꾼다. shim 의 `valid_actions` 가 이제
-# `action_registry.json` 파생이라 kind 마다 legal 한 팔을 전부 굴렸고, `reform` kind 가
+# `core/action_registry.json` 파생이라 kind 마다 legal 한 팔을 전부 굴렸고, `reform` kind 가
 # 격자에 들어왔다. 그래서 3·4 가 support 에 있다(조합 팔 5·6 도 — DS_COMBO_ARMS=1 로 생성).
 #
 # ⚠️ `wm_datasets.resolve()` 를 **쓰지 않는다** — 그 함수는 $WM_DATASET/$EVAL_DATA 를 읽으므로
@@ -228,7 +244,10 @@ SURRO_RULE = "deadband_Jbar"
 
 def _load_surrogate():
     try:
-        sys.path.insert(0, WM)
+        # 2026-08-18 폴더 분류: 이 셋은 전부 wm4 의 surrogate/ 에 있다(위 WM_CODE_DIRS 참조).
+        for _d in WM_CODE_DIRS:
+            if _d not in sys.path:
+                sys.path.append(_d)
         # 로딩·필터링 계약(`e1_analyze.load()` 로 읽기 · `fired==False` stub 10행 제거)은
         # Task 6 하니스에 **단일 정의**로 있다. 여기서 다시 쓰면 배포가 학습과 다른 행으로
         # 적합될 수 있으므로 그 함수를 그대로 부른다.

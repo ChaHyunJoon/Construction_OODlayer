@@ -353,6 +353,7 @@ function handle_ood!(env, truth, nl)
     # 세계가 안 바뀌는데도 verdict 는 "집행했다"고 말할 수 있다(2026-08-17 재리뷰 F2). 각 분기가
     # 실제로 탔는지를 여기 플래그로 남긴다 — 조건·순서·본문은 그대로, 계측만 얹는다.
     local enact_applied = false
+    local ran_milp = false      # G6(spec §5.5): 이 결정에서 f 가 솔버를 불렀는가
     try
         if mac == "NOOP"
             enact_applied = true
@@ -464,7 +465,7 @@ function handle_ood!(env, truth, nl)
         local _applied_note = enact_applied ? "" :
             " [집행 사슬 무동작: 이 사건 타입엔 $(mac) 분기가 없거나 가드에 안 걸렸다]"
         println("[recover] $tag → $mac$(_applied_note)  (closed=", length(env.cache.closed_set), ")")
-        local ran_milp = !(CB.LAST_EDGE_COSTS[] === _milp_sentinel)   # 센티넬이 그대로면 재풀이 없음
+        ran_milp = !(CB.LAST_EDGE_COSTS[] === _milp_sentinel)   # 센티넬이 그대로면 재풀이 없음
         if CB.LAST_AUTO_EFFICIENCY_W[] > 0.0
             println("[recover] energy term ON for this re-solve (auto w_eff=",
                     round(CB.LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3),
@@ -486,6 +487,10 @@ function handle_ood!(env, truth, nl)
     # 있었는데(deviate_valid=true) 사슬의 truth-타입 가드에 안 걸려 무동작으로 통과할 수 있다 —
     # 그 판이 Task 2 에 "이 팔의 표본"으로 잘못 들어가지 않게, 여기서 조용히 넘기지 않는다.
     this_decision["enact_applied"] = enact_applied
+    # G6 — `f` 무솔버 불변식(spec §5.5). 6팔 전부에서 false 여야 한다. 하나라도 true 면 그 팔은
+    # 행동공간이 아니라 meta-level(CALL_ORACLE)로 가야 한다. 예전에는 이 값이 stdout 에만
+    # 나가서 게이트를 기계로 못 걸었다.
+    this_decision["ran_milp"] = ran_milp
     (!enact_applied && get(decision.router, "deviated", false)) &&
         @warn "[recover] DEVIATE #$(get(decision.router, "deviate_at", "?")): " *
               "$(mac) 가 $(tag) 사건에서 집행 사슬을 무동작으로 통과했다(enact_applied=false) " *

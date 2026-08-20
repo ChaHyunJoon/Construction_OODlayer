@@ -10,7 +10,7 @@
     "와 **같은 값이어야 한다**(README 함정 29). 여기 값은 그 세 곳에서 그대로 옮긴 것이다.",
     "kinds = 그 팔이 전제조건상 말이 되는 사건 종류(상태를 아는 호출자가 준 valid 가 언제나 우선)."
   ],
-  "vocab": "v1-9arms",
+  "vocab": "v2-6arms",
   "macros": {
     "0": {
       "name": "NOOP",
@@ -34,6 +34,8 @@
       "name": "ForbidZone",
       "cost": 1.0,
       "kinds": ["zone"],
+      "retired": true,
+      "retired_reason": "2026-08-19 spec §2.1 — RelocateBuild(7) 에 흡수. 같은 의도이고 차이는 범위뿐인데 좁은 쪽의 도메인이 죽어 있다(restage_assembly! 가 _assembly_started 를 거부; 재적치 가능 staging circle 이 closed≈46 부터 0개). 실측 제안 0/143 · 집행 0/1438 · 라벨 0/872 — 삭제 비용 0행.",
       "doc": "relocate the staging areas of the sub-assemblies blocked by a no-go zone. Only works while those sub-assemblies have not started building; once they are under way its domain is empty and it silently does nothing."
     },
     "4": {
@@ -47,6 +49,8 @@
       "cost": 1.8,
       "kinds": ["fault"],
       "experimental": "DS_COMBO_ARMS",
+      "retired": true,
+      "retired_reason": "2026-08-19 spec §2.2 — ForbidAgent 를 품고 있다. ForbidAgent 의 효과는 verify() 가 MILP 를 다시 풀어야 나타나므로 (s,a)→s⁺ 가 argmin 을 지난다. 그건 macro option 이 아니라 meta-action CALL_ORACLE 의 실물 기전이다. 삭제가 아니라 재분류 — 행동공간에서만 뺀다.",
       "doc": "COMPOSITE (two specs): retire the agent WITHOUT spending a depot spare, then reform teams around the loss. The spare-preserving alternative to Replace. cost = ForbidAgent 0.8 + ReformTeam 1.0. GATED: the generator only offers this when DS_COMBO_ARMS=1 (oracle/ood_mdp_shim.jl COMBO_IDS); with the flag unset it collapses to the NOOP arm."
     },
     "6": {
@@ -54,6 +58,8 @@
       "cost": 0.8,
       "kinds": ["fault"],
       "experimental": "DS_COMBO_ARMS",
+      "retired": true,
+      "retired_reason": "2026-08-19 spec §2.1 — ForbidWindow 를 품고 있다. '기다리면 해소되는 사건' 을 위한 lever 인데 이 문제의 사건 셋(zone 영구 · fault 영구 · battery 는 복구)은 대기로 안 풀린다. 의도상 DeprioritizeAgent 와 같은데 TIER-1 하드라 빌드를 infeasible 하게 만들 수 있어 지배당한다.",
       "doc": "COMPOSITE (two specs): soft-shed the agent's work AND close a time window on the affected node -- two soft levers instead of one. cost = DeprioritizeAgent 0.3 + ForbidWindow 0.5. GATED by DS_COMBO_ARMS=1, same as macro 5."
     },
     "7": {

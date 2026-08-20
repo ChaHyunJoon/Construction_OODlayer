@@ -71,13 +71,35 @@ MACROS = sorted(REGISTRY)
 _VOCAB_ARMS_RE = re.compile(r"^v\d+-(\d+)arms$")
 
 
+def _is_retired(i, m):
+    """이 매크로가 은퇴했는가 — **엄격** 판정(2026-08-19 판정 K).
+
+    처음엔 "retired" 한 필드에 산문 사유 문자열을 직접 넣으려 했다(task-5-brief.md Step 3).
+    그러면 Python 은 truthy 검사라 동작하지만 Julia 로더(`isretired(m) = haskey(m,:retired) &&
+    Bool(m.retired)`)는 `Bool("문자열")` 에서 MethodError 로 죽는다 — 이 도장이 막으려는 바로
+    그 실패("두 언어가 갈린다")가 도장 자신에게서 난다. 그래서 필드를 쪼갰다: "retired" 는
+    **기계 술어**(반드시 JSON boolean)이고 사유 산문은 "retired_reason" 으로 옮겼다.
+
+    로더 규칙(양 언어 동일): 부재 → False · boolean → 그 값 · **그 밖의 무엇이든(문자열·수·
+    null·객체) → 매크로 id 를 밝히며 에러.** 공유 truthy 규약으로 합의하지 않는다 — 갈린
+    것이 바로 truthiness 다. 절대 강제변환하지 않고 절대 추측하지 않는다."""
+    if "retired" not in m:
+        return False
+    v = m["retired"]
+    if isinstance(v, bool):
+        return v
+    raise ValueError(
+        "macro %r: 'retired' 값이 boolean 이 아니다(%r) — remap 하지 않는다(그러면 구세대 macro 3 "
+        "행이 4 로 에러 없이 재해석된다). 명시적으로 true/false 로 고칠 것." % (i, v))
+
+
 def n_non_retired(registry):
     """`registry`(= {id: {..., 선택적 "retired": bool}}) 에서 은퇴 표식이 없는 엔트리 수.
     은퇴는 엔트리를 지우지 않고 표식만 다는 영구적 성질이다(레지스트리 자체의 속성) —
     실험 팔 게이트(`experimental`/`is_active`)와는 다른 축이다: 그건 ENV 로 켜고 끄는
     **런타임** 성질이라 도장(정적 provenance)에 넣으면 `DS_COMBO_ARMS=1` 을 export 하는
     순간 도장의 유효성이 흔들린다 — 그래서 여기서는 쓰지 않는다."""
-    return sum(1 for m in registry.values() if not m.get("retired"))
+    return sum(1 for i, m in registry.items() if not _is_retired(i, m))
 
 
 def assert_vocab_arm_count(vocab, n_actual):
@@ -134,9 +156,20 @@ def require_dynamics(obj, expected, where):
 # 쓰는 순간 KeyError 로 죽는 사고가 2026-08-02 에 실제로 났다(gen_oracle_dataset.jl:118).
 EXPERIMENTAL = {i: m["experimental"] for i, m in REGISTRY.items() if m.get("experimental")}
 
+# ---- 은퇴한 팔 (2026-08-19, spec §2) --------------------------------------------------------
+# 은퇴는 실험 게이트를 **이긴다**: DS_COMBO_ARMS=1 으로도 5·6 은 안 살아난다. 그리고
+# 이름표(MACRO_NAME)와 비용은 **지우지 않는다** — 지우면 구세대 행을 읽을 때 KeyError 로
+# 죽는데(2026-08-02 사고), 우리가 원하는 실패 모양은 '도장 불일치로 죽는 것'이다.
+# id 는 재번호하지 않는다: 3·5·6 은 영구 결번이고, 그래야 구세대 행이 조회 실패로 죽는다.
+# 재번호하면 macro 3 행이 ReformTeam 으로 **에러 없이** 재해석된다(spec §2.4).
+RETIRED = {i: m.get("retired_reason", "") for i, m in REGISTRY.items() if _is_retired(i, m)}
+
 
 def is_active(i):
-    """이 매크로를 지금 **제안해도 되는가**. 실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    """이 매크로를 지금 **제안해도 되는가**. 은퇴한 팔은 무조건 아니고,
+    실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    if i in RETIRED:
+        return False
     flag = EXPERIMENTAL.get(i)
     return flag is None or os.environ.get(flag, "0") == "1"
 

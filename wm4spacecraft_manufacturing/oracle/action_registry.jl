@@ -59,6 +59,24 @@ const COST      = Dict(i => Float64(REGISTRY[i].cost) for i in IDS)
 const _VOCAB_ARMS_RE = r"^v\d+-(\d+)arms$"
 
 """
+    isretired(i, m) -> Bool
+
+이 매크로가 은퇴했는가 — **엄격** 판정(2026-08-19 판정 K). `haskey(m,:retired) &&
+Bool(m.retired)` 는 `m.retired` 가 문자열이면 `Bool("문자열")` 에서 `MethodError` 로 죽는다
+(2026-08-19 컨트롤러 재리뷰 실측) — 이 도장이 막으려는 바로 그 실패("두 언어가 갈린다")가
+도장 자신에게서 나는 것이다. 그래서 "retired" 는 **기계 술어**(반드시 JSON boolean)이고
+사유 산문은 "retired_reason" 으로 분리했다. 규칙(양 언어 동일): 부재 → false · boolean →
+그 값 · **그 밖의 무엇이든(문자열·수·null·객체) → 매크로 id 를 밝히며 에러.** 강제변환·추측 금지.
+"""
+function isretired(i::Int, m)::Bool
+    haskey(m, :retired) || return false
+    v = m.retired
+    v isa Bool && return v
+    error("macro $(i): 'retired' 값이 boolean 이 아니다($(repr(v))) — remap 하지 않는다" *
+          "(그러면 구세대 macro 3 행이 4 로 에러 없이 재해석된다). 명시적으로 true/false 로 고칠 것.")
+end
+
+"""
     n_non_retired(registry) -> Int
 
 `registry`(id => JSON3.Object, 선택적 `retired` 필드) 에서 은퇴 표식이 없는 엔트리 수.
@@ -68,8 +86,7 @@ const _VOCAB_ARMS_RE = r"^v\d+-(\d+)arms$"
 유효성이 흔들린다 — 그래서 여기서는 쓰지 않는다.
 """
 function n_non_retired(registry)
-    isretired(m) = haskey(m, :retired) && Bool(m.retired)
-    return count(!isretired, values(registry))
+    return count(kv -> !isretired(kv[1], kv[2]), pairs(registry))
 end
 
 """
@@ -109,6 +126,12 @@ function require_vocab(obj, where::AbstractString)
     return nothing
 end
 
+"""은퇴한 팔 (spec §2). 은퇴는 실험 게이트를 이긴다 — DS_COMBO_ARMS=1 으로도 안 살아난다.
+id => retired_reason 산문(테스트/디버깅용). 이름표(NAME)와 비용(COST)은 지우지 않는다 —
+지우면 구세대 행을 읽을 때 KeyError 로 죽는데(2026-08-02 사고), 원하는 실패 모양은
+'도장 불일치로 죽는 것'이다."""
+const RETIRED = Dict(i => String(get(REGISTRY[i], :retired_reason, "")) for i in IDS if isretired(i, REGISTRY[i]))
+
 """
     is_active(i) -> Bool
 
@@ -120,6 +143,7 @@ end
 """
 function is_active(i::Int)
     m = REGISTRY[i]
+    isretired(i, m) && return false      # 은퇴가 실험 게이트를 이긴다
     haskey(m, :experimental) || return true
     return get(ENV, String(m.experimental), "0") == "1"
 end

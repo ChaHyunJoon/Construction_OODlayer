@@ -263,6 +263,20 @@ end
 # Julia side. Unknown kind / missing field / unknown id ref throws -> Reject.
 # 타입 있는 파싱: 믿을 수 없는 JSON 이 줄리아 쪽에서 타입 있는 ConstraintSpec 으로 바뀌는 "유일한 한 곳".
 # 모르는 kind / 빠진 필드 / 모르는 id 참조는 모두 예외를 던짐 → 호출부에서 Reject(거부)로 처리.
+#
+# ---- 태스크 5 (2026-08-19, spec §2) 대조 결과 --------------------------------------------
+# 이 `kind` 스위치는 닫힌 매크로 어휘(action_registry.json 의 id 0-8)가 아니라 **열린 CALL_ORACLE
+# 재-spec 경로의 DSL 제약 종류**를 다룬다 — 서로 다른 이름공간이라 macro 3·5·6 은퇴가 이 파일의
+# 리터럴 목록에 손댈 자리가 없다(그래서 대조 결과는 "바꿀 것 없음", 근거는 아래):
+#   · "ForbidAgent" — spec §2.2 가 명시적으로 재분류한 자리다: object-level 매크로 5 는 은퇴하지만
+#     그 구성 primitive ForbidAgent 는 여기 **그대로 남아야 한다** — 이게 곧 "meta-action
+#     CALL_ORACLE 의 실물 기전"이다. 지우면 그 재분류 자체가 깨진다.
+#   · "ForbidZone" / "ForbidWindow" — macro 3/6 은퇴 사유(도메인이 죽어 있다 / 대응할 물리가
+#     없다)는 오브젝트-레벨 매크로 메뉴에 관한 것이지, 이 primitive 자체의 존재를 금지하지
+#     않는다. LLM 이 자유형식 CALL_ORACLE 경로로 이걸 제안해도 여전히 파싱되지만(하위호환),
+#     같은 도메인 문제 때문에 대개 무동작이거나 지배당한다 — 위험하진 않고 그냥 쓸모없다.
+#   · 따라서 이 kind 목록에서 3·5·6 을 빼는 것은 **잘못된 수정**이다: 빼면 ForbidAgent 의
+#     CALL_ORACLE 기전 자체가 없어진다.
 function _parse_proposal(payload, event; id_resolver)
     cs = ConstraintSpec[]                   # 제약(constraint) 객체들을 담을 빈 배열 (원소 타입은 ConstraintSpec)
     for c in payload["constraints"]         # JSON 의 "constraints" 배열을 하나씩 순회 (c 는 제약 하나)

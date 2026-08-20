@@ -12,11 +12,11 @@ CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
 include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
 
 @testset "어휘 도장" begin
-    # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다. 오늘 registry 는 3/5/6 이
-    # 아직 은퇴 전인 9팔이므로 "v1-9arms" 다("v2-6arms" 는 태스크 5 이후의 END-STATE).
-    @test ActionRegistry.VOCAB == "v1-9arms"
-    @test length(ActionRegistry.IDS) == 9
-    @test ActionRegistry.require_vocab(Dict("vocab" => "v1-9arms"), "ok") === nothing
+    # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다. 태스크 5(2026-08-19)가 3/5/6 을
+    # 실제로 은퇴시켰으므로 오늘은 "v2-6arms" 다("v1-9arms" 는 그 이전 세대의 값).
+    @test ActionRegistry.VOCAB == "v2-6arms"
+    @test length(ActionRegistry.IDS) == 9   # 은퇴는 엔트리를 안 지운다 — 전체 엔트리 수는 그대로 9
+    @test ActionRegistry.require_vocab(Dict("vocab" => "v2-6arms"), "ok") === nothing
     @test_throws ErrorException ActionRegistry.require_vocab(Dict{String,Any}(), "도장 없음")
     @test_throws ErrorException ActionRegistry.require_vocab(Dict("vocab" => "v1-8arms"), "구세대")
 
@@ -93,6 +93,49 @@ end
     # 정상적으로 끝날 수 없다.
     r_bumped = _load_in_subprocess(_write_scratch_registry("v2-6arms"; retired_ids=[3, 5, 6]))
     @test r_bumped.success
+end
+
+@testset "6팔 확정" begin
+    delete!(ENV, "DS_COMBO_ARMS")
+    @test ActionRegistry.active_ids() == [0, 1, 2, 4, 7, 8]
+    ENV["DS_COMBO_ARMS"] = "1"
+    @test ActionRegistry.active_ids() == [0, 1, 2, 4, 7, 8]   # 은퇴가 실험 게이트를 이긴다
+    delete!(ENV, "DS_COMBO_ARMS")
+    @test ActionRegistry.NAME[3] == "ForbidZone"              # 이름표는 남는다
+    @test sort(collect(keys(ActionRegistry.RETIRED))) == [3, 5, 6]
+end
+
+# ---- 판정 K: retired 표식 형식 — 4경우(양 언어 동일 규칙). 공유 truthy 규약으로 합의하지
+# 않는다 — 갈린 것이 바로 truthiness 다. "retired" 가 boolean 이 아니면 무조건 에러여야 한다.
+@testset "retired 표식 형식 (판정 K, 4경우)" begin
+    # 실제 REGISTRY 값과 같은 타입(JSON3.Object)으로 만든다 — dot-access(`m.retired`)가
+    # 실제 로더와 같은 경로를 타야 이 테스트가 로더를 실제로 검증한다. JSON3.write(Dict(...))
+    # 로 만들어 문자열 안에 따옴표를 손으로 이스케이프하는 함정을 피한다.
+    function _mk(entry)
+        blob = JSON3.write(Dict("0" => entry))
+        obj = JSON3.read(blob)
+        return Dict{Int,Any}(parse(Int, String(k)) => v for (k, v) in pairs(obj))
+    end
+    reg_str = _mk(Dict("name" => "X", "cost" => 1.0, "retired" => "2026-08-19 spec §2.1 ..."))
+    reg_true = _mk(Dict("name" => "X", "cost" => 1.0, "retired" => true))
+    reg_false = _mk(Dict("name" => "X", "cost" => 1.0, "retired" => false))
+    reg_absent = _mk(Dict("name" => "X", "cost" => 1.0))
+
+    # 문자열 → 에러(매크로 id 를 밝히며)
+    err = try
+        ActionRegistry.n_non_retired(reg_str)
+        nothing
+    catch e
+        e
+    end
+    @test err isa Exception
+    @test occursin("0", sprint(showerror, err))
+    # true → 은퇴(0개 비은퇴)
+    @test ActionRegistry.n_non_retired(reg_true) == 0
+    # false → 비은퇴(1개 비은퇴)
+    @test ActionRegistry.n_non_retired(reg_false) == 1
+    # 부재 → 비은퇴(1개 비은퇴)
+    @test ActionRegistry.n_non_retired(reg_absent) == 1
 end
 
 @testset "동역학 도장" begin
