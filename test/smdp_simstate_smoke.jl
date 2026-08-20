@@ -109,6 +109,13 @@ function _big_state(order::Symbol)
                 event = CB.EventBlock(kind = :battery, robot = 1, severity = 0.3))
 end
 
+# 재리뷰 라운드 2: 조기 abort 마스킹 — 평평한 최상위 @testset 이 18개라, 첫 red 가 파일을
+# 죽이고 나머지를 통째로 숨긴다(세 delimiter-injection 게이트가 연속으로 붙어 있어 하나만
+# 보이고, 이 라운드가 첫 testset 에 넣은 fixture-전제 단언도 나머지 79개 단언의 보고를
+# 지워버린다). 바깥 @testset 하나로 감싸면 Julia 가 첫 red 에서도 나머지 testset 을 계속
+# 돌리고 끝에 한 번만 던진다 — 의미는 안 바뀌고 가시성만 회복한다.
+@testset "smdp_simstate_smoke.jl — 전체" begin
+
 @testset "정준 직렬화는 삽입 순서에 무관하다 — 10원소 (C-1 수정)" begin
     a = _big_state(:fwd)
     b = _big_state(:rev)
@@ -145,6 +152,10 @@ end
                         goal = (1.0, 1.0), phase = :outbound, step_out = 5, step_swap = 0)
     c2 = CB.CourierRec(target = 1, courier = 10, depot = :south, home = (2.0, 2.0),
                         goal = (3.0, 3.0), phase = :returning, step_out = 8, step_swap = 12)
+    # 재리뷰 라운드 2 DEFERRED-1: 이 fixture 의 전제("두 레코드가 (target,courier) 를 공유한다")
+    # 도 C-1 과 똑같이 단언되지 않으면 "정리" 한 번(예: c2.target 을 1->2)으로 조용히 무장해제
+    # 된다(실측). 전제 자체를 먼저 단언해서 fixture 가 퇴화하면 여기서 red 가 나게 한다.
+    @test (c1.target, c1.courier) == (c2.target, c2.courier)
     a = _state(couriers = [c1, c2])
     b = _state(couriers = [c2, c1])
     @test CB.canonical(a) == CB.canonical(b)
@@ -219,12 +230,18 @@ end
                             energy_J = 10.0, usage_s = 0.0, eff = 1.0, health = :healthy,
                             stalled = false, payload = nothing, role = Symbol(tail))
     # 위조된 tail 이 가리키는 정확한 모양(R99, pose=(0,0,0))과 일치하는 "진짜 두 번째 로봇" —
-    # 포즈가 다르면애초에 문자열이 안 겹쳐서 무엇을 고쳐도 테스트가 항상 통과해버린다.
+    # 포즈가 다르면 애초에 문자열이 안 겹쳐서 무엇을 고쳐도 테스트가 항상 통과해버린다.
     r99_matching_shape = CB.RobotRec(id = 99, pose = (0.0, 0.0, 0.0), vel = (0.0, 0.0), soc = 1.0,
                                       energy_J = 10.0, usage_s = 0.0, eff = 1.0, health = :healthy,
                                       stalled = false, payload = nothing, role = :transport)
     poisoned_fleet_str = CB.canonical(poisoned)
     clean_fleet_str = CB.canonical(_rec(1)) * ";" * CB.canonical(r99_matching_shape)
+    # 재리뷰 라운드 2, NEW-A: 위 clean_fleet_str 은 production 의 join 규칙(";" 구분자)을 손으로
+    # 복제한 것이다 — `_canonical_blocks` 가 Fleet 구분자를 바꾸면 이 비교는 계속 green 인 채
+    # 옛 포맷을 검사하는 박물관 전시물이 된다. production 경로가 실제로 내는 Fleet 블록 문자열과
+    # 묶어서, 구분자가 바뀌는 순간 여기가 red 가 되게 한다.
+    two_robot_state = _state(fleet_override = Dict(1 => _rec(1), 99 => r99_matching_shape))
+    @test Dict(CB._canonical_blocks(two_robot_state))[:fleet] == "Fleet[" * clean_fleet_str * "]"
     @test poisoned_fleet_str != clean_fleet_str
 end
 
@@ -372,4 +389,5 @@ _hybrid(base::T, alt::T, field::Symbol) where {T} =
         end
     end
     @test n_fields == 42
+end
 end
