@@ -75,6 +75,10 @@ import wm_datasets                      # 데이터셋 경로 단일 정의
 from e1_analyze import load
 from features_agnostic import STATE_DESCRIPTORS, descriptors_from_row
 
+# 축별 sd 판정선. 서술자는 전부 [0,1] 범위이므로, sd 가 이 아래면 그 축이 게이트를 삼킨다
+# (cap 에 잘리는 순간 혼자 score 를 지배 — main() 의 DEGENERATE-AXIS GATE 참고).
+DEGENERATE_SD = 0.02
+
 # ==========================================================================================
 #  버전/지문 — 낡은 교정파일이 조용히 쓰이는 것을 막는 장치
 # ==========================================================================================
@@ -165,6 +169,8 @@ def main():
     # --sd-floor=0.02 : 축별 sd 하한(기본 0 = 끔). 아래 [axis audit] 이 DEGENERATE 로 표시하는 축이
     # 남아 있는데 당장 데이터를 더 못 만들 때의 임시 보험. 켜면 어느 축이 올라갔는지 로그에 남는다.
     sd_floor = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--sd-floor=")), 0.0)
+    # --allow-degenerate : 아래 축 게이트를 경고로 낮춘다. 기본은 **차단**(2026-08-20).
+    allow_degenerate = "--allow-degenerate" in sys.argv[1:]
 
     # --exclude=zoneblk : 그 종류를 교정에서 **빼고** 맞춘다 = "아직 본 적 없는 종류"를 만드는 스위치.
     #
@@ -188,6 +194,48 @@ def main():
               f"(제외된 종류는 이제 '처음 보는 사건'이 됩니다)")
     X, keys = instance_descriptor_matrix(df)
     mu, sd, scores = fit_calibration(X, cap=cap, sd_floor=sd_floor)
+
+    # ---- DEGENERATE-AXIS GATE (감사는 2026-08-04, 차단으로 승격은 2026-08-20) ----------------
+    # 이 검사가 없어서 생긴 실제 사고: CANONICAL 의 60 instance 는 발화 시점이 closed∈{50,58}
+    # 두 값뿐이라 `progress` 의 sd 가 0.0051 이었다. 서술자는 전부 [0,1] 범위인데 한 축의 sd 만
+    # 0.005 면 그 축은 **초민감 축**이 되고, cap 에 잘리는 순간 혼자 score 를 지배한다:
+    #   6축·cap=8 이면 한 축만 잘려도 score >= 8/sqrt(6) = 3.27 인데 교정 최대 score 는 2.21 →
+    #   나머지 5축이 완벽해도 **자동으로 novel**. 실제로 데모의 battery(progress 0.41)와 후반
+    #   fault(0.66)가 종류와 무관하게 전부 escalate 됐다.
+    #
+    # 🔴 2026-08-20 — 경고로는 부족했다는 것이 실측으로 드러났다. 이 경고가 들어간 뒤에도
+    # `progress` sd=0.0051 짜리 교정이 그대로 만들어져 설치됐고(작업 트리 사본), 라이브에서
+    # p=0.0082 로 **모든 판이 escalate** 됐다. 그래서 두 가지를 바꿨다:
+    #   (a) 경고 -> **exit 1**. 그래도 만들려면 `--allow-degenerate` 를 명시해야 한다.
+    #   (b) 그 판정을 **파일을 쓰기 전에** 한다. 예전에는 json.dump 뒤에 있어서, 위반한 런이
+    #       **직전의 정상 교정을 덮어쓰고** 경고만 찍었다 — 이 레포가 sample_grid.py 에서
+    #       이미 한 번 데인 실패 모양("충실성 게이트는 출력 앞에서 친다")이 그대로 있었다.
+    solo = cap / np.sqrt(len(STATE_DESCRIPTORS))
+    print("\n  [axis audit] 서술자는 모두 [0,1] 범위이므로 sd 가 지나치게 작은 축은 게이트를 지배한다")
+    bad = []
+    for name, m, sd_i in zip(STATE_DESCRIPTORS, mu, sd):
+        rng_i = float(X[:, STATE_DESCRIPTORS.index(name)].ptp())
+        tag = ""
+        if sd_i < DEGENERATE_SD:
+            tag = "  <-- DEGENERATE"
+            bad.append((name, float(sd_i), rng_i))
+        print(f"    {name:18s} mu={m:7.4f} sd={sd_i:8.5f} range={rng_i:6.4f}{tag}")
+    if bad:
+        print(f"\n  [error] {[b[0] for b in bad]} 축의 분산이 사실상 0 입니다 (sd < {DEGENERATE_SD}).")
+        print(f"    한 축만 cap({cap:g}) 에 잘려도 score >= {solo:.2f} 인데 교정 최대는 "
+              f"{scores.max():.2f} 이므로, 그 축이 조금만 달라도 **무조건 escalate** 됩니다.")
+        for name, sd_i, _ in bad:
+            i = STATE_DESCRIPTORS.index(name)
+            lo, hi = mu[i] - cap * sd_i, mu[i] + cap * sd_i
+            print(f"    {name}: 포화되지 않는 구간 = [{lo:.4f}, {hi:.4f}] — 이 밖은 전부 novel")
+        print("    → 그 축이 실제로 변하는 데이터를 넣어 다시 만드십시오. 발화 시점이 원인이라면:")
+        print("      DS_FIRE_GRID=58,100,140,180,220,260 julia --project=. "
+              "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl")
+        print("    → 당장 데이터를 못 만들면 임시 보험으로 --sd-floor=0.02 (근거를 남길 것).")
+        if not allow_degenerate:
+            print("    아무것도 쓰지 않고 중단합니다. 정말 이대로 만들려면 --allow-degenerate.")
+            sys.exit(1)
+        print("    --allow-degenerate 가 주어져 계속합니다. 🔴 이 교정은 게이트로 못 씁니다.")
 
     # ---- parity probes: Julia 가 같은 입력에 같은 값을 내는지 검증할 (입력, 기대출력) 쌍 --------
     # 교정 데이터 자체 + 인위적으로 밀어낸 점들(=novel 이어야 하는 것들)을 섞는다.
@@ -260,31 +308,6 @@ def main():
     if p_out >= p_in:
         print("  WARNING: shifted probes are not scoring as more novel -- calibration may be degenerate")
 
-    # ---- DEGENERATE-AXIS AUDIT (added 2026-08-04) ------------------------------------------
-    # 이 검사가 없어서 생긴 실제 사고: CANONICAL 의 60 instance 는 발화 시점이 closed∈{50,58}
-    # 두 값뿐이라 `progress` 의 sd 가 0.0051 이었다. 서술자는 전부 [0,1] 범위인데 한 축의 sd 만
-    # 0.005 면 그 축은 **초민감 축**이 되고, cap 에 잘리는 순간 혼자 score 를 지배한다:
-    #   6축·cap=8 이면 한 축만 잘려도 score >= 8/sqrt(6) = 3.27 인데 교정 최대 score 는 2.21 →
-    #   나머지 5축이 완벽해도 **자동으로 novel**. 실제로 데모의 battery(progress 0.41)와 후반
-    #   fault(0.66)가 종류와 무관하게 전부 escalate 됐다.
-    # 파일은 정상적으로 만들어지고 에러도 없으므로, 경고를 크게 찍는 것 말고는 잡을 방법이 없다.
-    solo = cap / np.sqrt(len(STATE_DESCRIPTORS))
-    print("\n  [axis audit] 서술자는 모두 [0,1] 범위이므로 sd 가 지나치게 작은 축은 게이트를 지배한다")
-    bad = []
-    for name, m, s in zip(STATE_DESCRIPTORS, mu, sd):
-        rng = float(X[:, STATE_DESCRIPTORS.index(name)].ptp())
-        tag = ""
-        if s < 0.02:
-            tag = "  <-- DEGENERATE"
-            bad.append((name, float(s), rng))
-        print(f"    {name:18s} mu={m:7.4f} sd={s:8.5f} range={rng:6.4f}{tag}")
-    if bad:
-        print(f"\n  WARNING: {[b[0] for b in bad]} 축의 분산이 사실상 0 입니다.")
-        print(f"    한 축만 cap({cap:g}) 에 잘려도 score >= {solo:.2f} 인데 교정 최대는 "
-              f"{scores.max():.2f} 이므로, 그 축이 조금만 달라도 **무조건 escalate** 됩니다.")
-        print("    → 그 축이 실제로 변하는 데이터를 넣어 다시 만드십시오. 발화 시점이 원인이라면:")
-        print("      DS_FIRE_GRID=58,100,140,180,220,260 julia --project=. "
-              "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl")
 
 
 if __name__ == "__main__":

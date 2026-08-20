@@ -15,6 +15,7 @@
 # =============================================================================
 using ConstructionBots
 const CB = ConstructionBots
+import Statistics
 
 const CALIB = get(ENV, "NOVELTY_CALIB",
                   joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing",   # tools/ -> repo 루트 (wm4 는 repo 내부)
@@ -122,7 +123,20 @@ end
 # ---------------------------------------------------------------------------------------------
 # T8  eps 를 키우면 더 많이 LLM 으로 간다(운영 손잡이가 실제로 동작하는가).
 # ---------------------------------------------------------------------------------------------
-mid = det.mu .+ 2.0 .* det.sd
+# 🔴 2026-08-20 — 탐침을 교정에서 **유도**한다. 예전에는 `mu .+ 2.0 .* det.sd` 리터럴이었는데,
+# 모든 축에서 z=2 이므로 score = sqrt(mean(2²)) = **2.000 으로 데이터와 무관하게 고정**된다.
+# 그래서 이 검사가 실제로 재던 것은 "eps 손잡이가 동작하는가" 가 아니라
+# **"교정집합에 score 2.0 을 넘는 점이 있는가"** 였다 — 여유가 늘 얇았고(2.206 vs 2.0 = 10% ·
+# 2.223 vs 2.0 = 11%), 발화점 격자 교정으로 갈아끼우자 max=1.990 이 되어 **−0.5% 로 뒤집혔다.**
+# 그때도 손잡이 자체는 멀쩡했다(T5 가 p 0.994→0.404→0.006 로 이미 보인다).
+# 이제 `k = median(cal_scores)` 로 잡는다. 모든 축이 z=k 이므로 score == k 이고, p 는 교정
+# 분포의 한복판(≈0.5)에 떨어져 어떤 교정에서도 0.01 과 0.99 **사이**에 있다.
+# 그리고 그 전제를 **명시적으로 단언한다** — 픽스처가 못 받쳐주면 조용히 오측정하지 말고 빨개져야 한다.
+k   = Statistics.median(det.cal_scores)
+mid = det.mu .+ k .* det.sd
+p_mid = CB.conformal_pvalue(det, CB.novelty_score(det, mid))
+check("T8-premise 탐침의 p 가 두 eps 사이에 있다(안 그러면 T8 은 손잡이를 못 잰다)",
+      0.01 < p_mid < 0.99, "k=$(round(k; digits=3)) → p=$(round(p_mid; digits=4))")
 strict = CB.novelty_verdict(mid; eps = 0.01).novel
 loose  = CB.novelty_verdict(mid; eps = 0.99).novel
 check("T8 eps 손잡이가 동작(엄격하면 덜, 느슨하면 더 LLM 으로)", !strict && loose,
