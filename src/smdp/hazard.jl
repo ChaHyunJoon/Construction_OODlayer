@@ -399,12 +399,32 @@ function _hz_excluded()
     return ex
 end
 
-# hazard 의 스텝 카운터를 전역 시계(SIM_STEP)에 맞춘다. 자기 카운터를 따로 증가시키면
-# restore! 뒤에 둘이 어긋나고, Courier 의 절대 스텝 인덱스가 그 차이만큼 밀린다.
-# `SIM_STEP[] == 0`(= 아직 셋업 전)이면 자기 카운터를 유지한다 — 단위검사 경로가 그렇다.
-function _hz_sync_clock!(st::HazardState)
+# hazard 의 스텝·시간 카운터를 전역 시계(SIM_STEP)에 맞춘다.
+#
+# 리뷰 라운드 1(중요 3): 처음 버전은 `st.step` 만 동기화하고 `st.t += dt` 는 그대로 자기
+# 누적이었다 — 그러면 `hazard_step!` 호출이 한 번이라도 스킵되면(예: `hazard_enabled()` 가
+# 그 사이 꺼졌다 켜지거나, 안전 상한 `max_events` 로 조기 반환) `.t` 와 `.step` 이 **영구히**
+# 어긋난다. 스킵 전에는 `.t`·`.step` 이 항상 같이 전진해서 이 갈림이 구조적으로 불가능했는데,
+# 스텝만 동기화하는 절반짜리 수정이 오히려 그 불변을 깨는 신규 퇴행이었다. 그래서 `.t` 도
+# 자기 카운터를 버리고 동기화된 스텝에서 **유도**한다 — 그러면 스킵이 몇 번 있어도 다음 호출에서
+# 즉시 정확한 절대시각으로 복귀하고(자기 누적처럼 스킵분을 영영 잃지 않는다), 두 필드가 항상
+# `st.t == dt * st.step` 을 만족해 구조적으로 어긋날 수 없다.
+#
+# 오늘 시점에 이 함수를 부르는 restore! 는 `src/` 안에 아직 없다(태스크 9 이후에 생긴다) — 이
+# 함수가 지금 막는 것은 restore! 가 아니라 위에서 말한 "hazard_step! 스킵" 시나리오다. restore!
+# 가 생기면 그때도 같은 이유로 이 동기화가 필요해진다는 뜻으로 미리 적어 둔 것뿐이다.
+#
+# `SIM_STEP[] == 0`(= 아직 셋업 전)이면 `.step`/`.t` 모두 자기 카운터를 유지한다 — 단위검사
+# 경로(env 없이 손으로 `HazardState` 를 만들어 돌리는 test/mdp_hazard_smoke.jl 등)가 그렇다.
+function _hz_sync_clock!(st::HazardState, dt::Real)
     s = _current_sim_step()
-    st.step = s > 0 ? s : st.step + 1
+    if s > 0
+        st.step = s
+        st.t = Float64(dt) * s     # 유도값 — 자기 누적이 아니므로 스킵되어도 드리프트가 없다
+    else
+        st.step += 1
+        st.t += Float64(dt)
+    end
     return st.step
 end
 
@@ -422,8 +442,7 @@ function hazard_step!(env)
     length(st.events) >= st.params.max_events && return nothing   # 안전 상한
     dt = Float64(env.dt)                                          # env.dt 는 이미 "초" 단위(battery.jl 검증)
     dt > 0 || return nothing
-    st.t += dt
-    _hz_sync_clock!(st)      # 스텝은 전역 시계에서 받는다 (spec §11-8 단일 진실원)
+    _hz_sync_clock!(st, dt)      # t·스텝 모두 전역 시계에서 유도한다 (spec §11-8 단일 진실원)
 
     fleet = BATTERY_FLEET[]
     modes = _hz_modes(env)

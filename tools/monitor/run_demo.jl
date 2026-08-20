@@ -287,11 +287,18 @@ function handle_ood!(env, truth, nl)
         # 뿐이고 새로 재지 않는다.
         #   sim_t_at    : CB.sim_time(dt) = dt × CB.SIM_STEP[]. 종단 `makespan` 과 같은 출처
         #                 (spec §11-8 단일 진실원 — 위 SIM_STEP 주석).
+        #   sim_step_at : CB._current_sim_step() 을 sim_t_at 과 **같은 줄에서** 나란히 읽는다.
+        #                 리뷰 라운드 1(중요 4) — 예전엔 이 자리가 사설 `_SIM_STEP[]` 를 읽어서
+        #                 courier 가 쓰는 전역 `SIM_STEP[]` 과 한 스텝 어긋났었다(off-by-one,
+        #                 588판 중 98.4%가 -0.025s 로 오염). 이 필드가 있으면
+        #                 `sim_t_at == dt * sim_step_at` 를 산출물만으로 바로 검사할 수 있다 —
+        #                 test/smdp_clock_smoke.jl 의 회귀 테스트가 이 필드를 읽는다.
         #   energy_at_J : battery_report() 는 임의 시점의 누적 소비를 준다(render_demo.jl 이 이미
         #                 그렇게 읽어 화면에 싣는다). enable_battery! 는 이 파일 최상위에서
         #                 무조건 돌므로 함대는 항상 있다.
         #   closed_at   : "at" 과 같은 값이지만, 소비처가 이름으로 읽게 별도 키로 낸다.
         "sim_t_at"      => (try CB.sim_time(env.dt) catch; nothing end),
+        "sim_step_at"   => (try CB._current_sim_step() catch; nothing end),
         "energy_at_J"   => (try Float64(CB.battery_report().total_energy_J) catch; nothing end),
         "closed_at"     => length(env.cache.closed_set),
         # ---- 채점에 필요한 결정-시점 상태 (2026-08-06) ------------------------------------
@@ -914,11 +921,18 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             #      일을 덜 해서 에너지도 적게 쓰므로 총량은 미완주에 유리하다. 그래서 닫힌 노드당
             #      에너지(energy_per_closed)를 같이 남긴다. min_soc 는 마모 신호(가장 나쁜 로봇).
             "dt" => (try Float64(env.dt) catch; nothing end),
-            "sim_seconds" => (try Float64(env.dt) * result.steps catch; nothing end),
+            # 리뷰 라운드 1(소견 5) — 여기서 `env.dt * result.steps` 를 다시 계산하는 것은
+            # `CB.sim_time` 의 독스트링이 직접 금지하는 그 패턴이다("dt 를 각자 곱하지 말 것").
+            # `result.steps` 는 `simulate_case!` 가 반환하는 세 경로(:complete/:stall/:maxsteps)
+            # 전부에서 마지막으로 `CB.set_sim_step!(k)` 가 찍은 바로 그 `k` 와 항상 같으므로
+            # (루프 안 각 반환 직전에 이미 그 k 로 세팅됨), `CB.sim_time(env.dt)` 로 바꿔도 값은
+            # 그대로다 — 다만 이제 SIM_STEP[] 이라는 단일 출처를 통해서만 나온다.
+            "sim_seconds" => (try CB.sim_time(env.dt) catch; nothing end),
             # 실현 makespan[sim s] — 이 레인은 return_env_before_sim=true 로 수동 루프를 돌기 때문에
-            # 플래너의 stats[:Makespan] 이 존재하지 않는다. 실현 시간 = dt × steps 가 곧 makespan 이다.
-            # sim_seconds 와 같은 값이지만, 목적함수 J 의 소비처가 이름으로 읽게 하려고 별도 키로 낸다.
-            "makespan" => (try Float64(env.dt) * result.steps catch; nothing end),
+            # 플래너의 stats[:Makespan] 이 존재하지 않는다. 실현 시간 = CB.sim_time(dt) 가 곧
+            # makespan 이다. sim_seconds 와 같은 값이지만, 목적함수 J 의 소비처가 이름으로 읽게
+            # 하려고 별도 키로 낸다.
+            "makespan" => (try CB.sim_time(env.dt) catch; nothing end),
             "wall_seconds" => round(WALL_S; digits = 1),
             "spares_left" => (try length(CB.active_spares()) catch; -1 end),
             "battery" => (try
