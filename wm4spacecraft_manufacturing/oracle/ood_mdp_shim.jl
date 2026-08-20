@@ -326,7 +326,13 @@ const COMBO_IDS  = [5, 6]
 
 function action_to_proposal(ctx, a::Int)
     a == 0 && return nothing
-    if combo_arms_on() && a in COMBO_IDS
+    # 2026-08-19 (태스크 5 리뷰 F1 수정): 이 분기는 `valid_actions` 문지기보다 **먼저** 돌아서,
+    # `combo_arms_on()` 하나만으로 은퇴한 5/6 이 진짜 RespecProposal 을 만들 수 있었다 —
+    # `_zone_arms_for` 에서 고친 것과 같은 모양의 구멍이 같은 파일에 하나 더 있었다.
+    # `ActionRegistry.is_active(a)` 를 여기서도 확인한다: 은퇴는 3/5/6 에서 언제나 false 이므로
+    # `DS_COMBO_ARMS=1` 이 아무리 켜져 있어도(그리고 `DS_MACROS`/`DS_EP_MACROS` 로 5/6 을 직접
+    # 호출해도) 이 분기를 못 탄다 — "은퇴가 실험 게이트를 이긴다" 계약이 여기서도 성립해야 한다.
+    if ActionRegistry.is_active(a) && combo_arms_on() && a in COMBO_IDS
         return combo_to_proposal(ctx, a)
     end
     a in valid_actions(ctx) || return nothing   # macro invalid for this event type -> NOOP arm

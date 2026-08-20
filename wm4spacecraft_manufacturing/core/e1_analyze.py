@@ -12,7 +12,7 @@ makespan), per-scenario normalization, top-1 decision regret as THE metric, plus
 recall / agreement / catastrophic-choice rate. Evaluation is leave-one-INSTANCE-out (grouped), so the
 model is always judged on an OOD instance it did not train on (paired with the oracle on that instance).
 
-Usage:  python e1_analyze.py <dataset.jsonl>
+Usage:  python core/e1_analyze.py <dataset.jsonl>
 """
 # ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
 #    (EVALUATION.md · GRADED_OOD_DESIGN.md)
@@ -42,7 +42,7 @@ Usage:  python e1_analyze.py <dataset.jsonl>
 #   그 instance로 시험) 방식이라 모델은 항상 처음 보는 OOD 상황에서 채점된다.
 #
 # 실행 방법:
-#   python e1_analyze.py <dataset.jsonl>
+#   python core/e1_analyze.py <dataset.jsonl>
 #   옵션: --cost-aware (macro마다 비용을 매겨 "개입 안 하기=NOOP"도 정답이 될 수 있게 함)
 #         --lam=3.0     (비용 가중치 LAMBDA, 단위는 schedule-node 개수)
 #
@@ -61,7 +61,11 @@ Usage:  python e1_analyze.py <dataset.jsonl>
 #   * math.inf / math.nan: 무한대 / 숫자아님(NaN). JSON에는 이런 값이 문자열로 저장돼 다시 복원함.
 # =============================================================================
 
-import io, sys, json, math, warnings
+import io, os, sys, json, math, warnings
+# 2026-08-18 폴더 분류: surrogate_model 은 이제 surrogate/ 에 있다. 코드 폴더 전부를
+# sys.path 에 올려 맨이름 import 관례를 유지한다(근거는 core/wmpath.py 머리말).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                           # noqa: E402,F401
 import numpy as np
 import pandas as pd
 import objective                        # 목적함수 J 의 단일 진실원 (objective.json; spec §5)
@@ -69,9 +73,6 @@ from surrogate_model import build_model  # 평가·배포가 같은 모델을 �
 from sklearn.model_selection import LeaveOneGroupOut
 
 # 후보 macro의 정수 ID 목록과 사람이 읽을 이름 매핑.
-# 5·6 = 조합 팔(DS_COMBO_ARMS=1), 7 = RelocateBuild(zone 사건의 기본 개입 팔; 2026-08-03 부터 3 을 대체).
-# MACROS 는 "기본 생성에서 나오는 팔"이라 5·6 을 넣지 않는다. 7 은 zoneblk 덤프에 실제로 나오므로 넣는다.
-MACROS = [0, 1, 2, 3, 4, 7, 8]  # 8 = SwapBattery
 # [2026-08-05] 8 = SwapBattery 가 빠져 있어, macro 8 이 정답이 되는 순간 KeyError 로 죽었다
 # (MACROS 에는 8 이 들어 있는데 이름표만 없었다). Julia 쪽 gen_oracle_dataset.ACTION_NAME 과 맞춘다.
 # 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다. 이 표에는 5·6(조합 팔)이
@@ -79,6 +80,16 @@ MACROS = [0, 1, 2, 3, 4, 7, 8]  # 8 = SwapBattery
 # gen_oracle_dataset.jl 에도 따로 있었고, 감사가 "레지스트리에 있는 id 만" 비교해서 놓쳤다.
 # 5·6 을 레지스트리에 정식 등록했으므로 이제 파생 하나로 네 곳이 같아진다.
 import action_registry as _reg                                      # noqa: E402
+
+# 2026-08-19 (태스크 5 리뷰 F2 수정): 이 리터럴은 `[0, 1, 2, 3, 4, 7, 8]` 이었다 — 5·6 은 이미
+# 빠져 있었지만 **3(ForbidZone, 2026-08-19 spec §2.1 로 영구 은퇴)은 그대로였다.** 이 표는
+# `featurize()`(아래 `for m in MACROS: X[f"macro_{m}"] = ...`)의 one-hot 열을 정하고,
+# `surrogate/export_surrogate.py` 가 그 `featurize` 를 **배포 모델의 피처 공간**으로 그대로
+# 쓴다 — 리터럴을 안 고치면 은퇴한 macro 3 이 배포 모델에 열 하나로 계속 살아 있는다
+# (`core/features_agnostic.py` 에서 고친 것과 같은 leak, 한 파일 건너에). `ACTIVE_MACROS` 는
+# 은퇴(retired)·실험 게이트(experimental) 를 둘 다 반영하므로 다시는 리터럴 드리프트가 안 난다 —
+# 오늘 값은 `[0, 1, 2, 4, 7, 8]` 이고, 5·6 이 여기 없는 이유도 이제 이 한 줄로 설명된다.
+MACROS = list(_reg.ACTIVE_MACROS)  # 8 = SwapBattery
 
 MACRO_NAME = dict(_reg.MACRO_NAME)
 

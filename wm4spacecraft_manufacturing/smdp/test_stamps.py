@@ -198,3 +198,26 @@ def test_retired_field_false_means_not_retired():
 
 def test_retired_field_absent_means_not_retired():
     assert action_registry.n_non_retired(_registry_with_retired(None, present=False)) == 1
+
+
+# =============================================================================
+# 리뷰 F3 (판정: Important) — reference_policy 는 은퇴한 macro 를 채점 답으로 못 낸다
+# =============================================================================
+def test_reference_policy_never_answers_with_a_retired_macro():
+    """core/reference_policy.reference_action 의 zone 가지는 `RelocateBuild` 가 안 뜨면
+    `"ForbidZone"`(2026-08-19 영구 은퇴)을 답으로 냈다 — 은퇴한 매크로가 `decision_acc` 의
+    채점 기준이 되는 구멍이었다(리뷰 라운드 2 F3). 이제 그 구간은 unscored(None)여야 한다."""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+    import reference_policy as rp
+
+    ev_relocatable = {"truth": "ZoneTruth", "valid": ["NOOP", "RelocateBuild"],
+                       "zone_primitives": {"n_nav_blocked": 2, "root_covered": 0}}
+    a_star, basis, note = rp.reference_action(ev_relocatable)
+    assert a_star == "RelocateBuild"
+
+    ev_not_relocatable = {"truth": "ZoneTruth", "valid": ["NOOP"],
+                          "zone_primitives": {"n_nav_blocked": 2, "root_covered": 0}}
+    a_star, basis, note = rp.reference_action(ev_not_relocatable)
+    assert a_star != "ForbidZone"
+    assert a_star is None, "RelocateBuild 불가 + ForbidZone 은퇴 -> 닫힌 어휘에 답이 없다(unscored)"

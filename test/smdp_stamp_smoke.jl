@@ -155,3 +155,26 @@ end
     end
     @test CB.dynamics_stamp() == "hazard-off"
 end
+
+# ---- 리뷰 F1 (판정: Important) — 은퇴가 combo-arm 경로에서 새는지 회귀 검사 --------------------
+# `ood_mdp_shim.action_to_proposal` 의 `combo_arms_on() && a in COMBO_IDS` 분기가 `valid_actions`
+# 문지기보다 먼저 return 해서, `DS_COMBO_ARMS=1` 만으로 은퇴한 macro 5/6 이 진짜 RespecProposal 을
+# 만들 수 있었다(`_zone_arms_for` 에서 고친 것과 같은 모양의 구멍, 같은 파일). 수정 전에는 이
+# 테스트가 macro 5 에서 `nothing` 이 아닌 RespecProposal 을 받아 **빨간불**이었다(실측,
+# 2026-08-19 리뷰 라운드 2). `ActionRegistry.is_active(a)` 가드를 그 분기 조건에 추가해 닫았다.
+include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "ood_mdp_shim.jl"))
+
+@testset "은퇴는 combo-arm 경로도 이긴다 (리뷰 F1)" begin
+    ENV["DS_COMBO_ARMS"] = "1"
+    try
+        agent = CB.RobotID(id=1)
+        ctx5 = (type=:fault, agent=agent, zone=nothing, assembly=nothing, soc=NaN, after=0.0, source="test")
+        ctx6 = (type=:fault, agent=agent, zone=nothing, assembly=nothing, soc=NaN, after=0.0, source="test")
+        @test action_to_proposal(ctx5, 5) === nothing   # 은퇴한 macro 5, DS_COMBO_ARMS=1 이어도 프로포절 없음
+        @test action_to_proposal(ctx6, 6) === nothing   # 같은 이유로 macro 6 도 없음
+        # 게이트가 combo 분기만 막고 살아 있는 팔까지 죽이지 않는지 양성 대조(같은 ctx, macro 1).
+        @test action_to_proposal(ctx5, 1) !== nothing
+    finally
+        delete!(ENV, "DS_COMBO_ARMS")
+    end
+end
