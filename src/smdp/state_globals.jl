@@ -32,33 +32,49 @@
 # 리뷰 중이다) · `test/*.jl`(테스트 스캐폴딩용 상수, 예: `test/greedy_cost_dispatch_equivalence.jl`).
 # 이 경계 밖에서 새 진짜 상태가 나오면 이 파일이 그 사실을 놓친다 — 그 한계를 여기 명시한다.
 #
-# ---- 스캐너 자체의 구조적 사각지대 (fix round 1, [Critical] #3) -------------------------------
+# ---- 스캐너 자체의 구조적 사각지대 (fix round 1, [Critical] #3 / fix round 2, [Blocker] #1) ----
 # 원래 정규식은 `= Ref(...)` 만 봤다. 그래서 `const CARRIER_LAST_D = Dict{Any,Float64}()` 같은
 # **Ref 로 안 감싼 가변 컨테이너 const**(Dict/Set/Vector 등)를 구조적으로 볼 수 없었다 —
 # `replace_robot.jl` 의 이 컨테이너가 정확히 그 모양이고, 실제로 교체 로직의 텔레포트 판정을
-# 가른다(`:826-829`). 이제 세 모양을 잡는다:
-#   1. `Ref(...)` / `Ref{T}(...)`                              (원래 규칙)
-#   2. `Dict/Set/Vector/OrderedDict/IdDict/Array/OODQueue(...)`  (알려진 가변 컨테이너 생성자)
+# 가른다(`:826-829`). fix round 1 에서 세 모양을 추가했고, fix round 2 에서 **네 번째** 모양을
+# 추가했다 — round 1 이 "지금은 0건" 이라고 적었던 "`const` 없는 최상위 가변 전역"이 재검증
+# 결과 **32건**이었고(재리뷰가 "33건"이라 부른 것과 근사, 아래 참고), 그중 `RVO_ID_GLOBAL_MAP`
+# (spec: RVO 핸들은 ξ)·`RVO_SIM_WRAPPER`·`VALID_ID_COUNTERS`/`INVALID_ID_COUNTERS`(무효 id 가
+# `reassign.jl:87` 에서 에피소드 중 발급돼 스케줄 그래프에 그대로 박힌다) 는 진짜 상태였다 —
+# round 1 의 "0건" 이라는 디스클로저 자체가 틀렸었다(측정 없이 믿은 값). 이제 네 모양을 잡는다:
+#   1. `Ref(...)` / `Ref{T}(...)`                                (원래 규칙)
+#   2. `Dict/Set/Vector/OrderedDict/IdDict/Array/OODQueue(...)`    (알려진 가변 컨테이너 생성자)
 #   3. `Any[...]` / `String[...]` 같은 대괄호 리터럴 배열
+#   4. `global NAME = ...` 또는 `NAME = ...`(모듈 최상위, `const` 없음) — Julia 관용구:
+#      `global` 키워드는 최상위 선언에서는 생략 가능하고 함수 안에서 그 전역을 바꿀 때만 필요
+#      하다(`function f(); global NAME = val; end`). 이 넷째 패턴은 **선언줄**(들여쓰기 없는
+#      `global NAME = ...` 또는 `NAME = ...`)만 잡는다 — 함수 본문 안의 `global NAME = val` 재대입
+#      줄은 들여써져 있어 앵커(`^`)에 안 걸린다. 그건 의도된 것이다: 선언줄 하나만 잡아도
+#      `unclassified_globals`/`stale_globals` 계약은 성립한다(그 이름이 존재하는지만 알면 된다).
 #
-# 그래도 남는, **의도적으로 안 잡는** 모양(전부 src/ 전체를 grep 해 지금은 0건임을 확인했다 —
-# 이론적 사각지대이지 지금 당장 새는 구멍은 아니다):
-#   - 한 줄에 `const` 가 둘(`const A = 1; const B = 2`)
-#   - 들여쓴 최상위 const(모듈 본문이 들여써진 경우)
-#   - `Base.RefValue{T}()` 명시적 생성자(관용구는 항상 `Ref(...)`)
-#   - `const` 없는 최상위 가변 전역
-#   - 소문자 전역 이름(관례 위반 — 이 레포는 전부 대문자다)
+# 재검증(fix round 2) 결과, 나머지 다섯 이론적 사각지대는 **직접 다시 그렙해서** 지금도 0건임을
+# 재확인했다(아래는 이번에 재실행한 grep 결과, round 1 의 값을 그대로 믿지 않았다):
+#   - 한 줄에 `const` 가 둘(`const A = 1; const B = 2`)                          — 0건
+#   - 들여쓴 최상위 const(모듈 본문이 들여써진 경우)                              — 0건
+#   - `Base.RefValue{T}()` 명시적 생성자(관용구는 항상 `Ref(...)`)                — 0건
+#   - 소문자 전역 이름(관례 위반 — 이 레포는 전부 대문자다)                        — 0건
 #   - 위 2번 목록에 없는 **커스텀 가변 구조체 생성자**(예: 새 `mutable struct`). `OODQueue` 는
 #     수작업 감사로 찾아 목록에 넣었다 — 일반적으로 감지할 수 없다(타입 정보 없이 "이 식별자가
 #     가변 컨테이너 생성자인가"를 정규식으로 결정할 수 없다: `SMatrix{...}(...)` 처럼 **불변**
 #     생성자도 똑같은 문법을 쓴다). 새 커스텀 가변 컨테이너 전역을 만들면 **2번 목록에 이름을
 #     추가해야 스캐너가 본다** — 안 하면 코드 리뷰로만 잡힌다. 이 사실 자체가 이 인벤토리의
-#     한계다.
+#     한계다. (이 다섯째는 "0건"이 정의상 재확인 불가능한 종류다 — 새 구조체가 생기기 전엔 항상
+#     0건이므로, 위 넷과 달리 "지금 안전하다"는 보장이 아니라 "발견 메커니즘이 없다"는 고백이다.)
 #   면역: 불변 리터럴(숫자, 정규식 `r"..."`, 튜플, `SMatrix` 등 불변 타입)은 애초에 "상태"가
 #   아니므로(내용이 절대 안 바뀐다) 스캐너가 놓쳐도 스냅샷 관점에서 무해하다 — 그래서 2번
 #   목록을 "가변 컨테이너로 알려진 이름"으로 좁게 유지했다(범용 "식별자(...)" 매칭은 안 했다 —
 #   그러면 `get(ENV, "X", "y")`/`parse(Int, ...)` 같은 흔한 ENV 파싱 표현식까지 전부 잡혀
 #   `run_demo.jl`/`policy.jl` 의 setup 스칼라 수십 개가 쏟아져 들어온다. 실측 확인함).
+#
+# 의도적으로 쫓지 않은 것(코디네이터 지시, fix round 2): `render_demo.jl:88/99/172` ·
+# `gen_oracle_dataset.jl:1015,1139-1142` — 둘 다 이 스캐너의 `extra_files`/`root` 범위 밖이다.
+# `HZ_SEED_USED`(`run_demo.jl:640`)는 범위 안이라 스캔되고 분류도 했지만(:setup, pre-sim 전용
+# 이라는 지시를 따랐고 그 이상 깊이 검증하지 않았다) — 아래 표에 그렇게 적어 뒀다.
 # =============================================================================
 
 const STATE_GLOBALS = Dict{Symbol,Symbol}(
@@ -106,6 +122,20 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # `maybe_respecify!` 로 소비되지 않았으면, 그 대기열
                                           # 자체가 "곧 실행될 재명세"라는 진짜 미래 상태다 —
                                           # 복원 안 되면 그 이벤트가 통째로 증발한다.
+    :VALID_ID_COUNTERS      => :state,   # 신규(fix round 2, [Blocker] #1, 사각지대 #4: `const`
+                                          # 없는 최상위 `global`). graph_utils_essentials.jl:23 —
+                                          # `get_unique_id(T)` 가 발급하는 다음 유효 id 번호.
+                                          # 초기 장면 구성뿐 아니라 ood_injection.jl:478 에서
+                                          # **에피소드 중**(고장 로봇 재발급 등)에도 발급된다.
+                                          # 발급된 id 는 스케줄 그래프 노드에 그대로 박힌다 —
+                                          # 복원 안 되면 이후 발급되는 id 번호가 원본 트레이스와
+                                          # 달라져 그래프 정체성 비교가 갈린다.
+    :INVALID_ID_COUNTERS    => :state,   # 신규. graph_utils_essentials.jl:24 —
+                                          # `get_unique_invalid_id(T)` 가 발급하는 다음 무효
+                                          # (placeholder) id 번호. reassign.jl:87 의
+                                          # `release_pending_assignments!` 가 **에피소드 중**
+                                          # 발급해 스케줄에 새 RobotGo 노드로 박아 넣는다 — 위와
+                                          # 같은 이유로 상태.
 
     # ---- run_demo.jl / policy.jl 확장분 (I12 + fix round 1) --------------------------------
     :_REFORM_CT             => :state,   # 발화 횟수 게이팅 — SNAP_COUNT 와 같은 모양의 임계
@@ -139,17 +169,60 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
 
     # ---- ξ (재생 상태) -----------------------------------------------------------------
     :_CACHE_TIMESTAMP_COUNTER => :replay, # 부기 카운터. 복원해야 바이트 동일이 성립한다
-    :ASSET_LEDGER           => :replay,   # ex-:log(fix round 1, [Important] #5). 재확인: `asset_of`
-                                          # (`:118-119`)·`asset_generation` 의 유일한 소비처는
-                                          # replace_robot.jl:1473,1478,1553 이고 전부 `@info` 진단
-                                          # 문자열/다른 장부 기록에 값을 실어 나를 뿐, 어떤 분기도
-                                          # 그 반환값으로 갈리지 않는다(결정에 안 쓰인다 — 그래서
-                                          # `:state` 는 아니다). 그러나 "빌드 경계에서 일부러 안
-                                          # 비운다"는 append-only 이력이라, 복원 안 되면
-                                          # `asset_of`/`asset_generation` 이 다시 부를 때 다른 세대
-                                          # 번호를 내고 그게 이후 로그 문자열·기록으로 새 나가
-                                          # 바이트 동일 재현이 깨진다 — `_CACHE_TIMESTAMP_COUNTER`
-                                          # 와 같은 이유로 `:log` 가 아니라 `:replay`.
+    :ASSET_LEDGER           => :replay,   # ex-:log(fix round 1, [Important] #5). fix round 2 가
+                                          # round 1 의 근거를 고쳤다(처분은 그대로 `:replay`,
+                                          # 근거가 틀렸었다) — 재확인한 소비처 넷:
+                                          # (a) replace_robot.jl:1473 `asset_of(role)` 을 다시
+                                          #     장부 행에 실어 나른다(진단 문자열 아님, 다른 장부
+                                          #     기록의 인자다) — 그 자체로는 분기 안 함.
+                                          # (b) :1478/:1553 은 `@info` 인데 이 프로젝트 기본
+                                          #     로거가 `Logging.Warn`(runtests.jl:31)이라 **버려
+                                          #     진다** — 진단으로도 기능하지 않는다.
+                                          # (c) render_tools.jl:914-916 이 **실제로 분기한다**:
+                                          #     `isempty(ledger) && (empty!(_BATTERY_SWAP_FRAME);
+                                          #     _VIS_FRAME[]=0; ...)`. 하지만 그 분기는 렌더
+                                          #     레인 안(프레임 카운터 리셋)이라 동역학/결정에
+                                          #     안 닿는다 — 그래서 여전히 `:state` 는 아니다.
+                                          # (d) ood_injection.jl:343 주석: "ASSET_LEDGER 는
+                                          #     여기서 일부러 안 비운다 — 빌드 경계를 넘어
+                                          #     살아남아야 하는 유일한 상태(캠페인의 시간축)".
+                                          #     append-only 로 설계됐고, 복원 안 되면 이후
+                                          #     `asset_of`/`asset_generation` 이 다른 세대 번호를
+                                          #     내 로그·(c)의 렌더 분기가 원본과 달라진다 —
+                                          #     `_CACHE_TIMESTAMP_COUNTER` 와 같은 이유로
+                                          #     `:log` 가 아니라 `:replay`.
+    :RVO_ID_GLOBAL_MAP      => :replay,   # 신규(fix round 2, [Blocker] #1, 사각지대 #4).
+                                          # rvo_interface.jl:44 — Julia AbstractID ↔ RVO(외부
+                                          # Python rvo2 라이브러리) 정수 인덱스 매핑. 재리뷰가
+                                          # 지적한 대로 spec 은 이미 "RVO 핸들은 ξ" 라고
+                                          # 정한다. route_planning.jl:464 `update_rvo_sim!` 이
+                                          # 활성 에이전트 구성이 바뀔 때마다(에피소드 중 수시로)
+                                          # `rvo_reset_agent_map!()` 으로 통째로 재생성한다 —
+                                          # 외부 라이브러리 인터페이스 상태라 s 로 해시할 내용은
+                                          # 아니지만(:state 아님), 복원/CRN 연속성엔 필요하다.
+    :RVO_SIM_WRAPPER        => :replay,   # 신규. rvo_interface.jl:107 — 실제 RVO(C++/Python)
+                                          # 시뮬레이터 인스턴스를 담는 `CachedElement` 래퍼.
+                                          # `update_rvo_sim!`(route_planning.jl:464-471)가
+                                          # `RVO_ID_GLOBAL_MAP` 과 **같은 트리거로 같이**
+                                          # 재생성한다 — 같은 서브시스템, 같은 이유로 `:replay`.
+    :RVO_PYTHON_MODULE      => :replay,   # 신규. rvo_interface.jl:63 — 로드된 rvo2 파이썬 모듈
+                                          # 핸들. `update_rvo_sim!` -> `rvo_set_new_sim!` ->
+                                          # `rvo_new_sim()` -> `reset_rvo_python_module!()` 로
+                                          # 위 둘과 **같은 호출 사슬**에서 에피소드 중 재로드된다
+                                          # (route_planning.jl:470) — 재리뷰가 이름대지 않은
+                                          # 셋째 항목이지만 같은 서브시스템·같은 트리거라 같은
+                                          # 근거로 `:replay` 로 분류했다.
+    :DSPY_HEALTHY           => :replay,   # ex-:setup(fix round 1) -> :replay(fix round 2,
+                                          # [Important] #3). round 1 은 "프로세스 수명 동안
+                                          # 한 번 정해지면 안 바뀐다"고 적었는데 그 자체가
+                                          # `_CACHE_TIMESTAMP_COUNTER` 를 :replay 로 만든 논리와
+                                          # 같다 — policy.jl:392 에서 `nothing -> Bool` 로 뒤집힌
+                                          # 뒤 `dspy_ready()`(:387-388)가 그 캐시값을 그대로
+                                          # 돌려주고, `service_decide` 가 그 값으로 dspy/canonical
+                                          # 폴백을 가른다. 복원 안 되면 재생 시 서비스에 다시
+                                          # 물어봐서(원본 시점과 다른 실제 헬스 상태를 받을 수
+                                          # 있어) 원본과 다른 분기를 탈 수 있다 — s 콘텐츠는
+                                          # 아니지만(:state 아님) 재생 연속성엔 필요.
 
     # ---- log ---------------------------------------------------------------------------
     :OOD_TRUTH_LOG          => :log,
@@ -164,6 +237,21 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :MONITOR_RESPEC_HISTORY => :log,     # 신규(구조적 사각지대 #3). monitor.jl:19 — "이 런의 모든
                                           # OOD 결정"을 push! 로 쌓는 출력 전용 트레이스.
     :MONITOR_RECOVERY_LOG   => :log,     # 신규. monitor.jl:20 — 컨트롤러 자체 복구 조치 로그.
+    # fix round 2, [Important] #3: 아래 셋은 round 1 에서 :render 로 뒀었다 — 재리뷰가 옳게
+    # 지적한 대로, monitor.jl 의 다섯 전역(이 셋 + 위 둘)이 **전부** monitor_emit!(monitor.jl:407,
+    # 493-496)을 거쳐 MONITOR_IO(:log, 파일 핸들 — monitor.jl:31 `open(path,"w")`)로 JSON 한
+    # 줄로 나간다 — 진짜 렌더러(Makie 애니메이션, render_tools.jl 의 `_VIS_FRAME`/색상/틴트
+    # 프레임)와는 **다른 소비처**다. 그래서 실체가 있는 구분선은 "render_tools.jl(Makie 렌더
+    # 파이프라인) vs monitor.jl(JSON-lines 로그 파일 작성기)" 이지 "표시용이냐 이력용이냐" 가
+    # 아니다 — 후자는 임의적이었다(다섯 다 같은 함수로 나가므로). monitor.jl 소속은 전부 :log 로
+    # 통일한다.
+    :MONITOR_FAULTED        => :log,     # monitor.jl:21 — "FAULT 로 표시할 로봇 id". monitor.jl:150
+                                          # 에서 한 번 더 읽혀 emit 되는 다른 필드("mode") 계산에
+                                          # 쓰이지만, 그 결과도 결국 monitor_emit! 출력일 뿐이다.
+    :MONITOR_NODE_T         => :log,     # monitor.jl:22 — Gantt 차트용 정점 타이밍(:216-226),
+                                          # monitor_emit! 의 "schedule" 필드로 나간다.
+    :MONITOR_HANDOFF_T      => :log,     # monitor.jl:23 — 예비 인계 시각, monitor_emit! 의
+                                          # "handoffs" 필드로 나간다(:213,:493-496).
 
     # ---- meta (s 에 넣지 않는다 — spec §6.1) --------------------------------------------
     :NOVELTY_DETECTOR       => :meta,
@@ -216,9 +304,42 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :STATE_GLOBALS          => :setup,   # 자기 참조. 이 Dict 자신도 확장된 스캐너의 컨테이너
                                           # 모양(Dict{...}(...))에 걸린다 — 모듈 로드 후 절대
                                           # mutate 되지 않는 정적 분류표이므로 :setup.
-    :DSPY_HEALTHY           => :setup,   # 신규(policy.jl:384). "이미 확인했으면 그 값을 그대로
-                                          # 돌려준다"(:388) 는 멱등 메모이제이션 — 프로세스
-                                          # 수명 동안 한 번 정해지면 안 바뀌는 헬스체크 캐시.
+    # ---- fix round 2, [Important] #3: 아래 22개는 사각지대 #4(`const` 없는 최상위 `global`)
+    # 확장으로 새로 잡혔다. 전부 setter 호출 경로를 추적해 "에피소드 루프가 시작되기 전
+    # (`full_demo.jl` 의 `_run_lego_demo_impl`, 즉 씬/스케줄 구성 단계) 에만 바뀐다"를
+    # 확인했다 — 시뮬레이션 스텝 루프 안에서 재설정되는 호출은 0건.
+    :ALIGNMENT_CHECK_TOLERANCE => :setup,   # task_assignment.jl:151, setter 없음(고정 리터럴)
+    :AVOID_STAGING_AREAS    => :setup,   # route_planning.jl:27, set_avoid_staging_areas! 호출은
+                                          # full_demo.jl:855 하나뿐(설정 단계)
+    :CAPTURE_DISTANCE_TOLERANCE => :setup, # hierarchical_geom_essentials.jl:1033, setter 호출 0건
+    :CAPTURE_ROTATION_TOLERANCE => :setup, # 같은 파일:1038, setter 호출 0건
+    :DEFAULT_GEOM_OPTIMIZER  => :setup,   # hierarchical_geom_essentials.jl:26, full_demo.jl:390 에서만 설정
+    :DEFAULT_GEOM_OPTIMIZER_ATTRIBUTES => :setup, # 같은 파일:28, 같은 설정 경로
+    :DEFAULT_MILP_OPTIMIZER_ATTRIBUTES => :setup, # essential_tg_coponents.jl:1946,
+                                          # set/clear_default_milp_optimizer_attributes! 호출자 0건
+    :DEFAULT_ROBOT_GEOM     => :setup,   # hierarchical_geom_essentials.jl:104,
+                                          # set_default_robot_geom! 호출은 full_demo.jl:376 뿐
+    :HZ_SEED_USED           => :setup,   # run_demo.jl:640 — 코디네이터 지시: pre-sim 전용,
+                                          # 추적 보류(deferred). 스캔 범위 안이라 미분류로 둘 수
+                                          # 없어 지시받은 분류만 기록한다.
+    :LOADING_SPEED          => :setup,   # route_planning.jl:239, set_default_loading_speed! 호출은
+                                          # full_demo.jl:382,580 뿐(둘 다 _run_lego_demo_impl 의
+                                          # 작업배정 이전 구성 단계)
+    :MILP_OPTIMIZER         => :setup,   # essential_tg_coponents.jl:1944,
+                                          # set_default_milp_optimizer! 호출은 full_demo.jl:306 뿐
+    :ROBOT_RADIUS           => :setup,   # potential_fields.jl:388, 재대입 없음(고정 기본 반경)
+    :ROTATIONAL_LOADING_SPEED => :setup, # route_planning.jl:251, set_default_rotational_loading_speed!
+                                          # 호출은 full_demo.jl:383,581 뿐
+    :RVO_DEFAULT_TIME_STEP  => :setup,   # rvo_interface.jl:161, setter 호출은 full_demo.jl:381 뿐
+    :RVO_DEFAULT_NEIGHBOR_DISTANCE => :setup,     # 같은 파일:170, full_demo.jl:386 뿐
+    :RVO_DEFAULT_MIN_NEIGHBOR_DISTANCE => :setup, # 같은 파일:171, full_demo.jl:387 뿐
+    :RVO_DEFAULT_NEIGHBORHOOD_VELOCITY_SCALE_FACTOR => :setup, # 같은 파일:172, setter 호출자 0건
+    :RVO_MAX_SPEED          => :setup,   # rvo_interface.jl:119, setter 호출자 0건
+    :RVO_MAX_SPEED_VOLUME_FACTOR => :setup, # 같은 파일:118, setter 호출자 0건
+    :RVO_MIN_MAX_SPEED      => :setup,   # 같은 파일:120, setter 호출자 0건
+    :STAGING_BUFFER_RADIUS  => :setup,   # route_planning.jl:32, set_staging_buffer_radius! 호출은
+                                          # full_demo.jl:384 뿐
+    :USE_RVO                => :setup,   # route_planning.jl:22, set_use_rvo! 호출은 full_demo.jl:854 뿐
 
     # ---- 시각화 전용 --------------------------------------------------------------------
     :LIVE_PUSH              => :render,
@@ -231,26 +352,36 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :BATTERY_DELIVERY_FRAME_EVERY => :render,
     :_BATTERY_SWAP_FRAME    => :render,  # 신규. render_tools.jl:821 — _VIS_FRAME 과 짝지어 쓰는
                                           # 애니메이션 프레임 인덱스 부기(:917 에서 함께 리셋).
-    :MONITOR_FAULTED        => :render,  # 신규. monitor.jl:21 — "FAULT 로 표시할 로봇 id"
-                                          # (monitor.jl:150). 실제 고장 판정은 FAULTED_ROBOTS(:state)
-                                          # 가 갖고 있고, 이건 그걸 반영한 디스플레이 전용 거울.
-    :MONITOR_NODE_T         => :render,  # 신규. monitor.jl:22 — Gantt 차트용 정점 타이밍(:216-226).
-    :MONITOR_HANDOFF_T      => :render,  # 신규. monitor.jl:23 — 예비 인계 시각, monitor emit 의
-                                          # JSON 필드로만 나간다(:213,:420-496).
+    :BRIGHT_BLUE            => :render,  # 신규(fix round 2, 사각지대 #4). render_tools.jl:1108 —
+                                          # 고정 RGB 색상 리터럴, 재대입 없음(마커 색).
+    :BRIGHT_RED             => :render,  # render_tools.jl:1105 — 같은 이유.
+    :LIGHT_BROWN            => :render,  # render_tools.jl:1106 — 같은 이유.
+    :LIME_GREEN             => :render,  # render_tools.jl:1107 — 같은 이유.
+    :SPACE_GRAY             => :render,  # render_tools.jl:1104 — 같은 이유.
 )
 
 # ---- 정규식 ----------------------------------------------------------------------------
-# 셋 다 앵커(`^const\s+`)로 최상위(들여쓰기 없는) 선언만 잡는다.
+# 넷 다 앵커(`^`)로 최상위(들여쓰기 없는) 선언만 잡는다.
 const _PAT_REF     = r"^const\s+(_?[A-Z][A-Z_0-9]*)\s*=\s*Ref\b"
 const _CONTAINER_CTORS = ("Dict", "Set", "Vector", "OrderedDict", "IdDict", "Array", "OODQueue")
 const _PAT_CTOR     = Regex("^const\\s+(_?[A-Z][A-Z_0-9]*)\\s*=\\s*(?:" *
                              join(_CONTAINER_CTORS, "|") * ")\\b.*\\(")
 const _PAT_BRACKET = r"^const\s+(_?[A-Z][A-Z_0-9]*)\s*=\s*[A-Za-z_][A-Za-z0-9_]*\["
+# 넷째: `const` 없는 최상위 가변 전역(`global NAME = ...` 또는 맨 `NAME = ...`) — fix round 2,
+# [Blocker] #1. `(?!=)` 로 `==` 를 걸러낸다(비교식이 대입으로 오매칭되지 않게).
+const _PAT_GLOBAL_MUT = r"^(?:global\s+)?(_?[A-Z][A-Z_0-9]*)\s*=(?!=)"
 
 function _scan_file!(out::Vector{Symbol}, path::AbstractString)
     isfile(path) || return out
     for line in eachline(path)
-        for pat in (_PAT_REF, _PAT_CTOR, _PAT_BRACKET)
+        is_const = startswith(line, "const")
+        # _PAT_GLOBAL_MUT 는 `const` 가 없는 선언만 노린다 — const 줄에도 함께 돌리면
+        # (예) `const NAME = Ref(0)` 의 `NAME` 을 또 잡아 중복 매치가 나지만 해는 안 된다
+        # (같은 Symbol 이 push! 두 번 → sort!/unique! 로 어차피 합쳐진다). 그래도 의도를
+        # 분명히 하려고 const 줄에서는 넷째 패턴을 건너뛴다.
+        pats = is_const ? (_PAT_REF, _PAT_CTOR, _PAT_BRACKET) :
+                          (_PAT_REF, _PAT_CTOR, _PAT_BRACKET, _PAT_GLOBAL_MUT)
+        for pat in pats
             m = match(pat, line)
             m === nothing || push!(out, Symbol(m.captures[1]))
         end

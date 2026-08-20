@@ -29,10 +29,12 @@ const EXTRA_FILES = [RUN_DEMO_JL, POLICY_JL, ZONE_INJECT_JL]
     found = CB.scan_globals(SRC)
     for name in (:BATTERY_FLEET, :HAZARD_STATE, :SNAP_COUNT, :WEDGE_EDGES,
                  :RESTRICTION_ZONES, :SIM_STEP, :STALLED_ROBOTS, :BATTERY_DELIVERIES,
-                 :CARRIER_LAST_D, :RESPEC_QUEUE)   # fix round 1: 구조적 사각지대 #3 (non-Ref 컨테이너)
+                 :CARRIER_LAST_D, :RESPEC_QUEUE,   # fix round 1: 구조적 사각지대 #3 (non-Ref 컨테이너)
+                 :RVO_ID_GLOBAL_MAP, :RVO_SIM_WRAPPER,           # fix round 2: 사각지대 #4
+                 :VALID_ID_COUNTERS, :INVALID_ID_COUNTERS)       # (const 없는 최상위 global)
         @test name in found
     end
-    @test length(found) >= 70      # 2026-08-20 실측 89 (src/ 만, 확장 정규식 기준)
+    @test length(found) >= 70      # 2026-08-20 실측 120 (src/ 만, 사각지대 #4 반영)
 end
 
 @testset "스캐너가 run_demo.jl/policy.jl 의 전역도 찾는다 (범위 확장, I12 + fix round 1)" begin
@@ -82,12 +84,23 @@ end
                  :RECOVERY_SPARES, :CHECKED_OUT_SPARES, :DECOMMISSIONED_BODIES,
                  :HOT_SWAP_ASSETS, :WEDGE_EDGES, :DISSOLVED_GATES, :SNAP_COUNT,
                  :SIM_STEP, :LAST_EDGE_COSTS, :RESPEC_FROZEN, :RESPEC_PINNED,
-                 :_IDENTITY_SEEN, :CARRIER_LAST_D, :RESPEC_QUEUE, :_DECISION_N)
+                 :_IDENTITY_SEEN, :CARRIER_LAST_D, :RESPEC_QUEUE, :_DECISION_N,
+                 :VALID_ID_COUNTERS, :INVALID_ID_COUNTERS)   # fix round 2: 사각지대 #4, mid-episode 발급
         @test name in st
     end
     @test CB.STATE_GLOBALS[:HAZARD_STATE] === :split     # 셋으로 쪼개진다
     @test CB.STATE_GLOBALS[:OOD_SCHEDULE] === :split     # fired 만 상태, 나머지는 setup (fix round 1)
-    @test CB.STATE_GLOBALS[:ASSET_LEDGER] === :replay    # 결정에 안 쓰인다, 바이트 동일 재현용 (fix round 1)
+    @test CB.STATE_GLOBALS[:ASSET_LEDGER] === :replay    # 결정에 안 쓰인다, 바이트 동일 재현용 (fix round 1/2)
     @test CB.STATE_GLOBALS[:NOVELTY_DETECTOR] === :meta  # spec §6.1 — s 에 넣지 않는다
     @test CB.STATE_GLOBALS[:NOVELTY_FLEET_REF] === :setup  # never-written 상수 (fix round 1)
+    # fix round 2 재분류 (re-derived, review 근거 정정 포함):
+    @test CB.STATE_GLOBALS[:RVO_ID_GLOBAL_MAP] === :replay  # spec: RVO 핸들은 ξ
+    @test CB.STATE_GLOBALS[:RVO_SIM_WRAPPER] === :replay    # 같은 서브시스템, 같은 트리거
+    @test CB.STATE_GLOBALS[:RVO_PYTHON_MODULE] === :replay  # 같은 호출 사슬에서 같이 재로드
+    @test CB.STATE_GLOBALS[:DSPY_HEALTHY] === :replay       # ex-:setup — _CACHE_TIMESTAMP_COUNTER 와 같은 논리
+    # monitor.jl 다섯 전역은 전부 monitor_emit! 을 거쳐 MONITOR_IO(:log) 파일로 나간다 — 통일.
+    for name in (:MONITOR_FAULTED, :MONITOR_NODE_T, :MONITOR_HANDOFF_T,
+                 :MONITOR_RESPEC_HISTORY, :MONITOR_RECOVERY_LOG)
+        @test CB.STATE_GLOBALS[name] === :log
+    end
 end
