@@ -100,6 +100,63 @@ hazard 는 **opt-in** 이고 기본값이 꺼짐이라, **기본 실행이 만�
 ⚠️ **`require_vocab`/`require_dynamics` 는 아직 생산 소비처가 없다** — 도장은 쓰기 전용이다.
 이 표의 어떤 불일치도 지금은 기계가 잡지 않는다.
 
+## ⏳ 2026-08-20 — 확정된 설계, 아직 미구현: 모든 팔 뒤에 공통 MILP 재풀이
+
+**사용자 결정(2026-08-20).** 실행 레인(`tools/monitor/run_demo.jl`)의 `handle_ood!` 는 매크로
+dispatch 뒤에 **모든 팔에 대해** 무제약 재풀이를 부른다. 즉 `(s,a) → s⁺` 가 팔과 무관하게
+같은 argmin 을 통과한다. **코드는 아직 안 바뀌었다** — 이 절은 결정의 기록이지 현행 동작이 아니다.
+
+### 왜 — 코드를 읽고 확정된 세 가지 사실
+
+1. 🔴 **"action 후 MILP 재풀이" 라는 공통 파이프라인은 이 레포 어디에도 없다.** 라벨 레인에도
+   없다. `maybe_respecify!` 는 제안을 **특수 분기**로 흘려보내고, 그 docstring 들이 직접
+   그렇게 적어 놨다: `ForbidAgent` → `fault_robot_and_reassign!`(일반 경로로 가면 "silently
+   compiles to **ZERO constraints** — a *hollow admit*") · `ForbidZone` → `restage_all_blocked!`
+   ("needs geometric surgery ... **not a MILP re-solve**") · `ReplaceAgent` → `replace_robot.jl`
+   ("needs graph surgery ... **not a MILP re-solve**"). 그 분기 구조는 `handle_ood!` 의
+   `if/elseif` 와 사실상 같은 모양이다.
+2. 🔴 **`RESPEC_ENABLED[]=true` 로 플래그만 켜는 것은 답이 아니다.** `replan.jl:66-70` 이 적어
+   놓았듯 그 플래그는 **네 가지**를 한꺼번에 켠다: (1) respec 큐 처리 (2) OOD 이벤트의 큐 적재
+   (3) `_enforce_serial_frontiers!` (4) 포획 드리프트 복구. `run_demo.jl` 은 큐를 우회해 자기가
+   직접 복구하므로, (2)가 켜지면 **같은 사건이 큐에도 들어가고 `handle_ood!` 도 처리한다 —
+   이중 복구**다. (3)은 예비 로봇의 동시 active task 를 1개로 강제하는 별개의 동역학 변경이다.
+3. **필요한 부품은 이미 있다.** `rebalance_for_battery!`(`battery.jl:715`)는 배터리와 아무
+   상관이 없다 — `build_invariant` 로 완료·진행중 작업을 얼리고, **추가 제약 없이**(가격만
+   재산정) 재정식화한 뒤 `optimize!` + `commit_respec!` 한다. 이름만 배터리다.
+
+### 이 변경이 실제로 바꾸는 것
+
+- 🔴 **spec §2.2 의 은퇴 기준이 무효가 된다.** "argmin 을 통과하니 팔이 아니라 메타행동
+  메커니즘이다" 가 **모든 팔에 걸리므로** 팔을 가르는 기준으로 못 쓴다. 매크로 5 의 은퇴는
+  §2.1 의 "삭제 비용 0행"(dispatch 분기가 아예 없어 `enact_applied=false` 6/6)으로 정당화한다.
+- 🔴 **G6 은 모든 팔에서 `ran_milp=true` 가 되고, 그게 설계상 정상이다.** `smdp/gate_g6.py`
+  와 spec §1.3·§5.5 를 그 뜻으로 다시 써야 한다. **"G6 PASS" 를 인용하지 말 것.**
+- ✅ **`Deprioritize` 의 비-배터리 분기가 살아난다.** 지금 `deprioritize_agent!` 는
+  `AGENT_COST_BIAS` 에 배수를 쓰는데 그 값을 읽는 곳은 `formulate_milp` 의 목적식 하나뿐이고,
+  실행 레인은 그 뒤로 재풀이를 안 하므로 **그 배수가 읽히지 않은 채 남는다**(리뷰 실측: 6팔
+  54결정에서 `ran_milp=true` 는 정확히 3회, 전부 Deprioritize/BatteryTruth). 공통 재풀이가
+  그 죽은 효과를 살린다.
+- 🔴 **동역학 세대가 갈린다 → 재스윕·재라벨.** 그리고 ⚠️ **이 축을 나르는 도장이 없다**:
+  `objective_hash` 는 목적함수가 안 바뀌니 그대로, `vocab` 그대로, `dynamics` 는 hazard on/off
+  에만 묶여 있다. Task 4 의 세계 이동 때 이미 지적된 맹점이 그대로 재발한다 — **구현과 같은
+  커밋에서 도장 축을 하나 늘리거나 `generation` 을 올릴 것.**
+
+### 구현자가 부딪힐 지점 (미리 실측해 둔 것)
+
+- **전제조건은 충족된다**: 재풀이는 목적함수 훅과 0 아닌 efficiency 가중치를 요구하는데,
+  `run_demo.jl:531-532` 가 `ENERGY_OBJECTIVE=1`(기본값)일 때 `init_objective_weights!()` 를
+  부른다. 기본 실행 레인에서는 이미 켜져 있다.
+- **반환값을 무시하면 안 된다.** `rebalance_for_battery!` 는 `:rebalanced | :infeasible |
+  :commit_failed` 를 돌려주는데 현재 배터리 분기(`run_demo.jl:391`)는 **반환값을 아예 안 본다**.
+  모든 팔에 걸면 `ForbidZone` 뒤의 `:infeasible` 같은 것이 조용히 지나가면 안 된다.
+- **중복 호출 제거**: 배터리 분기 안의 `rebalance_for_battery!` 호출을 빼야 두 번 안 푼다.
+- **NOOP 도 재풀이할 것인가는 의미 결정이다.** 재풀이하면 NOOP 이 "아무것도 안 함" 이 아니라
+  "제약 변화 없이 다시 품" 이 되어 진짜 행동이 된다. `enact_applied` 로 가드할지 정할 것.
+- ⚠️ **항진적 변경이 되지 않는지 먼저 재라.** Task 5 리뷰 실측에서 관측된 판들은
+  `n_candidate_edges=0` 이라 MILP 가 순수 makespan 으로 후퇴했다. 후보 간선이 0이면 공통
+  재풀이가 **아무것도 안 바꾼다.** "재풀이를 켰다" 가 아니라 "재풀이가 실제로 계획을 바꿨다"
+  를 음성 대조와 함께 측정할 것 — 이 레포가 반복해서 데인 실패 모양이다.
+
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
 ### ✅ 2026-08-16 — SwapBattery 가 창고 예비의 물리 배송이 됐다 (현행 세대)
