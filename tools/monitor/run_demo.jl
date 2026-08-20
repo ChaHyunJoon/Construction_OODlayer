@@ -629,10 +629,14 @@ CB.set_battery_courier!(
 #    계층 전체가 이미 구성된 뒤라 그 조건을 만족한다.)
 # ⚠️ 시드는 world_seed 와 **분리한다.** 같이 쓰면 hazard 를 켜고 끄는 것이 배정까지 흔들어
 #    "hazard 단독 대조군" 이 성립하지 않는다.
+# 리뷰 라운드 2 (재리뷰 소견 2): hz_seed 를 `if` 안의 `local` 로 두면 DEMO_SUMMARY 를 쓰는
+# 아래쪽 `let` 블록에서 안 보여, 어느 행이 어느 hazard 시드인지 산출물만으로 알 수 없었다
+# (append 순서를 믿는 수밖에 없었다 — 재현성 구멍). 최상위 변수로 끌어올려 요약에 싣는다.
+HZ_SEED_USED = nothing
 if get(ENV, "DEMO_HAZARD", "0") == "1"
-    local hz_seed = try parse(Int, get(ENV, "DEMO_HAZARD_SEED", string(DEMO_SEED))) catch; DEMO_SEED end
-    CB.enable_hazard!(env; seed = hz_seed)
-    println(">>> hazard: ON (seed=", hz_seed, ")  dynamics=", CB.dynamics_stamp())
+    global HZ_SEED_USED = try parse(Int, get(ENV, "DEMO_HAZARD_SEED", string(DEMO_SEED))) catch; DEMO_SEED end
+    CB.enable_hazard!(env; seed = HZ_SEED_USED)
+    println(">>> hazard: ON (seed=", HZ_SEED_USED, ")  dynamics=", CB.dynamics_stamp())
 else
     println(">>> hazard: OFF  dynamics=", CB.dynamics_stamp())
 end
@@ -882,6 +886,10 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             "stream3" => (get(ENV, "DEMO_OOD_STREAM3", "0") == "1"),
             "world_seed" => DEMO_SEED,           # 로봇 초기 배치 = 공장(고정하고 쓰는 축)
             "ood_seed"   => DEMO_OOD_SEED,       # 언제/무엇이 터지는가 = 확률성(스위프하는 축)
+            # 재리뷰 라운드 2 (소견 2, 원 리뷰 I-3 잔여): 어느 행이 어느 hazard 시드로 돌았는지
+            # 산출물만으로 알 수 있어야 한다 — append 순서를 믿는 것은 재현성 구멍이다.
+            # hazard 가 꺼진 런은 nothing(= 시드를 안 썼다는 사실 자체가 정보).
+            "hazard_seed" => HZ_SEED_USED,
             "n_events_armed" => DEMO_N, "spares" => DEMO_SPARES, "robots" => NROB,
             "bsoc" => DEMO_BSOC, "sev_frac" => DEMO_OOD_SEVFRAC,
             "ood_lo" => DEMO_OOD_LO, "ood_hi" => DEMO_OOD_HI,
