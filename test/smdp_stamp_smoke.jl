@@ -187,19 +187,42 @@ end
 # `abspath(PROGRAM_FILE) == @__FILE__` 로 막혀 있어 include 해도 데모가 돌지 않는다(안전).
 include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
 
-@testset "surrogate 아티팩트 어휘 도장 (리뷰 라운드 2 Critical #2)" begin
-    # 실제 배포 아티팩트 -- 도장이 없다. 재학습·재수출 없이, 이 검사만으로 죽어야 한다.
-    real_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json")
-    real_spec = JSON3.read(read(real_path, String))
-    @test !haskey(real_spec, :vocab)   # 오늘의 실측을 문서화(이게 언젠가 재수출로 바뀌면 이 줄이 알려준다)
-    @test_throws ErrorException Demos.require_surrogate_vocab(real_spec, real_path)
-
-    # 스크래치 사양(현행 vocab 과 일치) -- 통과해야 한다.
+@testset "surrogate 아티팩트 어휘 도장 (리뷰 라운드 2/3 Critical)" begin
+    # 리뷰 라운드 3 Important 수정: 예전엔 여기서 실제
+    # `wm4spacecraft_manufacturing/surrogate/surrogate_linear.json` 을 읽었다 — 그런데 그 파일은
+    # **커밋돼 있지 않다**(작업 트리에만 있는 산출물). 깨끗한 체크아웃에는 그 파일이 아예 없으므로
+    # `read()` 가 `SystemError` 로 죽어 이 테스트 파일 전체가 빨간불이 된다(리뷰가 잡은 "NEW-0"
+    # 모양 — 검사 **자신**이 커밋 안 된 아티팩트에 기대는 새 결함). 그래서 실제 파일을 읽지 않고
+    # 문제가 됐던 두 모양(도장 없음 / 도장은 맞는데 열이 오염됨)을 **스크래치로 합성**한다 — 저장소
+    # 상태와 무관하게 항상 같은 결과를 내야 진짜 회귀 검사다.
     current_vocab = String(JSON3.read(read(Demos._ACTION_REGISTRY, String)).vocab)
-    ok_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0"], "vocab" => current_vocab)))
+
+    # 사례 1 (Critical #2): 도장 자체가 없다 -- 구세대 아티팩트의 실측 모양을 그대로 합성.
+    unstamped_spec = JSON3.read(JSON3.write(Dict("feature_names" =>
+        ["soc", "macro_0", "macro_1", "macro_2", "macro_3", "macro_4", "macro_7", "macro_8"])))
+    @test !haskey(unstamped_spec, :vocab)
+    @test_throws ErrorException Demos.require_surrogate_vocab(unstamped_spec, "scratch-unstamped")
+
+    # 사례 2 (리뷰 라운드 3 Important): 도장은 **현행과 정확히 일치**(`v2-6arms`)하는데 실제 열에는
+    # 은퇴한 macro_3 이 남아 있다 -- "나쁜 재수출"의 정직한 모양. 최초 구현은 도장 문자열만 봐서
+    # 이 경우를 조용히 통과시켰다(항진 게이트). 이제는 죽어야 한다 -- 이게 이 테스트의 핵심.
+    stamped_but_contaminated = JSON3.read(JSON3.write(Dict(
+        "vocab" => current_vocab, "feature_names" => ["soc", "macro_0", "macro_3", "macro_1"])))
+    @test_throws ErrorException Demos.require_surrogate_vocab(stamped_but_contaminated, "scratch-stamped-but-contaminated")
+
+    # 스크래치 사양(현행 vocab 과 일치 + 은퇴한 열 없음) -- 통과해야 한다.
+    ok_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0", "macro_1__x__soc"], "vocab" => current_vocab)))
     @test Demos.require_surrogate_vocab(ok_spec, "scratch-ok") === nothing
 
-    # 스크래치 사양(불일치) -- 죽어야 한다.
+    # 스크래치 사양(도장 문자열 자체가 불일치) -- 죽어야 한다.
     bad_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0"], "vocab" => "v1-9arms")))
     @test_throws ErrorException Demos.require_surrogate_vocab(bad_spec, "scratch-bad")
+
+    # 실제 아티팩트가 이 저장소(작업 트리)에 있으면 추가로 대조한다 -- 있으면 검사하고, 없으면
+    # 조용히 건너뛴다(깨끗한 체크아웃에서 절대 에러를 던지지 않는다는 것이 이 블록의 요점).
+    real_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json")
+    if isfile(real_path)
+        real_spec = JSON3.read(read(real_path, String))
+        @test_throws ErrorException Demos.require_surrogate_vocab(real_spec, real_path)
+    end
 end

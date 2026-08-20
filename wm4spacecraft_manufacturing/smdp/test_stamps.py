@@ -221,3 +221,17 @@ def test_reference_policy_never_answers_with_a_retired_macro():
     a_star, basis, note = rp.reference_action(ev_not_relocatable)
     assert a_star != "ForbidZone"
     assert a_star is None, "RelocateBuild 불가 + ForbidZone 은퇴 -> 닫힌 어휘에 답이 없다(unscored)"
+
+
+# =============================================================================
+# 리뷰 라운드 3 Minor — is_active() 는 registry 밖 id 에서 두 언어가 같아야 한다
+# =============================================================================
+def test_is_active_false_for_out_of_registry_ids():
+    """전에는 이 가드가 없어서 -1/9/10 같은 registry 밖 id 가 True 로 나왔다 — Julia 쪽은
+    `haskey(REGISTRY, i)` 로 이미 막고 있었는데 여기가 안 막아서 "같은 규칙" 이라는 두 언어
+    docstring 이 거짓이었다(리뷰 라운드 3). 지금은 둘 다 False."""
+    for i in (-1, 9, 10, -3, 12):
+        assert action_registry.is_active(i) is False, i
+    # 살아 있는 팔은 여전히 살아 있어야 한다(과잉 수정 방지).
+    assert action_registry.is_active(0) is True
+    assert action_registry.is_active(1) is True

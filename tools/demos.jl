@@ -113,7 +113,15 @@ end
 # 새 모듈 하나를 여기 얹는 위험보다, 이미 있는 `_ACTION_REGISTRY` 상수로 같은 검사를 자체
 # 구현하는 쪽이 더 작다(파일 하나만 다시 읽으면 된다 -- `load_action_vocab` 과 같은 소스).
 function require_surrogate_vocab(spec, where::AbstractString)
-    current = String(JSON3.read(read(_ACTION_REGISTRY, String)).vocab)
+    # 리뷰 라운드 3 Important 수정: 처음 버전은 `vocab` **문자열**만 대조했다 — 그러면
+    # "v2-6arms" 로 도장이 찍혔는데 실제 열에는 macro_3 이 그대로 있는 **나쁜 재수출**을
+    # 못 잡는다(도장은 상수 참조일 뿐 데이터가 실제로 그 상태인지는 안 보기 때문). 그건
+    # 이 게이트가 막으려던 바로 그 결함(구세대 아티팩트)만 잡고 진짜 위협(재수출 오염)은
+    # 통과시키는 것과 같다. 그래서 도장 대조 **다음에** feature_names 를 직접 읽어, 은퇴한
+    # macro id 의 one-hot/상호작용 열(`macro_<id>` 또는 `<state>__x__macro_<id>`)이 하나라도
+    # 있으면 도장이 뭐라고 말하든 죽는다 — "vocab 문자열" 이 아니라 "실제 열" 을 믿는다.
+    reg = JSON3.read(read(_ACTION_REGISTRY, String))
+    current = String(reg.vocab)
     got = try spec["vocab"] catch; nothing end
     got === nothing && error("$(where): surrogate 아티팩트에 어휘 도장('vocab')이 없다 — 구세대 " *
         "산출물이다(은퇴한 macro 가 feature 공간에 남아 있을 수 있다). 현행은 $(current). " *
@@ -122,6 +130,19 @@ function require_surrogate_vocab(spec, where::AbstractString)
     got_str = try String(got) catch; nothing end
     got_str === nothing && error("$(where): 어휘 도장이 문자열이 아니다 — 받은 값 $(repr(got)), 현행은 $(current).")
     got_str == current || error("$(where): 어휘 도장 불일치 — 파일 $(got_str) vs 현행 $(current).")
+
+    retired_ids = Set{Int}(parse(Int, String(k)) for (k, m) in pairs(reg.macros)
+                            if (haskey(m, :retired) && m.retired === true))
+    bad = String[]
+    for f in spec["feature_names"]
+        fs = String(f)
+        mm = match(r"macro_(\d+)", fs)
+        mm === nothing && continue
+        parse(Int, mm.captures[1]) in retired_ids && push!(bad, fs)
+    end
+    isempty(bad) || error("$(where): 어휘 도장은 $(got_str) 라고 말하지만 실제 feature_names 에 " *
+        "은퇴한 macro 의 열이 남아 있다 — 도장이 아니라 데이터를 믿을 것: $(bad). " *
+        "재학습·재수출하지 말고 데이터를 먼저 태스크 6 필터로 정리한 뒤 다시 뽑을 것.")
     return nothing
 end
 

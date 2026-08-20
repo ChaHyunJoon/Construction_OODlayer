@@ -166,8 +166,13 @@ RETIRED = {i: m.get("retired_reason", "") for i, m in REGISTRY.items() if _is_re
 
 
 def is_active(i):
-    """이 매크로를 지금 **제안해도 되는가**. 은퇴한 팔은 무조건 아니고,
-    실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    """이 매크로를 지금 **제안해도 되는가**. registry 밖 id 는 무조건 아니고(리뷰 라운드 3
+    Minor 정정 — 전에는 이 검사가 없어 registry 밖 id(-1·9·10 등, 손으로 넣을 수 있는
+    DS_EP_MACROS 값)가 True 로 나왔다; Julia 쪽 `is_active` 는 이미 `haskey(REGISTRY, i)` 로
+    막고 있었는데 여기가 안 막아서 "같은 규칙" 이라는 두 언어 docstring 이 거짓이었다),
+    은퇴한 팔도 무조건 아니고, 실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    if i not in REGISTRY:
+        return False
     if i in RETIRED:
         return False
     flag = EXPERIMENTAL.get(i)

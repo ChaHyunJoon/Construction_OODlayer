@@ -140,6 +140,12 @@ const RETIRED = Dict(i => String(get(REGISTRY[i], :retired_reason, "")) for i in
 
 ⚠️ 상수가 아니라 **함수**다. 조합 팔 게이트(`DS_COMBO_ARMS`)는 `include` 시점이 아니라
 호출 시점에 읽혀야 한다 — 상수로 접으면 로드 순서에 따라 플래그가 조용히 무시된다.
+
+리뷰 라운드 3 Minor 정정(2026-08-20): registry 밖 id(-1·9·10 등, DS_EP_MACROS 로 손으로 넣을
+수 있다)에서 이 함수는 `haskey(REGISTRY, i) || return false` 로 막는데, Python 쪽은 그 가드가
+없어 같은 입력에 `True` 를 냈다 — "같은 규칙" 이라는 이 문장이 실제로는 거짓이었다.
+`action_registry.py:is_active` 에도 같은 가드를 추가해 정렬했다: 이제 두 언어 모두
+registry 밖 id 는 `False`/`false` 다.
 """
 function is_active(i::Int)
     # 리뷰 라운드 2 Minor 수정: registry 밖 id(-1·9·10 등, DS_EP_MACROS 로 손으로 넣을 수 있다)는
