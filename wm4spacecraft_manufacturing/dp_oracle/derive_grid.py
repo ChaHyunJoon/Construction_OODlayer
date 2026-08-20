@@ -46,7 +46,10 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, ".."))
+# 2026-08-18 폴더 분류: objective 는 이제 ../core/ 에 있다. 코드 폴더 전부를 sys.path 에
+# 올려 맨이름 import 를 유지한다(근거·쓰는 법은 ../core/wmpath.py 머리말).
+sys.path.insert(0, os.path.join(HERE, "..", "core"))
+import wmpath                                            # noqa: E402,F401
 
 # 축 순서는 **고정**이다. cell_key 가 이 순서로 문자열을 만든다.
 AXES = ("prog_b", "soc_b", "spares_b", "pend_f", "zone_s", "evt")

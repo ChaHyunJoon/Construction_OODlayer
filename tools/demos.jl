@@ -89,7 +89,14 @@ CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 # 행동집합** 위에서 결정하면서도 아무 에러를 내지 않았다. `audit_action_vocab.py` 는 이 파일을
 # 검사 대상에 넣지 않아 6/6 으로 통과했다. 그래서 리터럴을 없애고 registry 에서 읽는다 —
 # 이제 매크로를 추가하면 데모가 자동으로 따라가고, 감사가 지켜야 할 복제본이 하나 줄어든다.
-const _ACTION_REGISTRY = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core", "action_registry.json")
+# 라운드 4 [Minor·구조] 정정: 여기 있던 `joinpath(pkgdir(CB), ...)` 하드코딩은 정경 로더가
+# 존중하는 `ACTION_REGISTRY` ENV 를 **무시**했다 — 하니스가 registry 를 갈아 끼우는 바로 그
+# 축에서 데모와 정경이 다른 파일을 보게 되는 갈림이다(재리뷰 라운드 2 §2.4 / DEFERRED-2).
+# 이제 정경 모듈(`oracle/action_registry.jl`)을 그대로 include 해서 경로·도장·은퇴 판정을
+# **한 곳에서만** 받는다. include 를 미루던 이유(대형 world-age 민감 파일)는 실측으로 기각:
+# 이 모듈은 177줄짜리 순수 로더이고, `src/smdp/mdp.jl` 과 같은 **모듈 로드 시점** 한 번뿐이다.
+include(joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+const _ACTION_REGISTRY = ActionRegistry.PATH
 
 # load_action_vocab : registry 를 읽어 (매크로 id 오름차순 벡터, id=>이름 Dict) 를 돌려준다.
 #   JSON3 는 객체의 키를 Symbol 로 준다 — registry 의 키가 "0","1",... 이라 String 으로 되돌려 파싱한다.
@@ -108,10 +115,11 @@ end
 # 담은 채 도장 없이 배포돼 있었다) 은퇴한 macro 3 이 배포 feature 공간에 조용히 남아 있었다.
 # `action_registry.py/.jl` 의 `require_vocab()` 이 이미 있는 "도장 부재/불일치 시 죽는다" 계약을
 # 이 producer(surrogate 소비자)도 그대로 따라야 한다 — export_surrogate.py 가 이제 아티팩트에
-# `"vocab"` 을 찍고(같은 커밋), 여기서 그것을 대조한다. `oracle/action_registry.jl` 전체를
-# include 하지 않는 이유: 이 파일은 이미 취약하다고 스스로 적어 둔 world-age 민감한 대형 파일이라
-# 새 모듈 하나를 여기 얹는 위험보다, 이미 있는 `_ACTION_REGISTRY` 상수로 같은 검사를 자체
-# 구현하는 쪽이 더 작다(파일 하나만 다시 읽으면 된다 -- `load_action_vocab` 과 같은 소스).
+# `"vocab"` 을 찍고(같은 커밋), 여기서 그것을 대조한다.
+# 라운드 4 정정: 예전 주석은 "`oracle/action_registry.jl` 전체를 include 하지 않는다 — 자체
+# 구현이 더 작다" 였다. 그 자체 구현이 은퇴 판정의 **세 번째 사본**이 됐고 정경보다 느슨해서
+# 정경이 죽는 registry 를 이 게이트만 통과시켰다(라운드 3 §3.5). 이제 위에서 정경 모듈을
+# include 하고 여기서는 `ActionRegistry.VOCAB` · `ActionRegistry.RETIRED` 만 읽는다.
 function require_surrogate_vocab(spec, where::AbstractString)
     # 리뷰 라운드 3 Important 수정: 처음 버전은 `vocab` **문자열**만 대조했다 — 그러면
     # "v2-6arms" 로 도장이 찍혔는데 실제 열에는 macro_3 이 그대로 있는 **나쁜 재수출**을
@@ -120,8 +128,13 @@ function require_surrogate_vocab(spec, where::AbstractString)
     # 통과시키는 것과 같다. 그래서 도장 대조 **다음에** feature_names 를 직접 읽어, 은퇴한
     # macro id 의 one-hot/상호작용 열(`macro_<id>` 또는 `<state>__x__macro_<id>`)이 하나라도
     # 있으면 도장이 뭐라고 말하든 죽는다 — "vocab 문자열" 이 아니라 "실제 열" 을 믿는다.
-    reg = JSON3.read(read(_ACTION_REGISTRY, String))
-    current = String(reg.vocab)
+    # 라운드 4 [Minor·구조] 정정: 예전엔 여기서 registry 를 날것으로 다시 읽고
+    # `haskey(m,:retired) && m.retired === true` 로 은퇴를 **자체 판정**했다 — 정경
+    # (`ActionRegistry.isretired` / `action_registry.py:_is_retired`, 판정 K)이 **에러로
+    # 거부**하는 입력(예: `retired` 가 산문 문자열)을 이 사본만 조용히 "은퇴 아님" 으로 읽어,
+    # 정경 로더가 죽는 registry 에서 이 게이트만 살아남아 macro_3 열이 든 아티팩트를
+    # 통과시켰다(재리뷰 라운드 3 §3.5 실측). 세 번째 사본을 없애고 정경에 위임한다.
+    current = ActionRegistry.VOCAB
     got = try spec["vocab"] catch; nothing end
     got === nothing && error("$(where): surrogate 아티팩트에 어휘 도장('vocab')이 없다 — 구세대 " *
         "산출물이다(은퇴한 macro 가 feature 공간에 남아 있을 수 있다). 현행은 $(current). " *
@@ -131,14 +144,40 @@ function require_surrogate_vocab(spec, where::AbstractString)
     got_str === nothing && error("$(where): 어휘 도장이 문자열이 아니다 — 받은 값 $(repr(got)), 현행은 $(current).")
     got_str == current || error("$(where): 어휘 도장 불일치 — 파일 $(got_str) vs 현행 $(current).")
 
-    retired_ids = Set{Int}(parse(Int, String(k)) for (k, m) in pairs(reg.macros)
-                            if (haskey(m, :retired) && m.retired === true))
+    retired_ids = Set{Int}(keys(ActionRegistry.RETIRED))   # 정경 판정(엄격: boolean 아니면 죽는다)
+
+    # 라운드 4 [Minor] — 열 목록 자체가 없거나 비었으면 **fail-closed**. 근거를 모양별로:
+    #   · `feature_names` 키 부재 / 리스트 아님 : 예전엔 KeyError·MethodError 로 죽긴 했지만
+    #     계약 밖 예외형이라 테스트(`@test_throws ErrorException`)가 못 덮었다. 계약 에러로 승격.
+    #   · 빈 리스트 : 예전엔 **통과**했다("검사할 열이 없으니 문제 없음"). 실제 생산자
+    #     (`export_surrogate.py`)는 열을 언제나 채워 쓰므로 빈 목록은 정상 산출물이 아니라
+    #     **목록을 잃은 산출물**이고, 그런 아티팩트를 검사 없이 승인하면 이 게이트의 요점이
+    #     사라진다 — 그래서 거부한다.
+    #   · `features` 등 다른 키에 열이 든 경우 : 위 "키 부재" 규칙으로 자동 거부된다.
+    #   · `MACRO_3`(대문자) · `macro3`(밑줄 없음) : **일부러 안 잡는다.** 이 검사는 생산자의
+    #     이름 규칙(`macro_{m}` · `{s}__x__macro_{m}`, features_agnostic.py:530,546 ·
+    #     export_surrogate.py:140) 위에서 정의된다. 규칙 밖 이름은 이 모델의 macro 열이 아니고,
+    #     휴리스틱으로 넓히면 `macro_in_valid` 같은 정상 열을 오탐하기 시작한다.
+    haskey(spec, :feature_names) || error("$(where): surrogate 아티팩트에 'feature_names' 가 없다 — " *
+        "열 목록 없이는 은퇴한 macro 가 feature 공간에 남아 있는지 확인할 수 없다(도장만으로는 " *
+        "부족하다는 것이 라운드 3 의 실측이다). 열 목록을 담아 다시 뽑을 것.")
+    cols = spec["feature_names"]
+    (cols isa AbstractVector) || error("$(where): 'feature_names' 가 리스트가 아니다 — 받은 값 $(repr(cols)).")
+    isempty(cols) && error("$(where): 'feature_names' 가 비어 있다 — 실제 생산자는 열을 언제나 " *
+        "채워 쓰므로 이건 정상 산출물이 아니라 열 목록을 잃은 산출물이다. 검사할 것이 없다는 " *
+        "이유로 통과시키지 않는다.")
+
     bad = String[]
-    for f in spec["feature_names"]
+    for f in cols
         fs = String(f)
-        mm = match(r"macro_(\d+)", fs)
-        mm === nothing && continue
-        parse(Int, mm.captures[1]) in retired_ids && push!(bad, fs)
+        # 라운드 3 §3.4 C1: `match` 는 **첫 매치만** 본다 — `macro_0__x__macro_3` 처럼 한 열
+        # 이름 안에서 산 id 가 은퇴 id 보다 앞에 오면 은퇴 id 가 안 보였다. `eachmatch` 로 전부 본다.
+        for mm in eachmatch(r"macro_(\d+)", fs)
+            if parse(Int, mm.captures[1]) in retired_ids
+                push!(bad, fs)
+                break
+            end
+        end
     end
     isempty(bad) || error("$(where): 어휘 도장은 $(got_str) 라고 말하지만 실제 feature_names 에 " *
         "은퇴한 macro 의 열이 남아 있다 — 도장이 아니라 데이터를 믿을 것: $(bad). " *

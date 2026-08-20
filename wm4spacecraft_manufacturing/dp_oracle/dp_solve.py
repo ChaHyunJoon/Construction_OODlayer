@@ -57,7 +57,10 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, ".."))
+# 2026-08-18 폴더 분류: objective 는 이제 ../core/ 에 있다. 코드 폴더 전부를 sys.path 에
+# 올려 맨이름 import 를 유지한다(근거·쓰는 법은 ../core/wmpath.py 머리말).
+sys.path.insert(0, os.path.join(HERE, "..", "core"))
+import wmpath                                            # noqa: E402,F401
 
 Z = 1.96
 

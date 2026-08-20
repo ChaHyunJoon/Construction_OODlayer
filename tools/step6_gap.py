@@ -23,8 +23,11 @@ import numpy as np
 # 목적함수 상수/해시의 단일 진실원. 이 스크립트는 CSV 의 `cost` 열을 평균하는데, 그 열이 어느 J 로
 # 계산됐는지는 `objective_hash` 열에만 적혀 있다 — 세대가 섞인 CSV 를 그냥 평균하면 gap 이
 # 아무것도 뜻하지 않게 된다(spec §7).
+# 2026-08-18 폴더 분류: objective 는 wm4 루트가 아니라 core/ 에 산다. 코드 폴더 전부를
+# sys.path 에 올려 맨이름 import 관례를 유지한다(근거·쓰는 법은 core/wmpath.py 머리말).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "wm4spacecraft_manufacturing"))
+                                "wm4spacecraft_manufacturing", "core"))
+import wmpath  # noqa: E402,F401
 import objective  # noqa: E402
 
 MACRO = {0, 1, 2, 3, 4}

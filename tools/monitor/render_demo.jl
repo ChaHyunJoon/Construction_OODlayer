@@ -131,7 +131,7 @@ else
 end
 # 세대 딱지. 이 렌더가 어느 목적함수로 만들어졌는지 로그에 남긴다(spec §7) — 산출물이
 # 스트림/애니 뿐이라 행에 박을 자리가 없으므로 로그가 유일한 provenance 다.
-let _objjl = joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "objective.jl")
+let _objjl = joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "core", "objective.jl")
     try
         Base.include(Main, _objjl)
         println(">>> objective_hash: $(Main.Objective.objective_hash())  energy_objective=$(ENERGY_ON ? 1 : 0)")

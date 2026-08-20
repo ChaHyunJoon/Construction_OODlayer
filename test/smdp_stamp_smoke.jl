@@ -195,7 +195,12 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     # 모양 — 검사 **자신**이 커밋 안 된 아티팩트에 기대는 새 결함). 그래서 실제 파일을 읽지 않고
     # 문제가 됐던 두 모양(도장 없음 / 도장은 맞는데 열이 오염됨)을 **스크래치로 합성**한다 — 저장소
     # 상태와 무관하게 항상 같은 결과를 내야 진짜 회귀 검사다.
-    current_vocab = String(JSON3.read(read(Demos._ACTION_REGISTRY, String)).vocab)
+    # 라운드 4: 도장 값도 정경(`ActionRegistry.VOCAB`)에서 받는다 — 예전엔 여기서 파일을
+    # 다시 파싱했고, 게이트가 ENV(`ACTION_REGISTRY`)를 존중하게 된 뒤로는 그 사본이 게이트와
+    # 다른 파일을 볼 수 있었다.
+    current_vocab = Demos.ActionRegistry.VOCAB
+    retired_ids = sort(collect(keys(Demos.ActionRegistry.RETIRED)))
+    @test !isempty(retired_ids)   # 아래 두 방향 검사가 공회전하지 않는다는 전제
 
     # 사례 1 (Critical #2): 도장 자체가 없다 -- 구세대 아티팩트의 실측 모양을 그대로 합성.
     unstamped_spec = JSON3.read(JSON3.write(Dict("feature_names" =>
@@ -218,11 +223,60 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     bad_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0"], "vocab" => "v1-9arms")))
     @test_throws ErrorException Demos.require_surrogate_vocab(bad_spec, "scratch-bad")
 
-    # 실제 아티팩트가 이 저장소(작업 트리)에 있으면 추가로 대조한다 -- 있으면 검사하고, 없으면
-    # 조용히 건너뛴다(깨끗한 체크아웃에서 절대 에러를 던지지 않는다는 것이 이 블록의 요점).
+    # 라운드 3 §3.4 C1 (라운드 4 에서 봉합): 한 열 이름 안에 산 id 가 은퇴 id 보다 **앞에**
+    # 오면 `match` 는 첫 매치만 보고 은퇴 id 를 놓쳤다. `eachmatch` 로 바꿨으니 죽어야 한다.
+    c1_spec = JSON3.read(JSON3.write(Dict(
+        "vocab" => current_vocab, "feature_names" => ["macro_0__x__macro_$(first(retired_ids))"])))
+    @test_throws ErrorException Demos.require_surrogate_vocab(c1_spec, "scratch-c1-second-id")
+
+    # 라운드 4 [Minor]: "틀린 게 아니라 없는" 모양은 fail-closed 여야 하고, **계약 에러**
+    # (ErrorException)로 죽어야 한다 -- 예전엔 KeyError/MethodError 라 이 형태의 단언이
+    # 못 덮었고, 빈 리스트는 아예 통과했다.
+    @test_throws ErrorException Demos.require_surrogate_vocab(
+        JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "features" => ["macro_0"]))), "scratch-wrong-key")
+    @test_throws ErrorException Demos.require_surrogate_vocab(
+        JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "feature_names" => String[]))), "scratch-empty")
+    @test_throws ErrorException Demos.require_surrogate_vocab(
+        JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "feature_names" => "macro_0"))), "scratch-not-a-list")
+
+    # ---- 실제 아티팩트 (라운드 4 [Important] 재구성) ------------------------------------------
+    # 예전 이 블록은 실물이 있으면 `@test_throws ErrorException ...(real_spec)` 을 **무조건**
+    # 걸었다. 즉 "배포된 surrogate 아티팩트는 영원히 오염돼 있다" 를 단언한 것이다. 이 게이트가
+    # 존재하는 목적(태스크 6 필터로 데이터를 정리한 뒤 깨끗하게 재수출)이 달성되는 순간 이
+    # 영구 회귀 테스트가 **정답 위에서 빨간불**이 된다 -- 재리뷰가 실물을 정상 모양(도장
+    # v2-6arms + 은퇴열 제거)으로 만들어 EXIT=1 을 실측했다. 저장소가 깨져 있는 동안에만 통과할
+    # 수 있는 검사는 "영원히 실패할 수 없는 검사" 의 거울상이고, 최악의 순간에 "고치려고" 지워진다.
+    #
+    # 그래서 **파일의 현재 내용에 대한 사실**이 아니라 **규칙**을 단언한다. 실물의 열 이름을
+    # 그대로 재료로 써서:
+    #   (a) 은퇴 macro 열을 걷어낸 사양은 **통과해야 한다**(깨끗한 재수출은 받아준다),
+    #   (b) 같은 열에 은퇴 macro 열을 하나 되돌린 사양은 **죽어야 한다**(오염은 거부한다).
+    # 둘 다 오늘 실물이 오염돼 있든 깨끗하든 **언제나** 참이다. 오늘의 실물이 어느 쪽인지는
+    # 게이트와 독립적인 열 스캔으로 재서 **단언이 아니라 일치성**으로만 확인한다.
     real_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json")
     if isfile(real_path)
         real_spec = JSON3.read(read(real_path, String))
-        @test_throws ErrorException Demos.require_surrogate_vocab(real_spec, real_path)
+        real_cols = String[String(f) for f in real_spec["feature_names"]]
+        _has_retired(c) = any(parse(Int, mm.captures[1]) in retired_ids
+                              for mm in eachmatch(r"macro_(\d+)", c))
+
+        # (a) 깨끗한 쪽 -- 실물의 열에서 은퇴 열만 뺀 것.
+        clean_cols = filter(!_has_retired, real_cols)
+        @test !isempty(clean_cols)
+        clean_spec = JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "feature_names" => clean_cols)))
+        @test Demos.require_surrogate_vocab(clean_spec, "real-artifact-cleaned") === nothing
+
+        # (b) 오염된 쪽 -- 같은 열에 은퇴 macro 열을 하나 되돌린 것.
+        stale_cols = vcat(clean_cols, "macro_$(first(retired_ids))")
+        stale_spec = JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "feature_names" => stale_cols)))
+        @test_throws ErrorException Demos.require_surrogate_vocab(stale_spec, "real-artifact-restaled")
+
+        # 오늘의 실물: 게이트의 판정이 **독립 스캔**의 판정과 같은가. 실물이 오염돼 있으면 둘 다
+        # 거부, 깨끗해지면 둘 다 승인 -- 어느 쪽이든 초록이고, 갈리면 빨간불이다.
+        indep_ok = haskey(real_spec, :vocab) && String(real_spec.vocab) == current_vocab &&
+                   !isempty(real_cols) && !any(_has_retired, real_cols)
+        gate_ok = try (Demos.require_surrogate_vocab(real_spec, real_path); true) catch; false end
+        @test gate_ok == indep_ok
+        @info "배포된 surrogate 아티팩트 오늘의 상태" path=real_path n_cols=length(real_cols) accepted=gate_ok
     end
 end
