@@ -11,10 +11,12 @@
 # 실행 레인이다. `tools/` 의 나머지·`wm4spacecraft_manufacturing/*.jl`·`test/*.jl` 은
 # **의도적으로 범위 밖**이다(state_globals.jl 헤더에 근거를 적어 뒀다).
 #
-# ⚠️ round 3 note: 이 테스트를 작업 트리(working tree)에서 그대로 돌리면 `표에 있는데 스캔에는
-# 없는 유령 전역이 없다` 가 **빨갛게** 나올 수 있다 — 다른 태스크가 `src/safety/cbf.jl` 삭제를
-# 스테이징해 뒀기 때문이다(이 커밋의 관할 밖). 그 삭제가 실제로 커밋되기 전까지는 정상이고,
-# 커밋되고 나면 CBF_*/FAILCLOSED_STOP 아홉 엔트리를 표에서 지우는 게 다음 라운드의 일이다.
+# ⚠️ 작업 트리 note: 이 테스트를 작업 트리(working tree)에서 그대로 돌리면 `표에 있는데 스캔에는
+# 없는 유령 전역이 없다` 가 **빨갛게** 나온다(유령 9개). 원인은 **둘**이다(round 3 은 하나만
+# 적었다 — 재리뷰 3 §6 이 정정): ① `src/safety/cbf.jl` 의 **스테이징된 삭제**에서 8개
+# (CBF_*) · ② **미커밋 `M src/respec/replan.jl`** 에서 1개(FAILCLOSED_STOP). 둘 다 사용자의
+# 진행 중 리오그라 이 태스크 관할 밖이고, 그 삭제가 실제로 커밋되면 그 아홉 엔트리를 표에서
+# 지우는 게 다음 라운드의 일이다.
 # **HEAD 기준 계약**(이 커밋의 git 트리)은 `git archive` 로 뽑은 순정 체크아웃에서 검증했다 —
 # 그게 이 테스트가 실제로 지켜야 하는 자리다(작업 트리가 아니라).
 #
@@ -42,10 +44,12 @@ const EXTRA_FILES = [RUN_DEMO_JL, POLICY_JL, ZONE_INJECT_JL]
                  :projects, :project_parameters)   # fix round 3: 소문자 컨테이너 리터럴 (const 없음)
         @test name in found
     end
-    # `>= 70` 하한은 78개짜리 표에서 8개를 지워도 통과하는 무의미한 경계였다(round 1 이미 지적,
-    # round 3 재리뷰가 다시 지적). 진짜 계약은 아래 "분류되지 않은 전역이 없다"/"유령 전역이
-    # 없다" 의 등호 두 개다 — 여기서는 스캐너가 실제로 파일을 훑고 있다는 살아있는 확인만 한다.
-    @test length(found) == length(CB.scan_globals(SRC))   # 결정적: 두 번 불러도 같아야 한다
+    # 죽은 `>= 70` 하한을 round 3 이 `length(found) == length(scan_globals(SRC))` 로 바꿨는데
+    # 그건 **순수 결정 함수를 두 번 불러 자기 자신과 비교하는 항진명제**라 실패할 수 없었다
+    # (재리뷰 3 [Minor]) — 죽은 어서션을 다른 죽은 어서션으로 바꾼 것이다. round 4 에서 지웠다.
+    # 진짜 계약은 아래 "분류되지 않은 전역이 없다"/"유령 전역이 없다" 의 **집합 등호** 둘이고,
+    # "스캐너가 실제로 파일을 훑는가"는 바로 위 이름 15개 어서션이 이미 지킨다(그 15개는
+    # 하나라도 스캔에서 빠지면 빨개진다 — 실패 가능한 검사다).
 end
 
 @testset "스캐너가 run_demo.jl/policy.jl 의 전역도 찾는다 (범위 확장, I12 + fix round 1)" begin
@@ -91,6 +95,22 @@ end
     unknown = CB.unknown_rhs_heads(SRC; extra_files=EXTRA_FILES)
     isempty(unknown) || @info "새로운 RHS 머리(사람이 아직 안 봄)" unknown
     @test isempty(unknown)
+    # round 4, [Important]#3: round 3 의 이름 그룹은 ALL_CAPS 전용이라, 같은 커밋이 방금 실재를
+    # 증명한 소문자 최상위 전역 클래스(projects · project_parameters)를 census 가 구조적으로 못
+    # 봤다. 이제 snake_case 소문자도 본다 — 스크래치 사본에서 `baz = NovelLowerCtor(2)` 로
+    # 레드 재현했다(state_globals.jl `rhs_heads` 독스트링에 그 실측). 여기서는 census 가 실제로
+    # 소문자 선언줄을 읽고 있다는 살아있는 증거를 건다: run_demo.jl 최상위의 소문자 바인딩에서만
+    # 나오는 머리들이다(ALL_CAPS 전용 그룹으로는 절대 안 나온다).
+    heads = CB.rhs_heads(SRC; extra_files=EXTRA_FILES)
+    for h in ("replace", "joinpath", "CB.run_lego_demo", "Graphs.nv", "isfile")
+        @test h in heads
+    end
+    # allowlist 는 하나뿐이다(round 4): `_rhs_head!` 안의 두 번째 하드코딩 목록을 합쳤다.
+    # 옛 숨은 목록의 원소가 이제 공시된 집합 안에 있어야 한다.
+    for h in ("get", "parse", "ConstructionBots", "Objective.objective_hash")
+        @test h in CB.KNOWN_RHS_HEADS
+    end
+    @test !("true" in CB.KNOWN_RHS_HEADS)   # 리터럴/예약어는 allowlist 가 아니라 파싱 필터다
     # 살아있는 사례: src/smdp/simstate.jl:24 의 `const SHA = Base.require(...)` 가 이전엔 네
     # 패턴 중 어디에도 안 걸렸다 — 지금은 이 census 가 "Base.require" 를 알려진 머리로 잡는다.
     @test "Base.require" in CB.rhs_heads(SRC; extra_files=EXTRA_FILES)
@@ -110,7 +130,10 @@ end
                  :SIM_STEP, :LAST_EDGE_COSTS, :RESPEC_FROZEN, :RESPEC_PINNED,
                  :_IDENTITY_SEEN, :CARRIER_LAST_D, :RESPEC_QUEUE, :_DECISION_N,
                  :INVALID_ID_COUNTERS,   # fix round 2: 사각지대 #4, mid-episode 발급
-                 :CBF_HOLD)              # fix round 3: RESPEC_HOLD 의 companion (replan.jl)
+                 :CBF_HOLD)              # round 3 이 넣었다. **처분만 유지하고 근거는 round 4 에서
+                                         # 정정했다** — lockstep 이 아니라 FAILCLOSED_STOP(:setup,
+                                         # 항상 false) 게이트 뒤라 오늘 프로덕션 쓰기 자리가 0건이다.
+                                         # :state 는 보수적 과잉분류. 근거 전문은 state_globals.jl.
         @test name in st
     end
     @test CB.STATE_GLOBALS[:HAZARD_STATE] === :split     # 셋으로 쪼개진다
@@ -128,11 +151,15 @@ end
                  :MONITOR_RESPEC_HISTORY, :MONITOR_RECOVERY_LOG)
         @test CB.STATE_GLOBALS[name] === :log
     end
-    # fix round 3, [Important]#2: VALID_ID_COUNTERS 는 :state 가 아니라 :setup 이다 —
-    # get_unique_id 의 15개 호출자 전부가 씬/스케줄 구성 단계뿐(재확인함), 에피소드 루프 안에서
-    # 부르는 곳이 없다. INVALID_ID_COUNTERS 만 reassign.jl:87 에서 실제로 에피소드 중 발급된다.
-    @test CB.STATE_GLOBALS[:VALID_ID_COUNTERS] === :setup
-    @test !(:VALID_ID_COUNTERS in st)
+    # fix round 4, [Critical]#1: VALID_ID_COUNTERS 는 **:state 다**. round 3 이 `get_unique_id`
+    # 의 **텍스트** 호출 15자리만 훑고 :setup 으로 강등했는데, 실제 발급은 암묵 생성자 사슬에서
+    # 일어난다: construction_schedule.jl:91-94 `$T(n::SceneNode) = $T(n, TransformNode())`
+    # -> hierarchical_geom_essentials.jl:326 `TransformNode()` -> :317 `get_unique_id`.
+    # 그 자리(replace_robot.jl:173 · reassign.jl:265)는 route_planning.jl:271 `respec_step!`
+    # 이 매 스텝 도는 핫스왑 경로다. 라이브 프로브 실측: `RobotStart(rn)` 한 번에
+    # TransformNodeID 2 -> 3. 근거 전문은 state_globals.jl 의 이 항목 주석.
+    @test CB.STATE_GLOBALS[:VALID_ID_COUNTERS] === :state
+    @test :VALID_ID_COUNTERS in st
     # fix round 3, [Critical]#1: HEAD:src/safety/cbf.jl · HEAD:src/respec/replan.jl 의 9개
     # (작업 트리엔 삭제가 스테이징돼 있지만 이 커밋의 git 트리에서는 그대로 존재한다).
     @test CB.STATE_GLOBALS[:CBF_ENABLED] === :setup

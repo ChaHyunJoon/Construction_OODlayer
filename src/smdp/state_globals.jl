@@ -74,8 +74,10 @@
 #     이걸 "영구적으로 측정 불가능"이라고 적었는데, round 3 재리뷰가 **그건 과장이라고 지적**
 #     했다 — 실제로는 두 방향으로 유계다: (a) 레포의 `mutable struct` 25개 중 최상위 전역이
 #     되는 건 단 2개뿐이고 둘 다 이미 분류돼 있다(`OODQueue`→`RESPEC_QUEUE`,
-#     `HazardState`→`HAZARD_STATE`류는 Ref 로 감싼다). (b) 범위 안 모든 대문자
-#     const/global 선언의 **RHS 머리 식별자**(대입 우변의 맨 앞 점-체인 식별자)를 전수
+#     `HazardState`→`HAZARD_STATE`류는 Ref 로 감싼다). (b) 범위 안 모든 최상위
+#     const/global 선언(**대문자 ALL_CAPS 와 소문자 snake_case 둘 다** — round 4 에서
+#     소문자를 넣었다, `_PAT_RHS_HEAD` 주석의 실측 비교 참고)의
+#     **RHS 머리 식별자**(대입 우변의 맨 앞 점-체인 식별자)를 전수
 #     조사하면 유한 목록이 나온다 — 아래 `KNOWN_RHS_HEADS`/`rhs_heads` 가 그 목록을
 #     **어서션**으로 만든다. 실제로 이 조치가 필요했던 살아있는 사례가 있다:
 #     `src/smdp/simstate.jl:24 const SHA = Base.require(...)` 는 위 네 패턴 중 **어느 것에도**
@@ -118,15 +120,37 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :SIM_STEP               => :state,   # Clock: 시계 단일 진실원 (태스크 8)
     :LAST_EDGE_COSTS        => :state,   # G6 센티넬이 읽는다 (spec §3.6)
     :RESPEC_HOLD            => :state,   # ⚠️ 에피소드 중 변한다. G1 이 최종 판정한다
-    :CBF_HOLD               => :state,   # 신규(round 3, [Critical]#1). cbf.jl:163 — L0
-                                          # line-stop 플래그. `replan.jl`의 `engage_fallback!`
-                                          # (:1130)/`release_fallback!`(:1145)가 RESPEC_HOLD 와
-                                          # **같은 자리에서 짝지어** 토글한다(진짜 respec 폴백
-                                          # 경로, "14곳에서 호출된다"는 그 함수 — eval 스크립트
-                                          # 전용이 아니다). CBF_ENABLED 가 꺼져 있으면 오늘은
-                                          # 물리적 효과가 없지만(cbf.jl:413 이 먼저 early-return),
-                                          # RESPEC_HOLD 의 companion 으로 실제 제어 흐름에서
-                                          # 바뀌므로 :state.
+    :CBF_HOLD               => :state,   # cbf.jl:163 — L0 line-stop 플래그. **처분은 유지하되
+                                          # round 3 이 적은 근거는 틀렸다**(재리뷰 3 [Important],
+                                          # round 4 에서 재확인). round 3 은 "`engage_fallback!`/
+                                          # `release_fallback!` 가 RESPEC_HOLD 와 lockstep 으로
+                                          # 토글하는 **always-reachable 프로덕션 폴백**" 이라고
+                                          # 적었다. 실제 코드(HEAD:replan.jl:1111-1147):
+                                          #   `RESPEC_HOLD[] = true`  (:1113)  ← 무조건 실행
+                                          #   `if FAILCLOSED_STOP[]`  (:1129)  ← **게이트**
+                                          #       `cbf_hold!(true)`   (:1130)
+                                          # 즉 lockstep 이 아니다 — RESPEC_HOLD 만 무조건 켜지고
+                                          # CBF_HOLD 는 게이트 뒤다. 그리고 그 게이트
+                                          # `FAILCLOSED_STOP` 은 **이 표가 바로 아래에서 `:setup`
+                                          # (`set_failclosed_stop!` 호출자 0건 → 항상 false)로
+                                          # 분류하는 그 플래그다**. 나머지 writer 도 오늘 도달
+                                          # 불가다: `release_fallback!`(replan.jl:1143, 유일한
+                                          # `cbf_hold!(false)` 자리)는 레포 전체 호출자 **0건**
+                                          # (정의 + ConstructionBots.jl:123 export +
+                                          # verifier.jl:255 문서문자열이 전부) · `disable_cbf!`
+                                          # (cbf.jl:221)은 tools/ 의 eval 스크립트 전용.
+                                          # round 3 주석은 게이트도 잘못 짚었다 — `CBF_ENABLED`
+                                          # (cbf.jl:413 의 early-return)는 **읽기/물리적 효과**의
+                                          # 게이트지 쓰기의 게이트가 아니다.
+                                          # 따라서: **오늘 프로덕션 레인에 CBF_HOLD 쓰기 자리는
+                                          # 0건**이다. `:state` 는 보수적 과잉분류이고(복원해도
+                                          # 값이 안 변하니 무해) 그래서 유지하지만, 내부 긴장을
+                                          # 여기 명시한다 — **유일한 writer 가 이 표 스스로
+                                          # `:setup`/항상-false 로 분류한 플래그 뒤에 있는
+                                          # `:state` 엔트리**다. `set_failclosed_stop!(true)` 가
+                                          # 실제로 켜지는 날 이 항목은 진짜 상태가 되므로 처분을
+                                          # 미리 맞춰 둔 것이다(반대 방향 — 실상태를 `:setup` 으로
+                                          # 내리는 것 — 만이 상태를 흘린다).
 
     # ---- fix round 1: 오분류 정정 (재확인 완료, 아래 각 줄에 근거) -------------------------
     :RESPEC_FROZEN          => :state,   # ex-:setup. reassign.jl:365 에서 매 재배정마다 다시 쓴다
@@ -160,6 +184,52 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # (로봇 재배정 중) 발급해 스케줄에 새 RobotGo 노드로
                                           # 박아 넣는다 — 발급된 id 가 그래프 정체성의 일부가
                                           # 되므로 복원 안 되면 이후 발급 번호가 갈린다.
+    :VALID_ID_COUNTERS      => :state,   # round 2 `:state` -> round 3 `:setup` -> **round 4 에서
+                                          # `:state` 로 되돌림**(재리뷰 3 [Critical]). round 3 의
+                                          # 강등 근거는 "`get_unique_id` 라고 **텍스트로 적힌**
+                                          # 15개 호출 자리를 전부 재확인했다 — 전부 구성 단계" 였다.
+                                          # 그 스윕이 **암묵 생성자 사슬**을 통째로 못 봤다. 이
+                                          # 레포에서 유효 id 는 텍스트 호출 자리에서만 발급되지
+                                          # 않는다 — 생성자가 안에서 발급한다:
+                                          #   construction_schedule.jl:91-94
+                                          #     `for T in (:RobotStart,...)  $T(n::SceneNode) = $T(n, TransformNode())`
+                                          #   -> hierarchical_geom_essentials.jl:326 `TransformNode()`
+                                          #   -> :313-317 내부 생성자 `t.id = get_unique_id(TransformNodeID)`
+                                          # 그리고 그 `RobotStart(RobotNode(...))` 호출은 에피소드
+                                          # 중 핫스왑 경로 한복판에 있다(replace_robot.jl:173 ·
+                                          # reassign.jl:265). 도달 사슬(round 4 에서 직접 재확인):
+                                          #   route_planning.jl:271 `respec_step!(env)` (**매 스텝**)
+                                          #   -> replan.jl:162/166 `maybe_respecify!`
+                                          #   -> replan.jl:768 `replace_robot!`   (:768 은 329줄에서
+                                          #      시작하는 `maybe_respecify!` 본문 안이다 — 확인함)
+                                          #   -> replace_robot.jl:1181/:1241 -> :157 `_restamp_robot_go!`
+                                          #   -> :173 `RobotStart(...)` -> `get_unique_id`.
+                                          # **라이브 실측(round 4 프로브, `julia +lts --project=.`):**
+                                          #   before RobotStart: Dict(GeomID=>2, TransformNodeID=>2)
+                                          #   after  RobotStart: Dict(GeomID=>2, TransformNodeID=>3)
+                                          # 즉 카운터가 에피소드 중 실제로 +1 된다. 구성된
+                                          # `RobotStart` 는 `get_node` 의 조회 키로만 쓰이고 버려지지만
+                                          # **카운터는 이미 올라간 뒤**다 — 복원 안 되면 그 뒤 발급되는
+                                          # TransformNodeID 가 원본 트레이스와 어긋나 그래프 정체성
+                                          # 비교가 갈린다.
+                                          # 같은 사각지대의 다른 암묵 발급 자리(전부 확인함):
+                                          #   construction_schedule.jl:267 (`$T(n::TransportUnitNode)`
+                                          #     가 `TransformNode()` 셋) · :282 (`$T(n::SceneNode)` 가 둘)
+                                          #   hierarchical_geom_essentials.jl:482,486 (`GeomNode(geom)`)
+                                          #   :527 (`Base.copy(::GeomNode)` — Base 오버로드다)
+                                          #   graph_utils_essentials.jl:590 (`TreeNode{E,ID}` **내부
+                                          #     생성자** — round 3 이 센 "15개 목록"에 아예 없다)
+                                          # ⚠️ 방법론 교훈(이 표 전체에 적용된다): "이 이름의 텍스트
+                                          # 호출 자리를 전부 훑었다"는 처분 근거로 **불충분하다** —
+                                          # 생성자·`Base.` 오버로드·`@eval` 생성 메서드가 부르는
+                                          # 헬퍼는 텍스트 스윕에 안 잡힌다. round 4 에서 이 표의
+                                          # 비-:state/:replay 전역 전부(:setup 72 · :log 16 ·
+                                          # :render 14 · :meta 1)의 **쓰기 자리와 그 둘러싼 함수**를
+                                          # 기계로 다시 뽑아 같은 클래스를 찾았다: 나머지는 전부
+                                          # 이름 있는 setter/훅 설치 함수(`set_*!` · `install_*_hook!` ·
+                                          # `clear_*!` · `monitor_record_*!` · `record_ood_truth!` ·
+                                          # `_prime_ldraw_part_index!`) 안에서만 써지고, 생성자나
+                                          # Base 오버로드 안에서 써지는 전역은 **이 항목 하나뿐**이다.
 
     # ---- run_demo.jl / policy.jl 확장분 (I12 + fix round 1) --------------------------------
     :_REFORM_CT             => :state,   # 발화 횟수 게이팅 — SNAP_COUNT 와 같은 모양의 임계
@@ -383,20 +453,6 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :STAGING_BUFFER_RADIUS  => :setup,   # route_planning.jl:32, set_staging_buffer_radius! 호출은
                                           # full_demo.jl:384 뿐
     :USE_RVO                => :setup,   # route_planning.jl:22, set_use_rvo! 호출은 full_demo.jl:854 뿐
-    :VALID_ID_COUNTERS      => :setup,   # ex-:state(round 2) -> :setup(round 3, [Important]#2).
-                                          # round 2 의 근거(ood_injection.jl:478 이 에피소드 중
-                                          # 발급한다)가 재리뷰에 반박됐다: 그 줄은
-                                          # `add_directional_spare_pools!` 안이고, 그 함수는
-                                          # `full_demo.jl:464` 에서만 불리는데 그 자리는
-                                          # `run_simulation!`(:875) 보다 411줄 앞, 즉 설정
-                                          # 단계다. `get_unique_id` 의 15개 호출자를 전부
-                                          # 재확인했다(ConstructionBots.jl·construction_schedule.jl·
-                                          # hierarchical_geom_essentials.jl·ood_injection.jl:478 +
-                                          # tools/checks.jl·tests.jl 의 스크립트 호출) — 전부
-                                          # 씬/스케줄/기하 **구성** 단계뿐, 에피소드 루프 안에서
-                                          # 부르는 곳은 0건. 그래서 다른 setup 상수들과 같은
-                                          # 기준으로 :setup 이 맞다(INVALID_ID_COUNTERS 는 여전히
-                                          # :state — reassign.jl:87 이 실제로 에피소드 중 부른다).
     :projects               => :setup,   # 신규(round 3, [Important]#2: "소문자=0건" 은
                                           # 틀렸다). project_params.jl:19 — 번호->프로젝트
                                           # 이름표 카탈로그(최상위 비-const `Dict`), 재대입
@@ -547,17 +603,68 @@ globals_with(disp::Symbol) = sort!([k for (k, v) in STATE_GLOBALS if v === disp]
 # 이 목록은 "지금 코드가 실제로 쓰는 15개 머리"의 census 이지, "허용되는 전부"가 아니다 — 새
 # 머리가 나오면 그게 진짜 가변 상태인지 사람이 보고 판단한 뒤 (a) 무해한 불변 타입이면 이
 # 목록에 추가, (b) 진짜 가변 컨테이너면 `_CONTAINER_CTORS` 에도 추가해 스캐너가 보게 해야 한다.
+#
+# ---- round 4, [Important]#3 + [Minor]: allowlist 는 **하나뿐이다** -----------------------------
+# round 3 은 여기 `KNOWN_RHS_HEADS` 를 공시해 놓고, `_rhs_head!` 본문 안에 **공시되지 않은 두
+# 번째 하드코딩 스킵 목록**(`get`·`parse`·`clamp`·`max`·`min`·`time`·`strip`·`lowercase`·
+# `rstrip`·`haskey`·`PARAMS`·`DEMO_N`·`Objective.objective_hash`·`ConstructionBots` + 예약어)
+# 을 따로 들고 있었다. allowlist 가 둘이면 공시된 쪽이 의미를 잃는다(재리뷰 3 [Minor]).
+# round 4 에서 **합쳤다**: 실제 머리 식별자는 전부 이 집합 하나에 들어오고, `_rhs_head!` 에
+# 남은 것은 `_NON_HEAD_TOKENS`(리터럴/예약어 — 애초에 "머리"가 아닌 토큰) 뿐이다.
+#
+# ⚠️ `get` 은 원리적 구멍이다 — `get(d, k, default)` 는 가변 컨테이너를 돌려줄 수 있으므로
+# `const X = get(...)` 가 진짜 상태를 숨길 수 있다. 오늘 실히트 0건(범위 안 `get` 머리는 전부
+# `get(ENV, "…", "…")` ENV 파싱)이라 알려진 머리로 둔다. 같은 논리가 `parse`/`clamp` 류에는
+# 적용되지 않는다(불변 스칼라만 돌려준다).
 const KNOWN_RHS_HEADS = Set([
+    # (a) round 3 이 공시했던 15개 — 생성자/타입 머리
     "Any", "Base.require", "CachedElement", "Dict", "GeometryBasics.Cylinder", "OODQueue",
     "RGB", "RVOAgentMap", "ReentrantLock", "Ref", "Regex", "SMatrix", "Set", "String", "Vector",
+    # (b) round 3 이 `_rhs_head!` 안에 숨겨 두었던 14개 — 순수 스칼라/ENV 파생 표현식의 머리와
+    #     이미 분류된 전역 이름. 여기로 올려 공시한다.
+    #     ⚠️ 실측 공시: 이 14개 중 `clamp`·`max`·`min`·`parse` 네 개는 **현재 범위에서 관측되지
+    #     않는다**(round 3 이 왜 넣었는지는 그 라운드가 안 적었다). allowlist 는 관측 집합의
+    #     상위집합이라 해는 없지만, "관측된 머리의 census" 라는 이름값은 그 넷에 대해 성립하지
+    #     않는다 — 다음 라운드에서 지워도 계약은 안 깨진다(오늘 실측: 관측 30 · 등록 34).
+    "get", "haskey", "lowercase", "rstrip", "strip", "time", "parse", "clamp", "max", "min",
+    "ConstructionBots", "PARAMS", "DEMO_N", "Objective.objective_hash",
+    # (c) round 4 에서 이름 그룹을 소문자까지 넓히며 **새로 보이게 된** 5개(실측: 정확히 이 5개).
+    #     전부 `tools/monitor/run_demo.jl` 최상위의 스크립트 지역 바인딩이다:
+    #       replace(:87 model_base) · joinpath(:88 stream_dir) · CB.run_lego_demo(:573 env)
+    #       Graphs.nv(:578 n_total)  · isfile(:1021 n)
+    #     넷은 불변 스칼라/문자열이고, `CB.run_lego_demo` 만 가변 env 를 돌려주지만 그 이름
+    #     (`env`)은 스캐너 네 패턴이 보는 최상위 전역 후보가 아니다(대문자 관례 밖) — 즉 오늘
+    #     이 표의 계약에는 안 닿는다. 새 소문자 머리가 나오면 여기서 죽는다는 것이 요점이다.
+    "replace", "joinpath", "CB.run_lego_demo", "Graphs.nv", "isfile",
 ])
-# 이름 그룹은 패턴 1-4 와 같은 전-대문자 관례(`_?[A-Z][A-Z_0-9]*`)로 좁힌다 — 처음엔
-# `[A-Za-z]` 로 느슨하게 했다가 타입 별칭(`const RobotID = BotID{DeliveryBot}` 류,
-# PascalCase 라 전-대문자가 아니다)과 스크립트 지역변수(`run_demo.jl` 최상위의
-# `model_base = replace(...)` 류, 소문자라 애초에 관례 위반)가 대거 새어 들어와서(실측:
-# 미확인 15개) 다시 좁혔다. `(?!")` 는 정규식/문자열 리터럴(`r"..."`)의 접두 문자(`r`)가
-# 머리로 오인되는 것을 막는다.
-const _PAT_RHS_HEAD = r"^(?:const\s+|global\s+)?(_?[A-Z][A-Z_0-9]*)\s*=\s*([A-Za-z_][A-Za-z0-9_.]*)(?!\")"
+# ---- round 4, [Important]#3: census 의 이름 그룹을 **소문자까지** 넓혔다 ---------------------
+# round 3 의 이름 그룹은 `(_?[A-Z][A-Z_0-9]*)` — **전-대문자 전용**이었다. 그런데 바로 그
+# round 3 이 "이 레포에 소문자 최상위 전역이 실재한다"(`project_params.jl:19 projects`,
+# `:40 project_parameters`)를 발견해 `_PAT_CTOR` 을 넓혔다. 즉 **같은 커밋이 방금 실재를
+# 증명한 클래스를, 같은 커밋이 새로 만든 발견 메커니즘은 구조적으로 못 봤다.** 실측(round 3
+# 재리뷰 + round 4 재현): 스크래치 사본에 `baz_rr3_global = NovelLowerCtor(2)` 를 심어도
+# `unknown_rhs_heads` 가 비어 있었다.
+#
+# 세 후보를 **실측으로** 비교한 뒤 골랐다(범위: src/ 전체 + monitor 3파일):
+#   (i)   `_?[A-Z][A-Z_0-9]*`                        머리 15개 · 미확인 0  ← round 3 (소문자 실명)
+#   (ii)  `_?[A-Z][A-Z_0-9]*|_?[a-z][a-z_0-9]*`      머리 20개 · 미확인 5  ← **채택**
+#   (iii) `_?[A-Za-z][A-Za-z_0-9]*`                  머리 29개 · 미확인 14
+# (iii) 이 추가로 끌어오는 9개는 전부 **PascalCase 타입 별칭**(`const RobotID = BotID{...}` ·
+# `const RectType = Hyperrectangle` · `const SumOfMakeSpans = MultiDeadlineCost{SumCost}` 등
+# — 불변 타입 바인딩이라 정의상 상태가 아니다) + 독스트링 오탐 1개(`a`)다. 그 9개를 알려진
+# 머리로 등록하면 census 가 "타입 별칭 사전" 이 되어 진짜 신호를 묻는다. (ii) 는 이 레포의
+# 두 실제 관례(ALL_CAPS 전역 · snake_case 소문자 전역)를 정확히 덮고 PascalCase 만 뺀다 —
+# **그리고 (ii) 로 `baz_rr3_global = NovelLowerCtor(2)` 는 잡힌다**(레드 증명: 아래 함수
+# 독스트링과 fix round 4 보고서). 남은 사각지대는 PascalCase 이름의 최상위 전역이고, 그건
+# 여기 명시적으로 적어 둔다 — 오늘 그런 전역은 0건이다(위 9개는 전부 타입 별칭).
+#
+# `(?!")` 는 정규식/문자열 리터럴(`r"..."`)의 접두 문자(`r`)가 머리로 오인되는 것을 막는다.
+const _PAT_RHS_HEAD = r"^(?:const\s+|global\s+)?(_?[A-Z][A-Z_0-9]*|_?[a-z][a-z_0-9]*)\s*=\s*([A-Za-z_][A-Za-z0-9_.]*)(?!\")"
+
+# 머리가 **아닌** 토큰: 리터럴과 Julia 예약어. allowlist 가 아니다 — `NAME = true` 의 `true` 는
+# "아직 사람이 안 본 생성자 모양" 이 될 수 없다(파싱 필터). 실제 식별자 머리는 전부
+# `KNOWN_RHS_HEADS` 에 있다(round 4 에서 두 목록을 하나로 합쳤다, 위 참고).
+const _NON_HEAD_TOKENS = ("true", "false", "nothing", "try", "if")
 
 function _rhs_head!(out::Set{String}, path::AbstractString)
     isfile(path) || return out
@@ -565,14 +672,10 @@ function _rhs_head!(out::Set{String}, path::AbstractString)
         m = match(_PAT_RHS_HEAD, line)
         m === nothing && continue
         head = m.captures[2]   # captures[1] 은 이름, [2] 가 RHS 머리(이름 그룹도 캡처하게 바뀌었다)
-        # 리터럴/키워드 머리(숫자, `true`/`false`/`nothing`/`try`/`if` 등)는 census 대상이 아니다
-        # — 이 census 는 "무언가를 생성하는 호출/타입 이름"만 본다. Julia 예약어와 순수
-        # 스칼라 파생 표현식(get/parse/lowercase 류)은 이미 다른 이유로 스캐너의 컨테이너
-        # 판정에서 제외돼 있으므로 여기서도 제외한다 — census 목적이 "새 불투명 생성자 모양"을
-        # 잡는 것이지 이미 이해된 ENV 파싱 관용구를 다시 세는 게 아니다.
-        head in ("true", "false", "nothing", "try", "if", "get", "haskey", "lowercase",
-                 "rstrip", "strip", "time", "parse", "clamp", "max", "min", "ConstructionBots",
-                 "PARAMS", "DEMO_N", "Objective.objective_hash") && continue
+        # 리터럴/예약어는 애초에 "머리"가 아니다(파싱 필터, allowlist 아님). round 3 은 여기에
+        # 실제 식별자 머리 14개까지 섞어 **공시되지 않은 두 번째 allowlist** 를 만들어 뒀었다 —
+        # round 4 에서 그 14개를 `KNOWN_RHS_HEADS` 로 올렸다. 남은 건 리터럴/예약어뿐이다.
+        head in _NON_HEAD_TOKENS && continue
         push!(out, head)
     end
     return out
@@ -582,8 +685,22 @@ end
     rhs_heads(root; extra_files=String[]) -> Vector{String}
 
 `root`(+ `extra_files`)의 최상위 `const`/`global`/맨 대입 선언에서 RHS 머리 식별자를 전수
-조사한다. `KNOWN_RHS_HEADS` 와의 차집합이 비어 있지 않으면 새로운(=아직 사람이 본 적 없는)
-생성자 모양이 나타났다는 뜻 — test/smdp_global_inventory.jl 이 그 경우 죽는다.
+조사한다. 이름 그룹은 ALL_CAPS **와 snake_case 소문자** 둘 다 본다(round 4, `_PAT_RHS_HEAD`
+주석에 세 후보의 실측 비교가 있다). `KNOWN_RHS_HEADS` 와의 차집합이 비어 있지 않으면
+새로운(=아직 사람이 본 적 없는) 생성자 모양이 나타났다는 뜻 —
+test/smdp_global_inventory.jl 이 그 경우 죽는다.
+
+레드 증명(round 4, 레포 밖 스크래치 사본에 세 줄을 심고 실측):
+```
++ const FOO_RR4_GLOBAL = MyBrandNewCtor(1)
++ const BAR_RR4_GLOBAL = ConstructionBots.some_new_mutable()
++ baz_rr4_global       = NovelLowerCtor(2)
+round 3 census: ["ConstructionBots.some_new_mutable", "MyBrandNewCtor"]        # 소문자 놓침 🔴
+round 4 census: ["ConstructionBots.some_new_mutable", "MyBrandNewCtor",
+                 "NovelLowerCtor"]                                            # 셋 다 잡는다 ✅
+```
+세 줄 모두 `unclassified_globals` 로는 안 잡힌다(스캔 패턴 넷의 사각지대) — 그래서 이 census
+가 그 클래스의 유일한 그물이다.
 """
 function rhs_heads(root::AbstractString; extra_files::AbstractVector{<:AbstractString}=String[])
     out = Set{String}()
