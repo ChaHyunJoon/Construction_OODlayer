@@ -17,6 +17,7 @@
 #  (다음 단계 예정: labeler = §7 K-rollout Monte-Carlo Q 라벨러, router = §9 VoI 게이트)
 # =============================================================================
 
+include("state_globals.jl")   # spec §3.6 전역 인벤토리 (hazard 보다 먼저 — 의존 없음)
 include("hazard.jl")   # §5 stochastic failure process (competing-risks point process)
 
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
