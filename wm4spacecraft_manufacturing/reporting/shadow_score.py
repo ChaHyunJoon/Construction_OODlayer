@@ -13,7 +13,7 @@ shadow 로 함께 적어 둔다(같은 사건, 같은 상태). a*(기준 행동)
      여기엔 훈련 폴드가 없으므로 leave-one-out 으로 대신한다(자기 자신은 절대 안 본다).
   B2 random-over-valid 의 해석적 기댓값(몬테카를로 아님).
 
-실행: python shadow_score.py --in results/llm_ood_eval.jsonl --md artifacts_night/shadow.md
+실행: python reporting/shadow_score.py --in results/llm_ood_eval.jsonl --md artifacts_night/shadow.md
 """
 import argparse
 import json
@@ -21,8 +21,14 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# 2026-08-18 폴더 분류 이후의 기준점 — HERE 는 이 파일 폴더(reporting/), 
+# WM 은 wm4spacecraft_manufacturing/ 다. 데이터 폴더(results_4pol/ · artifacts_4pol/ ·
+# dp_oracle/ · md/ · results/)는 전부 WM 기준이다. 코드 폴더 전부를 sys.path 에 올려
+# 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+WM = HERE.parent
+sys.path.insert(0, str(WM / "core"))
+import wmpath                                            # noqa: E402,F401
 
 import reference_policy                  # noqa: E402  (채점기 재사용 -- 재구현 금지)
 from ood_sweep_report import wilson       # noqa: E402  (CI 재사용)
@@ -33,7 +39,7 @@ try:
 except Exception:
     pass
 
-DEFAULT_IN = HERE / "results" / "llm_ood_eval.jsonl"
+DEFAULT_IN = WM / "results" / "llm_ood_eval.jsonl"
 KINDS = ("BatteryTruth", "FaultTruth", "ZoneTruth")     # ReformTruth 는 실측 격자가 없어 항상 unscored
 PRODUCERS = [("rule", "rule"), ("surrogate", "surrogate"), ("llm", "llm"), ("macro (실제 enacted)", "macro")]
 

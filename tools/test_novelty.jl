@@ -1,7 +1,7 @@
 # =============================================================================
 #  tools/test_novelty.jl -- Julia<->Python PARITY for the covariate-novelty gate.
 #
-#  Run:  julia +lts --project=. tools/test_novelty.jl [path/to/novelty_calibration.json]
+#  Run:  julia +lts --project=. tools/test_novelty.jl [path/to/novelty/novelty_calibration.json]
 #
 #  WHY PARITY IS THE WHOLE TEST
 #  ----------------------------
@@ -34,14 +34,14 @@ end
 banner(t) = println("\n" * "="^74 * "\n" * t * "\n" * "="^74)
 
 const CAL_PATH = isempty(ARGS) ?
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "novelty_calibration.json") :   # wm4 = repo 내부
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "novelty", "novelty_calibration.json") :   # wm4 = repo 내부
     ARGS[1]
 
 banner("SETUP")
 if !isfile(CAL_PATH)
     println("  calibration not found: $CAL_PATH")
-    println("  produce it with:  python export_novelty_calibration.py")
-    println("  (the dataset it uses is defined in wm4spacecraft_manufacturing/wm_datasets.py)")
+    println("  produce it with:  python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py")
+    println("  (the dataset it uses is defined in wm4spacecraft_manufacturing/core/wm_datasets.py)")
     exit(1)
 end
 

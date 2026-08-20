@@ -13,15 +13,18 @@
 # (`git show 8e005842:wm4spacecraft_manufacturing/gate_load_distribution.py`). 지금은 아무것도 안 잰다.
 #
 # 사용법
-#   bash run_4pol_parallel.sh --jobs 16
-#   bash run_4pol_parallel.sh --dry-run                  # 작업 목록만 출력
-#   bash run_4pol_parallel.sh --jobs 16 --seeds 1,2,3    # 일부만
+#   bash sweep/run_4pol_parallel.sh --jobs 16
+#   bash sweep/run_4pol_parallel.sh --dry-run                  # 작업 목록만 출력
+#   bash sweep/run_4pol_parallel.sh --jobs 16 --seeds 1,2,3    # 일부만
 # =============================================================================
 set -uo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
-cd "$HERE"
+# 2026-08-18 폴더 분류: 이 스크립트가 sweep/ 으로 내려갔다. SHARDS_DIR 같은 기본값이
+# **wm4 폴더 기준 상대경로**라 cwd 는 계속 WM 이어야 한다. REPO 는 .venv 가 있는 레포 루트.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"      # sweep/
+WM="$(cd "$HERE/.." && pwd)"                              # wm4spacecraft_manufacturing/
+REPO="$(cd "$WM/.." && pwd)"                              # 레포 루트
+cd "$WM"
 
 JOBS=16
 SEEDS="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30"
@@ -46,7 +49,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-NIGHT_DIR="$HERE/_night"
+NIGHT_DIR="$WM/_night"
 STATUS_FILE="$NIGHT_DIR/status_shards.jsonl"
 LOCK_FILE="$NIGHT_DIR/.status.lock"
 mkdir -p "$NIGHT_DIR" "$SHARDS_DIR"
@@ -87,7 +90,7 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 START_TIME=$(date +%s)
-export START_TIME DEADLINE_SECONDS SHARDS_DIR STATUS_FILE LOCK_FILE HERE POLICIES
+export START_TIME DEADLINE_SECONDS SHARDS_DIR STATUS_FILE LOCK_FILE HERE WM POLICIES
 
 # ---- 워커 --------------------------------------------------------------
 # xargs 가 부르는 함수. 인자: CASE SEED

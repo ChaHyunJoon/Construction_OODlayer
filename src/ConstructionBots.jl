@@ -80,7 +80,7 @@ include("construction_schedule.jl")         # 조립 스케줄(작업 순서 그
 include("rvo_interface.jl")                 # RVO(로봇 충돌회피) 인터페이스
 include("task_assignment.jl")               # 작업 배정(어느 로봇이 어느 작업을)
 include("route_planning.jl")                # 경로 계획(로봇 이동 경로)
-include("safety/cbf.jl")                    # SAFETY L1/L0: 속도 CBF 필터 + 진짜 라인스톱. 기본 비활성(no-op)
+include("safety/zone_guard.jl")             # SAFETY: 금지구역 여유거리 감사(측정 전용). 강제는 route_planning.jl 이 함
 include("safety/novelty.jl")                # NOVELTY: "학습분포 밖인가" 런타임 게이트. 교정 로드 전엔 무효(fail-open)
 include("graph_plotting.jl")                # 그래프 시각화
 include("render_tools.jl")                  # 3D 렌더링 도구
@@ -119,8 +119,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_emit_reform_ood!,  # 재명�
        zone_blockage, goal_engulfed, free_space_status            # 구역 **막힘** 술어(coverage 가 아니라 blockage): RVO 구동 목표 + 통로 연결성
 
 # OOD generation front-end (physical OOD events; src/respec/ood_injection.jl).
-export enable_cbf!, disable_cbf!, cbf_hold!, cbf_filter_velocity, cbf_certificate,  # SAFETY L1/L0: CBF 속도필터·라인스톱·감사
-       cbf_stats, reset_cbf_stats!, cbf_report, solve_qp2d, set_failclosed_stop!, release_fallback!
+export zone_clearance, agent_disc_radius, zone_safety_report, release_fallback!  # SAFETY: 금지구역 여유거리 감사 + 라인스톱 해제
 export NoveltyDetector, load_novelty_detector, set_novelty_detector!, clear_novelty_detector!,  # NOVELTY 게이트
        novelty_score, conformal_pvalue, novelty_verdict, event_descriptors, novelty_report,
        decision_margin, vote_disagreement, escalation_verdict

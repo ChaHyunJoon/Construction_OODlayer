@@ -5,7 +5,7 @@
 #
 # THE GAP THIS CLOSES
 # -------------------
-# `wm4spacecraft_manufacturing/drift_detectors.py` already contains a validated covariate-shift
+# `wm4spacecraft_manufacturing/novelty/drift_detectors.py` already contains a validated covariate-shift
 # novelty detector, and `compare_detectors.py` already established the non-obvious result that
 # the SIGNAL matters more than the detector (value-residual is NOT a drift signal; covariate
 # novelty is). But every bit of that runs in an offline replay of a finished .jsonl.
@@ -32,7 +32,7 @@
 #
 # CALIBRATED ON PHYSICAL DESCRIPTORS, NOT CLASS NAMES
 # ---------------------------------------------------
-# The calibration ships from `export_novelty_calibration.py` and is fitted on the KIND-AGNOSTIC
+# The calibration ships from `novelty/export_novelty_calibration.py` and is fitted on the KIND-AGNOSTIC
 # state descriptors. Calibrating on the legacy feature vector would make every new class novel
 # for a purely clerical reason (its `kind_*` one-hot is all zeros, its sentinels unprecedented)
 # -- a detector reacting to a naming convention rather than to physics. On descriptors, a new
@@ -126,7 +126,7 @@ Base.showerror(io::IO, e::CalibrationError) = print(io, "CalibrationError: ", e.
 """
     load_novelty_detector(path) -> NoveltyDetector
 
-Load the calibration JSON produced by `export_novelty_calibration.py`. Installing it is a
+Load the calibration JSON produced by `novelty/export_novelty_calibration.py`. Installing it is a
 separate step (`set_novelty_detector!`) so loading never has a side effect on a running sim.
 
 VALIDATION (added 2026-07-30) -- the loader used to accept any JSON with the right keys. A
@@ -153,14 +153,14 @@ function load_novelty_detector(path::AbstractString)
     if !haskey(blob, :format_version)
         throw(CalibrationError(
             "'$path' has no `format_version` (pre-2026-07-30 file). Regenerate it:\n" *
-            "    python export_novelty_calibration.py            # uses the canonical dataset\n" *
-            "  (wm_datasets.py defines which dataset that is.)"))
+            "    python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py\n" *
+            "  (core/wm_datasets.py defines which dataset that is.)"))
     end
     fv = Int(blob.format_version)
     if fv != NOVELTY_FORMAT_VERSION
         throw(CalibrationError(
             "'$path' is format_version=$fv but this build reads " *
-            "v$NOVELTY_FORMAT_VERSION. Regenerate with export_novelty_calibration.py."))
+            "v$NOVELTY_FORMAT_VERSION. Regenerate with novelty/export_novelty_calibration.py."))
     end
 
     # ---- 2. descriptor contract -------------------------------------------------------------
@@ -174,7 +174,7 @@ function load_novelty_detector(path::AbstractString)
         throw(CalibrationError(
             "'$path' was fitted on features\n    $(feat_names)\nbut this build computes\n" *
             "    $(NOVELTY_FEATURES)\nmu/sd would land on the wrong axes. Regenerate the " *
-            "calibration, or revert the descriptor change in features_agnostic.py."))
+            "calibration, or revert the descriptor change in core/features_agnostic.py."))
     end
 
     # ---- shape sanity: mu/sd must match the declared feature count ---------------------------

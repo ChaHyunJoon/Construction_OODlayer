@@ -23,7 +23,7 @@ build_md_report.py -- 3정책 스윕(run_4pol_parallel.sh 기본값 = canonical/
 
 실행
 ----
-  python build_md_report.py [--results-dir results_4pol] [--out-dir artifacts_4pol]
+  python reporting/build_md_report.py [--results-dir results_4pol] [--out-dir artifacts_4pol]
                              [--oracle-dir oracle/out] [--night-dir _night]
 
 테스트(오늘, 라벨 없는 상태): 그대로 실행 -- fault/zone 축이 `미측정 (STEP D 필요)` 로 렌더링되고
@@ -46,8 +46,14 @@ from pathlib import Path
 GONE_LLM7H = ("`test_llm7h.py`(2026-08-18 정리에서 삭제 -- "
               "`git show 8e005842:wm4spacecraft_manufacturing/test_llm7h.py`)")
 
+# 2026-08-18 폴더 분류 이후의 기준점 — HERE 는 이 파일 폴더(reporting/), 
+# WM 은 wm4spacecraft_manufacturing/ 다. 데이터 폴더(results_4pol/ · artifacts_4pol/ ·
+# dp_oracle/ · md/ · results/)는 전부 WM 기준이다. 코드 폴더 전부를 sys.path 에 올려
+# 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+WM = HERE.parent
+sys.path.insert(0, str(WM / "core"))
+import wmpath                                            # noqa: E402,F401
 
 import e1_analyze as E                       # noqa: E402  (lex_key, MACRO_COST, MACRO_NAME)
 import objective                              # noqa: E402  (ObjectiveError — 채점 불가 행 판정)

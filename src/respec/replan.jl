@@ -1103,46 +1103,27 @@ end
 """
     engage_fallback!(env)
 
-Year-2 stub for the certified safe-set / containment layer. For the MVP this is
-the trivial recoverable action: hold all agents (line stop). When CBF/HJ
-reachability lands, replace the body with "drive to the nearest point in the
-forward-invariant safe set"; the call site does not change.
+The recoverable fallback action: hold all agents (line stop).
+
+This is NOT a nominal flag. `step_environment!` (route_planning.jl) reads `RESPEC_HOLD[]` every
+step and zeroes every RVO agent's preferred velocity while it is up, so raising it physically
+stops the line. Stopping is also the always-available safe action: zero velocity can never
+carry an agent into a no-go zone, so no feasibility argument is needed to justify it.
+
+Callers that intend the build to CONTINUE past a fallback must pair this with
+`release_fallback!` — the flag is global and is never cleared on its own.
+(요약) 실제로 라인을 멈춘다. step_environment! 가 매 스텝 RESPEC_HOLD 를 읽어 전 에이전트의
+       선호속도를 0 으로 만든다. 되풀기는 release_fallback! 이 명시적으로 해야 한다.
 """
 function engage_fallback!(env)
     @warn "[RESPEC] FALLBACK engaged: holding all agents (line stop)."  # 모든 로봇을 멈춘다는 경고 로그
     RESPEC_HOLD[] = true                         # Ref 상자의 내용물을 true 로 설정 → "정지" 플래그 켜기
-
-    # L0 BACKUP CONTROLLER (safety/cbf.jl). Until now this function only set a flag that NOTHING
-    # in the simulation loop ever read -- the fail-closed guarantee was nominal (see
-    # docs/PATCHES.md:95, "make RESPEC_HOLD[] actually zero RVO preferred"). Routing through
-    # `cbf_hold!` gives it real physical teeth: the L1 filter then commands zero velocity to
-    # every agent, which is PROVABLY feasible (v=0 satisfies every CBF constraint while h>=0),
-    # i.e. stopping is the always-available safe action a backup controller requires.
-    #
-    # OPT-IN ON PURPOSE. `engage_fallback!` is called from 14 sites, several of which currently
-    # continue the build afterwards. Making the stop unconditional would silently change
-    # fail-closed semantics repo-wide and halt demos/tests that presently run past a fallback.
-    # So the teeth are gated on an explicit flag; turn it on with `set_failclosed_stop!(true)`.
-    # (요약) 지금까지 이 함수는 아무도 안 읽는 플래그만 켰다 = 명목상 fail-closed. 이제 CBF 필터를
-    #        통해 실제로 전 로봇을 정지시킬 수 있다(v=0 은 안전할 때 항상 실행가능하므로 원리적 보장).
-    #        단 호출처가 14곳이라 무조건 켜면 기존 데모/테스트가 멈춘다 → 명시적 플래그로 opt-in.
-    if FAILCLOSED_STOP[]
-        cbf_hold!(true)
-    end
     return nothing                               # 반환값 없음(파이썬에서 return None 과 같음)
 end
 
-"""
-Opt-in switch that gives `engage_fallback!` real physical effect (L0 line-stop via the CBF
-filter). Default `false` preserves the historical behaviour exactly.
-"""
-const FAILCLOSED_STOP = Ref(false)
-set_failclosed_stop!(on::Bool = true) = (FAILCLOSED_STOP[] = on; nothing)
-
-"Release both the nominal hold flag and the physical L0 stop (used by tests / resume paths)."
+"Release the line-stop so the simulation resumes (used by tests / resume paths)."
 function release_fallback!()
     RESPEC_HOLD[] = false
-    cbf_hold!(false)
     return nothing
 end
 

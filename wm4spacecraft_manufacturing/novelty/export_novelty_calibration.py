@@ -56,8 +56,8 @@ THE GATE IT FEEDS
 --------------------------------------------------------------------------------------------
 
 Usage:
-    python export_novelty_calibration.py oracle/out/graded_hs_all.jsonl \
-        [--out=novelty_calibration.json] [--alpha=0.05] [--cap=8.0] [--probes=32]
+    python novelty/export_novelty_calibration.py oracle/out/graded_hs_all.jsonl \
+        [--out=novelty/novelty_calibration.json] [--alpha=0.05] [--cap=8.0] [--probes=32]
 """
 import hashlib
 import json
@@ -65,6 +65,11 @@ import os
 import sys
 
 import numpy as np
+
+# 2026-08-18 폴더 분류: wm_datasets·e1_analyze·features_agnostic 은 이제 core/ 에 있다.
+# 코드 폴더 전부를 sys.path 에 올려 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                            # noqa: E402,F401
 
 import wm_datasets                      # 데이터셋 경로 단일 정의
 from e1_analyze import load
@@ -147,8 +152,13 @@ def main():
     # invocation passed that file explicitly.  A default that produces a band fitted
     # to a different distribution than the deployed one is a trap, so it now matches.
     path = wm_datasets.resolve(args[0] if args else None)
+    # 기본 출력은 **이 스크립트 폴더**(novelty/)에 고정한다. 2026-08-18 폴더 분류 전에는
+    # cwd 기준 상대이름이라 어디서 돌리느냐에 따라 다른 곳에 떨어졌다 — 설치된 교정파일과
+    # 갈린 사본이 조용히 생기는 자리였다. 소비처(tools/test_novelty.jl · test_router.jl ·
+    # tools/monitor/regen_router_cases.sh)가 보는 경로도 novelty/ 다.
     out = next((a.split("=")[1] for a in sys.argv[1:] if a.startswith("--out=")),
-               "novelty_calibration.json")
+               os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "novelty_calibration.json"))
     alpha = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--alpha=")), 0.05)
     cap = next((float(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--cap=")), 8.0)
     nprobe = next((int(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--probes=")), 32)

@@ -766,6 +766,10 @@ function terminal_report(env)
     dsum = isempty(ds) ? "n/a" : "min=$(round(minimum(ds),digits=2)) max=$(round(maximum(ds),digits=2)) mean=$(round(sum(ds)/length(ds),digits=2))"
     over = sort([(k, c) for (k, c) in team_load if c > 1]; by = x -> -x[2])   # [KO] 과구독(>1) 로봇을 많이 먹인 순으로 정렬
     println("  [TERMINAL] RESPEC_HOLD=$(CB.RESPEC_HOLD[])  active_types=$types")
+    # [KO] 금지구역 안전 여유 감사(src/safety/zone_guard.jl). 강제는 enforce_restriction_zone_clearance!
+    #      가 이미 하고 있고, 이 줄은 "얼마나 아슬아슬했나"를 실행 끝에 숫자로 남긴다.
+    #      violations>0 이면 스냅 뒤에도 침범이 남았다는 뜻 = 봐야 할 신호.
+    println("  ", try CB.zone_safety_report(env) catch e; "[ZONE] report failed: $e" end)
     println("  [TERMINAL] Go-nodes: AT-goal/waiting=$atg EN-ROUTE=$enr dist[$dsum] zones=$(length(CB.RESTRICTION_ZONES[]))")
     println("  [TERMINAL] over-subscribed robots (feeding >1 forming team): $(isempty(over) ? "none" : over)")
     flush(stdout)

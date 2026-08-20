@@ -26,9 +26,16 @@ G4b 는 kind 를 아예 보지 않고 menu 로만 묶어서, **같은 menu 안�
 세 검사 모두 모델 내부를 안 본다 — (instance, kind/menu, 예측한 팔) 목록만 받는다.
 그래서 어떤 모델 클래스에도, 배포된 서비스의 로그에도 그대로 적용된다.
 """
+import os
+import sys
 from collections import Counter, defaultdict
 
-from action_registry import MACRO_COST  # 단일 진실원(action_registry.json) — 리터럴 복붙 금지
+# 2026-08-18 폴더 분류: action_registry 는 이제 core/ 에 있다. 코드 폴더 전부를 sys.path 에
+# 올려 맨이름 import 를 유지한다(근거·쓰는 법은 core/wmpath.py 머리말).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                                            # noqa: E402,F401
+
+from action_registry import MACRO_COST  # 단일 진실원(core/action_registry.json) — 리터럴 복붙 금지
 
 
 def _menu_costs(menu):

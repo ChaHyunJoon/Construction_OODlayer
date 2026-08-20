@@ -16,7 +16,7 @@
 #
 # 각 (ood_seed, policy) 조합마다 tools/monitor/run_demo.jl 을 한 판 돌리고, 그 결과 한 줄
 # (완주 여부 · closed · 사건별 결정)을 DEMO_SUMMARY JSONL 에 덧붙인다. 분석은
-#   python wm4spacecraft_manufacturing/ood_sweep_report.py
+#   python wm4spacecraft_manufacturing/reporting/ood_sweep_report.py
 #
 # 정책
 # ----
@@ -121,4 +121,4 @@ foreach ($seed in $seeds) {
 
 $mins = [math]::Round(((Get-Date) - $t0).TotalMinutes, 1)
 Write-Host "`n[sweep] done in $mins min -> $outPath"
-Write-Host "[sweep] 다음: python wm4spacecraft_manufacturing/ood_sweep_report.py"
+Write-Host "[sweep] 다음: python wm4spacecraft_manufacturing/reporting/ood_sweep_report.py"

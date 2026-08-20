@@ -297,18 +297,20 @@ function update_position_from_sim!(agent)
     return global_transform(agent)         # 갱신된 전역 변환(위치/자세) 반환
 end
 
-# Counters for the CBF-vs-teleport comparison. `enforce_restriction_zone_clearance!` repairs a
-# zone violation by SNAPPING the agent's position to the boundary -- a state jump, not a control
-# action. The call site discards the return value, so these numbers were previously unobservable.
+# Counters for the zone snapper. `enforce_restriction_zone_clearance!` repairs a zone violation by
+# SNAPPING the agent's position to the boundary -- a state jump, not a control action. The call
+# site discards the return value, so without these counters the repairs would be invisible.
 #
-# MEASURED (tools/cbf_sim_eval.jl): enabling the CBF filter does NOT drive these to zero. In the
-# blocking-zone scenario both arms recorded 2 snaps at identical depth (0.5513189724) while the
-# filter itself saw NO violation -- i.e. the snaps came from an INITIAL CONDITION (a zone created
-# on top of already-parked robots), which no velocity filter can prevent. The two mechanisms
-# cover different failure modes; do not describe one as replacing the other.
-# (측정 결과) CBF 필터를 켜도 이 계수는 0 이 되지 않는다. 남은 침범은 로봇이 이동해 들어간 것이
-#   아니라 "주차된 로봇 위에 구역이 생성된" 초기조건이라 속도 필터로는 원리적으로 막을 수 없다.
-#   두 기구는 서로 다른 실패모드를 담당한다 — 한쪽이 다른 쪽을 대체한다고 쓰지 말 것.
+# WHY THE SNAPPING IS NOT REPLACEABLE BY A VELOCITY FILTER: the violations it repairs are an
+# INITIAL CONDITION (a zone created on top of already-parked robots), not robots DRIVING into a
+# zone. A velocity filter cannot undo a violation that exists before any velocity is commanded --
+# measured, not assumed; see the header of safety/zone_guard.jl for the CBF_ON/CBF_OFF numbers.
+# Read together with `zone_clearance(env)`: these counters say how much repair happened, that
+# function says how much margin is left right now.
+# (요약) 구역 스냅퍼의 계수기. 여기서 고치는 침범은 로봇이 이동해 들어간 게 아니라 "주차된 로봇 위에
+#   구역이 생성된" 초기조건이라 속도 필터(CBF)로는 원리적으로 막을 수 없다(측정으로 확인 — 근거는
+#   safety/zone_guard.jl 헤더). zone_clearance(env) 와 짝으로 읽을 것: 이건 "얼마나 고쳤나",
+#   저건 "지금 여유가 얼마나 남았나".
 const ZONE_SNAP_STATS = Ref(Dict{Symbol,Any}(:calls => 0, :agents_snapped => 0, :max_depth => 0.0))
 zone_snap_stats() = ZONE_SNAP_STATS[]
 reset_zone_snap_stats!() = (ZONE_SNAP_STATS[] = Dict{Symbol,Any}(
@@ -1140,15 +1142,14 @@ function get_cmd(node::Union{TransportUnitGo,RobotGo}, env::PlannerEnv)
 
     rvo_set_agent_max_speed!(agent, max_speed)  # RVO 에 최대속도 설정
 
-    # L1 SAFETY FILTER (safety/cbf.jl). THE single chokepoint: every commanded velocity in the
-    # whole simulator passes through this line, so filtering here -- rather than correcting
-    # positions after the fact (`enforce_restriction_zone_clearance!`, which TELEPORTS an agent
-    # to the zone boundary) -- makes the no-go invariant hold by CONTROL instead of by state
-    # surgery. Inert unless `enable_cbf!()` was called, so normal runs are byte-identical.
-    # (요약) 시뮬레이터의 모든 속도 명령이 지나는 유일한 길목. 여기서 미리 걸러야 "사후 순간이동"이
-    #        아니라 "제어"로 금지구역을 지킨다. enable_cbf!() 전에는 완전 무해(원본 그대로 통과).
-    pref_vel = cbf_filter_velocity(agent, twist.vel[1:2]; max_speed = max_speed)
-    rvo_set_agent_pref_velocity!(agent, pref_vel)  # RVO 에 선호속도(가고 싶은 방향·빠르기) 설정
+    # THE single chokepoint: every commanded velocity in the whole simulator passes through this
+    # line. A CBF-QP velocity filter used to sit here (safety/cbf.jl, removed 2026-08-18); it was
+    # never enabled by any real run and, when it WAS enabled, changed nothing measurable — see the
+    # header of safety/zone_guard.jl for the numbers. No-go zones are enforced by
+    # `enforce_restriction_zone_clearance!` below, and their margin is measured by `zone_clearance`.
+    # (요약) 시뮬레이터의 모든 속도 명령이 지나는 유일한 길목. 예전엔 여기에 CBF 속도필터가 있었으나
+    #        어떤 실제 실행에서도 켜진 적이 없고 켜도 수치가 안 변해서 제거했다(근거: zone_guard.jl 헤더).
+    rvo_set_agent_pref_velocity!(agent, twist.vel[1:2])  # RVO 에 선호속도(가고 싶은 방향·빠르기) 설정
     return twist                            # 계산한 트위스트 반환
 end
 # 운반유닛 결성/화물 내려놓기: 화물을 목표 자세로 천천히(적재 속도로) 옮기는 트위스트 계산.

@@ -46,7 +46,7 @@ streams/<base>__<case>__<policy><nsuf>.jsonl
 
 ```bash
 cd /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing
-./publish_streams.sh --clean
+./render/publish_streams.sh --clean
 ```
 
 기본 발행 범위 = **7 case × 3 policy × seed 1 = 21판** (대표 부분집합):
@@ -61,9 +61,9 @@ cd /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing
 **더 발행하기:**
 
 ```bash
-./publish_streams.sh --seeds 1,2,3                 # seed 2,3 은 tractor__<case>__<policy>_s2.jsonl 로
-./publish_streams.sh --cases all,zone --policies noop,dspy
-./publish_streams.sh --seeds $(seq -s, 1 30)       # 30시드 전부(90판/case, 심링크라 디스크는 안 쓴다)
+./render/publish_streams.sh --seeds 1,2,3                 # seed 2,3 은 tractor__<case>__<policy>_s2.jsonl 로
+./render/publish_streams.sh --cases all,zone --policies noop,dspy
+./render/publish_streams.sh --seeds $(seq -s, 1 30)       # 30시드 전부(90판/case, 심링크라 디스크는 안 쓴다)
 ```
 
 시드 2 이상을 발행했으면 대시보드의 **`OOD seed` 를 그 숫자로** 바꿔야 그 파일을 가리킨다.
@@ -141,7 +141,7 @@ VS Code 가 8080 을 자동 포워딩한다. 하단 **PORTS** 패널에 8080 행
 
 ## 7. 보는 순서 (요약)
 
-1. `./publish_streams.sh --clean` (발행 21판 확인)
+1. `./render/publish_streams.sh --clean` (발행 21판 확인)
 2. `julia +lts --project=. tools/monitor/server.jl` (배너 대기)
 3. 노트북: `ssh -N -L 8080:127.0.0.1:8080 <user>@<host>` → `http://127.0.0.1:8080/`
 4. 대시보드에서: **Model = Tractor (test)** · **OOD events = 0** · **OOD seed = 1** ·

@@ -47,7 +47,7 @@ case "$MODE" in
     for CASE in ${REGEN_CASES:-battery fault zone fault_battery fault_zone battery_zone all}; do
       start=$SECONDS
       echo "=== seed=$SEED case=$CASE $(date +%H:%M:%S) ==="
-      python llm_ood_eval.py run --case "$CASE" --seeds "$SEED" \
+      python sweep/llm_ood_eval.py run --case "$CASE" --seeds "$SEED" \
           --policies canonical,surrogate,dspy --dspy-url "$DSPY" --out "$OUT"
       echo "--- seed=$SEED case=$CASE rc=$? in $((SECONDS-start))s ; rows now: $(wc -l < "$OUT" 2>/dev/null || echo 0)"
     done

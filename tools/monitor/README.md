@@ -218,15 +218,15 @@ SEEDS="1 2 3" CASES="fault" bash tools/monitor/run_seed_sweep.sh
 
 ```bash
 cd ../wm4spacecraft_manufacturing
-python export_novelty_calibration.py oracle/out/openworld_merged.jsonl \
-       --exclude=zoneblk --out=novelty_calibration_no_zoneblk.json
+python novelty/export_novelty_calibration.py oracle/out/openworld_merged.jsonl \
+       --exclude=zoneblk --out=novelty/novelty_calibration_no_zoneblk.json
 ```
 
 그 다음 데모를 그 교정으로 띄운다:
 
 ```bash
 cd ConstructionBots.jl
-export NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty_calibration_no_zoneblk.json
+export NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json
 julia +lts --project=. tools/test_router.jl        # 8/8, zone→dspy / battery,fault→surrogate 확인
 julia +lts --project=. tools/monitor/run_demo.jl   # zone 사건에서만 [router] ... → dspy 가 찍힌다
 ```
@@ -280,7 +280,7 @@ cd src/respec/llm_service && LLM_NL_MODE=raw python -m uvicorn dspy_service:app 
 
 cd ConstructionBots.jl
 DSPY_URL=http://127.0.0.1:8078 \
-NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty_calibration_no_zoneblk.json \
+NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json \
 bash tools/monitor/regen_case_policy_matrix.sh            # 24 런, 약 2~2.5시간
 
 bash tools/monitor/regen_case_policy_matrix.sh fault zone  # 일부만 (× 3 정책)

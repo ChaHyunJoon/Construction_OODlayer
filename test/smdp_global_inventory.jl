@@ -11,14 +11,12 @@
 # 실행 레인이다. `tools/` 의 나머지·`wm4spacecraft_manufacturing/*.jl`·`test/*.jl` 은
 # **의도적으로 범위 밖**이다(state_globals.jl 헤더에 근거를 적어 뒀다).
 #
-# ⚠️ 작업 트리 note: 이 테스트를 작업 트리(working tree)에서 그대로 돌리면 `표에 있는데 스캔에는
-# 없는 유령 전역이 없다` 가 **빨갛게** 나온다(유령 9개). 원인은 **둘**이다(round 3 은 하나만
-# 적었다 — 재리뷰 3 §6 이 정정): ① `src/safety/cbf.jl` 의 **스테이징된 삭제**에서 8개
-# (CBF_*) · ② **미커밋 `M src/respec/replan.jl`** 에서 1개(FAILCLOSED_STOP). 둘 다 사용자의
-# 진행 중 리오그라 이 태스크 관할 밖이고, 그 삭제가 실제로 커밋되면 그 아홉 엔트리를 표에서
-# 지우는 게 다음 라운드의 일이다.
-# **HEAD 기준 계약**(이 커밋의 git 트리)은 `git archive` 로 뽑은 순정 체크아웃에서 검증했다 —
-# 그게 이 테스트가 실제로 지켜야 하는 자리다(작업 트리가 아니라).
+# ✅ 2026-08-20 해소: 예전에는 이 테스트를 작업 트리에서 돌리면 `유령 전역이 없다` 가 유령 9개로
+# 빨갛게 났다 — `src/safety/cbf.jl` 의 삭제가 스테이징만 돼 있고(CBF_* 8개) `replan.jl` 의
+# FAILCLOSED_STOP 제거가 미커밋이었기 때문이다. 그 둘이 커밋되면서 표에서도 아홉 엔트리를
+# 같이 뺐고, 이제 작업 트리와 HEAD 가 같은 답을 낸다.
+# **계약이 성립하는 자리는 여전히 HEAD**(`git archive` 로 뽑은 순정 체크아웃)다 — 작업 트리가
+# 초록이라고 HEAD 가 초록인 것은 아니다. 이 레포는 그 차이로 이미 두 번 데였다.
 #
 #   julia +lts --project=. test/smdp_global_inventory.jl
 using ConstructionBots
@@ -129,11 +127,9 @@ end
                  :HOT_SWAP_ASSETS, :WEDGE_EDGES, :DISSOLVED_GATES, :SNAP_COUNT,
                  :SIM_STEP, :LAST_EDGE_COSTS, :RESPEC_FROZEN, :RESPEC_PINNED,
                  :_IDENTITY_SEEN, :CARRIER_LAST_D, :RESPEC_QUEUE, :_DECISION_N,
-                 :INVALID_ID_COUNTERS,   # fix round 2: 사각지대 #4, mid-episode 발급
-                 :CBF_HOLD)              # round 3 이 넣었다. **처분만 유지하고 근거는 round 4 에서
-                                         # 정정했다** — lockstep 이 아니라 FAILCLOSED_STOP(:setup,
-                                         # 항상 false) 게이트 뒤라 오늘 프로덕션 쓰기 자리가 0건이다.
-                                         # :state 는 보수적 과잉분류. 근거 전문은 state_globals.jl.
+                 :INVALID_ID_COUNTERS)   # fix round 2: 사각지대 #4, mid-episode 발급
+    # 2026-08-20: `:CBF_HOLD` 가 여기 있었다. `src/safety/cbf.jl` 삭제가 커밋되면서 그 전역이
+    # 사라졌고, 같은 커밋에서 표의 `CBF_*` 8 + `FAILCLOSED_STOP` 도 함께 빠졌다.
         @test name in st
     end
     @test CB.STATE_GLOBALS[:HAZARD_STATE] === :split     # 셋으로 쪼개진다
@@ -160,11 +156,10 @@ end
     # TransformNodeID 2 -> 3. 근거 전문은 state_globals.jl 의 이 항목 주석.
     @test CB.STATE_GLOBALS[:VALID_ID_COUNTERS] === :state
     @test :VALID_ID_COUNTERS in st
-    # fix round 3, [Critical]#1: HEAD:src/safety/cbf.jl · HEAD:src/respec/replan.jl 의 9개
-    # (작업 트리엔 삭제가 스테이징돼 있지만 이 커밋의 git 트리에서는 그대로 존재한다).
-    @test CB.STATE_GLOBALS[:CBF_ENABLED] === :setup
-    @test CB.STATE_GLOBALS[:CBF_STATS] === :log
-    @test CB.STATE_GLOBALS[:FAILCLOSED_STOP] === :setup
+    # fix round 3, [Critical]#1 이 여기서 `CBF_ENABLED`/`CBF_STATS`/`FAILCLOSED_STOP` 의 처분을
+    # 못박고 있었다. 2026-08-20 에 `src/safety/cbf.jl` 삭제 + `replan.jl` 의 FAILCLOSED_STOP
+    # 제거가 커밋되면서 세 전역이 소스에서 사라졌고 표에서도 같이 빠졌다 — 아래 집합 등호
+    # (`Set(keys(STATE_GLOBALS)) == found`)가 그 동시성을 강제한다.
     # fix round 3, [Important]#2: 소문자 전역도 존재한다(project_params.jl) — 둘 다 재대입 없음.
     @test CB.STATE_GLOBALS[:projects] === :setup
     @test CB.STATE_GLOBALS[:project_parameters] === :setup

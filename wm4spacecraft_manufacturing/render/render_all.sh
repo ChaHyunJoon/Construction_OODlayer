@@ -27,26 +27,29 @@
 #
 # ⚠ 심링크 위험 -- README_RENDER_3D.md §2
 # ---------------------------------------------------------------------
-# tools/monitor/streams/ 에는 publish_streams.sh 가 건 **심링크**가 있고, 그 끝은
+# tools/monitor/streams/ 에는 render/publish_streams.sh 가 건 **심링크**가 있고, 그 끝은
 # results_4pol/shards/.../logs/*.jsonl (git 에 없는, 재생성에 40시간 걸리는 밤샘 산출물)이다.
 # 렌더가 같은 이름에 쓰면 심링크를 타고 원본이 0 바이트로 잘린다(실측). 이 스크립트는 계획한
 # 이름 중 하나라도 심링크면 **아무것도 돌리지 않고 멈춘다**.
 #
 # 사용법
-#   bash render_all.sh --dry-run                        # 계획만 출력
-#   bash render_all.sh --jobs 8                         # 기본 21판(7 case × 3 policy × seed 1)
-#   bash render_all.sh --cases battery --policies dspy --jobs 1
-#   bash render_all.sh --seeds 1,2,3 --jobs 8           # 63판
-#   bash render_all.sh --force                          # 이미 있는 anim 도 다시 만든다
+#   bash render/render_all.sh --dry-run                        # 계획만 출력
+#   bash render/render_all.sh --jobs 8                         # 기본 21판(7 case × 3 policy × seed 1)
+#   bash render/render_all.sh --cases battery --policies dspy --jobs 1
+#   bash render/render_all.sh --seeds 1,2,3 --jobs 8           # 63판
+#   bash render/render_all.sh --force                          # 이미 있는 anim 도 다시 만든다
 # =============================================================================
 set -uo pipefail
 
+# 2026-08-18 폴더 분류: 이 스크립트가 render/ 로 내려갔다. HERE=render/ ·
+# WM=wm4spacecraft_manufacturing/ · REPO=레포 루트(tools/ · LDraw_files/ · .venv 가 있는 곳).
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+WM="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$WM/.." && pwd)"
 MON="$REPO/tools/monitor"
 ANIM_DIR="$MON/anim"
 STREAM_DIR="$MON/streams"
-NIGHT_DIR="$HERE/_night"
+NIGHT_DIR="$WM/_night"
 LOG_DIR="$NIGHT_DIR/render_logs"
 STATUS_FILE="$NIGHT_DIR/status_render.jsonl"
 LOCK_FILE="$NIGHT_DIR/.render.lock"
@@ -150,9 +153,9 @@ if [ "$danger" -gt 0 ]; then
         그 원본은 git 에 없다(.gitignore:46). 복구 수단은 재실행뿐이다(630판 ≈ 40시간).
 
         먼저 발행물을 걷어라:
-            cd wm4spacecraft_manufacturing && ./publish_streams.sh --clean
+            wm4spacecraft_manufacturing/render/publish_streams.sh --clean
         렌더가 끝난 뒤 다시 걸면 된다:
-            ./publish_streams.sh
+            wm4spacecraft_manufacturing/render/publish_streams.sh
 EOF
     exit 1
 fi
@@ -213,7 +216,7 @@ render_board() {   # case policy seed worker_index
 
     t0=$(date +%s)
     # 스레드 고정: 안 걸면 프로세스마다 코어 수만큼 스레드를 띄워 K 배로 코어를 뺏는다
-    # (run_shard.sh 와 같은 이유). 나머지 환경변수는 llm_ood_eval.py:91-114 가 스윕에서
+    # (sweep/run_shard.sh 와 같은 이유). 나머지 환경변수는 sweep/llm_ood_eval.py:91-114 가 스윕에서
     # 넘긴 것과 같은 값 -- 단, render_demo.jl 이 읽지 않는 것도 있다(README_RENDER_3D.md §1).
     env \
         JULIA_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \

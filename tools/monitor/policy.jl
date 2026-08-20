@@ -52,7 +52,7 @@ include(joinpath(@__DIR__, "dp_lane.jl"))
 #   DEMO_ROUTER  auto(기본) | 1 | 0
 #                auto = 낯섦 감지기가 설치돼 있으면 켜고, 없으면 예전처럼 DEMO_POLICY 고정.
 #   ROUTER_EPS   낯섦 p-value 임계. 기본은 교정파일의 alpha.
-#   NOVELTY_CALIB  교정 JSON 경로(기본: wm4spacecraft_manufacturing/novelty_calibration.json)
+#   NOVELTY_CALIB  교정 JSON 경로(기본: wm4spacecraft_manufacturing/novelty/novelty_calibration.json)
 const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
 const ROUTER_EPS  = (try parse(Float64, ENV["ROUTER_EPS"]) catch; nothing end)
 
@@ -72,9 +72,13 @@ const ROUTER_EPS  = (try parse(Float64, ENV["ROUTER_EPS"]) catch; nothing end)
 """
 function install_novelty!()
     (try CB.novelty_detector() catch; nothing end) === nothing || return true
+    # 2026-08-20 폴더 재편: 교정 JSON 이 wm4spacecraft_manufacturing/novelty/ 로 옮겨졌다.
+    # 🔴 이 경로가 틀리면 아래 `isfile` 이 false 가 되어 라우터가 **조용히 꺼진 채**(fail-open)
+    # 런이 계속되고, DEMO_SUMMARY 의 "router" 필드는 요청 모드만 되뇌므로 산출물이
+    # 돌지도 않은 라우터를 주장하게 된다. 폴더를 옮길 때는 이 줄을 같이 옮길 것.
     path = get(ENV, "NOVELTY_CALIB",
                joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing",   # tools/monitor -> repo 루트
-                        "novelty_calibration.json"))
+                        "novelty", "novelty_calibration.json"))
     isfile(path) || (@warn "novelty calibration not found -> router disabled (fail-open)" path;
                      return false)
     try
@@ -90,7 +94,7 @@ function install_novelty!()
             does not match this build. Refusing to run with a stale gate -- regenerate it:
 
                 cd wm4spacecraft_manufacturing
-                python export_novelty_calibration.py
+                python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py
 
             (or set DEMO_ROUTER=0 to run deliberately without the router.)
             """
@@ -462,7 +466,7 @@ function canonical_macro(env, truth)
 end
 
 # ---- oracle lane: 기준 행동 a* 의 실행판 (2026-08-12) -----------------------------------
-# `wm4spacecraft_manufacturing/reference_policy.py` 의 a* 규칙을 **결정 시점에** 계산한 것.
+# `wm4spacecraft_manufacturing/core/reference_policy.py` 의 a* 규칙을 **결정 시점에** 계산한 것.
 # 저쪽은 판이 끝난 뒤 decisions[] 를 읽는 사후 채점기라 실행 lane 이 될 수 없다.
 #
 # 왜 신설했는가(2026-08-12 진단): 이 함수가 없던 동안 `DEMO_POLICY=oracle` 은 아래 decide_all 의

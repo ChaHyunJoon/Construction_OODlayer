@@ -158,20 +158,20 @@ end
 #   ⚠️ "깨끗하다" = **키 공간과 값이 둘 다 살아 있다**는 뜻이지 왕복(round-trip)을 실측했다는
 #   뜻이 아니다. 이 여덟도 `snapshot`/`restore!` 가 생기기 전까지는 종이 위의 대응이다.
 #
-# --- (A) `:state` 로 분류됐는데 대응 필드가 아예 없다 — 13 + 1 = 14 -----------------------
+# --- (A) `:state` 로 분류됐는데 대응 필드가 아예 없다 — 12 + 1 = 13 -----------------------
 #
 #   RESPEC_QUEUE          _IDENTITY_SEEN       VALID_ID_COUNTERS   INVALID_ID_COUNTERS
 #   CARRIER_LAST_D        _REFORM_CT           LAST_EDGE_COSTS     _DECISION_N
-#   HOT_SWAP_ASSETS       RESPEC_HOLD          CBF_HOLD            _ZONE_CT
-#   ZONE_DECIDE_DEFERRED
+#   HOT_SWAP_ASSETS       RESPEC_HOLD          _ZONE_CT            ZONE_DECIDE_DEFERRED
 #   + `OOD_SCHEDULE.fired` (`:split` 항목 — `OODTrigger.fired` 도 담을 필드가 없다)
 #
 #   ⚠️ 이 중 넷은 Task 7 의 수정 라운드가 **가장 강하게 `:state` 로 끌어올린** 것들이다:
 #   `RESPEC_QUEUE`(복원 안 하면 사건이 사라진다) · `_IDENTITY_SEEN`(프로그램이 죽는지를 정한다)
 #   · `VALID_ID_COUNTERS`(라운드 4 [Critical], 에피소드 중간에 증가하는 실측 프로브가 있다)
 #   · `CARRIER_LAST_D`(텔레포트 복구를 발화시킨다).
-#   ⚠️ `CBF_HOLD` 는 사용자의 staged `src/safety/cbf.jl` 삭제와 묶여 있다 — 그 삭제가 커밋되면
-#   인벤토리의 `CBF_*` 8개 + `FAILCLOSED_STOP` 이 같이 빠져야 한다(한 커밋으로).
+#   ✅ 2026-08-20: `CBF_HOLD` 는 이 목록에서 빠졌다. `src/safety/cbf.jl` 삭제가 커밋되면서
+#   인벤토리의 `CBF_*` 8개 + `FAILCLOSED_STOP` 이 **같은 커밋에서** 함께 제거됐다 —
+#   `test/smdp_global_inventory.jl` 의 집합 등호가 그것을 강제한다.
 #
 # --- (B) 부분적으로만/파생으로만 표현된다 — 7 --------------------------------------------
 #

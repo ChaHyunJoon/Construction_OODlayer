@@ -26,10 +26,10 @@
 # 한계: HEAD SHA 는 **커밋된 것**만 본다. 작업 트리의 미커밋 수정은 잡지 못한다.
 #
 # 사용법
-#   bash run_shard.sh battery 3 results_4pol/shards/battery/s3
-#   bash run_shard.sh zone 1 results_gate/solo/rep1 noop
-#   DRY_RUN=1 bash run_shard.sh battery 3 /tmp/x        # 명령만 출력
-#   SHARD_IGNORE_PROVENANCE=1 bash run_shard.sh ...     # 옛 동작(행 수만 보고 SKIP)
+#   bash sweep/run_shard.sh battery 3 results_4pol/shards/battery/s3
+#   bash sweep/run_shard.sh zone 1 results_gate/solo/rep1 noop
+#   DRY_RUN=1 bash sweep/run_shard.sh battery 3 /tmp/x  # 명령만 출력
+#   SHARD_IGNORE_PROVENANCE=1 bash sweep/run_shard.sh ...  # 옛 동작(행 수만 보고 SKIP)
 # =============================================================================
 set -uo pipefail
 
@@ -48,8 +48,11 @@ case "$OUTDIR" in
     *)  OUTDIR="$PWD/$OUTDIR" ;;
 esac
 
+# 2026-08-18 폴더 분류: 이 스크립트가 sweep/ 으로 내려가면서 기준점이 셋이 됐다.
+# HERE=sweep/ · WM=wm4spacecraft_manufacturing/ · REPO=레포 루트(.venv 와 git 이 있는 곳).
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+WM="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$WM/.." && pwd)"
 PY="$REPO/.venv/bin/python"
 DSPY_URL="${DSPY_URL:-http://127.0.0.1:8090}"
 
@@ -130,7 +133,7 @@ export OPENBLAS_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-CMD=("$PY" llm_ood_eval.py run
+CMD=("$PY" "$HERE/llm_ood_eval.py" run
      --case "$CASE"
      --seeds "$SEED"
      --policies "$POLICIES"
@@ -145,7 +148,7 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
     exit 0
 fi
 
-cd "$HERE"
+cd "$WM"        # 결과/로그 상대경로는 계속 wm4 폴더 기준이다
 t0=$SECONDS
 "${CMD[@]}" > "$OUTDIR/shard.log" 2>&1
 rc=$?

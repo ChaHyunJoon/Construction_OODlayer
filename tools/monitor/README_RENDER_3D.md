@@ -77,9 +77,9 @@ CLOBBERED BY JULIA                                 # ← 원본이 잘렸다. �
 
 **(B) 발행물을 먼저 걷는다.**
 ```bash
-cd wm4spacecraft_manufacturing && ./publish_streams.sh --clean   # 심링크 제거
+cd wm4spacecraft_manufacturing && ./render/publish_streams.sh --clean   # 심링크 제거
 #  … 렌더 …
-./publish_streams.sh                                             # 필요하면 다시 발행
+./render/publish_streams.sh                                             # 필요하면 다시 발행
 ```
 
 `render_all.sh` 는 계획한 산출물 이름 중 **하나라도 심링크면 한 판도 돌리지 않고 중단한다**
@@ -205,11 +205,11 @@ DSPY_PROGRAM=__seed_only__ ../.venv/bin/python -m uvicorn dspy_service:app --hos
 ```bash
 cd /home/chahj578/Construction_OODlayer/wm4spacecraft_manufacturing
 
-bash render_all.sh --dry-run                 # 계획만 (판 수 · 위험한 이름 검사)
-bash render_all.sh --jobs 8                  # 기본 21판 (7 case × 3 policy × seed 1)
-bash render_all.sh --seeds 1,2,3 --jobs 8    # 63판
-bash render_all.sh --cases battery --policies dspy --jobs 1
-bash render_all.sh --force                   # 이미 있는 anim 도 다시
+bash render/render_all.sh --dry-run                 # 계획만 (판 수 · 위험한 이름 검사)
+bash render/render_all.sh --jobs 8                  # 기본 21판 (7 case × 3 policy × seed 1)
+bash render/render_all.sh --seeds 1,2,3 --jobs 8    # 63판
+bash render/render_all.sh --cases battery --policies dspy --jobs 1
+bash render/render_all.sh --force                   # 이미 있는 anim 도 다시
 ```
 
 - **재개**: `anim/<이름>.html` 이 이미 있고 비어 있지 않으면 건너뛴다(`--force` 로 무시).
@@ -404,16 +404,16 @@ curl -s 127.0.0.1:8090/health
 
 # 2) 계획 확인 — 판 수와 "위험 0" 을 눈으로 본다
 cd wm4spacecraft_manufacturing
-bash render_all.sh --dry-run --jobs 8
+bash render/render_all.sh --dry-run --jobs 8
 
 # 3) 실행 (≈7.5분, 추정 상한. 실측 판당 137–158 s)
-bash render_all.sh --jobs 8
+bash render/render_all.sh --jobs 8
 
 # 4) 대시보드에서 상단 OOD events 를 4 로 놓는다  →  Factory View 3D 가 찬다
 ```
 
 `--events 4` 를 그대로 두는 한 어젯밤 발행 심링크는 건드리지 않는다(§1-A). 그래도 불안하면
-`./publish_streams.sh --clean` 을 먼저 돌려라 — 나중에 다시 걸면 그만이다.
+`./render/publish_streams.sh --clean` 을 먼저 돌려라 — 나중에 다시 걸면 그만이다.
 
 > 이 문서를 만들면서 21판 중 **7판은 이미 렌더돼 있다**
 > (`battery`·`fault`·`zone` × `noop`/`dspy`, `fault_zone`/`dspy`). 재개가 그것들을 건너뛰므로

@@ -18,15 +18,18 @@
 # 발행물은 .gitignore 로 배제돼 있다(tools/monitor/streams/).
 #
 # 사용:
-#   ./publish_streams.sh                          # 기본: 7 case x 3 policy x seed 1 = 21 개
-#   ./publish_streams.sh --clean                  # streams/ 를 비우고 새로 발행
-#   ./publish_streams.sh --seeds 1,2,3            # 여러 시드(seed 1 만 접미사 없음, 나머지는 _sN)
-#   ./publish_streams.sh --cases all,zone --policies noop,dspy
+#   ./render/publish_streams.sh                          # 기본: 7 case x 3 policy x seed 1 = 21 개
+#   ./render/publish_streams.sh --clean                  # streams/ 를 비우고 새로 발행
+#   ./render/publish_streams.sh --seeds 1,2,3            # 여러 시드(seed 1 만 접미사 없음, 나머지는 _sN)
+#   ./render/publish_streams.sh --cases all,zone --policies noop,dspy
 # =============================================================================
 set -euo pipefail
 
+# 2026-08-18 폴더 분류: 이 스크립트가 render/ 로 내려갔다. HERE=render/ ·
+# WM=wm4spacecraft_manufacturing/ (샤드 트리 기준) · REPO=레포 루트(tools/ 가 있는 곳).
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+WM="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$WM/.." && pwd)"
 DEST="$REPO/tools/monitor/streams"
 
 # 대시보드의 모델 선택기 기본값. safe_base() 와 같은 변환(확장자 제거 + 비영숫자 → "_").
@@ -52,7 +55,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 상대 경로면 이 스크립트가 있는 폴더 기준으로 푼다(어디서 부르든 같은 자리를 보게).
-[[ "$SHARDS_DIR" = /* ]] || SHARDS_DIR="$HERE/$SHARDS_DIR"
+[[ "$SHARDS_DIR" = /* ]] || SHARDS_DIR="$WM/$SHARDS_DIR"   # 샤드 트리는 wm4 폴더 기준
 [[ -d "$SHARDS_DIR" ]] || { echo "shards dir not found: $SHARDS_DIR" >&2; exit 1; }
 
 mkdir -p "$DEST"

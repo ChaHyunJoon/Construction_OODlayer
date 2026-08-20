@@ -158,7 +158,7 @@ kind×severity×seed grid is minutes-to-hours — run larger grids in the backgr
 **Consume** the labels in Python (no Julia needed):
 
 ```bash
-python e1_analyze.py <dataset.jsonl>            # LOO decision suboptimality audit + difficulty
+python core/e1_analyze.py <dataset.jsonl>       # LOO decision suboptimality audit + difficulty
 python sweep_surrogate.py <dataset.jsonl> --cost-aware   # HP sweep (subopt_norm + tie-rate)
 python ladder.py                                # per-kind severity ladder validity
 ```

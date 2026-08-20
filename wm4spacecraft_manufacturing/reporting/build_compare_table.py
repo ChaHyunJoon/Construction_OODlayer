@@ -33,8 +33,13 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+# 2026-08-18 폴더 분류: 이 파일이 reporting/ 으로 내려갔다. 아래에서 읽는 폴더
+# (artifacts_4pol/ · results_4pol/ · dp_oracle/ · md/)는 전부 **wm4 폴더 기준**이므로
+# 기준점을 WM 으로 잡는다 — 이 파일 폴더로 잡으면 reporting/artifacts_4pol 을 찾는다.
+# 코드 폴더 전부를 sys.path 에 올려 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
+WM = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(WM, "core"))
+import wmpath                                            # noqa: E402,F401
 
 # 스윕 case 키 -> 화면 라벨. 라벨은 사람이 읽는 문장이고 키는 하니스의 이름이다.
 CASES = [
@@ -181,9 +186,9 @@ def build_html(art_dir, meta_html, headline):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--artifacts", default=os.path.join(HERE, "artifacts_4pol"))
-    ap.add_argument("--out-md", default=os.path.join(HERE, "artifacts_4pol", "COMPARE.md"))
-    ap.add_argument("--out-html", default=os.path.join(HERE, "artifacts_4pol", "compare.html"))
+    ap.add_argument("--artifacts", default=os.path.join(WM, "artifacts_4pol"))
+    ap.add_argument("--out-md", default=os.path.join(WM, "artifacts_4pol", "COMPARE.md"))
+    ap.add_argument("--out-html", default=os.path.join(WM, "artifacts_4pol", "compare.html"))
     ap.add_argument("--dp-note", default="")
     a = ap.parse_args()
 
@@ -194,14 +199,14 @@ def main():
     # dp 열은 이미 `cell()` 의 결측 분기에서 "이 레인은 스윕에 없음" 으로 표에 남는다(위 참조).
     # 새 신호를 만들지 않는 이유: 여기서 따로 판정하면 칸과 각주가 다른 결론을 낼 수 있고,
     # 바로 그 갈림이 이번에 고치는 결함이다(아래 2026-08-16 주석).
-    dp_lane_swept = os.path.isdir(os.path.join(HERE, "results_4pol", "shards_dp"))
+    dp_lane_swept = os.path.isdir(os.path.join(WM, "results_4pol", "shards_dp"))
 
     # 세대·커버리지 같은 메타는 **파일에서 읽는다.** 문서에 손으로 적으면 갈린다.
     # DP 열이 무엇인지는 **value.json 이 스스로 말하게** 한다. 여기 손으로 적으면 솔버를 바꾼
     # 날 이 문장이 조용히 거짓이 된다(2026-08-14 -> 08-15 에 실제로 그럴 뻔했다).
     _solver = "constant_arm"
     try:
-        _solver = json.load(open(os.path.join(HERE, "dp_oracle", "value.json"))).get(
+        _solver = json.load(open(os.path.join(WM, "dp_oracle", "value.json"))).get(
             "solver", "constant_arm")
     except Exception:
         pass
@@ -284,20 +289,20 @@ def main():
             import collections as _c
             import statistics as _st
             import glob as _g
-            sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
+            sys.path.insert(0, os.path.join(WM, "dp_oracle"))
             from derive_grid import cell_key as _ck, state_of as _so
             from sample_grid import decompose_board as _dec
             # gap 의 **원인 문장**은 손으로 적지 않는다 — 표본의 `sampling_mode` 에서 유도한다.
             # (2026-08-17 최종 리뷰 Critical 3: 하드코딩된 원인 ①·③ 이 이미 닫힌 뒤에도 헤드라인
             #  아티팩트가 자기 전제를 계속 주장했다. 진실원은 `sample_grid.gap_cause_note`.)
             from sample_grid import gap_cause_note as _gcn, samples_sampling_mode as _ssm
-            _g_spec = json.load(open(os.path.join(HERE, "dp_oracle", "grid_spec.json")))
-            _v = json.load(open(os.path.join(HERE, "dp_oracle", "value.json")))
+            _g_spec = json.load(open(os.path.join(WM, "dp_oracle", "grid_spec.json")))
+            _v = json.load(open(os.path.join(WM, "dp_oracle", "value.json")))
             _V = {c: d["V"] for c, d in _v["cells"].items() if d.get("V") is not None}
             _backward = _v.get("solver") == "backward"
             _per = _c.defaultdict(lambda: _c.defaultdict(list))
             _skipped = _c.Counter()
-            for _p in _g.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
+            for _p in _g.glob(os.path.join(WM, "results_4pol", "*.jsonl")):
                 for _l in open(_p):
                     _l = _l.strip()
                     if not _l:
@@ -344,7 +349,7 @@ def main():
                     if _st.mean(_Js) < _V[_k] - 1e-9:
                         _w += 1
             _unit = ("그 칸부터의 **실현 cost-to-go**" if _backward else "판 전체의 평균 J")
-            _mode = _ssm(os.path.join(HERE, "dp_oracle", "samples.jsonl"))
+            _mode = _ssm(os.path.join(WM, "dp_oracle", "samples.jsonl"))
             if _t:
                 gap_note = ("**원 설계 §8.7 gap (평균 대 평균, n≥3 인 (칸,정책) 쌍 %d개; 비교 단위 = %s; "
                             "표집 모드 = `%s`).** "
@@ -370,8 +375,8 @@ def main():
                     "세대가 섞인 숫자가 되기 때문이다 — 빈 열을 보고 '천장이 닫혔다' 나 "
                     "'gap 이 줄었다' 로 읽지 말 것.")
 
-    vpath = os.path.join(HERE, "dp_oracle", "value.json")
-    gpath = os.path.join(HERE, "dp_oracle", "grid_spec.json")
+    vpath = os.path.join(WM, "dp_oracle", "value.json")
+    gpath = os.path.join(WM, "dp_oracle", "grid_spec.json")
     # dp 열이 스윕에 없을 때 이 커버리지 줄도 §8.7 gap 과 같은 이유로 같이 죽인다 — 커버리지는
     # value.json 이 **어느 세대의 결과에 대해** 격자를 얼마나 채웠는지를 말하는데, 결과가 없는
     # 세대의 value.json 을 놓고 "66/65 = 101.5%" 를 발행하면 이번 스윕과 무관한 숫자가 된다.

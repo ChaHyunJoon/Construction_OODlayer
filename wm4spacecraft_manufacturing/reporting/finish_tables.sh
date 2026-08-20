@@ -3,27 +3,30 @@
 # finish_tables.sh -- 샤드 트리 -> case jsonl -> 아티팩트 -> FINAL.md + COMPARE.md/html
 #
 # 왜 스크립트인가: 이 다섯 단계는 **순서와 인자가 서로 물려 있다.** 손으로 치면 정책 목록이
-# 한 군데만 어긋나도 병합기가 "OK" 를 내면서 조용히 부분 파일을 만든다(merge_shards.py 머리말의
+# 한 군데만 어긋나도 병합기가 "OK" 를 내면서 조용히 부분 파일을 만든다(sweep/merge_shards.py 머리말의
 # 사고 그대로). 한 곳에 적어 두고 그것만 돌린다.
 #
-# 3정책 샤드와 dp 샤드가 **다른 트리**에 있는 이유: run_shard.sh 의 provenance 도장은
+# 3정책 샤드와 dp 샤드가 **다른 트리**에 있는 이유: sweep/run_shard.sh 의 provenance 도장은
 # (commit, policies) 쌍이라, 같은 OUTDIR 에 다른 정책 목록으로 들어가면 STALE 로 판정해
 # **이미 끝난 3정책 결과를 지우고 다시 돈다.** 트리를 갈라 그 충돌을 피한다.
 #
-# 사용법:  bash finish_tables.sh [SEEDS]
+# 사용법:  bash reporting/finish_tables.sh [SEEDS]   (어느 cwd 에서 불러도 된다)
 # =============================================================================
 set -uo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$HERE"
-PY="$HERE/../.venv/bin/python"
+# 2026-08-18 폴더 분류: 이 스크립트가 reporting/ 으로 내려갔다. 아래 인자(results_4pol,
+# artifacts_4pol)는 전부 **wm4 폴더 기준 상대경로**라 cwd 는 계속 WM 이어야 한다.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"      # reporting/
+WM="$(cd "$HERE/.." && pwd)"                              # wm4spacecraft_manufacturing/
+cd "$WM"
+PY="$WM/../.venv/bin/python"
 
 SEEDS="${1:-1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30}"
 CASES="battery,fault,all,fault_battery,fault_zone,battery_zone,zone"
 POL3="canonical,surrogate,dspy"
 
 echo "=== 1) 3정책 샤드 병합 ==="
-"$PY" merge_shards.py --shards-dir results_4pol/shards --out-dir /tmp/merge3 \
+"$PY" "$WM/sweep/merge_shards.py" --shards-dir results_4pol/shards --out-dir /tmp/merge3 \
       --cases "$CASES" --seeds "$SEEDS" --policies "$POL3"
 rc3=$?
 echo "merge3 rc=$rc3"
@@ -31,7 +34,7 @@ echo "merge3 rc=$rc3"
 DP_OK=0
 if [ -d results_4pol/shards_dp ]; then
     echo "=== 2) dp 샤드 병합 ==="
-    "$PY" merge_shards.py --shards-dir results_4pol/shards_dp --out-dir /tmp/mergedp \
+    "$PY" "$WM/sweep/merge_shards.py" --shards-dir results_4pol/shards_dp --out-dir /tmp/mergedp \
           --cases "$CASES" --seeds "$SEEDS" --policies "dp"
     rcdp=$?
     echo "mergedp rc=$rcdp"
@@ -67,11 +70,11 @@ PYEOF
 [ $? -ne 0 ] && { echo "세대 확인 실패 -- 중단"; exit 1; }
 
 echo "=== 5) 아티팩트 + FINAL.md ==="
-"$PY" build_final_table.py --results-dir results_4pol --out-dir artifacts_4pol
+"$PY" "$HERE/build_final_table.py" --results-dir results_4pol --out-dir artifacts_4pol
 echo "build_final_table rc=$?"
 
 echo "=== 6) 4정책 x 7case 비교표 ==="
-"$PY" build_compare_table.py --artifacts artifacts_4pol \
+"$PY" "$HERE/build_compare_table.py" --artifacts artifacts_4pol \
       --out-md artifacts_4pol/COMPARE.md --out-html artifacts_4pol/compare.html
 echo "build_compare_table rc=$?"
 

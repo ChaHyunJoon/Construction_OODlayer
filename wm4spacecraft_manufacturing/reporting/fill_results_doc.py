@@ -14,21 +14,27 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+# 2026-08-18 폴더 분류: 이 파일이 reporting/ 으로 내려갔다. 아래에서 읽는 폴더
+# (artifacts_4pol/ · results_4pol/ · dp_oracle/ · md/)는 전부 **wm4 폴더 기준**이므로
+# 기준점을 WM 으로 잡는다 — 이 파일 폴더로 잡으면 reporting/artifacts_4pol 을 찾는다.
+# 코드 폴더 전부를 sys.path 에 올려 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
+WM = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(WM, "core"))
+import wmpath                                            # noqa: E402,F401
 # dp_oracle 는 패키지가 아니다(__init__.py 없음). 경로로 붙여 모듈로 직접 import 한다.
-sys.path.insert(0, os.path.join(HERE, "dp_oracle"))
+# (wmpath 가 이미 올리지만, 이 파일이 dp_oracle 에 직접 의존한다는 사실을 남겨 둔다.)
+sys.path.insert(0, os.path.join(WM, "dp_oracle"))
 # 이 기본 대상 문서는 2026-08-18 md 통합에서 내려갔다(복구 SHA 는 `md/README.md` §9-A).
 # 즉 `--doc` 없이 돌리면 열 파일이 없어 죽는다 — 채울 문서를 명시적으로 줄 것.
-DEFAULT_DOC = os.path.join(HERE, "md", "RESULTS_ROUTER3WAY_2026-08-14.md")
-ART = os.path.join(HERE, "artifacts_4pol")
-DPD = os.path.join(HERE, "dp_oracle")
+DEFAULT_DOC = os.path.join(WM, "md", "RESULTS_ROUTER3WAY_2026-08-14.md")
+ART = os.path.join(WM, "artifacts_4pol")
+DPD = os.path.join(WM, "dp_oracle")
 
 
 def table_section():
     p = os.path.join(ART, "COMPARE.md")
     if not os.path.exists(p):
-        return "_(COMPARE.md 없음 — `bash finish_tables.sh` 를 먼저 돌린다)_"
+        return "_(COMPARE.md 없음 — `bash reporting/finish_tables.sh` 를 먼저 돌린다)_"
     body = open(p).read()
     # 제목 줄은 이 문서가 이미 갖고 있으므로 뺀다.
     return "\n".join(l for l in body.splitlines() if not l.startswith("# "))
@@ -67,7 +73,7 @@ def holes_section():
     # 삭제가 아니라 **조건문**이다 — dp 샤드가 돌아오면 세 블록은 축자 그대로 되살아난다.
     # 되살리기 전에 `value.json` 이 그 시점 `results_4pol` 과 같은 코드 세대인지 먼저 확인할 것
     # (파일이 있다고 세대가 맞는다는 뜻이 아니다).
-    dp_lane_swept = os.path.isdir(os.path.join(HERE, "results_4pol", "shards_dp"))
+    dp_lane_swept = os.path.isdir(os.path.join(WM, "results_4pol", "shards_dp"))
 
     # (1) DP 커버리지 -- 칸 기준과 **결정 기준**을 둘 다 낸다.
     #     칸 커버리지만 적으면 낮아 보이는데, 결정 빈도가 편중돼 있어서 실제로 조회에 성공하는
@@ -113,7 +119,7 @@ def holes_section():
     # (2) dp 레인이 실제로 표를 얼마나 썼는가 -- dp_miss 를 이유별로 센다.
     miss = collections.Counter()
     n_dp_dec = 0
-    for p in glob.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
+    for p in glob.glob(os.path.join(WM, "results_4pol", "*.jsonl")):
         for line in open(p):
             line = line.strip()
             if not line:
@@ -162,7 +168,7 @@ def holes_section():
         import objective
         per = collections.defaultdict(lambda: collections.defaultdict(list))
         skipped = collections.Counter()
-        for p in glob.glob(os.path.join(HERE, "results_4pol", "*.jsonl")):
+        for p in glob.glob(os.path.join(WM, "results_4pol", "*.jsonl")):
             for line in open(p):
                 line = line.strip()
                 if not line:

@@ -18,7 +18,7 @@ const CB = ConstructionBots
 
 const CALIB = get(ENV, "NOVELTY_CALIB",
                   joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing",   # tools/ -> repo 루트 (wm4 는 repo 내부)
-                           "novelty_calibration.json"))
+                           "novelty", "novelty_calibration.json"))
 
 npass = 0; nfail = 0
 function check(name, ok, detail = "")
@@ -98,7 +98,8 @@ check("T6 세 종류 모두 유한하고 [0,1] 인 서술자 6개", allgood,
 #     이 검사가 필요한 이유: 기본 교정(novelty_calibration.json)은 세 종류 전부로 맞춰져 있어서
 #     데모의 어떤 사건도 낯설지 않다 -> 라우터가 배선돼 있어도 LLM 이 한 번도 안 불리고, 화면에서는
 #     "아무 일도 안 일어나는" 것처럼 보인다. 라우팅을 보이려면 교정이 그 종류를 몰라야 한다:
-#         python export_novelty_calibration.py <데이터> --exclude=zoneblk --out=novelty_calibration_no_zoneblk.json
+#         python novelty/export_novelty_calibration.py <데이터> --exclude=zoneblk \
+#                --out=novelty/novelty_calibration_no_zoneblk.json
 #     그리고 NOVELTY_CALIB 로 그 파일을 가리킨다.
 # ---------------------------------------------------------------------------------------------
 targets = Dict(k => (CB.novelty_verdict(d).novel ? "dspy" : "surrogate") for (k, d) in cases)

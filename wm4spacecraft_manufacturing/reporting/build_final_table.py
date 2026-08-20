@@ -3,7 +3,7 @@
 build_final_table.py -- 5시간 4정책 스윕(run_4pol.sh)의 결과를 오프라인으로 조립해 최종
 비교표(artifacts_4pol/FINAL.md)를 만든다.
 
-★ 이 스크립트는 새 시뮬을 절대 돌리지 않는다. julia 를 호출하지 않고, `llm_ood_eval.py run`
+★ 이 스크립트는 새 시뮬을 절대 돌리지 않는다. julia 를 호출하지 않고, `sweep/llm_ood_eval.py run`
    도 호출하지 않는다(둘 다 돌고 있는 스윕을 깨뜨린다 -- README 함정 30). 여기서 실행하는
    서브프로세스는 `llm_ood_eval.py report`(순수 파이썬, jsonl 위 집계) 와 `shadow_score.py`
    (순수 파이썬, 새 시뮬 0회) 뿐이다.
@@ -21,12 +21,12 @@ build_final_table.py -- 5시간 4정책 스윕(run_4pol.sh)의 결과를 오프�
 
 실행
 ----
-  python build_final_table.py [--results-dir results_4pol] [--out-dir artifacts_4pol]
+  python reporting/build_final_table.py [--results-dir results_4pol] [--out-dir artifacts_4pol]
 
 테스트(픽스처, 라이브 스윕과 무관):
   mkdir -p /tmp/ft/results_4pol
   cp results/llm_ood_eval.jsonl /tmp/ft/results_4pol/all.jsonl
-  python build_final_table.py --results-dir /tmp/ft/results_4pol --out-dir /tmp/ft/artifacts_4pol
+  python reporting/build_final_table.py --results-dir /tmp/ft/results_4pol --out-dir /tmp/ft/artifacts_4pol
 """
 import argparse
 import json
@@ -35,8 +35,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# 2026-08-18 폴더 분류 이후의 기준점 — HERE 는 이 파일 폴더(reporting/), 
+# WM 은 wm4spacecraft_manufacturing/ 다. 데이터 폴더(results_4pol/ · artifacts_4pol/ ·
+# dp_oracle/ · md/ · results/)는 전부 WM 기준이다. 코드 폴더 전부를 sys.path 에 올려
+# 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+WM = HERE.parent
+sys.path.insert(0, str(WM / "core"))
+import wmpath                                            # noqa: E402,F401
 
 import reference_policy  # noqa: E402  (BASIS 문자열만 읽는다 -- 채점 로직은 쓰지 않는다)
 from stats_paired import paired_wilcoxon, pair_boards, holm, sign_test   # noqa: E402
@@ -103,17 +109,17 @@ def repro_lines(n_boards, seeds, cases):
         "재현 절차:", "",
         "```bash",
         "# 1) %d 판 스윕 (julia 를 내부에서 부른다 -- 다른 julia 와 동시에 돌리지 말 것)" % n_boards,
-        "bash run_4pol_parallel.sh --jobs 50 --deadline-seconds 43200 --seeds %s --cases %s"
+        "bash sweep/run_4pol_parallel.sh --jobs 50 --deadline-seconds 43200 --seeds %s --cases %s"
         % (seed_str, case_str),
         "",
         "# 2) 오라클 라벨 재생성 -- julia, 순차 (README 함정 30)",
         "bash oracle/run_relabel_20260816.sh",
         "",
         "# 3) 샤드 병합 -> case별 report/shadow md+json -> FINAL.md/COMPARE.md (순수 파이썬)",
-        "bash finish_tables.sh",
+        "bash reporting/finish_tables.sh",
         "",
         "# 4) 이 문서 (순수 파이썬, julia 호출 없음, subprocess 없음)",
-        "python build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --oracle-dir oracle/out",
+        "python reporting/build_md_report.py --results-dir results_4pol --out-dir artifacts_4pol --oracle-dir oracle/out",
         "```", "",
     ]
 
@@ -159,7 +165,7 @@ def dedup_boards(rows):
 
 def run_tool(cmd, timeout=300):
     try:
-        proc = subprocess.run(cmd, cwd=str(HERE), capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=str(WM), capture_output=True, text=True, timeout=timeout)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as e:
         return 124, (e.stdout or ""), "TIMEOUT after %ss running: %s" % (timeout, " ".join(cmd))
@@ -169,7 +175,7 @@ def run_tool(cmd, timeout=300):
 
 def resolve_path(p):
     pp = Path(p)
-    return pp if pp.is_absolute() else (HERE / pp)
+    return pp if pp.is_absolute() else (WM / pp)      # 상대경로는 wm4 폴더 기준
 
 
 def fmt_pct(rate, num=None, den=None):
@@ -322,7 +328,7 @@ def build_case_artifacts(case_info, out_dir: Path, py: str):
 
     json_path = out_dir / ("%s.json" % case)
     md_path = out_dir / ("%s.md" % case)
-    rc, out, err = run_tool([py, str(HERE / "llm_ood_eval.py"), "report",
+    rc, out, err = run_tool([py, str(WM / "sweep" / "llm_ood_eval.py"), "report",
                               "--out", str(path), "--json", str(json_path), "--md", str(md_path)])
     if rc != 0 or not json_path.exists():
         result["report_err"] = ("llm_ood_eval.py report exit=%d\nstdout(tail)=%s\nstderr(tail)=%s"

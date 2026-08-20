@@ -66,7 +66,7 @@ mkdir -p "$LOGD"                                 # streams/anim 은 render_demo.
 
 # ---- 오늘 밤의 고정 규약(모두 override 가능하되 기본값은 이 값들) ---------------------------
 DSPY_URL="${DSPY_URL:-http://127.0.0.1:8090}"
-NOVELTY_CALIB="${NOVELTY_CALIB:-$REPO_ROOT/wm4spacecraft_manufacturing/novelty_calibration_no_zoneblk.json}"
+NOVELTY_CALIB="${NOVELTY_CALIB:-$REPO_ROOT/wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json}"
 export DSPY_URL NOVELTY_CALIB
 export DEMO_ROUTER=auto
 export DEMO_POLICY=router

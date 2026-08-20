@@ -26,8 +26,8 @@ fault / battery / zone 이 **하나의 추첨**으로 시점·종류·심각도�
 
 실행
 ----
-  python llm_ood_eval.py run    --seeds 1,2,3,4,5 --policies noop,canonical,dspy
-  python llm_ood_eval.py report --out results/llm_ood_eval.jsonl
+  python sweep/llm_ood_eval.py run    --seeds 1,2,3,4,5 --policies noop,canonical,dspy
+  python sweep/llm_ood_eval.py report --out results/llm_ood_eval.jsonl
 """
 import argparse
 import json
@@ -39,9 +39,16 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# 2026-08-18 폴더 분류: 이 파일이 sweep/ 로 내려갔다. 세 기준점을 구분한다 —
+#   HERE = sweep/ (이 파일 폴더)  ·  WM = wm4spacecraft_manufacturing/  ·  REPO = 레포 루트.
+# REPO 는 julia 를 `--project=.` 로 띄울 때의 cwd 라 반드시 레포 루트여야 한다(아래 :122).
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
-sys.path.insert(0, str(HERE))
+WM = HERE.parent
+REPO = WM.parent
+# ood_sweep_report 는 reporting/, reference_policy 는 core/ 로 갈렸다. 코드 폴더 전부를
+# sys.path 에 올려 맨이름 import 를 유지한다(근거는 core/wmpath.py 머리말).
+sys.path.insert(0, str(WM / "core"))
+import wmpath                                            # noqa: E402,F401
 
 from ood_sweep_report import sign_test, wilson          # noqa: E402  (검정 도구는 재사용)
 import reference_policy                                  # noqa: E402
@@ -51,7 +58,7 @@ try:
 except Exception:
     pass
 
-DEFAULT_OUT = HERE / "results" / "llm_ood_eval.jsonl"
+DEFAULT_OUT = WM / "results" / "llm_ood_eval.jsonl"    # 결과는 계속 wm4.../results 다
 
 
 # =========================================================================================
@@ -364,7 +371,7 @@ def paired(rows, a, b):
 def cmd_report(args):
     path = Path(args.out)
     if not path.exists():
-        print("요약 파일이 없다: %s\n  먼저: python llm_ood_eval.py run" % path)
+        print("요약 파일이 없다: %s\n  먼저: python sweep/llm_ood_eval.py run" % path)
         return 1
     rows = load_rows(path)
     res = summarize(rows)

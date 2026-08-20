@@ -120,37 +120,6 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :SIM_STEP               => :state,   # Clock: 시계 단일 진실원 (태스크 8)
     :LAST_EDGE_COSTS        => :state,   # G6 센티넬이 읽는다 (spec §3.6)
     :RESPEC_HOLD            => :state,   # ⚠️ 에피소드 중 변한다. G1 이 최종 판정한다
-    :CBF_HOLD               => :state,   # cbf.jl:163 — L0 line-stop 플래그. **처분은 유지하되
-                                          # round 3 이 적은 근거는 틀렸다**(재리뷰 3 [Important],
-                                          # round 4 에서 재확인). round 3 은 "`engage_fallback!`/
-                                          # `release_fallback!` 가 RESPEC_HOLD 와 lockstep 으로
-                                          # 토글하는 **always-reachable 프로덕션 폴백**" 이라고
-                                          # 적었다. 실제 코드(HEAD:replan.jl:1111-1147):
-                                          #   `RESPEC_HOLD[] = true`  (:1113)  ← 무조건 실행
-                                          #   `if FAILCLOSED_STOP[]`  (:1129)  ← **게이트**
-                                          #       `cbf_hold!(true)`   (:1130)
-                                          # 즉 lockstep 이 아니다 — RESPEC_HOLD 만 무조건 켜지고
-                                          # CBF_HOLD 는 게이트 뒤다. 그리고 그 게이트
-                                          # `FAILCLOSED_STOP` 은 **이 표가 바로 아래에서 `:setup`
-                                          # (`set_failclosed_stop!` 호출자 0건 → 항상 false)로
-                                          # 분류하는 그 플래그다**. 나머지 writer 도 오늘 도달
-                                          # 불가다: `release_fallback!`(replan.jl:1143, 유일한
-                                          # `cbf_hold!(false)` 자리)는 레포 전체 호출자 **0건**
-                                          # (정의 + ConstructionBots.jl:123 export +
-                                          # verifier.jl:255 문서문자열이 전부) · `disable_cbf!`
-                                          # (cbf.jl:221)은 tools/ 의 eval 스크립트 전용.
-                                          # round 3 주석은 게이트도 잘못 짚었다 — `CBF_ENABLED`
-                                          # (cbf.jl:413 의 early-return)는 **읽기/물리적 효과**의
-                                          # 게이트지 쓰기의 게이트가 아니다.
-                                          # 따라서: **오늘 프로덕션 레인에 CBF_HOLD 쓰기 자리는
-                                          # 0건**이다. `:state` 는 보수적 과잉분류이고(복원해도
-                                          # 값이 안 변하니 무해) 그래서 유지하지만, 내부 긴장을
-                                          # 여기 명시한다 — **유일한 writer 가 이 표 스스로
-                                          # `:setup`/항상-false 로 분류한 플래그 뒤에 있는
-                                          # `:state` 엔트리**다. `set_failclosed_stop!(true)` 가
-                                          # 실제로 켜지는 날 이 항목은 진짜 상태가 되므로 처분을
-                                          # 미리 맞춰 둔 것이다(반대 방향 — 실상태를 `:setup` 으로
-                                          # 내리는 것 — 만이 상태를 흘린다).
 
     # ---- fix round 1: 오분류 정정 (재확인 완료, 아래 각 줄에 근거) -------------------------
     :RESPEC_FROZEN          => :state,   # ex-:setup. reassign.jl:365 에서 매 재배정마다 다시 쓴다
@@ -223,13 +192,18 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # 호출 자리를 전부 훑었다"는 처분 근거로 **불충분하다** —
                                           # 생성자·`Base.` 오버로드·`@eval` 생성 메서드가 부르는
                                           # 헬퍼는 텍스트 스윕에 안 잡힌다. round 4 에서 이 표의
-                                          # 비-:state/:replay 전역 전부(:setup 72 · :log 16 ·
-                                          # :render 14 · :meta 1)의 **쓰기 자리와 그 둘러싼 함수**를
+                                          # 비-:state/:replay 전역 전부(당시 :setup 71 · :log 16 ·
+                                          # :render 14 · :meta 1 = 102 — round 4 가 적었던 `:setup 72`
+                                          # 는 재검산에서 틀렸다)의 **쓰기 자리와 그 둘러싼 함수**를
                                           # 기계로 다시 뽑아 같은 클래스를 찾았다: 나머지는 전부
                                           # 이름 있는 setter/훅 설치 함수(`set_*!` · `install_*_hook!` ·
                                           # `clear_*!` · `monitor_record_*!` · `record_ood_truth!` ·
                                           # `_prime_ldraw_part_index!`) 안에서만 써지고, 생성자나
                                           # Base 오버로드 안에서 써지는 전역은 **이 항목 하나뿐**이다.
+                                          # ⚠️ 2026-08-20 `src/safety/cbf.jl` 삭제가 커밋되면서 이 표에서
+                                          # `CBF_*` 8 + `FAILCLOSED_STOP` 9개가 빠졌다. 현행 분포는
+                                          # :setup 64 · :state 29 · :log 15 · :render 14 · :replay 6 ·
+                                          # :split 2 · :meta 1 = **131** 이다(위 스윕은 그 이전 모집단).
 
     # ---- run_demo.jl / policy.jl 확장분 (I12 + fix round 1) --------------------------------
     :_REFORM_CT             => :state,   # 발화 횟수 게이팅 — SNAP_COUNT 와 같은 모양의 임계
@@ -325,11 +299,6 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :_DRAWN_DECOMMISSIONED  => :log,
     :ZONE_SNAP_STATS        => :log,
     :LAST_AUTO_EFFICIENCY_W => :log,     # 진단용 — 결정에 안 쓰인다
-    :CBF_STATS              => :log,     # 신규. cbf.jl:181 — 호출/수정/hold/infeasible
-                                          # 횟수 누적 딕셔너리. `_bump!`(:200,:448-449)가
-                                          # 채우고 `cbf_stats()` 로만 노출된다 — 유일한 소비처는
-                                          # `tools/cbf_sim_eval.jl:129`(리포팅), 어떤 분기도
-                                          # 이 값으로 안 갈린다.
     :MONITOR_IO             => :log,
     :MONITOR_RESPEC         => :log,
     :MONITOR_CONTROL_HOOK   => :log,
@@ -466,30 +435,6 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # 있는 블록 이름 허용집합(`Set([:g,:geo,...])`).
                                           # `setdiff(omit, _BLOCK_NAMES)` 로 검증에만 쓰이고
                                           # push!/reassign 되는 자리가 없다(확인함).
-    # ---- round 3, [Critical]#1: HEAD:src/safety/cbf.jl · HEAD:src/respec/replan.jl 의 9개.
-    # 작업 트리에는 cbf.jl 삭제가 스테이징돼 있고(다른 태스크 소관) replan.jl 도 FAILCLOSED_STOP
-    # 이 지워진 버전으로 바뀌어 있다 — 그러나 **이 커밋의 트리에서는 둘 다 그대로 존재한다**
-    # (내가 pathspec 으로 이 두 파일만 커밋하므로 나머지 파일은 부모 커밋 그대로 남는다). HEAD
-    # 기준으로 계약이 성립하려면 여기서 분류해야 한다 — 나중에 그 삭제가 실제로 커밋되면
-    # `stale_globals` 가 이 아홉 중 남은 것들을 유령으로 잡을 것이고, 그게 정상 동작이다.
-    :CBF_ENABLED            => :setup,   # cbf.jl:141 — `enable_cbf!()`/`disable_cbf!()` 호출자는
-                                          # `tools/cbf_sim_eval.jl`·`tools/test_cbf.jl` 뿐(둘 다
-                                          # 독립 평가/테스트 스크립트, 실행 전 1회 설정).
-                                          # `route_planning.jl:1147` 주석: "Inert unless
-                                          # enable_cbf!() was called, so normal runs are
-                                          # byte-identical" — 기본 실행 레인(run_demo.jl)은 이
-                                          # 서브시스템을 아예 안 부른다.
-    :CBF_ALPHA              => :setup,   # cbf.jl:151, enable_cbf!() 의 kwarg 로만 설정(같은 호출자)
-    :CBF_MARGIN             => :setup,   # cbf.jl:154, 같은 이유
-    :CBF_INTER_AGENT        => :setup,   # cbf.jl:167, 같은 이유
-    :CBF_DEFAULT_RADIUS     => :setup,   # cbf.jl:170, setter 없음(고정 기본 반경)
-    :CBF_SCENE_TREE         => :setup,   # cbf.jl:387, `set_cbf_scene_tree!`/`scene_tree_for_cbf`
-                                          # 외부 호출자 0건 — 죽은 배선 훅, 영원히 `nothing`.
-    :FAILCLOSED_STOP        => :setup,   # replan.jl:1139 — "opt-in switch... Default `false`
-                                          # preserves the historical behaviour exactly"
-                                          # (제작자 docstring 그대로). `set_failclosed_stop!`
-                                          # 호출자는 레포 전체에 0건(verifier.jl:256 은 문서
-                                          # 문자열일 뿐 실제 호출이 아님) — 오늘은 항상 꺼져 있다.
 
     # ---- 시각화 전용 --------------------------------------------------------------------
     :LIVE_PUSH              => :render,

@@ -252,8 +252,12 @@ When ON, a `RelocateBuild` is admitted only if the named zone actually swallows 
 goals — the goals no per-assembly restage can rescue (`root_goal_coverage`). A zone that only
 clips a sub-assembly's staging area is repairable locally (or absorbed by the motion stack),
 so paying a global move for it is disproportionate and the gate rejects it. Rejection is a
-NO-OP for the geometry: `engage_fallback!` only raises `RESPEC_HOLD` unless the opt-in
-`set_failclosed_stop!(true)` is on, so the build keeps running.
+NO-OP FOR THE GEOMETRY — nothing is moved — but it is NOT a no-op for the run: the reject path
+calls `engage_fallback!`, which raises `RESPEC_HOLD` and `step_environment!` reads that flag
+every step to zero every agent's preferred velocity, so the line stops until something calls
+`release_fallback!`. (This docstring previously claimed the build keeps running, on the strength
+of an opt-in `set_failclosed_stop!` that no caller ever set; the claim was wrong about which
+mechanism carries the stop. Corrected 2026-08-18 alongside the removal of `safety/cbf.jl`.)
 
 **Off by default on purpose.** The oracle/dataset path (`gen_oracle_dataset.jl`, arms `[0,7]`)
 MEASURES the RelocateBuild arm on exactly these non-core zones and found it ~2x better than

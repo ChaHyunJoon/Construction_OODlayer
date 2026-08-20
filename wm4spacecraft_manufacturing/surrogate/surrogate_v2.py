@@ -22,7 +22,11 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 2026-08-18 폴더 분류: 옆 폴더(core/ 등)의 모듈을 맨이름으로 import 하려고 코드 폴더
+# 전부를 sys.path 에 올린다(근거·쓰는 법은 core/wmpath.py 머리말). 분류 전에는 이 자리가
+# `sys.path.insert(0, <이 파일 폴더>)` 한 줄이었다 — 그때는 모든 py 가 한 폴더였다.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                                            # noqa: E402,F401
 import objective                                        # noqa: E402
 from surrogate_features import build_features           # noqa: E402
 

@@ -17,7 +17,7 @@ tools/monitor/run_ood_sweep.ps1 이 쌓은 요약 JSONL. 한 줄 = 한 판 =
  4) 커버리지 -- 스트림이 실제로 어느 진행도에서 무엇을 터뜨렸는가.
     이게 이 실험의 존재 이유다: 라벨 격자가 아니라 뽑힌 시점에서 재는 것.
 
-실행:  python wm4spacecraft_manufacturing/ood_sweep_report.py [요약.jsonl]
+실행:  python wm4spacecraft_manufacturing/reporting/ood_sweep_report.py [요약.jsonl]
 """
 import json
 import math
@@ -26,7 +26,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT = HERE / "results" / "ood_sweep.jsonl"
+WM = HERE.parent          # 2026-08-18 폴더 분류: 결과는 계속 wm4.../results 다
+DEFAULT = WM / "results" / "ood_sweep.jsonl"
 
 # 윈도우 콘솔 기본 코드페이지(cp949)는 em-dash 조차 못 찍고 UnicodeEncodeError 로 죽는다.
 try:
