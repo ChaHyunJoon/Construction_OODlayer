@@ -49,9 +49,57 @@ def _strip_retired(valid_mask):
     return [m for m in valid_mask if int(m) not in RETIRED_MACROS]
 
 
+def _instance_key(row):
+    return row.get("instance_id", row.get("instance"))
+
+
+def _instance_groups(rows):
+    g = {}
+    for row in rows:
+        g.setdefault(_instance_key(row), []).append(row)
+    return g
+
+
+# instance-level 파생 집계(row 수 자체에서 파생되는 값) 목록. 2026-08-20 derived-field
+# sweep(task-6b-review)이 이 필드 하나만 필터로 낡는다는 것을 확인했다 — macro id 스캔이
+# 못 잡은 이유는 이게 리스트가 아니라 정수 **집계**이기 때문. 나중에 또 하나 생기면 여기
+# 이름만 추가하면 `_fix_cross_arm_aggregates`/`_assert_cross_arm_aggregates_fresh` 양쪽이
+# 같이 잡는다.
+CROSS_ARM_AGGREGATE_FIELDS = ("arms_labeled",)
+
+
+def _fix_cross_arm_aggregates(kept):
+    """arms_labeled 는 "그 instance 에서 실제로 라벨된 팔 수" = 그 instance 의 생존 행 수다.
+    필터가 macro 5/6 행을 빼면 남은 행 수가 줄지만 이 필드는 필터 이전 값 그대로 남아
+    낡는다(리뷰 실측: 65 instance/260행에서 6으로 낡음, 실제 생존 행은 4). kept 로 그룹화해
+    다시 센다."""
+    for group in _instance_groups(kept).values():
+        n = len(group)
+        for row in group:
+            for f in CROSS_ARM_AGGREGATE_FIELDS:
+                if f in row:
+                    row[f] = n
+
+
+def _assert_cross_arm_aggregates_fresh(kept):
+    """`_fix_cross_arm_aggregates` 가 실제로 먹었는지 **전수** 재확인한다(표본 하나가 아니라
+    모든 instance). 다음에 생길 파생 필드가 조용히 썩는 것(이번처럼 필터는 도는데 집계는
+    안 갱신되는 것)을 막는 것이 목적 — 값을 믿지 말고 매번 다시 세어 대조한다."""
+    for inst, group in _instance_groups(kept).items():
+        n = len(group)
+        for row in group:
+            for f in CROSS_ARM_AGGREGATE_FIELDS:
+                if f in row and row[f] != n:
+                    raise AssertionError(
+                        "cross-arm aggregate 부패 — instance %r: %s=%r 인데 실제 생존 행 %d"
+                        % (inst, f, row[f], n))
+
+
 def filter_rows(rows):
     """(살아남은 행, 카운터). 행마다 vocab 도장을 찍고 valid_mask 에서도 은퇴 id 를 뺀다.
     macro 컬럼은 remap 하지 않는다(존재하는 id 는 그대로, 존재하지 않아야 할 id 는 행째 drop).
+    kept 확정 후 instance-level 파생 집계(`arms_labeled` 등)를 생존 행 수로 다시 센다 —
+    macro id 스캔으로는 안 잡힌다(리스트가 아니라 정수 집계라서, task-6b-review 실측).
 
     보존 불변식: 입력 행은 kept 이거나 dropped_by_macro 에 세어지거나 — 제3의 길이 없다.
     이 assert 가 없으면 세지 않은 drop(예: 조건 없는 continue)이 자기정합적인 요약과 함께
@@ -73,6 +121,8 @@ def filter_rows(rows):
         raise AssertionError(
             "보존 불변식 위반 — kept(%d) + dropped(%d) != 입력(%d). 세지 않은 drop 이 있다."
             % (len(kept), total_dropped, len(rows)))
+    _fix_cross_arm_aggregates(kept)
+    _assert_cross_arm_aggregates_fresh(kept)  # 전수 재확인 — 표본 하나가 아니라
     return kept, diag
 
 

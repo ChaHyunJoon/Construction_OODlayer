@@ -73,6 +73,31 @@ def test_conservation_invariant_holds_on_normal_input():
     assert len(kept) + sum(diag["dropped_by_macro"].values()) == len(rows)
 
 
+def test_arms_labeled_recomputed_from_survivors():
+    """task-6b-review: arms_labeled 는 그 instance 의 생존 행 수를 나타내는 instance-level
+    파생 집계다. 필터 이전 값(6, macro 5/6 포함)을 그대로 남기면 은퇴 행 두 개가 빠진 뒤에도
+    거짓말을 한다 — 실제 생존 행 수(4)로 다시 세야 한다."""
+    rows = [{"instance": "i1", "macro": m, "arms_labeled": 6} for m in (0, 1, 2, 4, 5, 6)]
+    kept, _ = filter_labels.filter_rows(rows)
+    assert [r["arms_labeled"] for r in kept] == [4, 4, 4, 4]
+
+
+def test_arms_labeled_absent_field_is_untouched():
+    rows = [{"instance": "i2", "macro": 0}]
+    kept, _ = filter_labels.filter_rows(rows)
+    assert "arms_labeled" not in kept[0]
+
+
+def test_cross_arm_aggregate_check_catches_perturbation():
+    """음성 대조 — 표본 검사가 아니라 전수 검사임을 증명한다. 두 행 중 하나만 부패시켜도
+    (filter_rows 를 통하지 않고) `_assert_cross_arm_aggregates_fresh` 를 직접 걸면 빨개진다."""
+    kept = [{"instance": "i3", "arms_labeled": 2}, {"instance": "i3", "arms_labeled": 2}]
+    filter_labels._assert_cross_arm_aggregates_fresh(kept)  # 부패 전 — 조용히 통과해야 정상
+    kept[1]["arms_labeled"] = 999  # 주입한 부패
+    with pytest.raises(AssertionError):
+        filter_labels._assert_cross_arm_aggregates_fresh(kept)
+
+
 def test_registry_mismatch_kills_import():
     """음성 대조: action_registry.RETIRED 가 기대(3,5,6)와 달라지면 filter_labels 를
     다시 불러오는 순간 죽어야 한다 — 조용히 넘어가면 이 assert 는 장식이다."""
