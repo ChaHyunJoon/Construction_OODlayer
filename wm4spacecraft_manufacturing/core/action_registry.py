@@ -20,6 +20,7 @@ action_registry.py -- action_registry.json 을 읽는 **유일한** 로더.
 """
 import json
 import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REGISTRY_PATH = os.environ.get("ACTION_REGISTRY", os.path.join(HERE, "action_registry.json"))
@@ -39,14 +40,44 @@ MACRO_COST = {i: float(m["cost"]) for i, m in REGISTRY.items()}
 NAME2ID = {m["name"]: i for i, m in REGISTRY.items()}
 MACROS = sorted(REGISTRY)
 
-# ---- 어휘 도장 (2026-08-19, spec §2.4·§8) ---------------------------------------------------
+# ---- 어휘 도장 (2026-08-19, spec §2.4·§8; 리뷰 라운드 1 판정 G 로 정정) ---------------------
 # 왜 objective_hash 로 안 되는가: 해시는 목적함수의 스칼라를 도장한다. 어휘는 목적함수가
 # 아니므로 어휘만 바뀌면 해시가 안 갈릴 수 있고, 실제로 dp value.json 에서 그 맹점이 발화했다.
 # 도장은 그 축을 따로 잡는다. **소비처는 불일치 시 조용히 remap 하지 말고 죽는다** —
 # remap 하면 구세대 macro 3(ForbidZone) 행이 4(ReformTeam) 로 에러 없이 재해석된다.
+#
+# 판정 G (리뷰 라운드 1): 이 값은 **오늘 참인 것**을 선언해야 한다 — dynamics_stamp() 가
+# hazard_enabled() 에서 유도되는 것과 대칭이다. 오늘 registry 는 3/5/6 이 아직 은퇴하지 않은
+# 9팔이므로 "v1-9arms" 다. "v2-6arms" 는 태스크 5(3/5/6 은퇴) 이후에나 참이 되는 END-STATE
+# 값이라 지금 여기 두면 **오늘부터 계속 거짓말하는 도장**이 된다 — 그 자체로는 아무도
+# 못 잡는다(리터럴이라 검증 불가). 그래서 완전한 유도 대신 **기계적 일관성 검사**를 둔다:
+# 도장의 "<n>arms" 가 실제 registry 항목 수와 같은지 로드 시점에 어서션한다.
+# **이 어서션은 태스크 5 에서 load-bearing 이다**: 3/5/6 을 은퇴시키고 문자열을 "v2-6arms"
+# 로 갈아 끼우는 순간, 이 어서션이 "선언 6 vs 실제 6" 으로 통과하는 것이 곧 은퇴가 실제로
+# 집행됐다는 증거다. 문자열만 바꾸고 registry 에서 은퇴를 안 시키면(또는 그 반대) 여기서 죽는다.
+_VOCAB_ARMS_RE = re.compile(r"^v\d+-(\d+)arms$")
+
+
+def assert_vocab_arm_count(vocab, n_actual):
+    """도장의 `<n>arms` 를 실제 registry 항목 수와 대조한다. 형식이 아니거나 수가 다르면
+    ValueError — 오늘은 (선언 9, 실제 9)로 통과하고, 태스크 5 가 은퇴를 집행하며 문자열을
+    갈아 끼우는 순간의 (선언 6, 실제 6) 통과가 그 은퇴가 실제로 됐다는 기계적 증거가 된다."""
+    m = _VOCAB_ARMS_RE.match(vocab)
+    if not m:
+        raise ValueError(
+            "vocab 도장 형식이 아니다(v<버전>-<n>arms 꼴이어야 한다): %r" % vocab)
+    declared = int(m.group(1))
+    if declared != n_actual:
+        raise ValueError(
+            "vocab 도장이 거짓말한다 — 선언 %d arms(%r) vs 실제 registry %d arms. "
+            "어휘가 실제로 바뀌었으면 이 문자열도 같이 갈아 끼울 것; 안 바뀌었으면 registry 를 "
+            "되돌릴 것." % (declared, vocab, n_actual))
+
+
 VOCAB = json.load(open(REGISTRY_PATH, encoding="utf-8")).get("vocab")
 if not VOCAB:
     raise ValueError("action_registry.json 에 'vocab' 도장이 없다: %s" % REGISTRY_PATH)
+assert_vocab_arm_count(VOCAB, len(MACROS))
 
 
 def require_vocab(obj, where):

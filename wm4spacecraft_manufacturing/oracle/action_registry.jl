@@ -34,11 +34,35 @@ const IDS       = sort(collect(keys(REGISTRY)))
 const NAME      = Dict(i => String(REGISTRY[i].name)  for i in IDS)
 const COST      = Dict(i => Float64(REGISTRY[i].cost) for i in IDS)
 
-# ---- 어휘 도장 (2026-08-19, spec §2.4·§8) ---------------------------------------------------
+# ---- 어휘 도장 (2026-08-19, spec §2.4·§8; 리뷰 라운드 1 판정 G 로 정정) ---------------------
 # `action_registry.py:VOCAB` 과 **같은 JSON 필드**를 읽는다. 두 언어가 같은 파일을 보므로
 # 복붙 리터럴이 생기지 않는다.
+#
+# 판정 G: 이 값은 **오늘 참인 것**을 선언해야 한다 — dynamics_stamp() 가 hazard_enabled() 에서
+# 유도되는 것과 대칭이다. 오늘 registry 는 3/5/6 이 아직 은퇴 전인 9팔이므로 "v1-9arms" 다.
+# 완전한 유도 대신 **기계적 일관성 검사**를 둔다: 도장의 "<n>arms" 가 실제 registry 항목 수와
+# 같은지 로드 시점에 어서션한다. **이 어서션은 태스크 5 에서 load-bearing 이다** — 3/5/6 을
+# 은퇴시키고 문자열을 "v2-6arms" 로 갈아 끼우는 순간, (선언 6, 실제 6) 통과가 그 은퇴가 실제로
+# 집행됐다는 증거다.
+const _VOCAB_ARMS_RE = r"^v\d+-(\d+)arms$"
+
+"""
+    assert_vocab_arm_count(vocab, n_actual)
+
+도장의 `<n>arms` 를 실제 registry 항목 수와 대조한다. 형식이 아니거나 수가 다르면 죽는다.
+"""
+function assert_vocab_arm_count(vocab::AbstractString, n_actual::Integer)
+    m = match(_VOCAB_ARMS_RE, vocab)
+    m === nothing && error("vocab 도장 형식이 아니다(v<버전>-<n>arms 꼴이어야 한다): $(vocab)")
+    declared = parse(Int, m.captures[1])
+    declared == n_actual || error(
+        "vocab 도장이 거짓말한다 — 선언 $(declared) arms($(vocab)) vs 실제 registry $(n_actual) arms.")
+    return nothing
+end
+
 const VOCAB = haskey(_RAW, :vocab) ? String(_RAW.vocab) :
     error("action_registry.json 에 'vocab' 도장이 없다: $(PATH)")
+assert_vocab_arm_count(VOCAB, length(IDS))
 
 """
     require_vocab(obj, where)
@@ -49,7 +73,12 @@ remap 하면 구세대 macro 3(`ForbidZone`) 행이 4(`ReformTeam`) 로 에러 �
 function require_vocab(obj, where::AbstractString)
     got = try obj["vocab"] catch; nothing end
     got === nothing && error("$(where): 어휘 도장('vocab')이 없다 — 구세대 파일이다. 현행은 $(VOCAB).")
-    String(got) == VOCAB || error("$(where): 어휘 도장 불일치 — 파일 $(got) vs 현행 $(VOCAB).")
+    # 문자열이 아닌 도장 값(정수 등)도 계약 메시지로 죽어야 한다 — `String(got)` 을 그냥 부르면
+    # `String(::Int64)` 에 메서드가 없어 MethodError 로 죽는다(죽긴 죽지만 계약 메시지가 아니다).
+    got_str = try String(got) catch; nothing end
+    got_str === nothing && error(
+        "$(where): 어휘 도장이 문자열이 아니다 — 구세대/손상 파일이다. 받은 값 $(repr(got)), 현행은 $(VOCAB).")
+    got_str == VOCAB || error("$(where): 어휘 도장 불일치 — 파일 $(got_str) vs 현행 $(VOCAB).")
     return nothing
 end
 
