@@ -76,20 +76,20 @@ const norm = LinearAlgebra.norm # 벡터 길이(크기) 계산 함수에 짧은 
 # MODULE load puts it in an OLDER world than any demo call, exactly reproducing
 # the original top-level-include semantics.
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
-# The MDP layer (src/mdp/) is loaded the same way and for the same world-age reason.
+# The MDP layer (src/smdp/) is loaded the same way and for the same world-age reason.
 # It DEPENDS on navigator (battery/ood_truth/ood_stream), so it must come after.
-# [한국어] MDP 계층(src/mdp/)도 같은 이유로 모듈 로드 시점에 한 번 불러둔다. navigator 에
+# [한국어] MDP 계층(src/smdp/)도 같은 이유로 모듈 로드 시점에 한 번 불러둔다. navigator 에
 #          의존하므로 반드시 그 다음 줄이어야 한다.
-CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))
+CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 
 # ---- shared helpers (defined ONCE) ------------------------------------------
-# 행동 어휘의 단일 진실원은 `wm4spacecraft_manufacturing/action_registry.json` 이다(CLAUDE.md).
+# 행동 어휘의 단일 진실원은 `wm4spacecraft_manufacturing/core/action_registry.json` 이다(CLAUDE.md).
 # 여기 있던 `MACROS = [0,1,2,3,4]` 리터럴이 실제로 사고를 냈다: 2026-08-06 에 매크로 7(RelocateBuild)·
 # 8(SwapBattery) 가 registry 에 들어왔는데 이 파일만 5개짜리로 남아, 두 surrogate 데모가 **잘린
 # 행동집합** 위에서 결정하면서도 아무 에러를 내지 않았다. `audit_action_vocab.py` 는 이 파일을
 # 검사 대상에 넣지 않아 6/6 으로 통과했다. 그래서 리터럴을 없애고 registry 에서 읽는다 —
 # 이제 매크로를 추가하면 데모가 자동으로 따라가고, 감사가 지켜야 할 복제본이 하나 줄어든다.
-const _ACTION_REGISTRY = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "action_registry.json")
+const _ACTION_REGISTRY = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core", "action_registry.json")
 
 # load_action_vocab : registry 를 읽어 (매크로 id 오름차순 벡터, id=>이름 Dict) 를 돌려준다.
 #   JSON3 는 객체의 키를 Symbol 로 준다 — registry 의 키가 "0","1",... 이라 String 으로 되돌려 파싱한다.
@@ -101,6 +101,28 @@ function load_action_vocab(path::AbstractString = _ACTION_REGISTRY)
     ids   = sort!([parse(Int, String(k)) for k in keys(macros)])
     names = Dict(i => String(macros[Symbol(string(i))].name) for i in ids)
     return ids, names
+end
+
+# ---- 리뷰 라운드 2 Critical #2 (2026-08-19/20): surrogate 아티팩트 어휘 도장 검사 ----------------
+# 왜 있는가: `surrogate_linear.json` 은 어휘 도장이 없어서(구세대, 2026-08-19 실측: macro_3 9열을
+# 담은 채 도장 없이 배포돼 있었다) 은퇴한 macro 3 이 배포 feature 공간에 조용히 남아 있었다.
+# `action_registry.py/.jl` 의 `require_vocab()` 이 이미 있는 "도장 부재/불일치 시 죽는다" 계약을
+# 이 producer(surrogate 소비자)도 그대로 따라야 한다 — export_surrogate.py 가 이제 아티팩트에
+# `"vocab"` 을 찍고(같은 커밋), 여기서 그것을 대조한다. `oracle/action_registry.jl` 전체를
+# include 하지 않는 이유: 이 파일은 이미 취약하다고 스스로 적어 둔 world-age 민감한 대형 파일이라
+# 새 모듈 하나를 여기 얹는 위험보다, 이미 있는 `_ACTION_REGISTRY` 상수로 같은 검사를 자체
+# 구현하는 쪽이 더 작다(파일 하나만 다시 읽으면 된다 -- `load_action_vocab` 과 같은 소스).
+function require_surrogate_vocab(spec, where::AbstractString)
+    current = String(JSON3.read(read(_ACTION_REGISTRY, String)).vocab)
+    got = try spec["vocab"] catch; nothing end
+    got === nothing && error("$(where): surrogate 아티팩트에 어휘 도장('vocab')이 없다 — 구세대 " *
+        "산출물이다(은퇴한 macro 가 feature 공간에 남아 있을 수 있다). 현행은 $(current). " *
+        "재학습·재수출하지 말고(태스크 5 리뷰 경고: 아직 macro-3 행이 섞인 데이터로 재수출하면 " *
+        "지시자 없는 62열짜리 모델이 나온다) 데이터를 먼저 태스크 6 필터로 정리할 것.")
+    got_str = try String(got) catch; nothing end
+    got_str === nothing && error("$(where): 어휘 도장이 문자열이 아니다 — 받은 값 $(repr(got)), 현행은 $(current).")
+    got_str == current || error("$(where): 어휘 도장 불일치 — 파일 $(got_str) vs 현행 $(current).")
+    return nothing
 end
 
 # The set_default_milp_optimizer! block that appears (identically) in 8 of the 10
@@ -879,7 +901,7 @@ SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SEED       = parse(Int, get(ENV, "SEED", "1"))
 SEVERITY   = parse(Float64, get(ENV, "SEVERITY", "1.0"))   # zone: overlap frac; fault: 1.0  # 사건 심각도(구역=겹침비율)
 SURRO_PATH = get(ENV, "SURROGATE",                          # 학습된 surrogate JSON 파일 경로
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 # 행동 어휘는 registry 에서 읽는다(리터럴 복붙 금지 — load_action_vocab 주석 참조).
 #   ★ SURRO_PATH 의 export 와 어휘가 맞아야 한다: features() 가 만드는 one-hot 이 `macro_<id>` 라서,
 #     registry 가 7·8 을 포함하면 export 도 그 어휘로 학습된 것이어야 점수가 의미를 갖는다.
@@ -896,12 +918,13 @@ CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" =>
 # ---- the learned surrogate: y_hat = coef . ((x - mean)/scale) + intercept ----------------
 # surrogate = 선형회귀. 입력 x 를 (평균빼고 스케일나눠) 정규화한 뒤 계수와 내적 + 절편 = 예측값(예상 closed 노드).
 SURRO = JSON3.read(read(SURRO_PATH, String))            # JSON 파일 읽어 파싱
+require_surrogate_vocab(SURRO, SURRO_PATH)              # 은퇴한 macro 가 새 feature 공간에 남았는지 검사(리뷰 라운드 2)
 # This (superseded) demo only knows the LINEAR export with the original 19 columns.
 # 이 데모는 (구버전이라) 원본 19열짜리 "선형" export 만 안다. forest 이거나 상호작용 열(__x__)이 있으면 에러.
 if get(SURRO, "kind", "linear") == "forest" || any(occursin("__x__", String(f)) for f in SURRO["feature_names"])
     error("""demo_surrogate is SUPERSEDED and cannot read this surrogate ($(SURRO["meta"]["model"])).
              Use the surrogate_stream demo, or export a linear one:
-               python export_surrogate.py <dataset>.jsonl --cost-aware --linear""")
+               python wm4spacecraft_manufacturing/surrogate/export_surrogate.py <dataset>.jsonl --cost-aware --linear""")
 end
 FEATNAMES = String.(SURRO["feature_names"])            # 특징(feature) 이름들 — 학습 때의 열 순서와 정확히 맞춰야 함
 println(">>> surrogate loaded: $(length(FEATNAMES)) features, trained on $(SURRO["meta"]["n_instances"]) " *
@@ -1919,7 +1942,7 @@ RESCUE     = get(ENV, "CARRIER_RESCUE", "0") == "1"   # see force_advance_stuck_
 PROJECT    = "tractor"
 HTMLPATH   = joinpath("results", PROJECT, "greedy_RVO_Dispersion_TangentBug", "visualization.html")
 SURRO_PATH = get(ENV, "SURROGATE",
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 MACROS, MACRO_NAME = load_action_vocab()   # 행동 어휘 = action_registry.json (위 demo_surrogate 주석 참조)
 
 # NOTE: surrogate demos use a DIFFERENT MILP config than _setup_milp! (kept verbatim).
@@ -1930,6 +1953,7 @@ CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" =>
 
 # ---- the learned surrogate: y_hat = coef . ((x - mean)/scale) + intercept ----------------
 SURRO = JSON3.read(read(SURRO_PATH, String))
+require_surrogate_vocab(SURRO, SURRO_PATH)              # 은퇴한 macro 가 새 feature 공간에 남았는지 검사(리뷰 라운드 2)
 FEATNAMES = String.(SURRO["feature_names"])
 IS_FOREST = get(SURRO, "kind", "linear") == "forest"
 println(">>> surrogate: $(IS_FOREST ? "RandomForest ($(length(SURRO["trees"])) trees)" : "Ridge"), " *

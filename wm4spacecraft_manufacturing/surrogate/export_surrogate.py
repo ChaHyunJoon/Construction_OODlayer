@@ -34,7 +34,7 @@ Emits `surrogate_linear.json`:
 Prediction = coef · ((x - mean) / scale) + intercept
 
 Usage:
-  python export_surrogate.py <dataset.jsonl> [more.jsonl ...] [--cost-aware] [--lam 3.0] [-o out.json]
+  python surrogate/export_surrogate.py <dataset.jsonl> [more.jsonl ...] [--cost-aware] [--lam 3.0] [-o out.json]
 """
 # ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
 #    (EVALUATION.md · DESIGN_NEXT.md · md/BATTERY_FAULT_REDESIGN_2026-08-05.md)
@@ -66,12 +66,13 @@ Usage:
 #   될 수 있게 한다 → 모델이 "자제(restraint)"라는 세 번째 선택지를 배운다.
 #
 # 실행 방법:
-#   python export_surrogate.py <dataset.jsonl> [추가.jsonl ...] [--cost-aware] [--lam 3.0] [-o out.json]
+#   python surrogate/export_surrogate.py <dataset.jsonl> [추가.jsonl ...] [--cost-aware] [--lam 3.0] [-o out.json]
 #   --linear 를 주면 forest 대신 Ridge(선형)를 내보낸다.
 #
 # ---- 문법 참고 (익숙하지 않을 수 있는 Python 표현) ----
-#   * sys.path.insert(0, ...): 모듈 검색 경로 맨 앞에 이 파일 폴더를 추가 → 옆에 있는 e1_analyze를 import.
-#   * from e1_analyze import ...: 같은 폴더의 함수(load/featurize 등)를 재사용(중복 코드 방지).
+#   * sys.path.insert(0, ...): 모듈 검색 경로 맨 앞에 core/ 를 추가 → 거기 있는 wmpath 가 나머지
+#     코드 폴더까지 올려주고, 그래야 core/e1_analyze 를 맨이름으로 import 할 수 있다.
+#   * from e1_analyze import ...: core/ 의 함수(load/featurize 등)를 재사용(중복 코드 방지).
 #   * argparse: 명령줄 인자 파서. add_argument(nargs="+")=1개 이상, action="store_true"=플래그(있으면 True).
 #   * pd.concat([...], ignore_index=True): 여러 DataFrame을 세로로 이어붙이고 인덱스를 새로 매김.
 #   * sklearn 모델: Ridge=선형회귀(정규화), RandomForestRegressor=트리 앙상블, StandardScaler=표준화(평균0/분산1).
@@ -85,9 +86,12 @@ Usage:
 import sys, os, json, math, argparse
 import numpy as np
 import pandas as pd
-# 이 파일이 있는 폴더를 import 경로 맨 앞에 넣어 옆의 e1_analyze 모듈을 찾을 수 있게 한다.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# e1_analyze의 데이터 로드/자격판정/feature화/정렬키 함수를 그대로 재사용(일관성 유지).
+# 2026-08-18 폴더 분류: 옆 폴더(core/ 등)의 모듈을 맨이름으로 import 하려고 코드 폴더
+# 전부를 sys.path 에 올린다(근거·쓰는 법은 core/wmpath.py 머리말). 분류 전에는 이 자리가
+# `sys.path.insert(0, <이 파일 폴더>)` 한 줄이었다 — 그때는 모든 py 가 한 폴더였다.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+import wmpath                                            # noqa: E402,F401
+# core/e1_analyze 의 데이터 로드/자격판정/feature화/정렬키 함수를 그대로 재사용(일관성 유지).
 from e1_analyze import (load, instance_admissible, featurize, lex_key, instance_arms_complete,
                         cost_lex_key_row)
 from sklearn.linear_model import Ridge
@@ -215,7 +219,12 @@ def export_forest(model, feature_names, meta):
             "threshold": t.threshold.tolist(),      # 분기 임계값(feature <= threshold면 왼쪽)
             "value": [float(v[0][0]) for v in t.value],  # 각 잎의 예측값
         })
-    return {"kind": "forest", "feature_names": list(feature_names), "trees": trees, "meta": meta}
+    # 2026-08-19/20 (태스크 5 리뷰 라운드 2 Critical #2 수정): 어휘 도장을 아티팩트에 찍는다.
+    # action_registry.py/.jl 의 require_vocab() 계약("부재/불일치면 죽는다")을 이 producer 도
+    # 따라야 한다 -- 안 그러면 은퇴한 macro 가 배포 피처 공간에 조용히 남는다(2026-08-19 실측:
+    # surrogate_linear.json 이 vocab 없이 macro_3 9열을 담은 채 배포돼 있었다).
+    return {"kind": "forest", "feature_names": list(feature_names), "trees": trees, "meta": meta,
+            "vocab": _reg.VOCAB}
 
 
 # 배포 JSON 의 meta.target 문자열(어떤 목적함수로 학습했는지 파일 안에 남긴다).
@@ -387,6 +396,10 @@ def main():
         "scale": sc.scale_.tolist(),        # 표준화용 표준편차
         "coef": model.coef_.tolist(),       # 학습된 계수
         "intercept": float(model.intercept_),  # 절편
+        # 2026-08-19/20 (태스크 5 리뷰 라운드 2 Critical #2 수정): 어휘 도장. 부재/불일치 시 로더가
+        # 죽어야 한다(action_registry.require_vocab 과 같은 계약) -- 안 그러면 은퇴한 macro 의
+        # one-hot 열이 배포 피처 공간에 조용히 남는다.
+        "vocab": _reg.VOCAB,
         "meta": {
             "target": _target_desc(a),
             "model": "StandardScaler + Ridge(alpha=1.0)",

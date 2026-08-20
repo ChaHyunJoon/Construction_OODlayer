@@ -178,3 +178,28 @@ include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "ood_m
         delete!(ENV, "DS_COMBO_ARMS")
     end
 end
+
+# ---- 리뷰 라운드 2 Critical #2 — surrogate 아티팩트의 어휘 도장 (판정: Critical) --------------
+# `surrogate_linear.json` 이 도장 없이 배포돼 있었다(2026-08-19 실측: macro_3 9열 포함 63열,
+# vocab 필드 없음). export_surrogate.py 가 이제 "vocab" 을 찍고, tools/demos.jl 의
+# `require_surrogate_vocab` 이 그것을 대조한다(부재/불일치 시 죽는다 — action_registry 의
+# require_vocab 과 같은 계약). demos.jl 은 `module Demos` 로 감싸여 있고 CLI 실행부가
+# `abspath(PROGRAM_FILE) == @__FILE__` 로 막혀 있어 include 해도 데모가 돌지 않는다(안전).
+include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
+
+@testset "surrogate 아티팩트 어휘 도장 (리뷰 라운드 2 Critical #2)" begin
+    # 실제 배포 아티팩트 -- 도장이 없다. 재학습·재수출 없이, 이 검사만으로 죽어야 한다.
+    real_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json")
+    real_spec = JSON3.read(read(real_path, String))
+    @test !haskey(real_spec, :vocab)   # 오늘의 실측을 문서화(이게 언젠가 재수출로 바뀌면 이 줄이 알려준다)
+    @test_throws ErrorException Demos.require_surrogate_vocab(real_spec, real_path)
+
+    # 스크래치 사양(현행 vocab 과 일치) -- 통과해야 한다.
+    current_vocab = String(JSON3.read(read(Demos._ACTION_REGISTRY, String)).vocab)
+    ok_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0"], "vocab" => current_vocab)))
+    @test Demos.require_surrogate_vocab(ok_spec, "scratch-ok") === nothing
+
+    # 스크래치 사양(불일치) -- 죽어야 한다.
+    bad_spec = JSON3.read(JSON3.write(Dict("feature_names" => ["macro_0"], "vocab" => "v1-9arms")))
+    @test_throws ErrorException Demos.require_surrogate_vocab(bad_spec, "scratch-bad")
+end

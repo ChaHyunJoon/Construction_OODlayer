@@ -142,6 +142,10 @@ const RETIRED = Dict(i => String(get(REGISTRY[i], :retired_reason, "")) for i in
 호출 시점에 읽혀야 한다 — 상수로 접으면 로드 순서에 따라 플래그가 조용히 무시된다.
 """
 function is_active(i::Int)
+    # 리뷰 라운드 2 Minor 수정: registry 밖 id(-1·9·10 등, DS_EP_MACROS 로 손으로 넣을 수 있다)는
+    # 예전엔 `REGISTRY[i]` 에서 그냥 `KeyError` 로 죽었다. "제안 가능한가"라는 질문에 대한 답은
+    # false 여야 한다(그런 팔은 애초에 없다) — 계약 없는 크래시가 아니라.
+    haskey(REGISTRY, i) || return false
     m = REGISTRY[i]
     isretired(i, m) && return false      # 은퇴가 실험 게이트를 이긴다
     haskey(m, :experimental) || return true
