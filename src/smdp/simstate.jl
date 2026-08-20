@@ -131,6 +131,75 @@ end
     event::EventBlock
 end
 
+# =============================================================================
+# 🔴 알려진 한계 — `SimState` 는 `:state` 인벤토리를 아직 다 담지 못한다
+#     (final-review §2.1 실측. **Task 10 (snapshot/restore!) 의 입력이다.**)
+#
+# 이 목록을 여기 적는 이유: `globals_with(disp)` 는 레포 전체에서 **호출자가 0개**다
+# (정의 줄뿐). 즉 Task 7 의 disposition 표와 Task 9 의 여덟 블록을 묶는 기계가 **없고**,
+# 아래 격차는 어떤 테스트도 잡지 못한다. Task 10 이 이것을 재발견하지 말고 **물려받도록**
+# 이름을 하나하나 적는다. 🔴 **여기서 필드를 추가하지 않는다** — 무엇을 어떤 블록에 어떤
+# 타입으로 넣을지는 Task 10 의 설계 작업이다(스펙 §3.5 규칙 1·3).
+#
+# --- (A) `:state` 로 분류됐는데 대응 필드가 아예 없다 — 13 + 1 = 14 -----------------------
+#
+#   RESPEC_QUEUE          _IDENTITY_SEEN       VALID_ID_COUNTERS   INVALID_ID_COUNTERS
+#   CARRIER_LAST_D        _REFORM_CT           LAST_EDGE_COSTS     _DECISION_N
+#   HOT_SWAP_ASSETS       RESPEC_HOLD          CBF_HOLD            _ZONE_CT
+#   ZONE_DECIDE_DEFERRED
+#   + `OOD_SCHEDULE.fired` (`:split` 항목 — `OODTrigger.fired` 도 담을 필드가 없다)
+#
+#   ⚠️ 이 중 넷은 Task 7 의 수정 라운드가 **가장 강하게 `:state` 로 끌어올린** 것들이다:
+#   `RESPEC_QUEUE`(복원 안 하면 사건이 사라진다) · `_IDENTITY_SEEN`(프로그램이 죽는지를 정한다)
+#   · `VALID_ID_COUNTERS`(라운드 4 [Critical], 에피소드 중간에 증가하는 실측 프로브가 있다)
+#   · `CARRIER_LAST_D`(텔레포트 복구를 발화시킨다).
+#   ⚠️ `CBF_HOLD` 는 사용자의 staged `src/safety/cbf.jl` 삭제와 묶여 있다 — 그 삭제가 커밋되면
+#   인벤토리의 `CBF_*` 8개 + `FAILCLOSED_STOP` 이 같이 빠져야 한다(한 커밋으로).
+#
+# --- (B) 부분적으로만/파생으로만 표현된다 — 7 --------------------------------------------
+#
+#   SPARE_POOLS  SPARE_SLOTS  RECOVERY_SPARES  CHECKED_OUT_SPARES
+#   DECOMMISSIONED_BODIES  RESPEC_FROZEN  RESPEC_PINNED
+#
+#   `role_r` 이 풀 구조에서 파생되고 `RESPEC_FROZEN`/`PINNED` 는 `closed`/`active` 에서
+#   복원 가능하다는 것이 스펙의 주장이다. 그러나 `SPARE_SLOTS`·`DECOMMISSIONED_BODIES` 는
+#   `Dict{AbstractID,Vector{Float64}}` = **좌표**이고 그것을 나르는 필드가 없다.
+#   `SPARE_POOLS` 는 depot 소속(`Dict{Symbol,Vector{RobotID}}`)을 나르는데 `RobotRec` 에
+#   depot 필드가 없다.
+#
+# --- (C) 🔴 "직접 대응" 열 개 중 둘은 **콘텐츠 해시가 살아남을 수 없는 방식으로 손실**된다 --
+#
+#   1. `RESTRICTION_ZONES :: Ref(Dict{Symbol,LazySets.Ball2})`  →  `GeoBlock.zones :: Set{Symbol}`
+#      **키만 살고 공 기하(중심·반지름)가 통째로 버려진다.** 이름이 같고 반지름이 다른 두
+#      상태가 **같은 해시를 낸다.** zone 축은 481 다지선다 결정 중 143 개다 — 해시로 키를
+#      잡는 rollout 오라클에서 이것은 근사가 아니라 **조용한 충돌**이다.
+#   2. `AGENT_COST_BIAS :: Ref(Dict{AbstractID,Float64})` (로봇 → 배수)
+#      →  `GraphBlock.edge_bias :: Dict{Tuple{Int,Int},Float64}` (간선 → 배수)
+#      **키 공간이 다르다.** 현재 배정 간선이 없는 로봇의 bias 는 들어갈 자리가 없고,
+#      배정 구조 없이는 간선→bias 에서 로봇→bias 를 복원할 수 없다. 이것이 `Deprioritize`
+#      (여섯 팔 중 하나)의 **지연 효과 전부**다.
+#
+#   🔴 (C) 의 둘은 해시 기반 dedup/재출발을 켜기 **전에** 닫아야 한다. (A)/(B) 와 달리
+#   "아직 안 담았다" 가 아니라 "담았다고 보이는데 틀리다" 이기 때문이다.
+#
+# --- (D) 반대 방향 — 인벤토리에 근거가 없는 `SimState` 필드 -------------------------------
+#
+#   * `AgeBlock.no_progress` — 실행 레인(`run_demo.jl`)의 무진전 카운터는 `simulate_case!`
+#     안의 **함수 지역 변수** `stall`(`:849`·`:856`)이라 전역 스캐너가 원리적으로 못 본다.
+#     `maybe_emit_reform_ood!(no_progress)` 는 `demo_utils.jl:276` 에서만 불린다. 즉 스펙이
+#     "이 문제를 semi-Markov 로 만든다" 고 지목한 바로 그 필드에 **오라클이 굴릴 레인에서의
+#     생산자가 없다.** 스냅샷/복원 작업 전에 결론이 나야 한다 — `Age` 가 진짜 상태인지
+#     자리표시자인지가 여기서 갈린다.
+#   * `RobotRec.vel` — 출처인 RVO 에이전트의 컨테이너 `RVO_SIM_WRAPPER` 를 인벤토리는
+#     `:replay` 로 분류한다. 핸들은 replay·값은 state 라는 해석이 옳지만 표에 `:split` 항목이
+#     없어 **두 문서가 종이 위에서 어긋나 있다.**
+#
+# --- 무엇을 만들어야 하는가 (Task 10 이 물려받는 것) --------------------------------------
+#   `globals_with(:state)` 를 **소비하는** 기계 검사 하나. 이름마다 "s 의 어느 블록/필드" 또는
+#   "일부러 s 에 안 넣는다 — 이유" 를 선언하게 하고, 선언이 없는 이름이 있으면 빨개진다.
+#   지금 14 개 이름에는 둘 중 어느 것도 없다.
+# =============================================================================
+
 """ξ — 재생 상태. **s 에 절대 안 들어간다.** restore! 와 CRN 만 쓴다.
 `restore!(env, s, ξ')` 로 `ξ` 만 갈아 끼워 K 갈래를 만든다(spec §3.5 규칙 2).
 `MersenneTwister`/RVO 핸들 같은 불투명 객체는 여기 산다 — `SimState` 의 어떤 블록에도
