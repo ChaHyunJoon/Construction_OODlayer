@@ -1,5 +1,5 @@
 # ============================================================================
-#  이 파일이 하는 일: MDP 1단계 산출물인 "확률적 고장 프로세스"(src/mdp/hazard.jl)의
+#  이 파일이 하는 일: MDP 1단계 산출물인 "확률적 고장 프로세스"(src/smdp/hazard.jl)의
 #  수학이 실제로 맞는지 빠르게 검증하는 smoke 테스트. 실제 빌드(MILP/LDraw)를 돌리지
 #  않고, 난수/위험률/지수시계만 떼어내 통계적으로 확인한다.
 #
@@ -22,7 +22,7 @@ using Statistics
 const CB = ConstructionBots
 
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
-CB.include(joinpath(@__DIR__, "..", "src", "mdp", "mdp.jl"))
+CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
 
 @test CB.navigator_loaded()
 @test CB.mdp_loaded()

@@ -66,7 +66,7 @@ for s in (:BATTERY_FLEET, :set_battery_stall!, :set_battery_derate!)
     isdefined(CB, s) || error("navigator.jl 로드 실패: CB.$(s) 가 정의되지 않았다 — run_one 의 판간 배터리 초기화가 조용한 무동작이 된다")
 end
 # MDP STEP 1 의 확률적 고장 프로세스. DS_MC_K=1(기본)이면 절대 켜지지 않으므로 기존 실행은 불변.
-CB.include(joinpath(pkgdir(CB), "src", "mdp", "mdp.jl"))
+CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 
 # MILP(작업배정 최적화) 솔버를 HiGHS 로 지정하고 옵션을 건다.
 CB.set_default_milp_optimizer!(() -> HiGHS.Optimizer())
@@ -84,14 +84,14 @@ CB.set_default_milp_optimizer_attributes!("time_limit" => 60.0, "mip_rel_gap" =>
 #       부르지 않아, AUTO_EFFICIENCY_KAPPA[] 가 nothing 인 채 = gen_oracle_mc.jl 과 **다른
 #       플래너 목적함수**로 라벨을 만들고 있었다. spec §4/§6.3 이 요구하는 "κ 하나"가 아니었다.
 # ENERGY_OBJECTIVE=0 이면 끈다(구세대 동작 재현용 탈출구 — 껐다는 사실이 로그에 남는다).
-include(joinpath(@__DIR__, "..", "objective.jl"))
+include(joinpath(@__DIR__, "..", "core", "objective.jl"))
 using .Objective
 const OBJ_CFG  = Objective.load()
 const OBJ_HASH = Objective.objective_hash(OBJ_CFG)   # 모든 행에 박는다 (spec §7 세대 판정)
 # ENERGY_OBJECTIVE 는 **플래너 쪽 손잡이**라 objective.json 의 어떤 스칼라도 바꾸지 않는다 —
 # 즉 objective_hash 로는 껐는지 켰는지 알 수 없다. 그런데 끄면 재풀이가 다른 목적함수를 풀므로
 # 라벨의 세대는 실제로 갈린다. 그래서 **해시에 접지 않고 별도 필드로 각인**한다(F-1):
-# 해시는 verify.py/e1_analyze.py/step6_gap.py 같은 **분석 소비처**가 읽는 값이라, 생산자 손잡이를
+# 해시는 verify.py/core/e1_analyze.py/step6_gap.py 같은 **분석 소비처**가 읽는 값이라, 생산자 손잡이를
 # 거기 접으면 `ENERGY_OBJECTIVE=0 python verify.py` 한 줄이 기존 덤프 전체를 구세대로 재분류해
 # 버린다. 필드는 기계로 보이고, 값싸고, 읽는 쪽에서 오발할 수 없다.
 const ENERGY_ON = get(ENV, "ENERGY_OBJECTIVE", "1") == "1"
@@ -132,7 +132,7 @@ const OUTFILE = get(ENV, "DS_OUT", joinpath(@__DIR__, "out", "oracle_dataset.jso
 
 # =========================================================================================
 #  MDP STEP 2/3 : K-rollout 몬테카를로 라벨 + valid-macro-only 라벨링
-#  (설계: ../MDP_DESIGN_FROM_SCRATCH.md §7.1 / §14)
+#  (설계: ../md/MDP_DESIGN_FROM_SCRATCH.md §7.1 / §14)
 # -----------------------------------------------------------------------------------------
 #  DS_MC_K = 1 (기본)  -> 이 블록은 전부 무동작. 위험 프로세스가 켜지지 않고 매크로도 5개 전부
 #                         돌므로 **기존 덤프와 바이트 단위로 동일한 경로**다.
@@ -179,7 +179,7 @@ const FIRE_POINTS = Dict(:fault => _fire_fault(), :zone => (12,20,30),
 # 붕괴한다. 실측: openworld_merged.jsonl 60 instance 의 closed_at_fire ∈ {50,58} 뿐이고
 # progress 의 sd 는 0.005 다.
 #
-# 그 대가. novelty 교정( export_novelty_calibration.py )이 그 덤프로 mu/sd 를 맞추므로 `progress`
+# 그 대가. novelty 교정( novelty/export_novelty_calibration.py )이 그 덤프로 mu/sd 를 맞추므로 `progress`
 # 축이 사실상 점 하나가 된다. 배포 데모처럼 중반(progress 0.41)에 터지는 battery 는 z=45 → cap(8)
 # 로 잘려도 6축 중 혼자 score 의 93% 를 차지해, **종류와 무관하게 novel** 로 판정된다. 즉 라우터가
 # "아는 종류인가"가 아니라 "교정과 같은 순간에 터졌나"를 재고 있었다.
@@ -1098,7 +1098,7 @@ const EP_SEV    = Dict(:fault   => 1.0,
                        # :zonecore 의 severity 는 **root 하역 목표를 삼키는 비율**이다(offset 이 아니다).
                        # 1.0 = 최종 조립 목표 전부를 덮음 = NOOP 으로는 완주 불가.
                        :zonecore => parse(Float64, get(ENV, "DS_EP_CFRAC", "0.6")))
-# 개입 비용. export_surrogate.py 의 MACRO_COST 와 반드시 같아야 한다(보상 정의가 두 곳에 있으므로).
+# 개입 비용. surrogate/export_surrogate.py 의 MACRO_COST 와 반드시 같아야 한다(보상 정의가 두 곳에 있으므로).
 const MACRO_COST = Dict(0 => 0.0, 1 => 1.0, 2 => 0.3, 3 => 1.0, 4 => 1.0,
     # 조합 팔의 비용 = 구성 primitive 비용의 합. features_agnostic.psi 의 a_cost 와 같은 값이어야 한다
     # (ForbidAgent 0.8 + ReformTeam 1.0 = 1.8 / Deprioritize 0.3 + ForbidWindow 0.5 = 0.8).
