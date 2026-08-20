@@ -1301,7 +1301,7 @@ end
 # => the objective is byte-for-byte what it was.
 #
 # WHO SETS IT (2026-08-13). `init_objective_weights!` (this file, below) reads κ from
-# `wm4spacecraft_manufacturing/objective.json` and sets this Ref **globally, for the whole
+# `wm4spacecraft_manufacturing/core/objective.json` and sets this Ref **globally, for the whole
 # process**. It is an explicit opt-in: nothing calls it automatically, so a lane that never
 # calls it runs with κ = `nothing` and the AUTO path never fires — that is the failure mode to
 # check FIRST when the energy term looks dead in a lane. Call sites: `tools/monitor/run_demo.jl`,
@@ -1587,7 +1587,7 @@ function greedy_edge_cost(::GreedyEnergyAwareCost, sched, v, v2, dt::Float64)
 end
 
 """
-    init_objective_weights!(; path = <repo>/wm4spacecraft_manufacturing/objective.json)
+    init_objective_weights!(; path = <repo>/wm4spacecraft_manufacturing/core/objective.json)
 
 목적함수 상수를 **한 파일에서** 읽어 두 자리에 심는다 (spec §4, §5):
 
@@ -1603,7 +1603,7 @@ end
 `tools/monitor/run_demo.jl` 과 `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl` 두 레인이다.
 """
 function init_objective_weights!(; path::AbstractString = joinpath(@__DIR__, "..",
-        "wm4spacecraft_manufacturing", "objective.json"))
+        "wm4spacecraft_manufacturing", "core", "objective.json"))
     isfile(path) || error("objective.json 이 없다: $path")
     cfg = JSON3.read(read(path, String), Dict{String,Any})
     kappa = get(cfg, "kappa", nothing)
