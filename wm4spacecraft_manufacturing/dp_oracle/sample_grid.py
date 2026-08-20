@@ -160,6 +160,14 @@ dedup 의 술어는 `enact_applied` 인데(`_deviation_class` 의 클래스 B), 
 
 사용법
     ../../.venv/bin/python sample_grid.py --jobs 24 --seeds 1,2,3,4,5,6,7,8,9,10
+★ 2026-08-19 — 다음 재표집은 신세대 목적함수에서 나온다 (세대 단절 공지)
+`core/objective.json` 의 `generation` 이 `2026-08-19-vocab-6-arms-hazard-on` 으로 올라
+`objective_hash()` = **`77a71b4d3cf4d856`** 이 됐다. 그래서 이 파일이 만들어 커밋해 둔
+`samples.jsonl`(2258행) · `boards.jsonl` · 그것으로 푼 `dp_oracle/value.json` 은 전부
+**구세대**이고, `dp_solve.py` 가 그 표본을 받으면 exit 1 한다(그 파일 머리말 참조).
+**dp 레인을 되살리려면 여기서부터 다시 표집해야 한다** — 구세대 표본은 이름을 붙여 보존만 하고
+신세대 표에 섞지 말 것. 그리고 이 파일이 쓰는 팔 메뉴는 이제 **6팔**이다(은퇴 id 3·5·6 은
+영구 결번, `core/action_registry.RETIRED`).
 """
 # ※ 이 파일이 이름으로 인용하는 아래 md 문서는 2026-08-18 md 통합에서 내려갔다 —
 #    (md/RESULTS_ONE_STEP_DEVIATION_2026-08-17.md)

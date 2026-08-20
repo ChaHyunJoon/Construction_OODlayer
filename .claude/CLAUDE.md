@@ -34,9 +34,59 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
    경고와 같은 실패 모양). 스윕 전에 `DSPY_URL` 을 손으로 확인하고, 스윕 후에는
    `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것.
 
-**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash finish_tables.sh` 가
+**남아 있는 실물 검증 둘**: `cd wm4spacecraft_manufacturing && bash reporting/finish_tables.sh` 가
 `artifacts_4pol/COMPARE.md` 를 재현하는가(합계 **210/210 · 189/210 · 205/210**) ·
 `julia +lts --project=. -e 'using Pkg; Pkg.test()'`(기대 11 pass / 1 error).
+
+## 🔴 2026-08-19 — `objective_hash` 가 갈렸다. 커밋된 산출물은 전부 구세대다
+
+브랜치 `oracle-rebuild-night-2026-08-10` 이 `core/objective.json` 의 `generation` 을
+`"2026-08-13-global-kappa-precedence"` → **`"2026-08-19-vocab-6-arms-hazard-on"`** 으로 올렸다.
+**스칼라는 하나도 안 바뀌었다** — `0cb4ec5c..HEAD` 의 그 파일 diff 는 `generation` 한 줄 + 파일이
+`core/` 로 이동한 것뿐이다. 그래도 `generation` 은 **해시의 입력**이라 해시가 따라 움직인다.
+설계대로다 (아래 2026-08-13 절의 규칙: "스칼라가 하나도 안 바뀌어도 유효 의미가 바뀌면 반드시
+올린다" — 행동 어휘가 9팔에서 6팔로 닫혔으므로 유효 의미가 바뀌었다).
+
+**현행 `objective_hash()` = `77a71b4d3cf4d856`** (pristine `git archive` 에서 재계산).
+이 값을 여기 적는 이유: 이것을 기계로 보던 `audit_objective.py` 는 2026-08-18 정리에서 삭제됐다 —
+이제 사람이 지킨다. **구세대 값은 이 파일에 문자열로 다시 적지 않는다**(이 파일의 규약).
+
+🔴 **해시를 되돌리려고 `generation` 을 되돌리지 말 것.** 되돌리면 6팔 어휘로 닫은 산출물이 9팔
+세대의 해시를 달게 된다 — 실제로 갈린 축을 해시가 부정하는 것이다.
+
+**폭발 반경 (pristine 트리에서 재현함):**
+
+| 소비처 | 지금 무슨 일이 나는가 |
+|---|---|
+| `dp_oracle/dp_solve.py --samples samples.jsonl` | **exit 1** — `표본의 objective_hash 가 현행과 다르다(구세대 표본)`. 실측 재현 |
+| `dp_oracle/value.json` · `samples.jsonl` · `boards.jsonl` | 이 세대에 대해 **죽었다**. 🔴 **단계 (B) 는 `value.json` 을 재사용할 수 없다** — dp 레인 **재표집**이 필요하다(4~5시간, 표집이 대부분). 절차는 위 2026-08-16 절의 "되살리는 법" |
+| `oracle/out/relabel_2026-08-19.jsonl` (742행) | 구세대 해시를 그대로 단다 — **그게 옳다.** 그 행들은 범프 이전 목적함수에서 나왔다. 필터가 해시를 갈아 끼우면 낡은 행이 신세대로 위장한다 |
+| 커밋된 630판 스윕 · `artifacts_4pol/` · 배포 라벨셋 | 전부 구세대로 재분류됐다 |
+
+### 세 도장이 서로 다른 것을 주장한다 — 하나로 읽으면 틀린다
+
+| 도장 | 값 | **무엇에 대한 주장인가** | **무엇에 대한 주장이 아닌가** |
+|---|---|---|---|
+| `core/action_registry.json` 의 `vocab` | `v2-6arms` | 행동 **어휘**의 세대 — 어떤 매크로 id 가 살아 있는가 | 동역학도 목적함수도 아니다 |
+| `dynamics_stamp()` (`src/smdp/hazard.jl:166`) | 기본 실행에서 **`hazard-off`** | **런 하나**가 확률적 고장 프로세스를 켜고 굴렀는가 (`HAZARD_ENABLED[]`, 기본 **false**) | 목적함수 세대가 아니다 |
+| `core/objective.json` 의 `generation` | `2026-08-19-vocab-6-arms-hazard-on` | **목적함수 J 의 유효 의미**가 갈렸다는, 사람이 붙인 딱지. 해시에 들어간다 | 🔴 **어떤 산출물이 실제로 hazard 를 켜고 나왔는지가 아니다** |
+
+🔴 **`generation` 안의 `hazard-on` 을 "이 산출물은 hazard 를 켜고 만들었다"로 읽지 말 것.**
+hazard 는 **opt-in** 이고 기본값이 꺼짐이라, **기본 실행이 만드는 모든 산출물은
+`dynamics=hazard-off` 를 달고 `…-hazard-on` 이라는 세대 이름 아래 놓인다.** 그 이름은 "이 목적함수
+세대는 hazard 축이 존재하는 세계를 위한 것이다"라는 **설계 선언**이지 실행 사실의 기록이 아니다.
+실행 사실을 나르는 도장은 산출물 행의 `dynamics` 필드 하나뿐이다.
+(`generation` 문자열 자체는 계획서가 못박은 값이라 다시 올리지 않는다 — 올리면 해시가 또 움직인다.)
+
+**어느 산출물이 실제로 hazard 를 켜고 나왔는지는 행에서 기계로 판정된다.**
+`gen_oracle_dataset.jl` 이 행마다 `hz_seed` 를 낸다(`:1844`·`:2118`): `hz_seed === nothing ? -1`
+이고 `hz_seed` 가 non-nothing 인 것은 `DS_MC_K > 1` 일 때뿐이며 그때만 `enable_hazard!` 가 불린다.
+즉 **`hz_seed == -1` ⟺ `HAZARD_ENABLED[] == false` ⟺ `dynamics_stamp() == "hazard-off"`** 다.
+실측: `relabel_2026-08-19.jsonl` 742행 전부 `hz_seed=-1`. `core/filter_labels.py` 가 그 파생을
+행의 `dynamics` 필드로 각인한다 — 값을 지어내지 않고 행이 이미 나르던 증거에서 유도한다.
+
+⚠️ **`require_vocab`/`require_dynamics` 는 아직 생산 소비처가 없다** — 도장은 쓰기 전용이다.
+이 표의 어떤 불일치도 지금은 기계가 잡지 않는다.
 
 ## ★ 결과 세대 — 먼저 읽을 것 (2026-08-09 정리)
 
@@ -70,7 +120,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
   다만 blast radius 는 다르다 — 이 셋째 변경은 `_mon_robots`(`monitor_emit!` 의 `robots` 블록,
   `:488`)만 타므로 **모니터 스트림/보드의 SoC·mode 표시**에만 영향을 주고 `rows.jsonl` 의
   채점 지표에는 안 닿는다. 그래도 보드를 세대 간에 눈으로 대조할 때는 교란 변수다.
-- **★ `objective_hash` 는 안 바뀐다 — `19819377a7f8ebb2` 그대로다.** 갈린 것은 **동역학**이지
+- **★ (그 날의 사실) `objective_hash` 는 안 바뀌었다 — `19819377a7f8ebb2` 그대로였다.**
+  🔴 **2026-08-19 에 갈렸다** — 이 문장은 그 날짜 시점의 기록이다. 현행값과 폭발 반경은
+  위 §2026-08-19 절. 갈린 것은 **동역학**이지
   목적함수가 아니다(`objective.json` 무변경, 630행 전부 세대 쌍 `('19819377a7f8ebb2', 1)`).
   🔴 **여기서 해시를 올리면 배포 라벨셋 전부와 surrogate 가 한꺼번에 구세대로 재분류된다** —
   갈리지도 않은 축으로 세대를 가르는 것이다. (옛 해시를 이 파일에 문자열로 다시 적지 말 것.
@@ -350,8 +402,9 @@ Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded).
 
 ### 2026-08-13 — 목적함수 통일로 또 한 번 세대가 갈렸다
 
-`wm4spacecraft_manufacturing/objective.json` 이 목적함수 J 의 단일 진실원이고, `objective_hash()` =
-**`19819377a7f8ebb2`**. 파일에 `generation` 필드(현재 `"2026-08-13-global-kappa-precedence"`)가 있고
+`wm4spacecraft_manufacturing/core/objective.json` 이 목적함수 J 의 단일 진실원이고, `objective_hash()` 가
+그 파일에서 유도된다. **그 날의 해시 값은 여기 다시 적지 않는다 — 2026-08-19 에 갈렸고 현행값은
+위 §2026-08-19 절에 있다**(이 파일의 규약: 옛 해시를 문자열로 다시 적지 않는다). 파일에 `generation` 필드(현재 `"2026-08-13-global-kappa-precedence"`)가 있고
 해시에 들어간다 — **규칙: 스칼라가 하나도 안 바뀌어도 목적함수의 유효 의미가 바뀌면(플래너
 재배선 포함) 반드시 올린다.** greedy(`GreedyEnergyAwareCost`) · MILP(전역 `AUTO_EFFICIENCY_KAPPA`) ·
 오라클 라벨(`gen_oracle_mc.scalar_cost`) · Python 분석(`e1_analyze.cost_lex_key`) 이 전부 그 J 를
@@ -719,7 +772,7 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 - **`tools/diagnostics.jl` does not load at all** — it top-level-`include`s the deleted `venv/decpomdp/examples/`, so every key fails before dispatch. Partial replacement: `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl`.
 - **비교 런은 순차 실행**(함정 30). 병렬이면 HiGHS가 다른 스케줄을 내 비교가 무효 + 프로세스당
   ~2.5GB라 OOM. 과거 "B-7 미완주"가 이 아티팩트였다(단독 실행 시 3/3 완주).
-- 행동 어휘 단일 진실원 = `wm4spacecraft_manufacturing/action_registry.json`(리터럴 복붙 금지).
+- 행동 어휘 단일 진실원 = `wm4spacecraft_manufacturing/core/action_registry.json`(리터럴 복붙 금지).
   누락은 에러 없이 성능으로만 샌다 — `SwapBattery` 한 줄이 battery 적중 0/6 → 6/6 을 갈랐다.
 - LLM lane은 `DSPY_PROGRAM=__seed_only__`. 컴파일된 `dspy_real_program_gpt4o.json`은 battery 전용이라
   zone·RelocateBuild 어휘가 없다 — 그걸로 zone을 재면 어휘 밖 사건을 재는 것이 된다.
@@ -743,7 +796,7 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 
 ## Layout
 - `src/respec/` — OOD → DSL re-spec layer (`spec_dsl.jl`, `compiler.jl`, `verifier.jl`, `llm_service/`)
-- `src/safety/` — `cbf.jl`, `novelty.jl` · `src/mdp/` — `hazard.jl`, `mdp.jl` · `src/monitor/`, `src/navigator/`
+- `src/safety/` — `zone_guard.jl`, `novelty.jl` · `src/mdp/` — `hazard.jl`, `mdp.jl` · `src/monitor/`, `src/navigator/`
 - `wm4spacecraft_manufacturing/` — Python analysis stack (surrogate, drift, DSPy service)
 
 ## Docs
@@ -760,7 +813,13 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
   §1 용어(F vs OOD) · §5 데이터 스키마 · §6 완주 ≠ `closed==total` · §7 철회된 결론 ·
   §8 함정 43개 · §9 살아 있는 계약·재현 명령·재개 지점 · §10 아카이브 색인.
   세대 상세는 위 §★ 결과 세대.
-- `wm4spacecraft_manufacturing/LABELING_MANUAL.md` — oracle labeling workflow
+  🔴 **§11 폴더 구조** — 2026-08-18 에 `wm4spacecraft_manufacturing/` 의 평평한 파일 42개를
+  역할별 폴더로 나눴다: `core/`(목적함수·어휘·기준정책·데이터셋 정의) · `surrogate/` ·
+  `novelty/` · `sweep/`(스윕 실행) · `reporting/`(표·md 생성) · `render/` · `md/` ·
+  `measurements/`. 결과 데이터 폴더는 안 건드렸다. **경로를 인용하기 전에 §11 을 볼 것** —
+  맨이름 import 는 `core/wmpath.py` 로 유지되고, 데이터 경로의 기준점은 `HERE` 가 아니라
+  `wmpath.WM`(= wm4 폴더)다.
+- `wm4spacecraft_manufacturing/md/LABELING_MANUAL.md` — oracle labeling workflow
 - 실행이 끝난 계획서는 `docs/superpowers/plans/README.md`(14개 아카이브),
   종료된 SDD 세션은 `docs/superpowers/SDD_SESSIONS_ARCHIVE.md`.
   설계 문서 `docs/superpowers/specs/` 7개는 안 내렸다 — 결정이 아직 유효하다.
