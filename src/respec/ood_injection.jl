@@ -125,7 +125,8 @@ be dropped onto so SOME agent must actually detour.
 function _active_travel_segments(env; min_len::Float64 = 10 * default_robot_radius())
     # Tuple{Vector{Float64},Vector{Float64}}[] : "(실수벡터, 실수벡터) 튜플"을 담는 빈 배열 만들기.
     segs = Tuple{Vector{Float64},Vector{Float64}}[]
-    for v in env.cache.active_set            # 활성 작업(노드) 집합을 순회
+    for v in _ordered_active(env)            # 활성 작업(노드) 집합을 **정렬해서** 순회 — segs 의 순서가 그대로 살아남아
+                                             # 호출자(`inject_zone!`)가 `rand` 로 인덱싱하므로 순서가 결과를 정한다
         n = get_node(env.sched, v).node      # 정점 v 의 노드를 가져와 그 안의 .node 필드(실제 작업)를 꺼냄
         matches_template(EntityGo, n) || continue  # `A || continue` : A 가 거짓이면 다음 반복으로. 즉 "이동(EntityGo) 작업이 아니면 건너뜀"
         p = Vector{Float64}(project_to_2d(global_transform(entity(n)).translation))  # 현재 위치(3D 변환의 평행이동분)를 2D 로 투영해 실수벡터로
@@ -851,6 +852,24 @@ function _faultable(rid)
     return true
 end
 
+"""
+    _ordered_active(env) -> Vector{Int}
+
+`env.cache.active_set` 을 **정렬해서** 돌려준다. spec §3.5 규칙 4(정준 직렬화)의 첫 적용.
+
+왜: `Set` 의 순회 순서는 Julia 가 보장하지 않는다(해시 테이블 내부 상태에 딸린다). 그래서
+같은 시드·같은 커밋을 다시 굴려도 **첫 매치에서 반환하는** 순회가 **다른 로봇**을 고를 수
+있었다 — 런 간 재현성 결함(CLAUDE.md 2026-08-16 §알려진 한계 2). 정점 번호는 전역적으로
+유일하고 안정적인 정수이므로 정렬이 정준 순서로 충분하다.
+
+⚠️ 이 헬퍼가 필요한 자리는 **순회 순서가 결과에 남는 곳뿐**이다: 첫 매치에서 `return` 하는
+순회(`_pick_active_robot`)와, 순회 순서가 그대로 살아남는 `Vector` 를 만드는 순회
+(`_active_travel_segments` — 그 벡터를 `rand` 로 인덱싱한다). 후보를 모아 `sort(...)[1]` 로
+고르는 피커들(`pick_solo_fault_target` · `pick_solo_frontier_target` ·
+`pick_hotswap_fault_target`)은 정렬이 이미 순서를 지우므로 **손대지 않는다.**
+"""
+_ordered_active(env) = sort!(collect(env.cache.active_set))
+
 # 현재 이동/운반 작업 중인(=시각적으로 고장이 드러나는) 로봇 하나를 고른다. 없으면 아무 RobotGo 의 로봇.
 # 세 단 모두 `_faultable` 로 거른다 — 창고 예비/복구중 예비/은퇴 몸체/배송중 예비는 고장 대상이 아니다.
 function _pick_active_robot(env)
@@ -863,7 +882,7 @@ function _pick_active_robot(env)
     #     through to the original active/any pick if none has a frontier.
     # [한국어] (0) 아직 "남은 할 일(frontier)"이 있는 로봇을 우선 고름. 그런 로봇의 고장은 결과가 큼
     #          (NOOP 이면 그 일이 영영 사라져 빌드가 못 끝남; Replace 면 예비가 넘겨받음) → OOD 비교의 핵심.
-    for v in env.cache.active_set
+    for v in _ordered_active(env)                          # 정준 정렬 — 첫 매치를 돌려주므로 순회 순서가 답을 정한다
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue                          # RobotGo 노드가 아니면 건너뜀
         rid = try entity(node).id catch; nothing end          # 그 노드의 로봇 id(실패 시 nothing)
@@ -871,7 +890,7 @@ function _pick_active_robot(env)
         # _first_pending_assignment 가 nothing 이 아니면 = 남은 할 일이 있음 → 이 로봇을 고장 대상으로 반환.
         (try _first_pending_assignment(env, rid) !== nothing catch; false end) && return rid
     end
-    for v in env.cache.active_set                         # 진행중 작업부터(가장 자연스러운 고장 대상)
+    for v in _ordered_active(env)                         # 진행중 작업부터(가장 자연스러운 고장 대상). 정준 정렬 — 첫 매치를 돌려준다
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue
         rid = try entity(node).id catch; nothing end
