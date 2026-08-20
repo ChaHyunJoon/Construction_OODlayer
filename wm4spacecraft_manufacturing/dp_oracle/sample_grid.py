@@ -180,7 +180,10 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 WM = os.path.join(HERE, "..")
 REPO = os.path.join(WM, "..")
-sys.path.insert(0, WM)
+# 2026-08-18 폴더 분류: objective 는 ../core/ 로, llm_ood_eval 은 ../sweep/ 으로 갔다.
+# 코드 폴더 전부를 sys.path 에 올려 맨이름 import 를 유지한다(근거는 ../core/wmpath.py).
+sys.path.insert(0, os.path.join(WM, "core"))
+import wmpath                                                 # noqa: E402,F401
 sys.path.insert(0, HERE)
 
 import objective                                              # noqa: E402
