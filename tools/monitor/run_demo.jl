@@ -75,11 +75,10 @@ const DEMO_OOD_SEVFRAC = try clamp(parse(Float64, get(ENV, "DEMO_OOD_SEVFRAC", "
 const _REFORM_CT = Ref(0)   # 발화 횟수(상한 초과 시 더는 안 올림 → 진짜 정지가 정지로 보이게)
 # 사건마다의 결정 기록(요약 JSONL 용). 스위프 하니스가 이걸 읽어 정책별 결정을 비교한다.
 const _DECISIONS = Vector{Any}()
-# 지금까지 **실행된** 시뮬 스텝 수. 결정 시점의 sim_t = dt × 이 값이다 (2026-08-15).
-# ⚠️ `CB.sim_time(env)` 같은 함수는 이 레포에 없다 — 이 레인은 return_env_before_sim=true 로
-# 수동 루프를 돌기 때문에 시간이 루프 안에만 있다. 종단 요약의 `makespan` = dt × result.steps 와
-# **같은 출처**를 쓰려고 여기서 스텝을 센다(다른 시계를 만들면 Σc_k 가 makespan 과 안 맞는다).
-const _SIM_STEP = Ref(0)
+# 시계 단일 진실원은 이제 CB.SIM_STEP(spec §11-8, 태스크 8) — 여기서 사설 카운터를 따로 세지
+# 않는다. `CB.sim_time(dt)` = `dt * CB.SIM_STEP[]` 이고 그 전역은 `ood_inject_step!` 이 매 스텝
+# `set_sim_step!(k)` 로 채운다(같은 `k`, 아래 루프). 종단 요약의 `makespan` = dt × result.steps
+# 와 **같은 출처**를 쓰려는 이유도 그대로다(다른 시계를 만들면 Σc_k 가 makespan 과 안 맞는다).
 const NSUF   = DEMO_N > 0 ? "_n$(DEMO_N)" : ""   # stream name gets _nN so each count caches separately
 const PARAMS = try CB.get_project_params(MODEL) catch; nothing end
 const NROB   = haskey(ENV, "DEMO_ROBOTS") ? parse(Int, ENV["DEMO_ROBOTS"]) :
@@ -286,12 +285,13 @@ function handle_ood!(env, truth, nl)
         # 연속한 두 결정 사이의 Δmakespan·Δenergy 를 만들려면 결정 시점의 이 셋이 필요하다.
         # 그게 backward induction 이 요구하는 분해다. 세 값 모두 **이미 계산돼 있는 것**을 읽을
         # 뿐이고 새로 재지 않는다.
-        #   sim_t_at    : dt × 실행된 스텝 수. 종단 `makespan` 과 같은 출처(위 _SIM_STEP 주석).
+        #   sim_t_at    : CB.sim_time(dt) = dt × CB.SIM_STEP[]. 종단 `makespan` 과 같은 출처
+        #                 (spec §11-8 단일 진실원 — 위 SIM_STEP 주석).
         #   energy_at_J : battery_report() 는 임의 시점의 누적 소비를 준다(render_demo.jl 이 이미
         #                 그렇게 읽어 화면에 싣는다). enable_battery! 는 이 파일 최상위에서
         #                 무조건 돌므로 함대는 항상 있다.
         #   closed_at   : "at" 과 같은 값이지만, 소비처가 이름으로 읽게 별도 키로 낸다.
-        "sim_t_at"      => (try Float64(env.dt) * _SIM_STEP[] catch; nothing end),
+        "sim_t_at"      => (try CB.sim_time(env.dt) catch; nothing end),
         "energy_at_J"   => (try Float64(CB.battery_report().total_energy_J) catch; nothing end),
         "closed_at"     => length(env.cache.closed_set),
         # ---- 채점에 필요한 결정-시점 상태 (2026-08-06) ------------------------------------
@@ -806,7 +806,7 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
     # handle_ood!)이 이미 결정을 낼 수 있어서, 여기서 또 리셋하면 그 결정과 첫 in-sim 결정이
     # 인덱스를 나눠 갖는다. 리셋은 `policy.jl` include 직후(이 파일 위쪽)로 옮겼다 — 그 자리가
     # 이 프로세스(=이 판)에서 나올 수 있는 첫 handle_ood! 호출보다 앞이라 pre-sim·in-sim 둘 다 덮는다.
-    CB.step_environment!(env); _SIM_STEP[] = 1                       # 초기 1스텝(캐시 채움)
+    CB.step_environment!(env); CB.set_sim_step!(1)                   # 초기 1스텝(캐시 채움)
     CB.update_planning_cache!(env, 0.0)
     seen = length(CB.ood_truth_log())
     # pre-sim 에 심어 두고 결정을 미뤄 둔 존을 **여기서** 정책에 올린다(위 ZONE_DECIDE_DEFERRED 주석).
@@ -826,7 +826,7 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
             handle_ood!(env, log[seen].truth, log[seen].nl)
             stall = 0                                      # 복구 직후 교착 카운터 리셋
         end
-        CB.step_environment!(env); _SIM_STEP[] = k
+        CB.step_environment!(env); CB.set_sim_step!(k)
         CB.update_planning_cache!(env, 0.0)
         CB.monitor_track_schedule_step!(env, k; dt=env.dt)
         (k % 50 == 0) && CB.monitor_emit!(env, k)          # 배치마다 프레임 방출

@@ -399,6 +399,15 @@ function _hz_excluded()
     return ex
 end
 
+# hazard 의 스텝 카운터를 전역 시계(SIM_STEP)에 맞춘다. 자기 카운터를 따로 증가시키면
+# restore! 뒤에 둘이 어긋나고, Courier 의 절대 스텝 인덱스가 그 차이만큼 밀린다.
+# `SIM_STEP[] == 0`(= 아직 셋업 전)이면 자기 카운터를 유지한다 — 단위검사 경로가 그렇다.
+function _hz_sync_clock!(st::HazardState)
+    s = _current_sim_step()
+    st.step = s > 0 ? s : st.step + 1
+    return st.step
+end
+
 """
     hazard_step!(env) -> Nothing
 
@@ -413,7 +422,8 @@ function hazard_step!(env)
     length(st.events) >= st.params.max_events && return nothing   # 안전 상한
     dt = Float64(env.dt)                                          # env.dt 는 이미 "초" 단위(battery.jl 검증)
     dt > 0 || return nothing
-    st.t += dt; st.step += 1
+    st.t += dt
+    _hz_sync_clock!(st)      # 스텝은 전역 시계에서 받는다 (spec §11-8 단일 진실원)
 
     fleet = BATTERY_FLEET[]
     modes = _hz_modes(env)

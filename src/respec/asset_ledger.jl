@@ -101,6 +101,12 @@ const SIM_STEP = Ref(0)
 set_sim_step!(k::Integer) = (SIM_STEP[] = Int(k); nothing)
 _current_sim_step() = SIM_STEP[]
 
+# 시계 단일 진실원 (spec §3.3 Clock · §11-8). 예전에는 시계가 셋이었다 —
+# SIM_STEP · HazardState.t/.step · run_demo._SIM_STEP. Courier.step_out/step_swap 이
+# **절대 스텝 인덱스**이므로 시계가 갈리면 배송이 과거나 미래에 도착한다.
+# 초 단위가 필요한 소비처는 이 함수를 쓴다 — dt 를 각자 곱하지 말 것.
+sim_time(dt::Real) = Float64(dt) * SIM_STEP[]
+
 # 빌드/캠페인 시작 시 장부 비우기.
 reset_asset_ledger!() = (empty!(ASSET_LEDGER[]); nothing)
 # 장부 전체를 그대로 돌려주는 접근자.
