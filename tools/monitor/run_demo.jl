@@ -620,6 +620,22 @@ CB.set_battery_courier!(
     enabled    = get(ENV, "DEMO_BATTERY_COURIER", "1") == "1",
     speed      = (try parse(Float64, get(ENV, "DEMO_COURIER_SPEED", "0")) catch; 0.0 end),
     halt_build = get(ENV, "DEMO_SWAP_HALT", "1") == "1")
+# ── 확률적 고장 프로세스 (src/smdp/hazard.jl, spec §11-2) ───────────────────────────────
+# 🔴 이 손잡이는 **동역학 세대를 가른다.** 켜면 경쟁위험 점과정이 매 스텝 돌면서 고장·셀열화·
+#    zone 을 정확표집으로 발화시킨다(스텝당 베르누이 근사 아님). objective.json 은 안 바뀌므로
+#    objective_hash 로는 이 축이 안 잡힌다 — dynamics_stamp() 가 그 자리를 메운다(spec §8).
+# ⚠️ enable_battery! **뒤**에 불러야 한다. SoC 연동(β_s·(1−soc))이 이 프로세스의 요점이고,
+#    DRAIN_FACTOR_HOOK 도 배터리 계층이 있어야 걸린다. (set_battery_courier! 다음 자리 = 배터리
+#    계층 전체가 이미 구성된 뒤라 그 조건을 만족한다.)
+# ⚠️ 시드는 world_seed 와 **분리한다.** 같이 쓰면 hazard 를 켜고 끄는 것이 배정까지 흔들어
+#    "hazard 단독 대조군" 이 성립하지 않는다.
+if get(ENV, "DEMO_HAZARD", "0") == "1"
+    local hz_seed = try parse(Int, get(ENV, "DEMO_HAZARD_SEED", string(DEMO_SEED))) catch; DEMO_SEED end
+    CB.enable_hazard!(env; seed = hz_seed)
+    println(">>> hazard: ON (seed=", hz_seed, ")  dynamics=", CB.dynamics_stamp())
+else
+    println(">>> hazard: OFF  dynamics=", CB.dynamics_stamp())
+end
 println(">>> battery: capacity=", CB.BatteryParams().capacity_J, " J (spec, no shrink)",
         "  stall=", CB.BATTERY_STALL[].enabled, "@", CB.BATTERY_STALL[].threshold,
         "  derate=", CB.BATTERY_DERATE[].enabled,
@@ -949,6 +965,19 @@ let path = get(ENV, "DEMO_SUMMARY", "")
                 # 사라져 실제로 오판을 낸 전력이 있다). 이 필드가 유일한 기계적 증거다.
                 "n_stalled"    => (try length(CB.stalled_robots()) catch; -1 end),
             ),
+            # ⚠️ 브리프 원안은 이 자리에서 "enabled" => true 를 무조건 찍었다. 그런데 hazard_report()
+            #    는 상태가 nothing 이어도 예외 없이 0-카운트 NamedTuple 을 돌려주므로(hazard.jl
+            #    :660-664), try 가 절대 안 던져 hazard OFF 런에서도 enabled=true 가 찍힌다 —
+            #    probe_hazard.py 의 음성 대조(hz_off: n_hazard_on==0)가 항진적으로 깨진다.
+            #    CB.hazard_enabled() 로 실제 상태를 찍도록 고쳤다.
+            "hazard" => (try
+                    let r = CB.hazard_report()
+                        Dict("enabled" => CB.hazard_enabled(), "t" => r.t, "steps" => r.steps,
+                             "n_break" => r.n_break, "n_cell" => r.n_cell, "n_zone" => r.n_zone)
+                    end
+                catch
+                    Dict("enabled" => false)
+                end),
             "stream" => stream_path)
         open(path, "a") do io; println(io, JSON3.write(rec)); end
         println("[run_demo] summary → $path")

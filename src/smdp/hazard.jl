@@ -142,6 +142,7 @@ mutable struct HazardState
     lambda::Dict{Any,Float64}       # 직전 스텝의 λ_break (상태 특징으로 노출)
     mode_of::Dict{Any,Symbol}       # 직전 스텝의 전력 모드(:idle/:transit/:carry/:manip)
     events::Vector{NamedTuple}      # 발화 로그(라벨러/평가용)
+    pending_drop::Dict{Any,Float64} # 유예된 셀 사건의 **이미 뽑힌** 낙폭 (spec §5.7 CRN 누수)
     zone_ct::Int                    # zone 키 일련번호
 end
 
@@ -218,7 +219,7 @@ function _new_hazard_state(params::HazardParams, seed::Int)
                      Dict{Any,Float64}(), Dict{Any,Float64}(),
                      0.0, 0.0, Set{Any}(),
                      Dict{Any,Float64}(), Dict{Any,Symbol}(),
-                     NamedTuple[], 0)
+                     NamedTuple[], Dict{Any,Float64}(), 0)
     st.thr_zone = _exp1(st.rng_zone)
     return st
 end
@@ -513,14 +514,28 @@ end
 # 요구한다. 다인 운반팀 한가운데의 로봇을 깊은 방전시키면 팀이 형성 중에 끼어(wedge) 빌드가
 # 멈춘다 — 실제로 첫 e2e 에서 t=2.9s 에 그렇게 되어 270초를 교착으로 날렸다.
 # 가벼운 열화는 soft Deprioritize 로 끝나므로 아무 로봇에게나 자유롭게 발화한다.
-function _hz_fire_cell!(env, st::HazardState, id, soc, mode)
+#
+# --- CRN 누수 수정 (spec §5.7) -------------------------------------------------------------
+# 원래 코드는 안전 가드보다 **먼저** rand 를 불렀고, 가드가 유예시키면 그 뽑기가 버려졌다.
+# 가드가 낙폭에 의존하므로(깊은 방전인가?) 가드를 앞으로 옮길 수는 없다 — 그래서 **캐시**한다.
+# 유예 중에는 같은 낙폭을 재사용하고, 사건이 실제로 성사된 순간에만 캐시를 비운다.
+# 그 결과 로봇 r 의 "n 번째 셀 사건"은 어느 팔에서든 같은 낙폭을 갖는다(= CRN 이 산다).
+function _hz_draw_cell_drop!(st::HazardState, id)
+    haskey(st.pending_drop, id) && return st.pending_drop[id]
     p = st.params
-    BATTERY_FLEET[] === nothing && return nothing        # 배터리 계층이 없으면 이 위험은 의미 없음
-    # 심각도도 그 로봇 전용 스트림에서 뽑는다 → "로봇 r 의 n 번째 셀 사건"은 어느 팔에서든 같은
-    # 낙폭을 갖는다(CRN). 공유 스트림을 쓰면 팔마다 호출 순서가 달라 심각도가 뒤섞인다.
     rng = _robot_rng(st, id)
     drop = rand(rng) < p.cell_severe_frac ? p.cell_severe_drop :
            (p.cell_mild_lo + (p.cell_mild_hi - p.cell_mild_lo) * rand(rng))
+    st.pending_drop[id] = drop
+    return drop
+end
+
+_hz_commit_cell_drop!(st::HazardState, id) = (delete!(st.pending_drop, id); nothing)
+
+function _hz_fire_cell!(env, st::HazardState, id, soc, mode)
+    p = st.params
+    BATTERY_FLEET[] === nothing && return nothing        # 배터리 계층이 없으면 이 위험은 의미 없음
+    drop = _hz_draw_cell_drop!(st, id)      # 유예되면 같은 값을 재사용한다(CRN, spec §5.7)
     # 이 낙폭이 "깊은 방전"인지 = 결과 SoC 가 canonical Replace 임계 이하로 떨어지는지.
     thr_replace = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.2
     if max(0.0, soc - drop) <= thr_replace               # 깊은 방전 -> 고장과 동일한 안전 조건 요구
@@ -536,8 +551,9 @@ function _hz_fire_cell!(env, st::HazardState, id, soc, mode)
         nothing
     end
     (nl === nothing || isempty(nl)) && return nothing
+    _hz_commit_cell_drop!(st, id)                         # 사건이 실제로 났다 → 다음 사건은 새로 뽑는다
     st.cum_cell[id] = 0.0                                 # 재장전: 같은 로봇이 다시 열화될 수 있다
-    st.thr_cell[id] = _exp1(rng)                          # 같은 로봇 스트림에서 이어 뽑음(순서 고정)
+    st.thr_cell[id] = _exp1(_robot_rng(st, id))           # 같은 로봇 스트림에서 이어 뽑음(순서 고정)
     push_ood!(nl)
     soc_after = get(BATTERY_FLEET[].soc, id, soc)
     @info "[HAZARD] t=$(round(st.t; digits=2))s CELL-DEGRADATION R$(try id.id catch; id end) drop=$(round(drop; digits=2)) -> soc=$(round(soc_after; digits=3))"
