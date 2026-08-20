@@ -143,6 +143,11 @@ mutable struct HazardState
     mode_of::Dict{Any,Symbol}       # 직전 스텝의 전력 모드(:idle/:transit/:carry/:manip)
     events::Vector{NamedTuple}      # 발화 로그(라벨러/평가용)
     pending_drop::Dict{Any,Float64} # 유예된 셀 사건의 **이미 뽑힌** 낙폭 (spec §5.7 CRN 누수)
+    # 리뷰 라운드 1 (소견): 가드가 끝내 안 열리는 로봇, 또는 셀 시계가 넘은 뒤 그 로봇이
+    # st.broken 에 들어간 경우(hazard_step! 이 그 다음 스텝부터 cell 검사를 건너뛴다)는
+    # 이 캐시 항목이 영영 회수되지 않는다. 로봇 수만큼만 자라므로 메모리상 무해하고, CRN
+    # 상으로도 무해하다(어차피 그 로봇은 다시 안 도니 재사용될 일이 없다) — 고칠 것은 없다.
+    # 태스크 9 의 canonical(s) 는 이 필드를 담지 않아야 한다(replay state ξ 소속, s 아님).
     zone_ct::Int                    # zone 키 일련번호
 end
 

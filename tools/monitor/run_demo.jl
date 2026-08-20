@@ -970,10 +970,17 @@ let path = get(ENV, "DEMO_SUMMARY", "")
             #    :660-664), try 가 절대 안 던져 hazard OFF 런에서도 enabled=true 가 찍힌다 —
             #    probe_hazard.py 의 음성 대조(hz_off: n_hazard_on==0)가 항진적으로 깨진다.
             #    CB.hazard_enabled() 로 실제 상태를 찍도록 고쳤다.
+            # 리뷰 라운드 1 (소견 3): hazard_report() 의 독스트링이 스스로 경고한다 — "0건이
+            # 모형상 안 일어난 것인지 엔진이 못 일으킨 것인지는 완전히 다른 이야기이고, 합쳐
+            # 보고하면 거짓말이 된다." n_break_pending/n_cell_pending(문턱은 넘었으나
+            # fire_safe_target/fire_require_spare 가 거부해 유예된 시계 수)이 그 구분이다 —
+            # 실측으로 이미 발화했다(ON ood_seed=4 판이 pend_break=1 인데 이전 블록엔 안 남았다).
             "hazard" => (try
                     let r = CB.hazard_report()
                         Dict("enabled" => CB.hazard_enabled(), "t" => r.t, "steps" => r.steps,
-                             "n_break" => r.n_break, "n_cell" => r.n_cell, "n_zone" => r.n_zone)
+                             "n_break" => r.n_break, "n_cell" => r.n_cell, "n_zone" => r.n_zone,
+                             "n_break_pending" => r.n_break_pending,
+                             "n_cell_pending" => r.n_cell_pending)
                     end
                 catch
                     Dict("enabled" => false)
