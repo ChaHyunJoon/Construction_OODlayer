@@ -40,29 +40,56 @@ const COST      = Dict(i => Float64(REGISTRY[i].cost) for i in IDS)
 #
 # 판정 G: 이 값은 **오늘 참인 것**을 선언해야 한다 — dynamics_stamp() 가 hazard_enabled() 에서
 # 유도되는 것과 대칭이다. 오늘 registry 는 3/5/6 이 아직 은퇴 전인 9팔이므로 "v1-9arms" 다.
-# 완전한 유도 대신 **기계적 일관성 검사**를 둔다: 도장의 "<n>arms" 가 실제 registry 항목 수와
-# 같은지 로드 시점에 어서션한다. **이 어서션은 태스크 5 에서 load-bearing 이다** — 3/5/6 을
-# 은퇴시키고 문자열을 "v2-6arms" 로 갈아 끼우는 순간, (선언 6, 실제 6) 통과가 그 은퇴가 실제로
-# 집행됐다는 증거다.
+# 완전한 유도 대신 **기계적 일관성 검사**를 둔다: 도장의 "<n>arms" 가 **은퇴 표식이 없는**
+# registry 항목 수와 같은지 로드 시점에 어서션한다.
+#
+# 재리뷰 정정(라운드 2): 처음엔 "실제 registry 항목 수" 를 `length(IDS)`(= 전체 JSON 엔트리
+# 수)로 재고 커밋했는데 이건 **정반대로 작동한다.** 태스크 5 의 은퇴(`task-5-brief.md` Step 3)
+# 는 3/5/6 엔트리를 **지우지 않는다** — "retired" 표식만 달고 이름·비용은 그대로 둔다. 그래서
+# `length(IDS)` 는 은퇴 뒤에도 **영원히 9** 다: 은퇴를 집행하고 도장을 안 바꾼 실수는
+# (선언 9, 실제 9)로 통과해 못 잡고, 반대로 은퇴를 집행하고 도장을 옳게 "v2-6arms" 로 바꾼
+# 정상 변경은 (선언 6, 실제 9)로 **죽어서 막아버린다** — 재리뷰가 스크래치 registry 로 두
+# 방향 다 실측했다. 옳은 `n_actual` 은 **"retired" 표식이 없는 엔트리 수**(`n_non_retired`)
+# 다: 오늘은 은퇴 표식이 0개라 9 그대로고, 태스크 5 가 3/5/6 을 은퇴시키면 6 으로 실제로 준다.
+#
+# **이 어서션은 태스크 5 에서 load-bearing 이다**: 3/5/6 을 은퇴(retired 표식 추가)시키고
+# 문자열을 "v2-6arms" 로 갈아 끼우는 순간, `n_non_retired` 가 6 을 세어 (선언 6, 실제 6)로
+# 통과하는 것이 곧 은퇴가 실제로 집행됐다는 증거다. 문자열만 바꾸고 은퇴 표식을 안 달면
+# (또는 그 반대) 여기서 죽는다.
 const _VOCAB_ARMS_RE = r"^v\d+-(\d+)arms$"
+
+"""
+    n_non_retired(registry) -> Int
+
+`registry`(id => JSON3.Object, 선택적 `retired` 필드) 에서 은퇴 표식이 없는 엔트리 수.
+은퇴는 엔트리를 지우지 않고 표식만 다는 영구적 성질이다(레지스트리 자체의 속성) — 실험
+팔 게이트(`experimental`/`is_active`)와는 다른 축이다: 그건 ENV 로 켜고 끄는 **런타임**
+성질이라 도장(정적 provenance)에 넣으면 `DS_COMBO_ARMS=1` 을 export 하는 순간 도장의
+유효성이 흔들린다 — 그래서 여기서는 쓰지 않는다.
+"""
+function n_non_retired(registry)
+    isretired(m) = haskey(m, :retired) && Bool(m.retired)
+    return count(!isretired, values(registry))
+end
 
 """
     assert_vocab_arm_count(vocab, n_actual)
 
-도장의 `<n>arms` 를 실제 registry 항목 수와 대조한다. 형식이 아니거나 수가 다르면 죽는다.
+도장의 `<n>arms` 를 `n_actual`(호출자가 `n_non_retired(REGISTRY)` 로 넘긴다)과 대조한다.
+형식이 아니거나 수가 다르면 죽는다.
 """
 function assert_vocab_arm_count(vocab::AbstractString, n_actual::Integer)
     m = match(_VOCAB_ARMS_RE, vocab)
     m === nothing && error("vocab 도장 형식이 아니다(v<버전>-<n>arms 꼴이어야 한다): $(vocab)")
     declared = parse(Int, m.captures[1])
     declared == n_actual || error(
-        "vocab 도장이 거짓말한다 — 선언 $(declared) arms($(vocab)) vs 실제 registry $(n_actual) arms.")
+        "vocab 도장이 거짓말한다 — 선언 $(declared) arms($(vocab)) vs 실제(은퇴 제외) registry $(n_actual) arms.")
     return nothing
 end
 
 const VOCAB = haskey(_RAW, :vocab) ? String(_RAW.vocab) :
     error("action_registry.json 에 'vocab' 도장이 없다: $(PATH)")
-assert_vocab_arm_count(VOCAB, length(IDS))
+assert_vocab_arm_count(VOCAB, n_non_retired(REGISTRY))
 
 """
     require_vocab(obj, where)

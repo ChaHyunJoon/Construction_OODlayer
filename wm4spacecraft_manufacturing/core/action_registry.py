@@ -51,17 +51,40 @@ MACROS = sorted(REGISTRY)
 # 9팔이므로 "v1-9arms" 다. "v2-6arms" 는 태스크 5(3/5/6 은퇴) 이후에나 참이 되는 END-STATE
 # 값이라 지금 여기 두면 **오늘부터 계속 거짓말하는 도장**이 된다 — 그 자체로는 아무도
 # 못 잡는다(리터럴이라 검증 불가). 그래서 완전한 유도 대신 **기계적 일관성 검사**를 둔다:
-# 도장의 "<n>arms" 가 실제 registry 항목 수와 같은지 로드 시점에 어서션한다.
-# **이 어서션은 태스크 5 에서 load-bearing 이다**: 3/5/6 을 은퇴시키고 문자열을 "v2-6arms"
-# 로 갈아 끼우는 순간, 이 어서션이 "선언 6 vs 실제 6" 으로 통과하는 것이 곧 은퇴가 실제로
-# 집행됐다는 증거다. 문자열만 바꾸고 registry 에서 은퇴를 안 시키면(또는 그 반대) 여기서 죽는다.
+# 도장의 "<n>arms" 가 **은퇴 표식이 없는** registry 항목 수와 같은지 로드 시점에 어서션한다.
+#
+# 재리뷰 정정(라운드 2): 처음엔 "실제 registry 항목 수" 를 `len(MACROS)`(= 전체 JSON
+# 엔트리 수)로 재고 커밋했는데 이건 **정반대로 작동한다.** 태스크 5 의 은퇴(`task-5-brief.md`
+# Step 3)는 3/5/6 엔트리를 **지우지 않는다** — "retired" 표식만 달고 이름·비용은 그대로
+# 둔다(Step 5 의 `test_retired_macros_keep_their_names()` 가 그걸 요구한다). 그래서
+# `len(MACROS)` 는 은퇴 뒤에도 **영원히 9** 다: 은퇴를 집행하고 도장을 안 바꾼 실수는
+# (선언 9, 실제 9)로 통과해 못 잡고, 반대로 은퇴를 집행하고 도장을 옳게 "v2-6arms" 로
+# 바꾼 정상 변경은 (선언 6, 실제 9)로 **죽어서 막아버린다** — 재리뷰가 스크래치 registry
+# 로 두 방향 다 실측했다. 옳은 `n_actual` 은 **"retired" 표식이 없는 엔트리 수**
+# (`n_non_retired`) 다: 오늘은 은퇴 표식이 0개라 9 그대로고, 태스크 5 가 3/5/6 을
+# 은퇴시키면 6 으로 실제로 줄어든다.
+#
+# **이 어서션은 태스크 5 에서 load-bearing 이다**: 3/5/6 을 은퇴(retired 표식 추가)시키고
+# 문자열을 "v2-6arms" 로 갈아 끼우는 순간, `n_non_retired` 가 6 을 세어 (선언 6, 실제 6)로
+# 통과하는 것이 곧 은퇴가 실제로 집행됐다는 증거다. 문자열만 바꾸고 registry 에서 은퇴
+# 표식을 안 달면(또는 그 반대) 여기서 죽는다.
 _VOCAB_ARMS_RE = re.compile(r"^v\d+-(\d+)arms$")
 
 
+def n_non_retired(registry):
+    """`registry`(= {id: {..., 선택적 "retired": bool}}) 에서 은퇴 표식이 없는 엔트리 수.
+    은퇴는 엔트리를 지우지 않고 표식만 다는 영구적 성질이다(레지스트리 자체의 속성) —
+    실험 팔 게이트(`experimental`/`is_active`)와는 다른 축이다: 그건 ENV 로 켜고 끄는
+    **런타임** 성질이라 도장(정적 provenance)에 넣으면 `DS_COMBO_ARMS=1` 을 export 하는
+    순간 도장의 유효성이 흔들린다 — 그래서 여기서는 쓰지 않는다."""
+    return sum(1 for m in registry.values() if not m.get("retired"))
+
+
 def assert_vocab_arm_count(vocab, n_actual):
-    """도장의 `<n>arms` 를 실제 registry 항목 수와 대조한다. 형식이 아니거나 수가 다르면
-    ValueError — 오늘은 (선언 9, 실제 9)로 통과하고, 태스크 5 가 은퇴를 집행하며 문자열을
-    갈아 끼우는 순간의 (선언 6, 실제 6) 통과가 그 은퇴가 실제로 됐다는 기계적 증거가 된다."""
+    """도장의 `<n>arms` 를 `n_actual`(호출자가 `n_non_retired(REGISTRY)` 로 넘긴다)과
+    대조한다. 형식이 아니거나 수가 다르면 ValueError — 오늘은 (선언 9, 실제 9)로 통과하고,
+    태스크 5 가 은퇴를 집행하며 문자열을 갈아 끼우는 순간의 (선언 6, 실제 6) 통과가 그
+    은퇴가 실제로 됐다는 기계적 증거가 된다."""
     m = _VOCAB_ARMS_RE.match(vocab)
     if not m:
         raise ValueError(
@@ -69,7 +92,7 @@ def assert_vocab_arm_count(vocab, n_actual):
     declared = int(m.group(1))
     if declared != n_actual:
         raise ValueError(
-            "vocab 도장이 거짓말한다 — 선언 %d arms(%r) vs 실제 registry %d arms. "
+            "vocab 도장이 거짓말한다 — 선언 %d arms(%r) vs 실제(은퇴 제외) registry %d arms. "
             "어휘가 실제로 바뀌었으면 이 문자열도 같이 갈아 끼울 것; 안 바뀌었으면 registry 를 "
             "되돌릴 것." % (declared, vocab, n_actual))
 
@@ -77,7 +100,7 @@ def assert_vocab_arm_count(vocab, n_actual):
 VOCAB = json.load(open(REGISTRY_PATH, encoding="utf-8")).get("vocab")
 if not VOCAB:
     raise ValueError("action_registry.json 에 'vocab' 도장이 없다: %s" % REGISTRY_PATH)
-assert_vocab_arm_count(VOCAB, len(MACROS))
+assert_vocab_arm_count(VOCAB, n_non_retired(REGISTRY))
 
 
 def require_vocab(obj, where):
