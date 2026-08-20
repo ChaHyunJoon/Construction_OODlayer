@@ -187,7 +187,7 @@ end
 const _DP_REG = Ref{Any}(nothing)
 function _dp_registry()
     _DP_REG[] === nothing || return _DP_REG[]
-    p = joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "action_registry.json")
+    p = joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "core", "action_registry.json")
     _DP_REG[] = JSON3.read(read(p, String))
     return _DP_REG[]
 end
