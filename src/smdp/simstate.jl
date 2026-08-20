@@ -21,6 +21,12 @@
 # 패키지 모듈 안에서는 [deps] 에 없는 전이 의존성을 이름으로 불러올 수 없다(Main 은 예외).
 # `Project.toml` 을 건드리는 것은 이 태스크의 범위 밖이므로, UUID 로 직접 요청해 Manifest 의
 # 전이 의존성을 우회 로드한다 — SHA 는 이미 Manifest 에 있으므로(`ea8e919c-...`) 항상 해결된다.
+# ⚠️ 리뷰 라운드 1 이 잡은 두 번째 취약점: `Base.require` 를 **precompile 중에** 부르면 로드
+# 에러다. 이 파일이 살아남는 유일한 이유는 `src/smdp/mdp.jl` 이 `CB.include` 로 **런타임에**
+# 로드되고 결코 precompile 대상이 되지 않기 때문이다 — 이 include 를
+# `src/ConstructionBots.jl`(컴파일되는 모듈 본체) 안으로 옮기는 "정리" 가 나중에 들어오면 이
+# 한 줄이 원인이 안 보이는 방식으로 깨진다. 근본 해법은 여전히 `Project.toml [deps]` 한 줄이고,
+# 그건 이 태스크 범위 밖으로 그대로 남겨둔다.
 const SHA = Base.require(Base.PkgId(Base.UUID("ea8e919c-243c-51af-8825-aaa63cd721ce"), "SHA"))
 using Base: @kwdef
 
@@ -145,9 +151,21 @@ end
 # --- 정준 직렬화 --------------------------------------------------------------------------
 # spec §3.5 규칙 4: 모든 Set/Dict 는 **정렬해서** 직렬화한다. L5(_pick_active_robot 의 Set
 # 순회, 태스크 4)의 일반형이다. 정렬을 빼면 같은 상태가 프로세스마다 다른 해시를 얻는다.
-
-_c(x::Float64) = string(round(x; digits = 9))   # 부동소수 잡음이 해시를 갈리게 하지 않도록
-_c(x::Union{Int,Bool,Symbol,Nothing}) = string(x)
+#
+# 리뷰 라운드 1, C-2 (delimiter injection): 구분자(`, ; : | [ ] { } ( ) =`)를 문자열에 그대로
+# 쓰면서 `Symbol` payload 를 이스케이프 없이 꽂으면, 그 구분자를 담은 Symbol 하나가 임의의
+# 구조를 위조한다(측정된 예: 1로봇 fleet 이 오염된 role 로 2로봇 fleet 과 해시가 같아짐).
+# `Int`/`Bool`/`Nothing`/`Float64` 렌더는 고정된 문자 집합(숫자·`.`·`-`·`true`/`false`/
+# `nothing`)이라 구분자를 낼 수 없으므로 안전하다. 위험한 건 자유 텍스트를 담을 수 있는
+# `Symbol` 뿐이다 — 길이-프리픽스(`"<len>:<text>"`)로 감싸서 내용이 몇 바이트인지 먼저 밝히면,
+# 내부에 구분자·세미콜론이 몇 개 있든 그 Symbol 은 정확히 하나의 원자 토큰으로만 읽힌다.
+# 부수 효과: `Symbol("")` 은 `"0:"` 로 렌더돼 빈 집합 `"[]"` 과도 더 이상 겹치지 않는다.
+_c(x::Float64) = string(round(x; digits = 9) + 0.0)   # I-1: `round(-1e-12;digits=9)` 이
+    # 관측 가능한 -0.0 을 **만들어낸다**(`-0.0 == 0.0` 인데 `string` 은 다르게 찍는다) — vel·
+    # pose·build_delta 처럼 float 연산에서 나온 값이 노이즈 이하 부호 차이로 해시를 가른다.
+    # `+ 0.0` 은 `-0.0 + 0.0 == 0.0` 이라 부호를 정규화한다(round 뒤에 적용해 반올림 자체는 그대로).
+_c(x::Union{Int,Bool,Nothing}) = string(x)
+_c(x::Symbol) = (t = string(x); string(ncodeunits(t), ":", t))
 _c(t::Tuple) = "(" * join(map(_c, t), ",") * ")"
 _c(s::AbstractSet) = "[" * join(map(_c, sort!(collect(s); by = string)), ",") * "]"
 _c(d::AbstractDict) = "{" * join(["$(_c(k)):$(_c(v))"
@@ -160,29 +178,48 @@ canonical(b::GraphBlock) = "G(n=$(b.n_nodes),edges=$(_c(b.edges)),closed=$(_c(b.
 
 canonical(b::GeoBlock) = "Geo(poses=$(_c(b.poses)),zones=$(_c(b.zones)),delta=$(_c(b.build_delta)))"
 
+# health/role 은 예전엔 raw `$(...)` 로 꽂혔다 — 그것이 C-2 의 실제 진입점이었다. 이제 `_c(...)`
+# 를 통해서만 나간다.
 canonical(r::RobotRec) = "R$(r.id)(pose=$(_c(r.pose)),vel=$(_c(r.vel)),soc=$(_c(r.soc))," *
-    "E=$(_c(r.energy_J)),usage=$(_c(r.usage_s)),eff=$(_c(r.eff)),health=$(r.health)," *
-    "stalled=$(r.stalled),payload=$(_c(r.payload)),role=$(r.role))"
+    "E=$(_c(r.energy_J)),usage=$(_c(r.usage_s)),eff=$(_c(r.eff)),health=$(_c(r.health))," *
+    "stalled=$(r.stalled),payload=$(_c(r.payload)),role=$(_c(r.role)))"
 
-canonical(b::HazardBlock) = "Hz(l0=$(_c(b.lambda0)),mode=$(b.mode),broken=$(_c(b.broken))," *
+canonical(b::HazardBlock) = "Hz(l0=$(_c(b.lambda0)),mode=$(_c(b.mode)),broken=$(_c(b.broken))," *
     "expired_break=$(_c(b.expired_break)),expired_cell=$(_c(b.expired_cell)))"
 
-canonical(c::CourierRec) = "Cr(target=$(c.target),courier=$(c.courier),depot=$(c.depot)," *
-    "home=$(_c(c.home)),goal=$(_c(c.goal)),phase=$(c.phase)," *
+canonical(c::CourierRec) = "Cr(target=$(c.target),courier=$(c.courier),depot=$(_c(c.depot))," *
+    "home=$(_c(c.home)),goal=$(_c(c.goal)),phase=$(_c(c.phase))," *
     "out=$(c.step_out),swap=$(c.step_swap))"
 
 canonical(b::ClockBlock) = "Clk(t=$(_c(b.t)),step=$(b.step))"
 canonical(b::AgeBlock)   = "Age(no_progress=$(b.no_progress),snap_count=$(b.snap_count))"
-canonical(b::EventBlock) = "E(kind=$(b.kind),robot=$(_c(b.robot)),sev=$(_c(b.severity)))"
+canonical(b::EventBlock) = "E(kind=$(_c(b.kind)),robot=$(_c(b.robot)),sev=$(_c(b.severity)))"
 
 # `canonical(s::SimState)` 는 8개 블록 문자열을 **이름표 붙여** 모아뒀다가 합성한다 — 리터럴
 # 하나로 이어붙이지 않는 이유(컨트롤러 부칙 B5): `canonical(s.clock)`(t, step) 이 해시 안에
 # 있으면 두 상태의 해시가 같으려면 step 까지 같아야 하고, 결정론적 시뮬에서 그런 충돌은 전부
 # 복제본이다 — 태스크 13(G-M)의 `strip_age` 류가 나중에 clock(과 age) 을 뺀 해시를 요구한다.
 # `omit` 키워드로 블록 이름을 빼고 합성할 수 있게 해서, clock 을 문자열에 하드코딩하지 않는다.
+const _BLOCK_NAMES = Set([:g, :geo, :fleet, :hazard, :courier, :clock, :age, :event])
+
 function _canonical_blocks(s::SimState)
+    # I-3: `sort!(collect(keys(s.fleet)))` 는 순서만 정하고, 실제로 나가는 문자열은
+    # `canonical(rec)` 이 찍는 `rec.id` 뿐이라 Dict 키 자체는 해시에 한 번도 안 닿는다 —
+    # `Dict(1 => R(id=2))` 와 `Dict(2 => R(id=2))` 가 해시가 같아진다(측정됨). 이 상태가
+    # 유지하려는 불변식은 "키 == rec.id" 이므로, 키를 문자열에 또 넣는 대신(중복 진실원을
+    # 만드는 대신) 그 불변식을 단언한다 — 깨지면 (Task 10 추출기 버그처럼) 여기서 시끄럽게
+    # 죽는다. 이 레포의 원칙과 같다: 조용히 remap 하지 않고 죽는다.
+    for (k, rec) in s.fleet
+        k == rec.id || error("SimState.fleet key $k does not match RobotRec.id $(rec.id) — " *
+                              "fleet must be keyed by robot id (invariant violated)")
+    end
     fleet = join([canonical(s.fleet[k]) for k in sort!(collect(keys(s.fleet)))], ";")
-    cour  = join(map(canonical, sort(s.courier; by = c -> (c.target, c.courier))), ";")
+    # I-2: `by = c -> (c.target, c.courier)` 는 total order 가 아니다 — 두 레코드가 같은
+    # (target, courier) 를 공유하면(오늘의 유일한 생산자 `BATTERY_DELIVERIES` 에서는 안 나지만,
+    # 이 타입 자체는 그걸 막지 않는다) Julia 의 안정 정렬이 삽입 순서를 그대로 새어보낸다.
+    # `canonical` 로 정렬하면 키가 콘텐츠 전체라 total order 다(측정됨: 이제 두 삽입 순서가
+    # 같은 문자열을 낸다).
+    cour  = join(map(canonical, sort(s.courier; by = canonical)), ";")
     return Pair{Symbol,String}[
         :g       => canonical(s.g),
         :geo     => canonical(s.geo),
@@ -201,10 +238,19 @@ end
 `s` 의 정준 문자열. **같은 상태는 프로세스가 달라도 같은 문자열을 낸다.**
 `omit` 으로 `:g,:geo,:fleet,:hazard,:courier,:clock,:age,:event` 중 일부 블록을 빼고 합성할
 수 있다 — 예: `canonical(s; omit = Set([:clock]))` 은 clock 을 뺀 해시를 만든다(부칙 B5,
-태스크 13 의 `strip_age` 가 요구하는 모양). `ReplayState` 에는 메서드를 정의하지 않는다 —
-ξ 는 해시 대상이 아니다.
+태스크 13 의 `strip_age` 가 요구하는 모양). `omit` 에 위 8개 이름이 아닌 것이 섞이면(오타 등)
+**에러를 던진다** — M-1: 검증 없이 조용히 무시하면 `omit=Set([:clok])` 이 아무 일도 안 하고
+전체 해시를 돌려주고, Task 13 의 strip 이 아무 것도 안 벗겨냈다는 사실이 조용히 샌다.
+**주의**: `omit` 이 있는 해시와 없는 해시는 같은 키공간을 공유하지 않는다 — 블록 하나를 뺀
+문자열이 다른 상태의 전체 문자열과 우연히 같아질 수는 있지만(그것이 clock/age 를 뺀 의도된
+용도다), `omit=Set([:clock])`/`omit=Set([:age])` 끼리는 각 블록 문자열이 서로 다른 접두
+(`Clk(`/`Age(` 등)를 갖기 때문에 절대 혼동되지 않는다. `ReplayState` 에는 메서드를 정의하지
+않는다 — ξ 는 해시 대상이 아니다.
 """
 function canonical(s::SimState; omit::Set{Symbol} = Set{Symbol}())
+    bad = setdiff(omit, _BLOCK_NAMES)
+    isempty(bad) || error("canonical: unknown block name(s) in omit: $(bad) " *
+                           "(valid: $(_BLOCK_NAMES))")
     parts = [v for (k, v) in _canonical_blocks(s) if !(k in omit)]
     return join(parts, "|")
 end
