@@ -1684,6 +1684,14 @@ function run_one(prod; kind, severity, seed, n_spare, inject::Bool, plan = nothi
         fired    = FEAT[] !== nothing,                           # OOD 가 실제로 터졌는지(특징이 채워졌으면 참)
         nominal_feats = NOMINAL_FEAT[],                          # control 판에서만 채워짐(교란 없는 상태)
         hz_break = hz.n_break, hz_cell = hz.n_cell, hz_zone = hz.n_zone,   # 사후 고장 수(rollout 이 다른 미래를 겪었다는 증거)
+        # `hz_sim_s = hz.t` 의 의미는 **시뮬레이션 절대 초**다 (사용자 확정 2026-08-20).
+        # 태스크 8 이전에는 hazard arming 이후 자기 누적(`st.t += dt`)이었고, 그때는
+        # `hazard_step!` 이 한 번이라도 스킵되면(hazard 를 껐다 켜거나 `max_events` 조기
+        # 반환) `.t` 와 `.step` 이 **영구히** 어긋났다. 지금은 `_hz_sync_clock!` 이 전역
+        # `SIM_STEP[]` 에서 유도하므로 `st.t == dt * st.step` 이 구조적으로 보장된다.
+        # ⚠️ 그러므로 이것은 "위험에 노출된 시간" 이 **아니다**. 노출 시간이 필요하면
+        # arming 시각을 따로 내서 빼야 한다 — `.t` 를 자기 누적으로 되돌리지 말 것
+        # (그러면 위 불변식이 다시 깨진다). 현재 소비처는 레포 전체에 0곳이다.
         hz_pending = hz.n_break_pending, hz_capped = hz.capped, hz_sim_s = hz.t,
     )
 end
