@@ -321,9 +321,23 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
 하고, 기존 호출부(`respec_step!` → `tools/demos.jl:1296` · `tools/e2e.jl:326` ·
 `tools/tests.jl:379`)는 그대로 동작한다.
 
-⚠️ `:partial` 은 **새로 생길 수 있는 값**이고 제약 2개 이상인 제안에서만 나온다. 반환값을
-`in (:admitted, :noop, :fallback, :rejected)` 로 화이트리스트 검사하는 곳(`tools/e2e.jl:326`)은
-제약 벡터를 쓰기 시작하는 순간 이 값을 봐야 한다.
+⚠️ `:partial` 은 **새로 생길 수 있는 값**이고 제약 2개 이상인 제안에서만 나온다.
+판정 어휘의 단일 진실원은 `RESPEC_VERDICTS` 이고, 호출부는 그것을 **복제하지 말고**
+`assert_respec_verdict` 를 지나가야 한다 — 어휘를 사본으로 들고 있던 두 곳
+(`tools/e2e.jl` 의 `run_mock_loop`/`run_seam_loop`)이 실제로 `:partial` 을 말없이 버려
+"respec 이 발동한 적 없다"로 기록하고 있었다(C1 감사, 2026-08-21). 둘 다 고쳤다.
+
+🔴 **LINE-STOP SHORT-CIRCUIT (Ruling 1).** 집행 중 `RESPEC_HOLD[]` 가 latch 되면(= 어떤
+단위가 `engage_fallback!` 을 불렀으면) **남은 단위를 집행하지 않고 멈추고 `:fallback` 을
+돌려준다.** 근거: line-stop 은 정의상 라인의 끝이다. 그 뒤에 집행되는 제약은 **영영 실행되지
+않을 세계**를 편집하고, 그렇게 만들어진 `s` 는 일어나지 않는 전이를 가리킨다 — 이 계획의 전제
+(`s` 가 실제 전이를 색인한다) 자체가 깨진다. 부수 효과로 순차 집행의 새 실패 모드가
+first-match-wins **보다 나쁘지 않아진다**(fallback 최대 1회, 그 뒤로 아무것도 집행 안 됨).
+latch 판정은 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 한다(아래 참조). 건너뛴 단위는
+`LAST_ENACT_REPORT[]` 에 `status = :skipped_line_stop` 으로 **명시 기록**되므로
+`sum(r.n)` 불변식이 유지된다 — 조용한 건너뜀이 아니다.
+short-circuit 은 남은 단위가 있을 때만 일어나므로 **단위가 2개 이상일 때만** 발동한다.
+따라서 위의 N = 1 항등 정리는 그대로 성립한다.
 
 🔴 **반환 Symbol 은 line-stop 여부의 신호가 아니다 — `RESPEC_HOLD[]` 가 유일한 진실원이다.**
 이건 C1 이 만든 성질이 아니라 원래 그랬다: 예전에도 relocate/zone/replace/generic 의 거부
@@ -397,6 +411,38 @@ end
 # =============================================================================
 
 """
+`maybe_respecify!` / `respec_step!` 가 돌려줄 수 있는 Symbol **전부**. 판정 어휘의 단일 진실원.
+
+    :disabled  RESPEC_ENABLED[] 가 꺼져 있다 (`respec_step!` 만 낸다)
+    :noop      처리할 이벤트가 없거나, 빈 제안(절제)이거나, 집행 결과가 전부 no-op
+    :admitted  모든 집행 단위가 채택됐다
+    :partial   일부 단위만 채택됐다 (제약 2개 이상일 때만 나온다 — C1 에서 새로 생겼다)
+    :rejected  채택된 단위가 하나도 없고 거부가 있었다
+    :fallback  line-stop 에 걸렸다(집행 중 latch 되면 남은 단위는 집행하지 않는다)
+
+🔴 **호출부가 이 어휘를 화이트리스트로 복제하면 안 된다.** `:partial` 이 그렇게 해서 생긴
+사고의 실례다 — `tools/e2e.jl` 의 두 화이트리스트가 `:partial` 을 **말없이 버려**
+"respec 이 발동한 적 없다"로 기록했다(C1 감사, 2026-08-21). 새 값을 더할 때는 여기만 고치고,
+호출부는 `assert_respec_verdict` 를 지나가게 한다.
+"""
+const RESPEC_VERDICTS = (:disabled, :noop, :admitted, :partial, :rejected, :fallback)
+
+"""
+    assert_respec_verdict(verdict, where = "") -> Symbol
+
+`verdict` 가 `RESPEC_VERDICTS` 에 있으면 그대로 돌려주고, 없으면 `error()` 한다.
+Global Constraint **조용한 폴백 금지**의 집행 지점: 호출부의 분기표가 모르는 Symbol 을
+말없이 "아무 일도 없었다" 로 뭉개는 것을 구조적으로 막는다. 비용은 튜플 멤버십 하나다.
+"""
+function assert_respec_verdict(verdict::Symbol, where::AbstractString = "")
+    verdict in RESPEC_VERDICTS && return verdict
+    error("[RESPEC] 알 수 없는 판정 :$(verdict)" * (isempty(where) ? "" : " @ $(where)") *
+          " — 어휘는 $(RESPEC_VERDICTS) 다. maybe_respecify! 가 새 값을 내기 시작했다면 " *
+          "RESPEC_VERDICTS 와 이 판정을 소비하는 모든 분기표를 함께 고쳐야 한다 " *
+          "(조용히 버리면 부분 집행이 no-op 으로 기록된다).")
+end
+
+"""
 직전 `maybe_respecify!` 호출에서 **실제로 진입한** dispatch 분기의 종류가 진입 순서대로.
 호출마다 비워진다. 분류기(`_enact_kind`)가 아니라 **분기 본체가 직접** 찍는다 — 분류기와
 술어(`_is_*`)가 어긋나면 시험이 그 자리에서 빨개지도록(가정이 아니라 측정).
@@ -449,9 +495,14 @@ _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 """
     _enact_batched(kind) -> Bool
 
-이 종류의 분기가 제약 **벡터를 통째로** 다루는가. `true` 면 같은 종류를 한 단위로 묶는다
-(쪼개면 의미가 깨지므로): 제네릭 경로는 MILP **제약 집합**을 솔버에 넘기고(쪼개면 둘째
-풀이가 첫째 제약을 잃는다), `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints`
+이 종류의 분기가 제약 **벡터를 통째로** 다루는가. `true` 면 같은 종류를 한 단위로 묶는다.
+
+🔴 **왜 제네릭 경로를 묶는가 (계획서 스니펫에서 벗어난 결정 — 컨트롤러 승인 2026-08-21).**
+브리프는 제약을 예외 없이 낱개로 쪼개라고 했다. 제네릭 경로에 그렇게 하면 **이 태스크가
+고치는 바로 그 결함을 한 층 아래에서 다시 만든다**: 제네릭 관문은 MILP **제약 집합**을
+`extra_constraints = verdict.proposal` 로 솔버에 통째로 넘긴다. `[ForbidWindow(a), ForbidWindow(b)]`
+를 두 번의 풀이로 쪼개면 둘째 풀이의 모델에 첫째 제약이 **없다** — 즉 `a` 가 조용히 버려진다.
+"제약 벡터가 하나로 무너진다"가 dispatch 층에서 솔버 층으로 옮겨갈 뿐이다. 그래서 묶는다, `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints`
 로 돌며 재풀이를 한 번만 한다, `ForbidZone`/`RelocateBuild`/`ReformTeam` 분기는 기하 전체를
 한 번에 처리한다(`restage_all_blocked!`·`translate_whole_build!`·`reform_stuck_teams!` 는
 제약이 아니라 `env` 를 읽는다).
@@ -616,16 +667,48 @@ function maybe_respecify!(env, ood_queue;
     ENACT_ORDER_LOG[]   = Symbol[]
     LAST_ENACT_REPORT[] = NamedTuple[]
     outcomes = Symbol[]
-    for unit in _enact_units(proposal.constraints)
+    units       = _enact_units(proposal.constraints)
+    # 🔴 line-stop 이 **이 호출에서** 걸렸는지를 보려면 진입 시점 값을 남겨 둬야 한다.
+    #    이미 서 있던 라인(앞 스텝이 세웠고 아무도 release 안 함)까지 여기서 처리하지는 않는다 —
+    #    그건 이 태스크 밖의 의미 결정이고, 순차 집행 이전 동작도 그랬다. 명시적 선택이다.
+    hold_before     = RESPEC_HOLD[]
+    short_circuited = false
+    for (i, unit) in enumerate(units)
         one = RespecProposal(unit, proposal.rationale, proposal.source_event)
         st  = _enact_one!(env, one; id_resolver = id_resolver, optimizer = optimizer)
         push!(LAST_ENACT_REPORT[],
               (kind = _enact_kind(unit[1]), status = st, n = length(unit)))
         push!(outcomes, st)
+        # --- line-stop short-circuit (Ruling 1) --------------------------------
+        # `engage_fallback!` 은 `RESPEC_HOLD[]` 를 **latch** 한다 = 라인은 여기서 끝이다.
+        # 그 뒤에 집행되는 제약은 **영영 실행되지 않을 세계**를 편집한다. 그렇게 만들어진 s 는
+        # 일어나지 않는 전이를 가리키므로, 이 계획의 목적(= s 가 실제 전이를 색인한다) 자체를 깬다.
+        # 그래서 남은 단위를 집행하지 않고 멈춘다. 이렇게 하면 새 실패 모드가 first-match-wins
+        # 보다 **나쁘지 않다**(fallback 최대 1회, 그 뒤로는 아무것도 집행 안 됨).
+        # 판정 어휘가 아니라 `RESPEC_HOLD[]` 를 본다 — 거부 분기 다수가 `engage_fallback!` 을
+        # 부른 **뒤** `:rejected` 를 돌려주므로 Symbol 로는 latch 를 알 수 없다.
+        if RESPEC_HOLD[] && !hold_before && i < length(units)
+            # 건너뛴 단위도 **명시적 status 로 보고**한다 — 조용한 건너뜀이면 이 태스크가 고친
+            # 결함이 그대로 되살아난다. `sum(r.n)` 불변식도 그대로 유지된다.
+            for skipped in units[i+1:end]
+                push!(LAST_ENACT_REPORT[],
+                      (kind = _enact_kind(skipped[1]), status = :skipped_line_stop,
+                       n = length(skipped)))
+            end
+            short_circuited = true
+            @warn "[RESPEC] line-stop engaged mid-proposal -> " *
+                  "$(length(units) - i) remaining unit(s) NOT enacted " *
+                  "(a stopped line never executes them; see LAST_ENACT_REPORT[])"
+            break
+        end
     end
     @info "[RESPEC] enacted $(length(outcomes)) unit(s) over " *
           "$(length(proposal.constraints)) constraint(s) -> " *
           string([(r.kind, r.status) for r in LAST_ENACT_REPORT[]])
+    # short-circuit 이 실제로 일어났다면 반환은 `:fallback` 이다(집계보다 우선). 이 분기는
+    # `i < length(units)` 를 지났을 때만 참이므로 **단위가 2개 이상일 때만** 도달한다 —
+    # 즉 N = 1 항등 정리는 그대로 성립한다(단일 제약의 반환값 계약이 안 바뀐다).
+    short_circuited && return :fallback
     return _aggregate_enact(outcomes)
 end
 

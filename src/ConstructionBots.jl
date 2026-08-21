@@ -93,7 +93,8 @@ include("respec/respec.jl")  # RESPEC: 반드시 마지막 — 위에서 정의�
 # export : 이 모듈을 `using ConstructionBots` 한 외부 코드에서 "이름만으로" 바로 쓸 수 있게 공개하는 목록.
 #          (공개 안 하면 ConstructionBots.이름 처럼 모듈명을 붙여야 씀)
 # RESPEC: public surface for scripts/tests (Patch 3, step 3 in respec/PATCHES.md).
-export maybe_respecify!, push_ood!, OODQueue, maybe_emit_reform_ood!,  # 재명세(respec) 관련 공개 함수/타입 (+team-deadlock OOD 공유 emit)
+export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명세(respec) + 명목 레인 교착 해소
+       RESPEC_VERDICTS, assert_respec_verdict,   # 판정 어휘의 단일 진실원 + 조용한 버림 방지 관문
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
        SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
        set_battery_courier!, battery_courier_enabled,            # SwapBattery 물리 배송: 창고 예비가 배터리를 들고 왕복
@@ -134,7 +135,7 @@ export add_restriction_zone!, random_restriction_zone!, restriction_zones,      
        SPARE_SLOTS, spare_slots, station_keeping_goal,                        # 정박(station-keeping) 슬롯 저장소/술어
        warn_depot_clearance,                                                  # 창고-빌드 간격 경고(자동 조정 없음)
        fault_robot!, faulted_robots, clear_faulted_robots!,              # OOD 1-1: 로봇 고장 주입/조회/초기화
-       set_hot_swap!, hot_swap_enabled, set_spare_pool_margin!, set_reform_interval!,  # OOD 1-1: hot-swap 토글 + 창고 거리 + reform 반응주기(무진전 self-heal 간격)
+       set_hot_swap!, hot_swap_enabled, set_spare_pool_margin!, set_unwedge_interval!,  # OOD 1-1: hot-swap 토글 + 창고 거리 + 명목 unwedge 주기
        depot_available, depot_info,                                      # 창고(repository) 재고/메타
        decommissioned_bodies, checked_out_spares,                        # 은퇴(고장) 본체·반출 예비 조회
        draw_spare_depots!, draw_decommissioned_robots!,                  # 창고 스테이션·은퇴 로봇 시각화

@@ -114,24 +114,44 @@ end
 end
 
 # =============================================================================
-@testset "[4] 존재하지 않는 zone 은 조용히 넘어가지 않는다" begin
+@testset "[4] line-stop 이 걸리면 남은 제약을 집행하지 않는다 (Ruling 1)" begin
+    # 🔴 `engage_fallback!` 은 **영구 전역 line-stop**(RESPEC_HOLD)이다. 그 뒤에 집행되는 제약은
+    #    "영영 실행되지 않을 세계"를 편집한다 — 그렇게 만들어진 s 는 일어나지 않는 상태를 가리킨다.
+    #    그래서 line-stop 이 **이 호출에서** 걸린 순간 남은 단위를 집행하지 않고 멈춘다.
+    #    이 testset 은 short-circuit 이 없는 판(= 직전 커밋)에서 실제로 빨간불이 났다.
     place_zone!()
     CB.BATTERY_FLEET[].soc[RID] = 0.5
+    @test CB.RESPEC_HOLD[] === false           # 사전조건: 아직 라인이 안 섰다
+    before_soc = soc_of(RID)
+
+    # 첫 단위(:ghost = 없는 구역)가 거부되며 engage_fallback! 을 부른다. 둘째 단위(배터리)는
+    # 그 자체로는 **완벽히 집행 가능**하다 — 그래서 이 시험이 short-circuit 만을 잰다.
     st = enact!(CB.RespecProposal(CB.ConstraintSpec[
         CB.RelocateBuild(:ghost), CB.SwapBattery(RID)]))
+
+    @test CB.RESPEC_HOLD[] === true            # 라인이 섰다
+    @test st === :fallback                     # 집계가 아니라 short-circuit 이 정한다
+    @test soc_of(RID) == before_soc            # 🔴 둘째 제약은 집행되지 **않았다**
+    @test CB.ENACT_ORDER_LOG[] == [:relocate]  # 둘째 분기에 **진입조차** 안 했다
+
+    # 그래도 조용히 사라지지는 않는다 — 건너뛴 단위도 명시적 status 로 보고된다.
     rep = CB.LAST_ENACT_REPORT[]
     @test length(rep) == 2
-    # 거부된 제약이 **보고서에 남는다**(조용한 no-op 이 아니다).
-    @test any(r -> r.kind === :relocate && r.status !== :admitted, rep)
-    # 그리고 뒤따르는 제약은 그래도 집행된다.
-    @test soc_of(RID) == 1.0
-    @test st === :partial              # 하나는 먹었고 하나는 거부됐다
-    # 🔴 반환 Symbol 은 line-stop 여부의 신호가 아니다 — 유일한 진실원은 RESPEC_HOLD[] 다.
-    #    거부 분기가 engage_fallback! 을 불렀으므로 :partial 과 line-stop 이 **동시에** 참이다.
-    #    순차 집행이 새로 여는 조합이고, docstring 이 이 사실을 그대로 적는다.
-    @test CB.RESPEC_HOLD[] === true
-    CB.release_fallback!()            # 이 testset 이 건 전역 line-stop 을 푼다
+    @test rep[1].kind === :relocate && rep[1].status !== :admitted
+    @test rep[2].kind === :battery  && rep[2].status === :skipped_line_stop
+    @test sum(r.n for r in rep) == 2           # 제약 개수 불변식은 그대로
+
+    CB.release_fallback!()
     @test CB.RESPEC_HOLD[] === false
+end
+
+# =============================================================================
+@testset "[4b] 판정 어휘는 단일 진실원이고, 모르는 값은 조용히 안 넘어간다 (Ruling 2)" begin
+    # 호출부의 화이트리스트가 새 Symbol 을 말없이 버리는 것을 막는 관문.
+    @test :partial in CB.RESPEC_VERDICTS
+    @test all(v -> v in CB.RESPEC_VERDICTS, (:disabled, :noop, :admitted, :rejected, :fallback))
+    @test CB.assert_respec_verdict(:partial, "test") === :partial
+    @test_throws ErrorException CB.assert_respec_verdict(:definitely_not_a_verdict, "test")
 end
 
 # =============================================================================
@@ -144,6 +164,18 @@ end
 
     # 빈 제안 = 절제. 옛 계약대로 :noop.
     @test enact!(CB.RespecProposal(CB.ConstraintSpec[])) === :noop
+
+    # 🔴 Ruling 1(short-circuit)이 가장 깨뜨리기 쉬운 자리: **거부하며 line-stop 을 거는
+    #    제약이 하나뿐일 때**. 이 경우 건너뛸 단위가 없으므로 short-circuit 은 발동하지 않고,
+    #    반환은 집계 규칙의 N=1 항등에 따라 그 분기가 원래 내던 `:rejected` 여야 한다.
+    #    (`:fallback` 으로 바뀌면 tools/e2e.jl · tools/tests.jl 의 기존 계약이 깨진다.)
+    @test CB.RESPEC_HOLD[] === false
+    st1 = enact!(CB.RespecProposal(CB.ConstraintSpec[CB.RelocateBuild(:ghost)]))
+    @test st1 === :rejected                    # ← :fallback 이 아니다. N=1 항등 유지
+    @test CB.RESPEC_HOLD[] === true            # 그래도 라인은 섰다(반환값과 별개의 사실)
+    @test length(CB.LAST_ENACT_REPORT[]) == 1
+    @test CB.LAST_ENACT_REPORT[][1].status === :rejected   # :skipped_line_stop 행이 없다
+    CB.release_fallback!()
 end
 
 CB.clear_restriction_zones!()
