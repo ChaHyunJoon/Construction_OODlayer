@@ -143,12 +143,20 @@ const OUTFILE = get(ENV, "DS_OUT", joinpath(@__DIR__, "out", "oracle_dataset.jso
 const MC_K       = parse(Int, get(ENV, "DS_MC_K", "1"))
 const HZ_SEED0   = parse(Int, get(ENV, "DS_HZ_SEED0", "1000"))
 const VALID_ONLY = get(ENV, "DS_VALID_ONLY", "0") == "1"
+# D-3/D-4 재점검(2026-08-21, T6 라운드 2, 컨트롤러 지시): fire_require_spare 와
+# mtbf_zone_s 가 라벨 레인에서 독립 기본값을 들고 있어 실행 레인(HazardParams())과
+# 다른 세계를 만들고 있었다 — 이 저장소가 같은 모양으로 이미 세 번 데었다(DS_HOTSWAP
+# 누락으로 fault 발화율 100%→23%, 4b6b2d35 의 라벨러/평가 불일치 등). 파일의 기존
+# 관례(불리언 손잡이는 `get(ENV, "DS_X", "0") == "1"`, 예: DS_SMOKE/DS_VALID_ONLY/
+# DS_NOCTRL)를 따라 env 로 열어 두되 **기본값은 HazardParams() 와 맞춘다** — 하드코딩
+# 오버라이드가 아니라 "덮어쓸 수 있지만 안 건드리면 같은 세계"가 되게.
 const HZ_PARAMS  = CB.HazardParams(
     mtbf_break_s = parse(Float64, get(ENV, "DS_MTBF_BREAK", "500.0")),
     mtbf_cell_s  = parse(Float64, get(ENV, "DS_MTBF_CELL",  "500.0")),
-    mtbf_zone_s  = parse(Float64, get(ENV, "DS_MTBF_ZONE",  "Inf")),
+    mtbf_zone_s  = parse(Float64, get(ENV, "DS_MTBF_ZONE",  "1800.0")),   # D-4: HazardParams() 기본과 일치
     drain_sigma  = parse(Float64, get(ENV, "DS_DRAIN_SIGMA", "0.0")),
-    fire_safe_target = true, fire_require_spare = true,
+    fire_safe_target = true,
+    fire_require_spare = get(ENV, "DS_FIRE_REQUIRE_SPARE", "0") == "1",  # D-3: 기본 false, HazardParams() 와 일치
     fire_obstacle = false,
     fire_clear = !(get(ENV, "DS_HOTSWAP", get(ENV, "HOT_SWAP", "0")) == "1"),
     max_events = parse(Int, get(ENV, "DS_MAX_EVENTS", "12")))
