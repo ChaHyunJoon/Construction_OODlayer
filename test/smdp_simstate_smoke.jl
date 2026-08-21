@@ -10,6 +10,7 @@
 # 이 파일은 그 축소에 맞춰 재작성됐지만, 앞선 리뷰들이 실제로 잡았던 결함의 **회귀 검사는
 # 종류별로 전부 옮겨 왔다** — 그것들이 이 파일의 존재 이유이기 때문이다:
 #   C-1 삽입 순서 누수 · C-2 구분자 위조 · I-1 부호 있는 0 · I-3 로봇 identity · I-4 프로세스 간
+# C-1 픽스처는 26필드 확장이 들여온 세 컬렉션(`geo.zones`·`prog.closed`·`prog.active`)까지 채운다.
 #
 #   julia +lts --project=. test/smdp_simstate_smoke.jl
 using ConstructionBots
@@ -52,6 +53,12 @@ end
 # 3원소 Set/Dict 는 삽입 순서와 무관하게 내부 반복 순서가 이미 같아서(측정됨), sort! 를 지워도
 # 그 크기에서는 절대 안 걸린다 — 리뷰가 잡은 바로 그 결함. 12원소로 올린다.
 # **콘텐츠는 고정하고 삽입 순서만 바꾼다.**
+#
+# 🔴 2026-08-20 최종 리뷰 I3: 이 픽스처는 `edges`/`binding`/`poses`/`fleet` 넷만 채우고
+# **19 → 26 확장이 들여온 세 컬렉션(`geo.zones` · `prog.closed` · `prog.active`)을 비워 뒀다.**
+# 즉 C-1 보장이 그 셋에 대해서는 한 번도 실행된 적이 없었다. 셋 다 채운다.
+# `geo.zones` 가 가장 중요하다 — `s` 안에서 **유일한 Symbol 키 Dict** 이고, `_c` 의 정렬 키가
+# `string` 인 이상 `simstate.jl` 의 `_c` 정렬키 injectivity 논증이 실제로 걸리는 자리이기 때문이다.
 function _big_state(order::Symbol)
     # 순차 정수는 Julia 의 Int 해시가 버킷을 조밀하게 채워 삽입 순서와 무관해진다 — 흩어진 값.
     ids = [17, 4, 91, 33, 8, 250, 61, 12, 145, 77, 29, 103]
@@ -60,19 +67,30 @@ function _big_state(order::Symbol)
     binding = Dict{Int,Int}()
     poses = Dict{Int,NTuple{3,Float64}}()
     fleet = Dict{Int,CB.RobotRec}()
+    zones = Dict{Symbol,NTuple{3,Float64}}()
+    closed = Set{Int}()
+    active = Dict{Int,Float64}()
     for i in ord
         push!(edges, (i, i + 1))
         binding[i] = i * 2
         poses[i] = (Float64(i), 0.0, 0.0)
         fleet[i] = _rec(soc = 1.0 - i / 1000)
+        # Symbol 키: 문자열 해시라 Int 와 버킷 분포가 **다르다** — 이 축을 따로 흔들어야 하는 이유.
+        # ⚠️ 접두어가 `"z"` 였을 때는 이 12개 Symbol 의 Dict 순회 순서가 삽입 순서와 무관했다
+        # (실측). 즉 zones 축의 C-1 검사가 항진명제였다 — 아래 전제 단언이 그것을 잡았다.
+        # `"zone_"` 접두어에서는 실제로 갈린다. Julia 를 올렸다가 전제 단언이 빨개지면
+        # **단언을 지우지 말고 키를 다시 고를 것**(그 단언이 존재하는 이유가 바로 이 상황이다).
+        zones[Symbol("zone_", i)] = (Float64(i), Float64(2i), 0.5)
+        push!(closed, i + 1000)
+        active[i + 2000] = Float64(i) / 8
     end
     CB.SimState(
         g = CB.GraphBlock(edges = edges, binding = binding,
                           wedge_edges = Set{Tuple{Int,Int}}(),
                           dissolved_gates = Set{Tuple{Int,Int}}()),
-        geo = CB.GeoBlock(poses = poses, build_delta = (0.0, 0.0), zones = _default_geo_zones()),
+        geo = CB.GeoBlock(poses = poses, build_delta = (0.0, 0.0), zones = zones),
         fleet = fleet,
-        prog = _default_prog(),
+        prog = CB.ProgBlock(t = 7.5, closed = closed, active = active),
         courier = CB.CourierRec[])
 end
 
@@ -80,8 +98,27 @@ end
 
 @testset "정렬 직렬화 — 삽입 순서가 해시에 안 샌다 (C-1)" begin
     a, b = _big_state(:fwd), _big_state(:rev)
+
+    # 🔴 **전제 단언 먼저.** 두 픽스처의 내부 순회 순서가 실제로 갈리지 않으면 아래 등호는
+    # 아무것도 증명하지 않는다(정렬을 통째로 지워도 초록이다). 리뷰가 이 파일에서 이미 한 번
+    # 잡았던 실패 모양이라, 나중에 픽스처가 조용히 수렴하면 **여기가 먼저 빨개지게** 둔다.
+    @test collect(keys(a.fleet))      != collect(keys(b.fleet))
+    @test collect(keys(a.geo.zones))  != collect(keys(b.geo.zones))
+    @test collect(a.prog.closed)      != collect(b.prog.closed)
+    @test collect(keys(a.prog.active)) != collect(keys(b.prog.active))
+    # 그리고 도메인이 비어 있지 않다(19→26 확장이 들여온 셋).
+    @test length(a.geo.zones) == 12 && length(a.prog.closed) == 12 && length(a.prog.active) == 12
+
     @test CB.canonical(a) == CB.canonical(b)
     @test CB.state_hash(a) == CB.state_hash(b)
+
+    # 블록별로도 못 박는다 — 전체 canonical 만 보면 어느 블록이 실제로 정렬됐는지 안 보인다.
+    ab, bb = Dict(CB._canonical_blocks(a)), Dict(CB._canonical_blocks(b))
+    for blk in (:g, :geo, :fleet, :prog)
+        @test (blk, ab[blk]) == (blk, bb[blk])
+    end
+    # Symbol 키 Dict 가 실제로 렌더에 들어갔다(빈 Dict 였다면 이 검사가 항진명제였다).
+    @test occursin("8:zone_250", ab[:geo])   # `_c(Symbol)` = "<바이트수>:<본문>"
 end
 
 @testset "courier 벡터는 삽입 순서에 무관하다 (I-2)" begin

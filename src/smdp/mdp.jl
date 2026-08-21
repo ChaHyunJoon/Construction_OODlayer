@@ -24,6 +24,13 @@ include("simstate.jl")   # §3 상태 정의. 리뷰 라운드 1 확인: hazard.
                           # hazard 뒤에 두는 건 계획서 파일 목록 순서를 따르는 관례일 뿐이다.
 include("observe.jl")   # env → s 의 유일한 경로. simstate.jl(타입)·hazard.jl(_hz_modes) 둘 다에
                         # 의존하므로 반드시 이 둘 뒤에 온다.
+                        # 🔴 **세 번째 의존이 있다: navigator/navigator.jl** —
+                        # `_responsible_robots`·`is_spare`·`is_battery_courier`·
+                        # `BATTERY_DELIVERIES`·`SPARE_POOLS` 를 쓴다. Julia 의 늦은 바인딩이
+                        # 그것을 가려 왔다(모든 시험이 navigator.jl 을 먼저 include 한다) —
+                        # 안 하면 `include` 는 통과하고 **`simstate_of` 를 부르는 순간**
+                        # `UndefVarError` 로 죽는다. 위 사용법 블록의 "먼저(의존)" 는 hazard 만이
+                        # 아니라 이 파일 전체에 걸린다.
 
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true

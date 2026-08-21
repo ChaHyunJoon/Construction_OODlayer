@@ -248,3 +248,57 @@ def test_generation_declares_the_sojourn_dynamics():
     구세대 문자열이 남아 있으면, 서로 다른 동역학의 산출물이 같은 도장을 공유한다."""
     cfg = objective.load()
     assert cfg["generation"] == "2026-08-20-4arms-sojourn-spare-off-zone-on", cfg["generation"]
+
+
+# =============================================================================
+# 🔴 트립와이어 — generation 도장이 **아직 오지 않은** 동역학을 미리 선언하고 있다
+# (2026-08-20 최종 리뷰 I1. 컨트롤러 판정: 문자열은 **그대로 둔다** — 계획서 태스크 2 가
+#  그 값을 명시했고 generation 어휘는 사용자 계획의 소유다.)
+#
+# 도장 `"2026-08-20-4arms-sojourn-spare-off-zone-on"` 은 세 가지를 주장한다:
+#   4arms      — 어휘가 4팔이다
+#   spare-off  — hazard 의 `fire_require_spare` 가 꺼졌다
+#   zone-on    — hazard 의 `mtbf_zone_s` 가 유한하다(zone 레인이 켜졌다)
+# 뒤 둘은 **오늘 거짓이다.** 태스크 6 이 그 두 손잡이를 실제로 뒤집기 전까지는 도장이
+# 미래를 선언하고 있는 상태다.
+#
+# 위험한 것은 틀린 라벨 자체가 아니라 **아무도 두 번째 범프를 안 하게 된다는 것**이다:
+# 도장이 이미 post-C5 동역학의 이름을 달고 있으므로, 태스크 6 이 손잡이를 뒤집어도
+# "도장은 이미 맞는데?" 로 보인다. 그러면 pre-C5 산출물과 post-C5 산출물이 **같은
+# generation 을 공유한다** — 이 필드가 막으려던 바로 그 충돌이다.
+#
+# 그래서 이 시험은 "손잡이가 **아직** 도장이 말하는 상태가 아니다" 를 단언한다.
+# **지금 초록인 이유는 그 변경이 아직 안 왔기 때문이다.**
+# ⚠️ **태스크 6 이 이 두 손잡이를 뒤집는 순간 이 시험이 빨개진다. 그때 generation 을 다시
+#    올릴 것** (그리고 이 시험을 도장이 참임을 확인하는 형태로 뒤집을 것).
+# 이 브랜치가 `build_delta` · `prog.active` 에 쓴 것과 같은 트립와이어 패턴이다.
+# =============================================================================
+_HAZARD_JL = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "src", "smdp", "hazard.jl")
+
+
+def _hazard_default(field):
+    """`@kwdef HazardParams` 의 기본값을 소스에서 읽는다 — 여기에 복제본을 두지 않는다.
+    (복제하면 hazard.jl 이 바뀌어도 이 시험이 옛 값을 보고 계속 초록일 수 있다.)"""
+    import re
+    src = open(_HAZARD_JL, encoding="utf-8").read()
+    m = re.search(r"^\s*%s\s*::\s*\w+\s*=\s*([^\s#]+)" % re.escape(field), src, re.M)
+    assert m is not None, "hazard.jl 에서 %s 의 기본값을 못 찾았다 (개명됐나?)" % field
+    return m.group(1)
+
+
+def test_generation_forward_declares_dynamics_that_have_not_landed():
+    """도장은 spare-off / zone-on 을 선언하지만 hazard.jl 은 아직 그 반대다.
+    태스크 6 이 손잡이를 뒤집으면 이 시험이 죽고, 그것이 generation 을 다시 올리라는 신호다."""
+    cfg = objective.load()
+    assert "spare-off" in cfg["generation"]
+    assert "zone-on" in cfg["generation"]
+
+    # 아직 안 왔다 = 도장이 미래를 말하고 있다.
+    assert _hazard_default("fire_require_spare") == "true", (
+        "fire_require_spare 가 뒤집혔다 — 도장이 선언한 spare-off 가 이제 실제다. "
+        "generation 을 다시 올릴 것(pre-C5 / post-C5 산출물이 같은 도장을 공유하면 안 된다).")
+    assert _hazard_default("mtbf_zone_s") == "Inf", (
+        "mtbf_zone_s 가 유한해졌다 — 도장이 선언한 zone-on 이 이제 실제다. "
+        "generation 을 다시 올릴 것.")

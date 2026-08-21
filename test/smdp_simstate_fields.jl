@@ -1,8 +1,11 @@
 # test/smdp_simstate_fields.jl
-# 26필드 s 의 필드 민감도. **모든** 필드가 해시에 닿아야 한다 — 안 닿는 필드는 그 자리에서
-# 조용히 두 세계를 합친다.
+# 26필드 s 중 **이 파일이 덮는 것은 7필드다** — 2026-08-20 확장이 들여온 신규 축뿐이다:
+# `geo.zones` · `fleet.usage_s`/`mode`/`eff` · `prog.t`/`closed`/`active`.
+# (2026-08-20 최종 리뷰 Minor: 머리말이 "26필드 전부" 라고 적고 있었는데 거짓이었다.)
+# 나머지 19필드의 민감도 루프는 `test/smdp_simstate_smoke.jl` 의 "필드 민감도" testset 이
+# 담당한다(4블록 23필드). 안 닿는 필드는 그 자리에서 조용히 두 세계를 합친다.
 #   julia +lts --project=. test/smdp_simstate_fields.jl
-using ConstructionBots, Test, Random
+using ConstructionBots, Test
 const CB = ConstructionBots
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))

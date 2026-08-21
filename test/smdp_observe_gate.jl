@@ -136,9 +136,12 @@ end
     @test CB.RESTRICTION_ZONES[] == before_zones
     @test CB.SIM_STEP[] == before_step
     @test CB._CACHE_TIMESTAMP_COUNTER[] == before_cachect
-    # 두 번 불러도 같은 해시 (관측이 부작용을 남기지 않는다)
+    # 두 번 불러도 같은 해시 (관측이 부작용을 남기지 않는다).
+    # 🔴 예전에는 이 줄이 **바이트 동일하게 두 번** 있었다 — 같은 단언을 두 번 쓰는 것은
+    # "두 번 관측했다" 를 증명하지 않는다(둘 다 같은 `s` 를 같은 `h()` 와 댄다). 한 줄로 줄이고,
+    # 대신 **관측을 세 번 더 굴린 뒤에도** 같은지를 본다 — 그것이 원래 재려던 성질이다.
     @test CB.state_hash(s) == h()
-    @test CB.state_hash(s) == h()
+    @test all(h() == CB.state_hash(s) for _ in 1:3)
 
     # 🔴 **`_hz_ensure!` 를 부르지 않는다** — 반증 가능한 형태로.
     # 리뷰 라운드 1 이 잡은 결함: `enable_hazard!`(hazard.jl:250-255)가 `simstate_of` 가 훑는
@@ -299,6 +302,43 @@ end
         @test k == CB._int_key(first(sort(rs; by = string)))
     end
     @test nmulti > 0        # 정렬이 실제로 갈림길인 정점이 존재한다(= 위 등호가 공허하지 않다)
+end
+
+@testset "계약 (3) — role 분기 목록이 _responsible_robots 와 어긋나면 여기서 죽는다 (I4)" begin
+    # `observe.jl` 계약 (3) 은 `mode` 에만 걸린다 — `role` 은 `_hz_modes` 의 분류기를 못 쓴다
+    # (`_node_mode` 는 전력 모드라 경계가 다르다: RobotStart·LiftIntoPlace). 그 대신
+    # `_sched_roles` 의 태그 분기 목록이 `_responsible_robots` 의 분기 목록과 **같은 모양**임을
+    # 여기서 기계로 지킨다. 한쪽에 노드 타입이 추가되고 다른 쪽에 안 되면 빨개진다.
+    #
+    # 🔴 active_set 이 아니라 **스케줄 전체 정점**을 훑는다. step 120 의 active_set 은
+    # `RobotGo`·`TransportUnitGo` 두 종뿐이라(실측) 거기서만 재면 항진명제다.
+    tagged_only, resp_only, ntypes = 0, 0, Set{Symbol}()
+    for v in Graphs.vertices(env.sched)
+        n = CB.get_node(env.sched, v).node
+        push!(ntypes, typeof(n).name.name)
+        tagged = (n isa CB.RobotGo || n isa CB.RobotStart || n isa CB.TransportUnitGo ||
+                  n isa CB.FormTransportUnit || n isa CB.DepositCargo)
+        resp = !isempty(CB._responsible_robots(n))
+        tagged && !resp && (tagged_only += 1)
+        !tagged && resp && (resp_only += 1)
+    end
+    # 도메인이 비퇴화인지 먼저 — 다섯 분기 타입이 전부 스케줄에 실제로 있어야 위 루프가 뜻이 있다.
+    for t in (:RobotGo, :RobotStart, :TransportUnitGo, :FormTransportUnit, :DepositCargo)
+        @test (t, t in ntypes) == (t, true)
+    end
+    @test tagged_only == 0      # _sched_roles 가 태그를 주는데 담당 로봇이 없다
+    @test resp_only   == 0      # 담당 로봇은 있는데 _sched_roles 가 태그를 안 준다
+
+    # 🔴 **알려진 드리프트를 실측값으로 못 박는다** (리뷰 I4 가 지목한 자리, 이 파일이 만든 것이
+    # 아니다): `_node_mode` 는 `LiftIntoPlace → MANIPULATE` 로 보내는데 `_responsible_robots`
+    # 에는 그 분기가 없어 `Any[]` 다. 그래서 들어올리는 중인 로봇은 `mode` 도 `role` 도 `:idle`
+    # 로 읽힌다. **누가 `_responsible_robots` 에 `LiftIntoPlace` 를 추가하면 이 단언이 빨개진다**
+    # — 그때 `_sched_roles` 의 태그 분기도 같이 손봐야 한다(안 그러면 role 만 조용히 뒤처진다).
+    lifts = [CB.get_node(env.sched, v).node for v in Graphs.vertices(env.sched)
+             if CB.get_node(env.sched, v).node isa CB.LiftIntoPlace]
+    @test !isempty(lifts)                                     # 실측 colored_8x8: 33개
+    @test all(n -> CB._node_mode(n) == CB.MANIPULATE, lifts)  # 모드는 준다
+    @test all(n -> isempty(CB._responsible_robots(n)), lifts) # 그런데 받을 로봇이 없다
 end
 
 @testset "🔴 prog.active 는 **계획된** 시작이지 실제 시작이 아니다 (알려진 결함, 못 박아 둠)" begin

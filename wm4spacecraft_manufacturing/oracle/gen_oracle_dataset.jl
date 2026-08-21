@@ -1092,24 +1092,16 @@ const EP_SEV    = Dict(:fault   => 1.0,
                        # :zonecore 의 severity 는 **root 하역 목표를 삼키는 비율**이다(offset 이 아니다).
                        # 1.0 = 최종 조립 목표 전부를 덮음 = NOOP 으로는 완주 불가.
                        :zonecore => parse(Float64, get(ENV, "DS_EP_CFRAC", "0.6")))
-# 개입 비용. surrogate/export_surrogate.py 의 MACRO_COST 와 반드시 같아야 한다(보상 정의가 두 곳에 있으므로).
-const MACRO_COST = Dict(0 => 0.0, 1 => 1.0, 2 => 0.3, 3 => 1.0, 4 => 1.0,
-    # 조합 팔의 비용 = 구성 primitive 비용의 합. features_agnostic.psi 의 a_cost 와 같은 값이어야 한다
-    # (ForbidAgent 0.8 + ReformTeam 1.0 = 1.8 / Deprioritize 0.3 + ForbidWindow 0.5 = 0.8).
-    # 2026-08-15: 이 둘은 2026-08-06 레지스트리 통합 때 `action_registry.json` 에서 누락돼,
-    # 이름·비용만 여기와 파이썬 세 곳에 **유령으로** 남아 있었다(감사가 "5·6 은 무시" 라고 예외
-    # 처리하던 자리). 같은 날 정식 등록했으므로 이제 이 표는 레지스트리와 **일치해야 하고**,
-    # `audit_action_vocab.py` 항목 6 이 그것을 지킨다(그날부터 **여분 id 도** 잡는다 — 예전엔
-    # 레지스트리에 있는 id 만 봐서 이 유령을 조용히 건너뛰었다).
-    5 => 1.8, 6 => 0.8,
-    # RelocateBuild = 빌드 전체를 옮기는 전역 개입. ForbidZone(조립체 하나 이동, 1.0)보다 영향 범위가
-    # 넓으므로 더 비싸게 매긴다. features_agnostic.MACRO_COST[7] / _PRIMITIVE_TABLE["RelocateBuild"] 와
-    # **같은 값**이어야 한다(보상 정의가 여러 곳에 있으므로 — README 함정 29).
-    7 => 1.5,
-    # SwapBattery = 배터리는 무제한(재고 관리 안 함)이고 현장 작업이라 개입 중 가장 싸다.
-    # Replace(1.0)보다 확실히 싸야 "싸게 살릴까 비싸게 살릴까"가 진짜 선택이 된다.
-    # features_agnostic.MACRO_COST[8] 과 **같은 값**이어야 한다(보상 정의가 여러 곳에 있음).
-    8 => 0.2)
+# 개입 비용 — **레지스트리 파생**(`action_registry.json` 이 단일 진실원).
+# 2026-08-20 이전에는 구 9팔 리터럴이었다. `ACTION_NAME`(:124) 을 파생으로 바꾸면서 이 표만
+# 리터럴로 남았는데, 그 조합은 라벨 행의 **같은 줄에서 옳은 이름 + 틀린 비용**을 찍는다: 어휘가
+# 재번호되는 순간 `macro_name="RelocateBuild", macro_cost=0.3` 처럼 이름은 레지스트리에서,
+# 비용은 옛 리터럴에서 와서 두 값이 서로 다른 어휘를 가리킨다. 아무도 `macro_cost` 를 되읽지
+# 않으므로 계산은 안 틀리지만 **출처(provenance)가 조용히 썩는다**. 리터럴을 되살리지 말 것 —
+# `test/smdp_action_name_smoke.jl` 이 두 상수 모두 레지스트리 파생임을 못 박는다.
+# (레지스트리의 cost 는 surrogate/export_surrogate.py · e1_analyze · features_agnostic 의
+#  MACRO_COST 와 같은 값이어야 한다 — 보상 정의가 여러 곳에 있다, README 함정 29.)
+const MACRO_COST = Dict(i => ActionRegistry.COST[i] for i in ActionRegistry.IDS)
 
 # FIXED-STEP PROBES -- 두 문제정의 중 하나를 오늘 고르지 않기 위한 장치.
 #

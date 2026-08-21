@@ -24,9 +24,37 @@
 #         · **Task 12 가 `apply_action!` 직후에 `simstate_of` 를 부른다** — 캐시가 가장 낡아
 #           있을 자리다. 거기서 카운터가 오르는 것은 결함이 아니라 이 판정의 적용이다.
 #       게이트는 "스텝 직후 관측 지점에서 0회" 라는 **좁은** 사실만 단언한다.
-#   (2) **파생 금지.** 여기서 새 값을 계산하지 않는다. 엔진이 이미 들고 있는 값을 옮길 뿐이다.
-#       계산은 tplan.jl / rates.jl 의 몫이다.
-#   (3) **`mode` 는 hazard 의 분류기를 재사용한다.** 여기서 다시 분류하면 두 레인의 λ 가 갈린다.
+#   (2) **새 동역학을 만들지 않는다.** 계산은 tplan.jl / rates.jl 의 몫이다.
+#       🔴 **2026-08-20 최종 리뷰 I4 로 문구를 정정했다.** 예전 문구는 "파생 금지 — 여기서 새
+#       값을 계산하지 않는다" 였는데 **이 파일 자신이 그 문장을 지키지 않는다.** 실제로 파생하는
+#       것을 전부 이름으로 적는다(빠짐없이 적는 것이 이 계약의 전부다):
+#         · `prog.t`        = `sim_time(env.dt)`         — 스텝 인덱스 → 절대 sim 초 (단위 변환)
+#         · `courier.t_out`/`t_swap` = `dt * step_*`     — 같은 변환. `-1` 센티넬은 보존한다(C-3)
+#         · `g.binding[v]`  = `first(sort(rs; by = string))` — 담당 로봇이 여럿인 정점에서
+#           **하나로 줄이는 축약**. 정렬 없이는 `active_set` 의 Set 순서가 해시로 샌다(P2)
+#         · `fleet.role`    = `_role_of` 의 우선순위 규칙 + `_sched_roles` 의 분류 (아래 (3))
+#         · `geo.zones`     = `Ball2` → `(cx, cy, r)` 튜플 (표현 변환)
+#       기준은 "계산이 0 인가" 가 아니라 **"엔진이 이미 정한 사실 말고 새 사실을 지어내는가"** 다.
+#       위 다섯은 전부 단위 변환·전순서 축약이고 새 사실이 아니다. 지어낼 뻔한 자리에서는
+#       실제로 멈춰 섰다 — 미등록 로봇의 `usage_s`/`eff`, 씬트리에 없는 로봇의 pose(에러로 죽는다),
+#       `prog.active` 의 "실제 시작 시각"(계획값을 그대로 나르고 결함으로 못 박았다).
+#   (3) **`mode` 는 hazard 의 분류기를 재사용한다**(`_hz_modes`). 여기서 다시 분류하면 두 레인의
+#       λ 가 갈린다.
+#       ⚠️ **`role` 은 그 재사용이 안 된다 — 이 계약은 `mode` 에만 걸린다**(2026-08-20 리뷰 I4).
+#       `_sched_roles`(아래)는 담당 로봇을 `_responsible_robots` 에서 받지만 **태그**
+#       (`:transport` / `:team_member`)는 자기 분기 목록으로 정한다. 유일한 공유 분류기인
+#       `_node_mode` 는 **경계가 다른 축**(전력 모드)이라 그대로 못 쓴다 — 실측으로 확인한 두 지점:
+#         · `RobotStart` → `_node_mode` 는 `IDLE`, `_sched_roles` 는 `:transport`.
+#           스케줄에 **14개** 있다(colored_8x8). `_node_mode` 에서 태그를 받으면 그 로봇들의
+#           `role` 이 `:transport` → `:idle` 로 **바뀐다** = 동작 변경이다.
+#         · `LiftIntoPlace` → `_node_mode` 는 `MANIPULATE` 인데 `_responsible_robots` 에는
+#           분기가 없어 `Any[]` 다(스케줄에 **33개**). 그래서 들어올리는 중인 로봇은
+#           `mode` 도 `role` 도 `:idle` 로 읽힌다 — **`_node_mode` 와 `_responsible_robots`
+#           사이의 드리프트**이지 이 파일이 만든 것이 아니다.
+#       그래서 코드를 바꾸는 대신 **분기 목록이 서로 어긋나면 빨개지는 시험**을 뒀다:
+#       `test/smdp_observe_gate.jl` 의 "계약 (3) — role 분기 목록" testset 이 스케줄 342 정점
+#       전부에서 `_sched_roles` 의 태그 술어와 `_responsible_robots` 의 비어있음 여부가
+#       일치하는지 보고, 위 `LiftIntoPlace` 드리프트를 실측값으로 못 박는다.
 #
 # 🔴 **계획서(task-4-brief.md Step 3)의 코드는 그대로 쓸 수 없다.** 갈린 지점과 근거는
 # `.superpowers/sdd/2026-08-20-sojourn-generative-smdp/task-4-report.md` 에 전부 적혀 있다.
@@ -90,6 +118,9 @@ function simstate_of(env)
     modes  = _hz_modes(env)                     # 계약 (3): hazard 의 분류기를 재사용
     sroles = _sched_roles(env)
     fleet  = Dict{Int,RobotRec}()
+    # ⚠️ 이 `sort!` 는 **결정성 보장이 아니다**(2026-08-20 최종 리뷰 Minor). 결과가 `Dict` 라
+    # 삽입 순서는 어차피 안 남고, 직렬화 시점에 `simstate.jl` 의 `_c(::AbstractDict)` 가 다시
+    # 정렬한다. 여기서는 순회를 읽기 좋게 고정할 뿐이니 **이 줄을 결정성 근거로 인용하지 말 것.**
     for rid in sort!(collect(keys(fleet_b.soc)); by = string)
         k = _int_key(rid)
         # 폴백을 두지 않는다. 배터리 함대는 씬의 RobotNode 를 그대로 열거해 만들어지고
@@ -246,13 +277,23 @@ end
 """
     _sched_roles(env) -> Dict{Any,Symbol}
 
-활성 스케줄 노드에서 "이 로봇이 지금 무엇을 하는 중인가" 를 읽는다. 분류를 새로 만들지 않고
-`_responsible_robots`(battery.jl:184-192)의 **자기 분기 구조를 그대로 옮긴다**:
+활성 스케줄 노드에서 "이 로봇이 지금 무엇을 하는 중인가" 를 읽는다. **담당 로봇은
+`_responsible_robots`(battery.jl:184-192)에서 받고**(그 목록을 손으로 복제하지 않는다),
+태그만 그 함수의 **분기 구조와 같은 모양으로** 정한다:
 
   `RobotGo`/`RobotStart`                              → `:transport`   (혼자 주행)
   `TransportUnitGo`/`FormTransportUnit`/`DepositCargo` → `:team_member` (운반팀 소속)
 
 한 로봇이 둘 다에 걸리면 팀 소속이 이긴다(`_hz_modes` 가 무거운 모드를 채택하는 것과 같은 규약).
+
+🔴 **왜 `_node_mode` 에서 태그를 유도하지 않는가** (2026-08-20 리뷰 I4, 실측 후 판정).
+`_node_mode` 는 **전력 모드** 분류기라 경계가 다르다: `RobotStart → IDLE`(여기서는 `:transport`,
+스케줄에 14개) · `LiftIntoPlace → MANIPULATE`(여기서는 태그 없음, 33개). 그래서 거기서 태그를
+받으면 RobotStart 위의 로봇 `role` 이 `:transport` → `:idle` 로 **바뀐다**. 게이트 픽스처
+(step 120)의 active_set 은 `RobotGo`·`TransportUnitGo` 뿐이라 그 자리에서는 두 구현이 같은 값을
+내지만(실측: role 차이 0/14), 그 등호는 **분기가 안 걸린 도메인의 등호**라 근거로 못 쓴다.
+대신 여기 분기 목록이 `_responsible_robots` 와 어긋나면 빨개지는 시험을 뒀다 —
+`test/smdp_observe_gate.jl` 의 "계약 (3) — role 분기 목록" (스케줄 342 정점 전수, 실측 불일치 0).
 ⚠️ `env.cache.active_set` 은 `Set` 이라 순회 순서가 정의돼 있지 않다(이 레포가 이미 데인 L5
 결함). 그래서 승자 규칙을 **순서 무관**으로 짰다: `:team_member` 는 언제나 `:transport` 를
 이기고, 같은 등급끼리는 결과가 같다. 정렬로 막는 게 아니라 **연산이 교환법칙을 만족하게** 막는다.
