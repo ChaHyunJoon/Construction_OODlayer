@@ -90,7 +90,11 @@ const NID_MAX   = CB.get_vtx_id(SCHED, V_MAX)
 const MAKESPAN  = BASE_TF[V_MAX]
 const V_MID     = findfirst(v -> 8.0 < BASE_T0[v] < 18.0 && BASE_TF[v] > BASE_T0[v] + 1e-9,
                             1:Graphs.nv(SCHED))
-const NID_MID   = CB.get_vtx_id(SCHED, V_MID)
+# 🔴 `_nid_mid()` 를 여기서 계산하지 않는다. 픽스처가 납작해져 `V_MID === nothing` 이면
+#    `get_vtx_id(SCHED, nothing)` 이 **testset 밖에서** 터져 "비퇴화를 먼저 단언한다"는 성질이
+#    깔끔한 빨강이 아니라 요란한 크래시가 된다. 필요한 자리에서 지연 계산한다.
+_nid_mid() = (V_MID === nothing && error("픽스처 퇴화: 창 [10,20] 과 겹치는 노드가 없다");
+              CB.get_vtx_id(SCHED, V_MID))
 
 @testset "🔴 픽스처가 비퇴화다 (이걸 먼저 단언한다)" begin
     @test Graphs.nv(SCHED) > 100
@@ -179,10 +183,10 @@ end
 end
 
 @testset "🔴 문법 왕복 — ForbidWindow 와 같은 해를 낸다 (게이트 N-G8)" begin
-    fw = CB.ForbidWindow(NID_MID, 10.0, 20.0)
+    fw = CB.ForbidWindow(_nid_mid(), 10.0, 20.0)
     dj = CB.Disjunction(
-        CB.LinearConstraint([(1.0, CB.VarRef(:tF, NID_MID, nothing))], :le, 10.0),
-        CB.LinearConstraint([(1.0, CB.VarRef(:t0, NID_MID, nothing))], :ge, 20.0))
+        CB.LinearConstraint([(1.0, CB.VarRef(:tF, _nid_mid(), nothing))], :le, 10.0),
+        CB.LinearConstraint([(1.0, CB.VarRef(:t0, _nid_mid(), nothing))], :ge, 20.0))
 
     # 비퇴화 — 창이 실제로 걸려서 해가 base 와 갈린다. 이게 아니면 왕복 시험이 항진명제가 된다.
     t_fw = _solved_times(fw)
@@ -199,16 +203,68 @@ end
     # xa 는 노드 둘을 요구한다 — 하나만 주면 죽는다
     @test_throws Exception CB.VarRef(:xa, NID_MAX, nothing)
     # 반대로 t0/tF 는 노드 둘을 받지 않는다
-    @test_throws Exception CB.VarRef(:t0, NID_MAX, NID_MID)
+    @test_throws Exception CB.VarRef(:t0, NID_MAX, _nid_mid())
 
-    # 스케줄에 없는 노드 id → get_vtx 가 조용히 -1 을 돌려주는 자리다. 반드시 죽어야 한다.
-    ghost = CB.ActionID(typemax(Int) - 7)
+end
+
+# =============================================================================
+# 🔴 해석 불가능한 참조는 **예외가 아니라 Reject** 다 (수정 라운드 2)
+# -----------------------------------------------------------------------------
+# 이전 판의 이 시험은 `@test_throws Exception _count_added_constraints(...)` 로 **크래시 경로를
+# 정답으로 못박고 있었다.** 그건 이 태스크가 딛고 선 계약과 어긋난다 —
+# "verify() 는 전이함수의 문이고 거부는 NOOP 과 같은 전이"(llm_bridge.jl:62).
+# 예외는 전이가 아니라 전이의 부재다. 아래는 그 단언을 **뒤집는다**.
+# =============================================================================
+@testset "🔴 해석 불가능한 참조는 Reject 다 (예외로 시뮬을 무너뜨리지 않는다)" begin
+    inv = CB.build_invariant(ENV_)
+
+    # (1) 스케줄에 없는 노드 id. get_vtx 가 조용히 -1 을 돌려주는 자리.
+    ghost    = CB.ActionID(typemax(Int) - 7)
     ghost_cs = CB.LinearConstraint([(1.0, CB.VarRef(:tF, ghost, nothing))], :le, 1.0)
-    @test_throws Exception _count_added_constraints(ghost_cs)
+    v1 = CB.verify(_prop(ghost_cs), ENV_, inv)
+    @test v1 isa CB.Reject
+    @test v1.reason === :unresolvable_reference
+    @test occursin("not a schedule vertex", v1.detail)
 
-    # 후보 배정 엣지가 아닌 (u,v) 를 :xa 로 지목하면 죽는다 (구조적 0 자리를 조용히 무시하지 않는다)
-    bad_xa = CB.LinearConstraint([(1.0, CB.VarRef(:xa, NID_MAX, NID_MID))], :le, 1.0)
-    @test_throws Exception _count_added_constraints(bad_xa)
+    # (2) 🔴 실제로 도달 가능한 사례 — AGENTS 목록의 id 를 t0/tF 에 쓴 경우.
+    #     `_default_id_resolver`(replan.jl:1146-1157)가 그 문자열을 RobotID 로 **정상 해석**하므로
+    #     파싱은 통과하고, 예전 코드에서는 컴파일에서 터져 시뮬 루프까지 풀려 올라갔다.
+    rid = first(sort!([CB.entity(CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, v))).id
+                       for v in Graphs.vertices(SCHED)
+                       if CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, v)) isa CB.RobotStart];
+                      by = string))
+    @test CB.get_vtx(SCHED, rid) == -1              # 비퇴화: 로봇 id 는 정점 id 가 **아니다**
+    agent_cs = CB.LinearConstraint([(1.0, CB.VarRef(:t0, rid, nothing))], :le, 1.0)
+    v2 = CB.verify(_prop(agent_cs), ENV_, inv)
+    @test v2 isa CB.Reject
+    @test v2.reason === :unresolvable_reference
+
+    # (3) 후보 배정 엣지가 아닌 (u,v) 를 :xa 로 지목 — Xa 는 formulate_milp 안에만 있으므로
+    #     (2b) 접지 검사가 아니라 build **백스톱**이 잡는다. 그래도 결과는 Reject 다.
+    bad_xa = CB.LinearConstraint([(1.0, CB.VarRef(:xa, NID_MAX, _nid_mid()))], :le, 1.0)
+    v3 = CB.verify(_prop(bad_xa), ENV_, inv)
+    @test v3 isa CB.Reject
+    @test v3.reason === :ungrammatical
+    @test occursin("compilation failed", v3.detail)
+
+    # (4) Big-M 크기 가드 — 계수가 커지면 "완화된" 쪽이 완화가 아니게 되어 ∨ 가 ∧ 로 조인다.
+    #     상수를 키우면 ForbidWindow 등가가 깨지므로, 계수 쪽을 거부한다.
+    huge = CB.Disjunction(
+        CB.LinearConstraint([(1.0e3, CB.VarRef(:tF, NID_MAX, nothing))], :le, 1.0),
+        CB.LinearConstraint([(1.0,   CB.VarRef(:t0, NID_MAX, nothing))], :ge, 2.0))
+    v4 = CB.verify(_prop(huge), ENV_, inv)
+    @test v4 isa CB.Reject
+    @test v4.reason === :unresolvable_reference
+    @test occursin("Big-M", v4.detail)
+    # 음성 대조: 같은 모양인데 계수만 정상이면 **통과한다**(가드가 전부를 막지 않는다)
+    ok = CB.Disjunction(
+        CB.LinearConstraint([(1.0, CB.VarRef(:tF, NID_MAX, nothing))], :le, 1.0),
+        CB.LinearConstraint([(1.0, CB.VarRef(:t0, NID_MAX, nothing))], :ge, 2.0))
+    @test CB.grammar_ground_check(_prop(ok), SCHED) === nothing
+
+    # (5) 게이트를 **우회한** 내부 호출은 여전히 시끄럽게 죽는다. 이건 LLM 경로가 아니라
+    #     "verify 를 안 거치고 컴파일러를 직접 부른 내부 버그" 의 자리다 — 거기서는 예외가 맞다.
+    @test_throws Exception _count_added_constraints(ghost_cs)
 end
 
 # --- 엔진 내부 경로 회귀 (env 를 mutate 하므로 반드시 맨 마지막) ------------------
@@ -256,4 +312,33 @@ end
     # 🔴 0행이면 "로봇을 제거했다" 고 믿는 조용한 no-op 이다 — 재배정이 아예 안 일어난다.
     @test n >= 1
     @test CB.referenced_ids(CB.ForbidAgent(rid, 0.0)) == (rid,)
+end
+
+# =============================================================================
+# 🔴 끝에서 끝까지 — 해석 불가능한 참조가 **시뮬 루프를 무너뜨리지 않는다** (수정 라운드 2)
+# -----------------------------------------------------------------------------
+# 크래시 경로 실측(수정 전): `_var_of` 의 error() 가
+#   formulate_milp → verify()(verifier.jl:107) → maybe_respecify!(replan.jl:953, **try 없음**)
+#   → respec_step! → route_planning.jl:271 까지 풀려 올라간다.
+# 즉 `Reject` 도 `engage_fallback!` 도 아니고 시뮬레이션 루프가 통째로 죽는다.
+# 아래는 그 정확한 경로를 producer 로 태워서 **`:rejected` 라는 전이가 나오는지** 본다.
+# env 를 mutate 하므로(engage_fallback!) 파일의 맨 마지막이다.
+# =============================================================================
+@testset "🔴 e2e: maybe_respecify! 가 :rejected 를 내고 시뮬이 살아남는다" begin
+    rid = first(sort!([CB.entity(CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, v))).id
+                       for v in Graphs.vertices(SCHED)
+                       if CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, v)) isa CB.RobotStart];
+                      by = string))
+    bad = CB.RespecProposal(CB.ConstraintSpec[
+              CB.LinearConstraint([(1.0, CB.VarRef(:t0, rid, nothing))], :le, 1.0)])
+
+    CB.push_ood!("robot $(rid) reported something the model answered with a bad reference")
+    status = CB.maybe_respecify!(ENV_, CB.RESPEC_QUEUE; producer = (e, ev) -> bad)
+    @test status === :rejected                 # 예외가 아니라 **전이**가 나왔다
+    @info "e2e maybe_respecify! -> $(status)"
+
+    # 그리고 루프가 실제로 계속 돈다 — 수정 전이라면 위 줄에서 이미 예외로 여기 못 온다.
+    CB.step_environment!(ENV_)
+    CB.update_planning_cache!(ENV_, 0.0)
+    @test true
 end

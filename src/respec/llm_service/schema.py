@@ -35,9 +35,9 @@ proposal to the solver. Keep these kinds in lockstep with spec_dsl.jl.
   · TOOL_SCHEMA = {...} — 파이썬 dict 로 손수 적은 JSON schema(Anthropic tool-use 규격).
 ────────────────────────────────────────────────────────────────────────────
 """
-from typing import Annotated, List, Literal, Optional, Union  # 타입 힌트용 도구들(Literal=값 고정, Union=여러 타입 중 하나, Optional=None 가능)
+from typing import Annotated, List, Literal, Union  # 타입 힌트용 도구들(Literal=값 고정, Union=여러 타입 중 하나)
 
-from pydantic import BaseModel, Field  # Pydantic: 필드 선언만으로 검증/파싱 해주는 데이터 모델 라이브러리
+from pydantic import BaseModel, ConfigDict, Field  # Pydantic: 필드 선언만으로 검증/파싱 해주는 데이터 모델 라이브러리
 
 
 # ForbidWindow: 특정 노드를 [t_lo, t_hi] 시간창 동안 활동 금지(순수 시간 제약).
@@ -199,23 +199,42 @@ class SwapBattery(BaseModel):
 class VarRef(BaseModel):
     """One MILP decision variable.
 
-    `kind` is one of exactly three:
-      * "t0" -- the START time of node `node`
-      * "tF" -- the FINISH time of node `node`
-      * "xa" -- the ASSIGNMENT edge `Xa[node, node2]` (`node2` REQUIRED, and the
-                pair must be a candidate assignment edge; inventing one is rejected)
+    `kind` is one of exactly two:
+      * "t0" -- the START time of SCHEDULE NODE `node`
+      * "tF" -- the FINISH time of SCHEDULE NODE `node`
 
-    Reference nodes ONLY by an EXACT id echoed from the prompt's NODES / AGENTS
-    sections. Never invent an id, never use a vertex number: the schedule is
-    re-numbered by graph surgery, so a number means a different node afterwards.
+    🔴 `node` must be a SCHEDULE-NODE id -- one echoed from the prompt's NAMED NODES
+    section or its "ALL still-open node ids" list. It must NEVER be an AGENTS (robot)
+    id: a robot is not a schedule vertex, and such a reference is REJECTED.
+    Never invent an id, and never use a vertex number: graph surgery renumbers
+    vertices, so a number means a different node afterwards.
+
+    (The Julia `VarRef` type also has an "xa" kind for assignment edges `Xa[u,v]`,
+    used internally by `ForbidAgent`. It is deliberately NOT emittable: the prompt
+    ships no list of which (u,v) pairs are actual decision variables, so the model
+    has no way to instantiate it correctly. See llm_bridge.jl EMITTABLE_VARREF_KINDS.)
     """
-    kind: Literal["t0", "tF", "xa"]  # 셋뿐. 그 밖의 값은 여기서, 그리고 줄리아 VarRef 생성자에서 또 걸린다
-    node: str                        # 프롬프트가 준 정확한 노드/로봇 id (지어내지 말 것)
-    node2: Optional[str] = None      # "xa" 일 때만 필수(Xa[node, node2]); 나머지 kind 에서는 반드시 생략
+    # 🔴 `extra="forbid"` — 줄리아 생성자가 거부하는 것을 스키마도 거부하게 만든다.
+    #    Pydantic 기본값은 모르는 키를 **조용히 버리는 것**이라, `node2` 같은 필드를 실어 보내도
+    #    검증을 통과해 놓고 줄리아 파서에서 죽는다. 그게 정확히 "싼 표면에서 안 거르는" 실패다.
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["t0", "tF"]   # 둘뿐. `xa` 는 타입에는 있지만 emit 대상이 아니다(위 설명).
+    node: str                   # 프롬프트가 준 정확한 **스케줄 노드** id (로봇 id 가 아니다)
+
+    # `node2` 필드는 **의도적으로 없다.** `:xa` 가 emit 불가이므로 node2 는 어떤 경우에도
+    # 유효하지 않고, 필드를 아예 없애는 것이 `model_validator` 로 XOR 을 검사하는 것보다
+    # 강하게 강제한다(모델이 애초에 보낼 수 없다). 줄리아 `VarRef` 생성자도 같은 규칙이다:
+    # `:t0`/`:tF` 에 node2 를 주면 error.
 
 
 class Term(BaseModel):
     """One `coeff * var` term of a linear constraint."""
+    # 🔴 `extra="forbid"` — 줄리아 생성자가 거부하는 것을 스키마도 거부하게 만든다.
+    #    Pydantic 기본값은 모르는 키를 **조용히 버리는 것**이라, `node2` 같은 필드를 실어 보내도
+    #    검증을 통과해 놓고 줄리아 파서에서 죽는다. 그게 정확히 "싼 표면에서 안 거르는" 실패다.
+    model_config = ConfigDict(extra="forbid")
+
     coeff: float   # 계수
     var: VarRef    # 그 계수가 곱해지는 결정변수
 
@@ -241,8 +260,16 @@ class LinearConstraint(BaseModel):
     proposal is trial-solved with your constraint injected, and rejected if the
     problem becomes infeasible or if it re-times already-completed work.
     """
+    # 🔴 `extra="forbid"` — 줄리아 생성자가 거부하는 것을 스키마도 거부하게 만든다.
+    #    Pydantic 기본값은 모르는 키를 **조용히 버리는 것**이라, `node2` 같은 필드를 실어 보내도
+    #    검증을 통과해 놓고 줄리아 파서에서 죽는다. 그게 정확히 "싼 표면에서 안 거르는" 실패다.
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal["LinearConstraint"] = "LinearConstraint"
-    terms: List[Term]           # 비어 있으면 안 됨(0개 제약 = hollow admit)
+    # 🔴 `min_length=1` — docstring 이 "NON-EMPTY" 라고만 적고 강제는 안 하던 자리였다.
+    #    0개 항은 hollow admit 이라 줄리아 `LinearConstraint` 생성자가 error 한다.
+    #    같은 규칙을 **가장 싼 표면**(스키마 검증)에서 먼저 건다.
+    terms: List[Term] = Field(..., min_length=1)
     rel: Literal["le", "ge", "eq"]
     rhs: float
 
@@ -261,6 +288,11 @@ class Disjunction(BaseModel):
     Both halves must be LinearConstraints over the SAME schedule. It compiles to a
     Big-M encoding with one auxiliary binary, so it only shrinks the feasible set.
     """
+    # 🔴 `extra="forbid"` — 줄리아 생성자가 거부하는 것을 스키마도 거부하게 만든다.
+    #    Pydantic 기본값은 모르는 키를 **조용히 버리는 것**이라, `node2` 같은 필드를 실어 보내도
+    #    검증을 통과해 놓고 줄리아 파서에서 죽는다. 그게 정확히 "싼 표면에서 안 거르는" 실패다.
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal["Disjunction"] = "Disjunction"
     left: LinearConstraint
     right: LinearConstraint
@@ -316,9 +348,10 @@ _VARREF_SCHEMA = {
     "type": "object",
     "required": ["kind", "node"],
     "properties": {
-        "kind": {"type": "string", "enum": ["t0", "tF", "xa"]},
-        "node": {"type": "string"},
-        "node2": {"type": "string"},   # "xa" 일 때만 (Xa[node, node2])
+        # 🔴 emit 가능한 결정변수는 둘뿐. `xa` 는 타입에는 있지만 여기 없다
+        #    (프롬프트가 후보 엣지 목록을 안 실어서 유효한 인스턴스가 없다).
+        "kind": {"type": "string", "enum": ["t0", "tF"]},
+        "node": {"type": "string"},   # 스케줄 **노드** id (로봇 id 가 아니다)
     },
 }
 _LINEAR_SCHEMA = {
@@ -327,6 +360,7 @@ _LINEAR_SCHEMA = {
     "properties": {
         "terms": {
             "type": "array",
+            "minItems": 1,               # 🔴 0개 항 = hollow admit. 스키마에서 먼저 막는다.
             "items": {
                 "type": "object",
                 "required": ["coeff", "var"],
@@ -373,6 +407,7 @@ TOOL_SCHEMA = {
                         # --- L2-a 문법 (LinearConstraint / Disjunction) ---
                         "terms": {                     # LinearConstraint: Σ coeff·var
                             "type": "array",
+                            "minItems": 1,             # 🔴 0개 항 = hollow admit
                             "items": {
                                 "type": "object",
                                 "required": ["coeff", "var"],

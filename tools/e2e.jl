@@ -157,9 +157,13 @@ function start_mock(port)
             # tools/demos.jl:560-566 의 mock 과 같은 규칙.
             ev = haskey(body, "event") ? lowercase(String(body["event"])) : ""
             if occursin("team", ev) && (occursin("deadlock", ev) || occursin("stalled", ev))
+                # 🔴 2026-08-21 D-9 (Task C2): `ReformTeam` 은 emit 가능 집합에서 빠졌다 — 팀 교착
+                #    해소는 `maybe_unwedge_nominal!` 로 **명목 레인**에 이관됐다(재명세 행동이 아니다).
+                #    그래서 이 mock 도 실제 LLM 과 같은 답을 낸다: 제약 없음.
                 return HTTP.Response(200, JSON3.write(Dict(
-                    "constraints" => [Dict("kind" => "ReformTeam")],
-                    "rationale" => "mock: transport team deadlocked while forming -> re-establish it")))
+                    "constraints" => Any[],
+                    "rationale" => "mock (D-9): team deadlock is handled by the nominal lane " *
+                                   "(maybe_unwedge_nominal!), not by a re-spec action")))
             end
             # ---- 정정된 결정 표 (2026-08-05) -------------------------------------------
             # 이 mock 은 **실제 LLM 이 프롬프트에서 보는 것과 똑같은 두 필드**(covers / covers_root)
@@ -180,16 +184,19 @@ function start_mock(port)
             # 문서상 PASS(완주)였던 이 테스트가 그 사이 회귀해 있었다(forbidzone_llm_layer_status.md).
             cov = isempty(zones) ? [] : zones[1]["covers"]
             croot = !isempty(zones) && haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
+            # 🔴 2026-08-21 D-9 (Task C2): `ForbidZone` · `RelocateBuild` 가 emit 가능 집합에서 빠졌다.
+            #    C2 시점에 **공간형 kind 는 하나도 emittable 이 아니다**(C3 의 `TranslateBuild` 가
+            #    다시 연다). 그래서 이 두 갈래도 실제 프롬프트가 지시하는 답 — **제약 없음** — 을 낸다
+            #    (propose.py: "If the event is purely a SPATIAL exclusion, propose NOTHING").
+            #    ⚠️ 위의 covers/covers_root 결정표는 C3 에서 TranslateBuild 로 되살릴 자리다.
             if !isempty(cov)
-                aid = String(first(cov))                     # 구역이 실제로 덮는 조립체를 grounding
-                resp = Dict("constraints" => [Dict("kind" => "ForbidZone", "zone" => zkey, "assembly" => aid)],
-                            "rationale" => "mock: zone covers $(length(cov)) relocatable staging area(s) " *
-                                           "-> local restage (escalates to whole-build if residual remains)")
+                resp = Dict("constraints" => Any[],
+                            "rationale" => "mock (D-9): zone covers $(length(cov)) staging area(s) but no " *
+                                           "spatial kind is emittable until C3 TranslateBuild -> propose nothing")
             elseif croot
-                # RelocateBuild 는 assembly 를 지목하지 않는다(빌드 전체가 움직이므로 grounding 대상이 없음).
-                resp = Dict("constraints" => [Dict("kind" => "RelocateBuild", "zone" => zkey)],
-                            "rationale" => "mock: no relocatable staging area left but the zone traps ROOT " *
-                                           "deposit goals -> only a whole-build translation can clear it")
+                resp = Dict("constraints" => Any[],
+                            "rationale" => "mock (D-9): zone traps ROOT deposit goals but no spatial kind is " *
+                                           "emittable until C3 TranslateBuild -> propose nothing")
             else
                 resp = Dict("constraints" => Any[],
                             "rationale" => "mock: zone blocks no goal (detour-only) -> restraint is cheaper " *

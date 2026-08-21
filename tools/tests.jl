@@ -150,12 +150,16 @@ println("    -> ", isempty(zd) ? "(none)" : zd[1])
 
 resolver = ref -> CB._default_id_resolver(env, ref)
 asm_id = CB.open_node_descriptors(env)[1]["id"]    # a valid AssemblyComplete node id string
-println("\n[2] _parse_proposal with a ForbidZone JSON (assembly=$asm_id)")
-payload_ok = JSON3.read(JSON3.write(Dict(
-    "constraints" => [Dict("kind" => "ForbidZone", "zone" => "zone", "assembly" => asm_id)],
-    "rationale" => "central zone blocks the build core")))
-prop = CB._parse_proposal(payload_ok, "A no-go zone is active over the build core."; id_resolver=resolver)
-check("parsed 1 constraint", length(prop.constraints) == 1)
+println("\n[2] typed ForbidZone proposal (assembly=$asm_id)")
+# 🔴 2026-08-21 D-9 (Task C2): 이 kind 는 **emit 가능 집합에서 빠졌다** — `_parse_proposal` 이
+#    이제 거부한다. 하지만 **타입·게이트·집행부는 그대로 살아 있고**(엔진 내부 생산자가 쓴다)
+#    이 블록이 실제로 검증하는 것은 그쪽(verify + enact)이다. 그래서 JSON 파싱 단계만 걷어내고
+#    타입을 직접 만든다. emit 가능 kind 의 파싱 왕복은 test/respec_action_space.jl 이 더
+#    엄격하게(세 표면 집합 등식으로) 검사한다.
+prop = CB.RespecProposal(CB.ConstraintSpec[CB.ForbidZone(resolver(asm_id), :zone)],
+                         "central zone blocks the build core",
+                         "A no-go zone is active over the build core.")
+check("built 1 constraint", length(prop.constraints) == 1)
 check("constraint isa ForbidZone", !isempty(prop.constraints) && prop.constraints[1] isa CB.ForbidZone)
 check("zone symbol == :zone", !isempty(prop.constraints) && prop.constraints[1].zone == :zone)
 check("_is_zone_respec true", CB._is_zone_respec(prop))
@@ -169,12 +173,12 @@ prop_badzone = CB.RespecProposal([CB.ForbidZone(resolver(asm_id), :ghost)], "x",
 v_bad = CB.verify_zone(prop_badzone, env)
 check("verify_zone Reject(:no_such_zone)", v_bad isa CB.Reject && v_bad.reason == :no_such_zone)
 
-println("\n[5] parser rejects an unknown assembly id (throws -> Reject upstream)")
+println("\n[5] resolver rejects an unknown assembly id (throws -> Reject upstream)")
+# D-9 로 ForbidZone JSON 자체가 거부되므로, 여기서 재는 것은 **id 해석기**다 —
+# 모르는 id 는 조용히 넘어가지 않고 예외를 던진다(그 성질이 이 블록의 요점이었다).
 threw = false
 try
-    CB._parse_proposal(JSON3.read(JSON3.write(Dict(
-        "constraints" => [Dict("kind" => "ForbidZone", "zone" => "zone", "assembly" => "NOPE_999")]))),
-        "x"; id_resolver=resolver)
+    resolver("NOPE_999")
 catch
     threw = true
 end
@@ -346,13 +350,17 @@ gs = CB.root_deposit_goals(env)
 zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
 CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)
 
-println("\n[1] _parse_proposal with a RelocateBuild JSON")
+println("\n[1] typed RelocateBuild proposal")
 resolver = ref -> CB._default_id_resolver(env, ref)
-payload_ok = JSON3.read(JSON3.write(Dict(
-    "constraints" => [Dict("kind" => "RelocateBuild", "zone" => "zone")],
-    "rationale" => "zone covers un-relocatable core goals; shift the whole build")))
-prop = CB._parse_proposal(payload_ok, "A no-go zone is active over the build core."; id_resolver=resolver)
-check("parsed 1 constraint", length(prop.constraints) == 1)
+# 🔴 2026-08-21 D-9 (Task C2): 이 kind 는 **emit 가능 집합에서 빠졌다** — `_parse_proposal` 이
+#    이제 거부한다. 하지만 **타입·게이트·집행부는 그대로 살아 있고**(엔진 내부 생산자가 쓴다)
+#    이 블록이 실제로 검증하는 것은 그쪽(verify + enact)이다. 그래서 JSON 파싱 단계만 걷어내고
+#    타입을 직접 만든다. emit 가능 kind 의 파싱 왕복은 test/respec_action_space.jl 이 더
+#    엄격하게(세 표면 집합 등식으로) 검사한다.
+prop = CB.RespecProposal(CB.ConstraintSpec[CB.RelocateBuild(:zone)],
+                         "zone covers un-relocatable core goals; shift the whole build",
+                         "A no-go zone is active over the build core.")
+check("built 1 constraint", length(prop.constraints) == 1)
 check("constraint isa RelocateBuild", !isempty(prop.constraints) && prop.constraints[1] isa CB.RelocateBuild)
 check("zone symbol == :zone", !isempty(prop.constraints) && prop.constraints[1].zone == :zone)
 check("_is_relocate_build true", CB._is_relocate_build(prop))
@@ -1381,17 +1389,21 @@ mixed = CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(r5), CB.ForbidW
 # a mixed proposal's DeprioritizeAgent is harmless on the generic compile path (no-op):
 @check CB.compile_constraint!(nothing, nothing, nothing, nothing, nothing, mixed.constraints[1]) == 0
 
-println("== LLM->Julia decode: _parse_proposal maps DeprioritizeAgent JSON -> typed spec ==")
+println("== typed DeprioritizeAgent spec (D-9: no longer LLM-emittable) ==\n")
 resolver = s -> CB.RobotID(7)                            # trivial id resolver for the test
-payload = Dict("constraints" => [Dict("kind" => "DeprioritizeAgent", "agent" => "RobotID(7)", "factor" => 80.0)],
-               "rationale" => "battery low")
-prop = CB._parse_proposal(payload, "R7 battery low"; id_resolver = resolver)
+# 🔴 2026-08-21 D-9 (Task C2): 이 kind 는 **emit 가능 집합에서 빠졌다** — `_parse_proposal` 이
+#    이제 거부한다. 하지만 **타입·게이트·집행부는 그대로 살아 있고**(엔진 내부 생산자가 쓴다)
+#    이 블록이 실제로 검증하는 것은 그쪽(verify + enact)이다. 그래서 JSON 파싱 단계만 걷어내고
+#    타입을 직접 만든다. emit 가능 kind 의 파싱 왕복은 test/respec_action_space.jl 이 더
+#    엄격하게(세 표면 집합 등식으로) 검사한다.
+prop = CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(CB.RobotID(7), 80.0)],
+                         "battery low", "R7 battery low")
 @check length(prop.constraints) == 1
 @check prop.constraints[1] isa CB.DeprioritizeAgent
 @check prop.constraints[1].agent == CB.RobotID(7)
 @check prop.constraints[1].factor == 80.0
-payload2 = Dict("constraints" => [Dict("kind" => "DeprioritizeAgent", "agent" => "RobotID(7)")], "rationale" => "")
-@check CB._parse_proposal(payload2, "x"; id_resolver = resolver).constraints[1].factor == 50.0   # default
+# factor 기본값 50.0 은 줄리아 외부 생성자가 준다(spec_dsl.jl:266) — 파서가 아니라 거기가 원본이다.
+@check CB.DeprioritizeAgent(CB.RobotID(7)).factor == 50.0
 threw = Ref(false)
 try CB._parse_proposal(Dict("constraints" => [Dict("kind" => "Sabotage")], "rationale" => ""), "x"; id_resolver = resolver)
 catch; threw[] = true end

@@ -84,7 +84,8 @@ function llm_to_proposal(event, env; id_resolver)
     resp.status == 200 || error("respec service returned HTTP $(resp.status): $(String(resp.body))")
     # `$(...)` : 문자열 안에 값을 끼워 넣는 보간(파이썬 f-string 의 {} 와 같음).
     payload = JSON3.read(resp.body)                        # 응답 본문(JSON)을 줄리아에서 다룰 수 있는 객체로 파싱
-    return _parse_proposal(payload, event; id_resolver = id_resolver)  # 파싱된 JSON 을 타입 있는 제안 객체로 변환해 반환
+    # sched 를 넘겨 파싱 단계에서 참조 접지까지 확인한다(MILP 를 세우기 전에 걸린다).
+    return _parse_proposal(payload, event; id_resolver = id_resolver, sched = env.sched)
 end
 
 """
@@ -318,11 +319,38 @@ const EMITTABLE_KINDS = ("Disjunction", "LinearConstraint", "ReplaceAgent", "Swa
 #   Disjunction       {"kind":"Disjunction", "left":<LinearConstraint>, "right":<LinearConstraint>}
 # 모르는 rel / 모르는 VarRef kind / 빈 terms / 모르는 노드 id 는 전부 예외다(조용한 폴백 금지).
 
+"""
+    EMITTABLE_VARREF_KINDS
+
+🔴 LLM 이 emit 할 수 있는 **결정변수 종류**. `VarRef` **타입**은 `:xa` 도 받지만
+(`ForbidAgent ≡ Xa[u,v]=0`, 게이트 N-G8 이 그 등가를 쓴다) LLM 에게는 열지 않는다.
+
+**왜 `:xa` 를 안 여는가 (2026-08-21 실측):**
+ 1. 프롬프트가 **어떤 `(u,v)` 가 실제 결정변수인지 목록을 주지 않는다.** `Xa` 는 희소행렬이고
+    구조적 0 자리가 대부분이라, 모델은 유효한 쌍을 고를 방법이 없다 — 즉 유효한 인스턴스가
+    존재하지 않는 형식을 광고하는 셈이 된다(= 함정).
+ 2. 관측된 판에서 후보 배정 엣지 **423개 중 최적해가 고른 것은 0개**다
+    (test/respec_grammar.jl 헤더). 그 판에서는 `Xa` 위의 제약이 해를 **바꿀 수도 없다**.
+ 3. 후보 엣지 목록을 프롬프트에 실으려면 새 디스크립터 + `/propose` 요청 스키마 확장이 필요하다.
+    그건 C2 범위 밖이고, 결속되는 판이 확보된 뒤에 해야 의미가 있다.
+
+⇒ `schema.py` 의 `VarRef.kind` Literal · `TOOL_SCHEMA` · 프롬프트 산문과 **집합으로 같아야 한다**
+   (`test/respec_action_space.jl` 이 단언한다). 정렬된 튜플.
+"""
+const EMITTABLE_VARREF_KINDS = ("t0", "tF")
+
 "JSON 의 VarRef 하나를 타입 있는 `VarRef` 로. 모르는 kind·id 는 예외."
 function _parse_varref(v; id_resolver)
-    k = Symbol(String(v["kind"]))
-    n2 = (haskey(v, "node2") && v["node2"] !== nothing) ? id_resolver(String(v["node2"])) : nothing
-    return VarRef(k, id_resolver(String(v["node"])), n2)   # kind 검사는 VarRef 생성자가 한다
+    ks = String(v["kind"])
+    ks in EMITTABLE_VARREF_KINDS ||
+        error("VarRef kind '$ks' is not emittable. emittable = " *
+              join(EMITTABLE_VARREF_KINDS, " | ") *
+              (ks == "xa" ? " (:xa exists in the type but the prompt ships no candidate-edge " *
+                            "list, so it has no valid instantiation — see EMITTABLE_VARREF_KINDS)" : ""))
+    # emittable kind 는 노드 하나만 받는다. node2 가 오면 조용히 버리지 않고 죽는다.
+    haskey(v, "node2") && v["node2"] !== nothing &&
+        error("VarRef('$ks'): node2 is only meaningful for :xa, which is not emittable")
+    return VarRef(Symbol(ks), id_resolver(String(v["node"])), nothing)
 end
 
 "JSON 의 LinearConstraint 하나를 타입 있는 `LinearConstraint` 로."
@@ -337,7 +365,11 @@ function _parse_linear(c; id_resolver)
     return LinearConstraint(terms, Symbol(String(c["rel"])), Float64(c["rhs"]))
 end
 
-function _parse_proposal(payload, event; id_resolver)
+# 🔴 `sched` 를 받으면 **파싱 단계에서** 참조 접지를 확인한다(가장 싼 표면 — MILP 를 세우기
+#    전에 걸러진다). 실전 경로(`llm_to_proposal`)는 언제나 `env.sched` 를 넘긴다.
+#    `sched = nothing` 은 스텁 resolver 로 도는 단위시험용이고, 그 경우에도 **권위 있는 관문은
+#    언제나 `verify()`** 다(verifier.jl 의 `grammar_ground_check` + build 백스톱).
+function _parse_proposal(payload, event; id_resolver, sched = nothing)
     cs = ConstraintSpec[]                   # 제약(constraint) 객체들을 담을 빈 배열 (원소 타입은 ConstraintSpec)
     for c in payload["constraints"]         # JSON 의 "constraints" 배열을 하나씩 순회 (c 는 제약 하나)
         kind = String(c["kind"])            # 제약 종류 문자열(emit 가능한 것은 EMITTABLE_KINDS 뿐)
@@ -370,6 +402,16 @@ function _parse_proposal(payload, event; id_resolver)
     end
     # 삼항 연산자: "rationale" 키가 있으면 그 문자열을, 없으면 빈 문자열을 rationale 에 담음.
     rationale = haskey(payload, "rationale") ? String(payload["rationale"]) : ""
+    prop = RespecProposal(cs, rationale, String(event))
+    # 스케줄을 알면 여기서 접지를 확인한다. 실패는 예외 — 이 함수의 기존 계약 그대로이고
+    # (`llm_to_proposal` docstring), 호출부(`maybe_respecify!` replan.jl:355-375)가 그것을
+    # 잡아 사건 심각도로 분기한다. 즉 시뮬 루프는 안 무너진다.
+    if sched !== nothing
+        rej = grammar_ground_check(prop, sched)
+        rej === nothing ||
+            error("proposal references something that is not a decision variable " *
+                  "($(rej.reason)): $(rej.detail)")
+    end
     # 제약 목록 + 근거(rationale) + 원본 이벤트 문자열을 묶어 타입 있는 RespecProposal 객체로 반환.
-    return RespecProposal(cs, rationale, String(event))
+    return prop
 end

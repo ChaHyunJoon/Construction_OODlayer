@@ -98,16 +98,33 @@ function verify(proposal::RespecProposal, env, invariant::InvariantSpec;
         end
     end
 
+    # (2b) GROUNDING — L2-a 문법이 참조하는 결정변수가 실제로 해석되는가.
+    # 🔴 MILP 를 세우기 **전에** 본다: 해석 불가는 예외가 아니라 Reject 여야 한다
+    #     (아래 grammar_ground_check 의 주석 참조 — 예외는 전이가 아니다).
+    let rej = grammar_ground_check(proposal, env.sched)
+        rej === nothing || return rej
+    end
+
     # (3) FEASIBILITY — build the model WITH the proposal and the freeze
     # constraints, solve, and confirm a feasible point exists.
-    milp = formulate_milp(                               # 제안 + 고정조건을 넣은 MILP(혼합정수계획) 모델을 실제로 구성
-        SparseAdjacencyMILP(), env.sched, env.scene_tree;  # 모델 종류, 스케줄, 장면트리 (`;` 뒤부터 키워드 인자)
-        optimizer = optimizer,                           # 사용할 솔버
-        t0_ = invariant.frozen_t0,        # pin completed/in-progress work  # 완료/진행중 작업의 시작시각 고정
-        tF_ = invariant.frozen_tF,                       # 완료 작업의 종료시각 고정
-        warm_start_soln = warm_start,     # optional: pre-fault assignment, for fast feasibility  # (선택) 시작 추정해, 빠른 풀이용
-        extra_constraints = proposal,     # <-- the injected re-specification  # 바로 이 제안을 추가 제약으로 주입
-    )
+    # 🔴 build 를 try 로 감싼다(백스톱). (2b) 가 잡지 못하는 컴파일 오류 — 대표적으로 `:xa` 가
+    #    후보 배정 엣지가 아닌 경우(Xa 는 formulate_milp 안에서만 존재한다) — 도 **Reject** 가
+    #    되어야 한다. 여기서 예외가 새면 maybe_respecify!(replan.jl:953, try 없음)를 지나
+    #    route_planning.jl:271 까지 풀려 올라가 시뮬 루프를 무너뜨린다.
+    milp = try
+        formulate_milp(                                  # 제안 + 고정조건을 넣은 MILP(혼합정수계획) 모델을 실제로 구성
+            SparseAdjacencyMILP(), env.sched, env.scene_tree;  # 모델 종류, 스케줄, 장면트리
+            optimizer = optimizer,                       # 사용할 솔버
+            t0_ = invariant.frozen_t0,    # pin completed/in-progress work  # 완료/진행중 작업의 시작시각 고정
+            tF_ = invariant.frozen_tF,                   # 완료 작업의 종료시각 고정
+            warm_start_soln = warm_start, # optional: pre-fault assignment, for fast feasibility
+            extra_constraints = proposal, # <-- the injected re-specification
+        )
+    catch err
+        # 시끄럽게, 그러나 **전이로**. 사유와 원문 예외를 그대로 감사 로그에 남긴다.
+        return Reject(:ungrammatical,
+                      "constraint compilation failed: $(sprint(showerror, err))")
+    end
     optimize!(milp)                                      # 모델을 실제로 풀어봄(`!` = milp 를 직접 수정)
 
     # Match the codebase's own success check (full_demo.jl:431, 462).
@@ -371,6 +388,94 @@ function verify_replace(proposal::RespecProposal, env)
         end
     end
     return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
+end
+
+# =============================================================================
+# 2026-08-21 (Task C2 · 수정 라운드 2) — 참조 접지 검사: **예외가 아니라 Reject**
+# -----------------------------------------------------------------------------
+# 🔴 왜 이게 있어야 하는가. `(t0, tF, Xa)` 를 LLM 에게 연 순간, **파싱은 되는데 컴파일에서
+#    죽는** 입력이 도달 가능해졌다. 대표 사례: `VarRef(:t0, <agent id>)` —
+#    `_default_id_resolver`(replan.jl:1146-1157)가 AGENTS 목록의 문자열을 `RobotID` 로
+#    정상 해석해 주지만, `get_vtx(sched, ::RobotID)` 는 **-1** 이다(RobotID 는 정점 id 가 아니다).
+#    그러면 `_var_of` 의 `error()` 가 `formulate_milp` → `verify()` → `maybe_respecify!`
+#    (replan.jl:953, **try 없음**) → `respec_step!` → `route_planning.jl:271` 까지 그대로
+#    풀려 올라가 **시뮬 루프를 무너뜨린다.**
+#
+# 🔴 그것은 이 태스크가 딛고 선 계약과 정면으로 어긋난다 —
+#    "`verify()` 는 전이함수의 문이고 거부는 NOOP 과 같은 전이"(llm_bridge.jl:62).
+#    예외는 전이가 아니라 **전이의 부재**다. 모든 행동이 전이로 사상돼야 하는 SMDP 에서
+#    파싱되는 행동이 전이를 못 내면 그건 안전장치가 아니라 모형의 구멍이다.
+#
+# 🔴 remap 하지 않는다(조용한 폴백 금지). 그 규칙이 금지하는 것은 **성공한 척하기**이지
+#    **실패를 분류하기**가 아니다. `Reject(:unresolvable_reference, …)` 는 시끄럽고,
+#    로그에 남고, 감사 가능하며, 전이함수가 정의된 결과다.
+# =============================================================================
+
+"formulate_milp 의 시간변수 Big-M 기본값(essential_tg_coponents.jl:1059 `Mm=10000`).
+ 시간변수의 실효 상한으로 쓴다 — Disjunction 의 Big-M 이 실제로 완화 역할을 하는지 볼 때."
+const _MILP_VAR_BOUND = 1.0e4
+
+# VarRef 하나가 이 스케줄에서 해석 가능한가. 문제가 있으면 설명 문자열, 없으면 nothing.
+function _varref_problem(sched, r::VarRef)
+    get_vtx(sched, r.node) > 0 ||
+        return "VarRef($(r.kind)) references $(r.node), which is not a schedule vertex " *
+               "(get_vtx -> $(get_vtx(sched, r.node))). Agent ids are NOT vertex ids."
+    if r.node2 !== nothing
+        get_vtx(sched, r.node2) > 0 ||
+            return "VarRef(:xa) references $(r.node2), which is not a schedule vertex " *
+                   "(get_vtx -> $(get_vtx(sched, r.node2)))."
+    end
+    return nothing
+end
+
+# LinearConstraint 하나의 접지 + 크기 검사. `bigm` 이 주어지면 Big-M 완화가 실제로
+# 완화인지도 본다(아래 Disjunction 참조).
+function _linear_problem(sched, cs::LinearConstraint; bigm = nothing)
+    for (_, r) in cs.terms                    # Vector 순회 = 결정적
+        p = _varref_problem(sched, r)
+        p === nothing || return p
+    end
+    if bigm !== nothing
+        # 🔴 Big-M 이 계수에 대해 충분히 큰가. `_DISJ_BIGM` 은 `ForbidWindow` 와 같아야 해서
+        #    고정이다(문법 왕복이 그 위에 선다). 그래서 상수를 키우는 대신 **계수를 거부**한다.
+        #    보수적 상계: |Σ c·var − rhs| ≤ Σ|c|·VAR_BOUND + |rhs|.
+        #    이걸 안 하면 큰 계수에서 "완화된" 쪽이 완화가 아니게 되어 ∨ 가 조용히 ∧ 로 조인다.
+        span = sum(abs(c) for (c, _) in cs.terms) * _MILP_VAR_BOUND + abs(cs.rhs)
+        span <= bigm ||
+            return "Disjunction half is too large for the Big-M relaxation: " *
+                   "Σ|c|·$(_MILP_VAR_BOUND) + |rhs| = $(span) > M = $(bigm). " *
+                   "Use smaller coefficients — widening M would break ForbidWindow equivalence."
+    end
+    return nothing
+end
+
+"""
+    grammar_ground_check(proposal, sched) -> Union{Nothing,Reject}
+
+L2-a 문법(`LinearConstraint`·`Disjunction`)이 참조하는 결정변수를 **MILP 를 세우기 전에**
+전부 해석해 본다. 통과하면 `nothing`, 아니면 `Reject` 를 돌려준다 — **예외가 아니다.**
+
+다른 kind 들은 이 검사에 해당 없음(`nothing`)이다: 그들의 접지는 이미 각자의
+`verify_*` 와 `verify()` 2단계(과거불가침)가 본다.
+
+⚠️ `:xa` 후보 엣지 여부는 여기서 못 본다 — `Xa` 는 `formulate_milp` 안에서만 존재한다.
+   그래서 (a) `:xa` 는 **LLM emit 대상에서 뺐고**(llm_bridge.jl `EMITTABLE_VARREF_KINDS`),
+   (b) `verify()` 3단계의 build 를 `try` 로 감싸 어떤 컴파일 오류도 `Reject` 가 되게 했다.
+"""
+function grammar_ground_check(proposal::RespecProposal, sched)
+    for cs in proposal.constraints                    # Vector 순회 = 결정적
+        p = if cs isa LinearConstraint
+            _linear_problem(sched, cs)
+        elseif cs isa Disjunction
+            something(_linear_problem(sched, cs.left;  bigm = _DISJ_BIGM),
+                      _linear_problem(sched, cs.right; bigm = _DISJ_BIGM),
+                      Some(nothing))
+        else
+            nothing
+        end
+        p === nothing || return Reject(:unresolvable_reference, p)
+    end
+    return nothing
 end
 
 # --- which schedule ids does a spec touch (for the closed-node check) ---------

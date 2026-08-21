@@ -126,6 +126,18 @@ end
                    "terms" => [Dict("coeff" => 1.0, "var" => Dict("kind" => "tF", "node" => "N1"))])
     @test_throws Exception CB._parse_proposal(
         JSON3.read(JSON3.write(Dict("constraints" => [bad_rel]))), "s"; id_resolver = _resolver)
+    # 🔴 :xa 는 타입에는 있지만 **emit 불가**다 — 파서가 죽인다(조용히 무시하지 않는다)
+    xa_var = Dict("kind" => "LinearConstraint", "rel" => "le", "rhs" => 1.0,
+                  "terms" => [Dict("coeff" => 1.0,
+                                   "var" => Dict("kind" => "xa", "node" => "N1", "node2" => "N2"))])
+    @test_throws Exception CB._parse_proposal(
+        JSON3.read(JSON3.write(Dict("constraints" => [xa_var]))), "s"; id_resolver = _resolver)
+    # t0/tF 에 node2 를 실어 보내도 죽는다
+    n2_var = Dict("kind" => "LinearConstraint", "rel" => "le", "rhs" => 1.0,
+                  "terms" => [Dict("coeff" => 1.0,
+                                   "var" => Dict("kind" => "tF", "node" => "N1", "node2" => "N2"))])
+    @test_throws Exception CB._parse_proposal(
+        JSON3.read(JSON3.write(Dict("constraints" => [n2_var]))), "s"; id_resolver = _resolver)
     bad_var = Dict("kind" => "LinearConstraint", "rel" => "le", "rhs" => 1.0,
                    "terms" => [Dict("coeff" => 1.0, "var" => Dict("kind" => "zz", "node" => "N1"))])
     @test_throws Exception CB._parse_proposal(
@@ -149,11 +161,28 @@ end
 @testset "🔴 세 emit 표면(파서 · schema.py · propose.py 프롬프트)이 같은 집합이다" begin
     py = joinpath(pkgdir(CB), ".venv", "bin", "python")
     isfile(py) || error("세 표면을 대조하려면 레포 루트의 .venv 파이썬이 필요하다: $(py)")
+    # 🔴 검사 우주를 **`schema.py` 의 BaseModel 들에서 파생**시킨다 (수정 라운드 2).
+    #    이전 판은 `ADVERTISED_KINDS ∪ RETIRED_KINDS` 를 썼는데, 둘 다 **검사 대상 파일 안에서**
+    #    선언된다 — 두 튜플 어디에도 없는 kind 가 산문에 나타나면 안 보인다. 줄리아 쪽은 이미
+    #    `subtypes(CB.ConstraintSpec)` 로 파생 우주를 쓴다. 파이썬도 같은 규율로 맞춘다.
     code = """
-import sys, json, typing
+import sys, json, typing, inspect, pydantic
 sys.path.insert(0, r"$(joinpath(pkgdir(CB), "src", "respec", "llm_service"))")
 import schema, propose
 union = typing.get_args(typing.get_args(schema.ConstraintSpec)[0])
+
+def _kind_default(c):
+    f = c.model_fields.get("kind")
+    if f is None:
+        return None
+    d = f.default
+    return d if isinstance(d, str) else None
+
+# 파생 우주: schema.py 가 **정의한** 모든 BaseModel 의 kind 리터럴 (은퇴한 여섯 클래스 포함)
+universe = sorted({k for _, c in inspect.getmembers(schema, inspect.isclass)
+                   if issubclass(c, pydantic.BaseModel)
+                   for k in [_kind_default(c)] if k})
+
 prompt = propose._build_prompt(
     "stub event", ["N1", "N2"],
     agents=[{"id": "RobotID(1)", "label": "R1"}],
@@ -165,8 +194,12 @@ print(json.dumps({
                             ["items"]["properties"]["kind"]["enum"]),
   "advertised": sorted(propose.ADVERTISED_KINDS),
   "retired": sorted(propose.RETIRED_KINDS),
-  "in_prose": sorted(k for k in (list(propose.ADVERTISED_KINDS) + list(propose.RETIRED_KINDS))
-                     if k in prompt),
+  "universe": universe,
+  "in_prose": sorted(k for k in universe if k in prompt),
+  "var_literal": sorted(typing.get_args(schema.VarRef.model_fields["kind"].annotation)),
+  "var_tool_enum": sorted(schema._VARREF_SCHEMA["properties"]["kind"]["enum"]),
+  "var_advertised": sorted(propose.ADVERTISED_VAR_KINDS),
+  "var_in_prose": sorted(k for k in ("t0", "tF", "xa") if '\"' + k + '\"' in prompt),
   "prompt_len": len(prompt),
 }))
 """
@@ -180,12 +213,24 @@ print(json.dumps({
     @test Set(String.(got["advertised"])) == EMITTABLE
     # (3') 🔴 프롬프트 **산문** 자체 — 선언만 고치고 지시문을 안 고치는 실패를 막는다.
     #      산문에 나타나는 kind 이름이 정확히 emittable 넷이어야 한다.
+    #      우주는 schema.py 의 BaseModel 들에서 파생된다(두 튜플이 아니라).
+    @test Set(String.(got["universe"])) ⊇ union(EMITTABLE, REMOVED)   # 파생 우주가 실제로 넓다
     @test Set(String.(got["in_prose"])) == EMITTABLE
+
+    # 🔴 **결정변수 종류**도 네 표면이 같아야 한다 (t0/tF; :xa 는 emit 대상이 아니다)
+    varkinds = Set(["t0", "tF"])
+    @test Set(String.(got["var_literal"])) == varkinds
+    @test Set(String.(got["var_tool_enum"])) == varkinds
+    @test Set(String.(got["var_advertised"])) == varkinds
+    @test Set(String.(got["var_in_prose"])) == varkinds
+    @test Set(String.(CB.EMITTABLE_VARREF_KINDS)) == varkinds
     # 은퇴 목록과 emittable 은 서로소여야 한다(같은 이름이 양쪽에 있으면 선언이 자가당착)
     @test isempty(intersect(Set(String.(got["retired"])), EMITTABLE))
     @test got["prompt_len"] > 500          # 비퇴화: 프롬프트가 실제로 만들어졌다
-    @info "schema union=$(got["union"]) · propose.ADVERTISED_KINDS=$(got["advertised"]) · " *
-          "프롬프트 산문에 등장하는 kind=$(got["in_prose"]) (prompt_len=$(got["prompt_len"]))"
+    @info "파생 우주=$(got["universe"])\n  schema union=$(got["union"])\n  " *
+          "propose.ADVERTISED_KINDS=$(got["advertised"])\n  산문 kind=$(got["in_prose"])\n  " *
+          "변수종류 literal/tool/advertised/산문=$(got["var_literal"])/$(got["var_tool_enum"])/" *
+          "$(got["var_advertised"])/$(got["var_in_prose"]) (prompt_len=$(got["prompt_len"]))"
 end
 
 @testset "🔴 타입과 컴파일러는 살아 있다 (엔진이 쓴다)" begin

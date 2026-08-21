@@ -109,12 +109,16 @@ def _build_prompt(event: str, open_ids: list[str],
         f"{agent_lines}\n\n"
         "THE GRAMMAR (LinearConstraint / Disjunction). When NO pre-written recovery expresses "
         "the requirement, write the constraint yourself over the scheduler's decision "
-        "variables. A variable is one of exactly three:\n"
-        "  * {\"kind\": \"t0\", \"node\": <node id>}                 -- that node's START time\n"
-        "  * {\"kind\": \"tF\", \"node\": <node id>}                 -- that node's FINISH time\n"
-        "  * {\"kind\": \"xa\", \"node\": <u>, \"node2\": <v>}         -- the assignment edge u->v\n"
+        "variables. A variable is one of exactly two:\n"
+        "  * {\"kind\": \"t0\", \"node\": <schedule node id>}   -- that node's START time\n"
+        "  * {\"kind\": \"tF\", \"node\": <schedule node id>}   -- that node's FINISH time\n"
+        "  🔴 WHICH LIST TO DRAW `node` FROM: a variable's `node` is a SCHEDULE NODE id -- take "
+        "it from the NAMED NODES section above or from the exhaustive open-node id list below. "
+        "It is NEVER an AGENTS (robot) id: a robot is not a schedule vertex, so a variable "
+        "naming one is REJECTED. AGENTS ids are for ReplaceAgent/SwapBattery only.\n"
         "  * LinearConstraint: sum(coeff * var) `rel` rhs, with `rel` one of \"le\", \"ge\", "
-        "\"eq\". `terms` must be NON-EMPTY. Examples:\n"
+        "\"eq\". `terms` must be NON-EMPTY, and keep coefficients small (|coeff| of order 1). "
+        "Examples:\n"
         "      'node N must not finish before 30'        -> terms [1*tF(N)], rel \"ge\", rhs 30\n"
         "      'node A must finish before node B starts' -> terms [1*tF(A), -1*t0(B)], rel \"le\", rhs 0\n"
         "      'A and B must start together'             -> terms [1*t0(A), -1*t0(B)], rel \"eq\", rhs 0\n"
@@ -123,9 +127,10 @@ def _build_prompt(event: str, open_ids: list[str],
         "node N ('N must not be active during [lo, hi]') is exactly\n"
         "      left  = terms [1*tF(N)], rel \"le\", rhs lo   (finish before the window)\n"
         "      right = terms [1*t0(N)], rel \"ge\", rhs hi   (start after the window)\n"
-        "  Every node id you reference must be an EXACT id echoed from the lists above. An id "
-        "that is not in the schedule is REJECTED -- never invent one, and never use a vertex "
-        "number (graph surgery renumbers vertices).\n\n"
+        "  Every node id you reference must be an EXACT SCHEDULE-NODE id echoed from the node "
+        "lists. An id that is not a schedule vertex -- an invented one, or a robot id -- is "
+        "REJECTED (the proposal is refused; nothing happens). Never use a vertex number: graph "
+        "surgery renumbers vertices.\n\n"
         "ACTIVE NO-GO ZONES (context only -- see below). The live geometry reports:\n"
         f"{zone_lines}\n"
         "  There is currently NO spatial kind in the emittable set: a keep-out region is a "
@@ -161,6 +166,12 @@ def _build_prompt(event: str, open_ids: list[str],
 # 🔴 개수: **C2 끝 = 4종**. C3 가 `TranslateBuild` 를 더해 5종이 된다.
 #    C3 는 이 튜플과 프롬프트의 ZONES 문단을 **함께** 고쳐야 한다.
 # =============================================================================
+# 🔴 emit 가능한 **결정변수 종류**. 줄리아 `VarRef` 타입은 "xa"(배정 엣지 Xa[u,v])도 받지만
+#    LLM 에게는 열지 않는다 — 프롬프트가 어떤 (u,v) 가 실제 결정변수인지 목록을 안 싣기 때문에
+#    모델이 유효하게 인스턴스화할 방법이 없다(= 유효한 인스턴스가 없는 형식을 광고하는 함정).
+#    `llm_bridge.jl` 의 `EMITTABLE_VARREF_KINDS` · `schema.VarRef.kind` Literal 과 같아야 한다.
+ADVERTISED_VAR_KINDS: tuple[str, ...] = ("t0", "tF")
+
 ADVERTISED_KINDS: tuple[str, ...] = (
     "Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery",
 )
