@@ -461,18 +461,55 @@ function step_environment!(env::PlannerEnv, sim=rvo_global_sim())
 end
 
 
+"""
+    rvo_rebuild!(env)
+
+RVO 시뮬레이터를 씬트리에서 **무조건** 다시 만든다. `update_rvo_sim!` 의 본문에서 술어만 뺀
+것이고 구성 경로도 alpha 재적용도 같다 — **3계층 정책 규칙은 하나도 안 바뀐다.**
+
+왜 가드 없는 판이 따로 필요한가: `rvo_sim_needs_update` 는 "필요한 에이전트가 맵에 없는가" 만
+본다. 롤아웃 갈래가 **위치만 옮기고 에이전트를 추가하지 않았으면** 가드가 false 라 재구축이
+안 일어나고 오염이 다음 갈래로 샌다.
+
+⚠️ **`apply_action!` 도중에 부르면 안 된다.** `replace_robot.jl:835` 가
+`rvo_set_agent_max_speed!(tu, 0.0)` 로 핀을 걸고 같은 함수 안에서 force-close 한 뒤 :890 에서
+복원한다. 재구축이 그 사이에 끼면 핀이 풀려 RVO 가 유닛을 목표 밖으로 밀어낸다.
+**완전히 끝난 뒤에만** 부른다.
+
+이 함수는 **의도적으로 export 하지 않는다.** 이 파일의 다른 RVO 함수도(`update_rvo_sim!`
+포함) 하나도 export 되어 있지 않다 — 모듈 밖에서는 전부 `CB.rvo_rebuild!` 처럼 한정된
+이름으로 부른다. 새 예외를 만들지 않는다.
+"""
+function rvo_rebuild!(env::PlannerEnv)
+    @unpack sched, scene_tree, cache = env  # 필드 꺼내기
+    # 🔴 T12 가 update_rvo_sim! 없이 이 함수만 단독으로(포크된 env 에) 부른다 — 그러니 이
+    # 함수 스스로 완결적이어야 한다. active_nodes 는 update_rvo_sim! 안에서도 (가드보다 먼저)
+    # 이미 한 번 계산되므로 가드가 true 인 경로에서는 중복 계산이지만, 그 대가는 감수한다
+    # — 아래 update_rvo_sim! 의 주석 참고.
+    active_nodes = [get_node(sched, v) for v in cache.active_set]  # 활성 노드 목록(배열 내포 — 파이썬 리스트 컴프리헨션과 동일)
+    rvo_set_new_sim!()                  # 새 RVO 시뮬레이터 생성
+    rvo_add_agents!(scene_tree)         # 현재 에이전트들을 시뮬레이터에 추가
+    for node in active_nodes            # 각 활성 노드에
+        set_rvo_priority!(env, node)    # 우선순위(alpha) 다시 설정
+    end
+    return env
+end
+
 # 활성 에이전트 구성이 바뀌었으면 RVO 시뮬레이터를 새로 만들고 에이전트들을 다시 등록(! = 전역 sim 수정).
 function update_rvo_sim!(env::PlannerEnv)
-    @unpack sched, scene_tree, cache = env  # 필드 꺼내기
-    active_nodes = [get_node(sched, v) for v in cache.active_set]  # 활성 노드 목록(배열 내포 — 파이썬 리스트 컴프리헨션과 동일)
-    if rvo_sim_needs_update(scene_tree)     # RVO 시뮬레이터를 갱신해야 하면
+    @unpack sched, scene_tree, cache = env  # 필드 꺼내기 — 원본 코드와 동일하게 유지
+    # 🔴 원본과 동일하게 가드보다 "먼저", 무조건 계산한다. `cache.active_set` 에 `sched` 에
+    # 없는 정점 id 가 남아 있으면 `get_node` 가 여기서 즉시 BoundsError 로 죽는다 — 이게
+    # 리팩터 전 `update_rvo_sim!` 의 관찰 가능한 동작이었다(가정 위반은 error() 로 죽는다,
+    # 조용한 폴백 금지). 이 줄을 `rvo_rebuild!` 안으로만 옮기면 가드가 false 인 흔한 경우엔
+    # 이 계산 자체가 안 일어나 죽어야 할 자리에서 조용히 넘어가 버린다 — 그래서 여기서
+    # `rvo_rebuild!` 와 별개로 한 번 더(가드가 true 일 때는 중복으로) 계산한다.
+    active_nodes = [get_node(sched, v) for v in cache.active_set]
+    if rvo_sim_needs_update(scene_tree)  # RVO 시뮬레이터를 갱신해야 하면
         @info "New RVO simulation"          # 로그
-        rvo_set_new_sim!()                  # 새 RVO 시뮬레이터 생성
-        rvo_add_agents!(scene_tree)         # 현재 에이전트들을 시뮬레이터에 추가
-        for node in active_nodes            # 각 활성 노드에
-            set_rvo_priority!(env, node)    # 우선순위(alpha) 다시 설정
-        end
+        rvo_rebuild!(env)                   # 술어만 빼면 rvo_rebuild! 와 같은 구성 경로(내부에서 active_nodes 재계산)
     end
+    return nothing  # 반환값도 원래와 동일하게 유지(호출부는 아무도 반환값을 안 쓴다)
 end
 
 # 활성 노드 중 목표를 달성한 것들을 "완료"로 옮기고, 그로 인해 새로 활성화되는 노드까지 반영(! = 캐시 수정).
