@@ -276,3 +276,180 @@ end
     @test isfinite(τ3)
     @test ev3[1] === :terminal
 end
+
+# =============================================================================
+# 🔴🔴 Task T10 — `DRAIN_DT` 프로브. **ρ 와 독립인 두 번째 손잡이가 실제로 두 번째인가.**
+#
+# 왜 이 testset 이 존재하는가: T9 은 N-G1 의 격차를 만드는 기전이 최소 둘("ρ 가 흡수하는
+# rate boundary 편향" · "`dur == 0` 프론티어를 시간 0 으로 닫는 드레인")인데 **부호가 같아서
+# ρ 스윕으로는 안 갈린다**고 실측으로 남겼다. 그 교착을 깨는 유일한 방법이 드레인의 시간
+# 비용을 ρ 와 **따로** 흔드는 것이고, 이 testset 이 그 손잡이가 (a) 기본값에서 무해하고
+# (b) 켜면 실제로 무언가를 움직이며 (c) ρ 와 **분리 가능**하다는 것을 못박는다.
+#
+# 🔴 여기서 가장 중요한 단언은 **`n_drain >= 1`** 이다. 드레인이 한 번도 안 일어나면 이
+#    프로브는 아무것도 재지 않고, 그러면 아래의 모든 초록불이 항진명제다.
+# =============================================================================
+@testset "🔴 T10 — DRAIN_DT 기본값은 무해하다(T9 동작 보존)" begin
+    @test CB.DRAIN_DT isa Ref{Float64}
+    @test CB.DRAIN_DT[] == 0.0                       # 커밋된 기본값 = T9 의 동작
+    for seed in 1:12
+        τ1, ev1, nb1 = CB.sample_sojourn_traced(S0, env, P, BP, Random.MersenneTwister(seed))
+        τ2, ev2, nb2, nd2, td2 =
+            CB.sample_sojourn_probe(S0, env, P, BP, Random.MersenneTwister(seed))
+        @test τ1 === τ2 && ev1 == ev2 && nb1 == nb2   # 비트 동일
+        @test td2 == 0.0                              # 기본값에서 드레인은 시간을 안 쓴다
+        @test nd2 >= 0
+    end
+end
+
+const _T10_SEEDS = 1:60
+"주어진 (ρ, drain) 에서 (중앙값 τ, 드레인 총횟수, 드레인 총시간, τ 벡터)."
+function t10_cell(rho::Float64, drain::Float64)
+    old_r, old_d = CB.RHO[], CB.DRAIN_DT[]
+    try
+        CB.RHO[] = rho
+        CB.DRAIN_DT[] = drain
+        τs, nd, td = Float64[], 0, 0.0
+        for seed in _T10_SEEDS
+            τ, _, _, d, t = CB.sample_sojourn_probe(S0, env, P, BP,
+                                                    Random.MersenneTwister(seed))
+            push!(τs, τ); nd += d; td += t
+        end
+        return (median = sort(τs)[div(length(τs), 2)], n_drain = nd, t_drain = td, tau = τs)
+    finally
+        CB.RHO[] = old_r
+        CB.DRAIN_DT[] = old_d
+    end
+end
+
+const _T10_C00 = t10_cell(1.0, 0.0)                 # (ρ=1, drain=0)  = 커밋된 기본값
+const _T10_C01 = t10_cell(1.0, DT_SIM)              # (ρ=1, drain=dt)
+const _T10_C10 = t10_cell(2.0, 0.0)                 # (ρ=2, drain=0)
+const _T10_C11 = t10_cell(2.0, DT_SIM)              # (ρ=2, drain=dt)
+@info "🔴 T10 2×2 격자(시험 픽스처, n=$(length(_T10_SEEDS)))" med_r1d0=_T10_C00.median med_r1dt=_T10_C01.median med_r2d0=_T10_C10.median med_r2dt=_T10_C11.median n_drain_r1d0=_T10_C00.n_drain n_drain_r1dt=_T10_C01.n_drain n_drain_r2d0=_T10_C10.n_drain n_drain_r2dt=_T10_C11.n_drain t_drain_r1dt=_T10_C01.t_drain t_drain_r2dt=_T10_C11.t_drain drain_per_sample_r1=(_T10_C01.n_drain / length(_T10_SEEDS)) t_drain_per_sample_r1=(_T10_C01.t_drain / length(_T10_SEEDS)) dt_sim=DT_SIM
+
+@testset "🔴 T10 — 프로브가 항진명제가 아니다 (드레인이 실제로 일어난다)" begin
+    # 🔴 이 단언이 이 파일에서 가장 중요하다. 드레인이 0 번이면 아래 전부가 무의미하다.
+    @test _T10_C00.n_drain >= 1
+    @test _T10_C01.n_drain >= 1
+    # 시간 비용은 켠 쪽에서만 든다
+    @test _T10_C00.t_drain == 0.0
+    @test _T10_C01.t_drain > 0.0
+    @test _T10_C01.t_drain ≈ _T10_C01.n_drain * DT_SIM rtol = 1e-12
+end
+
+@testset "🔴 T10 — 드레인 비용은 ρ 와 분리된다 (두 손잡이가 서로 다른 것을 움직인다)" begin
+    # (a) ρ 를 고정하고 드레인만 흔들면 분포가 움직인다 → 드레인은 **ρ 가 아닌** 자유도다
+    @test _T10_C01.tau != _T10_C00.tau
+    # (b) 드레인을 고정하고 ρ 만 흔들어도 분포가 움직인다 → ρ 도 여전히 살아 있는 자유도다
+    @test _T10_C10.tau != _T10_C00.tau
+    # (c) 🔴 상호작용이 0 이 아니다 = 두 손잡이가 같은 것을 두 번 만지는 것이 아니다.
+    #     드레인의 효과가 ρ 에 따라 달라지면 "ρ 하나로 흡수된다"는 서술이 거짓이다.
+    d_at_rho1 = _T10_C01.median - _T10_C00.median
+    d_at_rho2 = _T10_C11.median - _T10_C10.median
+    @info "T10 상호작용" drain_effect_at_rho1=d_at_rho1 drain_effect_at_rho2=d_at_rho2 t_drain_per_sample=(_T10_C01.t_drain / length(_T10_SEEDS))
+    @test isfinite(d_at_rho1) && isfinite(d_at_rho2)
+    # 🔴 **방향을 단언하지 않는다 — 잰다.** 초판은 "드레인에 시간을 물리면 경량이 더 느리게
+    #    전진하므로 τ 가 줄어든다" 를 단언했고 **실측이 그것을 반박했다**(중앙값이 +0.023 s
+    #    로 늘었다). 이유는 두 항이 반대로 걸리기 때문이다:
+    #      · (+) 드레인이 쓴 시간이 τ 에 **그대로 더해진다**(τ 는 경과시간이다)
+    #      · (−) 스케줄이 늦게 전진해 로봇이 더 오래 non-idle → 위험 노출 증가 → 사건이 빨라짐
+    #    이 픽스처에서는 (+) 가 이긴다. 그러므로 부호는 **실측 대상**이지 단언 대상이 아니다.
+    #    (T9 보고서 §5-1 3번이 "드레인은 ρ 와 같은 방향" 이라고 추측한 대목이 여기서 정정된다.)
+    @test abs(d_at_rho1) > 0.0
+end
+
+@testset "🔴 T10 — 드레인 비용이 커지면 드레인 시간이 단조로 는다" begin
+    lo = t10_cell(1.0, 0.5 * DT_SIM)
+    hi = t10_cell(1.0, 2.0 * DT_SIM)
+    @info "T10 드레인 사다리" t_drain_half=lo.t_drain t_drain_1x=_T10_C01.t_drain t_drain_2x=hi.t_drain med_half=lo.median med_1x=_T10_C01.median med_2x=hi.median
+    @test lo.t_drain < _T10_C01.t_drain < hi.t_drain
+    # 🔴 중앙값의 **부호**를 단언하지 않는다(위 testset 의 정정 참조). 대신 손잡이가 실제로
+    #    분포를 움직인다는 것 — 즉 아무것도 안 하는 구현이 배제된다는 것 — 을 단언한다.
+    @test lo.tau != _T10_C00.tau
+    @test hi.tau != lo.tau
+end
+
+@testset "🔴 T10 — 조용한 폴백 금지 + 전역 복원" begin
+    old = CB.DRAIN_DT[]
+    try
+        CB.DRAIN_DT[] = -1.0
+        @test_throws ErrorException CB.sample_sojourn(S0, env, P, BP,
+                                                      Random.MersenneTwister(1))
+        CB.DRAIN_DT[] = NaN
+        @test_throws ErrorException CB.sample_sojourn(S0, env, P, BP,
+                                                      Random.MersenneTwister(1))
+    finally
+        CB.DRAIN_DT[] = old
+    end
+    @test CB.DRAIN_DT[] == 0.0                 # 위의 모든 픽스처가 전역을 복원했다
+    @test CB.RHO[] == 1.0
+end
+
+# =============================================================================
+# 🔴 T10 변이 스윕 2라운드에서 **살아남은 변이 두 개**를 잡으려고 추가한 testset 둘.
+#
+#   1라운드 실측: `T10MD2`(드레인이 문턱을 안 소진한다)와 `T10MD4`(드레인 구간 안에서 온
+#   실패를 삼킨다)가 **초록으로 통과했다.** 이유는 분포 단언만으로는 두 변이가 만드는 차이가
+#   표본 잡음 아래이기 때문이다(드레인 시간이 τ 의 ~0.1%). 그래서 분포가 아니라 **해석적
+#   항등식**과 **결정적 픽스처**로 잡는다. T9 이 M10 에서 한 것과 같은 수리다.
+# =============================================================================
+@testset "🔴 T10 — 드레인 구간에서도 위험이 누적된다 (zone-only 해석적 항등식)" begin
+    # 위험을 zone 하나로 줄이면 τ 가 닫힌 형태다: τ = Ez / λz (zone 은 상수율).
+    # 드레인이 시간을 쓰든 안 쓰든 이 값은 **정확히 같아야** 한다 — 드레인 구간에서도
+    # 문턱이 λz·Δ 만큼 소진되기 때문이다. 소진을 빠뜨리면 τ 가 드레인 시간만큼 길어진다.
+    Pz = CB.HazardParams(mtbf_break_s = Inf, mtbf_cell_s = Inf, mode = 50.0)
+    λz = CB._rate(Pz.mtbf_zone_s) * Pz.mode
+    @test λz > 0.0
+    old = CB.DRAIN_DT[]
+    try
+        CB.DRAIN_DT[] = DT_SIM
+        # ⚠️ zone 만 남기면 Ez 가 큰 뽑기에서는 **스케줄이 먼저 소진**돼 `:terminal` 로 끝난다
+        #    (실측: 12 시드 중 1개). 그건 항등식이 성립하는 자리가 아니므로 세고 건너뛴다 —
+        #    대신 항등식을 검사한 표본 수와 그중 드레인이 일어난 수를 **둘 다 단언**해서
+        #    "검사할 게 없어서 초록" 을 막는다.
+        n_zone, nd_zone, ks = 0, 0, sort!(collect(keys(S0.fleet)))
+        for seed in 1:16
+            rng = Random.MersenneTwister(seed)          # 소저너와 **같은 뽑기 순서**를 재현
+            for _ in ks; CB._exp1(rng); end             # Eb (로봇별 break)
+            for _ in ks; CB._exp1(rng); end             # Ec (로봇별 cell)
+            Ez = CB._exp1(rng)                          # zone
+            τ, ev, _, nd, _ = CB.sample_sojourn_probe(S0, env, Pz, BP,
+                                                      Random.MersenneTwister(seed))
+            CB.event_kind(ev) === :zone || continue     # 스케줄 소진(:terminal) 은 건너뛴다
+            n_zone += 1; nd_zone += nd
+            @test τ ≈ Ez / λz rtol = 1e-9               # 🔴 드레인이 있어도 **정확히** 같다
+        end
+        @test n_zone >= 8        # 🔴 항진명제 방지 1: 항등식을 검사한 표본이 실제로 있다
+        @test nd_zone >= 1       # 🔴 항진명제 방지 2: 그중 드레인이 일어난 표본이 있다
+        @info "T10 zone-only 항등식" n_zone_checked=n_zone n_drain_in_checked=nd_zone lambda_z=λz drain_dt=CB.DRAIN_DT[]
+    finally
+        CB.DRAIN_DT[] = old
+    end
+    @test CB.DRAIN_DT[] == 0.0
+end
+
+@testset "🔴 T10 — 드레인이 그 구간 안에서 온 실패를 삼키지 않는다" begin
+    # 프론티어가 **전부 dur == 0** 인 상태를 만든다 → 루프의 첫 반복이 드레인 분기다.
+    zero_v = [v for v in 1:NV if CB.node_duration(env, v) == 0.0]
+    @test !isempty(zero_v)
+    s_z = CB.SimState(g = S0.g, geo = S0.geo, fleet = S0.fleet,
+                      prog = CB.ProgBlock(closed = setdiff(Set{Int}(1:NV), Set([first(zero_v)]))))
+    @test CB.T_plan_next(s_z, env) == Inf          # 드레인 분기의 전제
+    Pbig = CB.HazardParams(mode = 1.0e6)           # 0.025 s 안에서 반드시 터진다
+    old = CB.DRAIN_DT[]
+    try
+        CB.DRAIN_DT[] = DT_SIM
+        for seed in 1:8
+            τ, ev, _, nd, td = CB.sample_sojourn_probe(s_z, env, Pbig, BP,
+                                                       Random.MersenneTwister(seed))
+            @test ev[1] === :failure               # 삼키면 :terminal 이 된다
+            @test 0.0 < τ <= DT_SIM + 1e-12        # 첫 드레인 구간 안에서 끝났다
+            @test nd == 1                          # 드레인은 한 번 셌고
+            @test td == 0.0                        # 그 시간을 쓰기 **전에** 나왔다
+        end
+    finally
+        CB.DRAIN_DT[] = old
+    end
+    @test CB.DRAIN_DT[] == 0.0
+end

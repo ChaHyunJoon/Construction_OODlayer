@@ -35,6 +35,32 @@ _exp1_draw(rng) = _exp1(rng)
 
 const _SOJ_TOL = 1e-9      # 경계 비교의 수치 여유. 시간 단위[s]
 
+"""
+    DRAIN_DT :: Ref{Float64}
+
+**`dur == 0` 프론티어를 닫는 데 경량 레인이 쓰는 시뮬 시간[s].** 기본 `0.0` = T9 의 동작
+그대로(= 선언된 근사: 계획상 시간을 안 쓰는 정점이므로 시간 0 으로 닫는다).
+
+🔴 **이것은 ρ 와 독립인 두 번째 손잡이이고, 그것이 존재 이유의 전부다**(Task T10).
+T9 보고서 §5-1 이 실측으로 남긴 문제: N-G1 의 격차를 만드는 기전이 최소 둘인데
+(ρ 가 흡수하는 **rate boundary 편향**, 그리고 이 **드레인의 시간 비용**) 둘 다 부호가 같아서
+("경량이 스케줄을 앞질러 나간다") **ρ 스윕만으로는 갈리지 않는다.** `RHO[]` 와 이 `Ref` 를
+**따로** 흔들면 2×2 요인설계가 되고, 그때 비로소 각 기전의 몫을 분해할 수 있다.
+
+값의 뜻: 엔진은 `dur == 0` 인 정점도 스텝 경계에서 닫으므로 **최소 `dt_sim`** 을 쓴다.
+그래서 자연스러운 프로브 값은 `dt_sim`(= `env.dt * bp.seconds_per_step` = 0.025 s)이다.
+
+⚠️ **기본값을 바꾸지 않는다.** 이 값을 N-G1 이 통과할 때까지 올리는 것은 ρ 를 그렇게 하는
+것과 **같은 종류의 잘못**이다 — 게이트가 판정하기로 되어 있는 오차를 손잡이가 흡수한다.
+프로브는 **재는** 도구이지 고치는 도구가 아니다.
+
+> `DRAIN_DT[] > 0` 일 때 드레인은 길이 `DRAIN_DT[]` 의 **작은 rate boundary 하나**처럼
+> 취급된다: 그 구간 안에서 위험이 먼저 오면 그 사건을 돌려주고, 아니면 문턱을 그만큼
+> 소진하고 필드를 전진시킨 뒤 정점을 닫는다. `n_boundary` 에는 세지 않는다(계획상 경계가
+> 아니다) — `sample_sojourn_probe` 가 `n_drain` 으로 따로 센다.
+"""
+const DRAIN_DT = Ref(0.0)
+
 # --- 사건 인코딩 --------------------------------------------------------------
 """
     event_kind(ev::Tuple{Symbol,Any}) -> Symbol
@@ -207,12 +233,69 @@ _cell_exponent(p::HazardParams, mode::Symbol) =
     (mode === :idle) ? 0.0 : (p.usage_scale_s > 0 ? p.beta_usage / p.usage_scale_s : 0.0)
 
 "모든 반환 지점의 사후조건을 한 자리에 모은다. τ 가 음수/NaN/Inf 면 조용히 나가지 않는다."
-function _ret(τ::Float64, ev::Tuple{Symbol,Any}, nb::Int)
+function _ret(τ::Float64, ev::Tuple{Symbol,Any}, nb::Int, nd::Int, td::Float64)
     (isfinite(τ) && τ >= 0.0) ||
         error("sample_sojourn: τ = $(τ) (사건 $(ev)) — 유한한 비음수여야 한다. " *
               "Inf 를 소저너로 돌려주면 '실패가 안 오는 세계'를 탐색하게 된다")
+    (isfinite(td) && td >= 0.0) ||
+        error("sample_sojourn: 드레인 누적시간 = $(td) — 유한한 비음수여야 한다")
+    td <= τ + _SOJ_TOL ||
+        error("sample_sojourn: 드레인이 쓴 시간 $(td) 이 τ = $(τ) 보다 크다 — " *
+              "드레인은 τ 의 부분집합이어야 한다")
     event_kind(ev)      # 인코딩이 알려진 모양인지 여기서 한 번 검증한다
-    return (τ, ev, nb)
+    return (τ, ev, nb, nd, td)
+end
+
+"""
+    _first_failure(cur, ks, modes, p, bp, cap, Eb, Ec, Ez, λz) -> (Δ, who)
+
+지금 상태에서 **모드가 상수인 동안** 세 경쟁위험 중 가장 먼저 오는 것까지의 시간과 그 정체.
+`sample_sojourn_probe` 의 주 루프와 (드레인 비용을 켰을 때의) 드레인 구간이 **같은 식**을
+쓰도록 뽑아낸 것이다 — 두 자리에 같은 산술을 두 번 적으면 한쪽만 고쳐지는 날이 온다.
+"""
+function _first_failure(cur::SimState, ks::Vector{Int}, modes::Dict{Int,Symbol},
+                        p::HazardParams, bp::BatteryParams, cap::Float64,
+                        Eb::Dict{Int,Float64}, Ec::Dict{Int,Float64},
+                        Ez::Float64, λz::Float64)
+    Δ_fail, who = Inf, nothing
+    for k in ks
+        haskey(cur.fleet, k) ||
+            error("sample_sojourn: 로봇 $(k) 가 s.fleet 에서 사라졌다 — 경량 레인이 " *
+                  "함대를 조용히 바꾸지 않는다")
+        rec  = cur.fleet[k]
+        A, a = rate_params_one(p, rec, modes[k], bp, cap)   # derive.jl 의 rate_params 와 같은 식
+        (isfinite(A) && isfinite(a) && A >= 0.0) ||
+            error("sample_sojourn: 로봇 $(k) 의 (A, a) = ($(A), $(a)) 가 비유한/음수다 — " *
+                  "조용히 Inf 로 떨어뜨리지 않는다")
+        db = inv_integrated_hazard(A, a, Eb[k])
+        db < Δ_fail && (Δ_fail = db; who = k)
+        # cell 은 soc 를 **안 본다** — usage 만의 지수형이라 a_c = β_u/U·1[mode ≠ :idle].
+        Ac = cell_rate_from(p, rec.usage_s, modes[k])
+        (isfinite(Ac) && Ac >= 0.0) ||
+            error("sample_sojourn: 로봇 $(k) 의 cell rate = $(Ac) 가 비유한/음수다")
+        ac = _cell_exponent(p, modes[k])
+        dc = inv_integrated_hazard(Ac, ac, Ec[k])
+        dc < Δ_fail && (Δ_fail = dc; who = (:cell, k))
+    end
+    if λz > 0.0
+        dz = Ez / λz                     # zone 은 상수율(usage·soc 를 안 본다)
+        dz < Δ_fail && (Δ_fail = dz; who = :zone)
+    end
+    return (Δ_fail, who)
+end
+
+"`Δ` 만큼 로봇별 문턱을 소진한다(제자리 수정). zone 문턱은 스칼라라 호출자가 뺀다."
+function _consume_thresholds!(cur::SimState, ks::Vector{Int}, modes::Dict{Int,Symbol},
+                              p::HazardParams, bp::BatteryParams, cap::Float64,
+                              Eb::Dict{Int,Float64}, Ec::Dict{Int,Float64}, Δ::Float64)
+    for k in ks
+        rec  = cur.fleet[k]
+        A, a = rate_params_one(p, rec, modes[k], bp, cap)
+        Eb[k] -= integrated_hazard(A, a, Δ)
+        Ac = cell_rate_from(p, rec.usage_s, modes[k])
+        Ec[k] -= integrated_hazard(Ac, _cell_exponent(p, modes[k]), Δ)
+    end
+    return nothing
 end
 
 """
@@ -239,7 +322,7 @@ soc 를 떨어뜨리고 `battery_action(env, id, ...)` 를 부르므로, 로봇�
 """
 function sample_sojourn(s::SimState, env, p::HazardParams, bp::BatteryParams, rng;
                         delta_max::Float64 = Inf)
-    τ, ev, _ = sample_sojourn_traced(s, env, p, bp, rng; delta_max = delta_max)
+    τ, ev = sample_sojourn_probe(s, env, p, bp, rng; delta_max = delta_max)
     return (τ, ev)
 end
 
@@ -252,6 +335,26 @@ end
 """
 function sample_sojourn_traced(s::SimState, env, p::HazardParams, bp::BatteryParams, rng;
                                delta_max::Float64 = Inf)
+    τ, ev, nb = sample_sojourn_probe(s, env, p, bp, rng; delta_max = delta_max)
+    return (τ, ev, nb)
+end
+
+"""
+    sample_sojourn_probe(s, env, p, bp, rng; delta_max = Inf)
+        -> (τ, event, n_boundary, n_drain, drain_time_s)
+
+`sample_sojourn_traced` + **드레인 계측 둘**. Task T10 의 분해가 쓰는 진입점이다:
+
+| 값 | 뜻 |
+|---|---|
+| `n_drain` | `dur == 0` 프론티어를 흘린 횟수 |
+| `drain_time_s` | 그 흘림이 **소비한 시뮬 시간의 합** = `n_drain * DRAIN_DT[]` (기본 0.0) |
+
+`DRAIN_DT[] == 0.0`(기본)이면 `drain_time_s == 0.0` 이고 τ·event·n_boundary 는 T9 의 값과
+**비트 동일**하다 — 드레인 분기가 시간을 안 쓰는 경로 그대로이기 때문이다.
+"""
+function sample_sojourn_probe(s::SimState, env, p::HazardParams, bp::BatteryParams, rng;
+                              delta_max::Float64 = Inf)
     (delta_max >= 0.0 && !isnan(delta_max)) ||
         error("sample_sojourn: delta_max = $(delta_max) — 비음수여야 한다")
     cap = Float64(bp.capacity_J)
@@ -275,51 +378,52 @@ function sample_sojourn_traced(s::SimState, env, p::HazardParams, bp::BatteryPar
 
     n_boundary = 0
     n_drain    = 0
+    t_drain    = 0.0
     guard      = 16 * p.max_events
+    drain_dt   = DRAIN_DT[]
+    (isfinite(drain_dt) && drain_dt >= 0.0) ||
+        error("sample_sojourn: DRAIN_DT[] = $(drain_dt) — 유한한 비음수여야 한다")
 
     while true
         # (0) 활성 프론티어를 **한 번만** 훑는다(정렬 + 소요시간). 아래의 모든 결정이 이걸 쓴다.
         act, durs = _active_with_durations(cur, env)
-        isempty(act) && return _ret(t, (:terminal, nothing), n_boundary)
+        isempty(act) && return _ret(t, (:terminal, nothing), n_boundary, n_drain, t_drain)
 
         if !any(>(0.0), durs)
             # 🔴 프론티어가 **전부 `dur == 0`** — `T_plan_next` 가 폴백을 타는 바로 그 자리다
             #    (tplan.jl:158-160). 계획상 시간을 안 쓰는 정점들이므로 **시간 0 으로** 닫고
             #    다시 본다. `Inf` 를 적분 상한으로 받는 일이 이 한 줄로 사라진다.
             #    ⚠️ 선언된 근사: 엔진은 이런 정점도 스텝 경계에서 닫으므로 `dt_sim` 만큼 늦다.
-            cur = _close_vertices(cur, act)
+            #    🔴 T10 의 프로브(`DRAIN_DT[] > 0`)가 정확히 그 근사를 흔든다 — 아래.
             n_drain += 1
             n_drain > guard &&
                 error("sample_sojourn: dur==0 프론티어를 $(n_drain) 번 흘렸다 — 스케줄이 " *
                       "전진하지 않는다")
+            if drain_dt <= 0.0
+                cur = _close_vertices(cur, act)          # T9 의 경로 그대로(시간 0)
+                continue
+            end
+            # --- 프로브: 드레인에 `drain_dt` 만큼의 시뮬 시간을 물린다 -----------------
+            #     길이 `drain_dt` 의 작은 경계 하나와 **같은 규칙**으로 처리한다: 그 안에서
+            #     위험이 먼저 오면 그 사건이 답이고, 아니면 문턱을 소진하고 필드를 밀고 닫는다.
+            modes_d = modes_of(cur, env)
+            Δ_fd, who_d = _first_failure(cur, ks, modes_d, p, bp, cap, Eb, Ec, Ez, λz)
+            Δ_stop_d = delta_max - t
+            if Δ_fd <= drain_dt && Δ_fd <= Δ_stop_d
+                return _ret(t + Δ_fd, (:failure, who_d), n_boundary, n_drain, t_drain)
+            elseif Δ_stop_d <= drain_dt
+                return _ret(delta_max, (:horizon, nothing), n_boundary, n_drain, t_drain)
+            end
+            _consume_thresholds!(cur, ks, modes_d, p, bp, cap, Eb, Ec, drain_dt)
+            λz > 0.0 && (Ez -= λz * drain_dt)
+            cur = _close_vertices(_advance_fields(cur, drain_dt, bp, modes_d), act)
+            t       += drain_dt
+            t_drain += drain_dt
             continue
         end
 
         modes = modes_of(cur, env)          # 🔴 경계당 한 번(배치). 로봇별 mode_of 금지
-        Δ_fail, who = Inf, nothing
-        for k in ks
-            haskey(cur.fleet, k) ||
-                error("sample_sojourn: 로봇 $(k) 가 s.fleet 에서 사라졌다 — 경량 레인이 " *
-                      "함대를 조용히 바꾸지 않는다")
-            rec  = cur.fleet[k]
-            A, a = rate_params_one(p, rec, modes[k], bp, cap)   # derive.jl 의 rate_params 와 같은 식
-            (isfinite(A) && isfinite(a) && A >= 0.0) ||
-                error("sample_sojourn: 로봇 $(k) 의 (A, a) = ($(A), $(a)) 가 비유한/음수다 — " *
-                      "조용히 Inf 로 떨어뜨리지 않는다")
-            db = inv_integrated_hazard(A, a, Eb[k])
-            db < Δ_fail && (Δ_fail = db; who = k)
-            # cell 은 soc 를 **안 본다** — usage 만의 지수형이라 a_c = β_u/U·1[mode ≠ :idle].
-            Ac = cell_rate_from(p, rec.usage_s, modes[k])
-            (isfinite(Ac) && Ac >= 0.0) ||
-                error("sample_sojourn: 로봇 $(k) 의 cell rate = $(Ac) 가 비유한/음수다")
-            ac = _cell_exponent(p, modes[k])
-            dc = inv_integrated_hazard(Ac, ac, Ec[k])
-            dc < Δ_fail && (Δ_fail = dc; who = (:cell, k))
-        end
-        if λz > 0.0
-            dz = Ez / λz                     # zone 은 상수율(usage·soc 를 안 본다)
-            dz < Δ_fail && (Δ_fail = dz; who = :zone)
-        end
+        Δ_fail, who = _first_failure(cur, ks, modes, p, bp, cap, Eb, Ec, Ez, λz)
 
         # 🔴 경계의 권위는 `T_plan_next` 다(단일 진실원). 위에서 `dur > 0` 인 활성이 있음을
         #    확인했으므로 여기서는 **주 경로**여야 하고, 그것을 트립와이어로 못박는다 —
@@ -332,19 +436,13 @@ function sample_sojourn_traced(s::SimState, env, p::HazardParams, bp::BatteryPar
         Δ_stop = delta_max - t
 
         if Δ_fail <= Δ_node && Δ_fail <= Δ_stop
-            return _ret(t + Δ_fail, (:failure, who), n_boundary)
+            return _ret(t + Δ_fail, (:failure, who), n_boundary, n_drain, t_drain)
         elseif Δ_stop <= Δ_node
-            return _ret(delta_max, (:horizon, nothing), n_boundary)
+            return _ret(delta_max, (:horizon, nothing), n_boundary, n_drain, t_drain)
         end
 
         # rate boundary — 결정이 아니다. 문턱을 소진하고 계속 간다.
-        for k in ks
-            rec  = cur.fleet[k]
-            A, a = rate_params_one(p, rec, modes[k], bp, cap)
-            Eb[k] -= integrated_hazard(A, a, Δ_node)
-            Ac = cell_rate_from(p, rec.usage_s, modes[k])
-            Ec[k] -= integrated_hazard(Ac, _cell_exponent(p, modes[k]), Δ_node)
-        end
+        _consume_thresholds!(cur, ks, modes, p, bp, cap, Eb, Ec, Δ_node)
         λz > 0.0 && (Ez -= λz * Δ_node)
         cur = _cross_boundary(cur, act, durs, Δ_node, bp, modes)
         t  += Δ_node
