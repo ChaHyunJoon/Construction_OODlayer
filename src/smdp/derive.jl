@@ -119,3 +119,35 @@ function rate_params(s::SimState, env, p::HazardParams,
     end
     return out
 end
+
+"""
+    robot_id_of(k::Int) -> RobotID
+
+`_int_key` 의 **역지도**(이슈 C). `s` 는 벌거벗은 `Int` 키를 나르는데 `apply_action!` →
+`action_to_proposal` 은 진짜 `RobotID` 를 요구한다.
+
+🔴 id 카운터가 **타입별**이라 `RobotID(3)`·`AssemblyID(3)`·`TransportUnitID(3)` 이 공존한다.
+그래서 `RobotID(k)` 를 그냥 만들지 않고 **살아 있는 함대에서 찾는다.** 못 찾으면 죽는다 —
+조용히 없는 로봇을 지목하면 그 롤아웃 전체가 거짓이다.
+
+🔴 정렬해서 돈다. `fleet.soc` 는 `Dict{Any,Float64}` 이고 이 레포의 근본 비결정성이 바로
+"정렬 안 된 Dict 순회가 답에 도달하는 것"이다(nondeterminism-investigation.md). 그리고 같은
+정수 키를 주는 id 가 함대에 둘 이상이면 **첫 하나를 고르지 않고 죽는다** — 그건 `_int_key`
+가 막으려던 조용한 충돌이 함대 쪽에서 일어난 것이다.
+"""
+function robot_id_of(k::Int)
+    fleet_b = BATTERY_FLEET[]
+    fleet_b === nothing && error("robot_id_of: BATTERY_FLEET[] 가 비어 있다 — enable_battery! 먼저")
+    hit = nothing
+    for rid in sort!(collect(keys(fleet_b.soc)); by = string)
+        _int_key(rid) == k || continue
+        hit === nothing ||
+            error("robot_id_of: 키 $(k) 에 해당하는 id 가 함대에 둘 이상이다 " *
+                  "($(hit) · $(rid)) — 조용히 첫 하나를 고르지 않는다")
+        hit = rid
+    end
+    hit === nothing &&
+        error("robot_id_of: 키 $(k) 에 해당하는 로봇이 함대에 없다 — 없는 로봇을 지목하면 " *
+              "그 롤아웃 전체가 거짓이다")
+    return hit
+end
