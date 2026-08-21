@@ -18,10 +18,15 @@ const _A_ZERO_TOL = 1e-12    # |a| 가 이보다 작으면 λ 상수 극한을 �
     integrated_hazard(A, a, Δ) -> Float64
 
 ∫₀^Δ A·e^{a t} dt = (A/a)(e^{aΔ} − 1).  `a → 0` 극한은 `A·Δ`.
+
+🔴 `expm1` 을 쓴다. `exp(x) - 1.0` 은 `|x|` 가 작을 때 **파국적 상쇄**를 일으킨다 —
+`_A_ZERO_TOL`(1e-12)과 ~1e-8 사이의 띠에서 유효숫자가 통째로 날아간다. 실측:
+`a = 1e-9, Δ = 1.0` 에서 `exp` 판은 수치적분 대비 상대오차 ≈ 2e-7 로, 시험의 `rtol = 1e-6`
+까지 **5배**밖에 안 남았다. 그 띠는 이 함수가 실제로 쓰이는 구간이다(느린 λ 증가).
 """
 function integrated_hazard(A::Float64, a::Float64, Δ::Float64)
     abs(a) < _A_ZERO_TOL && return A * Δ
-    return (A / a) * (exp(a * Δ) - 1.0)
+    return (A / a) * expm1(a * Δ)
 end
 
 """
@@ -37,9 +42,9 @@ end
 function inv_integrated_hazard(A::Float64, a::Float64, E::Float64)
     (A <= 0.0 || !isfinite(E) || E < 0.0) && return Inf   # !isfinite 가 NaN 도 잡는다
     abs(a) < _A_ZERO_TOL && return E / A
-    arg = 1.0 + a * E / A
-    arg <= 0.0 && return Inf          # a<0 에서 총위험을 넘어섰다
-    Δ = log(arg) / a
+    x = a * E / A                     # `integrated_hazard` 의 expm1 인자와 짝이 되는 형태
+    x <= -1.0 && return Inf           # a<0 에서 총위험을 넘어섰다 (구 `1 + x <= 0` 과 동치)
+    Δ = log1p(x) / a                  # 🔴 log(1 + x) 는 |x| 가 작을 때 상쇄된다
     return (isfinite(Δ) && Δ >= 0.0) ? Δ : Inf
 end
 
@@ -63,11 +68,41 @@ end
   · 주석은 `m_payload` 라고 적었는데 식은 `p.m_robot` 을 쓴다. 그리고 **`BatteryParams` 에
     `m_payload` 필드는 없다** — 짐 질량은 `_payload_mass(env, node, p)` 가 씬에서 잰다.
 
-⚠️ **기준 조건(`team = 1, m_payload = 0, speed = v_ref`)이 경량 레인의 선언된 근사다.**
-실현 속도는 `s` 에 없고(로봇 pose 가 상태에서 빠졌다) 구간 내내 상수도 아니다 — `v_ref` 는
-최대 속도이므로 **상한 근사**다(D-6 의 rate boundary 와 같은 종류의 편향이고, 부호가 같다:
-λ 를 과대평가해서 더 일찍 발화시킨다). 이 자리의 실측 잔차는 T7 보고서에 적혀 있고 게이트
-N-G1·N-G5 가 그 크기를 판정한다.
+⚠️ **기준 조건(`team = 1, m_payload = 0, speed = v_ref`)이 경량 레인의 선언된 근사다** —
+`speed`·`m_payload`·`team` 셋 다 `s` 에서 유도되지 않고(로봇 pose 와 화물 기하가 상태에서
+빠졌다) 구간 내내 상수도 아니다. **세 대입의 부호가 서로 다르므로 순부호를 유도해 둔다:**
+
+| 대입 | P 에 주는 부호 | 근거 / 실측 (colored_8x8 · 6로봇 · step 261) |
+|---|---|---|
+| `speed = v_ref` ← 실현 속도 | **위(+), 구성상 항상** | `v_ref = 4.0` 은 `rvo_default_max_speed()` 그 자체다(battery.jl:70) — 실현 속도가 이걸 넘을 수 없다. 실측 범위 `0.0 … 3.99999 m/s`(12개 이동 노드) |
+| `m_payload = 0` ← 실제 짐 | **아래(−)** | `km·(m_payload/team)·speed` 항이 사라진다. 실측 짐 질량 `0.0 … 2.29 kg` — `m_robot = 60 kg` 의 **3.8%** |
+| `team = 1` ← 실제 팀 크기 | `:manip` **위(+)** · 이동 모드 **영향 없음** | manip 할증을 안 나눈다: team 2 에서 `1000 W` vs `550 W`. 이동 모드는 `(m_robot·team + m_payload)/team` 이라 `m_payload = 0` 이면 team 이 약분된다 |
+
+🔴 **순부호는 양(+)이지만 무조건은 아니다.** 이동 모드에서
+`P_light − P_true = km·[m_robot·(v_ref − speed) − (m_payload/team)·speed]`
+이므로, 로봇이 **최고속으로 짐을 지고** 달리는 극단(`speed → v_ref`)에서는 두 번째 항만 남아
+부호가 뒤집힌다. 이 픽스처의 실측 크기로는 뒤집히려면 `speed > v_ref·m_robot/(m_robot+m_payload)`
+`= 4.0·60/62.29 ≈ 3.853 m/s` 여야 하는데, 뒤집히더라도 그 폭은 `km·m_payload·v_ref ≈ 15 W`
+(P 의 3%)로 작다. 실측: step 261 의 fleet 6대 **전부 양(+)**, 집계도 양(+).
+`test/smdp_derive.jl` 의 Ruling 2 testset 이 `@test e_light > e_engine` 과 로봇별
+`@test a_light >= a_true` 로 이 부호를 **단언**하고 실현 속도·짐 질량 범위를 `@info` 로 찍는다.
+그 단언은 불변식이 아니라 **트립와이어**다 — 빨개지면 "선언한 상한이 더는 성립하지 않는다".
+
+🔴 **잔차의 크기는 소비처마다 다르다. 하나의 숫자로 둘을 재지 말 것:**
+
+  · **지수(exponent) — 게이트 N-G1 이 본다.** `a` 안에서 이 대입이 건드리는 것은
+    `β_s·P/C` 항 하나뿐이므로, **그 항이 `a` 에서 차지하는 비중이 오차의 상한**이다:
+        이동 모드 `P = 500 W` → `1.2·500/8.28e6 = 7.25e-5` vs `β_u/U = 1/600 = 1.67e-3` → **4.2%**
+        `:manip`  `P = 1000 W` →                        `1.45e-4`                      → **8.0%**
+    ⚠️ 상한으로 인용할 값은 **8%** 다("약 4%" 는 이동 모드만의 값이다).
+    실측 최대 상대오차 `Δa/a = 3.7%`. Δ = 60 s 구간이면 λ 배수로 `exp(60·6.2e-5) ≈ 1.004`.
+
+  · **에너지 — 게이트 N-G5 가 본다. 🔴 위의 4~8% 로 재면 안 된다.** N-G5 는 `Σ ΔE` 와
+    `energy_J` 를 직접 비교하므로 오차가 `P_light / P_true` **그 자체**다. 실측(step 261,
+    `s.fleet` 6대): 집계 `100.0 J` vs `67.68 J` = **1.48배(오차 48%)**, 로봇 하나로는
+    **최대 4.6배**(거의 멈춰 선 `:transit` 로봇: `500 W` vs `≈110 W`).
+    지수 오차(3.7%)와 **자릿수가 다르다 — 실측 12.8배**.
+    N-G5 의 허용오차를 지수 쪽 숫자에서 뽑으면 게이트가 통과할 수 없다.
 """
 function mode_power_W(p::BatteryParams, mode::Symbol;
                       team::Int = 1, m_payload::Float64 = 0.0, speed::Float64 = p.v_ref)

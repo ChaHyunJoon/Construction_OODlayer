@@ -36,13 +36,29 @@ CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
 
 # -----------------------------------------------------------------------------
-# 🔴 임시 대역: `simstate_of` 는 이 브랜치에서 **아직 7필드가 아니다.**
+# 🔴🔴 **레인 격리용 임시 비계(scaffold)다. 병합 시 삭제된다.** 🔴🔴
+#
+#   `t7_simstate` 는 `sdd-lane-f` 가 `oracle-rebuild-night-2026-08-10` 에서 갈라진 시점에
+#   그 브랜치의 `simstate_of` 가 아직 축소되지 않았기 때문에만 존재한다. **Task R2 는 이미
+#   완료·병합됐다** — 권위는 언제나 병합된 `CB.simstate_of` 이고, 이 헬퍼도 계획서의 R2 초안
+#   본문도 **한 번도 권위였던 적이 없다.**
+#
+#   ⛔ 병합 시 할 일(기계적이다 — `src/` 의 어떤 것도 이 이름에 의존하지 않는다):
+#        `grep -n t7_simstate test/smdp_derive.jl` → 정의와 호출 전부를 지우고
+#        `CB.simstate_of(env)` 로 바꾼다. 두 구현이 갈리면
+#        `active_of == cache.active_set` 단언(260/260)이 먼저 빨개진다.
+#
+# 아래는 왜 이 비계가 필요했는지에 대한 기록이다:
+# `simstate_of` 는 이 브랜치의 기반 커밋에서 **아직 7필드가 아니다.**
 # Task R1(b578cd3c)이 `simstate.jl` 의 타입만 줄이고 `observe.jl` 은 손대지 않았다 —
 # `simstate_of` 는 여전히 `RobotRec(pose=…, health=…, …)` 8필드를 만들어 `MethodError` 로
-# 죽는다. 그것을 고치는 것은 **Task R2** 이고 아직 어느 레인에도 커밋되지 않았다(실측:
-# `git log --all`, 2026-08-21). 그래서 이 시험은 계획서 Task R2 Step 3 의 본문을 여기서
-# 재현한다. ⚠️ R2 가 착지하면 이 헬퍼를 지우고 `CB.simstate_of(env)` 로 바꿀 것.
-# 폴백이 아니라 대역이다 — `simstate_of` 를 try/catch 로 감싸지 않는다(조용한 폴백 금지).
+# 죽는다(Task R1 이 `simstate.jl` 의 타입만 줄이고 `observe.jl` 을 안 고쳤다).
+# 폴백이 아니라 비계다 — `simstate_of` 를 try/catch 로 감싸지 않는다(조용한 폴백 금지).
+#
+# ℹ️ 이 본문은 계획서 R2 초안과 세 군데가 다르다: (1) `_responsible_robots` 를 try/catch 없이
+#    바로 부른다, (2) `ball.center[1]`/`ball.radius` 대신 접근자 `get_center`/`get_radius` 를
+#    쓴다, (3) `error()` 문구가 다르다. 어느 것도 T7 의 단언에 닿지 않는다. (1)은 결과적으로
+#    **병합된 R2** 와 같다 — 그 try/catch 는 R2 리뷰에서 삭제됐다.
 # -----------------------------------------------------------------------------
 function t7_simstate(env)
     sched, cache = env.sched, env.cache
@@ -105,7 +121,13 @@ function check_modes_at(env, k::Int)
     heavy = CB._hz_modes(env)
     ms    = sort!(unique(CB.mode_of(s, env, kk) for kk in keys(s.fleet)); by = string)
     sizes = active_team_sizes(env)
-    @info "T7 mode probe" step = k modes = ms n_fleet = length(s.fleet) teams = sort(sizes)
+    # 🔴 **어느 population 위에서 잰 숫자인가**를 같이 찍는다. 앞선 세대의 실측표가
+    # fixture-specific 인 데다 population 이 안 적혀 있어 다른 태스크가 잘못 인용했다.
+    all_ids   = sort!(collect(keys(CB.BATTERY_FLEET[].soc)); by = string)
+    parked    = union!(Set{Any}(CB.active_spares()), Set{Any}(CB.checked_out_spares()))
+    ms_all    = sort!(unique(get(heavy, r, :idle) for r in all_ids); by = string)
+    ms_unpark = sort!(unique(get(heavy, r, :idle) for r in all_ids if !(r in parked)); by = string)
+    @info "T7 mode probe" step = k n_all = length(all_ids) n_parked = length(parked) n_fleet = length(s.fleet) modes_fleet = string(ms) modes_all = string(ms_all) modes_unparked = string(ms_unpark) teams = string(sort(sizes)) maxteam = (isempty(sizes) ? 0 : maximum(sizes))
 
     @testset "step $k — 🔴 비퇴화: 모드 도메인이 납작하지 않다" begin
         @test length(ms) >= 2      # 상수를 돌려주는 구현이 초록이 되는 구간을 배제한다
@@ -213,11 +235,16 @@ end
     prev = CB.get_active_pos(env)                 # step_environment! 가 잡는 것과 같은 스냅샷
     CB.step_environment!(env)                     # 훅이 이 안에서 장부를 쓴다
     e1   = fleet_b.energy_J
+    s260 = s                                      # active_set 은 이 스텝에 안 바뀐다(캐시 갱신 없음)
     # 스텝 중에 예비 풀이 바뀌었으면 위 스냅샷이 무효다 — 조용히 넘어가지 않는다.
     @test parked == union!(Set{Any}(CB.active_spares()), Set{Any}(CB.checked_out_spares()))
     @info "T7 Ruling2 fleet" n_fleet_soc = length(fleet_b.soc) n_parked = length(parked) dt = dt
-    pred   = Dict{Any,Float64}(id => (id in parked ? 0.0 : p.idle_W * dt) for id in keys(fleet_b.soc))
+    # 🔴 대기 기저도 `mode_power_W` 를 통과시킨다. `p.idle_W * dt` 를 그대로 쓰면 `:idle` 팔은
+    # 필드를 자기 자신과 비교하는 꼴이라 그 팔의 버그를 이 장부가 못 잡는다.
+    pred   = Dict{Any,Float64}(id => (id in parked ? 0.0 : CB.mode_power_W(p, :idle) * dt)
+                               for id in keys(fleet_b.soc))
     nmulti, nmanip = 0, 0
+    speeds, payloads = Float64[], Float64[]
     for v in sort!(collect(env.cache.active_set))
         node = CB.get_node(env.sched, v).node
         m = CB._node_mode(node)
@@ -231,14 +258,24 @@ end
         oldp = get(prev, v, newp)
         spd  = dt > 0 ? norm((newp - oldp)[1:2]) / dt : 0.0
         mp   = CB._payload_mass(env, node, p)
+        push!(speeds, spd); push!(payloads, mp)
         w    = CB.mode_power_W(p, sym; team = length(robots), m_payload = mp, speed = spd)
+        # ⚠️ 여기서는 `sort!` 한 정점 순서로 할증을 더하는데 엔진은 `env.cache.active_set`
+        # (Set) 순서로 더한다. 한 로봇이 **두 개 이상**의 할증을 받는 순간 부동소수 결합
+        # 순서가 갈려 아래 `==` 가 1 ulp 로 깨질 수 있다 — 지금 이 스텝에서는 어떤 로봇도
+        # 할증을 두 번 안 받아서 살아 있는 것이다. 깨지면 그건 `active_set` 순회 순서의
+        # 알려진 비결정성이 비트 단위 단언으로 새어 든 것이지 식의 오류가 아니다.
         for id in robots
             haskey(pred, id) || continue
             pred[id] += (w - p.idle_W) * dt   # 할증은 대기 위 델타 (battery.jl:214-216)
         end
     end
-    @info "T7 Ruling2 ledger coverage" n_multi_robot_nodes = nmulti n_manip_nodes = nmanip
-    @test nmulti >= 1                          # 팀 분할 분기를 실제로 태웠는가
+    @info "T7 Ruling2 ledger coverage" n_multi_robot_nodes = nmulti n_manip_nodes = nmanip n_motion_nodes = length(speeds) speed_min = minimum(speeds) speed_max = maximum(speeds) payload_min = minimum(payloads) payload_max = maximum(payloads) v_ref = p.v_ref
+    @test nmulti >= 1                          # 팀 분할 분기(:transit/:carry)를 태웠는가
+    @test nmanip >= 1                          # 🔴 :manip 분기도 태웠는가
+    # 🔴 실현 속도가 전부 0 이면 이동 팔이 `0.0 == 0.0` 을 비교하는 꼴이 되어 "14/14 exact" 가
+    # 조용히 "대기 기저만 잰 시험" 으로 퇴화한다. 하나라도 움직였는지 못박는다.
+    @test maximum(speeds) > 0.0
     worst, nexact = 0.0, 0
     for id in sort!(collect(keys(fleet_b.soc)); by = string)
         got, want = e1[id], pred[id]
@@ -249,6 +286,54 @@ end
     @info "T7 Ruling2 vs engine ledger" worst nexact n_total = length(fleet_b.soc)
     # 음성 대조: 계획서의 식(팀 분할 없음)은 이 장부를 못 맞춘다.
     @test CB.mode_power_W(p, :manip; team = 2) != p.manip_W
+
+    # -------------------------------------------------------------------------
+    # 🔴 선언된 근사(`team=1, m_payload=0, speed=v_ref`)의 **순부호와 크기**.
+    # 세 대입의 부호가 서로 다르다(speed 는 위로, m_payload 는 아래로) — 그래서 순부호는
+    # 주장이 아니라 **단언**이어야 한다. 그리고 크기는 소비처마다 다르므로 **두 번** 잰다.
+    # -------------------------------------------------------------------------
+    ph  = CB.HazardParams()
+    cap = p.capacity_J
+    ks  = sort!(collect(keys(s260.fleet)))
+
+    # (A) 에너지 — 게이트 N-G5 가 보는 크기. T12 의 ΔE 와 같은 population(s.fleet) 위에서.
+    e_light  = sum(CB.mode_power_W(p, CB.mode_of(s260, env, k)) * dt for k in ks)
+    e_engine = sum(e1[rid_of(k)] for k in ks)
+    per_robot = [CB.mode_power_W(p, CB.mode_of(s260, env, k)) * dt / e1[rid_of(k)] for k in ks]
+    @info "T7 잔차 (A) 에너지 — N-G5 가 보는 크기" e_light e_engine ratio = e_light / e_engine per_robot_min = minimum(per_robot) per_robot_max = maximum(per_robot)
+    @test e_engine > 0.0
+    @test e_light > e_engine        # 🔴 순부호가 양(+): 경량 레인이 과대평가한다
+    # 🔴 "지수의 4~8% 로 N-G5 를 재면 안 된다"의 음성 대조. 실측 집계비 1.48배(= 48% 오차),
+    # 로봇 하나로는 최대 4.6배까지 벌어진다 — 지수 오차(3.7%)와 자릿수가 다르다.
+    @test e_light / e_engine > 1.2
+
+    # (B) 지수 — 게이트 N-G1 이 보는 크기. `a` 안에서 이 대입이 건드리는 항은 β_s·P/C 하나다.
+    worst_a, worst_soc_share = 0.0, 0.0
+    for k in ks
+        m       = CB.mode_of(s260, env, k)
+        a_light = last(CB.rate_params_one(ph, s260.fleet[k], m, p, cap))
+        P_true  = e1[rid_of(k)] / dt                     # 엔진이 이 스텝에 실제로 쓴 평균 전력
+        du      = (m === :idle) ? 0.0 : ph.beta_usage / ph.usage_scale_s
+        a_true  = du + ph.beta_soc * P_true / cap
+        # 🔴 **트립와이어이지 불변식이 아니다.** `speed = v_ref` 는 상한이지만
+        # `m_payload = 0` 은 하한이므로, 로봇이 **최고속으로 짐을 지고** 달리면 개별 로봇에서
+        # 부호가 뒤집힐 수 있다(그 지점에서 `P_light − P_true = −km·m_payload·v_ref/team < 0`).
+        # 이 픽스처의 step 261 에서는 6대 전부 양(+)이다. 뒤집히면 여기가 먼저 빨개지고,
+        # 그건 버그가 아니라 "선언한 상한이 더 이상 성립하지 않는다"는 신호다.
+        @test a_light >= a_true                          # 🔴 지수에서도 순부호가 양(+)
+        worst_a = max(worst_a, (a_light - a_true) / a_true)
+        worst_soc_share = max(worst_soc_share,
+                              ph.beta_soc * CB.mode_power_W(p, m) / cap / a_light)
+    end
+    @info "T7 잔차 (B) 지수 — N-G1 이 보는 크기" worst_rel_error_in_a = worst_a soc_term_share_of_a = worst_soc_share
+    # β_s·P/C 항이 `a` 의 몇 %인지가 이 오차의 **상한**이다. 실측: `:manip`(P=1000 W)에서
+    # 8.0%, 이동 모드(P=500 W)에서 4.2%. ⚠️ "약 4%" 는 이동 모드만의 값이었다 — manip 은 그
+    # 두 배다. 상한으로 쓸 값은 **8%** 다.
+    @test worst_soc_share < 0.10
+    @test worst_a <= worst_soc_share + 1e-12   # 🔴 지수 오차는 그 항의 크기를 못 넘는다
+    # 🔴 그리고 두 크기가 **자릿수가 다르다** — N-G5 의 허용오차를 (B) 에서 뽑으면 안 된다는
+    # 것을 시험이 직접 말하게 한다. 실측: 0.478 vs 0.037 → 12.8배.
+    @test (e_light / e_engine - 1.0) > 5 * worst_a
 end
 
 @testset "mode_power_W 의 기준 조건 값" begin

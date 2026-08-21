@@ -51,6 +51,19 @@ end
     @test CB.inv_integrated_hazard(1e-3, 0.0, -1.0) == Inf      # 음수 E 도 안전한 쪽으로
 end
 
+@testset "🔴 |a·Δ| 가 작은 띠에서 상쇄가 없다 (BigFloat 대조 — expm1/log1p 가 load-bearing)" begin
+    # `_A_ZERO_TOL`(1e-12)과 ~1e-8 사이의 띠에서 `exp(x) - 1.0` 은 파국적 상쇄를 일으킨다.
+    # 실측(BigFloat 대조): 그 판의 상대오차 **8.2e-8** — 위 수치적분 시험의 rtol 1e-6 까지
+    # 12배밖에 안 남는다. `expm1` 판은 **2.2e-16**. 이 시험이 그 차이를 붙잡는다.
+    for (A, a, Δ) in ((1e-3, 1e-9, 1.0), (1e-3, 1e-10, 10.0),
+                      (1e-3, -1e-9, 1.0), (1e-3, 1e-11, 1.0), (1e-3, 1e-6, 900.0))
+        ref = Float64((big(A) / big(a)) * (exp(big(a) * big(Δ)) - 1))
+        @test abs(CB.integrated_hazard(A, a, Δ) - ref) / abs(ref) < 1e-14
+        # 역함수도 같은 띠에서 왕복해야 한다(log1p).
+        @test abs(CB.inv_integrated_hazard(A, a, ref) - Δ) / Δ < 1e-9
+    end
+end
+
 @testset "a→0 극한이 매끄럽다" begin
     A = 1e-3
     @test CB.integrated_hazard(A, 0.0, 50.0) ≈ A * 50.0
@@ -83,14 +96,35 @@ end
     @test_throws ErrorException CB.rate_params_one(p, rec, :sprint, bp, bp.capacity_J)
 end
 
-@testset "🔴 rates.jl 은 씬을 안 본다 (기계 검사)" begin
+@testset "🔴 rates.jl 은 씬을 안 본다 (AST 기계 검사)" begin
     # 분리의 이유가 이것이다: 수치 대조군이 엔진에 묶이면 안 된다. 그래서 `env` 를 받는
     # 배치 함수 `rate_params` 는 **derive.jl** 에 산다(계획서는 rates.jl 이라고 적었다).
+    #
+    # 🔴 정규식으로 소스를 긁던 앞 판은 두 군데가 샜다: 금지 목록이 6개뿐이라
+    # `global_transform`·`entity`·`get_node`·`Graphs`·`BATTERY_FLEET`·`HAZARD_STATE` 가
+    # 전부 통과했고, `split(l, "#")[1]` 은 `#` 이 든 **문자열 리터럴**을 잘라 먹었다.
+    # 이제 Julia 로 **파싱해서 심볼을 훑는다** — 주석·docstring 은 파서가 지우고,
+    # 문자열 안의 `#` 은 애초에 심볼이 아니라 잡히지 않는다.
     src  = read(joinpath(@__DIR__, "..", "src", "smdp", "rates.jl"), String)
-    src  = replace(src, r"\"\"\"(?s:.*?)\"\"\"" => "")             # docstring 제거
-    code = join([split(l, "#")[1] for l in split(src, "\n")], "\n")   # 주석 제거
-    for bad in ("env", "sched", "scene_tree", "cache", "active_of", "mode_of")
-        @test !occursin(Regex("\\b" * bad * "\\b"), code)
+    syms = Set{Symbol}()
+    walk(x) = (x isa Symbol && push!(syms, x);
+               x isa Expr && foreach(walk, x.args); nothing)
+    walk(Meta.parseall(src))
+
+    banned = [:env, :sched, :scene_tree, :cache, :active_set,          # 씬/엔진 핸들
+              :PlannerEnv, :SimState, :GraphBlock, :GeoBlock, :ProgBlock,
+              :get_node, :get_nodes, :entity, :global_transform, :node_id,
+              :matches_template, :Graphs, :get_active_pos,
+              :BATTERY_FLEET, :HAZARD_STATE, :RESTRICTION_ZONES,        # 전역 상태
+              :_responsible_robots, :_node_mode, :_payload_mass, :_hz_modes,
+              :active_of, :modes_of, :mode_of, :rate_params]            # derive.jl 의 것들
+    for b in banned
+        @test !(b in syms)
+    end
+    # 음성 대조: 이 검사가 실제로 무언가를 잡을 수 있는가 (허용된 이름은 진짜로 거기 있다)
+    for allowed in (:BatteryParams, :HazardParams, :RobotRec, :k_move, :hazard_rate_from,
+                    :mode_power_W, :integrated_hazard, :inv_integrated_hazard)
+        @test allowed in syms
     end
     @test hasmethod(CB.rate_params,
                     Tuple{CB.SimState,Any,CB.HazardParams,CB.BatteryParams,Float64})

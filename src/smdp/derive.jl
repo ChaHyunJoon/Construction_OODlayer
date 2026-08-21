@@ -21,8 +21,8 @@
 (후속 `v2` 의 모든 선행 `v1` 이 `closed_set` 에 있으면 `active_set` 에 넣는다).
 
 ⚠️ 알려진 한계: 어떤 간선에도 닿지 않는 고립 정점은 `s.g.edges` 에 흔적이 없어 여기서
-보이지 않는다. `test/smdp_derive.jl` 이 120 스텝 전 구간에서 엔진의 `cache.active_set` 과의
-동등성을 단언하므로, 그런 정점이 생기면 그 단언이 먼저 빨개진다.
+보이지 않는다. `test/smdp_derive.jl` 이 **1..260 스텝 전 구간**에서 엔진의 `cache.active_set`
+과의 동등성을 단언하므로(260/260 pass), 그런 정점이 생기면 그 단언이 먼저 빨개진다.
 """
 function active_of(s::SimState)
     preds = Dict{Int,Vector{Int}}()
@@ -31,7 +31,9 @@ function active_of(s::SimState)
         push!(verts, u); push!(verts, v)
         push!(get!(preds, v, Int[]), u)
     end
-    union!(verts, s.prog.closed)
+    # ⛔ 계획서 스니펫에 있던 `union!(verts, s.prog.closed)` 를 지웠다 — **죽은 코드**다.
+    #    그것이 넣는 원소는 전부 `s.prog.closed` 안에 있으므로 바로 아래 `!(v in closed)` 에서
+    #    100% 걸러진다. 남겨 두면 "closed 도 후보로 본다"는 잘못된 인상을 준다.
     return Set(v for v in verts
                if !(v in s.prog.closed) &&
                   all(u -> u in s.prog.closed, get(preds, v, Int[])))
@@ -65,6 +67,10 @@ function modes_of(s::SimState, env)
         rank = _mode_rank(sym)
         # ⚠️ `_responsible_robots` 는 팀 노드에서 `collect(keys(robot_team(node)))` 라
         # **정렬돼 있지 않다**(Dict 순회 순서). 정렬해서 돈다 — 시드 고정 = 완전 재현.
+        # ⚠️ `_responsible_robots` 는 `LiftIntoPlace` 에 **빈 벡터**를 준다(battery.jl:183-191)
+        # — `_node_mode` 는 그것을 `MANIPULATE` 로 분류하는데도. 그래서 `LiftIntoPlace` 는 두
+        # 레인 **모두에서** 아무에게도 `:manip` 을 주지 않는다. 이건 엔진 쪽 비대칭이고, 여기서
+        # 고치면 경량 레인만 달라져 λ 가 갈린다 — **의도적으로 그대로 둔다**(T8/T12 참고).
         for id in sort!(collect(_responsible_robots(node)); by = string)
             k = _int_key(id)
             # `s.fleet` 밖의 로봇은 이미 `_hz_excluded()` 로 걸러진 것이다(spec §2-4).
