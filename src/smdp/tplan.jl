@@ -1,0 +1,241 @@
+# =============================================================================
+# tplan.jl — 논문 식 (4) 의 대응물. **경량 롤아웃 모델 그 자체**다(spec §5-4).
+#
+# 이 파일이 정하는 것 하나: **λ 가 구간상수인 구간의 경계가 어디인가.** `rates.jl` 의
+# λ(t) = A·e^{a t} 는 "모드가 안 변하는 동안" 정확하다. 모드는 노드가 끝나야 변한다. 그래서
+# `T_plan_next` 는 **결정 epoch 가 아니라 λ 의 구간상수 경계**이고(spec §2-4), 소저너 샘플러가
+# 해석적으로 적분해도 되는 구간의 상한이다. 이 값을 넘어서 적분하면 그 뒤는 틀린 λ 다.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 D-6 (2026-08-21, 사용자 결정): **경과시간을 빼지 않는다.**
+#
+#    선행 설계는  rem = ρ·dur(v) − (s.prog.t − t0(v))  를 썼다. 두 가지로 죽는다:
+#      1. `get_t0` 는 **MILP 가 계획한 시작 시각**이고, 레포의 호출자가 전부 `t = 0.0` 을
+#         넘겨 `update_schedule_times!` 가 실질적으로 도달하지 않으므로 런 내내 0.0 에
+#         붙박인다 — 실측(선행 완료 보고서): 활성 정점 **15/15 가 `rem ≤ 0`**.
+#      2. ρ 로 못 고친다 — 활성의 **8/14 가 `min_duration == 0.0`** 이라 `ρ·0 − Δ ≤ 0` 이
+#         **모든 ρ** 에 대해 참이다.
+#    그리고 7필드 `s` 에는 애초에 시계가 없다(`ProgBlock` 은 `closed` 뿐이다). 그래서 뺄 것이
+#    없다 — 이건 근사이기 이전에 **가용 정보의 한계**다.
+#
+#    🔴 **근사의 방향(부호)** — 이 자리에서 못박는다:
+#      · 축 1 (D-6 이 만드는 편향): 진행 중인 노드의 **남은** 계획시간 대신 **전체** 계획시간을
+#        쓴다 ⇒ `T_plan_next ≥ (남은 계획시간)`. 이 축에서는 **엄밀한 상한(over-estimate)** 이고,
+#        경계를 늦게 잡으므로 λ 를 **한 구간 너무 길게** 상수로 취급한다.
+#      · 축 2 (반대 부호의 교란): `min_duration = duration_lower_bound(node)` 는 **하한**이다.
+#        실제 주행은 3계층 reactive 스택(TangentBug→PotentialField→RVO2)을 거치므로 더 길다.
+#        이 축에서는 **과소평가**다.
+#      ⇒ 두 축의 부호가 반대이므로 **실현 경계에 대한 순 부호는 선험이 아니라 실측**이다.
+#        `test/smdp_tplan.jl` 끝의 "D-6 upper-bound bias" 블록이 그 비(pred/actual)를 재고,
+#        게이트 **N-G1(Task T9)** 이 그 크기를 판정한다. 여기서 정확하게 만들려 하지 않는다.
+#
+#    ⚠️ **경량 모델은 혼잡·교착을 원리적으로 볼 수 없다.** ρ 가 축 2 의 격차를 흡수하는
+#       스칼라이고, 그 값은 **Task T10 이 무거운 레인에 적합해서** 채운다(아래 `RHO`).
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 🔴 이 파일은 로봇 모드를 **한 번도 보지 않는다** — 그래서 `mode_of` 를 로봇 루프에서
+#    부르는 T7 리뷰의 금지(배치 경로를 이차로 되돌리는 것)에 애초에 걸리지 않는다. 경계는
+#    "어떤 노드가 언제 끝나는가" 만으로 정해지고, 그건 스케줄의 성질이지 함대의 성질이 아니다.
+#    복잡도는 `O(|active|)` (T_plan_next) · `O(|V| + |E|)` (T_done) 로 **함대 크기와 무관**하다.
+#    ⚠️ 이 자리에 모드 조건("팀이 있는 노드만")을 넣고 싶어지면, 그때는 반드시
+#    `modes_of`/`rate_params`(배치, 함대에 선형)를 쓸 것 — `mode_of` 를 루프에 넣지 말 것.
+#
+# 🔴 조용한 폴백 금지: 스케줄에 없는 정점 · 음수/비유한 소요시간은 `error()` 다. 0 이나
+#    기본값으로 때우면 "짧은 노드가 있다" 와 "그 노드가 다른 세계의 것이다" 가 한 값으로 합쳐진다.
+#
+# 🔴 **수정 1라운드 (2026-08-21, 리뷰 지적 Important 2)**: `T_plan_next ≤ T_done` 이 **거짓이었다.**
+#    활성 프론티어가 **전부 `dur == 0`** 이면 `:111` 이 후보를 전부 걸러 `Inf` 를 돌려주는데,
+#    `T_done` 은 남은 DAG 를 걸어 유한 양수를 돌려준다 — `Inf ≤ 36.075` 는 거짓이다. 그리고
+#    이건 학술적인 구멍이 아니다: 이 씬은 정점의 **41%(142/342)가 `dur == 0`** 이라 "프론티어가
+#    전부 0" 은 긴 런에서 실제로 도달한다. 그때 T9 의 소저너는 **모드 변화가 앞에 남아 있는데도
+#    적분 상한으로 `Inf` 를 받는다** — 이 파일이 막으려고 존재하는 바로 그 실패다.
+#    → `_zero_frontier_fallback` 을 넣어 불변식을 **복원**했다(약화가 아니라 복원). 근거와
+#      남은 느슨함은 `T_plan_next` 의 docstring 에 있다.
+# =============================================================================
+
+"""
+    RHO :: Ref{Float64}
+
+계획 소요시간 → 실현 소요시간의 보정 배수. `min_duration` 이 **하한**이라 실제는 항상 더 길고,
+그 격차를 흡수하는 스칼라 하나다.
+
+🔴 **현재 값 `1.0` 은 잠정(provisional) 기본값이고 적합된 값이 아니다.** 이 자리의 주인은
+**Task T10 (게이트 N-G2)** 이고, 무거운 레인의 실현 시간에 적합해서 채운다. T8 은 그 값을
+스스로 적합하지 않는다 — `1.0` 은 "보정 없음"이라는 뜻이지 "1.0 이 맞다"는 뜻이 아니다.
+`T_plan_next`/`T_done` 이 ρ 에 대해 **정확히 선형**이므로(시험이 못박는다) T10 이 이 `Ref` 하나만
+바꾸면 두 함수가 같이 움직인다.
+"""
+const RHO = Ref(1.0)
+
+"""
+    node_duration(env, v::Int) -> Float64
+
+정점 `v` 의 **계획 소요시간**(ρ 보정 전 원값) = `get_min_duration(env.sched, v)`.
+
+⚠️ 이름대로 **하한**이다(`task_assignment.jl:86` 이 `duration_lower_bound(node)` 를 넣는다).
+실현 시간이 아니다 — 위 헤더의 "축 2".
+
+🔴 폴백 없음: `env.sched` 에 없는 정점, 음수, 비유한 값은 전부 `error()`.
+"""
+function node_duration(env, v::Int)
+    Graphs.has_vertex(env.sched, v) ||
+        error("node_duration: 정점 $(v) 가 env.sched 에 없다 — `s` 와 스케줄이 다른 세계다. " *
+              "0 으로 때우지 않는다(그러면 '즉시 끝나는 노드' 와 구분이 사라진다)")
+    d = Float64(get_min_duration(env.sched, v))
+    isfinite(d) ||
+        error("node_duration: 정점 $(v) 의 min_duration = $(d) — 유한하지 않다. " *
+              "스케줄 노드는 유한 시간에 끝난다는 가정이 깨졌다")
+    d < 0.0 &&
+        error("node_duration: 정점 $(v) 의 min_duration = $(d) < 0 — 음수 소요시간이다. " *
+              "clamp 하지 않는다(경계가 조용히 과거로 간다)")
+    return d
+end
+
+"""
+    T_plan_next(s::SimState, env; rho = RHO[]) -> Float64
+
+다음 모드 변화까지의 시간. 두 갈래다.
+
+**주 경로** — 활성 정점(`active_of(s)`: 모든 선행이 닫혔고 자신은 안 닫힌 정점) 중 **가장 짧은
+계획 소요시간** × ρ. `dur == 0` 인 정점은 **후보에서 뺀다**: 0 을 돌려주면 `sample_sojourn` 이
+전진하지 못하고 `n_boundary` 상한에서 죽거나 시뮬 시간 0 초 만에 DAG 를 통과한다. eps 클램프도
+같은 자리에서 죽는다(1.8e-15 는 전진이 아니다).
+
+**폴백(수정 1라운드에 추가)** — 프론티어가 **전부 `dur == 0`** 이라 주 경로가 후보를 하나도
+못 찾으면, 남은 DAG 의 `_finish_times` 에서 **가장 이른 양수 완료시각**을 돌려준다. 즉
+`dur == 0` 인 프론티어를 (계획시간상 즉시 끝나므로) **뚫고 지나가** 그 뒤의 첫 양수 경계를 잡는다.
+
+  🔴 **이 폴백이 없으면 `T_plan_next ≤ T_done` 이 거짓이다.** 프론티어가 전부 0 이면 주 경로는
+     `Inf` 를, `T_done` 은 유한 양수를 돌려준다. 이 씬은 정점의 41%(142/342)가 `dur == 0` 이라
+     그 상태는 긴 런에서 실제로 도달하고, 그때 소저너는 **남은 모드 변화를 앞에 두고 적분 상한으로
+     `Inf`** 를 받는다. `test/smdp_tplan.jl` 의 "폴백" 픽스처가 이 자리를 못박는다.
+
+**`Inf` 는 이제 단 하나의 뜻이다: 남은 계획 작업의 소요시간이 전부 0 이다**(흡수상태 포함).
+그리고 그때는 `T_done == 0.0` 이다 — 그래서 아래 불변식이 **구성상** 참이다.
+
+🔴 **불변식 (이제 논증이 아니라 구성상 참이다)**:
+
+    T_plan_next(s, env; rho) ≤ T_done(s, env; rho)   또는   T_done(s, env; rho) == 0.0
+
+증명. `f = _finish_times(env, s.prog.closed, rho)` 라 하자. `T_done = max f`(또는 흡수상태면 0).
+  · 주 경로가 값을 내면, 그 최소를 주는 활성 정점 `v` 는 열려 있고 선행이 전부 닫혀 있으므로
+    `f[v] = ρ·dur(v)` = 그 값이다. 따라서 값 ≤ `max f` = `T_done`.
+  · 폴백이 값을 내면 그것은 `min{f[v] : f[v] > 0}` 이므로 ≤ `max f` = `T_done`.
+  · 둘 다 `Inf` 면 양수 `f[v]` 가 하나도 없다는 뜻이고 그러면 `max f == 0` → `T_done == 0.0`. ∎
+
+⚠️ **남은 느슨함(측정됨, 고의로 안 고쳤다)**: 주 경로는 폴백보다 **클 수 있다.** 활성에
+`dur > 0` 인 정점이 하나라도 있으면 폴백을 안 타는데, 그때에도 `dur == 0` 인 다른 활성 정점의
+후속이 더 이른 양수 경계를 가질 수 있다(`min f > 0` 이 주 경로보다 작을 수 있다). 즉 `min f > 0`
+을 **항상** 쓰는 편이 언제나 더 타이트하다. 그렇게 하지 않은 이유는 그것이 `active_of` 를
+`T_plan_next` 에서 통째로 들어내(계획서의 `Consumes: active_of` 인터페이스를 바꾸고) 호출당 비용을
+`O(|active|)` 에서 `O(|V|+|E|)` 로 올리는, 수정 라운드가 단독으로 내릴 결정이 아니기 때문이다.
+그 격차는 `test/smdp_tplan.jl` 이 400 스텝에서 **실측해서 로그로 남긴다**.
+🔴 **실측 결과 이 창에서 격차는 0 이다**: 400 스텝 전부에서 주 경로 == `min{f > 0}` (비의
+min·median·max 가 전부 정확히 1.0, 더 타이트한 스텝 **0개**). 즉 "느슨할 수 있다" 는 이론적
+가능성이고 이 픽스처의 초반 10 초에서는 **한 번도 실현되지 않았다.** T9/T10 은 그 로그를 보고
+결정할 것 — 긴 런에서 격차가 열리면 그 로그가 먼저 그것을 보여준다.
+
+⚠️ 이 값은 **결정 epoch 가 아니다.** 사건(고장·배터리)이 그 전에 터지면 소저너가 그것을 먼저
+돌려준다. 여기서 재는 것은 λ 의 파라미터가 바뀌는 순간 하나뿐이다.
+⚠️ 계획시간상 **즉시(t = 0)** 일어나는 모드 변화는 원리적으로 못 잡는다 — `Δ > 0` 이어야 하기
+때문이다. `dur == 0` 정점의 완료가 그것이고, 폴백은 그 경계를 **건너뛴 뒤**의 첫 양수 경계를 준다.
+
+복잡도: 주 경로 `O(|s.g.edges| + |active| log|active|)`, 폴백 `O(|V| + |E|)`. 둘 다 **함대
+크기와 무관**하다(헤더의 T7 리뷰 항목).
+"""
+function T_plan_next(s::SimState, env; rho::Float64 = RHO[])
+    rho > 0.0 || error("T_plan_next: rho = $(rho) — 양수여야 한다(0 이면 경계가 즉시가 된다)")
+    best = Inf
+    # `active_of` 는 `Set` 을 돌려준다 — 순회 순서가 정의돼 있지 않다. 정렬해서 돈다:
+    # 값(min)은 순서에 안 흔들리지만 **어느 정점이 먼저 error 를 내는지**가 흔들린다.
+    for v in sort!(collect(active_of(s)))
+        d = node_duration(env, v)         # 스케줄 밖 정점은 여기서 죽는다(폴백 없음)
+        d > 0.0 || continue               # 🔴 dur == 0 은 경계 후보가 아니다
+        rd = rho * d
+        rd < best && (best = rd)
+    end
+    isfinite(best) && return best
+    # 🔴 프론티어가 전부 dur == 0 이다. `Inf` 를 돌려주면 불변식이 깨지고 소저너가 남은 모드
+    # 변화를 못 보고 지나간다 — DAG 를 뚫고 첫 **양수** 경계를 찾는다(위 docstring 의 증명).
+    return _zero_frontier_fallback(env, s.prog.closed, rho)
+end
+
+"프론티어가 전부 `dur == 0` 일 때의 경계: 남은 DAG 의 가장 이른 **양수** 완료시각(없으면 `Inf`)."
+function _zero_frontier_fallback(env, closed, rho::Float64)
+    finish = _finish_times(env, closed, rho)
+    best = Inf
+    for v in sort!(collect(keys(finish)))          # Dict 순회 순서를 안 믿는다
+        f = finish[v]
+        (f > 0.0 && f < best) && (best = f)
+    end
+    return best
+end
+
+"""
+    _finish_times(env, closed, rho) -> Dict{Int,Float64}
+
+남은(열린) 정점들의 **가장 이른 계획 완료시각**을 지금(t = 0)부터 재서 돌려준다.
+닫힌 정점은 통째로 빼고, 남은 정점들의 **유도 부분그래프**에서 위상정렬 1회로 푼다:
+
+    finish[v] = max(열린 선행들의 finish)  +  ρ · node_duration(v)
+
+`T_done`(= 이 값들의 **최댓값**)과 `T_plan_next` 의 폴백(= **양수 중 최솟값**)이 **같은 DP** 를
+쓴다. 그래서 `T_plan_next ≤ T_done` 이 논증이 아니라 **구성상** 참이다(min ≤ max).
+
+🔴 **순환 불가**: `Graphs.topological_sort_by_dfs` 는 사이클을 만나면
+`error("The input graph contains at least one loop.")` 로 죽는다(Graphs 1.13.1,
+`traversals/dfs.jl:104` — 반복(iterative) 구현이라 스택도 안 터진다). 조용히 돌지 않는다.
+위상정렬이 선행을 먼저 내주므로 `finish[u]` 는 항상 이미 채워져 있다 — 그래서 계획서의
+`get(finish, u, 0.0)` 대신 `error()` 를 둔다(그 폴백은 "선행이 아직 안 풀렸다" 를 "선행이 0초에
+끝났다" 로 조용히 바꿔 longest path 를 소리 없이 짧게 만든다).
+
+복잡도 `O(|V| + |E|)`.
+"""
+function _finish_times(env, closed, rho::Float64)
+    sched  = env.sched
+    G      = get_graph(sched)
+    finish = Dict{Int,Float64}()
+    for v in Graphs.topological_sort_by_dfs(G)      # 사이클이면 여기서 죽는다
+        v in closed && continue
+        head = 0.0
+        for u in Graphs.inneighbors(G, v)
+            u in closed && continue
+            haskey(finish, u) ||
+                error("_finish_times: 선행 $(u) 가 아직 안 풀렸다 — 위상정렬 가정이 깨졌다(정점 $(v))")
+            head = max(head, finish[u])
+        end
+        finish[v] = head + rho * node_duration(env, v)
+    end
+    return finish
+end
+
+"""
+    T_done(s::SimState, env; rho = RHO[]) -> Float64
+
+미완 스케줄 DAG 의 **longest path**(ρ 배) — 아무것도 고장 나지 않으면 언제 끝나는가.
+`_finish_times` 의 **최댓값**이다.
+
+**흡수상태(전부 닫힘)에서는 `0.0`.** 🔴 이것이 `T_plan_next` 의 `Inf` 에 대응하는 값이고,
+둘의 방향이 반대인 것은 **두 함수가 서로 다른 질문에 답하기 때문**이다:
+  · `T_plan_next` = "다음 경계까지 얼마나?" → 경계가 없으면 `Inf`(= 끝까지 적분해도 된다)
+  · `T_done`      = "끝나기까지 얼마나?"   → 이미 끝났으면 `0.0`
+`T_done` 을 `Inf` 로 두면 "끝났다" 와 "영원히 안 끝난다" 가 한 값으로 합쳐진다. 반대로
+`T_plan_next` 를 `0.0` 으로 두면 소저너가 전진하지 못한다. 그래서 이 비대칭은 의도적이다.
+남은 정점이 있는데 그 소요시간이 전부 0 이어도 `0.0` 이다(= 남은 일이 즉시 끝난다).
+
+진행 중 노드의 잔여 보정을 **하지 않는다** — D-6 과 같은 이유(시계가 없다). 그래서 `T_done`
+역시 같은 방향의 상한 편향을 갖는다(헤더의 축 1).
+
+복잡도 `O(|V| + |E|)`.
+"""
+function T_done(s::SimState, env; rho::Float64 = RHO[])
+    rho > 0.0 || error("T_done: rho = $(rho) — 양수여야 한다")
+    closed = s.prog.closed
+    any(v -> !(v in closed), Graphs.vertices(env.sched)) || return 0.0   # 흡수상태
+    finish = _finish_times(env, closed, rho)
+    best = 0.0
+    for v in sort!(collect(keys(finish)))          # Dict 순회 순서를 안 믿는다
+        finish[v] > best && (best = finish[v])
+    end
+    return best
+end
