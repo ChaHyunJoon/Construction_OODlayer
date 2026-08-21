@@ -221,6 +221,25 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :_DECISIONS             => :log,     # run_demo.jl:77 — 결정마다 push! 하는 리포팅용 트레이스
                                           # (:337 push!, :905-906 DEMO_SUMMARY 로 그대로 방출).
                                           # 다시 읽어 분기하는 소비처가 없다 — 순수 출력.
+    :ENACT_ORDER_LOG        => :log,     # 신규(Task C1). replan.jl:523 — `maybe_respecify!` 가
+                                          # 진입한 순차-집행 분기의 순서를 push! 로 쌓는 감사
+                                          # 트레이스. 매 호출 **맨 앞**에서 `Symbol[]` 로 덮어써
+                                          # 진다(replan.jl:832) — 그래서 이전 결정의 내용이 이번
+                                          # 결정으로 새어 들어올 여지가 코드 안에서 이미 막혀
+                                          # 있다(:log 는 그 사실을 "스냅샷 불필요"로 확인할 뿐,
+                                          # 그 사실을 만드는 쪽은 아니다). 소비처는 테스트 단언
+                                          # (`test/respec_sequential_enact.jl` 등)과 `@info` 방출
+                                          # 뿐 — 다시 읽어 분기하는 프로덕션 코드가 없다(`_DECISIONS`
+                                          # 와 같은 논리).
+    :LAST_ENACT_REPORT      => :log,     # 신규(Task C1). replan.jl:536 — 집행 단위별
+                                          # `(kind, status, n)` 행을 쌓는 감사 트레이스.
+                                          # `ENACT_ORDER_LOG` 와 짝지어 매 호출 맨 앞에서
+                                          # `NamedTuple[]` 로 리셋된다(replan.jl:833). `sum(r.n)`
+                                          # 불변식은 **같은 호출 안에서** 검증되는 것이지 다음
+                                          # 결정으로 이월되는 상태가 아니다 — 다음 호출은 빈
+                                          # 벡터에서 다시 시작한다. 다시 읽어 분기하는 소비처가
+                                          # 없다(테스트 단언 + `@info` 뿐) — `ENACT_ORDER_LOG` 와
+                                          # 같은 이유로 :log.
 
     # ---- 분할 --------------------------------------------------------------------------
     # 비율 인자·broken·eff·usage_s·expired → s
@@ -359,6 +378,26 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :ENERGY_MODEL           => :setup,
     :GREEDY_ENERGY_W        => :setup,
     :PLANNING_OBJECTIVE_WEIGHTS => :setup,
+    :RHO                    => :setup,   # 신규(Task T8). tplan.jl:68 — 계획→실현 소요시간 보정
+                                          # 배수. `EDGE_COST_MULTIPLIER`/`GREEDY_ENERGY_W` 와 같은
+                                          # 모양의 튜닝 스칼라: `node_duration`/`T_plan_next`/
+                                          # `T_done` 이 매 호출 **읽기만** 하고, 에피소드 시뮬
+                                          # 루프 안에서 재대입하는 자리는 0건(확인함, `grep -rn
+                                          # "RHO\[\]\s*="` — 쓰기는 `test/smdp_tplan.jl` 의
+                                          # save/restore 쌍과 `tools/monitor/gen_ng1_pairs.jl` 의
+                                          # 그리드서치 sweep(둘 다 옛값을 저장했다가 되돌린다)뿐).
+                                          # 현재 `1.0` 은 잠정 기본값이고 **Task T10(게이트 N-G2)이
+                                          # 무거운 레인에 적합해 이 `Ref` 를 덮어쓴다** — :setup
+                                          # 은 "에피소드 중 불변"을 뜻하지 "영원히 1.0"을 뜻하지
+                                          # 않는다(다른 setup 상수들도 실행 전 구성 단계에서
+                                          # `set_*!` 로 채워진 뒤 에피소드 내내 고정된다, 예:
+                                          # `LOADING_SPEED`/`MILP_OPTIMIZER`). T10 이 적합한 값은
+                                          # 이 :setup 분류 아래 그대로 살아남는다 — snapshot/
+                                          # restore! 는 :setup 을 건드리지 않으므로 롤아웃 사이
+                                          # 리셋으로 조용히 1.0 에 되돌아가는 경로가 없다(적합값을
+                                          # 버리는 방향의 버그를 피한다). 반대로 :state/:replay 로
+                                          # 잘못 분류했다면 존재하지도 않는 "복원" 의미론을 이
+                                          # 스칼라에 강제하게 된다 — 근거 없이 s 를 부풀리는 쪽.
     :NOVELTY_FLEET_REF      => :setup,   # ex-:meta(fix round 1, [Minor] #7). 재확인: novelty.jl:293
                                           # 선언 뒤 어디서도 대입되지 않는다(레포 전체 grep 0건) —
                                           # 고정 스케일 상수(명목 함대 크기 30.0)일 뿐, 관측 이력을
