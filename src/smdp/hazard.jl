@@ -94,10 +94,17 @@ Base.@kwdef struct HazardParams
     cell_mild_hi::Float64   = 0.70     # 가벼운 열화 낙폭 상한
 
     # --- (C) 통행금지 구역 출현(fleet-level) 위험 --------------------------------
-    mtbf_zone_s::Float64    = Inf      # 기본 꺼짐. 유한값을 주면 무작위 시점에 zone 이 생김
+    mtbf_zone_s::Float64    = 1800.0   # D-4 (2026-08-20): 유한값으로 켠다. 기본이 Inf 였던 탓에
+                                       # 커밋된 전 런에서 n_zone = 0 이었다(실측) — zone 이 사건
+                                       # 종류로 선언돼 있는데 한 번도 도착하지 않는 상태였다.
+                                       # ⚠️ **미교정 초기값**이다. Task C8(N-G3)이 교정한다.
 
     # --- (D) 방전 무작위성 --------------------------------------------------------
-    drain_sigma::Float64    = 0.15     # ε_r ~ LogNormal(−σ²/2, σ) (평균 1). 0 이면 결정론적
+    drain_sigma::Float64    = 0.0      # D-5 (2026-08-21): ε_r 개체차를 **동역학에서 없앤다.**
+                                       # 0.15 였을 때는 로봇마다 방전 효율이 달랐고, 그 값을 s 에서
+                                       # 빼면 모델이 잠재변수 혼합이 되어 s 에서 Markov 가 아니었다.
+                                       # 0 으로 두면 eff ≡ 1.0 이라 s 에서 빠지는 것이 공짜다.
+                                       # ⚠️ 되살리려면 RobotRec 에 eff 를 **같은 커밋에서** 넣을 것.
     drain_step_cv::Float64  = 0.0      # >0 이면 매 스텝 추가 iid 변동(변동계수). 기본 0
 
     # --- (E) 전역 외생 모드(drift 손잡이) ----------------------------------------
@@ -105,7 +112,11 @@ Base.@kwdef struct HazardParams
 
     # --- (F) 발화(enactment) 옵션 -------------------------------------------------
     fire_safe_target::Bool  = true     # 깔끔히 교체 가능한 로봇만 실제로 고장냄(아니면 다음 스텝으로 유예)
-    fire_require_spare::Bool= true     # 쓸 수 있는 예비가 있을 때만 고장냄
+    fire_require_spare::Bool= false    # D-3 (2026-08-20, 근거는 2026-08-21 에 교체): 예비와
+                                       # 무관하게 발화한다. 이제 예비는 충분하다고 **가정**하므로
+                                       # (D-7) 이 손잡이가 막는 것은 "예비 소진 시 음소거" 가
+                                       # 아니라 **그 가정이 깨졌을 때 조용히 음소거되는 것**이다.
+                                       # true 로 되돌리면 가정 위반이 에러가 아니라 침묵이 된다.
     fire_obstacle::Bool     = false    # 고장 자리를 장애물로 남길지(ForbidZone 과분류 방지 위해 기본 false)
     fire_clear::Bool        = true     # 고장 본체를 즉시 견인해 치울지
     max_events::Int         = 64       # 안전 상한(런어웨이 방지)
@@ -338,24 +349,36 @@ function _mode_mult(p::HazardParams, m::Symbol)
 end
 
 """
-    hazard_rate(st, id; mode, soc) -> Float64
+    hazard_rate_from(p::HazardParams, usage_s, soc, mode) -> Float64
 
-The breakdown hazard rate λ_r [1/s] for robot `id` right now:
+λ 의 **단일 진실원**. 무거운 레인(`hazard_rate`)과 경량 레인(`rates.jl`)이 둘 다 이것을 부른다.
+인자가 전부 `s` 에서 나온다는 것이 spec §2-6 의 요점이다 — `usage_s`·`soc` 는 `RobotRec` 의
+두 필드이고 `mode` 는 `derive.jl` 의 `mode_of` 가 낸다.
 
     λ = (1/mtbf_break) · global_mode · mode_mult · exp(β_u·û + β_s·(1 − soc))
 
 with û = usage_s / usage_scale_s. Every argument is OBSERVABLE state (design §3.1),
 which is what keeps the process Markov in the declared state vector.
 """
-# 지금 이 순간 로봇 id 의 급작 고장 위험률 λ[1/s]. 모든 인자가 "관측 가능한 상태"라서 Markov 가 유지된다.
-function hazard_rate(st::HazardState, id; mode::Symbol = :idle, soc::Float64 = 1.0)
-    p = st.params
+function hazard_rate_from(p::HazardParams, usage_s::Float64, soc::Float64, mode::Symbol)
     base = _rate(p.mtbf_break_s)
     base == 0 && return 0.0
-    u_hat = p.usage_scale_s > 0 ? st.usage_s[id] / p.usage_scale_s : 0.0
+    u_hat = p.usage_scale_s > 0 ? usage_s / p.usage_scale_s : 0.0
     return base * p.mode * _mode_mult(p, mode) *
            exp(p.beta_usage * u_hat + p.beta_soc * (1.0 - clamp(soc, 0.0, 1.0)))
 end
+
+"""
+    hazard_rate(st, id; mode, soc) -> Float64
+
+The breakdown hazard rate λ_r [1/s] for robot `id` right now. Thin wrapper over
+`hazard_rate_from` — kept so existing callers (`hazard_step!`, `hazard_features`) need
+no change.
+"""
+# 지금 이 순간 로봇 id 의 급작 고장 위험률 λ[1/s]. 기존 시그니처는 얇은 래퍼로 남는다 —
+# 호출자를 전부 고칠 필요가 없다.
+hazard_rate(st::HazardState, id; mode::Symbol = :idle, soc::Float64 = 1.0) =
+    hazard_rate_from(st.params, st.usage_s[id], soc, mode)
 
 # 셀 열화 위험률. 급작 고장과 같은 형태지만 마모(누적 사용)에만 의존하게 둔다(SoC 는 결과지 원인이 아님).
 function _cell_rate(st::HazardState, id; mode::Symbol = :idle)

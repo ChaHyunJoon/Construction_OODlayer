@@ -2838,12 +2838,16 @@ SEED       = parse(Int, get(ENV, "SEED", "1"))               # 위험 프로세�
 # 기대 사건 수가 1 미만이 되어 "아무 일도 안 일어나는" 실행이 나온다(실측: 19.55 s / 1 event).
 MTBF_BREAK = parse(Float64, get(ENV, "MTBF_BREAK", "60.0"))  # 기준조건 평균 무고장 시간[s]
 MTBF_CELL  = parse(Float64, get(ENV, "MTBF_CELL",  "45.0"))
-MTBF_ZONE  = parse(Float64, get(ENV, "MTBF_ZONE",  "Inf"))
-DRAIN_SIG  = parse(Float64, get(ENV, "DRAIN_SIGMA", "0.15")) # 로봇별 방전 효율 편차 σ
+MTBF_ZONE  = parse(Float64, get(ENV, "MTBF_ZONE",  "1800.0"))  # D-4: HazardParams() 기본과 일치(T6 라운드 3)
+DRAIN_SIG  = parse(Float64, get(ENV, "DRAIN_SIGMA", "0.0"))   # D-5: HazardParams() 기본과 일치(T6 라운드 3)
 STALL      = get(ENV, "STALL", "0") == "1"
 # 정체성 보존 hot-swap 을 기본으로 켠다. 이게 꺼져 있으면 교체가 "스케줄 재각인" 경로로 가고,
 # 그 경로는 다인 운반 도중 고장을 소화하지 못해 위험 프로세스가 만든 사건 대부분이 유예된다.
 HOT_SWAP   = get(ENV, "HOT_SWAP", "1") == "1"
+# D-3 (T6 라운드 3, 컨트롤러 지시): 이 파일도 gen_oracle_dataset.jl 과 같은 모양으로 독립
+# 기본값을 하드코딩하고 있었다 — fire_require_spare = true 가 그 자리에 박혀 실행 레인
+# (HazardParams() 기본 false)과 다른 세계를 만들었다. env 로 열어 두되 기본은 맞춘다.
+FIRE_REQUIRE_SPARE = get(ENV, "FIRE_REQUIRE_SPARE", "0") == "1"
 GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 FAST       = get(ENV, "FAST", "1") == "1"
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "0") == "1"
@@ -2899,7 +2903,7 @@ CB.disable_hazard!()          # 이전 실행 잔여 상태 정리(훅 원복 �
 HZ_PARAMS = CB.HazardParams(
     mtbf_break_s = MTBF_BREAK, mtbf_cell_s = MTBF_CELL, mtbf_zone_s = MTBF_ZONE,
     drain_sigma = DRAIN_SIG,
-    fire_safe_target = true, fire_require_spare = true,
+    fire_safe_target = true, fire_require_spare = FIRE_REQUIRE_SPARE,
     # hot-swap 은 고장 본체를 창고로 되돌려 정체성을 보존하므로 견인(clear)하면 안 된다.
     fire_obstacle = false, fire_clear = !HOT_SWAP)
 
