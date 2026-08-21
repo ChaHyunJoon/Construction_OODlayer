@@ -121,7 +121,15 @@ function verify(proposal::RespecProposal, env, invariant::InvariantSpec;
             extra_constraints = proposal, # <-- the injected re-specification
         )
     catch err
-        # 시끄럽게, 그러나 **전이로**. 사유와 원문 예외를 그대로 감사 로그에 남긴다.
+        # 🔴 **좁게 잡는다.** 넓은 catch 는 방금 고친 결함의 거울상이다 — 우리 자신의 시끄러운
+        #    내부 고장을 조용한 오분류로 바꾼다.
+        #   (a) 제어 흐름 예외는 절대 삼키지 않는다.
+        (err isa InterruptException || err isa StackOverflowError) && rethrow()
+        #   (b) 제안에 LLM 이 쓴 제약이 하나도 없으면 이 실패는 **우리 컴파일러의 버그**다.
+        #       그대로 던진다 — stacktrace 를 살려야 고칠 수 있고, 명목/oracle 레인의 고장이
+        #       :ungrammatical line-stop 으로 위장되면 안 된다.
+        _carries_llm_grammar(proposal) || rethrow()
+        # 여기까지 온 것만 전이로 바꾼다: LLM 이 쓴 제약이 섞인 제안의 컴파일 실패.
         return Reject(:ungrammatical,
                       "constraint compilation failed: $(sprint(showerror, err))")
     end
@@ -415,15 +423,20 @@ end
  시간변수의 실효 상한으로 쓴다 — Disjunction 의 Big-M 이 실제로 완화 역할을 하는지 볼 때."
 const _MILP_VAR_BOUND = 1.0e4
 
-# VarRef 하나가 이 스케줄에서 해석 가능한가. 문제가 있으면 설명 문자열, 없으면 nothing.
+# VarRef 하나가 이 스케줄에서 해석 가능한가.
+# 반환: `nothing`(문제 없음) 또는 `(reason::Symbol, detail::String)`.
+# 🔴 사유 심볼을 문제 **종류별로** 나눈다 — 감사에서 reason 으로 묶을 때 서로 다른 실패가
+#    한 통에 섞이면 안 된다(참조 미해석 vs 계수 크기는 원인도 대응도 다르다).
 function _varref_problem(sched, r::VarRef)
     get_vtx(sched, r.node) > 0 ||
-        return "VarRef($(r.kind)) references $(r.node), which is not a schedule vertex " *
-               "(get_vtx -> $(get_vtx(sched, r.node))). Agent ids are NOT vertex ids."
+        return (:unresolvable_reference,
+                "VarRef($(r.kind)) references $(r.node), which is not a schedule vertex " *
+                "(get_vtx -> $(get_vtx(sched, r.node))). Agent ids are NOT vertex ids.")
     if r.node2 !== nothing
         get_vtx(sched, r.node2) > 0 ||
-            return "VarRef(:xa) references $(r.node2), which is not a schedule vertex " *
-                   "(get_vtx -> $(get_vtx(sched, r.node2)))."
+            return (:unresolvable_reference,
+                    "VarRef(:xa) references $(r.node2), which is not a schedule vertex " *
+                    "(get_vtx -> $(get_vtx(sched, r.node2))).")
     end
     return nothing
 end
@@ -442,9 +455,10 @@ function _linear_problem(sched, cs::LinearConstraint; bigm = nothing)
         #    이걸 안 하면 큰 계수에서 "완화된" 쪽이 완화가 아니게 되어 ∨ 가 조용히 ∧ 로 조인다.
         span = sum(abs(c) for (c, _) in cs.terms) * _MILP_VAR_BOUND + abs(cs.rhs)
         span <= bigm ||
-            return "Disjunction half is too large for the Big-M relaxation: " *
-                   "Σ|c|·$(_MILP_VAR_BOUND) + |rhs| = $(span) > M = $(bigm). " *
-                   "Use smaller coefficients — widening M would break ForbidWindow equivalence."
+            return (:bigm_overflow,      # 🔴 참조 문제가 아니라 **계수 크기** 문제다. 사유를 분리한다.
+                    "Disjunction half is too large for the Big-M relaxation: " *
+                    "Σ|c|·$(_MILP_VAR_BOUND) + |rhs| = $(span) > M = $(bigm). " *
+                    "Use smaller coefficients — widening M would break ForbidWindow equivalence.")
     end
     return nothing
 end
@@ -473,10 +487,24 @@ function grammar_ground_check(proposal::RespecProposal, sched)
         else
             nothing
         end
-        p === nothing || return Reject(:unresolvable_reference, p)
+        p === nothing || return Reject(p[1], p[2])     # p = (reason, detail)
     end
     return nothing
 end
+
+"""
+    _carries_llm_grammar(proposal) -> Bool
+
+제안이 **LLM 이 직접 쓴 제약**(`LinearConstraint`/`Disjunction`)을 하나라도 담고 있는가.
+
+🔴 `verify()` 3단계의 build 백스톱이 이 술어로 갈린다. 그 술어가 정확히 두 세계를 가른다:
+  * 참이면 — 컴파일 실패의 원인이 **LLM 이 쓴 제약**일 수 있다 → `Reject` 가 옳다(전이).
+  * 거짓이면 — 하드코딩된 kind 만 들어 있다 → 컴파일 실패는 **우리 컴파일러의 버그**다.
+    그걸 `Reject` 로 재분류하면 명목/oracle 레인의 진짜 고장이 엉뚱한 사유의 line-stop 으로
+    **위장**된다(예: `reassign.jl:387` 의 내부 `ForbidAgent` 경로). 거기서는 시끄럽게 죽는 게 맞다.
+"""
+_carries_llm_grammar(p::RespecProposal) =
+    any(c -> c isa LinearConstraint || c isa Disjunction, p.constraints)
 
 # --- which schedule ids does a spec touch (for the closed-node check) ---------
 # 제약이 어떤 노드 ID 들을 건드리는지 돌려주는 함수. cs 의 "타입에 따라" 다른 메서드 실행(다중 디스패치).

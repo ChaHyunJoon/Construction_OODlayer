@@ -254,7 +254,9 @@ end
         CB.LinearConstraint([(1.0,   CB.VarRef(:t0, NID_MAX, nothing))], :ge, 2.0))
     v4 = CB.verify(_prop(huge), ENV_, inv)
     @test v4 isa CB.Reject
-    @test v4.reason === :unresolvable_reference
+    # 🔴 참조 미해석이 아니라 **계수 크기** 문제다 — 사유 심볼이 달라야 감사에서 안 섞인다.
+    @test v4.reason === :bigm_overflow
+    @test v4.reason !== :unresolvable_reference
     @test occursin("Big-M", v4.detail)
     # 음성 대조: 같은 모양인데 계수만 정상이면 **통과한다**(가드가 전부를 막지 않는다)
     ok = CB.Disjunction(
@@ -265,6 +267,42 @@ end
     # (5) 게이트를 **우회한** 내부 호출은 여전히 시끄럽게 죽는다. 이건 LLM 경로가 아니라
     #     "verify 를 안 거치고 컴파일러를 직접 부른 내부 버그" 의 자리다 — 거기서는 예외가 맞다.
     @test_throws Exception _count_added_constraints(ghost_cs)
+end
+
+# =============================================================================
+# 🔴 백스톱 catch 는 **좁아야** 한다 (수정 라운드 3)
+# -----------------------------------------------------------------------------
+# 넓은 `catch err` 는 방금 고친 결함의 거울상이다: 우리 자신의 시끄러운 내부 고장을 조용한
+# 오분류로 바꾼다. 하드코딩된 kind 만 든 제안의 컴파일 실패는 **우리 컴파일러의 버그**이고
+# (예: reassign.jl:387 의 내부 ForbidAgent 경로 = 명목/oracle 라벨 레인),
+# 그걸 `Reject(:ungrammatical)` → `engage_fallback!` 로 바꾸면 진짜 고장이 엉뚱한 사유의
+# line-stop 으로 위장된다. 아래가 그 갈림을 **양쪽 다** 실측한다.
+# =============================================================================
+@testset "🔴 백스톱은 LLM 문법이 섞인 제안만 Reject 한다 (내부 고장은 던진다)" begin
+    inv   = CB.build_invariant(ENV_)
+    ghost = CB.ActionID(typemax(Int) - 11)
+
+    # 하드코딩 kind 만: ForbidWindow 가 없는 노드를 가리키면 compile 이 죽는다.
+    #   (compiler.jl:39 `v = get_vtx(sched, cs.node)` → -1 → tF[-1] → BoundsError)
+    hard_only = _prop(CB.ForbidWindow(ghost, 1.0, 2.0))
+    @test !CB._carries_llm_grammar(hard_only)
+    # 🔴 **던져야 한다.** Reject 로 삼키면 명목 레인 고장이 안 보인다.
+    @test_throws Exception CB.verify(hard_only, ENV_, inv)
+
+    # 같은 고장인데 LLM 이 쓴 제약이 **섞여 있으면** 전이(Reject)가 맞다 — 음성 대조.
+    mixed = CB.RespecProposal(CB.ConstraintSpec[
+                CB.ForbidWindow(ghost, 1.0, 2.0),
+                CB.LinearConstraint([(1.0, CB.VarRef(:tF, NID_MAX, nothing))], :le, 1.0e6)])
+    @test CB._carries_llm_grammar(mixed)
+    vm = CB.verify(mixed, ENV_, inv)
+    @test vm isa CB.Reject
+    @test vm.reason === :ungrammatical
+
+    # 술어 자체의 경계: 하드코딩만 false, 문법 포함 true
+    @test !CB._carries_llm_grammar(_prop(CB.SwapBattery(CB.RobotID(1))))
+    @test CB._carries_llm_grammar(_prop(
+        CB.Disjunction(CB.LinearConstraint([(1.0, CB.VarRef(:tF, NID_MAX, nothing))], :le, 1.0),
+                       CB.LinearConstraint([(1.0, CB.VarRef(:t0, NID_MAX, nothing))], :ge, 2.0))))
 end
 
 # --- 엔진 내부 경로 회귀 (env 를 mutate 하므로 반드시 맨 마지막) ------------------
