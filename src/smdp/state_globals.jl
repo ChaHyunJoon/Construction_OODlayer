@@ -402,6 +402,15 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # 버리는 방향의 버그를 피한다). 반대로 :state/:replay 로
                                           # 잘못 분류했다면 존재하지도 않는 "복원" 의미론을 이
                                           # 스칼라에 강제하게 된다 — 근거 없이 s 를 부풀리는 쪽.
+    :_STATE_BASELINE        => :setup,   # 신규(D-13R, 이 파일 하단). 롤아웃 경계 리셋이 되돌릴
+                                          # **기준선** — `capture_state_baseline!()` 이 트리 시작
+                                          # 직전에 한 번 잡고 에피소드 내내 불변이다. 그래서
+                                          # `RHO`/`DRAIN_DT` 와 같은 이유로 :setup 이다.
+                                          # 🔴 **:state 로 분류하면 순환이다** — 리셋이 기준선을
+                                          # 기준선으로 되돌리려 든다. `resettable_state_globals()`
+                                          # 는 :state/:split 만 보므로 오늘은 안 걸리지만, 그
+                                          # 안전이 **분류에 의존**한다는 것이 요점이다.
+                                          # `test/smdp_state_reset.jl` 이 그 순환을 직접 단언한다.
     :DRAIN_DT               => :setup,   # 신규(Task T10). sojourn.jl — `dur == 0` 프론티어를 닫는
                                           # 데 부과하는 시뮬 시간. **`RHO` 와 같은 모양이고 같은
                                           # 이유로 :setup 이다**: `Ref{Float64}`, 커밋된 기본값

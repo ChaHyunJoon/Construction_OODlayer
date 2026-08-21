@@ -51,6 +51,11 @@ const KNOWN_OUT_OF_MODULE = Set([:ZONE_DECIDE_DEFERRED, :_DECISION_N, :_ZONE_CT]
         @test !(:RHO in CB.resettable_state_globals())
         @test !(:DRAIN_DT in CB.resettable_state_globals())
 
+        # 🔴 기준선 자신이 리셋 대상이면 **순환**이다 — 리셋이 기준선을 기준선으로 되돌린다.
+        #    오늘은 :setup 이라 안 걸리지만, 그 안전이 **분류 하나에 의존**한다. 못박는다.
+        @test CB.STATE_GLOBALS[:_STATE_BASELINE] === :setup
+        @test !(:_STATE_BASELINE in CB.resettable_state_globals())
+
         old_rho, old_drain = CB.RHO[], CB.DRAIN_DT[]
         try
             CB.RHO[] = 1.234                      # T10 이 적합한 값을 흉내
