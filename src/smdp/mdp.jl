@@ -47,5 +47,15 @@ include("sojourn.jl") # spec §5-3 정확 소저너. 경쟁위험 셋(break·cel
                       # tplan.jl(T_plan_next)·hazard.jl(cell_rate_from·_exp1·_rate) 에 의존하므로
                       # 반드시 tplan.jl **다음**에 온다.
 
+include("generative.jl") # spec §5-1 생성 시뮬레이터 G(s,a). apply_action! 이 진짜 respec 을
+                         # 집행하고 generate 가 (s′, R, τ, event) 를 낸다. sojourn.jl(sample_sojourn·
+                         # advance_to·advance_to_rate_boundary·energy_between·_active_with_durations·
+                         # _close_vertices)·tplan.jl(T_plan_next)·observe.jl(simstate_of)·
+                         # respec/replan.jl(_enact_one!·RESPEC_VERDICTS·RESPEC_HOLD)·
+                         # route_planning.jl(rvo_rebuild!·update_planning_cache!) 에 의존하므로
+                         # 반드시 sojourn.jl **다음**에 온다.
+                         # 🔴 이 파일이 `src/` 에서 처음으로 `ActionRegistry` 를 로드한다
+                         #    (oracle/ood_mdp_shim.jl 경유). 그 전까지 Julia 소비처는 0개였다.
+
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true
