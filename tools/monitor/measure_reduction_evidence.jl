@@ -194,7 +194,28 @@ function main()
                # 은 유도 불가"가 아니라 "이 1-hop 휴리스틱이 21% 에서 실패"로 재해석하는 유일한
                # 근거 — 둘 다 프로세싱 없이 JSON 만 읽어도 보이게 여기 싣는다.
                "alive_samples" => alive_samples,
-               "binding_diag"  => binding_diag_samples)
+               "binding_diag"  => binding_diag_samples,
+               # --- 컨트롤러 라운드 3, Important 2: byte-identical 재현성 결과가 실제로 무엇을
+               # 증명하고 무엇을 증명 못 하는지 산출물 JSON 에도 못박아 둔다(리포트에만 있으면
+               # JSON 만 읽는 다음 사람이 과잉해석할 수 있다). 리뷰가 콜그래프로 추적: 이 하네스가
+               # 켜는 자동 hazard 시계(`hazard_step!` -> `_hz_fire_break!`/`_hz_fire_cell!`,
+               # hazard.jl:522·563 부근, `_hz_all_robots(env)` 루프 hazard.jl:451)는 항상
+               # explicit `target=id` 로 `fault_action`/`fault_robot!` 를 부른다 — `_pick_active_robot`
+               # 은 `target=nothing` 일 때만 들어가는데 그 경로는 tools/e2e.jl:434·tools/demos.jl 의
+               # OOD 진입점에서만 오고 이 스크립트는 둘 다 안 부른다. 그래서 이 스크립트는 시드가
+               # 무엇이든 `_pick_active_robot` 에 **구조적으로 도달 불가능**하다.
+               "reproducibility_scope" =>
+                   "2 sequential same-dir runs of THIS script gave byte-identical JSON (see " *
+                   "task-R3R4-report.md fix round 2/3). This shows only that THIS harness (pure " *
+                   "observe loop + arithmetically-inert maybe_unwedge_nominal! call) is " *
+                   "reproducible under these exact conditions. It does NOT bound or speak to the " *
+                   "repo's separately-measured non-reproducibility (T11 makespan, C1 " *
+                   "OptimisticMakespan): this harness never enters the non-deterministic code " *
+                   "path at all. Reason: the automatic hazard clock always faults with an " *
+                   "explicit target=id chosen by a per-robot loop (hazard.jl:451, " *
+                   "_hz_all_robots(env)), never through _pick_active_robot -- that function is " *
+                   "reached only via target=nothing, from tools/e2e.jl:434 or tools/demos.jl's " *
+                   "OOD entry points, neither of which this script calls.")
     mkpath(joinpath(pkgdir(CB), "results", "smdp"))
     open(joinpath(pkgdir(CB), "results", "smdp", "reduction_evidence.json"), "w") do io
         JSON3.pretty(io, out)

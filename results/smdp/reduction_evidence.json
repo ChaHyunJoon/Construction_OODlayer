@@ -1,4 +1,5 @@
 {
+    "reproducibility_scope": "2 sequential same-dir runs of THIS script gave byte-identical JSON (see task-R3R4-report.md fix round 2/3). This shows only that THIS harness (pure observe loop + arithmetically-inert maybe_unwedge_nominal! call) is reproducible under these exact conditions. It does NOT bound or speak to the repo's separately-measured non-reproducibility (T11 makespan, C1 OptimisticMakespan): this harness never enters the non-deterministic code path at all. Reason: the automatic hazard clock always faults with an explicit target=id chosen by a per-robot loop (hazard.jl:451, _hz_all_robots(env)), never through _pick_active_robot -- that function is reached only via target=nothing, from tools/e2e.jl:434 or tools/demos.jl's OOD entry points, neither of which this script calls.",
     "alive_samples": [
         {
             "step": 1,

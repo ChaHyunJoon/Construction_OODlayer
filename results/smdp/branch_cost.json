@@ -1,15 +1,27 @@
 {
     "simstate_of_ms": {
-        "median": 17.2304085,
-        "min": 16.504959,
-        "max": 61.56731
+        "median": 17.959000500000002,
+        "min": 17.5912,
+        "max": 68.141229
     },
     "n_robots": 12,
     "n_closed": 144,
+    "simstate_of_gc_ms": {
+        "median": 0,
+        "min": 0,
+        "max": 49.709727,
+        "at_max_elapsed_call": 49.709727
+    },
     "deepcopy_ms": {
-        "median": 19.3586205,
-        "min": 18.982334,
-        "max": 20.369225
+        "median": 19.2309035,
+        "min": 19.112967,
+        "max": 20.779028
+    },
+    "deepcopy_gc_ms": {
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "at_max_elapsed_call": 0
     },
     "n": 20
 }

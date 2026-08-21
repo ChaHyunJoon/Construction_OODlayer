@@ -36,14 +36,35 @@ for k in 1:200
     CB.set_sim_step!(k)
 end
 
-bench(f, n) = (f(); [(@elapsed f()) * 1000 for _ in 1:n])   # 첫 회는 컴파일 — 버린다
+# 🔴 컨트롤러 라운드 3, minor 1: `@elapsed` 는 GC 시간을 **버린다**(측정에서 빠짐) — 그래서
+# 이전 라운드의 스파이크(simstate_of_ms.max=61.567 vs median=17.230) 설명이 "GC 일 것 같다"는
+# 미검증 추측에 머물렀다. `@timed` 로 바꾸면 같은 호출에서 경과시간과 GC 시간을 **동시에** 얻어
+# 그 추측을 공짜로 검증할 수 있다(추가 실행 비용 없음, `@elapsed` 와 같은 호출 1번).
+function bench(f, n)
+    f()   # 첫 회는 컴파일 — 버린다
+    elapsed_ms = Float64[]
+    gc_ms      = Float64[]
+    for _ in 1:n
+        r = @timed f()
+        push!(elapsed_ms, r.time * 1000)
+        push!(gc_ms, r.gctime * 1000)
+    end
+    return elapsed_ms, gc_ms
+end
 
 N = 20
-d  = bench(() -> deepcopy(env), N)
-s  = bench(() -> CB.simstate_of(env), N)
+d, d_gc = bench(() -> deepcopy(env), N)
+s, s_gc = bench(() -> CB.simstate_of(env), N)
+d_max_i = argmax(d)   # 가장 느렸던 호출의 인덱스 — 그 호출의 GC 시간을 바로 대응시켜 본다
+s_max_i = argmax(s)
 out = Dict("n" => N,
            "deepcopy_ms"    => (median = median(d), min = minimum(d), max = maximum(d)),
            "simstate_of_ms" => (median = median(s), min = minimum(s), max = maximum(s)),
+           # --- 컨트롤러 라운드 3, minor 1: GC 가설을 직접 검정한다(더 이상 추측이 아니다) ---
+           "deepcopy_gc_ms"    => (median = median(d_gc), min = minimum(d_gc), max = maximum(d_gc),
+                                    at_max_elapsed_call = d_gc[d_max_i]),
+           "simstate_of_gc_ms" => (median = median(s_gc), min = minimum(s_gc), max = maximum(s_gc),
+                                    at_max_elapsed_call = s_gc[s_max_i]),
            "n_robots" => length(CB.BATTERY_FLEET[].soc),
            "n_closed" => length(env.cache.closed_set))
 mkpath(joinpath(pkgdir(CB), "results", "smdp"))
