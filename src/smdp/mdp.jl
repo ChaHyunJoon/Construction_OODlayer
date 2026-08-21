@@ -32,5 +32,12 @@ include("observe.jl")   # env → s 의 유일한 경로. simstate.jl(타입)·h
                         # `UndefVarError` 로 죽는다. 위 사용법 블록의 "먼저(의존)" 는 hazard 만이
                         # 아니라 이 파일 전체에 걸린다.
 
+include("derive.jl")   # s 의 파생 접근자(active_of·modes_of·mode_of·rate_params).
+                       # simstate.jl(타입)·hazard.jl(_hz_modes 와 같은 순위)·
+                       # navigator/battery.jl(_node_mode·_responsible_robots) 에 의존한다.
+include("rates.jl")    # spec §2 의 닫힌 형태. **순수 수학** — 씬을 참조하지 않는다.
+                       # hazard.jl(hazard_rate_from)·navigator/battery.jl(BatteryParams·k_move)
+                       # 에 의존. derive.jl 의 rate_params 가 rate_params_one 을 부른다(늦은 바인딩).
+
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true
