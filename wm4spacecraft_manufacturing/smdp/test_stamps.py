@@ -14,19 +14,34 @@ import objective  # noqa: E402
 
 
 def test_vocab_constant_is_declared():
-    # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다. 태스크 5(2026-08-19)가 3/5/6 을
-    # 실제로 은퇴시켰으므로 오늘은 "v2-6arms" 다("v1-9arms" 는 그 이전 세대의 값).
-    assert action_registry.VOCAB == "v2-6arms"
+    # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다.
+    # 2026-08-20 의 4팔 축소가 어휘를 "v3-4arms" 로 올렸다(`v2-6arms` 는 그 이전 세대,
+    # `v1-9arms` 는 그 앞). 🔴 **리터럴인 것이 이 시험의 요점이다** — 세대가 갈리면 사람이
+    # 여기 와서 갱신하도록 강제한다. 레지스트리에서 읽어 오면 항진명제가 된다.
+    # (2026-08-21 갱신: 이 세 시험이 한 세대 낡은 채로 방치돼 있었다 — 보고서 §9.)
+    assert action_registry.VOCAB == "v3-4arms"
 
 
 def test_vocab_declares_todays_true_arm_count():
     # dynamics_stamp() 는 hazard_enabled() 에서 **유도**되는데 vocab 문자열은 리터럴이라
-    # 유도할 수 없다 — 그래서 유도 대신 "선언 <n>arms == 은퇴 제외 실제 registry 항목 수"를
-    # 기계로 대조한다(리뷰 판정 G, 재리뷰로 정정). 태스크 5 이후 registry 항목 수는 여전히
-    # 9(이름표는 안 지운다) 이지만 은퇴 제외 개수는 6 이다 — 그 둘이 갈리는 것 자체가 은퇴가
-    # 실제로 집행됐다는 기계적 증거다.
-    assert len(action_registry.MACROS) == 9
-    assert action_registry.n_non_retired(action_registry.REGISTRY) == 6
+    # 유도할 수 없다 — 그래서 유도 대신 "선언 <n>arms == 실제 registry 항목 수"를 기계로
+    # 대조한다(리뷰 판정 G).
+    #
+    # 🔴 **2026-08-21 정정 — v2 시대의 논법은 이 세대에 성립하지 않는다.**
+    #    v2 는 은퇴를 "retired 표식"으로 집행해서 `len(MACROS)`(9)와 `n_non_retired`(6)가
+    #    갈렸고, **그 갈림 자체가 은퇴의 기계적 증거**였다. v3 의 4팔 축소는 은퇴를
+    #    **재번호(0..3)로** 집행했다 — 이름표를 안 남긴다. 그래서 오늘은 둘이 **같다**(4 == 4)
+    #    이고 `RETIRED` 는 언제나 비어 있다. 옛 어서션을 그대로 두면 영원히 빨간불이다.
+    #
+    #    ⚠️ 그 대가는 CLAUDE.md 가 적어 뒀다: 재번호 뒤에는 **어휘 도장이 유일한 방어선**이다
+    #    (구 macro 2(Deprioritize) 행이 새 어휘의 유효 id(RelocateBuild)로 **조용히** 읽힌다).
+    #    그래서 이 시험이 빨간 채로 방치되면 안 되는 것이었다.
+    assert len(action_registry.MACROS) == 4
+    assert action_registry.n_non_retired(action_registry.REGISTRY) == 4
+    # 그리고 그 개수가 **도장 문자열이 선언한 값**과 같은가 — 리터럴 두 벌을 만들지 않고
+    # 도장의 파서를 태워서 대조한다. 이것이 "선언 == 실제" 계약의 본체다.
+    action_registry.assert_vocab_arm_count(
+        action_registry.VOCAB, action_registry.n_non_retired(action_registry.REGISTRY))
 
 
 def test_n_non_retired_ignores_only_entries_marked_retired():
@@ -119,7 +134,7 @@ def test_task5_scenario_retired_and_stamp_correctly_bumped_loads(tmp_path):
 
 
 def test_require_vocab_accepts_matching_stamp():
-    action_registry.require_vocab({"vocab": "v2-6arms"}, "테스트")
+    action_registry.require_vocab({"vocab": "v3-4arms"}, "테스트")
 
 
 def test_require_vocab_dies_on_missing_stamp():
@@ -143,31 +158,60 @@ def test_require_dynamics_dies_on_mismatch():
 
 
 # =============================================================================
-# 태스크 5: 3·5·6 영구 은퇴 (spec §2) — 브리프 Step 1
+# 2026-08-20: 4팔 축소 (9팔 -> 4팔, id 재번호 0..3)
+# 은퇴 표식이 아니라 **엔트리 삭제** 정책으로 바꿨다. 구세대 산출물을 전부 폐기했으므로
+# 이름표를 남겨 KeyError 를 피할 이유가 없어졌고, 그래서 id 재번호도 안전해졌다.
+# 그 대가로 **도장(vocab)이 유일한 방어선**이다 — 구세대 macro 2 행은 이제 KeyError 가
+# 아니라 RelocateBuild 로 조용히 읽힌다.
 # =============================================================================
-def test_retired_macros_are_exactly_three_five_six():
-    assert sorted(action_registry.RETIRED) == [3, 5, 6]
+def test_no_retired_macros_remain():
+    """은퇴 표식 대신 삭제 정책 — RETIRED 는 비어 있어야 한다."""
+    assert action_registry.RETIRED == {}
 
 
-def test_active_macros_are_the_six_arms():
-    assert action_registry.ACTIVE_MACROS == [0, 1, 2, 4, 7, 8]
+def test_active_macros_are_the_four_arms():
+    assert action_registry.ACTIVE_MACROS == [0, 1, 2, 3]
 
 
-def test_retired_macros_keep_their_names():
-    """이름표는 지우지 않는다. 지우면 구세대 행을 읽을 때 KeyError 로 죽는데, 그건
-    2026-08-02 에 실제로 난 사고다(gen_oracle_dataset.jl:118). 우리가 원하는 것은
-    '읽을 때 도장 불일치로 죽는 것'이지 'KeyError 로 죽는 것'이 아니다."""
-    assert action_registry.MACRO_NAME[3] == "ForbidZone"
-    assert action_registry.MACRO_NAME[5] == "ForbidAgent+ReformTeam"
+def test_the_four_arms_are_named_as_expected():
+    """사건 종류당 개입 팔 하나 + NOOP. 이름-비용 쌍은 구 어휘에서 그대로 옮겼다."""
+    assert action_registry.MACRO_NAME == {
+        0: "NOOP", 1: "Replace", 2: "RelocateBuild", 3: "SwapBattery"}
+    assert action_registry.MACRO_COST == {0: 0.0, 1: 1.0, 2: 1.5, 3: 0.2}
 
 
-def test_combo_arms_flag_cannot_resurrect_retired():
-    """DS_COMBO_ARMS=1 으로도 5·6 은 안 살아난다 — 은퇴가 실험 게이트를 이긴다."""
+def test_removed_arms_are_gone_entirely():
+    """Deprioritize / ReformTeam / ForbidZone / 조합 팔은 레지스트리에 없다.
+    `is_active` 는 registry 밖 id 에 대해 False 여야 한다(KeyError 가 아니라)."""
+    assert set(action_registry.MACROS) == {0, 1, 2, 3}
+    assert "Deprioritize" not in action_registry.NAME2ID
+    assert "ReformTeam" not in action_registry.NAME2ID
+    assert "ForbidZone" not in action_registry.NAME2ID
+    for gone in (4, 5, 6, 7, 8, -1, 99):
+        assert action_registry.is_active(gone) is False
+
+
+def test_reform_is_not_an_event_kind():
+    """팀 교착은 외생 실패 사건이 아니라 Replace 의 2차 결과였다 — decision epoch 에서 뺐다."""
+    assert set(action_registry.KIND_VALID) == {"fault", "battery", "zone"}
+    assert action_registry.KIND_VALID["fault"] == [0, 1]
+    assert action_registry.KIND_VALID["battery"] == [0, 1, 3]
+    assert action_registry.KIND_VALID["zone"] == [0, 2]
+
+
+def test_vocab_stamp_declares_four_arms():
+    """도장이 실제 팔 수와 일치해야 한다 — 로드 시점 어서션이 이미 강제하지만 명시한다."""
+    assert action_registry.VOCAB == "v3-4arms"
+    assert action_registry.n_non_retired(action_registry.REGISTRY) == 4
+
+
+def test_combo_arms_flag_does_not_resurrect_deleted():
+    """DS_COMBO_ARMS=1 으로도 5·6 은 안 살아난다 — 이제는 엔트리 자체가 없다."""
     os.environ["DS_COMBO_ARMS"] = "1"
     try:
         import importlib
         m = importlib.reload(action_registry)
-        assert m.ACTIVE_MACROS == [0, 1, 2, 4, 7, 8]
+        assert m.ACTIVE_MACROS == [0, 1, 2, 3]
     finally:
         os.environ.pop("DS_COMBO_ARMS", None)
         importlib.reload(action_registry)
