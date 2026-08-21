@@ -515,6 +515,7 @@ referenced_ids(cs::ForbidZone)   = (cs.assembly,)  # 구역 제약은 (grounding
 referenced_ids(cs::ReplaceAgent) = (cs.agent,)   # 교체 제약은 고장난 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::ReformTeam)   = ()            # 팀 재정립은 특정 노드를 안 지목(기하가 막힌 팀을 찾음)
 referenced_ids(cs::RelocateBuild) = ()           # 빌드 전체 평행이동은 특정 노드를 안 지목(구역 키만 지목)
+referenced_ids(cs::TranslateBuild) = ()          # 주어진 Δ 만큼의 전체 평행이동도 특정 노드를 안 지목(Δ 뿐이다)
 referenced_ids(cs::DeprioritizeAgent) = (cs.agent,)  # 소프트 회피 제약은 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::SwapBattery)  = (cs.agent,)   # 배터리 교체는 그 로봇(agent) 하나를 건드림
 

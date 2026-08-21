@@ -115,64 +115,46 @@ function run_with_stack(f, stacksize::Int)
 end
 
 # =============================================================================
-# mock_respec -- LLM-FREE end-to-end test of the FULL respec seam for ForbidZone
-#   (Stage 2). Stands up a local mock /propose server that returns a fixed ForbidZone
-#   (grounded from the request's own zones/nodes context, mimicking the LLM), enables the
-#   RESPEC seam, injects a CENTRAL zone via schedule_ood! (returning an NL string), and runs
-#   the real sim loop (ood_inject_step! -> step -> respec_step!). This drives the production
+# mock_respec -- LLM-FREE end-to-end test of the FULL respec seam for the SPATIAL arm.
+#   Stands up a local mock /propose server that answers with the one emittable spatial kind
+#   (grounded from the request's own zones context, mimicking the LLM), enables the RESPEC
+#   seam, injects a CENTRAL zone via schedule_ood! (returning an NL string), and runs the
+#   real sim loop (ood_inject_step! -> step -> respec_step!). This drives the production
 #   path: NL -> push_ood! -> maybe_respecify! -> llm_to_proposal(HTTP mock) -> _parse_proposal
-#   -> ForbidZone -> verify_zone -> restage_all -> translate_whole_build! -> completion.
+#   -> TranslateBuild -> _apply_uniform_translation! -> reset_cache_resume! -> completion.
 #   ENV: NAVON_ZONE_R, OOD_STEP.
+#
+#   🔴 2026-08-21 (Task C3): the arm CHANGED. Until D-9 (Task C2) this scenario emitted
+#   ForbidZone/RelocateBuild and the tested tail was verify_zone -> restage_all ->
+#   translate_whole_build!. Both kinds came off the EMITTABLE surface (ForbidZone: empty
+#   domain after the first batch boundary; RelocateBuild: it is a SOLVER, not an action --
+#   `_find_min_translation` picks Δ by itself). The primitive underneath, now emittable with
+#   a FREE Δ, is `TranslateBuild(dx, dy)`. So the mock must now DERIVE a displacement from
+#   the zone geometry, exactly as the real model is instructed to (propose.py ZONES section).
 # =============================================================================
-# [KO] 시나리오1: LLM 없이 ForbidZone respec 전 구간을 실제 시뮬로 검증.
-#      흐름 = 중앙에 no-go 구역 주입 → NL 방출 → mock 서버가 ForbidZone DSL 로 응답 →
-#      검증(verify_zone) → 빌드 전체를 옆으로 이동(translate_whole_build!)해 구역 회피 → 완주.
+# [KO] 시나리오1: LLM 없이 공간형 respec 전 구간을 실제 시뮬로 검증.
+#      흐름 = 중앙에 no-go 구역 주입 → NL 방출 → mock 서버가 TranslateBuild(dx,dy) 로 응답 →
+#      파싱·집행(_apply_uniform_translation!)으로 빌드 전체를 비켜 옮김 → 완주.
 function scenario_mock_respec()
 
-# =============================================================================
-# 🔴 BLOCKED ON TASK C3 — 이 시나리오는 C2 (D-9 행동공간 축소) 이후 **실행 불가**다.
-# -----------------------------------------------------------------------------
-# 이 시나리오가 검증하는 경로는 파일 머리말(:118-124) 그대로다:
-#     NL → push_ood! → maybe_respecify! → llm_to_proposal(HTTP mock) → _parse_proposal
-#        → ForbidZone → verify_zone → restage_all → translate_whole_build! → 완주
-# 그런데 2026-08-21 D-9 (Task C2) 가 `ForbidZone`·`RelocateBuild`·`ReformTeam` 을
-# **emit 가능 집합에서 뺐다**. 이 mock 은 진짜 HTTP 서버라 반드시 `_parse_proposal` 을
-# 지나야 하고, 파서는 이제 그 세 kind 에서 죽는다. C2~C3 구간에는 **emittable 인 공간형
-# kind 가 하나도 없다** — C3 의 `TranslateBuild(dx, dy)` 가 그것을 다시 연다.
-#
-# 🔴 **왜 "빈 제약" 으로 때우지 않는가** (첫 수정 시도가 그랬고, 그게 틀렸다):
-#   · `replan.jl:417` 이 빈 벡터를 `:noop` 으로 매핑하고, `:noop` 은 아래 seam 루프의
-#     `respec_seen` 집합(:333)에 들어 있다 → PASS 게이트의 `r.respec` 절반이 **공허하게**
-#     만족된다. 내용을 지워서 얻은 초록이다.
-#   · 구역은 root 하역 목표들의 **중심**에 반지름 2.5 로 심긴다(`ood_action!`, :224-227).
-#     우회할 바깥이 없다. 공간형 팔이 조용한 no-op 이 되면 이 파일이 스스로 기록한
-#     실측 실패가 그대로 재현된다 — "빌드가 구역으로 걸어들어가 정지".
-#   · `run_seam_loop` 은 `maybe_unwedge_nominal!` 을 부르지 않는다(그건 demo_utils.jl:273 과
-#     tools/monitor/run_demo.jl:832 에만 배선돼 있다). 루트 엔드게임 carrier 교착의 **유일한**
-#     복구가 `ReformTeam` 응답이었고(:350-353), 그것도 함께 사라진다.
-#
-# ⇒ 무의미한 초록보다 "C3 에 막혀 있다" 는 빨강이 낫다. Task C3 가 이 시나리오를
-#    `TranslateBuild` 로 복원하고, 이 블록을 지우고, **실제로 돌리고**, `ReformTeam` 복구를
-#    무엇으로 대체할지 정하는 소유자다(C3 브리프에 명시됨).
-#    다른 시나리오는 영향 없다: `mock_replace` 등은 `ReplaceAgent`(여전히 emittable)를 쓴다.
-# =============================================================================
-error("""
-[E2E] SKIPPED — scenario 'mock_respec' is BLOCKED ON TASK C3.
+# 🔴 **선행조건 — 조용한 미실행 방지 (fix round 1, 컨트롤러 Important 3).**
+# 아래 seam 루프는 `CB.maybe_unwedge_nominal!` 로 루트 엔드게임 carrier 교착을 푼다(:362 참조).
+# 그 함수는 이 작업 트리의 **미커밋 in-flight 변경**(2026-08-20 4팔 축소)에만 있고 HEAD 63ccf524
+# 에는 없다. in-flight 변경이 폐기되면 이 파일은 ~90초짜리 env 빌드를 다 하고 나서야 루프
+# 한복판에서 UndefVarError 로 죽는다 — 그리고 이 파일은 `test/runtests.jl` 밖이라 **아무도 안
+# 돌리면 그 사실조차 안 드러난다.** 그래서 진입 즉시 죽인다. 폴백이 아니라 시끄러운 선행조건이다.
+isdefined(CB, :maybe_unwedge_nominal!) || error("""
+[E2E] scenario 'mock_respec' 의 선행조건 실패: `ConstructionBots.maybe_unwedge_nominal!` 가 없다.
 
-  Why: 2026-08-21 D-9 (Task C2) removed ForbidZone / RelocateBuild / ReformTeam from the
-       EMITTABLE action space. This scenario's mock is a real HTTP /propose server, so its
-       response must pass through _parse_proposal — which now rejects those kinds. Between
-       C2 and C3 there is NO emittable spatial kind at all.
+  이 시나리오의 seam 루프는 루트 엔드게임 carrier 교착을 그 함수로 푼다(Task C3 가 죽은
+  `maybe_emit_reform_ood!` 호출을 이것으로 바꿨다 — 그 함수는 2026-08-20 4팔 축소에서 삭제됐고,
+  그것이 만들던 `ReformTeam` 은 D-9 로 emit 불가라 되돌리는 것은 답이 아니다).
 
-  Unblocker: Task C3 adds TranslateBuild(dx, dy). C3 owns restoring this scenario, deleting
-       this guard, RUNNING it, and deciding what replaces the ReformTeam recovery that
-       run_seam_loop relied on for the root-endgame carrier wedge.
+  원인: `maybe_unwedge_nominal!` 의 도입은 `src/respec/ood_injection.jl` 의 **미커밋 in-flight
+  변경**이다. 그 변경이 커밋되지 않았거나 되돌려졌다.
 
-  Do NOT "fix" this by returning empty constraints: replan.jl:417 maps [] to :noop, :noop is
-  in this loop's respec_seen set, and the PASS gate would then be satisfied vacuously while
-  the build walks into a zone planted on the centroid of the root deposit goals.
-
-  Unaffected scenarios: mock_replace, full_loop, selfheal, spare_replace, live_respec.
+  고칠 것: 그 in-flight 변경을 커밋하거나, 교착 복구를 대체할 다른 명목 레인 훅을 정할 것.
+  조용히 우회하지 말 것 — 복구가 없으면 이 시나리오는 정체로 끝나고 게이트는 FAIL 이 된다.
 """)
 
 MOCK_PORT = 8731
@@ -184,8 +166,8 @@ OOD_STEP = parse(Int, get(ENV, "OOD_STEP", "5"))           # [KO] 몇 번째 스
 
 _setup_milp!()
 
-# ---- mock /propose server: deterministic, grounds ForbidZone from request context -----
-# [KO] 진짜 LLM 대신 쓰는 가짜 HTTP 서버. /health=살아있음 확인, /propose=OOD 요청에 ForbidZone 응답.
+# ---- mock /propose server: deterministic, derives TranslateBuild from request context -----
+# [KO] 진짜 LLM 대신 쓰는 가짜 HTTP 서버. /health=살아있음 확인, /propose=OOD 요청에 TranslateBuild 응답.
 #      "결정적(deterministic)" = 무작위 없이 요청 안의 실제 zone/node 정보를 그대로 근거로 답(LLM 흉내).
 function start_mock(port)
     handler = function (req::HTTP.Request)                 # [KO] 들어온 요청 하나를 처리하는 익명함수
@@ -198,49 +180,62 @@ function start_mock(port)
             nodes = haskey(body, "nodes") ? body["nodes"] : []
             zkey  = isempty(zones) ? "zone" : String(zones[1]["key"])     # ground the live zone key
                                                             # [KO] 실제 구역 키를 그대로 사용(없으면 "zone")
-            # ---- 먼저 사건 **종류**로 분기한다(공간형 vs 팀 교착) ----------------------
-            # 존을 치우고 난 뒤 루트 엔드게임에서 carrier 팀이 끼는 2차 사건이 별도 NL 로 들어온다
-            # (maybe_emit_reform_ood!). 그건 공간 결정이 아니라 기하 재정립이므로 ReformTeam 이다.
-            # tools/demos.jl:560-566 의 mock 과 같은 규칙.
-            ev = haskey(body, "event") ? lowercase(String(body["event"])) : ""
-            if occursin("team", ev) && (occursin("deadlock", ev) || occursin("stalled", ev))
-                return HTTP.Response(200, JSON3.write(Dict(
-                    "constraints" => [Dict("kind" => "ReformTeam")],
-                    "rationale" => "mock: transport team deadlocked while forming -> re-establish it")))
-            end
-            # ---- 정정된 결정 표 (2026-08-05) -------------------------------------------
-            # 이 mock 은 **실제 LLM 이 프롬프트에서 보는 것과 똑같은 두 필드**(covers / covers_root)
-            # 만으로 공간형 팔을 고른다 — `covers` 는 open_zone_descriptors 가 zone_blocked_assemblies
-            # 로 계산한 값이므로 곧 **ForbidZone 이 지금 실제로 옮길 수 있는 도메인**이다.
+            # ---- 결정 표 (2026-08-21 Task C3 개정) --------------------------------------
+            # 이 mock 은 **실제 LLM 이 프롬프트에서 보는 것과 똑같은 필드**만 쓴다
+            # (covers / covers_root / center / radius — open_zone_descriptors 가 싣는 전부).
             #
-            #   covers 비어있지 않음            -> ForbidZone   (국소 재적치. 부족하면 실행부가
-            #                                                    :residual_blocked 에서 전역 이동으로 자동 격상)
-            #   covers 비었음 ∧ covers_root     -> RelocateBuild(국소로 못 구하는 root 하역 목표가 갇힘.
-            #                                                    도메인이 비면 위 자동 격상이 **도달 불가**하다 —
-            #                                                    restage_all_blocked! 이 :none 으로 조기 반환해
-            #                                                    residual 을 계산조차 안 하기 때문)
-            #   covers 비었음 ∧ ¬covers_root    -> 제약 없음    (구역이 아무 목표도 안 막음 → 항법이 우회.
-            #                                                    개입은 비용만 든다)
+            #   covers 비었음 ∧ ¬covers_root  -> 제약 없음  (구역이 아무 목표도 안 막음 → 항법이
+            #                                                 우회한다. 개입은 비용만 든다)
+            #   그 외                          -> TranslateBuild(dx, dy)  (빌드 전체를 비켜 옮긴다)
             #
-            # 옛 mock 은 상황과 무관하게 늘 ForbidZone 을 냈고, 주입 시점에 도메인이 이미 비어 있어서
-            # 그 팔이 조용한 no-op 이 됐다(= NOOP 과 바이트 동일) → 빌드가 구역으로 걸어들어가 정지.
-            # 문서상 PASS(완주)였던 이 테스트가 그 사이 회귀해 있었다(forbidzone_llm_layer_status.md).
-            cov = isempty(zones) ? [] : zones[1]["covers"]
+            # 🔴 **팀 교착(ReformTeam) 분기는 지웠다** — 두 겹으로 죽어 있었다:
+            #   (1) `maybe_emit_reform_ood!` 가 2026-08-20 4팔 축소에서 **삭제**됐다
+            #       (respec/ood_injection.jl:641). 아래 루프가 그것을 부르고 있었으므로 이 파일은
+            #       C2 의 SKIP 이 없었어도 `UndefVarError` 로 죽었다.
+            #       ⚠️ 정확히: 그 삭제는 **이 작업 트리의 미커밋 in-flight 변경**이다 —
+            #       HEAD(63ccf524)의 `ood_injection.jl` 에는 아직 `maybe_emit_reform_ood!` 가 있다.
+            #   (2) `ReformTeam` 은 D-9 로 emit 표면에서 빠졌다 — 이 응답은 파서에서 죽는다.
+            #   교착 복구는 없어진 게 아니라 **명목 레인으로 내려갔다**: `maybe_unwedge_nominal!`.
+            #   아래 seam 루프가 그것을 부른다(demo_utils.jl:273 · run_demo.jl:832 와 같은 배선).
+            #
+            # 🔴 **Δ 를 어떻게 정하는가 — 이것이 C3 의 요점이다.** `RelocateBuild` 는 Δ 를
+            # `_find_min_translation` 이 **찾아 줬다**(= 감춰 둔 매크로). `TranslateBuild` 는
+            # 제안자가 Δ 를 **직접** 정해야 한다. 그래서 이 mock 도 프롬프트가 주는 기하
+            # (구역 중심·반지름)에서 Δ 를 유도한다 — propose.py 의 ZONES 지시문과 같은 추론이다:
+            #   "빌드의 남은 작업이 구역 중심을 **둘러싸고** 있으므로, 반지름보다 짧은 이동으로는
+            #    자기가 서 있는 구역을 벗어날 수 없다. 몇 배의 반지름이 맞는 크기다."
+            #
+            # ⚠️ **실측(2026-08-21, tractor 픽스처, 구역 R=2.5 를 root 하역 목표 중심에 심음):**
+            #     구역 안 future work disc = 26,  `_find_min_translation` 의 최소 Δ = 5.849
+            #     |Δ| = 2·R = 5.0  -> 잔여 25 / 14 / 24 / 14 (±x, ±y) — **모자란다**
+            #     |Δ| = 3·R = 7.5  -> 잔여 **0** (네 방향 모두)
+            #   그래서 3·R 을 쓴다. 최소값(5.849)보다 크다 — 그게 정상이다: 제안자는 최소 이동을
+            #   못 풀고(그게 solver 의 일이다) **충분한** 이동을 유도할 뿐이다. 그 차이가 곧
+            #   "매크로를 고르는 것"과 "원시연산의 파라미터를 정하는 것"의 차이다.
+            # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 예전엔 `radius` 가 없으면
+            #    `ZONE_R` 로 때웠는데, 이 하네스의 존재 이유가 "항진적이지 않은 것"이다 — 요청이
+            #    기하를 안 실어 보냈는데도 mock 이 자기가 아는 값으로 답하면, **프롬프트에서
+            #    유도했다** 는 이 시나리오의 주장 자체가 거짓이 된다. 오늘 이 분기는 죽어 있다
+            #    (`open_zone_descriptors` 는 언제나 `radius` 를 싣는다). 그러니 죽인다.
+            (!isempty(zones) && haskey(zones[1], "radius")) ||
+                error("[E2E] /propose 요청의 zones 에 `radius` 가 없다 — mock 은 요청이 실어 보낸 " *
+                      "기하에서만 Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다). " *
+                      "open_zone_descriptors(llm_bridge.jl) 가 바뀌었는지 확인할 것.")
+            zr    = Float64(zones[1]["radius"])
+            cov   = isempty(zones) ? [] : zones[1]["covers"]
             croot = !isempty(zones) && haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
-            if !isempty(cov)
-                aid = String(first(cov))                     # 구역이 실제로 덮는 조립체를 grounding
-                resp = Dict("constraints" => [Dict("kind" => "ForbidZone", "zone" => zkey, "assembly" => aid)],
-                            "rationale" => "mock: zone covers $(length(cov)) relocatable staging area(s) " *
-                                           "-> local restage (escalates to whole-build if residual remains)")
-            elseif croot
-                # RelocateBuild 는 assembly 를 지목하지 않는다(빌드 전체가 움직이므로 grounding 대상이 없음).
-                resp = Dict("constraints" => [Dict("kind" => "RelocateBuild", "zone" => zkey)],
-                            "rationale" => "mock: no relocatable staging area left but the zone traps ROOT " *
-                                           "deposit goals -> only a whole-build translation can clear it")
-            else
+            if isempty(cov) && !croot
                 resp = Dict("constraints" => Any[],
-                            "rationale" => "mock: zone blocks no goal (detour-only) -> restraint is cheaper " *
-                                           "than any intervention")
+                            "rationale" => "mock: zone blocks no remaining goal (detour-only) -> " *
+                                           "restraint is cheaper than any intervention")
+            else
+                dx = 3.0 * zr                       # 방향은 +x, 크기는 반지름의 3배 (위 실측 참조)
+                resp = Dict("constraints" => [Dict("kind" => "TranslateBuild",
+                                                   "dx" => dx, "dy" => 0.0)],
+                            "rationale" => "mock: the zone (r=$(zr)) traps remaining build work " *
+                                           "(covers=$(length(cov)), covers_root=$(croot)) -> slide the " *
+                                           "whole build clear by dx=$(dx) (= 3 zone radii; a shorter " *
+                                           "move cannot clear a zone the build is standing in)")
             end
             return HTTP.Response(200, JSON3.write(resp))
         end
@@ -390,13 +385,32 @@ function run_seam_loop(env; cap=250_000, stall_limit=8000)
         end
         c = length(env.cache.closed_set)   # [KO] 현재까지 완료(closed)된 작업 수
         stall = c > prev ? 0 : stall + 1; prev = c   # 진전 있으면 정체 0, 없으면 +1
-        # 무진전 알람(팀 교착 OOD). 진짜 sim 루프(demo_utils.jl:259)는 이걸 부르는데 이 손수 만든
-        # 루프에는 빠져 있었다 → 존을 다 치운 뒤 루트 엔드게임에서 carrier 팀이 끼면 복구할 방법이
-        # 없어 그대로 정체로 끝났다. zone 대응과 별개의 **2차 사건**이라 별도 알람이 필요하다
-        # (verify_reform 은 "이미 끼인 팀"을 요구하는 사후 반응형이라 zone 결정으로는 못 낸다).
-        # 🔴 D-9 (C2): 이 알람이 부르던 대응 `ReformTeam` 은 emit 불가가 됐다. 이 루프의 유일한
-    #    루트-엔드게임 교착 복구였다 — 대체는 Task C3 소관(위 scenario_mock_respec 의 SKIP 참조).
-    CB.maybe_emit_reform_ood!(stall)   # REFORM_INTERVAL(기본 2000) 배수마다 NL 을 respec 큐에 넣음
+        # 무진전 교착 복구. zone 대응과 별개의 **2차 사건**이다(존을 다 치운 뒤 루트 엔드게임에서
+        # carrier 팀이 끼는 경우) — 없으면 그대로 정체로 끝난다.
+        #
+        # 🔴 **2026-08-21 (Task C3): `maybe_emit_reform_ood!` → `maybe_unwedge_nominal!` 로 바꿨다.**
+        #   왜 이 대체인가 (브리프가 "정하고 근거를 보고하라" 고 한 결정):
+        #   (1) 옛 호출 대상이 **존재하지 않는다.** `maybe_emit_reform_ood!`(+ `REFORM_INTERVAL` ·
+        #       `set_reform_interval!`)는 2026-08-20 4팔 축소에서 삭제됐다
+        #       (respec/ood_injection.jl:641-660). 이 줄은 `UndefVarError` 였다 — C2 의 SKIP 이
+        #       없었어도 이 시나리오는 여기서 죽었다. 즉 "복구가 사라졌다" 보다 나빴다.
+        #   ⚠️ **의존성 주의 (Task C3 보고서에 올림).** 그 삭제와 `maybe_unwedge_nominal!` 의 도입은
+        #       둘 다 **이 작업 트리의 미커밋 in-flight 변경**이다(HEAD 63ccf524 에는 옛 함수가
+        #       그대로 있다). 그래서 이 줄은 그 in-flight 변경이 커밋된 뒤에야 HEAD 위에서 돈다.
+        #       실측은 작업 트리 상태에서 했다(2026-08-21: complete 279/289 · PASS).
+        #       옛 이름으로 되돌리는 것은 답이 아니다 — 그 함수가 만드는 것은 `ReformTeam` 제안이고
+        #       그건 D-9 로 emit 불가라 파서에서 죽는다.
+        #   (2) `maybe_unwedge_nominal!` 이 **바로 그 자리를 위해 만들어진 대체품**이고, 두 생산
+        #       시뮬 루프에 이미 배선돼 있다(src/demo_utils.jl:273 · tools/monitor/run_demo.jl:832).
+        #       이 손수 만든 seam 루프만 빠져 있었다 — 이 줄이 그 누락을 메운다.
+        #   (3) 같은 복구 사슬을 부른다(`recover_stalled_teams!` = 스냅 → 스케줄 교착 해소 →
+        #       캐리어 강제 전진) + 성공 시 `reset_cache_resume!`. 다른 점은 **결정 epoch 를 만들지
+        #       않는다**는 것뿐이고, 그것이 의도다: 팀 교착은 외생 실패 사건이 아니라 Replace 의
+        #       2차 결과라 결정이 아니라 TAMP 재계획이어야 한다(위 삭제 주석의 논거).
+        #   (4) 대안이었을 "ReformTeam 을 emit 표면에 되돌린다" 는 D-9 를 뒤집는 것이고, 팔 수가
+        #       5 가 아니라 6 이 된다 — 컨트롤러 판정과 정면으로 충돌한다. 채택하지 않았다.
+        #   ⚠️ 트리거 상수도 바뀐다: 옛 `REFORM_INTERVAL` → `UNWEDGE_INTERVAL`(기본 2000, 같은 값).
+        CB.maybe_unwedge_nominal!(env, stall)
         CB.project_complete(env) && return (status=:complete, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # 완주
         # 정체로 끝나기 직전에 "무엇이 왜 남았는지"를 한 번 찍는다(수치만 보고 추측하지 않기 위해).
         stall >= stall_limit && (_dump_stall(env);
@@ -413,10 +427,10 @@ try close(SRV) catch end   # [KO] mock 서버 닫기(실패해도 무시)
 transient = r.viol == 0 || r.last_v < max(2000, 0.1 * r.iters)
 # [KO] PASS 조건: 완주 + respec 발동 + 침범이 일시적(복구 후 재진입 없음).
 pass = r.status == :complete && r.respec && transient
-println("\n==== RESULT (mock e2e: spatial respec via the covers/covers_root decision table) ====")
+println("\n==== RESULT (mock e2e: spatial respec — TranslateBuild with a mock-derived Δ) ====")
 println("closed $n0 -> $(r.closed)/$total  status=$(r.status)  respec_fired=$(r.respec)")
 println("zone penetration: worst_pen=$(round(r.worst;digits=3)) viol_steps=$(r.viol) viol_iters=[$(r.first_v)..$(r.last_v)] of $(r.iters)  evac_transient=$transient")
-println(pass ? "PASS (NL -> mock LLM -> spatial spec by decision table -> verify -> recovery -> complete, no re-entry)" : "FAIL")
+println(pass ? "PASS (NL -> mock LLM -> TranslateBuild(dx,dy) -> _apply_uniform_translation! -> complete, no re-entry)" : "FAIL")
 CB.RESPEC_ENABLED[] = false; CB.clear_ood_schedule!(); CB.clear_restriction_zones!()   # [KO] 전역 상태 원상복구
 end
 

@@ -337,6 +337,59 @@ struct Disjunction <: ConstraintSpec
     right::LinearConstraint   # 섞을 표현 자체가 없다(컴파일은 언제나 같은 `model` 인자에 대고 한다)
 end
 
+# =============================================================================
+# 2026-08-21 (Task C3 · spec §5-5) — L2-b: 파라미터가 자유로운 **공간 원시연산**
+# -----------------------------------------------------------------------------
+# L2-a(위 셋)가 시간/배정 축에서 "아무도 안 짠 제약"을 열었다면, 여기는 **기하 축**이다.
+# 🔴 `RelocateBuild(zone)` 은 action 이 아니라 **solver** 다: `translate_whole_build!` 이
+#    `_find_min_translation` 으로 Δ 를 스스로 찾는다(restage_zone.jl:768-779). 그것을 LLM 에
+#    주는 것은 신설이 아니라 **감춰 둔 매크로를 도로 고르는 것**이다. 진짜 원시연산은
+#    `_apply_uniform_translation!(env, Δ)` 이고, 아래가 그것을 자유 파라미터로 노출한다.
+# =============================================================================
+
+"""
+    TranslateBuild(dx, dy)
+
+빌드 전체를 **주어진** 강체 변위 `(dx, dy)` 만큼 옮긴다. 집행부는
+`_apply_uniform_translation!(env, (dx, dy))`(restage_zone.jl:610) — 모든 조립체의
+`start_config` 를 Δ 만큼 합성 이동하고 적치원 기록을 갱신한 뒤 드리프트한 씬 노드를 스냅한다.
+**이동은 합성된다**: 같은 제안에 둘을 실으면 순 이동은 Δ₁+Δ₂ 다.
+
+🔴 `RelocateBuild(zone)` 와의 차이가 이 계획의 요점이다(spec §5-5):
+
+    RelocateBuild(zone)   Δ 를 **알고리즘이 찾는다**(`_find_min_translation`). 제안자는 구역
+                          이름만 고른다 — 매크로 선택이다.
+    TranslateBuild(dx,dy) Δ 를 **제안자가 정한다.** 그래서 제안자가 ZONES 기하를 보고 "빌드가
+                          비켜야 하고 이만큼이면 된다" 를 스스로 유도해야 한다. 그것이 L2 신설이다.
+
+**Tier: SPATIAL** — `ForbidZone`·`RelocateBuild` 와 같은 티어다. MILP `@constraint` 가
+아니라 기하 수술이므로 `compile_constraint!` 는 0 행을 더하고(닫힌 합집합 계약 유지),
+실제 동작은 `replan.jl` 의 `:translate` 분기가 한다.
+
+**조용한 폴백 금지 (Global Constraint) — 이 타입이 지키는 몫:**
+  · 비유한 Δ(`NaN`/`Inf`)는 **가장 싼 표면인 이 생성자에서 죽는다.** 클램프하지 않고, 0 으로
+    대체하지 않는다. 비유한 Δ 를 `_apply_uniform_translation!` 에 흘리면 모든 조립체의
+    `start_config` 가 `NaN` 이 되고, 그 뒤 어떤 기하 판정도 조용히 `false` 가 된다.
+  · `Δ = 0` 은 **생성자가 아니라 집행부가** 거부한다(`:rejected`). 이유: 0 은 문법 오류가 아니라
+    **정책 오류**(= "옮기겠다" 고 말해 놓고 안 옮김)이고, 이 레포는 그 둘을 다르게 다룬다 —
+    문법 오류는 제안 전체를 파서에서 죽이고, 정책 오류는 집행 단위별 판정으로 `LAST_ENACT_REPORT[]`
+    에 남는다. 생성자에서 막으면 그 판정 경로가 **도달 불가능한 죽은 가드**가 된다.
+  · 옮길 대상이 없는 경우(`env.staging_circles` 가 빔)도 집행부가 `:rejected` 로 죽인다 —
+    `_apply_uniform_translation!` 은 그 상황에서 **조용한 no-op** 이기 때문이다.
+  · 기하적 타당성(결과 배치가 조건을 만족하는가)은 **Task C4 의 `verify_translate`** 가 맡는다.
+    zone 이름을 안 받으므로 kind 별 전제조건이 없고, 결과 배치만 본다.
+"""
+struct TranslateBuild <: ConstraintSpec
+    dx::Float64           # x 축 변위 (제안자가 정한다 — 알고리즘이 찾아 주는 게 아니다)
+    dy::Float64           # y 축 변위. z 는 안 건드린다(평면 강체이동)
+    function TranslateBuild(dx::Real, dy::Real)
+        (isfinite(dx) && isfinite(dy)) ||
+            error("TranslateBuild: Δ 는 유한해야 한다 (받은 값: ($(dx), $(dy))). " *
+                  "클램프하지 않고 기본값으로 대체하지도 않는다 — 조용한 폴백 금지.")
+        return new(Float64(dx), Float64(dy))
+    end
+end
+
 # -----------------------------------------------------------------------------
 # A re-specification proposal is an ordered bundle of ConstraintSpecs plus the
 # provenance needed for auditing/verification. The LLM returns exactly this.

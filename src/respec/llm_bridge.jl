@@ -267,9 +267,11 @@ end
 #
 # ---- 🔴 2026-08-21 D-9 (Task C2, spec §5-8): 행동공간을 emit 가능한 것만 남기고 줄였다 --------
 # 🔴 **수를 어느 시점 기준으로 세는지 반드시 밝힐 것.** 이 파일 기준:
-#     C2 끝 = **4종** (ReplaceAgent · SwapBattery · LinearConstraint · Disjunction)
-#     C3 끝 = **5종** (위 넷 + TranslateBuild) ← .claude/CLAUDE.md 의 "emit 가능 5종" 은 이 시점이다.
-#   출발점은 8종이었다. 8 - 6 + 2 = 4, 그 뒤 C3 가 +1 해서 5.
+#     C2 끝 = 4종 (ReplaceAgent · SwapBattery · LinearConstraint · Disjunction)
+#     C3 끝 = **5종** (위 넷 + TranslateBuild) ← .claude/CLAUDE.md 의 "emit 가능 5종" 은 이 시점이고,
+#                                               **지금 이 파일이 그 시점이다**(Task C3 집행됨).
+#   출발점은 9종이었다(ConstraintSpec 구상타입 8 + C3 가 만든 TranslateBuild).
+#   산수: 8 - 6 + 3 = 5  (원래 8종에서 6종을 빼고, C2 의 L2-a 문법 둘 + C3 의 L2-b 원시연산 하나를 더했다).
 # ⚠️ 바로 아래에 있던 2026-08-19 "대조 결과 = 바꿀 것 없음" 블록은 **철회됐다.** 그 논증은
 #    "primitive 가 파싱되는 것은 위험하진 않고 그냥 쓸모없다" 였는데, D-9 가 그 전제를 뒤집었다:
 #    같은 일을 하는 후보가 둘이면 LLM 이 어느 쪽으로 새는지가 **측정 잡음**이 된다.
@@ -283,7 +285,7 @@ end
 #                     (_hz_fire_cell! → battery_action, hazard.jl:583)
 #   RelocateBuild     행동이 아니라 **solver** 다 — `_find_min_translation` 이 Δ 를 스스로 찾는다
 #                     (restage_zone.jl:768-779). 진짜 원시연산 `_apply_uniform_translation!(env, Δ)`
-#                     를 Task C3 의 `TranslateBuild(dx, dy)` 가 자유 파라미터로 노출한다.
+#                     를 Task C3 의 `TranslateBuild(dx, dy)` 가 자유 파라미터로 노출한다(**집행됨**).
 #                     🔴 컨트롤러 판정(2026-08-21): 이걸 안 빼면 emit 가능 수가 5 가 아니라 6 이 된다.
 #
 # 🔴 **타입·컴파일러·내부 생산자는 전부 남는다.** 지우는 것은 이 파서 스위치와 `schema.py` 의
@@ -309,7 +311,8 @@ end
 ⚠️ 이것은 `action_registry.json` 의 매크로 어휘(`v3-4arms`)와 **다른 이름공간**이다.
 정렬된 튜플로 둔다(직렬화·로그가 결정적이도록).
 """
-const EMITTABLE_KINDS = ("Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery")
+const EMITTABLE_KINDS = ("Disjunction", "LinearConstraint", "ReplaceAgent",
+                        "SwapBattery", "TranslateBuild")
 
 # --- L2-a 문법의 JSON 형태 -------------------------------------------------------
 #   VarRef            {"kind": "t0"|"tF"|"xa", "node": <id>, "node2": <id>|null}
@@ -387,6 +390,13 @@ function _parse_proposal(payload, event; id_resolver, sched = nothing)
             # 🔴 L2-a: 아무도 안 짠 선형 제약을 LLM 이 직접 쓴다(spec §5-4). 안전장치는 kind 를
             #    안 보는 일반 verify() 다(verifier.jl:83-125) — 문법·과거불가침·feasibility·invariant.
             _parse_linear(c; id_resolver = id_resolver)
+        elseif kind == "TranslateBuild"
+            # 🔴 L2-b: 빌드 전체를 **제안자가 정한** Δ 만큼 옮긴다(spec §5-5). `RelocateBuild` 와
+            #    같은 기전이지만 Δ 의 출처가 반대다 — 거기서는 `_find_min_translation` 이 Δ 를
+            #    찾아 준다(= 감춰 둔 매크로). 여기서는 제안자가 ZONES 기하를 보고 Δ 를 유도해야 한다.
+            #    `dx`/`dy` 는 **필수**다: `get(c, "dx", 0.0)` 로 기본값을 채우면 빠진 필드가
+            #    조용히 Δ=0(= hollow admit)이 된다. 비유한 값은 생성자가 죽인다.
+            TranslateBuild(Float64(c["dx"]), Float64(c["dy"]))
         elseif kind == "Disjunction"
             # Disjunction(left, right) : Big-M 이접. ForbidWindow(v,lo,hi) 가 정확히
             #   Disjunction(tF[v] ≤ lo, t0[v] ≥ hi) 다(test/respec_grammar.jl 이 두 해가 같음을 실측).
@@ -395,6 +405,7 @@ function _parse_proposal(payload, event; id_resolver, sched = nothing)
         else
             # 🔴 D-9 로 뺀 kind(ForbidZone · ReformTeam · ForbidAgent · ForbidWindow ·
             #    DeprioritizeAgent · RelocateBuild)도 여기로 온다 — **조용히 무시하지 않고 죽는다.**
+            #    `RelocateBuild` 를 낸 제안자는 `TranslateBuild(dx, dy)` 를 써야 한다(C3).
             error("kind '$kind' is not emittable (D-9). emittable = " *
                   join(EMITTABLE_KINDS, " | "))
         end
