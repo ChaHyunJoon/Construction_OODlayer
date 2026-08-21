@@ -402,6 +402,22 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # 버리는 방향의 버그를 피한다). 반대로 :state/:replay 로
                                           # 잘못 분류했다면 존재하지도 않는 "복원" 의미론을 이
                                           # 스칼라에 강제하게 된다 — 근거 없이 s 를 부풀리는 쪽.
+    :DRAIN_DT               => :setup,   # 신규(Task T10). sojourn.jl — `dur == 0` 프론티어를 닫는
+                                          # 데 부과하는 시뮬 시간. **`RHO` 와 같은 모양이고 같은
+                                          # 이유로 :setup 이다**: `Ref{Float64}`, 커밋된 기본값
+                                          # `0.0`(= T9 의 동작), `sample_sojourn` 이 매 호출
+                                          # **읽기만** 하고, 쓰기는 프로브의 save/restore 쌍뿐이다
+                                          # (`tools/monitor/gen_ng1_pairs.jl:250-257` ·
+                                          # `test/smdp_sojourn.jl:308-311` — 둘 다 옛값을 저장했다
+                                          # 되돌린다). 에피소드 시뮬 루프 안의 재대입은 0건.
+                                          # ⚠️ :state 로 분류하면 롤아웃 사이 리셋이 프로브 값을
+                                          # 조용히 0 으로 되돌려 2×2 요인설계가 무너진다 — `RHO`
+                                          # 항목이 적은 것과 같은 방향의 사고다.
+                                          # 🔴 이 등록이 T10 병합에서 빠져 있었다(레인이 globals
+                                          # fix `bd311146` **이전**에 분기해 이 파일을 한 번도 안
+                                          # 건드렸다). `test/smdp_global_inventory.jl` 이
+                                          # `isempty([:DRAIN_DT])` 로 잡았다 — 횡단 시험이 레포
+                                          # 범위로 돌 때만 보이는 종류다(보고서 §6 절차 실수).
     :NOVELTY_FLEET_REF      => :setup,   # ex-:meta(fix round 1, [Minor] #7). 재확인: novelty.jl:293
                                           # 선언 뒤 어디서도 대입되지 않는다(레포 전체 grep 0건) —
                                           # 고정 스케일 상수(명목 함대 크기 30.0)일 뿐, 관측 이력을
