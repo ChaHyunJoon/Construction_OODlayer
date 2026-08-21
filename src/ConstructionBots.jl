@@ -94,6 +94,7 @@ include("respec/respec.jl")  # RESPEC: 반드시 마지막 — 위에서 정의�
 #          (공개 안 하면 ConstructionBots.이름 처럼 모듈명을 붙여야 씀)
 # RESPEC: public surface for scripts/tests (Patch 3, step 3 in respec/PATCHES.md).
 export maybe_respecify!, push_ood!, OODQueue, maybe_emit_reform_ood!,  # 재명세(respec) 관련 공개 함수/타입 (+team-deadlock OOD 공유 emit)
+       RESPEC_VERDICTS, assert_respec_verdict,   # 판정 어휘의 단일 진실원 + 조용한 버림 방지 관문
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
        SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
        set_battery_courier!, battery_courier_enabled,            # SwapBattery 물리 배송: 창고 예비가 배터리를 들고 왕복

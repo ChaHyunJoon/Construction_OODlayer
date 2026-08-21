@@ -211,10 +211,19 @@ _is_robot_replace(p::RespecProposal) = any(c -> c isa ReplaceAgent, p.constraint
     _is_relocate_build(proposal) -> Bool
 
 True iff the proposal carries a `RelocateBuild` — "shift the WHOLE build clear of a no-go
-zone". Checked BEFORE `_is_zone_respec` in `maybe_respecify!` so that a proposal carrying
-both takes the stronger lever: `restage_all_blocked!` can only move assemblies that have
-not started building, and that set is empty from the first batch boundary onward
-(measured 2026-08-03), whereas the whole-build translation has no such precondition.
+zone". `restage_all_blocked!` can only move assemblies that have not started building, and
+that set is empty from the first batch boundary onward (measured 2026-08-03), whereas the
+whole-build translation has no such precondition — so when a proposal carries BOTH, the
+stronger lever is the one that runs.
+
+🔴 **2026-08-21 (C1, 순차 집행): 그 규칙이 이제 "검사 순서"가 아니라 명시적 흡수로 집행된다.**
+예전에는 `if` 사슬의 순서 자체가 배타성을 보장했다(먼저 걸린 분기가 `return` 했으므로).
+순차 집행은 모든 분기를 돌리므로 순서만으로는 배타성이 사라진다 — 그래서 `_subsumption` 이
+**같은 zone** 을 가리키는 `ForbidZone` 단위를 `:subsumed_by_relocate` 로 기록하고 집행하지
+않는다. 그렇게 하지 않으면 이미 비워진 구역에 재적치가 한 번 더 돌고, 그 결과가
+`:partial`/`:infeasible`/`:residual_blocked` 면 `engage_fallback!` 로 가서 **성공적으로 옮긴
+빌드를 잉여 단위가 영구 line-stop 시킨다**(옛 코드에 없던 실패 경로).
+서로 **다른** zone 이면 흡수하지 않는다 — 그 구역에는 진짜 할 일이 있다.
 """
 # 제안에 RelocateBuild(빌드 전체를 구역 밖으로 평행이동)가 하나라도 있으면 true. maybe_respecify! 에서
 # ForbidZone 분기보다 **먼저** 검사한다 — 둘 다 들어있으면 전제조건이 없는 쪽(전체 이동)을 써야 하므로.
@@ -235,8 +244,15 @@ _is_battery_swap(p::RespecProposal) = any(c -> c isa SwapBattery, p.constraints)
 True iff the proposal is composed ONLY of `DeprioritizeAgent`s (a TIER-2 soft re-spec, e.g. a
 battery-degradation OOD). Pure-soft proposals are dispatched specially: we register the bounded
 cost bias and energy-aware re-solve, with NO feasibility risk. A proposal that MIXES a
-DeprioritizeAgent with a hard spec is NOT caught here — it falls through to the relevant hard
-dispatch / generic verify, where the DeprioritizeAgent compiles to a harmless no-op.
+DeprioritizeAgent with a hard spec is NOT caught here — under the pre-2026-08-21 `if` chain it
+fell through to the relevant hard dispatch / generic verify, where the DeprioritizeAgent
+compiled to a harmless no-op.
+
+🔴 **2026-08-21 (C1, 순차 집행): 그 "무해한 no-op" 도 이제 명시적 흡수다.** 순차 집행에서는
+섞인 제안의 `DeprioritizeAgent` 가 **자기 단위**를 얻어 전면 MILP 재풀이 + `commit_respec!` 를
+돌게 된다 — 실패하면 `engage_fallback!` 이다. 옛 동작(아무 일도 안 일어남)을 보존하려고
+`_subsumption` 이 그 단위를 `:subsumed_by_hard_spec` 으로 **기록하고 집행하지 않는다.**
+순수 soft 제안(전부 `DeprioritizeAgent`)은 흡수 대상이 아니며 예전처럼 이 분기가 집행한다.
 """
 # 제안이 "오직 DeprioritizeAgent 들"로만 이뤄졌으면 true(예: 배터리 저하 = TIER-2 soft 재명세). all=전부 참이어야 true.
 _is_deprioritize(p::RespecProposal) =
@@ -266,11 +282,125 @@ function _robot_position_2d(env, agent::AbstractID)
 end
 
 """
-    maybe_respecify!(env, ood_queue; id_resolver, optimizer) -> Symbol
+    maybe_respecify!(env, ood_queue; id_resolver, optimizer, producer) -> Symbol
 
 Called once per sim step from `simulate!` right after `step_environment!`.
-Returns one of: `:noop`, `:admitted`, `:rejected`, `:fallback`. The return value
-is purely for logging; the world state is mutated in place on `:admitted`.
+Polls ONE OOD event off `ood_queue`, turns it into a typed `RespecProposal` (LLM or a
+plugged `producer`), and **enacts every constraint the proposal carries** — see below.
+The world state is mutated in place; the return value is the aggregated verdict.
+
+SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
+------------------------------------------
+🔴 이 함수는 예전에 **first-match-wins** 였다: 일곱 개의 `if _is_*(proposal)` 분기가 각각
+`return` 해서, `[RelocateBuild(:z), SwapBattery(r)]` 같은 제약 **벡터**가 첫 분기 하나로
+무너지고 나머지는 **조용히** 버려졌다(측정: 조합 팔이 65/65 instance 에서 정보량 0).
+지금은 제안의 `constraints` 를 **집행 단위**로 쪼개 `_enact_one!` 에 하나씩 넘긴다.
+바뀐 것은 **제어 흐름 하나뿐**이고 분기 본문의 로직은 그대로다.
+
+**집행 순서 규칙** (`_enact_kind` → `_ENACT_RANK`, 오름차순):
+
+    1 relocate  RelocateBuild        기하: 빌드 전체 평행이동
+    2 zone      ForbidZone           기하: 막힌 조립체 재적치
+    3 replace   ReplaceAgent         그래프: 예비 1:1 인계(비파괴 — 실패 시 스스로 4로 강등)
+    4 fault     ForbidAgent          그래프: MILP 재분배(파괴적 — 남은 일을 흩뿌린다)
+    5 battery   SwapBattery          현장 배터리 교체(스케줄·기하 불변)
+    6 reform    ReformTeam           기하: 교착 팀 재구성 — 위 수술의 **결과**를 봐야 한다
+    7 deprioritize DeprioritizeAgent 목적함수 bias + 재풀이
+    8 generic   그 외                 MILP 제약 집합 + 재풀이 (`verify` 관문)
+
+왜 이 순서인가: 기하 수술이 조립체 좌표를 옮기고, 그래프 수술은 **그 좌표 위에서** 인계
+대상을 고른다(`nearest_pool` 이 위치를 읽는다). 반대로 하면 인계가 옛 좌표를 보고 정해진 뒤
+그 아래에서 땅이 움직인다. `reform` 은 그래프 수술이 만든 교착을 고치는 것이므로 그 뒤여야
+하고, 재풀이(7·8)는 최종 기하·그래프 위에서 한 번만 도는 게 맞다.
+
+**결정성**: 정렬은 `alg = Base.Sort.DEFAULT_STABLE` 로 명시한 **안정 정렬**이라 동순위는
+제안에 적힌 원래 순서를 지킨다. 입력은 `Vector` 이고 `Set`/`Dict` 순회가 한 군데도 없다 —
+같은 제안은 언제나 같은 집행 순서를 낸다(Global Constraint: 시드 고정 = 완전 재현).
+
+**단위 묶기**: 같은 종류의 제약은 그 분기가 **원래 벡터를 통째로 다루던 경우에만** 한 단위로
+묶는다(`_enact_batched`). `ForbidZone`·`ReformTeam`·`RelocateBuild` 는 분기가 기하 전체를
+한 번에 처리하고, `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints` 로 돌며,
+제네릭 경로는 **제약 집합**을 솔버에 넘긴다 — 이 넷을 쪼개면 둘째 풀이가 첫째 제약을 잃는다.
+반대로 `ReplaceAgent`·`ForbidAgent`·`SwapBattery` 분기는 `first(...)` 로 **하나만** 읽으므로
+단위를 낱개로 쪼개야 N 개가 N 번 집행된다(그게 이 태스크가 고치는 결함이다).
+
+**흡수된 단위는 집계에 들어가지 않는다.** `_subsumption` 이 집행하지 않기로 한 단위는
+`outcomes` 에 기여하지 않는다 — 그건 집행 **결과**가 아니라 "집행하지 않기로 한 결정"이기
+때문이다. 덕분에 `[RelocateBuild(:z), ForbidZone(…, :z)]` 는 옛 코드처럼 `:admitted` 를 낸다
+(잉여 단위를 `:noop` 으로 세면 `:partial` 로 새어 나간다).
+
+**N 개의 결과 → Symbol 하나 (집계 규칙, `_aggregate_enact`)** — 우선순위대로 첫 일치:
+
+    1. 하나라도 :fallback  → :fallback   (전역 line-stop 은 latch 된다. 가장 강한 사실)
+    2. 전부      :admitted → :admitted
+    3. 하나라도 :admitted  → :partial    (일부만 먹었다 — 새 값. 아래 주의)
+    4. 하나라도 :rejected  → :rejected
+    5. 그 외(전부 :noop)   → :noop
+
+🔴 **N = 1 항등 정리 — 정확한 정의역** (2026-08-21 정정). 규칙 1~5 는 결과가 하나뿐일 때
+언제나 그 하나를 그대로 돌려준다(특례가 아니라 정리다). 다만 그 정리가 `maybe_respecify!` 의
+**반환값**으로 이어지는 정의역은 다음이다:
+
+> **진입 시 `RESPEC_HOLD[] == false`**(= 라인이 돌고 있다)**인 경우에 한해**, 제약이 하나인
+> 제안의 반환값은 순차 집행 이전과 동일하다.
+
+라인이 이미 멈춰 있으면 LINE-STOP GATE 가 집계보다 먼저 `:fallback` 을 돌려주므로 항등이
+아니다. **이 약화는 의도된 것이고 무해하다**: 멈춘 라인 위에서는 반환값이 가리킬 "집행"이라는
+것이 존재하지 않으므로, 그 구간에서 옛 반환값을 재현하는 것은 재현이 아니라 **거짓말**이다.
+반환값에 의미가 있는 유일한 구간이 곧 정리의 정의역이다.
+
+정의역 안에서는 기존 호출부(`respec_step!` → `tools/demos.jl:1296` · `tools/e2e.jl` 의 두 루프 ·
+`tools/tests.jl:379`)가 전부 그대로 동작한다.
+
+⚠️ **완전한 바이트 동일은 아니다**: `invariant = build_invariant(env)` 가 producer/LLM 생성
+**이전**에서 `_enact_one!` 안(생성 **이후**)으로 옮겨졌다. 기본 LLM 경로에서는 무해하지만,
+`env` 를 **변경하는** `producer` 를 꽂으면 그 변경이 예전에는 invariant 에 안 잡히고 지금은
+잡힌다. 지금 레포의 producer(baselines·정책)는 전부 읽기 전용이라 실측상 차이가 없다.
+
+⚠️ `:partial` 은 **새로 생길 수 있는 값**이고 제약 2개 이상인 제안에서만 나온다.
+판정 어휘의 단일 진실원은 `RESPEC_VERDICTS` 이고, 호출부는 그것을 **복제하지 말고**
+`assert_respec_verdict` 를 지나가야 한다 — 어휘를 사본으로 들고 있던 두 곳
+(`tools/e2e.jl` 의 `run_mock_loop`/`run_seam_loop`)이 실제로 `:partial` 을 말없이 버려
+"respec 이 발동한 적 없다"로 기록하고 있었다(C1 감사, 2026-08-21). 둘 다 고쳤다.
+
+🔴 **LINE-STOP GATE — 멈춘 라인에는 아무것도 집행하지 않는다.** 각 단위를 집행하기 **전에**
+`RESPEC_HOLD[]` 를 본다. 서 있으면 그 단위와 남은 단위 전부를 `:skipped_line_stop` 으로
+기록하고 `:fallback` 을 돌려준다. **latch 가 방금 걸렸든 몇 스텝 전에 걸렸든 똑같이.**
+
+근거: line-stop 은 정의상 라인의 끝이다. 그 뒤에 집행되는 제약은 **영영 실행되지 않을 세계**를
+편집하고, 그렇게 만들어진 `s` 는 일어나지 않는 전이를 가리킨다 — 이 계획의 전제(`s` 가 실제
+전이를 색인한다) 자체가 깨진다. 지키는 불변식은 **현재 상태**의 성질이지 전이의 성질이 아니다.
+
+⚠️ **왜 "전이 감지"로는 안 되는가 (2026-08-21 실측).** `RESPEC_HOLD[]` 는 **영구 latch** 이고
+`release_fallback!` 만이 푸는데 **production 에서 아무도 부르지 않는다**(`respec_step!` 도
+`RESPEC_ENABLED[]` 만 본다). 그래서 런 중 fallback 이 한 번 걸리면 그 뒤 **모든** 호출이 이미
+멈춘 라인 위로 들어온다. 진입 전후를 비교하던 초판은 그 구간에서 **영영 발동하지 않았고**,
+제약 N 개를 전부 죽은 세계에 집행했다 — first-match-wins 보다 N 배 나쁘다. 실측(시험 [6] RED):
+멈춘 라인 위에서 `:admitted` 를 돌려주며 `soc 0.7→1.0`, `in_zone 66→0`.
+
+⚠️ **의도된 동작 변화**: 한 번 latch 되면 `maybe_respecify!` 는 이후 매 호출 **즉시 `:fallback`**
+이 된다(집행 0건). 정직한 보고다 — 라인이 실제로 멈춰 있다 — 지만 분명한 동작 변화다.
+latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다: 거부 분기의 다수는
+`engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate·zone·replace·generic),
+거꾸로 reform 과 deprioritize 는 latch **없이** `:rejected` 를 낸다. Symbol 로 키를 잡으면
+앞은 놓치고 뒤는 거짓 발동한다.
+
+건너뛴 단위는 `LAST_ENACT_REPORT[]` 에 `:skipped_line_stop` 으로 **명시 기록**되므로
+`sum(r.n)` 불변식이 유지된다 — 조용한 건너뜀이 아니다.
+
+🔴 **반환 Symbol 은 line-stop 여부의 신호가 아니다 — `RESPEC_HOLD[]` 가 유일한 진실원이다.**
+이건 C1 이 만든 성질이 아니라 원래 그랬다: 예전에도 relocate/zone/replace/generic 의 거부
+경로가 `engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려줬다. 순차 집행이 새로 여는 것은
+`:partial`(= 한 단위는 먹었고 다른 단위는 거부되며 line-stop 을 걸었을 수 있다) 이라는 조합
+이다 — 실측 예: `[RelocateBuild(:ghost), SwapBattery(r)]` → 보고서 `[(:relocate,:rejected),
+(:battery,:admitted)]` → 반환 `:partial`, 그리고 `RESPEC_HOLD[] == true`
+(test/respec_sequential_enact.jl [4]). line-stop 을 보려면 `RESPEC_HOLD[]` 를 읽어라.
+first-match-wins 시절엔 분기가 하나만 돌아서 이 조합이 생길 수 없었다. 분기 본문을 안 고치는
+것이 이 태스크의 제약이므로 그 동작 자체는 그대로 두었다.
+
+집행 흔적은 두 전역에 남는다 — `ENACT_ORDER_LOG[]`(진입한 분기의 순서) 와
+`LAST_ENACT_REPORT[]`(단위별 `(kind, status, n)`). 후자의 `sum(r.n)` 이 제안의 제약 개수와
+같다는 것이 **조용히 버려진 제약이 없다는 기계적 증거**다(Global Constraint: 조용한 폴백 금지).
 """
 # `;` 뒤 두 인자는 키워드 인자이며 "= 기본값"이 붙어 있어 생략 가능.
 # `ref -> _default_id_resolver(env, ref)` : `->` 는 익명함수(파이썬 람다 `lambda ref: ...`). 즉 기본 id 변환 함수.
@@ -324,6 +454,213 @@ function _replace_via_reassign!(env, faulted, optimizer, why)
     return :fallback
 end
 
+# =============================================================================
+# 순차 집행 (Task C1, 2026-08-21) — 제약 벡터의 **모든** 원소를 집행한다.
+# 규칙 전문은 아래 `maybe_respecify!` 의 docstring 에 있다.
+# =============================================================================
+
+"""
+`maybe_respecify!` / `respec_step!` 가 돌려줄 수 있는 Symbol **전부**. 판정 어휘의 단일 진실원.
+
+    :disabled  RESPEC_ENABLED[] 가 꺼져 있다 (`respec_step!` 만 낸다)
+    :noop      처리할 이벤트가 없거나, 빈 제안(절제)이거나, 집행 결과가 전부 no-op
+    :admitted  모든 집행 단위가 채택됐다
+    :partial   일부 단위만 채택됐다 (제약 2개 이상일 때만 나온다 — C1 에서 새로 생겼다)
+    :rejected  채택된 단위가 하나도 없고 거부가 있었다
+    :fallback  line-stop 에 걸렸다(집행 중 latch 되면 남은 단위는 집행하지 않는다)
+
+🔴 **호출부가 이 어휘를 화이트리스트로 복제하면 안 된다.** `:partial` 이 그렇게 해서 생긴
+사고의 실례다 — `tools/e2e.jl` 의 두 화이트리스트가 `:partial` 을 **말없이 버려**
+"respec 이 발동한 적 없다"로 기록했다(C1 감사, 2026-08-21). 새 값을 더할 때는 여기만 고치고,
+호출부는 `assert_respec_verdict` 를 지나가게 한다.
+"""
+const RESPEC_VERDICTS = (:disabled, :noop, :admitted, :partial, :rejected, :fallback)
+
+"""
+    assert_respec_verdict(verdict, where = "") -> Symbol
+
+`verdict` 가 `RESPEC_VERDICTS` 에 있으면 그대로 돌려주고, 없으면 `error()` 한다.
+Global Constraint **조용한 폴백 금지**의 집행 지점: 호출부의 분기표가 모르는 Symbol 을
+말없이 "아무 일도 없었다" 로 뭉개는 것을 구조적으로 막는다. 비용은 튜플 멤버십 하나다.
+"""
+function assert_respec_verdict(verdict::Symbol, where::AbstractString = "")
+    verdict in RESPEC_VERDICTS && return verdict
+    error("[RESPEC] 알 수 없는 판정 :$(verdict)" * (isempty(where) ? "" : " @ $(where)") *
+          " — 어휘는 $(RESPEC_VERDICTS) 다. maybe_respecify! 가 새 값을 내기 시작했다면 " *
+          "RESPEC_VERDICTS 와 이 판정을 소비하는 모든 분기표를 함께 고쳐야 한다 " *
+          "(조용히 버리면 부분 집행이 no-op 으로 기록된다).")
+end
+
+"""
+직전 `maybe_respecify!` 호출에서 **실제로 진입한** dispatch 분기의 종류가 진입 순서대로.
+호출마다 비워진다. 분류기(`_enact_kind`)가 아니라 **분기 본체가 직접** 찍는다 — 분류기와
+술어(`_is_*`)가 어긋나면 시험이 그 자리에서 빨개지도록(가정이 아니라 측정).
+"""
+const ENACT_ORDER_LOG = Ref(Symbol[])
+
+"""
+직전 `maybe_respecify!` 호출의 **집행 단위별** 결과. 행 하나 = 집행 단위 하나:
+
+    (kind::Symbol, status::Symbol, n::Int)
+
+- `kind`   — `_enact_kind` 가 붙인 종류.
+- `status` — 그 분기가 **원래 돌려주던 그대로의** Symbol(`:admitted·:rejected·:noop·:fallback`).
+             분기 본문의 로직을 안 바꿨으므로 어휘도 그대로다.
+- `n`      — 그 단위가 실어 나른 제약 개수. `sum(r.n for r in LAST_ENACT_REPORT[])` 는 언제나
+             제안의 제약 개수와 같다 = **조용히 버려진 제약이 없다는 기계적 증거**.
+"""
+const LAST_ENACT_REPORT = Ref(NamedTuple[])
+
+"""
+    _enact_kind(c::ConstraintSpec) -> Symbol
+
+제약 하나를 **어느 dispatch 분기가 집행하는가**로 분류한다. `maybe_respecify!` 안의
+`_is_*(proposal)` 술어들과 1:1 로 대응한다(단위가 낱개일 때 `any(c -> c isa T, [c])` 는
+`c isa T` 와 같으므로 정확히 일치한다). 어디에도 안 걸리면 `:generic` — 제네릭 MILP 관문
+(`verify` + `formulate_milp` + `commit_respec!`)이 받는다. 거기서도 못 다루는 타입이면
+`compile_constraint!` 가 `MethodError` 로 죽는다. **조용히 건너뛰는 경로는 없다.**
+
+⚠️ Task C3 이 `TranslateBuild` 를 들여오면 여기에 한 줄(`c isa TranslateBuild ? :relocate :`)
+과 `_enact_one!` 안의 분기 하나를 더한다. 그 전까지는 `:generic` 으로 떨어져 `MethodError`
+로 죽는다 — 조용히 무시되지 않는다.
+"""
+_enact_kind(c::ConstraintSpec) =
+    c isa RelocateBuild     ? :relocate     :
+    c isa ForbidZone        ? :zone         :
+    c isa ReplaceAgent      ? :replace      :
+    c isa ForbidAgent       ? :fault        :
+    c isa SwapBattery       ? :battery      :
+    c isa ReformTeam        ? :reform       :
+    c isa DeprioritizeAgent ? :deprioritize :
+                              :generic
+
+# 집행 순서. 근거는 `maybe_respecify!` docstring 의 "집행 순서 규칙" 절.
+# 기하(1·2) → 그래프(3·4) → 현장수리(5) → 교착복구(6) → 재풀이(7·8).
+const _ENACT_RANK = (relocate = 1, zone = 2, replace = 3, fault = 4,
+                     battery = 5, reform = 6, deprioritize = 7, generic = 8)
+
+_enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
+
+"""
+    _enact_batched(kind) -> Bool
+
+이 종류의 분기가 제약 **벡터를 통째로** 다루는가. `true` 면 같은 종류를 한 단위로 묶는다.
+
+🔴 **왜 제네릭 경로를 묶는가 (계획서 스니펫에서 벗어난 결정 — 컨트롤러 승인 2026-08-21).**
+브리프는 제약을 예외 없이 낱개로 쪼개라고 했다. 제네릭 경로에 그렇게 하면 **이 태스크가
+고치는 바로 그 결함을 한 층 아래에서 다시 만든다**: 제네릭 관문은 MILP **제약 집합**을
+`extra_constraints = verdict.proposal` 로 솔버에 통째로 넘긴다. `[ForbidWindow(a), ForbidWindow(b)]`
+를 두 번의 풀이로 쪼개면 둘째 풀이의 모델에 첫째 제약이 **없다** — 즉 `a` 가 조용히 버려진다.
+"제약 벡터가 하나로 무너진다"가 dispatch 층에서 솔버 층으로 옮겨갈 뿐이다. 그래서 묶는다, `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints`
+로 돌며 재풀이를 한 번만 한다, `ForbidZone`/`RelocateBuild`/`ReformTeam` 분기는 기하 전체를
+한 번에 처리한다(`restage_all_blocked!`·`translate_whole_build!`·`reform_stuck_teams!` 는
+제약이 아니라 `env` 를 읽는다).
+
+`false` 인 셋(`:replace`·`:fault`·`:battery`)의 분기 본문은 `first(c for c in ... if c isa T)`
+로 **첫 하나만** 읽는다 — 그래서 낱개로 쪼개야 N 개가 N 번 집행된다. 이것이 이 태스크가
+고치는 결함의 종류 내부 버전이다.
+"""
+_enact_batched(kind::Symbol) = kind in (:relocate, :zone, :reform, :deprioritize, :generic)
+
+"""
+    _enact_units(constraints) -> Vector{Vector{ConstraintSpec}}
+
+제약 벡터를 **집행 순서대로 늘어놓은 집행 단위들**로 쪼갠다.
+
+정렬은 `alg = Base.Sort.DEFAULT_STABLE` 로 **명시**한다: 동순위(같은 종류)는 제안에 적힌
+원래 순서를 지키고, 기본 알고리즘이 바뀌어도 순서가 안 흔들린다. 입력은 `Vector` 이고
+`Set`/`Dict` 순회가 한 군데도 없으므로 같은 제안은 언제나 같은 단위열을 낸다
+(Global Constraint: 시드 고정 = 완전 재현).
+"""
+function _enact_units(constraints::AbstractVector{<:ConstraintSpec})
+    ordered = sort(collect(ConstraintSpec, constraints);
+                   by = _enact_rank, alg = Base.Sort.DEFAULT_STABLE)
+    units = Vector{ConstraintSpec}[]
+    for c in ordered
+        k = _enact_kind(c)
+        # 정렬이 같은 종류를 이미 붙여 놓았으므로 직전 단위만 보면 된다.
+        if _enact_batched(k) && !isempty(units) && _enact_kind(units[end][1]) === k
+            push!(units[end], c)
+        else
+            push!(units, ConstraintSpec[c])
+        end
+    end
+    return units
+end
+
+"""
+    _subsumption(unit, all_constraints) -> Union{Nothing,Symbol}
+
+이 집행 단위가 **다른 제약에 의해 이미 처리되므로 집행하지 않아야 하는가**. 집행하지 않으면
+그 사유 Symbol 을, 정상 집행이면 `nothing` 을 낸다.
+
+🔴 **왜 이게 필요한가 — 우선순위와 배타성은 다르다.** dispatch 사슬의 두 자리는 단순한 검사
+순서가 아니라 **실측으로 정해진 도메인 규칙**이었고, 순차 집행 초판은 우선순위만 지키고
+배타성을 없애 버렸다:
+
+1. `RelocateBuild(:z)` + `ForbidZone(…, :z)` — `_is_relocate_build` docstring 의 2026-08-03 실측:
+   조립체별 재적치(`restage_all_blocked!`)는 "아직 시작 안 한 조립체"만 옮길 수 있고 그 집합은
+   첫 배치 경계에서 비어 다시 안 찬다. 그래서 둘 다 실린 제안은 **강한 지렛대 하나만** 쓴다.
+   둘 다 집행하면 이미 비워진 구역에 재적치를 한 번 더 돌리는데, 그게
+   `:partial`/`:infeasible`/`:residual_blocked` 를 내면 `engage_fallback!` 로 간다 —
+   **성공적으로 옮긴 빌드가 잉여 둘째 단위 때문에 영구 line-stop 된다.** 옛 코드에는 없던
+   실패 경로다.
+2. `DeprioritizeAgent` + 하드 스펙 — `_is_deprioritize` docstring: 섞인 제안은 이 분기에 안 걸리고
+   하드 dispatch 로 떨어져 "DeprioritizeAgent 는 무해한 no-op 으로 컴파일된다". 초판은 그걸
+   **전면 MILP 재풀이 + `commit_respec!`** 로 바꿔 버렸다(실패 시 역시 fallback).
+
+**흡수는 조용한 드롭이 아니다.** C1 의 명령은 "어떤 제약도 **조용히** 버려지지 않는다" 이지
+"모든 제약이 반드시 무언가를 집행한다" 가 아니다. 흡수된 단위는 `LAST_ENACT_REPORT[]` 에
+사유가 적힌 행으로 남고 `sum(r.n) == length(proposal.constraints)` 불변식도 유지된다 —
+감사 가능한 명명된 결과다. 잉여 단위를 집행하는 쪽은 옛 동작보다도, 목표보다도 **엄격히 나쁘다.**
+
+사유:
+- `:subsumed_by_relocate`  — 단위의 **모든** `ForbidZone` 이 같은 제안의 어떤 `RelocateBuild` 와
+  **같은 zone** 을 가리킨다. 일부만 겹치면 흡수하지 않는다(나머지 구역은 진짜 할 일이 있다).
+- `:subsumed_by_hard_spec` — 순수 soft 가 아닌 제안 안의 `DeprioritizeAgent` 단위.
+
+정렬된 `Vector` 로만 판정한다 — `Set`/`Dict` 순회 없음(Global Constraint).
+"""
+function _subsumption(unit::AbstractVector{<:ConstraintSpec},
+                      all_constraints::AbstractVector{<:ConstraintSpec})
+    kind = _enact_kind(first(unit))
+    if kind === :zone
+        rb_zones = sort!(unique(Symbol[c.zone for c in all_constraints if c isa RelocateBuild]);
+                         by = string)
+        isempty(rb_zones) && return nothing
+        all(c -> c isa ForbidZone && c.zone in rb_zones, unit) && return :subsumed_by_relocate
+    elseif kind === :deprioritize
+        any(c -> !(c isa DeprioritizeAgent), all_constraints) && return :subsumed_by_hard_spec
+    end
+    return nothing
+end
+
+"""
+    _aggregate_enact(outcomes) -> Symbol
+
+집행 단위별 결과 N 개를 반환용 Symbol 하나로 접는다. 우선순위대로 첫 일치:
+
+    1. 하나라도 :fallback  → :fallback   (전역 line-stop 은 latch 된다 — 가장 강한 사실)
+    2. 전부      :admitted → :admitted
+    3. 하나라도 :admitted  → :partial    (일부만 먹었다)
+    4. 하나라도 :rejected  → :rejected
+    5. 그 외(전부 :noop)   → :noop
+
+🔴 **N = 1 에서 항등**이다 — 특례가 아니라 정리다. 결과가 s 하나뿐일 때 위 다섯을 순서대로
+따라가면 언제나 s 가 나온다(:admitted 는 2, :fallback 은 1, :rejected 는 4, :noop 는 5).
+그래서 제약 하나짜리 제안의 반환값 계약이 순차 집행 전과 **바이트 동일**하고, 기존 호출부가
+전부 그대로 동작한다. 새로 나올 수 있는 값은 `:partial` 하나뿐이고 제약 2개 이상일 때만이다.
+"""
+function _aggregate_enact(outcomes::AbstractVector{Symbol})
+    isempty(outcomes)                   && return :noop
+    any(s -> s === :fallback, outcomes) && return :fallback
+    all(s -> s === :admitted, outcomes) && return :admitted
+    any(s -> s === :admitted, outcomes) && return :partial
+    any(s -> s === :rejected, outcomes) && return :rejected
+    return :noop
+end
+
+
 # respec 파이프라인 본체: 큐에서 OOD 이벤트 하나를 꺼내 생성→검증→(종류별 특수)대응→재풀이→재개까지 처리.
 # 반환값(:noop/:admitted/:rejected/:fallback)은 로깅용이며, :admitted 시 세계 상태를 실제로 바꿈.
 function maybe_respecify!(env, ood_queue;
@@ -334,7 +671,6 @@ function maybe_respecify!(env, ood_queue;
     event === nothing && return :noop             # 처리할 이벤트가 없으면 아무것도 안 함(:noop) 반환
 
     @info "[RESPEC] OOD event: $event"            # @info : 정보 로그 출력 매크로. $event 로 값 보간.
-    invariant = build_invariant(env)              # 이미 끝났거나 진행 중인 작업을 "고정(freeze)"한 불변식 구성
 
     # --- generate: OOD event -> typed DSL proposal -----------------------------
     # The PRODUCER is pluggable (the comparison seam, see RESPEC_PRODUCER). Default is
@@ -418,12 +754,108 @@ function maybe_respecify!(env, ood_queue;
         return :noop
     end
 
+    # --- 순차 집행 (Task C1) ----------------------------------------------------
+    # 🔴 여기가 이 태스크가 바꾼 **유일한 제어 흐름**이다. 예전엔 아래 `_enact_one!` 의 본문이
+    #    이 자리에 통째로 있었고, 일곱 분기가 각각 `return` 해서 첫 일치 하나만 집행됐다.
+    #    지금은 제약을 집행 단위로 쪼개(`_enact_units`) 같은 `env` 위에서 **차례로** 집행한다.
+    #    각 단위는 `_enact_one!` 안에서 자기 `verify_*` 를 라이브 `env` 로 다시 통과해야 하므로,
+    #    앞 단위가 전제조건을 무효화했으면 **거기서 걸러지고 그 사실이 보고서에 남는다.**
+    ENACT_ORDER_LOG[]   = Symbol[]
+    LAST_ENACT_REPORT[] = NamedTuple[]
+    outcomes = Symbol[]
+    units           = _enact_units(proposal.constraints)
+    short_circuited = false
+    for (i, unit) in enumerate(units)
+        # --- line-stop gate (Ruling 1, 정정판) ----------------------------------
+        # 🔴 **상태를 본다. 전이가 아니다.** `engage_fallback!` 은 `RESPEC_HOLD[]` 를 latch 하고
+        #    `release_fallback!`(이 파일 하단) 만이 푸는데 **production 에서 아무도 안 부른다**
+        #    (`respec_step!` 도 `RESPEC_ENABLED[]` 만 본다). 그래서 런 중 fallback 이 한 번이라도
+        #    걸리면 그 뒤 **모든** 호출이 "이미 멈춘 라인" 위로 들어온다. 초판은 latch 의 **순간**만
+        #    감지해서(hold_before 비교) 그 구간에서 영영 발동하지 않았고, N 개 제약을 전부 죽은
+        #    세계에 집행했다 — first-match-wins 보다 N 배 나쁘다(실측: 시험 [6] 의 RED 는
+        #    `:admitted` 를 돌려주면서 soc 0.7→1.0, in_zone 66→0 을 만들었다. 멈춘 라인 위에서).
+        #    지금 지키는 불변식은 하나다: **멈춘 라인에는 어떤 제약도 집행하지 않는다.**
+        #    latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다 — 거부 분기의 다수가
+        #    `engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate/zone/replace/generic),
+        #    거꾸로 reform(`:1207`)·deprioritize(`:1235`)는 latch 없이 `:rejected` 를 낸다.
+        #    Symbol 로 키를 잡으면 앞은 놓치고 뒤는 거짓 발동한다.
+        if RESPEC_HOLD[]
+            # 건너뛴 단위도 **명시적 status 로 보고**한다 — 조용한 건너뜀이면 이 태스크가 고친
+            # 결함이 그대로 되살아난다. `sum(r.n)` 불변식도 그대로 유지된다.
+            for skipped in units[i:end]
+                push!(LAST_ENACT_REPORT[],
+                      (kind = _enact_kind(skipped[1]), status = :skipped_line_stop,
+                       n = length(skipped)))
+            end
+            short_circuited = true
+            @warn "[RESPEC] line is STOPPED (RESPEC_HOLD) -> " *
+                  "$(length(units) - i + 1) unit(s) NOT enacted " *
+                  "(a stopped line never executes them; see LAST_ENACT_REPORT[])"
+            break
+        end
+        # --- 흡수(subsumption): 집행하지 않되 **기록한다** (Ruling 2) --------------
+        sub = _subsumption(unit, proposal.constraints)
+        if sub !== nothing
+            push!(LAST_ENACT_REPORT[], (kind = _enact_kind(unit[1]), status = sub,
+                                        n = length(unit)))
+            @info "[RESPEC] unit $(_enact_kind(unit[1])) subsumed ($(sub)) -> not enacted (recorded)"
+            continue        # outcomes 에는 안 넣는다 — 집행 결과가 아니라 "집행하지 않기로 한 결정"
+        end
+        one = RespecProposal(unit, proposal.rationale, proposal.source_event)
+        st  = _enact_one!(env, one; id_resolver = id_resolver, optimizer = optimizer)
+        push!(LAST_ENACT_REPORT[],
+              (kind = _enact_kind(unit[1]), status = st, n = length(unit)))
+        push!(outcomes, st)
+    end
+    @info "[RESPEC] enacted $(length(outcomes)) unit(s) over " *
+          "$(length(proposal.constraints)) constraint(s) -> " *
+          string([(r.kind, r.status) for r in LAST_ENACT_REPORT[]])
+    # 라인이 멈춰 있어서 집행을 건너뛰었다면 반환은 `:fallback` 이다(집계보다 우선).
+    # 라인이 도는 동안에는 이 분기가 도달 불가능하므로 아래 집계의 N=1 항등은 그 정의역에서
+    # 그대로 성립한다(정확한 정의역 서술은 이 함수 docstring 의 "N = 1 항등" 절 참조).
+    short_circuited && return :fallback
+    return _aggregate_enact(outcomes)
+end
+
+"""
+    _enact_one!(env, proposal; id_resolver, optimizer) -> Symbol
+
+**하나의 집행 단위**(같은 종류의 제약 1개 이상)를 집행한다. 본문은 순차 집행 이전
+`maybe_respecify!` 의 dispatch 꼬리를 **그대로** 옮긴 것이다 — 술어(`_is_*`)도, 분기 본문의
+로직도, 반환 어휘(`:admitted·:rejected·:noop·:fallback`)도 바꾸지 않았다. 더한 것은 분기마다
+한 줄씩의 `push!(ENACT_ORDER_LOG[], …)` 뿐이다.
+
+분기 표(파일 안 등장 순서 = 검사 순서):
+
+    _is_robot_fault     ForbidAgent          → fault_robot_and_reassign!
+    _is_relocate_build  RelocateBuild        → translate_whole_build!
+    _is_zone_respec     ForbidZone           → restage_all_blocked! (+ Phase B 전체이동)
+    _is_battery_swap    SwapBattery          → swap_battery!
+    _is_robot_replace   ReplaceAgent         → hot_swap_robot! / replace_robot(_distributed)!
+    _is_reform          ReformTeam           → reform_stuck_teams! / recover_stalled_teams!
+    _is_deprioritize    DeprioritizeAgent    → deprioritize_agent! + 재풀이
+    (fall-through)      그 외                 → verify + formulate_milp + commit_respec!
+
+⚠️ 검사 **순서**는 예전 그대로 두었지만, 단위가 한 종류뿐이라 이제 순서가 결과를 가르지
+않는다. 집행 순서를 정하는 것은 `_enact_units`(= `_enact_rank`)다.
+"""
+
+function _enact_one!(env, proposal::RespecProposal;
+                     id_resolver = ref -> _default_id_resolver(env, ref),
+                     optimizer   = _respec_optimizer())
+    # 🔴 **집행 단위마다 얼린 과거를 다시 만든다.** 앞 단위의 집행이 스케줄을 바꿨을 수 있으므로,
+    #    호출 진입 때 한 번 만든 invariant 를 재사용하면 둘째 단위가 **낡은 과거** 위에서 검증된다.
+    #    (순차 집행 전에는 `maybe_respecify!` 가 LLM 호출 직전에 한 번만 만들었다.)
+    invariant = build_invariant(env)
+
+
     # --- robot fault: dispatch to the reassign machinery ----------------------
     # A ForbidAgent re-spec needs schedule surgery (release pending edges) + the
     # frozen/pinned context that the generic verify path does not establish.
     # fault_robot_and_reassign! does freeze -> release -> ForbidAgent -> verify ->
     # commit, and rejects to the safe fallback if the future is not re-solvable.
     if _is_robot_fault(proposal)                 # 제안이 "로봇 한 대 고장(ForbidAgent 1개)"인 경우
+        push!(ENACT_ORDER_LOG[], :fault)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         agent = proposal.constraints[1].agent    # 그 제약에서 고장난 로봇 id 를 꺼냄(.agent 필드)
         @info "[RESPEC] robot-fault re-spec -> reassign $(agent)"  # 어떤 로봇을 재배정하는지 로그
         # fault_robot_and_reassign! : 고정→대기엣지 해제→ForbidAgent→검증→커밋 까지 수행. resume=true 면 진행 상태 유지.
@@ -450,6 +882,7 @@ function maybe_respecify!(env, ood_queue;
     #   "아직 시작 안 한 조립체"만 옮길 수 있는데 그 집합이 첫 배치 경계에서 비어 영영 안 돌아온다(실측).
     #   전체 이동은 그 전제조건이 없으므로 빌드 내내 유효하다. ForbidZone 분기보다 먼저 검사한다.
     if _is_relocate_build(proposal)
+        push!(ENACT_ORDER_LOG[], :relocate)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         # verify gate (static + zone-exists + movable) BEFORE any geometric mutation.
         # 기하 변경 전에 먼저 검증(정적 + 구역 실존 + 옮길 대상 존재).
         vverdict = verify_relocate(proposal, env)
@@ -527,6 +960,7 @@ function maybe_respecify!(env, ood_queue;
     # [한국어] ForbidZone(공간형) 대응: no-go 구역이 덮은 적치영역을 기하적으로 옮김(MILP 재풀이 아님).
     #   restage_all_blocked! 이 "구역이 덮은 모든 조립체"의 적치를 구역 밖으로 옮김(spec 이 지목한 하나만이 아님).
     if _is_zone_respec(proposal)
+        push!(ENACT_ORDER_LOG[], :zone)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         # verify gate (static + zone-exists) BEFORE any geometric mutation — never trust the LLM.
         # 기하 변경 전에 먼저 검증(정적 검사 + 구역 실존) — LLM 을 절대 맹신하지 않음.
         zverdict = verify_zone(proposal, env)
@@ -633,6 +1067,7 @@ function maybe_respecify!(env, ood_queue;
     #   그대로라 재풀이할 게 없음). 창고 예비 본체를 안 먹는다 — 그 희소성은 ReplaceAgent 의 몫이고,
     #   두 장부를 분리해야 둘 중 고르는 게 진짜 결정이 된다.
     if _is_battery_swap(proposal)
+        push!(ENACT_ORDER_LOG[], :battery)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         role = first(c for c in proposal.constraints if c isa SwapBattery).agent
         bverdict = verify_swap_battery(proposal, env)      # 변경 전 검증(정적 + grounding)
         if bverdict isa Reject
@@ -677,6 +1112,7 @@ function maybe_respecify!(env, ood_queue;
     # [한국어] ReplaceAgent(로봇 고장) 대응: 가장 가까운 방위 예비 풀이 idle 로봇 1대를 내주고, 그 빈 작업사슬이
     #   고장 로봇의 남은 일을 통째로 넘겨받음(1:1 인계, MILP 재풀이 아님). 예비 선택은 기하(nearest_pool)로.
     if _is_robot_replace(proposal)
+        push!(ENACT_ORDER_LOG[], :replace)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         # the faulted agent the LLM named; the SPARE is geometry's call, not the LLM's.
         # 고장 로봇은 LLM 이 지목, 예비(spare)는 기하가 결정. first(...) = 조건 맞는 첫 제약의 .agent 를 꺼냄.
         faulted = first(c for c in proposal.constraints if c isa ReplaceAgent).agent
@@ -796,6 +1232,7 @@ function maybe_respecify!(env, ood_queue;
     # admits ONLY if a mostly-formed-but-wedged team actually exists.
     # [한국어] ReformTeam(다중로봇 팀 교착) 대응: 교착된 팀의 낙오 멤버를 운반 슬롯에 끼워 팀을 재구성(MILP 없음).
     if _is_reform(proposal)
+        push!(ENACT_ORDER_LOG[], :reform)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         # A ReformTeam request is SPECULATIVE: the "team deadlocked" OOD is auto-emitted on a
         # no-progress heuristic (demo_utils.jl), so "no actually-reformable wedge" is a FALSE
         # ALARM, not a hard-constraint violation. reform is purely additive geometric surgery,
@@ -896,6 +1333,7 @@ function maybe_respecify!(env, ood_queue;
     # [한국어] DeprioritizeAgent(TIER-2 soft) 대응: 해당 로봇의 엣지 비용만 다시 매기므로 실행가능성을
     #   해칠 수 없음(빌드를 멈추게 못 함). grounding 만 검증 → 클램프된 bias 등록 → 에너지 인식 재풀이.
     if _is_deprioritize(proposal)
+        push!(ENACT_ORDER_LOG[], :deprioritize)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
         dverdict = verify_deprioritize(proposal, env)
         if dverdict isa Reject
             @warn "[RESPEC] deprioritize proposal REJECTED ($(dverdict.reason)): $(dverdict.detail) -> no-op (build continues)"
@@ -950,6 +1388,7 @@ function maybe_respecify!(env, ood_queue;
 
     # --- verify (the gate; does the trial solve itself) -----------------------
     # verify(...) : 제안을 실제로 "시험 풀이(trial solve)"해 통과/거부를 판정하는 관문. 통과 못 하면 Reject 객체 반환.
+    push!(ENACT_ORDER_LOG[], :generic)   # C1: 특수 분기 어디에도 안 걸린 제약 = 제네릭 MILP 관문
     verdict = verify(proposal, env, invariant; optimizer = optimizer)
     if verdict isa Reject                        # 판정 결과가 Reject 타입이면(=거부)
         @warn "[RESPEC] proposal REJECTED ($(verdict.reason)): $(verdict.detail) -> fallback"  # 거부 사유 로그
