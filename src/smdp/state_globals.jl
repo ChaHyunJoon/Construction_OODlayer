@@ -640,6 +640,13 @@ const KNOWN_RHS_HEADS = Set([
     #     (`env`)은 스캐너 네 패턴이 보는 최상위 전역 후보가 아니다(대문자 관례 밖) — 즉 오늘
     #     이 표의 계약에는 안 닿는다. 새 소문자 머리가 나오면 여기서 죽는다는 것이 요점이다.
     "replace", "joinpath", "CB.run_lego_demo", "Graphs.nv", "isfile",
+    # (d) 2026-08-21, Task T12 병합이 새로 들여온 1개. **이 census 가 설계대로 죽어서 보였다** —
+    #     `src/smdp/generative.jl:54 const OBJECTIVE_JSON = normpath(joinpath(pkgdir(...), ...))`.
+    #     판정(위 절차 (a)): `normpath` 는 `String` 을 돌려주는 **불변** 머리이고, 바로 위 (c) 의
+    #     `joinpath` 과 같은 부류다. 가변 컨테이너를 만들 수 없으므로 `_CONTAINER_CTORS` 에는
+    #     넣지 않는다. `OBJECTIVE_JSON` 자체도 재대입되지 않는 경로 문자열이라 상태가 아니다.
+    #     ⚠️ 그래서 이 항목 뒤 실측은 관측 31 · 등록 35 다(위 (b) 의 30 · 34 에서 각 +1).
+    "normpath",
 ])
 # ---- round 4, [Important]#3: census 의 이름 그룹을 **소문자까지** 넓혔다 ---------------------
 # round 3 의 이름 그룹은 `(_?[A-Z][A-Z_0-9]*)` — **전-대문자 전용**이었다. 그런데 바로 그
