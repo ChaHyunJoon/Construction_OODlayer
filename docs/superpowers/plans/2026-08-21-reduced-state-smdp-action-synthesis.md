@@ -25,7 +25,7 @@
 - **게이트를 짤 때는 음성 대조를 먼저 실측한다.** 초록불은 증거가 아니다 — 이 브랜치에서 "절대 실패할 수 없던 시험" 여섯 개가 전부 초록이었다.
 - **소요시간 표기**: 각 태스크 제목 옆의 값은 숙련 개발자 1인 기준 **집중 작업 시간**이다. 재컴파일·스윕 대기는 별도로 표시한다.
 
-**총 추정: 47 h 집중 작업 + 6~9 h 대기** (Phase 1R~5). OOD layer 와 replay buffer 는 **계획서 B** 로 분리한다.
+**총 추정: 55.5 h 집중 작업 + 7~10 h 대기** (Phase 1R~5). OOD layer 와 replay buffer 는 **계획서 B** 로 분리한다.
 
 ---
 
@@ -2430,16 +2430,27 @@ git commit -m "fix(respec): enact every constraint, not just the first match"
 
 ---
 
-## Task C2: MILP 제약 문법 (L2-a) — **4시간**
+## Task C2: MILP 제약 문법 (L2-a) + 행동공간 축소 — **5시간**
 
-spec §5-4. `ForbidWindow`·`ForbidAgent` 를 **삭제하지 않는다** — 그 둘이 인스턴스인 문법을 노출한다.
+spec §5-4 · §5-8. 두 가지를 **한 태스크에서** 한다:
+1. `(t0, tF, Xa)` 위의 제약 문법을 노출한다 — `ForbidWindow`·`ForbidAgent` 가 그 인스턴스다
+2. 🔴 **LLM 이 emit 할 수 있는 kind 를 5종으로 줄인다** (D-9)
+
+둘을 나누면 안 되는 이유: 문법 없이 kind 를 빼면 그 사이에 `L_dsl` 이 표현력을 잃고, kind 를
+안 빼고 문법만 넣으면 같은 일을 하는 후보가 둘이 되어 LLM 이 어느 쪽으로 새는지가 측정 잡음이 된다.
+
+⚠️ **Julia 타입은 지우지 않는다.** 실측한 내부 생산자:
+`ForbidAgent` → `src/navigator/baselines.jl:173·192·201` · `src/respec/reassign.jl` ·
+`ForbidWindow` → `tools/dev_session.jl` · `tools/tests.jl`.
+지우는 것은 **행동공간의 표면적**(= `schema.py` union + `llm_bridge.jl` 파서 스위치)뿐이다.
 
 **Files:**
 - Modify: `src/respec/spec_dsl.jl` (`VarRef` · `LinearConstraint` · `Disjunction`)
 - Modify: `src/respec/compiler.jl` (두 컴파일 메서드)
 - Modify: `src/respec/verifier.jl` (`referenced_ids`)
-- Modify: `src/respec/llm_service/schema.py` (Pydantic 모델)
-- Test: `test/respec_grammar.jl` (신규)
+- Modify: `src/respec/llm_service/schema.py` (Pydantic 모델 **추가 2 · 제거 5**)
+- Modify: `src/respec/llm_bridge.jl` (파서 스위치 — 같은 5종 제거)
+- Test: `test/respec_grammar.jl`, `test/respec_action_space.jl` (둘 다 신규)
 
 **Interfaces:**
 - Produces:
@@ -2448,6 +2459,8 @@ spec §5-4. `ForbidWindow`·`ForbidAgent` 를 **삭제하지 않는다** — 그
   - `Disjunction(left::LinearConstraint, right::LinearConstraint)`
   - `compile_constraint!(model, t0, tF, Xa, sched, cs)` 두 메서드
   - `referenced_ids(cs)` 두 메서드
+- 🔴 **제거(행동공간에서만)**: `ForbidZone` · `ReformTeam` · `ForbidAgent` · `ForbidWindow` ·
+  `DeprioritizeAgent` — `schema.py` 와 `llm_bridge.jl` 파서에서. **타입과 컴파일러는 그대로 둔다**
 
 - [ ] **Step 1: 실패하는 시험을 쓴다**
 
@@ -2620,6 +2633,68 @@ referenced_ids(cs::Disjunction) =
     Tuple(unique(vcat(collect(referenced_ids(cs.left)), collect(referenced_ids(cs.right)))))
 ```
 
+- [ ] **Step 4b: 🔴 행동공간을 5종으로 줄인다 (D-9)**
+
+```julia
+# test/respec_action_space.jl
+# 행동공간은 **LLM 이 emit 할 수 있는 것**이다. 타입이 존재하는 것과는 다르다.
+#   julia +lts --project=. test/respec_action_space.jl
+using ConstructionBots, Test
+const CB = ConstructionBots
+
+const EMITTABLE = Set(["ReplaceAgent", "SwapBattery", "TranslateBuild",
+                       "LinearConstraint", "Disjunction"])
+const REMOVED   = Set(["ForbidZone", "ReformTeam", "ForbidAgent", "ForbidWindow",
+                       "DeprioritizeAgent"])
+
+@testset "파서가 받는 kind 가 정확히 5종이다" begin
+    for k in EMITTABLE
+        @test CB.parse_proposal(_stub_json(k)) isa CB.RespecProposal
+    end
+end
+
+@testset "🔴 뺀 kind 를 내면 **죽는다** (조용히 무시하지 않는다)" begin
+    for k in REMOVED
+        @test_throws Exception CB.parse_proposal(_stub_json(k))
+    end
+end
+
+@testset "🔴 타입과 컴파일러는 살아 있다 (엔진이 쓴다)" begin
+    # 행동공간에서 뺐다고 타입을 지우면 baselines.jl 과 reassign.jl 이 깨진다.
+    @test isdefined(CB, :ForbidAgent)
+    @test isdefined(CB, :ForbidWindow)
+    @test hasmethod(CB.compile_constraint!,
+                    Tuple{Any,Any,Any,Any,Any,CB.ForbidAgent})
+end
+
+@testset "🔴 엔진 내부 경로가 여전히 돈다 (회귀)" begin
+    # fault_robot_and_reassign! 은 내부에서 ForbidAgent 를 만든다 — 파서를 좁힌 것이
+    # 그 경로에 닿으면 안 된다.
+    env, _ = _fault_fixture()
+    r = CB.fault_robot_and_reassign!(env, _faulted_robot(env); resume = true)
+    @test r !== nothing
+end
+```
+
+`_stub_json(kind)` 는 그 kind 의 최소 유효 JSON 을 만든다(`smdp_fixtures.jl`).
+
+**구현**: `schema.py` 의 discriminated union 에서 다섯 클래스를 빼고(클래스 정의는 주석과 함께
+남겨 두되 union 에서 제외), `llm_bridge.jl:283-292` 의 `kind` 스위치에서 다섯 분기를 제거한다.
+🔴 **제거된 kind 가 오면 `error()` 로 죽는다** — `nothing` 을 돌려주면 LLM 이 뺀 팔을 내도
+조용히 NOOP 으로 무너지고, 그건 이 레포가 `valid_actions` 문지기에서 이미 데인 실패 모양이다.
+
+각 제거 자리에 근거를 한 줄씩 남긴다 (spec §5-8 의 표를 그대로):
+
+```julia
+# 2026-08-21 D-9: 행동공간에서 뺐다. **타입은 남는다**(엔진 내부 생산자가 있다).
+#   ForbidZone        도메인 공집합 (closed≈46 이후 n_restage_feasible == 0)
+#   ReformTeam        은퇴 — 복구가 maybe_unwedge_nominal! 로 명목 레인에 이관
+#   ForbidAgent       D-7 아래 ReplaceAgent 에 약우월로 지배
+#   ForbidWindow      대응 사건 없음 (도착 시점이 확률변수다)
+#   DeprioritizeAgent 선택 0회. cell 위험은 battery kind 로 도착하므로 SwapBattery 가 답이다
+#                     (_hz_fire_cell! → battery_action, hazard.jl:583)
+```
+
 - [ ] **Step 5: `schema.py` 에 노출한다**
 
 `src/respec/llm_service/schema.py` 에 `LinearConstraint`·`Disjunction` Pydantic 모델을 추가하고 discriminated union 에 넣는다. docstring 에 **무엇을 참조할 수 있는지**(프롬프트의 NODES/AGENTS 목록에서 echo)와 **왜 이것이 신설 경로인지**를 적는다. `llm_bridge.jl` 의 파서에 두 kind 를 추가한다.
@@ -2637,8 +2712,9 @@ Expected: 둘 다 PASS
 
 ```bash
 git add src/respec/spec_dsl.jl src/respec/compiler.jl src/respec/verifier.jl \
-        src/respec/llm_bridge.jl src/respec/llm_service/schema.py test/respec_grammar.jl
-git commit -m "feat(respec): expose the MILP constraint grammar -- ForbidWindow and ForbidAgent become instances"
+        src/respec/llm_bridge.jl src/respec/llm_service/schema.py \
+        test/respec_grammar.jl test/respec_action_space.jl
+git commit -m "feat(respec): expose the constraint grammar and cut the emittable space to five kinds"
 ```
 
 ---
@@ -2804,6 +2880,18 @@ end
     # zone 은 비키지만 작업영역이 도달 불가로 나가는 경우
     r = CB.verify_translate(_p(1e6, 1e6), env)
     @test r isa CB.Reject
+end
+
+@testset "🔴 verify 는 읽기 전용이다 (spec §5-1b)" begin
+    # verify() 가 상태를 안 바꾼다는 것은 **가정이지 실측이 아니었다.** 시행풀이가 전역
+    # (HiGHS 상태·RNG)을 건드리면 "관측이 세계를 바꾸는" 사고가 된다 — simstate_of 에
+    # 읽기 전용 게이트를 둔 것과 같은 이유다. 통과·거부 **양쪽**에서 본다.
+    inv = CB.build_invariant(env)
+    for prop in (_p(3.0, -1.5), _p(0.0, 0.0))          # 통과 후보 · 거부 확정
+        h0 = CB.state_hash(CB.simstate_of(env))
+        CB.verify(prop, env, inv)
+        @test CB.state_hash(CB.simstate_of(env)) == h0
+    end
 end
 
 @testset "🔴 음성 대조 — 검증기가 상수 Admit 이 아니다" begin
@@ -3173,11 +3261,11 @@ git commit -m "fix(hazard): calibrate all four arrival rates against the hazard-
 | 1R | R1, R2, R3, R4 | 9 h | ~25 min |
 | 2 | T6, T7, T8, T9, T10 | 14 h | ~30 min |
 | 3 | T11, T12, T13, T14 | 11 h | — |
-| 4 | C1, C2, C3, C4, C5, C6 | 16 h | — |
+| 4 | C1, C2, C3, C4, C5, C6 | 17 h | — |
 | 5 | C7, C8 | 4.5 h | 6~9 h |
-| | **합** | **54.5 h** | **6.9~9.9 h** |
+| | **합** | **55.5 h** | **6.9~9.9 h** |
 
-리뷰·수정 왕복을 15% 얹으면 **약 63 h 집중 작업**. 하루 5 h 기준 **13 근무일**.
+리뷰·수정 왕복을 15% 얹으면 **약 64 h 집중 작업**. 하루 5 h 기준 **13 근무일**.
 
 **임계 경로**: R1 → R2 → T7 → T8 → T9(N-G1) → T12 → C1 → C2/C3 → C8.
 

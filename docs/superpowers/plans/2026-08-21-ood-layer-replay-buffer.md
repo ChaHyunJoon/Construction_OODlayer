@@ -731,7 +731,8 @@ spec §7. **층화 reservoir 도, 우선순위도 안 짓는다.** 기준선을 
 - Produces:
   - `Stamp(objective_hash::String, generation::String, vocab::String, train_kinds::String)`
   - `current_stamp() -> Stamp`
-  - `Transition(s, a, R, tau, s_next, terminal, stamp)`
+  - `action_key(a) -> String` — 🔴 매크로와 합성 공통의 정준 행동 키 (spec §5-1b)
+  - `Transition(s, a::String, R, tau, s_next, terminal, stamp, meta)`
   - `ReplayBuffer(capacity::Int)`
   - `push_transition!(rb, tr) -> Nothing` — 🔴 도장 불일치면 죽는다
   - `sample_batch(rb, n; rng) -> Vector{Transition}` — uniform, 비복원
@@ -754,13 +755,15 @@ _s() = CB.SimState(g = CB.GraphBlock(edges = Set([(1, 2)]), binding = Dict(1 => 
                    fleet = Dict(7 => CB.RobotRec(soc = 0.9, usage_s = 1.0)),
                    prog = CB.ProgBlock(closed = Set{Int}()))
 _tr(a; stamp = CB.current_stamp()) =
-    CB.Transition(_s(), a, -1.0, 2.0, _s(), false, stamp)
+    CB.Transition(_s(), CB.action_key(a), -1.0, 2.0, _s(), false, stamp,
+                  Dict{String,Any}())
 
 @testset "순환 버퍼가 오래된 것부터 덮어쓴다" begin
     rb = CB.ReplayBuffer(3)
     for a in 0:4; CB.push_transition!(rb, _tr(a)); end
     @test length(rb) == 3
-    @test Set(t.a for t in CB.sample_batch(rb, 3; rng = MersenneTwister(1))) == Set([2, 3, 4])
+    @test Set(t.a for t in CB.sample_batch(rb, 3; rng = MersenneTwister(1))) ==
+          Set(CB.action_key.([2, 3, 4]))
 end
 
 @testset "uniform sampling 은 비복원이고 재현된다" begin
@@ -789,6 +792,17 @@ end
         bad = CB.Stamp((k === f ? "XX" : getfield(cur, k) for k in fieldnames(CB.Stamp))...)
         @test_throws ErrorException CB.push_transition!(rb, _tr(1; stamp = bad))
     end
+end
+
+@testset "🔴 rationale 이 달라도 같은 행동이다 (spec §5-1b)" begin
+    cs = CB.ConstraintSpec[CB.TranslateBuild(1.0, 2.0)]
+    @test CB.action_key(cs) == CB.action_key(copy(cs))
+    # meta 는 행동에 안 닿는다
+    t1 = CB.Transition(_s(), CB.action_key(cs), -1.0, 2.0, _s(), false,
+                       CB.current_stamp(), Dict{String,Any}("rationale" => "zone blocks root"))
+    t2 = CB.Transition(_s(), CB.action_key(cs), -1.0, 2.0, _s(), false,
+                       CB.current_stamp(), Dict{String,Any}("rationale" => "build must move"))
+    @test t1.a == t2.a
 end
 
 @testset "빈 버퍼에서 표집하면 죽는다" begin
@@ -835,14 +849,30 @@ function current_stamp()
                  String(ActionRegistry.VOCAB), String(TRAIN_KINDS[]))
 end
 
+"""
+    action_key(a) -> String
+
+행동의 **정준 키**. spec §5-1b: `a = proposal.constraints` 뿐이고 `rationale`·`source_event` 는
+세계에 안 닿으므로 행동이 아니다.
+
+🔴 `a::Int` 로 두면 escalation transition 이 전부 한 값(`-1`)으로 뭉개져 서로 다른 합성이
+구분되지 않는다. 매크로 팔과 합성을 **한 문자열 공간**에 넣어 통일한다.
+`canonical_constraint` 는 `simstate.jl` 의 `_c` 와 같은 규약(정렬 · `-0.0` 정규화)을 쓴다 —
+안 그러면 같은 제약이 프로세스마다 다른 키를 얻는다.
+"""
+action_key(a::Int) = "macro:" * string(a)
+action_key(cs::AbstractVector) =
+    "dsl:" * join(sort!([canonical_constraint(c) for c in cs]), ";")
+
 struct Transition
     s::SimState
-    a::Int                  # L_macro 0..3, escalation 이면 -1 (proposal 은 meta 에)
+    a::String               # action_key. 매크로와 합성이 한 축에 산다
     R::Float64
     tau::Float64
     s_next::SimState
     terminal::Bool
     stamp::Stamp
+    meta::Dict{String,Any}  # rationale · source_event · escalate_reason — 행동이 아니다
 end
 
 mutable struct ReplayBuffer
