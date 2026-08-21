@@ -102,8 +102,20 @@ end
 end
 
 """스케줄 진행 + 시계. `T_plan_next` 와 흡수상태 판정이 이것을 읽는다(spec §3-3).
-`active` 의 값은 그 정점이 **실제로 시작한 시각** — 진행 중 노드의 잔여 소요시간을 내려면
-필요하다. `t` 는 절대 sim 초이고 `CourierRec.t_*` 의 해석 기준이다."""
+`t` 는 절대 sim 초이고 `CourierRec.t_*` 의 해석 기준이다.
+
+🔴 **`active` 의 값에 대한 정정 (2026-08-20 태스크 4).** 이 자리에는 원래 "그 정점이 **실제로
+시작한 시각**" 이라고 적혀 있었다. **그렇지 않다.** 유일한 생산 경로 `simstate_of` 가 넣는 값은
+`get_t0(sched, v)` = **MILP/구조적으로 계획된** 시작이고, 그것은 런 도중 움직이지 않는다
+(`process_schedule!` 호출자가 전부 `t = 0.0` 을 넘긴다). 실제 시작을 적는 곳은 `:log` 로 분류된
+`MONITOR_NODE_T` 하나뿐이라 `s` 의 출처로 쓸 수 없다 — 그래서 지어내지 않고 계획값을 나른다.
+
+⚠️ **이 문단을 읽지 않고 "진행 중 노드의 잔여 소요시간" 을 이 필드로 내리면 틀린다.**
+`잔여 = ρ·duration − (t − active[v])` 는 상시 ≤ 0 이 되어 `T_plan_next` 가 클램프만 돌려준다
+(실측: step 120 에서 활성 10개 중 8개가 `t0 = 0.0`·계획 소요시간 `0.0` 인데 경과 3.0초).
+전체 근거 사슬: `src/smdp/observe.jl:94-114`. 이 사실을 못 박는 시험:
+`test/smdp_observe_gate.jl` 의 "prog.active 는 계획된 시작" testset — **결함이 고쳐지면 그 시험이
+빨개진다**(그것이 이 갭을 열어둔 채 표시해 두는 방식이다)."""
 @kwdef struct ProgBlock
     t::Float64
     closed::Set{Int}
@@ -124,7 +136,7 @@ end
     t_swap::Float64
 end
 
-# ---- 2026-08-20 엄격 축소에서 사라진 채로 남은 블록 둘 -----------------------------------------
+# ---- 2026-08-20 엄격 축소에서 사라진 채로 남은 블록 셋 -----------------------------------------
 #   `HazardBlock`(lambda0·mode·broken·expired_break·expired_cell) — 위 (1). `usage_s`·`mode`·
 #     `eff` 가 `RobotRec` 으로 돌아오면서 부분적으로만 해소됐다 — `lambda0`·`broken` 류는 여전히 밖.
 #   `AgeBlock`(snap_count)   ← 명목 레인 복구가 증가시킨다, 팔이 아니다
@@ -223,9 +235,9 @@ _c(d::AbstractDict) = "{" * join(["$(_c(k)):$(_c(v))"
 #     같다 — 콘텐츠 해시가 원하는 "같은 값이면 같은 문자열" 의미로는 원하는 동작일 가능성이
 #     높지만, 명시적으로 그렇다고 밝혀둔 적은 없었다.
 #   - `_c(::AbstractSet)`/`_c(::AbstractDict)` 는 정렬 키로 `string(elem)`/`string(key)` 를
-#     쓰고 실제로 내보내는 건 `_c(elem)`/`_c(key)` 다 — 오늘의 모든 키 타입(Int, Tuple{Int,Int})
-#     에서는 `string` 이 injective 라 문제가 없지만, `string` 이 non-injective 인 타입이 나중에
-#     Set/Dict 키로 들어오면 total order 가 깨질 수 있다.
+#     쓰고 실제로 내보내는 건 `_c(elem)`/`_c(key)` 다 — 오늘의 모든 키 타입(Int, Tuple{Int,Int},
+#     그리고 `GeoBlock.zones` 가 쓰는 Symbol)에서는 `string` 이 injective 라 문제가 없지만,
+#     `string` 이 non-injective 인 타입이 나중에 Set/Dict 키로 들어오면 total order 가 깨질 수 있다.
 #   - `SHA` 는 여전히 `Base.require` 로 Manifest 전이 의존성을 우회 로드한다 — 근본 해법인
 #     `Project.toml [deps]` 한 줄은 이 태스크 범위 밖으로 아직 안 갚은 채로 남아 있다.
 

@@ -160,6 +160,14 @@ function _int_key(id)
         error("_int_key: $(typeof(id)) 에 `.id` 가 없다 — s 의 정수 키를 만들 수 없다 " *
               "(hash 폴백은 두지 않는다: 조용한 충돌보다 죽는 편이 낫다)")
     v = getproperty(id, :id)
+    # 🔴 `Bool <: Integer` **다**. `v isa Integer` 만 보면 `.id === true` 인 id 가 통과해 `1` 이
+    # 되고 `RobotID(1)` 과 **조용히 충돌한다** — 이 함수가 막으라고 존재하는 바로 그 사고가
+    # 이 함수 안에서 일어난다(리뷰 라운드 2 실측: `_int_key((id=true,)) == _int_key(RobotID(1))`).
+    # 오늘의 id 타입 중 `Bool` 페이로드는 없지만, 이 가드의 존재 이유는 **아무도 예상 못 한
+    # id 모양**을 잡는 것이다 — 그 역할에 구멍이 있으면 가드가 아니다.
+    v isa Bool &&
+        error("_int_key: $(typeof(id)).id 가 Bool 이다(값: $(v)) — Julia 에서 `Bool <: Integer` 라 " *
+              "`Int(true) == 1` 이 되어 RobotID(1) 과 조용히 충돌한다. 정수 키로 받지 않는다")
     v isa Integer ||
         error("_int_key: $(typeof(id)).id 가 $(typeof(v)) 다(Integer 가 아니다) — 값: $(v)")
     return Int(v)
@@ -222,6 +230,12 @@ _build_delta() = (0.0, 0.0)
 붙이고, `Replace` 경로가 그 부모 관계를 재스탬프한다 — 그래서 이 한 값이 "운반 중인가/무엇의
 일부인가" 를 나른다. `get_parent`(graph_utils_essentials.jl:1112)는 부모 **꼭짓점 번호**를
 돌려주고 부모가 없으면 `-1` 이다.
+
+⚠️ `_int_key` 는 **id 의 타입 태그를 지운다** — `TransportUnitID(3)` 과 `AssemblyID(3)` 은 둘 다
+`3` 이 된다. 로봇의 부모는 실측상 항상 `TransportUnitNode` 라 오늘은 충돌하지 않지만, `s` 는
+이 값을 벌거벗은 `Int` 로 들고 있으므로 **소비처가 타입을 되살릴 수 없다**(Task 9 의 역변환이
+그 자리에서 막힌다). 타입을 살리려면 `payload` 를 `Union{Nothing,Int}` 가 아닌 모양으로 바꿔야
+하는데 그것은 태스크 3 의 타입 결정이다 — 여기서 조용히 바꾸지 않고 적어 둔다.
 """
 function _payload_of(env, rid)
     p = get_parent(env.scene_tree, rid)

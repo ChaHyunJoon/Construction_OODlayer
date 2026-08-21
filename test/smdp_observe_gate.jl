@@ -80,6 +80,17 @@ const RIDS  = sort!(collect(keys(FLEET.soc)); by = string)
 const RID   = first(RIDS)
 const RID2  = RIDS[2]
 
+@testset "_int_key 는 예상 못 한 id 모양에서 죽는다 (hash 폴백 없음)" begin
+    @test CB._int_key(CB.RobotID(7)) === 7
+    @test CB._int_key(CB.ObjectID(7)) === 7            # 타입 태그는 지워진다(문서화된 성질)
+    @test_throws ErrorException CB._int_key(7)          # `.id` 가 없다
+    @test_throws ErrorException CB._int_key("R7")       # `.id` 가 없다
+    @test_throws ErrorException CB._int_key((id = 7.0,))    # Float 은 정수 키가 아니다
+    # 🔴 `Bool <: Integer` 다. 이 한 줄이 없으면 `.id === true` 가 `1` 로 통과해
+    # `RobotID(1)` 과 조용히 충돌한다 — 이 함수가 막으려는 사고 그 자체다(리뷰 라운드 2).
+    @test_throws ErrorException CB._int_key((id = true,))
+end
+
 @testset "simstate_of 는 읽기 전용이다" begin
     # 🔴 리뷰 라운드 1: 초판은 `BATTERY_DELIVERIES`·`RESTRICTION_ZONES` 를 **빈 채로** 대조했다
     # (`0 == 0`, `Dict() == Dict()`) — 어떤 구현도 통과하는 공허한 단언이다. 두 레지스트리를
@@ -396,7 +407,10 @@ end
     s = CB.simstate_of(env)
     @test s.prog.closed == Set(env.cache.closed_set)
     @test Set(keys(s.prog.active)) == Set(env.cache.active_set)
-    @test s.prog.t ≈ CB.sim_time(env.dt)
+    # `s.prog.t ≈ CB.sim_time(env.dt)` 는 삭제했다 — `observe.jl` 이 그 필드를 **바로 그 호출로**
+    # 채우므로 `f(x) == f(x)` 라 절대 못 죽는다(리뷰 라운드 2). 이 축의 진짜 대조는
+    # "N-G0 — Prog 축" 의 `SIM_STEP` 교란이고, 아래 한 줄이 값 자체를 계산된 기대치로 잡는다.
+    @test s.prog.t ≈ Float64(env.dt) * 120        # 픽스처가 정확히 120 스텝을 굴렸다
     @test length(s.fleet) == length(FLEET.soc)
     # payload 도 격리된 교란이 없다(로봇 재부모화 = 씬트리 수술). 엔진의 부모 관계와 직접 대조.
     # 🔴 리뷰 라운드 1: step 40 에서는 14/14 가 `nothing` 이라 **무조건 `nothing` 을 돌려주는
