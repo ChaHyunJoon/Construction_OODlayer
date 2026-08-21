@@ -216,24 +216,84 @@ function open_node_descriptors(env)
 end
 
 """
+    _zone_work_reach(discs, zcenter, zradius) -> Float64
+
+How far the unfinished work THIS zone currently traps reaches from the zone centre:
+`max(‖c - Z‖ + r)` over the `_future_work_discs` that intersect the zone, `0.0` when none do.
+
+Shipped to the model as `work_reach` so it can DERIVE a sufficient displacement
+(`zone radius + work_reach`) instead of guessing a multiple of the zone radius. `max` over a
+vector is order-independent, so no sort is needed here (the caller sorts the zone keys, which
+is what reaches the prompt as text).
+"""
+# 이 구역이 지금 가두고 있는 미완 작업이 구역 중심에서 얼마나 멀리까지 뻗는가(가둔 게 없으면 0.0).
+function _zone_work_reach(discs, zcenter, zradius::Float64)
+    reach = 0.0
+    for (c, r) in discs
+        d = hypot(Float64(c[1]) - zcenter[1], Float64(c[2]) - zcenter[2])
+        d < zradius + r || continue          # 이 구역과 안 겹치는 원반은 이 구역이 가둔 게 아니다
+        reach = max(reach, d + r)
+    end
+    return reach
+end
+
+"""
     open_zone_descriptors(env) -> Vector{Dict{String,Any}}
 
-The ACTIVE no-go zones the model may reference with a `ForbidZone`, one entry per
-registered zone in `RESTRICTION_ZONES`, as `{"key","center","radius","covers","covers_root"}`:
-  * `key`         -- the EXACT `Symbol` string the `ForbidZone.zone` field must echo
+The ACTIVE no-go zones the model may reference, one entry per registered zone in
+`RESTRICTION_ZONES`, as
+`{"key","center","radius","covers","covers_root","build_center","build_radius","work_reach"}`:
+  * `key`         -- the EXACT `Symbol` string the spec's `zone` field must echo
                      (e.g. "zone"/"block"), so the dispatch can find the live geometry.
   * `center`,`radius` -- world-frame disc (advisory grounding only; the LLM never emits geometry).
   * `covers`      -- ids of the relocatable sub-assemblies this zone overlaps (cross-ref
                      with `nodes` labels so the model can name the blocked `assembly`).
   * `covers_root` -- true iff the zone also traps the root's un-relocatable deposit goals
                      (the central-core case → whole-build relocation, not per-assembly).
-Empty when no zone is active, so non-spatial events see no zones and won't mis-emit ForbidZone.
+
+🔴 **Task C4 added the last three.** Before them the prompt asked the model to size a
+`TranslateBuild` displacement "from the zone's radius" -- a number the request did not carry.
+What actually sets the required displacement is not the zone's radius but **where the trapped
+work sits**, so the prompt's "several zone radii" was a value calibrated on two fixtures
+(`|Δ_min|/R` measured **2.34** on tractor vs **2.04** on colored_8x8 -- the ratio is not stable),
+not a derived one. These three make the derivation possible **from the request alone**:
+  * `build_center`,`build_radius` -- `_build_footprint(env)`: the disc a whole-build translation
+                     carries. Gives the DIRECTION (away from the zone centre, along
+                     `build_center - center`) and lets the model see how far the build already is.
+  * `work_reach`  -- how far the work THIS zone currently traps reaches from the zone centre:
+                     `max(‖c-Z‖ + r)` over the `_future_work_discs` that intersect it, `0.0` when
+                     the zone traps nothing. `radius + work_reach` is a **LOWER BOUND** on the
+                     displacement: a trapped disc `(c, rᵢ)` has `‖c-Z‖ ≤ work_reach - rᵢ`, so a
+                     rigid shift of that length carries every CURRENTLY trapped disc out
+                     (`‖c+tu-Z‖ ≥ t - ‖c-Z‖ ≥ radius + rᵢ`).
+                     🔴 **It is a bound, not a guarantee, and that was measured -- do not upgrade
+                     this sentence.** A rigid shift can also sweep work that is currently OUTSIDE
+                     the zone INTO it, and `work_reach` cannot see that term. Measured on the
+                     `tools/e2e.jl mock_respec` tractor scene (r=2.5, work_reach=4.4): a proposal
+                     of `1.05·(r+work_reach) = 7.245` along `build_center - center` was REJECTED
+                     by `verify_translate` as `:residual_blocked` and the run stalled at 145/289.
+                     Tightening the reach to ALL discs instead of the trapped ones does not help:
+                     that is `2.5 + 17.60 = 20.1` on the same scene, outside the depot ring the
+                     same verifier enforces (D = 20). There is no single scalar that is sufficient
+                     along every direction -- which is exactly why `verify_translate` judges the
+                     RESULTING placement instead of pre-approving a formula.
+  ⚠️ `work_reach == 0.0` means the zone traps NO remaining work -- the motion layer detours
+     on its own and any whole-build move is pure cost.
+
+Empty when no zone is active, so non-spatial events see no zones and won't mis-emit a spatial arm.
+`build_center`/`build_radius` are `nothing` when `env.staging_circles` is empty (there is no
+footprint to report) -- the prompt says so rather than substituting a number.
 """
 function open_zone_descriptors(env)
     out = Vector{Dict{String,Any}}()                    # 결과(구역 설명 목록). 값 타입이 섞여 Any 사용.
     isempty(RESTRICTION_ZONES[]) && return out          # 활성 구역이 없으면 빈 목록(비공간 사건엔 zone 안 보임)
     # RESTRICTION_ZONES[] : `[]` 는 Ref/전역 컨테이너의 "안쪽 값"을 꺼내는 것. (key, ball) 로 각 구역을 순회.
-    for (key, ball) in RESTRICTION_ZONES[]
+    # 🔴 정렬해서 순회한다 (Global Constraint: Dict 순회 순서에 기대지 않는다). 이 목록은 프롬프트
+    #    산문의 순서가 되므로, 정렬하지 않으면 같은 씬에서 프로세스마다 다른 프롬프트가 난다.
+    fc, fR = isempty(env.staging_circles) ? (nothing, nothing) : _build_footprint(env)
+    discs = _future_work_discs(env)          # work_reach 의 정의역(미완 목표 원반 + 비루트 staging)
+    for key in sort!(collect(keys(RESTRICTION_ZONES[])); by = string)
+        ball = RESTRICTION_ZONES[][key]
         # ball 은 원판(disc). 중심의 앞 2개 좌표(x,y)만 실수 벡터로, 반지름도 실수로 뽑음. `;` 는 두 문장을 한 줄에.
         c = Vector{Float64}(get_center(ball)[1:2]); r = Float64(get_radius(ball))
         # 이 구역이 막는 조립체 id 목록. 실패하면(계산 불가) 빈 AbstractID 배열로 대체(try/catch 한 줄 표현).
@@ -255,7 +315,12 @@ function open_zone_descriptors(env)
             "center" => [round(c[1]; digits = 2), round(c[2]; digits = 2)],  # 참고용 중심 좌표(모델은 좌표를 안 만듦)
             "radius" => round(r; digits = 2),           # 참고용 반지름
             "covers" => covers,                         # 덮는 조립체 노드 id 들
-            "covers_root" => covers_root))              # 루트 목표까지 덮으면 빌드 전체 이동 사례
+            "covers_root" => covers_root,               # 루트 목표까지 덮으면 빌드 전체 이동 사례
+            # C4: 변위를 **유도**하는 데 필요한 세 수. 지어낸 값이 아니라 씬에서 재서 싣는다.
+            "build_center" => fc === nothing ? nothing :
+                              [round(fc[1]; digits = 2), round(fc[2]; digits = 2)],
+            "build_radius" => fR === nothing ? nothing : round(fR; digits = 2),
+            "work_reach" => round(_zone_work_reach(discs, c, r); digits = 2)))
     end
     return out                                          # 활성 구역 설명 목록 반환
 end

@@ -71,14 +71,20 @@ def _build_prompt(event: str, open_ids: list[str],
         or "  (no labelled milestone nodes)"
     )
     # 활성 출입금지 구역: 구역 키 + 덮는 조립체 + 루트까지 덮는지 + 대략 위치를 한 줄로
-    zone_lines = (
-        "\n".join(
-            f"  - zone key: {z['key']}  ->  covers assemblies: {z.get('covers') or '(none)'}; "
-            f"covers_root: {z.get('covers_root')}  (near {z.get('center')}, r={z.get('radius')})"
-            for z in zones
-        )
-        or "  (no active no-go zones)"
-    )
+    def _zline(z: dict) -> str:
+        # 🔴 build_center/build_radius/work_reach 는 Task C4 가 실은 필드다. 없으면 **없다고 적는다**
+        #    — 아는 값으로 때우면(조용한 폴백) 모델이 유도했다고 착각한 채 지어낸 수를 낸다.
+        bc, br = z.get("build_center"), z.get("build_radius")
+        build = (f"build footprint: centre {bc}, r={br}"
+                 if bc is not None and br is not None
+                 else "build footprint: NOT REPORTED (nothing to translate)")
+        wr = z.get("work_reach")
+        reach = (f"work_reach={wr}" if wr is not None else "work_reach: NOT REPORTED")
+        return (f"  - zone key: {z['key']}  ->  covers assemblies: {z.get('covers') or '(none)'}; "
+                f"covers_root: {z.get('covers_root')}  (centre {z.get('center')}, r={z.get('radius')}); "
+                f"{reach}; {build}")
+
+    zone_lines = ("\n".join(_zline(z) for z in zones) or "  (no active no-go zones)")
     # 아래는 여러 문자열 리터럴을 나란히 둔 것 — 파이썬은 인접한 문자열을 자동으로 이어붙인다(하나의 긴 프롬프트).
     # 내용: 사건 설명 + 노드/로봇/구역 목록 + 어떤 kind 를 언제 쓸지에 대한 규칙을 모델에게 지시.
     return (
@@ -139,19 +145,34 @@ def _build_prompt(event: str, open_ids: list[str],
         "  * TranslateBuild: {\"dx\": <number>, \"dy\": <number>} -- slide the ENTIRE build "
         "rigidly by the displacement YOU choose. The zone stays put; every remaining goal and "
         "staging area moves by (dx, dy).\n"
-        "  🔴 DERIVE (dx, dy) FROM THE ZONES GEOMETRY ABOVE -- never invent coordinates and never "
-        "copy a number out of the event text. (dx, dy) is a DISPLACEMENT, not a destination. "
-        "Choose a DIRECTION that carries the build away from the zone centre, and a MAGNITUDE "
-        "reasoned from the zone's radius: the build's remaining work sits around that centre, so "
-        "a move shorter than the radius cannot clear a zone the build is standing in -- several "
-        "zone radii is the right order. Too small a move leaves work inside the keep-out region "
-        "and the robots park at its edge forever; there is no partial credit. (0, 0) is REFUSED: "
-        "it claims an intervention and performs none.\n"
-        "  If the zone blocks no remaining work (covers is empty and covers_root is false), "
-        "propose NOTHING (empty constraints) -- the motion layer detours on its own and a "
-        "whole-build move costs every robot extra travel. Do NOT try to encode a zone as a time "
-        "window or an assignment ban; that mis-states the problem and will be rejected or will "
-        "do nothing.\n\n"
+        "  🔴 DERIVE (dx, dy) FROM THE NUMBERS ON THE ZONE LINE ABOVE -- never invent "
+        "coordinates and never copy a number out of the event text. (dx, dy) is a DISPLACEMENT, "
+        "not a destination. Every quantity you need is reported, so COMPUTE it; do not guess a "
+        "multiple of anything:\n"
+        "    DIRECTION: the unit vector from the zone centre towards the build footprint centre "
+        "-- that carries the build away from the zone along the shortest escape. If the two "
+        "centres coincide (the zone sits on the build), any direction works; pick +x.\n"
+        "    MAGNITUDE: at least r + work_reach, where r is the zone radius and work_reach is how "
+        "far the work THAT zone currently traps reaches from its centre. Anything shorter cannot "
+        "clear the zone, because the trapped work extends work_reach from the centre while the "
+        "zone extends r. That is a LOWER BOUND, not a guarantee: the whole build moves rigidly, "
+        "so the same shift can also carry work that is currently outside the zone into it. "
+        "Exceed the bound with a margin rather than sitting on it.\n"
+        "  Do NOT overshoot either. A displacement is also REFUSED when it carries the build "
+        "outside the workspace: the spare depots do NOT move with the build, so a build shoved "
+        "far away is a build the replacement and battery-delivery robots can no longer reach. "
+        "Aim just above r + work_reach; a displacement many times that size is not a safer "
+        "answer, it is a rejected one. Both failures are REJECTIONS, not silent partial "
+        "successes: an under-sized move is refused rather than enacted, so guessing small to be "
+        "safe buys nothing.\n"
+        "  Too small a move leaves work inside the keep-out region and the robots park at its "
+        "edge forever; there is no partial credit. (0, 0) is REFUSED: it claims an intervention "
+        "and performs none.\n"
+        "  If the zone blocks no remaining work (work_reach is 0.0, or covers is empty and "
+        "covers_root is false), propose NOTHING (empty constraints) -- the motion layer detours "
+        "on its own and a whole-build move costs every robot extra travel. Do NOT try to encode "
+        "a zone as a time window or an assignment ban; that mis-states the problem and will be "
+        "rejected or will do nothing.\n\n"
         "ALL still-open node ids (exhaustive reference; the NAMED NODES above are "
         "the labelled subset):\n"
         f"{', '.join(open_ids)}\n\n"
@@ -160,7 +181,8 @@ def _build_prompt(event: str, open_ids: list[str],
         "a robot BROKEN/immobile to be covered by a backup/spare -> ReplaceAgent; a TIMING or "
         "ASSIGNMENT requirement nobody pre-wrote -> LinearConstraint, or Disjunction when it is "
         "an either/or; a SPATIAL no-go region that traps remaining work -> TranslateBuild with a "
-        "displacement derived from that zone's geometry; a zone that blocks nothing -> nothing. "
+        "displacement COMPUTED from (zone radius + work_reach) away from that zone's centre; "
+        "a zone that blocks nothing -> nothing. "
         "If unsure, fewer."
     )
 

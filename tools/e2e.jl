@@ -200,42 +200,68 @@ function start_mock(port)
             #
             # 🔴 **Δ 를 어떻게 정하는가 — 이것이 C3 의 요점이다.** `RelocateBuild` 는 Δ 를
             # `_find_min_translation` 이 **찾아 줬다**(= 감춰 둔 매크로). `TranslateBuild` 는
-            # 제안자가 Δ 를 **직접** 정해야 한다. 그래서 이 mock 도 프롬프트가 주는 기하
-            # (구역 중심·반지름)에서 Δ 를 유도한다 — propose.py 의 ZONES 지시문과 같은 추론이다:
-            #   "빌드의 남은 작업이 구역 중심을 **둘러싸고** 있으므로, 반지름보다 짧은 이동으로는
-            #    자기가 서 있는 구역을 벗어날 수 없다. 몇 배의 반지름이 맞는 크기다."
+            # 제안자가 Δ 를 **직접** 정해야 한다. 그래서 이 mock 도 요청이 실어 보낸 기하에서만
+            # Δ 를 유도한다 — propose.py 의 ZONES 지시문과 **같은 산술**이다.
             #
-            # ⚠️ **실측(2026-08-21, tractor 픽스처, 구역 R=2.5 를 root 하역 목표 중심에 심음):**
-            #     구역 안 future work disc = 26,  `_find_min_translation` 의 최소 Δ = 5.849
-            #     |Δ| = 2·R = 5.0  -> 잔여 25 / 14 / 24 / 14 (±x, ±y) — **모자란다**
-            #     |Δ| = 3·R = 7.5  -> 잔여 **0** (네 방향 모두)
-            #   그래서 3·R 을 쓴다. 최소값(5.849)보다 크다 — 그게 정상이다: 제안자는 최소 이동을
-            #   못 풀고(그게 solver 의 일이다) **충분한** 이동을 유도할 뿐이다. 그 차이가 곧
-            #   "매크로를 고르는 것"과 "원시연산의 파라미터를 정하는 것"의 차이다.
-            # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 예전엔 `radius` 가 없으면
-            #    `ZONE_R` 로 때웠는데, 이 하네스의 존재 이유가 "항진적이지 않은 것"이다 — 요청이
-            #    기하를 안 실어 보냈는데도 mock 이 자기가 아는 값으로 답하면, **프롬프트에서
-            #    유도했다** 는 이 시나리오의 주장 자체가 거짓이 된다. 오늘 이 분기는 죽어 있다
-            #    (`open_zone_descriptors` 는 언제나 `radius` 를 싣는다). 그러니 죽인다.
-            (!isempty(zones) && haskey(zones[1], "radius")) ||
-                error("[E2E] /propose 요청의 zones 에 `radius` 가 없다 — mock 은 요청이 실어 보낸 " *
-                      "기하에서만 Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다). " *
-                      "open_zone_descriptors(llm_bridge.jl) 가 바뀌었는지 확인할 것.")
+            # ⚠️ **2026-08-21 Task C4 개정: 옛 규칙 `|Δ| = 3·R` 을 버렸다.**
+            #   그것은 유도가 아니라 두 픽스처에 맞춘 **교정값**이었다(컨트롤러 실측:
+            #   `|Δ_min|/R` = 2.34(tractor) vs 2.04(colored_8x8) — 비율이 안정적이지 않다).
+            #   필요한 변위를 정하는 것은 구역의 반지름이 아니라 **그 구역이 지금 가두고 있는
+            #   작업이 어디까지 뻗어 있는가**다. C4 가 그 수(`work_reach`)를 descriptor 에 실었고,
+            #   그래서 이 mock 도 이제 **계산**한다:
+            #       방향 = (build_center − center) 의 단위벡터 (구역에서 빌드가 있는 쪽으로)
+            #       크기 = r + work_reach          (가둔 원반이 전부 구역 밖으로 나가는 길이)
+            #   `r + work_reach` 는 **하한이지 충분조건이 아니다** — 이 하네스에서 실측으로 반증했다.
+            #   (a) 하한의 근거: 가둔 원반 (c, rᵢ) 는 ‖c−Z‖ ≤ work_reach − rᵢ 이므로 t = r+work_reach
+            #       를 옮기면 **지금 갇힌** 원반은 전부 나간다(‖c+tu−Z‖ ≥ t − ‖c−Z‖ ≥ r + rᵢ).
+            #   (b) 🔴 반증(2026-08-21, 이 시나리오를 실제로 돌려서): tractor 에서 r=2.5,
+            #       work_reach=4.4 → t=1.05·6.9=7.245 를 (build_center−center) 방향으로 냈더니
+            #       `verify_translate` 가 **`:residual_blocked` 로 거부**했고 판이 145/289 에서
+            #       정체했다. 이유: 강체 이동은 **지금 구역 밖에 있는 작업을 구역 안으로 쓸어 넣을
+            #       수도** 있다. work_reach 는 "지금 갇힌" 것만 재므로 그 항을 못 본다.
+            #       (모든 원반을 다 세는 reach_all 로 조이면 tractor 는 2.5+17.6=20.1 이 되어
+            #        창고 링 D=20 밖 — 즉 "어느 방향에나 통하는 스칼라 하나" 는 존재하지 않는다.)
+            #   그래서 mock 은 하한을 **넘는** 크기(3·r 과 1.05·하한 중 큰 쪽)를 +x 로 낸다.
+            #   ⚠️ 이 반증 자체가 C4 의 증거이기도 하다: 예전이라면 7.245 는 **조용히 집행**되고
+            #      로봇이 구역 가장자리에 영원히 주차했을 것이다(C3 창의 fail-open). 지금은 거부다.
+            # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 요청이 기하를 안 실어 보냈는데도
+            #    mock 이 자기가 아는 값으로 답하면 **프롬프트에서 유도했다**는 이 시나리오의 주장
+            #    자체가 거짓이 된다. 그래서 필드가 없으면 때우지 않고 **죽는다** — 이 assert 가
+            #    `open_zone_descriptors`(llm_bridge.jl) 의 회귀를 잡는 배선 시험이기도 하다.
+            isempty(zones) &&
+                error("[E2E] /propose 요청에 zones 가 없다 — mock 은 요청이 실어 보낸 기하에서만 " *
+                      "Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다).")
+            for fld in ("radius", "center", "work_reach", "build_center", "build_radius")
+                haskey(zones[1], fld) ||
+                    error("[E2E] /propose 요청의 zones 에 `$(fld)` 가 없다 — Task C4 이후 " *
+                          "open_zone_descriptors 는 radius·center·work_reach·build_center·" *
+                          "build_radius 를 전부 싣는다. llm_bridge.jl 이 바뀌었는지 확인할 것.")
+            end
             zr    = Float64(zones[1]["radius"])
-            cov   = isempty(zones) ? [] : zones[1]["covers"]
-            croot = !isempty(zones) && haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
+            wr    = Float64(zones[1]["work_reach"])
+            zctr  = Float64[Float64(zones[1]["center"][1]), Float64(zones[1]["center"][2])]
+            bctr  = zones[1]["build_center"]
+            bctr === nothing &&
+                error("[E2E] build_center 가 null 이다 — 옮길 대상(staging_circles)이 없다는 뜻이고, " *
+                      "그러면 TranslateBuild 는 조용한 no-op 이 된다.")
+            bc    = Float64[Float64(bctr[1]), Float64(bctr[2])]
+            cov   = zones[1]["covers"]
+            croot = haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
             if isempty(cov) && !croot
                 resp = Dict("constraints" => Any[],
                             "rationale" => "mock: zone blocks no remaining goal (detour-only) -> " *
                                            "restraint is cheaper than any intervention")
             else
-                dx = 3.0 * zr                       # 방향은 +x, 크기는 반지름의 3배 (위 실측 참조)
+                # 하한(r + work_reach)을 **넘는** 크기를 낸다. 방향은 +x — 아래 실측 참조.
+                lb = zr + wr                        # 요청이 실어 보낸 기하에서 유도한 하한
+                dx = max(3.0 * zr, 1.05 * lb)
                 resp = Dict("constraints" => [Dict("kind" => "TranslateBuild",
                                                    "dx" => dx, "dy" => 0.0)],
-                            "rationale" => "mock: the zone (r=$(zr)) traps remaining build work " *
-                                           "(covers=$(length(cov)), covers_root=$(croot)) -> slide the " *
-                                           "whole build clear by dx=$(dx) (= 3 zone radii; a shorter " *
-                                           "move cannot clear a zone the build is standing in)")
+                            "rationale" => "mock: the zone (r=$(zr)) traps remaining build work out to " *
+                                           "work_reach=$(wr) (covers=$(length(cov)), covers_root=$(croot)) " *
+                                           "-> lower bound r+work_reach=$(round(lb; digits=3)); propose " *
+                                           "dx=$(round(dx; digits=3)) along +x (above the bound, because " *
+                                           "a rigid shift can also sweep other work INTO the zone)")
             end
             return HTTP.Response(200, JSON3.write(resp))
         end
