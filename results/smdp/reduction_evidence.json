@@ -1,0 +1,7 @@
+{
+    "wedge_subset_frac": 1,
+    "dissolved_nonempty_frac": 0,
+    "binding_derivable_frac": 0,
+    "active_is_frontier_frac": 1,
+    "n_steps": 400
+}
