@@ -147,7 +147,7 @@ const HZ_PARAMS  = CB.HazardParams(
     mtbf_break_s = parse(Float64, get(ENV, "DS_MTBF_BREAK", "500.0")),
     mtbf_cell_s  = parse(Float64, get(ENV, "DS_MTBF_CELL",  "500.0")),
     mtbf_zone_s  = parse(Float64, get(ENV, "DS_MTBF_ZONE",  "Inf")),
-    drain_sigma  = parse(Float64, get(ENV, "DS_DRAIN_SIGMA", "0.15")),
+    drain_sigma  = parse(Float64, get(ENV, "DS_DRAIN_SIGMA", "0.0")),
     fire_safe_target = true, fire_require_spare = true,
     fire_obstacle = false,
     fire_clear = !(get(ENV, "DS_HOTSWAP", get(ENV, "HOT_SWAP", "0")) == "1"),
