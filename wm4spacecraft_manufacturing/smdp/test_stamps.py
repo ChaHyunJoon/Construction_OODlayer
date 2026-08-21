@@ -247,31 +247,28 @@ def test_generation_declares_the_sojourn_dynamics():
     """generation 은 '오늘 참인 것'을 선언한다. 4팔 축소 + hazard 두 손잡이 변경 뒤에도
     구세대 문자열이 남아 있으면, 서로 다른 동역학의 산출물이 같은 도장을 공유한다."""
     cfg = objective.load()
-    assert cfg["generation"] == "2026-08-20-4arms-sojourn-spare-off-zone-on", cfg["generation"]
+    assert cfg["generation"] == "2026-08-21-reduced-state-sojourn-drainsigma0", cfg["generation"]
 
 
 # =============================================================================
-# 🔴 트립와이어 — generation 도장이 **아직 오지 않은** 동역학을 미리 선언하고 있다
-# (2026-08-20 최종 리뷰 I1. 컨트롤러 판정: 문자열은 **그대로 둔다** — 계획서 태스크 2 가
-#  그 값을 명시했고 generation 어휘는 사용자 계획의 소유다.)
+# ✅ 확인판(2026-08-21, 태스크 6 라운드 3) — 옛 트립와이어를 그 자신의 지시대로 뒤집었다.
 #
-# 도장 `"2026-08-20-4arms-sojourn-spare-off-zone-on"` 은 세 가지를 주장한다:
-#   4arms      — 어휘가 4팔이다
-#   spare-off  — hazard 의 `fire_require_spare` 가 꺼졌다
-#   zone-on    — hazard 의 `mtbf_zone_s` 가 유한하다(zone 레인이 켜졌다)
-# 뒤 둘은 **오늘 거짓이다.** 태스크 6 이 그 두 손잡이를 실제로 뒤집기 전까지는 도장이
-# 미래를 선언하고 있는 상태다.
+# 옛 도장 `"2026-08-20-4arms-sojourn-spare-off-zone-on"` 은 spare-off/zone-on 을 **아직
+# 오지 않은** 동역학으로 미리 선언했고, 그때 이 시험은 "손잡이가 아직 안 뒤집혔다"를
+# 단언하는 트립와이어였다(그래서 이름이 forward_declares_..._not_landed) — 초록인 이유가
+# "아직 안 왔기 때문"인, 손잡이가 뒤집히는 순간 죽도록 설계된 시험.
 #
-# 위험한 것은 틀린 라벨 자체가 아니라 **아무도 두 번째 범프를 안 하게 된다는 것**이다:
-# 도장이 이미 post-C5 동역학의 이름을 달고 있으므로, 태스크 6 이 손잡이를 뒤집어도
-# "도장은 이미 맞는데?" 로 보인다. 그러면 pre-C5 산출물과 post-C5 산출물이 **같은
-# generation 을 공유한다** — 이 필드가 막으려던 바로 그 충돌이다.
+# 태스크 6 이 실제로 두 손잡이를 뒤집었고, generation 을
+# `"2026-08-21-reduced-state-sojourn-drainsigma0"` 로 다시 올렸다(바로 위
+# test_generation_declares_the_sojourn_dynamics 가 그 정확한 문자열을 등호로 고정한다).
+# 새 문자열은 옛 명명 관례(`spare-off`/`zone-on` 서브스트링)를 안 쓴다 — 그건
+# `"...-spare-off-zone-on"` 도장 전용 관례였고, 문자열 자체의 정확한 값은 이미 등호로
+# 고정돼 있다. 이 시험이 지금부터 지키는 것은 문자열 안의 서브스트링이 아니라 **문자열이
+# 실제로 주장하는 것**이다: hazard.jl 의 기본값이 정말로 뒤집힌 채로 남아 있는가.
 #
-# 그래서 이 시험은 "손잡이가 **아직** 도장이 말하는 상태가 아니다" 를 단언한다.
-# **지금 초록인 이유는 그 변경이 아직 안 왔기 때문이다.**
-# ⚠️ **태스크 6 이 이 두 손잡이를 뒤집는 순간 이 시험이 빨개진다. 그때 generation 을 다시
-#    올릴 것** (그리고 이 시험을 도장이 참임을 확인하는 형태로 뒤집을 것).
-# 이 브랜치가 `build_delta` · `prog.active` 에 쓴 것과 같은 트립와이어 패턴이다.
+# 되돌리면(hazard.jl 을 롤백하면서 generation 은 안 내리면) 이 시험이 죽는다 — 그것이
+# 이 시험의 유일한 존재 이유다: pre-T6 산출물과 post-T6 산출물이 같은 도장을 공유하는
+# 사고를 잡는다. `build_delta` · `prog.active` 와 같은 트립와이어 패턴의 확인판.
 # =============================================================================
 _HAZARD_JL = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -288,17 +285,16 @@ def _hazard_default(field):
     return m.group(1)
 
 
-def test_generation_forward_declares_dynamics_that_have_not_landed():
-    """도장은 spare-off / zone-on 을 선언하지만 hazard.jl 은 아직 그 반대다.
-    태스크 6 이 손잡이를 뒤집으면 이 시험이 죽고, 그것이 generation 을 다시 올리라는 신호다."""
-    cfg = objective.load()
-    assert "spare-off" in cfg["generation"]
-    assert "zone-on" in cfg["generation"]
-
-    # 아직 안 왔다 = 도장이 미래를 말하고 있다.
-    assert _hazard_default("fire_require_spare") == "true", (
-        "fire_require_spare 가 뒤집혔다 — 도장이 선언한 spare-off 가 이제 실제다. "
-        "generation 을 다시 올릴 것(pre-C5 / post-C5 산출물이 같은 도장을 공유하면 안 된다).")
-    assert _hazard_default("mtbf_zone_s") == "Inf", (
-        "mtbf_zone_s 가 유한해졌다 — 도장이 선언한 zone-on 이 이제 실제다. "
-        "generation 을 다시 올릴 것.")
+def test_generation_confirms_dynamics_have_landed():
+    """도장이 주장하는 sojourn 동역학(D-3 spare-independent 발화, D-4 유한 zone MTBF)이
+    hazard.jl 에 실제로 착륙했는지 확인한다. 예전 이름은
+    test_generation_forward_declares_dynamics_that_have_not_landed 였다 — 그건 "아직 안
+    왔다"를 단언하는 트립와이어였고, 태스크 6 이 손잡이를 뒤집은 뒤 자신의 주석이 지시한
+    대로("그리고 이 시험을 도장이 참임을 확인하는 형태로 뒤집을 것") 이 확인판으로 바뀌었다."""
+    assert _hazard_default("fire_require_spare") == "false", (
+        "fire_require_spare 가 다시 true 로 돌아갔다 — generation 은 여전히 spare-independent "
+        "발화(D-3)를 주장하는데 코드가 아니다. hazard.jl 을 되돌렸다면 generation 도 구세대로 "
+        "내릴 것(그러지 않으면 서로 다른 동역학이 같은 도장을 공유한다).")
+    assert _hazard_default("mtbf_zone_s") == "1800.0", (
+        "mtbf_zone_s 가 1800.0 이 아니다 — generation 은 여전히 유한 zone MTBF(D-4)를 주장하는데 "
+        "코드가 아니다. hazard.jl 을 되돌렸다면 generation 도 구세대로 내릴 것.")
