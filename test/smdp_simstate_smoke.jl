@@ -107,7 +107,8 @@ end
 @testset "구분자 위조 — Symbol 은 길이-프리픽스로 감싸진다 (C-2)" begin
     # `role` 은 자유 텍스트 Symbol 을 담을 수 있는 필드다. 이스케이프 없이 꽂으면 그 payload 가
     # 임의의 구조를 위조한다(측정된 예: 1로봇 fleet 이 오염된 role 로 2로봇 fleet 과 해시가 같아짐).
-    tail = ",role=transport);R99(pose=(0.0,0.0,0.0),soc=1.0,health=healthy,payload=nothing,role=transport"
+    tail = "transport,usage=0.0,mode=transit,eff=1.0);R99(pose=(0.0,0.0,0.0)," *
+           "soc=1.0,health=healthy,payload=nothing,role=transport"
     poisoned = Dict(1 => _rec(role = Symbol(tail)))
     r99 = _rec(pose = (0.0, 0.0, 0.0))
     clean = Dict(1 => _rec(), 99 => r99)
