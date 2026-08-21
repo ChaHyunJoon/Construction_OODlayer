@@ -281,5 +281,143 @@ end
     end
     @test _hash(env) == h0
     @test CB._count_future_goals_in_zone(env; zone_keys = ZKEYS) == N_GOALS
-    CB.clear_restriction_zones!()
 end
+
+# =============================================================================
+# 🔴 [8] 프롬프트가 **주장하는 것**을 이 씬에서 실측으로 진다.
+#
+# 왜 여기인가: `propose.py` 의 ZONES 문단과 `open_zone_descriptors` 의 docstring 은 `work_reach`
+# 와 `max_shift` 에 대해 검사 가능한 주장을 한다. 그 주장을 실행하는 유일한 소비자가
+# `tools/e2e.jl` 의 mock 이었는데, mock 은 방향을 **한 개** 고르므로 방향에 대한 주장을 한 점에서만
+# 건드린다 — 그리고 그 한 점을 씬에 맞게 고르면 주장이 틀려도 초록이 된다(컨트롤러가 잡은
+# "시험 대상을 빼서 초록이 된 suite" 모양). 그래서 주장을 **32방향 실측**으로 여기서 진다.
+#
+# 🔴 이 testset 이 지키는 문장 셋 (llm_bridge.jl 의 docstring · propose.py 의 산문과 같은 문장):
+#   (B) `r + work_reach` 는 **지금 갇힌** 작업을 **어느 방향으로든** 구역 밖으로 빼낸다.
+#   (C) 그러나 **충분조건이 아니다** — 그 크기로 구역 전체가 깨끗해지는 방향은 일부뿐이다
+#       (강체 이동이 바깥 작업을 쓸어 넣는다). 이 단언이 그 문장을 "규칙" 으로 되돌리는 수정을 막는다.
+#   (D) **필요조건도 아니다** — 좋은 방향은 그보다 **작은** 이동으로도 비운다.
+#   (E) `build_center − center` 는 탈출 방향이 아니다(프롬프트가 예전에 그렇게 말했다).
+#   (F) `max_shift` 는 **방향과 무관하게** 작업영역을 보장하고, 공허하지 않다(조금만 넘으면 깨진다).
+# =============================================================================
+const NDIR = 32
+const DIRS = [[cos(2π*k/NDIR), sin(2π*k/NDIR)] for k in 0:(NDIR-1)]   # 결정적 순서
+const ZBALL = CB.RESTRICTION_ZONES[][:c4zone]
+const ZCEN  = Vector{Float64}(CB.get_center(ZBALL)[1:2])
+const DISCS = CB._future_work_discs(env)
+const TRAPPED = [(c, r) for (c, r) in DISCS if norm(c .- ZCEN) < ZR + r]
+const WORK_REACH = maximum(norm(c .- ZCEN) + r for (c, r) in TRAPPED)
+const REFSIZE = ZR + WORK_REACH                       # 프롬프트의 "reference size"
+"이 방향으로 구역 전체가 깨끗해지는 최소 이동(이분법). 못 찾으면 Inf."
+function _tmin(u; hi = 60.0)
+    CB.translate_clears_zones(env, (hi*u[1], hi*u[2]); zone_keys = ZKEYS) || return Inf
+    lo = 0.0
+    while hi - lo > 1e-4
+        m = (lo + hi)/2
+        CB.translate_clears_zones(env, (m*u[1], m*u[2]); zone_keys = ZKEYS) ? (hi = m) : (lo = m)
+    end
+    return hi
+end
+const TMINS = [_tmin(u) for u in DIRS]
+
+@testset "🔴 [8] descriptor 가 싣는 수와 프롬프트가 그 수에 대해 하는 주장" begin
+    # --- (A) 배선: descriptor 가 여섯 필드를 실제로 싣고, 값이 독립 계산과 맞는가 -------------
+    zd = CB.open_zone_descriptors(env)
+    @test length(zd) == 1
+    d = zd[1]
+    for fld in ("key", "center", "radius", "covers", "covers_root",
+                "build_center", "build_radius", "max_shift", "work_reach")
+        @test haskey(d, fld)
+    end
+    @test d["key"] == "c4zone"
+    @test d["radius"] ≈ ZR
+    @test d["build_radius"] ≈ round(FR; digits = 2)
+    @test d["build_center"] == [round(FC[1]; digits = 2), round(FC[2]; digits = 2)]
+    @test d["work_reach"] ≈ round(WORK_REACH; digits = 2)
+    @test d["max_shift"] ≈ round(MAX_SHIFT; digits = 2)      # MAX_SHIFT = D - ‖fc‖ - fR
+    @test !isempty(TRAPPED)                                   # 비퇴화: 가둔 게 있어야 work_reach 가 뜻이 있다
+    @test WORK_REACH > 0
+
+    # --- (B) reference size 는 **갇힌** 작업을 어느 방향으로든 빼낸다 ----------------------
+    n_evac = count(DIRS) do u
+        all(norm((c .+ REFSIZE .* u) .- ZCEN) + 1e-9 >= ZR + r for (c, r) in TRAPPED)
+    end
+    @test n_evac == NDIR                                      # 32/32
+
+    # --- (C) 🔴 그러나 구역 전체를 비우지는 **못한다** (충분조건이 아니다) -------------------
+    n_clear = count(u -> CB.translate_clears_zones(env, (REFSIZE*u[1], REFSIZE*u[2]);
+                                                   zone_keys = ZKEYS), DIRS)
+    @test 0 < n_clear < NDIR      # 🔴 위쪽 부등호가 "규칙이다" 로 되돌리는 수정을 빨갛게 만든다
+    # 그리고 그 실패가 검증기까지 전달되는가 (문서상의 사실이 아니라 판정의 사실인가)
+    bad = DIRS[findfirst(u -> !CB.translate_clears_zones(env, (REFSIZE*u[1], REFSIZE*u[2]);
+                                                        zone_keys = ZKEYS), DIRS)]
+    @test CB.verify_translate(_p(REFSIZE*bad[1], REFSIZE*bad[2]), env).reason === :residual_blocked
+
+    # --- (D) 🔴 필요조건도 아니다 — 더 짧은 이동으로 비우는 방향이 있다 --------------------
+    @test minimum(TMINS) < REFSIZE
+    @test CB.verify_translate(_p(minimum(TMINS)*DIRS[argmin(TMINS)][1],
+                                 minimum(TMINS)*DIRS[argmin(TMINS)][2]), env) isa CB.Admit
+
+    # --- (E) 🔴 `build_center − center` 는 탈출 방향이 아니다 -----------------------------
+    bz = FC .- ZCEN
+    #   이 픽스처에서는 구역이 빌드와 **동심**이라 그 규칙에 내용이 아예 없다.
+    @test norm(bz) < 0.01 * FR
+    #   그 경우 프롬프트의 옛 규칙은 "+x 로 가라" 였다. 기준 크기로 +x 는 거부된다.
+    @test CB.verify_translate(_p(REFSIZE, 0.0), env).reason === :residual_blocked
+
+    # --- (F) max_shift 는 방향 무관 보장이고, 공허하지 않다 -------------------------------
+    @test all(u -> CB._within_workspace_bounds(env, (MAX_SHIFT*u[1], MAX_SHIFT*u[2])), DIRS)
+    @test any(u -> !CB._within_workspace_bounds(env, (1.01*MAX_SHIFT*u[1], 1.01*MAX_SHIFT*u[2])), DIRS)
+
+    @info "[C4] 프롬프트 주장 실측 (32방향): reference=$(round(REFSIZE; digits = 4)) " *
+          "(r=$(ZR) + work_reach=$(round(WORK_REACH; digits = 4)))\n" *
+          "      (B) 갇힌 작업 탈출 = $(n_evac)/$(NDIR)   (C) 구역 전체 깨끗 = $(n_clear)/$(NDIR)\n" *
+          "      (D) 최소 소요 t: min=$(round(minimum(TMINS); digits = 4)) " *
+          "max=$(round(maximum(filter(isfinite, TMINS)); digits = 4)) — min < reference: " *
+          "$(minimum(TMINS) < REFSIZE)\n" *
+          "      (E) ‖build_center − center‖ = $(round(norm(bz); digits = 6)) (build_radius " *
+          "$(round(FR; digits = 3)) 대비 동심)   (F) max_shift = $(round(MAX_SHIFT; digits = 3))"
+end
+
+# =============================================================================
+# 🔴 [9] 집행부가 **평가된 검사만** 기록한다 (fix 1, 컨트롤러 minor 3).
+#
+# `verify_translate` 는 단락 평가다. `:zero_displacement` 로 거부되면 구역 검사도 작업영역
+# 검사도 **한 적이 없다** — 그것을 모니터에 `passed=true` 로 적으면 "증거가 아닌 초록불" 이
+# 하나 더 생긴다. 이 시험은 세 거부 사유 각각에서 기록된 checks 목록이 **실제로 평가된 곳까지만**
+# 길고, 마지막 항목이 실패로 적혔는지를 잰다. 덤으로 세 거부 경로 모두에서 **세계가 안 바뀐다**.
+# =============================================================================
+@testset "🔴 [9] 거부 기록은 평가된 검사까지만이고, 거부는 세계를 안 바꾼다" begin
+    @test !CB.RESPEC_HOLD[]
+    enact!(prop) = CB.maybe_respecify!(env, CB.OODQueue(String["c4 monitor probe"]);
+                                       producer = (_e, _v) -> prop)
+    small = 0.1 .* D0
+    cases = [(:zero_displacement, _p(0.0, 0.0),           1),
+             (:residual_blocked,  _p(small[1], small[2]), 3),
+             (:out_of_bounds,     _p(1e6, 1e6),           4)]
+    before = _poses(env); h0 = _hash(env)
+    for (reason, prop, n_expected) in cases
+        CB.MONITOR_RESPEC[] = Dict{String,Any}()      # 기록기를 켠다(기본은 nothing = 기록 안 함)
+        @test enact!(prop) === :rejected
+        rec = CB.MONITOR_RESPEC[]["verification"]
+        @test rec["status"] == "rejected"
+        @test rec["execution"]["status"] == string(reason)
+        checks = rec["checks"]
+        @test length(checks) == n_expected                    # 평가된 만큼만 적혔다
+        @test all(c -> c["passed"] === true, checks[1:end-1])  # 앞의 것들은 실제로 통과했다
+        @test checks[end]["passed"] === false                 # 마지막이 걸린 검사다
+    end
+    @test _poses(env) == before && _hash(env) == h0            # 세 거부가 세계를 안 건드렸다
+    # 🔴 음성 대조: 통과 경로에서는 넷 다 평가되고 넷 다 초록이다(목록이 항상 짧은 게 아니다).
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    @test enact!(_p(D0[1], D0[2])) === :admitted
+    ok = CB.MONITOR_RESPEC[]["verification"]["checks"]
+    @test length(ok) == 4 && all(c -> c["passed"] === true, ok)
+    CB._apply_uniform_translation!(env, (-D0[1], -D0[2]))      # 정확한 되돌리기(이동은 합성된다)
+    CB.reset_cache_resume!(env.cache, env.sched)
+    CB.MONITOR_RESPEC[] = nothing
+    @info "[C4] 모니터 기록 길이: zero=1 · residual=3 · out_of_bounds=4 · admitted=4 " *
+          "(평가되지 않은 검사는 안 적힌다)"
+end
+
+CB.clear_restriction_zones!()

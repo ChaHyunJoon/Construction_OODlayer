@@ -200,51 +200,62 @@ function start_mock(port)
             #
             # 🔴 **Δ 를 어떻게 정하는가 — 이것이 C3 의 요점이다.** `RelocateBuild` 는 Δ 를
             # `_find_min_translation` 이 **찾아 줬다**(= 감춰 둔 매크로). `TranslateBuild` 는
-            # 제안자가 Δ 를 **직접** 정해야 한다. 그래서 이 mock 도 요청이 실어 보낸 기하에서만
-            # Δ 를 유도한다 — propose.py 의 ZONES 지시문과 **같은 산술**이다.
+            # 제안자가 Δ 를 **직접** 정해야 한다. 이 mock 은 요청이 실어 보낸 기하에서
+            # **하한과 상한을 계산**하고, 그 창 안에서 크기를 고른다.
             #
-            # ⚠️ **2026-08-21 Task C4 개정: 옛 규칙 `|Δ| = 3·R` 을 버렸다.**
-            #   그것은 유도가 아니라 두 픽스처에 맞춘 **교정값**이었다(컨트롤러 실측:
-            #   `|Δ_min|/R` = 2.34(tractor) vs 2.04(colored_8x8) — 비율이 안정적이지 않다).
-            #   필요한 변위를 정하는 것은 구역의 반지름이 아니라 **그 구역이 지금 가두고 있는
-            #   작업이 어디까지 뻗어 있는가**다. C4 가 그 수(`work_reach`)를 descriptor 에 실었고,
-            #   그래서 이 mock 도 이제 **계산**한다:
-            #       방향 = (build_center − center) 의 단위벡터 (구역에서 빌드가 있는 쪽으로)
-            #       크기 = r + work_reach          (가둔 원반이 전부 구역 밖으로 나가는 길이)
-            #   `r + work_reach` 는 **하한이지 충분조건이 아니다** — 이 하네스에서 실측으로 반증했다.
-            #   (a) 하한의 근거: 가둔 원반 (c, rᵢ) 는 ‖c−Z‖ ≤ work_reach − rᵢ 이므로 t = r+work_reach
-            #       를 옮기면 **지금 갇힌** 원반은 전부 나간다(‖c+tu−Z‖ ≥ t − ‖c−Z‖ ≥ r + rᵢ).
-            #   (b) 🔴 반증(2026-08-21, 이 시나리오를 실제로 돌려서): tractor 에서 r=2.5,
-            #       work_reach=4.4 → t=1.05·6.9=7.245 를 (build_center−center) 방향으로 냈더니
-            #       `verify_translate` 가 **`:residual_blocked` 로 거부**했고 판이 145/289 에서
-            #       정체했다. 이유: 강체 이동은 **지금 구역 밖에 있는 작업을 구역 안으로 쓸어 넣을
-            #       수도** 있다. work_reach 는 "지금 갇힌" 것만 재므로 그 항을 못 본다.
-            #       (모든 원반을 다 세는 reach_all 로 조이면 tractor 는 2.5+17.6=20.1 이 되어
-            #        창고 링 D=20 밖 — 즉 "어느 방향에나 통하는 스칼라 하나" 는 존재하지 않는다.)
-            #   그래서 mock 은 하한을 **넘는** 크기(3·r 과 1.05·하한 중 큰 쪽)를 +x 로 낸다.
+            # ⚠️ **이 mock 이 무엇을 시험하고 무엇을 안 시험하는지 정확히 적는다 (C4 fix 1).**
+            #   시험한다   — 이음새 전체: NL → /propose → 타입 파싱 → `verify_translate` →
+            #                `_apply_uniform_translation!` → 완주. 그리고 요청이 C4 필드를
+            #                **실제로 싣는지**(아래 `error()` 들 = 배선 시험).
+            #   안 시험한다 — 프롬프트의 **방향** 지침. 아래 `+x` 는 이 씬에서 통하는 값이지
+            #                요청이 정당화해 주는 값이 **아니다**. 방향에 대한 주장은
+            #                `test/respec_verify_translate.jl` 의 `[8]` 이 32방향 실측으로 진다.
+            #                (그 시험이 이 하네스보다 촘촘하고 결정적이다 — 여기서 방향을 하나
+            #                 고르는 것은 그 주장을 한 점에서만 건드린다.)
+            #
+            # 🔴 **2026-08-21 Task C4 실측 — 옛 `|Δ| = 3·R` 도, 새 `r+work_reach` 도 규칙이 아니다.**
+            #   컨트롤러 실측대로 `|Δ_min|/R` = 2.34(tractor) vs 2.04(colored_8x8) 라 3·R 은 교정값이다.
+            #   그래서 `work_reach` 를 실어 `r + work_reach` 를 유도하게 했는데, **그것은 하한도
+            #   상한도 아니다** — 32방향 실측으로 세 가지를 확인했다:
+            #   (a) 맞는 것: 갇힌 원반 (c, rᵢ) 는 ‖c−Z‖ ≤ work_reach − rᵢ 이므로 t = r+work_reach
+            #       면 **지금 갇힌** 원반은 어느 방향으로든 전부 나간다(32/32, 최소 여유 9.4e-5 ·
+            #       1.7e-3). 그러나 그 크기에서 **구역 전체가 깨끗한 방향은 2/32 · 16/32 뿐**이고
+            #       (쓸려 들어오는 작업), 진짜 최소는 **그보다 작다**(5.0997 < 5.1978,
+            #       5.9047 < 6.8981). 즉 필요조건도 충분조건도 아닌 **기준 크기**다.
+            #   (b) 🔴 반증(이 시나리오를 실제로 돌려서): tractor 에서 r=2.5, work_reach=4.4 →
+            #       t=1.05·6.9=7.245 를 (build_center−center) 방향으로 냈더니 `verify_translate` 가
+            #       `:residual_blocked` 로 거부했고 판이 145/289 에서 정체했다.
+            #   (c) 🔴 그리고 **분해 측정(fix 1)**: 갈린 것은 크기가 아니라 **방향**이었다.
+            #       같은 씬에서 32방향 최소 소요 t 를 이분법으로 재니 —
+            #         +x: 7.242 · +y: 6.874 · −y: 6.079 · −x: 12.193 · (build_center−center): **19.333**
+            #         (그 방향의 링 예산은 8.58 이라 **어떤 Δ 도 통하지 않는다**), 32방향 중 8개가
+            #         "필요 > 예산" 이다.
+            #       그리고 `1.05·하한 = 7.243` 은 **+x 에서는 통한다**(필요 7.2418). 즉 run2 의 실패는
+            #       3.5% 크기 차이가 아니라 프롬프트가 지시하던 **방향** 때문이었다.
+            #       colored_8x8 에서는 반대로 `3·R = 7.5` 가 +x 에서 **모자란다**(필요 8.264) —
+            #       두 규칙 다 씬 교정값이다. 프롬프트는 이제 방향을 지시하지 않고 **하한·상한과
+            #       "방향이 크기를 정한다"** 는 실측을 말한다.
             #   ⚠️ 이 반증 자체가 C4 의 증거이기도 하다: 예전이라면 7.245 는 **조용히 집행**되고
             #      로봇이 구역 가장자리에 영원히 주차했을 것이다(C3 창의 fail-open). 지금은 거부다.
             # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 요청이 기하를 안 실어 보냈는데도
-            #    mock 이 자기가 아는 값으로 답하면 **프롬프트에서 유도했다**는 이 시나리오의 주장
-            #    자체가 거짓이 된다. 그래서 필드가 없으면 때우지 않고 **죽는다** — 이 assert 가
+            #    mock 이 자기가 아는 값으로 답하면 **요청에서 유도했다**는 이 시나리오의 주장 자체가
+            #    거짓이 된다. 그래서 필드가 없으면 때우지 않고 **죽는다** — 이 assert 가
             #    `open_zone_descriptors`(llm_bridge.jl) 의 회귀를 잡는 배선 시험이기도 하다.
             isempty(zones) &&
                 error("[E2E] /propose 요청에 zones 가 없다 — mock 은 요청이 실어 보낸 기하에서만 " *
                       "Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다).")
-            for fld in ("radius", "center", "work_reach", "build_center", "build_radius")
+            for fld in ("radius", "center", "work_reach", "build_center", "build_radius", "max_shift")
                 haskey(zones[1], fld) ||
                     error("[E2E] /propose 요청의 zones 에 `$(fld)` 가 없다 — Task C4 이후 " *
                           "open_zone_descriptors 는 radius·center·work_reach·build_center·" *
-                          "build_radius 를 전부 싣는다. llm_bridge.jl 이 바뀌었는지 확인할 것.")
+                          "build_radius·max_shift 를 전부 싣는다. llm_bridge.jl 이 바뀌었는지 확인할 것.")
             end
-            zr    = Float64(zones[1]["radius"])
-            wr    = Float64(zones[1]["work_reach"])
-            zctr  = Float64[Float64(zones[1]["center"][1]), Float64(zones[1]["center"][2])]
-            bctr  = zones[1]["build_center"]
-            bctr === nothing &&
-                error("[E2E] build_center 가 null 이다 — 옮길 대상(staging_circles)이 없다는 뜻이고, " *
-                      "그러면 TranslateBuild 는 조용한 no-op 이 된다.")
-            bc    = Float64[Float64(bctr[1]), Float64(bctr[2])]
+            zr = Float64(zones[1]["radius"])
+            wr = Float64(zones[1]["work_reach"])
+            (zones[1]["build_center"] === nothing || zones[1]["max_shift"] === nothing) &&
+                error("[E2E] build_center/max_shift 가 null 이다 — 옮길 대상(staging_circles)이 " *
+                      "없다는 뜻이고, 그러면 TranslateBuild 는 조용한 no-op 이 된다.")
+            ceil_ = Float64(zones[1]["max_shift"])         # 상한: 어느 방향으로 가도 링 안
             cov   = zones[1]["covers"]
             croot = haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
             if isempty(cov) && !croot
@@ -252,16 +263,22 @@ function start_mock(port)
                             "rationale" => "mock: zone blocks no remaining goal (detour-only) -> " *
                                            "restraint is cheaper than any intervention")
             else
-                # 하한(r + work_reach)을 **넘는** 크기를 낸다. 방향은 +x — 아래 실측 참조.
-                lb = zr + wr                        # 요청이 실어 보낸 기하에서 유도한 하한
-                dx = max(3.0 * zr, 1.05 * lb)
+                evac_ = zr + wr            # 기준 크기(하한이 아니다 — 위 (c) 실측 참조)
+                evac_ < ceil_ ||
+                    error("[E2E] 창이 비었다: 기준 크기 $(evac_) ≥ 상한 $(ceil_) — 이 씬에서는 " *
+                          "갇힌 작업을 어느 방향으로도 링 안에서 빼낼 수 없다. 게이트가 아니라 씬의 문제다.")
+                # 창 [evac, ceil] 안의 크기. 방향 +x 는 **이 씬에 대한 mock 의 선택**이지
+                # 요청에서 유도한 값이 아니다(위 주석 참조).
+                dx = min(ceil_, max(3.0 * zr, 1.05 * evac_))
                 resp = Dict("constraints" => [Dict("kind" => "TranslateBuild",
                                                    "dx" => dx, "dy" => 0.0)],
                             "rationale" => "mock: the zone (r=$(zr)) traps remaining build work out to " *
                                            "work_reach=$(wr) (covers=$(length(cov)), covers_root=$(croot)) " *
-                                           "-> lower bound r+work_reach=$(round(lb; digits=3)); propose " *
-                                           "dx=$(round(dx; digits=3)) along +x (above the bound, because " *
-                                           "a rigid shift can also sweep other work INTO the zone)")
+                                           "-> window [reference $(round(evac_; digits=3)), " *
+                                           "ceiling $(round(ceil_; digits=3))]; propose " *
+                                           "dx=$(round(dx; digits=3)) along +x (direction is this " *
+                                           "harness's scene-specific choice, NOT derived from the " *
+                                           "request -- see test/respec_verify_translate.jl [8])")
             end
             return HTTP.Response(200, JSON3.write(resp))
         end

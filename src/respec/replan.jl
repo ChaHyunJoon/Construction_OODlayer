@@ -574,20 +574,6 @@ const _ENACT_RANK = (relocate = 1, translate = 1, zone = 2, replace = 3, fault =
 
 _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 
-"""
-    _TB_MIN_DELTA
-
-`TranslateBuild` 가 **관측 가능하려면** 넘어야 하는 변위 크기의 하한.
-
-지어낸 상수가 아니라 `s` 의 **관측 양자**다: `simstate.jl:217` 의 정준화가
-`_c(x::Float64) = string(round(x; digits = 9) + 0.0)` 이므로 절대값 5e-10 이하의 좌표 변화는
-`state_hash` 에서 통째로 흡수된다 — 그 아래의 Δ 로 "옮겼다" 고 보고하면 `s` 안에서 **NOOP 과
-바이트 동일**한 결과에 `:admitted` 를 붙이는 hollow admit 이 된다.
-
-⚠️ **하한이지 보장이 아니다.** |Δ| ≥ 이 값이라고 해시가 반드시 갈리는 것은 아니다(좌표별 반올림
-경계에 달렸다). 이 상수의 계약은 "이 아래는 **확실히** 구분 불가능하다" 하나뿐이다.
-"""
-const _TB_MIN_DELTA = 1e-9
 
 """
     _enact_batched(kind) -> Bool
@@ -1072,17 +1058,38 @@ function _enact_one!(env, proposal::RespecProposal;
         # 이미 `error()` 로 죽으므로 여기 도달할 수 있는 비유한 Δ 는 **존재하지 않는다**
         # (도달 불가능한 분기를 "통과했다" 고 기록하는 것은 이 계획서가 금지한 초록불이다).
         tverdict = verify_translate(RespecProposal(ConstraintSpec[c]), env)
-        _tb_checks(rej) = Any[
-            Dict("name" => "observable_delta", "passed" => rej !== :zero_displacement,
+        # 🔴 **평가되지 않은 검사를 "passed" 로 적지 않는다** (fix 1, 컨트롤러 minor 3).
+        #    `verify_translate` 는 단락 평가라 `:zero_displacement` 로 거부되면 구역 검사도
+        #    작업영역 검사도 **한 적이 없다.** 그것을 초록으로 기록하면 모니터에 "증거가 아닌
+        #    초록불" 이 생긴다 — 열두 줄 위에서 `isfinite` 재검사를 지운 것과 같은 이유다.
+        #    그래서 `verify_translate` 의 검사 **순서 그대로** 잘라서, 실제로 평가된 것까지만
+        #    적는다(거부 사유가 그 순서의 어디에서 멈췄는지를 말해 준다).
+        _TB_CHECK_ORDER = (:zero_displacement, :no_staging, :residual_blocked, :out_of_bounds)
+        # ⚠️ `Dict{String,Any}` 를 **명시한다**: 리터럴만 두면 `Dict{String,String}` 으로 추론돼
+        #    아래에서 `d["passed"] = Bool` 이 MethodError 로 죽는다(실측으로 잡았다).
+        _tb_check_all() = Any[
+            Dict{String,Any}("name" => "observable_delta",
                  "detail" => "Δ = ($(c.dx), $(c.dy)); |Δ| = $(norm([c.dx, c.dy])) " *
                              "(하한 $(_TB_MIN_DELTA) = simstate `_c` 의 관측 양자)"),
-            Dict("name" => "translatable_target", "passed" => rej !== :no_staging,
+            Dict{String,Any}("name" => "translatable_target",
                  "detail" => "staging_circles = $(length(env.staging_circles))"),
-            Dict("name" => "clears_active_zones", "passed" => rej !== :residual_blocked,
+            Dict{String,Any}("name" => "clears_active_zones",
                  "detail" => "zones = $(sort!(collect(keys(RESTRICTION_ZONES[])); by = string))"),
-            Dict("name" => "within_workspace", "passed" => rej !== :out_of_bounds,
+            Dict{String,Any}("name" => "within_workspace",
                  "detail" => "depot ring D = $(spare_depot_distance())"),
         ]
+        function _tb_checks(rej)
+            all_ = _tb_check_all()
+            i = rej === nothing ? length(all_) : findfirst(==(rej), _TB_CHECK_ORDER)
+            # 순서에 없는 사유(:not_translate/:ambiguous — 이 분기는 그 전에 error() 로 죽는다)면
+            # 아무 검사도 평가되지 않은 것이므로 하나도 적지 않는다.
+            i === nothing && return Any[]
+            out = all_[1:i]
+            for (j, d) in enumerate(out)
+                d["passed"] = (rej === nothing) || (j < i)
+            end
+            return out
+        end
         if tverdict isa Reject
             monitor_record_verification!(status = "rejected",
                 checks = _tb_checks(tverdict.reason),

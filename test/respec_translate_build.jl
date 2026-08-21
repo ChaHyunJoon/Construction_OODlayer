@@ -27,9 +27,10 @@
 # ⚠️ 브리프와 다른 것(전부 보고서에 기록):
 #    · `test/smdp_fixtures.jl` / `_zone_fixture()` / `_assembly_poses()` 는 이 브랜치에 **없다**.
 #      헬퍼를 이 파일 안에 자족적으로 둔다(test/respec_grammar.jl 과 같은 규율).
-#    · `translate_clears_zones` · `verify_translate` 는 **Task C4 가 만든다**(브리프 addendum 3).
-#      그 둘을 요구하는 단언은 C4 로 넘기고, 여기서는 이미 있는 `_count_future_goals_in_zone`
-#      으로 같은 사실을 잰다.
+#    · `translate_clears_zones` · `verify_translate` 는 **Task C4 가 만들었다**(브리프 addendum 3).
+#      이 파일은 그것을 직접 안 부른다 — 여기서 재는 것은 **집행부**의 계약(반환 Symbol · 기하 ·
+#      회계)이고, 검증기 자체의 계약은 `test/respec_verify_translate.jl` 이 진다. 같은 사실을
+#      이미 있는 `_count_future_goals_in_zone` 으로 재는 것은 그대로 둔다(독립 계측).
 #    · 브리프는 Δ=0 에서 `:fallback` 을 기대하지만, 같은 브리프의 구현 스니펫은 `:rejected` 를
 #      돌려준다(자가당착). C1 의 `_aggregate_enact` 는 N=1 에서 항등이므로 실제 값은 `:rejected` 다.
 # =============================================================================
@@ -299,8 +300,9 @@ end
 end
 
 @testset "🔴 [9] baseline(_find_min_translation) 의 Δ 와 잴 수 있다" begin
-    # `translate_clears_zones` · `verify_translate` 는 Task C4 가 만든다(브리프 addendum 3).
-    # 그때까지 같은 사실을 이미 있는 `_count_future_goals_in_zone` 으로 잰다.
+    # 🔴 여기서 `_count_future_goals_in_zone` 을 쓰는 것은 **의도적인 독립 계측**이다:
+    # `verify_translate` 가 쓰는 술어(`translate_clears_zones`, disc 기반)와 다른 계산으로
+    # 같은 사실을 재므로, 검증기와 계측이 같이 틀리는 경우가 걸러진다.
     @test !CB.RESPEC_HOLD[]
     gs = sort(CB.root_deposit_goals(env); by = g -> (Float64(g[1]), Float64(g[2])))
     @test !isempty(gs)                        # 정렬해서 더한다(부동소수 결합법칙 — 시드 고정 재현)
@@ -323,11 +325,17 @@ end
     end
 end
 
-@testset "🔴 [10] 잠정 사후 경계: 구역을 못 비우는 Δ 는 **정확히 되돌리고** 거부한다" begin
-    # fix round 1 (컨트롤러 Important 1). 이 분기는 fail-open 이었다 — 일반 `verify()` 는
-    # 제네릭 fall-through 에서만 불리고(이 분기는 그 전에 :admitted 로 반환한다), MILP 재풀이도
-    # 없고, `_apply_uniform_translation!` 자체에 상한도 상태값도 없다. `RelocateBuild` 경로가
-    # 쓰던 잔여 판정(`_count_future_goals_in_zone`)을 그대로 빌려 잠정 경계로 삼는다.
+@testset "🔴 [10] 구역을 못 비우는 Δ 는 거부되고 **세계가 안 바뀐다**" begin
+    # ⚠️ **이 testset 의 기전이 Task C4 에서 바뀌었다(제목도 같이 고쳤다).**
+    #   C3: 먼저 옮기고 → 잔여를 세고 → `.-Δ` 로 **정확히 되돌리고** → `:rejected`.
+    #        그때는 아래 `after[k] ≈ before[k]` 가 "되돌리기가 정확한가" 를 재는 단언이었다.
+    #   C4: `verify_translate` 가 **적용 전에** 판정한다. 되돌리기가 아예 없다 —
+    #        그래서 아래 좌표 단언은 이제 "되돌리기의 정확성" 이 아니라
+    #        **"거부 경로가 세계를 손대지 않는다"** 를 잰다(적용-후-되돌리기라면 부동소수
+    #        오차가 남았을 자리라, 값은 여전히 의미가 있고 더 세다).
+    #   이 분기는 C3 이전에는 fail-open 이었다: 일반 `verify()` 는 제네릭 fall-through 에서만
+    #   불리고(이 분기는 그 전에 반환한다), MILP 재풀이도 없고, `_apply_uniform_translation!`
+    #   자체에 상한도 상태값도 없다.
     @test !CB.RESPEC_HOLD[]
     gs = sort(CB.root_deposit_goals(env); by = g -> (Float64(g[1]), Float64(g[2])))
     @test !isempty(gs)
@@ -349,7 +357,7 @@ end
         @test st === :rejected
         @test [(r.kind, r.status) for r in CB.LAST_ENACT_REPORT[]] == [(:translate, :rejected)]
         after = _poses(env)
-        for k in sort!(collect(keys(before)))  # 🔴 되돌리기가 **정확**한가 (이동은 합성된다)
+        for k in sort!(collect(keys(before)))  # 🔴 거부 경로가 세계를 **아예 안 만졌는가** (C4)
             @test after[k][1] ≈ before[k][1] atol = 1e-12
             @test after[k][2] ≈ before[k][2] atol = 1e-12
         end
@@ -361,8 +369,8 @@ end
         st2 = enact!(_prop(CB.TranslateBuild(Δ0[1], Δ0[2])))
         @test st2 === :admitted
         @test CB._count_future_goals_in_zone(env; zone_keys = [:c3bound]) == 0
-        @info "[C3] 잠정 경계: |Δ_min|=$(round(norm(Δ0); digits = 3)) 는 통과(잔여 0), " *
-              "0.1·Δ_min=$(round(norm(small); digits = 3)) 는 거부 후 정확 복원 (구역 안 목표 $(n0))"
+        @info "[C3/C4] 경계: |Δ_min|=$(round(norm(Δ0); digits = 3)) 는 통과(잔여 0), " *
+              "0.1·Δ_min=$(round(norm(small); digits = 3)) 는 거부 + 세계 불변 (구역 안 목표 $(n0))"
     finally
         CB.clear_restriction_zones!()
     end

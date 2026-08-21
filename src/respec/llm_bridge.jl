@@ -258,31 +258,54 @@ work sits**, so the prompt's "several zone radii" was a value calibrated on two 
 (`|Δ_min|/R` measured **2.34** on tractor vs **2.04** on colored_8x8 -- the ratio is not stable),
 not a derived one. These three make the derivation possible **from the request alone**:
   * `build_center`,`build_radius` -- `_build_footprint(env)`: the disc a whole-build translation
-                     carries. Gives the DIRECTION (away from the zone centre, along
-                     `build_center - center`) and lets the model see how far the build already is.
+                     carries, and where it currently sits.
+  * `max_shift`   -- `D - ‖build_center‖ - build_radius` (clamped at 0): the largest displacement
+                     that keeps the footprint inside the fixed depot ring **in every direction**,
+                     i.e. the CEILING `_within_workspace_bounds` enforces. Direction-independent
+                     by construction (it is the radially-outward worst case), so the model can
+                     use it without knowing which way it will move.
   * `work_reach`  -- how far the work THIS zone currently traps reaches from the zone centre:
                      `max(‖c-Z‖ + r)` over the `_future_work_discs` that intersect it, `0.0` when
                      the zone traps nothing. `radius + work_reach` is a **LOWER BOUND** on the
                      displacement: a trapped disc `(c, rᵢ)` has `‖c-Z‖ ≤ work_reach - rᵢ`, so a
                      rigid shift of that length carries every CURRENTLY trapped disc out
                      (`‖c+tu-Z‖ ≥ t - ‖c-Z‖ ≥ radius + rᵢ`).
-                     🔴 **It is a bound, not a guarantee, and that was measured -- do not upgrade
-                     this sentence.** A rigid shift can also sweep work that is currently OUTSIDE
-                     the zone INTO it, and `work_reach` cannot see that term. Measured on the
-                     `tools/e2e.jl mock_respec` tractor scene (r=2.5, work_reach=4.4): a proposal
-                     of `1.05·(r+work_reach) = 7.245` along `build_center - center` was REJECTED
-                     by `verify_translate` as `:residual_blocked` and the run stalled at 145/289.
-                     Tightening the reach to ALL discs instead of the trapped ones does not help:
-                     that is `2.5 + 17.60 = 20.1` on the same scene, outside the depot ring the
-                     same verifier enforces (D = 20). There is no single scalar that is sufficient
-                     along every direction -- which is exactly why `verify_translate` judges the
-                     RESULTING placement instead of pre-approving a formula.
+                     🔴 **`radius + work_reach` is a REFERENCE SIZE -- neither necessary nor
+                     sufficient to clear the zone. All three halves of that were measured; do not
+                     upgrade this sentence.** What it IS: the shift that lifts every currently
+                     trapped disc out, in ANY direction (measured 32/32 in both fixtures, worst
+                     slack 9.4e-5 and 1.7e-3 -- tight, as the algebra predicts). What it is NOT:
+                     (i) sufficient -- at exactly that size the zone came out actually clear in
+                     only **2 of 32** directions (colored_8x8) and **16 of 32** (tractor), because
+                     a rigid shift sweeps work that is currently OUTSIDE the zone INTO it, a term
+                     `work_reach` cannot see; (ii) necessary -- the true minimum is BELOW it
+                     (5.0997 vs 5.1978, and 5.9047 vs 6.8981), because a well-chosen direction
+                     lets trapped work slip out sideways. The displacement that actually clears is
+                     **direction-dependent**; measured minimum over 32 evenly spaced directions
+                     (both fixtures, zone r=2.5 on the root-goal centroid):
+
+                       colored_8x8  floor 5.198   required 5.100 .. 15.419   (ring budget 17.302)
+                       tractor      floor 6.898   required 5.905 .. 19.859   (ring budget 8.58 ..
+                                                                              12.13, direction-wise)
+
+                     and on tractor **8 of 32 directions have no admissible displacement at all**
+                     (what they require exceeds what the ring allows). There is no direction-
+                     independent scalar that is sufficient -- which is exactly why
+                     `verify_translate` judges the RESULTING placement instead of pre-approving a
+                     formula, and why the prompt must not promise one. Test
+                     `test/respec_verify_translate.jl` `[8]` asserts all three measured facts
+                     (evacuates in every direction · not sufficient · not necessary) so this
+                     sentence cannot rot back into a rule.
+     ⚠️ `build_center - center` is NOT the escape direction (measured, and the prompt used to say
+        it was): on tractor it needs 19.33 while the ring allows 8.58 there -- no admissible Δ
+        exists along it -- and on colored_8x8 the zone is concentric with the build
+        (`‖build_center - center‖ = 0.0`) so the rule has no content at all.
   ⚠️ `work_reach == 0.0` means the zone traps NO remaining work -- the motion layer detours
      on its own and any whole-build move is pure cost.
 
 Empty when no zone is active, so non-spatial events see no zones and won't mis-emit a spatial arm.
-`build_center`/`build_radius` are `nothing` when `env.staging_circles` is empty (there is no
-footprint to report) -- the prompt says so rather than substituting a number.
+`build_center`/`build_radius`/`max_shift` are `nothing` when `env.staging_circles` is empty (there
+is no footprint to report) -- the prompt says so rather than substituting a number.
 """
 function open_zone_descriptors(env)
     out = Vector{Dict{String,Any}}()                    # 결과(구역 설명 목록). 값 타입이 섞여 Any 사용.
@@ -320,6 +343,9 @@ function open_zone_descriptors(env)
             "build_center" => fc === nothing ? nothing :
                               [round(fc[1]; digits = 2), round(fc[2]; digits = 2)],
             "build_radius" => fR === nothing ? nothing : round(fR; digits = 2),
+            "max_shift" => fR === nothing ? nothing :
+                           round(max(0.0, spare_depot_distance() - hypot(fc[1], fc[2]) - fR);
+                                 digits = 2),
             "work_reach" => round(_zone_work_reach(discs, c, r); digits = 2)))
     end
     return out                                          # 활성 구역 설명 목록 반환
