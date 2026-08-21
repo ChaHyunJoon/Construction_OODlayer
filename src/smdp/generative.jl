@@ -192,16 +192,72 @@ _arm_key(x) = error(
 const RESOLVE_CALLS = Ref(0)
 
 """
-    resolve_assignments!(env) -> NamedTuple
+    resolve_assignments!(env; optimizer = _respec_optimizer()) -> (; ran_milp, n_reassigned, status)
 
-🔴 **빈 스텁이다. Task T13 이 채운다.** 확정 설계(`.claude/CLAUDE.md` §⏳ 2026-08-20)는
-"모든 팔 뒤에 공통 MILP 재풀이" 인데 그 파이프라인은 레포 어디에도 없다. T12 의 시험이
-T13 을 기다리지 않도록 여기서는 자리만 잡고, **비어 있다는 사실을 반환값이 스스로 말한다**
-(`stub = true`) — 조용히 무동작이면 T13 이 이미 됐다고 오독된다.
+**모든 팔 뒤에 도는 공통 MILP 재풀이** (Task T13, 확정 설계 `.claude/CLAUDE.md` §⏳ 2026-08-20).
+남은 스케줄을 현재 그래프·기하 위에서 **추가 제약 없이** 다시 푼다. 어떤 팔에서든 같은 코드가
+돌아야 `Ĵ(a)` 의 차이가 **팔의 차이**가 된다.
+
+🔴 **계획서 Step 3 의 스니펫은 못 쓴다 — 시그니처 셋이 전부 틀렸다**(2026-08-21 실측):
+  · `release_pending_assignments!(env)` → 실제는 `(env, invariant::InvariantSpec; faulted)`
+  · `assign_collaborative_tasks!(env)`  → 실제는 첫 인자가 `model` 이다(`task_assignment.jl:433`)
+  · `validate(env.sched)`               → **맨이름 `validate` 는 존재하지 않는다**
+    (`validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐)
+그 대신 CLAUDE.md 가 "부품은 이미 있다" 고 지목한 **`rebalance_for_battery!`(`battery.jl:715`)의
+모양**을 그대로 쓴다 — 그 함수는 이름만 배터리이고, 하는 일은 `build_invariant` 로 완료·진행중을
+얼리고 추가 제약 없이 재정식화 + `optimize!` + `commit_respec!` 다.
+
+### 기록된 의미 결정 — **NOOP 도 재푼다**
+
+CLAUDE.md 가 "NOOP 도 재풀이할 것인가는 **의미 결정**이다" 라고 남겨 둔 자리다.
+**재푼다.** 안 그러면 NOOP 만 체계적으로 다른 파이프라인을 타고, 그 차이가 팔의 성질로
+오독된다 — 이 태스크의 존재 이유가 정확히 그것을 막는 것이다.
+⚠️ 대가: NOOP 이 "아무것도 안 함" 이 아니라 **"제약 변화 없이 다시 품"** 이 된다. 그것이
+`Ĵ(NOOP)` 의 정의이고, 논문이 NOOP 을 그렇게 서술해야 한다.
+
+### ⚠️ 항진성 — `n_reassigned` 를 반드시 볼 것
+
+CLAUDE.md 경고: 관측된 판들은 `n_candidate_edges = 0` 이라 MILP 가 순수 makespan 으로
+후퇴했다. **후보 간선이 0 이면 공통 재풀이가 아무것도 안 바꾼다.**
+그래서 `ran_milp` 은 증거가 **아니다** — 설계상 모든 팔에서 `true` 다(CLAUDE.md: "G6 은 모든
+팔에서 `ran_milp=true` 가 되고 그게 설계상 정상이다. 'G6 PASS' 를 인용하지 말 것").
+증거는 `n_reassigned` 다.
+
+`n_reassigned` 의 정의: **재풀이 전후로 `binding` 이 바뀐 정점 수.**
+`simstate_of(env).g.binding` 을 쓴다 — 배정을 읽는 두 번째 구현을 만들지 않기 위해서다.
+⚠️ **하한이다**: `binding` 은 팀에서 `first(sort(...))` 하나만 담으므로(`observe.jl:96`),
+정렬 첫째가 안 바뀌는 팀 구성 변경은 여기서 안 보인다. 0 이 아니면 확실히 바뀐 것이고,
+0 이라고 안 바뀐 것은 아니다.
+
+### 실패 경로 — 조용히 넘어가지 않는다
+
+`:infeasible` / `:commit_failed` 를 **반환한다**(던지지 않는다). CLAUDE.md 가 "반환값을
+무시하면 안 된다 — 현재 배터리 분기(`run_demo.jl:391`)는 아예 안 본다" 고 적은 그 자리이므로,
+호출자가 반드시 보게 한다(`apply_action!` 이 죽는다).
+🔴 **D-14 가 이 자리를 다시 연다**: 재풀이 불능은 "버그"가 아니라 세계의 사실일 수 있고,
+그러면 예외가 아니라 **terminal 전이**여야 한다(`briefs/task-D14-brief.md`).
 """
-function resolve_assignments!(env)
+function resolve_assignments!(env; optimizer = _respec_optimizer())
     RESOLVE_CALLS[] += 1
-    return (ran_milp = false, n_reassigned = 0, stub = true)
+    before = simstate_of(env).g.binding
+    inv    = build_invariant(env)                     # 이미 한/하는 일은 고정
+    milp   = formulate_milp(SparseAdjacencyMILP(), env.sched, env.scene_tree;
+                            optimizer = optimizer,
+                            t0_ = inv.frozen_t0, tF_ = inv.frozen_tF)   # extra_constraints 없음
+    optimize!(milp)
+    if primal_status(milp) != MOI.FEASIBLE_POINT
+        return (ran_milp = true, n_reassigned = 0, status = :infeasible)
+    end
+    ok = commit_respec!(env, milp,
+                        RespecProposal(ConstraintSpec[], "common re-solve (T13)", "smdp-generative");
+                        resume = true)                # 🔴 resume=true — 진행도를 보존한다
+    ok === false && return (ran_milp = true, n_reassigned = 0, status = :commit_failed)
+    after = simstate_of(env).g.binding
+    n = 0
+    for v in union(keys(before), keys(after))
+        get(before, v, -1) == get(after, v, -1) || (n += 1)
+    end
+    return (ran_milp = true, n_reassigned = n, status = :resolved)
 end
 
 """
@@ -305,7 +361,16 @@ function apply_action!(env, ctx, a::Int)
             "release_fallback! 은 production 소비처가 0개다 — 조용히 롤아웃을 이어가지 않는다")
     end
 
-    res = resolve_assignments!(env)        # 공통 MILP 재풀이 — Task T13 이 채운다(지금은 스텁)
+    res = resolve_assignments!(env)        # 공통 MILP 재풀이 (T13) — **모든 팔 뒤에** 돈다
+    # 🔴 반환값을 무시하지 않는다. CLAUDE.md 가 지적한 그 자리다 —
+    #    `run_demo.jl:391` 의 배터리 분기는 `rebalance_for_battery!` 의 판정을 **아예 안 본다**.
+    #    재풀이가 실패했는데 롤아웃을 이어가면 그 뒤의 τ·R 이 전부 없는 계획 위의 값이다.
+    # ⚠️ D-14 가 이 자리를 다시 연다: 재풀이 불능은 버그가 아니라 세계의 사실일 수 있고,
+    #    그러면 예외가 아니라 **terminal 전이**여야 한다(briefs/task-D14-brief.md).
+    res.status === :resolved || error(
+        "apply_action!: 공통 재풀이가 $(res.status) 다 (행동 $(a)($(ActionRegistry.NAME[a])), " *
+        "판정 $(outcome)). 재풀이가 실패한 계획 위에서는 어떤 전이도 의미가 없다 — " *
+        "조용히 롤아웃을 이어가지 않는다")
     update_planning_cache!(env, 0.0)
     rvo_rebuild!(env)                      # ← 반드시 마지막(RVO 는 씬트리의 파생물, spec §5-2)
     return (a = a, outcome = outcome, enacted = (outcome === :admitted),
