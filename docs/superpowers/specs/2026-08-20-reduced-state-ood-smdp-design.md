@@ -8,6 +8,12 @@
 
 ---
 
+
+> 🔴 **2026-08-21 실행 정정 — 아래 §2-3 · §2-6 · §4-1 · §5-6 은 실측으로 정정됐다.**
+> 계획서 A 를 집행하면서 이 문서의 명제 넷이 실측으로 반증됐다. 각 절 안에
+> **🔴 2026-08-21 정정** 블록으로 표시했다. 근거는
+> `.superpowers/sdd/2026-08-21-reduced-state-smdp-action-synthesis/` 의 태스크 보고서와
+> `nondeterminism-investigation.md` 에 있다.
 ## 0. 이 문서가 정하는 것 / 대체하는 것
 
 지도교수 피드백 셋을 반영해 **상태·행동공간·평가·데이터 파이프라인의 정의를 다시 세운다.**
@@ -116,6 +122,26 @@ ablation 이지 출발점이 아니다 — §7.
 "precedence + **배정 엣지**" 라고 적으므로 유도 가능성이 있고, 유도되면 8 → 1 이 더 준다.
 → **측정 의무**. 유도되면 다음 세대에서 뺀다. 이 세대에서는 **유지**한다.
 
+
+#### 🔴 2026-08-21 정정 — §2-3 의 세 명제, 실측 결과
+
+Task R3 이 `tractor.mpd` / 12로봇 / 400스텝에서 쟀다 (`results/smdp/reduction_evidence.json`):
+
+| 명제 | 실측 | 판정 |
+|---|---|---|
+| `active == frontier(closed, edges)` | **1.0** | ✅ `active` 를 뺀 근거는 **참** |
+| `wedge_edges ⊆ edges` | **1.0** | ✅ `wedge_edges` 를 뺀 근거는 **참** |
+| `dissolved_gates` 가 비어 있지 않은 비율 | **NOT_MEASURED** | ⚠️ 아래 |
+| `binding` 이 `edges` 에서 유도되는가 | **0.0** | 🔴 아래 |
+
+- `dissolved_nonempty_frac = 0.0` 은 **"손실이 0"이 아니라 "시험한 적이 없다"** 이다.
+  `UNWEDGE_INTERVAL[] = 2000` > 돌린 400스텝이고, `DISSOLVED_GATES` 의 유일한 writer 가 이 하네스가
+  들어가지 않는 두 시뮬 루프에만 배선돼 있다. 픽스처는 실제로 자주 멈췄다(무진전 최대 연속 22,
+  400 중 314스텝) — 트리거 근처에도 못 갔을 뿐이다. JSON 이 `n_unwedge_fired` 와
+  `dissolved_nonempty_status` 로 그 사실을 나른다.
+- 🔴 `binding_derivable_frac = 0.0` 은 **§10 미해결 4번의 예상과 반대**다. `binding` 은 `s` 에 남는다.
+  다만 정확한 주장은 "binding 은 유도 불가"가 아니라 **"계획서의 1-hop 휴리스틱이 ~21% 에서
+  실패한다"** 이다: 207개 중 163(78.7%) 정확, 20(9.7%) 선행 없음, 24(11.6%) **다른** 로봇 유도.
 ### 2-4. 멤버십이 `role`·`health` 를 대체한다 — 차단 이슈 B 가 여기서 닫힌다
 
 선행 spec §3-4 는 `_hz_excluded()` 의 제외 집합이 `role`+`health` 에서 **유도된다**고 적었고,
@@ -177,6 +203,18 @@ mode_of(s, env, rid)  = _hz_modes 규칙을 active_of(s)·s.g.binding·정적 �
 `integrated_hazard`·`inv_integrated_hazard` 는 `(A, a, Δ)` 만 받으므로 그대로 순수하고,
 §2 의 닫힌 형태를 수치적분과 대조하는 시험도 그대로 선다.
 
+
+#### 🔴 2026-08-21 정정 — §2-6 의 `mode_of` 정의는 **결함이다**
+
+이 절은 `mode` 를 `s.g.binding` 에서 유도한다고 적었다. **틀렸다.**
+`_responsible_robots` 는 **팀 전체**를 돌려주는데 `simstate_of` 는 `binding` 에 **한 명만** 남긴다.
+그래서 나머지 팀원이 `:carry` 대신 `:idle` 로 분류되고, `mult_carry = 2.0` vs `mult_idle = 0.10` →
+**λ 가 정확히 20배 틀린다.** Task T7 이 실측했다(계획서 판 `mode_of` 를 넣으면 시험 24개 실패,
+측정된 비율이 정확히 20.0).
+
+**확정 정의:** *어느 노드가 활성인가* 는 `s`(`active_of(s)`)에서, *그 노드를 누가 맡는가* 는
+`env.sched` 의 `_responsible_robots` 에서 온다. 팀 구성은 하드코딩된 하위 계층의 관할이므로
+§2-1 의 판정 기준상 상태가 아니다. `binding` 은 `Replace` 가 재스탬프하는 그래프 값으로 남는다.
 ### 2-7. 팔의 흔적 대조 (투명해지는 팔이 없는가)
 
 | 팔 | `s` 안의 흔적 |
@@ -270,6 +308,25 @@ T_plan_next(s, env; ρ) = ρ · min{ dur(v) : v ∈ active_of(s), dur(v) > 0 }
 
 ---
 
+
+#### 🔴 2026-08-21 정정 — §4-1 의 "상한 근사" 주장은 **반증됐다**
+
+이 절은 D-6 의 새 rate boundary 를 **상한 근사**라고 적고 크기 판정을 N-G1 에 미뤘다.
+Task T8 이 **모드 상수 구간** 21개에서 쟀다: over/exact/under = **4 / 11 / 6**, 평균비 **0.939** —
+**상한이 아니고 오히려 순 과소추정**이다.
+
+🔴 그리고 안전 방향이 이 절의 서술과 반대다. `sample_sojourn` 은 `min(T_plan_next, …)` 까지 닫힌
+형태로 적분하므로 **과대추정이 해로운 방향**(실제 경계를 넘어 낡은 λ 를 씀)이고 과소추정은 보수적이다.
+
+⚠️ 그리고 이 표의 중앙값 1.000 은 측정값이 아니라 **`dt_sim = 0.025 s` 눈금**이다 — "정확히 1.0"인
+11개가 곧 ≤3스텝 구간 11개이고 두 집합이 일치한다. 분해 가능한 10개만 보면 중앙값 **0.634**.
+관측된 과대(4/21, 최대 5.125배)는 25% 이내로 분해되지만, **양자화 바닥 구간 안에 숨은 추가
+과대추정은 위로 한계가 없다.** N-G1 은 `dt_sim` 보다 고운 분해능 없이는 과대 쪽을 **완전히** 크기
+잴 수 없다.
+
+또한 §4-1 이 세운 불변식 `T_plan_next ≤ T_done` 은 초판 구현에서 **거짓이었다**(활성 정점이 전부
+`dur == 0` 이면 전자가 `Inf`, 후자가 유한). T8 이 `min{finish > 0}` 폴백으로 **구성상 참**이 되게
+복원했고, 이제 `Inf` 는 **"남은 계획 작업이 전부 zero-duration"** 하나만을 뜻한다.
 ### 4-2. D-10 — 심의시간을 0 으로 둔다 (그리고 그렇게 적는다)
 
 `verify()` 는 상태를 안 바꾸지만 **시간은 쓴다** — MILP 시행풀이 한 번 + escalation 이면 LLM
@@ -574,6 +631,27 @@ NOOP 으로 무너진다."*
 
 ---
 
+
+### 🔴 6-6. 2026-08-21 정정 — 재현성: 문서화된 원인이 낡았고, 진짜 원인이 규명됐다
+
+이 문서와 `.claude/CLAUDE.md` 는 런 간 발산의 원인을 `_pick_active_robot` 의 정렬되지 않은 `Set`
+순회로 지목해 왔다. **그 함수는 이미 정렬한다**(`_ordered_active`, `ood_injection.jl:912`).
+
+**실제 원인(실측, 코드 차이 0 대조):** Julia 는 `ConstructionBots` 를 재precompile 할 때마다 새
+모듈 `build_id` 를 발급하고, 그것이 `TypeName.hash` 를 시드한다 → CB 정의 ID 타입의
+`hash`/`objectid` 가 바뀐다 → 그 ID 를 키로 쓰는 `Dict`/`Set` 순회 순서가 바뀐다 →
+`hierarchical_geom_essentials.jl:872` 의 `recurse_child_geometry` 에서 그 순서가 답에 도달한다 →
+**bounding-sphere 적합**이 갈린다 → 물체 격자 배치가 순열 → **배정 DAG 가 갈린다.**
+
+`touch src/ConstructionBots.jl`(0바이트 변경)만으로 makespan 35.225 → 34.950. 한 디렉토리 3회
+반복은 바이트 동일 — **프로세스 수준 비결정성은 없다.**
+
+🔴 **`state_hash` 는 디렉토리/재컴파일을 건너 이식 가능한 키가 아니다.** `prog.closed` 가 **정점
+번호**로 저장되므로 두 세계에서 **같은 해시가 나오면서 실제 닫힌 작업은 다를 수 있다**(실측).
+방향이 반대인 두 실패가 동시에 난다 — 다른 세계가 병합되고, 같은 세계가 병합되지 않는다.
+**트리는 행동 경로로 색인하고, `state_hash` 는 한 디렉토리 안의 진단으로만 쓴다.**
+
+전문: `.superpowers/sdd/2026-08-21-reduced-state-smdp-action-synthesis/nondeterminism-investigation.md`
 ## 7. replay buffer — 표준 uniform 부터
 
 ### 7-1. 저장 단위는 SMDP transition
