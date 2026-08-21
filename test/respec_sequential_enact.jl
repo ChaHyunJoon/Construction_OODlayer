@@ -48,7 +48,11 @@ end
 # zone: root 자신의 하역 목표들 위에 심는다(조립체별 재적치로는 못 비키는 배치 = whole-build
 # 평행이동이 존재하는 이유). tools/tests.jl:test_relocatebuild_parse 의 검증된 레시피 그대로.
 place_zone!() = begin
-    gs = CB.root_deposit_goals(env)
+    # 🔴 `root_deposit_goals` 는 `assembly_components(...)` 를 **정렬 없이** 순회한다
+    #    (restage_zone.jl:346). 부동소수 덧셈은 결합법칙이 성립하지 않으므로 순회 순서가 달라지면
+    #    평균의 마지막 비트가 갈리고, 그러면 구역 중심이 런마다 미세하게 달라진다. 정렬해서 더한다
+    #    (Global Constraint: 모든 Set/Dict 는 정렬해서 쓴다 / 시드 고정 = 완전 재현).
+    gs = sort(CB.root_deposit_goals(env); by = g -> (Float64(g[1]), Float64(g[2])))
     zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
     CB.clear_restriction_zones!()
     CB.add_restriction_zone!(:zone, zc, 2.5)
@@ -176,6 +180,83 @@ end
     @test length(CB.LAST_ENACT_REPORT[]) == 1
     @test CB.LAST_ENACT_REPORT[][1].status === :rejected   # :skipped_line_stop 행이 없다
     CB.release_fallback!()
+end
+
+# =============================================================================
+@testset "[6] 이미 멈춘 라인으로 들어오면 아무것도 집행하지 않는다 (Ruling 1 정정)" begin
+    # 🔴 `RESPEC_HOLD[]` 는 **영구 latch** 다. `release_fallback!`(replan.jl:1459)만 풀 수 있는데
+    #    production 에서 아무도 안 부른다. 그래서 런 중 fallback 이 한 번이라도 걸리면 그 뒤의
+    #    **모든** `maybe_respecify!` 호출이 "이미 멈춘 라인" 위로 들어온다. 전이(latch 순간)만
+    #    보던 초판은 그 구간에서 short-circuit 이 **영영 발동하지 않아** N 개 제약을 전부
+    #    죽은 세계에 집행했다 — first-match-wins 보다 N 배 나쁘다. 지금은 **상태**를 본다.
+    place_zone!()
+    CB.BATTERY_FLEET[].soc[RID] = 0.7
+    before_soc     = soc_of(RID)
+    before_in_zone = in_zone()
+    @test before_in_zone > 0                   # 도메인 비퇴화(항진명제 방지)
+    @test before_soc < 1.0
+
+    CB.engage_fallback!(env)                   # 앞 스텝이 라인을 세워 둔 상태를 재현
+    @test CB.RESPEC_HOLD[] === true
+
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.RelocateBuild(:zone), CB.SwapBattery(RID)]))
+
+    @test st === :fallback
+    @test soc_of(RID)  == before_soc           # 🔴 엔진 효과 0
+    @test in_zone()    == before_in_zone       # 🔴 엔진 효과 0
+    @test CB.ENACT_ORDER_LOG[] == Symbol[]     # 어떤 분기에도 진입하지 않았다
+    rep = CB.LAST_ENACT_REPORT[]
+    @test length(rep) == 2
+    @test all(r -> r.status === :skipped_line_stop, rep)
+    @test sum(r.n for r in rep) == 2           # 그래도 전부 보고된다
+    CB.release_fallback!()
+    @test CB.RESPEC_HOLD[] === false
+end
+
+# =============================================================================
+@testset "[7] 같은 zone 의 ForbidZone 은 RelocateBuild 에 흡수된다 (Ruling 2)" begin
+    # 🔴 `_is_relocate_build` 의 **실측 도메인 규칙**(2026-08-03): 둘 다 실린 제안은 강한 지렛대
+    #    하나만 쓴다. 순차 집행 초판은 우선순위만 지키고 **배타성**을 없애서, 이미 비워진 구역에
+    #    `restage_all_blocked!` 를 한 번 더 돌렸다. 그게 :partial/:infeasible/:residual_blocked 를
+    #    내면 engage_fallback! 로 가므로 — **성공적으로 옮긴 빌드가 잉여 둘째 단위 때문에 영구
+    #    line-stop 될 수 있었다.** 흡수는 조용한 드롭이 아니다: 명시 status 로 기록된다.
+    place_zone!()
+    @test in_zone() > 0
+    @test CB.RESPEC_HOLD[] === false
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.RelocateBuild(:zone), CB.ForbidZone(CB.AssemblyID(1), :zone)]))
+
+    @test st === :admitted                     # 옛 동작 그대로(:partial 로 새지 않는다)
+    @test in_zone() == 0
+    @test CB.ENACT_ORDER_LOG[] == [:relocate]  # zone 분기에 **진입하지 않았다**
+    @test CB.RESPEC_HOLD[] === false           # 잉여 단위가 라인을 세우지 못한다
+    rep = CB.LAST_ENACT_REPORT[]
+    @test length(rep) == 2
+    @test rep[2].kind === :zone && rep[2].status === :subsumed_by_relocate
+    @test sum(r.n for r in rep) == 2           # 불변식 유지 = 조용한 드롭이 아니다
+end
+
+# =============================================================================
+@testset "[8] 하드 스펙과 섞인 DeprioritizeAgent 는 흡수된다 (Ruling 2)" begin
+    # `_is_deprioritize` docstring 의 실측 규칙: 하드 스펙과 섞인 DeprioritizeAgent 는 옛 코드에서
+    # "무해한 no-op" 이었다. 순차 집행이 그걸 **전면 MILP 재풀이 + commit** 으로 바꿔 버렸다.
+    CB.BATTERY_FLEET[].soc[RID] = 0.8
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.SwapBattery(RID), CB.DeprioritizeAgent(RID, 2.0)]))
+    @test st === :admitted
+    @test soc_of(RID) == 1.0                   # 하드 스펙은 집행됐다
+    @test CB.ENACT_ORDER_LOG[] == [:battery]   # deprioritize 분기(재풀이)에 진입하지 않았다
+    rep = CB.LAST_ENACT_REPORT[]
+    @test rep[2].kind === :deprioritize && rep[2].status === :subsumed_by_hard_spec
+    @test sum(r.n for r in rep) == 2
+
+    # 순수 soft 제안은 흡수되지 **않는다**(분류기 직접 검사 — MILP 재풀이 비용을 안 낸다).
+    pure = CB.ConstraintSpec[CB.DeprioritizeAgent(RID, 2.0)]
+    @test CB._subsumption(pure, pure) === nothing
+    # 다른 zone 의 ForbidZone 은 흡수되지 않는다.
+    other = CB.ConstraintSpec[CB.RelocateBuild(:zone), CB.ForbidZone(CB.AssemblyID(1), :other)]
+    @test CB._subsumption(CB.ConstraintSpec[other[2]], other) === nothing
 end
 
 CB.clear_restriction_zones!()

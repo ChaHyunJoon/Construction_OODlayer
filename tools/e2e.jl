@@ -321,7 +321,7 @@ function run_seam_loop(env; cap=250_000, stall_limit=8000)
     for it in 1:cap
         CB.ood_inject_step!(env, it)     # [KO] 예약된 OOD 가 이 스텝이면 발동(NL 을 push_ood!)
         CB.step_environment!(env)        # [KO] 물리 시뮬을 한 스텝 전진(로봇 이동 등)
-        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl run_mock_loop")
+        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl scenario_mock_respec")
         # 🔴 어휘를 여기서 **복제하지 않는다.** 예전엔 `(st in (:admitted,:noop,:fallback,:rejected))`
         #    라는 사본이 있었고, C1 이 `:partial` 을 들여오자 그 사본이 부분 집행을 **말없이 버려서**
         #    "respec 이 발동한 적 없다"로 기록했다. 지금은 `assert_respec_verdict` 가 모르는 값을
@@ -475,7 +475,7 @@ function run_seam_loop(env; cap=120_000, stall_limit=8000)
     for it in 1:cap
         CB.ood_inject_step!(env, it)
         CB.step_environment!(env)
-        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl run_seam_loop")
+        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl scenario_mock_replace")
         # 🔴 여기도 어휘 사본이었다. :noop/:disabled 는 "아무 결정도 없음"이라 기록하지 않지만,
         #    그 외 **모든** 판정(:admitted · :partial · :rejected · :fallback)은 기록한다 —
         #    사본을 두면 새 값이 조용히 :none 으로 남아 아래 check 가 엉뚱한 이유로 빨개진다.

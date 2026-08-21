@@ -211,10 +211,19 @@ _is_robot_replace(p::RespecProposal) = any(c -> c isa ReplaceAgent, p.constraint
     _is_relocate_build(proposal) -> Bool
 
 True iff the proposal carries a `RelocateBuild` — "shift the WHOLE build clear of a no-go
-zone". Checked BEFORE `_is_zone_respec` in `maybe_respecify!` so that a proposal carrying
-both takes the stronger lever: `restage_all_blocked!` can only move assemblies that have
-not started building, and that set is empty from the first batch boundary onward
-(measured 2026-08-03), whereas the whole-build translation has no such precondition.
+zone". `restage_all_blocked!` can only move assemblies that have not started building, and
+that set is empty from the first batch boundary onward (measured 2026-08-03), whereas the
+whole-build translation has no such precondition — so when a proposal carries BOTH, the
+stronger lever is the one that runs.
+
+🔴 **2026-08-21 (C1, 순차 집행): 그 규칙이 이제 "검사 순서"가 아니라 명시적 흡수로 집행된다.**
+예전에는 `if` 사슬의 순서 자체가 배타성을 보장했다(먼저 걸린 분기가 `return` 했으므로).
+순차 집행은 모든 분기를 돌리므로 순서만으로는 배타성이 사라진다 — 그래서 `_subsumption` 이
+**같은 zone** 을 가리키는 `ForbidZone` 단위를 `:subsumed_by_relocate` 로 기록하고 집행하지
+않는다. 그렇게 하지 않으면 이미 비워진 구역에 재적치가 한 번 더 돌고, 그 결과가
+`:partial`/`:infeasible`/`:residual_blocked` 면 `engage_fallback!` 로 가서 **성공적으로 옮긴
+빌드를 잉여 단위가 영구 line-stop 시킨다**(옛 코드에 없던 실패 경로).
+서로 **다른** zone 이면 흡수하지 않는다 — 그 구역에는 진짜 할 일이 있다.
 """
 # 제안에 RelocateBuild(빌드 전체를 구역 밖으로 평행이동)가 하나라도 있으면 true. maybe_respecify! 에서
 # ForbidZone 분기보다 **먼저** 검사한다 — 둘 다 들어있으면 전제조건이 없는 쪽(전체 이동)을 써야 하므로.
@@ -235,8 +244,15 @@ _is_battery_swap(p::RespecProposal) = any(c -> c isa SwapBattery, p.constraints)
 True iff the proposal is composed ONLY of `DeprioritizeAgent`s (a TIER-2 soft re-spec, e.g. a
 battery-degradation OOD). Pure-soft proposals are dispatched specially: we register the bounded
 cost bias and energy-aware re-solve, with NO feasibility risk. A proposal that MIXES a
-DeprioritizeAgent with a hard spec is NOT caught here — it falls through to the relevant hard
-dispatch / generic verify, where the DeprioritizeAgent compiles to a harmless no-op.
+DeprioritizeAgent with a hard spec is NOT caught here — under the pre-2026-08-21 `if` chain it
+fell through to the relevant hard dispatch / generic verify, where the DeprioritizeAgent
+compiled to a harmless no-op.
+
+🔴 **2026-08-21 (C1, 순차 집행): 그 "무해한 no-op" 도 이제 명시적 흡수다.** 순차 집행에서는
+섞인 제안의 `DeprioritizeAgent` 가 **자기 단위**를 얻어 전면 MILP 재풀이 + `commit_respec!` 를
+돌게 된다 — 실패하면 `engage_fallback!` 이다. 옛 동작(아무 일도 안 일어남)을 보존하려고
+`_subsumption` 이 그 단위를 `:subsumed_by_hard_spec` 으로 **기록하고 집행하지 않는다.**
+순수 soft 제안(전부 `DeprioritizeAgent`)은 흡수 대상이 아니며 예전처럼 이 분기가 집행한다.
 """
 # 제안이 "오직 DeprioritizeAgent 들"로만 이뤄졌으면 true(예: 배터리 저하 = TIER-2 soft 재명세). all=전부 참이어야 true.
 _is_deprioritize(p::RespecProposal) =
@@ -308,6 +324,11 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
 반대로 `ReplaceAgent`·`ForbidAgent`·`SwapBattery` 분기는 `first(...)` 로 **하나만** 읽으므로
 단위를 낱개로 쪼개야 N 개가 N 번 집행된다(그게 이 태스크가 고치는 결함이다).
 
+**흡수된 단위는 집계에 들어가지 않는다.** `_subsumption` 이 집행하지 않기로 한 단위는
+`outcomes` 에 기여하지 않는다 — 그건 집행 **결과**가 아니라 "집행하지 않기로 한 결정"이기
+때문이다. 덕분에 `[RelocateBuild(:z), ForbidZone(…, :z)]` 는 옛 코드처럼 `:admitted` 를 낸다
+(잉여 단위를 `:noop` 으로 세면 `:partial` 로 새어 나간다).
+
 **N 개의 결과 → Symbol 하나 (집계 규칙, `_aggregate_enact`)** — 우선순위대로 첫 일치:
 
     1. 하나라도 :fallback  → :fallback   (전역 line-stop 은 latch 된다. 가장 강한 사실)
@@ -316,10 +337,25 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
     4. 하나라도 :rejected  → :rejected
     5. 그 외(전부 :noop)   → :noop
 
-이 규칙은 **N = 1 에서 항등**이다(특례가 아니라 정리다: 단일 결과 s 에 대해 1~5 를 순서대로
-따라가면 언제나 s 가 나온다). 그래서 제약 하나짜리 제안의 반환값 계약은 예전과 **바이트 동일**
-하고, 기존 호출부(`respec_step!` → `tools/demos.jl:1296` · `tools/e2e.jl:326` ·
-`tools/tests.jl:379`)는 그대로 동작한다.
+🔴 **N = 1 항등 정리 — 정확한 정의역** (2026-08-21 정정). 규칙 1~5 는 결과가 하나뿐일 때
+언제나 그 하나를 그대로 돌려준다(특례가 아니라 정리다). 다만 그 정리가 `maybe_respecify!` 의
+**반환값**으로 이어지는 정의역은 다음이다:
+
+> **진입 시 `RESPEC_HOLD[] == false`**(= 라인이 돌고 있다)**인 경우에 한해**, 제약이 하나인
+> 제안의 반환값은 순차 집행 이전과 동일하다.
+
+라인이 이미 멈춰 있으면 LINE-STOP GATE 가 집계보다 먼저 `:fallback` 을 돌려주므로 항등이
+아니다. **이 약화는 의도된 것이고 무해하다**: 멈춘 라인 위에서는 반환값이 가리킬 "집행"이라는
+것이 존재하지 않으므로, 그 구간에서 옛 반환값을 재현하는 것은 재현이 아니라 **거짓말**이다.
+반환값에 의미가 있는 유일한 구간이 곧 정리의 정의역이다.
+
+정의역 안에서는 기존 호출부(`respec_step!` → `tools/demos.jl:1296` · `tools/e2e.jl` 의 두 루프 ·
+`tools/tests.jl:379`)가 전부 그대로 동작한다.
+
+⚠️ **완전한 바이트 동일은 아니다**: `invariant = build_invariant(env)` 가 producer/LLM 생성
+**이전**에서 `_enact_one!` 안(생성 **이후**)으로 옮겨졌다. 기본 LLM 경로에서는 무해하지만,
+`env` 를 **변경하는** `producer` 를 꽂으면 그 변경이 예전에는 invariant 에 안 잡히고 지금은
+잡힌다. 지금 레포의 producer(baselines·정책)는 전부 읽기 전용이라 실측상 차이가 없다.
 
 ⚠️ `:partial` 은 **새로 생길 수 있는 값**이고 제약 2개 이상인 제안에서만 나온다.
 판정 어휘의 단일 진실원은 `RESPEC_VERDICTS` 이고, 호출부는 그것을 **복제하지 말고**
@@ -327,17 +363,30 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
 (`tools/e2e.jl` 의 `run_mock_loop`/`run_seam_loop`)이 실제로 `:partial` 을 말없이 버려
 "respec 이 발동한 적 없다"로 기록하고 있었다(C1 감사, 2026-08-21). 둘 다 고쳤다.
 
-🔴 **LINE-STOP SHORT-CIRCUIT (Ruling 1).** 집행 중 `RESPEC_HOLD[]` 가 latch 되면(= 어떤
-단위가 `engage_fallback!` 을 불렀으면) **남은 단위를 집행하지 않고 멈추고 `:fallback` 을
-돌려준다.** 근거: line-stop 은 정의상 라인의 끝이다. 그 뒤에 집행되는 제약은 **영영 실행되지
-않을 세계**를 편집하고, 그렇게 만들어진 `s` 는 일어나지 않는 전이를 가리킨다 — 이 계획의 전제
-(`s` 가 실제 전이를 색인한다) 자체가 깨진다. 부수 효과로 순차 집행의 새 실패 모드가
-first-match-wins **보다 나쁘지 않아진다**(fallback 최대 1회, 그 뒤로 아무것도 집행 안 됨).
-latch 판정은 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 한다(아래 참조). 건너뛴 단위는
-`LAST_ENACT_REPORT[]` 에 `status = :skipped_line_stop` 으로 **명시 기록**되므로
+🔴 **LINE-STOP GATE — 멈춘 라인에는 아무것도 집행하지 않는다.** 각 단위를 집행하기 **전에**
+`RESPEC_HOLD[]` 를 본다. 서 있으면 그 단위와 남은 단위 전부를 `:skipped_line_stop` 으로
+기록하고 `:fallback` 을 돌려준다. **latch 가 방금 걸렸든 몇 스텝 전에 걸렸든 똑같이.**
+
+근거: line-stop 은 정의상 라인의 끝이다. 그 뒤에 집행되는 제약은 **영영 실행되지 않을 세계**를
+편집하고, 그렇게 만들어진 `s` 는 일어나지 않는 전이를 가리킨다 — 이 계획의 전제(`s` 가 실제
+전이를 색인한다) 자체가 깨진다. 지키는 불변식은 **현재 상태**의 성질이지 전이의 성질이 아니다.
+
+⚠️ **왜 "전이 감지"로는 안 되는가 (2026-08-21 실측).** `RESPEC_HOLD[]` 는 **영구 latch** 이고
+`release_fallback!` 만이 푸는데 **production 에서 아무도 부르지 않는다**(`respec_step!` 도
+`RESPEC_ENABLED[]` 만 본다). 그래서 런 중 fallback 이 한 번 걸리면 그 뒤 **모든** 호출이 이미
+멈춘 라인 위로 들어온다. 진입 전후를 비교하던 초판은 그 구간에서 **영영 발동하지 않았고**,
+제약 N 개를 전부 죽은 세계에 집행했다 — first-match-wins 보다 N 배 나쁘다. 실측(시험 [6] RED):
+멈춘 라인 위에서 `:admitted` 를 돌려주며 `soc 0.7→1.0`, `in_zone 66→0`.
+
+⚠️ **의도된 동작 변화**: 한 번 latch 되면 `maybe_respecify!` 는 이후 매 호출 **즉시 `:fallback`**
+이 된다(집행 0건). 정직한 보고다 — 라인이 실제로 멈춰 있다 — 지만 분명한 동작 변화다.
+latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다: 거부 분기의 다수는
+`engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate·zone·replace·generic),
+거꾸로 reform 과 deprioritize 는 latch **없이** `:rejected` 를 낸다. Symbol 로 키를 잡으면
+앞은 놓치고 뒤는 거짓 발동한다.
+
+건너뛴 단위는 `LAST_ENACT_REPORT[]` 에 `:skipped_line_stop` 으로 **명시 기록**되므로
 `sum(r.n)` 불변식이 유지된다 — 조용한 건너뜀이 아니다.
-short-circuit 은 남은 단위가 있을 때만 일어나므로 **단위가 2개 이상일 때만** 발동한다.
-따라서 위의 N = 1 항등 정리는 그대로 성립한다.
 
 🔴 **반환 Symbol 은 line-stop 여부의 신호가 아니다 — `RESPEC_HOLD[]` 가 유일한 진실원이다.**
 이건 C1 이 만든 성질이 아니라 원래 그랬다: 예전에도 relocate/zone/replace/generic 의 거부
@@ -540,6 +589,53 @@ function _enact_units(constraints::AbstractVector{<:ConstraintSpec})
 end
 
 """
+    _subsumption(unit, all_constraints) -> Union{Nothing,Symbol}
+
+이 집행 단위가 **다른 제약에 의해 이미 처리되므로 집행하지 않아야 하는가**. 집행하지 않으면
+그 사유 Symbol 을, 정상 집행이면 `nothing` 을 낸다.
+
+🔴 **왜 이게 필요한가 — 우선순위와 배타성은 다르다.** dispatch 사슬의 두 자리는 단순한 검사
+순서가 아니라 **실측으로 정해진 도메인 규칙**이었고, 순차 집행 초판은 우선순위만 지키고
+배타성을 없애 버렸다:
+
+1. `RelocateBuild(:z)` + `ForbidZone(…, :z)` — `_is_relocate_build` docstring 의 2026-08-03 실측:
+   조립체별 재적치(`restage_all_blocked!`)는 "아직 시작 안 한 조립체"만 옮길 수 있고 그 집합은
+   첫 배치 경계에서 비어 다시 안 찬다. 그래서 둘 다 실린 제안은 **강한 지렛대 하나만** 쓴다.
+   둘 다 집행하면 이미 비워진 구역에 재적치를 한 번 더 돌리는데, 그게
+   `:partial`/`:infeasible`/`:residual_blocked` 를 내면 `engage_fallback!` 로 간다 —
+   **성공적으로 옮긴 빌드가 잉여 둘째 단위 때문에 영구 line-stop 된다.** 옛 코드에는 없던
+   실패 경로다.
+2. `DeprioritizeAgent` + 하드 스펙 — `_is_deprioritize` docstring: 섞인 제안은 이 분기에 안 걸리고
+   하드 dispatch 로 떨어져 "DeprioritizeAgent 는 무해한 no-op 으로 컴파일된다". 초판은 그걸
+   **전면 MILP 재풀이 + `commit_respec!`** 로 바꿔 버렸다(실패 시 역시 fallback).
+
+**흡수는 조용한 드롭이 아니다.** C1 의 명령은 "어떤 제약도 **조용히** 버려지지 않는다" 이지
+"모든 제약이 반드시 무언가를 집행한다" 가 아니다. 흡수된 단위는 `LAST_ENACT_REPORT[]` 에
+사유가 적힌 행으로 남고 `sum(r.n) == length(proposal.constraints)` 불변식도 유지된다 —
+감사 가능한 명명된 결과다. 잉여 단위를 집행하는 쪽은 옛 동작보다도, 목표보다도 **엄격히 나쁘다.**
+
+사유:
+- `:subsumed_by_relocate`  — 단위의 **모든** `ForbidZone` 이 같은 제안의 어떤 `RelocateBuild` 와
+  **같은 zone** 을 가리킨다. 일부만 겹치면 흡수하지 않는다(나머지 구역은 진짜 할 일이 있다).
+- `:subsumed_by_hard_spec` — 순수 soft 가 아닌 제안 안의 `DeprioritizeAgent` 단위.
+
+정렬된 `Vector` 로만 판정한다 — `Set`/`Dict` 순회 없음(Global Constraint).
+"""
+function _subsumption(unit::AbstractVector{<:ConstraintSpec},
+                      all_constraints::AbstractVector{<:ConstraintSpec})
+    kind = _enact_kind(first(unit))
+    if kind === :zone
+        rb_zones = sort!(unique(Symbol[c.zone for c in all_constraints if c isa RelocateBuild]);
+                         by = string)
+        isempty(rb_zones) && return nothing
+        all(c -> c isa ForbidZone && c.zone in rb_zones, unit) && return :subsumed_by_relocate
+    elseif kind === :deprioritize
+        any(c -> !(c isa DeprioritizeAgent), all_constraints) && return :subsumed_by_hard_spec
+    end
+    return nothing
+end
+
+"""
     _aggregate_enact(outcomes) -> Symbol
 
 집행 단위별 결과 N 개를 반환용 Symbol 하나로 접는다. 우선순위대로 첫 일치:
@@ -667,47 +763,56 @@ function maybe_respecify!(env, ood_queue;
     ENACT_ORDER_LOG[]   = Symbol[]
     LAST_ENACT_REPORT[] = NamedTuple[]
     outcomes = Symbol[]
-    units       = _enact_units(proposal.constraints)
-    # 🔴 line-stop 이 **이 호출에서** 걸렸는지를 보려면 진입 시점 값을 남겨 둬야 한다.
-    #    이미 서 있던 라인(앞 스텝이 세웠고 아무도 release 안 함)까지 여기서 처리하지는 않는다 —
-    #    그건 이 태스크 밖의 의미 결정이고, 순차 집행 이전 동작도 그랬다. 명시적 선택이다.
-    hold_before     = RESPEC_HOLD[]
+    units           = _enact_units(proposal.constraints)
     short_circuited = false
     for (i, unit) in enumerate(units)
-        one = RespecProposal(unit, proposal.rationale, proposal.source_event)
-        st  = _enact_one!(env, one; id_resolver = id_resolver, optimizer = optimizer)
-        push!(LAST_ENACT_REPORT[],
-              (kind = _enact_kind(unit[1]), status = st, n = length(unit)))
-        push!(outcomes, st)
-        # --- line-stop short-circuit (Ruling 1) --------------------------------
-        # `engage_fallback!` 은 `RESPEC_HOLD[]` 를 **latch** 한다 = 라인은 여기서 끝이다.
-        # 그 뒤에 집행되는 제약은 **영영 실행되지 않을 세계**를 편집한다. 그렇게 만들어진 s 는
-        # 일어나지 않는 전이를 가리키므로, 이 계획의 목적(= s 가 실제 전이를 색인한다) 자체를 깬다.
-        # 그래서 남은 단위를 집행하지 않고 멈춘다. 이렇게 하면 새 실패 모드가 first-match-wins
-        # 보다 **나쁘지 않다**(fallback 최대 1회, 그 뒤로는 아무것도 집행 안 됨).
-        # 판정 어휘가 아니라 `RESPEC_HOLD[]` 를 본다 — 거부 분기 다수가 `engage_fallback!` 을
-        # 부른 **뒤** `:rejected` 를 돌려주므로 Symbol 로는 latch 를 알 수 없다.
-        if RESPEC_HOLD[] && !hold_before && i < length(units)
+        # --- line-stop gate (Ruling 1, 정정판) ----------------------------------
+        # 🔴 **상태를 본다. 전이가 아니다.** `engage_fallback!` 은 `RESPEC_HOLD[]` 를 latch 하고
+        #    `release_fallback!`(이 파일 하단) 만이 푸는데 **production 에서 아무도 안 부른다**
+        #    (`respec_step!` 도 `RESPEC_ENABLED[]` 만 본다). 그래서 런 중 fallback 이 한 번이라도
+        #    걸리면 그 뒤 **모든** 호출이 "이미 멈춘 라인" 위로 들어온다. 초판은 latch 의 **순간**만
+        #    감지해서(hold_before 비교) 그 구간에서 영영 발동하지 않았고, N 개 제약을 전부 죽은
+        #    세계에 집행했다 — first-match-wins 보다 N 배 나쁘다(실측: 시험 [6] 의 RED 는
+        #    `:admitted` 를 돌려주면서 soc 0.7→1.0, in_zone 66→0 을 만들었다. 멈춘 라인 위에서).
+        #    지금 지키는 불변식은 하나다: **멈춘 라인에는 어떤 제약도 집행하지 않는다.**
+        #    latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다 — 거부 분기의 다수가
+        #    `engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate/zone/replace/generic),
+        #    거꾸로 reform(`:1207`)·deprioritize(`:1235`)는 latch 없이 `:rejected` 를 낸다.
+        #    Symbol 로 키를 잡으면 앞은 놓치고 뒤는 거짓 발동한다.
+        if RESPEC_HOLD[]
             # 건너뛴 단위도 **명시적 status 로 보고**한다 — 조용한 건너뜀이면 이 태스크가 고친
             # 결함이 그대로 되살아난다. `sum(r.n)` 불변식도 그대로 유지된다.
-            for skipped in units[i+1:end]
+            for skipped in units[i:end]
                 push!(LAST_ENACT_REPORT[],
                       (kind = _enact_kind(skipped[1]), status = :skipped_line_stop,
                        n = length(skipped)))
             end
             short_circuited = true
-            @warn "[RESPEC] line-stop engaged mid-proposal -> " *
-                  "$(length(units) - i) remaining unit(s) NOT enacted " *
+            @warn "[RESPEC] line is STOPPED (RESPEC_HOLD) -> " *
+                  "$(length(units) - i + 1) unit(s) NOT enacted " *
                   "(a stopped line never executes them; see LAST_ENACT_REPORT[])"
             break
         end
+        # --- 흡수(subsumption): 집행하지 않되 **기록한다** (Ruling 2) --------------
+        sub = _subsumption(unit, proposal.constraints)
+        if sub !== nothing
+            push!(LAST_ENACT_REPORT[], (kind = _enact_kind(unit[1]), status = sub,
+                                        n = length(unit)))
+            @info "[RESPEC] unit $(_enact_kind(unit[1])) subsumed ($(sub)) -> not enacted (recorded)"
+            continue        # outcomes 에는 안 넣는다 — 집행 결과가 아니라 "집행하지 않기로 한 결정"
+        end
+        one = RespecProposal(unit, proposal.rationale, proposal.source_event)
+        st  = _enact_one!(env, one; id_resolver = id_resolver, optimizer = optimizer)
+        push!(LAST_ENACT_REPORT[],
+              (kind = _enact_kind(unit[1]), status = st, n = length(unit)))
+        push!(outcomes, st)
     end
     @info "[RESPEC] enacted $(length(outcomes)) unit(s) over " *
           "$(length(proposal.constraints)) constraint(s) -> " *
           string([(r.kind, r.status) for r in LAST_ENACT_REPORT[]])
-    # short-circuit 이 실제로 일어났다면 반환은 `:fallback` 이다(집계보다 우선). 이 분기는
-    # `i < length(units)` 를 지났을 때만 참이므로 **단위가 2개 이상일 때만** 도달한다 —
-    # 즉 N = 1 항등 정리는 그대로 성립한다(단일 제약의 반환값 계약이 안 바뀐다).
+    # 라인이 멈춰 있어서 집행을 건너뛰었다면 반환은 `:fallback` 이다(집계보다 우선).
+    # 라인이 도는 동안에는 이 분기가 도달 불가능하므로 아래 집계의 N=1 항등은 그 정의역에서
+    # 그대로 성립한다(정확한 정의역 서술은 이 함수 docstring 의 "N = 1 항등" 절 참조).
     short_circuited && return :fallback
     return _aggregate_enact(outcomes)
 end
