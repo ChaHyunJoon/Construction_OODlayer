@@ -145,7 +145,7 @@ ablation 이지 출발점이 아니다 — §7.
 `SwapBattery` 직후의 `s⁺` 가 `NOOP` 직후와 같다(배송 나간 예비는 `_hz_excluded()` 로 빠지고,
 나머지 7필드 중 어느 것도 안 움직인다).
 
-> 🔴 **트립와이어.** Phase 7(MCTS)이 transposition table 또는 `state_hash` 기반 노드 병합을
+> 🔴 **트립와이어.** Phase 8(MCTS)이 transposition table 또는 `state_hash` 기반 노드 병합을
 > 도입하면 `SwapBattery` 자식과 `NOOP` 자식이 한 노드로 합쳐진다. 그때는 **비행 중 배송을
 > 나르는 필드를 `s` 에 되돌려야 한다.** 표준 MCTS 는 경로 색인이라 그 전까지는 필요 없다.
 > CLAUDE.md 가 이미 `state_hash` 기반 병합을 금지하고 있다(생산 소비처 0개).
@@ -188,7 +188,7 @@ mode_of(s, env, rid)  = _hz_modes 규칙을 active_of(s)·s.g.binding·정적 �
 
 ---
 
-## 3. 사용자 결정 (D-1 ~ D-7)
+## 3. 사용자 결정 (D-1 ~ D-8)
 
 | # | 결정 | 무엇이 걸려 있나 |
 |---|---|---|
@@ -199,6 +199,7 @@ mode_of(s, env, rid)  = _hz_modes 규칙을 active_of(s)·s.g.binding·정적 �
 | **D-5** | **`drain_sigma = 0.0`** | 🔴 **신규.** `eff`(ε_r)를 상태에서 빼려면 동역학에서 먼저 없애야 한다 — §3-1 |
 | **D-6** | **rate boundary 를 `t0` 경과가 아니라 미완 노드의 계획 duration 에서 낸다** | 🔴 **신규.** 완료 보고서 §4-1 차단 이슈 A 의 해소 경로 — §4 |
 | **D-7** | **창고 예비는 충분하다** | 🔴 **신규.** 예비 재고를 상태·행동 메뉴에서 뺀다 — §3-2 |
+| **D-8** | **행동 신설을 L2 까지 허용한다** | 🔴 **신규(2026-08-21).** 제약 문법 + 파라미터 자유 원시연산을 LLM 에 노출하고, 재사용 우선 규칙을 둔다 — §5 |
 
 ### 3-1. D-5 — `eff` 를 상태에서 빼는 유일하게 정직한 방법
 
@@ -267,50 +268,112 @@ T_plan_next(s, env; ρ) = ρ · min{ dur(v) : v ∈ active_of(s), dur(v) > 0 }
 
 ---
 
-## 5. 행동공간은 두 층이다
+## 5. 행동공간 — 세 층과 신설의 3단 사다리
 
-### 5-1. `L_macro` 와 `L_dsl`
+### 5-1. 세 층
 
 | | 무엇 | 누가 쓰나 |
 |---|---|---|
-| **`L_macro`** | `action_registry.json` 의 4팔 (`v3-4arms`). **`L_dsl` 에 파라미터를 고정한 투영** | surrogate · `Ĵ(a)` · MCTS 트리 |
-| **`L_dsl`** | `RespecProposal{constraints::Vector{ConstraintSpec}, rationale, source_event}` | LLM escalation |
+| **`L_macro`** | `action_registry.json` 의 4팔 (`v3-4arms`) | surrogate · `Ĵ(a)` · MCTS 트리 |
+| **`L_dsl`** | `RespecProposal{constraints::Vector{ConstraintSpec}, …}` — 이름 붙은 kind 들 | LLM escalation (오늘) |
+| **`L_prim`** | 🔴 **신규.** MILP 제약 문법 + 파라미터 자유 수술 원시연산 | LLM 이 **신설**할 때 (§5-4·5-5) |
 
-`llm_service/schema.py` 가 LLM 에 허용하는 출력은 팔 번호가 아니라
-`{"constraints": [ {<kind>}, ... ], "rationale": str}` 이고, `compiler.jl` 이 MILP 제약으로
-컴파일하거나 `replan.jl` 이 기하/그래프 수술로 dispatch 하고, `verifier.jl` 의 게이트 7개가
-집행 전에 판정한다. **"제약을 만들고 → 컴파일하고 → 검증한다" 는 이미 구현돼 있다.**
+`L_macro` 는 `L_dsl` 에 파라미터를 고정한 투영이고, `L_dsl` 의 각 kind 는 `L_prim` 위의 **이름
+붙은 지름길**이다. OOD 대응은 `L_prim` 에서 일어난다.
 
-### 5-2. `L_dsl` 이 오늘 실제로 무엇인가 (전수 대조)
+### 5-2. 🟢 `verify()` 는 이미 kind 무관이다 — 신설의 안전장치가 이미 있다
 
-| kind | 상태 | 대응 사건 |
-|---|---|---|
-| `ReplaceAgent` | ✅ | fault |
-| `SwapBattery` | ✅ | battery |
-| `RelocateBuild` | ✅ | zone |
-| `ForbidZone` | ❌ **도메인 공집합** — `closed≈46` 부터 `n_restage_feasible == 0`, 이후 전부 조용한 no-op | (zone, 죽음) |
-| `ReformTeam` | ❌ 은퇴. 복구가 `maybe_unwedge_nominal!` 로 명목 레인에 이관 | — |
-| `ForbidAgent` | ❌ **삭제 대상** — §5-3 | fault |
-| `ForbidWindow` | ❌ **삭제 대상** — §5-3 | — |
-| `DeprioritizeAgent` | ⏸ 제안 338 · **선택 0회**. 이슈 D 가 닫히면 재평가 | `cell`(degraded-but-alive) |
+`verifier.jl:83-125` 의 일반 `verify(proposal, env, invariant)` 가 하는 일 넷:
 
-**살아 있는 kind 는 셋이고 사건 셋과 1:1 이다.**
+```
+(1) GRAMMAR      cs isa ConstraintSpec
+(2) STATIC       referenced_ids(cs) ∩ invariant.closed_nodes == ∅   (과거를 안 건드린다)
+(3) FEASIBILITY  formulate_milp(…; extra_constraints = proposal) → optimize! → FEASIBLE_POINT
+(4) INVARIANT    satisfies_invariant(milp, env, invariant)
+```
 
-### 5-3. `ForbidAgent` · `ForbidWindow` 를 삭제한다
+**넷 중 어느 것도 kind 를 안 본다.** MILP 로 컴파일되는 제약이면 무엇이든 이 검증을 통과해야
+하고, 통과하면 안전하다. 실측 확인: `verifier.jl` 에 `verify_forbid_window` 도
+`verify_forbid_agent` 도 **없다** — 그 둘은 처음부터 일반 검증만 받았다.
 
-**`ForbidWindow`** — `llm_bridge.jl:274` 가 은퇴 사유를 *"대응할 물리가 없다"* 로 적어 두었다.
-시간창 회피는 **예정된 시간적 위험**이 있을 때 의미가 있는데, 사건 셋은 전부 도착 시점이
-확률변수다. 대응할 사건이 없다.
+kind별 게이트(`verify_zone` · `verify_relocate` · `verify_replace` · `verify_swap_battery` ·
+`verify_deprioritize` · `verify_reform`)가 따로 있는 이유는 그것들이 **MILP 에 도달하지 않는
+기하/그래프 수술**이라 feasibility 로 검사할 수 없기 때문이다.
 
-**`ForbidAgent`** — D-7 이 이것을 지배한다. `ForbidAgent` 는 고장 로봇을 금지하고 **남은
-로봇에게 재분배**하고, `ReplaceAgent` 는 **`usage_s = 0` 인 새 로봇**을 투입한다. 예비가 항상
-있으면 후자가 약우월하다 — 마모 0 인 로봇을 얻는데 남은 로봇의 `usage_s` 를 더 올릴 이유가
-없다. 존재 이유였던 "예비가 없을 때의 차선책" 이 가정으로 사라졌다.
+> **귀결**: 제약 티어의 행동 신설은 **오늘 이미 안전하게 검증된다.** 없는 것은 검증이 아니라
+> **문법의 노출**이다.
 
-> `spec_dsl.jl` · `schema.py` · `compiler.jl` 에서 두 kind 를 **제거한다.** LLM 이 낼 수 없게.
-> 어휘의 단일 진실원 규약과 일관된다.
+### 5-3. 신설의 3단 사다리
 
-### 5-4. 🔴 진짜 합성 gap — `maybe_respecify!` 는 first-match-wins 다
+| 수준 | 무엇 | 오늘 | 검증 |
+|---|---|---|---|
+| **L1** 파라미터 grounding | 어느 zone · 어느 로봇 · 어느 조립체 | ✅ | kind별 게이트 |
+| **L2** 제약/기전 신설 | `(t0, tF, Xa)` 위의 아무도 안 짠 제약식 · 파라미터가 자유로운 수술 | 🔧 §5-4 · §5-5 | 🟢 일반 `verify()` + 일반 기하 검증기 |
+| **L3** 기전 자체의 신설 | 코드에 없는 새 조작 | ❌ | — |
+
+**L3 는 코드 생성 없이는 어떤 시스템도 못 한다.** 이것은 이 프로젝트의 한계가 아니라 범위의
+선언이고, 그렇게 적는다. **L2 가 이 논문의 자리다.**
+
+### 5-4. L2-a — MILP 제약 문법
+
+`ForbidWindow` 와 `ForbidAgent` 는 **별개의 kind 가 아니라 같은 문법의 두 인스턴스**다:
+
+```
+ForbidWindow(v, t_lo, t_hi)  ≡  tF[v] ≤ t_lo  ∨  t0[v] ≥ t_hi        (Big-M 이접)
+ForbidAgent(r)               ≡  Xa[v,v2] = 0   ∀ frontier 후보 엣지
+```
+
+🔴 **선행 판단 정정.** 이 문서의 초판은 두 kind 를 **삭제**하자고 적었다(매크로로서 죽었다는
+근거로). 그 판단은 **철회한다** — 삭제하면 §5-2 의 일반 검증을 받는 **유일한 티어**가 통째로
+사라진다. 매크로 어휘 `L_macro` 에서 빠지는 것은 그대로이고(이미 `v3-4arms` 에 없다),
+`L_prim` 에서는 **문법의 인스턴스로 남는다.**
+
+노출할 문법 (최소):
+
+```
+Constraint := Linear | Disjunction | Fix
+Linear     := Σ cᵢ·Var ⋛ b            Var ∈ {t0[v], tF[v], Xa[v,v2]}
+Disjunction:= Linear ∨ Linear          (Big-M 으로 컴파일)
+Fix        := Xa[v,v2] = 0 | 1
+```
+
+- 노드·엣지·로봇은 **프롬프트가 준 목록에서 echo** 한다(좌표·id 를 지어내지 않는다 —
+  `schema.py` 가 이미 강제하는 규약).
+- `compile_constraint!` 의 기존 두 메서드가 이 문법의 백엔드가 된다.
+- 검증은 **아무것도 새로 안 짠다**. `verify()` 그대로다.
+
+### 5-5. L2-b — 수술 티어의 원시연산 노출
+
+🔴 `RelocateBuild(zone)` 은 action 이 아니라 **solver 다.** 실측
+(`restage_zone.jl:768-779`):
+
+```julia
+function translate_whole_build!(env; zone_keys = …, resume, verbose)
+    Δ = _find_min_translation(env; zone_keys)          # ← Δ 를 함수가 스스로 찾는다
+    Δ === nothing && (Δ = _find_clear_translation(fc, fR, env; zone_keys))
+    _apply_uniform_translation!(env, Δ)                # ← 진짜 원시연산은 이것
+```
+
+"빌드를 옮긴다" 는 결정과 "Δ 를 찾는" 알고리즘이 한 덩어리다. 그래서 LLM 에 `RelocateBuild` 를
+주면 그것은 **감춰 둔 매크로를 도로 고르는 것**이지 신설이 아니다.
+
+> **원시연산을 그대로 노출한다**: `TranslateBuild(dx, dy)`.
+> `_apply_uniform_translation!(env, Δ)` 이 이미 그 시그니처다.
+
+귀결 넷:
+1. known 세계(fault · battery)는 이 원시연산을 **한 번도 쓰지 않는다**
+2. zone 사건에서 LLM 은 프롬프트의 ZONES 기하를 보고 **"빌드가 비켜야 하고 이만큼이면 된다"를
+   스스로 유도**해야 한다
+3. 검증은 **일반 기하 검증기**가 한다 — 옮긴 배치가 모든 zone 을 벗어나는가 · 도달 가능한가 ·
+   `build_invariant` 를 지키는가. kind 를 안 본다
+4. 🟢 **`_find_min_translation` 이 baseline 이 된다.** LLM 의 Δ 와 알고리즘의 최소 Δ 를 비교하는
+   측정이 공짜로 생긴다
+
+같은 방식으로 노출 가능한 원시연산이 더 있다(`restage_assembly!` · `replace_robot!` 의 그래프
+splice). **이 세대에서는 `TranslateBuild` 하나만 연다** — zone 이 유일한 OOD 이므로 필요한 것이
+그 하나이고, 나머지는 근거 없이 표면적을 넓히는 것이다.
+
+### 5-6. 🔴 합성 gap — `maybe_respecify!` 는 first-match-wins 다
 
 `replan.jl:452 · 529 · 679 · 798 · 898` 의 다섯 dispatch 분기가 **각각 `return` 한다.** 그래서
 
@@ -320,27 +383,44 @@ RespecProposal([RelocateBuild(:z3), ReplaceAgent(R7)])
     → ReplaceAgent 는 조용히 버려진다
 ```
 
-`constraints` 가 벡터인데 집행은 하나뿐이다. **이것이 합성이 죽어 있는 실제 이유이고, 여기엔
-죽은 매크로가 하나도 안 끼어 있다** — 살아 있는 kind 셋만으로 발생한다.
-
-그리고 이것이 OOD 평가와 정확히 맞물린다: test-only 4 case 중 **셋(`fault_zone` ·
-`battery_zone` · `all`)이 다중 사건 epoch** 다. 순차 집행이 없으면 그 세 case 에서 LLM 이 무엇을
+`constraints` 가 벡터인데 집행은 하나뿐이다. 여기엔 죽은 매크로가 하나도 안 끼어 있다 —
+살아 있는 kind 셋만으로 발생한다. 그리고 test-only 4 case 중 **셋(`fault_zone` ·
+`battery_zone` · `all`)이 다중 사건 epoch** 라, 순차 집행이 없으면 그 세 case 에서 LLM 이 무엇을
 내든 하나만 먹힌다.
 
 **순차 집행의 두 요구:**
-1. **순서 규칙** — 기하 수술(`RelocateBuild`) → 그래프 수술(`ReplaceAgent`) → 배송(`SwapBattery`),
+1. **순서 규칙** — 기하(`TranslateBuild`) → 그래프(`ReplaceAgent`) → 배송(`SwapBattery`),
    `rvo_rebuild!` 는 **맨 끝**(선행 spec §5-2 의 핀 경고).
 2. 🔴 **제약마다 직전 재검증** — `verify_*` 는 집행 전 상태에서 판정한다. 첫 집행이 둘째의
    전제조건을 무효화할 수 있고, 조용히 지나가면 `already_clear` / `:residual_blocked` 류의
    **무성 no-op** 이 된다.
 
-### 5-5. "LLM 이 새 action 을 만든다" 의 정직한 내용
+### 5-7. 재사용 우선 규칙 (사용자 결정 D-8)
 
-| 축 | 오늘 성립하나 |
-|---|---|
-| **파라미터 grounding** — 어느 zone · 어느 조립체 · 어느 로봇 | ✅ 무한 행동공간. `schema.py` 가 "프롬프트가 준 ZONES 목록에서 echo, 좌표를 지어내지 마라" 로 grounding 을 강제 |
-| **다중 제약 동시 집행** — 닫힌 4팔로는 표현 불가능한 조합 | 🔧 §5-4 를 고치면 성립 |
-| **kind 신설** | ❌ 불가. `spec_dsl.jl` 이 단일 진실원. **과장하지 않는다** |
+> 신설이 목적이 아니다. LLM 은 **먼저 기존 매크로로 대응 가능한지 판단하고**, 가능하면 그것을
+> 쓰고, 아니면 `L_prim` 에서 합성한다.
+
+이 규칙은 프롬프트에 명시되고 **양방향 지표로 측정된다**:
+
+| 지표 | known 3 case 에서 | zone case 에서 |
+|---|---|---|
+| 합성률 (`L_prim` 사용 비율) | **낮아야 한다** — 높으면 과잉 합성 | **높아야 한다** |
+| 재사용률 (`L_macro` 사용 비율) | 높아야 한다 | **낮아야 한다** — 높으면 탐지 실패 |
+
+한 지표쌍이 양방향 음성 대조를 동시에 준다.
+
+### 5-8. `L_dsl` 이 오늘 실제로 무엇인가 (전수 대조)
+
+| kind | 상태 | 대응 사건 |
+|---|---|---|
+| `ReplaceAgent` | ✅ | fault |
+| `SwapBattery` | ✅ | battery |
+| `RelocateBuild` | ✅ 이지만 **solver 다** — `L_prim` 의 `TranslateBuild` 로 분해(§5-5) | zone |
+| `ForbidZone` | ❌ **도메인 공집합** — `closed≈46` 부터 `n_restage_feasible == 0`, 이후 전부 조용한 no-op | (zone, 죽음) |
+| `ReformTeam` | ❌ 은퇴. 복구가 `maybe_unwedge_nominal!` 로 명목 레인에 이관 | — |
+| `ForbidAgent` | 🔧 매크로로는 죽음(D-7 이 `ReplaceAgent` 로 지배). **문법 인스턴스로 존속**(§5-4) | fault |
+| `ForbidWindow` | 🔧 대응 사건 없음. **문법 인스턴스로 존속**(§5-4) | — |
+| `DeprioritizeAgent` | ⏸ 제안 338 · **선택 0회**. 이슈 D 가 닫히면 재평가 | `cell`(degraded-but-alive) |
 
 ---
 
@@ -354,18 +434,22 @@ RespecProposal([RelocateBuild(:z3), ReplaceAgent(R7)])
 |---|---|---|
 | **known (학습)** | `fault` · `battery` · `fault_battery` | 라벨셋 · surrogate 가 보는 세계 |
 | **OOD (순수)** | `zone` | 가장 깨끗한 판정 |
-| **OOD (혼합)** | `fault_zone` · `battery_zone` · `all` | known + OOD 동시 도착. §5-4 가 필요한 자리 |
+| **OOD (혼합)** | `fault_zone` · `battery_zone` · `all` | known + OOD 동시 도착. §5-6 이 필요한 자리 |
 
-### 6-2. 🔴 따라오는 것 — `RelocateBuild` 가 support 에서 사라진다
+### 6-2. known 세계에서 무엇이 사라지는가 — 매크로가 아니라 **기전 전체**다
 
-`zone` 을 라벨에서 빼면 `RelocateBuild` 도 같이 사라진다(zone 의 유일한 개입 팔). surrogate 의
-support 가 `{0, 1, 3}` 이 되고 zone 사건에서 그 팔을 **고를 수 없다.**
+`zone` 을 빼면 다음이 전부 known 세계 밖으로 나간다:
 
-**이것은 결함이 아니라 설계 의도다.** OOD 사건에 known 정책이 쓸 수단이 없어야 escalation 이
-의미를 갖는다. 다만 CLAUDE.md 2026-08-14 절이 기록한 **실패 모양과 겉모습이 똑같다**
-(*"support 가 `{0,1,2,7,8}` 이라 reform 에서 NOOP 밖에 못 골랐다"*). 그때는 버그였고 지금은
-의도다 — **산출물 도장에 `train_kinds` 축을 추가**해 그 차이를 기계가 읽게 한다. 안 하면 다음
-사람이 "surrogate 가 zone 에서 약하다" 를 성능 결함으로 오독한다.
+1. `RelocateBuild` 매크로 (surrogate support 가 `{0, 1, 3}` 이 된다)
+2. 🔴 **`TranslateBuild` 원시연산도** — known 레인은 빌드를 옮기는 기전을 **한 번도 쓰지 않는다**
+3. `RESTRICTION_ZONES` 를 읽는 어떤 대응도
+
+즉 known 세계의 정식 서술은 **"제조 현장에서 일어나는 일은 로봇 고장과 배터리 방전 둘뿐이다"**
+이고, 대응은 `Replace` · `SwapBattery` 둘뿐이다. zone 은 그 세계관 **밖에서** 도착한다.
+
+**이것이 결함이 아니라 설계 의도다.** 다만 CLAUDE.md 2026-08-14 절이 기록한 실패 모양과
+겉모습이 같다(*"support 가 `{0,1,2,7,8}` 이라 reform 에서 NOOP 밖에 못 골랐다"*). 그때는
+버그였고 지금은 의도다 — **산출물 도장에 `train_kinds` 축을 추가**해 기계가 그 차이를 읽게 한다.
 
 ### 6-3. 탐지는 decision-space 기준 (랩미팅 합의 #2)
 
@@ -377,27 +461,32 @@ severity 임계값을 쓰지 않는다. **split conformal**:
 
 임계값이 사라지고 **α(위험 예산)** 하나만 남는다. 그것이 "원칙적" 이라는 말의 내용이다.
 
-### 6-4. escalation 경로 — 문지기를 우회해야 한다
+⚠️ zone 사건에서는 `L_macro` 의 팔이 `{NOOP, Replace, SwapBattery}` 뿐이라 **셋 다 나쁘고 서로
+비슷하다**. 구간 겹침이 그 상황을 자연스럽게 잡아내는 것이 이 설계의 기대이고, 그것이
+실제로 성립하는지가 N-G6 의 첫 축이다.
+
+### 6-4. escalation 경로 — 문지기를 우회해 `L_prim` 으로 간다
 
 🔴 `ood_mdp_shim.action_to_proposal` 이 `a in valid_actions(ctx) || return nothing` 으로 거른다.
 CLAUDE.md: *"팔 메뉴가 아니라 문지기다. fault 가 리터럴 `[0,1]` 인 한 매크로 4 를 시켜도 조용히
 NOOP 으로 무너진다."*
 
 > escalation 은 **`action_to_proposal` 을 우회**해 `RespecProposal` 을 직접 만들고
-> `verify` → `maybe_respecify!` 로 간다. 그러지 않으면 escalate 해 놓고 닫힌 어휘로 되떨어진다.
+> `verify` → `maybe_respecify!`(순차 집행판) 으로 간다. 그러지 않으면 escalate 해 놓고
+> 닫힌 어휘로 되떨어진다.
 
 🔴 그리고 `DSPY_PROGRAM=__seed_only__` 를 못박는다. 컴파일된 `dspy_real_program_gpt4o.json` 은
-**battery 전용이라 zone·RelocateBuild 어휘가 없다**(CLAUDE.md). 안 맞추면 LLM 이 zone 에
-실패했을 때 **추론 실패인지 어휘 부재인지 구분이 안 된다.**
+**battery 전용이라 zone 어휘가 없다**(CLAUDE.md). 안 맞추면 LLM 이 zone 에 실패했을 때
+**추론 실패인지 어휘 부재인지 구분이 안 된다.**
 
-### 6-5. 프롬프트가 명시해야 할 것 넷
+### 6-5. 프롬프트가 명시해야 할 것 다섯
 
 1. 알려진 매크로로 대응이 안 되는 사건일 수 있다는 **선언**
-2. `L_dsl` 문법 **+ 각 kind 의 전제조건**(`schema.py` docstring 이 이미 담고 있다 —
-   `RelocateBuild` 는 *"zone 의 `covers_root` 가 true 일 때만, 하위 조립체 staging 을 덮었다는
-   이유로는 내지 마라"* 까지)
-3. **ZONES 섹션** — 활성 구역 키와 기하. grounding 의 유일한 출처
-4. `constraints` 가 **벡터**라 여러 제약을 **합성**할 수 있다는 것
+2. **재사용 우선 규칙**(§5-7) — 기존 매크로로 되면 그것을 쓴다
+3. `L_prim` 문법 — MILP 제약 문법(§5-4) + `TranslateBuild(dx, dy)`(§5-5), 그리고 각각의
+   **전제조건**(`schema.py` docstring 이 이미 담고 있는 수준)
+4. **ZONES 섹션** — 활성 구역의 키와 기하 `(cx, cy, r)`. grounding 의 유일한 출처
+5. `constraints` 가 **벡터**라 여러 제약·연산을 **합성**할 수 있다는 것
 
 ---
 
@@ -469,11 +558,12 @@ uniform 이 well-studied 한 바닥이고, 층화·우선순위는 "없을 때 �
 | **N-G0′** | `simstate_of` 가 env 를 충실히 읽는가 (7필드 음성 대조) | Phase 1R |
 | **N-G1** | `sample_sojourn` 이 dt-루프와 같은 분포인가 (KS) | Phase 2 |
 | **N-G2** | ρ 보정 뒤 팔 **순위**가 보존되는가 (Kendall τ) | Phase 2 |
-| **N-G3** | 모델 λ 가 관측 도착률과 맞는가 (Poisson CI + χ²) | Phase 4 |
+| **N-G3** | 모델 λ 가 관측 도착률과 맞는가 (Poisson CI + χ²) | Phase 5 |
 | **N-G4** | RVO 가 씬트리의 파생물인가 | Phase 3 |
 | **N-G5** | 보상이 epoch 위로 가법적인가 | Phase 3 |
-| **N-G6** | leave-one-failure-type-out — §8-1 | Phase 5 |
+| **N-G6** | leave-one-failure-type-out — §8-1 | Phase 6 |
 | **N-G7** | 다중 제약 집행이 단독과 **다른 결과**를 내는가 | Phase 4 |
+| **N-G8** | 문법 왕복 — 문법으로 쓴 제약이 기존 kind 와 **같은 MILP 제약**을 만드는가 | Phase 4 |
 
 ### 8-1. N-G6 은 escalation률만 재면 안 된다
 
@@ -487,6 +577,10 @@ uniform 이 well-studied 한 바닥이고, 층화·우선순위는 "없을 때 �
 4. **`L_macro` 음성 대조** — 같은 판을 4팔만으로 굴리면 NOOP 뿐인가
 5. **known 3 case 의 escalation률이 α 근처인가** — 0 이면 구간이 너무 넓고, 높으면 conformal
    미교정
+6. 🔴 **합성률 · 재사용률의 양방향 대조**(§5-7) — known 에서 합성률이 높으면 과잉 합성이고,
+   zone 에서 재사용률이 높으면 탐지 실패다. 한 지표쌍이 양쪽 음성 대조를 동시에 준다
+7. **LLM 의 Δ 대 baseline Δ** — `_find_min_translation` 이 낸 최소 이동과 비교한다(§5-5). 신설이
+   "되긴 됐다" 와 "잘 됐다" 를 가른다
 
 ### 8-2. 게이트를 짜는 규칙
 
@@ -496,41 +590,48 @@ uniform 이 well-studied 한 바닥이고, 층화·우선순위는 "없을 때 �
 ### 8-3. 도장
 
 이 문서가 가르는 축 셋:
-- **D-5**(`drain_sigma`) · **D-6**(rate boundary) · `ForbidAgent`/`ForbidWindow` 삭제 →
-  동역학·어휘가 갈린다 → `generation` bump + `vocab` bump
+- **D-5**(`drain_sigma`) · **D-6**(rate boundary) → 동역학이 갈린다 → `generation` bump
+- **D-8**(`L_prim` 노출) → 행동공간이 갈린다 → `vocab` bump
 - **train_kinds** → 산출물 도장에 **새 축**을 추가한다. 기존 도장 어느 것도 이 축을 못 나른다
 
 ---
 
 ## 9. 순서와 의존성
 
-**계획서 A — SMDP 생성 시뮬레이터**
+**계획서 A — SMDP 생성 시뮬레이터 + 행동 신설**
 
 | Phase | 태스크 | 요지 |
 |---|---|---|
 | **1R** | R1 `SimState` 26→7 · R2 `simstate_of`+N-G0′ · R3 축소 근거 3건 실측 · R4 갈래 비용 재측정 | R3 = §2-3 (c)(d) + `active` 불변식 |
 | **2** | 6′ hazard 손잡이(D-3·D-4·**D-5**) · 7′ `rates.jl` · 8′ `tplan.jl`(**D-6**) · 9′ `sojourn.jl`(이슈 C·D·E) · 10 ρ | 임계 경로 |
 | **3** | 11 `rvo_rebuild!` · 12′ `generative.jl`(D-7 가드, 이슈 F) · 13 공통 재풀이 · 14 N-G5 | |
-| **4** | C1 순차 집행 · C2 두 kind 삭제 · C3 N-G7 · C4 워치독 재설정 · C5 λ 교정(N-G3) | §5-4. C4 는 선행 계획 Task 15 에서 **예비 축을 뺀 것**(D-7) — 워치독만 남는다 |
+| **4** | C1 순차 집행 · C2 MILP 제약 문법(L2-a) · C3 `TranslateBuild`(L2-b) · C4 일반 기하 검증기 · C5 N-G7 · C6 N-G8 | §5. **D-8 의 집행** |
+| **5** | C7 워치독 재설정 · C8 λ 교정(N-G3) | C7 은 선행 계획 Task 15 에서 **예비 축을 뺀 것**(D-7) |
 
 **계획서 B — OOD layer + closed loop**
 
 | Phase | 태스크 | 요지 |
 |---|---|---|
-| **5** | O1 라벨 분할 · O2 conformal · O3 escalation 배선 · O4 프롬프트 · O5 N-G6 | §6 |
-| **6** | B1 버퍼 · B2 counterfactual 적재 · B3 재학습 루프 | §7 |
+| **6** | O1 라벨 분할 · O2 conformal · O3 escalation 배선 · O4 프롬프트 5항목 · O5 N-G6 | §6 |
+| **7** | B1 버퍼 · B2 counterfactual 적재 · B3 재학습 루프 | §7 |
 
-**Phase 7 (MCTS)** 는 별도 계획으로 남는다. §2-5 의 트립와이어를 그 계획이 물려받는다.
+**Phase 8 (MCTS)** 는 별도 계획으로 남는다. §2-5 의 트립와이어를 그 계획이 물려받는다.
+
+**의존성 두 개만 기억하면 된다**: Phase 4 는 Phase 3(공통 재풀이)이 있어야 제약이 실제로 해에
+반영된다. Phase 6 은 Phase 4 가 있어야 escalation 이 `L_prim` 에 닿는다.
 
 ---
 
 ## 10. 이 문서가 주장하지 않는 것 · 미해결
 
 1. **7필드가 충분하다고 주장하지 않는다.** 손실 압축을 명시적으로 허용했고(§2-3 (c)), 그 손실이
-   실제로 아프면 트리 노드 키 설계(Phase 7)가 되돌린다. 되돌릴 조건은 §2-5 에 적었다.
+   실제로 아프면 트리 노드 키 설계(Phase 8)가 되돌린다. 조건은 §2-5 에 적었다.
 2. **D-6 의 rate boundary 근사가 정확하다고 주장하지 않는다.** 상한 근사이고 N-G1 이 판정한다.
-3. **LLM 이 kind 를 신설할 수 있다고 주장하지 않는다**(§5-5).
-4. **미해결**: `binding` 이 `edges` 에서 유도되는가(§2-3 (d)) · `dissolved_gates` 손실 크기 ·
+3. 🔴 **L3(기전 자체의 신설)은 못 한다**(§5-3). 코드에 없는 조작은 코드 생성 없이 만들 수 없고,
+   그것은 이 프로젝트의 한계가 아니라 **범위의 선언**이다. `L_prim` 이 여는 것은 L2 까지다.
+4. **`TranslateBuild` 말고 다른 원시연산은 이 세대에서 안 연다**(§5-5). zone 이 유일한 OOD 이므로
+   필요한 것이 그 하나이고, 나머지는 근거 없이 표면적을 넓히는 것이다.
+5. **미해결**: `binding` 이 `edges` 에서 유도되는가(§2-3 (d)) · `dissolved_gates` 손실 크기 ·
    `DeprioritizeAgent` 를 `cell` 사건에 되살릴 것인가 · ρ 가 스칼라 하나로 충분한가 ·
-   갈래 비용의 RVO 재구축분.
-5. **범위 밖**: `cell_mild_*` degraded 세대의 hazard 파라미터 · MCTS · surrogate feature 설계.
+   갈래 비용의 RVO 재구축분 · MILP 제약 문법의 표현력 상한(어떤 대응이 문법 밖인가).
+6. **범위 밖**: `cell_mild_*` degraded 세대의 hazard 파라미터 · MCTS · surrogate feature 설계.
