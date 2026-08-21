@@ -23,6 +23,7 @@
 # =============================================================================
 using ConstructionBots, Test
 import Random
+import JSON3
 const CB = ConstructionBots
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
@@ -367,9 +368,25 @@ end
     @test_throws ErrorException CB.T_plan_next(s_bad, env)            # 다른 세계의 정점
 end
 
-@testset "RHO 는 잠정 기본값이고 키워드가 그것을 읽는다" begin
+@testset "RHO 는 적합된 값이고 키워드가 그것을 읽는다" begin
+    # 🔴 2026-08-21 (T10): 이 단언의 **뜻이 바뀌었다.** 예전엔 "아직 아무도 안 채운 잠정값"
+    #    이었고, 지금은 "`tools/monitor/fit_rho.jl` 이 노드 소요시간에 적합한 값" 이다.
+    #    값이 같은 것은 우연이 아니라 측정 결과다(tplan.jl 의 `RHO` docstring 이 근거 전부를
+    #    적는다). 그래서 아래에서 **산출물과 대조**한다 — 값 하나만 보면 "T10 이 안 돌았다" 와
+    #    "T10 이 돌았고 1.0 이 나왔다" 가 구분되지 않기 때문이다.
     @test CB.RHO isa Ref{Float64}
-    @test CB.RHO[] == 1.0                       # T10(N-G2)이 채우기 전의 잠정값
+    @test CB.RHO[] == 1.0                       # 적합값(fit_rho.jl → results/smdp/rho.json)
+    let path = joinpath(@__DIR__, "..", "results", "smdp", "rho.json")
+        if isfile(path)
+            rj = JSON3.read(read(path, String))
+            @test abs(Float64(rj["rho"]) - CB.RHO[]) <= 1e-12   # 두 출처가 갈리면 빨강
+            @test rj["fit_rule"] == "median(actual/planned) over closed vertices with planned > 0"
+            @test rj["meta"]["ng1_consulted"] == false          # 게이트에 맞춘 교정이 아니다
+            @info "T8/T10 RHO 출처" rho=CB.RHO[] n_nodes=rj["n_nodes"] p10=rj["ratio_p10"] p90=rj["ratio_p90"] file=rj["meta"]["file"]
+        else
+            @warn "results/smdp/rho.json 이 없다 — RHO 의 출처를 대조하지 못했다" path
+        end
+    end
     s2 = state_with_active(s_end, [first(sort(POS; by = dur))])
     old = CB.RHO[]
     try
