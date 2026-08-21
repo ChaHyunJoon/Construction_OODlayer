@@ -231,10 +231,57 @@ end
     ms = CB.modes_of(S0, env)
     per = [CB.mode_power_W(BP, ms[k]) for k in sort!(collect(keys(S0.fleet)))]
     @info "T9 energy_between 집계" n_fleet=length(per) per_robot_W=string(per) max_single_W=maximum(per) sum_W=sum(per) e1=e1
+    # 🔴 이 픽스처에는 고장 로봇이 없으므로 population 항이 0 이다 — **그 사실을 단언한다**,
+    #    안 그러면 아래 등식이 population 항을 우연히 안 태우고 통과한다.
+    @test CB._n_charged_outside_fleet(S0) == 0
     @test e1 ≈ sum(per) * 1.0
     @test e1 > maximum(per) * 1.0 + 1e-9      # 한 대만 세는 구현은 여기서 죽는다
     @test length(S0.fleet) >= 2               # 위 단언이 항진명제가 아닌가
     @test_throws ErrorException CB.energy_between(S0, env, -1.0, BP)
+end
+
+# =============================================================================
+# 🔴 T14/N-G5 Step 0 — population 불일치 (T12 리뷰 Important 1)
+#
+# `energy_between` 은 `s.fleet` 만 합산했는데, 엔진은 `keys(fleet.soc) \ parked` 전원에게
+# 대기전력을 부과한다(`battery.jl:242-246`). `s.fleet` 는 거기서 **고장 로봇까지** 더 빼므로
+# (`_hz_excluded() = parked ∪ faulted`), 고장 발생 ~ Replace 사이의 모든 전이가
+# `idle_W × |고장| × Δ` 만큼 **과소계상**한다.
+#
+# 여기서는 진짜 고장을 주입하지 않고 **기전을 직접 겨냥한다**: `s.fleet` 에서 로봇을 하나 빼면
+# (= 엔진은 과금하는데 s 는 모르는 상태) 에너지가 정확히 `idle_W` 만큼 **늘어야** 한다.
+# =============================================================================
+@testset "🔴 N-G5 Step 0 — 엔진이 과금하는데 s.fleet 에 없는 로봇이 계상된다" begin
+    ks = sort!(collect(keys(S0.fleet)))
+    @test length(ks) >= 2                       # 하나 빼도 남는 게 있어야 한다(항진 방지)
+
+    dropped = first(ks)
+    fleet2  = Dict(k => S0.fleet[k] for k in ks if k != dropped)
+    S_drop  = CB.SimState(g = S0.g, geo = S0.geo, fleet = fleet2, prog = S0.prog)
+
+    # s 가 로봇 하나를 잃으면 "엔진이 과금하는데 s 밖" 인구가 정확히 1 늘어야 한다
+    @test CB._n_charged_outside_fleet(S_drop) == CB._n_charged_outside_fleet(S0) + 1
+
+    e_full = CB.energy_between(S0,     env, 1.0, BP)
+    e_drop = CB.energy_between(S_drop, env, 1.0, BP)
+
+    # 빠진 로봇의 원래 모드 전력은 빠지고, 대신 idle_W 가 들어온다
+    ms   = CB.modes_of(S0, env)
+    lost = CB.mode_power_W(BP, ms[dropped])
+    @info "N-G5 Step 0 population 항" dropped_mode=ms[dropped] lost_W=lost idle_W=BP.idle_W e_full=e_full e_drop=e_drop
+    @test e_drop ≈ (e_full - lost + BP.idle_W) rtol = 1e-12
+
+    # 🔴 음성 대조: 수정 전 구현(= population 항 없음)이면 e_drop == e_full - lost 다.
+    #    그 값과 **다른가**. 다르지 않으면 이 시험은 아무것도 안 지킨다.
+    @test !isapprox(e_drop, e_full - lost; rtol = 1e-12)
+    @test BP.idle_W > 0.0                       # 위 비교가 공허하지 않은가
+
+    # 🔴 음수 방향(= 두 정의가 예상 밖으로 어긋남)은 조용히 0 으로 접지 않는다.
+    #    s.fleet 에 유령 로봇을 넣어 엔진 과금 집합보다 크게 만들면 죽어야 한다.
+    ghost = Dict(S0.fleet)
+    ghost[maximum(ks) + 12345] = first(values(S0.fleet))
+    S_ghost = CB.SimState(g = S0.g, geo = S0.geo, fleet = ghost, prog = S0.prog)
+    @test_throws ErrorException CB._n_charged_outside_fleet(S_ghost)
 end
 
 @testset "🔴 조용한 폴백 금지" begin

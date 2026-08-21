@@ -223,7 +223,51 @@ function energy_between(s::SimState, env, Δ::Float64, bp::BatteryParams)
         haskey(modes, k) || error("energy_between: 로봇 $(k) 의 모드가 없다")
         tot += mode_power_W(bp, modes[k])
     end
+    tot += bp.idle_W * _n_charged_outside_fleet(s)   # 아래 참조 (T12 리뷰 Important 1)
     return tot * Δ
+end
+
+"""
+    _n_charged_outside_fleet(s::SimState) -> Int
+
+**엔진이 대기전력을 부과하는데 `s.fleet` 에는 없는 로봇 수.** 실질적으로 = 고장 로봇 수.
+
+🔴 **왜 이게 필요한가 (T12 리뷰 Important 1, 이 세션이 독립 확인).** 두 모집단이 다르다:
+
+| | 정의 | 코드 |
+|---|---|---|
+| 엔진이 과금하는 집합 | `keys(fleet.soc) \\ parked` | `battery.jl:242-246` |
+| `s.fleet` | `keys(fleet.soc) \\ _hz_excluded()` | `simstate_of` (spec §2-4) |
+
+`parked = active_spares() ∪ checked_out_spares()` 이고
+`_hz_excluded() = parked ∪ keys(faulted_robots())` 이므로 **차집합이 정확히 고장 로봇**이다.
+그리고 그 상태는 `Replace` 가 치울 때까지 지속되므로, 고치지 않으면 **고장 발생 ~ Replace
+사이의 모든 전이가 `idle_W × |고장| × Δ` 만큼 에너지를 과소계상한다.**
+
+⚠️ 이건 **근사가 아니라 모집단 정의 불일치**다 — 런타임에 정확히 셀 수 있으므로 허용오차로
+덮지 않는다. (`mode_power_W` 의 `team=1, m_payload=0, speed=v_ref` 기본값은 **선언된 근사**라
+별개다. T7 잔차 (A) 가 그 크기를 재고, 게이트 N-G5c 가 그것을 진단으로 다룬다 —
+`briefs/task-T14-ng5-redefinition.md`.)
+
+🔴 **델타를 덧붙이지 않고 엔진과 같은 방식으로 유도한다.** "고장 로봇을 더한다"로 적으면
+`_hz_excluded()` 의 구성이 바뀌는 날 조용히 갈린다. 여기서는 두 집합의 **크기 차**를 직접 재고,
+음수가 나오면(= 두 정의가 예상 밖 방향으로 어긋남) **죽는다**.
+
+`BATTERY_FLEET[]` 가 없으면 0 이다 — 함대가 없으면 엔진도 아무에게도 과금하지 않는다.
+"""
+function _n_charged_outside_fleet(s::SimState)
+    fleet = BATTERY_FLEET[]
+    fleet === nothing && return 0
+    parked = Set{Any}()
+    try union!(parked, active_spares())      catch; end
+    try union!(parked, checked_out_spares()) catch; end
+    n_charged = count(id -> !(id in parked), keys(fleet.soc))
+    n_extra   = n_charged - length(s.fleet)
+    n_extra >= 0 || error(
+        "energy_between: 엔진 과금 집합($(n_charged))이 s.fleet($(length(s.fleet)))보다 작다 — " *
+        "`_hz_excluded()` 와 `battery.jl` 의 parked 정의가 예상 밖 방향으로 어긋났다. " *
+        "0 으로 접지 않는다")
+    return n_extra
 end
 
 # --- 표집 --------------------------------------------------------------------
