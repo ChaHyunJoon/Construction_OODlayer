@@ -729,3 +729,123 @@ end
 unknown_rhs_heads(root::AbstractString; extra_files::AbstractVector{<:AbstractString}=String[]) =
     [h for h in rhs_heads(root; extra_files=extra_files) if !(h in KNOWN_RHS_HEADS)]
 
+
+# =============================================================================
+# 롤아웃 경계 리셋 (2026-08-21, 사용자 결정 D-13 의 단서 · briefs/task-D13R-brief.md)
+#
+# 🔴 **왜 필요한가.** `RESPEC_HOLD[]` 는 프로세스 전역 **영구 래치**이고 그것을 푸는
+#    production 호출자가 0 개다(그게 D-13 의 설계다). MCTS 는 한 프로세스·한 디렉토리에서
+#    `G(s,a)` 를 수천 번 부르므로(§4: "트리는 한 디렉토리 안에서 굴린다"), **fallback 을 한 번
+#    밟은 롤아웃이 그 뒤 전부를 오염시킨다** — 에러가 아니라 "아무것도 안 움직이는 세계"로.
+#
+#    실측(2026-08-21): 시험 파일을 **파일당 별도 프로세스**로 돌리면 22/22 PASS 인데, 같은
+#    파일들을 **한 프로세스**에서 연달아 돌리면 5 개가 실패한다. `respec_grammar.jl` 이
+#    `RESPEC_HOLD = true` 를 남기고 그 다음 두 파일이 던지며, `smdp_tplan.jl` 의 비퇴화 단언은
+#    `NDIST_A >= 2` 에서 `1 >= 2` 로 깨진다(= 활성집합이 트레이스 내내 안 바뀐다 = 라인이 서 있다).
+#
+#    계획서 A 의 Global Constraint 는 이 누수를 **이미 알고** 프로세스 격리로 우회했다.
+#    트리는 그 우회를 쓸 수 없다(프로세스를 가르면 세계가 갈린다). **여기서 격리를 프로세스가
+#    아니라 명시적 리셋으로 얻는다.**
+#
+# 🔴 **기준선은 "모듈 초기값"이 아니라 "트리 시작 시점"이다.** 이게 이 설계의 핵심 판단이다.
+#    `VALID_ID_COUNTERS` 를 모듈 초기값(빈 Dict)으로 되돌리면 **setup 단계에서 이미 발급된 id 를
+#    가진 살아 있는 객체들과 충돌한다** — 그 카운터는 에피소드 중 실제로 전진한다(핫스왑 경로가
+#    `RobotStart(RobotNode(...))` 를 만들면서 `get_unique_id` 를 탄다, 위 :VALID_ID_COUNTERS 항목의
+#    라이브 프로브 참조). 반대로 **아예 안 되돌리면** id 가 롤아웃마다 단조 증가해 N 번째 롤아웃이
+#    1 번째와 다른 세계를 보게 된다 — §4 가 규명한 바로 그 결함 부류(id hash → Dict 순회 순서 →
+#    기하)다. 그래서 기준선을 **호출자가 잡는다**: 환경 셋업이 끝나고 트리가 시작되기 직전.
+#
+# ⚠️ `:setup` 은 **절대 건드리지 않는다.** 특히 `RHO`/`DRAIN_DT` — 위 두 항목이 적어 둔 대로,
+#    리셋이 그것을 되돌리면 T10 이 적합한 값이 매 롤아웃마다 버려지고 λ 가 **에러 없이** 틀린다.
+# =============================================================================
+
+"기준선. `capture_state_baseline!()` 가 채운다. `nothing` 이면 아직 안 잡힌 것이고, 그 상태의 리셋은 **에러**다."
+const _STATE_BASELINE = Ref{Union{Nothing,Dict{Symbol,Any}}}(nothing)
+
+"`Ref` 는 내용물이, 나머지는 객체 자체가 스냅샷 대상이다."
+_snapshot_of(x::Base.RefValue) = x[]
+_snapshot_of(x) = x
+
+_restore_into!(x::Base.RefValue, v) = (x[] = deepcopy(v); nothing)
+_restore_into!(x::AbstractDict, v)  = (empty!(x); merge!(x, deepcopy(v)); nothing)
+_restore_into!(x::AbstractSet, v)   = (empty!(x); union!(x, deepcopy(v)); nothing)
+_restore_into!(x::AbstractVector, v)= (empty!(x); append!(x, deepcopy(v)); nothing)
+function _restore_into!(x, v)                      # 가변 struct (예: OODQueue)
+    ismutable(x) || error("_restore_into!: $(typeof(x)) 는 가변이 아니다 — 리셋할 수 없다")
+    for f in fieldnames(typeof(x))
+        setfield!(x, f, deepcopy(getfield(v, f)))
+    end
+    return nothing
+end
+
+"""
+    resettable_state_globals() -> Vector{Symbol}
+
+리셋 대상. 처분이 `:state` 또는 `:split` 이면서 **이 모듈 안에서 해석되는** 이름 전부.
+표에서 유도하므로 손으로 나열한 목록이 뒤처지는 사고가 구조적으로 불가능하다
+(`tools/demos.jl` 의 `clear_*!` 여섯 줄이 정확히 그 사고였다 — `RESPEC_HOLD` 가 거기 없다).
+"""
+resettable_state_globals() =
+    sort!([k for (k, v) in STATE_GLOBALS
+           if (v === :state || v === :split) && isdefined(@__MODULE__, k)]; by = string)
+
+"""
+    unresettable_state_globals() -> Vector{Symbol}
+
+처분은 `:state`/`:split` 인데 **이 모듈 밖**에 사는 이름(= `run_demo.jl`/`policy.jl` 의 스크립트
+지역 전역). 여기서는 되돌릴 수 없으므로 호출자가 책임진다.
+🔴 이 목록이 **커지면 시험이 죽는다** — 새 에피소드 상태가 모듈 밖에 생겼다는 뜻이고, 그러면
+트리가 그것을 리셋하지 못한 채 돈다.
+"""
+unresettable_state_globals() =
+    sort!([k for (k, v) in STATE_GLOBALS
+           if (v === :state || v === :split) && !isdefined(@__MODULE__, k)]; by = string)
+
+"""
+    capture_state_baseline!() -> Int
+
+지금의 `:state`/`:split` 전역 값을 기준선으로 잡는다. 잡은 개수를 돌려준다.
+
+**언제 부르는가:** 환경 셋업이 끝나고 **트리(또는 롤아웃 루프)가 시작되기 직전** 한 번.
+모듈 로드 시점이 아니다 — 위 헤더의 `VALID_ID_COUNTERS` 논증 참조.
+"""
+function capture_state_baseline!()
+    d = Dict{Symbol,Any}()
+    for k in resettable_state_globals()
+        d[k] = deepcopy(_snapshot_of(getfield(@__MODULE__, k)))
+    end
+    _STATE_BASELINE[] = d
+    return length(d)
+end
+
+"기준선이 잡혀 있는가."
+state_baseline_captured() = _STATE_BASELINE[] !== nothing
+
+"""
+    reset_state_globals!() -> Int
+
+`:state`/`:split` 전역을 기준선으로 되돌린다. 되돌린 개수를 돌려준다.
+
+🔴 기준선이 없으면 **죽는다.** 모듈 초기값으로 조용히 폴백하지 않는다 — 그 폴백은
+`VALID_ID_COUNTERS` 를 빈 Dict 로 만들어 살아 있는 객체와 id 를 충돌시키고, 그 사고는
+**에러 없이 다른 세계**로 나타난다(이 레포가 반복해서 데인 모양).
+
+⚠️ `:setup` 은 건드리지 않는다 — `RHO`·`DRAIN_DT` 의 적합값이 살아남아야 한다.
+"""
+function reset_state_globals!()
+    b = _STATE_BASELINE[]
+    b === nothing && error(
+        "reset_state_globals!: 기준선이 없다. `capture_state_baseline!()` 를 셋업 직후 · 트리 " *
+        "시작 직전에 먼저 부를 것. 모듈 초기값으로 폴백하지 않는다 — VALID_ID_COUNTERS 가 " *
+        "빈 Dict 가 되어 살아 있는 객체와 id 가 충돌하고, 그 사고는 에러 없이 다른 세계로 " *
+        "나타난다(state_globals.jl 의 롤아웃 리셋 헤더 참조)")
+    n = 0
+    for (k, v) in b
+        isdefined(@__MODULE__, k) || error(
+            "reset_state_globals!: $(k) 가 기준선에는 있는데 지금 모듈에 없다 — 기준선이 다른 " *
+            "세계에서 잡혔다")
+        _restore_into!(getfield(@__MODULE__, k), v)
+        n += 1
+    end
+    return n
+end
