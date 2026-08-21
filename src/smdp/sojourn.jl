@@ -103,6 +103,12 @@ end
 
 rate boundary 를 **넘지 않는** 전진. `Δ > T_plan_next(s, env)` 면 **죽는다** — 조용히 넘어가면
 닫혀야 할 노드가 안 닫힌 채 시간만 흐르고, 그 뒤 모든 λ 가 틀린 모드에서 계산된다.
+
+⚠️ **소비처가 0개다** (2026-08-21 수정 1라운드에 기록). 계획서 T9 의 `Produces` 목록에 있어서
+만들었고 `test/smdp_sojourn.jl` 이 계약을 못박지만, `sample_sojourn` 은 경계를 넘을 때
+`_cross_boundary` 를 쓰고 이 함수를 부르지 않는다. **T13/T14 가 결정 epoch 사이의 부분 전진에
+이걸 쓰거나, 아니면 다음 브리프가 이 함수를 은퇴시켜야 한다** — 소비처 없는 API 를 계약만
+지킨 채 남겨 두면 다음 세대가 "누군가 쓰겠지" 로 읽는다.
 """
 function advance_to(s::SimState, env, Δ::Float64, bp::BatteryParams)
     (isfinite(Δ) && Δ >= 0.0) ||

@@ -59,8 +59,28 @@ CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 #
 # 🔴 이 숫자들 중 어느 것도 다른 디렉토리에서 잰 잔차가 아니다. `K_α` 는 KS 분포의 상수,
 #    `g` 는 지수분포의 항등식, `N`·`r_min` 은 이 프로세스가 지금 들고 있는 값이다.
-const K_ALPHA = 1.6276236012099228     # KS 점근 임계계수, α = 0.01 (Q_KS(λ)=α 의 해)
-const ALPHA   = 0.01
+const ALPHA = 0.01
+
+# 🔴 KS 점근 임계계수를 **손으로 옮기지 않는다**(수정 1라운드, minor 3). 두 곳(여기와
+#    `gate_ng1.py`)에 같은 리터럴을 박아 두는 것은 이 레포의 단일 출처 규칙 위반이다.
+#    한쪽이 다른 쪽을 베끼게 만들 수도 없다 — 생성기가 먼저 돌면서 이 값으로 n 을 정해야
+#    하므로 Python 이 쓴 값을 읽을 수가 없다. 그래서 **각자 독립으로 유도**하고 게이트가
+#    둘을 대조한다(그게 베끼는 단일 출처보다 강하다).
+#
+#    Kolmogorov 분포: `P(√n·D ≤ λ) = 1 − Q(λ)`,  `Q(λ) = 2 Σ_{k≥1} (−1)^{k−1} e^{−2k²λ²}`.
+#    `Q(λ) = α` 를 이분법으로 푼다(Q 는 λ 에 대해 단조감소).
+_ks_Q(λ::Float64) = 2.0 * sum((-1.0)^(k - 1) * exp(-2.0 * k^2 * λ^2) for k in 1:200)
+function _ks_critical(α::Float64)
+    0.0 < α < 1.0 || error("_ks_critical: α = $(α)")
+    lo, hi = 0.1, 10.0
+    _ks_Q(lo) > α > _ks_Q(hi) || error("_ks_critical: 이분 구간이 α 를 감싸지 않는다")
+    for _ in 1:200
+        mid = 0.5 * (lo + hi)
+        _ks_Q(mid) > α ? (lo = mid) : (hi = mid)
+    end
+    return 0.5 * (lo + hi)
+end
+const K_ALPHA = _ks_critical(ALPHA)
 
 ks_sup_gap(c::Float64) = c == 1.0 ? 0.0 :
     (c^(-1.0 / (c - 1.0)) - c^(-c / (c - 1.0)))
