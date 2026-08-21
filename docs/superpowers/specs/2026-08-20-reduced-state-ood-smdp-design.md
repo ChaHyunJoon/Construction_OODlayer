@@ -188,7 +188,7 @@ mode_of(s, env, rid)  = _hz_modes 규칙을 active_of(s)·s.g.binding·정적 �
 
 ---
 
-## 3. 사용자 결정 (D-1 ~ D-8)
+## 3. 사용자 결정 (D-1 ~ D-10)
 
 | # | 결정 | 무엇이 걸려 있나 |
 |---|---|---|
@@ -200,6 +200,8 @@ mode_of(s, env, rid)  = _hz_modes 규칙을 active_of(s)·s.g.binding·정적 �
 | **D-6** | **rate boundary 를 `t0` 경과가 아니라 미완 노드의 계획 duration 에서 낸다** | 🔴 **신규.** 완료 보고서 §4-1 차단 이슈 A 의 해소 경로 — §4 |
 | **D-7** | **창고 예비는 충분하다** | 🔴 **신규.** 예비 재고를 상태·행동 메뉴에서 뺀다 — §3-2 |
 | **D-8** | **행동 신설을 L2 까지 허용한다** | 🔴 **신규(2026-08-21).** 제약 문법 + 파라미터 자유 원시연산을 LLM 에 노출하고, 재사용 우선 규칙을 둔다 — §5 |
+| **D-9** | **행동공간은 emit 가능 5종.** `a = proposal.constraints` 뿐 | 🔴 **신규(2026-08-21).** 불필요한 후보군을 표면에서 뺀다 — §5-1b · §5-8 |
+| **D-10** | **심의시간을 0 으로 가정한다** | 🔴 **신규(2026-08-21).** `verify` 시행풀이 + LLM 왕복이 τ 에 안 들어간다 — §4-2 |
 
 ### 3-1. D-5 — `eff` 를 상태에서 빼는 유일하게 정직한 방법
 
@@ -268,6 +270,26 @@ T_plan_next(s, env; ρ) = ρ · min{ dur(v) : v ∈ active_of(s), dur(v) > 0 }
 
 ---
 
+### 4-2. D-10 — 심의시간을 0 으로 둔다 (그리고 그렇게 적는다)
+
+`verify()` 는 상태를 안 바꾸지만 **시간은 쓴다** — MILP 시행풀이 한 번 + escalation 이면 LLM
+왕복까지. 현재 정식화는 결정을 **순간적**으로 보고 τ 를 결정 **이후**부터 센다. 그래서
+모델 안에서 escalation 은 공짜이고, **실패한 escalation 은 완전히 공짜다.**
+
+셋 중 A 를 고른다(사용자 결정):
+
+| | | 왜 아닌가 |
+|---|---|---|
+| **A. 0 으로 가정 (채택)** | 지금 동작 그대로, 가정을 명시 | — |
+| B. 상수 심의시간 | `τ += c_deliberate` | 상수를 지어내야 한다 |
+| C. 실측 반영 | 실제 지연을 τ 에 | 🔴 재현성이 **벽 시계에 묶인다** — "시드 고정 = 완전 재현" 요구와 정면 충돌 |
+
+🔴 **그래서 이 모델에는 "escalation 을 자주 하면 손해" 라는 압력이 없다.** 그 자리를 대신하는
+것은 conformal 의 **α** 하나뿐이다(§6-3). 결과를 읽을 때 escalation률을 "비용 대비 이득" 으로
+해석하면 안 된다 — 비용 항이 모델에 없다. 알려진 낙관 편향으로 기록한다.
+
+---
+
 ## 5. 행동공간 — 세 층과 신설의 3단 사다리
 
 ### 5-1. 세 층
@@ -280,6 +302,39 @@ T_plan_next(s, env; ρ) = ρ · min{ dur(v) : v ∈ active_of(s), dur(v) > 0 }
 
 `L_macro` 는 `L_dsl` 에 파라미터를 고정한 투영이고, `L_dsl` 의 각 kind 는 `L_prim` 위의 **이름
 붙은 지름길**이다. OOD 대응은 `L_prim` 에서 일어난다.
+
+### 5-1b. 🔴 행동의 경계 — `RespecProposal` 은 행동이 아니다
+
+`RespecProposal` 은 **"어떤 failure 에서 어떤 action 을 할 것인가" 라는 정보의 집합체**이고,
+그 중 행동인 것은 한 필드뿐이다:
+
+```julia
+struct RespecProposal
+    constraints::Vector{ConstraintSpec}   # ← 세계를 편집한다.          **행동**
+    rationale::String                     # ← LLM 이 댄 이유.            감사 로그
+    source_event::String                  # ← 촉발 사건 참조.            감사 로그
+end
+```
+
+```
+a        = proposal.constraints          그게 전부다
+verify() = 전이함수의 문 (거부되면 s′ = s)   행동이 아니다
+```
+
+**근거는 상태 축소와 같은 기준이다**(§2-1): 세계에 안 닿는 것은 행동도 상태도 아니다.
+`rationale` 은 자연어이고 솔버 동작에 영향이 없다(`spec_dsl.jl` 이 직접 그렇게 적어 뒀다) —
+행동에 넣으면 **같은 편집을 다른 문장으로 설명한 두 제안이 서로 다른 행동**이 된다.
+`verify()` 는 상태를 안 바꾸므로(거부 = NOOP 과 같은 전이) `P(s′|s,a)` 의 일부다.
+
+귀결 둘:
+1. **replay buffer 의 `a`** 는 `constraints` 의 정준 직렬화다(§7-1). `rationale` 은 meta 로 간다.
+2. **트리 자식 색인**도 `constraints` 로 한다. 안 그러면 같은 편집이 rationale 마다 다른 자식이
+   되어 통계가 쪼개진다.
+
+⚠️ `verify()` 가 읽기 전용이라는 것은 **가정이지 실측이 아니다.** 시행풀이가 전역(HiGHS 상태·
+RNG)을 건드리면 "관측이 세계를 바꾸는" 사고가 된다. 계획서 A 가 단언을 단다.
+
+---
 
 ### 5-2. 🟢 `verify()` 는 이미 kind 무관이다 — 신설의 안전장치가 이미 있다
 
@@ -323,10 +378,26 @@ ForbidWindow(v, t_lo, t_hi)  ≡  tF[v] ≤ t_lo  ∨  t0[v] ≥ t_hi        (Bi
 ForbidAgent(r)               ≡  Xa[v,v2] = 0   ∀ frontier 후보 엣지
 ```
 
-🔴 **선행 판단 정정.** 이 문서의 초판은 두 kind 를 **삭제**하자고 적었다(매크로로서 죽었다는
-근거로). 그 판단은 **철회한다** — 삭제하면 §5-2 의 일반 검증을 받는 **유일한 티어**가 통째로
-사라진다. 매크로 어휘 `L_macro` 에서 빠지는 것은 그대로이고(이미 `v3-4arms` 에 없다),
-`L_prim` 에서는 **문법의 인스턴스로 남는다.**
+🔴 **판단 정정 2회.** 초판은 두 kind 를 **삭제**하자고 적었고, 2판은 그것을 **철회**했다
+(*"일반 검증을 받는 유일한 티어가 사라진다"*). **2판이 과했다.** 문법을 노출하는 순간
+`LinearConstraint`·`Disjunction` 이 그 티어의 인스턴스가 되므로, 두 kind 의 **이름**은 티어
+유지에 필요하지 않다. 층을 갈라 적으면:
+
+| 계층 | `ForbidAgent` | `ForbidWindow` |
+|---|---|---|
+| `L_macro` (4팔) | 이미 없음 | 이미 없음 |
+| **`L_dsl` — LLM 이 emit 가능** | 🔴 **뺀다** | 🔴 **뺀다** |
+| Julia 타입 · `compile_constraint!` | **남긴다** | **남긴다** |
+| `L_prim` 문법 | `LinearConstraint` 가 대체 | `Disjunction` 이 대체 |
+
+**타입을 남기는 이유는 실측이다** — 둘 다 `src/` 안에 생산자가 있다:
+- `ForbidAgent` : `navigator/baselines.jl:173·192·201`(baseline 정책) ·
+  `respec/reassign.jl`(`fault_robot_and_reassign!` 의 freeze → release → ForbidAgent →
+  verify → commit 사슬). **엔진이 내부적으로 쓴다.**
+- `ForbidWindow` : `src/` 에는 생산자가 없고 `tools/dev_session.jl` · `tools/tests.jl` 이 쓴다.
+
+즉 **삭제 대상은 타입이 아니라 행동공간의 표면적**이다. `schema.py` 의 discriminated union 과
+`llm_bridge.jl` 의 파서 스위치에서 빼면 LLM 이 낼 수 없고, 엔진은 그대로 돈다.
 
 노출할 문법 (최소):
 
@@ -411,16 +482,29 @@ RespecProposal([RelocateBuild(:z3), ReplaceAgent(R7)])
 
 ### 5-8. `L_dsl` 이 오늘 실제로 무엇인가 (전수 대조)
 
-| kind | 상태 | 대응 사건 |
-|---|---|---|
-| `ReplaceAgent` | ✅ | fault |
-| `SwapBattery` | ✅ | battery |
-| `RelocateBuild` | ✅ 이지만 **solver 다** — `L_prim` 의 `TranslateBuild` 로 분해(§5-5) | zone |
-| `ForbidZone` | ❌ **도메인 공집합** — `closed≈46` 부터 `n_restage_feasible == 0`, 이후 전부 조용한 no-op | (zone, 죽음) |
-| `ReformTeam` | ❌ 은퇴. 복구가 `maybe_unwedge_nominal!` 로 명목 레인에 이관 | — |
-| `ForbidAgent` | 🔧 매크로로는 죽음(D-7 이 `ReplaceAgent` 로 지배). **문법 인스턴스로 존속**(§5-4) | fault |
-| `ForbidWindow` | 🔧 대응 사건 없음. **문법 인스턴스로 존속**(§5-4) | — |
-| `DeprioritizeAgent` | ⏸ 제안 338 · **선택 0회**. 이슈 D 가 닫히면 재평가 | `cell`(degraded-but-alive) |
+**확정 행동공간 = LLM 이 emit 할 수 있는 5종** (사용자 결정 D-9, 2026-08-21):
+
+| kind | 역할 |
+|---|---|
+| `ReplaceAgent` | known 대응 — fault |
+| `SwapBattery` | known 대응 — battery |
+| `TranslateBuild` | `L_prim` 기하 원시연산 (§5-5) |
+| `LinearConstraint` | `L_prim` MILP 제약 문법 (§5-4) |
+| `Disjunction` | 같음 |
+
+**뺀 셋과 근거** (전부 `schema.py` + `llm_bridge.jl` 파서에서 제거. Julia 타입은 존치):
+
+| kind | 왜 뺐나 |
+|---|---|
+| `ForbidZone` | **도메인 공집합** — `closed≈46` 부터 `n_restage_feasible == 0`, 이후 전부 조용한 no-op |
+| `ReformTeam` | 은퇴. 복구가 `maybe_unwedge_nominal!` 로 명목 레인에 이관됐다 |
+| `ForbidAgent` | D-7 아래에서 `ReplaceAgent` 에 약우월로 지배된다(§5-3). 엔진 내부 사용은 그대로 |
+| `ForbidWindow` | 대응 사건이 없다(도착 시점이 확률변수라 시간창 회피의 대상이 없다) |
+| `DeprioritizeAgent` | 제안 338 · **선택 0회**. 🔴 예전 유보("`cell` 에 대응할 팔이 이것뿐")는 **거짓이었다** — `_hz_fire_cell!`(`hazard.jl:583`)이 `battery_action(; target, soc_drop)` 을 부르므로 **`cell` 위험은 `battery` kind 사건을 낸다.** `SwapBattery` 가 이미 그 자리의 팔이다 |
+
+⏸ **재평가 트리거**: N-G3 스윕에서 `cell` 사건의 SoC 낙폭 분포가 얕은 쪽(`cell_mild_lo=0.35`
+근처)에 몰리면, `SwapBattery`(예비 배송 + 라인 정지)가 과잉 대응일 수 있다. 그때
+`DeprioritizeAgent` 를 재평가한다.
 
 ---
 
@@ -631,7 +715,9 @@ uniform 이 well-studied 한 바닥이고, 층화·우선순위는 "없을 때 �
    그것은 이 프로젝트의 한계가 아니라 **범위의 선언**이다. `L_prim` 이 여는 것은 L2 까지다.
 4. **`TranslateBuild` 말고 다른 원시연산은 이 세대에서 안 연다**(§5-5). zone 이 유일한 OOD 이므로
    필요한 것이 그 하나이고, 나머지는 근거 없이 표면적을 넓히는 것이다.
-5. **미해결**: `binding` 이 `edges` 에서 유도되는가(§2-3 (d)) · `dissolved_gates` 손실 크기 ·
-   `DeprioritizeAgent` 를 `cell` 사건에 되살릴 것인가 · ρ 가 스칼라 하나로 충분한가 ·
-   갈래 비용의 RVO 재구축분 · MILP 제약 문법의 표현력 상한(어떤 대응이 문법 밖인가).
-6. **범위 밖**: `cell_mild_*` degraded 세대의 hazard 파라미터 · MCTS · surrogate feature 설계.
+5. 🔴 **심의시간이 모델에 없다**(§4-2, D-10). escalation률을 비용 대비 이득으로 읽지 말 것.
+6. **미해결**: `binding` 이 `edges` 에서 유도되는가(§2-3 (d)) · `dissolved_gates` 손실 크기 ·
+   `cell` 낙폭이 얕으면 `DeprioritizeAgent` 를 되살릴 것인가(§5-8 트리거) · ρ 가 스칼라 하나로
+   충분한가 · 갈래 비용의 RVO 재구축분 · MILP 제약 문법의 표현력 상한(어떤 대응이 문법 밖인가) ·
+   `verify()` 가 정말 읽기 전용인가(§5-1b — 계획서 A 가 단언한다).
+7. **범위 밖**: `cell_mild_*` degraded 세대의 hazard 파라미터 · MCTS · surrogate feature 설계.
