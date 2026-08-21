@@ -26,6 +26,7 @@
    ⚠️ 브리프의 `n >= 200` 판은 이 검사를 통과하지 못한다: n=200/200 이면 D_crit = 0.16276 이고
       그것이 분해하는 것은 c ~ 1.562 (= 56% 격차)다 — D-6 이 만들 수 있는 어떤 현실적 오차보다도
       굵다. **초록이 증거가 아니게 된다.**
+   ⚠️ 반대로 `n_required` 를 채웠다고 `c*` 가 **반드시** 잡히는 것도 아니다(아래 POWER 주석).
 
 🔴 **`--expect-fail` 의 계약(수정 1라운드).** 음성 대조에서 "빨간불" 은 **벌어야 한다.**
    분해능이 모자라서 나온 빨간불은 음성 대조의 성공이 **아니다** — 그건 게이트가 아무것도
@@ -120,17 +121,27 @@ def main(path, expect_fail):
     n_req = math.ceil(2.0 * (K_ALPHA / g_star) ** 2) if g_star > 0 else float("inf")
     print(f"RESOLUTION n1={n1} n2={n2} c_star={c_star:.6f} g(c_star)={g_star:.6f} "
           f"D_crit={d_crit:.6f} resolves_c>={c_res:.6f} n_required={n_req}")
-    # 🔴 **`n_required` 는 필요조건이지 충분조건이 아니다** (수정 1라운드에 이 게이트의 자기
-    #    시험이 잡아냈다). `n = 2(K/g)²` 는 `D_crit == g(c*)` 가 되는 지점이고, KS 통계량은
-    #    확률변수이므로 그 자리에서 검정력은 **약 50%** 다 — 참 격차가 정확히 c* 인 표본이
-    #    임계값 아래로 떨어지는 일이 절반쯤 일어난다(합성 지수쌍 실측: KS 0.0164 < 0.0237).
-    #    그래서 이 게이트가 `n_required` 로 주장할 수 있는 것은 **"이보다 적으면 c* 를 원리적으로
-    #    기각할 수 없다"** 뿐이다. 여유 있는 탐지를 원하면 유도된 격차가 임계값의 2배가 되는
-    #    `4·n_required` 가 필요하다(엄밀한 검정력 계산은 하지 않았다 — 여백 규칙이다).
-    print(f"POWER n_threshold={n_req} (D_crit == g(c*), ~50% power) "
-          f"n_for_2x_margin={4 * n_req if n_req != float('inf') else 'inf'} "
+    # 🔴 **`n_required` 는 필요조건이지 충분조건이 아니다.**
+    #    `n = 2(K/g)²` 를 대입하면 `D_crit = K√(2n⁻¹) = K√(2·g²/2K²) = g` — 즉 그 지점에서
+    #    `D_crit == g(c*)` 는 **항등식**이다(경험적 우연이 아니다). 그러므로 이보다 표본이 적으면
+    #    `c*` 크기의 격차는 원리적으로 기각될 수 없고, 그것이 "표본이 모자라서 나온 초록/빨강" 을
+    #    막는 데 정확히 충분하다. 그러나 "`c*` 를 반드시 잡는다" 는 **아니다.**
+    #
+    #    ⚠️ **정정(수정 2라운드).** 이 자리는 한때 "그러므로 검정력이 약 50%" 라고 적고 그것을
+    #    매 실행 찍었다. **틀렸다.** `D = sup_t|F₁−F₂|` 는 잡음 위의 **상한**이라 점별 격차보다
+    #    위로 편향된다 — `E[D] ≠ g`. 그래서 통계량이 `g` 를 중심으로 흩어진다는 전제가 성립하지
+    #    않는다. 검정력은 **여기서 주장하지 않는다**: 그 값은 `(c*, n, α)` 마다 다르고 이 게이트는
+    #    임의의 셋에 대해 돌기 때문이다. 이 구성에 대한 **실측** 검정력은 그것을 실제로 재는
+    #    자리에 있다 — `test_gate_ng1.py::test_measured_power_at_threshold_and_at_2x_margin`.
+    #
+    #    `n_where_g_is_2x_D_crit = 4·n_required` 는 **유도된 격차 `g` 가 임계값의 2배가 되는
+    #    표본수**다(`D_crit ∝ n^(-1/2)` 이므로 4배). "n_required 의 2배" 가 아니다.
+    print(f"POWER g/D_crit={(g_star / d_crit) if d_crit > 0 else float('inf'):.5f} "
+          f"n_threshold={n_req} (identity: D_crit == g(c*) exactly at n_threshold) "
+          f"n_where_g_is_2x_D_crit={4 * n_req if n_req != float('inf') else 'inf'} "
           f"regime={'below-threshold' if d_crit > g_star else 'at-or-above-threshold'} "
-          "-- n_required is NECESSARY, not sufficient")
+          "-- n_required is NECESSARY, not sufficient; power is NOT asserted here "
+          "(see test_gate_ng1.py::test_measured_power_at_threshold_and_at_2x_margin)")
     # 🔴 두 독립 유도의 교차검증(scipy 의 `kstwobign` vs 생성기의 Kolmogorov 급수 이분법).
     #    실측: 두 유도는 **2.2e-16 로 일치한다**(기계 오차). 그런데 허용치를 1e-7 로 둔 이유는
     #    따로 있다 — **이미 커밋된 아티팩트**들이 수정 1라운드 이전의 손으로 옮긴 리터럴

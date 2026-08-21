@@ -15,17 +15,16 @@ import json, math, os, random, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "gate_ng1.py")
+sys.path.insert(0, HERE)
+# 🔴 상수도 식도 **게이트에서 가져온다.** 첫 판은 `K_ALPHA` 리터럴과 `sup_gap` 복사본을 여기
+#    다시 들여왔는데, 그건 수정 1라운드의 minor 3 이 없앤 것과 **같은 부류**다(손으로 옮긴
+#    상수 두 벌). 시험이 게이트를 검증하는 것이지 상수를 검증하는 게 아니므로 import 가 맞다.
+from gate_ng1 import ALPHA, K_ALPHA, sup_gap as _sup_gap   # noqa: E402
 
 R_MIN, N_FLEET = 1.4, 6                      # HazardParams 의 인접 배수비 · 함대 크기
 C_STAR = ((N_FLEET - 1) + R_MIN) / N_FLEET   # = 1.0666666666666667
-K_ALPHA = 1.6276236115189502
-
-
-def _sup_gap(c):
-    return 0.0 if c == 1.0 else c ** (-1.0 / (c - 1.0)) - c ** (-c / (c - 1.0))
-
-
 N_REQ = math.ceil(2.0 * (K_ALPHA / _sup_gap(C_STAR)) ** 2)   # 9403
+D_CRIT_AT_N_REQ = K_ALPHA * math.sqrt(2.0 / N_REQ)
 
 
 def _lane(n, rate, seed, horizon=20.0):
@@ -95,6 +94,20 @@ def test_powered_null_passes():
 
 
 @case
+def test_healthy_null_under_expect_fail_is_a_failure():
+    """🔴 진짜 음성 대조 **실패** 경로 — 마지막까지 시험이 없던 종료 경로다.
+
+    건강하고(위생·분해능·종류 전부 통과) 표본도 충분한데 **섭동이 안 보이면**, 그건 음성
+    대조의 실패이고 rc=1 이어야 한다. `test_powered_null_passes` 는 정확히 이 픽스처를 만들어
+    놓고 `--expect-fail` **없이** 돌리기 때문에 이 경로를 덮지 못했다."""
+    with tempfile.TemporaryDirectory() as d:
+        p = _artifact(os.path.join(d, "b2.json"), N_REQ, 1.0, 1.0, lane="null")
+        rc, out = _run(p, expect_fail=True)
+        assert rc != 0, out
+        assert "게이트가 섭동을 못 잡았다" in out, out
+
+
+@case
 def test_powered_supra_cstar_expect_fail_succeeds():
     """c* 보다 **확실히 큰** 격차 + 충분한 n → `--expect-fail` 이 rc=0.
 
@@ -108,25 +121,71 @@ def test_powered_supra_cstar_expect_fail_succeeds():
 
 
 @case
-def test_cstar_is_a_threshold_not_a_guarantee():
-    """🔴 `n_required` 가 **필요조건일 뿐**임을 시험으로 못박는다.
+def test_at_n_required_a_draw_at_cstar_can_fail_to_reject():
+    """🔴 `n_required` 가 **필요조건일 뿐**임을 못박는 **결정적** 트립와이어.
 
-    `n = 2(K/g)²` 는 `D_crit == g(c*)` 가 되는 자리라 검정력이 약 50% 다. 정확히 c* 만큼
-    벌어진 **순수 지수쌍**은 그 자리에서 임계값 아래로 떨어질 수 있고, 실제로 떨어진다.
-    이 시험이 초록인 동안에는 "n_required 를 채웠으니 c* 는 반드시 잡힌다"고 쓰면 안 된다.
+    `n = 2(K/g)²` 에서 `D_crit == g(c*)` 는 항등식이다. 그 자리에서도 정확히 `c*` 만큼 벌어진
+    표본이 임계값 **아래**로 떨어지는 draw 가 **존재한다** — 아래 시드 쌍이 그것이고, 값이
+    재현되므로 이 시험은 흔들리지 않는다.
 
-    ⚠️ 실제 N-G1 의 self-c* 음성 대조는 잡혔다(KS 0.0335 > 0.0237). 그건 τ 의 참 법칙이
-    지수가 아니라 표본 요동이 그쪽으로 떨어진 것이고, **보장이 아니라 관측**이다."""
+    ⚠️ **존재 증명이지 전형이 아니다.** 이 draw 는 표집분포의 **1.10 백분위**다(실측:
+    2000 반복, 이 디렉토리·2026-08-21). 첫 판은 이걸 "검정력 약 50%" 의 근거로 썼는데
+    **틀렸다** — `test_measured_power_at_threshold_and_at_2x_margin` 이 실제 값을 잰다.
+
+    ⚠️ 첫 판의 이 자리에는 `0.3·D_crit < KS < 3.0·D_crit` 이 있었다. 그건 **트립와이어가
+    아니었다** — 150 개 재표집 draw 가 전부 0.77×~1.94× 안에 들어와 검정력 99% 에서도 초록으로
+    남았을 것이다. docstring 이 주장하는 성질을 실제로 잠그지 않는 시험은 이 계획이 없애려는
+    바로 그 모양이라 통째로 갈았다.
+    """
     with tempfile.TemporaryDirectory() as d:
         p = _artifact(os.path.join(d, "c2.json"), N_REQ, 1.0, C_STAR, lane="at-cstar")
         rc, out = _run(p)
         ks = float([l for l in out.splitlines() if l.startswith("KS=")][0]
                    .split()[0].split("=")[1])
-        d_crit = float([l for l in out.splitlines() if l.startswith("RESOLUTION")][0]
-                       .split("D_crit=")[1].split()[0])
-        # 임계값과 **같은 자릿수**에 있다(= 임계 영역). 어느 쪽에 떨어지는지는 표본이 정한다.
-        assert 0.3 * d_crit < ks < 3.0 * d_crit, f"KS={ks} D_crit={d_crit}\n{out}"
+        assert abs(ks - 0.016378) < 1e-6, f"seeds (11,22) draw moved: KS={ks}\n{out}"
+        assert ks < D_CRIT_AT_N_REQ, f"KS={ks} D_crit={D_CRIT_AT_N_REQ}"
+        assert rc == 0, out          # 기각하지 못하므로 게이트는 PASS 를 낸다
         assert "n_required is NECESSARY, not sufficient" in out, out
+        assert "~50% power" not in out, "the retracted power claim is back in the output"
+
+
+@case
+def test_measured_power_at_threshold_and_at_2x_margin():
+    """🔴 검정력을 **재서** 못박는다 (수정 2라운드). 시드 고정 = 결정적, flaky 하지 않다.
+
+    실측(이 디렉토리, seed 20260821, 순수 지수쌍, `c = c*`):
+
+    | n | D_crit | E[KS] | 검정력 @ α=0.01 |
+    |---|---|---|---|
+    | `n_required` = 9403 | 0.023738 | **0.029401** | **0.805** (2000 반복) |
+    | `4·n_required` = 37612 | 0.011869 | 0.026138 | **1.000** (400 반복) |
+
+    🔴 요점 둘: (1) `E[KS] = 0.0294 > g = 0.0237` — `sup` 통계량은 점별 격차보다 **위로**
+    편향된다. 그래서 "통계량이 g 를 중심으로 흩어지므로 검정력 50%" 라는 첫 판의 추론이
+    깨진다. (2) 그럼에도 검정력은 1 이 **아니다**(0.805) — `n_required` 는 여전히 충분조건이
+    아니고, 실제 self-c* 음성 대조가 잡힌 것은 **개연적 결과(p≈0.8)** 이지 행운이 아니다.
+    """
+    try:
+        import numpy as np
+        from scipy.stats import ks_2samp
+    except ImportError:                                     # pragma: no cover
+        print("      (skipped: numpy/scipy 없음)"); return
+
+    def power(n, reps, seed, c=C_STAR):
+        rng = np.random.default_rng(seed)
+        dcrit = K_ALPHA * math.sqrt(2.0 / n)
+        ks = np.empty(reps)
+        for i in range(reps):
+            ks[i] = ks_2samp(rng.exponential(1.0, n),
+                             rng.exponential(1.0 / c, n), method="asymp").statistic
+        return ks, dcrit
+
+    ks, dc = power(N_REQ, 400, 20260821)
+    pw = float((ks >= dc).mean())
+    assert ks.mean() > dc, f"E[KS]={ks.mean()} should exceed D_crit={dc} (sup is biased up)"
+    assert 0.70 <= pw <= 0.92, f"power at n_required = {pw} (measured 0.805 @2000 reps)"
+    ks2, dc2 = power(4 * N_REQ, 100, 20260821)
+    assert float((ks2 >= dc2).mean()) == 1.0, "power at 4*n_required should be 1.0"
 
 
 @case
