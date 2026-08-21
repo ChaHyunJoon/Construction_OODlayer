@@ -264,63 +264,107 @@ end
 # 타입 있는 파싱: 믿을 수 없는 JSON 이 줄리아 쪽에서 타입 있는 ConstraintSpec 으로 바뀌는 "유일한 한 곳".
 # 모르는 kind / 빠진 필드 / 모르는 id 참조는 모두 예외를 던짐 → 호출부에서 Reject(거부)로 처리.
 #
-# ---- 태스크 5 (2026-08-19, spec §2) 대조 결과 --------------------------------------------
-# 이 `kind` 스위치는 닫힌 매크로 어휘(action_registry.json 의 id 0-8)가 아니라 **열린 CALL_ORACLE
-# 재-spec 경로의 DSL 제약 종류**를 다룬다 — 서로 다른 이름공간이라 macro 3·5·6 은퇴가 이 파일의
-# 리터럴 목록에 손댈 자리가 없다(그래서 대조 결과는 "바꿀 것 없음", 근거는 아래):
-#   · "ForbidAgent" — spec §2.2 가 명시적으로 재분류한 자리다: object-level 매크로 5 는 은퇴하지만
-#     그 구성 primitive ForbidAgent 는 여기 **그대로 남아야 한다** — 이게 곧 "meta-action
-#     CALL_ORACLE 의 실물 기전"이다. 지우면 그 재분류 자체가 깨진다.
-#   · "ForbidZone" / "ForbidWindow" — macro 3/6 은퇴 사유(도메인이 죽어 있다 / 대응할 물리가
-#     없다)는 오브젝트-레벨 매크로 메뉴에 관한 것이지, 이 primitive 자체의 존재를 금지하지
-#     않는다. LLM 이 자유형식 CALL_ORACLE 경로로 이걸 제안해도 여전히 파싱되지만(하위호환),
-#     같은 도메인 문제 때문에 대개 무동작이거나 지배당한다 — 위험하진 않고 그냥 쓸모없다.
-#   · 따라서 이 kind 목록에서 3·5·6 을 빼는 것은 **잘못된 수정**이다: 빼면 ForbidAgent 의
-#     CALL_ORACLE 기전 자체가 없어진다.
+# ---- 🔴 2026-08-21 D-9 (Task C2, spec §5-8): 행동공간을 emit 가능한 것만 남기고 줄였다 --------
+# 🔴 **수를 어느 시점 기준으로 세는지 반드시 밝힐 것.** 이 파일 기준:
+#     C2 끝 = **4종** (ReplaceAgent · SwapBattery · LinearConstraint · Disjunction)
+#     C3 끝 = **5종** (위 넷 + TranslateBuild) ← .claude/CLAUDE.md 의 "emit 가능 5종" 은 이 시점이다.
+#   출발점은 8종이었다. 8 - 6 + 2 = 4, 그 뒤 C3 가 +1 해서 5.
+# ⚠️ 바로 아래에 있던 2026-08-19 "대조 결과 = 바꿀 것 없음" 블록은 **철회됐다.** 그 논증은
+#    "primitive 가 파싱되는 것은 위험하진 않고 그냥 쓸모없다" 였는데, D-9 가 그 전제를 뒤집었다:
+#    같은 일을 하는 후보가 둘이면 LLM 이 어느 쪽으로 새는지가 **측정 잡음**이 된다.
+#
+# 뺀 것과 근거(spec §5-8 의 표 그대로):
+#   ForbidZone        도메인 공집합 (closed≈46 이후 n_restage_feasible == 0)
+#   ReformTeam        은퇴 — 복구가 maybe_unwedge_nominal! 로 명목 레인에 이관
+#   ForbidAgent       D-7 아래 ReplaceAgent 에 약우월로 지배
+#   ForbidWindow      대응 사건 없음 (도착 시점이 확률변수다). 필요하면 Disjunction 으로 쓴다
+#   DeprioritizeAgent 선택 0회. cell 위험은 battery kind 로 도착하므로 SwapBattery 가 답이다
+#                     (_hz_fire_cell! → battery_action, hazard.jl:583)
+#   RelocateBuild     행동이 아니라 **solver** 다 — `_find_min_translation` 이 Δ 를 스스로 찾는다
+#                     (restage_zone.jl:768-779). 진짜 원시연산 `_apply_uniform_translation!(env, Δ)`
+#                     를 Task C3 의 `TranslateBuild(dx, dy)` 가 자유 파라미터로 노출한다.
+#                     🔴 컨트롤러 판정(2026-08-21): 이걸 안 빼면 emit 가능 수가 5 가 아니라 6 이 된다.
+#
+# 🔴 **타입·컴파일러·내부 생산자는 전부 남는다.** 지우는 것은 이 파서 스위치와 `schema.py` 의
+#    union 뿐이다. 내부 생산자 실측: `navigator/baselines.jl:173·192·201` ·
+#    `respec/reassign.jl:382` · `oracle/ood_mdp_shim.jl:306`(RelocateBuild 를 **직접** 생성한다 —
+#    파서를 안 탄다. 그래서 action_registry.json 의 팔 2 는 이 변경에 안 닿는다).
+#
+# 🔴 뺀 kind 가 오면 `error()` 로 **죽는다**. `nothing` 을 돌려주면 LLM 이 뺀 팔을 내도 조용히
+#    NOOP 으로 무너지고, 그건 이 레포가 `valid_actions` 문지기에서 이미 데인 실패 모양이다.
+#
+# ⚠️ 알려진 대가: `tools/tests.jl`(ForbidZone·RelocateBuild·DeprioritizeAgent 파싱 단위시험)과
+#    `tools/e2e.jl`(모의 LLM 응답)은 이 좁힘 뒤 그 kind 들에서 실패한다. 둘 다 `runtests.jl` 밖의
+#    개발용 하니스이고, 명목 레인(`Pkg.test()`)은 이 스위치를 타지 않는다.
+
+"""
+    EMITTABLE_KINDS
+
+🔴 LLM 이 **emit 할 수 있는** 제약 kind 의 단일 목록(D-9). 아래 `_parse_proposal` 의 스위치와
+언제나 같아야 하고, `llm_service/schema.py` 의 discriminated union · `TOOL_SCHEMA` enum 과도
+같아야 한다 — 세 표면 중 하나만 달라지면 그 자리가 조용한 갈라짐이다.
+`test/respec_action_space.jl` 이 셋의 **집합 등식**을 직접 단언한다(포함이 아니라 등식).
+
+⚠️ 이것은 `action_registry.json` 의 매크로 어휘(`v3-4arms`)와 **다른 이름공간**이다.
+정렬된 튜플로 둔다(직렬화·로그가 결정적이도록).
+"""
+const EMITTABLE_KINDS = ("Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery")
+
+# --- L2-a 문법의 JSON 형태 -------------------------------------------------------
+#   VarRef            {"kind": "t0"|"tF"|"xa", "node": <id>, "node2": <id>|null}
+#   LinearConstraint  {"kind":"LinearConstraint",
+#                      "terms":[{"coeff":1.0,"var":<VarRef>}, ...],
+#                      "rel":"le"|"ge"|"eq", "rhs": <number>}
+#   Disjunction       {"kind":"Disjunction", "left":<LinearConstraint>, "right":<LinearConstraint>}
+# 모르는 rel / 모르는 VarRef kind / 빈 terms / 모르는 노드 id 는 전부 예외다(조용한 폴백 금지).
+
+"JSON 의 VarRef 하나를 타입 있는 `VarRef` 로. 모르는 kind·id 는 예외."
+function _parse_varref(v; id_resolver)
+    k = Symbol(String(v["kind"]))
+    n2 = (haskey(v, "node2") && v["node2"] !== nothing) ? id_resolver(String(v["node2"])) : nothing
+    return VarRef(k, id_resolver(String(v["node"])), n2)   # kind 검사는 VarRef 생성자가 한다
+end
+
+"JSON 의 LinearConstraint 하나를 타입 있는 `LinearConstraint` 로."
+function _parse_linear(c; id_resolver)
+    # 중첩(Disjunction 의 left/right)에서는 "kind" 가 생략될 수 있다. 있으면 반드시 일치해야 한다.
+    haskey(c, "kind") && String(c["kind"]) != "LinearConstraint" &&
+        error("Disjunction 의 항은 LinearConstraint 여야 한다 (받은 값: $(String(c["kind"])))")
+    terms = Tuple{Float64,VarRef}[]
+    for t in c["terms"]                       # 배열 순서대로 — 결정적
+        push!(terms, (Float64(t["coeff"]), _parse_varref(t["var"]; id_resolver = id_resolver)))
+    end
+    return LinearConstraint(terms, Symbol(String(c["rel"])), Float64(c["rhs"]))
+end
+
 function _parse_proposal(payload, event; id_resolver)
     cs = ConstraintSpec[]                   # 제약(constraint) 객체들을 담을 빈 배열 (원소 타입은 ConstraintSpec)
     for c in payload["constraints"]         # JSON 의 "constraints" 배열을 하나씩 순회 (c 는 제약 하나)
-        kind = String(c["kind"])            # 제약 종류 문자열("ForbidWindow" 또는 "ForbidAgent")
+        kind = String(c["kind"])            # 제약 종류 문자열(emit 가능한 것은 EMITTABLE_KINDS 뿐)
         # spec = if ... elseif ... else ... end : 분기 결과를 바로 변수에 담는 표현식 if. (파이썬 elif = elseif)
-        spec = if kind == "ForbidWindow"
-            # ForbidWindow(노드id, 하한, 상한) : 특정 노드를 [t_lo, t_hi] 시간창 동안 금지하는 제약 생성.
-            # id_resolver(...) 로 문자열 노드 id 를 실제 id 객체로 되돌림(모르는 id 면 여기서 예외 발생).
-            ForbidWindow(id_resolver(String(c["node"])), Float64(c["t_lo"]), Float64(c["t_hi"]))
-        elseif kind == "ForbidAgent"
-            # ForbidAgent(로봇id, after) : 특정 로봇을 after 시각 이후로 못 쓰게 막는 제약.
-            # get(c, "after", 0.0) : "after" 키가 있으면 그 값, 없으면 기본 0.0(딕셔너리 get 기본값).
-            ForbidAgent(id_resolver(String(c["agent"])), Float64(get(c, "after", 0.0)))
-        elseif kind == "ForbidZone"
-            # ForbidZone(조립체id, zone키) : 공간적 출입금지 구역이 한 조립체의 적치영역을 덮은 사건.
-            # MILP 으로 안 풀고 기하 복구(restage/whole-build)로 dispatch 됨. assembly 는 grounding(감사·교차검증)용 —
-            # id_resolver 로 실제 노드 id 로 되돌리고(모르는 id 면 예외→거부), zone 은 RESTRICTION_ZONES 의 키(Symbol).
-            ForbidZone(id_resolver(String(c["assembly"])), Symbol(String(c["zone"])))
-        elseif kind == "ReplaceAgent"
+        spec = if kind == "ReplaceAgent"
             # ReplaceAgent(로봇id, after) : 로봇 고장 → 가장 가까운 예비로 1:1 인계(replace_robot.jl).
-            # ForbidAgent 와 필드는 같지만(로봇 id + after) 처리 경로가 다른 별도 종류 — MILP 재배정이 아니라
-            # 그래프 splice 로 전용 dispatch(_is_robot_replace). 예비 선택은 LLM 이 아니라 기하(nearest_pool)가 함.
+            # MILP 재배정이 아니라 그래프 splice 로 전용 dispatch(_is_robot_replace).
+            # 예비 선택은 LLM 이 아니라 기하(nearest_pool)가 함 — 이 spec 은 고장 로봇 id 만 지목.
             ReplaceAgent(id_resolver(String(c["agent"])), Float64(get(c, "after", 0.0)))
-        elseif kind == "RelocateBuild"
-            # RelocateBuild(zone키) : 구역이 조각조각 못 옮기는 작업까지 덮은 경우 → 빌드 **전체**를 Δ 하나로
-            # 평행이동(translate_whole_build!). ForbidZone 과 달리 assembly 를 안 지목한다(전체가 움직이므로
-            # per-assembly grounding 자체가 없다). zone 은 RESTRICTION_ZONES 의 키(Symbol) — 존재 여부는
-            # verify_relocate 가 확인한다(LLM 이 없는 구역을 지어내면 거부).
-            RelocateBuild(Symbol(String(c["zone"])))
         elseif kind == "SwapBattery"
             # SwapBattery(로봇id) : 방전 → 현장에서 배터리만 교체(swap_battery!). 같은 본체가 계속 일하고
             # 창고 예비 "본체"를 안 먹는다 — ReplaceAgent 와 소모 자원이 달라서 별도 종류로 둔 것이다.
-            # (기계고장에는 쓰면 안 됨: 구동계가 망가진 로봇은 배터리를 갈아도 안 움직인다.)
             SwapBattery(id_resolver(String(c["agent"])))
-        elseif kind == "ReformTeam"
-            # ReformTeam() : 다로봇 운반팀 형성 교착 → 기하 재정립(reform_stuck_teams!). 필드 없음.
-            ReformTeam()
-        elseif kind == "DeprioritizeAgent"
-            # DeprioritizeAgent(로봇id, factor) : TIER-2 소프트 회피(예: 배터리 저하). 제약을 안 더하고
-            # 목적함수에서 그 로봇 배정엣지 비용에 factor 를 곱함 → feasible set 불변(빌드 안 멈춤).
-            # factor 는 advisory(없으면 50.0); enactment(deprioritize_agent!)에서 [1,1e3] 로 클램프됨(안전).
-            DeprioritizeAgent(id_resolver(String(c["agent"])), Float64(get(c, "factor", 50.0)))
+        elseif kind == "LinearConstraint"
+            # 🔴 L2-a: 아무도 안 짠 선형 제약을 LLM 이 직접 쓴다(spec §5-4). 안전장치는 kind 를
+            #    안 보는 일반 verify() 다(verifier.jl:83-125) — 문법·과거불가침·feasibility·invariant.
+            _parse_linear(c; id_resolver = id_resolver)
+        elseif kind == "Disjunction"
+            # Disjunction(left, right) : Big-M 이접. ForbidWindow(v,lo,hi) 가 정확히
+            #   Disjunction(tF[v] ≤ lo, t0[v] ≥ hi) 다(test/respec_grammar.jl 이 두 해가 같음을 실측).
+            Disjunction(_parse_linear(c["left"]; id_resolver = id_resolver),
+                        _parse_linear(c["right"]; id_resolver = id_resolver))
         else
-            error("unknown constraint kind from respec service: $kind")  # 알 수 없는 종류면 예외 → 거부
+            # 🔴 D-9 로 뺀 kind(ForbidZone · ReformTeam · ForbidAgent · ForbidWindow ·
+            #    DeprioritizeAgent · RelocateBuild)도 여기로 온다 — **조용히 무시하지 않고 죽는다.**
+            error("kind '$kind' is not emittable (D-9). emittable = " *
+                  join(EMITTABLE_KINDS, " | "))
         end
         push!(cs, spec)                     # 만든 제약을 배열에 추가
     end

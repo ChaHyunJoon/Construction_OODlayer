@@ -385,6 +385,16 @@ referenced_ids(cs::RelocateBuild) = ()           # 빌드 전체 평행이동은
 referenced_ids(cs::DeprioritizeAgent) = (cs.agent,)  # 소프트 회피 제약은 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::SwapBattery)  = (cs.agent,)   # 배터리 교체는 그 로봇(agent) 하나를 건드림
 
+# 2026-08-21 (Task C2 · L2-a 문법). LLM 이 직접 쓴 선형 제약이 건드리는 노드들.
+# 🔴 `verify()` 2단계(과거불가침)가 이걸 그대로 쓴다 — 여기서 id 를 빠뜨리면 LLM 이
+#    이미 끝난 노드를 재시간화하는 제약을 조용히 통과시킬 수 있다. `node2`(:xa 의 두 번째
+#    끝점)까지 반드시 센다. 순회 대상이 Vector 뿐이라 순서가 결정적이다(Set/Dict 없음).
+referenced_ids(cs::LinearConstraint) =
+    Tuple(unique(vcat([r.node for (_, r) in cs.terms],
+                      [r.node2 for (_, r) in cs.terms if r.node2 !== nothing])))
+referenced_ids(cs::Disjunction) =
+    Tuple(unique(vcat(collect(referenced_ids(cs.left)), collect(referenced_ids(cs.right)))))
+
 """
     verify_swap_battery(proposal, env) -> Verdict
 

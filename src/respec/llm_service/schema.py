@@ -35,7 +35,7 @@ proposal to the solver. Keep these kinds in lockstep with spec_dsl.jl.
   · TOOL_SCHEMA = {...} — 파이썬 dict 로 손수 적은 JSON schema(Anthropic tool-use 규격).
 ────────────────────────────────────────────────────────────────────────────
 """
-from typing import Annotated, List, Literal, Union  # 타입 힌트용 도구들(Literal=값 고정, Union=여러 타입 중 하나)
+from typing import Annotated, List, Literal, Optional, Union  # 타입 힌트용 도구들(Literal=값 고정, Union=여러 타입 중 하나, Optional=None 가능)
 
 from pydantic import BaseModel, Field  # Pydantic: 필드 선언만으로 검증/파싱 해주는 데이터 모델 라이브러리
 
@@ -185,11 +185,114 @@ class SwapBattery(BaseModel):
     agent: str   # 배터리를 갈아 끼울 로봇 id
 
 
-# ConstraintSpec: 위 제약 kind 중 하나를 담는 타입. discriminator="kind" 로 "kind" 값을 보고
-# 어느 클래스로 파싱할지 자동 판별(discriminated union). = 이 한 줄이 문법 전체의 합집합 타입.
+# =============================================================================
+# 2026-08-21 (Task C2 · spec §5-4) — L2-a: MILP 결정변수 위의 제약 문법
+# -----------------------------------------------------------------------------
+# 위의 kind 들은 전부 "누군가 미리 짜 둔 매크로"다. 아래 둘은 다르다: 모델이
+# (t0, tF, Xa) 위의 선형 제약을 **직접 쓴다**. ForbidWindow/ForbidAgent 는 이
+# 문법의 인스턴스이지 별개 종류가 아니다.
+# 이것이 안전한 이유는 줄리아의 verify() 가 kind 를 보지 않기 때문이다
+# (verifier.jl:83-125 — 문법 · 과거불가침 · MILP feasibility · invariant).
+# =============================================================================
+
+
+class VarRef(BaseModel):
+    """One MILP decision variable.
+
+    `kind` is one of exactly three:
+      * "t0" -- the START time of node `node`
+      * "tF" -- the FINISH time of node `node`
+      * "xa" -- the ASSIGNMENT edge `Xa[node, node2]` (`node2` REQUIRED, and the
+                pair must be a candidate assignment edge; inventing one is rejected)
+
+    Reference nodes ONLY by an EXACT id echoed from the prompt's NODES / AGENTS
+    sections. Never invent an id, never use a vertex number: the schedule is
+    re-numbered by graph surgery, so a number means a different node afterwards.
+    """
+    kind: Literal["t0", "tF", "xa"]  # 셋뿐. 그 밖의 값은 여기서, 그리고 줄리아 VarRef 생성자에서 또 걸린다
+    node: str                        # 프롬프트가 준 정확한 노드/로봇 id (지어내지 말 것)
+    node2: Optional[str] = None      # "xa" 일 때만 필수(Xa[node, node2]); 나머지 kind 에서는 반드시 생략
+
+
+class Term(BaseModel):
+    """One `coeff * var` term of a linear constraint."""
+    coeff: float   # 계수
+    var: VarRef    # 그 계수가 곱해지는 결정변수
+
+
+# LinearConstraint: 아무도 하드코딩하지 않은 제약을 모델이 직접 쓰는 자리(행동 신설 L2-a).
+class LinearConstraint(BaseModel):
+    """Sum(coeff * var) `rel` rhs -- a NEW scheduling constraint you write yourself.
+
+    This is the one kind that is NOT a pre-written macro: it lets you express a
+    requirement nobody hardcoded, directly over the scheduler's decision variables.
+    Examples of what it can say that no other kind can:
+      * "node N must not finish before 30"        -> [1*tF(N)] ge 30
+      * "node A must finish before node B starts" -> [1*tF(A), -1*t0(B)] le 0
+      * "these two nodes must start together"     -> [1*t0(A), -1*t0(B)] eq 0
+
+    `rel` is exactly one of "le" (<=), "ge" (>=), "eq" (==). `terms` must be
+    NON-EMPTY -- a zero-term constraint constrains nothing and is rejected.
+
+    Every `var.node` must be an EXACT id echoed from the prompt's NODES / AGENTS
+    listing. An id that is not in the schedule is REJECTED (never silently skipped).
+
+    Safety: this is gated by the SAME general verifier as every other kind -- the
+    proposal is trial-solved with your constraint injected, and rejected if the
+    problem becomes infeasible or if it re-times already-completed work.
+    """
+    kind: Literal["LinearConstraint"] = "LinearConstraint"
+    terms: List[Term]           # 비어 있으면 안 됨(0개 제약 = hollow admit)
+    rel: Literal["le", "ge", "eq"]
+    rhs: float
+
+
+# Disjunction: "둘 중 하나는 성립" (Big-M + 이진변수로 컴파일). ForbidWindow 가 정확히 이것이다.
+class Disjunction(BaseModel):
+    """`left` OR `right` -- at least one of the two linear constraints must hold.
+
+    Use this for an EITHER/OR requirement that a single linear constraint cannot
+    express. The canonical example is a forbidden time window on node N: "N is not
+    active during [lo, hi]" is exactly
+
+        left  = [1*tF(N)] le lo      (finish before the window)
+        right = [1*t0(N)] ge hi      (start after the window)
+
+    Both halves must be LinearConstraints over the SAME schedule. It compiles to a
+    Big-M encoding with one auxiliary binary, so it only shrinks the feasible set.
+    """
+    kind: Literal["Disjunction"] = "Disjunction"
+    left: LinearConstraint
+    right: LinearConstraint
+
+
+# =============================================================================
+# 🔴 2026-08-21 D-9 (Task C2, spec §5-8): 행동공간을 emit 가능한 것만 남기고 줄였다.
+# -----------------------------------------------------------------------------
+# 아래 여섯 클래스는 **정의는 그대로 남기되 union 과 TOOL_SCHEMA enum 에서 뺐다.**
+#   ForbidZone        도메인 공집합 (closed≈46 이후 n_restage_feasible == 0)
+#   ReformTeam        은퇴 — 복구가 maybe_unwedge_nominal! 로 명목 레인에 이관
+#   ForbidAgent       D-7 아래 ReplaceAgent 에 약우월로 지배
+#   ForbidWindow      대응 사건 없음 (도착 시점이 확률변수다). 필요하면 Disjunction 으로 쓴다
+#   DeprioritizeAgent 선택 0회. cell 위험은 battery kind 로 도착하므로 SwapBattery 가 답이다
+#                     (_hz_fire_cell! -> battery_action, hazard.jl:583)
+#   RelocateBuild     행동이 아니라 solver 다(_find_min_translation 이 Δ 를 스스로 찾는다,
+#                     restage_zone.jl:768-779). 진짜 원시연산 _apply_uniform_translation!(env, Δ)
+#                     를 Task C3 의 TranslateBuild(dx, dy) 가 자유 파라미터로 노출한다.
+#                     안 빼면 emit 가능 수가 5 가 아니라 6 이 된다(컨트롤러 판정 2026-08-21).
+#
+# 🔴 **줄리아 타입과 컴파일러는 살아 있다** — 엔진 내부 생산자가 그 타입들을 직접 만든다
+#    (navigator/baselines.jl:173·192·201 · respec/reassign.jl:382 · oracle/ood_mdp_shim.jl:306).
+#    여기서 빠지는 것은 "LLM 이 낼 수 있는 것"의 목록뿐이다.
+#
+# 이 목록은 llm_bridge.jl 의 `EMITTABLE_KINDS` 와 **집합으로 같아야 한다** —
+# test/respec_action_space.jl 이 두 표면의 등식을 직접 단언한다.
+#
+# 클래스 정의를 지우지 않고 남긴 이유: Task C3 가 TranslateBuild 를 넣고 나면 이 파일이
+# 행동공간의 역사를 그대로 들고 있는 유일한 자리이고, 되살릴 때 diff 가 한 줄이면 된다.
+# =============================================================================
 ConstraintSpec = Annotated[
-    Union[ForbidWindow, ForbidAgent, ForbidZone, RelocateBuild, ReplaceAgent, ReformTeam,
-          DeprioritizeAgent, SwapBattery],
+    Union[LinearConstraint, Disjunction, ReplaceAgent, SwapBattery],
     Field(discriminator="kind"),
 ]
 
@@ -208,13 +311,42 @@ class RespecProposal(BaseModel):
 # 강제로 호출해야 하므로, 여기 정의된 모양의 JSON 외에는 물리적으로 못 내놓는다.
 # Pydantic 에서 자동 생성하지 않고 손으로 적은 이유: 모델에 kind-enum 이 앞에 오는
 # 평평하고 명확한 schema 를 보여주기 위함. 결과 검증은 여전히 위 RespecProposal 이 담당.
+# 손으로 적은 하위 schema 둘(TOOL_SCHEMA 안에서 두 번 쓰이므로 이름을 붙여 둔다).
+_VARREF_SCHEMA = {
+    "type": "object",
+    "required": ["kind", "node"],
+    "properties": {
+        "kind": {"type": "string", "enum": ["t0", "tF", "xa"]},
+        "node": {"type": "string"},
+        "node2": {"type": "string"},   # "xa" 일 때만 (Xa[node, node2])
+    },
+}
+_LINEAR_SCHEMA = {
+    "type": "object",
+    "required": ["terms", "rel", "rhs"],
+    "properties": {
+        "terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["coeff", "var"],
+                "properties": {"coeff": {"type": "number"}, "var": _VARREF_SCHEMA},
+            },
+        },
+        "rel": {"type": "string", "enum": ["le", "ge", "eq"]},
+        "rhs": {"type": "number"},
+    },
+}
+
 TOOL_SCHEMA = {
     "name": "propose_respecification",
     "description": (
-        "Propose a re-specification that handles the observed open-world event. Most kinds "
-        "ADD formal scheduling constraints (hard); DeprioritizeAgent is the ONE soft kind -- "
-        "it only re-prices a degraded (e.g. low-battery) robot so the solver avoids it without "
-        "removing it. Never change the objective directly. Reference nodes/agents by the exact "
+        "Propose a re-specification that handles the observed open-world event. Two kinds are "
+        "pre-written recoveries (ReplaceAgent for a broken robot, SwapBattery for a flat one); "
+        "two are a GRAMMAR you write yourself over the scheduler's decision variables "
+        "(LinearConstraint, and Disjunction for an either/or). Prefer a pre-written recovery "
+        "when one fits the event; reach for the grammar when nothing pre-written expresses the "
+        "requirement. Never change the objective directly. Reference nodes/agents by the exact "
         "ids given in the prompt."
     ),
     "input_schema": {                       # 모델 출력의 형태를 규정하는 JSON schema 본체
@@ -230,19 +362,30 @@ TOOL_SCHEMA = {
                     "properties": {
                         "kind": {
                             "type": "string",
-                            # enum = 허용된 kind 8종만. 그 밖의 값은 여기서 걸림.
-                            "enum": ["ForbidWindow", "ForbidAgent", "ForbidZone", "RelocateBuild",
-                                     "ReplaceAgent", "ReformTeam", "DeprioritizeAgent", "SwapBattery"],
+                            # 🔴 D-9: emit 가능한 kind 만. llm_bridge.jl 의 EMITTABLE_KINDS 와
+                            # 집합으로 같아야 한다(test/respec_action_space.jl 이 단언한다).
+                            "enum": ["LinearConstraint", "Disjunction",
+                                     "ReplaceAgent", "SwapBattery"],
                         },
                         # 아래는 kind 별로 쓰이는 필드들을 한데 나열(모델이 해당 kind 에 맞는 것만 채움).
-                        "node": {"type": "string"},
-                        "agent": {"type": "string"},
-                        "t_lo": {"type": "number"},
-                        "t_hi": {"type": "number"},
-                        "after": {"type": "number"},
-                        "zone": {"type": "string"},
-                        "assembly": {"type": "string"},
-                        "factor": {"type": "number"},
+                        "agent": {"type": "string"},   # ReplaceAgent / SwapBattery
+                        "after": {"type": "number"},   # ReplaceAgent
+                        # --- L2-a 문법 (LinearConstraint / Disjunction) ---
+                        "terms": {                     # LinearConstraint: Σ coeff·var
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["coeff", "var"],
+                                "properties": {
+                                    "coeff": {"type": "number"},
+                                    "var": _VARREF_SCHEMA,
+                                },
+                            },
+                        },
+                        "rel": {"type": "string", "enum": ["le", "ge", "eq"]},
+                        "rhs": {"type": "number"},
+                        "left": _LINEAR_SCHEMA,        # Disjunction 의 왼쪽 항
+                        "right": _LINEAR_SCHEMA,       # Disjunction 의 오른쪽 항
                     },
                 },
             },

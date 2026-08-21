@@ -102,6 +102,86 @@ compile_constraint!(model, t0, tF, Xa, sched, cs::DeprioritizeAgent) = 0
 # 혼합 제안이 일반 컴파일 경로를 타도 무해하도록 두는 no-op 메서드.
 compile_constraint!(model, t0, tF, Xa, sched, cs::RelocateBuild) = 0
 
+# =============================================================================
+# 2026-08-21 (Task C2 · spec §5-4) — L2-a 문법의 컴파일
+# -----------------------------------------------------------------------------
+# 🔴 **조용한 폴백 금지**(Global Constraint). 아래 세 자리가 이 레포에서 조용히 새는 자리다:
+#   · `get_vtx(sched, id)` 는 모르는 id 에 **-1 을 돌려준다**(graph_utils_essentials.jl:797).
+#     그대로 색인하면 BoundsError 나 엉뚱한 변수가 된다 → 여기서 먼저 죽인다.
+#   · `Xa[u,v]` 가 구조적 0(후보 배정 엣지가 아님)이면 결정변수가 아니다 → 죽인다.
+#     (조용히 건너뛰면 "제약을 걸었다" 고 믿는 0행 제안 = hollow admit 이 된다.)
+#   · 알 수 없는 `rel`/`kind` → 죽인다. 절대 remap 하지 않는다.
+# 결정성: 순회하는 것은 `cs.terms`(Vector) 뿐이다 — `Set`/`Dict` 를 안 돈다.
+# =============================================================================
+
+"VarRef 하나를 살아 있는 JuMP 결정변수로 해석한다. 해석 불가면 **에러**(조용한 폴백 금지)."
+function _var_of(t0, tF, Xa, sched, r::VarRef)
+    v = get_vtx(sched, r.node)                        # 모르는 id 면 -1
+    v > 0 || error("VarRef: 노드 $(r.node) 가 스케줄에 없다 (get_vtx -> $(v))")
+    r.kind === :t0 && return t0[v]
+    r.kind === :tF && return tF[v]
+    if r.kind === :xa
+        v2 = get_vtx(sched, r.node2)
+        v2 > 0 || error("VarRef(:xa): 노드 $(r.node2) 가 스케줄에 없다 (get_vtx -> $(v2))")
+        isassigned_edge(Xa, v, v2) ||
+            error("VarRef(:xa): Xa[$(r.node), $(r.node2)] 는 결정변수가 아니다 " *
+                  "(후보 배정 엣지가 아닌 자리 — 구조적 0)")
+        return Xa[v, v2]
+    end
+    error("VarRef: 알 수 없는 kind $(r.kind)")         # 도달 불가(생성자가 막는다). 그래도 죽인다.
+end
+
+"`Σ cᵢ·varᵢ` 를 JuMP 식으로. terms 순서대로 더하므로 결정적이다."
+_lin_expr(t0, tF, Xa, sched, cs::LinearConstraint) =
+    sum(c * _var_of(t0, tF, Xa, sched, r) for (c, r) in cs.terms)
+
+# --- LinearConstraint: 선형 제약 한 줄 -----------------------------------------
+# 반환값 = **모델에 실제로 추가한 행 수**. (반환값이 행 수와 다르면 hollow admit 을 못 잡는다 —
+#  test/respec_grammar.jl 이 둘의 일치를 직접 단언한다.)
+function compile_constraint!(model, t0, tF, Xa, sched, cs::LinearConstraint)
+    e = _lin_expr(t0, tF, Xa, sched, cs)
+    if cs.rel === :le
+        @constraint(model, e <= cs.rhs)
+    elseif cs.rel === :ge
+        @constraint(model, e >= cs.rhs)
+    elseif cs.rel === :eq
+        @constraint(model, e == cs.rhs)
+    else
+        error("LinearConstraint: 알 수 없는 rel $(cs.rel)")   # 도달 불가(생성자가 막는다)
+    end
+    return 1
+end
+
+# --- Disjunction: left ∨ right (Big-M + 이진변수) ------------------------------
+# `active` 가 1 인 쪽만 강제된다. `ForbidWindow` 와 **같은** Big-M 상수(1e5)를 쓴다 —
+# 두 경로가 같은 해를 내야 문법 왕복(게이트 N-G8)이 성립한다.
+const _DISJ_BIGM = 1e5
+
+"이접의 한쪽을 Big-M 으로 건다. `active`(0/1 식)가 1 일 때만 유효. 추가한 행 수를 돌려준다."
+function _bigm_half!(model, e, rel::Symbol, rhs::Float64, active)
+    if rel === :le
+        @constraint(model, e <= rhs + _DISJ_BIGM * (1 - active)); return 1
+    elseif rel === :ge
+        @constraint(model, e >= rhs - _DISJ_BIGM * (1 - active)); return 1
+    elseif rel === :eq
+        # 🔴 등식은 **두 행**으로 완화해야 한다. 한 행짜리 `e == rhs` 를 그냥 걸면 그 등식이
+        #    b 와 무관하게 **언제나** 성립해야 해서 이접(∨)이 연접(∧)으로 조용히 바뀐다.
+        @constraint(model, e <= rhs + _DISJ_BIGM * (1 - active))
+        @constraint(model, e >= rhs - _DISJ_BIGM * (1 - active))
+        return 2
+    end
+    error("Disjunction: 알 수 없는 rel $(rel)")
+end
+
+function compile_constraint!(model, t0, tF, Xa, sched, cs::Disjunction)
+    b = @variable(model, binary = true)   # b == 1 → left 활성, b == 0 → right 활성
+    l = _lin_expr(t0, tF, Xa, sched, cs.left)
+    r = _lin_expr(t0, tF, Xa, sched, cs.right)
+    n  = _bigm_half!(model, l, cs.left.rel,  cs.left.rhs,  b)
+    n += _bigm_half!(model, r, cs.right.rel, cs.right.rhs, 1 - b)
+    return n
+end
+
 # --- helpers ------------------------------------------------------------------
 
 """
