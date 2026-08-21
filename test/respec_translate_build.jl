@@ -106,6 +106,31 @@ enact!(prop) = CB.maybe_respecify!(
     producer = (_env, _ev) -> prop)
 _prop(cs...) = CB.RespecProposal(CB.ConstraintSpec[cs...])
 
+# 🔴 **`_resync_scene_drift!` 이 실제로 훑는 씬 본체 집합** (fix round 1, 컨트롤러 Important 2).
+#    초판은 `RobotNode` 를 스냅샷했는데 **그건 틀린 집합이었다**: `_resync_scene_drift!`
+#    (restage_zone.jl:177-186)는 `ObjectStart`/`AssemblyComplete` 스케줄 노드의 엔티티 씬 본체와
+#    그 `TransportUnitNode` 만 훑고, 같은 함수의 docstring(:142)이 못박아 두었다 —
+#    *"Robots are NOT touched (control drives them to goals)."*
+#    그래서 로봇 기준 `n_moved` 는 **어떤 Δ 에서도 0** 이었다(=`tol` 문턱이 아니라 노드타입 제외를
+#    재고 있었다). 게다가 `@info` 로만 찍혀 빨개질 수도 없었다. 아래가 `tol` 이 실제로 재는 집합이다.
+function _drift_bodies(env)
+    out = Dict{Any,Vector{Float64}}()
+    for n in CB.get_nodes(env.sched)
+        (CB.matches_template(CB.ObjectStart, n) ||
+         CB.matches_template(CB.AssemblyComplete, n)) || continue
+        ent = CB.entity(n)
+        for id in (CB.node_id(ent), CB.node_id(CB.TransportUnitNode(ent)))
+            CB.has_vertex(env.scene_tree, id) || continue
+            sn = CB.get_node(env.scene_tree, id)
+            out[id] = Vector{Float64}(CB.project_to_2d(CB.global_transform(sn).translation))
+        end
+    end
+    return out
+end
+# 정렬해서 센다(Global Constraint: Dict 순회 순서에 기대지 않는다).
+_n_moved(before, after) = count(k -> haskey(after, k) && norm(after[k] .- before[k]) > 1e-9,
+                                sort!(collect(keys(before)); by = string))
+
 # 스텁 id_resolver — 파서 시험용(씬 없이 돈다).
 const _RID = CB.RobotID(1)
 _resolver(s::AbstractString) = s == "GHOST" ? error("unknown id $s") : _RID
@@ -161,6 +186,10 @@ end
     before = _poses(env)
     h0 = _hash(env)
     @test length(before) == DOM.n_poses && !isempty(before)   # 공집합 순회 = 항진명제 방지
+    # 🔴 두 갈래 대조의 **양성** 쪽: tol(=RR) 보다 큰 Δ 는 씬 본체를 실제로 스냅해야 한다.
+    #    이게 없으면 [5] 의 `n_moved == 0` 은 "어떤 Δ 에서도 0" 과 구분되지 않는다.
+    bodies_before = _drift_bodies(env)
+    @test !isempty(bodies_before)                             # 재는 집합이 비어 있지 않다
 
     st = enact!(_prop(CB.TranslateBuild(3.0, -1.5)))
     @test st === :admitted
@@ -172,8 +201,15 @@ end
         @test after[k][2] ≈ before[k][2] - 1.5 atol = 1e-9
         @test after[k][3] ≈ before[k][3]       atol = 1e-9     # z 는 안 건드린다(평면 이동)
     end
-    # 🔴 s 에 흔적이 남는가 — 남지 않으면 MCTS 트리에서 NOOP 과 병합된다
+    # `state_hash` 도 갈린다. ⚠️ **독립 증거가 아니다**(fix round 1): 이 분기는 Δ 적용 뒤
+    #    `reset_cache_resume!` 도 부르므로 해시 변화가 Δ 만의 결과라고 말할 수 없다.
+    #    Δ 에 대한 증거는 위 좌표 단언이고, 이 줄은 "s 에 아무 흔적도 안 남지는 않는다" 까지다.
     @test _hash(env) != h0
+    # 🔴 두 갈래 대조의 **양성** 쪽 (Δ = 3.354 > RR = 0.14): 씬 본체가 실제로 스냅된다.
+    n_moved_big = _n_moved(bodies_before, _drift_bodies(env))
+    @test n_moved_big > 0
+    @info "[C3] 두 갈래 대조 · 양성: |Δ|=3.354 > tol=RR=$(round(RR; digits = 3)) -> " *
+          "씬 본체 이동 $(n_moved_big)/$(length(bodies_before))"
     # 집행 회계: 단위 하나, 조용히 버려진 제약 없음
     @test [(r.kind, r.status) for r in CB.LAST_ENACT_REPORT[]] == [(:translate, :admitted)]
     @test sum(r.n for r in CB.LAST_ENACT_REPORT[]) == 1
@@ -186,12 +222,11 @@ end
     @test 0.0 < δ < RR                       # 이 시험이 주장하는 바로 그 구간인지 먼저 확인
     before = _poses(env)
     h0 = _hash(env)
-    # 음성 대조: 같은 Δ 를 **씬트리에서** 재면 사라진다(R2 실측). 씬 본체 위치를 같이 잰다.
-    scene_before = Dict(CB.node_id(n) => Vector{Float64}(CB.project_to_2d(
-                            CB.global_transform(n).translation))
-                        for n in CB.get_nodes(env.scene_tree)
-                        if CB.matches_template(CB.RobotNode, n))
-    @test !isempty(scene_before)
+    # 🔴 음성 대조 (두 갈래 중 **음성** 쪽). `_resync_scene_drift!` 은 드리프트 ≤ tol(= RR)인
+    #    본체를 아예 안 건드린다 → δ < RR 이면 씬 본체가 **하나도** 안 움직인다. [4] 가 같은
+    #    집합에서 `n_moved > 0` 을 단언하므로 이 0 은 공허하지 않다.
+    bodies_before = _drift_bodies(env)
+    @test !isempty(bodies_before)
 
     st = enact!(_prop(CB.TranslateBuild(δ, 0.0)))
     @test st === :admitted
@@ -201,14 +236,14 @@ end
         @test after[k][1] ≈ before[k][1] + δ atol = 1e-12
         @test after[k][2] ≈ before[k][2]     atol = 1e-12
     end
-    @test _hash(env) != h0                   # 🔴 sub-robot-radius Δ 가 state_hash 에 보인다
-    scene_after = Dict(CB.node_id(n) => Vector{Float64}(CB.project_to_2d(
-                           CB.global_transform(n).translation))
-                       for n in CB.get_nodes(env.scene_tree)
-                       if CB.matches_template(CB.RobotNode, n))
-    n_moved = count(k -> norm(scene_after[k] .- scene_before[k]) > 1e-9, sort!(collect(keys(scene_before)); by = string))
-    @info "[C3] sub-radius Δ=$(round(δ; digits = 4)) (RR=$(round(RR; digits = 4))): " *
-          "poses 전부 이동, 씬 로봇 중 이동한 것 = $(n_moved)/$(length(scene_before))"
+    # 🔴 이 줄이 R2 트립와이어의 **본체**다: `poses` 를 씬트리 출처로 다시 배선하면 δ < tol 이
+    #    통째로 흡수돼 위 좌표 단언(atol 1e-12)이 빨개진다. (해시 줄은 [4] 와 같은 이유로
+    #    reset_cache_resume! 과 교락돼 있으므로 보조 증거로만 둔다.)
+    @test _hash(env) != h0
+    n_moved_small = _n_moved(bodies_before, _drift_bodies(env))
+    @test n_moved_small == 0                 # 🔴 음성: tol 미만이라 씬 본체는 하나도 안 스냅된다
+    @info "[C3] 두 갈래 대조 · 음성: δ=$(round(δ; digits = 4)) < tol=RR=$(round(RR; digits = 4)) -> " *
+          "씬 본체 이동 $(n_moved_small)/$(length(bodies_before)) (poses 는 전부 정확히 δ 이동)"
 end
 
 @testset "🔴 [6] Δ = 0 은 **거부**된다 (조용한 no-op 방지) — :noop 과 구분된다" begin
@@ -223,6 +258,15 @@ end
     @test !CB.RESPEC_HOLD[]                  # 문법 결함은 라인을 영구정지시키지 않는다
     # 🔴 음성 대조: "절제"(빈 제약) 는 :noop 이다. 둘이 같은 값이면 이 시험은 아무것도 안 잰다.
     @test enact!(CB.RespecProposal(CB.ConstraintSpec[])) === :noop
+
+    # 🔴 정확한 0 만 막으면 안 된다 (fix round 1, 컨트롤러 minor 1): |Δ| 가 `s` 의 관측 양자
+    #    (`_c` 의 digits=9) 아래면 `:admitted` 를 붙여도 NOOP 과 바이트 동일하다 = hollow admit.
+    before2 = _poses(env)
+    h2 = _hash(env)
+    @test enact!(_prop(CB.TranslateBuild(1e-18, 0.0))) === :rejected
+    @test _poses(env) == before2
+    @test _hash(env) == h2
+    @test CB._TB_MIN_DELTA == 1e-9           # 하한은 선언된 상수다(시험이 그 값을 안다)
 end
 
 @testset "🔴 [7] 여러 TranslateBuild 가 **전부** 집행된다 (C1 계약 · 이동은 합성된다)" begin
@@ -274,6 +318,51 @@ end
         @test CB._count_future_goals_in_zone(env; zone_keys = [:c3zone]) == 0
         @info "[C3] baseline Δ0 = $(round.(Δ0; digits = 3))  |Δ0| = $(round(norm(Δ0); digits = 3)); " *
               "구역 안 목표 $(n_before) -> 0"
+    finally
+        CB.clear_restriction_zones!()
+    end
+end
+
+@testset "🔴 [10] 잠정 사후 경계: 구역을 못 비우는 Δ 는 **정확히 되돌리고** 거부한다" begin
+    # fix round 1 (컨트롤러 Important 1). 이 분기는 fail-open 이었다 — 일반 `verify()` 는
+    # 제네릭 fall-through 에서만 불리고(이 분기는 그 전에 :admitted 로 반환한다), MILP 재풀이도
+    # 없고, `_apply_uniform_translation!` 자체에 상한도 상태값도 없다. `RelocateBuild` 경로가
+    # 쓰던 잔여 판정(`_count_future_goals_in_zone`)을 그대로 빌려 잠정 경계로 삼는다.
+    @test !CB.RESPEC_HOLD[]
+    gs = sort(CB.root_deposit_goals(env); by = g -> (Float64(g[1]), Float64(g[2])))
+    @test !isempty(gs)
+    zc = sum(gs) ./ length(gs)
+    CB.clear_restriction_zones!()
+    CB.add_restriction_zone!(:c3bound, zc, 2.5)
+    try
+        n0 = CB._count_future_goals_in_zone(env; zone_keys = [:c3bound])
+        @test n0 > 0                          # 🔴 비퇴화: 구역이 실제로 목표를 가두고 있다
+        Δ0 = CB._find_min_translation(env; zone_keys = [:c3bound])
+        @test Δ0 !== nothing && norm(Δ0) > 0
+
+        # (a) 모자란 Δ = 최소 이동의 10% → 잔여가 남는다 → 거부 + **정확한 되돌리기**
+        before = _poses(env)
+        h0 = _hash(env)
+        small = 0.1 .* Δ0
+        @test 0.0 < norm(small) < norm(Δ0)    # 이 시험이 주장하는 구간인지 먼저 확인
+        st = enact!(_prop(CB.TranslateBuild(small[1], small[2])))
+        @test st === :rejected
+        @test [(r.kind, r.status) for r in CB.LAST_ENACT_REPORT[]] == [(:translate, :rejected)]
+        after = _poses(env)
+        for k in sort!(collect(keys(before)))  # 🔴 되돌리기가 **정확**한가 (이동은 합성된다)
+            @test after[k][1] ≈ before[k][1] atol = 1e-12
+            @test after[k][2] ≈ before[k][2] atol = 1e-12
+        end
+        @test _hash(env) == h0                 # s 에 흔적이 남지 않는다 = 세계가 그대로다
+        @test CB._count_future_goals_in_zone(env; zone_keys = [:c3bound]) == n0
+        @test !CB.RESPEC_HOLD[]                # 라인을 영구정지시키지는 않는다
+
+        # (b) 🔴 음성 대조: 같은 경계가 **충분한** Δ 는 통과시킨다. 아니면 (a) 는 "언제나 거부"다.
+        st2 = enact!(_prop(CB.TranslateBuild(Δ0[1], Δ0[2])))
+        @test st2 === :admitted
+        @test CB._count_future_goals_in_zone(env; zone_keys = [:c3bound]) == 0
+        @info "[C3] 잠정 경계: |Δ_min|=$(round(norm(Δ0); digits = 3)) 는 통과(잔여 0), " *
+              "0.1·Δ_min=$(round(norm(small); digits = 3)) 는 거부 후 정확 복원 (구역 안 목표 $(n0))"
     finally
         CB.clear_restriction_zones!()
     end

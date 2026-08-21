@@ -575,6 +575,21 @@ const _ENACT_RANK = (relocate = 1, translate = 1, zone = 2, replace = 3, fault =
 _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 
 """
+    _TB_MIN_DELTA
+
+`TranslateBuild` 가 **관측 가능하려면** 넘어야 하는 변위 크기의 하한.
+
+지어낸 상수가 아니라 `s` 의 **관측 양자**다: `simstate.jl:217` 의 정준화가
+`_c(x::Float64) = string(round(x; digits = 9) + 0.0)` 이므로 절대값 5e-10 이하의 좌표 변화는
+`state_hash` 에서 통째로 흡수된다 — 그 아래의 Δ 로 "옮겼다" 고 보고하면 `s` 안에서 **NOOP 과
+바이트 동일**한 결과에 `:admitted` 를 붙이는 hollow admit 이 된다.
+
+⚠️ **하한이지 보장이 아니다.** |Δ| ≥ 이 값이라고 해시가 반드시 갈리는 것은 아니다(좌표별 반올림
+경계에 달렸다). 이 상수의 계약은 "이 아래는 **확실히** 구분 불가능하다" 하나뿐이다.
+"""
+const _TB_MIN_DELTA = 1e-9
+
+"""
     _enact_batched(kind) -> Bool
 
 이 종류의 분기가 제약 **벡터를 통째로** 다루는가. `true` 면 같은 종류를 한 단위로 묶는다.
@@ -662,6 +677,16 @@ end
 어떤 구역을 비웠다는 증거를 들고 있지 않다. 그것으로 `ForbidZone` 을 흡수하면 구역을 비울
 유일한 단위를 조용히 버리게 된다. 반대로 `RelocateBuild` 는 집행 시점의 라이브 기하에서 Δ 를
 다시 풀므로 앞선 `TranslateBuild` 를 이미 반영한 잔여 이동만 낸다(이중 계산이 아니다).
+
+🔴 **도달가능성 — 이 판단이 안전한 이유는 오늘의 우연이다 (fix round 1, 컨트롤러 minor 3).**
+위는 **건전성** 논증이다(흡수하면 틀린다). 그와 별개로, 흡수하지 **않아서** 생길 수 있는 해
+(`TranslateBuild` 가 구역을 비운 뒤 `ForbidZone` 단위가 한 번 더 돌아 `engage_fallback!` 로 가
+성공한 이동을 영구 line-stop 시키는 것 — `:subsumed_by_relocate` 가 존재하는 바로 그 이유)는
+**오늘 도달 불가능할 뿐이다**: (a) `ForbidZone` 이 D-9 로 emit 표면에서 빠져 LLM 이 둘을 한
+제안에 실을 수 없고, (b) 둘을 섞어 만드는 내부 생산자가 하나도 없다(`baselines.jl:173·192·201` ·
+`reassign.jl:382` · `ood_mdp_shim.jl:306` 확인). ⚠️ **둘 중 하나가 바뀌는 날 이 경로가 다시 열리고,
+그것을 지키는 시험은 없다.** `ForbidZone` 을 emit 표면에 되돌리거나 혼합 생산자를 만드는 태스크는
+여기부터 다시 읽을 것.
 
 정렬된 `Vector` 로만 판정한다 — `Set`/`Dict` 순회 없음(Global Constraint).
 """
@@ -1045,12 +1070,25 @@ function _enact_one!(env, proposal::RespecProposal;
             @warn "[RESPEC] TranslateBuild Δ=($(c.dx), $(c.dy)) is NOT FINITE -> rejected (no clamp)"
             return :rejected
         end
-        if c.dx == 0.0 && c.dy == 0.0
+        # 🔴 **정확히 0 이 아니라 크기 하한이다** (fix round 1, 컨트롤러 minor 1).
+        #    `c.dx == 0.0 && c.dy == 0.0` 만 보면 `TranslateBuild(1e-18, 0.0)` 이 세 전제조건을
+        #    전부 통과해 `:admitted` 가 되면서 `s` 안에서는 **NOOP 과 바이트 동일**하다 — 이 분기가
+        #    죽이겠다고 적어 둔 바로 그 hollow admit 이다.
+        #    하한의 출처는 지어낸 상수가 아니라 **관측의 양자**다: `simstate.jl:217` 의 정준화가
+        #    `_c(x::Float64) = string(round(x; digits = 9) + 0.0)` 이므로 절대값 5e-10 이하의 좌표
+        #    변화는 `state_hash` 에서 통째로 흡수된다. `_TB_MIN_DELTA = 1e-9` 는 그 흡수폭이다.
+        #    ⚠️ 이것은 **하한이지 보장이 아니다**: |Δ| ≥ 1e-9 라고 반드시 해시가 갈린다는 뜻은
+        #    아니다(좌표별 반올림 경계에 달렸다). 이 가드는 **확실히 구분 불가능한 것**만 죽인다.
+        Δnorm = hypot(c.dx, c.dy)
+        if Δnorm < _TB_MIN_DELTA
+            zero_exact = (c.dx == 0.0 && c.dy == 0.0)
             monitor_record_verification!(status = "rejected",
                 checks = _tb_checks(true, false, true),
                 execution = Dict("action" => "none"),
-                verdict = "REJECTED · zero displacement (hollow admit)")
-            @warn "[RESPEC] TranslateBuild Δ=(0.0, 0.0) moves nothing -> rejected " *
+                verdict = "REJECTED · " * (zero_exact ? "zero displacement (hollow admit)" :
+                          "sub-observable displacement |Δ|=$(Δnorm) < $(_TB_MIN_DELTA) (hollow admit)"))
+            @warn "[RESPEC] TranslateBuild |Δ|=$(Δnorm) is below the observable quantum " *
+                  "($(_TB_MIN_DELTA); simstate `_c` rounds at digits=9) -> rejected " *
                   "(restraint is `constraints: []` -> :noop, which is a DIFFERENT verdict)"
             return :rejected
         end
@@ -1063,10 +1101,53 @@ function _enact_one!(env, proposal::RespecProposal;
                   "-> rejected (a uniform translation over an empty target set is a silent no-op)"
             return :rejected
         end
-        # ⚠️ Task C4 가 `verify_translate(proposal, env)` 를 여기에 넣는다(결과 배치의 기하 검증).
-        #    그 전까지 이 분기는 위 세 전제조건만 보장한다 — 보고서에 미결로 남긴다.
         _apply_uniform_translation!(env, Δ)                  # 실제로 빌드 전체를 Δ 만큼 옮긴다
         reset_cache_resume!(env.cache, env.sched)            # 그래프/기하가 바뀌었으니 프론티어 재빌드
+
+        # --- 🔴 잠정 사후 경계 (fix round 1, 컨트롤러 Important 1) --------------------
+        # **이 분기는 fail-open 이었다.** 추적 결과 어떤 경계도 이 경로에 닿지 않는다:
+        #   · 일반 `verify()` 는 특수 분기들 **뒤** 제네릭 fall-through 에서만 불린다 — 여기서
+        #     `:admitted` 로 반환하므로 invariant 검사가 `TranslateBuild` 를 본 적이 없다.
+        #   · MILP 재풀이가 없다(분기 전체가 apply + resume 둘뿐이다).
+        #   · `_apply_uniform_translation!`(restage_zone.jl:610-623)은 상한도 상태값도 없다 —
+        #     Δ 를 합성하고 `env` 를 돌려줄 뿐이다.
+        # 대조: `RelocateBuild` 경로는 끝까지 경계돼 있다 — Δ 는 `_find_min_translation` 이 내고,
+        # 그 뒤 `residual = _count_future_goals_in_zone(...)` 가 `:residual_blocked`/`:infeasible` 로
+        # 강등해 `engage_fallback!` 로 간다. `TranslateBuild` 는 **기전만 물려받고 가드는 못 물려받았다.**
+        #
+        # 그래서 그 **이미 있는 기전**을 그대로 쓴다(새 설계를 만들지 않는다 — C4 를 선점하지 않는다):
+        # 활성 구역이 있는데 옮기고도 미완 목표가 구역 안에 남으면 **정확히 되돌리고** `:rejected`.
+        # 되돌리기가 정확한 이유는 문서화된 성질이다: 이동은 합성된다(restage_zone.jl:605-607),
+        # 그러므로 Δ 뒤에 −Δ 는 순 이동 0 이다.
+        #
+        # ⚠️ **잠정이다. 대체는 Task C4 의 `verify_translate`.** 이 경계가 잡는 것과 못 잡는 것을
+        #    분명히 적어 둔다:
+        #      잡는다   — 활성 구역을 못 비우는 Δ(모자란 크기 · 틀린 방향) = `:residual_blocked` 등가물.
+        #      못 잡는다 — (1) 활성 구역이 **없을 때**의 모든 Δ. 구역이 없으면 기하적 기준점 자체가 없다.
+        #                  (2) 구역을 **넘치게** 비우는 Δ(예: 1e6). 잔여 0 이므로 통과한다 —
+        #                      비례성 판정은 결과 배치를 보는 C4 의 몫이다.
+        #    `RESTRICTION_ZONES[]` 의 키는 정렬해서 쓴다(Global Constraint: Dict 순회 금지).
+        zkeys = sort!(collect(keys(RESTRICTION_ZONES[])); by = string)
+        if !isempty(zkeys)
+            residual = _count_future_goals_in_zone(env; zone_keys = zkeys)
+            if residual > 0
+                _apply_uniform_translation!(env, (-c.dx, -c.dy))   # 정확한 되돌리기(이동은 합성된다)
+                reset_cache_resume!(env.cache, env.sched)
+                monitor_record_verification!(status = "rejected",
+                    checks = vcat(_tb_checks(true, true, true), Any[
+                        Dict("name" => "clears_active_zones", "passed" => false,
+                             "detail" => "residual=$(residual) future goal(s) still inside " *
+                                         "zone(s) $(zkeys) after Δ=($(c.dx), $(c.dy)); " *
+                                         "translation reverted exactly")]),
+                    execution = Dict("action" => "reverted", "status" => "residual_blocked",
+                                     "delta" => [c.dx, c.dy], "residual" => residual),
+                    verdict = "REJECTED · provisional bound: Δ does not clear the active zone(s)")
+                @warn "[RESPEC] TranslateBuild Δ=($(c.dx), $(c.dy)) left residual=$(residual) " *
+                      "future goal(s) inside zone(s) $(zkeys) -> REVERTED exactly and rejected " *
+                      "(provisional bound; Task C4's verify_translate replaces it)"
+                return :rejected
+            end
+        end
         monitor_record_verification!(status = "passed",
             checks = _tb_checks(true, true, true),
             execution = Dict("action" => "translate_build", "status" => "translated",

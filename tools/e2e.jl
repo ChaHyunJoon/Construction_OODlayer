@@ -137,6 +137,26 @@ end
 #      파싱·집행(_apply_uniform_translation!)으로 빌드 전체를 비켜 옮김 → 완주.
 function scenario_mock_respec()
 
+# 🔴 **선행조건 — 조용한 미실행 방지 (fix round 1, 컨트롤러 Important 3).**
+# 아래 seam 루프는 `CB.maybe_unwedge_nominal!` 로 루트 엔드게임 carrier 교착을 푼다(:362 참조).
+# 그 함수는 이 작업 트리의 **미커밋 in-flight 변경**(2026-08-20 4팔 축소)에만 있고 HEAD 63ccf524
+# 에는 없다. in-flight 변경이 폐기되면 이 파일은 ~90초짜리 env 빌드를 다 하고 나서야 루프
+# 한복판에서 UndefVarError 로 죽는다 — 그리고 이 파일은 `test/runtests.jl` 밖이라 **아무도 안
+# 돌리면 그 사실조차 안 드러난다.** 그래서 진입 즉시 죽인다. 폴백이 아니라 시끄러운 선행조건이다.
+isdefined(CB, :maybe_unwedge_nominal!) || error("""
+[E2E] scenario 'mock_respec' 의 선행조건 실패: `ConstructionBots.maybe_unwedge_nominal!` 가 없다.
+
+  이 시나리오의 seam 루프는 루트 엔드게임 carrier 교착을 그 함수로 푼다(Task C3 가 죽은
+  `maybe_emit_reform_ood!` 호출을 이것으로 바꿨다 — 그 함수는 2026-08-20 4팔 축소에서 삭제됐고,
+  그것이 만들던 `ReformTeam` 은 D-9 로 emit 불가라 되돌리는 것은 답이 아니다).
+
+  원인: `maybe_unwedge_nominal!` 의 도입은 `src/respec/ood_injection.jl` 의 **미커밋 in-flight
+  변경**이다. 그 변경이 커밋되지 않았거나 되돌려졌다.
+
+  고칠 것: 그 in-flight 변경을 커밋하거나, 교착 복구를 대체할 다른 명목 레인 훅을 정할 것.
+  조용히 우회하지 말 것 — 복구가 없으면 이 시나리오는 정체로 끝나고 게이트는 FAIL 이 된다.
+""")
+
 MOCK_PORT = 8731
 ENV["RESPEC_SERVICE_URL"] = "http://127.0.0.1:$MOCK_PORT"   # CB reads the URL at call time
                                                             # [KO] CB 가 이 URL 을 실행 중 읽어 /propose 로 요청
@@ -192,7 +212,16 @@ function start_mock(port)
             #   그래서 3·R 을 쓴다. 최소값(5.849)보다 크다 — 그게 정상이다: 제안자는 최소 이동을
             #   못 풀고(그게 solver 의 일이다) **충분한** 이동을 유도할 뿐이다. 그 차이가 곧
             #   "매크로를 고르는 것"과 "원시연산의 파라미터를 정하는 것"의 차이다.
-            zr    = (!isempty(zones) && haskey(zones[1], "radius")) ? Float64(zones[1]["radius"]) : ZONE_R
+            # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 예전엔 `radius` 가 없으면
+            #    `ZONE_R` 로 때웠는데, 이 하네스의 존재 이유가 "항진적이지 않은 것"이다 — 요청이
+            #    기하를 안 실어 보냈는데도 mock 이 자기가 아는 값으로 답하면, **프롬프트에서
+            #    유도했다** 는 이 시나리오의 주장 자체가 거짓이 된다. 오늘 이 분기는 죽어 있다
+            #    (`open_zone_descriptors` 는 언제나 `radius` 를 싣는다). 그러니 죽인다.
+            (!isempty(zones) && haskey(zones[1], "radius")) ||
+                error("[E2E] /propose 요청의 zones 에 `radius` 가 없다 — mock 은 요청이 실어 보낸 " *
+                      "기하에서만 Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다). " *
+                      "open_zone_descriptors(llm_bridge.jl) 가 바뀌었는지 확인할 것.")
+            zr    = Float64(zones[1]["radius"])
             cov   = isempty(zones) ? [] : zones[1]["covers"]
             croot = !isempty(zones) && haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
             if isempty(cov) && !croot
