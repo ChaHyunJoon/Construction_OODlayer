@@ -112,6 +112,8 @@ const NV      = CB.Graphs.nv(env.sched)
 trace_act    = Vector{Set{Int}}()
 trace_dnext  = Float64[]
 trace_ddone  = Float64[]
+trace_modes  = Vector{Dict{Int,Symbol}}()   # 🔴 수정 1라운드: 모드 경계를 재기 위해
+trace_closed = Vector{Set{Int}}()           # 🔴 수정 1라운드: always-DP 변형 대조용
 
 @testset "🔴 T_plan_next 는 언제나 양수다 ($(NSTEPS) 스텝 내내)" begin
     # 선행 설계가 죽은 자리가 정확히 여기다: eps 클램프로 1.8e-15 를 돌려주면
@@ -127,10 +129,16 @@ trace_ddone  = Float64[]
         D = CB.T_done(s, env)
         @test Δ > 0.0
         @test !isnan(Δ)
-        isempty(a) && @test Δ == Inf
+        # 🔴 **이 단언은 이 창(400 스텝)에서 한 번도 실행되지 않는다** — `T_done` 이 내내
+        # 27 s 아래로 안 내려간다(n_inf = 0). **커버리지로 세지 말 것.** 긴 런에서만 살아난다.
+        # 수정 1라운드에 조건을 `isempty(활성)` → `T_done == 0` 으로 바꿨다: 폴백이 생긴 뒤
+        # `Inf` 의 뜻이 "활성이 없다" 가 아니라 "남은 작업의 소요시간이 전부 0" 이기 때문이다.
+        D == 0.0 && @test Δ == Inf
         # 불변식: 활성 정점은 열려 있으므로 그 정점의 finish 가 이미 ρ·d 이상이다.
         @test Δ <= D + 1e-9 || D == 0.0
         push!(trace_act, a); push!(trace_dnext, Δ); push!(trace_ddone, D)
+        push!(trace_modes, CB.modes_of(s, env))   # λ 파라미터가 실제로 바뀌는 사건
+        push!(trace_closed, s.prog.closed)
     end
 end
 
@@ -202,16 +210,54 @@ end
     @test CB.T_plan_next(s2, env) ≈ dur(p)        # 0 을 돌려주지 않는다
 end
 
-@testset "🔴 Inf 분기 둘을 각각 **실제로** 태운다" begin
-    # (1) 활성이 비었다
-    s_empty = state_with_active(s_end, Int[])
-    @test isempty(CB.active_of(s_empty))
-    @test CB.T_plan_next(s_empty, env) == Inf
-    # (2) 활성은 있는데 전부 dur == 0 — 가정이 아니라 실제로 도달한다
-    s_zero = state_with_active(s_end, ZERO[1:min(3, length(ZERO))])
-    @test !isempty(CB.active_of(s_zero))
-    @test all(v -> dur(v) == 0.0, CB.active_of(s_zero))
-    @test CB.T_plan_next(s_zero, env) == Inf
+"z(dur==0) → w(dur>0) → u(dur>0) 사슬. 프론티어가 전부 0 인 상태를 **일관되게** 만든다."
+function find_zero_frontier_chain(env, N::Int)
+    G = CB.get_graph(env.sched)
+    for z in 1:N
+        dur(z) == 0.0 || continue
+        for w in CB.Graphs.outneighbors(G, z)
+            dur(w) > 0.0 || continue
+            for u in CB.Graphs.outneighbors(G, w)
+                dur(u) > 0.0 && return (z, w, u)
+            end
+        end
+    end
+    return nothing
+end
+
+@testset "🔴 Inf 는 이제 뜻이 하나다: 남은 작업의 소요시간이 전부 0" begin
+    # (1) 흡수상태 — 남은 정점이 아예 없다
+    s_abs = state_with_closed(s_end, 1:NV)
+    @test CB.T_plan_next(s_abs, env) == Inf
+    @test CB.T_done(s_abs, env) == 0.0
+    # (2) 🔴 작업은 남았는데 전부 dur == 0 — 활성이 **비어 있지 않은데도** Inf 다.
+    #     `state_with_active` 로 만들면 `s.g.edges` 와 `env.sched` 가 어긋나 폴백이 다른 세계를
+    #     본다. 그래서 `closed` 로만 만든다(= `simstate_of` 가 내는 상태와 같은 모양).
+    z0 = first(ZERO)
+    s_z = state_with_closed(s_end, setdiff(Set(1:NV), Set([z0])))
+    @test CB.active_of(s_z) == Set([z0])          # 활성이 비어 있지 않다
+    @test dur(z0) == 0.0
+    @test CB.T_plan_next(s_z, env) == Inf
+    @test CB.T_done(s_z, env) == 0.0              # → 불변식은 `T_done == 0` 가지로 성립
+end
+
+@testset "🔴 폴백: 프론티어가 전부 dur==0 이어도 Inf 가 아니다 (불변식 복원)" begin
+    # 🔴 수정 1라운드 이전에는 여기서 `T_plan_next = Inf`, `T_done = 유한 양수` 였다 —
+    #    즉 `T_plan_next ≤ T_done` 이 **거짓**이었고, 그 상태의 소저너는 남은 모드 변화를
+    #    앞에 두고 적분 상한으로 Inf 를 받았다.
+    found = find_zero_frontier_chain(env, NV)
+    @test found !== nothing            # 못 찾으면 초록이 아니라 빨강
+    z, w, u = found
+    s_f = state_with_closed(s_end, setdiff(Set(1:NV), Set([z, w, u])))
+    @info "T8 fallback fixture" z=z w=w u=u dz=dur(z) dw=dur(w) du=dur(u)
+    @test dur(z) == 0.0 && dur(w) > 0.0 && dur(u) > 0.0
+    @test CB.active_of(s_f) == Set([z])           # 프론티어는 z 하나, 그리고 dur(z) == 0
+    got, done = CB.T_plan_next(s_f, env), CB.T_done(s_f, env)
+    @test isfinite(got)                           # 🔴 Inf 가 아니다 (수정의 핵심)
+    @test got ≈ dur(w)                            # z 를 뚫고 지나간 첫 양수 경계
+    @test done ≈ dur(w) + dur(u)
+    @test got < done                              # 🔴 불변식이 **엄격하게** 성립한다
+    @test CB.T_plan_next(s_f, env; rho = 3.0) ≈ 3.0 * got rtol = 1e-9   # 폴백도 ρ 선형
 end
 
 @testset "ρ 는 선형 배수다" begin
@@ -289,6 +335,10 @@ function find_chain_and_isolate(env, N::Int)
 end
 
 @testset "🔴 손으로 검산되는 픽스처: longest path ≠ sum ≠ max" begin
+    # ⚠️ 이 픽스처가 가르는 것은 longest-path vs **열린 정점 전체의 합** vs **한 노드의 최댓값**
+    #    이다. **선행들의 합**(`head += finish[u]`)은 가르지 **못한다** — 선형 사슬에서는 열린
+    #    선행이 정점마다 하나뿐이라 `+=` 와 `max` 가 같은 값을 낸다. 그 변이는 위의 독립 구현
+    #    대조(`lp_ref`)와 `got < tot` 가 잡는다.
     found = find_chain_and_isolate(env, NV)
     @test found !== nothing        # 🔴 못 찾으면 초록이 아니라 빨강 — 조건부로 건너뛰지 않는다
     a, b, c, x = found
@@ -334,28 +384,63 @@ end
 # =============================================================================
 # 🔴 D-6 상한 근사의 **부호와 크기를 잰다**(단언하지 않는다 — N-G1 이 판정한다).
 #
-# 예측: T_plan_next(s) = 다음 모드 변화까지의 시간.
-# 실측: 활성집합이 실제로 바뀔 때까지 흐른 시뮬 초 = (그 구간의 스텝 수) · DT_SIM.
+# 🔴 **수정 1라운드 (리뷰 지적 Important 1): 재는 사건이 틀렸었다.**
+#    1라운드 이전에는 "**활성집합**이 바뀔 때까지"를 actual 로 썼다. 그런데 이 함수가 예측하는
+#    것은 "**모드**가 바뀔 때까지"다. `modes_of`(derive.jl:55-66)는 `active_of(s)` 와 함대 키의
+#    순함수이므로 **모드 변화 ⟹ 활성집합 변화**이지만 **역은 거짓**이다. 즉 모드상수 구간은
+#    활성상수 구간들의 **합집합**이라 `actual_mode ≥ actual_active` 이고, 옛 표의 모든 비는
+#    참값의 **상한**이었다 — 과대예측(운영상 해로운 방향)은 **부풀려졌고** 과소예측은
+#    **축소돼** 있었다. 그래서 아래는 **모드 경계**를 주 측정으로 삼고, 옛 활성집합 기준은
+#    비교용으로만 남긴다.
+#
+# 예측: `T_plan_next(s)`. 실측: 그 사건이 실제로 일어날 때까지 흐른 시뮬 초 = 구간 스텝 수 × DT_SIM.
 # 두 편향이 반대로 걸린다 — 경과시간을 안 빼는 것(과대) vs `min_duration` 이 하한인 것(과소).
 # 그래서 순 부호는 **선험이 아니라 실측**이다.
 # =============================================================================
-let
-    ratios = Float64[]; preds = Float64[]; acts = Float64[]
-    i = 1
-    while i <= NSTEPS
+_pct(sv, p) = sv[clamp(ceil(Int, p * length(sv)), 1, length(sv))]
+
+"`key` 가 상수인 구간으로 트레이스를 쪼개 (pred/actual) 를 낸다. 잘린 마지막 구간과 Inf 는 뺀다."
+function interval_ratios(key::Vector, pred::Vector{Float64}, dt::Float64)
+    ratios, preds, acts, lens = Float64[], Float64[], Float64[], Int[]
+    n, i = length(key), 1
+    while i <= n
         j = i
-        while j < NSTEPS && trace_act[j+1] == trace_act[i]; j += 1; end
-        if j < NSTEPS && isfinite(trace_dnext[i])          # 끝까지 안 잘린 구간만
-            pred = trace_dnext[i]; act = (j - i + 1) * DT_SIM
-            push!(preds, pred); push!(acts, act); push!(ratios, pred / act)
+        while j < n && key[j + 1] == key[i]; j += 1; end
+        if j < n && isfinite(pred[i])          # 끝까지 안 잘린 구간만
+            m = j - i + 1
+            push!(lens, m); push!(preds, pred[i]); push!(acts, m * dt)
+            push!(ratios, pred[i] / (m * dt))
         end
         i = j + 1
     end
-    if isempty(ratios)
-        @warn "T8 D-6: 잴 수 있는 구간이 없다"
-    else
-        sr = sort(ratios)
-        med = sr[cld(length(sr), 2)]
-        @info "🔴 T8 D-6 upper-bound bias (measured, NOT asserted — N-G1 sizes it)" n_intervals=length(ratios) ratio_min=minimum(sr) ratio_p25=sr[max(1,cld(length(sr),4))] ratio_median=med ratio_p75=sr[max(1,cld(3*length(sr),4))] ratio_max=maximum(sr) n_over=count(>(1.0), ratios) n_under=count(<(1.0), ratios) mean_pred=sum(preds)/length(preds) mean_actual=sum(acts)/length(acts) dt_sim=DT_SIM
+    return ratios, preds, acts, lens
+end
+
+function report_bias(label, key)
+    r, pr, ac, ln = interval_ratios(key, trace_dnext, DT_SIM)
+    if isempty(r)
+        @warn "T8 D-6: 잴 수 있는 구간이 없다" label
+        return
     end
+    sr = sort(r)
+    le3 = [k for k in eachindex(r) if ln[k] <= 3]
+    @info label n_intervals=length(r) ratio_min=minimum(sr) ratio_p25=_pct(sr, 0.25) ratio_median=_pct(sr, 0.50) ratio_p75=_pct(sr, 0.75) ratio_max=maximum(sr) n_over=count(>(1.0), r) n_exact=count(==(1.0), r) n_under=count(<(1.0), r) mean_pred=sum(pr)/length(pr) mean_actual=sum(ac)/length(ac) mean_ratio_of_means=(sum(pr)/sum(ac)) interval_steps_min=minimum(ln) interval_steps_median=_pct(sort(ln), 0.50) interval_steps_max=maximum(ln) n_intervals_le3_steps=length(le3) n_exact_of_which_le3=count(k -> r[k] == 1.0, le3) n_under_of_which_le3=count(k -> r[k] < 1.0, le3) n_over_of_which_le3=count(k -> r[k] > 1.0, le3) ratio_quantum_at_1_step=1.0 median_ratio_of_intervals_ge4_steps=(isempty(setdiff(eachindex(r), le3)) ? NaN : _pct(sort([r[k] for k in setdiff(eachindex(r), le3)]), 0.50)) n_intervals_ge4_steps=(length(r) - length(le3)) dt_sim=DT_SIM
+end
+
+# 🔴 주 측정 — **모드 경계** (이 함수가 실제로 예측하는 사건)
+report_bias("🔴 T8 D-6 bias vs MODE boundary (measured, NOT asserted — N-G1 sizes it)", trace_modes)
+# 비교용 — 옛(틀린) 기준. 두 표의 차이가 곧 위 주석의 편향이다.
+report_bias("T8 D-6 bias vs ACTIVE-SET change (superseded; upper bound on the true ratio)", trace_act)
+
+# 🔴 주 경로 vs "항상 DP" 변형의 격차 — T_plan_next docstring 의 "남은 느슨함" 을 수치화한다.
+let
+    gaps, n_tighter = Float64[], 0
+    for i in 1:NSTEPS
+        dp = CB._zero_frontier_fallback(env, trace_closed[i], 1.0)   # = min{finish > 0}
+        isfinite(dp) || continue
+        dp < trace_dnext[i] - 1e-12 && (n_tighter += 1)
+        push!(gaps, trace_dnext[i] / dp)
+    end
+    sg = sort(gaps)
+    @info "T8 primary-path vs always-DP variant (how loose is the fallback-only choice)" n=length(gaps) n_steps_where_DP_is_tighter=n_tighter ratio_min=minimum(sg) ratio_median=_pct(sg, 0.50) ratio_max=maximum(sg)
 end
