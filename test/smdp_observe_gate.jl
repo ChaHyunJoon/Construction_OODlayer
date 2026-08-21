@@ -63,13 +63,66 @@ h() = CB.state_hash(CB.simstate_of(env))
 end
 
 @testset "simstate_of 는 읽기 전용이다" begin
-    before = (length(env.cache.closed_set), length(env.cache.active_set),
-              copy(CB.BATTERY_FLEET[].soc))
+    # 🔴 fix round 1 — 리뷰가 잡은 결함: 초판은 이 testset 에서 `HZ.usage_s`·`RESTRICTION_ZONES`·
+    # `_CACHE_TIMESTAMP_COUNTER` 대조를 빼먹었다(셋 다 observe.jl 이 실제로 읽는 값인데도) —
+    # coverage 가 조용히 줄었다. 그리고 세 `error()` 가드(BATTERY_FLEET 없음·HAZARD_STATE 없음·
+    # 미등록 로봇의 usage_s)가 이 파일 어디에서도 한 번도 실행되지 않았다 — "가드가 있다" 는 코드를
+    # 읽었다는 뜻일 뿐 실측이 아니다. 전부 복원한다.
+    #
+    # zone 등호가 공허하지 않게 먼저 하나 채운다(구세대가 잡았던 결함: 빈 채로 대조하면 `Dict()
+    # == Dict()` 가 항상 참이라 어떤 구현도 통과한다). testset 끝에서 다시 뺀다.
+    CB.RESTRICTION_ZONES[][:ng0ro] = CB.LazySets.Ball2([1.0, 2.0], 0.75)
+
+    before_closed  = length(env.cache.closed_set)
+    before_active  = length(env.cache.active_set)
+    before_soc     = copy(CB.BATTERY_FLEET[].soc)
+    before_usage   = copy(CB.HAZARD_STATE[].usage_s)
+    before_zones   = copy(CB.RESTRICTION_ZONES[])
+    before_cachect = CB._CACHE_TIMESTAMP_COUNTER[]
+
     s = CB.simstate_of(env)
-    @test length(env.cache.closed_set) == before[1]
-    @test length(env.cache.active_set) == before[2]
-    @test CB.BATTERY_FLEET[].soc == before[3]
+
+    @test length(env.cache.closed_set) == before_closed
+    @test length(env.cache.active_set) == before_active
+    @test CB.BATTERY_FLEET[].soc  == before_soc
+    @test CB.HAZARD_STATE[].usage_s == before_usage
+    @test CB.RESTRICTION_ZONES[]  == before_zones
+    @test CB._CACHE_TIMESTAMP_COUNTER[] == before_cachect
     @test CB.state_hash(s) == CB.state_hash(CB.simstate_of(env))
+    @test all(CB.state_hash(CB.simstate_of(env)) == CB.state_hash(s) for _ in 1:3)
+
+    delete!(CB.RESTRICTION_ZONES[], :ng0ro)
+
+    # 🔴 fix round 1 자체 결함 수정: `s` 는 `:ng0ro` 가 아직 들어있는 상태에서 캡처됐다(줄 83).
+    # 그걸 지운 위 줄 뒤로 `s` 를 그대로 재활용해 비교하면 **이 testset 이 스스로** "복원됐다"를
+    # "zone 을 안 지운 옛 상태와 같다" 로 잘못 잰다 — 구세대 헤더가 경고한 바로 그 함정("하나의
+    # 전역 h0 를 쓰면 앞의 교란이 안 지워졌을 때 뒤의 모든 단언이 오염된다")을 이 fix 가 새로
+    # 만들 뻔했다. `:ng0ro` 를 지운 **직후** 새 기준선을 다시 잰다.
+    h_clean = CB.state_hash(CB.simstate_of(env))
+
+    # 세 `error()` 가드를 전부 실측한다(조용한 폴백 금지의 유일한 실측 지점). 각각 전역을
+    # 임시로 흔들고 죽는지 확인한 뒤 정확히 원래대로 복원한다.
+    saved_fleet = CB.BATTERY_FLEET[]
+    CB.BATTERY_FLEET[] = nothing
+    @test_throws ErrorException CB.simstate_of(env)
+    CB.BATTERY_FLEET[] = saved_fleet
+    @test CB.state_hash(CB.simstate_of(env)) == h_clean
+
+    saved_hazard = CB.HAZARD_STATE[]
+    CB.HAZARD_STATE[] = nothing
+    @test_throws ErrorException CB.simstate_of(env)
+    CB.HAZARD_STATE[] = saved_hazard
+    @test CB.state_hash(CB.simstate_of(env)) == h_clean
+
+    # 🔴 `_hz_ensure!` 를 부르지 않는다 — 이 negative control 이 세 가드 중 가장 미묘했던 자리다
+    # (구세대 코멘트 그대로). 미등록 로봇의 `usage_s` 를 지우고 관측하면, 조용히 `0.0` 을 채우는
+    # 구현이 아니라 observe.jl 의 `haskey(st.usage_s, rid) || error(...)` 가 실제로 발화해야 한다.
+    rid = first(sort!(collect(keys(CB.BATTERY_FLEET[].soc)); by = string))
+    saved_usage = CB.HAZARD_STATE[].usage_s[rid]
+    delete!(CB.HAZARD_STATE[].usage_s, rid)
+    @test_throws ErrorException CB.simstate_of(env)
+    CB.HAZARD_STATE[].usage_s[rid] = saved_usage
+    @test CB.state_hash(CB.simstate_of(env)) == h_clean   # 복원하면 되돌아온다
 end
 
 @testset "N-G0′ 필드 민감도 — env 를 흔들면 해시가 갈린다" begin
@@ -94,6 +147,13 @@ end
     @test h1 != h0
     CB.RESTRICTION_ZONES[][:ng0probe] = CB.LazySets.Ball2([0.0, 0.0], 2.0)
     @test h() != h1        # 🔴 반지름만 달라도 갈려야 한다
+    # 🔴 fix round 1 (minor 6): 구세대 게이트는 중심만 바꾸는 대조도 같이 했는데(반지름은 그대로
+    # 두고 중심만 옮김) 이 재작성이 그걸 빼먹었다. 이 파일의 머리 코멘트가 "zone(중심·반지름까지)"
+    # 라고 명시적으로 약속하는데, `cx`/`cy` 를 튜플에서 빠뜨린 구현도 반지름 대조만으로는 오늘
+    # 초록이다 — 중심만 바꿔서 그 구멍을 막는다.
+    h2 = h()
+    CB.RESTRICTION_ZONES[][:ng0probe] = CB.LazySets.Ball2([3.0, 0.0], 2.0)
+    @test h() != h2         # 🔴 반지름 같고 중심만 달라도 갈려야 한다
     delete!(CB.RESTRICTION_ZONES[], :ng0probe)
     @test h() == h0
 end
@@ -101,6 +161,11 @@ end
 @testset "🔴 멤버십이 _hz_excluded 와 정확히 일치한다 (spec §2-4)" begin
     s  = CB.simstate_of(env)
     ex = CB._hz_excluded()
+    # 🔴 fix round 1 (minor 5): 제외 집합이 비어 있지 않다는 것부터 먼저 단언한다. 안 그러면
+    # `n_spare_per_pool` 이 나중에 0 으로 바뀌는 등 픽스처가 흔들려 `ex` 가 비어버렸을 때
+    # `Set(keys(s.fleet)) == expect` 가 "fleet == 배터리 로봇 전부" 로 조용히 약해지고도 초록으로
+    # 남는다 — 이 도메인 비퇴화 단언이 그 자리에서 먼저 빨개진다.
+    @test !isempty(ex)
     all_ids = collect(keys(CB.BATTERY_FLEET[].soc))
     expect  = Set(CB._int_key(r) for r in all_ids if !(r in ex))
     @test Set(keys(s.fleet)) == expect
@@ -114,10 +179,16 @@ end
 end
 
 @testset "🔴 시계·배송·역할이 s 에 없다 (음성 대조)" begin
+    # 🔴 fix round 1: 이 testset 은 픽스처를 120 스텝 굴린 **뒤에** 돈다. 원래 브리프 코드는
+    # `CB.set_sim_step!(1)` 로 되돌렸는데, 브리프의 픽스처는 1스텝짜리였고 SCENE-INCANTATION
+    # 이 120스텝으로 바꿨다 — 그 치환이 이 줄까지는 안 따라왔다. 오늘은 `prog.t` 가 없어서
+    # 아무 단언도 안 읽으니 무해하지만, 이후 누군가 `ProgBlock` 에 시계를 다시 넣으면(§11-6
+    # 이후 태스크가 그럴 수 있다) 이 파일의 나머지 testset 전부가 `SIM_STEP[]==1` 인 채로
+    # 남아 실제로 120스텝 굴린 env 와 어긋난 세계를 잰다 — 조용히. 120 으로 되돌린다.
     s0 = CB.simstate_of(env)
     CB.set_sim_step!(2)
     @test CB.state_hash(CB.simstate_of(env)) == CB.state_hash(s0)   # t 가 없다
-    CB.set_sim_step!(1)
+    CB.set_sim_step!(120)
     @test !hasproperty(s0.prog, :t)
     @test !hasproperty(s0.prog, :active)
     @test !hasproperty(s0, :courier)
@@ -169,18 +240,25 @@ end
     @test h() == h0
 end
 
-@testset "🔴 geo.poses 가 RelocateBuild 의 실제 집행부를 관측하는가 (독립 검증자 지적사항, 실측)" begin
+@testset "🔴 geo.poses 가 RelocateBuild 의 실제 집행부를 관측하는가 (영구 트립와이어)" begin
     # `_apply_uniform_translation!`(restage_zone.jl:610-624, RelocateBuild 의 실제 집행부)는
     # `AssemblyComplete.start_config` 를 **무조건** 옮기고, 이어서 `_resync_scene_drift!`
     # (restage_zone.jl:157-176)가 씬트리 쪽을 스냅한다 — 단 **free(미포획) 노드에 한해, 드리프트가
-    # `tol`(기본 `default_robot_radius()`)보다 클 때만.** `simstate_of` 의 `geo.poses` 는 씬트리
-    # `AssemblyNode` 를 읽으므로(`get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)`),
-    # `tol` 미만의 이동은 씬트리에 전혀 안 남을 위험이 있다 — 이 축이 `RelocateBuild` 가 `s` 에
-    # 남기는 유일한 흔적이라 못 박혔으므로(simstate.jl `GeoBlock` docstring), 조용히 안 보이면
-    # `RelocateBuild` 와 `NOOP` 이 그 결정 직후엔 구분 불가능해진다(SwapBattery 트립와이어와 같은
-    # 종류). 여기서 **실측**한다 — 작은 Δ 는 tol 미만, 큰 Δ 는 tol 초과(배선 자체가 살아있다는
-    # 대조군)로 각각 적용·복원한다. `_apply_uniform_translation!` 은 **누적형**이라 역방향 Δ 로
-    # 정확히 되돌아온다(docstring: "Translations COMPOSE").
+    # `tol`(기본 `default_robot_radius()`)보다 클 때만.**
+    #
+    # 🔴 **경위(fix round 1 이 정정)**: 계획서 브리프의 스니펫은 `geo.poses` 를 씬트리
+    # `AssemblyNode` 에서 읽으라고 적었다(`get_nodes(env.scene_tree)` + `matches_template(
+    # AssemblyNode,·)`) — `tol` 미만의 이동은 씬트리에 전혀 안 남으므로 그대로 구현했다면
+    # `RelocateBuild` 와 `NOOP` 이 결정 직후 구분 불가능했을 것이다. **이 오류는 브리프 안에만
+    # 있었다** — base(`b578cd3c`)도 지금의 `observe.jl` 도 처음부터 `AssemblyComplete.
+    # start_config` 를 읽는다(옛 `_build_poses` 와 같은 출처). 즉 코드에 있던 결함을 여기서
+    # 고친 게 아니라, 브리프대로 만들었으면 생겼을 결함을 실측으로 미리 잡아 코드에 들어가지
+    # 못하게 막았다. 이 testset 은 그 실측을 **영구 트립와이어**로 남긴다 — 누가 나중에 `poses`
+    # 출처를 씬트리로 되돌리면(리팩터 등) 여기서 바로 빨개진다.
+    #
+    # 방법: 작은 Δ 는 tol 미만, 큰 Δ 는 tol 초과(배선 자체가 살아있다는 대조군)로 각각 적용·
+    # 복원한다. `_apply_uniform_translation!` 은 **누적형**이라 역방향 Δ 로 정확히 되돌아온다
+    # (docstring: "Translations COMPOSE").
     r = CB.default_robot_radius()
     s0 = CB.simstate_of(env)
     @test !isempty(s0.geo.poses)

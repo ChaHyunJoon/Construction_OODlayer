@@ -14,6 +14,15 @@
 #       아니라 그 로봇 전용 스트림에서 난수를 셋 태운다. 그래서 미등록 로봇은 `usage_s` 를
 #       **지어내지 않고** `error()` 로 죽는다(아래 함수 본문) — `enable_hazard!` 가 이미 모든
 #       배터리 함대 로봇을 등록해 두므로, 정상 경로에서는 도달하지 않는다.
+#
+#       ⚠️ **정확히 하나, 의도적으로 남긴 부작용이 있다 (컨트롤러 판정, base 부터 그대로 —
+#       R2 가 새로 만든 것이 아니다).** `global_transform`(hierarchical_geom_essentials.jl:347)
+#       = `get_cached_value!` 이고, 캐시가 **낡아 있으면** `propagate_forward!` 로 재계산하면서
+#       `_next_cache_timestamp()`(graph_utils_essentials.jl:143-147)가 프로세스 전역
+#       `_CACHE_TIMESTAMP_COUNTER` 를 올린다. 그 카운터는 **ξ** 다(simstate.jl `ReplayState.
+#       cache_counter`) — `s` 가 아니다. 대안(갱신을 건너뛰기)은 더 나쁘다: `s` 에 낡은 pose 라는
+#       **틀린 값**이 들어간다. 게이트는 "스텝 직후 관측 지점에서 0회" 라는 좁은 사실만
+#       단언한다(`test/smdp_observe_gate.jl` "simstate_of 는 읽기 전용이다").
 #   (2) **새 동역학을 만들지 않는다.** 계산은 tplan.jl / rates.jl 의 몫이다. 실제로 파생하는
 #       것은 둘뿐이다:
 #         · `g.binding[v]` = `first(sort(rs; by = string))` — 담당 로봇이 여럿인 정점에서
@@ -28,14 +37,18 @@
 #   이름은 전부 일치한다 — `CHECKED_OUT_SPARES` · `_hz_excluded` · `RESTRICTION_ZONES` ·
 #   `LazySets.Ball2` 의 `center`/`radius` 필드 · `_responsible_robots` · `global_transform` ·
 #   `node_id` · `get_nodes` (grep 으로 실측 확인, task-R2-report.md 참조). **딱 하나, 이름이 아니라
-#   출처가 틀렸다**: 브리프는 `poses` 를 `get_nodes(env.scene_tree)` + `matches_template(
-#   AssemblyNode, ·)` 로 읽으라고 적었는데, 독립 검증자가 지적하고 이 파일이 실측으로 확인한 바
-#   `_apply_uniform_translation!`(restage_zone.jl:610-624, RelocateBuild 의 실제 집행부)이 무조건
-#   쓰는 값은 씬트리가 아니라 `AssemblyComplete.start_config` 다 — 씬트리 쪽은 드리프트가
-#   `default_robot_radius()` 미만이면 `_resync_scene_drift!` 가 아예 안 건드린다(실측:
-#   `Δ=0.2·tol` 적용 후 `state_hash` 불변). 그래서 `poses` 의 출처를 `start_config` 로 바꿨다 —
-#   아래 게이트의 "geo.poses 가 RelocateBuild 의 실제 집행부를 관측하는가" testset이 그 실측과
-#   수정의 증거다.
+#   출처가 틀렸다 — 그리고 그 오류는 브리프 안에서만 있었다, 이 파일(base 부터 커밋된 코드)에는
+#   없었다.** 브리프는 `poses` 를 `get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)`
+#   로 읽으라고 적었다. **base(`b578cd3c`)의 `simstate_of` 는 이미 `_build_poses(env)` 를 통해
+#   `AssemblyComplete.start_config` 를 읽고 있었다** — 씬트리 출처는 브리프의 스니펫과 이 태스크의
+#   진행 중이던 초안에만 있었지, 커밋된 코드에 있던 적이 없다. 독립 검증자가 지적하고 이 파일이
+#   실측으로 확인한 바 `_apply_uniform_translation!`(restage_zone.jl:610-624, RelocateBuild 의
+#   실제 집행부)이 무조건 쓰는 값은 씬트리가 아니라 `AssemblyComplete.start_config` 다 — 씬트리
+#   쪽은 드리프트가 `default_robot_radius()` 미만이면 `_resync_scene_drift!` 가 아예 안 건드린다
+#   (실측: `Δ=0.2·tol` 적용 후 `state_hash` 불변). 그래서 최종 구현은 브리프가 아니라 base 와
+#   같은 출처(`start_config`)를 쓴다 — **찾은 것은 계획서의 오류이지 코드의 퇴행이 아니다.**
+#   아래 게이트의 "geo.poses 가 RelocateBuild 의 실제 집행부를 관측하는가" testset이 이 실측을
+#   영구 트립와이어로 남긴다.
 # =============================================================================
 
 """
@@ -44,7 +57,9 @@
 현재 `env`(+ 배터리·hazard 전역)에서 `s` 를 읽는다. **읽기 전용.**
 
 계약 셋(어기면 롤아웃이 조용히 틀린다):
-  (1) env·전역을 하나도 수정하지 않는다.
+  (1) env·전역을 하나도 수정하지 않는다 — **단, `global_transform` 의 캐시 재계산이 `ξ`
+      (`_CACHE_TIMESTAMP_COUNTER`)를 올리는 것은 의도적으로 남긴 유일한 예외다**(파일 머리
+      코멘트, base 부터 그대로).
   (2) 새 값을 계산하지 않는다 — 엔진이 이미 들고 있는 값을 옮길 뿐이다.
   (3) 🔴 **`fleet` 멤버십은 `_hz_excluded()` 를 직접 부른다.** 여기서 role·health 로 다시
       유도하면 두 레인이 서로 다른 집합 위에서 위험을 적분한다(spec §2-4, 완료 보고서 §4-2 가
@@ -67,7 +82,13 @@ function simstate_of(env)
     end
     binding = Dict{Int,Int}()
     for v in Graphs.vertices(sched)
-        rs = try _responsible_robots(get_node(sched, v).node) catch; () end
+        # 🔴 리뷰 라운드 1 이 잡은 결함: 옛 초안은 여기를 `try ... catch; () end` 로 감쌌다(브리프
+        # verbatim). `_responsible_robots`(battery.jl:184-192)는 else 분기에서 항상 `Any[]` 를
+        # 반환하고 **절대 던지지 않는다** — 그래서 그 catch 는 죽은 방어 코드가 아니라 "조용한
+        # 폴백 금지" 원칙 위반이었다: 어느 날 새 노드 타입이 추가돼 이 호출이 정말로 던지면, 그
+        # 정점이 `binding` 에서 **조용히** 빠진다(이 루프는 `binding` 에 들어간 것만 보므로 그
+        # 누락은 어디서도 안 보인다). base 는 이 호출을 그대로 bare 로 뒀다 — 그 형태로 되돌린다.
+        rs = _responsible_robots(get_node(sched, v).node)
         isempty(rs) && continue
         # ⚠️ `_responsible_robots` 는 **정렬돼 있지 않다**(Dict 순회 순서 — 선행 계획의 오류 P2).
         # 정렬 첫째를 쓴다. 안 하면 같은 세계가 프로세스마다 다른 binding 을 얻는다.
@@ -77,20 +98,23 @@ function simstate_of(env)
 
     # --- Geo: 조립체 기하 + zone(중심·반지름까지) --------------------------------------
     #
-    # 🔴 **poses 의 출처를 씬트리 AssemblyNode 에서 스케줄의 AssemblyComplete.start_config
-    # 로 옮겼다** (독립 검증자 지적, 실측으로 확인 — task-R2-report.md 의 "geo.poses 출처
-    # 정정" 참조). 브리프의 원안(`get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)`
-    # + `global_transform(n)`)은 `RelocateBuild` 의 실제 집행부 `_apply_uniform_translation!`
-    # (restage_zone.jl:610-624)이 무조건 옮기는 `start_config` 가 아니라, 그 편집이 씬트리로
-    # **되튕기길 기다리는** 값을 읽는다. 그 되튕김(`_resync_scene_drift!`, restage_zone.jl:157-176)
-    # 은 free(미포획) 노드에 한해 드리프트가 `tol`(기본 `default_robot_radius()`) 보다 클 때만
-    # 일어난다 — 실측: `Δ = 0.2·tol` 을 적용하면 씬트리 쪽 해시가 **한 글자도 안 바뀐다**
-    # (`h_small == h0`, 아래 게이트 testset). `tol` 미만의 RelocateBuild 는 `s` 에서 완전히
-    # 사라져 `RelocateBuild` 와 `NOOP` 이 결정 직후 구분 불가능해진다 — `SwapBattery`/`NOOP`
-    # 트립와이어(simstate.jl `SimState` docstring)와 같은 부류의 사고다.
-    # `start_config` 는 `_apply_uniform_translation!` 이 tol 무관하게 항상 쓰는 값이라 이 구멍이
-    # 없다 — 옛 세대(`_build_poses`, 2026-08-20)가 정확히 이 이유로 이 출처를 썼던 것이고,
-    # R2 초안이 스케줄이 아니라 씬트리를 읽는 브리프 코드를 그대로 옮기면서 그 성질을 잃었다.
+    # 🔴 **poses 의 출처는 `AssemblyComplete.start_config` 다 — base(`b578cd3c`, 옛 `_build_poses`)
+    # 부터 그대로이고, 이 태스크가 바꾼 것이 아니다.** 계획서 브리프의 스니펫은 이것 대신
+    # `get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)` + `global_transform(n)` 을
+    # 시켰는데(**브리프의 오류**, 이 태스크의 진행 중이던 초안에만 잠깐 있었고 커밋된 적은 없다),
+    # 독립 검증자가 지적하고 실측으로 확인한 바 `RelocateBuild` 의 실제 집행부
+    # `_apply_uniform_translation!`(restage_zone.jl:610-624)이 무조건 옮기는 값은 `start_config`
+    # 이지 씬트리가 아니다 — 씬트리 쪽은 `_resync_scene_drift!`(restage_zone.jl:157-176)가
+    # free(미포획) 노드에 한해, 드리프트가 `tol`(기본 `default_robot_radius()`)보다 클 때만
+    # 되튕긴다. 실측: `Δ = 0.2·tol` 을 씬트리 출처로 적용하면 `state_hash` 가 **한 글자도 안
+    # 바뀐다**(`h_small == h0`, 아래 게이트의 "geo.poses 가 RelocateBuild 의 실제 집행부를
+    # 관측하는가" testset이 이 실측을 영구 트립와이어로 남긴다) — `tol` 미만의 RelocateBuild 가
+    # `s` 에서 사라져 `NOOP` 과 구분 불가능해질 뻔했다(`SwapBattery`/`NOOP` 트립와이어와 같은
+    # 부류의 사고).
+    #
+    # ⚠️ **스케줄의 모든 `AssemblyComplete` 를 훑는다**(옛 `_build_poses` docstring 그대로 옮김):
+    # `_apply_uniform_translation!` 은 `env.staging_circles` 에 등재된 조립체만 옮기므로 여기
+    # 담기는 집합은 그 상위집합이다 — 빠뜨리는 쪽이 아니라 더 담는 쪽이라 관측이 눈멀지 않는다.
     poses = Dict{Int,NTuple{3,Float64}}()
     for v in Graphs.vertices(sched)
         n = get_node(sched, v).node
