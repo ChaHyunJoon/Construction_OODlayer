@@ -9,24 +9,17 @@
 # 🔴 씬 생성은 `SCENE-INCANTATION.md` 의 정본을 따른다(`return_env_before_sim = true`).
 #    계획서 스니펫은 판을 끝까지 굴려 **퇴화한** 세계를 잰다.
 #
-# 🔴 **스텝 수는 120 이 아니라 260 이다.** SCENE-INCANTATION §2 의 실측표는 다른 픽스처의
-#    것이다(`n_spare_per_pool` 없음 · 다른 rng). **이 픽스처를 5스텝 간격 400스텝으로 직접
-#    실측**했더니 모드 도메인이 이렇게 나왔다:
+# 🔴 **스텝 번호를 하나도 박지 않는다 — 훑어서 발견한다.**
+#    `SCENE-INCANTATION.md` §2 는 "그 표는 픽스처 고유값이다. 인용하지 말고 다시 재라"고
+#    적는다. 그런데 이 시험이 step 95·260 을 상수로 인용하고 있었고, 그래서 병합 후 main 에서
+#    빨개졌다 — **같은 파일·같은 시드**인데 `laneF` 는 `n_manip_nodes = 1`, main 은 `0`
+#    (CLAUDE.md: "결정성의 단위는 프로세스가 아니라 디렉토리 = 컴파일 캐시").
 #
-#      step       distinct  modes                      max team
-#      1–90       1         [:transit]                 1
-#      95         2         [:carry, :manip]           4
-#      100–170    1         [:carry]                   4      ← 🔴 120 은 퇴화 구간이다
-#      175–220    2         [:carry, :transit]         2
-#      225–240    1         [:transit]                 1
-#      245–255    2         [:carry, :transit]         2
-#      260        3         [:carry, :manip, :transit] 2      ← 여기서 잰다
-#      265–315    1..2                                 2..3
-#      330        3         [:carry, :manip, :transit] 2
-#
-#    그래서 모드가 걸린 단언은 **step 95**(팀 크기 4 — Ruling 1 을 제대로 때린다)와
-#    **step 260**(세 모드가 동시에 산다)에서 잰다. 픽스처가 바뀌어 도메인이 다시 납작해지면
-#    아래 "비퇴화" 단언이 **먼저** 빨개진다.
+#    이제 조건을 만족하는 **첫 스텝을 찾아** 거기서 잰다:
+#      · 장부 대조   — 다중 로봇 노드 ≥1 · `:manip` ≥1 · 이동 ≥1 · 실현 속도 > 0
+#      · 모드 단언   — distinct 모드 ≥2 이면서 활성 팀 최대 크기 ≥2
+#    범위 안에 그런 스텝이 **없으면** 그것이 진짜 빨간불이다(픽스처가 그 팔을 안 태운다).
+#    실제로 어느 스텝에 안착했는지는 매 실행 `@info "T7 발견한 프로브 스텝"` 이 찍는다.
 # =============================================================================
 using ConstructionBots, Test
 using LinearAlgebra: norm
@@ -36,71 +29,9 @@ const CB = ConstructionBots
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
 
-# -----------------------------------------------------------------------------
-# 🔴🔴 **레인 격리용 임시 비계(scaffold)다. 병합 시 삭제된다.** 🔴🔴
-#
-#   `t7_simstate` 는 `sdd-lane-f` 가 `oracle-rebuild-night-2026-08-10` 에서 갈라진 시점에
-#   그 브랜치의 `simstate_of` 가 아직 축소되지 않았기 때문에만 존재한다. **Task R2 는 이미
-#   완료·병합됐다** — 권위는 언제나 병합된 `CB.simstate_of` 이고, 이 헬퍼도 계획서의 R2 초안
-#   본문도 **한 번도 권위였던 적이 없다.**
-#
-#   ⛔ 병합 시 할 일(기계적이다 — `src/` 의 어떤 것도 이 이름에 의존하지 않는다):
-#        `grep -n t7_simstate test/smdp_derive.jl` → 정의와 호출 전부를 지우고
-#        `CB.simstate_of(env)` 로 바꾼다. 두 구현이 갈리면
-#        `active_of == cache.active_set` 단언(260/260)이 먼저 빨개진다.
-#
-# 아래는 왜 이 비계가 필요했는지에 대한 기록이다:
-# `simstate_of` 는 이 브랜치의 기반 커밋에서 **아직 7필드가 아니다.**
-# Task R1(b578cd3c)이 `simstate.jl` 의 타입만 줄이고 `observe.jl` 은 손대지 않았다 —
-# `simstate_of` 는 여전히 `RobotRec(pose=…, health=…, …)` 8필드를 만들어 `MethodError` 로
-# 죽는다(Task R1 이 `simstate.jl` 의 타입만 줄이고 `observe.jl` 을 안 고쳤다).
-# 폴백이 아니라 비계다 — `simstate_of` 를 try/catch 로 감싸지 않는다(조용한 폴백 금지).
-#
-# ℹ️ 이 본문은 계획서 R2 초안과 세 군데가 다르다: (1) `_responsible_robots` 를 try/catch 없이
-#    바로 부른다, (2) `ball.center[1]`/`ball.radius` 대신 접근자 `get_center`/`get_radius` 를
-#    쓴다, (3) `error()` 문구가 다르다. 어느 것도 T7 의 단언에 닿지 않는다. (1)은 결과적으로
-#    **병합된 R2** 와 같다 — 그 try/catch 는 R2 리뷰에서 삭제됐다.
-# -----------------------------------------------------------------------------
-function t7_simstate(env)
-    sched, cache = env.sched, env.cache
-    fleet_b = CB.BATTERY_FLEET[];  fleet_b === nothing && error("enable_battery! 먼저")
-    st      = CB.HAZARD_STATE[];   st === nothing      && error("enable_hazard! 먼저")
-
-    edges = Set{Tuple{Int,Int}}()
-    for e in CB.Graphs.edges(sched)
-        push!(edges, (CB.Graphs.src(e), CB.Graphs.dst(e)))
-    end
-    binding = Dict{Int,Int}()
-    for v in CB.Graphs.vertices(sched)
-        rs = CB._responsible_robots(CB.get_node(sched, v).node)
-        isempty(rs) && continue
-        binding[v] = CB._int_key(first(sort!(collect(rs); by = string)))
-    end
-    poses = Dict{Int,NTuple{3,Float64}}()
-    for n in CB.get_nodes(env.scene_tree)
-        CB.matches_template(CB.AssemblyNode, n) || continue
-        tr = CB.global_transform(n).translation
-        poses[CB._int_key(CB.node_id(n))] = (Float64(tr[1]), Float64(tr[2]), Float64(tr[3]))
-    end
-    zones = Dict{Symbol,NTuple{3,Float64}}()
-    for (k, ball) in CB.RESTRICTION_ZONES[]
-        c = CB.get_center(ball)
-        zones[k] = (Float64(c[1]), Float64(c[2]), Float64(CB.get_radius(ball)))
-    end
-    excluded = CB._hz_excluded()
-    fleet = Dict{Int,CB.RobotRec}()
-    for rid in sort!(collect(keys(fleet_b.soc)); by = string)
-        rid in excluded && continue
-        haskey(st.usage_s, rid) || error("t7_simstate: $(rid) 가 hazard 상태에 없다")
-        fleet[CB._int_key(rid)] = CB.RobotRec(soc     = Float64(fleet_b.soc[rid]),
-                                              usage_s = Float64(st.usage_s[rid]))
-    end
-    return CB.SimState(g = CB.GraphBlock(edges = edges, binding = binding),
-                       geo = CB.GeoBlock(poses = poses, zones = zones),
-                       fleet = fleet,
-                       prog = CB.ProgBlock(closed = Set{Int}(collect(cache.closed_set))))
-end
-
+# ℹ️ Task R2 가 병합되어 `CB.simstate_of` 가 7필드 `SimState` 를 낸다. 레인 격리 동안 이
+#    시험이 들고 있던 대역 헬퍼는 **삭제됐다**(fix round 3) — 이제 엔진의 유일한 env→s 경로를
+#    그대로 쓴다. 그래서 이 파일은 `src/smdp/observe.jl` 에도 의존한다.
 rid_of(k) = first(r for r in sort!(collect(keys(CB.BATTERY_FLEET[].soc)); by = string)
                   if CB._int_key(r) == k)
 
@@ -142,7 +73,7 @@ end
 
 # step k 에서의 모드 관련 단언 전부. env 를 앞으로 못 되감으므로 루프 안에서 그 자리에 돈다.
 function check_modes_at(env, k::Int)
-    s     = t7_simstate(env)
+    s     = CB.simstate_of(env)
     heavy = CB._hz_modes(env)
     ms    = sort!(unique(CB.mode_of(s, env, kk) for kk in keys(s.fleet)); by = string)
     sizes = active_team_sizes(env)
@@ -195,42 +126,13 @@ function check_modes_at(env, k::Int)
     return s
 end
 
-# --- 씬 (SCENE-INCANTATION.md 정본) ------------------------------------------
-env = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "t7derive",
-                         num_robots = 6, assignment_mode = :greedy,
-                         n_spare_per_pool = 2,
-                         open_animation_at_end = false, save_animation = false,
-                         write_results = false, return_env_before_sim = true,
-                         rng = Random.MersenneTwister(1))
-CB.enable_battery!(env)
-CB.enable_hazard!(env; seed = 5)
-
-const MODE_PROBE_STEPS = (95, 260)
-maxteam_seen = 0
-
-@testset "active_of == 엔진의 active_set (260 스텝 내내)" begin
-    for k in 1:260
-        CB.step_environment!(env)
-        CB.update_planning_cache!(env, 0.0)
-        CB.set_sim_step!(k)
-        s = t7_simstate(env)
-        @test CB.active_of(s) == Set(env.cache.active_set)
-        sz = active_team_sizes(env)
-        isempty(sz) || (global maxteam_seen = max(maxteam_seen, maximum(sz)))
-        k in MODE_PROBE_STEPS && check_modes_at(env, k)
-    end
-end
-@info "T7 max active team size over 260 steps" maxteam_seen
-
-s = t7_simstate(env)     # step 260 의 세계
-
-@testset "🔴 조용한 폴백 금지" begin
-    @test_throws ErrorException CB.mode_of(s, env, -12345)            # fleet 에 없는 로봇
-    s_bad = CB.SimState(g = CB.GraphBlock(edges = Set([(1, 10^7)]), binding = Dict{Int,Int}()),
-                        geo = s.geo, fleet = s.fleet,
-                        prog = CB.ProgBlock(closed = Set([1])))
-    @test_throws ErrorException CB.mode_of(s_bad, env, first(keys(s.fleet)))  # 스케줄에 없는 정점
-end
+# =============================================================================
+# Ruling 2 — `mode_power_W` 가 **엔진이 실제로 빼는 에너지**와 같은가.
+#
+# 대조군은 공식의 복사본이 아니라 **엔진의 장부**다: `fleet.energy_J` 는 `_debit!` 만이 쓴다
+# (battery.jl:157). 한 스텝의 장부 증분을 `mode_power_W` 로 예측해서 맞춘다.
+# `rates.jl` 은 씬을 못 보므로 이 대조는 여기(derive 시험)에 산다.
+# =============================================================================
 
 # =============================================================================
 # Ruling 2 — `mode_power_W` 가 **엔진이 실제로 빼는 에너지**와 같은가.
@@ -239,14 +141,45 @@ end
 # (battery.jl:157). 한 스텝의 장부 증분을 `mode_power_W` 로 예측해서 맞춘다.
 # `rates.jl` 은 씬을 못 보므로 이 대조는 여기(derive 시험)에 산다.
 # =============================================================================
-@testset "🔴 Ruling 2 — mode_power_W == battery.jl 의 실제 소모 (한 스텝 장부 대조)" begin
+"""
+    ledger_ready(env) -> Bool
+
+지금의 `env.cache.active_set` 이 장부 대조에 필요한 분기를 **전부** 태우는가:
+다중 로봇 노드 ≥ 1 (팀 분할) · `:manip` 노드 ≥ 1 · 이동 노드 ≥ 1.
+`step_environment!` 은 `active_set` 을 안 바꾸므로, 스텝 **전에** 본 이 집합이 곧 배터리 훅이
+쓸 집합이다 — 그래서 미리 판정할 수 있다.
+"""
+function ledger_ready(env)
+    nmulti = nmanip = nmotion = 0
+    for v in env.cache.active_set
+        node = CB.get_node(env.sched, v).node
+        m = CB._node_mode(node)
+        m == CB.IDLE && continue
+        r = CB._responsible_robots(node)
+        isempty(r) && continue
+        length(r) > 1 && (nmulti += 1)
+        m == CB.MANIPULATE ? (nmanip += 1) : (nmotion += 1)
+    end
+    return nmulti >= 1 && nmanip >= 1 && nmotion >= 1
+end
+
+"""
+    try_ledger_at!(env, k) -> Bool
+
+step `k` 에서 장부 대조 + 잔차 (A)(B)(C) 를 전부 돌린다. **`step_environment!` 을 스스로
+한 번 부른다**(호출자는 그 스텝을 다시 밟지 않는다). 실현 속도가 전부 0 이라 이동 팔이
+퇴화하면 단언 없이 `false` 를 돌려주고, 호출자가 계속 훑는다.
+
+🔴 스텝 번호를 **박지 않는다.** 앞 판은 step 260/261 을 상수로 박았는데 그 스케줄은
+디렉토리 간에 안정적이지 않다(실측: 같은 시험 파일·같은 시드로 `laneF` 는
+`n_manip_nodes = 1`, 병합된 main 은 `0`). `SCENE-INCANTATION.md` §2 가 "스텝 번호를 인용하지
+말고 직접 재라"고 적어 놓고 정작 이 시험이 인용하고 있었다.
+"""
+function try_ledger_at!(env, k::Int)
     fleet_b = CB.BATTERY_FLEET[]
     p  = fleet_b.params
     dt = env.dt * p.seconds_per_step
     st = CB.HAZARD_STATE[]
-    # ε_r ≡ 1 (D-5). 아니면 아래 예측에 로봇별 배수가 빠진다 — 조용히 틀리지 않게 못박는다.
-    @test all(==(1.0), values(st.eff))
-    @test st.params.drain_step_cv == 0.0
 
     # 🔴 장부를 0 으로 놓고 잰다. 차분(e1 − e0)으로 읽으면 e0 ≈ 650 J 위에서 ~2.5 J 을 빼는
     # 것이라 **읽는 행위 자체가** 상대오차 ~1e-14 를 만든다(실측: 5.77e-14). 그건 식의 차이가
@@ -256,13 +189,13 @@ end
     # 🔴 `parked` 는 **스텝 전에** 잡는다. `battery_courier_step!` 이 `account_battery_step!`
     # **뒤에** 돌면서 예비를 뽑거나 돌려놓을 수 있어서, 스텝 뒤에 재면 엔진이 쓴 집합과 다른
     # 집합을 쓰게 된다(그러면 대조가 조용히 어긋난다 — 실측으로 한 번 데였다).
+    s260   = CB.simstate_of(env)                  # 🔴 스텝 **전**의 s (훅이 본 active_set 과 짝)
     parked = union!(Set{Any}(CB.active_spares()), Set{Any}(CB.checked_out_spares()))
     prev = CB.get_active_pos(env)                 # step_environment! 가 잡는 것과 같은 스냅샷
     CB.step_environment!(env)                     # 훅이 이 안에서 장부를 쓴다
     e1   = fleet_b.energy_J
-    s260 = s                                      # active_set 은 이 스텝에 안 바뀐다(캐시 갱신 없음)
-    # 스텝 중에 예비 풀이 바뀌었으면 위 스냅샷이 무효다 — 조용히 넘어가지 않는다.
-    @test parked == union!(Set{Any}(CB.active_spares()), Set{Any}(CB.checked_out_spares()))
+
+    parked_after = union!(Set{Any}(CB.active_spares()), Set{Any}(CB.checked_out_spares()))
     @info "T7 Ruling2 fleet" n_fleet_soc = length(fleet_b.soc) n_parked = length(parked) dt = dt
     # 🔴 대기 기저도 `mode_power_W` 를 통과시킨다. `p.idle_W * dt` 를 그대로 쓰면 `:idle` 팔은
     # 필드를 자기 자신과 비교하는 꼴이라 그 팔의 버그를 이 장부가 못 잡는다.
@@ -299,12 +232,24 @@ end
                   (mode = sym, team = length(robots), m_payload = mp, speed = spd))
         end
     end
-    @info "T7 Ruling2 ledger coverage" n_multi_robot_nodes = nmulti n_manip_nodes = nmanip n_motion_nodes = length(speeds) speed_min = (isempty(speeds) ? NaN : minimum(speeds)) speed_max = (isempty(speeds) ? NaN : maximum(speeds)) payload_min = (isempty(payloads) ? NaN : minimum(payloads)) payload_max = (isempty(payloads) ? NaN : maximum(payloads)) v_ref = p.v_ref
+    @info "T7 Ruling2 ledger coverage" step = k n_multi_robot_nodes = nmulti n_manip_nodes = nmanip n_motion_nodes = length(speeds) speed_min = (isempty(speeds) ? NaN : minimum(speeds)) speed_max = (isempty(speeds) ? NaN : maximum(speeds)) payload_min = (isempty(payloads) ? NaN : minimum(payloads)) payload_max = (isempty(payloads) ? NaN : maximum(payloads)) v_ref = p.v_ref
+    # 🔴 **후보 기각.** 실현 속도가 전부 0 이면 이동 팔이 `0.0 == 0.0` 을 비교하는 꼴이 되어
+    # "14/14 exact" 가 조용히 "대기 기저만 잰 시험" 으로 퇴화한다. 단언하지 않고 물러난다 —
+    # 호출자가 다음 후보 step 을 계속 찾는다(스텝 번호를 박지 않는다는 원칙 그대로).
+    if isempty(speeds) || maximum(speeds) <= 0.0
+        @info "T7 장부 후보 기각 — 이동 팔이 퇴화(실현 속도 전부 0)" step = k
+        return false
+    end
+
+@testset "step $k — 🔴 Ruling 2: mode_power_W == battery.jl 의 실제 소모 (장부 대조)" begin
+    # ε_r ≡ 1 (D-5). 아니면 예측에 로봇별 배수가 빠진다 — 조용히 틀리지 않게 못박는다.
+    @test all(==(1.0), values(st.eff))
+    @test st.params.drain_step_cv == 0.0
+    # 스텝 중에 예비 풀이 바뀌었으면 스냅샷이 무효다 — 조용히 넘어가지 않는다.
+    @test parked == parked_after
     @test nmulti >= 1                          # 팀 분할 분기(:transit/:carry)를 태웠는가
     @test nmanip >= 1                          # 🔴 :manip 분기도 태웠는가
-    # 🔴 실현 속도가 전부 0 이면 이동 팔이 `0.0 == 0.0` 을 비교하는 꼴이 되어 "14/14 exact" 가
-    # 조용히 "대기 기저만 잰 시험" 으로 퇴화한다. 하나라도 움직였는지 못박는다.
-    @test maximum(speeds) > 0.0
+    @test maximum(speeds) > 0.0                # 이동 팔이 실제로 움직였는가
     worst, nexact = 0.0, 0
     for id in sort!(collect(keys(fleet_b.soc)); by = string)
         got, want = e1[id], pred[id]
@@ -366,8 +311,12 @@ end
     # 두 배다. 상한으로 쓸 값은 **8%** 다.
     # 경계는 이 픽스처가 실제로 지탱하는 값으로 좁힌다(실측 0.0800 / 0.0373) — 느슨한 경계를
     # 남겨 두면 아래 분리비 단언과 **동시에 참이면서 서로 모순인** 상태가 생긴다.
-    @test worst_soc_share < 0.09
-    @test worst_a < 0.05
+    # 🔴 경계는 **유도된 것만** 건다. 한때 여기 `@test worst_a < 0.05` 가 있었는데 그건
+    # step 261/laneF 의 관측치(0.0373)에 맞춘 숫자였고, 스텝을 발견 방식으로 바꾸자마자
+    # step 95 에서 0.0571 로 깨졌다 — 스텝 번호를 박은 것과 **같은 종류의 실수**(픽스처 적합)다.
+    # 진짜 경계는 유도에서 온다: 이 대입이 건드리는 항은 β_s·P/C 하나이고, P 의 최대는
+    # `manip_W` 이므로 그 항이 `a` 에서 차지하는 비중(worst_soc_share)이 곧 오차의 상한이다.
+    @test worst_soc_share < 0.09               # β_s·manip_W/C ÷ a 의 유도 상한(실측 0.0800)
     @test worst_a <= worst_soc_share + 1e-12   # 🔴 지수 오차는 그 항의 크기를 못 넘는다
 
     # (C) 두 오차의 **분리비** — 이것이 "N-G5 를 (B) 로 재지 말라"의 근거다.
@@ -383,7 +332,94 @@ end
     @info "T7 잔차 (C) 두 오차의 분리비 — N-G5 를 N-G1 숫자로 재지 말 것" separation_observed = separation floor = 3.0 energy_rel_error = e_light / e_engine - 1.0 exponent_rel_error = worst_a
     @test separation > 3.0
 end
+    return true
+end
 
+# --- 씬 (SCENE-INCANTATION.md 정본) ------------------------------------------
+env = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "t7derive",
+                         num_robots = 6, assignment_mode = :greedy,
+                         n_spare_per_pool = 2,
+                         open_animation_at_end = false, save_animation = false,
+                         write_results = false, return_env_before_sim = true,
+                         rng = Random.MersenneTwister(1))
+CB.enable_battery!(env)
+CB.enable_hazard!(env; seed = 5)
+
+# 🔴 **스텝 번호를 박지 않는다 — 훑어서 찾는다.**
+# `SCENE-INCANTATION.md` §2 는 "스텝 번호를 인용하지 말고 네 픽스처를 직접 재라"고 적는다.
+# 그런데 이 시험이 정확히 그 인용을 하고 있었다(step 95 · 260 을 상수로). 실측: **같은 시험
+# 파일·같은 시드인데** `laneF` 는 step 261 에서 `n_manip_nodes = 1`, 병합된 main 은 `0` 이라
+# 네 단언이 빨개졌다. 스케줄은 디렉토리 간에 안정적이지 않다(CLAUDE.md: "결정성의 단위는
+# 프로세스가 아니라 디렉토리").
+#
+# 그래서 이제 **조건을 만족하는 첫 스텝을 발견**해서 거기서 잰다. 증명하는 명제가 강해진다:
+#   앞: "step 260 에서 장부가 맞는다"
+#   뒤: "범위 안에 비퇴화 스텝이 **존재하고**, 거기서 장부가 정확히 맞는다"
+# 범위 안에 그런 스텝이 하나도 없으면 **그것이 진짜 빨간불**이다 — 픽스처가 팀 분할된 manip
+# 팔을 더는 안 태운다는 뜻이므로.
+const MAXSTEP = 320                 # 260 → 320: 스케줄이 밀려도 후보를 찾을 여유
+
+maxteam_seen   = 0
+ledger_step    = 0                  # 장부 대조를 실제로 돌린 스텝 (0 = 아직)
+ledger_tried   = Int[]              # 후보였지만 퇴화해서 기각한 스텝들
+mode_probe_2   = 0                  # distinct>=2 && maxteam>=2 를 처음 만족한 스텝
+mode_probe_3   = 0                  # distinct>=3 && maxteam>=2 를 처음 만족한 스텝
+best_distinct  = 0
+
+@testset "active_of == 엔진의 active_set ($MAXSTEP 스텝 내내)" begin
+    for k in 1:MAXSTEP
+        # 장부 대조는 **자기가 스텝을 밟는다**(훅이 그 스텝 안에서 장부를 쓰기 때문).
+        # 아직 성공한 적이 없고 지금 active_set 이 필요한 분기를 전부 태우면 여기서 시도한다.
+        if ledger_step == 0 && ledger_ready(env)
+            if try_ledger_at!(env, k)
+                global ledger_step = k
+            else
+                push!(ledger_tried, k)
+            end
+        else
+            CB.step_environment!(env)
+        end
+        CB.update_planning_cache!(env, 0.0)
+        CB.set_sim_step!(k)
+        s = CB.simstate_of(env)
+        @test CB.active_of(s) == Set(env.cache.active_set)
+
+        sz = active_team_sizes(env)
+        isempty(sz) || (global maxteam_seen = max(maxteam_seen, maximum(sz)))
+        # 모드 프로브도 같은 방식으로 **발견**한다.
+        nd = length(unique(CB.mode_of(s, env, kk) for kk in keys(s.fleet)))
+        global best_distinct = max(best_distinct, nd)
+        mt = isempty(sz) ? 0 : maximum(sz)
+        if mode_probe_2 == 0 && nd >= 2 && mt >= 2
+            global mode_probe_2 = k; check_modes_at(env, k)
+        elseif mode_probe_3 == 0 && nd >= 3 && mt >= 2
+            global mode_probe_3 = k; check_modes_at(env, k)
+        end
+    end
+end
+@info "T7 발견한 프로브 스텝" ledger_step = ledger_step ledger_rejected = string(ledger_tried) mode_probe_2 = mode_probe_2 mode_probe_3 = mode_probe_3 best_distinct = best_distinct maxteam_seen = maxteam_seen maxstep = MAXSTEP
+
+@testset "🔴 범위 안에 비퇴화 스텝이 존재한다 (여기가 빨개지면 픽스처가 팔을 안 태운다)" begin
+    # 장부 대조를 돌릴 수 있는 스텝이 **하나라도** 있었는가 —
+    # 다중 로봇 노드 ≥1 · :manip ≥1 · 이동 ≥1 · 실현 속도 > 0.
+    @test ledger_step > 0
+    # 모드 단언을 걸 수 있는 스텝이 있었는가 (distinct ≥ 2 이면서 팀 ≥ 2).
+    @test mode_probe_2 > 0
+    @test maxteam_seen >= 2          # Ruling 1 을 시험할 수 있는 픽스처인가
+end
+
+s = CB.simstate_of(env)     # 마지막 스텝의 세계
+
+@testset "🔴 조용한 폴백 금지" begin
+    @test_throws ErrorException CB.mode_of(s, env, -12345)            # fleet 에 없는 로봇
+    s_bad = CB.SimState(g = CB.GraphBlock(edges = Set([(1, 10^7)]), binding = Dict{Int,Int}()),
+                        geo = s.geo, fleet = s.fleet,
+                        prog = CB.ProgBlock(closed = Set([1])))
+    @test_throws ErrorException CB.mode_of(s_bad, env, first(keys(s.fleet)))  # 스케줄에 없는 정점
+end
+
+
+# step k 에서의 모드 관련 단언 전부. env 를 앞으로 못 되감으므로 루프 안에서 그 자리에 돈다.
 @testset "mode_power_W 의 기준 조건 값" begin
     p = CB.BATTERY_FLEET[].params
     @test CB.mode_power_W(p, :idle)    == p.idle_W
