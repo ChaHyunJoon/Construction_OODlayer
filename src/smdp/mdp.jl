@@ -38,6 +38,10 @@ include("derive.jl")   # s 의 파생 접근자(active_of·modes_of·mode_of·ra
 include("rates.jl")    # spec §2 의 닫힌 형태. **순수 수학** — 씬을 참조하지 않는다.
                        # hazard.jl(hazard_rate_from)·navigator/battery.jl(BatteryParams·k_move)
                        # 에 의존. derive.jl 의 rate_params 가 rate_params_one 을 부른다(늦은 바인딩).
+include("tplan.jl")    # D-6 rate boundary. λ 가 구간상수인 구간의 경계(T_plan_next)와
+                       # 남은 스케줄의 longest path(T_done). derive.jl(active_of)·
+                       # essential_tg_coponents.jl(get_min_duration·get_graph) 에 의존하므로
+                       # 반드시 derive.jl / rates.jl **다음**에 온다.
 
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true
