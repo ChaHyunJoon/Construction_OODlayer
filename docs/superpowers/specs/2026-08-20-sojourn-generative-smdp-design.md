@@ -455,8 +455,26 @@ end
    (`simstate_of_ms.median = 17.59 ms`) — 갈래 비용의 지배항이 `deepcopy` 단독이 아니라 env
    크기 전반일 가능성을 시사한다. 원자료: `results/smdp/branch_cost.json`, 측정 스크립트:
    `tools/monitor/measure_branch_cost.jl`.
-2. **`simstate_of` 가 정확한지 아직 모른다.** 함수 자체가 없다. `SimState` 는 지금까지
-   **타입으로서만** 검증됐다(필드 민감도 · 크로스 프로세스 해시 안정성 · 구분자 주입 방어).
+   ⚠️ **이 값은 갈래 비용의 완전한 합이 아니라 하한이다.** §5-2b 가 확인했듯 3계층
+   reactive policy 중 TangentBug·PotentialField 는 `env` 필드라 `deepcopy` 로 자동
+   격리되지만, RVO2 는 프로세스 전역(`RVO_SIM_WRAPPER`, `src/rvo_interface.jl:107`)이라
+   갈래 전환마다 별도 재구축(`rvo_rebuild!`, 아직 미구현·Task 11)이 필요하고 그 비용은
+   여기 안 잡혀 있다.
+2. **`simstate_of` 는 있고, N-G0 가 채웠다 — 다만 완전하다고 주장하지는 않는다.**
+   `simstate_of(env)`(`src/smdp/observe.jl`, Task 4, 커밋 `5f8dd58b`+`18ed52db`)가
+   구현됐고, `test/smdp_observe_gate.jl` 가 **378 단언 전부 통과**로 게이팅한다. 26필드
+   중 23필드는 교란→해시 갈림→복원→해시 일치의 격리 실측이 딸려 있다(그 필드가 실제로
+   해시에 닿는다는 증거). 게이트가 **못 세운 것**은 따로 있다:
+   - **값 동등만으로 검사된 넷: `edges`·`binding`·`payload`·`mode`.** 스케줄 그래프·씬트리
+     수술을 같은 프로세스 안에서 안전하게 되돌릴 방법이 없어 음성 대조(해시 갈림)를 못
+     붙였다 — 값이 엔진과 같다는 것만 보인다.
+   - **엔진 출처가 아예 없는 둘.** `build_delta` 는 상수 `(0.0,0.0)` 을 돌려준다(누적기가
+     소스 어디에도 없음을 확인한 뒤 지어내지 않고 상수로 못박았다). `prog.active` 는
+     spec §3-2(169줄, "그 정점이 **실제로 시작한** 시각")의 정의와 달리 **MILP 가
+     계획한 `t0`** 를 나른다 — 실행 중 실제 시작 시각을 기록하는 실행 경로가 없다
+     (`test/smdp_observe_gate.jl:293-319`). 이 격차는 **Task 8 의 `T_plan_next` 를
+     구조적으로 막는다**. 둘 다 게이트에 전용 단언으로 못 박혀 있어서, 누가 진짜 출처를
+     배선하면 그 단언이 먼저 빨개진다 — 그래서 지금은 안전하게 열어 둘 수 있다.
 3. **λ 가 교정된 적이 없다.** `expected_hazard_events()` 는 미검증이고 Poisson 95% CI 가
    `[0.24, 7.22]` 다. 정확 표집기를 만들어도 **틀린 λ 를 정확히 표집할 뿐이다.**
 4. **`mtbf_zone_s` 의 값이 아직 없다.** D-4 는 "켠다"만 정했다.
