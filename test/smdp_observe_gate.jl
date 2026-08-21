@@ -41,12 +41,36 @@ env = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "ng0",
 CB.enable_battery!(env)
 CB.enable_hazard!(env; seed = 11)
 
-# 스텝 하나만 굴리면 로봇이 전부 :idle 이라 `mode` 축이 상수가 된다(= 아무것도 못 가른다).
-# 명목 루프의 최소 형태(demo_utils.jl:157-158)를 그대로 40스텝 돌려 진짜 진행 상태를 만든다.
-for k in 1:40
+# 🔴 **왜 120 스텝인가 (리뷰 라운드 1 이 잡은 결함)**. 초판은 40 스텝이었는데, 그 지점에서는
+# `mode` 가 14/14 로봇 전부 `:transit` 한 값이고 `payload` 는 14/14 전부 `nothing` 이다. 그러면
+# 두 축의 검사가 **반증 불가능**해진다 — `mode = :transit` 상수를 돌려주는 구현도, `payload` 로
+# 무조건 `nothing` 을 돌려주는 구현도 초록으로 통과한다. 실측(probe, 5스텝 간격 260스텝):
+#
+#     step   distinct modes            non-nothing payload
+#     1-79   1  [:transit]             0
+#     80-90  1  [:transit]             0
+#     95     3  [:transit,:manip,:carry]  6
+#     100-170 2 [:transit,:carry]      6      ← 안정 구간
+#     175-260 2 [:transit,:carry]      2..4
+#
+# 120 은 그 안정 구간 한복판이다(t=3.0s · closed 63 · active 10 · mode 2종 · payload 6/14).
+# 아래 두 testset 이 그 도메인이 실제로 비퇴화인지를 **명시적으로 단언**한다 — 나중에 픽스처가
+# 바뀌어 도메인이 다시 납작해지면 그 단언이 먼저 빨개진다.
+#
+# 명목 루프의 최소 형태(demo_utils.jl:157-158)를 그대로 돌린다.
+#
+# `FIRST_ACTIVE_T` = 이 시험이 **직접 관측한** "그 정점이 처음 활성으로 보인 절대 sim 초".
+# 엔진에는 이런 기록이 없다 — 그것이 아래 `prog.active` 단언의 요점이다.
+const FIRST_ACTIVE_T = Dict{Int,Float64}()
+for k in 1:120
     CB.step_environment!(env)
     CB.update_planning_cache!(env, 0.0)
     CB.set_sim_step!(k)
+    let t = CB.sim_time(env.dt)
+        for v in env.cache.active_set
+            get!(FIRST_ACTIVE_T, v, t)
+        end
+    end
 end
 
 h() = CB.state_hash(CB.simstate_of(env))
@@ -57,19 +81,35 @@ const RID   = first(RIDS)
 const RID2  = RIDS[2]
 
 @testset "simstate_of 는 읽기 전용이다" begin
+    # 🔴 리뷰 라운드 1: 초판은 `BATTERY_DELIVERIES`·`RESTRICTION_ZONES` 를 **빈 채로** 대조했다
+    # (`0 == 0`, `Dict() == Dict()`) — 어떤 구현도 통과하는 공허한 단언이다. 두 레지스트리를
+    # 먼저 채워 도메인을 비우지 않는다. (여기서 넣은 둘은 이 testset 끝에서 다시 뺀다.)
+    CB.RESTRICTION_ZONES[][:ng0ro] = CB.LazySets.Ball2([1.0, 2.0], 0.75)
+    CB.BATTERY_DELIVERIES[][RIDS[3]] =
+        CB.BatteryDelivery(RIDS[4], RIDS[3], :north, Float64[1.0, 2.0], :outbound,
+                           Float64[3.0, 4.0], 5, -1)
+
     before_closed  = length(env.cache.closed_set)
     before_active  = length(env.cache.active_set)
     before_soc     = copy(FLEET.soc)
     before_usage   = copy(HZ.usage_s)
     before_eff     = copy(HZ.eff)          # 🔴 _hz_ensure! 를 부르면 여기가 늘어난다(난수도 태운다)
     before_broken  = copy(HZ.broken)
-    before_deliv   = length(CB.BATTERY_DELIVERIES[])
+    # 배송은 가변 struct 라 `copy(Dict)` 는 **같은 객체**를 가리킨다 — 내용이 바뀌어도 등호가
+    # 참이다. 필드를 렌더해서 뜬다.
+    _deliv_snap() = Dict(k => (d.target, d.courier, d.depot, copy(d.home), d.phase,
+                               copy(d.goal), d.step_out, d.step_swap)
+                         for (k, d) in CB.BATTERY_DELIVERIES[])
+    before_deliv   = _deliv_snap()
     before_zones   = copy(CB.RESTRICTION_ZONES[])
     before_step    = CB.SIM_STEP[]
     # 🔴 가장 미묘한 자리: `global_transform`(hierarchical_geom_essentials.jl:347)은
     # `get_cached_value!` 라 캐시가 낡았으면 **재계산하면서 `_CACHE_TIMESTAMP_COUNTER` 를 올린다**.
-    # 그 카운터는 ξ(재생 상태)로 분류돼 있다(simstate.jl `ReplayState.cache_counter`) — 즉 관측이
-    # 재생 상태를 건드릴 수 있다는 뜻이다. 스텝 직후에는 전부 최신이라 0회여야 한다.
+    # 그 카운터는 ξ(재생 상태)로 분류돼 있다(simstate.jl `ReplayState.cache_counter`).
+    # ⚠️ **일반적으로 0회라는 뜻이 아니다** — 캐시가 낡아 있으면 관측이 실제로 올린다(이 파일의
+    # 뒤쪽 testset 들이 `set_desired_global_transform!` 로 캐시를 무효화한 직후 `h()` 를 부르는
+    # 것이 바로 그 경우다). 여기서 재는 것은 **이 관측 지점**(스텝 직후, 전부 최신)의 실측값이다.
+    # 컨트롤러 판정: 이 부작용은 유지한다(ξ 이고, 갱신을 건너뛰면 `s` 에 **낡은 pose** 가 들어간다).
     before_cachect = CB._CACHE_TIMESTAMP_COUNTER[]
 
     s = CB.simstate_of(env)
@@ -80,13 +120,35 @@ const RID2  = RIDS[2]
     @test HZ.usage_s  == before_usage
     @test HZ.eff      == before_eff
     @test HZ.broken   == before_broken
-    @test length(CB.BATTERY_DELIVERIES[]) == before_deliv
+    @test !isempty(before_deliv) && !isempty(before_zones)   # 도메인이 비어 있지 않다
+    @test _deliv_snap() == before_deliv
     @test CB.RESTRICTION_ZONES[] == before_zones
     @test CB.SIM_STEP[] == before_step
     @test CB._CACHE_TIMESTAMP_COUNTER[] == before_cachect
     # 두 번 불러도 같은 해시 (관측이 부작용을 남기지 않는다)
     @test CB.state_hash(s) == h()
     @test CB.state_hash(s) == h()
+
+    # 🔴 **`_hz_ensure!` 를 부르지 않는다** — 반증 가능한 형태로.
+    # 리뷰 라운드 1 이 잡은 결함: `enable_hazard!`(hazard.jl:250-255)가 `simstate_of` 가 훑는
+    # **바로 그 키 집합**을 미리 등록해 두므로, 위의 `HZ.eff == before_eff` 는 설령 관측이
+    # `_hz_ensure!` 를 부르더라도 `haskey(st.eff,id) && return`(hazard.jl:292) 단락에 걸려
+    # 그대로 통과한다 = 아무것도 증명하지 못한다.
+    # 그래서 RID 의 등록을 **일부러 지우고** 관측한다. 관측이 `_hz_ensure!` 를 부르면 그 자리가
+    # 다시 채워지고(그리고 그 로봇 스트림에서 난수 3개 — `_lognorm1` 의 randn 1 + `_exp1` 2 —
+    # 를 태워 CRN 을 민다) 아래 두 단언이 즉시 빨개진다.
+    saved_eff, saved_usage = HZ.eff[RID], HZ.usage_s[RID]
+    delete!(HZ.eff, RID); delete!(HZ.usage_s, RID)
+    s_unreg = CB.simstate_of(env)
+    @test !haskey(HZ.eff, RID)
+    @test !haskey(HZ.usage_s, RID)
+    # 그리고 미등록 로봇이 문서화된 값으로 읽히는지 — observe.jl 의 "지어내지 않는다" 경로.
+    @test s_unreg.fleet[CB._int_key(RID)].usage_s == 0.0
+    @test s_unreg.fleet[CB._int_key(RID)].eff == 1.0
+    HZ.eff[RID] = saved_eff; HZ.usage_s[RID] = saved_usage
+
+    delete!(CB.RESTRICTION_ZONES[], :ng0ro)
+    delete!(CB.BATTERY_DELIVERIES[], RIDS[3])
 end
 
 @testset "N-G0 — Fleet 축(soc·usage_s·eff·health·role)" begin
@@ -144,14 +206,18 @@ end
     @test h() == h0
 
     # mode — 활성 노드의 전력 모드. 이 축만은 **격리된 교란이 없다**(active_set 을 흔들면
-    # ProgBlock 도 같이 갈린다). 대신 두 가지를 단언한다:
-    #   (a) hazard 의 분류기와 정확히 같은 값을 나른다 (계약 (3): 재분류 금지)
-    #   (b) 이 상태에서 실제로 정보를 나른다 — 전부 :idle 이면 아무것도 못 가른다
+    # ProgBlock 도 같이 갈린다). 그래서 값 동등 검사로 대체하는데, 그 검사는 `observe.jl:79` 와
+    # **같은 호출**이라 `f(x) == f(x)` 다 — 그것만으로는 `_hz_modes` 가 비결정적일 때만 빨개진다.
+    # 🔴 리뷰 라운드 1: 초판의 구제책 `any(!== :idle)` 은 step 40 에서 mode 가 14/14 `:transit`
+    # **한 값**이라 `mode = :transit` 상수 구현도 통과시켰다. 이제 픽스처를 120 스텝으로 옮기고
+    # **서로 다른 값이 2종 이상**임을 단언한다 — 상수 구현은 여기서 죽는다.
     s = CB.simstate_of(env)
     modes = CB._hz_modes(env)
     for rid in RIDS
         @test s.fleet[CB._int_key(rid)].mode === get(modes, rid, :idle)
     end
+    mode_domain = Set(r.mode for r in values(s.fleet))
+    @test length(mode_domain) >= 2        # 실측 step 120: {:transit, :carry}
     @test any(r -> r.mode !== :idle, values(s.fleet))
 end
 
@@ -211,10 +277,46 @@ end
                                             for e in Graphs.edges(env.sched))
     @test !isempty(s.g.edges)
     @test !isempty(s.g.binding)
+    # 🔴 리뷰 라운드 1: 초판은 `k in [...]`(멤버십)이었다. 그러면 P2 의 결정성 수정
+    # (`observe.jl:64` 의 `first(sort(rs; by = string))`)을 **아무것도 검증하지 않는다** —
+    # `rs[1]` 을 그대로 쓰는 비결정적 구현도 멤버십은 만족한다. 실측: 담당 로봇이 2대 이상인
+    # 정점이 99개이고 그중 12개에서 `first(sort(rs; by=string)) != rs[1]` 이다. 등호로 바꾼다.
+    nmulti = 0
     for (v, k) in s.g.binding
         rs = CB._responsible_robots(CB.get_node(env.sched, v).node)
-        @test k in [CB._int_key(r) for r in rs]
+        length(rs) > 1 && (nmulti += 1)
+        @test k == CB._int_key(first(sort(rs; by = string)))
     end
+    @test nmulti > 0        # 정렬이 실제로 갈림길인 정점이 존재한다(= 위 등호가 공허하지 않다)
+end
+
+@testset "🔴 prog.active 는 **계획된** 시작이지 실제 시작이 아니다 (알려진 결함, 못 박아 둠)" begin
+    # simstate.jl:105 와 spec §3-2 는 이 필드를 "그 정점이 **실제로 시작한** 시각" 이라고 적었다.
+    # **아니다.** `get_t0` 는 MILP/구조적 계획값이고, 그것을 쓰는 유일한 경로
+    # `process_schedule!`(route_planning.jl:506)는 `update_schedule_times!` 를 `Δt > 0` 일 때만
+    # 태우는데 레포의 **모든 호출자가 t = 0.0 을 넘긴다**(demo_utils.jl:80·158,
+    # route_planning.jl:273, tools/monitor/run_demo.jl:483·795·815, render_demo.jl:597).
+    # 실행 중 실제 시작을 기록하는 곳은 `MONITOR_NODE_T`(monitor.jl:220) 하나뿐인데 그것은
+    # `:log` 로 분류돼 있고(state_globals.jl:318) 모니터가 꺼져 있으면 아예 안 채워진다 —
+    # `s` 의 출처로 쓸 수 없다. 그래서 **지어내지 않고** `get_t0` 를 그대로 나르고, 그 사실을
+    # 여기에 단언으로 못 박는다. 누가 진짜 출처를 배선하면 아래 둘이 빨개진다.
+    # (Task 8 의 `T_plan_next` 가 이것 위에 서면 구조적으로 틀린다 — 이 태스크 범위 밖.)
+    s = CB.simstate_of(env)
+
+    # (1) 이 필드가 지금 무엇을 나르는가 — 계획값.
+    @test s.prog.active ==
+          Dict(v => Float64(CB.get_t0(env.sched, v)) for v in env.cache.active_set)
+
+    # (2) 그것이 실제 시작이 **아니라는** 직접 증거: 아직 활성인(=안 끝난) 정점이 자기
+    #     계획 소요시간 전체보다 오래 "경과" 했다고 말한다. 실제 시작이면 불가능하다.
+    #     실측 step 120: 10개 활성 중 8개가 `t0 = 0.0`·`duration = 0.0` 인데 경과 3.0초.
+    impossible = [v for v in keys(s.prog.active)
+                  if s.prog.t - s.prog.active[v] > Float64(CB.get_duration(env.sched, v))]
+    @test !isempty(impossible)
+
+    # (3) 이 시험이 **직접 관측한** 첫 활성 시각과 하나도 안 맞는다. 진짜 출처가 배선되면
+    #     둘은 같은 스텝 경계에서 찍히므로 일치하게 되고, 이 단언이 빨개진다.
+    @test count(v -> s.prog.active[v] == FIRST_ACTIVE_T[v], keys(s.prog.active)) == 0
 end
 
 @testset "N-G0 — Prog 축(t · closed · active)" begin
@@ -225,8 +327,13 @@ end
     CB.set_sim_step!(CB.SIM_STEP[] - 1)
     @test h() == h0
 
-    # closed 집합
-    victim = maximum(Graphs.vertices(env.sched))
+    # closed 집합. 🔴 리뷰 라운드 1 이후 픽스처가 120 스텝으로 깊어져 `maximum(vertices)` 는
+    # **이미 닫혀 있다** — 그러면 push! 가 무동작이라 대조가 성립하지 않는다. 아직 닫히지도
+    # 열리지도 않은 정점을 고른다(비면 이 단언이 먼저 죽는다 = 조용히 넘어가지 않는다).
+    future = sort!(collect(setdiff(Set(Graphs.vertices(env.sched)),
+                                   env.cache.closed_set, env.cache.active_set)))
+    @test !isempty(future)
+    victim = first(future)
     @test !(victim in env.cache.closed_set)
     h0 = h()
     push!(env.cache.closed_set, victim)
@@ -292,6 +399,10 @@ end
     @test s.prog.t ≈ CB.sim_time(env.dt)
     @test length(s.fleet) == length(FLEET.soc)
     # payload 도 격리된 교란이 없다(로봇 재부모화 = 씬트리 수술). 엔진의 부모 관계와 직접 대조.
+    # 🔴 리뷰 라운드 1: step 40 에서는 14/14 가 `nothing` 이라 **무조건 `nothing` 을 돌려주는
+    # 구현이 14/14 통과**했다. 120 스텝 픽스처에서는 6/14 가 실제로 운반유닛에 포획돼 있다 —
+    # 그 도메인이 비퇴화인지를 먼저 단언하고, 그 다음에 값을 대조한다.
+    @test count(r -> r.payload !== nothing, values(s.fleet)) >= 1   # 실측 step 120: 6/14
     for rid in RIDS
         p = CB.get_parent(env.scene_tree, rid)
         expect = Graphs.has_vertex(env.scene_tree, p) ?
