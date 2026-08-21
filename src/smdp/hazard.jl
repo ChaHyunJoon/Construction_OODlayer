@@ -389,6 +389,28 @@ function _cell_rate(st::HazardState, id; mode::Symbol = :idle)
     return base * p.mode * _mode_mult(p, mode) * exp(p.beta_usage * u_hat)
 end
 
+"""
+    cell_rate_from(p::HazardParams, usage_s, mode) -> Float64
+
+λ_cell 의 **단일 진실원의 경량 레인 쪽 입구**(이슈 D). `_cell_rate` 와 **같은 식**이고,
+인자가 전부 `s` 에서 나온다 — `usage_s` 는 `RobotRec` 의 필드, `mode` 는 `derive.jl` 의
+`modes_of` 가 낸다. soc 는 **안 쓴다**(셀 열화는 마모의 함수이고 soc 는 결과지 원인이 아니다).
+
+🔴 **셋째 경쟁위험이다.** `hazard_step!`(:497-509)은 `break`·`cell`·`zone` 셋을 **독립적으로**
+검사하고, 그 자리 주석이 예전에 둘을 `elseif` 로 묶었다가 "경쟁 위험 모형이 아니라 우선순위
+큐"가 되어 버렸던 사고를 기록하고 있다. 경량 레인이 둘만 세면 게이트 N-G1 이 **2위험 표집기와
+3위험 엔진**을 비교하게 된다.
+
+⚠️ `_cell_rate` 는 `st.params`·`st.usage_s` 를 읽는 래퍼이고 이 함수는 그 두 값을 인자로
+받는다. 동치는 `test/smdp_sojourn.jl` 이 살아 있는 hazard 상태 전수로 `==` 대조한다.
+"""
+function cell_rate_from(p::HazardParams, usage_s::Float64, mode::Symbol)
+    base = _rate(p.mtbf_cell_s)
+    base == 0 && return 0.0
+    u_hat = p.usage_scale_s > 0 ? usage_s / p.usage_scale_s : 0.0
+    return base * p.mode * _mode_mult(p, mode) * exp(p.beta_usage * u_hat)
+end
+
 # -----------------------------------------------------------------------------
 # Per-step advance: classify modes, accumulate Λ, fire whoever crossed.
 # -----------------------------------------------------------------------------

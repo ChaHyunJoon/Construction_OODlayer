@@ -42,6 +42,10 @@ include("tplan.jl")    # D-6 rate boundary. λ 가 구간상수인 구간의 경
                        # 남은 스케줄의 longest path(T_done). derive.jl(active_of)·
                        # essential_tg_coponents.jl(get_min_duration·get_graph) 에 의존하므로
                        # 반드시 derive.jl / rates.jl **다음**에 온다.
+include("sojourn.jl") # spec §5-3 정확 소저너. 경쟁위험 셋(break·cell·zone)을 dt 루프 없이
+                      # 표집한다. derive.jl(active_of·modes_of·robot_id_of)·rates.jl(닫힌 형태)·
+                      # tplan.jl(T_plan_next)·hazard.jl(cell_rate_from·_exp1·_rate) 에 의존하므로
+                      # 반드시 tplan.jl **다음**에 온다.
 
 # 호출자가 "MDP 계층이 로드됐다"고 확인할 수 있게 해주는 표식 함수.
 mdp_loaded() = true
