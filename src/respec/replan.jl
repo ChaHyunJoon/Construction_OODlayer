@@ -1750,17 +1750,38 @@ end
 """
     engage_fallback!(env)
 
-The recoverable fallback action: hold all agents (line stop).
+The **TERMINAL** fallback action: hold all agents (line stop). 🔴 **Not recoverable.**
 
 This is NOT a nominal flag. `step_environment!` (route_planning.jl) reads `RESPEC_HOLD[]` every
 step and zeroes every RVO agent's preferred velocity while it is up, so raising it physically
 stops the line. Stopping is also the always-available safe action: zero velocity can never
 carry an agent into a no-go zone, so no feasibility argument is needed to justify it.
 
-Callers that intend the build to CONTINUE past a fallback must pair this with
-`release_fallback!` — the flag is global and is never cleared on its own.
-(요약) 실제로 라인을 멈춘다. step_environment! 가 매 스텝 RESPEC_HOLD 를 읽어 전 에이전트의
-       선호속도를 0 으로 만든다. 되풀기는 release_fallback! 이 명시적으로 해야 한다.
+🔴 **The effective semantics are "first fallback = permanent end of the run", and that is the
+design** (user decision D-13, 2026-08-21). `RESPEC_HOLD[]` is a permanent process-global latch;
+only `release_fallback!` clears it and **no production caller pairs with it — zero, by design**
+(`release_fallback!`'s own docstring says "used by tests / resume paths"). Do NOT write, here or
+anywhere, that the build keeps running past a fallback.
+
+⚠️ **This docstring previously claimed "recoverable" and told callers to pair with
+`release_fallback!`.** That was the SECOND instance of this exact failure shape in this
+codebase — `verifier.jl` (RELOCATE_GATE) carried the same claim, resting on an opt-in
+(`set_failclosed_stop!`) that no caller ever set, and was corrected 2026-08-18. Twenty lines
+apart, twice. `test/respec_fallback_terminal.jl` now asserts the production-caller count is
+zero, so this cannot rot back silently.
+
+🔴 **Consequence for the SMDP / MCTS.** The latch is process-global and nothing resets it at a
+rollout boundary (`src/smdp/state_globals.jl` classifies `:RESPEC_HOLD => :state` but there is
+no reset function). One rollout that engages fallback poisons every later rollout in the same
+process — silently, as a world where nothing moves. Measured 2026-08-21: running the SMDP/respec
+test files in a single process leaves `RESPEC_HOLD = true` after `respec_grammar.jl` and the
+next two files throw, while `smdp_tplan.jl`'s non-degeneracy assertion collapses to a single
+distinct active set. A rollout-boundary reset of the `:state` globals is required before the
+tree runs (report §8-4).
+
+(요약) 실제로 라인을 **영구히** 멈춘다 — 복구 가능하지 않다. step_environment! 가 매 스텝
+       RESPEC_HOLD 를 읽어 전 에이전트의 선호속도를 0 으로 만들고, 그것을 푸는 production
+       호출자는 **0 개이며 그것이 설계다**. 트리를 굴리려면 롤아웃 경계 리셋이 따로 필요하다.
 """
 function engage_fallback!(env)
     @warn "[RESPEC] FALLBACK engaged: holding all agents (line stop)."  # 모든 로봇을 멈춘다는 경고 로그
