@@ -1,12 +1,586 @@
 {
-    "n_steps": 400,
+    "alive_samples": [
+        {
+            "step": 1,
+            "n_closed": 56,
+            "n_active": 20,
+            "n_verts": 309
+        },
+        {
+            "step": 50,
+            "n_closed": 84,
+            "n_active": 17,
+            "n_verts": 309
+        },
+        {
+            "step": 100,
+            "n_closed": 99,
+            "n_active": 16,
+            "n_verts": 309
+        },
+        {
+            "step": 200,
+            "n_closed": 152,
+            "n_active": 19,
+            "n_verts": 309
+        },
+        {
+            "step": 300,
+            "n_closed": 190,
+            "n_active": 20,
+            "n_verts": 309
+        },
+        {
+            "step": 400,
+            "n_closed": 212,
+            "n_active": 18,
+            "n_verts": 309
+        }
+    ],
+    "dissolved_nonempty_frac": 0,
     "dissolved_nonempty_status": "NOT_MEASURED_trigger_unreachable_in_this_run",
+    "binding_diag": [
+        {
+            "n_total": 207,
+            "step": 1,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        },
+        {
+            "n_total": 207,
+            "step": 50,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        },
+        {
+            "n_total": 207,
+            "step": 100,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        },
+        {
+            "n_total": 207,
+            "step": 200,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        },
+        {
+            "n_total": 207,
+            "step": 300,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        },
+        {
+            "n_total": 207,
+            "step": 400,
+            "all_ok": false,
+            "n_no_predecessor": 20,
+            "examples_correct": [
+                {
+                    "v": 6,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 7,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 8,
+                    "derived": 6,
+                    "actual": 6
+                },
+                {
+                    "v": 13,
+                    "derived": 2,
+                    "actual": 2
+                },
+                {
+                    "v": 14,
+                    "derived": 2,
+                    "actual": 2
+                }
+            ],
+            "n_derived_correct": 163,
+            "examples_no_predecessor": [
+                {
+                    "v": 184,
+                    "derived": null,
+                    "actual": 1
+                },
+                {
+                    "v": 186,
+                    "derived": null,
+                    "actual": 2
+                },
+                {
+                    "v": 188,
+                    "derived": null,
+                    "actual": 3
+                },
+                {
+                    "v": 190,
+                    "derived": null,
+                    "actual": 4
+                },
+                {
+                    "v": 192,
+                    "derived": null,
+                    "actual": 5
+                }
+            ],
+            "n_derived_different": 24,
+            "examples_derived_different": [
+                {
+                    "v": 40,
+                    "derived": 7,
+                    "actual": 12
+                },
+                {
+                    "v": 96,
+                    "derived": 8,
+                    "actual": 3
+                },
+                {
+                    "v": 109,
+                    "derived": 12,
+                    "actual": 1
+                },
+                {
+                    "v": 115,
+                    "derived": 9,
+                    "actual": 4
+                },
+                {
+                    "v": 134,
+                    "derived": 5,
+                    "actual": 10
+                }
+            ]
+        }
+    ],
+    "binding_derivable_frac": 0,
     "wedge_subset_frac": 1,
+    "active_is_frontier_frac": 1,
+    "n_no_progress_steps": 314,
     "unwedge_interval": 2000,
     "n_unwedge_fired": 0,
-    "dissolved_nonempty_frac": 0,
-    "binding_derivable_frac": 0,
-    "active_is_frontier_frac": 1,
     "max_no_progress_streak": 22,
-    "n_no_progress_steps": 314
+    "n_steps": 400
 }

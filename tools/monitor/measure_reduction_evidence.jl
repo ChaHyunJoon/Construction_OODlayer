@@ -39,36 +39,39 @@ end
 
 """
 binding 진단: 정점 v 의 담당 로봇을 v 로 들어오는 엣지의 출발점(u)의 binding 으로 유도해 본다.
-전체 분해(총계·무유도·오유도·정답)와 표본(최대 10개 정점)을 함께 남긴다 — `n_binding_ok`(step
-전체 all-match) 하나만으로는 "대부분 맞는데 하나가 틀렸다" 와 "거의 다 틀렸다" 를 구분 못 한다.
+전체 분해(총계·무유도·오유도·정답)와 표본(카테고리별 최대 5개 정점)을 함께 남긴다 — `n_binding_ok`
+(step 전체 all-match) 하나만으로는 "대부분 맞는데 몇 개가 틀렸다" 와 "거의 다 틀렸다" 를 구분 못
+한다. 🔴 컨트롤러 라운드 2, Important 1: JSON 이 직렬화 가능한 `Dict` 로 리턴한다(`NamedTuple`
+아님) — 이 진단이 `binding_derivable_frac=0.0` 재해석의 **유일한 근거**이므로 산출물 JSON 안에
+그대로 남아야 한다(println 프로세로만 남으면 다음 사람이 JSON 만 열었을 때 근거가 없다).
 """
 function binding_diag(g_edges, g_binding)
     derived = Dict{Int,Int}()
     for (u, v) in g_edges
         haskey(g_binding, u) && !haskey(derived, v) && (derived[v] = g_binding[u])
     end
-    n_nothing, n_wrong, n_correct = 0, 0, 0
-    nothing_verts, wrong_verts, correct_verts = Int[], Int[], Int[]
+    no_pred_verts, wrong_verts, correct_verts = Int[], Int[], Int[]
     for v in sort(collect(keys(g_binding)))
         d = get(derived, v, nothing)
         if d === nothing
-            n_nothing += 1
-            push!(nothing_verts, v)
+            push!(no_pred_verts, v)
         elseif d == g_binding[v]
-            n_correct += 1
             push!(correct_verts, v)
         else
-            n_wrong += 1
             push!(wrong_verts, v)
         end
     end
-    mk(v) = (v = v, actual = g_binding[v], derived = get(derived, v, nothing))
-    sample = (nothing_examples = mk.(first(nothing_verts, 5)),
-              wrong_examples   = mk.(first(wrong_verts, 5)),
-              correct_examples = mk.(first(correct_verts, 5)))
-    all_ok = n_nothing == 0 && n_wrong == 0
-    return (all_ok = all_ok, n_total = length(g_binding), n_nothing = n_nothing,
-            n_wrong = n_wrong, n_correct = n_correct, sample = sample)
+    mk(v) = Dict("v" => v, "actual" => g_binding[v], "derived" => get(derived, v, nothing))
+    return Dict(
+        "n_total"                    => length(g_binding),
+        "n_derived_correct"          => length(correct_verts),
+        "n_no_predecessor"           => length(no_pred_verts),   # 유도할 선행자 자체가 없음(루트형 정점)
+        "n_derived_different"        => length(wrong_verts),     # 선행자는 있지만 binding 이 다름
+        "all_ok"                     => isempty(no_pred_verts) && isempty(wrong_verts),
+        "examples_no_predecessor"    => mk.(first(no_pred_verts, 5)),
+        "examples_derived_different" => mk.(first(wrong_verts, 5)),
+        "examples_correct"           => mk.(first(correct_verts, 5)),
+    )
 end
 
 function main()
@@ -87,8 +90,11 @@ function main()
     # (측정값을 맞추려고 튜닝하지 않는다: 이 둘은 진단용이지 out 의 필드가 아니다.)
     first_frontier_fail = nothing
     first_wedge_fail = nothing
-    alive_samples = NamedTuple[]
-    binding_diag_samples = NamedTuple[]
+    # 🔴 컨트롤러 라운드 2, Important 1: 둘 다 Dict 로 모아 산출물 JSON 에 그대로 싣는다(아래
+    # `out["alive_samples"]`·`out["binding_diag"]`) — 이전엔 println 으로만 남아서 JSON 만 읽는
+    # 사람에게는 근거가 안 보였다.
+    alive_samples = Dict[]
+    binding_diag_samples = Dict[]
 
     # --- (a)-보강: dissolved_nonempty_frac=0.0 이 "안 일어났다" 인지 "안 쟀다" 인지 구분한다 ---
     # `maybe_unwedge_nominal!(env, no_progress)` 가 `DISSOLVED_GATES` 를 채우는 유일한 진입로다
@@ -125,6 +131,14 @@ function main()
         # 로그 아님). `UNWEDGE_INTERVAL[]`(기본 2000) > N(400) 이므로 `no_progress` 가 그 배수에
         # 닿을 수 없다 — 즉 아래 호출은 이 실행 전체에서 **항상 false 를 반환하도록 산술적으로
         # 보장돼 있다**(no_progress ≤ 400 < 2000). 부작용 없음이 실측이 아니라 산술로도 보장된다.
+        #
+        # 🔴 컨트롤러 라운드 2, minor 2 — 함정 경고: 이건 관찰(observe)이 아니라 **진짜 호출**이다.
+        # `maybe_unwedge_nominal!` 이 트리거되면 `recover_stalled_teams!` 를 실제로 실행해 env 를
+        # 고친다(부작용 있음) — 지금은 위 산술 때문에 안전할 뿐이다. **누군가 나중에 `N` 을 2000
+        # 이상으로 올리면 이 줄이 측정 도중 조용히 복구 로직을 실행하기 시작한다** — 관측이 세계를
+        # 바꾸는 계약 위반이자, "측정"이 "개입"으로 바뀌는 것이다. N 을 올릴 사람은 이 호출을
+        # 지우거나(그러면 dissolved_nonempty_status 계측이 다시 원점) `UNWEDGE_INTERVAL[]` 을
+        # `set_unwedge_interval!` 로 같이 올려서 계속 산술적으로 무해하게 만들 것.
         CB.maybe_unwedge_nominal!(env, no_progress) && (n_unwedge_fired += 1)
 
         isempty(CB.DISSOLVED_GATES[]) || (n_dissolved += 1)
@@ -150,13 +164,13 @@ function main()
 
         # (b) binding 이 edges 만으로 재구성되는가.
         bd = binding_diag(s.g.edges, s.g.binding)
-        bd.all_ok && (n_binding_ok += 1)
+        bd["all_ok"] && (n_binding_ok += 1)
 
         if k in (1, 50, 100, 200, 300, 400)
-            push!(alive_samples, (step = k, n_closed = length(env.cache.closed_set),
-                                   n_active = length(env.cache.active_set),
-                                   n_verts = length(verts)))
-            push!(binding_diag_samples, merge((step = k,), bd))
+            push!(alive_samples, Dict("step" => k, "n_closed" => length(env.cache.closed_set),
+                                       "n_active" => length(env.cache.active_set),
+                                       "n_verts" => length(verts)))
+            push!(binding_diag_samples, merge(Dict("step" => k), bd))
         end
     end
 
@@ -173,7 +187,14 @@ function main()
                "dissolved_nonempty_status" => n_unwedge_fired > 0 ? "measured_nonzero_source" :
                    (max_no_progress_streak >= unwedge_interval ?
                     "measured_zero_despite_reachable_trigger" :
-                    "NOT_MEASURED_trigger_unreachable_in_this_run"))
+                    "NOT_MEASURED_trigger_unreachable_in_this_run"),
+               # --- 컨트롤러 라운드 2, Important 1: 산출물 JSON 이 스스로 근거를 실어야 한다 ---
+               # `alive_samples` = R3 가 퇴화한 세계를 재지 않았다는 증거(closed 단조증가, active
+               # 한 번도 0/전체 안 됨). `binding_diag` = binding_derivable_frac=0.0 을 "binding
+               # 은 유도 불가"가 아니라 "이 1-hop 휴리스틱이 21% 에서 실패"로 재해석하는 유일한
+               # 근거 — 둘 다 프로세싱 없이 JSON 만 읽어도 보이게 여기 싣는다.
+               "alive_samples" => alive_samples,
+               "binding_diag"  => binding_diag_samples)
     mkpath(joinpath(pkgdir(CB), "results", "smdp"))
     open(joinpath(pkgdir(CB), "results", "smdp", "reduction_evidence.json"), "w") do io
         JSON3.pretty(io, out)
