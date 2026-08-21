@@ -42,7 +42,7 @@
 """
 import argparse, json, math, sys
 
-from scipy.stats import ks_2samp, kstwobign
+from scipy.stats import ks_2samp, kstwobign, norm
 
 ALPHA = 0.01                       # 위험 예산. 낮게 잡는다
 # 🔴 손으로 옮긴 리터럴을 두지 않는다(수정 1라운드, minor 3). 여기서는 scipy 로,
@@ -51,6 +51,105 @@ ALPHA = 0.01                       # 위험 예산. 낮게 잡는다
 K_ALPHA = float(kstwobign.ppf(1.0 - ALPHA))
 KS_METHOD = "asymp"                # ks_2samp 의 귀무분포. 아래 출력에 이름을 찍는다
 FAILURE_KINDS = {"break", "cell", "zone"}
+
+
+# =============================================================================
+# 🔴 N-G1′ — 검열을 통계량에서 분리한다 (사용자 결정 D-12, 2026-08-21)
+#
+# **왜.** 적합 rho 에서 이 게이트의 혼합 KS 중 **80.7~98.1 %** 가 관측창 끝의 검열 원자
+# 하나다(실측: light 1738/9403 vs heavy 836/9403 → |Δp| = 0.0959 = KS 0.1189 의 80.7 %).
+# 즉 "두 레인의 sojourn 분포가 같은가" 를 잰다고 주장하면서 실제로 재는 것의 대부분은
+# **"20 초에서 누가 더 많이 살아남았는가"** 하나다. FAIL 이 나와도 분포의 어디가 다른지 모른다.
+#
+# **그래서 판정을 두 성분으로 가른다** (Bonferroni: 각 ALPHA/2, 하나라도 깨지면 FAIL):
+#   [A] 원자  — P(tau >= H) 의 두 비율 검정.        z_crit = Phi^-1(1 - ALPHA/4)
+#   [B] 몸통  — **비검열 부분표본**만의 2표본 KS.   D_crit = k(ALPHA/2)*sqrt(1/n1'+1/n2')
+#
+# 그리고 판정에 안 쓰는 **진단** 하나를 낸다 — 각 성분이 함의하는 rate ratio:
+#   c_atom = -ln(p_L)/Lambda        (Lambda = -ln(p_H), 엔진의 유효 적분위험)
+#   c_body = sup_trunc^-1(D_cond)   (절단지수 사이의 sup 거리를 역으로 푼다)
+# 두 값이 **일치하면** 격차는 균일한 rate 배율이고, **어긋나면** 시간에 따라 변하는 무언가다.
+#
+# 🔴 **교차 검증 실측 (두 디렉토리, 2026-08-21).** 몸통만 재현된다:
+#      KS_all   T9 레인 0.118898  vs  T10 레인 0.071121   → 1.67배 (재현 안 됨)
+#      KS_cond  T9 레인 0.042074  vs  T10 레인 0.042434   → 0.9 %  (재현됨)
+#      c_body   T9 레인 0.8373    vs  T10 레인 0.8332     → 0.5 %  (재현됨)
+#      c_atom   T9 레인 0.6976    vs  T10 레인 0.7653     → 9.7 %  (재현 안 됨)
+#    즉 성분 [B] 가 이 시스템에서 **재현 가능한 유일한 신호**이고, 그것이 말하는 것은
+#    경량 레인의 누적위험이 엔진의 약 83 % 라는 것이다.
+#    ⇒ 성분 [A] 의 판정은 §4 입력 정준화(C8) 뒤에 다시 볼 것. 근거: briefs/task-D12-brief.md
+# =============================================================================
+ALPHA_HALF = ALPHA / 2.0                      # Bonferroni 몫. 두 성분에 반씩
+K_ALPHA_HALF = float(kstwobign.ppf(1.0 - ALPHA_HALF))     # 성분 [B] 의 KS 상수
+Z_CRIT_HALF = float(norm.ppf(1.0 - ALPHA_HALF / 2.0))     # 성분 [A] 의 양측 z 임계
+
+# 절단지수 CDF 의 sup 거리를 재는 격자. 결정적이어야 하므로 고정 크기 선형격자를 쓴다.
+_TRUNC_GRID = 200001
+
+
+def sup_trunc(c, lam):
+    """`[0,H]` 로 절단된 두 지수분포(rate 비 `c`) CDF 사이의 최대 간격.
+
+    `u = x/H` 로 두면 `H` 가 소거되고 `Lambda` 만 남는다:
+        F_c(u) = (1 - exp(-c*Lambda*u)) / (1 - exp(-c*Lambda)),  u in [0,1]
+    """
+    if c == 1.0 or lam <= 0.0 or not math.isfinite(lam):
+        return 0.0
+    best = 0.0
+    denom1 = 1.0 - math.exp(-lam)
+    denomc = 1.0 - math.exp(-c * lam)
+    if denom1 <= 0.0 or denomc <= 0.0:
+        return 0.0
+    for i in range(_TRUNC_GRID):
+        u = i / (_TRUNC_GRID - 1)
+        a = (1.0 - math.exp(-lam * u)) / denom1
+        b = (1.0 - math.exp(-c * lam * u)) / denomc
+        gap = abs(a - b)
+        if gap > best:
+            best = gap
+    return best
+
+
+def resolved_c_trunc(d_crit, lam):
+    """`sup_trunc(c) == d_crit` 인 `c < 1` (= 몸통 성분이 분해할 수 있는 가장 큰 c)."""
+    lo, hi = 1e-6, 1.0 - 1e-12
+    if sup_trunc(lo, lam) < d_crit:
+        return float("nan")
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if sup_trunc(mid, lam) < d_crit:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
+
+
+def invert_sup_trunc(d_obs, lam):
+    """관측된 `D_cond` 를 내는 `c` (경량이 느리므로 `c < 1` 가지를 고른다)."""
+    if d_obs <= 0.0:
+        return 1.0
+    lo, hi = 1e-6, 1.0 - 1e-12
+    if sup_trunc(lo, lam) < d_obs:
+        return float("nan")          # 어떤 c 로도 이 거리를 못 만든다
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if sup_trunc(mid, lam) < d_obs:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
+
+
+def two_proportion_z(x1, n1, x2, n2):
+    """두 비율의 풀드 z 와 표준오차. 어느 한쪽 n 이 0 이면 `(nan, nan)`."""
+    if n1 <= 0 or n2 <= 0:
+        return float("nan"), float("nan")
+    p1, p2 = x1 / n1, x2 / n2
+    pbar = (x1 + x2) / (n1 + n2)
+    se = math.sqrt(pbar * (1.0 - pbar) * (1.0 / n1 + 1.0 / n2))
+    if se <= 0.0:
+        return (0.0 if p1 == p2 else float("inf")), se
+    return (p1 - p2) / se, se
 
 
 def sup_gap(c):
@@ -186,9 +285,105 @@ def main(path, expect_fail):
     #    크기가 아니더라도 방법과 질량을 함께 찍는다 — 안 찍으면 다음 사람이 모른다.
     print(f"tie_mass_at_max light={tl}/{n1}@{xl:.6f} heavy={th}/{n2}@{xh:.6f} "
           "(asymptotic null assumes continuity; tie mass makes it approximate)")
-    if p < ALPHA:
-        f_dist.append(f"두 분포가 갈린다 (p={p:.4g} < {ALPHA}, KS={st:.4f}, "
-                      f"관측 격차 c_hat={c_hat:.4f})")
+    # ⚠️ 🔴 **위 혼합 KS 는 이제 판정이 아니라 진단이다** (D-12). 그 통계량의 80~98 % 가
+    #    검열 원자 하나이므로, 판정은 아래 두 성분이 진다. 옛 값은 T9/T10 기록과의 연속성을
+    #    위해 계속 찍는다.
+    print(f"[legacy] mixed-KS={st:.6f} p={p:.4g}  -- DIAGNOSTIC ONLY since D-12; "
+          "the verdict is the two components below")
+
+    # =========================================================================
+    # 🔴 N-G1′ — 판정. 두 성분 + Bonferroni (사용자 결정 D-12)
+    # =========================================================================
+    xL, xH = lk.count("horizon"), hk.count("horizon")
+    pL, pH = (xL / n1 if n1 else float("nan")), (xH / n2 if n2 else float("nan"))
+
+    # --- [A] 지평 원자 ------------------------------------------------------
+    zA, seA = two_proportion_z(xL, n1, xH, n2)
+    dp_crit = Z_CRIT_HALF * seA if math.isfinite(seA) else float("nan")
+    atom_fail = math.isfinite(zA) and abs(zA) > Z_CRIT_HALF
+    print(f"[A] atom  p_L={pL:.6f}({xL}/{n1}) p_H={pH:.6f}({xH}/{n2}) dp={pL - pH:+.6f} "
+          f"z={zA:.4f} z_crit={Z_CRIT_HALF:.4f}(alpha/2={ALPHA_HALF}) "
+          f"detectable_dp>={dp_crit:.6f} -> {'FAIL' if atom_fail else 'PASS'}")
+
+    # --- [B] 몸통 (비검열 부분표본) ------------------------------------------
+    lu = [t for t, k in zip(light, lk) if k != "horizon"]
+    hu = [t for t, k in zip(heavy, hk) if k != "horizon"]
+    n1u, n2u = len(lu), len(hu)
+    if n1u < 2 or n2u < 2:
+        f_res.append(f"비검열 부분표본이 너무 작다 (light={n1u}, heavy={n2u}) — "
+                     "몸통 성분을 잴 수 없다")
+        d_cond, p_cond, d_crit_b, body_fail = float("nan"), float("nan"), float("nan"), False
+    else:
+        d_cond, p_cond = ks_2samp(lu, hu, method=KS_METHOD)
+        d_crit_b = K_ALPHA_HALF * math.sqrt(1.0 / n1u + 1.0 / n2u)
+        body_fail = p_cond < ALPHA_HALF
+    print(f"[B] body  n1'={n1u} n2'={n2u} KS_cond={d_cond:.6f} p={p_cond:.4g} "
+          f"D_crit={d_crit_b:.6f}(k={K_ALPHA_HALF:.10f}) "
+          f"ratio={d_cond / d_crit_b if d_crit_b > 0 else float('nan'):.3f}x "
+          f"-> {'FAIL' if body_fail else 'PASS'}")
+
+    # --- [C] 진단: 각 성분이 함의하는 rate ratio ------------------------------
+    #     판정에 쓰지 않는다. 두 값이 어긋나면 "균일 배율이 아니다" 는 뜻이고, 그것이
+    #     '제3 기전' 에 이름을 붙이는 첫 단서다 (briefs/task-D12-brief.md §4).
+    lam = -math.log(pH) if (0.0 < pH < 1.0) else float("nan")
+    c_atom = (-math.log(pL) / lam) if (0.0 < pL < 1.0 and math.isfinite(lam) and lam > 0) \
+             else float("nan")
+    c_body = invert_sup_trunc(d_cond, lam) if (math.isfinite(lam) and math.isfinite(d_cond)) \
+             else float("nan")
+    ratio_cc = (c_atom / c_body) if (math.isfinite(c_atom) and math.isfinite(c_body)
+                                     and c_body > 0) else float("nan")
+    print(f"[C] implied Lambda={lam:.6f} c_atom={c_atom:.6f} c_body={c_body:.6f} "
+          f"c_atom/c_body={ratio_cc:.4f} "
+          "(≈1 => uniform rate scaling; !=1 => something that grows with elapsed time) "
+          "-- DIAGNOSTIC, not a verdict")
+
+    # --- 분해능: **두 성분 다** c* 를 분해해야 한다 ---------------------------
+    #     🔴 위 §1 의 분해능 검사는 혼합 KS 용이다. 성분별로 다시 유도한다 — 실측상
+    #     몸통 성분이 더 많은 표본을 요구하므로(원자 6,782 vs 몸통 25,198 @ c*=1.0667),
+    #     혼합 기준만 통과시키면 몸통이 아무것도 못 보는 채로 초록이 될 수 있다.
+    if math.isfinite(lam) and lam > 0:
+        # [A] 가 c* 를 분해하는가
+        pL_star = math.exp(-c_star * lam)
+        _, se_star = two_proportion_z(round(pL_star * n1), n1, xH, n2)
+        dpA = abs(pL_star - pH)
+        n_req_A = (math.ceil(2.0 * Z_CRIT_HALF ** 2 * ((pL_star + pH) / 2) *
+                             (1 - (pL_star + pH) / 2) / dpA ** 2) if dpA > 0 else float("inf"))
+        okA = math.isfinite(se_star) and dpA > Z_CRIT_HALF * se_star
+        # [B] 가 c* 를 분해하는가.
+        # 🔴 **방향 선택.** `sup_trunc` 는 `c` 와 `1/c` 에 대칭이 아니다. 실측(Lambda 1.8~3.0):
+        #    `sup_trunc(1/c*)` 가 언제나 `sup_trunc(c*)` 보다 **작다** = 잡기 더 어렵다.
+        #    그래서 보수적으로 그쪽을 요구한다 — 어느 방향의 격차든 이 문턱을 넘으면 잡힌다.
+        # ⚠️ 그리고 **절단이 검정력을 깎는다**: 비절단 `sup_gap(c*)=0.023738` 대비
+        #    `sup_trunc(1/c*)`은 0.0128~0.0182 다. 즉 원자를 떼어낸 대가로 몸통 성분은
+        #    혼합 게이트보다 **1.7~3.4 배 많은 표본**을 요구한다. 그것이 D-12 의 비용이고,
+        #    게이트가 그 사실을 조용히 넘기지 않고 말한다.
+        g_body = sup_trunc(1.0 / c_star, lam)
+        okB = math.isfinite(d_crit_b) and g_body > d_crit_b
+        n_req_B = (math.ceil(2.0 * (K_ALPHA_HALF / g_body) ** 2) if g_body > 0 else float("inf"))
+        # 생성기가 쓸 수 있게 **총 표본수**로도 환산한다(비검열 비율의 역수를 곱한다).
+        frac_unc = min(n1u / n1, n2u / n2) if (n1 and n2) else float("nan")
+        n_total_B = (math.ceil(n_req_B / frac_unc)
+                     if (frac_unc and math.isfinite(frac_unc) and frac_unc > 0
+                         and n_req_B != float("inf")) else float("inf"))
+        print(f"RESOLUTION' [A] dp(c*)={dpA:.6f} n_required={n_req_A} -> "
+              f"{'ok' if okA else 'INSUFFICIENT'} | "
+              f"[B] sup_trunc(1/c*)={g_body:.6f} n'_required={n_req_B} "
+              f"(uncensored_frac={frac_unc:.4f} -> n_total_required={n_total_B}) -> "
+              f"{'ok' if okB else 'INSUFFICIENT'}")
+        if not okA:
+            f_res.append(f"성분 [A] 가 c*={c_star:.4f} 를 분해하지 못한다 (n>={n_req_A} 필요)")
+        if not okB:
+            f_res.append(f"성분 [B] 가 c*={c_star:.4f} 를 분해하지 못한다 — 비검열 "
+                         f"{min(n1u, n2u)} 개인데 {n_req_B} 필요. 생성기에 "
+                         f"**총 n >= {n_total_B}** 를 줄 것 (Lambda={lam:.4f} 에 의존하므로 "
+                         "레인마다 다르다)")
+
+    if atom_fail:
+        f_dist.append(f"[A] 지평 원자가 갈린다 (z={zA:.3f} > {Z_CRIT_HALF:.3f}, "
+                      f"dp={pL - pH:+.5f})")
+    if body_fail:
+        f_dist.append(f"[B] 몸통(비검열) 분포가 갈린다 (p={p_cond:.4g} < {ALPHA_HALF}, "
+                      f"KS_cond={d_cond:.4f}, 함의 c_body={c_body:.4f})")
 
     for f in f_sanity + f_res + f_kinds + f_dist:
         print("FAIL: " + f)

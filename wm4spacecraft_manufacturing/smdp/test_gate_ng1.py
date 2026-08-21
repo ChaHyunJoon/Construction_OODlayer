@@ -222,6 +222,133 @@ def test_sanity_failure_is_not_a_negative_control_success():
         assert rc != 0, out
 
 
+# ===========================================================================
+# 🔴 N-G1′ — 성분 분해가 **실제로 두 축을 가르는가** (사용자 결정 D-12)
+#
+# 이 셋이 D-12 의 핵심 주장을 시험한다. 합성 표본을 **직접** 지어서
+#   (1) 몸통은 같고 원자만 다른 판  → [A] FAIL · [B] PASS 여야 한다
+#   (2) 원자는 같고 몸통만 다른 판  → [A] PASS · [B] FAIL 여야 한다
+# 둘 다 성립해야 "분해"라는 말이 성립한다. 하나라도 안 되면 두 성분이 같은 것을 재는 것이다.
+# ===========================================================================
+import re as _re
+
+
+def _components(out):
+    """게이트 출력에서 [A]/[B]/[C] 를 뽑는다."""
+    a = _re.search(r"^\[A\] atom .*-> (PASS|FAIL)$", out, _re.M)
+    b = _re.search(r"^\[B\] body .*-> (PASS|FAIL)$", out, _re.M)
+    c = _re.search(r"c_atom=([0-9.naif-]+) c_body=([0-9.naif-]+)", out)
+    assert a and b, out
+    return a.group(1), b.group(1), (float(c.group(1)), float(c.group(2))) if c else (None, None)
+
+
+def _split_artifact(path, body_l, body_h, n_cens_l, n_cens_h, horizon=20.0):
+    """몸통과 검열 수를 **따로** 지정해 만드는 아티팩트."""
+    lt = list(body_l) + [horizon] * n_cens_l
+    ht = list(body_h) + [horizon] * n_cens_h
+    lk = [("break", "cell", "zone")[i % 3] for i in range(len(body_l))] + ["horizon"] * n_cens_l
+    hk = [("break", "cell", "zone")[i % 3] for i in range(len(body_h))] + ["horizon"] * n_cens_h
+    meta = {"alpha": 0.01, "k_alpha": K_ALPHA, "c_star": C_STAR, "r_min": R_MIN,
+            "n_fleet": N_FLEET, "sup_gap_at_c_star": _sup_gap(C_STAR),
+            "n_derived": N_REQ, "n_used": len(lt), "probe_step": 0, "dt_sim": 0.025,
+            "horizon_s": horizon, "global_mode": 1.0, "heavy_events_fired": 0,
+            "lane": "synthetic-split", "perturb_c": 1.0}
+    json.dump({"light_tau": lt, "heavy_tau": ht, "light_kinds": lk,
+               "heavy_kinds": hk, "meta": meta}, open(path, "w"))
+    return path
+
+
+def _trunc_exp(n, rate, seed, horizon=20.0):
+    """`[0, horizon)` 으로 **거절 표집**한 지수 표본 — 검열 없이 몸통만 만든다."""
+    rng = random.Random(seed)
+    out = []
+    while len(out) < n:
+        t = rng.expovariate(rate)
+        if t < horizon:
+            out.append(t)
+    return out
+
+
+@case
+def test_atom_only_difference_fails_A_and_passes_B():
+    """몸통이 **같은 분포**이고 검열 질량만 다르면 [A] 만 빨개져야 한다."""
+    N = 20000
+    body_l = _trunc_exp(N, 0.2, 101)
+    body_h = _trunc_exp(N, 0.2, 202)          # 같은 rate = 같은 몸통 분포
+    with tempfile.TemporaryDirectory() as d:
+        p = _split_artifact(os.path.join(d, "a.json"), body_l, body_h, 4000, 1000)
+        _, out = _run(p)
+        A, B, _ = _components(out)
+        A2, B2, (c_atom, c_body) = A, B, _components(out)[2]
+        assert A == "FAIL", f"원자가 4000 vs 1000 인데 [A] 가 안 잡았다\n{out}"
+        assert B == "PASS", f"몸통이 같은 분포인데 [B] 가 빨개졌다\n{out}"
+        # 🔴 [C] 의 두 값이 **독립 계산**인가. 몸통이 같으므로 c_body ≈ 1 이어야 하고,
+        #    원자는 4배 차이라 c_atom 은 1 에서 멀어야 한다. `c_body = c_atom` 같은
+        #    복사 구현은 여기서 죽는다.
+        assert abs(c_body - 1.0) < 0.05, f"몸통이 같은데 c_body={c_body} 가 1 에서 멀다\n{out}"
+        assert abs(c_atom - 1.0) > 0.15, f"원자가 4배 다른데 c_atom={c_atom} 이 1 근처다\n{out}"
+
+
+@case
+def test_body_only_difference_passes_A_and_fails_B():
+    """검열 질량이 **같고** 몸통 모양만 다르면 [B] 만 빨개져야 한다."""
+    N = 20000
+    body_l = _trunc_exp(N, 0.20, 303)
+    body_h = _trunc_exp(N, 0.35, 404)         # 다른 rate = 다른 몸통 모양
+    with tempfile.TemporaryDirectory() as d:
+        p = _split_artifact(os.path.join(d, "b.json"), body_l, body_h, 2000, 2000)
+        _, out = _run(p)
+        A, B, _ = _components(out)
+        assert A == "PASS", f"검열이 2000 vs 2000 로 같은데 [A] 가 빨개졌다\n{out}"
+        assert B == "FAIL", f"몸통 rate 가 0.20 vs 0.35 인데 [B] 가 안 잡았다\n{out}"
+
+
+@case
+def test_uniform_rate_scaling_makes_the_two_implied_ratios_agree():
+    """🔴 [C] 진단의 계약. **순수 배율**이면 `c_atom ≈ c_body` 여야 한다.
+
+    이 시험이 없으면 "두 값이 어긋난다 = 균일 배율이 아니다" 라는 D-12 의 판독이
+    근거를 잃는다 — 어긋남이 배율 때문인지 추정량의 편향 때문인지 구분이 안 된다.
+    """
+    N = 60000
+    with tempfile.TemporaryDirectory() as d:
+        # light rate 0.10, heavy rate 0.13 -> 참 c_atom = c_body = 0.10/0.13 = 0.7692
+        p = _artifact(os.path.join(d, "c.json"), N, 0.10, 0.13, lane="uniform-scaling")
+        _, out = _run(p)
+        _, _, (c_atom, c_body) = _components(out)
+        true_c = 0.10 / 0.13
+        assert abs(c_atom - true_c) < 0.03, f"c_atom={c_atom} vs 참값 {true_c}\n{out}"
+        assert abs(c_body - true_c) < 0.05, f"c_body={c_body} vs 참값 {true_c}\n{out}"
+        # 그리고 서로도 가까워야 한다 — 이것이 실제 판독에 쓰는 양이다
+        assert abs(c_atom / c_body - 1.0) < 0.06, \
+            f"순수 배율인데 두 함의값이 갈린다: {c_atom} vs {c_body}\n{out}"
+
+
+@case
+def test_component_thresholds_are_derived_not_literals():
+    """🔴 두 성분의 임계값이 **유도**된 값인가 (리터럴 복붙 금지 — 게이트의 기존 규약).
+
+    `z_crit` 은 `Phi^-1(1 - alpha/4)`, `[B]` 의 `k` 는 `kstwobign.ppf(1 - alpha/2)` 여야 한다.
+    시험은 그 둘을 **독립적으로** 계산해 게이트가 찍은 값과 대조한다 — 게이트에서 import 하면
+    같은 리터럴을 두 번 읽는 것이라 아무것도 안 막는다.
+    """
+    from scipy.stats import norm as _norm, kstwobign as _kb
+    z_expect = float(_norm.ppf(1.0 - ALPHA / 4.0))
+    k_expect = float(_kb.ppf(1.0 - ALPHA / 2.0))
+    with tempfile.TemporaryDirectory() as d:
+        p = _artifact(os.path.join(d, "t.json"), N_REQ, 1.0, 1.0, lane="threshold-check")
+        _, out = _run(p)
+        mz = _re.search(r"z_crit=([0-9.]+)", out)
+        mk = _re.search(r"D_crit=[0-9.]+\(k=([0-9.]+)\)", out)
+        assert mz and mk, out
+        assert abs(float(mz.group(1)) - z_expect) < 1e-3, \
+            f"z_crit={mz.group(1)} vs 유도값 {z_expect:.6f} — 리터럴이 박혔나\n{out}"
+        assert abs(float(mk.group(1)) - k_expect) < 1e-6, \
+            f"k={mk.group(1)} vs 유도값 {k_expect:.10f}\n{out}"
+        # 항진 방지: 두 상수가 서로 다른 값이어야 이 대조가 의미가 있다
+        assert abs(z_expect - k_expect) > 0.5
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     bad = 0
