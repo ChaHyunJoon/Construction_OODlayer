@@ -1,0 +1,149 @@
+# =============================================================================
+# test/respec_sequential_enact.jl  —  Task C1 게이트 (독립 실행. runtests.jl 에 넣지 않는다)
+#
+#   julia +lts --project=. test/respec_sequential_enact.jl
+#
+# 🔴 무엇을 재는가: `maybe_respecify!` 가 **제약 벡터의 모든 원소를 집행**하는가.
+#    고치기 전의 구현은 first-match-wins 였다 — 일곱 개의 `if _is_*(proposal)` 분기가
+#    각각 `return` 해서, `[RelocateBuild(:zone), SwapBattery(r)]` 는 첫 분기만 먹고
+#    나머지를 **조용히** 버렸다(replan.jl:426·452·529·635·679·798·898).
+#
+# 🔴 음성 대조(Global Constraint: "게이트를 짤 때는 음성 대조를 먼저 실측한다"):
+#    testset [1] 은 **집행 전 코드에서 실제로 빨간불이 났다** — 반환 Symbol 이 아니라
+#    `env`(그리고 프로세스 전역 배터리 함대) 위의 **관측 가능한 효과 둘**을 단언하기 때문이다.
+#    실측한 RED 는 task-C1-report.md 에 그대로 붙여 뒀다. 새 전역
+#    (`ENACT_ORDER_LOG`/`LAST_ENACT_REPORT`)을 쓰는 단언은 [2] 이후로 미뤄 뒀다 —
+#    [1] 이 UndefVarError 가 아니라 **효과 부재**로 실패해야 증거가 되기 때문이다.
+#
+# 씬 생성은 SCENE-INCANTATION.md 의 정본을 따른다(계획서 스니펫이 아니라).
+#   · `return_env_before_sim = true` 없이 부르면 판을 끝까지 굴리고 Tuple 을 돌려준다.
+#   · `write_results = false` · `rng = MersenneTwister(1)` · `n_spare_per_pool = 2`.
+#   · 호출 순서는 step_environment! → update_planning_cache! → set_sim_step!.
+#
+# ⚠️ `enable_hazard!` 는 **일부러 안 켠다.** 이 시험은 확률적 고장이 필요 없고,
+#    `_pick_active_robot` 이 `Set` 을 순회하는 알려진 재현성 결함(.claude/CLAUDE.md ★1)을
+#    끌어들이면 시드 고정 재현이 깨진다. 방전은 SoC 를 직접 찍어서 만든다(결정적).
+# =============================================================================
+using ConstructionBots, Test
+import Random
+const CB = ConstructionBots
+CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
+CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
+
+env = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "respec_seq_enact",
+                         num_robots = 6, assignment_mode = :greedy,
+                         n_spare_per_pool = 2,
+                         open_animation_at_end = false, save_animation = false,
+                         write_results = false, return_env_before_sim = true,
+                         rng = Random.MersenneTwister(1))
+CB.enable_battery!(env)
+
+for k in 1:120                      # SCENE-INCANTATION §2: 120 스텝이 비퇴화 구간
+    CB.step_environment!(env)
+    CB.update_planning_cache!(env, 0.0)
+    CB.set_sim_step!(k)
+end
+
+# --- 결정적 픽스처 --------------------------------------------------------------
+# zone: root 자신의 하역 목표들 위에 심는다(조립체별 재적치로는 못 비키는 배치 = whole-build
+# 평행이동이 존재하는 이유). tools/tests.jl:test_relocatebuild_parse 의 검증된 레시피 그대로.
+place_zone!() = begin
+    gs = CB.root_deposit_goals(env)
+    zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
+    CB.clear_restriction_zones!()
+    CB.add_restriction_zone!(:zone, zc, 2.5)
+end
+in_zone() = CB._count_future_goals_in_zone(env; zone_keys = [:zone])
+soc_of(r) = CB.BATTERY_FLEET[].soc[r]
+
+# 로봇 id 는 **정렬해서** 고른다 — Set/Dict 순회 순서에 기대면 런마다 갈린다(Global Constraint).
+const RID = first(sort!(collect(keys(CB.BATTERY_FLEET[].soc)); by = string))
+
+# maybe_respecify! 의 두 번째 위치인자는 **OOD 큐**다(제안이 아니다 — 브리프의 오류).
+# 타입 있는 제안을 직접 집행시키려면 `producer` 이음새를 쓴다(tools/tests.jl:379 와 동일).
+enact!(prop) = CB.maybe_respecify!(
+    env, CB.OODQueue(String["synthetic multi-constraint proposal"]);
+    producer = (_env, _ev) -> prop)
+
+# =============================================================================
+@testset "🔴 [1] 두 제약이 둘 다 집행된다 (음성 대조: 여기가 RED 였다)" begin
+    place_zone!()
+    CB.BATTERY_FLEET[].soc[RID] = 0.2
+
+    before_in_zone = in_zone()
+    before_soc     = soc_of(RID)
+    # 사전조건: 두 팔 모두 **비퇴화 도메인**을 갖는다. 이게 깨지면 아래 단언이 항진명제가 된다.
+    @test before_in_zone > 0
+    @test before_soc < 1.0
+
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.RelocateBuild(:zone), CB.SwapBattery(RID)]))
+    @info "[C1] status = $st"
+
+    # 반환 Symbol 이 아니라 **엔진 위의 효과**를 잰다.
+    @test in_zone() == 0             # RelocateBuild 가 먹었다(기하가 움직였다)
+    @test soc_of(RID) == 1.0         # SwapBattery 도 먹었다  ← 고치기 전엔 0.2 로 남았다
+    @test st === :admitted
+end
+
+# =============================================================================
+@testset "[2] 집행 순서는 제안 순서가 아니라 _enact_rank 다" begin
+    place_zone!()
+    CB.BATTERY_FLEET[].soc[RID] = 0.3
+    @test in_zone() > 0              # 도메인 비퇴화 재확인
+
+    # 제안에는 배터리를 **먼저** 적었는데, 집행은 기하(rank 1) → 배터리(rank 5) 순이어야 한다.
+    enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.SwapBattery(RID), CB.RelocateBuild(:zone)]))
+    @test CB.ENACT_ORDER_LOG[] == [:relocate, :battery]
+    @test in_zone() == 0
+    @test soc_of(RID) == 1.0
+end
+
+# =============================================================================
+@testset "[3] 제약마다 결과가 기록된다 — 조용한 건너뜀이 없다" begin
+    place_zone!()
+    CB.BATTERY_FLEET[].soc[RID] = 0.4
+    enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.SwapBattery(RID), CB.RelocateBuild(:zone)]))
+    rep = CB.LAST_ENACT_REPORT[]
+    @test length(rep) == 2                                   # 제약 둘 → 집행 단위 둘
+    @test [r.kind for r in rep] == [:relocate, :battery]      # 순서까지 기록된다
+    @test all(r -> r.status isa Symbol, rep)
+    @test sum(r.n for r in rep) == 2                          # 버려진 제약이 하나도 없다
+end
+
+# =============================================================================
+@testset "[4] 존재하지 않는 zone 은 조용히 넘어가지 않는다" begin
+    place_zone!()
+    CB.BATTERY_FLEET[].soc[RID] = 0.5
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
+        CB.RelocateBuild(:ghost), CB.SwapBattery(RID)]))
+    rep = CB.LAST_ENACT_REPORT[]
+    @test length(rep) == 2
+    # 거부된 제약이 **보고서에 남는다**(조용한 no-op 이 아니다).
+    @test any(r -> r.kind === :relocate && r.status !== :admitted, rep)
+    # 그리고 뒤따르는 제약은 그래도 집행된다.
+    @test soc_of(RID) == 1.0
+    @test st === :partial              # 하나는 먹었고 하나는 거부됐다
+    # 🔴 반환 Symbol 은 line-stop 여부의 신호가 아니다 — 유일한 진실원은 RESPEC_HOLD[] 다.
+    #    거부 분기가 engage_fallback! 을 불렀으므로 :partial 과 line-stop 이 **동시에** 참이다.
+    #    순차 집행이 새로 여는 조합이고, docstring 이 이 사실을 그대로 적는다.
+    @test CB.RESPEC_HOLD[] === true
+    CB.release_fallback!()            # 이 testset 이 건 전역 line-stop 을 푼다
+    @test CB.RESPEC_HOLD[] === false
+end
+
+# =============================================================================
+@testset "[5] 단일 제약의 반환값 계약은 안 바뀐다 (회귀)" begin
+    CB.BATTERY_FLEET[].soc[RID] = 0.6
+    st = enact!(CB.RespecProposal(CB.ConstraintSpec[CB.SwapBattery(RID)]))
+    @test st === :admitted            # 옛 계약 그대로 — 집계 규칙은 N=1 에서 항등이다
+    @test soc_of(RID) == 1.0
+    @test length(CB.LAST_ENACT_REPORT[]) == 1
+
+    # 빈 제안 = 절제. 옛 계약대로 :noop.
+    @test enact!(CB.RespecProposal(CB.ConstraintSpec[])) === :noop
+end
+
+CB.clear_restriction_zones!()
