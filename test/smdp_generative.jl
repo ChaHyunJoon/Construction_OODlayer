@@ -286,13 +286,27 @@ end
 @testset "generate 는 τ>0 과 유한 R 을 낸다" begin
     env, ctx = _fault_fixture()
     s0 = CB.simstate_of(env)
-    s1, R, τ, ev = CB.generate(s0, env, ctx, 0, P, BP, Random.MersenneTwister(3))
+    g1 = CB.generate(s0, env, ctx, 0, P, BP, Random.MersenneTwister(3))
+    s1, R, τ, ev, E = g1.s, g1.R, g1.τ, g1.event, g1.E
     @info "T12 generate(NOOP)" τ=τ R=R event=string(ev) kind=CB.event_kind(ev)
     @test τ > 0.0
     @test isfinite(R)
     @test R <= 0.0                                # 보상은 비용의 음수다 (spec §4)
     @test s1 isa CB.SimState
     @test CB.assert_paired(s1, env) === nothing   # s′ 는 여전히 env 와 같은 그래프 세대다
+
+    # 🔴 N-G5a — **레인 안의 보상 항등식** (T12 리뷰 Important 2 · N-G5 재정의 Step 1).
+    #    `R = -(τ + w_E·E)` 가 성립하는가. 이 단언이 의미를 가지려면 `E` 가 `generate` 에서
+    #    **직접** 와야 한다 — `E = (−R − τ)/w_E` 로 역산하면 등식이 정의상 항진이 된다.
+    wE = CB.objective_w_E()
+    @info "N-G5a 보상 분해" τ=τ E=E w_E=wE R=R residual=(R + (τ + wE * E))
+    @test isfinite(E) && E >= 0.0
+    @test R + (τ + wE * E) ≈ 0.0 atol = 1e-9 * max(1.0, abs(R))
+    # 음성 대조 둘: 등식이 공허하지 않은가 — 두 항이 **둘 다** 실제로 R 을 움직이는가.
+    @test τ > 0.0
+    @test wE * E > 0.0
+    @test !isapprox(R, -τ; rtol = 1e-9)           # 에너지 항이 R 에 실제로 들어가 있다
+    @test !isapprox(R, -(wE * E); rtol = 1e-9)    # 시간 항도 마찬가지
 end
 
 @testset "🔴 generate 는 rate boundary 를 넘는 τ 에서도 산다 (브리프의 advance_to 오류)" begin
@@ -312,7 +326,8 @@ end
     # 🔴 음성 대조: 브리프가 시킨 `advance_to(s⁺, env, τ, bp)` 는 **바로 여기서 죽는다.**
     @test_throws ErrorException CB.advance_to(sp, env, τ_found, BP)
     # 계약: generate 는 같은 자리에서 살아야 한다(같은 env·같은 시드).
-    s3, R, τ, ev = CB.generate(sp, env, ctx, 0, P, BP, Random.MersenneTwister(found))
+    g3 = CB.generate(sp, env, ctx, 0, P, BP, Random.MersenneTwister(found))
+    s3, R, τ, ev = g3.s, g3.R, g3.τ, g3.event
     @test τ === τ_found
     @test isfinite(R)
     # s′ 는 시간이 흘렀다 — 닫힌 집합이 커졌거나 soc 가 줄었다.
@@ -326,8 +341,8 @@ end
     function once(seed)
         e = _fork(BASE)
         s = CB.simstate_of(e)
-        s2, R, τ, ev = CB.generate(s, e, ctx, 0, P, BP, Random.MersenneTwister(seed))
-        return (τ, R, string(ev), CB.state_hash(s2))
+        g = CB.generate(s, e, ctx, 0, P, BP, Random.MersenneTwister(seed))
+        return (g.τ, g.R, string(g.event), CB.state_hash(g.s), g.E)
     end
     a, b = once(11), once(11)
     @test a === b

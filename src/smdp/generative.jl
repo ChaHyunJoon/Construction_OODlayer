@@ -380,13 +380,23 @@ end
 #  G(s,a)
 # =============================================================================
 """
-    generate(s, env, ctx, a, p, bp, rng; delta_max = Inf) -> (s′, R, τ, event)
+    generate(s, env, ctx, a, p, bp, rng; delta_max = Inf) -> (; s, R, τ, event, E)
 
 `G(s,a)`. spec §5-1. MCTS 가 이걸로 `(s,a) → (s′, R, τ)` 를 표집한다.
 
     R = -(τ + w_E · E[0,τ])
 
 보상은 **비용의 음수**이고 `w_E` 는 `objective.json` 에서 온다(spec §4). 언제나 `R ≤ 0` 이다.
+
+🔴 **`E` 를 같이 돌려준다 (2026-08-21, T12 리뷰 Important 2 · N-G5 재정의 Step 1).**
+게이트 **N-G5a** 는 `R + (τ + w_E·E) == 0` 이라는 **레인 안의 항등식**을 검사하는데,
+`E` 를 역산(`E = (−R − τ)/w_E`)해서 뽑으면 그 등식이 **정의상 항진**이 된다. 그래서 `E` 는
+소비처가 **직접** 받아야 한다. 부수 효과로 `objective.json` 의 두 번째 소비처도 없어진다.
+근거 전문: `briefs/task-T14-ng5-redefinition.md`.
+
+⚠️ **반환은 `NamedTuple` 이다 — 위치 기반 구조분해를 쓰지 말 것.** 4-tuple 이었을 때
+`E` 를 더하는 것이 모든 호출자를 깨뜨렸다. 필드로 받으면 D-14 가 `terminal` 을 더할 때
+같은 일이 반복되지 않는다.
 
 🔴 **`env` 를 제자리에서 바꾼다.** `s` 는 "호출자가 이 env 의 짝이라고 믿는 상태" 이고,
 그 믿음을 `assert_paired` 가 먼저 검사한다. 갈래는 호출자가 뜬다(`deepcopy` + `rvo_rebuild!`).
@@ -404,5 +414,7 @@ function generate(s::SimState, env, ctx, a::Int, p::HazardParams, bp::BatteryPar
     s_next, E, _ = _advance_over(s_plus, env, τ, bp; guard = 16 * p.max_events)
     R = -(τ + objective_w_E() * E)
     isfinite(R) || error("generate: R = $(R) 가 비유한이다 (τ=$(τ), E=$(E))")
-    return (s_next, R, τ, ev)
+    isfinite(E) && E >= 0.0 ||
+        error("generate: E = $(E) — 유한한 비음수여야 한다. 음수 에너지를 0 으로 접지 않는다")
+    return (s = s_next, R = R, τ = τ, event = ev, E = E)
 end
