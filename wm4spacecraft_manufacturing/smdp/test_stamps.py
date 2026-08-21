@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import action_registry  # noqa: E402
+import objective  # noqa: E402
 
 
 def test_vocab_constant_is_declared():
@@ -235,3 +236,15 @@ def test_is_active_false_for_out_of_registry_ids():
     # 살아 있는 팔은 여전히 살아 있어야 한다(과잉 수정 방지).
     assert action_registry.is_active(0) is True
     assert action_registry.is_active(1) is True
+
+
+# =============================================================================
+# 2026-08-20: sojourn 동역학 세대 도장 — fire_require_spare / mtbf_zone_s 가 동역학을
+# 가르는데 objective.json 의 스칼라는 하나도 안 바뀌므로 objective_hash 가 그 단절을
+# 볼 수 없다. generation 이 그 자리를 메운다(spec §7 규칙).
+# =============================================================================
+def test_generation_declares_the_sojourn_dynamics():
+    """generation 은 '오늘 참인 것'을 선언한다. 4팔 축소 + hazard 두 손잡이 변경 뒤에도
+    구세대 문자열이 남아 있으면, 서로 다른 동역학의 산출물이 같은 도장을 공유한다."""
+    cfg = objective.load()
+    assert cfg["generation"] == "2026-08-20-4arms-sojourn-spare-off-zone-on", cfg["generation"]
