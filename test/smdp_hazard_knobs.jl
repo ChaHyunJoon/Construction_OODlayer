@@ -48,59 +48,66 @@ end
     @test CB.HazardParams().drain_sigma == 0.0
 end
 
-@testset "🔴 라벨 레인 HZ_PARAMS 전 필드 기계적 대조 (T6 라운드 2, 컨트롤러 지시)" begin
-    # 손으로 적은 이름 목록이 아니라, gen_oracle_dataset.jl 의 `CB.HazardParams(...)` 호출을
-    # **그 소스 그대로 파싱해 평가**한다 — 그래야 나중에 그 호출에 필드가 하나 늘어도 이 시험이
-    # 저절로 걸린다(사람이 목록을 안 늘려도 됨). ENV 를 지운 채 평가하므로 "아무 DS_* 도 안 준
-    # 기본 호출"과 정확히 같다.
-    ds_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "gen_oracle_dataset.jl")
-    src = read(ds_path, String)
-    mi = findfirst("const HZ_PARAMS", src)
+# ---- gen_oracle_dataset.jl 의 실제 HZ_PARAMS 생성자를 소스에서 파싱해 평가 -----------------
+# 손으로 적은 이름 목록이 아니라, `CB.HazardParams(...)` 호출을 **그 소스 그대로 파싱해 평가**한다
+# — 그래야 나중에 그 호출에 필드가 하나 늘어도 이 시험이 저절로 걸린다(사람이 목록을 안 늘려도 됨).
+# ENV 를 지운 채 평가하므로 "아무 DS_* 도 안 준 기본 호출"과 정확히 같다. 두 testset(전체-필드
+# 대조 + 비율 고정)이 같은 `label_params`/`exec_params` 를 쓰므로 여기 top level 에서 한 번만 판다.
+const _DS_PATH = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "gen_oracle_dataset.jl")
+const _DS_SRC  = read(_DS_PATH, String)
+let mi = findfirst("const HZ_PARAMS", _DS_SRC)
     mi === nothing && error("HZ_PARAMS 상수를 못 찾았다 — gen_oracle_dataset.jl 구조가 바뀌었다")
-    ci = findnext("CB.HazardParams(", src, first(mi))
+    ci = findnext("CB.HazardParams(", _DS_SRC, first(mi))
     ci === nothing && error("HZ_PARAMS 정의 안에서 CB.HazardParams( 호출을 못 찾았다")
-    start = first(ci)
-    depth = 0
-    stop = nothing
+    global _HZ_CALL_START = first(ci)
+end
+let depth = 0, stop = nothing
     # ⚠️ 파일에 한글 주석(멀티바이트 UTF-8)이 섞여 있어 `start:lastindex(src)` 처럼 정수를 1씩
     # 늘리며 인덱싱하면 문자 경계 중간을 가리켜 StringIndexError 가 난다(실측). `eachindex` 로
     # 코드포인트 경계만 밟는다.
-    for i in eachindex(src)
-        i < start && continue
-        c = src[i]
+    for i in eachindex(_DS_SRC)
+        i < _HZ_CALL_START && continue
+        c = _DS_SRC[i]
         c == '(' && (depth += 1)
         c == ')' && (depth -= 1; depth == 0 && (stop = i; break))
     end
     stop === nothing && error("CB.HazardParams(...) 호출의 괄호 짝을 못 찾았다")
-    call_src = src[start:stop]
+    global _HZ_CALL_SRC = _DS_SRC[_HZ_CALL_START:stop]
+end
 
-    # 이 프로세스에 우연히 DS_* 가 이미 설정돼 있으면 "기본값" 비교가 아니게 된다 — 명시적으로 지운다.
-    for k in ("DS_MTBF_BREAK", "DS_MTBF_CELL", "DS_MTBF_ZONE", "DS_DRAIN_SIGMA",
-              "DS_FIRE_REQUIRE_SPARE", "DS_HOTSWAP", "HOT_SWAP", "DS_MAX_EVENTS")
-        haskey(ENV, k) && delete!(ENV, k)
-    end
-    label_params = Base.eval(Main, Meta.parse(call_src))::CB.HazardParams
-    exec_params  = CB.HazardParams()
+# 이 프로세스에 우연히 DS_* 가 이미 설정돼 있으면 "기본값" 비교가 아니게 된다 — 명시적으로 지운다.
+for k in ("DS_MTBF_BREAK", "DS_MTBF_CELL", "DS_MTBF_ZONE", "DS_DRAIN_SIGMA",
+          "DS_FIRE_REQUIRE_SPARE", "DS_HOTSWAP", "HOT_SWAP", "DS_MAX_EVENTS")
+    haskey(ENV, k) && delete!(ENV, k)
+end
+const LABEL_PARAMS = Base.eval(Main, Meta.parse(_HZ_CALL_SRC))::CB.HazardParams
+const EXEC_PARAMS  = CB.HazardParams()
 
+@testset "🔴 라벨 레인 HZ_PARAMS 전 필드 기계적 대조 (T6 라운드 2, 컨트롤러 지시)" begin
     # "안 건드리면 같은 세계" 가 기본값이다 — 다르게 튜닝된 필드는 여기 **이름을 박고 근거를 달아야**
     # 통과한다(코멘트 없이 그냥 빼는 조용한 폴백을 막으려고 Dict 값이 String 이어야 함).
-    # ⚠️ 아래 세 항목의 근거는 **추정**이다(소스에 설계자 주석이 없다) — task-T6-report.md 의
-    # "Fix round 1" 절이 컨트롤러 확인을 요청한다. D-3(fire_require_spare)·D-4(mtbf_zone_s) 는
-    # 사건 **종류**가 아예 가능한지를 가르는 구조적 스위치라 두 레인이 반드시 같아야 하지만, 아래
-    # 셋은 `hz_seed` 가 무장될 때만(=K-rollout/에피소드 배경잡음) 쓰이고 연구 대상 사건 자체는
-    # FIRE_POINTS 로 별도 결정론적으로 배치된다 — 그렇다면 "더 짧은 MTBF·낮은 상한" 은 좁은
-    # rollout 창 안에서 매크로 간 통계적 분리를 만들려는 의도적 스트레스-세계일 수 있다. 확정된
-    # 설계 근거가 아니므로 여기서 억지로 맞추지 않고, 이름을 박아 다음 사람이 판단하게 한다.
+    # D-3(fire_require_spare)·D-4(mtbf_zone_s) 는 사건 **종류**가 아예 가능한지를 가르는 구조적
+    # 스위치라 두 레인이 반드시 같아야 했고, 이제 같다(위 컨트롤러 라운드 1 지시로 고침).
+    #
+    # 아래 세 항목(mtbf_break_s·mtbf_cell_s·max_events)은 **강도(intensity) 손잡이**로 남겨 둔다
+    # (T6 라운드 2, 컨트롤러 판정): 데이터 생성기가 짧은 에피소드 안에서 사건이 실제로 나오도록
+    # 발생률을 올리는 것은 라벨 커버리지를 위한 통상적 importance sampling 이지 버그가 아니다 —
+    # 단 이 근거는 **미확인**이다(소스에 설계자 코멘트가 없다). 결정적으로, 실행 레인의
+    # `mtbf_*` 자체가 **미교정**이다(`hazard.jl` 의 `mtbf_zone_s` 주석: "⚠️ 미교정 초기값이다.
+    # Task C8(N-G3)이 교정한다") — 그 자체가 잠정인 숫자에 라벨 레인을 강제로 맞추는 것은 아무
+    # 의미가 없다. **Task C8(λ 교정 + 게이트 N-G3)이 이 셋의 재판정을 소유한다** — C8 이
+    # `hazard.jl` 의 `mtbf_break_s`/`mtbf_cell_s` 를 교정하면, 그때 의미 있는 것은 라벨 레인의
+    # **절대값이 아니라 실행 레인에 대한 비율**이다(바로 아래 testset 이 그 비율을 고정한다).
     ALLOWED_DIVERGENCE = Dict{Symbol,String}(
-        :mtbf_break_s => "추정: K-rollout 배경잡음 세기 손잡이(연구 대상 사건과 무관, 확정 근거 없음 — report 참조)",
-        :mtbf_cell_s  => "추정: 위와 동일",
-        :max_events   => "추정: 위와 동일(런어웨이 상한을 좁은 rollout 창에 맞춘 것으로 보임)",
+        :mtbf_break_s => "미확인: 라벨-커버리지 강도 손잡이로 추정(연구 대상 사건과 무관). Task C8 재판정 소유.",
+        :mtbf_cell_s  => "미확인: 위와 동일. Task C8 재판정 소유.",
+        :max_events   => "미확인: 위와 동일(런어웨이 상한을 좁은 rollout 창에 맞춘 것으로 보임). Task C8 재판정 소유.",
     )
 
     unexplained = Tuple{Symbol,Any,Any}[]
     for f in fieldnames(CB.HazardParams)
-        lv = getfield(label_params, f)
-        ev = getfield(exec_params, f)
+        lv = getfield(LABEL_PARAMS, f)
+        ev = getfield(EXEC_PARAMS, f)
         lv == ev && continue
         haskey(ALLOWED_DIVERGENCE, f) && continue
         push!(unexplained, (f, lv, ev))
@@ -111,7 +118,35 @@ end
     @test isempty(unexplained)
 
     # D-3/D-4/D-5 는 위 루프와 별개로 직접 재확인(회귀 고정판) — 루프 로직이 잘못돼도 이건 남는다.
-    @test label_params.drain_sigma       == exec_params.drain_sigma
-    @test label_params.fire_require_spare == exec_params.fire_require_spare
-    @test label_params.mtbf_zone_s        == exec_params.mtbf_zone_s
+    @test LABEL_PARAMS.drain_sigma        == EXEC_PARAMS.drain_sigma
+    @test LABEL_PARAMS.fire_require_spare == EXEC_PARAMS.fire_require_spare
+    @test LABEL_PARAMS.mtbf_zone_s        == EXEC_PARAMS.mtbf_zone_s
+end
+
+@testset "🔴 미확인 강도-손잡이 셋의 비율을 고정한다 (T6 라운드 2, 컨트롤러 지시)" begin
+    # 위 testset 이 mtbf_break_s·mtbf_cell_s·max_events 를 "다르게 튜닝된 강도 손잡이"로
+    # 허용하지만, 그 허용을 **오늘 측정한 비율에 고정**한다 — 그래야 어느 한쪽만 조용히 바뀌는
+    # 것과 "의도적으로 같이 스케일된" 것을 구분할 수 있다. 라벨값이나 실행값 **어느 한쪽만**
+    # 바뀌어도 이 testset 이 걸린다; 둘을 같은 비율로 같이 바꾸면(예: C8 이 실행 레인을 재교정하며
+    # 라벨 레인도 같은 배수로 맞추면) 통과하려면 이 상수도 같이 고쳐야 한다 — 그것이 바로
+    # "묵시적으로 넘어가지 않는다" 는 점이다. Task C8(λ 교정 + 게이트 N-G3)이 이 셋의 재판정과
+    # 함께 이 비율 상수의 갱신도 소유한다.
+    #
+    # 오늘(2026-08-21) 측정한 비율 — 라벨값 / 실행값:
+    RATIO_MTBF_BREAK = 500.0 / 900.0    # label mtbf_break_s=500.0, exec mtbf_break_s=900.0
+    RATIO_MTBF_CELL  = 500.0 / 1200.0   # label mtbf_cell_s=500.0,  exec mtbf_cell_s=1200.0
+    RATIO_MAX_EVENTS = 12 / 64          # label max_events=12,      exec max_events=64
+
+    for (fname, target_ratio) in ((:mtbf_break_s, RATIO_MTBF_BREAK),
+                                   (:mtbf_cell_s,  RATIO_MTBF_CELL),
+                                   (:max_events,   RATIO_MAX_EVENTS))
+        lv = getfield(LABEL_PARAMS, fname)
+        ev = getfield(EXEC_PARAMS, fname)
+        measured_ratio = lv / ev
+        ok = measured_ratio == target_ratio
+        if !ok
+            @error "라벨/실행 비율이 오늘 고정한 값과 다르다 — 한쪽만 움직였을 수 있다" field = fname label_value = lv exec_value = ev measured_ratio = measured_ratio pinned_ratio = target_ratio
+        end
+        @test ok
+    end
 end
