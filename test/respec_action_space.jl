@@ -24,12 +24,16 @@ const CB = ConstructionBots
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 
 # 🔴 **개수를 명시적으로 박아 둔다 (컨트롤러 판정 2026-08-21).**
-#   C2 끝 = **4종** (아래). C3 끝 = **5종** (아래 넷 + `TranslateBuild`).
+#   C2 끝 = 4종 (ReplaceAgent · SwapBattery · LinearConstraint · Disjunction).
+#   **C3 끝 = 5종** (그 넷 + `TranslateBuild`) ← 지금이 그 시점이다 (Task C3 집행됨).
 #   `.claude/CLAUDE.md` 의 "emit 가능 5종" 은 **C3 끝** 시점을 말한다.
-#   출발점은 8종이었다: 8 − 6 + 2 = 4, 그 뒤 C3 가 +1 해서 5.
-#   아래 `@test length(EMITTABLE) == 4` 는 C3 가 그 숫자를 **의도적으로** 고치게 만든다 —
-#   느슨한 단언을 물려받으면 6종이 되어도 초록이 된다.
-const EMITTABLE = Set(["ReplaceAgent", "SwapBattery", "LinearConstraint", "Disjunction"])
+#   산수: 출발점 8종 → **8 − 6 + 3 = 5**
+#     −6 : ForbidZone · ReformTeam · ForbidAgent · ForbidWindow · DeprioritizeAgent · RelocateBuild
+#     +3 : LinearConstraint · Disjunction (C2, L2-a) + TranslateBuild (C3, L2-b)
+#   아래 `@test length(EMITTABLE) == 5` 는 다음에 이 수를 바꾸는 태스크가 그것을 **의도적으로**
+#   고치게 만든다 — 느슨한 단언을 물려받으면 6종이 되어도 초록이 된다.
+const EMITTABLE = Set(["ReplaceAgent", "SwapBattery", "LinearConstraint", "Disjunction",
+                       "TranslateBuild"])
 const REMOVED   = Set(["ForbidZone", "ReformTeam", "ForbidAgent", "ForbidWindow",
                        "DeprioritizeAgent", "RelocateBuild"])
 
@@ -76,7 +80,7 @@ _parse(kind) = CB._parse_proposal(_stub_json(kind), "stub"; id_resolver = _resol
 const UNIVERSE = sort!(collect(union(
     Set(string(nameof(T)) for T in InteractiveUtils.subtypes(CB.ConstraintSpec)),
     EMITTABLE, REMOVED,
-    Set(["TranslateBuild", "Sabotage", ""]))))
+    Set(["TranslateBuild", "Sabotage", ""]))))   # TranslateBuild 는 이제 subtypes 로도 들어온다
 
 @testset "🔴 파서가 받는 kind 집합이 기대집합과 **정확히 같다** (포함이 아니라 등식)" begin
     accepted = Set{String}()
@@ -89,10 +93,10 @@ const UNIVERSE = sort!(collect(union(
         ok && push!(accepted, k)
     end
     @test accepted == EMITTABLE
-    # 🔴 C2 끝 = 4종. C3 가 TranslateBuild 를 더하면 이 줄이 먼저 빨개진다(의도적 변경 강제).
-    @test length(EMITTABLE) == 4
-    @test length(accepted) == 4
-    @test length(CB.EMITTABLE_KINDS) == 4
+    # 🔴 C3 끝 = 5종. 다음에 이 수를 바꾸는 태스크는 이 줄부터 빨개진다(의도적 변경 강제).
+    @test length(EMITTABLE) == 5
+    @test length(accepted) == 5
+    @test length(CB.EMITTABLE_KINDS) == 5
     @info "파서가 받는 kind = $(sort!(collect(accepted)))  (우주 $(length(UNIVERSE))종 중)"
 
     # 파서가 선언한 상수와 실제 동작이 같은가 (상수만 고치고 스위치를 안 고치는 실패를 막는다)
@@ -245,6 +249,9 @@ end
     @test hasmethod(CB.compile_constraint!, Tuple{Any,Any,Any,Any,Any,CB.RelocateBuild})
     @test hasmethod(CB.compile_constraint!, Tuple{Any,Any,Any,Any,Any,CB.LinearConstraint})
     @test hasmethod(CB.compile_constraint!, Tuple{Any,Any,Any,Any,Any,CB.Disjunction})
+    # C3: 새 emittable kind 도 닫힌 합집합 계약을 지킨다(no-op 메서드 + referenced_ids)
+    @test hasmethod(CB.compile_constraint!, Tuple{Any,Any,Any,Any,Any,CB.TranslateBuild})
+    @test hasmethod(CB.referenced_ids, Tuple{CB.TranslateBuild})
     for T in (CB.ForbidAgent, CB.ForbidWindow, CB.ForbidZone, CB.ReformTeam,
               CB.DeprioritizeAgent, CB.RelocateBuild, CB.LinearConstraint, CB.Disjunction)
         @test hasmethod(CB.referenced_ids, Tuple{T})

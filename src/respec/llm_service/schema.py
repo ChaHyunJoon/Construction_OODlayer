@@ -299,6 +299,52 @@ class Disjunction(BaseModel):
 
 
 # =============================================================================
+# 2026-08-21 (Task C3 · spec §5-5) — L2-b: 파라미터가 자유로운 공간 원시연산
+# -----------------------------------------------------------------------------
+# 위의 L2-a 문법이 시간/배정 축을 열었다면 이것은 기하 축이다. RelocateBuild(zone) 은
+# action 이 아니라 solver 였다(_find_min_translation 이 Δ 를 스스로 찾는다) — 그래서
+# 은퇴시키고, 그 밑에 있던 진짜 원시연산 _apply_uniform_translation!(env, Δ) 를
+# 자유 파라미터로 노출한다.
+# =============================================================================
+
+
+class TranslateBuild(BaseModel):
+    """Shift the ENTIRE build rigidly by the displacement (dx, dy) YOU choose.
+
+    This is the only kind that moves GEOMETRY. Emit it when the event is a SPATIAL
+    keep-out region that traps work the build must still reach: the zone stays where it
+    is and the whole build (every assembly's staging area and every remaining deposit
+    goal) slides by (dx, dy) so its work region no longer overlaps the zone.
+
+    🔴 DERIVE (dx, dy) FROM THE ZONES SECTION -- NEVER INVENT COORDINATES, and never
+    copy a number from the event text. The prompt's ZONES section gives each active
+    zone's `center` and `radius`. `dx`/`dy` are a DISPLACEMENT (a delta), NOT a
+    destination: (0, 0) is refused, because "translate by nothing" claims an
+    intervention and performs none. If you judge that no move is warranted, emit an
+    EMPTY constraints list instead -- that is how restraint is said in this grammar,
+    and it is a different (and cheaper) answer.
+
+    Reason about MAGNITUDE from the zone's own geometry: the build's remaining work sits
+    around the zone, so a displacement must carry it past the far edge -- a move shorter
+    than the zone's radius cannot clear a zone the build is standing in. Pick a direction
+    that takes the build AWAY from the zone centre, and a magnitude of several zone radii.
+    A displacement that is too small leaves work inside the keep-out region and the robots
+    park at its edge forever; there is no partial credit.
+
+    Cost is real: every remaining goal moves, so every robot drives further. Do not
+    propose a translation for an event that is not spatial.
+    """
+    # 🔴 `extra="forbid"` — 줄리아 생성자가 거부하는 것을 스키마도 거부하게 만든다.
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["TranslateBuild"] = "TranslateBuild"
+    # 🔴 기본값이 **없다.** `dx: float = 0.0` 으로 두면 빠진 필드가 조용히 Δ=0 이 되고,
+    #    그것은 "옮기겠다"고 말해 놓고 아무것도 안 하는 hollow admit 이다(줄리아 쪽에서 :rejected).
+    dx: float   # x 축 변위(목적지가 아니라 **변위**)
+    dy: float   # y 축 변위. z 는 없다 — 평면 강체이동이다.
+
+
+# =============================================================================
 # 🔴 2026-08-21 D-9 (Task C2, spec §5-8): 행동공간을 emit 가능한 것만 남기고 줄였다.
 # -----------------------------------------------------------------------------
 # 아래 여섯 클래스는 **정의는 그대로 남기되 union 과 TOOL_SCHEMA enum 에서 뺐다.**
@@ -310,8 +356,12 @@ class Disjunction(BaseModel):
 #                     (_hz_fire_cell! -> battery_action, hazard.jl:583)
 #   RelocateBuild     행동이 아니라 solver 다(_find_min_translation 이 Δ 를 스스로 찾는다,
 #                     restage_zone.jl:768-779). 진짜 원시연산 _apply_uniform_translation!(env, Δ)
-#                     를 Task C3 의 TranslateBuild(dx, dy) 가 자유 파라미터로 노출한다.
+#                     를 Task C3 의 TranslateBuild(dx, dy) 가 자유 파라미터로 노출한다(**집행됨**).
 #                     안 빼면 emit 가능 수가 5 가 아니라 6 이 된다(컨트롤러 판정 2026-08-21).
+#
+# 🔴 개수(이 파일 기준): C2 끝 = 4종. **C3 끝 = 5종** — 위 넷 + TranslateBuild.
+#    산수: 8 - 6 + 3 = 5 (원래 8종 - 은퇴 6종 + L2-a 둘(LinearConstraint·Disjunction)
+#    + L2-b 하나(TranslateBuild)). 지금 이 파일이 C3 끝 시점이다.
 #
 # 🔴 **줄리아 타입과 컴파일러는 살아 있다** — 엔진 내부 생산자가 그 타입들을 직접 만든다
 #    (navigator/baselines.jl:173·192·201 · respec/reassign.jl:382 · oracle/ood_mdp_shim.jl:306).
@@ -324,7 +374,7 @@ class Disjunction(BaseModel):
 # 행동공간의 역사를 그대로 들고 있는 유일한 자리이고, 되살릴 때 diff 가 한 줄이면 된다.
 # =============================================================================
 ConstraintSpec = Annotated[
-    Union[LinearConstraint, Disjunction, ReplaceAgent, SwapBattery],
+    Union[LinearConstraint, Disjunction, ReplaceAgent, SwapBattery, TranslateBuild],
     Field(discriminator="kind"),
 ]
 
@@ -378,10 +428,11 @@ TOOL_SCHEMA = {
         "Propose a re-specification that handles the observed open-world event. Two kinds are "
         "pre-written recoveries (ReplaceAgent for a broken robot, SwapBattery for a flat one); "
         "two are a GRAMMAR you write yourself over the scheduler's decision variables "
-        "(LinearConstraint, and Disjunction for an either/or). Prefer a pre-written recovery "
-        "when one fits the event; reach for the grammar when nothing pre-written expresses the "
-        "requirement. Never change the objective directly. Reference nodes/agents by the exact "
-        "ids given in the prompt."
+        "(LinearConstraint, and Disjunction for an either/or); one is a spatial primitive "
+        "(TranslateBuild, which slides the whole build by a displacement you choose, for a "
+        "keep-out zone that traps work). Prefer a pre-written recovery when one fits the event; "
+        "reach for the grammar when nothing pre-written expresses the requirement. Never change "
+        "the objective directly. Reference nodes/agents by the exact ids given in the prompt."
     ),
     "input_schema": {                       # 모델 출력의 형태를 규정하는 JSON schema 본체
         "type": "object",
@@ -399,11 +450,15 @@ TOOL_SCHEMA = {
                             # 🔴 D-9: emit 가능한 kind 만. llm_bridge.jl 의 EMITTABLE_KINDS 와
                             # 집합으로 같아야 한다(test/respec_action_space.jl 이 단언한다).
                             "enum": ["LinearConstraint", "Disjunction",
-                                     "ReplaceAgent", "SwapBattery"],
+                                     "ReplaceAgent", "SwapBattery", "TranslateBuild"],
                         },
                         # 아래는 kind 별로 쓰이는 필드들을 한데 나열(모델이 해당 kind 에 맞는 것만 채움).
                         "agent": {"type": "string"},   # ReplaceAgent / SwapBattery
                         "after": {"type": "number"},   # ReplaceAgent
+                        # --- L2-b 공간 원시연산 (TranslateBuild) ---
+                        # 🔴 변위(delta)다. 목적지 좌표가 아니다. (0,0) 은 줄리아가 거부한다.
+                        "dx": {"type": "number"},      # TranslateBuild
+                        "dy": {"type": "number"},      # TranslateBuild
                         # --- L2-a 문법 (LinearConstraint / Disjunction) ---
                         "terms": {                     # LinearConstraint: Σ coeff·var
                             "type": "array",

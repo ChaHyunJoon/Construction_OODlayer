@@ -102,6 +102,14 @@ compile_constraint!(model, t0, tF, Xa, sched, cs::DeprioritizeAgent) = 0
 # 혼합 제안이 일반 컴파일 경로를 타도 무해하도록 두는 no-op 메서드.
 compile_constraint!(model, t0, tF, Xa, sched, cs::RelocateBuild) = 0
 
+# --- TranslateBuild: SPATIAL — compiles to NOTHING here -------------------------
+# 2026-08-21 (Task C3 · spec §5-5, L2-b). RelocateBuild/ForbidZone/ReformTeam 과 **같은 티어**다:
+# 주어진 Δ 만큼의 강체 평행이동은 기하 수술이지 타이밍/배정 제약이 아니다. 집행은 dispatch 의
+# `:translate` 분기(replan.jl `_is_translate_build`)가 `_apply_uniform_translation!` 로 하고
+# MILP 에는 닿지 않는다. 이 no-op 메서드는 닫힌 합집합 계약을 유지하고, TranslateBuild 를 실은
+# 혼합 제안이 제네릭 컴파일 경로를 타도 무해하게(제약 0개) 만든다.
+compile_constraint!(model, t0, tF, Xa, sched, cs::TranslateBuild) = 0
+
 # =============================================================================
 # 2026-08-21 (Task C2 · spec §5-4) — L2-a 문법의 컴파일
 # -----------------------------------------------------------------------------

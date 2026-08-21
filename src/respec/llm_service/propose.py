@@ -85,9 +85,10 @@ def _build_prompt(event: str, open_ids: list[str],
         "An open-world event occurred during execution of a multi-robot "
         "assembly plan.\n"
         f"EVENT: {event}\n\n"
-        "You re-specify the problem with the closed DSL below. There are exactly FOUR kinds "
+        "You re-specify the problem with the closed DSL below. There are exactly FIVE kinds "
         "you may emit -- two are pre-written recoveries, two are a GRAMMAR you write yourself "
-        "over the scheduler's decision variables. You never change the objective directly, "
+        "over the scheduler's decision variables, and one is a SPATIAL primitive that moves the "
+        "build itself. You never change the objective directly, "
         "and you never invent a kind that is not listed here.\n\n"
         "NAMED NODES. When the event refers to an assembly/part/milestone, match the "
         "description in the event to one of these and use its EXACT node id -- NOT the "
@@ -131,14 +132,26 @@ def _build_prompt(event: str, open_ids: list[str],
         "lists. An id that is not a schedule vertex -- an invented one, or a robot id -- is "
         "REJECTED (the proposal is refused; nothing happens). Never use a vertex number: graph "
         "surgery renumbers vertices.\n\n"
-        "ACTIVE NO-GO ZONES (context only -- see below). The live geometry reports:\n"
+        "ACTIVE NO-GO ZONES -> TranslateBuild. The live geometry reports:\n"
         f"{zone_lines}\n"
-        "  There is currently NO spatial kind in the emittable set: a keep-out region is a "
-        "GEOMETRIC fact and none of the four kinds above moves geometry. If the event is purely "
-        "a SPATIAL exclusion, propose NOTHING (empty constraints) -- the motion layer routes "
-        "around a zone on its own, and a detour is cheaper than a wrong intervention. Do NOT "
-        "try to encode a zone as a time window or an assignment ban; that mis-states the "
-        "problem and will be rejected or will do nothing.\n\n"
+        "  A keep-out region is a GEOMETRIC fact, so the only kind that can answer it is the "
+        "spatial primitive:\n"
+        "  * TranslateBuild: {\"dx\": <number>, \"dy\": <number>} -- slide the ENTIRE build "
+        "rigidly by the displacement YOU choose. The zone stays put; every remaining goal and "
+        "staging area moves by (dx, dy).\n"
+        "  🔴 DERIVE (dx, dy) FROM THE ZONES GEOMETRY ABOVE -- never invent coordinates and never "
+        "copy a number out of the event text. (dx, dy) is a DISPLACEMENT, not a destination. "
+        "Choose a DIRECTION that carries the build away from the zone centre, and a MAGNITUDE "
+        "reasoned from the zone's radius: the build's remaining work sits around that centre, so "
+        "a move shorter than the radius cannot clear a zone the build is standing in -- several "
+        "zone radii is the right order. Too small a move leaves work inside the keep-out region "
+        "and the robots park at its edge forever; there is no partial credit. (0, 0) is REFUSED: "
+        "it claims an intervention and performs none.\n"
+        "  If the zone blocks no remaining work (covers is empty and covers_root is false), "
+        "propose NOTHING (empty constraints) -- the motion layer detours on its own and a "
+        "whole-build move costs every robot extra travel. Do NOT try to encode a zone as a time "
+        "window or an assignment ban; that mis-states the problem and will be rejected or will "
+        "do nothing.\n\n"
         "ALL still-open node ids (exhaustive reference; the NAMED NODES above are "
         "the labelled subset):\n"
         f"{', '.join(open_ids)}\n\n"
@@ -146,7 +159,9 @@ def _build_prompt(event: str, open_ids: list[str],
         "handles the event. Choose by the event's NATURE: a robot out of CHARGE -> SwapBattery; "
         "a robot BROKEN/immobile to be covered by a backup/spare -> ReplaceAgent; a TIMING or "
         "ASSIGNMENT requirement nobody pre-wrote -> LinearConstraint, or Disjunction when it is "
-        "an either/or; a purely SPATIAL no-go region -> nothing. If unsure, fewer."
+        "an either/or; a SPATIAL no-go region that traps remaining work -> TranslateBuild with a "
+        "displacement derived from that zone's geometry; a zone that blocks nothing -> nothing. "
+        "If unsure, fewer."
     )
 
 
@@ -163,8 +178,11 @@ def _build_prompt(event: str, open_ids: list[str],
 # `test/respec_action_space.jl` 이 세 표면의 **집합 등식**을 단언하고, 나아가
 # `_build_prompt(...)` 가 만든 **산문 자체**에 은퇴 kind 이름이 하나도 안 남았는지까지 훑는다.
 #
-# 🔴 개수: **C2 끝 = 4종**. C3 가 `TranslateBuild` 를 더해 5종이 된다.
-#    C3 는 이 튜플과 프롬프트의 ZONES 문단을 **함께** 고쳐야 한다.
+# 🔴 개수: C2 끝 = 4종. **C3 끝 = 5종** (+ TranslateBuild) — 지금이 그 시점이다.
+#    산수: 8 - 6 + 3 = 5 (원래 8종 - 은퇴 6종 + L2-a 둘 + L2-b 하나).
+#    C3 는 이 튜플과 프롬프트의 ZONES 문단을 **함께** 고쳤다: 예전 산문은 공간 사건에 대해
+#    "아무것도 제안하지 말라" 고 지시했는데, 종류만 늘리고 그 문장을 안 고치면 모델은
+#    계속 아무것도 안 낸다(선언과 지시문이 갈라지는 바로 그 실패).
 # =============================================================================
 # 🔴 emit 가능한 **결정변수 종류**. 줄리아 `VarRef` 타입은 "xa"(배정 엣지 Xa[u,v])도 받지만
 #    LLM 에게는 열지 않는다 — 프롬프트가 어떤 (u,v) 가 실제 결정변수인지 목록을 안 싣기 때문에
@@ -173,7 +191,7 @@ def _build_prompt(event: str, open_ids: list[str],
 ADVERTISED_VAR_KINDS: tuple[str, ...] = ("t0", "tF")
 
 ADVERTISED_KINDS: tuple[str, ...] = (
-    "Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery",
+    "Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery", "TranslateBuild",
 )
 
 # D-9 로 은퇴한 이름들. 이 문자열이 프롬프트 산문에 다시 나타나면 시험이 빨개진다.

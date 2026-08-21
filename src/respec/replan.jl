@@ -229,6 +229,30 @@ stronger lever is the one that runs.
 # ForbidZone 분기보다 **먼저** 검사한다 — 둘 다 들어있으면 전제조건이 없는 쪽(전체 이동)을 써야 하므로.
 _is_relocate_build(p::RespecProposal) = any(c -> c isa RelocateBuild, p.constraints)
 
+"""
+    _is_translate_build(proposal) -> Bool
+
+True iff the proposal carries a `TranslateBuild(dx, dy)` — "shift the WHOLE build by **this**
+rigid Δ" (Task C3 · spec §5-5, L2-b).
+
+🔴 **`RelocateBuild` 와 같은 지렛대가 아니다 — 같은 *기전*을 쓰는 다른 *행동*이다.**
+둘 다 `_apply_uniform_translation!` 로 내려가지만 Δ 의 출처가 반대다: `RelocateBuild` 는
+`_find_min_translation` 이 Δ 를 **찾아 주는 solver** 이고, `TranslateBuild` 는 제안자가 Δ 를
+**직접 정한다**. 그래서 `TranslateBuild` 는 구역 이름을 안 받고, 어떤 구역을 비운다는 보장도
+스스로 하지 못한다 — 그 판정은 결과 배치를 보는 `verify_translate`(Task C4)의 몫이다.
+
+🔴 **그래서 `_subsumption` 에 넣지 않았다** (이 태스크의 판단, 보고서에 근거를 남긴다):
+흡수는 "다른 제약이 이 단위의 일을 **이미 했다**" 는 증거가 있을 때만 정당하다.
+`RelocateBuild(:z)` 는 zone 을 이름으로 지목하고 그 zone 을 비우도록 **구성적으로** 풀기 때문에
+그 증거를 들고 있다. `TranslateBuild(dx, dy)` 는 zone 을 지목하지도, 비운다는 보장도 없다 —
+그것으로 `ForbidZone` 단위를 흡수하면 **구역을 비울 유일한 단위를 조용히 버리는** 것이 된다.
+반대 방향(`RelocateBuild` 가 `TranslateBuild` 를 흡수)도 안 한다: `translate_whole_build!` 는
+**집행 시점의** 라이브 기하에서 Δ 를 다시 풀므로 앞선 `TranslateBuild` 의 이동을 이미 반영한
+잔여 이동만 낸다(이중 계산이 아니다). 이동은 합성된다는 `_apply_uniform_translation!` 의
+문서화된 성질이 그것을 보장한다.
+"""
+_is_translate_build(p::RespecProposal) = any(c -> c isa TranslateBuild, p.constraints)
+
 # ReformTeam: multi-robot team deadlock -> geometric re-establishment (reform_stuck_teams!),
 # dispatched specially like ReplaceAgent/ForbidZone (no MILP).
 # 제안에 ReformTeam(다중로봇 팀 교착 → 기하적 재구성)이 하나라도 있으면 true. MILP 없이 특수 처리됨.
@@ -520,12 +544,18 @@ const LAST_ENACT_REPORT = Ref(NamedTuple[])
 (`verify` + `formulate_milp` + `commit_respec!`)이 받는다. 거기서도 못 다루는 타입이면
 `compile_constraint!` 가 `MethodError` 로 죽는다. **조용히 건너뛰는 경로는 없다.**
 
-⚠️ Task C3 이 `TranslateBuild` 를 들여오면 여기에 한 줄(`c isa TranslateBuild ? :relocate :`)
-과 `_enact_one!` 안의 분기 하나를 더한다. 그 전까지는 `:generic` 으로 떨어져 `MethodError`
-로 죽는다 — 조용히 무시되지 않는다.
+✅ Task C3 이 `TranslateBuild` 를 들여왔다. C1 의 이 자리 메모는 그것을 `:relocate` 로
+분류하라고 적었지만 **그대로 하지 않았다**: `_enact_one!` 의 분기 본체가 스스로 찍는 Symbol 과
+분류기가 어긋나면 `ENACT_ORDER_LOG[]`(분기 본체가 찍는다)와 `LAST_ENACT_REPORT[].kind`
+(분류기가 찍는다)가 **같은 단위에 서로 다른 이름을 붙인다** — 이 두 전역의 존재 이유가 바로
+"분류기와 술어가 어긋나면 시험이 그 자리에서 빨개지게" 하는 것이다. 그리고 둘은 실제로 다른
+분기다(`verify_relocate` 대 Δ 검사, solver 대 원시연산). 그래서 `:translate` 로 **별도 종류**를
+준다. 여전히 어디에도 안 걸리는 타입은 `:generic` 으로 떨어져 `compile_constraint!` 의
+`MethodError` 로 죽는다 — 조용히 무시되는 경로는 없다.
 """
 _enact_kind(c::ConstraintSpec) =
     c isa RelocateBuild     ? :relocate     :
+    c isa TranslateBuild    ? :translate    :
     c isa ForbidZone        ? :zone         :
     c isa ReplaceAgent      ? :replace      :
     c isa ForbidAgent       ? :fault        :
@@ -536,7 +566,10 @@ _enact_kind(c::ConstraintSpec) =
 
 # 집행 순서. 근거는 `maybe_respecify!` docstring 의 "집행 순서 규칙" 절.
 # 기하(1·2) → 그래프(3·4) → 현장수리(5) → 교착복구(6) → 재풀이(7·8).
-const _ENACT_RANK = (relocate = 1, zone = 2, replace = 3, fault = 4,
+# `translate` 는 `relocate` 와 **같은 순위 1** 이다(둘 다 기하를 먼저 확정한다). 동순위는
+# `_enact_units` 의 `alg = Base.Sort.DEFAULT_STABLE` 이 제안에 적힌 원래 순서로 고정하므로
+# 결정적이다(Global Constraint: 시드 고정 = 완전 재현).
+const _ENACT_RANK = (relocate = 1, translate = 1, zone = 2, replace = 3, fault = 4,
                      battery = 5, reform = 6, deprioritize = 7, generic = 8)
 
 _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
@@ -560,6 +593,10 @@ _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 로 **첫 하나만** 읽는다 — 그래서 낱개로 쪼개야 N 개가 N 번 집행된다. 이것이 이 태스크가
 고치는 결함의 종류 내부 버전이다.
 """
+# 🔴 `:translate` 는 **묶지 않는다.** 분기 본체가 Δ 하나를 읽으므로 묶으면 N 개 중 1 개만
+# 집행되고 나머지가 조용히 사라진다 — C1 이 고친 결함의 종류 내부 버전이다. 낱개로 쪼개면
+# N 개가 N 번 집행되고, `_apply_uniform_translation!` 의 문서화된 성질(이동은 합성된다)에 따라
+# 순 이동이 ΣΔᵢ 가 된다.
 _enact_batched(kind::Symbol) = kind in (:relocate, :zone, :reform, :deprioritize, :generic)
 
 """
@@ -618,6 +655,13 @@ end
 - `:subsumed_by_relocate`  — 단위의 **모든** `ForbidZone` 이 같은 제안의 어떤 `RelocateBuild` 와
   **같은 zone** 을 가리킨다. 일부만 겹치면 흡수하지 않는다(나머지 구역은 진짜 할 일이 있다).
 - `:subsumed_by_hard_spec` — 순수 soft 가 아닌 제안 안의 `DeprioritizeAgent` 단위.
+
+🔴 **`TranslateBuild`(Task C3)는 여기에 들어오지 않는다 — 흡수하지도, 흡수되지도 않는다.**
+근거는 `_is_translate_build` 의 docstring 에 적었다. 요약: 흡수는 "다른 제약이 이 단위의 일을
+이미 했다" 는 **증거**를 요구하는데, `TranslateBuild(dx, dy)` 는 zone 을 지목하지 않으므로
+어떤 구역을 비웠다는 증거를 들고 있지 않다. 그것으로 `ForbidZone` 을 흡수하면 구역을 비울
+유일한 단위를 조용히 버리게 된다. 반대로 `RelocateBuild` 는 집행 시점의 라이브 기하에서 Δ 를
+다시 풀므로 앞선 `TranslateBuild` 를 이미 반영한 잔여 이동만 낸다(이중 계산이 아니다).
 
 정렬된 `Vector` 로만 판정한다 — `Set`/`Dict` 순회 없음(Global Constraint).
 """
@@ -828,7 +872,8 @@ end
 분기 표(파일 안 등장 순서 = 검사 순서):
 
     _is_robot_fault     ForbidAgent          → fault_robot_and_reassign!
-    _is_relocate_build  RelocateBuild        → translate_whole_build!
+    _is_relocate_build  RelocateBuild        → translate_whole_build!   (Δ 를 solver 가 찾는다)
+    _is_translate_build TranslateBuild       → _apply_uniform_translation!(env, Δ)  (Δ 를 제안자가 준다)
     _is_zone_respec     ForbidZone           → restage_all_blocked! (+ Phase B 전체이동)
     _is_battery_swap    SwapBattery          → swap_battery!
     _is_robot_replace   ReplaceAgent         → hot_swap_robot! / replace_robot(_distributed)!
@@ -949,6 +994,88 @@ function _enact_one!(env, proposal::RespecProposal;
             verdict="REJECTED · recovery infeasible")
         engage_fallback!(env)
         return :fallback
+    end
+
+    # --- TranslateBuild (L2-b, Task C3): the PRIMITIVE under RelocateBuild -----------
+    # 🔴 `RelocateBuild` 와 같은 기전(`_apply_uniform_translation!`)을 쓰지만 Δ 의 출처가 반대다:
+    #    거기서는 `_find_min_translation` 이 Δ 를 찾아 주고(= solver, 매크로 선택), 여기서는
+    #    **제안자가 Δ 를 준다**(= 원시연산, 행동 신설). 그래서 zone 이름도, kind 별 전제조건도 없다.
+    #
+    # 🔴 **조용한 폴백 금지 (Global Constraint).** 이 분기가 죽이는 세 가지:
+    #    (a) 비유한 Δ — `TranslateBuild` 생성자가 이미 죽였다. 여기서 한 번 더 본다(방어 심층화):
+    #        생성자를 우회한 값이 들어오면 `start_config` 가 통째로 NaN 이 되고, 그 뒤 모든 기하
+    #        판정이 조용히 false 가 된다.
+    #    (b) Δ = 0 — "옮기겠다" 고 말해 놓고 안 옮기는 hollow admit 이다. `:noop`(= 빈 제약 = 절제)
+    #        와 **구분되어야** 한다. 절제는 제안자가 개입하지 않기로 한 것이고 이것은 개입하겠다고
+    #        한 뒤 아무 일도 안 일어난 것이다. 그래서 `:rejected` 다.
+    #    (c) 옮길 대상 없음 — `_apply_uniform_translation!` 은 `env.staging_circles` 를 순회하므로
+    #        그것이 비면 **에러 없이 아무것도 안 한다**(= 조용한 no-op). `translate_whole_build!` 이
+    #        같은 상황을 `:no_staging` 으로 먼저 걸러 내는 것과 같은 자리다.
+    #    셋 다 **클램프하지 않는다** — 기본값으로 대체하지도 않는다.
+    #
+    # ⚠️ `engage_fallback!` 을 부르지 않는다(= 라인을 영구 정지시키지 않는다). `RESPEC_HOLD[]` 는
+    #    latch 되고 production 에서 아무도 안 푼다(이 파일의 line-stop 게이트 주석). 잘못 쓴 Δ 하나로
+    #    남은 런 전체의 respec 을 죽이는 것은 비례하지 않는다 — `_is_reform`/`_is_deprioritize` 분기가
+    #    이미 latch 없이 `:rejected` 를 내는 것과 같은 처리다. 기하가 **복구 불가능**하다는 판정
+    #    (그때는 fallback 이 맞다)은 결과 배치를 보는 `verify_translate`(Task C4)의 몫이다.
+    if _is_translate_build(proposal)
+        push!(ENACT_ORDER_LOG[], :translate)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
+        # `:translate` 는 배치되지 않는다(`_enact_batched`) → 단위는 언제나 낱개다. 아니면 **죽는다**
+        # (조용히 `first` 를 집어 나머지를 버리면 C1 이 고친 결함이 이 분기에서 되살아난다).
+        tbs = TranslateBuild[c for c in proposal.constraints if c isa TranslateBuild]
+        length(tbs) == 1 ||
+            error("_enact_one!(:translate): 집행 단위에 TranslateBuild 가 $(length(tbs))개다. " *
+                  "`_enact_batched(:translate) == false` 이므로 낱개여야 한다 — " *
+                  "묶으면 나머지가 조용히 버려진다.")
+        c = tbs[1]
+        Δ = (c.dx, c.dy)
+        _tb_checks(ok_finite, ok_nonzero, ok_target) = Any[
+            Dict("name" => "finite_delta", "passed" => ok_finite,
+                 "detail" => "Δ = ($(c.dx), $(c.dy))"),
+            Dict("name" => "nonzero_delta", "passed" => ok_nonzero,
+                 "detail" => "a zero displacement is a hollow admit, not restraint"),
+            Dict("name" => "translatable_target", "passed" => ok_target,
+                 "detail" => "staging_circles = $(length(env.staging_circles))"),
+        ]
+        if !(isfinite(c.dx) && isfinite(c.dy))
+            monitor_record_verification!(status = "rejected",
+                checks = _tb_checks(false, true, true),
+                execution = Dict("action" => "none"),
+                verdict = "REJECTED · non-finite displacement")
+            @warn "[RESPEC] TranslateBuild Δ=($(c.dx), $(c.dy)) is NOT FINITE -> rejected (no clamp)"
+            return :rejected
+        end
+        if c.dx == 0.0 && c.dy == 0.0
+            monitor_record_verification!(status = "rejected",
+                checks = _tb_checks(true, false, true),
+                execution = Dict("action" => "none"),
+                verdict = "REJECTED · zero displacement (hollow admit)")
+            @warn "[RESPEC] TranslateBuild Δ=(0.0, 0.0) moves nothing -> rejected " *
+                  "(restraint is `constraints: []` -> :noop, which is a DIFFERENT verdict)"
+            return :rejected
+        end
+        if isempty(env.staging_circles)
+            monitor_record_verification!(status = "rejected",
+                checks = _tb_checks(true, true, false),
+                execution = Dict("action" => "none"),
+                verdict = "REJECTED · nothing to translate (no staging circles)")
+            @warn "[RESPEC] TranslateBuild: env.staging_circles is EMPTY -> nothing to translate " *
+                  "-> rejected (a uniform translation over an empty target set is a silent no-op)"
+            return :rejected
+        end
+        # ⚠️ Task C4 가 `verify_translate(proposal, env)` 를 여기에 넣는다(결과 배치의 기하 검증).
+        #    그 전까지 이 분기는 위 세 전제조건만 보장한다 — 보고서에 미결로 남긴다.
+        _apply_uniform_translation!(env, Δ)                  # 실제로 빌드 전체를 Δ 만큼 옮긴다
+        reset_cache_resume!(env.cache, env.sched)            # 그래프/기하가 바뀌었으니 프론티어 재빌드
+        monitor_record_verification!(status = "passed",
+            checks = _tb_checks(true, true, true),
+            execution = Dict("action" => "translate_build", "status" => "translated",
+                             "delta" => [c.dx, c.dy], "distance" => norm([c.dx, c.dy]),
+                             "geometry_solver" => "proposer_supplied_delta"),
+            verdict = "ADMITTED · whole build translated by the PROPOSED Δ")
+        @info "[RESPEC] TranslateBuild: whole build translated by Δ=($(c.dx), $(c.dy)) " *
+              "|Δ|=$(round(norm([c.dx, c.dy]); digits = 3)) -> admitted"
+        return :admitted
     end
 
     # --- restriction zone: dispatch to the geometric multi-assembly relocation --
