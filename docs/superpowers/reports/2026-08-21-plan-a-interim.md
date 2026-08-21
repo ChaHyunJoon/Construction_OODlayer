@@ -5,6 +5,8 @@
 설계 `docs/superpowers/specs/2026-08-20-reduced-state-ood-smdp-design.md`
 작업 원장 `.superpowers/sdd/2026-08-21-reduced-state-smdp-action-synthesis/progress.md` (1988줄)
 
+> 🔴 **다른 세션에서 재개한다면 §10(인수인계)부터 읽을 것.** 진행 중인 스윕이 하나 있다.
+
 > **이 문서를 읽는 순서.**
 > 급하면 §0 · §7-D · §8 만 읽으면 된다. §0 이 무엇이 됐는가, **§7-D 가 결정된 것**,
 > §8 이 그 결정을 반영한 실행 순서다.
@@ -1207,3 +1209,136 @@ PyCall 객체를 만날 경로가 없다.
 
 *이 보고서는 세션 중단 시점의 상태를 적은 것이다. 태스크별 근거는 위 표의 보고서 15개에,
 모든 판정과 그 비용은 원장에 있다.*
+
+---
+
+## 10. 🔴 다음 세션 인수인계 (2026-08-21, 세션 2 종료 시점)
+
+> **이 절만 읽고 재개할 수 있어야 한다.** 이 세션이 무엇을 했고, 무엇이 **지금 돌고 있고**,
+> 다음 손이 어디로 가야 하는지.
+
+### 10-1. 한눈에
+
+| | |
+|---|---|
+| 이 세션 커밋 | **20** (병합 4 + 신규 12 + 레인 회수 4) |
+| 검증 | Julia **23/23** · Python **65/65** (파일당 별도 프로세스) |
+| 계획서 A 진척 | **T13 까지 완료.** 남은 것: **C7 · C5(=D-14) · C8**, 그리고 **D-12 최종 판정** |
+| 🔴 **지금 돌고 있는 것** | **C7 스윕** — `laneC7` 워크트리, PID 3836421, 12판 중 6판 완료 |
+
+### 10-2. 🔴 진행 중 — C7 스윕 (재개 시 **가장 먼저** 확인할 것)
+
+```bash
+# 살아 있나
+ps -p 3836421 && echo RUNNING || echo DONE
+# 진행/결과
+wc -l < /home/chahj578/cb-lanes/laneC7/results/smdp/watchdog.jsonl
+tail -20 /tmp/claude-1035/-home-chahj578/7411ca87-3745-45ce-b1e9-c1e8128ea3bf/scratchpad/c7_sweep.log
+```
+
+**왜 별도 워크트리인가:** T13 이 `main` 의 소스를 고치는 동안 스윕이 그 소스를 읽으면
+판마다 다른 커밋을 재게 된다. `laneC7`(`sdd-lane-c7`, base `5d1fe90d`)에 격리했다.
+⚠️ 그래서 스윕의 절대 수치는 **그 디렉토리의 세계**다(§4). `stall_limit` 사이의 **비교**는
+같은 디렉토리 안이라 유효하다.
+
+**레인에만 있는 변경 2개** (병합 대상):
+- `tools/monitor/run_demo.jl` — `DEMO_STALL_LIMIT` ENV 손잡이(`simulate_case!` 의 `stall_limit`
+  기본값 2500 을 연다). ⚠️ `const … = parse(…)` 형태라 `state_globals` 스캐너에 안 걸린다
+  (`DEMO_SEED`/`DEMO_SPARES` 와 같은 모양) — 인벤토리 등록 불필요, **확인함**.
+- 요약 행에 `"stall_limit"` 필드 추가 — 없으면 산출물에서 어느 행이 어느 값인지 **append
+  순서로 추측**해야 한다(`hazard_seed` 를 실은 것과 같은 이유).
+- `tools/monitor/sweep_watchdog.jl` (신규)
+
+#### 🔴 예비 결과가 이미 무언가를 말한다 (6/12 시점)
+
+```
+ stall  spares  hzseed     status  closed/total  progress
+  2500       4       1   complete       295/321     0.919
+  2500       8       1   complete       311/353     0.881
+  2500       4       2   complete       295/321     0.919
+  2500       4       3   complete       295/321     0.919
+  2500       4       4   complete       295/321     0.919
+```
+
+**두 가지가 눈에 띈다 — 둘 다 C7 의 판정을 바꾼다:**
+
+1. 🔴 **완주율이 100 % 다.** 계획서 C7 Step 3 의 목표 band 는 **60~85 %** 이고, 그 이유는
+   "100 % 면 사건이 희소해 팔 간 차이가 안 보인다" 이다. ⇒ **`stall_limit` 축으로는 band 에
+   못 들어간다.** 손잡이를 바꿔야 할 대상은 워치독이 아니라 **hazard 강도**(`mtbf_break_s` ·
+   `mtbf_cell_s` · `mode`)일 가능성이 크다 — 그리고 그건 **C8 의 λ 교정 항목**이다.
+   ⇒ **C7 과 C8 의 경계를 다시 봐야 한다.**
+2. 🔴 **hazard 시드 1·2·3·4 가 `295/321` 로 완전히 동일하다.** 시드가 세계를 안 흔들거나,
+   흔들어도 종점이 같다. 어느 쪽인지 **먼저 가려야** C7 의 5 시드 설계가 의미를 갖는다.
+   확인법: 각 판의 `n_decisions` 를 비교할 것(요약 행에 있다). 전부 같으면 시드가 안 먹은 것이다.
+   ⚠️ `[HAZARD]` 로그로 세지 말 것 — `run_demo.jl:472` 의 `Logging.Warn` 이 그 `@info` 를
+   통째로 버린다(CLAUDE.md 살아 있는 결함 7).
+
+### 10-3. 이 세션이 집행한 것 (커밋 순)
+
+| 커밋 | 무엇 |
+|---|---|
+| `1daf5596` | 병합 C6 (게이트 N-G8) — 실행 후 **PASS** 확인 |
+| `a32a6386` | 병합 T10 (ρ 적합 + 분해) — rebase 불필요(파일 겹침 0) |
+| `776a8636` | **T10 이 `DRAIN_DT` 를 인벤토리에 등록 안 함** — 횡단 시험이 잡았다 |
+| `d86847ae` | 병합 T12 (`generative.jl`, `G(s,a)`) |
+| `2fbe0393` | **T12 가 `normpath` 새 RHS 머리를 들여옴** — census 의 첫 실사용 |
+| `d482cb02` | **D-13** `engage_fallback!` → `terminal` + 재발 방지 트립와이어 |
+| `3f5d1cc0` | 병합 C4 (기하 검증기) |
+| `900c409a` · `b6af342a` | **D-13R** 롤아웃 경계 리셋 + `_STATE_BASELINE` 등록 |
+| `376f7956` | **N-G5 Step 0** — `energy_between` 의 population 불일치 수정 |
+| `24f548dd` | **N-G5 Step 1** — `generate` 가 `E` 반환(NamedTuple), N-G5a 항등식 |
+| `45367a07` | **D-12** 게이트 N-G1′ — 검열 원자를 판정에서 분리 |
+| `6acd9a4c` | 어휘 도장 시험 3개가 한 세대 낡았던 것 해소 |
+| `5d1fe90d` | 보고서 갱신 |
+| `0fecd31e` | **T13** 모든 팔 뒤 공통 MILP 재풀이 |
+
+### 10-4. 🔴 다음 손이 반드시 알아야 할 것 (이 세션이 실측한 함정)
+
+1. **`state_globals.jl` 은 main 작업트리에 커밋 안 된 진짜 작업이 있다**(ReformTeam 은퇴 →
+   `UNWEDGE_INTERVAL` 등록). **인벤토리 통과에 필수**다. 이 파일을 커밋할 때는 그 베이스라인
+   편집이 딸려가지 않도록 **패치로 떼어냈다 되돌리는 방식**을 쓸 것 — 이 세션은 세 번 그렇게 했다.
+   백업: `/tmp/claude-1035/-home-chahj578/7411ca87-3745-45ce-b1e9-c1e8128ea3bf/scratchpad/main_state_globals.patch`.
+2. **계획서의 함수 시그니처를 믿지 말 것.** T13 에서 셋이 전부 틀렸다
+   (`release_pending_assignments!` · `assign_collaborative_tasks!` · 존재하지 않는 `validate`).
+   `grep -rn "function <name>" src/` 로 매번 확인할 것.
+3. **픽스처가 결론을 만든다.** T13 에서 비소비 `_fault_fixture()` 로 재면 NOOP 과 Replace 의
+   `state_hash` 가 **같게** 나오는데, 그건 Replace 가 집행되지 않기 때문이다. `_fresh_fault_fixture()`
+   로 다시 재니 `outcome=:admitted`·`enacted=true` 이고 두 상태가 **다르다**.
+   ⇒ **팔의 구별 가능성을 주장하기 전에 `enacted` 를 먼저 볼 것.**
+4. **`prog.closed` 가 t=0 에 비어 있다.** "진행도 보존" 같은 포함관계 단언은 픽스처를 비퇴화
+   스텝까지 전진시키지 않으면 **공허**하다(첫 판이 실제로 그랬다).
+5. **22 개 시험을 한 프로세스에 전부 올리면 간헐적 SIGSEGV.** 리셋과 무관하다(리셋 존재 전에도
+   났고, RVO/Python 전역은 전부 `:replay`/`:setup` 이라 `deepcopy` 가 PyCall 객체를 만날 경로가
+   없다). 검증은 **파일당 별도 프로세스**로 돌릴 것.
+
+### 10-5. 남은 순서 (§8-6 의 갱신판)
+
+```
+[진행중] C7 스윕 (laneC7)  ──► 결과 판정 + 위 10-2 의 두 발견 반영
+                              │  ⚠️ 완주율 100% 라 band 를 못 맞춘다 → C8 의 λ 교정과
+                              │     경계를 다시 그어야 할 수 있다
+                              ▼
+                         C5 = D-14  (terminal-infeasible + R_stall)
+                              │  R_stall 은 objective.json 의 실패 분기에서 **유도**
+                              │  (C_fail + C_unclosed·(total−closed) + tie_eps·makespan)
+                              │  → objective_hash 불변 → C8 불필요
+                              ▼
+                         C8  (네 항목 한 묶음, generation bump 1회)
+                              1 비결정성 입력 정준화  2 fire_clear 수정
+                              3 λ 교정 + 라벨 레인 손잡이  4 D-11 zone 세계 분리 + train_kinds
+                              ▼
+                    D-12 게이트 **최종 판정** (반드시 C8 뒤)
+                              │  음성 대조 아티팩트를 n ≥ 43,411 로 재생성해야 한다
+                              ▼
+                         5~8시간 교정 스윕
+```
+
+### 10-6. 재개 시 읽을 것 (우선순위 순)
+
+| 파일 | 무엇 |
+|---|---|
+| **이 절(§10)** | 인수인계 |
+| **§8-6** | 순서 구속 한 장 |
+| `.superpowers/sdd/…/briefs/task-D1{1,2,4}-brief.md` · `task-D13R-brief.md` · `task-T14-ng5-redefinition.md` | 이 세션이 쓴 설계 5건 (⚠️ `.gitignore` 대상 — 디스크에만 있다) |
+| §7-D | 사용자 결정 D-11~D-14 와 **설계 라운드에서 바뀐 세부** |
+| §3 머리의 재검증 표 | 계획서·spec 오류 7건의 독립 재검증 |
