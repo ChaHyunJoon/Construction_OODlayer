@@ -366,6 +366,181 @@ function verify_relocate(proposal::RespecProposal, env)
     return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
 end
 
+# =============================================================================
+# Task C4 — 기하 티어의 **일반**(kind 무관) 검증기
+# -----------------------------------------------------------------------------
+# `verify()` 가 MILP 티어를 kind 무관으로 검증하듯(문법·과거불가침·feasibility·invariant),
+# 기하 티어에도 kind 를 안 보는 검증기를 둔다. 여기 있는 셋은 **어느 팔이 그 변위를 냈는지**
+# 를 묻지 않는다 — "결과 배치가 조건을 만족하는가" 만 묻는다. 그것이 **신설된** 행동
+# (L2 원시연산 `TranslateBuild`)을 안전하게 만드는 방법이다: 전제조건 검사는 팔마다 새로
+# 써야 하지만 결과 검사는 새 팔이 생겨도 그대로 쓴다.
+#
+# 🔴 이것이 Task C3 의 **잠정** 경계를 대체한다. C3 는 `_apply_uniform_translation!` 로 먼저
+#    옮기고, 잔여를 세고, `.-Δ` 로 정확히 되돌렸다. 그 모양의 값은 되돌리기의 정확성에 통째로
+#    걸려 있다 — 부정확한 되돌리기는 세계를 영구히 어긋나게 하므로 **대체하려던 fail-open 보다
+#    나쁘다.** 아래 셋은 아무것도 안 옮긴다: 좌표에 Δ 를 더해 볼 뿐이라 구조적으로 읽기 전용이다.
+# =============================================================================
+
+"""
+    _TB_MIN_DELTA
+
+`TranslateBuild` 가 **관측 가능하려면** 넘어야 하는 변위 크기의 하한.
+
+지어낸 상수가 아니라 `s` 의 **관측 양자**다: `simstate.jl:217` 의 정준화가
+`_c(x::Float64) = string(round(x; digits = 9) + 0.0)` 이므로 절대값 5e-10 이하의 좌표 변화는
+`state_hash` 에서 통째로 흡수된다 — 그 아래의 Δ 로 "옮겼다" 고 보고하면 `s` 안에서 **NOOP 과
+바이트 동일**한 결과에 `:admitted` 를 붙이는 hollow admit 이 된다.
+
+⚠️ **하한이지 보장이 아니다.** |Δ| ≥ 이 값이라고 해시가 반드시 갈리는 것은 아니다(좌표별 반올림
+경계에 달렸다). 이 상수의 계약은 "이 아래는 **확실히** 구분 불가능하다" 하나뿐이다.
+"""
+const _TB_MIN_DELTA = 1e-9
+
+# ⚠️ 이 상수는 Task C4 까지 `replan.jl`(집행 티어)에 있었다. 실제 소비자는 아래
+#    `verify_translate` 의 **수용 문턱**이므로 검증 티어로 옮겼다 — 집행부는 이제
+#    `verify_translate` 의 판정만 집행한다. `verifier.jl` 이 `replan.jl` 보다 먼저
+#    include 되므로 방향도 이쪽이 맞다(respec.jl:28 vs :30).
+
+"""
+    translate_clears_zones(env, Δ) -> Bool
+
+빌드 전체를 `Δ` 만큼 옮겼을 때 **남은 작업**이 모든 활성 제한구역을 벗어나는가.
+
+정의역은 `_future_work_discs(env)` 를 **그대로** 쓴다 — `restage_zone.jl` 이 이미 "미완
+스케줄이 도달해야 하는 목표 + 비루트 staging 작업영역" 으로 정의해 둔 집합이고, 여기서 다시
+정의하면 두 곳의 기준이 갈린다. 판정식도 `_minimum_clear_translation`(같은 파일)의 `clear`
+술어와 같은 모양(`+1e-9` 여유 포함)이라, `_find_min_translation` 이 낸 Δ 는 **정의상** 이
+검사를 통과한다. 두 곳이 서로 다른 부등식을 쓰면 "솔버가 낸 값을 게이트가 거부" 하는 조용한
+불일치가 난다.
+
+**`env` 를 수정하지 않는다** — 원판을 옮겨 보고 버리는 것이 아니라 좌표에 Δ 를 더한다.
+활성 구역이 없으면 `true`(비울 것이 없다) — 이 함수는 구역만 본다. 구역이 없을 때의 경계는
+[`_within_workspace_bounds`](@ref) 가 준다.
+"""
+# 빌드를 Δ 만큼 옮겼다고 **가정**했을 때 미완 작업 원반이 전부 활성 구역 밖인가. env 는 안 건드린다.
+function translate_clears_zones(env, Δ::NTuple{2,Float64};
+        zone_keys = sort!(collect(keys(RESTRICTION_ZONES[])); by = string))  # Dict 순회 금지 → 정렬
+    zones = [RESTRICTION_ZONES[][k] for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]
+    isempty(zones) && return true                        # 활성 구역이 없으면 비울 것도 없다
+    for (c, r) in _future_work_discs(env)                # 미완 목표 원반 + 비루트 staging 작업영역
+        cx, cy = c[1] + Δ[1], c[2] + Δ[2]                # 옮겨진 자리(좌표만 더한다 — 세계는 그대로)
+        for z in zones
+            zc = get_center(z)
+            # ⚠️ `_minimum_clear_translation`(restage_zone.jl:686-692)의 `clear` 술어와 **같지
+            #    않다**: 그쪽은 `margin = 1e-4` 를 더해 `R + r + margin` 을 요구한다. 여기는
+            #    margin 이 없으므로 이 술어가 **더 느슨하다**. 방향은 안전하다 — 솔버가 낸 Δ 는
+            #    1e-4 여유를 갖고 이 검사를 통과한다. 🔴 **그러나 둘이 같다고 믿고 여기를 조이지
+            #    말 것**: `margin` 을 여기 더하면 솔버의 최소해가 자기 게이트에 걸릴 수 있다.
+            #    (1e-9 는 부동소수 여유일 뿐 margin 이 아니다.)
+            hypot(cx - Float64(zc[1]), cy - Float64(zc[2])) + 1e-9 <
+                Float64(get_radius(z)) + r && return false
+        end
+    end
+    return true
+end
+
+"""
+    _within_workspace_bounds(env, Δ) -> Bool
+
+옮겨진 빌드가 **작업영역 안**에 남는가. 브리프가 예고한 대로 이 술어는 이 브랜치에 없었다 —
+그래서 숫자를 지어내지 않고 **씬 안에 이미 있는 기준점**에서 유도한다:
+
+  · 대상: `_build_footprint(env)` 의 감싸는 원 `(fc, fR)` — "통째 이동이 구역 밖으로 날라야 할
+    대상" 이라고 그 docstring 이 직접 정의한 원이다.
+  · 경계: **고정 창고 링** `spare_depot_distance()`. 창고는 `depot_centers_fixed` 가
+    `(0,±D)`·`(±D,0)` 절대좌표에 박고(`ood_injection.jl:591`), `_apply_uniform_translation!` 은
+    **창고를 안 옮긴다**(적치원과 조립체 start_config 만 옮긴다). 즉 D 는 빌드가 움직여도
+    변하지 않는 유일한 기하 기준점이다.
+
+판정: `‖fc + Δ‖ + fR ≤ D` — 옮겨진 footprint 원판이 창고 링 **안**에 남는다.
+
+⚠️ **이것은 새 계약이 아니라 `warn_depot_clearance`(ood_injection.jl:603-616)의 두 번째 사본이다**
+(`translate_clears_zones` 의 docstring 이 경고하는 바로 그 모양이라 여기 명시한다). 차이 둘:
+  · **정의역**: 저쪽이 더 넓다 — 모든 적치원 + 모든 비-spare 씬 노드를 원점 기준으로 잰다.
+    여기는 `_build_footprint` 원판만 본다. 저쪽은 `env` 를 읽어 재므로 **가상의 Δ 에 대해서는
+    못 부른다**(Δ 를 적용해 봐야 값이 나온다) — 읽기 전용 판정이 이 술어의 요구사항이라 재사용이
+    아니라 같은 기준점을 다시 쓴다.
+  · **여유율**: 저쪽은 `D < 1.2·r` 이면 경고한다(= `r ≤ D/1.2` 를 권고). 여기는 `r ≤ D` 다.
+    🔴 1.2 를 안 쓴 이유는 실측이다: `tools/e2e.jl mock_respec`(tractor)에서 **완주하는** 실행이
+    쓰는 변위가 `‖fc+Δ‖+fR = 18.69` 이고 `1.2 × 18.69 = 22.4 > 20` 이라, 1.2 를 채우면 이 게이트가
+    **실제로 성공하는 복구를 거부한다.** 즉 저쪽 문턱은 "셋업 시 창고가 빌드에 안 겹치게" 를 위한
+    권고이고, 여기는 "복구 이동이 물류권을 벗어나지 않게" 를 위한 하드 경계다. 둘이 갈라지면
+    이 주석과 `warn_depot_clearance` 의 docstring 을 **같이** 고칠 것.
+
+🔴 이것이 C3 가 못 닫은 두 구멍을 **같은 하나의 술어로** 닫는다:
+  (1) 활성 구역이 없을 때 — C3 는 "기하적 기준점이 없다" 며 모든 Δ 를 통과시켰다. 창고 링은
+      구역과 무관하게 존재하므로 기준점이 있다.
+  (2) 구역을 넘치게 비우는 Δ — 구역을 비우는 것은 필요조건이지 충분조건이 아니다.
+      `TranslateBuild(1e6, 1e6)` 은 잔여 0 이지만 링 밖이다.
+
+왜 링이 의미 있는 경계인가: 창고는 `ReplaceAgent`(예비 본체)와 `SwapBattery`(배터리 배송)의
+**출발점**이다. 빌드가 링을 넘어가면 그 두 복구는 물류권 밖으로 나간 대상을 향해 왕복하게 된다
+— 즉 이 경계는 "화면 밖으로 나갔다" 가 아니라 **다른 두 팔의 도달 범위**를 말한다.
+
+⚠️ **필요조건이지 충분조건이 아니다(실측).** 감싸는 원은 root 적치원과 root 하역 목표만 품는다.
+   `colored_8x8` 픽스처에서 `fR = 2.698` 인데 개별 `_future_work_discs` 는 원점에서 **12.93** 까지
+   뻗는다. 링 안에 남는 Δ 라도 먼 work disc 하나는 링 밖으로 나갈 수 있다. 그 자리를 `fR` 대신
+   work-disc 반경으로 조이면 **구역을 비우는 최소 이동 자체가 경계 밖이 된다**(12.93 + 5.10 =
+   18.03 > 20 은 아니지만 tractor 픽스처에서는 17.60 + 5.85 = 23.45 > 20). 즉 더 조인 경계는
+   시스템이 스스로 옳다고 계산한 변위를 거부한다 — 그래서 조이지 않았다. 보고서에 남긴다.
+"""
+# 옮겨진 빌드의 감싸는 원이 "고정 창고 링"(D) 안에 남는가. D 는 빌드가 움직여도 안 변하는 유일한 기준점.
+function _within_workspace_bounds(env, Δ::NTuple{2,Float64})
+    isempty(env.staging_circles) && return false         # 감쌀 대상이 없으면 경계를 말할 수 없다
+    fc, fR = _build_footprint(env)                        # 빌드 전체를 감싸는 원(중심, 반지름)
+    return hypot(fc[1] + Δ[1], fc[2] + Δ[2]) + fR <= spare_depot_distance()
+end
+
+"""
+    verify_translate(proposal, env) -> Admit | Reject
+
+기하 티어의 **일반** 검증기. kind 별 전제조건을 안 본다 — 결과 배치가 조건을 만족하는지만 본다.
+조건 셋:
+  (1) 변위가 관측 가능하다   — `|Δ| ≥ _TB_MIN_DELTA`. 그 아래는 `state_hash` 가 통째로 흡수하므로
+                              NOOP 과 **바이트 동일**하다(= hollow admit).
+  (2) 모든 zone 을 벗어난다   — [`translate_clears_zones`](@ref)
+  (3) 작업영역 안에 남는다    — [`_within_workspace_bounds`](@ref)
+
+🔴 (1)이 이 레포의 반복된 실패 모양을 막는다: `enact_applied = true` 는 "효과 지점에 도달했다"
+이지 "세계가 바뀌었다" 가 아니다. 도달하고도 아무것도 안 바꾸는 팔은 로그상 성공으로 보인다.
+정확한 0 만 막으면 `TranslateBuild(1e-18, 0.0)` 이 그 자리로 새므로 하한은 **관측의 양자**다
+(`simstate.jl` 의 `_c` 가 digits=9 로 정준화한다 — `_TB_MIN_DELTA` 의 출처).
+
+**읽기 전용이다.** 아무것도 옮기지 않는다 — 그래서 `verify → enact` 사이에 TOCTOU 도, 되돌리기
+실패도 없다. 거부는 `Reject` 하나이고 **클램프도 "안전한" Δ 로의 대체도 하지 않는다**(조용한
+폴백 금지): 거부된 이동은 세계를 안 바꾼 채 `:rejected` 로 남아 NOOP 과 구별된다.
+
+`referenced_ids(TranslateBuild) == ()` 이므로 "과거 불가침"(closed 노드 참조) 검사는 이 팔에서
+구조적으로 공허하다 — `verify_relocate` 와 달리 여기 안 넣는다. 혼합 제안의 다른 제약은
+자기 티어(`verify`)가 본다.
+"""
+# 기하 티어의 kind 무관 검증기: (1) 관측 가능한 변위 (2) 모든 구역을 벗어남 (3) 작업영역 안. 읽기 전용.
+function verify_translate(proposal::RespecProposal, env)
+    cs = [c for c in proposal.constraints if c isa TranslateBuild]   # 이 검증기가 판정하는 대상만
+    isempty(cs) && return Reject(:not_translate, "no TranslateBuild in proposal")
+    length(cs) == 1 ||
+        return Reject(:ambiguous, "$(length(cs)) TranslateBuild constraints in one proposal — " *
+                      "a rigid translation has one Δ; batching them hides the discarded ones")
+    c = cs[1]
+    Δ = (c.dx, c.dy)                                     # 생성자가 유한성을 이미 보장한다(spec_dsl.jl:385)
+    Δnorm = hypot(Δ[1], Δ[2])
+    if Δnorm < _TB_MIN_DELTA                             # (1) 관측 가능한가
+        return Reject(:zero_displacement,
+            "|Δ| = $(Δnorm) < $(_TB_MIN_DELTA) (simstate `_c` rounds at digits=9): " *
+            "byte-identical to NOOP — a hollow admit, not restraint")
+    end
+    isempty(env.staging_circles) &&                      # 옮길 대상 자체가 없다(균일 이동이 no-op 이 되는 자리)
+        return Reject(:no_staging, "env.staging_circles is empty — nothing to translate")
+    translate_clears_zones(env, Δ) ||                    # (2) 결과 배치가 구역을 벗어나는가
+        return Reject(:residual_blocked,
+            "future work still intersects an active zone after Δ=$(Δ)")
+    _within_workspace_bounds(env, Δ) ||                  # (3) 결과 배치가 작업영역 안인가
+        return Reject(:out_of_bounds,
+            "translated build leaves the workspace: ‖fc+Δ‖+R > D = $(spare_depot_distance()) " *
+            "(the fixed spare-depot ring; depots do not move with the build)")
+    return Admit(proposal, length(proposal.constraints))
+end
+
 """
     verify_replace(proposal, env) -> Verdict
 

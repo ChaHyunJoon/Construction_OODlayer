@@ -71,14 +71,20 @@ def _build_prompt(event: str, open_ids: list[str],
         or "  (no labelled milestone nodes)"
     )
     # 활성 출입금지 구역: 구역 키 + 덮는 조립체 + 루트까지 덮는지 + 대략 위치를 한 줄로
-    zone_lines = (
-        "\n".join(
-            f"  - zone key: {z['key']}  ->  covers assemblies: {z.get('covers') or '(none)'}; "
-            f"covers_root: {z.get('covers_root')}  (near {z.get('center')}, r={z.get('radius')})"
-            for z in zones
-        )
-        or "  (no active no-go zones)"
-    )
+    def _zline(z: dict) -> str:
+        # 🔴 build_center/build_radius/work_reach 는 Task C4 가 실은 필드다. 없으면 **없다고 적는다**
+        #    — 아는 값으로 때우면(조용한 폴백) 모델이 유도했다고 착각한 채 지어낸 수를 낸다.
+        bc, br, ms = z.get("build_center"), z.get("build_radius"), z.get("max_shift")
+        build = (f"build footprint: centre {bc}, r={br}; max_shift={ms}"
+                 if bc is not None and br is not None
+                 else "build footprint: NOT REPORTED (nothing to translate)")
+        wr = z.get("work_reach")
+        reach = (f"work_reach={wr}" if wr is not None else "work_reach: NOT REPORTED")
+        return (f"  - zone key: {z['key']}  ->  covers assemblies: {z.get('covers') or '(none)'}; "
+                f"covers_root: {z.get('covers_root')}  (centre {z.get('center')}, r={z.get('radius')}); "
+                f"{reach}; {build}")
+
+    zone_lines = ("\n".join(_zline(z) for z in zones) or "  (no active no-go zones)")
     # 아래는 여러 문자열 리터럴을 나란히 둔 것 — 파이썬은 인접한 문자열을 자동으로 이어붙인다(하나의 긴 프롬프트).
     # 내용: 사건 설명 + 노드/로봇/구역 목록 + 어떤 kind 를 언제 쓸지에 대한 규칙을 모델에게 지시.
     return (
@@ -139,19 +145,46 @@ def _build_prompt(event: str, open_ids: list[str],
         "  * TranslateBuild: {\"dx\": <number>, \"dy\": <number>} -- slide the ENTIRE build "
         "rigidly by the displacement YOU choose. The zone stays put; every remaining goal and "
         "staging area moves by (dx, dy).\n"
-        "  🔴 DERIVE (dx, dy) FROM THE ZONES GEOMETRY ABOVE -- never invent coordinates and never "
-        "copy a number out of the event text. (dx, dy) is a DISPLACEMENT, not a destination. "
-        "Choose a DIRECTION that carries the build away from the zone centre, and a MAGNITUDE "
-        "reasoned from the zone's radius: the build's remaining work sits around that centre, so "
-        "a move shorter than the radius cannot clear a zone the build is standing in -- several "
-        "zone radii is the right order. Too small a move leaves work inside the keep-out region "
-        "and the robots park at its edge forever; there is no partial credit. (0, 0) is REFUSED: "
-        "it claims an intervention and performs none.\n"
-        "  If the zone blocks no remaining work (covers is empty and covers_root is false), "
-        "propose NOTHING (empty constraints) -- the motion layer detours on its own and a "
-        "whole-build move costs every robot extra travel. Do NOT try to encode a zone as a time "
-        "window or an assignment ban; that mis-states the problem and will be rejected or will "
-        "do nothing.\n\n"
+        "  🔴 DERIVE (dx, dy) FROM THE NUMBERS ON THE ZONE LINE ABOVE -- never invent "
+        "coordinates and never copy a number out of the event text. (dx, dy) is a DISPLACEMENT, "
+        "not a destination. Every quantity you need is reported, so COMPUTE it; do not guess a "
+        "multiple of anything:\n"
+        "    REFERENCE SIZE: r + work_reach, where r is the zone radius and work_reach is how far "
+        "the work THAT zone currently traps reaches from its centre. A shift that long lifts every "
+        "CURRENTLY TRAPPED piece of work clear of the zone no matter which way you go. It is a "
+        "reference, NOT a floor and NOT a guarantee -- measured on two real scenes, it evacuated "
+        "the trapped work in 32 of 32 directions but left the zone actually clear in only 2 of 32 "
+        "and 16 of 32, because the build is rigid and the same shift sweeps OTHER remaining work "
+        "in. A well-chosen direction can also clear with LESS than it (measured 5.10 against a "
+        "reference of 5.20, and 5.90 against 6.90).\n"
+        "    CEILING on the magnitude: max_shift. Beyond it the build leaves the workspace -- the "
+        "spare depots do NOT move with the build, so a build shoved past that radius is a build "
+        "the replacement and battery-delivery robots can no longer reach. max_shift already "
+        "accounts for the worst direction, so it holds whichever way you move.\n"
+        "    DIRECTION: your judgement, and it matters more than the magnitude. Be aware of what "
+        "the reported numbers can and cannot tell you: the whole build moves RIGIDLY, so a shift "
+        "that carries the trapped work out of the zone can at the same time carry other remaining "
+        "work IN. How far you must go therefore depends on WHICH WAY you go, and no number on "
+        "this line determines that. Measured on two real scenes: with the reference at 5.20 the "
+        "displacement actually needed ranged 5.10 to 15.42 across directions, and with the "
+        "reference at 6.90 it ranged 5.91 to 19.86. Do NOT assume the "
+        "escape direction points from the zone centre towards the build centre; on one of those "
+        "scenes that direction needed 19.33 with a ceiling of 8.58 (no displacement along it is "
+        "admissible at all), and on the other the two centres coincide, so the rule has no "
+        "content. Prefer the direction that moves the build off the zone with the LEAST remaining "
+        "work swept across it, and pick a magnitude at or above the reference size while staying "
+        "under the ceiling.\n"
+        "  Both failures are REJECTIONS, not silent partial successes: an under-sized move is "
+        "refused rather than enacted, and so is an over-sized one, and the refusal names which "
+        "condition failed. Guessing small to be safe buys nothing.\n"
+        "  Too small a move leaves work inside the keep-out region and the robots park at its "
+        "edge forever; there is no partial credit. (0, 0) is REFUSED: it claims an intervention "
+        "and performs none.\n"
+        "  If the zone blocks no remaining work (work_reach is 0.0, or covers is empty and "
+        "covers_root is false), propose NOTHING (empty constraints) -- the motion layer detours "
+        "on its own and a whole-build move costs every robot extra travel. Do NOT try to encode "
+        "a zone as a time window or an assignment ban; that mis-states the problem and will be "
+        "rejected or will do nothing.\n\n"
         "ALL still-open node ids (exhaustive reference; the NAMED NODES above are "
         "the labelled subset):\n"
         f"{', '.join(open_ids)}\n\n"
@@ -160,7 +193,8 @@ def _build_prompt(event: str, open_ids: list[str],
         "a robot BROKEN/immobile to be covered by a backup/spare -> ReplaceAgent; a TIMING or "
         "ASSIGNMENT requirement nobody pre-wrote -> LinearConstraint, or Disjunction when it is "
         "an either/or; a SPATIAL no-go region that traps remaining work -> TranslateBuild with a "
-        "displacement derived from that zone's geometry; a zone that blocks nothing -> nothing. "
+        "displacement sized from (zone radius + work_reach) and capped by max_shift; "
+        "a zone that blocks nothing -> nothing. "
         "If unsure, fewer."
     )
 

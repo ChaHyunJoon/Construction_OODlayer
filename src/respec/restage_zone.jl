@@ -339,7 +339,8 @@ keep generated forbid zones away from the root (so an injected OOD stays RECOVER
 # root 조립체 직속 부품들이 놓이는(LiftIntoPlace) 자리들의 (x,y) 좌표 목록 — root 는 안 옮기므로 이 목표를 덮는 구역은 복구 불가.
 function root_deposit_goals(env;
         root = isempty(env.staging_circles) ? nothing :            # 적치원 없으면 root 없음
-               argmax(k -> Float64(get_radius(env.staging_circles[k])), collect(keys(env.staging_circles))))  # 가장 큰 적치원 = root
+               argmax(k -> Float64(get_radius(env.staging_circles[k])),
+                      sort!(collect(keys(env.staging_circles)); by = string)))  # 가장 큰 적치원 = root (동률은 키 정렬로)
     root === nothing && return Vector{Float64}[]
     ac = _assembly_complete_node(env, root); ac === nothing && return Vector{Float64}[]  # root 의 "조립완료" 노드
     out = Vector{Float64}[]                                        # 결과 좌표들
@@ -551,8 +552,13 @@ staging center that contains every staging circle AND every root deposit goal. T
 what a whole-build translation must carry clear of the zone.
 """
 # 빌드 전체를 감싸는 최소원(중심, 반지름)을 구한다 — 모든 적치원과 root deposit 목표를 다 품는 원. 통째 이동이 구역 밖으로 날라야 할 대상.
+# 🔴 정렬한 뒤 argmax 한다 (fix 1, 컨트롤러 minor 4): `argmax` 는 **첫** 최대값을 집고,
+#    `keys(Dict)` 순서는 프로세스마다 다르다. 반지름이 같은 적치원이 둘이면 root 가, 따라서
+#    `_build_footprint` 의 중심이 Dict 순서에 걸린다 — C4 가 그 값을 **수락/거부 경계와
+#    프롬프트 산문 양쪽**에 올렸으므로 이제 그 비결정성은 판정을 흔든다.
 function _build_footprint(env;
-        root = argmax(k -> Float64(get_radius(env.staging_circles[k])), collect(keys(env.staging_circles))))  # 가장 큰 적치원 = root
+        root = argmax(k -> Float64(get_radius(env.staging_circles[k])),
+                      sort!(collect(keys(env.staging_circles)); by = string)))  # 가장 큰 적치원 = root (동률은 키 정렬로 결정)
     fc = Vector{Float64}(get_center(env.staging_circles[root])[1:2])  # 감싸는 원의 중심 = root 적치원 중심
     fR = 0.0                                                          # 감싸는 원의 반지름(0 에서 키워감)
     for (_, b) in env.staging_circles                                   # 모든 적치원을 품도록
@@ -650,9 +656,12 @@ end
 function _future_work_discs(env)
     elems = _future_goal_discs(env)
     isempty(env.staging_circles) && return elems
-    root = argmax(k -> Float64(get_radius(env.staging_circles[k])),
-                  collect(keys(env.staging_circles)))
-    for (aid, b) in env.staging_circles
+    # 정렬한다 (컨트롤러 minor 4): root 선택의 동률 깨기와, 아래 elems 의 **순서**가
+    # `_minimum_clear_translation` 의 후보 방향 순서(=동률 시 어느 Δ 를 고르는가)를 정한다.
+    _sorted_aids = sort!(collect(keys(env.staging_circles)); by = string)
+    root = argmax(k -> Float64(get_radius(env.staging_circles[k])), _sorted_aids)
+    for aid in _sorted_aids
+        b = env.staging_circles[aid]
         aid == root && continue  # the oversized global envelope is not occupied workspace
         ac = _assembly_complete_node(env, aid)
         ac === nothing && continue
