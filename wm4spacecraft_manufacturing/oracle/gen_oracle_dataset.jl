@@ -118,16 +118,10 @@ const SMOKE  = get(ENV, "DS_SMOKE", "0") == "1"              # smoke=참이면 �
 # 8 = SwapBattery(현장 배터리 교체). battery 사건에서만 valid 이므로 다른 kind 에서는 valid_actions 가
 # 걸러 NOOP 팔로 무너진다(action_to_proposal). VALID_ONLY 모드에서는 valid_mask 가 알아서 고른다.
 const MACROS = ActionRegistry.active_ids()
-const ACTION_NAME = Dict(0=>"NOOP", 1=>"Replace", 2=>"Deprioritize", 3=>"ForbidZone", 4=>"ReformTeam",
-    # 조합 팔(ood_mdp_shim.jl 의 COMBO_IDS). DS_COMBO_ARMS=1 일 때만 요청될 수 있다.
-    # 이 항목이 없으면 시뮬은 정상인데 **행을 쓰는 순간** KeyError 로 죽는다(2026-08-02 실측).
-    5=>"ForbidAgent+ReformTeam", 6=>"Deprioritize+ForbidWindow",
-    # 8 = SwapBattery : 같은 본체에 배터리만 현장 교체. Replace(1)와 달리 창고 "본체"를 안 먹는다
-    #     — 두 팔의 소모 자원이 다르다는 것이 이 팔을 따로 두는 이유다(spec_dsl.jl SwapBattery).
-    8=>"SwapBattery",
-    # 7 = RelocateBuild(빌드 전체 평행이동). zone 사건의 **기본 개입 팔**로 3(ForbidZone)을 대체한다 —
-    # 3 은 closed≈46 이후 도메인이 비어 NOOP 과 바이트 동일해지기 때문(ood_mdp_shim.jl `_zone_arms` 주석).
-    7=>"RelocateBuild")   # 매크로 번호→이름
+# 매크로 번호 → 이름. **레지스트리 파생**(action_registry.json 이 단일 진실원).
+# 2026-08-20 이전에는 구 9팔 리터럴이었고, 4팔 재번호 뒤에는 2/3 을 "Deprioritize"/"ForbidZone"
+# 으로 **틀리게** 찍었다. 리터럴을 되살리지 말 것 — test/smdp_action_name_smoke.jl 이 막는다.
+const ACTION_NAME = Dict(i => ActionRegistry.NAME[i] for i in ActionRegistry.IDS)
 const OUTFILE = get(ENV, "DS_OUT", joinpath(@__DIR__, "out", "oracle_dataset.jsonl"))   # 결과 JSONL 저장 경로
 
 # =========================================================================================
