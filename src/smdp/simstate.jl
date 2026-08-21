@@ -59,6 +59,10 @@ using Base: @kwdef
 #   즉 이 `s` 는 "행동이 만드는 변화" 를 완전히 담지만 "시간이 만드는 변화" 는 안 담는다.
 #   ⟨S, A, P, γ, R, Υ⟩ 중 **S 와 A 는 이것으로 충분하고, P·Υ 는 이것만으로 부족하다.**
 #
+# 🔴 2026-08-21 축소가 아래 (1)(2)(4) 의 "해소"/"부분 해소" 판정을 다시 뒤집었다 —
+#   `eff`(RobotRec) · `active`(ProgBlock) · `ProgBlock.t`/`CourierRec` 는 전부 다시 s 밖이다.
+#   (1) usage_r 만 남고 eff_r 은 재차 밖 · (2) closed 만 남고 active 는 재차 밖
+#   (4) 시계 자체(ProgBlock.t)와 그 시계로 해석되던 CourierRec 이 통째로 삭제됐다.
 # 🔴 **같은 날 후속 (sojourn read-set 확장, 19 → 26): 위 (1)(2)(4)는 이제 부분/전부 해소됐다.**
 #   (1) `usage_r`·`eff_r` 는 `RobotRec.usage_s`/`RobotRec.eff` 로 돌아왔다. `λ_0r`(HazardBlock)
 #       은 여전히 밖 — (1)은 **부분** 해소.
@@ -158,6 +162,9 @@ end
 #   MCTS 에서 트리 노드를 무엇으로 색인하는가 — `s` 자체인가, `s` + read-set 요약인가 —
 #   그리고 그 답은 §11-2 규칙대로 설계가 아니라 **N-11-2 ablation** 이 정한다.
 #
+# 🔴 2026-08-21 축소가 이 절의 "넷 중 셋이 돌아왔다 · 사건만 남았다" 판정도 뒤집었다 —
+#   `eff_r`·`active`·시계(`ProgBlock.t`)가 다시 s 밖으로 나갔다(`CourierRec` 삭제로 그 시계의
+#   유일한 소비처도 함께 사라졌다). 남은 것은 `usage_r`·`closed`·zone 뿐이다.
 # 🔴 **같은 날 후속: 위 목록 넷 중 셋이 `s` 안으로 되돌아왔다.** `usage_r`·`eff_r`(`λ_0r` 은
 #   여전히 밖) · `closed`/`active`/zone(신규 `ProgBlock`·`GeoBlock.zones`) · 시계(`ProgBlock.t`,
 #   `CourierRec.step_*` → `t_*` 로 개명해 그 시계로 해석)가 그것이다. **"이번 epoch 를 연
@@ -217,6 +224,14 @@ _c(t::Tuple) = "(" * join(map(_c, t), ",") * ")"
 _c(s::AbstractSet) = "[" * join(map(_c, sort!(collect(s); by = string)), ",") * "]"
 _c(d::AbstractDict) = "{" * join(["$(_c(k)):$(_c(v))"
                                   for (k, v) in sort!(collect(d); by = p -> string(p[1]))], ",") * "}"
+# `_c(::RobotRec)` 는 위 다섯과 한 자리에 있다 — 이 클러스터를 감사할 때(정렬 안정성·구분자
+# 안전성) 놓치지 않도록. `_canonical_blocks` 가 `_c(s.fleet::Dict{Int,RobotRec})` 하나로 fleet
+# 을 찍으므로, `_c(::AbstractDict)` 가 값마다 부르는 `_c(v)` 에 `RobotRec` 다리가 필요하다 —
+# 없으면 `MethodError: no method matching _c(::RobotRec)` 로 죽는다(실측: Task R1 Step 4 첫 시도).
+# `R<key>` 접두(I-3, 로봇 identity)는 `_c(::AbstractDict)` 의 `"$(_c(k)):$(_c(v))"` 가 이미 키를
+# 찍으므로 그대로 보존된다 — 별도 접두를 덧붙일 필요가 없다. 정의 자체는 `canonical(r::RobotRec)`
+# 바로 뒤에 있다(중복 정의를 피하려고 위임만 한다) — 아래 그 자리에서 여기로 돌아오는 표식을 둔다.
+_c(r::RobotRec) = canonical(r)
 # 리뷰 라운드 2 잔여 항목 (기록만 — 사소하고, 지금 고치지 않는다):
 #   - `_c(NaN) == "NaN"` 이라 `NaN` 을 담은 두 상태는 (IEEE754 상 `NaN != NaN` 이지만) 해시가
 #     같다 — 콘텐츠 해시가 원하는 "같은 값이면 같은 문자열" 의미로는 원하는 동작일 가능성이
@@ -233,14 +248,8 @@ canonical(b::GraphBlock) = "G(edges=$(_c(b.edges)),bind=$(_c(b.binding)))"
 canonical(b::GeoBlock) = "Geo(poses=$(_c(b.poses)),zones=$(_c(b.zones)))"
 
 canonical(r::RobotRec) = "(soc=$(_c(r.soc)),usage=$(_c(r.usage_s)))"
-
-# 브리프 Step 4 의 `_canonical_blocks` 는 `s.fleet::Dict{Int,RobotRec}` 를 `_c(s.fleet)` 하나로
-# 찍는다(옛 코드처럼 `join(["R$(k)"*canonical(...)...])` 를 손으로 짜지 않는다) — `_c(::AbstractDict)`
-# 가 값마다 `_c(v)` 를 부르므로, 그 다리를 놓는 이 한 줄이 없으면
-# `MethodError: no method matching _c(::RobotRec)` 로 죽는다(실측: Step 4 첫 시도). `R<key>` 접두
-# (I-3, 로봇 identity)는 `_c(::AbstractDict)` 의 `"$(_c(k)):$(_c(v))"` 가 이미 키를 찍으므로 그대로
-# 보존된다 — 별도 접두를 덧붙일 필요가 없다.
-_c(r::RobotRec) = canonical(r)
+# `_c(r::RobotRec) = canonical(r)` — 정의는 위 `_c` 클러스터(`_c(::AbstractDict)` 바로 뒤)에
+# 있다. `_canonical_blocks` 의 `"Fleet=" * _c(s.fleet)` 가 그 다리를 실제로 쓴다.
 
 canonical(b::ProgBlock) = "Prog(closed=$(_c(b.closed)))"
 
@@ -260,10 +269,12 @@ _canonical_blocks(s::SimState) = (
     canonical(s::SimState; omit::Set{Symbol} = Set{Symbol}()) -> String
 
 `s` 의 정준 문자열. **같은 상태는 프로세스가 달라도 같은 문자열을 낸다.**
-`omit` 으로 `:g,:geo,:fleet,:prog` 중 일부 블록을 빼고 합성할
-수 있다 — 예: `canonical(s; omit = Set([:prog]))` 은 prog 를 뺀 해시를 만든다(부칙 B5). `omit` 에 위 4개 이름이 아닌 것이 섞이면(오타 등, 2026-08-21 축소로 사라진 `:courier` 도 포함)
-**에러를 던진다** — M-1: 검증 없이 조용히 무시하면 `omit=Set([:clok])` 이 아무 일도 안 하고
-전체 해시를 돌려주고, Task 13 의 strip 이 아무 것도 안 벗겨냈다는 사실이 조용히 샌다.
+`omit` 으로 `:g,:geo,:fleet,:prog` 중 일부 블록을 빼고 합성할 수 있다 — 예:
+`canonical(s; omit = Set([:prog]))` 은 prog 를 뺀 해시를 만든다(부칙 B5).
+`omit` 에 위 4개 이름이 아닌 것이 섞이면(오타 등) **에러를 던진다** — 2026-08-21 축소로
+사라진 `:courier` 도 이제 그 "위 4개가 아닌 것"에 포함된다. M-1: 검증 없이 조용히 무시하면
+`omit=Set([:clok])` 이 아무 일도 안 하고 전체 해시를 돌려주고, Task 13 의 strip 이 아무
+것도 안 벗겨냈다는 사실이 조용히 샌다.
 **주의**: `omit` 이 있는 해시와 없는 해시는 같은 키공간을 공유하지 않는다 — 블록 하나를 뺀
 문자열이 다른 상태의 전체 문자열과 우연히 같아질 수는 있지만(그것이 clock/age 를 뺀 의도된
 용도다), `omit=Set([:g])`/`omit=Set([:geo])` 끼리는 각 블록 문자열이 서로 다른 접두
@@ -289,8 +300,9 @@ end
   상태 재방문 탐지가 전부 이 위에 선다"(구 spec §3.2). 그 계약은 `s` 가 **충분통계**라는
   전제 위에 있었다.
 
-  지금: 엄격 축소로 `s` 는 행동의 write-set 만 담는 **손실 압축**이다(hazard 비율·스케줄
-  진행·zone·시계·사건이 전부 밖에 있다). 그래서 **서로 다른 두 세계가 같은 해시를 낸다.**
+  지금: 엄격 축소로 `s` 는 행동의 write-set 만 담는 **손실 압축**이다(hazard 비율·시계·
+  사건이 전부 밖에 있다 — `스케줄 진행`(`prog.closed`)과 `zone`(`geo.zones`)은 2026-08-21
+  축소 이후에도 s 안에 있다, 이 목록에서 뺀다). 그래서 **서로 다른 두 세계가 같은 해시를 낸다.**
   이 해시로 MCTS 트리 노드를 병합하면 그 둘이 한 노드로 합쳐지고, 한쪽의 롤아웃 통계가
   다른 쪽의 가치로 읽힌다 — 에러는 안 나고 정책만 조용히 틀어진다. 이 레포가 반복해서
   데인 실패 모양(낡은/다른 것이 이번 판단의 참·거짓을 정하는 것) 그대로다.
