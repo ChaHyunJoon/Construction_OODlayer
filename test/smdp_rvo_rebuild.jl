@@ -62,3 +62,19 @@ end
     CB.rvo_rebuild!(env); b = positions()
     @test a == b
 end
+
+# =============================================================================
+# 컨트롤러 리뷰 1라운드 발견 1 — active_nodes 컴프리헨션이 가드를 넘어가며 죽는 자리가
+# 바뀌면 안 된다. 원본 update_rvo_sim! 은 `active_nodes = [get_node(sched, v) for v in
+# cache.active_set]` 을 가드보다 **먼저, 무조건** 계산했다. `cache.active_set` 에 `sched`
+# 에 없는 정점 id 가 남아 있으면(가정 위반) 이 줄이 **가드와 무관하게** BoundsError 로
+# 즉시 죽는 게 원래 동작이다. 그 줄을 rvo_rebuild! 안으로만 옮기면, 가드가 false 인
+# (흔한) 경우엔 이 계산 자체가 안 일어나 죽어야 할 자리에서 조용히 넘어간다 — 조용한
+# 폴백 금지 위반. 이 시험은 가드가 false 인 채로도 여전히 죽는지를 잰다.
+# =============================================================================
+@testset "🔴 update_rvo_sim! 은 sched 에 없는 정점을 조용히 넘기지 않는다 (가드가 false 여도 죽는다)" begin
+    @test !CB.rvo_sim_needs_update(env.scene_tree)  # 가드가 여전히 false 임을 먼저 확인 — 아니면 이 시험이 무의미하다
+    bogus_env = deepcopy(env)
+    push!(bogus_env.cache.active_set, typemax(Int))  # sched 에 없는 정점 id (가정 위반)
+    @test_throws BoundsError CB.update_rvo_sim!(bogus_env)
+end
