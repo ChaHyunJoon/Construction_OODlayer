@@ -736,6 +736,33 @@ hazard_rate(st::HazardState, id; mode::Symbol = :idle, soc::Float64 = 1.0) =
     hazard_rate_from(st.params, st.usage_s[id], soc, mode)
 ```
 
+- [ ] **Step 4b: 🔴 라벨 레인의 독립 기본값을 같이 고친다**
+
+실측: `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl:150` 이
+
+```julia
+    drain_sigma  = parse(Float64, get(ENV, "DS_DRAIN_SIGMA", "0.15")),
+```
+
+로 **`HazardParams` 와 무관하게 0.15 를 자기 기본값으로 들고 있다.** `hazard.jl` 만 고치면
+**실행 레인은 D-5 세계인데 라벨 레인은 옛 세계**가 된다 — 이 레포가 이미 데인 실패 모양이다
+(`DS_HOTSWAP` 하나 빠뜨려 `fault` 발화율이 100% → 23% 로 조용히 샜다).
+
+그 줄의 기본값을 `"0.0"` 으로 바꾸고, **두 레인이 같은 값을 쓰는지 단언**을 시험에 추가한다:
+
+```julia
+@testset "🔴 라벨 레인이 실행 레인과 같은 세계다" begin
+    src = read(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle",
+                        "gen_oracle_dataset.jl"), String)
+    @test occursin("\"DS_DRAIN_SIGMA\", \"0.0\"", replace(src, " " => ""))
+    @test CB.HazardParams().drain_sigma == 0.0
+end
+```
+
+⚠️ 같은 방식으로 독립 기본값을 든 `DS_*` 손잡이가 더 있는지 확인한다:
+`grep -n 'get(ENV, "DS_' wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl | head -40`.
+`HazardParams`/`BatteryParams` 와 이름이 겹치는 것은 전부 대조한다.
+
 - [ ] **Step 5: `generation` 을 올린다**
 
 `wm4spacecraft_manufacturing/core/objective.json` 의 `"generation"` 을
@@ -762,6 +789,7 @@ Expected: 셋 다 PASS. `smdp_stamp_smoke.jl` 이 옛 generation 을 못박고 �
 
 ```bash
 git add src/smdp/hazard.jl test/smdp_hazard_knobs.jl \
+        wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl \
         wm4spacecraft_manufacturing/core/objective.json test/smdp_stamp_smoke.jl
 git commit -m "feat(hazard): spare-independent firing, finite zone mtbf, deterministic drain (D-3/4/5)"
 ```
