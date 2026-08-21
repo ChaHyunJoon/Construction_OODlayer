@@ -1,7 +1,10 @@
 # test/smdp_clock_smoke.jl
 # spec §3.3 Clock · §11-8 — 시계가 셋이었다(SIM_STEP · HazardState.t/.step ·
-# run_demo._SIM_STEP). Courier.step_out/step_swap 이 **절대 스텝 인덱스**라 시계를
-# 복원 안 하면 배송이 과거나 미래에 도착한다.
+# run_demo._SIM_STEP). `battery_courier.jl` 의 `BatteryDelivery.step_out`/`step_swap` 이
+# **절대 스텝 인덱스**라 시계를 복원 안 하면 배송이 과거나 미래에 도착한다.
+# (2026-08-20 후속: `src/smdp/simstate.jl` 의 `CB.SimState` 쪽 `CourierRec` 는 이제
+# `ProgBlock.t` 가 절대 sim 초 시계를 직접 실어 날라 `t_out`/`t_swap`(Float64)으로 개명됐다 —
+# 이 파일이 재는 SIM_STEP 시계 자체는 그와 별개로 여전히 필요하다.)
 #
 #   julia +lts --project=. test/smdp_clock_smoke.jl
 using ConstructionBots

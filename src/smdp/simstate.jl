@@ -31,57 +31,88 @@ const SHA = Base.require(Base.PkgId(Base.UUID("ea8e919c-243c-51af-8825-aaa63cd72
 using Base: @kwdef
 
 # --- 블록 --------------------------------------------------------------------------------
+#
+# 🔴 2026-08-20 **엄격 축소 (사용자 결정)**: `s` 는 **행동공간이 실제로 편집하는 변수만** 담는다.
+#    네 팔(NOOP · Replace · RelocateBuild · SwapBattery)이 건드리는 19 필드가 전부다.
+#    42 → 40 → **19**.
+#
+# ⚠️ **이 축소가 무엇을 포기했는지 명시한다 — 조용히 새면 안 되는 종류다.**
+#
+#   (1) `F(τ|s,a)` 를 이 `s` 로 정의할 수 없다. hazard 비율
+#       `λ_r(u) = λ_0r + β_u·usage_r + β_s(1−soc_r) + β_c·1[carrying_r]` 의 인자 중
+#       `λ_0r`(HazardBlock) · `usage_r` · `eff_r` 가 전부 빠졌다. `soc_r` 하나만 남는다.
+#       → **sojourn 모델 Υ 는 `s` 밖에서 조달해야 한다.**
+#   (2) `T_plan(s)` 을 이 `s` 로 계산할 수 없다. `closed`/`active`(스케줄 진행)와
+#       `zones`(경로 차단)가 빠졌다. → **τ 의 첫 성분도 `s` 밖에서 와야 한다.**
+#   (3) 이번 epoch 를 연 사건(`EventBlock`)이 없다. decision epoch 가 event-triggered 인데
+#       어느 사건이 열었는지 `s` 가 모른다. → 행동 메뉴는 `s` 가 아니라 호출자의 ctx 가 정한다.
+#   (4) `Clock` 이 없는데 `CourierRec.step_out`/`step_swap` 은 **절대 스텝 인덱스**다.
+#       그 둘은 이제 `s` 안에서 해석 불가능한 값이다 — 상대시간으로 바꾸거나 소비처가
+#       시계를 따로 들고 있어야 한다.
+#
+#   즉 이 `s` 는 "행동이 만드는 변화" 를 완전히 담지만 "시간이 만드는 변화" 는 안 담는다.
+#   ⟨S, A, P, γ, R, Υ⟩ 중 **S 와 A 는 이것으로 충분하고, P·Υ 는 이것만으로 부족하다.**
+#
+# 🔴 **같은 날 후속 (sojourn read-set 확장, 19 → 26): 위 (1)(2)(4)는 이제 부분/전부 해소됐다.**
+#   (1) `usage_r`·`eff_r` 는 `RobotRec.usage_s`/`RobotRec.eff` 로 돌아왔다. `λ_0r`(HazardBlock)
+#       은 여전히 밖 — (1)은 **부분** 해소.
+#   (2) `closed`/`active`(신규 `ProgBlock`)와 `zones`(`GeoBlock.zones`, 기하까지)가 돌아왔다 —
+#       (2)는 **해소**.
+#   (3) `EventBlock` 은 여전히 없다 — 그대로.
+#   (4) `ProgBlock.t` 가 절대 sim 초 시계를 제공해 `CourierRec.t_out`/`t_swap` 이 그 시계로
+#       해석 가능해졌다 — (4)는 **해소**(`step_out`/`step_swap` → `t_out`/`t_swap` 개명).
+#   상세: `.superpowers/sdd/2026-08-20-sojourn-generative-smdp/task-3-brief.md`.
 
-"attributed schedule DAG. 위상만으로는 부족하다 — Replace 의 핵심 편집(replace_in_schedule!)은
-로봇 id 를 **재스탬프**할 뿐 위상을 안 바꾼다. 그래서 `binding` 이 필수다."
+"""행동이 편집하는 스케줄 그래프 부분만. `n_nodes`·`closed`·`active` 는 2026-08-20 엄격
+축소에서 빠졌다(어떤 팔도 안 건드린다 — 명목 TAMP 가 움직인다). `closed`/`active` 는 같은 날
+후속에서 `ProgBlock` 으로 돌아왔다(GraphBlock 자체가 아니라 별도 블록으로) — 위 (2) 해소."""
 @kwdef struct GraphBlock
-    n_nodes::Int
-    edges::Set{Tuple{Int,Int}}          # precedence + 배정 엣지. 태스크 14 의 T_plan 이 쓴다
-    closed::Set{Int}
-    active::Set{Int}
-    binding::Dict{Int,Int}              # 정점 → 바인딩된 로봇 id
-    edge_bias::Dict{Tuple{Int,Int},Float64}   # AGENT_COST_BIAS 가 만드는 가중치 배수
-    wedge_edges::Set{Tuple{Int,Int}}    # ReformTeam 이 G 에 남기는 영구 편집 (spec §5.4-b)
+    edges::Set{Tuple{Int,Int}}          # precedence + 배정 엣지. Replace 가 편집한다
+    binding::Dict{Int,Int}              # 정점 → 바인딩된 로봇 id. Replace 가 재스탬프한다
+    wedge_edges::Set{Tuple{Int,Int}}    # 스페어 인계 직렬화(Replace 경로)가 남기는 영구 편집
     dissolved_gates::Set{Tuple{Int,Int}}
 end
 
-"기하. 운반 중이 아닌 부품/조립체의 world pose · 활성 no-go 구역 · 누적 build translation Δ."
+"""행동이 편집하는 기하 + **sojourn 이 읽는 zone**. `zones` 는 2026-08-20 엄격 축소에서
+빠졌다가 이 설계에서 돌아왔다 — zone 이 `T_plan_next` 를 가르기 때문이다(spec §3-3).
+⚠️ **기하까지** 나른다. 이름만 나르면 반지름이 다른 두 상태가 같은 해시를 낸다."""
 @kwdef struct GeoBlock
-    poses::Dict{Int,NTuple{3,Float64}}
-    zones::Set{Symbol}
-    build_delta::NTuple{2,Float64}
+    poses::Dict{Int,NTuple{3,Float64}}  # RelocateBuild 가 강체 Δ 를 건다
+    build_delta::NTuple{2,Float64}      # 누적 build translation
+    zones::Dict{Symbol,NTuple{3,Float64}}   # key => (cx, cy, r)
 end
 
-"""로봇 하나의 레코드. 로봇 집합에는 **창고의 spare 도 포함한다**(실측 작업 10 + 예비 12 = 22).
-`spares_left` 는 이 집합에서 유도되는 값이지 따로 들고 다니는 스칼라가 아니다."""
+"""로봇 하나의 레코드. 다섯 필드는 행동의 write-set, 뒤 셋은 sojourn 의 read-set 이다.
+`usage_s`·`mode` 는 λ_r 의 인자이고, `eff`(ε_r)는 soc 감소율의 인자다 — 상수라 동역학
+비용이 0 인데, 빼면 모델이 잠재변수 혼합이 되어 s 에서 Markov 가 아니다(spec §3-3).
+`mode ∈ {:idle, :transit, :carry, :manip}` — 실측 hazard.jl:333-338, `:transit` 이 기준(배수 1.0).
+
+로봇 집합에는 창고의 spare 도 포함한다(실측 작업 10 + 예비 12 = 22).
+`id` 는 필드가 아니라 **`fleet` Dict 의 키**다(중복 진실원을 두지 않는다). 빠진 것들:
+`vel`(RVO 파생) · `energy_J`(비용 누적기) · `stalled`(soc 파생)."""
 @kwdef struct RobotRec
-    id::Int
-    pose::NTuple{3,Float64}             # SE(2)
-    vel::NTuple{2,Float64}              # 빼면 반응형 컨트롤러가 memoryless 가 아니다
-    soc::Float64
-    energy_J::Float64
-    usage_s::Float64                    # hazard 항 β_u·usage. 빼면 F(τ|s,a) 정의 불능
-    eff::Float64                        # frailty. 한 번 뽑고 재추첨 없음 → 무기억성 미적용 → 상태다
-    health::Symbol                      # :healthy | :degraded | :dead
-    stalled::Bool                       # SoC 0 으로 멈춰 선 로봇. 빼면 복구 판정이 갈린다
-    payload::Union{Nothing,Int}
+    pose::NTuple{3,Float64}             # SE(2). Replace 의 본체 교체·복구 스냅이 움직인다
+    soc::Float64                        # [0,1]. SwapBattery 가 되돌린다
+    health::Symbol                      # :healthy | :degraded | :dead. Replace 가 바꾼다
+    payload::Union{Nothing,Int}         # 운반 중인 것. Replace 가 재부모화한다
     role::Symbol                        # :transport|:team_member|:idle|:spare_parked|:courier
-end
-
-"""비율의 인자와 발화 상태만. **누적값(cum_*)과 문턱(thr_*)은 안 넣는다**(spec §3.4).
-예외: `expired_*` — `_hz_fire_break!` 가 유예하면서 아무것도 리셋하지 않아 "만료됐는데 대기 중"
-상태가 관측 물리량 `(usage, soc, mode)` 만으로 복원되지 않는다. **값이 아니라 불리언만.**"""
-@kwdef struct HazardBlock
-    lambda0::Dict{Int,Float64}
+    usage_s::Float64
     mode::Symbol
-    broken::Set{Int}                    # 발화한 위험은 재발화 없음
-    expired_break::Set{Int}
-    expired_cell::Set{Int}
+    eff::Float64
 end
 
-"배송 레코드. `target`/`courier` 는 **좌표가 아니라 로봇 id** 이고 `step_*` 는 **절대 스텝 인덱스**
-(→ Clock 없이는 복원 불가). 실제 `BatteryDelivery`(src/respec/battery_courier.jl:86-95)와
-필드명이 일치한다(순서는 다르지만 `@kwdef` 라 무관)."
+"""스케줄 진행 + 시계. `T_plan_next` 와 흡수상태 판정이 이것을 읽는다(spec §3-3).
+`active` 의 값은 그 정점이 **실제로 시작한 시각** — 진행 중 노드의 잔여 소요시간을 내려면
+필요하다. `t` 는 절대 sim 초이고 `CourierRec.t_*` 의 해석 기준이다."""
+@kwdef struct ProgBlock
+    t::Float64
+    closed::Set{Int}
+    active::Dict{Int,Float64}
+end
+
+"""배송 레코드. `SwapBattery` 가 만든다. `target`/`courier` 는 **좌표가 아니라 로봇 id**.
+`t_out`/`t_swap` 은 절대 sim 초다(`ProgBlock.t` 와 같은 시계) — 2026-08-20 엄격 축소가 남긴
+절대 스텝 인덱스 부채(위 (4))는 `ProgBlock.t` 가 시계를 돌려주면서 해소됐다."""
 @kwdef struct CourierRec
     target::Int
     courier::Int
@@ -89,132 +120,63 @@ end
     home::NTuple{2,Float64}
     goal::NTuple{2,Float64}
     phase::Symbol                       # :outbound | :returning
-    step_out::Int
-    step_swap::Int
+    t_out::Float64
+    t_swap::Float64
 end
 
-"1차 개정이 빠뜨린 블록. Courier.step_out/step_swap 이 절대 스텝 인덱스라 필수다."
-@kwdef struct ClockBlock
-    t::Float64
-    step::Int
-end
+# ---- 2026-08-20 엄격 축소에서 사라진 채로 남은 블록 둘 -----------------------------------------
+#   `HazardBlock`(lambda0·mode·broken·expired_break·expired_cell) — 위 (1). `usage_s`·`mode`·
+#     `eff` 가 `RobotRec` 으로 돌아오면서 부분적으로만 해소됐다 — `lambda0`·`broken` 류는 여전히 밖.
+#   `AgeBlock`(snap_count)   ← 명목 레인 복구가 증가시킨다, 팔이 아니다
+#   `EventBlock`(kind·robot·severity)                             — 위 (3), 그대로 남음
 
-"""**이 블록이 이 문제를 semi-Markov 로 만든다**(spec §5.4).
-Ascione Thm 2.2: `X` 가 semi-Markov ⟺ `(X, γ)` 가 Markov. 이 둘이 그 age 과정 `γ` 다.
-- `no_progress` — `maybe_emit_reform_ood!` 가 `% REFORM_INTERVAL == 0` 로 발화시킨다.
-  **결정의 34%(485/1438)가 이 카운터에 걸려 있다** — 코너 케이스가 아니다.
-- `snap_count`  — `>= SNAP_ESCALATE_AT(3)` 에서 복구 경로가 갈린다."""
-@kwdef struct AgeBlock
-    no_progress::Int
-    snap_count::Int
-end
-
-"""이번 epoch 를 연 사건. SMDP 의 decision epoch 는 event-triggered 이므로 트리거한 사건이
-상태의 일부다. ⚠️ **`kind` 는 kind 지름길의 입구다**(spec §4.4) — 모델에 넣을 때는 타입 라벨이
-아니라 **물리적 귀결**로 넣고, 타입 문자열은 로그에만 남긴다. 방어선은 §6.4 의
-leave-one-failure-type-out 행렬이고 그것이 유일한 방어선이다."""
-@kwdef struct EventBlock
-    kind::Symbol
-    robot::Union{Nothing,Int}
-    severity::Float64
-end
-
-"""s = (G, Geo, Fleet, Hazard, Courier, Clock, Age, e)  — spec §3.3 확정 정의."""
+"""s = (G, Geo, Fleet, Prog, Courier) — 26 필드. 행동공간이 편집하는 write-set(19필드)에
+sojourn 샘플러·보상함수가 읽는 read-set(zones·usage_s·mode·eff·prog) 을 합쳤다(spec §3-3).
+남은 부채(EventBlock 등)는 위 목록."""
 @kwdef struct SimState
     g::GraphBlock
     geo::GeoBlock
     fleet::Dict{Int,RobotRec}
-    hazard::HazardBlock
+    prog::ProgBlock
     courier::Vector{CourierRec}
-    clock::ClockBlock
-    age::AgeBlock
-    event::EventBlock
 end
 
 # =============================================================================
-# 🔴 알려진 한계 — `SimState` 는 `:state` 인벤토리를 아직 다 담지 못한다
-#     (final-review §2.1 실측. **Task 10 (snapshot/restore!) 의 입력이다.**)
+# 🔴 알려진 한계 — 2026-08-20 엄격 축소 이후
 #
-# 이 목록을 여기 적는 이유: `globals_with(disp)` 는 레포 전체에서 **호출자가 0개**다
-# (정의 줄뿐). 즉 Task 7 의 disposition 표와 Task 9 의 여덟 블록을 묶는 기계가 **없고**,
-# 아래 격차는 어떤 테스트도 잡지 못한다. Task 10 이 이것을 재발견하지 말고 **물려받도록**
-# 이름을 하나하나 적는다. 🔴 **여기서 필드를 추가하지 않는다** — 무엇을 어떤 블록에 어떤
-# 타입으로 넣을지는 Task 10 의 설계 작업이다(스펙 §3.5 규칙 1·3).
+# 이전 세대의 이 자리에는 "`:state` 인벤토리 30개 중 무엇이 `SimState` 에 안 담겼는가" 표가
+# 있었다. 그 표의 전제는 "`s` 는 에피소드 상태를 전부 담아야 한다" 였는데, 엄격 축소가 그
+# 전제를 **의도적으로 버렸다** — 이제 `s` 는 **행동이 편집하는 것만** 담는다. 그래서 그 표는
+# 통째로 무의미해졌고(대부분의 이름이 "일부러 안 담는다" 로 답이 정해진다) 삭제했다.
 #
-#   분할은 30 개를 정확히 덮는다: (0) 8 + (A) 13 + (B) 7 + (C) 2 = 30. `HAZARD_STATE` 는
-#   `:split` 이고 `HazardBlock` 이 담으므로 이 목록에 없다.
+# 대신 이 축소가 만든 **구조적 부채**를 적는다. 위 (1)~(4)가 그것이고, 요약하면:
 #
-# --- (0) 깨끗이 대응된다 — 8 (Task 10 이 재유도하지 말고 대조할 수 있게 이름으로 적는다) ----
+#   `s` 만으로는 **다음 사건이 언제 오는지(τ)** 도 **다음 상태가 무엇인지(P)** 도 모른다.
+#   `s` 는 `(s, a) → s⁺` 의 **행동 편집 부분**에 대해서만 닫혀 있다.
 #
-#   BATTERY_FLEET        → `RobotRec.soc` · `.energy_J` (fleet::Dict{Int,RobotRec})
-#   STALLED_ROBOTS       → `RobotRec.stalled`
-#   FAULTED_ROBOTS       → `RobotRec.health`  (:healthy | :degraded | :dead)
-#   BATTERY_DELIVERIES   → `courier::Vector{CourierRec}`
-#   WEDGE_EDGES          → `GraphBlock.wedge_edges`
-#   DISSOLVED_GATES      → `GraphBlock.dissolved_gates`
-#   SNAP_COUNT           → `AgeBlock.snap_count`
-#   SIM_STEP             → `ClockBlock.step`
+# → 그러므로 소비처는 반드시 `s` 와 **함께** 다음을 따로 들고 다녀야 한다:
+#     · hazard 비율 인자 (`λ_0r` · `usage_r` · `eff_r`)        → `F(τ|s,a)` 용
+#     · 스케줄 진행 (`closed`/`active`) 과 활성 zone            → `T_plan` 용
+#     · 시계 (`t`/`step`)                                       → `CourierRec.step_*` 해석용
+#     · 이번 epoch 를 연 사건                                   → 행동 메뉴 결정용
+#   그것들을 `s` 에 다시 넣지 않고 어디에 둘지는 **아직 정해지지 않았다** — Task 10
+#   (`snapshot`/`restore!`)이 그 결정을 물려받는다.
 #
-#   ⚠️ "깨끗하다" = **키 공간과 값이 둘 다 살아 있다**는 뜻이지 왕복(round-trip)을 실측했다는
-#   뜻이 아니다. 이 여덟도 `snapshot`/`restore!` 가 생기기 전까지는 종이 위의 대응이다.
+# 🔴 **같은 날 후속: 위 목록 넷 중 셋이 `s` 안으로 되돌아왔다.** `usage_r`·`eff_r`(`λ_0r` 은
+#   여전히 밖) · `closed`/`active`/zone(신규 `ProgBlock`·`GeoBlock.zones`) · 시계(`ProgBlock.t`,
+#   `CourierRec.step_*` → `t_*` 로 개명해 그 시계로 해석)가 그것이다. **"이번 epoch 를 연
+#   사건" 만 아직 s 밖**이다 — Task 10 이 물려받을 결정은 그 하나로 좁혀졌다.
 #
-# --- (A) `:state` 로 분류됐는데 대응 필드가 아예 없다 — 12 + 1 = 13 -----------------------
+# 🔴 **남아 있던 손실 매핑 하나 — 이 태스크에서 해소됐다** (해시 기반 dedup/재출발을 켜기 전에
+#   닫을 것으로 적혀 있던 항목):
+#   구 `GeoBlock.zones :: Set{Symbol}` 이 `RESTRICTION_ZONES :: Dict{Symbol,Ball2}` 의 키만
+#   나르고 공 기하(중심·반지름)를 버리던 결함은 필드가 통째로 빠지면서 한때 s 에서 사라졌었다.
+#   신규 `GeoBlock.zones :: Dict{Symbol,NTuple{3,Float64}}` 는 **기하까지**(cx,cy,r) 나른다 —
+#   이름만 나르는 옛 결함이 그대로 되풀이되지 않도록 이 태스크의 설계 자체가 그 경고를 반영했다.
 #
-#   RESPEC_QUEUE          _IDENTITY_SEEN       VALID_ID_COUNTERS   INVALID_ID_COUNTERS
-#   CARRIER_LAST_D        _REFORM_CT           LAST_EDGE_COSTS     _DECISION_N
-#   HOT_SWAP_ASSETS       RESPEC_HOLD          _ZONE_CT            ZONE_DECIDE_DEFERRED
-#   + `OOD_SCHEDULE.fired` (`:split` 항목 — `OODTrigger.fired` 도 담을 필드가 없다)
-#
-#   ⚠️ 이 중 넷은 Task 7 의 수정 라운드가 **가장 강하게 `:state` 로 끌어올린** 것들이다:
-#   `RESPEC_QUEUE`(복원 안 하면 사건이 사라진다) · `_IDENTITY_SEEN`(프로그램이 죽는지를 정한다)
-#   · `VALID_ID_COUNTERS`(라운드 4 [Critical], 에피소드 중간에 증가하는 실측 프로브가 있다)
-#   · `CARRIER_LAST_D`(텔레포트 복구를 발화시킨다).
-#   ✅ 2026-08-20: `CBF_HOLD` 는 이 목록에서 빠졌다. `src/safety/cbf.jl` 삭제가 커밋되면서
-#   인벤토리의 `CBF_*` 8개 + `FAILCLOSED_STOP` 이 **같은 커밋에서** 함께 제거됐다 —
-#   `test/smdp_global_inventory.jl` 의 집합 등호가 그것을 강제한다.
-#
-# --- (B) 부분적으로만/파생으로만 표현된다 — 7 --------------------------------------------
-#
-#   SPARE_POOLS  SPARE_SLOTS  RECOVERY_SPARES  CHECKED_OUT_SPARES
-#   DECOMMISSIONED_BODIES  RESPEC_FROZEN  RESPEC_PINNED
-#
-#   `role_r` 이 풀 구조에서 파생되고 `RESPEC_FROZEN`/`PINNED` 는 `closed`/`active` 에서
-#   복원 가능하다는 것이 스펙의 주장이다. 그러나 `SPARE_SLOTS`·`DECOMMISSIONED_BODIES` 는
-#   `Dict{AbstractID,Vector{Float64}}` = **좌표**이고 그것을 나르는 필드가 없다.
-#   `SPARE_POOLS` 는 depot 소속(`Dict{Symbol,Vector{RobotID}}`)을 나르는데 `RobotRec` 에
-#   depot 필드가 없다.
-#
-# --- (C) 🔴 "직접 대응" 열 개 중 둘은 **콘텐츠 해시가 살아남을 수 없는 방식으로 손실**된다 --
-#
-#   1. `RESTRICTION_ZONES :: Ref(Dict{Symbol,LazySets.Ball2})`  →  `GeoBlock.zones :: Set{Symbol}`
-#      **키만 살고 공 기하(중심·반지름)가 통째로 버려진다.** 이름이 같고 반지름이 다른 두
-#      상태가 **같은 해시를 낸다.** zone 축은 481 다지선다 결정 중 143 개다 — 해시로 키를
-#      잡는 rollout 오라클에서 이것은 근사가 아니라 **조용한 충돌**이다.
-#   2. `AGENT_COST_BIAS :: Ref(Dict{AbstractID,Float64})` (로봇 → 배수)
-#      →  `GraphBlock.edge_bias :: Dict{Tuple{Int,Int},Float64}` (간선 → 배수)
-#      **키 공간이 다르다.** 현재 배정 간선이 없는 로봇의 bias 는 들어갈 자리가 없고,
-#      배정 구조 없이는 간선→bias 에서 로봇→bias 를 복원할 수 없다. 이것이 `Deprioritize`
-#      (여섯 팔 중 하나)의 **지연 효과 전부**다.
-#
-#   🔴 (C) 의 둘은 해시 기반 dedup/재출발을 켜기 **전에** 닫아야 한다. (A)/(B) 와 달리
-#   "아직 안 담았다" 가 아니라 "담았다고 보이는데 틀리다" 이기 때문이다.
-#
-# --- (D) 반대 방향 — 인벤토리에 근거가 없는 `SimState` 필드 -------------------------------
-#
-#   * `AgeBlock.no_progress` — 실행 레인(`run_demo.jl`)의 무진전 카운터는 `simulate_case!`
-#     안의 **함수 지역 변수** `stall`(`:849`·`:856`)이라 전역 스캐너가 원리적으로 못 본다.
-#     `maybe_emit_reform_ood!(no_progress)` 는 `demo_utils.jl:276` 에서만 불린다. 즉 스펙이
-#     "이 문제를 semi-Markov 로 만든다" 고 지목한 바로 그 필드에 **오라클이 굴릴 레인에서의
-#     생산자가 없다.** 스냅샷/복원 작업 전에 결론이 나야 한다 — `Age` 가 진짜 상태인지
-#     자리표시자인지가 여기서 갈린다.
-#   * `RobotRec.vel` — 출처인 RVO 에이전트의 컨테이너 `RVO_SIM_WRAPPER` 를 인벤토리는
-#     `:replay` 로 분류한다. 핸들은 replay·값은 state 라는 해석이 옳지만 표에 `:split` 항목이
-#     없어 **두 문서가 종이 위에서 어긋나 있다.**
-#
-# --- 무엇을 만들어야 하는가 (Task 10 이 물려받는 것) --------------------------------------
-#   `globals_with(:state)` 를 **소비하는** 기계 검사 하나. 이름마다 "s 의 어느 블록/필드" 또는
-#   "일부러 s 에 안 넣는다 — 이유" 를 선언하게 하고, 선언이 없는 이름이 있으면 빨개진다.
-#   지금 14 개 이름에는 둘 중 어느 것도 없다.
+# ✅ 2026-08-20 에 소멸한 것: `AGENT_COST_BIAS`(로봇→배수) vs 구 `GraphBlock.edge_bias`
+#   (간선→배수)의 키 공간 불일치 — `Deprioritize` 가 어휘에서 빠지며 필드 자체가 없어졌다.
+#   (`deprioritize_agent!` 집행부는 TIER-2 소프트 재명세 기전으로 남아 있다.)
 # =============================================================================
 
 """ξ — 재생 상태. **s 에 절대 안 들어간다.** restore! 와 CRN 만 쓴다.
@@ -267,64 +229,50 @@ _c(d::AbstractDict) = "{" * join(["$(_c(k)):$(_c(v))"
 #   - `SHA` 는 여전히 `Base.require` 로 Manifest 전이 의존성을 우회 로드한다 — 근본 해법인
 #     `Project.toml [deps]` 한 줄은 이 태스크 범위 밖으로 아직 안 갚은 채로 남아 있다.
 
-canonical(b::GraphBlock) = "G(n=$(b.n_nodes),edges=$(_c(b.edges)),closed=$(_c(b.closed))," *
-    "active=$(_c(b.active)),"  *
-    "bind=$(_c(b.binding)),bias=$(_c(b.edge_bias)),wedge=$(_c(b.wedge_edges))," *
-    "dissolved=$(_c(b.dissolved_gates)))"
+canonical(b::GraphBlock) = "G(edges=$(_c(b.edges)),bind=$(_c(b.binding))," *
+    "wedge=$(_c(b.wedge_edges)),dissolved=$(_c(b.dissolved_gates)))"
 
-canonical(b::GeoBlock) = "Geo(poses=$(_c(b.poses)),zones=$(_c(b.zones)),delta=$(_c(b.build_delta)))"
+canonical(b::GeoBlock) = "Geo(poses=$(_c(b.poses)),delta=$(_c(b.build_delta))," *
+    "zones=$(_c(b.zones)))"
 
-# health/role 은 예전엔 raw `$(...)` 로 꽂혔다 — 그것이 C-2 의 실제 진입점이었다. 이제 `_c(...)`
-# 를 통해서만 나간다.
-canonical(r::RobotRec) = "R$(r.id)(pose=$(_c(r.pose)),vel=$(_c(r.vel)),soc=$(_c(r.soc))," *
-    "E=$(_c(r.energy_J)),usage=$(_c(r.usage_s)),eff=$(_c(r.eff)),health=$(_c(r.health))," *
-    "stalled=$(r.stalled),payload=$(_c(r.payload)),role=$(_c(r.role)))"
+# health/role 은 예전엔 raw `$(...)` 로 꽂혔다 — 그것이 C-2(구분자 위조)의 실제 진입점이었다.
+# 이제 `_c(...)` 를 통해서만 나간다.
+# ⚠️ 2026-08-20: `RobotRec.id` 가 필드에서 빠졌다. 로봇 identity 는 `fleet` Dict 의 키가
+# 나르므로, 그 키를 문자열에 **반드시** 넣어야 한다 — 안 넣으면 I-3 이 잡았던 결함이 되살아난다
+# (`Dict(1=>rec)` 와 `Dict(2=>rec)` 가 같은 해시를 낸다). 그래서 접두 `R<key>` 는 아래
+# `_canonical_blocks` 가 **키에서** 붙인다. 이 메서드는 레코드 내용만 찍는다.
+canonical(r::RobotRec) = "(pose=$(_c(r.pose)),soc=$(_c(r.soc)),health=$(_c(r.health))," *
+    "payload=$(_c(r.payload)),role=$(_c(r.role)),usage=$(_c(r.usage_s))," *
+    "mode=$(_c(r.mode)),eff=$(_c(r.eff)))"
 
-canonical(b::HazardBlock) = "Hz(l0=$(_c(b.lambda0)),mode=$(_c(b.mode)),broken=$(_c(b.broken))," *
-    "expired_break=$(_c(b.expired_break)),expired_cell=$(_c(b.expired_cell)))"
+canonical(b::ProgBlock) = "Prog(t=$(_c(b.t)),closed=$(_c(b.closed)),active=$(_c(b.active)))"
 
+# ⚠️ t_out/t_swap 은 이제 Float64 다 — 예전 Int 는 `$(c.step_out)` 로 직접 꽂아도 안전했지만
+# float 은 -0.0 정규화가 필요해 반드시 `_c(...)` 를 통해서 찍는다(`_c(::Float64)` 의 `+ 0.0`).
 canonical(c::CourierRec) = "Cr(target=$(c.target),courier=$(c.courier),depot=$(_c(c.depot))," *
     "home=$(_c(c.home)),goal=$(_c(c.goal)),phase=$(_c(c.phase))," *
-    "out=$(c.step_out),swap=$(c.step_swap))"
+    "out=$(_c(c.t_out)),swap=$(_c(c.t_swap)))"
 
-canonical(b::ClockBlock) = "Clk(t=$(_c(b.t)),step=$(b.step))"
-canonical(b::AgeBlock)   = "Age(no_progress=$(b.no_progress),snap_count=$(b.snap_count))"
-canonical(b::EventBlock) = "E(kind=$(_c(b.kind)),robot=$(_c(b.robot)),sev=$(_c(b.severity)))"
-
-# `canonical(s::SimState)` 는 8개 블록 문자열을 **이름표 붙여** 모아뒀다가 합성한다 — 리터럴
-# 하나로 이어붙이지 않는 이유(컨트롤러 부칙 B5): `canonical(s.clock)`(t, step) 이 해시 안에
-# 있으면 두 상태의 해시가 같으려면 step 까지 같아야 하고, 결정론적 시뮬에서 그런 충돌은 전부
-# 복제본이다 — 태스크 13(G-M)의 `strip_age` 류가 나중에 clock(과 age) 을 뺀 해시를 요구한다.
-# `omit` 키워드로 블록 이름을 빼고 합성할 수 있게 해서, clock 을 문자열에 하드코딩하지 않는다.
-const _BLOCK_NAMES = Set([:g, :geo, :fleet, :hazard, :courier, :clock, :age, :event])
+# `canonical(s::SimState)` 는 다섯 블록 문자열을 **이름표 붙여** 모아뒀다가 합성한다 — 리터럴
+# 하나로 이어붙이지 않는 이유(컨트롤러 부칙 B5): `omit` 키워드로 블록 이름을 빼고 합성할 수
+# 있어야 한다(태스크 13 의 strip 류가 요구하는 모양).
+const _BLOCK_NAMES = Set([:g, :geo, :fleet, :prog, :courier])
 
 function _canonical_blocks(s::SimState)
-    # I-3: `sort!(collect(keys(s.fleet)))` 는 순서만 정하고, 실제로 나가는 문자열은
-    # `canonical(rec)` 이 찍는 `rec.id` 뿐이라 Dict 키 자체는 해시에 한 번도 안 닿는다 —
-    # `Dict(1 => R(id=2))` 와 `Dict(2 => R(id=2))` 가 해시가 같아진다(측정됨). 이 상태가
-    # 유지하려는 불변식은 "키 == rec.id" 이므로, 키를 문자열에 또 넣는 대신(중복 진실원을
-    # 만드는 대신) 그 불변식을 단언한다 — 깨지면 (Task 10 추출기 버그처럼) 여기서 시끄럽게
-    # 죽는다. 이 레포의 원칙과 같다: 조용히 remap 하지 않고 죽는다.
-    for (k, rec) in s.fleet
-        k == rec.id || error("SimState.fleet key $k does not match RobotRec.id $(rec.id) — " *
-                              "fleet must be keyed by robot id (invariant violated)")
-    end
-    fleet = join([canonical(s.fleet[k]) for k in sort!(collect(keys(s.fleet)))], ";")
-    # I-2: `by = c -> (c.target, c.courier)` 는 total order 가 아니다 — 두 레코드가 같은
-    # (target, courier) 를 공유하면(오늘의 유일한 생산자 `BATTERY_DELIVERIES` 에서는 안 나지만,
-    # 이 타입 자체는 그걸 막지 않는다) Julia 의 안정 정렬이 삽입 순서를 그대로 새어보낸다.
-    # `canonical` 로 정렬하면 키가 콘텐츠 전체라 total order 다(측정됨: 이제 두 삽입 순서가
-    # 같은 문자열을 낸다).
+    # I-3: 로봇 identity 는 이제 **오직 Dict 키**에만 있다(`RobotRec.id` 삭제). 그래서 키를
+    # 문자열에 넣는 것이 선택이 아니라 필수다 — 예전에는 `canonical(rec)` 이 찍는 `rec.id` 와
+    # 키가 중복 진실원이라 "키 == rec.id" 를 단언으로 지켰는데, 이제 진실원이 하나뿐이라
+    # 단언할 대상이 없고 대신 키가 반드시 해시에 닿아야 한다.
+    fleet = join(["R$(k)" * canonical(s.fleet[k]) for k in sort!(collect(keys(s.fleet)))], ";")
+    # I-2: `by = canonical` 로 정렬한다 — 키가 콘텐츠 전체라 total order 다. `(target, courier)`
+    # 로 정렬하면 두 레코드가 그 쌍을 공유할 때 Julia 안정 정렬이 삽입 순서를 새어보낸다.
     cour  = join(map(canonical, sort(s.courier; by = canonical)), ";")
     return Pair{Symbol,String}[
         :g       => canonical(s.g),
         :geo     => canonical(s.geo),
+        :prog    => canonical(s.prog),
         :fleet   => "Fleet[$fleet]",
-        :hazard  => canonical(s.hazard),
         :courier => "Courier[$cour]",
-        :clock   => canonical(s.clock),
-        :age     => canonical(s.age),
-        :event   => canonical(s.event),
     ]
 end
 
@@ -332,15 +280,14 @@ end
     canonical(s::SimState; omit::Set{Symbol} = Set{Symbol}()) -> String
 
 `s` 의 정준 문자열. **같은 상태는 프로세스가 달라도 같은 문자열을 낸다.**
-`omit` 으로 `:g,:geo,:fleet,:hazard,:courier,:clock,:age,:event` 중 일부 블록을 빼고 합성할
-수 있다 — 예: `canonical(s; omit = Set([:clock]))` 은 clock 을 뺀 해시를 만든다(부칙 B5,
-태스크 13 의 `strip_age` 가 요구하는 모양). `omit` 에 위 8개 이름이 아닌 것이 섞이면(오타 등)
+`omit` 으로 `:g,:geo,:prog,:fleet,:courier` 중 일부 블록을 빼고 합성할
+수 있다 — 예: `canonical(s; omit = Set([:courier]))` 은 courier 를 뺀 해시를 만든다(부칙 B5). `omit` 에 위 5개 이름이 아닌 것이 섞이면(오타 등)
 **에러를 던진다** — M-1: 검증 없이 조용히 무시하면 `omit=Set([:clok])` 이 아무 일도 안 하고
 전체 해시를 돌려주고, Task 13 의 strip 이 아무 것도 안 벗겨냈다는 사실이 조용히 샌다.
 **주의**: `omit` 이 있는 해시와 없는 해시는 같은 키공간을 공유하지 않는다 — 블록 하나를 뺀
 문자열이 다른 상태의 전체 문자열과 우연히 같아질 수는 있지만(그것이 clock/age 를 뺀 의도된
-용도다), `omit=Set([:clock])`/`omit=Set([:age])` 끼리는 각 블록 문자열이 서로 다른 접두
-(`Clk(`/`Age(` 등)를 갖기 때문에 절대 혼동되지 않는다. `ReplayState` 에는 메서드를 정의하지
+용도다), `omit=Set([:g])`/`omit=Set([:geo])` 끼리는 각 블록 문자열이 서로 다른 접두
+(`G(`/`Geo(` 등)를 갖기 때문에 절대 혼동되지 않는다. `ReplayState` 에는 메서드를 정의하지
 않는다 — ξ 는 해시 대상이 아니다.
 """
 function canonical(s::SimState; omit::Set{Symbol} = Set{Symbol}())
@@ -354,22 +301,37 @@ end
 """
     state_hash(s; omit = Set{Symbol}()) -> String
 
-`s` 의 콘텐츠 해시(sha256 앞 32자). dp 격자가 하던 "같은 칸인가" 판정을 이것이 대신한다 —
-롤아웃 dedup · G-M 검사 · 상태 재방문 탐지가 전부 이 위에 선다(spec §3.2). `omit` 은
-`canonical` 로 그대로 전달된다.
+`s` 의 콘텐츠 해시(sha256 앞 32자). `omit` 은 `canonical` 로 그대로 전달된다.
 
-**오라클 전제조건 (리뷰 라운드 2, M-3 — 기록만, 아직 안 고침)**: `_c(::Float64)` 의 반올림
-허용오차(`digits=9`)는 **절대값**이다. 그래서 필드 크기에 따라 실효 상대 허용오차가 균일하지
-않다 — 실측(흡수 ULP 기준): `soc ≈ 0.87` 은 ~5.7e-10, `clock.t ≈ 42.5` 는 ~1.2e-11,
-`usage_s ≈ 37.25` 는 ~1.3e-11, `energy_J ≈ 1e5` 는 ~5e-15(35 ULP) 로 사실상 스무딩이 없다.
-**위험한 필드는 `energy_J` 하나다** — 재리뷰 라운드 2 가 잡을 때까지 이 문단이 `usage_s`·
-`clock.t` 도 `energy_J` 와 같은 "~1e-15 급" 칸에 잘못 넣었었다: 초 단위 값(O(10¹))은 실제로
-~7만 ULP 를 흡수하므로 "사실상 없음" 이 아니다. 같은 물리적 상태에 서로 다른 float 누적
-순서로 도달한 두 롤아웃이 `energy_J` 드리프트가 이 허용오차를 넘을 만큼 벌어지면 **다른
-해시**를 낸다 — 넘지 않으면 같은 해시를 낸다(무조건 다르다는 뜻이 아니다). 이건 "조용히
-실패하는" 바로 그 방식이다: 아무 데도 에러가 안 나고 오라클의 캐싱·CRN 분산 축소가 그냥
-조용히 멈춘다. 결정론적 replay 하나 안에서 해시를 비교하는 동안은 무해하지만, K-rollout
-오라클이 **서로 다른 실행 경로**로 도달한 상태의 동일성을 이 해시로 판정하려는 순간부터는
-이 전제(절대 허용오차, `energy_J` 에서 가장 얇음)를 명시적으로 깨야 한다.
+🔴 **2026-08-20 이후 이 해시로 상태를 병합·dedup 하지 말 것.** 역할이 바뀌었다.
+
+  옛 계약: "dp 격자가 하던 '같은 칸인가' 판정을 이것이 대신한다 — 롤아웃 dedup · G-M 검사 ·
+  상태 재방문 탐지가 전부 이 위에 선다"(구 spec §3.2). 그 계약은 `s` 가 **충분통계**라는
+  전제 위에 있었다.
+
+  지금: 엄격 축소로 `s` 는 행동의 write-set 만 담는 **손실 압축**이다(hazard 비율·스케줄
+  진행·zone·시계·사건이 전부 밖에 있다). 그래서 **서로 다른 두 세계가 같은 해시를 낸다.**
+  이 해시로 MCTS 트리 노드를 병합하면 그 둘이 한 노드로 합쳐지고, 한쪽의 롤아웃 통계가
+  다른 쪽의 가치로 읽힌다 — 에러는 안 나고 정책만 조용히 틀어진다. 이 레포가 반복해서
+  데인 실패 모양(낡은/다른 것이 이번 판단의 참·거짓을 정하는 것) 그대로다.
+
+  **지금 이 해시가 정당하게 쓰이는 곳**: 같은 결정론적 replay 안에서 "이 두 스냅샷이
+  글자 그대로 같은가" 를 싸게 확인하는 것(테스트·회귀 검사). 그 밖은 없다.
+
+  생산 소비처는 현재 **0개**다. 늘리기 전에 이 문단을 다시 읽을 것.
+
+**오라클 전제조건 — `_c(::Float64)` 의 반올림 허용오차(`digits=9`)는 절대값이다.**
+그래서 필드 크기에 따라 실효 상대 허용오차가 균일하지 않다. 2026-08-20 엄격 축소로 가장
+위험했던 필드(`energy_J`, ~5e-15 = 34 ULP 로 사실상 스무딩이 없었다)는 여전히 `s` 밖이다.
+🔴 **`usage_s`·`clock.t` 는 이 태스크(2026-08-20 sojourn read-set 확장)로 `RobotRec.usage_s`·
+`ProgBlock.t`(+ 파생 `active` 값·`CourierRec.t_*`)로 되돌아왔다** — 지금 아는 sim 시간 스케일
+(makespan 수십 초대)에서는 O(10⁰)~O(10²) 대이므로 `digits=9` 가 여전히 충분해 보이지만,
+`soc` 처럼 **실측으로 확인된 값은 아니다**. 남은 float 필드는 `pose`·`soc`·`build_delta`·
+`poses`·`zones`·`eff`·courier 좌표까지 대부분 O(10⁰)~O(10²) 라 `digits=9` 가 충분한 흡수폭을
+준다(실측 기준 `soc ≈ 0.87` 에서 ~5.7e-10). **그래도 전제는 전제다**: 서로 다른 실행 경로로
+도달한 두 상태를 이 해시로 동일하다고 판정하는 순간, 부동소수 누적 드리프트가 이 허용오차를
+넘으면 조용히 다른 해시가 난다 — 아무 데도 에러가 안 나고 오라클의 캐싱·CRN 분산 축소가 그냥
+멈춘다. 결정론적 replay 하나 안에서는 무해하다. `usage_s` 가 장기 시뮬레이션에서 실제로 이
+허용오차 안에 드는지는 아직 실측되지 않았다 — Task 4(`simstate_of`)가 실측할 자리다.
 """
 state_hash(s; omit::Set{Symbol} = Set{Symbol}()) = bytes2hex(SHA.sha256(canonical(s; omit = omit)))[1:32]
