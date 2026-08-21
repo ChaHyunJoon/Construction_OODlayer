@@ -265,6 +265,78 @@ struct DeprioritizeAgent <: ConstraintSpec
 end
 DeprioritizeAgent(agent::AbstractID) = DeprioritizeAgent(agent, 50.0)  # 기본 심각도(클램프 전 advisory 값)
 
+# =============================================================================
+# 2026-08-21 (Task C2 · spec §5-4) — L2-a: MILP 결정변수 위의 **제약 문법**
+# -----------------------------------------------------------------------------
+# 여기까지의 kind 들은 전부 "누군가 미리 짜 둔 매크로"다. 아래 셋은 다르다: LLM 이
+# `(t0, tF, Xa)` 위의 **선형 제약 하나를 직접 쓴다**. `ForbidWindow`·`ForbidAgent` 는
+# 이 문법의 인스턴스이지 별개의 종류가 아니다 —
+#   ForbidWindow(v, lo, hi)  ==  Disjunction(tF[v] ≤ lo, t0[v] ≥ hi)
+#   ForbidAgent(a)           ==  Xa[u,v] = 0 들의 모음
+# 이것을 안전하게 만드는 것은 **kind 를 안 보는 일반 `verify()`**(verifier.jl:83-125)다:
+# 문법 · 과거불가침 · MILP feasibility · invariant 넷을 통과해야 solver 에 닿는다.
+# 새 kind 를 위한 `verify_*` 는 필요 없고, 만들면 안 된다.
+# =============================================================================
+
+"""
+    VarRef(kind, node, node2 = nothing)
+
+MILP 결정변수 하나에 대한 참조. `kind` 는 셋뿐이다:
+  `:t0` → `t0[v]`   (그 노드의 시작시각)
+  `:tF` → `tF[v]`   (그 노드의 종료시각)
+  `:xa` → `Xa[u,v]` (배정 후보 엣지. `node2` 필수)
+
+🔴 **정점 인덱스가 아니라 `AbstractID` 로 참조한다.** 그래프 수술이 정점 번호를 재부여하므로
+인덱스로 적은 제약은 수술 뒤에 엉뚱한 노드를 가리킨다. 기존 `ForbidWindow.node` 와 같은 규약이다.
+"""
+struct VarRef
+    kind::Symbol                        # :t0 | :tF | :xa 뿐 (생성자가 강제)
+    node::AbstractID                    # 대상 노드/로봇의 ID (정점 번호가 아니다)
+    node2::Union{Nothing,AbstractID}    # :xa 일 때의 두 번째 끝점. 나머지 kind 에서는 nothing
+    function VarRef(kind::Symbol, node::AbstractID, node2 = nothing)
+        kind in (:t0, :tF, :xa) ||
+            error("VarRef: kind 는 :t0 | :tF | :xa 뿐이다 (받은 값: $(kind))")
+        kind === :xa && node2 === nothing &&
+            error("VarRef: :xa 는 노드 둘을 요구한다 (Xa[u,v])")
+        kind !== :xa && node2 !== nothing &&
+            error("VarRef: $(kind) 는 노드 하나만 받는다")
+        return new(kind, node, node2)
+    end
+end
+
+"""
+    LinearConstraint(terms, rel, rhs)
+
+`Σ cᵢ·varᵢ  ⋛  rhs`. `rel ∈ {:le, :ge, :eq}`.
+
+이것이 **L2-a 의 전부**다(spec §5-4). `ForbidAgent` 는 `Xa[u,v] = 0` 들의 모음이고
+`ForbidWindow` 는 아래 `Disjunction` 이다 — 둘은 별개의 kind 가 아니라 이 문법의 인스턴스다.
+LLM 이 여기서 **아무도 안 짠 제약**을 만들 수 있고, 그것을 안전하게 만드는 것은
+`verifier.jl:83` 의 일반 `verify()` 다(kind 를 안 본다).
+"""
+struct LinearConstraint <: ConstraintSpec
+    terms::Vector{Tuple{Float64,VarRef}}  # (계수, 변수참조) 쌍들. **순서 있는 Vector** = 직렬화/컴파일이 결정적
+    rel::Symbol                           # :le | :ge | :eq
+    rhs::Float64                          # 우변 상수
+    function LinearConstraint(terms, rel::Symbol, rhs::Real)
+        rel in (:le, :ge, :eq) ||
+            error("LinearConstraint: rel 은 :le | :ge | :eq 뿐이다 (받은 값: $(rel))")
+        isempty(terms) && error("LinearConstraint: 항이 없다 — 0개 제약은 hollow admit 이다")
+        return new(collect(Tuple{Float64,VarRef}, terms), rel, Float64(rhs))
+    end
+end
+
+"""
+    Disjunction(left, right)
+
+`left ∨ right`. Big-M + 이진변수로 컴파일된다. `ForbidWindow(v, t_lo, t_hi)` 가 정확히
+`Disjunction(tF[v] ≤ t_lo, t0[v] ≥ t_hi)` 다(test/respec_grammar.jl 이 두 해가 같음을 실측한다).
+"""
+struct Disjunction <: ConstraintSpec
+    left::LinearConstraint    # 두 항 모두 LinearConstraint 로 **타입 고정** — 이질적인 두 모델을
+    right::LinearConstraint   # 섞을 표현 자체가 없다(컴파일은 언제나 같은 `model` 인자에 대고 한다)
+end
+
 # -----------------------------------------------------------------------------
 # A re-specification proposal is an ordered bundle of ConstraintSpecs plus the
 # provenance needed for auditing/verification. The LLM returns exactly this.

@@ -85,62 +85,102 @@ def _build_prompt(event: str, open_ids: list[str],
         "An open-world event occurred during execution of a multi-robot "
         "assembly plan.\n"
         f"EVENT: {event}\n\n"
-        "You re-specify the problem with the closed DSL below. Most kinds ADD hard "
-        "scheduling/spatial constraints; ONE kind (DeprioritizeAgent) is a SOFT preference "
-        "for a degraded-but-usable robot. You never change the objective directly.\n\n"
+        "You re-specify the problem with the closed DSL below. There are exactly FOUR kinds "
+        "you may emit -- two are pre-written recoveries, two are a GRAMMAR you write yourself "
+        "over the scheduler's decision variables. You never change the objective directly, "
+        "and you never invent a kind that is not listed here.\n\n"
         "NAMED NODES. When the event refers to an assembly/part/milestone, match the "
-        "description in the event to one of these and use its EXACT node id — NOT the "
+        "description in the event to one of these and use its EXACT node id -- NOT the "
         "human label:\n"
         f"{node_lines}\n\n"
         "AGENTS (robots). If the event involves a robot, reference it by the EXACT "
-        "agent id below — NOT a node id, and NOT the human label (e.g. use the agent "
-        "id, not 'R3'). Choose among three robot specs by how SEVERE the event is:\n"
-        "  * DeprioritizeAgent — the robot is DEGRADED BUT STILL USABLE (most importantly a "
-        "BATTERY problem: 'R3's battery is low/degraded/running flat', 'R5 low on charge'). "
-        "It should be AVOIDED for heavy/long work but NOT removed. This is the SAFEST choice: "
-        "it never stalls the build (it only raises the robot's cost so the solver prefers "
-        "healthier robots). Use it whenever the robot can still move/work.\n"
-        "  * ReplaceAgent — the robot BROKE DOWN / is immobile and should be REPLACED by a "
-        "BACKUP/SPARE robot that takes over its work ('robot R failed, send a "
-        "replacement/backup'). The spare is chosen automatically; you only name the faulted agent.\n"
-        "  * ForbidAgent — a robot must simply be REMOVED from service with NO backup "
-        "(its work is redistributed among the remaining robots), or the event explicitly "
-        "says to take it offline without replacement.\n"
+        "agent id below -- NOT a node id, and NOT the human label (e.g. use the agent "
+        "id, not 'R3'). Two robot recoveries exist, and they consume DIFFERENT resources, "
+        "so choosing between them is a real decision:\n"
+        "  * SwapBattery -- the robot's BATTERY is depleted/flat/low and the fix is a fresh "
+        "pack ('R3 is out of charge', 'R5 stalled on a flat battery'). The SAME physical robot "
+        "keeps working and NO depot spare body is consumed -- only time. Prefer this for any "
+        "pure BATTERY/charge problem: a depot spare is a scarce chassis that a later MECHANICAL "
+        "breakdown will need, and spending one on a flat battery wastes it.\n"
+        "  * ReplaceAgent -- the robot BROKE DOWN / is immobile / has a MECHANICAL fault and "
+        "must be REPLACED by a BACKUP/SPARE robot that takes over its remaining work ('robot R "
+        "failed, send a replacement'). A fresh battery does nothing for a broken drivetrain. "
+        "The spare is chosen automatically by geometry; you only name the faulted agent.\n"
         f"{agent_lines}\n\n"
-        "ACTIVE NO-GO ZONES. If the event describes a SPATIAL exclusion / keep-out / "
-        "no-go / blocked area (robots must not enter a region), decide between the TWO "
-        "spatial specs using the `covers` and `covers_root` fields listed below — they are "
-        "computed from the LIVE geometry, so trust them over the event's wording:\n"
-        "  * `covers` non-empty  -> ForbidZone. The zone overlaps sub-assemblies whose staging "
-        "areas can be moved LOCALLY. Set `zone` to the EXACT zone key and `assembly` to the "
-        "EXACT node id of one assembly it covers. This is the DEFAULT spatial answer.\n"
-        "  * `covers_root` true  -> RelocateBuild. The zone traps the ROOT assembly's own "
-        "deposit goals, which no per-assembly restage can rescue, so the WHOLE build must "
-        "shift. Set `zone` only (there is no `assembly` field).\n"
-        "  * `covers` empty AND `covers_root` false -> the zone blocks no goal at all; the "
-        "motion layer simply routes around it. Propose NOTHING (empty constraints) — a "
-        "detour is cheaper than any intervention.\n"
-        "  ASYMMETRY (measured, same seed/zones, macro crossed): a wrong ForbidZone costs "
-        "almost nothing (it degenerates to a no-op, and the Julia side AUTOMATICALLY escalates "
-        "to the whole-build move if a restage proves insufficient), while a wrong RelocateBuild "
-        "is a global irreversible shift that dropped the run from 231 closed nodes (7/8 "
-        "assemblies) to 136 (1/8). When in doubt between the two, choose ForbidZone.\n"
-        f"{zone_lines}\n\n"
+        "THE GRAMMAR (LinearConstraint / Disjunction). When NO pre-written recovery expresses "
+        "the requirement, write the constraint yourself over the scheduler's decision "
+        "variables. A variable is one of exactly two:\n"
+        "  * {\"kind\": \"t0\", \"node\": <schedule node id>}   -- that node's START time\n"
+        "  * {\"kind\": \"tF\", \"node\": <schedule node id>}   -- that node's FINISH time\n"
+        "  🔴 WHICH LIST TO DRAW `node` FROM: a variable's `node` is a SCHEDULE NODE id -- take "
+        "it from the NAMED NODES section above or from the exhaustive open-node id list below. "
+        "It is NEVER an AGENTS (robot) id: a robot is not a schedule vertex, so a variable "
+        "naming one is REJECTED. AGENTS ids are for ReplaceAgent/SwapBattery only.\n"
+        "  * LinearConstraint: sum(coeff * var) `rel` rhs, with `rel` one of \"le\", \"ge\", "
+        "\"eq\". `terms` must be NON-EMPTY, and keep coefficients small (|coeff| of order 1). "
+        "Examples:\n"
+        "      'node N must not finish before 30'        -> terms [1*tF(N)], rel \"ge\", rhs 30\n"
+        "      'node A must finish before node B starts' -> terms [1*tF(A), -1*t0(B)], rel \"le\", rhs 0\n"
+        "      'A and B must start together'             -> terms [1*t0(A), -1*t0(B)], rel \"eq\", rhs 0\n"
+        "  * Disjunction: `left` OR `right`, both LinearConstraints -- for an EITHER/OR "
+        "requirement a single linear constraint cannot express. A forbidden time window on "
+        "node N ('N must not be active during [lo, hi]') is exactly\n"
+        "      left  = terms [1*tF(N)], rel \"le\", rhs lo   (finish before the window)\n"
+        "      right = terms [1*t0(N)], rel \"ge\", rhs hi   (start after the window)\n"
+        "  Every node id you reference must be an EXACT SCHEDULE-NODE id echoed from the node "
+        "lists. An id that is not a schedule vertex -- an invented one, or a robot id -- is "
+        "REJECTED (the proposal is refused; nothing happens). Never use a vertex number: graph "
+        "surgery renumbers vertices.\n\n"
+        "ACTIVE NO-GO ZONES (context only -- see below). The live geometry reports:\n"
+        f"{zone_lines}\n"
+        "  There is currently NO spatial kind in the emittable set: a keep-out region is a "
+        "GEOMETRIC fact and none of the four kinds above moves geometry. If the event is purely "
+        "a SPATIAL exclusion, propose NOTHING (empty constraints) -- the motion layer routes "
+        "around a zone on its own, and a detour is cheaper than a wrong intervention. Do NOT "
+        "try to encode a zone as a time window or an assignment ban; that mis-states the "
+        "problem and will be rejected or will do nothing.\n\n"
         "ALL still-open node ids (exhaustive reference; the NAMED NODES above are "
         "the labelled subset):\n"
         f"{', '.join(open_ids)}\n\n"
         "Call propose_respecification with the MINIMAL set of constraints that safely "
-        "handles the event. Choose the kind by the event's NATURE: a robot DEGRADED but usable "
-        "(LOW/FADING BATTERY, slowed) -> DeprioritizeAgent; a robot BROKEN/immobile to be "
-        "covered by a backup/spare -> ReplaceAgent; a robot removed with NO replacement -> "
-        "ForbidAgent; a SPATIAL no-go region -> ForbidZone (name the zone key + a covered "
-        "assembly node id) unless that zone's `covers_root` is true, in which case "
-        "-> RelocateBuild (zone key only); a purely TEMPORAL no-work interval on a node -> ForbidWindow; "
-        "a multi-robot transport TEAM DEADLOCKED while forming / the build STALLED waiting for "
-        "a team to complete -> ReformTeam (no fields). "
-        "A LOW-BATTERY / degraded robot is DeprioritizeAgent, NOT ForbidAgent/ReplaceAgent "
-        "(it can still work). Do NOT use ForbidWindow for a spatial zone. If unsure, fewer."
+        "handles the event. Choose by the event's NATURE: a robot out of CHARGE -> SwapBattery; "
+        "a robot BROKEN/immobile to be covered by a backup/spare -> ReplaceAgent; a TIMING or "
+        "ASSIGNMENT requirement nobody pre-wrote -> LinearConstraint, or Disjunction when it is "
+        "an either/or; a purely SPATIAL no-go region -> nothing. If unsure, fewer."
     )
+
+
+# =============================================================================
+# 🔴 2026-08-21 D-9 (Task C2): 이 프롬프트가 **세 번째 emit 표면**이다.
+# -----------------------------------------------------------------------------
+# 앞의 둘은 `schema.py` 의 discriminated union / `TOOL_SCHEMA` enum 과
+# `llm_bridge.jl` 의 `EMITTABLE_KINDS` + 파서 스위치다. 셋 중 하나만 낡으면
+# 모델은 낼 수 없는 팔을 고르라고 지시받는다(= 매 라운드 토큰을 버리고, 파서에서 죽는다).
+# 이 레포는 같은 모양("한 계약의 사본을 든 두 번째 표면")에 이미 세 번 데였다:
+# DS_* 라벨 레인 기본값 · tools/demos.jl 의 세 번째 HazardParams · 낡은 어휘를 박은 stamp 시험.
+#
+# 아래 두 리터럴은 그 세 번째 표면의 **기계가 읽을 수 있는 선언**이다.
+# `test/respec_action_space.jl` 이 세 표면의 **집합 등식**을 단언하고, 나아가
+# `_build_prompt(...)` 가 만든 **산문 자체**에 은퇴 kind 이름이 하나도 안 남았는지까지 훑는다.
+#
+# 🔴 개수: **C2 끝 = 4종**. C3 가 `TranslateBuild` 를 더해 5종이 된다.
+#    C3 는 이 튜플과 프롬프트의 ZONES 문단을 **함께** 고쳐야 한다.
+# =============================================================================
+# 🔴 emit 가능한 **결정변수 종류**. 줄리아 `VarRef` 타입은 "xa"(배정 엣지 Xa[u,v])도 받지만
+#    LLM 에게는 열지 않는다 — 프롬프트가 어떤 (u,v) 가 실제 결정변수인지 목록을 안 싣기 때문에
+#    모델이 유효하게 인스턴스화할 방법이 없다(= 유효한 인스턴스가 없는 형식을 광고하는 함정).
+#    `llm_bridge.jl` 의 `EMITTABLE_VARREF_KINDS` · `schema.VarRef.kind` Literal 과 같아야 한다.
+ADVERTISED_VAR_KINDS: tuple[str, ...] = ("t0", "tF")
+
+ADVERTISED_KINDS: tuple[str, ...] = (
+    "Disjunction", "LinearConstraint", "ReplaceAgent", "SwapBattery",
+)
+
+# D-9 로 은퇴한 이름들. 이 문자열이 프롬프트 산문에 다시 나타나면 시험이 빨개진다.
+RETIRED_KINDS: tuple[str, ...] = (
+    "DeprioritizeAgent", "ForbidAgent", "ForbidWindow", "ForbidZone",
+    "ReformTeam", "RelocateBuild",
+)
 
 
 # _extract_tool_input: 모델 응답에서 우리가 강제한 tool 호출의 입력(=제안 JSON)만 뽑아냄.

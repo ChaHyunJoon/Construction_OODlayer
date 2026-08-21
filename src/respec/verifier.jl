@@ -98,16 +98,41 @@ function verify(proposal::RespecProposal, env, invariant::InvariantSpec;
         end
     end
 
+    # (2b) GROUNDING — L2-a 문법이 참조하는 결정변수가 실제로 해석되는가.
+    # 🔴 MILP 를 세우기 **전에** 본다: 해석 불가는 예외가 아니라 Reject 여야 한다
+    #     (아래 grammar_ground_check 의 주석 참조 — 예외는 전이가 아니다).
+    let rej = grammar_ground_check(proposal, env.sched)
+        rej === nothing || return rej
+    end
+
     # (3) FEASIBILITY — build the model WITH the proposal and the freeze
     # constraints, solve, and confirm a feasible point exists.
-    milp = formulate_milp(                               # 제안 + 고정조건을 넣은 MILP(혼합정수계획) 모델을 실제로 구성
-        SparseAdjacencyMILP(), env.sched, env.scene_tree;  # 모델 종류, 스케줄, 장면트리 (`;` 뒤부터 키워드 인자)
-        optimizer = optimizer,                           # 사용할 솔버
-        t0_ = invariant.frozen_t0,        # pin completed/in-progress work  # 완료/진행중 작업의 시작시각 고정
-        tF_ = invariant.frozen_tF,                       # 완료 작업의 종료시각 고정
-        warm_start_soln = warm_start,     # optional: pre-fault assignment, for fast feasibility  # (선택) 시작 추정해, 빠른 풀이용
-        extra_constraints = proposal,     # <-- the injected re-specification  # 바로 이 제안을 추가 제약으로 주입
-    )
+    # 🔴 build 를 try 로 감싼다(백스톱). (2b) 가 잡지 못하는 컴파일 오류 — 대표적으로 `:xa` 가
+    #    후보 배정 엣지가 아닌 경우(Xa 는 formulate_milp 안에서만 존재한다) — 도 **Reject** 가
+    #    되어야 한다. 여기서 예외가 새면 maybe_respecify!(replan.jl:953, try 없음)를 지나
+    #    route_planning.jl:271 까지 풀려 올라가 시뮬 루프를 무너뜨린다.
+    milp = try
+        formulate_milp(                                  # 제안 + 고정조건을 넣은 MILP(혼합정수계획) 모델을 실제로 구성
+            SparseAdjacencyMILP(), env.sched, env.scene_tree;  # 모델 종류, 스케줄, 장면트리
+            optimizer = optimizer,                       # 사용할 솔버
+            t0_ = invariant.frozen_t0,    # pin completed/in-progress work  # 완료/진행중 작업의 시작시각 고정
+            tF_ = invariant.frozen_tF,                   # 완료 작업의 종료시각 고정
+            warm_start_soln = warm_start, # optional: pre-fault assignment, for fast feasibility
+            extra_constraints = proposal, # <-- the injected re-specification
+        )
+    catch err
+        # 🔴 **좁게 잡는다.** 넓은 catch 는 방금 고친 결함의 거울상이다 — 우리 자신의 시끄러운
+        #    내부 고장을 조용한 오분류로 바꾼다.
+        #   (a) 제어 흐름 예외는 절대 삼키지 않는다.
+        (err isa InterruptException || err isa StackOverflowError) && rethrow()
+        #   (b) 제안에 LLM 이 쓴 제약이 하나도 없으면 이 실패는 **우리 컴파일러의 버그**다.
+        #       그대로 던진다 — stacktrace 를 살려야 고칠 수 있고, 명목/oracle 레인의 고장이
+        #       :ungrammatical line-stop 으로 위장되면 안 된다.
+        _carries_llm_grammar(proposal) || rethrow()
+        # 여기까지 온 것만 전이로 바꾼다: LLM 이 쓴 제약이 섞인 제안의 컴파일 실패.
+        return Reject(:ungrammatical,
+                      "constraint compilation failed: $(sprint(showerror, err))")
+    end
     optimize!(milp)                                      # 모델을 실제로 풀어봄(`!` = milp 를 직접 수정)
 
     # Match the codebase's own success check (full_demo.jl:431, 462).
@@ -373,6 +398,114 @@ function verify_replace(proposal::RespecProposal, env)
     return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
 end
 
+# =============================================================================
+# 2026-08-21 (Task C2 · 수정 라운드 2) — 참조 접지 검사: **예외가 아니라 Reject**
+# -----------------------------------------------------------------------------
+# 🔴 왜 이게 있어야 하는가. `(t0, tF, Xa)` 를 LLM 에게 연 순간, **파싱은 되는데 컴파일에서
+#    죽는** 입력이 도달 가능해졌다. 대표 사례: `VarRef(:t0, <agent id>)` —
+#    `_default_id_resolver`(replan.jl:1146-1157)가 AGENTS 목록의 문자열을 `RobotID` 로
+#    정상 해석해 주지만, `get_vtx(sched, ::RobotID)` 는 **-1** 이다(RobotID 는 정점 id 가 아니다).
+#    그러면 `_var_of` 의 `error()` 가 `formulate_milp` → `verify()` → `maybe_respecify!`
+#    (replan.jl:953, **try 없음**) → `respec_step!` → `route_planning.jl:271` 까지 그대로
+#    풀려 올라가 **시뮬 루프를 무너뜨린다.**
+#
+# 🔴 그것은 이 태스크가 딛고 선 계약과 정면으로 어긋난다 —
+#    "`verify()` 는 전이함수의 문이고 거부는 NOOP 과 같은 전이"(llm_bridge.jl:62).
+#    예외는 전이가 아니라 **전이의 부재**다. 모든 행동이 전이로 사상돼야 하는 SMDP 에서
+#    파싱되는 행동이 전이를 못 내면 그건 안전장치가 아니라 모형의 구멍이다.
+#
+# 🔴 remap 하지 않는다(조용한 폴백 금지). 그 규칙이 금지하는 것은 **성공한 척하기**이지
+#    **실패를 분류하기**가 아니다. `Reject(:unresolvable_reference, …)` 는 시끄럽고,
+#    로그에 남고, 감사 가능하며, 전이함수가 정의된 결과다.
+# =============================================================================
+
+"formulate_milp 의 시간변수 Big-M 기본값(essential_tg_coponents.jl:1059 `Mm=10000`).
+ 시간변수의 실효 상한으로 쓴다 — Disjunction 의 Big-M 이 실제로 완화 역할을 하는지 볼 때."
+const _MILP_VAR_BOUND = 1.0e4
+
+# VarRef 하나가 이 스케줄에서 해석 가능한가.
+# 반환: `nothing`(문제 없음) 또는 `(reason::Symbol, detail::String)`.
+# 🔴 사유 심볼을 문제 **종류별로** 나눈다 — 감사에서 reason 으로 묶을 때 서로 다른 실패가
+#    한 통에 섞이면 안 된다(참조 미해석 vs 계수 크기는 원인도 대응도 다르다).
+function _varref_problem(sched, r::VarRef)
+    get_vtx(sched, r.node) > 0 ||
+        return (:unresolvable_reference,
+                "VarRef($(r.kind)) references $(r.node), which is not a schedule vertex " *
+                "(get_vtx -> $(get_vtx(sched, r.node))). Agent ids are NOT vertex ids.")
+    if r.node2 !== nothing
+        get_vtx(sched, r.node2) > 0 ||
+            return (:unresolvable_reference,
+                    "VarRef(:xa) references $(r.node2), which is not a schedule vertex " *
+                    "(get_vtx -> $(get_vtx(sched, r.node2))).")
+    end
+    return nothing
+end
+
+# LinearConstraint 하나의 접지 + 크기 검사. `bigm` 이 주어지면 Big-M 완화가 실제로
+# 완화인지도 본다(아래 Disjunction 참조).
+function _linear_problem(sched, cs::LinearConstraint; bigm = nothing)
+    for (_, r) in cs.terms                    # Vector 순회 = 결정적
+        p = _varref_problem(sched, r)
+        p === nothing || return p
+    end
+    if bigm !== nothing
+        # 🔴 Big-M 이 계수에 대해 충분히 큰가. `_DISJ_BIGM` 은 `ForbidWindow` 와 같아야 해서
+        #    고정이다(문법 왕복이 그 위에 선다). 그래서 상수를 키우는 대신 **계수를 거부**한다.
+        #    보수적 상계: |Σ c·var − rhs| ≤ Σ|c|·VAR_BOUND + |rhs|.
+        #    이걸 안 하면 큰 계수에서 "완화된" 쪽이 완화가 아니게 되어 ∨ 가 조용히 ∧ 로 조인다.
+        span = sum(abs(c) for (c, _) in cs.terms) * _MILP_VAR_BOUND + abs(cs.rhs)
+        span <= bigm ||
+            return (:bigm_overflow,      # 🔴 참조 문제가 아니라 **계수 크기** 문제다. 사유를 분리한다.
+                    "Disjunction half is too large for the Big-M relaxation: " *
+                    "Σ|c|·$(_MILP_VAR_BOUND) + |rhs| = $(span) > M = $(bigm). " *
+                    "Use smaller coefficients — widening M would break ForbidWindow equivalence.")
+    end
+    return nothing
+end
+
+"""
+    grammar_ground_check(proposal, sched) -> Union{Nothing,Reject}
+
+L2-a 문법(`LinearConstraint`·`Disjunction`)이 참조하는 결정변수를 **MILP 를 세우기 전에**
+전부 해석해 본다. 통과하면 `nothing`, 아니면 `Reject` 를 돌려준다 — **예외가 아니다.**
+
+다른 kind 들은 이 검사에 해당 없음(`nothing`)이다: 그들의 접지는 이미 각자의
+`verify_*` 와 `verify()` 2단계(과거불가침)가 본다.
+
+⚠️ `:xa` 후보 엣지 여부는 여기서 못 본다 — `Xa` 는 `formulate_milp` 안에서만 존재한다.
+   그래서 (a) `:xa` 는 **LLM emit 대상에서 뺐고**(llm_bridge.jl `EMITTABLE_VARREF_KINDS`),
+   (b) `verify()` 3단계의 build 를 `try` 로 감싸 어떤 컴파일 오류도 `Reject` 가 되게 했다.
+"""
+function grammar_ground_check(proposal::RespecProposal, sched)
+    for cs in proposal.constraints                    # Vector 순회 = 결정적
+        p = if cs isa LinearConstraint
+            _linear_problem(sched, cs)
+        elseif cs isa Disjunction
+            something(_linear_problem(sched, cs.left;  bigm = _DISJ_BIGM),
+                      _linear_problem(sched, cs.right; bigm = _DISJ_BIGM),
+                      Some(nothing))
+        else
+            nothing
+        end
+        p === nothing || return Reject(p[1], p[2])     # p = (reason, detail)
+    end
+    return nothing
+end
+
+"""
+    _carries_llm_grammar(proposal) -> Bool
+
+제안이 **LLM 이 직접 쓴 제약**(`LinearConstraint`/`Disjunction`)을 하나라도 담고 있는가.
+
+🔴 `verify()` 3단계의 build 백스톱이 이 술어로 갈린다. 그 술어가 정확히 두 세계를 가른다:
+  * 참이면 — 컴파일 실패의 원인이 **LLM 이 쓴 제약**일 수 있다 → `Reject` 가 옳다(전이).
+  * 거짓이면 — 하드코딩된 kind 만 들어 있다 → 컴파일 실패는 **우리 컴파일러의 버그**다.
+    그걸 `Reject` 로 재분류하면 명목/oracle 레인의 진짜 고장이 엉뚱한 사유의 line-stop 으로
+    **위장**된다(예: `reassign.jl:387` 의 내부 `ForbidAgent` 경로). 거기서는 시끄럽게 죽는 게 맞다.
+"""
+_carries_llm_grammar(p::RespecProposal) =
+    any(c -> c isa LinearConstraint || c isa Disjunction, p.constraints)
+
 # --- which schedule ids does a spec touch (for the closed-node check) ---------
 # 제약이 어떤 노드 ID 들을 건드리는지 돌려주는 함수. cs 의 "타입에 따라" 다른 메서드 실행(다중 디스패치).
 # `(x,)` : 원소 1개짜리 튜플(파이썬과 동일하게 쉼표 필요). 결과를 항상 순회 가능한 묶음으로 통일.
@@ -384,6 +517,16 @@ referenced_ids(cs::ReformTeam)   = ()            # 팀 재정립은 특정 노�
 referenced_ids(cs::RelocateBuild) = ()           # 빌드 전체 평행이동은 특정 노드를 안 지목(구역 키만 지목)
 referenced_ids(cs::DeprioritizeAgent) = (cs.agent,)  # 소프트 회피 제약은 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::SwapBattery)  = (cs.agent,)   # 배터리 교체는 그 로봇(agent) 하나를 건드림
+
+# 2026-08-21 (Task C2 · L2-a 문법). LLM 이 직접 쓴 선형 제약이 건드리는 노드들.
+# 🔴 `verify()` 2단계(과거불가침)가 이걸 그대로 쓴다 — 여기서 id 를 빠뜨리면 LLM 이
+#    이미 끝난 노드를 재시간화하는 제약을 조용히 통과시킬 수 있다. `node2`(:xa 의 두 번째
+#    끝점)까지 반드시 센다. 순회 대상이 Vector 뿐이라 순서가 결정적이다(Set/Dict 없음).
+referenced_ids(cs::LinearConstraint) =
+    Tuple(unique(vcat([r.node for (_, r) in cs.terms],
+                      [r.node2 for (_, r) in cs.terms if r.node2 !== nothing])))
+referenced_ids(cs::Disjunction) =
+    Tuple(unique(vcat(collect(referenced_ids(cs.left)), collect(referenced_ids(cs.right)))))
 
 """
     verify_swap_battery(proposal, env) -> Verdict
