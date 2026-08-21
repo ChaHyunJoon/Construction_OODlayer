@@ -31,6 +31,7 @@
 using ConstructionBots, Test
 using LinearAlgebra: norm
 import Random
+import Logging
 const CB = ConstructionBots
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
@@ -113,6 +114,30 @@ function active_team_sizes(env)
         isempty(r) || push!(sizes, length(r))
     end
     return sizes
+end
+
+# =============================================================================
+# 🔴 선언한 상한이 **합법적으로** 뒤집힐 수 있는 조건 — `rates.jl` 의 유도를 코드로 옮긴 것.
+#
+# 이동 모드에서
+#     P_light − P_true = km·[ m_robot·(v_ref − speed) − (m_payload/team)·speed ]
+# 이므로 `speed > v_ref·m_robot/(m_robot + m_payload/team)` 이면 부호가 뒤집힌다.
+# `:manip` 은 `P_light − P_true = (manip_W − idle_W)·(1 − 1/team) >= 0` 이라 **절대 안 뒤집힌다**.
+# 세 번째 경로: 한 로봇이 **비대기 노드 두 개 이상**에 걸리면 엔진은 할증을 **더하는데**
+# `mode_of` 는 가장 무거운 하나만 고르므로 그것만으로 P_true 가 P_light 를 넘을 수 있다.
+# =============================================================================
+flip_threshold(p, m_payload::Float64, team::Int) =
+    p.v_ref * p.m_robot / (p.m_robot + m_payload / team)
+
+may_flip(p, ctxs) =
+    length(ctxs) > 1 ||
+    any(c -> c.mode !== :manip && c.speed > flip_threshold(p, c.m_payload, c.team), ctxs)
+
+"뒤집힘 영역에 있으면 **크게** 알리고 `true` 를 돌려준다(호출자가 센다). 조용히 넘어가지 않는다."
+function warn_if_flipped(p, id, mode, ctxs, a_light, a_true)
+    may_flip(p, ctxs) || return false
+    @warn "T7 🔴 선언한 상한이 이 로봇에서 합법적으로 뒤집힐 수 있는 영역이다 (버그 아님 — rates.jl 의 유도 참조)" robot = string(id) mode = mode a_light = a_light a_true = a_true n_nonidle_nodes = length(ctxs) speeds = string([c.speed for c in ctxs]) payloads = string([c.m_payload for c in ctxs]) teams = string([c.team for c in ctxs]) thresholds = string([flip_threshold(p, c.m_payload, c.team) for c in ctxs]) v_ref = p.v_ref
+    return true
 end
 
 # step k 에서의 모드 관련 단언 전부. env 를 앞으로 못 되감으므로 루프 안에서 그 자리에 돈다.
@@ -245,6 +270,7 @@ end
                                for id in keys(fleet_b.soc))
     nmulti, nmanip = 0, 0
     speeds, payloads = Float64[], Float64[]
+    node_ctx = Dict{Any,Vector{Any}}()      # 로봇 -> 그 로봇이 걸린 비대기 노드들의 (mode,team,mp,speed)
     for v in sort!(collect(env.cache.active_set))
         node = CB.get_node(env.sched, v).node
         m = CB._node_mode(node)
@@ -258,7 +284,7 @@ end
         oldp = get(prev, v, newp)
         spd  = dt > 0 ? norm((newp - oldp)[1:2]) / dt : 0.0
         mp   = CB._payload_mass(env, node, p)
-        push!(speeds, spd); push!(payloads, mp)
+        sym === :manip || (push!(speeds, spd); push!(payloads, mp))   # 이동 노드만 센다
         w    = CB.mode_power_W(p, sym; team = length(robots), m_payload = mp, speed = spd)
         # ⚠️ 여기서는 `sort!` 한 정점 순서로 할증을 더하는데 엔진은 `env.cache.active_set`
         # (Set) 순서로 더한다. 한 로봇이 **두 개 이상**의 할증을 받는 순간 부동소수 결합
@@ -268,9 +294,12 @@ end
         for id in robots
             haskey(pred, id) || continue
             pred[id] += (w - p.idle_W) * dt   # 할증은 대기 위 델타 (battery.jl:214-216)
+            # 뒤집힘 판정에 필요한 재료를 로봇별로 모은다(아래 (B)에서 쓴다).
+            push!(get!(node_ctx, id, Any[]),
+                  (mode = sym, team = length(robots), m_payload = mp, speed = spd))
         end
     end
-    @info "T7 Ruling2 ledger coverage" n_multi_robot_nodes = nmulti n_manip_nodes = nmanip n_motion_nodes = length(speeds) speed_min = minimum(speeds) speed_max = maximum(speeds) payload_min = minimum(payloads) payload_max = maximum(payloads) v_ref = p.v_ref
+    @info "T7 Ruling2 ledger coverage" n_multi_robot_nodes = nmulti n_manip_nodes = nmanip n_motion_nodes = length(speeds) speed_min = (isempty(speeds) ? NaN : minimum(speeds)) speed_max = (isempty(speeds) ? NaN : maximum(speeds)) payload_min = (isempty(payloads) ? NaN : minimum(payloads)) payload_max = (isempty(payloads) ? NaN : maximum(payloads)) v_ref = p.v_ref
     @test nmulti >= 1                          # 팀 분할 분기(:transit/:carry)를 태웠는가
     @test nmanip >= 1                          # 🔴 :manip 분기도 태웠는가
     # 🔴 실현 속도가 전부 0 이면 이동 팔이 `0.0 == 0.0` 을 비교하는 꼴이 되어 "14/14 exact" 가
@@ -308,32 +337,51 @@ end
     @test e_light / e_engine > 1.2
 
     # (B) 지수 — 게이트 N-G1 이 보는 크기. `a` 안에서 이 대입이 건드리는 항은 β_s·P/C 하나다.
-    worst_a, worst_soc_share = 0.0, 0.0
+    worst_a, worst_soc_share, n_flipped = 0.0, 0.0, 0
     for k in ks
         m       = CB.mode_of(s260, env, k)
         a_light = last(CB.rate_params_one(ph, s260.fleet[k], m, p, cap))
         P_true  = e1[rid_of(k)] / dt                     # 엔진이 이 스텝에 실제로 쓴 평균 전력
         du      = (m === :idle) ? 0.0 : ph.beta_usage / ph.usage_scale_s
         a_true  = du + ph.beta_soc * P_true / cap
-        # 🔴 **트립와이어이지 불변식이 아니다.** `speed = v_ref` 는 상한이지만
-        # `m_payload = 0` 은 하한이므로, 로봇이 **최고속으로 짐을 지고** 달리면 개별 로봇에서
-        # 부호가 뒤집힐 수 있다(그 지점에서 `P_light − P_true = −km·m_payload·v_ref/team < 0`).
-        # 이 픽스처의 step 261 에서는 6대 전부 양(+)이다. 뒤집히면 여기가 먼저 빨개지고,
-        # 그건 버그가 아니라 "선언한 상한이 더 이상 성립하지 않는다"는 신호다.
-        @test a_light >= a_true                          # 🔴 지수에서도 순부호가 양(+)
+        ctxs    = get(node_ctx, rid_of(k), Any[])
+        # 🔴 **불변식을 단언한다 — 픽스처를 단언하지 않는다.**
+        # 앞 판은 맨 `@test a_light >= a_true` 였는데, 그건 `rates.jl` 이 **합법이라고 유도해 둔**
+        # 상황에서도 빨개진다. 그러면 종료 코드만 보고는 "선언한 상한이 합법적으로 깨졌다" 와
+        # "구현 버그" 를 구분할 수 없다 — 주석을 읽어야만 해석되는 빨간불은 증거가 아니다.
+        # 그래서 진짜 불변인 것을 건다: **뒤집힘 조건이 성립하지 않는 한 순부호는 양(+)이다.**
+        # 이 명제의 위반은 언제나 진짜 버그이므로 빨간불이 마땅하다.
+        # ℹ️ 이 픽스처에서는 `n_flipped == 0` 이므로 이 논리합은 오늘 **맨 단언과 동치**다 —
+        #    약해진 것이 없다. 뒤집힘이 실제로 생기는 날에만 갈라진다(그때는 @warn 이 이유를 댄다).
+        flipped = warn_if_flipped(p, rid_of(k), m, ctxs, a_light, a_true)
+        n_flipped += flipped
+        @test a_light >= a_true || flipped
         worst_a = max(worst_a, (a_light - a_true) / a_true)
         worst_soc_share = max(worst_soc_share,
                               ph.beta_soc * CB.mode_power_W(p, m) / cap / a_light)
     end
-    @info "T7 잔차 (B) 지수 — N-G1 이 보는 크기" worst_rel_error_in_a = worst_a soc_term_share_of_a = worst_soc_share
+    @info "T7 잔차 (B) 지수 — N-G1 이 보는 크기" worst_rel_error_in_a = worst_a soc_term_share_of_a = worst_soc_share n_robots_in_flipped_regime = n_flipped n_fleet = length(ks)
     # β_s·P/C 항이 `a` 의 몇 %인지가 이 오차의 **상한**이다. 실측: `:manip`(P=1000 W)에서
     # 8.0%, 이동 모드(P=500 W)에서 4.2%. ⚠️ "약 4%" 는 이동 모드만의 값이었다 — manip 은 그
     # 두 배다. 상한으로 쓸 값은 **8%** 다.
-    @test worst_soc_share < 0.10
+    # 경계는 이 픽스처가 실제로 지탱하는 값으로 좁힌다(실측 0.0800 / 0.0373) — 느슨한 경계를
+    # 남겨 두면 아래 분리비 단언과 **동시에 참이면서 서로 모순인** 상태가 생긴다.
+    @test worst_soc_share < 0.09
+    @test worst_a < 0.05
     @test worst_a <= worst_soc_share + 1e-12   # 🔴 지수 오차는 그 항의 크기를 못 넘는다
-    # 🔴 그리고 두 크기가 **자릿수가 다르다** — N-G5 의 허용오차를 (B) 에서 뽑으면 안 된다는
-    # 것을 시험이 직접 말하게 한다. 실측: 0.478 vs 0.037 → 12.8배.
-    @test (e_light / e_engine - 1.0) > 5 * worst_a
+
+    # (C) 두 오차의 **분리비** — 이것이 "N-G5 를 (B) 로 재지 말라"의 근거다.
+    # 🔴 앞 판은 `(ratio−1) > 5·worst_a` 였는데 `5` 가 이 픽스처의 관측치(12.8)에 맞춘 숫자였고,
+    # 게다가 `worst_a` 의 경계(0.10)와 곱하면 `5·worst_a` 가 관측된 `ratio−1 = 0.478` 을
+    # **넘을 수** 있어 두 단언이 서로 모순인 상태를 허용했다. 이제 **비율을 직접 재서 찍고**
+    # 바닥값을 건다.
+    # 바닥값 3.0 의 출처: 이 문단의 주장은 "두 오차가 자릿수가 다르다" 이다. 분리비가 3 이하로
+    # 내려가면 그 주장 자체가 성립하지 않고(하나의 tolerance 로 둘을 재도 큰 사고가 안 난다),
+    # 그러면 고칠 것은 시험이 아니라 `rates.jl` 의 이 문단이다. 실측값은 아래 @info 가 매 실행
+    # 찍으므로 드리프트가 보인다(현재 12.8).
+    separation = (e_light / e_engine - 1.0) / worst_a
+    @info "T7 잔차 (C) 두 오차의 분리비 — N-G5 를 N-G1 숫자로 재지 말 것" separation_observed = separation floor = 3.0 energy_rel_error = e_light / e_engine - 1.0 exponent_rel_error = worst_a
+    @test separation > 3.0
 end
 
 @testset "mode_power_W 의 기준 조건 값" begin
@@ -346,4 +394,47 @@ end
     @test CB.mode_power_W(p, :transit; speed = 0.0) == p.idle_W   # 멈춰 있으면 대기 전력뿐
     @test_throws ErrorException CB.mode_power_W(p, :sprint)
     @test_throws ErrorException CB.mode_power_W(p, :carry; team = 0)
+end
+
+# =============================================================================
+# 🔴 뒤집힘 판정기 자체의 단위 시험. 이 픽스처에는 뒤집힌 로봇이 **없으므로**(실측
+# `n_robots_in_flipped_regime = 0`) 경고 경로가 한 번도 안 돌면 그 경로가 살아 있는지 알 수
+# 없다. 그래서 임계 위/아래 값을 **합성해서** 판정기와 경고를 직접 태운다. 씬이 필요 없다.
+# =============================================================================
+@testset "🔴 flip 조건과 @warn 경로 (합성 입력 — 씬에 없다)" begin
+    p   = CB.BATTERY_FLEET[].params
+    mp  = 2.2937600000000002              # 이 픽스처에서 실측된 최대 짐 질량 [kg]
+    thr = flip_threshold(p, mp, 1)
+    @test thr ≈ p.v_ref * p.m_robot / (p.m_robot + mp)
+    @test thr < p.v_ref                   # 짐이 있으면 임계는 v_ref 아래에 있다
+    @test flip_threshold(p, 0.0, 1) == p.v_ref   # 짐이 없으면 절대 안 뒤집힌다
+
+    below = Any[(mode = :carry, team = 1, m_payload = mp, speed = thr - 1e-6)]
+    above = Any[(mode = :carry, team = 1, m_payload = mp, speed = thr + 1e-6)]
+    @test !may_flip(p, below)
+    @test  may_flip(p, above)
+
+    # 유도의 음성 대조: 임계 아래에서는 P_light 가 크고, 위에서는 작다.
+    P_light = CB.mode_power_W(p, :carry)                       # 기준 조건
+    @test CB.mode_power_W(p, :carry; team = 1, m_payload = mp, speed = thr - 1e-6) < P_light
+    @test CB.mode_power_W(p, :carry; team = 1, m_payload = mp, speed = thr + 1e-6) > P_light
+
+    # `:manip` 은 어떤 속도·팀에서도 안 뒤집힌다 (P_light − P_true = (manip_W−idle_W)(1−1/team) ≥ 0)
+    @test !may_flip(p, Any[(mode = :manip, team = 4, m_payload = 0.0, speed = p.v_ref)])
+    @test CB.mode_power_W(p, :manip) >= CB.mode_power_W(p, :manip; team = 4)
+
+    # 세 번째 경로: 비대기 노드 두 개 이상이면 엔진은 할증을 더하므로 뒤집힐 수 있다.
+    @test may_flip(p, Any[below[1], (mode = :transit, team = 1, m_payload = 0.0, speed = 0.0)])
+
+    # --- 경고 경로가 실제로 도는가 -------------------------------------------
+    # 먼저 **눈에 보이게** 한 번 태운다(캡처하지 않는다). 이 시험 출력에 실제 경고 문구가
+    # 찍혀 있어야 "경로가 살아 있다"를 사람이 확인할 수 있다.
+    @info "↓↓↓ 아래 @warn 은 합성 입력으로 **의도적으로** 태운 시연이다 (실제 로봇 아님) ↓↓↓"
+    warn_if_flipped(p, "SYNTH-DEMO", :carry, above, 1.0, 2.0)
+
+    res = @test_logs (:warn,) match_mode = :any warn_if_flipped(p, "SYNTH-ABOVE", :carry, above, 1.0, 2.0)
+    @test res === true                                     # 셌다
+    # 그리고 뒤집히지 않았으면 **조용하다**(경고 남발도 정보가 아니다).
+    quiet = @test_logs min_level = Logging.Warn warn_if_flipped(p, "SYNTH-BELOW", :carry, below, 2.0, 1.0)
+    @test quiet === false
 end
