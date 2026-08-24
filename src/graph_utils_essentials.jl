@@ -83,6 +83,59 @@ Special helper for identifying schedule vertices.
     id::Int = -1        # 꼭짓점 ID 번호(기본값 -1 = 미지정)
 end
 
+# ─────────────────────────────────────────────────────────────────────────────
+# [2026-08-24] 내용 기반 `Base.hash` — 재현성 결함의 뿌리 처방
+#
+# Julia 의 기본 해시는 `hash(@nospecialize(x), h) = hash_uint(3h - objectid(x))` 이고
+# 불변 구조체의 `objectid` 는 **상위 32비트가 값, 하위 32비트가 타입(`jl_type_hash`)** 에서
+# 온다. 그런데 `ConstructionBots` 의 프리컴파일 산출물은 바이트 재현되지 않아서
+# **패키지가 정의한 타입의 `jl_type_hash` 가 빌드마다 다르다**(실측:
+# `objectid(ObjectID)` = `2ae9e2ed` vs `6398c88d`).
+# ⟹ `ObjectID`·`AssemblyID`·`BotID`·`TemplatedID` … 를 키로 쓰는 **모든** `Dict`/`Set` 이
+#    빌드마다 다른 순서로 순회하고, 그것이 같은 시드의 세계를 빌드마다 옮겼다.
+#    전문: `.superpowers/sdd/2026-08-23-measured-smdp/repro-root-cause.md`
+#
+# 처방: ID 의 해시를 **내용**(정수 id + 안정적인 텍스트 타입 태그)에서만 만든다.
+# 🔴 `hash(::Type)`·`hash(::Symbol)` 을 쓰면 안 된다 — 둘 다 `jl_type_hash`/`objectid` 로
+#    내려가 같은 결함을 다시 들여온다. 안정적인 원시연산은 `hash(::String)` 뿐이다
+#    (`Base.hashing.jl:114`, 고정 시드 `memhash_seed` 의 순수 내용 해시).
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+    id_type_tag(T) -> String
+
+타입 `T` 의 **문맥 독립** 텍스트 태그. `string(T)`/`show` 를 쓰지 않는다 — 그 둘은
+활성 모듈에 따라 모듈 접두사가 붙었다 말았다 하므로 컴파일 시점에 의존한다.
+매개변수를 재귀적으로 펼쳐 `TemplatedID{T}` · `BotID{R}` 가 매개변수까지 구분되게 한다.
+"""
+function id_type_tag(@nospecialize(T))
+    if isa(T, DataType)
+        nm = String(nameof(T))
+        ps = T.parameters
+        isempty(ps) && return nm
+        return string(nm, "{", join([id_type_tag(p) for p in ps], ","), "}")
+    elseif isa(T, UnionAll)
+        return id_type_tag(Base.unwrap_unionall(T))
+    elseif isa(T, Union)
+        return string("Union{", join(sort!([id_type_tag(p) for p in Base.uniontypes(T)]), ","), "}")
+    elseif isa(T, TypeVar)
+        return string("TypeVar(", T.name, ")")
+    else
+        return string(T)    # Int·Bool 같은 값 매개변수
+    end
+end
+
+# @generated : 태그 문자열의 해시를 **컴파일 시점에 한 번** 계산해 리터럴로 굽는다.
+#              (런타임 비용 0 — `Dict` 조회마다 문자열을 만들면 안 되므로.)
+@generated function id_type_seed(::Type{A}) where {A<:AbstractID}
+    seed = hash(id_type_tag(A))
+    return :($seed)
+end
+
+# 내용 기반 해시. `isequal`/`==` 는 불변 구조체의 기본(`===`, 즉 타입+필드 비트)이므로
+# "isequal ⟹ hash 같음" 이 성립하고, 타입 태그가 다르면 같은 id 라도 해시가 갈린다.
+Base.hash(id::A, h::UInt) where {A<:AbstractID} = hash(id.id, hash(id_type_seed(A), h))
+
 # Base.함수 = ... : 기존 표준 함수(Base 모듈)에 "이 타입일 때의 동작"을 추가(파이썬의 __메서드__ 오버라이드 비슷).
 # where {A<:AbstractID} : 위에서 쓴 타입 매개변수 A 의 제약을 명시. id::A 는 "어떤 AbstractID 하위 타입이든"을 받는다는 뜻.
 Base.summary(id::A) where {A<:AbstractID} = string(string(A), "(", get_id(id), ")")  # 요약 문자열: 예) "ObjectID(5)"
