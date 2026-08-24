@@ -9,8 +9,20 @@
 ## 0. 한 줄 요약
 
 OOD 사건을 **하나의 LLM**(DSPy/gpt-4o)이 인식 → 번역 → 결정까지 한 번의 호출로 처리하게 만든다.
-Claude `/propose` 경로는 제거한다. 1단계에서 번역(DSL)은 **채점·검사용 부산물**이고 집행은
-지금처럼 매크로가 한다. 번역이 믿을 만하다고 측정된 뒤에 2단계에서 집행을 넘긴다.
+Claude `/propose` 경로는 제거한다.
+
+세 가지를 함께 바꾼다:
+
+1. **어휘를 3팔로** — `NOOP` · `Replace` · `SwapBattery`. zone 사건은 LLM 결정 레인에서 빼고
+   (surrogate 학습 증거용으로만 남긴다) `RelocateBuild`는 은퇴, `DeprioritizeAgent` 잔재는 제거.
+2. **메뉴를 연다** — 사건 종류별 후보 필터를 없애고 LLM에게 언제나 레지스트리 전체를 준다.
+   어떤 팔이 이 상황에 말이 안 되는지 판단하는 것 자체가 측정 대상이다(§1.2).
+3. **번역을 추가한다** — 출력 필드를 `reasoning → constraints → macro` 순으로 선언한다.
+
+1단계에서 번역(DSL)은 **채점·검사용 부산물**이고 집행은 지금처럼 매크로가 한다.
+번역이 믿을 만하다고 측정된 뒤에 2단계에서 집행을 넘긴다.
+
+세 변경은 **한꺼번에 착지시키지 않는다** — 축 C → B → A 순서로 각각 측정한다(§6).
 
 ---
 
@@ -46,11 +58,35 @@ Claude `/propose` 경로는 제거한다. 1단계에서 번역(DSL)은 **채점�
 MACROS      : {0:'NOOP', 1:'Replace', 2:'RelocateBuild', 3:'SwapBattery'}
 KIND_VALID  : fault→[NOOP,Replace]  battery→[NOOP,Replace,SwapBattery]  zone→[NOOP,RelocateBuild]
 RETIRED     : {}   EXPERIMENTAL : {}
+vocab stamp : "v3-4arms"
 ```
+
+이것은 **바꾸기 전 상태의 기록**이다(§5가 목표 상태를 정한다).
+
+`action_registry.json`의 `_doc`이 2026-08-20에 `Deprioritize`를 지운 이유를 남겨 뒀다 —
+"어떤 사건에도 고유하게 안 붙었고 **제안 338회 대비 선택 0회**. 이 하니스의 배터리 사건은
+'저하'가 아니라 '정지'(SoC 0)라 멈춘 로봇의 우선순위를 낮춰봐야 아무것도 안 풀린다.
+degraded-but-alive 상태가 없다." 즉 레지스트리 차원의 제거는 이미 끝났고, 남은 것은
+`DeprioritizeAgent` **DSL kind 잔재**다(§5.4).
 
 `policy.jl:valid_macros`가 battery에 `"Deprioritize"`를, zone에 `"ForbidZone"`을 실어 보내지만
 `_valid_for`의 `[m for m in req.valid if m in MACROS]` 필터가 **조용히 버린다**
 (`dspy_service.py:142`). 즉 두 이름은 이미 죽은 텍스트다.
+
+### 1.2 설계 원칙 — 후보 배제는 reasoning의 일부다
+
+현재 `policy.jl:valid_macros`와 `dspy_service._valid_for`가 **사건 종류를 먼저 분류한 뒤**
+그 종류에 legal한 팔만 골라 LLM에게 준다. 그러면 "무엇이 고장났는가"를 규칙이 이미 판단해
+버린 뒤이고, LLM에게 남는 일은 좁혀진 메뉴에서 하나 집는 것뿐이다. **그 상태에서 측정되는
+것은 추론이 아니라 선택이다.**
+
+행동 후보는 어차피 적다(3개). 따라서:
+
+> **LLM에게는 사건 종류와 무관하게 언제나 action registry 전체를 후보로 준다.**
+> 어떤 팔이 이 상황에 말이 되지 않는지를 판단하는 것 자체가 LLM이 해야 할 추론이다.
+
+이 원칙이 §5.3(kind 필터 폐지)의 근거이고, `nl_mode="observation"`(관찰문에서 지시절을
+떼어내는 기존 장치)과 같은 방향이다 — 답을 미리 알려주지 않는다.
 
 ---
 
@@ -103,7 +139,7 @@ Julia: 일관성 게이트(constraints ↔ macro, 진단 전용)
 계약은 유지되고, `chosen`은 계속 `macro` 필드에서 나온다.
 
 **단, 출력 필드가 늘면 프롬프트가 바뀌므로 `chosen`이 달라질 수 있다.** 바이트 동일은
-요구하지 않는다 — §6의 기준을 쓴다.
+요구하지 않는다 — §7.1의 기준을 쓴다.
 
 ---
 
@@ -169,7 +205,6 @@ ENTITIES YOU MAY NAME (use these id strings exactly):
 | `NOOP` | (제약 없음) | — |
 | `Replace` | `ReplaceAgent` | `truth.robot` |
 | `SwapBattery` | `SwapBattery` | `truth.robot` |
-| `RelocateBuild` | `RelocateBuild` | `truth.zone` |
 
 판정 3값 `:agree` / `:mismatch` / `:absent` 를 결정 행에 기록한다.
 **STEP 1에서는 거절하지 않는다** — 거절하는 순간 세계가 바뀐다. 이 필드가 §7 승격 게이트의 입력이다.
@@ -226,11 +261,18 @@ per-kind grounding    :  FaultTruth P=0.92 R=0.83 F1=0.87  (halluc 1, missed 2)
 translation health    :  agree 20/23 · mismatch 1 · absent 2 · parse_err 0 · schema_err 0
 ```
 
-### 4.3 zone은 0이 아니라 `unscored`로 인쇄한다
+### 4.3 채점 대상은 fault · battery 둘뿐이다
 
-§5.2 적용 후 `emitted_key`에 zone을 지목하는 분기가 하나도 없으므로 zone recall은 구조적으로 항상 0이다.
-0으로 인쇄하면 "LLM이 zone 번역을 못한다"로 오독된다. `reference_policy`가 근거 없는
-구간에 쓰는 관례를 그대로 따라 `unscored`로 인쇄한다.
+§5.1로 zone 사건이 LLM 결정 레인에서 빠지므로, 남은 사건 종류는 `FaultTruth` · `BatteryTruth`
+둘이고 **둘 다 grounding이 완전히 정의된다**:
+
+| truth | truth_key | 정답 팔 | emitted_key |
+|---|---|---|---|
+| `FaultTruth` | `(:fault, robot)` | `Replace` | `ReplaceAgent → (:fault, agent)` ✅ 기존 |
+| `BatteryTruth` | `(:battery, robot)` (§5.5) | `SwapBattery` | `SwapBattery → (:battery, agent)` ✅ §5.5 신규 |
+
+`unscored`로 인쇄할 구간이 남지 않는다 — 다만 §5.6의 SoC 임계값 위(soc > 0.2)는
+`reference_policy`가 여전히 `unscored`로 둔다(측정된 근거가 없는 구간).
 
 ### 4.4 오프라인 번역 eval — `tools/dspy_translate_eval.py`
 
@@ -257,15 +299,87 @@ translation health    :  agree 20/23 · mismatch 1 · absent 2 · parse_err 0 ·
 
 ## 5. 어휘·채점 규칙 변경 (결정 사항)
 
-### 5.1 `Deprioritize` 전면 제거
+### 5.1 zone 사건을 LLM 결정 레인에서 제거
 
-soft battery 저하도 OOD 사건이므로 "우선순위만 낮추는" 대응을 두지 않는다.
-battery는 severity와 무관하게 실제 개입(`SwapBattery`)으로 간다.
+zone은 앞으로 **OOD 시뮬레이션에서 surrogate가 잘 학습됐다는 증거로만** 쓴다. LLM 재명세
+경로에서는 다루지 않는다. 따라서 결정 epoch를 만드는 사건 종류는 **fault · battery 둘**이다.
+
+영향 지점: `ZoneTruth` 주입 스케줄, `llm_ood_eval.py --case zone`,
+`reference_policy.reference_action`의 `ZoneTruth` 분기, `policy.jl:valid_macros`의 zone 분기,
+`macro_to_proposal`의 zone 분기, `oracle_macro`의 zone 경로.
+
+> **주의**: `ood_mdp_shim.jl` · `src/smdp/generative.jl` · `test/smdp_stamp_smoke.jl`은
+> `ActionRegistry.kind_valid`를 계속 쓴다(오라클/SMDP 레인). zone을 그쪽에서까지 지우는 것은
+> 이 spec의 범위가 **아니다** — LLM 결정 레인에서만 뺀다.
+
+### 5.2 어휘를 3팔로 — **재번호하지 말고 은퇴 처리한다**
+
+목표: `NOOP` · `Replace` · `SwapBattery`. `RelocateBuild`는 zone 전용 팔이므로 함께 빠진다.
+
+`action_registry.json`에서 `RelocateBuild`(id 2)에 `"retired": true` + `"retired_reason"`을
+붙인다. **엔트리를 지우고 id를 0..2로 재번호하지 않는다.**
+
+근거 — 레지스트리 자신의 `_doc`이 그 위험을 적어 뒀다:
+
+> "2026-08-20 축소 (9팔 → 4팔, id 재번호 0..3): 은퇴 표식 대신 **엔트리를 지웠다.**
+>  구세대 산출물을 전부 폐기했으므로 (…) 그 대가로 **id 재번호가 안전해졌지만 동시에
+>  도장(vocab)이 유일한 방어선이 됐다** — 구세대 파일의 macro 2 행은 이제 KeyError가 아니라
+>  RelocateBuild로 **조용히** 읽힌다."
+
+지금 재번호하면 같은 사고가 반복된다: `v3-4arms` 세대 산출물(배포 surrogate, DSPy 컴파일
+프로그램의 학습 라벨, 오라클 데이터셋)의 `macro=3`(SwapBattery) 행이 새 어휘에서 결번이 되고
+`macro=2`(RelocateBuild) 행이 SwapBattery로 재해석된다. 은퇴 처리하면 **id가 고정되므로 그
+재해석 자체가 일어나지 않는다.** 은퇴 기계(`_is_retired` / `n_non_retired` / `RETIRED`)는
+이미 존재하고 어서션까지 걸려 있다.
+
+동반 수정:
+
+- `vocab` 도장 `"v3-4arms"` → `"v4-3arms"`.
+  `assert_vocab_arm_count(VOCAB, n_non_retired(REGISTRY))`가 도장의 팔 개수와 실제 개수를
+  대조하므로 **반드시 같이 올려야 한다**(파이썬·줄리아 양쪽 로더).
+- `wm4spacecraft_manufacturing/smdp/test_stamps.py:22`의 하드코딩
+  `assert action_registry.VOCAB == "v3-4arms"` 갱신.
+- `test/smdp_stamp_smoke.jl:118-121`의 `kind_valid` 기대값 갱신.
+
+결과: `MACROS = [0,1,2,3]`, `ACTIVE_MACROS = [0,1,3]`,
+`dspy_service.MACROS = ['NOOP','Replace','SwapBattery']`.
+
+### 5.3 kind 필터 폐지 — LLM에게는 레지스트리 전체를 준다
+
+§1.2의 원칙을 배선하는 곳은 두 군데다.
+
+**(a) `tools/monitor/policy.jl:valid_macros`** — 사건 종류별 분기를 전부 없애고 활성
+레지스트리 전체 이름을 돌려준다. `zone_diagnosis`를 부르던 `named`/`domain` 계산 블록도
+함께 사라진다(그 분기 하나만을 위해 존재했다).
+
+**(b) `src/respec/llm_service/dspy_service.py:_valid_for`** — kind 폴백을 없앤다.
+
+```python
+def _valid_for(req) -> List[str]:
+    caller = [m for m in (getattr(req, "valid", None) or []) if m in MACROS]
+    return caller if caller else MACROS          # 기존: VALID.get(req.kind, MACROS)
+```
+
+`VALID`(= `KIND_VALID`에서 유도) 테이블은 LLM 경로에서 더 이상 쓰이지 않는다.
+레지스트리의 `kinds` 필드 자체는 **남긴다** — 오라클/SMDP 레인(`ood_mdp_shim.jl`,
+`generative.jl`)이 계속 쓴다.
+
+`coerced` 규칙(어휘 밖 응답 → NOOP 강제)은 **유지한다.** 이제 그 규칙이 거르는 것은
+"이 사건에 안 맞는 팔"이 아니라 "레지스트리에 없는 이름"뿐이다 — 그것이 옳은 방어선이다.
+
+**채점상의 귀결**: fault 사건에서 `SwapBattery`가 메뉴에 오른다. `reference_policy`의
+FaultTruth 정답은 `pending>0 → Replace`, `==0 → NOOP`이므로 LLM이 SwapBattery를 고르면
+**오답으로 집계된다.** 이것은 결함이 아니라 의도다 — "이 팔은 이 상황에 말이 안 된다"를
+판단하는 것이 측정 대상이다.
+
+### 5.4 `DeprioritizeAgent` DSL kind 잔재 제거
+
+레지스트리에서는 이미 빠졌다(§1.1). 남은 것은 DSL 문법·dispatch·테스트의 잔재다.
 
 #### 제거 범위 (전수 grep으로 측정, 2026-08-24)
 
-`DeprioritizeAgent`는 죽은 텍스트가 아니라 **compile / verify / dispatch까지 배선된 살아 있는
-DSL kind**다. 26개 파일에 걸쳐 있고, 그중 주석만 있는 파일이 8개다.
+`DeprioritizeAgent`는 **compile / verify / dispatch까지 배선된 살아 있는 DSL kind**다.
+26개 파일에 걸쳐 있고 그중 주석만 있는 파일이 8개다.
 
 **코드 수정이 필요한 파일** (괄호 = 주석 아닌 hit 수):
 
@@ -285,122 +399,158 @@ DSL kind**다. 26개 파일에 걸쳐 있고, 그중 주석만 있는 파일이 
 | `test/respec_action_space.jl` (7) · `test/respec_sequential_enact.jl` (3) · `test/navigator_comparison_smoke.jl` (2) | 테스트 갱신 |
 
 **주석만 있어 수정 불필요**: `objective.jl` · `objective.py` · `run_demo.jl` · `render_demo.jl` ·
-`e2e.jl` · `test/objective_hooks_smoke.jl` · `llm_bridge.jl`.
-`gen_oracle_dataset.jl`의 `"Deprioritize"` 4곳도 전부 주석이다 — 4팔 재번호 때 이미 빠졌다.
+`e2e.jl` · `test/objective_hooks_smoke.jl` · `llm_bridge.jl` · `gen_oracle_dataset.jl`.
 
 **삭제 예정 파일이라 자동 해결**: `propose.py` · `translate_eval.py` ·
 `verify_battery_translation.py` (§2.1).
 
 #### 제외: `wm4spacecraft_manufacturing/core/features_agnostic.py` (3 hits)
 
-**건드리지 않는다.** 이 모듈은 행동을 id가 아니라 **효과 서술자 공간의 점**으로 적는
-ψ-표현 실험이고(Chandak et al. AAAI'20), `_PRIMITIVE_TABLE`/`MACRO_SPECS`는 **옛 9팔 id 공간**
-위에 있다(id 2=DeprioritizeAgent인데 현 레지스트리 2=RelocateBuild). 소비처는 이 모듈과 그
-테스트뿐이다(확인함 — 외부 참조 0).
+**건드리지 않는다.** 행동을 id가 아니라 **효과 서술자 공간의 점**으로 적는 ψ-표현 실험이고
+(Chandak et al. AAAI'20), `_PRIMITIVE_TABLE`/`MACRO_SPECS`는 **옛 9팔 id 공간** 위에 있다
+(id 2=DeprioritizeAgent인데 현 레지스트리 2=RelocateBuild). 소비처는 이 모듈과 그 테스트뿐이다
+(확인함 — 외부 참조 0).
 
-이 모듈의 존재 이유 자체가 "행동 하나가 사라져도 나머지의 ψ는 한 자리도 안 바뀐다"이고,
+이 모듈의 존재 이유가 "행동 하나가 사라져도 나머지의 ψ는 한 자리도 안 바뀐다"이고
 `psi_regression_check()`가 그 계약을 강제한다. 항목을 지우면 그 검사가 깨지고 기존 실험
-숫자와의 비교가 무효가 된다. ψ 표는 **메뉴가 아니라 서술자 공간**이므로, 라이브 문법에서
-kind를 지우면서 표를 그대로 두는 것이 일관된 처리다.
+비교가 무효가 된다. ψ 표는 **메뉴가 아니라 서술자 공간**이므로 라이브 문법에서 kind를
+지우면서 표를 그대로 두는 것이 일관된 처리다.
 
-#### 5.1.1 필수 동반 수정 — `SwapBattery` 채점 구멍
+### 5.5 필수 동반 수정 — `SwapBattery` 채점 구멍
 
 `emitted_key`에는 `SwapBattery` 분기가 **없다**(정의는 `ood_truth.jl:152` 하나뿐임을 확인).
-Deprioritize를 지우면 battery가 낼 수 있는 유일한 팔이 키를 못 만들어 **battery grounding이
-항상 0**이 된다. 이 작업의 원래 목적(battery·fault 추론 품질 측정)이 원리적으로 불가능해진다.
+`Deprioritize`를 지우면 battery가 낼 수 있는 유일한 팔이 키를 못 만들어 **battery grounding이
+항상 0**이 된다. 이 작업의 원래 목적(battery · fault 추론 품질 측정)이 원리적으로 불가능해진다.
 
 방향은 이미 레포가 잡아 뒀다 — `canonical_respec(BatteryTruth)`는 이미 deep/mild를 합쳐
 `SwapBattery(t.robot)` 하나만 낸다(`baselines.jl:96`). `emitted_key`/`truth_key`만 그 통합을
-못 따라간 상태다. 따라서:
+못 따라간 상태다.
 
 ```julia
 # emitted_key: 추가
 elseif tn === :SwapBattery
     return (:battery, c.agent)      # SwapBattery.agent (spec_dsl.jl:218 확인)
 
+# emitted_key: 제거 — ForbidZone 분기(레지스트리 은퇴), DeprioritizeAgent 분기(§5.4)
+
 # truth_key: severity 분기 제거
 truth_key(t::BatteryTruth) = (:battery, t.robot)
 ```
 
-### 5.2 zone grounding — 정의하지 않는다
-
-`emitted_key`에 `RelocateBuild → (:zone, ·)` 분기를 **추가하지 않는다**. 아울러 이미 죽은
-`ForbidZone → (:zone, ·)` 분기를 제거한다(ForbidZone은 레지스트리에서 은퇴 상태).
-결과적으로 zone 사건의 grounding은 "채점 대상 엔티티 없음"으로 남고 §4.3대로 `unscored`로
-인쇄된다. zone 대응에 대한 사전 지식을 채점 규칙에 심지 않는다는 기존 결정과 일치한다.
-
-### 5.3 SoC 임계값 0.2로 통일
+### 5.6 SoC 임계값 0.2로 통일
 
 ```
 Julia  ood_truth.jl:129        REPLACE_SOC_THRESHOLD = Ref(0.2)
 Python reference_policy.py:69  BATTERY_DEEP_SOC      = 0.5     ← 0.2 로 변경
 ```
 
-`set_replace_soc_threshold!`를 부르는 코드는 레포에 없다(확인함). §5.1.1로 `truth_key`가
+`set_replace_soc_threshold!`를 부르는 코드는 레포에 없다(확인함). §5.5로 `truth_key`가
 임계값을 안 쓰게 되므로, 남는 소비처는 `reference_policy`의 "SwapBattery 정답 vs unscored"
 분기 하나다.
 
-> **공개된 대가**: 0.5 → 0.2 로 내리면 `n44_plus78_d20` 사다리에서 SwapBattery가 이긴
-> 세 rung 중 **0.30 · 0.50의 실측 근거가 채점에서 버려진다**(그 구간이 unscored가 된다).
+> **공개된 대가**: 0.5 → 0.2로 내리면 `n44_plus78_d20` 사다리에서 SwapBattery가 이긴 세 rung
+> 중 **0.30 · 0.50의 실측 근거가 채점에서 버려진다**(그 구간이 unscored가 된다).
 > 지금 데이터로는 아무 채점도 바뀌지 않는다 — BatteryTruth 56건의 SoC 최댓값이 0.09999라
 > 전부 0.2 아래다. mild battery를 굴리는 실행에서만 차이가 난다.
 
----
+## 6. 작업 순서 — 세 축을 섞지 않는다
 
-## 6. 작업 순서
+이 spec은 서로 다른 **세 개의 변경 축**을 담고 있다. 한꺼번에 착지시키면 결과가 나빠졌을 때
+원인을 가를 수 없다.
+
+| 축 | 내용 | `chosen`에 대한 영향 |
+|---|---|---|
+| **C** | 어휘 축소 (zone·RelocateBuild 제거, Deprioritize 잔재 제거) — §5.1·5.2·5.4·5.5·5.6 | 확실히 바뀐다 |
+| **B** | 메뉴 개방 (kind 필터 폐지) — §5.3 | 확실히 바뀐다 |
+| **A** | 번역 추가 (`constraints` 출력 필드 + `entities` 입력) — §2·§3·§4 | 바뀔 수 있다 |
+
+**순서: C → B → A.** 각 축이 끝날 때마다 같은 seed 집합으로 측정하고 기록한다.
+축 B는 그 자체로 이 연구의 결과다 — "규칙이 좁혀 준 메뉴"와 "레지스트리 전체 메뉴"에서
+LLM의 정답률이 어떻게 다른가는 §1.2 원칙의 실증이다.
+
+### 축 C — 어휘 축소
 
 | # | 작업 | 검증 |
 |---|---|---|
-| T1 | `schema.py` → dspy 서비스 쪽 이사 | hjcrl venv import + 기존 DSL 검증 테스트 통과 |
-| T2 | `MacroRequest` + `agents`/`nodes`/`zones`, `_entities_block()` | 순수 렌더링 단위 테스트 (모델 호출 0) |
-| T3 | `PickMacro`에 `entities` 입력 + `constraints` 출력 | 컴파일 arm 로딩 회귀 테스트 — partial demo 로드, `chosen`이 `macro`에서 나오는지 |
-| T4 | 서비스 검증·강등 3단계 (§3.3) | 목 응답: 깨진 JSON→`parse`, 잘못된 kind→`schema`, 지어낸 id→`dropped`, **셋 다 `chosen` 생존** |
-| T5 | `policy.jl`: descriptor 전송 + 일관성 게이트 + `emitted_keys` | `emitted_key` 재사용 확인, 게이트가 거절하지 않는지 |
-| T6 | `run_demo.jl`: 결정 행 필드 6개 | 요약 jsonl 스키마 테스트 |
-| T7 | `llm_ood_eval.py`: grounding 블록 + zone `unscored` | 기존 행으로 리포트가 안 깨지는지(하위호환) |
-| T8 | §5.1 `Deprioritize` 전면 제거(파일 목록 확정됨) + §5.1.1 `SwapBattery` 키 추가 | §5.1 표의 파일 전부, `features_agnostic.py` 제외 확인, 채점기 교차 테스트 |
-| T9 | §5.2 `emitted_key` 정리 (`ForbidZone` 분기 제거) | zone이 `unscored`로 인쇄되는지 |
-| T10 | §5.3 임계값 0.2 통일 | 두 채점기가 같은 severity class를 내는지 교차 테스트 |
-| T11 | Claude 경로 삭제 + `llm_bridge.jl` → `grounding_descriptors.jl` 분할 | 전체 테스트 스위트 |
-| T12 | `dspy_translate_eval.py` + `dump_llm_fixture.jl` | 3케이스 통과 |
+| C1 | `action_registry.json`: `RelocateBuild`(id 2) 은퇴 + `vocab` → `"v4-3arms"` | `assert_vocab_arm_count` 통과, `ACTIVE_MACROS == [0,1,3]` |
+| C2 | 도장 하드코딩 갱신: `test_stamps.py:22`, `test/smdp_stamp_smoke.jl:118-121` | 두 테스트 통과 |
+| C3 | zone을 LLM 결정 레인에서 제거 (§5.1) | `--case zone`이 명확히 거부되는지 (조용히 통과 금지) |
+| C4 | `Deprioritize` 잔재 제거 (§5.4) — **단일 커밋**, `features_agnostic.py` 제외 | §5.4 표의 파일 전부 + 전체 테스트 스위트 |
+| C5 | `emitted_key`/`truth_key` 정리 (§5.5) | fault·battery 둘 다 grounding이 정의되는지 |
+| C6 | SoC 임계값 0.2 통일 (§5.6) | 채점기 교차 테스트 (§7.3) |
+| C7 | **측정** — 축 C 후 baseline | seed ≥15, `decision_rate` + `per_kind` 기록 |
 
-`schema.py`를 **먼저** 옮기는 이유: 그게 안 되면 나머지가 무의미하다. 검증기 없는
+### 축 B — 메뉴 개방
+
+| # | 작업 | 검증 |
+|---|---|---|
+| B1 | `policy.jl:valid_macros` → 활성 레지스트리 전체 (§5.3a) | zone 분기·`zone_diagnosis` 블록이 함께 사라졌는지 |
+| B2 | `dspy_service._valid_for` kind 폴백 제거 (§5.3b) | `valid`를 안 보내도 3팔 전체가 나오는지 |
+| B3 | **측정** — 축 B 후 | C7과 같은 seed 집합. fault에서 SwapBattery 오선택 빈도를 별도 집계 |
+
+### 축 A — 번역 추가
+
+| # | 작업 | 검증 |
+|---|---|---|
+| A1 | `schema.py` → dspy 서비스 쪽 이사 | hjcrl venv import + 기존 DSL 검증 테스트 통과 |
+| A2 | `MacroRequest` + `agents`/`nodes`/`zones`, `_entities_block()` | 순수 렌더링 단위 테스트 (모델 호출 0) |
+| A3 | `PickMacro`에 `entities` 입력 + `constraints` 출력 | 컴파일 arm 로딩 회귀 — partial demo 로드, `chosen`이 `macro`에서 나오는지 |
+| A4 | 서비스 검증·강등 3단계 (§3.3) | 목 응답: 깨진 JSON→`parse`, 잘못된 kind→`schema`, 지어낸 id→`dropped`, **셋 다 `chosen` 생존** |
+| A5 | `policy.jl`: descriptor 전송 + 일관성 게이트 + `emitted_keys` | 게이트가 거절하지 않는지 |
+| A6 | `run_demo.jl`: 결정 행 필드 6개 | 요약 jsonl 스키마 테스트 |
+| A7 | `llm_ood_eval.py`: grounding 블록 | 기존 행으로 리포트가 안 깨지는지(하위호환) |
+| A8 | Claude 경로 삭제 + `llm_bridge.jl` → `grounding_descriptors.jl` 분할 (§2.1·2.2) | 전체 테스트 스위트 |
+| A9 | `dspy_translate_eval.py` + `dump_llm_fixture.jl` (§4.4) | 3케이스 통과 |
+| A10 | **측정** — 축 A 후 | B3과 같은 seed 집합 + grounding PRF |
+
+`schema.py`(A1)를 먼저 옮기는 이유: 그게 안 되면 나머지가 무의미하다. 검증기 없는
 `constraints` 필드는 자유 텍스트일 뿐이다.
 
 ---
 
 ## 7. 검증 기준
 
-### 7.1 "같은 세계" 비교 — 무엇을 요구하고 무엇은 요구하지 않는가
+### 7.1 "같은 세계" 불변식은 **폐기한다**
 
-T3에서 프롬프트가 바뀌므로 **`chosen` 시퀀스의 바이트 동일은 요구하지 않는다**
-(`temperature=0.0`, `cache=True`지만 프롬프트가 캐시 키다).
+초안은 STEP 1이 기존 `dspy` 수치와 직접 비교 가능해야 한다고 요구했다. 축 B·C가 들어오면서
+그 전제는 성립하지 않는다 — 어휘가 3팔로 줄고 메뉴가 개방되므로 **세계가 확실히 바뀐다.**
 
-같은 seed 집합(≥15판)으로 T3 전/후를 돌려서:
+대신:
 
-1. `decision_rate`의 Wilson CI가 겹칠 것. 안 겹치고 나빠졌으면 **거기서 멈춘다.**
-2. `per_kind`(FaultTruth · BatteryTruth) 각각도 같은 기준.
-3. `chosen` 시퀀스 diff를 사람이 읽을 수 있게 파일로 남길 것 — 몇 개가 어느 방향으로 바뀌었는지.
+- 축 C 종료 시점(C7)을 **새 baseline**으로 삼는다. 이후 비교는 전부 C7 기준이다.
+- 기존 `v3-4arms` 세대 수치는 "이전 세대"로 라벨링해 보관하되 새 수치와 같은 표에 섞지 않는다.
+- 각 축의 측정(C7 · B3 · A10)은 **같은 seed 집합 · 같은 world seed**로 돌린다.
+  축 간 차이가 정책 변화가 아니라 판 차이가 되면 안 된다.
+
+축 A에서만은 여전히 "출력 필드 추가가 결정을 얼마나 흔드는가"를 따로 본다:
+`decision_rate`의 Wilson CI가 B3과 겹치는지, `chosen` 시퀀스 diff를 파일로 남길 것.
 
 ### 7.2 물리 설정 도장 대조 (과거 사고 재발 방지)
 
-전/후 비교 런은 실행 레인과 **같은 물리 설정**이어야 한다. `DS_HOTSWAP` 하나 어긋나면
+축 간 비교 런은 실행 레인과 **같은 물리 설정**이어야 한다. `DS_HOTSWAP` 하나 어긋나면
 에러 없이 fault 발화율이 100% → 23%로 새고, 그러면 "결정이 나빠졌다"가 아니라
 "사건이 안 터졌다"를 보게 된다.
 
 - 전/후 런의 설정 도장(`hot_swap`, `DS_SHRINK` 등)을 대조할 것.
 - kind별 발화율(`fired == True` 비율)을 **매번** 집계할 것. 총 행 수만 보면 "좀 적네"로 지나간다.
+- 어휘 도장(`vocab`)도 같이 본다 — C1 이후 산출물은 전부 `v4-3arms`여야 한다.
 
-### 7.3 채점기 교차 테스트 (T8/T10 이후 필수)
+### 7.3 채점기 교차 테스트 (C5/C6 이후 필수)
 
 같은 `BatteryTruth`에 대해 Julia `truth_key`와 Python `reference_policy.reference_action`이
 모순되지 않는지 — SoC 격자(0.02 / 0.15 / 0.25 / 0.45 / 0.6)에서 표로 대조한다.
+
+### 7.4 메뉴 개방의 부작용 계측 (B3 필수)
+
+fault 사건에서 `SwapBattery`를, battery 사건에서 `Replace`를 고른 빈도를 **따로 집계한다.**
+전체 `decision_rate` 하나로 뭉치면 "메뉴를 넓혔더니 나빠졌다"까지만 알 수 있고
+**어떤 종류의 혼동인지**를 못 본다. 그 혼동표가 §1.2 원칙의 실제 결과다.
 
 ---
 
 ## 8. STEP 2 (집행 전환) 승격 게이트
 
-임계값은 STEP 1을 측정한 **뒤에** 정한다. 지금 숫자를 지어내지 않는다.
+임계값은 축 A를 측정한 **뒤에** 정한다. 지금 숫자를 지어내지 않는다.
 게이트가 읽을 필드는 §3.4 · §4.1에서 이미 정해졌다:
 
 - `consistency == "agree"` 비율 (fault + battery)
@@ -416,12 +566,16 @@ STEP 2 자체는 별도 spec이다 — `run_demo.jl` 집행 사슬 은퇴 + `ver
 
 ## 9. 공개된 위험
 
-1. **`chosen`이 바뀔 수 있다** (§2.3). arm은 같지만 프롬프트가 바뀐다. §7.1이 판정 기준이다.
-2. **0.30 · 0.50 rung의 실측 근거가 채점에서 버려진다** (§5.3). 지금 데이터로는 무영향.
-3. **`Deprioritize` 제거는 이 작업에서 가장 큰 덩어리다.** 죽은 텍스트가 아니라
-   compile / verify / dispatch까지 배선된 살아 있는 DSL kind이고, 코드 수정이 필요한 파일이
-   13개(테스트 3개 포함), 그중 `replan.jl` 한 곳에만 16개 site가 있다(§5.1). 되돌리려면
-   `spec_dsl.jl` · `schema.py` lockstep과 테스트가 함께 움직여야 한다.
-   T8은 단일 커밋으로 묶고, 그 앞뒤로 전체 테스트 스위트를 돌린다.
-4. **`laneC7` 워크트리와 갈라진다.** `sdd-lane-c7`의 `ood_truth.jl`은 이미 `ForbidZone`
+1. **기존 `dspy` 수치와의 직접 비교가 끊긴다** (§7.1). 축 B·C가 세계를 바꾼다.
+   C7을 새 baseline으로 다시 세우는 비용이 든다.
+2. **fault 메뉴에 `SwapBattery`가 오른다** (§5.3). 고르면 오답으로 집계되는 것이 의도다.
+   `decision_rate`가 축 B에서 떨어질 수 있고, 그 하락은 결함이 아니라 측정값이다 — §7.4의
+   혼동표 없이 이 숫자만 보면 오독한다.
+3. **`Deprioritize` 잔재 제거는 이 작업에서 가장 큰 덩어리다** (§5.4). compile / verify /
+   dispatch까지 배선돼 있고 코드 수정이 필요한 파일이 13개(테스트 3개 포함), `replan.jl`
+   한 곳에만 16개 site가 있다. C4는 단일 커밋으로 묶고 앞뒤로 전체 스위트를 돌린다.
+4. **어휘 도장을 안 올리면 조용히 샌다** (§5.2). `vocab`을 `v4-3arms`로 올리지 않으면
+   `assert_vocab_arm_count`가 걸리거나, 더 나쁘게는 구세대 산출물이 새 어휘로 재해석된다.
+5. **0.30 · 0.50 rung의 실측 근거가 채점에서 버려진다** (§5.6). 지금 데이터로는 무영향.
+6. **`laneC7` 워크트리와 갈라진다.** `sdd-lane-c7`의 `ood_truth.jl`은 이미 `ForbidZone`
    분기를 지운 상태이고 `src/smdp/`에 이 워크트리에 없는 파일들이 있다. 병합 시 충돌 지점이다.
