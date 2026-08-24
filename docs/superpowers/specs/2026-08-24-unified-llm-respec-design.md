@@ -14,7 +14,8 @@ Claude `/propose` 경로는 제거한다.
 세 가지를 함께 바꾼다:
 
 1. **어휘를 3팔로** — `NOOP` · `Replace` · `SwapBattery`. zone 사건은 LLM 결정 레인에서 빼고
-   (surrogate 학습 증거용으로만 남긴다) `RelocateBuild`는 은퇴, `DeprioritizeAgent` 잔재는 제거.
+   (surrogate 학습 증거용으로만 남긴다) `RelocateBuild`는 레지스트리에서 삭제,
+   `DeprioritizeAgent` 잔재도 제거. id는 0..2로 재번호한다.
 2. **메뉴를 연다** — 사건 종류별 후보 필터를 없애고 LLM에게 언제나 레지스트리 전체를 준다.
    어떤 팔이 이 상황에 말이 안 되는지 판단하는 것 자체가 측정 대상이다(§1.2).
 3. **번역을 추가한다** — 출력 필드를 `reasoning → constraints → macro` 순으로 선언한다.
@@ -312,37 +313,66 @@ zone은 앞으로 **OOD 시뮬레이션에서 surrogate가 잘 학습됐다는 �
 > `ActionRegistry.kind_valid`를 계속 쓴다(오라클/SMDP 레인). zone을 그쪽에서까지 지우는 것은
 > 이 spec의 범위가 **아니다** — LLM 결정 레인에서만 뺀다.
 
-### 5.2 어휘를 3팔로 — **재번호하지 말고 은퇴 처리한다**
+### 5.2 어휘를 3팔로 — 엔트리를 지우고 재번호한다
 
-목표: `NOOP` · `Replace` · `SwapBattery`. `RelocateBuild`는 zone 전용 팔이므로 함께 빠진다.
+목표: `{0: NOOP, 1: Replace, 2: SwapBattery}`. `RelocateBuild`는 zone 전용 팔이므로 함께
+빠진다. **은퇴 표식을 남기지 않고 `action_registry.json`에서 엔트리를 지우고 id를 0..2로
+재번호한다.**
 
-`action_registry.json`에서 `RelocateBuild`(id 2)에 `"retired": true` + `"retired_reason"`을
-붙인다. **엔트리를 지우고 id를 0..2로 재번호하지 않는다.**
+근거:
 
-근거 — 레지스트리 자신의 `_doc`이 그 위험을 적어 뒀다:
+- zone 제거로 세계가 바뀌므로 라벨·오라클·surrogate는 **어차피 전부 재생성한다.**
+  id를 고정해 구세대 산출물의 가독성을 지키는 것은 재생성하는 순간 값이 0이다.
+- 은퇴 엔트리는 코드를 읽는 사람이 매번 "이건 살아 있나?"를 우회해야 하는 상시 비용이다.
+- 2026-08-20의 9팔 → 4팔 축소가 정확히 같은 판단(폐기 + 삭제 + 재번호)이었다.
 
-> "2026-08-20 축소 (9팔 → 4팔, id 재번호 0..3): 은퇴 표식 대신 **엔트리를 지웠다.**
->  구세대 산출물을 전부 폐기했으므로 (…) 그 대가로 **id 재번호가 안전해졌지만 동시에
->  도장(vocab)이 유일한 방어선이 됐다** — 구세대 파일의 macro 2 행은 이제 KeyError가 아니라
->  RelocateBuild로 **조용히** 읽힌다."
+#### 필수 동반 조건 — 도장을 **실제로 검사하게** 만든다
 
-지금 재번호하면 같은 사고가 반복된다: `v3-4arms` 세대 산출물(배포 surrogate, DSPy 컴파일
-프로그램의 학습 라벨, 오라클 데이터셋)의 `macro=3`(SwapBattery) 행이 새 어휘에서 결번이 되고
-`macro=2`(RelocateBuild) 행이 SwapBattery로 재해석된다. 은퇴 처리하면 **id가 고정되므로 그
-재해석 자체가 일어나지 않는다.** 은퇴 기계(`_is_retired` / `n_non_retired` / `RETIRED`)는
-이미 존재하고 어서션까지 걸려 있다.
+재번호의 위험은 재해석 자체가 아니라 그것이 **조용하다는 것**이다. 재번호하면 디스크에
+남은 `v3-4arms` 파일의 `macro=2`(RelocateBuild) 행이 새 어휘에서 `SwapBattery`로 에러 없이
+읽힌다.
 
-동반 수정:
+측정 결과(2026-08-24): `require_vocab`을 실제로 부르는 소비처는 **`gate_ng2.py:112` 하나뿐**이고,
+`macro` 열을 읽는 나머지 7곳은 도장을 보지 않는다 —
+
+```
+e1_analyze.py:463 · surrogate_v2.py:144,237 · eval_surrogate_v2.py:162
+export_surrogate.py:298 · dspy_service.py:260,463,464
+```
+
+레지스트리 `_doc`의 "지금 도장은 write-only 다"는 사실이었다. 따라서:
+
+> **재번호와 `require_vocab` 배선을 같은 커밋에 넣는다.** 도장이 안 걸린 채로 재번호하는
+> 것만 금지한다 — 그 조합이 조용한 오독을 만든다.
+
+우선순위가 가장 높은 곳은 **디스크에서 파일을 자동 발견하는 로더**다:
+`dspy_service.py:80`(`dspy_real_program_*.json` glob으로 최신 선택) 및 그 학습 행 로더
+(`:251-260`). 사람이 경로를 명시하는 로더보다 사고 확률이 높다.
+
+#### 동반 수정
 
 - `vocab` 도장 `"v3-4arms"` → `"v4-3arms"`.
   `assert_vocab_arm_count(VOCAB, n_non_retired(REGISTRY))`가 도장의 팔 개수와 실제 개수를
-  대조하므로 **반드시 같이 올려야 한다**(파이썬·줄리아 양쪽 로더).
+  대조하므로 **반드시 같이 올려야 한다**(파이썬 `core/action_registry.py` ·
+  줄리아 `oracle/action_registry.jl` 양쪽 로더).
 - `wm4spacecraft_manufacturing/smdp/test_stamps.py:22`의 하드코딩
   `assert action_registry.VOCAB == "v3-4arms"` 갱신.
-- `test/smdp_stamp_smoke.jl:118-121`의 `kind_valid` 기대값 갱신.
+- `test/smdp_stamp_smoke.jl:118-121`의 `kind_valid` 기대값 갱신
+  (`:zone`은 빈 목록이 된다).
+- `cost` 값은 이름-비용 쌍 불변 규칙대로 옮긴다: `NOOP=0.0` · `Replace=1.0` · `SwapBattery=0.2`.
+  `gen_oracle_dataset.jl MACRO_COST` · `e1_analyze.MACRO_COST` · `features_agnostic.MACRO_COST`와
+  같은 값이어야 한다.
 
-결과: `MACROS = [0,1,2,3]`, `ACTIVE_MACROS = [0,1,3]`,
-`dspy_service.MACROS = ['NOOP','Replace','SwapBattery']`.
+#### 재생성 대상 (축 C 이후)
+
+`v3-4arms` 세대 산출물은 새 어휘에서 무효다. 재생성하고, 구세대 파일은 **지우거나 옮긴다**
+— 남겨 두면 위의 무검사 로더가 집는다.
+
+- 오라클 라벨셋 (`gen_oracle_dataset.jl`)
+- 배포 surrogate (`export_surrogate.py` → `surrogate_v2`)
+- DSPy 컴파일 프로그램의 학습 라벨 (`dspy_real_program_gpt4o*.json`의 근거 데이터)
+
+재생성 런은 §7.2대로 실행 레인과 같은 물리 설정이어야 한다(`DS_HOTSWAP` 등).
 
 ### 5.3 kind 필터 폐지 — LLM에게는 레지스트리 전체를 준다
 
@@ -472,13 +502,14 @@ LLM의 정답률이 어떻게 다른가는 §1.2 원칙의 실증이다.
 
 | # | 작업 | 검증 |
 |---|---|---|
-| C1 | `action_registry.json`: `RelocateBuild`(id 2) 은퇴 + `vocab` → `"v4-3arms"` | `assert_vocab_arm_count` 통과, `ACTIVE_MACROS == [0,1,3]` |
+| C1 | `action_registry.json`: `RelocateBuild` 엔트리 삭제 + id 재번호 0..2 + `vocab` → `"v4-3arms"` + **`require_vocab` 배선**(§5.2) | `assert_vocab_arm_count` 통과, `MACROS == [0,1,2]`, 구세대 도장 파일이 **큰 소리로 죽는지** |
 | C2 | 도장 하드코딩 갱신: `test_stamps.py:22`, `test/smdp_stamp_smoke.jl:118-121` | 두 테스트 통과 |
 | C3 | zone을 LLM 결정 레인에서 제거 (§5.1) | `--case zone`이 명확히 거부되는지 (조용히 통과 금지) |
 | C4 | `Deprioritize` 잔재 제거 (§5.4) — **단일 커밋**, `features_agnostic.py` 제외 | §5.4 표의 파일 전부 + 전체 테스트 스위트 |
 | C5 | `emitted_key`/`truth_key` 정리 (§5.5) | fault·battery 둘 다 grounding이 정의되는지 |
 | C6 | SoC 임계값 0.2 통일 (§5.6) | 채점기 교차 테스트 (§7.3) |
-| C7 | **측정** — 축 C 후 baseline | seed ≥15, `decision_rate` + `per_kind` 기록 |
+| C7 | 산출물 재생성 (오라클 라벨 · surrogate · DSPy 학습 라벨) + 구세대 파일 제거 | 새 파일 전부 `v4-3arms` 도장, kind별 발화율 집계(§7.2) |
+| C8 | **측정** — 축 C 후 baseline | seed ≥15, `decision_rate` + `per_kind` 기록 |
 
 ### 축 B — 메뉴 개방
 
@@ -486,7 +517,7 @@ LLM의 정답률이 어떻게 다른가는 §1.2 원칙의 실증이다.
 |---|---|---|
 | B1 | `policy.jl:valid_macros` → 활성 레지스트리 전체 (§5.3a) | zone 분기·`zone_diagnosis` 블록이 함께 사라졌는지 |
 | B2 | `dspy_service._valid_for` kind 폴백 제거 (§5.3b) | `valid`를 안 보내도 3팔 전체가 나오는지 |
-| B3 | **측정** — 축 B 후 | C7과 같은 seed 집합. fault에서 SwapBattery 오선택 빈도를 별도 집계 |
+| B3 | **측정** — 축 B 후 | C8과 같은 seed 집합. fault에서 SwapBattery 오선택 빈도를 별도 집계 |
 
 ### 축 A — 번역 추가
 
@@ -517,9 +548,9 @@ LLM의 정답률이 어떻게 다른가는 §1.2 원칙의 실증이다.
 
 대신:
 
-- 축 C 종료 시점(C7)을 **새 baseline**으로 삼는다. 이후 비교는 전부 C7 기준이다.
+- 축 C 종료 시점(C8)을 **새 baseline**으로 삼는다. 이후 비교는 전부 C7 기준이다.
 - 기존 `v3-4arms` 세대 수치는 "이전 세대"로 라벨링해 보관하되 새 수치와 같은 표에 섞지 않는다.
-- 각 축의 측정(C7 · B3 · A10)은 **같은 seed 집합 · 같은 world seed**로 돌린다.
+- 각 축의 측정(C8 · B3 · A10)은 **같은 seed 집합 · 같은 world seed**로 돌린다.
   축 간 차이가 정책 변화가 아니라 판 차이가 되면 안 된다.
 
 축 A에서만은 여전히 "출력 필드 추가가 결정을 얼마나 흔드는가"를 따로 본다:
@@ -574,8 +605,11 @@ STEP 2 자체는 별도 spec이다 — `run_demo.jl` 집행 사슬 은퇴 + `ver
 3. **`Deprioritize` 잔재 제거는 이 작업에서 가장 큰 덩어리다** (§5.4). compile / verify /
    dispatch까지 배선돼 있고 코드 수정이 필요한 파일이 13개(테스트 3개 포함), `replan.jl`
    한 곳에만 16개 site가 있다. C4는 단일 커밋으로 묶고 앞뒤로 전체 스위트를 돌린다.
-4. **어휘 도장을 안 올리면 조용히 샌다** (§5.2). `vocab`을 `v4-3arms`로 올리지 않으면
-   `assert_vocab_arm_count`가 걸리거나, 더 나쁘게는 구세대 산출물이 새 어휘로 재해석된다.
+4. **재번호 + 무검사 로더 = 조용한 오독** (§5.2). `require_vocab`의 실제 소비처는
+   `gate_ng2.py` 하나뿐이고 `macro` 열을 읽는 나머지 7곳은 도장을 보지 않는다(측정함).
+   도장 배선 없이 재번호하면 디스크에 남은 `v3-4arms` 파일의 `macro=2`(RelocateBuild) 행이
+   `SwapBattery`로 에러 없이 읽힌다. **C1이 그 배선을 같은 커밋에 포함해야 하는 이유다.**
+   구세대 파일 제거(C7)는 두 번째 방어선이지 첫 번째가 아니다.
 5. **0.30 · 0.50 rung의 실측 근거가 채점에서 버려진다** (§5.6). 지금 데이터로는 무영향.
 6. **`laneC7` 워크트리와 갈라진다.** `sdd-lane-c7`의 `ood_truth.jl`은 이미 `ForbidZone`
    분기를 지운 상태이고 `src/smdp/`에 이 워크트리에 없는 파일들이 있다. 병합 시 충돌 지점이다.
