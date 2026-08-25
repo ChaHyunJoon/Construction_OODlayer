@@ -216,8 +216,14 @@ _legacy_arms() = get(ENV, "DS_ARMS_LEGACY", "0") == "1"
 이 전부 같다(실측). 유일한 구분자가 행의 `valid_mask` 였고 그걸 게이트하는 소비처는 없다.
 그래서 도장을 심었는데, 도장이 기본값 문자열 `"1"` 을 **두 번째로 복사**해서 읽으면 한쪽만
 고쳤을 때 도장이 조용히 거짓말한다. 판독점을 하나로 묶어 그 경로를 없앤다.
+
+🔴 `DS_ARMS_LEGACY=1` 이 왜 여기 들어오나 (2026-08-25, Task 8b / M3): 아래 `valid_actions` 의
+battery 분기는 legacy 일 때 **`soc_split_enabled()` 를 보기도 전에** 되돌아가고, 그 legacy 경로는
+`ctx.soc <= thr0` 로 **언제나 SoC 로 메뉴를 가른다**. 그러니 `DS_ARMS_LEGACY=1 DS_BATTERY_SOC_SPLIT=0`
+으로 돌리면 메뉴는 갈렸는데 도장은 `false` 를 찍는다 = 도장이 거짓말한다. 8b 는 이 런에서 그
+플래그를 쓰지 않지만, **거짓말할 수 있는 도장은 그 자체가 결함**이므로 판독점에서 막는다.
 """
-soc_split_enabled() = get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1"
+soc_split_enabled() = _legacy_arms() || get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1"
 
 function valid_actions(ctx)
     if ctx.type === :fault

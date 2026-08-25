@@ -22,10 +22,12 @@ Cost-aware mode fixes it by (a) keeping the harmless instances and (b) charging 
 adaptation cost (a spare robot, a restage, a team re-form are not free):
 
     y = closed - LAMBDA * cost(macro),   cost = action_registry.json 의 macro 별 cost
-                                         (2026-08-25 현재 v4-3arms: NOOP 0 / Replace 1.0 /
-                                          SwapBattery 0.2. 여기 숫자를 다시 적지 말 것 —
-                                          예전 이 자리의 "Deprioritize 0.3, ForbidZone/Reform
-                                          1.0" 은 두 번의 어휘 축소로 거짓이 됐다.)
+                                         (값은 이 산문이 아니라 레지스트리에서 읽는다 — 아래
+                                          MACRO_COST 가 `_reg.MACRO_COST` 파생이다. 🔴 여기에
+                                          숫자를 다시 적지 말 것: 예전 이 자리의 팔 이름·비용
+                                          목록은 두 번의 어휘 축소로 거짓이 됐고, 그 직후
+                                          2026-08-25 에 적어 둔 3팔 값도 같은 함정이었다.
+                                          현행 값은 `action_registry.json` 을 볼 것.)
 
 (the cost vector is `OODRewardCfg` from decpomdp/examples/ood_env_mdp.jl; LAMBDA is in schedule-nodes).
 Consequential events are unaffected — Replace still buys ~+21 nodes on a fault, far above the cost —

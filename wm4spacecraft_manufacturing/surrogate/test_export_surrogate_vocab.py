@@ -71,8 +71,18 @@ def test_macro_name_map_comes_from_the_registry(tmp_path):
     """print 요약의 이름 맵이 리터럴로 되돌아가면 여기서 걸린다.
 
     되돌아갔을 때의 피해: 이 맵은 `spec` 에 안 들어가므로 배포 모델은 멀쩡한데 **사람이 읽는
-    요약이 macro 2(SwapBattery)를 "Deprioritize" 라고 부른다**(구 9팔 리터럴의 값). 그 출력이
+    요약이 오늘의 macro id 를 옛 어휘의 이름으로 부른다**(구 9팔 리터럴의 값). 그 출력이
     보고서에 인용되면 거짓 문장이 발행된다.
+
+    🔴 여기에 이름을 리터럴로 적지 않는다(2026-08-25, Task 8b / M1·M2). 8a 가 여기 적었던
+    `MACRO_NAME[2] == "SwapBattery"` 는 **정당한 어휘 변경에서 RED 가 된다** — 어휘 단일
+    진실원이 `action_registry.json` 이라는 이 계획의 명제를 테스트가 스스로 어긴 것이다.
+    대신 **JSON 을 독립 경로로 다시 읽어** 대조한다: `action_registry` 모듈을 거치지 않으므로
+    "모듈이 자기 자신과 같다" 는 항진명제가 되지 않고, 구 9팔 리터럴(id 3~8 에 이름이 있는
+    맵)은 id 집합이 달라 여기서 죽는다.
     """
+    with open(action_registry.REGISTRY_PATH, encoding="utf-8") as fh:
+        from_disk = {int(k): m["name"] for k, m in json.load(fh)["macros"].items()}
+    assert from_disk, "레지스트리가 비었다 — 대조가 항진명제가 된다"
+    assert export_surrogate.MACRO_NAME == from_disk
     assert export_surrogate.MACRO_NAME == action_registry.MACRO_NAME
-    assert export_surrogate.MACRO_NAME[2] == "SwapBattery"

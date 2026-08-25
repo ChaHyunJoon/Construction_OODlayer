@@ -149,6 +149,20 @@ const OUTFILE = get(ENV, "DS_OUT", joinpath(@__DIR__, "out", "oracle_dataset.jso
 const MC_K       = parse(Int, get(ENV, "DS_MC_K", "1"))
 const HZ_SEED0   = parse(Int, get(ENV, "DS_HZ_SEED0", "1000"))
 const VALID_ONLY = get(ENV, "DS_VALID_ONLY", "0") == "1"
+
+# ---- valid_only 도장 (2026-08-25, Task 8b / R-61) ---------------------------------------
+# `DS_VALID_ONLY` 는 **기본값 `"0"` 인데 실무는 언제나 `1`** 이다 — `DS_HOTSWAP` 과 정확히 같은
+# 함정이고, 두 라벨셋은 `vocab`·`objective_hash`·`hot_swap`·`train_kinds`·`soc_split` 이 전부
+# 같은데 **행 집합이 다르다**(끄면 그 사건에서 집행 불가능한 팔의 행이 생기고, 그 판은
+# `action_to_proposal` 문지기에 걸려 조용히 NOOP 을 돈다). 그래서 도장이 필요하다.
+# 게이트는 만들지 않는다 — C9·V3 이 `train_kinds`·`soc_split` 에 대해 정한 규칙과 같다.
+#
+# 🔴 `VALID_ONLY` 를 그대로 찍지 않는 이유: 에피소드 모드에서 `DS_EP_MACROS` 가 있으면
+# `ep_macros` 가 valid 계산을 **통째로 건너뛰고** 그 목록만 돈다. 그 런의 메뉴는 valid-only 가
+# 아니므로 도장이 `true` 를 찍으면 거짓말이 된다(같은 종류의 거짓말을 `DS_ARMS_LEGACY` 에서
+# `soc_split` 이 하고 있었다 — 8b 가 `soc_split_enabled` 에서 같이 고쳤다).
+valid_only_effective() =
+    VALID_ONLY && !(EPISODE_N > 0 && !isempty(get(ENV, "DS_EP_MACROS", "")))
 # D-3/D-4 재점검(2026-08-21, T6 라운드 2, 컨트롤러 지시): fire_require_spare 와
 # mtbf_zone_s 가 라벨 레인에서 독립 기본값을 들고 있어 실행 레인(HazardParams())과
 # 다른 세계를 만들고 있었다 — 이 저장소가 같은 모양으로 이미 세 번 데었다(DS_HOTSWAP
@@ -1108,8 +1122,9 @@ const EPISODE_N = parse(Int, get(ENV, "DS_EPISODE_N", "0"))     # 에피소드�
 # 🔴 2026-08-24 (spec §5.1, Task 4 / C12) — 기본값에서 `zoneblk` 를 뺐다. 결정과 그 대가:
 #   왜 뺐나 (둘)
 #     (1) **대조가 0이다.** 3팔 축소 뒤 zone 에피소드의 후보 팔은 `_zone_arms()` = `[0]` 하나뿐이라
-#         (아래 :~1843 의 주석 참조) 이 생성기는 고를 것이 없는 행을 만든다. 라벨 행의 존재
-#         이유는 "같은 상태에서 팔이 갈리면 결과가 갈린다" 인데, 팔이 하나면 그 진술이 없다.
+#         (`run_episodes` 의 `ep_macros` 클로저 zone 분기 주석 참조) 이 생성기는 고를 것이
+#         없는 행을 만든다. 라벨 행의 존재 이유는 "같은 상태에서 팔이 갈리면 결과가 갈린다"
+#         인데, 팔이 하나면 그 진술이 없다.
 #     (2) **held-out 오염.** zone 은 이 실험의 OOD 프로브다(CLAUDE.md §OOD: known 학습 =
 #         fault·battery, 테스트 전용 = zone). 학습 라벨셋에 zone 을 넣으면 "낯선 사건을
 #         알아보는가" 를 재려는 그 사건을 surrogate 가 이미 본 것이 된다.
@@ -1130,13 +1145,18 @@ const EP_KINDS  = [Symbol(s) for s in split(get(ENV, "DS_EP_KINDS", "fault,batte
 # ---- train_kinds 도장 (2026-08-25, Task 8 / C9·R-50) ------------------------------------
 # **어느 손잡이가 실제로 이 런을 몰았는가**에서 유도한다. 리터럴 금지 — 그리고 `DS_EP_KINDS`
 # 하나만 보는 것도 안 된다: `DS_EPISODE_N` 기본값이 0 이라 기본 경로는 `EP_KINDS` 를 **아예 안
-# 탄다**(main() 의 분기와 :1989 의 루프가 `KINDS` 를 돈다). C9 가 `DS_EP_KINDS` 만 명시하라고
-# 했던 것이 정확히 그 함정이었다 — 그 경로로는 zone 이 그대로 들어온다.
+# 탄다**(`main()` 의 `EPISODE_N > 0` 분기 아래, instance 를 채우는 `for seed in SEEDS, kind in KINDS`
+# 루프가 `KINDS` 를 돈다). C9 가 `DS_EP_KINDS` 만 명시하라고 했던 것이 정확히 그 함정이었다 —
+# 그 경로로는 zone 이 그대로 들어온다.
+# 🔴 줄번호를 적지 않는 이유: 이 파일의 줄번호는 커밋마다 밀린다. 실제로 8a 가 여기 적었던
+# ":1989" 는 같은 커밋 안에서 이미 :2007 로 밀려 있었다(C8 이 고치라고 한 것과 정확히 같은 결함).
+# 이 파일의 주석에서 위치를 가리킬 때는 **심볼로** 가리킬 것.
 # 정렬해서 박는 이유: `"battery,fault"` 와 `"fault,battery"` 가 같은 세계인데 다른 도장으로
 # 남으면 세대 비교가 문자열 순서에 걸린다.
 const TRAIN_KINDS = join(sort(String.(EPISODE_N > 0 ? EP_KINDS : KINDS)), ",")
 println(">>> train_kinds: $(TRAIN_KINDS)  (episode_mode=$(EPISODE_N > 0))  " *
-        "soc_split: $(soc_split_enabled() ? 1 : 0)")
+        "soc_split: $(soc_split_enabled() ? 1 : 0)  " *
+        "valid_only: $(valid_only_effective() ? 1 : 0)")
 const EP_LO     = parse(Int, get(ENV, "DS_EP_LO", "8"))         # 사건이 터질 closed-노드 구간 [lo,hi]
 const EP_HI     = parse(Int, get(ENV, "DS_EP_HI", "60"))
 const EP_SEV    = Dict(:fault   => 1.0,
@@ -1924,6 +1944,7 @@ function run_episodes(io)
                 "vocab"=>VOCAB,
                 "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
                 "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
+                "valid_only"=>valid_only_effective(), # 세대의 일곱 번째 축 (라벨 메뉴가 valid 로 좁혀졌나 — R-61)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -1963,6 +1984,7 @@ function run_episodes(io)
                                         "vocab"=>VOCAB,
                                         "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
                                         "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
+                                        "valid_only"=>valid_only_effective(), # 세대의 일곱 번째 축 (라벨 메뉴가 valid 로 좁혀졌나 — R-61)
                                         "objective_hash"=>OBJ_HASH]   # 라벨은 아니지만 세대 표식은 붙인다
                 for k in propertynames(p.raw); push!(prow, String(k)=>getproperty(p.raw, k)); end
                 println(pio, jrow(prow)); n_probe += 1
@@ -2122,6 +2144,7 @@ function main()
                 "vocab"=>VOCAB,
                 "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
                 "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
+                "valid_only"=>valid_only_effective(), # 세대의 일곱 번째 축 (라벨 메뉴가 valid 로 좁혀졌나 — R-61)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -2185,6 +2208,7 @@ function main()
                     "vocab"=>VOCAB,
                     "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
                     "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
+                    "valid_only"=>valid_only_effective(), # 세대의 일곱 번째 축 (라벨 메뉴가 valid 로 좁혀졌나 — R-61)
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                     "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
