@@ -106,8 +106,13 @@ def run_one(seed, policy, out_path, log_dir, args):
         DEMO_POLICY=policy,
         DEMO_ROUTER=args.router,                 # 기본 "0" = 기존 동작(정책 비교, STATUS §5). opt-in: --router
         DEMO_SPARES=str(args.spares),
-        DEMO_REFORM=str(args.reform),
-        DEMO_REFORM_MAX=str(args.reform_max),
+        # 2026-08-24 (Task 6 수정 라운드 1, 판정 R-45): `DEMO_REFORM=` / `DEMO_REFORM_MAX=`
+        # 주입을 지웠다. Task 6(`139d1962`)이 `run_demo.jl` 에서 그 둘을 읽는 코드를
+        # 통째로 지웠으므로(ReformTruth 사건 종류 자체가 삭제됐다) 여기서 넣어도
+        # **아무 데도 안 닿는다.** 죽은 노브를 남겨 두면 `--reform 300` 을 주고 스윕이
+        # 초록으로 완주했을 때 "reform 이 발화했다" 고 믿게 된다.
+        # ⚠️ `tools/monitor/render_demo.jl` 은 아직 두 변수를 읽지만, 이 드라이버가
+        #    띄우는 것은 `run_demo.jl` 하나뿐이다(아래 subprocess.run).
         DEMO_BSOC=str(args.bsoc),
         DEMO_OOD_SEVFRAC=str(args.sev_frac),
         CARRIER_RESCUE="1",
@@ -506,8 +511,8 @@ def main():
     r.add_argument("--events", type=int, default=4)
     r.add_argument("--world-seed", type=int, default=1)
     r.add_argument("--spares", type=int, default=3)
-    r.add_argument("--reform", type=int, default=300)
-    r.add_argument("--reform-max", type=int, default=6)
+    # 2026-08-24 (판정 R-45): `--reform` / `--reform-max` 를 지웠다 — 파싱만 되고
+    # 아무것도 안 하는 플래그가 정확히 제거 대상이다. 이제 주면 argparse 가 죽는다.
     r.add_argument("--bsoc", type=float, default=0.9)
     r.add_argument("--sev-frac", type=float, default=0.5)
     r.add_argument("--dspy-url", default="http://127.0.0.1:8090")

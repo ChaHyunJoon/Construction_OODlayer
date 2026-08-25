@@ -86,4 +86,11 @@ end
     @testset "OOD grounding keys" begin
         include("ood_truth_keys.jl")
     end
+
+    # 2026-08-24 (Task 6 수정 라운드 1, 판정 R-46): `policy.jl` 의 집행 가능 매크로 화이트리스트가
+    # `action_registry.json`(어휘 단일 진실원)에 묶여 있는지. 리터럴로 되돌아가면 어휘 밖 팔이
+    # **에러 없이** 집행돼 판에 거짓 라벨로 박힌다.
+    @testset "policy macro whitelist ↔ action registry" begin
+        include("policy_macro_binding.jl")
+    end
 end

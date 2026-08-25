@@ -670,12 +670,33 @@ const FORCE_MACRO = strip(get(ENV, "DEMO_FORCE_MACRO", ""))
 # `DEMO_FORCE_MACRO=Deprioritize DEMO_OOD=battery` 를 재현 레시피로 적어 두고 있다 — 가상의
 # 조합이 아니라 도달 가능한 설정이다. 그래서 **읽는 자리에서 바로, 시끄럽게** 죽인다.
 #
-# 이 튜플은 아래 `macro_to_proposal` 이 실제로 집행할 수 있는 이름의 전부다
-# (`NOOP` 은 "제약 없음"이 정답이라 빈 제안이 정상 동작이다). 팔을 늘리면 둘을 같이 고친다.
-const ENACTABLE_MACROS = ("NOOP", "Replace", "SwapBattery", "ReformTeam")
-if !isempty(FORCE_MACRO) && !(FORCE_MACRO in ENACTABLE_MACROS)
+# 🔴 2026-08-24 리뷰 라운드 1 (Important #2): 이 목록은 처음에 리터럴 튜플이었고
+# `ReformTeam` 을 포함했다 -- 그 이름은 `action_registry.json` 이 2026-08-20 에 **삭제**한
+# 팔이라, `DEMO_FORCE_MACRO=ReformTeam` 이 검사를 통과한 뒤 실제로 집행돼(`macro_to_proposal`
+# → `run_demo.jl` 의 `mac == "ReformTeam"` 분기) **어휘 도장이 v4-3arms 인 판에 어휘 밖 팔이
+# 라벨로 박히는** 결과를 냈다. 리터럴은 레지스트리의 네 번째 진실원이었다.
+# 그래서 **레지스트리에서 유도한다** — Task 2 가 세운 단일 진실원 그대로.
+# 바인딩은 `test/policy_macro_binding.jl` 이 지킨다(runtests.jl 에 실려 있다). 그 게이트는
+# 세 방향을 전부 잰다: 리터럴 복원 · 레지스트리에만 팔이 늘어난 경우(= `macro_to_proposal`
+# 분기 누락) · 아래 두 손잡이 중 하나의 검사만 지운 경우. 셋 다 변형으로 RED 를 확인했다.
+#
+# ⚠️ **상수가 아니라 함수다.** 두 가지 이유:
+#    (1) `ActionRegistry.is_active` 자체가 의도적으로 함수다 — experimental 게이트
+#        (`DS_COMBO_ARMS`)를 **호출 시점**에 읽어야 하고, 상수로 접으면 로드 순서에 따라
+#        플래그가 조용히 무시된다(action_registry.jl 의 `is_active` 독스트링). 그 함수를
+#        상수로 스냅샷하면 여기서 그 계약을 되돌리는 셈이다.
+#    (2) `const` 로 두면 `test/smdp_global_inventory.jl` 의 RHS 머리 census 가 새 머리
+#        (`Tuple`)를 보고 죽는다 — 그 게이트를 통과시키려면 `src/smdp/state_globals.jl`
+#        (이번 라운드에 손대지 못하게 묶인 파일)에 새 hunk 를 얹어야 한다. 함수 정의는
+#        최상위 바인딩을 새로 만들지 않으므로 그 census 의 대상이 아니다(실측: 아래 두
+#        게이트 모두 초록).
+isdefined(@__MODULE__, :ActionRegistry) ||
+    include(joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "oracle",
+                     "action_registry.jl"))
+enactable_macros() = Tuple(ActionRegistry.NAME[i] for i in ActionRegistry.active_ids())
+if !isempty(FORCE_MACRO) && !(FORCE_MACRO in enactable_macros())
     error("DEMO_FORCE_MACRO=\"$(FORCE_MACRO)\" 는 집행 가능한 매크로가 아니다 — 현행 메뉴는 " *
-          join(ENACTABLE_MACROS, " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
+          join(enactable_macros(), " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
           "결정 기록에는 '그 팔을 골랐다' 고 남는다(= 거짓 라벨). 오타/구세대 이름을 의심하라.")
 end
 
@@ -709,10 +730,10 @@ const DEVIATE_ARM = strip(get(ENV, "DS_DEVIATE_ARM", ""))
 # 있었다. 위 파싱 게이트는 `DS_DEVIATE_AT` 의 오타만 잡고 `DS_DEVIATE_ARM` 의 **이름**은 메뉴와
 # 대조하지 않는다. 모르는 이름은 `macro_to_proposal` 에서 빈 제안으로 떨어져 집행이 안 되는데
 # `should_deviate` 는 그 결정을 "deviated" 로 표시한다 — DP 표집이 **일어나지 않은 이탈**을
-# 표본으로 삼게 된다. 같은 `ENACTABLE_MACROS` 로 같은 자리에서 죽인다.
-if !isempty(DEVIATE_ARM) && !(DEVIATE_ARM in ENACTABLE_MACROS)
+# 표본으로 삼게 된다. 같은 `enactable_macros()` 로 같은 자리에서 죽인다.
+if !isempty(DEVIATE_ARM) && !(DEVIATE_ARM in enactable_macros())
     error("DS_DEVIATE_ARM=\"$(DEVIATE_ARM)\" 는 집행 가능한 매크로가 아니다 — 현행 메뉴는 " *
-          join(ENACTABLE_MACROS, " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
+          join(enactable_macros(), " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
           "그 결정은 '이탈했다' 고 표본에 남는다(= 거짓 라벨). 오타/구세대 이름을 의심하라.")
 end
 

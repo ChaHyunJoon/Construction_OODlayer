@@ -143,7 +143,7 @@ $ curl -s -XPOST 127.0.0.1:8080/artifact -H 'Content-Type: application/json' \
 | `DEMO_SEED` 의 뜻 | 월드(로봇 초기 배치). 스윕은 1 로 고정 | **OOD 발화 시점 추첨 시드** |
 | 세 종류 혼합 추첨 | `DEMO_OOD_STREAM3=1` (`:431`) | 그런 모드가 없다 |
 | `DEMO_OOD=all` | `[:fault,:battery,:zone]` (`:99`) | **`fault` 하나로 떨어진다** — `case_kinds` 에 `all` 분기가 없어 `return [:fault]` 로 간다(실측: `>>> OOD armed: zone×0 + fault×4`) |
-| reform 기본값 | 스윕이 `--reform 300 --reform-max 6` 을 명시 | 기본 400 / 3 (`:86,90`) — 명시해서 맞춘다 |
+| reform | **없다.** `run_demo.jl` 이 `DEMO_REFORM` 을 안 읽고(Task 6), 스윕 드라이버의 `--reform`/`--reform-max` 도 2026-08-24 에 지워졌다 | 아직 `DEMO_REFORM`(기본 400) / `DEMO_REFORM_MAX`(기본 3) 을 읽는다 (`:83,87`) — 렌더 전용 손잡이다 |
 | MeshCat | 없다 | 애니를 켜면 `Visualizer()` 를 만든다(`full_demo.jl:194,235`) |
 
 **시드 축을 돌리려면 `DEMO_SEED=k` 를 준다**(스윕의 `DEMO_OOD_SEED=k` 가 아니다). 그러면 이름도

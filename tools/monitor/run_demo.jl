@@ -537,7 +537,12 @@ const OBJ_HASH = Objective.objective_hash()
 println(">>> objective_hash: $(OBJ_HASH)")
 
 # 어휘 도장(spec §2.4·§8, 2026-08-19) — objective_hash 가 못 잡는 축이므로 별도로 로드한다.
-include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+# 2026-08-24 (Task 6 수정 라운드 1, 판정 R-46): 가드를 붙였다. `policy.jl`(위에서 include 된다)
+# 이 이제 같은 로더를 include 해 `enactable_macros()` 를 레지스트리에서 **유도**하므로, 가드가
+# 없으면 여기서 `WARNING: replacing module ActionRegistry.` 가 나고 같은 JSON 을 두 번 읽는다.
+# 로더는 멱등이어야 한다 — 두 번째 모듈 인스턴스가 생기는 것 자체가 "두 진실원" 의 씨앗이다.
+isdefined(@__MODULE__, :ActionRegistry) ||
+    include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
 
 # ⚠️ 신세대 가지도 **지금은 GreedyFinalTimeCost 를 고른다.** GreedyEnergyAwareCost 로 바꿔도
 #   프로덕션에서는 얻는 것이 없기 때문이다(2026-08-13 리뷰, 소스로 확인): greedy 는 초기 계획에서
