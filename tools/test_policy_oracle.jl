@@ -95,23 +95,28 @@ env = run_with_stack(2_000_000_000) do
         save_milp_solution=false, return_env_before_sim=true)
 end
 
-println("\n== 1. battery 축 -- SoC <= 0.5 는 충전을 되살리는 팔, 그 위는 근거가 없다 ==")
+println("\n== 1. battery 축 -- SoC <= ORACLE_BATTERY_DEEP_SOC 는 충전을 되살리는 팔, 그 위는 근거가 없다 ==")
 # 배터리 레이어가 없으면 valid_macros 가 SwapBattery 를 메뉴에서 빼므로 두 갈래를 다 확인한다
 # (reference_policy.py:175 의 `"SwapBattery" if "SwapBattery" in valid else "Replace"` 와 같은 규칙).
 have_fleet = (try CB.BATTERY_FLEET[] !== nothing catch; false end)
 println("    BATTERY_FLEET 설치됨 = $(have_fleet)")
 restore_arm = have_fleet ? "SwapBattery" : "Replace"
-t_deep  = CB.BatteryTruth(CB.RobotID(1), 0.02)
-t_edge  = CB.BatteryTruth(CB.RobotID(1), 0.5)     # 경계값: reference_policy 는 `soc <= 0.5`
-t_mild  = CB.BatteryTruth(CB.RobotID(1), 0.80)    # 격자가 테스트한 사다리(최고 rung 0.50) 바깥
+# 🔴 SoC 리터럴을 쓰지 않는다(2026-08-25). 예전에는 `t_edge = 0.5` 리터럴이었는데, 그것이
+# 임계값의 **네 번째 진실원**이었다: 임계값이 0.5 -> 0.2 로 내려가면 0절은 빨개지는데 이 절은
+# "경계값" 이라는 이름으로 여전히 0.5 를 재게 되어 두 절이 서로 다른 세계를 주장한다.
+# 경계·구간을 상수에서 유도하면 임계값이 어디로 가든 이 절이 재는 **성질**은 그대로다.
+t_deep  = CB.BatteryTruth(CB.RobotID(1), ORACLE_BATTERY_DEEP_SOC / 2)   # 임계값 아래(깊은 방전)
+t_edge  = CB.BatteryTruth(CB.RobotID(1), ORACLE_BATTERY_DEEP_SOC)       # 경계값: 규칙이 `soc <= thr`
+t_mild  = CB.BatteryTruth(CB.RobotID(1), (1 + ORACLE_BATTERY_DEEP_SOC) / 2)  # 임계값 위(근거 없는 구간)
 t_nan   = CB.BatteryTruth(CB.RobotID(1), NaN)     # 값이 있으나 유한하지 않다
-check("깊은 방전(SoC=0.02) -> 충전을 되살리는 팔",
+check("깊은 방전(SoC=$(round(ORACLE_BATTERY_DEEP_SOC/2, digits=3))) -> 충전을 되살리는 팔",
       oracle_macro(env, t_deep) == restore_arm, "got=$(oracle_macro(env, t_deep))")
-check("경계값 SoC=0.5 는 '깊은 방전' 쪽(<=)",
+check("경계값 SoC=$(ORACLE_BATTERY_DEEP_SOC) 는 '깊은 방전' 쪽(<=)",
       oracle_macro(env, t_edge) == restore_arm, "got=$(oracle_macro(env, t_edge))")
-# ★ mild 는 NOOP 이 아니다. reference_policy.py:184 가 SoC>0.5 를 **unscored(None)** 로 돌려주므로
-#   (근거 격자가 없는 구간) 실행 lane 은 기준선이 하는 일을 그대로 해야 두 구현이 정확히 겹친다.
-check("미검증 구간(SoC=0.80) -> canonical 에 위임 (NOOP 을 지어내지 않는다)",
+# ★ mild 는 NOOP 이 아니다. reference_policy.py 의 같은 자리가 SoC>BATTERY_DEEP_SOC 를
+#   **unscored(None)** 로 돌려주므로(근거가 없는 구간) 실행 lane 은 기준선이 하는 일을 그대로
+#   해야 두 구현이 정확히 겹친다.
+check("미검증 구간(SoC=$(round((1+ORACLE_BATTERY_DEEP_SOC)/2, digits=3))) -> canonical 에 위임 (NOOP 을 지어내지 않는다)",
       oracle_macro(env, t_mild) == canonical_macro(env, t_mild),
       "oracle=$(oracle_macro(env, t_mild)) canonical=$(canonical_macro(env, t_mild))")
 check("SoC 가 유한하지 않으면 canonical 에 위임",

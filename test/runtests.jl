@@ -111,4 +111,32 @@ end
     @testset "SMDP hazard knobs" begin
         include("smdp_hazard_knobs.jl")
     end
+
+    # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
+    # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
+    # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다
+    # (실효: `(0.2, 0.5]` 구간에서 oracle 레인은 팔을 내고 파이썬 채점기는 unscored 로 뺀다).
+    # 두 언어의 그 임계값을 묶는 것은 이 게이트 0절 하나뿐이다 — 줄리아 쪽에서 파이썬 상수를
+    # 유도할 수 없기 때문이다(이유는 policy.jl 의 그 상수 위 주석).
+    #
+    # 🔴 **하위 프로세스로 부른다(include 가 아니다).** 그 파일은 스크립트라 마지막 줄이
+    # `exit(nfail == 0 ? 0 : 1)` 이다. 여기서 `include` 하면 초록일 때 `exit(0)` 이 걸려
+    # **뒤따르는 테스트가 하나도 안 돌았는데 Pkg.test 는 성공으로 보인다** — include 배선은
+    # 그 자체로 "실패할 수 없는 게이트" 를 하나 더 만드는 셈이다. 하위 프로세스는 종료코드를
+    # 그대로 나르고, 그 파일이 심는 전역 로거·ENV 도 이쪽으로 새지 않는다.
+    @testset "policy oracle lane (tools/test_policy_oracle.jl)" begin
+        gate = normpath(joinpath(@__DIR__, "..", "tools", "test_policy_oracle.jl"))
+        repo = normpath(joinpath(@__DIR__, ".."))
+        @test isfile(gate)
+        logf = tempname()
+        ok = success(pipeline(`$(Base.julia_cmd()) --project=$(repo) $(gate)`;
+                              stdout = logf, stderr = logf))
+        txt = isfile(logf) ? read(logf, String) : ""
+        # 요약 줄은 언제나 보여 준다(초록이어도 몇 개를 쟀는지가 보여야 한다).
+        for l in split(txt, '\n')
+            occursin("policy oracle lane:", l) && println("    ", strip(l))
+        end
+        ok || println("---- tools/test_policy_oracle.jl 전체 출력 ----\n", txt)
+        @test ok
+    end
 end

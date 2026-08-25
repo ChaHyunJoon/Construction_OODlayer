@@ -495,10 +495,32 @@ end
 #        (md/README.md §6: 복구를 되살린 처방이 DEMO_REFORM). canonical_macro 는 규칙의 답을 지금
 #        실행 가능한 어휘로 투영하므로(바로 위 함수) 실행 불가능한 팔은 절대 내지 않는다.
 #
-# 아래 상수는 reference_policy.py:71 의 `BATTERY_DEEP_SOC` 와 **같은 값이어야 한다**. 갈리면 그
-# 사이 SoC 구간에서 두 구현이 다른 팔을 내고, 증상은 에러가 아니라 **oracle 레인의 결정 적중률이
-# 1.0 미만**으로 나타난다. tools/test_policy_oracle.jl 의 0절이 두 파일을 직접 대조한다.
-const ORACLE_BATTERY_DEEP_SOC = 0.5      # = reference_policy.py:71 BATTERY_DEEP_SOC
+# 아래 상수는 `reference_policy.py` 의 `BATTERY_DEEP_SOC` 와 **같은 값이어야 한다**(줄번호로
+# 찾지 말 것 — 이 레포는 줄번호가 계속 밀린다. 심볼로 찾는다). 갈리면 그 사이 SoC 구간에서 두
+# 구현이 다른 팔을 내고, 증상은 에러가 아니라 **oracle 레인의 결정 적중률이 1.0 미만**으로
+# 나타난다.
+#
+# 왜 0.2 인가 (2026-08-25): `reference_policy.BATTERY_DEEP_SOC` 가 0.5 -> 0.2 로 내려갔는데
+# (그쪽 주석대로 `src/navigator/ood_truth.jl` 의 `REPLACE_SOC_THRESHOLD` = 0.2 와 통일한
+# 값이다) 이 상수만 0.5 로 남아 있었다. 그 사이 구간 `(0.2, 0.5]` 에서 oracle 레인은 팔을
+# 내는데 파이썬 채점기는 같은 사건을 unscored 로 뺐다 — 실측: 현행 라벨셋
+# `oracle/out/oracle_dataset.jsonl` 의 battery 행 27개 중 **18개**가 그 구간에 있다.
+#
+# 🔴 왜 리터럴인가 — 유도를 시도했고 **못 한다**. (추론이 아니라 배선 제약이다.)
+#   · 파이썬 쪽 `BATTERY_DEEP_SOC` 는 다른 언어라 로드 시점에 읽을 수 없다.
+#   · 줄리아 쪽 진실원 `CB.REPLACE_SOC_THRESHOLD[]` 로는 유도할 수 있어 **보이지만**, 이 파일은
+#     `CB` 도 navigator 레이어도 없는 맨 모듈에서 로드될 수 있어야 한다:
+#     `test/policy_macro_binding.jl` 의 (B)·(C) 양성대조가 정확히 그 형태
+#     (`module _M; import HTTP, JSON3; include("policy.jl") end`)로 이 파일을 띄우고, 그 게이트는
+#     `test/runtests.jl` 에 실려 있다. 최상위에서 `CB.` 를 만지면 그 게이트가 UndefVarError 로
+#     빨개진다. `isdefined(...) ? ...[] : 0.2` 식 폴백은 **리터럴을 조용히 되살리는 것**이라
+#     더 나쁘다(이 레포에 이미 셋 있다: battery.jl · hazard.jl · replace_robot.jl).
+#
+# 그래서 값은 리터럴로 두고 **둘을 묶는 일은 게이트가 한다**: `tools/test_policy_oracle.jl` 의
+# 0절이 `reference_policy.py` 를 정규식으로 직접 읽어 이 상수와 대조한다. 그 게이트는
+# 2026-08-25 부터 `test/runtests.jl` 에 배선돼 있다 — 그 전까지 **고아 게이트**였고, 그래서
+# 이 회귀(0.5 대 0.2)가 최종 리뷰까지 살아남았다. 배선을 빼면 방어선이 사라진다.
+const ORACLE_BATTERY_DEEP_SOC = 0.2      # == reference_policy.py `BATTERY_DEEP_SOC` (게이트: tools/test_policy_oracle.jl 0절)
 
 # ---- "지금 운반체가 이동 중인가" 술어 (2026-08-13) ------------------------------------------
 # **oracle 레인 전용이다.** 이 함수는 `oracle_macro` 만 부른다 — 공유 장부(RECOVERY_SPARES)를
@@ -569,12 +591,17 @@ function oracle_macro(env, truth)
         # NaN <= x 는 조용히 false 라 mild 가지로 새어 들어간다 -- reference_policy._finite_soc 와
         # 같은 게이트를 여기서도 통과시킨다.
         (soc === nothing || !isfinite(soc)) && return canonical_macro(env, truth)
-        # 깊은 방전. D=20 사다리(n44_plus78_d20)에서 SwapBattery 가 세 칸 전부에서 이긴다
-        # (0.02 = 완주 여부, 0.30·0.50 = makespan). SwapBattery 가 메뉴에 없는 배선에서는
-        # Replace 가 그 자리를 대신한다 -- reference_policy.py:175 와 같은 규칙.
+        # 깊은 방전. D=20 사다리(n44_plus78_d20)에서 SwapBattery 가 세 칸(0.02·0.30·0.50)
+        # 전부에서 이겼지만(0.02 = 완주 여부, 0.30·0.50 = makespan), 임계값이 0.2 로 내려가면서
+        # **이 가지에 남는 것은 0.02 칸 하나뿐이다** — 나머지 두 칸은 아래 unscored 구간으로
+        # 밀려났다(대가는 reference_policy.py 의 `BATTERY_DEEP_SOC` 대입부 주석에 적혀 있다).
+        # SwapBattery 가 메뉴에 없는 배선에서는 Replace 가 그 자리를 대신한다 --
+        # reference_policy.py `a_star` 의 `"SwapBattery" if ... else "Replace"` 와 같은 규칙.
         soc <= ORACLE_BATTERY_DEEP_SOC && return ("SwapBattery" in vm ? "SwapBattery" : "Replace")
-        # SoC > 0.5 는 격자가 테스트한 사다리(최고 rung 0.50) **바깥**이라 근거가 없다.
-        # reference_policy.py:184 가 이 구간을 unscored 로 뺀다 -- 없는 정답을 지어내지 않는다.
+        # SoC > ORACLE_BATTERY_DEEP_SOC 는 채점 근거가 없는 구간이다(사다리의 0.30·0.50 rung 이
+        # 여기로 밀려났다 — 측정은 있었지만 임계값이 그 아래에 있다). reference_policy.py 의
+        # 같은 자리가 이 구간을 unscored(a*=None)로 뺀다 -- 없는 정답을 지어내지 않는다.
+        # ★ NOOP 이 아니라 canonical 위임이다(이 함수 위 ★ 주석).
         return canonical_macro(env, truth)
     elseif truth isa CB.FaultTruth
         local pend = try _agent_pending(env, truth.robot) catch; -1 end
