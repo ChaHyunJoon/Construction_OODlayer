@@ -21,7 +21,11 @@ and picks whatever macro has the largest main effect. That is a hole, not a deci
 Cost-aware mode fixes it by (a) keeping the harmless instances and (b) charging each macro its
 adaptation cost (a spare robot, a restage, a team re-form are not free):
 
-    y = closed - LAMBDA * cost(macro),   cost = {NOOP 0, Deprioritize 0.3, Replace/ForbidZone/Reform 1.0}
+    y = closed - LAMBDA * cost(macro),   cost = action_registry.json 의 macro 별 cost
+                                         (2026-08-25 현재 v4-3arms: NOOP 0 / Replace 1.0 /
+                                          SwapBattery 0.2. 여기 숫자를 다시 적지 말 것 —
+                                          예전 이 자리의 "Deprioritize 0.3, ForbidZone/Reform
+                                          1.0" 은 두 번의 어휘 축소로 거짓이 됐다.)
 
 (the cost vector is `OODRewardCfg` from decpomdp/examples/ood_env_mdp.jl; LAMBDA is in schedule-nodes).
 Consequential events are unaffected — Replace still buys ~+21 nodes on a fault, far above the cost —
@@ -101,8 +105,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import LeaveOneGroupOut
 
 # adaptation cost per macro (OODRewardCfg, decpomdp/examples/ood_env_mdp.jl)
-# macro별 개입 비용(e1_analyze와 동일). NOOP=0, Deprioritize=0.3, 나머지=1.0.
-# 7 = RelocateBuild(1.5, 전역 개입).
+# macro별 개입 비용(e1_analyze와 동일). **레지스트리 파생이므로 여기 값을 적지 않는다** —
+# 예전 이 자리의 "NOOP=0, Deprioritize=0.3, 나머지=1.0 / 7 = RelocateBuild(1.5)" 는
+# 2026-08-20(9->4팔)·2026-08-24(4->3팔) 축소로 두 번 거짓이 됐다.
 #
 # 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다. 예전 주석은 "5·6 = 조합 팔"
 # 이라고 적고 있었는데, 그 둘은 레지스트리 통합(2026-08-06) 때 어휘에서 빠졌고 이 표에만
@@ -110,6 +115,31 @@ from sklearn.model_selection import LeaveOneGroupOut
 import action_registry as _reg                                      # noqa: E402
 
 MACRO_COST = dict(_reg.MACRO_COST)
+# macro id -> 이름. **레지스트리 파생**(action_registry.json 이 단일 진실원).
+# 2026-08-25 이전에는 아래 두 print 자리에 9팔 리터럴이 박혀 있었다:
+#   {0:"NOOP",1:"Replace",2:"Deprioritize",3:"ForbidZone",4:"ReformTeam",...,8:"SwapBattery"}
+# 2026-08-20 의 재번호(9->4팔) 때부터 이미 틀린 표였다. 피해의 정확한 범위(2026-08-25 실측):
+# 이 맵은 `spec` 에 **안 들어간다** — 흘러가는 곳은 아래 두 print 뿐이다. 그러니 배포 모델의
+# macro support 가 오염되는 것이 아니라, **사람이 읽는 요약이 macro 2(SwapBattery)를
+# "Deprioritize" 라고 부른다.** 그 출력이 보고서에 인용되면 거짓 문장이 발행된다.
+# 어휘 밖 id 가 오면 KeyError 로 죽는 것이 옳다 — 도장 검사를 통과한 파일에는 있을 수 없고,
+# 있다면 조용히 "macro_9" 같은 이름을 지어내는 것보다 멈추는 편이 낫다.
+MACRO_NAME = dict(_reg.MACRO_NAME)
+
+
+def _load_labels(path):
+    """라벨 한 파일을 읽고 **어떤 행 필터보다도 앞에서** 어휘 도장을 본다.
+
+    2026-08-25 (Task 8 / R-52): 이 경로에는 도장 검사가 **없었다**. `e1_analyze.load` 는
+    JSON 을 DataFrame 으로 펴 줄 뿐이고 `eval_surrogate_v2.load_rows` 의 검사는 이 스크립트가
+    안 지나간다. 그래서 **구세대(`v3-4arms`) 라벨로 재적합해도 조용히 성공했고**, 그렇게 나온
+    `surrogate_linear.json` 에는 `_reg.VOCAB`(= 현행) 도장이 찍혔다 — 산출물이 자기 출신을
+    거짓으로 말한다. 4팔->3팔 재번호로 구세대 `macro=2`(RelocateBuild) 행이 새 어휘에서
+    SwapBattery 로 **조용히** 읽히므로 이 구멍은 라벨의 의미를 바꾼다.
+    """
+    df = load(path)                                              # "Inf"/"NaN" 문자열 복원
+    _reg.require_vocab_stamps(df["vocab"] if "vocab" in df.columns else None, path)
+    return df
 
 # State features that must be allowed to INTERACT with the chosen macro. Without these the exported
 # model is purely additive and CANNOT represent the graded flip: on a battery OOD the value of NOOP
@@ -255,7 +285,9 @@ def main():
                                                         "surrogate_linear.json"))
     a = ap.parse_args()  # 실제 인자 파싱 → a.data, a.cost_aware 등으로 접근
 
-    df = pd.concat([load(p) for p in a.data], ignore_index=True)  # 모든 데이터셋을 로드해 하나로 합침
+    # 도장 검사는 `_load_labels` 안, 즉 **fired 필터 앞**이다. 뒤로 옮기면 구세대 미발화 행이
+    # 먼저 걷혀 "구세대 반 + 현행 반" 파일이 조용히 통과한다.
+    df = pd.concat([_load_labels(p) for p in a.data], ignore_index=True)  # 모든 데이터셋을 로드해 하나로 합침
     df = df[df.fired == True].copy()  # OOD가 실제로 발동된 행만 남김
 
     if a.cost_aware:
@@ -372,11 +404,7 @@ def main():
         for k, v in sorted(per_kind.items()):  # kind별 regret과 top-1 정확도 출력
             acc = 100.0 * sum(1 for _, ok in v if ok) / len(v)
             print(f"    {k:9s} n={len(v):2d}  regret={np.mean([r for r, _ in v]):.3f}  top1-correct={acc:.0f}%")
-        # 8 = SwapBattery 가 빠져 있어, macro 8 을 고르는 순간 KeyError 로 죽었다(2026-08-05 실측:
-        # 새 battery 덤프에서 학습은 끝났는데 요약을 찍다가 죽음). Julia 쪽 ACTION_NAME 과 맞춘다.
-        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
-                 5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
-                 8: "SwapBattery"}
+        names = MACRO_NAME  # 레지스트리 파생 (위 정의 참조). 리터럴을 되살리지 말 것.
         df2 = df.copy(); df2["pred"] = model.predict(X)  # 학습행에 대한 예측을 붙여
         print("  chosen macro per kind (on training rows):")
         for k, gk in df2.groupby("kind"):
@@ -432,11 +460,7 @@ def main():
         picks = []
         for _, g in gk.groupby("instance"):
             picks.append(int(g.loc[g.pred.idxmax()].macro))  # instance마다 예측 최대 macro
-        # 8 = SwapBattery 가 빠져 있어, macro 8 을 고르는 순간 KeyError 로 죽었다(2026-08-05 실측:
-        # 새 battery 덤프에서 학습은 끝났는데 요약을 찍다가 죽음). Julia 쪽 ACTION_NAME 과 맞춘다.
-        names = {0: "NOOP", 1: "Replace", 2: "Deprioritize", 3: "ForbidZone", 4: "ReformTeam",
-                 5: "ForbidAgent+ReformTeam", 6: "Deprioritize+ForbidWindow", 7: "RelocateBuild",
-                 8: "SwapBattery"}
+        names = MACRO_NAME  # 레지스트리 파생 (위 정의 참조). 리터럴을 되살리지 말 것.
         cnt = {names[m]: picks.count(m) for m in sorted(set(picks))}  # macro별 선택 횟수 집계
         print(f"    {k:9s} -> {cnt}")
 

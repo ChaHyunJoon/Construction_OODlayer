@@ -1117,12 +1117,26 @@ const EPISODE_N = parse(Int, get(ENV, "DS_EPISODE_N", "0"))     # 에피소드�
 #     (a) spec §5.1 은 zone 을 **surrogate 학습 증거**로 남긴다고 적는다. 그 증거는 이제 학습
 #         라벨이 아니라 **평가 레인**에서 나온다: zone 사건은 hazard 레인(`mtbf_zone_s`)이
 #         계속 발화시키고, 채점만 안 될 뿐(reference_policy 가 unscored) 관측·특징은 남는다.
-#     (b) 🔴 **이 축을 나르는 도장이 없다.** zone 을 뺀 라벨셋과 안 뺀 라벨셋은 `objective_hash`
-#         · `vocab` · `dynamics` 가 셋 다 같다(CLAUDE.md §2026-08-21 이 `train_kinds` 축을
-#         요구하는 이유). 즉 이 기본값 변경은 산출물에 흔적을 안 남긴다 — 재생성 시 kinds 를
-#         **명시**해서 굴리고 그 사실을 보고서에 적을 것.
+#     (b) 🔴 **이 축을 나르는 도장이 없었다 — 2026-08-25 에 심었다.** zone 을 뺀 라벨셋과 안 뺀
+#         라벨셋은 `objective_hash` · `vocab` · `dynamics` 가 셋 다 같아서 사후 구별이 불가능
+#         했다(CLAUDE.md §2026-08-21 이 `train_kinds` 축을 요구한 이유). 이제 모든 행이 아래
+#         `TRAIN_KINDS` 를 `"train_kinds"` 필드로 달고 나간다. **게이트는 일부러 안 만들었다**
+#         — 도장은 생성을 복원 가능하게 만드는 것이 일이고, 무엇을 거부할지는 별개 결정이다.
+#         그래도 재생성 시 kinds 를 **명시**해서 굴릴 것(기본값에 의존하면 도장이 기본값을
+#         기록할 뿐이고, 그 기본값이 나중에 갈리면 두 런이 같은 이름으로 남는다).
 #     (c) zoneblk 행이 필요하면 노브는 그대로다: `DS_EP_KINDS=fault,battery,zoneblk`.
 const EP_KINDS  = [Symbol(s) for s in split(get(ENV, "DS_EP_KINDS", "fault,battery"), ",")]
+
+# ---- train_kinds 도장 (2026-08-25, Task 8 / C9·R-50) ------------------------------------
+# **어느 손잡이가 실제로 이 런을 몰았는가**에서 유도한다. 리터럴 금지 — 그리고 `DS_EP_KINDS`
+# 하나만 보는 것도 안 된다: `DS_EPISODE_N` 기본값이 0 이라 기본 경로는 `EP_KINDS` 를 **아예 안
+# 탄다**(main() 의 분기와 :1989 의 루프가 `KINDS` 를 돈다). C9 가 `DS_EP_KINDS` 만 명시하라고
+# 했던 것이 정확히 그 함정이었다 — 그 경로로는 zone 이 그대로 들어온다.
+# 정렬해서 박는 이유: `"battery,fault"` 와 `"fault,battery"` 가 같은 세계인데 다른 도장으로
+# 남으면 세대 비교가 문자열 순서에 걸린다.
+const TRAIN_KINDS = join(sort(String.(EPISODE_N > 0 ? EP_KINDS : KINDS)), ",")
+println(">>> train_kinds: $(TRAIN_KINDS)  (episode_mode=$(EPISODE_N > 0))  " *
+        "soc_split: $(soc_split_enabled() ? 1 : 0)")
 const EP_LO     = parse(Int, get(ENV, "DS_EP_LO", "8"))         # 사건이 터질 closed-노드 구간 [lo,hi]
 const EP_HI     = parse(Int, get(ENV, "DS_EP_HI", "60"))
 const EP_SEV    = Dict(:fault   => 1.0,
@@ -1908,6 +1922,8 @@ function run_episodes(io)
                 # 다른 소비처를 위해 남긴다 — 행 스키마는 `energy_J` 하나로 수렴시킨다(C-1a).
                 "energy_J"=>r.total_energy_J,
                 "vocab"=>VOCAB,
+                "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
+                "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -1945,6 +1961,8 @@ function run_episodes(io)
                 prow = Pair{String,Any}["episode"=>eid, "branch_t"=>t, "macro"=>a,
                                         "probe_idx"=>pi, "closed_at"=>p.closed_at,
                                         "vocab"=>VOCAB,
+                                        "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
+                                        "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
                                         "objective_hash"=>OBJ_HASH]   # 라벨은 아니지만 세대 표식은 붙인다
                 for k in propertynames(p.raw); push!(prow, String(k)=>getproperty(p.raw, k)); end
                 println(pio, jrow(prow)); n_probe += 1
@@ -2102,6 +2120,8 @@ function main()
                 "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
                 "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
                 "vocab"=>VOCAB,
+                "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
+                "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -2163,6 +2183,8 @@ function main()
                     "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
                     "vocab"=>VOCAB,
+                    "train_kinds"=>TRAIN_KINDS,      # 세대의 다섯 번째 축 (무엇으로 학습했나 — C9/R-50)
+                    "soc_split"=>soc_split_enabled(), # 세대의 여섯 번째 축 (battery 메뉴가 갈렸나 — R-50)
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                     "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)

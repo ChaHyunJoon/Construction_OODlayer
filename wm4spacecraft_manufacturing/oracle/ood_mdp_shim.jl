@@ -21,8 +21,10 @@
 #                               Agent/ForbidZone/ReformTeam. NOOP and any invalid
 #                               cross-type macro -> nothing (== the NOOP arm).
 #
-# macro ids (gen_oracle_dataset.jl:73-74): 0 NOOP · 1 Replace · 2 Deprioritize
-#                                          3 ForbidZone · 4 ReformTeam
+# macro ids: **레지스트리가 단일 진실원이다**(core/action_registry.json). 여기 리스트를
+# 다시 적지 않는다 — 예전에 적어 둔 "0 NOOP · 1 Replace · 2 Deprioritize · 3 ForbidZone ·
+# 4 ReformTeam" 은 2026-08-20(9팔->4팔)과 2026-08-24(4팔->3팔) 재번호로 두 번 거짓이 됐고,
+# 그 사이 이 파일을 읽은 사람에게 macro 2 를 두 번 다른 팔로 알려 줬다.
 # Replace == ReplaceAgent (gen:474-481; hot-swap is a separate ENACTMENT toggle).
 # =============================================================================
 
@@ -203,6 +205,20 @@ _zone_arms() = sort(unique(vcat(0, ActionRegistry.kind_valid(:zone))))
 # 하위호환. `DS_ARMS_LEGACY=1` 이면 2026-08-15 이전의 고정 집합으로 되돌아간다(옛 덤프 재현용).
 _legacy_arms() = get(ENV, "DS_ARMS_LEGACY", "0") == "1"
 
+"""
+    soc_split_enabled() -> Bool
+
+`DS_BATTERY_SOC_SPLIT` 손잡이의 **단일 판독점**. 아래 `valid_actions` 의 battery 분기와
+`gen_oracle_dataset.jl` 의 `soc_split` 도장이 **둘 다 이 함수를 부른다**.
+
+왜 함수인가 (2026-08-25, Task 8 / R-50): 이 손잡이는 라벨의 의미를 갈라 놓는데 산출물에
+흔적을 안 남겼다 — `SPLIT=0` 라벨과 `SPLIT=1` 라벨은 `vocab`·`objective_hash`·`hot_swap`
+이 전부 같다(실측). 유일한 구분자가 행의 `valid_mask` 였고 그걸 게이트하는 소비처는 없다.
+그래서 도장을 심었는데, 도장이 기본값 문자열 `"1"` 을 **두 번째로 복사**해서 읽으면 한쪽만
+고쳤을 때 도장이 조용히 거짓말한다. 판독점을 하나로 묶어 그 경로를 없앤다.
+"""
+soc_split_enabled() = get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1"
+
 function valid_actions(ctx)
     if ctx.type === :fault
         _legacy_arms() && return [0, 1]
@@ -214,15 +230,23 @@ function valid_actions(ctx)
             thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
             return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 2] : [0, 2]
         end
-        # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 {0,1,2,8} 의 부분집합).
-        #   8 = SwapBattery 는 심각도와 무관하게 항상 실행 가능하다 — 방전은 배터리를 갈면 풀리기
+        # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 `kind_valid(:battery)` 의
+        # 부분집합. 그 상한을 여기 숫자로 적지 않는다 — 예전 이 자리의 `{0,1,2,8}` 은 9팔
+        # 시절의 값이라 두 번의 재번호로 거짓이 됐다).
+        #   SwapBattery 는 심각도와 무관하게 항상 실행 가능하다 — 방전은 배터리를 갈면 풀리기
         #   때문. 양쪽 칸에 모두 넣어야 "얼마나 방전됐는가"가 팔을 고르는 축이 된다: deep 은
-        #   {아무것도 안 함, 본체교체, 배터리교체}, mild 는 {아무것도, 회피, 배터리교체}.
+        #   {아무것도 안 함, 본체교체, 배터리교체}, mild 는 {아무것도 안 함, 배터리교체}.
+        #   (mild 의 세 번째 칸이던 Deprioritize/회피는 2026-08-20 축소로 어휘에서 빠졌다.)
         #   fault 에는 일부러 안 넣는다 — 구동계가 망가진 로봇은 배터리를 갈아도 안 움직인다.
-        # DS_BATTERY_SOC_SPLIT=0 이면 분할을 끄고 상한 {0,1,2,8} 을 통째로 제시한다. 그러면
-        # "깊은 방전에서도 Deprioritize 가 이기는가" 를 라벨이 직접 답한다(팔 3 -> 4).
+        # 🔴 DS_BATTERY_SOC_SPLIT=0 이면 분할을 끄고 상한을 통째로 제시한다. 3팔 어휘에서 그
+        # 차이는 **mild(soc>thr) 칸에서 Replace(1) 가 메뉴에 남느냐**다: SPLIT=1 이면 빠지고,
+        # 그러면 라벨 격자가 `macro=1` 행을 만들어도 `action_to_proposal` 문지기가 걸러
+        # **실제로는 NOOP 을 돈 행**이 `macro=1` 로 기록된다(에러 없이). 그래서 이 손잡이는
+        # 라벨의 의미를 가르고, 행에 `soc_split` 도장으로 남는다(`soc_split_enabled`).
+        # (예전 이 자리의 "깊은 방전에서도 Deprioritize 가 이기는가 / 팔 3 -> 4" 는 그 팔이
+        #  어휘에 있던 시절의 서술이다.)
         up = ActionRegistry.kind_valid(:battery)
-        get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1" || return up
+        soc_split_enabled() || return up
         thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
         # 2026-08-24 재번호: SwapBattery 가 3 -> 2 다. 이 튜플이 낡으면 SwapBattery 가
         # **battery 메뉴에서 통째로 사라진다**(교집합이 [0,1]/[0] 으로 무너진다).

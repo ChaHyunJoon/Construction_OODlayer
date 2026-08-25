@@ -135,13 +135,8 @@ def load_rows(path):
     # 계약 0 (2026-08-24): 어휘 도장. 2026-08-24 의 4팔->3팔 재번호로 구세대 파일의
     # macro=2(RelocateBuild) 행이 새 어휘에서 SwapBattery 로 **조용히** 읽히게 됐다.
     # fired 필터보다 **앞에서** 본다 -- 필터가 행을 다 걷어내면 검사할 것이 없어진다.
-    if "vocab" not in df.columns:
-        raise ValueError("%s: 어휘 도장('vocab') 열이 없다 -- 구세대 라벨이다. 현행은 %r."
-                         % (path, action_registry.VOCAB))
-    stamps = set(df["vocab"].astype(str))
-    if stamps != {action_registry.VOCAB}:
-        raise ValueError("%s: 어휘 도장 불일치 -- 파일 %s vs 현행 %r."
-                         % (path, sorted(stamps), action_registry.VOCAB))
+    action_registry.require_vocab_stamps(
+        df["vocab"] if "vocab" in df.columns else None, path)
     if "fired" not in df.columns:
         raise SystemExit("라벨에 `fired` 열이 없다 — stub 10행을 거를 수 없다. 조용히 넘어가지 않는다.")
     n_all = len(df)

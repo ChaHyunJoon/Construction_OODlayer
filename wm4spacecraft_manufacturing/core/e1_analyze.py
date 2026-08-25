@@ -88,8 +88,10 @@ import action_registry as _reg                                      # noqa: E402
 # 쓴다 — 리터럴을 안 고치면 은퇴한 macro 3 이 배포 모델에 열 하나로 계속 살아 있는다
 # (`core/features_agnostic.py` 에서 고친 것과 같은 leak, 한 파일 건너에). `ACTIVE_MACROS` 는
 # 은퇴(retired)·실험 게이트(experimental) 를 둘 다 반영하므로 다시는 리터럴 드리프트가 안 난다 —
-# 오늘 값은 `[0, 1, 2, 4, 7, 8]` 이고, 5·6 이 여기 없는 이유도 이제 이 한 줄로 설명된다.
-MACROS = list(_reg.ACTIVE_MACROS)  # 8 = SwapBattery
+# 위 문단이 "오늘 값은 `[0, 1, 2, 4, 7, 8]`" 이라고 적었던 것은 9팔 시절의 값이다 — 2026-08-20
+# (9->4팔)·2026-08-24(4->3팔) 축소로 두 번 거짓이 됐다. **값을 여기 다시 적지 않는다**: 그것이
+# 이 줄이 레지스트리 파생인 이유다(현행 값을 알고 싶으면 action_registry.json 을 볼 것).
+MACROS = list(_reg.ACTIVE_MACROS)
 
 MACRO_NAME = dict(_reg.MACRO_NAME)
 

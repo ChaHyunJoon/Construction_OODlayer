@@ -117,6 +117,28 @@ def require_vocab(obj, where):
             "%s: 어휘 도장 불일치 -- 파일 %r vs 현행 %r." % (where, got, VOCAB))
 
 
+def require_vocab_stamps(stamps, where):
+    """라벨 **파일**의 행별 어휘 도장을 대조한다. `stamps=None` 이면 도장 열 자체가 없는 것.
+
+    `require_vocab` 이 산출물 dict **하나**의 도장을 보는 데 반해 이것은 여러 행의 도장
+    **집합**을 본다. 두 소비처(`surrogate/eval_surrogate_v2.load_rows`,
+    `surrogate/export_surrogate._load_labels`)가 이 함수를 공유한다 — 검사를 두 벌로
+    복사해 두면 한쪽만 고쳐지고 나머지 한쪽이 조용히 구세대를 먹는다(2026-08-25 실측:
+    export 경로에는 검사가 아예 없었고, 그래서 구세대 라벨로 재적합해도 산출물에는
+    **현행 도장**이 찍혀 나왔다).
+
+    🔴 반드시 `fired` 같은 행 필터 **앞에서** 부를 것. 뒤에 두면 도장이 갈린 미발화 행이
+    필터에 먼저 걷혀 사라지고, 구세대 반 + 현행 반인 파일이 조용히 통과한다
+    (`n44_plus78` 이 정확히 그 모양이었다).
+    """
+    if stamps is None:
+        raise ValueError("%s: 어휘 도장('vocab') 열이 없다 -- 구세대 라벨이다. 현행은 %r."
+                         % (where, VOCAB))
+    got = sorted(set(str(v) for v in stamps))
+    if got != [VOCAB]:
+        raise ValueError("%s: 어휘 도장 불일치 -- 파일 %s vs 현행 %r." % (where, got, VOCAB))
+
+
 def require_dynamics(obj, expected, where):
     """동역학 도장을 대조한다. hazard on/off 는 objective_hash 로 못 잡는 별도 축이다."""
     got = obj.get("dynamics") if hasattr(obj, "get") else None
