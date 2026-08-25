@@ -125,16 +125,21 @@ MACROS = [_REG_NAME[i] for i in _REG_ACTIVE]
 # 상태를 모르는 호출자에게는 전제조건 없는 팔만 남긴 이 보수적 표를 그대로 준다.
 # 2026-08-06: 이 폴백표도 레지스트리의 kinds 에서 유도한다. 손으로 적으면 레지스트리에 팔을
 # 늘려도 이 표는 옛 목록 그대로라, 상태를 모르는 호출자에게는 새 팔이 영영 안 보인다.
-# zone 만 예외로 ForbidZone 을 뺀다: 그 팔은 "아직 시작 안 한 조립체"라는 전제조건이 있어
-# 상태를 모르면 legal 인지 알 수 없고, 중반에는 조용한 no-op 이 된다(2026-08-03 실측 36/36 동점).
-# 상태를 아는 호출자(policy.jl valid_macros)가 실어 보내면 그쪽이 언제나 이긴다.
+# [역사] "zone 만 예외로 ForbidZone 을 뺀다"는 규칙이 여기 있었다: 그 팔은 "아직 시작 안 한
+# 조립체"라는 전제조건이 있어 상태를 모르면 legal 인지 알 수 없고, 중반에는 조용한 no-op 이
+# 된다(2026-08-03 실측 36/36 동점). ForbidZone 도 zone kind 도 이제 레지스트리에 없다.
+# 상태를 아는 호출자(policy.jl valid_macros)가 실어 보내면 그쪽이 언제나 이긴다 — 이건 그대로다.
 VALID = {k: [_REG_NAME[i] for i in ids] for k, ids in _REG_KIND_VALID.items()}
-# 2026-08-19 (태스크 5): ForbidZone(3) 은 이제 영구 은퇴라 `_REG_KIND_VALID` 자체가 이미
-# 안 낸다(is_active 가 은퇴를 실험 게이트보다 먼저 본다) — 이 필터는 그래서 지금은 무동작이다.
-# 그래도 남겨 둔다: 위 주석(2026-08-05)의 원래 이유(빌드 중반 조용한 no-op)가 여전히 참이고,
-# 상태를 모르는 호출자 표에 대한 방어를 이중으로 걸어 둬서 나쁠 게 없다.
-VALID["zone"] = [m for m in VALID.get("zone", []) if m != "ForbidZone"]
-VALID["reform"] = ["NOOP", "ReformTeam"]
+# 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 두 줄을 지웠다 —
+#     VALID["zone"]   = [m for m in VALID.get("zone", []) if m != "ForbidZone"]
+#     VALID["reform"] = ["NOOP", "ReformTeam"]
+# 둘 다 레지스트리 밖에서 **키를 만들어 내는** 리터럴이었다. 3팔 축소로 `_REG_KIND_VALID` 에
+# "zone" 키가 없어졌으므로 첫 줄은 `VALID.get("zone", [])` == [] 를 필터해 `VALID["zone"] = []`
+# 를 **새로 만든다**. 그러면 아래 `_valid_for` 의 `VALID.get(req.kind, MACROS)` 가 MACROS 로
+# 폴백하지 못하고 **빈 legal 메뉴**를 LLM 에 넘긴다 — 에러 없이. 둘째 줄은 레지스트리에 없는
+# 이름(ReformTeam)을 kind 표에 못박고 있었다.
+# 이제 VALID 는 순수 레지스트리 파생이고, 표에 없는 kind(zone/reform)는 MACROS 로 폴백한다.
+# 폴백이지 raise 가 아닌 이유: 채점 대상이 아닌 사건 하나가 긴 측정 런을 죽이면 안 된다.
 
 
 def _valid_for(req) -> List[str]:
@@ -268,10 +273,11 @@ def _load_surrogate():
         _state.update(surrogate=model, surro_feats=list(FEATURE_NAMES),
                       surro_support=set(support),
                       surro_data="%s (%d rows / %d instances, macro support %s, rule %s, "
-                                 "objective_hash %s)"
+                                 "objective_hash %s, vocab %s)"
                                  % (os.path.basename(SURRO_DATA),
                                     meta["rows_after_fired_filter"], meta["instances"],
-                                    support, SURRO_RULE, meta["objective_hash"]))
+                                    support, SURRO_RULE, meta["objective_hash"],
+                                    meta.get("vocab")))
     except Exception as e:
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 

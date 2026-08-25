@@ -71,7 +71,11 @@ CB.clear_restriction_zones!()
 CB.add_restriction_zone!(:zone, zc, 2.5)          # 빌드 한복판 = 옮길 조립체가 실재하는 구역
 CB.add_restriction_zone!(:faraway, [500.0, 500.0], 1.0)   # 아무것도 안 덮는 구역
 
-println("\n== 1. valid_macros — 지목이 없어도 기하가 대상을 알면 ForbidZone 은 legal ==")
+println("\n== 1. valid_macros — zone 은 LLM 결정 레인에서 빠졌다 (2026-08-24, spec §5.1) ==")
+# 🔴 이 절은 2026-08-24 에 **뒤집혔다.** 원래 검사는 "지목이 없어도 기하가 대상을 알면 ForbidZone
+# 이 메뉴에 있어야 한다" 였다(2026-08-05, STEP 7). zone 이 결정 레인에서 빠지면서 그 규칙 자체가
+# 없어졌으므로, 지금 재는 것은 그 반대다: **기하가 무엇을 알든 zone 메뉴는 비어 있다.**
+# 절을 지우지 않고 뒤집는 이유는 지운 규칙이 조용히 되살아나는 것을 여기서 잡기 위해서다.
 # ZoneTruth(zone, center, radius, assembly). assembly=nothing = 지목 없음(중앙 core zone 이 그렇다).
 t_named   = CB.ZoneTruth(:zone, Vector{Float64}(zc), 2.5, first(CB.zone_blocked_assemblies(env)))
 t_unnamed = CB.ZoneTruth(:zone, Vector{Float64}(zc), 2.5, nothing)
@@ -80,6 +84,8 @@ t_far     = CB.ZoneTruth(:faraway, [500.0, 500.0], 1.0, nothing)
 dom  = CB.zone_diagnosis(env, :zone).n_restage_feasible
 domf = CB.zone_diagnosis(env, :faraway).n_restage_feasible
 println("    도메인: :zone -> $(dom) 개 옮길 수 있음 / :faraway -> $(domf) 개")
+# 🔴 이 두 줄이 아래 "비었다" 를 항진명제에서 구해 준다: 기하는 여전히 옮길 대상을 알고 있는데도
+# 메뉴가 비었다는 뜻이 되어야 하고, "구역이 죽어서 비었다" 가 아니어야 한다.
 check("사전조건: 중앙 구역은 도메인이 비어 있지 않다", dom > 0)
 check("사전조건: 먼 구역은 도메인이 비었다", domf == 0)
 
@@ -89,13 +95,17 @@ vm_far     = valid_macros(env, t_far)
 println("    named   -> $(vm_named)")
 println("    unnamed -> $(vm_unnamed)")
 println("    faraway -> $(vm_far)")
-check("지목 있으면 ForbidZone 포함(기존 동작 유지)", "ForbidZone" in vm_named)
-check("지목 없어도 도메인이 있으면 ForbidZone 포함(이번 수정)", "ForbidZone" in vm_unnamed)
-check("도메인도 지목도 없으면 ForbidZone 없음", !("ForbidZone" in vm_far))
-check("RelocateBuild 는 언제나 남는다(전제조건 없음)",
-      all(v -> "RelocateBuild" in v, (vm_named, vm_unnamed, vm_far)))
-check("ReformTeam 은 zone 메뉴에 없다(집결지 snap 은 거부되는 수복)",
-      all(v -> !("ReformTeam" in v), (vm_named, vm_unnamed, vm_far)))
+check("지목이 있어도 zone 메뉴는 비었다(도메인 $(dom) 개인데도)", isempty(vm_named))
+check("지목이 없어도 zone 메뉴는 비었다", isempty(vm_unnamed))
+check("아무것도 안 덮는 구역도 비었다", isempty(vm_far))
+check("삭제된 두 이름은 어느 zone 메뉴에도 없다",
+      all(v -> !("ForbidZone" in v) && !("RelocateBuild" in v), (vm_named, vm_unnamed, vm_far)))
+# ★ 음성 대조. 위 셋은 `valid_macros(env, _) = String[]` 이라는 상수 구현으로도 통과한다.
+# battery 는 여전히 상태를 보고 메뉴를 만들어야 한다 — 그것이 이 함수가 남아 있는 이유다.
+vm_batt = valid_macros(env, CB.BatteryTruth(CB.RobotID(1), 0.02))
+println("    battery -> $(vm_batt)")
+check("음성 대조: battery 메뉴는 비지 않는다", !isempty(vm_batt), "got=$(vm_batt)")
+check("음성 대조: battery 메뉴에 Replace 가 있다", "Replace" in vm_batt, "got=$(vm_batt)")
 
 println("\n== 2. ood_features — 원시값은 싣고 판정은 싣지 않는다 ==")
 f = ood_features(env, t_unnamed)

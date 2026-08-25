@@ -252,7 +252,13 @@ def test_retired_field_absent_means_not_retired():
 def test_reference_policy_never_answers_with_a_retired_macro():
     """core/reference_policy.reference_action 의 zone 가지는 `RelocateBuild` 가 안 뜨면
     `"ForbidZone"`(2026-08-19 영구 은퇴)을 답으로 냈다 — 은퇴한 매크로가 `decision_acc` 의
-    채점 기준이 되는 구멍이었다(리뷰 라운드 2 F3). 이제 그 구간은 unscored(None)여야 한다."""
+    채점 기준이 되는 구멍이었다(리뷰 라운드 2 F3).
+
+    🔴 2026-08-24 (spec §5.1, Task 4) 로 이 테스트가 **뒤집혔다.** 예전에는 첫 케이스가
+    `a_star == "RelocateBuild"` 를 요구했다 — 즉 "zone 은 RelocateBuild 로 답한다" 는 규칙을
+    테스트가 못박고 있었다. RelocateBuild 는 3팔 축소로 어휘에서 사라졌고 zone 자체가 LLM
+    결정 레인에서 빠졌으므로, 두 케이스 다 unscored 여야 한다. 어느 쪽이든 **은퇴/삭제된
+    매크로가 채점 기준이 되지 않는다** 는 이 테스트의 원래 계약은 그대로다."""
     sys.path.insert(0, os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
     import reference_policy as rp
@@ -260,13 +266,15 @@ def test_reference_policy_never_answers_with_a_retired_macro():
     ev_relocatable = {"truth": "ZoneTruth", "valid": ["NOOP", "RelocateBuild"],
                        "zone_primitives": {"n_nav_blocked": 2, "root_covered": 0}}
     a_star, basis, note = rp.reference_action(ev_relocatable)
-    assert a_star == "RelocateBuild"
+    assert a_star is None, "zone 은 LLM 결정 레인에서 빠졌다 -> 정답이 없다(unscored)"
+    assert basis == "zone", "zone 이 함수 끝의 reform 폴백으로 새면 사유가 잘못 찍힌다"
 
     ev_not_relocatable = {"truth": "ZoneTruth", "valid": ["NOOP"],
                           "zone_primitives": {"n_nav_blocked": 2, "root_covered": 0}}
     a_star, basis, note = rp.reference_action(ev_not_relocatable)
     assert a_star != "ForbidZone"
     assert a_star is None, "RelocateBuild 불가 + ForbidZone 은퇴 -> 닫힌 어휘에 답이 없다(unscored)"
+    assert basis == "zone"
 
 
 # =============================================================================

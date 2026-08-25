@@ -218,29 +218,12 @@ def reference_action(ev):
         return "NOOP", "fault", "the faulted robot owed no work; the fleet absorbs it"
 
     if truth == "ZoneTruth":
-        zp = ev.get("zone_primitives") or {}
-        nb, rc = zp.get("n_nav_blocked"), zp.get("root_covered")
-        if nb is None or rc is None:
-            return None, "zone", "zone primitives not recorded"
-        if int(nb) > 0 and int(rc) == 0:
-            # 막힌 것이 **항법 목표**이고 root 하역목표는 안 걸렸다 = 빌드를 통째로 옮기면 풀린다.
-            # 이 자리에서만 전역 이동이 값을 한다(blk 279 완주 vs NOOP 254 정지).
-            if "RelocateBuild" in valid:
-                return "RelocateBuild", "zone", \
-                       "zone blocks %d navigable goal(s) and no root delivery goal" % int(nb)
-            # 2026-08-19 (태스크 5 리뷰 F3 수정): 여기 있던 폴백 `else "ForbidZone"` 는 macro 3 을
-            # 채점 답으로 냈다 -- ForbidZone 은 2026-08-19 spec §2.1 로 **영구 은퇴**했다(도메인이
-            # 죽어 있다: restage_assembly! 가 이미 시작한 조립체를 거부). 은퇴한 매크로를 정답으로
-            # 쓰면 `decision_acc` 가 절대 고를 수 없는 팔에 맞혀야 점수를 준다 -- 채점 자체가
-            # 원리적으로 불가능해진다. 위 battery/reform 가지의 "unscored" 관례를 그대로 따른다:
-            # 이 구간(RelocateBuild 가 불가능한 zone 결정)은 닫힌 어휘에 답이 없으므로 채점하지
-            # 않는다. 전체 정책을 다시 유도하지 않는다 -- 이 한 분기만 은퇴한 id 를 안 낸다.
-            return None, "zone", \
-                   ("zone blocks %d navigable goal(s), no root delivery goal, but RelocateBuild "
-                    "not offered (relocate infeasible) -- the only closed-vocabulary answer "
-                    "(ForbidZone) is permanently retired (spec §2.1); unscored" % int(nb))
-        return "NOOP", "zone", \
-               "blockage %s / root goals covered %s: relocating costs more than it recovers" % (nb, rc)
+        # 2026-08-24 (spec §5.1): zone 은 LLM 결정 레인에서 빠졌다 -- surrogate 학습 증거로만
+        # 쓴다. 닫힌 어휘(NOOP/Replace/SwapBattery)에 zone 의 수복이 없으므로 정답이 없다.
+        # battery 의 untested regime 과 같은 관례로 **채점하지 않는다**.
+        # 지우지 않고 명시적 unscored 로 남기는 이유: 옛 요약 행에 섞여 있는 zone 결정이 조용히
+        # 아래 `reform` 폴백으로 떨어지면 사유가 "no measured grid" 로 잘못 찍힌다.
+        return None, "zone", "zone 은 LLM 결정 레인에서 제거됐다(spec 2026-08-24 §5.1); unscored"
 
     return None, "reform", "no measured grid for this event class"
 

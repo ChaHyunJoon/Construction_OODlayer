@@ -154,19 +154,20 @@ function case_kinds(c)
     c == "none"          && return Symbol[]
     c == "battery"       && return [:battery]
     c == "fault"         && return [:fault]
-    c == "zone"          && return [:zone]
     c == "fault_battery" && return [:fault, :battery]
-    # Spatial recovery must run while assemblies are still pristine. Robot
-    # health events are scheduled after this pre-build geometry recovery.
-    c == "fault_zone"    && return [:zone, :fault]
-    c == "battery_zone"  && return [:zone, :battery]
     # 2026-08-16: run_demo.jl(스윕 엔진)의 case_kinds 와 여기(렌더 엔진)의 표가 갈라져 있었다 —
     # "all" 분기가 여기 없어서 폴백 [:fault] 로 떨어졌고, all case 72판(canonical/surrogate/dspy
     # × 30 seed)이 battery(그리고 zone) 사건을 한 번도 armed 하지 않은 채 fault-only 로
     # 조용히 렌더됐다(courier 자체가 화면에 안 나온 원인). 두 엔진의 케이스 표는 **반드시
-    # 일치**해야 한다 — run_demo.jl:105 와 같은 값을 낸다.
-    c == "all"            && return [:fault, :battery, :zone]
-    return [:fault]
+    # 일치**해야 한다 — run_demo.jl 의 case_kinds 와 같은 값을 낸다.
+    c == "all"            && return [:fault, :battery]
+    # 🔴 2026-08-24 (spec §5.1, Task 4): zone 계열(zone/fault_zone/battery_zone)을 여기서도 뺐다.
+    # run_demo.jl 만 고치고 이 표를 그대로 뒀다면 위 2026-08-16 회귀가 **거울상으로** 재현된다:
+    # `DEMO_OOD=all` 이 스윕 엔진에서는 [:fault,:battery], 렌더 엔진에서는 [:fault,:battery,:zone]
+    # 이 되어 두 엔진이 다른 세계를 굴린다. 폴백도 같이 없앤다 — 없앤 케이스를 요청하면 조용히
+    # fault 판으로 돌지 말고 큰 소리로 죽어야 한다.
+    error("DEMO_OOD=$(c) 는 없는 케이스다. zone 계열은 2026-08-24 에 LLM 결정 레인에서 " *
+          "제거됐다(spec §5.1). 가능한 값: none|fault|battery|fault_battery|all")
 end
 
 const _ZONE_CT = Ref(0)

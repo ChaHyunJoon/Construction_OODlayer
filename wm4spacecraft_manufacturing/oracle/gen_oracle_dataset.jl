@@ -1095,7 +1095,24 @@ canonical_bg(env, ev) = (NEV[] += 1; action_to_proposal(event_context(env, ev), 
 # told apart by event type -- both arrive as :fault -- so each SCHEDULED action registers the NL it
 # emitted in EP_SCHED_NL, and the producer treats only those as decision points.
 const EPISODE_N = parse(Int, get(ENV, "DS_EPISODE_N", "0"))     # 에피소드당 스케줄할 사건 수(0=모드 끔)
-const EP_KINDS  = [Symbol(s) for s in split(get(ENV, "DS_EP_KINDS", "fault,battery,zoneblk"), ",")]
+# 🔴 2026-08-24 (spec §5.1, Task 4 / C12) — 기본값에서 `zoneblk` 를 뺐다. 결정과 그 대가:
+#   왜 뺐나 (둘)
+#     (1) **대조가 0이다.** 3팔 축소 뒤 zone 에피소드의 후보 팔은 `_zone_arms()` = `[0]` 하나뿐이라
+#         (아래 :~1831 의 주석 참조) 이 생성기는 고를 것이 없는 행을 만든다. 라벨 행의 존재
+#         이유는 "같은 상태에서 팔이 갈리면 결과가 갈린다" 인데, 팔이 하나면 그 진술이 없다.
+#     (2) **held-out 오염.** zone 은 이 실험의 OOD 프로브다(CLAUDE.md §OOD: known 학습 =
+#         fault·battery, 테스트 전용 = zone). 학습 라벨셋에 zone 을 넣으면 "낯선 사건을
+#         알아보는가" 를 재려는 그 사건을 surrogate 가 이미 본 것이 된다.
+#   대가 (셋 — 조용히 넘어가면 안 되는 것들)
+#     (a) spec §5.1 은 zone 을 **surrogate 학습 증거**로 남긴다고 적는다. 그 증거는 이제 학습
+#         라벨이 아니라 **평가 레인**에서 나온다: zone 사건은 hazard 레인(`mtbf_zone_s`)이
+#         계속 발화시키고, 채점만 안 될 뿐(reference_policy 가 unscored) 관측·특징은 남는다.
+#     (b) 🔴 **이 축을 나르는 도장이 없다.** zone 을 뺀 라벨셋과 안 뺀 라벨셋은 `objective_hash`
+#         · `vocab` · `dynamics` 가 셋 다 같다(CLAUDE.md §2026-08-21 이 `train_kinds` 축을
+#         요구하는 이유). 즉 이 기본값 변경은 산출물에 흔적을 안 남긴다 — 재생성 시 kinds 를
+#         **명시**해서 굴리고 그 사실을 보고서에 적을 것.
+#     (c) zoneblk 행이 필요하면 노브는 그대로다: `DS_EP_KINDS=fault,battery,zoneblk`.
+const EP_KINDS  = [Symbol(s) for s in split(get(ENV, "DS_EP_KINDS", "fault,battery"), ",")]
 const EP_LO     = parse(Int, get(ENV, "DS_EP_LO", "8"))         # 사건이 터질 closed-노드 구간 [lo,hi]
 const EP_HI     = parse(Int, get(ENV, "DS_EP_HI", "60"))
 const EP_SEV    = Dict(:fault   => 1.0,
@@ -1825,9 +1842,9 @@ function run_episodes(io)
             #     함께 삭제됐다(ood_mdp_shim.jl:186-191).
             #   · `DS_EP_MACROS="0,3,7"` 은 이제 **어휘 밖 id** 를 요구하는 것이라
             #     `action_to_proposal` 이 `nothing` 을 내고 조용히 NOOP 으로 접힌다.
-            # ⚠️ 귀결: `DS_EP_KINDS` 기본값에 아직 `zoneblk` 가 들어 있으므로(위 :1094) 이
-            # 생성기는 **후보가 NOOP 하나뿐인 zone 에피소드**를 계속 만든다 — 대조가 0인 행이다.
-            # 기본값을 바꾸는 것은 이 태스크의 결정이 아니다(Task 3 보고서 C8 참조).
+            # ⚠️ 귀결: 후보가 NOOP 하나뿐인 zone 에피소드 = 대조가 0인 행. 그래서 2026-08-24
+            # (Task 4 / C12) 에 `DS_EP_KINDS` 기본값에서 `zoneblk` 를 뺐다 — 근거와 대가는
+            # 그 상수 위 주석에 있다. 노브로는 여전히 켤 수 있고, 켜면 이 줄이 `[0]` 을 낸다.
             k in (:zoneblk, :zonecore) && return _zone_arms()
             if k === :battery
                 # 🔴 2026-08-24 (Task 3 / R-23) — 여기 있던 `sev <= thr ? [0,1] : [0,2]` 리터럴을

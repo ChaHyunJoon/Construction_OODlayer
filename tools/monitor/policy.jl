@@ -166,11 +166,6 @@ function ood_features(env, truth)
         ("battery", truth.robot)
     elseif truth isa CB.ZoneTruth
         ("zone", nothing)
-    elseif truth isa CB.ReformTruth
-        # 2026-08-04 버그 수정: 여기가 없어서 팀 교착 사건이 아래 else 로 떨어져 **"fault"** 로
-        # 서비스에 전달됐다. 그러면 valid 가 [NOOP,Replace,Deprioritize] 가 되어 정책이
-        # ReformTeam 을 아예 고를 수 없고, 실측에서 Deprioritize 를 골라 아무 복구도 안 됐다.
-        ("reform", nothing)
     else
         ("fault", nothing)
     end
@@ -238,6 +233,9 @@ function ood_features(env, truth)
 end
 
 """
+> 2026-08-24: 아래 zone 논의는 **역사 기록**이다. zone 은 LLM 결정 레인에서 제거됐고
+> (spec §5.1) 이 함수에 zone 분기는 더 이상 없다.
+
     valid_macros(env, truth) -> Vector{String}
 
 이 사건에서 **실제로 무언가를 할 수 있는** 매크로들. 빈 벡터를 돌려주면 서비스가 kind 별 기본표를 쓴다.
@@ -278,23 +276,14 @@ function valid_macros(env, truth)
         return have_fleet ? ["NOOP", "Replace", "Deprioritize", "SwapBattery"] :
                             ["NOOP", "Replace", "Deprioritize"]
     end
-    truth isa CB.ZoneTruth || return String[]          # 그 외 종류는 서비스 기본표 그대로
-    # 대상 조립체를 지목한 구역 = 국소 재적치가 말이 되는 사건.
-    named = try truth.assembly !== nothing catch; false end
-    # 2026-08-05(STEP 7): 지목이 없어도 **기하가 대상을 알고 있으면** ForbidZone 은 legal 이다.
-    # 옛 판정("지목 없으면 grounding 할 대상이 없다")은 틀렸다 — proposal_for_macro 가 이미
-    # zone_blocked_assemblies 에서 대상을 채워 넣는다(아래 그 분기 참조). 그래서 지목 유무로 팔을
-    # 지우면, 대상이 실재하는데도 메뉴에서 빠져 정책이 **고를 수조차 없는** 상태가 된다. 그게
-    # 이 파일이 고치고 있는 "표현력" 실패의 또 다른 얼굴이다. 진단기와 같은 계산을 쓴다.
-    # (도메인이 비었다고 팔을 **지우지는** 않는다 — 그건 2026-08-05 에 실측으로 접었다. 위 주석 참조.)
-    domain = try
-        CB.zone_diagnosis(env, truth.zone; check_restage = true).n_restage_feasible
-    catch e
-        @warn "[policy] zone_diagnosis failed -> ForbidZone 메뉴는 지목 여부로만 판단" exception = e
-        0
-    end
-    return (named || domain > 0) ? ["NOOP", "ForbidZone", "RelocateBuild"] :
-                                   ["NOOP", "RelocateBuild"]
+    # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `truth isa CB.ZoneTruth` 분기를 통째로 지웠다.
+    # 그 분기는 `named`/`zone_diagnosis(...; check_restage=true)` 로 도메인을 재서
+    # `["NOOP","ForbidZone","RelocateBuild"]` 또는 `["NOOP","RelocateBuild"]` 를 냈다 — 즉 zone 을
+    # **LLM 이 결정할 사건**으로 만드는 자리였다. zone 은 이제 surrogate 학습 증거로만 쓰고
+    # 결정 epoch 를 만들지 않는다. 위 docstring 의 zone 논쟁은 역사로 남겨 뒀다.
+    # ⚠️ `Deprioritize` 는 여기서 빼지 않았다 — 그 팔의 제거는 Task 5 의 몫이고, 어휘 축소를
+    # zone 커밋에 섞으면 두 변경이 한 diff 에서 구분되지 않는다.
+    return String[]          # 그 외 종류는 서비스 기본표 그대로
 end
 
 """
@@ -1146,23 +1135,10 @@ function macro_to_proposal(truth, macro_name::AbstractString; env = nothing)
         return CB.RespecProposal(CB.ConstraintSpec[CB.SwapBattery(truth.robot)], rationale, src)
     elseif macro_name == "Deprioritize" && hasproperty(truth, :robot)
         return CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(truth.robot)], rationale, src)
-    elseif macro_name == "ForbidZone" && truth isa CB.ZoneTruth
-        # 지목할 조립체: truth 가 들고 있으면 그것, 없으면 지금 그 구역에 막힌 것 중 하나.
-        # dispatch 는 어차피 막힌 것 **전부**를 기하로 찾아 옮기지만(restage_all_blocked!),
-        # DSL 제약은 대상 id 를 하나 요구한다. 여기서 nothing 이면 빈 제안 = 조용한 NOOP 이 되므로
-        # (그 침묵이 바로 이 파일이 고치고 있는 실패 양식이다) 반드시 채워서 내보낸다.
-        local aid = truth.assembly
-        if aid === nothing && env !== nothing
-            local blocked = try CB.zone_blocked_assemblies(env) catch; [] end
-            isempty(blocked) || (aid = first(blocked))
-        end
-        aid === nothing ||
-            return CB.RespecProposal(CB.ConstraintSpec[CB.ForbidZone(aid, truth.zone)], rationale, src)
-    elseif macro_name == "RelocateBuild" && truth isa CB.ZoneTruth
-        # 2026-08-04: zone 사건의 기본 개입 팔. ForbidZone 과 달리 assembly 를 안 지목하므로
-        # truth.assembly 가 nothing(중앙 core zone)이어도 성립한다 — 이 분기가 없으면 LLM 이
-        # RelocateBuild 를 골라도 아래 빈 제안으로 떨어져 **조용히 NOOP 이 실행된다**.
-        return CB.RespecProposal(CB.ConstraintSpec[CB.RelocateBuild(truth.zone)], rationale, src)
+    # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `ForbidZone` · `RelocateBuild` 두 분기를
+    # 지웠다. zone 은 LLM 결정 레인에서 빠졌고 `valid_macros` 가 zone 메뉴를 더는 안 내므로
+    # 그 이름이 여기 도달할 경로가 없다. (Julia 타입 `CB.ForbidZone`/`CB.RelocateBuild` 는
+    # 시뮬레이터 쪽에 그대로 살아 있다 — 어휘에서만 빠졌다.)
     elseif macro_name == "ReformTeam"
         return CB.RespecProposal(CB.ConstraintSpec[CB.ReformTeam()], rationale, src)
     end
@@ -1176,7 +1152,7 @@ function record_decision!(env, truth, decision, nl)
         hasproperty(truth, :robot) ? _rl(truth.robot) : ""
     catch; "" end
     kind = truth isa CB.FaultTruth ? "FAULT" : truth isa CB.BatteryTruth ? "BATTERY" :
-           truth isa CB.ZoneTruth ? "ZONE" : truth isa CB.ReformTruth ? "REFORM" : "OOD"
+           truth isa CB.ZoneTruth ? "ZONE" : "OOD"
     (truth isa CB.FaultTruth) && try CB.monitor_record_fault!(truth.robot) catch end
     try
         CB.monitor_record_respec!(; at = length(env.cache.closed_set),

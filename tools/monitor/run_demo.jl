@@ -96,16 +96,17 @@ function case_kinds(c)
     c == "none"          && return Symbol[]
     c == "battery"       && return [:battery]
     c == "fault"         && return [:fault]
-    c == "zone"          && return [:zone]
-    c == "zonecore"      && return [:zonecore]   # 중앙 core zone, **빌드 도중** 발화(아래 주석 참조)
     c == "fault_battery" && return [:fault, :battery]
-    c == "fault_zone"    && return [:zone, :fault]
-    c == "battery_zone"  && return [:zone, :battery]
-    # 2026-08-06: 세 종류가 **한 스트림 안에서** 섞이는 케이스. DEMO_OOD_STREAM3=1 과 함께 쓴다.
-    # 기존 조합 케이스(fault_zone 등)는 각 종류가 정확히 한 번, 정해진 순서로 나온다 —
-    # 즉 대본이다. 여기서는 무엇이 언제 몇 번 오는지가 전부 추첨이다.
-    c == "all"           && return [:fault, :battery, :zone]
-    return [:fault]   # fallback
+    # 2026-08-06: 두 종류가 **한 스트림 안에서** 섞이는 케이스. DEMO_OOD_STREAM3=1 과 함께 쓴다.
+    # 기존 조합 케이스(fault_battery)는 각 종류가 정확히 한 번, 정해진 순서로 나온다 — 즉 대본이다.
+    # 여기서는 무엇이 언제 몇 번 오는지가 전부 추첨이다.
+    c == "all"           && return [:fault, :battery]
+    # 2026-08-24 (spec §5.1): zone 계열(zone/zonecore/fault_zone/battery_zone)은 제거됐다.
+    # 폴백하지 않는다 — 조용히 fault 판으로 돌면 그 결과가 "zone 을 돌렸다"로 기록된다.
+    # (여기 있던 `return [:fault]` 폴백은 오타도 같은 방식으로 삼켰다: DEMO_OOD=btatery 가
+    #  에러 없이 fault 판을 돌렸다.)
+    error("DEMO_OOD=$(c) 는 없는 케이스다. zone 계열은 2026-08-24 에 LLM 결정 레인에서 " *
+          "제거됐다(spec §5.1). 가능한 값: none|fault|battery|fault_battery|all")
 end
 
 # ---- CORE zone: RelocateBuild 를 실제로 요구하는 사건 (2026-08-04) --------------------------

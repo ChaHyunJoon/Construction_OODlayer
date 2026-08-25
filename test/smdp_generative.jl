@@ -120,13 +120,25 @@ end
     AR = CB.ActionRegistry
     env0, _ = _fault_fixture()
     s0 = CB.simstate_of(env0)
-    for k in (:fault, :battery, :zone)
+    for k in (:fault, :battery)
         @test Set(CB.legal_actions_kind(k)) == Set(AR.kind_valid(String(k)))
         @test Set(CB.legal_actions_kind(k)) ⊆ Set(AR.IDS)
+        # 🔴 비퇴화: 위 등호는 양변이 비면 **항진명제**다. 아래 :zone 절이 그 예시다.
+        @test !isempty(CB.legal_actions_kind(k))
         @test 0 in CB.legal_actions(s0, k)                # NOOP 은 언제나 있다
     end
-    # 음성 대조: 세 kind 가 전부 같은 집합이면 위 등호는 상수 구현으로도 통과한다.
-    @test length(unique([Set(CB.legal_actions_kind(k)) for k in (:fault, :battery, :zone)])) >= 2
+    # 음성 대조: 두 kind 가 같은 집합이면 위 등호는 상수 구현으로도 통과한다.
+    # 🔴 2026-08-24: 여기에서 :zone 을 뺐다. zone 집합이 ∅ 라 그것만으로 unique 가 2 가 되어,
+    # fault 와 battery 가 같아져도 이 대조가 초록이 됐다 — 대조가 아니라 장식이 된다.
+    @test length(unique([Set(CB.legal_actions_kind(k)) for k in (:fault, :battery)])) >= 2
+    # ---- :zone (2026-08-24, spec §5.1) --------------------------------------------------
+    # 🔴 위 루프에 :zone 을 그대로 두면 `∅ == ∅` 와 `∅ ⊆ IDS` 두 항진명제가 된다. 3팔 축소로
+    # 레지스트리에 zone 팔이 하나도 없기 때문이다. 그래서 zone 은 등호가 아니라 **오늘의 상태**를
+    # 못박는다: 상한은 비었고, 그런데도 `legal_actions` 는 NOOP 하나를 낸다
+    # (`generative.jl` 의 `isempty(arms) && return [0]` 폴백). 그 폴백이 없으면 MCTS 가 zone
+    # 노드에서 확장할 팔이 0개가 되어 조용히 멈춘다.
+    @test isempty(CB.legal_actions_kind(:zone))
+    @test CB.legal_actions(s0, :zone) == [0]
     # 오늘의 어휘를 **기준선으로만** 못박는다 — 갈리면 이 줄을 갱신하고 그 사실을 보고한다
     @test AR.VOCAB == "v4-3arms"
 end

@@ -496,7 +496,12 @@ def main():
     r.add_argument("--seeds", default="1,2,3,4,5")
     r.add_argument("--policies", default="noop,canonical,dspy")
     r.add_argument("--out", default=str(DEFAULT_OUT))
-    r.add_argument("--case", default="all")
+    # 2026-08-24 (spec §5.1): 여기에는 `choices=` 가 **없었다** — `--case zone` 도 `--case typo` 도
+    # 통과해 run_demo 의 `case_kinds` 폴백(`return [:fault]`)으로 떨어져 조용히 fault 판을
+    # 돌렸다. 그 폴백은 이번에 error 로 바뀌었고, 여기서 한 번 더 앞에서 막는다.
+    r.add_argument("--case", default="all",
+                   choices=["none", "fault", "battery", "fault_battery", "all"],
+                   help="zone 계열은 2026-08-24 에 제거됐다(spec §5.1)")
     r.add_argument("--model", default="tractor.mpd")
     r.add_argument("--events", type=int, default=4)
     r.add_argument("--world-seed", type=int, default=1)

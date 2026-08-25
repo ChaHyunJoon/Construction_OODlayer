@@ -21,7 +21,9 @@
 #   (3) 상수 `ORACLE_BATTERY_DEEP_SOC` 가 `reference_policy.py` 의 `BATTERY_DEEP_SOC` 와 같은가
 #       (갈리면 SoC 중간 구간에서 두 구현이 다른 팔을 낸다 = oracle 적중률이 1.0 이 아니게 된다)
 #   (4) `decide_all` 이 `pol["oracle"]` 을 채우되 **다른 정책의 화면/스트림에는 안 새는가**
-#   (5) zone 가지의 상태 게이트가 **래치가 아니라 술어인가**(3b절) -- Replace 가 일어난 상태
+#   (5) 🔴 2026-08-24 뒤집힘: 3b절은 원래 zone 가지의 상태 게이트가 **래치가 아니라 술어인가**를
+#       쟀다. zone 이 LLM 결정 레인에서 빠져(spec §5.1) 그 가지가 상태와 무관한 NOOP 이 됐으므로,
+#       이제 그 절은 "어느 상태에서도 NOOP 이고 메뉴는 비었다"를 쟨다. -- Replace 가 일어난 상태
 #       (RECOVERY_SPARES 가 비어 있지 않다)에서 **예비가 도착했으면** NOOP 이 아니라 RelocateBuild
 #       가 나와야 한다. 옛 술어 `!isempty(recovery_spares())` 는 도착해도 안 풀리는 단방향 래치라
 #       이 검사에서 떨어진다.
@@ -148,7 +150,15 @@ check("등록 안 된 구역(진단 불가) -> canonical 에 위임",
       oracle_macro(env, t_ghost) == canonical_macro(env, t_ghost),
       "oracle=$(oracle_macro(env, t_ghost)) canonical=$(canonical_macro(env, t_ghost))")
 
-println("\n== 3b. zone 축 -- 전역 이동은 '지금 돌아오는 중인 운반체' 가 없을 때만 legal ==")
+println("\n== 3b. zone 축 -- 🔴 2026-08-24 뒤집힘: zone 은 결정 레인에서 빠졌다 (spec §5.1) ==")
+# 🔴 이 절은 원래 "전역 이동(RelocateBuild)은 '지금 돌아오는 중인 운반체' 가 없을 때만 legal" 을
+# 재는 절이었다 -- 그 상태 게이트가 **래치가 아니라 술어인가**가 핵심이었다. zone 이 LLM 결정
+# 레인에서 빠지면서(spec §5.1) `valid_macros` 가 zone 메뉴를 안 내고, 따라서 `oracle_macro` 의
+# zone 가지는 `"RelocateBuild" in vm` 에서 언제나 막혀 **상태와 무관하게 NOOP** 이다.
+# 절을 지우지 않고 뒤집는다: 아래 픽스처(실제로 항법 목표를 막고 전역 이동이 가능한 구역)와
+# 사전조건은 그대로 두고, 검사만 "이 상태들 전부에서 답이 NOOP 이고 메뉴는 비었다"로 바꾼다.
+# 그래야 zone 팔이 조용히 되살아나면 여기가 빨강이 된다 -- 그때는 이 절을 되돌릴 차례다.
+# (아래 RECOVERY_SPARES / _recovery_in_transit 서술은 **역사 기록**이다.)
 # 왜 이 절이 있는가: 2026-08-13 실측에서 `fault_zone` seed 1 이 a* 를 그대로 집행하면 closed=186 에서
 # 멎었다(2판 소수점까지 동일). 같은 구역·같은 Δ 인데 `battery_zone` seed 1 은 완주(291)한다. 두 판의
 # zone_primitives 는 n_teams_forming 말고 전부 같다 -- 구역 기하로는 구분이 불가능하고, 구분하는 것은
@@ -192,8 +202,10 @@ else
     check("사전조건: 막힘>0 & root 0 (개입할 이유가 있는 상태)",
           zd_blk.n_nav_blocked > 0 && zd_blk.root_covered == 0)
     CB.clear_recovery_spares!()
-    check("돌아올 로봇이 없으면 전역 이동(= reference_policy 와 같은 답)",
-          oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
+    check("돌아올 로봇이 없어도 zone 은 NOOP (예전 답: RelocateBuild)",
+          oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
+    check("그리고 zone 메뉴는 비었다(개입 팔이 없다)", isempty(valid_macros(env, t_blk)),
+          "menu=$(valid_macros(env, t_blk))")
 
     # 두 종류의 로봇을 **env 를 건드리지 않고** 고른다(기하 조작은 start_config 가 goal_config 를
     # 함께 끌고 가서 상대거리가 안 바뀐다 -- 2026-08-13 실측으로 접었다):
@@ -255,9 +267,11 @@ else
         check("사전조건: 오는 중으로 읽힌다", _recovery_in_transit(env) == true)
         check("돌아오는 중인 운반체가 있으면 전역 이동은 legal 이 아니다 -> NOOP",
               oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
-        check("그리고 그 답은 여전히 메뉴 안이다",
-              oracle_macro(env, t_blk) in valid_macros(env, t_blk),
-              "menu=$(valid_macros(env, t_blk))")
+        # 예전에는 "그 답은 여전히 메뉴 안이다"(`m in vm`)였다. 메뉴가 빈 지금 그 검사는
+        # 무조건 거짓이 되므로, 재는 것을 "메뉴가 비었으면 답은 NOOP 이어야 한다"로 바꾼다.
+        check("메뉴가 비면 답은 NOOP 이다",
+              isempty(valid_macros(env, t_blk)) && oracle_macro(env, t_blk) == "NOOP",
+              "menu=$(valid_macros(env, t_blk)) got=$(oracle_macro(env, t_blk))")
 
         # (ii) ★★ 래치 vs 술어를 가르는 검사 ★★
         # 몸체를 **자기 목표 위**에 세운다 = 그 예비가 **도착**했다. RECOVERY_SPARES 는
@@ -274,8 +288,11 @@ else
         gpt !== nothing && CB.set_local_transform!(body,
             CB.CoordinateTransformations.Translation(gpt[1], gpt[2], body_tf.translation[3]), true)
         check("사전조건: 도착으로 읽힌다", _recovery_in_transit(env) == false)
-        check("★ Replace 는 있었지만 예비가 도착했다 -> NOOP 이 아니라 RelocateBuild (래치가 아니다)",
-              oracle_macro(env, t_blk) == "RelocateBuild" && !isempty(CB.recovery_spares()),
+        # ★ 옛 핵심 검사(래치 vs 술어)가 여기 있었다: 예비가 **도착**했으면 답이 NOOP 이 아니라
+        #   RelocateBuild 여야 한다. zone 팔이 없어진 지금 두 상태가 같은 답을 내는 것이 정상이고,
+        #   그 사실(= 이 축이 더는 답을 가르지 않는다)을 명시적으로 못박는다.
+        check("★ 예비가 도착해도 zone 답은 그대로 NOOP -- 이 상태축은 더는 답을 안 가른다",
+              oracle_macro(env, t_blk) == "NOOP" && !isempty(CB.recovery_spares()),
               "got=$(oracle_macro(env, t_blk)) n_spares=$(length(CB.recovery_spares()))")
         # (iii) 같은 상태에서 **창고 왕복 표식만** 지운다 = 현장 예비 접합 Replace(replace_robot.jl:
         #       1182/1271). 돌아올 길이 없었으므로 게이트는 걸리지 않아야 한다.
@@ -284,8 +301,8 @@ else
         check("사전조건: 다시 멀리 세웠다(창고 표식이 있으면 잠긴다)",
               oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
         delete!(CB.decommissioned_bodies(), rid)
-        check("창고 왕복이 없던 Replace(현장 예비 접합)는 게이트를 걸지 않는다",
-              _recovery_in_transit(env) == false && oracle_macro(env, t_blk) == "RelocateBuild",
+        check("창고 왕복이 없던 Replace(현장 예비 접합)도 마찬가지로 NOOP",
+              _recovery_in_transit(env) == false && oracle_macro(env, t_blk) == "NOOP",
               "in_transit=$(_recovery_in_transit(env)) got=$(oracle_macro(env, t_blk))")
 
         CB.set_local_transform!(body, CB.CoordinateTransformations.Translation(  # 몸체 원복
@@ -294,26 +311,19 @@ else
         empty!(CB.decommissioned_bodies())
     end
     CB.clear_recovery_spares!()
-    check("복귀 상태를 지우면 원래 답으로 돌아온다(상태 의존이지 영구 변경이 아니다)",
-          oracle_macro(env, t_blk) == "RelocateBuild", "got=$(oracle_macro(env, t_blk))")
+    check("복귀 상태를 지워도 NOOP (zone 답은 이제 상태에 의존하지 않는다)",
+          oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
 end
 CB.clear_restriction_zones!()
 CB.add_restriction_zone!(:faraway, [500.0, 500.0], 1.0)   # 5절이 t_far 를 다시 쓰므로 복원
 
-println("\n== 4. reform 축 -- 실측 격자가 없으므로 canonical 에 위임 ==")
-# ★ 이 lane 의 핵심. NOOP 으로 떨어지면 재형성이 필요한 교착을 그대로 두게 되고, 그것이 곧
-#   미완주다(README §6: 복구를 되살린 처방이 DEMO_REFORM). reference_policy.py:208 은 이 사건을
-#   unscored 로 빼므로 canonical 위임은 채점에도 영향을 주지 않는다.
-t_reform = CB.ReformTruth()
-check("reform -> canonical 과 같은 답",
-      oracle_macro(env, t_reform) == canonical_macro(env, t_reform),
-      "oracle=$(oracle_macro(env, t_reform)) canonical=$(canonical_macro(env, t_reform))")
-check("reform 폴백이 NOOP 이 아니다(교착을 그대로 두면 안 된다)",
-      oracle_macro(env, t_reform) != "NOOP", "got=$(oracle_macro(env, t_reform))")
+# == 4. reform 축 == 은 2026-08-20 4팔 축소에서 삭제됐다. `ReformTruth` 가 실패 사건이 아니라
+# Replace 의 2차 결과로 재분류되면서 decision epoch 에서 빠졌고, 교착 해소는
+# `maybe_unwedge_nominal!` 이 명목 레인에서 결정 없이 처리한다.
 
 println("\n== 5. 고른 팔은 언제나 그 사건의 메뉴 안에 있다 ==")
 for (nm, t) in (("battery-deep", t_deep), ("battery-edge", t_edge), ("battery-mild", t_mild),
-                ("fault", t_fault), ("zone-far", t_far), ("reform", t_reform))
+                ("fault", t_fault), ("zone-far", t_far))
     local vm = valid_macros(env, t)
     local m = oracle_macro(env, t)
     check("$(nm): 고른 팔이 메뉴 안", isempty(vm) || m in vm, "chose=$(m) menu=$(vm)")
