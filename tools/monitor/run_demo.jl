@@ -6,7 +6,7 @@
 #   env = run_lego_demo(return_env_before_sim=true)  로 완성된 env 만 받고,
 #   run_simulation! 대신 **수동 루프**를 직접 돌린다(프레임워크 respec-큐 라우팅 우회):
 #     매 스텝:  ood_inject_step!  → 새 OOD truth 감지 → **결정 정책**이 매크로 선택 → 캡처
-#               → 고른 매크로대로 복구(Replace=hot-swap / Deprioritize=rebalance·강등 / ForbidZone=restage / NOOP=무동작)
+#               → 고른 매크로대로 복구(Replace=hot-swap / SwapBattery=현장 배터리 교체 / ForbidZone=restage / NOOP=무동작)
 #               → step_environment! → update_planning_cache! → (주기적) monitor_emit!
 #
 # 결정 정책(DEMO_POLICY):
@@ -70,7 +70,7 @@ const DEMO_SPARES = try max(0, parse(Int, get(ENV, "DEMO_SPARES", "2"))) catch; 
 const DEMO_OOD_SEED = try max(0, parse(Int, get(ENV, "DEMO_OOD_SEED", "0"))) catch; 0 end
 const DEMO_OOD_LO   = try clamp(parse(Float64, get(ENV, "DEMO_OOD_LO", "0.10")), 0.01, 0.95) catch; 0.10 end
 const DEMO_OOD_HI   = try clamp(parse(Float64, get(ENV, "DEMO_OOD_HI", "0.75")), 0.02, 0.98) catch; 0.75 end
-# 깊은 방전(→Replace)이 뽑힐 확률. 나머지는 DEMO_BSOC 만큼의 완만한 열화(→Deprioritize/NOOP).
+# 깊은 방전(→Replace)이 뽑힐 확률. 나머지는 DEMO_BSOC 만큼의 완만한 열화(→SwapBattery/NOOP).
 const DEMO_OOD_SEVFRAC = try clamp(parse(Float64, get(ENV, "DEMO_OOD_SEVFRAC", "0.5")), 0.0, 1.0) catch; 0.5 end
 const _REFORM_CT = Ref(0)   # 발화 횟수(상한 초과 시 더는 안 올림 → 진짜 정지가 정지로 보이게)
 # 사건마다의 결정 기록(요약 JSONL 용). 스위프 하니스가 이걸 읽어 정책별 결정을 비교한다.
@@ -263,7 +263,9 @@ capture!(env, truth, decision, nl) = record_decision!(env, truth, decision, nl)
 # 중요: 복구는 이벤트 종류가 아니라 **정책이 고른 매크로**를 따른다. 그래야 UI 에 표시된 결정과
 # 엔진이 실제로 한 일이 일치한다(예전엔 종류별로 고정 복구라, LLM 이 NOOP 을 골라도 엔진은 고쳤다).
 #   Replace      → hot_swap_robot!  (정체성보존 씬트리 hot-swap, 창고 스페어로 본체 교체)
-#   Deprioritize → battery 면 rebalance_for_battery!(SoC-편향 재solve), 그 외엔 우선순위 강등
+#   (Deprioritize → 2026-08-24 Task 5 에서 삭제. `deprioritize_agent!` 호출이 try/catch 안에 있고
+#    `enact_applied = true` 가 그 **앞**에 있어서, kind 를 지우고 이 분기를 남기면 던진 예외를
+#    catch 가 삼킨 채 "집행했다"고 기록됐다 — 조용한 거짓 보고.)
 #   ForbidZone   → restage_all_blocked! (+필요시 translate_whole_build!)
 #   NOOP         → 아무 것도 하지 않음
 # canonical 정책에서는 규칙이 종전과 같은 매크로를 내므로 동작이 완전히 동일하다.
@@ -389,19 +391,6 @@ function handle_ood!(env, truth, nl)
                 enact_applied = true
                 local sw = CB.swap_battery!(env, truth.robot; verbose = false)
                 println("[battery] swap=$(sw.status) soc_before=$(get(sw, :soc_before, nothing))")
-            end
-        elseif mac == "Deprioritize"
-            # `enact_applied` 를 두 팔(BatteryTruth 분기·hasproperty 분기) 각각에 복제한다 —
-            # 어느 쪽도 안 타는 경우(예: ReformTruth, 필드 없는 struct)가 실제로 있다
-            # (2026-08-17 재리뷰 C1(B)).
-            if truth isa CB.BatteryTruth
-                enact_applied = true
-                CB.rebalance_for_battery!(env)
-            elseif hasproperty(truth, :robot)
-                enact_applied = true
-                try CB.deprioritize_agent!(truth.robot, 0.25) catch e
-                    @warn "deprioritize_agent! failed" exception = e
-                end
             end
         elseif mac == "ForbidZone" && truth isa CB.ZoneTruth
             enact_applied = true

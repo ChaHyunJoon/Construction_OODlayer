@@ -1339,13 +1339,13 @@ end   # demo_energy_adaptive 끝
 # =============================================================================
 # energy_adaptive_anim -- VISUAL (MeshCat) demo of the ENERGY-AWARE ADAPTIVE replanning
 #   stack: per-robot SoC accounting + energy objective + multi-time OOD, with a live per-robot
-#   battery HUD sidebar. Story: build starts -> a robot's BATTERY degrades -> DeprioritizeAgent
+#   battery HUD sidebar. Story: build starts -> a robot's BATTERY degrades -> SwapBattery
 #   (soft) -> energy-aware re-solve -> central NO-GO ZONE -> ForbidZone -> whole-build translate.
 #   ENV: USE_MOCK, MOCK_PORT, PROJECT, N_BATTERY, ZONE_CLOSED, ZONE_R, SEED, ENERGY_W, GRID_SCALE,
 #        OPEN_ANIM, CAM_MAP, CAM_FOLLOW, SIDEBAR_W.
 # =============================================================================
 # demo_energy_adaptive_anim : 위 energy_adaptive 의 "시각(MeshCat) 버전". 로봇별 배터리 HUD 사이드바가 실시간으로 뜬다.
-#   스토리: 조립 시작 → 한 로봇 배터리 열화 → DeprioritizeAgent(부드러운 우선순위 낮추기) → 에너지인식 재계획 →
+#   스토리: 조립 시작 → 한 로봇 배터리 열화 → SwapBattery(현장 배터리 교체) → 에너지인식 재계획 →
 #           중앙 금지구역 등장 → ForbidZone → 빌드 전체 평행이동. 사건마다 자연어→DSL→재계획을 사이드바에 보여줌.
 #   ENV: USE_MOCK, MOCK_PORT, PROJECT, N_BATTERY, ZONE_CLOSED, ZONE_R, SEED, ENERGY_W, GRID_SCALE, OPEN_ANIM, CAM_MAP, CAM_FOLLOW, SIDEBAR_W.
 function demo_energy_adaptive_anim()
@@ -1385,7 +1385,7 @@ CB.CAMERA_FOLLOW[] && CB.set_camera_follow_map!(          # 켜졌을 때만 매
     CAM_MAP == "-x0y" ? ((x, y) -> (-Float64(x), 0.0, Float64(y))) :
     ((x, y) -> (Float64(x), 0.0, -Float64(y))))   # default "x0-y"
 
-# --- deterministic mock /propose: battery->DeprioritizeAgent, zone->ForbidZone, fault->ReplaceAgent ---
+# --- deterministic mock /propose: battery->SwapBattery, zone->ForbidZone, fault->ReplaceAgent ---
 # _agent_for_rn : 사건 문구에서 "R숫자"를 뽑아, id 가 "(숫자)" 로 끝나는 로봇을 찾는다(못 찾으면 첫 로봇).
 _agent_for_rn(event, agents) = begin
     m = match(r"[Rr](\d+)", String(event))               # 정규식으로 R1, r2 같은 로봇 번호 추출
@@ -1396,7 +1396,7 @@ _agent_for_rn(event, agents) = begin
     end
     isempty(agents) ? "" : String(agents[1]["id"])
 end
-# start_mock : 가짜 LLM. 자연어 사건을 소문자로 훑어 종류를 판단 → 배터리=DeprioritizeAgent, 고장=ReplaceAgent, 구역=ForbidZone.
+# start_mock : 가짜 LLM. 자연어 사건을 소문자로 훑어 종류를 판단 → 배터리=SwapBattery, 고장=ReplaceAgent, 구역=ForbidZone.
 function start_mock(port)
     handler = function (req::HTTP.Request)
         path = HTTP.URIs.URI(req.target).path
@@ -1409,8 +1409,8 @@ function start_mock(port)
         cons =                                            # cons = 반환할 DSL 제약(constraints) 목록. if 식의 결과가 담김.
             if occursin("battery", ev) || occursin("charge", ev) || occursin("degraded", ev)
                 aid = _agent_for_rn(event, agents)
-                @info "[MOCK-LLM] battery -> DeprioritizeAgent(agent=$aid, factor=50)"
-                [Dict("kind" => "DeprioritizeAgent", "agent" => aid, "factor" => 50.0)]
+                @info "[MOCK-LLM] battery -> SwapBattery(agent=$aid)"   # 2026-08-24 Task 5: DeprioritizeAgent 삭제
+                [Dict("kind" => "SwapBattery", "agent" => aid)]
             elseif occursin("broken", ev) || occursin("immobile", ev) || occursin("cannot move", ev)
                 aid = _agent_for_rn(event, agents)
                 @info "[MOCK-LLM] breakdown -> ReplaceAgent(agent=$aid)"
@@ -1466,8 +1466,8 @@ CB.schedule_ood!(1, function (env)
     @info "[DEMO] battery ON ($(length(CB.BATTERY_FLEET[].soc)) robots), energy objective w=$ENERGY_W, camera-follow=$(CB.CAMERA_FOLLOW[])"
     return nothing   # no respec
 end)
-# a few BATTERY-degradation OODs (soft DeprioritizeAgent) spread over the early build
-# 초반에 배터리 열화 OOD 몇 개(부드러운 DeprioritizeAgent 유발) 무작위 예약.
+# a few BATTERY-degradation OODs (SwapBattery) spread over the early build
+# 초반에 배터리 열화 OOD 몇 개(SwapBattery 유발) 무작위 예약.
 CB.schedule_random_ood!(; n = N_BATTERY, kinds = [:battery], closed_lo = 8,
     closed_hi = max(12, ZONE_CLOSED - 10), seed = SEED)
 # one big CENTRAL ZONE mid-build -> whole-build translate -> camera follows
@@ -1481,7 +1481,7 @@ for _ in 1:30
 end
 ready = _rdy[]
 println(">>> ENERGY-ADAPTIVE visual demo: project=$(pp[:project_name])  mode=$(USE_MOCK ? "MOCK" : "REAL-LLM")")
-println(">>> battery OOD x$N_BATTERY (DeprioritizeAgent) + central zone @closed=$ZONE_CLOSED; /propose=$(ENV["RESPEC_SERVICE_URL"]) ready=$ready")
+println(">>> battery OOD x$N_BATTERY (SwapBattery) + central zone @closed=$ZONE_CLOSED; /propose=$(ENV["RESPEC_SERVICE_URL"]) ready=$ready")
 (!USE_MOCK && !ready) && @warn "REAL-LLM mode but service not reachable — start uvicorn server:app --port 8000 in a shell WITH ANTHROPIC_API_KEY first."
 
 _PIPE = String[]
@@ -1684,7 +1684,7 @@ _agent_for_rn(event, agents) = begin
     end
     isempty(agents) ? "" : String(agents[1]["id"])
 end
-# start_mock : 가짜 LLM. stall/고장="broken/immobile"=ReplaceAgent, 교착="deadlock/stuck"=ReformTeam, 열화=DeprioritizeAgent.
+# start_mock : 가짜 LLM. stall/고장="broken/immobile"=ReplaceAgent, 교착="deadlock/stuck"=ReformTeam, 열화=SwapBattery.
 #   검사 순서 주의: 배터리 방전은 "broken" 로 먼저 잡혀 교체가 된다.
 function start_mock(port)
     handler = function (req::HTTP.Request)
@@ -1706,8 +1706,8 @@ function start_mock(port)
                 [Dict("kind" => "ReformTeam")]                     # -> recover_stalled_teams! (un-wedges the build)
             elseif occursin("degraded", ev) || occursin("charge", ev)
                 aid = _agent_for_rn(event, agents)
-                @info "[MOCK-LLM] battery-degraded -> DeprioritizeAgent(agent=$aid, factor=50)"
-                [Dict("kind" => "DeprioritizeAgent", "agent" => aid, "factor" => 50.0)]
+                @info "[MOCK-LLM] battery-degraded -> SwapBattery(agent=$aid)"   # 2026-08-24 Task 5
+                [Dict("kind" => "SwapBattery", "agent" => aid)]
             else
                 @info "[MOCK-LLM] no-op"
                 []
@@ -2888,7 +2888,7 @@ function start_mock(port)
             elseif occursin("deadlock", ev) || occursin("re-establish", ev)
                 [Dict("kind" => "ReformTeam")]
             elseif occursin("degraded", ev) || occursin("charge", ev)
-                [Dict("kind" => "DeprioritizeAgent", "agent" => _agent_for_rn(event, agents), "factor" => 50.0)]
+                [Dict("kind" => "SwapBattery", "agent" => _agent_for_rn(event, agents))]   # 2026-08-24 Task 5
             elseif occursin("exclusion zone", ev)
                 []                                   # zone 은 항법 스택이 이미 우회하므로 추가 제약 불필요
             else

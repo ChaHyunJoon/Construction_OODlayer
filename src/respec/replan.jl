@@ -85,7 +85,8 @@ const RESPEC_DRIFT_REPAIR = Ref{Union{Nothing,Bool}}(nothing)
 respec_drift_repair() = RESPEC_DRIFT_REPAIR[] === nothing ? RESPEC_ENABLED[] : RESPEC_DRIFT_REPAIR[]
 
 """
-κ for the DeprioritizeAgent re-solve: how much makespan magnitude the energy term is allowed to
+κ for the (now-deleted) soft objective-bias re-solve: how much makespan magnitude the energy term
+is allowed to
 be worth (`w_eff = κ · speed_scale / efficiency_scale`, see AUTO_EFFICIENCY_KAPPA). κ→0 makes the
 bias inert again; κ≈0.25 lets energy decide among equal- and near-equal-makespan assignments
 without overturning a genuinely faster plan. Override with `RESPEC_DEPRIO_KAPPA`.
@@ -95,7 +96,7 @@ without overturning a genuinely faster plan. Override with `RESPEC_DEPRIO_KAPPA`
 #
 # ⚠️ 2026-08-13 (계획 태스크 6, spec §6.3): **프로덕션 경로는 더 이상 이 값을 읽지 않는다.**
 #   κ 는 objective.json → `init_objective_weights!` 가 심는 전역 `AUTO_EFFICIENCY_KAPPA[]` 로
-#   승격됐다(예전엔 아래 maybe_respecify! 의 DeprioritizeAgent 분기 한 곳에서만 켰다가 즉시
+#   승격됐다(예전엔 아래 maybe_respecify! 의 soft-bias 분기 한 곳에서만 켰다가 즉시
 #   원복했고, 그래서 다른 모든 매크로의 재풀이가 에너지를 버린 채 돌았다 — spec §2.2).
 #
 #   ☠️ 이건 **휴면 상태의 두 번째 진실원**이다. 아래 기본값 0.25 는 objective.json 의 kappa=0.01 과
@@ -262,25 +263,10 @@ _is_reform(p::RespecProposal) = any(c -> c isa ReformTeam, p.constraints)
 # (배터리만 갈면 스케줄도 기하도 안 바뀌므로 재풀이할 게 없음.)
 _is_battery_swap(p::RespecProposal) = any(c -> c isa SwapBattery, p.constraints)
 
-"""
-    _is_deprioritize(proposal) -> Bool
-
-True iff the proposal is composed ONLY of `DeprioritizeAgent`s (a TIER-2 soft re-spec, e.g. a
-battery-degradation OOD). Pure-soft proposals are dispatched specially: we register the bounded
-cost bias and energy-aware re-solve, with NO feasibility risk. A proposal that MIXES a
-DeprioritizeAgent with a hard spec is NOT caught here — under the pre-2026-08-21 `if` chain it
-fell through to the relevant hard dispatch / generic verify, where the DeprioritizeAgent
-compiled to a harmless no-op.
-
-🔴 **2026-08-21 (C1, 순차 집행): 그 "무해한 no-op" 도 이제 명시적 흡수다.** 순차 집행에서는
-섞인 제안의 `DeprioritizeAgent` 가 **자기 단위**를 얻어 전면 MILP 재풀이 + `commit_respec!` 를
-돌게 된다 — 실패하면 `engage_fallback!` 이다. 옛 동작(아무 일도 안 일어남)을 보존하려고
-`_subsumption` 이 그 단위를 `:subsumed_by_hard_spec` 으로 **기록하고 집행하지 않는다.**
-순수 soft 제안(전부 `DeprioritizeAgent`)은 흡수 대상이 아니며 예전처럼 이 분기가 집행한다.
-"""
-# 제안이 "오직 DeprioritizeAgent 들"로만 이뤄졌으면 true(예: 배터리 저하 = TIER-2 soft 재명세). all=전부 참이어야 true.
-_is_deprioritize(p::RespecProposal) =
-    !isempty(p.constraints) && all(c -> c isa DeprioritizeAgent, p.constraints)
+# 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `_is_deprioritize` 판정자를 지웠다 —
+#   `DeprioritizeAgent` kind 삭제로 순수-soft 제안이라는 것이 존재하지 않는다.
+#   그 판정자가 몰던 dispatch 분기(`verify_deprioritize` + `deprioritize_agent!` + 재풀이)와
+#   `_subsumption` 의 `:subsumed_by_hard_spec` 사유도 같은 커밋에서 사라졌다.
 
 """
     _robot_position_2d(env, agent) -> Vector{Float64}
@@ -329,13 +315,13 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
     4 fault     ForbidAgent          그래프: MILP 재분배(파괴적 — 남은 일을 흩뿌린다)
     5 battery   SwapBattery          현장 배터리 교체(스케줄·기하 불변)
     6 reform    ReformTeam           기하: 교착 팀 재구성 — 위 수술의 **결과**를 봐야 한다
-    7 deprioritize DeprioritizeAgent 목적함수 bias + 재풀이
     8 generic   그 외                 MILP 제약 집합 + 재풀이 (`verify` 관문)
+      (7 deprioritize 는 2026-08-24 Task 5 에서 kind 와 함께 삭제됐다 — 번호는 결번으로 둔다)
 
 왜 이 순서인가: 기하 수술이 조립체 좌표를 옮기고, 그래프 수술은 **그 좌표 위에서** 인계
 대상을 고른다(`nearest_pool` 이 위치를 읽는다). 반대로 하면 인계가 옛 좌표를 보고 정해진 뒤
 그 아래에서 땅이 움직인다. `reform` 은 그래프 수술이 만든 교착을 고치는 것이므로 그 뒤여야
-하고, 재풀이(7·8)는 최종 기하·그래프 위에서 한 번만 도는 게 맞다.
+하고, 재풀이(8)는 최종 기하·그래프 위에서 한 번만 도는 게 맞다.
 
 **결정성**: 정렬은 `alg = Base.Sort.DEFAULT_STABLE` 로 명시한 **안정 정렬**이라 동순위는
 제안에 적힌 원래 순서를 지킨다. 입력은 `Vector` 이고 `Set`/`Dict` 순회가 한 군데도 없다 —
@@ -343,8 +329,8 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
 
 **단위 묶기**: 같은 종류의 제약은 그 분기가 **원래 벡터를 통째로 다루던 경우에만** 한 단위로
 묶는다(`_enact_batched`). `ForbidZone`·`ReformTeam`·`RelocateBuild` 는 분기가 기하 전체를
-한 번에 처리하고, `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints` 로 돌며,
-제네릭 경로는 **제약 집합**을 솔버에 넘긴다 — 이 넷을 쪼개면 둘째 풀이가 첫째 제약을 잃는다.
+한 번에 처리하고, 제네릭 경로는 **제약 집합**을 솔버에 넘긴다 — 이 셋을 쪼개면 둘째 풀이가
+첫째 제약을 잃는다.
 반대로 `ReplaceAgent`·`ForbidAgent`·`SwapBattery` 분기는 `first(...)` 로 **하나만** 읽으므로
 단위를 낱개로 쪼개야 N 개가 N 번 집행된다(그게 이 태스크가 고치는 결함이다).
 
@@ -406,7 +392,7 @@ SEQUENTIAL ENACTMENT (Task C1, 2026-08-21)
 이 된다(집행 0건). 정직한 보고다 — 라인이 실제로 멈춰 있다 — 지만 분명한 동작 변화다.
 latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다: 거부 분기의 다수는
 `engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate·zone·replace·generic),
-거꾸로 reform 과 deprioritize 는 latch **없이** `:rejected` 를 낸다. Symbol 로 키를 잡으면
+거꾸로 reform 은 latch **없이** `:rejected` 를 낸다. Symbol 로 키를 잡으면
 앞은 놓치고 뒤는 거짓 발동한다.
 
 건너뛴 단위는 `LAST_ENACT_REPORT[]` 에 `:skipped_line_stop` 으로 **명시 기록**되므로
@@ -431,7 +417,7 @@ first-match-wins 시절엔 분기가 하나만 돌아서 이 조합이 생길 �
 # optimizer 기본값은 _respec_optimizer() 호출 결과(쓸 최적화 솔버).
 # Classify an OOD event's safety criticality, used ONLY when we cannot obtain a
 # typed proposal (LLM network / parse failure). SOFT/advisory events — a battery
-# degradation (DeprioritizeAgent class) and the SPECULATIVE "team deadlocked"
+# degradation (the old soft-bias class) and the SPECULATIVE "team deadlocked"
 # reform alarm — are feasibility-preserving: the pre-event plan was feasible and
 # ignoring them changes nothing, so on failure we NO-OP and keep building. HARD
 # events (no-go zone, robot breakdown) can make blindly continuing unsafe, so a
@@ -561,7 +547,6 @@ _enact_kind(c::ConstraintSpec) =
     c isa ForbidAgent       ? :fault        :
     c isa SwapBattery       ? :battery      :
     c isa ReformTeam        ? :reform       :
-    c isa DeprioritizeAgent ? :deprioritize :
                               :generic
 
 # 집행 순서. 근거는 `maybe_respecify!` docstring 의 "집행 순서 규칙" 절.
@@ -570,7 +555,7 @@ _enact_kind(c::ConstraintSpec) =
 # `_enact_units` 의 `alg = Base.Sort.DEFAULT_STABLE` 이 제안에 적힌 원래 순서로 고정하므로
 # 결정적이다(Global Constraint: 시드 고정 = 완전 재현).
 const _ENACT_RANK = (relocate = 1, translate = 1, zone = 2, replace = 3, fault = 4,
-                     battery = 5, reform = 6, deprioritize = 7, generic = 8)
+                     battery = 5, reform = 6, generic = 8)
 
 _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 
@@ -585,8 +570,8 @@ _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 고치는 바로 그 결함을 한 층 아래에서 다시 만든다**: 제네릭 관문은 MILP **제약 집합**을
 `extra_constraints = verdict.proposal` 로 솔버에 통째로 넘긴다. `[ForbidWindow(a), ForbidWindow(b)]`
 를 두 번의 풀이로 쪼개면 둘째 풀이의 모델에 첫째 제약이 **없다** — 즉 `a` 가 조용히 버려진다.
-"제약 벡터가 하나로 무너진다"가 dispatch 층에서 솔버 층으로 옮겨갈 뿐이다. 그래서 묶는다, `DeprioritizeAgent` 분기는 이미 `for c in proposal.constraints`
-로 돌며 재풀이를 한 번만 한다, `ForbidZone`/`RelocateBuild`/`ReformTeam` 분기는 기하 전체를
+"제약 벡터가 하나로 무너진다"가 dispatch 층에서 솔버 층으로 옮겨갈 뿐이다. 그래서 묶는다.
+`ForbidZone`/`RelocateBuild`/`ReformTeam` 분기는 기하 전체를
 한 번에 처리한다(`restage_all_blocked!`·`translate_whole_build!`·`reform_stuck_teams!` 는
 제약이 아니라 `env` 를 읽는다).
 
@@ -598,7 +583,7 @@ _enact_rank(c::ConstraintSpec) = getfield(_ENACT_RANK, _enact_kind(c))
 # 집행되고 나머지가 조용히 사라진다 — C1 이 고친 결함의 종류 내부 버전이다. 낱개로 쪼개면
 # N 개가 N 번 집행되고, `_apply_uniform_translation!` 의 문서화된 성질(이동은 합성된다)에 따라
 # 순 이동이 ΣΔᵢ 가 된다.
-_enact_batched(kind::Symbol) = kind in (:relocate, :zone, :reform, :deprioritize, :generic)
+_enact_batched(kind::Symbol) = kind in (:relocate, :zone, :reform, :generic)
 
 """
     _enact_units(constraints) -> Vector{Vector{ConstraintSpec}}
@@ -643,9 +628,8 @@ end
    `:partial`/`:infeasible`/`:residual_blocked` 를 내면 `engage_fallback!` 로 간다 —
    **성공적으로 옮긴 빌드가 잉여 둘째 단위 때문에 영구 line-stop 된다.** 옛 코드에는 없던
    실패 경로다.
-2. `DeprioritizeAgent` + 하드 스펙 — `_is_deprioritize` docstring: 섞인 제안은 이 분기에 안 걸리고
-   하드 dispatch 로 떨어져 "DeprioritizeAgent 는 무해한 no-op 으로 컴파일된다". 초판은 그걸
-   **전면 MILP 재풀이 + `commit_respec!`** 로 바꿔 버렸다(실패 시 역시 fallback).
+2. (삭제됨) `DeprioritizeAgent` + 하드 스펙 — 그 kind 가 2026-08-24 Task 5 에서 DSL 에서
+   사라지면서 `:subsumed_by_hard_spec` 사유도 함께 지웠다. 남은 흡수 사유는 1 하나뿐이다.
 
 **흡수는 조용한 드롭이 아니다.** C1 의 명령은 "어떤 제약도 **조용히** 버려지지 않는다" 이지
 "모든 제약이 반드시 무언가를 집행한다" 가 아니다. 흡수된 단위는 `LAST_ENACT_REPORT[]` 에
@@ -655,7 +639,6 @@ end
 사유:
 - `:subsumed_by_relocate`  — 단위의 **모든** `ForbidZone` 이 같은 제안의 어떤 `RelocateBuild` 와
   **같은 zone** 을 가리킨다. 일부만 겹치면 흡수하지 않는다(나머지 구역은 진짜 할 일이 있다).
-- `:subsumed_by_hard_spec` — 순수 soft 가 아닌 제안 안의 `DeprioritizeAgent` 단위.
 
 🔴 **`TranslateBuild`(Task C3)는 여기에 들어오지 않는다 — 흡수하지도, 흡수되지도 않는다.**
 근거는 `_is_translate_build` 의 docstring 에 적었다. 요약: 흡수는 "다른 제약이 이 단위의 일을
@@ -684,8 +667,6 @@ function _subsumption(unit::AbstractVector{<:ConstraintSpec},
                          by = string)
         isempty(rb_zones) && return nothing
         all(c -> c isa ForbidZone && c.zone in rb_zones, unit) && return :subsumed_by_relocate
-    elseif kind === :deprioritize
-        any(c -> !(c isa DeprioritizeAgent), all_constraints) && return :subsumed_by_hard_spec
     end
     return nothing
 end
@@ -832,7 +813,7 @@ function maybe_respecify!(env, ood_queue;
         #    지금 지키는 불변식은 하나다: **멈춘 라인에는 어떤 제약도 집행하지 않는다.**
         #    latch 여부는 판정 Symbol 이 아니라 `RESPEC_HOLD[]` 로 본다 — 거부 분기의 다수가
         #    `engage_fallback!` 을 부른 **뒤** `:rejected` 를 돌려주고(relocate/zone/replace/generic),
-        #    거꾸로 reform(`:1207`)·deprioritize(`:1235`)는 latch 없이 `:rejected` 를 낸다.
+        #    거꾸로 reform(`:1207`)은 latch 없이 `:rejected` 를 낸다.
         #    Symbol 로 키를 잡으면 앞은 놓치고 뒤는 거짓 발동한다.
         if RESPEC_HOLD[]
             # 건너뛴 단위도 **명시적 status 로 보고**한다 — 조용한 건너뜀이면 이 태스크가 고친
@@ -889,7 +870,6 @@ end
     _is_battery_swap    SwapBattery          → swap_battery!
     _is_robot_replace   ReplaceAgent         → hot_swap_robot! / replace_robot(_distributed)!
     _is_reform          ReformTeam           → reform_stuck_teams! / recover_stalled_teams!
-    _is_deprioritize    DeprioritizeAgent    → deprioritize_agent! + 재풀이
     (fall-through)      그 외                 → verify + formulate_milp + commit_respec!
 
 ⚠️ 검사 **순서**는 예전 그대로 두었지만, 단위가 한 종류뿐이라 이제 순서가 결과를 가르지
@@ -1028,7 +1008,7 @@ function _enact_one!(env, proposal::RespecProposal;
     #
     # ⚠️ `engage_fallback!` 을 부르지 않는다(= 라인을 영구 정지시키지 않는다). `RESPEC_HOLD[]` 는
     #    latch 되고 production 에서 아무도 안 푼다(이 파일의 line-stop 게이트 주석). 잘못 쓴 Δ 하나로
-    #    남은 런 전체의 respec 을 죽이는 것은 비례하지 않는다 — `_is_reform`/`_is_deprioritize` 분기가
+    #    남은 런 전체의 respec 을 죽이는 것은 비례하지 않는다 — `_is_reform` 분기가
     #    이미 latch 없이 `:rejected` 를 내는 것과 같은 처리다. 🔴 **아직 안 닫힌 것**: "어떤 Δ 도
     #    구역을 링 안에서 비울 수 없다"(= 진짜 기하적 infeasible)는 판정은 아직 이 경로에 없다 —
     #    `verify_translate` 는 **주어진** Δ 만 본다. 그 자리는 `RelocateBuild` 경로의
@@ -1489,67 +1469,11 @@ function _enact_one!(env, proposal::RespecProposal;
         return :admitted
     end
 
-    # --- soft deprioritize (TIER-2): bounded objective bias, NO feasibility risk -
-    # A DeprioritizeAgent (e.g. battery degraded) is feasibility-PRESERVING by construction:
-    # it only re-prices the agent's edges, so it can never stall the build. We verify grounding
-    # (agent exists, not closed; cheap, no solve), register the CLAMPED bias, and energy-aware
-    # re-solve. If the re-solve (which the bias cannot make infeasible) still fails for an
-    # unrelated reason, we fail closed to the safe fallback — defense in depth.
-    # [한국어] DeprioritizeAgent(TIER-2 soft) 대응: 해당 로봇의 엣지 비용만 다시 매기므로 실행가능성을
-    #   해칠 수 없음(빌드를 멈추게 못 함). grounding 만 검증 → 클램프된 bias 등록 → 에너지 인식 재풀이.
-    if _is_deprioritize(proposal)
-        push!(ENACT_ORDER_LOG[], :deprioritize)   # C1: 실제로 진입한 분기를 진입 순서대로 기록
-        dverdict = verify_deprioritize(proposal, env)
-        if dverdict isa Reject
-            @warn "[RESPEC] deprioritize proposal REJECTED ($(dverdict.reason)): $(dverdict.detail) -> no-op (build continues)"
-            return :rejected            # soft spec: a bad one is just ignored; no line-stop needed  # soft 는 나빠도 그냥 무시
-        end
-        for c in proposal.constraints                    # 각 soft 제약에 대해
-            f = deprioritize_agent!(c.agent, c.factor)   # CLAMPED to [1, MAX_AGENT_COST_BIAS]  # 비용 배수를 [1,상한]으로 클램프해 등록
-            @info "[RESPEC] deprioritize $(c.agent): edge-cost ×$(round(f, digits=2)) (soft, feasibility-preserving)"
-        end
-        # The bias reaches the solver ONLY through the efficiency term, which the default weights
-        # (speed=1, efficiency=0) discard. κ is now a GLOBAL default (objective.json ->
-        # init_objective_weights!, spec §6.3), so this formulation simply inherits it -- the old
-        # scoped enable/restore around this one call is gone, because scoping it here meant every
-        # OTHER macro's re-solve ran with energy discarded (spec §2.2).
-        #
-        # MEASURED CAVEAT (2026-08-13): κ reaching this call does NOT mean the energy term
-        # materializes here. formulate_milp only creates Xa variables (and edge_costs) for edges
-        # that could still be ADDED -- outdegree(v) < n_eligible_successors[v]. Mid-build the
-        # schedule is already fully assigned, so this re-solve typically prices ZERO candidate
-        # edges and get_objective_expr returns the pure makespan term. The path where the term is
-        # genuinely live is the one that RELEASES edges first: release_pending_assignments!
-        # (reassign.jl:121) via fault_robot_and_reassign!. Do not read the log line below as
-        # "battery SoC pricing is live" -- it is not, for lack of anything to price.
-        # [한국어] κ 는 이제 전역 기본값이라 이 정식화가 그냥 물려받는다(예전엔 여기서만 켰다 원복해서
-        #   다른 모든 매크로의 재풀이가 에너지를 버렸다 — spec §2.2).
-        #   다만 **κ 가 닿는 것과 에너지 항이 실제로 생기는 것은 다르다**: formulate_milp 은 아직
-        #   추가 가능한 엣지에만 Xa/edge_costs 를 만드는데, 빌드 중반 스케줄은 이미 전부 배정돼 있어
-        #   후보가 0 인 경우가 보통이다. 엣지를 실제로 풀어 주는 경로(release_pending_assignments!)
-        #   에서만 항이 산다. 아래 로그를 "SoC 가격책정이 살아났다"로 읽으면 안 된다.
-        milp = formulate_milp(
-            SparseAdjacencyMILP(), env.sched, env.scene_tree;
-            optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF)
-        if LAST_AUTO_EFFICIENCY_W[] > 0.0
-            @info "[RESPEC] deprioritize re-solve: energy term ON (auto w_eff=$(round(LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3)), κ=$(AUTO_EFFICIENCY_KAPPA[]))"
-        else
-            @warn "[RESPEC] deprioritize re-solve: energy term NOT active -- the bias cannot steer this solve. init_objective_weights! 를 불렀는가?"
-        end
-        optimize!(milp)
-        if primal_status(milp) != MOI.FEASIBLE_POINT     # bias 는 실행가능성을 보존하는데도 불가능하면(무관한 이유) 방어적 폴백
-            @warn "[RESPEC] deprioritize re-solve infeasible (unexpected; bias preserves feasibility) -> fallback"
-            engage_fallback!(env)
-            return :fallback
-        end
-        if !commit_respec!(env, milp, proposal; resume = true)   # 재각인 커밋 실패 시 폴백
-            @warn "[RESPEC] deprioritize commit re-stamp failed -> fallback"
-            engage_fallback!(env)
-            return :fallback
-        end
-        @info "[RESPEC] ADMITTED deprioritize: re-solved with $(length(proposal.constraints)) soft bias(es)."
-        return :admitted
-    end
+    # 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 soft `deprioritize` dispatch 분기를 지웠다.
+    #   `_is_deprioritize` → `verify_deprioritize` → `deprioritize_agent!` → 에너지 인식 재풀이
+    #   사슬 전체가 `DeprioritizeAgent` kind 하나에만 달려 있었고 그 kind 가 삭제됐다.
+    #   ⚠️ `AGENT_COST_BIAS` 레지스트리와 `deprioritize_agent!` 자체는 남아 있지만, 이 커밋 뒤로
+    #   **프로덕션 경로에서 그것을 쓰는 곳이 없다**(유일한 소비처는 tools/tests.jl 의 진단이다).
 
     # --- verify (the gate; does the trial solve itself) -----------------------
     # verify(...) : 제안을 실제로 "시험 풀이(trial solve)"해 통과/거부를 판정하는 관문. 통과 못 하면 Reject 객체 반환.

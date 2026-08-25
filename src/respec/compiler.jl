@@ -82,15 +82,9 @@ function compile_constraint!(model, t0, tF, Xa, sched, cs::ForbidAgent)
     return n                                                  # 총 추가 제약 개수 반환
 end
 
-# --- DeprioritizeAgent: TIER-2 soft bias — compiles to NOTHING here ------------
-# It adds NO hard constraint (that is the whole point: it must not shrink the feasible
-# set). The biasing happens in the OBJECTIVE via the AGENT_COST_BIAS registry, set at
-# dispatch time (replan.jl `_is_deprioritize`) before the re-solve. This no-op method
-# exists so the closed-union contract holds and a MIXED proposal that happens to carry a
-# DeprioritizeAgent through the generic compile path is harmless (contributes 0 constraints).
-# 이 버전은 cs::DeprioritizeAgent(TIER-2 소프트 편향)일 때 실행됨 — 하드 제약을 하나도 안 더하고 그냥 0을 반환.
-#   (실제 편향은 여기가 아니라 목적함수/AGENT_COST_BIAS 레지스트리에서 일어남. 이 메서드는 닫힌 합집합 계약 유지용.)
-compile_constraint!(model, t0, tF, Xa, sched, cs::DeprioritizeAgent) = 0
+# 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `cs::DeprioritizeAgent` no-op 메서드를 지웠다 —
+#   그 kind 가 DSL 에서 통째로 삭제됐으므로 닫힌 합집합에 그 자리가 없다. (소프트 비용편향 기전
+#   `AGENT_COST_BIAS` 자체는 essential_tg_coponents.jl 에 남아 있다.)
 
 # --- RelocateBuild: SPATIAL — compiles to NOTHING here -------------------------
 # Like ForbidZone/ReplaceAgent/ReformTeam, a whole-build rigid translation is geometric

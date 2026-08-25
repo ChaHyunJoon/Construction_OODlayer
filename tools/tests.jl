@@ -34,7 +34,7 @@
 #   zone_corridor            -- LLM-free unit test of the zone BLOCKAGE predicates: 덮였다 vs 막혔다 (STEP 8)
 #   zone_team_causal         -- NAV-ON reversal test: does a covered team ACTUALLY fail to form? (STEP 11)
 #   replace_parse            -- LLM-free unit test of the ReplaceAgent bridge+verify path (OOD 1-1 Part B)
-#   deprioritize_integration -- TIER-2 DeprioritizeAgent integration on a REAL env (no LLM)
+#   deprioritize_integration -- soft AGENT_COST_BIAS mechanism on a REAL env (no LLM)
 #   battery_smoke            -- OFFLINE smoke test of the energy-aware adaptive layer (no env, no LLM)
 #   battery_safety           -- OFFLINE safety/verifiability test of the TIER-2 soft re-spec + bias registry
 #   llm_classification       -- Stage 3 REAL-LLM check (needs the Python service up + ANTHROPIC_API_KEY)
@@ -1117,16 +1117,18 @@ nfail[] == 0 || error("test_replace_parse had $(nfail[]) failure(s)")
 end
 
 # =============================================================================
-# deprioritize_integration -- Integration verification of the TIER-2 DeprioritizeAgent on a
-#   REAL env (no LLM): (1) verify_deprioritize ADMITS a real robot, REJECTS a non-existent /
-#   closed one. (2) feasibility-PRESERVING: a re-solve with the agent biased stays FEASIBLE.
-#   (3) it actually REROUTES: the biased robot does <= as much assignment work as baseline.
+# deprioritize_integration -- Integration verification of the soft AGENT_COST_BIAS mechanism on
+#   a REAL env (no LLM): (1) feasibility-PRESERVING: a re-solve with the agent biased stays
+#   FEASIBLE. (2) it actually REROUTES: the biased robot does <= as much assignment work as
+#   baseline. (3) the deployed AUTO energy weight makes the bias reach the solver at all.
+#   🔴 2026-08-24 (Task 5): the `verify_deprioritize` gate stage — the only DSL-typed part —
+#   was deleted with the kind. The MECHANISM stages below are untouched.
 #   Builds ONE small env (greedy) and re-solves; mirrors the maybe_respecify! soft-dispatch
 #   path without the LLM round-trip.
 # =============================================================================
-# [검증 내용] 실제 env 위에서 TIER-2 DeprioritizeAgent(로봇 우선순위 낮추기 = 소프트 re-spec)를 확인:
-#   (1) 실존 로봇은 Admit, 없는 로봇은 Reject, (2) 편향(bias)을 걸고 다시 풀어도 여전히 feasible,
-#   (3) 실제로 우회시켜 그 로봇의 배정 작업량이 baseline 이하로 줄어드는지 본다(LLM 없이 소프트 경로만).
+# [검증 내용] 실제 env 위에서 소프트 비용편향 기전(deprioritize_agent! → AGENT_COST_BIAS)을 확인:
+#   편향을 걸고 다시 풀어도 여전히 feasible 하고, 실제로 우회시켜 그 로봇의 배정 작업량이
+#   baseline 이하로 줄어드는지 본다(LLM 없이, DSL 없이).
 function test_deprioritize_integration()
 value = JuMP.value                    # JuMP 결정변수의 최적해 값을 읽는 함수 별칭
 chk(c, m) = (c ? (PASS[] += 1) : (FAILN[] += 1; println("  FAIL: ", m)))  # 로컬 pass/fail 집계 클로저
@@ -1164,11 +1166,9 @@ function owned_edge_usage(milp, sched, rid)
     return u
 end
 
-# (1) verify_deprioritize gate
-println("== (1) verify_deprioritize: admit real robot, reject non-existent ==")
-chk(CB.verify_deprioritize(CB.RespecProposal([CB.DeprioritizeAgent(R, 100.0)]), env) isa CB.Admit, "real robot admitted")
-chk(CB.verify_deprioritize(CB.RespecProposal([CB.DeprioritizeAgent(CB.RobotID(999999), 100.0)]), env) isa CB.Reject, "fake robot rejected")
-
+# (1) 🔴 2026-08-24 (Task 5): 여기 있던 `verify_deprioritize` 게이트 검사를 지웠다 — 게이트와
+#     `DeprioritizeAgent` kind 가 함께 삭제됐다. 남은 (2)(3)(4)는 전부 기전 검사다.
+chk(!isdefined(CB, :verify_deprioritize), "verify_deprioritize gate is gone (Task 5)")
 # (2) baseline solve (no bias)
 println("== (2) baseline re-solve (no bias) ==")
 CB.clear_agent_bias!()
@@ -1335,22 +1335,23 @@ exit(FAILN[] == 0 ? 0 : 1)
 end
 
 # =============================================================================
-# battery_safety -- OFFLINE safety/verifiability test for the TIER-2 soft re-spec
-#   (DeprioritizeAgent) and the AGENT_COST_BIAS objective-bias registry. NO env build, NO LLM.
+# battery_safety -- OFFLINE safety/verifiability test for the AGENT_COST_BIAS objective-bias
+#   registry (the soft cost-bias MECHANISM). NO env build, NO LLM.
+#   🔴 2026-08-24 (spec §5.4, Task 5): the DSL kind that used to drive it (`DeprioritizeAgent`)
+#   was DELETED. The registry, `deprioritize_agent!` and its clamp survive, so what is left here
+#   is the mechanism's safety contract; every DSL-grammar assertion was removed with the kind.
 #   Running it also PRECOMPILES the whole module, so it doubles as an integration check that the
 #   spec_dsl/compiler/verifier/replan + essential_tg_coponents edits all load.
 # =============================================================================
-# [검증 내용] env/LLM 없이 소프트 re-spec(DeprioritizeAgent)와 AGENT_COST_BIAS 편향 레지스트리의
-#   "안전성/검증가능성"을 확인: LLM 이 뽑을 수 있는 건 닫힌 문법(grammar)뿐이고, factor 는 [1,MAX]로
-#   clamp 되어 목적함수를 역이용 못하며, 소프트 스펙은 하드 제약 0개로 컴파일되어 feasibility 를 절대 안 줄임.
+# [검증 내용] env/LLM 없이 AGENT_COST_BIAS 편향 레지스트리의 "안전성"을 확인: factor 는 [1,MAX]로
+#   clamp 되어 목적함수를 역이용 못하고, 배율 합성(agent × battery)이 기본 항등이다.
 #   (이 테스트를 돌리면 모듈 전체가 precompile 되므로 로드 통합검사도 겸함.)
 function test_battery_safety()
-println("== closed-union: DeprioritizeAgent is a ConstraintSpec (LLM can only emit grammar) ==")
-@check CB.DeprioritizeAgent <: CB.ConstraintSpec
+println("== 🔴 2026-08-24 (Task 5): the DeprioritizeAgent DSL kind is GONE ==")
+@check !isdefined(CB, :DeprioritizeAgent)                 # 타입 자체가 없다
+@check !isdefined(CB, :verify_deprioritize)               # 전용 게이트도 없다
+@check !isdefined(CB, :_is_deprioritize)                  # dispatch 판정자도 없다
 r5 = CB.RobotID(5); r6 = CB.RobotID(6)
-da = CB.DeprioritizeAgent(r5)
-@check da.factor == 50.0                                  # default advisory severity
-@check CB.referenced_ids(da) == (r5,)                     # grounding key for the closed-node check
 
 println("== SAFETY: factor is CLAMPED to [1, MAX] (LLM cannot weaponize the knob) ==")
 CB.clear_agent_bias!()
@@ -1368,11 +1369,6 @@ CB.deprioritize_agent!(r5, 10.0); CB.deprioritize_agent!(r6, 20.0)
 CB.clear_agent_bias!()
 @check isempty(CB.AGENT_COST_BIAS[])                      # global clear works
 
-println("== SAFETY: feasibility-preserving BY CONSTRUCTION — compiles to ZERO hard constraints ==")
-# 소프트 re-spec 이 feasible 집합을 줄이거나 빌드를 멈출 수 없다는 "구조적 증거":
-# 컴파일 결과 추가된 하드 제약 개수가 0 이어야 함(0이면 절대 계획을 막지 못함).
-@check CB.compile_constraint!(nothing, nothing, nothing, nothing, nothing, da) == 0
-
 println("== objective-bias composition: agent_bias × battery_fn, both default-identity ==")
 CB.clear_agent_bias!(); CB.EDGE_COST_MULTIPLIER[] = nothing
 @check CB.edge_cost_multiplier(nothing, 1) == 1.0        # both off -> edge_costs byte-for-byte unchanged
@@ -1380,30 +1376,10 @@ CB.EDGE_COST_MULTIPLIER[] = (s, v) -> 3.0                # stub battery fn
 @check CB.edge_cost_multiplier(nothing, 1) == 3.0        # agent registry empty -> battery only
 CB.EDGE_COST_MULTIPLIER[] = nothing                      # reset
 
-println("== dispatch predicate: pure-soft proposals routed to the soft path ==")
-@check CB._is_deprioritize(CB.RespecProposal([CB.DeprioritizeAgent(r5)]))
-@check CB._is_deprioritize(CB.RespecProposal([CB.DeprioritizeAgent(r5), CB.DeprioritizeAgent(r6)]))
-mixed = CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(r5), CB.ForbidWindow(r5, 0.0, 1.0)])
-@check !CB._is_deprioritize(mixed)                       # mixed -> NOT soft path (hard spec governs)
-@check !CB._is_deprioritize(CB.RespecProposal(CB.ConstraintSpec[]))   # empty -> not soft
-# a mixed proposal's DeprioritizeAgent is harmless on the generic compile path (no-op):
-@check CB.compile_constraint!(nothing, nothing, nothing, nothing, nothing, mixed.constraints[1]) == 0
-
-println("== typed DeprioritizeAgent spec (D-9: no longer LLM-emittable) ==\n")
+println("== closed union: an unknown kind still throws on the Julia side ==")
+# 🔴 2026-08-24 (Task 5): 여기 있던 `_is_deprioritize` dispatch 판정 블록과 typed
+#    `DeprioritizeAgent` spec 왕복 블록을 지웠다 — 그 kind 가 삭제됐다.
 resolver = s -> CB.RobotID(7)                            # trivial id resolver for the test
-# 🔴 2026-08-21 D-9 (Task C2): 이 kind 는 **emit 가능 집합에서 빠졌다** — `_parse_proposal` 이
-#    이제 거부한다. 하지만 **타입·게이트·집행부는 그대로 살아 있고**(엔진 내부 생산자가 쓴다)
-#    이 블록이 실제로 검증하는 것은 그쪽(verify + enact)이다. 그래서 JSON 파싱 단계만 걷어내고
-#    타입을 직접 만든다. emit 가능 kind 의 파싱 왕복은 test/respec_action_space.jl 이 더
-#    엄격하게(세 표면 집합 등식으로) 검사한다.
-prop = CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(CB.RobotID(7), 80.0)],
-                         "battery low", "R7 battery low")
-@check length(prop.constraints) == 1
-@check prop.constraints[1] isa CB.DeprioritizeAgent
-@check prop.constraints[1].agent == CB.RobotID(7)
-@check prop.constraints[1].factor == 80.0
-# factor 기본값 50.0 은 줄리아 외부 생성자가 준다(spec_dsl.jl:266) — 파서가 아니라 거기가 원본이다.
-@check CB.DeprioritizeAgent(CB.RobotID(7)).factor == 50.0
 threw = Ref(false)
 try CB._parse_proposal(Dict("constraints" => [Dict("kind" => "Sabotage")], "rationale" => ""), "x"; id_resolver = resolver)
 catch; threw[] = true end

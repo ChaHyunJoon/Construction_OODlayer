@@ -238,25 +238,17 @@ end
 end
 
 # =============================================================================
-@testset "[8] 하드 스펙과 섞인 DeprioritizeAgent 는 흡수된다 (Ruling 2)" begin
-    # `_is_deprioritize` docstring 의 실측 규칙: 하드 스펙과 섞인 DeprioritizeAgent 는 옛 코드에서
-    # "무해한 no-op" 이었다. 순차 집행이 그걸 **전면 MILP 재풀이 + commit** 으로 바꿔 버렸다.
-    CB.BATTERY_FLEET[].soc[RID] = 0.8
-    st = enact!(CB.RespecProposal(CB.ConstraintSpec[
-        CB.SwapBattery(RID), CB.DeprioritizeAgent(RID, 2.0)]))
-    @test st === :admitted
-    @test soc_of(RID) == 1.0                   # 하드 스펙은 집행됐다
-    @test CB.ENACT_ORDER_LOG[] == [:battery]   # deprioritize 분기(재풀이)에 진입하지 않았다
-    rep = CB.LAST_ENACT_REPORT[]
-    @test rep[2].kind === :deprioritize && rep[2].status === :subsumed_by_hard_spec
-    @test sum(r.n for r in rep) == 2
-
-    # 순수 soft 제안은 흡수되지 **않는다**(분류기 직접 검사 — MILP 재풀이 비용을 안 낸다).
-    pure = CB.ConstraintSpec[CB.DeprioritizeAgent(RID, 2.0)]
-    @test CB._subsumption(pure, pure) === nothing
-    # 다른 zone 의 ForbidZone 은 흡수되지 않는다.
+# 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 testset [8] "하드 스펙과 섞인 DeprioritizeAgent 는
+#   흡수된다 (Ruling 2)" 를 통째로 지웠다. `DeprioritizeAgent` kind 가 DSL 에서 삭제되면서
+#   `_is_deprioritize` · `:deprioritize` 집행 분기 · `_subsumption` 의 `:subsumed_by_hard_spec`
+#   사유가 전부 사라졌다 — 흡수 사유는 이제 `:subsumed_by_relocate` 하나뿐이다.
+#   그 testset 안에 있던 "다른 zone 의 ForbidZone 은 흡수되지 않는다" 음성 대조는 여기로 옮겼다.
+@testset "[8] 흡수는 같은 zone 일 때만 일어난다 (음성 대조)" begin
     other = CB.ConstraintSpec[CB.RelocateBuild(:zone), CB.ForbidZone(CB.AssemblyID(1), :other)]
     @test CB._subsumption(CB.ConstraintSpec[other[2]], other) === nothing
+    # `:subsumed_by_hard_spec` 은 더 이상 어떤 입력으로도 나오지 않는다(사유 자체가 없다).
+    @test CB._subsumption(CB.ConstraintSpec[CB.SwapBattery(RID)],
+                          CB.ConstraintSpec[CB.SwapBattery(RID), CB.ForbidWindow(RID, 0.0, 1.0)]) === nothing
 end
 
 CB.clear_restriction_zones!()

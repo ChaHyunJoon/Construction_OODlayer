@@ -22,7 +22,7 @@
 #   (2) STATIC    : 목적함수를 건드리지 않고(DSL 상 구조적으로 불가), 이미 끝난(closed) 노드를 참조하지 않음("과거 불변" 규칙).
 #   (3) FEASIBLE  : 제안을 넣은 MILP 가 실제로 풀리고(feasible) 안전 불변식도 만족하는가. 안 되면 → 거절 → 호출자 폴백.
 #  (3)만 실제 풀이 비용이 듦. (1)(2)는 싸서 나쁜 제안 대부분을 풀기 전에 걸러낸다.
-#  ForbidZone/ReplaceAgent/DeprioritizeAgent/ReformTeam 은 스케줄 제약이 아니라 별도 경로라
+#  ForbidZone/ReplaceAgent/ReformTeam 은 스케줄 제약이 아니라 별도 경로라
 #  가벼운 전용 게이트(verify_zone/verify_replace/…)로 검증한다.
 #
 #  Julia 문법 참고(처음 보는 사람용):
@@ -691,7 +691,6 @@ referenced_ids(cs::ReplaceAgent) = (cs.agent,)   # 교체 제약은 고장난 �
 referenced_ids(cs::ReformTeam)   = ()            # 팀 재정립은 특정 노드를 안 지목(기하가 막힌 팀을 찾음)
 referenced_ids(cs::RelocateBuild) = ()           # 빌드 전체 평행이동은 특정 노드를 안 지목(구역 키만 지목)
 referenced_ids(cs::TranslateBuild) = ()          # 주어진 Δ 만큼의 전체 평행이동도 특정 노드를 안 지목(Δ 뿐이다)
-referenced_ids(cs::DeprioritizeAgent) = (cs.agent,)  # 소프트 회피 제약은 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::SwapBattery)  = (cs.agent,)   # 배터리 교체는 그 로봇(agent) 하나를 건드림
 
 # 2026-08-21 (Task C2 · L2-a 문법). LLM 이 직접 쓴 선형 제약이 건드리는 노드들.
@@ -736,37 +735,9 @@ function verify_swap_battery(proposal::RespecProposal, env)
     return Admit(proposal, length(proposal.constraints))
 end
 
-"""
-    verify_deprioritize(proposal, env) -> Verdict
-
-The verify gate for a TIER-2 `DeprioritizeAgent` (soft, objective-only) proposal. Unlike the
-hard-constraint `verify`, this needs NO feasibility solve: a soft cost bias PRESERVES the
-feasible set exactly, so it can never make the build infeasible — the safety property holds
-BY CONSTRUCTION (see spec_dsl.jl design invariant, Tier 2). Two cheap, authoritative checks:
-  (1) STATIC — no referenced agent is an already-closed node (the "past is invariant" rule).
-  (2) GROUNDING — the named `agent` actually exists as a physical robot in the scene; the LLM
-      cannot deprioritize a robot the world does not have (never trust the LLM's id).
-The `factor` is NOT trusted either: it is CLAMPED to [1, MAX_AGENT_COST_BIAS] at enactment
-(`deprioritize_agent!`), so an out-of-range or adversarial value cannot blow up or invert the
-objective. Admitted ⇒ caller registers the bias and re-solves; the re-solve is always feasible.
-"""
-# TIER-2 소프트 제약 DeprioritizeAgent(목적함수만 살짝 바꿈) 전용 게이트. 소프트라 feasible 집합을 그대로 보존 → 풀이 재검증 불필요. 검사: (1)과거 노드 참조 금지, (2)그 로봇이 실제로 존재.
-function verify_deprioritize(proposal::RespecProposal, env)
-    invariant = build_invariant(env)                     # 현재 얼린 과거
-    # 씬에 실제 존재하는 로봇들의 ID 집합(grounding 확인용). 컴프리헨션으로 만들어 Set 으로 감쌈.
-    robot_ids = Set(node_id(n) for n in get_nodes(env.scene_tree) if matches_template(RobotNode, n))
-    for cs in proposal.constraints                       # 각 제약에 대해
-        for id in referenced_ids(cs)                     # 건드리는 노드 ID 들
-            id in invariant.closed_nodes &&              # 과거 노드 참조면 거절
-                return Reject(:touches_closed, "deprioritize spec references closed node $(id)")
-        end
-        if cs isa DeprioritizeAgent                      # DeprioritizeAgent 이면
-            cs.agent in robot_ids ||                     # 이름댄 로봇이 실제 로봇이 아니면 거절(LLM id 를 믿지 않음)
-                return Reject(:no_such_agent, "DeprioritizeAgent names $(cs.agent) which is not a physical robot")
-        end
-    end
-    return Admit(proposal, length(proposal.constraints))  # 통과 → 채택
-end
+# 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `verify_deprioritize` 게이트를 지웠다 —
+#   `DeprioritizeAgent` kind 가 DSL 에서 삭제되면서 이 게이트가 검증할 제안이 없어졌다.
+#   (호출자였던 `replan.jl` 의 `_is_deprioritize` 분기도 같은 커밋에서 사라졌다.)
 
 """
     verify_reform(proposal, env) -> Verdict

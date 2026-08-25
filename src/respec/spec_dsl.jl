@@ -239,31 +239,13 @@ the gate (`verify_reform`): admitted only when a wedged team actually exists.
 struct ReformTeam <: ConstraintSpec
 end
 
-"""
-    DeprioritizeAgent(agent, factor=50.0)
-
-TIER-2 (soft, objective-only) spec: "robot `agent` should be AVOIDED for future work
-where possible — e.g. its battery is degraded — but it remains usable if no one else can
-do a task." Unlike `ForbidAgent` (a HARD removal that can make the build infeasible), this
-adds NO constraint: it multiplies the assignment-edge ENERGY cost of `agent`'s frontier by
-`factor` in the objective (via `deprioritize_agent!` → `AGENT_COST_BIAS`), so the energy-aware
-re-solve routes work onto healthier robots ONLY when that does not break feasibility.
-
-SAFETY (why this is the safest re-spec kind): it preserves the feasible set EXACTLY — it can
-never stall the build or violate a feasibility-expressed safety property; it only re-orders
-preference among already-feasible (already-safe) plans. `factor` is ADVISORY and CLAMPED to
-[1, 1e3] at enactment (`deprioritize_agent!`): the LLM cannot drive it < 1 (which would
-*incentivize* the robot) nor to a blowup value. This is the LLM-facing path for a battery /
-soft-degradation OOD; the local `rebalance_for_battery!` is the LLM-free equivalent.
-"""
-# 의미(TIER-2, soft): "로봇 `agent` 를 가급적 피하되(예: 배터리 저하), 다른 로봇이 못 하면 써도 됨."
-#   ForbidAgent(하드 제거)와 달리 제약을 안 더하고 목적함수에서 그 로봇의 배정엣지 에너지비용에 factor 를 곱함
-#   → feasible set 불변 → 빌드 절대 멈추지 않음(구조적 안전). factor 는 enactment 에서 [1,1e3] 로 클램프.
-struct DeprioritizeAgent <: ConstraintSpec
-    agent::AbstractID   # 가급적 피할 로봇/에이전트 ID
-    factor::Float64     # 그 로봇 배정엣지의 비용 배수(>1=회피). enactment 에서 [1,1e3] 로 클램프됨(안전).
-end
-DeprioritizeAgent(agent::AbstractID) = DeprioritizeAgent(agent, 50.0)  # 기본 심각도(클램프 전 advisory 값)
+# 🔴 2026-08-24 (spec §5.4, Task 5): `DeprioritizeAgent` (TIER-2 soft objective-bias) 는 여기서
+#   **완전히 삭제됐다** — 타입·컴파일 메서드·verify 게이트·dispatch 분기 전부. 레지스트리에서는
+#   2026-08-20 에 이미 빠졌다(제안 338회 대비 선택 0회; 이 하니스의 배터리 사건은 저하가 아니라
+#   정지(SoC 0)라 degraded-but-alive 상태가 없다). 그래서 TIER 2 는 지금 **비어 있다** — 위
+#   DESIGN INVARIANT 의 2-tier 서술은 역사로 읽을 것.
+#   ⚠️ 소프트 비용편향 **기전** 자체(`deprioritize_agent!` / `AGENT_COST_BIAS`,
+#   essential_tg_coponents.jl)는 살아 있다 — 없어진 것은 그것을 LLM/DSL 이 부르는 문법이다.
 
 # =============================================================================
 # 2026-08-21 (Task C2 · spec §5-4) — L2-a: MILP 결정변수 위의 **제약 문법**

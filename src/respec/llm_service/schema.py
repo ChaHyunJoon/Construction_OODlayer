@@ -137,27 +137,10 @@ class ReformTeam(BaseModel):
     kind: Literal["ReformTeam"] = "ReformTeam"  # 필드가 kind 하나뿐 — 팀 재정립은 인자가 필요 없음
 
 
-# DeprioritizeAgent: 로봇을 "제거"하지 않고 "가급적 피함"(소프트 선호). 가장 중요한 용도=배터리 저하.
-# 유일한 soft kind — 하드 제약을 안 더하고 배정 비용만 올려 solver 가 건강한 로봇을 선호하게 함(빌드 안 멈춤).
-class DeprioritizeAgent(BaseModel):
-    """Robot `agent` should be AVOIDED for future work but NOT removed (a SOFT preference).
-
-    Emit this for a DEGRADATION event -- most importantly a BATTERY problem ("robot R3's
-    battery is low / degraded / running flat", "R5 is low on charge") -- where the robot can
-    STILL work but should be spared heavy/long hauls so it does not run out. This is the SAFEST
-    re-spec: unlike ForbidAgent/ReplaceAgent (which REMOVE the robot and can stall the build),
-    DeprioritizeAgent adds NO hard constraint -- it only raises the robot's assignment COST so
-    the energy-aware re-solve routes work onto healthier robots WHEN POSSIBLE, while keeping the
-    robot available if it is the only option (so the build can never stall on it).
-
-    Echo the EXACT agent id (the `id` from the AGENTS section, not 'R3', not a node id).
-    `factor` (optional, default 50) expresses severity: higher = avoid harder; it is CLAMPED to
-    a safe range [1, 1000] on the Julia side, so you cannot over- or under-drive it. Prefer this
-    over ForbidAgent/ReplaceAgent whenever the robot is DEGRADED-BUT-USABLE rather than DEAD.
-    """
-    kind: Literal["DeprioritizeAgent"] = "DeprioritizeAgent"
-    agent: str            # 저하됐지만 아직 쓸 수 있는 로봇 id
-    factor: float = 50.0  # 심각도(클수록 더 피함). 줄리아 쪽에서 [1,1000] 로 클램프 → 과·소 조정 불가(안전).
+# 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `class DeprioritizeAgent(BaseModel)` 을 지웠다.
+#   아래 D-9 주석은 "정의는 남기고 union 에서만 뺐다" 고 적지만 이 kind 는 예외다 — Julia 쪽
+#   `spec_dsl.jl` 의 타입 자체가 같은 커밋에서 삭제되므로(lockstep) 여기 클래스만 남기면 두
+#   표면이 서로 다른 문법을 말하게 된다. 되살리려면 두 파일을 함께 되살릴 것.
 
 
 # SwapBattery: 방전된 로봇의 배터리만 현장에서 교체. 같은 본체가 계속 일하고, 창고 예비 "본체"를 안 먹음.
@@ -174,10 +157,6 @@ class SwapBattery(BaseModel):
     wastes it. Conversely, do NOT emit this for a mechanical fault ("cannot move", "broken
     down", "motor failure") -- a fresh battery does nothing for a broken drivetrain; use
     ReplaceAgent there.
-
-    Relation to DeprioritizeAgent: use DeprioritizeAgent when the robot is DEGRADED-BUT-USABLE
-    and you only want future work routed away from it; use SwapBattery when you want its
-    charge actually RESTORED now.
 
     Echo the EXACT agent id (the `id` from the AGENTS section, not 'R3', not a node id).
     """
@@ -353,7 +332,9 @@ class TranslateBuild(BaseModel):
 #   ForbidAgent       D-7 아래 ReplaceAgent 에 약우월로 지배
 #   ForbidWindow      대응 사건 없음 (도착 시점이 확률변수다). 필요하면 Disjunction 으로 쓴다
 #   DeprioritizeAgent 선택 0회. cell 위험은 battery kind 로 도착하므로 SwapBattery 가 답이다
-#                     (_hz_fire_cell! -> battery_action, hazard.jl:583)
+#                     (_hz_fire_cell! -> battery_action, hazard.jl:583).
+#                     🔴 2026-08-24 (Task 5): 이 kind 는 클래스 정의까지 삭제됐다(위 참조) —
+#                     아래 "클래스 정의를 지우지 않고 남긴 이유" 는 나머지 다섯에만 해당한다.
 #   RelocateBuild     행동이 아니라 solver 다(_find_min_translation 이 Δ 를 스스로 찾는다,
 #                     restage_zone.jl:768-779). 진짜 원시연산 _apply_uniform_translation!(env, Δ)
 #                     를 Task C3 의 TranslateBuild(dx, dy) 가 자유 파라미터로 노출한다(**집행됨**).

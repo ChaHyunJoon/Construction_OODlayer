@@ -763,7 +763,7 @@ end
 #   replan loops on the SAME warning/verdict while the sim makes NO progress, STOP that run,
 #   record a structured diagnostic verdict, and move on. Drives run_lego_demo's FULL simulate!
 #   loop HEADLESS (save_animation=false). Scenario: N_BATTERY soft battery OODs
-#   (DeprioritizeAgent) + one central NO-GO zone (whole-build relocation) over a real physics
+#   (soft degradation) + one central NO-GO zone (whole-build relocation) over a real physics
 #   run. REAL LLM service must be UP on :8000 (health checked; aborts if down).
 #   ENV: SEEDS (csv), MAXNP, MODE, N_BATTERY, N_OOD, CLOSED_HI, ZONE_CLOSED, ZONE_R, ENERGY_W,
 #     PROJECT, VERDICT (jsonl out path), RESPEC_SERVICE_URL.

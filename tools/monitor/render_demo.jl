@@ -619,7 +619,7 @@ function enact_reform!(env)
 end
 
 # 완주 보장 enactment(검증된 manual-loop 경로). truth(고장/배터리/존)와 — 있으면 — LLM 이 고른 macro 를 반영.
-#   prop 이 주어지면 그 매크로대로(ReplaceAgent→hot_swap, ForbidZone→restage, DeprioritizeAgent→SoC 회복+rebalance),
+#   prop 이 주어지면 그 매크로대로(ReplaceAgent→hot_swap, ForbidZone→restage),
 #   없거나 NOOP 면 truth 종류로 기본 복구. 어느 경로든 빌드가 멈추지 않게 함.
 function enact_recovery!(env, truth, prop)
     macro_name, _ = _proposal_macro(prop)
@@ -631,12 +631,9 @@ function enact_recovery!(env, truth, prop)
         elseif prop !== nothing && CB._is_zone_respec(prop)        # LLM: 공간 no-go → 리스테이지
             truth isa CB.ZoneTruth && truth.assembly !== nothing &&
                 CB.restage_assembly!(env, truth.assembly; resume = true, verbose = false)
-        elseif prop !== nothing && CB._is_deprioritize(prop)       # LLM: 배터리 저하(soft) → SoC 회복 후 재분배(무정지)
-            local f = CB.BATTERY_FLEET[]
-            if truth isa CB.BatteryTruth && f !== nothing && haskey(f.soc, truth.robot)
-                f.soc[truth.robot] = max(f.soc[truth.robot], 0.55)
-            end
-            CB.rebalance_for_battery!(env)
+        # 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `CB._is_deprioritize(prop)` 분기(SoC 회복 +
+        # rebalance)를 지웠다 — 그 판정자와 `DeprioritizeAgent` kind 가 함께 삭제됐다. 배터리
+        # 사건은 아래 `else` 의 truth 기반 기본 복구(임계값 아래=hot_swap / 위=rebalance)로 간다.
         else                                                       # NOOP/미상 or producer=canonical → truth 기반 기본 복구
             if truth isa CB.FaultTruth
                 CB.hot_swap_robot!(env, truth.robot; mode = :via_depot, verbose = false)

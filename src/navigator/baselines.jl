@@ -84,22 +84,20 @@ function canonical_respec(t::ZoneTruth)
     end
 end
 
-# B1(배터리): 심각도로 갈림 — 깊은 방전(SoC ≤ 임계값)은 하드 교체(ReplaceAgent),
-# 가벼운 열화는 소프트 우선순위 낮춤(DeprioritizeAgent, 살려두고 일만 덜어줌).
-"Canonical response to a battery event, SEVERITY-DEPENDENT (matches truth_key(::BatteryTruth)):
-a deep discharge (SoC ≤ REPLACE_SOC_THRESHOLD) is treated as a hard fault -> ReplaceAgent; a mild
-degradation stays a Tier-2 soft DeprioritizeAgent (route work away, keep usable)."
+# B1(배터리): 2026-08-20 (4팔 축소)로 심각도 분기가 사라졌다.
+# 예전에는 깊은 방전 -> ReplaceAgent, 가벼운 열화 -> 소프트 강등이었는데, 후자가 어휘에서
+# 빠지면서 **기준정책이 행동공간 밖을 제안하게 되는** 상태였다. 남은 개입은 SwapBattery 하나이고
+# 그것은 심각도와 무관하게 항상 실행 가능하다(방전은 배터리를 갈면 풀린다). 그래서 두 칸이
+# 합쳐진다 — `ood_mdp_shim.canonical_action(:battery)` 이 deep/mild 둘 다 3(SwapBattery)을
+# 내는 것과 이제 **일치한다**(예전에는 그 둘이 서로 어긋나 있었다: shim 은 8, 여기는 ReplaceAgent).
+"Canonical response to a battery event: swap the depleted battery in the field. Severity-independent
+-- SwapBattery restores charge whatever the SoC, and it does NOT consume a scarce depot spare body,
+which Replace does. Mirrors `ood_mdp_shim.canonical_action` for `:battery`."
 canonical_respec(t::BatteryTruth) =
-    t.soc_after <= REPLACE_SOC_THRESHOLD[] ?
-        RespecProposal(ConstraintSpec[ReplaceAgent(t.robot, t.after)],
-                       "B1: battery flat -> hard replace (spare hand-off)", "rule") :
-        RespecProposal(ConstraintSpec[DeprioritizeAgent(t.robot, 50.0)],
-                       "B1: battery degraded -> soft deprioritize (feasible-preserving)", "rule")
+    RespecProposal(ConstraintSpec[SwapBattery(t.robot)],
+                   "B1: battery -> field battery swap (no spare body consumed)", "rule")
 
-# B1(팀 교착): 정답은 팀을 기하적으로 다시 짜는 ReformTeam. (::ReformTruth = 값은 안 쓰고 타입만 매칭)
-"Canonical response to a transport-team deadlock: geometric re-establishment."
-canonical_respec(::ReformTruth) =
-    RespecProposal(ConstraintSpec[ReformTeam()], "B1: team deadlock -> reform", "rule")
+# B1(팀 교착) 분기는 2026-08-20 4팔 축소에서 삭제됐다 — 그 truth 타입 자체가 없어졌다.
 
 # B1 별칭: 어떤 종류의 정답 truth 든 받아 위의 canonical_respec 로 넘겨줌(추상타입 OODTruth 로 전부 수용).
 "B1 alias: produce the canonical proposal from a structured truth."
@@ -176,7 +174,6 @@ oracle_respec(t::FaultTruth) =
                    "B3: robot fault -> optimal MILP reassignment", "oracle")
 oracle_respec(t::ZoneTruth) = canonical_respec(t)   # optimal restage == canonical restage
 oracle_respec(t::BatteryTruth) = canonical_respec(t)   # severity-aware canonical is the optimal enactment
-oracle_respec(::ReformTruth)   = RespecProposal(ConstraintSpec[ReformTeam()], "B3: reform", "oracle")
 
 # ============================================================================
 # B5 — random-macro (sanity floor for the LEARNED macro head). Given CORRECT
@@ -189,18 +186,22 @@ oracle_respec(::ReformTruth)   = RespecProposal(ConstraintSpec[ReformTeam()], "B
 # 후보 xs 중 하나를 rng 로 무작위 선택(재현성 위해 rng 를 매 호출 다르게 주는 게 좋음).
 _random_choice(rng, xs) = xs[Int(floor(rand(rng) * length(xs))) + 1]
 
-# B5(고장): 올바른 대상(t.robot) 위에서 DSL 종류만 무작위로 고름 — 일부러 "전략 실수"(교체/재배정/우선순위낮춤)도 섞음.
+# B5(고장): 올바른 대상(t.robot) 위에서 DSL 종류만 무작위로 고름 — 일부러 "전략 실수"(비파괴 교체 vs 파괴적 재배정)도 섞음.
+# 🔴 2026-08-24 (spec §5.4, Task 5): 셋째 후보였던 `DeprioritizeAgent(t.robot, 50.0)` 를 뺐다 —
+#   그 kind 가 DSL 에서 삭제됐다. ⚠️ 후보가 3 → 2 로 줄었으므로 같은 rng 라도 뽑히는 팔이 달라진다
+#   (B5 기준선은 이 커밋 전후로 같은 세계가 아니다).
 function random_macro_respec(t::FaultTruth; rng = Random.GLOBAL_RNG)
     cands = ConstraintSpec[ReplaceAgent(t.robot, t.after),
-                           ForbidAgent(t.robot, t.after),
-                           DeprioritizeAgent(t.robot, 50.0)]
+                           ForbidAgent(t.robot, t.after)]
     c = _random_choice(rng, cands)
     return RespecProposal(ConstraintSpec[c], "B5: random macro on faulted robot", "random")
 end
 # B5(배터리): 마찬가지로 무작위 — 열화 로봇을 하드 제거하는 실수까지 포함(결정의 가치를 격리하려는 의도).
+# 🔴 2026-08-24 (spec §5.4, Task 5): 첫째 후보였던 `DeprioritizeAgent(t.robot, 50.0)` 를 뺐다.
+#   ⚠️ 남은 둘은 **둘 다 하드**다 — 즉 B5 는 이제 배터리 사건에서 정답 팔(SwapBattery)을 뽑을 수
+#   없다. 그 메뉴를 다시 여는 것은 이 태스크의 몫이 아니다(Task 6 의 채점 키 재유도가 그 자리다).
 function random_macro_respec(t::BatteryTruth; rng = Random.GLOBAL_RNG)
-    cands = ConstraintSpec[DeprioritizeAgent(t.robot, 50.0),
-                           ReplaceAgent(t.robot, t.after),
+    cands = ConstraintSpec[ReplaceAgent(t.robot, t.after),
                            ForbidAgent(t.robot, t.after)]
     c = _random_choice(rng, cands)
     return RespecProposal(ConstraintSpec[c], "B5: random macro on degraded robot", "random")
@@ -212,9 +213,6 @@ function random_macro_respec(t::ZoneTruth; rng = Random.GLOBAL_RNG)
         RespecProposal(ConstraintSpec[ForbidZone(t.assembly, t.zone)], "B5: random (zone)", "random") :
         nothing
 end
-# B5(팀 교착): 50% 확률로 ReformTeam, 아니면 무응답.
-random_macro_respec(::ReformTruth; rng = Random.GLOBAL_RNG) =
-    rand(rng) < 0.5 ? RespecProposal(ConstraintSpec[ReformTeam()], "B5: random (reform)", "random") : nothing
 
 # ============================================================================
 # B4 — reactive-only (the floor MARL degrades to WITHOUT the macro head). At the

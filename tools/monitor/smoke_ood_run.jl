@@ -3,8 +3,9 @@
 # OOD 가 주입되는 tractor 데모 + monitor 스트림 생성.
 #   · producer = B1 canonical_respec (baselines.jl) — 검증된 규칙맵:
 #       fault                         → ReplaceAgent (스페어 1:1 hot-swap)
-#       battery SoC ≤ REPLACE 임계     → ReplaceAgent (깊은 방전=하드 교체)
-#       battery SoC >  임계            → DeprioritizeAgent (가벼운 열화=소프트 강등)
+#       battery                       → SwapBattery (현장 배터리 교체; 2026-08-20 4팔 축소로
+#                                       심각도 분기가 합쳐졌다. 예전엔 ≤임계 → ReplaceAgent,
+#                                       >임계 → DeprioritizeAgent 였다 — 후자는 2026-08-24 삭제)
 #       zone (staging 차단)            → ForbidZone (그 조립체를 존 밖으로 restage)
 #   · 배터리 용량을 완만하게(shrink 작게) → 자연 방전이 0에 안 닿고, 오직 주입된 severe 만 저SoC.
 #   · fault/replace 는 scene-tree 수술이라 MeshCat 애니와 충돌 → save_animation=false.
@@ -53,7 +54,7 @@ function canonical_producer(env, event)
     prop  = try CB.canonical_respec(truth) catch; return nothing end
     (prop === nothing || isempty(prop.constraints)) && return nothing   # nav-zone 등 계획 DSL 불필요(모션 우회)
     c0    = prop.constraints[1]
-    macro_name = string(typeof(c0).name.name)                           # ReplaceAgent/DeprioritizeAgent/ForbidZone
+    macro_name = string(typeof(c0).name.name)                           # ReplaceAgent/SwapBattery/ForbidZone
     tgt   = try
         hasproperty(c0, :agent) ? _rl(c0.agent) : hasproperty(c0, :assembly) ? string(c0.assembly) : ""
     catch; "" end

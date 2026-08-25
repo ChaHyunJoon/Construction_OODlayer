@@ -273,16 +273,16 @@ function valid_macros(env, truth)
     # 전제조건: 배터리 레이어가 켜져 있어야 SoC 복구가 의미를 갖는다. 없으면 메뉴에서 뺀다.
     if truth isa CB.BatteryTruth
         local have_fleet = (try CB.BATTERY_FLEET[] !== nothing catch; false end)
-        return have_fleet ? ["NOOP", "Replace", "Deprioritize", "SwapBattery"] :
-                            ["NOOP", "Replace", "Deprioritize"]
+        return have_fleet ? ["NOOP", "Replace", "SwapBattery"] : ["NOOP", "Replace"]
     end
     # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `truth isa CB.ZoneTruth` 분기를 통째로 지웠다.
     # 그 분기는 `named`/`zone_diagnosis(...; check_restage=true)` 로 도메인을 재서
     # `["NOOP","ForbidZone","RelocateBuild"]` 또는 `["NOOP","RelocateBuild"]` 를 냈다 — 즉 zone 을
     # **LLM 이 결정할 사건**으로 만드는 자리였다. zone 은 이제 surrogate 학습 증거로만 쓰고
     # 결정 epoch 를 만들지 않는다. 위 docstring 의 zone 논쟁은 역사로 남겨 뒀다.
-    # ⚠️ `Deprioritize` 는 여기서 빼지 않았다 — 그 팔의 제거는 Task 5 의 몫이고, 어휘 축소를
-    # zone 커밋에 섞으면 두 변경이 한 diff 에서 구분되지 않는다.
+    # 🔴 2026-08-24 (spec §5.4, Task 5): `Deprioritize` 를 이 메뉴에서 뺐다. 배터리 사건의 개입
+    # 팔은 이제 `Replace`(창고 예비 본체를 먹음)와 `SwapBattery`(현장 교체) 둘뿐이고, 배터리
+    # 레이어가 꺼져 있으면 `Replace` 하나다.
     return String[]          # 그 외 종류는 서비스 기본표 그대로
 end
 
@@ -715,7 +715,6 @@ should_deviate(at::Int, arm::AbstractString, idx::Int) =
 
 # ConstraintSpec 타입 이름 → 매크로 이름 정규화(ReplaceAgent → Replace 등).
 _macro_label(s) = s == "ReplaceAgent" ? "Replace" :
-                  s == "DeprioritizeAgent" ? "Deprioritize" :
                   s == "ForbidZone" ? "ForbidZone" :
                   s == "ReformTeam" ? "ReformTeam" : s
 
@@ -1133,8 +1132,8 @@ function macro_to_proposal(truth, macro_name::AbstractString; env = nothing)
         # 2026-08-06: 이 분기가 없으면 정책이 SwapBattery 를 골라도 아래 빈 제안으로 떨어져
         # **조용히 NOOP 이 실행된다** — RelocateBuild 에서 한 번 겪은 것과 똑같은 실패 양식이다.
         return CB.RespecProposal(CB.ConstraintSpec[CB.SwapBattery(truth.robot)], rationale, src)
-    elseif macro_name == "Deprioritize" && hasproperty(truth, :robot)
-        return CB.RespecProposal(CB.ConstraintSpec[CB.DeprioritizeAgent(truth.robot)], rationale, src)
+    # 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `Deprioritize` 분기(→ `CB.DeprioritizeAgent`)
+    # 를 지웠다. 그 kind 가 DSL 에서 삭제됐고 `valid_macros` 의 배터리 메뉴에서도 빠졌다.
     # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `ForbidZone` · `RelocateBuild` 두 분기를
     # 지웠다. zone 은 LLM 결정 레인에서 빠졌고 `valid_macros` 가 zone 메뉴를 더는 안 내므로
     # 그 이름이 여기 도달할 경로가 없다. (Julia 타입 `CB.ForbidZone`/`CB.RelocateBuild` 는

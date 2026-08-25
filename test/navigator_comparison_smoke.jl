@@ -8,7 +8,7 @@
 #     B3=oracle(정답), 그 사이에 규칙기반/랜덤/LLM/MARL 등이 늘어섬(ladder).
 #   · decision_quality(...).grounded = 제안이 실제 진짜 이벤트(truth)에 올바로 대응했는지.
 #   · lift_normalized : floor(0)~oracle(1) 사이로 성능을 0~1 로 정규화한 값.
-#   · DSL 액션: ReplaceAgent(로봇 교체), ForbidZone(금지구역), DeprioritizeAgent(후순위), ReformTeam(팀 재편) 등.
+#   · DSL 액션: ReplaceAgent(로봇 교체), SwapBattery(현장 배터리 교체), ForbidZone(금지구역) 등.
 #  Julia 문법 참고:
 #   · const CB = ConstructionBots : 긴 모듈명을 짧은 별칭 CB 로. 이후 CB.foo 로 접근.
 #   · @__DIR__ : 이 소스 파일이 있는 디렉터리 경로. joinpath 로 상대경로를 안전하게 이어붙임.
@@ -112,16 +112,20 @@ end
     # correct spec per kind grounds; nothing/blank misses.
     @test CB.decision_quality([CB.ReplaceAgent(r3,0.0)], [CB.FaultTruth(r3,Float64[0,0],0.0)]).grounded  # 고장 → 로봇 교체 = 정답
     @test CB.decision_quality([CB.ForbidZone(asm,:z1)], [CB.ZoneTruth(:z1,Float64[0,0],2.0,asm)]).grounded  # 금지구역 → ForbidZone = 정답
-    @test CB.decision_quality([CB.ReformTeam()], [CB.ReformTruth()]).grounded  # 팀 재편 필요 → ReformTeam = 정답
-    # BATTERY is severity-split at REPLACE_SOC_THRESHOLD (=0.2): a mild degradation (SoC>0.2) grounds
-    # against the soft Deprioritize; a deep discharge (SoC<=0.2) grounds against the hard Replace.
-    # 배터리는 심각도(SoC)로 정답이 갈림: 임계값 0.2 초과=가벼운 저하→후순위(Deprioritize)가 정답, 0.2 이하=방전→교체(Replace)가 정답.
-    @test CB.decision_quality([CB.DeprioritizeAgent(r3,50.0)], [CB.BatteryTruth(r3,0.5,0.0)]).grounded  # SoC 0.5(가벼움) → 후순위 = 정답
+    # BATTERY is severity-split at REPLACE_SOC_THRESHOLD (=0.2): a deep discharge (SoC<=0.2)
+    # grounds against the hard Replace. 배터리는 심각도(SoC)로 정답이 갈림: 0.2 이하=방전→교체.
     @test CB.decision_quality([CB.ReplaceAgent(r3,0.0)],       [CB.BatteryTruth(r3,0.1,0.0)]).grounded  # SoC 0.1(방전) → 교체 = 정답
-    # wrong severity class both ways is NOT grounded:
-    # 심각도 분류를 틀리면 양방향 모두 오답(grounded 아님):
+    # 🔴 2026-08-24 (spec §5.4, Task 5): 임계값 **위**(가벼운 저하)의 정답이 사라졌다. `truth_key`
+    #    가 그 칸에 `(:battery, robot)` 를 내는데, `emitted_key` 에서 그 키를 내던 유일한 kind 가
+    #    `DeprioritizeAgent` 였고 이 커밋이 그것을 지웠다. `SwapBattery` 에는 `emitted_key` 분기가
+    #    **없다**(ood_truth.jl). 즉 지금 mild battery 는 **어떤 팔로도 grounded 가 될 수 없다.**
+    #    ⚠️ 아래 두 줄은 그 공백을 기계로 붙잡아 두는 트립와이어다 — 채점 키 재유도는 Task 6 의
+    #    몫이고, Task 6 이 `emitted_key` 를 고치는 순간 여기가 빨개져서 갱신을 강제한다.
+    @test CB.emitted_key(CB.SwapBattery(r3)) === nothing
+    @test !CB.decision_quality([CB.SwapBattery(r3)], [CB.BatteryTruth(r3,0.5,0.0)]).grounded
+    # wrong severity class is NOT grounded:
+    # 심각도 분류를 틀리면 오답(grounded 아님):
     @test !CB.decision_quality([CB.ForbidAgent(r3,0.0)],        [CB.BatteryTruth(r3,0.5,0.0)]).grounded  # hard-remove a merely-degraded robot  # 가벼운 저하인데 강제 제거 = 오답
-    @test !CB.decision_quality([CB.DeprioritizeAgent(r3,50.0)], [CB.BatteryTruth(r3,0.1,0.0)]).grounded  # only soft-bias a flat robot  # 방전인데 후순위만 = 오답
     # empty proposal against a real event -> missed
     @test !CB.decision_quality(Any[], [CB.FaultTruth(r3,Float64[0,0],0.0)]).grounded  # 진짜 이벤트에 빈 제안 = 놓침(오답)
 end
