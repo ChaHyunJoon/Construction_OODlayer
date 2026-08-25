@@ -52,9 +52,13 @@ end
 
 @testset "스캐너가 run_demo.jl/policy.jl 의 전역도 찾는다 (범위 확장, I12 + fix round 1)" begin
     found = CB.scan_globals(SRC; extra_files=EXTRA_FILES)
-    for name in (:_REFORM_CT, :_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS)
+    for name in (:_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS)
         @test name in found
     end
+    # `_REFORM_CT` 는 2026-08-24 축 C(Task 6)가 run_demo.jl 에서 지웠다 — `ReformTruth` 발화
+    # 경로 전체를 삭제하면서 그 카운터도 같이 없앴고, `state_globals.jl` 의 표 항목도 지웠다.
+    # `_SIM_STEP` 과 같은 모양의 음성 대조 — 여기 있으면 유령 엔트리다.
+    @test !(:_REFORM_CT in found)
     # _SIM_STEP 은 태스크 8(시계 단일 진실원 통일)이 run_demo.jl 에서 지웠다 — 여기 있으면 안 된다.
     # 이 음성 대조가 바로 fix round 1 이 잡은 살아있는 레드(유령 엔트리)의 반대쪽 증거다.
     @test !(:_SIM_STEP in found)

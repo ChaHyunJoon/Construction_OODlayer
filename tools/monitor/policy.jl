@@ -660,6 +660,25 @@ end
 # 기록이 "canonical 이 RelocateBuild 를 골랐다"로 읽히면 그게 곧 거짓말이 되기 때문.
 const FORCE_MACRO = strip(get(ENV, "DEMO_FORCE_MACRO", ""))
 
+# 🔴 2026-08-24 (Task 6 · 컨트롤러 판정 R-42): FORCE_MACRO 는 **메뉴와 대조된 적이 없었다.**
+# `macro_to_proposal` 이 모르는 이름은 아래쪽에서 조용히 **빈 제안**으로 떨어지고
+# (`policy.jl` 맨 아래 `return CB.RespecProposal(CB.ConstraintSpec[], ...)`) `enact_applied`
+# 가 false 로 남는데, 그 판의 결정 기록에는 `forced_macro=<그 이름>` 과 `chosen=<그 이름>` 이
+# 그대로 찍힌다 — 즉 **고르지 않은(집행되지 않은) 팔을 골랐다고 적힌 판**이 만들어진다.
+# 축 C 로 어휘가 3팔이 되면서 `Deprioritize`(Task 5) · `ForbidZone`·`RelocateBuild`(Task 4)
+# 세 이름이 전부 이 상태가 됐고, `wm4spacecraft_manufacturing/smdp/gate_g6.py` 의 머리말이
+# `DEMO_FORCE_MACRO=Deprioritize DEMO_OOD=battery` 를 재현 레시피로 적어 두고 있다 — 가상의
+# 조합이 아니라 도달 가능한 설정이다. 그래서 **읽는 자리에서 바로, 시끄럽게** 죽인다.
+#
+# 이 튜플은 아래 `macro_to_proposal` 이 실제로 집행할 수 있는 이름의 전부다
+# (`NOOP` 은 "제약 없음"이 정답이라 빈 제안이 정상 동작이다). 팔을 늘리면 둘을 같이 고친다.
+const ENACTABLE_MACROS = ("NOOP", "Replace", "SwapBattery", "ReformTeam")
+if !isempty(FORCE_MACRO) && !(FORCE_MACRO in ENACTABLE_MACROS)
+    error("DEMO_FORCE_MACRO=\"$(FORCE_MACRO)\" 는 집행 가능한 매크로가 아니다 — 현행 메뉴는 " *
+          join(ENACTABLE_MACROS, " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
+          "결정 기록에는 '그 팔을 골랐다' 고 남는다(= 거짓 라벨). 오타/구세대 이름을 의심하라.")
+end
+
 # ---- 1-step deviation (DP 표집 전용) ---------------------------------------------------
 # DS_DEVIATE_AT=k · DS_DEVIATE_ARM=<이름> 이면 **k 번째 결정에서만** 그 팔을 집행하고
 # 나머지 결정은 실행 정책(canonical)이 고른 것을 그대로 쓴다.
@@ -685,6 +704,17 @@ else
     _v
 end
 const DEVIATE_ARM = strip(get(ENV, "DS_DEVIATE_ARM", ""))
+
+# 🔴 2026-08-24 (Task 6, 컨트롤러 판정 R-44): `FORCE_MACRO` 와 **정확히 같은 구멍**이 여기에도
+# 있었다. 위 파싱 게이트는 `DS_DEVIATE_AT` 의 오타만 잡고 `DS_DEVIATE_ARM` 의 **이름**은 메뉴와
+# 대조하지 않는다. 모르는 이름은 `macro_to_proposal` 에서 빈 제안으로 떨어져 집행이 안 되는데
+# `should_deviate` 는 그 결정을 "deviated" 로 표시한다 — DP 표집이 **일어나지 않은 이탈**을
+# 표본으로 삼게 된다. 같은 `ENACTABLE_MACROS` 로 같은 자리에서 죽인다.
+if !isempty(DEVIATE_ARM) && !(DEVIATE_ARM in ENACTABLE_MACROS)
+    error("DS_DEVIATE_ARM=\"$(DEVIATE_ARM)\" 는 집행 가능한 매크로가 아니다 — 현행 메뉴는 " *
+          join(ENACTABLE_MACROS, " · ") * ". 모르는 이름은 빈 제안으로 떨어져 집행은 안 되는데 " *
+          "그 결정은 '이탈했다' 고 표본에 남는다(= 거짓 라벨). 오타/구세대 이름을 의심하라.")
+end
 
 # ARM 만 있고 AT 이 없으면 언제나 설정 실수다(어느 결정에서 갈아 쓸지가 없다) — 조용한 완전
 # canonical 판으로 새지 않게 여기서 잡는다.

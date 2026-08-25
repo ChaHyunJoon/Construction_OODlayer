@@ -107,25 +107,26 @@ controllers = CB.default_controllers(; llm = llm_fn,
     end
 end
 
-# decision_quality 채점이 4가지 OOD 종류(fault/zone/reform/battery)를 모두 올바로 판정하는지 검증.
-@testset "decision quality covers ALL OOD kinds" begin
+# decision_quality 채점이 **채점 가능한 두 종류**(fault/battery)를 올바로 판정하는지 검증.
+# 🔴 2026-08-24 (spec §5.5, Task 6): 이 묶음은 예전에 "4가지 OOD 종류(fault/zone/reform/battery)"
+# 를 잰다고 적혀 있었다. reform 은 사건 종류 자체가 없어졌고(ReformTruth 삭제), zone 은 결정
+# 레인에서 빠졌다(Task 4). 아래 Task 5 트립와이어 두 줄이 요구한 갱신이 여기다.
+@testset "decision quality covers the SCORABLE OOD kinds" begin
     # correct spec per kind grounds; nothing/blank misses.
     @test CB.decision_quality([CB.ReplaceAgent(r3,0.0)], [CB.FaultTruth(r3,Float64[0,0],0.0)]).grounded  # 고장 → 로봇 교체 = 정답
-    @test CB.decision_quality([CB.ForbidZone(asm,:z1)], [CB.ZoneTruth(:z1,Float64[0,0],2.0,asm)]).grounded  # 금지구역 → ForbidZone = 정답
-    # BATTERY is severity-split at REPLACE_SOC_THRESHOLD (=0.2): a deep discharge (SoC<=0.2)
-    # grounds against the hard Replace. 배터리는 심각도(SoC)로 정답이 갈림: 0.2 이하=방전→교체.
-    @test CB.decision_quality([CB.ReplaceAgent(r3,0.0)],       [CB.BatteryTruth(r3,0.1,0.0)]).grounded  # SoC 0.1(방전) → 교체 = 정답
-    # 🔴 2026-08-24 (spec §5.4, Task 5): 임계값 **위**(가벼운 저하)의 정답이 사라졌다. `truth_key`
-    #    가 그 칸에 `(:battery, robot)` 를 내는데, `emitted_key` 에서 그 키를 내던 유일한 kind 가
-    #    `DeprioritizeAgent` 였고 이 커밋이 그것을 지웠다. `SwapBattery` 에는 `emitted_key` 분기가
-    #    **없다**(ood_truth.jl). 즉 지금 mild battery 는 **어떤 팔로도 grounded 가 될 수 없다.**
-    #    ⚠️ 아래 두 줄은 그 공백을 기계로 붙잡아 두는 트립와이어다 — 채점 키 재유도는 Task 6 의
-    #    몫이고, Task 6 이 `emitted_key` 를 고치는 순간 여기가 빨개져서 갱신을 강제한다.
-    @test CB.emitted_key(CB.SwapBattery(r3)) === nothing
-    @test !CB.decision_quality([CB.SwapBattery(r3)], [CB.BatteryTruth(r3,0.5,0.0)]).grounded
-    # wrong severity class is NOT grounded:
-    # 심각도 분류를 틀리면 오답(grounded 아님):
-    @test !CB.decision_quality([CB.ForbidAgent(r3,0.0)],        [CB.BatteryTruth(r3,0.5,0.0)]).grounded  # hard-remove a merely-degraded robot  # 가벼운 저하인데 강제 제거 = 오답
+    # 🔴 zone 은 더 이상 grounded 가 될 수 없다: `emitted_key(::ForbidZone)` 분기를 지웠다.
+    #    그 분기가 곧 "구역 사건의 정답은 ForbidZone 이다" 라는 채점 규칙 그 자체였다.
+    #    `truth_key(::ZoneTruth)` 는 남아 있으므로 zone 정답은 자동으로 **missed** 로 잡힌다.
+    @test CB.emitted_key(CB.ForbidZone(asm,:z1)) === nothing
+    @test !CB.decision_quality([CB.ForbidZone(asm,:z1)], [CB.ZoneTruth(:z1,Float64[0,0],2.0,asm)]).grounded
+    # 🔴 battery 의 severity 분기는 없어졌다(Task 6). deep/mild 가 같은 키 (:battery, robot) 이고
+    #    그것을 내는 팔은 `SwapBattery` 하나다 — `canonical_respec(::BatteryTruth)` 의 통합과 같다.
+    @test CB.emitted_key(CB.SwapBattery(r3)) == (:battery, r3)
+    @test CB.decision_quality([CB.SwapBattery(r3)], [CB.BatteryTruth(r3,0.1,0.0)]).grounded   # 깊은 방전
+    @test CB.decision_quality([CB.SwapBattery(r3)], [CB.BatteryTruth(r3,0.5,0.0)]).grounded   # 가벼운 저하
+    # 하드 고장 취급으로 배터리 사건에 답하면 여전히 오답이다(키가 (:fault, ·) 라서).
+    @test !CB.decision_quality([CB.ReplaceAgent(r3,0.0)], [CB.BatteryTruth(r3,0.1,0.0)]).grounded
+    @test !CB.decision_quality([CB.ForbidAgent(r3,0.0)],  [CB.BatteryTruth(r3,0.5,0.0)]).grounded
     # empty proposal against a real event -> missed
     @test !CB.decision_quality(Any[], [CB.FaultTruth(r3,Float64[0,0],0.0)]).grounded  # 진짜 이벤트에 빈 제안 = 놓침(오답)
 end

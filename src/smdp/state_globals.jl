@@ -206,8 +206,9 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # :split 2 · :meta 1 = **131** 이다(위 스윕은 그 이전 모집단).
 
     # ---- run_demo.jl / policy.jl 확장분 (I12 + fix round 1) --------------------------------
-    :_REFORM_CT             => :state,   # 발화 횟수 게이팅 — SNAP_COUNT 와 같은 모양의 임계
-                                          # 카운터(연속 무성과 N 회마다 ReformTeam 재발화, :849-850)
+    # 🔴 2026-08-24 (spec §5.5, Task 6): `:_REFORM_CT` 항목을 지웠다. 그 전역은 run_demo.jl 의
+    # `ReformTruth` 발화 경로를 게이팅하던 카운터였고, 그 경로 전체가 같은 커밋에서 삭제됐다
+    # (`ReformTruth` 타입 자체가 없어졌다). 표에 남겨 두면 스캔이 못 찾는 **유령 항목**이 된다.
     :_ZONE_CT                => :state,  # 존 주입 키 접미사(`zone_inj_$(_ZONE_CT[])` 등) — 이
                                           # 카운터 값이 RESTRICTION_ZONES 딕셔너리의 실제 키에
                                           # 그대로 들어간다. 복원 안 되면 재주입 시 기존 키와

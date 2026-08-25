@@ -74,14 +74,15 @@ end
 ZoneTruth(zone, center, radius) = ZoneTruth(zone, center, radius, nothing)
 
 # 배터리 사건 정답: robot 의 SoC(State of Charge=충전잔량, 0~1)가 soc_after 로 떨어짐.
-# 정답 대응은 "심각도(severity)"에 따라 갈린다 — 아래 REPLACE_SOC_THRESHOLD 설명 참고:
-#   · 깊은 방전(soc_after ≤ 임계값): 로봇이 사실상 죽음 -> 하드하게 ReplaceAgent(교체).
-#   · 가벼운 열화(soc_after > 임계값): 살려두되 무거운/먼 일을 피하게 하는 소프트 DeprioritizeAgent.
-"True battery event: `robot`'s SoC dropped to `soc_after`. The canonical response is
-SEVERITY-DEPENDENT (see `REPLACE_SOC_THRESHOLD`): a DEEP discharge (`soc_after ≤ threshold`)
-leaves the robot effectively dead — the motion gate freezes it — so the correct response is the
-HARD `ReplaceAgent` (same class as a mechanical fault); a mild DEGRADATION (`soc_after > threshold`)
-is handled by a TIER-2 soft `DeprioritizeAgent` (route work away, do NOT hard-remove)."
+# 🔴 2026-08-24 (spec §5.5, Task 6): 정답 대응은 더 이상 심각도로 갈리지 않는다. soft 팔
+# (DeprioritizeAgent)이 어휘에서 삭제됐고(Task 5), `canonical_respec(::BatteryTruth)` 는
+# deep/mild 를 가리지 않고 `SwapBattery(t.robot)` 하나만 낸다(baselines.jl:96).
+# `soc_after` 는 그대로 기록한다 — 서술자·라벨 레인이 읽고, `REPLACE_SOC_THRESHOLD` 는 이제
+# reference_policy 의 "정답 vs unscored" 판정에만 쓰인다.
+"True battery event: `robot`'s SoC dropped to `soc_after`. The canonical response is NO LONGER
+severity-dependent (2026-08-24, spec §5.5): the soft tier-2 arm was deleted from the vocabulary,
+so `canonical_respec(::BatteryTruth)` collapses deep discharge and mild degradation into a single
+`SwapBattery(t.robot)`. `soc_after` is still recorded (descriptors / label lane read it)."
 struct BatteryTruth <: OODTruth
     robot            # RobotID / AbstractID in practice
     soc_after::Float64
@@ -90,12 +91,12 @@ end
 # after 생략 시 0.0 으로 채우는 편의 생성자.
 BatteryTruth(robot, soc_after) = BatteryTruth(robot, soc_after, 0.0)
 
-# 운반팀 교착(deadlock) 정답: 정답 대응은 팀을 기하적으로 다시 짜는 ReformTeam.
-# 특정 로봇 하나에 매이지 않는 "팀 단위" 사건이라 필드가 없고, 고정 키 (:reform, :team) 로 채점.
-"True transport-team-deadlock event: the canonical response is a geometric ReformTeam.
-Team-scoped (no single entity), so it grounds against the sentinel key (:reform, :team)."
-struct ReformTruth <: OODTruth
-end
+# 2026-08-20 (4팔 축소): 여기 있던 `ReformTruth` 를 삭제했다. 운반팀 교착은 **외생 실패 사건이
+# 아니었다** — 발화 조건이 `no_progress % REFORM_INTERVAL == 0` 이라는 순수 카운터 modulo 였고,
+# 엔진 docstring 이 스스로 "SECOND-ORDER OOD of a spare hand-off" 라고 적었다(= Replace 의 후속
+# 결과). 필드가 없는 빈 struct 라 어떤 로봇도 팀도 지목하지 못했다는 것이 그 방증이다.
+# 교착 해소는 `maybe_unwedge_nominal!`(respec/ood_injection.jl)이 명목 레인에서 직접 부른다 —
+# 결정 epoch 를 만들지 않는다. 사건 종류는 이제 셋이다: fault · battery · zone.
 
 # ---- truth log: the evaluator-only channel ----------------------------------------
 # Module-level Ref, mirroring RESTRICTION_ZONES / SPARE_POOLS in ood_injection.jl.
@@ -120,12 +121,11 @@ ground_truth_labels() = OODTruth[e.truth for e in OOD_TRUTH_LOG[]]
 # Entity-level grounding: did the LLM name the RIGHT faulted robot / RIGHT zone?
 # Strategy choice (ReplaceAgent vs ForbidAgent) is a separate axis, not entity-grounding.
 
-# Battery severity split: a battery event that leaves the robot at/below REPLACE_SOC_THRESHOLD is
-# a DEPLETION — the robot is dead (motion-gate frozen), so its canonical response is the HARD
-# ReplaceAgent, whose `emitted_key` is (:fault, robot). It therefore grounds against the (:fault, ·)
-# key, NOT (:battery, ·). Above the threshold it is a soft DEGRADATION grounding against Deprioritize.
-# Scoring against these keys rewards choosing the right SEVERITY CLASS, not merely the right robot.
-# 배터리 사건의 소프트↔하드 대응이 갈리는 SoC 경계값(이하이면 하드 Replace). 전역 조정 가능.
+# 🔴 2026-08-24 (spec §5.5, Task 6): 여기 있던 "battery severity split" 설명은 폐기됐다.
+# `truth_key(::BatteryTruth)` 는 이제 SoC 와 무관하게 (:battery, robot) 하나만 낸다 — 갈라
+# 놓을 두 번째 팔이 어휘에 없기 때문이다. 이 상수는 채점 키에서 빠졌고, 남은 소비처는
+# reference_policy 의 "정답 vs unscored" 판정 하나다.
+# 배터리 사건의 깊은 방전 판정 SoC 경계값. 전역 조정 가능.
 const REPLACE_SOC_THRESHOLD = Ref(0.2)
 "Set the SoC at/below which a battery event's canonical response flips soft→hard (Replace)."
 set_replace_soc_threshold!(x::Real) = (REPLACE_SOC_THRESHOLD[] = Float64(x); nothing)
@@ -133,34 +133,41 @@ set_replace_soc_threshold!(x::Real) = (REPLACE_SOC_THRESHOLD[] = Float64(x); not
 # truth_key : 정답 라벨을 "비교 가능한 키(튜플)"로 바꾼다 = 채점 때 대응이 맞는지 대조할 열쇠.
 truth_key(t::FaultTruth)   = (:fault, t.robot)   # 고장 = (:fault, 그 로봇)
 truth_key(t::ZoneTruth)    = (:zone, t.zone)     # 구역 = (:zone, 그 구역 이름표)
-# 배터리는 심각도로 키가 갈린다: `조건 ? A : B` 는 삼항연산자(조건이면 A, 아니면 B).
-truth_key(t::BatteryTruth) = t.soc_after <= REPLACE_SOC_THRESHOLD[] ?
-    (:fault, t.robot) :          # deep discharge -> hard Replace (matches ReplaceAgent/ForbidAgent)
-    (:battery, t.robot)          # degradation    -> soft Deprioritize (matches DeprioritizeAgent)
-truth_key(::ReformTruth)   = (:reform, :team)    # 팀 교착 = 고정 센티넬 키
+# 🔴 2026-08-24 (spec §5.5, Task 6): severity 삼항연산을 없앴다. soft 대응(DeprioritizeAgent)이
+# 어휘에서 사라졌으므로(Task 5) deep/mild 를 가르는 키가 더 이상 **서로 다른 팔**을 가리키지
+# 않는다 — 둘 다 SwapBattery 하나로 모인다(baselines.jl:96 의 canonical_respec 가 이미 그렇다).
+# SoC 임계값의 남은 소비처는 reference_policy 의 "정답 vs unscored" 하나뿐이다.
+truth_key(t::BatteryTruth) = (:battery, t.robot)
 
 # Duck-typed on the spec's type NAME so it works with both the real spec_dsl.jl types
-# and standalone mocks with the same fields. Covers the FULL DSL repertoire so
-# decision-quality grounding is defined for every OOD kind (fault, zone, battery,
-# reform). Returns `nothing` only for specs that carry no groundable entity (ForbidWindow).
+# and standalone mocks with the same fields. Covers the two SCORABLE OOD kinds left after the
+# 2026-08-24 three-arm reduction (fault, battery). Returns `nothing` for specs that carry no
+# groundable entity (e.g. ForbidWindow) and for zone specs, which no longer ground.
 #
 # NOTE the fault-vs-battery distinction is by SPEC KIND, which encodes the STRATEGY the
-# method chose: ForbidAgent/ReplaceAgent == "treat as a hard fault"; DeprioritizeAgent ==
-# "treat as a soft degradation". Scoring against the truth key therefore rewards choosing
-# the RIGHT severity class, not merely naming the right robot.
+# method chose: ForbidAgent/ReplaceAgent == "treat as a hard fault"; SwapBattery == "treat as a
+# recoverable battery event". Scoring against the truth key therefore rewards choosing the RIGHT
+# response class, not merely naming the right robot.
 # emitted_key : 컨트롤러가 "실제로 내놓은 DSL 지시(c)" 를 truth_key 와 같은 키 형식으로 바꾼다.
 # 타입 이름(nameof)만 보고 분기 = 실제 spec_dsl.jl 타입이든 테스트용 목(mock)이든 필드만 같으면 동작(덕타이핑).
 function emitted_key(c)
     tn = nameof(typeof(c))                       # c 의 타입 "이름"(심볼)만 뽑아 비교
     if tn === :ReplaceAgent || tn === :ForbidAgent
         return (:fault, c.agent)                 # 교체/재배정 = "하드 고장 취급" 전략
-    elseif tn === :ForbidZone
-        return (:zone, c.zone)
-    elseif tn === :DeprioritizeAgent
-        return (:battery, c.agent)               # 우선순위 낮춤 = "소프트 열화 취급" 전략
+    elseif tn === :SwapBattery
+        # 🔴 2026-08-24 (spec §5.5, Task 6): 이 분기가 **없어서** battery grounding 이 구조적으로
+        # 0 이었다. canonical_respec(BatteryTruth) 는 이미 deep/mild 를 SwapBattery 하나로
+        # 합쳐 놨는데(baselines.jl:96) 채점기만 그 통합을 못 따라가고 있었다. Task 5 로
+        # DeprioritizeAgent 가 사라진 뒤로는 battery 가 낼 수 있는 유일한 팔이 이것이다.
+        return (:battery, c.agent)               # SwapBattery.agent (spec_dsl.jl)
     elseif tn === :ReformTeam
         return (:reform, :team)
     else
+        # 🔴 2026-08-24 (spec §5.5, Task 6): 여기 있던 `ForbidZone` 분기(→ (:zone, c.zone))를
+        # 지웠다. 그 분기가 곧 "구역 사건의 정답은 ForbidZone 이다" 라는 **채점 규칙 그 자체**
+        # 였는데, zone 은 Task 4 로 결정 레인에서 빠졌다. `truth_key(::ZoneTruth)` 는 남겨 둔다 —
+        # 옛 요약 행을 다시 읽을 때 키가 없으면 그 행이 조용히 사라지기 때문이고, zone 을 emit
+        # 하는 쪽이 없으므로 채점에서는 자동으로 missed 로 잡힌다.
         return nothing                           # 채점 대상 엔티티가 없는 지시(예: ForbidWindow)
     end
 end

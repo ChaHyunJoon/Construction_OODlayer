@@ -80,4 +80,10 @@ end
     @testset "Demo" begin                 # 실제 레고 빌드 데모를 끝까지 돌리는 통합 테스트
         include("test_demo.jl")
     end
+
+    # 2026-08-24 (spec §5.5, Task 6): grounding 키가 남은 두 사건(fault·battery)에 맞는지.
+    # `emitted_key` 에 `SwapBattery` 분기가 없으면 battery grounding 이 **에러 없이** 0 이 된다.
+    @testset "OOD grounding keys" begin
+        include("ood_truth_keys.jl")
+    end
 end

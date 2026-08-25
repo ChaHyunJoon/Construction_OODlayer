@@ -47,10 +47,10 @@ const OODC   = lowercase(get(ENV, "DEMO_OOD", "fault"))
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
 # battery OOD 의 severity 손잡이(떨어뜨릴 SoC 양). 0.9=심각(교체가 정답), 0.45 정도면 애매한 구간.
 const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.9")), 0.05, 0.99) catch; 0.9 end
-# 무진전 몇 스텝마다 "팀 교착" 사건을 결정 레이어에 올릴지. 0=끔(기존 데모 재현 그대로).
-# 오라클 생성기의 DS_REFORM(기본 120)에 대응한다 — 데모에는 그동안 이 장치가 아예 없었다.
-const DEMO_REFORM = try max(0, parse(Int, get(ENV, "DEMO_REFORM", "0"))) catch; 0 end
-const DEMO_REFORM_MAX = try max(1, parse(Int, get(ENV, "DEMO_REFORM_MAX", "3"))) catch; 3 end
+# 🔴 2026-08-24 (spec §5.5, Task 6): `DEMO_REFORM` · `DEMO_REFORM_MAX` 손잡이를 지웠다.
+# 그 둘이 몰던 것은 `record_ood_truth!(..., CB.ReformTruth())` 하나뿐이고, `ReformTruth` 는
+# 이 커밋에서 사건 종류 자체로 삭제됐다(ood_truth.jl). 손잡이만 남기면 `DEMO_REFORM>0` 이
+# 존재하지 않는 타입을 만들려다 `try/catch` 에 삼켜져 **조용히 아무 일도 안 하는 기능**이 된다.
 # 빌드 RNG seed. 기존 데모는 1 로 고정돼 있어 **한 판밖에 못 봤다** — 2x2 대조를 여러 seed 로
 # 반복하려면 노브가 필요하다. 기본 1 이므로 기존 스트림 재현은 그대로다.
 const DEMO_SEED = try parse(Int, get(ENV, "DEMO_SEED", "1")) catch; 1 end
@@ -72,7 +72,6 @@ const DEMO_OOD_LO   = try clamp(parse(Float64, get(ENV, "DEMO_OOD_LO", "0.10")),
 const DEMO_OOD_HI   = try clamp(parse(Float64, get(ENV, "DEMO_OOD_HI", "0.75")), 0.02, 0.98) catch; 0.75 end
 # 깊은 방전(→Replace)이 뽑힐 확률. 나머지는 DEMO_BSOC 만큼의 완만한 열화(→SwapBattery/NOOP).
 const DEMO_OOD_SEVFRAC = try clamp(parse(Float64, get(ENV, "DEMO_OOD_SEVFRAC", "0.5")), 0.0, 1.0) catch; 0.5 end
-const _REFORM_CT = Ref(0)   # 발화 횟수(상한 초과 시 더는 안 올림 → 진짜 정지가 정지로 보이게)
 # 사건마다의 결정 기록(요약 JSONL 용). 스위프 하니스가 이걸 읽어 정책별 결정을 비교한다.
 const _DECISIONS = Vector{Any}()
 # 시계 단일 진실원은 이제 CB.SIM_STEP(spec §11-8, 태스크 8) — 여기서 사설 카운터를 따로 세지
@@ -828,30 +827,24 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
         CB.monitor_track_schedule_step!(env, k; dt=env.dt)
         (k % 50 == 0) && CB.monitor_emit!(env, k)          # 배치마다 프레임 방출
         nc = length(env.cache.closed_set)
-        # 빌드가 실제로 전진했으면 reform 예산도 되돌린다(`render_demo.jl:566-571` 과 동일 규칙).
-        # 즉 DEMO_REFORM_MAX 는 "평생 N 회"가 아니라 "**연속** 무성과 N 회"를 뜻한다.
         # 배터리 교체 대기 중의 정지는 **의도된 라인 정지**이지 교착이 아니다(battery_courier.jl).
         # 여기서 세면 stall_limit 워치독이 배송 왕복(창고 D=20·4 m/s 기준 수백 스텝)을 교착으로
-        # 오판해 판을 STALL 로 끝내고, 위의 reform 발화도 없는 팀 교착을 만들어 낸다.
+        # 오판해 판을 STALL 로 끝내고 만다.
         # render_demo.jl 쪽(demo_utils.simulate!)에 넣은 것과 같은 가드다 — 두 엔진이 같은 세계여야 한다.
         if (try CB.battery_swap_halt_active() catch; false end)
             # 카운터를 그대로 둔다(리셋도 증가도 아님) — 정지 전의 진전 이력을 보존한다.
-        elseif nc > last_closed; last_closed = nc; stall = 0; _REFORM_CT[] = 0; else; stall += 1; end
-        # DEMO_REFORM>0 이면 무진전이 그 간격을 넘을 때마다 팀 교착 사건을 **truth 로그에 올려**
-        # 위의 `while seen < length(log)` 가 정책 레이어(canonical/surrogate/LLM)로 라우팅하게 한다.
-        # CB.maybe_emit_reform_ood! 를 안 쓰는 이유: 그건 RESPEC_ENABLED 게이트 + 전역 respec 큐로 가는데,
-        # 이 데모는 RESPEC_ENABLED=false 로 두고 truth 로그를 직접 읽어 복구를 몬다(두 경로가 다르다).
-        # 발화 횟수를 제한한다. handle_ood! 뒤에 stall 이 0 으로 리셋되므로, 무제한이면 정지 판정이
-        # 영영 안 나고 max_steps 까지 헛돈다(실측: reform 20회 이상 반복, closed 는 266 고정).
-        if DEMO_REFORM > 0 && _REFORM_CT[] < DEMO_REFORM_MAX && stall > 0 && stall % DEMO_REFORM == 0
-            _REFORM_CT[] += 1
-            local rnl = "A multi-robot transport team is deadlocked while forming: some members are " *
-                        "waiting in their carrying positions but the team cannot complete and the " *
-                        "build has stalled. Re-establish the stuck transport team(s)."
-            try CB.record_ood_truth!(rnl, CB.ReformTruth()) catch e
-                @warn "reform truth 기록 실패" exception=e
-            end
-        end
+        elseif nc > last_closed; last_closed = nc; stall = 0; else; stall += 1; end
+        # 🔴 2026-08-24 (spec §5.5, Task 6): 여기 있던 두 번째 reform 발화 경로
+        # (`DEMO_REFORM` 배수마다 `record_ood_truth!(rnl, CB.ReformTruth())`)를 지웠다.
+        # 이유는 하나가 아니라 셋이고 전부 조용한 종류다:
+        #   (1) `ReformTruth` 타입이 이 커밋에서 삭제됐다 — 남겨 두면 `UndefVarError` 가 바로
+        #       위 `try/catch` 에 삼켜져 기능이 **말없이** 죽는다.
+        #   (2) `canonical_respec(::ReformTruth)` 는 2026-08-20 4팔 축소에서 이미 사라져 있었다.
+        #       그래서 오늘 `DEMO_REFORM>0` 은 `policy.jl` 의 `canonical_macro` 안에서
+        #       `MethodError` 를 내고, `prop === nothing` 경로가 그것을 문자열 "NOOP" 으로
+        #       바꿔 **기준정책이 내리지 않은 결정을 내렸다고 기록**하고 있었다.
+        #   (3) 교착 복구 자체는 결정 epoch 를 만들 필요가 없다 — 명목 레인의 unwedge 훅
+        #       (src/respec/ood_injection.jl)이 같은 무진전 트리거로 직접 푼다.
         if CB.project_complete(env)
             CB.monitor_emit!(env, k); println(">>> PROJECT COMPLETE @ step $k (closed=$nc)")
             return (status = :complete, steps = k, closed = nc)
