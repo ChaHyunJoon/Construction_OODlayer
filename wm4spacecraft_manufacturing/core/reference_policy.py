@@ -70,8 +70,15 @@ n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도
 
 import math
 
-BATTERY_DEEP_SOC = 0.5      # n44_plus78_d20 사다리: SwapBattery가 0.02/0.30/0.50 전부에서 이김
-                             # (0.02=완주 여부, 0.30·0.50=makespan) -> 상한을 사다리 최고 severity로
+BATTERY_DEEP_SOC = 0.2      # Julia ood_truth.jl 의 REPLACE_SOC_THRESHOLD 와 통일(2026-08-24, 심볼로
+                             # 맞출 것 -- 줄번호는 이 파일 안에서도 이미 한 번 밀렸다).
+                             # ⚠️ 공개된 대가: 0.5 였을 때는 n44_plus78_d20 사다리의 0.30·0.50 rung 이
+                             # 이 가지 안에 있어 채점 근거가 있었다(세 rung 전부에서 SwapBattery 가
+                             # 이겼다 -- 위 BASIS["battery"] 참고). 0.2 로 내리면 그 두 rung 이
+                             # unscored 로 빠진다 -- 측정된 근거를 버리는 것이다. 지금 커밋된 라벨의
+                             # BatteryTruth 는 전부 이 임계값 아래라 현 데이터로는 채점이 안 바뀐다
+                             # (수치는 재검증 불가 산출물에서 나온 것이라 여기 적지 않는다); mild
+                             # battery 를 굴리는 실행에서만 차이가 난다.
 
 BASIS = {
     # [역사] 아래 문자열의 사다리 기록은 구세대 어휘(v3-4arms 이전)의 것이다 — 각 rung 에서
@@ -210,15 +217,17 @@ def reference_action(ev):
             # 않았다 -- SoC 0.02 에서만 테스트됐고 거기서도 미완주).
             return ("SwapBattery" if "SwapBattery" in valid else "Replace"), "battery", \
                    "deep discharge (SoC<=%.2f): restore charge, cheapest/fastest restoring arm" % BATTERY_DEEP_SOC
-        # SoC > 0.5 는 이 격자가 테스트한 사다리(최고 rung 0.50) **바깥**이다. 근거가 없는
-        # 구간에서 NOOP 을 정답이라고 채점하면 없는 정답을 지어내는 것이 된다 -- 아래 reform 축과
-        # **같은 이유로 채점하지 않는다**(unscored). 임계값이 0.3 이던 시절에는 0.50 rung 이
-        # 이 가지 안에 있어서 채점할 근거가 있었지만, 0.5 로 올린 지금은 이 가지 위에 테스트된
-        # rung 이 하나도 없다. 현재 42판 데이터에서는 BatteryTruth 56건의 soc 최댓값이 0.09999
-        # 라 아무도 이 가지에 들어오지 않아 채점이 한 건도 바뀌지 않지만(확인함), mild battery
-        # 를 굴리는 미래 실행에서는 조용한 오채점이 된다.
+        # SoC > BATTERY_DEEP_SOC(현재 0.2)는 이 격자가 테스트한 사다리 안에서도 채점 근거가
+        # 없는 구간이다(0.2 로 내리면서 n44_plus78_d20 사다리의 0.30·0.50 rung 이 이 가지로
+        # 밀려났다 -- 위 BATTERY_DEEP_SOC 대입부의 대가 주석 참고). 근거가 없는 구간에서 NOOP 을
+        # 정답이라고 채점하면 없는 정답을 지어내는 것이 된다 -- 아래 reform 축과 **같은 이유로
+        # 채점하지 않는다**(unscored). 지금 커밋된 라벨의 BatteryTruth 는 전부 이 임계값 아래라
+        # 현 데이터로는 이 가지에 아무도 들어오지 않아 채점이 안 바뀌지만, mild battery 를 굴리는
+        # 실행에서는 조용한 오채점을 막아 준다.
         return None, "battery", \
-               "SoC>%.2f: above the highest rung this grid tested (0.50) -- untested regime, unscored" % BATTERY_DEEP_SOC
+               "SoC>%.2f: above BATTERY_DEEP_SOC -- unscored (some of this range was tested by the " \
+               "n44_plus78_d20 ladder up to 0.50, but the threshold now sits below it; see the " \
+               "cost-of-disclosure comment above BATTERY_DEEP_SOC)" % BATTERY_DEEP_SOC
 
     if truth == "FaultTruth":
         pend = ev.get("agent_pending")
