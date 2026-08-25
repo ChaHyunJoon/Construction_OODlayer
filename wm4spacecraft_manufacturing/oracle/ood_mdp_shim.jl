@@ -138,9 +138,6 @@ function _ctx_from_truth(t, ev)
     elseif tn == "BatteryTruth"
         return (type=:battery, agent=gf(:robot, nothing), zone=nothing, assembly=nothing,
                 soc=Float64(gf(:soc_after, NaN)), after=Float64(gf(:after, 0.0)), source=String(ev))
-    elseif tn == "ReformTruth"
-        return (type=:reform,  agent=nothing, zone=nothing, assembly=nothing,
-                soc=NaN,               after=0.0,                     source=String(ev))
     end
     return _ctx_from_keywords(ev)
 end
@@ -150,7 +147,7 @@ function _ctx_from_keywords(ev::AbstractString)
     s = lowercase(String(ev))
     ty = (occursin("broken", s) || occursin("faulted", s) || occursin("cannot move", s)) ? :fault :
          (occursin("zone", s)   || occursin("exclusion", s) || occursin("no-go", s))      ? :zone :
-         (occursin("battery", s)|| occursin("charge", s)   || occursin("degraded", s))    ? :battery : :reform
+         (occursin("battery", s)|| occursin("charge", s)   || occursin("degraded", s))    ? :battery : :unknown
     return (type=ty, agent=nothing, zone=nothing, assembly=nothing, soc=NaN, after=0.0, source=String(ev))
 end
 
@@ -173,43 +170,25 @@ end
 # Macro 7 (RelocateBuild -> translate_whole_build!) has no such precondition (it reads
 # `_future_work_discs`, gated on `closed_set` only), so it is the honest zone arm.
 # DS_ZONE_ARMS="0,3" restores the old set for reproducing pre-fix dumps.
-_zone_arms() = (s = get(ENV, "DS_ZONE_ARMS", "0,7");
-                [parse(Int, strip(x)) for x in split(s, ",")])
+#
+# ---- 🔴 2026-08-24 (3팔 축소): 리터럴 zone 팔 집합을 **삭제**했다 -------------------------
+# 기본값은 `"0,2"` 였고 그 `2` 는 RelocateBuild 였다. 그 팔이 어휘에서 사라지고 SwapBattery 가
+# 3 -> 2 로 재번호되면서, 이 리터럴을 그대로 두면 **배터리 교체가 zone 팔로 조용히 밀려
+# 들어간다** — 이 파일 어디에도 그것을 잡는 테스트가 없다. DS_ZONE_ARMS 환경변수 경로도 같은
+# 이유로 없앴다: 임의의 정수를 어휘 밖에서 주입하는 문이었다.
+# 이제 zone 팔은 **레지스트리 파생**이다. `kinds` 에 "zone" 을 가진 팔이 하나도 없으므로 오늘
+# 이 값은 `[0]` = "닫힌 어휘 안에 이 구역의 수복이 없다" 는 정직한 진술이다(위 STEP 2 문단이
+# `:line_stop` 이라고 부르던 바로 그 경우). 어휘에 zone 팔이 다시 생기면 자동으로 따라온다.
+# ⚠️ zone **분기 구조 자체**의 제거는 Task 4 의 몫이다 — 여기서는 id 경로만 걷어냈다.
+_zone_arms() = sort(unique(vcat(0, ActionRegistry.kind_valid(:zone))))
 
-# ---- ZONE ARMS, PER DECISION POINT (2026-08-05, STEP 2) --------------------------------
-# The fixed set above solved the manufactured-tie problem with a blunt instrument: arm 3 was
-# dropped GLOBALLY because its domain is *usually* empty. `zone_diagnosis` measures the domain
-# at THIS decision point, so the same reasoning can now be applied exactly:
-#   * arm 3 (ForbidZone)    is offered only when some blocked assembly can actually be restaged
-#     (`n_restage_feasible > 0`) — otherwise `restage_all_blocked!` returns `:none` and the arm
-#     is byte-identical to NOOP.
-#   * arm 7 (RelocateBuild) is offered only when a clearing shift exists (`relocate_feasible`)
-#     — otherwise `translate_whole_build!` returns `:infeasible` and it, too, collapses to NOOP.
-# Offering an arm that cannot act does not measure a decision; it manufactures a tie. When
-# neither can act the set is `[0]`: the honest statement that this zone has no repair in the
-# closed vocabulary (the `:line_stop` case, and exactly where an LLM's PROPOSE_NEW belongs).
-# An explicit `DS_ZONE_ARMS` always wins, so pinned reproductions are unaffected.
-# [한] 위의 고정 집합은 "arm 3 의 도메인이 대개 비어 있다"는 이유로 그 팔을 **전역으로** 뺀 것이었다.
-#   이제 zone_diagnosis 가 **이 결정 시점의** 도메인을 재므로, 같은 논리를 정확히 적용할 수 있다:
-#   실제로 옮길 수 있을 때만 3 을, 벗어날 Δ 가 존재할 때만 7 을 제시한다. 둘 다 불가면 [0] —
-#   "닫힌 어휘 안에 수복이 없다"는 정직한 진술이고, 그 자리가 곧 LLM 의 PROPOSE_NEW 자리다.
-#   행동할 수 없는 팔을 끼워 넣는 것은 결정을 재는 게 아니라 동점을 제조하는 것이다.
-_zone_arms_pinned() = haskey(ENV, "DS_ZONE_ARMS")   # 로드시점이 아니라 호출시점에 읽는다(런타임 토글 허용)
-
-function _zone_arms_for(ctx)
-    _zone_arms_pinned() && return _zone_arms()   # 명시 지정이 항상 이긴다(옛 덤프 재현 경로)
-    zd = _zd(ctx)
-    zd === nothing && return _zone_arms()        # 진단이 없으면(플래그 OFF/실패) 옛 고정 집합
-    arms = [0]
-    # 2026-08-19 (태스크 5, spec §2.1): `ActionRegistry.is_active(3)` 가드를 반드시 앞에 둔다.
-    # 이 함수는 등록부 상한(`ActionRegistry.kind_valid`)을 안 거치고 기하 술어만으로 직접 3 을
-    # 밀어 넣는 유일한 경로다 — 은퇴 표식만으로는 이 push! 를 못 막는다(레지스트리를 안 본다).
-    # 가드가 없으면 macro 3 이 영구 결번인데도 zd.n_restage_feasible>0 인 판에서 조용히
-    # 되살아난다 — "은퇴는 실험 게이트를 이긴다"는 계약이 여기서만 새는 구멍이었다.
-    ActionRegistry.is_active(3) && zd.n_restage_feasible > 0 && push!(arms, 3)
-    zd.relocate_feasible     && push!(arms, 7)
-    return arms
-end
+# ---- ZONE ARMS, PER DECISION POINT (2026-08-05, STEP 2) — 🔴 2026-08-24 삭제 -------------
+# 여기에는 `_zone_arms_pinned` / `_zone_arms_for` 가 있었다. 결정 시점 기하(`zone_diagnosis`)로
+# zone 팔 집합을 좁히는 코드였고, 그 본체는 `zd.relocate_feasible && push!(arms, 2)` — 즉
+# **매크로 id 2 를 직접 push** 하는 경로였다. 3팔 축소로 id 2 는 SwapBattery 가 됐으므로 그대로
+# 두면 배터리 교체가 zone 팔 집합에 들어간다. 이 경로는 레지스트리 상한을 안 거치므로 어휘를
+# 줄이는 것만으로는 막히지 않는다 — 그래서 지웠다.
+# zone 팔은 이제 `_zone_arms()`(레지스트리 파생) 하나뿐이고 오늘 그 값은 `[0]` 이다.
 
 # ---- 레지스트리 파생으로 전환 (2026-08-16) ---------------------------------------------
 # 무엇이 바뀌었나. 위 두 절(2026-08-03 / 08-05)이 고친 것은 **zone 축**이었고, fault·battery 는
@@ -233,7 +212,7 @@ function valid_actions(ctx)
     elseif ctx.type === :battery
         _legacy_arms() && begin
             thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
-            return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 8] : [0, 2, 8]
+            return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 2] : [0, 2]
         end
         # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 {0,1,2,8} 의 부분집합).
         #   8 = SwapBattery 는 심각도와 무관하게 항상 실행 가능하다 — 방전은 배터리를 갈면 풀리기
@@ -245,14 +224,14 @@ function valid_actions(ctx)
         up = ActionRegistry.kind_valid(:battery)
         get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1" || return up
         thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
-        keep = (isfinite(ctx.soc) && ctx.soc <= thr) ? (0, 1, 8) : (0, 2, 8)
+        # 2026-08-24 재번호: SwapBattery 가 3 -> 2 다. 이 튜플이 낡으면 SwapBattery 가
+        # **battery 메뉴에서 통째로 사라진다**(교집합이 [0,1]/[0] 으로 무너진다).
+        keep = (isfinite(ctx.soc) && ctx.soc <= thr) ? (0, 1, 2) : (0, 2)
         return [a for a in up if a in keep]
     elseif ctx.type === :zone
-        # 결정 시점 기하로 좁힌 집합(_zone_arms_for). 레지스트리 상한 {0,3,7} 의 부분집합이다.
-        return _zone_arms_for(ctx)
-    elseif ctx.type === :reform
-        _legacy_arms() && return [0, 4]
-        return ActionRegistry.kind_valid(:reform)          # {0,4}
+        # 2026-08-24: 레지스트리에 zone 팔이 없다 -> `[0]`. 결정 시점 기하로 좁히던 경로
+        # (_zone_arms_for)는 매크로 id 2 를 직접 push 했으므로 재번호와 함께 삭제했다.
+        return _zone_arms()
     end
     return [0]
 end
@@ -271,26 +250,23 @@ function canonical_action(ctx)
         # not pretend otherwise and let the safe fallback own it.
         # [한] 구역의 기준정책 = 최소수복 규칙(위반된 술어를 전부 해소하는 가장 싼 개입, 위반이
         #   없으면 NOOP). 옛 규칙은 "무조건 개입"이었고 그게 가장 비싼 방향의 오답이었다(231 vs 136).
-        zd = _zd(ctx)
-        if zd !== nothing
-            arms = valid_actions(ctx)
-            zd.verdict === :forbid_zone    && 3 in arms && return 3
-            zd.verdict === :relocate_build && 7 in arms && return 7
-            return 0        # :noop / :line_stop / 그 팔이 이 시점에 행동 불가 -> 절제
-        end
-        # 진단이 없을 때(DS_ZONE_DIAG=0 또는 실패)의 옛 동작: 액션 집합에 있는 개입을 그냥 고른다.
-        arms = _zone_arms()
-        7 in arms && return 7
-        3 in arms && return ctx.assembly === nothing ? 0 : 3   # ForbidZone only if it blocks an assembly
+        # 🔴 2026-08-24 (3팔 축소): 여기 있던 두 줄(`... && 2 in arms && return 2`)은 매크로
+        # id 2 를 RelocateBuild 로 읽던 코드다. 재번호 뒤 그 id 는 SwapBattery 이므로 그대로
+        # 두면 **구역 사건의 기준행동이 배터리 교체**가 된다. 어휘에 zone 개입 팔이 없는 이상
+        # 정직한 기준행동은 절제(NOOP) 하나뿐이다 — 위 STEP 2 문단의 `:line_stop` 경우.
         return 0
     elseif ctx.type === :battery
-        thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
         # 2026-08-04 SwapBattery 도입으로 기본값이 바뀌었다: 깊은 방전의 단순 규칙은 이제 "본체 교체"가
         # 아니라 "배터리 교체"다. 방전에 귀한 창고 본체를 쓰면, 정작 기계고장이 났을 때 쓸 예비가 없다.
         # (이전: deep -> 1(Replace). 그 시절 라벨은 SwapBattery 가 없던 어휘에서 측정된 것이다.)
-        return (isfinite(ctx.soc) && ctx.soc <= thr) ? 8 : 2   # deep -> SwapBattery, mild -> Deprioritize
-    elseif ctx.type === :reform
-        return 4
+        # 2026-08-20 (4팔 축소): mild 의 기준정책이던 Deprioritize 가 어휘에서 빠졌다. 남은
+        # 개입은 SwapBattery 하나이고, 그것은 심각도와 무관하게 항상 실행 가능하다(방전은
+        # 배터리를 갈면 풀린다). 그래서 기준정책이 SoC 에 더 이상 민감하지 않다 — deep/mild
+        # 둘 다 같은 팔. `thr` 은 valid_actions 의 SoC 분할이 계속 쓰므로 거기서만 갈린다.
+        # 🔴 2026-08-24 재번호: 그 팔의 id 가 3 -> 2 다. 이 리터럴을 안 고치면 3 이 레지스트리
+        # 밖 id 가 되어 `action_to_proposal` 이 `nothing` 을 내고 **battery 기준행동이 조용히
+        # NOOP 으로 무너진다**(에러 없이 성능으로만 샌다).
+        return 2   # 2 = SwapBattery (구 3, 그 앞은 8)
     end
     return 0
 end
@@ -299,72 +275,20 @@ end
 # Uses the surviving DSL constructors. A macro that is invalid for this event type (needs a
 # target/zone the ctx does not carry) collapses to `nothing` == the NOOP arm — matching the
 # generator's full-5-macro sweep, where invalid rows realize the same run as NOOP.
-# ---- COMBINATION ARMS (PLAN_ACTION_GROWTH.md §2 H2, scope (b)) -------------------------
-# PLAN_ACTION_GROWTH.md 는 2026-08-18 md 통합에서 내려갔다 — 복구 SHA 는 md/README.md §9-A.
-# The engine already accepts MULTIPLE specs -- `RespecProposal.constraints` is a Vector and
-# replan.jl iterates `for c in proposal.constraints`. Every macro so far emits exactly ONE
-# spec, so the combination axis has never been exercised. These arms exercise it.
-#
-# OFF BY DEFAULT (`DS_COMBO_ARMS=1` to enable): with the flag unset, ids 5/6 are not in
-# valid_actions and therefore collapse to the NOOP arm exactly as before, so every existing
-# dump path is byte-identical. The flag only widens what a caller may ASK for.
-#
-#   5 = [ForbidAgent, ReformTeam]        -- retire the agent WITHOUT spending a spare, then
-#                                           reform teams around the loss. The spare-preserving
-#                                           alternative to Replace; ForbidAgent is a primitive
-#                                           that is not exposed as any macro today.
-#   6 = [DeprioritizeAgent, ForbidWindow] -- soft-shed the agent's work AND close a time window
-#                                           on the affected node. Two soft levers instead of one.
-# 2026-08-16: `const` 에서 **함수**로 바꿨다. 아래 `valid_actions` 는 이제
-# `ActionRegistry.is_active` 를 통해 이 플래그를 **호출 시점**에 읽는데, 여기만 include 시점에
-# 읽으면 둘이 갈리는 창이 생긴다: 플래그를 로드 뒤에 켜면 `valid_actions(:fault)` 는 5·6 을
-# 제시하는데 `action_to_proposal` 의 조합 분기는 안 타고, 그 다음 문지기는 통과하며
-# (5 ∈ valid_actions), 어느 `a == ...` 분기에도 안 걸려 `cs === nothing` 으로 **조용히 NOOP** 이
-# 된다. 두 곳 다 호출 시점에 읽으면 그 창이 닫힌다.
-combo_arms_on() = get(ENV, "DS_COMBO_ARMS", "0") == "1"
-const COMBO_IDS  = [5, 6]
-
 function action_to_proposal(ctx, a::Int)
     a == 0 && return nothing
-    # 2026-08-19 (태스크 5 리뷰 F1 수정): 이 분기는 `valid_actions` 문지기보다 **먼저** 돌아서,
-    # `combo_arms_on()` 하나만으로 은퇴한 5/6 이 진짜 RespecProposal 을 만들 수 있었다 —
-    # `_zone_arms_for` 에서 고친 것과 같은 모양의 구멍이 같은 파일에 하나 더 있었다.
-    # `ActionRegistry.is_active(a)` 를 여기서도 확인한다: 은퇴는 3/5/6 에서 언제나 false 이므로
-    # `DS_COMBO_ARMS=1` 이 아무리 켜져 있어도(그리고 `DS_MACROS`/`DS_EP_MACROS` 로 5/6 을 직접
-    # 호출해도) 이 분기를 못 탄다 — "은퇴가 실험 게이트를 이긴다" 계약이 여기서도 성립해야 한다.
-    if ActionRegistry.is_active(a) && combo_arms_on() && a in COMBO_IDS
-        return combo_to_proposal(ctx, a)
-    end
     a in valid_actions(ctx) || return nothing   # macro invalid for this event type -> NOOP arm
                                                  # (reproduces the dumps: invalid macros == NOOP label)
     cs = nothing
     if a == 1 && ctx.agent !== nothing
         cs = CB.ConstraintSpec[CB.ReplaceAgent(ctx.agent, Float64(ctx.after))]
     elseif a == 2 && ctx.agent !== nothing
-        cs = CB.ConstraintSpec[CB.DeprioritizeAgent(ctx.agent, 50.0)]
-    elseif a == 3
-        # ForbidZone must NAME the assembly it relocates, but `ZoneTruth` does not always carry
-        # one — and when it did not, this branch silently produced `nothing` == the NOOP arm.
-        # That is the same silent-no-op failure `ZONE_DOMAIN_GATE` exists to expose, one layer
-        # up. The diagnosis already computed which blocked assemblies can actually be restaged,
-        # so take a target from there rather than dropping the arm.
-        # [한] ForbidZone 은 대상 조립체를 지목해야 하는데 ZoneTruth 가 안 실어줄 때가 있었고,
-        #   그때 이 분기가 조용히 NOOP 으로 무너졌다(오답이 절제로 위장되는 바로 그 실패).
-        #   진단이 "실제로 옮길 수 있는" 집합을 이미 계산했으니 거기서 대상을 고른다.
-        zd = _zd(ctx)
-        target = ctx.assembly !== nothing ? ctx.assembly :
-                 (zd === nothing ? nothing : zd.restage_target)
-        target !== nothing && (cs = CB.ConstraintSpec[CB.ForbidZone(target, ctx.zone)])
-    elseif a == 4
-        cs = CB.ConstraintSpec[CB.ReformTeam()]
-    elseif a == 8 && ctx.agent !== nothing
         # SwapBattery(agent) : 같은 본체에 배터리만 현장 교체(창고 본체 소모 없음, swap_battery!).
+        # 🔴 2026-08-24: id 3 -> 2. 이 자리에 있던 `a == 2 && ctx.zone !== nothing` ->
+        # `CB.RelocateBuild(...)` 분기는 **삭제**했다 — 재번호 뒤 두 분기가 같은 id 를 다투게
+        # 되고, 앞선 zone 분기가 이겨서 배터리 사건이 구역 이동 제안을 받게 된다.
+        # (`CB.RelocateBuild` 타입 자체는 Julia 쪽에 남아 있다 — 어휘에서만 빠졌다.)
         cs = CB.ConstraintSpec[CB.SwapBattery(ctx.agent)]
-    elseif a == 7 && ctx.zone !== nothing
-        # RelocateBuild(zone) : 구역은 그대로 두고 빌드 전체를 Δ 하나로 비켜 옮긴다(translate_whole_build!).
-        # ForbidZone(3)과 달리 assembly 를 안 지목하므로 ctx.assembly 가 nothing 이어도 성립한다 —
-        # 조립체별 재적치의 전제조건(아직 시작 안 한 조립체)이 빌드 중반에 사라지는 문제를 구조적으로 우회한다.
-        cs = CB.ConstraintSpec[CB.RelocateBuild(Symbol(ctx.zone))]
     end
     if get(ENV, "DS_SHIM_DEBUG", "0") == "1"
         Base.println(Base.stderr, "[shim] action_to_proposal: a=$a type=$(ctx.type) assembly=$(ctx.assembly) ",
@@ -374,26 +298,3 @@ function action_to_proposal(ctx, a::Int)
     return CB.RespecProposal(cs, "oracle macro $a", String(ctx.source))
 end
 
-"조합 팔(5,6) -> 여러 spec 을 담은 RespecProposal. 대상이 없으면 nothing(=NOOP 팔)."
-function combo_to_proposal(ctx, a::Int)
-    cs = nothing
-    if a == 5 && ctx.agent !== nothing
-        # 스페어를 쓰지 않고 능력 상실에 대응: 그 로봇을 빼고(ForbidAgent) 팀을 다시 짠다.
-        cs = CB.ConstraintSpec[CB.ForbidAgent(ctx.agent, Float64(ctx.after)),
-                               CB.ReformTeam()]
-    elseif a == 6 && ctx.agent !== nothing
-        # 소프트 2단: 일감 가중치를 낮추고, 영향 노드에 시간창을 닫는다.
-        # ForbidWindow 는 노드 대상이므로 assembly 가 있을 때만 의미가 있다.
-        specs = CB.ConstraintSpec[CB.DeprioritizeAgent(ctx.agent, 50.0)]
-        if ctx.assembly !== nothing
-            t0 = Float64(ctx.after)
-            push!(specs, CB.ForbidWindow(ctx.assembly, t0, t0 + 30.0))
-        end
-        cs = specs
-    end
-    cs === nothing && return nothing
-    if get(ENV, "DS_SHIM_DEBUG", "0") == "1"
-        Base.println(Base.stderr, "[shim] combo arm $a -> $(length(cs)) specs: $(cs)")
-    end
-    return CB.RespecProposal(cs, "combo arm $a", String(ctx.source))
-end

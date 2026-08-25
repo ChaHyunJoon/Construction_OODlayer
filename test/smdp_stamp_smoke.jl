@@ -12,13 +12,17 @@ CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
 include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
 
 @testset "어휘 도장" begin
-    # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다. 태스크 5(2026-08-19)가 3/5/6 을
-    # 실제로 은퇴시켰으므로 오늘은 "v2-6arms" 다("v1-9arms" 는 그 이전 세대의 값).
-    @test ActionRegistry.VOCAB == "v2-6arms"
-    @test length(ActionRegistry.IDS) == 9   # 은퇴는 엔트리를 안 지운다 — 전체 엔트리 수는 그대로 9
-    @test ActionRegistry.require_vocab(Dict("vocab" => "v2-6arms"), "ok") === nothing
+    # 도장은 "오늘 참인 것"을 선언한다. 2026-08-24 3팔 축소로 오늘은 "v4-3arms" 다.
+    # 이 세대는 은퇴 표식이 아니라 **엔트리 삭제** 정책이라 전체 엔트리 수도 3 이다.
+    @test ActionRegistry.VOCAB == "v4-3arms"
+    @test length(ActionRegistry.IDS) == 3
+    @test ActionRegistry.IDS == [0, 1, 2]
+    @test ActionRegistry.require_vocab(Dict("vocab" => "v4-3arms"), "ok") === nothing
     @test_throws ErrorException ActionRegistry.require_vocab(Dict{String,Any}(), "도장 없음")
-    @test_throws ErrorException ActionRegistry.require_vocab(Dict("vocab" => "v1-8arms"), "구세대")
+    @test_throws ErrorException ActionRegistry.require_vocab(Dict("vocab" => "v3-4arms"), "구세대")
+    # ⚠️ 재번호(0..2 연속) 이후 도장이 **유일한** 방어선이다 — 예전에는 구세대 macro id 가 영구
+    # 결번이라 조회 실패로도 죽었지만, 이제 v3-4arms 세대의 macro 2(RelocateBuild) 행이 새
+    # 어휘에서 SwapBattery 로 조용히 읽힌다. 위 두 줄이 그 유일한 문지기의 회귀 검사다.
 
     # arm-count 일관성 어서션 — Python 쪽 assert_vocab_arm_count 의 Julia 대응. 오늘은
     # (선언 9, 실제 9)로 통과해야 하고, 태스크 5 가 은퇴를 집행하며 "v2-6arms"/6 으로 바꾸는
@@ -31,10 +35,9 @@ include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "actio
     # 이전엔 `String(::Int64)` 메서드가 없어 MethodError 로 죽었다(죽긴 죽지만 계약 메시지가 아님).
     @test_throws ErrorException ActionRegistry.require_vocab(Dict("vocab" => 3), "정수 도장")
 
-    # 재리뷰 라운드 2 판정: `n_non_retired` 는 "retired" 표식이 없는 엔트리만 센다 —
-    # 은퇴는 엔트리를 안 지우고 표식만 다는 영구적 성질이라(task-5-brief.md Step 3),
-    # length(IDS)(전체 엔트리 수)로 재면 태스크 5 이후에도 영원히 9 로 고정돼 어서션이
-    # 은퇴를 못 본다.
+    # `n_non_retired` 는 "retired" 표식이 없는 엔트리만 센다. 2026-08-20 세대의 실제
+    # registry 에는 은퇴 엔트리가 0 개지만(삭제 정책), 이 술어 자체는 계약으로 남아 있고
+    # Julia/Python 두 로더가 같은 규칙을 써야 하므로 스크래치 registry 로 계속 검사한다.
     _small = JSON3.read("""{"macros": {"0": {"name":"A","cost":1.0},
                                         "1": {"name":"B","cost":1.0,"retired":true},
                                         "2": {"name":"C","cost":1.0,"retired":false}}}""")
@@ -95,14 +98,25 @@ end
     @test r_bumped.success
 end
 
-@testset "6팔 확정" begin
+@testset "3팔 확정 (2026-08-24 축소, id 재번호 0..2)" begin
     delete!(ENV, "DS_COMBO_ARMS")
-    @test ActionRegistry.active_ids() == [0, 1, 2, 4, 7, 8]
+    @test ActionRegistry.active_ids() == [0, 1, 2]
     ENV["DS_COMBO_ARMS"] = "1"
-    @test ActionRegistry.active_ids() == [0, 1, 2, 4, 7, 8]   # 은퇴가 실험 게이트를 이긴다
+    @test ActionRegistry.active_ids() == [0, 1, 2]   # 지워진 조합 팔은 플래그로도 안 살아난다
     delete!(ENV, "DS_COMBO_ARMS")
-    @test ActionRegistry.NAME[3] == "ForbidZone"              # 이름표는 남는다
-    @test sort(collect(keys(ActionRegistry.RETIRED))) == [3, 5, 6]
+    @test ActionRegistry.NAME == Dict(0 => "NOOP", 1 => "Replace", 2 => "SwapBattery")
+    @test ActionRegistry.COST == Dict(0 => 0.0, 1 => 1.0, 2 => 0.2)
+    # 은퇴 표식이 아니라 삭제 정책 — RETIRED 는 비어 있다
+    @test isempty(ActionRegistry.RETIRED)
+    # 지워진 팔은 registry 밖 id 이므로 is_active 가 false 여야 한다(KeyError 가 아니라)
+    for gone in (3, 4, 5, 6, 7, 8, -1, 99)
+        @test ActionRegistry.is_active(gone) == false
+    end
+    # reform 도 zone 도 더 이상 사건 종류가 아니다
+    @test isempty(ActionRegistry.kind_valid(:reform))
+    @test isempty(ActionRegistry.kind_valid(:zone))
+    @test ActionRegistry.kind_valid(:fault)   == [0, 1]
+    @test ActionRegistry.kind_valid(:battery) == [0, 1, 2]
 end
 
 # ---- 판정 K: retired 표식 형식 — 4경우(양 언어 동일 규칙). 공유 truthy 규약으로 합의하지
@@ -199,8 +213,16 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     # 다시 파싱했고, 게이트가 ENV(`ACTION_REGISTRY`)를 존중하게 된 뒤로는 그 사본이 게이트와
     # 다른 파일을 볼 수 있었다.
     current_vocab = Demos.ActionRegistry.VOCAB
-    retired_ids = sort(collect(keys(Demos.ActionRegistry.RETIRED)))
-    @test !isempty(retired_ids)   # 아래 두 방향 검사가 공회전하지 않는다는 전제
+    # 2026-08-20: 오염 판정 기준이 "은퇴 id" 에서 "레지스트리 밖 id" 로 바뀌었다(삭제 정책이라
+    # RETIRED 가 언제나 비어 있어 예전 전제가 항진이 된다). 아래 검사가 공회전하지 않는다는
+    # 전제는 이제 "살아있는 어휘가 전체 정수의 진부분집합" 이다.
+    live_ids = sort(collect(Demos.ActionRegistry.IDS))
+    @test live_ids == [0, 1, 2]
+    # 구세대 id — 이 세대의 레지스트리 밖이므로 열에 남아 있으면 오염이다.
+    # 2026-08-24 3팔 축소로 **3 이 여기 합류했다**(구 SwapBattery id). 이 목록이 낡으면
+    # 재번호가 조용히 통과한다.
+    dead_ids = [3, 4, 5, 6, 7, 8]
+    @test isempty(intersect(Set(live_ids), Set(dead_ids)))
 
     # 사례 1 (Critical #2): 도장 자체가 없다 -- 구세대 아티팩트의 실측 모양을 그대로 합성.
     unstamped_spec = JSON3.read(JSON3.write(Dict("feature_names" =>
@@ -208,11 +230,11 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     @test !haskey(unstamped_spec, :vocab)
     @test_throws ErrorException Demos.require_surrogate_vocab(unstamped_spec, "scratch-unstamped")
 
-    # 사례 2 (리뷰 라운드 3 Important): 도장은 **현행과 정확히 일치**(`v2-6arms`)하는데 실제 열에는
-    # 은퇴한 macro_3 이 남아 있다 -- "나쁜 재수출"의 정직한 모양. 최초 구현은 도장 문자열만 봐서
-    # 이 경우를 조용히 통과시켰다(항진 게이트). 이제는 죽어야 한다 -- 이게 이 테스트의 핵심.
+    # 사례 2: 도장은 **현행과 정확히 일치**하는데 실제 열에는 구세대 macro_7(RelocateBuild 의
+    # 옛 id)이 남아 있다 -- "나쁜 재수출"의 정직한 모양. 도장 문자열만 보면 조용히 통과한다.
+    # 이제는 죽어야 한다 -- 이게 이 테스트의 핵심이고, 재번호 세대에서 특히 중요하다.
     stamped_but_contaminated = JSON3.read(JSON3.write(Dict(
-        "vocab" => current_vocab, "feature_names" => ["soc", "macro_0", "macro_3", "macro_1"])))
+        "vocab" => current_vocab, "feature_names" => ["soc", "macro_0", "macro_7", "macro_1"])))
     @test_throws ErrorException Demos.require_surrogate_vocab(stamped_but_contaminated, "scratch-stamped-but-contaminated")
 
     # 스크래치 사양(현행 vocab 과 일치 + 은퇴한 열 없음) -- 통과해야 한다.
@@ -226,7 +248,7 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     # 라운드 3 §3.4 C1 (라운드 4 에서 봉합): 한 열 이름 안에 산 id 가 은퇴 id 보다 **앞에**
     # 오면 `match` 는 첫 매치만 보고 은퇴 id 를 놓쳤다. `eachmatch` 로 바꿨으니 죽어야 한다.
     c1_spec = JSON3.read(JSON3.write(Dict(
-        "vocab" => current_vocab, "feature_names" => ["macro_0__x__macro_$(first(retired_ids))"])))
+        "vocab" => current_vocab, "feature_names" => ["macro_0__x__macro_$(first(dead_ids))"])))
     @test_throws ErrorException Demos.require_surrogate_vocab(c1_spec, "scratch-c1-second-id")
 
     # 라운드 4 [Minor]: "틀린 게 아니라 없는" 모양은 fail-closed 여야 하고, **계약 에러**
@@ -257,7 +279,7 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     if isfile(real_path)
         real_spec = JSON3.read(read(real_path, String))
         real_cols = String[String(f) for f in real_spec["feature_names"]]
-        _has_retired(c) = any(parse(Int, mm.captures[1]) in retired_ids
+        _has_retired(c) = any(!(parse(Int, mm.captures[1]) in Set(live_ids))
                               for mm in eachmatch(r"macro_(\d+)", c))
 
         # (a) 깨끗한 쪽 -- 실물의 열에서 은퇴 열만 뺀 것.
@@ -267,7 +289,7 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
         @test Demos.require_surrogate_vocab(clean_spec, "real-artifact-cleaned") === nothing
 
         # (b) 오염된 쪽 -- 같은 열에 은퇴 macro 열을 하나 되돌린 것.
-        stale_cols = vcat(clean_cols, "macro_$(first(retired_ids))")
+        stale_cols = vcat(clean_cols, "macro_$(first(dead_ids))")
         stale_spec = JSON3.read(JSON3.write(Dict("vocab" => current_vocab, "feature_names" => stale_cols)))
         @test_throws ErrorException Demos.require_surrogate_vocab(stale_spec, "real-artifact-restaled")
 

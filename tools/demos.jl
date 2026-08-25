@@ -144,7 +144,12 @@ function require_surrogate_vocab(spec, where::AbstractString)
     got_str === nothing && error("$(where): 어휘 도장이 문자열이 아니다 — 받은 값 $(repr(got)), 현행은 $(current).")
     got_str == current || error("$(where): 어휘 도장 불일치 — 파일 $(got_str) vs 현행 $(current).")
 
-    retired_ids = Set{Int}(keys(ActionRegistry.RETIRED))   # 정경 판정(엄격: boolean 아니면 죽는다)
+    # 2026-08-20 (4팔 축소): 판정 기준을 "은퇴 id" 에서 **"레지스트리 밖 id"** 로 바꿨다.
+    # 이 세대는 은퇴 표식 대신 엔트리를 지우므로 `ActionRegistry.RETIRED` 가 **언제나 비어 있고**,
+    # 예전 기준을 그대로 두면 이 게이트가 아무것도 안 잡는 항진 검사가 된다(구세대 `macro_7` 열이
+    # 든 아티팩트가 통과한다). 살아있는 어휘는 `IDS` 이므로 그 밖의 macro 열은 전부 오염이다 —
+    # 은퇴 id 는 그 여집합에 자동으로 포함되므로 기준이 좁아지지 않고 넓어진다.
+    live_ids = Set{Int}(ActionRegistry.IDS)
 
     # 라운드 4 [Minor] — 열 목록 자체가 없거나 비었으면 **fail-closed**. 근거를 모양별로:
     #   · `feature_names` 키 부재 / 리스트 아님 : 예전엔 KeyError·MethodError 로 죽긴 했지만
@@ -173,7 +178,7 @@ function require_surrogate_vocab(spec, where::AbstractString)
         # 라운드 3 §3.4 C1: `match` 는 **첫 매치만** 본다 — `macro_0__x__macro_3` 처럼 한 열
         # 이름 안에서 산 id 가 은퇴 id 보다 앞에 오면 은퇴 id 가 안 보였다. `eachmatch` 로 전부 본다.
         for mm in eachmatch(r"macro_(\d+)", fs)
-            if parse(Int, mm.captures[1]) in retired_ids
+            if !(parse(Int, mm.captures[1]) in live_ids)
                 push!(bad, fs)
                 break
             end

@@ -1821,6 +1821,13 @@ function run_episodes(io)
             k in (:zoneblk, :zonecore) && return _zone_arms()
             if k === :battery
                 thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+                # 🔴 2026-08-24 (3팔 재번호) — 이 두 리터럴의 **의미가 갈렸다**. 값은 그대로 두는
+                # 것이 맞다: mild 의 `2` 는 구 9팔 어휘에서 Deprioritize 였고, v3-4arms 에서는
+                # RelocateBuild(= battery 사건에서 valid 밖 -> action_to_proposal 이 NOOP 으로
+                # 접음)라 **mild 후보가 사실상 NOOP 둘**이었다. v4-3arms 에서 2 = SwapBattery 이므로
+                # 이 줄은 이제서야 의도한 것을 가리킨다.
+                # ⚠️ 남은 간극(이 태스크의 범위 밖, Task 8 재생성이 정할 것): deep 후보에 
+                # SwapBattery 가 없다. shim 의 `valid_actions(:battery, deep)` 은 [0,1,2] 다.
                 return sev <= thr ? [0, 1] : [0, 2]
             end
             return MACROS

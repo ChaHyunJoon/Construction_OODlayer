@@ -128,7 +128,7 @@ end
     # 음성 대조: 세 kind 가 전부 같은 집합이면 위 등호는 상수 구현으로도 통과한다.
     @test length(unique([Set(CB.legal_actions_kind(k)) for k in (:fault, :battery, :zone)])) >= 2
     # 오늘의 어휘를 **기준선으로만** 못박는다 — 갈리면 이 줄을 갱신하고 그 사실을 보고한다
-    @test AR.VOCAB == "v3-4arms"
+    @test AR.VOCAB == "v4-3arms"
 end
 
 @testset "🔴 D-7 — 예비 재고가 메뉴를 좁히지 않는다" begin

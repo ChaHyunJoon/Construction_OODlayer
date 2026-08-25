@@ -15,11 +15,11 @@ import objective  # noqa: E402
 
 def test_vocab_constant_is_declared():
     # 리뷰 라운드 1 판정 G: 도장은 "오늘 참인 것"을 선언한다.
-    # 2026-08-20 의 4팔 축소가 어휘를 "v3-4arms" 로 올렸다(`v2-6arms` 는 그 이전 세대,
-    # `v1-9arms` 는 그 앞). 🔴 **리터럴인 것이 이 시험의 요점이다** — 세대가 갈리면 사람이
-    # 여기 와서 갱신하도록 강제한다. 레지스트리에서 읽어 오면 항진명제가 된다.
+    # 2026-08-24 의 3팔 축소가 어휘를 "v4-3arms" 로 올렸다(`v3-4arms` 는 그 이전 세대,
+    # `v2-6arms`·`v1-9arms` 는 그 앞). 🔴 **리터럴인 것이 이 시험의 요점이다** — 세대가 갈리면
+    # 사람이 여기 와서 갱신하도록 강제한다. 레지스트리에서 읽어 오면 항진명제가 된다.
     # (2026-08-21 갱신: 이 세 시험이 한 세대 낡은 채로 방치돼 있었다 — 보고서 §9.)
-    assert action_registry.VOCAB == "v3-4arms"
+    assert action_registry.VOCAB == "v4-3arms"
 
 
 def test_vocab_declares_todays_true_arm_count():
@@ -29,15 +29,15 @@ def test_vocab_declares_todays_true_arm_count():
     #
     # 🔴 **2026-08-21 정정 — v2 시대의 논법은 이 세대에 성립하지 않는다.**
     #    v2 는 은퇴를 "retired 표식"으로 집행해서 `len(MACROS)`(9)와 `n_non_retired`(6)가
-    #    갈렸고, **그 갈림 자체가 은퇴의 기계적 증거**였다. v3 의 4팔 축소는 은퇴를
-    #    **재번호(0..3)로** 집행했다 — 이름표를 안 남긴다. 그래서 오늘은 둘이 **같다**(4 == 4)
+    #    갈렸고, **그 갈림 자체가 은퇴의 기계적 증거**였다. v3 의 4팔 축소도, v4 의 3팔 축소도
+    #    은퇴를 **재번호로** 집행했다 — 이름표를 안 남긴다. 그래서 오늘은 둘이 **같다**(3 == 3)
     #    이고 `RETIRED` 는 언제나 비어 있다. 옛 어서션을 그대로 두면 영원히 빨간불이다.
     #
     #    ⚠️ 그 대가는 CLAUDE.md 가 적어 뒀다: 재번호 뒤에는 **어휘 도장이 유일한 방어선**이다
-    #    (구 macro 2(Deprioritize) 행이 새 어휘의 유효 id(RelocateBuild)로 **조용히** 읽힌다).
-    #    그래서 이 시험이 빨간 채로 방치되면 안 되는 것이었다.
-    assert len(action_registry.MACROS) == 4
-    assert action_registry.n_non_retired(action_registry.REGISTRY) == 4
+    #    (v3-4arms 의 macro 2(RelocateBuild) 행이 새 어휘의 유효 id(SwapBattery)로 **조용히**
+    #    읽힌다). 그래서 이 시험이 빨간 채로 방치되면 안 되는 것이었다.
+    assert len(action_registry.MACROS) == 3
+    assert action_registry.n_non_retired(action_registry.REGISTRY) == 3
     # 그리고 그 개수가 **도장 문자열이 선언한 값**과 같은가 — 리터럴 두 벌을 만들지 않고
     # 도장의 파서를 태워서 대조한다. 이것이 "선언 == 실제" 계약의 본체다.
     action_registry.assert_vocab_arm_count(
@@ -134,7 +134,7 @@ def test_task5_scenario_retired_and_stamp_correctly_bumped_loads(tmp_path):
 
 
 def test_require_vocab_accepts_matching_stamp():
-    action_registry.require_vocab({"vocab": "v3-4arms"}, "테스트")
+    action_registry.require_vocab({"vocab": "v4-3arms"}, "테스트")
 
 
 def test_require_vocab_dies_on_missing_stamp():
@@ -158,51 +158,52 @@ def test_require_dynamics_dies_on_mismatch():
 
 
 # =============================================================================
-# 2026-08-20: 4팔 축소 (9팔 -> 4팔, id 재번호 0..3)
-# 은퇴 표식이 아니라 **엔트리 삭제** 정책으로 바꿨다. 구세대 산출물을 전부 폐기했으므로
-# 이름표를 남겨 KeyError 를 피할 이유가 없어졌고, 그래서 id 재번호도 안전해졌다.
-# 그 대가로 **도장(vocab)이 유일한 방어선**이다 — 구세대 macro 2 행은 이제 KeyError 가
-# 아니라 RelocateBuild 로 조용히 읽힌다.
+# 2026-08-24: 3팔 축소 (4팔 -> 3팔, RelocateBuild 삭제 · SwapBattery 3 -> 2 재번호)
+# 은퇴 표식이 아니라 **엔트리 삭제** 정책 그대로다. zone 사건을 결정 레인에서 뺐으므로
+# (spec 2026-08-24 §5.1) 그 개입 팔인 RelocateBuild 도 어휘에서 사라졌고, 남은 두 사건
+# 종류(fault·battery)가 둘 다 채점 가능해졌다.
+# 그 대가로 **도장(vocab)이 유일한 방어선**이다 — v3-4arms 세대의 macro 2 행은 이제
+# KeyError 가 아니라 SwapBattery 로 조용히 읽힌다.
 # =============================================================================
 def test_no_retired_macros_remain():
     """은퇴 표식 대신 삭제 정책 — RETIRED 는 비어 있어야 한다."""
     assert action_registry.RETIRED == {}
 
 
-def test_active_macros_are_the_four_arms():
-    assert action_registry.ACTIVE_MACROS == [0, 1, 2, 3]
+def test_active_macros_are_the_three_arms():
+    assert action_registry.ACTIVE_MACROS == [0, 1, 2]
 
 
-def test_the_four_arms_are_named_as_expected():
+def test_the_three_arms_are_named_as_expected():
     """사건 종류당 개입 팔 하나 + NOOP. 이름-비용 쌍은 구 어휘에서 그대로 옮겼다."""
-    assert action_registry.MACRO_NAME == {
-        0: "NOOP", 1: "Replace", 2: "RelocateBuild", 3: "SwapBattery"}
-    assert action_registry.MACRO_COST == {0: 0.0, 1: 1.0, 2: 1.5, 3: 0.2}
+    assert action_registry.MACRO_NAME == {0: "NOOP", 1: "Replace", 2: "SwapBattery"}
+    assert action_registry.MACRO_COST == {0: 0.0, 1: 1.0, 2: 0.2}
 
 
 def test_removed_arms_are_gone_entirely():
-    """Deprioritize / ReformTeam / ForbidZone / 조합 팔은 레지스트리에 없다.
+    """Deprioritize / ReformTeam / ForbidZone / RelocateBuild / 조합 팔은 레지스트리에 없다.
     `is_active` 는 registry 밖 id 에 대해 False 여야 한다(KeyError 가 아니라)."""
-    assert set(action_registry.MACROS) == {0, 1, 2, 3}
-    assert "Deprioritize" not in action_registry.NAME2ID
-    assert "ReformTeam" not in action_registry.NAME2ID
-    assert "ForbidZone" not in action_registry.NAME2ID
-    for gone in (4, 5, 6, 7, 8, -1, 99):
+    assert set(action_registry.MACROS) == {0, 1, 2}
+    for gone_name in ("Deprioritize", "ReformTeam", "ForbidZone", "RelocateBuild"):
+        assert gone_name not in action_registry.NAME2ID
+    for gone in (3, 4, 5, 6, 7, 8, -1, 99):
         assert action_registry.is_active(gone) is False
 
 
-def test_reform_is_not_an_event_kind():
-    """팀 교착은 외생 실패 사건이 아니라 Replace 의 2차 결과였다 — decision epoch 에서 뺐다."""
-    assert set(action_registry.KIND_VALID) == {"fault", "battery", "zone"}
+def test_reform_and_zone_are_not_event_kinds():
+    """팀 교착은 외생 실패 사건이 아니라 Replace 의 2차 결과였다 — decision epoch 에서 뺐다.
+    zone 은 2026-08-24 에 뺐다: 개입 팔(RelocateBuild)이 어휘에서 사라졌으므로 zone 결정에는
+    NOOP 밖에 안 남고, 그런 사건 종류는 채점할 것이 없다(spec 2026-08-24 §5.1)."""
+    assert set(action_registry.KIND_VALID) == {"fault", "battery"}
     assert action_registry.KIND_VALID["fault"] == [0, 1]
-    assert action_registry.KIND_VALID["battery"] == [0, 1, 3]
-    assert action_registry.KIND_VALID["zone"] == [0, 2]
+    assert action_registry.KIND_VALID["battery"] == [0, 1, 2]
+    assert "zone" not in action_registry.KIND_VALID
 
 
-def test_vocab_stamp_declares_four_arms():
+def test_vocab_stamp_declares_three_arms():
     """도장이 실제 팔 수와 일치해야 한다 — 로드 시점 어서션이 이미 강제하지만 명시한다."""
-    assert action_registry.VOCAB == "v3-4arms"
-    assert action_registry.n_non_retired(action_registry.REGISTRY) == 4
+    assert action_registry.VOCAB == "v4-3arms"
+    assert action_registry.n_non_retired(action_registry.REGISTRY) == 3
 
 
 def test_combo_arms_flag_does_not_resurrect_deleted():
@@ -211,7 +212,7 @@ def test_combo_arms_flag_does_not_resurrect_deleted():
     try:
         import importlib
         m = importlib.reload(action_registry)
-        assert m.ACTIVE_MACROS == [0, 1, 2, 3]
+        assert m.ACTIVE_MACROS == [0, 1, 2]
     finally:
         os.environ.pop("DS_COMBO_ARMS", None)
         importlib.reload(action_registry)

@@ -1,22 +1,24 @@
 """
 action_registry.py -- action_registry.json 을 읽는 **유일한** 로더.
 
-왜 있는가 (PLAN_LLM_INFERENCE_7H §P2 / Ch-A):
-    매크로 id-이름-비용 표가 6곳에 리터럴로 복사돼 있었고 서로 달랐다. 가장 아픈 두 곳:
-      llm_producer.MACRO_NAME 에 8(SwapBattery) 이 없어서 **LLM 은 battery 의 기본 정답을
-      발화할 방법이 없었다** -- 정답이 어휘 밖이면 적중률은 원리적으로 100% 가 못 된다.
-      steering_signature.MACROS 는 5개뿐이라 7·8 이 둘 다 빠져 있었다.
-    이 모듈은 새 추상화가 아니라 **JSON 한 장을 읽어 dict 세 개로 펴는 것**이 전부다.
+왜 있는가:
+    매크로 id-이름-비용 표가 여러 곳에 리터럴로 복사돼 있었고 서로 달랐다. 가장 아팠던 곳은
+    llm_producer.MACRO_NAME 에 SwapBattery 가 없어서 **LLM 이 battery 의 싼 정답을 발화할
+    방법이 없었던** 것이다 -- 정답이 어휘 밖이면 적중률은 원리적으로 100% 가 못 된다.
+    이 모듈은 새 추상화가 아니라 **JSON 한 장을 읽어 dict 몇 개로 펴는 것**이 전부다.
 
-조용한 폴백을 두지 않는다(계획 §P2 "롤백" 절):
+조용한 폴백을 두지 않는다:
     파일이 없거나 깨졌으면 큰 소리로 죽는다. try/except 로 옛 리터럴로 되돌아가면
     "레지스트리를 배선했다고 믿고" 돌린 실험이 사실은 옛 어휘로 돈 것이 되고, 그 사고는
     로그 한 줄에 묻힌다. 어휘 불일치가 정확히 이 파일이 고치는 병이므로 여기서 감추지 않는다.
 
-[문법 참고]
-  - json.load(open(p, encoding="utf-8")) : JSON 파일을 dict 로 읽기.
-  - {int(k): v for k, v in d.items()}    : 키를 문자열 -> 정수로 바꾸는 dict comprehension
-                                          (JSON 은 객체 키가 언제나 문자열이라 필요하다).
+2026-08-20 축소 (9팔 -> 4팔, id 재번호 0..3):
+    은퇴 표식(`retired`) 대신 **엔트리를 지웠다.** 구세대 산출물을 전부 폐기했으므로 이름표를
+    남겨 KeyError 를 피할 이유가 없어졌다. 그 대가로 **id 재번호가 안전해졌지만 동시에
+    도장(vocab)이 유일한 방어선이 됐다** -- 구세대 파일의 macro 2 행은 이제 KeyError 가 아니라
+    RelocateBuild 로 **조용히** 읽힌다. `require_vocab` 을 소비처에 반드시 배선할 것.
+    은퇴 기계(_is_retired / n_non_retired / RETIRED)는 API 호환과 도장 어서션을 위해 남긴다 --
+    오늘 은퇴 엔트리는 0 개이므로 n_non_retired == len(MACROS) 다.
 """
 import json
 import os
@@ -40,73 +42,48 @@ MACRO_COST = {i: float(m["cost"]) for i, m in REGISTRY.items()}
 NAME2ID = {m["name"]: i for i, m in REGISTRY.items()}
 MACROS = sorted(REGISTRY)
 
-# ---- 어휘 도장 (2026-08-19, spec §2.4·§8; 리뷰 라운드 1 판정 G 로 정정) ---------------------
+# ---- 어휘 도장 -------------------------------------------------------------------------------
 # 왜 objective_hash 로 안 되는가: 해시는 목적함수의 스칼라를 도장한다. 어휘는 목적함수가
 # 아니므로 어휘만 바뀌면 해시가 안 갈릴 수 있고, 실제로 dp value.json 에서 그 맹점이 발화했다.
-# 도장은 그 축을 따로 잡는다. **소비처는 불일치 시 조용히 remap 하지 말고 죽는다** —
-# remap 하면 구세대 macro 3(ForbidZone) 행이 4(ReformTeam) 로 에러 없이 재해석된다.
+# **소비처는 불일치 시 조용히 remap 하지 말고 죽는다.**
 #
-# 판정 G (리뷰 라운드 1): 이 값은 **오늘 참인 것**을 선언해야 한다 — dynamics_stamp() 가
-# hazard_enabled() 에서 유도되는 것과 대칭이다. 오늘 registry 는 3/5/6 이 아직 은퇴하지 않은
-# 9팔이므로 "v1-9arms" 다. "v2-6arms" 는 태스크 5(3/5/6 은퇴) 이후에나 참이 되는 END-STATE
-# 값이라 지금 여기 두면 **오늘부터 계속 거짓말하는 도장**이 된다 — 그 자체로는 아무도
-# 못 잡는다(리터럴이라 검증 불가). 그래서 완전한 유도 대신 **기계적 일관성 검사**를 둔다:
-# 도장의 "<n>arms" 가 **은퇴 표식이 없는** registry 항목 수와 같은지 로드 시점에 어서션한다.
-#
-# 재리뷰 정정(라운드 2): 처음엔 "실제 registry 항목 수" 를 `len(MACROS)`(= 전체 JSON
-# 엔트리 수)로 재고 커밋했는데 이건 **정반대로 작동한다.** 태스크 5 의 은퇴(`task-5-brief.md`
-# Step 3)는 3/5/6 엔트리를 **지우지 않는다** — "retired" 표식만 달고 이름·비용은 그대로
-# 둔다(Step 5 의 `test_retired_macros_keep_their_names()` 가 그걸 요구한다). 그래서
-# `len(MACROS)` 는 은퇴 뒤에도 **영원히 9** 다: 은퇴를 집행하고 도장을 안 바꾼 실수는
-# (선언 9, 실제 9)로 통과해 못 잡고, 반대로 은퇴를 집행하고 도장을 옳게 "v2-6arms" 로
-# 바꾼 정상 변경은 (선언 6, 실제 9)로 **죽어서 막아버린다** — 재리뷰가 스크래치 registry
-# 로 두 방향 다 실측했다. 옳은 `n_actual` 은 **"retired" 표식이 없는 엔트리 수**
-# (`n_non_retired`) 다: 오늘은 은퇴 표식이 0개라 9 그대로고, 태스크 5 가 3/5/6 을
-# 은퇴시키면 6 으로 실제로 줄어든다.
-#
-# **이 어서션은 태스크 5 에서 load-bearing 이다**: 3/5/6 을 은퇴(retired 표식 추가)시키고
-# 문자열을 "v2-6arms" 로 갈아 끼우는 순간, `n_non_retired` 가 6 을 세어 (선언 6, 실제 6)로
-# 통과하는 것이 곧 은퇴가 실제로 집행됐다는 증거다. 문자열만 바꾸고 registry 에서 은퇴
-# 표식을 안 달면(또는 그 반대) 여기서 죽는다.
+# 도장의 "<n>arms" 가 은퇴 표식이 없는 registry 항목 수와 같은지 로드 시점에 어서션한다.
+# 문자열만 바꾸고 registry 를 안 고치면(또는 그 반대) 여기서 죽는다.
 _VOCAB_ARMS_RE = re.compile(r"^v\d+-(\d+)arms$")
 
 
 def _is_retired(i, m):
-    """이 매크로가 은퇴했는가 — **엄격** 판정(2026-08-19 판정 K).
+    """이 매크로가 은퇴했는가 -- **엄격** 판정.
 
-    처음엔 "retired" 한 필드에 산문 사유 문자열을 직접 넣으려 했다(task-5-brief.md Step 3).
-    그러면 Python 은 truthy 검사라 동작하지만 Julia 로더(`isretired(m) = haskey(m,:retired) &&
-    Bool(m.retired)`)는 `Bool("문자열")` 에서 MethodError 로 죽는다 — 이 도장이 막으려는 바로
-    그 실패("두 언어가 갈린다")가 도장 자신에게서 난다. 그래서 필드를 쪼갰다: "retired" 는
-    **기계 술어**(반드시 JSON boolean)이고 사유 산문은 "retired_reason" 으로 옮겼다.
+    "retired" 는 **기계 술어**(반드시 JSON boolean)이고 사유 산문은 "retired_reason" 이다.
+    쪼개 놓은 이유: 한 필드에 산문을 넣으면 Python 은 truthy 라 통과하는데 Julia 로더는
+    `Bool("문자열")` 에서 MethodError 로 죽는다 -- 이 도장이 막으려는 바로 그 실패
+    ("두 언어가 갈린다")가 도장 자신에게서 난다.
 
-    로더 규칙(양 언어 동일): 부재 → False · boolean → 그 값 · **그 밖의 무엇이든(문자열·수·
-    null·객체) → 매크로 id 를 밝히며 에러.** 공유 truthy 규약으로 합의하지 않는다 — 갈린
-    것이 바로 truthiness 다. 절대 강제변환하지 않고 절대 추측하지 않는다."""
+    규칙(양 언어 동일): 부재 -> False · boolean -> 그 값 · **그 밖의 무엇이든 -> 에러.**
+    절대 강제변환하지 않고 절대 추측하지 않는다.
+
+    2026-08-20 현재 은퇴 엔트리는 0 개다(은퇴 대신 삭제). 이 함수는 도장 어서션의 계약을
+    유지하고 Julia 로더와 대칭을 맞추기 위해 남아 있다."""
     if "retired" not in m:
         return False
     v = m["retired"]
     if isinstance(v, bool):
         return v
     raise ValueError(
-        "macro %r: 'retired' 값이 boolean 이 아니다(%r) — remap 하지 않는다(그러면 구세대 macro 3 "
-        "행이 4 로 에러 없이 재해석된다). 명시적으로 true/false 로 고칠 것." % (i, v))
+        "macro %r: 'retired' 값이 boolean 이 아니다(%r) -- remap 하지 않는다. "
+        "명시적으로 true/false 로 고칠 것." % (i, v))
 
 
 def n_non_retired(registry):
-    """`registry`(= {id: {..., 선택적 "retired": bool}}) 에서 은퇴 표식이 없는 엔트리 수.
-    은퇴는 엔트리를 지우지 않고 표식만 다는 영구적 성질이다(레지스트리 자체의 속성) —
-    실험 팔 게이트(`experimental`/`is_active`)와는 다른 축이다: 그건 ENV 로 켜고 끄는
-    **런타임** 성질이라 도장(정적 provenance)에 넣으면 `DS_COMBO_ARMS=1` 을 export 하는
-    순간 도장의 유효성이 흔들린다 — 그래서 여기서는 쓰지 않는다."""
+    """`registry` 에서 은퇴 표식이 없는 엔트리 수. 실험 팔 게이트(`experimental`)와는 다른
+    축이다 -- 그건 ENV 로 켜고 끄는 **런타임** 성질이라 도장(정적 provenance)에 넣으면
+    플래그를 export 하는 순간 도장의 유효성이 흔들린다."""
     return sum(1 for i, m in registry.items() if not _is_retired(i, m))
 
 
 def assert_vocab_arm_count(vocab, n_actual):
-    """도장의 `<n>arms` 를 `n_actual`(호출자가 `n_non_retired(REGISTRY)` 로 넘긴다)과
-    대조한다. 형식이 아니거나 수가 다르면 ValueError — 오늘은 (선언 9, 실제 9)로 통과하고,
-    태스크 5 가 은퇴를 집행하며 문자열을 갈아 끼우는 순간의 (선언 6, 실제 6) 통과가 그
-    은퇴가 실제로 됐다는 기계적 증거가 된다."""
+    """도장의 `<n>arms` 를 `n_actual` 과 대조한다. 형식이 아니거나 수가 다르면 ValueError."""
     m = _VOCAB_ARMS_RE.match(vocab)
     if not m:
         raise ValueError(
@@ -114,7 +91,7 @@ def assert_vocab_arm_count(vocab, n_actual):
     declared = int(m.group(1))
     if declared != n_actual:
         raise ValueError(
-            "vocab 도장이 거짓말한다 — 선언 %d arms(%r) vs 실제(은퇴 제외) registry %d arms. "
+            "vocab 도장이 거짓말한다 -- 선언 %d arms(%r) vs 실제(은퇴 제외) registry %d arms. "
             "어휘가 실제로 바뀌었으면 이 문자열도 같이 갈아 끼울 것; 안 바뀌었으면 registry 를 "
             "되돌릴 것." % (declared, vocab, n_actual))
 
@@ -126,51 +103,43 @@ assert_vocab_arm_count(VOCAB, n_non_retired(REGISTRY))
 
 
 def require_vocab(obj, where):
-    """산출물 dict 의 어휘 도장을 대조한다. 없거나 다르면 ValueError."""
+    """산출물 dict 의 어휘 도장을 대조한다. 없거나 다르면 ValueError.
+
+    ⚠️ 2026-08-20 재번호 이후 이것이 **유일한** 방어선이다. 예전에는 구세대 macro id 가
+    영구 결번이라 조회 실패로도 죽었지만, 이제 0..3 이 연속이라 구세대 행이 조용히 읽힌다."""
     got = obj.get("vocab") if hasattr(obj, "get") else None
     if got is None:
         raise ValueError(
-            "%s: 어휘 도장('vocab')이 없다 — 구세대 파일이다. 현행은 %r. "
-            "remap 하지 않는다(구 macro 3/5/6 은 영구 결번)." % (where, VOCAB))
+            "%s: 어휘 도장('vocab')이 없다 -- 구세대 파일이다. 현행은 %r. "
+            "remap 하지 않는다." % (where, VOCAB))
     if got != VOCAB:
         raise ValueError(
-            "%s: 어휘 도장 불일치 — 파일 %r vs 현행 %r." % (where, got, VOCAB))
+            "%s: 어휘 도장 불일치 -- 파일 %r vs 현행 %r." % (where, got, VOCAB))
 
 
 def require_dynamics(obj, expected, where):
     """동역학 도장을 대조한다. hazard on/off 는 objective_hash 로 못 잡는 별도 축이다."""
     got = obj.get("dynamics") if hasattr(obj, "get") else None
     if got is None:
-        raise ValueError("%s: 동역학 도장('dynamics')이 없다 — 구세대 파일이다. 기대 %r."
+        raise ValueError("%s: 동역학 도장('dynamics')이 없다 -- 구세대 파일이다. 기대 %r."
                          % (where, expected))
     if got != expected:
-        raise ValueError("%s: 동역학 도장 불일치 — 파일 %r vs 기대 %r." % (where, got, expected))
+        raise ValueError("%s: 동역학 도장 불일치 -- 파일 %r vs 기대 %r." % (where, got, expected))
 
-# ---- 실험 팔 게이트 (2026-08-15) ------------------------------------------------------------
+
+# ---- 실험 팔 게이트 --------------------------------------------------------------------------
 # 매크로에 `"experimental": "<ENV 이름>"` 이 있으면 그 환경변수가 "1" 일 때만 **제안 대상**이 된다.
-# 왜 이 구조인가: 조합 팔 5·6 은 `oracle/ood_mdp_shim.jl` 의 `DS_COMBO_ARMS` 뒤에 실재하는데
-# 레지스트리에는 없어서, 이름·비용만 소비처 네 곳에 유령으로 복사돼 있었다(2026-08-15 감사가 적발).
-# 그렇다고 그냥 등록만 하면 **끄고도 메뉴에 뜬다** — shim 이 명시한 "OFF BY DEFAULT 면 기존 덤프
-# 경로와 byte-identical" 계약이 깨진다. 그래서 어휘(이름·비용)에는 **언제나 있고**, 제안 메뉴에는
-# **플래그가 켜졌을 때만** 오르게 나눈다. 이름표가 항상 있어야 하는 이유는 따로 있다: 그 행을
-# 쓰는 순간 KeyError 로 죽는 사고가 2026-08-02 에 실제로 났다(gen_oracle_dataset.jl:118).
+# 2026-08-20 현재 실험 팔은 0 개다(조합 팔 5·6 이 삭제됐다).
 EXPERIMENTAL = {i: m["experimental"] for i, m in REGISTRY.items() if m.get("experimental")}
 
-# ---- 은퇴한 팔 (2026-08-19, spec §2) --------------------------------------------------------
-# 은퇴는 실험 게이트를 **이긴다**: DS_COMBO_ARMS=1 으로도 5·6 은 안 살아난다. 그리고
-# 이름표(MACRO_NAME)와 비용은 **지우지 않는다** — 지우면 구세대 행을 읽을 때 KeyError 로
-# 죽는데(2026-08-02 사고), 우리가 원하는 실패 모양은 '도장 불일치로 죽는 것'이다.
-# id 는 재번호하지 않는다: 3·5·6 은 영구 결번이고, 그래야 구세대 행이 조회 실패로 죽는다.
-# 재번호하면 macro 3 행이 ReformTeam 으로 **에러 없이** 재해석된다(spec §2.4).
+# ---- 은퇴한 팔 -------------------------------------------------------------------------------
+# 2026-08-20 현재 비어 있다. 은퇴 표식 대신 엔트리를 삭제하는 정책으로 바꿨다.
 RETIRED = {i: m.get("retired_reason", "") for i, m in REGISTRY.items() if _is_retired(i, m)}
 
 
 def is_active(i):
-    """이 매크로를 지금 **제안해도 되는가**. registry 밖 id 는 무조건 아니고(리뷰 라운드 3
-    Minor 정정 — 전에는 이 검사가 없어 registry 밖 id(-1·9·10 등, 손으로 넣을 수 있는
-    DS_EP_MACROS 값)가 True 로 나왔다; Julia 쪽 `is_active` 는 이미 `haskey(REGISTRY, i)` 로
-    막고 있었는데 여기가 안 막아서 "같은 규칙" 이라는 두 언어 docstring 이 거짓이었다),
-    은퇴한 팔도 무조건 아니고, 실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
+    """이 매크로를 지금 **제안해도 되는가**. registry 밖 id 는 무조건 아니고(-1·9·10 등 손으로
+    넣을 수 있는 값), 은퇴한 팔도 무조건 아니고, 실험 팔은 자기 ENV 플래그가 켜졌을 때만."""
     if i not in REGISTRY:
         return False
     if i in RETIRED:
@@ -183,7 +152,7 @@ ACTIVE_MACROS = [i for i in MACROS if is_active(i)]
 
 # 사건 종류별로 전제조건상 말이 되는 팔. 상태를 아는 호출자(policy.jl)가 `valid` 를 실어 보내면
 # 언제나 그쪽이 이긴다 -- 이 표는 상태를 모르는 호출자를 위한 폴백일 뿐이다.
-# 실험 팔은 위 게이트가 꺼져 있으면 여기 안 오른다(= 폴백 메뉴가 예전과 같다).
+# 사건 종류는 셋뿐이다: fault / battery / zone. 'reform' 은 더 이상 decision epoch 가 아니다.
 KIND_VALID = {}
 for _i, _m in REGISTRY.items():
     if not is_active(_i):

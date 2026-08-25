@@ -1,21 +1,40 @@
 {
   "_doc": [
-    "행동 어휘의 단일 진실원 (PLAN_LLM_INFERENCE_7H §P2 / Ch-A).",
-    "지금까지 매크로 id-이름-비용 표가 6곳에 따로 박혀 있었고 서로 달랐다:",
-    "  llm_producer.MACRO_NAME 에 8(SwapBattery) 없음 -> LLM 이 battery 의 기본 정답을 발화할 수 없었다",
-    "  dspy_service.MACROS 6개 / steering_signature.MACROS 5개 -> 서비스마다 다른 어휘",
-    "정답이 어휘 밖이면 초과비용은 원리적으로 0 이 될 수 없다. 그래서 이 파일 하나만 고치면",
-    "모든 소비처가 같이 바뀌도록 배선하고, audit_action_vocab.py 가 그 일치를 테스트로 강제한다.",
+    "행동 어휘의 단일 진실원.",
+    "",
+    "2026-08-20 축소: 9팔 -> 4팔. 사건 종류당 개입 팔 하나 + NOOP.",
+    "  Deprioritize  제거 — 어떤 사건에도 고유하게 안 붙었고 제안 338회 대비 선택 0회.",
+    "                이 하니스의 배터리 사건은 '저하'가 아니라 '정지'(SoC 0)라 멈춘 로봇의",
+    "                우선순위를 낮춰봐야 아무것도 안 풀린다. degraded-but-alive 상태가 없다.",
+    "  ReformTeam    제거 — 대응하던 ReformTruth 가 외생 실패 사건이 아니었다. 발화 조건이",
+    "                `no_progress % REFORM_INTERVAL == 0` 이라는 순수 카운터 modulo 이고,",
+    "                엔진 docstring 이 스스로 'SECOND-ORDER OOD of a spare hand-off' 라고",
+    "                적는다 = Replace 의 후속 결과. 교착 해소는 명목 레인의 재계획으로 내렸다",
+    "                (replace_robot.jl 의 네 unwedging 루틴이 이미 그 일을 한다).",
+    "  ForbidZone / ForbidAgent+ReformTeam / Deprioritize+ForbidWindow  제거 (구 3/5/6).",
+    "",
+    "id 를 0..3 으로 재번호했다. spec 2026-08-19 §2.4 는 재번호를 철회했었는데, 그 근거는",
+    "'구세대 파일의 macro 3 행이 새 레지스트리에서 에러 없이 재해석된다' 였다. 2026-08-20 에",
+    "구세대 산출물을 전부 폐기하면서 그 전제가 사라졌다. 대신 도장(vocab)이 유일한 방어선이므로",
+    "**소비처에 require_vocab 을 반드시 배선할 것** — 지금 도장은 write-only 다.",
+    "",
     "cost 는 gen_oracle_dataset.jl MACRO_COST / e1_analyze.MACRO_COST / features_agnostic.MACRO_COST",
-    "와 **같은 값이어야 한다**(README 함정 29). 여기 값은 그 세 곳에서 그대로 옮긴 것이다.",
-    "kinds = 그 팔이 전제조건상 말이 되는 사건 종류(상태를 아는 호출자가 준 valid 가 언제나 우선)."
+    "와 **같은 값이어야 한다**. 여기 값은 구 레지스트리에서 그대로 옮겼다(이름-비용 쌍 불변).",
+    "kinds = 그 팔이 전제조건상 말이 되는 사건 종류(상태를 아는 호출자가 준 valid 가 언제나 우선).",
+    "사건 종류는 셋뿐이다: fault / battery / zone. 'reform' 은 더 이상 decision epoch 가 아니다.",
+    "",
+    "2026-08-24 축소: 4팔 -> 3팔. RelocateBuild(구 id 2) 삭제 — zone 사건을 LLM 결정 레인에서",
+    "뺐다(spec 2026-08-24 §5.1). SwapBattery 가 3 -> 2 로 재번호됐다. v3-4arms 세대 파일의",
+    "macro=2 행은 새 어휘에서 SwapBattery 로 **조용히** 읽히므로, 그 세대 산출물은 반드시",
+    "폐기하거나 도장 검사(require_vocab)를 통과시켜야 한다 — Task 3 이 그 배선이다.",
+    "그래서 오늘의 사건 종류는 둘뿐이다: fault / battery (윗줄의 '셋뿐이다' 는 구세대 진술)."
   ],
-  "vocab": "v2-6arms",
+  "vocab": "v4-3arms",
   "macros": {
     "0": {
       "name": "NOOP",
       "cost": 0.0,
-      "kinds": ["fault", "battery", "zone", "reform"],
+      "kinds": ["fault", "battery"],
       "doc": "do nothing / restraint. Free. Best when the disruption is absorbed by slack or spares and intervening would waste a scarce resource."
     },
     "1": {
@@ -25,50 +44,6 @@
       "doc": "swap the affected robot for a spare BODY from the depot pool. Consumes one spare robot. Best on a real fault, or on a depleted battery when no cheaper repair applies."
     },
     "2": {
-      "name": "Deprioritize",
-      "cost": 0.3,
-      "kinds": ["fault", "battery"],
-      "doc": "lower the affected robot's task priority and route heavy work away from it. Cheap, reversible, keeps the robot in the fleet. The middle option for a degraded-but-alive robot."
-    },
-    "3": {
-      "name": "ForbidZone",
-      "cost": 1.0,
-      "kinds": ["zone"],
-      "retired": true,
-      "retired_reason": "2026-08-19 spec §2.1 — RelocateBuild(7) 에 흡수. 같은 의도이고 차이는 범위뿐인데 좁은 쪽의 도메인이 죽어 있다(restage_assembly! 가 _assembly_started 를 거부; 재적치 가능 staging circle 이 closed≈46 부터 0개). 실측 제안 0/143 · 집행 0/1438 · 라벨 0/872 — 삭제 비용 0행.",
-      "doc": "relocate the staging areas of the sub-assemblies blocked by a no-go zone. Only works while those sub-assemblies have not started building; once they are under way its domain is empty and it silently does nothing."
-    },
-    "4": {
-      "name": "ReformTeam",
-      "cost": 1.0,
-      "kinds": ["reform", "fault"],
-      "doc": "re-form a deadlocked multi-robot transport team geometrically so the carrier can close."
-    },
-    "5": {
-      "name": "ForbidAgent+ReformTeam",
-      "cost": 1.8,
-      "kinds": ["fault"],
-      "experimental": "DS_COMBO_ARMS",
-      "retired": true,
-      "retired_reason": "2026-08-19 spec §2.2 — ForbidAgent 를 품고 있다. ForbidAgent 의 효과는 verify() 가 MILP 를 다시 풀어야 나타나므로 (s,a)→s⁺ 가 argmin 을 지난다. 그건 macro option 이 아니라 meta-action CALL_ORACLE 의 실물 기전이다. 삭제가 아니라 재분류 — 행동공간에서만 뺀다.",
-      "doc": "COMPOSITE (two specs): retire the agent WITHOUT spending a depot spare, then reform teams around the loss. The spare-preserving alternative to Replace. cost = ForbidAgent 0.8 + ReformTeam 1.0. GATED: the generator only offers this when DS_COMBO_ARMS=1 (oracle/ood_mdp_shim.jl COMBO_IDS); with the flag unset it collapses to the NOOP arm."
-    },
-    "6": {
-      "name": "Deprioritize+ForbidWindow",
-      "cost": 0.8,
-      "kinds": ["fault"],
-      "experimental": "DS_COMBO_ARMS",
-      "retired": true,
-      "retired_reason": "2026-08-19 spec §2.1 — ForbidWindow 를 품고 있다. '기다리면 해소되는 사건' 을 위한 lever 인데 이 문제의 사건 셋(zone 영구 · fault 영구 · battery 는 복구)은 대기로 안 풀린다. 의도상 DeprioritizeAgent 와 같은데 TIER-1 하드라 빌드를 infeasible 하게 만들 수 있어 지배당한다.",
-      "doc": "COMPOSITE (two specs): soft-shed the agent's work AND close a time window on the affected node -- two soft levers instead of one. cost = DeprioritizeAgent 0.3 + ForbidWindow 0.5. GATED by DS_COMBO_ARMS=1, same as macro 5."
-    },
-    "7": {
-      "name": "RelocateBuild",
-      "cost": 1.5,
-      "kinds": ["zone"],
-      "doc": "shift the ENTIRE build by one rigid translation so the whole work region clears the no-go zone. No precondition, works at any build stage, but it is a global move that disturbs every robot already in transit -- the most expensive action in the repertoire."
-    },
-    "8": {
       "name": "SwapBattery",
       "cost": 0.2,
       "kinds": ["battery"],

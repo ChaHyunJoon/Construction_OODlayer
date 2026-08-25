@@ -3,9 +3,10 @@
   872행 − 65(구 macro 5) − 65(구 macro 6) = 742행 / 260 instance (98 아니다 — 아래 참고).
   구 macro 3(ForbidZone)은 원래 0행이라 손실이 없다.
 
-🔴 **정수 remap 을 하지 않는다.** id 를 0..5 로 다시 매기면 구세대 macro 3 행이
-ReformTeam 으로, 5 행이 SwapBattery 로 **에러 없이** 재해석된다. 3·5·6 을 영구 결번으로
-두면 구세대 파일은 조회 실패로 죽고, 그게 우리가 원하는 실패 모양이다(spec §2.4).
+🔴 **2026-08-20 에 id 가 0..3 으로 재번호됐다.** 그래서 이 필터는 **세대 판정 도구가 아니다** —
+구세대 macro 2(Deprioritize) 행은 새 어휘의 유효 id(RelocateBuild)라 그냥 통과한다.
+세대 판정은 어휘 도장(`action_registry.require_vocab`)이 하고, 이 필터는 그 뒤에 남은
+**어휘 밖 id**(구 4~8 등)만 걷어낸다. 도장 검사 없이 이 필터만 돌리면 조용히 오독된다.
 
 🔴 **원본을 덮어쓰지 않는다.** 새 파일로 파생하고 도장을 찍는다.
 
@@ -42,11 +43,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import action_registry  # noqa: E402
 
 # 영구 결번 (spec §11-6). 이제 action_registry.RETIRED(dict[int,str])에서 온다.
+# 2026-08-20 (4팔 축소): 판정 기준이 "은퇴 id" 에서 **"레지스트리 밖 id"** 로 바뀌었다.
+# 이 세대는 은퇴 표식 대신 엔트리를 지우므로 `action_registry.RETIRED` 가 **언제나 비어 있고**,
+# 예전 기준을 그대로 두면 이 필터가 아무것도 안 빼는 항진 필터가 된다(구세대 macro 7 행이
+# 그대로 통과한다). 살아있는 어휘는 `MACROS` 이므로 그 밖의 id 는 전부 구세대다 —
+# 은퇴 id 는 그 여집합에 자동으로 포함되므로 기준이 좁아지지 않고 넓어진다.
+#
+# 🔴 재번호(0..3 연속) 이후 이 필터는 **id 를 보고 세대를 판정할 수 없다** — 구세대 macro 2
+# (Deprioritize)는 새 어휘에서도 유효한 id(RelocateBuild)라 이 필터를 통과한다. 세대 판정은
+# `require_vocab`(도장)이 해야 하고, 이 필터는 그 뒤에 남은 **어휘 밖 id 만** 걷어낸다.
+LIVE_MACROS = frozenset(action_registry.MACROS)
 RETIRED_MACROS = frozenset(action_registry.RETIRED)
-assert RETIRED_MACROS == frozenset({3, 5, 6}), (
-    "action_registry.RETIRED 이 이 파일이 전제하는 {3,5,6} 과 다르다: %s. "
+assert not (RETIRED_MACROS & LIVE_MACROS), (
+    "action_registry.RETIRED 와 MACROS 가 겹친다: %s. "
     "registry 가 바뀌었거나 이 파일의 전제가 낡았다는 뜻이다 — 조용히 넘어가지 말 것."
-    % sorted(RETIRED_MACROS))
+    % sorted(RETIRED_MACROS & LIVE_MACROS))
 
 
 def _dynamics_from_row(row):
@@ -92,7 +103,7 @@ def _strip_retired(valid_mask):
     (`wm_datasets.py` 주석: valid_mask 가 없는 행은 사건 미발화 stub 이라 규약이 다르다)."""
     if not isinstance(valid_mask, list):
         return valid_mask
-    return [m for m in valid_mask if int(m) not in RETIRED_MACROS]
+    return [m for m in valid_mask if int(m) in LIVE_MACROS]
 
 
 def _instance_key(row):
@@ -161,7 +172,7 @@ def _surviving_counts_from_input(rows):
     for row in rows:
         inst = _instance_key(row)
         seen[inst] = seen.get(inst, 0) + 1
-        if row.get("macro") in RETIRED_MACROS:
+        if row.get("macro") not in LIVE_MACROS:
             dropped[inst] = dropped.get(inst, 0) + 1
     return {inst: n - dropped.get(inst, 0) for inst, n in seen.items()}
 
@@ -193,7 +204,7 @@ def filter_rows(rows):
     kept, dropped, unstamped = [], {}, 0
     for row in rows:
         m = row.get("macro")
-        if m in RETIRED_MACROS:
+        if m not in LIVE_MACROS:
             dropped[m] = dropped.get(m, 0) + 1
             continue
         row = dict(row)
