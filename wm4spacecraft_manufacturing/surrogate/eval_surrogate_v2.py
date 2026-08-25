@@ -37,7 +37,8 @@
      `energy_J` 를 달고 있다)을 **버린다**. `complete` 로만 거르면 "아무것도 발화 안 했는데
      완주했다"를 학습 데이터로 먹는다. `surrogate_features.build_features` 는 의도적으로
      필터링을 하지 않는다(Task 5 의 문서화·검사된 계약) — **그 책임은 이 호출자 것이다.**
-  3. 학습셋은 `wm_datasets.RELABEL_20260814` **뿐이다**. `n44_plus78` 로 폴백하지 않는다 —
+  3. 학습셋은 `wm_datasets.ORACLE_DATASET` **뿐이다**(2026-08-25 정정: 예전엔
+     `RELABEL_20260814` 였는데 그 파일은 구세대 어휘라 폐기됐다). `n44_plus78` 로 폴백하지 않는다 —
      그 파일은 행동 어휘 두 세대를 concat 한 것이라, 그 라벨이 이 계획이 제거하려는 결함을
      그대로 가르친다. 그래서 `wm_datasets.resolve()`(=$WM_DATASET 을 읽는다)를 쓰지 않고
      상수를 직접 쓴다 — 환경변수 하나로 조용히 다른 파일이 들어오는 경로를 원천 차단한다.
@@ -377,7 +378,11 @@ def sign_test_direction(truth, arm, rival):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     # 기본값은 상수 직접 참조다 — `wm_datasets.resolve()` 를 쓰지 않는 이유는 docstring 계약 3.
-    ap.add_argument("--labels", default=wm_datasets.abspath(wm_datasets.RELABEL_20260814))
+    # 🔴 2026-08-25 (최종 브랜치 리뷰 C4 의 같은 부류): 기본값이 `RELABEL_20260814` 였다. 그
+    # 파일은 축 C Task 1 이 지운 **구세대(v3-4arms 이전) 라벨**이라 `load_rows` 가 곧바로
+    # `SystemExit("라벨 파일이 없다")` 를 낸다. 되살려도 결과는 같다 — 그 세대에는 `vocab` 열이
+    # 없어 `require_vocab_stamps` 가 거부한다. 즉 이 기본값은 **어떤 경우에도 못 도는 값**이었다.
+    ap.add_argument("--labels", default=wm_datasets.abspath(wm_datasets.ORACLE_DATASET))
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--g4-tau", type=float, default=0.05)
     ap.add_argument("--g4b-min-group", type=int, default=5)

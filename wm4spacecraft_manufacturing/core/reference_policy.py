@@ -75,10 +75,19 @@ BATTERY_DEEP_SOC = 0.2      # Julia ood_truth.jl 의 REPLACE_SOC_THRESHOLD 와 �
                              # ⚠️ 공개된 대가: 0.5 였을 때는 n44_plus78_d20 사다리의 0.30·0.50 rung 이
                              # 이 가지 안에 있어 채점 근거가 있었다(세 rung 전부에서 SwapBattery 가
                              # 이겼다 -- 위 BASIS["battery"] 참고). 0.2 로 내리면 그 두 rung 이
-                             # unscored 로 빠진다 -- 측정된 근거를 버리는 것이다. 지금 커밋된 라벨의
-                             # BatteryTruth 는 전부 이 임계값 아래라 현 데이터로는 채점이 안 바뀐다
-                             # (수치는 재검증 불가 산출물에서 나온 것이라 여기 적지 않는다); mild
-                             # battery 를 굴리는 실행에서만 차이가 난다.
+                             # unscored 로 빠진다 -- 측정된 근거를 버리는 것이다.
+                             # 🔴 2026-08-25 정정(최종 브랜치 리뷰 F2): 여기 있던 "지금 커밋된
+                             # 라벨의 BatteryTruth 는 전부 이 임계값 아래" 는 **거짓이다**. Task 7
+                             # 이 그 문장을 쓴 뒤 Task 8 이 라벨을 새로 만들면서 뒤집혔다.
+                             # 현행 라벨셋 `oracle/out/oracle_dataset.jsonl`(vocab v4-3arms,
+                             # 커밋 ef7559ab)에서 kind=="battery" 행은 27개이고 soc 사다리는
+                             # {0.02, 0.30, 0.50} rung 당 9행이다 -- 즉 **18/27 행(9 instance
+                             # 중 6개)이 이 임계값 위**다. 대가는 가상이 아니라 지금 데이터의
+                             # 2/3 이 unscored 로 빠지는 것이다. 재유도:
+                             #   python -c "import json,sys; rs=[json.loads(l) for l in
+                             #   open(sys.argv[1])]; b=[float(r['soc']) for r in rs if
+                             #   r['kind']=='battery']; print(sum(s>0.2 for s in b),'/',len(b))" \
+                             #   wm4spacecraft_manufacturing/oracle/out/oracle_dataset.jsonl
 
 BASIS = {
     # [역사] 아래 문자열의 사다리 기록은 구세대 어휘(v3-4arms 이전)의 것이다 — 각 rung 에서
@@ -221,9 +230,13 @@ def reference_action(ev):
         # 없는 구간이다(0.2 로 내리면서 n44_plus78_d20 사다리의 0.30·0.50 rung 이 이 가지로
         # 밀려났다 -- 위 BATTERY_DEEP_SOC 대입부의 대가 주석 참고). 근거가 없는 구간에서 NOOP 을
         # 정답이라고 채점하면 없는 정답을 지어내는 것이 된다 -- 아래 reform 축과 **같은 이유로
-        # 채점하지 않는다**(unscored). 지금 커밋된 라벨의 BatteryTruth 는 전부 이 임계값 아래라
-        # 현 데이터로는 이 가지에 아무도 들어오지 않아 채점이 안 바뀌지만, mild battery 를 굴리는
-        # 실행에서는 조용한 오채점을 막아 준다.
+        # 채점하지 않는다**(unscored).
+        # 🔴 2026-08-25 정정(최종 브랜치 리뷰 F2): 여기 있던 "지금 커밋된 라벨의 BatteryTruth 는
+        # 전부 이 임계값 아래라 이 가지에 아무도 들어오지 않는다" 는 **거짓이다**. Task 8 이
+        # 라벨을 새로 만들면서 뒤집혔다 -- 현행 `oracle/out/oracle_dataset.jsonl`(vocab
+        # v4-3arms, 커밋 ef7559ab)의 battery 행 27개 중 **18개가 이 가지로 들어온다**(soc
+        # 사다리 {0.02, 0.30, 0.50}, rung 당 9행; 0.30·0.50 두 rung = 18행). 재유도 명령은
+        # 위 BATTERY_DEEP_SOC 대입부 주석에 있다.
         return None, "battery", \
                "SoC>%.2f: above BATTERY_DEEP_SOC -- unscored (some of this range was tested by the " \
                "n44_plus78_d20 ladder up to 0.50, but the threshold now sits below it; see the " \

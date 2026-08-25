@@ -229,8 +229,16 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 #
 # ⚠️ `wm_datasets.resolve()` 를 **쓰지 않는다** — 그 함수는 $WM_DATASET/$EVAL_DATA 를 읽으므로
 # 환경변수 하나로 옛 라벨이 조용히 들어온다. 상수를 직접 가리킨다.
+#
+# 🔴 2026-08-25 (최종 브랜치 리뷰 C4): `RELABEL_20260816` 은 **구세대(v3-4arms 이전) 라벨**이고
+# 축 C Task 1 이 작업 트리에서 지웠다. 그 상수를 가리키는 동안 `load_rows` 가
+# `SystemExit("라벨 파일이 없다")` 를 던졌는데 SystemExit 은 BaseException 이라 아래
+# `_load_surrogate` 의 `except Exception` 을 **빠져나가** FastAPI startup 을 통째로 죽였다
+# (실측: `_load_surrogate() RAISED OUT: SystemExit`). 즉 서비스가 아예 뜨지 않아 `/health` 의
+# 보고 경로에 도달조차 못 했다. 파일을 되살려도 결과는 같다 — 그 세대에는 `vocab` 열이 없어
+# `require_vocab_stamps` 가 거부한다. v4-3arms 라벨셋을 가리킨다.
 # ---------------------------------------------------------------------------------------------
-SURRO_DATA = wm_datasets.abspath(wm_datasets.RELABEL_20260816)
+SURRO_DATA = wm_datasets.abspath(wm_datasets.ORACLE_DATASET)
 # 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
 # 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
 # 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.
@@ -286,7 +294,14 @@ def _load_surrogate():
                                     meta["rows_after_fired_filter"], meta["instances"],
                                     support, SURRO_RULE, meta["objective_hash"],
                                     meta.get("vocab")))
-    except Exception as e:
+    # 🔴 2026-08-25 (최종 브랜치 리뷰 C4): `SystemExit` 을 함께 잡는다. 이 함수가 부르는
+    # `eval_surrogate_v2.load_rows` 는 로딩 계약 위반(파일 없음 · `fired` 열 없음)을
+    # **`SystemExit`** 으로 알리는데 그것은 `Exception` 이 아니라 `BaseException` 의 자식이라
+    # `except Exception` 을 그대로 통과했다. 이 함수는 `@app.on_event("startup")` 에서 돌므로
+    # 그 예외 하나가 LLM 레인 서비스 전체를 못 뜨게 만든다 — R-25 가 의도한 모양은 "실패를
+    # /health 에 실어 보고한다" 이고, 아래 한 줄이 그 의도를 실제로 집행한다.
+    # `KeyboardInterrupt` 는 일부러 안 잡는다(Ctrl-C 로 서버를 못 죽이게 되면 안 된다).
+    except (Exception, SystemExit) as e:
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 
 

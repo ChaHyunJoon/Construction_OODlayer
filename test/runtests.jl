@@ -93,4 +93,22 @@ end
     @testset "policy macro whitelist ↔ action registry" begin
         include("policy_macro_binding.jl")
     end
+
+    # 🔴 2026-08-25 (최종 브랜치 리뷰 F1): 아래 셋은 **레지스트리 파생과 도장 계약을 지키는
+    # 게이트인데 이 진입점에 실려 있지 않았다** — 누가 손으로 `julia +lts --project=.
+    # test/<파일>.jl` 를 칠 때만 돌았다. "돌지 않는 게이트" 는 "실패할 수 없는 게이트" 의
+    # 사촌이다(이 계획이 후자를 여섯 개 찾았다). 셋 다 단독 실행에서 초록임을 확인하고 싣는다.
+    #   smdp_action_name_smoke : gen_oracle_dataset.jl 의 ACTION_NAME/MACRO_COST 가 레지스트리
+    #                            파생인가 (리터럴이 되살아나면 라벨 행에 틀린 이름·비용이 찍힌다)
+    #   smdp_stamp_smoke       : 어휘 도장 v4-3arms · 동역학 도장 · surrogate 산출물 도장
+    #   smdp_hazard_knobs      : D-3/D-4/D-5 손잡이와 λ 단일 진실원, 라벨 레인 == 실행 레인
+    @testset "SMDP action-name derivation" begin
+        include("smdp_action_name_smoke.jl")
+    end
+    @testset "SMDP stamps" begin
+        include("smdp_stamp_smoke.jl")
+    end
+    @testset "SMDP hazard knobs" begin
+        include("smdp_hazard_knobs.jl")
+    end
 end

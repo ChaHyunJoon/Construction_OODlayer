@@ -186,6 +186,20 @@ RELABEL_20260816 = "oracle/out/relabel_2026-08-16.jsonl"
 RELABEL_20260819 = "oracle/out/relabel_2026-08-19.jsonl"
 
 # ==========================================================================================
+#  ORACLE_DATASET — v4-3arms 어휘로 처음부터 다시 만든 라벨셋 (2026-08-24, 축 C Task 8)
+# ==========================================================================================
+# `oracle/gen_oracle_dataset.jl` 의 **기본 출력 경로**(`DS_OUT` 미설정 시)와 같은 파일이다.
+# 33행 / 12 instance, `vocab="v4-3arms"` · `train_kinds="battery,fault"` · `soc_split=false`
+# · `valid_only=true` 도장이 행마다 찍혀 있다.
+#
+# 🔴 왜 이 상수가 필요한가 (2026-08-25, 최종 브랜치 리뷰 C4): 위의 RELABEL_* 셋은 전부
+# **구세대 어휘(v3-4arms 이전)** 이고 작업 트리에서 지워졌다. 그런데 `dspy_service.SURRO_DATA`
+# 와 `eval_surrogate_v2` 의 `--labels` 기본값이 아직 그 상수들을 가리키고 있어서, 두 소비처가
+# `load_rows` 의 `SystemExit("라벨 파일이 없다")` 로 죽었다. 파일이 되살아나도 결과는 같다 --
+# 그 세대에는 `vocab` 열이 없어 `require_vocab_stamps` 가 거부한다. 현행 소비처는 이 상수를 쓴다.
+ORACLE_DATASET = "oracle/out/oracle_dataset.jsonl"
+
+# ==========================================================================================
 #  FIREGRID — CANONICAL + 발화 시점을 흩뿌린 인스턴스들 (2026-08-04)
 # ==========================================================================================
 # 왜 별도 파일인가.  CANONICAL 의 60 instance 는 `closed_at_fire` 가 {50,58} 두 값뿐이라
@@ -221,6 +235,7 @@ HS_V2  = "oracle/out/graded_hs_v2.jsonl"     # [삭제됨] cost artifact + e1_fr
 KNOWN = {
     "canonical": CANONICAL,
     "firegrid": FIREGRID,
+    "oracle_dataset": ORACLE_DATASET,
     "hs_all": HS_ALL,
     "hs_n44": HS_N44,
     "hs_v2": HS_V2,

@@ -271,9 +271,28 @@ function valid_macros(env, truth)
     # 두 팔의 소모 자원이 다르다는 것이 SwapBattery 를 따로 둔 이유이므로(spec_dsl.jl), 그 선택을
     # 지우면 battery 사건에서 잴 수 있는 결정 구조 자체가 사라진다.
     # 전제조건: 배터리 레이어가 켜져 있어야 SoC 복구가 의미를 갖는다. 없으면 메뉴에서 뺀다.
+    # 🔴 2026-08-25 (최종 브랜치 리뷰 C2): 이 메뉴는 하드코딩 튜플
+    # `["NOOP","Replace","SwapBattery"]` 였다. 판정 R-46 이 같은 파일의 `enactable_macros()`
+    # 를 레지스트리 파생으로 고쳤지만 **420줄 위의 이 진짜 메뉴는 그대로 남았다.** 실측:
+    # `ACTION_REGISTRY=` 를 이름 바꾼 레지스트리로 돌리면 `enactable_macros()` 는 따라가고
+    # `valid_macros` 는 안 따라간다 — 에러 없이. 그런데 이 반환값이 곧 LLM 의 메뉴
+    # (`service_decide` 의 payload["valid"]) · oracle/canonical 규칙의 메뉴 · 채점기가 읽는
+    # 결정 기록의 `valid` 필드(`run_demo.jl`)다. 즉 어휘의 **하중을 받는** 사본이었다.
+    # `enactable_macros()` 와 같은 로더로 유도한다.
     if truth isa CB.BatteryTruth
         local have_fleet = (try CB.BATTERY_FLEET[] !== nothing catch; false end)
-        return have_fleet ? ["NOOP", "Replace", "SwapBattery"] : ["NOOP", "Replace"]
+        # 레지스트리가 battery 사건에서 전제조건상 말이 된다고 선언한 팔들(상한).
+        local ids = ActionRegistry.kind_valid("battery")
+        if !have_fleet
+            # 전제조건: 배터리 레이어가 켜져 있어야 SoC 복구가 의미를 갖는다. 꺼져 있으면
+            # **battery 사건에서만** 말이 되는 팔(레지스트리의 `kinds` 가 battery 하나뿐인
+            # 팔 = 오늘의 SwapBattery)을 뺀다. 다른 kind 에도 붙는 팔(NOOP·Replace)은 "로봇
+            # 하나가 멈췄다" 는 사실만으로 성립하므로 남는다.
+            # 이름을 리터럴로 적지 않는 이유는 위 주석 그대로다 — 어휘의 단일 진실원은
+            # `action_registry.json` 이고, 리터럴은 그것의 두 번째 진실원이 된다.
+            ids = [i for i in ids if length(collect(ActionRegistry.REGISTRY[i].kinds)) > 1]
+        end
+        return [ActionRegistry.NAME[i] for i in ids]
     end
     # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `truth isa CB.ZoneTruth` 분기를 통째로 지웠다.
     # 그 분기는 `named`/`zone_diagnosis(...; check_restage=true)` 로 도메인을 재서

@@ -335,21 +335,16 @@ STATE_DESCRIPTORS = ["harm", "work_at_risk", "resource_loss",
 ACTION_DESCRIPTORS = ["a_cost", "a_intervenes", "a_soft",
                       "a_restores_capacity", "a_relocates_work", "a_spatial"]
 
-_ACTION_TABLE = {
-    #        cost, intervenes, soft, restores, relocates, spatial
-    0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),   # NOOP
-    1: (1.0, 1.0, 0.0, 1.0, 0.0, 0.0),   # Replace       : 스페어로 능력 복원
-    2: (0.3, 1.0, 1.0, 0.0, 0.0, 0.0),   # Deprioritize  : 소프트, 비용만 조정
-    3: (1.0, 1.0, 0.0, 0.0, 1.0, 1.0),   # ForbidZone    : 일을 공간적으로 옮김
-    4: (1.0, 1.0, 0.0, 0.0, 1.0, 0.0),   # ReformTeam    : 팀 구성을 옮김(비공간)
-    7: (1.5, 1.0, 0.0, 0.0, 1.0, 1.0),   # RelocateBuild : 빌드 전체를 공간적으로 옮김(ForbidZone 의 전역판)
-}
-
-
+# 🔴 2026-08-25 (최종 브랜치 리뷰 C1): 여기 있던 `_ACTION_TABLE` 은 **구 9팔 id 리터럴**이었다
+# (2: Deprioritize · 3: ForbidZone · 4: ReformTeam · 7: RelocateBuild). 2026-08-24 의 4팔->3팔
+# 재번호 뒤 그 표는 `action_descriptors(2)` 에서 SwapBattery 자리에 **DeprioritizeAgent 의
+# 서술자**를 돌려줬다. 표를 지우고 ψ 의 앞 6축에서 유도한다 — ψ 는 아래에서 레지스트리 파생이므로
+# 이 함수도 자동으로 단일 진실원을 따른다. (그 대가로 옛 `psi_regression_check` 는 항진명제가
+# 되므로 아래에서 **실제로 실패할 수 있는** 레지스트리 대조로 갈아 끼웠다.)
 def action_descriptors(macro):
-    """macro 번호 -> 액션 서술자 dict."""
-    vals = _ACTION_TABLE.get(int(macro), (0.0,) * 6)
-    return dict(zip(ACTION_DESCRIPTORS, vals))
+    """macro 번호 -> 액션 서술자 dict(ψ 의 앞 6축). 레지스트리 파생."""
+    full = psi(macro)
+    return {k: full[k] for k in ACTION_DESCRIPTORS}
 
 
 # ==========================================================================================
@@ -395,26 +390,51 @@ _PRIMITIVE_TABLE = {
 #   a_scope          : 영향 범위 (1대=1 / 구역=2 / 전역=3)
 PSI_AXES = ACTION_DESCRIPTORS + ["a_n_specs", "a_consumes_spare", "a_reversible", "a_scope"]
 
-# 매크로 -> primitive 조합. 기존 5개는 전부 **spec 하나**다(그래서 조합축이 통째로 비어 있다).
-MACRO_SPECS = {
-    0: [],                       # NOOP
-    1: ["ReplaceAgent"],
-    2: ["DeprioritizeAgent"],
-    3: ["ForbidZone"],
-    4: ["ReformTeam"],
-    # 조합 행동(A1 스모크 대상). 여기 추가해도 **모델 입력 차원은 변하지 않는다** — 이게 요점.
-    # 2026-08-15: 이 둘은 2026-08-06 레지스트리 통합 때 어휘에서 누락돼 이름·비용만 소비처 네 곳에
-    # 유령으로 남아 있었다(감사가 "5·6 은 무시" 라고 예외 처리하고 있었다). 같은 날 정식 등록해
-    # 어휘가 다시 하나가 됐고, 제안 메뉴에는 `DS_COMBO_ARMS=1` 일 때만 오른다(action_registry.is_active).
-    5: ["ForbidAgent", "ReformTeam"],
-    6: ["DeprioritizeAgent", "ForbidWindow"],
-    7: ["RelocateBuild"],        # zone 사건의 기본 개입 팔(3 을 대체). spec 하나짜리.
-    # 8 = SwapBattery. _PRIMITIVE_TABLE 에는 처음부터 있었는데 이 매핑만 빠져 있었다 —
-    # psi() 는 MACRO_SPECS.get(m, []) 로 조회하므로 8 은 빈 리스트가 되어 **NOOP 의 ψ 를
-    # 그대로 돌려줬다**(실측: psi(8) == psi(0) -> True). 그 상태로 agnostic 표현을 학습하면
-    # 모델은 "배터리 교체 = 아무것도 안 하기" 로 배운다. test_features_agnostic.py 가 계약.
-    8: ["SwapBattery"],
+# 매크로 -> primitive 조합.
+#
+# 🔴 2026-08-25 (최종 브랜치 리뷰 C1): 여기 있던 **id 리터럴 표**(0..8, 구 9팔 맵)를 지웠다.
+# 2026-08-24 의 4팔->3팔 재번호 뒤 그 표는 `psi(2)` 에서 SwapBattery 자리에 DeprioritizeAgent
+# 의 서술자를 돌려줬다 -- a_cost 0.3(레지스트리는 0.2) · a_soft 1.0(0.0 이어야) ·
+# a_restores_capacity 0.0(1.0 이어야). `/decide` 의 surrogate 레인이 그 벡터를 그대로 먹는다
+# (dspy_service._load_surrogate -> surrogate_v2 -> surrogate_features.build_features -> psi).
+# 같은 모듈의 `MACRO_COST` 는 이미 레지스트리 파생이라 자기 자신과 모순돼 있었다.
+#
+# 이제 **id 는 레지스트리가 정한다**. 여기 남는 것은 "어휘 이름 -> DSL primitive 이름" 번역표
+# 하나뿐이고, 그것은 id 재번호에 불변이다(primitive 는 src/respec/spec_dsl.jl 의 어휘라
+# action_registry.json 이 정하는 축이 아니다). 레지스트리에 번역이 없는 이름이 나타나면
+# **조용히 NOOP 으로 무너지지 않고 로드 시점에 죽는다** -- 그 조용한 무너짐이 psi(8) 사고였다.
+_MACRO_NAME_SPECS = {
+    "NOOP":        [],
+    "Replace":     ["ReplaceAgent"],
+    "SwapBattery": ["SwapBattery"],
+    # 은퇴한 팔의 번역은 **남기지 않는다.** 이 파일이 이미 한 번 데인 자리가 정확히 그것이다
+    # (2026-08-15 의 "5·6 유령": 어휘에서 빠진 이름·비용이 소비처 네 곳에 유령으로 남아 감사가
+    #  예외 처리를 하고 있었다). 팔이 레지스트리로 돌아오면 그때 한 줄을 여기 되살리면 되고,
+    # 그전까지는 위 `_macro_specs_from_registry` 가 **모르는 이름에서 시끄럽게 죽는다.**
+    # (primitive 이름 자체는 `_PRIMITIVE_TABLE` 에 그대로 있으므로 `psi(["ForbidZone"])`
+    #  같은 spec_seq 조회는 계속 된다 — 그건 매크로 어휘가 아니라 DSL 어휘다.)
 }
+
+
+def _macro_specs_from_registry():
+    """레지스트리의 {id: name} 을 {id: [primitive 이름]} 으로 번역한다. 모르는 이름은 에러."""
+    out = {}
+    for i, nm in _reg.MACRO_NAME.items():
+        if nm not in _MACRO_NAME_SPECS:
+            raise ValueError(
+                "action_registry.json 의 매크로 %d(%r) 에 대응하는 primitive 번역이 없다 -- "
+                "조용히 NOOP 의 ψ 로 무너뜨리지 않는다. features_agnostic._MACRO_NAME_SPECS 에 "
+                "그 이름을 등록하거나 어휘를 되돌릴 것." % (i, nm))
+        specs = list(_MACRO_NAME_SPECS[nm])
+        for s in specs:
+            if s not in _PRIMITIVE_TABLE:
+                raise ValueError(
+                    "매크로 %d(%r) 의 primitive %r 가 _PRIMITIVE_TABLE 에 없다." % (i, nm, s))
+        out[i] = specs
+    return out
+
+
+MACRO_SPECS = _macro_specs_from_registry()
 
 
 def psi(action):
@@ -456,19 +476,38 @@ def psi(action):
     return {k: out[k] for k in PSI_AXES}
 
 
-def psi_regression_check():
-    """ψ 가 기존 5매크로에서 옛 표와 **한 자리도 다르지 않은지** 검사한다.
+def psi_registry_check():
+    """ψ 의 비용축이 레지스트리(`action_registry.json`)의 cost 와 같은지 검사한다.
 
-    이게 깨지면 조합 확장이 기존 실험 숫자를 조용히 바꾼 것이므로, 비교가 전부 무효가 된다.
+    🔴 2026-08-25 (최종 브랜치 리뷰 C1): 이 함수는 원래 "ψ 가 옛 `_ACTION_TABLE` 과 한 자리도
+    다르지 않은지" 를 봤다. 그런데 두 표가 **같은 구 9팔 리터럴**이라 둘이 함께 틀려도 초록이었고,
+    실제로 v4-3arms 재번호 뒤 psi(2) 가 SwapBattery 자리에서 DeprioritizeAgent 를 돌려주는 동안
+    이 검사는 통과했다. 지금은 `_ACTION_TABLE` 이 없어졌으므로(action_descriptors 가 ψ 파생)
+    그 형태로 남겨 두면 **항진명제** = 실패할 수 없는 게이트가 된다.
+
+    그래서 대조 대상을 **독립 경로**로 바꾼다: ψ 는 이름->primitive 번역을 거쳐 `_PRIMITIVE_TABLE`
+    에서 비용을 얻고, `MACRO_COST` 는 레지스트리 JSON 에서 직접 온다. 두 경로가 갈리면 그것이
+    바로 C1 이 잡은 모순(`MACRO_COST[2]=0.2` vs `psi(2)['a_cost']=0.3`)이다.
+
+    반환: 어긋난 (macro, 레지스트리 cost, psi a_cost) 목록. 정상이면 빈 리스트.
     """
     bad = []
-    for m in (0, 1, 2, 3, 4):
-        old = action_descriptors(m)
-        new = psi(m)
-        for k in ACTION_DESCRIPTORS:
-            if abs(float(old[k]) - float(new[k])) > 1e-12:
-                bad.append((m, k, old[k], new[k]))
+    for m in _reg.ACTIVE_MACROS:
+        want = float(MACRO_COST[m])
+        got = float(psi(m)["a_cost"])
+        if abs(want - got) > 1e-12:
+            bad.append((m, want, got))
     return bad
+
+
+# 로드 시점에 집행한다 -- action_registry.py 의 `assert_vocab_arm_count` 와 같은 규약(조용한
+# 폴백을 두지 않는다). 이 줄이 있으면 C1 은 `import features_agnostic` 에서 즉시 죽는다.
+_psi_bad = psi_registry_check()
+if _psi_bad:
+    raise ValueError(
+        "ψ 의 a_cost 가 action_registry.json 의 cost 와 갈렸다 -- (macro, registry, psi) = %r. "
+        "어휘 이름->primitive 번역(_MACRO_NAME_SPECS) 또는 _PRIMITIVE_TABLE 의 비용을 맞출 것."
+        % (_psi_bad,))
 
 
 # ==========================================================================================
