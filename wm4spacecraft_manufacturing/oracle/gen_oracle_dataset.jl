@@ -88,6 +88,10 @@ include(joinpath(@__DIR__, "..", "core", "objective.jl"))
 using .Objective
 const OBJ_CFG  = Objective.load()
 const OBJ_HASH = Objective.objective_hash(OBJ_CFG)   # 모든 행에 박는다 (spec §7 세대 판정)
+# 어휘 도장 — 모든 라벨 행에 박는다 (2026-08-24, 4팔->3팔 재번호). 레지스트리가 단일
+# 진실원이므로 리터럴을 적지 않는다. 이것이 없으면 v3-4arms 세대의 `macro=2`(RelocateBuild)
+# 행이 새 어휘에서 SwapBattery 로 **조용히** 읽힌다 — 에러 없이 라벨의 의미만 갈린다.
+const VOCAB = ActionRegistry.VOCAB
 # ENERGY_OBJECTIVE 는 **플래너 쪽 손잡이**라 objective.json 의 어떤 스칼라도 바꾸지 않는다 —
 # 즉 objective_hash 로는 껐는지 켰는지 알 수 없다. 그런데 끄면 재풀이가 다른 목적함수를 풀므로
 # 라벨의 세대는 실제로 갈린다. 그래서 **해시에 접지 않고 별도 필드로 각인**한다(F-1):
@@ -1808,27 +1812,37 @@ function run_episodes(io)
             # 있으면 에피소드 모드와 단일사건 모드가 fault 의 팔 집합에 대해 **서로 다른 말을
             # 한다** — 같은 저장소 안에서 어휘가 둘로 갈리는 것이 이 계획이 없애려는 병이다.
             k === :fault && return ActionRegistry.kind_valid(:fault)
-            # zone 팔은 shim 의 _zone_arms() 단일 출처를 따른다(기본 [0,7]=NOOP/RelocateBuild).
-            # 여기 [0,3] 을 하드코딩해 두면 shim 과 어긋나 "덤프에는 3, 실행은 7" 같은 조용한 불일치가 난다.
+            # zone 팔은 shim 의 `_zone_arms()` 단일 출처를 따른다. 여기 리터럴을 박아 두면
+            # shim 과 어긋나 "덤프에는 X, 실행은 Y" 같은 조용한 불일치가 난다.
             #
-            # 2026-08-05(STEP 2): shim 의 `valid_actions(:zone)` 은 이제 **결정 시점의 기하**로 정해진다
-            # (`zone_diagnosis`: 옮길 수 있을 때만 3, 벗어날 Δ 가 있을 때만 7). 여기 이 목록은 그보다
-            # 앞선 시점 — 판을 돌리기 전, 계획만 보고 정하는 **롤아웃 후보**라 기하를 알 수 없다. 그래서
-            # 둘은 역할이 다르며, 어긋난 것이 아니다: 후보로 돌린 팔이 그 시점에 행동 불가였다면
-            # `action_to_proposal` 이 NOOP 팔로 접고 `valid_mask` 에 그 사실이 그대로 남는다.
-            # 3(ForbidZone)까지 롤아웃해 라벨을 얻고 싶으면 DS_EP_MACROS="0,3,7" 로 후보를 넓힌다
-            # (STEP 6 의 가지별 격자가 그렇게 한다).
+            # 🔴 2026-08-24 (3팔 축소) — 이 자리의 옛 주석은 전부 거짓이 됐다. 그것은
+            # `_zone_arms()` 의 기본값이 `[0,7]`(NOOP/RelocateBuild)이고 결정 시점 기하
+            # (`zone_diagnosis`)가 3/7 을 갈라 준다고 적었고, `DS_EP_MACROS="0,3,7"` 로 후보를
+            # 넓히라고 권했다. RelocateBuild 가 어휘에서 삭제되면서 그 셋 다 없어졌다:
+            #   · `_zone_arms()` = `sort(unique(vcat(0, kind_valid(:zone))))` 이고 레지스트리에
+            #     zone 팔이 하나도 없으므로 **오늘 그 값은 `[0]`** 이다.
+            #   · 기하로 좁히던 `_zone_arms_for` 는 매크로 id 2 를 직접 push 했으므로 재번호와
+            #     함께 삭제됐다(ood_mdp_shim.jl:186-191).
+            #   · `DS_EP_MACROS="0,3,7"` 은 이제 **어휘 밖 id** 를 요구하는 것이라
+            #     `action_to_proposal` 이 `nothing` 을 내고 조용히 NOOP 으로 접힌다.
+            # ⚠️ 귀결: `DS_EP_KINDS` 기본값에 아직 `zoneblk` 가 들어 있으므로(위 :1094) 이
+            # 생성기는 **후보가 NOOP 하나뿐인 zone 에피소드**를 계속 만든다 — 대조가 0인 행이다.
+            # 기본값을 바꾸는 것은 이 태스크의 결정이 아니다(Task 3 보고서 C8 참조).
             k in (:zoneblk, :zonecore) && return _zone_arms()
             if k === :battery
-                thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
-                # 🔴 2026-08-24 (3팔 재번호) — 이 두 리터럴의 **의미가 갈렸다**. 값은 그대로 두는
-                # 것이 맞다: mild 의 `2` 는 구 9팔 어휘에서 Deprioritize 였고, v3-4arms 에서는
-                # RelocateBuild(= battery 사건에서 valid 밖 -> action_to_proposal 이 NOOP 으로
-                # 접음)라 **mild 후보가 사실상 NOOP 둘**이었다. v4-3arms 에서 2 = SwapBattery 이므로
-                # 이 줄은 이제서야 의도한 것을 가리킨다.
-                # ⚠️ 남은 간극(이 태스크의 범위 밖, Task 8 재생성이 정할 것): deep 후보에 
-                # SwapBattery 가 없다. shim 의 `valid_actions(:battery, deep)` 은 [0,1,2] 다.
-                return sev <= thr ? [0, 1] : [0, 2]
+                # 🔴 2026-08-24 (Task 3 / R-23) — 여기 있던 `sev <= thr ? [0,1] : [0,2]` 리터럴을
+                # shim 의 `valid_actions` 파생으로 바꿨다. 리터럴이 실제로 무엇을 잃고 있었는가:
+                #   · deep(sev <= thr) 후보가 `[0,1]` 이라 **SwapBattery 가 롤아웃되지 않았다.**
+                #     그런데 shim 의 `canonical_action(:battery)` 은 `2`(SwapBattery)다 — 즉
+                #     라벨 레인이 **채점 기준이 되는 팔을 한 번도 굴리지 않았다.** 오라클이
+                #     deep 배터리의 답으로 SwapBattery 를 낼 수 있는 경로 자체가 없었다.
+                #   · mild 의 `2` 는 어휘 세대마다 다른 것을 가리켰다(9팔 Deprioritize ->
+                #     v3-4arms RelocateBuild = battery 에서 valid 밖 -> NOOP 으로 접힘).
+                # 에피소드 계획의 battery severity 는 **떨어진 뒤의 잔량 SoC** 다(:1173 참조).
+                # 그래서 shim 의 ctx 를 그대로 흉내내 `soc = sev` 로 물어보면 shim 과 정의상
+                # 같은 답이 나온다 — SoC 분할(DS_BATTERY_SOC_SPLIT)도 임계값도 거기 한 곳에만
+                # 산다. 오늘의 값: deep -> [0,1,2], mild -> [0,2].
+                return valid_actions((type = :battery, soc = Float64(sev)))
             end
             return MACROS
         end
@@ -1865,6 +1879,7 @@ function run_episodes(io)
                 # `energy_J` = objective.J_row 가 읽는 이름. 값은 total_energy_J 와 같고 옛 키는
                 # 다른 소비처를 위해 남긴다 — 행 스키마는 `energy_J` 하나로 수렴시킨다(C-1a).
                 "energy_J"=>r.total_energy_J,
+                "vocab"=>VOCAB,
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -1901,6 +1916,7 @@ function run_episodes(io)
             for (pi, p) in enumerate(PROBE_TRACE[])
                 prow = Pair{String,Any}["episode"=>eid, "branch_t"=>t, "macro"=>a,
                                         "probe_idx"=>pi, "closed_at"=>p.closed_at,
+                                        "vocab"=>VOCAB,
                                         "objective_hash"=>OBJ_HASH]   # 라벨은 아니지만 세대 표식은 붙인다
                 for k in propertynames(p.raw); push!(prow, String(k)=>getproperty(p.raw, k)); end
                 println(pio, jrow(prow)); n_probe += 1
@@ -2054,6 +2070,7 @@ function main()
                 "min_soc"=>ctrl.min_soc, "n_stalled"=>ctrl.n_stalled,
                 "mean_soc"=>ctrl.mean_soc, "total_energy_J"=>ctrl.total_energy_J,
                 "energy_J"=>ctrl.total_energy_J,      # objective.J_row 가 읽는 이름 (C-1a)
+                "vocab"=>VOCAB,
                 "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                 "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                 "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)
@@ -2114,6 +2131,7 @@ function main()
                     "label_seconds"=>r.label_seconds, "min_soc"=>r.min_soc, "n_stalled"=>r.n_stalled,
                     "mean_soc"=>r.mean_soc, "total_energy_J"=>r.total_energy_J,
                     "energy_J"=>r.total_energy_J,     # objective.J_row 가 읽는 이름 (C-1a)
+                    "vocab"=>VOCAB,
                     "objective_hash"=>OBJ_HASH, "energy_objective"=>(ENERGY_ON ? 1 : 0),
                     "battery_physics"=>battery_physics_row(),   # 세대의 세 번째 축 (run_demo.jl:822 과 같은 스키마)
                     "hot_swap"=>hot_swap_row(),                 # 세대의 네 번째 축 (Replace 의 집행 방식)

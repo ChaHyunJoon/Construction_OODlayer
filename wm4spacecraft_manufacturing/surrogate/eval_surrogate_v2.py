@@ -25,6 +25,11 @@
 
 행 로딩·필터링 계약 (Task 4·5 가 발견한 제약, 이 파일이 그 호출자다)
 ==================================================================
+  0. **어휘 도장을 먼저 본다** (2026-08-24). 행의 `vocab` 이 `action_registry.VOCAB` 과 다르거나
+     아예 없으면 `ValueError`. 4팔->3팔 재번호로 구세대(`v3-4arms`)의 `macro=2`(RelocateBuild)
+     행이 새 어휘에서 SwapBattery 로 **조용히** 읽히게 됐고, 도장이 그 유일한 방어선이다.
+     `fired` 필터보다 **앞에** 있어야 한다 — 뒤에 두면 도장이 갈린 미발화 행이 필터에 먼저
+     걷혀 사라진다(구세대 반, 현행 반인 파일이 조용히 통과한다).
   1. `e1_analyze.load()` 로 읽는다 — `makespan` 143행이 JSON 문자열 `"Inf"`, `soc`/
      `zone_radius` 220/235행이 `"NaN"` 이다. pandas 로 직접 읽으면 object-dtype 문자열
      컬럼이 되어 조용히 오염된다.
@@ -58,6 +63,7 @@ from threadpoolctl import threadpool_limits
 # `sys.path.insert(0, <이 파일 폴더>)` 한 줄이었다 — 그때는 모든 py 가 한 폴더였다.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import wmpath                                            # noqa: E402,F401
+import action_registry                                   # noqa: E402
 import e1_analyze                                        # noqa: E402
 import objective                                         # noqa: E402
 import wm_datasets                                       # noqa: E402
@@ -122,10 +128,20 @@ MODELS = {"tree2h": SurrogateV2, "ridge": RidgeJ, "linear2h": LinearTwoHead}
 #  데이터
 # ==========================================================================================
 def load_rows(path):
-    """라벨 파일 -> 행 dict 목록. 위 docstring 의 로딩 계약 1·2 를 여기서 집행한다."""
+    """라벨 파일 -> 행 dict 목록. 위 docstring 의 로딩 계약 0·1·2 를 여기서 집행한다."""
     if not os.path.exists(path):
         raise SystemExit("라벨 파일이 없다: %s — 폴백하지 않는다(n44_plus78 금지)." % path)
     df = e1_analyze.load(path)                       # 계약 1: "Inf"/"NaN" 문자열 복원
+    # 계약 0 (2026-08-24): 어휘 도장. 2026-08-24 의 4팔->3팔 재번호로 구세대 파일의
+    # macro=2(RelocateBuild) 행이 새 어휘에서 SwapBattery 로 **조용히** 읽히게 됐다.
+    # fired 필터보다 **앞에서** 본다 -- 필터가 행을 다 걷어내면 검사할 것이 없어진다.
+    if "vocab" not in df.columns:
+        raise ValueError("%s: 어휘 도장('vocab') 열이 없다 -- 구세대 라벨이다. 현행은 %r."
+                         % (path, action_registry.VOCAB))
+    stamps = set(df["vocab"].astype(str))
+    if stamps != {action_registry.VOCAB}:
+        raise ValueError("%s: 어휘 도장 불일치 -- 파일 %s vs 현행 %r."
+                         % (path, sorted(stamps), action_registry.VOCAB))
     if "fired" not in df.columns:
         raise SystemExit("라벨에 `fired` 열이 없다 — stub 10행을 거를 수 없다. 조용히 넘어가지 않는다.")
     n_all = len(df)
@@ -140,6 +156,7 @@ def load_rows(path):
     return rows, {"path": path, "rows_in_file": n_all, "rows_after_fired_filter": len(rows),
                   "dropped_unfired_stubs": n_all - len(rows),
                   "instances": len(set(r["instance"] for r in rows)),
+                  "vocab": action_registry.VOCAB,
                   "objective_hash": objective.objective_hash()}
 
 
