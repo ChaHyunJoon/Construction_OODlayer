@@ -11,8 +11,9 @@
 # and measure decision regret / ranking fidelity vs the ORACLE-best macro (feasibility-lexicographic).
 #
 # The surrogate has something to learn ONLY if the oracle-best macro VARIES across instances. Sources
-# of variation here: OOD KIND (fault->Replace, zone->ForbidZone, battery-deep->Replace / battery-mild
-# ->Deprioritize) and SPARE PROVISIONING (few spares -> Replace wedges, so NOOP can win). Both are
+# of variation here: OOD KIND (fault->Replace, battery->SwapBattery; since the 2026-08-24 three-arm
+# reduction zone carries no arm of its own and battery no longer splits on severity) and SPARE
+# PROVISIONING (few spares -> Replace wedges, so NOOP can win). Both are
 # encoded as state features (kind one-hot, soc, spare_count), so a state-reading model can beat any
 # "always pick macro X" baseline. That gap is exactly the E1 signal.
 #
@@ -27,7 +28,7 @@
 #   · 다양한 상황(instance)을 만든다 = OOD 종류 × severity(심각도) × seed(난수씨앗) × 예비로봇 수(spare).
 #   · 각 상황에서 OOD 사건이 터진 그 순간의 "상태 특징(state features)"을 기록한다
 #     (= LLM/surrogate 가 실제로 볼 수 있는 공개 정보와 동일한 것).
-#   · 그리고 후보 DSL 매크로(NOOP/Replace/Deprioritize/ForbidZone/ReformTeam)를 하나씩
+#   · 그리고 후보 DSL 매크로(v4-3arms: NOOP/Replace/SwapBattery)를 하나씩
 #     진짜 시뮬레이터에 넣어 끝까지 돌려보고, 그 실제 결과(완주 여부·makespan 등)를 정답(oracle) 라벨로 남긴다.
 #   · 결과는 (instance, macro) 한 쌍당 JSONL 한 줄로 저장 → 나중에 파이썬이 이걸로 surrogate 를 학습.
 # 프로젝트 안에서의 역할: surrogate(값싼 대리모델)를 학습시킬 "정답 데이터셋"을 만드는 생산기.
@@ -57,7 +58,7 @@ using Printf                                       # @printf(형식화 출력)�
 include(joinpath(@__DIR__, "ood_mdp_shim.jl"))    # was: decpomdp/examples/ood_env.jl + ood_env_mdp.jl
 # navigator.jl 은 CB 모듈 안에서 include 해야 함(world-age 문제 회피: 런타임에 정의되는 함수들이라 CB 스코프 필요).
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))   # fault_action / zone_action / battery (world-age)
-# run_one 의 판간 배터리 초기화(:1465-1467 부근)는 이 include 가 정의하는 심볼들에 걸려 있고
+# run_one 의 판간 배터리 초기화(:1642-1644 부근)는 이 include 가 정의하는 심볼들에 걸려 있고
 # `try ... catch end` 로 감싸여 있다. include 가 실패하거나 순서가 바뀌면 그 세 줄이 **조용한
 # 무동작**이 되어 stall/derate 가 판 사이로 새고, 캠페인 전체가 오류 없이 오염된다(DS_SHARD 가
 # instance 를 라운드로빈으로 쪼개므로 오염이 샤드 배치에 따라 달라져 재현조차 안 된다).
@@ -118,8 +119,9 @@ const SMOKE  = get(ENV, "DS_SMOKE", "0") == "1"              # smoke=참이면 �
 # 라벨링할 매크로 메뉴 = 레지스트리의 **활성 팔**(action_registry.json, Global Constraint 4).
 # 2026-08-16 이전에는 `[0,1,2,3,4,8]` 리터럴이었고, 거기 **7(RelocateBuild)이 빠져 있었다** —
 # zone 의 정식 개입 팔인데 기본 메뉴에 없어서 DS_MACROS 로 따로 넣어 준 격자에서만 라벨됐다.
-# 실험 팔(5·6)은 `is_active()` 가 DS_COMBO_ARMS 로 건다.
-# 8 = SwapBattery(현장 배터리 교체). battery 사건에서만 valid 이므로 다른 kind 에서는 valid_actions 가
+# `is_active()` 의 실험 게이트(DS_COMBO_ARMS)는 그대로지만, 지금 레지스트리에 `experimental`
+# 표식이 달린 팔은 하나도 없다 — 구 조합 팔 5·6 은 2026-08-20 축소에서 사라졌다.
+# 2 = SwapBattery(현장 배터리 교체). battery 사건에서만 valid 이므로 다른 kind 에서는 valid_actions 가
 # 걸러 NOOP 팔로 무너진다(action_to_proposal). VALID_ONLY 모드에서는 valid_mask 가 알아서 고른다.
 const MACROS = ActionRegistry.active_ids()
 # 매크로 번호 → 이름. **레지스트리 파생**(action_registry.json 이 단일 진실원).
@@ -374,6 +376,9 @@ function zone_overlap_frac(env, zkey)
 end
 
 # --- CONSEQUENTIAL zone injector ------------------------------------------------------------------
+# [역사] 아래 주입기 세 종(place_blocking_zone! · place_core_zone! · eval-matched)의 설명과 실측은
+# 구세대 어휘(v3-4arms 이전)의 기록이다 — ForbidZone(구 3)·RelocateBuild(구 7)는 이제 레지스트리에
+# 없고, zone 에는 개입 팔이 하나도 없다(`_zone_arms()` == `[0]`). 주입기 코드 자체는 살아 있다.
 # random_restriction_zone! deliberately caps the radius so the zone is a harmless LOCAL detour (never
 # swallows a goal region) -> inadmissible for the oracle. To make a zone that ForbidZone/restage MUST
 # recover (so ForbidZone becomes oracle-best, a 2nd decision class vs fault->Replace), we place the
@@ -447,6 +452,7 @@ function place_blocking_zone!(env; key::Symbol = :zoneblk, offset::Float64 = 0.0
 end
 
 # --- CORE zone injector: the HARM-carrying zone family (2026-08-03) ---------------------------------
+# [역사] 아래 서술의 RelocateBuild/ForbidZone 은 구세대 어휘다(위 CONSEQUENTIAL 주입기의 표식 참조).
 # place_blocking_zone! above lands on a SUB-assembly's staging area, which the old guard
 # (`zone_clears_root_goals`) required — the root's own delivery goals had to stay clear, because the
 # only spatial repair then was `restage_all_blocked!`, which cannot move the root. The measured
@@ -481,9 +487,11 @@ function place_core_zone!(env; key::Symbol = :zonecore, frac::Float64 = 0.6)
 end
 
 # --- EVAL-MATCHED zone injector: 평가 런과 **같은 사건**을 오라클에도 심는다 (2026-08-12) ----------
+# [역사] 아래 실측(zone_blocked=0 · closed 291 / 22.425s 등)은 구세대 어휘의 기록이다 — 거기 나오는
+# RelocateBuild 는 이제 레지스트리에 없다. 숫자는 재측정 불가라 그대로 보존한다.
 # 왜 필요한가. 이 파일의 `:zone` 가지는 그동안 `CB.zone_action(:zone_ds)` = `random_restriction_zone!`
 # 을 썼는데, 그 함수는 **설계상 아무것도 막지 않는다**: 반지름을 2×로봇반지름으로 캡하고, 선분 양끝이
-# 구역 밖에 남는 자리만 고른다(위 325행 주석이 "inadmissible for the oracle" 이라고 못박아 둔 그
+# 구역 밖에 남는 자리만 고른다(위 :383 주석이 "inadmissible for the oracle" 이라고 못박아 둔 그
 # 함수다). 실측(n44_plus78_d20.jsonl): zone_blocked=0 · zone_overlap=0.0 · zone_work_overlap=0 이고
 # NOOP 과 RelocateBuild 가 무사고 대조군과 **바이트 동일**(closed 291 / 22.425s)이었다. 즉 그
 # 1/1 완주는 "오라클이 zone 을 풀었다"가 아니라 "zone 이 사건이 아니었다"였다.
@@ -1060,7 +1068,9 @@ studied_prod(a::Int, kind::Symbol, severity, n_spare_cfg; hz_seed = nothing) = (
     # not an OOD response) stays canonical — that is the "hold the background policy fixed" rule.
     #
     # ⚠️ 단, **연구 대상이 reform 자신일 때는 그 예외를 끄지 않으면 팔이 안 갈린다** (2026-08-16).
-    #   `maybe_emit_reform_ood!`(ood_injection.jl:645)에는 dedup 이 없어, 무진전이 이어지는 한
+    #   [역사] `maybe_emit_reform_ood!` 는 2026-08-20 4팔 축소에서 **삭제됐다**(ood_injection.jl 의
+    #   `팀 교착 OOD 발화 — 2026-08-20 삭제` 주석). 아래는 그 함수가 살아 있던 시절의 기록이다:
+    #   그 함수에는 dedup 이 없어, 무진전이 이어지는 한
     #   `REFORM_INTERVAL`(=120) 배수마다 **다시** 발화한다. 그래서 이 줄을 조건 없이 두면
     #   NOOP 팔의 판에서도 배경 정책이 120스텝 뒤에 ReformTeam 을 집행한다 — 팔 0 이
     #   "지연된 팔 4" 가 되어 위 주석이 막으려던 바로 그 실패(팔이 바이트 동일해짐)를 재현한다.
@@ -1098,7 +1108,7 @@ const EPISODE_N = parse(Int, get(ENV, "DS_EPISODE_N", "0"))     # 에피소드�
 # 🔴 2026-08-24 (spec §5.1, Task 4 / C12) — 기본값에서 `zoneblk` 를 뺐다. 결정과 그 대가:
 #   왜 뺐나 (둘)
 #     (1) **대조가 0이다.** 3팔 축소 뒤 zone 에피소드의 후보 팔은 `_zone_arms()` = `[0]` 하나뿐이라
-#         (아래 :~1831 의 주석 참조) 이 생성기는 고를 것이 없는 행을 만든다. 라벨 행의 존재
+#         (아래 :~1843 의 주석 참조) 이 생성기는 고를 것이 없는 행을 만든다. 라벨 행의 존재
 #         이유는 "같은 상태에서 팔이 갈리면 결과가 갈린다" 인데, 팔이 하나면 그 진술이 없다.
 #     (2) **held-out 오염.** zone 은 이 실험의 OOD 프로브다(CLAUDE.md §OOD: known 학습 =
 #         fault·battery, 테스트 전용 = zone). 학습 라벨셋에 zone 을 넣으면 "낯선 사건을
@@ -1122,7 +1132,7 @@ const EP_SEV    = Dict(:fault   => 1.0,
                        # 1.0 = 최종 조립 목표 전부를 덮음 = NOOP 으로는 완주 불가.
                        :zonecore => parse(Float64, get(ENV, "DS_EP_CFRAC", "0.6")))
 # 개입 비용 — **레지스트리 파생**(`action_registry.json` 이 단일 진실원).
-# 2026-08-20 이전에는 구 9팔 리터럴이었다. `ACTION_NAME`(:124) 을 파생으로 바꾸면서 이 표만
+# 2026-08-20 이전에는 구 9팔 리터럴이었다. `ACTION_NAME`(:130) 을 파생으로 바꾸면서 이 표만
 # 리터럴로 남았는데, 그 조합은 라벨 행의 **같은 줄에서 옳은 이름 + 틀린 비용**을 찍는다: 어휘가
 # 재번호되는 순간 `macro_name="RelocateBuild", macro_cost=0.3` 처럼 이름은 레지스트리에서,
 # 비용은 옛 리터럴에서 와서 두 값이 서로 다른 어휘를 가리킨다. 아무도 `macro_cost` 를 되읽지
@@ -1231,7 +1241,7 @@ end
 #  stall/derate 는 아예 손대지 않는다). battery.jl:486 이 이름으로 부르는 그 모드이고, 배포
 #  레인(tools/monitor/run_demo.jl)도 비-battery 사건에서 이 모드로 돈다. `BATTERY_STALL`/
 #  `BATTERY_DERATE` 는 기본이 꺼짐(battery.jl:489/:539)이고 run_one 이 판마다 둘을 다시 끄므로
-#  (:1465-1467), 안 부르는 것으로 충분하다 — 켜 놓고 끄는 것이 아니라 처음부터 안 켠다.
+#  (:1642-1644), 안 부르는 것으로 충분하다 — 켜 놓고 끄는 것이 아니라 처음부터 안 켠다.
 #  용도: fault/zoneblk 처럼 배터리가 사건이 아닌 kind 에서도 energy_J 를 유한하게 남겨 완주 행의
 #  J(= makespan + w_E·energy_J)를 채점 가능하게 만든다.
 #
@@ -1432,7 +1442,8 @@ function build_injection(kind::Symbol, severity, seed; fire_at::Int = 0, inject:
     #
     # 왜 별도 주입기를 만들지 않는가. 팀 교착은 심을 수 있는 사건이 아니라 **2차 실패**다 —
     # 스페어 인계(Replace) 뒤에 다중로봇 운반팀이 형성을 못 끝내면서 생긴다. 엔진은 이미 그것을
-    # 감지해 발화한다: `maybe_emit_reform_ood!`(ood_injection.jl:645)가 시뮬 루프에서 매 스텝
+    # 감지해 발화한다: `maybe_emit_reform_ood!`(2026-08-20 에 삭제됐다 — ood_injection.jl 의
+    # `팀 교착 OOD 발화 — 2026-08-20 삭제` 주석; 그래서 이 :reform 가지는 더 이상 발화하지 않는다)가 시뮬 루프에서 매 스텝
     # 돌며(`demo_utils.jl:259`) 무진전이 `REFORM_INTERVAL` 배수에 닿으면 respec 큐에 NL 을 넣는다.
     # `run_one` 은 그 간격을 `DS_REFORM=120` 으로 **데모와 같은 값**에 맞춰 놓았고, NL 문자열도
     # `run_demo.jl:739` 의 것과 한 글자도 같다 = 계획서가 요구한 "같은 조건" 이 이미 성립한다.
@@ -1979,7 +1990,8 @@ function main()
         if kind === :fault
             # severity = 1.0: the victim owns a full pending chain (consequential -> Replace).
             # DS_SPARES may include 0 -> no spare exists, so Replace degenerates and the correct macro
-            # moves to ReformTeam/NOOP. The model must read `spare_count`, not just the kind.
+            # moves to NOOP (the old ReformTeam fallback left the vocabulary on 2026-08-20).
+            # The model must read `spare_count`, not just the kind.
             for ns in SPARES; push!(instances, (:fault, 1.0, seed, ns)); end   # 예비 수준별로 하나씩
         elseif kind === :reform
             # 팀 교착은 **스페어 인계의 2차 실패**다 — 그러니 예비 수준이 그 사건의 severity 축이다
@@ -1990,8 +2002,9 @@ function main()
             # severity = 0.0: SAME kind label, but the victim owns no work -> NOOP is correct.
             for ns in SPARES; push!(instances, (:faultidle, 0.0, seed, ns)); end
         elseif kind === :battery                            # severity 사다리를 훑음(깊은→얕은)
-            # severity = post-drop SoC. DS_BSOC sweeps the ladder: deep (stall now -> Replace) ->
-            # marginal (runs flat later -> Deprioritize) -> mild (finishes anyway -> NOOP).
+            # severity = post-drop SoC. DS_BSOC sweeps the ladder: deep (stall now) -> marginal (runs
+            # flat later) -> mild (finishes anyway). Since 2026-08-24 the canonical arm no longer
+            # splits with the rung -- every battery event grounds as SwapBattery.
             #
             # [2026-08-05] 기본 사다리를 0.05,0.12,0.2,0.3,0.45,0.6 -> **0.02,0.3,0.5** 로 바꿨다.
             # 옛 사다리의 앞 두 칸(0.05/0.12)은 둘 다 정지 임계(0.15) 아래라 **거동이 동일**했고
@@ -2004,8 +2017,9 @@ function main()
         elseif kind === :zoneharm
             push!(instances, (:zoneharm, 0.0, seed, 3))   # zone over a FINISHED staging area -> NOOP
         elseif kind === :zoneblk                            # 겹침 비율(severity)을 훑어 graded OOD 생성
-            # sweep the zone-overlap fraction (severity) -> a GRADED consequential OOD (NOOP<->ForbidZone
-            # flips with overlap). DS_ZFRACS overrides the default sweep.
+            # sweep the zone-overlap fraction (severity) -> a GRADED consequential OOD. [역사] 이 축이
+            # 갈랐던 NOOP<->ForbidZone 은 구세대 어휘다 — 오늘 zone 후보는 NOOP 하나뿐이다.
+            # DS_ZFRACS overrides the default sweep.
             for f in [parse(Float64, s) for s in split(get(ENV, "DS_ZFRACS", "0.5,0.7,0.9,1.1,1.3"), ",")]
                 push!(instances, (:zoneblk, f, seed, 3))   # 각 offset 값을 severity 로
             end

@@ -2,6 +2,8 @@
 # action_registry.jl — 행동 어휘의 **Julia 쪽 유일한 로더**.
 #
 # 왜 있는가 (2026-08-16, Global Constraint 4).
+#   [역사] 아래 세 문단은 구세대 어휘(v3-4arms 이전, 9팔)의 기록이다 — 3(ForbidZone)·4(ReformTeam)·
+#   7(RelocateBuild)·8(SwapBattery) 은 이제 그 번호로도 그 이름으로도 레지스트리에 없다.
 #   단일 진실원은 `wm4spacecraft_manufacturing/action_registry.json` 이고, 파이썬은
 #   `action_registry.py` 로 **파생**해서 읽는다. Julia 쪽에는 그 파생이 없어서
 #   `gen_oracle_dataset.jl` 의 `const MACROS = [0,1,2,3,4,8]` 처럼 **메뉴가 리터럴로**
@@ -42,6 +44,8 @@ const NAME      = Dict(i => String(REGISTRY[i].name)  for i in IDS)
 const COST      = Dict(i => Float64(REGISTRY[i].cost) for i in IDS)
 
 # ---- 어휘 도장 (2026-08-19, spec §2.4·§8; 리뷰 라운드 1 판정 G 로 정정) ---------------------
+# [역사] 아래 논증 안의 "오늘"·"9팔"·"3/5/6 은퇴" 는 전부 구세대 어휘(v3-4arms 이전)의 기록이다.
+# 오늘의 도장은 `action_registry.json` 의 "v4-3arms" 이고 활성 팔은 0/1/2 셋뿐이다. 어서션 자체는 현행이다.
 # `action_registry.py:VOCAB` 과 **같은 JSON 필드**를 읽는다. 두 언어가 같은 파일을 보므로
 # 복붙 리터럴이 생기지 않는다.
 #
@@ -173,8 +177,9 @@ active_ids() = [i for i in IDS if is_active(i)]
 
 그 사건 종류에서 **전제조건상 말이 되는** 활성 팔. `action_registry.KIND_VALID` 의 대응.
 
-상태를 아는 호출자(shim 의 `_zone_arms_for` 처럼 결정 시점 기하를 재는 쪽)가 더 좁힐 수는
-있다 — 이 표는 그 상한이다. 넓히는 방향으로는 못 간다.
+상태를 아는 호출자(결정 시점 기하를 재는 쪽)가 더 좁힐 수는 있다 — 이 표는 그 상한이다.
+넓히는 방향으로는 못 간다. (여기 예시로 적혀 있던 shim 의 `_zone_arms_for` 는 2026-08-24
+3팔 축소에서 삭제됐다 — `ood_mdp_shim.jl:186-191` 의 삭제 주석 참조.)
 """
 function kind_valid(kind)
     k = String(kind)

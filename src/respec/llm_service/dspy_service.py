@@ -92,6 +92,9 @@ def _default_program():
 PROGRAM = os.environ.get("DSPY_PROGRAM") or _default_program()
 
 # ---- 행동 어휘: 레지스트리에서 읽는다 (2026-08-06, Ch-A) ---------------------------------
+# [역사] 이 절 아래의 실측 기록은 구세대 어휘(v3-4arms 이전)의 것이다 — Deprioritize·ForbidZone·
+# RelocateBuild 는 이제 레지스트리에 없고 zone·reform 은 사건 종류가 아니다. 그 산출물은 이미
+# 폐기돼 재측정이 불가능하므로 숫자와 서술은 지우지 않고 그대로 둔다.
 # 여기 있던 리터럴에는 SwapBattery 가 없었다. 그래서 이 서비스로 결정하는 **라이브 데모에서는**
 # battery 사건의 싼 정답(현장 배터리 교체, cost 0.2)을 LLM 이 고를 수조차 없었고, 늘 Replace(1.0)
 # 아니면 Deprioritize(0.3) 중에서만 답했다. 어휘가 정답을 담지 못하면 그 사건의 초과비용은
@@ -106,8 +109,10 @@ from action_registry import (MACRO_NAME as _REG_NAME, MACRO_COST as _REG_COST,  
 # 이름이 이 서비스의 어휘로 조용히 되살아난다. `ACTIVE_MACROS` 는 은퇴(retired)와 실험 게이트
 # (experimental) 를 **모두** 반영한 진짜 "지금 제안 가능한 팔" 목록이다.
 MACROS = [_REG_NAME[i] for i in _REG_ACTIVE]
-# 이벤트 종류별로 애초에 legal 한 매크로(gen_oracle_dataset 의 valid_actions / ood_mdp_shim 의
-# _zone_arms 와 **같은 규칙이어야 한다**).
+# 이벤트 종류별로 애초에 legal 한 매크로. 레지스트리의 `KIND_VALID` 파생이므로 gen_oracle_dataset
+# 의 `valid_actions` 와 같은 출처를 읽는다. (여기 적혀 있던 "shim 의 `_zone_arms` 와 같은 규칙"
+# 은 2026-08-24 3팔 축소 뒤 거짓이다: `_zone_arms()` 는 이제 `[0]` 이고 이 표에는 zone 키가 아예
+# 없어 아래 `_valid_for` 가 MACROS 로 폴백한다.)
 #
 # zone 이 2026-08-03 에 ForbidZone -> RelocateBuild 로 바뀌었다. ForbidZone 의 실행부
 # (restage_all_blocked!)는 "아직 시작 안 한 조립체"만 옮길 수 있는데 그 집합이 빌드 중반에
@@ -148,6 +153,7 @@ def _valid_for(req) -> List[str]:
     return caller if caller else VALID.get(req.kind, MACROS)
 
 # ---- 2026-08-05 (STEP 4): 결정표를 산문으로 주지 않는다 ---------------------------------
+# [역사] 아래 실측(ForbidZone 선택)은 구세대 어휘(v3-4arms 이전)의 기록이다 — 그 팔은 이제 없다.
 # 이 프롬프트의 마지막 두 문장은 원래 결정 규칙 그 자체였다("빌드 전체를 옮기는 게 그 교란보다
 # 이득인가 -- 적치영역 가장자리만 스치는 구역은 보통 아니다"). 규칙을 문장으로 주면 측정되는 것은
 # **추론이 아니라 프롬프트 준수**다. 같은 파일 아래(_IMPERATIVE 주석)에 그 증거가 이미 있다:
@@ -206,6 +212,8 @@ _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
 #  · feature: `surrogate_features.build_features`(22차원)를 **import 해서** 쓴다. 여기서
 #             재조립하면 학습/배포가 조용히 갈린다 — 이 저장소의 반복된 사고다.
 #
+# [역사] 아래 support 기록({0,1,2,7,8}·3·4·5·6·reform kind)은 구세대 어휘(v3-4arms 이전)의 것이다 —
+# 그 팔들도 reform 사건 종류도 이제 레지스트리에 없다. 숫자는 재측정 불가라 그대로 보존한다.
 # 알려진 능력 회귀 — **2026-08-16 에 해소했다. 이력으로 남긴다(왜 있었는지가 다음 사람에게
 # 필요하다).** 2026-08-14 ~ 08-15 동안 배포 학습셋(RELABEL_20260814)의 macro support 는
 # {0,1,2,7,8} 이었고 **ReformTeam(4)·ForbidZone(3) 행이 0줄**이었다. 아래 support 필터가 그
@@ -314,7 +322,9 @@ def _startup():
 
 
 class MacroRequest(BaseModel):
-    kind: str                                  # fault | battery | zone | reform
+    kind: str                                  # fault | battery (레지스트리 KIND_VALID 의 사건 종류).
+    #   "zone" 요청은 아직 도착할 수 있으나 어휘에 zone 팔이 없어 채점되지 않고(reference_policy),
+    #   "reform" 은 2026-08-24 3팔 축소에서 사건 종류에서 빠졌다.
     severity: float = 0.0
     soc: Optional[float] = None                # battery only
     zone_overlap: Optional[float] = None       # zone only
@@ -369,9 +379,9 @@ class MacroRequest(BaseModel):
     zone_nav_downstream: Optional[int] = None      # 막힌 노드 뒤에 걸려 함께 얼어붙는 미완 작업 수
     zone_unfinished_total: Optional[int] = None    # 그 비교 분모(전체 미완 노드 수)
     # valid : 호출자가 **세계를 보고** 계산한 legal 매크로 목록(2026-08-05 추가).
-    #   kind 만으로 정하면 전제조건이 있는 팔(ForbidZone: 아직 시작 안 한 조립체만 옮길 수 있음)을
-    #   "언제나 불법" 또는 "언제나 합법" 중 하나로만 둘 수 있다. 둘 다 틀린다 — 전자는 실행 가능한
-    #   국소 복구를 어휘에서 지워 매번 전역 이동(RelocateBuild)을 시키고, 후자는 조용한 no-op 을
+    #   kind 만으로 정하면 전제조건이 있는 팔(구 어휘의 ForbidZone: 아직 시작 안 한 조립체만 옮길 수
+    #   있음)을 "언제나 불법" 또는 "언제나 합법" 중 하나로만 둘 수 있다. 둘 다 틀린다 — 전자는 실행
+    #   가능한 국소 복구를 어휘에서 지워 매번 전역 이동(구 RelocateBuild)을 시키고, 후자는 조용한 no-op 을
     #   고르게 한다. 상태를 아는 쪽(줄리아)이 계산해 실어 보내는 것이 유일하게 옳은 배치다.
     valid: Optional[List[str]] = None
 
@@ -445,6 +455,8 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
             return None, ("no training support for any valid macro %s "
                           "(surrogate saw %s)" % (valid, sorted(support)))
         # ---- 개입이 하나도 안 남았으면 그것은 예측이 아니다 (2026-08-14, Task 7) ------------
+        # [역사] 아래 실측 대가는 구세대 어휘(v3-4arms 이전)의 기록이다 — ReformTeam 도 reform
+        # 메뉴도 이제 없다. 규약 자체(UNSUPPORTED 로 되돌린다)는 현행이다.
         # `supported ∩ legal` 이 {NOOP} 하나면 랭커는 후보가 하나뿐이라 그것을 "골랐다"고
         # 답한다 — **빈 후보 집합이 예측의 옷을 입은 것**이다. 그리고 그 답은 확신에 차서
         # 나가므로 호출부는 폴백할 기회조차 얻지 못한다.
@@ -506,6 +518,7 @@ DESCRIPTOR_DOC = {
 }
 
 
+# [역사] 아래 관측(ForbidZone 선택)은 구세대 어휘(v3-4arms 이전)의 기록이다 — 그 팔은 이제 없다.
 # 주입기 문장은 "무슨 일이 있었는가" 뒤에 **"무엇을 하라"**를 붙인다:
 #   "... and cannot move; dispatch the nearest backup robot to take over its remaining work."
 #   "... blocking a staging area; restage the affected assembly out of the restricted region."

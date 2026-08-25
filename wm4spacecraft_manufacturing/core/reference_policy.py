@@ -13,6 +13,10 @@ reference_policy.py -- 라이브 스트림의 결정을 "옳았는가"로 채점
 
 각 규칙은 추측이 아니라 이 저장소의 특정 실험에 근거한다(아래 BASIS 문자열이 그 출처다):
 
+[역사] 아래 실험 기록(과 위 반사실 비용 계산의 "팔 4개")은 구세대 어휘(v3-4arms 이전)의 것이다 —
+Deprioritize·RelocateBuild·ReformTeam 은 이제 레지스트리에 없고 zone·reform 은 사건 종류가 아니다.
+그 산출물은 이미 폐기돼 재측정이 불가능하므로 숫자와 서술은 그대로 보존한다.
+
   battery : oracle/out/n44_plus78_d20.jsonl (seed 1, D=20 근거리 창고, 5 instance / 13 row 전체
             중 battery 는 3 instance: severity 0.02/0.30/0.50 사다리 한 칸씩, 칸마다 다른 팔을
             테스트함: 0.02 -> {NOOP, Replace, SwapBattery}, 0.30·0.50 -> {NOOP, Deprioritize,
@@ -70,6 +74,8 @@ BATTERY_DEEP_SOC = 0.5      # n44_plus78_d20 사다리: SwapBattery가 0.02/0.30
                              # (0.02=완주 여부, 0.30·0.50=makespan) -> 상한을 사다리 최고 severity로
 
 BASIS = {
+    # [역사] 아래 문자열의 사다리 기록은 구세대 어휘(v3-4arms 이전)의 것이다 — 각 rung 에서
+    # 굴린 팔 목록의 "Deprioritize" 는 이제 레지스트리에 없다. 숫자는 재측정 불가라 보존한다.
     "battery": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 5 instances / 13 rows "
                 "in this grid (battery kind = 3 of those instances, one per severity rung; arms "
                 "tested per rung: 0.02 -> {NOOP, Replace, SwapBattery}, 0.30/0.50 -> {NOOP, "
@@ -137,6 +143,9 @@ BASIS = {
               "this row) but does not establish it. Historical provenance (not re-verified in "
               "this pass): firegrid_merged.jsonl, 42 fault instances over seeds 1-6, perfect "
               "separation (agent_pending > 0 -> Replace [24/24], == 0 -> NOOP [18/18]).",
+    # [역사] 아래 문자열은 구세대 어휘(v3-4arms 이전)의 기록이다 — RelocateBuild·ReformTeam 은
+    # 이제 레지스트리에 없고, zone 은 2026-08-24 (spec §5.1) 부터 채점되지 않는다(reference_action
+    # 의 ZoneTruth 분기가 unscored 를 낸다). 이 항목은 그 규칙의 근거가 아니라 출처 보존용이다.
     "zone": "oracle/out/n44_plus78_d20.jsonl, seed 1, D=20 (near depot), 1 zone instance only "
              "(severity 1.0) -- NOOP and RelocateBuild TIE exactly (both complete, closed "
              "291/313, identical makespan 22.425s): this grid does not test the rule below, the "
@@ -189,6 +198,8 @@ def reference_action(ev):
         if soc is None:
             return None, "battery", "SoC not a finite number"
         if soc <= BATTERY_DEEP_SOC:
+            # [역사] 아래 사다리 기록은 구세대 어휘(v3-4arms 이전)의 것이다 — "세 팔" 중
+            # Deprioritize 는 이제 레지스트리에 없다. 숫자는 재측정 불가라 그대로 둔다.
             # 깊은 방전 = 개입하지 않으면 그 로봇은 죽는다. D=20 사다리(n44_plus78_d20)에서는
             # SoC 0.02 는 SwapBattery만 완주(NOOP·Replace 미완주)해 근거가 **완주 여부**이고,
             # SoC 0.30·0.50 은 세 팔(NOOP/Deprioritize/SwapBattery) 전부 완주하지만 SwapBattery

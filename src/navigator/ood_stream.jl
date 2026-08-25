@@ -7,10 +7,10 @@
 #  세 가지 OOD 종류를 섞어 심는다:
 #    :fault   — 로봇 고장          (→ ReplaceAgent / 재배정, fault_action)
 #    :battery — 배터리 열화(SoC↓)  (→ 에너지 인지 replan이 경로 재조정, battery_action)
-#    :zone    — 통행금지 구역 출현  (→ ForbidZone / restage, zone_action)
+#    :zone    — 통행금지 구역 출현  (→ zone_action. 2026-08-24 3팔 축소 뒤 zone 에 대응하는 팔은 어휘에 없다)
 #  발화 시점은 "빌드 진척도(닫힌 노드 수, closed-node count)" 임계값 기준 — 기계/속도가 달라도 재현되게.
-#  채점을 위해 세 종류 모두 정답(truth)을 기록한다. 특히 battery는 심각도로 갈린다(REPLACE_SOC_THRESHOLD):
-#    깊은 방전 → 하드 Replace, 가벼운 열화 → 소프트 Deprioritize.
+#  채점을 위해 세 종류 모두 정답(truth)을 기록한다. battery 의 정답은 심각도와 무관하게 SwapBattery 하나다
+#    (2026-08-24 3팔 축소로 soft 팔이 없어져 truth_key(::BatteryTruth) 의 SoC 분할이 폐기됐다).
 #  평소 실행엔 영향 없음(호출하기 전까지 잠들어 있음).
 #
 #  Julia 문법 참고(처음 보는 사람용):
@@ -32,14 +32,14 @@
 # kinds, so a single run exercises repeated adaptive replanning:
 #   :fault   — a robot breaks down            (-> ReplaceAgent / reassign, via fault_action)
 #   :battery — a robot's battery degrades     (-> SoC drop; energy-aware replan re-routes it)
-#   :zone    — a no-go zone appears           (-> ForbidZone / restage, via zone_action)
+#   :zone    — a no-go zone appears           (-> via zone_action; the vocabulary has no zone arm)
 #
 # Each trigger uses build-PROGRESS thresholds (closed-node counts) rather than raw sim steps:
 # reproducible across machines/speeds (same rationale as schedule_ood_at_closed!). Truth is
-# recorded for ALL THREE kinds (grounding eval): :fault and :zone via the ood_truth.jl wrappers,
-# and :battery via `battery_action` below, which logs a `BatteryTruth(robot, soc_after)`. The
-# battery canonical is SEVERITY-SPLIT (see REPLACE_SOC_THRESHOLD): a deep discharge grounds as a
-# hard Replace, a mild degradation as a soft Deprioritize.
+# recorded for ALL THREE kinds: :fault and :zone via the ood_truth.jl wrappers, and :battery via
+# `battery_action` below, which logs a `BatteryTruth(robot, soc_after)`. Since the 2026-08-24
+# three-arm reduction the battery canonical is SEVERITY-INDEPENDENT -- every battery event grounds
+# as SwapBattery -- and only :fault and :battery are scored (zone specs no longer ground).
 #
 # Depends on (all in-module by include order): schedule_ood_at_closed! (ood_injection.jl),
 # fault_action / zone_action (navigator/ood_truth.jl), inject_battery_fault! (navigator/battery.jl).
@@ -51,9 +51,9 @@
 A scheduled-OOD action that drops a robot's battery SoC mid-sim. Returns the NL event and lets the
 injector (`ood_inject_step!`) enqueue it (so we pass `enqueue=false` to avoid a double push). It ALSO
 records the ground-truth label `BatteryTruth(robot, soc_after)` into `OOD_TRUTH_LOG` (evaluator-only),
-so battery events are scored in decision-quality just like fault/zone. The canonical response is
-severity-split at `REPLACE_SOC_THRESHOLD` (deep discharge -> Replace, degradation -> Deprioritize),
-resolved from the recorded `soc_after` by `truth_key(::BatteryTruth)`.
+so battery events are scored in decision-quality just like fault. The canonical response is
+SwapBattery whatever the severity (2026-08-24 three-arm reduction): `truth_key(::BatteryTruth)`
+no longer splits on the recorded `soc_after`.
 """
 # 시뮬레이션 도중 한 로봇의 배터리 SoC를 떨어뜨리는 스케줄용 액션. env를 받는 클로저를 반환한다.
 # 자연어 사건설명(nl)을 돌려주고, 동시에 정답 라벨 BatteryTruth(robot, soc_after)를 로그에 기록해 채점에 씀.
@@ -110,14 +110,15 @@ after the env/schedule are built and BEFORE stepping. Combine with `init_battery
 Reproducible when `seed` is given. Zone keys are auto-numbered (`:zone_rand_1`, …) so multiple
 zones coexist. `:battery` events need an initialized fleet (otherwise they no-op harmlessly).
 
-Battery SEVERITY is drawn per event so BOTH canonical classes occur: with probability
+Battery SEVERITY is drawn per event so both magnitudes occur: with probability
 `battery_severe_frac` the event is a DEEP discharge (`severe_soc_drop`, default 1.0 -> SoC floor 0,
-below `REPLACE_SOC_THRESHOLD` -> canonical Replace); otherwise a mild degradation (`soc_drop` ->
-canonical Deprioritize). Set `battery_severe_frac=0` to recover the old always-degradation behaviour.
+below `REPLACE_SOC_THRESHOLD`); otherwise a mild degradation (`soc_drop`). Set
+`battery_severe_frac=0` to recover the old always-degradation behaviour. The CANONICAL RESPONSE no
+longer splits on severity (2026-08-24 three-arm reduction): both magnitudes ground as SwapBattery.
 """
 # n개의 일회성 OOD 트리거를 [closed_lo, closed_hi] 진척 구간의 무작위 지점에 심는다(종류는 kinds에서 무작위).
 # env/스케줄을 다 만든 뒤, 스텝을 돌리기 전에 한 번 호출. seed를 주면 재현 가능.
-# battery는 매 사건마다 심각도를 뽑아 심함(severe_soc_drop, 깊은 방전→Replace)/약함(soc_drop→Deprioritize) 둘 다 나오게 함.
+# battery는 매 사건마다 심각도를 뽑아 심함(severe_soc_drop, 깊은 방전)/약함(soc_drop) 둘 다 나오게 함(정답 팔은 둘 다 SwapBattery).
 # battery_severe_frac=0으로 두면 예전처럼 항상 약한 열화만 발생.
 function schedule_random_ood!(; n::Int=3, kinds::Vector{Symbol}=[:fault, :battery, :zone],
         closed_lo::Int=4, closed_hi::Int=40, seed::Union{Nothing,Int}=nothing,

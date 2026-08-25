@@ -33,7 +33,8 @@
 #
 #  THREE COMPETING RISKS ARE MODELLED
 #    :break  per-robot sudden breakdown        -> fault_action  (FaultTruth)
-#    :cell   per-robot battery cell degradation-> battery_action(BatteryTruth, severity-split)
+#    :cell   per-robot battery cell degradation-> battery_action(BatteryTruth; the DROP is
+#            severity-split, the LABEL is not -- both magnitudes ground as SwapBattery since 2026-08-24)
 #    :zone   fleet-level no-go zone appearing  -> zone_action   (ZoneTruth)
 #  Breakdown is TERMINAL for that robot; cell degradation RE-ARMS (a robot can
 #  degrade more than once); zone is a global process that always re-arms.
@@ -88,9 +89,9 @@ Base.@kwdef struct HazardParams
 
     # --- (B) 배터리 셀 열화(cell degradation) 위험 -------------------------------
     mtbf_cell_s::Float64    = 1200.0   # 셀 고장/급락 사건의 평균 간격
-    cell_severe_frac::Float64 = 0.5    # 이 확률로 "깊은 방전"(→ canonical Replace)
+    cell_severe_frac::Float64 = 0.5    # 이 확률로 "깊은 방전"(고장과 같은 안전 조건을 요구하는 낙폭)
     cell_severe_drop::Float64 = 1.0    # 깊은 방전 시 SoC 낙폭(1.0 = 바닥까지)
-    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한(→ canonical Deprioritize)
+    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한(정답 팔은 깊은 방전과 같은 SwapBattery)
     cell_mild_hi::Float64   = 0.70     # 가벼운 열화 낙폭 상한
 
     # --- (C) 통행금지 구역 출현(fleet-level) 위험 --------------------------------
@@ -117,7 +118,7 @@ Base.@kwdef struct HazardParams
                                        # (D-7) 이 손잡이가 막는 것은 "예비 소진 시 음소거" 가
                                        # 아니라 **그 가정이 깨졌을 때 조용히 음소거되는 것**이다.
                                        # true 로 되돌리면 가정 위반이 에러가 아니라 침묵이 된다.
-    fire_obstacle::Bool     = false    # 고장 자리를 장애물로 남길지(ForbidZone 과분류 방지 위해 기본 false)
+    fire_obstacle::Bool     = false    # 고장 자리를 장애물로 남길지(zone 사건 과분류 방지 위해 기본 false)
     fire_clear::Bool        = true     # 고장 본체를 즉시 견인해 치울지
     max_events::Int         = 64       # 안전 상한(런어웨이 방지)
 end
@@ -585,14 +586,15 @@ function _hz_fire_break!(env, st::HazardState, id, soc, mode)
 end
 
 # --- 배터리 셀 열화 발화 -------------------------------------------------------------
-# 낙폭을 확률적으로 뽑아 심각도를 가른다: 깊은 방전(→ canonical Replace) / 가벼운 열화(→ Deprioritize).
+# 낙폭을 확률적으로 뽑아 심각도를 가른다: 깊은 방전 / 가벼운 열화. 2026-08-24 3팔 축소 뒤
+# 정답 팔은 둘 다 SwapBattery 이고, 심각도가 가르는 것은 낙폭과 아래 발화 안전 조건뿐이다.
 # battery_action 이 SoC 를 실제로 떨어뜨리고 BatteryTruth(심각도 채점의 근거)를 기록한다.
 #
 # ENACTMENT 제약(모형 제약이 아님): 깊은 방전은 downstream 에서 사실상 breakdown 으로 취급되어
 # 스페어 인계(Replace)를 부르므로, 급작 고장과 똑같은 안전 조건(단독 frontier + 예비 존재)을
 # 요구한다. 다인 운반팀 한가운데의 로봇을 깊은 방전시키면 팀이 형성 중에 끼어(wedge) 빌드가
 # 멈춘다 — 실제로 첫 e2e 에서 t=2.9s 에 그렇게 되어 270초를 교착으로 날렸다.
-# 가벼운 열화는 soft Deprioritize 로 끝나므로 아무 로봇에게나 자유롭게 발화한다.
+# 가벼운 열화는 현장 배터리 교체(SwapBattery)로 끝나므로 아무 로봇에게나 자유롭게 발화한다.
 #
 # --- CRN 누수 수정 (spec §5.7) -------------------------------------------------------------
 # 원래 코드는 안전 가드보다 **먼저** rand 를 불렀고, 가드가 유예시키면 그 뽑기가 버려졌다.
@@ -615,7 +617,7 @@ function _hz_fire_cell!(env, st::HazardState, id, soc, mode)
     p = st.params
     BATTERY_FLEET[] === nothing && return nothing        # 배터리 계층이 없으면 이 위험은 의미 없음
     drop = _hz_draw_cell_drop!(st, id)      # 유예되면 같은 값을 재사용한다(CRN, spec §5.7)
-    # 이 낙폭이 "깊은 방전"인지 = 결과 SoC 가 canonical Replace 임계 이하로 떨어지는지.
+    # 이 낙폭이 "깊은 방전"인지 = 결과 SoC 가 REPLACE_SOC_THRESHOLD 이하로 떨어지는지.
     thr_replace = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.2
     if max(0.0, soc - drop) <= thr_replace               # 깊은 방전 -> 고장과 동일한 안전 조건 요구
         p.fire_safe_target && !_hz_safe_target(env, id) && return nothing
