@@ -331,6 +331,50 @@ function event_descriptors_of(env, truth)
 end
 
 """
+    route_verdict(; desc, have_det, drives, policy, v=nothing, eps=nothing) -> Dict
+
+라우팅 판정 Dict 를 만든다. **세 분기 전부 `"descriptors"` 키를 갖는다.**
+
+🔴 왜 분리했나 (2026-08-26): 라우팅은 교정값이 있어야 하지만 서술자 계산은 **필요 없다**
+(`event_descriptors_of` 는 교정값(novelty detector)을 안 읽는다 — 그래서 교정 유무와 무관하게
+계산된다; `ood_features` 를 거쳐 env/CB 내부 상태를 읽고 던질 수 있어 순수 함수는 아니다).
+둘이 한 게이트에 묶여 있어서, 교정 파일이 없는 동안 LLM 이 서술자를 한 번도 못 받았다. 이
+함수는 교정 유무와 무관하게 `desc` 를 그대로 싣는다. `desc === nothing`(계산 실패)일 때도
+**키를 지우지 않는다** — "못 쟀다"와 "안 실었다"는 다른 사건이고, 키가 없으면 소비처가 둘을
+구분할 수 없다.
+"""
+function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractString,
+                       v = nothing, eps = nothing)
+    base = Dict{String,Any}("descriptors" => desc)
+    if !have_det
+        return merge(base, Dict{String,Any}(
+            "enabled" => false, "advisory" => false, "target" => policy,
+            "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
+            "reason" => "no novelty calibration installed -> gate inactive " *
+                        "(DEMO_POLICY=$(policy) fixed for the run)"))
+    end
+    if v === nothing
+        return merge(base, Dict{String,Any}(
+            "enabled" => false, "advisory" => false, "target" => policy,
+            "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
+            "reason" => "descriptors unavailable"))
+    end
+    would = v.novel ? "dspy" : "surrogate"
+    msg = v.novel ?
+        "novelty p=$(round(v.p; digits=3)) < eps=$(round(eps; digits=3)) — NEVER SEEN THIS BEFORE → ask the LLM" :
+        "novelty p=$(round(v.p; digits=3)) ≥ eps=$(round(eps; digits=3)) — familiar → surrogate (0.11 ms)"
+    return merge(base, Dict{String,Any}(
+        "enabled" => drives, "advisory" => !drives,
+        "target" => drives ? would : policy, "would_route_to" => would,
+        "novel" => v.novel,
+        "p" => (isfinite(v.p) ? v.p : nothing),
+        "score" => (isfinite(v.score) ? v.score : nothing),
+        "eps" => eps,
+        "reason" => drives ? msg :
+            msg * "  (advisory only — this recording enacted DEMO_POLICY=$(policy), fixed)"))
+end
+
+"""
     route(env, truth) -> Dict
 
 이 사건을 누구에게 보낼지 **시스템이** 정한다.
@@ -358,39 +402,23 @@ function route(env, truth)
     # noop 은 "정책 후보" 가 아니라 **통제 실험의 바닥선**이다. 개입이 실제로 이득인지 재려면
     # 아무도 이 lane 을 대신 판단해 주면 안 된다. 그래서 라우팅 자체를 끈다(판정은 참고용 기록).
     drives = have_det && router_enabled() && POLICY != "noop"
-    if !have_det
-        return Dict{String,Any}("enabled" => false, "advisory" => false, "target" => POLICY,
-                                "novel" => false, "p" => nothing, "score" => nothing,
-                                "eps" => nothing,
-                                "reason" => "no novelty calibration installed -> gate inactive " *
-                                            "(DEMO_POLICY=$(POLICY) fixed for the run)")
-    end
+
+    # 🔴 서술자를 **먼저** 계산한다. 교정 유무와 무관하다 — 계산은 event_descriptors_of 의
+    # docstring 이 말하듯 교정값(novelty detector)을 안 읽는다.
     desc = try event_descriptors_of(env, truth) catch e
         @warn "descriptor computation failed -> router falls back" exception = e
         nothing
     end
-    desc === nothing && return Dict{String,Any}("enabled" => false, "advisory" => false,
-        "target" => POLICY, "novel" => false, "p" => nothing, "score" => nothing,
-        "eps" => nothing, "reason" => "descriptors unavailable")
+
+    have_det || return route_verdict(desc = desc, have_det = false, drives = false,
+                                     policy = POLICY)
+    desc === nothing && return route_verdict(desc = nothing, have_det = true, drives = drives,
+                                             policy = POLICY)
+
     v = CB.novelty_verdict(desc; eps = ROUTER_EPS)
     eps = ROUTER_EPS === nothing ? (try CB.novelty_detector().alpha catch; 0.05 end) : ROUTER_EPS
-    would = v.novel ? "dspy" : "surrogate"
-    base = v.novel ?
-        "novelty p=$(round(v.p; digits=3)) < eps=$(round(eps; digits=3)) — NEVER SEEN THIS BEFORE → ask the LLM" :
-        "novelty p=$(round(v.p; digits=3)) ≥ eps=$(round(eps; digits=3)) — familiar → surrogate (0.11 ms)"
-    return Dict{String,Any}(
-        "enabled"  => drives,                     # 실행을 정하는가
-        "advisory" => !drives,                    # 참고용으로만 기록된 판정인가
-        "target"   => drives ? would : POLICY,    # 실제로 실행될 정책
-        "would_route_to" => would,                # 라우터라면 골랐을 정책
-        "novel"    => v.novel,
-        "p"        => (isfinite(v.p) ? v.p : nothing),
-        "score"    => (isfinite(v.score) ? v.score : nothing),
-        "eps"      => eps,
-        "descriptors" => desc,
-        # reason 은 대시보드 ROUTER 줄에 그대로 표시되므로 영어로 쓴다(화면 문구는 전부 영어).
-        "reason"   => drives ? base :
-            base * "  (advisory only — this recording enacted DEMO_POLICY=$(POLICY), fixed)")
+    return route_verdict(desc = desc, have_det = true, drives = drives, policy = POLICY,
+                         v = v, eps = eps)
 end
 
 const DSPY_HEALTHY = Ref{Union{Nothing,Bool}}(nothing)

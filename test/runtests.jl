@@ -94,6 +94,14 @@ end
         include("policy_macro_binding.jl")
     end
 
+    # 2026-08-26 (tool-lane step A, Task 1): 교정 파일이 없어도 event_descriptors_of 의
+    # 결과가 route() 의 모든 반환 분기에 "descriptors" 키로 실리는지. 이 키가 빠지면 LLM 이
+    # 문장 한 줄만 받고 숫자 서술자를 못 받는다(교정 유무와 서술자 계산이 한 게이트에 묶였던
+    # 옛 결함의 재발 방지).
+    @testset "router descriptors survive a missing calibration" begin
+        include("route_descriptors_survive.jl")
+    end
+
     # 🔴 2026-08-25 (최종 브랜치 리뷰 F1): 아래 셋은 **레지스트리 파생과 도장 계약을 지키는
     # 게이트인데 이 진입점에 실려 있지 않았다** — 누가 손으로 `julia +lts --project=.
     # test/<파일>.jl` 를 칠 때만 돌았다. "돌지 않는 게이트" 는 "실패할 수 없는 게이트" 의
