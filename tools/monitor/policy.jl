@@ -1041,13 +1041,19 @@ function decide_all(env, truth; nl::AbstractString = "")
 
     enacted = requested
     fell_back = false
-    if get(rt, "enabled", false)
+    # 🔴 `get(rt, "enabled", false)` 였다 (2026-08-27). 그 값은 have_det 을 포함하므로 교정 파일이
+    #    없으면 **레인 선택 자체가 안 돌았다** — 축 1 이 select_lane 에 도달조차 못 한다.
+    #    레인 선택은 novelty 수치가 없어도 성립한다: 축 1 은 지원집합만 보고, 축 2(임시 novelty)는
+    #    `rt["novel"]` 이 없으면 false 로 읽혀 그냥 발화하지 않는다.
+    if router_enabled() && POLICY != "noop"
         local sel = select_lane(novel = get(rt, "novel", false) === true, available = avail,
                                 supported = supported, policy = POLICY)
         enacted = sel.lane
         # 기존 문구를 **덮어쓰지 않고 덧붙인다** — novelty 수치가 든 줄이 화면에서 사라지면 안 된다.
         rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason
         rt["lane_reason"] = sel.reason
+        # 어느 축이 이 판정을 냈는가. 산문에서 역파싱하지 않는다 — 설계서 R5 가 이 값을 센다.
+        rt["router_axis"] = sel.axis
         fell_back = (enacted != requested && enacted == "canonical")
     end
     # 고정 정책 실행(라우터 OFF)이거나, 고른 레인이 실제로는 쓸 수 없을 때의 마지막 그물.
@@ -1061,7 +1067,15 @@ function decide_all(env, truth; nl::AbstractString = "")
     # 넘어가고, "surrogate 를 쟀다"고 적은 판이 사실은 LLM 판이 된다 — STATUS §5 가 정책 비교 시
     # 라우터를 끄라고 적은 바로 그 사고다. 그래서 격상은 라우터가 실제로 몰 때만 허용한다.
     # (진단 기록은 아래에서 조건과 무관하게 계속 남는다 — 감사 증거는 언제나 남긴다는 원칙.)
-    escalation_allowed = get(rt, "enabled", false)
+    # ---- 격상 손잡이 (2026-08-27, 설계서 §3) -------------------------------------------------
+    # 🔴 예전에는 `get(rt, "enabled", false)` 였다. 그 값은 `have_det && router_enabled() &&
+    #    POLICY != "noop"` 이라 **novelty 교정 파일이 있어야만** 어휘 미달 격상이 열렸다.
+    #    그런데 "이 팔을 학습한 적이 있는가" 는 교정과 아무 상관이 없는 사실이다. 교정 디렉토리가
+    #    없는 동안(= 지금) 어휘 미달은 한 번도 격상할 수 없었다.
+    # ⚠️ 원래 그 게이트가 막으려던 것은 실재한다: DEMO_ROUTER=0 으로 정책을 고정한 비교 실행에서
+    #    사건에 따라 조용히 dspy 로 넘어가면 "surrogate 를 쟀다"고 적은 판이 LLM 판이 된다.
+    #    그래서 그 보호는 **사람이 켠 손잡이**로 보존하고, 교정 유무(have_det)만 뗀다.
+    escalation_allowed = router_enabled() && POLICY != "noop"
 
     # ---- 표현력 에스컬레이션 (2026-08-04) ---------------------------------------------------
     # novelty 라우터는 **상태**가 낯선지만 본다. 그런데 싼 정책이 못 하는 이유가 하나 더 있다:

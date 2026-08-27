@@ -137,6 +137,28 @@ check("T6 누락이 없으면 격상하지 않는다", t6 == "" && isempty(m6))
 t6b, m6b = escalation_target(pol6, "oracle", true)
 check("T6b 모르는 정책 이름이면 조용히 빈 값(예외 아님)", t6b == "" && isempty(m6b))
 
+# ---------------------------------------------------------------------------------------------
+# T7 (2026-08-27, 계약 고정) 어휘 미달 격상은 novelty 교정과 무관하다.
+#     🔴 이 파일에는 `@testset`이 없다(자체 check() 관용구로 센다) — 파일 끝의 println/exit
+#     뒤에 @testset을 붙이면 exit 뒤의 죽은 코드가 되어 영원히 안 도는 검사가 된다.
+#     `pol` 은 서비스 응답을 정규화한 Dict 다. surrogate 가 SwapBattery 를 학습한 적이 없다.
+# ---------------------------------------------------------------------------------------------
+pol7 = Dict(
+    "surrogate" => Dict("chosen" => "NOOP", "available" => true,
+                        "unsupported" => ["SwapBattery"]),
+    "dspy"      => Dict("chosen" => "SwapBattery", "available" => true))
+
+# 🔴 이것이 이 태스크의 전부다: 교정 파일이 없어도(=have_det false) 어휘 미달은 격상한다.
+#    `allowed` 는 이제 have_det 이 아니라 사람이 켠 손잡이만 나른다.
+t7, m7 = escalation_target(pol7, "surrogate", true)
+check("T7 어휘 미달은 손잡이가 켜져 있으면(have_det 와 무관) 격상한다",
+      t7 == "dspy" && m7 == ["SwapBattery"], "target=$(t7) missing=$(m7)")
+
+# 손잡이를 끈 비교 실행에서는 레인이 안 바뀐다 — 그런데 **진단은 남는다.**
+t7b, m7b = escalation_target(pol7, "surrogate", false)
+check("T7b 손잡이가 꺼지면 격상은 안 하지만 누락 진단은 남긴다",
+      t7b == "" && m7b == ["SwapBattery"], "target=$(t7b) missing=$(m7b)")
+
 println()
 println(nfail == 0 ? "전부 통과 ($(npass))" : "$(nfail)개 실패 / $(npass)개 통과")
 exit(nfail == 0 ? 0 : 1)

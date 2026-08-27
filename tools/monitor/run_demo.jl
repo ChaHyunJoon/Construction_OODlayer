@@ -324,6 +324,13 @@ function handle_ood!(env, truth, nl)
         "router_novel" => (try get(decision.router, "novel", nothing) catch; nothing end),
         "router_p"     => (try get(decision.router, "p", nothing) catch; nothing end),
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
+        # 어느 축(control/vocabulary_gap/novelty/none)이 이 결정을 냈는가 (2026-08-27, Task 3).
+        # 설계서 §5: "도장만 찍고 소비처를 안 만드는 것이 kind 경계가 얼어붙은 채 아무도 모르게
+        # 만든 그 실패다" — router_axis 를 policy.jl 에 심고 여기 화이트리스트에 안 넣으면
+        # 모니터 스트림에는 나가도 결정 행에는 안 실려, 축별 발화 집합(R5)을 잴 수 없다.
+        # 🔴 키가 없으면 `nothing`(=이 결정에는 레인 선택이 없었다) — `"none"`(=선택했는데 축이
+        # 안 발화했다)으로 채우지 않는다. 다른 사건이다.
+        "router_axis"   => (try get(decision.router, "router_axis", nothing) catch; nothing end),
         "escalated"     => (try haskey(decision.router, "escalated_from") catch; false end),
         # 1-step deviation (2026-08-17): policy.jl 이 rt 에 심은 것을 그대로 옮긴다. Task 2 의
         # sample_grid.py 는 스트림이 아니라 **이 decisions 목록**을 읽으므로, 여기 없으면 게이트가
