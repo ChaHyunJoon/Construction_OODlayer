@@ -120,6 +120,33 @@ end
         include("smdp_hazard_knobs.jl")
     end
 
+    # 🔴 2026-08-25: 방전 정지가 **결정 epoch 를 만들지 않는다**는 계약. 지운 `_fire_battery_stall!`
+    # 이 되살아나거나, 정지 기록(`STALLED_ROBOTS`)이 같이 지워지면 빨개진다 — 후자는 스케줄 DAG
+    # 교착의 유일한 사후 증거를 잃는 것이라 전자만큼 비싸다.
+    @testset "battery stall raises no OOD" begin
+        include("battery_stall_no_ood.jl")
+    end
+
+    # 🔴 2026-08-25: zone 주입 게이트가 어휘(`case_kinds`)에서 분리돼 있는가. `:zone in kinds` 로
+    # 되돌아가면 주입기 넷이 다시 도달 불가가 된다(2026-08-24~25 동안 실제로 그랬다).
+    @testset "zone injection gate" begin
+        include(normpath(joinpath(@__DIR__, "..", "tools", "monitor", "test_zone_gate.jl")))
+    end
+
+    # 🔴 2026-08-25: battery 메뉴의 SoC 분할이 **두 레인에서 같은가**. 라벨 레인만 갈랐던 시절엔
+    # mild 에서 실행 레인이 라벨 격자에 없는 팔을 골랐다(= surrogate 가 본 적 없는 팔).
+    # 같은 파일이 mild 가 NOOP-only 라는 설계 결정(= L2 인계 표식)도 함께 지킨다.
+    @testset "battery menu lanes agree" begin
+        include("battery_menu_lanes_agree.jl")
+    end
+
+    # 🔴 2026-08-25: `DS_BSOC` 기본 사다리의 모든 칸이 채점 가능한 deep 구간인가(= 팔을 비교할 수
+    # 있는가). mild 칸이 다시 들어오면 대조가 0인 행이 생기고, 칸이 하나로 줄면 2026-08-05 에
+    # 고친 "심각도 축이 점 하나" 결함이 재현된다 — 두 어서션이 각각 그 둘을 막는다.
+    @testset "battery ladder is deep-only" begin
+        include("battery_ladder_is_deep_only.jl")
+    end
+
     # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
     # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
     # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다

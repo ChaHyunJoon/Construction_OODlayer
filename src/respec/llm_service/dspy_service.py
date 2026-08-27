@@ -330,7 +330,7 @@ app = FastAPI(title="ConstructionBots DSPy macro producer")
 
 @app.on_event("startup")
 def _startup():
-    lm = dspy.LM("openai/%s" % MODEL, temperature=0.0, max_tokens=300, cache=True)
+    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=True)
     dspy.configure(lm=lm)
     _load_program()
     _load_surrogate()      # 배포 SurrogateV2 적합(355행이라 1초 미만)

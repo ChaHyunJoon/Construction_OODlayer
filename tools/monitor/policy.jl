@@ -281,8 +281,16 @@ function valid_macros(env, truth)
     # `enactable_macros()` 와 같은 로더로 유도한다.
     if truth isa CB.BatteryTruth
         local have_fleet = (try CB.BATTERY_FLEET[] !== nothing catch; false end)
-        # 레지스트리가 battery 사건에서 전제조건상 말이 된다고 선언한 팔들(상한).
-        local ids = ActionRegistry.kind_valid("battery")
+        # ---- SoC 분할: 라벨 레인과 **같은 함수**를 쓴다 (2026-08-25) ---------------------------
+        # 여기는 `kind_valid("battery")`(= 상한) 를 그대로 냈고, 라벨 레인
+        # (`ood_mdp_shim.valid_actions`)만 SoC 로 메뉴를 갈랐다. 즉 같은 사건에서 라벨을 만든
+        # 세계와 실제로 굴린 세계의 **행동공간이 달랐다**: mild 에서 이 레인은 `Replace` 를 고를
+        # 수 있는데 라벨 격자엔 그 행이 없어, 그 결정이 surrogate 가 본 적 없는 팔로 남는다.
+        # 분할 규칙과 손잡이 판독점을 어휘 단일 진실원으로 올렸다(`ActionRegistry.battery_arms`
+        # · `soc_split_enabled`). 게이트: `test/battery_menu_lanes_agree.jl`.
+        local thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+        local ids = ActionRegistry.battery_arms(Float64(truth.soc_after), thr,
+                                                ActionRegistry.soc_split_enabled())
         if !have_fleet
             # 전제조건: 배터리 레이어가 켜져 있어야 SoC 복구가 의미를 갖는다. 꺼져 있으면
             # **battery 사건에서만** 말이 되는 팔(레지스트리의 `kinds` 가 battery 하나뿐인
@@ -302,6 +310,26 @@ function valid_macros(env, truth)
     # 🔴 2026-08-24 (spec §5.4, Task 5): `Deprioritize` 를 이 메뉴에서 뺐다. 배터리 사건의 개입
     # 팔은 이제 `Replace`(창고 예비 본체를 먹음)와 `SwapBattery`(현장 교체) 둘뿐이고, 배터리
     # 레이어가 꺼져 있으면 `Replace` 하나다.
+    # ---- zone: 닫힌 어휘에 수복이 없다는 사실을 **메뉴로** 말한다 (2026-08-25) ---------------
+    # Task 4 가 zone 분기를 지운 뒤 이 함수는 zone 에 `String[]` 을 돌려줬고, 그러면
+    # `service_decide` 가 `payload["valid"]` 를 안 실어 서비스의 `_valid_for` 가
+    # `VALID.get("zone", MACROS)` 로 **전체 3팔로 폴백**한다(레지스트리에 zone 키가 없으므로).
+    # 실측(2026-08-25, gpt-4o): 구역 사건에서 LLM 이 `SwapBattery` 를 2순위로 올렸다. 그 팔은
+    # `ZoneTruth` 에 `:robot` 이 없어 집행 사슬의 가드에 걸려 **아무 일도 안 하는데**, 결정
+    # 기록에는 그 이름이 그대로 남는다 = 집행되지 않은 팔이 라벨이 된다.
+    #
+    # 그래서 정직한 메뉴를 명시적으로 낸다. 오늘 그 값은 `["NOOP"]` 이고, 뜻은 **"닫힌 어휘에
+    # 이 구역의 수복이 없다"**(= `zone_diagnosis` 의 `:line_stop`). 이건 결함이 아니라 OOD 경계
+    # 표식이고, 아래 `decide_all` 의 표현력 에스컬레이션이 붙잡아야 할 바로 그 신호다
+    # (L2 제약 신설 레인이 인계받을 자리). 어휘에 zone 팔이 다시 생기면 자동으로 따라온다.
+    #
+    # 규약은 `ood_mdp_shim._zone_arms()` 와 **같다**(NOOP + 레지스트리의 zone 팔) — 두 레인이
+    # 다른 규약을 쓰면 라벨 레인과 실행 레인의 메뉴가 갈린다.
+    # 게이트: `test/policy_macro_binding.jl` (E).
+    if truth isa CB.ZoneTruth
+        return [ActionRegistry.NAME[i]
+                for i in sort(unique(vcat(0, ActionRegistry.kind_valid(:zone))))]
+    end
     return String[]          # 그 외 종류는 서비스 기본표 그대로
 end
 
