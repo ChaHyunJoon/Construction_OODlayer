@@ -105,7 +105,13 @@ function install_novelty!()
     end
 end
 
-"라우터를 쓸 것인가."
+"""
+라우터를 쓸 것인가.
+
+⚠️ 이 함수는 `install_novelty!()` 를 불러 **교정 JSON 유무도 나른다** — "사람이 켠 손잡이"만
+원하면(격상·레인 선택 게이트가 그렇다) 이 함수가 아니라 **`router_drives()`(아래)** 를 써라.
+2026-08-27 에 이 둘을 헷갈려 회귀가 났다(Fix round 1, Ruling R11) — 그 docstring 이 전말이다.
+"""
 router_enabled() = ROUTER_MODE == "0" ? false :
                    ROUTER_MODE == "1" ? install_novelty!() :
                    install_novelty!()          # auto: 감지기가 있으면 켠다
@@ -120,13 +126,14 @@ router_enabled() = ROUTER_MODE == "0" ? false :
 `router_enabled()` 은 `ROUTER_MODE ∈ {"1","auto"}` 일 때 `install_novelty!()` 를 **호출한다** —
 즉 교정 JSON(`wm4spacecraft_manufacturing/novelty/novelty_calibration.json`) 유무를 나른다.
 Task 3 최초 구현이 어휘 미달 격상 게이트를 `router_enabled() && POLICY != "noop"` 로 바꿨는데,
-`have_det`(:439 의 `install_novelty!()`)와 `router_enabled()` 이 **같은 함수를 불러 같은 값을
-낸다**(`ROUTER_MODE=="0"` 인 경우만 예외) — 그래서 교정 파일이 없으면(이 작업 트리처럼)
+`have_det`(`route()` 안에서 `install_novelty!()` 를 직접 부르는 줄)와 `router_enabled()` 은
+**같은 함수를 불러 같은 값을 낸다**(`ROUTER_MODE=="0"` 인 경우만 예외) — 그래서 교정 파일이 없으면(이 작업 트리처럼)
 "뗀다"고 한 `have_det` 결합이 **하나도 안 끊겼다.** `router_drives()` 는 `install_novelty!()`
 를 전혀 부르지 않는다 — `ROUTER_MODE`(`DEMO_ROUTER` env)와 `POLICY`(`DEMO_POLICY` env)만
 본다. 이 둘을 다시 헷갈리면 이 결함이 그대로 재발한다.
 
-⚠️ novelty 축 자리(`route()` 의 `drives`, :439)는 그대로 둔다 — 거기는 여전히 `have_det` 이
+⚠️ novelty 축 자리(`route()` 안의 `drives = have_det && router_enabled() && POLICY != "noop"`)는
+그대로 둔다 — 거기는 여전히 `have_det` 이
 있어야 옳다(교정값이 없으면 novelty p 자체를 계산할 수 없으므로). 이 함수는 어휘 미달
 격상·레인 선택 진입 게이트 **두 곳에만** 쓴다.
 """

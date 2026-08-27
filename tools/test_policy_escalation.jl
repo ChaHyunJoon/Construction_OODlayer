@@ -167,7 +167,10 @@ check("T7b 손잡이가 꺼지면 격상은 안 하지만 누락 진단은 남�
 #     round 1 은 `escalation_allowed`/select_lane 게이트에 `router_enabled() && POLICY != "noop"`
 #     를 썼는데, `router_enabled()` 는 `install_novelty!()` 를 불러 **교정 JSON 유무**를 도로
 #     실어 왔다 — "뗀다"고 한 have_det 결합이 하나도 안 끊긴 회귀. 그래서 `router_drives()` 를
-#     새로 만들었다(policy.jl). 이 T8 은 그 재발을 막는다.
+#     새로 만들었다(policy.jl). 🔴 (2026-08-27, Fix round 2 정정) 이 T8/T8b 는 `router_drives()`
+#     **자신의 정의**가 교정 의존을 되찾을 때만 빨개진다 -- decide_all 의 **호출부**가 다시
+#     `router_enabled()` 로 되돌아가는 실제로 일어났던 회귀 경로는 안 잡는다(그건 아래 T9/T9b 가
+#     잡는다). "이 T8 은 그 재발을 막는다" 는 round 1 의 과장이었다.
 #
 #     ENV 를 바꿔 프로세스 재기동으로 검사하는 방법은 안 썼다 — `ROUTER_MODE`/`POLICY` 가
 #     `const` 라 같은 프로세스 안에서는 재현이 안 되고, 이 파일이 여러 프로세스를 띄우면
@@ -185,20 +188,44 @@ check("T8b (양성 대조) router_enabled() 의 lowered 코드에는 install_nov
       "-- 즉 위 검사 방법이 실제로 그 호출을 잡아낼 수 있다",
       occursin("install_novelty", lowered_enabled))
 
-# T8c 보충(런타임, 이 프로세스의 기본 ENV 한정): 이 작업 트리에는 교정 파일이 없다(실측,
-# wm4spacecraft_manufacturing/novelty/ 디렉토리 자체가 없음) -- 그래서 install_novelty!() 는
-# fail-open 으로 false 다. ROUTER_MODE(기본 "auto")가 "0"이 아니고 POLICY(기본 "canonical")가
-# "noop"이 아닌 한, 바로 그 상태에서 router_drives()=true 인데 router_enabled()=false 다.
-# 이 둘이 갈린다는 사실 자체가 "손잡이가 교정 파일에 안 묶여 있다"는 살아있는 증거다.
-# ENV 를 명시로 세팅하지 않은 것은 의도적이다 -- round 1 이 놓친 바로 그 기본 상태를 잰다.
-if ROUTER_MODE != "0" && POLICY != "noop"
-    check("T8c (런타임, 기본 ENV) router_drives()=true 인데 router_enabled()=false " *
-          "(교정 파일 부재, ROUTER_MODE=$(ROUTER_MODE) POLICY=$(POLICY)) -- 손잡이가 갈라져 있다",
-          router_drives() == true && router_enabled() == false,
-          "router_drives()=$(router_drives()) router_enabled()=$(router_enabled())")
+# ---------------------------------------------------------------------------------------------
+# T9 (2026-08-27, Fix round 2 -- 실제 회귀 지점을 겨눈다) decide_all 의 두 게이트가 실제로
+#     router_drives() 를 부르고 router_enabled() 를 안 부른다.
+#
+#     리뷰 지적(round 2, I-2): T8/T8b 는 router_drives() **자신의 정의**만 재서, 실제로 났던
+#     회귀(policy.jl:1073/:1105 의 **호출부**가 router_enabled() 를 썼던 것)를 되돌려도 초록으로
+#     남는다 -- decide_all 이 그 두 줄에서 여전히 router_drives() 대신 router_enabled() 를 부르게
+#     되돌려도 T8/T8b 는 router_drives() 정의 자체가 안 바뀌었으니 안 빨개진다. 이 T9 이 그
+#     구멍을 메운다: **호출부**를 직접 본다.
+#
+#     decide_all 은 keyword 인자(`nl::AbstractString=""`)가 있어 Julia 가 실제 본문을 숨은
+#     `#decide_all#N` 함수로 컴파일한다(N 은 Julia 내부 카운터라 하드코딩하지 않고, decide_all
+#     자신의 lowered 코드에서 정규식으로 찾는다). `@code_lowered`/`Base.uncompressed_ast` 는
+#     함수를 **실행하지 않는다** -- env/truth 자리에 `nothing` 을 넣어도 안전하다(호출이 아니라
+#     메서드 선택 + 정적 조회뿐이고, 인자 타입이 전부 `Any` 라 `nothing` 으로도 같은 메서드가
+#     골라진다).
+#
+#     소스 텍스트 grep 을 안 쓴 이유: `route()` 안의 `drives = have_det && router_enabled() &&
+#     POLICY != "noop"`(novelty 축, 정당한 용법)에도 `router_enabled` 문자열이 있어서
+#     파일 전체 grep 은 그 정당한 용법에 걸려 항진적으로 "OK" 가 나온다. lowered 코드는
+#     **decide_all 자신의 본문**만 보므로 그 문제가 없다 -- route() 는 별도 메서드라 그 호출은
+#     decide_all 의 lowered 코드에 인라인되지 않고 `Main.route(...)` 한 호출로만 보인다.
+# ---------------------------------------------------------------------------------------------
+wrapper_src = string(@code_lowered decide_all(nothing, nothing))
+m9 = match(r"var\"(#decide_all#\d+)\"", wrapper_src)
+if m9 === nothing
+    check("T9 decide_all 의 숨은 kwarg 바디 함수 이름을 못 찾았다 -- Julia 버전/kwarg 컴파일 " *
+          "방식이 바뀐 것으로 보인다. 이 검사는 못 쟀다(빨강 아님, 미측정)", false, wrapper_src)
 else
-    check("T8c 건너뜀 -- ROUTER_MODE/POLICY 기본값이 아니라서 이 방식의 대조가 성립 안 함" *
-          "(ROUTER_MODE=$(ROUTER_MODE) POLICY=$(POLICY))", true)
+    local bodyfn = getfield(@__MODULE__, Symbol(m9.captures[1]))
+    local body_src = string(Base.uncompressed_ast(only(methods(bodyfn))))
+    local n_drives  = count("router_drives", body_src)
+    local n_enabled = count("router_enabled", body_src)
+    check("T9 decide_all 의 실제 게이트 두 곳이 router_drives() 를 부른다(정확히 2회 기대)",
+          n_drives == 2, "n_drives=$(n_drives)")
+    check("T9b decide_all 은 router_enabled() 를 직접 부르지 않는다 " *
+          "(그 함수는 별도 메서드인 route() 안에서만, novelty 축에 정당하게 쓰인다)",
+          n_enabled == 0, "n_enabled=$(n_enabled)")
 end
 
 println()
