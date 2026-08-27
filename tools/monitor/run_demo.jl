@@ -271,7 +271,16 @@ capture!(env, truth, decision, nl) = record_decision!(env, truth, decision, nl)
 function handle_ood!(env, truth, nl)
     decision = decide_all(env, truth; nl = nl)      # nl = LLM 이 읽을 자연어 관찰
     let rt = decision.router
-        get(rt, "enabled", false) && println("[router] $(rt["reason"]) → $(rt["target"])")
+        # 🔴 2026-08-27 (최종 리뷰 F3): 조건이 `get(rt, "enabled", false)` 였다. 그 값은 novelty
+        #    교정(have_det)까지 포함하므로, 교정 파일이 없는 기본 실행에서 **어휘 미달로 레인이
+        #    바뀐 사건이 이 줄을 한 줄도 안 찍었다.** 이 레포의 "로그에 안 떴다 ≠ 안 일어났다"
+        #    가 세 번째로 반복될 자리다. 라우터가 실제로 레인을 몰았으면(`drives_lane`) 찍는다.
+        #    ⚠️ `enabled` 도 계속 본다 — 두 축은 별개이고 예전 판의 출력이 사라지면 안 된다.
+        if get(rt, "drives_lane", false) === true || get(rt, "enabled", false) === true
+            local why  = get(rt, "reason", "")
+            local axis = something(get(rt, "router_axis", nothing), "-")
+            println("[router] ", why, " → enacted=", decision.enacted, " axis=", axis)
+        end
     end
     capture!(env, truth, decision, nl)
     tag = string(typeof(truth).name.name)
@@ -331,6 +340,17 @@ function handle_ood!(env, truth, nl)
         # 🔴 키가 없으면 `nothing`(=이 결정에는 레인 선택이 없었다) — `"none"`(=선택했는데 축이
         # 안 발화했다)으로 채우지 않는다. 다른 사건이다.
         "router_axis"   => (try get(decision.router, "router_axis", nothing) catch; nothing end),
+        # 라우터가 이 런에서 **레인을 몰았는가**(= `router_drives()`). `router_target` 은 라우터가
+        # 몰아도 기본 정책 이름에 머물 수 있으므로(Task 3 이후) 이 필드가 그 사실의 진실원이다.
+        # `llm_ood_eval.py` 의 사후 게이트(`_router_drove`)가 `router_axis` 와 함께 이것을 읽는다.
+        "router_drives" => (try get(decision.router, "drives_lane", nothing) catch; nothing end),
+        # 🔴 2026-08-27 (최종 리뷰 F4): 축 1 의 입력(surrogate 지원집합)을 **실제로 쟀는가**.
+        # `router_axis == "none"` 은 "재서 아니었다" 와 "못 쟀다" 둘 다에서 나온다 — 이 필드가
+        # 없으면 R5 집계에서 "축 1 미발화" 가 사건 부재인지 미측정인지 산출물만으로 구분 불가다.
+        # 🔴 키가 없으면 `nothing`(=기록 없음) — `false`(=재봤는데 못 쟀다)로 채우지 않는다.
+        "support_measured" => (try get(decision.router, "support_measured", nothing) catch; nothing end),
+        # 축 1 이 발화했을 때 **어느 팔**이 지원 밖이었는가(설계서 §3 의 `<이름들>`).
+        "vocabulary_gap_arms" => (try get(decision.router, "vocabulary_gap_arms", nothing) catch; nothing end),
         "escalated"     => (try haskey(decision.router, "escalated_from") catch; false end),
         # 1-step deviation (2026-08-17): policy.jl 이 rt 에 심은 것을 그대로 옮긴다. Task 2 의
         # sample_grid.py 는 스트림이 아니라 **이 decisions 목록**을 읽으므로, 여기 없으면 게이트가

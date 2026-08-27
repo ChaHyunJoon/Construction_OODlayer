@@ -388,9 +388,32 @@ function event_descriptors_of(env, truth)
 end
 
 """
-    route_verdict(; desc, have_det, drives, policy, v=nothing, eps=nothing) -> Dict
+    route_verdict(; desc, have_det, drives, policy, drives_lane=router_drives(),
+                  v=nothing, eps=nothing) -> Dict
 
-라우팅 판정 Dict 를 만든다. **세 분기 전부 `"descriptors"` 키를 갖는다.**
+라우팅 판정 Dict 를 만든다. **세 분기 전부 `"descriptors"` 키와 `"drives_lane"` 키를 갖는다.**
+
+🔴 `enabled` 와 `drives_lane` 은 **다른 것을 주장한다** (2026-08-27, 최종 리뷰 F3):
+
+  · `enabled`     = **novelty 축**이 실행을 정했는가. `have_det`(교정 JSON) 을 포함한다.
+  · `drives_lane` = **라우터가 이 런에서 레인을 고르는가**(`router_drives()`; 사람이 켠 손잡이만).
+
+Task 3 이후 이 둘이 **갈린다.** 기본 작업 트리(교정 파일 없음 · `DEMO_ROUTER=auto` ·
+`DEMO_POLICY=canonical`)의 실측이 정확히 그 자리다:
+
+```
+router_drives()  = true      # decide_all 이 select_lane 으로 레인을 고른다
+router_enabled() = false     # 교정 JSON 이 없어 novelty p 를 못 낸다
+```
+
+그 상태에서 예전 `reason` 은 `"gate inactive (DEMO_POLICY=canonical fixed for the run)"` 이었다 —
+**라우터가 실제로 레인을 고른 판에 대해** 정책이 고정이었다고 적는 자기모순 기록이고,
+`dashboard.html` 이 그 문자열로 `ROUTER off` 를 렌더했다. 그래서 여기서는 `drives_lane` 이
+참이면 그 두 주장(`gate inactive` · `DEMO_POLICY=… fixed for the run`)을 **하지 않는다.**
+격상·레인 선택 동작 자체는 그대로다(그것이 R11 의 옳은 절반이다) — 바뀌는 것은 기록뿐이다.
+
+⚠️ `drives_lane` 의 기본값은 `router_drives()` 다(= `route()` 가 넘길 필요가 없다). 검사에서만
+명시적으로 준다 — `ROUTER_MODE`/`POLICY` 가 `const` 라 같은 프로세스에서 ENV 로는 못 가른다.
 
 🔴 왜 분리했나 (2026-08-26): 라우팅은 교정값이 있어야 하지만 서술자 계산은 **필요 없다**
 (`event_descriptors_of` 는 교정값(novelty detector)을 안 읽는다 — 그래서 교정 유무와 무관하게
@@ -406,14 +429,21 @@ end
 그 계약이 signature 만으로는 안 보인다.
 """
 function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractString,
+                       drives_lane::Bool = router_drives(),
                        v = nothing, eps::Union{Nothing,Real} = nothing)
-    base = Dict{String,Any}("descriptors" => desc)
+    base = Dict{String,Any}("descriptors" => desc, "drives_lane" => drives_lane)
+    # 라우터가 레인을 몰고 있으면 "정책이 런 내내 고정" 도 "게이트 비활성" 도 거짓이다.
+    # 그 두 문장은 화면(dashboard.html)과 스윕 게이트가 그대로 읽는 유일한 산문이다.
+    nocal = drives_lane ?
+        "no novelty calibration installed -> the novelty axis is inactive, " *
+        "but the router still selects the lane (DEMO_ROUTER=$(ROUTER_MODE))" :
+        "no novelty calibration installed -> gate inactive " *
+        "(DEMO_POLICY=$(policy) fixed for the run)"
     if !have_det
         return merge(base, Dict{String,Any}(
             "enabled" => false, "advisory" => false, "target" => policy,
             "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
-            "reason" => "no novelty calibration installed -> gate inactive " *
-                        "(DEMO_POLICY=$(policy) fixed for the run)"))
+            "reason" => nocal))
     end
     if v === nothing
         return merge(base, Dict{String,Any}(
@@ -434,8 +464,12 @@ function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractStr
         "p" => (isfinite(v.p) ? v.p : nothing),
         "score" => (isfinite(v.score) ? v.score : nothing),
         "eps" => eps,
+        # 🔴 advisory 문구도 `drives_lane` 을 본다: novelty 축이 안 몰아도 라우터가 레인을
+        # 고르고 있으면 "이 녹화는 DEMO_POLICY 고정으로 집행했다" 는 거짓이다.
         "reason" => drives ? msg :
-            msg * "  (advisory only — this recording enacted DEMO_POLICY=$(policy), fixed)"))
+            msg * (drives_lane ?
+                   "  (novelty axis advisory only — the lane is still selected by the router)" :
+                   "  (advisory only — this recording enacted DEMO_POLICY=$(policy), fixed)")))
 end
 
 """
@@ -938,6 +972,43 @@ end
 
 
 """
+    surrogate_support_measured(surro_entry, missing) -> Bool
+
+surrogate 가 이 사건에서 **지원집합을 실제로 쟀는가**. 순수 함수다 — Dict 하나와 벡터 하나만
+본다(`escalation_target` 과 같은 이유로 뽑았다: `decide_all` 안에 인라인이면 env·truth·파이썬
+서비스가 전부 살아 있어야만 검사할 수 있고, 그래서 검사되지 않는다).
+
+🔴 왜 필요한가 (2026-08-27, 최종 리뷰 F4). `supported = isempty(missing)` 은 Bool 하나라
+**두 사건이 같은 값(true)으로 무너진다**:
+
+```
+지원집합 UNKNOWN(모델 미적재/서비스 부재) → unsupported=[] → supported=true → axis="none"
+진짜로 전부 지원                          → unsupported=[] → supported=true → axis="none"
+```
+
+앞의 것은 축 1 이 **자기가 존재하는 이유인 그 실패 모드에서 스스로를 과소 집계**하는 것이다.
+Task 4(`bdb0bdda`)가 파이썬에서 죽인 `set(range(5))` 붕괴가 언어 경계에서 그대로 살아 있었다:
+파이썬의 3값 신호(`None` 못 쟀다 / `[]` 재서 없다 / `[이름]` 미달)가 `/decide` JSON 에서
+뭉개져 나가고 Julia 는 `unsupported` 만 읽는다. Ruling R13 에 따라 `select_lane` 의 axis enum 은
+**안 바꾸고**(그것은 Task 2 의 계약이자 하류 소비처의 계약이다) 구분을 **기록에** 남긴다.
+
+판정은 **문자열 매칭이 아니라 구조**로 한다 — 에러 문구가 바뀌어도 안 깨진다:
+
+  · `available == true` ⟹ 점수를 냈다 ⟹ 지원집합이 `None` 이 아니었다
+    (`surrogate_rank` 는 `support is None` 이면 점수를 내기 전에 되돌아간다) ⟹ **쟀다**
+  · `missing ≠ ∅`      ⟹ `UNSUPPORTED:` 규약이 나왔다 ⟹ 지원집합을 읽었다 ⟹ **쟀다**
+  · 그 외(서비스 부재 · "support is unknown") ⟹ **못 쟀다**
+
+⚠️ 알려진 잔여(범위 밖): 서비스의 `if not scorable` 분기("no training support for any valid
+macro")는 지원집합을 **읽었는데도** `UNSUPPORTED:` 접두사를 안 붙여 `/decide` 가
+`unsupported: []` 를 싣는다. 그 사건은 여기서 "못 쟀다" 로 기록된다 — 안전한 방향(미측정으로
+표시)이지만 정확하지는 않다. 고칠 자리는 `dspy_service.surrogate_rank` 의 그 분기다.
+"""
+surrogate_support_measured(surro_entry, missing) =
+    (get(surro_entry, "available", false) === true) || !isempty(missing)
+
+
+"""
     policy_entry(b, label) -> Dict
 
 서비스 응답 하나(`b`, 없으면 `nothing`)를 **`decide_all` 이 `pol[key]` 에 넣는 dict** 로 바꾼다.
@@ -1040,7 +1111,17 @@ function decide_all(env, truth; nl::AbstractString = "")
 
     # oracle 은 canonical/noop 과 마찬가지로 DSPy 서비스 없이도 결정을 내야 한다(a* 는 상태에서
     # 곧바로 나온다). 여기 빠져 있으면 DEMO_ALL_POLICIES=0 인 oracle 판이 사건마다 서비스를 부른다.
-    j = (POLICY in ("canonical", "noop", "oracle") && !get(rt, "enabled", false) &&
+    # 🔴 2026-08-27 (최종 리뷰 F6): 조건이 `!get(rt, "enabled", false)` 였다. 그 값은 novelty
+    #    교정(have_det)을 포함하므로, Task 3 이후 `router_drives()` 가 true 인데 `rt["enabled"]`
+    #    는 false 인 상태가 **도달 가능해졌다**(교정 파일이 없는 이 작업 트리가 바로 그 상태다).
+    #    그러면 `DEMO_ALL_POLICIES=0` 런이 **라우팅한다고 주장하면서 서비스 호출을 통째로
+    #    건너뛴다** — pol["surrogate"]·pol["dspy"] 가 둘 다 unavailable 이라 축 1 이 발화할
+    #    길 자체가 없고 select_lane 은 언제나 canonical + axis="none" 으로 떨어진다.
+    #    R11 이 고친 바로 그 손잡이 혼동이 한 화면 위에 남아 있었다. 레인을 고르는 게이트와
+    #    **같은 술어**를 쓴다: 라우터가 몰면 서비스가 필요하다.
+    #    (`rt["enabled"] ⟹ router_drives()` 이므로 이 조건은 예전 것보다 엄격히 덜 건너뛴다 —
+    #     라우터가 꺼진 비교 실행의 절약은 그대로 남는다.)
+    j = (POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
         nothing : service_decide(env, truth; nl = nl, descriptors = desc)
 
@@ -1067,6 +1148,29 @@ function decide_all(env, truth; nl::AbstractString = "")
     # `requested` 로 물으면 라우터가 이미 dspy 를 고른 사건에서 "지원됨" 이 나와 분기가 뒤집힌다.
     local _esc_probe, _esc_miss = escalation_target(pol, "surrogate", true)
     local supported = isempty(_esc_miss)
+    # ---- F4 (2026-08-27 최종 리뷰): "재서 없다" 와 "못 쟀다" 를 기록에서 가른다 -------------
+    # `supported` 는 Bool 하나라 두 사건이 같은 값(true)으로 무너진다:
+    #   지원집합 UNKNOWN(모델 미적재/서비스 부재) → unsupported=[] → supported=true → axis="none"
+    #   진짜로 전부 지원                          → unsupported=[] → supported=true → axis="none"
+    # 앞의 것은 축 1 이 **자기가 존재하는 이유인 그 실패 모드에서 스스로를 과소 집계**하는 것이다
+    # (파이썬에서 Task 4 가 죽인 `set(range(5))` 붕괴가 언어 경계에서 살아 있었다).
+    # 🔴 Ruling R13: `select_lane` 의 axis enum 은 **안 바꾼다**(Task 2 의 계약 · V2 의 몫).
+    #    구분은 axis **옆에** 남긴다.
+    # 판정은 문자열 매칭이 아니라 구조로 한다:
+    #   available == true   ⟹ 점수를 냈다 ⟹ 지원집합이 None 이 아니었다(surrogate_rank 는 None
+    #                         이면 곧바로 되돌아간다) ⟹ 쟀다.
+    #   unsupported ≠ ∅     ⟹ `UNSUPPORTED:` 규약이 나왔다 ⟹ 지원집합을 읽었다 ⟹ 쟀다.
+    #   그 외(서비스 부재 · "support is unknown") ⟹ **못 쟀다.**
+    # 유도는 위 순수 함수 한 곳에만 둔다(`surrogate_support_measured` docstring 이 근거다) —
+    # 여기 인라인으로 다시 쓰면 검사되는 것과 실행되는 것이 갈린다.
+    rt["support_measured"] = surrogate_support_measured(pol["surrogate"], _esc_miss)
+    # ---- F5 (2026-08-27 최종 리뷰): 미달 팔의 **이름**을 남긴다 --------------------------------
+    # `_esc_miss` 는 지금까지 `supported` 라는 Bool 로 접힌 뒤 버려졌다. `rt["requested_unsupported"]`
+    # 는 `requested`(기본 canonical)로 키잉되는데 `pol["canonical"]` 에는 `unsupported` 키가
+    # 없으므로, 기본 설정에서 축 1 이 발화해 dspy 로 보내도 **어느 팔이 없었는지 아무 데도
+    # 안 적혔다.** 설계서 §3 은 `reason = "vocabulary_gap: <이름들>"` 을 명시한다.
+    # 기록은 격상 여부와 무관하게 남긴다(라우터가 꺼진 비교 실행의 진단도 값어치가 있다).
+    isempty(_esc_miss) || (rt["vocabulary_gap_arms"] = _esc_miss)
 
     enacted = requested
     fell_back = false
@@ -1081,9 +1185,14 @@ function decide_all(env, truth; nl::AbstractString = "")
         local sel = select_lane(novel = get(rt, "novel", false) === true, available = avail,
                                 supported = supported, policy = POLICY)
         enacted = sel.lane
+        # 🔴 축 1 이 냈으면 **어느 팔이 없었는지**를 산문에도 싣는다(설계서 §3 의 문구:
+        #    `unsupported ≠ ∅ ⟹ escalate, reason = "vocabulary_gap: <이름들>"`).
+        #    조립은 여기서 한다 — `select_lane` 의 시그니처는 안 바꾼다(의존성 0 계약).
+        local lane_reason = (sel.axis == "vocabulary_gap" && !isempty(_esc_miss)) ?
+            sel.reason * " [" * join(_esc_miss, ",") * "]" : sel.reason
         # 기존 문구를 **덮어쓰지 않고 덧붙인다** — novelty 수치가 든 줄이 화면에서 사라지면 안 된다.
-        rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason
-        rt["lane_reason"] = sel.reason
+        rt["reason"] = get(rt, "reason", "") * " · LANE: " * lane_reason
+        rt["lane_reason"] = lane_reason
         # 어느 축이 이 판정을 냈는가. 산문에서 역파싱하지 않는다 — 설계서 R5 가 이 값을 센다.
         rt["router_axis"] = sel.axis
         fell_back = (enacted != requested && enacted == "canonical")

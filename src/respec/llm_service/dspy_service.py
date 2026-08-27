@@ -699,6 +699,16 @@ def health():
             "surrogate": _state["surro_data"] or ("ERROR: " + str(_state["surro_error"])),
             # 축 1(어휘 미달)의 입력. 산문(`surrogate` 필드)이 아니라 **기계가 읽는 목록**이다.
             # None 은 "못 쟀다"(모델 미적재)이고 [] 는 "아무 팔도 지원 안 한다" — 다른 사건이다.
+            #
+            # 🔴 커밋 메시지 정정 (2026-08-27, 최종 리뷰 F8). `bdb0bdda` 의 메시지는
+            #    *"`/health` 와 `/decide` 가 목록을 싣는다"* 라고 적었지만 **거짓이다** —
+            #    지원집합 목록을 싣는 것은 이 `/health` 하나뿐이고, `/decide` 는 그 사건의
+            #    `unsupported`(= 목록에서 유도된 결과)만 싣는다. 커밋 메시지는 못 고치므로
+            #    정정을 여기 남긴다.
+            #    귀결: Julia 쪽(`policy.jl:decide_all`)은 지원집합을 직접 못 읽는다. 그래서
+            #    "쟀는가" 는 응답의 **구조**에서 유도한다 — `available == true`(점수를 냈다
+            #    ⟹ support 가 None 이 아니었다) 또는 `unsupported ≠ ∅`(`UNSUPPORTED:` 규약이
+            #    나왔다 ⟹ support 를 읽었다). 그 값이 결정 행의 `support_measured` 다.
             "surro_support": (None if _state.get("surro_support") is None
                               else sorted(_state["surro_support"])),
             "policies": ["dspy", "surrogate"]}

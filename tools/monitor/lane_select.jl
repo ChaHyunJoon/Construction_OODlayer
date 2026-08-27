@@ -15,7 +15,7 @@
 # =============================================================================
 
 """
-    select_lane(; novel, available, supported, policy) -> (lane, reason, axis)
+    select_lane(; novel, available, supported, policy) -> (lane, axis, reason)
 
 - `novel`     : novelty 판정 (p < eps). ⚠️ **축 2 의 임시 자리지킴**이다 — 설계서
                 `2026-08-27-vocabulary-indexed-router-design.md` §3 의 축 2 는 conformal
@@ -35,6 +35,11 @@
 수 있는지**를 본다. 후자는 novelty 교정 파일과 무관한 사실이고, 무엇보다 **경계를 움직이는
 축**이다 — 새 매크로는 정의상 지원 밖이고 학습되면 정의상 안이다. 순서가 뒤집히면 같은
 사건이 "낯설어서 올렸다" 로 기록되는데 사실은 "그 팔을 배운 적이 없어서" 다.
+
+🔴 반환 순서는 `(lane, axis, reason)` 다 — 아래 모든 `return` 이 그 순서로 조립한다.
+2026-08-27 최종 리뷰까지 이 docstring 은 `(lane, reason, axis)` 라고 적고 있었다. NamedTuple 이라
+이름으로 읽는 호출부는 무사했지만, 그 문구를 믿고 **위치 분해**(`lane, reason, axis = …`)를 쓰면
+축과 산문이 조용히 뒤바뀐다 — `router_axis` 필드에 영어 문장이 실리고 R5 집계가 통째로 망가진다.
 
 `reason` 은 화면 ROUTER 줄에 그대로 나가므로 영어로 쓴다(이 저장소의 화면 문구 규약).
 """
