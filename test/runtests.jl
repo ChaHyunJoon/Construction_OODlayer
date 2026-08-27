@@ -102,6 +102,12 @@ end
         include("route_descriptors_survive.jl")
     end
 
+    # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
+    # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
+    @testset "lane selection — vocabulary gap outranks novelty" begin
+        include(normpath(joinpath(@__DIR__, "..", "tools", "monitor", "test_lane_select.jl")))
+    end
+
     # 🔴 2026-08-25 (최종 브랜치 리뷰 F1): 아래 셋은 **레지스트리 파생과 도장 계약을 지키는
     # 게이트인데 이 진입점에 실려 있지 않았다** — 누가 손으로 `julia +lts --project=.
     # test/<파일>.jl` 를 칠 때만 돌았다. "돌지 않는 게이트" 는 "실패할 수 없는 게이트" 의

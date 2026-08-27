@@ -64,3 +64,42 @@ end
         @test !isempty(r.reason)
     end
 end
+
+@testset "어휘 미달이 novelty 보다 먼저다 (2026-08-27, 축 1)" begin
+    UP = Dict("surrogate" => true, "dspy" => true, "canonical" => true)
+
+    # (A) 지원 밖 팔이 있으면, 상태가 익숙해도 LLM 으로 간다.
+    r = select_lane(novel = false, available = UP, supported = false, policy = "dspy")
+    @test r.lane == "dspy"
+    @test r.axis == "vocabulary_gap"
+
+    # (B) 🔴 두 축이 동시에 참이면 **어휘 미달이 이긴다.** 순서가 뒤집히면 기록이
+    #     "낯설어서 올렸다" 가 되는데 사실은 "그 팔을 배운 적이 없어서" 다 — 다른 사건이고,
+    #     전자는 교정 파일에 의존하지만 후자는 안 한다.
+    r2 = select_lane(novel = true, available = UP, supported = false, policy = "dspy")
+    @test r2.lane == "dspy"
+    @test r2.axis == "vocabulary_gap"
+
+    # (C) 어휘는 되는데 상태가 낯설면 novelty 축이다 (축 2 가 생기기 전 임시 자리).
+    r3 = select_lane(novel = true, available = UP, supported = true, policy = "dspy")
+    @test r3.lane == "dspy"
+    @test r3.axis == "novelty"
+
+    # (D) 둘 다 아니면 surrogate 이고, 발화한 축이 없다.
+    r4 = select_lane(novel = false, available = UP, supported = true, policy = "dspy")
+    @test r4.lane == "surrogate"
+    @test r4.axis == "none"
+
+    # (E) 통제 바닥선은 축 판정 자체를 안 한다.
+    r5 = select_lane(novel = true, available = UP, supported = false, policy = "noop")
+    @test r5.lane == "noop"
+    @test r5.axis == "control"
+
+    # (F) 어휘 미달인데 LLM 이 없으면 canonical 로 떨어지되 **축은 그대로 기록된다** —
+    #     "못 올렸다" 와 "올릴 일이 없었다" 는 다른 사건이다.
+    r6 = select_lane(novel = false,
+                     available = Dict("surrogate" => true, "dspy" => false, "canonical" => true),
+                     supported = false, policy = "dspy")
+    @test r6.lane == "canonical"
+    @test r6.axis == "vocabulary_gap"
+end
