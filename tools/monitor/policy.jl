@@ -110,6 +110,28 @@ router_enabled() = ROUTER_MODE == "0" ? false :
                    ROUTER_MODE == "1" ? install_novelty!() :
                    install_novelty!()          # auto: 감지기가 있으면 켠다
 
+"""
+    router_drives() -> Bool
+
+**사람이 켠 손잡이만** 본다 — 설계서(`2026-08-20-reduced-state-ood-smdp-design.md`) §3 의
+`ROUTER_DRIVES`.
+
+🔴 왜 `router_enabled()` 를 그대로 못 썼는가 (2026-08-27, Fix round 1 실측):
+`router_enabled()` 은 `ROUTER_MODE ∈ {"1","auto"}` 일 때 `install_novelty!()` 를 **호출한다** —
+즉 교정 JSON(`wm4spacecraft_manufacturing/novelty/novelty_calibration.json`) 유무를 나른다.
+Task 3 최초 구현이 어휘 미달 격상 게이트를 `router_enabled() && POLICY != "noop"` 로 바꿨는데,
+`have_det`(:439 의 `install_novelty!()`)와 `router_enabled()` 이 **같은 함수를 불러 같은 값을
+낸다**(`ROUTER_MODE=="0"` 인 경우만 예외) — 그래서 교정 파일이 없으면(이 작업 트리처럼)
+"뗀다"고 한 `have_det` 결합이 **하나도 안 끊겼다.** `router_drives()` 는 `install_novelty!()`
+를 전혀 부르지 않는다 — `ROUTER_MODE`(`DEMO_ROUTER` env)와 `POLICY`(`DEMO_POLICY` env)만
+본다. 이 둘을 다시 헷갈리면 이 결함이 그대로 재발한다.
+
+⚠️ novelty 축 자리(`route()` 의 `drives`, :439)는 그대로 둔다 — 거기는 여전히 `have_det` 이
+있어야 옳다(교정값이 없으면 novelty p 자체를 계산할 수 없으므로). 이 함수는 어휘 미달
+격상·레인 선택 진입 게이트 **두 곳에만** 쓴다.
+"""
+router_drives() = ROUTER_MODE != "0" && POLICY != "noop"
+
 # 여기가 "누가 매크로를 고르는가"를 결정하는 유일한 지점이다. 아래 세 함수만 보면 된다:
 #   ood_features  : 결정 순간의 공개 상태(정답 누수 없음) — 오프라인 라벨러의 capture_features 와 동일 항목
 #   dspy_decide   : 그 상태를 DSPy 서비스에 POST → 매크로 + 순위 + margin
@@ -1045,7 +1067,10 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    없으면 **레인 선택 자체가 안 돌았다** — 축 1 이 select_lane 에 도달조차 못 한다.
     #    레인 선택은 novelty 수치가 없어도 성립한다: 축 1 은 지원집합만 보고, 축 2(임시 novelty)는
     #    `rt["novel"]` 이 없으면 false 로 읽혀 그냥 발화하지 않는다.
-    if router_enabled() && POLICY != "noop"
+    # 🔴 (2026-08-27, Fix round 1) 여기 `router_enabled()` 를 썼던 최초 구현은 틀렸다 —
+    #    그 함수가 `install_novelty!()` 를 불러 교정 파일 유무를 도로 나른다(위 `router_drives()`
+    #    docstring 참고). `router_drives()` 는 그 의존을 안 가진 순수한 사람 손잡이다.
+    if router_drives()
         local sel = select_lane(novel = get(rt, "novel", false) === true, available = avail,
                                 supported = supported, policy = POLICY)
         enacted = sel.lane
@@ -1075,7 +1100,9 @@ function decide_all(env, truth; nl::AbstractString = "")
     # ⚠️ 원래 그 게이트가 막으려던 것은 실재한다: DEMO_ROUTER=0 으로 정책을 고정한 비교 실행에서
     #    사건에 따라 조용히 dspy 로 넘어가면 "surrogate 를 쟀다"고 적은 판이 LLM 판이 된다.
     #    그래서 그 보호는 **사람이 켠 손잡이**로 보존하고, 교정 유무(have_det)만 뗀다.
-    escalation_allowed = router_enabled() && POLICY != "noop"
+    # 🔴 (2026-08-27, Fix round 1) 여기도 `router_enabled()` 를 썼던 최초 구현은 틀렸다 — 같은
+    #    이유로 `router_drives()` 를 쓴다(위 그 함수의 docstring 이 정확한 사유다).
+    escalation_allowed = router_drives()
 
     # ---- 표현력 에스컬레이션 (2026-08-04) ---------------------------------------------------
     # novelty 라우터는 **상태**가 낯선지만 본다. 그런데 싼 정책이 못 하는 이유가 하나 더 있다:

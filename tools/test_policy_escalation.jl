@@ -23,6 +23,7 @@
 module TestPolicyEscalation
 
 import HTTP, JSON3
+using InteractiveUtils: @code_lowered   # T8 의 정적 검사(아래)가 쓴다 -- stdlib, Pkg.add 아님
 include(joinpath(@__DIR__, "monitor", "policy.jl"))
 
 npass = 0; nfail = 0
@@ -158,6 +159,47 @@ check("T7 어휘 미달은 손잡이가 켜져 있으면(have_det 와 무관) �
 t7b, m7b = escalation_target(pol7, "surrogate", false)
 check("T7b 손잡이가 꺼지면 격상은 안 하지만 누락 진단은 남긴다",
       t7b == "" && m7b == ["SwapBattery"], "target=$(t7b) missing=$(m7b)")
+
+# ---------------------------------------------------------------------------------------------
+# T8 (2026-08-27, Fix round 1 — 재발 방지) 격상 손잡이(`router_drives`)는 교정 파일 유무를
+#     나르지 않는다.
+#
+#     round 1 은 `escalation_allowed`/select_lane 게이트에 `router_enabled() && POLICY != "noop"`
+#     를 썼는데, `router_enabled()` 는 `install_novelty!()` 를 불러 **교정 JSON 유무**를 도로
+#     실어 왔다 — "뗀다"고 한 have_det 결합이 하나도 안 끊긴 회귀. 그래서 `router_drives()` 를
+#     새로 만들었다(policy.jl). 이 T8 은 그 재발을 막는다.
+#
+#     ENV 를 바꿔 프로세스 재기동으로 검사하는 방법은 안 썼다 — `ROUTER_MODE`/`POLICY` 가
+#     `const` 라 같은 프로세스 안에서는 재현이 안 되고, 이 파일이 여러 프로세스를 띄우면
+#     "시뮬레이터도 서비스도 안 띄운다"는 이 파일의 원래 계약(19행)이 깨진다. 대신 **정적
+#     검사**를 골랐다: `router_drives()` 의 저수준 코드(lowered IR)에 `install_novelty!` 호출이
+#     **문법적으로 존재하지 않는다**는 것은 어떤 ENV 조합에서도 참인, 더 강한 계약이다.
+#     대조군으로 `router_enabled()` 의 lowered 코드에는 그 호출이 실제로 있다는 것도 같이
+#     확인해 이 검사 방법 자체가 뭔가를 놓치고 있지 않다는 것을 보인다(양성 대조).
+# ---------------------------------------------------------------------------------------------
+lowered_drives  = string(@code_lowered router_drives())
+lowered_enabled = string(@code_lowered router_enabled())
+check("T8 router_drives() 의 lowered 코드에 install_novelty! 호출이 없다(정적 -- ENV 무관)",
+      !occursin("install_novelty", lowered_drives), lowered_drives)
+check("T8b (양성 대조) router_enabled() 의 lowered 코드에는 install_novelty! 호출이 있다 " *
+      "-- 즉 위 검사 방법이 실제로 그 호출을 잡아낼 수 있다",
+      occursin("install_novelty", lowered_enabled))
+
+# T8c 보충(런타임, 이 프로세스의 기본 ENV 한정): 이 작업 트리에는 교정 파일이 없다(실측,
+# wm4spacecraft_manufacturing/novelty/ 디렉토리 자체가 없음) -- 그래서 install_novelty!() 는
+# fail-open 으로 false 다. ROUTER_MODE(기본 "auto")가 "0"이 아니고 POLICY(기본 "canonical")가
+# "noop"이 아닌 한, 바로 그 상태에서 router_drives()=true 인데 router_enabled()=false 다.
+# 이 둘이 갈린다는 사실 자체가 "손잡이가 교정 파일에 안 묶여 있다"는 살아있는 증거다.
+# ENV 를 명시로 세팅하지 않은 것은 의도적이다 -- round 1 이 놓친 바로 그 기본 상태를 잰다.
+if ROUTER_MODE != "0" && POLICY != "noop"
+    check("T8c (런타임, 기본 ENV) router_drives()=true 인데 router_enabled()=false " *
+          "(교정 파일 부재, ROUTER_MODE=$(ROUTER_MODE) POLICY=$(POLICY)) -- 손잡이가 갈라져 있다",
+          router_drives() == true && router_enabled() == false,
+          "router_drives()=$(router_drives()) router_enabled()=$(router_enabled())")
+else
+    check("T8c 건너뜀 -- ROUTER_MODE/POLICY 기본값이 아니라서 이 방식의 대조가 성립 안 함" *
+          "(ROUTER_MODE=$(ROUTER_MODE) POLICY=$(POLICY))", true)
+end
 
 println()
 println(nfail == 0 ? "전부 통과 ($(npass))" : "$(nfail)개 실패 / $(npass)개 통과")
