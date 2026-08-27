@@ -452,7 +452,20 @@ def psi(action):
     if isinstance(action, (list, tuple)):
         names = list(action)
     else:
-        names = MACRO_SPECS.get(int(action), [])
+        mid = int(action)
+        # 🔴 `.get(mid, [])` 였다 (2026-08-27 수정). 그러면 바로 아래 `if not names:` 가
+        #    **"원시연산 0개인 진짜 NOOP"(레지스트리 0번)** 과 **"레지스트리에 없는 id"** 를
+        #    같은 분기로 무너뜨려 둘 다 NOOP 의 ψ 를 받았다. 실측: psi(99) == psi(0) 이 True.
+        #    귀결: predict_J 가 미등록 매크로에 **예외 없이** NOOP 의 값을 그럴듯하게 냈다.
+        #    매크로를 주조하는 세계에서는 낡은 id 가 돌아다니므로 조용한 거짓이 된다.
+        # ⚠️ 판정은 truthiness 가 아니라 **멤버십**이다 — MACRO_SPECS[0] 은 빈 리스트이므로
+        #    `if not MACRO_SPECS.get(mid)` 로 고치면 NOOP 이 죽는다.
+        if mid not in MACRO_SPECS:
+            raise KeyError(
+                "psi: 매크로 id %d 가 action_registry 에 없다 -- 조용히 NOOP 의 ψ 로 "
+                "무너뜨리지 않는다. 현행 어휘의 id 는 %s 다. 구세대 라벨이거나 "
+                "레지스트리에 등록되지 않은 주조 id 를 의심하라." % (mid, sorted(MACRO_SPECS)))
+        names = MACRO_SPECS[mid]
 
     if not names:                                  # NOOP
         return dict(zip(PSI_AXES, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)))
