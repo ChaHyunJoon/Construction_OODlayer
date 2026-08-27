@@ -137,6 +137,10 @@ def run_one(seed, policy, out_path, log_dir, args):
 
 ROUTER_ENGAGED_TARGETS = {"surrogate", "dspy"}    # route() 가 실제로 고를 수 있는 값은 이 둘뿐(policy.jl:349)
 
+# 라우터가 레인을 고를 때 policy.jl 이 결정 행에 심는 축 라벨(lane_select.jl 의 enum).
+# None 은 "이 결정에는 레인 선택 기록이 없다" 이고, 그 외는 전부 "레인 선택이 돌았다" 이다.
+ROUTER_AXES = {"control", "vocabulary_gap", "novelty", "none"}
+
 
 def _router_drove(out_path, case, ood_seed, policy, want_router):
     """1-b: `--router != 0` 로 던 판이 실제로 라우터를 구동했는지 사후 확인.
@@ -147,14 +151,26 @@ def _router_drove(out_path, case, ood_seed, policy, want_router):
     즉 라우터가 한 번도 구동되지 않은 판(백업 데이터 = 전부 DEMO_ROUTER=0)에서도 이 조건은
     통과해, STEP E 가 밤새 fail-open 인 채로 돌아도 전부 "ok" 로 보고될 수 있었다.
 
+    🔴 2026-08-27 (최종 리뷰 F7) — 그 뒤 판정(`router_target in {surrogate,dspy}`)이 **양방향으로**
+    틀려졌다. Task 3 이 격상·레인 선택을 novelty 교정에서 뗀 뒤로:
+
+      · 거짓 음성: 라우터가 레인을 몰아도 `rt["target"]` 은 기본 정책 이름에 머물 수 있다
+        (`target` 을 덮어쓰는 것은 **novelty 축**(`enabled=true`)뿐이다). 교정 파일이 없는
+        `--router 1 --policies canonical` 런은 라우터가 **실제로 몰았는데** 여기서
+        "gate failed open" 으로 보고된다.
+      · 거짓 양성: `--policies surrogate` 면 라우터가 꺼져 있어도 target 이 "surrogate" 라
+        이 검사가 그냥 통과한다(옛 docstring 도 괄호로 그 예외를 인정하고 있었다).
+
+    이제 **진실원을 직접 읽는다**: policy.jl 이 레인을 고를 때만 심는 `router_axis`
+    (그리고 그 술어 자체인 `router_drives`). 설계서 §5 — 도장에 소비처를 붙인다.
+
     올바른 판정은 두 단계다(실패 원인을 구분해서 알려준다 -- 무엇을 고칠지가 다르다):
       1) 깃발이 서브프로세스까지 실제로 전달됐는가 -- 요약 행의 최상위 `router` 필드는
          `DEMO_ROUTER` 값을 그대로 기록한다(run_demo.jl:620). 이게 요청한 --router 값과 다르면
          애초에 라우터를 켠 적이 없는 것이다.
-      2) 라우터가 실제로 무언가를 골랐는가 -- route() 가 실행을 정할 때(drives=true)만 target 을
-         "surrogate"/"dspy" 로 덮어쓴다(policy.jl:349,356). base policy 이름이 그대로 남아 있다는
-         것은(요청한 --policies 가 surrogate/dspy 자체가 아닌 한) 라우터가 fail-open 이었거나
-         결정마다 매번 advisory 로만 그쳤다는 뜻이다.
+      2) 라우터가 실제로 레인을 골랐는가 -- 결정 행의 `router_axis`(또는 `router_drives`)가
+         그 사실을 나른다. 둘 다 **키 자체가 없는** 옛 산출물(Task 3 이전)에서만 예전
+         `router_target` 판정으로 되돌아간다.
 
     반환: (ok, reason). ok=True 면 reason=None. 판을 못 찾으면 (False, ...).
     """
@@ -165,10 +181,29 @@ def _router_drove(out_path, case, ood_seed, policy, want_router):
             if r.get("router") != want_router:
                 return False, ("flag not passed: summary row's router=%r != requested --router %r"
                                % (r.get("router"), want_router))
-            targets = {d.get("router_target") for d in (r.get("decisions") or [])}
+            decisions = r.get("decisions") or []
+            # 이 산출물이 축 도장을 아는 세대인가. 키가 하나도 없으면 Task 3 이전 산출물이다.
+            stamped = any(("router_axis" in d) or ("router_drives" in d) for d in decisions)
+            if stamped:
+                axes = {d.get("router_axis") for d in decisions}
+                drove = {d.get("router_drives") for d in decisions}
+                if not ((axes & ROUTER_AXES) or (True in drove)):
+                    return False, ("gate failed open: no decision recorded a lane selection "
+                                   "(router_axis=%r router_drives=%r) -- see policy.jl router_drives()"
+                                   % (sorted(a for a in axes if a), sorted(d for d in drove if d is not None)))
+                # 축 1 의 입력을 한 번도 못 쟀으면, 어휘 미달이 '없었다' 가 아니라 '못 쟀다' 다.
+                # 게이트를 빨갛게 만들지는 않는다(레인 선택 자체는 돌았다) -- 대신 이름을 밝힌다.
+                measured = {d.get("support_measured") for d in decisions}
+                if measured and True not in measured:
+                    print("    WARN: router drove, but surrogate support was never measured "
+                          "(support_measured=%r) -- axis 1 could not have fired in this run"
+                          % sorted(str(m) for m in measured))
+                return True, None
+            targets = {d.get("router_target") for d in decisions}
             if not (targets & ROUTER_ENGAGED_TARGETS):
                 return False, ("gate failed open: no decision's router_target left the base policy "
-                               "(saw %r) -- see policy.jl:67 fail-open" % sorted(t for t in targets if t))
+                               "(saw %r) -- pre-Task-3 artifact, no router_axis stamp"
+                               % sorted(t for t in targets if t))
             return True, None
     return False, "no row found for (case=%r, ood_seed=%r, policy=%r) in summary" % (case, ood_seed, policy)
 

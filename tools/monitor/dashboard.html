@@ -1359,10 +1359,16 @@
     }
     if (rb) {
       rb.hidden = false;
+      // 🔴 `rt.enabled` 는 **novelty 축**이 실행을 정했는가일 뿐이다(교정 JSON 유무를 포함한다).
+      // 2026-08-27 Task 3 이후 라우터는 교정 없이도 레인을 고른다 — 그 사실은 `drives_lane` 이
+      // 나른다. 이 화면이 `enabled` 만 보고 "ROUTER off" 를 렌더한 것이 최종 리뷰 F3 이다:
+      // 라우터가 실제로 결정한 판에 대해 화면이 라우터가 꺼져 있었다고 적었다.
+      // 옛 스트림에는 `drives_lane` 키가 없다 → undefined → `enabled` 만 보던 예전 렌더 그대로.
+      var drove = (rt && (rt.enabled === true || rt.drives_lane === true));
       if (!rt) {
         rb.innerHTML = '<span class="rlab">ROUTER</span><span class="roff">no router record in this stream'
                      + ' (recorded before routing existed, with DEMO_POLICY fixed).</span>';
-      } else if (!rt.enabled && rt.advisory && rt.p != null) {
+      } else if (!drove && rt.advisory && rt.p != null) {
         // 정책 고정 녹화(DEMO_ROUTER=0): 라우터는 실행을 안 했지만 판정은 남아 있다.
         // "라우터였다면 어디로 보냈을까"를 고정 실행과 나란히 보여주는 것이 이 화면의 값어치다.
         var wnv = !!rt.novel;
@@ -1372,9 +1378,26 @@
           + '<span class="rwhy">novelty p=' + Number(rt.p).toFixed(3)
           + ' &middot; <b>this recording enacted ' + esc(din.enacted || rt.target || "?") + ' (fixed)</b></span>'
           + pHint(rt.p, rt.eps, wnv);
-      } else if (!rt.enabled) {
+      } else if (!drove) {
         rb.innerHTML = '<span class="rlab">ROUTER</span><span class="roff">off · '
                      + esc(rt.reason || "") + '</span>';
+      } else if (!rt.enabled) {
+        // 🔴 2026-08-27 (최종 리뷰 F3): 이 분기가 없어서, 라우터가 **어휘 미달로 레인을 바꾼**
+        // 판이 화면에 "ROUTER off · ... DEMO_POLICY=canonical fixed for the run" 으로 떴다 —
+        // 라우터가 실제로 결정한 판에 대해. novelty 축은 교정 파일이 없어 쉬고 있지만
+        // (`rt.enabled=false`) 레인 선택은 돌았다(`rt.drives_lane=true`). 그 사실을 그대로 적는다.
+        var ax = rt.router_axis || "none";
+        var gapArms = (rt.vocabulary_gap_arms && rt.vocabulary_gap_arms.length)
+                    ? ' [' + esc(rt.vocabulary_gap_arms.join(", ")) + ']' : '';
+        rb.innerHTML = '<span class="rlab">ROUTER</span>'
+          + '<span class="rverdict '+(ax === "vocabulary_gap" ? "novel" : "familiar")+'">'
+          + 'axis: ' + esc(ax) + gapArms + '</span>'
+          + '<span class="rwhy">' + esc(rt.lane_reason || rt.reason || "")
+          + ' &middot; enacted=' + esc(din.enacted || rt.target || "?")
+          + (rt.support_measured === false
+             ? ' <i>(surrogate support was NOT measured — “no gap” here means “not measured”)</i>'
+             : '')
+          + '</span>';
       } else {
         var nv = !!rt.novel;
         var pTxt = (rt.p == null) ? "—" : Number(rt.p).toFixed(3);

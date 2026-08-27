@@ -235,12 +235,28 @@ julia +lts --project=. tools/monitor/run_demo.jl   # zone 사건에서만 [route
 
 | 변수 | 기본 | 뜻 |
 |---|---|---|
-| `DEMO_ROUTER` | `auto` | `auto`=교정이 있으면 라우터 켬 / `1`=강제 / `0`=끔(예전처럼 `DEMO_POLICY` 고정) |
+| `DEMO_ROUTER` | `auto` | 🔴 **레인 선택 손잡이**(`router_drives()`). `auto`/`1` = 라우터가 사건마다 레인을 고른다(**교정 파일과 무관하다**) / `0` = 끔(예전처럼 `DEMO_POLICY` 고정) |
 | `ROUTER_EPS` | 교정의 `alpha`(0.05) | 낯섦 p-value 임계. 키우면 더 많이 LLM 으로 간다 |
 | `NOVELTY_CALIB` | `../wm4spacecraft_manufacturing/novelty_calibration.json` | 교정 파일 경로 |
 
-**비파괴**: 교정 파일이 없거나 `DEMO_ROUTER=0` 이면 예전 동작 그대로(fail-open). 라우터 기록이 없는
-옛 스트림도 대시보드가 그대로 연다("이 스트림에는 라우터 기록이 없습니다"로 표시).
+🔴 **2026-08-27 정정 — 이 표의 `auto` 뜻이 바뀌었다.** 예전에는 `auto` = "교정이 설치돼 있으면 켬"
+이었다. 설계서(`2026-08-27-vocabulary-indexed-router-design.md` §3)가 요구하는 대로 **격상·레인 선택**을
+novelty 교정 게이트에서 뗀 뒤로, 두 손잡이가 갈린다:
+
+| 술어 | 무엇을 정하나 | 교정 JSON 을 보나 |
+|---|---|---|
+| `router_drives()` | 라우터가 **레인을 고르는가**(축 1 어휘 미달 + 격상) | **아니다** — `DEMO_ROUTER`·`DEMO_POLICY` 만 |
+| `router_enabled()` | **novelty 축**(축 2)이 판정을 낼 수 있는가 | 그렇다(p-value 를 내려면 교정이 필요하다) |
+
+**비파괴 — 정확히 어디까지인가**: `DEMO_ROUTER=0` 이면 레인 전환도 격상도 없다(비교 실행 보호는
+그대로다). 그러나 🔴 **교정 파일이 없다고 해서 예전 동작이 되지는 않는다** — 기본값 `auto` 에서
+라우터는 교정 없이도 레인을 고른다. 그 사건에서 스트림의 `router.enabled` 는 `false` 지만
+`router.drives_lane` 은 `true` 이고, 결정 행의 `router_drives`·`router_axis` 가 그 사실을 나른다.
+(2026-08-27 이전 이 문단은 "교정 파일이 없거나 `DEMO_ROUTER=0` 이면 예전 동작 그대로(fail-open)" 라고
+적고 있었다. 앞 절반은 이제 거짓이고, 실측이 반증한다: 기본 env 에서 `router_drives()=true` ·
+`router_enabled()=false` 인데 `run_demo.jl` 이 canonical 이 아니라 라우터가 고른 레인을 집행한다.)
+
+라우터 기록이 없는 옛 스트림도 대시보드가 그대로 연다("이 스트림에는 라우터 기록이 없습니다"로 표시).
 
 ## LLM 입력이 자연어 문장으로 바뀜 (2026-07-28)
 
