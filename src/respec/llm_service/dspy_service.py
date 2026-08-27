@@ -443,6 +443,22 @@ def _surro_row(req: "MacroRequest", macro: int) -> dict:
         progress=float(req.progress))
 
 
+def _unsupported_for(req, valid):
+    """이 메뉴에서 surrogate 가 학습 근거를 못 가진 팔들. **못 쟀으면 빈 목록이 아니라 None.**
+
+    🔴 유도는 여기 한 곳에만 둔다. `surrogate_rank` 도 `decide` 도 이 함수(또는 그것이 만든
+    `UNSUPPORTED:` 문자열)에서만 값을 얻는다 — 두 벌 두면 조용히 갈린다.
+    ⚠️ `req` 는 지금 안 쓰지만 시그니처에 남긴다: 앞으로 지원 여부가 사건 의존이 되면
+    (예: SoC 로 갈린 메뉴) 여기서 읽어야 하고, 그때 호출부를 다시 고치지 않는다.
+    """
+    from e1_analyze import MACRO_NAME as MN
+    name2id = {v: k for k, v in MN.items()}
+    support = _state.get("surro_support")
+    if support is None:
+        return None
+    return [m for m in valid if m in name2id and name2id[m] not in support]
+
+
 def surrogate_rank(req: "MacroRequest", valid: List[str]):
     """배포 SurrogateV2 로 legal 매크로를 점수화해 순위를 낸다.
 
@@ -463,8 +479,16 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
     try:
         from e1_analyze import MACRO_NAME as MN
         name2id = {v: k for k, v in MN.items()}
-        support = _state.get("surro_support") or set(range(5))
-        unsupported = [m for m in valid if m in name2id and name2id[m] not in support]
+        # 🔴 `or set(range(5))` 였다 (2026-08-27 수정). 그건 구세대 리터럴(매크로 5개)이고,
+        #    surrogate 로드가 실패하면 지원집합이 조용히 {0,1,2,3,4} 가 되어 현행 어휘
+        #    ({0,1,2})의 모든 팔이 '지원됨' 으로 읽혔다. 그러면 어휘 미달 축이 **정확히 그
+        #    상황에서** 영원히 침묵한다 — 모델이 없는데 "전부 배웠다" 고 답하는 셈이다.
+        #    못 읽으면 답하지 않는다.
+        support = _state.get("surro_support")
+        if support is None:
+            return None, ("surrogate macro support is unknown (model not loaded) -- "
+                          "refusing to answer rather than assuming every arm is supported")
+        unsupported = _unsupported_for(req, valid)      # 유도는 한 곳에만 (위 도우미)
         scorable = [name2id[m] for m in valid if m in name2id and name2id[m] in support]
         if not scorable:
             return None, ("no training support for any valid macro %s "
@@ -673,6 +697,10 @@ def health():
             "program": os.path.basename(PROGRAM) if os.path.exists(PROGRAM) else "(seed only)",
             "demos": _state["demos"], "calls": _state["calls"],
             "surrogate": _state["surro_data"] or ("ERROR: " + str(_state["surro_error"])),
+            # 축 1(어휘 미달)의 입력. 산문(`surrogate` 필드)이 아니라 **기계가 읽는 목록**이다.
+            # None 은 "못 쟀다"(모델 미적재)이고 [] 는 "아무 팔도 지원 안 한다" — 다른 사건이다.
+            "surro_support": (None if _state.get("surro_support") is None
+                              else sorted(_state["surro_support"])),
             "policies": ["dspy", "surrogate"]}
 
 
