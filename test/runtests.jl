@@ -180,4 +180,45 @@ end
         ok || println("---- tools/test_policy_oracle.jl 전체 출력 ----\n", txt)
         @test ok
     end
+
+    # 🔴 2026-08-27 (최종 리뷰 F1): `tools/test_policy_escalation.jl` 은 **다섯 번째 고아
+    # 게이트**였다. Task 2 는 `tools/monitor/test_lane_select.jl` 을 여기 배선했는데, Task 3 이
+    # T7·T7b·T8·T8b·T9·T9b 여섯을 더한 이 파일은 `runtests.jl` 에도 어떤 하네스에도 없었다 —
+    # 이 브랜치가 스스로 내건 Global Constraint("새 Julia 테스트는 반드시 runtests.jl 에
+    # 배선한다") 위반이고, 바로 위 R-66 블록이 2026-08-25 에 기록한 **같은 실패**의 재발이다.
+    # T9/T9b/T9c 가 R11 회귀(어휘 미달 격상이 novelty 교정 파일에 다시 묶이는 것)의 유일한
+    # 방어선인데 사람이 손으로 쳐야만 돌았다.
+    #
+    # 🔴 **하위 프로세스로 부른다(include 가 아니다).** 위 R-66 주석과 같은 이유다: 그 파일은
+    # 스크립트라 마지막 줄이 `exit(nfail == 0 ? 0 : 1)` 이고, `include` 하면 초록일 때
+    # `exit(0)` 이 그 자리에서 걸려 **뒤따르는 테스트가 하나도 안 돌았는데 Pkg.test 는 성공으로
+    # 보인다.** 하위 프로세스는 종료코드를 그대로 나르고, 그 파일이 심는 전역 로거·ENV 도
+    # 이쪽으로 새지 않는다(그 파일은 policy.jl 을 include 하므로 ROUTER_MODE/POLICY const 를
+    # 자기 모듈에 만든다).
+    @testset "policy escalation gate (tools/test_policy_escalation.jl)" begin
+        gate = normpath(joinpath(@__DIR__, "..", "tools", "test_policy_escalation.jl"))
+        repo = normpath(joinpath(@__DIR__, ".."))
+        @test isfile(gate)
+        logf = tempname()
+        # 🔴 `JULIA_LOAD_PATH` 를 **지운다**(이 배선을 하자마자 실측으로 드러난 함정).
+        # `Pkg.test()` 는 자기 임시 테스트 환경을 `JULIA_LOAD_PATH` 로 심는데, 그 값에는
+        # `@stdlib` 가 없다. 자식 julia 는 그것을 물려받으므로 `--project=$(repo)` 를 줘도
+        # **선언 안 된 stdlib 를 못 찾는다** — 이 게이트는 `using InteractiveUtils`(T8/T9 의
+        # 정적 검사가 쓰는 `@code_lowered`)를 하는데 `Project.toml` 에는 그 stdlib 가 없다
+        # (Manifest 1.10.11 고정이라 `Pkg.add` 로 넣을 수도 없다).
+        # 실측: LOAD_PATH 를 물려받으면 `ArgumentError: Package InteractiveUtils not found`
+        # 로 즉사해 게이트가 **한 검사도 못 돌고** 빨개진다. 지우면 기본
+        # `@:@v#.#:@stdlib` 가 복원되어 헤더가 문서화한 단독 실행과 같은 세계가 된다.
+        cmd = addenv(`$(Base.julia_cmd()) --project=$(repo) $(gate)`,
+                     "JULIA_LOAD_PATH" => nothing)
+        ok = success(pipeline(cmd; stdout = logf, stderr = logf))
+        txt = isfile(logf) ? read(logf, String) : ""
+        # 요약 줄("전부 통과 (N)" / "N개 실패 / M개 통과")은 초록이어도 보여 준다 — 몇 개를
+        # 쟀는지가 안 보이면 게이트가 조용히 0개로 줄어들어도 아무도 모른다.
+        for l in split(txt, '\n')
+            (occursin("전부 통과", l) || occursin("개 실패", l)) && println("    ", strip(l))
+        end
+        ok || println("---- tools/test_policy_escalation.jl 전체 출력 ----\n", txt)
+        @test ok
+    end
 end
