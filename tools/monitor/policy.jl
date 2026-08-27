@@ -342,9 +342,14 @@ end
 함수는 교정 유무와 무관하게 `desc` 를 그대로 싣는다. `desc === nothing`(계산 실패)일 때도
 **키를 지우지 않는다** — "못 쟀다"와 "안 실었다"는 다른 사건이고, 키가 없으면 소비처가 둘을
 구분할 수 없다.
+
+⚠️ `v` 를 주면서 `eps` 를 생략하면 아래에서 명시적으로 에러를 던진다(2026-08-26, F5) —
+`round(nothing; digits=3)` 가 `MethodError` 로 죽는 것보다 원인이 뚜렷하다. `route()` 는 둘을
+항상 같이 넘기므로 오늘은 이 경로에 도달하지 않지만, 키워드 기본값이 `nothing`/`nothing` 인 한
+그 계약이 signature 만으로는 안 보인다.
 """
 function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractString,
-                       v = nothing, eps = nothing)
+                       v = nothing, eps::Union{Nothing,Real} = nothing)
     base = Dict{String,Any}("descriptors" => desc)
     if !have_det
         return merge(base, Dict{String,Any}(
@@ -359,6 +364,8 @@ function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractStr
             "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
             "reason" => "descriptors unavailable"))
     end
+    eps === nothing && error("route_verdict: v is given but eps is nothing -- " *
+                             "caller must pass eps whenever v is non-nothing")
     would = v.novel ? "dspy" : "surrogate"
     msg = v.novel ?
         "novelty p=$(round(v.p; digits=3)) < eps=$(round(eps; digits=3)) — NEVER SEEN THIS BEFORE → ask the LLM" :
