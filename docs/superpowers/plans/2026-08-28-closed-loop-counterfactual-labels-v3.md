@@ -46,6 +46,7 @@
 | **안 짓는다** | **축 2 (conformal)**. 2026-08-28 측정이 R3 FAIL · R4 "실패할 수 없는 검사" · 조건부 coverage 0.000 을 냈다. Task 8 은 새 라벨셋 위에서 **다시 재기만** 한다 |
 | **안 짓는다** | 새 원시연산(L2). `_PRIMITIVE_TABLE` 에 없는 동작이면 파일 12개가 붙는다 |
 | **안 짓는다** | `src/safety/novelty.jl` 삭제. 사용자 결정대로 새 라우터를 먼저 짓고 나중에 지운다(설계서 §6) |
+| **부분만 한다** | 🔴 `sample_grid.py` 의 `CASES` 리터럴(zone 4종 포함). V3 의 생산자는 `--cases` 를 자기 CLI 에서 `TRAIN_KINDS` 로 **하드 스톱**하지만(Task 4 `main()`), `sample_grid.py` 자신의 `CASES` 기본값과 그 파일의 `main()` 은 그대로다 — DP 표집 경로는 V3 의 소비처가 아니라 안 건드린다. **그 리터럴이 남아 있다는 사실을 §9 에 적는다** |
 
 ### 🔴 `psi()` 호출 시점 방어는 **이미 있다 — 다시 짓지 않는다**
 
@@ -66,9 +67,9 @@ psi(99) -> KeyError: 'psi: 매크로 id 99 가 action_registry 에 없다 ...'
 ### 2-1. R3 = FAIL. 손잡이가 없다 — 그리고 그것은 J 의 성질이다
 
 - α ∈ (0,1) **전체**에서 격상률이 취하는 값은 `{1.000, 0.750, 0.667}` **셋뿐**이고, 측정 가능하고 공허하지 않은 것은 **0.750 하나**다(α 구간의 94.1%).
-- 이유: gap 분포가 이봉이고 **빈 구간 `(30.963, 17304.157)`** 이 있는데, 유한한 2q 의 도달 범위 `[44.382, 15170.903]` 이 **그 빈 구간 안에 통째로 들어간다.**
+- 이유: gap 분포가 이봉이고 **빈 구간 `(30.963, 17304.157)`** 이 있는데, **측정 가능하고 공허하지 않은 α 에서의** 2q 도달 범위 `[44.382, 15170.903]` 이 **그 빈 구간 안에 통째로 들어간다.** ⚠️ 한정어를 빼면 안 된다(2026-08-28 preflight R-8): α 격자 **전체**의 유한한 2q 범위는 `[26.353, 15170.903]` 이고 `26.353 < 30.963` 이라 **빈 구간 안에 안 들어간다.** 숫자가 아니라 라벨이 틀렸던 자리다.
 - 🔴 **그 이봉성은 surrogate 의 성질이 아니라 `J` 자신의 성질이다.** 독립 재유도가 **진실 J** 의 gap 을 모델 없이 직접 재서 같은 빈 구간 `(109.5, 17778.6)` 을 얻었다. 원인은 `objective.json` 의 `C_fail = 10000` 완주 절벽이다.
-- **귀결: `Ĵ` 가 더 정확해져도 축 2 는 안 산다.** 정확도의 병이 아니다.
+- **귀결(정확한 형태):** `Ĵ` 를 **균일하게** 개선하는 것만으로는 축 2 가 안 산다. 🔴 그러나 *"정확도는 무관하다"* 는 **과장이고 출처 보고와 충돌한다**(2026-08-28 preflight R-7). 측정 보고 §7-2 의 조건 2 는 *"`Ĵ` 가 지금보다 **최소 한 자릿수** 정확해지지 않으면 어떤 α 도 봉우리 안을 가르지 못한다"* 이다 — 즉 **정확도는 필요조건이되 충분조건이 아니다.** 충분하지 않은 이유는 두 가지다: (가) 봉우리 **사이** 간격(17000~20000)은 `C_fail` 절벽이라 모델과 무관하고(진실 J 로도 같은 빈 구간이 나온다), (나) §2-2 의 **구조적 비교환성**은 전체 잔차를 10배 줄여도 팔 사이 잔차 *규모비* 가 남으면 그대로다.
 
 ### 2-2. R4 는 통과한 게 아니라 **아무것도 못 가리는 검사**였고, 잔차는 **반증됐다**
 
@@ -128,6 +129,19 @@ $ grep -rn 'require_vocab_stamps' --include='*.jl' . | grep -v '\.venv'
 > R2 는 *"같은 사건이 라벨 추가 전에는 `vocabulary_gap` 으로, 후에는 surrogate 로 가는가"* 이지 *"새 매크로를 주조하는가"* 가 아니다. **지원집합은 어휘의 부분집합**이고, 오늘 지원집합 = 어휘 전체 `{0,1,2}` 인 것은 라벨셋이 세 팔을 다 가르치기 때문이다. 지원집합을 `{0,1}` 로 줄인 라벨셋을 만들고 → 반사실 라벨로 macro 2 를 **추가**하면 → 지원집합이 `{0,1} → {0,1,2}` 로 자란다. **어휘는 `v4-3arms` 그대로다.**
 
 즉 V3 은 **어휘 안에서 경계를 움직인다.** 어휘 자체를 늘리는 길(설계서 §8, `vocab` 벽)은 V3 다음이다.
+
+### 🔴 그러나 이 재정의는 **엄격히 더 약하다** — 세 가지 방식으로
+
+2026-08-28 preflight 가 위 논증을 CONFIRMED 로 판정하면서 같이 지적한 것이다. 설계서 §7 R2 의 **문언**과 §4 ④ 에는 부합하지만, §4 가 그리는 **①→⑥ 폐루프**에는 못 미친다. 셋 다 적는다:
+
+1. 🔴 **①→④ 방아쇠가 관측되지 않는다.** V3 의 '전' 라벨셋은 **같은 실행이 만든 행의 뺄셈**이다(Task 7 Step 1 이 `--drop-macro 2` 로 만든다). 즉 *"사건이 도착 → 축 1 이 격상 → LLM 이 대응 → 그 대응에서 라벨이 쌓임"* 이라는 인과 사슬을 **한 칸도 태우지 않는다.** 라벨은 사건이 도착하기 **전에 이미 다 만들어져 있고**, V3 은 그중 일부를 가렸다가 걷을 뿐이다.
+2. 🔴 **주조 경로 기계를 0개 태운다.** `SwapBattery` 는 이미 `KIND_VALID`·`MACRO_SPECS`·`macro_to_proposal`·`run_demo.jl` 집행 사슬·`ood_mdp_shim.action_to_proposal`·`reference_policy` 에 **전부 들어 있다.** 설계서 §8 이 "6~7파일 수작업" 이라고 부른 그 기계 중 **어느 것도 V3 에서 시험되지 않는다.** 새 팔이었다면 그 일곱 자리 중 하나만 빠져도 조용히 빈 제안이 되는데, V3 은 그 위험 영역에 들어가지 않는다.
+3. 🔴 **그래서 V3 이 실제로 보이는 것은 폐루프가 아니다.** 정확한 이름은 **"R1 + 같은 프로세스 재적재 + 도장 진실원"** 이다:
+   - **R1** — 축 1 이 발화할 수 있다(V1 이 `_state` 를 손으로 갈아 끼워 보인 것을, V3 은 **라벨 파일에서** 보인다. 그만큼은 진짜로 더 강하다).
+   - **같은 프로세스 재적재** — 라벨을 바꾸면 지원집합이 따라 움직인다(Task 6 이 만든 경로).
+   - **도장 진실원** — 그 지원집합이 행 스캔이 아니라 파일의 선언에서 온다(Task 5).
+
+> 🔴 **그러므로 "V3 이 R2 를 달성한다" 고 쓰면 거짓이다.** 쓸 수 있는 문장은 *"V3 은 설계서 §7 R2 의 **한 사례**를 어휘 안에서 관측 가능하게 만들고, 폐루프의 나머지 절반(①→④ 방아쇠와 주조 경로)은 안 태운다"* 다. 이 계획서·커밋 메시지·후속 보고 어디에도 그보다 강한 문장을 쓰지 않는다.
 
 ---
 
@@ -489,6 +503,31 @@ def test_at_zero_is_a_probe_board_with_no_deviation(monkeypatch, tmp_path):
     assert p == str(tmp_path / "battery_s1_probe" / "rows.jsonl")
 
 
+def test_a_probe_board_ignores_a_deviation_left_in_the_parent_environment(monkeypatch,
+                                                                         tmp_path):
+    """🔴 위 테스트만으로는 부족하다 (2026-08-28 preflight 위험 15-b).
+
+    `env = dict(os.environ)` 로 시작하므로, 셸에 `DS_DEVIATE_AT` 이 export 돼 있으면
+    "안 넣는다" 가 "안 걸린다" 를 뜻하지 않는다 — **프로브 판이 조용히 갈아 끼워지고 사건
+    목록의 진실원이 이미 반사실인 판이 된다.** 위 테스트는 부모 환경이 깨끗해서 그 결함이
+    있어도 **초록**이다. 이 테스트가 그 구멍을 막는다.
+    """
+    monkeypatch.setenv("DS_DEVIATE_AT", "7")
+    monkeypatch.setenv("DS_DEVIATE_ARM", "Replace")
+
+    def fake_call(cmd, stdout=None, stderr=None, cwd=None, env=None):
+        assert "DS_DEVIATE_AT" not in env, "🔴 부모 환경의 deviation 이 프로브 판으로 샜다"
+        assert "DS_DEVIATE_ARM" not in env
+        out = cmd[cmd.index("--out") + 1]
+        with open(out, "w") as fh:
+            fh.write('{"complete": true}\n')
+        return 0
+
+    monkeypatch.setattr(sample_grid.subprocess, "call", fake_call)
+    p, k = sample_grid.run_board("battery", 1, 0, "NOOP", str(tmp_path), at=0)
+    assert k == 0 and p is not None
+
+
 def test_at_none_keeps_the_legacy_dp_path(monkeypatch, tmp_path):
     """🔴 회귀 방지: 구세대 DP 경로(board_id 규약 `<case>_s<seed>_a<arm_id>`)는 안 바뀐다.
 
@@ -561,15 +600,23 @@ def run_board(case, seed, arm_id, arm_name, outroot, world_seed=1, n_hint=DEFAUL
 ```python
     # 프로브 판(k == 0)은 갈아 끼우지 않는다 — 두 키를 **아예 안 넣는다**(policy.jl 은
     # DS_DEVIATE_AT 가 0 이하이면 error() 하고, 빈 문자열/미설정만 OFF 로 읽는다).
+    # 🔴 그리고 **부모 환경에 남은 값을 지운다** (2026-08-28 preflight 위험 15-b).
+    #    `env = dict(os.environ)` 로 시작하므로, 셸에 DS_DEVIATE_AT 이 export 돼 있으면
+    #    "안 넣는다" 가 "안 걸린다" 를 뜻하지 않는다 — 프로브 판이 조용히 갈아 끼워지고,
+    #    그러면 **사건 목록의 진실원이 이미 반사실인 판**이 된다. 바로 아래 줄이
+    #    DEMO_FORCE_MACRO 에 대해 같은 일을 이미 하고 있다(같은 이유다).
     if k > 0:
         env["DS_DEVIATE_AT"] = str(k)
         env["DS_DEVIATE_ARM"] = arm_name
+    else:
+        env.pop("DS_DEVIATE_AT", None)
+        env.pop("DS_DEVIATE_ARM", None)
 ```
 
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
 Run: `.venv/bin/python -m pytest wm4spacecraft_manufacturing/dp_oracle/test_sample_grid_wiring.py -v --ignore=src/respec/llm_service/test_propose.py`
-Expected: PASS — 10 passed
+Expected: PASS — 11 passed
 
 - [ ] **Step 5: 커밋 (명시 경로만)**
 
@@ -933,6 +980,7 @@ n_active 는 descriptors_from_row 가 서술자 셋을 만드는 값인데 결�
   - `counterfactual_labels.assert_label_schema(row, where) -> None`
   - `counterfactual_labels.instance_id(case, seed, event_index) -> str`
   - `counterfactual_labels.fold_board_to_label_row(board_row, event, case, seed, arm_id, arm_name) -> dict`
+  - `counterfactual_labels.assert_event_matches_board(event, board_row, where) -> None`
   - `counterfactual_labels.outcome_fingerprint(row) -> tuple`
   - `counterfactual_labels.build_labels(cases, seeds, work, world_seed=1) -> tuple[list[dict], dict]`
   - `counterfactual_labels.main() -> None` (CLI)
@@ -1000,11 +1048,25 @@ def test_the_schema_gate_does_not_depend_on_whether_the_board_completed():
                 cf.assert_label_schema(bad, "%s/%s" % (complete, col))
 
 
-def test_infinite_makespan_survives_the_json_round_trip():
-    """미완주 판의 makespan 은 Inf 다. `e1_analyze.load` 가 "Inf" 문자열을 되돌린다."""
-    b = _board(_decision(1), complete=False, closed=163, makespan=float("inf"))
+def test_an_incomplete_board_still_carries_a_finite_makespan():
+    """🔴 2026-08-28 preflight R-6: 초판은 "미완주 판의 makespan 은 Inf 다" 라고 적었고
+    **틀렸다.** 이 레인(`run_demo.jl`)은 `"makespan" => CB.sim_time(env.dt)` 로 **실현 시간**을
+    적는다 — 완주 여부와 무관하게 유한하다. `"Inf"` 는 **oracle 레인**(`gen_oracle_dataset.jl`)의
+    관용구이고 오늘의 33행이 그것을 들고 있어서 두 레인이 헷갈렸다.
+
+    ⚠️ 이 차이는 Task 8 의 세대 간 비교에 직접 걸린다 — 계획서 §2-3 과 Task 8 §5 를 볼 것.
+    """
+    b = _board(_decision(1), complete=False, closed=163, makespan=41.375)
     row = cf.fold_board_to_label_row(b, _event(), "battery", 1, 0, "NOOP")
-    assert json.loads(json.dumps(row))["makespan"] == "Inf"
+    assert json.loads(json.dumps(row))["makespan"] == pytest.approx(41.375)
+
+
+def test_a_none_makespan_is_a_hard_stop_not_an_infinity():
+    """`run_demo.jl` 은 `CB.sim_time` 이 던지면 `nothing` 을 적는다. 그것은 "무한히 오래
+    걸렸다" 가 아니라 **"못 쟀다"** 이고, `_jsonable` 이 그것을 Inf 로 승격시키면 안 된다."""
+    b = _board(_decision(1), complete=False, closed=163, makespan=None)
+    with pytest.raises(ValueError, match="makespan"):
+        cf.fold_board_to_label_row(b, _event(), "battery", 1, 0, "NOOP")
 
 
 def test_valid_mask_comes_from_the_registry_not_a_literal():
@@ -1014,6 +1076,27 @@ def test_valid_mask_comes_from_the_registry_not_a_literal():
     frow = cf.fold_board_to_label_row(_board(_decision(1, truth="FaultTruth")),
                                       _event(kind="fault"), "fault", 1, 0, "NOOP")
     assert frow["valid_mask"] == reg.KIND_VALID["fault"]
+
+
+def test_the_event_identity_gate_catches_a_board_from_a_different_world():
+    """🔴 위 "열이 일관되다" 단언이 못 잡는 것을 이 게이트가 잡는다 (preflight 위험 15-a)."""
+    ev = _event()
+    ok = _board(_decision(1, deviate_at=1))
+    cf.assert_event_matches_board(ev, ok, "ok")
+
+    # (a) 그 index 의 결정이 아예 없다
+    with pytest.raises(ValueError, match="decision_index=1"):
+        cf.assert_event_matches_board(ev, _board(_decision(2, deviate_at=2)), "없는 사건")
+
+    # (b) 게이트가 그 결정에서 안 걸렸다 = 이 판은 그 사건의 반사실이 아니다
+    with pytest.raises(ValueError, match="deviate_at"):
+        cf.assert_event_matches_board(ev, _board(_decision(1)), "미발화")
+
+    # (c) 🔴 결정 시점 상태가 갈렸다 = 결정 k 이전에 이미 다른 세계였다.
+    #     이것이 서술자 복사로는 **절대 안 드러나는** 실패다 — 모든 팔이 같은 거짓을 나눠 갖는다.
+    with pytest.raises(ValueError, match="n_active"):
+        cf.assert_event_matches_board(ev, _board(_decision(1, deviate_at=1, n_active=19)),
+                                      "갈린 세계")
 
 
 def test_outcome_fingerprint_counts_simulations_not_rows():
@@ -1030,9 +1113,15 @@ def test_outcome_fingerprint_counts_simulations_not_rows():
 
 
 def test_the_descriptor_columns_are_taken_from_the_event_not_the_arm_board():
-    """같은 사건의 팔들은 결정 k 까지 바이트 동일하므로 서술자가 같아야 한다.
+    """서술자를 사건에서 한 번 읽어 모든 팔에 같이 넣으면 **팔 사이에서 일관**해진다.
 
-    사건에서 한 번 읽어 모든 팔에 같이 넣으면 그 계약이 **구성상** 지켜진다.
+    🔴 2026-08-28 preflight 위험 15-a: 초판은 이것을 *"계약이 구성상 지켜진다"* 라고 적었는데
+    **그 논증은 틀렸다.** 사건에서 복사하면 열이 팔 사이에서 **같아지기만** 할 뿐,
+    그 값이 **그 판에서 참인지**는 아무것도 보장하지 않는다 — 프로브 판과 반사실 판이 서로
+    다른 세계라면(부모 환경의 deviation 이 샜거나, 재개 캐시가 다른 세대의 판을 돌려줬거나,
+    world_seed 가 어긋났거나) 모든 팔이 **같은 거짓 서술자**를 나눠 갖는다. 그 실패는
+    "열이 갈린다" 가 아니라 "열이 일관되게 틀리다" 라서 이 단언으로는 절대 안 잡힌다.
+    실제 계약은 `assert_event_matches_board` 가 판마다 검사한다(아래 테스트).
     """
     ev = _event()
     rows = [cf.fold_board_to_label_row(_board(_decision(1), closed=c), ev, "battery", 1, i, n)
@@ -1113,7 +1202,15 @@ def _terminal_energy(board_row):
 
 def _jsonable(x):
     """JSON 은 Inf/NaN 을 리터럴로 못 쓴다. 이 레포의 규약은 `"Inf"`/`"NaN"` 문자열이고
-    `e1_analyze.load` 가 읽을 때 되돌린다(`makespan`·`soc`·`zone_radius` 열)."""
+    `e1_analyze.load` 가 읽을 때 되돌린다(`makespan`·`soc`·`zone_radius` 열).
+
+    ⚠️ **이 레인의 `makespan` 은 미완주 판에서도 유한하다** — `run_demo.jl` 이
+    `"makespan" => CB.sim_time(env.dt)` 로 **실현 시간**을 적기 때문이다(2026-08-28 preflight
+    R-6 이 초판의 "미완주면 Inf" 를 반증했다). `"Inf"` 는 **oracle 레인**의 관용구다.
+    그래도 이 함수를 두는 이유는 `soc`(fault 사건에서 `NaN` 이 될 수 있다)와, 혹시 이 열에
+    비유한값이 들어오면 **JSON 이 조용히 `Infinity` 라는 비표준 리터럴을 쓰는 것**을 막기
+    위해서다. 🔴 `None`("못 쟀다")은 여기서 손대지 않는다 — `assert_label_schema` 가 죽인다.
+    """
     import math
     if isinstance(x, float):
         if math.isinf(x):
@@ -1127,9 +1224,15 @@ def fold_board_to_label_row(board_row, event, case, seed, arm_id, arm_name):
     """반사실 판 한 줄 + 그 사건 = 라벨 행 하나.
 
     **서술자 열은 `event` 에서 온다** (판이 아니라). 같은 사건의 팔들은 결정 k 까지 바이트
-    동일하므로 서술자가 같아야 하는데, 팔마다 자기 판에서 읽으면 그 계약이 **가정**이 된다.
-    사건에서 한 번 읽어 모두에게 같이 넣으면 **구성상** 지켜진다.
+    동일하므로 서술자가 같아야 하는데, 팔마다 자기 판에서 읽으면 팔 간 불일치가 조용히 섞인다.
     **결과 열은 판에서 온다** — 그것이 이 팔이 만든 미래다.
+
+    🔴 2026-08-28 preflight 위험 15-a: 초판은 여기에 *"사건에서 한 번 읽어 모두에게 같이
+    넣으면 계약이 **구성상** 지켜진다"* 라고 적었는데 **그 논증은 틀렸다.** 복사는 열을 팔
+    사이에서 **일관되게** 만들 뿐 그 값이 **그 판에서 참이 되게** 하지 않는다 — 프로브 판과
+    반사실 판이 다른 세계면 모든 팔이 **같은 거짓 서술자**를 나눠 갖고, 그 실패는 팔 간
+    비교로 절대 안 드러난다. 실제 계약은 `build_labels` 가 이 함수를 부르기 **전에**
+    `assert_event_matches_board` 로 판마다 검사한다.
     """
     row = {
         # ---- fit 이 요구하는 여섯 ----------------------------------------------------------
@@ -1181,6 +1284,48 @@ def fold_board_to_label_row(board_row, event, case, seed, arm_id, arm_name):
     return row
 
 
+def assert_event_matches_board(event, board_row, where):
+    """🔴 이 반사실 판이 **정말 그 사건에서** 갈렸는가 — 판 자신에게 물어본다.
+
+    2026-08-28 preflight 위험 15-a: 서술자를 사건에서 복사하는 것은 열을 팔 사이에서
+    **일관되게** 만들 뿐, 그 값이 판에서 참이 되게 하지 않는다. 프로브 판과 반사실 판이
+    다른 세계면(부모 환경의 deviation 누출 · 다른 세대의 재개 캐시 · world_seed 어긋남)
+    **모든 팔이 같은 거짓 서술자를 나눠 갖고**, 그 실패는 팔 간 비교로 절대 안 드러난다.
+
+    그래서 판의 결정 목록에서 그 index 의 결정을 찾아 **사건이 주장하는 것과 대조**한다.
+    결정 k 까지는 canonical prefix 라 바이트 동일해야 하므로, 여기서 갈리면 전제가 깨진 것이다.
+    """
+    idx = int(event["decision_index"])
+    ds = board_row.get("decisions") or []
+    d = next((x for x in ds if x.get("decision_index") == idx), None)
+    if d is None:
+        raise ValueError(
+            "%s: 이 판에는 decision_index=%d 인 결정이 없다(결정 %d개) -- 프로브 판이 본 사건이 "
+            "이 판에는 없다. 두 판이 같은 세계가 아니다." % (where, idx, len(ds)))
+    # 갈아 끼우기 게이트가 그 index 에서 실제로 걸렸는가. `deviate_at` 은 policy.jl 이
+    # "팔이 바뀌었는지와 무관하게" 심는 값이라(그 자리 주석이 그렇게 적는다) 미발화와
+    # 동어반복이 구분된다.
+    if d.get("deviate_at") != idx:
+        raise ValueError(
+            "%s: deviation 게이트가 이 결정에서 안 걸렸다(deviate_at=%r, 기대 %d) -- "
+            "k 가 결정 수보다 크거나 DS_DEVIATE_AT 이 안 먹었다. 이 판은 그 사건의 반사실이 "
+            "아니다." % (where, d.get("deviate_at"), idx))
+    # 결정 시점 상태가 프로브 판과 같은가 = 결정 k 까지 같은 세계였는가.
+    for k_ev, k_board in (("agent_pending", "agent_pending"), ("progress", "progress"),
+                          ("spare_count", "spare_count"), ("closed_at_fire", "closed_at"),
+                          ("n_active", "n_active")):
+        if event[k_ev] != d.get(k_board):
+            raise ValueError(
+                "%s: 결정 %d 의 %r 이 프로브 판과 다르다 (사건 %r vs 판 %r) -- 두 판이 결정 k "
+                "이전에 이미 갈렸다. 서술자를 사건에서 복사하면 이 거짓이 **모든 팔에 똑같이** "
+                "실려서 팔 간 비교로는 절대 안 드러난다."
+                % (where, idx, k_ev, event[k_ev], d.get(k_board)))
+    kind = TRUTH_TO_KIND.get(d.get("truth"))
+    if kind != event["kind"]:
+        raise ValueError("%s: 결정 %d 의 사건 종류가 다르다 (사건 %r vs 판 %r)."
+                         % (where, idx, event["kind"], kind))
+
+
 def outcome_fingerprint(row):
     """🔴 **행이 아니라 시뮬레이션을 센다.**
 
@@ -1194,8 +1339,12 @@ def outcome_fingerprint(row):
 
 - [ ] **Step 4: 테스트가 통과하는지 확인한다**
 
+⚠️ **Task 5 가 이 파일을 다시 고친다.** Task 5 Step 8 이 `REQUIRED_LABEL_COLUMNS` 에 `train_macros` 를 더하는데 `fold_board_to_label_row` 는 그 열을 안 찍으므로, 여기서 쓰는 두 단언(`for col in cf.REQUIRED_LABEL_COLUMNS` 와 `assert_label_schema(row, "ok")`)이 그때 빨개진다. **Task 5 Step 10 이 같이 고친다** — 그 스텝을 건너뛰면 Step 11 이 그 빨강을 진짜 결함으로 오진한다.
+
 Run: `.venv/bin/python -m pytest wm4spacecraft_manufacturing/oracle/test_counterfactual_labels.py -v --ignore=src/respec/llm_service/test_propose.py`
-Expected: PASS — 13 passed
+Expected: PASS — **20 passed**
+
+⚠️ **함수 수와 테스트 수가 다르다** (2026-08-28 preflight R-4 가 초판의 "13 passed" 를 반증했다). Task 3 의 5 + 이 태스크의 10 함수 = 15 함수인데, `test_a_missing_column_is_a_hard_stop_in_both_branches` 가 `@pytest.mark.parametrize` 로 **6항목**이라 그 함수 하나가 테스트 6개로 센다 → 5 + (10 − 1) + 6 = **20**.
 
 - [ ] **Step 5: 오케스트레이터와 CLI 를 쓴다**
 
@@ -1245,6 +1394,11 @@ def build_labels(cases, seeds, work, world_seed=1):
                         continue
                     with open(p) as fh:
                         board_row = json.loads(fh.readline())
+                    # 🔴 서술자를 복사하기 **전에** 이 판이 정말 그 사건에서 갈렸는지 묻는다.
+                    #    복사가 계약을 지켜 주지 않는다(위 함수의 docstring).
+                    assert_event_matches_board(
+                        ev, board_row,
+                        "%s_s%d_a%d_k%d" % (case, seed, arm_id, ev["decision_index"]))
                     got.append(fold_board_to_label_row(board_row, ev, case, seed,
                                                        arm_id, arm_name))
                 iid = instance_id(case, seed, ev["decision_index"])
@@ -1333,7 +1487,7 @@ if __name__ == "__main__":
 - [ ] **Step 6: 전체 유닛 게이트를 다시 돌린다**
 
 Run: `.venv/bin/python -m pytest wm4spacecraft_manufacturing/oracle/test_counterfactual_labels.py wm4spacecraft_manufacturing/dp_oracle/test_sample_grid_wiring.py -v --ignore=src/respec/llm_service/test_propose.py`
-Expected: PASS — 23 passed
+Expected: PASS — **31 passed** (20 + `test_sample_grid_wiring.py` 의 11)
 
 - [ ] **Step 7: 🔴 진짜 라벨을 만든다 (실행 시간이 드는 유일한 스텝)**
 
@@ -1346,7 +1500,31 @@ time .venv/bin/python wm4spacecraft_manufacturing/oracle/counterfactual_labels.p
     2>&1 | tee wm4spacecraft_manufacturing/oracle/out/counterfactual_labels.log
 ```
 
-Expected: `exit 0`. 규모 예상: `(case 2 × seed 3)` 프로브 6판 + 사건당 팔 수만큼. `DEMO_N` 기본값이 4 이므로 battery 사건 ~4개 × 3팔 × 3 seed = 36판, fault 사건 ~4개 × 2팔 × 3 seed = 24판 → **총 ~66판**. 오늘의 라벨셋 `label_seconds` 중앙값이 판당 ~76 s 이므로 **순차 ~85분**.
+Expected: `exit 0`. 판 수 예상: `(case 2 × seed 3)` 프로브 6판 + 사건당 팔 수만큼. `DEMO_N` 기본값이 4 이므로 battery 사건 ~4개 × 3팔 × 3 seed = 36판, fault 사건 ~4개 × 2팔 × 3 seed = 24판 → **총 ~66판**.
+
+🔴 **벽시계는 예측하지 않는다** (2026-08-28 preflight R-3). 초판은 *"`label_seconds` 중앙값이 판당 ~76 s 이므로 순차 ~85분"* 이라고 적었는데 **두 번 틀렸다**:
+
+```
+$ label_seconds (n=33):  median 9.009 · max 76.231 · sum 756.3
+```
+
+(가) **76.231 은 중앙값이 아니라 최댓값**이다 — 중앙값은 **9.009 s** 다.
+(나) 더 중요하게, 그 열은 **oracle 라벨 레인이 instance 하나를 라벨하는 데 쓴 시간**이지 이 계획이 굴리는 `run_demo.jl` 판 하나의 벽시계가 **아니다.** 두 레인은 사건 수·정책 수·MILP 호출 수가 다르다.
+
+**그래서 이 스텝은 예측 대신 측정한다.** 먼저 판 **하나**를 재고 그 값으로 곱한다:
+
+```bash
+cd /home/chahj578/Construction_OODlayer
+rm -rf /tmp/_cf_timing && mkdir -p /tmp/_cf_timing
+time .venv/bin/python -c "
+import os, sys
+sys.path.insert(0, os.path.abspath('wm4spacecraft_manufacturing/dp_oracle'))
+sys.path.insert(0, os.path.abspath('wm4spacecraft_manufacturing/core'))
+import sample_grid
+print(sample_grid.run_board('battery', 1, 0, 'NOOP', '/tmp/_cf_timing', at=1))"
+```
+
+그 벽시계 × 66 이 이 스텝의 예상 시간이다. **그 수를 보고서에 적는다** — 다음 사람이 예측이 아니라 실측을 물려받게.
 
 🔴 **`--jobs` 를 만들지 않았다. 병렬로 굴리지 말 것** — HiGHS 가 다른 스케줄을 내면 팔 비교 자체가 무효다(CLAUDE.md 함정 30).
 
@@ -1375,7 +1553,42 @@ PY
 ```
 Expected: `load_rows` 가 `SystemExit`/`ValueError` 없이 통과하고 `fit OK`.
 
-🔴 **`_fitted_c == False` 가 나오면 그 사실을 보고서에 적는다** — 반사실 판이 전부 완주했다는 뜻이고, `predict_J` 의 미완주 분기가 통째로 `_c_fallback`(=0.0)이 된다. 이 계획서 §2-3 이 예고한 자리다. 그 자체가 실패는 아니지만 **Task 8 의 재측정이 그 위에서 이뤄진다는 것을 알고 읽어야 한다.**
+🔴 **`_fitted_c == False` 는 정지 조건이다 — "실패는 아니다" 가 아니다** (2026-08-28 preflight 위험 12). 초판은 이것을 기록해 둘 사실로만 적었는데, **실제로 재 보니 모델이 상수로 붕괴한다.** 오늘의 33행에서 완주 27행만으로 적합해 재현했다:
+
+```
+완주 행만 적합: n=27  _fitted_b=True _fitted_c=False
+  predict_complete_proba  min=2.22045e-15 max=2.22045e-15     ← 전부 완주인데 "전부 실패한다"
+  predict_J               min=10000.020048 max=10000.028147   ← 스프레드 0.0081
+```
+
+기전: `head_a` 가 **한 클래스만** 보면 확률이 한 점으로 굳고, `predict_J` 가 그 확률로 완주/미완주 분기를 섞으므로 **모든 팔의 Ĵ 가 `C_fail` 근처 상수**가 된다. 귀결이 셋 다 치명적이다:
+- **모든 팔의 gap ≈ 0** → 축 2 재측정(Task 8)이 무의미해진다.
+- **`argmin Ĵ` 가 사실상 임의** → surrogate 가 "채점했다" 고 답하지만 순위에 정보가 없다.
+- Task 7 의 R2 게이트는 `scores` 가 비지 않았는지만 보므로 **이 붕괴를 통과시킨다** — 즉 R2 가 초록인 채로 라벨셋이 쓸모없을 수 있다.
+
+**그래서 여기서 멈춘다.** 실행 스크립트에 아래를 더해 판정을 기계로 만든다:
+
+```bash
+.venv/bin/python - <<'PY'
+import sys, os, numpy as np
+for d in ("wm4spacecraft_manufacturing/surrogate", "wm4spacecraft_manufacturing/core"):
+    sys.path.insert(0, os.path.abspath(d))
+from eval_surrogate_v2 import load_rows
+from surrogate_v2 import SurrogateV2
+rows, _ = load_rows("wm4spacecraft_manufacturing/oracle/out/counterfactual_labels.jsonl")
+m = SurrogateV2().fit(rows)
+J = m.predict_J(rows)
+n_inc = sum(1 for r in rows if not r["complete"])
+print("미완주 행 %d / %d · _fitted_b=%s _fitted_c=%s · J 스프레드 %.6g"
+      % (n_inc, len(rows), m._fitted_b, m._fitted_c, J.max() - J.min()))
+assert m._fitted_c, ("🔴 정지: 반사실 판이 전부 완주했다. head_a 가 한 클래스만 봐서 "
+                     "predict_J 가 C_fail 근처 상수로 붕괴한다(실측 스프레드 0.008). "
+                     "이 라벨셋 위에서는 순위에 정보가 없다.")
+assert J.max() - J.min() > 1.0, "🔴 정지: Ĵ 가 사실상 상수다 — 팔 순위에 정보가 없다."
+PY
+```
+
+🔴 **이 단언이 걸리면 라벨셋을 안 쓴다.** 고칠 방향은 판 수를 늘리는 것이 아니라 **미완주가 나오는 사건을 표본에 넣는 것**이다(예: `--seeds` 를 넓히거나 `DEMO_SPARES` 를 낮춰 canonical 이 실패하는 판을 만든다). 어느 쪽이든 **새 세계**이므로 그 사실을 보고서에 적고 Task 8 의 기준선을 다시 잡는다.
 
 - [ ] **Step 9: 커밋 (명시 경로만 — `_cf_work` 는 넣지 않는다)**
 
@@ -1420,7 +1633,7 @@ total/closed 누락이 에러 없이 통과한다. 수락 기준은 행 수가 �
 **Files:**
 - Modify: `wm4spacecraft_manufacturing/core/action_registry.py`
 - Modify: `wm4spacecraft_manufacturing/oracle/action_registry.jl`
-- Modify: `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` (`"train_kinds"=>TRAIN_KINDS,` 앵커 4곳 + 상수 정의부)
+- Modify: `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` (`"train_kinds"=>TRAIN_KINDS,` 앵커 4곳 + 상수 정의부 + 🔴 `main()` 끝의 **되읽기 소비처**)
 - Modify: `wm4spacecraft_manufacturing/oracle/counterfactual_labels.py` (생산자가 도장을 찍는다)
 - Modify: `wm4spacecraft_manufacturing/surrogate/eval_surrogate_v2.py` (`load_rows` — **소비처 1**)
 - Modify: `src/respec/llm_service/dspy_service.py` (`_load_surrogate` — **소비처 2**)
@@ -1438,6 +1651,7 @@ total/closed 누락이 에러 없이 통과한다. 수락 기준은 행 수가 �
   - `action_registry.train_macros_stamp(macros) -> list[int]`
   - `action_registry.require_train_macros_stamps(stamps, where) -> list[int]`
   - `ActionRegistry.train_macros_stamp(macros)::Vector{Int}` · `ActionRegistry.require_train_macros_stamps(stamps, where::AbstractString)::Vector{Int}`
+  - 🔴 **그 Julia 함수의 생산 소비처:** `gen_oracle_dataset.jl` 의 `main()` 끝 되읽기 블록(Step 13-b). 테스트만 부르는 함수는 **읽는 곳이 0곳인 것과 같다** — 2026-08-28 preflight C-4 가 초판의 그 상태를 반증했다.
   - `eval_surrogate_v2.load_rows(path)` 의 `meta` 에 `"train_macros": list[int]` 추가 (기존 7키 → 8키)
   - 🔴 **시그니처 변경:** `counterfactual_labels.assert_label_schema(row, where, skip=())` — Task 4 판의 `(row, where)` 에 `skip` 이 붙는다. Task 4 의 `fold_board_to_label_row` 가 유일한 호출자이고 같은 스텝에서 같이 고친다.
   - `counterfactual_labels.REQUIRED_LABEL_COLUMNS` 에 `"train_macros"` 가 들어간다.
@@ -1619,7 +1833,11 @@ Expected: PASS — 8 passed
         df["train_macros"] if "train_macros" in df.columns else None, path)
 ```
 
-그리고 `main()` 의 export dict 안 `"kinds": sorted(set(str(k) for k in df.kind)),` 줄 **바로 뒤**에 추가:
+그리고 `main()` 의 export dict 안 `"kinds": sorted(set(str(k) for k in df.kind)),` 줄 **바로 뒤**에 아래를 추가한다.
+
+🔴 **그 줄은 2곳이다** (2026-08-28 preflight R-9, 오늘 기준 `:392` 의 forest export meta 와 `:442` 의 linear export meta). **둘 다 고친다** — 한쪽만 고치면 다른 export 가 도장 없이 나가고, 그것이 이 파일이 이미 한 번 낸 사고(`export 경로에 검사가 아예 없어서 구세대 라벨로 재적합해도 산출물에는 현행 도장이 찍혀 나갔다`)의 같은 모양이다. 넣은 뒤 확인: `grep -n '"train_macros"' wm4spacecraft_manufacturing/surrogate/export_surrogate.py` 가 **3줄**(`_load_labels` 의 검사 1 + meta 2)이어야 한다.
+
+⚠️ `:442` 쪽은 들여쓰기가 12칸(`"meta": {` 안), `:392` 쪽은 8칸이다. 각 자리의 `"kinds"` 줄과 정확히 맞춘다.
 
 ```python
             # 🔴 설계서 §4: "디스크의 어떤 산출물도 이 모델이 어떤 매크로를 지원하는가를
@@ -1832,9 +2050,72 @@ def test_two_generations_concatenated_are_rejected(tmp_path):
                          _row(action_registry.VOCAB, train_macros=[0, 1, 2])))
 ```
 
-`wm4spacecraft_manufacturing/surrogate/test_export_surrogate_vocab.py` — 그 파일이 만드는 라벨 행 픽스처에 같은 `"train_macros"` 항목을 더한다.
+`wm4spacecraft_manufacturing/surrogate/test_export_surrogate_vocab.py` — 그 파일의 `_row(vocab, **kw)` 에도 같은 `"train_macros"` 항목을 더한다.
 
-🔴 **파일을 열어 픽스처의 실제 모양을 보고 고칠 것.** 두 파일의 픽스처 헬퍼 이름이 다르다. 고친 뒤 `git diff` 로 **`train_macros` 한 항목만** 늘었는지 확인한다.
+🔴 **그리고 Task 4 의 테스트 두 건을 같이 고친다** (2026-08-28 preflight C-1). 이 스텝이 `REQUIRED_LABEL_COLUMNS` 에 `train_macros` 를 더했는데 `fold_board_to_label_row` 는 그 열을 **안 찍는다**(파일 전체의 선언이라 `build_labels` 가 마지막에 찍는다). 그래서 `wm4spacecraft_manufacturing/oracle/test_counterfactual_labels.py` 의 두 건이 이 스텝에서 빨개진다 — **고치지 않으면 Step 11 이 그 빨강을 "진짜 결함" 으로 오진한다.**
+
+`test_the_label_row_has_every_column_fit_needs` 의 첫 두 줄
+
+```python
+    for col in cf.REQUIRED_LABEL_COLUMNS:
+        assert col in row, col
+```
+
+을 이렇게 바꾼다:
+
+```python
+    # `train_macros` 는 파일 전체의 선언이라 `build_labels` 가 마지막에 찍는다 —
+    # 접기 시점에는 **없는 것이 옳다**(2026-08-28, Task 5).
+    for col in cf.REQUIRED_LABEL_COLUMNS:
+        if col == "train_macros":
+            assert col not in row, "접기 단계가 파일 전체의 도장을 미리 찍으면 안 된다"
+            continue
+        assert col in row, col
+```
+
+`test_the_schema_gate_does_not_depend_on_whether_the_board_completed` 안의
+
+```python
+        cf.assert_label_schema(row, "ok")
+```
+
+와
+
+```python
+            with pytest.raises(ValueError, match=col):
+                cf.assert_label_schema(bad, "%s/%s" % (complete, col))
+```
+
+두 곳에 같은 `skip` 을 넘긴다:
+
+```python
+        cf.assert_label_schema(row, "ok", skip=("train_macros",))
+```
+
+```python
+            with pytest.raises(ValueError, match=col):
+                cf.assert_label_schema(bad, "%s/%s" % (complete, col),
+                                       skip=("train_macros",))
+```
+
+같은 이유로 `test_a_missing_column_is_a_hard_stop_in_both_branches` 의 `cf.assert_label_schema(row, "테스트")` 도 `skip=("train_macros",)` 를 받는다. ⚠️ 그것 없이도 `match=col` 은 우연히 통과한다(오류 문구가 빠진 열을 **전부** 나열하므로) — **우연한 초록을 남기지 않는다.**
+
+그리고 새 계약을 못박는 단언을 그 파일 끝에 더한다:
+
+```python
+def test_the_file_wide_stamp_is_written_once_by_build_labels_not_per_row():
+    """🔴 `train_macros` 는 **파일의 선언**이지 행의 속성이 아니다.
+
+    행마다 자기 macro 를 적으면 오늘의 사후 유도(`{int(r["macro"]) for r in rows}`)와
+    똑같아지고, 그러면 `train_kinds` 처럼 아무것도 안 지키는 도장이 된다.
+    """
+    row = cf.fold_board_to_label_row(_board(_decision(1)), _event(), "battery", 1, 2,
+                                     "SwapBattery")
+    assert "train_macros" not in row
+    assert "train_macros" in cf.REQUIRED_LABEL_COLUMNS
+```
+
+🔴 **두 파일의 헬퍼는 이름이 `_row(vocab, **kw)` 로 같다** (2026-08-28 preflight R-5 — 초판은 "이름이 다르다" 고 적었고 틀렸다). 이름이 같다고 **같은 함수가 아니다**: 파일마다 별개로 정의돼 있고 채우는 열이 다르므로, 한쪽만 고치면 다른 쪽이 조용히 빨개진다. **두 파일을 각각 열어 각자의 `_row` 를 고칠 것.** 고친 뒤 `git diff` 로 **`train_macros` 한 항목만** 늘었는지 확인한다.
 
 - [ ] **Step 11: Python 소비처 전체를 돌린다**
 
@@ -1843,9 +2124,24 @@ Run:
 .venv/bin/python -m pytest wm4spacecraft_manufacturing/ src/respec/llm_service/ -v \
     --ignore=src/respec/llm_service/test_propose.py
 ```
-Expected: 전부 PASS.
+Expected: `test_gate_ng2.py` 3건을 뺀 나머지가 전부 PASS.
 
-🔴 여기서 빨개지는 것 중 **진짜 결함**과 **픽스처 누락**을 구분해서 보고서에 적는다. `require_train_macros_stamps` 가 던진 것은 대개 픽스처 누락이고, `train_macros_stamp` 가 던진 것은 **그 라벨 파일이 현행 레지스트리 밖 id 를 가르친다**는 진짜 발견이다.
+🔴 **기준선은 "전부 초록" 이 아니다** (2026-08-28 preflight R-2 실측):
+
+```
+3 failed, 114 passed, 2 warnings
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_agreement_passes
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_disagreement_fails
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_spread_over_3_is_reported_but_is_not_the_verdict
+```
+
+그 3건은 **선존 결함**이다 — `test_gate_ng2.py` 의 픽스처가 **은퇴한 팔 id 3** 을 쓴다.
+V3 과 무관하고 **이 계획은 그 파일을 안 고친다**(별도 정리 작업의 몫이다).
+🔴 그러므로 판정은 *"전부 PASS"* 가 아니라 **"`3 failed / 114 passed` 에서 실패 3건이
+그대로 그 3건이고, passed 수가 이 태스크가 더한 만큼 늘었는가"** 다. 실패가 4건이 되거나
+실패 이름이 달라지면 **그것이 이 태스크의 회귀다.**
+
+🔴 그리고 여기서 빨개지는 것 중 **진짜 결함**과 **픽스처 누락**을 구분해서 보고서에 적는다. `require_train_macros_stamps` 가 던진 것은 대개 픽스처 누락이고, `train_macros_stamp` 가 던진 것은 **그 라벨 파일이 현행 레지스트리 밖 id 를 가르친다**는 진짜 발견이다.
 
 - [ ] **Step 12: Julia 판 도장을 만든다**
 
@@ -1925,6 +2221,90 @@ grep -n 'train_macros' wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
 ```
 Expected: 상수 정의 1줄 + println 1줄 + write site **4줄** = 6줄
 
+- [ ] **Step 13-b: 🔴 Julia 소비처를 만든다 — 도장만 찍고 끝내지 않는다**
+
+🔴 **2026-08-28 preflight C-4 가 이 계획서 자신을 반증했다.** Step 12·13 까지만 하면 Julia 판 `require_train_macros_stamps` 의 **생산 소비처가 0곳**이다 — 테스트만 부른다. 그것이 정확히 이 태스크가 막으려던 `train_kinds` 의 모양(**4곳에서 찍고 0곳에서 읽는다**)이고, 그 실패를 이름으로 지목하는 계획서 안에서 재현될 뻔했다.
+
+**소비처는 생성기 자신이다.** `gen_oracle_dataset.jl` 이 도장을 찍는 레인이므로, 다 쓰고 나서 **자기가 쓴 파일을 다시 읽어 자기 도장을 검사한다.** 그것이 사실 시트 §7 이 지적한 비대칭(*"도장을 찍는 레인이 자기 도장을 검사할 함수가 없다"*)의 정확한 반대다. 그리고 이 검사가 실제로 잡는 사건이 있다: 🔴 **`DS_RESUME=1` 은 출력 파일에 `append` 한다** — 어휘가 바뀐 뒤 이어 쓰면 한 파일 안에 두 세대의 도장이 섞이는데, 오늘은 그것을 아무도 못 본다.
+
+`wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` — `main()` 끝의
+
+```julia
+    close(io)                                            # 파일 닫기
+    println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
+```
+
+를 아래로 **교체**한다:
+
+```julia
+    close(io)                                            # 파일 닫기
+    println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
+
+    # ---- 🔴 자기 도장 되읽기 검사 (2026-08-28, V3 Task 5) ---------------------------------
+    # 왜 여기인가. `train_kinds` 는 4곳에서 찍히고 **읽는 곳이 0곳**이라 kind 경계가 얼어붙은
+    # 채 아무도 몰랐다(생성기 스스로 "게이트는 일부러 안 만들었다" 고 적는다). `train_macros` 가
+    # 같은 길을 가지 않게, **찍는 레인이 자기 도장을 읽는다.**
+    #
+    # 🔴 이 검사가 실제로 잡는 사건: `DS_RESUME=1` 은 OUTFILE 에 **append** 한다. 어휘가 바뀐
+    # 뒤 이어 쓰면 한 파일 안에 두 세대의 도장이 섞이는데, 파이썬 소비처(load_rows)는 배포
+    # 적재 시점에야 그것을 알고 그때는 이미 라벨이 쓰인 뒤다. 여기서 보면 **쓴 직후**에 안다.
+    let stamps = Vector{Any}()
+        for line in eachline(OUTFILE)
+            isempty(strip(line)) && continue
+            r = JSON3.read(line)
+            haskey(r, :train_macros) ||
+                error("$(OUTFILE): 방금 쓴 행에 train_macros 도장이 없다 — 위 write site 4곳 중 " *
+                      "하나가 빠졌거나 구세대 행이 섞였다(DS_RESUME=1 로 이어 쓴 파일인가?).")
+            push!(stamps, collect(r.train_macros))
+        end
+        got = ActionRegistry.require_train_macros_stamps(stamps, OUTFILE)
+        got == TRAIN_MACROS || error(
+            "$(OUTFILE): 파일의 train_macros 도장 $(got) 이 이 실행의 $(TRAIN_MACROS) 와 다르다 — " *
+            "다른 어휘/다른 팔 집합으로 만든 행이 섞였다(DS_RESUME=1?). 합집합으로 뭉개지 않는다.")
+        println("[dataset] train_macros 되읽기 검사 통과: $(got) (행 $(length(stamps))개)")
+    end
+```
+
+⚠️ `JSON3` 는 이 파일이 이미 쓰는 패키지다(행을 쓰는 `jrow` 가 그것을 쓴다) — 새 의존이 아니다.
+
+- [ ] **Step 13-c: Julia 소비처가 실제로 발화하는지 음성 대조한다**
+
+🔴 **"소비처를 배선했다" 는 주장을 코드 읽기로 끝내지 않는다.** 도장이 갈린 파일을 만들어 이 검사가 **실제로 죽는지** 본다. 시뮬레이션은 안 돌린다 — 스크래치패드에 두 세대가 섞인 가짜 파일을 만들어 그 검사 블록만 태운다.
+
+```bash
+cd /home/chahj578/Construction_OODlayer
+SCRATCH=$(mktemp -d)
+printf '%s
+%s
+' '{"macro":0,"train_macros":[0,1,2]}' '{"macro":1,"train_macros":[0,1]}'     > "$SCRATCH/mixed.jsonl"
+printf '%s
+' '{"macro":0,"train_macros":[0,1,2]}' > "$SCRATCH/ok.jsonl"
+julia +lts --project=. -e '
+import JSON3
+include("wm4spacecraft_manufacturing/oracle/action_registry.jl")
+function readback(path)
+    stamps = Vector{Any}()
+    for line in eachline(path)
+        isempty(strip(line)) && continue
+        r = JSON3.read(line)
+        haskey(r, :train_macros) || error("$(path): 도장 없음")
+        push!(stamps, collect(r.train_macros))
+    end
+    ActionRegistry.require_train_macros_stamps(stamps, path)
+end
+d = ENV["SCRATCH"]
+println("ok.jsonl  -> ", readback(joinpath(d, "ok.jsonl")))
+try
+    readback(joinpath(d, "mixed.jsonl")); println("🔴 mixed.jsonl 이 통과했다 — 검사가 무력하다")
+catch e
+    println("mixed.jsonl -> 기대대로 죽었다: ", sprint(showerror, e))
+end' 2>&1 | tail -5
+rm -rf "$SCRATCH"
+```
+Expected: `ok.jsonl  -> [0, 1, 2]` 그리고 `mixed.jsonl -> 기대대로 죽었다: ... 행마다 다르다 ...`
+
+🔴 **`mixed.jsonl` 이 통과하면 멈춘다** — 도장을 찍기만 하고 아무것도 안 지키는 상태이고, 그것이 `train_kinds` 의 실패 그 자체다.
+
 - [ ] **Step 14: Julia 게이트를 쓰고 `runtests.jl` 에 배선한다**
 
 `test/train_macros_stamp_smoke.jl` (새 파일):
@@ -2002,10 +2382,16 @@ PY
 grep -rn 'train_macros' src/respec/llm_service/dspy_service.py \
     wm4spacecraft_manufacturing/surrogate/eval_surrogate_v2.py \
     wm4spacecraft_manufacturing/surrogate/export_surrogate.py
+echo "--- Julia 소비처 (읽는 곳) ---"
+grep -n 'require_train_macros_stamps' wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
 ```
-Expected: `meta` 가 8키, `train_macros == [0, 1, 2]`, grep 이 **세 파일 전부에서** 매치. 🔴 매치가 한 파일이라도 없으면 `train_kinds` 의 실패를 반복한 것이다 — 거기서 멈춘다.
+Expected: `meta` 가 8키, `train_macros == [0, 1, 2]`, 파이썬 grep 이 **세 파일 전부에서** 매치, **그리고 Julia grep 이 `gen_oracle_dataset.jl` 에서 한 줄**.
+
+🔴 **매치가 한 곳이라도 없으면 `train_kinds` 의 실패를 반복한 것이다 — 거기서 멈춘다.** 특히 Julia grep 이 비면 도장을 **찍는 레인이 자기 도장을 안 읽는** 상태이고, 그것이 2026-08-28 preflight C-4 가 이 계획서 초판에서 잡아낸 결함이다. 🔴 **`test/train_macros_stamp_smoke.jl` 매치는 소비처로 세지 않는다** — 테스트만 부르는 함수는 읽는 곳이 0곳인 것과 같다.
 
 - [ ] **Step 17: 커밋 (명시 경로만 — 한 커밋에 도장과 소비처가 같이 들어간다)**
+
+🔴 **커밋 전 마지막 확인:** 이 한 커밋 안에 **도장을 찍는 곳(Julia write site 4 + 파이썬 생산자)과 읽는 곳(파이썬 3 + Julia 1)이 같이 들어 있는가.** 하나라도 다음 커밋으로 미루면 리뷰가 통과시키고 `train_kinds` 가 반복된다.
 
 ```bash
 git add wm4spacecraft_manufacturing/core/action_registry.py \
@@ -2029,7 +2415,9 @@ train_kinds 는 4곳에서 찍히고 읽는 곳이 0곳이라 kind 경계가 얼
 load_rows 가 meta 로 올리고 dspy_service 가 그것을 지원집합으로 쓴다 — 예전의 사후 유도
 ({int(r[macro]) for r in rows})는 fired 필터 뒤 값이라 파일의 선언이 아니었다.
 검사는 vocab(동등)과 달리 **부분집합**이다 — 지원집합이 어휘보다 작게 자라는 것이 폐루프다.
-Julia 판도 같이 만든다: 이 레인에는 행 집합 도장 검사가 아예 없었다."
+Julia 판도 같이 만들고 **소비처까지 붙인다**: gen_oracle_dataset.jl 이 다 쓰고 나서 자기가 쓴
+파일을 되읽어 자기 도장을 검사한다. 그 검사가 실제로 잡는 사건이 있다 — DS_RESUME=1 은 append 라
+어휘가 바뀐 뒤 이어 쓰면 한 파일에 두 세대의 도장이 섞이는데 오늘은 아무도 못 본다."
 ```
 
 ---
@@ -2143,12 +2531,28 @@ def test_reload_route_grows_the_support_set(tmp_path, restore_state):
 
 
 def test_a_failed_reload_does_not_silently_keep_the_old_model(tmp_path, restore_state):
-    """🔴 못 읽었으면 '못 읽었다' 고 답한다 — 낡은 모델로 계속 답하면서 ok 를 내면 안 된다."""
+    """🔴 못 읽었으면 '못 읽었다' 고 답한다 — 낡은 모델로 계속 답하면서 ok 를 내면 안 된다.
+
+    🔴 2026-08-28 preflight C-2: 초판은 `assert bad in out["surrogate"]` 였고 **통과할 수
+    없었다.** 실패 경로가 `_state["surro_data"]`(직전 성공 적재의 **산문 설명**)를 안 지워서
+    `reload` 가 `_state["surro_data"] or ("ERROR: " + ...)` 의 **앞쪽**을 그대로 돌려줬기
+    때문이다. 즉 실패한 재적재가 "이전 라벨셋을 잘 읽었다" 는 문장을 계속 내보냈다 —
+    이 레포가 반복해 데인 조용한 거짓 보고의 모양 그 자체다. Step 4 가 그 자리를 지운다.
+
+    ⚠️ 그리고 이 파일은 `restore_state` 없이는 안 된다. `test_support_is_data.py` 는
+    **import 시점에**(= pytest 수집 중, 어떤 테스트보다 먼저) `svc._load_surrogate()` 를
+    부르므로 모듈 상태가 이미 채워져 있고, 이 테스트가 그것을 부수면 같은 세션의 다른
+    파일이 조용히 다른 세계에서 돈다.
+    """
     bad = str(tmp_path / "nope.jsonl")
     out = svc.reload(svc.ReloadRequest(path=bad))
     assert out["ok"] is False
+    # None("못 쟀다")이지 []("아무 팔도 지원 안 한다")가 아니다.
     assert svc._state["surro_support"] is None
-    assert bad in out["surrogate"] or "nope" in out["surrogate"]
+    # 실패 사실이 **문자열의 앞머리**로 드러나야 한다 — 직전 성공의 산문이 남으면 안 된다.
+    assert out["surrogate"].startswith("ERROR:"), out["surrogate"]
+    assert "nope.jsonl" in out["surrogate"], out["surrogate"]
+    assert out["path"] == bad
 
 
 def test_the_env_override_is_read_at_module_scope(tmp_path):
@@ -2218,7 +2622,16 @@ def _load_surrogate(path=None):
         #    "재적재했다" 는 주장이 조용히 거짓이 된다.
         _state["surrogate"] = None
         _state["surro_support"] = None
+        # 🔴 `surro_data` 도 같이 지운다 (2026-08-28 preflight C-2). 그 값은 **직전 성공
+        #    적재의 산문 설명**이고, `/health` 와 `/reload` 가 `_state["surro_data"] or
+        #    ("ERROR: " + str(_state["surro_error"]))` 로 읽는다 — 안 지우면 실패한 재적재가
+        #    "oracle_dataset.jsonl (33 rows / 12 instances, macro support [0,1,2], ...)" 라는
+        #    **참이 아닌 문장**을 계속 내보낸다. 그 문자열이 이 서비스가 무엇을 적재했는지
+        #    말하는 유일한 창구이므로, 거기 낡은 성공이 남으면 실패가 보고되지 않는다.
+        _state["surro_data"] = None
 ```
+
+⚠️ 이 `except` 절은 `_state["surro_error"] = "%s: %s" % (type(e).__name__, e)` 줄을 **이미 갖고 있다**(오늘 기준). `load_rows` 는 파일이 없을 때 `SystemExit("라벨 파일이 없다: <경로> …")` 를 던지므로 그 경로가 `surro_error` 안에 그대로 들어간다 — 위 테스트의 `"nope.jsonl" in out["surrogate"]` 가 그것을 읽는다.
 
 - [ ] **Step 5: `POST /reload` 를 만든다**
 
@@ -2260,7 +2673,22 @@ Expected: PASS — 4 passed
 - [ ] **Step 7: 서비스 테스트 전체가 안 깨졌는지 확인한다**
 
 Run: `.venv/bin/python -m pytest src/respec/llm_service/ wm4spacecraft_manufacturing/ -v --ignore=src/respec/llm_service/test_propose.py`
-Expected: 전부 PASS
+Expected: `test_gate_ng2.py` 3건을 뺀 나머지가 전부 PASS.
+
+🔴 **기준선은 "전부 초록" 이 아니다** (2026-08-28 preflight R-2 실측):
+
+```
+3 failed, 114 passed, 2 warnings
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_agreement_passes
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_disagreement_fails
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_spread_over_3_is_reported_but_is_not_the_verdict
+```
+
+그 3건은 **선존 결함**이다 — `test_gate_ng2.py` 의 픽스처가 **은퇴한 팔 id 3** 을 쓴다.
+V3 과 무관하고 **이 계획은 그 파일을 안 고친다**(별도 정리 작업의 몫이다).
+🔴 그러므로 판정은 *"전부 PASS"* 가 아니라 **"`3 failed / 114 passed` 에서 실패 3건이
+그대로 그 3건이고, passed 수가 이 태스크가 더한 만큼 늘었는가"** 다. 실패가 4건이 되거나
+실패 이름이 달라지면 **그것이 이 태스크의 회귀다.**
 
 ⚠️ `import numpy, sklearn.ensemble` 이 `import dspy` **앞에** 있어야 한다(오늘 기준 `:44` vs `:46`). 이 태스크가 파일 위쪽을 건드리므로 **순서가 유지됐는지 `head -50` 으로 눈으로 확인한다** — 깨면 surrogate 로드가 죽고 레인이 에러 없이 canonical 로 내려앉는다(커밋 `f43ad79` 가 고친 회귀).
 
@@ -2393,6 +2821,11 @@ def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
     assert svc._unsupported_for(req, MENU) == ["SwapBattery"]
     out_before = svc.decide(req)
     assert out_before["surrogate"]["unsupported"] == ["SwapBattery"]
+    # 🔴 `ranking != []` 만으로는 전/후가 안 갈린다 — '전' 에서도 지원되는 두 팔은 채점되기
+    #    때문이다(`surrogate_rank` 의 `scorable = [... if name2id[m] in support]` 앵커: 미달
+    #    팔만 빠지고 나머지는 그대로 점수를 받는다). 그래서 판정은 **그 팔의 이름**으로 한다.
+    assert "SwapBattery" not in out_before["surrogate"]["scores"]
+    assert set(out_before["surrogate"]["scores"]) == {"NOOP", "Replace"}
 
     # ---- 라벨 추가 + 재적재 --------------------------------------------------------------
     after = svc.reload(svc.ReloadRequest(path=AFTER))
@@ -2405,8 +2838,23 @@ def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
     assert out_after["surrogate"]["unsupported"] == []
     # 그리고 surrogate 가 실제로 그 팔을 **채점한다** — "미달이 없다" 와 "점수를 낸다" 는
     # 다른 사건이고, 후자가 없으면 surrogate 레인이 빈손으로 이긴 것이 된다.
-    assert out_after["surrogate"]["available"] is True
+    #
+    # 🔴 2026-08-28 preflight 정정 (R-1): 여기 있던 것은
+    #        assert out_after["surrogate"]["available"] is True
+    #    였고 **`KeyError('available')` 로 죽는다** — `decide()` 의 `out["surrogate"]` 가 내는
+    #    키는 `chosen / ranking / scores / margin / unsupported / policy / error` 뿐이다.
+    #    `available` 은 **Julia 쪽 `policy_entry`(`policy.jl`, 오늘 기준 `:1039`)가 붙이는
+    #    다른 레인의 키**다. 즉 V3 의 완료 판정이 아예 실행되지 못하는 상태였다.
+    #    파이썬 쪽의 같은 뜻은 **구조**로 유도한다(`policy.jl` 의 `· available == true ⟹
+    #    점수를 냈다` 앵커가 그 규약을 적는다): 점수를 못 낸 분기는 `ranking=[]`·`scores={}`
+    #    를 내고, 낸 분기만 비어 있지 않다.
+    assert out_after["surrogate"]["ranking"] != []
+    assert out_after["surrogate"]["scores"] != {}
     assert out_after["surrogate"]["chosen"] in MENU
+    assert out_after["surrogate"]["error"] is None
+    # 🔴 그리고 **그 팔이 실제로 채점됐는지**를 이름으로 본다. `ranking != []` 만으로는
+    #    "다른 두 팔로 점수를 냈다" 와 구분되지 않는다.
+    assert "SwapBattery" in out_after["surrogate"]["scores"]
 
     # ---- 🔴 방향까지 못박는다: 지원집합이 **자랐다**(줄지도, 그대로도 아니다) -------------
     assert set(before["surro_support"]) < set(after["surro_support"])
@@ -2453,7 +2901,8 @@ Expected: PASS — 4 passed
 🔴 **`test_r2_the_same_event_changes_lanes_after_labels_are_added` 가 빨간 채로 V3 을 끝내지 않는다.** 실패 모양별 진단:
 - `before["surro_support"] != [0, 1]` → Step 1 의 '전' 파일 도장이 잘못 찍혔다.
 - `_unsupported_for(...) != ["SwapBattery"]` → V1 Task 4 의 `_unsupported_for` 가 `e1_analyze.MACRO_NAME` 을 통해 이름 → id 를 만든다. 그 사전이 레지스트리와 갈렸는지 본다.
-- `out_after["surrogate"]["available"] is not True` → 라벨이 늘었는데 `SurrogateV2.fit` 이 그 팔을 채점 못 한다. `psi(2)` 와 `MACRO_SPECS` 를 확인한다.
+- `out_after["surrogate"]["scores"]` 에 `SwapBattery` 가 없다 → 라벨이 늘었는데 `SurrogateV2.fit` 이 그 팔을 채점 못 한다. `psi(2)` 와 `MACRO_SPECS` 를 확인한다.
+- `KeyError` 가 난다 → 🔴 **`decide()` 응답 키를 지어내지 말 것.** 실제 키는 `chosen / ranking / scores / margin / unsupported / policy / error` 다. `available` 은 Julia 쪽 `policy_entry` 가 붙이는 키이고 HTTP 응답에는 없다(2026-08-28 preflight R-1 이 이 자리에서 초판을 반증했다).
 
 - [ ] **Step 4: 🔴 게이트가 **실패할 수 있는지** 확인한다 (음성 대조)**
 
@@ -2475,7 +2924,22 @@ julia +lts --project=. tools/test_policy_escalation.jl
 julia +lts --project=. test/policy_macro_binding.jl
 julia +lts --project=. test/route_descriptors_survive.jl
 ```
-Expected: 전부 PASS
+Expected: Julia 는 전부 PASS. pytest 는 `test_gate_ng2.py` 3건을 뺀 나머지가 전부 PASS.
+
+🔴 **기준선은 "전부 초록" 이 아니다** (2026-08-28 preflight R-2 실측):
+
+```
+3 failed, 114 passed, 2 warnings
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_agreement_passes
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_healthy_disagreement_fails
+FAILED wm4spacecraft_manufacturing/smdp/test_gate_ng2.py::test_spread_over_3_is_reported_but_is_not_the_verdict
+```
+
+그 3건은 **선존 결함**이다 — `test_gate_ng2.py` 의 픽스처가 **은퇴한 팔 id 3** 을 쓴다.
+V3 과 무관하고 **이 계획은 그 파일을 안 고친다**(별도 정리 작업의 몫이다).
+🔴 그러므로 판정은 *"전부 PASS"* 가 아니라 **"`3 failed / 114 passed` 에서 실패 3건이
+그대로 그 3건이고, passed 수가 이 태스크가 더한 만큼 늘었는가"** 다. 실패가 4건이 되거나
+실패 이름이 달라지면 **그것이 이 태스크의 회귀다.**
 
 - [ ] **Step 6: 커밋 (명시 경로만)**
 
@@ -2597,6 +3061,12 @@ PY
 
 Expected: 숫자 넷. **어떤 값이 나와도 이 태스크는 성공이다** — 재는 것이 목적이다. 🔴 **다만 그 숫자를 근거로 축 2 를 짓기 시작하지 않는다.** §2-3 의 조건 3·4 가 여전히 라벨 밖에 있다.
 
+🔴 **읽을 때 반드시 붙여야 하는 단서 셋** (2026-08-28 preflight 위험 13·14):
+
+1. **미완주 행이 0 이면 진단 3 이 조용히 무의미해진다.** `complete` 축의 조건부 coverage 는 값이 하나뿐이면 **주변 coverage 와 같아진다** — 즉 "조건부로 쟀다" 는 표시만 남고 실제로는 §2-2 가 반증한 그 주변 지표로 되돌아간다. Task 4 Step 8 의 `_fitted_c` 정지 조건이 그 상태를 먼저 막지만, **여기서도 미완주 행 수를 같이 찍고 0 이면 진단 3 의 `complete` 축을 "측정 안 됨" 으로 적는다.** `macro` 축은 그대로 유효하다(팔이 여럿이므로).
+2. **`q` 는 여전히 LIO 다.** 이 스크립트는 조건부로 **쪼개기만** 할 뿐 분위수는 그대로 leave-instance-out 이라, §2-2 가 지적한 calibration/evaluation 겹침(30~31/33)이 남아 있다. 즉 **여기 나오는 숫자도 낙관적**이고, 그것이 나쁘게 나오면 그 판정만 믿을 수 있다(좋게 나오는 것은 못 믿는다).
+3. 🔴 **기준선 33행과 `makespan` 의 의미가 다르다.** 이 레인(`run_demo.jl`)의 미완주 판은 **유한한 실현 시간**을 적고, 기준선 라벨셋(oracle 레인)의 미완주 행은 `"Inf"` 다(2026-08-28 preflight R-6). `J` 의 완주 분기가 `makespan` 을 쓰므로 **잔차·gap 의 절대 크기를 두 세대 사이에서 직접 비교하면 어긋난다.** 보고에는 두 세대의 수를 나란히 적되 **"개선/악화" 라는 말을 쓰지 않는다** — 같은 자로 잰 것이 아니다. 비교 가능한 것은 *구조*(빈 구간이 있는가 · 격상 집합이 kind 와 정렬되는가 · 조건부 coverage 가 0 인가)이지 자릿수가 아니다.
+
 - [ ] **Step 3: 재측정 보고를 쓴다**
 
 `docs/superpowers/reports/2026-08-28-v3-axis2-remeasure.md` — 아래 골격을 채운다. **숫자를 비워 두지 않는다.**
@@ -2635,6 +3105,14 @@ Expected: 숫자 넷. **어떤 값이 나와도 이 태스크는 성공이다** 
   kind 로 결정하는 것, 그리고 단일 α·단일 q 가 팔에 무관한 구간 폭을 강제하는 것.
   이 라벨셋이 아무리 커져도 그 둘은 안 움직인다.
 - `no_arms`/`single_arm` 퇴화 분기는 **여전히 미시험**이다 (사건마다 팔이 2~3개).
+- 🔴 **미완주 행이 0 이면 `complete` 축의 조건부 coverage 는 주변 coverage 와 같다** — 축이
+  퇴화하면 "조건부로 쟀다" 는 표시만 남는다. 미완주 행 수를 같이 적고, 0 이면 그 축을
+  **"측정 안 됨"** 으로 적는다(PASS 로도 FAIL 로도 읽지 않는다).
+- 🔴 **`q` 는 여전히 LIO 다** — 조건부로 쪼개기만 했고 분위수의 겹침(30~31/33)은 그대로다.
+  나쁜 판정만 믿을 수 있고 좋은 판정은 못 믿는다.
+- 🔴 **기준선 33행과 `makespan` 의 의미가 다르다** — 이 레인의 미완주 판은 유한한 실현 시간을
+  적고 oracle 레인은 `"Inf"` 를 적는다. `J` 의 완주 분기가 그 열을 쓰므로 **잔차·gap 의 절대
+  크기를 세대 간 직접 비교하면 어긋난다.** 비교 가능한 것은 구조이지 자릿수가 아니다.
 - 이 측정은 `objective.json` `generation` / `SurrogateV2` 구조 / 이 라벨 파일에 매인다.
 
 ## 6. 그래서 다음은
@@ -2673,9 +3151,15 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
 
 - 🔴 **축 2 는 여전히 안 산다 — 그리고 라벨로 못 고치는 부분이 있다.** 장애 넷 중 (3) 레지스트리의 `"kinds": ["battery"]` 가 팔 메뉴를 kind 로 결정하는 것과 (4) 단일 α·단일 q 가 팔에 무관한 구간 폭을 강제하는 것은 **라벨셋 밖의 축**이다. Task 8 이 그 사실을 숫자와 함께 남긴다.
 - 🔴 **`no_arms` / `single_arm` 퇴화 분기는 미측정으로 남는다.** 축 2 규칙의 절반이 한 번도 발화한 적이 없다.
-- 🔴 **R2 의 마지막 한 칸은 논증이다.** 이 계획은 `/decide` 의 `unsupported` 가 뒤집히는 것을 관측하고, `select_lane` 이 그 입력으로 레인을 고르는 것은 V1 의 `test_lane_select.jl` 이 게이트한다. **두 조각의 합성을 한 프로세스에서 관측하지는 않았다.** 그것을 재려면 라벨 두 벌로 판을 각각 굴려 결정 행의 `router_axis` 분포를 비교해야 하고, 판 실행이 필요해 이 계획에서 뺐다. **"R2 를 end-to-end 로 관측했다" 고 적지 말 것** — 적을 수 있는 것은 *"라벨 추가가 라우팅 입력을 뒤집는 것을 관측했고, 그 입력에서 레인이 나오는 것은 별도 게이트가 지킨다"* 다.
+- 🔴 **재정의된 R2 는 설계서의 R2 보다 엄격히 더 약하다 — 네 가지 방식으로**(§3 의 긴 판을 볼 것):
+  1. **①→④ 방아쇠를 안 태운다.** '전' 라벨셋이 **같은 실행이 만든 행의 뺄셈**이라, "사건 도착 → 격상 → LLM 대응 → 라벨 축적" 중 어느 칸도 관측되지 않는다. 라벨은 사건보다 먼저 존재한다.
+  2. **주조 경로 기계를 0개 태운다.** `SwapBattery` 는 이미 `KIND_VALID`·`MACRO_SPECS`·`macro_to_proposal`·집행 사슬·`ood_mdp_shim`·`reference_policy` 에 전부 있다. 설계서 §8 의 "6~7파일" 중 **아무것도 시험되지 않는다.**
+  3. **레인 합성의 마지막 한 칸은 논증이다.** 이 계획은 `/decide` 의 `unsupported` 가 뒤집히는 것을 관측하고, `select_lane` 이 그 입력으로 레인을 고르는 것은 V1 의 `test_lane_select.jl` 이 게이트한다. **두 조각의 합성을 한 프로세스에서 관측하지 않았다.** 재려면 라벨 두 벌로 판을 각각 굴려 결정 행의 `router_axis` 분포를 비교해야 하고, 판 실행이 필요해 뺐다.
+  4. 따라서 V3 이 보이는 것의 정확한 이름은 폐루프가 아니라 **"R1 + 같은 프로세스 재적재 + 도장 진실원"** 이다.
+  🔴 **"V3 이 R2 를 달성했다" · "경계가 움직이는 것을 end-to-end 로 관측했다" 고 적지 말 것.** 이 레포는 그런 자기 요약 오류로 이미 데었다. 적을 수 있는 것은 *"라벨 추가가 라우팅 입력을 뒤집는 것을 관측했고, 그 입력에서 레인이 나오는 것은 별도 게이트가 지킨다"* 다.
 - **어휘 자체는 안 자란다.** 매크로 주조(`vocab` 등가성 벽 · 6~7파일 수작업 · `macro_to_proposal` 을 빠뜨리면 조용히 빈 제안)는 다음 계획이다. V3 은 **어휘 안에서** 경계를 움직인다.
 - **`train_kinds` 는 여전히 읽는 곳이 0곳이다.** 이 계획은 `train_macros` 에만 소비처를 만들었다. `train_kinds` 를 같이 배선하면 zone 을 뺀 라벨셋과 안 뺀 라벨셋을 기계가 구분하게 되지만, 그 게이트의 의미(어떤 kind 를 거부할 것인가)가 정해지지 않았다.
+- 🔴 **`sample_grid.py` 의 `CASES` 리터럴이 남는다.** Task 1 은 `ENACTABLE_NAMES`(어휘)를 레지스트리 파생으로 바꿨지만 `CASES = [..., "all", "fault_zone", "battery_zone", "zone"]` 는 그대로다 — 그중 넷이 zone 을 태운다. V3 의 생산자는 자기 CLI 에서 `TRAIN_KINDS` 로 하드 스톱하므로 **이 계획의 라벨 경로는 안전하지만**, `sample_grid.py` 를 직접 부르는 사람은 여전히 기본값으로 zone 을 태운다. 그 파일의 DP 표집 용도에는 zone 이 정당하므로 여기서 안 고쳤다 — **`--cases` 없이 그 스크립트를 라벨 목적으로 부르지 말 것.**
 - **`sample_grid.py` 의 DP 소비 측을 안 되살렸다.** `dp_solve.py` · `boards.jsonl` · `_sample_work` 는 그대로 삭제 상태다. `rows_to_samples` 의 격자 경로(`load_grid` 에 `objective_hash` 대조가 **없다**)도 그대로다 — V3 의 라벨 경로는 그 함수를 우회한다.
 - **`--jobs 24` 가 판을 갈리게 하는지는 여전히 UNVERIFIED 다.** 이 계획은 순차만 쓰므로 재지 않았다. 재려면 같은 `(case, seed, arm)` 을 `--jobs 1`/`--jobs 24` 로 굴려 `rows.jsonl` 을 바이트 대조해야 한다.
 - **`run_demo.jl` 집행 사슬 누락을 잡는 게이트가 없다.** `grep -rn enact_applied test/` 가 0건이다. 새 팔을 더할 때 그 자리를 빠뜨리면 잡히지 않는다 — 매크로 주조 계획이 다뤄야 한다.
@@ -2696,3 +3180,58 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
 | 부록 *"`require_vocab` 은 6곳이 쓴다"* | 생산 **3곳** + 테스트 **4파일** | §3 의 표가 3곳 각각을 다룬다 |
 | §7 R3/R4 | R3 **FAIL**(격상률이 α 에 대해 상수) · R4 는 **실패할 수 없는 검사**이고 조건부 coverage 는 **0.000**(= 반증됨) | §2 가 라벨셋에 대한 요구로 번역하고, Task 8 이 다시 잰다 |
 | §4 결정 행 = `run_demo.jl:281-345` | 오늘 기준 `:290`~`:371` (+`:492`·`:496`). **앵커는 `local this_decision = Dict(`** | Global Constraints 가 앵커 인용을 규약으로 못박는다 |
+
+---
+
+## 부록 B — 실행 전 검증(preflight)이 이 계획서에서 고친 것
+
+**대상 보고:** `docs/superpowers/reports/2026-08-28-v3-preflight-verification.md` (커밋 `f4946bd8`)
+**대상 계획서 판:** 커밋 `e54dd94a` (초판, 2698줄)
+**방법:** 모든 `file:line`·앵커를 열어 확인하고, 숫자는 원자료에서 다시 유도하고, 하중 큰 주장은 **실행해서** 쟀다. 레포 파일은 하나도 안 고쳤고 작업 트리에 아무것도 복원하지 않았다.
+
+### 판정 집계 (보고 §0 표, 22건)
+
+| 판정 | 건수 |
+|---|---|
+| ✅ CONFIRMED (그대로 둔다) | **5** — `vocab` 벽 실재 · `train_macros` 의 **Python** 쪽 도장/소비처 동일 태스크 · `boards.jsonl` 제외 · Task 8 의 조건부 coverage 방향 · 축 2 장애 넷의 위치 |
+| ⚠️ 부분 CONFIRMED / 한정어 누락 | **7** — 재정의된 R2(더 약하다) · 지원집합 축소 기전(게이트만 틀림) · 2q 도달 범위 라벨 · export `"kinds"` 2곳 · "7번째 파일" 제거의 부분성(`CASES`) · 사건 동일성 게이트 부재 · §9 의 한계 고백 불완전 |
+| 🔴 **REFUTED (측정으로 반증)** | **8** — R-1 `available` 키 부재 · R-2 "전부 PASS" · R-3 `label_seconds` 중앙값 · R-4 테스트 개수 · R-5 픽스처 이름 · R-6 미완주 makespan · R-7 §2-1 과장 · **C-4 Julia 도장의 소비처 0곳** |
+| 🔴 내부 모순 / 통과 불가 | **2** — C-1 `REQUIRED_LABEL_COLUMNS` 충돌 · C-2 실패한 재적재 테스트 |
+| **UNVERIFIABLE** | **0** |
+
+### 🔴 가장 하중 큰 두 건
+
+1. **R-1 — V3 의 완료 판정이 아예 실행되지 못했다.** Task 7 이 `out["surrogate"]["available"]` 을 단언하는데 `decide()` 응답에 그 키가 없다(`KeyError`). `available` 은 Julia 쪽 `policy_entry` 가 붙이는 다른 레인의 키다. → `ranking`/`scores`/`error` + `"SwapBattery" in scores` 로 다시 썼다.
+2. **C-4 — 이 계획서가 자기가 이름 붙인 실패를 재현할 뻔했다.** Julia 판 `require_train_macros_stamps` 의 **생산 소비처가 0곳**이었다 = `train_kinds` 의 "찍고 아무도 안 읽는다" 그 모양. → Step 13-b 가 `gen_oracle_dataset.jl` `main()` 끝에 **되읽기 소비처**를 붙이고, Step 13-c 가 두 세대 섞인 파일로 **실제로 죽는지** 음성 대조한다. Step 16 의 확인이 Julia grep 을 포함하고, **테스트 매치는 소비처로 세지 않는다**고 명시했다.
+
+### 이 판에서 고친 것 전수
+
+| # | 무엇 | 어디를 고쳤나 |
+|---|---|---|
+| R-1 | `decide()` 에 `available` 키가 없다 | Task 7 Step 2 의 게이트 · Step 3 의 진단 목록 |
+| R-2 | "전부 PASS" 는 없는 초록이다 (`3 failed / 114 passed`, `test_gate_ng2.py` 의 **선존** 결함 — 픽스처가 은퇴 id 3 을 쓴다) | Task 5 Step 11 · Task 6 Step 7 · Task 7 Step 5 (3곳 전부) |
+| R-3 | `label_seconds` 중앙값 **9.009**(76.231 은 최댓값이고 **다른 레인의 단위**) | Task 4 Step 7 — 예측을 버리고 **판 하나를 재서 곱하는** 절차로 교체 |
+| R-4 | parametrize 6항목 때문에 개수가 다르다 | Task 4 Step 4(→20) · Step 6(→31) · Task 2 Step 4(→11) |
+| R-5 | 두 픽스처 헬퍼는 이름이 **같다**(`_row(vocab, **kw)`) | Task 5 Step 10 |
+| R-6 | 이 레인의 미완주 `makespan` 은 **유한**하다(`CB.sim_time`) | Task 4 의 테스트 교체 + `None` 정지 테스트 신설 · `_jsonable` docstring · Task 8 의 세대 비교 단서 |
+| R-7 | *"Ĵ 가 정확해져도 안 산다"* 는 과장 | §2-1 — "균일 개선만으로는 부족하다 / 정확도는 **필요조건**" 으로 정정 |
+| R-8 | 2q 도달 범위에 한정어가 빠졌다 | §2-1 |
+| C-1 | Task 4 의 테스트 3건이 Task 5 에서 빨개진다 | Task 5 Step 10 이 같이 고치고, Task 4 Step 4 에 전방 경고 |
+| C-2 | 실패한 재적재 테스트가 통과 불가 | Task 6 Step 4 가 `surro_data` 를 지우고, 테스트를 `startswith("ERROR:")` 로 |
+| R-9 | export `"kinds"` 가 2곳(`:392`·`:442`) | Task 5 Step 7 — 둘 다 고치고 grep 3줄로 확인 |
+| C-4 | Julia 도장의 소비처 0곳 | **Step 13-b·13-c 신설** + Step 16 확인 확장 + 커밋 전 확인 |
+| C-5 | 사건 동일성 게이트가 없고 "구성상 지켜진다" 는 논증이 **틀렸다** | `assert_event_matches_board` 신설 + `build_labels` 가 접기 **전에** 호출 + 음성 대조 3건 |
+| 위험 12 | 전원 완주 시 surrogate 가 **상수로 붕괴**(실측 `proba=2.22e-15`, `J` 스프레드 0.008) | Task 4 Step 8 — "기록해 둘 사실" 에서 **정지 조건**(`assert m._fitted_c` + J 스프레드)으로 |
+| 위험 13 | 전원 완주 시 조건부 coverage 가 **조용히 주변 coverage 로 되돌아간다** | Task 8 Step 2 단서 1 · 보고 골격 §5 |
+| 위험 14 | 미완주 `makespan` 의미 차이로 **세대 간 비교가 어긋난다** | Task 8 Step 2 단서 3 · 보고 골격 §5 ("개선/악화" 라는 말 금지) |
+| 위험 15-b | 프로브 판이 부모 환경의 `DS_DEVIATE_AT` 을 안 지우고, 그 테스트는 결함이 있어도 **초록** | Task 2 Step 3 의 `env.pop` + `monkeypatch.setenv` 로 부모 환경을 오염시키는 테스트 신설 |
+| P1-b | 재정의된 R2 가 **엄격히 더 약하다** | 🔴 §3 에 절 신설(세 방식) · §9 의 한 줄을 **네 항목**으로 확장 |
+| P4-2 | `CASES` 의 zone 리터럴은 **부분 해결**이다 | §1 범위 표에 "부분만 한다" 행 · §9 항목 신설 |
+
+### preflight 가 **그대로 두라고 한 것** (over-correction 금지)
+
+- Priority-1 논증(`vocab` 벽이 실재하고 `train_macros` 로 못 낮춘다) — 2단계 음성 대조로 CONFIRMED.
+- `boards.jsonl` 을 복원 목록에서 뺀 판단.
+- "7번째 파일"(`ENACTABLE_NAMES`) 지적과 `enactable_names()` 파생.
+- 인용한 측정 숫자 전부(33행→18 고유 시뮬 · battery 9/fault 0 · 2.782 대 87.3 = 31.4배 · 빈 구간 · 94.1% · 조건부 0.000) — 재유도 일치.
+- **R4 를 "실패할 수 없는 검사" 로만 인용한 것과 18 고유 시뮬레이션으로 말하는 것** — 보고가 **"잘한 것"** 으로 지목했다. 건드리지 않았다.
