@@ -5,7 +5,8 @@
 유한표본 분위수 q 를 만들고, 팔별 구간 `[Ĵ ± q]` 의 top-1/top-2 겹침을 세는 것이 전부다.
 
 🔴 왜 out-of-fold 인가: 전량 적합 모델은 자기가 본 instance 를 암기한다. 배포 레인이 마주치는
-것은 **처음 보는 사건**이므로 그 상황의 잔차를 재야 한다. 전량 적합 Ĵ 는 보조 진단이다.
+것은 **처음 보는 사건**이므로 그 상황의 잔차를 재야 한다. 전량 적합 Ĵ 는 여기서 **계산하지도
+내보내지도 않는다** — 이 도구가 내는 잔차·q·격상은 전부 out-of-fold 하나에서만 온다.
 
 🔴 `predict_delta_J` 를 쓰지 않는다 (설계서 §3): 같은 instance 안에서 빼는 값은 팔에 무관한
 상수라 `argmin` 을 안 바꾸고, 구간 폭도 안 바꾼다. conformal 은 `predict_J` 를 직접 쓴다.
@@ -34,7 +35,7 @@ from sklearn.model_selection import LeaveOneGroupOut
 from threadpoolctl import threadpool_limits
 
 # 손잡이의 **도달 범위**를 재는 격자다. 0.5 를 넘는 값은 운용값이 아니다 — 보고에서 그렇게
-# 이름 붙인다. 0.01~0.03 구간을 촘촘히 두는 이유: n=33 에서 k=ceil(34(1-a)) 가 34 를 넘는
+# 이름 붙인다. 0.01~0.03 구간을 촘촘히 두는 이유: n=33 에서 k=ceil(34(1-a)) 가 n=33 을 넘는
 # 경계(alpha < 1/34 ≈ 0.0294)가 그 안에 있고, 그 경계에서 q 가 유한 -> 무한으로 튄다.
 ALPHA_GRID = (0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99)
 
@@ -77,6 +78,33 @@ def oof_predictions(rows):
     if np.isnan(oof).any():
         raise RuntimeError("OOF 예측에 NaN 이 남았다 — 폴드가 모든 행을 덮지 않았다.")
     return oof
+
+
+def require_objective_stamp(rows, where):
+    """라벨 행이 이고 다니는 목적함수 도장을 **현행 `objective.json`** 과 대조한다.
+
+    🔴 왜 필요한가 (2026-08-28 검토): `load_rows` 가 집행하는 것은 **어휘** 도장뿐이고,
+    목적함수 도장은 `meta` 에 실려 산출물에 **찍히기만 하고 아무도 읽지 않았다**. 그런데
+    `true_J` 는 J 를 **현행 config 로 다시 계산**하고 `main()` 은 산출물에 **현행 해시**를
+    찍는다. 그래서 `C_fail` 을 고치고 구세대 라벨을 그대로 먹이면, 세대 혼합인 측정이
+    **제대로 프로비넌스된 것처럼** 새 해시를 달고 나온다 — 보고 §6 이 "이 보고 전체를
+    무효로 만든다" 고 적은 바로 그 실패다. 찍기 전에 읽는다.
+
+    `action_registry.require_vocab_stamps` 와 같은 계약: 행 도장의 **집합**이 현행 하나와
+    정확히 같아야 한다(균일 + 일치). 열이 아예 없으면 그것도 실패다.
+    """
+    cur = objective.objective_hash()
+    missing = sum(1 for r in rows if r.get("objective_hash") is None)
+    if missing:
+        raise ValueError(
+            "%s: 목적함수 도장('objective_hash')이 없는 행이 %d 개다 -- 구세대 라벨이다. "
+            "현행은 %r." % (where, missing, cur))
+    got = sorted(set(str(r["objective_hash"]) for r in rows))
+    if got != [cur]:
+        raise ValueError(
+            "%s: 목적함수 도장 불일치 -- 파일 %s vs 현행 %r. `true_J` 는 현행 objective.json "
+            "으로 J 를 다시 계산하므로, 이대로 재면 세대 혼합을 현행 도장으로 감춘 산출물이 "
+            "나온다. 라벨을 다시 만들거나 objective.json 을 되돌려라." % (where, got, cur))
 
 
 def true_J(rows):
@@ -198,7 +226,10 @@ def measure(rows, alphas=ALPHA_GRID):
 
 def _jsonable(o):
     if isinstance(o, float) and math.isinf(o):
-        return "Infinity"
+        # 🔴 부호를 보존한다. -inf 를 "Infinity" 로 접으면 소비처에서 부등호가 뒤집힌다
+        # (`gap <= 2q` 가 전부 True 가 되어 모든 escalate 가 False -> True 로 넘어간다).
+        # 오늘의 산출물에 -inf 는 없지만, "없으니 접어도 된다" 는 도장을 찍는 논리와 같다.
+        return "Infinity" if o > 0 else "-Infinity"
     if isinstance(o, dict):
         return {k: _jsonable(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -214,6 +245,9 @@ def main():
     args = ap.parse_args()
 
     rows, meta = load_rows(args.labels)
+    # 🔴 도장을 찍기 전에 읽는다 -- meta 의 objective_hash 는 **현행 config** 에서 오지
+    # 라벨에서 오지 않는다. 대조 없이 찍으면 세대 혼합이 프로비넌스로 위장한다.
+    require_objective_stamp(rows, args.labels)
     res = measure(rows)
     res["meta"] = {k: meta[k] for k in ("path", "rows_after_fired_filter", "instances",
                                         "vocab", "objective_hash")}
@@ -221,7 +255,8 @@ def main():
     with open(args.out, "w") as f:
         # 🔴 allow_nan=False: NaN 이 dict 에 조용히 섞여 있으면 시끄럽게 죽어야 한다 — 뭉개서
         # 산출물에 리터럴 NaN 을 박아 넣으면 그건 JSON 표준도 아니고 다음 소비처가 못 읽는다.
-        # +inf/-inf 는 이미 `_jsonable` 에서 "Infinity" 문자열로 앞서 바뀌므로 여기 안 걸린다.
+        # +inf/-inf 는 이미 `_jsonable` 에서 "Infinity"/"-Infinity" 문자열로 앞서
+        # 바뀌므로(부호 보존) 여기 안 걸린다.
         json.dump(_jsonable(res), f, indent=2, ensure_ascii=False, sort_keys=True,
                   allow_nan=False)
     print("wrote %s" % args.out)

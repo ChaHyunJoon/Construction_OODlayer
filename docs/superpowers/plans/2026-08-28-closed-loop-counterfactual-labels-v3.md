@@ -3146,40 +3146,45 @@ Expected: JSON 이 나온다. 🔴 **`n_q_infinite != 0` 인 α 행은 "PASS" �
 
 - [ ] **Step 2: 세 진단을 직접 계산한다**
 
+🔴 **재구현하지 않는다 — 도구가 이미 내보내는 것을 import 한다.** `oof_predictions` 는
+**미적합 헤드 폴백 가드**(`_fitted_b`/`_fitted_c` assert)를 안에 달고 있다. Task 4 Step 8 의
+`_fitted_c` 정지 조건은 **라벨셋 전체**에 대한 검사이지 폴드별이 아니므로, 전량으로는 통과하면서
+**어떤 폴드의 훈련셋만** 완주/미완주 한쪽을 못 보는 상태가 남는다. 그 폴드에서 `predict_J` 는
+`_c_fallback = 0.0` 을 그럴듯한 유한값으로 내고, 그 오염된 잔차가 **진단 2·3 으로 그대로 들어간다**
+— 그리고 그 둘이 §7-2 부활 게이트가 매달린 숫자다. 여기서 루프를 손으로 다시 쓰면 그 가드가 없다.
+`conformal_quantile` 도 같다(`k > n → +inf` 를 "큰 수" 로 뭉개지 않는 유일한 구현이다).
+
 ```bash
 .venv/bin/python - <<'PY'
-import collections, json, os, sys
+import collections, os, sys
 for d in ("wm4spacecraft_manufacturing/surrogate", "wm4spacecraft_manufacturing/core"):
     sys.path.insert(0, os.path.abspath(d))
 import numpy as np
-from sklearn.model_selection import LeaveOneGroupOut
-from eval_surrogate_v2 import load_rows
-from surrogate_v2 import SurrogateV2
-import objective
+# 🔴 도구가 내보내는 것을 그대로 쓴다. oof_predictions 는 미적합 헤드 가드를,
+#    conformal_quantile 은 k > n -> +inf 를 안에 달고 있다. 재구현하면 둘 다 사라진다.
+from conformal_feasibility import (conformal_quantile, oof_predictions,
+                                   require_objective_stamp, true_J)
+from eval_surrogate_v2 import group_by_instance, load_rows
 
 P = "wm4spacecraft_manufacturing/oracle/out/counterfactual_labels.jsonl"
 rows, meta = load_rows(P)
+require_objective_stamp(rows, P)      # 목적함수 도장을 **읽는다** (찍기만 하지 않는다)
 print("meta =", meta)
 
 # ---- 진단 0: 자유도. 행이 아니라 고유 시뮬레이션 --------------------------------------
 fp = lambda r: (r["complete"], r["closed"], r["makespan"], r["energy_J"])
 print("행 %d · 고유 시뮬 %d · instance %d"
       % (len(rows), len({fp(r) for r in rows}), len({r["instance"] for r in rows})))
+print("미완주 행 %d" % sum(1 for r in rows if not r["complete"]))   # 0 이면 단서 1 발동
 
-# ---- OOF Ĵ (LeaveOneGroupOut on instance) ----------------------------------------------
-groups = np.array([r["instance"] for r in rows])
-X = np.zeros((len(rows), 1))          # split() 은 2차원 X 를 기대한다(값은 안 쓴다)
-jhat = np.zeros(len(rows))
-for tr, te in LeaveOneGroupOut().split(X, groups=groups):
-    m = SurrogateV2().fit([rows[i] for i in tr])
-    jhat[te] = m.predict_J([rows[i] for i in te])
-J = np.array([objective.J_row(r) for r in rows])
-res = np.abs(jhat - J)
+# ---- OOF Ĵ · 잔차 -----------------------------------------------------------------------
+# 🔴 폴드 하나라도 헤드가 미적합이면 여기서 AssertionError 로 **멈춘다**. 그것이 요점이다 —
+#    _c_fallback=0.0 이 진단 2·3 에 조용히 섞이느니 시끄럽게 죽는 편이 낫다.
+jhat = oof_predictions(rows)
+res = np.abs(jhat - true_J(rows))
 
 # ---- 진단 1: 완주 팔이 2개 이상인 사건이 kind 마다 몇 개인가 -----------------------------
-by_i = collections.defaultdict(list)
-for r in rows:
-    by_i[r["instance"]].append(r)
+by_i = group_by_instance(rows)
 n_comp = {i: sum(1 for r in g if r["complete"]) for i, g in by_i.items()}
 kind = {i: g[0]["kind"] for i, g in by_i.items()}
 c = collections.Counter((kind[i], n_comp[i] >= 2) for i in by_i)
@@ -3202,8 +3207,7 @@ for alpha in (0.05, 0.1, 0.2, 0.3):
     qs = {}
     for i in by_i:
         oth = np.array([res[k] for k, r in enumerate(rows) if r["instance"] != i])
-        kk = int(np.ceil((len(oth) + 1) * (1 - alpha)))
-        qs[i] = np.sort(oth)[kk - 1] if kk <= len(oth) else float("inf")
+        qs[i] = conformal_quantile(oth, alpha)     # k > n -> +inf. 큰 수로 뭉개지 않는다.
     if any(np.isinf(v) for v in qs.values()):
         print("alpha=%.2f  🚫 UNMEASURABLE (q_i = inf 인 instance 있음)" % alpha)
         continue

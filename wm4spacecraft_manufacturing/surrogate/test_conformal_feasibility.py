@@ -189,3 +189,52 @@ def test_dump_raises_on_nan_instead_of_emitting_literal_nan():
     buf = io.StringIO()
     with pytest.raises(ValueError):
         json.dump(payload, buf, allow_nan=False)
+
+
+def test_jsonable_preserves_the_sign_of_negative_infinity():
+    # 🔴 -inf 를 "Infinity" 로 접으면 부호가 사라진다. 소비처가 그것을 float 로 되읽으면
+    # `gap <= 2q` 가 트리비얼하게 참이 되어 **모든 escalate 가 False -> True 로 뒤집힌다.**
+    # 오늘의 산출물에 음의 무한대는 없지만, "없으니 접어도 된다" 는 논리는 검사 없는 도장과
+    # 같은 논리다.
+    payload = cf._jsonable({"pos": float("inf"), "neg": float("-inf"),
+                            "nested": [{"q": float("-inf")}]})
+    assert payload["pos"] == "Infinity"
+    assert payload["neg"] == "-Infinity"
+    assert payload["nested"][0]["q"] == "-Infinity"
+    # 왕복: 두 문자열이 서로 다른 값으로 되읽혀야 한다.
+    assert float(payload["neg"]) == -math.inf
+    assert float(payload["pos"]) == math.inf
+
+
+# ---- require_objective_stamp: 찍기 전에 읽는다 -------------------------------------------
+# 🔴 합성 픽스처로만 시험한다. 실 라벨셋은 오늘 일치하므로 불일치 경로를 못 밟고, 실데이터에
+# 매인 시험은 라벨이 바뀔 때 같이 무너진다.
+def _stamped_rows(stamps):
+    return [{"instance": "i%d" % i, "macro": 0, "objective_hash": h}
+            for i, h in enumerate(stamps)]
+
+
+def test_objective_stamp_passes_when_all_rows_match_current_config():
+    cur = cf.objective.objective_hash()
+    cf.require_objective_stamp(_stamped_rows([cur, cur, cur]), "synthetic")
+
+
+def test_objective_stamp_raises_on_stale_stamp():
+    # 구세대 도장 하나짜리 파일: `true_J` 가 현행 config 로 J 를 다시 계산하므로 세대 혼합이다.
+    with pytest.raises(ValueError) as e:
+        cf.require_objective_stamp(_stamped_rows(["deadbeefdeadbeef"] * 3), "synthetic")
+    assert "목적함수 도장 불일치" in str(e.value)
+
+
+def test_objective_stamp_raises_on_mixed_stamps_even_if_one_is_current():
+    # 🔴 반은 현행, 반은 구세대 -- `n44_plus78` 이 정확히 이 모양이었다. 균일성도 요구한다.
+    cur = cf.objective.objective_hash()
+    with pytest.raises(ValueError) as e:
+        cf.require_objective_stamp(_stamped_rows([cur, "deadbeefdeadbeef"]), "synthetic")
+    assert "목적함수 도장 불일치" in str(e.value)
+
+
+def test_objective_stamp_raises_when_column_is_absent():
+    with pytest.raises(ValueError) as e:
+        cf.require_objective_stamp([{"instance": "i1", "macro": 0}], "synthetic")
+    assert "없는 행이" in str(e.value)
