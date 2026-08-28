@@ -47,9 +47,15 @@ def _ev(light, heavy, arms=None):
     활성 팔 전체다 — 리터럴로 복붙하지 않는다. 2026-08-28 이전 이 기본값이 `(0, 1, 2, 3)`
     으로 하드코딩돼 있었는데, `2026-08-24 축소`(4팔 -> 3팔, `RelocateBuild` 삭제) 뒤에도
     안 고쳐져서 존재하지 않는 팔 id 3 을 매 사건에 실어 보냈다 — 게이트는 정직하게
-    "활성 팔이 아니다"로 거부했다(이 파일 3/13 실패의 원인)."""
+    "활성 팔이 아니다"로 거부했다(이 파일 3/13 실패의 원인).
+
+    🔴 리뷰 라운드 1 정정: 처음엔 `AR.MACROS`(= `sorted(REGISTRY)`, **은퇴/실험 포함 전체**)
+    를 썼다. 게이트 자신의 술어는 `AR.is_active`(= `AR.ACTIVE_MACROS`) 이고, 오늘은
+    `RETIRED={}`·`EXPERIMENTAL={}` 라 우연히 둘이 같았을 뿐이다. 다음에 어느 팔 하나라도
+    은퇴/실험으로 표시되는 순간 `AR.MACROS` 는 다시 비활성 id 를 실어 보내 지금 고친 바로
+    그 실패가 재발한다. 술어와 같은 소스(`AR.ACTIVE_MACROS`)를 쓴다."""
     if arms is None:
-        arms = AR.MACROS
+        arms = AR.ACTIVE_MACROS
     return {"arms": list(arms), "light_score": list(light), "heavy_score": list(heavy)}
 
 
@@ -152,8 +158,8 @@ def test_all_tied_heavy_scores_is_not_a_pass():
 
 def test_ranks_without_scores_are_rejected():
     """순위만 있는 산출물은 거부한다 — 동점을 볼 수 없기 때문이다."""
-    evs = [{"arms": list(AR.MACROS), "light_rank": list(range(len(AR.MACROS))),
-            "heavy_rank": list(range(len(AR.MACROS)))}
+    evs = [{"arms": list(AR.ACTIVE_MACROS), "light_rank": list(range(len(AR.ACTIVE_MACROS))),
+            "heavy_rank": list(range(len(AR.ACTIVE_MACROS)))}
            for _ in range(4)]
     rc, out = _run(_rho(), _ranks(evs))
     assert rc == 1, out
@@ -183,7 +189,7 @@ def test_arm_id_outside_vocab_is_rejected():
 
 
 def test_nonfinite_score_is_rejected():
-    evs = [{"arms": list(AR.MACROS), "light_score": [1.0, 2.0, float("inf")],
+    evs = [{"arms": list(AR.ACTIVE_MACROS), "light_score": [1.0, 2.0, float("inf")],
             "heavy_score": [10.0, 20.0, 30.0]} for _ in range(4)]
     rc, out = _run(_rho(), _ranks(evs))
     assert rc == 1, out
