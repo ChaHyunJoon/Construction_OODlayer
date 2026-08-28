@@ -181,6 +181,11 @@ Windows 전용). 판정 기준은 "결과를 만드는가, 보기만 하는가".
 | `dynamics_stamp()` (`hazard.jl:166`) | **런 하나**가 확률적 고장을 켜고 굴렀는가 | 목적함수 세대가 아니다 |
 | `objective.json` 의 `generation` | **J 의 유효 의미**가 갈렸다는 사람이 붙인 딱지 | 🔴 어떤 산출물이 실제로 hazard 를 켰는지가 **아니다** |
 
+🔴 **`require_dynamics` 는 write-only 다** — `core/action_registry.py:142` 에 정의는 있는데
+**생산 소비처가 0개**이고 `smdp/test_stamps.py:152-157` 만 부른다. **Julia 짝도 없다**
+(`grep -rn require_dynamics --include='*.jl'` = 0건). 즉 `dynamics` 축에는 기계 게이트가 없다 —
+위 `train_kinds`·아래 `require_vocab` 과 **같은 실패 모드**이고, 이 축은 아직 그 자리에 있다.
+
 🔴 **`generation` 안의 `hazard-on` 을 "이 산출물은 hazard 를 켜고 만들었다" 로 읽지 말 것.**
 hazard 는 opt-in 이고 기본이 꺼짐이라 **기본 실행의 모든 산출물이 `dynamics=hazard-off` 를 달고
 `…-hazard-on` 세대 이름 아래 놓인다.** 실행 사실을 나르는 것은 행의 `dynamics` 필드 하나뿐이고,
@@ -228,16 +233,22 @@ hazard 는 opt-in 이고 기본이 꺼짐이라 **기본 실행의 모든 산출
 
 ```bash
 git show 0ed0c4be:wm4spacecraft_manufacturing/md/README.md | less
-git show 0ed0c4be:.claude/CLAUDE.md | less        # 이 파일의 정리 전 판(1092줄)
+git show 0ed0c4be:.claude/CLAUDE.md | less        # 이 파일의 정리 전 판(919줄)
 ```
 
-아래 여덟은 **아직 고쳐지지 않았고 계획서 A·B 실행자의 행동을 바꾼다.**
+아래 여덟 중 **1 은 해소됐고 나머지 일곱은 아직 살아 있다** — 전부 계획서 실행자의 행동을 바꾼다.
 
-1. 🔴 **런 간 재현성 결함이 살아 있다.** `_pick_active_robot`(`respec/ood_injection.jl:856`)이
-   `env.cache.active_set` 을 순회하는데 그것은 **`Set` 이라 순회 순서가 정의돼 있지 않다.**
-   같은 시드·같은 커밋을 다시 굴려도 고장 대상 로봇이 갈릴 수 있다.
-   ⚠️ 계획서의 **"시드 고정 = 완전 재현"** 요구와 정면으로 충돌한다 — 라벨 레인은 아직
-   재현되지 않는다(표집 레인은 된다).
+1. ✅ **런 간 재현성 결함은 고쳐졌다**(이 목록에서 유일하게 해소된 항목). 두 커밋이 함께 고쳤다:
+   `038aa58d`(2026-08-19)가 `_pick_active_robot`(`respec/ood_injection.jl:916`)의 `Set` 순회를
+   `_ordered_active(env) = sort!(collect(env.cache.active_set))`(`:912`)로 정준 정렬했고,
+   `bb1b88c4`(2026-08-24)가 `AbstractID` 에 **내용 기반** `Base.hash` 를 정의해 뿌리를 뽑았다 —
+   Julia 기본 해시가 `objectid` 를 쓰는데 프리컴파일이 바이트 재현되지 않아 ID-키 `Dict`/`Set` 의
+   순회 순서가 **빌드마다** 갈렸다. 이제 시드 고정으로 재현된다.
+   🔴 **대가: 그 이전 산출물은 전부 다른 세계다** — 옛 라벨·스윕 수치를 새것과 같은 표에 섞지 말 것.
+   ⚠️ `_ordered_active` 는 **순회 순서가 결과에 남는 자리에만** 걸려 있다(첫 매치에서 `return`
+   하는 순회, 순서가 살아남는 `Vector` 를 만드는 순회). 후보를 모아 `sort(...)[1]` 로 고르는
+   피커들은 정렬이 이미 순서를 지우므로 일부러 손대지 않았다 — `ood_injection.jl:897-911` 의
+   docstring 이 그 규칙의 진실원이다. **새 `active_set` 순회를 쓸 때 이 규칙을 다시 판정할 것.**
 2. 🔴 **다른 창고의 놀고 있는 예비가 Replace 경로에서 안 보인다**
    (`ood_injection.jl:425-435`). `pop_spare!` 는 배송 중 예비를 건너뛰도록 고쳤지만
    `nearest_pool` 은 여전히 `isempty(SPARE_POOLS[][key])` 만 본다. 풀당 기본 2대라 가장 가까운
@@ -253,9 +264,14 @@ git show 0ed0c4be:.claude/CLAUDE.md | less        # 이 파일의 정리 전 판
 4. 🔴 **조합 팔은 정보량이 0이었다** — 65/65 instance 에서 `5≡4`, `6≡2`. 추가 primitive 가
    엔진에서 집행되지 않았기 때문이다. → **계획서 A 의 게이트 N-G7 이 그 재발을 막는다.**
 5. 🔴 **`ood_mdp_shim.valid_actions` 는 팔 메뉴가 아니라 문지기다.** `action_to_proposal` 이
-   `a in valid_actions(ctx) || return nothing` 으로 거른다 — fault 가 리터럴 `[0,1]` 인 한
-   매크로 4 를 시켜도 **조용히 NOOP 으로 무너진다.** 팔을 늘리려면 여기부터다.
+   `a in valid_actions(ctx) || return nothing` 으로 거른다 — 메뉴 밖 팔을 시키면 에러가 아니라
+   **조용히 NOOP 으로 무너진다.** 팔을 늘리려면 여기부터다.
    → 계획서 B 의 escalation 은 이 함수를 **우회**해야 한다.
+   ⚠️ 옛 서술("fault 가 리터럴 `[0,1]`" · "매크로 4")은 낡았다: fault 분기는 이제
+   `ActionRegistry.kind_valid(:fault)` 를 돌려주고(`ood_mdp_shim.jl:234`), 리터럴 `[0,1]` 은
+   **`DS_ARMS_LEGACY=1` 에서만** 나온다(`:231`). 매크로 4 는 `v4-3arms` 에 아예 없다.
+   실측 현행값: `fault=[0,1]` · `battery=[0,1,2]`(SoC 분할이 더 좁힌다) · `zone=[]`.
+   즉 **값은 같고 출처가 리터럴 → 레지스트리로 바뀐 것**이고, 문지기라는 사실은 그대로다.
 6. 🔴 **라벨 레인은 `DS_HOTSWAP=1` 이어야 한다.** 실행 레인이 hot-swap ON 이고, 안 켜면 fault
    대상 피커가 죽어 **발화율이 100% → 23%** 로 무너진다(실측). 로그만 보면 정상으로 보인다.
 7. 🔴 **`n_stalled` 가 정지의 유일한 기계적 증거다.** `run_demo.jl:472` 가 `global_logger` 를
@@ -301,6 +317,12 @@ Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedenc
 (≈4m30s). 유일한 error 는 `test/runtests.jl:80` 의 `Demo` — `Gurobi Error 10009: No Gurobi
 license found` 이고 **변경과 무관하다.** (2026-08-28 실측. 옛 "11 pass" 는 상위 testset 개수를
 전체 단언 수로 잘못 읽은 것이다.)
+
+⚠️ **`Pkg.test()` 초록이 전부가 아니다.** `test/smdp_global_inventory.jl`(spec §3.6 — 스냅샷
+대상 전역의 전수 목록을 기계로 지키는 살아 있는 게이트)은 **`test/runtests.jl` 이 include 하지
+않는다**(실측). 전역을 새로 만들었으면 손으로 돌릴 것:
+`julia +lts --project=. test/smdp_global_inventory.jl`. 계약이 성립하는 자리는 작업 트리가
+아니라 **HEAD** 다(그 파일 헤더가 근거를 적는다).
 
 🔴 **삭제된 검사 도구들**(2026-08-18 정리, `git show 8e005842:wm4spacecraft_manufacturing/<name>`):
 `verify.py` · `audit_objective.py` · `audit_action_vocab.py` · `test_objective.py` ·
@@ -376,7 +398,7 @@ license found` 이고 **변경과 무관하다.** (2026-08-28 실측. 옛 "11 pa
   작업 트리에 없으므로: `git show 0ed0c4be:wm4spacecraft_manufacturing/md/README.md`.
   §0 현행 · §0-Z 직전 · §1 용어(F vs OOD) · §3 확정 측정 · §5 스키마 ·
   §6 완주 ≠ `closed==total` · §7 철회된 결론 · §8 함정 · §9 살아 있는 계약 · §10 아카이브 색인.
-- 이 파일의 **정리 전 판**(1092줄, 세대별 서술 전문): `git show 0ed0c4be:.claude/CLAUDE.md`.
+- 이 파일의 **정리 전 판**(919줄, 세대별 서술 전문): `git show 0ed0c4be:.claude/CLAUDE.md`.
 - ⚠️ **경로 규약**: 맨이름 import 는 `core/wmpath.py` 가 유지하고, 데이터 경로의 기준점은
   `HERE` 가 아니라 `wmpath.WM`(= wm4 폴더)다.
 - 아카이브: `docs/superpowers/plans/README.md`(실행 완료 계획서) ·
