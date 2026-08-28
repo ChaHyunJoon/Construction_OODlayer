@@ -102,6 +102,16 @@ end
         include("route_descriptors_survive.jl")
     end
 
+    # 2026-08-26 (tool-lane step A, Task 2 — 리뷰 라운드 1 F2): `service_decide` 의 `agents`
+    # kwarg 와 `decide_all` 호출부의 `CB.open_agent_descriptors(env)` 는 `policy_macro_binding.jl`
+    # · `battery_menu_lanes_agree.jl` · `tools/test_policy_oracle.jl` 어느 게이트도 실행하지
+    # 않는 코드 경로였다(실측: 두 줄을 각각 `error(...)`로 바꿔치기해도 세 게이트 모두 초록).
+    # 이 파일이 그 구멍을 메운다 — kwarg 선언 자체 · 실 env 에서의 비어있지 않은 출력 ·
+    # `env.sched` 를 넘기면 던진다는 음성 대조(옛 버전이 실제로 갖고 있던 버그) 셋을 잰다.
+    @testset "service_decide ships agents" begin
+        include("service_decide_ships_agents.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin
