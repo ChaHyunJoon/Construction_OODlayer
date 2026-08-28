@@ -62,6 +62,17 @@ def oof_predictions(rows):
     with threadpool_limits(limits=1):
         for tr, te in LeaveOneGroupOut().split(idx, groups=groups):
             model = SurrogateV2().fit([rows[i] for i in tr])
+            # 🔴 미적합 헤드는 NaN 이 아니라 `_b_fallback`/`_c_fallback`(0.0 초기값, 결코 NaN
+            # 아님)을 낸다 — 아래 NaN 가드는 이 경로를 못 잡는다. fold 의 훈련셋이 완주/미완주
+            # 어느 한쪽을 하나도 못 보면 그 헤드는 한 번도 fit 되지 않았는데, predict_J 는 그걸
+            # 감추고 그럴듯한 유한값을 낸다 — "학습된 예측"과 "초기화값"이 구분 안 된다.
+            missing = [name for name, fitted in
+                       (("head_b", model._fitted_b), ("head_c", model._fitted_c)) if not fitted]
+            assert not missing, (
+                "OOF 폴드에서 미적합 헤드 폴백이 감지됐다: %s 가 이 폴드에서 fit 되지 않았다 "
+                "(held-out instance=%s). predict_J 가 그럴듯한 유한값을 냈겠지만 그것은 학습되지 "
+                "않은 헤드의 초기값(_b_fallback/_c_fallback=0.0)이다."
+                % (missing, sorted(set(rows[i]["instance"] for i in te))))
             oof[te] = model.predict_J([rows[i] for i in te])
     if np.isnan(oof).any():
         raise RuntimeError("OOF 예측에 NaN 이 남았다 — 폴드가 모든 행을 덮지 않았다.")
@@ -144,6 +155,12 @@ def measure(rows, alphas=ALPHA_GRID):
         q_pooled = conformal_quantile(res, a)
         esc_pooled = escalation(oof, rows, q_pooled)
         cov = coverage_leave_instance_out(res, rows, a)
+        # 🔴 "못 잰다"와 "쟀는데 크다"를 여기서 갈라야 한다. n_oth 가 작은 alpha 격자 끝에서는
+        # per-instance q_i 가 전부 +inf 가 되고, 그러면 hits 가 전부 True 라 coverage_holdout
+        # 이 트리비얼하게 1.0 이 되어 R4 PASS 로 읽힌다 — 측정이 아니라 측정 불능이 PASS 로
+        # 위장한 것이다. per_instance_q 를 그대로 내보내고 n_q_infinite 로 그 사실을 남긴다.
+        n_q_infinite = sum(1 for v in cov["per_instance_q"].values() if math.isinf(v))
+        unmeasurable = n_q_infinite > 0
         # 정직판 격상: instance 마다 자기를 뺀 q_i 를 쓴다.
         honest = {}
         for iid in by_inst:
@@ -151,6 +168,12 @@ def measure(rows, alphas=ALPHA_GRID):
             qi = cov["per_instance_q"][iid]
             honest[iid] = bool(len(s) < 2 or (s[1] - s[0]) <= 2.0 * qi)
         need = 1.0 - a - 0.05
+        if need <= 0.0:
+            r4 = "VACUOUS"          # 문지방이 구조적으로 항상 통과라 측정할 게 없다.
+        elif unmeasurable:
+            r4 = "UNMEASURABLE"     # coverage 가 +inf 구간을 상대로 잰 값이라 무의미하다.
+        else:
+            r4 = "PASS" if cov["coverage"] >= need else "FAIL"
         out["alphas"].append({
             "alpha": a,
             "k": math.ceil((len(res) + 1) * (1.0 - a)), "n_residuals": len(res),
@@ -159,10 +182,16 @@ def measure(rows, alphas=ALPHA_GRID):
             "escalation_rate_pooled": esc_pooled["rate"],
             "escalated_instances": sorted(i for i, v in esc_pooled["per_instance"].items()
                                           if v["escalate"]),
-            "escalation_rate_honest": float(np.mean(list(honest.values()))),
-            "coverage_holdout": cov["coverage"],
+            # 🔴 unmeasurable 이면 honest 도 "전부 격상"이 아니라 "못 쟀다"다 — 같은 이유로
+            # None 처리하고 플래그로 구분한다(1.000 이라는 그럴듯한 숫자를 내보내지 않는다).
+            "escalation_rate_honest": (None if unmeasurable
+                                        else float(np.mean(list(honest.values())))),
+            "honest_unmeasurable": unmeasurable,
+            "per_instance_q": dict(cov["per_instance_q"]),
+            "n_q_infinite": n_q_infinite,
+            "coverage_holdout": (None if unmeasurable else cov["coverage"]),
             "coverage_required": need,
-            "R4": "PASS" if cov["coverage"] >= need else "FAIL",
+            "R4": r4,
         })
     return out
 
@@ -190,13 +219,18 @@ def main():
                                         "vocab", "objective_hash")}
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as f:
-        json.dump(_jsonable(res), f, indent=2, ensure_ascii=False, sort_keys=True)
+        # 🔴 allow_nan=False: NaN 이 dict 에 조용히 섞여 있으면 시끄럽게 죽어야 한다 — 뭉개서
+        # 산출물에 리터럴 NaN 을 박아 넣으면 그건 JSON 표준도 아니고 다음 소비처가 못 읽는다.
+        # +inf/-inf 는 이미 `_jsonable` 에서 "Infinity" 문자열로 앞서 바뀌므로 여기 안 걸린다.
+        json.dump(_jsonable(res), f, indent=2, ensure_ascii=False, sort_keys=True,
+                  allow_nan=False)
     print("wrote %s" % args.out)
     for a in res["alphas"]:
-        print("  alpha=%-5s k=%2d/%d q=%12s escalate=%.3f coverage=%.3f R4=%s"
+        cov_s = "n/a" if a["coverage_holdout"] is None else "%.3f" % a["coverage_holdout"]
+        print("  alpha=%-5s k=%2d/%d q=%12s escalate=%s coverage=%-5s R4=%s n_q_inf=%d"
               % (a["alpha"], a["k"], a["n_residuals"],
                  ("inf" if math.isinf(a["q_pooled"]) else "%.3f" % a["q_pooled"]),
-                 a["escalation_rate_pooled"], a["coverage_holdout"], a["R4"]))
+                 "%.3f" % a["escalation_rate_pooled"], cov_s, a["R4"], a["n_q_infinite"]))
 
 
 if __name__ == "__main__":

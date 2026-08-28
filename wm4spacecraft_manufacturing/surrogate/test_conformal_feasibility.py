@@ -4,6 +4,8 @@
 "추정량이 정의대로 계산된다"이다. 실데이터 측정은 Task 2 가 하고, 그 숫자의 재유도는
 독립 에이전트(Task 3)가 한다. 이 파일이 그 둘 사이의 유일한 산술 보증이다.
 """
+import io
+import json
 import math
 import os
 import sys
@@ -117,3 +119,73 @@ def test_coverage_is_one_when_all_residuals_equal():
     res = np.array([7.0, 7.0, 7.0, 7.0, 7.0])
     got = cf.coverage_leave_instance_out(res, rows, alpha=0.3)
     assert got["coverage"] == pytest.approx(1.0)
+
+
+# ---- measure(): "못 잰다" 대 "쟀는데 크다" — 리뷰가 잡은 결함 -----------------------------
+# `measure()` 는 `oof_predictions`/`true_J` 를 통해서만 모델 적합에 닿는다. 여기서는 둘 다
+# monkeypatch 해서 합성 oof/잔차를 직접 주입한다 — 실 라벨셋도, 모델 적합도 필요 없다.
+def _patch_oof_and_truth(monkeypatch, oof, jt):
+    monkeypatch.setattr(cf, "oof_predictions", lambda rows: np.asarray(oof, dtype=float))
+    monkeypatch.setattr(cf, "true_J", lambda rows: np.asarray(jt, dtype=float))
+
+
+def test_measure_marks_unmeasurable_when_all_q_infinite(monkeypatch):
+    # 3 instance, 각 1행 -> instance 하나를 빼면 다른 잔차가 2개뿐이다.
+    # alpha=0.01 이면 k = ceil(3*0.99) = 3 > 2 -> 모든 instance 의 q_i 가 +inf.
+    rows = _rows({"i1": [0], "i2": [0], "i3": [0]})
+    oof = np.array([1.0, 2.0, 3.0])
+    _patch_oof_and_truth(monkeypatch, oof, jt=np.zeros(3))   # res = |oof-0| = oof
+    got = cf.measure(rows, alphas=[0.01])
+    row = got["alphas"][0]
+    assert row["n_q_infinite"] == 3
+    assert row["honest_unmeasurable"] is True
+    assert row["R4"] == "UNMEASURABLE"
+    # 🔴 이게 이 회귀의 핵심이다: 트리비얼한 1.0 이 아니라 None 이어야 한다.
+    assert row["coverage_holdout"] is None
+    assert row["escalation_rate_honest"] is None
+    # per_instance_q 는 여전히 내보내져서 독자가 "왜" 를 볼 수 있어야 한다.
+    assert set(row["per_instance_q"]) == {"i1", "i2", "i3"}
+    assert all(math.isinf(v) for v in row["per_instance_q"].values())
+
+
+def test_measure_n_q_infinite_counts_partial_correctly(monkeypatch):
+    # i1 은 2행(자기를 빼면 다른 잔차 3개), i2/i3/i4 는 1행씩(자기를 빼면 다른 잔차 4개).
+    # alpha=0.2 로 두 그룹을 가른다: n_oth=3 -> k=ceil(4*0.8)=4>3 (i1 만 +inf).
+    # n_oth=4 -> k=ceil(5*0.8)=4<=4 (i2/i3/i4 는 유한).
+    rows = _rows({"i1": [0, 1], "i2": [0], "i3": [0], "i4": [0]})
+    oof = np.array([5.0, 6.0, 1.0, 2.0, 3.0])
+    _patch_oof_and_truth(monkeypatch, oof, jt=np.zeros(5))
+    got = cf.measure(rows, alphas=[0.2])
+    row = got["alphas"][0]
+    assert row["n_q_infinite"] == 1
+    assert math.isinf(row["per_instance_q"]["i1"])
+    assert not math.isinf(row["per_instance_q"]["i2"])
+    assert not math.isinf(row["per_instance_q"]["i3"])
+    assert not math.isinf(row["per_instance_q"]["i4"])
+    # 하나라도 무한이면 그 alpha 행 전체가 UNMEASURABLE (부분 측정을 PASS/FAIL 로 안 낸다).
+    assert row["R4"] == "UNMEASURABLE"
+    assert row["coverage_holdout"] is None
+
+
+def test_measure_marks_vacuous_when_need_nonpositive(monkeypatch):
+    # alpha=0.99 -> need = 1 - 0.99 - 0.05 = -0.04 <= 0 -> 문지방이 항상 통과라 재는 의미가 없다.
+    # (alpha=0.95 는 need 가 부동소수 오차로 정확히 0.0 이 아니라 미세하게 양수가 될 수 있어
+    # 피한다 — -0.04 는 그 오차 폭보다 훨씬 커서 안정적이다.)
+    rows = _rows({"i1": [0, 1], "i2": [0], "i3": [0], "i4": [0]})
+    oof = np.array([5.0, 6.0, 1.0, 2.0, 3.0])
+    _patch_oof_and_truth(monkeypatch, oof, jt=np.zeros(5))
+    got = cf.measure(rows, alphas=[0.99])
+    row = got["alphas"][0]
+    assert row["coverage_required"] == pytest.approx(-0.04)
+    assert row["R4"] == "VACUOUS"
+
+
+def test_dump_raises_on_nan_instead_of_emitting_literal_nan():
+    # 🔴 `allow_nan=False` 가 없으면 json.dump 가 리터럴 NaN 을 조용히 써 버린다 — 그건
+    # JSON 표준도 아니고 다음 소비처가 못 읽는다. NaN 은 시끄럽게 죽어야 한다.
+    payload = cf._jsonable({"x": float("nan"), "y": [1.0, float("inf")]})
+    # +inf 는 여전히 "Infinity" 문자열로 살아남아야 한다(회귀 아님).
+    assert payload["y"][1] == "Infinity"
+    buf = io.StringIO()
+    with pytest.raises(ValueError):
+        json.dump(payload, buf, allow_nan=False)
