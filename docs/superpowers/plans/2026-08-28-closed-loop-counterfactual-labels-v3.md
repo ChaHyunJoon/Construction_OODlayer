@@ -1654,8 +1654,17 @@ total/closed 누락이 에러 없이 통과한다. 수락 기준은 행 수가 �
   - `action_registry.require_train_macros_stamps(stamps, where) -> list[int]`
   - `ActionRegistry.train_macros_stamp(macros)::Vector{Int}` · `ActionRegistry.require_train_macros_stamps(stamps, where::AbstractString)::Vector{Int}`
   - `ActionRegistry.require_train_macros_stamps_file(path)::Union{Vector{Int},Nothing}` — 라벨 **파일** 판. 파일 없음/0행이면 `nothing`("검사할 것이 없다" ≠ "통과").
-  - 🔴 **그 Julia 함수의 생산 소비처:** `gen_oracle_dataset.jl` 의 `_check_stamps_written(where)` 와 그것을 부르는 **`main()` 의 출구 세 곳**(dryrun · episode · dataset), 대상 파일은 `OUTFILE` 과 그 `.probes.jsonl` 짝 **둘 다**(Step 13-b). 테스트만 부르는 함수는 **읽는 곳이 0곳인 것과 같다** — 2026-08-28 preflight C-4 가 초판의 그 상태를 반증했다.
-  - ⚠️ **커버리지를 정확히 적는다** (2026-08-28 2차 검토): write site 넷의 목적지가 둘로 갈린다 — `:1949`(에피소드 결정 행)·`:2164`·`:2228`(일반 레인)은 `OUTFILE` 로, `:1989`(에피소드 probe 행)는 **`.probes.jsonl` 로** 간다. 그리고 `main()` 은 출구가 셋이라 **끝에만 붙이면 에피소드 레인 둘이 영영 안 검사된다.** 위 배선은 출구 셋 × 파일 둘이라 **넷을 전부 덮는다.**
+  - `gen_oracle_dataset.jl` 의 `const PROBES_OUT` — probe 파일 경로의 단일 진실원(오늘은 `run_episodes` 안에 리터럴로 한 번 있다).
+  - 🔴 **그 Julia 함수의 생산 소비처:** `gen_oracle_dataset.jl` 의 `_check_stamps_written(where, paths...)` 와 그것을 부르는 **`main()` 의 출구 네 곳 전부**(Step 13-b). 테스트만 부르는 함수는 **읽는 곳이 0곳인 것과 같다** — 2026-08-28 preflight C-4 가 초판의 그 상태를 반증했다.
+  - ⚠️ **커버리지를 write site × 목적지 × 출구로 적는다.** 이 자리는 **두 번 오산됐다**(2차 검토는 "출구 셋", 3차 검토가 **넷**임을 실측). 그래서 숫자를 산문에 박지 않고 Step 13-b-2 가 **파일에서 유도해 대조**한다.
+
+| write site | 목적지 파일 | 어느 출구가 검사하나 |
+|---|---|---|
+| `:1949` 에피소드 결정 행 | `OUTFILE` | 에피소드 본 실행 (그리고 에피소드 dryrun 이 이어 쓸 파일을 미리 본다) |
+| `:1989` 에피소드 probe 행 | **`PROBES_OUT`** (`.probes.jsonl`) | 에피소드 본 실행 **하나뿐** — 다른 셋은 이 파일을 안 연다 |
+| `:2164` · `:2228` 일반 레인 | `OUTFILE` | 일반 레인 tail (그리고 일반 레인 dryrun 이 미리 본다) |
+
+  - 🔴 **dryrun 출구 둘도 검사한다.** 행을 안 쓰지만 `io = open(OUTFILE, RESUME ? "a" : "w")` 라 `DS_RESUME=1` 이면 **이어 쓸 파일에 이미 이전 세대 행이 있다** — dryrun 이 그 드리프트를 **45판을 태우기 전에** 잡을 수 있는 유일한 자리다. 이 기능이 존재하는 이유가 정확히 dryrun 으로 새어 나갈 뻔했다.
   - `eval_surrogate_v2.load_rows(path)` 의 `meta` 에 `"train_macros": list[int]` 추가 (기존 7키 → 8키)
   - 🔴 **시그니처 변경:** `counterfactual_labels.assert_label_schema(row, where, skip=())` — Task 4 판의 `(row, where)` 에 `skip` 이 붙는다. Task 4 의 `fold_board_to_label_row` 가 유일한 호출자이고 같은 스텝에서 같이 고친다.
   - `counterfactual_labels.REQUIRED_LABEL_COLUMNS` 에 `"train_macros"` 가 들어간다.
@@ -2269,9 +2278,43 @@ function require_train_macros_stamps_file(path::AbstractString)
 end
 ```
 
-그 다음 `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` 에 **한 줄짜리 호출부**를 만든다. 🔴 **`main()` 은 출구가 셋이다** (2026-08-28 2차 검토가 잡아낸 두 번째 결함): 에피소드 dryrun(`close(io); return` 앵커) · 에피소드 본 실행(`run_episodes(io); close(io); return` 앵커, 오늘 기준 `:2022`) · 일반 레인(파일 끝의 `close(io)`). **끝에만 붙이면 에피소드 레인의 write site 두 곳이 영영 안 검사된다** — 그것이 `train_kinds` 를 단계 하나 늘린 것에 불과하다.
+그 다음 `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` 에 호출부를 만든다.
 
-먼저 `function main()` **바로 앞**에 도우미를 넣는다:
+🔴 **`main()` 은 출구가 넷이다** (2026-08-28 3차 검토가 잡아낸 것 — 2차 검토는 셋이라고 셌고 **그 셈이 틀렸다**). 숫자를 손으로 세지 말고 앵커로 뽑는다:
+
+```bash
+awk '/^function main\(\)/{f=1} f&&/close\(io\)/{n++} f&&/^end$/{print n+0; exit}' \
+    wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
+```
+→ **4** (오늘 기준 `:2020` 에피소드 dryrun · `:2022` 에피소드 본 실행 · `:2128` **일반 레인 dryrun** · `:2264` 일반 레인 tail).
+
+⚠️ **놓치기 쉬운 것이 `:2128` 이다** — 에피소드 dryrun 과 **다른** 분기이고, 그 아래 `[dryrun] $(n_runs) simulation runs total` 앵커 바로 다음 줄에 있다.
+
+🔴 **dryrun 출구도 검사한다. 행을 안 쓰는데 왜인가:** `io = open(OUTFILE, RESUME ? "a" : "w")`(오늘 기준 `:2026`) 이므로 `DS_RESUME=1` 이면 **그 파일에 이미 이전 세대의 행이 들어 있다.** dryrun 은 "무엇을 굴릴지" 를 보려고 돌리는 것이고, 바로 그 순간이 *"이어 쓸 파일의 도장이 이 실행과 다르다"* 를 **45판을 태우기 전에** 알 수 있는 유일한 자리다. 즉 이 기능이 존재하는 이유(`DS_RESUME` 어휘 드리프트)가 **정확히 dryrun 으로 새어 나갈 수 있었다.** (`RESUME=0` 이면 `"w"` 가 파일을 이미 비웠으므로 검사는 0행 → `nothing` → 무해하다.)
+
+**검사 대상은 "이 실행이 실제로 연 파일" 뿐이다.** 파일 목록을 인자로 받는다 — 안 그러면 일반 레인 실행이 **자기가 열지도 않은** 옛 `.probes.jsonl` 을 보고 헛경보를 낸다.
+
+먼저 `const OUTFILE = ...` 줄 **바로 뒤**에 probes 경로를 상수로 올린다(오늘은 그 식이 `:1855` 에 리터럴로 한 번 있다 — 두 벌 두면 갈린다):
+
+```julia
+# probe 궤적 파일. 오늘 이 식은 `run_episodes` 안에 리터럴로 한 번만 있었다(`pio = open(...)`).
+# V3 의 도장 되읽기가 **같은 경로**를 봐야 하므로 진실원을 하나로 올린다.
+const PROBES_OUT = replace(OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl"
+```
+
+그리고 `run_episodes` 안의
+
+```julia
+    pio = open(replace(OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl", RESUME ? "a" : "w")
+```
+
+를 이렇게 바꾼다:
+
+```julia
+    pio = open(PROBES_OUT, RESUME ? "a" : "w")     # 경로 유도는 OUTFILE 옆 상수 한 곳에만
+```
+
+그 다음 `function main()` **바로 앞**에 도우미를 넣는다:
 
 ```julia
 # ---- 🔴 자기 도장 되읽기 (2026-08-28, V3 Task 5) ------------------------------------------
@@ -2279,20 +2322,23 @@ end
 # 몰랐다(이 파일 스스로 "게이트는 일부러 안 만들었다" 고 적는다). `train_macros` 가 같은 길을
 # 가지 않게, **찍는 레인이 자기 도장을 읽는다.**
 #
-# 🔴 `main()` 의 **모든 출구**에서 부른다. write site 넷의 목적지가 둘로 갈리기 때문이다:
+# 🔴 `main()` 의 **네 출구 전부**에서 부른다. write site 넷의 목적지가 둘로 갈리기 때문이다:
 #     :1949 -> io  (에피소드 결정 행 → OUTFILE)
-#     :1989 -> pio (에피소드 probe 행 → OUTFILE 의 `.probes.jsonl` 짝, `pio = open(replace(
-#                   OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl", ...)` 앵커)
+#     :1989 -> pio (에피소드 probe 행 → PROBES_OUT)
 #     :2164 · :2228 -> io (일반 레인 → OUTFILE)
-#   OUTFILE 만 끝에서 보면 **에피소드 레인 둘이 통째로 안 검사된다.**
+#   그리고 출구는 넷이다 — 에피소드 dryrun · 에피소드 본 실행 · **일반 레인 dryrun** ·
+#   일반 레인 tail. tail 에만 붙이면 앞의 셋이 통째로 안 검사된다.
 #
-# 파싱은 ActionRegistry 가 한다 — 이 파일에는 JSON 파서가 없고(:947 이 그것을 설계 원칙으로
+# 🔴 `paths` 를 인자로 받는 이유: **이 실행이 실제로 연 파일만** 본다. 일반 레인은 PROBES_OUT
+#   을 열지 않으므로, 거기서 옛 probes 파일을 검사하면 자기가 만들지도 않은 산출물 때문에
+#   헛경보로 죽는다.
+#
+# 파싱은 ActionRegistry 가 한다 — 이 파일에는 JSON 파서가 없고(`:947` 이 그것을 설계 원칙으로
 # 적는다), 그 모듈은 이미 JSON3 를 쓴다. 여기서 JSON3 를 부르면 UndefVarError 로 죽는다.
-function _check_stamps_written(where::AbstractString)
-    probes = replace(OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl"
-    for path in (OUTFILE, probes)
+function _check_stamps_written(where::AbstractString, paths::AbstractString...)
+    for path in paths
         got = ActionRegistry.require_train_macros_stamps_file(path)
-        got === nothing && continue          # 파일 없음/0행: 검사할 것이 없다
+        got === nothing && continue          # 파일 없음/0행: 검사할 것이 없다 ≠ 통과했다
         got == TRAIN_MACROS || error(
             "$(path): 파일의 train_macros 도장 $(got) 이 이 실행의 $(TRAIN_MACROS) 와 다르다 — " *
             "다른 팔 집합으로 만든 행이 섞였다(DS_RESUME=1?). 합집합으로 뭉개지 않는다.")
@@ -2301,34 +2347,48 @@ function _check_stamps_written(where::AbstractString)
 end
 ```
 
-그리고 `main()` 의 **세 출구 전부**를 고친다:
+그리고 `main()` 의 **네 출구 전부**를 고친다. 각 자리에서 **그 실행이 연 파일만** 넘긴다:
 
 ```julia
             println("[dryrun] $(length(SEEDS) * EPISODE_N * length(MACROS)) simulation runs total")
-            close(io); _check_stamps_written("dryrun"); return
+            close(io); _check_stamps_written("dryrun/episode", OUTFILE); return
 ```
 
 ```julia
-        run_episodes(io); close(io); _check_stamps_written("episode"); return
+        run_episodes(io); close(io); _check_stamps_written("episode", OUTFILE, PROBES_OUT); return
+```
+
+```julia
+        println("[dryrun] $(n_runs) simulation runs total")
+        close(io); _check_stamps_written("dryrun/dataset", OUTFILE); return
 ```
 
 ```julia
     close(io)                                            # 파일 닫기
     println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
-    _check_stamps_written("dataset")
+    _check_stamps_written("dataset", OUTFILE)
 ```
 
-⚠️ dryrun 은 행을 안 쓰지만 **`RESUME=1` 이면 기존 행이 남아 있다** — 그 경우에도 검사가 돈다(그리고 그것이 옳다: 이어 쓸 파일이 이미 갈려 있으면 굴리기 **전에** 알아야 한다).
+⚠️ 에피소드 **dryrun** 은 `run_episodes` 를 안 부르므로 `pio` 를 안 연다 — 그래서 그 자리에는 `OUTFILE` 만 넘긴다. 일반 레인 둘도 마찬가지다. `PROBES_OUT` 을 넘기는 것은 **에피소드 본 실행 하나뿐**이다.
 
-넣은 뒤 확인:
+- [ ] **Step 13-b-2: 🔴 배선 수를 손으로 적지 않고 파일에서 유도해 대조한다**
+
+🔴 **이 스텝이 있는 이유:** 2차 검토판의 게이트는 *"출구 매치가 **3**보다 적으면 멈춘다"* 였다. 그런데 실제 출구는 **넷**이었으므로, 그 게이트는 결함을 잡는 대신 **자기 오산을 승인**했다 — 구멍 위에 초록을 보고했다. **숫자를 손으로 적는 게이트는 그 숫자가 틀리면 게이트가 아니다.** 그래서 기대값을 **파일에서 유도**한다.
 
 ```bash
-grep -n '_check_stamps_written\|require_train_macros_stamps_file' \
-    wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl \
-    wm4spacecraft_manufacturing/oracle/action_registry.jl
+cd /home/chahj578/Construction_OODlayer
+G=wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
+N_EXIT=$(awk '/^function main\(\)/{f=1} f&&/close\(io\)/{n++} f&&/^end$/{print n+0; exit}' "$G")
+N_CALL=$(grep -c '_check_stamps_written("' "$G")
+echo "main() 의 출구 = $N_EXIT · _check_stamps_written 호출부 = $N_CALL"
+grep -n '_check_stamps_written(' "$G"
+grep -n 'require_train_macros_stamps_file' wm4spacecraft_manufacturing/oracle/action_registry.jl
+test "$N_EXIT" = "$N_CALL" || { echo "🔴 정지: 출구 $N_EXIT 개 중 $N_CALL 개만 검사한다 — 안 검사되는 레인이 남았다. 그것이 train_kinds 다."; exit 1; }
+echo "OK: 모든 출구가 도장을 되읽는다"
 ```
-Expected: `gen_oracle_dataset.jl` 에 **4줄**(정의 1 + 출구 3), `action_registry.jl` 에 **2줄**(docstring 1 + 정의 1).
-🔴 출구 매치가 3보다 적으면 멈춘다 — 검사 안 되는 레인이 남았다는 뜻이고, 그게 `train_kinds` 다.
+Expected: `main() 의 출구 = 4 · _check_stamps_written 호출부 = 4`, 그리고 `grep -n '_check_stamps_written('` 이 **5줄**(정의 1 + 호출 4), `action_registry.jl` grep 이 **2줄**(docstring 1 + 정의 1).
+
+🔴 **두 수가 다르면 멈춘다.** 그리고 🔴 **`N_EXIT` 를 리터럴 4 로 바꾸지 말 것** — 그 순간 이 게이트는 다시 "손으로 적은 숫자" 가 되고, 출구가 하나 더 생기는 날 조용히 통과시킨다.
 
 - [ ] **Step 13-c: 🔴 **진짜 함수**로 음성 대조한다 (복사본이 아니다)**
 
@@ -2373,7 +2433,7 @@ nostamp.jsonl -> 기대대로 죽었다: ... `train_macros` 도장이 없다 ...
 
 🔴 **`mixed.jsonl` 이나 `nostamp.jsonl` 이 통과하면 멈춘다** — 도장을 찍기만 하고 아무것도 안 지키는 상태이고, 그것이 `train_kinds` 의 실패 그 자체다.
 
-⚠️ **이 스텝이 덮지 않는 것을 정직하게 적는다:** 여기서 태우는 것은 `require_train_macros_stamps_file` **함수**이고, `gen_oracle_dataset.jl` 의 **세 호출부**는 안 태운다(그러려면 라벨 생성을 실제로 돌려야 한다 — 45판 시뮬). 호출부의 존재는 Step 13-b 끝의 grep(출구 3개)과 Step 16 의 grep 이 센다. **"호출된다" 는 grep 근거이지 실행 근거가 아니다** — 라벨을 다시 만드는 다음 사람이 그 출력(`train_macros 되읽기 검사 통과: ...`)을 보고 확인해야 한다.
+⚠️ **이 스텝이 덮지 않는 것을 정직하게 적는다:** 여기서 태우는 것은 `require_train_macros_stamps_file` **함수**이고, `gen_oracle_dataset.jl` 의 **호출부 넷**은 안 태운다(그러려면 라벨 생성을 실제로 돌려야 한다 — 45판 시뮬). 호출부의 존재와 **수**는 Step 13-b-2 가 파일에서 유도해 대조하고, Step 16 의 grep 이 다시 센다. **"호출된다" 는 grep 근거이지 실행 근거가 아니다** — 라벨을 다시 만드는 다음 사람이 그 출력(`train_macros 되읽기 검사 통과: ...`)을 보고 확인해야 한다.
 
 
 - [ ] **Step 14: Julia 게이트를 쓰고 `runtests.jl` 에 배선한다**
@@ -2454,15 +2514,15 @@ grep -rn 'train_macros' src/respec/llm_service/dspy_service.py \
     wm4spacecraft_manufacturing/surrogate/eval_surrogate_v2.py \
     wm4spacecraft_manufacturing/surrogate/export_surrogate.py
 echo "--- Julia 소비처 (읽는 곳) ---"
-grep -n 'require_train_macros_stamps' wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
+grep -n '_check_stamps_written(' wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl
 ```
-Expected: `meta` 가 8키, `train_macros == [0, 1, 2]`, 파이썬 grep 이 **세 파일 전부에서** 매치, **그리고 Julia grep 이 `gen_oracle_dataset.jl` 에서 한 줄**.
+Expected: `meta` 가 8키, `train_macros == [0, 1, 2]`, 파이썬 grep 이 **세 파일 전부에서** 매치, **그리고 Julia grep 이 `gen_oracle_dataset.jl` 에서 5줄**(도우미 정의 1 + `main()` 출구 4). 🔴 그 **수의 판정은 Step 13-b-2 가 파일에서 유도해** 한다 — 여기 적힌 5 는 참고값이고, 손으로 적은 숫자를 믿지 않는다.
 
 🔴 **매치가 한 곳이라도 없으면 `train_kinds` 의 실패를 반복한 것이다 — 거기서 멈춘다.** 특히 Julia grep 이 비면 도장을 **찍는 레인이 자기 도장을 안 읽는** 상태이고, 그것이 2026-08-28 preflight C-4 가 이 계획서 초판에서 잡아낸 결함이다. 🔴 **`test/train_macros_stamp_smoke.jl` 매치는 소비처로 세지 않는다** — 테스트만 부르는 함수는 읽는 곳이 0곳인 것과 같다.
 
 - [ ] **Step 17: 커밋 (명시 경로만 — 한 커밋에 도장과 소비처가 같이 들어간다)**
 
-🔴 **커밋 전 마지막 확인:** 이 한 커밋 안에 **도장을 찍는 곳(Julia write site 4 + 파이썬 생산자)과 읽는 곳(파이썬 3 + Julia 1)이 같이 들어 있는가.** 하나라도 다음 커밋으로 미루면 리뷰가 통과시키고 `train_kinds` 가 반복된다.
+🔴 **커밋 전 마지막 확인:** 이 한 커밋 안에 **도장을 찍는 곳(Julia write site 4 + 파이썬 생산자)과 읽는 곳(파이썬 3 + Julia: 함수 1 + `main()` 출구 4)이 같이 들어 있는가.** 하나라도 다음 커밋으로 미루면 리뷰가 통과시키고 `train_kinds` 가 반복된다.
 
 ```bash
 git add wm4spacecraft_manufacturing/core/action_registry.py \
@@ -2890,8 +2950,8 @@ def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
     `ValueError: No LM is loaded` 가 나고 `macro()` 의 `except` 가 삼킨다). 누군가 LM 을
     설정하는 순간 **이 게이트가 매 실행 gpt-4o 유료 호출을 낸다.**
     `test_vocabulary_gap_fires.py` 가 2026-08-27 에 이미 같은 이유로 `decide()` 를 피했다 —
-    그 파일의 `test_the_gap_reaches_the_single_source_of_truth_decide_parses` docstring 이
-    그 결정을 적는다. 같은 규약을 따른다.
+    그 파일의 `test_the_gap_reaches_the_single_source_of_truth_decide_parses` docstring
+    (오늘 기준 `:82-86`)이 그 결정을 적는다. 같은 규약을 따른다.
 
     그래서 여기서는 `decide()` 가 **파싱하는 그 단일 진실원**을 직접 잰다:
     `surrogate_rank` 가 돌려주는 `(scored, err)`. `decide()` 는 그 `err` 를 문자열로 갈라
@@ -3350,9 +3410,67 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
 | # | 무엇 | 근거 | 어디를 고쳤나 |
 |---|---|---|---|
 | 1 | 🔴 **BLOCKING — `JSON3` 를 안 쓰는 파일에서 `JSON3` 를 불렀다.** `gen_oracle_dataset.jl` 의 import 는 `ConstructionBots` · `HiGHS, Logging, Random, Graphs` · `Printf` · `.Objective` 뿐이고 **`JSON3` 가 없다.** 쓰기는 손수 만든 `jrow` 이고 `:947` 이 *"JSON 파서를 쓰지 않는 이유 … 외부 의존 없음"* 을 **설계 원칙**으로 적는다(`:1763` 의 `JSON3.write` 는 `run_demo.jl` 을 가리키는 주석). 첫 실행에 `UndefVarError: JSON3` | 직접 확인: `grep '^using\|^import'` 가 그 넷만 낸다 | 파일 읽기를 **`action_registry.jl` 로 옮겼다** — 그 모듈은 이미 `import JSON3`(`:35`) 한다. `require_train_macros_stamps_file(path)` 신설, `gen_oracle_dataset.jl` 은 호출만 한다. **거짓 주장 삭제.** |
-| 1-b | 🔴 **그리고 Step 13-c 가 그것을 못 잡았다** — 검사 블록을 스크립트 안에 **다시 써서**(거기에만 `import JSON3` 를 붙여) 돌렸다. **소비처의 복사본을 시험한 것**이고, 이 계획서가 막으려는 결함 모양 그 자체다 | — | 함수가 `action_registry.jl` 로 갔으므로 13-c 가 `include` 후 **진짜 함수**를 부른다. 케이스도 2 → 5(정상·빈 파일·없는 파일·섞인 도장·도장 없음)로 늘렸다. 🔴 그리고 **이 스텝이 안 덮는 것**(세 호출부는 grep 근거이지 실행 근거가 아니다)을 명시했다 |
-| 2 | **소비처가 write site 넷 중 둘만 덮는데 넷을 덮는다고 적었다.** `main()` 은 출구가 **셋**(dryrun `close(io); return` · episode `run_episodes(io); close(io); return` 오늘 기준 `:2022` · 일반 레인 tail)이고, 끝에만 붙이면 `run_episodes`(1852–2006) 안의 `:1949`·`:1989` 가 영영 안 검사된다. **게다가 `:1989` 는 `pio` = `OUTFILE` 의 `.probes.jsonl` 짝으로 나가서 파일 자체가 다르다** | 직접 확인: `run_episodes` 범위와 `pio = open(replace(OUTFILE, …) * ".probes.jsonl", …)` | `_check_stamps_written(where)` 도우미를 만들어 **출구 셋 전부**에서 부르고, **`OUTFILE` 과 `.probes.jsonl` 둘 다** 검사한다 → 넷을 전부 덮는다. Interfaces 에 그 커버리지를 **파일별로** 적었고, Step 13-b 끝의 grep 이 **출구 3개**를 센다 |
+| 1-b | 🔴 **그리고 Step 13-c 가 그것을 못 잡았다** — 검사 블록을 스크립트 안에 **다시 써서**(거기에만 `import JSON3` 를 붙여) 돌렸다. **소비처의 복사본을 시험한 것**이고, 이 계획서가 막으려는 결함 모양 그 자체다 | — | 함수가 `action_registry.jl` 로 갔으므로 13-c 가 `include` 후 **진짜 함수**를 부른다. 케이스도 2 → 5(정상·빈 파일·없는 파일·섞인 도장·도장 없음)로 늘렸다. 🔴 그리고 **이 스텝이 안 덮는 것**(호출부는 grep 근거이지 실행 근거가 아니다)을 명시했다 (⚠️ 그때 "세 호출부" 라고 적었는데 실제로는 넷이다 — 부록 D 의 1번) |
+| 2 | **소비처가 write site 넷 중 둘만 덮는데 넷을 덮는다고 적었다.** `main()` 은 출구가 **셋**(dryrun `close(io); return` · episode `run_episodes(io); close(io); return` 오늘 기준 `:2022` · 일반 레인 tail)이고, 끝에만 붙이면 `run_episodes`(1852–2006) 안의 `:1949`·`:1989` 가 영영 안 검사된다. **게다가 `:1989` 는 `pio` = `OUTFILE` 의 `.probes.jsonl` 짝으로 나가서 파일 자체가 다르다** | 직접 확인: `run_episodes` 범위와 `pio = open(replace(OUTFILE, …) * ".probes.jsonl", …)` | `_check_stamps_written` 도우미를 만들어 여러 출구에서 부르게 했다. 🔴 **⚠️ 이 수정 자체가 부분적이었다 — 3차 검토가 반증했다(부록 D 의 1번).** 출구는 셋이 아니라 **넷**이고(일반 레인 dryrun `:2128` 을 빠뜨렸다), *"출구 3개"* 를 기대하던 grep 게이트가 그 오산을 **승인**했다. 지금 판은 출구 넷 전부를 덮고, 기대값을 **파일에서 유도**한다 |
 | 3 | **Goal 줄이 §9 가 금지한 문장을 그대로 들고 있었다** — *"end-to-end 로 보인다 (설계서 §7 R2)"*. 문서에서 가장 많이 읽히는 줄이다 | — | Goal 을 **"고정된 어휘 안에서 지원집합이 자라는 것"** 으로 다시 쓰고, 바로 아래에 🔴 *"이것은 §7 R2 의 한 사례이지 R2 자체가 아니다 — 엄격히 더 약하다"* 와 §3 참조, 금지 문장을 붙였다 |
 | 4 | **R2 게이트의 유료 호출 노출이 안 적혀 있었다.** `svc.decide()` 는 dspy 레인도 부른다. `test_vocabulary_gap_fires.py` 는 2026-08-27 에 **바로 그 이유로** `decide()` 를 피했고 그 결정을 docstring 에 적어 뒀다 | 그 파일의 `test_the_gap_reaches_the_single_source_of_truth_decide_parses` docstring | 게이트를 **`surrogate_rank` 의 `(scored, err)`** 로 다시 썼다(=`decide()` 가 파싱하는 단일 진실원, 무료·결정론적). `decide()` 단언은 **LM 가드가 붙은 별도 테스트**로 분리했다(`dspy.settings.lm` 이 있으면 skip). §9 에 다섯 번째 한계로 *"그 한 칸의 커버리지는 계약이 아니라 상태에 걸려 있다"* 를 적었다 |
 
 **이 판에서 자발적으로 더한 음성 대조 하나:** Task 7 Step 4 에 3번 항목을 넣었다 — `dict(scored_before).keys() == {...}` 를 `scored_before != []` 로 바꿔도 **여전히 초록**임을 실제로 보이게 한다. 팔 이름으로 판정해야 하는 이유가 논증이 아니라 관측으로 남는다.
+
+---
+
+## 부록 D — 3차 검토가 고친 것
+
+**대상 계획서 판:** 커밋 `d133d97d` (2차 반영판)
+**판정:** 2차 수정 4건 중 **셋이 ADDRESSED 로 확인**됐다 — `action_registry.jl` 이동에 순환 import 가 없고(`gen_oracle_dataset.jl:58` → `ood_mdp_shim.jl:34` 로 `ActionRegistry` 가 이미 전이적으로 들어온다), Goal 줄의 금지 문장은 부정문·인용 안에만 남았고, `(scored, err)` 게이트는 `dspy_service.py:462`(반환 모양)·`:768-792`(파싱)·`:718`(`prog(...)` 무조건 호출) 로 확인됐다.
+**남은 하나는 내 주장이 틀린 것이었다.**
+
+### 🔴 1. `main()` 의 출구는 셋이 아니라 **넷**이다 — 그리고 게이트가 그 오산을 승인했다
+
+직접 확인(앵커 기반 계수):
+
+```
+$ awk '/^function main\(\)/{f=1} f&&/close\(io\)/{n++} f&&/^end$/{print n+0; exit}' gen_oracle_dataset.jl
+4
+$ grep -n 'close(io)' … | awk -F: '$1>=2008'
+2020:            close(io); return          ← 에피소드 dryrun
+2022:        run_episodes(io); close(io); return   ← 에피소드 본 실행
+2128:        close(io); return          ← 🔴 **일반 레인 dryrun (빠뜨렸다)**
+2264:    close(io)                       ← 일반 레인 tail
+```
+
+빠뜨린 `:2128` 이 하필 **가장 하중 큰 자리**였다. `io = open(OUTFILE, RESUME ? "a" : "w")`(`:2026`)이므로 `DS_RESUME=1` 이면 그 파일에 **이미 이전 세대 행이 있고**, 이 기능이 존재하는 이유(`DS_RESUME` 어휘 드리프트)가 **`DS_DRYRUN=1` 로 새어 나갈 수 있었다.**
+
+🔴 **그리고 더 나쁜 것: 자기 검사가 오산을 승인했다.** 2차 판의 게이트는 *"출구 매치가 **3**보다 적으면 멈춘다"* 였다. 실제 출구가 넷이므로 그 게이트는 구멍 위에 **초록을 보고**했다. **숫자를 손으로 적는 게이트는 그 숫자가 틀리면 게이트가 아니라 알리바이다.**
+
+**고친 방식 셋:**
+1. **출구 넷 전부**에서 `_check_stamps_written` 을 부른다. dryrun 출구를 **제외하지 않는다** — 행을 안 써도 `RESUME=1` 이면 이어 쓸 파일을 미리 보는 자리이고, 그것이 45판을 태우기 전에 드리프트를 잡는 유일한 기회다(`RESUME=0` 이면 `"w"` 가 이미 파일을 비워 0행 → `nothing` → 무해).
+2. **검사 대상을 인자로 받는다**(`_check_stamps_written(where, paths...)`). 일반 레인은 `PROBES_OUT` 을 열지 않으므로, 자기가 만들지도 않은 옛 probes 파일 때문에 헛경보로 죽지 않는다. `PROBES_OUT` 을 넘기는 것은 **에피소드 본 실행 하나뿐**이다.
+3. 🔴 **게이트가 기대값을 파일에서 유도한다**(Step 13-b-2). `N_EXIT` 를 앵커 기반 `awk` 로 뽑아 `N_CALL` 과 대조하고, 다르면 `exit 1`. 그리고 *"`N_EXIT` 를 리터럴 4 로 바꾸지 말 것"* 을 명시했다 — 그 순간 다시 알리바이가 된다.
+
+**곁들여 고친 중복 하나:** probes 경로 식이 `run_episodes` 안에 리터럴로만 있었다. 되읽기가 **같은 경로**를 봐야 하므로 `const PROBES_OUT` 으로 올리고 `pio = open(PROBES_OUT, …)` 로 바꾼다 — 두 벌 두면 갈린다.
+
+### 2. `test_vocabulary_gap_fires.py` 인용 오프바이원
+
+`:82-87` → **`:82-86`**. 87 은 빈 줄이다. 고쳤다.
+
+### 🔴 3. 다른 모든 "N 곳 / N 줄 / N 개" 주장을 실제 파일에 대고 다시 셌다
+
+같은 기능에서 셈이 **두 번** 틀렸으므로, 이전 텍스트가 아니라 **원본**에 대고 전수 재계수했다. 전부 일치했다:
+
+| 주장 | 재계수 방법 | 결과 |
+|---|---|---|
+| `train_kinds` write site **4곳** (`:1949`·`:1989`·`:2164`·`:2228`) | `grep -n 'train_kinds"=>TRAIN_KINDS'` | ✅ 4 |
+| `load_rows` 의 `meta` **7키** → 8키 | 반환 dict 의 `"key":` 계수 | ✅ 7 |
+| export 의 `"kinds":` **2곳** (`:392`·`:442`) | `grep -n '"kinds":'` | ✅ 2 |
+| `sample_grid.py` **1331줄** | `git show HEAD:… \| wc -l` | ✅ 1331 |
+| `test_sample_grid_wiring.py` 6 → **11** | 계획서 코드블록의 `def test_` 계수 | ✅ 6 / 11 |
+| `test_counterfactual_labels.py` 5 → **20** (parametrize 6항목 포함) | 같은 방법 + `parametrize` 항목 전개 | ✅ 5 / 20 (함수 15 + 5) |
+| Task 4 Step 6 **31** | 20 + 11 | ✅ 31 |
+| `test_train_macros_stamp.py` **8** | 같은 방법 | ✅ 8 |
+| `test_reload_grows_support.py` **4** | 같은 방법 | ✅ 4 |
+| `test_r2_boundary_moves.py` **5** (4 passed + 1 skipped 또는 5 passed) | 같은 방법 | ✅ 5 |
+| 기준선 `3 failed, 114 passed` | 실제 실행 | ✅ 일치 |
+| `require_vocab*` 생산 소비처 **3곳** + 테스트 **4파일** | 사실 시트 §7 재확인 | ✅ |
+
+🔴 **틀린 것은 `main()` 출구 하나뿐이었고, 그것은 "이전 텍스트를 믿고" 센 유일한 자리였다.** 그 교훈이 Step 13-b-2 의 자기유도 게이트다.
