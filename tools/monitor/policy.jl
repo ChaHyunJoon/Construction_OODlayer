@@ -999,10 +999,14 @@ Task 4(`bdb0bdda`)가 파이썬에서 죽인 `set(range(5))` 붕괴가 언어 �
   · `missing ≠ ∅`      ⟹ `UNSUPPORTED:` 규약이 나왔다 ⟹ 지원집합을 읽었다 ⟹ **쟀다**
   · 그 외(서비스 부재 · "support is unknown") ⟹ **못 쟀다**
 
-⚠️ 알려진 잔여(범위 밖): 서비스의 `if not scorable` 분기("no training support for any valid
-macro")는 지원집합을 **읽었는데도** `UNSUPPORTED:` 접두사를 안 붙여 `/decide` 가
-`unsupported: []` 를 싣는다. 그 사건은 여기서 "못 쟀다" 로 기록된다 — 안전한 방향(미측정으로
-표시)이지만 정확하지는 않다. 고칠 자리는 `dspy_service.surrogate_rank` 의 그 분기다.
+✅ 2026-08-28(`ce48c1ce`) 고쳐짐: 서비스의 `if not scorable` 분기("no training support for any
+valid macro")는 지원집합을 **읽었는데도** `UNSUPPORTED:` 접두사를 안 붙여 `/decide` 가
+`unsupported: []` 를 싣는 문제가 있었다 — 그 사건이 여기서 "못 쟀다" 로 잘못 기록됐다(안전한
+방향이지만 부정확). 지금은 `unsupported` 가 비지 않았으면 그 분기도 `UNSUPPORTED:` 규약을
+그대로 낸다(`dspy_service.surrogate_rank`). 남은 경우는 `valid` 의 모든 이름이 레지스트리에
+아예 없는(등록 안 된 매크로) 사건뿐이고, 그건 "지원 안 됨"과는 다른 사건이라 규약 밖 메시지를
+유지한다 — 이 파일이 읽는 `missing ≠ ∅ ⟹ 쟀다` 계약과 여전히 합치한다(그 경우
+`missing == ∅` 이므로 위 계약이 적용될 사건 자체가 없다).
 """
 surrogate_support_measured(surro_entry, missing) =
     (get(surro_entry, "available", false) === true) || !isempty(missing)

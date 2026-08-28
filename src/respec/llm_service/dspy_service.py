@@ -505,6 +505,16 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
             # top-level `valid` 필드에, 지원집합은 `/health` 의 `surro_support` 에 이미
             # 나간다(둘 다 `surrogate_rank` 의 유일한 호출부인 `decide()` 를 통해서만
             # 도달하므로 재구성 가능).
+            if unsupported is None:
+                # 🔴 리뷰 라운드 1: `_unsupported_for` 는 `_state["surro_support"]` 를
+                # (위의 `support = _state.get(...)` 와는) **독립적으로 다시 읽는다**. 스레드
+                # 서버에서 그 사이 모델이 리로드돼 지원집합이 지워지면 이 함수는 "못 쟀다"(None)
+                # 를 돌려준다 — `if unsupported:` 로 None 과 [] 를 뭉개면 이 경우가 "다 모른다"
+                # (아래 규약 밖 메시지)로 잘못 떨어진다. 이 파일에서 그 세 값(None/[]/[이름])을
+                # 일부러 구분하는 자리이므로 여기서도 구분한다 — 위 가드와 같은 메시지로
+                # 되돌린다(둘 다 "지원집합을 못 읽었다"는 같은 사실이다).
+                return None, ("surrogate macro support is unknown (model not loaded) -- "
+                              "refusing to answer rather than assuming every arm is supported")
             if unsupported:
                 return None, "UNSUPPORTED:" + ",".join(unsupported)
             # `unsupported` 도 비었는데 `scorable` 도 비었다는 것은 `valid` 의 어떤 이름도

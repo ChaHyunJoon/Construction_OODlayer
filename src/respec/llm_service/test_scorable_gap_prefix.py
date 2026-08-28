@@ -65,6 +65,36 @@ def test_scorable_and_unsupported_both_empty_stays_out_of_band(support):
     assert "unknown to registry" in err
 
 
+def test_race_where_support_vanishes_between_the_two_reads_stays_unmeasured(support, monkeypatch):
+    """🔴 리뷰 라운드 1, item 3. `surrogate_rank` 는 `support = _state.get("surro_support")`
+    를 한 번 읽고 나서 `_unsupported_for` 가 **독립적으로 다시** 같은 키를 읽는다. 스레드
+    서버에서 그 사이 모델이 리로드되면 후자가 `None`("못 쟀다")을 돌려줄 수 있는데,
+    `if unsupported:` 만 보면 `None` 과 `[]` 가 똑같이 falsy라 "다 모른다"(규약 밖, 하지만
+    틀린) 메시지로 떨어진다. 이 파일이 일부러 세 값(None/[]/[이름])을 구분하는 자리이므로
+    여기서도 구분해야 한다 -- `unsupported is None` 이면 `support is None` 가드와 같은
+    "못 쟀다" 메시지로 되돌아가야 한다."""
+    support(set())                                        # scorable 이 반드시 비게 만든다
+    monkeypatch.setattr(svc, "_unsupported_for", lambda req, valid: None)
+    scored, err = svc.surrogate_rank(_req(MENU), MENU)
+    assert scored is None
+    assert not str(err).startswith("UNSUPPORTED:")
+    assert "unknown (model not loaded)" in err
+    assert "unknown to registry" not in err               # 다른 메시지와 안 섞였는지 확인
+
+
+def test_valid_empty_is_a_known_vacuous_edge_unreachable_via_the_service(support):
+    """리뷰의 표현 지적: '둘 다 비면 전부 미등록' 이라는 증명은 `valid` 자체가 비어 있으면
+    공허하게 참이 되고, 그러면 "all unknown to registry" 메시지가 실제로는 거짓이 된다
+    (뺄 이름이 없는 게 아니라 애초에 아무 것도 안 물어본 것). 서비스 경로로는 도달 불가능
+    하다 -- `_valid_for` (`dspy_service.py:150-153`) 는 모든 사건 종류에서 `MACROS` 로
+    폴백해 `valid` 가 절대 비지 않는다 -- 그래서 여기서는 경계 자체만 못박고, 고치지는
+    않는다(범위 밖으로 남겨둔 리뷰의 판단을 따른다)."""
+    support({0, 1, 2})
+    scored, err = svc.surrogate_rank(_req([]), [])
+    assert scored is None
+    assert not str(err).startswith("UNSUPPORTED:")        # 빈 이름 목록으로 규약을 안 쓴다
+
+
 def test_existing_UNSUPPORTED_contract_unaffected(support):
     """회귀 방지: 기존 프로듀서(2건, dspy_service.py 원래 :513·:524 자리)의 계약은
     이 수정으로 안 바뀐다 -- test_vocabulary_gap_fires.py 가 이미 못박고 있지만
