@@ -491,8 +491,27 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
         unsupported = _unsupported_for(req, valid)      # 유도는 한 곳에만 (위 도우미)
         scorable = [name2id[m] for m in valid if m in name2id and name2id[m] in support]
         if not scorable:
-            return None, ("no training support for any valid macro %s "
-                          "(surrogate saw %s)" % (valid, sorted(support)))
+            # 🔴 2026-08-28 수정: 이 분기는 `support is None` 가드를 이미 지났으므로
+            # 지원집합을 **읽었다** — `policy.jl` 의 구조 계약(`missing ≠ ∅` ⟹
+            # `UNSUPPORTED:` 규약이 나왔다 ⟹ 쟀다)대로 `unsupported` 가 비어있지
+            # 않으면 여기서도 그 규약을 써야 한다. 예전엔 산문으로 돌려보내 "못 쟀다"로
+            # 잘못 기록됐다(안전한 방향이지만 부정확 — `tools/monitor/policy.jl:1001-1005`
+            # 가 이 자리를 정확히 지목했다).
+            #
+            # 진단(`valid`, `support`)을 문자열에 욱여넣지 않는 이유: 소비처
+            # (`decide()` L789·L799, `test_vocabulary_gap_fires.py:97`)가
+            # `err.split(":", 1)[1].split(",")` 로 **이름 목록만** 기대한다 — 텍스트를
+            # 덧붙이면 그 파싱이 깨진다. 정보는 안 사라진다: `valid` 는 `decide()` 응답의
+            # top-level `valid` 필드에, 지원집합은 `/health` 의 `surro_support` 에 이미
+            # 나간다(둘 다 `surrogate_rank` 의 유일한 호출부인 `decide()` 를 통해서만
+            # 도달하므로 재구성 가능).
+            if unsupported:
+                return None, "UNSUPPORTED:" + ",".join(unsupported)
+            # `unsupported` 도 비었는데 `scorable` 도 비었다는 것은 `valid` 의 어떤 이름도
+            # `name2id`(레지스트리)에 없다는 뜻이다 — "지원 안 됨"이 아니라 "애초에 모르는
+            # 매크로"라 다른 사건이다. 빈 이름 목록으로 `UNSUPPORTED:` 를 내면 그것도 거짓말
+            # (재긴 했는데 뺄 것이 없다는 주장)이므로 여기서는 규약 밖 메시지를 유지한다.
+            return None, "no training support for any valid macro (all unknown to registry)"
         # ---- 개입이 하나도 안 남았으면 그것은 예측이 아니다 (2026-08-14, Task 7) ------------
         # [역사] 아래 실측 대가는 구세대 어휘(v3-4arms 이전)의 기록이다 — ReformTeam 도 reform
         # 메뉴도 이제 없다. 규약 자체(UNSUPPORTED 로 되돌린다)는 현행이다.
