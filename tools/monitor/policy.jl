@@ -533,7 +533,8 @@ function dspy_ready()
 end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
-function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing)
+function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
+                        agents = nothing)
     dspy_ready() || return nothing
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
@@ -545,6 +546,8 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 서비스는 별도 프로세스라 환경변수로는 못 미치므로 요청에 실어 보낸다. LLM_NL_MODE=raw 로 옛 동작.
     payload["nl_mode"] = lowercase(get(ENV, "LLM_NL_MODE", "observation"))
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
+    # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 — 여기 없는 id 는 모델이 못 만든다.
+    agents === nothing || (payload["agents"] = agents)
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
@@ -1127,7 +1130,8 @@ function decide_all(env, truth; nl::AbstractString = "")
     #     라우터가 꺼진 비교 실행의 절약은 그대로 남는다.)
     j = (POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
-        nothing : service_decide(env, truth; nl = nl, descriptors = desc)
+        nothing : service_decide(env, truth; nl = nl, descriptors = desc,
+                                 agents = CB.open_agent_descriptors(env))
 
     # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
     # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로

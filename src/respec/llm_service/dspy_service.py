@@ -25,7 +25,7 @@ Run (hjcrl venv, from this directory):
   python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 """
 import os, sys, json, glob, math, re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -398,6 +398,13 @@ class MacroRequest(BaseModel):
     #   있음)을 "언제나 불법" 또는 "언제나 합법" 중 하나로만 둘 수 있다. 둘 다 틀린다 — 전자는 실행
     #   가능한 국소 복구를 어휘에서 지워 매번 전역 이동(구 RelocateBuild)을 시키고, 후자는 조용한 no-op 을
     #   고르게 한다. 상태를 아는 쪽(줄리아)이 계산해 실어 보내는 것이 유일하게 옳은 배치다.
+    # agents : 이 요청 시점에 **실재하는** 로봇 목록 [{id, label}, ...].
+    #   `llm_bridge.open_agent_descriptors` 가 만드는 형태를 그대로 받는다.
+    #   ②접지의 재료다 — tool 파라미터의 enum 이 이 목록에서만 나오므로, 여기 없는 id 는
+    #   모델이 **생성할 수 없다**(디코드 시점 차단).
+    # ★ 선언하지 않으면 pydantic 이 조용히 버린다. 그러면 enum 이 빈 목록으로 굳어 tool
+    #   호출이 전부 막히는데, 원인이 호출자에 있는 것처럼 보인다.
+    agents: Optional[List[Dict[str, str]]] = None
     valid: Optional[List[str]] = None
 
 
