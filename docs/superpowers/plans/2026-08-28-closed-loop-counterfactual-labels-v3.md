@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 같은 OOD 사건이 **라벨 추가 + 재적재 전에는 `vocabulary_gap` 으로 dspy 로 가고, 후에는 surrogate 로 가는 것**을 end-to-end 로 보인다 (설계서 §7 R2). 그것이 "경계가 실제로 움직인다" 의 유일한 판정 기준이고, 그것 없이는 V1 이 지은 축 1 이 죽은 코드로 남는다.
+**Goal:** **고정된 어휘(`v4-3arms`) 안에서 지원집합이 자라는 것**을, 반사실 라벨을 실제로 만들어 보인다 — 같은 OOD 사건에 대해 `/decide` 의 라우팅 입력이 라벨 추가 + 재적재 **전에는 `unsupported = ["SwapBattery"]`**(축 1 이 발화하는 조건), **후에는 `[]`** 로 뒤집힌다. 그것 없이는 V1 이 지은 축 1 이 죽은 코드로 남는다.
+
+🔴 **이것은 설계서 §7 R2 의 한 사례이지 R2 자체가 아니다 — 엄격히 더 약하다.** '전' 상태가 같은 실행이 만든 행의 **뺄셈**이라 ①→④ 방아쇠(사건 도착 → 격상 → LLM 대응 → 라벨 축적)를 한 칸도 안 태우고, 그 팔이 이미 어휘 안에 있어 **주조 경로 기계를 0개** 태운다. V3 이 실제로 보이는 것의 정확한 이름은 폐루프가 아니라 **"R1 + 같은 프로세스 재적재 + 도장 진실원"** 이다. 세 가지 방식의 약화를 §3 이, 금지 문장을 §9 가 적는다. **"V3 이 R2 를 달성한다" · "경계가 움직이는 것을 end-to-end 로 보였다" 고 쓰지 말 것.**
 
 **Architecture:** 반사실 라벨 생산자는 **맨땅에서 짓지 않는다** — `wm4spacecraft_manufacturing/dp_oracle/sample_grid.py`(1331줄, 자칭 "반사실 표집기")가 git HEAD 에 있고 작업 트리에서만 삭제돼 있다. V3 은 그것을 **되살려 모양을 바꾼다**: (1) 낡은 경로와 어휘 리터럴을 고쳐 판이 실제로 돌게 만들고(Task 1), (2) 반사실 지점을 crc32 해시가 아니라 **OOD 사건 index** 에서 몰고(Task 2), (3) 사건을 열거하고(Task 3), (4) 판을 라벨 행으로 접고(Task 4), (5) `train_macros` 도장을 **소비처와 같은 태스크에서** 넣고(Task 5), (6) 재적재 경로를 만들고(Task 6), (7) R2 를 측정하고(Task 7), (8) 그 라벨셋 위에서 축 2 의 실현가능성을 **다시 잰다**(Task 8 — 짓지는 않는다).
 
@@ -1651,7 +1653,9 @@ total/closed 누락이 에러 없이 통과한다. 수락 기준은 행 수가 �
   - `action_registry.train_macros_stamp(macros) -> list[int]`
   - `action_registry.require_train_macros_stamps(stamps, where) -> list[int]`
   - `ActionRegistry.train_macros_stamp(macros)::Vector{Int}` · `ActionRegistry.require_train_macros_stamps(stamps, where::AbstractString)::Vector{Int}`
-  - 🔴 **그 Julia 함수의 생산 소비처:** `gen_oracle_dataset.jl` 의 `main()` 끝 되읽기 블록(Step 13-b). 테스트만 부르는 함수는 **읽는 곳이 0곳인 것과 같다** — 2026-08-28 preflight C-4 가 초판의 그 상태를 반증했다.
+  - `ActionRegistry.require_train_macros_stamps_file(path)::Union{Vector{Int},Nothing}` — 라벨 **파일** 판. 파일 없음/0행이면 `nothing`("검사할 것이 없다" ≠ "통과").
+  - 🔴 **그 Julia 함수의 생산 소비처:** `gen_oracle_dataset.jl` 의 `_check_stamps_written(where)` 와 그것을 부르는 **`main()` 의 출구 세 곳**(dryrun · episode · dataset), 대상 파일은 `OUTFILE` 과 그 `.probes.jsonl` 짝 **둘 다**(Step 13-b). 테스트만 부르는 함수는 **읽는 곳이 0곳인 것과 같다** — 2026-08-28 preflight C-4 가 초판의 그 상태를 반증했다.
+  - ⚠️ **커버리지를 정확히 적는다** (2026-08-28 2차 검토): write site 넷의 목적지가 둘로 갈린다 — `:1949`(에피소드 결정 행)·`:2164`·`:2228`(일반 레인)은 `OUTFILE` 로, `:1989`(에피소드 probe 행)는 **`.probes.jsonl` 로** 간다. 그리고 `main()` 은 출구가 셋이라 **끝에만 붙이면 에피소드 레인 둘이 영영 안 검사된다.** 위 배선은 출구 셋 × 파일 둘이라 **넷을 전부 덮는다.**
   - `eval_surrogate_v2.load_rows(path)` 의 `meta` 에 `"train_macros": list[int]` 추가 (기존 7키 → 8키)
   - 🔴 **시그니처 변경:** `counterfactual_labels.assert_label_schema(row, where, skip=())` — Task 4 판의 `(row, where)` 에 `skip` 이 붙는다. Task 4 의 `fold_board_to_label_row` 가 유일한 호출자이고 같은 스텝에서 같이 고친다.
   - `counterfactual_labels.REQUIRED_LABEL_COLUMNS` 에 `"train_macros"` 가 들어간다.
@@ -2225,85 +2229,152 @@ Expected: 상수 정의 1줄 + println 1줄 + write site **4줄** = 6줄
 
 🔴 **2026-08-28 preflight C-4 가 이 계획서 자신을 반증했다.** Step 12·13 까지만 하면 Julia 판 `require_train_macros_stamps` 의 **생산 소비처가 0곳**이다 — 테스트만 부른다. 그것이 정확히 이 태스크가 막으려던 `train_kinds` 의 모양(**4곳에서 찍고 0곳에서 읽는다**)이고, 그 실패를 이름으로 지목하는 계획서 안에서 재현될 뻔했다.
 
-**소비처는 생성기 자신이다.** `gen_oracle_dataset.jl` 이 도장을 찍는 레인이므로, 다 쓰고 나서 **자기가 쓴 파일을 다시 읽어 자기 도장을 검사한다.** 그것이 사실 시트 §7 이 지적한 비대칭(*"도장을 찍는 레인이 자기 도장을 검사할 함수가 없다"*)의 정확한 반대다. 그리고 이 검사가 실제로 잡는 사건이 있다: 🔴 **`DS_RESUME=1` 은 출력 파일에 `append` 한다** — 어휘가 바뀐 뒤 이어 쓰면 한 파일 안에 두 세대의 도장이 섞이는데, 오늘은 그것을 아무도 못 본다.
+**소비처는 생성기 자신이다.** `gen_oracle_dataset.jl` 이 도장을 찍는 레인이므로, 다 쓰고 나서 **자기가 쓴 파일을 다시 읽어 자기 도장을 검사한다.** 그것이 사실 시트 §7 이 지적한 비대칭(*"도장을 찍는 레인이 자기 도장을 검사할 함수가 없다"*)의 정확한 반대다. 그리고 이 검사가 실제로 잡는 사건이 있다: 🔴 **`DS_RESUME=1` 은 출력 파일에 `append` 한다**(`io = open(OUTFILE, RESUME ? "a" : "w")` 앵커) — 어휘가 바뀐 뒤 이어 쓰면 한 파일 안에 두 세대의 도장이 섞이는데, 오늘은 파이썬 소비처가 **배포 적재 시점에야** 안다.
 
-`wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` — `main()` 끝의
+🔴 **파일 읽기는 `action_registry.jl` 에 둔다 — `gen_oracle_dataset.jl` 이 아니라.** 이유 둘, 둘 다 2026-08-28 2차 검토가 잡아낸 것이다:
 
-```julia
-    close(io)                                            # 파일 닫기
-    println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
-```
+1. 🔴 **`gen_oracle_dataset.jl` 에는 JSON 파서가 없다.** 그 파일의 import 는 `ConstructionBots` · `HiGHS, Logging, Random, Graphs` · `Printf` · `.Objective` 뿐이고 **`JSON3` 가 없다.** 쓰기는 손수 만든 `jrow` 로 하고, `:947`(오늘 기준)이 *"JSON 파서를 쓰지 않는 이유: 이 스크립트는 쓰기도 손수 만든 jrow 로 한다(외부 의존 없음)"* 라고 **설계 원칙으로 적는다**. (`:1763` 의 `JSON3.write` 는 `run_demo.jl` 을 가리키는 **주석**이지 이 파일의 의존이 아니다.) 거기서 `JSON3` 를 부르면 **`UndefVarError: JSON3` 로 첫 실행에 죽는다.**
+2. **`action_registry.jl` 은 이미 `import JSON3` 한다**(`:35`, 레지스트리 JSON 을 읽는 데 쓴다). 그러므로 파일 읽는 소비처를 거기 두면 **새 의존이 하나도 안 생기고**, `gen_oracle_dataset.jl` 은 한 줄 호출만 한다. 🔴 그리고 더 중요하게, 그 함수는 **`include` 만으로 단독 실행 가능**해져서 Step 13-c 가 **복사본이 아니라 진짜 함수**를 태울 수 있다.
 
-를 아래로 **교체**한다:
+먼저 `wm4spacecraft_manufacturing/oracle/action_registry.jl` — Step 12 에서 만든 `require_train_macros_stamps` 의 `end` **바로 뒤**에 파일 판을 더한다:
 
 ```julia
-    close(io)                                            # 파일 닫기
-    println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
+"""
+    require_train_macros_stamps_file(path) -> Union{Vector{Int},Nothing}
 
-    # ---- 🔴 자기 도장 되읽기 검사 (2026-08-28, V3 Task 5) ---------------------------------
-    # 왜 여기인가. `train_kinds` 는 4곳에서 찍히고 **읽는 곳이 0곳**이라 kind 경계가 얼어붙은
-    # 채 아무도 몰랐다(생성기 스스로 "게이트는 일부러 안 만들었다" 고 적는다). `train_macros` 가
-    # 같은 길을 가지 않게, **찍는 레인이 자기 도장을 읽는다.**
-    #
-    # 🔴 이 검사가 실제로 잡는 사건: `DS_RESUME=1` 은 OUTFILE 에 **append** 한다. 어휘가 바뀐
-    # 뒤 이어 쓰면 한 파일 안에 두 세대의 도장이 섞이는데, 파이썬 소비처(load_rows)는 배포
-    # 적재 시점에야 그것을 알고 그때는 이미 라벨이 쓰인 뒤다. 여기서 보면 **쓴 직후**에 안다.
-    let stamps = Vector{Any}()
-        for line in eachline(OUTFILE)
-            isempty(strip(line)) && continue
-            r = JSON3.read(line)
-            haskey(r, :train_macros) ||
-                error("$(OUTFILE): 방금 쓴 행에 train_macros 도장이 없다 — 위 write site 4곳 중 " *
-                      "하나가 빠졌거나 구세대 행이 섞였다(DS_RESUME=1 로 이어 쓴 파일인가?).")
-            push!(stamps, collect(r.train_macros))
-        end
-        got = ActionRegistry.require_train_macros_stamps(stamps, OUTFILE)
-        got == TRAIN_MACROS || error(
-            "$(OUTFILE): 파일의 train_macros 도장 $(got) 이 이 실행의 $(TRAIN_MACROS) 와 다르다 — " *
-            "다른 어휘/다른 팔 집합으로 만든 행이 섞였다(DS_RESUME=1?). 합집합으로 뭉개지 않는다.")
-        println("[dataset] train_macros 되읽기 검사 통과: $(got) (행 $(length(stamps))개)")
+라벨 **파일 하나**를 되읽어 행별 `train_macros` 도장을 검사하고 그 집합을 돌려준다.
+파일이 없거나 행이 0개면 `nothing`(= 검사할 것이 없다. "통과" 가 아니다).
+
+🔴 왜 여기(`ActionRegistry`)에 두는가 (2026-08-28 2차 검토):
+  · 소비처인 `gen_oracle_dataset.jl` 에는 **JSON 파서가 없다** — 그 파일은 쓰기를 손수 만든
+    `jrow` 로 하고 "외부 의존 없음" 을 설계 원칙으로 적는다. 거기서 JSON3 를 부르면
+    `UndefVarError` 로 첫 실행에 죽는다.
+  · 이 모듈은 **이미 `import JSON3`** 한다(레지스트리 JSON 을 읽는다). 새 의존이 안 생긴다.
+  · 그리고 여기 있으면 `include(action_registry.jl)` 만으로 **이 함수 자체를** 시험할 수
+    있다 — 소비처의 복사본을 시험하는 것은 시험이 아니다.
+"""
+function require_train_macros_stamps_file(path::AbstractString)
+    isfile(path) || return nothing
+    stamps = Vector{Vector{Int}}()
+    for line in eachline(path)
+        isempty(strip(line)) && continue
+        r = JSON3.read(line)
+        haskey(r, :train_macros) || error(
+            "$(path): 행에 `train_macros` 도장이 없다 — write site 하나가 빠졌거나 " *
+            "구세대 행이 섞였다(DS_RESUME=1 로 이어 쓴 파일인가?).")
+        push!(stamps, Int[Int(x) for x in r.train_macros])
     end
+    isempty(stamps) && return nothing        # 빈 파일: 검사할 것이 없다 ≠ 통과했다
+    return require_train_macros_stamps(stamps, path)
+end
 ```
 
-⚠️ `JSON3` 는 이 파일이 이미 쓰는 패키지다(행을 쓰는 `jrow` 가 그것을 쓴다) — 새 의존이 아니다.
+그 다음 `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl` 에 **한 줄짜리 호출부**를 만든다. 🔴 **`main()` 은 출구가 셋이다** (2026-08-28 2차 검토가 잡아낸 두 번째 결함): 에피소드 dryrun(`close(io); return` 앵커) · 에피소드 본 실행(`run_episodes(io); close(io); return` 앵커, 오늘 기준 `:2022`) · 일반 레인(파일 끝의 `close(io)`). **끝에만 붙이면 에피소드 레인의 write site 두 곳이 영영 안 검사된다** — 그것이 `train_kinds` 를 단계 하나 늘린 것에 불과하다.
 
-- [ ] **Step 13-c: Julia 소비처가 실제로 발화하는지 음성 대조한다**
+먼저 `function main()` **바로 앞**에 도우미를 넣는다:
 
-🔴 **"소비처를 배선했다" 는 주장을 코드 읽기로 끝내지 않는다.** 도장이 갈린 파일을 만들어 이 검사가 **실제로 죽는지** 본다. 시뮬레이션은 안 돌린다 — 스크래치패드에 두 세대가 섞인 가짜 파일을 만들어 그 검사 블록만 태운다.
+```julia
+# ---- 🔴 자기 도장 되읽기 (2026-08-28, V3 Task 5) ------------------------------------------
+# 왜. `train_kinds` 는 4곳에서 찍히고 **읽는 곳이 0곳**이라 kind 경계가 얼어붙은 채 아무도
+# 몰랐다(이 파일 스스로 "게이트는 일부러 안 만들었다" 고 적는다). `train_macros` 가 같은 길을
+# 가지 않게, **찍는 레인이 자기 도장을 읽는다.**
+#
+# 🔴 `main()` 의 **모든 출구**에서 부른다. write site 넷의 목적지가 둘로 갈리기 때문이다:
+#     :1949 -> io  (에피소드 결정 행 → OUTFILE)
+#     :1989 -> pio (에피소드 probe 행 → OUTFILE 의 `.probes.jsonl` 짝, `pio = open(replace(
+#                   OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl", ...)` 앵커)
+#     :2164 · :2228 -> io (일반 레인 → OUTFILE)
+#   OUTFILE 만 끝에서 보면 **에피소드 레인 둘이 통째로 안 검사된다.**
+#
+# 파싱은 ActionRegistry 가 한다 — 이 파일에는 JSON 파서가 없고(:947 이 그것을 설계 원칙으로
+# 적는다), 그 모듈은 이미 JSON3 를 쓴다. 여기서 JSON3 를 부르면 UndefVarError 로 죽는다.
+function _check_stamps_written(where::AbstractString)
+    probes = replace(OUTFILE, r"\.jsonl$" => "") * ".probes.jsonl"
+    for path in (OUTFILE, probes)
+        got = ActionRegistry.require_train_macros_stamps_file(path)
+        got === nothing && continue          # 파일 없음/0행: 검사할 것이 없다
+        got == TRAIN_MACROS || error(
+            "$(path): 파일의 train_macros 도장 $(got) 이 이 실행의 $(TRAIN_MACROS) 와 다르다 — " *
+            "다른 팔 집합으로 만든 행이 섞였다(DS_RESUME=1?). 합집합으로 뭉개지 않는다.")
+        println("[$(where)] train_macros 되읽기 검사 통과: $(got) -> $(path)")
+    end
+end
+```
+
+그리고 `main()` 의 **세 출구 전부**를 고친다:
+
+```julia
+            println("[dryrun] $(length(SEEDS) * EPISODE_N * length(MACROS)) simulation runs total")
+            close(io); _check_stamps_written("dryrun"); return
+```
+
+```julia
+        run_episodes(io); close(io); _check_stamps_written("episode"); return
+```
+
+```julia
+    close(io)                                            # 파일 닫기
+    println("[dataset] wrote $(n_rows) rows over $(n_inst) instances -> $(OUTFILE)")
+    _check_stamps_written("dataset")
+```
+
+⚠️ dryrun 은 행을 안 쓰지만 **`RESUME=1` 이면 기존 행이 남아 있다** — 그 경우에도 검사가 돈다(그리고 그것이 옳다: 이어 쓸 파일이 이미 갈려 있으면 굴리기 **전에** 알아야 한다).
+
+넣은 뒤 확인:
+
+```bash
+grep -n '_check_stamps_written\|require_train_macros_stamps_file' \
+    wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl \
+    wm4spacecraft_manufacturing/oracle/action_registry.jl
+```
+Expected: `gen_oracle_dataset.jl` 에 **4줄**(정의 1 + 출구 3), `action_registry.jl` 에 **2줄**(docstring 1 + 정의 1).
+🔴 출구 매치가 3보다 적으면 멈춘다 — 검사 안 되는 레인이 남았다는 뜻이고, 그게 `train_kinds` 다.
+
+- [ ] **Step 13-c: 🔴 **진짜 함수**로 음성 대조한다 (복사본이 아니다)**
+
+🔴 **"소비처를 배선했다" 를 코드 읽기로 끝내지 않는다.** 그리고 🔴 **소비처의 복사본을 시험하지 않는다** — 2026-08-28 2차 검토가 이 스텝의 초판에서 정확히 그 결함을 잡았다: 초판은 검사 블록을 스크립트 안에 **다시 써서**(그리고 거기에만 `import JSON3` 를 붙여서) 돌렸고, 그래서 **진짜 블록이 `UndefVarError` 로 죽는다는 사실을 이 스텝이 못 잡았다.** 시험이 결함을 가려 주는 모양이었다.
+
+이제 `require_train_macros_stamps_file` 은 `action_registry.jl` 의 함수이므로 **그 파일을 include 해서 그 함수를 그대로 부른다.**
 
 ```bash
 cd /home/chahj578/Construction_OODlayer
 SCRATCH=$(mktemp -d)
-printf '%s
-%s
-' '{"macro":0,"train_macros":[0,1,2]}' '{"macro":1,"train_macros":[0,1]}'     > "$SCRATCH/mixed.jsonl"
-printf '%s
-' '{"macro":0,"train_macros":[0,1,2]}' > "$SCRATCH/ok.jsonl"
-julia +lts --project=. -e '
-import JSON3
+printf '%s\n%s\n' '{"macro":0,"train_macros":[0,1,2]}' '{"macro":1,"train_macros":[0,1]}' \
+    > "$SCRATCH/mixed.jsonl"
+printf '%s\n' '{"macro":0,"train_macros":[0,1,2]}' > "$SCRATCH/ok.jsonl"
+printf '%s\n' '{"macro":0,"vocab":"v4-3arms"}'      > "$SCRATCH/nostamp.jsonl"
+: > "$SCRATCH/empty.jsonl"
+SCRATCH="$SCRATCH" julia +lts --project=. -e '
 include("wm4spacecraft_manufacturing/oracle/action_registry.jl")
-function readback(path)
-    stamps = Vector{Any}()
-    for line in eachline(path)
-        isempty(strip(line)) && continue
-        r = JSON3.read(line)
-        haskey(r, :train_macros) || error("$(path): 도장 없음")
-        push!(stamps, collect(r.train_macros))
-    end
-    ActionRegistry.require_train_macros_stamps(stamps, path)
-end
 d = ENV["SCRATCH"]
-println("ok.jsonl  -> ", readback(joinpath(d, "ok.jsonl")))
-try
-    readback(joinpath(d, "mixed.jsonl")); println("🔴 mixed.jsonl 이 통과했다 — 검사가 무력하다")
-catch e
-    println("mixed.jsonl -> 기대대로 죽었다: ", sprint(showerror, e))
-end' 2>&1 | tail -5
+f(n) = joinpath(d, n)
+println("ok.jsonl      -> ", ActionRegistry.require_train_macros_stamps_file(f("ok.jsonl")))
+println("empty.jsonl   -> ", ActionRegistry.require_train_macros_stamps_file(f("empty.jsonl")),
+        "   (nothing = 검사할 것이 없다, 통과가 아니다)")
+println("missing       -> ", ActionRegistry.require_train_macros_stamps_file(f("nope.jsonl")))
+for n in ("mixed.jsonl", "nostamp.jsonl")
+    try
+        ActionRegistry.require_train_macros_stamps_file(f(n))
+        println("🔴 ", n, " 이 통과했다 — 검사가 무력하다")
+    catch e
+        println(n, " -> 기대대로 죽었다: ", first(sprint(showerror, e), 120))
+    end
+end'
 rm -rf "$SCRATCH"
 ```
-Expected: `ok.jsonl  -> [0, 1, 2]` 그리고 `mixed.jsonl -> 기대대로 죽었다: ... 행마다 다르다 ...`
+Expected:
+```
+ok.jsonl      -> [0, 1, 2]
+empty.jsonl   -> nothing   (검사할 것이 없다, 통과가 아니다)
+missing       -> nothing
+mixed.jsonl   -> 기대대로 죽었다: ... 행마다 다르다 ...
+nostamp.jsonl -> 기대대로 죽었다: ... `train_macros` 도장이 없다 ...
+```
 
-🔴 **`mixed.jsonl` 이 통과하면 멈춘다** — 도장을 찍기만 하고 아무것도 안 지키는 상태이고, 그것이 `train_kinds` 의 실패 그 자체다.
+🔴 **`mixed.jsonl` 이나 `nostamp.jsonl` 이 통과하면 멈춘다** — 도장을 찍기만 하고 아무것도 안 지키는 상태이고, 그것이 `train_kinds` 의 실패 그 자체다.
+
+⚠️ **이 스텝이 덮지 않는 것을 정직하게 적는다:** 여기서 태우는 것은 `require_train_macros_stamps_file` **함수**이고, `gen_oracle_dataset.jl` 의 **세 호출부**는 안 태운다(그러려면 라벨 생성을 실제로 돌려야 한다 — 45판 시뮬). 호출부의 존재는 Step 13-b 끝의 grep(출구 3개)과 Step 16 의 grep 이 센다. **"호출된다" 는 grep 근거이지 실행 근거가 아니다** — 라벨을 다시 만드는 다음 사람이 그 출력(`train_macros 되읽기 검사 통과: ...`)을 보고 확인해야 한다.
+
 
 - [ ] **Step 14: Julia 게이트를 쓰고 `runtests.jl` 에 배선한다**
 
@@ -2724,7 +2795,7 @@ V1 은 축 1 이 **발화할 수 있음**(R1)을 보였지만, 그 음성 대조
 - Create: `src/respec/llm_service/test_r2_boundary_moves.py`
 
 **Interfaces:**
-- Consumes: `dspy_service.reload` · `ReloadRequest` · `_load_surrogate(path)` · `SURRO_DATA` (Task 6) · `dspy_service.decide` · `_unsupported_for` · `health` (V1 Task 4) · `counterfactual_labels.py` 의 `--drop-macro`/`--work` 재개 (Task 4) · `action_registry.train_macros_stamp` (Task 5)
+- Consumes: `dspy_service.reload` · `ReloadRequest` · `_load_surrogate(path)` · `SURRO_DATA` (Task 6) · `dspy_service.surrogate_rank` · `_unsupported_for` · `health` (V1 Task 4) · `dspy_service.decide` (🔴 **LM 가드 뒤에서만** — 유료 호출) · `counterfactual_labels.py` 의 `--drop-macro`/`--work` 재개 (Task 4) · `action_registry.train_macros_stamp` (Task 5)
 - Produces: 없음 (게이트)
 
 - [ ] **Step 1: R2 의 '전' 라벨셋을 만든다 (🔴 시뮬레이션 없음 — Task 4 의 판을 재개해서 쓴다)**
@@ -2811,7 +2882,22 @@ def test_both_label_files_exist():
 
 
 def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
-    """🔴 **V3 의 완료 판정.** 이 하나가 빨간 채로 V3 을 끝내면 안 된다."""
+    """🔴 **V3 의 완료 판정.** 이 하나가 빨간 채로 V3 을 끝내면 안 된다.
+
+    🔴 **`decide()` 를 부르지 않는다** (2026-08-28 2차 검토). 이 환경에는 `OPENAI_API_KEY` 가
+    설정돼 있고, `decide()` 는 dspy 레인도 같이 호출한다 — 오늘 그것이 유료 호출을 안 내는
+    것은 *"아무도 `dspy.configure` 를 안 불렀다"* 는 **우연**일 뿐이다(LM 미설정이면
+    `ValueError: No LM is loaded` 가 나고 `macro()` 의 `except` 가 삼킨다). 누군가 LM 을
+    설정하는 순간 **이 게이트가 매 실행 gpt-4o 유료 호출을 낸다.**
+    `test_vocabulary_gap_fires.py` 가 2026-08-27 에 이미 같은 이유로 `decide()` 를 피했다 —
+    그 파일의 `test_the_gap_reaches_the_single_source_of_truth_decide_parses` docstring 이
+    그 결정을 적는다. 같은 규약을 따른다.
+
+    그래서 여기서는 `decide()` 가 **파싱하는 그 단일 진실원**을 직접 잰다:
+    `surrogate_rank` 가 돌려주는 `(scored, err)`. `decide()` 는 그 `err` 를 문자열로 갈라
+    응답의 `surrogate.unsupported` 로 꽂을 뿐이다. `decide()` 의 그 파싱 단계는
+    아래 `test_decide_carries_the_flip_to_julia` 가 **LM 이 없을 때만** 덮는다.
+    """
     req = _the_same_event()
 
     # ---- 전: SwapBattery 를 가르치는 행이 없다 -> 어휘 미달 -> dspy ---------------------
@@ -2819,13 +2905,15 @@ def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
     assert before["ok"] is True
     assert before["surro_support"] == [0, 1], before["surro_support"]
     assert svc._unsupported_for(req, MENU) == ["SwapBattery"]
-    out_before = svc.decide(req)
-    assert out_before["surrogate"]["unsupported"] == ["SwapBattery"]
-    # 🔴 `ranking != []` 만으로는 전/후가 안 갈린다 — '전' 에서도 지원되는 두 팔은 채점되기
-    #    때문이다(`surrogate_rank` 의 `scorable = [... if name2id[m] in support]` 앵커: 미달
-    #    팔만 빠지고 나머지는 그대로 점수를 받는다). 그래서 판정은 **그 팔의 이름**으로 한다.
-    assert "SwapBattery" not in out_before["surrogate"]["scores"]
-    assert set(out_before["surrogate"]["scores"]) == {"NOOP", "Replace"}
+
+    scored_before, err_before = svc.surrogate_rank(req, MENU)
+    # 🔴 `err` 가 `"UNSUPPORTED:<이름,...>"` 규약을 지키는가 — `decide()` 가 파싱하는 그 문자열.
+    assert err_before == "UNSUPPORTED:SwapBattery", err_before
+    # 🔴 그리고 그 팔이 **채점되지 않았다.** `scored != []` 만으로는 전/후가 안 갈린다 —
+    #    '전' 에서도 지원되는 두 팔은 그대로 점수를 받기 때문이다(`surrogate_rank` 의
+    #    `scorable = [name2id[m] for m in valid if ... in support]` 앵커: 미달 팔만 빠진다).
+    #    그래서 판정은 **그 팔의 이름**으로 한다.
+    assert dict(scored_before).keys() == {"NOOP", "Replace"}
 
     # ---- 라벨 추가 + 재적재 --------------------------------------------------------------
     after = svc.reload(svc.ReloadRequest(path=AFTER))
@@ -2834,30 +2922,41 @@ def test_r2_the_same_event_changes_lanes_after_labels_are_added(restore_state):
 
     # ---- 후: 같은 사건, 같은 메뉴, 이제 어휘 미달이 없다 -> surrogate ---------------------
     assert svc._unsupported_for(req, MENU) == []
-    out_after = svc.decide(req)
-    assert out_after["surrogate"]["unsupported"] == []
-    # 그리고 surrogate 가 실제로 그 팔을 **채점한다** — "미달이 없다" 와 "점수를 낸다" 는
-    # 다른 사건이고, 후자가 없으면 surrogate 레인이 빈손으로 이긴 것이 된다.
-    #
-    # 🔴 2026-08-28 preflight 정정 (R-1): 여기 있던 것은
-    #        assert out_after["surrogate"]["available"] is True
-    #    였고 **`KeyError('available')` 로 죽는다** — `decide()` 의 `out["surrogate"]` 가 내는
-    #    키는 `chosen / ranking / scores / margin / unsupported / policy / error` 뿐이다.
-    #    `available` 은 **Julia 쪽 `policy_entry`(`policy.jl`, 오늘 기준 `:1039`)가 붙이는
-    #    다른 레인의 키**다. 즉 V3 의 완료 판정이 아예 실행되지 못하는 상태였다.
-    #    파이썬 쪽의 같은 뜻은 **구조**로 유도한다(`policy.jl` 의 `· available == true ⟹
-    #    점수를 냈다` 앵커가 그 규약을 적는다): 점수를 못 낸 분기는 `ranking=[]`·`scores={}`
-    #    를 내고, 낸 분기만 비어 있지 않다.
-    assert out_after["surrogate"]["ranking"] != []
-    assert out_after["surrogate"]["scores"] != {}
-    assert out_after["surrogate"]["chosen"] in MENU
-    assert out_after["surrogate"]["error"] is None
-    # 🔴 그리고 **그 팔이 실제로 채점됐는지**를 이름으로 본다. `ranking != []` 만으로는
-    #    "다른 두 팔로 점수를 냈다" 와 구분되지 않는다.
-    assert "SwapBattery" in out_after["surrogate"]["scores"]
+    scored_after, err_after = svc.surrogate_rank(req, MENU)
+    assert err_after is None, err_after
+    # surrogate 가 실제로 그 팔을 **채점한다** — "미달이 없다" 와 "점수를 낸다" 는 다른
+    # 사건이고, 후자가 없으면 surrogate 레인이 빈손으로 이긴 것이 된다.
+    assert "SwapBattery" in dict(scored_after)
+    assert dict(scored_after).keys() == {"NOOP", "Replace", "SwapBattery"}
 
     # ---- 🔴 방향까지 못박는다: 지원집합이 **자랐다**(줄지도, 그대로도 아니다) -------------
     assert set(before["surro_support"]) < set(after["surro_support"])
+
+
+def test_decide_carries_the_flip_to_julia(restore_state):
+    """`decide()` 의 파싱 단계 — `err` 문자열이 응답의 `surrogate.unsupported` 가 되는가.
+
+    🔴 **LM 이 설정돼 있으면 건너뛴다.** `decide()` 는 dspy 레인도 부르므로 LM 이 있으면
+    **유료 gpt-4o 호출**이 난다. 오늘 그것이 안 나는 것은 아무도 `dspy.configure` 를 안
+    부른 덕이고(`_startup()` 만 부르는데 이 테스트는 그것을 안 탄다), 그건 계약이 아니라
+    **현재 상태**다. 상태가 바뀌면 조용히 돈을 쓰는 대신 **건너뛴다.**
+
+    ⚠️ 그래서 이 단언은 **조건부 커버리지**다. 위 `test_r2_...` 가 무조건 도는 진짜 게이트이고,
+    이것은 그 위에 얹는 보너스다. 🔴 이 테스트가 skip 됐다고 R2 가 안 잰 것이 아니다 —
+    반대로 **이것만 초록이고 위가 빨간 상태를 "R2 통과" 로 읽으면 안 된다.**
+
+    ⚠️ 🔴 그리고 이 테스트도 `decide()` -> `select_lane` 의 마지막 한 칸은 안 덮는다.
+    레인 선택은 Julia 이고 V1 의 `tools/monitor/test_lane_select.jl` 이 게이트한다(계획서 §9).
+    """
+    import dspy
+    if getattr(dspy.settings, "lm", None) is not None:
+        pytest.skip("LM 이 설정돼 있다 — decide() 가 유료 호출을 낸다. 건너뛴다.")
+
+    req = _the_same_event()
+    svc.reload(svc.ReloadRequest(path=BEFORE))
+    assert svc.decide(req)["surrogate"]["unsupported"] == ["SwapBattery"]
+    svc.reload(svc.ReloadRequest(path=AFTER))
+    assert svc.decide(req)["surrogate"]["unsupported"] == []
 
 
 def test_the_growth_is_carried_by_the_stamp_not_by_a_row_scan(restore_state):
@@ -2896,12 +2995,13 @@ def test_health_reports_the_grown_support(restore_state):
 - [ ] **Step 3: R2 를 돌린다**
 
 Run: `.venv/bin/python -m pytest src/respec/llm_service/test_r2_boundary_moves.py -v --ignore=src/respec/llm_service/test_propose.py`
-Expected: PASS — 4 passed
+Expected: PASS — **4 passed, 1 skipped** (LM 미설정인 오늘은 `test_decide_carries_the_flip_to_julia` 도 돌아 **5 passed**. 🔴 **둘 다 정상이다** — skip 여부는 이 환경에 LM 이 설정돼 있는가일 뿐이고, R2 판정은 `test_r2_...` 가 낸다.)
 
 🔴 **`test_r2_the_same_event_changes_lanes_after_labels_are_added` 가 빨간 채로 V3 을 끝내지 않는다.** 실패 모양별 진단:
 - `before["surro_support"] != [0, 1]` → Step 1 의 '전' 파일 도장이 잘못 찍혔다.
 - `_unsupported_for(...) != ["SwapBattery"]` → V1 Task 4 의 `_unsupported_for` 가 `e1_analyze.MACRO_NAME` 을 통해 이름 → id 를 만든다. 그 사전이 레지스트리와 갈렸는지 본다.
-- `out_after["surrogate"]["scores"]` 에 `SwapBattery` 가 없다 → 라벨이 늘었는데 `SurrogateV2.fit` 이 그 팔을 채점 못 한다. `psi(2)` 와 `MACRO_SPECS` 를 확인한다.
+- `dict(scored_after)` 에 `SwapBattery` 가 없다 → 라벨이 늘었는데 `SurrogateV2.fit` 이 그 팔을 채점 못 한다. `psi(2)` 와 `MACRO_SPECS` 를 확인한다.
+- `test_decide_carries_the_flip_to_julia` 가 **skip** 됐다 → 정상이다. LM 이 설정돼 있어 유료 호출을 피한 것이고, **R2 판정은 위 테스트가 이미 냈다.** 🔴 반대로 **이것만 초록이고 위가 빨간 상태를 "R2 통과" 로 읽지 말 것.**
 - `KeyError` 가 난다 → 🔴 **`decide()` 응답 키를 지어내지 말 것.** 실제 키는 `chosen / ranking / scores / margin / unsupported / policy / error` 다. `available` 은 Julia 쪽 `policy_entry` 가 붙이는 키이고 HTTP 응답에는 없다(2026-08-28 preflight R-1 이 이 자리에서 초판을 반증했다).
 
 - [ ] **Step 4: 🔴 게이트가 **실패할 수 있는지** 확인한다 (음성 대조)**
@@ -2910,6 +3010,7 @@ Expected: PASS — 4 passed
 
 1. `test_r2_...` 안의 `BEFORE` 를 `AFTER` 로 임시로 바꾸고 돌린다 → **`assert before["surro_support"] == [0, 1]` 에서 빨개져야 한다.** 되돌린다.
 2. Task 5 Step 6 의 `support = list(meta["train_macros"])` 를 `support = sorted({int(r["macro"]) for r in rows})` 로 임시로 되돌리고 돌린다 → **`test_the_growth_is_carried_by_the_stamp_not_by_a_row_scan` 이 빨개져야 한다**(다른 셋은 통과한다 — 그게 이 단언이 따로 있는 이유다). 되돌린다.
+3. `test_r2_...` 의 `assert dict(scored_before).keys() == {"NOOP", "Replace"}` 를 `assert scored_before != []` 로 임시로 바꾸고 돌린다 → 🔴 **여전히 초록이어야 한다.** 그것이 이 단언을 이름으로 쓰는 이유의 증거다: `surrogate_rank` 의 `scorable` 필터는 미달 팔만 빼고 나머지는 그대로 채점하므로 `scored != []` 는 **전/후 둘 다에서 참**이고 R2 를 못 가른다. 되돌린다.
 
 - [ ] **Step 5: V3 전체 게이트를 돌린다**
 
@@ -3156,6 +3257,7 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
   2. **주조 경로 기계를 0개 태운다.** `SwapBattery` 는 이미 `KIND_VALID`·`MACRO_SPECS`·`macro_to_proposal`·집행 사슬·`ood_mdp_shim`·`reference_policy` 에 전부 있다. 설계서 §8 의 "6~7파일" 중 **아무것도 시험되지 않는다.**
   3. **레인 합성의 마지막 한 칸은 논증이다.** 이 계획은 `/decide` 의 `unsupported` 가 뒤집히는 것을 관측하고, `select_lane` 이 그 입력으로 레인을 고르는 것은 V1 의 `test_lane_select.jl` 이 게이트한다. **두 조각의 합성을 한 프로세스에서 관측하지 않았다.** 재려면 라벨 두 벌로 판을 각각 굴려 결정 행의 `router_axis` 분포를 비교해야 하고, 판 실행이 필요해 뺐다.
   4. 따라서 V3 이 보이는 것의 정확한 이름은 폐루프가 아니라 **"R1 + 같은 프로세스 재적재 + 도장 진실원"** 이다.
+  5. 🔴 **`decide()` 의 파싱 단계는 조건부로만 덮인다.** R2 게이트는 유료 호출을 피하려고 `surrogate_rank` 의 `(scored, err)` — `decide()` 가 파싱하는 그 단일 진실원 — 까지만 잰다. `decide()` 자신은 dspy 레인도 부르므로 LM 이 설정되면 **매 실행 gpt-4o 유료 호출**을 내고, `test_decide_carries_the_flip_to_julia` 는 그때 **skip 된다.** 즉 그 한 칸의 커버리지는 *"이 환경에 아무도 `dspy.configure` 를 안 불렀다"* 라는 **상태**에 걸려 있지 계약이 아니다. `test_vocabulary_gap_fires.py` 가 2026-08-27 에 같은 이유로 같은 공백을 남겼다 — V3 이 그것을 좁히지 못했다.
   🔴 **"V3 이 R2 를 달성했다" · "경계가 움직이는 것을 end-to-end 로 관측했다" 고 적지 말 것.** 이 레포는 그런 자기 요약 오류로 이미 데었다. 적을 수 있는 것은 *"라벨 추가가 라우팅 입력을 뒤집는 것을 관측했고, 그 입력에서 레인이 나오는 것은 별도 게이트가 지킨다"* 다.
 - **어휘 자체는 안 자란다.** 매크로 주조(`vocab` 등가성 벽 · 6~7파일 수작업 · `macro_to_proposal` 을 빠뜨리면 조용히 빈 제안)는 다음 계획이다. V3 은 **어휘 안에서** 경계를 움직인다.
 - **`train_kinds` 는 여전히 읽는 곳이 0곳이다.** 이 계획은 `train_macros` 에만 소비처를 만들었다. `train_kinds` 를 같이 배선하면 zone 을 뺀 라벨셋과 안 뺀 라벨셋을 기계가 구분하게 되지만, 그 게이트의 의미(어떤 kind 를 거부할 것인가)가 정해지지 않았다.
@@ -3202,7 +3304,7 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
 ### 🔴 가장 하중 큰 두 건
 
 1. **R-1 — V3 의 완료 판정이 아예 실행되지 못했다.** Task 7 이 `out["surrogate"]["available"]` 을 단언하는데 `decide()` 응답에 그 키가 없다(`KeyError`). `available` 은 Julia 쪽 `policy_entry` 가 붙이는 다른 레인의 키다. → `ranking`/`scores`/`error` + `"SwapBattery" in scores` 로 다시 썼다.
-2. **C-4 — 이 계획서가 자기가 이름 붙인 실패를 재현할 뻔했다.** Julia 판 `require_train_macros_stamps` 의 **생산 소비처가 0곳**이었다 = `train_kinds` 의 "찍고 아무도 안 읽는다" 그 모양. → Step 13-b 가 `gen_oracle_dataset.jl` `main()` 끝에 **되읽기 소비처**를 붙이고, Step 13-c 가 두 세대 섞인 파일로 **실제로 죽는지** 음성 대조한다. Step 16 의 확인이 Julia grep 을 포함하고, **테스트 매치는 소비처로 세지 않는다**고 명시했다.
+2. **C-4 — 이 계획서가 자기가 이름 붙인 실패를 재현할 뻔했다.** Julia 판 `require_train_macros_stamps` 의 **생산 소비처가 0곳**이었다 = `train_kinds` 의 "찍고 아무도 안 읽는다" 그 모양. → Step 13-b 가 되읽기 소비처를 붙이고, Step 13-c 가 두 세대 섞인 파일로 **실제로 죽는지** 음성 대조한다. Step 16 의 확인이 Julia grep 을 포함하고, **테스트 매치는 소비처로 세지 않는다**고 명시했다. (⚠️ 2차 검토가 이 수정 자체에서 결함 둘을 더 찾았다 — 부록 C 를 볼 것.)
 
 ### 이 판에서 고친 것 전수
 
@@ -3235,3 +3337,22 @@ git commit -m "measure(axis2): V3 라벨셋 위에서 축 2 실현가능성을 �
 - "7번째 파일"(`ENACTABLE_NAMES`) 지적과 `enactable_names()` 파생.
 - 인용한 측정 숫자 전부(33행→18 고유 시뮬 · battery 9/fault 0 · 2.782 대 87.3 = 31.4배 · 빈 구간 · 94.1% · 조건부 0.000) — 재유도 일치.
 - **R4 를 "실패할 수 없는 검사" 로만 인용한 것과 18 고유 시뮬레이션으로 말하는 것** — 보고가 **"잘한 것"** 으로 지목했다. 건드리지 않았다.
+
+---
+
+## 부록 C — 2차 검토(scoped re-review)가 고친 것
+
+**대상 계획서 판:** 커밋 `14a3b6e4` (1차 반영판)
+**판정:** 1차 수정 **19건 전부 ADDRESSED** 로 재유도 확인. 그중 자체 판단 두 건이 **검증됨** —
+(가) `surrogate_rank` 의 `scorable` 필터 때문에 `ranking != []` 는 전/후 **둘 다 참**이므로 1차 검증자의 처방만으로는 R2 가 안 갈린다(팔 이름 게이트가 옳다), (나) 전원 완주 정지 조건이 그대로 재현된다(`_fitted_c=False` · `predict_complete_proba` min=max=**2.22045e-15** · `predict_J` 스프레드 **0.008099** · 두 assert 모두 발화).
+**새로 찾은 것 4건 — 전부 이 판에서 고쳤다.**
+
+| # | 무엇 | 근거 | 어디를 고쳤나 |
+|---|---|---|---|
+| 1 | 🔴 **BLOCKING — `JSON3` 를 안 쓰는 파일에서 `JSON3` 를 불렀다.** `gen_oracle_dataset.jl` 의 import 는 `ConstructionBots` · `HiGHS, Logging, Random, Graphs` · `Printf` · `.Objective` 뿐이고 **`JSON3` 가 없다.** 쓰기는 손수 만든 `jrow` 이고 `:947` 이 *"JSON 파서를 쓰지 않는 이유 … 외부 의존 없음"* 을 **설계 원칙**으로 적는다(`:1763` 의 `JSON3.write` 는 `run_demo.jl` 을 가리키는 주석). 첫 실행에 `UndefVarError: JSON3` | 직접 확인: `grep '^using\|^import'` 가 그 넷만 낸다 | 파일 읽기를 **`action_registry.jl` 로 옮겼다** — 그 모듈은 이미 `import JSON3`(`:35`) 한다. `require_train_macros_stamps_file(path)` 신설, `gen_oracle_dataset.jl` 은 호출만 한다. **거짓 주장 삭제.** |
+| 1-b | 🔴 **그리고 Step 13-c 가 그것을 못 잡았다** — 검사 블록을 스크립트 안에 **다시 써서**(거기에만 `import JSON3` 를 붙여) 돌렸다. **소비처의 복사본을 시험한 것**이고, 이 계획서가 막으려는 결함 모양 그 자체다 | — | 함수가 `action_registry.jl` 로 갔으므로 13-c 가 `include` 후 **진짜 함수**를 부른다. 케이스도 2 → 5(정상·빈 파일·없는 파일·섞인 도장·도장 없음)로 늘렸다. 🔴 그리고 **이 스텝이 안 덮는 것**(세 호출부는 grep 근거이지 실행 근거가 아니다)을 명시했다 |
+| 2 | **소비처가 write site 넷 중 둘만 덮는데 넷을 덮는다고 적었다.** `main()` 은 출구가 **셋**(dryrun `close(io); return` · episode `run_episodes(io); close(io); return` 오늘 기준 `:2022` · 일반 레인 tail)이고, 끝에만 붙이면 `run_episodes`(1852–2006) 안의 `:1949`·`:1989` 가 영영 안 검사된다. **게다가 `:1989` 는 `pio` = `OUTFILE` 의 `.probes.jsonl` 짝으로 나가서 파일 자체가 다르다** | 직접 확인: `run_episodes` 범위와 `pio = open(replace(OUTFILE, …) * ".probes.jsonl", …)` | `_check_stamps_written(where)` 도우미를 만들어 **출구 셋 전부**에서 부르고, **`OUTFILE` 과 `.probes.jsonl` 둘 다** 검사한다 → 넷을 전부 덮는다. Interfaces 에 그 커버리지를 **파일별로** 적었고, Step 13-b 끝의 grep 이 **출구 3개**를 센다 |
+| 3 | **Goal 줄이 §9 가 금지한 문장을 그대로 들고 있었다** — *"end-to-end 로 보인다 (설계서 §7 R2)"*. 문서에서 가장 많이 읽히는 줄이다 | — | Goal 을 **"고정된 어휘 안에서 지원집합이 자라는 것"** 으로 다시 쓰고, 바로 아래에 🔴 *"이것은 §7 R2 의 한 사례이지 R2 자체가 아니다 — 엄격히 더 약하다"* 와 §3 참조, 금지 문장을 붙였다 |
+| 4 | **R2 게이트의 유료 호출 노출이 안 적혀 있었다.** `svc.decide()` 는 dspy 레인도 부른다. `test_vocabulary_gap_fires.py` 는 2026-08-27 에 **바로 그 이유로** `decide()` 를 피했고 그 결정을 docstring 에 적어 뒀다 | 그 파일의 `test_the_gap_reaches_the_single_source_of_truth_decide_parses` docstring | 게이트를 **`surrogate_rank` 의 `(scored, err)`** 로 다시 썼다(=`decide()` 가 파싱하는 단일 진실원, 무료·결정론적). `decide()` 단언은 **LM 가드가 붙은 별도 테스트**로 분리했다(`dspy.settings.lm` 이 있으면 skip). §9 에 다섯 번째 한계로 *"그 한 칸의 커버리지는 계약이 아니라 상태에 걸려 있다"* 를 적었다 |
+
+**이 판에서 자발적으로 더한 음성 대조 하나:** Task 7 Step 4 에 3번 항목을 넣었다 — `dict(scored_before).keys() == {...}` 를 `scored_before != []` 로 바꿔도 **여전히 초록**임을 실제로 보이게 한다. 팔 이름으로 판정해야 하는 이유가 논증이 아니라 관측으로 남는다.
