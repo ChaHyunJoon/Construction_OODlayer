@@ -10,6 +10,13 @@
 
 이 파일이 별도인 이유: 브리프가 `test_native_fc_wired.py` 의 기대값을 **정확히 `6 passed`** 로
 못박았다. 거기에 시험을 더하면 그 수가 틀려진다.
+
+🔴 2026-08-29 (T3) 정정: 위 "정확히 6 passed" 는 낡았다. 시그니처를 `action` 하나로 줄이면서
+`test_native_fc_wired.py` 의 `test_macro_stays_a_separate_output_field` ·
+`test_expressible_is_declared` 두 시험(시그니처가 `macro`/`expressible` 을 여전히 출력
+필드로 가진다는 단언)이 거짓이 되어 그 파일에서 지워졌다 — 지금 그 파일의 기대값은
+**정확히 `4 passed`** 다. 이 파일이 별도인 이유 자체(그 파일의 시험 수를 안 건드린다)는
+그대로 유효하다.
 """
 import contextlib
 import os
@@ -240,3 +247,26 @@ def test_the_settings_restorer_actually_restores_by_identity():
     finally:
         dspy.configure(lm=lm0, adapter=ad0)
         dspy_service._state["program"] = prog0
+
+
+def test_the_signature_has_exactly_one_output_field():
+    """🔴 F4. `tool_choice="required"` 판에서 프로바이더가 content 를 비우면
+    `adapters/base.py:168` 이 `value={}` 를, `:181` 이 전 필드 `None` 을 만든다 — **예외 없이.**
+    채울 수 없는 필드를 남기면 그 사실이 조용하다. 그래서 아예 없앤다."""
+    assert list(SelectTool.output_fields) == ["action"]
+
+
+def test_the_input_fields_are_unchanged():
+    """음성 대조: 입력 셋은 그대로여야 한다 — `tools` 가 빠지면 native FC 가 안 선다."""
+    assert set(SelectTool.input_fields) == {"state", "tools", "valid_actions"}
+
+
+def test_native_fc_still_fires_on_the_reduced_signature():
+    """출력 필드를 줄여도 네 조건이 그대로 서는지 — 배선이 아니라 발화를 잰다.
+
+    🔴 `native_fc_active()` 는 `dspy.settings.adapter`/`dspy.settings.lm` 을 읽으므로
+    아무도 `dspy.configure` 를 안 부른 상태에서는 `None`(못 쟀다)을 낸다. 이 파일의 기존
+    idiom(`_dspy_settings_restored()` + `_configure_dspy()`)을 그대로 쓴다."""
+    with _dspy_settings_restored():
+        _configure_dspy()
+        assert native_fc_active(SelectTool) is True

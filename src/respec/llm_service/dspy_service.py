@@ -207,17 +207,14 @@ class SelectTool(dspy.Signature):
     tools: List[dspy.Tool] = dspy.InputField(desc="the recovery tools available here")
     valid_actions: str = dspy.InputField(desc="ONLY these macros are legal for this event")
 
-    reasoning: str = dspy.OutputField(desc="one sentence")
-    expressible: bool = dspy.OutputField(
-        desc="false if NO available tool can address what you observed")
+    # 🔴 유일한 출력 필드다 (2026-08-29, 단일 채널). `reasoning`·`expressible`·`macro`·
+    #    `ranking`·`margin` 다섯 텍스트 OutputField 를 여기서 **삭제했다.**
+    #    이유: `tool_choice="required"` 판에서 프로바이더가 message content 를 비우고,
+    #    `adapters/base.py:168` 이 `value = ... if text and ... else {}`, `:181` 이
+    #    `value.setdefault(field_name, None)` 을 하므로 **예외 없이** 전 필드가 `None` 이 된다
+    #    (실측: 그 응답 모양을 어댑터에 직접 흘려 재현). 채울 수 없는 필드를 남기면 조용하다.
+    #    결정 성분은 `tool_registry.COMMON_ARGS` 가 tool 인자로 나른다.
     action: dspy.ToolCalls = dspy.OutputField()
-    # 🔴 macro 를 tool 에 합치지 않는다: tool 호출이 실패해도 결정은 살아야 한다(spec §4-1).
-    #    macro 는 **채점 어휘**(action_registry)의 것이고 tool 은 행동 어휘의 것이다.
-    macro: str = dspy.OutputField(desc="the single best macro, from valid_actions")
-    ranking: str = dspy.OutputField(
-        desc="ALL legal macros ordered best-first, comma separated")
-    margin: float = dspy.OutputField(
-        desc="0..1 confidence gap between your 1st and 2nd choice; 0 means equally good")
 
 
 def build_adapter():
@@ -968,7 +965,12 @@ def health():
 #    아래 두 축약이 조용히 아무것도 안 지운다 — C8 축약은 `KeyError: 'tools'`(아래 참조)를
 #    도로 열고, §4-1 구제는 같은 파싱 실패를 그대로 다시 밟는다. **둘 다 에러가 안 난다.**
 #    게이트: test_macro_returns_tool_call.py::test_the_stripped_field_names_are_real_fields...
-_FC_IN, _FC_OUT, _EXPR = "tools", "action", "expressible"
+# 🔴 이 두 이름은 `SelectTool` 의 필드명과 **같아야 한다.** `Signature.delete` 는 없는 이름에
+#    에러를 내지 않으므로(`dspy/signatures/signature.py:446`, `fields.pop(name, None)`), 갈리면
+#    축약이 조용히 아무것도 안 지운다.
+#    🔴 2026-08-29: `_EXPR` 를 없앴다 — `expressible` 은 이제 시그니처 필드가 아니라 tool
+#    인자다. 남겨 두면 `delete(_EXPR)` 가 조용히 no-op 이 되어 "지웠다" 는 거짓을 만든다.
+_FC_IN, _FC_OUT = "tools", "action"
 
 # ---- tool_choice 손잡이 (Plan B, 2026-08-29) -------------------------------------------------
 # 🔴 왜 생겼나 (실측, 2026-08-28 유료 스윕). tool 을 내밀고 native FC 가 **진짜로** 켜진 판에서

@@ -44,16 +44,11 @@ def test_signature_has_the_toolcalls_output_field():
     assert ad._get_tool_call_output_field_name(SelectTool) == "action"
 
 
-def test_macro_stays_a_separate_output_field():
-    """spec §4-1 불변식: tool 실패가 결정을 지우면 안 된다."""
-    assert "macro" in SelectTool.output_fields
-    assert SelectTool.output_fields["macro"].annotation is str
-
-
-def test_expressible_is_declared():
-    """T2 를 발화시키는 신호. 없으면 '어휘가 무능했다'를 셀 자리가 없다."""
-    assert "expressible" in SelectTool.output_fields
-    assert SelectTool.output_fields["expressible"].annotation is bool
+# 🔴 2026-08-29 (T3): `test_macro_stays_a_separate_output_field` 와 `test_expressible_is_declared`
+#    는 여기서 지웠다 — 둘 다 `macro`/`expressible` 이 `SelectTool` 의 **시그니처 출력 필드**임을
+#    단언했는데, 그 설계가 이 태스크로 뒤집혔다(다섯 텍스트 OutputField 삭제, 단일 채널
+#    `action` 만 남음). 그 두 필드는 이제 시그니처가 아니라 `tool_registry.COMMON_ARGS` 가
+#    나르는 tool 인자다 — 시그니처에 대한 단언이므로 이 파일(T3의 대상)에서 지운다.
 
 
 def test_native_branch_actually_fires_with_a_real_lm_object():
