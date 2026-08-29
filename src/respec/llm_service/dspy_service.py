@@ -949,6 +949,54 @@ def health():
 #    게이트: test_macro_returns_tool_call.py::test_the_stripped_field_names_are_real_fields...
 _FC_IN, _FC_OUT, _EXPR = "tools", "action", "expressible"
 
+# ---- tool_choice 손잡이 (Plan B, 2026-08-29) -------------------------------------------------
+# 🔴 왜 생겼나 (실측, 2026-08-28 유료 스윕). tool 을 내밀고 native FC 가 **진짜로** 켜진 판에서
+#    gpt-4o 는 tool 을 **안 부르고** 텍스트로 답했다. 두 사건 종류에서 두 번 잰 값:
+#      fault  : tools_offered=2 · native_fc=True · tool_called=None · tool_calls_n=0 · 오류 없음
+#      battery: tools_offered=3 · native_fc=True · tool_called=None · tool_calls_n=0 · 오류 없음
+#    유력한 설명은 **아무것도 부르라고 압박하지 않았다**는 것이다 — 이 레인은 `tool_choice` 를
+#    한 번도 안 보냈다. 설계 근거: 모든 실패는 tool 로 끝난다(익숙한 실패는 있는 tool, 낯선
+#    실패는 새로 주조된 tool). 그러므로 호출을 요구하는 것이 설계와 어긋나지 않는다.
+#
+# 🔴 이것이 `strict` 가 **아님**을 분명히 해 둔다. `dspy.Tool` 에는 `strict` 필드가 없다
+#    (모델 필드는 정확히 `arg_desc · arg_types · args · desc · func · has_kwargs · name`).
+#    즉 이 손잡이가 강제하는 것은 **호출 여부**이지 인자 스키마 준수가 아니다.
+#
+# 🔴 전달 경로 (설치된 라이브러리에서 실측한 것이지 추정이 아니다):
+#      `prog(config={"tool_choice": ...})` -> `predict.py:_forward_preprocess` 의
+#      `config = {**self.config, **kwargs.pop("config", {})}` -> `predict.py:forward` 의
+#      `adapter(lm, lm_kwargs=config, ...)` -> `adapters/base.py:_call_preprocess`
+#      -> `adapters/base.py:_render_request` -> `LMRequest.from_call(**lm_kwargs)`
+#      -> `clients/openai_format.py:81-82` 의 `to_openai_chat_request`.
+#    ⚠️ **반드시 `config=` 로 넘긴다.** 맨 kwarg(`prog(tool_choice=...)`)로 주면 dspy 가
+#      "시그니처에 없는 입력 필드" 로 보고 **경고 한 줄 내고 조용히 버린다**
+#      (`predict.py:191-198`). 프로바이더에는 아무것도 안 간다.
+#    ⚠️ 어댑터는 native FC 가 켜진 분기에서 `tool_choice` 를 **넣지도 지우지도 않는다** —
+#      `adapters/base.py:97` 의 pop 루프는 `if not self.use_native_function_calling:` 안에만
+#      있다. 그래서 호출자가 실은 값이 프로바이더까지 살아서 간다.
+#
+# 🔴 **tool 이 0개일 때는 절대 보내면 안 된다.** `clients/openai_format.py` 는 `tool_choice`
+#    를 `:81` 에서 싣는데 그것이 `tools` 를 싣는 `:83` 의 `if request.tools:` 와 **무관하다.**
+#    즉 tool 없는 요청에 `tool_choice="required"` 를 실으면 그대로 프로바이더로 나가 400 이
+#    된다. 그래서 아래 `_ask` 는 `if tools:` 안에서만 이 값을 싣는다 — C8 축약(메뉴가 빈
+#    요청)과 §4-1 구제 호출(`tools=None`)이 둘 다 자동으로 제외된다.
+TOOL_CHOICE_ENV = "DSPY_TOOL_CHOICE"
+TOOL_CHOICE_DEFAULT = "required"
+
+
+def tool_choice():
+    """이 요청에 실을 `tool_choice` 값. `None` 이면 **그 키를 아예 안 보낸다.**
+
+    🔴 되돌리는 법(비교 판을 돌리는 법)은 **로직 편집이 아니라 환경변수 하나다**:
+    `DSPY_TOOL_CHOICE=""` 로 두면 2026-08-29 이전과 **바이트 단위로 같은 요청**이 나간다
+    (키 자체가 없다). `DSPY_TOOL_CHOICE=auto` 는 그것과 다르다 — 프로바이더 기본값과 의미는
+    같아도 요청에 키가 실리고, 그 사실이 응답의 `tool_choice` 에 남아 두 판이 구별된다.
+
+    호출 시점에 읽는다(모듈 상수로 굳히지 않는다) — `synthesize.synthesis_enabled()` 와 같은
+    규약이라 시험이 monkeypatch 로 두 레짐을 다 돌릴 수 있다.
+    """
+    return os.environ.get(TOOL_CHOICE_ENV, TOOL_CHOICE_DEFAULT).strip() or None
+
 
 def _first_tool_call(action):
     """`dspy.ToolCalls` 에서 (이름, 인자, 개수) 를 꺼낸다. 안 불렀으면 (None, {}, 0).
@@ -963,7 +1011,7 @@ def _first_tool_call(action):
     return getattr(c, "name", None), dict(getattr(c, "args", None) or {}), len(calls)
 
 
-def _ask(prog, sig, line, valid, tools):
+def _ask(prog, sig, line, valid, tools, choice=None):
     """프로그램을 한 번 부른다.
 
     🔴 `tools` 가 비면 그 kwarg 를 **아예 안 넘긴다**(C8). `signature` 는 dspy 의 특권 kwarg 라
@@ -972,6 +1020,10 @@ def _ask(prog, sig, line, valid, tools):
     kw = {"signature": sig, "state": line, "valid_actions": ", ".join(valid)}
     if tools:
         kw[_FC_IN] = tools
+        # 🔴 `tools` 가 있을 때만. 위 `TOOL_CHOICE_ENV` 주석의 마지막 문단이 이유다 —
+        #    tool 0개 + `tool_choice` 는 프로바이더 400 이다. `config=` 여야 도달한다.
+        if choice:
+            kw["config"] = {"tool_choice": choice}
     pred = prog(**kw)
     _state["calls"] += 1
     return pred
@@ -1019,9 +1071,14 @@ def macro(req: MacroRequest):
     #    상수나 `prog.signature` 로 재면 위 C8 축약이 탄 요청에서 "native FC 가 발화했다" 고
     #    답하면서 provider 로 나가는 tools 는 0개인 상태를 보고하게 된다.
     native_fc = native_fc_active(sig)
+    # 🔴 레짐 표식. 이 요청의 **첫 시도**에 실제로 실린 `tool_choice` 다(`tools` 가 비면 안
+    #    싣는다 -> None). `tools_offered` 와 같은 규약으로 첫 시도를 기록한다 — 아래 §4-1
+    #    구제 호출은 tool 없이 다시 묻지만 이 값은 첫 시도의 것을 그대로 나른다. 그래야
+    #    "이 결정이 어느 레짐에서 났는가" 가 한 행 안에서 읽힌다.
+    tool_choice_sent = tool_choice() if tools else None
     pred, err, tool_lane_err = None, None, None
     try:
-        pred = _ask(prog, sig, line, valid, tools)
+        pred = _ask(prog, sig, line, valid, tools, tool_choice_sent)
     except AdapterParseError as e:
         # ---- spec §4-1: **tool 실패가 결정을 지우면 안 된다** --------------------------------
         # `expressible` 이 bool 로 안 읽히면(`"maybe"`/`""`) 여기로 온다. 예전 포괄 `except` 는
@@ -1069,6 +1126,27 @@ def macro(req: MacroRequest):
         expressible = getattr(pred, _EXPR, None)
         expressible = expressible if isinstance(expressible, bool) else None
         tool_called, tool_args, n_calls = _first_tool_call(getattr(pred, _FC_OUT, None))
+        # ---- R26: 강제된 호출은 집행의 근거가 아니다 ---------------------------------------
+        # 🔴 컨트롤러 판정 R26. 모델이 `expressible == False` 라고 말한 사건 — "가진 어떤
+        #    tool 도 내가 본 것을 표현 못 한다" — 에서 `tool_choice="required"` 때문에 **어쩔
+        #    수 없이** 나온 호출은, 어느 로봇에 손대야 하는지에 대한 증거가 아니다. 기록은
+        #    하되(그것은 데이터다) **집행에는 안 넘긴다.**
+        # 🔴 구현이 여기 있는 이유: 줄리아 집행 경로(`tools/monitor/enact.jl:178-179` 의
+        #    `enact_target`)가 읽는 것은 `tool_called` · `tool_args` **두 값**이다. 그래서
+        #    거절을 그 값 안에서 말해야 한다 — `tool_called = None` 이면
+        #    `CB.ground_tool_args`(`src/respec/llm_bridge.jl:306-307`)가 첫 줄에서
+        #    `("deferred:no_tool_call", ...)` 를 내고, `enact_target` 은 `admit` 이 아니므로
+        #    agent 를 안 들인다. 줄리아를 한 줄도 안 고치고 R26 이 성립한다.
+        # 🔴 그런데 그렇게 하면 이 행이 "모델이 메뉴를 거절했다"(C8 ②)와 **같은 모양**이 된다
+        #    — 이 레포가 이미 두 번 밟은 함정이다. 가르는 키는 `tool_calls_n` 이다: R26 행은
+        #    `tool_called is None` 이면서 `tool_calls_n > 0` 이고, 진짜 거절은 `== 0` 이다.
+        #    그래서 `n_calls` 는 **절대 0 으로 덮지 않는다**(실제로 부른 횟수 그대로).
+        #    ⚠️ 이 판별 키는 줄리아가 이미 나르는 여덟 키 안에 있다(`TOOL_LANE_KEYS`).
+        #    호출 자체의 내용은 아래 `tool_called_forced` · `tool_args_forced` 가 보관한다.
+        tool_called_forced, tool_args_forced = None, {}
+        if expressible is False and tool_called is not None:
+            tool_called_forced, tool_args_forced = tool_called, tool_args
+            tool_called, tool_args = None, {}
         try:
             margin = float(getattr(pred, "margin", 0.0) or 0.0)
         except Exception:
@@ -1076,6 +1154,7 @@ def macro(req: MacroRequest):
     else:
         chosen, raw_rank, reasoning, margin = "", "", "", 0.0
         expressible, tool_called, tool_args, n_calls = None, None, {}, 0
+        tool_called_forced, tool_args_forced = None, {}
 
     # 어휘 밖 / 이 이벤트에 불법인 응답은 NOOP 으로 강제(오프라인 평가와 동일 규칙).
     # 🔴 강등 **전** 이름을 따로 붙잡는다. 일치 판정(`macro_tool_agree`)이 재려는 것은 "채점
@@ -1085,6 +1164,11 @@ def macro(req: MacroRequest):
     said = chosen
     # 모델이 말한 macro 에 대응하는 tool. `said` 가 표 밖이면 None = "비교할 왼쪽이 없다".
     expected_tool = MACRO_TO_TOOL.get(said)
+    # 🔴 일치 판정의 오른쪽은 **R26 억제 전**의 호출이다. `macro_tool_agree` 가 재는 것은
+    #    "채점 어휘와 행동 어휘가 갈리는 빈도" — 모델의 출력에 대한 사실이지 집행 가능성에
+    #    대한 사실이 아니다. 억제된 값을 쓰면 R26 부분모집단 전체가 조용히 `None`("못 쟀다")
+    #    으로 빠져 그 비율이 그만큼 편향된다. 강등 전 이름(`said`)을 쓰는 위 논증과 같은 축.
+    called_said = tool_called if tool_called is not None else tool_called_forced
     coerced = chosen not in valid
     if coerced:
         chosen = "NOOP" if "NOOP" in valid else valid[0]
@@ -1125,13 +1209,35 @@ def macro(req: MacroRequest):
             #    (한 레인의 사건이 다른 레인의 버킷에 실려 fault 발화율이 100% vs 23%)을
             #    이미 한 번 밟았다.
             # 🔴 새 필드를 더하지 않는다 — 가르는 키가 이미 응답에 있다. 소비자 규칙:
-            #      거절 = `tools_offered > 0 and tool_called is None and tool_lane_error is None`
+            #      거절 = `tools_offered > 0 and tool_called is None and tool_lane_error is None
+            #              and tool_calls_n == 0 and tool_choice != "required"`
             #    ⚠️ `native_fc` 로 가르지 말 것. ③에서 False 인 것은 맞지만 native FC 를 안 켜는
             #       프로바이더에서는 ②도 False 다 — 가르는 키는 `tool_lane_error` **하나**다.
+            # 🔴 2026-08-29 (Plan B, tool_choice). 위 규칙에 **꼬리 두 개가 붙었다** — 그 전의
+            #    세 키짜리 규칙은 이제 **거짓이다.** 이 커밋이 두 가지를 새로 만들었다:
+            #      ④ R26 억제: `expressible == False` 인데 강제된 호출이 왔다. 집행에 안
+            #         넘기려고 `tool_called` 을 None 으로 비웠으므로 ②와 **글자 그대로 같은
+            #         모양**이 된다. 가르는 키는 `tool_calls_n`(④는 > 0, ②는 == 0)이고,
+            #         그 호출의 내용은 `tool_called_forced` · `tool_args_forced` 에 있다.
+            #      ⑤ 레짐 자체: `tool_choice == "required"` 인 판에서는 프로바이더가 호출을
+            #         보장하므로 ②(모델의 거절)는 **원리상 관측되지 않는다.** 그러므로
+            #         `tool_choice` 를 안 보고 거절률을 세면 두 세대의 행이 한 표에 섞인다 —
+            #         이 레포가 정확히 그것으로 한 번 데었다.
+            #    🔴 그래서 이 커밋 **이전**에 기록된 행에는 `tool_choice` 키가 아예 없다. 없음
+            #       = 구 레짐(키를 안 보냈다)으로 읽으면 되고, 그것이 두 세대의 경계다.
             #    게이트: `test_macro_returns_tool_call.py` 의
             #      `test_a_parse_failure_row_is_not_a_declined_menu` (두 행을 나란히 만들어
             #      C8 의 두 키로는 구별 불가임을, 그리고 무엇이 가르는지를 못박는다).
             "tools_offered": len(tools),
+            # 🔴 레짐 표식 (Plan B, 2026-08-29). 이 요청의 첫 시도에 **실제로 실린** 값이다:
+            #    `"required"` = 호출을 강제한 새 레짐 · `None` = 키를 안 보낸 옛 레짐
+            #    (`DSPY_TOOL_CHOICE=""` 또는 tool 0개). 소스가 아니라 **그 요청**의 사실이라
+            #    행 하나만 보고도 어느 세대인지 갈린다. 위 C8 주석 ⑤가 소비자 규칙이다.
+            "tool_choice": tool_choice_sent,
+            # R26 으로 집행에서 뺀 호출의 원본. 억제가 없었으면 None/{} 다. 🔴 이것이
+            # `tool_called` 자리로 돌아가면 안 된다 — 줄리아가 그 값을 집행에 먹인다.
+            "tool_called_forced": tool_called_forced,
+            "tool_args_forced": tool_args_forced,
             "expressible": expressible,
             # 배선이 아니라 발화. 이 요청이 실제로 쓴 시그니처 기준(None = 못 쟀다).
             "native_fc": native_fc,
@@ -1149,8 +1255,8 @@ def macro(req: MacroRequest):
             #    이 레인에서 사람이 제일 먼저 읽을 숫자가 불일치율인데 그것이 그만큼 부풀려진다.
             #    ⚠️ `coerced` 로는 복원 안 된다 — legal 하지만 이 메뉴에 없는 macro 도
             #       `coerced=True` 인데 그쪽은 진짜로 잴 수 있다. 두 사건이 합쳐진다.
-            "macro_tool_agree": (None if (tool_called is None or expected_tool is None)
-                                 else tool_called == expected_tool),
+            "macro_tool_agree": (None if (called_said is None or expected_tool is None)
+                                 else called_said == expected_tool),
             # ---- 합성 레인 (T2, Plan B / T6b, spec §9-2) --------------------------------------
             # 🔴 네 값: "disabled" | False | True | None. **네 값은 분할이 아니다** — 다섯 번째
             #    사건(돌았는데 실패)이 `None` 을 공유하고, 그것을 가르는 키는 같은 응답의
@@ -1204,6 +1310,23 @@ def decide(req: MacroRequest):
                    #    `/decide` 로만 들어오므로(`tools/monitor/policy.jl:559`), 여기 안
                    #    실으면 `tool_minted` 는 실제로 도는 곳에서 영원히 안 보인다.
                    "tool_minted": d["tool_minted"], "synthesis": d["synthesis"],
+                   # ---- 레짐 표식 · R26 기록 (Plan B, 2026-08-29) --------------------------
+                   # 🔴 이 셋도 **아래 표식 위**에 산다. `tool_minted`/`synthesis` 와 같은
+                   #    이유다: `test/tool_lane_keys_survive.jl` (6)절이 표식 **아래** 키
+                   #    집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과 **양방향 등호**로 대조하므로,
+                   #    여기 아래에 키를 하나라도 더하면 그 게이트가 정당하게 빨개진다.
+                   #    파이썬 쪽 그물은 `test_synthesize.py` 의
+                   #    `test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy`.
+                   # ⚠️ 그러므로 줄리아의 **결정 행**에는 아직 이 셋이 안 실린다. 실으려면
+                   #    `tools/monitor/policy.jl` 의 `const TOOL_LANE_KEYS` 튜플에 이름을
+                   #    더하고 **같은 커밋에서** 이 줄들을 표식 아래로 옮겨야 한다. 그 배선은
+                   #    이 태스크의 파일 범위 밖이다(보고서가 줄을 짚는다).
+                   # ⚠️ 위 주석 줄은 `# ---- tool ` 로 시작하면 안 된다 — 줄리아 추출기는
+                   #    그 모양의 표식이 이 dict 안에 **정확히 하나**일 것을 요구하고, 둘이면
+                   #    게이트가 죽는다(빨간색이 아니라 추출 실패로).
+                   "tool_choice": d["tool_choice"],
+                   "tool_called_forced": d["tool_called_forced"],
+                   "tool_args_forced": d["tool_args_forced"],
                    # ---- tool 레인 (Plan A) ------------------------------------------------
                    # 🔴 `/macro` 에는 이 레포에 **호출자가 없다** — 실측(`grep -rn '/macro'
                    #    --include='*.jl' --include='*.py' src tools wm4spacecraft_manufacturing
