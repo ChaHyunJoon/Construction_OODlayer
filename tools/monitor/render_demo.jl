@@ -762,11 +762,9 @@ function policy_producer(env, event)
     local _tgt = enact_target(env, truth, decision.tool_lane,
                               (try decision.router catch; nothing end),
                               decision.macro_name)
-    println("[enact] target=", _tgt.agent === nothing ? "-" : string(_tgt.agent),
-            " source=", _tgt.source,
-            " tool_agent=", _tgt.tool_agent === nothing ? "-" : _tgt.tool_agent,
-            " verify=", _tgt.verify,
-            " reject=", _tgt.reject === nothing ? "-" : _tgt.reject)
+    # 🔴 문구는 `enact.jl` 의 `log_enact` **한 벌**이다 — `llm_producer` 도 같은 함수를 부른다.
+    # 두 producer 가 각자 println 을 들면 한쪽이 `reject` 를 빠뜨리는 순간 폴백이 조용해진다.
+    log_enact(_tgt)
     # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
     # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.
     # 직접 집행하므로 dispatch 는 생략(nothing) — canonical_producer 와 같은 패턴.
@@ -788,6 +786,18 @@ end
 # producer(LLM): 최근 OOD 의 자연어 설명을 **진짜 Claude API**(llm_to_proposal→Python 서비스)로 보내
 #   검증된 DSL 제안을 받고(패널에 macro+rationale 표시), 그 결정대로 완주 보장 enactment 실행 → nothing.
 #   LLM 호출/파싱 실패 시 canonical 로 안전 폴백(빌드 계속).
+#
+# 🔴 2026-08-29 (Plan B / T2c): **집행 대상 agent 가 `policy_producer` 와 같은 문을 지난다.**
+# 그 전까지 이 레인은 `llm_to_proposal` 이 돌려준 제안을 dispatcher 에 **그대로** 넘겼고, 그래서
+# LLM 이 고른 agent 는 접지·출처·강제 거절을 **하나도** 거치지 않고 세계에 닿았다. 한 레포에
+# 엔진이 둘인데 한쪽만 문을 지나면 그 문은 없는 것과 같다. 규칙은 복사하지 않는다 —
+# `enact.jl` 의 `llm_enact_target` → `enact_target` 을 **부른다**.
+#
+# 🔴 **"`_default_id_resolver` 가 이미 접지한다" 는 반론은 실측으로 틀리다.** 그 함수
+# (`replan.jl:1687`)는 로봇 열거 **앞에** 스케줄 정점 id 공간 전체를 먼저 훑고 `get_vtx_id` 를
+# 그대로 돌려준다 — 즉 **노드 id 문자열이 agent 자리를 통과한다.** `_open_agent_pairs`(모델에게
+# 보여 준 집합)는 그 값을 받아들이지 않는다. 그것이 리뷰어가 "세 번째 손복사 열거" 라고 지적한
+# 결함의 실체이고, 이 배선이 그 위에 문을 세운다.
 function llm_producer(env, event)
     rec = truth_for_event(event)
     truth = rec === nothing ? nothing : rec.truth
@@ -799,13 +809,42 @@ function llm_producer(env, event)
                 first(split(sprint(showerror, e), "\n")))
         nothing
     end
+    # ---- 집행 대상 접지 (2026-08-29, Plan B / T2c) --------------------------------------
+    # 🔴 **폴백은 기록된다**(컨트롤러 판정 R2/R6). 조용히 떨어지면 "LLM 이 골랐다" 와 "주입기가
+    # 알려줬다" 가 같은 관측이 되고, Plan B 가 재려는 것 자체가 측정 불가가 된다. 이 엔진에는
+    # `run_demo.jl` 의 결정 행이 없으므로 기록 채널이 둘이다:
+    #   · `log_enact` 한 줄 — stdout. `policy_producer` 와 **같은 함수**다(문구가 갈릴 수 없다).
+    #   · `capture!` 의 source/rationale — 모니터 respec 스트림. 이 엔진에서 유일하게 **영속**된다.
+    local why = ""                       # 폴백 사유. 빈 문자열이면 폴백이 없었다.
+    if proposal_agent(prop) !== nothing
+        local mac = _macro_label(_proposal_macro(prop)[1])
+        # ⚠️ router 는 `nothing` 이다 — 이 레인은 `decide_all` 을 안 타므로 라우터가 없고,
+        # 따라서 `DS_DEVIATE_AT` 이 이 레인의 팔을 갈아 끼우는 경로도 **오늘은 없다**.
+        # `DEMO_FORCE_MACRO` 거절은 `_arm_overridden` 의 ENV 기본값으로 라우터 없이도 산다.
+        # 이 레인에 라우터가 생기면 여기에 그대로 넘긴다 — 규칙은 `_arm_overridden` 에 하나뿐이다.
+        local tgt = llm_enact_target(env, truth, prop, mac)
+        log_enact(tgt)
+        if tgt.source != "tool"
+            why = tgt.reject === nothing ? "unknown" : String(tgt.reject)
+            # 🔴 spec §4-1: 거절은 **결정을 지우지 않는다.** 매크로는 그대로 서고 agent 만
+            # 폴백 값으로 다시 짓는다 — `policy_producer` 가 쓰는 바로 그 `macro_to_proposal`.
+            # 그 팔을 못 지으면(어휘 밖 / 대상 없음) 제안을 통째로 버리고 canonical 로 간다:
+            # 접지 안 된 agent 를 통과시키느니 개입을 포기하는 쪽이 안전하다.
+            prop = (tgt.agent !== nothing && haskey(CB.MACRO_TO_TOOL, mac)) ?
+                   macro_to_proposal(truth, mac; env = env, agent = tgt.agent) : nothing
+        end
+    end
     if prop === nothing || isempty(prop.constraints)              # LLM 실패/빈 제안 → canonical
         truth === nothing && return nothing
         cprop = try CB.canonical_respec(truth) catch; nothing end
-        capture!(env, truth, cprop, nl; source = "canonical (LLM fallback)")
+        capture!(env, truth, cprop, nl;
+                 source = "canonical (LLM fallback" * (isempty(why) ? "" : ": " * why) * ")")
         return cprop
     else
         rat = try prop.rationale catch; "" end
+        # 폴백이 있었으면 **영속되는 기록**에도 남는다. 이 문자열이 없으면 스트림에서
+        # "LLM 이 그 로봇을 골랐다" 와 "열거 밖이라 truth 로 떨어졌다" 가 구분되지 않는다.
+        isempty(why) || (rat = "[enact fallback: " * why * "] " * String(rat))
         println("[llm] Claude → ", _proposal_macro(prop)[1], "  rationale: ", first(split(String(rat), "\n")))
         capture!(env, truth, prop, nl; source = "claude-opus-4-8", rationale = rat)
         return prop

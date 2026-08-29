@@ -228,6 +228,84 @@ function enact_target(env, truth, tool_lane, router, mac)
 end
 
 """
+    log_enact(tgt) -> nothing
+
+집행 대상 선택의 **한 줄 기록**. `render_demo.jl` 의 두 producer 가 **같은 함수**를 부른다.
+
+🔴 왜 함수인가: 이 엔진에는 `run_demo.jl` 의 `this_decision` 같은 결정 행이 없어서
+(`_DECISIONS` 가 그 파일에 0건) `source`·`tool_agent`·`reject` 를 실을 자리가 stdout 한 줄
+뿐이다. 그 한 줄을 producer 마다 손으로 복사하면 한쪽이 `reject` 를 빠뜨리는 순간
+"LLM 이 골랐다" 와 "주입기가 알려줬다" 가 같은 관측이 된다(컨트롤러 판정 R2/R6).
+문구는 `policy_producer` 가 쓰던 것 **그대로**다 — 기존 스트림 소비자가 안 깨진다.
+"""
+log_enact(tgt) =
+    println("[enact] target=", tgt.agent === nothing ? "-" : string(tgt.agent),
+            " source=", tgt.source,
+            " tool_agent=", tgt.tool_agent === nothing ? "-" : tgt.tool_agent,
+            " verify=", tgt.verify,
+            " reject=", tgt.reject === nothing ? "-" : tgt.reject)
+
+"""
+    proposal_agent(prop) -> agent | nothing
+
+LLM 제안이 **누구를 가리키는가**. 첫 제약의 `agent` 필드(없으면 `nothing`).
+`_proposal_macro` 가 표시용 이름을 뽑는 것과 같은 자리(`prop.constraints[1]`)를 본다 —
+집행이 실제로 읽는 것이 그 제약이기 때문이다(`enact_recovery!` 는 `.agent` 를 존중한다).
+"""
+proposal_agent(prop) =
+    (prop === nothing || isempty(prop.constraints)) ? nothing :
+    (hasproperty(prop.constraints[1], :agent) ? prop.constraints[1].agent : nothing)
+
+"""
+    llm_enact_target(env, truth, prop, mac; router = nothing) -> enact_target 의 NamedTuple
+
+**LLM 제안이 고른 agent 를 `enact_target` 과 똑같은 문을 통과시킨다.**
+
+🔴 왜 이 함수가 있어야 했는가 (2026-08-29, Plan B / T2c — 실측된 우회로)
+------------------------------------------------------------------------
+`render_demo.jl` 의 `llm_producer`(`DEMO_LLM=1`)는 `llm_to_proposal` 이 돌려준 제안을
+**그대로** 집행 dispatcher 에 넘겼다. 그래서 그 레인에서 LLM 이 고른 agent 는
+
+  · 접지 없이            — `_open_agent_pairs`(모델에게 **보여준** 집합)와 대조된 적이 없다
+  · 출처 검사 없이       — 집행되는 팔과 인자의 팔이 같은지 안 물었다
+  · 강제/이탈 거절 없이  — `DEMO_FORCE_MACRO` 판에서도 LLM 의 agent 가 그대로 실렸다
+
+세계에 닿았다. `policy_producer` 는 T2b 에서 `enact_target` 뒤로 들어갔지만 이 레인은 안
+들어갔다 — 한 레포에 두 엔진이 있고 한쪽만 문을 지나면 그 문은 없는 것과 같다.
+
+⚠️ **접지가 `_default_id_resolver` 로 이미 되어 있다는 반론은 실측으로 틀렸다.**
+`_default_id_resolver`(`replan.jl:1687`)는 로봇 열거 **앞에** 스케줄 정점 id 공간 전체를
+먼저 훑어 `get_vtx_id` 를 그대로 돌려준다. 즉 **노드 id 문자열이 agent 자리를 통과한다** —
+`_open_agent_pairs` 가 받아들이지 않는 값이다. 그것이 리뷰어가 "세 번째 손복사 열거"라고
+지적한 결함의 실체다.
+
+동작
+----
+제안의 agent 를 `tool_lane` **모양 그대로**(`decide_all` 이 만드는 것과 같은 두 키) 감싸
+`enact_target` 에 넘긴다. tool 이름은 `CB.MACRO_TO_TOOL` 에서 **유도한다** — 리터럴로 적으면
+그 표와 갈릴 수 있고, 이 레인에서는 "인자를 낸 팔" 과 "집행되는 팔" 이 같은 제약 하나이므로
+출처 검사(규칙 0b)는 **구조적으로 참**이다. 하중을 지는 것은 접지(규칙 1~3)와
+`_arm_overridden`(규칙 0)이다.
+
+`mac` 이 `MACRO_TO_TOOL` 밖이면 `tool_called` 가 `nothing` 이고 `enact_target` 은
+`tool_arm_mismatch` 로 거절한다 — 즉 **모르는 팔에서는 LLM 의 agent 를 안 쓴다**(안전한 쪽).
+
+⚠️ `router` 는 인자다. 이 레인은 `decide_all` 을 안 타서 오늘은 라우터가 없고(따라서
+`DS_DEVIATE_AT` 이 이 레인의 팔을 바꾸는 경로도 없다) `nothing` 이 넘어온다. `DEMO_FORCE_MACRO`
+거절은 `_arm_overridden` 의 ENV 기본값으로 **라우터 없이도 산다**. 이 레인에 라우터가 생기면
+그대로 넘기면 된다 — 규칙은 여기 없고 `_arm_overridden` 에 하나뿐이다.
+"""
+function llm_enact_target(env, truth, prop, mac; router = nothing)
+    local a = proposal_agent(prop)
+    local lane = a === nothing ? nothing :
+        Dict{String,Any}("tool_called" =>
+                             (mac === nothing ? nothing :
+                              get(CB.MACRO_TO_TOOL, String(mac), nothing)),
+                         "tool_args" => Dict{String,Any}("agent" => string(a)))
+    return enact_target(env, truth, lane, router, mac)
+end
+
+"""
     enact_macro!(env, truth, mac, agent) -> (; enact_applied, ran_milp)
 
 고른 매크로 `mac` 을 세계에 집행한다. `agent` 는 **집행 대상 로봇**(`RobotID` 또는

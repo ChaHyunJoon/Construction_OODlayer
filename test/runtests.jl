@@ -215,6 +215,20 @@ end
         include("render_lane_uses_llm_agent.jl")
     end
 
+    # 🔴 2026-08-29 (Plan B / T2c): 같은 파일의 **다른 producer** 가 그 문을 안 지나고 있었다.
+    # `set_respec_producer!` 는 `DEMO_LLM` 으로 둘 중 하나를 고르는데(`render_demo.jl:880`),
+    # T2b 가 고친 것은 기본값 쪽(`policy_producer`)뿐이고 `llm_producer`(`DEMO_LLM=1`)는
+    # `llm_to_proposal` 의 제안을 dispatcher 에 **그대로** 넘겼다 — 그 레인에서는 LLM 이 고른
+    # agent 가 접지·출처·강제 거절을 하나도 안 거치고 세계에 닿았다. 이제 그 레인도
+    # `enact.jl` 의 `llm_enact_target` → `enact_target` 을 부른다.
+    # 🔴 이 게이트의 (1) 이 **우회로가 실재했음을 음성 대조로 잰다**: `_default_id_resolver`
+    # (`replan.jl:1687`)는 로봇 열거 앞에 스케줄 정점 id 공간을 먼저 훑으므로 노드 id 문자열이
+    # agent 자리를 통과하고, `ReplaceAgent.agent` 의 타입이 `AbstractID` 라 그 값이 제약에
+    # 실제로 들어간다. 서비스는 안 부른다 — 8000·8077 요청 0건.
+    @testset "llm_producer grounds the agent (Plan B / T2c)" begin
+        include("llm_producer_grounds_agent.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin
