@@ -867,8 +867,8 @@ def health():
 # ---- tool 레인 (Plan A, Task 6) --------------------------------------------------------------
 # 🔴 이 세 이름은 `SelectTool` 의 필드명과 **같아야 한다.** `Signature.delete` 는 없는 이름에
 #    에러를 내지 않으므로(`dspy/signatures/signature.py:446`, `fields.pop(name, None)`), 갈리면
-#    아래 두 축약이 조용히 아무것도 안 지운다 — C8 축약은 `tools: []` 를 provider 로 흘려 400 을
-#    받고, §4-1 구제는 같은 파싱 실패를 그대로 다시 밟는다. **둘 다 에러가 안 난다.**
+#    아래 두 축약이 조용히 아무것도 안 지운다 — C8 축약은 `KeyError: 'tools'`(아래 참조)를
+#    도로 열고, §4-1 구제는 같은 파싱 실패를 그대로 다시 밟는다. **둘 다 에러가 안 난다.**
 #    게이트: test_macro_returns_tool_call.py::test_the_stripped_field_names_are_real_fields...
 _FC_IN, _FC_OUT, _EXPR = "tools", "action", "expressible"
 
@@ -913,12 +913,28 @@ def macro(req: MacroRequest):
     tools = build_tools(getattr(req, "agents", None), valid)
     # ---- C8: 부를 tool 이 하나도 없는 경우 -------------------------------------------------
     # `build_tools` 가 `[]` 를 내는 것은 정상이다(Task 5 가 그렇게 만들었다: 실재 로봇 id 가
-    # 없으면 로봇을 지목하는 tool 을 아예 안 낸다). 그 빈 목록을 native FC 에 그대로 넘기면
-    # `lm_kwargs["tools"] = []` 가 되고(실측: `adapters/base.py:114`) provider 가 400 을 낸다.
-    # 그러니 tool 입출력 필드를 뺀 시그니처로 **tool 없이 묻는다.** `expressible` 은 남긴다 —
-    # 메뉴가 비었을 때야말로 "어떤 tool 로도 안 된다" 가 답이어야 하는 사건이다.
-    # 그 사실은 `tools_offered == 0` 으로 남는다: "부를 tool 이 없었다"(0)와 "있었는데 안
-    # 불렀다"(>0, `tool_called is None`)는 **다른 사건**이고 뭉개지 않는다.
+    # 없으면 로봇을 지목하는 tool 을 아예 안 낸다). 그럴 때 tool 입출력 필드를 뺀 시그니처로
+    # **tool 없이 묻는다.**
+    #
+    # 🔴 이 축약이 막는 것 (2026-08-29 fix round 1 에서 **정정**. 그 전에 여기 적혀 있던
+    #    *"빈 목록을 넘기면 provider 가 400 을 낸다"* 는 **거짓이다** — 실측:
+    #      `_call_preprocess` 뒤 `lm_kwargs == {'tools': []}` 이지만 LM 경계에서는 그 키가
+    #      **없다**. `dspy/clients/openai_format.py:83` 이 `if request.tools:` 라 빈 리스트가
+    #      falsy 로 떨어진다. 비어 있지 않은 목록은 그대로 도달한다(양성 대조 확인).
+    #      그리고 native FC 가 켜진 판에서 이 축약의 프롬프트는 `tools=[]` 판과 **바이트 단위로
+    #      같다**(둘 다 2994자). 즉 400 도, 프롬프트 차이도 없다.)
+    #
+    #    ① **진짜 위험은 `KeyError: 'tools'`(`dspy/adapters/base.py:111`)다** — 이 태스크가
+    #       고치는 바로 그 실패. `_ask` 는 `if tools:` 로 빈 목록의 kwarg 를 안 넘기는데,
+    #       시그니처에 `tools` 필드가 **남아 있으면** native FC 분기가 `inputs["tools"]` 를
+    #       읽다가 죽는다. 필드를 빼야 그 분기 자체가 안 선다. (변이 M6 이 이걸 붉힌다.)
+    #    ② native FC 가 **안 켜진** 판(어댑터 플래그 off · `supports_function_calling` False)
+    #       에서는 `tools` 가 프롬프트 **본문에 렌더된다.** 실측: 빈 tool 목록 필드가 프롬프트를
+    #       2994 -> 3960자로 966자 부풀린다. 모델이 읽을 것이 없는 필드다.
+    #
+    # `expressible` 은 남긴다 — 메뉴가 비었을 때야말로 "어떤 tool 로도 안 된다" 가 답이어야
+    # 하는 사건이다. 그리고 그 사실은 `tools_offered == 0` 으로 남는다: "부를 tool 이
+    # 없었다"(0)와 "있었는데 안 불렀다"(>0, `tool_called is None`)는 **다른 사건**이다.
     sig = prog.signature if tools else prog.signature.delete(_FC_IN).delete(_FC_OUT)
     # 🔴 배선이 아니라 **발화**를 잰다. 그리고 이 요청이 **실제로 쓴** 시그니처로 잰다 — 모듈
     #    상수나 `prog.signature` 로 재면 위 C8 축약이 탄 요청에서 "native FC 가 발화했다" 고
@@ -939,8 +955,17 @@ def macro(req: MacroRequest):
         # ⚠️ **`AdapterParseError` 에만 건다.** 실제 프로바이더 장애는 전부 `LMError` 이고
         #    (`dspy/clients/lm.py:185` 가 감싼다), 거기서 다시 물으면 장애마다 과금 leg 을
         #    배로 태우면서 아무것도 못 건진다. 음성 대조 검사가 그 경계를 못박는다.
-        # 💰 대가: 파싱 실패 사건 하나당 완료 leg 이 3 -> 최대 4 가 된다(Task 4 의 과금 표).
-        #    그 사건은 오늘 **결정을 통째로 잃고 있으므로** 그 한 leg 이 사는 값이다.
+        # 💰 대가 (2026-08-29 fix round 1 에서 **정정**. 옛 문구 "3 -> 최대 4" 는 상한이
+        #    아니었다 — 구제 요청도 ChatAdapter -> JSONAdapter 사슬을 그대로 타므로 그것 자체가
+        #    실패하면 leg 을 또 쓴다):
+        #      · 구제가 성공  : 실패 요청 + 구제 = 실측 3 leg (가짜 LM). `response_format` 을
+        #                       지원하는 모델(gpt-4o)에서는 Task 4 표의 3 + 1 = **4**.
+        #      · 구제도 실패  : 실측 **4 leg** (가짜 LM). gpt-4o 에서는 3 + 3 = **최대 6**.
+        #    그 사건은 오늘 **결정을 통째로 잃고 있으므로** 성공 경로의 한 leg 은 사는 값이라고
+        #    판단했다. 실패 경로는 옛 동작과 결과가 같으면서 leg 만 더 쓴다 — 그게 이 설계의
+        #    진짜 비용이고, 여기 적어 둔다.
+        #    ⚠️ `_state["calls"]` 는 구제가 성공해도 **+1** 이다(실측). 실패한 `_ask` 는
+        #       증가 전에 던진다. 즉 `llm_calls` 는 leg 수가 아니라 "예측을 낸 호출" 수다.
         tool_lane_err = "%s: %s" % (type(e).__name__, e)
         sig = prog.signature.delete(_FC_IN).delete(_FC_OUT).delete(_EXPR)
         native_fc = native_fc_active(sig)
@@ -975,6 +1000,8 @@ def macro(req: MacroRequest):
     #    이 계산을 강등 뒤에 뒀는데, 그러면 어휘 밖 macro 를 낸 사건에서 일치 여부가 모델의
     #    출력이 아니라 `NOOP` 에 대해 재어진다 — 강등 사실은 이미 `coerced` 가 나른다.
     said = chosen
+    # 모델이 말한 macro 에 대응하는 tool. `said` 가 표 밖이면 None = "비교할 왼쪽이 없다".
+    expected_tool = MACRO_TO_TOOL.get(said)
     coerced = chosen not in valid
     if coerced:
         chosen = "NOOP" if "NOOP" in valid else valid[0]
@@ -1000,10 +1027,19 @@ def macro(req: MacroRequest):
             # §4-1: 레인은 실패했는데 결정은 살아남은 사건. `error` 와 **다른 자리**여야 한다 —
             #       `error` 에 넣으면 줄리아의 `policy_entry` 가 그 결정을 통째로 버린다.
             "tool_lane_error": tool_lane_err,
-            # 🔴 재기만 한다. 강제하지 않는다 (spec §4-1). 부른 tool 이 없으면 None =
-            #    "못 쟀다" 이고, False("재서 어긋났다") 와 섞지 않는다.
-            "macro_tool_agree": (None if tool_called is None
-                                 else tool_called == MACRO_TO_TOOL.get(said))}
+            # 🔴 재기만 한다. 강제하지 않는다 (spec §4-1). 못 쟀으면 None 이고,
+            #    False("재서 어긋났다") 와 섞지 않는다 (spec §9-2).
+            # 🔴 "못 쟀다" 는 **두 가지**다 (fix round 1, M2):
+            #      ① 부른 tool 이 없다        -> 비교할 오른쪽이 없다
+            #      ② 모델의 macro 가 표 밖이다 -> 비교할 왼쪽이 없다 (빈 문자열 · 환각한 이름)
+            #    ②를 안 가르면 `MACRO_TO_TOOL.get(said)` 가 None 이고 None 은 어떤 tool 이름과도
+            #    같지 않으므로 그 부분모집단이 **언제나 False** 로 기록된다 = "못 쟀다" 가
+            #    "재서 어긋났다" 로 둔갑한다. 실측: macro="" 도 macro="Teleport" 도 False.
+            #    이 레인에서 사람이 제일 먼저 읽을 숫자가 불일치율인데 그것이 그만큼 부풀려진다.
+            #    ⚠️ `coerced` 로는 복원 안 된다 — legal 하지만 이 메뉴에 없는 macro 도
+            #       `coerced=True` 인데 그쪽은 진짜로 잴 수 있다. 두 사건이 합쳐진다.
+            "macro_tool_agree": (None if (tool_called is None or expected_tool is None)
+                                 else tool_called == expected_tool)}
 
 
 @app.post("/decide")
@@ -1024,7 +1060,10 @@ def decide(req: MacroRequest):
                    "rationale": d["reasoning"], "policy": d["policy"],
                    "coerced": d["coerced"], "error": d["error"],
                    # ---- tool 레인 (Plan A) ------------------------------------------------
-                   # 🔴 `/macro` 에는 이 레포에 **호출자가 없다**(실측: 정의 둘 + 주석 하나).
+                   # 🔴 `/macro` 에는 이 레포에 **호출자가 없다** — 실측(`grep -rn '/macro'
+                   #    --include='*.jl' --include='*.py' src tools wm4spacecraft_manufacturing
+                   #    test`): 정의 1건(`@app.post("/macro")`) · 주석/독스트링 언급 3건 ·
+                   #    **호출 0건**.
                    #    라이브 레인은 `/decide` 로만 들어온다(`tools/monitor/policy.jl:559`).
                    #    여기 안 실으면 ②접지가 실제로 도는 곳에서 영원히 안 보인다.
                    # ⚠️ 여기까지가 Plan A 다. 줄리아의 `policy_entry`(`policy.jl:1034-1046`)는

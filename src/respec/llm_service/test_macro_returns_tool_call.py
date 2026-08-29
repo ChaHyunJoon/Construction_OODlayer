@@ -250,12 +250,24 @@ def test_a_provider_failure_is_not_retried_and_is_not_salvaged():
 
 
 def test_a_parse_failure_that_survives_the_retry_still_reports_the_decision_error():
-    """구제도 실패하면 옛 동작으로 되돌아간다 — 조용히 성공한 척하지 않는다."""
-    _install(_answer(expressible="maybe"), _answer(expressible="maybe"))
+    """구제도 실패하면 옛 동작으로 되돌아간다 — 조용히 성공한 척하지 않는다.
+
+    🔴 실패를 **진짜 두 번째 파싱 실패**로 만든다 (fix round 1). 처음 판은 DummyLM 의 답을
+    바닥내서(`"No more responses"`) 같은 분기에 도달했는데, 그건 docstring 이 말하는 기전이
+    아니었다 — "구제 호출이 파싱에 또 실패했다" 가 아니라 "가짜 LM 이 할 말이 없었다" 였다.
+    지금은 첫 요청이 `expressible` 로, 구제 요청이 `margin` 으로 깨진다. 둘 다 실제 어댑터가
+    내는 `AdapterParseError` 다.
+
+    답이 넷인 이유: 두 번의 요청이 각각 ChatAdapter -> JSONAdapter 로 두 leg 씩 쓴다
+    (실측: 이 시나리오의 총 leg = 4).
+    """
+    _install(_answer(expressible="maybe"), _answer(expressible="maybe"),
+             _answer(margin="not-a-number"), _answer(margin="not-a-number"))
     out = svc.macro(_req())
     assert out["chosen"] == "NOOP" and out["coerced"] is True
-    assert out["error"] is not None
-    assert out["tool_lane_error"] is not None
+    assert out["error"] is not None and "AdapterParseError" in out["error"]
+    assert out["tool_lane_error"] is not None and "AdapterParseError" in out["tool_lane_error"]
+    assert out["expressible"] is None and out["tool_called"] is None
 
 
 # ---------------------------------------------------------------------------------------------
@@ -263,9 +275,22 @@ def test_a_parse_failure_that_survives_the_retry_still_reports_the_decision_erro
 # ---------------------------------------------------------------------------------------------
 
 def test_an_empty_tool_menu_asks_without_tools_instead_of_sending_an_empty_list():
-    """🔴 `build_tools` 는 `[]` 를 낼 수 있고 그건 정상이다(Task 5). 그걸 native FC 에 그대로
-    넘기면 `lm_kwargs["tools"] = []` 가 되어(실측: `_call_preprocess` 가 그 값을 채운다)
-    provider 가 400 을 낸다. tool **없이** 묻는다."""
+    """🔴 `build_tools` 는 `[]` 를 낼 수 있고 그건 정상이다(Task 5). 그럴 때 tool 입출력
+    필드를 뺀 시그니처로 tool **없이** 묻는다.
+
+    ⚠️ **여기 적혀 있던 이유는 거짓이었다**(2026-08-29 fix round 1 정정). 옛 문구는
+    *"빈 목록을 넘기면 provider 가 400 을 낸다"* 였는데, 실측하면 빈 목록은 LM 경계에
+    **도달조차 안 한다**: `_call_preprocess` 뒤 `lm_kwargs == {'tools': []}` 이지만
+    `dspy/clients/openai_format.py:83` 의 `if request.tools:` 가 falsy 로 떨어뜨린다.
+    native FC 판에서 두 프롬프트는 바이트 단위로 같다(2994자).
+
+    실제로 막는 것 둘:
+      ① `_ask` 가 빈 목록의 kwarg 를 안 넘기므로, 시그니처에 `tools` 필드가 남아 있으면
+         native FC 분기가 `inputs["tools"]` 에서 `KeyError: 'tools'`
+         (`dspy/adapters/base.py:111`) 로 죽는다 — 이 태스크가 고치는 그 실패 그대로다.
+      ② native FC 가 안 켜진 판에서는 빈 tool 목록이 **프롬프트 본문에** 렌더된다
+         (실측 2994 -> 3960자, +966자).
+    """
     _install(_answer(macro="Replace", ranking="Replace"), fc=True)
     s = _spy()
     out = svc.macro(_req(valid=["Replace"], agents=[]))
@@ -329,6 +354,44 @@ def test_agreement_is_measured_on_what_the_model_said_not_on_the_coerced_macro()
         "모델은 Replace 라 말하고 swap_body 를 불렀다 = 두 어휘는 **일치했다**"
 
 
+def test_a_macro_outside_the_table_is_unmeasurable_not_a_disagreement():
+    """🔴 fix round 1 (M2). spec §9-2 붕괴를 이름 그대로 밟고 있었다.
+
+    모델의 macro 가 `MACRO_TO_TOOL` 밖이면(빈 문자열 · 환각한 이름) 등식의 오른쪽이 `None` 이고
+    `None` 은 어떤 tool 이름과도 같지 않다 — 그래서 그 부분모집단에서 `macro_tool_agree` 가
+    **언제나 `False`** 였다. 즉 "못 쟀다" 가 "재서 어긋났다" 로 기록된다. 실측(실제 어댑터 경유):
+
+        macro=""         + deliver_battery -> macro_tool_agree = False
+        macro="Teleport" + deliver_battery -> macro_tool_agree = False
+
+    이 레인에서 사람이 제일 먼저 읽을 숫자가 불일치율인데, 그것이 이만큼 부풀려진다.
+
+    ⚠️ `coerced` 로는 이 구분을 **복원할 수 없다.** legal 하지만 이 메뉴에 없는 macro 도
+    `coerced=True` 인데 그쪽은 진짜로 잴 수 있다(같은 파일의
+    `test_agreement_is_measured_on_what_the_model_said_not_on_the_coerced_macro` 가 바로 그 예다).
+    두 사건이 `coerced=True` 로 합쳐지므로 정보가 응답에서 사라진다.
+    """
+    for macro in ("", "Teleport"):
+        _install(_answer(action={"tool_calls": [{"name": "deliver_battery",
+                                                 "args": {"agent": RID}}]},
+                         macro=macro, ranking="NOOP"))
+        out = svc.macro(_req())
+        assert out["tool_called"] == "deliver_battery", macro
+        assert out["macro_tool_agree"] is None, \
+            "macro=%r 는 표 밖이다 — '못 쟀다'(None)이지 '어긋났다'(False)가 아니다" % macro
+
+
+def test_a_macro_inside_the_table_still_yields_a_real_verdict():
+    """음성 대조. 위 수정이 `macro_tool_agree` 를 통째로 None 으로 만들지 않았는지 본다 —
+    표 안의 macro 는 True/False 를 그대로 낸다."""
+    for macro, tool, want in [("SwapBattery", "deliver_battery", True),
+                              ("SwapBattery", "swap_body", False),
+                              ("NOOP", "no_intervention", True)]:
+        _install(_answer(action={"tool_calls": [{"name": tool, "args": {"agent": RID}}]},
+                         macro=macro, ranking=macro))
+        assert svc.macro(_req())["macro_tool_agree"] is want, (macro, tool)
+
+
 # ---------------------------------------------------------------------------------------------
 # 사용자 결정 ② — 다섯 키(+ C8·중복호출 구분)가 `/decide` 에도 실린다
 # ---------------------------------------------------------------------------------------------
@@ -344,16 +407,49 @@ def test_macro_reports_every_lane_key():
 
 
 def test_decide_carries_the_lane_keys_into_the_dspy_block():
-    """🔴 `/macro` 는 이 레포에 **호출자가 없다**(실측: `grep -rn '/macro' src tools
-    wm4spacecraft_manufacturing test` = 정의 둘 + 주석 하나). 라이브 레인은 `/decide` 로만
-    들어온다(`tools/monitor/policy.jl:559`). 여기 안 실으면 접지가 실제로 도는 곳에서
-    영원히 안 보인다."""
-    _install(_answer(action={"tool_calls": [{"name": "deliver_battery", "args": {"agent": RID}}]},
-                     macro="SwapBattery", ranking="SwapBattery, NOOP, Replace"))
-    out = svc.decide(_req())
-    assert set(_LANE_KEYS) <= set(out["dspy"])
-    assert out["dspy"]["tool_called"] == "deliver_battery"
-    assert out["dspy"]["macro_tool_agree"] is True
+    """🔴 `/macro` 는 이 레포에 **호출자가 없다**(실측: `grep -rn '/macro' --include='*.jl'
+    --include='*.py' src tools wm4spacecraft_manufacturing test` = 정의 1건
+    (`@app.post("/macro")`) · 주석/독스트링 언급 3건 · **호출 0건**). 라이브 레인은 `/decide`
+    로만 들어온다(`tools/monitor/policy.jl:559`). 여기 안 실으면 접지가 실제로 도는 곳에서
+    영원히 안 보인다.
+
+    🔴 **키의 존재만 재면 안 된다** (fix round 1, M1). 값은 여덟 번의 손으로 적은 전사를
+    거치므로, 존재만 재면 그중 여섯이 프로덕션에서 틀린 값을 나르면서 게이트가 초록이다 —
+    실측: `decide()` 가 `native_fc=True` / `tools_offered=0` / `expressible=True` 를 못박는
+    변이 셋이 이 파일의 검사 전부를 통과했다. **같은 요청의 `/macro` 응답과 값이 같은지** 잰다.
+
+    ⚠️ 시나리오가 넷인 이유: 하나만 쓰면 하드코딩 변이가 우연히 그 값과 같아 살아남는다. 아래
+    마지막 블록이 **여덟 키 각각이 시나리오 사이에서 최소 두 값을 가지는지** 확인한다 — 그게
+    "어떤 상수 하드코딩도 붉어진다" 의 통제다. 이 통제가 없으면 위 루프는 공허할 수 있다.
+    """
+    A = _answer(expressible="True", macro="SwapBattery", ranking="SwapBattery, NOOP, Replace")
+    B = _answer(expressible="False", macro="Replace", ranking="Replace")
+    C = _answer(expressible="True", macro="SwapBattery", ranking="SwapBattery, NOOP, Replace",
+                action={"tool_calls": [{"name": "deliver_battery", "args": {"agent": RID}},
+                                       {"name": "swap_body", "args": {"agent": RID}}]})
+    Dbad = _answer(expressible="maybe", macro="NOOP", ranking="NOOP")
+    Dok = _answer(macro="NOOP", ranking="NOOP")
+    scenarios = [
+        # (라벨, 한 번의 macro() 가 소비하는 답들, fc, 요청 kwargs)
+        ("A native FC on, tools present", (A,), True, {}),
+        ("B native FC on, empty menu (C8)", (B,), True, dict(valid=["Replace"], agents=[])),
+        # 🔴 fc=False 라야 tool 호출이 **텍스트 채널로** 돌아온다 — `_FCDummy` 는 native
+        #    tool_call 을 낼 줄 모른다(이 파일 상단 참조). tool_* 네 키는 여기서만 움직인다.
+        ("C text channel, two tool calls", (C,), False, {}),
+        ("D parse failure -> salvage", (Dbad, Dbad, Dok), False, {}),
+    ]
+    seen = {k: set() for k in _LANE_KEYS}
+    for label, answers, fc, kw in scenarios:
+        _install(*(answers + answers), fc=fc)   # macro() 가 한 벌, decide() 가 한 벌 쓴다
+        m = svc.macro(_req(**kw))
+        d = svc.decide(_req(**kw))["dspy"]
+        assert set(_LANE_KEYS) <= set(d), label
+        for k in _LANE_KEYS:
+            assert d[k] == m[k], "%s: decide()[%r]=%r != macro()[%r]=%r" % (label, k, d[k], k, m[k])
+            seen[k].add(repr(m[k]))
+    # 🔴 통제: 여덟 키 전부가 시나리오 사이에서 값이 갈려야 위 루프가 하드코딩을 붙잡는다.
+    flat = {k: sorted(v) for k, v in seen.items() if len(v) < 2}
+    assert not flat, "이 키들은 시나리오 사이에서 상수라 하드코딩 변이를 못 잡는다: %r" % flat
 
 
 # ---------------------------------------------------------------------------------------------
