@@ -35,19 +35,22 @@
       "name": "NOOP",
       "cost": 0.0,
       "kinds": ["fault", "battery"],
-      "doc": "do nothing / restraint. Free. Best when the disruption is absorbed by slack or spares and intervening would waste a scarce resource."
+      "mechanism": "do nothing. No graph is edited, no resource is spent, no time is lost.",
+      "when_to_use": "Best when the disruption is absorbed by slack or spares and intervening would waste a scarce resource."
     },
     "1": {
       "name": "Replace",
       "cost": 1.0,
       "kinds": ["fault", "battery"],
-      "doc": "swap the affected robot for a spare BODY from the depot pool. Consumes one spare robot. Best on a real fault, or on a depleted battery when no cheaper repair applies."
+      "mechanism": "swap the affected robot for a spare BODY from the depot pool. Edits the SCHEDULE GRAPH: a new node takes the same node id and the assignment edges are re-hung (replace_robot.jl). Consumes one spare robot from the depot, which is a scarce resource. Measured: +13.3 sim s per event, energy/closed +228%.",
+      "when_to_use": "Best on a real fault, or on a depleted battery when no cheaper repair applies."
     },
     "2": {
       "name": "SwapBattery",
       "cost": 0.2,
       "kinds": ["battery"],
-      "doc": "swap only the depleted battery in the field, keeping the same robot body and its identity. Does NOT consume a depot spare body, so it is far cheaper than Replace; it restores charge but not a broken robot."
+      "mechanism": "a spare robot is BORROWED from the nearest depot and physically drives the battery to the affected robot; the swap applies on arrival, then the courier returns and recharges. The schedule graph is NOT edited. The robot keeps its body and identity. No depot spare is consumed -- the cost is travel time plus a line stop while the swap is pending. Measured: +4.1 sim s per event, energy/closed +25%.",
+      "when_to_use": "Cheaper than Replace when the body is sound and only charge is missing."
     }
   }
 }

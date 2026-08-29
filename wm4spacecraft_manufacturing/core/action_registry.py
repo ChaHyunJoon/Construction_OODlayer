@@ -191,7 +191,11 @@ def doc_lines(ids=None):
     out = []
     for i in ids:
         m = REGISTRY[i]
-        out.append("- %s (cost %.1f): %s" % (m["name"], float(m["cost"]), m["doc"]))
+        # 🔴 `when_to_use` 는 절대 렌더하지 않는다. 그것은 정답 조건이고, 프롬프트에 실으면
+        #    측정되는 것이 추론이 아니라 프롬프트 준수가 된다(dspy_service.py:155-165 실측).
+        #    감사·회귀 테스트는 JSON 을 직접 읽는다.
+        text = m.get("mechanism") or m.get("doc", "")
+        out.append("- %s (cost %.1f): %s" % (m["name"], float(m["cost"]), text))
     return out
 
 
