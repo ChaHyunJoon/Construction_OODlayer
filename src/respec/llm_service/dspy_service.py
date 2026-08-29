@@ -25,7 +25,7 @@ Run (hjcrl venv, from this directory):
   python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 """
 import os, sys, json, glob, math, re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -526,6 +526,17 @@ class MacroRequest(BaseModel):
     # ★ 선언하지 않으면 pydantic 이 조용히 버린다. 그러면 enum 이 빈 목록으로 굳어 tool
     #   호출이 전부 막히는데, 원인이 호출자에 있는 것처럼 보인다.
     agents: Optional[List[Dict[str, str]]] = None
+    # zones : 이 요청 시점에 **살아 있는** 출입금지 구역 목록.
+    #   `llm_bridge.open_zone_descriptors(env)` 가 만드는 형태 그대로
+    #   [{key, center, radius, covers, covers_root, build_center, build_radius, max_shift,
+    #     work_reach}, ...], 구역 키로 정렬돼 있고 **활성 구역이 없으면 빈 목록**이다.
+    #   🔴 spec §9-1 표에서 이것이 **기하 축의 유일한 입력**이다. 이게 없으면 zone 사건에서
+    #      파라미터(어느 구역을, 무엇을 덮은 채로)를 유도하는 것이 원리적으로 불가능하다.
+    #   ★ 선언하지 않으면 pydantic 이 조용히 버린다 — 호출자가 실어 보내도 서비스는 못 보고,
+    #     증상은 **호출자 쪽 결함처럼** 보인다. 실측(선언 전, 2026-08-29):
+    #     `MacroRequest(kind="zone", zones=[...]).zones` -> AttributeError, 즉 값이 사라진다.
+    #     게이트: `test_zone_channel.py::test_zones_survives_the_pydantic_boundary`.
+    zones: Optional[List[Dict[str, Any]]] = None
     valid: Optional[List[str]] = None
 
 
@@ -762,7 +773,7 @@ def _llm_input(r: MacroRequest) -> str:
     기존 호출자가 깨지지 않게.
     """
     if not (r.nl and r.nl.strip()):
-        return _state_line(r) + _geometry_block(r)
+        return _state_line(r) + _geometry_block(r) + _zones_block(r)
     lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip(), getattr(r, "nl_mode", None))]
     if r.descriptors and len(r.descriptors) == len(DESCRIPTOR_NAMES):
         lines += ["",
@@ -770,7 +781,7 @@ def _llm_input(r: MacroRequest) -> str:
                   "each is in [0,1] and means the same thing for any kind of disruption):"]
         for name, v in zip(DESCRIPTOR_NAMES, r.descriptors):
             lines.append("  %-18s = %.2f   (%s)" % (name, float(v), DESCRIPTOR_DOC[name]))
-    return "\n".join(lines) + _geometry_block(r)
+    return "\n".join(lines) + _geometry_block(r) + _zones_block(r)
 
 
 # 각 원시값이 무엇인지 -- 값만 주면 모델이 뜻을 지어낸다. 설명은 **사실**만 적고
@@ -797,9 +808,20 @@ _GEOM_COVERAGE = [
      "transport teams currently gathering"),
     ("zone_teams_covered", "  of which trapped",
      "of those, how many must gather inside the zone (they cannot form where they stand)"),
-    ("zone_relocate_norm", "min_shift_to_clear_m",
-     "smallest rigid translation of the whole build that puts every unfinished goal outside "
-     "the zone; -1 means no such shift exists"),
+    # 🔴 2026-08-29 (spec §1-4, Task T4a): 여기 있던 마지막 한 행을 지웠다 —
+    #     ("zone_relocate_norm", "min_shift_to_clear_m",
+    #      "smallest rigid translation of the whole build that puts every unfinished goal "
+    #      "outside the zone; -1 means no such shift exists"),
+    # 그 값은 `_find_min_translation`(`respec/restage_zone.jl`)이 **푼 답**이다. 답을 프롬프트에
+    # 실으면 측정되는 것이 추론이 아니라 **프롬프트 준수**가 된다 — 이 파일 위(STEP 4 주석과
+    # `_IMPERATIVE` 주석)에 그 실측 선례가 이미 있다: 서술자가 harm=0.02 인데도 "restage 하라"는
+    # 문장을 따라간 결정. T2(합성 레인)가 기하 축에서 변위를 유도하기 시작하면 이 누수는 더
+    # 세진다(정답 이동량을 그대로 보여주는 셈이라 §5-3 의 P-예측이 무의미해진다).
+    # 🔴 **필드 자체는 남긴다** — 위 `MacroRequest.zone_relocate_norm` 은 대리모델 피처이고
+    #    `wm4spacecraft_manufacturing/core/features_agnostic.py:595` 와
+    #    `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl:893` 이 읽는다. 필드를 지우면
+    #    무관한 레인이 깨진다. 지운 것은 **프롬프트 렌더 행 하나**뿐이다.
+    #    게이트: `test_zone_channel.py::test_the_field_survives_even_though_the_row_is_gone`.
 ]
 
 # 두 번째 묶음. `zone_nav_disconnected` 는 일부러 안 싣는다: 결정 경로에서는 통로 flood-fill 을
@@ -846,6 +868,47 @@ def _geometry_block(r: MacroRequest) -> str:
         if r.zone_unfinished_total is not None:
             out.append("  (the build has %s unfinished nodes in total)" % r.zone_unfinished_total)
     return "\n".join(out)
+
+
+# ---- 2026-08-29 (spec §9-1, Task T4a): 살아 있는 구역의 기하 원시값 --------------------------
+# `open_zone_descriptors(env)` 가 잰 것을 **사실만** 산문으로 편다. 규약은 위 `_GEOM_COVERAGE`
+# 와 같다 — **무엇이 있는가만 적고, 무엇을 하라는 절대 적지 않는다.**
+# 🔴 특히 `covers_root` 를 *"루트는 재적치할 수 없으니 빌드 전체를 옮겨라"* 로 번역하지 않는다.
+#    그건 오라클의 **판정(verdict)**이지 증거가 아니고, 그렇게 적는 순간 이 태스크가 (A)에서
+#    막 지운 누수를 다른 문으로 그대로 들이는 셈이 된다. 판정은 모델이 이 사실들에서 한다.
+# ⚠️ 싣는 것은 §9-1 표가 적은 `center · radius · covers` 와 그 root 포함 여부까지다.
+#    `max_shift`/`work_reach`/`build_center`/`build_radius` 는 /propose 레인이 Δ 를 유도할 때
+#    쓰는 값이고, §1-4 가 **결정 레인**의 유도 입력을 center·radius 까지로 못박으므로 여기서는
+#    렌더하지 않는다(필드는 요청에 그대로 남아 있으니 나중에 되살릴 수 있다).
+_ZONE_HEADER = "ACTIVE NO-GO ZONES (geometry as measured; one disc per live zone):"
+
+
+def _zones_block(r: "MacroRequest") -> str:
+    """구역이 하나도 없으면 **빈 문자열** — 비공간 사건의 입력이 바이트 단위로 예전과 같다.
+
+    (`open_zone_descriptors` 가 활성 구역이 없을 때 빈 목록을 내므로, 그 경우가 곧 이 경우다.)
+    """
+    out = ["", _ZONE_HEADER]
+    # 항목의 **형태 검사는 여기 없다**: 필드 타입이 `List[Dict[str, Any]]` 이라 pydantic 이
+    # 경계에서 이미 거른다(실측: 항목에 문자열을 섞으면 `ValidationError: zones.1 Input should
+    # be a valid dictionary`). 여기에 `isinstance` 가드를 또 두면 **도달 불가능한 코드**이고,
+    # 그런 가드는 시험이 없는 척 통과해 "막고 있다"는 거짓 안심을 만든다.
+    for z in (getattr(r, "zones", None) or []):
+        out.append('  zone "%s"' % z.get("key", "?"))
+        if z.get("center") is not None:
+            out.append("    center            = %s" % (list(z["center"]),))
+        if z.get("radius") is not None:
+            out.append("    radius            = %s" % z["radius"])
+        covers = z.get("covers")
+        if covers is not None:
+            out.append("    covers            = %d sub-assembl%s whose staging area this disc "
+                       "overlaps%s"
+                       % (len(covers), "y" if len(covers) == 1 else "ies",
+                          (": " + ", ".join(str(c) for c in covers)) if covers else ""))
+        if z.get("covers_root") is not None:
+            out.append("    root_goals_inside = %s   (delivery goals of the ROOT assembly lie "
+                       "inside this disc)" % ("yes" if z["covers_root"] else "no"))
+    return "\n".join(out) if len(out) > 2 else ""
 
 
 @app.get("/health")
