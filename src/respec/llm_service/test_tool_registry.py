@@ -328,3 +328,70 @@ def test_needs_agent_is_derived_from_function_signatures_not_a_hand_maintained_s
         del _FUNCS["relocate"]
     assert _needs_agent("no_intervention") is False, (
         "reason 만 받는 함수를 agent-taking 으로 오판했다.")
+
+
+# ---- 2026-08-29 (단일 채널): reg 별칭 -- 위 test_tool_registry.py 는 tool_registry 를 그
+# 이름 그대로 import 한다(line 22). 아래 새 시험들만 `reg.` 접두를 쓰므로 별칭을 하나 둔다.
+reg = tool_registry
+
+# ---- 2026-08-29 (단일 채널): 결정 성분이 tool 인자로 들어간다 --------------------------------
+_COMMON = ("macro", "reasoning", "expressible", "ranking")
+
+
+def test_every_tool_carries_the_four_common_args():
+    """🔴 텍스트 OutputField 가 사라지므로 이 넷이 결정의 **유일한** 운반체다."""
+    tools = reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "SwapBattery", "NOOP"])
+    assert len(tools) == 3
+    for t in tools:
+        props = t.format_as_litellm_function_call()["function"]["parameters"]["properties"]
+        for name in _COMMON:
+            assert name in props, "%s 에 %s 가 없다" % (t.name, name)
+
+
+def test_the_unique_args_are_untouched():
+    """음성 대조: 공통 인자를 더하는 것이 접지용 고유 인자를 밀어내면 안 된다."""
+    tools = {t.name: t for t in
+             reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "SwapBattery", "NOOP"])}
+    for name in ("swap_body", "deliver_battery"):
+        p = tools[name].format_as_litellm_function_call()["function"]["parameters"]["properties"]
+        assert p["agent"]["enum"] == ["r1"], "agent enum 이 접지의 재료다"
+    p = tools["no_intervention"].format_as_litellm_function_call()["function"]["parameters"]["properties"]
+    assert p["reason"]["type"] == "string"
+
+
+def test_macro_arg_is_an_enum_of_this_events_legal_macros():
+    """어휘 밖 macro 를 낼 여지를 스키마에서 줄인다(강제는 아니다 -- F10)."""
+    tools = reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "NOOP"])
+    p = tools[0].format_as_litellm_function_call()["function"]["parameters"]["properties"]
+    assert p["macro"]["enum"] == ["Replace", "NOOP"]
+
+
+def test_all_args_are_required():
+    """🔴 `expressible` 이 빠지면 T2 합성의 방아쇠가 사라진다. 스키마에서 요구한다."""
+    tools = reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "SwapBattery", "NOOP"])
+    for t in tools:
+        params = t.format_as_litellm_function_call()["function"]["parameters"]
+        assert set(params["required"]) == set(params["properties"])
+
+
+def test_expressible_description_separates_the_two_events():
+    """🔴 실측(2026-08-29): 옛 문구로는 어휘 밖 사건에서 1/3 만 False 였다. 나머지 둘은
+    reasoning 에서 "근본 원인을 못 고친다" 고 말하면서 True 를 냈다 -- 모델이 "표현 불가" 와
+    "개입 불필요" 를 혼동한다. 개정 문구가 그 둘을 **명시적으로** 가르고, 그때 3/3 이 됐다.
+    이 시험은 그 두 문장이 사라지지 않게 지킨다."""
+    d = reg.COMMON_ARGS(["Replace", "NOOP"])["expressible"]["description"]
+    assert "unnecessary" in d and "outside the menu" in d, \
+        "두 사건을 가르는 문장이 빠지면 발화율이 1/3 로 돌아간다"
+
+
+def test_reasoning_description_asks_for_the_gap_in_words():
+    """`margin` 스칼라를 없앤 대가로 이 문장이 그 자리를 나른다(spec §3-3)."""
+    d = reg.COMMON_ARGS(["Replace", "NOOP"])["reasoning"]["description"]
+    assert "runner-up" in d and "not as a number" in d
+
+
+def test_tool_to_macro_is_the_exact_inverse():
+    """🔴 두 표가 갈리면 `chosen` 이 조용히 틀린다 -- 이 설계에서 `chosen` 은 tool 이름에서만
+    나오므로 이 등식이 곧 결정의 정확성이다."""
+    assert reg.TOOL_TO_MACRO == {v: k for k, v in reg.MACRO_TO_TOOL.items()}
+    assert len(reg.TOOL_TO_MACRO) == len(reg.MACRO_TO_TOOL), "역표가 값 충돌로 줄면 안 된다"

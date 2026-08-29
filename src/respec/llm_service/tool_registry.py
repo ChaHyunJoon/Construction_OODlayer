@@ -85,6 +85,54 @@ def no_intervention(reason: str):
 #    MACRO_TO_TOOL src/respec/llm_service/dspy_service.py` = 0 hits, fix round 1 H6 실측).
 #    두 벌 두면 조용히 갈린다.
 MACRO_TO_TOOL = {"Replace": "swap_body", "SwapBattery": "deliver_battery", "NOOP": "no_intervention"}
+
+# 🔴 tool 이름 -> 매크로 이름. `MACRO_TO_TOOL` 에서 **유도한다** — 손으로 두 벌 적으면 갈린다.
+#    이 설계에서 `chosen` 은 오직 이 표를 통해 나오므로, 여기가 틀리면 결정이 틀린다.
+TOOL_TO_MACRO = {v: k for k, v in MACRO_TO_TOOL.items()}
+assert len(TOOL_TO_MACRO) == len(MACRO_TO_TOOL), \
+    "MACRO_TO_TOOL 이 두 매크로를 같은 tool 에 보낸다 — 역표가 성립하지 않는다"
+
+# ---- 결정 성분을 나르는 공통 인자 (2026-08-29, 단일 채널) ------------------------------------
+# 🔴 왜 인자인가. `tool_choice="required"` 판에서 프로바이더는 tool 호출만 내고 message content
+#    를 비운다. 그러면 텍스트 OutputField 는 `adapters/base.py:168·181` 이 **예외 없이** 전부
+#    `None` 으로 만든다. 즉 강제 하에서 결정을 받을 수 있는 채널은 tool 인자 **하나뿐**이다.
+_EXPRESSIBLE_DESC = (
+    "false if NOTHING in this tool menu can remove the CAUSE of what you observed -- "
+    "i.e. you are calling a tool only because you must, not because it fixes anything. "
+    "Answering NOOP because intervening is unnecessary is NOT this: that is true. "
+    "Set false when the fix this event needs is outside the menu entirely.")
+# 🔴 마지막 두 문장이 하중을 받는다. 실측(2026-08-29): 이 두 문장이 없는 옛 문구
+#    ("false if NO available tool can address what you observed")로는 어휘 밖 사건 셋 중
+#    **하나만** False 였고, 개정 후 3/3 이 됐다. 대조군(진짜 배터리 사건)은 양쪽 다 True —
+#    거짓 양성은 안 생겼다.
+#    ⚠️ 대가: 이 문구는 모델에게 *언제 false 라고 말할지*를 가르친다. 그래서 `expressible ==
+#    False` 비율은 부분적으로 **프롬프트 준수**를 잰다. 세대를 가르는 키는 `decision_source` 다.
+
+_REASONING_DESC = (
+    "one sentence: why this action, and how clearly it beats the runner-up -- "
+    "say that in words (e.g. \"clearly better than X\" / \"only marginally better than X\" / "
+    "\"essentially tied with X\"), not as a number.")
+# 🔴 `margin` 스칼라를 없앤 자리다(spec §3-3). 그 값은 계산된 적이 없는 자기 신고였고 무엇과도
+#    대조된 적이 없다(실측: harm 0.88 사건이 0.5, soc 12% 사건이 0.8). 실측(2026-08-29): 이
+#    문구로 3/3 이 비교 절을 산문에 담았고, 어느 대안보다 나은지까지 말해 숫자보다 정보가 많다.
+
+
+def COMMON_ARGS(valid):
+    """세 tool 이 **전부** 갖는 결정 성분 인자. 고유 인자(`agent`/`reason`)와 합쳐 쓴다.
+
+    🔴 `valid` 를 받는 이유는 `macro` enum 이 **이 사건의** legal 매크로여야 하기 때문이다.
+    모듈 상수로 굳히면 사건마다 다른 메뉴를 못 따라간다.
+    """
+    return {
+        "macro": {"type": "string", "enum": list(valid),
+                  "description": "the macro name this call enacts"},
+        "reasoning": {"type": "string", "description": _REASONING_DESC},
+        "expressible": {"type": "boolean", "description": _EXPRESSIBLE_DESC},
+        "ranking": {"type": "string",
+                    "description": "ALL legal macros ordered best-first, comma separated"},
+    }
+
+
 _FUNCS = {"swap_body": swap_body, "deliver_battery": deliver_battery,
           "no_intervention": no_intervention}
 
@@ -109,8 +157,12 @@ def build_tools(agents, valid) -> List[dspy.Tool]:
 
     🔴 로봇 id 가 하나도 없으면 로봇을 지목하는 tool 을 **아예 안 낸다.** 빈 enum 은 provider 가
     거부하거나 아무 문자열이나 통과시키는데, 후자면 ②접지가 조용히 뚫린다.
+
+    🔴 2026-08-29: 각 tool 이 `COMMON_ARGS(valid)` 를 함께 싣는다 — 그것이 이 설계에서 결정을
+    받는 유일한 채널이다.
     """
     agent_ids = [a["id"] for a in (agents or []) if a.get("id")]
+    common = COMMON_ARGS(valid)
     out = []
     for macro in (valid or []):
         name = MACRO_TO_TOOL.get(macro)
@@ -119,9 +171,11 @@ def build_tools(agents, valid) -> List[dspy.Tool]:
         if _needs_agent(name):
             if not agent_ids:
                 continue
-            out.append(dspy.Tool(_FUNCS[name], args=_agent_arg(agent_ids)))
+            args = dict(_agent_arg(agent_ids))
         else:
-            out.append(dspy.Tool(_FUNCS[name], args={"reason": {
+            args = {"reason": {
                 "type": "string",
-                "description": "what you observed that made intervention unnecessary"}}))
+                "description": "what you observed that made intervention unnecessary"}}
+        args.update(common)
+        out.append(dspy.Tool(_FUNCS[name], args=args))
     return out
