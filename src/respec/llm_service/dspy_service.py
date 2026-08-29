@@ -66,6 +66,20 @@ for _d in WM_CODE_DIRS:
         sys.path.append(_d)
 import wm_datasets                                            # noqa: E402
 
+# ---- tool 레인 (Plan A, Task 6) --------------------------------------------------------------
+# 🔴 C9: 이 두 줄은 **`import dspy`(위) 아래**에 있어야 한다. 계획서 본문은 "상단에" 라고 적지만
+#    그러면 44행의 numpy/sklearn-before-dspy 계약이 깨진다(`tool_registry` 가 dspy 를 끌고 온다).
+#    `tool_registry.py` 자신도 같은 순서 가드를 독립적으로 들고 있다(그 파일의 H2 주석) — 둘 중
+#    하나만 남기지 말 것. 게이트: test_macro_returns_tool_call.py::
+#    test_tool_registry_is_imported_below_import_dspy · test_tool_registry.py::
+#    test_tool_registry_import_does_not_poison_a_later_sklearn_import
+# ⚠️ `insert(0, ...)` 이 아니라 `append` 인 이유는 위 WM_CODE_DIRS 와 같다 — 이 폴더에는
+#    `server.py`·`schema.py` 처럼 표준/서드파티와 이름이 겹칠 수 있는 모듈이 산다.
+if HERE not in sys.path:
+    sys.path.append(HERE)
+from tool_registry import MACRO_TO_TOOL, build_tools           # noqa: E402
+from dspy.utils.exceptions import AdapterParseError            # noqa: E402
+
 
 def _model_tag(model=None):
     """'gpt-4o' -> 'gpt4o'. 컴파일 산출물 파일명에 쓰는 태그(dspy_real_experiment.py 와 동일 규칙)."""
@@ -850,26 +864,117 @@ def health():
             "policies": ["dspy", "surrogate"]}
 
 
+# ---- tool 레인 (Plan A, Task 6) --------------------------------------------------------------
+# 🔴 이 세 이름은 `SelectTool` 의 필드명과 **같아야 한다.** `Signature.delete` 는 없는 이름에
+#    에러를 내지 않으므로(`dspy/signatures/signature.py:446`, `fields.pop(name, None)`), 갈리면
+#    아래 두 축약이 조용히 아무것도 안 지운다 — C8 축약은 `tools: []` 를 provider 로 흘려 400 을
+#    받고, §4-1 구제는 같은 파싱 실패를 그대로 다시 밟는다. **둘 다 에러가 안 난다.**
+#    게이트: test_macro_returns_tool_call.py::test_the_stripped_field_names_are_real_fields...
+_FC_IN, _FC_OUT, _EXPR = "tools", "action", "expressible"
+
+
+def _first_tool_call(action):
+    """`dspy.ToolCalls` 에서 (이름, 인자, 개수) 를 꺼낸다. 안 불렀으면 (None, {}, 0).
+
+    하나만 본다 — 이 레인의 결정은 사건당 행동 하나다. 여럿 오면 첫 번째만 쓰고 나머지는
+    버리되, 개수를 함께 돌려줘 응답의 `tool_calls_n` 에 남긴다(조용히 버리지 않는다).
+    """
+    calls = list(getattr(action, "tool_calls", None) or [])
+    if not calls:
+        return None, {}, 0
+    c = calls[0]
+    return getattr(c, "name", None), dict(getattr(c, "args", None) or {}), len(calls)
+
+
+def _ask(prog, sig, line, valid, tools):
+    """프로그램을 한 번 부른다.
+
+    🔴 `tools` 가 비면 그 kwarg 를 **아예 안 넘긴다**(C8). `signature` 는 dspy 의 특권 kwarg 라
+    (`predict.py:144`) 이 한 번의 호출에만 적용되고 `prog.signature` 는 안 건드린다.
+    """
+    kw = {"signature": sig, "state": line, "valid_actions": ", ".join(valid)}
+    if tools:
+        kw[_FC_IN] = tools
+    pred = prog(**kw)
+    _state["calls"] += 1
+    return pred
+
+
 @app.post("/macro")
 def macro(req: MacroRequest):
     valid = _valid_for(req)
     prog = _state["program"] or _load_program()
     line = _llm_input(req)          # 문장(있으면) / 없으면 예전처럼 파싱된 필드
+    # 🔴 `req.valid` 가 아니라 **해소된 메뉴**(`valid`)를 넘긴다. `req.valid` 는 fault 사건에서
+    #    언제나 None 이다 — `policy.jl:553-554` 가 `valid_macros` 의 결과가 비면 payload 에 키를
+    #    안 싣고, `valid_macros`(`policy.jl:362`)는 Battery/Zone 이 아닌 truth 에 `String[]` 을
+    #    낸다. 날것을 주면 **모든 fault 사건에서 tool 레인이 조용히 꺼진다** — 그리고 이 레포의
+    #    스윕 도구는 `/health` 도 per-decision `error` 도 안 읽으므로 아무도 그 말을 안 해 준다.
+    tools = build_tools(getattr(req, "agents", None), valid)
+    # ---- C8: 부를 tool 이 하나도 없는 경우 -------------------------------------------------
+    # `build_tools` 가 `[]` 를 내는 것은 정상이다(Task 5 가 그렇게 만들었다: 실재 로봇 id 가
+    # 없으면 로봇을 지목하는 tool 을 아예 안 낸다). 그 빈 목록을 native FC 에 그대로 넘기면
+    # `lm_kwargs["tools"] = []` 가 되고(실측: `adapters/base.py:114`) provider 가 400 을 낸다.
+    # 그러니 tool 입출력 필드를 뺀 시그니처로 **tool 없이 묻는다.** `expressible` 은 남긴다 —
+    # 메뉴가 비었을 때야말로 "어떤 tool 로도 안 된다" 가 답이어야 하는 사건이다.
+    # 그 사실은 `tools_offered == 0` 으로 남는다: "부를 tool 이 없었다"(0)와 "있었는데 안
+    # 불렀다"(>0, `tool_called is None`)는 **다른 사건**이고 뭉개지 않는다.
+    sig = prog.signature if tools else prog.signature.delete(_FC_IN).delete(_FC_OUT)
+    # 🔴 배선이 아니라 **발화**를 잰다. 그리고 이 요청이 **실제로 쓴** 시그니처로 잰다 — 모듈
+    #    상수나 `prog.signature` 로 재면 위 C8 축약이 탄 요청에서 "native FC 가 발화했다" 고
+    #    답하면서 provider 로 나가는 tools 는 0개인 상태를 보고하게 된다.
+    native_fc = native_fc_active(sig)
+    pred, err, tool_lane_err = None, None, None
     try:
-        pred = prog(state=line, valid_actions=", ".join(valid))
-        _state["calls"] += 1
+        pred = _ask(prog, sig, line, valid, tools)
+    except AdapterParseError as e:
+        # ---- spec §4-1: **tool 실패가 결정을 지우면 안 된다** --------------------------------
+        # `expressible` 이 bool 로 안 읽히면(`"maybe"`/`""`) 여기로 온다. 예전 포괄 `except` 는
+        # 그것을 `chosen=""` -> NOOP + `coerced=True` 로 바꿨다 = **tool 레인 필드 하나의 파싱
+        # 문제가 결정 전체를 지웠다.** 그래서 tool 레인 필드를 전부 뺀 **Plan A 이전의 결정
+        # 시그니처**로 한 번 다시 묻는다. 성공하면 `error` 는 None 으로 남는다 — 여기에 문자열을
+        # 넣으면 `policy.jl:1036-1037` 의 `policy_entry` 가 `error !== nothing` 을 보고 그 레인을
+        # `available=false` 로 버려서, 살려낸 결정이 줄리아 경계에서 도로 지워진다(실측).
+        # 레인이 실패한 사실 자체는 `tool_lane_error` 가 따로 나른다.
+        # ⚠️ **`AdapterParseError` 에만 건다.** 실제 프로바이더 장애는 전부 `LMError` 이고
+        #    (`dspy/clients/lm.py:185` 가 감싼다), 거기서 다시 물으면 장애마다 과금 leg 을
+        #    배로 태우면서 아무것도 못 건진다. 음성 대조 검사가 그 경계를 못박는다.
+        # 💰 대가: 파싱 실패 사건 하나당 완료 leg 이 3 -> 최대 4 가 된다(Task 4 의 과금 표).
+        #    그 사건은 오늘 **결정을 통째로 잃고 있으므로** 그 한 leg 이 사는 값이다.
+        tool_lane_err = "%s: %s" % (type(e).__name__, e)
+        sig = prog.signature.delete(_FC_IN).delete(_FC_OUT).delete(_EXPR)
+        native_fc = native_fc_active(sig)
+        try:
+            pred = _ask(prog, sig, line, valid, None)
+        except Exception as e2:
+            err = "%s: %s" % (type(e2).__name__, e2)
+    except Exception as e:                      # 서비스가 죽지 않게: 줄리아가 canonical 로 폴백할 수 있도록 표시
+        err = "%s: %s" % (type(e).__name__, e)
+
+    if pred is not None:
         chosen = (getattr(pred, "macro", "") or "").strip()
         raw_rank = (getattr(pred, "ranking", "") or "").strip()
         reasoning = (getattr(pred, "reasoning", "") or "").strip()
+        # 🔴 사용자 결정 ①: `bool()` 로 **감싸지 않는다.** 어댑터는 이미 진짜 bool 로 파싱하므로
+        #    (`parse_value(v, bool)`), 감싸면 파싱이 깨졌을 때 `bool("False") is True` 라
+        #    **거짓 True** 가 조용히 기록된다. 못 읽었으면 None = "못 쟀다"(spec §9-2).
+        expressible = getattr(pred, _EXPR, None)
+        expressible = expressible if isinstance(expressible, bool) else None
+        tool_called, tool_args, n_calls = _first_tool_call(getattr(pred, _FC_OUT, None))
         try:
             margin = float(getattr(pred, "margin", 0.0) or 0.0)
         except Exception:
             margin = 0.0
-        err = None
-    except Exception as e:                      # 서비스가 죽지 않게: 줄리아가 canonical 로 폴백할 수 있도록 표시
-        chosen, raw_rank, reasoning, margin, err = "", "", "", 0.0, "%s: %s" % (type(e).__name__, e)
+    else:
+        chosen, raw_rank, reasoning, margin = "", "", "", 0.0
+        expressible, tool_called, tool_args, n_calls = None, None, {}, 0
 
     # 어휘 밖 / 이 이벤트에 불법인 응답은 NOOP 으로 강제(오프라인 평가와 동일 규칙).
+    # 🔴 강등 **전** 이름을 따로 붙잡는다. 일치 판정(`macro_tool_agree`)이 재려는 것은 "채점
+    #    어휘와 행동 어휘가 갈리는 빈도" 이므로 **모델이 말한 것**으로 재야 한다. 계획서 본문은
+    #    이 계산을 강등 뒤에 뒀는데, 그러면 어휘 밖 macro 를 낸 사건에서 일치 여부가 모델의
+    #    출력이 아니라 `NOOP` 에 대해 재어진다 — 강등 사실은 이미 `coerced` 가 나른다.
+    said = chosen
     coerced = chosen not in valid
     if coerced:
         chosen = "NOOP" if "NOOP" in valid else valid[0]
@@ -880,7 +985,25 @@ def macro(req: MacroRequest):
             ranking.append(m)
     return {"policy": "dspy:%s" % MODEL, "chosen": chosen, "ranking": ranking,
             "margin": margin, "reasoning": reasoning, "valid": valid,
-            "coerced": coerced, "state": line, "llm_calls": _state["calls"], "error": err}
+            "coerced": coerced, "state": line, "llm_calls": _state["calls"], "error": err,
+            # ---- tool 레인 (Plan A) ----------------------------------------------------------
+            "tool_called": tool_called,
+            "tool_args": tool_args,
+            # 여럿 왔으면 첫 번째만 썼다는 사실을 남긴다(조용히 버리지 않는다).
+            "tool_calls_n": n_calls,
+            # C8: 0 = **부를 tool 이 없었다**(레인이 꺼졌다). >0 인데 `tool_called is None`
+            #     = 있었는데 **안 불렀다**. 두 사건을 한 값으로 뭉개지 않는다.
+            "tools_offered": len(tools),
+            "expressible": expressible,
+            # 배선이 아니라 발화. 이 요청이 실제로 쓴 시그니처 기준(None = 못 쟀다).
+            "native_fc": native_fc,
+            # §4-1: 레인은 실패했는데 결정은 살아남은 사건. `error` 와 **다른 자리**여야 한다 —
+            #       `error` 에 넣으면 줄리아의 `policy_entry` 가 그 결정을 통째로 버린다.
+            "tool_lane_error": tool_lane_err,
+            # 🔴 재기만 한다. 강제하지 않는다 (spec §4-1). 부른 tool 이 없으면 None =
+            #    "못 쟀다" 이고, False("재서 어긋났다") 와 섞지 않는다.
+            "macro_tool_agree": (None if tool_called is None
+                                 else tool_called == MACRO_TO_TOOL.get(said))}
 
 
 @app.post("/decide")
@@ -899,7 +1022,19 @@ def decide(req: MacroRequest):
     d = macro(req)                                   # dspy 정책(위 엔드포인트 재사용)
     out["dspy"] = {"chosen": d["chosen"], "ranking": d["ranking"], "margin": d["margin"],
                    "rationale": d["reasoning"], "policy": d["policy"],
-                   "coerced": d["coerced"], "error": d["error"]}
+                   "coerced": d["coerced"], "error": d["error"],
+                   # ---- tool 레인 (Plan A) ------------------------------------------------
+                   # 🔴 `/macro` 에는 이 레포에 **호출자가 없다**(실측: 정의 둘 + 주석 하나).
+                   #    라이브 레인은 `/decide` 로만 들어온다(`tools/monitor/policy.jl:559`).
+                   #    여기 안 실으면 ②접지가 실제로 도는 곳에서 영원히 안 보인다.
+                   # ⚠️ 여기까지가 Plan A 다. 줄리아의 `policy_entry`(`policy.jl:1034-1046`)는
+                   #    키 목록을 손으로 들고 있어 아래 여덟을 **아직 결정 행으로 안 나른다** —
+                   #    그 배선(`run_demo.jl` 의 `this_decision`)은 Plan B 의 첫 태스크다.
+                   "tool_called": d["tool_called"], "tool_args": d["tool_args"],
+                   "tool_calls_n": d["tool_calls_n"], "tools_offered": d["tools_offered"],
+                   "expressible": d["expressible"], "native_fc": d["native_fc"],
+                   "tool_lane_error": d["tool_lane_error"],
+                   "macro_tool_agree": d["macro_tool_agree"]}
 
     scored, err = surrogate_rank(req, valid)         # surrogate 정책(배포 SurrogateV2)
     if scored:
