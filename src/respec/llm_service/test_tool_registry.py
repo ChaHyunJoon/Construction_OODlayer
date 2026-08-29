@@ -43,7 +43,15 @@ def _by_name(tools):
 
 
 def test_agent_enum_is_exactly_the_live_ids():
-    """🔴 환각 id 를 디코드 시점에 막는 자리. enum 밖은 모델이 생성할 수 없다."""
+    """🔴 모델에게 **보여주는** id 가 살아 있는 것뿐인지 재는 자리.
+
+    🔴 2026-08-29 정정. 이 독스트링에 있던 *"환각 id 를 디코드 시점에 막는 자리. enum 밖은
+    모델이 생성할 수 없다"* 는 **거짓이다.** 이 검사가 재는 것은 `enum` 의 **내용물**이지
+    집행이 아니다. 실측: `format_as_litellm_function_call()` 의 `parameters` 키는
+    `{properties, required, type}` — `strict` 도 `additionalProperties` 도 없고, dspy 3.3.0 의
+    `dspy.Tool` 에는 `strict` 필드 자체가 없다. `tool_choice` 도 안 보낸다. 비-strict `enum`
+    에 프로바이더가 문법 제약을 거는지는 **안 잰 프로바이더 동작**이다(라이브 호출이 있어야
+    판정된다). 그러니 이 검사의 초록을 "환각 id 가 불가능하다" 로 읽지 말 것."""
     got = _by_name(build_tools(AGENTS, ["NOOP", "Replace", "SwapBattery"]))
     for name in ("swap_body", "deliver_battery"):
         enum = got[name]["parameters"]["properties"]["agent"]["enum"]

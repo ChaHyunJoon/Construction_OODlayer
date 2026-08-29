@@ -219,6 +219,57 @@ def test_a_field_level_parse_failure_does_not_erase_the_decision():
     assert out["tool_called"] is None
     assert out["macro_tool_agree"] is None
     assert out["native_fc"] is False, "구제 호출은 tool 필드가 없다 = native FC 는 안 탔다"
+    # 🔴 F2: 이 행의 C8 두 키는 "메뉴가 있었는데 거절했다" 와 **같다.** 구제 호출은
+    #    `tools=None` 이라 부를 수 없었는데도 개수는 첫 시도의 것이 남는다. 아래
+    #    `test_a_parse_failure_row_is_not_a_declined_menu` 가 그 충돌을 정면으로 못박는다.
+    assert out["tools_offered"] > 0, "첫 시도의 개수가 남아 있어야 한다(C8 ③의 전제)"
+
+
+def test_a_parse_failure_row_is_not_a_declined_menu():
+    """🔴 F2 — 이 레인의 헤드라인 숫자(거절률)가 파싱 실패율만큼 부풀려지는 자리.
+
+    §4-1 구제 호출은 시그니처에서 tool 필드를 빼고 `tools=None` 으로 다시 묻는다 = 그 요청은
+    tool 을 **부를 수 없었다.** 그런데 `tools_offered` 는 첫 시도의 개수를 그대로 나르므로,
+    그 행은 C8 의 두 키(`tools_offered > 0` · `tool_called is None`)만 보면 "메뉴가 있었는데
+    모델이 거절했다" 와 **글자 그대로 같다.** 이 레포는 같은 모양 — 한 레인의 사건이 다른
+    레인의 버킷에 실려 fault 발화율이 100% vs 23% 로 읽힌 것 — 을 이미 한 번 밟았다.
+
+    설계 결정: **새 필드를 더하지 않는다.** 가르는 키(`tool_lane_error`)가 이미 두 엔드포인트의
+    응답에 실려 있다. 대신 그 규칙이 주석에만 살지 않도록 여기서 **두 행을 나란히 만들어**
+    (a) C8 두 키로는 구별 불가이고 (b) `tool_lane_error` 가 실제로 가른다는 것을 못박는다.
+
+    ⚠️ `native_fc` 로 가르지 말 것 — 여기서는 갈리지만(False vs True), 그건 `_FCDummy` 가
+    native FC 를 켜 주기 때문이다. native FC 를 안 켜는 프로바이더에서는 거절 행도 False 라
+    이 축은 두 사건을 못 가른다. 가르는 키는 `tool_lane_error` 하나다."""
+    # ③ 파싱 실패 -> 구제. tool 을 부를 수 **없었다**.
+    _install(_answer(expressible="maybe", macro="SwapBattery",
+                     ranking="SwapBattery, NOOP, Replace", margin="0.7"),
+             _answer(expressible="maybe", macro="SwapBattery",
+                     ranking="SwapBattery, NOOP, Replace", margin="0.7"),
+             _answer(macro="SwapBattery", ranking="SwapBattery, NOOP, Replace", margin="0.7"),
+             fc=True)
+    salvaged = svc.macro(_req())
+
+    # ② 진짜 거절. 메뉴가 있었고, 부를 수 있었고, 안 불렀다.
+    _install(_answer(expressible="False", action={"tool_calls": []}, macro="NOOP"), fc=True)
+    declined = svc.macro(_req())
+
+    # (a) C8 의 두 키만으로는 구별 불가 — 이 단언이 초록인 동안 "tools_offered > 0 이고
+    #     tool_called is None 이면 거절" 은 **거짓 규칙**이다.
+    assert (salvaged["tools_offered"] > 0, salvaged["tool_called"]) == \
+           (declined["tools_offered"] > 0, declined["tool_called"]), \
+        "두 행이 C8 두 키에서 갈렸다면 이 검사의 전제가 바뀐 것이다 — 불변식 주석을 고칠 것"
+
+    # (b) 가르는 키는 `tool_lane_error` 다.
+    assert salvaged["tool_lane_error"] is not None, "부를 수 없었던 행이 거절과 구별 불가가 됐다"
+    assert declined["tool_lane_error"] is None, "거절 행에 레인 오류가 붙었다 — 규칙이 반대로 샌다"
+
+    # (c) 소비자 규칙 자체를 돌려 본다: 거절로 세어야 하는 것은 한 행뿐이다.
+    def is_declined(row):
+        return (row["tools_offered"] > 0 and row["tool_called"] is None
+                and row["tool_lane_error"] is None)
+
+    assert [is_declined(r) for r in (salvaged, declined)] == [False, True]
 
 
 def test_a_provider_failure_is_not_retried_and_is_not_salvaged():

@@ -33,7 +33,19 @@ python-pptx>=1.0.2          # make_evolution_deck.py (presentation build only)
 # ---- LLM decision service (src/respec/llm_service) -------------------------
 # Kept in sync with src/respec/llm_service/requirements.txt, which lists the
 # subset needed to run the service alone.
-dspy>=3.2.1
+# 🔴 **핀이다. 범위로 되돌리지 말 것.** 이 레인(Plan A, tool 호출)은 dspy 의 **비공개
+# 표면**을 타고 있고, 그것이 깨질 때 **아무것도 안 붉어진다** — 이 게이트들을 도는 CI 가 없다.
+#   · `adapter._get_tool_call_input_field_name` / `_get_tool_call_output_field_name` (비공개)
+#     -> `native_fc_active()` 가 이 둘을 부른다. 마이너 범프에서 이름이 바뀌면 그 함수의
+#        포괄 `except Exception` 이 `AttributeError` 를 삼켜 **모든 요청에 영원히 None** 을
+#        낸다 = 그 함수의 독스트링이 "라이브에서는 도달 불가" 라고 적은 바로 그 상태.
+#   · `adapter.use_native_function_calling` · `_call_preprocess`
+#   · `Signature.delete` 의 `pop(name, None)` 의미론 (C8 축약 · §4-1 구제가 이것에 기댄다)
+#   · `dspy.clients.openai_format` 의 `if request.tools:` — 빈 리스트가 falsy 로 떨어져
+#     LM 경계에서 키가 사라지는 동작 (C8 축약의 근거)
+#   · `dspy.utils.exceptions.AdapterParseError` — §4-1 구제가 **이 타입에만** 걸린다
+# 실측 설치본 = 3.3.0. 올릴 때는 위 다섯을 손으로 다시 재고 올릴 것.
+dspy==3.3.0
 openai>=2.48.0
 anthropic>=0.40
 fastapi>=0.110

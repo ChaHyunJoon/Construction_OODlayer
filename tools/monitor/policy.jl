@@ -546,7 +546,14 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 서비스는 별도 프로세스라 환경변수로는 못 미치므로 요청에 실어 보낸다. LLM_NL_MODE=raw 로 옛 동작.
     payload["nl_mode"] = lowercase(get(ENV, "LLM_NL_MODE", "observation"))
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
-    # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 — 여기 없는 id 는 모델이 못 만든다.
+    # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 = 모델에게 **보여주는** id 가 이것뿐이다.
+    # 🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 못 만든다"* 는 **거짓이다.**
+    #    디코드 시점 차단은 이 레인에 **없다.** 실측: `format_as_litellm_function_call()` 이 내는
+    #    `parameters` 의 키는 `{properties, required, type}` 뿐이고 `strict` 도
+    #    `additionalProperties` 도 없다. dspy 3.3.0 의 `dspy.Tool` 에는 `strict` 필드 자체가
+    #    없고, `tool_choice` 는 이 레인 어디서도 안 보낸다. 비-strict `enum` 에 프로바이더가
+    #    문법 제약을 거는지는 **안 잰 프로바이더 동작**이라 라이브 호출 없이는 판정 못 한다.
+    #    → 환각 id 방어를 이 채널에 기대지 말 것. 거르는 자리는 받는 쪽(줄리아 경계)이다.
     agents === nothing || (payload["agents"] = agents)
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.

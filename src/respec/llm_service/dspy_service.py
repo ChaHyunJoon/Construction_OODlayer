@@ -514,8 +514,15 @@ class MacroRequest(BaseModel):
     #   고르게 한다. 상태를 아는 쪽(줄리아)이 계산해 실어 보내는 것이 유일하게 옳은 배치다.
     # agents : 이 요청 시점에 **실재하는** 로봇 목록 [{id, label}, ...].
     #   `llm_bridge.open_agent_descriptors` 가 만드는 형태를 그대로 받는다.
-    #   ②접지의 재료다 — tool 파라미터의 enum 이 이 목록에서만 나오므로, 여기 없는 id 는
-    #   모델이 **생성할 수 없다**(디코드 시점 차단).
+    #   ②접지의 재료다 — tool 파라미터의 enum 이 이 목록에서만 나오므로, 모델은 **살아 있는
+    #   id 만 담긴 메뉴를 본다.**
+    #   🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 생성할 수 없다(디코드 시점
+    #      차단)"* 는 **거짓이다.** 실측: `format_as_litellm_function_call()` 의 `parameters` 는
+    #      `{properties, required, type}` 뿐 — `strict` 도 `additionalProperties` 도 없고,
+    #      dspy 3.3.0 의 `dspy.Tool` 에는 `strict` 필드 **자체가 없다**(`model_fields` =
+    #      arg_desc·arg_types·args·desc·func·has_kwargs·name). `tool_choice` 도 안 보낸다.
+    #      출하되는 것은 **보여준 것**이지 강제한 것이 아니다. 비-strict `enum` 에 프로바이더가
+    #      문법 제약을 거는지는 **안 잰 프로바이더 동작**이고, 라이브 호출 없이는 못 정한다.
     # ★ 선언하지 않으면 pydantic 이 조용히 버린다. 그러면 enum 이 빈 목록으로 굳어 tool
     #   호출이 전부 막히는데, 원인이 호출자에 있는 것처럼 보인다.
     agents: Optional[List[Dict[str, str]]] = None
@@ -933,8 +940,10 @@ def macro(req: MacroRequest):
     #       2994 -> 3960자로 966자 부풀린다. 모델이 읽을 것이 없는 필드다.
     #
     # `expressible` 은 남긴다 — 메뉴가 비었을 때야말로 "어떤 tool 로도 안 된다" 가 답이어야
-    # 하는 사건이다. 그리고 그 사실은 `tools_offered == 0` 으로 남는다: "부를 tool 이
-    # 없었다"(0)와 "있었는데 안 불렀다"(>0, `tool_called is None`)는 **다른 사건**이다.
+    # 하는 사건이다. 그리고 그 사실은 `tools_offered == 0` 으로 남는다.
+    # ⚠️ 그 두 사건("없었다" 0 / "안 불렀다" >0)이 전부라고 읽지 말 것 — **세 번째가 있다**
+    #    (구제 호출은 tool 을 부를 수 **없었는데** 첫 시도의 개수를 그대로 나른다). 셋의
+    #    전체 목록과 소비자 규칙은 아래 반환 dict 의 `tools_offered` 주석에 한 벌만 둔다.
     sig = prog.signature if tools else prog.signature.delete(_FC_IN).delete(_FC_OUT)
     # 🔴 배선이 아니라 **발화**를 잰다. 그리고 이 요청이 **실제로 쓴** 시그니처로 잰다 — 모듈
     #    상수나 `prog.signature` 로 재면 위 C8 축약이 탄 요청에서 "native FC 가 발화했다" 고
@@ -966,6 +975,10 @@ def macro(req: MacroRequest):
         #    진짜 비용이고, 여기 적어 둔다.
         #    ⚠️ `_state["calls"]` 는 구제가 성공해도 **+1** 이다(실측). 실패한 `_ask` 는
         #       증가 전에 던진다. 즉 `llm_calls` 는 leg 수가 아니라 "예측을 낸 호출" 수다.
+        # 🔴 이 문자열이 **C8 ③을 ②에서 가르는 유일한 키다.** 아래 구제 호출은 `tools=None`
+        #    이라 tool 을 부를 수 없는데 `tools_offered` 는 첫 시도의 개수를 그대로 나르므로,
+        #    이것을 안 남기면 그 행은 "메뉴가 있었는데 모델이 거절했다" 와 구별 불가가 된다
+        #    (전체 서술은 반환 dict 의 `tools_offered` 주석).
         tool_lane_err = "%s: %s" % (type(e).__name__, e)
         sig = prog.signature.delete(_FC_IN).delete(_FC_OUT).delete(_EXPR)
         native_fc = native_fc_active(sig)
@@ -1018,8 +1031,26 @@ def macro(req: MacroRequest):
             "tool_args": tool_args,
             # 여럿 왔으면 첫 번째만 썼다는 사실을 남긴다(조용히 버리지 않는다).
             "tool_calls_n": n_calls,
-            # C8: 0 = **부를 tool 이 없었다**(레인이 꺼졌다). >0 인데 `tool_called is None`
-            #     = 있었는데 **안 불렀다**. 두 사건을 한 값으로 뭉개지 않는다.
+            # C8 불변식 — **세 사건이다.** 둘로 읽으면 세 번째가 두 번째 버킷으로 샌다.
+            #   ① `tools_offered == 0`  = **부를 tool 이 없었다**(레인이 꺼졌다).
+            #   ② `> 0` · `tool_called is None` · `tool_lane_error is None`
+            #        = 메뉴가 있었는데 **안 불렀다**(모델의 거절). 이 레인이 재려는 숫자.
+            #   ③ `> 0` · `tool_called is None` · `tool_lane_error is not None`
+            #        = **부를 수 없었다.** §4-1 구제 호출은 시그니처에서 tool 필드를 빼고
+            #          `tools=None` 으로 다시 묻는다 — 그런데 이 값은 구제 호출의 0 이 아니라
+            #          **첫 시도의 개수를 그대로 나른다.**
+            # 🔴 2026-08-29 정정. 여기 있던 *"0 / >0 두 사건"* 서술은 불완전했고, 그래서
+            #    **거짓이었다** — ③이 ②와 글자 그대로 같은 모양이라 ②의 버킷에 들어앉는다.
+            #    귀결: 거절률이 **파싱 실패율만큼 부풀려진 채** 읽힌다. 이 레포는 같은 모양
+            #    (한 레인의 사건이 다른 레인의 버킷에 실려 fault 발화율이 100% vs 23%)을
+            #    이미 한 번 밟았다.
+            # 🔴 새 필드를 더하지 않는다 — 가르는 키가 이미 응답에 있다. 소비자 규칙:
+            #      거절 = `tools_offered > 0 and tool_called is None and tool_lane_error is None`
+            #    ⚠️ `native_fc` 로 가르지 말 것. ③에서 False 인 것은 맞지만 native FC 를 안 켜는
+            #       프로바이더에서는 ②도 False 다 — 가르는 키는 `tool_lane_error` **하나**다.
+            #    게이트: `test_macro_returns_tool_call.py` 의
+            #      `test_a_parse_failure_row_is_not_a_declined_menu` (두 행을 나란히 만들어
+            #      C8 의 두 키로는 구별 불가임을, 그리고 무엇이 가르는지를 못박는다).
             "tools_offered": len(tools),
             "expressible": expressible,
             # 배선이 아니라 발화. 이 요청이 실제로 쓴 시그니처 기준(None = 못 쟀다).
