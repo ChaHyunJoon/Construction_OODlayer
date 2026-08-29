@@ -33,12 +33,21 @@
 | **T1** | ✅ 완료 (검증 2라운드) | `bd64ba11` → `3965d061` → `01cee573` | **155 passed / 0 failed** |
 | **T2** | ✅ 완료 (검증 2라운드) | `f1dbee69` → `c48ffc95` → `6bb875ad` | **170 passed / 0 failed** |
 | **T3** | ✅ 완료 (검증 1라운드) | `198d0440` → `d2c408a1` | **124 passed / 48 failed** ← 설계대로 |
-| T4~T7 | ⬜ 미착수 | — | — |
+| **T4** | ✅ 완료 (음성 대조 6종) | `7d525078` | **168 passed / 0 failed** |
+| T5~T7 | ⬜ 미착수 | — | — |
 
-🔴 **지금의 HEAD 는 안전한 정지점이 아니다.** T1 이 공통 인자 넷을 tool 스키마에 얹은 순간부터
-`dspy_service.py` 가 그 넷을 `tool_args` 에 그대로 실어 보내고, 줄리아 `ground_tool_args` 가
-전 사건에서 `reject:off_schema_param` 을 낸다(실측, §0-B ①). 게다가 T3 이후 `macro()` 는 매
-호출에서 `NameError` 로 죽는다. **T4 가 들어오기 전까지 이 트리로 스윕·데모를 돌리지 말 것.**
+✅ **T1~T3 이 열어 둔 두 구멍은 T4 가 닫았다**(실측, §0-B ⑪):
+`macro()` 의 `NameError` 는 사라졌고(가짜 LM 으로 끝까지 태워 `decision_source="tool"` 확인),
+`tool_args` 는 한 키(`agent`)만 실어 `ground_tool_args` 가 더 이상 `reject:off_schema_param` 을
+안 낸다. **파이썬 레인은 이제 돈다.**
+
+🔴 **그래도 아직 스윕을 돌리지 말 것 — 이유가 바뀌었다.** 남은 것은 배선이다:
+① `TOOL_CHOICE_DEFAULT` 가 아직 `None` 이라 **호출을 강제하지 않는다**(실측 호출률 0/3 —
+F3). T5 가 `"required"` 로 되돌린다.
+② 줄리아 `TOOL_LANE_KEYS` 가 아직 옛 열 개라 `decision_source`·`tool_arg_error` 가 **결정
+행에 안 실린다**(그리고 `test/tool_lane_keys_survive.jl` (6)절이 그 사실로 빨갛다). T6 이 닫는다.
+⟹ 지금 돌리면 죽지는 않지만, tool 호출이 거의 안 오고 새 진단 키가 기록에서 빠진 **읽을 수
+없는 스윕**이 된다.
 
 ## 0-B. 실행 중 반증되거나 정정된 것 — **다음 태스크가 이걸 안 읽으면 같은 자리를 다시 밟는다**
 
@@ -118,6 +127,41 @@ T4 의 교차 게이트가 묶는 것은 `_GROUNDING_ARGS` ↔ `TOOL_PARAM_SCHEM
 §3-1 이 `macro` 를 tool 인자로 옮겨 `macro_tool_agree` 를 살린다. 옛 설계서를 들고 T3 을 리뷰하면
 멀쩡한 구현을 결함으로 잡는다(실제로 그럴 뻔했다).
 
+**⑪ T4 실행 결과 — 계획서 Step 3 의 코드를 그대로 쓰면 안 되는 자리가 여섯이었다.**
+전문은 `.superpowers/sdd/2026-08-29-single-channel-tool-lane-plan/task-4-report.md`. 요지:
+(a) 빈 응답 `AdapterParseError` 는 `error` 가 아니라 **`tool_lane_error`** 로 보고한다 —
+§0-B ③ 이 남긴 결정을 그렇게 내렸고, 문자열이 아니라 **예외 타입**으로 가른다(메시지 sniff 는
+dspy 가 문구를 바꾸는 날 조용히 죽는다). 그래서 `no_call` 은 세 하위 사건을 덮고
+`error`·`tool_lane_error`·`tool_calls_n` 이 가른다(새 키 0개).
+(b) 계획서의 새 반환 dict 에 **`tool_minted` 가 빠져 있다** — 그대로 쓰면 `/decide` 가
+`KeyError` 로 죽는다(라이브 레인은 `/decide` 로만 들어온다).
+(c) 계획서 Step 1 의 시험 코드 두 곳이 이 harness 에서 **틀리다**: `agent` 리터럴이 그 파일의
+`AGENTS` 에 없어 조립 시험 넷이 조용히 접지 실패 경로를 재고, `fc=True` 는 `_FCDummy` 가 native
+tool_call 을 직렬화 못 해 `tool_called` 이 **언제나 None** 이 된다(조립 시험은 `fc=False` 여야 한다).
+(d) 🔴 음성 대조 M6 이 **계획서의 가드 하나를 결함으로 잡았다**: `said` 를 접지 실패 시 `None`
+으로 접는 줄은 어떤 시험도 안 붙잡았고(지워도 168 전부 초록), 접지 실패의 대부분이 `agent` 축
+이므로 그 부분모집단 전체를 불일치율의 분모에서 조용히 뺀다. 지웠다.
+
+**⑫ 🔴 §0-B ⑦ 의 "소스 게이트 셋 다 초록" 은 `test/tool_lane_keys_survive.jl` 에 대해 거짓이었다.**
+T4 착수 **전**(`3e62d50e` 의 파이썬)으로 되돌려 잰 값: **152 pass / 13 fail** — (3)절
+"enacted 가 dspy 가 아니면 8키가 전부 nothing 이다" 에서 이미 13개가 빨갰다(뿌리는 하나로 보인다:
+`_MODE[] = :surro` 인데 `d.enacted` 가 `"dspy"` 로 나오고 그 전제가 깨져 아래가 연쇄로 무너진다).
+그 절은 파이썬을 한 줄도 안 읽는 순수 줄리아 mock 이라 **이 레인과 무관하고 T4 의 범위 밖이다.**
+T4 후는 150/15 — 즉 **T4 가 더한 실패는 정확히 2개이고 둘 다 (6)절**(교차언어 키 등호)이며
+T6 이 닫는다. → **이 파일의 초록을 어떤 근거로도 인용하지 말 것. 지금 초록이 아니다.**
+누가 (3)절을 고칠지는 **미정이다** — 이 계획에 그 태스크가 없다.
+
+**⑬ 구조적으로 도달 불가가 된 사건 하나.** "강등 전 macro 로 일치를 잰다" 는 계약이 위반되는
+사건을 **이제 만들 수 없다**: 갈리려면 `MACRO_TO_TOOL[said] == 부른 tool` 이면서
+`TOOL_TO_MACRO[부른 tool] ∉ valid` 여야 하는데, 두 조건이 합쳐지면 `said ∉ valid` 라 T2 의
+`check_tool_args` 가 `macro_outside_menu` 로 먼저 거른다. 계약은 코드에 남기고 시험만 지웠다 —
+T2 의 **검사 순서가 바뀌면 그 사건이 되살아난다.**
+
+**⑭ `native_fc` 의 값 종류가 셋이 됐다.** `True`/`False`/`None`. `no_tools` 행은 LM 을 아예 안
+불렀으므로 `None`("못 쟀다")이지 `False`("물었는데 안 켜졌다")가 아니다. 예전 C8 축약은 실제로
+물어서 `False` 를 쟀다 — 두 값을 접으면 그 두 사건이 섞인다. `policy.jl:1219-1221` 의
+*"`native_fc` 는 null 가능한 넷에 들지 않는다"* 는 주석은 **이제 거짓이다.** T6 이 정정할 것.
+
 ---
 
 ## 0. 이 계획이 닫는 실패 케이스 — 이것이 계획의 축이다
@@ -130,17 +174,17 @@ T4 의 교차 게이트가 묶는 것은 `_GROUNDING_ARGS` ↔ `TOOL_PARAM_SCHEM
 | **F2** | tool 0개인데 `tool_choice` 전송 | `openai_format.py:81-83` 이 `tool_choice` 를 `tools` 와 **무관하게** 싣는다 → 프로바이더 400 | 부분 (`_ask` 의 `if tools:`) | **T5** |
 | **F3** | 강제 없이 호출이 안 나온다 | 실측 **0/3**. 프롬프트·필드 제거·행위자 프레이밍 전부 0/3. 모델이 판단 과제로 보면 답변하고 행동하지 않는다 | 🔴 열림 | **T5** |
 | **F4** | `required` 가 텍스트 채널을 비운다 | `content=None` → `adapters/base.py:168` 이 `value={}`, `:181` 이 전 필드 `None`. **예외가 안 난다** → §4-1 구제가 발화조차 안 함 | 🔴 2콜로 우회 중 | **T3** |
-| **F5** | 집행 ≠ 채점 | 실측 **3/3**. `fault-severe`: 채점 `Replace`, 집행 `deliver_battery` | 🔴 열림 | **T4** |
+| **F5** | 집행 ≠ 채점 | 실측 **3/3**. `fault-severe`: 채점 `Replace`, 집행 `deliver_battery` | ✅ 닫힘 (T4, `7d525078`) | T7 라이브 확인 |
 | **F6** | `expressible` 오판 (T1 은 **문구를 payload 에 싣기만** 한다 — 기록되는 값이 tool 인자에서 나오는 것은 T3 부터고, 행동 변화의 증거는 T7 뿐이다) | 어휘 밖 사건에서 **1/3만** `False`. 모델이 "표현 불가"와 "개입 불필요"를 혼동 → T2 합성이 정작 필요할 때 안 돈다 | 🔴 열림 | **T1** + T7 실측 |
-| **F7** | R26 이 `chosen` 을 같이 지운다 | 단일 채널에서 `chosen` 이 `tool_called` 에서 나오는데 R26 이 그것을 `None` 으로 만든다 | 🔴 신규 위험 | **T4** |
+| **F7** | R26 이 `chosen` 을 같이 지운다 | 단일 채널에서 `chosen` 이 `tool_called` 에서 나오는데 R26 이 그것을 `None` 으로 만든다 | ✅ 닫힘 (T4) — `chosen` 은 억제 **전** 이름에서 나온다 | — |
 | **F8** | R26 행 ↔ 메뉴 거절(C8②) 구별 불가 | 둘 다 `tool_called is None` | ✅ `tool_calls_n` 이 가른다 | **T4** (0으로 안 덮음 유지) |
-| **F9** | 🔴 `tool_args` 에 공통 인자가 샌다 (**T1 이후 HEAD 에서 이미 발화 중** — §0-B ①) | 줄리아 `TOOL_PARAM_SCHEMA`(`llm_bridge.jl:148-151`)는 `agent`/`reason` **둘만** 선언한다. 새면 `ground_tool_args` 가 `reject:off_schema_param` → **집행이 전 사건에서 정지** | 🔴 신규 **고위험** | **T4** 교차 게이트 |
+| **F9** | ✅ **닫힘 (T4, 실측)** — 옛 상태: `tool_args` 에 공통 인자가 샌다 (T1~T3 HEAD 에서 발화 중이었다, §0-B ①) | 줄리아 `TOOL_PARAM_SCHEMA`(`llm_bridge.jl:148-151`)는 `agent`/`reason` **둘만** 선언한다. 새면 `ground_tool_args` 가 `reject:off_schema_param` → **집행이 전 사건에서 정지** | 🔴 신규 **고위험** | **T4** 교차 게이트 |
 | **F10** | enum 밖 `agent` id | `dspy.Tool` 에 `strict` 필드가 **없다**(실측: `model_fields` = `arg_desc·arg_types·args·desc·func·has_kwargs·name`). 스키마가 강제가 아니다 | 부분 (줄리아만) | **T2** |
 | **F11** | 다중 tool 호출 | `_first_tool_call` 이 첫 번째만 쓰고 나머지를 버린다 | 부분 (기록만) | **T5** (원천 차단) |
 | **F12** | 필수 인자 누락 | `required` 목록이 강제가 아니다(F10 과 같은 뿌리). `expressible` 이 없으면 `None` → T2 합성이 안 돈다 | 🔴 열림 | **T2** |
 | **F13** | `expressible` 이 bool 이 아니다 | `bool("False") is True` — 거짓 `True` 가 조용히 기록된다 | ✅ `isinstance` 검사 | **T4** (유지) |
-| **F14** | tool 인자 JSON 파싱 실패 | `AdapterParseError`. ~~§4-1 구제는 이 설계에서 뺄 것이 없어 무의미~~ 🔴 **이 판단은 반증됐다** — 구제 분기는 여전히 도달 가능하고 native FC 판에서 살아남은 방아쇠가 `no_call` 이다(§0-B ③) | 🔴 재정의 필요 | **T4** |
-| **F15** | `required` 인데 호출이 없다 | 계약 위반. 오늘 이 사건에 이름이 없다 | 🔴 미정의 | **T4** (`no_call`) |
+| **F14** | ✅ 닫힘 (T4) — tool 인자 JSON 파싱 실패 | `AdapterParseError`. ~~§4-1 구제는 이 설계에서 뺄 것이 없어 무의미~~ 🔴 **이 판단은 반증됐다** — 구제 분기는 여전히 도달 가능하고 native FC 판에서 살아남은 방아쇠가 `no_call` 이다(§0-B ③) | 🔴 재정의 필요 | **T4** |
+| **F15** | `required` 인데 호출이 없다 | 계약 위반 | ✅ 닫힘 (T4) — `decision_source="no_call"`, `error` 는 안 채운다 | — |
 | **F16** | 프로바이더 장애 | `LMError` | ✅ `error` | 유지 |
 
 **F9 가 이 계획에서 가장 위험하다.** 조용하지 않고 시끄럽게 실패하지만(`reject:off_schema_param`), 그 시끄러움이 **집행 레인 전체를 멈춘다**. T4 의 교차 게이트가 파이썬이 내는 `tool_args` 키 집합과 줄리아의 `TOOL_PARAM_SCHEMA` 를 집합 등식으로 묶는다.
@@ -652,6 +696,17 @@ git commit -m "T3: 시그니처를 action 하나로 줄인다 (텍스트 채널 
 
 # Task 4: `macro()` 단일 채널 조립
 
+> ✅ **완료 (2026-08-29): `7d525078`. 168 passed / 0 failed. 소요 약 70분(추정 90~120분).**
+> 보고서: `.superpowers/sdd/2026-08-29-single-channel-tool-lane-plan/task-4-report.md`.
+> **아래 Step 3 의 코드를 다시 쓸 일이 있으면 그 보고서 §1 이 진실원이다** — 계획서 코드와
+> 갈린 자리가 여섯이고 전부 실측 근거가 있다(§0-B ⑪). 특히:
+> 1. `except Exception` + `error=err` 는 **쓰지 않았다** — `AdapterParseError` 를 따로 받아
+>    `tool_lane_error` 로 보고한다(§5-1). 예외 **타입**으로 가르지 메시지 문자열로 안 가른다.
+> 2. Step 3 의 반환 dict 에 `tool_minted` 가 빠져 있다 — 그대로 쓰면 `/decide` 가 죽는다.
+> 3. Step 1 의 시험 코드는 `agent` 리터럴과 `fc=True` 둘 다 이 harness 에서 틀리다.
+> 4. `said = ... if tool_arg_error is None else None` 가드는 **지웠다**(음성 대조 M6).
+> 5. 이 태스크가 남긴 빨간 것: `test/tool_lane_keys_survive.jl` (6)절 2개 — T6 이 닫는다.
+>
 > 🔴 **착수 전 필독 — T1~T3 실행이 이 태스크의 전제 넷을 바꿨다(§0-B 전문).**
 > 1. **성공 기준은 "48이 초록" 이 아니라 "그 26개가 초록" 이다.** 22개는 `_EXPR` 참조를 지우는
 >    것만으로 조립이 맞든 틀리든 초록이 된다. 목록:
