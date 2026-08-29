@@ -188,6 +188,18 @@ end
         include("battery_ladder_is_deep_only.jl")
     end
 
+    # 2026-08-29 (Plan B / B0): `primitive_registry.json` 은 T2(tool 합성)의 원시 연산
+    # 알파벳인데, 그 소비자(T2)가 아직 안 지어졌다. 소비자 없는 레지스트리는 아무도 안 읽는
+    # JSON 이고 조용히 썩는다 — 그리고 썩은 채로 B3 에 도착하면 "합성기가 이상한 tool 을
+    # 만든다"라는 증상으로 나타나 원인 추적이 길어진다. 이 게이트가 그 사이를 버틴다:
+    # 레지스트리가 이름 짓는 impl·gate·predicate 가 전부 오늘 CB 에서 해석되는가, 그리고
+    # spec §7-2 의 "채점 어휘와 섞지 않는다"가 이름 공간 수준에서 지켜지는가.
+    # 변이 4종(impl 오타 · gate 오타 · 채점 어휘와 이름 충돌 · when_to_use 공백)으로
+    # 실제로 빨개지는 것을 확인했다 — `PRIMITIVE_REGISTRY` 로 오염 사본을 물려서 쟀다.
+    @testset "primitive registry resolves" begin
+        include("primitive_registry_resolves.jl")
+    end
+
     # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
     # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
     # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다

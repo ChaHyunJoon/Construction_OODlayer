@@ -1,0 +1,569 @@
+{
+  "_doc": [
+    "T2(tool 합성)가 조합하는 **원시 연산 알파벳**. spec 2026-08-26-tool-synthesis-lane-design 7-1 스키마.",
+    "",
+    "🔴 이 파일은 action_registry.json 과 **다른 것을 센다**(그 문서 7-2). 셋을 절대 섞지 않는다:",
+    "  action_registry.json     채점 어휘 (vocab 도장 · MACRO_COST · emitted_key). 3항목, 고정.",
+    "  primitive_registry.json  T2 의 알파벳 = 이 파일.",
+    "  tool_registry(.py)       T1 의 알파벳. 합성분이 여기 쌓인다.",
+    "action_registry 의 emitted_key 가 (:fault,·)/(:battery,·) 로 **사건 클래스를 인코딩**하므로,",
+    "여기 원시를 저기 섞으면 존재하지 않는 사건 클래스가 채점기로 밀반입된다.",
+    "",
+    "mechanism 규약 (그 문서 6-1): mechanism 은 **모델이 읽는다**. when_to_use 는 **절대 렌더하지 않는다**",
+    "— 그것은 정답 조건이고, 프롬프트에 실으면 재는 것이 추론이 아니라 프롬프트 준수가 된다.",
+    "mechanism 은 최대한 상세하게 쓴다: 어느 표면을 고치는지, 무엇을 소모하는지, 되돌릴 수 있는지,",
+    "어떤 상태값으로 실패를 알리는지, 그리고 **함정**(끄는 환경변수, MILP 재풀이 요구, 미배선)까지.",
+    "",
+    "🔴 gate 필드의 정직한 상태 (2026-08-29 실측). 여기 적힌 verify_* 는 전부 verifier.jl 에 실재하고",
+    "실제로 불린다. 그러나 **전부 RespecProposal 하나를 받는다** — 원시 연산의 인자를 받는 게이트는",
+    "아직 없다. 즉 오늘 기준 모든 원시는 안전층 3(그 문서 8)에서 `deferred` 다. 'gate 이름이 있다'를",
+    "'게이트가 이 원시에 걸려 있다'로 읽지 말 것. 그 강등이 Plan B 의 C 단계다.",
+    "gate_arity 필드가 이 사실을 항목마다 들고 있다.",
+    "",
+    "impl 은 ConstructionBots(CB) 에서 해석되는 이름이어야 한다. test/primitive_registry_resolves.jl 이 강제한다.",
+    "harness_args 는 호출자(집행부)가 채우는 인자다 — T2 가 고르는 것이 아니다. params 만 T2 의 자유도다."
+  ],
+  "schema_version": 1,
+  "surfaces": [
+    "sched",
+    "scene_tree",
+    "env_param",
+    "physical",
+    "milp"
+  ],
+  "primitives": [
+    {
+      "name": "release_pending_assignments",
+      "surface": "sched",
+      "params": {
+        "faulted": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "robot id whose ACTIVE target should also be released; null releases only未started work"
+        }
+      },
+      "mechanism": "Removes free->slot ASSIGNMENT EDGES from the schedule graph so a following MILP re-solve is free to re-decide who does that work, and resets each freed slot to the unassigned (invalid-id) state so id propagation re-stamps it with whatever robot the solver actually picks. Release policy is asymmetric on purpose: a HEALTHY robot's edge is KEPT (pinned) if either endpoint is closed or active -- finished and in-progress work is never disturbed; the FAULTED robot's edge is kept only if an endpoint is CLOSED, so a faulted robot also drops its current active target and that work gets reassigned. Returns the removed (src,dst) vertex pairs. It does NOT re-solve: the caller's formulate_milp + update_project_schedule! do that, so calling this alone leaves the schedule with fewer assignments and no replacement plan. IRREVERSIBLE: the removed edges are not recorded anywhere that can put them back; measured blast radius is large (Xa nonzero 423 -> 3197).",
+      "when_to_use": "Only when the assignment itself is the thing that must change and a MILP re-solve will follow in the same step.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "a MILP re-solve must follow in the same enactment, or the build loses assignments"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "release_pending_assignments!",
+      "harness_args": [
+        "env",
+        "invariant"
+      ],
+      "source": "src/respec/reassign.jl:121"
+    },
+    {
+      "name": "reset_slot_to_invalid",
+      "surface": "sched",
+      "params": {
+        "slot_v": {
+          "type": "integer",
+          "description": "schedule graph vertex index of the transport-task slot RobotGo"
+        }
+      },
+      "mechanism": "Reverts ONE transport-task slot (the dst RobotGo of a free->slot assignment edge) to the unassigned state: stamps it with a fresh INVALID robot id and re-keys the successor FormTransportUnit team by that invalid id, with geometry preserved. This is needed because align_with_predecessor for RobotGo uses first_valid, which would otherwise keep the slot's STALE valid id instead of adopting the new feeder's id during propagate_valid_ids!. After the reset the re-solve's id propagation flows the correct identity from the RobotStart anchors forward. Returns false (no-op) if the slot already carries an invalid id or is not a RobotGo.",
+      "when_to_use": "Building block under release_pending_assignments; rarely useful alone.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "slot_v must index a RobotGo carrying a valid robot id"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "reset_slot_to_invalid!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/reassign.jl:81"
+    },
+    {
+      "name": "rethread_robot_ids",
+      "surface": "sched",
+      "params": {},
+      "mechanism": "Authoritative re-stamp of every RobotGo's robot id strictly along graph edges, rooted at the RobotStart anchors, in topological order. Intended to stop post-reassign double-booking, where a free RobotGo whose predecessor now belongs to a different robot's thread keeps its old id and one robot ends up on two un-serialized branches. 🔴 PARKED AND NOT WIRED. Its own docstring records it as verified INSUFFICIENT on its own: a cluster of deep-future post-deposit RobotGos (geometry-miss orphans) hits the DepositCargo branch with get_matching_child_id returning nothing, so the pass SKIPS them and they keep stale ids -- exactly the nodes that double-book. Forcing them invalid instead reproduces an rvo BoundsError. It is NOT called from fault_robot_and_reassign!. Composing it will change nothing on the failure it looks like it fixes.",
+      "when_to_use": "Do not compose. Listed so the alphabet is complete and so a synthesiser that reaches for it can be told why it fails.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "none -- but see mechanism: this does not close the double-booking it targets"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "rethread_robot_ids!",
+      "harness_args": [
+        "sched",
+        "scene_tree"
+      ],
+      "source": "src/respec/reassign.jl:245",
+      "notes": "PARKED building block. Not wired into any enactment path."
+    },
+    {
+      "name": "reform_stuck_teams",
+      "surface": "physical",
+      "params": {
+        "min_ready": {
+          "type": "integer",
+          "default": 1,
+          "description": "only reform teams that already have at least this many members captured"
+        },
+        "snap_all": {
+          "type": "boolean",
+          "default": false,
+          "description": "snap every member, not just stragglers"
+        }
+      },
+      "mechanism": "Closed-loop team re-formation. A FormTransportUnit needs ALL its team robots in position SIMULTANEOUSLY, so after a single-spare hand-off a team can wedge: most members reach their slots and WAIT, their bodies blocking the path of the last straggler, which can then never arrive, so the unit never forms and the build stalls. This re-establishes every mostly-formed but wedged team by snapping its straggler members directly into their prescribed carrying slots (global_transform(tu) composed with child_transform(tu, mid)) -- BOTH the scene body and the RVO agent -- so the next is_goal check sees the whole team in position. Only teams with at least min_ready members already captured are touched, so it never force-assembles a team that has not started gathering. Returns the number of robots repositioned. It teleports bodies: it changes the physical state, not the schedule.",
+      "when_to_use": "On a sustained no-progress stall where a transport team is mostly formed.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "at least one FormTransportUnit is active with >= min_ready members captured"
+      ],
+      "gate": "verify_reform",
+      "gate_arity": "RespecProposal",
+      "impl": "reform_stuck_teams!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:458"
+    },
+    {
+      "name": "recover_stalled_teams",
+      "surface": "physical",
+      "params": {},
+      "mechanism": "Graduated, safety-gated self-healing commander for a sustained transport-formation stall. The blind no-progress signal only says the build is stuck; this classifies WHY and takes the matching SAFE action, escalating only as far as needed: snap stragglers (cheapest) -> if an all-missing team's gather point sits in a NO-GO ZONE, relocate staging clear of it via restage_all_blocked!/translate_whole_build! (it NEVER teleports a robot into a forbidden region) -> force-snap a zone-clear wedge -> dissolve a schedule wedge. Statuses: :snapped, :restaged, :force_snapped, :unwedged, :no_team (nothing is forming -- the stall is a frontier gap elsewhere, and the honest answer is a no-op), :stuck (teams exist but none was safely actionable). Because it can call the restage primitives, composing it AND a restage primitive in one tool can move the build twice.",
+      "when_to_use": "The default first response to a sustained formation stall.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "a sustained no-progress stall has been observed"
+      ],
+      "gate": "verify_reform",
+      "gate_arity": "RespecProposal",
+      "impl": "recover_stalled_teams!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:588"
+    },
+    {
+      "name": "force_advance_stuck_carrier",
+      "surface": "physical",
+      "params": {
+        "tol": {
+          "type": "number",
+          "default": 0.05,
+          "description": "position tolerance for the forced advance"
+        }
+      },
+      "mechanism": "Last resort: teleports a formed transport unit that got stuck near its goal directly onto its deposit target so DepositCargo closes and the whole downstream chain unblocks. 🔴 OFF BY DEFAULT AND SILENTLY SO. The first line is a gate on the CARRIER_RESCUE environment variable: unless CARRIER_RESCUE=1 it returns (status = :disabled, moved = 0) without doing anything. It is off because it changes the twin's dynamics. A composed tool that calls this under the default environment does nothing and reports success-shaped output.",
+      "when_to_use": "Only under an explicit CARRIER_RESCUE=1 diagnostic run.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "ENV CARRIER_RESCUE == \"1\", otherwise this is a no-op"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "force_advance_stuck_carrier!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:803",
+      "notes": "Environment-gated no-op by default. Do not treat a :disabled status as an enactment."
+    },
+    {
+      "name": "resolve_schedule_wedge",
+      "surface": "sched",
+      "params": {},
+      "mechanism": "Endgame completion-forcing recovery for the single-spare multi-task cyclic cargo dependency. A Replace hands a spare several time-serialized tasks and _serialize_spare_frontiers! chains them with dep_i -> slot_{i+1} edges recorded in WEDGE_EDGES. If task i is a multi-robot carry whose co-carriers never sync on the spare's shifted timeline, dep_i never closes, so slot_{i+1} and everything behind it never activate: the build stalls near completion with NO active forming team, which is why the reform path returns :no_team and no-ops. This DISSOLVES the wedge by dropping recorded serialization gates whose deposit is still open (reverting those slots to their real graph predecessors), re-deriving the frontier, and force-forming any team that becomes active. Gates are dropped ONE per reform cycle, earliest-t0 first, which is what avoids re-creating the single-spare double-booking. Returns (:unwedged, ...) or (:no_wedge, ...). WEDGE_EDGES is populated ONLY by a spare Replace, so on a run that never replaced a robot this is an honest no-op, not a checked-and-found-nothing.",
+      "when_to_use": "Only after :no_team on the reform path, i.e. a genuine endgame scheduling wedge.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "WEDGE_EDGES is non-empty (a spare Replace happened earlier in this run)"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "resolve_schedule_wedge!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:979"
+    },
+    {
+      "name": "deprioritize_agent",
+      "surface": "env_param",
+      "params": {
+        "agent": {
+          "type": "string",
+          "description": "robot id to bias away from work"
+        },
+        "factor": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 1000.0,
+          "description": "cost multiplier on that robot's assignment edges; CLAMPED to [1, 1e3]"
+        }
+      },
+      "mechanism": "Registers a soft per-agent cost bias in AGENT_COST_BIAS. The energy-aware re-solve then multiplies that robot's frontier assignment edges by the factor, routing work AWAY from it WITHOUT removing it -- the feasible set is unchanged, so this cannot make the problem infeasible. The value is CLAMPED to [1, MAX_AGENT_COST_BIAS = 1.0e3]: never below 1 (a robot cannot be incentivised) and never a blow-up value. 🔴 THIS IS INERT ON ITS OWN. It only changes edge weights that a MILP re-solve reads. Without a re-solve in the same enactment, registering a bias changes nothing observable and the world is byte-identical. There is also no local undo today: clear_agent_bias! drops the bias but does not restore whatever plan the biased re-solve replaced.",
+      "when_to_use": "The load axis, once a re-solve is wired into the same enactment.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "a MILP re-solve must run after this call or it has no effect"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "deprioritize_agent!",
+      "harness_args": [],
+      "source": "src/essential_tg_coponents.jl:1379",
+      "notes": "spec 9-3: a local undo for this knob is the HARD precondition before the load axis may be enacted."
+    },
+    {
+      "name": "restage_assembly",
+      "surface": "scene_tree",
+      "params": {
+        "assembly_id": {
+          "type": "string",
+          "description": "id of the sub-assembly whose staging area moves"
+        },
+        "zone_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "restriction zones to clear; defaults to every live zone"
+        }
+      },
+      "mechanism": "Relocates ONE sub-assembly's staging area clear of the active restriction zone(s) by a rigid translation of its start_config; the whole staging subtree follows. NO MILP re-solve. Statuses: :restaged (moved; from/to/delta returned, cache rebuilt if resume), :infeasible (no zone-clear, non-overlapping location exists, so the caller must fall back), :already_built (the assembly is complete -- nothing to relocate), :no_node / :no_staging. SCOPE LIMIT: it only relocates an assembly that is NOT yet complete, and parts already physically delivered to the OLD staging area are NOT moved -- the gate refuses an already-built assembly rather than leaving parts behind.",
+      "when_to_use": "A zone covers one sub-assembly's staging circle and that assembly has not started.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "the assembly is not yet complete",
+        "a zone-clear non-overlapping spot exists"
+      ],
+      "gate": "verify_relocate",
+      "gate_arity": "RespecProposal",
+      "impl": "restage_assembly!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/restage_zone.jl:202"
+    },
+    {
+      "name": "restage_all_blocked",
+      "surface": "scene_tree",
+      "params": {
+        "zone_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "restriction zones to clear; defaults to every live zone"
+        }
+      },
+      "mechanism": "Multi-assembly recovery: relocates EVERY assembly the zone(s) block, not just one. Greedy, largest staging circle first (hardest to place), each step reusing restage_assembly!, which reads env.staging_circles live so later moves avoid the already-relocated ones. The per-call cache rebuild is suppressed and done ONCE at the end. Returns (status, moved, failed) with status :restaged_all, :partial (some moved, some infeasible), :infeasible (none placeable), or :none (no blocked assemblies -- the zone already clears every goal). 🔴 It cannot touch the ROOT assembly's own deposit goals; when those are what the zone covers it reports a residual and translate_whole_build is the only lever left.",
+      "when_to_use": "A zone blocks several sub-assemblies' staging areas.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "at least one blocked, un-started assembly exists"
+      ],
+      "gate": "verify_relocate",
+      "gate_arity": "RespecProposal",
+      "impl": "restage_all_blocked!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/restage_zone.jl:517"
+    },
+    {
+      "name": "translate_whole_build",
+      "surface": "scene_tree",
+      "params": {
+        "zone_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "restriction zones to clear; defaults to every live zone"
+        }
+      },
+      "mechanism": "Whole-build relocation: when a zone covers the root's OWN un-relocatable deposit goals -- the dense central core restage_all_blocked! reports as :residual_blocked -- no per-assembly move clears it, so the ENTIRE build is translated by one rigid delta. This is sound because every assembly's start_config is an independent transform-tree root whose subtree carries BOTH its staging area AND its components' deposit goals (goal_config(LiftIntoPlace) descends from start_config(AssemblyComplete)), so a uniform delta shifts the schedule with no internal desync; _resync_scene_drift! follows on the scene side. The delta comes from _find_min_translation: the minimum shift clearing every unfinished physical goal disc and every non-root local staging workspace. The oversized root PLANNING envelope is deliberately excluded because it is not occupied geometry, so small zones cause local-size moves while large zones expand the analytic exclusion intervals and produce proportionally larger moves. Statuses: :translated (zone clear, residual 0), :residual_blocked (moved but goals STILL in the zone), :infeasible, :no_staging. NO MILP re-solve.",
+      "when_to_use": "A zone covers the root's own deposit goals and per-assembly restaging left a residual.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "staging circles are on record",
+        "an analytic zone-clear translation exists"
+      ],
+      "gate": "verify_translate",
+      "gate_arity": "RespecProposal",
+      "impl": "translate_whole_build!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/restage_zone.jl:777"
+    },
+    {
+      "name": "apply_uniform_translation",
+      "surface": "scene_tree",
+      "params": {
+        "delta": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[dx, dy] planar shift in metres; z is always 0"
+        }
+      },
+      "mechanism": "Rigidly shifts the WHOLE build by an explicit delta: translates every assembly's start_config (root included -- each subtree carries its staging plus its components' deposit goals), updates the staging-circle records, then _resync_scene_drift! snaps drifted scene bodies and transport units. TRANSLATIONS COMPOSE: calling this twice with d1 then d2 leaves a net shift of d1+d2, which is what lets translate_whole_build! top a minimal move up to a conservative one WITHOUT any undo. That also means it is trivially reversible by applying -delta -- it is the only geometry primitive here with an exact inverse. It performs NO feasibility check of its own: it moves the build wherever it is told, including into a zone.",
+      "when_to_use": "The raw mover under translate_whole_build; use directly only when the delta is already known to be safe.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "none -- this primitive does not check that the destination is zone-clear"
+      ],
+      "gate": "verify_translate",
+      "gate_arity": "RespecProposal",
+      "impl": "_apply_uniform_translation!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/restage_zone.jl:616",
+      "notes": "Exact inverse: apply the negated delta. The only primitive here with a cheap local undo."
+    },
+    {
+      "name": "swap_battery",
+      "surface": "physical",
+      "params": {
+        "agent": {
+          "type": "string",
+          "description": "robot id whose charge is restored"
+        }
+      },
+      "mechanism": "Restores a robot's charge IN THE FIELD, keeping the same physical body. Statuses: :battery_swapped (soc_before echoed so the caller can log how flat it was) and :no_robot (the id has no scene node). It deliberately does NOT call pop_spare: a battery is unmetered (cost only) while a depot BODY is the scarce resource a replacement spends, and keeping the two ledgers separate is what makes choosing between them a real decision rather than a renaming. No schedule mutation, no scene-tree surgery, no re-homing -- the body never moves and never changes, so the robot's intact task chain simply resumes. This is the least invasive recovery in the vocabulary and structurally cannot produce an identity violation. If the courier path is enabled the swap does not happen here: a depot spare carries a battery out and the swap lands on the step it arrives.",
+      "when_to_use": "Battery depletion where the body itself is fine.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "the robot has a scene node"
+      ],
+      "gate": "verify_swap_battery",
+      "gate_arity": "RespecProposal",
+      "impl": "swap_battery!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:1419"
+    },
+    {
+      "name": "dispatch_battery_courier",
+      "surface": "physical",
+      "params": {
+        "target": {
+          "type": "string",
+          "description": "robot id that needs a battery delivered"
+        }
+      },
+      "mechanism": "Sends a depot spare robot to carry a battery to the target and returns the BatteryDelivery. If a delivery to that same target is already in flight it returns that one instead, so it cannot double-dispatch. Returns nothing when no deliverable spare exists, and the caller (swap_battery) then falls back to the immediate in-field swap so the build never blocks. It does NOT edit the schedule DAG or the scene tree -- it adds a physical errand. The borrowed spare is NOT consumed from the pool but is unavailable while out; pop_spare deliberately refuses to hand out a spare that is on a delivery, because retiring its body mid-errand would make the delivery silently vanish.",
+      "when_to_use": "Battery depletion where physically walking a battery out is cheaper than spending a body.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "a depot spare exists that is not already on an errand"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "dispatch_battery_courier!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/battery_courier.jl:167"
+    },
+    {
+      "name": "replace_robot",
+      "surface": "sched",
+      "params": {
+        "faulted": {
+          "type": "string",
+          "description": "robot id whose remaining work is handed away"
+        },
+        "spare": {
+          "type": "string",
+          "description": "idle spare robot id that takes the work"
+        }
+      },
+      "mechanism": "Hands the faulted robot's remaining work thread to an idle spare by a GRAPH SPLICE, with no MILP. Statuses: :replaced (spliced; count of re-stamped slots returned, cache rebuilt if resume), :no_spare (the given spare has no idle free node, i.e. it is not an unused spare), :no_frontier (the faulted robot has no pending assignment to hand off), :already_done (no non-closed RobotGo at all). SCOPE: only the FUTURE is moved -- closed, realized nodes are never touched, so the faulted robot keeps credit for what it finished. Its dead frontier stays bound to it (the caller registers that body as a static obstacle) and pruning it from active RVO driving is the caller's separate fault step. Serializing several handed-off tasks onto one spare is what creates the endgame wedge that resolve_schedule_wedge exists to dissolve.",
+      "when_to_use": "A robot is dead and a specific spare should inherit its thread.",
+      "reversible": false,
+      "consumes": [
+        "one idle spare robot"
+      ],
+      "preconditions": [
+        "the spare has an idle free node",
+        "the faulted robot has a non-closed frontier"
+      ],
+      "gate": "verify_replace",
+      "gate_arity": "RespecProposal",
+      "impl": "replace_robot!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:1212"
+    },
+    {
+      "name": "hot_swap_robot",
+      "surface": "scene_tree",
+      "params": {
+        "faulted": {
+          "type": "string",
+          "description": "robot id to heal"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "via_depot",
+            "in_place"
+          ],
+          "default": "via_depot",
+          "description": "re-home the robot through the nearest depot, or heal it where it stands"
+        }
+      },
+      "mechanism": "Identity-preserving scene-tree replacement of a faulted or degraded robot from the spare repository. It KEEPS the faulted RobotID, so the schedule and every transport team are untouched and nothing is re-stamped; only the physical asset is swapped, from the nearest depot. Statuses: :swapped (a depot spare BODY was retired, the robot re-homed via depot or healed in place, and battery/fault state reset; depot/spare/mode echoed), :no_robot, :no_spare (no depot with an available spare near the fault). A robot faulted MID-CARRY, i.e. captured by a transport unit, is ALWAYS healed in place and never disbanded, whatever mode says. No schedule mutation and no cache reset: the intact task chain resumes as-is next step. 🔴 It CONSUMES one depot spare body, which is the scarce resource of this harness.",
+      "when_to_use": "Robot breakdown, when preserving the schedule matters more than the spare body.",
+      "reversible": false,
+      "consumes": [
+        "one depot spare body"
+      ],
+      "preconditions": [
+        "a depot with an available spare exists near the fault"
+      ],
+      "gate": "verify_replace",
+      "gate_arity": "RespecProposal",
+      "impl": "hot_swap_robot!",
+      "harness_args": [
+        "env"
+      ],
+      "source": "src/respec/replace_robot.jl:1499",
+      "notes": "This is the primitive the current Replace enactment actually calls."
+    },
+    {
+      "name": "pop_spare",
+      "surface": "physical",
+      "params": {
+        "pool": {
+          "type": "string",
+          "description": "spare pool key (a live depot id)"
+        }
+      },
+      "mechanism": "Removes and returns one unused spare robot id from a pool, LIFO. Returns nothing if the pool is empty or absent, and the caller then treats that as no backup available and engages its safe fallback. A spare that is out delivering a battery is BORROWED, not free: popping it would let _retire_spare_body! retire its body mid-errand and the delivery would silently vanish, so those are skipped. 🔴 IRREVERSIBLE AND SCARCE: there is no push_spare. Every call permanently shrinks the depot pool, and the pool size is the budget the whole run competes over.",
+      "when_to_use": "Never compose this directly; the replacement primitives spend spares through their own accounting.",
+      "reversible": false,
+      "consumes": [
+        "one depot spare body, permanently"
+      ],
+      "preconditions": [
+        "the named pool exists and holds a non-borrowed spare"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "pop_spare!",
+      "harness_args": [],
+      "source": "src/respec/ood_injection.jl:387"
+    },
+    {
+      "name": "compile_constraint",
+      "surface": "milp",
+      "params": {
+        "constraint_type": {
+          "type": "string",
+          "enum": [
+            "ForbidWindow",
+            "ForbidAgent",
+            "LinearConstraint",
+            "Disjunction"
+          ],
+          "description": "the ONLY four constraint kinds that have a compiler method"
+        }
+      },
+      "mechanism": "Emits one re-spec constraint into the MILP model. Exactly FOUR kinds have a method: ForbidWindow, ForbidAgent, LinearConstraint, Disjunction. Anything else is not a constraint this harness can express -- there is no generic fallback, so a synthesised tool that names a fifth kind is not merely rejected at a gate, it has no compiler at all. Compiling alone changes nothing observable: the model must then be solved and committed.",
+      "when_to_use": "Expressing a hard restriction the solver must respect.",
+      "reversible": true,
+      "consumes": [],
+      "preconditions": [
+        "the constraint is one of the four compiled kinds"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "compile_constraint!",
+      "harness_args": [
+        "model",
+        "t0",
+        "tF",
+        "Xa",
+        "sched"
+      ],
+      "source": "src/respec/compiler.jl:38,66,143,178"
+    },
+    {
+      "name": "commit_respec",
+      "surface": "milp",
+      "params": {},
+      "mechanism": "Writes a solved MILP back onto the live schedule, making the re-spec real. Everything upstream of it (releasing edges, registering a cost bias, compiling constraints) is inert until this runs. IRREVERSIBLE in practice: the previous schedule is overwritten and nothing here restores it.",
+      "when_to_use": "The terminal step of any load-axis or constraint-axis edit.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "a feasible solved MILP for this proposal exists"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "commit_respec!",
+      "harness_args": [
+        "env",
+        "milp",
+        "proposal"
+      ],
+      "source": "src/respec/replan.jl:1621"
+    }
+  ],
+  "predicates": [
+    {
+      "name": "goal_engulfed",
+      "impl": "goal_engulfed",
+      "source": "src/respec/zone_corridor.jl:180",
+      "mechanism": "True when a goal's arrival tolerance disc lies entirely inside an enforced exclusion disc, i.e. the node can never close while that zone lives. Pure predicate: reads geometry, edits nothing."
+    },
+    {
+      "name": "free_space_status",
+      "impl": "free_space_status",
+      "source": "src/respec/zone_corridor.jl:220",
+      "mechanism": "Classifies whether a start->goal traversal still has free space given the live zones. Pure predicate; the corridor flood-fill is expensive and is switched OFF on the decision path, so a 0 from that sub-check means NOT MEASURED, never measured-and-clear."
+    },
+    {
+      "name": "downstream_unfinished",
+      "impl": "_downstream_unfinished",
+      "source": "src/respec/zone_corridor.jl:296",
+      "mechanism": "Counts the unfinished work that is frozen behind a given set of vertices. Pure predicate; this is the quantity that turns 'the zone covers something' into 'the zone costs something'."
+    },
+    {
+      "name": "zone_blockage",
+      "impl": "zone_blockage",
+      "source": "src/respec/zone_corridor.jl:344",
+      "mechanism": "Aggregate blockage report for the live zones, built from the predicates above. Pure predicate. This is the before/after measurement that layer 4 (efficacy) re-runs around an edit to decide resolves vs inert."
+    }
+  ]
+}
