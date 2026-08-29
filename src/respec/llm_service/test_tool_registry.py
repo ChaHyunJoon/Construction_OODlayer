@@ -215,6 +215,58 @@ def test_macro_to_tool_keys_match_the_active_vocabulary():
         "이 표도 같이 고칠 것. 조용한 드리프트를 여기서 막는다." % (set(MACRO_TO_TOOL), active))
 
 
+_MEASURED_RE = re.compile(
+    r"Measured:\s*\+([0-9.]+)\s*sim s per event,\s*energy/closed\s*\+([0-9]+)%")
+
+
+def test_measured_costs_in_the_docstrings_still_match_the_live_registry():
+    """fix round 3 (K5): H7 은 `MACRO_TO_TOOL` 의 **이름**만 레지스트리와 대조한다 --
+    각 tool 의 docstring 이 담고 있는 측정치(`+13.3`/`+228%`, `+4.1`/`+25%`)는 손으로
+    옮겨 적은 두 번째 사본이고, 어느 쪽도 대조되지 않는다. `action_registry.json` 의
+    mechanism 산문을 고치면(Task 3 이 이번 주에 그렇게 했다) 모델이 읽는 숫자가 조용히
+    낡아도 아무것도 안 울린다.
+
+    이 파일은 이미 `action_registry` 를 import 하고 있으므로(H7) 진실원은 손에 있다.
+    렌더링으로 통째로 고치는 대신(그 트레이드오프는 이 라운드의 report 에 판단으로
+    적었다 -- action_registry 를 tool_registry.py 의 import 경로에 끌어들이는 것은 K1 이
+    막 정리한 바로 그 영역에 두 번째 모듈을 심는 것과 같은 모양이라 하지 않았다) **숫자만**
+    앵커로 대조한다. 숫자를 고른 이유: 산문은 tool 설명으로 다시 쓰면서 의도적으로
+    갈렸다(예: swap_body 는 "The replaced body does not come back." 을 추가로 들고
+    있고 mechanism 의 "(replace_robot.jl)" 언급은 뺐다) -- 문장 전체를 대조하면 이
+    합법적인 재서술 자체가 항상 걸린다. 숫자는 재서술돼도 값이 같아야 하는 유일한
+    부분이고, 실제로 드리프트했을 때 독자가 신뢰해서 쓰는 바로 그 값이다.
+
+    NOOP 은 cost 가 0 이고 mechanism 에 "Measured: ..." 절 자체가 없다 -- 앵커가 없으므로
+    건너뛴다(레지스트리를 실측: `_MEASURED_RE` 가 NOOP 에는 안 걸리고 Replace·SwapBattery
+    둘에만 걸린다). 그래서 `executed` 는 3 이 아니라 2 를 기대한다 -- `test_registry_doc_split.py`
+    가 세 번 겪은 공허통과를 막는 것과 같은 이유로, 정확한 개수를 못박아 "필터가 전부를
+    걸러서 루프가 안 돈" 경우와 "정상적으로 하나(NOOP)를 건너뛴" 경우를 구분한다."""
+    tools = _by_name(build_tools(AGENTS, ["NOOP", "Replace", "SwapBattery"]))
+    assert len(tools) == 3, "이 호출은 3 개 tool 을 내야 정상이다"
+    executed = 0
+    for mid, m in action_registry.REGISTRY.items():
+        match = _MEASURED_RE.search(m["mechanism"])
+        if match is None:
+            continue
+        executed += 1
+        tool_name = MACRO_TO_TOOL[m["name"]]
+        desc = tools[tool_name]["description"]
+        seconds, pct = match.group(1), match.group(2)
+        assert ("+%s" % seconds) in desc, (
+            "macro %s(%s) 의 레지스트리 mechanism 은 +%s sim s/event 를 측정치로 든다. "
+            "tool %r 의 description 에는 그 숫자가 없다 -- mechanism 이 편집되면서 이 "
+            "docstring 의 사본이 낡았을 수 있다." % (mid, m["name"], seconds, tool_name))
+        assert ("+%s%%" % pct) in desc, (
+            "macro %s(%s) 의 레지스트리 mechanism 은 energy/closed +%s%% 를 측정치로 든다. "
+            "tool %r 의 description 에는 그 숫자가 없다 -- mechanism 이 편집되면서 이 "
+            "docstring 의 사본이 낡았을 수 있다." % (mid, m["name"], pct, tool_name))
+    assert executed == 2, (
+        "이 라운드에서 실측한 값(2, Replace 와 SwapBattery 만 'Measured: ...' 절을 가진다)과 "
+        "다르다(%d) -- 레지스트리에 측정치가 있는 macro 가 늘거나 줄었으면 이 테스트와 그 "
+        "실측을 같이 갱신할 것. 0 이면 이 검사 전체가 공허하게 통과한다는 뜻이니 그 경우는 "
+        "특히 조용히 넘기지 말 것." % executed)
+
+
 def test_tool_registry_import_does_not_poison_a_later_sklearn_import():
     """fix round 2 (K1, Important): fix round 1 의 numpy/sklearn 가드(`tool_registry.py`
     상단의 `import numpy, sklearn.ensemble`)는 주석 하나로만 지켜지고 있었다. 측정: 그
