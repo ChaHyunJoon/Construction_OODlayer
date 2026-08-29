@@ -201,8 +201,19 @@ class SelectTool(dspy.Signature):
 
 def build_adapter():
     """native FC 를 켠 어댑터. **site-packages 의 기본값(False)을 고치지 않는다** — 그건
-    재설치에 날아가고 이 레포 밖에서 돌리는 사람과 조용히 갈린다(spec §2-4)."""
+    재설치에 날아가고 이 레포 밖에서 돌리는 사람과 조용히 갈린다(spec §2-4).
+
+    ⚠️ 어댑터 **클래스**는 일부러 못박지 않는다. 변이 V10(`JSONAdapter` 반환)은 이 게이트에서
+    살아남는데(실측: `16 passed *** SURVIVED ***`) 그게 옳다 — `JSONAdapter` 는
+    `ChatAdapter` 의 자식이고 플래그를 그대로 물려주므로 §2-4 의 네 조건이 전부 그대로 선다.
+    클래스를 못박으면 이 태스크가 재지 않은 **직렬화 형식**에 대한 불변식을 세우는 셈이고,
+    그 불변식은 런타임에 이미 거짓이다: `ChatAdapter.__call__` 은 파싱 실패 시 스스로
+    `JSONAdapter` 로 재시도한다. 우리가 주장하는 것은 네 조건이지 클래스가 아니다."""
     return dspy.ChatAdapter(use_native_function_calling=True)
+
+
+_state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
+          "surrogate": None, "surro_feats": None, "surro_data": None, "surro_error": None}
 
 
 def native_fc_active(signature=None):
@@ -215,12 +226,23 @@ def native_fc_active(signature=None):
     네 조건(어댑터 플래그 · `list[dspy.Tool]` 입력 · `dspy.ToolCalls` 출력 ·
     `lm.supports_function_calling`)이 전부 참일 때만 True.
 
+    🔴 **어느 시그니처를 읽는가**: 인자가 없으면 모듈 상수 `SelectTool` 이 아니라 **실제로 도는
+    프로그램**(`_state["program"].signature`)을 읽는다. 둘은 갈릴 수 있고 — `_load_program()`
+    이 tool 필드 없는 시그니처를 얹으면 — 그때 `SelectTool` 을 읽으면 이 함수는 "native FC 가
+    발화했다"고 답하면서 provider 로 나가는 tools 는 0개인 상태를 보고하게 된다. 그건 이 필드의
+    존재 이유(배선 ≠ 발화)와 정확히 반대 방향의 거짓말이다. 실측(컨트롤러 B1):
+    tool 필드를 뺀 프로그램에서 `native_fc_active()` -> True, 실제 `lm_kwargs["tools"]` -> [].
+    아직 프로그램이 없으면(부팅 전) `SelectTool` 로 폴백한다.
+
     🔴 못 재면 `False` 가 아니라 `None` 을 낸다. "못 쟀다"(None)와 "재서 꺼져 있었다"(False)는
     다른 사건이다(spec §9-2). 아무도 `dspy.configure` 를 안 불렀으면 조건 1·4 를 **읽을 수
     없으므로** dspy 의 폴백 기본값을 추론해 False 를 내지 않는다 — 그건 측정이 아니다.
     """
     try:
-        sig = signature if signature is not None else SelectTool
+        sig = signature
+        if sig is None:
+            prog = _state["program"]
+            sig = prog.signature if prog is not None else SelectTool
         adapter = dspy.settings.adapter
         lm = dspy.settings.lm
         return bool(
@@ -231,10 +253,6 @@ def native_fc_active(signature=None):
         )
     except Exception:
         return None
-
-
-_state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
-          "surrogate": None, "surro_feats": None, "surro_data": None, "surro_error": None}
 
 # ---------------------------------------------------------------------------------------------
 # surrogate 정책: **배포 모델(SurrogateV2, 2-헤드 ΔĴ)을 여기서 직접 적합**시켜 서비스한다.
@@ -376,10 +394,26 @@ def _load_program():
 app = FastAPI(title="ConstructionBots DSPy macro producer")
 
 
-@app.on_event("startup")
-def _startup():
+def _configure_dspy():
+    """LM 과 **native FC 어댑터를 실제로 설치하는** 줄. `_startup()` 에서 떼어낸 이유는 시험이
+    이 줄을 직접 돌릴 수 있어야 하기 때문이다(`_startup` 은 SurrogateV2 적합까지 끌고 온다).
+
+    🔴 아래 `adapter=` 가 프로덕션에서 native FC 를 켜는 **유일한 줄**이다. 이 줄이 사라져도
+    `build_adapter()` 를 따로 부르는 시험은 전부 초록으로 남는다 — 컨트롤러 실측 변이 V6:
+    `_startup() drops adapter=build_adapter() -> 12 passed *** SURVIVED ***`. 그리고 레인은
+    조용히 텍스트 직렬화 경로로 돌아간다(spec §10 risk 4). 그래서
+    `test_native_fc_active.py::test_configure_dspy_installs_the_native_fc_adapter` 가 이 줄
+    하나만을 감시한다.
+
+    LM **객체 생성**은 네트워크·과금 0건이다(litellm 의 로컬 모델 맵). 호출은 여기서 안 난다."""
     lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=True)
     dspy.configure(lm=lm, adapter=build_adapter())
+    return lm
+
+
+@app.on_event("startup")
+def _startup():
+    _configure_dspy()
     _load_program()
     _load_surrogate()      # 배포 SurrogateV2 적합(355행이라 1초 미만)
 

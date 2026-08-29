@@ -76,5 +76,11 @@ def test_native_branch_actually_fires_with_a_real_lm_object():
     #    두 필드 삭제가 함께 일어나므로, dspy_service.py 의 어떤 변이도 셋을 따로 붉히지
     #    못한다(변이 M1·M2·M3 이 전부 셋을 함께 붉힌다). 독립 검사 셋으로 읽지 말 것.
     assert kw["tools"][0]["function"]["name"] == "deliver_battery"
-    assert "action" not in sig.output_fields   # native 로 넘어가며 삭제된다
-    assert "tools" not in sig.input_fields
+    # 🔴 이름의 부재가 아니라 **삭제가 일어났는가**를 잰다. 옛 단언
+    #    (`"action" not in sig.output_fields`)은 필드를 `act` 로 개명하기만 해도 초록이었다 —
+    #    삭제를 잰 게 아니라 이름의 부재를 쟀기 때문이다(컨트롤러 실측 B3). 아래는 삭제 자체를
+    #    잰다: 분기가 안 타면 제거 집합이 비어(`set()`) 붉어진다.
+    assert set(SelectTool.output_fields) - set(sig.output_fields) == \
+        {ad._get_tool_call_output_field_name(SelectTool)}
+    assert set(SelectTool.input_fields) - set(sig.input_fields) == \
+        {ad._get_tool_call_input_field_name(SelectTool)}
