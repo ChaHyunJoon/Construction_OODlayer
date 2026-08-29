@@ -137,6 +137,18 @@ end
         include("service_decide_ships_agents.jl")
     end
 
+    # 2026-08-29 (Plan B / T1): DSPy 서비스가 이미 내던 tool 레인 키 8개를 Julia 의
+    # `policy_entry` 가 전부 떨어뜨리고 있었다. 이 게이트는 그 8개가
+    # `decide_all(...).tool_lane` 까지 **값까지 그대로** 오는지, 그리고 spec §9-2 의 삼상
+    # (`nothing`="못 쟀다" ≠ `false`="재서 어긋났다")이 언어 경계에서 살아남는지 잰다.
+    # 바로 위 게이트와 **같은 패턴**이다 — 루프백에 진짜 HTTP 서버를 띄우고 `DSPY_URL` 을
+    # policy.jl include 동안에만 그리로 돌린다(패키지 제네릭 해적질 없음, 8077 로 나가는
+    # 요청 없음 = 유료 OpenAI 호출 없음). 같은 이유로 `Sockets` 를 직접 import 하지 않는다
+    # (그 함정이 위 게이트를 이 배선 안에서 통째로 에러로 만든 이력이 있다).
+    @testset "tool lane keys survive to decide_all" begin
+        include("tool_lane_keys_survive.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin

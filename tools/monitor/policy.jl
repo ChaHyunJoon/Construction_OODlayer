@@ -565,8 +565,13 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #         `tool_args` 를 거기까지 나르는 것이 없다. 실측: 레포의 `.jl` 에서 `tool_args`/
     #         `tool_called` 를 **코드로 읽는 줄이 0개**다(주석에서 언급하는 자리는 바로 이
     #         블록뿐이므로, grep 이 1건을 내면 그건 이 주석 자신이다). 그리고 이 파일의
-    #         `policy_entry` 는 키 목록을 손으로 들고 있어 여덟 개만 나른다 —
-    #         chosen·ranking·margin·rationale·scores·unsupported·label·available.
+    #         🟡 2026-08-29 (Plan B / T1) 갱신: 이 문단의 마지막 줄은 *"`policy_entry` 는
+    #         키 목록을 손으로 들고 있어 chosen·ranking·margin·rationale·scores·unsupported·
+    #         label·available 여덟 개만 나른다"* 였다. **그 부분은 이제 낡았다** — `policy_entry`
+    #         가 `TOOL_LANE_KEYS`(아래) 여덟 개를 두 분기 모두에서 나르고 `decide_all` 이
+    #         `tool_lane` 필드로 노출한다. 🔴 **그러나 위 ③의 결론은 그대로 참이다**: 나르기만
+    #         할 뿐 `RespecProposal` 까지 잇는 것은 아직 없으므로 `grammar_ground_check` 는
+    #         여전히 이 레인을 못 본다. 그 연결은 T2 다.
     #    즉 tool 호출의 접지를 보증하는 층은 **오늘 없다.** 연결은 Plan B 의 경계 작업이다.
     #    (세 부분의 전체 서술과 근거는 스펙 §8 안전 스택 표 아래의 같은 날짜 정정.)
     agents === nothing || (payload["agents"] = agents)
@@ -1038,6 +1043,60 @@ surrogate_support_measured(surro_entry, missing) =
 
 
 """
+    TOOL_LANE_KEYS
+
+DSPy 서비스가 `/decide` 의 `dspy` 본체에 싣는 **tool 레인 키 전부**
+(`src/respec/llm_service/dspy_service.py` 의 `macro()` 반환 dict `:1029-1073`,
+그리고 `/decide` 가 그것을 `out["dspy"]` 로 옮기는 `:1103-1107`).
+
+🔴 목록을 두 벌 두지 않는다. `policy_entry` 의 **두 분기**와 `decide_all` 의 `tool_lane`
+노출이 전부 이 하나를 읽는다 — 손으로 든 키 목록이 갈리는 것이 이 배선이 애초에 없었던 이유다
+(`service_decide` 위 2026-08-29 정정 블록 참조).
+"""
+const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offered",
+                        "expressible", "native_fc", "tool_lane_error", "macro_tool_agree")
+
+"""
+    _tool_args_dict(x)
+
+`tool_args` 만 모양을 고정한다 — 나머지 일곱은 스칼라라 그대로 싣는다.
+
+왜: 서비스가 보내는 것은 JSON 객체라 Julia 쪽에서 `JSON3.Object` 로 도착하는데, 그 타입은
+`Dict{String,Any}` 가 아니다. 하류(T2 의 접지 `grammar_ground_check` 경로)가 `Dict{String,Any}`
+로 읽을 것이므로 경계에서 한 번만 바꾼다.
+
+실측(2026-08-29): 현행 tool 알파벳의 인자는 **전부 평평하다** — `tool_registry.py` 의 세 tool 이
+받는 것은 `agent::String` 하나 또는 `reason::String` 하나뿐이라 중첩 객체가 나올 자리가 없다.
+그래서 변환은 **얕다**: 값이 중첩 객체인 tool 이 생기면 그 값은 `JSON3.Object` 로 남는다.
+(깊은 복사를 지금 짓지 않는 이유 = 오늘 재보면 그 사건이 도달 불가능하기 때문이고, 도달
+가능해지는 순간이 곧 이 docstring 을 다시 읽어야 하는 순간이다.)
+
+🔴 `nothing` 을 빈 Dict 로 접지 않는다 — "tool 을 안 불렀다"와 "인자가 비었다"는 다른 사건이다.
+"""
+_tool_args_dict(x) = x === nothing ? nothing :
+    (x isa AbstractDict{String} ? x : Dict{String,Any}(String(k) => v for (k, v) in pairs(x)))
+
+"""
+    tool_lane_fields(b) -> Vector{Pair{String,Any}}
+
+`TOOL_LANE_KEYS` 여덟 개를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
+
+🔴 **삼상 보존 (spec §9-2).** `nothing` = "못 쟀다", `false` = "재서 어긋났다". 여기서
+`something(x, false)` 나 `Bool(x)` 로 감싸면 그 계약이 죽는다 — `expressible` ·
+`native_fc` · `macro_tool_agree` 셋 다 서비스가 `null` 을 낼 수 있고, JSON3 는 그것을
+`nothing` 으로 준다(실측). 그러므로 **아무것도 접지 않는다.**
+
+🔴 두 분기가 **같은 키 집합**을 낸다. 키를 있을 때만 싣는 설계는 "키가 없다"와 "값이 null 이다"를
+구분 불가능하게 만든다(Plan A 가 이미 밟은 presence-gated 결함). 레인이 안 돌았다는 사실은
+이미 있는 `"available"` 키가 나른다 — 새 표식 키를 만들지 않는다.
+"""
+tool_lane_fields(b) = Pair{String,Any}[k => (k == "tool_args" ?
+                                             _tool_args_dict(b === nothing ? nothing :
+                                                             get(b, :tool_args, nothing)) :
+                                             (b === nothing ? nothing : get(b, Symbol(k), nothing)))
+                                       for k in TOOL_LANE_KEYS]
+
+"""
     policy_entry(b, label) -> Dict
 
 서비스 응답 하나(`b`, 없으면 `nothing`)를 **`decide_all` 이 `pol[key]` 에 넣는 dict** 로 바꾼다.
@@ -1065,7 +1124,10 @@ function policy_entry(b, label)
                         # 이 정책이 **아예 고를 수 없었던** 유효 매크로들(학습 근거 0).
                         # "NOOP 을 골랐다"와 "새 행동을 못 본다"는 전혀 다른 사건이다.
                         "unsupported" => String.(collect(get(b, :unsupported, String[]))),
-                        "label" => String(get(b, :policy, label)), "available" => true)
+                        "label" => String(get(b, :policy, label)), "available" => true,
+                        # ---- tool 레인 8키 (Plan B / T1, 2026-08-29) --------------------
+                        # 여기까지가 배선이다. 집행부가 이 값을 **쓰는** 것은 T2 의 몫.
+                        tool_lane_fields(b)...)
         end
     end
     # ---- 폴백 dict 도 `unsupported` 와 **사유**를 싣는다 (2026-08-14 회귀 수정) ----------
@@ -1080,7 +1142,10 @@ function policy_entry(b, label)
                 "rationale" => (isempty(miss0) ? err0 :
                                 "no training support for " * join(miss0, ",")),
                 "unsupported" => miss0, "error" => err0,
-                "label" => label, "available" => false)
+                "label" => label, "available" => false,
+                # 🔴 폴백도 **같은 8키**를 낸다(전부 nothing). 키가 사라지면 소비자가
+                # "레인이 안 돌았다"와 "레인이 돌았는데 값이 null 이다"를 못 가른다.
+                tool_lane_fields(nothing)...)
 end
 
 
@@ -1459,10 +1524,18 @@ function decide_all(env, truth; nl::AbstractString = "")
         ""
     end
 
+    # ---- tool 레인 노출 (Plan B / T1, 2026-08-29) ---------------------------------------------
+    # 🔴 **`pol["dspy"]` 가 아니라 `pol[enacted]` 다.** 실제로 결정을 낸 레인이 canonical /
+    #    noop / oracle / surrogate 이면 LLM 의 tool 호출은 그 결정과 **아무 상관이 없다** —
+    #    `pol["dspy"]` 에서 뽑으면 canonical 이 결정한 사건에서 LLM 의 tool 인자가 집행으로
+    #    흘러드는 경로가 생긴다. 그 레인들의 dict 에는 8키가 아예 없으므로 `get(..., nothing)`
+    #    이 전부 `nothing` 을 낸다 = "못 쟀다"(spec §9-2), `false` 가 아니다.
+    local tool_lane = Dict{String,Any}(k => get(pol[enacted], k, nothing) for k in TOOL_LANE_KEYS)
+
     return (macro_name = chosen, candidates = cands, policies = pol, enacted = enacted,
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],
             llm_macro = pol["dspy"]["chosen"], verdict = verdict, router = rt,
-            narrative = narrative,
+            narrative = narrative, tool_lane = tool_lane,
             detail = pol[enacted]["rationale"], agree = isempty(others))
 end
 
