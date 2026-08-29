@@ -223,7 +223,8 @@ battery 분기는 legacy 일 때 **`soc_split_enabled()` 를 보기도 전에** 
 으로 돌리면 메뉴는 갈렸는데 도장은 `false` 를 찍는다 = 도장이 거짓말한다. 8b 는 이 런에서 그
 플래그를 쓰지 않지만, **거짓말할 수 있는 도장은 그 자체가 결함**이므로 판독점에서 막는다.
 """
-soc_split_enabled() = _legacy_arms() || get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1"
+# 2026-08-25: 기본값 문자열 `"1"` 의 사본을 없앤다 — 판독점은 `ActionRegistry.soc_split_enabled`.
+soc_split_enabled() = _legacy_arms() || ActionRegistry.soc_split_enabled()
 
 function valid_actions(ctx)
     if ctx.type === :fault
@@ -251,13 +252,13 @@ function valid_actions(ctx)
         # 라벨의 의미를 가르고, 행에 `soc_split` 도장으로 남는다(`soc_split_enabled`).
         # (예전 이 자리의 "깊은 방전에서도 Deprioritize 가 이기는가 / 팔 3 -> 4" 는 그 팔이
         #  어휘에 있던 시절의 서술이다.)
-        up = ActionRegistry.kind_valid(:battery)
-        soc_split_enabled() || return up
+        # 🔴 2026-08-25: 여기 있던 `keep = ... ? (0,1,2) : (0,2)` 리터럴을 지웠다. 그 튜플은
+        # 재번호 때마다 조용히 거짓이 되는 종류였고(주석이 그 위험을 직접 적고 있었다), 무엇보다
+        # **실행 레인(`policy.jl valid_macros`)에는 이 분할이 아예 없어서** 두 레인의 행동공간이
+        # 갈려 있었다. 분할 규칙을 어휘 단일 진실원으로 올리고 두 레인이 같은 함수를 부른다.
+        # 게이트: `test/battery_menu_lanes_agree.jl`.
         thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
-        # 2026-08-24 재번호: SwapBattery 가 3 -> 2 다. 이 튜플이 낡으면 SwapBattery 가
-        # **battery 메뉴에서 통째로 사라진다**(교집합이 [0,1]/[0] 으로 무너진다).
-        keep = (isfinite(ctx.soc) && ctx.soc <= thr) ? (0, 1, 2) : (0, 2)
-        return [a for a in up if a in keep]
+        return ActionRegistry.battery_arms(ctx.soc, thr, soc_split_enabled())
     elseif ctx.type === :zone
         # 2026-08-24: 레지스트리에 zone 팔이 없다 -> `[0]`. 결정 시점 기하로 좁히던 경로
         # (_zone_arms_for)는 매크로 id 2 를 직접 push 했으므로 재번호와 함께 삭제했다.

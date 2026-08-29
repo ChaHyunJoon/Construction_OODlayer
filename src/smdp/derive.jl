@@ -5,7 +5,7 @@
 #    본다: 어떤 노드가 활성인가(= `s`) · 그 노드를 누가 맡는가(= `_responsible_robots`).
 #    다시 분류하면 경량 레인과 무거운 레인의 λ 가 갈린다.
 #
-# 🔴 **팀 명부를 `s.g.binding` 에서 유도하지 않는다** (2026-08-21 T7 정정, spec §2-6 의 결함).
+# 🔴 **팀 명부를 `s.g.binding` 에서 유도하지 않는다** (spec §2-6 의 결함).
 #    `_responsible_robots(node)` 는 팀 **전원**을 돌려주는데 `simstate_of` 는 그 중 한 명만
 #    `binding[v]` 에 적는다(`observe.jl`: `first(sort(rs; by = string))`). binding 으로 팀을
 #    유도하면 나머지 팀원이 전부 `:idle` 로 분류되고, `mult_idle = 0.10` vs `mult_carry = 2.0`
@@ -31,9 +31,6 @@ function active_of(s::SimState)
         push!(verts, u); push!(verts, v)
         push!(get!(preds, v, Int[]), u)
     end
-    # ⛔ 계획서 스니펫에 있던 `union!(verts, s.prog.closed)` 를 지웠다 — **죽은 코드**다.
-    #    그것이 넣는 원소는 전부 `s.prog.closed` 안에 있으므로 바로 아래 `!(v in closed)` 에서
-    #    100% 걸러진다. 남겨 두면 "closed 도 후보로 본다"는 잘못된 인상을 준다.
     return Set(v for v in verts
                if !(v in s.prog.closed) &&
                   all(u -> u in s.prog.closed, get(preds, v, Int[])))
@@ -50,9 +47,9 @@ _mode_rank(m::Symbol) = m === :carry ? 3 : m === :manip ? 2 : m === :transit ? 1
 `mode_of` 도 `rate_params` 도 이것 하나를 부른다(단일 분류기).
 
 복잡도: `O(|edges| + Σ_{v ∈ active} |team(v)| · log + |fleet| log|fleet|)`.
-🔴 **로봇 수에 대해 선형이지 이차가 아니다.** 계획서의 `mode_of` 는 로봇마다 `active_of(s)`
-를 다시 만들어 배치 경로가 `O(|fleet| · |edges|)` 였다 — Task T9 의 rate boundary 가
-로봇당 세 번씩 부르므로 그 자리에서 예산을 다 쓴다.
+🔴 **로봇 수에 대해 선형이지 이차가 아니다.** 로봇마다 `active_of(s)` 를 다시 만들면 배치
+경로가 `O(|fleet| · |edges|)` 가 되고, rate boundary 가 로봇당 세 번씩 부르므로 그 자리에서
+예산을 다 쓴다.
 """
 function modes_of(s::SimState, env)
     out = Dict{Int,Symbol}(k => :idle for k in keys(s.fleet))
@@ -70,7 +67,7 @@ function modes_of(s::SimState, env)
         # ⚠️ `_responsible_robots` 는 `LiftIntoPlace` 에 **빈 벡터**를 준다(battery.jl:183-191)
         # — `_node_mode` 는 그것을 `MANIPULATE` 로 분류하는데도. 그래서 `LiftIntoPlace` 는 두
         # 레인 **모두에서** 아무에게도 `:manip` 을 주지 않는다. 이건 엔진 쪽 비대칭이고, 여기서
-        # 고치면 경량 레인만 달라져 λ 가 갈린다 — **의도적으로 그대로 둔다**(T8/T12 참고).
+        # 고치면 경량 레인만 달라져 λ 가 갈린다 — **의도적으로 그대로 둔다**.
         for id in sort!(collect(_responsible_robots(node)); by = string)
             k = _int_key(id)
             # `s.fleet` 밖의 로봇은 이미 `_hz_excluded()` 로 걸러진 것이다(spec §2-4).
@@ -86,8 +83,7 @@ end
     mode_of(s::SimState, env, k::Int) -> Symbol
 
 로봇 `k`(= `s.fleet` 의 키)의 전력·위험 모드 — `:idle | :transit | :carry | :manip`.
-`modes_of` 의 얇은 래퍼다(Task T6 이 `hazard_rate` 를 `hazard_rate_from` 의 래퍼로 둔 것과
-같은 이유: 두 경로가 **구성상** 같은 값을 낸다).
+`modes_of` 의 얇은 래퍼다 — 두 경로가 **구성상** 같은 값을 낸다.
 
 🔴 `s.fleet` 에 없는 로봇은 `:idle` 로 떨어뜨리지 않고 **에러다.** 없는 로봇은 위험에서
 빠져 있다는 뜻이고, 그것을 대기 중인 로봇과 한 값으로 합치면 두 레인이 서로 다른 집합 위에서
@@ -107,8 +103,8 @@ end
 `_hz_excluded()` 로 걸러져 있다(spec §2-4). 거르면 두 번 거르는 것이고, 그 둘이 어긋나면
 게이트 N-G1 이 서로 다른 집합을 비교하게 된다.
 
-⚠️ 계획서는 이 함수를 `rates.jl` 에 두라고 적었지만, `env` 를 받으므로 여기(scene 을 보는
-레인)에 둔다. `rates.jl` 이 순수 수학으로 남는 것이 분리의 **이유**다.
+⚠️ `env` 를 받으므로 `rates.jl` 이 아니라 여기(scene 을 보는 레인)에 둔다. `rates.jl` 이
+순수 수학으로 남는 것이 분리의 **이유**다.
 """
 function rate_params(s::SimState, env, p::HazardParams,
                      bp::BatteryParams, capacity_J::Float64)

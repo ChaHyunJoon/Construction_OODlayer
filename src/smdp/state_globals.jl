@@ -206,9 +206,7 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # :split 2 · :meta 1 = **131** 이다(위 스윕은 그 이전 모집단).
 
     # ---- run_demo.jl / policy.jl 확장분 (I12 + fix round 1) --------------------------------
-    # 🔴 2026-08-24 (spec §5.5, Task 6): `:_REFORM_CT` 항목을 지웠다. 그 전역은 run_demo.jl 의
-    # `ReformTruth` 발화 경로를 게이팅하던 카운터였고, 그 경로 전체가 같은 커밋에서 삭제됐다
-    # (`ReformTruth` 타입 자체가 없어졌다). 표에 남겨 두면 스캔이 못 찾는 **유령 항목**이 된다.
+                                          # 카운터(연속 무성과 N 회마다 ReformTeam 재발화, :849-850)
     :_ZONE_CT                => :state,  # 존 주입 키 접미사(`zone_inj_$(_ZONE_CT[])` 등) — 이
                                           # 카운터 값이 RESTRICTION_ZONES 딕셔너리의 실제 키에
                                           # 그대로 들어간다. 복원 안 되면 재주입 시 기존 키와
@@ -349,6 +347,7 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :NOVELTY_DETECTOR       => :meta,
 
     # ---- 셋업 상수 / 배선 훅 / ENV 손잡이 ----------------------------------------------
+    :UNWEDGE_INTERVAL      => :setup,   # 명목 레인 교착 해소 주기(무진전 modulo). 상수 손잡이
     :SPARE_POOL_CENTERS     => :setup,   # spec §3.6: 셋업 상수 — 스냅샷 불필요
     :DEPOT_INFO             => :setup,
     :HAZARD_ENABLED         => :setup,
@@ -367,7 +366,6 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :IDENTITY_CHECK         => :setup,
     :IDENTITY_CHECK_EVERY   => :setup,
     :IDENTITY_STRICT        => :setup,
-    :REFORM_INTERVAL        => :setup,   # ⚠️ 이 값이 Age.no_progress 의 modulo 를 정한다
     :RELOCATE_GATE          => :setup,
     :REPLACE_SOC_THRESHOLD  => :setup,
     :RESPEC_DRIFT_REPAIR    => :setup,
@@ -458,10 +456,15 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :DEFAULT_MILP_OPTIMIZER_ATTRIBUTES => :setup, # essential_tg_coponents.jl:1946.
                                           # round 2 의 "호출자 0건"은 틀렸다(round 3 재리뷰가
                                           # 잡음) — 실측 14개 호출쌍이 있다
-                                          # (full_demo.jl:307-308,604-605 + tools/checks.jl·
-                                          # demos.jl·diagnostics.jl·e2e.jl·restage.jl·
-                                          # test_policy_oracle.jl·test_policy_zone.jl·tests.jl·
-                                          # dev_session.jl·gen_oracle_dataset.jl). 전부 확인함:
+                                          # (2026-08-23 재측정: full_demo.jl:308,605 +
+                                          # tools/demos.jl 3곳 + tools/checks.jl·e2e.jl·restage.jl·
+                                          # tests.jl·test_policy_oracle.jl·test_policy_zone.jl·
+                                          # dev_session.jl·gen_oracle_dataset.jl·
+                                          # test/stage_graph_plots.jl 각 1곳).
+                                          # 🔴 옛 목록은 test/stage_graph_plots.jl 을 빠뜨리고
+                                          # tools/diagnostics.jl 을 넣고 있었다 — 후자는 2026-08-23
+                                          # 죽은 코드로 삭제됐고 그 자리를 전자가 메워 합계는 14로
+                                          # 같다. 전부 확인함:
                                           # full_demo.jl 안의 두 자리(:307-308,:604-605)는
                                           # 둘 다 `run_simulation!`(:875) **이전**의 MILP
                                           # 작업배정 단계이고, 나머지는 각자 독립 스크립트가

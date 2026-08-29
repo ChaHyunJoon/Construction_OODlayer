@@ -103,7 +103,7 @@ def main():
     key, kpid = _find_key(src_pid)
     if not key:
         sys.exit("ERROR: could not read ANTHROPIC_API_KEY from any running service process. "
-                 "Start the service (tools/run_real_llm_demo.ps1 style) or pass a PID.")
+                 "Start the LLM service (src/respec/llm_service/server.py) or pass a PID.")
     print(f">>> key sourced from PID {kpid} (len={len(key)}, masked)")   # 키 자체는 안 찍고 길이만
     fx = json.load(open(FIXTURE, encoding="utf-8"))   # fixture(JSON) 로드
 

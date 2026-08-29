@@ -1,12 +1,7 @@
 # =============================================================================
 # observe.jl — env → s 의 **유일한** 경로 (spec §6 C2, 게이트 N-G0′)
 #
-# 2026-08-21 축소(Task R1)로 `SimState` 가 26 → **7 필드**(로봇당 8 → 2)가 됐다. 이 파일은
-# Task R2 에서 그 축소를 따라잡는다 — `_role_of`·`_sched_roles`·`_payload_of`·`_courier_recs`·
-# `_build_delta`(그리고 이제 호출자가 없어진 `_build_poses`·`_health_of`)는 전부 삭제됐다.
-# `_int_key` 만 그대로 남는다.
-#
-# 계약 셋. 어기면 롤아웃이 조용히 틀린다:
+# 계약. 어기면 관측이 조용히 틀린다:
 #   (1) **읽기 전용 — 정확히는 `s` 와 세계의 동역학에 관찰 가능한 변화를 주지 않는다.**
 #       관측이 세계를 바꾸면 같은 상태를 두 번 관측한 것만으로 갈래가 갈린다.
 #       🔴 이 계약은 "대입을 안 한다" 보다 넓다 — **지연 초기화 헬퍼를 부르는 것도 수정이다.**
@@ -15,8 +10,7 @@
 #       **지어내지 않고** `error()` 로 죽는다(아래 함수 본문) — `enable_hazard!` 가 이미 모든
 #       배터리 함대 로봇을 등록해 두므로, 정상 경로에서는 도달하지 않는다.
 #
-#       ⚠️ **정확히 하나, 의도적으로 남긴 부작용이 있다 (컨트롤러 판정, base 부터 그대로 —
-#       R2 가 새로 만든 것이 아니다).** `global_transform`(hierarchical_geom_essentials.jl:347)
+#       ⚠️ **정확히 하나, 의도적으로 남긴 부작용이 있다.** `global_transform`(hierarchical_geom_essentials.jl:347)
 #       = `get_cached_value!` 이고, 캐시가 **낡아 있으면** `propagate_forward!` 로 재계산하면서
 #       `_next_cache_timestamp()`(graph_utils_essentials.jl:143-147)가 프로세스 전역
 #       `_CACHE_TIMESTAMP_COUNTER` 를 올린다. 그 카운터는 **ξ** 다(simstate.jl `ReplayState.
@@ -32,23 +26,6 @@
 #   (3) 🔴 **`fleet` 멤버십은 `_hz_excluded()` 를 직접 부른다.** 여기서 role·health 로
 #       다시 유도하면 두 레인이 서로 다른 집합 위에서 위험을 적분한다(spec §2-4, 완료 보고서
 #       §4-2 가 반례 둘을 실측했다). `_hz_excluded()` = 주차 예비 ∪ 반출 예비 ∪ 고장(주입 레인).
-#
-# 🔴 **Task R2 진행 중 실측한, 계획서 브리프와의 불일치(전부 실제 이름을 확인하고 그대로 씀)**:
-#   이름은 전부 일치한다 — `CHECKED_OUT_SPARES` · `_hz_excluded` · `RESTRICTION_ZONES` ·
-#   `LazySets.Ball2` 의 `center`/`radius` 필드 · `_responsible_robots` · `global_transform` ·
-#   `node_id` · `get_nodes` (grep 으로 실측 확인, task-R2-report.md 참조). **딱 하나, 이름이 아니라
-#   출처가 틀렸다 — 그리고 그 오류는 브리프 안에서만 있었다, 이 파일(base 부터 커밋된 코드)에는
-#   없었다.** 브리프는 `poses` 를 `get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)`
-#   로 읽으라고 적었다. **base(`b578cd3c`)의 `simstate_of` 는 이미 `_build_poses(env)` 를 통해
-#   `AssemblyComplete.start_config` 를 읽고 있었다** — 씬트리 출처는 브리프의 스니펫과 이 태스크의
-#   진행 중이던 초안에만 있었지, 커밋된 코드에 있던 적이 없다. 독립 검증자가 지적하고 이 파일이
-#   실측으로 확인한 바 `_apply_uniform_translation!`(restage_zone.jl:610-624, RelocateBuild 의
-#   실제 집행부)이 무조건 쓰는 값은 씬트리가 아니라 `AssemblyComplete.start_config` 다 — 씬트리
-#   쪽은 드리프트가 `default_robot_radius()` 미만이면 `_resync_scene_drift!` 가 아예 안 건드린다
-#   (실측: `Δ=0.2·tol` 적용 후 `state_hash` 불변). 그래서 최종 구현은 브리프가 아니라 base 와
-#   같은 출처(`start_config`)를 쓴다 — **찾은 것은 계획서의 오류이지 코드의 퇴행이 아니다.**
-#   아래 게이트의 "geo.poses 가 RelocateBuild 의 실제 집행부를 관측하는가" testset이 이 실측을
-#   영구 트립와이어로 남긴다.
 # =============================================================================
 
 """
@@ -56,7 +33,7 @@
 
 현재 `env`(+ 배터리·hazard 전역)에서 `s` 를 읽는다. **읽기 전용.**
 
-계약 셋(어기면 롤아웃이 조용히 틀린다):
+계약(어기면 관측이 조용히 틀린다):
   (1) env·전역을 하나도 수정하지 않는다 — **단, `global_transform` 의 캐시 재계산이 `ξ`
       (`_CACHE_TIMESTAMP_COUNTER`)를 올리는 것은 의도적으로 남긴 유일한 예외다**(파일 머리
       코멘트, base 부터 그대로).
@@ -82,15 +59,15 @@ function simstate_of(env)
     end
     binding = Dict{Int,Int}()
     for v in Graphs.vertices(sched)
-        # 🔴 리뷰 라운드 1 이 잡은 결함: 옛 초안은 여기를 `try ... catch; () end` 로 감쌌다(브리프
-        # verbatim). `_responsible_robots`(battery.jl:184-192)는 else 분기에서 항상 `Any[]` 를
-        # 반환하고 **절대 던지지 않는다** — 그래서 그 catch 는 죽은 방어 코드가 아니라 "조용한
-        # 폴백 금지" 원칙 위반이었다: 어느 날 새 노드 타입이 추가돼 이 호출이 정말로 던지면, 그
-        # 정점이 `binding` 에서 **조용히** 빠진다(이 루프는 `binding` 에 들어간 것만 보므로 그
-        # 누락은 어디서도 안 보인다). base 는 이 호출을 그대로 bare 로 뒀다 — 그 형태로 되돌린다.
+        # 🔴 이 호출을 `try ... catch; () end` 로 감싸지 말 것.
+        # `_responsible_robots`(battery.jl:184-192)는 else 분기에서 항상 `Any[]` 를 반환하고
+        # **절대 던지지 않으므로** 그 catch 는 죽은 방어 코드가 아니라 "조용한 폴백 금지" 원칙
+        # 위반이다: 어느 날 새 노드 타입이 추가돼 이 호출이 정말로 던지면 그 정점이 `binding`
+        # 에서 **조용히** 빠진다(이 루프는 `binding` 에 들어간 것만 보므로 그 누락은 어디서도
+        # 안 보인다).
         rs = _responsible_robots(get_node(sched, v).node)
         isempty(rs) && continue
-        # ⚠️ `_responsible_robots` 는 **정렬돼 있지 않다**(Dict 순회 순서 — 선행 계획의 오류 P2).
+        # ⚠️ `_responsible_robots` 는 **정렬돼 있지 않다**(Dict 순회 순서).
         # 정렬 첫째를 쓴다. 안 하면 같은 세계가 프로세스마다 다른 binding 을 얻는다.
         binding[v] = _int_key(first(sort!(collect(rs); by = string)))
     end
@@ -98,21 +75,16 @@ function simstate_of(env)
 
     # --- Geo: 조립체 기하 + zone(중심·반지름까지) --------------------------------------
     #
-    # 🔴 **poses 의 출처는 `AssemblyComplete.start_config` 다 — base(`b578cd3c`, 옛 `_build_poses`)
-    # 부터 그대로이고, 이 태스크가 바꾼 것이 아니다.** 계획서 브리프의 스니펫은 이것 대신
-    # `get_nodes(env.scene_tree)` + `matches_template(AssemblyNode,·)` + `global_transform(n)` 을
-    # 시켰는데(**브리프의 오류**, 이 태스크의 진행 중이던 초안에만 잠깐 있었고 커밋된 적은 없다),
-    # 독립 검증자가 지적하고 실측으로 확인한 바 `RelocateBuild` 의 실제 집행부
-    # `_apply_uniform_translation!`(restage_zone.jl:610-624)이 무조건 옮기는 값은 `start_config`
-    # 이지 씬트리가 아니다 — 씬트리 쪽은 `_resync_scene_drift!`(restage_zone.jl:157-176)가
+    # 🔴 **poses 의 출처는 `AssemblyComplete.start_config` 다 — 씬트리가 아니다.** 조립체를
+    # 옮기는 집행부 `_apply_uniform_translation!`(restage_zone.jl:610-624)이 무조건 쓰는 값이
+    # `start_config` 이기 때문이다. 씬트리 쪽은 `_resync_scene_drift!`(restage_zone.jl:157-176)가
     # free(미포획) 노드에 한해, 드리프트가 `tol`(기본 `default_robot_radius()`)보다 클 때만
     # 되튕긴다. 실측: `Δ = 0.2·tol` 을 씬트리 출처로 적용하면 `state_hash` 가 **한 글자도 안
-    # 바뀐다**(`h_small == h0`, 아래 게이트의 "geo.poses 가 RelocateBuild 의 실제 집행부를
-    # 관측하는가" testset이 이 실측을 영구 트립와이어로 남긴다) — `tol` 미만의 RelocateBuild 가
-    # `s` 에서 사라져 `NOOP` 과 구분 불가능해질 뻔했다(`SwapBattery`/`NOOP` 트립와이어와 같은
-    # 부류의 사고).
+    # 바뀐다**(`h_small == h0`) — `tol` 미만의 평행이동이 `s` 에서 사라져 `NOOP` 과 구분
+    # 불가능해질 뻔했다(`SwapBattery`/`NOOP` 트립와이어와 같은 부류의 사고). 아래 게이트의
+    # 해당 testset 이 이 실측을 영구 트립와이어로 남긴다.
     #
-    # ⚠️ **스케줄의 모든 `AssemblyComplete` 를 훑는다**(옛 `_build_poses` docstring 그대로 옮김):
+    # ⚠️ **스케줄의 모든 `AssemblyComplete` 를 훑는다**:
     # `_apply_uniform_translation!` 은 `env.staging_circles` 에 등재된 조립체만 옮기므로 여기
     # 담기는 집합은 그 상위집합이다 — 빠뜨리는 쪽이 아니라 더 담는 쪽이라 관측이 눈멀지 않는다.
     poses = Dict{Int,NTuple{3,Float64}}()

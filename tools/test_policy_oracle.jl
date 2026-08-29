@@ -209,7 +209,16 @@ else
     CB.clear_recovery_spares!()
     check("돌아올 로봇이 없어도 zone 은 NOOP (예전 답: RelocateBuild)",
           oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
-    check("그리고 zone 메뉴는 비었다(개입 팔이 없다)", isempty(valid_macros(env, t_blk)),
+    # 🔴 2026-08-25: 예전엔 `isempty(valid_macros(...))` 였다. 그 "빈 벡터" 는 호출자 쪽에서는
+    # **"모르겠다"** 라는 신호라(그러면 DSPy 서비스가 kind 표를 못 찾고 전체 3팔로 폴백한다)
+    # zone 사건의 LLM 메뉴에 `Replace`/`SwapBattery` 가 조용히 들어와 있었다. 이제 그 자리는
+    # **명시적인 NOOP-only 메뉴**다 — 뜻은 같고("개입 팔이 없다") 새는 구멍만 막혔다.
+    # 기대값은 레지스트리에서 만든다(리터럴 금지 · `ood_mdp_shim._zone_arms()` 와 같은 규약).
+    local zone_menu = [ActionRegistry.NAME[i]
+                       for i in sort(unique(vcat(0, ActionRegistry.kind_valid(:zone))))]
+    check("그리고 zone 메뉴에 개입 팔이 없다(NOOP 하나뿐)",
+          valid_macros(env, t_blk) == zone_menu &&
+          !any(m -> m in ("Replace", "SwapBattery"), valid_macros(env, t_blk)),
           "menu=$(valid_macros(env, t_blk))")
 
     # 두 종류의 로봇을 **env 를 건드리지 않고** 고른다(기하 조작은 start_config 가 goal_config 를
@@ -272,10 +281,11 @@ else
         check("사전조건: 오는 중으로 읽힌다", _recovery_in_transit(env) == true)
         check("돌아오는 중인 운반체가 있으면 전역 이동은 legal 이 아니다 -> NOOP",
               oracle_macro(env, t_blk) == "NOOP", "got=$(oracle_macro(env, t_blk))")
-        # 예전에는 "그 답은 여전히 메뉴 안이다"(`m in vm`)였다. 메뉴가 빈 지금 그 검사는
-        # 무조건 거짓이 되므로, 재는 것을 "메뉴가 비었으면 답은 NOOP 이어야 한다"로 바꾼다.
-        check("메뉴가 비면 답은 NOOP 이다",
-              isempty(valid_macros(env, t_blk)) && oracle_macro(env, t_blk) == "NOOP",
+        # 2026-08-25: zone 메뉴가 다시 비어 있지 않으므로(NOOP-only) 원래의 더 센 검사
+        # "그 답은 메뉴 안이다"(`m in vm`)를 되살린다 — 그리고 그 답이 NOOP 인 것까지 본다.
+        check("답은 메뉴 안이고 NOOP 이다",
+              (oracle_macro(env, t_blk) in valid_macros(env, t_blk)) &&
+              oracle_macro(env, t_blk) == "NOOP",
               "menu=$(valid_macros(env, t_blk)) got=$(oracle_macro(env, t_blk))")
 
         # (ii) ★★ 래치 vs 술어를 가르는 검사 ★★

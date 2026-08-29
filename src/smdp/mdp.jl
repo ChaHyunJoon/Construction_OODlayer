@@ -19,9 +19,8 @@
 
 include("state_globals.jl")   # spec §3.6 전역 인벤토리 (hazard 보다 먼저 — 의존 없음)
 include("hazard.jl")   # §5 stochastic failure process (competing-risks point process)
-include("simstate.jl")   # §3 상태 정의. 리뷰 라운드 1 확인: hazard.jl 에 의존하지 않는다 —
-                          # 이전 주석의 "HazardParams/HazardState 를 참조한다"는 틀린 진술이었다.
-                          # hazard 뒤에 두는 건 계획서 파일 목록 순서를 따르는 관례일 뿐이다.
+include("simstate.jl")   # §3 상태 정의. hazard.jl 에 의존하지 않는다 —
+                          # hazard 뒤에 두는 건 관례일 뿐이다.
 include("observe.jl")   # env → s 의 유일한 경로. simstate.jl(타입)·hazard.jl(_hz_modes) 둘 다에
                         # 의존하므로 반드시 이 둘 뒤에 온다.
                         # 🔴 **세 번째 의존이 있다: navigator/navigator.jl** —

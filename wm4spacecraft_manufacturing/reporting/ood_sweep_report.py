@@ -4,7 +4,7 @@ ood_sweep_report.py -- 무작위 OOD 스트림 스위프 결과 보고 (2026-08-
 
 무엇을 읽나
 -----------
-tools/monitor/run_ood_sweep.ps1 이 쌓은 요약 JSONL. 한 줄 = 한 판 =
+요약 JSONL. 한 줄 = 한 판 =
 (world_seed 고정, ood_seed 하나, policy 하나).
 
 무엇을 보고하나
@@ -86,7 +86,10 @@ def sign_test(wins, losses):
 def main():
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
     if not path.exists():
-        print(f"요약 파일이 없다: {path}\n  먼저: pwsh -File tools/monitor/run_ood_sweep.ps1")
+        print(f"요약 파일이 없다: {path}\n"
+              "  생산자였던 tools/monitor/run_ood_sweep.ps1 은 2026-08-23 제거됐다"
+              "(pwsh 미설치·미사용). 현행 스위프는 wm4spacecraft_manufacturing/sweep/"
+              "run_4pol_parallel.sh 를 쓴다.")
         return 1
     rows = load(path)
     if not rows:

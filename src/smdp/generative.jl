@@ -22,17 +22,16 @@
 
 # --- 행동 어휘의 단일 진실원 배선 --------------------------------------------------------
 #
-# 🔴 **`src/` 안의 Julia 코드가 `ActionRegistry` 를 로드하는 것은 이 파일이 처음이다**
-#    (계획서의 실측: `grep -rn ActionRegistry src/` → 소비처 0개). 그래서 그 배선을 여기서
-#    한 번만 만들고, 어디서도 팔 번호 리터럴을 쓰지 않는다.
+# 🔴 **`src/` 안의 Julia 코드가 `ActionRegistry` 를 로드하는 것은 이 파일이 처음이다.**
+#    그 배선을 여기서 한 번만 만들고, 어디서도 팔 번호 리터럴을 쓰지 않는다.
 #
-# ⚠️ **브리프와 다른 점 하나 — 무엇을 include 하는가.** 브리프는 `action_registry.jl` 만
-#    include 하라고 적었는데, 그러면 `action_to_proposal`/`valid_actions`/`event_context` 가
-#    CB 안에 없다(그 셋은 `oracle/ood_mdp_shim.jl` 에 있고, 그 파일이 자기 형제인
-#    `action_registry.jl` 을 이미 include 한다). shim 을 include 하면 **한 번의 include 로
-#    둘 다** 들어오고, `ActionRegistry` 가 두 벌 생기는 일도 없다. 실측한 경로:
-#    `wm4spacecraft_manufacturing/oracle/action_registry.jl` — 2026-08-18 폴더 재편 뒤에도
-#    `core/` 가 아니라 `oracle/` 에 있다(브리프의 ⚠️ 는 기우였다. JSON 만 `core/` 에 있다).
+# ⚠️ **`action_registry.jl` 이 아니라 `ood_mdp_shim.jl` 을 include 한다.** 전자만 넣으면
+#    `action_to_proposal`/`valid_actions`/`event_context` 가 CB 안에 없다(그 셋은
+#    `oracle/ood_mdp_shim.jl` 에 있고, 그 파일이 자기 형제인 `action_registry.jl` 을 이미
+#    include 한다). shim 을 include 하면 **한 번의 include 로 둘 다** 들어오고,
+#    `ActionRegistry` 가 두 벌 생기는 일도 없다. 경로는
+#    `wm4spacecraft_manufacturing/oracle/action_registry.jl` — `core/` 가 아니라 `oracle/`
+#    이다(JSON 만 `core/` 에 있다).
 #
 # shim 은 본문 전체에서 `CB.` 접두사로 심볼을 부른다(원래 Main 스코프에 로드되던 파일이다).
 # 이 모듈 안에서 그 이름을 자기 자신에 묶어 주면 파일을 한 글자도 안 고치고 그대로 쓸 수 있다.
@@ -43,7 +42,7 @@ isdefined(@__MODULE__, :action_to_proposal) ||
 
 # --- 목적함수 가중치의 단일 진실원 --------------------------------------------------------
 #
-# ⚠️ **브리프와 다른 점 둘 — `Objective.load()` 를 여기서 부를 수 없다.** `core/objective.jl`
+# ⚠️ **`Objective.load()` 를 여기서 부를 수 없다.** `core/objective.jl`
 #    은 `module Objective` 안에서 `using SHA` 를 하는데, `SHA` 는 `Project.toml [deps]` 에
 #    없다(Manifest 전이 의존성뿐). 패키지 모듈 안에서는 [deps] 밖 이름을 `using` 으로 못
 #    부른다 — `simstate.jl:22-36` 이 정확히 같은 자리에서 데고 `Base.require` 로 우회한
@@ -149,7 +148,7 @@ end
     action_path_key(path) -> String
 
 **트리 노드와 리플레이 버퍼의 색인 키.** 루트에서 여기까지의 **행동 경로**를 문자열 하나로
-정규화한다(계획서: "버퍼·트리는 `constraints` 로 색인한다").
+정규화한다 — 버퍼·트리는 `constraints` 로 색인한다.
 
 🔴 **왜 `state_hash` 가 아닌가 — 이제 측정된 기전이 있다**
 (`nondeterminism-investigation.md`). Julia 는 `ConstructionBots` 를 재precompile 할 때마다
@@ -188,23 +187,22 @@ _arm_key(x) = error(
 # =============================================================================
 #  집행
 # =============================================================================
-"""Task T13 의 자리를 세는 카운터. 스텁이 **조용히 무동작**이 아니라는 것을 시험이 이걸로 본다."""
+"""공통 재풀이가 실제로 돈 횟수. **조용히 무동작**이 아니라는 것을 시험이 이걸로 본다."""
 const RESOLVE_CALLS = Ref(0)
 
 """
     resolve_assignments!(env; optimizer = _respec_optimizer()) -> (; ran_milp, n_reassigned, status)
 
-**모든 팔 뒤에 도는 공통 MILP 재풀이** (Task T13, 확정 설계 `.claude/CLAUDE.md` §⏳ 2026-08-20).
+**모든 팔 뒤에 도는 공통 MILP 재풀이** (확정 설계 `.claude/CLAUDE.md` §⏳ 2026-08-20).
 남은 스케줄을 현재 그래프·기하 위에서 **추가 제약 없이** 다시 푼다. 어떤 팔에서든 같은 코드가
 돌아야 `Ĵ(a)` 의 차이가 **팔의 차이**가 된다.
 
-🔴 **계획서 Step 3 의 스니펫은 못 쓴다 — 시그니처 셋이 전부 틀렸다**(2026-08-21 실측):
-  · `release_pending_assignments!(env)` → 실제는 `(env, invariant::InvariantSpec; faulted)`
-  · `assign_collaborative_tasks!(env)`  → 실제는 첫 인자가 `model` 이다(`task_assignment.jl:433`)
-  · `validate(env.sched)`               → **맨이름 `validate` 는 존재하지 않는다**
+⚠️ **실측된 시그니처 셋**(직관과 다르니 확인하고 쓸 것):
+  · `release_pending_assignments!` → `(env, invariant::InvariantSpec; faulted)`
+  · `assign_collaborative_tasks!`  → 첫 인자가 `model` 이다(`task_assignment.jl:433`)
+  · 맨이름 `validate` 는 **존재하지 않는다**
     (`validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐)
-그 대신 CLAUDE.md 가 "부품은 이미 있다" 고 지목한 **`rebalance_for_battery!`(`battery.jl:715`)의
-모양**을 그대로 쓴다 — 그 함수는 이름만 배터리이고, 하는 일은 `build_invariant` 로 완료·진행중을
+대신 **`rebalance_for_battery!`(`battery.jl:715`)의 모양**을 그대로 쓴다 — 그 함수는 이름만 배터리이고, 하는 일은 `build_invariant` 로 완료·진행중을
 얼리고 추가 제약 없이 재정식화 + `optimize!` + `commit_respec!` 다.
 
 ### 기록된 의미 결정 — **NOOP 도 재푼다**
@@ -271,9 +269,8 @@ D-7 가드. 예비가 실제로 마르면 **죽는다**(spec §3-2).
 `@info`/`@warn` 이라 `Logging.Warn` 로거 아래에서 **보이지 않는다.** 그래서 로그가 아니라
 에러로 만든다 — "안 났다" 와 "못 본다" 를 가른다.
 
-⚠️ **브리프와 다른 점 셋 — 팔 번호 리터럴(`a == 1`)로 가드하지 않는다.** 브리프는
-`a == 1 || return nothing` 을 시켰는데 그건 두 번째 진실원이다(재번호가 한 번 더 오면 조용히
-엉뚱한 팔을 지킨다). 창고 본체를 실제로 먹는 것은 **`ReplaceAgent` 제약**이고
+⚠️ **팔 번호 리터럴(`a == 1`)로 가드하지 않는다.** `a == 1 || return nothing` 은 두 번째
+진실원이다(재번호가 한 번 더 오면 조용히 엉뚱한 팔을 지킨다). 창고 본체를 실제로 먹는 것은 **`ReplaceAgent` 제약**이고
 (`replan.jl:_is_robot_replace` → `pop_spare!`), 그건 타입으로 정확히 판정된다.
 """
 function _assert_spares_available(env, prop)
@@ -300,8 +297,7 @@ end
 ⚠️ 그리고 `deepcopy` 는 respec **전역**(`SPARE_POOLS`·`RESTRICTION_ZONES`·`FAULTED_ROBOTS`
 …)도 격리하지 않는다 — `test/smdp_generative.jl` 이 그 누수를 수치로 기록한다.
 
-**반환값**은 이름 붙은 결과다(브리프는 `Nothing` 을 적었는데, 그러면 "집행됐다/거부됐다"가
-호출자에게 안 보인다):
+**반환값**은 이름 붙은 결과다 — `Nothing` 을 내면 "집행됐다/거부됐다"가 호출자에게 안 보인다:
 
     (a, outcome, enacted, branch, resolve)
 
@@ -385,15 +381,15 @@ end
 
 `s` 를 `τ` 만큼 전진시키고 그 구간의 소비 에너지 `E` [J] 를 함께 낸다.
 
-⚠️ **브리프와 다른 점 넷 — `advance_to(s⁺, env, τ, bp)` 로는 안 된다.** `advance_to` 는
-**rate boundary 를 넘지 않는** 전진이고 `Δ > T_plan_next` 면 설계대로 죽는다(T9 가 그렇게
-지었다). 그런데 `sample_sojourn` 의 `τ` 는 경계를 **몇 개든** 넘어서 온다(이 픽스처 실측:
-`T_plan_next = 0.025 s` vs `T_done ≈ 32.7 s`). 브리프대로 쓰면 흔한 경우에 `generate` 가
-그냥 죽는다 — `test/smdp_generative.jl` 이 그 자리를 음성 대조로 못박는다.
+⚠️ **`advance_to(s⁺, env, τ, bp)` 한 번으로는 안 된다.** `advance_to` 는 **rate boundary 를
+넘지 않는** 전진이고 `Δ > T_plan_next` 면 설계대로 죽는다. 그런데 `sample_sojourn` 의 `τ` 는
+경계를 **몇 개든** 넘어서 온다(이 픽스처 실측: `T_plan_next = 0.025 s` vs `T_done ≈ 32.7 s`) —
+그렇게 쓰면 흔한 경우에 `generate` 가 그냥 죽는다. `test/smdp_generative.jl` 이 그 자리를
+음성 대조로 못박는다.
 
-그래서 소저너가 **자기 안에서** 하는 것과 같은 걸음으로 다시 걷는다. T9 의 공개 API 만
-쓴다(`T_plan_next` · `advance_to` · `advance_to_rate_boundary` · `energy_between`) —
-🔴 이것이 T9 가 보고한 "`advance_to` 소비처 0개" 를 닫는 배선이다. 은퇴시키지 말 것.
+그래서 소저너가 **자기 안에서** 하는 것과 같은 걸음으로 다시 걷는다. 공개 API 만 쓴다
+(`T_plan_next` · `advance_to` · `advance_to_rate_boundary` · `energy_between`) —
+🔴 이것이 `advance_to` 의 유일한 소비처다. 은퇴시키지 말 것.
 
 `E` 를 구간마다 따로 적분하는 이유: `energy_between` 은 **모드가 상수인 구간**에서만
 정확하다고 자기 docstring 이 선언한다. 경계를 넘으면 모드가 바뀌므로 한 번에
@@ -453,22 +449,21 @@ end
 
 보상은 **비용의 음수**이고 `w_E` 는 `objective.json` 에서 온다(spec §4). 언제나 `R ≤ 0` 이다.
 
-🔴 **`E` 를 같이 돌려준다 (2026-08-21, T12 리뷰 Important 2 · N-G5 재정의 Step 1).**
+🔴 **`E` 를 같이 돌려준다.**
 게이트 **N-G5a** 는 `R + (τ + w_E·E) == 0` 이라는 **레인 안의 항등식**을 검사하는데,
 `E` 를 역산(`E = (−R − τ)/w_E`)해서 뽑으면 그 등식이 **정의상 항진**이 된다. 그래서 `E` 는
 소비처가 **직접** 받아야 한다. 부수 효과로 `objective.json` 의 두 번째 소비처도 없어진다.
 근거 전문: `briefs/task-T14-ng5-redefinition.md`.
 
-⚠️ **반환은 `NamedTuple` 이다 — 위치 기반 구조분해를 쓰지 말 것.** 4-tuple 이었을 때
-`E` 를 더하는 것이 모든 호출자를 깨뜨렸다. 필드로 받으면 D-14 가 `terminal` 을 더할 때
-같은 일이 반복되지 않는다.
+⚠️ **반환은 `NamedTuple` 이다 — 위치 기반 구조분해를 쓰지 말 것.** 필드로 받아야 나중에
+필드가 하나 늘어도 호출자가 안 깨진다.
 
 🔴 **`env` 를 제자리에서 바꾼다.** `s` 는 "호출자가 이 env 의 짝이라고 믿는 상태" 이고,
 그 믿음을 `assert_paired` 가 먼저 검사한다. 갈래는 호출자가 뜬다(`deepcopy` + `rvo_rebuild!`).
 
 ⚠️ **선언된 근사 하나**: 돌려주는 `s′` 는 **사건이 도착한 시각의 상태**이지 그 사건이
 집행된 뒤의 상태가 아니다. 사건의 집행(고장 로봇 등록·배터리 방전 등)은 **다음** 결정에서
-`ctx` 를 통해 들어온다 — 이 함수가 `env` 에 사건을 심지 않는다. 그 자리는 T13/T14 가 연다.
+`ctx` 를 통해 들어온다 — 이 함수가 `env` 에 사건을 심지 않는다. 그 자리는 아직 열려 있다.
 """
 function generate(s::SimState, env, ctx, a::Int, p::HazardParams, bp::BatteryParams, rng;
                   delta_max::Float64 = Inf)

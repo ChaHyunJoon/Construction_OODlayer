@@ -323,7 +323,7 @@ function _mon_ood()
         kind = truth isa FaultTruth   ? "fault"   :
                truth isa ZoneTruth    ? "zone"    :
                truth isa BatteryTruth ? "battery" :
-               truth isa ReformTruth  ? "reform"  : "other"
+               "other"
         d = Dict{String,Any}("at" => _mon_finite(e.at), "kind" => kind, "nl" => e.nl)
         if truth isa FaultTruth
             d["target"] = string(truth.robot)

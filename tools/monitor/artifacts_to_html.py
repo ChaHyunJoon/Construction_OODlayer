@@ -148,7 +148,8 @@ def render_decisions(d):
         return ""
 
     # `correct` 는 3상태다: true / false / **null**(= 그 사건 종류에 측정된 정답 격자가 없어
-    # 채점에서 빠짐, 예: ReformTruth). null 을 오답으로 칠하면 정확도가 실제보다 나빠 보인다.
+    # 채점에서 빠짐 — reference_policy 가 실측 격자 없는 사건에 None 을 낸다).
+    # null 을 오답으로 칠하면 정확도가 실제보다 나빠 보인다.
     tabs, panes = [], []
     for i, k in enumerate(keys):
         det = pols[k]["detail"]
@@ -178,7 +179,7 @@ def render_decisions(d):
     return """
 <section>
   <h2>2. 결정 로그 <span class=dim>사건마다 무엇을 골랐고 정답은 무엇이었나</span></h2>
-  <p class=note>탭의 숫자는 <b>채점된 사건만</b>의 적중이다. 회색 <b>—</b> 줄(ReformTruth)은
+  <p class=note>탭의 숫자는 <b>채점된 사건만</b>의 적중이다. 회색 <b>—</b> 줄(실측 격자가 없어 unscored 인 사건)은
      측정된 정답 격자가 없어 분모에 들어가지 않는다 — 위 표의 &ldquo;옳은 결정&rdquo;과 같은 기준.</p>
   <div class=tabs>{tabs}</div>
   {panes}

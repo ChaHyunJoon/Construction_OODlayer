@@ -40,7 +40,7 @@ except Exception:
     pass
 
 DEFAULT_IN = WM / "results" / "llm_ood_eval.jsonl"
-KINDS = ("BatteryTruth", "FaultTruth", "ZoneTruth")     # ReformTruth 는 실측 격자가 없어 항상 unscored
+KINDS = ("BatteryTruth", "FaultTruth", "ZoneTruth")     # 2026-08-20 4팔 축소 이후 사건 종류는 이 셋뿐
 PRODUCERS = [("rule", "rule"), ("surrogate", "surrogate"), ("llm", "llm"), ("macro (실제 enacted)", "macro")]
 
 # 계획서 §3 에서 그대로 복사한 해석 한계 문단 -- 축약 금지, 출력에 그대로 남긴다.
@@ -159,7 +159,7 @@ def build_report(rows, decisions):
     N = len(scored_rows)
     L = ["# Shadow Score -- STEP A (새 시뮬 0회, 동일 사건·동일 분모)", "",
          "입력: %d rows / %d decisions. 공유 분모 N = %d (kind 는 알지만 필수 상태 필드가 없거나 "
-         "ReformTruth 처럼 실측 격자가 없어 unscored 로 빠진 사건은 제외)." % (len(rows), len(decisions), N), "",
+         "실측 격자가 없어 unscored 로 빠진 사건은 제외)." % (len(rows), len(decisions), N), "",
          "## 산출 1 -- producer 4개 (동일 사건·동일 분모 N=%d)" % N, "",
          "| producer | n | 옳은 결정 (Wilson, 결정단위) | 95% CI (군집 부트스트랩, 판단위) |",
          "|---|---|---|---|"]

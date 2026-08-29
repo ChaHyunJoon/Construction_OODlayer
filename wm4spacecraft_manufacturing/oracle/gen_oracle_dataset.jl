@@ -1903,7 +1903,11 @@ function run_episodes(io)
                 # 에피소드 계획의 battery severity 는 **떨어진 뒤의 잔량 SoC** 다(:1173 참조).
                 # 그래서 shim 의 ctx 를 그대로 흉내내 `soc = sev` 로 물어보면 shim 과 정의상
                 # 같은 답이 나온다 — SoC 분할(DS_BATTERY_SOC_SPLIT)도 임계값도 거기 한 곳에만
-                # 산다. 오늘의 값: deep -> [0,1,2], mild -> [0,2].
+                # 산다. 🔴 2026-08-25 로 값이 바뀌었다: deep -> [0,1,2], **mild -> [0]**
+                # (mild 는 닫힌 어휘에 수복이 없다고 선언했다 — `ActionRegistry.battery_arms`).
+                # ⚠️ 귀결: `DS_BSOC` 기본 사다리 `0.02,0.3,0.5` 의 **뒤 두 칸이 대조 0인 행**이
+                # 된다(후보가 NOOP 하나). 2026-08-24 에 `zoneblk` 를 `DS_EP_KINDS` 기본값에서
+                # 뺀 것과 같은 상황이다 — 사다리를 그대로 두면 계산만 태우고 정보가 0이다.
                 return valid_actions((type = :battery, soc = Float64(sev)))
             end
             return MACROS
@@ -2046,12 +2050,27 @@ function main()
             # flat later) -> mild (finishes anyway). Since 2026-08-24 the canonical arm no longer
             # splits with the rung -- every battery event grounds as SwapBattery.
             #
-            # [2026-08-05] 기본 사다리를 0.05,0.12,0.2,0.3,0.45,0.6 -> **0.02,0.3,0.5** 로 바꿨다.
+            # [2026-08-05] 기본 사다리를 0.05,0.12,0.2,0.3,0.45,0.6 -> 0.02,0.3,0.5 로 바꿨다.
             # 옛 사다리의 앞 두 칸(0.05/0.12)은 둘 다 정지 임계(0.15) 아래라 **거동이 동일**했고
-            # (즉시 정지), 심각도 축이 사실상 한 점이었다. 새 세 칸은 정지 경계를 걸치도록 잡아
-            # 로봇의 거동이 실제로 갈린다: 즉시 정지 / 감속하며 계속 일함 / 사실상 무영향.
-            # (`_arm_battery!` 의 설계 주석 참조. 옛 사다리는 DS_BSOC 로 언제든 재현 가능.)
-            for s in [parse(Float64, x) for x in split(get(ENV, "DS_BSOC", "0.02,0.3,0.5"), ",")]
+            # (즉시 정지), 심각도 축이 사실상 한 점이었다. 그 세 칸은 정지 경계를 걸치도록 잡아
+            # 로봇의 거동이 실제로 갈렸다: 즉시 정지 / 감속하며 계속 일함 / 사실상 무영향.
+            #
+            # 🔴 [2026-08-25] **mild 칸 둘(0.3 · 0.5)을 뺐다 -> 기본 `0.02,0.18`.**
+            # mild(`soc > REPLACE_SOC_THRESHOLD` = 0.2)는 이제 닫힌 어휘에 수복이 없다고 선언했고
+            # (`ActionRegistry.battery_arms` -> `[NOOP]`), 그 자리는 zone 과 같은 **L2 제약 신설
+            # 레인**의 대상이다. 그러면 그 칸을 격자에 남길 이유가 없다 — 후보가 NOOP 하나뿐인
+            # 에피소드는 **대조가 0인 행**이고(팔을 비교할 수 없다), `reference_policy` 도 그
+            # 구간을 이미 `None`(unscored) 로 뺀다. 2026-08-24 에 같은 이유로 `zoneblk` 를
+            # `DS_EP_KINDS` 기본값에서 뺐다.
+            #
+            # 칸을 하나(0.02)로 줄이지 **않은** 이유가 위 2026-08-05 문단이다. 정지 경계 0.15 가
+            # deep 구간(<=0.2) **안에** 있으므로, deep 만으로도 거동이 갈리는 두 칸을 잡을 수 있다
+            # (실측 2026-08-25, DS_STALL=0.15 / DS_DERATE_HI=0.5):
+            #     0.02 -> 속도배율 0.0    즉시 정지
+            #     0.18 -> 속도배율 0.406  감속하며 계속 일함   (둘 다 채점 구간, 메뉴는 3팔)
+            # 게이트: `test/battery_ladder_is_deep_only.jl` (두 어서션이 이 둘을 각각 지킨다).
+            # 옛 사다리는 `DS_BSOC` 로 언제든 재현 가능하다 — mild 를 굴리고 싶으면 명시적으로 준다.
+            for s in [parse(Float64, x) for x in split(get(ENV, "DS_BSOC", "0.02,0.18"), ",")]
                 push!(instances, (:battery, s, seed, 3))   # 각 목표 SoC 값을 severity 로
             end
         elseif kind === :zoneharm

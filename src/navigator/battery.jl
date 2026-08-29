@@ -280,28 +280,11 @@ function account_battery_step!(env, prev_pos::Dict{Int,Vector{Float64}})
         end
     end
 
-    # (3) STALL: any ACTIVELY-WORKING robot that just crossed the stall threshold breaks down
-    # once -> physical fault + breakdown NL -> respec ReplaceAgent -> nearest spare takes over.
-    # Only active workers trigger (a dead idle robot has nothing to hand off); the motion gate
-    # still freezes anything flat. Inert unless stall enabled.
-    # (3) 방전 정지: 이번에 "일하던" 로봇이 정지 임계값을 처음 넘으면 딱 한 번 고장 처리 -> 교체 OOD 발생.
-    if BATTERY_STALL[].enabled
-        thr = BATTERY_STALL[].threshold
-        retired = Set{Any}(checked_out_spares())   # never re-stall a retired (checked-out) spare  # 은퇴 예비는 재정지 안 함
-        for id in active_ids
-            (id in retired) && continue
-            # 배터리 배송을 기다리는 중이면 정지 발화를 하지 않는다. 예전에는 교체가 같은 스텝에
-            # 즉시 적용돼 임계 이하로 머무는 스텝이 없었지만, 배송 경로에서는 도착까지 수백 스텝을
-            # 임계 아래로 서 있다 — 그동안 여기서 고장 OOD 가 터지면 이미 처방이 진행 중인 사건에
-            # **두 번째 처방(Replace)** 이 얹혀 배송이 무의미해진다(캐스케이드).
-            (try awaiting_battery_swap(id) catch; false end) && continue
-            (id in STALLED_ROBOTS[]) && continue                    # 이미 정지 처리된 로봇은 건너뜀(한 번만)
-            (haskey(fleet.soc, id) && fleet.soc[id] <= thr) || continue  # 잔량이 임계값 이하일 때만
-            push!(STALLED_ROBOTS[], id)                             # 정지 처리 기록(중복 방지)
-            nl = _fire_battery_stall!(env, id)                     # 고장 OOD 발생시키기
-            nl === nothing || @info "[STALL] robot R$(id.id) battery flat (SoC<=$(round(thr;digits=3))) -> breakdown OOD; dispatching nearest spare."
-        end
-    end
+    # (3) STALL: 임계값을 처음 넘은 "일하던" 로봇을 **기록만** 한다. 물리적으로 멈추는 것은
+    # 여기가 아니라 모션 게이트(`soc_speed_factor` <- `SOC_SPEED_HOOK`)이고, 그쪽은 그대로다.
+    # 🔴 2026-08-25: 여기 있던 `_fire_battery_stall!` 호출(= 고장 등록 + 견인 + `push_ood!`)을
+    #    지웠다. 근거와 계약은 `_mark_newly_stalled!` 의 독스트링 · `test/battery_stall_no_ood.jl`.
+    _mark_newly_stalled!(fleet, active_ids)
     return
 end
 
@@ -429,7 +412,8 @@ end
 # (= 앞으로 할 운반 일이 남았는가). `pick_hotswap_fault_target` 이 정확히 그 술어이며 진행도와
 # 무관하게 후보를 낸다. 여기서 그것을 쓰는 것은 안전하다 — 배터리 사건 자체는 스케줄을 건드리지
 # 않고 SoC 만 떨어뜨리며, 그 뒤 재각인(re-stamp) 경로를 타는 stall→고장 발화는
-# `_fire_battery_stall!` 이 이미 hot-swap 여부로 자체 게이트한다.
+# (2026-08-25) 여기 있던 `_fire_battery_stall!` 언급은 삭제된 함수를 가리킨다 — 방전 정지는
+# 이제 `_mark_newly_stalled!` 가 기록만 하고 hot-swap 게이트를 두지 않는다.
 function _pick_battery_target(env, fleet::BatteryFleet)
     isempty(fleet.soc) && return nothing
     for f in (:pick_solo_fault_target, :pick_solo_frontier_target)   # 이 헬퍼들이 있으면 우선 사용(없으면 catch)
@@ -598,27 +582,55 @@ end
 "Point route_planning.SOC_SPEED_HOOK at `soc_speed_factor` (idempotent). Inert until stall on."
 install_soc_speed_hook!() = (SOC_SPEED_HOOK[] = soc_speed_factor; nothing)
 
-# Fire the breakdown OOD for a flat robot: record the physical fault (obstacle=true leaves the
-# dead body in place as a static obstacle others detour around -- the chosen semantics; clear=
-# false so it stalls where it died, not teleported), then enqueue the NL so the respec loop
-# runs ReplaceAgent -> nearest spare hand-off. Returns the NL, or nothing if we DELIBERATELY
-# skip replacement.
+# =================================================================================
+#  방전 정지 기록 — **결정 epoch 를 만들지 않는다** (2026-08-25)
+# =================================================================================
+# 여기 있던 `_fire_battery_stall!` 을 지웠다. 그 함수는 임계값을 넘은 로봇에 대해
+# `fault_robot!`(물리 고장 등록 + 견인) 을 하고 `push_ood!(nl)` 로 breakdown NL 을 respec 큐에
+# 넣었다. **`record_ood_truth!` 은 부르지 않았다** — 그래서 어느 엔진에서도 결정이 되지 않았다:
+#   · `run_demo.jl` 은 truth 로그를 폴링한다 -> 이 사건을 못 본다. 게다가 `RESPEC_ENABLED[]=false`
+#     라 큐 자체를 안 돈다.
+#   · `render_demo.jl` 은 큐를 돌지만 `truth_for_event(event) === nothing` 이라 조용히 버린다.
+# 즉 **결정 없이 로봇만 고장 등록·견인되는** 경로였고, 그 사실이 산출물에 남지 않았다.
 #
-# We only replace a flat robot that BOTH (a) still has pending work to hand off AND (b) has an
-# available spare in some pool. If it has no frontier it has effectively FINISHED (nothing to
-# hand off) -- the motion gate just holds it at rest. If no spare is free we also skip, rather
-# than fall through to the fragile general-reassign path (which can corrupt the schedule). In
-# either skip case the robot stays put (dead), which is the intended "stalled robot" semantics.
-# 방전 로봇에 대해 고장 OOD 를 발동: (a) 넘길 남은 일이 있고 (b) 쓸 예비가 있을 때만 교체. 둘 중 하나라도 없으면 그냥 멈춰 둠.
-function _fire_battery_stall!(env, id)
-    # (a) re-stamp 인계는 넘길 배정 엣지가 필요하지만, 정체성보존 핫스왑은 그게 없어도 되므로 핫스왑이면 운반 중 정지도 허용.
-    hot_swap_enabled() || (_first_pending_assignment(env, id) === nothing && return nothing)
-    nearest_pool(_ood_robot_pos2d(env, id)) === nothing && return nothing  # (b) no spare available  # 근처 예비 없으면 포기
-    cfg = BATTERY_STALL[]
-    nl = fault_robot!(env; target = id, obstacle = cfg.obstacle, clear = cfg.clear)  # 물리 고장 기록(설정대로 견인/장애물)
-    nl === nothing && return nothing
-    push_ood!(nl)                                        # 자연어 사건을 큐에 -> 검증된 재명세 루프가 ReplaceAgent 수행
-    return nl
+# 왜 되살리지 않고 지우나 — 실측(2026-08-25):
+#   287 노드를 다 지은 판의 `min_soc = 0.9988`, `n_depleted = 0`(임계값 0.15). 제조 한 판에서
+#   SoC 는 사실상 안 떨어지므로 이 경로는 **자연 방전으로 발화하지 않는다.** 발화하는 유일한
+#   경우는 주입된 battery 사건인데, 그건 이미 `BatteryTruth` 로 결정 epoch 를 만든다 —
+#   그 위에 이 경로가 두 번째 처방(Replace)을 조용히 얹고 있었다.
+#
+# 🔴 **정지 기록은 남긴다.** `n_stalled` 가 정지의 유일한 기계적 증거이고(`[STALL]` @info 는
+# `run_demo.jl` 의 `Logging.Warn` 에 삼켜진다), 스케줄 DAG 교착을 사후에 설명할 신호가 그것뿐이다.
+# 게이트: `test/battery_stall_no_ood.jl`.
+
+"""
+    _mark_newly_stalled!(fleet, active_ids) -> Vector
+
+이번 스텝에 정지 임계값을 **처음** 넘은 로봇들을 `STALLED_ROBOTS` 에 기록하고 그 목록을 돌려준다.
+부작용은 그 기록 하나뿐이다 — OOD 도, 고장 등록도, 견인도 하지 않는다.
+
+건너뛰는 셋(전부 기존 조건 그대로):
+  · 창고로 반납된(checked-out) 예비 — 재정지 금지
+  · 배터리 배송을 기다리는 중 — 이미 처방이 진행 중인 사건에 두 번째 처방을 얹지 않기 위해
+  · 이미 기록된 로봇 — 한 번만
+
+`env` 를 받지 않는다: 그래야 게이트가 시뮬레이터 없이 이 계약을 전수 검사할 수 있다
+(`lane_select.jl` · `escalation_target` 과 같은 규약).
+"""
+function _mark_newly_stalled!(fleet, active_ids)
+    newly = Any[]
+    BATTERY_STALL[].enabled || return newly              # 정지 기능 꺼져 있으면 아무 일도 안 함
+    thr = BATTERY_STALL[].threshold
+    retired = Set{Any}(checked_out_spares())             # 은퇴(반납) 예비는 재정지 안 함
+    for id in active_ids
+        (id in retired) && continue
+        (try awaiting_battery_swap(id) catch; false end) && continue   # 배송 대기 중이면 건너뜀
+        (id in STALLED_ROBOTS[]) && continue             # 이미 정지 처리된 로봇(한 번만)
+        (haskey(fleet.soc, id) && fleet.soc[id] <= thr) || continue     # 잔량이 임계값 이하일 때만
+        push!(STALLED_ROBOTS[], id)
+        push!(newly, id)
+    end
+    return newly
 end
 
 """

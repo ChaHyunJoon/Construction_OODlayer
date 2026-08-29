@@ -9,7 +9,7 @@
 #
 # 🔴 이 파일은 씬(scene)도 엔진도 참조하지 않는다. 그것이 `derive.jl` 과 갈라놓은 **이유**다 —
 #    수치 적분 대조군(`test/smdp_rates.jl`)이 엔진에 묶이면 안 된다. 배치 함수
-#    `rate_params` 는 씬 인자를 받으므로 `derive.jl` 에 산다(계획서는 여기라고 적었다).
+#    `rate_params` 는 씬 인자를 받으므로 `derive.jl` 에 산다.
 # =============================================================================
 
 const _A_ZERO_TOL = 1e-12    # |a| 가 이보다 작으면 λ 상수 극한을 쓴다 (수치 안정)
@@ -61,12 +61,12 @@ end
 `test/smdp_derive.jl` 의 "Ruling 2" 시험이 실제 판에서 한 스텝을 굴려 엔진의 에너지 장부
 (`BatteryFleet.energy_J`, `_debit!` 만이 쓴다)와 대조한다.
 
-🔴 **계획서의 식은 틀렸다** (2026-08-21 T7 실측):
-  · `:manip` 에 팀 분할이 없다 — 6인 팀이면 로봇당 전력이 **6배** 커진다.
+🔴 **베껴 쓸 때 틀리기 쉬운 세 자리** (2026-08-21 T7 실측):
+  · `:manip` 의 **팀 분할을 빠뜨리지 말 것** — 6인 팀이면 로봇당 전력이 **6배** 커진다.
   · `:carry = walk_W + k_move·m_robot·v_ref` 는 `m_robot` 을 **두 번** 센다
     (`walk_W` 자체가 `idle_W + k_move·m_robot·v_ref` 로 교정된 값이다, battery.jl:93-96).
-  · 주석은 `m_payload` 라고 적었는데 식은 `p.m_robot` 을 쓴다. 그리고 **`BatteryParams` 에
-    `m_payload` 필드는 없다** — 짐 질량은 `_payload_mass(env, node, p)` 가 씬에서 잰다.
+  · **`BatteryParams` 에 `m_payload` 필드는 없다** — 짐 질량은 `_payload_mass(env, node, p)`
+    가 씬에서 잰다. 위 kwarg 는 호출자가 넘기는 값이다.
 
 ⚠️ **기준 조건(`team = 1, m_payload = 0, speed = v_ref`)이 경량 레인의 선언된 근사다** —
 `speed`·`m_payload`·`team` 셋 다 `s` 에서 유도되지 않고(로봇 pose 와 화물 기하가 상태에서

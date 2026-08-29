@@ -173,7 +173,11 @@ oracle_respec(t::FaultTruth) =
     RespecProposal(ConstraintSpec[ForbidAgent(t.robot, t.after)],
                    "B3: robot fault -> optimal MILP reassignment", "oracle")
 oracle_respec(t::ZoneTruth) = canonical_respec(t)   # optimal restage == canonical restage
-oracle_respec(t::BatteryTruth) = canonical_respec(t)   # severity-aware canonical is the optimal enactment
+# 2026-08-24 에 severity 분기가 하나로 합쳐졌으므로 더 이상 severity-aware 가 아니다 —
+# 이 규칙은 SoC 와 무관하게 SwapBattery 를 낸다. 심각도로 갈리는 것은 **메뉴** 쪽이고
+# (`ActionRegistry.battery_arms`), mild 에서는 호출자가 이 답을 NOOP 으로 투영한다
+# (`policy.jl canonical_macro(env, truth)`).
+oracle_respec(t::BatteryTruth) = canonical_respec(t)
 
 # ============================================================================
 # B5 — random-macro (sanity floor for the LEARNED macro head). Given CORRECT

@@ -253,9 +253,9 @@ function simulate!(
         end
 
         # 배터리 교체 대기 중의 정지는 **의도된 라인 정지**이지 무진전이 아니다. 여기서 세면
-        #   · max_num_iters_no_progress 워치독이 배송 왕복을 "교착"으로 오판해 런을 죽이고,
-        #   · maybe_emit_reform_ood!(REFORM_INTERVAL 배수) 가 있지도 않은 팀 교착 OOD 를 띄운다
-        # (배송 왕복은 창고 거리 D=20·속도 4 m/s 기준 수백 스텝이라 두 임계값 모두 실제로 걸린다).
+        # max_num_iters_no_progress 워치독이 배송 왕복을 "교착"으로 오판해 런을 죽인다
+        # (배송 왕복은 창고 거리 D=20·속도 4 m/s 기준 수백 스텝이라 임계값에 실제로 걸린다).
+        # (2026-08-20 이전에는 `maybe_emit_reform_ood!` 오발화도 여기 걸렸는데, 그 함수는 삭제됐다.)
         if (try ConstructionBots.battery_swap_halt_active() catch; false end)
             # 카운터를 그대로 둔다(리셋도 증가도 아님) — 정지 전의 진전 이력을 보존한다.
         # `==` 는 값이 같은지 비교. "이번에 끝난 작업 수가 직전과 똑같으면(= 진전 없음)"
@@ -266,14 +266,11 @@ function simulate!(
         end
         sim_process_data.last_iter_num_closed = length(cache.closed_set)   # 이번 끝난 작업 수를 다음 비교용으로 저장
 
-        # CLOSED-LOOP self-healing (OOD 1-1): a SUSTAINED wedge (no progress) after a spare
-        # hand-off is the second-order failure -- a multi-robot transport team can't finish
-        # forming. Emit a "team deadlocked" OOD so the respec layer re-establishes the stuck
-        # team(s) via ReformTeam BEFORE we give up. Now factored into the SHARED
-        # `maybe_emit_reform_ood!` (ood_injection.jl) so the RL event-triggered env emits the SAME
-        # team-deadlock OOD identically (LLM-vs-RL symmetry; EVENT_MDP_DESIGN.md §4). RESPEC-gated
-        # and verify_reform-guarded, so nominal/baseline runs never emit it.
-        ConstructionBots.maybe_emit_reform_ood!(sim_process_data.num_iters_no_progress)
+        # 2026-08-20 (4팔 축소): 구 `maybe_emit_reform_ood!` 를 `maybe_unwedge_nominal!` 로
+        # 바꿨다. **같은 트리거, 다른 귀결** — 예전엔 자연어 OOD 를 respec 큐에 넣어 정책이
+        # `ReformTeam` 을 고르게 했고 그 선택이 라벨에서 "결정" 으로 세어졌다. 이제는 명목
+        # 레인이 교착 해소를 **직접** 부르고 결정 epoch 를 만들지 않는다(D1-(b)).
+        ConstructionBots.maybe_unwedge_nominal!(env, sim_process_data.num_iters_no_progress)
 
         project_stop_bool = ConstructionBots.project_complete(env)         # 프로젝트가 완성됐는지(참/거짓)
         # `>=` 크거나 같음. 무진전이 한계치 이상이면 더 못 나아가는 것으로 보고 종료 플래그를 켬

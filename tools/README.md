@@ -12,18 +12,18 @@ touch only ONE of them. These tools let you pay only for the layer you changed.
 The serialize-ban (timing-persistence gap doc) is about the **PlannerEnv** only.
 `llm_fixture.json` is plain strings/dicts → safe to cache across processes.
 
-## 1. Build the fixture once (only when the env build or descriptors change)
+## 1. The fixture (`tools/llm_fixture.json`) is a committed artifact
 
-```
-julia +lts --project=. tools/diagnostics.jl dump_fixture
-```
+`tools/llm_fixture.json` = the exact `/propose` request body (`open_ids`, `agents`,
+`nodes`) the production `llm_to_proposal` would send, plus a sub-assembly-id → node-id
+map so the Python cases know the gold targets.
 
-> **Currently blocked.** `tools/diagnostics.jl` hard-`include`s `venv/decpomdp/examples/{ood_env,ood_env_mdp,ood_reinforce}.jl` at module load, and `decpomdp/` no longer exists — so *every* diagnostics key fails before dispatch. Only `ood_compare` actually uses those three; `dump_fixture` does not. Use the existing `tools/llm_fixture.json` until the include block is rewired (partial replacement: `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl`).
-
-Builds the tractor env, steps to mid-build (closed≥8), and writes
-`tools/llm_fixture.json` = the exact `/propose` request body (`open_ids`,
-`agents`, `nodes`) the production `llm_to_proposal` would send, plus a
-sub-assembly-id → node-id map so the Python cases know the gold targets.
+> **No live regeneration path.** The generator was `tools/diagnostics.jl dump_fixture`,
+> removed 2026-08-23 as dead code: it top-level-`include`d `decpomdp/examples/`, which no
+> longer exists, so every diagnostics key failed before dispatch. Use the committed
+> fixture as-is. Partial replacement for the compare path:
+> `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl`. To rebuild the fixture, recover
+> the generator with `git show HEAD~1:tools/diagnostics.jl` and rewire its include block.
 
 ## 2. Iterate on the LLM translation (prompt/schema) — seconds, no Julia
 
