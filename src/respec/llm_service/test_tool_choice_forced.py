@@ -607,3 +607,89 @@ def test_decide_carries_the_rescue_flag():
     assert d["text_rescue"] is True
     assert d["tool_choice"] == "required"
     assert d["chosen"] == "SwapBattery" and d["tool_called"] == "deliver_battery"
+
+
+# ---------------------------------------------------------------------------------------------
+# (7) 오설정 값은 **일찍 시끄럽게** 죽는다 (2026-08-29, fix round)
+# ---------------------------------------------------------------------------------------------
+#
+# 🔴 왜 생겼나 (실측). `tool_choice()` 는 문자열을 **검증 없이** 통과시켰다. 그런데 그 값이
+#    닿는 타입은 닫힌 enum 이다 — `dspy/core/types.py:327` 의
+#    `mode: Literal["auto", "required", "none"]` (+ `ConfigDict(extra="forbid")`), 그리고 그
+#    Literal 은 dspy 가 좁힌 것이 아니라 OpenAI 스펙 그대로다
+#    (`openai/types/chat/chat_completion_tool_choice_option_param.py:15`).
+#    ⟹ `DSPY_TOOL_CHOICE=false` 같은 오설정은 `LMRequest.from_call` 안에서 pydantic
+#      `ValidationError` 로 죽고, 그것은 `AdapterParseError` 가 **아니므로** `macro()` 의
+#      포괄 `except` 로 떨어져 `error` 가 되고, `policy.jl:1301` 의 `policy_entry` 가
+#      `err !== nothing` 을 보고 **레인을 통째로 `available=false` 로 버린다.**
+#      즉 tool 하나가 아니라 **결정 전체가 매 사건 사라지고**, 아무도 그 말을 안 해 준다.
+#
+# 🔴 고칠 자리는 dspy 가 아니다. site-packages 편집은 재설치에 날아가고 이 레포 밖에서 돌리는
+#    사람과 조용히 갈린다(`build_adapter()` docstring, spec §2-4). 그리고 Literal 을 늘려도
+#    `openai_format.py:396` 이 그 값을 그대로 실어 보내 **프로바이더 400** 이 될 뿐이다 —
+#    자리만 옮기고 왕복과 재시도 비용이 붙는다.
+#
+# 🔴 "끄는" 값은 이미 있다: `""`(키 자체를 안 보냄) 또는 `"none"`. 그래서 이 검증은 무엇도
+#    막지 않는다 — 오타를 조용한 레인 사망 대신 **즉시 읽히는 에러**로 바꿀 뿐이다.
+# 🔴 `"auto "` 는 여기 **없다** — 앞뒤 공백은 오설정이 아니라 흔한 사고이고 `.strip()` 이
+#    정상 처리한다(아래 음성 대조가 그 사실을 못박는다). 대문자 `"REQUIRED"` 는 있다:
+#    프로바이더가 대소문자를 가리므로 조용히 접으면 우리가 스펙보다 넓어진다.
+_BAD = ("false", "False", "0", "true", "requiredd", "REQUIRED", "yes", "off")
+
+
+def test_a_misconfigured_value_dies_loudly_instead_of_killing_the_lane():
+    """🔴 이 절의 본체. 예전에는 이 값들이 그대로 통과해 dspy 안에서 죽었다."""
+    for bad in _BAD:
+        with pytest.raises(ValueError) as e:
+            svc.tool_choice(_req(tool_choice=bad))
+        # 사람이 읽고 바로 고칠 수 있어야 한다: 나쁜 값과 허용된 값이 둘 다 보인다.
+        assert bad in str(e.value), "에러가 **어떤 값이** 틀렸는지 말해야 한다"
+        assert "required" in str(e.value) and "none" in str(e.value), \
+            "에러가 허용된 값을 말해야 한다"
+
+
+def test_the_env_knob_is_validated_too(monkeypatch):
+    """환경변수가 요청을 이기므로(우선순위), 검증도 같이 걸려야 한다 — 아니면 킬스위치가
+    조용한 레인 사망의 **두 번째 입구**로 남는다."""
+    monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "false")
+    with pytest.raises(ValueError):
+        svc.tool_choice(_req(tool_choice="required"))
+
+
+def test_every_legal_value_still_passes_untouched(monkeypatch):
+    """🔴 음성 대조. 검증이 **끄는 길을 막지 않는다** — 이게 막히면 되돌리기가 불가능해진다."""
+    monkeypatch.delenv(svc.TOOL_CHOICE_ENV, raising=False)
+    assert svc.tool_choice(_req(tool_choice="required")) == "required"
+    assert svc.tool_choice(_req(tool_choice="auto")) == "auto"
+    assert svc.tool_choice(_req(tool_choice="none")) == "none"
+    assert svc.tool_choice(_req(tool_choice="")) is None          # 키를 안 보냄
+    assert svc.tool_choice(_req(tool_choice="  ")) is None        # 공백만도 같다
+    assert svc.tool_choice(_req(tool_choice="auto ")) == "auto"   # 앞뒤 공백은 사고지 오설정이 아니다
+    assert svc.tool_choice(_req(tool_choice=" required")) == "required"
+    assert svc.tool_choice(None) is None
+    monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "")
+    assert svc.tool_choice(_req(tool_choice="required")) is None  # 킬스위치 OFF 방향
+
+
+def test_the_allowed_set_matches_what_the_provider_accepts():
+    """🔴 이 시험이 감시하는 것은 우리 목록이 **dspy/OpenAI 의 것과 갈리지 않는다**는 것이다.
+    한쪽만 늘리면 통과시킨 값이 프로바이더 400 이 된다."""
+    from dspy.core.types import LMToolChoice
+    for v in svc.TOOL_CHOICE_ALLOWED:
+        LMToolChoice.from_value(v)      # 던지면 우리 목록이 dspy 보다 넓다
+
+
+def test_a_misconfigured_env_knob_refuses_to_boot(monkeypatch):
+    """🔴 환경변수가 틀리면 **매 사건이 500** 이 되고 이유는 서비스 로그에만 남는다.
+    그 판은 아예 안 뜨는 것이 맞다 — 반나절 뒤 산출물이 전부 폴백이었음을 발견하는 것보다."""
+    monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "false")
+    with pytest.raises(ValueError) as e:
+        svc._startup()
+    assert "false" in str(e.value)
+
+
+def test_a_legal_env_knob_does_not_block_boot(monkeypatch):
+    """음성 대조: 검증이 정상 부팅을 막지 않는다. 킬스위치 OFF(`""`) 도 포함한다."""
+    for good in ("", "required", "auto", "none"):
+        monkeypatch.setenv(svc.TOOL_CHOICE_ENV, good)
+        svc._startup()          # 던지면 실패

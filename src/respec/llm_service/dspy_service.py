@@ -452,6 +452,15 @@ def _configure_dspy():
 
 @app.on_event("startup")
 def _startup():
+    # 🔴 킬스위치 오설정은 **부팅에서** 잡는다. `tool_choice()` 의 검증은 요청마다 걸리므로
+    #    환경변수가 틀렸으면 **매 사건이 HTTP 500** 이 되고, 그 이유는 서비스 로그에만 남는다
+    #    (실측: `TestClient` -> `status 500`, body `"Internal Server Error"`. 줄리아 쪽은
+    #    `policy.jl:676` 의 `@warn "DSPy call failed"` 로 사실만 보고 이유를 못 받는다).
+    #    여기서 한 번 태워 두면 그 판은 **뜨지도 않는다** — 반나절 돌린 뒤 산출물이 전부
+    #    canonical 폴백이었다는 것을 나중에 발견하는 것보다 낫다.
+    #    ⚠️ `tool_choice()` 는 여전히 **호출 시점에** 환경변수를 읽는다(시험이 monkeypatch 로
+    #      두 레짐을 다 돌릴 수 있어야 한다). 이 줄은 그 계약을 안 바꾸고 부팅에 한 번 더 잰다.
+    tool_choice(None)
     _configure_dspy()
     _load_program()
     _load_surrogate()      # 배포 SurrogateV2 적합(355행이라 1초 미만)
@@ -1005,6 +1014,16 @@ TOOL_CHOICE_ENV = "DSPY_TOOL_CHOICE"
 #      유도는 `policy.jl` 의 `tool_choice_for`). 그리고 강제한 사건에서 텍스트 채널이 무너지면
 #      아래 `macro()` 의 텍스트 구제가 두 번째 호출로 그것을 되찾는다(`text_rescue`).
 TOOL_CHOICE_DEFAULT = None
+# 🔴 허용 집합. **이 목록은 우리가 정한 정책이 아니라 프로바이더 스펙의 사본이다** —
+#    `openai/types/chat/chat_completion_tool_choice_option_param.py:15` 의
+#    `Literal["none", "auto", "required"]`, 그리고 dspy 가 그것을 그대로 물려받은
+#    `dspy/core/types.py:327` 의 `mode` (+ `ConfigDict(extra="forbid")`).
+#    ⚠️ 여기만 늘리면 통과시킨 값이 dspy 나 프로바이더에서 죽는다. 그래서
+#    `test_the_allowed_set_matches_what_the_provider_accepts` 가 이 목록을 dspy 에 직접
+#    태워 두 쪽이 갈리지 않는지 감시한다.
+#    🔴 `""` 는 여기 없다 — 그건 "값"이 아니라 **"키를 안 보낸다"** 이고, 아래 `tool_choice()`
+#      가 `None` 으로 접는다. 두 사건을 같은 자리에 두면 킬스위치의 OFF 방향이 사라진다.
+TOOL_CHOICE_ALLOWED = ("auto", "required", "none")
 
 
 def tool_choice(req=None):
@@ -1035,11 +1054,25 @@ def tool_choice(req=None):
     규약이라 시험이 monkeypatch 로 두 레짐을 다 돌릴 수 있다.
     """
     v = os.environ.get(TOOL_CHOICE_ENV)
+    src = TOOL_CHOICE_ENV
     if v is None:
-        v = getattr(req, "tool_choice", None)
+        v, src = getattr(req, "tool_choice", None), "MacroRequest.tool_choice"
         if v is None:
             v = TOOL_CHOICE_DEFAULT
-    return (v.strip() or None) if isinstance(v, str) else None
+    v = (v.strip() or None) if isinstance(v, str) else None
+    # 🔴 오설정을 **여기서** 죽인다. 안 죽이면 값은 dspy 의 닫힌 enum 까지 흘러가
+    #    `LMRequest.from_call` 안에서 pydantic `ValidationError` 가 되고, 그것은
+    #    `AdapterParseError` 가 **아니므로** `macro()` 의 포괄 except 로 떨어져 `error` 가 된다.
+    #    그러면 `policy.jl:1301` 의 `policy_entry` 가 `err !== nothing` 을 보고 레인을 통째로
+    #    `available=false` 로 버린다 — **tool 하나가 아니라 결정 전체가 매 사건 사라지고,**
+    #    이 레포의 스윕 도구는 per-decision `error` 를 안 읽으므로 아무도 그 말을 안 해 준다.
+    #    오타 하나가 조용한 전면 폴백이 되는 자리라 시끄러운 쪽을 고른다.
+    if v is not None and v not in TOOL_CHOICE_ALLOWED:
+        raise ValueError(
+            "%s=%r is not a legal tool_choice. Allowed: %s. "
+            "To send nothing at all (byte-identical to the pre-2026-08-29 request) use \"\"."
+            % (src, v, ", ".join(repr(a) for a in TOOL_CHOICE_ALLOWED)))
+    return v
 
 
 def _first_tool_call(action):
