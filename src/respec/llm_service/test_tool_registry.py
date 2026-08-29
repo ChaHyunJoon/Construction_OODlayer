@@ -359,8 +359,14 @@ def test_the_unique_args_are_untouched():
     assert p["reason"]["type"] == "string"
 
 
-def test_macro_arg_is_an_enum_of_this_events_legal_macros():
+def test_macro_arg_is_an_enum_of_this_events_emitted_macros():
     """어휘 밖 macro 를 낼 여지를 스키마에서 줄인다(강제는 아니다 -- F10).
+
+    fix round 2 (N3): 이 시험은 원래 "legal_macros" 라는 이름이었지만 실제로 재는 건 **emitted**
+    (실제로 tool 로 나간) 매크로다 -- legal 메뉴 ⊇ callable 메뉴이고 그 둘은 다른 것이다.
+    이 요청(`r1` 이 있어 agent-taking 팔도 나간다)에서는 둘이 같아서 이름이 안 갈렸을 뿐이다.
+    `ranking` 이 legal 메뉴(스코어링 대상 전체)를 나르고, 이 `macro` enum 은 callable 메뉴
+    (emitted)를 나른다 -- `COMMON_ARGS` 의 `emitted` 파라미터가 그 계약을 이름으로 말한다.
 
     fix round 1 (finding 6): `tools[0]` 하나만 보면 불변이 나머지 tool 에서 깨져도 못 잡는다.
     나오는 tool 전부를 돈다."""
@@ -368,6 +374,33 @@ def test_macro_arg_is_an_enum_of_this_events_legal_macros():
     for t in tools:
         p = t.format_as_litellm_function_call()["function"]["parameters"]["properties"]
         assert p["macro"]["enum"] == ["Replace", "NOOP"]
+
+
+def test_macro_enum_equals_the_tools_actually_emitted():
+    """🔴 fix round 2 (N1): "이 매크로가 tool 로 나가는가" 를 결정하는 곳이 두 곳이면 몰래
+    갈릴 수 있다 -- 리뷰가 실측: 실제 tool 구성 루프에만 스킵 규칙 하나를 얹어도(예:
+    `if macro == "SwapBattery" and len(agent_ids) >= 3: continue`) 25개 시험이 전부 green
+    인 채로, 3-agent 요청에서 `deliver_battery` 는 안 나가는데 남은 tool 들의 `macro` enum
+    에는 여전히 `"SwapBattery"` 가 남았다 -- finding 2 의 결함이 소리 없이 되살아난 것이다.
+
+    이 시험은 오늘의 어휘(Replace/SwapBattery/NOOP)나 특정 fixture 값에 기대지 않는다 --
+    구조적 불변만 잰다: `build_tools` 가 실제로 낸 tool 목록에서 `TOOL_TO_MACRO` 로 유도한
+    매크로 리스트가, 그 tool 들이 들고 있는 `macro` enum 과 **항상** 같아야 한다. "emit 여부를
+    결정하는 곳이 한 곳뿐" 이라는 계약이 깨지면 이 등식이 깨진다."""
+    cases = [
+        ([{"id": "r1", "label": "a"}], ["Replace", "SwapBattery", "NOOP"]),
+        ([], ["Replace", "NOOP"]),
+        ([{"id": "r1", "label": "a"}, {"id": "r2", "label": "b"}, {"id": "r3", "label": "c"}],
+         ["Replace", "SwapBattery", "NOOP"]),
+    ]
+    for agents, valid in cases:
+        tools = reg.build_tools(agents, valid)
+        expected = [reg.TOOL_TO_MACRO[t.name] for t in tools]
+        for t in tools:
+            p = t.format_as_litellm_function_call()["function"]["parameters"]["properties"]
+            assert p["macro"]["enum"] == expected, (
+                "%r 의 macro enum %r 이 실제로 나간 tool 에서 유도한 매크로 %r 과 다르다 -- "
+                "emit 여부를 결정하는 곳이 두 군데로 갈렸다" % (t.name, p["macro"]["enum"], expected))
 
 
 def test_macro_enum_excludes_macros_that_have_no_emitted_tool():

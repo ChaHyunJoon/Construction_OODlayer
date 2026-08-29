@@ -117,20 +117,23 @@ _REASONING_DESC = (
 #    문구로 3/3 이 비교 절을 산문에 담았고, 어느 대안보다 나은지까지 말해 숫자보다 정보가 많다.
 
 
-def COMMON_ARGS(valid):
+def COMMON_ARGS(emitted):
     """세 tool 이 **전부** 갖는 결정 성분 인자. 고유 인자(`agent`/`reason`)와 합쳐 쓴다.
 
-    🔴 `valid` 를 받는 이유는 `macro` enum 이 **이 사건의** legal 매크로여야 하기 때문이다.
-    모듈 상수로 굳히면 사건마다 다른 메뉴를 못 따라간다.
+    🔴 fix round 2 (N2): 이 인자의 이름은 `valid` 가 아니라 `emitted` 다 -- 계약은 "이
+    사건에서 legal 한 매크로 전체" 가 아니라 **호출자가 실제로 tool 로 내보낼 매크로**
+    (`build_tools` 참고, fix round 1 finding 2). 모듈 상수로 굳히면 사건마다 다른 메뉴를
+    못 따라가므로 인자로 받는다. `ranking` 의 description 은 건드리지 않는다: 그건 스코어링
+    메뉴(legal 매크로 전체)를 말하고, `macro` enum 은 콜 가능한 메뉴(`emitted`)를 말한다 --
+    원래 다른 것을 가리키므로 이건 "비대칭"이 아니라 설계다.
 
-    🔴 fix round 1 (finding 2): `valid` 는 "이 사건에서 legal 한 매크로 전체" 가 아니라
-    **호출자가 실제로 tool 로 내보낼 매크로** 여야 한다 -- `build_tools` 참고. `ranking` 의
-    description 은 건드리지 않는다: 그건 스코어링 메뉴(legal 매크로 전체)를 말하고, `macro`
-    enum 은 콜 가능한 메뉴(실제로 나가는 tool)를 말한다 -- 원래 다른 것을 가리키므로 이건
-    "비대칭"이 아니라 설계다.
+    🔴 Task 2 가 이 함수를 부를 때는 **키 이름 집합만** 필요하다(값의 enum 이 아니라) --
+    그 경우엔 `emitted` 에 무엇을 넘기든 상관없다. 그래도 이름을 정확히 두는 이유는, 값의
+    enum 을 실제로 쓰는 호출자(`build_tools`)에게 "여기 넣을 건 legal 전체가 아니라 emit
+    되는 것" 이라는 계약을 이름 하나로 전달하기 위해서다.
     """
     return {
-        "macro": {"type": "string", "enum": list(valid),
+        "macro": {"type": "string", "enum": list(emitted),
                   "description": "the macro name this call enacts"},
         "reasoning": {"type": "string", "description": _REASONING_DESC},
         "expressible": {"type": "boolean", "description": _EXPRESSIBLE_DESC},
@@ -173,13 +176,19 @@ def build_tools(agents, valid) -> List[dspy.Tool]:
     여전히 `"Replace"` 가 남아, 모델이 존재하지 않는 tool 을 legal 하다고 답할 길이 생긴다.
     그 답은 Task 4 에서 `macro_tool_agree=False` 로 기록되는데, 이는 모델의 실수가 아니라
     스키마 자신이 만든 불일치다.
+
+    🔴 fix round 2 (N1): "이 매크로가 tool 로 나가는가" 를 결정하는 곳은 **이 함수 안에 하나만**
+    있어야 한다. round 1 은 그 결정을 두 벌(별도의 `emitted_macros` 리스트 컴프리헨션과, 그와
+    독립적으로 같은 조건을 다시 판정하는 tool 구성 루프) 로 적어, 리뷰가 후자에만 스킵 규칙을
+    하나 얹는 변형으로 두 벌이 몰래 갈릴 수 있음을 실측했다(어떤 fixture 도 못 잡았다 -- finding
+    2 가 되살아나되 아무 시험도 안 빨개졌다). 그래서 한 번의 순회로 emit 될
+    `(macro, tool_name, unique_args)` 를 모으고, `macro` enum 도 `dspy.Tool` 구성도 **그 한
+    목록에서만** 유도한다 -- 두 번째 판정 지점을 아예 없앤다.
     """
     agent_ids = [a["id"] for a in (agents or []) if a.get("id")]
-    emitted_macros = [m for m in (valid or [])
-                       if MACRO_TO_TOOL.get(m) is not None
-                       and (agent_ids or not _needs_agent(MACRO_TO_TOOL[m]))]
-    common = COMMON_ARGS(emitted_macros)
-    out = []
+    emitted = []  # [(macro, tool_name, unique_args), ...] -- 이 리스트를 채우는 이 루프가
+                  # emit 여부를 결정하는 **유일한** 자리다. 아래에서는 여기서 나온 것을 그대로
+                  # 쓰기만 한다.
     for macro in (valid or []):
         name = MACRO_TO_TOOL.get(macro)
         if name is None:
@@ -187,11 +196,17 @@ def build_tools(agents, valid) -> List[dspy.Tool]:
         if _needs_agent(name):
             if not agent_ids:
                 continue
-            args = dict(_agent_arg(agent_ids))
+            unique_args = dict(_agent_arg(agent_ids))
         else:
-            args = {"reason": {
+            unique_args = {"reason": {
                 "type": "string",
                 "description": "what you observed that made intervention unnecessary"}}
+        emitted.append((macro, name, unique_args))
+
+    common = COMMON_ARGS([macro for macro, _, _ in emitted])
+    out = []
+    for macro, name, unique_args in emitted:
+        args = dict(unique_args)
         args.update(common)
         out.append(dspy.Tool(_FUNCS[name], args=args))
     return out
