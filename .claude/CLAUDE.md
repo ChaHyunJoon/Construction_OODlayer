@@ -313,10 +313,16 @@ julia +lts --project=. -i tools/dev_session.jl      # Revise REPL: t() re-checks
 ```
 Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedence over `ARGS[1]`.
 
-**기대 baseline(실패 아님):** `Pkg.test()` = **254 pass / 0 fail / 1 error / 255 total**
-(≈4m30s). 유일한 error 는 `test/runtests.jl:80` 의 `Demo` — `Gurobi Error 10009: No Gurobi
-license found` 이고 **변경과 무관하다.** (2026-08-28 실측. 옛 "11 pass" 는 상위 testset 개수를
-전체 단언 수로 잘못 읽은 것이다.)
+**기대 baseline(실패 아님):** `Pkg.test()` = **710 pass / 0 fail / 1 error / 711 total**
+(≈4m50s, 2026-08-29 `c81fad02` 실측). 유일한 error 는 `test/runtests.jl:80` 의 `Demo` —
+`Gurobi Error 10009: No Gurobi license found` 이고 **변경과 무관하다.**
+
+🔴 **이 숫자는 자라는 중이다 — 인용하지 말고 재유도해라.** Plan B(2026-08-29,
+`docs/superpowers/plans/2026-08-29-tool-enactment-lane-plan-b.md`)가 태스크마다 게이트를 더한다.
+경과: 254(08-28) → 631(`36bb917b`, B0 이 +367) → 710(`c81fad02`, T1 이 +79).
+회귀 판정에 쓸 값은 **네가 지금 잰 값**이고, 이 줄은 자릿수 감각용이다.
+(옛 "254" 를 2026-08-29 에 그대로 두면 377 pass 만큼 낡은 값이 되고, 옛 "11 pass" 는 상위
+testset 개수를 전체 단언 수로 잘못 읽은 것이었다 — 같은 종류의 사고가 이 줄에서 두 번 났다.)
 
 ⚠️ **`Pkg.test()` 초록이 전부가 아니다.** `test/smdp_global_inventory.jl`(spec §3.6 — 스냅샷
 대상 전역의 전수 목록을 기계로 지키는 살아 있는 게이트)은 **`test/runtests.jl` 이 include 하지
