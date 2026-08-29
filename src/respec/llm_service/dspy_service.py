@@ -237,8 +237,10 @@ def native_fc_active(signature=None):
 
     🔴 `supports_function_calling`(조건 4)은 **로컬 조회가 아니다**(2026-08-28 정정). LM 생성은
     connect 0건이지만 그 속성을 **읽으면** litellm 이 원격 cost map(raw.githubusercontent.com)을
-    가져오려 하고, 실패하면 로컬 백업으로 폴백한다 — 실측 connect 시도 8건(IPv4 4 + IPv6 4).
-    값은 옳고 **과금은 없다**(provider 호출이 아니다). 오프라인 CI 에서는 여기서 지연이 붙는다.
+    가져오려 하고, 실패하면 로컬 백업으로 폴백한다 — 실측 connect 시도 **프로세스당** 8건
+    (IPv4 4 + IPv6 4). 읽기당이 아니다: litellm 이 cost map 을 모듈 수준에 캐싱해서 두 번째
+    읽기부터는 0건이다(실측: 새 LM 객체로 5회 읽어도 총계 8, 모델을 바꿔도 그대로).
+    값은 옳고 **과금은 없다**(provider 호출이 아니다). 오프라인 CI 는 프로세스당 한 번 문다.
     아직 프로그램이 없으면(부팅 전) `SelectTool` 로 폴백한다.
 
     🔴 못 재면 `False` 가 아니라 `None` 을 낸다. "못 쟀다"(None)와 "재서 꺼져 있었다"(False)는
