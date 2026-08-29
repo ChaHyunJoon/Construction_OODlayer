@@ -871,12 +871,17 @@ tool_registry.json       T1 의 알파벳 (합성분이 여기 쌓인다)       
 "tool_called"     => "deliver_battery"
 "tool_args"       => Dict(...)
 "tool_minted"     => false      # 이 결정이 T2 를 발화시켰다면 그 결과
-"verify"          => "admit"    # "admit" | "reject:<reason>" | "deferred"
+"verify"          => "admit"    # "admit" | "reject:<reason>" | "deferred:<reason>"
 "efficacy"        => "resolves" # "resolves" | "inert" | "deferred"
 "macro"           => "SwapBattery"   # 채점 어휘 — tool 과 별개로 계속 기록
 "macro_tool_agree" => true      # macro 와 tool 이 같은 방향인가 (§4-1 미결 — 재기만 한다)
 "emitted_keys"    => [...]      # CB.emitted_key 로 **Julia 가** 계산
 ```
+
+> 🔴 **2026-08-29 정정 (Plan B / T3 검증).** 위 `verify` 주석은 세 번째 상태를 맨 `"deferred"`
+> 로 적고 있었는데, 구현은 `"deferred:<reason>"` 를 낸다. **이 문서만 읽고 쓴 소비자는
+> `verify == "deferred"` 로 비교해서 deferred 행을 하나도 못 잡는다.** 접두사 비교가 규약이다:
+> `startswith(verify, "deferred")`. `reject` 도 같다.
 
 🔴 `deferred` 를 `unknown` 이나 `agree` 로 뭉개지 않는다. **"못 쟀다"와 "재서 통과했다"는 다른
 사건**이고, 이 레포는 그 둘을 섞어 여러 번 데였다.

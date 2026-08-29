@@ -1052,6 +1052,15 @@ DSPy 서비스가 `/decide` 의 `dspy` 본체에 싣는 **tool 레인 키 전부
 🔴 목록을 두 벌 두지 않는다. `policy_entry` 의 **두 분기**와 `decide_all` 의 `tool_lane`
 노출이 전부 이 하나를 읽는다 — 손으로 든 키 목록이 갈리는 것이 이 배선이 애초에 없었던 이유다
 (`service_decide` 위 2026-08-29 정정 블록 참조).
+
+🔴 **그래도 언어 경계에는 두 벌이 남는다** (2026-08-29 수정 라운드, F1). 위 튜플은 파이썬이
+내는 이름의 **손으로 쓴 사본**이고, 파이썬에서 키를 이름 바꾸면 그 값은 여기서 조용히
+`nothing`("못 쟀다")으로 도착한다 — 양쪽 게이트가 **전부 초록인 채로**. 그래서
+`test/tool_lane_keys_survive.jl` 의 (5)절이 `.venv/bin/python` 으로 `dspy_service.py` 의
+`out["dspy"]` dict 리터럴을 **AST 로 읽어** 이 튜플과 대조한다. `tools/test_policy_oracle.jl`
+0절(`ORACLE_BATTERY_DEEP_SOC` ↔ `reference_policy.BATTERY_DEEP_SOC`)이 같은 자리에 이미
+있는 같은 모양의 계약이다. 🔴 그 절은 파이썬에 못 닿으면 **skip 이 아니라 빨개진다** —
+skip 은 같은 구멍에 단계만 더한 것이다.
 """
 const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offered",
                         "expressible", "native_fc", "tool_lane_error", "macro_tool_agree")
@@ -1071,7 +1080,23 @@ const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offer
 (깊은 복사를 지금 짓지 않는 이유 = 오늘 재보면 그 사건이 도달 불가능하기 때문이고, 도달
 가능해지는 순간이 곧 이 docstring 을 다시 읽어야 하는 순간이다.)
 
-🔴 `nothing` 을 빈 Dict 로 접지 않는다 — "tool 을 안 불렀다"와 "인자가 비었다"는 다른 사건이다.
+🔴 `nothing` 을 빈 Dict 로 접지 않는다. 다만 **그 이유를 정확히 적는다** (2026-08-29 수정
+라운드, F5). 여기 있던 문구는 *"`nothing` 과 `Dict()` 가 'tool 을 안 불렀다' 와 '인자가
+비었다' 를 가른다"* 였는데, 그것은 **측정보다 넓은 주장이었다**: 서비스의 성공 응답에서
+`tool_args` 는 **절대 `null` 이 아니다** — `_first_tool_call` 이 호출이 없으면 `{}` 를 내고
+(`dspy_service.py:_first_tool_call`), `pred is None` 인 폴백 경로도 `tool_args = {}` 로
+초기화한다(`:1008`). 그러므로 이 층에서 `Dict()` 는 "안 불렀다" 와 "인자가 없는 tool 을
+불렀다" 둘 다이고, 둘을 가르지 못한다.
+
+🔴 소비자 규칙은 **`tool_called === nothing` 으로 가르는 것 하나뿐이다.**
+(`tool_args` 의 빈 여부로 가르면 인자 없는 tool 을 부른 사건이 "안 불렀다" 로 샌다.)
+`enact.jl` 의 `enact_target` 이 그 규칙을 쓴다.
+
+그래도 접지 않는 이유는 남아 있다: `tool_args === nothing` 은 **서비스가 보낸 값이 아니라**
+"이 레인에 그 키가 아예 없었다" 는 뜻이다(집행 레인이 dspy 가 아니었다 · 폴백 분기였다 ·
+서비스가 그 키를 안 싣는 세대다). 그것을 `Dict()` 로 접으면 "레인이 안 돌았다" 가
+"tool 을 안 부른 dspy 결정" 으로 둔갑한다. 가르는 키는 `tool_lane_view` 의 `"lane"` ·
+`"lane_available"` 이다(그 docstring 에 삼분 규칙이 한 벌 있다).
 """
 _tool_args_dict(x) = x === nothing ? nothing :
     (x isa AbstractDict{String} ? x : Dict{String,Any}(String(k) => v for (k, v) in pairs(x)))
@@ -1082,9 +1107,29 @@ _tool_args_dict(x) = x === nothing ? nothing :
 `TOOL_LANE_KEYS` 여덟 개를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
 
 🔴 **삼상 보존 (spec §9-2).** `nothing` = "못 쟀다", `false` = "재서 어긋났다". 여기서
-`something(x, false)` 나 `Bool(x)` 로 감싸면 그 계약이 죽는다 — `expressible` ·
-`native_fc` · `macro_tool_agree` 셋 다 서비스가 `null` 을 낼 수 있고, JSON3 는 그것을
-`nothing` 으로 준다(실측). 그러므로 **아무것도 접지 않는다.**
+`something(x, false)` 나 `Bool(x)` 로 감싸면 그 계약이 죽는다. 그러므로 **아무것도 접지
+않는다.**
+
+서비스가 실제로 `null` 을 낼 수 있는 키는 **넷**이다 (2026-08-29 수정 라운드, F4 —
+여기 있던 *"`expressible` · `native_fc` · `macro_tool_agree` 셋 다"* 는 **거짓이었고**,
+파이썬 쪽 docstring 과 정면으로 어긋나 있었다):
+
+  · `tool_called`      — tool 을 안 불렀다 / 부를 수 없었다
+  · `expressible`      — 어댑터가 bool 로 못 읽었다(`isinstance(..., bool)` 가 아니면 None)
+  · `tool_lane_error`  — 레인이 실패하지 않았으면 None
+  · `macro_tool_agree` — 비교할 왼쪽이나 오른쪽이 없다
+
+⚠️ `native_fc` 는 **그 넷에 들지 않는다.** `native_fc_active()` 는 언제나 `True`/`False` 를
+내고, `None` 은 그 함수 안에서 조건 1·4 를 **읽을 수 없을 때**(= `dspy.configure` 전)만
+나온다 — `_startup()` 이 항상 `_configure_dspy()` 를 먼저 돌리므로 **어떤 서비스 응답도
+`native_fc: null` 을 만들지 못한다**(`dspy_service.native_fc_active` docstring 의 검증자
+실측: `DSPY_MODEL` 여덟 가지를 훑어도 None 없음). 이 게이트도 그 사실을 그대로 인정한다 —
+`test/tool_lane_keys_survive.jl` 은 `native_fc` 의 `true`/`false` 두 상태만 못박고
+세 번째를 **지어내지 않는다**.
+
+그래서 Julia 쪽에서 `native_fc === nothing` 이 뜻하는 것은 "서비스가 못 쟀다" 가 **아니라**
+셋 중 하나다: ① 집행 레인이 dspy 가 아니었다 ② dspy 항목이 폴백이었다 ③ 그 키를 안 싣는
+세대의 응답이었다. ①②를 가르는 것은 `tool_lane_view` 의 `"lane"` · `"lane_available"` 이다.
 
 🔴 두 분기가 **같은 키 집합**을 낸다. 키를 있을 때만 싣는 설계는 "키가 없다"와 "값이 null 이다"를
 구분 불가능하게 만든다(Plan A 가 이미 밟은 presence-gated 결함). 레인이 안 돌았다는 사실은
@@ -1095,6 +1140,50 @@ tool_lane_fields(b) = Pair{String,Any}[k => (k == "tool_args" ?
                                                              get(b, :tool_args, nothing)) :
                                              (b === nothing ? nothing : get(b, Symbol(k), nothing)))
                                        for k in TOOL_LANE_KEYS]
+
+"""
+    tool_lane_view(pol, enacted) -> Dict{String,Any}
+
+`decide_all(...).tool_lane` 의 **본문 생산자**. `TOOL_LANE_KEYS` 여덟에 **출처 두 개**를 더한다.
+셋 다 **같은 `pol[enacted]` 항목 하나**에서 나온다 — 서로 다른 레인의 값이 한 dict 에 섞이지
+않는다는 것이 이 함수가 존재하는 이유다.
+
+  · `"lane"`           = `enacted` — 실제로 결정을 낸 레인 이름
+  · `"lane_available"` = `pol[enacted]["available"]` — 그 레인 항목이 성공 분기였는가
+
+🔴 **왜 더하는가** (2026-08-29 수정 라운드, F2). 여덟 키만으로는 `tool_lane[k] === nothing` 이
+**세 사건을 한 값으로 뭉갠다**. 이 dict 만 읽는 소비자는 셋을 가를 수 없었다:
+
+  (a) 집행 레인이 dspy 가 **아니었다** → tool 레인이 애초에 없었다.
+      (`pol["canonical"]` 등에는 여덟 키가 아예 없어 `get(..., nothing)` 이 전부 nothing 이다.)
+  (b) 집행 레인이 dspy 인데 **그 항목이 폴백**이었다 → 레인이 돌다가 실패했다.
+  (c) 집행 레인이 dspy 이고 항목도 성공인데 **서비스가 진짜 `null` 을 보냈다** → 못 쟀다.
+
+**소비자 규칙 — 이 세 줄이 전부다(다른 곳에 사본을 두지 말 것):**
+
+  (a) `tool_lane["lane"] != "dspy"`
+  (b) `tool_lane["lane"] == "dspy" && tool_lane["lane_available"] !== true`
+  (c) `tool_lane["lane"] == "dspy" && tool_lane["lane_available"] === true`
+
+🔴 (b) 의 **대가를 여기 명시한다**(controller ruling R1, 그대로 둔다): 폴백 `policy_entry` 는
+여덟을 **전부 `nothing`** 으로 낸다 — 서비스가 실제로 **잰** `tool_lane_error` 문자열까지
+접힌다. 그러므로 (b) 에서 `tool_lane["tool_lane_error"] === nothing` 은 "파싱 실패가 없었다"는
+뜻이 **아니다**. 그 사건의 원문은 `policies["dspy"]["error"]` 와 서비스 응답에만 남는다.
+(a) 에서도 마찬가지로 여덟은 "서비스가 못 쟀다" 가 아니라 "이 결정과 무관하다" 를 뜻한다.
+
+🔴 여덟 키는 이름도 뜻도 **안 바꾼다** — 하류(`enact.jl` 의 `enact_target`, `run_demo.jl` 의
+결정 행)가 이미 읽고 있다. 더하기만 한다.
+"""
+function tool_lane_view(pol, enacted)
+    local e = get(pol, enacted, nothing)
+    local d = Dict{String,Any}(k => (e === nothing ? nothing : get(e, k, nothing))
+                               for k in TOOL_LANE_KEYS)
+    # 🔴 여덟과 **같은 항목**에서 뽑는다. `pol["dspy"]` 를 여기서 다시 읽으면 (a) 와 (c) 가
+    #    도로 섞인다 — 그게 이 함수가 `pol` 과 `enacted` 를 같이 받는 이유다.
+    d["lane"] = enacted
+    d["lane_available"] = e === nothing ? nothing : get(e, "available", nothing)
+    return d
+end
 
 """
     policy_entry(b, label) -> Dict
@@ -1530,7 +1619,9 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    `pol["dspy"]` 에서 뽑으면 canonical 이 결정한 사건에서 LLM 의 tool 인자가 집행으로
     #    흘러드는 경로가 생긴다. 그 레인들의 dict 에는 8키가 아예 없으므로 `get(..., nothing)`
     #    이 전부 `nothing` 을 낸다 = "못 쟀다"(spec §9-2), `false` 가 아니다.
-    local tool_lane = Dict{String,Any}(k => get(pol[enacted], k, nothing) for k in TOOL_LANE_KEYS)
+    #    삼분 규칙(레인이 없었다 / 레인이 실패했다 / 서비스가 null 을 냈다)과 두 출처 키는
+    #    `tool_lane_view` 의 docstring 에 **한 벌만** 있다.
+    local tool_lane = tool_lane_view(pol, enacted)
 
     return (macro_name = chosen, candidates = cands, policies = pol, enacted = enacted,
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],

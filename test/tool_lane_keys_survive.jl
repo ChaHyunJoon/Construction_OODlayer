@@ -50,6 +50,34 @@
 #  (4) 폴백 분기(서비스가 `error` 를 냄)에서도 `pol["dspy"]` 에 키 8개가 **존재하고** 전부
 #      `nothing` 이다 — 키가 사라지지 않는다. 키를 있을 때만 싣는 설계는 "키가 없다"와
 #      "값이 null 이다"를 구분 불가능하게 만든다(Plan A 가 밟은 presence-gated 결함).
+#  (5) 🔴 **null 이 될 수 있는 키는 전부 실제로 null 로 고정된다** (2026-08-29 수정 라운드, F3).
+#      라운드 1 의 픽스처는 여덟 중 **둘**(`macro_tool_agree` · `tool_lane_error`)만 null 로
+#      보냈다. 그래서 `expressible` 에 `something(x, false)` 를 씌워도 79개 어서션이 **전부
+#      초록**이었다 — 삼상 계약이 그 키에서만 조용히 죽는다. 서비스가 실제로 `null` 을 낼 수
+#      있는 키는 넷(`tool_called` · `expressible` · `tool_lane_error` · `macro_tool_agree`)
+#      이고, `:decline` 시나리오가 그 넷을 **동시에** null 로 보낸다.
+#      ⚠️ `native_fc` 는 그 넷에 **없다.** 검증자 실측(2026-08-28): `None` 은 `native_fc_active`
+#      안에서 예외가 나야 나오는데 `_startup()` 이 늘 `_configure_dspy()` 를 먼저 돌리므로
+#      **어떤 서비스 응답도 `native_fc: null` 을 못 만든다**. 그래서 여기서 세 번째 상태를
+#      **지어내지 않는다** — 실재하는 `true`/`false` 둘만 못박고(2/3), 그 사실을 적는다.
+#  (6) 🔴 **교차언어 결속**: Julia 의 `TOOL_LANE_KEYS` 가 파이썬 `dspy_service.py` 의
+#      `out["dspy"]` 리터럴에서 실제로 유도된 키 집합과 **같다**. 라운드 1 에서 Julia 의
+#      목록은 파이썬 이름의 **손으로 쓴 사본**이었고 둘을 잇는 것이 아무것도 없었다 —
+#      파이썬에서 키 이름을 바꾸면 값이 여기서 조용히 `nothing`("못 쟀다")으로 도착하고
+#      **양쪽 게이트가 전부 초록**이었다. `tools/test_policy_oracle.jl` 0절이
+#      (`ORACLE_BATTERY_DEEP_SOC` ↔ `reference_policy.BATTERY_DEEP_SOC`) 같은 자리에 이미
+#      가진 계약과 같은 모양이다.
+#      🔴 파이썬에 못 닿으면 **skip 이 아니라 빨개진다.** skip 은 같은 구멍에 단계만 더한 것이다.
+#      🔴 서비스를 **import 하지 않는다** — `ast` 로 소스만 읽는다(부팅도 과금도 없다).
+#         모든 호출은 `env -u OPENAI_API_KEY` 로 감싼다.
+#  (7) 삼분 규칙: `tool_lane` 은 여덟 옆에 `"lane"` · `"lane_available"` 을 같이 낸다
+#      (`tool_lane_view` docstring 에 규칙 한 벌). (a) 레인이 dspy 가 아니었다 /
+#      (b) dspy 인데 항목이 폴백이었다 / (c) 서비스가 진짜 null 을 냈다 — 셋이 갈린다.
+#
+# ℹ️ 이 파일의 `haskey` 어서션들은 **구조적으로 실패할 수 없다**(같은 dict comprehension 이
+#    여덟을 언제나 짓는다). 남겨 두지만 **존재는 증거가 아니다** — 하중은 전부 바로 아래
+#    붙어 있는 값 어서션이 진다. 키가 사라지는 회귀는 `(0)` 의 길이/집합 검사와 (6) 의
+#    교차언어 대조가 잡는다.
 #
 # 실행: julia +lts --project=. test/tool_lane_keys_survive.jl
 # =============================================================================
@@ -72,9 +100,14 @@ isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "n
 #   :lane      dspy 가용(8키 적재, 두 개는 null) · surrogate 불가 → select_lane 이 dspy 를 고른다
 #   :surro     dspy 가용(8키 적재, null 없음)   · surrogate 가용  → select_lane 이 surrogate 를 고른다
 #   :err       dspy 가 error → policy_entry 의 **폴백 분기** · surrogate 불가 → canonical
+#   :decline   dspy 가용인데 **모델이 메뉴를 거절했다**(C8 ②) — null 가능한 넷이 전부 null
 const _MODE = Ref{Symbol}(:lane)
 
-# 응답에 싣는 tool 레인 값. 검사가 이 상수를 그대로 대조하므로 두 벌이 갈릴 수 없다.
+# 응답에 싣는 tool 레인 값.
+# 🔴 (2026-08-29 수정 라운드, F7) 이 주석은 **거짓이었다** — (1) 절이 `"deliver_battery"` 같은
+#    인라인 리터럴로 대조했고, 그래서 이 상수와 검사가 실제로는 두 벌이었다. 지금은 (1)·(5)
+#    둘 다 `TOOL_LANE_KEYS` 를 돌며 **이 dict 에서 기대값을 읽는다**. 서버가 보내는 것과
+#    검사가 기대하는 것이 같은 리터럴 하나라, 갈릴 자리가 없다.
 # `tool_args` 는 서비스에서 JSON 객체로 오고, 현행 tool 알파벳(`tool_registry.py`)의 인자는
 # `agent::String` 또는 `reason::String` 하나뿐이라 평평하다.
 const _LANE_FULL = Dict{String,Any}(
@@ -92,14 +125,40 @@ const _LANE_FULL = Dict{String,Any}(
 const _LANE_WITH_NULLS = merge(_LANE_FULL, Dict{String,Any}(
     "macro_tool_agree" => nothing, "tool_lane_error" => nothing))
 
+# (5) 를 위한 **거절 행**(dspy_service.py 의 C8 ②: 메뉴는 있었는데 모델이 tool 을 안 불렀다).
+# 🔴 서비스가 실제로 `null` 을 낼 수 있는 **넷을 전부** 동시에 null 로 보낸다:
+#    `tool_called`(안 불렀다) · `expressible`(bool 로 안 읽혔다) · `tool_lane_error`(실패 없음)
+#    · `macro_tool_agree`(비교할 오른쪽이 없다). 위 `_LANE_WITH_NULLS` 는 뒤의 둘만 덮어서
+#    앞의 둘이 한 번도 null 로 안 왔다 — 그게 F3 이 잡은 구멍이다.
+# ⚠️ `tool_args` 는 여기서도 **`nothing` 이 아니라 `{}`** 다. 서비스의 `_first_tool_call` 이
+#    호출이 없으면 빈 dict 를 내기 때문이다(F5). 즉 이 층에서 "안 불렀다" 를 가르는 키는
+#    `tool_called` **하나뿐**이고, `tool_args` 의 빈 여부가 아니다 — 아래 (5) 가 그것을 못박는다.
+# ⚠️ `native_fc` 는 `false`(재서 꺼져 있었다). `nothing` 은 **서비스가 만들 수 없는 상태**라
+#    지어내지 않는다 — 머리말 (5) 참조. 이 시나리오가 그 키의 두 번째(그리고 마지막) 실상태다.
+const _LANE_DECLINED = Dict{String,Any}(
+    "tool_called" => nothing,
+    "tool_args" => Dict{String,Any}(),
+    "tool_calls_n" => 0,
+    "tools_offered" => 3,
+    "expressible" => nothing,
+    "native_fc" => false,
+    "tool_lane_error" => nothing,
+    "macro_tool_agree" => nothing)
+
+# 🔴 매크로 이름 리터럴을 쓰지 않는다 (2026-08-29 수정 라운드, F6). 이 레포의 규칙은
+#    `test/policy_macro_binding.jl:134` 에 적혀 있다 — 어휘 이름을 테스트에 적으면 그 파일이
+#    **어휘의 또 다른 사본**이 되고, 레지스트리에서 이름을 바꾸면 여기가 죽은 이름을 계속
+#    단언한다. 아래 둘은 `wm4spacecraft_manufacturing/core/action_registry.json` 에서
+#    유도된다(`_ARM_NAME`/`_NOOP_NAME`, policy.jl include 뒤에 정의). 두 함수 모두 **호출
+#    시점에** 그 전역을 읽으므로 정의 순서는 문제되지 않는다.
 _dspy_body(lane) = merge(Dict{String,Any}(
-    "chosen" => "SwapBattery", "ranking" => ["SwapBattery", "NOOP"], "margin" => 0.4,
+    "chosen" => _ARM_NAME, "ranking" => [_ARM_NAME, _NOOP_NAME], "margin" => 0.4,
     "rationale" => "fake service", "policy" => "dspy:test", "unsupported" => String[]), lane)
 
-const _SURRO_BODY = Dict{String,Any}(
-    "chosen" => "NOOP", "ranking" => ["NOOP", "SwapBattery"], "margin" => 0.2,
+_surro_body() = Dict{String,Any}(
+    "chosen" => _NOOP_NAME, "ranking" => [_NOOP_NAME, _ARM_NAME], "margin" => 0.2,
     "rationale" => "fake surrogate", "policy" => "surrogate:test",
-    "scores" => Dict("NOOP" => 0.7, "SwapBattery" => 0.3), "unsupported" => String[])
+    "scores" => Dict(_NOOP_NAME => 0.7, _ARM_NAME => 0.3), "unsupported" => String[])
 
 const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose = -1) do req
     if req.target == "/health"
@@ -111,7 +170,11 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
         local out = if m === :lane
             Dict{String,Any}("dspy" => _dspy_body(_LANE_WITH_NULLS), "surrogate" => nothing)
         elseif m === :surro
-            Dict{String,Any}("dspy" => _dspy_body(_LANE_FULL), "surrogate" => _SURRO_BODY)
+            Dict{String,Any}("dspy" => _dspy_body(_LANE_FULL), "surrogate" => _surro_body())
+        elseif m === :decline
+            # 성공 분기다(`error` 없음) — 그래서 여기의 `nothing` 들은 전부 **서비스가 보낸
+            # null** 이지 "레인이 안 돌았다" 가 아니다. 삼분의 (c).
+            Dict{String,Any}("dspy" => _dspy_body(_LANE_DECLINED), "surrogate" => nothing)
         else
             # 폴백 분기: `error` 가 있으면 `policy_entry` 가 성공 분기를 통째로 건너뛴다.
             # 🔴 그런데 tool 레인 키는 **여전히 응답에 실려 있다** — 그래도 폴백은 8키를
@@ -142,6 +205,79 @@ finally
     _PREV_DSPY_URL === nothing ? delete!(ENV, "DSPY_URL") : (ENV["DSPY_URL"] = _PREV_DSPY_URL)
 end
 
+# ---- 어휘는 레지스트리에서 유도한다 (F6) --------------------------------------------------
+# `ActionRegistry` 는 policy.jl 의 가드 있는 include 로 같이 들어온다(두 번째 로더 경로를
+# 만들지 않는다 — `test/policy_macro_binding.jl:39-45` 와 같은 이유).
+# id 0 = 절제(NOOP)라는 것은 이 레지스트리의 규약이고 `policy.jl:359-360` ·
+# `action_registry.jl:battery_arms` 가 이미 그 규약으로 `vcat(0, kind_valid(...))` 를 쓴다.
+# **이름**은 어디에도 안 적는다 — 레지스트리에서 이름을 바꾸면 이 파일이 따라간다.
+const _NOOP_NAME = ActionRegistry.NAME[0]
+const _ARM_NAME  = first(a for a in
+                         (ActionRegistry.NAME[i] for i in ActionRegistry.kind_valid(:battery))
+                         if a != _NOOP_NAME)
+
+# ---- (6) 교차언어: 파이썬 서비스의 키를 **소스에서** 뽑는다 ---------------------------------
+# 🔴 서비스를 **import 하지 않는다.** `ast` 로 `out["dspy"] = {...}` 리터럴만 읽는다 —
+#    import 하면 FastAPI 앱과 dspy 설정이 딸려 오고, 그건 이 게이트가 지불하지 않기로 한 값이다.
+# 🔴 `env -u OPENAI_API_KEY` 로 감싼다(과금 경로에 손이 닿을 여지 자체를 없앤다).
+# 레인 키의 경계는 파이썬 소스가 **스스로 선언한다**: `out["dspy"]` dict 안의
+# `# ---- tool 레인 ...` 표식 아래 줄에 있는 키가 레인 키다. 표식이 없거나 둘이면 죽는다.
+# ⚠️ 알려진 한계: 표식 **위**에 레인 키를 끼워 넣으면 이 추출이 그것을 레인 키로 안 센다.
+#    그 대신 아무것도 안 잡는 게 아니라, `all` 대조(아래)가 여전히 Julia 목록의 소멸·개명을 잡는다.
+const _PY_EXTRACT = raw"""
+import ast, json, re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+lines = src.split("\n")
+lits = [n.value for n in ast.walk(ast.parse(src))
+        if isinstance(n, ast.Assign) and len(n.targets) == 1
+        and isinstance(n.targets[0], ast.Subscript)
+        and isinstance(n.targets[0].value, ast.Name) and n.targets[0].value.id == "out"
+        and isinstance(n.targets[0].slice, ast.Constant) and n.targets[0].slice.value == "dspy"
+        and isinstance(n.value, ast.Dict)]
+if len(lits) != 1:
+    sys.exit('expected exactly 1 out[dspy] dict literal, found %d' % len(lits))
+d = lits[0]
+keys = []
+for k in d.keys:
+    if not (isinstance(k, ast.Constant) and isinstance(k.value, str)):
+        sys.exit("non-literal key in out['dspy'] at line %s" % getattr(k, "lineno", "?"))
+    keys.append((k.value, k.lineno))
+marks = [i + 1 for i in range(d.lineno - 1, d.end_lineno)
+         if re.match(r"^\s*#\s*-{2,}\s*tool ", lines[i])]
+if len(marks) != 1:
+    sys.exit("expected exactly 1 `# ---- tool ...` marker inside out['dspy'], found %d" % len(marks))
+print(json.dumps({"all": [k for k, _ in keys],
+                  "lane": [k for k, ln in keys if ln > marks[0]],
+                  "marker": marks[0]}, ensure_ascii=False))
+"""
+
+const _PY_BIN = joinpath(REPO, ".venv", "bin", "python")
+# 🔴 기본값은 **생산 소스**다. ENV 손잡이는 이 게이트가 실제로 빨개지는지 보이기 위한
+#    변형 증명 전용이고(수정 보고서가 그 실행을 인용한다), CI 는 이것을 세팅하지 않는다.
+const _PY_SERVICE_SRC = get(ENV, "TOOL_LANE_PY_SRC",
+                            joinpath(REPO, "src", "respec", "llm_service", "dspy_service.py"))
+
+"""
+    _py_decide_keys(pysrc) -> (all, lane)
+
+`dspy_service.py` 의 `out["dspy"]` dict 리터럴에서 키 이름을 뽑는다.
+
+🔴 **못 하면 예외로 죽는다 — skip 하지 않는다.** 파이썬에 못 닿는다는 이유로 이 검사를
+건너뛰면 F1 이 지적한 구멍(두 언어의 목록이 조용히 갈린다)이 "단계만 하나 더한 채" 그대로
+남는다. 그래서 인터프리터 부재도, 소스 부재도, 추출 실패도 전부 빨간색이다.
+"""
+function _py_decide_keys(pysrc::AbstractString)
+    isfile(_PY_BIN) || error("교차언어 게이트: 파이썬이 없다 — $(_PY_BIN) (skip 하지 않는다)")
+    isfile(pysrc) || error("교차언어 게이트: 서비스 소스가 없다 — $(pysrc)")
+    local o = IOBuffer(); local e = IOBuffer()
+    local pr = run(pipeline(ignorestatus(
+        `env -u OPENAI_API_KEY $(_PY_BIN) -c $(_PY_EXTRACT) $(pysrc)`); stdout = o, stderr = e))
+    local out = String(take!(o)); local errs = String(take!(e))
+    pr.exitcode == 0 || error("교차언어 게이트: 키 추출 실패 (rc=$(pr.exitcode))\n$(errs)")
+    local j = JSON3.read(out)
+    return (Set(String.(j["all"])), Set(String.(j["lane"])), Int(j["marker"]))
+end
+
 const TENV = try
     CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr",
                        project_name = "tool_lane_keys_survive",
@@ -157,6 +293,31 @@ end
 
 _truth() = CB.BatteryTruth(CB.RobotID(1), 0.5)
 
+"""
+    _assert_lane_values(tl, want)
+
+`tl`(= `decide_all(...).tool_lane`)의 여덟 키를 **서버가 실제로 보낸 픽스처 dict** `want` 와
+대조한다. F7: 인라인 리터럴을 쓰면 픽스처와 검사가 두 벌이 되어 갈릴 수 있다 — 여기서는
+갈릴 자리가 없다.
+
+🔴 타입까지 본다. `nothing` 은 `===` 로(그래야 `false`·`""` 로 접힌 것이 빨개진다), `Bool` 도
+`===` 로(그래야 `1`/`"true"` 가 안 통과한다).
+"""
+function _assert_lane_values(tl, want)
+    for k in TOOL_LANE_KEYS
+        local w = want[k]
+        if w === nothing
+            @test tl[k] === nothing
+        elseif w isa Bool
+            @test tl[k] === w
+        elseif w isa Integer
+            @test tl[k] === w
+        else
+            @test tl[k] == w
+        end
+    end
+end
+
 try
     @testset "tool 레인 키 8개가 decide_all 까지 살아온다" begin
 
@@ -169,6 +330,13 @@ try
         # 여덟이라는 사실도 여기서 못박는다 — 목록이 조용히 줄면 나머지 검사가 그만큼 덜 잰다.
         @test length(TOOL_LANE_KEYS) == 8
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_FULL))
+        @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_DECLINED))
+        # 픽스처의 매크로 이름이 **정말 레지스트리에서 왔는가**(F6). 둘이 같으면 아래
+        # `enacted` 판정이 두 레인을 구별 못 해 (3) 이 하중을 잃는다.
+        local _reg = [ActionRegistry.NAME[i] for i in ActionRegistry.active_ids()]
+        @test _NOOP_NAME != _ARM_NAME
+        @test _NOOP_NAME in _reg
+        @test _ARM_NAME in _reg
     end
 
     @testset "(1)+(2) dspy 가 집행되면 8키가 값까지 그대로 오고, null 은 null 로 온다" begin
@@ -180,24 +348,25 @@ try
         @test hasproperty(d, :tool_lane)
         local tl = d.tool_lane
         # ---- (1) 여덟이 전부 있고 값이 그대로다 ------------------------------------------
+        # ℹ️ `haskey` 는 **구조적으로 실패할 수 없다**(같은 comprehension 이 여덟을 언제나 짓는다) —
+        #    존재는 증거가 아니다. 하중은 바로 아래 값 대조가 진다.
         for k in TOOL_LANE_KEYS
             @test haskey(tl, k)
         end
-        @test tl["tool_called"] == "deliver_battery"
-        @test tl["tool_calls_n"] == 1
-        @test tl["tools_offered"] == 3
-        @test tl["expressible"] === true
-        @test tl["native_fc"] === true
+        # 🔴 F7: 기대값을 **서버가 실제로 보낸 dict 에서 읽는다.** 인라인 리터럴을 쓰면
+        #    `_LANE_*` 상수와 검사가 두 벌이 되고, 위 주석이 다시 거짓이 된다.
+        _assert_lane_values(tl, _LANE_WITH_NULLS)
         # `tool_args` 는 dict 다. 경계에서 `Dict{String,Any}` 로 고정된다(JSON3.Object 가 아니라).
         @test tl["tool_args"] isa Dict{String,Any}
-        @test tl["tool_args"] == Dict{String,Any}("agent" => "robot-1")
         # ---- (2) 🔴 삼상 보존: null 이 `nothing` 으로 온다. `false` 도 `""` 도 아니다 ------
-        @test tl["macro_tool_agree"] === nothing
         @test tl["macro_tool_agree"] !== false
-        @test tl["tool_lane_error"] === nothing
         @test tl["tool_lane_error"] != ""
+        # ---- (7) 출처 두 키: 이 사건은 삼분의 (c) 다 ---------------------------------------
+        @test tl["lane"] == "dspy"
+        @test tl["lane"] == d.enacted
+        @test tl["lane_available"] === true
         # 결정 자체는 지워지지 않았다(spec §4-1) — 레인 키가 실렸다고 chosen 이 상하지 않는다.
-        @test d.macro_name == "SwapBattery"
+        @test d.macro_name == _ARM_NAME
     end
 
     @testset "(3) enacted 가 dspy 가 아니면 8키가 전부 nothing 이다" begin
@@ -208,12 +377,19 @@ try
         @test d.enacted == "surrogate"
         #   ② 🔴 그 실행에서 `pol["dspy"]` 는 값을 **들고 있는가**. 안 들고 있으면
         #      `pol[enacted]` 와 `pol["dspy"]` 가 같은 값을 내므로 이 검사가 하중을 잃는다.
-        @test d.policies["dspy"]["tool_called"] == "deliver_battery"
+        @test d.policies["dspy"]["tool_called"] == _LANE_FULL["tool_called"]
         @test d.policies["dspy"]["macro_tool_agree"] === true
         for k in TOOL_LANE_KEYS
-            @test haskey(d.tool_lane, k)
+            @test haskey(d.tool_lane, k)   # ℹ️ 존재는 증거가 아니다 — 다음 줄이 하중을 진다
             @test d.tool_lane[k] === nothing
         end
+        # ---- (7) 삼분의 (a): "레인이 dspy 가 아니었다" 가 `tool_lane` 만으로 읽힌다 --------
+        # 🔴 여기가 `"lane"` 의 하중점이다. `tool_lane_view` 가 레인 이름을 `pol[enacted]` 가
+        #    아닌 곳(예: 리터럴 "dspy")에서 가져오면 이 줄이 빨개진다.
+        @test d.tool_lane["lane"] == "surrogate"
+        @test d.tool_lane["lane"] == d.enacted
+        @test d.tool_lane["lane"] != "dspy"
+        @test d.tool_lane["lane_available"] === true
     end
 
     @testset "(4) 폴백 분기에서도 8키가 존재하고 전부 nothing 이다" begin
@@ -231,9 +407,128 @@ try
         # 그 사건에서 집행된 레인(canonical)의 노출도 같은 모양이다.
         @test d.enacted == "canonical"
         for k in TOOL_LANE_KEYS
-            @test haskey(d.tool_lane, k)
+            @test haskey(d.tool_lane, k)   # ℹ️ 존재는 증거가 아니다 — 다음 줄이 하중을 진다
             @test d.tool_lane[k] === nothing
         end
+        @test d.tool_lane["lane"] == "canonical"
+        @test d.tool_lane["lane_available"] === true
+    end
+
+    @testset "(5) null 가능한 키 넷이 전부 null 로 살아온다 (거절 행)" begin
+        # 🔴 F3. 라운드 1 픽스처는 여덟 중 **둘**만 null 로 보냈다. `expressible` 과
+        #    `tool_called` 은 어느 시나리오에서도 null 이 아니어서, 그 둘에 `something(x, false)`
+        #    를 씌워도 79개가 전부 초록이었다. 이 절이 그 구멍을 막는다.
+        _MODE[] = :decline
+        local d = decide_all(TENV, _truth(); nl = "")
+        # 전제: 이 응답은 **성공 분기**다. 그래야 아래 `nothing` 들이 "서비스가 보낸 null"
+        # 이라는 뜻이 된다(폴백이면 (4) 를 다시 재는 것이 되어 아무것도 안 잰다).
+        @test d.enacted == "dspy"
+        @test d.policies["dspy"]["available"] === true
+        local tl = d.tool_lane
+        _assert_lane_values(tl, _LANE_DECLINED)
+        # ---- null 가능한 넷을 **이름으로** 다시 못박는다 ------------------------------------
+        # 🔴 `=== nothing` 이지 `""`·`false` 가 아니다. Julia 쪽에서 접으면 여기서 빨개진다.
+        @test tl["tool_called"] === nothing
+        @test tl["tool_called"] != ""
+        @test tl["expressible"] === nothing
+        @test tl["expressible"] !== false
+        @test tl["tool_lane_error"] === nothing
+        @test tl["macro_tool_agree"] === nothing
+        # ---- F5: `tool_args` 는 **null 이 아니다** ------------------------------------------
+        # 서비스의 `_first_tool_call` 이 호출이 없으면 `{}` 를 낸다. 그러므로 이 층에서
+        # "tool 을 안 불렀다" 를 가르는 키는 `tool_called` 하나뿐이고, `tool_args` 의 빈 여부가
+        # **아니다**. 아래 두 줄이 그 사실을 못박는다(그리고 `nothing`↔`{}` 접기를 둘 다 막는다).
+        @test tl["tool_args"] !== nothing
+        @test tl["tool_args"] == Dict{String,Any}()
+        @test tl["tool_calls_n"] === 0
+        # ---- native_fc 는 2/3 만 실재한다 -----------------------------------------------------
+        # ⚠️ `false`(재서 꺼져 있었다)가 두 번째이자 **마지막** 실상태다. `nothing` 은
+        #    `native_fc_active` 안에서 예외가 나야 하는데 어떤 서비스 응답도 그것을 못 만든다
+        #    (검증자 실측 2026-08-28). 세 번째를 지어내지 않고, 없다는 사실을 여기 적는다.
+        @test tl["native_fc"] === false
+        @test tl["native_fc"] !== nothing
+        # 삼분의 (c): 레인은 dspy 이고 항목도 성공이다 → 위 `nothing` 들은 전부 "서비스가 못 쟀다".
+        @test tl["lane"] == "dspy"
+        @test tl["lane_available"] === true
+    end
+
+    @testset "(6) 🔴 교차언어 — Julia 의 키 목록이 파이썬 소스에 묶여 있다" begin
+        # `tools/test_policy_oracle.jl` 0절과 같은 계약이다. 못 닿으면 skip 이 아니라 예외로
+        # 죽는다(`_py_decide_keys` 가 그렇게 짜여 있다).
+        local (all_keys, lane_keys, marker) = _py_decide_keys(_PY_SERVICE_SRC)
+        println("    python out[\"dspy\"] lane keys = ", join(sort(collect(lane_keys)), " · "))
+        println("    julia  TOOL_LANE_KEYS        = ", join(sort(collect(TOOL_LANE_KEYS)), " · "))
+        # 🔴 양방향 등호. `⊆` 만 재면 파이썬에 **키를 더한** 사건을 못 잡는다.
+        @test lane_keys == Set(TOOL_LANE_KEYS)
+        # Julia 가 읽는 이름이 실제로 응답에 있는가(개명·삭제를 잡는 두 번째 그물).
+        @test issubset(Set(TOOL_LANE_KEYS), all_keys)
+
+        # ---- 음성 대조: 이 대조가 정말 하중을 지는가 ----------------------------------------
+        # 🔴 위 두 줄은 **언제나 참일 수도** 있다(추출이 Julia 목록을 그대로 베껴 오는 식으로
+        #    망가지면). 그래서 파이썬 소스를 실제로 변형해 두 방향 모두 빨개지는지 확인한다.
+        # 🔴 변형은 **파이썬 소스의 리터럴을 베끼지 않고** 만든다. 추출기가 돌려준 표식 줄
+        #    번호와 Julia 쪽 키 이름만 쓴다 — 파이썬 코드를 한 줄이라도 여기 적으면 그것이
+        #    또 하나의 사본이 되고, 그 사본이 낡는 순간 음성 대조가 조용히 죽는다.
+        local lines = split(read(_PY_SERVICE_SRC, String), "\n")
+        @test 0 < marker <= length(lines)
+        mktempdir() do dir
+            # ① 표식 **바로 아래**에 키를 하나 더 끼운다 → 파이썬 레인 집합이 커진다.
+            local add = joinpath(dir, "dspy_service_add.py")
+            write(add, join(vcat(lines[1:marker],
+                                 ["                   \"tool_provider\": d[\"policy\"],"],
+                                 lines[marker+1:end]), "\n"))
+            local (_, lane_add, _) = _py_decide_keys(add)
+            @test "tool_provider" in lane_add
+            @test lane_add != Set(TOOL_LANE_KEYS)
+            # ② 레인 키 하나의 **이름을 바꾼다** → Julia 가 읽는 이름이 응답에서 사라진다.
+            #    패턴은 Julia 쪽 목록에서 만든다(파이썬 리터럴이 아니다).
+            local kk = "native_fc"
+            @test kk in TOOL_LANE_KEYS
+            local ren = joinpath(dir, "dspy_service_rename.py")
+            write(ren, replace(join(lines, "\n"), "\"$(kk)\":" => "\"$(kk)_renamed\":"))
+            local (all_ren, lane_ren, _) = _py_decide_keys(ren)
+            @test !(kk in all_ren)
+            @test !issubset(Set(TOOL_LANE_KEYS), all_ren)
+            @test lane_ren != Set(TOOL_LANE_KEYS)
+        end
+    end
+
+    @testset "(7) 삼분의 (b) — dspy 인데 항목이 폴백이다" begin
+        # (a)·(c) 는 위 (1)(3)(4)(5) 가 **진짜 `decide_all`** 로 잰다. (b) 만 그렇게 못 잰다:
+        # `decide_all` 의 가용성 그물(`!pol[enacted]["available"] → canonical`)과
+        # `escalation_target` 의 `pol["dspy"]["available"]` 가드 때문에 `enacted == "dspy"` 이면
+        # 그 항목은 **언제나 available** 이다. 즉 위 절들에서 `lane_available === true` 는
+        # 오늘 상수다 — 그 사실을 숨기지 않고, (b) 는 여기서 직접 잰다.
+        # 🔴 손으로 쓴 dict 를 검사하는 것이 아니다: 항목은 **진짜 생산자** `policy_entry` 가,
+        #    노출은 **진짜 생산자** `tool_lane_view` 가 짓는다.
+        local fb = policy_entry(nothing, "dspy:LLM")
+        @test fb["available"] === false
+        local v = tool_lane_view(Dict{String,Any}("dspy" => fb), "dspy")
+        @test v["lane"] == "dspy"
+        @test v["lane_available"] === false
+        for k in TOOL_LANE_KEYS
+            @test v[k] === nothing
+        end
+        # 대조군: 같은 함수가 **성공 항목**에서는 `true` 를 낸다 = 위 `false` 가 상수가 아니다.
+        # `policy_entry` 는 `b.chosen` 처럼 **속성**으로 읽으므로 NamedTuple 로 준다
+        # (그 docstring 이 그렇게 부를 수 있다고 적는다). 키 목록은 픽스처에서 유도한다.
+        local ok = policy_entry(merge((chosen = _ARM_NAME, ranking = [_ARM_NAME], margin = 0.4,
+                                       rationale = "fake", policy = "dspy:test",
+                                       unsupported = String[]),
+                                      NamedTuple{Tuple(Symbol.(collect(keys(_LANE_FULL))))}(
+                                          Tuple(collect(values(_LANE_FULL))))), "dspy:LLM")
+        @test ok["available"] === true
+        local vok = tool_lane_view(Dict{String,Any}("dspy" => ok), "dspy")
+        @test vok["lane_available"] === true
+        @test vok["tool_lane_error"] == _LANE_FULL["tool_lane_error"]
+        # 🔴 (b) 의 대가(ruling R1): 서비스가 **실제로 잰** `tool_lane_error` 가 폴백 dict 에서
+        #    `nothing` 으로 접힌다. 위 두 항목이 나란히 그것을 보여 준다 — 같은 응답 본체인데
+        #    성공 분기는 문자열을 나르고 폴백 분기는 `nothing` 을 낸다. 그러므로 (b) 에서
+        #    `tool_lane_error === nothing` 은 "파싱 실패가 없었다"는 뜻이 **아니다**.
+        #    (그 사건의 원문이 `policies["dspy"]["error"]` 에만 남는다는 것은 (4) 가 진짜
+        #     `decide_all` 로 이미 잰다.)
+        @test _LANE_FULL["tool_lane_error"] !== nothing
+        @test fb["tool_lane_error"] === nothing
     end
 
     end # testset
