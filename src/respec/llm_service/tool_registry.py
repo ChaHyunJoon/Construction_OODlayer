@@ -142,6 +142,49 @@ def COMMON_ARGS(emitted):
     }
 
 
+def check_tool_args(name, args, valid, agent_ids):
+    """tool 호출 인자를 검증한다. `None` = 접지 성공, 문자열 = **거절 사유**.
+
+    🔴 왜 여기서도 검사하나. `dspy.Tool` 에 `strict` 가 없어(실측) `enum`·`required` 가 전부
+    권고다. 줄리아의 `ground_tool_args`(`llm_bridge.jl:238`)가 같은 축을 집행 직전에 보지만,
+    거기 닿을 때는 이미 응답이 기록된 뒤다 — 잘못된 인자가 남으면 그 행을 읽는 사람이
+    "모델이 이렇게 답했다" 로 읽는다.
+
+    🔴 사유 문자열은 **그대로 응답의 `tool_arg_error` 에 실린다.** 사람이 읽고 바로 고칠 수
+    있어야 하므로 나쁜 값과 기대값을 둘 다 담는다.
+
+    🔴 `COMMON_ARGS(...)` 는 여기서 **키 이름 집합**(필수 인자 이름 집합)에만 쓴다 — `valid`
+    (이 사건의 legal 매크로 전체)를 그대로 넘기지만, 그건 `macro` enum 을 만들기 위해서가
+    아니라 (Task 2 는 그 enum 을 안 쓴다) 네 공통 키 이름을 얻기 위해서다. `macro` 자신의
+    합법성은 아래에서 `valid` 와 **별도로** 검사한다(`args["macro"] not in valid`). `valid`
+    를 여기 그대로 넘기는 것은 키 이름 집합에는 옳고, enum 에는(그 목적이라면) 틀렸을
+    것이다 -- `build_tools` 가 내보내는 `macro` enum 은 `valid` 가 아니라 `emitted`(그 요청이
+    실제로 tool 로 낸 것)여야 하기 때문이다. 여기서는 enum 을 쓰지 않으므로 문제되지 않는다.
+    """
+    if name not in MACRO_TO_TOOL.values():
+        return "unknown_tool: %r (등록된 것은 %s)" % (
+            name, ", ".join(sorted(MACRO_TO_TOOL.values())))
+    if not isinstance(args, dict):
+        return "args_not_a_dict: %r" % (args,)
+    want = set(COMMON_ARGS(valid)) | ({"agent"} if _needs_agent(name) else {"reason"})
+    missing = sorted(want - set(args))
+    if missing:
+        return "missing_args: %s (요구=%s 실려온=%s)" % (
+            ",".join(missing), ",".join(sorted(want)), ",".join(sorted(args)))
+    extra = sorted(set(args) - want)
+    if extra:
+        return "off_schema_args: %s (요구=%s)" % (",".join(extra), ",".join(sorted(want)))
+    # 🔴 bool 은 `isinstance` 로 본다. `bool("False") is True` 라 캐스팅하면 거짓 True 가 난다.
+    if not isinstance(args["expressible"], bool):
+        return "expressible_not_a_bool: %r" % (args["expressible"],)
+    if args["macro"] not in valid:
+        return "macro_outside_menu: %r (이 사건의 메뉴=%s)" % (args["macro"], ",".join(valid))
+    if _needs_agent(name) and args["agent"] not in agent_ids:
+        return "agent_outside_enum: %r (실재하는 id=%s)" % (
+            args["agent"], ",".join(agent_ids) or "<없음>")
+    return None
+
+
 _FUNCS = {"swap_body": swap_body, "deliver_battery": deliver_battery,
           "no_intervention": no_intervention}
 

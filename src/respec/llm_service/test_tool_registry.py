@@ -460,3 +460,68 @@ def test_tool_to_macro_is_the_exact_inverse():
     나오므로 이 등식이 곧 결정의 정확성이다."""
     assert reg.TOOL_TO_MACRO == {v: k for k, v in reg.MACRO_TO_TOOL.items()}
     assert len(reg.TOOL_TO_MACRO) == len(reg.MACRO_TO_TOOL), "역표가 값 충돌로 줄면 안 된다"
+
+
+def test_grounding_accepts_a_well_formed_call():
+    """음성 대조 먼저 — 검증이 정상 호출을 막으면 레인이 통째로 죽는다."""
+    ok = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace, NOOP"},
+        ["Replace", "NOOP"], ["r1"])
+    assert ok is None
+
+
+def test_grounding_rejects_an_agent_outside_the_enum():
+    """🔴 F10. dspy.Tool 에 strict 가 없으므로 enum 은 권고다 — 실제로 뚫릴 수 있다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r9", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], ["r1"])
+    assert why is not None and "agent" in why and "r9" in why
+
+
+def test_grounding_rejects_a_missing_required_arg():
+    """🔴 F12. `expressible` 이 없으면 T2 합성의 방아쇠가 조용히 사라진다."""
+    why = reg.check_tool_args(
+        "swap_body", {"agent": "r1", "macro": "Replace", "reasoning": "x", "ranking": "Replace"},
+        ["Replace", "NOOP"], ["r1"])
+    assert why is not None and "expressible" in why
+
+
+def test_grounding_rejects_a_macro_outside_this_events_menu():
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "SwapBattery", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], ["r1"])
+    assert why is not None and "macro" in why
+
+
+def test_grounding_rejects_an_unknown_tool():
+    why = reg.check_tool_args("teleport", {}, ["NOOP"], ["r1"])
+    assert why is not None and "teleport" in why
+
+
+def test_grounding_rejects_a_non_bool_expressible():
+    """🔴 F13 의 짝. `bool("False") is True` 라 문자열을 받아 주면 거짓 True 가 기록된다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": "False",
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], ["r1"])
+    assert why is not None and "expressible" in why
+
+
+def test_no_intervention_needs_reason_not_agent():
+    assert reg.check_tool_args(
+        "no_intervention",
+        {"reason": "nothing broke", "macro": "NOOP", "reasoning": "x", "expressible": True,
+         "ranking": "NOOP"},
+        ["NOOP"], []) is None
+    why = reg.check_tool_args(
+        "no_intervention",
+        {"macro": "NOOP", "reasoning": "x", "expressible": True, "ranking": "NOOP"},
+        ["NOOP"], [])
+    assert why is not None and "reason" in why
