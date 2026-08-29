@@ -36,9 +36,46 @@ gut 해서 "" 를 내거나 이름+비용만 내도 라운드 1 의 다섯 테�
   Q4 (문서만) 위 P4 절이 "test 2∪3" 처럼 라운드 1 이전 번호를 쓰고 있어서 라운드 1이 테스트를
      추가한 뒤로 번호가 밀렸다 -- 함수 이름으로 다시 썼다(번호는 순서가 바뀌면 또 샌다).
      `_macros()` 는 **테스트 프로세스의** ACTION_REGISTRY 를 읽는다 -- 실제로 떠 있는 서비스가
-     다른 ACTION_REGISTRY 로 부팅됐으면 이 파일의 레지스트리 테스트 넷 전부가 그걸 못 본다.
+     다른 ACTION_REGISTRY 로 부팅됐으면 이 파일의 레지스트리 테스트들 전부가 그걸 못 본다.
      `test_no_compiled_program_shadows_seed_doc` 이 DSPY_PROGRAM 에 대해 이미 밝힌 것과 같은
      종류의 크로스-프로세스 한계라 `_macros()` 옆에도 적었다.
+
+fix round 3 (S1-S5): 라운드 2 의 Q2 예외("같은 macro 의 mechanism 에도 있는 윈도우는 leak
+판정에서 뺀다")를 지시한 것은 이 라운드를 시킨 바로 그 사람의 실수였다 -- 필터가 지켜야 할
+**성질**이 아니라 **메커니즘**을 명명했고, 판별(attribution)과 탐지(detection)가 같은 필터
+안에서 서로를 깎아 먹었다. 고친 원칙: 예외는 그대로 두고(판별용), 지켜야 할 성질은 **별도의,
+렌더를 안 보는 어서션**으로 분리한다.
+  S1 (Important) `mechanism.2 := mechanism.2 + " " + when_to_use.2` 로 정답 조건을 실제
+     렌더된 프롬프트에 그대로 실어도 라운드 2 파일은 7개 전부 초록이었다 -- macro 0/1 은
+     각자의 when_to_use 가 우연히 "Best when"/"Best on" 으로 시작해서 블록리스트가 대신
+     잡아줬을 뿐, 구조적 방어가 아니었다(macro 2 의 when_to_use 는 "Cheaper than Replace…"
+     라 블록리스트를 안 문다). Q2 의 예외는 그대로 두고, when_to_use 전체가 자신의
+     mechanism 안에 그대로 박혀 있지 않은지를 JSON 만 보고(render 는 아예 안 보고) 직접
+     재는 별도 어서션을 추가했다(test_when_to_use_is_not_embedded_in_own_mechanism).
+  S2 (Important) Q3 의 공허함(빈 문자열이면 루프가 안 돈다)이 없어진 게 아니라 옮겨갔다 --
+     when_to_use 가 자기 mechanism 의 부분문자열이면(예: 67자짜리 부분문자열 뮤테이션) Q2
+     의 예외가 모든 윈도우를 스킵시켜서 leak 루프가 어서션을 0번 실행하고 공허하게 통과한다
+     (실측: macro 0 은 83/0/83, macro 1 은 59/0/59, macro 2(뮤테이션 대상)는 48/48/0 --
+     총/스킵/실행). `if chunk in own_mechanism_lower: continue` 는 이 파일에서 세 번째로
+     나온 "캔드 스킵이 루프 바디를 도달 불가능하게 만드는" 모양이라 패턴으로 취급한다 --
+     루프가 최소 한 번은 실제로 실행됐는지(executed > 0)를 직접 잰다.
+  S3 (Minor, 문서만) 실제(뮤테이션 없는) 레지스트리에서 `when_to_use[0]` 과 `mechanism[1]`
+     이 이미 19자를 공유한다(`' a scarce resource.'`, 20자 창보다 딱 한 글자 짧다). Q2 의
+     예외는 macro **자기 자신의** mechanism 만 보므로 이 크로스-macro 근접은 못 걸러낸다 --
+     mechanism.1 에 대한 평범한 산문 편집 하나가 그 공유분을 20자로 늘리면 아무것도 안
+     샜는데 "macro 0 의 when_to_use 가 샜다"는 엉뚱한 필드·엉뚱한 macro 귀속이 날 수 있다.
+     예외 폭을 넓히면(다른 macro 의 mechanism 도 보게) 진짜 누출을 가릴 여지가 더 커지므로
+     (Q2 에서와 같은 이유로) 넓히지 않고 여기 적어만 둔다.
+  S4 (Minor, 문서만) 위 세 군데("네 개"/"넷")가 라운드 2 가 테스트 두 개를 추가한 뒤로
+     정확히 2 만큼 틀려 있었다(`grep -n "_macros()"` 로 재확인: 이 라운드 전 여섯 곳, S1
+     추가 후 일곱). 셀 때마다 새로 셀 숫자를 프로즈에 박아두는 대신 숫자를 뺐다.
+  S5 (Minor, 문서만) 두 결합을 각 테스트 옆에 적었다: (a) mechanism == "" 면
+     `"" in rendered` 가 파이썬에서 언제나 True 라 test_doc_lines_renders_every_mechanism
+     (Q1)은 그 macro 에 대해 공허하게 통과한다 -- P1(MIN_LEN=15)이 오늘의 유일한 방어선이고,
+     그 문턱이 완화되면 Q1 은 조용히 그 macro 를 안 재게 된다. (b) `action_registry.py:197`
+     이 여전히 구세대 `doc` 키로 폴백한다(`m.get("mechanism") or m.get("doc", "")`) --
+     mechanism: "" 이면서 doc 키가 있는 macro 는 구세대 prose 를 렌더하므로 위 vacuity 는
+     그대로 남는다. action_registry.py 는 이 라운드의 요청 범위 밖이라 안 건드렸다.
 """
 import json
 import os
@@ -75,8 +112,8 @@ def _macros():
 
     🔴 Q4: 이 함수는 **이 테스트를 도는 프로세스의** `ACTION_REGISTRY` 환경변수를 읽는다
     (`action_registry.REGISTRY_PATH` 를 통해). 실제로 떠 있는 서비스 프로세스가 다른
-    `ACTION_REGISTRY` 로 부팅됐으면, 이 함수는(따라서 이 파일의 레지스트리 테스트 네 개
-    전부는) 그 서비스가 실제로 무엇을 읽고 있는지 볼 수 없다 --
+    `ACTION_REGISTRY` 로 부팅됐으면, 이 함수는(따라서 이 파일의 레지스트리 테스트들 전부는)
+    그 서비스가 실제로 무엇을 읽고 있는지 볼 수 없다 --
     `test_no_compiled_program_shadows_seed_doc` 이 `DSPY_PROGRAM` 에 대해 이미 밝힌 것과
     같은 종류의 크로스-프로세스 한계다."""
     with open(action_registry.REGISTRY_PATH, encoding="utf-8") as f:
@@ -121,7 +158,17 @@ def test_doc_lines_renders_every_mechanism():
     안 보여서 battery 적중이 0/6 이었던 실측)과 정확히 같은 모양의 구멍인데 아무 게이트도
     안 물었다. 렌더된 프롬프트 문자열 안에 각 macro 의 mechanism 원문이 실제로 있는지
     직접 잰다(대소문자·공백 그대로 -- `doc_lines()` 는 `text` 를 그대로 삽입하고 소문자화하지
-    않는다)."""
+    않는다).
+
+    🔴 S5 (fix round 3, 문서만, 결합 두 개): (a) `mechanism == ""` 면 `"" in rendered` 가
+    파이썬에서 언제나 True 라 이 어서션은 그 macro 에 대해 공허하게 통과한다 --
+    `test_mechanism_is_non_empty_and_substantive`(P1, MIN_LEN=15)가 오늘의 유일한 방어선이고,
+    그 문턱이 나중에 완화되면 이 테스트는 그 macro 에 대해 조용히 아무것도 안 재는 상태가
+    된다. (b) `action_registry.py:197` 은 여전히 구세대 `doc` 키로 폴백한다
+    (`m.get("mechanism") or m.get("doc", "")`) -- mechanism: "" 이면서 doc 키가 있는 macro 는
+    구세대 prose 를 렌더하므로, 그 렌더된 문자열이 "" 가 아니게 되어도 (a)의 vacuity(빈
+    mechanism 이 렌더에 실제로 있는지 이 테스트가 못 잰다는 사실)는 바뀌지 않는다.
+    `action_registry.py` 는 이 라운드의 요청 범위 밖이라 안 건드렸다."""
     rendered = "\n".join(action_registry.doc_lines())
     for mid, m in _macros().items():
         assert m["mechanism"] in rendered, (
@@ -167,6 +214,31 @@ def test_when_to_use_is_non_empty():
         )
 
 
+def test_when_to_use_is_not_embedded_in_own_mechanism():
+    """🔴 S1 (fix round 3, Important): 라운드 2 의 Q2 예외("자신의 mechanism 에도 있는 윈도우는
+    leak 이 아니다")는 판별(attribution)엔 옳지만, mechanism 에 when_to_use 전체를 그대로
+    이어붙이는 경우를 구조적으로 못 걸러낸다. 실측: `mechanism.2 := mechanism.2 + " " +
+    when_to_use.2` 로 정답 조건이 실제 렌더된 프롬프트에 그대로 실렸는데도 라운드 2 파일은
+    7개 테스트 전부 초록이었다 -- macro 0/1 은 각자의 when_to_use 가 우연히 VERDICT_WORDS
+    문구("Best when"/"Best on")로 시작해서 블록리스트가 대신 잡아줬을 뿐, 구조적 방어가
+    아니라 지금 산문의 우연이었다(macro 2 의 "Cheaper than Replace…" 는 블록리스트를 안 문다).
+
+    Q2 의 예외는 render 기반 leak 검사(판별용)로 그대로 둔다. 여기서는 render 를 아예 안
+    보고 JSON 만으로 별도 성질을 잰다: 어떤 macro 의 when_to_use 전체도 자신의 mechanism
+    문자열 안에 그대로 박혀 있으면 안 된다. doc_lines() 가 무엇을 하든 상관없이 성립해야
+    하는 성질이라, Q2 의 렌더-기반 예외와 서로 깎아먹지 않는다."""
+    for mid, m in _macros().items():
+        when_to_use = m["when_to_use"].strip().lower()
+        if not when_to_use:
+            continue  # 빈 when_to_use 는 test_when_to_use_is_non_empty(Q3)의 몫
+        mechanism = m["mechanism"].lower()
+        assert when_to_use not in mechanism, (
+            "macro %s 의 when_to_use 전체가 자신의 mechanism 안에 그대로 박혀 있다 -- 정답 "
+            "조건이 mechanism 에 이어붙은 것이고, Q2 의 같은-macro 예외 때문에 render 기반 "
+            "leak 검사가 이 경우를 공허하게 통과시킨다." % mid
+        )
+
+
 def test_doc_lines_never_renders_when_to_use():
     """🔴 P2 (M8): 구 버전은 `when_to_use.lower()[:24]` 고정 **접두**만 봤다. 리뷰 라운드 1
     실측: `doc_lines()` 가 `when_to_use[10:]` (꼬리만, 접두가 아니라)를 새게 만드는 뮤테이션에서
@@ -180,18 +252,45 @@ def test_doc_lines_never_renders_when_to_use():
     없고, mechanism 에 새로 넣은 문구가 우연히 그 macro 자신의 when_to_use 와 20자 이상
     겹쳤을 뿐이다. mechanism 은 원래 렌더되는 필드이므로 **그 macro 자신의 mechanism 에도
     나타나는 윈도우**는 leak 판정에서 뺀다 -- mechanism 이 낸 것과 when_to_use 가 낸 것을
-    구별 못 하면 오탐뿐 아니라 오귀속(엉뚱한 필드를 지목)까지 낸다."""
+    구별 못 하면 오탐뿐 아니라 오귀속(엉뚱한 필드를 지목)까지 낸다.
+
+    🔴 S2 (fix round 3, Important): 위 예외가 새 공허함을 냈다 -- when_to_use 가 자기
+    mechanism 의 부분문자열이면(예: mechanism 에 when_to_use 를 이어붙이거나, when_to_use 를
+    mechanism 의 부분문자열로 설정하면) **모든** 윈도우가 스킵되어 이 루프의 assert 가 0번
+    실행되고 공허하게 통과한다 -- Q3(빈 문자열)와 같은 모양의 구멍이 내용 겹침으로 재현된
+    것이다(실측: macro 0 은 윈도우 83개 중 83개 실행, macro 1 은 59개 중 59개 실행인데
+    macro 2(뮤테이션 대상)는 48개 중 0개 실행). `test_when_to_use_is_not_embedded_in_own_mechanism`
+    (S1)가 이 경우를 렌더와 무관하게 직접 잡지만, 이 루프 자신도 "최소 한 번은 실제로
+    실행됐다"를 스스로 어서션한다 -- 캔드 스킵이 루프 바디를 도달 불가능하게 만드는 모양이
+    이 파일에서 세 번째로 나왔으므로(Q3, 그리고 이번), 그 모양 자체를 구조적으로 막는다.
+
+    🔴 S3 (fix round 3, Minor, 문서만): 이 예외는 macro **자기 자신의** mechanism 만 본다.
+    실측: 현재(뮤테이션 없는) 레지스트리에서 `when_to_use[0]` 과 `mechanism[1]` 이 이미
+    19자를 공유한다(`' a scarce resource.'`, 20자 창보다 딱 한 글자 짧다). mechanism.1 에
+    대한 평범한 산문 편집 하나가 그 공유분을 20자로 늘리면, 실제로 새는 건 아무것도 없는데도
+    "macro 0 의 when_to_use 가 샜다"는 엉뚱한 필드·엉뚱한 macro 귀속이 날 수 있다. 예외의
+    폭을 넓혀서(다른 macro 의 mechanism 도 예외 대상에 넣어서) 이걸 막을 수도 있었지만,
+    그러면 진짜 누출을 가릴 여지가 더 커진다(Q2 에서 넓히지 않기로 한 것과 같은 이유) --
+    그래서 넓히지 않고 여기 적어만 둔다."""
     rendered = "\n".join(action_registry.doc_lines()).lower()
     window = 20
     for mid, m in _macros().items():
         own_mechanism_lower = m["mechanism"].lower()
-        for chunk in _leak_windows(m["when_to_use"].lower(), window=window):
+        windows = _leak_windows(m["when_to_use"].lower(), window=window)
+        executed = 0
+        for chunk in windows:
             if chunk in own_mechanism_lower:
                 continue  # mechanism 자신에도 있는 문구 -- leak 이 아니라 의도된 렌더
+            executed += 1
             assert chunk not in rendered, (
                 "macro %s 의 when_to_use 에서 %d자 연속 구간이 프롬프트로 샜다: %r"
                 % (mid, window, chunk)
             )
+        assert executed > 0, (
+            "macro %s 의 leak 검사가 공허하게 통과했다(윈도우 %d개 중 실행 0개) -- when_to_use "
+            "가 비어있거나(Q3) 자신의 mechanism 에 흡수됐다(S1)는 뜻이다."
+            % (mid, len(windows))
+        )
 
 
 # ---- SEED_DOC 이 컴파일 산출물에 조용히 갈아치워지지 않는지 ----------------------------
