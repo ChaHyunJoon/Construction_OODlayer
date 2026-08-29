@@ -8,6 +8,7 @@ import os
 import sys
 
 import pytest
+from pydantic import ValidationError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -44,5 +45,5 @@ def test_agents_rejects_wrong_shaped_elements():
     타입 애노테이션을 `list` 로 뭉개도 이 파일의 다른 두 테스트는 여전히 통과한다(둘 다
     올바른 형태만 넣는다) -- 이 테스트가 그 구멍을 막는다. value 가 str 이 아니면 거부돼야 한다.
     """
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MacroRequest(kind="battery", agents=[{"id": 5}])

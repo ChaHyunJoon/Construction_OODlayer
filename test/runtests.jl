@@ -102,12 +102,19 @@ end
         include("route_descriptors_survive.jl")
     end
 
-    # 2026-08-26 (tool-lane step A, Task 2 — 리뷰 라운드 1 F2): `service_decide` 의 `agents`
-    # kwarg 와 `decide_all` 호출부의 `CB.open_agent_descriptors(env)` 는 `policy_macro_binding.jl`
-    # · `battery_menu_lanes_agree.jl` · `tools/test_policy_oracle.jl` 어느 게이트도 실행하지
-    # 않는 코드 경로였다(실측: 두 줄을 각각 `error(...)`로 바꿔치기해도 세 게이트 모두 초록).
-    # 이 파일이 그 구멍을 메운다 — kwarg 선언 자체 · 실 env 에서의 비어있지 않은 출력 ·
-    # `env.sched` 를 넘기면 던진다는 음성 대조(옛 버전이 실제로 갖고 있던 버그) 셋을 잰다.
+    # 2026-08-26 (tool-lane step A, Task 2 — 리뷰 라운드 1 F2 · 라운드 2 G1+G2): `service_decide`
+    # 의 `agents` kwarg 와 `decide_all` 호출부의 `CB.open_agent_descriptors(env)` 는
+    # `policy_macro_binding.jl` · `battery_menu_lanes_agree.jl` · `tools/test_policy_oracle.jl`
+    # · `tools/test_policy_escalation.jl` 어느 게이트도 실행하지 않는 코드 경로였다(실측: 두 줄을
+    # 각각 `error(...)`로 바꿔치기해도 넷 다 초록).
+    # 🔴 라운드 1 은 이 구멍을 **부분적으로만** 메웠다 — kwarg 선언과 `open_agent_descriptors`
+    # 원시 함수만 잰 세 어서션은, payload 조립 줄(policy.jl:~550)도 `decide_all` 호출부 줄
+    # (policy.jl:~1134)도 한 번도 안 태운다(실측: `env.sched` 로 되돌린 원래 버그를 되살려도
+    # Pass 5/5 로 그대로 초록이었다). 라운드 2 가 네 번째 어서션을 더했다 — `dspy_ready()` 를
+    # `true` 로, `HTTP.post` 를 요청 본문을 가로채는 스텁으로 바꿔치기하고 `decide_all(env,
+    # truth)` 를 직접 실행해 그 두 줄을 **실제로** 태운다. 스크래치패드 사본에서 그 두 줄을
+    # 각각 `error(...)`로 바꿔도, 그리고 원래 버그(`env.sched`)를 되살려도 이 네 번째 어서션이
+    # 셋 다 빨개지는 것을 실측했다(수정 라운드 2 보고서 참조).
     @testset "service_decide ships agents" begin
         include("service_decide_ships_agents.jl")
     end
