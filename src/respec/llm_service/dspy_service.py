@@ -231,12 +231,26 @@ def native_fc_active(signature=None):
     이 tool 필드 없는 시그니처를 얹으면 — 그때 `SelectTool` 을 읽으면 이 함수는 "native FC 가
     발화했다"고 답하면서 provider 로 나가는 tools 는 0개인 상태를 보고하게 된다. 그건 이 필드의
     존재 이유(배선 ≠ 발화)와 정확히 반대 방향의 거짓말이다. 실측(컨트롤러 B1):
-    tool 필드를 뺀 프로그램에서 `native_fc_active()` -> True, 실제 `lm_kwargs["tools"]` -> [].
+    tool 필드를 뺀 프로그램에서 `native_fc_active()` -> True 인데 provider 로는 tool 이 0개 간다.
+    (정확히는 키가 **없다**: `_call_preprocess` 뒤 `lm_kwargs == {}`, `"tools" in lm_kwargs` 는
+    `False`. 전에 여기 적혀 있던 `lm_kwargs["tools"] -> []` 는 그대로 실행하면 `KeyError` 다.)
+
+    🔴 `supports_function_calling`(조건 4)은 **로컬 조회가 아니다**(2026-08-28 정정). LM 생성은
+    connect 0건이지만 그 속성을 **읽으면** litellm 이 원격 cost map(raw.githubusercontent.com)을
+    가져오려 하고, 실패하면 로컬 백업으로 폴백한다 — 실측 connect 시도 8건(IPv4 4 + IPv6 4).
+    값은 옳고 **과금은 없다**(provider 호출이 아니다). 오프라인 CI 에서는 여기서 지연이 붙는다.
     아직 프로그램이 없으면(부팅 전) `SelectTool` 로 폴백한다.
 
     🔴 못 재면 `False` 가 아니라 `None` 을 낸다. "못 쟀다"(None)와 "재서 꺼져 있었다"(False)는
     다른 사건이다(spec §9-2). 아무도 `dspy.configure` 를 안 불렀으면 조건 1·4 를 **읽을 수
     없으므로** dspy 의 폴백 기본값을 추론해 False 를 내지 않는다 — 그건 측정이 아니다.
+
+    ⚠️ **세 상태 중 라이브에서 도달 가능한 것은 둘뿐이다**(검증자 실측, 2026-08-28).
+    `_startup()` 이 항상 `_configure_dspy()` 를 먼저 돌리므로 adapter/lm 이 비는 일이 없고,
+    `DSPY_MODEL` 값 여덟 가지(빈 문자열·존재하지 않는 모델 포함)를 훑어도 `None` 이 나오지
+    않았다. 즉 `None` 은 **부팅 전 / 시험 안에서만** 나오는 상태다. 이 값을 응답에 싣는 쪽
+    (Task 6)은 "라이브에서 None 을 본 적이 없다"를 "못 잰 적이 없다"의 증거로 쓰면 안 된다 —
+    그 상태는 애초에 그 경로로 도달하지 않는다.
     """
     try:
         sig = signature
@@ -405,7 +419,9 @@ def _configure_dspy():
     `test_native_fc_active.py::test_configure_dspy_installs_the_native_fc_adapter` 가 이 줄
     하나만을 감시한다.
 
-    LM **객체 생성**은 네트워크·과금 0건이다(litellm 의 로컬 모델 맵). 호출은 여기서 안 난다."""
+    LM **객체 생성**은 connect 0건이고, 이 함수는 provider 호출을 내지 않는다 — 과금 0건이다.
+    (여기서 `supports_function_calling` 을 읽지는 않는다. 그 속성의 성질은 `native_fc_active`
+    아래 주석 참조: 읽으면 원격 cost map fetch 를 시도한다.)"""
     lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=True)
     dspy.configure(lm=lm, adapter=build_adapter())
     return lm

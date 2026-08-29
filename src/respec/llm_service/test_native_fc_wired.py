@@ -64,8 +64,12 @@ def test_native_branch_actually_fires_with_a_real_lm_object():
     """
     ad = build_adapter()
     lm = dspy.LM("openai/gpt-4.1", api_key="sk-DOES-NOT-MATTER-no-call-is-made")
-    # ⚠️ 이 한 줄은 우리 코드에 대한 검사가 아니라 **환경 전제**다(litellm 의 로컬 모델 맵).
+    # ⚠️ 이 한 줄은 우리 코드에 대한 검사가 아니라 **환경 전제**다(litellm 의 모델 cost map).
     #    dspy_service.py 를 어떻게 변이시켜도 붉어지지 않는다 — 독립 검사로 읽지 말 것.
+    # 🔴 그리고 이 읽기는 **로컬 조회가 아니다**(2026-08-28 정정). 위 docstring 의 "호출은 0건"
+    #    은 **provider(과금) 호출** 이야기다. 이 속성을 읽으면 litellm 이 원격 cost map
+    #    (raw.githubusercontent.com) fetch 를 시도하고 실패 시 로컬 백업으로 폴백한다 —
+    #    실측 connect 시도 8건. 과금은 여전히 0건이지만 네트워크 0건은 아니다.
     assert lm.supports_function_calling is True
     kw = {}
     sig = ad._call_preprocess(
