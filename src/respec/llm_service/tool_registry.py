@@ -161,7 +161,8 @@ def check_tool_args(name, args, valid, agent_ids):
     것이다 -- `build_tools` 가 내보내는 `macro` enum 은 `valid` 가 아니라 `emitted`(그 요청이
     실제로 tool 로 낸 것)여야 하기 때문이다. 여기서는 enum 을 쓰지 않으므로 문제되지 않는다.
 
-    🔴 fix round 1 (검사 순서, 고정): `unknown_tool → args_not_a_dict → tool_missing_impl →
+    🔴 fix round 1 (검사 순서, 고정) + fix round 2 (두 축 추가): `unknown_tool →
+    args_not_a_dict → tool_missing_impl → valid_not_a_sequence → agent_ids_not_a_sequence →
     missing_args → off_schema_args → expressible_not_a_bool → macro_outside_menu →
     agent_outside_enum` 순으로 검사하고, **처음으로 걸리는 사유 하나만** 돌려준다(리뷰가 이
     순서를 실측했고 재배열하지 말라고 못박았다 -- `unknown_tool` 이 `_FUNCS` 를 건드리는
@@ -170,6 +171,13 @@ def check_tool_args(name, args, valid, agent_ids):
     `expressible_not_a_bool` 만 보고되고 `agent_outside_enum` 은 기록조차 안 된다. 따라서
     `tool_arg_error` 문자열을 어떤 실패 종류(예: F10)가 **몇 번** 났는지 세는 데 쓰면 안
     된다 -- 그 축을 세려면 각 축을 이 함수와 별도로 독립 재검사해야 한다.
+
+    🔴 fix round 2 (Cheap 2): `valid`·`agent_ids` 가 문자열이면 `args["macro"] not in valid` ·
+    `args["agent"] not in agent_ids` 는 리스트 멤버십이 아니라 **부분문자열 검사**가 된다 --
+    `valid="Replace,SwapBattery"` 에 `macro="Swap"` 을 주면 부분일치로 조용히 접지에 성공한다.
+    그래서 문자열(`bytes` 포함)은 시퀀스 취급을 거부하고 사유를 낸다. 범위 밖(적어 두고 고치지
+    않기로 한 것): `valid=7`/`agent_ids=7` 처럼 falsy 가 아니지만 타입이 틀린 다른 값은 여전히
+    raise 한다(`x or []` 는 falsy 만 잡는다) -- 리뷰가 별도 결함으로 이연했다.
 
     🔴 fix round 1 (Important/Minor 4, 총함수화): `valid`·`agent_ids` 가 `None` 이어도, 그리고
     `name` 이 `MACRO_TO_TOOL` 에는 있는데 `_FUNCS` 에는 없어도(표 두 벌이 갈리는 드리프트)
@@ -186,6 +194,13 @@ def check_tool_args(name, args, valid, agent_ids):
         return "args_not_a_dict: %r" % (args,)
     if name not in _FUNCS:
         return "tool_missing_impl: %r (MACRO_TO_TOOL 에는 있으나 _FUNCS 에 구현이 없음)" % (name,)
+    # 🔴 fix round 2 (Cheap 2): 문자열은 `in` 이 부분일치로 새므로 시퀀스로 인정하지 않는다.
+    if isinstance(valid, (str, bytes)):
+        return ("valid_not_a_sequence: %r (매크로 이름의 리스트여야 한다 -- "
+                "문자열이면 `in` 이 부분일치로 샌다)") % (valid,)
+    if isinstance(agent_ids, (str, bytes)):
+        return ("agent_ids_not_a_sequence: %r (로봇 id 의 리스트여야 한다 -- "
+                "문자열이면 `in` 이 부분일치로 샌다)") % (agent_ids,)
     valid = valid or []
     agent_ids = agent_ids or []
     want = set(COMMON_ARGS(valid)) | ({"agent"} if _needs_agent(name) else {"reason"})

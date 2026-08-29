@@ -473,13 +473,16 @@ def test_grounding_accepts_a_well_formed_call():
 
 
 def test_grounding_rejects_an_agent_outside_the_enum():
-    """🔴 F10. dspy.Tool 에 strict 가 없으므로 enum 은 권고다 — 실제로 뚫릴 수 있다."""
+    """🔴 F10. dspy.Tool 에 strict 가 없으므로 enum 은 권고다 — 실제로 뚫릴 수 있다.
+
+    🔴 fix round 2 (Cheap 1): 사유의 **머리**를 고정한다 -- 느슨한 `"agent" in why` 는 다른
+    가드가 대신 걸려도(예: `agent_ids_not_a_sequence`) 통과했을 것이다."""
     why = reg.check_tool_args(
         "swap_body",
         {"agent": "r9", "macro": "Replace", "reasoning": "x", "expressible": True,
          "ranking": "Replace"},
         ["Replace", "NOOP"], ["r1"])
-    assert why is not None and "agent" in why and "r9" in why
+    assert why is not None and why.startswith("agent_outside_enum:") and "r9" in why
 
 
 def test_grounding_rejects_a_missing_required_arg():
@@ -499,27 +502,41 @@ def test_grounding_rejects_a_missing_required_arg():
 
 
 def test_grounding_rejects_a_macro_outside_this_events_menu():
+    """🔴 fix round 2 (Cheap 1): 사유의 머리를 고정한다 -- 느슨한 `"macro" in why` 는
+    `missing_args`/`off_schema_args`(둘 다 요구 키 목록에 `macro` 를 늘 담는다) 가 대신
+    걸려도 통과했을 것이다."""
     why = reg.check_tool_args(
         "swap_body",
         {"agent": "r1", "macro": "SwapBattery", "reasoning": "x", "expressible": True,
          "ranking": "Replace"},
         ["Replace", "NOOP"], ["r1"])
-    assert why is not None and "macro" in why
+    assert why is not None and why.startswith("macro_outside_menu:") and "SwapBattery" in why
 
 
 def test_grounding_rejects_an_unknown_tool():
+    """🔴 fix round 2 (Important). 삭제 대조: `unknown_tool` 가드를 지우면 이 호출은
+    round-1 에서 새로 추가된 `tool_missing_impl` 가드(같은 이름이 `MACRO_TO_TOOL` 에는
+    없으니 `_FUNCS` 에도 당연히 없다 -- 그 가드가 대신 걸린다)로 흘러들어가 **버젓이 걸린다**
+    (구체적으로 `tool_missing_impl: 'teleport' (...)`). 그 문자열도 옛 느슨한 단언
+    (`"teleport" in why`)을 만족시키므로, 이 시험은 자신이 지키려던 가드가 사라져도 green 으로
+    남았을 것이다 -- 게다가 그 상태의 사유 문자열은 "MACRO_TO_TOOL 에는 있으나" 라고 주장하는데
+    `teleport` 는 애초에 `MACRO_TO_TOOL` 에 없으므로 그 문장 자체가 거짓이 된다. 사유의 머리를
+    `unknown_tool:` 로 고정해 정확히 그 가드가 걸렸는지를 잰다."""
     why = reg.check_tool_args("teleport", {}, ["NOOP"], ["r1"])
-    assert why is not None and "teleport" in why
+    assert why is not None and why.startswith("unknown_tool:") and "teleport" in why
 
 
 def test_grounding_rejects_a_non_bool_expressible():
-    """🔴 F13 의 짝. `bool("False") is True` 라 문자열을 받아 주면 거짓 True 가 기록된다."""
+    """🔴 F13 의 짝. `bool("False") is True` 라 문자열을 받아 주면 거짓 True 가 기록된다.
+
+    🔴 fix round 2 (Cheap 1): 사유의 머리를 고정한다 -- 느슨한 `"expressible" in why` 는
+    `missing_args`(요구 키 목록에 `expressible` 이 늘 있다) 가 대신 걸려도 통과했을 것이다."""
     why = reg.check_tool_args(
         "swap_body",
         {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": "False",
          "ranking": "Replace"},
         ["Replace", "NOOP"], ["r1"])
-    assert why is not None and "expressible" in why
+    assert why is not None and why.startswith("expressible_not_a_bool:")
 
 
 def test_grounding_accepts_expressible_false():
@@ -599,6 +616,32 @@ def test_grounding_reports_a_tool_missing_its_impl_instead_of_raising():
         assert why is not None and why.startswith("tool_missing_impl:") and "ghost_tool" in why
     finally:
         del tool_registry.MACRO_TO_TOOL["GhostMacro"]
+
+
+def test_grounding_rejects_a_string_valid_instead_of_a_list():
+    """🔴 fix round 2 (Cheap 2). `valid` 가 문자열이면 `args["macro"] not in valid` 는 리스트
+    멤버십이 아니라 **부분문자열 검사**가 된다 -- `valid="Replace,SwapBattery"` 에
+    `macro="Swap"` 을 주면 `"Swap" not in "Replace,SwapBattery"` 가 `False` 라 접지가 조용히
+    성공한다(부분일치, 실측: 고치기 전에는 이 호출이 `None` 을 돌려줬다). 이 시험은 그 정확한
+    함정을 재현해 명시적으로 거부되는지 잰다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Swap", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        "Replace,SwapBattery", ["r1"])
+    assert why is not None and why.startswith("valid_not_a_sequence:"), (
+        "문자열 valid 가 부분일치로 새 'Swap' 이 legal 매크로로 접지됐다")
+
+
+def test_grounding_rejects_a_string_agent_ids_instead_of_a_list():
+    """🔴 fix round 2 (Cheap 2) 의 짝 -- `agent_ids` 가 문자열이면 `args["agent"] not in
+    agent_ids` 도 같은 부분일치 함정에 빠진다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], "r1")
+    assert why is not None and why.startswith("agent_ids_not_a_sequence:")
 
 
 def test_no_intervention_needs_reason_not_agent():
