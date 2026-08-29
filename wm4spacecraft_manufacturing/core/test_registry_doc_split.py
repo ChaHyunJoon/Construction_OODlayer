@@ -5,6 +5,16 @@
 그런데 레지스트리 doc 이 "Best when …" / "Best on …" 으로 그 선을 넘어 있었고,
 doc_lines() 가 그것을 SEED_DOC 에 그대로 실었다.
 
+⚠️ 이 게이트가 못 재는 것 (T1, fix round 4): 이 파일의 모든 어서션은 `_macros().items()` 를
+순회한다 -- 즉 **있는** macro 가 틀렸는지는 재지만, **있어야 할** macro 가 빠졌는지는 못 잰다.
+`test_registry_is_non_empty` 가 완전히 빈 레지스트리(순수 공허)는 닫지만, **부분** 누락은 이
+파일 밖의 문제다: SwapBattery 를 지우고 vocab 도장을 `v4-2arms` 로 같이 바꾸면(이 레지스트리가
+창건 실패담으로 세 번 인용하는 바로 그 실패 모양이자 2026-08-24 의 4→3 arm 축소와 같은 편집
+모양인데도) `action_registry.py` 의 `assert_vocab_arm_count` 는 도장과 실제 arm 수가 서로
+맞으면 통과시킨다 -- 지우는 손이 도장도 같이 고치므로 구조상 통과한다. 이걸 닫으려면 이 파일
+밖의 진실원(예: 기대 arm 이름의 독립된 목록)이 있어야 하는데, 그런 걸 지어내지 않는다. 이
+파일은 **존재하는 팔의 모양**을 재지, **있어야 할 팔이 다 있는지**는 재지 못한다.
+
 fix round 1 (리뷰어 뮤테이션 테이블 P1-P5): 아래 다섯 군데를 고쳤다. 각각 "뮤테이션을 만들고
 빨개지는 걸 보고 되돌린다"로 검증했다 -- 그 로그는 커밋되지 않고 task-3-report.md 에 있다.
   P1 mechanism.2 = "" 가 4개 게이트를 전부 통과했다 -- 빈 mechanism 을 막는 테스트가 없었다.
@@ -66,9 +76,11 @@ fix round 3 (S1-S5): 라운드 2 의 Q2 예외("같은 macro 의 mechanism 에�
      샜는데 "macro 0 의 when_to_use 가 샜다"는 엉뚱한 필드·엉뚱한 macro 귀속이 날 수 있다.
      예외 폭을 넓히면(다른 macro 의 mechanism 도 보게) 진짜 누출을 가릴 여지가 더 커지므로
      (Q2 에서와 같은 이유로) 넓히지 않고 여기 적어만 둔다.
-  S4 (Minor, 문서만) 위 세 군데("네 개"/"넷")가 라운드 2 가 테스트 두 개를 추가한 뒤로
-     정확히 2 만큼 틀려 있었다(`grep -n "_macros()"` 로 재확인: 이 라운드 전 여섯 곳, S1
-     추가 후 일곱). 셀 때마다 새로 셀 숫자를 프로즈에 박아두는 대신 숫자를 뺐다.
+  S4 (Minor, 문서만) 위 두 군데(P4 절, `_macros()` 의 docstring)의 "네 개"/"넷" 이 라운드 2
+     가 테스트 두 개를 추가한 뒤로 정확히 2 만큼 틀려 있었다(`grep -n "for mid, m in
+     _macros().items():"` 로 재확인 -- 이 패턴은 실제 반복문 줄만 잡고 프로즈의 백틱 인용은
+     안 잡는다: 라운드 2 커밋(d06341d4)에서 여섯 곳, 이 라운드에서 S1 추가 후 일곱). 셀 때마다
+     새로 셀 숫자를 프로즈에 박아두는 대신 숫자를 뺐다.
   S5 (Minor, 문서만) 두 결합을 각 테스트 옆에 적었다: (a) mechanism == "" 면
      `"" in rendered` 가 파이썬에서 언제나 True 라 test_doc_lines_renders_every_mechanism
      (Q1)은 그 macro 에 대해 공허하게 통과한다 -- P1(MIN_LEN=15)이 오늘의 유일한 방어선이고,
@@ -76,6 +88,55 @@ fix round 3 (S1-S5): 라운드 2 의 Q2 예외("같은 macro 의 mechanism 에�
      이 여전히 구세대 `doc` 키로 폴백한다(`m.get("mechanism") or m.get("doc", "")`) --
      mechanism: "" 이면서 doc 키가 있는 macro 는 구세대 prose 를 렌더하므로 위 vacuity 는
      그대로 남는다. action_registry.py 는 이 라운드의 요청 범위 밖이라 안 건드렸다.
+
+fix round 4 (T1-T4 + Q2 판단): 라운드 3 이 Q2 의 판별 예외를 봉인하려고 넣은 기계
+(`executed > 0`) 와 새 어서션(S1)이 그 자체로 또 새 결함 세 개(T2/T3/T4)를 냈다 -- 이 파일이
+스스로 인정한다: 같은 종류의 실수(불완전한 성질 명명, 검증 없는 프로즈 주장, 필터 아닌 손
+계산으로 낸 숫자)가 반복되고 있다.
+  T1 (Important, 위에 문서화) `_macros()` 가 빈 dict 를 돌려주면(레지스트리가 완전히 비고
+     도장이 `v4-0arms` 로 같이 찍히면) 이 파일의 모든 루프가 빈 순회로 공허하게 통과해서
+     8/8 이 초록이었다 -- Q1 이 존재하는 이유(doc_lines() 가 빈 배열을 내는 것)조차 못 잡는
+     채로. `assert _macros()`(test_registry_is_non_empty)로 순수 공허는 닫았다; 부분 누락은
+     이 파일 밖의 문제라고 위에 적었다(진실원을 지어내지 않는다).
+  T2 (Minor) `test_when_to_use_is_not_embedded_in_own_mechanism`(S1)은 독립 핀이 아니라
+     P4 와 같은 종류의 **래퍼**다 -- 증명: when_to_use 가 자신의 mechanism 의 부분문자열이면
+     그 슬라이딩 윈도우 전부도 부분문자열이므로(부분문자열의 부분문자열은 부분문자열이다)
+     전부 스킵되고 executed == 0 이 된다. 즉 S1 이 빨개지는 모든 입력에서 `executed > 0`
+     어서션도 반드시 빨개진다. 5만 쌍 무작위 탐색(스크립트, 커밋 안 됨)에서 반례 0건 --
+     P4 의 관행(래퍼는 스스로 그렇다고 선언한다)을 S1 에도 적용해 docstring 에 적었다.
+  T3 (Minor) `assert executed > 0` 의 메시지가 원인을 "비어있음(Q3)" 또는 "통째로 흡수(S1)"
+     둘로만 말하는데, 세 번째 경우가 있다 -- when_to_use 의 슬라이딩 윈도우 각각은 mechanism
+     안 어딘가에 있지만 전체가 한 덩어리로는 없는 경우("윈도우는 있지만 통째로는 없음";
+     직접 구성해 확인: when_to_use="A"*20+"B", mechanism 은 그 두 20자 창을 서로 다른 자리에
+     따로 담되 21자 전체는 어디에도 안 담는다 -- executed==0 인데 S1 은 안 빨개진다). 이
+     경우엔 메시지의 "비어있거나(Q3) 흡수됐다(S1)" 가 거짓 진단이면서 테스트는 옳게
+     빨개진다 -- 메시지를 세 원인 다 포괄하도록 넓혔다.
+  T4 (Minor) S4 의 "위 세 군데"가 틀렸다 -- 실제로는 두 군데(P4 절, `_macros()` docstring)
+     였다. 위에서 고쳤다. 라운드 3 의 근거로 쓴 `grep -n "_macros()"` 6줄 출력도 실제 그
+     명령의 출력이 아니었다(진짜 출력은 9줄 -- 산문에 있는 `_macros()` 언급 두 줄 + `def`
+     한 줄까지 걸린다) -- 여섯 개의 호출부만 골라낸 필터링된 렌더링을 raw 로 제시한 것이었다.
+     `grep -n "_macros().items()"` 로 바꿔도 안 풀린다 -- 이 라운드의 새 프로즈 자체가
+     `_macros().items()` 를 백틱으로 네 번 인용하고 있어서(위 T1/T2 절 등) 그 패턴도
+     프로즈에 걸린다(직접 재확인: 11줄, 호출부 7 + 프로즈 인용 4). 실제 반복문 줄만 잡는
+     `grep -n "for mid, m in
+     _macros().items():"` 로 다시 바꿨다(위와 같은 이유로 이 문장 자체도 한 줄에 이어 쓰지
+     않는다 -- 안 그러면 이 T4 절 자신이 그 패턴에 걸린다) -- 위 S4 절의 인용을 이 패턴으로
+     교체했고, 라운드 4 보고서에는 그 명령의 truly-raw 출력을 그대로 붙였다.
+
+  Q2 를 없앨지 판단(지시받지 않음, 직접 판단): **남긴다.** 실측(라이브 레지스트리, 뮤테이션
+  없음): 194개 윈도우 중 Q2 예외가 스킵하는 것은 0개다 -- 오늘 이 예외는 아무 것도 안
+  건드린다. 그런데도 남기는 이유는 세 가지다. (1) Q2 가 고친 문제(라운드 2 실측: mechanism
+  에 문구 하나 추가했을 뿐인데 "when_to_use 가 샜다"는 엉뚱한 필드 지목)는 실재했고, 재발
+  가능하다 -- 평범한 mechanism 산문 편집은 앞으로도 일어난다. (2) Q2 를 없애면 그 misattribution
+  이 다시 열린다 -- S1/S2 는 **탐지**(진짜 새는지)를 대신하지 **판별**(누가 새게 했는지)은
+  대신하지 못한다(T2 의 증명이 정확히 이 방향의 비대칭을 보인다: S1 은 executed>0 의
+  부분집합이라 탐지력을 안 늘리지만, 판별 메시지의 정확성은 늘린다 -- Q2 도 같은 종류의
+  가치다). (3) `executed > 0`(S2)가 이제 Q2 를 구조적으로 안전하게 만든다 -- Q2 가 모든
+  윈도우를 스킵해서 검사를 통째로 무력화할 수 없다는 걸 이 어서션이 보장한다(그 경계 사례가
+  뭘로 인해 뚫리는지도 위 T3 에서 이제 정직하게 말한다). 비용(코드 복잡도 한 줄 + 이 파일
+  세 라운드에 걸친 문서 무게)과 편익(재발 가능한 오귀속 방지, 이제 구조적으로 안전함)을
+  견줘 남기는 쪽을 골랐다. `if chunk in own_mechanism_lower: continue` 옆에 이 안전조건을
+  명시했다.
 """
 import json
 import os
@@ -118,6 +179,23 @@ def _macros():
     같은 종류의 크로스-프로세스 한계다."""
     with open(action_registry.REGISTRY_PATH, encoding="utf-8") as f:
         return json.load(f)["macros"]
+
+
+def test_registry_is_non_empty():
+    """🔴 T1 (fix round 4, Important, 1/2): 이 파일의 모든 어서션은 `_macros().items()` 를
+    순회한다 -- 레지스트리가 완전히 비어있으면(`{"macros": {}, "vocab": "v4-0arms"}` 처럼
+    도장의 arm 수와 실제 arm 수가 둘 다 0 으로 서로 맞으면 `action_registry.py` 의
+    `assert_vocab_arm_count` 도 통과시킨다) 이 파일의 모든 루프 바디가 한 번도 안 돌고 여덟
+    테스트 전부가 빈 순회로 공허하게 통과한다 -- `doc_lines() == []` 조차 Q1 을 못 잡는다
+    (Q1 의 루프도 안 도니까). 이 한 줄이 그 순수 공허를 닫는다.
+
+    이게 닫는 건 **완전** 공허뿐이다. **부분** 누락(예: SwapBattery 삭제 + 도장을
+    `v4-2arms` 로 같이 조정)은 못 닫는다 -- 위 모듈 docstring 의 "이 게이트가 못 재는 것"
+    절을 볼 것."""
+    assert _macros(), (
+        "레지스트리에 macro 가 하나도 없다 -- 이 파일의 모든 테스트가 빈 순회로 공허하게 "
+        "통과한다."
+    )
 
 
 def test_every_macro_has_both_fields():
@@ -226,7 +304,21 @@ def test_when_to_use_is_not_embedded_in_own_mechanism():
     Q2 의 예외는 render 기반 leak 검사(판별용)로 그대로 둔다. 여기서는 render 를 아예 안
     보고 JSON 만으로 별도 성질을 잰다: 어떤 macro 의 when_to_use 전체도 자신의 mechanism
     문자열 안에 그대로 박혀 있으면 안 된다. doc_lines() 가 무엇을 하든 상관없이 성립해야
-    하는 성질이라, Q2 의 렌더-기반 예외와 서로 깎아먹지 않는다."""
+    하는 성질이라, Q2 의 렌더-기반 예외와 서로 깎아먹지 않는다.
+
+    🔴 T2 (fix round 4, Minor): 이 테스트는 독립 핀이 아니라 P4 와 같은 종류의 **래퍼**다 --
+    증명: when_to_use 가 자신의 mechanism 의 부분문자열이면, `_leak_windows` 가 내는 그
+    슬라이딩 윈도우 전부도 부분문자열이다(부분문자열의 부분문자열은 부분문자열이다). 그러면
+    `test_doc_lines_never_renders_when_to_use` 의 모든 윈도우가 (그 macro 자신의 mechanism 에
+    있다는 이유로) 스킵되고 `executed == 0` 이 된다 -- 즉 이 테스트가 빨개지는 모든 입력에서
+    `assert executed > 0`(S2)도 반드시 함께 빨개진다. 5만 쌍 무작위 (mechanism, when_to_use)
+    탐색에서 반례(이 테스트만 빨개지고 executed>0 은 통과) 0건 -- 역방향은 갈린다: 윈도우가
+    개별적으로는 mechanism 안에 다 있지만 전체가 한 덩어리로는 없는 입력(예:
+    `when_to_use="A"*20+"B"`, `mechanism`이 그 두 20자 창을 서로 다른 자리에 따로 담되 21자
+    전체는 안 담는 경우)은 `executed > 0` 만 빨개지고 이 테스트는 안 빨개진다. 그래도 남기는
+    이유: **탐지력**은 안 늘리지만 mechanism 에 이어붙는 흔한 편집 모양에 대해 render 를
+    다시 계산할 필요 없이 즉시 정확한 진단("전체가 박혔다")을 준다 -- P4 가 세운 관행(래퍼는
+    스스로 그렇다고 선언한다)을 따른다."""
     for mid, m in _macros().items():
         when_to_use = m["when_to_use"].strip().lower()
         if not when_to_use:
@@ -271,7 +363,15 @@ def test_doc_lines_never_renders_when_to_use():
     "macro 0 의 when_to_use 가 샜다"는 엉뚱한 필드·엉뚱한 macro 귀속이 날 수 있다. 예외의
     폭을 넓혀서(다른 macro 의 mechanism 도 예외 대상에 넣어서) 이걸 막을 수도 있었지만,
     그러면 진짜 누출을 가릴 여지가 더 커진다(Q2 에서 넓히지 않기로 한 것과 같은 이유) --
-    그래서 넓히지 않고 여기 적어만 둔다."""
+    그래서 넓히지 않고 여기 적어만 둔다.
+
+    🔴 T3 (fix round 4, Minor): 아래 `executed > 0` 실패 메시지는 원인을 "비어있음(Q3)"
+    또는 "자신의 mechanism 에 흡수됨(S1)" 둘로만 짚었는데, 세 번째 경우가 있다 --
+    when_to_use 의 슬라이딩 윈도우 각각은 mechanism 안 어딘가에 있지만 전체가 한 덩어리로는
+    없는 경우(직접 구성해 확인: `when_to_use = "A"*20 + "B"`, `mechanism` 이 그 두 20자 창을
+    서로 다른 자리에 따로 담되 21자 전체는 어디에도 안 담으면, executed==0 인데 S1 은 안
+    빨개진다). 이 경우 메시지의 두 원인 진단은 둘 다 거짓이면서 테스트는 옳게 빨개진다 --
+    메시지를 세 원인 다 포괄하도록 넓혔다(원인을 하나로 확정하지 않는다)."""
     rendered = "\n".join(action_registry.doc_lines()).lower()
     window = 20
     for mid, m in _macros().items():
@@ -280,15 +380,22 @@ def test_doc_lines_never_renders_when_to_use():
         executed = 0
         for chunk in windows:
             if chunk in own_mechanism_lower:
-                continue  # mechanism 자신에도 있는 문구 -- leak 이 아니라 의도된 렌더
+                # mechanism 자신에도 있는 문구 -- leak 이 아니라 의도된 렌더(Q2). 이 continue
+                # 가 *모든* 윈도우를 스킵해서 아래 assert 를 0번 실행하는 채로 검사를
+                # 무력화할 수는 없다 -- 루프 뒤의 `assert executed > 0`(S2)가 그걸 구조적으로
+                # 막는다. 그 보장이 없었다면 Q2 는 판별용 예외가 아니라 탐지 자체를 끄는
+                # 스위치가 될 수 있었다.
+                continue
             executed += 1
             assert chunk not in rendered, (
                 "macro %s 의 when_to_use 에서 %d자 연속 구간이 프롬프트로 샜다: %r"
                 % (mid, window, chunk)
             )
         assert executed > 0, (
-            "macro %s 의 leak 검사가 공허하게 통과했다(윈도우 %d개 중 실행 0개) -- when_to_use "
-            "가 비어있거나(Q3) 자신의 mechanism 에 흡수됐다(S1)는 뜻이다."
+            "macro %s 의 leak 검사가 공허하게 통과했다(윈도우 %d개 중 실행 0개) -- "
+            "when_to_use 의 모든 윈도우가 자신의 mechanism 안에서 스킵됐다는 뜻이다. 원인은"
+            "하나로 확정하지 않는다(비어있음/전체가 통째로 흡수/윈도우들이 개별적으로만"
+            " mechanism 과 우연히 겹침 -- 셋 다 이 모양을 낼 수 있다)."
             % (mid, len(windows))
         )
 
