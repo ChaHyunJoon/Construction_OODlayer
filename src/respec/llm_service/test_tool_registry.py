@@ -348,6 +348,22 @@ def test_every_tool_carries_the_four_common_args():
             assert name in props, "%s 에 %s 가 없다" % (t.name, name)
 
 
+def test_the_common_args_keep_their_json_schema_types():
+    """🔴 fix round 1 (T3 리뷰). `test_native_fc_wired.py::test_expressible_is_declared` 를
+    지우면서 `expressible` 이 `bool` 이라는 단언도 같이 사라졌다 -- 존재는 T1 의 스키마
+    시험이 잡지만 **타입은 아무도 안 본다.** 실측(리뷰): `COMMON_ARGS` 의
+    `"expressible": {"type": "boolean"}` 을 `"string"` 으로 바꿔도 `test_tool_registry.py`
+    41개가 전부 green 이고 전체 스위트도 60/111 그대로다 -- byte-identical. `expressible` 은
+    합성 레인(T2)의 유일한 방아쇠이고, 문자열로 오면 `bool("False") is True` 로 곧장 걸어
+    들어간다(spec §9-2 가 경고한 바로 그 함정). 그래서 네 공통 인자 각각의 JSON-Schema
+    `type` 을 `COMMON_ARGS(...)` 에서 직접 읽어 못박는다."""
+    common = reg.COMMON_ARGS(["Replace", "NOOP"])
+    assert common["expressible"]["type"] == "boolean", (
+        "expressible 이 boolean 이 아니면 문자열 파싱이 bool('False') is True 로 샌다")
+    for name in ("macro", "reasoning", "ranking"):
+        assert common[name]["type"] == "string", "%s 의 타입이 string 이 아니다" % name
+
+
 def test_the_unique_args_are_untouched():
     """음성 대조: 공통 인자를 더하는 것이 접지용 고유 인자를 밀어내면 안 된다."""
     tools = {t.name: t for t in
