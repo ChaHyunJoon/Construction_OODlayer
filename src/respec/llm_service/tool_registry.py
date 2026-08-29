@@ -13,6 +13,23 @@
 """
 from typing import Any, Dict, List
 
+# 🔴 fix round 1 (H2) -- `dspy_service.py:44` 와 같은 계약, 이 파일에도 독립적으로 필요하다.
+# dspy 3.3.0 은 `import dspy` 시점에 sys.modules["numpy"] 를 lazy-import 프록시로 바꿔치기한다.
+# 그 뒤 **이 프로세스 안에서 누구든** sklearn.ensemble 을 import 하면(joblib -> numpy 경유)
+# 그 프록시로 재진입해 `numpy/_core/_methods.py:17: TypeError: data type 'bool' not understood`
+# 로 죽는다. 이 파일이 `dspy_service.py` 보다 먼저 import 되는 두 경로가 실재한다:
+#   (a) Task 6 이후: `dspy_service.py` 안에서 `from tool_registry import ...` 를 하면 그 줄이
+#       실행되는 시점의 import 순서를 이 파일이 정한다 -- 이 파일이 numpy/sklearn 보다 먼저
+#       `dspy` 를 심으면 dspy_service.py 의 44행 순서 고정이 무의미해진다.
+#   (b) pytest 수집: 디렉토리 안 파일 이름이 알파벳순과 다르게 재배열되거나(-p no:randomly
+#       류 플러그인, 파일 이름 변경 등) `test_tool_registry.py` 가 `test_macro_request_agents.py`
+#       보다 먼저 수집되면, 이 파일 혼자 먼저 `dspy` 를 심어 버린다.
+# 실측(2026-08-28, fix round 1 H2): `pytest test_tool_registry.py test_macro_request_agents.py`
+# (이 순서)는 수집 단계에서 TypeError 로 죽는다; 역순은 11 passed. 이 파일 혼자 `import
+# tool_registry` 뒤에 `import sklearn.ensemble` 또는 `import dspy_service` 를 해도 같은
+# TypeError 로 죽는다. 절대 "정리"한다고 아래 줄을 지우거나 dspy 뒤로 옮기지 말 것.
+import numpy, sklearn.ensemble  # noqa: F401  -- 순서 고정: dspy 보다 먼저 진짜 numpy/sklearn 을 초기화
+
 import dspy
 
 _NEVER = "never called: Julia enacts this"
@@ -20,8 +37,12 @@ _NEVER = "never called: Julia enacts this"
 
 def _agent_arg(agent_ids: List[str]) -> Dict[str, Any]:
     # ⚠️ dspy 는 `args` 를 주면 `arg_desc` 를 **무시한다**. description 을 여기 직접 넣는다.
+    # 🔴 fix round 1 (H6): 예전 문구("copied verbatim from the prompt")는 존재하지 않는 채널을
+    # 주장했다 -- `req.agents` 는 프롬프트 본문에 렌더되지 않는다(그 id 들이 사는 곳은 오직 이
+    # enum 뿐이다). 모델이 읽는 이 설명이 없는 소스를 가리키면 안 되므로 enum 을 가리키게 고친다.
     return {"agent": {"type": "string", "enum": list(agent_ids),
-                      "description": "exact robot id, copied verbatim from the prompt"}}
+                      "description": "exact robot id, copied verbatim from this parameter's "
+                                      "enum list (these ids are not restated in the prompt text)"}}
 
 
 def swap_body(agent: str):
@@ -58,7 +79,9 @@ def no_intervention(reason: str):
 
 
 # 매크로 이름(채점 어휘) -> tool 이름(행동 어휘). 두 어휘를 섞지 않되 대응은 명시한다.
-# 🔴 공개 이름이다 — dspy_service 가 `macro_tool_agree` 를 계산할 때 **이 표를** 쓴다.
+# 🔴 공개 이름이다 — Task 6 의 `dspy_service` 가 `macro_tool_agree` 를 계산할 때 **이 표를**
+#    쓸 것이다(2026-08-28 현재 `dspy_service.py` 는 이 표를 아직 참조하지 않는다 -- `grep -n
+#    MACRO_TO_TOOL src/respec/llm_service/dspy_service.py` = 0 hits, fix round 1 H6 실측).
 #    두 벌 두면 조용히 갈린다.
 MACRO_TO_TOOL = {"Replace": "swap_body", "SwapBattery": "deliver_battery", "NOOP": "no_intervention"}
 _NEEDS_AGENT = {"swap_body", "deliver_battery"}
