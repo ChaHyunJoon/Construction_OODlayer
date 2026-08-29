@@ -102,19 +102,28 @@ end
         include("route_descriptors_survive.jl")
     end
 
-    # 2026-08-26 (tool-lane step A, Task 2 — 리뷰 라운드 1 F2 · 라운드 2 G1+G2): `service_decide`
-    # 의 `agents` kwarg 와 `decide_all` 호출부의 `CB.open_agent_descriptors(env)` 는
-    # `policy_macro_binding.jl` · `battery_menu_lanes_agree.jl` · `tools/test_policy_oracle.jl`
+    # 2026-08-26 (tool-lane step A, Task 2 — 리뷰 라운드 1 F2 · 라운드 2 G1+G2 · 라운드 4 J1-J5):
+    # `service_decide` 의 `agents` kwarg 와 `decide_all` 호출부의 `CB.open_agent_descriptors(env)`
+    # 는 `policy_macro_binding.jl` · `battery_menu_lanes_agree.jl` · `tools/test_policy_oracle.jl`
     # · `tools/test_policy_escalation.jl` 어느 게이트도 실행하지 않는 코드 경로였다(실측: 두 줄을
     # 각각 `error(...)`로 바꿔치기해도 넷 다 초록).
     # 🔴 라운드 1 은 이 구멍을 **부분적으로만** 메웠다 — kwarg 선언과 `open_agent_descriptors`
     # 원시 함수만 잰 세 어서션은, payload 조립 줄(policy.jl:~550)도 `decide_all` 호출부 줄
     # (policy.jl:~1134)도 한 번도 안 태운다(실측: `env.sched` 로 되돌린 원래 버그를 되살려도
-    # Pass 5/5 로 그대로 초록이었다). 라운드 2 가 네 번째 어서션을 더했다 — `dspy_ready()` 를
-    # `true` 로, `HTTP.post` 를 요청 본문을 가로채는 스텁으로 바꿔치기하고 `decide_all(env,
-    # truth)` 를 직접 실행해 그 두 줄을 **실제로** 태운다. 스크래치패드 사본에서 그 두 줄을
-    # 각각 `error(...)`로 바꿔도, 그리고 원래 버그(`env.sched`)를 되살려도 이 네 번째 어서션이
-    # 셋 다 빨개지는 것을 실측했다(수정 라운드 2 보고서 참조).
+    # Pass 5/5 로 그대로 초록이었다). 라운드 2 가 네 번째 어서션을 더했다 — `decide_all(env,
+    # truth)` 를 직접 실행해 그 두 줄을 **실제로** 태우고, 나가는 요청 본문의 `"agents"` 를 잰다.
+    # 🔴 라운드 4 (J1)가 **그 요청을 가로채는 방식**을 바꿨다. 라운드 2~3 은 `HTTP.post` 를
+    # **패키지 제네릭 해적질**로 덮어썼다 — 그 정의 하나가 메서드를 셋 심는데(위치인자 메서드 ·
+    # `Core.kwcall` 정렬 메서드 · 본체) 라운드 3 의 `Base.delete_method` 는 첫째만 지웠고, 이
+    # 레포의 실제 호출자는 전부 키워드 인자를 넘겨 둘째로 디스패치한다(실측: "지웠다" 뒤에도
+    # 해적 메서드가 실제 키워드 호출에 계속 응답했다). 지금은 그 파일이 **로컬 `HTTP.serve!`
+    # 서버**를 커널이 고른 임시 포트(`listenany=true`)에 띄우고, `ENV["DSPY_URL"]` 을
+    # `policy.jl` 의 `include` 동안에만 그리로 돌린 뒤 `finally` 에서 원래 값으로 되돌린다 —
+    # **어떤 패키지 제네릭에도 메서드를 심지 않는다.** 그래서 이 게이트 뒤에 오는 인프로세스
+    # 시험이 스텁에 걸릴 일이 없다(그 오염이 `replan.jl:715-745` 의 예외-삼킴 `:noop` 폴백과
+    # 만나면 "초록인데 아무것도 안 재는" 상태가 된다 — 이 레포의 정본 조용한-실패 모양이다).
+    # 스크래치패드 오버레이에서 그 두 줄을 각각 `error(...)`로 바꿔도, 그리고 원래 버그
+    # (`env.sched`)를 되살려도 이 게이트가 빨개지는 것을 실측했다(수정 라운드 2·4 보고서 참조).
     @testset "service_decide ships agents" begin
         include("service_decide_ships_agents.jl")
     end
