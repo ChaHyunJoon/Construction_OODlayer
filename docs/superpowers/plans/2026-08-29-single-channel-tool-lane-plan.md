@@ -18,6 +18,105 @@
 - **site-packages 를 고치지 않는다.** 재설치에 날아가고 레포 밖과 조용히 갈린다.
 - 행동 어휘 단일 진실원은 `wm4spacecraft_manufacturing/core/action_registry.json` — 리터럴 복붙 금지. 현행 `v4-3arms`: `NOOP` · `Replace` · `SwapBattery`.
 - 매 태스크 끝에 `.venv/bin/python -m pytest src/respec/llm_service/ -q` 가 초록이어야 한다. 착수 시점 기준선 **146 passed**(2026-08-29 실측) — 이 숫자는 태스크마다 자란다. 회귀 판정은 **직전 태스크에서 네가 잰 값**과 비교한다.
+  🔴 **T3 은 이 제약의 유일한 예외다**(실행 중 판정, 아래 §0-B). T3 은 `macro()` 가 아직 읽는
+  텍스트 필드를 지우므로 스위트를 **일부러 빨갛게 남긴다**. T3 끝의 정상 상태는 초록이 아니라
+  **`124 passed / 48 failed`** 이고, 그중 정보가 있는 것은 26개뿐이다(§0-B ⑨).
+
+---
+
+## 0-A. 실행 상태 (2026-08-29, subagent-driven + max-reasoning 검증자)
+
+| 태스크 | 상태 | 커밋 | 스위트 |
+|---|---|---|---|
+| — | 선행: F1 마감분(미커밋이던 것)을 분리 커밋 | `011ed3c0` | 146 passed |
+| — | 계획서·설계서를 트래킹에 넣음 | `316faae6` | 146 passed |
+| **T1** | ✅ 완료 (검증 2라운드) | `bd64ba11` → `3965d061` → `01cee573` | **155 passed / 0 failed** |
+| **T2** | ✅ 완료 (검증 2라운드) | `f1dbee69` → `c48ffc95` → `6bb875ad` | **170 passed / 0 failed** |
+| **T3** | ✅ 완료 (검증 1라운드) | `198d0440` → `d2c408a1` | **124 passed / 48 failed** ← 설계대로 |
+| T4~T7 | ⬜ 미착수 | — | — |
+
+🔴 **지금의 HEAD 는 안전한 정지점이 아니다.** T1 이 공통 인자 넷을 tool 스키마에 얹은 순간부터
+`dspy_service.py` 가 그 넷을 `tool_args` 에 그대로 실어 보내고, 줄리아 `ground_tool_args` 가
+전 사건에서 `reject:off_schema_param` 을 낸다(실측, §0-B ①). 게다가 T3 이후 `macro()` 는 매
+호출에서 `NameError` 로 죽는다. **T4 가 들어오기 전까지 이 트리로 스윕·데모를 돌리지 말 것.**
+
+## 0-B. 실행 중 반증되거나 정정된 것 — **다음 태스크가 이걸 안 읽으면 같은 자리를 다시 밟는다**
+
+전부 T1~T3 실행 중에 이 머신에서 실측했거나 라이브러리를 직접 태워 확인했다.
+
+**① F9 는 "신규 위험" 이 아니라 HEAD 에서 이미 발화 중이다.** 계획서는 F9 를 T4 가 닫을
+장래 위험으로 적었다. 실측(`julia +lts --project=.`):
+`ground_tool_args(env,"swap_body",{agent,macro,reasoning,expressible,ranking})` →
+`("reject:off_schema_param", "선언 밖 인자=[expressible,macro,ranking,reasoning] 선언=[agent]")`.
+`no_intervention` 도 같다. `_first_tool_call` 이 다섯 키를 전부 복사하고 `dspy_service.py:1340`
+이 그대로 싣는다. → **T4 의 `_GROUNDING_ARGS` 필터가 계획대로 이걸 닫는다.** 계획서에 더할 것은
+"T1~T4 사이는 안전한 정지점이 아니다" 한 줄뿐이다(§0-A).
+
+**② 🔴 `test/tool_args_grounding.jl` 은 이 축에 대해 구조적으로 눈이 멀었다.** 계획서 T1 Step 5
+는 이 계열이 빨개지면 멈추라고 적었는데, **빨개지지 않았다 — 145/145 초록이었다.** 이유:
+`_PY_EXTRACT`(`:153-159`)가 `inspect.signature(_FUNCS[name])` 즉 **파이썬 함수 시그니처**를 읽고,
+`build_tools()` 가 실제로 내는 JSON 스키마를 안 읽는다. 그 파일의 docstring 은 두 어휘를 묶는다고
+주장하지만 이 축은 안 묶는다. → **T6 이 재조준하거나 이름을 바꿀 것.** T4 의 새 게이트는
+`_GROUNDING_ARGS` ↔ `TOOL_PARAM_SCHEMA` 만 덮으므로, `build_tools()` 산출 ↔ 줄리아 축은 여전히
+아무도 안 지킨다. **이 계획서의 옛 T1 Step 5 문장을 근거로 이 게이트를 다시 믿지 말 것.**
+
+**③ 🔴 F14 는 틀렸다 — §4-1 구제 경로는 여전히 도달 가능하고, 그 유일한 방아쇠가 §5-1 과 충돌한다.**
+계획서 F14 는 "§4-1 구제는 이 설계에서 뺄 것이 없어 무의미" 라고 적었고 T4 의 코드(`:650-654`)는
+`except Exception` 하나로 받아 `no_call` 반환에 `error=err` 를 채운다. 실측: 검증자가 그 분기에
+**여섯 가지 방법으로 도달**했다 — fc=False 에서 `action='not-json'` / `{}` / `None` /
+action 키 없음 / `{'tool_calls':'str'}`, 그리고 **fc=True 에서 빈 응답**. `dspy/adapters/base.py:171-176`
+이 텍스트도 tool_calls 도 없으면 **시그니처와 무관하게**
+`AdapterParseError("The LM returned an empty or null response.")` 를 던지기 때문이다.
+⟹ native FC 판에서 살아남은 유일한 방아쇠가 **정확히 §5-1 의 `no_call` 사건**인데, T4 를 쓰인
+대로 구현하면 거기에 `error` 를 채운다 — §5-1 은 **`error` 에 아무것도 안 넣는다**고 못박는다
+(장애와 계약 위반을 가르는 것이 그 키의 존재 이유다). `_blank_decision` 의 docstring 도
+"`error` 는 비운다" 라고 적는데 `pred is None` 경로가 그걸 덮어쓴다.
+→ **T4 는 빈 응답 `AdapterParseError` 를 진짜 프로바이더 장애와 갈라서 `error` 를 쓸지 정해야 한다.**
+
+**④ `tool_arg_error` 로 실패 종류를 세면 안 된다.** `check_tool_args` 는 **처음 걸린 사유 하나만**
+낸다. 순서는 `unknown_tool → args_not_a_dict → tool_missing_impl → valid_not_a_sequence →
+agent_ids_not_a_sequence → missing_args → off_schema_args → expressible_not_a_bool →
+macro_outside_menu → agent_outside_enum`. 실측: agent 가 틀렸고 **동시에** 다른 것도 틀리면
+언제나 다른 쪽이 보고된다 ⟹ 이 문자열로 센 **F10 발생 수는 항상 과소집계다.** → **T7** 및 스윕
+행을 읽는 사람은 축마다 따로 셀 것. (순서를 바꾸지 않기로 판정한 근거는 T2 절 끝의 정정 참조.)
+
+**⑤ "접지 성공률" 은 `tool_arg_error is None` 이 아니다.** 스펙대로 잘 만들어진
+`no_intervention` 호출은 파이썬에서 `None`(접지할 것이 없다)을 내는데 줄리아는 같은 호출에
+`deferred:no_groundable_param` 을 낸다(`llm_bridge.jl:200-203` 이 그 구별의 이유를 적는다).
+파이썬 반환이 2상인 것은 spec §3-5 대로라 규약 위반이 아니지만, **두 레인이 같은 이름의 비율을
+서로 다른 분모로 계산하게 된다.** → **T7**/대시보드: NOOP 을 "접지됨" 에 접어 넣지 말 것.
+
+**⑥ 파이썬 `want`(5키)와 줄리아 `TOOL_PARAM_SCHEMA`(1키)는 같은 축을 서로 다른 기준집합으로 잰다.**
+T4 의 교차 게이트가 묶는 것은 `_GROUNDING_ARGS` ↔ `TOOL_PARAM_SCHEMA` 이고 그건 맞다. 그러나
+`check_tool_args` 의 `off_schema_args` 는 5키 `want` 를 쓴다 — 두 검증기는 "off-schema" 의 뜻에
+대해 **설계상 영원히 불일치**한다. → **T4**: `_GROUNDING_ARGS` 옆에 한 줄로 적어 둘 것. 나중에
+둘을 한 게이트로 읽는 사람이 나온다.
+
+**⑦ 소스를 읽는 게이트 셋은 `macro()` 가 런타임에 죽어 있어도 못 본다.**
+`test_the_new_keys_stay_above_the_tool_lane_marker` · `test_synthesis_keys_sit_above_…` ·
+줄리아 `test/tool_lane_keys_survive.jl` 은 전부 `dspy_service.py` **소스**를 파싱한다(AST/정규식,
+줄리아 것은 요청 0건). **지금 셋 다 초록인데 `macro()` 는 매 호출 `NameError` 로 죽는다.**
+소스 배치 게이트로서는 맞지만 **레인이 돈다는 증거가 아니다.** → **T6/T7**: 이들의 초록을 레인
+건강의 근거로 인용하지 말 것. 그걸 재는 것은 T7 의 라이브 게이트다.
+
+**⑧ `expressible` 의 JSON-Schema 타입은 T3 이 한때 무방비로 만들었다.** T3 이 지운
+`test_expressible_is_declared` 는 존재뿐 아니라 **타입**도 못박고 있었다. 실측: `COMMON_ARGS` 의
+`"expressible": {"type":"boolean"}` 을 `"string"` 으로 바꿔도 스위트가 **바이트 동일**하게 초록이었다.
+`d2c408a1` 의 `test_the_common_args_keep_their_json_schema_types` 가 넷의 타입을 못박아 닫았다
+(변이 7종 전부 이 시험 하나만 붉힌다). ⚠️ **다섯 번째 공통 인자는 여전히 타입 없이 들어올 수 있다**
+— 다만 그 *도착* 자체는 시끄럽다(T2 의 `want` 가 구조적으로 유도되어 접지 시험 10개가 붉어진다).
+
+**⑨ T3 의 48 red 는 22 + 26 이다. "48이 초록이 됐다" 는 T4 의 성공 기준이 아니다.**
+22개는 `_EXPR` 랜드마인만으로 죽는다 — T4 가 `_EXPR` 참조를 지우는 순간 조립이 맞든 틀리든
+초록이 된다. **정보가 있는 것은 나머지 26개**이고, 그것이 T4 가 조립 로직으로 직접 풀어야 할
+잔여 레드셋이다. 두 목록(node id + 한 줄 이유)은
+`.superpowers/sdd/2026-08-29-single-channel-tool-lane-plan/task-3-report.md` §8 에 있고 검증자의
+독립 측정과 node 단위로 일치한다. → **T4 의 성공 기준은 "그 26개가 초록" 이다.**
+
+**⑩ 설계서 세대 주의.** 2026-08-26 설계서는 "`macro` 는 별도 `OutputField` 로 남는다" 고 적는다.
+**그 문장은 폐기됐다** — 이 계획이 딛는 2026-08-29 설계 §2 는 다섯 `OutputField` 를 전부 지우고
+§3-1 이 `macro` 를 tool 인자로 옮겨 `macro_tool_agree` 를 살린다. 옛 설계서를 들고 T3 을 리뷰하면
+멀쩡한 구현을 결함으로 잡는다(실제로 그럴 뻔했다).
 
 ---
 
@@ -32,15 +131,15 @@
 | **F3** | 강제 없이 호출이 안 나온다 | 실측 **0/3**. 프롬프트·필드 제거·행위자 프레이밍 전부 0/3. 모델이 판단 과제로 보면 답변하고 행동하지 않는다 | 🔴 열림 | **T5** |
 | **F4** | `required` 가 텍스트 채널을 비운다 | `content=None` → `adapters/base.py:168` 이 `value={}`, `:181` 이 전 필드 `None`. **예외가 안 난다** → §4-1 구제가 발화조차 안 함 | 🔴 2콜로 우회 중 | **T3** |
 | **F5** | 집행 ≠ 채점 | 실측 **3/3**. `fault-severe`: 채점 `Replace`, 집행 `deliver_battery` | 🔴 열림 | **T4** |
-| **F6** | `expressible` 오판 | 어휘 밖 사건에서 **1/3만** `False`. 모델이 "표현 불가"와 "개입 불필요"를 혼동 → T2 합성이 정작 필요할 때 안 돈다 | 🔴 열림 | **T1** + T7 실측 |
+| **F6** | `expressible` 오판 (T1 은 **문구를 payload 에 싣기만** 한다 — 기록되는 값이 tool 인자에서 나오는 것은 T3 부터고, 행동 변화의 증거는 T7 뿐이다) | 어휘 밖 사건에서 **1/3만** `False`. 모델이 "표현 불가"와 "개입 불필요"를 혼동 → T2 합성이 정작 필요할 때 안 돈다 | 🔴 열림 | **T1** + T7 실측 |
 | **F7** | R26 이 `chosen` 을 같이 지운다 | 단일 채널에서 `chosen` 이 `tool_called` 에서 나오는데 R26 이 그것을 `None` 으로 만든다 | 🔴 신규 위험 | **T4** |
 | **F8** | R26 행 ↔ 메뉴 거절(C8②) 구별 불가 | 둘 다 `tool_called is None` | ✅ `tool_calls_n` 이 가른다 | **T4** (0으로 안 덮음 유지) |
-| **F9** | 🔴 `tool_args` 에 공통 인자가 샌다 | 줄리아 `TOOL_PARAM_SCHEMA`(`llm_bridge.jl:148-151`)는 `agent`/`reason` **둘만** 선언한다. 새면 `ground_tool_args` 가 `reject:off_schema_param` → **집행이 전 사건에서 정지** | 🔴 신규 **고위험** | **T4** 교차 게이트 |
+| **F9** | 🔴 `tool_args` 에 공통 인자가 샌다 (**T1 이후 HEAD 에서 이미 발화 중** — §0-B ①) | 줄리아 `TOOL_PARAM_SCHEMA`(`llm_bridge.jl:148-151`)는 `agent`/`reason` **둘만** 선언한다. 새면 `ground_tool_args` 가 `reject:off_schema_param` → **집행이 전 사건에서 정지** | 🔴 신규 **고위험** | **T4** 교차 게이트 |
 | **F10** | enum 밖 `agent` id | `dspy.Tool` 에 `strict` 필드가 **없다**(실측: `model_fields` = `arg_desc·arg_types·args·desc·func·has_kwargs·name`). 스키마가 강제가 아니다 | 부분 (줄리아만) | **T2** |
 | **F11** | 다중 tool 호출 | `_first_tool_call` 이 첫 번째만 쓰고 나머지를 버린다 | 부분 (기록만) | **T5** (원천 차단) |
 | **F12** | 필수 인자 누락 | `required` 목록이 강제가 아니다(F10 과 같은 뿌리). `expressible` 이 없으면 `None` → T2 합성이 안 돈다 | 🔴 열림 | **T2** |
 | **F13** | `expressible` 이 bool 이 아니다 | `bool("False") is True` — 거짓 `True` 가 조용히 기록된다 | ✅ `isinstance` 검사 | **T4** (유지) |
-| **F14** | tool 인자 JSON 파싱 실패 | `AdapterParseError`. §4-1 구제는 이 설계에서 뺄 것이 없어 무의미 | 🔴 재정의 필요 | **T4** |
+| **F14** | tool 인자 JSON 파싱 실패 | `AdapterParseError`. ~~§4-1 구제는 이 설계에서 뺄 것이 없어 무의미~~ 🔴 **이 판단은 반증됐다** — 구제 분기는 여전히 도달 가능하고 native FC 판에서 살아남은 방아쇠가 `no_call` 이다(§0-B ③) | 🔴 재정의 필요 | **T4** |
 | **F15** | `required` 인데 호출이 없다 | 계약 위반. 오늘 이 사건에 이름이 없다 | 🔴 미정의 | **T4** (`no_call`) |
 | **F16** | 프로바이더 장애 | `LMError` | ✅ `error` | 유지 |
 
@@ -86,6 +185,23 @@
 ---
 
 # Task 1: tool 스키마 — 공통 인자 넷과 개정된 설명
+
+> ✅ **완료 (2026-08-29): `bd64ba11` → `3965d061` → `01cee573`. 155 passed / 0 failed.**
+> 계획서 코드에서 **바뀐 것 셋** — 다시 쓸 일이 있으면 이 상태가 진실원이다:
+> 1. `COMMON_ARGS` 의 파라미터 이름이 `valid` → **`emitted`** 다. 계약도 좁아졌다: "이 사건에서
+>    **실제로 tool 로 나가는** 매크로". 이유: `agents=[]` 인 사건에서 `swap_body` 는 안 나가는데
+>    `no_intervention` 의 `macro` enum 에 `"Replace"` 가 남아, **스키마가 스스로 만든 불일치**를
+>    T4 가 `macro_tool_agree=False` 로 기록하게 된다(실측). `ranking` 은 그대로 **전체 채점 메뉴**를
+>    말한다 — 이 비대칭은 의도된 것이다(모델이 보는 메뉴가 셋이 된다: `valid_actions` 전체 ·
+>    `ranking` 전체 · `macro` enum 은 호출 가능한 것만).
+> 2. `build_tools` 는 "이 매크로가 tool 로 나가는가" 를 **한 곳에서만** 판정한다. 한 번의 순회로
+>    `(macro, tool_name, unique_args)` 를 모으고 enum 도 `dspy.Tool` 구성도 그 목록에서만 유도한다.
+>    (중간 판이 그 조건을 두 벌 적었고, 검증자가 한쪽에만 스킵 규칙을 얹어 **전 시험 초록인 채로**
+>    두 벌이 갈릴 수 있음을 실측했다. `tool_registry.py:89-90` 이 그 규칙의 진실원이다.)
+> 3. 계획서 Step 2 의 기대값 "7 failed" 는 틀렸다 — **실측 5 failed / 2 passed**.
+>    `test_the_unique_args_are_untouched` 와 `test_all_args_are_required` 는 구현 **전에도** 초록이었다.
+>    후자는 그 뒤 "넷이 각각 `required` 에 있다" 를 직접 단언하도록 강화됐다(옛 집합 등식만으로는
+>    `expressible` 을 통째로 지워도 초록이었다 — 실측).
 
 **Files:**
 - Modify: `src/respec/llm_service/tool_registry.py` (`build_tools` 는 `:104-127`, `MACRO_TO_TOOL` 는 `:87`)
@@ -263,7 +379,12 @@ Expected: 전부 PASS
 - [ ] **Step 5: 파일 전체 회귀를 본다**
 
 Run: `.venv/bin/python -m pytest src/respec/llm_service/ -q`
-Expected: PASS. ⚠️ `test_tool_args_grounding` 계열이 깨지면 **멈추고 T2 를 앞당긴다** — 인자 집합이 바뀌었다는 뜻이다.
+Expected: PASS.
+~~⚠️ `test_tool_args_grounding` 계열이 깨지면 **멈추고 T2 를 앞당긴다** — 인자 집합이 바뀌었다는 뜻이다.~~
+🔴 **이 트립와이어는 작동하지 않는다(2026-08-29 실측).** 인자 집합이 실제로 바뀌었는데
+`test/tool_args_grounding.jl` 은 **145/145 초록**이었다 — `_PY_EXTRACT`(`:153-159`)가 파이썬 **함수
+시그니처**를 읽고 `build_tools()` 가 내는 JSON 스키마를 안 읽기 때문이다. 전문은 §0-B ②.
+이 줄을 근거로 그 게이트를 믿지 말 것.
 
 - [ ] **Step 6: 커밋**
 
@@ -275,6 +396,23 @@ git commit -m "T1: 결정 성분을 tool 인자로 옮긴다 — expressible 설
 ---
 
 # Task 2: 파이썬 인자 접지 계층
+
+> ✅ **완료 (2026-08-29): `f1dbee69` → `c48ffc95` → `6bb875ad`. 170 passed / 0 failed.**
+> 계획서 코드에서 **더해진 것** — `check_tool_args` 는 계획서 본문보다 넓다:
+> 1. **총함수다. 어떤 입력에도 예외를 안 던지고 사유 문자열을 낸다.** `valid=None`·`agent_ids=None`·
+>    dict 아닌 `args`·`MACRO_TO_TOOL` 에만 있고 `_FUNCS` 에 없는 이름 전부. 🔴 이유가 중요하다:
+>    T4 가 `macro()` 안에서 이걸 부르는데, 거기서 난 예외는 응답의 `error` 로 삼켜지고
+>    `policy_entry` 가 **레인 전체를 `available=false`** 로 버린다 — 사유를 보고하라고 만든 검증기가
+>    조용한 전면 폴백의 원인이 된다. (남은 구멍: `valid=7` 처럼 **truthy 인데 타입이 틀린** 값은
+>    아직 던진다. `x or []` 는 falsy 만 잡는다. T4 호출부에서는 도달 불가.)
+> 2. **`str` 인 `valid` 를 거절한다.** `args["macro"] not in valid` 가 문자열에 대해 **부분문자열
+>    매칭**을 해서, `valid="Replace,SwapBattery"` 면 `macro="Swap"` 이 조용히 접지에 성공한다(실측).
+>    `agent_ids` 도 같다.
+> 3. 12개 가드 **전부** 자기 시험에 묶여 있고, 각 거절 시험은 사유 문자열의 **머리**를 못박는다
+>    (`why.startswith("unknown_tool:")`). 느슨한 부분문자열 단언(`"reason" in why` 는 `reasoning`
+>    때문에 항상 참)이 가드를 놓치는 것을 실측으로 두 번 잡았다.
+> 4. **검사 순서는 안 바꿨다** — `agent_outside_enum` 이 마지막이라 F10 이 과소집계된다는 사실은
+>    docstring 에 적어 두는 쪽을 택했다. 근거와 귀결은 §0-B ④.
 
 **Files:**
 - Modify: `src/respec/llm_service/tool_registry.py`
@@ -358,7 +496,7 @@ def test_no_intervention_needs_reason_not_agent():
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `.venv/bin/python -m pytest src/respec/llm_service/test_tool_registry.py -q -k grounding or no_intervention_needs`
+Run: `.venv/bin/python -m pytest src/respec/llm_service/test_tool_registry.py -q -k "grounding or no_intervention_needs"`  ← 🔴 따옴표 없으면 셸이 쪼갠다(계획서 원문의 결함)
 Expected: FAIL — `has no attribute 'check_tool_args'`
 
 - [ ] **Step 3: 구현한다** — `COMMON_ARGS` 아래에 붙인다
@@ -414,6 +552,20 @@ git commit -m "T2: tool 인자 접지 계층 — strict 가 없는 스키마를 
 ---
 
 # Task 3: 시그니처를 `action` 하나로 축소
+
+> ✅ **완료 (2026-08-29): `198d0440` → `d2c408a1`. 124 passed / 48 failed — 설계대로 빨갛다.**
+> 계획서에 없던 판정 셋:
+> 1. **`test_native_fc_wired.py` 의 두 시험을 지웠다** — `test_macro_stays_a_separate_output_field`
+>    와 `test_expressible_is_declared`. 그 둘은 "`macro`/`expressible` 이 **출력 필드다**" 를 단언하는데
+>    이 태스크가 지우는 것이 정확히 그 설계다(고칠 것이 아니라 참이 아니게 된 것). 각 자리에 한 줄
+>    주석을 남겼다. 그 파일의 기대값은 **6 → 4 passed**.
+>    ⚠️ 대가: `test_expressible_is_declared` 는 **타입**도 못박고 있었고 아무것도 그 자리를 안 메웠다
+>    — `d2c408a1` 의 `test_the_common_args_keep_their_json_schema_types` 가 닫았다(§0-B ⑧).
+> 2. **`_EXPR` 를 정말로 지웠다.** 그래서 `dspy_service.py:1187`·`:1273` 이 정의되지 않은 이름을
+>    참조하고 `macro()` 가 매 호출 `NameError` 로 죽는다. 남겨 두는 대안은 `delete(_EXPR)` 를
+>    **조용한 no-op** 으로 만들어 "지웠다" 는 거짓을 만든다(`Signature.delete` 는 `fields.pop(name, None)`).
+>    T4 가 통째로 지울 코드 안의 시끄러운 `NameError` 가 낫다고 판정했다.
+> 3. **48 red 의 분해가 이 태스크의 진짜 산출물이다** — 22 랜드마인 + 26 진짜. §0-B ⑨.
 
 **Files:**
 - Modify: `src/respec/llm_service/dspy_service.py:201-224` (`SelectTool`), `:962` (`_FC_IN`/`_FC_OUT`/`_EXPR`)
@@ -484,7 +636,7 @@ _FC_IN, _FC_OUT = "tools", "action"
 - [ ] **Step 4: 통과 확인 + 무엇이 깨졌는지 본다**
 
 Run: `.venv/bin/python -m pytest src/respec/llm_service/ -q`
-Expected: 새 시험 3개 PASS. **`test_macro_returns_tool_call.py` 와 `test_tool_choice_forced.py` 의 여러 시험이 깨진다** — 그것들은 텍스트 채널을 전제한다. 깨진 목록을 적어 두고 **T4 에서 함께 고친다**(지금 고치지 않는다: 조립 로직이 아직 안 바뀌었다).
+Expected: 새 시험 3개 PASS. **실측 결과 `124 passed / 48 failed`** (`test_macro_returns_tool_call.py` 19 · `test_tool_choice_forced.py` 28 · `test_synthesize.py` 1). 47개가 `NameError: name '_EXPR' is not defined`(`dspy_service.py:1273`), 1개가 `AttributeError: module 'dspy_service' has no attribute '_EXPR'`. **그중 22개는 `_EXPR` 랜드마인일 뿐이고 정보가 있는 것은 26개다** — 목록은 `.superpowers/sdd/.../task-3-report.md` §8. 원문: — 그것들은 텍스트 채널을 전제한다. 깨진 목록을 적어 두고 **T4 에서 함께 고친다**(지금 고치지 않는다: 조립 로직이 아직 안 바뀌었다).
 
 - [ ] **Step 5: 커밋** — 깨진 시험이 있으므로 `--no-verify` 없이, 깨진 사실을 메시지에 적는다
 
@@ -499,6 +651,25 @@ git commit -m "T3: 시그니처를 action 하나로 줄인다 (텍스트 채널 
 ---
 
 # Task 4: `macro()` 단일 채널 조립
+
+> 🔴 **착수 전 필독 — T1~T3 실행이 이 태스크의 전제 넷을 바꿨다(§0-B 전문).**
+> 1. **성공 기준은 "48이 초록" 이 아니라 "그 26개가 초록" 이다.** 22개는 `_EXPR` 참조를 지우는
+>    것만으로 조립이 맞든 틀리든 초록이 된다. 목록:
+>    `.superpowers/sdd/2026-08-29-single-channel-tool-lane-plan/task-3-report.md` §8. (§0-B ⑨)
+> 2. 🔴 **아래 Step 3 의 `except Exception` + `error=err` 는 그대로 쓰면 안 된다.**
+>    F14 의 "구제가 무의미하다" 는 판단이 반증됐다 — `dspy/adapters/base.py:171-176` 이 텍스트도
+>    tool_calls 도 없으면 **시그니처와 무관하게** `AdapterParseError("The LM returned an empty or
+>    null response.")` 를 던지고, native FC 판에서 그것이 도달하는 유일한 방아쇠가 **§5-1 의
+>    `no_call` 사건**이다. 그런데 §5-1 은 그 사건에 **`error` 를 채우지 말라**고 못박는다(장애와
+>    계약 위반을 가르는 것이 그 키의 이유다). 빈 응답 `AdapterParseError` 를 진짜 `LMError` 와
+>    **갈라서** 처리할 것. (§0-B ③)
+> 3. `check_tool_args` 를 **맨입력으로 불러도 된다** — T2 가 총함수로 만들었다(예외 대신 사유
+>    문자열). 단 `valid=7` 같은 truthy-오타입은 아직 던진다. 그리고 **"접지 성공률" 을
+>    `tool_arg_error is None` 으로 세지 말 것**: 규약대로 만들어진 `no_intervention` 도 `None` 이다
+>    (§0-B ⑤).
+> 4. `_GROUNDING_ARGS`(2키) 와 `check_tool_args` 의 `want`(5키)는 **서로 다른 기준집합**이다.
+>    한 게이트로 읽지 않도록 `_GROUNDING_ARGS` 옆에 한 줄 적을 것 (§0-B ⑥).
+> 5. F9 는 장래 위험이 아니라 **지금 발화 중**이다 — 이 태스크가 그걸 끄는 태스크다 (§0-B ①).
 
 **Files:**
 - Modify: `src/respec/llm_service/dspy_service.py` — `macro()` 의 `:1233-1260`(text_rescue 절, **삭제**), `:1126-1160`(§4-1 구제, **삭제**), `:1270-1345`(조립·반환 dict)
@@ -551,7 +722,12 @@ def test_tool_args_carries_only_the_grounding_arg():
 
 
 def test_the_python_and_julia_param_schemas_agree():
-    """🔴 F9 교차 게이트. 두 표를 집합 등식으로 묶는다 — 한쪽만 늘리면 여기서 죽는다."""
+    """🔴 F9 교차 게이트. 두 표를 집합 등식으로 묶는다 — 한쪽만 늘리면 여기서 죽는다.
+
+    🔴 이 게이트는 `_GROUNDING_ARGS`(2키) ↔ 줄리아 `TOOL_PARAM_SCHEMA` 만 묶는다. **`build_tools()`
+    가 내는 JSON 스키마(5키) ↔ 줄리아 축은 아무도 안 지킨다** — 그걸 지킨다고 주장하는
+    `test/tool_args_grounding.jl` 은 파이썬 **함수 시그니처**를 읽어서 이 축에 눈이 멀었고,
+    T1 이 인자 넷을 더했을 때 145/145 초록이었다(실측, §0-B ②). 재조준은 T6 몫이다."""
     import re, pathlib
     src = pathlib.Path(__file__).resolve().parents[2] / "respec" / "llm_bridge.jl"
     text = src.read_text(encoding="utf-8")
@@ -872,6 +1048,17 @@ git commit -m "T5: required 를 기본으로, 다중 호출을 원천 차단한�
 
 # Task 6: 줄리아 배선
 
+> 🔴 **이 태스크에 일이 하나 늘었다(§0-B ②).** `test/tool_args_grounding.jl` 의 `_PY_EXTRACT`
+> (`:153-159`)가 `inspect.signature(_FUNCS[name])` 를 읽는다 — **파이썬 함수 시그니처**이지
+> `build_tools()` 가 내는 JSON 스키마가 아니다. 그래서 T1 이 tool 마다 인자 넷을 더했는데도
+> **145/145 초록**이었고, 그 파일 docstring 의 "두 어휘를 묶는다" 는 주장은 이 축에 대해 거짓이다.
+> 재조준(스키마 키 집합에 묶기)하거나, 못 묶는다면 **docstring 이 안 지키는 것을 명시**할 것.
+> 음성 대조 없이 초록인 게이트는 이 레포가 반복해 밟은 실패 모드다.
+>
+> ⚠️ 그리고 `test/tool_lane_keys_survive.jl` 을 **레인 건강의 증거로 인용하지 말 것** — 그것은
+> `dspy_service.py` **소스**를 읽고 요청을 0건 보낸다. T3 이후 `macro()` 가 매 호출 `NameError` 로
+> 죽는 동안에도 초록이었다(§0-B ⑦).
+
 **Files:**
 - Modify: `tools/monitor/policy.jl` — `TOOL_LANE_KEYS` `:1149-1161`, `service_decide` 의 `tool_choice` 인자 `:591`·`:661`, `route` 호출부 `:1416`
 - Test: `test/tool_choice_gate.jl`
@@ -954,6 +1141,20 @@ git commit -m "T6: decision_source 를 나르고 text_rescue 를 뺀다"
 ---
 
 # Task 7: 라이브 실측 게이트 + 전체 회귀
+
+> 🔴 **집계 규칙 셋 — 안 지키면 이 게이트가 내는 수치가 틀린다(§0-B ④⑤⑦).**
+> 1. **`tool_arg_error` 문자열로 실패 종류를 세지 말 것.** `check_tool_args` 는 처음 걸린 사유
+>    하나만 내고 `agent_outside_enum`(F10)이 순서상 마지막이라, 두 군데가 동시에 틀리면 F10 은
+>    보고되지 않는다 ⟹ **F10 은 항상 과소집계**. 축마다 따로 셀 것.
+> 2. **"접지 성공률" 을 `tool_arg_error is None` 으로 세지 말 것.** 규약대로 만들어진
+>    `no_intervention` 호출도 `None` 이다(접지할 것이 없다) — 줄리아는 같은 호출에
+>    `deferred:no_groundable_param` 을 낸다. NOOP 을 "접지됨" 분자에 넣으면 두 레인이 같은 이름의
+>    비율을 다른 분모로 계산한다.
+> 3. **소스를 읽는 게이트 셋의 초록을 레인 건강의 증거로 쓰지 말 것**(§0-B ⑦). 레인이 실제로
+>    도는지를 재는 것은 이 태스크의 라이브 게이트뿐이다.
+> 4. F6 확인을 **`expressible == False` 비율만으로** 하지 말 것 — 그 비율은 부분적으로 프롬프트
+>    준수를 재고, 메뉴가 하나뿐인 사건은 어휘 공백과 무관한 이유로 `False` 를 낸다.
+>    `tools_offered` 로 층화할 것.
 
 **Files:**
 - Create: `src/respec/llm_service/test_live_single_channel.py`
