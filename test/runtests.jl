@@ -164,6 +164,17 @@ end
         include("enact_uses_llm_agent.jl")
     end
 
+    # 🔴 2026-08-29 (Plan B / T3): LLM 이 낸 `tool_args` 를 거르는 자리는 오늘 이 레인에
+    # `CB.ground_tool_args` **하나뿐이다** — 디코드 시점 차단이 없고(dspy 3.3.0 의 `dspy.Tool`
+    # 에는 `strict` 필드 자체가 없다) 두 번째 방어선 `grammar_ground_check` 는
+    # `RespecProposal` 을 받아 tool 레인을 못 본다. 그러니 이 게이트가 약하면 방어선이 없는
+    # 것과 같다. 재는 것 둘: (a) 판정이 **삼상이고 셋 다 도달 가능한가**(둘만 닿으면 그것은
+    # 거짓말이 하나 든 이상 상태다), (b) 🔴 spec §4-1 — `reject` 가 **결정을 지우지 않는가**
+    # (매크로는 그대로 `truth.robot` 으로 집행된다). 서비스는 안 부른다 — 8077 요청 0건.
+    @testset "tool args grounding — 삼상 판정" begin
+        include("tool_args_grounding.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin

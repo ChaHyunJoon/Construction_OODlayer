@@ -338,6 +338,15 @@ function handle_ood!(env, truth, nl)
         "tool_agent"         => _tgt.tool_agent,
         "enact_agent"        => (_tgt.agent === nothing ? nothing : string(_tgt.agent)),
         "enact_agent_source" => _tgt.source,
+        # ---- 접지 판정 (2026-08-29, Plan B / T3, 컨트롤러 판정 R9) ----------------------
+        # 🔴 spec §9-2 의 키는 `verify` 하나이고 값은 **삼상**이다:
+        #   "admit"              재서 통과했다(참조된 것이 실재한다)
+        #   "reject:<reason>"    재서 어긋났다     예: "reject:ungrounded_agent"
+        #   "deferred:<reason>"  **못 쟀다**       예: "deferred:no_tool_call"
+        # `deferred` 를 `admit` 으로 접지 않는다 — "잴 것이 없었다" 를 통과로 세면 접지
+        # 통과율을 세는 사람이 NOOP(인자가 `reason` 뿐인 `no_intervention`)을 통과로 센다.
+        # 새 키를 발명하지 않는다(R9): 접지 실패도 이 키에 `reject:ungrounded_<param>` 로 싣는다.
+        "verify"             => _tgt.verify,
         "enacted"  => decision.enacted,
         "rule"     => decision.rule_macro,
         "llm"      => decision.llm_macro,

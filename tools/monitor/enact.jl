@@ -60,7 +60,7 @@ function _arm_overridden(router)
 end
 
 """
-    enact_target(env, truth, tool_lane, router) -> (; agent, source, tool_agent)
+    enact_target(env, truth, tool_lane, router) -> (; agent, source, tool_agent, verify)
 
 **누구에게 집행할 것인가**를 정한다. Plan B 의 분수령이 이 함수다 — 여기가 `truth.robot` 을
 돌려주면 집행은 주입기가 이미 아는 값을 쓰는 것이고, LLM 의 tool 호출은 세계에 대해
@@ -68,10 +68,34 @@ end
 
 규칙 (브리프 커밋 3 + 컨트롤러 판정 R16):
  0. 이 결정의 팔이 강제/이탈로 갈아 끼워졌으면(`_arm_overridden`) tool 레인을 **안 본다**.
- 1. `tool_lane["tool_args"]["agent"]` 가 **문자열**이고
- 2. `CB.resolve_agent_id(env, 그 문자열)` 이 `nothing` 이 아니면 → 그것을 쓴다. source `"tool"`.
- 3. 아니면 `truth.robot`(있으면). source `"truth"`.
- 4. `truth` 에 `robot` 이 없으면 agent `nothing`, source `"none"`.
+ 1. **접지 판정이 `"admit"` 이고**(`CB.ground_tool_args`, 2026-08-29 T3) — 즉 tool 호출이
+    실재하고 그 인자가 실재하는 것을 가리키고 —
+ 2. `tool_lane["tool_args"]["agent"]` 가 **문자열**이고
+ 3. `CB.resolve_agent_id(env, 그 문자열)` 이 `nothing` 이 아니면 → 그것을 쓴다. source `"tool"`.
+ 4. 아니면 `truth.robot`(있으면). source `"truth"`.
+ 5. `truth` 에 `robot` 이 없으면 agent `nothing`, source `"none"`.
+
+🔴 **접지 판정(T3) — `verify` 를 같이 낸다.** spec §9-2 의 결정-행 키 `verify` 는 정확히
+삼상이다(`"admit"` | `"reject:<reason>"` | `"deferred:<reason>"`). 오늘 이 레인에서 `tool_args`
+를 거르는 자리는 `CB.ground_tool_args` 하나뿐이므로(디코드 시점 차단이 없다 — spec §8 의
+2026-08-29 정정), 그 판정이 집행 조건에 **실제로 들어간다**: `admit` 이 아니면 tool 의 agent 를
+쓰지 않는다.
+
+⚠️ **왜 `resolve_agent_id` 검사만으로 부족한가.** 열거 밖 문자열은 resolver 만으로도 이미
+폴백한다. 그러나 `tool_called` 값이 없는 채 `tool_args` 만 실려 온 레인(8키는 **항상 존재**하고
+값만 `nothing` 일 수 있다 — T1 소비자 규칙 1)에서는 agent 가 **실재해도** 그것을 어느 tool
+호출에 귀속시킬 수 없다. 판정은 `deferred:no_tool_call` 이고, 그 판에서 집행이 그 agent 를 쓰면
+**기록되지 않은 호출의 인자로 세계가 바뀐다.** `verdict == "admit"` 조건이 하중을 받는 자리가
+정확히 거기다(`test/tool_args_grounding.jl` (5)(b) 가 그 변이를 잡는다).
+
+🔴 **`reject` 는 결정을 지우지 않는다 (spec §4-1).** `reject`/`deferred` 는 "tool 레인이
+실패했다" 이지 "결정이 사라졌다" 가 아니다 — 매크로 결정은 그대로 서고 그대로 집행된다
+(`truth.robot` 으로). 여기서 예외를 던지거나 결정을 비우면 그것이 결함이다.
+
+⚠️ **R16 과 `verify` 는 다른 축이다.** 강제/이탈 판에서도 `verify` 는 **인자에 대한 사실**을
+그대로 낸다(실재 id 면 `"admit"`). 그 판에서 tool 의 agent 를 안 쓴다는 사실은
+`enact_agent_source == "truth"` 가 나른다. 두 축을 한 필드에 섞으면 "인자가 틀렸다" 와 "팔이
+강제됐다" 가 같은 관측이 된다.
 
 🔴 **폴백은 반드시 기록된다 (컨트롤러 판정 R2/R6).** 조용히 떨어지면 "LLM 이 골랐다" 와
 "주입기가 알려줬다" 가 **같은 관측**이 되고, Plan B 가 재려는 것 자체가 측정 불가가 된다.
@@ -99,19 +123,28 @@ end
 """
 function enact_target(env, truth, tool_lane, router)
     # 값을 본다 — 키 존재가 아니라. `tool_lane` 자체가 없을 수도 있는 호출자를 위해 get 을 쓴다.
+    local tc = tool_lane === nothing ? nothing : get(tool_lane, "tool_called", nothing)
     local ta = tool_lane === nothing ? nothing : get(tool_lane, "tool_args", nothing)
     local raw = ta isa AbstractDict ? get(ta, "agent", nothing) : nothing
     local tool_agent = raw isa AbstractString ? String(raw) : nothing
+    # 🔴 접지 판정(T3). 순수 함수이고 삼상이다. 판정 자체는 R16 과 무관하게 **항상** 잰다 —
+    # 그것이 인자에 대한 사실이기 때문이다(위 docstring 의 두 축 분리).
+    # 판정기가 죽으면 그것도 "못 쟀다" 이지 "통과" 가 아니다(`admit` 으로 접지 않는다).
+    local verify = try
+        CB.ground_tool_args(env, tc, ta)[1]
+    catch e
+        "deferred:ground_check_error"
+    end
     # R16: 팔이 강제/이탈로 갈아 끼워진 판에서는 tool 레인의 agent 를 **쓰지 않는다.**
     local same_arm = !_arm_overridden(router)
-    # 접지: 열거에 **정확히 있는** 문자열만 통과한다(`CB.resolve_agent_id`, 파싱 없음).
-    local hit = (same_arm && tool_agent !== nothing) ?
+    # 접지: 판정이 `admit` 이고 열거에 **정확히 있는** 문자열일 때만 통과(파싱 없음).
+    local hit = (same_arm && verify == "admit" && tool_agent !== nothing) ?
         (try CB.resolve_agent_id(env, tool_agent) catch; nothing end) : nothing
     hit !== nothing &&
-        return (agent = hit, source = "tool", tool_agent = tool_agent)
+        return (agent = hit, source = "tool", tool_agent = tool_agent, verify = verify)
     hasproperty(truth, :robot) &&
-        return (agent = truth.robot, source = "truth", tool_agent = tool_agent)
-    return (agent = nothing, source = "none", tool_agent = tool_agent)
+        return (agent = truth.robot, source = "truth", tool_agent = tool_agent, verify = verify)
+    return (agent = nothing, source = "none", tool_agent = tool_agent, verify = verify)
 end
 
 """

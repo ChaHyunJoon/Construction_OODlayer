@@ -197,6 +197,72 @@ function resolve_agent_id(env, s::AbstractString)
 end
 
 """
+    ground_tool_args(env, tool_called, tool_args) -> (verdict::String, detail::String)
+
+LLM 이 낸 **tool 인자가 실재하는 것을 가리키는가**를 잰다. 오늘 이 레인에서 인자를 거르는
+자리는 **여기 하나뿐이다**(2026-08-29, Plan B / T3).
+
+🔴 왜 이 층이 필요한가 (spec §8 의 2026-08-29 정정 = 실측 셋)
+--------------------------------------------------------------
+ 1. **디코드 시점 차단이 이 레인엔 없다.** `format_as_litellm_function_call()` 이 내는
+    `parameters` 에는 `strict` 도 `additionalProperties` 도 없고, dspy 3.3.0 의 `dspy.Tool`
+    에는 `strict` 필드 **자체가 없다**. 모델은 살아 있는 id 만 담긴 enum 을 **보지만**,
+    보여준 것이지 강제된 것이 아니다.
+ 2. 두 번째 방어선(`grammar_ground_check`, `verifier.jl:654`)은 실재하지만 그것은
+    `RespecProposal` 을 받는다 — **tool 레인을 못 본다.**
+그래서 프롬프트 채널에 환각 방어를 기대면 안 된다. 이 함수가 그 자리다.
+
+🔴 **판정은 정확히 삼상이다** (spec §9-2 — 이 레포가 여러 번 데인 자리):
+
+    "admit"                  검사했고 참조된 것이 전부 실재한다
+    "reject:<reason>"        검사했는데 어긋났다        예: "reject:ungrounded_agent"
+    "deferred:<reason>"      **못 쟀다**                예: "deferred:no_tool_call"
+
+🔴 **`deferred` 를 `admit` 으로 접지 마라.** "재서 통과했다" 와 "잴 것이 없었다" 는 다른
+사건이다. 특히 `no_intervention` 은 인자가 `reason` 뿐이라 접지할 것이 아예 없다 —
+그것은 `admit` 이 아니라 **`deferred:no_groundable_param`** 이다. 공허한 참을 통과로
+기록하면 나중에 "접지 통과율" 을 세는 사람이 NOOP 을 통과로 센다.
+
+어떤 파라미터가 접지 대상인가
+-----------------------------
+오늘 tool 알파벳(`llm_service/tool_registry.py`)에서 접지 가능한 파라미터는 **`"agent"` 하나**다
+(`swap_body`·`deliver_battery` 가 받고, `no_intervention` 은 `reason` 만 받는다). 그래서 이
+함수는 **tool 이름표가 아니라 인자 dict 에 `"agent"` 키가 실려 왔는가**로 판정한다 — 파이썬의
+`MACRO_TO_TOOL`/`_FUNCS` 표를 Julia 에 손으로 복사하면 두 벌이 조용히 갈리기 때문이다
+(`_needs_agent` 가 손으로 든 집합을 없앤 것과 같은 이유). 접지 대상 파라미터가 늘면 그때
+여기에 그 키를 더한다.
+
+판정 규칙 — 전부 **값**으로 본다(`haskey` 는 값이 실려 왔다는 증거가 아니다, T1 소비자 규칙 1):
+
+  * `tool_called` 가 문자열이 아니거나 비었다 → `deferred:no_tool_call`
+  * `tool_args` 가 dict 이 아니다             → `deferred:no_tool_args`
+  * dict 에 `"agent"` 값이 없다               → `deferred:no_groundable_param`
+  * `"agent"` 값이 있는데 `resolve_agent_id` 가 `nothing` 을 낸다(문자열이 아닌 경우 포함)
+                                              → `reject:ungrounded_agent`
+  * 그 외                                     → `admit`
+
+⚠️ **이 함수는 순수하다 — 판정만 하고 아무것도 안 고친다.** 세계도 인자도 안 건드린다.
+집행이 이 판정을 어떻게 쓰는지는 `tools/monitor/enact.jl` 의 `enact_target` 에 있다.
+"""
+function ground_tool_args(env, tool_called, tool_args)
+    (tool_called isa AbstractString && !isempty(tool_called)) ||
+        return ("deferred:no_tool_call", "tool_called=" * repr(tool_called))
+    tool_args isa AbstractDict ||
+        return ("deferred:no_tool_args",
+                "tool=" * tool_called * " tool_args=" * repr(tool_args))
+    raw = get(tool_args, "agent", nothing)
+    raw === nothing &&
+        return ("deferred:no_groundable_param",
+                "tool=" * tool_called * " args=[" *
+                join(sort!(String[string(k) for k in keys(tool_args)]), ",") * "]")
+    hit = raw isa AbstractString ? resolve_agent_id(env, String(raw)) : nothing
+    hit === nothing &&
+        return ("reject:ungrounded_agent",
+                "tool=" * tool_called * " agent=" * repr(raw) * " 는 열거에 없다")
+    return ("admit", "tool=" * tool_called * " agent=" * repr(raw))
+end
+
+"""
     open_node_descriptors(env) -> Vector{Dict{String,String}}
 
 Schedulable MILESTONE nodes the model can put a ForbidWindow on,
