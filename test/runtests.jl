@@ -153,8 +153,9 @@ end
         include("service_decide_ships_zones.jl")
     end
 
-    # 2026-08-29 (Plan B / T1): DSPy 서비스가 이미 내던 tool 레인 키 8개를 Julia 의
-    # `policy_entry` 가 전부 떨어뜨리고 있었다. 이 게이트는 그 8개가
+    # 2026-08-29 (Plan B / T1 · T-C): DSPy 서비스가 이미 내던 tool 레인 키를 Julia 의
+    # `policy_entry` 가 전부 떨어뜨리고 있었다. (T-C 가 `tool_choice` · `text_rescue` 를 더해
+    # **여덟에서 열**이 됐다.) 이 게이트는 그 열 개가
     # `decide_all(...).tool_lane` 까지 **값까지 그대로** 오는지, 그리고 spec §9-2 의 삼상
     # (`nothing`="못 쟀다" ≠ `false`="재서 어긋났다")이 언어 경계에서 살아남는지 잰다.
     # 바로 위 게이트와 **같은 패턴**이다 — 루프백에 진짜 HTTP 서버를 띄우고 `DSPY_URL` 을
@@ -163,6 +164,23 @@ end
     # (그 함정이 위 게이트를 이 배선 안에서 통째로 에러로 만든 이력이 있다).
     @testset "tool lane keys survive to decide_all" begin
         include("tool_lane_keys_survive.jl")
+    end
+
+    # 🔴 2026-08-29 (Plan B / T-C): `tool_choice="required"` 는 공짜가 아니다 — 컨트롤러가 같은
+    # 요청·같은 빌드로 그 손잡이만 갈라 유료 2콜을 냈고, 강제 판에서 프로바이더가 message
+    # content 를 **비웠다**(`reasoning=""` · `expressible=null` · `chosen=""` → coerced NOOP,
+    # **예외 없음**). 그래서 강제는 라우터가 **familiar 라고 실제로 잰** 사건에만 건다.
+    # 🔴 함정: `route_verdict` 는 세 사건("교정 없음" · "descriptors 없음" · "재서 익숙하다")을
+    # `novel == false` 라는 **한 값으로 접고 있었다.** 이 워킹트리에는 교정 JSON 이 없으므로
+    # `novel` 만 보고 강제하면 **전 사건이 강제되어** `expressible` 이 통째로 사라진다 —
+    # 사용자가 명시적으로 원하지 않는다고 말한 상태. `novelty_measured` 가 그 붕괴를 푼다
+    # (선례: 같은 파일의 `surrogate_support_measured`, F4 — `supported` 옆의 "쟀는가").
+    # 이 게이트가 재는 것 넷: `tool_choice_for` 진리표 3상태 전수 · `novelty_measured` 의 세
+    # 분기 · 🔴 **나가는 요청 본문**(합성 감지기를 설치해 novelty 축을 실제로 재게 만든 뒤
+    # familiar/novel 두 판을 나란히 잰다) · `service_decide` 의 적재 규약.
+    # 위 두 게이트와 같은 루프백 패턴이다 — 8077 로 나가는 요청 0건 = 유료 호출 0건.
+    @testset "router-gated tool_choice" begin
+        include("tool_choice_gate.jl")
     end
 
     # 🔴 2026-08-29 (Plan B / T2): **이 계획의 분수령**을 지키는 게이트. T2 이전까지 집행

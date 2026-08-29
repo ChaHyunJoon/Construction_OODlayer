@@ -1,6 +1,11 @@
 # =============================================================================
-# tool 레인 키 8개가 서비스 응답 → `policy_entry` → `decide_all(...).tool_lane` 까지
-# **살아서** 도착하는지 못박는다. (2026-08-29, Plan B / T1)
+# tool 레인 키 **열 개**가 서비스 응답 → `policy_entry` → `decide_all(...).tool_lane` 까지
+# **살아서** 도착하는지 못박는다. (2026-08-29, Plan B / T1 · T-C)
+#
+# 🔴 T-C(2026-08-29)가 여덟에 **둘을 더했다**: `tool_choice`(이 요청의 첫 시도에 실제로 실린
+# 레짐 표식)와 `text_rescue`(강제가 텍스트 채널을 비웠고 그것을 두 번째 호출로 되찾았는가,
+# **삼상**). 개수를 이 파일이 손으로 들고 있는 자리는 (0)절 한 곳뿐이고, 나머지는 전부
+# `TOOL_LANE_KEYS` 를 돈다.
 #
 # 무엇을 지키는가
 # ----------------
@@ -54,8 +59,13 @@
 #      라운드 1 의 픽스처는 여덟 중 **둘**(`macro_tool_agree` · `tool_lane_error`)만 null 로
 #      보냈다. 그래서 `expressible` 에 `something(x, false)` 를 씌워도 79개 어서션이 **전부
 #      초록**이었다 — 삼상 계약이 그 키에서만 조용히 죽는다. 서비스가 실제로 `null` 을 낼 수
-#      있는 키는 넷(`tool_called` · `expressible` · `tool_lane_error` · `macro_tool_agree`)
-#      이고, `:decline` 시나리오가 그 넷을 **동시에** null 로 보낸다.
+#      있는 키는 **여섯**(`tool_called` · `expressible` · `tool_lane_error` ·
+#      `macro_tool_agree` · `tool_choice` · `text_rescue`)이고, `:decline` 시나리오가 그
+#      여섯을 **동시에** null 로 보낸다.
+#      🔴 뒤의 둘이 T-C 가 더한 것이다. `tool_choice === nothing` = **강제를 안 했다**(옛 레짐
+#      또는 라우터가 novelty 를 못 쟀거나 낯설다고 판정한 사건), `text_rescue === nothing` =
+#      **붕괴가 없었다**. 둘 다 `false` 로 접히면 안 된다 — `text_rescue == false` 는
+#      "붕괴했는데 못 살렸다" 라는 **전혀 다른 사건**이다(spec §9-2).
 #      ⚠️ `native_fc` 는 그 넷에 **없다.** 검증자 실측(2026-08-28): `None` 은 `native_fc_active`
 #      안에서 예외가 나야 나오는데 `_startup()` 이 늘 `_configure_dspy()` 를 먼저 돌리므로
 #      **어떤 서비스 응답도 `native_fc: null` 을 못 만든다**. 그래서 여기서 세 번째 상태를
@@ -118,7 +128,10 @@ const _LANE_FULL = Dict{String,Any}(
     "expressible" => true,
     "native_fc" => true,
     "tool_lane_error" => "tool-call parse failed: unterminated JSON",
-    "macro_tool_agree" => true)
+    "macro_tool_agree" => true,
+    # T-C: 강제 판이고, 그 강제가 텍스트 채널을 비웠지만 구제가 되찾았다.
+    "tool_choice" => "required",
+    "text_rescue" => true)
 
 # (2) 를 위해 **삼상의 왼쪽 끝**을 실제로 보낸다: 두 키를 `null` 로. `nothing` 은 JSON3.write
 # 가 `null` 로 직렬화한다.
@@ -143,7 +156,12 @@ const _LANE_DECLINED = Dict{String,Any}(
     "expressible" => nothing,
     "native_fc" => false,
     "tool_lane_error" => nothing,
-    "macro_tool_agree" => nothing)
+    "macro_tool_agree" => nothing,
+    # 🔴 T-C: 거절 행은 **강제하지 않은 판**에서만 나온다(강제 판에서 C8 ② 는 원리상 관측되지
+    #    않는다 — `dspy_service.py` 의 소비자 규칙 ⑤). 그래서 이 둘도 `nothing` 이고,
+    #    그것이 이 시나리오가 여섯 번째·다섯 번째 null 을 실제로 보내는 자리다.
+    "tool_choice" => nothing,
+    "text_rescue" => nothing)
 
 # 🔴 매크로 이름 리터럴을 쓰지 않는다 (2026-08-29 수정 라운드, F6). 이 레포의 규칙은
 #    `test/policy_macro_binding.jl:134` 에 적혀 있다 — 어휘 이름을 테스트에 적으면 그 파일이
@@ -319,7 +337,7 @@ function _assert_lane_values(tl, want)
 end
 
 try
-    @testset "tool 레인 키 8개가 decide_all 까지 살아온다" begin
+    @testset "tool 레인 키 열 개가 decide_all 까지 살아온다" begin
 
     @testset "(0) 전제 — 이 게이트가 실제로 서비스를 부르는 설정인가" begin
         # `policy.jl` 의 삼항식은 세 조건이 **모두** 참이면 `service_decide` 를 통째로
@@ -328,7 +346,7 @@ try
         @test !(POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
                 get(ENV, "DEMO_ALL_POLICIES", "1") == "0")
         # 여덟이라는 사실도 여기서 못박는다 — 목록이 조용히 줄면 나머지 검사가 그만큼 덜 잰다.
-        @test length(TOOL_LANE_KEYS) == 8
+        @test length(TOOL_LANE_KEYS) == 10
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_FULL))
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_DECLINED))
         # 픽스처의 매크로 이름이 **정말 레지스트리에서 왔는가**(F6). 둘이 같으면 아래
@@ -434,6 +452,15 @@ try
         @test tl["expressible"] !== false
         @test tl["tool_lane_error"] === nothing
         @test tl["macro_tool_agree"] === nothing
+        # ---- T-C 가 더한 둘도 **이름으로** 못박는다 -----------------------------------------
+        # 🔴 `nothing` 이지 `""`·`false` 가 아니다. `text_rescue` 는 특히 위험하다 — `false` 로
+        #    접히면 "붕괴가 없었다" 가 "붕괴했는데 못 살렸다" 로 둔갑해, 이 레인의 손실률이
+        #    **전 사건에서 100%** 로 읽힌다.
+        @test tl["tool_choice"] === nothing
+        @test tl["tool_choice"] != ""
+        @test tl["text_rescue"] === nothing
+        @test tl["text_rescue"] !== false
+        @test tl["text_rescue"] !== true
         # ---- F5: `tool_args` 는 **null 이 아니다** ------------------------------------------
         # 서비스의 `_first_tool_call` 이 호출이 없으면 `{}` 를 낸다. 그러므로 이 층에서
         # "tool 을 안 불렀다" 를 가르는 키는 `tool_called` 하나뿐이고, `tool_args` 의 빈 여부가

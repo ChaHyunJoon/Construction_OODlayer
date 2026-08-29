@@ -545,6 +545,18 @@ class MacroRequest(BaseModel):
     #     게이트: `test_zone_channel.py::test_zones_survives_the_pydantic_boundary`.
     zones: Optional[List[Dict[str, Any]]] = None
     valid: Optional[List[str]] = None
+    # tool_choice : **이 사건에 대해 호출자가 정한** tool 강제 여부 (2026-08-29, Plan B / T-C).
+    #   `"required"` = 이 요청은 tool 호출을 요구한다 · `None`/없음 = 요구하지 않는다(그러면
+    #   `_ask` 가 그 키를 프로바이더 요청에 **아예 안 싣는다** = 2026-08-29 이전과 바이트 동일).
+    #   유도는 호출자에 있다 — `tools/monitor/policy.jl` 의 `tool_choice_for`(의존성 0 순수
+    #   함수)가 `novelty_measured`·`novel` 둘만 보고 정한다. 서비스는 그것을 **재유도하지
+    #   않는다**: 라우터의 novelty 판정은 여기 없다.
+    #   🔴 우선순위는 `tool_choice(req)` 가 정한다 — **환경변수가 이기고**, 없을 때만 이 값을
+    #      쓴다. `DSPY_TOOL_CHOICE` 는 사람이 잡는 양방향 킬스위치이기 때문이다.
+    #   ★ 선언하지 않으면 pydantic 이 **조용히 버린다**. 그러면 호출자가 실어 보내도 서비스는
+    #     못 보고, 모든 사건이 "요청이 강제를 안 했다"로 굳는다 — 원인이 호출자에 있는 것처럼
+    #     보인다. 이 레포가 `total_nodes`(위)에서 이미 밟은 함정이다.
+    tool_choice: Optional[str] = None
 
 
 _SURRO_INSTANCE = "live"        # 요청 하나 = instance 하나. `choose`/`predict_delta_J` 의 그룹 키.
@@ -981,21 +993,53 @@ _FC_IN, _FC_OUT, _EXPR = "tools", "action", "expressible"
 #    된다. 그래서 아래 `_ask` 는 `if tools:` 안에서만 이 값을 싣는다 — C8 축약(메뉴가 빈
 #    요청)과 §4-1 구제 호출(`tools=None`)이 둘 다 자동으로 제외된다.
 TOOL_CHOICE_ENV = "DSPY_TOOL_CHOICE"
-TOOL_CHOICE_DEFAULT = "required"
+# 🔴 2026-08-29 (Plan B / T-C): `"required"` 였다. **무조건 강제는 실측으로 반증됐다.**
+#    컨트롤러가 같은 요청·같은 빌드로 `DSPY_TOOL_CHOICE` 만 갈라 유료 2콜을 냈고, `required`
+#    판에서 프로바이더가 tool 호출만 내고 message content 를 **비웠다**:
+#      chosen  Replace -> NOOP (`coerced=True`) · reasoning 180자+ -> `""`
+#      expressible  true -> null · tool_called  null -> "no_intervention"
+#      error / tool_lane_error 는 **양쪽 다 null** — 예외가 안 난다.
+#    즉 텍스트 OutputField 전부가 빈 채로 파싱되고, spec §4-1 의 `AdapterParseError` 구제는
+#    **발화조차 하지 않는다.** 모델이 마음을 바꾼 게 아니라 **채널이 없다.**
+#    ⟹ 기본값은 `None`(안 보냄)이고, 강제는 **요청이 사건마다 정한다**(`MacroRequest.tool_choice`,
+#      유도는 `policy.jl` 의 `tool_choice_for`). 그리고 강제한 사건에서 텍스트 채널이 무너지면
+#      아래 `macro()` 의 텍스트 구제가 두 번째 호출로 그것을 되찾는다(`text_rescue`).
+TOOL_CHOICE_DEFAULT = None
 
 
-def tool_choice():
+def tool_choice(req=None):
     """이 요청에 실을 `tool_choice` 값. `None` 이면 **그 키를 아예 안 보낸다.**
 
-    🔴 되돌리는 법(비교 판을 돌리는 법)은 **로직 편집이 아니라 환경변수 하나다**:
-    `DSPY_TOOL_CHOICE=""` 로 두면 2026-08-29 이전과 **바이트 단위로 같은 요청**이 나간다
-    (키 자체가 없다). `DSPY_TOOL_CHOICE=auto` 는 그것과 다르다 — 프로바이더 기본값과 의미는
-    같아도 요청에 키가 실리고, 그 사실이 응답의 `tool_choice` 에 남아 두 판이 구별된다.
+    **우선순위는 환경변수 > 요청 > 기본값(`None`)이다.**
+
+      · `os.environ[TOOL_CHOICE_ENV]` 가 **존재하면** 그 값이 이긴다 — 요청이 무엇을 실었든.
+        사람이 잡는 **양방향 킬스위치**라 그렇다: `""` 면 `None`(키 자체를 안 보냄 =
+        2026-08-29 이전과 바이트 동일), `"required"` 면 라우터가 뭐라 했든 전부 강제.
+        ⚠️ 판정은 `os.environ.get(...) is not None` 이지 truthiness 가 **아니다** — 빈
+        문자열은 "안 걸었다" 가 아니라 "끄라고 걸었다" 이고, 그 둘을 접으면 킬스위치의 OFF
+        방향이 사라진다.
+      · 환경변수가 **아예 없으면** `req.tool_choice` 를 쓴다. 그 값은 호출자가 사건마다
+        계산한 것이다(`policy.jl` 의 `tool_choice_for` — novelty 를 **실제로 재서** familiar
+        인 사건에만 `"required"`).
+      · 둘 다 없으면 `TOOL_CHOICE_DEFAULT` = `None` = 안 보낸다.
+
+    🔴 되돌리는 법(비교 판을 돌리는 법)은 **로직 편집이 아니라 환경변수 하나다** — 그리고 이
+    문단은 기본값이 `None` 이 된 뒤에도 여전히 참이다(검증함). `DSPY_TOOL_CHOICE=""` 로 두면
+    호출자가 무엇을 실어 보내든 2026-08-29 이전과 **바이트 단위로 같은 요청**이 나간다(키
+    자체가 없다). 달라진 것은 그 환경변수를 **안 걸었을 때의 동작**이다: 예전에는 무조건
+    `"required"` 였고 지금은 **요청이 정한다.**
+    `DSPY_TOOL_CHOICE=auto` 는 `""` 와 다르다 — 프로바이더 기본값과 의미는 같아도 요청에 키가
+    실리고, 그 사실이 응답의 `tool_choice` 에 남아 두 판이 구별된다.
 
     호출 시점에 읽는다(모듈 상수로 굳히지 않는다) — `synthesize.synthesis_enabled()` 와 같은
     규약이라 시험이 monkeypatch 로 두 레짐을 다 돌릴 수 있다.
     """
-    return os.environ.get(TOOL_CHOICE_ENV, TOOL_CHOICE_DEFAULT).strip() or None
+    v = os.environ.get(TOOL_CHOICE_ENV)
+    if v is None:
+        v = getattr(req, "tool_choice", None)
+        if v is None:
+            v = TOOL_CHOICE_DEFAULT
+    return (v.strip() or None) if isinstance(v, str) else None
 
 
 def _first_tool_call(action):
@@ -1075,7 +1119,7 @@ def macro(req: MacroRequest):
     #    싣는다 -> None). `tools_offered` 와 같은 규약으로 첫 시도를 기록한다 — 아래 §4-1
     #    구제 호출은 tool 없이 다시 묻지만 이 값은 첫 시도의 것을 그대로 나른다. 그래야
     #    "이 결정이 어느 레짐에서 났는가" 가 한 행 안에서 읽힌다.
-    tool_choice_sent = tool_choice() if tools else None
+    tool_choice_sent = tool_choice(req) if tools else None
     pred, err, tool_lane_err = None, None, None
     try:
         pred = _ask(prog, sig, line, valid, tools, tool_choice_sent)
@@ -1116,14 +1160,82 @@ def macro(req: MacroRequest):
     except Exception as e:                      # 서비스가 죽지 않게: 줄리아가 canonical 로 폴백할 수 있도록 표시
         err = "%s: %s" % (type(e).__name__, e)
 
+    # ---- 텍스트 채널 붕괴 구제 (Plan B / T-C, 2026-08-29, spec §4-1) -------------------------
+    # 🔴 무엇을 구제하나. `tool_choice="required"` 를 실은 요청에서 프로바이더는 tool 호출만
+    #    내고 **message content 를 비운다**(컨트롤러의 짝지은 유료 A/B 실측 — 같은 요청·같은
+    #    빌드로 그 손잡이만 갈랐다). 그러면 텍스트 OutputField **전부**(`reasoning` · `macro` ·
+    #    `expressible` · `ranking` · `margin`)가 빈 채로 파싱되고, `chosen == ""` 이 아래
+    #    `coerced` 분기에서 NOOP 이 된다. 🔴 **예외가 안 난다** — 그래서 위 §4-1 의
+    #    `AdapterParseError` 구제는 이 사건에서 **발화조차 하지 않는다.** 별도의 감지가 필요하다.
+    #
+    # 🔴 감지는 **강등·`coerced` 계산 전**에 한다. 그 아래로 내려가면 `chosen` 이 이미 NOOP 으로
+    #    덮여 빈 문자열이라는 사실이 사라진다("모델이 NOOP 을 골랐다" 와 구별 불가가 된다).
+    #
+    # 🔴 `tool_lane_err is None` 을 같이 본다. 브리프의 발화 조건은 *"1차 시도의 `macro` 가 빈
+    #    문자열"* 인데, `AdapterParseError` 분기에서는 **1차 시도가 pred 를 못 냈다** — 지금
+    #    손에 있는 `pred` 는 이미 구제 호출(2차)의 것이다. 거기서 또 발화시키면 §4-1 구제가
+    #    방금 물은 것을 leg 하나 더 태워 다시 묻는 것이고, 게다가 그 구제가 `_EXPR` 를 지운
+    #    이유(그 필드가 파싱에 실패했다)가 여기서는 그대로 살아 있으므로 같은 실패를 다시 밟는다.
+    #
+    # 🔴 **`_EXPR` 는 지우지 않는다.** §4-1 구제가 지우는 이유는 *거기서는 `expressible` 자체가
+    #    파싱에 실패했기* 때문이다. 여기는 다르다 — **아무것도 실패하지 않았고 content 가
+    #    없었을 뿐이다.** `expressible` 을 되찾는 것이 이 구제의 목적 절반이다(그것이 합성
+    #    레인 T2 의 유일한 방아쇠이고, 사용자가 "사라지는 것을 원하지 않는다" 고 명시한 필드다).
+    #
+    # 🔴 **두 채널을 합치지 않는다.** 병합은 채널별로 갈린다:
+    #      1차에서 : `tool_called` · `tool_args` · `tool_calls_n`   (행동 채널)
+    #      2차에서 : `reasoning` · `macro` · `ranking` · `margin` · `expressible` (텍스트 채널)
+    #    이 순서 덕에 `macro_tool_agree` 가 **계속 측정 가능한 양**으로 남는다 — spec §4-1 이
+    #    `macro` 를 `ToolCalls` 와 별개의 OutputField 로 둔 이유가 그것이고, macro 를
+    #    `tool_called` 에서 유도하는 안은 그 측정을 정의상 1.0 으로 만들어 죽인다.
+    #
+    # 🔴 스탬프(`native_fc` · `tools_offered` · `tool_choice`)는 **1차의 것**을 그대로 나른다.
+    #    `tools_offered` 주석이 선언한 "첫 시도를 기록한다" 규약과 같다 — 그래서 여기서
+    #    `native_fc` 를 다시 재지 않는다(§4-1 구제는 재계산한다. 거기서는 시그니처가 바뀐 것이
+    #    **그 결정을 실제로 낸** 호출이기 때문이다. 여기서는 행동 채널이 여전히 1차의 것이다).
+    #
+    # 💰 비용: 구제가 발화한 사건은 leg 2개 이상이고 `_state["calls"]` 는 **+2** 다 — `_ask` 가
+    #    예측을 낸 뒤에만 증가하고 두 호출 모두 예측을 냈기 때문이다. 그 카운터의 계약은
+    #    "leg 수" 가 아니라 **"예측을 낸 호출 수"** 다(위 §4-1 블록의 같은 주석).
+    text_src = pred
+    text_rescue = None
+    if (pred is not None and tool_choice_sent is not None and tool_lane_err is None
+            and not (getattr(pred, "macro", "") or "").strip()):
+        # 🔴 C8 축약과 **같은 시그니처**(`_FC_IN`/`_FC_OUT` 만 뺀 것)로 `tools=None` · 강제 없이
+        #    다시 묻는다. `_ask` 는 `if tools:` 안에서만 `tool_choice` 를 싣도록 되어 있으므로
+        #    이 호출에는 그 키가 구조적으로 안 실린다(tool 0개 + tool_choice = 프로바이더 400).
+        try:
+            text_src = _ask(prog, prog.signature.delete(_FC_IN).delete(_FC_OUT),
+                            line, valid, None)
+        except Exception:
+            # 🔴 `err` 에 넣지 않는다. 넣으면 `policy.jl` 의 `policy_entry` 가 `error !== nothing`
+            #    을 보고 이 레인을 통째로 `available=false` 로 버려, 1차가 이미 낸 tool 호출까지
+            #    같이 지워진다(§4-1 이 이미 같은 이유로 그 자리를 피했다). 붕괴 사실은
+            #    `text_rescue` 가 나른다.
+            text_src = pred
+        # ---- 🔴 `text_rescue` 는 **삼상**이다 (spec §9-2). 선례는 `tool_minted`. ------------
+        #   None  = 붕괴가 없었다 (구제가 필요 없었다 / 강제 자체를 안 했다)
+        #   True  = 붕괴했고 구제가 **텍스트 채널을 되찾았다**
+        #   False = 붕괴했고 구제가 되찾지 못했다
+        # ⚠️ 세 상태를 **절대 두 개로 접지 말 것.** "강제를 안 해서 붕괴가 없었다"(None)와
+        #    "붕괴했는데 못 살렸다"(False)는 전혀 다른 사건이고, 후자만이 이 레인의 손실이다.
+        # ⚠️ 알려진 한계 — `False` 는 **두 사건을 덮는다**: (a) 구제 호출 자체가 던졌다,
+        #    (b) 호출은 됐는데 `macro` 가 또 비었다. 오늘 그 둘을 가르는 키는 **없다.**
+        #    새 키를 지어내지 않는 이유는 둘 다 소비자에게 같은 뜻("텍스트 채널을 못 되찾았다")
+        #    이기 때문이고, 그래도 **가를 수 없다는 사실 자체는 여기 적는다** — 이 레포가
+        #    반복해 데인 자리는 언제나 "접었다는 사실을 안 적은" 쪽이었다.
+        text_rescue = bool((getattr(text_src, "macro", "") or "").strip())
+
     if pred is not None:
-        chosen = (getattr(pred, "macro", "") or "").strip()
-        raw_rank = (getattr(pred, "ranking", "") or "").strip()
-        reasoning = (getattr(pred, "reasoning", "") or "").strip()
+        chosen = (getattr(text_src, "macro", "") or "").strip()
+        raw_rank = (getattr(text_src, "ranking", "") or "").strip()
+        reasoning = (getattr(text_src, "reasoning", "") or "").strip()
         # 🔴 사용자 결정 ①: `bool()` 로 **감싸지 않는다.** 어댑터는 이미 진짜 bool 로 파싱하므로
         #    (`parse_value(v, bool)`), 감싸면 파싱이 깨졌을 때 `bool("False") is True` 라
         #    **거짓 True** 가 조용히 기록된다. 못 읽었으면 None = "못 쟀다"(spec §9-2).
-        expressible = getattr(pred, _EXPR, None)
+        # 🔴 텍스트 채널 다섯은 `text_src` 에서, 행동 채널 셋은 `pred`(1차)에서. 구제가 안
+        #    돌았으면 `text_src is pred` 라 이 구분은 무비용이다.
+        expressible = getattr(text_src, _EXPR, None)
         expressible = expressible if isinstance(expressible, bool) else None
         tool_called, tool_args, n_calls = _first_tool_call(getattr(pred, _FC_OUT, None))
         # ---- R26: 강제된 호출은 집행의 근거가 아니다 ---------------------------------------
@@ -1148,7 +1260,7 @@ def macro(req: MacroRequest):
             tool_called_forced, tool_args_forced = tool_called, tool_args
             tool_called, tool_args = None, {}
         try:
-            margin = float(getattr(pred, "margin", 0.0) or 0.0)
+            margin = float(getattr(text_src, "margin", 0.0) or 0.0)
         except Exception:
             margin = 0.0
     else:
@@ -1234,6 +1346,12 @@ def macro(req: MacroRequest):
             #    (`DSPY_TOOL_CHOICE=""` 또는 tool 0개). 소스가 아니라 **그 요청**의 사실이라
             #    행 하나만 보고도 어느 세대인지 갈린다. 위 C8 주석 ⑤가 소비자 규칙이다.
             "tool_choice": tool_choice_sent,
+            # 🔴 강제가 텍스트 채널을 비웠고 그것을 두 번째 호출로 되찾았는가 (T-C, 2026-08-29).
+            #    **삼상**이다 — `None` 붕괴 없음 / `True` 되찾았다 / `False` 못 되찾았다.
+            #    선례는 `tool_minted`(`synthesize.py`)이고, 접는 순간 "강제를 안 해서 멀쩡했다"
+            #    와 "강제해서 무너졌는데 못 살렸다" 가 한 값이 된다(spec §9-2).
+            #    ⚠️ 구제가 돈 행은 `llm_calls` 가 **2 만큼** 늘어 있다(위 발화 블록의 💰 주석).
+            "text_rescue": text_rescue,
             # R26 으로 집행에서 뺀 호출의 원본. 억제가 없었으면 None/{} 다. 🔴 이것이
             # `tool_called` 자리로 돌아가면 안 된다 — 줄리아가 그 값을 집행에 먹인다.
             "tool_called_forced": tool_called_forced,
@@ -1324,7 +1442,11 @@ def decide(req: MacroRequest):
                    # ⚠️ 위 주석 줄은 `# ---- tool ` 로 시작하면 안 된다 — 줄리아 추출기는
                    #    그 모양의 표식이 이 dict 안에 **정확히 하나**일 것을 요구하고, 둘이면
                    #    게이트가 죽는다(빨간색이 아니라 추출 실패로).
-                   "tool_choice": d["tool_choice"],
+                   # 🔴 2026-08-29 (T-C): `tool_choice` 는 여기 있었고 **표식 아래로 내려갔다**
+                   #    (`text_rescue` 와 함께). 줄리아의 `TOOL_LANE_KEYS` 가 그 둘을 나르게
+                   #    됐으므로 양방향 등호가 그것을 요구한다. `tool_called_forced` ·
+                   #    `tool_args_forced` 는 **이번 범위 밖**이라 그대로 위에 남는다 —
+                   #    줄리아가 아직 안 읽는다.
                    "tool_called_forced": d["tool_called_forced"],
                    "tool_args_forced": d["tool_args_forced"],
                    # ---- tool 레인 (Plan A) ------------------------------------------------
@@ -1341,7 +1463,14 @@ def decide(req: MacroRequest):
                    "tool_calls_n": d["tool_calls_n"], "tools_offered": d["tools_offered"],
                    "expressible": d["expressible"], "native_fc": d["native_fc"],
                    "tool_lane_error": d["tool_lane_error"],
-                   "macro_tool_agree": d["macro_tool_agree"]}
+                   "macro_tool_agree": d["macro_tool_agree"],
+                   # ---- 레짐 표식 · 텍스트 구제 (Plan B / T-C, 2026-08-29) ----------------
+                   # 🔴 이 둘은 표식 **아래**다 — 줄리아의 `TOOL_LANE_KEYS` 가 그것을 나르고
+                   #    `test/tool_lane_keys_survive.jl` (6)절이 양방향 등호로 대조한다.
+                   #    (위 `# ---- 레짐 표식 · R26 기록` 주석이 `# ---- tool ` 로 시작하지
+                   #     않는 것이 중요하다 — 표식은 이 dict 안에 정확히 하나여야 한다.)
+                   "tool_choice": d["tool_choice"],
+                   "text_rescue": d["text_rescue"]}
 
     scored, err = surrogate_rank(req, valid)         # surrogate 정책(배포 SurrogateV2)
     if scored:

@@ -593,8 +593,12 @@ def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
         "`out['dspy']` 안의 `# ---- tool …` 표식이 %d 개다 -- 줄리아 추출기는 정확히 1개를 "
         "요구하고 아니면 그 게이트가 죽는다." % len(marks))
     lane = [k.value for k in d.keys if k.lineno > marks[0]]
+    # 🔴 2026-08-29 (T-C): 여덟에서 **열**이 됐다. `tool_choice` 와 `text_rescue` 가 표식
+    #    아래로 내려갔고, 같은 커밋이 줄리아의 `TOOL_LANE_KEYS` 에 그 둘을 더했다. 이 집합과
+    #    그 튜플은 (6)절이 **양방향 등호**로 대조하므로, 한쪽만 고치면 줄리아가 빨개진다.
     assert set(lane) == {"tool_called", "tool_args", "tool_calls_n", "tools_offered",
-                         "expressible", "native_fc", "tool_lane_error", "macro_tool_agree"}, lane
+                         "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
+                         "tool_choice", "text_rescue"}, lane
     allk = [k.value for k in d.keys]
     assert "tool_minted" in allk and "synthesis" in allk, (
         "합성 레인 키가 /decide 응답에서 사라졌다 -- 라이브 레인은 /decide 로만 들어온다.")

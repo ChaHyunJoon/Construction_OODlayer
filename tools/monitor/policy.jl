@@ -423,6 +423,24 @@ router_enabled() = false     # 교정 JSON 이 없어 novelty p 를 못 낸다
 **키를 지우지 않는다** — "못 쟀다"와 "안 실었다"는 다른 사건이고, 키가 없으면 소비처가 둘을
 구분할 수 없다.
 
+🔴 `novelty_measured` 는 `novel` 과 **다른 것을 주장한다** (2026-08-29, Plan B / T-C).
+같은 축의 선례가 이 파일에 이미 있다 — `surrogate_support_measured`(아래): 거기서도 `Bool`
+하나(`supported`)가 "재서 없다"와 "못 쟀다"를 같은 값으로 무너뜨렸고, 그래서 **"쟀는가"를
+옆에 따로 놓았다.** 여기가 정확히 같은 자리다:
+
+  · `novel`            = 이 사건이 낯선가. 🔴 **위 세 분기가 그것을 두 값으로 접는다** —
+                         교정 JSON 이 없어도(`!have_det`) 서술자가 없어도(`v === nothing`)
+                         `false` 다. 의미도 값도 **한 글자도 안 바꾼다**: 기존 녹화와의 비교
+                         가능성이 거기 걸려 있다(:1341 의 `would` 판정을 보존하는 것과 같은 이유).
+  · `novelty_measured` = **novelty 축을 실제로 쟀는가.** 앞의 두 분기에서 `false`, 실제 판정
+                         분기에서만 `true`.
+
+왜 이 구분이 필요한가: `tool_choice_for`(바로 아래)가 `novel == false` 만 보고 tool 호출을
+강제하면, 교정 파일이 없는 지금의 작업 트리에서 **모든 사건이 "익숙하다"로 읽혀 전부 강제된다.**
+그리고 강제는 프로바이더가 message content 를 비우게 만들어 `expressible` 을 지운다(실측:
+컨트롤러의 짝지은 유료 A/B). 즉 "못 쟀다"를 "익숙하다"로 읽는 순간, 사용자가 명시적으로 원하지
+않는다고 말한 상태 — `expressible` 이 전 사건에서 사라진 판 — 가 조용히 만들어진다.
+
 ⚠️ `v` 를 주면서 `eps` 를 생략하면 아래에서 명시적으로 에러를 던진다(2026-08-26, F5) —
 `round(nothing; digits=3)` 가 `MethodError` 로 죽는 것보다 원인이 뚜렷하다. `route()` 는 둘을
 항상 같이 넘기므로 오늘은 이 경로에 도달하지 않지만, 키워드 기본값이 `nothing`/`nothing` 인 한
@@ -442,13 +460,17 @@ function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractStr
     if !have_det
         return merge(base, Dict{String,Any}(
             "enabled" => false, "advisory" => false, "target" => policy,
-            "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
+            # 🔴 `novel => false` 는 "익숙하다"가 아니라 **"못 쟀다"** 다. 그 사실을 값으로
+            #    나르는 것은 옆의 `novelty_measured` 하나뿐이다(위 docstring).
+            "novel" => false, "novelty_measured" => false,
+            "p" => nothing, "score" => nothing, "eps" => nothing,
             "reason" => nocal))
     end
     if v === nothing
         return merge(base, Dict{String,Any}(
             "enabled" => false, "advisory" => false, "target" => policy,
-            "novel" => false, "p" => nothing, "score" => nothing, "eps" => nothing,
+            "novel" => false, "novelty_measured" => false,
+            "p" => nothing, "score" => nothing, "eps" => nothing,
             "reason" => "descriptors unavailable"))
     end
     eps === nothing && error("route_verdict: v is given but eps is nothing -- " *
@@ -460,7 +482,8 @@ function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractStr
     return merge(base, Dict{String,Any}(
         "enabled" => drives, "advisory" => !drives,
         "target" => drives ? would : policy, "would_route_to" => would,
-        "novel" => v.novel,
+        # 🔴 여기가 **유일하게** 실제로 잰 분기다.
+        "novel" => v.novel, "novelty_measured" => true,
         "p" => (isfinite(v.p) ? v.p : nothing),
         "score" => (isfinite(v.score) ? v.score : nothing),
         "eps" => eps,
@@ -471,6 +494,37 @@ function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractStr
                    "  (novelty axis advisory only — the lane is still selected by the router)" :
                    "  (advisory only — this recording enacted DEMO_POLICY=$(policy), fixed)")))
 end
+
+"""
+    tool_choice_for(; novelty_measured::Bool, novel::Bool) -> Union{Nothing,String}
+
+이 사건의 `/decide` 요청에 실을 `tool_choice` 값. `nothing` 이면 **그 키를 아예 안 보낸다**
+(= 2026-08-29 이전과 바이트 단위로 같은 요청). 의존성 0 — Bool 둘만 본다.
+
+| `novelty_measured` | `novel` | 결과 | 왜 |
+|---|---|---|---|
+| `false` | (무관) | `nothing` | **못 쟀다.** 강제는 `expressible` 을 지우므로, 모르는 채로 지우면 안 된다 |
+| `true`  | `true`  | `nothing` | **낯설다** = unfamiliar OOD. 합성 레인(T2)의 유일한 방아쇠가 `expressible == false` 라, 강제해서 그 필드를 비우면 T2 가 영원히 안 돈다 |
+| `true`  | `false` | `"required"` | **익숙하다.** 기존 tool 중 하나를 고르는 것이 전부인 사건이라, 호출을 요구해 `tool_called` 를 얻는다 |
+
+🔴 **실측이 무조건 강제를 반증했다** (2026-08-28~29, 컨트롤러의 짝지은 유료 A/B — 같은 요청 ·
+같은 빌드 · `DSPY_TOOL_CHOICE` 만 다르게). `required` 판에서 프로바이더가 tool 호출만 내고
+message content 를 **비웠다**: `reasoning=""` · `expressible=null` · `chosen==""` 이 `coerced`
+로 NOOP 이 됐다. 예외가 안 나므로 spec §4-1 의 `AdapterParseError` 구제는 **발화조차 안 한다.**
+즉 **한 번의 호출로 두 채널을 같이 받을 수 없다.** 그래서 강제는 "고를 것만 남은" 사건에만 건다.
+
+🔴 **한계 두 개 — 반드시 읽을 것.**
+
+  ① 이 게이트는 **novelty 축 하나만** 본다. 어휘 미달 축(축 1)은 `escalation_target(pol, ...)`
+     이 필요하고 `pol` 은 **바로 이 호출의 응답**에서 온다 — 요청을 만드는 시점에는 존재하지
+     않는다(순환). ⟹ **novelty 로는 familiar 인데 어휘가 미달인 사건은 그대로 강제된다.**
+  ② 원리적으로는 `/health` 의 `surro_support`(`dspy_service.py:939`, 기계가 읽는 목록)를
+     요청 **전에** 읽어 축 1 을 사전 해소할 수 있다. **이번 범위 밖이다** — 구현하지 않았고,
+     여기 한계로만 적는다.
+"""
+tool_choice_for(; novelty_measured::Bool, novel::Bool) =
+    (novelty_measured && !novel) ? "required" : nothing
+
 
 """
     route(env, truth) -> Dict
@@ -534,7 +588,7 @@ end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
 function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
-                        agents = nothing, zones = nothing)
+                        agents = nothing, zones = nothing, tool_choice = nothing)
     dspy_ready() || return nothing
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
@@ -568,7 +622,7 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #         🟡 2026-08-29 (Plan B / T1) 갱신: 이 문단의 마지막 줄은 *"`policy_entry` 는
     #         키 목록을 손으로 들고 있어 chosen·ranking·margin·rationale·scores·unsupported·
     #         label·available 여덟 개만 나른다"* 였다. **그 부분은 이제 낡았다** — `policy_entry`
-    #         가 `TOOL_LANE_KEYS`(아래) 여덟 개를 두 분기 모두에서 나르고 `decide_all` 이
+    #         가 `TOOL_LANE_KEYS`(아래, 2026-08-29 T-C 이후 **열 개**)를 두 분기 모두에서 나르고 `decide_all` 이
     #         `tool_lane` 필드로 노출한다. 🔴 **그러나 위 ③의 결론은 그대로 참이다**: 나르기만
     #         할 뿐 `RespecProposal` 까지 잇는 것은 아직 없으므로 `grammar_ground_check` 는
     #         여전히 이 레인을 못 본다. 그 연결은 T2 다.
@@ -592,6 +646,19 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    (`isempty(env.staging_circles)` 인 씬), 값 타입이 `Any` 라 pydantic 이 null 을 받고
     #    `_zones_block` 은 그 세 키를 **아예 렌더하지 않는다**. 그래서 이 채널로는 422 가 안 난다.
     zones === nothing || (payload["zones"] = zones)
+    # 라우터 게이팅된 `tool_choice`(2026-08-29, Plan B / T-C). `agents`/`zones` 와 **정확히 같은
+    # 규약**: 키워드로 받고, `nothing` 이 아닐 때만 싣는다. 안 실으면 서비스의
+    # `MacroRequest.tool_choice` 가 `None` 으로 남고 `dspy_service.tool_choice(req)` 가 `None` 을
+    # 내므로 — 즉 요청에 그 키가 안 실리므로 — **비-호출자의 요청은 바이트 단위로 예전과 같다.**
+    #
+    # 🔴 값을 여기서 정하지 않는다. 유도는 `tool_choice_for`(위, 의존성 0) 한 곳에만 있고
+    #    호출부(`decide_all`)가 `rt` 를 읽어 넘긴다 — 여기 인라인으로 다시 쓰면 검사되는 것과
+    #    실행되는 것이 갈린다(이 파일이 `policy_entry` 에서 이미 밟은 결함).
+    # 🔴 서비스 쪽 우선순위는 **환경변수 > 요청**이다(`DSPY_TOOL_CHOICE` 는 사람이 잡는
+    #    킬스위치이고 양방향이다). 그러므로 여기서 `"required"` 를 실어도 서비스 호스트에
+    #    `DSPY_TOOL_CHOICE=""` 가 걸려 있으면 강제되지 않는다 — 그 사실은 응답의 `tool_choice`
+    #    표식에 남으므로 행 하나만 보고 갈린다.
+    tool_choice === nothing || (payload["tool_choice"] = String(tool_choice))
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
@@ -1080,7 +1147,17 @@ DSPy 서비스가 `/decide` 의 `dspy` 본체에 싣는 **tool 레인 키 전부
 skip 은 같은 구멍에 단계만 더한 것이다.
 """
 const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offered",
-                        "expressible", "native_fc", "tool_lane_error", "macro_tool_agree")
+                        "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
+                        # ---- 2026-08-29 (Plan B / T-C): 레짐 표식과 그 대가 ------------------
+                        # `tool_choice`  = 이 요청의 **첫 시도**에 실제로 실린 값
+                        #                  (`"required"` | `"auto"` | … | `nothing` = 안 보냈다).
+                        #                  🔴 이것 없이 거절률(C8 ②)을 세면 두 레짐의 행이 한
+                        #                  표에 섞인다 — 강제 판에서 ②는 원리상 관측되지 않는다.
+                        # `text_rescue`  = 강제가 텍스트 채널을 비웠고, 그것을 두 번째 호출로
+                        #                  되찾았는가. **삼상**이다(spec §9-2):
+                        #                  `nothing` 붕괴 없음 / `true` 구제 성공 / `false` 실패.
+                        #                  🔴 두 값으로 접지 말 것.
+                        "tool_choice", "text_rescue")
 
 """
     _tool_args_dict(x)
@@ -1121,7 +1198,10 @@ _tool_args_dict(x) = x === nothing ? nothing :
 """
     tool_lane_fields(b) -> Vector{Pair{String,Any}}
 
-`TOOL_LANE_KEYS` 여덟 개를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
+`TOOL_LANE_KEYS` **열 개**를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
+(2026-08-29 T-C 가 `tool_choice` · `text_rescue` 를 더해 여덟에서 열이 됐다. 이 함수는 그 튜플을
+그대로 도므로 개수를 코드가 다시 들고 있지는 않다 — 하중은 `test/tool_lane_keys_survive.jl`
+(0)절의 길이 검사와 (6)절의 교차언어 등호가 진다.)
 
 🔴 **삼상 보존 (spec §9-2).** `nothing` = "못 쟀다", `false` = "재서 어긋났다". 여기서
 `something(x, false)` 나 `Bool(x)` 로 감싸면 그 계약이 죽는다. 그러므로 **아무것도 접지
@@ -1161,18 +1241,18 @@ tool_lane_fields(b) = Pair{String,Any}[k => (k == "tool_args" ?
 """
     tool_lane_view(pol, enacted) -> Dict{String,Any}
 
-`decide_all(...).tool_lane` 의 **본문 생산자**. `TOOL_LANE_KEYS` 여덟에 **출처 두 개**를 더한다.
+`decide_all(...).tool_lane` 의 **본문 생산자**. `TOOL_LANE_KEYS` 전부에 **출처 두 개**를 더한다.
 셋 다 **같은 `pol[enacted]` 항목 하나**에서 나온다 — 서로 다른 레인의 값이 한 dict 에 섞이지
 않는다는 것이 이 함수가 존재하는 이유다.
 
   · `"lane"`           = `enacted` — 실제로 결정을 낸 레인 이름
   · `"lane_available"` = `pol[enacted]["available"]` — 그 레인 항목이 성공 분기였는가
 
-🔴 **왜 더하는가** (2026-08-29 수정 라운드, F2). 여덟 키만으로는 `tool_lane[k] === nothing` 이
+🔴 **왜 더하는가** (2026-08-29 수정 라운드, F2). 레인 키만으로는 `tool_lane[k] === nothing` 이
 **세 사건을 한 값으로 뭉갠다**. 이 dict 만 읽는 소비자는 셋을 가를 수 없었다:
 
   (a) 집행 레인이 dspy 가 **아니었다** → tool 레인이 애초에 없었다.
-      (`pol["canonical"]` 등에는 여덟 키가 아예 없어 `get(..., nothing)` 이 전부 nothing 이다.)
+      (`pol["canonical"]` 등에는 그 키가 아예 없어 `get(..., nothing)` 이 전부 nothing 이다.)
   (b) 집행 레인이 dspy 인데 **그 항목이 폴백**이었다 → 레인이 돌다가 실패했다.
   (c) 집행 레인이 dspy 이고 항목도 성공인데 **서비스가 진짜 `null` 을 보냈다** → 못 쟀다.
 
@@ -1183,19 +1263,19 @@ tool_lane_fields(b) = Pair{String,Any}[k => (k == "tool_args" ?
   (c) `tool_lane["lane"] == "dspy" && tool_lane["lane_available"] === true`
 
 🔴 (b) 의 **대가를 여기 명시한다**(controller ruling R1, 그대로 둔다): 폴백 `policy_entry` 는
-여덟을 **전부 `nothing`** 으로 낸다 — 서비스가 실제로 **잰** `tool_lane_error` 문자열까지
+레인 키를 **전부 `nothing`** 으로 낸다 — 서비스가 실제로 **잰** `tool_lane_error` 문자열까지
 접힌다. 그러므로 (b) 에서 `tool_lane["tool_lane_error"] === nothing` 은 "파싱 실패가 없었다"는
 뜻이 **아니다**. 그 사건의 원문은 `policies["dspy"]["error"]` 와 서비스 응답에만 남는다.
-(a) 에서도 마찬가지로 여덟은 "서비스가 못 쟀다" 가 아니라 "이 결정과 무관하다" 를 뜻한다.
+(a) 에서도 마찬가지로 그것들은 "서비스가 못 쟀다" 가 아니라 "이 결정과 무관하다" 를 뜻한다.
 
-🔴 여덟 키는 이름도 뜻도 **안 바꾼다** — 하류(`enact.jl` 의 `enact_target`, `run_demo.jl` 의
+🔴 이 키들은 이름도 뜻도 **안 바꾼다** — 하류(`enact.jl` 의 `enact_target`, `run_demo.jl` 의
 결정 행)가 이미 읽고 있다. 더하기만 한다.
 """
 function tool_lane_view(pol, enacted)
     local e = get(pol, enacted, nothing)
     local d = Dict{String,Any}(k => (e === nothing ? nothing : get(e, k, nothing))
                                for k in TOOL_LANE_KEYS)
-    # 🔴 여덟과 **같은 항목**에서 뽑는다. `pol["dspy"]` 를 여기서 다시 읽으면 (a) 와 (c) 가
+    # 🔴 전부 **같은 항목**에서 뽑는다. `pol["dspy"]` 를 여기서 다시 읽으면 (a) 와 (c) 가
     #    도로 섞인다 — 그게 이 함수가 `pol` 과 `enacted` 를 같이 받는 이유다.
     d["lane"] = enacted
     d["lane_available"] = e === nothing ? nothing : get(e, "available", nothing)
@@ -1231,7 +1311,7 @@ function policy_entry(b, label)
                         # "NOOP 을 골랐다"와 "새 행동을 못 본다"는 전혀 다른 사건이다.
                         "unsupported" => String.(collect(get(b, :unsupported, String[]))),
                         "label" => String(get(b, :policy, label)), "available" => true,
-                        # ---- tool 레인 8키 (Plan B / T1, 2026-08-29) --------------------
+                        # ---- tool 레인 키 (Plan B / T1·T-C, 2026-08-29) ------------------
                         # 여기까지가 배선이다. 집행부가 이 값을 **쓰는** 것은 T2 의 몫.
                         tool_lane_fields(b)...)
         end
@@ -1249,7 +1329,7 @@ function policy_entry(b, label)
                                 "no training support for " * join(miss0, ",")),
                 "unsupported" => miss0, "error" => err0,
                 "label" => label, "available" => false,
-                # 🔴 폴백도 **같은 8키**를 낸다(전부 nothing). 키가 사라지면 소비자가
+                # 🔴 폴백도 **같은 키 집합**을 낸다(전부 nothing). 키가 사라지면 소비자가
                 # "레인이 안 돌았다"와 "레인이 돌았는데 값이 null 이다"를 못 가른다.
                 tool_lane_fields(nothing)...)
 end
@@ -1325,7 +1405,17 @@ function decide_all(env, truth; nl::AbstractString = "")
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
         nothing : service_decide(env, truth; nl = nl, descriptors = desc,
                                  agents = CB.open_agent_descriptors(env),
-                                 zones = CB.open_zone_descriptors(env))
+                                 zones = CB.open_zone_descriptors(env),
+                                 # 🔴 라우터가 **익숙하다고 실제로 잰** 사건에만 강제한다
+                                 #    (`tool_choice_for` 의 진리표와 그 두 한계를 읽을 것).
+                                 #    `rt` 는 바로 위 `route(env, truth)` 의 결과다 — 요청보다
+                                 #    먼저 돌아 있으므로 이 시점에 신호가 존재한다.
+                                 #    ⚠️ `get(rt, ..., false) === true` 로 읽는다: 옛 녹화를
+                                 #    재생하는 소비자처럼 키가 없을 수도 있고, 없음은
+                                 #    "못 쟀다" 로 읽어야 안전한 쪽(강제하지 않음)으로 떨어진다.
+                                 tool_choice = tool_choice_for(
+                                     novelty_measured = get(rt, "novelty_measured", false) === true,
+                                     novel = get(rt, "novel", false) === true))
 
     # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
     # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로
@@ -1635,7 +1725,7 @@ function decide_all(env, truth; nl::AbstractString = "")
     # 🔴 **`pol["dspy"]` 가 아니라 `pol[enacted]` 다.** 실제로 결정을 낸 레인이 canonical /
     #    noop / oracle / surrogate 이면 LLM 의 tool 호출은 그 결정과 **아무 상관이 없다** —
     #    `pol["dspy"]` 에서 뽑으면 canonical 이 결정한 사건에서 LLM 의 tool 인자가 집행으로
-    #    흘러드는 경로가 생긴다. 그 레인들의 dict 에는 8키가 아예 없으므로 `get(..., nothing)`
+    #    흘러드는 경로가 생긴다. 그 레인들의 dict 에는 레인 키가 아예 없으므로 `get(..., nothing)`
     #    이 전부 `nothing` 을 낸다 = "못 쟀다"(spec §9-2), `false` 가 아니다.
     #    삼분 규칙(레인이 없었다 / 레인이 실패했다 / 서비스가 null 을 냈다)과 두 출처 키는
     #    `tool_lane_view` 의 docstring 에 **한 벌만** 있다.
