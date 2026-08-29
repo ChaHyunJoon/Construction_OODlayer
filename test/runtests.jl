@@ -137,6 +137,18 @@ end
         include("service_decide_ships_agents.jl")
     end
 
+    # 2026-08-29 (Plan B / T4b): 파이썬 서비스는 `MacroRequest.zones` 를 이미 선언하고
+    # 프롬프트에 렌더하는데(5d39eebe) Julia 쪽에서 **아무도 그 값을 안 실었다** —
+    # 필드가 선언돼 있으나 휴면이었다. 이 게이트는 `decide_all` 을 실제로 실행해 나간 요청
+    # 본문의 `"zones"` 를 잰다(위 agents 게이트와 같은 루프백 서버 방식 — 8077 로는 한
+    # 요청도 안 나간다). 단독 `32 pass`. 변이 실측: payload 조립 줄 삭제 · `decide_all`
+    # 호출부 kwarg 삭제 각각 `28 pass / 2 fail / 2 error`.
+    # ⚠️ 이 파일도 agents 게이트처럼 자기 env 를 짓는다(실측: 단독 1:46 중 테스트 블록 14.6s
+    #    — 나머지는 패키지 로드 + `run_lego_demo`). 스위트 시간이 그만큼 는다.
+    @testset "service_decide ships zones" begin
+        include("service_decide_ships_zones.jl")
+    end
+
     # 2026-08-29 (Plan B / T1): DSPy 서비스가 이미 내던 tool 레인 키 8개를 Julia 의
     # `policy_entry` 가 전부 떨어뜨리고 있었다. 이 게이트는 그 8개가
     # `decide_all(...).tool_lane` 까지 **값까지 그대로** 오는지, 그리고 spec §9-2 의 삼상
