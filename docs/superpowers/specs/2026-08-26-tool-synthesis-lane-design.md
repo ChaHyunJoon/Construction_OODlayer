@@ -506,7 +506,38 @@ class SynthesizeTool(dspy.Signature):
 **못 막는다** — `shift_build(dx=2.38)` 과 `shift_build(dx=2.40)` 은 둘 다 스키마를 완벽히 통과한다.
 중복은 문법 문제가 아니라 **정체성 문제**이므로 서비스 쪽 정규화가 다룬다.
 
-#### 5-2-1. ψ 는 이미 있다 (실측 — 2026-08-26 본체 확인)
+#### 5-2-1. ψ 는 이미 있다 (실측 — 2026-08-26 본체 확인) — 🔴 **2026-08-29 반증됨**
+
+> 🔴 **2026-08-29 정정 (측정으로 반증).** 이 절의 제목과 결론 — *"합성 tool 의 `body` 가 곧 ψ
+> 벡터가 된다 — 새로 지을 것이 없다"* — 은 **거짓이다.** 아래 본문은 `psi` 가 리스트를 받는다는
+> 것까지는 맞지만, **그 리스트가 어떤 이름 공간의 이름이어야 하는지**를 틀렸다.
+>
+> 실측 (`env -u OPENAI_API_KEY .venv/bin/python`):
+>
+> ```
+> psi(['ReplaceAgent'])                                     → a_cost 1.0 · a_reversible 0.0 · …
+> psi(['release_pending_assignments','deprioritize_agent'])  → 10축 전부 0.0
+> psi(['nonsense_operation_xyz'])                            → 10축 전부 0.0     ← 구분 불가
+> psi(['release_pending_assignments']) == psi(['translate_whole_build'])  → True
+> ```
+>
+> 원인은 `features_agnostic.py:473` 의 `v = [_PRIMITIVE_TABLE[n] for n in names if n in
+> _PRIMITIVE_TABLE]` 과 그 다음 줄의 영벡터 폴백이다. `_PRIMITIVE_TABLE`(`:364`)이 들고 있는
+> 것은 **DSL 원시 8종**(ReplaceAgent · ForbidZone · SwapBattery …)이지 §2-3 인벤토리 =
+> `primitive_registry.json` 의 **운용 원시 19종**이 아니다. 모르는 이름은 조용히 걸러진다.
+>
+> **귀결 셋:** ① §5-2-2 의 ②(ψ 근접)가 구조적으로 무너진다 — 모든 합성 tool 이 서로 거리 0.
+> ② §5-2-3 의 `|K|` 곡선이 의미를 잃는다. ③ `a_reversible = 0.0` 이 "쟀더니 비가역"이 아니라
+> **"몰라서 0"** 인데, 아래 본문은 ③층이 그 축을 그대로 읽으면 된다고 적는다.
+>
+> 이 레포는 같은 결함의 **다른 가지**를 이미 고쳤다: `psi(int)` 경로는 2026-08-27 에
+> "등록 안 된 id 를 조용히 NOOP 의 ψ 로 무너뜨리지 않는다"로 `KeyError` 를 던지게 됐다
+> (`:463`). **리스트 경로는 그 수정을 안 받았다.**
+>
+> **→ 선행 작업**: (a) `primitive_registry.json` 의 각 원시에 ψ 10축 값을 싣고, (b) `psi` 의
+> 리스트 경로가 모르는 이름에 **큰 소리로 죽게** 한다. 그 둘 없이 T2 를 켜면 중복 측정이
+> 항진명제가 된다. Plan B 의 T6a.
+
 
 `wm4spacecraft_manufacturing/core/features_agnostic.py:440` 의 `psi(action)` 은
 **primitive 이름들의 리스트를 그대로 받는다.** 즉 합성 tool 의 `body` 가 곧 ψ 벡터가 된다 —
