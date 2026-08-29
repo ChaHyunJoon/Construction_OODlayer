@@ -288,3 +288,174 @@ function enact_macro!(env, truth, mac, agent)
     end
     return (enact_applied = enact_applied, ran_milp = ran_milp)
 end
+
+# =============================================================================
+# ④ 실효성 층 (2026-08-29, Plan B / T5) — spec §8 의 네 번째 층.
+#
+# 여기서부터는 T2 의 집행 사슬을 **감싸는** 계측이다. 사슬 본체(`enact_macro!`)는 한 줄도
+# 안 바뀐다 — 그 함수의 계약을 이미 두 게이트가 지고 있고(`enact_uses_llm_agent.jl` ·
+# `tool_args_grounding.jl`), 전후 측정을 사슬 **안에** 넣으면 그 게이트들이 재는 반환 모양이
+# 바뀐다.
+# =============================================================================
+
+"""
+    EFFICACY_CHECK_PATHS
+
+④층이 `zone_blockage` 를 부를 때 쓰는 `check_paths` 값. **`false` 다** (컨트롤러 판정 R12).
+
+🔴 왜 `false` 이고, 왜 그 사실이 산출물에 실려야 하는가
+------------------------------------------------------
+`check_paths=true` 는 목표마다 평면 격자를 flood-fill 한다(`zone_corridor.jl` 의
+`free_space_status`). 이 픽스처만 해도 미완 nav 목표가 **181개**라(실측) 결정 경로에서 매번
+그 비용을 내는 것은 곤란하고, **그것이 이 값이 `false` 인 이유다.** 대가는 정확하다:
+`n_disconnected` 가 **언제나 0** 이 되어 corridor(통로 봉쇄) 막힘이 `n_blocked` 에 안 실린다.
+그러니 `n_blocked` 는 **엄밀한 하한**이고, 그 하한으로 낸 판정은 "안 줄었다"(`inert`)를
+과다 보고할 수 있다 — 통로만 막고 있던 사건은 처음부터 `n_blocked=0` 으로 보인다.
+
+`zone_corridor.jl` 자신이 "재지 않은 것을 0 으로 보고하지 않는다"는 규율을 적고 있으므로,
+④층의 산출물은 그 사실을 **함께** 나른다: 결정 행의 `efficacy_checked_paths`.
+⚠️ 그 값은 리터럴이 아니라 **측정 결과에서 읽는다**(`blockage.checked_paths`) — 여기 상수를
+`true` 로 바꾸면 결정 행의 값도 따라 바뀐다. 손으로 쓴 짝은 갈라진다.
+"""
+const EFFICACY_CHECK_PATHS = false
+
+"""
+    _zone_blockage_now(env, truth) -> NamedTuple | nothing
+
+이 zone 사건이 지목한 구역 하나에 대해 **지금** 막혀 있는 것을 잰다. 순수 술어이고
+(`zone_corridor.jl` 은 편집 연산이 0개다) 세계를 안 건드린다. 못 재면 `nothing` —
+0 으로 접지 않는다.
+"""
+function _zone_blockage_now(env, truth)
+    return try
+        CB.zone_blockage(env; zone_keys = Symbol[truth.zone],
+                         check_paths = EFFICACY_CHECK_PATHS)
+    catch e
+        @warn "[efficacy] zone_blockage failed" exception = e
+        nothing
+    end
+end
+
+"""
+    enact_with_efficacy!(env, truth, mac, agent)
+        -> (; enact_applied, ran_milp, efficacy, efficacy_checked_paths)
+
+`enact_macro!` 을 **그대로** 부르되 그 앞뒤에서 막힘을 재고, spec §8 ④층의 판정을 낸다.
+`enact_applied`·`ran_milp` 는 `enact_macro!` 이 낸 것을 손대지 않고 그대로 통과시킨다.
+
+판정 (spec §9-2 의 값 집합)
+--------------------------
+    "resolves"                     편집 후 `n_blocked` 가 **줄었다** — 관측된 막힘에 닿았다
+    "inert"                        쟀는데 안 줄었다
+    "deferred:no_efficacy_measure" 잴 방법이 없다(zone 축이 아닌 사건) — R10
+    "deferred:not_enacted"         집행 사슬의 어느 분기도 안 탔다
+    "deferred:measure_error"       술어가 죽었다
+
+🔴 **이것은 상태가 아니라 차이다.** `after.n_blocked == 0` 을 보는 규칙(=상태)으로 바꾸면
+막힘이 애초에 0 이던 사건의 아무 편집이나 `resolves` 가 된다 — 즉 "고쳤다"가 "고칠 것이
+없었다"와 같은 관측이 된다. 그리고 전 측정을 사후 시점으로 옮기면 두 값이 항상 같아져
+`resolves` 가 **도달 불가**가 된다. 게이트 `test/efficacy_measures_the_edit.jl` 의 (1)(2)(2b)
+가 그 두 변이를 각각 잡는다(변이 실측은 T5 보고서).
+
+🔴 **R10 — zone 축만 잰다.** `zone_corridor.jl` 의 술어가 세는 것은 *구역이 막는 것*이다.
+battery/fault 사건에 들이대면 `n_blocked` 가 전후 모두 0 이라 **옳게 고친 배터리 교체가
+`inert` 로 오분류된다.** 다른 축의 실효성 측정을 지금 발명하는 것은 B3/C 의 설계 작업이고,
+**틀린 측정은 정직한 `deferred` 보다 나쁘다.** 그래서 분기는 블랙리스트가 아니라
+`truth isa CB.ZoneTruth` 라는 **양성 검사**다 — 사건 종류가 하나 늘어도 조용히 zone 술어에
+빨려 들어가지 않는다.
+
+⚠️ **`verify`(②접지)와 다른 축이다.** `verify == "admit"` 인데 `efficacy == "inert"` 인 결정은
+정상이고 흔하다 — "인자가 실재하는 것을 가리켰다"와 "그 편집이 막힘을 풀었다"는 다른 명제다.
+
+⚠️ **`not_enacted` 는 `inert` 가 아니다.** "안 했다"와 "했는데 안 통했다"는 다른 사건이고,
+④층 신호를 세는 사람에게는 정확히 그 구분이 값어치다(spec §8-1 의 "③④ 거절 사유 분포").
+그래서 이 판정은 `n_blocked` 비교보다 **먼저** 온다: 사슬이 무동작이었는데 우연히 다른 무엇이
+막힘을 줄였다면 그것을 이 편집의 공으로 돌리지 않는다.
+
+⚠️ `efficacy_checked_paths` 는 **측정이 실제로 일어났을 때만** `Bool` 이다. 안 쟀으면
+`nothing` — "경로를 안 봤다"(`false`)와 "아무것도 안 봤다"를 같은 값으로 접으면 R12 가 막으려던
+바로 그 혼동이 한 칸 옆에서 재현된다.
+"""
+function enact_with_efficacy!(env, truth, mac, agent)
+    # R10: zone 축이 아니면 **재지 않는다.** 사슬은 그대로 돌린다(판정만 유보한다).
+    if !(truth isa CB.ZoneTruth)
+        local r0 = enact_macro!(env, truth, mac, agent)
+        return (enact_applied = r0.enact_applied, ran_milp = r0.ran_milp,
+                efficacy = "deferred:no_efficacy_measure", efficacy_checked_paths = nothing)
+    end
+    local before = _zone_blockage_now(env, truth)
+    # 🔴 이 줄의 **위**가 전 측정, **아래**가 사후 측정이다. 둘을 같은 쪽으로 모으면 차이가
+    #    항상 0 이 되어 이 층이 아무것도 못 잰다(변이시험 1).
+    local r = enact_macro!(env, truth, mac, agent)
+    local after = _zone_blockage_now(env, truth)
+    local eff, checked
+    if before === nothing || after === nothing
+        eff, checked = "deferred:measure_error", nothing
+    elseif !r.enact_applied
+        eff = "deferred:not_enacted"
+        checked = before.checked_paths && after.checked_paths
+    else
+        eff = after.n_blocked < before.n_blocked ? "resolves" : "inert"
+        checked = before.checked_paths && after.checked_paths
+    end
+    return (enact_applied = r.enact_applied, ran_milp = r.ran_milp,
+            efficacy = eff, efficacy_checked_paths = checked)
+end
+
+"""
+    emitted_keys_of(prop) -> Vector | nothing
+
+이 결정에 대응하는 제안(`RespecProposal`)이 실제로 내놓은 DSL 지시들의 **채점 키**
+(spec §9-2 의 `emitted_keys`). 🔴 **Julia 가 `CB.emitted_key` 로 계산한다** — 서비스에게
+묻지 않는다(`src/navigator/ood_truth.jl` 의 그 함수가 채점기와 **같은** 키 형식을 낸다).
+
+키 하나는 `(:fault, RobotID(3))` 같은 2-튜플이라 그대로는 JSON 이 못 나른다. 두 칸을 문자열로
+편 `["fault", "RobotID(3)"]` 로 싣는다 — `string(...)` 은 `resolve_agent_id` 가 받아들이는
+바로 그 표기이므로 왕복이 성립한다.
+
+🔴 **실패는 `nothing` 이고 빈 배열이 아니다.** 빈 배열은 "계산했더니 낼 키가 없었다"(NOOP 이
+정확히 그 경우다)이고 `nothing` 은 "계산을 못 했다"이다. 이 레포는 그 둘을 섞어 여러 번 데였다.
+`emitted_key` 가 `nothing` 을 내는 지시(채점 대상 엔티티가 없는 것 — 오늘의 `ForbidZone` 이
+그렇다)는 채점기와 **같은 규칙으로** 건너뛴다(`baselines.jl` 의 `_emitted_keyset`).
+"""
+function emitted_keys_of(prop)
+    prop === nothing && return nothing
+    return try
+        local out = Any[]
+        for c in prop.constraints
+            local k = CB.emitted_key(c)
+            k === nothing && continue
+            push!(out, Any[string(first(k)), string(last(k))])
+        end
+        out
+    catch e
+        @warn "[emitted_keys] emitted_key failed" exception = e
+        nothing
+    end
+end
+
+"""
+    decision_reasoning(decision) -> String | nothing
+
+spec §9-2 의 `reasoning`: *"해석성 로그 — 파싱하지 않는다, 지우지도 않는다"*.
+`decide_all` 이 낸 `detail`(= `pol[enacted]["rationale"]`, `policy.jl` 의 반환문)을 **손대지
+않고** 돌려준다. 자르지 않는다 · 파싱하지 않는다 · 빈 문자열로 덮지 않는다.
+
+🔴 **출처는 `pol[enacted]` 이지 `pol["dspy"]` 가 아니다.** T1 이 `tool_lane_view` 에서 정한
+규칙과 **같은** 규칙이다: canonical 이 낸 결정의 행에 LLM 의 문장을 실으면 그 행은 자기가 안
+한 추론을 서술하게 된다. dspy 레인이 집행된 판 — 즉 spec §9-2 가 말하는 그 판 — 에서는 이
+값이 곧 서비스가 준 `reasoning` 문자열이다(`policy_entry` 가 `rationale` 로 나른다). 어느
+레인이었는지는 같은 행의 `enacted` 가 나른다.
+
+⚠️ 한 줄짜리 함수인 이유는 **게이트가 잡을 자리를 만들기 위해서다.** 이 값이 호출부에
+인라인이면 `run_demo.jl` 은 스크립트라 어떤 테스트도 그 줄을 못 태운다(T2 가 사슬을 이 파일로
+옮긴 것과 같은 이유). 여기 있으면 절단·파싱 변이가 `test/efficacy_measures_the_edit.jl` (7)
+에서 빨개진다.
+"""
+function decision_reasoning(decision)
+    return try
+        decision.detail
+    catch e
+        nothing
+    end
+end

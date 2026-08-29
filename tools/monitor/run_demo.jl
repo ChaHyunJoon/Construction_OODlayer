@@ -347,6 +347,22 @@ function handle_ood!(env, truth, nl)
         # 통과율을 세는 사람이 NOOP(인자가 `reason` 뿐인 `no_intervention`)을 통과로 센다.
         # 새 키를 발명하지 않는다(R9): 접지 실패도 이 키에 `reject:ungrounded_<param>` 로 싣는다.
         "verify"             => _tgt.verify,
+        # ---- 해석성 로그 · 채점 키 (2026-08-29, Plan B / T5, spec §9-2) -------------------
+        # `reasoning` — spec §9-2: *"해석성 로그 — 파싱하지 않는다, 지우지도 않는다"*.
+        # `decision.detail` 은 `pol[enacted]["rationale"]` 그자체다(policy.jl 의 반환문) —
+        # 자르거나 파싱하지 않고 그대로 싣는다.
+        # 🔴 **출처는 `pol[enacted]` 이지 `pol["dspy"]` 가 아니다.** 위 `tool_lane` 의 여덟 이
+        # 따르는 규칙과 **같은** 규칙이다(T1, `tool_lane_view` docstring): canonical 이 낸
+        # 결정의 행에 LLM 의 문장을 실으면 그 행은 **자기가 안 한 추론**을 서술하게 된다.
+        # dspy 레인이 집행된 판에서는 이 값이 곧 서비스의 `rationale` 이다(= spec 이 말하는
+        # 그 문자열). 어느 레인이었는지는 같은 행의 `enacted` 가 나른다.
+        "reasoning" => decision_reasoning(decision),
+        # `emitted_keys` — spec §9-2: **Julia 가** `CB.emitted_key` 로 계산한다(서비스에게
+        # 묻지 않는다). 결정에 대응하는 제안 = `macro_to_proposal(truth, mac)` — 프레임워크
+        # dispatcher 가 검증·집행하는 바로 그것이다(policy.jl).
+        # 🔴 계산이 실패하면 `nothing` — 빈 배열로 덮지 않는다(빈 배열은 "계산했는데
+        # 낼 키가 없었다" = NOOP 이 정확히 그 경우다).
+        "emitted_keys" => emitted_keys_of(try macro_to_proposal(truth, mac; env = env) catch; nothing end),
         "enacted"  => decision.enacted,
         "rule"     => decision.rule_macro,
         "llm"      => decision.llm_macro,
@@ -402,7 +418,11 @@ function handle_ood!(env, truth, nl)
     # 사슬 본체는 `tools/monitor/enact.jl` 로 **그대로** 옮겼다(순수 이동). 이유는 그 파일
     # 헤더에 있다(컨트롤러 판정 R5): 이 파일은 최상위에서 데모를 돌리는 스크립트라 테스트가
     # include 할 수 없고, 사슬이 여기 있는 한 게이트가 생산 코드를 태울 방법이 없다.
-    local _enacted = enact_macro!(env, truth, mac, _tgt.agent)
+    # 🔴 2026-08-29 (Plan B / T5): 사슬을 **감싸서** 부른다. `enact_with_efficacy!` 는
+    # `enact_macro!` 을 그대로 호출하고(사슬 본체는 한 줄도 안 바뀐다) 그 **앞뒤**에서
+    # `zone_blockage` 순수 술어를 재 — spec §8 ④ 실효성 층이다. 전후 **차이**를 재는 것이
+    # 핵심이다: 사후 상태만 보면 "막힐 것이 없었다"와 "막힘을 풀었다"가 같은 관측이 된다.
+    local _enacted = enact_with_efficacy!(env, truth, mac, _tgt.agent)
     local enact_applied = _enacted.enact_applied
     local ran_milp = _enacted.ran_milp
     # 이 결정 행에 "집행 사슬이 실제로 뭔가 했는가" 를 남긴다 — `deviate_valid`(메뉴 질문)와는
@@ -414,6 +434,15 @@ function handle_ood!(env, truth, nl)
     # 행동공간이 아니라 meta-level(CALL_ORACLE)로 가야 한다. 예전에는 이 값이 stdout 에만
     # 나가서 게이트를 기계로 못 걸었다.
     this_decision["ran_milp"] = ran_milp
+    # ④ 실효성 층 (spec §9-2). `enact_applied` 와 같은 이유로 push! **뒤에** 쓴다 —
+    # 집행이 끝나야 사후 측정이 존재한다.
+    # 🔴 `efficacy_checked_paths` 를 같이 싣는 이유(컨트롤러 판정 R12): 결정 경로의
+    # `zone_blockage` 는 `check_paths=false` 로 불리므로 `n_disconnected` 가 **언제나 0** 이다.
+    # 그러면 `n_blocked` 는 엄밀한 하한이고, 통로만 막힌 사건은 처음부터 0 으로 보인다 —
+    # 산출물이 그 사실을 들고 있어야 나중에 이 숫자를 읽는 사람이 속지 않는다.
+    # ⚠️ zone 이 아닌 사건에서는 `nothing`(아예 안 쟀다) — `false`(경로를 안 봤다)가 아니다.
+    this_decision["efficacy"] = _enacted.efficacy
+    this_decision["efficacy_checked_paths"] = _enacted.efficacy_checked_paths
     (!enact_applied && get(decision.router, "deviated", false)) &&
         @warn "[recover] DEVIATE #$(get(decision.router, "deviate_at", "?")): " *
               "$(mac) 가 $(tag) 사건에서 집행 사슬을 무동작으로 통과했다(enact_applied=false) " *

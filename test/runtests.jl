@@ -175,6 +175,19 @@ end
         include("tool_args_grounding.jl")
     end
 
+    # 🔴 2026-08-29 (Plan B / T5): spec §8 의 ④ 실효성 층. 앞의 셋(①문법·②접지·③안전)을
+    # 전부 통과한 편집이 **관측된 막힘에 실제로 닿았는가** 를 `zone_corridor.jl` 의 순수
+    # 술어로 집행 **전후** 재서 판정한다. 재는 명제 하나: 이 층은 세계의 *상태* 가 아니라
+    # 편집이 만든 *차이* 를 잰다 — 사후 상태만 보면 "고쳤다"와 "고칠 것이 없었다"가 같은
+    # 관측이 되고, 전 측정을 사후로 옮기면 `resolves` 가 도달 불가가 된다(변이시험 둘 다
+    # T5 보고서에 실측 RED 출력이 있다). 값 다섯이 전부 도달 가능한지도 여기서 지킨다
+    # (`resolves` · `inert` · `deferred:no_efficacy_measure`(R10) · `deferred:not_enacted`).
+    # 같은 파일이 `emitted_keys`(= `CB.emitted_key` 를 **불러서** 대조, 리터럴 금지)와
+    # `reasoning`(글자 그대로, 절단 없음)도 지킨다. 서비스는 안 부른다 — 8077 요청 0건.
+    @testset "efficacy measures the edit (Plan B / T5)" begin
+        include("efficacy_measures_the_edit.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin
