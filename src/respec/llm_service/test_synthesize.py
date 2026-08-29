@@ -522,12 +522,18 @@ def test_macro_and_decide_carry_tool_minted(monkeypatch):
     svc = _svc()
     AG = [{"id": "R5", "label": "Robot R5"}]
 
-    def ans(**kw):
-        b = {"reasoning": "r", "expressible": "False", "action": {"tool_calls": []},
-             "macro": "NOOP", "ranking": "NOOP, Replace, SwapBattery", "margin": "0.0"}
+    # 🔴 2026-08-29 (T4): `expressible` 은 텍스트 `OutputField` 가 아니라 **tool 인자**다.
+    #    옛 판(`ans(expressible="False")`)은 이제 그 값을 아무 데도 안 싣고, 호출도 0건이라
+    #    `decision_source="no_call"` 로 떨어져 합성이 영원히 안 발화한다.
+    def ans(expressible=False, **kw):
+        args = {"agent": "R5", "macro": "NOOP", "reasoning": "r",
+                "expressible": expressible, "ranking": "NOOP, Replace, SwapBattery"}
+        args.pop("agent")               # no_intervention 은 agent 를 안 받는다
+        args["reason"] = "nothing in the menu fits"
+        b = {"action": {"tool_calls": [{"name": "no_intervention", "args": args}]}}
         b.update(kw)
         return b
-    dspy.configure(lm=DummyLM([ans(), ans(expressible="True")]), adapter=svc.build_adapter())
+    dspy.configure(lm=DummyLM([ans(), ans(expressible=True)]), adapter=svc.build_adapter())
     svc._state["program"] = None
     svc._load_program()
     req = svc.MacroRequest(kind="battery", soc=0.1, agents=AG,
@@ -593,12 +599,13 @@ def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
         "`out['dspy']` 안의 `# ---- tool …` 표식이 %d 개다 -- 줄리아 추출기는 정확히 1개를 "
         "요구하고 아니면 그 게이트가 죽는다." % len(marks))
     lane = [k.value for k in d.keys if k.lineno > marks[0]]
-    # 🔴 2026-08-29 (T-C): 여덟에서 **열**이 됐다. `tool_choice` 와 `text_rescue` 가 표식
-    #    아래로 내려갔고, 같은 커밋이 줄리아의 `TOOL_LANE_KEYS` 에 그 둘을 더했다. 이 집합과
-    #    그 튜플은 (6)절이 **양방향 등호**로 대조하므로, 한쪽만 고치면 줄리아가 빨개진다.
+    # 🔴 2026-08-29 (T4): `text_rescue` 가 빠지고 `decision_source`·`tool_arg_error` 가
+    #    들어와 **열한 개**다. ⚠️ 줄리아의 `TOOL_LANE_KEYS` 는 아직 옛 열 개라 그 파일의
+    #    (6)절이 지금 정당하게 빨갛다(실측: T4 가 더한 실패는 정확히 2개) — T6 이 닫는다. 파이썬에서 키를
+    #    표식 위로 숨겨 초록을 만들지 않는 이유는 그 상태가 조용해지기 때문이다.
     assert set(lane) == {"tool_called", "tool_args", "tool_calls_n", "tools_offered",
                          "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
-                         "tool_choice", "text_rescue"}, lane
+                         "tool_choice", "decision_source", "tool_arg_error"}, lane
     allk = [k.value for k in d.keys]
     assert "tool_minted" in allk and "synthesis" in allk, (
         "합성 레인 키가 /decide 응답에서 사라졌다 -- 라이브 레인은 /decide 로만 들어온다.")
