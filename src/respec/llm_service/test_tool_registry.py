@@ -1,5 +1,7 @@
 """tool 스키마가 **그 요청에 실재하는 id 만** 담는지 못박는다."""
 import os
+import re
+import subprocess
 import sys
 
 import pytest
@@ -17,7 +19,9 @@ _WM_CORE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
 if _WM_CORE not in sys.path:
     sys.path.append(_WM_CORE)
 
-from tool_registry import build_tools, MACRO_TO_TOOL, swap_body, deliver_battery, no_intervention  # noqa: E402
+import tool_registry  # noqa: E402
+from tool_registry import (build_tools, MACRO_TO_TOOL, _FUNCS, _needs_agent,  # noqa: E402
+                            swap_body, deliver_battery, no_intervention, _NEVER)
 import action_registry  # noqa: E402
 
 AGENTS = [{"id": "ConstructionBots.BotID{ConstructionBots.DeliveryBot}(5)", "label": "Robot R5 / robot 5"},
@@ -91,6 +95,19 @@ def test_no_intervention_description_carries_its_own_mechanism():
     assert "no graph is edited" in d
 
 
+def _leak_windows(text, window=20):
+    """`text` 에서 길이 `window` 인 모든 연속 부분문자열. `text` 가 window 보다 짧으면
+    `text` 전체 하나만. wm4spacecraft_manufacturing/core/test_registry_doc_split.py 의
+    `_leak_windows` 와 같은 모양(fix round 2, K2) -- 그 파일이 이번 주 자기 round 3(S1)에서
+    같은 버그를 겪고 이 방식으로 고쳤다."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= window:
+        return [text]
+    return [text[i:i + window] for i in range(len(text) - window + 1)]
+
+
 def test_no_applicability_verdict_leaks_into_descriptions():
     """spec §6: 기전은 말하고 정답 조건은 말하지 않는다.
 
@@ -103,6 +120,41 @@ def test_no_applicability_verdict_leaks_into_descriptions():
     for s in tools.values():
         assert "best when" not in s["description"].lower()
         assert "best on" not in s["description"].lower()
+
+
+def test_no_applicability_verdict_leaks_via_a_sliding_window_over_the_live_registry():
+    """fix round 2 (K2, Important): 위 테스트의 `"best when"`/`"best on"` 블록리스트는
+    구조가 아니라 우연히 걸린다 -- action_registry.json 의 `when_to_use` 세 개 중 둘
+    (NOOP, Replace)만 그 두 문구로 **시작**하고, SwapBattery 는 "Cheaper than Replace
+    when the body is sound and only charge is missing." 로 시작해서 안 걸린다. 측정: 그
+    문장을 `deliver_battery` 의 docstring 에 그대로 붙여넣어도(모델이 읽는 유일한 설명에
+    정답 조건이 그대로 실려도) 위 블록리스트 테스트를 포함해 fix round 1 까지의 13 개
+    테스트가 전부 green 이었다. SwapBattery 는 이 tool lane 전체가 존재하는 이유인
+    바로 그 팔이다(canonical 이 1533 번 중 0 번 고른다).
+
+    wm4spacecraft_manufacturing/core/test_registry_doc_split.py 가 이 레포에서 이미 같은
+    모양의 버그를 이번 주 자기 round 3(S1)/round 5(V1)에서 겪었다 -- 블록리스트와 접두
+    검사 둘 다 부분적으로만 잡았고, 최종 해법은 `when_to_use` 전체를 20자 슬라이딩
+    윈도우로 쪼개 그 어떤 연속 20자 구간도 모델이 읽는 텍스트에 있으면 안 된다는 것이었다.
+    같은 방식을 여기 쓴다: **살아 있는** action_registry(테스트가 이미 H7 에서 읽고
+    있다)의 `when_to_use` 세 개 전부를, 세 tool description 을 합친 텍스트와 대조한다.
+    """
+    tools = _by_name(build_tools(AGENTS, ["NOOP", "Replace", "SwapBattery"]))
+    assert len(tools) == 3, "이 호출은 3 개 tool 을 내야 정상이다 -- 0 이면 검사가 공허해진다"
+    rendered = "\n".join(s["description"].lower() for s in tools.values())
+    executed = 0
+    for mid, m in action_registry.REGISTRY.items():
+        for chunk in _leak_windows(m["when_to_use"].lower()):
+            executed += 1
+            assert chunk not in rendered, (
+                "macro %s(%s) 의 when_to_use 에서 %d자 연속 구간이 tool description 으로 "
+                "샜다: %r -- 정답 조건이 모델이 읽는 유일한 설명에 실렸다."
+                % (mid, m["name"], len(chunk), chunk)
+            )
+    assert executed > 0, (
+        "when_to_use 윈도우가 하나도 안 생겼다 -- 레지스트리의 when_to_use 가 전부 비어서 "
+        "위 루프가 공허하게 통과했을 수 있다(register round 1 의 H3 와 같은 모양)."
+    )
 
 
 def test_illegal_macros_are_not_offered_as_tools():
@@ -138,12 +190,17 @@ def test_tool_bodies_never_actually_run():
     """fix round 1 (H5): 계약 ①("함수 본체는 절대 호출되지 않는다 … raise 로 막아 둔다")이
     파일 docstring 에만 있고 어떤 테스트도 그 raise 를 재지 않았다. 세 raise 를 각각 전부
     `return` 으로 바꿔도(=계약 위반) 이 테스트 없이는 8/8 이 green 이었다. 여기서 재는 것은
-    "Julia 가 이걸 두 번 집행하지 않는다" 는 안전장치 자체다."""
-    with pytest.raises(AssertionError):
+    "Julia 가 이걸 두 번 집행하지 않는다" 는 안전장치 자체다.
+
+    fix round 2 (K4): `pytest.raises(AssertionError)` 에 `match=` 가 없었다 -- 아무 관계
+    없는 이유로 `AssertionError` 를 던지는 본체도 이 테스트를 통과시켰을 것이다(예: 인자
+    타입 체크를 넣었다가 실수로 raise 문 자체를 지우면서 다른 assert 만 남기는 편집).
+    `_NEVER` 문자열이 바로 여기 있으므로 이걸로 잡는다."""
+    with pytest.raises(AssertionError, match=re.escape(_NEVER)):
         swap_body("some-agent-id")
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape(_NEVER)):
         deliver_battery("some-agent-id")
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape(_NEVER)):
         no_intervention("some reason")
 
 
@@ -156,3 +213,58 @@ def test_macro_to_tool_keys_match_the_active_vocabulary():
     assert set(MACRO_TO_TOOL) == active, (
         "MACRO_TO_TOOL %r 이 action_registry 의 활성 어휘 %r 와 다르다 -- 레지스트리가 바뀌면 "
         "이 표도 같이 고칠 것. 조용한 드리프트를 여기서 막는다." % (set(MACRO_TO_TOOL), active))
+
+
+def test_tool_registry_import_does_not_poison_a_later_sklearn_import():
+    """fix round 2 (K1, Important): fix round 1 의 numpy/sklearn 가드(`tool_registry.py`
+    상단의 `import numpy, sklearn.ensemble`)는 주석 하나로만 지켜지고 있었다. 측정: 그
+    가드를 지워도 `pytest test_tool_registry.py` 단독(13 passed), `pytest
+    src/respec/llm_service/`(47 passed) 둘 다 green 이다 -- 이 디렉터리의 알파벳순 수집이
+    `test_macro_request_agents.py`(dspy_service 를 먼저 로드) 를 먼저 만나서 우연히 가려진다.
+
+    실제 위험 시나리오(Task 6 이후 `dspy_service.py` 가 `from tool_registry import ...`
+    를 하는 시점, 또는 이 파일이 알파벳순보다 먼저 수집되는 임의의 pytest 호출)는 **이
+    프로세스 안에서 tool_registry 가 먼저 import 되고 그 뒤 누군가 sklearn.ensemble 을
+    import 하는** 것이다. 그 순서를 이 테스트 프로세스 자체를 오염시키지 않고 재려면
+    별도 서브프로세스가 필요하다 -- 이 파일이 이미 (H7 을 통해) `action_registry` 를,
+    (fix round 1 을 통해) `dspy` 를 이 인터프리터에 로드해 놓았으므로, 여기서 직접
+    `import sklearn.ensemble` 을 하면 이미 늦었을 수도 있고 다른 테스트의 import 순서에
+    따라 우연히 안전할 수도 있다 -- 정확히 이 가드가 보호하려는 비결정성이다."""
+    code = (
+        "import sys\n"
+        "sys.path.insert(0, %r)\n"
+        "import tool_registry\n"
+        "import sklearn.ensemble\n"
+        "print('OK')\n"
+    ) % HERE
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.returncode == 0 and "OK" in r.stdout, (
+        "새 서브프로세스에서 tool_registry 를 먼저 import 한 뒤 sklearn.ensemble 을 "
+        "import 하면 죽었다 -- numpy/sklearn-before-dspy 가드(fix round 1, H2)가 지워졌거나 "
+        "무력화됐다.\nreturncode=%r\nstdout=%r\nstderr=%r" % (r.returncode, r.stdout, r.stderr))
+
+
+def test_needs_agent_is_derived_from_function_signatures_not_a_hand_maintained_set():
+    """fix round 2 (K3, Minor): 예전 `_NEEDS_AGENT` 는 손으로 든 집합이었다. 측정: 넷째
+    agent-taking 팔을 `MACRO_TO_TOOL`·`_FUNCS` 에 추가하면서 그 집합만 깜빡해도(측정
+    당시) 13 개 테스트가 전부 green 이었다 -- `build_tools` 가 조용히 `reason: string`
+    분기로 빠져 agent enum 이 안 나갔다(`_FUNCS` 를 깜빡하면 `KeyError` 로 시끄럽게
+    죽는 것과 대조적으로, 에러가 없다). 고친 코드는 `_needs_agent(name)` 이 `_FUNCS[name]`
+    의 실제 파라미터 이름에서 유도한다 -- 손으로 든 표가 아예 없으므로 "깜빡함" 자체가
+    불가능해졌다. monkeypatch 로 새 agent-taking 함수 하나를 주입해(원 저장소는 건드리지
+    않고) 그 유도가 실제로 작동하는지 잰다: `_FUNCS` 에만 추가해도(다른 어떤 표도 손대지
+    않고) `_needs_agent` 가 즉시 True 를 본다."""
+    def relocate(agent: str):
+        raise AssertionError(_NEVER)
+
+    assert "relocate" not in _FUNCS, "이 이름이 이미 _FUNCS 에 있다 -- 테스트 준비가 잘못됐다"
+    _FUNCS["relocate"] = relocate
+    try:
+        assert _needs_agent("relocate") is True, (
+            "_FUNCS 에 agent 파라미터를 가진 함수를 추가했는데 _needs_agent 가 못 봤다 -- "
+            "유도가 실제로 시그니처를 읽지 않고 있다."
+        )
+    finally:
+        del _FUNCS["relocate"]
+    assert _needs_agent("no_intervention") is False, (
+        "reason 만 받는 함수를 agent-taking 으로 오판했다.")
