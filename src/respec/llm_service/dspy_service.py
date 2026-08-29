@@ -177,16 +177,60 @@ violated from the state you are given; do not assume an event of a given type al
 something."""
 
 
-class PickMacro(dspy.Signature):
+class SelectTool(dspy.Signature):
     __doc__ = SEED_DOC
-    state: str = dspy.InputField(desc="decision-time state of the OOD event")
+    state: str = dspy.InputField(desc="decision-time observation of the OOD event")
+    # 🔴 이 필드가 native FC 의 스위치다 (spec §2-4 조건 2). 없으면 dspy 가 ValueError.
+    #    켜지면 이 필드와 `action` 은 시그니처에서 **삭제되어** 프롬프트 텍스트에 안 들어가고
+    #    provider 의 tools 파라미터로만 간다 -- 모델이 읽는 tool 설명은 전부 Tool 객체 안에 있다.
+    tools: List[dspy.Tool] = dspy.InputField(desc="the recovery tools available here")
     valid_actions: str = dspy.InputField(desc="ONLY these macros are legal for this event")
+
     reasoning: str = dspy.OutputField(desc="one sentence")
+    expressible: bool = dspy.OutputField(
+        desc="false if NO available tool can address what you observed")
+    action: dspy.ToolCalls = dspy.OutputField()
+    # 🔴 macro 를 tool 에 합치지 않는다: tool 호출이 실패해도 결정은 살아야 한다(spec §4-1).
+    #    macro 는 **채점 어휘**(action_registry)의 것이고 tool 은 행동 어휘의 것이다.
     macro: str = dspy.OutputField(desc="the single best macro, from valid_actions")
     ranking: str = dspy.OutputField(
         desc="ALL legal macros ordered best-first, comma separated")
     margin: float = dspy.OutputField(
-        desc="0..1 confidence gap between your 1st and 2nd choice; 0 means they are equally good")
+        desc="0..1 confidence gap between your 1st and 2nd choice; 0 means equally good")
+
+
+def build_adapter():
+    """native FC 를 켠 어댑터. **site-packages 의 기본값(False)을 고치지 않는다** — 그건
+    재설치에 날아가고 이 레포 밖에서 돌리는 사람과 조용히 갈린다(spec §2-4)."""
+    return dspy.ChatAdapter(use_native_function_calling=True)
+
+
+def native_fc_active(signature=None):
+    """native FC 가 **실제로** 켜졌는가 — 네 조건을 런타임에 전부 읽는다(spec §2-4).
+
+    🔴 배선 여부가 아니라 발화 여부다. 조건 4(`lm.supports_function_calling`)는 LM 이 정하므로
+    코드를 읽어서는 알 수 없다. 이 함수의 반환값을 응답에 실어야 라이브 런에서 "배선했다" 와
+    "실제로 켜졌다" 가 구분된다.
+
+    네 조건(어댑터 플래그 · `list[dspy.Tool]` 입력 · `dspy.ToolCalls` 출력 ·
+    `lm.supports_function_calling`)이 전부 참일 때만 True.
+
+    🔴 못 재면 `False` 가 아니라 `None` 을 낸다. "못 쟀다"(None)와 "재서 꺼져 있었다"(False)는
+    다른 사건이다(spec §9-2). 아무도 `dspy.configure` 를 안 불렀으면 조건 1·4 를 **읽을 수
+    없으므로** dspy 의 폴백 기본값을 추론해 False 를 내지 않는다 — 그건 측정이 아니다.
+    """
+    try:
+        sig = signature if signature is not None else SelectTool
+        adapter = dspy.settings.adapter
+        lm = dspy.settings.lm
+        return bool(
+            adapter.use_native_function_calling                            # 조건 1
+            and adapter._get_tool_call_input_field_name(sig) is not None   # 조건 2 (base.py:609)
+            and adapter._get_tool_call_output_field_name(sig) is not None  # 조건 3 (base.py:619)
+            and lm.supports_function_calling                               # 조건 4 (base.py:110)
+        )
+    except Exception:
+        return None
 
 
 _state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
@@ -307,13 +351,17 @@ def _load_surrogate():
 
 def _load_program():
     """컴파일 산출물(instructions + demos)을 얹은 dspy 프로그램을 만든다."""
-    prog = dspy.Predict(PickMacro)
+    prog = dspy.Predict(SelectTool)
     instr, demos = None, []
     if os.path.exists(PROGRAM):
         blob = json.load(open(PROGRAM, encoding="utf-8"))
         instr = blob.get("instructions")
-        # demo 의 출력 필드는 (reasoning, macro) 뿐 -> ranking/margin 은 비어 있는 부분 demo.
-        # dspy 는 이를 허용한다. chosen 은 macro 필드에서 나오므로 벤치마크한 계약과 동일하다.
+        # demo 는 입력이 state 하나, 출력이 (reasoning, macro) 뿐이다 -> tools/valid_actions
+        # 입력과 expressible/action/ranking/margin 출력이 비어 있는 **부분 demo**.
+        # dspy 는 이를 허용한다 -- 실측: 이 모양의 demo 로
+        # `build_adapter().format(SelectTool, demos, inputs)` 가 예외 없이 메시지 4개를 낸다
+        # (system/user/assistant/user). 그래서 컴파일 산출물을 다시 만들 필요가 없다.
+        # chosen 은 macro 필드에서 나오므로 벤치마크한 계약과 동일하다.
         demos = [dspy.Example(**{k: v for k, v in d.items() if k in
                                  ("state", "reasoning", "macro")}).with_inputs("state")
                  for d in blob.get("demos", []) if d.get("state")]
@@ -331,7 +379,7 @@ app = FastAPI(title="ConstructionBots DSPy macro producer")
 @app.on_event("startup")
 def _startup():
     lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=True)
-    dspy.configure(lm=lm)
+    dspy.configure(lm=lm, adapter=build_adapter())
     _load_program()
     _load_surrogate()      # 배포 SurrogateV2 적합(355행이라 1초 미만)
 
