@@ -553,7 +553,22 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    `additionalProperties` 도 없다. dspy 3.3.0 의 `dspy.Tool` 에는 `strict` 필드 자체가
     #    없고, `tool_choice` 는 이 레인 어디서도 안 보낸다. 비-strict `enum` 에 프로바이더가
     #    문법 제약을 거는지는 **안 잰 프로바이더 동작**이라 라이브 호출 없이는 판정 못 한다.
-    #    → 환각 id 방어를 이 채널에 기대지 말 것. 거르는 자리는 받는 쪽(줄리아 경계)이다.
+    #    → 환각 id 방어를 이 채널에 기대지 말 것.
+    # 🔴 2026-08-29 정정 2. 위 줄은 원래 *"거르는 자리는 받는 쪽(줄리아 경계)이다"* 로 닫혀
+    #    있었다. **그것도 거짓이다** — 방향만 반대인 같은 종류의 과장이다(디코드 시점 집행을
+    #    과장하는 대신 사후 집행을 과장한다). 오늘 이 레인의 tool 인자를 거르는 자리는
+    #    **어디에도 없다.** 정확히는 셋으로 갈린다:
+    #      ① 디코드 시점 집행: **없다**(위 실측).
+    #      ② 접지를 집행할 그물은 **실재한다** — `grammar_ground_check` 는 `verify()` 안에서
+    #         MILP 를 세우기 전(2b GROUNDING)에 실제로 불린다. 아스피레이션이 아니다.
+    #      ③ 🔴 **그런데 그 그물은 이 레인을 아직 못 본다.** 그것은 `RespecProposal` 을 받고,
+    #         `tool_args` 를 거기까지 나르는 것이 없다. 실측: 레포의 `.jl` 에서 `tool_args`/
+    #         `tool_called` 를 **코드로 읽는 줄이 0개**다(주석에서 언급하는 자리는 바로 이
+    #         블록뿐이므로, grep 이 1건을 내면 그건 이 주석 자신이다). 그리고 이 파일의
+    #         `policy_entry` 는 키 목록을 손으로 들고 있어 여덟 개만 나른다 —
+    #         chosen·ranking·margin·rationale·scores·unsupported·label·available.
+    #    즉 tool 호출의 접지를 보증하는 층은 **오늘 없다.** 연결은 Plan B 의 경계 작업이다.
+    #    (세 부분의 전체 서술과 근거는 스펙 §8 안전 스택 표 아래의 같은 날짜 정정.)
     agents === nothing || (payload["agents"] = agents)
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
