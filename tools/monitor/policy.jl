@@ -1634,15 +1634,27 @@ end
 
 # ---- 고른 매크로 → DSL 제안(RespecProposal). 프레임워크 dispatcher 가 검증·실행한다. ----
 # NOOP 은 "제약 없음"이 정답이므로 빈 제안을 돌려준다(= 개입하지 않음).
-function macro_to_proposal(truth, macro_name::AbstractString; env = nothing)
+function macro_to_proposal(truth, macro_name::AbstractString; env = nothing, agent = nothing)
     rationale = "policy=$(POLICY) chose $(macro_name)"
     src = string(typeof(truth).name.name)
-    if macro_name == "Replace" && hasproperty(truth, :robot)
-        return CB.RespecProposal(CB.ConstraintSpec[CB.ReplaceAgent(truth.robot, 0.0)], rationale, src)
-    elseif macro_name == "SwapBattery" && hasproperty(truth, :robot)
+    # ---- 집행 대상 (2026-08-29, Plan B / T2b) ------------------------------------------
+    # 🔴 `agent` 가 주어지면 그것을 쓴다. 그것이 두 번째 엔진(`render_demo.jl`)에서 LLM 의
+    # tool 호출이 세계에 닿는 유일한 자리다 — `enact_recovery!` 는 `ReplaceAgent` 제약의
+    # `.agent` 를 이미 존중하므로(그 자리는 이미 제안을 따른다), 끊겨 있던 곳은 정확히
+    # 여기 하나다. 기본값이 `nothing` 이라 **기존 호출자는 한 줄도 안 바뀐다.**
+    #
+    # ⚠️ `hasproperty(truth, :robot)` 가드가 왜 필요했는가: `ZoneTruth` 에는 `robot` 필드가
+    # 없고 `ReformTruth` 는 필드가 아예 없는 struct 라, 가드 없이 `truth.robot` 을 읽으면 던진다.
+    # 그래서 가드를 없앤 게 아니라 **대상 계산으로 옮겼다**: agent 가 있으면 truth 에 `robot` 이
+    # 없어도 집행 대상은 존재하고(실재하는 경우다), 둘 다 없으면 예전처럼 빈 제안으로 떨어진다.
+    local tgt = agent !== nothing ? agent :
+                (hasproperty(truth, :robot) ? truth.robot : nothing)
+    if macro_name == "Replace" && tgt !== nothing
+        return CB.RespecProposal(CB.ConstraintSpec[CB.ReplaceAgent(tgt, 0.0)], rationale, src)
+    elseif macro_name == "SwapBattery" && tgt !== nothing
         # 2026-08-06: 이 분기가 없으면 정책이 SwapBattery 를 골라도 아래 빈 제안으로 떨어져
         # **조용히 NOOP 이 실행된다** — RelocateBuild 에서 한 번 겪은 것과 똑같은 실패 양식이다.
-        return CB.RespecProposal(CB.ConstraintSpec[CB.SwapBattery(truth.robot)], rationale, src)
+        return CB.RespecProposal(CB.ConstraintSpec[CB.SwapBattery(tgt)], rationale, src)
     # 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `Deprioritize` 분기(→ `CB.DeprioritizeAgent`)
     # 를 지웠다. 그 kind 가 DSL 에서 삭제됐고 `valid_macros` 의 배터리 메뉴에서도 빠졌다.
     # 🔴 2026-08-24 (spec §5.1, Task 4): 여기 있던 `ForbidZone` · `RelocateBuild` 두 분기를

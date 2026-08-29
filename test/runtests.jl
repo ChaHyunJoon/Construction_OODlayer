@@ -188,6 +188,21 @@ end
         include("efficacy_measures_the_edit.jl")
     end
 
+    # 🔴 2026-08-29 (Plan B / T2b): **두 번째 엔진**(`tools/monitor/render_demo.jl`)에도 같은
+    # 인과를 잇는다. T2 는 `run_demo.jl` 레인만 고쳤고 render 레인은 `macro_to_proposal` 이
+    # `truth.robot` 으로 제안을 만들어 LLM 의 tool 호출이 세계에 대해 인과가 없었다. 이제
+    # 두 엔진이 **같은 함수**(`enact.jl` 의 `enact_target`)를 부르므로 R16(강제/이탈 팔
+    # 거절)과 R2/R6(폴백 기록)이 한쪽에서만 조용히 썩을 수 없다.
+    # 🔴 `render_demo.jl` 은 스크립트라 include 가 불가능하다 — 그래서 이 게이트는
+    # `policy_producer` 의 **원문 텍스트를 뽑아 실행한다**(복제본을 재지 않는다). 같은 수법으로
+    # `run_demo.jl` 의 결정 행 조립부(`this_decision` … `merge!(this_decision, _e.row)`)도
+    # 실행해서, `enact_decision!` 이 낸 row 가 **결정 행까지 살아 도착하는지**를 값으로 잰다
+    # (`enact_uses_llm_agent.jl` (9) 는 row 본체를, (10) 은 호출부의 존재를 지킨다 — 그 둘의
+    # **합류**가 성립하는지는 아무도 안 쟀다). 서비스는 안 부른다 — 8077 요청 0건.
+    @testset "render lane uses the LLM's agent (Plan B / T2b)" begin
+        include("render_lane_uses_llm_agent.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin

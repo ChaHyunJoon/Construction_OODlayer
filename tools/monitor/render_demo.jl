@@ -691,6 +691,10 @@ function retrying_action(inner; at::Int, every::Int, max_tries::Int = 200, tag::
 end
 
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
+# 🔴 2026-08-29 (Plan B / T2b): 집행 대상 선택 seam. `run_demo.jl` 과 **같은 함수**를 부른다.
+# 두 엔진이 각자 규칙을 들고 있으면 갈릴 수 있고, 이 레포는 그 사고를 이미 여러 번 밟았다
+# (`has_zone` 술어, `record_decision!` 쌍둥이). `enact.jl` 은 최상위 부작용이 없다.
+include(joinpath(@__DIR__, "enact.jl"))
 # ⚠️ `run_demo.jl:248` 과 달리 여기서는 `_reset_decision_counter!()` 를 부르지 않는다. 그래도
 # 안전한 이유는 **하나뿐이다**: 이 스크립트의 유일한 호출자인 `server.jl:117` 이 실행마다
 # `julia … render_demo.jl` **새 프로세스**를 띄우므로 `policy.jl:711` 의 `_DECISION_N[]` 이
@@ -741,10 +745,31 @@ function policy_producer(env, event)
     println("[policy] $(typeof(truth).name.name) → $(decision.macro_name) " *
             "(enacted=$(decision.enacted); rule=$(decision.rule_macro), " *
             "surro=$(decision.policies["surrogate"]["chosen"]), dspy=$(decision.policies["dspy"]["chosen"]))")
+    # ---- 집행 대상 agent (2026-08-29, Plan B / T2b) ------------------------------------
+    # 🔴 여기까지 이 엔진에서 LLM 의 tool 호출은 세계에 대해 인과가 없었다. `macro_to_proposal`
+    # 이 `truth.robot`(주입기가 이미 아는 값)으로 `ReplaceAgent`/`SwapBattery` 를 만들고,
+    # `enact_recovery!` 는 그 제약의 `.agent` 를 성실히 집행했다 — 끊긴 자리는 한 곳이었다.
+    #
+    # 🔴 **`run_demo.jl` 과 같은 함수를 부른다**(`enact.jl` 의 `enact_target`). 규칙을 복사하지
+    # 않는 이유: 두 엔진이 각자 규칙을 들고 있으면 R16(강제/이탈 판에서 tool 인자 거절)과
+    # R2/R6(폴백 기록)이 한쪽에서만 조용히 썩는다. 같은 함수를 부르면 갈릴 수 없다.
+    #
+    # ⚠️ 이 엔진에는 `run_demo.jl` 의 `this_decision` 같은 **결정 행 화이트리스트가 없다**
+    # (2026-08-29 실측: `_DECISIONS` 가 이 파일에 0건이고, 기록은 `record_decision!` →
+    # 모니터 respec 스트림 하나뿐이다). 그래서 세 키를 실을 자리가 이 파일에는 존재하지
+    # 않는다 — 있는 척 만들지 않는다. `enact_agent_source` 는 아래 한 줄로 stdout 에만 남는다.
+    local _tgt = enact_target(env, truth, decision.tool_lane,
+                              (try decision.router catch; nothing end),
+                              decision.macro_name)
+    println("[enact] target=", _tgt.agent === nothing ? "-" : string(_tgt.agent),
+            " source=", _tgt.source,
+            " tool_agent=", _tgt.tool_agent === nothing ? "-" : _tgt.tool_agent,
+            " verify=", _tgt.verify,
+            " reject=", _tgt.reject === nothing ? "-" : _tgt.reject)
     # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
     # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.
     # 직접 집행하므로 dispatch 는 생략(nothing) — canonical_producer 와 같은 패턴.
-    return macro_to_proposal(truth, decision.macro_name; env = env)
+    return macro_to_proposal(truth, decision.macro_name; env = env, agent = _tgt.agent)
 end
 
 # producer(canonical): 최근 OOD truth → canonical 휴리스틱 분석 캡처 + 직접 복구 → nothing(dispatch 생략).
