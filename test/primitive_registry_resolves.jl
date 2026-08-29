@@ -79,7 +79,7 @@ end
 @testset "schema fields present" begin
     required = ["name", "surface", "params", "mechanism", "when_to_use",
                 "reversible", "consumes", "preconditions", "gate", "gate_arity",
-                "impl", "harness_args", "source"]
+                "impl", "harness_args", "source", "psi"]
     for p in _PRIMS
         for k in required
             @test haskey(p, k)
@@ -131,4 +131,58 @@ end
     @test length(unique(ns)) == length(ns)
     qs = [String(q["name"]) for q in _PREDS]
     @test length(unique(qs)) == length(qs)
+end
+
+# =============================================================================
+# (8) ψ 축 스키마 — 2026-08-29, Plan B / T6a
+#
+# 왜 Julia 쪽에도 있는가: 이 계약을 파이썬 로더(`core/primitive_registry.py`)가 이미
+# 로드 시점에 집행한다. 그런데 이 레포가 반복해 밟은 실패 모드가 정확히 **"한쪽 언어만
+# 지키는 도장"** 이다(`require_vocab_stamps` 에 Julia 짝이 없어 라벨 레인에는 행-집합
+# 검사가 없는 것, `train_kinds` 가 write-only 인 것). 같은 파일을 두 언어가 읽으므로
+# 스키마 단언도 두 언어에 있어야 한다.
+#
+# 🔴 여기서 재는 것은 **스키마와 유도 가능한 세 축**뿐이다. a_cost·a_soft·a_scope·
+# a_relocates_work·a_restores_capacity·a_intervenes 는 `mechanism` 산문을 사람이 읽어
+# 넣은 값이라 기계로 대조할 짝이 없다 — 이 게이트가 초록이라고 표가 옳은 것이 아니다.
+#
+# 변이시험: 한 원시의 `psi` 블록을 지우면 (3) 과 (8a) 가, 축 하나를 지우면 (8a) 가,
+# `psi.a_reversible` 을 `reversible` 과 어긋나게 바꾸면 (8b) 가 빨개진다.
+# =============================================================================
+@testset "psi axes match the declared schema" begin
+    @test haskey(_REG, "psi_axes")
+    axes = String.(_REG["psi_axes"])
+    @test !isempty(axes)
+    @test length(unique(axes)) == length(axes)
+    # a_n_specs 는 조합에서 len() 으로 나오는 **파생축**이다. 원시 하나의 표에 실으면
+    # 진실원이 둘이 된다(features_agnostic.psi 가 그 축을 스스로 계산한다).
+    @test !("a_n_specs" in axes)
+
+    @testset "(8a) every primitive carries exactly those axes, in order" begin
+        for p in _PRIMS
+            @test haskey(p, "psi")
+            @test String.(collect(keys(p["psi"]))) == axes
+            for a in axes
+                @test p["psi"][a] isa Real
+            end
+        end
+    end
+
+    # (8b) 같은 항목의 다른 필드에서 **독립적으로** 유도되는 세 축.
+    #      이것이 손으로 넣은 값의 오타를 잡는 유일한 기계 검사다.
+    @testset "(8b) derivable axes agree with the fields they come from" begin
+        for p in _PRIMS
+            @test (p["psi"]["a_reversible"] == 1.0) == p["reversible"]
+            @test (p["psi"]["a_consumes_spare"] == 1.0) == !isempty(p["consumes"])
+            @test (p["psi"]["a_spatial"] == 1.0) == (String(p["surface"]) == "scene_tree")
+        end
+    end
+
+    # (8c) 순수 술어에는 ψ 가 **없어야** 한다 — 아무것도 안 바꾸므로 효과 서술자가 없고,
+    #      0 으로 채우면 그 술어가 ψ 공간에서 NOOP 처럼 보인다.
+    @testset "(8c) predicates carry no psi" begin
+        for q in _PREDS
+            @test !haskey(q, "psi")
+        end
+    end
 end

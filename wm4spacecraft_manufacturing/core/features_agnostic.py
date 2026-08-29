@@ -156,6 +156,7 @@ import numpy as np
 import pandas as pd
 
 import action_registry as _reg                                      # noqa: E402
+import primitive_registry as _prim                                  # noqa: E402
 
 # 전체 macro 목록과 개입 비용(e1_analyze / export_surrogate 와 동일한 값이어야 함).
 # 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다(단일 진실원). 예전 리터럴에는
@@ -390,6 +391,32 @@ _PRIMITIVE_TABLE = {
 #   a_scope          : 영향 범위 (1대=1 / 구역=2 / 전역=3)
 PSI_AXES = ACTION_DESCRIPTORS + ["a_n_specs", "a_consumes_spare", "a_reversible", "a_scope"]
 
+# ------------------------------------------------------------------------------------------
+# 운용 원시 알파벳 (`core/primitive_registry.json`, 19종) -- 2026-08-29 Plan B / T6a
+# ------------------------------------------------------------------------------------------
+# 🔴 왜 두 번째 표가 필요한가: 위 `_PRIMITIVE_TABLE` 은 **DSL 원시**(src/respec/spec_dsl.jl 의
+# 제약 문법)의 표다. T2(tool 합성)가 조합하는 것은 그것이 아니라 primitive_registry.json 의
+# **운용 원시**(release_pending_assignments! · translate_whole_build! …)이고, 그 이름들은
+# 여기 하나도 없었다. 아래 `psi` 의 리스트 경로가 `if n in _PRIMITIVE_TABLE` 로 거른 뒤
+# 영벡터를 돌려줬으므로 **모든 운용 원시가 ψ 공간에서 같은 점(원점)**이었다. 실측:
+#     psi(['release_pending_assignments']) == psi(['translate_whole_build'])   -> True
+#     psi(['nonsense_operation_xyz'])                                          -> 10축 전부 0.0
+# 이 상태로 spec §5-2-2 ②(ψ 근접으로 중복 판정)를 켜면 그 판정이 **항진명제**가 된다.
+#
+# 표의 열 순서는 리터럴이 아니라 `PSI_AXES` 에서 파생한다 -- `a_n_specs` 만 빼면 아래
+# 튜플의 열 순서와 정확히 같다. 레지스트리 쪽 축 이름 집합이 여기서 어긋나면
+# `psi_tuples` 가 **로드 시점에 죽는다**(빠진 축이 조용히 0 이 되는 것을 막는 자리).
+_PRIM_TABLE_AXES = [a for a in PSI_AXES if a != "a_n_specs"]
+_OPERATIONAL_TABLE = _prim.psi_tuples(_PRIM_TABLE_AXES)
+
+# ⚠️ 두 이름 공간은 **서로소여야 한다.** 겹치면 아래 조회 순서(DSL -> 운용)가 "어느 표가
+# 이기는가" 라는 조용한 결정이 된다. 겹치는 즉시 import 에서 죽인다.
+_NS_CLASH = set(_PRIMITIVE_TABLE) & set(_OPERATIONAL_TABLE)
+if _NS_CLASH:
+    raise ValueError(
+        "DSL 원시 이름과 운용 원시(primitive_registry.json) 이름이 겹친다: %s -- "
+        "어느 표가 이기는지가 조용한 결정이 되므로 여기서 죽인다." % sorted(_NS_CLASH))
+
 # 매크로 -> primitive 조합.
 #
 # 🔴 2026-08-25 (최종 브랜치 리뷰 C1): 여기 있던 **id 리터럴 표**(0..8, 구 9팔 맵)를 지웠다.
@@ -470,9 +497,34 @@ def psi(action):
     if not names:                                  # NOOP
         return dict(zip(PSI_AXES, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)))
 
-    v = [_PRIMITIVE_TABLE[n] for n in names if n in _PRIMITIVE_TABLE]
-    if not v:
-        return dict(zip(PSI_AXES, (0.0,) * len(PSI_AXES)))
+    # 🔴 2026-08-29 (Plan B / T6a). 여기는 원래
+    #        v = [_PRIMITIVE_TABLE[n] for n in names if n in _PRIMITIVE_TABLE]
+    #        if not v: return dict(zip(PSI_AXES, (0.0,) * len(PSI_AXES)))
+    #    였다. `if n in _PRIMITIVE_TABLE` 가 **모르는 이름을 조용히 걸러냈고**, 그 다음 줄의
+    #    영벡터 폴백이 "아무것도 안 남았다"를 NOOP 비슷한 것으로 무너뜨렸다. 그래서 운용 원시
+    #    19종이 전부 ψ 원점에 겹쳤고 `psi(['nonsense_operation_xyz'])` 도 같은 점이었다 --
+    #    즉 오타와 실재 행동이 구분되지 않았다.
+    #    이것은 `psi(int)` 경로가 2026-08-27 에 이미 고친 결함(`:463` 위 주석)의 **다른 가지**다.
+    #    같은 처방을 리스트 경로에 적용한다: 두 이름 공간을 순서대로 찾고, 어느 쪽에도 없으면
+    #    **KeyError 로 죽는다.** 영벡터 폴백은 지웠다 -- `names` 가 빈 리스트인 진짜 NOOP 은
+    #    위 `if not names:` 가 이미 옳게 처리하므로 그 분기는 그대로다(다른 사건이다).
+    v = []
+    for n in names:
+        if n in _PRIMITIVE_TABLE:                  # DSL 원시 (spec_dsl.jl 의 제약 문법)
+            v.append(_PRIMITIVE_TABLE[n])
+        elif n in _OPERATIONAL_TABLE:              # 운용 원시 (primitive_registry.json)
+            v.append(_OPERATIONAL_TABLE[n])
+        else:
+            hint = ("그 이름은 primitive_registry.json 의 **순수 술어**다 -- 술어는 아무것도 "
+                    "바꾸지 않으므로 ψ(효과 서술자)가 없다. tool 의 body 는 운용 원시로만 "
+                    "이루어져야 한다."
+                    if n in _prim.PREDICATE_NAMES else
+                    "오타이거나, 아직 레지스트리에 등재되지 않은 합성 원시를 의심하라.")
+            raise KeyError(
+                "psi: 원시 이름 %r 가 어느 이름 공간에도 없다 -- 조용히 걸러내고 영벡터를 "
+                "돌려주지 않는다. 현행 이름 공간은 둘이다: DSL 원시(spec_dsl.jl) %s · "
+                "운용 원시(primitive_registry.json) %s. %s"
+                % (n, sorted(_PRIMITIVE_TABLE), sorted(_OPERATIONAL_TABLE), hint))
     cols = list(zip(*v))                           # 축별 열
     out = {
         "a_cost":              float(sum(cols[0])),
