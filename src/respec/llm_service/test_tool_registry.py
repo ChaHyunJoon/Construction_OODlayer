@@ -483,11 +483,19 @@ def test_grounding_rejects_an_agent_outside_the_enum():
 
 
 def test_grounding_rejects_a_missing_required_arg():
-    """🔴 F12. `expressible` 이 없으면 T2 합성의 방아쇠가 조용히 사라진다."""
+    """🔴 F12. `expressible` 이 없으면 T2 합성의 방아쇠가 조용히 사라진다.
+
+    🔴 fix round 1 (Minor 6): `"expressible" in why` 는 동어반복이었다 -- `expressible` 은
+    swap_body 의 `want`(요구 인자) 집합에 **항상** 들어 있으므로, missing_args 메시지의
+    `요구=...` 절에 실제로 무엇이 빠졌든 상관없이 항상 나타난다(예: 코드가 엉뚱하게
+    `macro` 를 빠뜨렸다고 오판해도 이 substring 검사는 여전히 통과했을 것이다). 실제로
+    빠진 키가 메시지 **머리**(`missing_args: <키> (...)`)에 정확히 그 이름으로 나오는지를
+    본다 -- `reasoning` 이 `reason` 을 포함하듯, 다른 요구 키가 우연히 겹치는 사고를
+    막으려면 뒤에 공백이 오는 것까지 확인해야 한다."""
     why = reg.check_tool_args(
         "swap_body", {"agent": "r1", "macro": "Replace", "reasoning": "x", "ranking": "Replace"},
         ["Replace", "NOOP"], ["r1"])
-    assert why is not None and "expressible" in why
+    assert why is not None and why.startswith("missing_args: expressible ")
 
 
 def test_grounding_rejects_a_macro_outside_this_events_menu():
@@ -514,6 +522,85 @@ def test_grounding_rejects_a_non_bool_expressible():
     assert why is not None and "expressible" in why
 
 
+def test_grounding_accepts_expressible_false():
+    """🔴 fix round 1 (Important 1). 기존 7개 시험은 전부 `expressible: True` 만 썼다 --
+    `expressible=False` 는 이 설계 전체가 존재하는 이유인 **바로 그 트리거**다(어휘 밖 사건에서
+    T2 합성 방아쇠를 당기는 값). 실측: `if args["expressible"] is not True:` 로 바꿔치면 이
+    시험 추가 전에는 33개 전부 green 이었는데, 그 뮤테이션은 `expressible=False` 인 정상 호출을
+    `expressible_not_a_bool: False` 로 거절한다 -- 즉 이 레인이 존재하는 이유를 검증기가 조용히
+    막아도 초록으로 보였을 것이다. 이 시험은 그 뮤테이션에서 반드시 빨개져야 한다."""
+    ok = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": False,
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], ["r1"])
+    assert ok is None
+
+
+def test_grounding_rejects_an_off_schema_extra_arg():
+    """🔴 fix round 1 (Important 2). 삭제 대조: `off_schema_args` 가드를 지우면 아래 호출이
+    `None`(접지 성공)을 돌려준다 -- 정확히 줄리아의 `ground_tool_args`(`llm_bridge.jl:238`)가
+    `reject:off_schema_param` 으로 거부하는 그 축이다. 스키마에 없는 키가 조용히 통과하면
+    Task 1 이 스키마로 좁힌 채널을 Task 2 가 도로 넓히는 셈이다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace", "zone": "z1", "margin": 0.5},
+        ["Replace", "NOOP"], ["r1"])
+    assert why is not None and why.startswith("off_schema_args:")
+    assert "zone" in why and "margin" in why
+
+
+def test_grounding_rejects_non_dict_args():
+    """🔴 fix round 1 (Minor 3). 이 가드가 없으면 문자열·리스트는 `missing_args` 로 흘러들어
+    (`set(args)` 가 문자열의 글자 하나하나·리스트의 원소를 키처럼 다뤄) 오도하는 사유를 내고,
+    `None`·정수는 `set(args)` 에서 바로 `TypeError` 로 죽는다(raise 는 안 된다는 총함수
+    계약 위반). 넷 다 `args_not_a_dict` 로 깔끔하게 거절되는지 잰다."""
+    for bad in ("not a dict", ["a", "list"], None, 42):
+        why = reg.check_tool_args("swap_body", bad, ["Replace", "NOOP"], ["r1"])
+        assert why is not None and why.startswith("args_not_a_dict:"), (bad, why)
+
+
+def test_grounding_is_total_over_none_valid():
+    """🔴 fix round 1 (Minor 4). `build_tools` 는 `agents or []` 로 방어하는데 이 함수는 그동안
+    `list(None)` 에서 raise 했다 -- Task 4 가 이 함수를 `macro()` 안에서 부르므로, raise 하면
+    그 예외가 응답의 `error` 필드로 삼켜지고 `policy.jl` 의 `policy_entry` 가 이 lane 전체를
+    `available=false` 로 끈다(사유 문자열을 돌려주는 게 임무인 검증기가 레인 전체를 죽이는
+    본말전도). `valid=None` 은 빈 메뉴로 취급되어 어떤 `macro` 값도 메뉴 밖이 된다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        None, ["r1"])
+    assert why is not None and why.startswith("macro_outside_menu:")
+
+
+def test_grounding_is_total_over_none_agent_ids():
+    """🔴 fix round 1 (Minor 4) 의 짝. `agent_ids=None` 도 raise 없이 빈 enum 으로 취급된다."""
+    why = reg.check_tool_args(
+        "swap_body",
+        {"agent": "r1", "macro": "Replace", "reasoning": "x", "expressible": True,
+         "ranking": "Replace"},
+        ["Replace", "NOOP"], None)
+    assert why is not None and why.startswith("agent_outside_enum:")
+
+
+def test_grounding_reports_a_tool_missing_its_impl_instead_of_raising():
+    """🔴 fix round 1 (Minor 4). `MACRO_TO_TOOL` 에는 있는데 `_FUNCS` 에는 없는 이름은 두 표가
+    갈리는 드리프트를 흉내낸다 -- 원 표는 건드리지 않고 monkeypatch 로 임시 항목만 얹는다
+    (`test_needs_agent_is_derived_from_function_signatures_not_a_hand_maintained_set` 와 같은
+    패턴). 이 상태에서 `_needs_agent` 가 `_FUNCS[name]` 을 그대로 인덱싱하면 `KeyError` 로
+    raise 하므로, `check_tool_args` 는 그보다 먼저 `_FUNCS` 존재를 확인해 사유 문자열로
+    돌려줘야 한다."""
+    tool_registry.MACRO_TO_TOOL["GhostMacro"] = "ghost_tool"
+    try:
+        assert "ghost_tool" not in _FUNCS, "준비 오류: 이미 _FUNCS 에 있다"
+        why = reg.check_tool_args("ghost_tool", {}, ["GhostMacro"], ["r1"])
+        assert why is not None and why.startswith("tool_missing_impl:") and "ghost_tool" in why
+    finally:
+        del tool_registry.MACRO_TO_TOOL["GhostMacro"]
+
+
 def test_no_intervention_needs_reason_not_agent():
     assert reg.check_tool_args(
         "no_intervention",
@@ -524,4 +611,8 @@ def test_no_intervention_needs_reason_not_agent():
         "no_intervention",
         {"macro": "NOOP", "reasoning": "x", "expressible": True, "ranking": "NOOP"},
         ["NOOP"], [])
-    assert why is not None and "reason" in why
+    # 🔴 fix round 1 (Minor 6): `"reason" in why` 는 동어반복이었다 -- `reasoning` 이 요구 키
+    # 목록에 항상 있고 그 단어가 이미 "reason" 을 부분문자열로 포함하므로, 실제로 무엇이
+    # 빠졌는지와 무관하게 항상 참이었다. 메시지 머리가 정확히 `reason`(그 뒤에 공백, "reasoning"
+    # 이 아니라)으로 시작하는지를 본다.
+    assert why is not None and why.startswith("missing_args: reason ")

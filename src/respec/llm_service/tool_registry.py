@@ -160,12 +160,34 @@ def check_tool_args(name, args, valid, agent_ids):
     를 여기 그대로 넘기는 것은 키 이름 집합에는 옳고, enum 에는(그 목적이라면) 틀렸을
     것이다 -- `build_tools` 가 내보내는 `macro` enum 은 `valid` 가 아니라 `emitted`(그 요청이
     실제로 tool 로 낸 것)여야 하기 때문이다. 여기서는 enum 을 쓰지 않으므로 문제되지 않는다.
+
+    🔴 fix round 1 (검사 순서, 고정): `unknown_tool → args_not_a_dict → tool_missing_impl →
+    missing_args → off_schema_args → expressible_not_a_bool → macro_outside_menu →
+    agent_outside_enum` 순으로 검사하고, **처음으로 걸리는 사유 하나만** 돌려준다(리뷰가 이
+    순서를 실측했고 재배열하지 말라고 못박았다 -- `unknown_tool` 이 `_FUNCS` 를 건드리는
+    무엇보다도 먼저인 것만 하중을 받는다). 그래서 두 축이 동시에 잘못된 호출은 **뒤쪽 축의
+    사유를 절대 내지 않는다** -- 예를 들어 `expressible` 도 틀리고 `agent` 도 메뉴 밖인 호출은
+    `expressible_not_a_bool` 만 보고되고 `agent_outside_enum` 은 기록조차 안 된다. 따라서
+    `tool_arg_error` 문자열을 어떤 실패 종류(예: F10)가 **몇 번** 났는지 세는 데 쓰면 안
+    된다 -- 그 축을 세려면 각 축을 이 함수와 별도로 독립 재검사해야 한다.
+
+    🔴 fix round 1 (Important/Minor 4, 총함수화): `valid`·`agent_ids` 가 `None` 이어도, 그리고
+    `name` 이 `MACRO_TO_TOOL` 에는 있는데 `_FUNCS` 에는 없어도(표 두 벌이 갈리는 드리프트)
+    이 함수는 **절대 raise 하지 않는다** -- Task 4 는 이 함수를 `macro()` 안에서 부르는데,
+    거기서 예외가 나면 그 예외는 응답의 `error` 필드로 삼켜지고 `policy.jl` 의 `policy_entry`
+    가 이 lane 전체를 `available=false` 로 죽인다(레인 전체의 조용한 폴백). 사유 문자열을
+    돌려주는 게 임무인 검증기가 raise 로 그 임무를 걷어차면 안 되므로, `build_tools` 가 이미
+    취하는 방어(`agents or []`)와 같은 자세를 취한다.
     """
     if name not in MACRO_TO_TOOL.values():
         return "unknown_tool: %r (등록된 것은 %s)" % (
             name, ", ".join(sorted(MACRO_TO_TOOL.values())))
     if not isinstance(args, dict):
         return "args_not_a_dict: %r" % (args,)
+    if name not in _FUNCS:
+        return "tool_missing_impl: %r (MACRO_TO_TOOL 에는 있으나 _FUNCS 에 구현이 없음)" % (name,)
+    valid = valid or []
+    agent_ids = agent_ids or []
     want = set(COMMON_ARGS(valid)) | ({"agent"} if _needs_agent(name) else {"reason"})
     missing = sorted(want - set(args))
     if missing:
