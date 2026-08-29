@@ -34,20 +34,23 @@
 | **T2** | ✅ 완료 (검증 2라운드) | `f1dbee69` → `c48ffc95` → `6bb875ad` | **170 passed / 0 failed** |
 | **T3** | ✅ 완료 (검증 1라운드) | `198d0440` → `d2c408a1` | **124 passed / 48 failed** ← 설계대로 |
 | **T4** | ✅ 완료 (음성 대조 6종) | `7d525078` | **168 passed / 0 failed** |
-| T5~T7 | ⬜ 미착수 | — | — |
+| **T5** | ✅ 완료 (음성 대조 4종) | `90cfcc82` | **174 passed / 0 failed** |
+| T6~T7 | ⬜ 미착수 | — | — |
 
 ✅ **T1~T3 이 열어 둔 두 구멍은 T4 가 닫았다**(실측, §0-B ⑪):
 `macro()` 의 `NameError` 는 사라졌고(가짜 LM 으로 끝까지 태워 `decision_source="tool"` 확인),
 `tool_args` 는 한 키(`agent`)만 실어 `ground_tool_args` 가 더 이상 `reject:off_schema_param` 을
 안 낸다. **파이썬 레인은 이제 돈다.**
 
-🔴 **그래도 아직 스윕을 돌리지 말 것 — 이유가 바뀌었다.** 남은 것은 배선이다:
-① `TOOL_CHOICE_DEFAULT` 가 아직 `None` 이라 **호출을 강제하지 않는다**(실측 호출률 0/3 —
-F3). T5 가 `"required"` 로 되돌린다.
-② 줄리아 `TOOL_LANE_KEYS` 가 아직 옛 열 개라 `decision_source`·`tool_arg_error` 가 **결정
-행에 안 실린다**(그리고 `test/tool_lane_keys_survive.jl` (6)절이 그 사실로 빨갛다). T6 이 닫는다.
-⟹ 지금 돌리면 죽지는 않지만, tool 호출이 거의 안 오고 새 진단 키가 기록에서 빠진 **읽을 수
-없는 스윕**이 된다.
+✅ **T5 가 ①을 닫았다** — `TOOL_CHOICE_DEFAULT = "required"`, 그리고 `parallel_tool_calls=False`
+가 프로바이더 요청까지 도달한다(실측).
+
+🔴 **그래도 아직 스윕을 돌리지 말 것 — 남은 것은 줄리아 배선 하나다.**
+줄리아 `TOOL_LANE_KEYS` 가 아직 옛 열 개라 `decision_source`·`tool_arg_error` 가 **결정 행에
+안 실린다**(그리고 `test/tool_lane_keys_survive.jl` (6)절이 그 사실로 빨갛다). T6 이 닫는다.
+⟹ 지금 돌리면 죽지 않고 tool 호출도 오지만, **새 진단 키 둘이 기록에서 빠진다** — 즉 실패
+사건의 이름(`no_tools`/`no_call`)과 접지 실패 사유가 사후에 복원 불가능해진다. 스윕을 다시
+돌리는 비용이 그 두 키를 얻는 비용보다 크므로 T6 뒤에 돌리는 것이 맞다.
 
 ## 0-B. 실행 중 반증되거나 정정된 것 — **다음 태스크가 이걸 안 읽으면 같은 자리를 다시 밟는다**
 
@@ -162,6 +165,45 @@ T2 의 **검사 순서가 바뀌면 그 사건이 되살아난다.**
 물어서 `False` 를 쟀다 — 두 값을 접으면 그 두 사건이 섞인다. `policy.jl:1219-1221` 의
 *"`native_fc` 는 null 가능한 넷에 들지 않는다"* 는 주석은 **이제 거짓이다.** T6 이 정정할 것.
 
+**⑮ T5 실행 결과 — 계획서 Step 3 의 `build_adapter()` 지시가 실측으로 반증됐다.**
+전문은 `task-5-report.md`. `parallel_tool_calls=False` 를 어댑터에 걸면 **킬스위치가 죽는다**:
+dspy 3.3.0 이 두 손잡이를 프로바이더 경계에서 한 객체(`LMToolChoice`)로 접어서
+(`core/types.py:538-542` + `clients/openai_format.py:396-398`), `parallel_tool_calls` 만 실린
+요청에 **`tool_choice: "auto"` 를 지어내 붙인다**(실측). 그러면 `DSPY_TOOL_CHOICE=""` 가 더 이상
+2026-08-29 이전과 바이트 동일한 요청을 못 내고, A/B 기준선이 조용히 다른 세계가 된다.
+⟹ `_ask` 의 `config=` 에서 `tool_choice` 와 **같은 조건 아래** 싣는다. 음성 대조: 계획서안은
+이 파일의 계약 **7개**를 붉힌다.
+
+**⑯ 🔴 T5 가 `policy.jl` 의 라우터 게이팅을 사실상 죽였다 — T6 이 산문을 정정해야 한다.**
+`tool_choice_for` 는 "못 쟀다"·"낯설다" 에 `nothing` 을 내는데, 이제 그 사건에서도 서비스
+기본값이 `"required"` 를 세운다. 진리표 세 행이 한 값으로 붕괴한다. **의도한 종착점이다**
+(그 게이팅의 근거인 *"강제는 `expressible` 을 지운다"* 가 T3 으로 끊겼다). 그러나
+`policy.jl:438-442`·`:504-514` 의 산문이 **지금 거짓**이고, T6 이 배선을 지울 때 함께 고쳐야 한다.
+⚠️ 그리고 `test/tool_choice_gate.jl` 은 **43/43 초록이다**(T5 뒤 실측) — 순수 함수만 재고
+그 함수의 **효과**는 안 재기 때문이다. §0-B ⑦ 과 같은 종류의 함정이므로 T6 이 그 게이트에
+"이 함수는 생산 호출자가 0개다" 가 아니라 **"이 게이팅은 더 이상 작동하지 않는다"** 를 적을 것.
+
+**⑰ ✅ §0-B ② 의 처방이 T4 이후 틀렸다 — T6 의 일이 줄었다.** 그 항목은
+`test/tool_args_grounding.jl` 을 *"`build_tools()` 산출 JSON 스키마에 재조준하라"* 고 적었다.
+실측하면 그 재조준은 **하면 안 된다**: `_FUNCS` 시그니처 = `_GROUNDING_ARGS` = `{agent, reason}`
+= 줄리아 `TOOL_PARAM_SCHEMA` 이고, `build_tools()` 의 JSON 스키마(5키)가 그 상위집합인 것은
+**T4 가 F9 를 닫으려고 의도적으로 만든 비대칭**이다. 그걸 묶으면 줄리아가 공통 인자 넷을
+선언해야 하고, 그건 F9 를 도로 여는 것이다.
+⟹ T6 이 그 파일에 할 일은 **재조준이 아니라 docstring 정정** 하나다("이 게이트는 접지 알파벳
+(`_FUNCS` ↔ `TOOL_PARAM_SCHEMA`)만 묶는다. `build_tools()` 의 JSON 스키마는 **일부러** 더 넓고,
+그 축은 `test_macro_returns_tool_call.py::test_the_python_and_julia_param_schemas_agree` 가 잰다").
+그 파일은 T5 뒤에도 **145/145 초록**이다(실측).
+
+**⑱ ✅ T7 의 위험 하나를 미리 닫았다.** 이 레포의 오프라인 시험은 native FC 의 `tool_calls` 를
+**한 번도 안 만든다**(`_FCDummy` 는 직렬화를 못 하고 `test_native_fc_wired.py` 는 배선만
+증명한다). 그래서 T4 의 조립이 텍스트 파싱된 `ToolCalls` 에 대해서만 검증됐다는 위험이 있었다 —
+프로바이더는 `arguments` 를 **JSON 문자열**로 보내므로, 안 풀리면 `check_tool_args` 가 전
+사건에서 `args_not_a_dict` 를 내고 레인이 멈춘다(F9 급).
+실측으로 닫았다: `_provider_tool_call_to_tool_call_dict`(`adapters/base.py:734-753`)가
+`json_repair.loads` 로 먼저 푼다. 같은 페이로드를 두 경로로 태우면 `_first_tool_call` 출력이
+**동일하다**(이름·args 타입·키 집합·`check_tool_args` 결과·`_GROUNDING_ARGS` 필터 결과 전부).
+⟹ T7 의 라이브 게이트가 재는 것은 우리 디코딩이 아니라 **프로바이더의 행동**이다. 범위 그대로.
+
 ---
 
 ## 0. 이 계획이 닫는 실패 케이스 — 이것이 계획의 축이다
@@ -171,8 +213,8 @@ T2 의 **검사 순서가 바뀌면 그 사건이 되살아난다.**
 | # | 실패 | 어떻게 나타나나 | 오늘 상태 | 닫는 태스크 |
 |---|---|---|---|---|
 | **F1** | `tool_choice` 오설정 | dspy 의 닫힌 enum 에서 `ValidationError` → 포괄 except → `error` → `policy_entry` 가 레인을 `available=false` 로 버린다. **결정 전체가 매 사건 사라지고 아무도 말 안 해 준다** | ✅ 닫힘 (2026-08-29) | T7 회귀 게이트만 |
-| **F2** | tool 0개인데 `tool_choice` 전송 | `openai_format.py:81-83` 이 `tool_choice` 를 `tools` 와 **무관하게** 싣는다 → 프로바이더 400 | 부분 (`_ask` 의 `if tools:`) | **T5** |
-| **F3** | 강제 없이 호출이 안 나온다 | 실측 **0/3**. 프롬프트·필드 제거·행위자 프레이밍 전부 0/3. 모델이 판단 과제로 보면 답변하고 행동하지 않는다 | 🔴 열림 | **T5** |
+| **F2** | tool 0개인데 `tool_choice` 전송 | `openai_format.py:81-83` 이 `tool_choice` 를 `tools` 와 **무관하게** 싣는다 → 프로바이더 400 | ✅ 닫힘 (T4 조기 반환 + T5 의 `if choice:`) — 이중 방어 | — |
+| **F3** | 강제 없이 호출이 안 나온다 | 실측 **0/3**. 프롬프트·필드 제거·행위자 프레이밍 전부 0/3 | ✅ 닫힘 (T5, `TOOL_CHOICE_DEFAULT="required"`) | T7 라이브 확인 |
 | **F4** | `required` 가 텍스트 채널을 비운다 | `content=None` → `adapters/base.py:168` 이 `value={}`, `:181` 이 전 필드 `None`. **예외가 안 난다** → §4-1 구제가 발화조차 안 함 | 🔴 2콜로 우회 중 | **T3** |
 | **F5** | 집행 ≠ 채점 | 실측 **3/3**. `fault-severe`: 채점 `Replace`, 집행 `deliver_battery` | ✅ 닫힘 (T4, `7d525078`) | T7 라이브 확인 |
 | **F6** | `expressible` 오판 (T1 은 **문구를 payload 에 싣기만** 한다 — 기록되는 값이 tool 인자에서 나오는 것은 T3 부터고, 행동 변화의 증거는 T7 뿐이다) | 어휘 밖 사건에서 **1/3만** `False`. 모델이 "표현 불가"와 "개입 불필요"를 혼동 → T2 합성이 정작 필요할 때 안 돈다 | 🔴 열림 | **T1** + T7 실측 |
@@ -180,7 +222,7 @@ T2 의 **검사 순서가 바뀌면 그 사건이 되살아난다.**
 | **F8** | R26 행 ↔ 메뉴 거절(C8②) 구별 불가 | 둘 다 `tool_called is None` | ✅ `tool_calls_n` 이 가른다 | **T4** (0으로 안 덮음 유지) |
 | **F9** | ✅ **닫힘 (T4, 실측)** — 옛 상태: `tool_args` 에 공통 인자가 샌다 (T1~T3 HEAD 에서 발화 중이었다, §0-B ①) | 줄리아 `TOOL_PARAM_SCHEMA`(`llm_bridge.jl:148-151`)는 `agent`/`reason` **둘만** 선언한다. 새면 `ground_tool_args` 가 `reject:off_schema_param` → **집행이 전 사건에서 정지** | 🔴 신규 **고위험** | **T4** 교차 게이트 |
 | **F10** | enum 밖 `agent` id | `dspy.Tool` 에 `strict` 필드가 **없다**(실측: `model_fields` = `arg_desc·arg_types·args·desc·func·has_kwargs·name`). 스키마가 강제가 아니다 | 부분 (줄리아만) | **T2** |
-| **F11** | 다중 tool 호출 | `_first_tool_call` 이 첫 번째만 쓰고 나머지를 버린다 | 부분 (기록만) | **T5** (원천 차단) |
+| **F11** | 다중 tool 호출 | `_first_tool_call` 이 첫 번째만 쓰고 나머지를 버린다 | ✅ 닫힘 (T5) — `parallel_tool_calls=False` 가 요청까지 도달(실측). `tool_calls_n` 은 계속 잰다 | T7 라이브 확인 |
 | **F12** | 필수 인자 누락 | `required` 목록이 강제가 아니다(F10 과 같은 뿌리). `expressible` 이 없으면 `None` → T2 합성이 안 돈다 | 🔴 열림 | **T2** |
 | **F13** | `expressible` 이 bool 이 아니다 | `bool("False") is True` — 거짓 `True` 가 조용히 기록된다 | ✅ `isinstance` 검사 | **T4** (유지) |
 | **F14** | ✅ 닫힘 (T4) — tool 인자 JSON 파싱 실패 | `AdapterParseError`. ~~§4-1 구제는 이 설계에서 뺄 것이 없어 무의미~~ 🔴 **이 판단은 반증됐다** — 구제 분기는 여전히 도달 가능하고 native FC 판에서 살아남은 방아쇠가 `no_call` 이다(§0-B ③) | 🔴 재정의 필요 | **T4** |
@@ -1006,6 +1048,14 @@ git commit -m "T4: 단일 채널 조립 — chosen 이 tool 이름에서 나오�
 ---
 
 # Task 5: 요청 손잡이 — 강제 고정 · 다중 호출 차단
+
+> ✅ **완료 (2026-08-29): `90cfcc82`. 174 passed / 0 failed. 소요 약 25분(추정 30~40분).**
+> 보고서: `.superpowers/sdd/2026-08-29-single-channel-tool-lane-plan/task-5-report.md`.
+> 🔴 **아래 Step 3 의 `build_adapter()` 코드를 쓰지 말 것 — 실측으로 반증됐다**(§0-B ⑮).
+> `parallel_tool_calls` 는 `_ask` 의 `config=` 에서 `tool_choice` 와 **같은 조건 아래** 싣는다.
+> 계획서의 `test_parallel_tool_calls_is_disabled_at_the_source` 는
+> `test_the_adapter_does_not_carry_the_parallel_flag` 로 **대체했다**(반대 방향을 못박는다).
+> ⚠️ 부수 효과: 이 태스크가 `policy.jl` 의 라우터 게이팅을 무효화한다(§0-B ⑯). T6 이 산문 정정.
 
 **Files:**
 - Modify: `src/respec/llm_service/dspy_service.py` — `build_adapter()` `:227-233`, `TOOL_CHOICE_DEFAULT` `:1007`
