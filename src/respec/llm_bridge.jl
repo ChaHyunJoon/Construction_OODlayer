@@ -197,17 +197,62 @@ function resolve_agent_id(env, s::AbstractString)
 end
 
 """
+    TOOL_PARAM_SCHEMA :: Dict{String,Dict{String,Bool}}
+
+오늘 tool 알파벳의 **선언된 파라미터 집합**. `tool 이름 => (파라미터 이름 => 필수인가)`.
+진실원은 `src/respec/llm_service/tool_registry.py` 의 `_FUNCS` 시그니처이고, 여기 있는 것은
+**생산 경로가 파이썬 없이 읽을 수 있는 짝**이다.
+
+🔴 **두 벌이 조용히 갈리지 않는 이유는 게이트다.** `test/tool_args_grounding.jl` (7)절이
+레포의 `.venv` 파이썬으로 `tool_registry.py` 를 `inspect.signature` 로 훑어 이 표와 **집합
+등식**을 단언한다(못 닿으면 skip 이 아니라 빨개진다). 그 게이트가 T1 수정 라운드의
+교차언어 수법(`test/tool_lane_keys_survive.jl` (6)절)과 같은 모양이다.
+⚠️ 그래서 이 표를 손으로 고치는 것만으로는 갈릴 수 없다 — 파이썬을 안 고치면 게이트가 죽는다.
+
+왜 파이썬을 런타임에 안 부르는가: 이 표는 `enact_target` 이 **결정마다** 읽는다. 결정 경로에
+서브프로세스를 놓으면 그 비용을 매 사건마다 낸다.
+"""
+const TOOL_PARAM_SCHEMA = Dict{String,Dict{String,Bool}}(
+    "swap_body"       => Dict{String,Bool}("agent"  => true),
+    "deliver_battery" => Dict{String,Bool}("agent"  => true),
+    "no_intervention" => Dict{String,Bool}("reason" => true))
+
+"""
+    MACRO_TO_TOOL :: Dict{String,String}
+
+매크로 이름(채점 어휘) → tool 이름(행동 어휘). `tool_registry.py` 의 같은 이름 표의 짝이고,
+같은 게이트가 집합 등식으로 묶는다.
+
+🔴 **이것이 있어야 "이 tool 호출이 집행되는 팔의 것인가" 를 물을 수 있다**(교차축, 2026-08-29
+검증 항목 8). 그 전에는 `no_intervention` 호출의 인자로 `Replace` 가 집행돼도 두 측정축이
+다 초록이었다.
+"""
+const MACRO_TO_TOOL = Dict{String,String}(
+    "Replace" => "swap_body", "SwapBattery" => "deliver_battery", "NOOP" => "no_intervention")
+
+"""
+    GROUNDABLE_PARAMS
+
+접지(실재하는 것을 가리키는가)를 **잴 수 있는** 파라미터 이름들. 오늘은 `"agent"` 하나다 —
+`reason` 은 자유 문장이라 대조할 열거가 없다. 접지 가능한 파라미터가 늘면 여기에 더하고
+`ground_tool_args` 의 해당 분기를 함께 연다.
+"""
+const GROUNDABLE_PARAMS = ("agent",)
+
+"""
     ground_tool_args(env, tool_called, tool_args) -> (verdict::String, detail::String)
 
-LLM 이 낸 **tool 인자가 실재하는 것을 가리키는가**를 잰다. 오늘 이 레인에서 인자를 거르는
-자리는 **여기 하나뿐이다**(2026-08-29, Plan B / T3).
+LLM 이 낸 **tool 호출이 실재하는 것을 가리키는가**를 잰다. 오늘 이 레인에서 tool 호출을
+거르는 자리는 **여기 하나뿐이다**(2026-08-29, Plan B / T3).
 
 🔴 왜 이 층이 필요한가 (spec §8 의 2026-08-29 정정 = 실측 셋)
 --------------------------------------------------------------
  1. **디코드 시점 차단이 이 레인엔 없다.** `format_as_litellm_function_call()` 이 내는
     `parameters` 에는 `strict` 도 `additionalProperties` 도 없고, dspy 3.3.0 의 `dspy.Tool`
     에는 `strict` 필드 **자체가 없다**. 모델은 살아 있는 id 만 담긴 enum 을 **보지만**,
-    보여준 것이지 강제된 것이 아니다.
+    보여준 것이지 강제된 것이 아니다. 검증자 실측(2026-08-29): dspy 3.3.0 의 `ToolCalls`
+    는 여분 인자를 걸러내지 않고 `_first_tool_call` 이 그대로 복사한다 — 스키마 밖 인자가
+    **실제로** 여기까지 온다.
  2. 두 번째 방어선(`grammar_ground_check`, `verifier.jl:654`)은 실재하지만 그것은
     `RespecProposal` 을 받는다 — **tool 레인을 못 본다.**
 그래서 프롬프트 채널에 환각 방어를 기대면 안 된다. 이 함수가 그 자리다.
@@ -218,28 +263,41 @@ LLM 이 낸 **tool 인자가 실재하는 것을 가리키는가**를 잰다. �
     "reject:<reason>"        검사했는데 어긋났다        예: "reject:ungrounded_agent"
     "deferred:<reason>"      **못 쟀다**                예: "deferred:no_tool_call"
 
+소비자 규약은 **접두사 비교**다(spec §9-2, 커밋 `afe38dd9`).
+
 🔴 **`deferred` 를 `admit` 으로 접지 마라.** "재서 통과했다" 와 "잴 것이 없었다" 는 다른
-사건이다. 특히 `no_intervention` 은 인자가 `reason` 뿐이라 접지할 것이 아예 없다 —
+사건이다. 특히 `no_intervention` 은 선언된 인자가 `reason` 뿐이라 접지할 것이 아예 없다 —
 그것은 `admit` 이 아니라 **`deferred:no_groundable_param`** 이다. 공허한 참을 통과로
 기록하면 나중에 "접지 통과율" 을 세는 사람이 NOOP 을 통과로 센다.
 
-어떤 파라미터가 접지 대상인가
------------------------------
-오늘 tool 알파벳(`llm_service/tool_registry.py`)에서 접지 가능한 파라미터는 **`"agent"` 하나**다
-(`swap_body`·`deliver_battery` 가 받고, `no_intervention` 은 `reason` 만 받는다). 그래서 이
-함수는 **tool 이름표가 아니라 인자 dict 에 `"agent"` 키가 실려 왔는가**로 판정한다 — 파이썬의
-`MACRO_TO_TOOL`/`_FUNCS` 표를 Julia 에 손으로 복사하면 두 벌이 조용히 갈리기 때문이다
-(`_needs_agent` 가 손으로 든 집합을 없앤 것과 같은 이유). 접지 대상 파라미터가 늘면 그때
-여기에 그 키를 더한다.
+🔴 **이름도 잰다** (2026-08-29 검증 항목 7). 이전 판은 **인자 dict 만 보고 이름을 안 봤다** —
+실측: `ground_tool_args(env, "teleport", Dict("agent" => B))` 가 `"admit"` 을 냈다. 존재하지
+않는 tool 이 접지를 통과한 것이다. 이제 `TOOL_PARAM_SCHEMA` 에 없는 이름은
+`reject:unknown_tool` 이다.
 
-판정 규칙 — 전부 **값**으로 본다(`haskey` 는 값이 실려 왔다는 증거가 아니다, T1 소비자 규칙 1):
+🔴 **판정은 그 tool 의 선언된 파라미터 집합에 대해 한다** (항목 9·10). 이전 판은 인자 dict 에
+`"agent"` 키가 실려 왔는가 **하나만** 보았기 때문에, `no_intervention` 에 스키마 밖 `agent`
+를 얹으면 `admit` 이 났다(실측). 이제:
+  * 선언에 없는 인자가 오면 → `reject:off_schema_param` (조용히 무시하지 않는다)
+  * 필수 인자가 없으면       → `reject:missing_required_param` (**잴 수 있는 실패**다.
+    "프로바이더의 `required` 가 잡는다" 는 정당화는 위 실측 1과 자기모순이다)
 
-  * `tool_called` 가 문자열이 아니거나 비었다 → `deferred:no_tool_call`
-  * `tool_args` 가 dict 이 아니다             → `deferred:no_tool_args`
-  * dict 에 `"agent"` 값이 없다               → `deferred:no_groundable_param`
-  * `"agent"` 값이 있는데 `resolve_agent_id` 가 `nothing` 을 낸다(문자열이 아닌 경우 포함)
-                                              → `reject:ungrounded_agent`
-  * 그 외                                     → `admit`
+판정 규칙 — 전부 **값**으로 본다(레인 dict 에서 `haskey` 는 값이 실려 왔다는 증거가 아니다,
+T1 소비자 규칙 1). ⚠️ 단 `tool_args` **안**에서는 키 존재가 의미를 나른다: 그것은 서비스가
+받은 JSON 객체 그대로이고, `"agent": null` 과 `"agent"` 부재는 **다른 사건**이다(항목 11).
+
+  * `tool_called` 가 문자열이 아니거나 비었다        → `deferred:no_tool_call`
+  * 그 이름이 알파벳에 없다                          → `reject:unknown_tool`
+  * `tool_args` 가 dict 이 아니다                    → `deferred:no_tool_args`
+  * 선언에 없는 인자가 실려 왔다                     → `reject:off_schema_param`
+  * 필수 인자가 **부재**다                           → `reject:missing_required_param`
+  * 이 tool 에 접지 가능한 파라미터가 선언돼 있지 않다 → `deferred:no_groundable_param`
+  * `"agent"` 가 실려 왔는데(`null` 포함) 열거에 없다 → `reject:ungrounded_agent`
+  * 그 외                                            → `admit`
+
+🔴 **`detail` 은 이 삼상의 유일한 진단이다** — 특히 `"agent": null` 과 `"agent"` 부재를 가르는
+것이 그 문자열이다. 호출부(`enact_target`)가 그것을 버리면 사유가 사라진다(항목 11이 잡은
+것이 정확히 그것이고, 지금은 `verify_detail` 로 결정 행까지 간다).
 
 ⚠️ **이 함수는 순수하다 — 판정만 하고 아무것도 안 고친다.** 세계도 인자도 안 건드린다.
 집행이 이 판정을 어떻게 쓰는지는 `tools/monitor/enact.jl` 의 `enact_target` 에 있다.
@@ -247,19 +305,42 @@ LLM 이 낸 **tool 인자가 실재하는 것을 가리키는가**를 잰다. �
 function ground_tool_args(env, tool_called, tool_args)
     (tool_called isa AbstractString && !isempty(tool_called)) ||
         return ("deferred:no_tool_call", "tool_called=" * repr(tool_called))
+    name = String(tool_called)
+    schema = get(TOOL_PARAM_SCHEMA, name, nothing)
+    schema === nothing &&
+        return ("reject:unknown_tool",
+                "tool=" * repr(name) * " 는 알파벳에 없다 — 등록된 것은 [" *
+                join(sort!(collect(keys(TOOL_PARAM_SCHEMA))), ",") * "]")
     tool_args isa AbstractDict ||
-        return ("deferred:no_tool_args",
-                "tool=" * tool_called * " tool_args=" * repr(tool_args))
-    raw = get(tool_args, "agent", nothing)
-    raw === nothing &&
+        return ("deferred:no_tool_args", "tool=" * name * " tool_args=" * repr(tool_args))
+    got = sort!(String[string(k) for k in keys(tool_args)])
+    extra = String[k for k in got if !haskey(schema, k)]
+    isempty(extra) ||
+        return ("reject:off_schema_param",
+                "tool=" * name * " 선언 밖 인자=[" * join(extra, ",") *
+                "] 선언=[" * join(sort!(collect(keys(schema))), ",") * "]")
+    missing_req = sort!(String[k for (k, req) in schema if req && !(k in got)])
+    isempty(missing_req) ||
+        return ("reject:missing_required_param",
+                "tool=" * name * " 필수 인자 부재=[" * join(missing_req, ",") *
+                "] 실려 온 것=[" * join(got, ",") * "]")
+    gp = String[p for p in GROUNDABLE_PARAMS if haskey(schema, p)]
+    isempty(gp) &&
         return ("deferred:no_groundable_param",
-                "tool=" * tool_called * " args=[" *
-                join(sort!(String[string(k) for k in keys(tool_args)]), ",") * "]")
+                "tool=" * name * " 선언=[" * join(sort!(collect(keys(schema))), ",") *
+                "] 에 접지 가능한 파라미터가 없다 args=[" * join(got, ",") * "]")
+    # 오늘 접지 가능한 파라미터는 `agent` 하나다(`GROUNDABLE_PARAMS`).
+    ("agent" in got) ||
+        return ("deferred:no_groundable_param",
+                "tool=" * name * " args=[" * join(got, ",") * "] 에 agent 가 없다")
+    raw = tool_args["agent"]
     hit = raw isa AbstractString ? resolve_agent_id(env, String(raw)) : nothing
     hit === nothing &&
         return ("reject:ungrounded_agent",
-                "tool=" * tool_called * " agent=" * repr(raw) * " 는 열거에 없다")
-    return ("admit", "tool=" * tool_called * " agent=" * repr(raw))
+                "tool=" * name * " agent=" * repr(raw) *
+                (raw === nothing ? " (키는 실려 왔고 값이 null 이다 — 부재와 다른 사건이다)" :
+                                   " 는 열거에 없다"))
+    return ("admit", "tool=" * name * " agent=" * repr(raw))
 end
 
 """

@@ -21,130 +21,210 @@
 # =============================================================================
 
 """
-    _arm_overridden(router) -> Bool
+    _arm_overridden(router, mac; force_macro=…) -> Bool
 
-이 결정의 **집행 팔이 정책 밖에서 강제로 갈아 끼워졌는가**(통제 실험 `DEMO_FORCE_MACRO`,
+이 결정의 **집행 팔이 정책 밖에서 실제로 갈아 끼워졌는가**(통제 실험 `DEMO_FORCE_MACRO`,
 또는 1-step deviation `DS_DEVIATE_AT`).
 
 🔴 왜 이것이 집행 대상 선택에 필요한가 (T1 리뷰 F8 · 컨트롤러 판정 R16)
 ------------------------------------------------------------------------
-`decide_all` 은 `tool_lane` 을 `pol[enacted]` 에서 **`FORCE_MACRO`/`DEVIATE` 가 `chosen` 을
-덮기 전에** 뽑는다(`policy.jl` 의 `forced`/`dev` 블록이 `tool_lane` 을 만드는 줄보다 앞이
-아니다 — 뒤다). 그래서 통제 판·이탈 판에서는 `decision.macro_name` 과
-`tool_lane["tool_called"]` 이 **서로 다른 팔**을 서술한다: 집행되는 것은 강제된 팔이고,
-tool 호출은 정책이 원래 고른 팔의 것이다.
+`decide_all` 의 `tool_lane` 은 `pol[enacted]` 에서 나오고(`policy.jl:1624`),
+**`FORCE_MACRO`/`DEVIATE` 는 그 항목에 한 번도 안 쓴다** — 그 블록들(`:1507-1546`)이 고치는
+것은 지역변수 `chosen` 과 라우터 dict `rt` 뿐이다(실측: `pol[enacted][…] = …` 대입이 파일
+전체에 0건). 그래서 통제 판·이탈 판에서는 `decision.macro_name` 과 `tool_lane["tool_called"]`
+이 **서로 다른 팔**을 서술한다: 집행되는 것은 강제된 팔이고, tool 호출은 정책이 원래 고른 팔의
+것이다.
+
+🔴 **줄 순서가 이유가 아니다.** 이 자리의 예전 주석은 근거를 *"`forced`/`deviate` 블록이
+`tool_lane` 캡처보다 뒤다"* 라고 적었는데 **실제 순서는 반대이고**(override 는 `:1507`,
+`tool_lane` 은 `:1624`) 그 근거는 틀렸다. 순서를 바꿔도 이 문제는 안 사라진다 — 사라지려면
+override 가 `pol[enacted]` 를 다시 써야 하는데 그런 코드가 없다. 틀린 근거로 옳은 코드를
+지키면 다음 사람이 그 근거를 믿고 코드를 바꾼다.
 
 그 상태에서 `tool_args["agent"]` 를 그대로 집행에 먹이면, **한 팔을 위해 고른 agent 가 다른
-팔의 집행에 적용**되고 결정 행은 그것을 `enact_agent_source == "tool"` 로 주장한다 — 이
-태스크가 없애려는 바로 그 종류의 조용한 거짓말이다.
+팔의 집행에 적용**되고 결정 행은 그것을 `enact_agent_source == "tool"` 로 주장한다.
 
-**해법은 추측이 아니라 거절이다(R16).** 팔이 강제됐으면 `truth.robot` 으로 떨어지고
-`"truth"` 로 기록한다. 강제된 팔이 "원했을" agent 를 재유도하지 않는다 — 통제 판의 존재
-이유가 팔이 외부에서 부과됐다는 것이고, LLM 의 파라미터가 그 팔에 얹혀 가면 통제가 오염된다.
-대가: 통제·이탈 판은 tool-agent 경로를 한 번도 안 태운다 — 통제로서는 그게 맞는 동작이다.
+**해법은 추측이 아니라 거절이다(R16).** 팔이 갈아 끼워졌으면 `truth.robot` 으로 떨어지고
+`"truth"` 로 기록한다(R16 은 그대로 선다). 강제된 팔이 "원했을" agent 를 재유도하지 않는다.
 
-무엇을 보는가(전부 **값**으로 판정한다):
-  * `router["forced_from"]`  -- `FORCE_MACRO` 가 실제로 팔을 갈아 끼웠다(`policy.jl:1422`)
-  * `router["deviate_from"]` -- deviate 게이트가 이 인덱스에서 발화했다(`:1436`)
-  * `router["deviated"]`     -- 그 발화가 실제로 팔을 바꿨다(`:1435`)
-  * `ENV["DEMO_FORCE_MACRO"]` -- 🔴 `forced` 는 `FORCE_MACRO != chosen` 일 때만 참이라
-    (`:1419`), 강제 팔이 우연히 정책의 선택과 같으면 `forced_from` 이 **안 실린다.** 그래도
-    그 판은 통제 판이다 — R16 이 env 도 같이 보라고 못박은 자리다.
+🔴 **판정은 "팔이 실제로 달라졌는가" 다** (2026-08-29 수정 라운드, 항목 4b). 이전 판은
+`deviate_from` 이 **실려 있기만 하면** 거절했다. 그런데 `policy.jl:1525` 는 이탈 게이트가
+발화하면 **팔이 안 바뀌어도** `deviate_from` 을 심는다(`rt["deviated"] = (dev != chosen)` 과
+따로). 그래서 이탈 팔이 정책의 선택과 **같은** 런까지 tool 레인을 거부했고, 그 런들이 전부
+`enact_agent_source == "truth"` 로 기록되어 **"LLM 의 tool 호출이 실제로 세계를 바꿨는가"를
+재려고 읽을 바로 그 히스토그램이 체계적으로 깎였다.** R16 의 취지는 "팔이 외부에서 **바뀐**
+런에서는 안 쓴다" 이지 "이탈 게이트가 켜졌으면 안 쓴다" 가 아니다.
+
+그래서 세 경로가 **같은 술어**를 쓴다: *기록된 override-이전 팔이 집행되는 팔 `mac` 과
+다른가.*
+  * `router["forced_from"]`  -- `FORCE_MACRO` 가 덮기 전의 팔(`policy.jl:1511`)
+  * `router["deviate_from"]` -- 이탈이 덮기 전의 팔(`:1525`)
+  * `router["deviated"]`     -- `policy.jl` 이 이미 `dev != chosen` 으로 계산해 둔 값(`:1524`)
+  * `force_macro`            -- 🔴 `forced` 는 `FORCE_MACRO != chosen` 일 때만 참이라
+    (`:1508`), 강제 팔이 우연히 정책의 선택과 같으면 `forced_from` 이 **안 실린다.** 그 판은
+    강제 팔 = 집행 팔 = 정책의 선택이므로 tool 호출도 **그 팔의 것**이다 — 거절할 이유가
+    없다. 그래서 여기서도 `force_macro != mac` 일 때만 거절한다(위 4b 와 같은 술어).
+
+⚠️ **`force_macro` 는 인자다 — 프로세스 `ENV` 를 함수 안에서 읽지 않는다**(항목 6).
+예전에는 이 함수가 `ENV["DEMO_FORCE_MACRO"]` 를 직접 읽어서, 그 변수를 부모 env 로 흘리는
+테스트가 **하나만** 생겨도 관계없는 게이트가 깨졌다. 기본값으로만 ENV 를 읽고(호출부가 아무
+것도 안 넘겨도 생산 동작은 같다) 주입 지점을 하나 남긴다.
 """
-function _arm_overridden(router)
-    isempty(strip(get(ENV, "DEMO_FORCE_MACRO", ""))) || return true
+function _arm_overridden(router, mac; force_macro = get(ENV, "DEMO_FORCE_MACRO", ""))
+    local m = mac === nothing ? nothing : String(mac)
+    local fm = strip(String(force_macro))
+    (!isempty(fm) && m !== nothing && String(fm) != m) && return true
     router === nothing && return false
-    get(router, "forced_from", nothing) === nothing || return true
-    get(router, "deviate_from", nothing) === nothing || return true
-    return get(router, "deviated", false) === true
+    # `policy.jl:1524` 가 이미 "팔이 바뀌었나" 로 계산해 둔 값. 그대로 믿는다.
+    get(router, "deviated", false) === true && return true
+    for k in ("forced_from", "deviate_from")
+        local v = get(router, k, nothing)
+        (v isa AbstractString && m !== nothing && String(v) != m) && return true
+    end
+    return false
 end
 
 """
-    enact_target(env, truth, tool_lane, router) -> (; agent, source, tool_agent, verify)
+    enact_target(env, truth, tool_lane, router, mac)
+        -> (; agent, source, tool_agent, verify, verify_detail, reject)
 
 **누구에게 집행할 것인가**를 정한다. Plan B 의 분수령이 이 함수다 — 여기가 `truth.robot` 을
 돌려주면 집행은 주입기가 이미 아는 값을 쓰는 것이고, LLM 의 tool 호출은 세계에 대해
 인과가 없다.
 
-규칙 (브리프 커밋 3 + 컨트롤러 판정 R16):
- 0. 이 결정의 팔이 강제/이탈로 갈아 끼워졌으면(`_arm_overridden`) tool 레인을 **안 본다**.
- 1. **접지 판정이 `"admit"` 이고**(`CB.ground_tool_args`, 2026-08-29 T3) — 즉 tool 호출이
-    실재하고 그 인자가 실재하는 것을 가리키고 —
+규칙 (브리프 커밋 3 + 컨트롤러 판정 R16 + 2026-08-29 수정 라운드 항목 2·8·11·12):
+ 0. 이 결정의 팔이 강제/이탈로 **실제로 갈아 끼워졌으면**(`_arm_overridden`) tool 레인을
+    **안 본다**.
+ 0b. 🔴 **출처 일치**: `tool_lane["tool_called"]` 이 **집행되는 매크로 `mac` 에 대응하는
+    tool**(`CB.MACRO_TO_TOOL`)이 아니면 그 인자를 수입하지 않는다.
+ 1. **접지 판정이 `"admit"` 이고**(`CB.ground_tool_args`, 2026-08-29 T3) —
  2. `tool_lane["tool_args"]["agent"]` 가 **문자열**이고
  3. `CB.resolve_agent_id(env, 그 문자열)` 이 `nothing` 이 아니면 → 그것을 쓴다. source `"tool"`.
  4. 아니면 `truth.robot`(있으면). source `"truth"`.
  5. `truth` 에 `robot` 이 없으면 agent `nothing`, source `"none"`.
 
-🔴 **접지 판정(T3) — `verify` 를 같이 낸다.** spec §9-2 의 결정-행 키 `verify` 는 정확히
-삼상이다(`"admit"` | `"reject:<reason>"` | `"deferred:<reason>"`). 오늘 이 레인에서 `tool_args`
-를 거르는 자리는 `CB.ground_tool_args` 하나뿐이므로(디코드 시점 차단이 없다 — spec §8 의
-2026-08-29 정정), 그 판정이 집행 조건에 **실제로 들어간다**: `admit` 이 아니면 tool 의 agent 를
-쓰지 않는다.
+🔴 **0b — 교차축 구멍이 실측됐다 (2026-08-29 검증 항목 8).**
 
-⚠️ **왜 `resolve_agent_id` 검사만으로 부족한가.** 열거 밖 문자열은 resolver 만으로도 이미
-폴백한다. 그러나 `tool_called` 값이 없는 채 `tool_args` 만 실려 온 레인(8키는 **항상 존재**하고
-값만 `nothing` 일 수 있다 — T1 소비자 규칙 1)에서는 agent 가 **실재해도** 그것을 어느 tool
-호출에 귀속시킬 수 없다. 판정은 `deferred:no_tool_call` 이고, 그 판에서 집행이 그 agent 를 쓰면
-**기록되지 않은 호출의 인자로 세계가 바뀐다.** `verdict == "admit"` 조건이 하중을 받는 자리가
-정확히 거기다(`test/tool_args_grounding.jl` (5)(b) 가 그 변이를 잡는다).
+    macro = "Replace", tool_called = "no_intervention", tool_args = Dict("agent" => B)
+      → verify == "admit" · enact_agent_source == "tool" · **Replace 가 B 에서 집행됐다**
+
+두 측정축이 다 초록인데 세계가 **NOOP tool 의 인자로** 바뀌었다. 접지 판정은 인자에 대한
+사실만 말하므로 이 구멍을 막을 수 없다 — 막는 것은 출처(provenance) 검사다.
+
+🔴 **판정 R20 — 이것은 spec §4-1 위반이 아니다.** §4-1 이 금지하는 것은 **불일치를 이유로
+결정을 바꾸는 것**이고, `macro_tool_agree` 는 지금처럼 계속 **기록만** 한다(이 함수는 그 키를
+읽지도 않는다). 여기서 하는 것은 **다른 팔을 가리키는 호출에서 파라미터를 수입하지 않는
+것** = 출처 문제다. 결정은 안 바뀐다. 대가는 "불일치 사건에서 tool agent 가 안 쓰이고
+`truth.robot` 으로 떨어진다" 인데, 그건 오늘 동작이다.
+
+🔴 **접지 판정(T3) — `verify` 를 같이 낸다.** spec §9-2 의 결정-행 키 `verify` 는 정확히
+삼상이다(`"admit"` | `"reject:<reason>"` | `"deferred:<reason>"`, 소비자 규약은 접두사 비교).
+오늘 이 레인에서 tool 호출을 거르는 자리는 `CB.ground_tool_args` 하나뿐이므로, 그 판정이
+집행 조건에 **실제로 들어간다**: `admit` 이 아니면 tool 의 agent 를 쓰지 않는다.
+
+🔴 **`verify_detail` 을 버리지 않는다 (항목 11).** 예전에는 `ground_tool_args(...)[1]` 로
+판정만 받고 사유 문자열을 그 자리에서 버렸다. 그러면 `"agent": null` 과 `"agent"` 부재처럼
+**같은 층에서 갈리는 두 사건**의 유일한 진단이 사라진다. 이제 원문 그대로 나르고
+`run_demo.jl` 이 결정 행에 싣는다.
 
 🔴 **`reject` 는 결정을 지우지 않는다 (spec §4-1).** `reject`/`deferred` 는 "tool 레인이
 실패했다" 이지 "결정이 사라졌다" 가 아니다 — 매크로 결정은 그대로 서고 그대로 집행된다
 (`truth.robot` 으로). 여기서 예외를 던지거나 결정을 비우면 그것이 결함이다.
 
-⚠️ **R16 과 `verify` 는 다른 축이다.** 강제/이탈 판에서도 `verify` 는 **인자에 대한 사실**을
-그대로 낸다(실재 id 면 `"admit"`). 그 판에서 tool 의 agent 를 안 쓴다는 사실은
-`enact_agent_source == "truth"` 가 나른다. 두 축을 한 필드에 섞으면 "인자가 틀렸다" 와 "팔이
-강제됐다" 가 같은 관측이 된다.
+⚠️ **R16·출처 일치와 `verify` 는 다른 축이다.** 강제/이탈 판에서도, 이름이 어긋난 판에서도
+`verify` 는 **인자에 대한 사실**을 그대로 낸다. 그 판에서 tool 의 agent 를 안 쓴다는 사실은
+`enact_agent_source == "truth"` 와 `reject`(아래)가 나른다. 두 축을 한 필드에 섞으면
+"인자가 틀렸다" 와 "팔이 강제됐다" 가 같은 관측이 된다.
 
 🔴 **폴백은 반드시 기록된다 (컨트롤러 판정 R2/R6).** 조용히 떨어지면 "LLM 이 골랐다" 와
 "주입기가 알려줬다" 가 **같은 관측**이 되고, Plan B 가 재려는 것 자체가 측정 불가가 된다.
-그래서 이 함수는 `source` 와 **원문 문자열** `tool_agent` 를 함께 낸다 — `handle_ood!` 이
-셋을 결정 행에 싣는다(`tool_agent` · `enact_agent` · `enact_agent_source`).
+그래서 이 함수는 `source` · **원문 문자열** `tool_agent` · **거절 사유** `reject` 를 함께 낸다.
 
-⚠️ `tool_agent` 는 팔이 강제된 판에서도 **원문 그대로** 실린다. 그래야 "LLM 은 B 를 냈는데
-집행은 A 로 갔다" 가 산출물에서 보인다 — 원문을 지우면 R16 의 거절이 tool 레인 부재와
-구분되지 않는다.
+🔴 **`reject` 는 `resolve_agent_id` 의 두 실패를 가른다 (항목 2).** 예전 코드는
+
+    try CB.resolve_agent_id(env, s) catch; nothing end
+
+로 **"열거에 없다"**(정상적인 접지 실패)와 **"해석기가 던졌다"**(버그)를 하나의 조용한
+`"truth"` 폴백으로 무너뜨렸다 — *조용한 폴백 금지* 가 논지인 바로 그 파일 안에서. 이제
+전자는 `"ungrounded_agent"`, 후자는 `"resolver_error:<예외타입>"` 이다(T3 의
+`deferred:ground_check_error` 와 같은 결).
+
+`reject` 의 값들 — `source == "tool"` 이면 **항상 `nothing`** 이다:
+    "no_tool_agent"          tool 레인에 문자열 agent 가 없었다
+    "arm_overridden"         R16 — 팔이 실제로 갈아 끼워졌다
+    "tool_arm_mismatch"      호출된 tool 이 집행되는 팔의 것이 아니다 (0b)
+    "verify:<판정>"          접지 판정이 `admit` 이 아니었다
+    "ungrounded_agent"       열거에 없는 문자열
+    "resolver_error:<타입>"  해석기가 던졌다 (버그 — 조용히 넘기지 않는다)
+
+⚠️ **읽기 규약 (항목 5)**: `enact_agent_source == "tool"` 인데 `enact_applied == false` 인
+상태는 **도달 가능하다** — `ZoneTruth` + 유효한 tool agent 면 zone 분기가 agent 를 아예 안
+쓰기 때문이다. 그 조합의 뜻은 하나다: **"tool 이 agent 를 골랐다" 와 "그 agent 로 세계가
+바뀌었다" 는 다른 명제다.** 전자는 `enact_agent_source`, 후자는 `enact_applied` 가 나른다.
+"LLM 의 호출이 세계를 바꾼 비율" 을 세려면 **둘 다** 봐야 한다.
 
 🔴 **키 존재로 분기하지 않는다 (T1 이 남긴 소비자 규칙 1).** `decide_all` 은 8키를
-`get(..., nothing)` 으로 순회하므로 **키는 항상 있고** 값만 `nothing` 일 수 있다 —
-`haskey` 는 값이 실려 왔다는 증거가 아니다. 그래서 여기서 보는 것은 **값**뿐이다.
-
-⚠️ **`tool_lane` 만으로는 "레인이 실패했다" 와 "레인이 없었다" 를 못 가른다**(T1 리뷰 R1:
-폴백 `policy_entry` 가 측정된 `tool_lane_error` 를 `nothing` 으로 접는다). 이 함수는 그
-구분이 필요 없다 — 둘 다 "agent 를 못 얻었다" 로 같게 처리하고 `"truth"` 로 기록한다.
-그 구분이 필요한 소비자는 정책 항의 `available`/`error` 를 봐야 한다.
+`get(..., nothing)` 으로 순회하므로 **키는 항상 있고** 값만 `nothing` 일 수 있다.
+⚠️ 단 `tool_args` **안**에서는 다르다 — 그것은 서비스가 받은 JSON 객체 그대로이므로 키 존재가
+의미를 나른다. 그 구분은 `ground_tool_args` 가 진다.
 
 ⚠️ **`tool_args` 변환은 얕다 (T1 소비자 규칙 2).** 오늘 tool 알파벳의 인자는 전부 평평한
 문자열 하나라(`tool_registry.py` 의 `_agent_arg()` — enum 의 키가 `"agent"` 다) 여기서 읽는
 `tool_args["agent"]` 는 `String` 이다. 중첩 인자를 받는 tool 이 생기면 그 값은
-`JSON3.Object` 로 남고, 그때 이 가정을 다시 읽어야 한다. `raw isa AbstractString` 검사가
-그 순간의 안전장치다 — 문자열이 아니면 tool 레인이 없는 것과 같이 취급한다.
+`JSON3.Object` 로 남고, 그때 이 가정을 다시 읽어야 한다.
 """
-function enact_target(env, truth, tool_lane, router)
+function enact_target(env, truth, tool_lane, router, mac)
     # 값을 본다 — 키 존재가 아니라. `tool_lane` 자체가 없을 수도 있는 호출자를 위해 get 을 쓴다.
     local tc = tool_lane === nothing ? nothing : get(tool_lane, "tool_called", nothing)
     local ta = tool_lane === nothing ? nothing : get(tool_lane, "tool_args", nothing)
     local raw = ta isa AbstractDict ? get(ta, "agent", nothing) : nothing
     local tool_agent = raw isa AbstractString ? String(raw) : nothing
-    # 🔴 접지 판정(T3). 순수 함수이고 삼상이다. 판정 자체는 R16 과 무관하게 **항상** 잰다 —
-    # 그것이 인자에 대한 사실이기 때문이다(위 docstring 의 두 축 분리).
+    # 🔴 접지 판정(T3). 순수 함수이고 삼상이다. 판정 자체는 R16·출처 일치와 무관하게 **항상**
+    # 잰다 — 그것이 인자에 대한 사실이기 때문이다(위 docstring 의 축 분리).
     # 판정기가 죽으면 그것도 "못 쟀다" 이지 "통과" 가 아니다(`admit` 으로 접지 않는다).
-    local verify = try
-        CB.ground_tool_args(env, tc, ta)[1]
+    # 🔴 항목 12: 예외를 통째로 삼키지 않는다 — 사유 문자열에 **예외 타입**을 싣고 `@warn` 으로
+    # 남긴다(`@info` 를 버리는 로거를 쓰는 레포다: `run_demo.jl` 이 `Logging.Warn` 을 심는다).
+    local verify, verify_detail
+    try
+        verify, verify_detail = CB.ground_tool_args(env, tc, ta)
     catch e
-        "deferred:ground_check_error"
+        verify = "deferred:ground_check_error"
+        verify_detail = "exception=" * string(typeof(e)) * " tool=" * repr(tc)
+        @warn "[enact] ground_tool_args threw — 판정을 못 쟀다(admit 이 아니다)" exception = e
     end
-    # R16: 팔이 강제/이탈로 갈아 끼워진 판에서는 tool 레인의 agent 를 **쓰지 않는다.**
-    local same_arm = !_arm_overridden(router)
-    # 접지: 판정이 `admit` 이고 열거에 **정확히 있는** 문자열일 때만 통과(파싱 없음).
-    local hit = (same_arm && verify == "admit" && tool_agent !== nothing) ?
-        (try CB.resolve_agent_id(env, tool_agent) catch; nothing end) : nothing
+    # 이 판에서 tool 의 agent 를 **왜** 못 썼는가. `source == "tool"` 이면 nothing.
+    local reject::Union{Nothing,String} = nothing
+    local hit = nothing
+    # 집행되는 팔에 대응하는 tool 이름. 대응이 없는 팔(예: zone 팔)은 `nothing` 이고,
+    # 그러면 어떤 호출도 그 팔의 것이 아니다.
+    local want_tool = mac === nothing ? nothing : get(CB.MACRO_TO_TOOL, String(mac), nothing)
+    if tool_agent === nothing
+        reject = "no_tool_agent"
+    elseif _arm_overridden(router, mac)
+        reject = "arm_overridden"
+    elseif !(want_tool !== nothing && tc isa AbstractString && String(tc) == want_tool)
+        reject = "tool_arm_mismatch"
+    elseif verify != "admit"
+        reject = "verify:" * verify
+    else
+        # 접지: 열거에 **정확히 있는** 문자열일 때만 통과(파싱 없음). 🔴 두 실패를 가른다.
+        try
+            hit = CB.resolve_agent_id(env, tool_agent)
+            hit === nothing && (reject = "ungrounded_agent")
+        catch e
+            hit = nothing
+            reject = "resolver_error:" * string(typeof(e))
+            @warn "[enact] resolve_agent_id threw — 열거 밖과 다른 사건이다" exception = e
+        end
+    end
     hit !== nothing &&
-        return (agent = hit, source = "tool", tool_agent = tool_agent, verify = verify)
+        return (agent = hit, source = "tool", tool_agent = tool_agent,
+                verify = verify, verify_detail = verify_detail, reject = nothing)
     hasproperty(truth, :robot) &&
-        return (agent = truth.robot, source = "truth", tool_agent = tool_agent, verify = verify)
-    return (agent = nothing, source = "none", tool_agent = tool_agent, verify = verify)
+        return (agent = truth.robot, source = "truth", tool_agent = tool_agent,
+                verify = verify, verify_detail = verify_detail, reject = reject)
+    return (agent = nothing, source = "none", tool_agent = tool_agent,
+            verify = verify, verify_detail = verify_detail, reject = reject)
 end
 
 """
@@ -158,6 +238,10 @@ end
     두 zone 분기는 `truth isa CB.ZoneTruth` 가드가 걸려 있어서, 지원 안 하는 매크로로
     deviate 하면 아무 일 없이 통과하는데도 verdict 는 "집행했다"고 말할 수 있다.
   * `ran_milp`     -- G6(spec §5.5): 이 결정에서 f 가 솔버를 불렀는가(센티넬 판정).
+  * `status`       -- 🔴 그 분기가 부른 **편집 연산의 반환 상태**(`:swapped` 등), 안 불렀으면
+    `nothing`. 2026-08-29 수정 라운드 항목 1: `hot_swap_robot!` 의 `:no_spare`/`:no_robot` 은
+    **예외가 아니라 반환값**인데 아무도 안 읽어서, 창고에 예비가 없어 수술이 아무것도 안 해도
+    `enact_applied` 가 `true` 였다. 이제 Replace 의 `enact_applied` 는 `status === :swapped` 다.
 
 `tag` 는 로그 문구용으로 여기서 다시 만든다 — `handle_ood!` 의 `tag` 와 **같은 식**이다
 (`string(typeof(truth).name.name)`).
@@ -183,6 +267,12 @@ function enact_macro!(env, truth, mac, agent)
     # 실제로 탔는지를 여기 플래그로 남긴다 — 조건·순서·본문은 그대로, 계측만 얹는다.
     local enact_applied = false
     local ran_milp = false      # G6(spec §5.5): 이 결정에서 f 가 솔버를 불렀는가
+    # 분기가 부른 편집 연산의 **상태 심볼**(`:swapped` · `:no_spare` · `:no_robot` · 배터리
+    # 교체의 상태…). 안 부른 분기에서는 `nothing` — "부르고 실패했다" 와 "안 불렀다" 를 같은
+    # 값으로 접지 않는다. ⚠️ 이 값은 `enact_with_efficacy!` 를 **안 넘는다**(그 층의 반환 키
+    # 집합을 `test/efficacy_measures_the_edit.jl` (5) 가 못박는다) — 그래서 결정 행에는
+    # 안 실린다. 항목 1 의 실질은 `enact_applied` 가 이제 `status === :swapped` 라는 것이다.
+    local status = nothing
     try
         if mac == "NOOP"
             enact_applied = true
@@ -200,10 +290,25 @@ function enact_macro!(env, truth, mac, agent)
             # nothing 역참조는 불가능하다. 반대 방향은 열려 있다 — `robot` 필드가 없는 truth
             # (ZoneTruth/ReformTruth)에 tool 이 유효 agent 를 실어 보내면 집행이 안 되고
             # `enact_applied=false` 로 **정직하게** 기록된다(조용한 거짓 보고가 아니다).
+            #
+            # 🔴 2026-08-29 수정 라운드 (항목 1): `hot_swap_robot!` 의 **반환값을 읽는다.**
+            # `:no_spare` / `:no_robot` 은 **예외가 아니라 반환값**이고(`replace_robot.jl:1508·
+            # 1516·1520`) 예전에는 아무도 안 읽었다. 그래서 창고에 예비가 없어 씬트리 수술이
+            # **아무것도 안 해도** `enact_applied = true` 였고, 그 두 줄 뒤의 SoC 대입이 회복을
+            # 흉내 내 게이트까지 초록이었다. `:no_spare` 는 문서화된 실재 실패 모드다
+            # (CLAUDE.md ★-2: 다른 창고의 놀고 있는 예비가 `nearest_pool` 에 안 보인다).
+            # 반환값을 버리는 호출은 이 파일의 논지(조용한 거짓 보고 금지)와 정면으로 어긋난다.
             if hasproperty(truth, :robot)
-                enact_applied = true
-                CB.hot_swap_robot!(env, agent; mode = :via_depot, verbose = false)
-                if truth isa CB.BatteryTruth
+                local hs = CB.hot_swap_robot!(env, agent; mode = :via_depot, verbose = false)
+                status = hs.status
+                enact_applied = (status === :swapped)
+                enact_applied || @warn(
+                    "[recover] Replace 가 세계를 안 바꿨다 — 씬트리 수술이 실패했다",
+                    status, detail = get(hs, :detail, nothing), agent)
+                # 🔴 SoC 회복은 **수술이 실제로 났을 때만** 쓴다. 예전에는 무조건 대입이라
+                # `:no_spare` 판에서도 `fleet.soc[agent] == 1.0` 이 됐다 — 그 한 칸이 이 레인의
+                # 유일한 양성 관측이었으므로, 그 대입이 곧 "세계가 바뀌었다"는 거짓 증거였다.
+                if enact_applied && truth isa CB.BatteryTruth
                     local f = CB.BATTERY_FLEET[]                   # 스왑된 본체=새 배터리 → SoC 회복
                     (f !== nothing && haskey(f.soc, agent)) && (f.soc[agent] = 1.0)
                 end
@@ -216,6 +321,7 @@ function enact_macro!(env, truth, mac, agent)
             if hasproperty(truth, :robot)
                 enact_applied = true
                 local sw = CB.swap_battery!(env, agent; verbose = false)
+                status = sw.status
                 println("[battery] swap=$(sw.status) soc_before=$(get(sw, :soc_before, nothing))")
             end
         elseif mac == "ForbidZone" && truth isa CB.ZoneTruth
@@ -286,7 +392,7 @@ function enact_macro!(env, truth, mac, agent)
     catch e
         println("[recover] $tag ($mac) FAILED: ", first(split(sprint(showerror, e), "\n")))
     end
-    return (enact_applied = enact_applied, ran_milp = ran_milp)
+    return (enact_applied = enact_applied, ran_milp = ran_milp, status = status)
 end
 
 # =============================================================================
@@ -342,6 +448,13 @@ end
 
 `enact_macro!` 을 **그대로** 부르되 그 앞뒤에서 막힘을 재고, spec §8 ④층의 판정을 낸다.
 `enact_applied`·`ran_milp` 는 `enact_macro!` 이 낸 것을 손대지 않고 그대로 통과시킨다.
+
+🔴 **반환 키는 정확히 넷이다 — 늘리지 마라.** `test/efficacy_measures_the_edit.jl` (5) 가
+`Set(keys(r))` 로 이 집합을 **못박고** 있다(T5 의 계약: ④층은 감싸는 계측이지 사슬의 반환을
+다시 짓는 자리가 아니다). 2026-08-29 수정 라운드에서 `enact_macro!` 이 새로 내는 `status`
+(항목 1)를 여기로 통과시켰다가 그 게이트가 빨개졌다 — 그래서 `status` 는 `enact_macro!` 의
+반환에만 있고 이 층을 안 넘는다. 그 귀결은 수정 보고서에 적혀 있다(결정 행에 `enact_status`
+키가 없는 이유).
 
 판정 (spec §9-2 의 값 집합)
 --------------------------
@@ -458,4 +571,86 @@ function decision_reasoning(decision)
     catch e
         nothing
     end
+end
+
+# =============================================================================
+# 🔴 분수령의 **호출부** (2026-08-29 수정 라운드, 항목 0 — 이 라운드의 최우선)
+# =============================================================================
+
+"""
+    enact_decision!(env, truth, decision)
+        -> (; target, enacted, row::Dict{String,Any})
+
+이 결정 하나를 **세계에 집행하고**, 그 집행에 대한 결정-행 키들을 만든다.
+`run_demo.jl` 의 `handle_ood!` 은 이 함수를 부르고 `row` 를 결정 행에 합칠 뿐이다.
+
+🔴 **왜 이 함수가 존재하는가 — 게이트 밖의 생산 라인을 없애기 위해서다.**
+리뷰어 실측(2026-08-29): `run_demo.jl` 의 집행 호출부에서 마지막 인자를 `_tgt.agent` 에서
+`truth.robot` 으로 되돌리면 **T2 이전 세계가 정확히 복원되는데 스위트 전체가 초록이었다.**
+이유는 `test/runtests.jl` 의 어떤 테스트도 `run_demo.jl` 을 읽지 않기 때문이다 — 변이시험이
+빨개졌던 것은 `enact.jl` **안의 함수**를 고쳤을 때이고, **그 함수를 부르는 자리**는 아무도
+안 지켰다. 그것이 Plan A 가 이미 밟은 결함("시그니처는 재는데 진짜 줄은 한 번도 안 탄다")
+그대로이고, 이번엔 그 줄이 계획 전체의 분수령였다.
+
+그래서 **호출부 자체를 여기로 옮겼다.** 이제 `enact_target` 에 무엇을 넘기는지, 그 결과를
+어느 키로 싣는지가 전부 이 함수 안에 있고, `test/enact_uses_llm_agent.jl` (9)·
+`test/tool_args_grounding.jl` (9) 가 **이 함수를 직접 태운다**(후자는 루프백 대역 서버로
+`decide_all` 을 실제로 돌린 **진짜 레인 dict** 으로 태운다 — 손으로 지은 dict 이 아니다).
+`run_demo.jl` 에 남은 것은 이 호출 한 줄과 `merge!` 한 줄이고, 그 두 줄은
+`test/enact_uses_llm_agent.jl` (10) 의 소스 텍스트 단언이 지킨다.
+
+⚠️ **`row` 는 화이트리스트가 아니라 이 함수의 산출물 전부다.** 호출부가 키를 골라 담으면
+그 자리가 다시 게이트 밖의 화이트리스트가 된다(`run_demo.jl` 자신의 주석이 경고하는 함정).
+
+`row` 의 키 (spec §9-2):
+    tool_agent · enact_agent · enact_agent_source      T2, 컨트롤러 판정 R2/R6
+    verify · verify_detail                             T3 + 항목 11
+    enact_agent_reject                                 항목 2·8 — tool 의 agent 를 **왜** 안 썼나
+    enact_applied · ran_milp                           T2 · G6(spec §5.5)
+    efficacy · efficacy_checked_paths                  T5 ④층 (컨트롤러 판정 R12)
+
+⚠️ **`enact_status` 는 여기 없다.** `enact_macro!` 은 편집 연산의 반환 상태(`:swapped` ·
+`:no_spare` …)를 이제 내지만(항목 1), 그것을 여기까지 나르려면 `enact_with_efficacy!` 의 반환
+키를 하나 늘려야 하고 그 집합은 `test/efficacy_measures_the_edit.jl` (5) 가 못박고 있다 —
+그 파일은 이 라운드의 파일 집합 밖이다. 항목 1 의 실질(수술이 실패하면 `enact_applied` 가
+`false` 이고 SoC 회복도 안 일어난다)은 그대로 결정 행에 실린다.
+"""
+function enact_decision!(env, truth, decision)
+    local mac = decision.macro_name
+    # 🔴 이 두 줄이 이 계획의 분수령이다. 여기까지 LLM 의 tool 호출은 세계에 대해 인과가
+    # 없었다 — 집행 사슬이 `truth.robot`(주입기가 이미 아는 값)을 썼기 때문이다.
+    local tgt = enact_target(env, truth, (try decision.tool_lane catch; nothing end),
+                             (try decision.router catch; nothing end), mac)
+    # 🔴 사슬을 **감싸서** 부른다(T5). `enact_with_efficacy!` 는 `enact_macro!` 을 그대로
+    # 호출하고(사슬 본체는 한 줄도 안 바뀐다) 그 **앞뒤**에서 `zone_blockage` 순수 술어를
+    # 잰다. 전후 **차이**를 재는 것이 핵심이다: 사후 상태만 보면 "막힐 것이 없었다"와
+    # "막힘을 풀었다"가 같은 관측이 된다.
+    local res = enact_with_efficacy!(env, truth, mac, tgt.agent)
+    return (target = tgt, enacted = res, row = Dict{String,Any}(
+        # ---- 집행 대상 agent (T2, 컨트롤러 판정 R2/R6) --------------------------------
+        # 🔴 조용한 폴백은 이 태스크를 무의미하게 만든다: 폴백이 기록되지 않으면 "LLM 이
+        # 골랐다" 와 "주입기가 알려줬다" 가 **같은 관측**이 된다.
+        # ⚠️ 넷은 **항상 존재**한다. 키 부재와 값 `nothing` 을 섞지 않는다.
+        "tool_agent"         => tgt.tool_agent,   # LLM 이 낸 원문(거절된 판에서도 그대로)
+        "enact_agent"        => (tgt.agent === nothing ? nothing : string(tgt.agent)),
+        "enact_agent_source" => tgt.source,       # "tool" | "truth" | "none"
+        "enact_agent_reject" => tgt.reject,       # source=="tool" 이면 nothing
+        # ---- 접지 판정 (T3, 컨트롤러 판정 R9) ------------------------------------------
+        # 🔴 값은 **삼상**이고 소비자 규약은 **접두사 비교**다(spec §9-2, 커밋 afe38dd9):
+        #   "admit" | "reject:<reason>" | "deferred:<reason>"
+        # `deferred` 를 `admit` 으로 접지 않는다 — "잴 것이 없었다" 를 통과로 세면 접지
+        # 통과율을 세는 사람이 NOOP 을 통과로 센다.
+        "verify"             => tgt.verify,
+        "verify_detail"      => tgt.verify_detail,
+        # ---- 집행 사슬이 실제로 뭔가 했는가 --------------------------------------------
+        # `deviate_valid`(메뉴 질문)와 다른 질문이다(2026-08-17 재리뷰 F2).
+        "enact_applied"      => res.enact_applied,
+        # G6 — `f` 무솔버 불변식(spec §5.5).
+        "ran_milp"           => res.ran_milp,
+        # ---- ④ 실효성 층 (spec §9-2) ---------------------------------------------------
+        # 🔴 `efficacy_checked_paths` 를 같이 싣는 이유(컨트롤러 판정 R12): 결정 경로의
+        # `zone_blockage` 는 `check_paths=false` 로 불리므로 `n_disconnected` 가 언제나 0 이다.
+        # ⚠️ zone 이 아닌 사건에서는 `nothing`(아예 안 쟀다) — `false`(경로를 안 봤다)가 아니다.
+        "efficacy"               => res.efficacy,
+        "efficacy_checked_paths" => res.efficacy_checked_paths))
 end

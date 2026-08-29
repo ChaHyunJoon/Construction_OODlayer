@@ -285,12 +285,6 @@ function handle_ood!(env, truth, nl)
     capture!(env, truth, decision, nl)
     tag = string(typeof(truth).name.name)
     mac = decision.macro_name
-    # ---- 집행 대상 agent (2026-08-29, Plan B / T2 커밋 3) ------------------------------
-    # 🔴 이 줄이 이 계획의 분수령이다. 여기까지 LLM 의 tool 호출은 세계에 대해 인과가
-    # 없었다 — 집행 사슬이 `truth.robot`(주입기가 이미 아는 값)을 썼기 때문이다. 규칙과
-    # 그 근거(R2/R6 폴백 기록 · R16 강제-팔 거절)는 `enact.jl` 의 `enact_target` docstring 에.
-    local _tgt = enact_target(env, truth, decision.tool_lane,
-                              (try decision.router catch; nothing end))
     # 스위프 요약용 기록. UI(monitor 스트림)와 별개로, 정책 비교를 기계가 읽을 수 있게 남긴다.
     # `this_decision` 으로 참조를 들고 있는다 — 아래 집행 사슬이 끝난 뒤 `enact_applied` 를
     # **같은 행**에 덧붙여 써야 하기 때문이다(mac 실행은 이 push! 뒤에 일어난다).
@@ -326,27 +320,10 @@ function handle_ood!(env, truth, nl)
         "progress" => (n_total > 0 ? length(env.cache.closed_set) / n_total : 0.0),
         "spare_count" => (try length(CB.active_spares()) catch; -1 end),
         "agent_pending" => (try _agent_pending(env, hasproperty(truth, :robot) ? truth.robot : nothing) catch; -1 end),
-        # ---- 집행 대상 agent 3키 (2026-08-29, Plan B / T2, 컨트롤러 판정 R2/R6) ----------
-        # 🔴 조용한 폴백은 이 태스크를 무의미하게 만든다: 폴백이 기록되지 않으면 "LLM 이
-        # 골랐다" 와 "주입기가 알려줬다" 가 **같은 관측**이 되고 Plan B 가 재려는 것 자체가
-        # 측정 불가가 된다. 그리고 이 dict 는 **화이트리스트**다 — 위 `router_axis` 주석이
-        # 경고한 그 함정과 같은 자리다(모니터 스트림에는 나가도 결정 행에는 안 실린다).
-        # ⚠️ 셋은 **항상 존재**한다. 키 부재와 값 `nothing` 을 섞지 않는다.
-        #   tool_agent         LLM 이 낸 원문 문자열(강제-팔 판에서도 원문 그대로), 없으면 nothing
-        #   enact_agent        실제로 집행한 대상의 문자열, 없으면 nothing
-        #   enact_agent_source "tool" | "truth" | "none"
-        "tool_agent"         => _tgt.tool_agent,
-        "enact_agent"        => (_tgt.agent === nothing ? nothing : string(_tgt.agent)),
-        "enact_agent_source" => _tgt.source,
-        # ---- 접지 판정 (2026-08-29, Plan B / T3, 컨트롤러 판정 R9) ----------------------
-        # 🔴 spec §9-2 의 키는 `verify` 하나이고 값은 **삼상**이다:
-        #   "admit"              재서 통과했다(참조된 것이 실재한다)
-        #   "reject:<reason>"    재서 어긋났다     예: "reject:ungrounded_agent"
-        #   "deferred:<reason>"  **못 쟀다**       예: "deferred:no_tool_call"
-        # `deferred` 를 `admit` 으로 접지 않는다 — "잴 것이 없었다" 를 통과로 세면 접지
-        # 통과율을 세는 사람이 NOOP(인자가 `reason` 뿐인 `no_intervention`)을 통과로 센다.
-        # 새 키를 발명하지 않는다(R9): 접지 실패도 이 키에 `reject:ungrounded_<param>` 로 싣는다.
-        "verify"             => _tgt.verify,
+        # ⚠️ 집행에 대한 키 열 하나(tool_agent · enact_agent · enact_agent_source ·
+        # enact_agent_reject · verify · verify_detail · enact_applied · ran_milp ·
+        # efficacy · efficacy_checked_paths)는 **여기 없다.** 집행이 이 push! 뒤에
+        # 일어나므로 `enact_decision!` 이 낸 `row` 를 아래에서 이 같은 dict 에 merge! 한다.
         # ---- 해석성 로그 · 채점 키 (2026-08-29, Plan B / T5, spec §9-2) -------------------
         # `reasoning` — spec §9-2: *"해석성 로그 — 파싱하지 않는다, 지우지도 않는다"*.
         # `decision.detail` 은 `pol[enacted]["rationale"]` 그자체다(policy.jl 의 반환문) —
@@ -414,35 +391,26 @@ function handle_ood!(env, truth, nl)
         "dp_miss"  => (try get(decision.policies["dp"], "dp_miss", nothing) catch; nothing end),
         "nl"       => String(nl))
     push!(_DECISIONS, this_decision)
-    # ---- 집행 사슬 (2026-08-29, Plan B / T2 커밋 1) ------------------------------------
-    # 사슬 본체는 `tools/monitor/enact.jl` 로 **그대로** 옮겼다(순수 이동). 이유는 그 파일
-    # 헤더에 있다(컨트롤러 판정 R5): 이 파일은 최상위에서 데모를 돌리는 스크립트라 테스트가
-    # include 할 수 없고, 사슬이 여기 있는 한 게이트가 생산 코드를 태울 방법이 없다.
-    # 🔴 2026-08-29 (Plan B / T5): 사슬을 **감싸서** 부른다. `enact_with_efficacy!` 는
-    # `enact_macro!` 을 그대로 호출하고(사슬 본체는 한 줄도 안 바뀐다) 그 **앞뒤**에서
-    # `zone_blockage` 순수 술어를 재 — spec §8 ④ 실효성 층이다. 전후 **차이**를 재는 것이
-    # 핵심이다: 사후 상태만 보면 "막힐 것이 없었다"와 "막힘을 풀었다"가 같은 관측이 된다.
-    local _enacted = enact_with_efficacy!(env, truth, mac, _tgt.agent)
-    local enact_applied = _enacted.enact_applied
-    local ran_milp = _enacted.ran_milp
-    # 이 결정 행에 "집행 사슬이 실제로 뭔가 했는가" 를 남긴다 — `deviate_valid`(메뉴 질문)와는
-    # 다른 질문이다(2026-08-17 재리뷰 F2, "Critical" 수정). deviate 로 갈아 끼운 팔이 메뉴에는
-    # 있었는데(deviate_valid=true) 사슬의 truth-타입 가드에 안 걸려 무동작으로 통과할 수 있다 —
-    # 그 판이 Task 2 에 "이 팔의 표본"으로 잘못 들어가지 않게, 여기서 조용히 넘기지 않는다.
-    this_decision["enact_applied"] = enact_applied
-    # G6 — `f` 무솔버 불변식(spec §5.5). 6팔 전부에서 false 여야 한다. 하나라도 true 면 그 팔은
-    # 행동공간이 아니라 meta-level(CALL_ORACLE)로 가야 한다. 예전에는 이 값이 stdout 에만
-    # 나가서 게이트를 기계로 못 걸었다.
-    this_decision["ran_milp"] = ran_milp
-    # ④ 실효성 층 (spec §9-2). `enact_applied` 와 같은 이유로 push! **뒤에** 쓴다 —
-    # 집행이 끝나야 사후 측정이 존재한다.
-    # 🔴 `efficacy_checked_paths` 를 같이 싣는 이유(컨트롤러 판정 R12): 결정 경로의
-    # `zone_blockage` 는 `check_paths=false` 로 불리므로 `n_disconnected` 가 **언제나 0** 이다.
-    # 그러면 `n_blocked` 는 엄밀한 하한이고, 통로만 막힌 사건은 처음부터 0 으로 보인다 —
-    # 산출물이 그 사실을 들고 있어야 나중에 이 숫자를 읽는 사람이 속지 않는다.
-    # ⚠️ zone 이 아닌 사건에서는 `nothing`(아예 안 쟀다) — `false`(경로를 안 봤다)가 아니다.
-    this_decision["efficacy"] = _enacted.efficacy
-    this_decision["efficacy_checked_paths"] = _enacted.efficacy_checked_paths
+    # ---- 집행 (2026-08-29, Plan B / T2·T3·T5 + 수정 라운드 항목 0) ----------------------
+    # 🔴 **집행부는 `tools/monitor/enact.jl` 의 `enact_decision!` 이다 — 이 파일에는 이 두 줄
+    # 뿐이다.** 이유는 그 함수의 docstring 에 있다(항목 0): 이 파일은 최상위에서 데모를 돌리는
+    # 스크립트라 `test/runtests.jl` 의 어떤 테스트도 읽지 않는다. 그래서 여기 있던 인자 하나를
+    # 되돌리는 것만으로 T2 이전 세계가 복원되는데 **스위트 전체가 초록**이었다(리뷰어 실측).
+    # 🔴 이 두 줄을 다시 인라인 사슬로 되돌리지 마라 — `test/enact_uses_llm_agent.jl` (10) 의
+    # 소스 텍스트 단언이 그 되돌림에서 빨개진다.
+    # ⚠️ push! **뒤**여야 한다: 집행이 끝나야 사후 측정이 존재하고, `this_decision` 은 이미
+    # `_DECISIONS` 안에 있는 **같은 dict** 이라 merge! 가 그 행을 채운다.
+    local _e = enact_decision!(env, truth, decision)
+    merge!(this_decision, _e.row)
+    # 🔴 **알려진 한계 — 이 열 키는 스위프 결정 행에만 있고 모니터 스트림에는 없다**
+    # (수정 라운드 항목 4c). `capture!`(= `record_decision!`)는 위에서 **집행보다 먼저** 돌기
+    # 때문이다. 그 순서는 의도된 것이다: 모니터는 라이브 UI 라 결정을 즉시 보여야 하고,
+    # 집행 뒤로 미루면 (a) 화면이 집행 한 번만큼 늦고 (b) 집행이 던지는 판에서 결정이 화면에서
+    # 통째로 사라진다. 그래서 **어느 산출물에 있고 어디에 없는지를 여기 한 자리에 적는다**:
+    #   있다: 스위프 결과 jsonl 의 `decisions[]`(= `_DECISIONS`, 이 행)
+    #   없다: 모니터 respec 스트림(`monitor_record_respec!` 의 `input` dict)
+    # 스트림만 읽는 소비자는 이 열 축을 **재구성할 수 없다** — 결정 행을 읽어야 한다.
+    local enact_applied = _e.enacted.enact_applied
     (!enact_applied && get(decision.router, "deviated", false)) &&
         @warn "[recover] DEVIATE #$(get(decision.router, "deviate_at", "?")): " *
               "$(mac) 가 $(tag) 사건에서 집행 사슬을 무동작으로 통과했다(enact_applied=false) " *
