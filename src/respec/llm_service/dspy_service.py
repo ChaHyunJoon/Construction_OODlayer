@@ -78,6 +78,13 @@ import wm_datasets                                            # noqa: E402
 if HERE not in sys.path:
     sys.path.append(HERE)
 from tool_registry import MACRO_TO_TOOL, build_tools           # noqa: E402
+# ---- tool 합성 레인 (Plan B / T6b) --------------------------------------------------------
+# 🔴 위 `tool_registry` 와 **같은 이유로** `import dspy` 아래다(numpy/sklearn-before-dspy).
+#    `synthesize.py` 도 그 가드를 독립적으로 들고 있다 — 둘 중 하나만 남기지 말 것.
+# 🔴 이 import 는 과금 0건이다: 모듈 최상위에서 LM 을 만들지도 부르지도 않는다.
+#    합성이 실제로 도는 것은 `TOOL_SYNTHESIS=1` + `expressible == False` 두 조건이
+#    함께 참일 때뿐이다(`maybe_synthesize` 의 docstring, 컨트롤러 판정 R13).
+from synthesize import maybe_synthesize                        # noqa: E402
 from dspy.utils.exceptions import AdapterParseError            # noqa: E402
 
 
@@ -1081,6 +1088,16 @@ def macro(req: MacroRequest):
     coerced = chosen not in valid
     if coerced:
         chosen = "NOOP" if "NOOP" in valid else valid[0]
+    # ---- T2: tool 합성 레인 (Plan B / T6b, spec §5) ---------------------------------------
+    # 🔴 발화 조건은 **`expressible == False`** 하나다(spec §8-1 이 승격 게이트의 대체 신호로
+    #    지목한 바로 그 비율). `None`("못 쟀다")은 발화가 아니다.
+    # 🔴 그리고 발화 사건이어도 `TOOL_SYNTHESIS=1` 이 아니면 LM 을 한 번도 안 부른다(R13) —
+    #    그때 `tool_minted` 는 `None` 이 아니라 `"disabled"` 다.
+    # ⚠️ `line` 을 그대로 넘긴다: T4a 가 프롬프트에서 지운 정답 행(`min_shift_to_clear_m`)의
+    #    제거를 합성 레인이 자동으로 승계한다. 여기서 따로 렌더하면 그 제거가 한쪽에만 산다.
+    synthesis = maybe_synthesize(expressible=expressible, kind=req.kind, state=line,
+                                 tools=tools)
+
     ranking = [m.strip() for m in raw_rank.replace("[", "").replace("]", "").split(",") if m.strip()]
     ranking = [m for m in ranking if m in valid]
     for m in valid:                              # 빠진 legal 매크로는 뒤에 채워 넣어 항상 완전한 순위표가 되게
@@ -1133,7 +1150,27 @@ def macro(req: MacroRequest):
             #    ⚠️ `coerced` 로는 복원 안 된다 — legal 하지만 이 메뉴에 없는 macro 도
             #       `coerced=True` 인데 그쪽은 진짜로 잴 수 있다. 두 사건이 합쳐진다.
             "macro_tool_agree": (None if (tool_called is None or expected_tool is None)
-                                 else tool_called == expected_tool)}
+                                 else tool_called == expected_tool),
+            # ---- 합성 레인 (T2, Plan B / T6b, spec §9-2) --------------------------------------
+            # 🔴 네 값: "disabled" | False | True | None. **네 값은 분할이 아니다** — 다섯 번째
+            #    사건(돌았는데 실패)이 `None` 을 공유하고, 그것을 가르는 키는 같은 응답의
+            #    `synthesis["ran"]` · `synthesis["error"]` 다(`synthesize.py` 모듈 docstring 의
+            #    표). C8 의 세 사건과 **같은 모양의 함정**이므로 두 값으로 읽지 말 것.
+            # 🔴 줄리아는 이 키를 **아직 안 읽는다.** 소비처가 될 자리는 둘이고 T6b 보고서가
+            #    이름으로 짚는다(줄 번호는 병렬 작업으로 움직인다 — 실측: 이 세션 중에
+            #    `TOOL_LANE_KEYS` 가 1065 -> 1082 로 옮겨졌다):
+            #      `tools/monitor/policy.jl` 의 `const TOOL_LANE_KEYS` 튜플. 여기 이름을
+            #      더하면 같은 파일의 `tool_lane_fields` 와 `tool_lane_view` 가 자동으로
+            #      나르고, `tools/monitor/run_demo.jl` 의 `local this_decision = Dict(` /
+            #      `merge!(this_decision, _e.row)` 가 그것을 결정 행에 얹는다.
+            #    ⚠️ 그 편집은 이 응답의 `out["dspy"]` 안에서 두 키를 `# ---- tool 레인` 표식
+            #      **아래로** 옮기는 것과 **같은 커밋**이어야 한다 — 아니면
+            #      `test/tool_lane_keys_survive.jl` (6)절의 양방향 등호가 빨개진다.
+            "tool_minted": synthesis["tool_minted"],
+            # 전문을 그대로 싣는다 — canon · |K| · ψ 거리와 그 **표준화 통계의 출처**,
+            # `reach`/`missing_primitive`, params 평평함 판정이 전부 여기 있다. 잘라 실으면
+            # 그 사건에서 무엇이 필요했는지가 기록에서 사라진다(spec §5-1).
+            "synthesis": synthesis}
 
 
 @app.post("/decide")
@@ -1153,6 +1190,20 @@ def decide(req: MacroRequest):
     out["dspy"] = {"chosen": d["chosen"], "ranking": d["ranking"], "margin": d["margin"],
                    "rationale": d["reasoning"], "policy": d["policy"],
                    "coerced": d["coerced"], "error": d["error"],
+                   # ---- 합성 레인 (T2, Plan B / T6b) --------------------------------------
+                   # 🔴 이 둘은 **Plan A 의 tool 레인 키가 아니다.** 아래 `# ---- tool 레인`
+                   #    표식이 이 dict 안에서 그 경계를 선언하고, `test/tool_lane_keys_survive.jl`
+                   #    (6)절이 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과
+                   #    양방향 등호로 대조한다. 그래서 합성 레인 키는 표식 **위**에 둔다 —
+                   #    표식 아래에 두면 그 게이트가 정당하게 빨개진다(다른 레인의 키를
+                   #    tool 레인 목록에 밀어 넣는 셈이므로).
+                   # 🔴 그러므로 줄리아가 이 값을 결정 행으로 나르려면 `TOOL_LANE_KEYS` 에
+                   #    이름을 더하는 것과 **같은 커밋에서** 이 두 줄을 표식 아래로 옮겨야
+                   #    한다. 그 배선은 이 태스크의 범위 밖이고 T6b 보고서가 줄을 짚는다.
+                   # 🔴 `/macro` 에는 이 레포에 **호출자가 0개**다(아래 주석). 라이브 레인은
+                   #    `/decide` 로만 들어오므로(`tools/monitor/policy.jl:559`), 여기 안
+                   #    실으면 `tool_minted` 는 실제로 도는 곳에서 영원히 안 보인다.
+                   "tool_minted": d["tool_minted"], "synthesis": d["synthesis"],
                    # ---- tool 레인 (Plan A) ------------------------------------------------
                    # 🔴 `/macro` 에는 이 레포에 **호출자가 없다** — 실측(`grep -rn '/macro'
                    #    --include='*.jl' --include='*.py' src tools wm4spacecraft_manufacturing
