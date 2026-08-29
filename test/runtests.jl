@@ -120,10 +120,19 @@ end
     # 서버**를 커널이 고른 임시 포트(`listenany=true`)에 띄우고, `ENV["DSPY_URL"]` 을
     # `policy.jl` 의 `include` 동안에만 그리로 돌린 뒤 `finally` 에서 원래 값으로 되돌린다 —
     # **어떤 패키지 제네릭에도 메서드를 심지 않는다.** 그래서 이 게이트 뒤에 오는 인프로세스
-    # 시험이 스텁에 걸릴 일이 없다(그 오염이 `replan.jl:715-745` 의 예외-삼킴 `:noop` 폴백과
-    # 만나면 "초록인데 아무것도 안 재는" 상태가 된다 — 이 레포의 정본 조용한-실패 모양이다).
-    # 스크래치패드 오버레이에서 그 두 줄을 각각 `error(...)`로 바꿔도, 그리고 원래 버그
-    # (`env.sched`)를 되살려도 이 게이트가 빨개지는 것을 실측했다(수정 라운드 2·4 보고서 참조).
+    # 시험이 스텁에 걸릴 일이 없다. 왜 그게 중요한가(라운드 5 L4 로 범위를 좁힌 서술):
+    # `replan.jl:726` 이 `llm_to_proposal` 의 예외를 3회 재시도로 삼키고, 끝내 실패하면
+    # **`_event_criticality(event) === :soft` 인 경우에만**(`:740`) `@warn` 하나 남기고
+    # `:noop` 을 돌려준다(`:742`) — critical 이벤트는 `engage_fallback!` 후 `:fallback`(`:746`),
+    # 즉 line-stop 이지 침묵이 아니다. 그러니 조용한-실패 위험은 **soft 이벤트 경로 하나**다:
+    # 그 경로 위의 인프로세스 시험이 스텁에 걸리면 "초록인데 아무것도 안 재는" 상태가 된다.
+    # 실측 환경을 밝혀 둔다(라운드 5 L5): 두 줄을 각각 `error(...)`로 바꾼 것과 원래 버그
+    # (`env.sched`)를 되살린 것이 이 게이트를 빨갛게 만드는 것은 **스크래치패드 오버레이 사본을
+    # `julia +lts --project=. <파일>` 로 단독 실행해서** 쟀다(수정 라운드 2·4 보고서). 이
+    # 배선(`Pkg.test()`) 안에서의 초록 기준선은 라운드 5 가 따로 쟀다 —
+    # `service_decide ships agents | 10  10`, 스위트 264 pass / 0 fail / 1 error / 265
+    # total. 단독 초록이 스위트 초록의 증거가 아니라는 것은 라운드 4 가 실제로 밟은 함정이다
+    # (`import Sockets` 가 `Pkg.test()` 샌드박스에서 안 풀려 게이트가 통째로 에러였다).
     @testset "service_decide ships agents" begin
         include("service_decide_ships_agents.jl")
     end

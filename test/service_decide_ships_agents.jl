@@ -9,8 +9,12 @@
 # 그리고 `decide_all` 호출부의 `agents = CB.open_agent_descriptors(env)`)은
 # `policy_macro_binding.jl` · `battery_menu_lanes_agree.jl` 어느 쪽도 건드리지 않는다 —
 # 둘 다 `service_decide` 를 부르지 않거나, 부르더라도 `agents` kwarg 없이 부른다.
-# `tools/test_policy_oracle.jl` 도 `decide_all` 을 부르지만 `withenv("DEMO_ALL_POLICIES"=>"0")`
-# 아래서다 — 그건 정확히 `agents` 를 건너뛰는 삼항식의 `then` 가지다.
+# `tools/test_policy_oracle.jl` 도 `decide_all` 을 부르지만 `agents` 를 건너뛰는 삼항식의
+# `then` 가지 아래서다. 그 가지에 들어가려면 세 조건이 **모두** 필요한데, 그 파일은 셋을 다
+# 만족시킨다: `POLICY` 기본 `"canonical"`, `tools/test_policy_oracle.jl:48` 의
+# `ENV["DEMO_ROUTER"] = "0"`(→ `router_drives()` 가 false), `:352` 의
+# `withenv("DEMO_ALL_POLICIES" => "0")`. (라운드 5 L1: 예전 주석은 `DEMO_ALL_POLICIES=0`
+# 하나만으로 `then` 가지에 간다고 읽혔다 — 아니다. `DEMO_ROUTER=0` 이 같이 있어야 한다.)
 #
 # 🔴 라운드 1 (F2) 은 이 구멍을 **부분적으로만** 메웠다. 실측(라운드 2 validator, 각 줄을
 # `error(...)` 로 바꿔치기): 아래 (1)~(3) 은 `service_decide` 의 **시그니처**(kwarg 선언)와
@@ -32,11 +36,15 @@
 # `Base.delete_method` 는 (i) 만 지웠고 — 그런데 이 레포의 **모든 실제 호출자는 키워드 인자를
 # 넘기므로 전부 (ii) 로 디스패치한다.** 즉 "지웠다"고 주장한 뒤에도 해적 메서드가 실제 호출에
 # 계속 응답했다(라운드 3 validator 실측). 그게 왜 위험한가: `src/respec/llm_bridge.jl:76` 이
-# 키워드 인자로 `HTTP.post` 를 부르고, 그 호출자인 `src/respec/replan.jl:715-745` 는
-# **모든 예외를 잡아 3회 재시도한 뒤 `:noop` 으로 폴백하고 `@warn` 만 남긴다.** 그래서 이 파일
-# 뒤(`test/runtests.jl:119` 이후)에 respec LLM 레인의 인프로세스 시험이 하나라도 생기면,
-# 그 시험은 스텁의 시끄러운 `error(...)` 를 폴백이 삼킨 채 **초록인데 아무것도 안 재는** 상태가
-# 된다 — 이 레포의 정본 조용한-실패 모양이다.
+# 키워드 인자로 `HTTP.post` 를 부르고, 그 호출자인 `src/respec/replan.jl:726` 이
+# `llm_to_proposal` 의 **모든 예외를 잡아 3회 재시도**한다. 끝내 실패했을 때의 처리는 이벤트
+# 안전도로 갈린다(라운드 5 L4 로 좁힌 서술 — 예전 주석은 이 갈림을 뭉갰다):
+# `_event_criticality(event) === :soft` 이면(`:740`) `@warn` 하나 남기고 `:noop`(`:742`),
+# critical 이면 `engage_fallback!` 후 `:fallback`(`:746`) — 후자는 line-stop 이지 침묵이 아니다.
+# 그래서 조용한-실패 위험은 **soft 이벤트 경로 하나**다: 이 파일 뒤(`test/runtests.jl:137` 이후)
+# 에 그 경로를 타는 respec LLM 레인 인프로세스 시험이 생기면, 그 시험은 스텁의 시끄러운
+# `error(...)` 를 soft 폴백이 삼킨 채 **초록인데 아무것도 안 재는** 상태가 된다 — 이 레포의
+# 정본 조용한-실패 모양이다.
 #   → 라운드 4 는 **해적질 자체를 없앴다.** `policy.jl:19` 의 `const DSPY_URL` 은 include 시점에
 #     `ENV["DSPY_URL"]` 에서 읽히므로, policy.jl 을 include 하기 **전에** 로컬 `HTTP.serve!`
 #     리스너를 띄우고 `ENV["DSPY_URL"]` 을 그 포트로 돌려놓으면 요청 본문을 **아무 메서드도 안
@@ -50,16 +58,26 @@
 #   🔴 **8077(진짜 DSPy 서비스)로는 한 요청도 안 나간다** — `DSPY_URL` 이 우리 루프백 포트를
 #     가리키는 상태에서만 policy.jl 이 include 되고, `/decide` 는 과금되는 OpenAI 호출이다.
 #
-# ⚠️ **숨은 전제 (라운드 3 H3 · 라운드 4 J5)**: (4) 가 `decide_all` 호출부 줄을 실제로
-# 태우는 것은 **현재 환경변수 상태에 달려 있다.** `policy.jl:1131` 의 삼항식은
-# `POLICY in (canonical,noop,oracle) && !router_drives() && DEMO_ALL_POLICIES=="0"` 세 조건이
-# **모두** 참일 때만 `service_decide` 호출을 건너뛴다. `router_drives()` 가 참인 것(기본
-# `ROUTER_MODE="auto"`)만으로는 이 삼항식을 안 건너뛴다는 것을 보장 못 한다 — 정말 건너뛰지
-# 않게 만드는 것은 **`DEMO_ALL_POLICIES` 가 기본값 `"1"`(≠`"0"`)이라는 사실**이다(coordinator 의
-# 실측 로그가 "novelty calibration not found -> router disabled" 를 찍었다 — router_drives() 가
-# 이미 게이트 밖에서 꺼져 있었는데도 삼항식은 여전히 서비스를 불렀다, 세 번째 조건이 거짓이라서).
-# 라운드 4 는 그 전제를 (4) 안에서 **어서션으로 이름 붙였다** — 전제가 깨지면 "본문을 못 받았다"
-# 는 하류 증상이 아니라 전제 자체가 빨개진다.
+# ⚠️ **숨은 전제 (라운드 3 H3 · 라운드 4 J5 · 🔴 라운드 5 L1/L2 정정)**: (4) 가 `decide_all`
+# 호출부 줄을 실제로 태우는 것은 **현재 환경변수 상태에 달려 있다.** `policy.jl:1131` 의
+# 삼항식은 `POLICY in (canonical,noop,oracle) && !router_drives() && DEMO_ALL_POLICIES=="0"`
+# 세 조건이 **모두** 참일 때만 `service_decide` 호출을 건너뛴다.
+#
+# 🔴 라운드 3 H3 은 그 이유를 **틀리게** 적었다("`DEMO_ALL_POLICIES` 가 기본 `\"1\"` 이라는
+# 사실이 유일하게 건너뛰기를 막는다"). 실제 정의를 읽으면 그렇지 않다:
+#     policy.jl:56   const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
+#     policy.jl:140  router_drives() = ROUTER_MODE != "0" && POLICY != "noop"
+# `router_drives()` 는 novelty 교정 파일을 **전혀 보지 않는다**(그건 `router_enabled()` 다 —
+# `policy.jl:108-137` 의 docstring 이 이 구분을 통째로 설명한다). 그래서 기본값
+# (`DEMO_ROUTER` 미설정 → `"auto"`, `DEMO_POLICY` 미설정 → `"canonical"`)에서 `router_drives()`
+# 는 **참**이고, `!router_drives()` 가 거짓이라 삼항식은 **그것만으로** 건너뛰지 않는다.
+# "novelty calibration not found -> router disabled" 로그는 `router_enabled()`/`have_det` 쪽
+# 이야기지 이 술어가 아니다. 실측(coordinator, 라운드 5): `withenv("DEMO_ALL_POLICIES"=>"0")`
+# 아래서도 요청 본문은 **여전히 잡혔다**(9 Pass / 1 Fail — 전제 어서션 하나만 실패).
+#
+# 그래서 (4) 안의 전제 어서션은 `DEMO_ALL_POLICIES` 한 항이 아니라 **삼항식의 skip 조건
+# 자체를 부정한** 형태다(라운드 5 L2): 하중을 지는 항이 무엇이든, 이 게이트가 서비스 호출을
+# 건너뛰는 설정에서 돌면 "본문을 못 받았다"는 하류 증상 대신 전제 자체가 빨개진다.
 #
 # 이 파일이 재는 다섯 가지:
 #   1. `service_decide` 가 `agents` 라는 키워드 인자를 **선언한다** — 메서드 객체에서 직접
@@ -88,7 +106,7 @@ import Random
 # 🔴 `Sockets` 를 **직접 import 하지 않는다**(라운드 5 K1). stdlib 이라도 `Project.toml` 의
 # `[deps]` 에 없으면 `Pkg.test()` 가 만드는 **샌드박스 환경**에서 안 풀린다 — 실측:
 # `LoadError: ArgumentError: Package Sockets not found in current path.` 로 이 게이트가 통째로
-# 에러였다(`test/runtests.jl:128`). 단독 실행(`julia --project=.`)은 기본 `LOAD_PATH` 의
+# 에러였다(`test/runtests.jl:137`). 단독 실행(`julia --project=.`)은 기본 `LOAD_PATH` 의
 # `@stdlib` 덕에 그냥 풀려서 초록이었다 — 그래서 라운드 4 의 "단독 초록" 은 스위트에 대한
 # 증거가 아니었다. `HTTP` 가 `Sockets` 에 의존하고 그 바인딩을 그대로 들고 있으므로
 # `HTTP.Sockets.*` 로 닿는다: 공유 파일인 `Project.toml` 을 건드릴 이유가 없다.
@@ -164,7 +182,7 @@ end
 # (iii) 마지막 길. `try/finally` 는 오직 **서버를 닫기 위한** 것이다(테스트가 통과하든,
 # 어서션이 예외를 던지든). 예외를 삼키지 않으므로 실패는 그대로 위로 전파된다 — 라운드 3 의
 # `catch e` / 재던짐 분기는
-# 라운드 4 에서 제거했다(J4): `test/runtests.jl:118-120` 아래서는 이 testset 이 **중첩**이라
+# 라운드 4 에서 제거했다(J4): `test/runtests.jl:136-137` 아래서는 이 testset 이 **중첩**이라
 # 실패한 `@test` 가 부모로 기록될 뿐 `TestSetException` 이 여기서 던져지지 않는다 — 그 분기는
 # 실제로 도는 배선에서 한 번도 안 탔다(단독 실행에서만 탔다).
 try
@@ -197,8 +215,13 @@ try
         # H3/J5 경고 참조) `service_decide` 가 불리고, 그 안에서 진짜 `HTTP.post` 가 위
         # `_SERVER` 로 나간다 -- 핸들러가 그 요청 본문을 붙잡는다.
         #
-        # (J5) (4) 의 커버리지가 매달려 있는 숨은 전제를 하류 증상 대신 여기서 직접 이름 붙인다.
-        @test get(ENV, "DEMO_ALL_POLICIES", "1") != "0"
+        # (J5, 라운드 5 L2 로 정정) (4) 의 커버리지가 매달려 있는 숨은 전제를 하류 증상 대신
+        # 여기서 직접 이름 붙인다. 라운드 4 형태(`DEMO_ALL_POLICIES != "0"` 한 항)는 **틀린
+        # 항**을 쟀다 — 기본 설정에서 하중을 지는 것은 `!router_drives()` 가 거짓인 쪽이고,
+        # `DEMO_ALL_POLICIES=0` 만으로는 건너뛰지 않는다(위 헤더 L1 문단, 실측 포함).
+        # 그러니 `policy.jl:1131` 의 skip 조건을 **그대로 부정해서** 쓴다.
+        @test !(POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
+                get(ENV, "DEMO_ALL_POLICIES", "1") == "0")
         _CAPTURED_BODY[] = nothing
         local truth = CB.BatteryTruth(CB.RobotID(1), 0.5)
         decide_all(TENV, truth; nl = "")
