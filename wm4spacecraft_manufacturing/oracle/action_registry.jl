@@ -186,4 +186,55 @@ function kind_valid(kind)
     return [i for i in active_ids() if k in String.(collect(REGISTRY[i].kinds))]
 end
 
+# =============================================================================================
+#  battery 메뉴의 SoC 분할 — **두 레인의 단일 진실원** (2026-08-25)
+# =============================================================================================
+# 왜 여기로 올렸나. 이 규칙은 두 곳에 **따로** 있었다:
+#   · 라벨 레인 `ood_mdp_shim.valid_actions(:battery)` — SoC 로 갈랐다(deep/mild)
+#   · 실행 레인 `policy.jl valid_macros(::BatteryTruth)` — **안 갈랐다**
+# 즉 같은 사건에서 라벨을 만든 세계와 실제로 굴린 세계의 행동공간이 달랐다. mild 에서 실행
+# 레인은 `Replace` 를 고를 수 있는데 라벨 격자엔 그 행이 없으므로, 그 결정은 surrogate 가 한
+# 번도 본 적 없는 팔로 남는다 — 에러 없이 성능으로만 새는, 이 레포의 단골 실패다.
+# 게이트: `test/battery_menu_lanes_agree.jl`.
+
+"""
+    battery_arms(soc, thr, split::Bool) -> Vector{Int}
+
+battery 사건의 팔 메뉴(id). `split=false` 면 레지스트리 상한(`kind_valid(:battery)`)을 그대로 낸다
+(`DS_BATTERY_SOC_SPLIT=0` 경로).
+
+`split=true` 일 때 무엇이 갈리나:
+  · **deep** (`soc <= thr`) — 상한 그대로. 방전이 깊으면 본체 교체까지 말이 된다.
+  · **mild** (`soc >  thr`) — **개입 팔이 하나도 없다. 메뉴는 NOOP 뿐이다.**
+
+🔴 mild 가 왜 NOOP-only 인가 (설계 결정 2026-08-25).
+`soc > thr` 는 `reference_policy.reference_action` 이 **`None`(unscored)** 을 내는 구간이다 —
+측정된 격자가 없어 이 어휘에 채점 근거가 있는 정답이 **없다**. 그런데 메뉴에는 `SwapBattery`
+가 남아 있어서, 정답이 없는 자리에서 정책이 계속 개입 팔을 골랐고 그 결정이 라벨로 남았다
+(실측 2026-08-25, gpt-4o: soc 0.05 와 0.45 에서 **둘 다** `SwapBattery`. 근거 문장은 severity 를
+정확히 구분하는데 argmax 만 무너진다 — 어휘에 "맞는 팔이 없다" 고 말할 출구가 없기 때문).
+그래서 zone 과 **같은 모양**으로 맞춘다: 닫힌 어휘가 답할 수 없으면 메뉴는 NOOP 하나이고,
+그 사실 자체가 L2(제약 신설) 레인이 인계받아야 한다는 표식이다.
+⚠️ 대가는 공개한다 — mild 에서 `SwapBattery` 는 이제 **집행되지 않는다.** 그 이전 세대의
+mild 판과 이 판은 같은 세계가 아니다.
+
+이전 규칙(2026-08-25 오전, 한 커밋만 살았다)은 "본체를 갈아 끼우는 팔만 뺀다" = mild -> [0,2]
+였고, 그것이 구 `ood_mdp_shim` 리터럴과 같은 값이었다. 이 함수가 두 레인의 단일 진실원이므로
+여기 한 줄이 라벨 레인과 실행 레인을 **함께** 옮긴다.
+
+`soc` 가 유한하지 않으면(미기록) 좁히지 않는다 — 모르는 것을 근거로 메뉴를 줄이지 않는다.
+"""
+function battery_arms(soc, thr, split::Bool)
+    up = kind_valid(:battery)
+    split || return up
+    (soc isa Real && isfinite(soc)) || return up
+    Float64(soc) <= Float64(thr) && return up                    # deep -> 상한 그대로
+    # mild -> 절제만 남긴다. `zone` 과 같은 규약으로 만든다(NOOP + 그 kind 의 팔), 그리고
+    # 오늘 `kind_valid(:zone)` 이 비어 있듯 여기서도 개입 팔을 남기지 않는다.
+    return [i for i in up if COST[i] == 0.0]
+end
+
+"`DS_BATTERY_SOC_SPLIT` 의 단일 판독점. 두 레인이 이것만 부른다(기본값 문자열을 두 번 복사하지 않게)."
+soc_split_enabled() = get(ENV, "DS_BATTERY_SOC_SPLIT", "1") == "1"
+
 end # module

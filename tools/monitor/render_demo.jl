@@ -302,6 +302,7 @@ function dump_layout(env, cmdfile)
 end
 
 include(joinpath(@__DIR__, "run_header.jl"))
+include(joinpath(@__DIR__, "zone_gate.jl"))    # DEMO_ZONE/DEMO_ZONE_AT 게이트(run_demo.jl 과 공용)
 include(joinpath(@__DIR__, "zone_command.jl"))
 
 # 2026-08-13: 아래 독스트링이 이 두 `include` **앞에** 있었다. Julia 는 독스트링 바로 뒤의 식을
@@ -898,7 +899,11 @@ pre = function (env)
     slots = [0.10, 0.32, 0.55]
     kinds = case_kinds(OODC)
     initial_closed = length(env.cache.closed_set)
-    has_zone = :zone in kinds
+    # 🔴 2026-08-25: `:zone in kinds` 였다. spec §5.1 이 zone 을 `case_kinds` 에서 빼면서 이 값이
+    # 영원히 false 가 됐고, 아래 zone arming 블록 전체(:891 대화형 · :893 pre-sim/at-closed)가
+    # 도달 불가가 됐다. run_demo.jl 과 **같은 술어**를 쓴다 — 두 엔진이 갈리면 그것 자체가
+    # 이 레포의 반복된 사고다(2026-08-16 `all` 케이스 72판). 기본값 0 = 기존 녹화 재현 불변.
+    has_zone = zone_requested()
     robot_kinds = filter(k -> k !== :zone, kinds)
     # DEMO_N (const above) = how many OOD events to inject (0 = one per case kind, the original
     # behaviour). When >0 it OVERRIDES the fault/battery event count, cycling the case's robot kinds
@@ -1054,7 +1059,7 @@ pre = function (env)
             end
         end
     end
-    n_zone = (:zone in kinds) ? 1 : 0                     # zone is ALWAYS fixed at 1
+    n_zone = has_zone ? 1 : 0                             # zone is ALWAYS fixed at 1
     zone_tag = n_zone == 0 ? "" :
                DEMO_ZONE_PRESIM ? " [$(DEMO_ZONE_MODE), pre-sim]" :
                DEMO_ZONE_MODE == "blocking" ? " [blocking, @closed=$(zone_at)]" : " [harmless, pre-sim]"

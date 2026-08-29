@@ -637,32 +637,73 @@ end
 # other demos); the stall/replace demo sets it low.
 # [한국어] 자가치유 "팀 교착(team deadlocked)" OOD 가 발동하기까지 필요한 "진전 없음" 연속 스텝 수.
 #          작을수록 교착을 빨리 잡아 적응 컨트롤러가 즉각 반응(reform 은 교착이 없으면 안전한 no-op).
-const REFORM_INTERVAL = Ref(2000)
-# 위 임계값을 바꾸는 세터(최소 1 로 하한).
-set_reform_interval!(n::Integer) = (REFORM_INTERVAL[] = max(1, Int(n)); nothing)
+# ---- 팀 교착 OOD 발화 — 2026-08-20 삭제 ------------------------------------------------------
+# 여기 있던 `REFORM_INTERVAL` / `set_reform_interval!` / `maybe_emit_reform_ood!` 를 지웠다.
+#
+# 무엇이었나: `no_progress % REFORM_INTERVAL == 0` 일 때 "운반팀이 교착됐다"는 자연어 OOD 를
+# respec 큐에 넣어 `ReformTeam` 결정을 하나 만들어냈다.
+#
+# 왜 지웠나 (4팔 축소). 그것은 실패 **사건**이 아니었다:
+#   · 발화 조건에 물리량이 하나도 없다 — 순수 카운터 modulo 다. `ReformTruth` 는 필드가 없는
+#     빈 struct 라 어떤 로봇도 어떤 팀도 지목하지 않았다.
+#   · 이 함수 자신의 docstring 이 "SECOND-ORDER OOD of a spare hand-off" 라고 적었다 =
+#     외생 도착이 아니라 **Replace(우리 자신의 행동)의 후속 결과**다. SMDP 의 T_fail 은
+#     외생이어야 하는데 이것은 자기 정책의 결과라 독립성 가정을 깬다.
+#   · 없는 교착에도 발화했다(배터리 교체 대기의 의도된 라인 정지가 무진전으로 세어졌다.
+#     demo_utils.jl 의 `battery_swap_halt_active()` 예외가 그 땜질이었다).
+#   · dedup 이 없어 무진전이 이어지는 한 간격마다 다시 떴다 — NOOP 판에서도 배경 정책이
+#     뒤늦게 ReformTeam 을 집행해 팔 0 이 "지연된 팔 4" 가 됐다(reform 7 instance 중 6개에서
+#     두 팔의 closed 가 같았다).
+#
+# 교착 해소 자체는 **없어지지 않았다** — 명목 레인(TAMP 재계획)으로 내렸다.
+# `replace_robot.jl` 의 네 unwedging 루틴(`reform_stuck_teams!` · `recover_stalled_teams!` ·
+# `force_advance_stuck_carrier!` · `resolve_schedule_wedge!`)이 이미 그 일을 한다. 달라진 것은
+# 그것이 더 이상 **결정 epoch 를 만들지 않는다**는 점뿐이다.
+
+# ⚠️ 그 "이미 한다" 는 **틀렸다** — 실측으로 확인하고 아래 훅으로 고쳤다. 네 루틴은 명목 레인에
+# 있지 않았다: 전부 `replan.jl:798` 의 `_is_reform(proposal)` 분기(= `ReformTeam` **제안**이
+# 큐에 들어와야 하는 경로)와 `run_demo.jl` 의 `elseif mac == "ReformTeam"` 매크로 dispatch
+# 안에서만 불렸다. 그래서 발화와 팔을 둘 다 없애면 **교착 복구가 통째로 도달 불가능**해진다.
+# `maybe_unwedge_nominal!` 이 그 사슬을 결정 epoch 없이 명목 레인에서 직접 부른다.
+
+"무진전이 이 스텝 수를 넘길 때마다 명목 레인이 교착 해소를 시도한다. 0 이면 끈다."
+const UNWEDGE_INTERVAL = Ref(2000)
+set_unwedge_interval!(n::Integer) = (UNWEDGE_INTERVAL[] = max(0, Int(n)); nothing)
 
 """
-    maybe_emit_reform_ood!(no_progress::Integer) -> Bool
+    maybe_unwedge_nominal!(env, no_progress::Integer) -> Bool
 
-Emit the self-healing "transport team deadlocked" OOD (→ ReformTeam) when a SUSTAINED wedge is
-detected: `no_progress` consecutive no-progress steps crossing `REFORM_INTERVAL`. This is the
-SECOND-ORDER OOD of a spare hand-off (a multi-robot transport team can't finish forming after a
-Replace). Factored out of the inline `demo_utils.jl` loop so that BOTH the LLM full-sim loop AND the
-RL event-triggered env can emit team-deadlock into the SAME respec queue — keeping the LLM-vs-RL
-comparison symmetric (both controllers receive the 4th OOD identically; see
-`decpomdp/docs/EVENT_MDP_DESIGN.md` §4). RESPEC-gated (a true no-op unless the respec hook is
-enabled) and safe (reform is a verified no-op when nothing is actually wedged). Returns `true` iff an
-event was enqueued.
+무진전이 `UNWEDGE_INTERVAL` 배수에 닿으면 **명목 레인에서** 교착 해소를 시도한다.
+`recover_stalled_teams!` 하나가 격상 사슬 전체를 담고 있다(값싼 스냅 → 스케줄 교착 해소 →
+캐리어 강제 전진). 해소했으면 `true`.
+
+**결정 epoch 를 만들지 않는다** — 이것이 구 `maybe_emit_reform_ood!` 와의 유일한 차이이자
+전부다. 구 버전은 자연어 OOD 를 respec 큐에 넣어 정책 레이어가 `ReformTeam` 을 고르게 했고,
+그 선택이 라벨에서 "결정" 으로 세어졌다. 팀 교착은 외생 실패 사건이 아니라 Replace 의 2차
+결과이므로(위 삭제 주석) 그것은 결정이 아니라 **TAMP 재계획**이어야 한다.
+
+RESPEC 게이트를 걸지 않는다: 이제 respec 층의 기능이 아니라 명목 레인의 일부다.
 """
-# 진전 없는 스텝이 REFORM_INTERVAL 을 넘기면 "팀 교착" OOD(→ ReformTeam)를 respec 큐에 넣는다. 넣었으면 true.
-function maybe_emit_reform_ood!(no_progress::Integer)
-    RESPEC_ENABLED[] || return false                                   # respec 꺼져 있으면 아무 일도 안 함(진짜 no-op)
-    (no_progress > 0 && no_progress % REFORM_INTERVAL[] == 0) || return false  # 간격의 배수(=임계 도달)일 때만 발동
-    # push_ood! : 자연어 이벤트를 respec 큐에 예약(LLM·RL 컨트롤러가 동일 큐로 4번째 OOD 를 똑같이 받게 함).
-    push_ood!("A multi-robot transport team is deadlocked while forming: " *
-              "some members are waiting in their carrying positions but the team cannot complete and " *
-              "the build has stalled. Re-establish the stuck transport team(s).")
-    return true
+function maybe_unwedge_nominal!(env, no_progress::Integer)
+    iv = UNWEDGE_INTERVAL[]
+    (iv > 0 && no_progress > 0 && no_progress % iv == 0) || return false
+    rec = try
+        recover_stalled_teams!(env; verbose = false)
+    catch e
+        @warn "[NOMINAL] unwedge 실패" exception = e
+        return false
+    end
+    ok = rec.status in (:snapped, :unwedged, :restaged, :force_snapped,
+                        :carrier_closed, :carrier_advanced)
+    # ⚠️ 캐시 재개는 빼먹기 쉬운 자리다. 구 `run_demo.jl` 의 `mac == "ReformTeam"` 분기가
+    # 복구 성공 뒤에 이걸 불렀는데, 훅으로 옮기면서 안 옮기면 그래프는 바뀌었는데 스케줄
+    # 캐시가 옛 프론티어를 들고 있어 **복구가 아무 효과도 못 낸다**(에러는 안 난다).
+    ok && try
+        reset_cache_resume!(env.cache, env.sched)
+    catch e
+        @warn "[NOMINAL] reset_cache_resume! 실패" exception = e
+    end
+    return ok
 end
 """
     set_hot_swap!(; enabled=true, mode=:via_depot)
@@ -1010,7 +1051,9 @@ assignment edge to a spare mid multi-robot carry trips
 (route_planning.jl). Identity-preserving **hot swap** keeps the id and only exchanges the body, so
 there is no edge to hand over and a mid-carry breakdown is recoverable. The engine already encodes
 exactly this exception in two other places — `_hz_safe_target` (mdp/hazard.jl) and
-`_fire_battery_stall!` (navigator/battery.jl) — this function is the picker form of it.
+`_hz_safe_target` (mdp/hazard.jl) — this function is the picker form of it.
+(`_fire_battery_stall!` was the second such place; it was deleted 2026-08-25 — the battery stall
+path no longer raises an OOD at all, see `_mark_newly_stalled!`.)
 
 Candidate = a non-spare robot that is a member of a **non-closed** `FormTransportUnit` team, i.e. it
 still owns carry work, so the breakdown is CONSEQUENTIAL (under NOOP the whole team freezes:
