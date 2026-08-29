@@ -231,7 +231,20 @@ def build_adapter():
     `ChatAdapter` 의 자식이고 플래그를 그대로 물려주므로 §2-4 의 네 조건이 전부 그대로 선다.
     클래스를 못박으면 이 태스크가 재지 않은 **직렬화 형식**에 대한 불변식을 세우는 셈이고,
     그 불변식은 런타임에 이미 거짓이다: `ChatAdapter.__call__` 은 파싱 실패 시 스스로
-    `JSONAdapter` 로 재시도한다. 우리가 주장하는 것은 네 조건이지 클래스가 아니다."""
+    `JSONAdapter` 로 재시도한다. 우리가 주장하는 것은 네 조건이지 클래스가 아니다.
+
+    🔴 **`parallel_tool_calls` 를 여기 걸지 않는다** (2026-08-29, T5 — 계획서 지시를 실측으로
+    뒤집은 자리다). 이 생성자는 그 인자를 받고(`chat_adapter.py:47`) 값도 `lm_kwargs` 까지
+    간다. 그런데 dspy 3.3.0 은 `tool_choice` 와 그것을 **프로바이더 경계에서 한 객체**
+    (`LMToolChoice`)로 접어서, 이 키만 실린 요청에 `tool_choice: "auto"` 를 **지어내 붙인다**
+    (실측: `core/types.py:538-542` + `clients/openai_format.py:396-398`).
+    ⟹ 여기 걸면 그 값이 **모든** 요청에 실리므로 `DSPY_TOOL_CHOICE=""` 킬스위치가 더 이상
+      2026-08-29 이전과 바이트 동일한 요청을 못 낸다 — 그 손잡이의 존재 이유 전체가 A/B
+      비교판을 로직 편집 없이 내는 것이다. 실측: 그 한 줄만 넣으면 `test_tool_choice_forced.py`
+      의 계약 넷이 빨개진다.
+    그래서 `_ask` 가 `tool_choice` 와 **같은 조건 아래** 싣는다(그 함수의 같은 날짜 주석).
+    잠금장치: test_tool_choice_forced.py::test_the_adapter_does_not_carry_the_parallel_flag
+    """
     return dspy.ChatAdapter(use_native_function_calling=True)
 
 
@@ -1029,9 +1042,18 @@ TOOL_CHOICE_ENV = "DSPY_TOOL_CHOICE"
 #    지웠으므로 **되찾을 채널 자체가 없고**, 구제 코드와 `text_rescue` 키를 T4 가 지웠다.
 #    위 실측이 보고한 붕괴는 여전히 참이지만, 그 대응이 "2차 호출로 되찾기" 에서 "결정
 #    성분을 애초에 tool 인자로 받기" 로 바뀌었다(`tool_registry.COMMON_ARGS`).
-#    ⚠️ 그리고 `TOOL_CHOICE_DEFAULT = None` 은 **T5 가 `"required"` 로 되돌린다** — 강제가
-#      텍스트 채널을 죽이던 인과가 끊겼기 때문이다. 그때 위 반증 서술도 함께 갱신할 것.
-TOOL_CHOICE_DEFAULT = None
+#
+# 🔴 2026-08-29 (T5): 기본값이 `None` 에서 **`"required"` 로 되돌아갔다.** 반증됐던 것은
+#    "무조건 강제" 자체가 아니라 **텍스트 채널을 죽이면서 강제하는 것**이었고, T3 이 그 채널을
+#    없애 인과를 끊었다(위 실측의 `chosen`·`reasoning`·`expressible` 붕괴는 전부 텍스트
+#    `OutputField` 의 사건이다 — 그 필드들이 이제 없다).
+#    되돌리는 근거(실측, F3): 강제 없이 tool 호출률이 **0/3** 이었고, 프롬프트에 호출 지시를
+#    넣어도 · 텍스트 출력 필드를 전부 없애도 · 행위자 프레이밍을 지시문 맨 앞에 놔도 전부
+#    0/3 이었다. 양성 대조(산술 과제)는 tool 3개에도 부른다 — 배선이 아니라 **과제의 성질**이라
+#    프롬프트로 대체 불가능하다.
+#    ⟹ 요청(`MacroRequest.tool_choice`)은 여전히 사건마다 다른 값을 실을 수 있고, 환경변수는
+#      여전히 양방향 킬스위치다. 바뀐 것은 **둘 다 없을 때**의 값 하나뿐이다.
+TOOL_CHOICE_DEFAULT = "required"
 # 🔴 허용 집합. **이 목록은 우리가 정한 정책이 아니라 프로바이더 스펙의 사본이다** —
 #    `openai/types/chat/chat_completion_tool_choice_option_param.py:15` 의
 #    `Literal["none", "auto", "required"]`, 그리고 dspy 가 그것을 그대로 물려받은
@@ -1118,7 +1140,24 @@ def _ask(prog, sig, line, valid, tools, choice=None):
         # 🔴 `tools` 가 있을 때만. 위 `TOOL_CHOICE_ENV` 주석의 마지막 문단이 이유다 —
         #    tool 0개 + `tool_choice` 는 프로바이더 400 이다. `config=` 여야 도달한다.
         if choice:
-            kw["config"] = {"tool_choice": choice}
+            # 🔴 F11 (2026-08-29, T5). `parallel_tool_calls=False` 를 **`tool_choice` 와 같은
+            #    조건 아래** 싣는다. 계획서는 이것을 `build_adapter()` 에 걸라고 했는데
+            #    **실측으로 반증됐다**: dspy 3.3.0 은 두 손잡이를 프로바이더 경계에서 한 객체로
+            #    접는다 — `core/types.py:538-542` 가 둘 중 **하나만 있어도**
+            #    `LMToolChoice.from_value(...)` 를 만들고, `clients/openai_format.py:396-398` 이
+            #    `{"tool_choice": choice.mode}` 를 먼저 깐 뒤 `parallel` 을 얹는다.
+            #    ⟹ `parallel_tool_calls` 만 실으면 dspy 가 `tool_choice: "auto"` 를 **지어낸다**
+            #      (실측: `parallel=False 만 -> {"tool_choice":"auto","parallel_tool_calls":false}`).
+            #    어댑터에 걸면 그 값이 모든 요청에 실리므로 `DSPY_TOOL_CHOICE=""` 킬스위치가
+            #    **2026-08-29 이전과 바이트 동일한 요청을 못 낸다** — 그 손잡이의 존재 이유가
+            #    A/B 비교판이고, 기준선이 조용히 다른 세계가 되는 것이 이 레포의 상습 실패다.
+            #    (실측: 어댑터에 건 판에서 이 파일의 계약 넷이 빨개진다.)
+            # ⚠️ `tool_calls_n` 은 **그대로 잰다.** 프로바이더가 이 플래그를 안 지킬 수 있고,
+            #    그때 조용해지면 안 된다 — 그리고 그 값은 F8 의 판별키이기도 하다.
+            # 게이트: test_tool_choice_forced.py::test_the_two_knobs_are_decided_in_one_place
+            #        (구조) · ::test_parallel_tool_calls_reaches_the_provider_request (도달)
+            #        · ::test_turning_the_knob_off_sends_neither_key (킬스위치 OFF 방향)
+            kw["config"] = {"tool_choice": choice, "parallel_tool_calls": False}
     pred = prog(**kw)
     _state["calls"] += 1
     return pred

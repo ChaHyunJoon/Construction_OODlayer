@@ -407,17 +407,25 @@ def test_tool_choice_survives_the_pydantic_boundary():
     assert _req(tool_choice=None).tool_choice is None
 
 
-def test_the_default_is_no_longer_unconditionally_required():
-    """🔴 §0 실측의 직접적 귀결. 요청도 환경변수도 없으면 **키를 안 보낸다.**
+# 🔴 삭제 (2026-08-29 T5): `test_the_default_is_no_longer_unconditionally_required` —
+#    "요청도 환경변수도 없으면 키를 안 보낸다" 를 재던 것. **그 기본값이 뒤집혔다**(F3: 강제
+#    없이 호출률 0/3). 반증됐던 것은 "무조건 강제" 자체가 아니라 텍스트 채널을 죽이면서
+#    강제하는 것이었고, T3 이 그 채널을 없애 인과를 끊었다. 그 자리는 위 (6b)절의
+#    `test_the_default_is_required` 와 `test_parallel_tool_calls_reaches_the_provider_request`
+#    가 메운다. **요청이 명시적으로 `""` 를 실으면 여전히 안 보낸다** — 그건
+#    `test_every_legal_value_still_passes_untouched` 가 계속 지킨다.
 
-    변이 증명: `TOOL_CHOICE_DEFAULT` 를 `"required"` 로 되돌리면 이 세 단언이 빨개진다.
-    """
-    assert svc.TOOL_CHOICE_DEFAULT is None, "무조건 강제가 기본값으로 돌아왔다"
-    lm = _install(_answer(action=CALL, macro="SwapBattery"), fc=True)
-    out = svc.macro(_req(tool_choice=None))
+
+def test_an_explicit_empty_string_in_the_request_still_sends_nothing():
+    """🔴 기본값이 `"required"` 가 된 뒤에도 **요청이 끄는 길**은 살아 있어야 한다.
+    `None`(안 실었다)과 `""`(끄라고 실었다)는 다른 사건이고, 접으면 호출자가 이 레인을
+    사건 단위로 끌 방법이 사라진다."""
+    lm = _install(_answer(action=CALL), fc=True)
+    out = svc.macro(_req(tool_choice=""))
     assert out["tools_offered"] > 0, "tool 이 0개면 이 시험은 400 방지 계약을 다시 재는 것이다"
     assert "tool_choice" not in lm.seen[0], (
-        "요청도 환경변수도 강제를 안 했는데 키가 나갔다: %r" % (lm.seen[0].get("tool_choice"),))
+        "요청이 명시적으로 껐는데 키가 나갔다: %r" % (lm.seen[0].get("tool_choice"),))
+    assert "parallel_tool_calls" not in lm.seen[0], "두 키는 같은 조건 아래 있어야 한다"
     assert out["tool_choice"] is None
 
 
@@ -454,7 +462,10 @@ def test_the_env_knob_beats_the_request_in_both_directions(monkeypatch):
 def test_the_pure_helper_reads_both_sources_in_order(monkeypatch):
     """`tool_choice(req)` 자체를 직접 태운다 — `macro()` 를 통과하지 않고도 우선순위가 못박힌다."""
     monkeypatch.delenv(svc.TOOL_CHOICE_ENV, raising=False)
-    assert svc.tool_choice(None) is None
+    # 🔴 2026-08-29 (T5): 예전엔 `is None` 이었다. 요청 객체가 없으면 **기본값**이 서고,
+    #    그 기본값이 `"required"` 로 바뀌었다(F3). `""` 와 갈리는 것이 요점이다:
+    #    `None`("안 실었다") -> 기본값 · `""`("끄라고 실었다") -> 안 보냄.
+    assert svc.tool_choice(None) == "required"
     assert svc.tool_choice(_req(tool_choice="required")) == "required"
     assert svc.tool_choice(_req(tool_choice="")) is None      # 빈 문자열은 키를 안 보낸다
     monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "auto")
@@ -490,6 +501,114 @@ def test_the_pure_helper_reads_both_sources_in_order(monkeypatch):
 #    `expressible` 을 되찾는다는 이 절의 목적 절반은 그 값이 tool 인자가 되면서 **애초에 잃지
 #    않는 것**으로 바뀌었다 — 위 (2)절이 그것을 잰다.
 # ⚠️ `tool_choice` 를 되돌리는 길(`DSPY_TOOL_CHOICE=""`)은 그대로 남아 있다 — 위 (5)절.
+
+
+# ---------------------------------------------------------------------------------------------
+# (6b) 강제가 기본이고, 다중 호출은 원천 차단된다 (2026-08-29, T5)
+# ---------------------------------------------------------------------------------------------
+#
+# 🔴 **`parallel_tool_calls` 를 `build_adapter()` 에 걸지 않는 이유 — 실측으로 반증된 계획서안.**
+#    계획서 T5 Step 3 은 `dspy.ChatAdapter(use_native_function_calling=True,
+#    parallel_tool_calls=False)` 를 지시한다. 그대로 하면 **이 파일의 계약 넷이 깨진다**(실측:
+#    그 한 줄만 넣고 스위트를 돌려 4 failed 를 확인했다).
+#
+#    원인은 dspy 3.3.0 이 두 손잡이를 **프로바이더 경계에서 한 객체로 접기** 때문이다:
+#      `core/types.py:538-542` — `if "tool_choice" in kwargs or "parallel_tool_calls" in kwargs:`
+#         -> `LMToolChoice.from_value(kwargs.get("tool_choice", ...), parallel=...)`
+#      `clients/openai_format.py:396-398` — `data = {"tool_choice": choice.mode}` 뒤에
+#         `if choice.parallel is not None: data["parallel_tool_calls"] = choice.parallel`
+#    ⟹ `parallel_tool_calls` 만 실으면 dspy 가 `tool_choice: "auto"` 를 **지어내서 함께 보낸다.**
+#    실측 (`LMRequest.from_call` -> `to_openai_chat_request`):
+#      tool_choice=required + parallel=False -> {"tool_choice":"required","parallel_tool_calls":false}
+#      parallel=False 만                      -> {"tool_choice":"auto",    "parallel_tool_calls":false}  🔴
+#      둘 다 없음                              -> 두 키 다 없음
+#
+#    귀결: 어댑터에 걸면 `DSPY_TOOL_CHOICE=""` 킬스위치가 **더 이상 2026-08-29 이전과 바이트
+#    동일한 요청을 못 낸다** — 그 손잡이의 존재 이유 전체가 A/B 비교판을 로직 편집 없이 내는
+#    것인데, 그 판이 `tool_choice: "auto"` 를 달고 나간다. 이 레포가 반복해 데인 자리가
+#    "라벨 레인과 실행 레인이 조용히 다른 세계" 이고, 망가진 A/B 기준선이 정확히 그 모양이다.
+#
+# ⟹ 그래서 `_ask` 의 `config=` 로 **`tool_choice` 와 같은 블록에서 함께** 싣는다. dspy 가 둘을
+#   한 객체로 접으니 우리도 한 자리에서 결정한다. 세 판이 전부 옳게 선다:
+#     · 기본(`required`)   : 두 키가 다 나간다 — F11 차단
+#     · 킬스위치(`""`)     : 두 키가 다 안 나간다 — 바이트 동일 유지
+#     · tool 0개           : `macro()` 가 아예 안 묻는다 — 400 불가
+# ⚠️ 어댑터에 도로 걸고 싶어지면 아래 `test_the_adapter_does_not_carry_the_parallel_flag` 가
+#   막는다. 그 시험이 이 판정의 하중을 진다.
+
+
+def test_the_default_is_required(monkeypatch):
+    """🔴 F3. 강제 없이는 호출이 **0/3** 이었다(실측). 프롬프트에 호출 지시를 넣어도, 텍스트
+    출력 필드를 전부 없애도, 행위자 프레이밍을 지시문 맨 앞에 놔도 전부 0/3 이었다.
+    양성 대조(산술 과제)는 tool 3개에도 부른다 — 배선이 아니라 **과제의 성질**이다.
+
+    그리고 강제가 예전에 텍스트 채널을 죽이던 인과는 T3 이 끊었다(텍스트 필드가 없다)."""
+    monkeypatch.delenv(svc.TOOL_CHOICE_ENV, raising=False)
+    assert svc.TOOL_CHOICE_DEFAULT == "required"
+    assert svc.tool_choice(_req(tool_choice=None)) == "required"
+
+
+def test_the_env_knob_can_still_turn_it_off(monkeypatch):
+    """음성 대조: 되돌려 재는 길이 막히면 안 된다."""
+    monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "")
+    assert svc.tool_choice(_req(tool_choice=None)) is None
+
+
+def test_parallel_tool_calls_reaches_the_provider_request(monkeypatch):
+    """🔴 F11. 예전에는 여럿 오면 `_first_tool_call` 이 첫 번째만 쓰고 나머지를 버렸다
+    (`tool_calls_n` 에 기록은 했다). 프로바이더에게 애초에 하나만 내라고 말할 수 있다.
+
+    **배선이 아니라 도달을 잰다** — `lm.seen[0]` 은 `to_openai_chat_request(request)` 의
+    결과다(`adapters/base.py:249-254` 의 `_legacy_call_kwargs`)."""
+    monkeypatch.delenv(svc.TOOL_CHOICE_ENV, raising=False)
+    lm = _install(_answer(action=CALL), fc=True)
+    out = svc.macro(_req(tool_choice=None))
+    assert out["tools_offered"] > 0, "tool 이 0개면 이 시험은 다른 것을 잰다"
+    assert lm.seen[0].get("tool_choice") == "required"
+    assert lm.seen[0].get("parallel_tool_calls") is False, (
+        "다중 호출이 원천 차단되지 않았다: %r" % (lm.seen[0].get("parallel_tool_calls"),))
+
+
+def test_turning_the_knob_off_sends_neither_key(monkeypatch):
+    """🔴 킬스위치의 OFF 방향. **이 시험이 위 (6b) 판정의 하중을 진다** — 계획서대로
+    어댑터에 `parallel_tool_calls` 를 걸면 여기서 `tool_choice: "auto"` 가 잡힌다(실측)."""
+    monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "")
+    lm = _install(_answer(action=CALL), fc=True)
+    out = svc.macro(_req())
+    assert lm.seen and "tool_choice" not in lm.seen[0], (
+        "킬스위치를 걸었는데 tool_choice 가 나갔다: %r" % (lm.seen[0].get("tool_choice"),))
+    assert "parallel_tool_calls" not in lm.seen[0], (
+        "킬스위치를 걸었는데 parallel_tool_calls 가 나갔다 — dspy 가 그 키만으로 "
+        "tool_choice='auto' 를 지어내므로 요청이 2026-08-29 이전과 바이트 동일하지 않다")
+    assert out["tool_choice"] is None
+
+
+def test_the_adapter_does_not_carry_the_parallel_flag():
+    """🔴 위 (6b) 판정의 잠금장치. 어댑터에 걸면 그 값이 **모든** 요청에 실리고, dspy 가
+    `tool_choice` 없이 그 키만 보면 `"auto"` 를 지어낸다 — 킬스위치가 죽는다.
+    계획서 T5 의 `test_parallel_tool_calls_is_disabled_at_the_source` 를 이것으로 **대체했다.**"""
+    assert svc.build_adapter().parallel_tool_calls is None, (
+        "어댑터가 이 플래그를 들고 있다 — `_ask` 의 config= 로 tool_choice 와 함께 실을 것")
+
+
+def test_the_two_knobs_are_decided_in_one_place():
+    """🔴 dspy 가 둘을 한 객체(`LMToolChoice`)로 접으므로 우리도 한 자리에서 결정한다.
+    `_ask` 안에서 `parallel_tool_calls` 가 `tool_choice` 와 **같은 조건**(`if choice:`) 아래
+    있는지 소스로 못박는다 — 갈리면 킬스위치가 한쪽만 끄게 된다.
+
+    ⚠️ 소스 검사다. 도달을 재는 것은 위 두 시험이고, 이것은 그 둘이 **왜** 함께 서는지를
+    구조로 고정한다(하중은 여전히 위 둘이 진다)."""
+    import ast as _ast
+    src = open(os.path.join(HERE, "dspy_service.py"), encoding="utf-8").read()
+    fn = next(n for n in _ast.walk(_ast.parse(src))
+              if isinstance(n, _ast.FunctionDef) and n.name == "_ask")
+    ifs = [n for n in _ast.walk(fn) if isinstance(n, _ast.If)]
+    hit = [n for n in ifs
+           if isinstance(n.test, _ast.Name) and n.test.id == "choice"
+           and "parallel_tool_calls" in _ast.dump(n) and "tool_choice" in _ast.dump(n)]
+    assert len(hit) == 1, (
+        "`_ask` 안에서 두 키가 `if choice:` 하나 아래 함께 있지 않다 — dspy 는 둘을 한 객체로 "
+        "접으므로 조건이 갈리면 킬스위치가 한쪽만 끈다")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -549,7 +668,7 @@ def test_every_legal_value_still_passes_untouched(monkeypatch):
     assert svc.tool_choice(_req(tool_choice="  ")) is None        # 공백만도 같다
     assert svc.tool_choice(_req(tool_choice="auto ")) == "auto"   # 앞뒤 공백은 사고지 오설정이 아니다
     assert svc.tool_choice(_req(tool_choice=" required")) == "required"
-    assert svc.tool_choice(None) is None
+    assert svc.tool_choice(None) == "required"   # 🔴 T5: 요청이 없으면 기본값이 선다
     monkeypatch.setenv(svc.TOOL_CHOICE_ENV, "")
     assert svc.tool_choice(_req(tool_choice="required")) is None  # 킬스위치 OFF 방향
 
