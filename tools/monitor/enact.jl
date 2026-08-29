@@ -21,6 +21,100 @@
 # =============================================================================
 
 """
+    _arm_overridden(router) -> Bool
+
+이 결정의 **집행 팔이 정책 밖에서 강제로 갈아 끼워졌는가**(통제 실험 `DEMO_FORCE_MACRO`,
+또는 1-step deviation `DS_DEVIATE_AT`).
+
+🔴 왜 이것이 집행 대상 선택에 필요한가 (T1 리뷰 F8 · 컨트롤러 판정 R16)
+------------------------------------------------------------------------
+`decide_all` 은 `tool_lane` 을 `pol[enacted]` 에서 **`FORCE_MACRO`/`DEVIATE` 가 `chosen` 을
+덮기 전에** 뽑는다(`policy.jl` 의 `forced`/`dev` 블록이 `tool_lane` 을 만드는 줄보다 앞이
+아니다 — 뒤다). 그래서 통제 판·이탈 판에서는 `decision.macro_name` 과
+`tool_lane["tool_called"]` 이 **서로 다른 팔**을 서술한다: 집행되는 것은 강제된 팔이고,
+tool 호출은 정책이 원래 고른 팔의 것이다.
+
+그 상태에서 `tool_args["agent"]` 를 그대로 집행에 먹이면, **한 팔을 위해 고른 agent 가 다른
+팔의 집행에 적용**되고 결정 행은 그것을 `enact_agent_source == "tool"` 로 주장한다 — 이
+태스크가 없애려는 바로 그 종류의 조용한 거짓말이다.
+
+**해법은 추측이 아니라 거절이다(R16).** 팔이 강제됐으면 `truth.robot` 으로 떨어지고
+`"truth"` 로 기록한다. 강제된 팔이 "원했을" agent 를 재유도하지 않는다 — 통제 판의 존재
+이유가 팔이 외부에서 부과됐다는 것이고, LLM 의 파라미터가 그 팔에 얹혀 가면 통제가 오염된다.
+대가: 통제·이탈 판은 tool-agent 경로를 한 번도 안 태운다 — 통제로서는 그게 맞는 동작이다.
+
+무엇을 보는가(전부 **값**으로 판정한다):
+  * `router["forced_from"]`  -- `FORCE_MACRO` 가 실제로 팔을 갈아 끼웠다(`policy.jl:1422`)
+  * `router["deviate_from"]` -- deviate 게이트가 이 인덱스에서 발화했다(`:1436`)
+  * `router["deviated"]`     -- 그 발화가 실제로 팔을 바꿨다(`:1435`)
+  * `ENV["DEMO_FORCE_MACRO"]` -- 🔴 `forced` 는 `FORCE_MACRO != chosen` 일 때만 참이라
+    (`:1419`), 강제 팔이 우연히 정책의 선택과 같으면 `forced_from` 이 **안 실린다.** 그래도
+    그 판은 통제 판이다 — R16 이 env 도 같이 보라고 못박은 자리다.
+"""
+function _arm_overridden(router)
+    isempty(strip(get(ENV, "DEMO_FORCE_MACRO", ""))) || return true
+    router === nothing && return false
+    get(router, "forced_from", nothing) === nothing || return true
+    get(router, "deviate_from", nothing) === nothing || return true
+    return get(router, "deviated", false) === true
+end
+
+"""
+    enact_target(env, truth, tool_lane, router) -> (; agent, source, tool_agent)
+
+**누구에게 집행할 것인가**를 정한다. Plan B 의 분수령이 이 함수다 — 여기가 `truth.robot` 을
+돌려주면 집행은 주입기가 이미 아는 값을 쓰는 것이고, LLM 의 tool 호출은 세계에 대해
+인과가 없다.
+
+규칙 (브리프 커밋 3 + 컨트롤러 판정 R16):
+ 0. 이 결정의 팔이 강제/이탈로 갈아 끼워졌으면(`_arm_overridden`) tool 레인을 **안 본다**.
+ 1. `tool_lane["tool_args"]["agent"]` 가 **문자열**이고
+ 2. `CB.resolve_agent_id(env, 그 문자열)` 이 `nothing` 이 아니면 → 그것을 쓴다. source `"tool"`.
+ 3. 아니면 `truth.robot`(있으면). source `"truth"`.
+ 4. `truth` 에 `robot` 이 없으면 agent `nothing`, source `"none"`.
+
+🔴 **폴백은 반드시 기록된다 (컨트롤러 판정 R2/R6).** 조용히 떨어지면 "LLM 이 골랐다" 와
+"주입기가 알려줬다" 가 **같은 관측**이 되고, Plan B 가 재려는 것 자체가 측정 불가가 된다.
+그래서 이 함수는 `source` 와 **원문 문자열** `tool_agent` 를 함께 낸다 — `handle_ood!` 이
+셋을 결정 행에 싣는다(`tool_agent` · `enact_agent` · `enact_agent_source`).
+
+⚠️ `tool_agent` 는 팔이 강제된 판에서도 **원문 그대로** 실린다. 그래야 "LLM 은 B 를 냈는데
+집행은 A 로 갔다" 가 산출물에서 보인다 — 원문을 지우면 R16 의 거절이 tool 레인 부재와
+구분되지 않는다.
+
+🔴 **키 존재로 분기하지 않는다 (T1 이 남긴 소비자 규칙 1).** `decide_all` 은 8키를
+`get(..., nothing)` 으로 순회하므로 **키는 항상 있고** 값만 `nothing` 일 수 있다 —
+`haskey` 는 값이 실려 왔다는 증거가 아니다. 그래서 여기서 보는 것은 **값**뿐이다.
+
+⚠️ **`tool_lane` 만으로는 "레인이 실패했다" 와 "레인이 없었다" 를 못 가른다**(T1 리뷰 R1:
+폴백 `policy_entry` 가 측정된 `tool_lane_error` 를 `nothing` 으로 접는다). 이 함수는 그
+구분이 필요 없다 — 둘 다 "agent 를 못 얻었다" 로 같게 처리하고 `"truth"` 로 기록한다.
+그 구분이 필요한 소비자는 정책 항의 `available`/`error` 를 봐야 한다.
+
+⚠️ **`tool_args` 변환은 얕다 (T1 소비자 규칙 2).** 오늘 tool 알파벳의 인자는 전부 평평한
+문자열 하나라(`tool_registry.py` 의 `_agent_arg()` — enum 의 키가 `"agent"` 다) 여기서 읽는
+`tool_args["agent"]` 는 `String` 이다. 중첩 인자를 받는 tool 이 생기면 그 값은
+`JSON3.Object` 로 남고, 그때 이 가정을 다시 읽어야 한다. `raw isa AbstractString` 검사가
+그 순간의 안전장치다 — 문자열이 아니면 tool 레인이 없는 것과 같이 취급한다.
+"""
+function enact_target(env, truth, tool_lane, router)
+    # 값을 본다 — 키 존재가 아니라. `tool_lane` 자체가 없을 수도 있는 호출자를 위해 get 을 쓴다.
+    local ta = tool_lane === nothing ? nothing : get(tool_lane, "tool_args", nothing)
+    local raw = ta isa AbstractDict ? get(ta, "agent", nothing) : nothing
+    local tool_agent = raw isa AbstractString ? String(raw) : nothing
+    # R16: 팔이 강제/이탈로 갈아 끼워진 판에서는 tool 레인의 agent 를 **쓰지 않는다.**
+    local same_arm = !_arm_overridden(router)
+    # 접지: 열거에 **정확히 있는** 문자열만 통과한다(`CB.resolve_agent_id`, 파싱 없음).
+    local hit = (same_arm && tool_agent !== nothing) ?
+        (try CB.resolve_agent_id(env, tool_agent) catch; nothing end) : nothing
+    hit !== nothing &&
+        return (agent = hit, source = "tool", tool_agent = tool_agent)
+    hasproperty(truth, :robot) &&
+        return (agent = truth.robot, source = "truth", tool_agent = tool_agent)
+    return (agent = nothing, source = "none", tool_agent = tool_agent)
+end
+
+"""
     enact_macro!(env, truth, mac, agent) -> (; enact_applied, ran_milp)
 
 고른 매크로 `mac` 을 세계에 집행한다. `agent` 는 **집행 대상 로봇**(`RobotID` 또는
@@ -66,12 +160,19 @@ function enact_macro!(env, truth, mac, agent)
             # `robot` 필드가 없다(`:67-72`) — 가드 밖에 두면 reform/zone 사건에 Replace 로
             # deviate 했을 때 이 분기가 매치는 됐지만 `hasproperty` 가 false 라 아무 일도 안
             # 일어났는데 `enact_applied=true` 로 거짓 보고한다.
+            #
+            # 🔴 2026-08-29 (T2 커밋 3): 본체는 이제 `agent` 를 쓰지만 **가드는 그대로**
+            # `hasproperty(truth, :robot)` 다(브리프·R5 가 조건 변경을 금한다). 귀결을 적어
+            # 둔다: 가드가 참이면 `enact_target` 규칙상 `agent !== nothing` 이 보장되므로
+            # nothing 역참조는 불가능하다. 반대 방향은 열려 있다 — `robot` 필드가 없는 truth
+            # (ZoneTruth/ReformTruth)에 tool 이 유효 agent 를 실어 보내면 집행이 안 되고
+            # `enact_applied=false` 로 **정직하게** 기록된다(조용한 거짓 보고가 아니다).
             if hasproperty(truth, :robot)
                 enact_applied = true
-                CB.hot_swap_robot!(env, truth.robot; mode = :via_depot, verbose = false)
+                CB.hot_swap_robot!(env, agent; mode = :via_depot, verbose = false)
                 if truth isa CB.BatteryTruth
                     local f = CB.BATTERY_FLEET[]                   # 스왑된 본체=새 배터리 → SoC 회복
-                    (f !== nothing && haskey(f.soc, truth.robot)) && (f.soc[truth.robot] = 1.0)
+                    (f !== nothing && haskey(f.soc, agent)) && (f.soc[agent] = 1.0)
                 end
             end
         elseif mac == "SwapBattery"
@@ -81,7 +182,7 @@ function enact_macro!(env, truth, mac, agent)
             # `enact_applied` 는 Replace 와 같은 이유로 가드 안쪽(2026-08-17 재리뷰 C1(B)).
             if hasproperty(truth, :robot)
                 enact_applied = true
-                local sw = CB.swap_battery!(env, truth.robot; verbose = false)
+                local sw = CB.swap_battery!(env, agent; verbose = false)
                 println("[battery] swap=$(sw.status) soc_before=$(get(sw, :soc_before, nothing))")
             end
         elseif mac == "ForbidZone" && truth isa CB.ZoneTruth

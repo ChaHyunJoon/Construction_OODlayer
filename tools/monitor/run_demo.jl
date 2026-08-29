@@ -285,6 +285,12 @@ function handle_ood!(env, truth, nl)
     capture!(env, truth, decision, nl)
     tag = string(typeof(truth).name.name)
     mac = decision.macro_name
+    # ---- 집행 대상 agent (2026-08-29, Plan B / T2 커밋 3) ------------------------------
+    # 🔴 이 줄이 이 계획의 분수령이다. 여기까지 LLM 의 tool 호출은 세계에 대해 인과가
+    # 없었다 — 집행 사슬이 `truth.robot`(주입기가 이미 아는 값)을 썼기 때문이다. 규칙과
+    # 그 근거(R2/R6 폴백 기록 · R16 강제-팔 거절)는 `enact.jl` 의 `enact_target` docstring 에.
+    local _tgt = enact_target(env, truth, decision.tool_lane,
+                              (try decision.router catch; nothing end))
     # 스위프 요약용 기록. UI(monitor 스트림)와 별개로, 정책 비교를 기계가 읽을 수 있게 남긴다.
     # `this_decision` 으로 참조를 들고 있는다 — 아래 집행 사슬이 끝난 뒤 `enact_applied` 를
     # **같은 행**에 덧붙여 써야 하기 때문이다(mac 실행은 이 push! 뒤에 일어난다).
@@ -320,6 +326,18 @@ function handle_ood!(env, truth, nl)
         "progress" => (n_total > 0 ? length(env.cache.closed_set) / n_total : 0.0),
         "spare_count" => (try length(CB.active_spares()) catch; -1 end),
         "agent_pending" => (try _agent_pending(env, hasproperty(truth, :robot) ? truth.robot : nothing) catch; -1 end),
+        # ---- 집행 대상 agent 3키 (2026-08-29, Plan B / T2, 컨트롤러 판정 R2/R6) ----------
+        # 🔴 조용한 폴백은 이 태스크를 무의미하게 만든다: 폴백이 기록되지 않으면 "LLM 이
+        # 골랐다" 와 "주입기가 알려줬다" 가 **같은 관측**이 되고 Plan B 가 재려는 것 자체가
+        # 측정 불가가 된다. 그리고 이 dict 는 **화이트리스트**다 — 위 `router_axis` 주석이
+        # 경고한 그 함정과 같은 자리다(모니터 스트림에는 나가도 결정 행에는 안 실린다).
+        # ⚠️ 셋은 **항상 존재**한다. 키 부재와 값 `nothing` 을 섞지 않는다.
+        #   tool_agent         LLM 이 낸 원문 문자열(강제-팔 판에서도 원문 그대로), 없으면 nothing
+        #   enact_agent        실제로 집행한 대상의 문자열, 없으면 nothing
+        #   enact_agent_source "tool" | "truth" | "none"
+        "tool_agent"         => _tgt.tool_agent,
+        "enact_agent"        => (_tgt.agent === nothing ? nothing : string(_tgt.agent)),
+        "enact_agent_source" => _tgt.source,
         "enacted"  => decision.enacted,
         "rule"     => decision.rule_macro,
         "llm"      => decision.llm_macro,
@@ -375,8 +393,7 @@ function handle_ood!(env, truth, nl)
     # 사슬 본체는 `tools/monitor/enact.jl` 로 **그대로** 옮겼다(순수 이동). 이유는 그 파일
     # 헤더에 있다(컨트롤러 판정 R5): 이 파일은 최상위에서 데모를 돌리는 스크립트라 테스트가
     # include 할 수 없고, 사슬이 여기 있는 한 게이트가 생산 코드를 태울 방법이 없다.
-    local _enacted = enact_macro!(env, truth, mac,
-                                  hasproperty(truth, :robot) ? truth.robot : nothing)
+    local _enacted = enact_macro!(env, truth, mac, _tgt.agent)
     local enact_applied = _enacted.enact_applied
     local ran_milp = _enacted.ran_milp
     # 이 결정 행에 "집행 사슬이 실제로 뭔가 했는가" 를 남긴다 — `deviate_valid`(메뉴 질문)와는

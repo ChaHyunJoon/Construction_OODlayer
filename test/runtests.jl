@@ -149,6 +149,21 @@ end
         include("tool_lane_keys_survive.jl")
     end
 
+    # 🔴 2026-08-29 (Plan B / T2): **이 계획의 분수령**을 지키는 게이트. T2 이전까지 집행
+    # 사슬은 `CB.hot_swap_robot!(env, truth.robot; ...)` — 주입기가 **이미 아는 값** — 을
+    # 썼고, 그래서 LLM 의 tool 호출은 세계에 대해 인과가 없었다. 이 게이트가 재는 명제는
+    # 하나다: `tool_args` 의 agent 가 `truth.robot` 과 **다를 때**, 세계는 `truth.robot` 이
+    # 아니라 LLM 이 고른 agent 에서 바뀐다. ⚠️ 두 값이 같은 시험은 배선 전후로 똑같이
+    # 통과하므로 아무것도 재지 않는다 — 그래서 이 파일은 A ≠ B 를 잡고 두 로봇의 SoC 를
+    # 서로 다른 값으로 벌려 둔다.
+    # 같이 지키는 것: 접지 실패(`resolve_agent_id` 가 열거 밖 문자열을 거절)와 그 폴백이
+    # **기록되는지**(R2/R6 — 조용한 폴백은 "LLM 이 골랐다" 와 "주입기가 알려줬다" 를 같은
+    # 관측으로 만든다), 그리고 R16(팔이 강제/이탈된 판에서는 tool 의 agent 를 안 쓴다).
+    # 🔴 서비스를 **아예 안 부른다**(집행 함수를 직접 부른다) — 8077 로 나가는 요청 0건.
+    @testset "enactment uses the LLM's agent" begin
+        include("enact_uses_llm_agent.jl")
+    end
+
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
     @testset "lane selection — vocabulary gap outranks novelty" begin
