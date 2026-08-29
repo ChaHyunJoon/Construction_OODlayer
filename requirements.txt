@@ -47,7 +47,6 @@ python-pptx>=1.0.2          # make_evolution_deck.py (presentation build only)
 # 실측 설치본 = 3.3.0. 올릴 때는 위 다섯을 손으로 다시 재고 올릴 것.
 dspy==3.3.0
 openai>=2.48.0
-anthropic>=0.40
 fastapi>=0.110
 uvicorn>=0.29
 pydantic>=2.6

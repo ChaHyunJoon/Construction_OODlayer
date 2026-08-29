@@ -1,22 +1,38 @@
 # =============================================================================
-# llm_bridge.jl  --  thin HTTP client to the separated Python LLM service.
+# llm_bridge.jl  --  typed DSL parse + the grounding enumerations it shares.
 # =============================================================================
 #
-# The LLM layer is a standalone Python process (src/respec/llm_service/). Julia
-# only POSTs {event, open_ids} and receives a validated DSL proposal as JSON.
-# The anthropic call, prompt, and tool schema all live in Python; Julia keeps
-# ONLY the typed parse below — that, plus verify(), is the safety boundary that
-# must stay on the solver side. Python proposes; Julia validates and admits.
+# 🔴 2026-08-29: the Anthropic lane was REMOVED. This file used to also be a thin
+# HTTP client to a Python `/propose` service (`_respec_service_url`,
+# `respec_service_ready`, `llm_to_proposal`, `open_node_id_strings`) whose only
+# server implementation called `anthropic.Anthropic()`. That lane was measured
+# dead (nothing listening on :8000, no ANTHROPIC_API_KEY, no launcher) and is
+# gone along with `llm_service/{propose,server,test_propose}.py`. The surviving
+# LLM lane is DSPy, which speaks its OWN seam (`service_decide` in
+# `tools/monitor/policy.jl` -> `/macro` on :8077) and never used this client.
 #
-# Service URL (default http://127.0.0.1:8000) overridable via RESPEC_SERVICE_URL.
-# Requires: HTTP, JSON3 (Julia side). No anthropic dependency in Julia anymore.
+# What REMAINS here — and why it is not part of that lane:
+#   · the typed parse (`_parse_proposal`, `EMITTABLE_KINDS`, `_parse_linear`, …).
+#     This, plus `verify()`, is the safety boundary that must stay on the SOLVER
+#     side no matter who proposes. It is set-locked with `llm_service/schema.py`.
+#   · the grounding enumerations (`_open_agent_pairs`, `open_agent_descriptors`,
+#     `resolve_agent_id`, `open_node_descriptors`, `open_zone_descriptors`) and
+#     `ground_tool_args`. The DSPy lane and the enactment lane consume these —
+#     they are the single source of "the set we showed the model" vs "the set we
+#     accept back", and splitting them is exactly how grounding breaks silently.
+# Requires: HTTP, JSON3 (Julia side). No anthropic dependency in Julia, ever.
 # -----------------------------------------------------------------------------
 # [한국어 설명]
-# 이 파일은 별도 파이썬 LLM 서비스(src/respec/llm_service/)로의 얇은 HTTP 클라이언트.
-# 프로젝트 역할: 줄리아는 {event, open_ids 등}만 POST 하고, 검증된 DSL 제안을 JSON 으로 받는다.
-# anthropic 호출·프롬프트·tool schema 는 전부 파이썬에 있고, 줄리아는 아래의 "타입 있는 파싱"만 담당.
-# 이 파싱 + verify() 가 solver 쪽에 남아야 하는 안전 경계 — 파이썬은 제안만, 줄리아가 검증·수용.
-# 서비스 주소는 기본 http://127.0.0.1:8000, 환경변수 RESPEC_SERVICE_URL 로 덮어쓸 수 있음.
+# 🔴 2026-08-29: Anthropic 레인을 **삭제**했다. 예전엔 이 파일이 파이썬 `/propose` 서비스로의
+# 얇은 HTTP 클라이언트이기도 했다(`llm_to_proposal` 등). 그 서비스의 유일한 구현이
+# `anthropic.Anthropic()` 을 불렀고, 그 레인은 죽은 것으로 실측됐다(:8000 에 아무도 없음,
+# ANTHROPIC_API_KEY 없음, 실행 스크립트 없음). 살아남은 LLM 레인은 DSPy 하나이고, 그쪽은
+# 자기 이음새(`service_decide` → :8077 `/macro`)를 쓴다 — 이 클라이언트를 쓴 적이 없다.
+#
+# 남은 것: (a) 타입 있는 파싱 — 이것 + verify() 가 "누가 제안하든" solver 쪽에 남아야 하는
+# 안전 경계다(`schema.py` 와 집합으로 잠겨 있다). (b) 접지 열거들 + `ground_tool_args` —
+# DSPy 레인과 집행(enactment) 레인이 이걸 쓴다. "모델에게 보여 준 집합"과 "모델에게서
+# 받아들이는 집합"의 단일 진실원이라, 갈라지는 순간 접지가 조용히 깨진다.
 #
 # [문법 참고] (줄리아의 덜 익숙한 기능들)
 #   · function f(x::T) — x 가 타입 T 일 때만 적용되는 메서드(다중 디스패치). 같은 이름 여러 정의 가능.
@@ -26,89 +42,6 @@
 #   · `A => B` — Pair(키-값 쌍). Dict("k" => v) 로 딕셔너리를 만든다.
 #   · `$(...)` — 문자열 보간(파이썬 f-string 의 {}). `try ... catch; 기본값 end` — 한 줄 예외 처리.
 # =============================================================================
-
-# const 은 "이 이름은 한 번 정해지면 안 바뀐다"는 상수 선언(파이썬엔 직접 대응어 없음 — 사실상 전역 상수).
-# get(ENV, "키", 기본값) : 딕셔너리 get 과 동일 — 환경변수 ENV 에 그 키가 있으면 그 값을, 없으면 기본값을 돌려줌.
-# 즉 "환경변수 RESPEC_SERVICE_URL 이 설정돼 있으면 그걸 쓰고, 없으면 로컬 주소를 기본으로 쓴다".
-# 호출 시점에 ENV 를 읽는 함수 — const 로 두면 precompile 때 기본값이 baked 되어 런타임 ENV override 가 무시됨
-# (mock 서버 주소 지정 등이 안 먹는 함정). 함수면 매 호출마다 현재 ENV["RESPEC_SERVICE_URL"] 를 반영.
-_respec_service_url() = get(ENV, "RESPEC_SERVICE_URL", "http://127.0.0.1:8000")  # 파이썬 LLM 서비스 주소(런타임 ENV 우선)
-
-"""
-    respec_service_ready() -> Bool
-
-Ping the Python service's /health. Call this once before a simulation run so a
-missing/down service is a clear startup error rather than a per-step fallback.
-"""
-# 함수 이름 끝의 `()` 안이 비었으니 인자 없는 함수. 반환 타입은 docstring 의 `-> Bool` 표기대로 참/거짓.
-function respec_service_ready()
-    # try ... catch ... end : 파이썬의 try/except 와 같음 — try 블록에서 에러가 나면 catch 블록으로 넘어감.
-    try
-        # HTTP.get(주소; 키워드인자...) : 그 주소로 HTTP GET 요청을 보냄. `*` 는 문자열 이어붙이기(파이썬의 + 에 해당).
-        # `;` 뒤는 키워드 인자 — readtimeout(응답 대기 최대 3초), retries(재시도 0회).
-        resp = HTTP.get(_respec_service_url() * "/health"; readtimeout = 3, retries = 0)
-        return resp.status == 200   # HTTP 상태코드가 200(정상)이면 true, 아니면 false 를 돌려줌
-    catch                            # 요청 중 어떤 에러든 발생하면(서비스가 꺼져 있는 등)
-        return false                 # 서비스 준비 안 됨 → false
-    end
-end
-
-"""
-    llm_to_proposal(event, env; id_resolver) -> RespecProposal
-
-POST the OOD event and the still-mutable node ids to the Python service and parse
-the returned DSL JSON into a typed `RespecProposal`. Any failure (service down,
-non-200, malformed body, unknown id, bad kind) THROWS — and the caller
-(`maybe_respecify!`) treats a throw exactly like a Reject, engaging the safe
-fallback. Failing loudly is correct: an unparseable proposal must never reach
-the solver.
-"""
-# 인자 목록에서 `;` 앞은 위치 인자(event, env), 뒤는 키워드 인자(id_resolver) — 호출 시 id_resolver=... 로 줘야 함.
-# id_resolver 는 "문자열 id 를 실제 줄리아 id 객체로 되돌리는 함수"를 통째로 인자로 받는 것(함수도 값처럼 전달).
-function llm_to_proposal(event, env; id_resolver)
-    # Dict(...) : 파이썬 dict. `"키" => 값` 의 `=>` 는 "키-값 쌍"을 만드는 Pair 연산자(파이썬의 `"키": 값` 에 해당).
-    body = Dict("event" => String(event),                  # String(event) : event 를 문자열로 변환
-                "open_ids" => open_node_id_strings(env),    # 아직 안 끝난 노드 id 문자열 목록
-                "agents"   => open_agent_descriptors(env),  # 금지 가능한 로봇(에이전트) 설명 목록
-                "nodes"    => open_node_descriptors(env),   # 시간창 금지를 걸 수 있는 마일스톤 노드 설명 목록
-                "zones"    => open_zone_descriptors(env))   # 활성 출입금지 구역 설명(ForbidZone grounding 용)
-    # HTTP.post(주소, 헤더목록, 본문; 키워드...) : 그 주소로 HTTP POST 요청을 보냄.
-    resp = HTTP.post(
-        _respec_service_url() * "/propose",                # 제안(propose)을 요청하는 엔드포인트 주소(런타임 ENV)
-        ["content-type" => "application/json"],            # 요청 헤더: 본문이 JSON 형식임을 명시
-        JSON3.write(body);                                 # body(Dict)를 JSON 문자열로 직렬화해 본문으로 전송
-        readtimeout = 30, retries = 0,                     # 최대 30초 대기, 재시도 없음
-    )
-    # `A || B` : 단락 평가 — A 가 참이면 거기서 끝, A 가 거짓일 때만 B 를 실행. (파이썬 `A or B` 와 유사)
-    # 여기선 "상태가 200이면 통과, 아니면 error(...) 로 예외를 던져라"는 흔한 줄리아 관용구.
-    resp.status == 200 || error("respec service returned HTTP $(resp.status): $(String(resp.body))")
-    # `$(...)` : 문자열 안에 값을 끼워 넣는 보간(파이썬 f-string 의 {} 와 같음).
-    payload = JSON3.read(resp.body)                        # 응답 본문(JSON)을 줄리아에서 다룰 수 있는 객체로 파싱
-    # sched 를 넘겨 파싱 단계에서 참조 접지까지 확인한다(MILP 를 세우기 전에 걸린다).
-    return _parse_proposal(payload, event; id_resolver = id_resolver, sched = env.sched)
-end
-
-"""
-    open_node_id_strings(env) -> Vector{String}
-
-The schedulable, NOT-yet-closed node ids, stringified the same way the
-id_resolver reverses them. Closed nodes are filtered out so the model cannot
-even reference completed work — the "completed work is invariant" rule enforced
-at the prompt boundary, before the verifier re-checks it.
-"""
-function open_node_id_strings(env)
-    sched = env.sched                       # env 의 sched 필드(조립 스케줄 그래프)를 꺼내 짧은 이름에 담음 (`.` 은 필드 접근)
-    ids = String[]                          # 빈 문자열 배열 생성. `타입[]` 은 "그 타입의 빈 벡터"(파이썬의 [] 인데 원소 타입 지정).
-    # for ... in ... : 파이썬 for 와 동일. Graphs.vertices(sched) 는 그래프의 모든 정점(노드)을 순회.
-    for v in Graphs.vertices(sched)
-        # `A && continue` : A 가 참이면 continue(이번 반복 건너뛰기) 실행. (`&&` 는 파이썬 and 의 단락 버전)
-        # 즉 "이 노드가 이미 끝난(closed) 집합에 속하면 건너뛴다" — 완료된 작업은 LLM 에 노출하지 않음.
-        v in env.cache.closed_set && continue
-        # push!(배열, 값) : 배열 끝에 값 추가(파이썬 list.append). 끝의 `!` 는 배열을 직접 바꾼다는 관례 표시.
-        push!(ids, string(get_vtx_id(sched, v)))  # 정점 v 의 id 를 문자열로 바꿔 목록에 추가
-    end
-    return ids                              # 아직 안 끝난 노드 id 문자열 목록 반환
-end
 
 """
     _open_agent_pairs(env) -> Vector{Pair{String,RobotID}}
@@ -651,7 +584,9 @@ function _parse_linear(c; id_resolver)
 end
 
 # 🔴 `sched` 를 받으면 **파싱 단계에서** 참조 접지를 확인한다(가장 싼 표면 — MILP 를 세우기
-#    전에 걸러진다). 실전 경로(`llm_to_proposal`)는 언제나 `env.sched` 를 넘긴다.
+#    전에 걸러진다). 🔴 2026-08-29: 이 인자를 언제나 채워 주던 실전 경로가 `llm_to_proposal`
+#    이었는데 그 레인이 삭제됐다 — 지금 `sched` 를 넘기는 호출부는 없다. 규칙 자체는 그대로
+#    유효하니 새 제안 경로가 생기면 반드시 `env.sched` 를 넘길 것.
 #    `sched = nothing` 은 스텁 resolver 로 도는 단위시험용이고, 그 경우에도 **권위 있는 관문은
 #    언제나 `verify()`** 다(verifier.jl 의 `grammar_ground_check` + build 백스톱).
 function _parse_proposal(payload, event; id_resolver, sched = nothing)
@@ -696,9 +631,9 @@ function _parse_proposal(payload, event; id_resolver, sched = nothing)
     # 삼항 연산자: "rationale" 키가 있으면 그 문자열을, 없으면 빈 문자열을 rationale 에 담음.
     rationale = haskey(payload, "rationale") ? String(payload["rationale"]) : ""
     prop = RespecProposal(cs, rationale, String(event))
-    # 스케줄을 알면 여기서 접지를 확인한다. 실패는 예외 — 이 함수의 기존 계약 그대로이고
-    # (`llm_to_proposal` docstring), 호출부(`maybe_respecify!` replan.jl:355-375)가 그것을
-    # 잡아 사건 심각도로 분기한다. 즉 시뮬 루프는 안 무너진다.
+    # 스케줄을 알면 여기서 접지를 확인한다. 실패는 예외 — 이 함수의 기존 계약 그대로다.
+    # (2026-08-29: 그 계약을 문서화하던 `llm_to_proposal` docstring 은 그 레인과 함께 삭제됐다.)
+    # 호출부(`maybe_respecify!`)가 그것을 잡아 사건 심각도로 분기한다 — 시뮬 루프는 안 무너진다.
     if sched !== nothing
         rej = grammar_ground_check(prop, sched)
         rej === nothing ||

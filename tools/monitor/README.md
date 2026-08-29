@@ -186,7 +186,9 @@ SEEDS="1 2 3" CASES="fault" bash tools/monitor/run_seed_sweep.sh
 - **Factory View(MeshCat)** 는 현재 `visualization.html`(tractor 애니) 고정. 모델별 애니는 별도 생성 필요
   (fault/replace 는 scene-tree 수술이라 save_animation=true 시 애니 업데이터가 크래시 → OOD 런은 애니 off).
 - **respec 분석 주체**는 지금 `canonical_respec`(baselines.jl B1 규칙맵) = heuristic "LLM". 실제 LLM 서비스
-  (llm_bridge → Python /propose)로 교체 가능(인터페이스 동일).
+  🔴 2026-08-29: 예전에 여기 적혀 있던 교체 대상(`llm_bridge` → Python `/propose`)은
+  Anthropic 레인과 함께 삭제됐다. 교체 지점(producer seam) 자체는 그대로다 —
+  살아 있는 LLM 레인은 DSPy(`/macro`, :8077)이고 `tools/monitor/policy.jl` 이 부른다.
 - 큰 모델(Saturn V 1845 parts)은 env 빌드+시뮬이 오래 걸림 — 데모는 소형 모델(tractor/mini kits) 권장.
 - 인간이 존을 **라이브** 주입하는 ⛔ 버튼은 `POST /inject/zone` 명령 큐와 시뮬레이션-thread control hook으로 구현됨.
   v5(위)에서 ③⑤⑥ 은 **평면도에 그려서** 정의하고, 그리기 전에는 시뮬레이션이 시작되지 않는다.

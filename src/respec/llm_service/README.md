@@ -1,55 +1,51 @@
-# LLM re-specification service (Python, fully separated)
+# LLM services (Python)
 
-The LLM layer runs as a standalone HTTP service. Julia never imports Python for
-this — it only POSTs `{event, open_ids}` and receives a validated DSL proposal.
-The formal spec (the DSL JSON) is the wire format, so this whole service is
-swappable without touching the solver/verifier.
+## 🔴 2026-08-29 — the Anthropic `/propose` service was REMOVED
+
+This directory used to host a standalone FastAPI service on **:8000** that
+translated a natural-language OOD event into a validated DSL proposal by calling
+Claude:
 
 ```
 [ Julia ] llm_bridge.jl ──HTTP POST /propose──▶ [ Python ] server.py
                                                    └ propose.py ─▶ Claude (tool-use)
-                                                   └ schema.py  ─▶ DSL grammar + validation
-        ◀──── {"constraints":[...], "rationale": "..."} (validated DSL) ────┘
 ```
 
-## Setup
-Deps are installed into the existing **hjcnlp** venv
-(`C:\Users\chahj\PythonCodes\venv\hjcnlp`, Python 3.10) — anthropic, fastapi,
-uvicorn, pydantic. To (re)install: `hjcnlp\Scripts\python.exe -m pip install -r requirements.txt`.
+`server.py`, `propose.py` and `test_propose.py` are **gone**, along with the
+Julia client that spoke to them (`llm_to_proposal`, `respec_service_ready` in
+`../llm_bridge.jl`). The lane was measured dead before removal: nothing was
+listening on :8000, `ANTHROPIC_API_KEY` was not in the environment, no launcher
+for it existed anywhere in the repo, and `propose.py`'s default model id was not
+a real dated Anthropic model. `test_propose.py` had to be `--ignore`d in every
+pytest run because it `sys.exit(1)`s at import and could fire a **paid** API
+call during collection — that landmine is what the removal was for. There is no
+`anthropic` dependency left in this repo.
 
-Run with ABSOLUTE paths + `--app-dir` so it works from any directory (a relative
-path gives "filename, directory name, or volume label syntax is incorrect"; in
-PowerShell a quoted exe path also needs the `&` call operator):
-```powershell
-$env:ANTHROPIC_API_KEY = "sk-..."          # required
-$env:RESPEC_MODEL = "claude-opus-4-8"      # optional
-& "C:\Users\chahj\PythonCodes\venv\hjcnlp\Scripts\python.exe" -m uvicorn server:app `
-    --host 127.0.0.1 --port 8000 `
-    --app-dir "C:\Users\chahj\PythonCodes\venv\ConstructionBots.jl\src\respec\llm_service"
-```
-Verified working without a key: `import schema/propose/server`, app routes
-`/health` + `/propose`, and DSL validation (good proposal validates, bad `kind`
-is rejected). The key is only needed when `/propose` actually calls Claude.
+## What runs now
 
-## Contract
-- `GET  /health` → `{"status":"ok"}` (Julia checks this before a run)
-- `POST /propose` body `{"event": str, "open_ids": [str]}`
-  → `200 {"constraints": [...], "rationale": str}` on success
-  → `422 {"detail": "..."}` on any failure → Julia treats as Reject → fallback
+**`dspy_service.py` is the only LLM service.** It is a different seam and never
+used the one above: it serves `/macro` (plus its own `/health`) on **:8077**, and
+Julia reaches it from `tools/monitor/policy.jl` (`service_decide`), not from
+`llm_bridge.jl`. `DSPY_URL` selects the address — several ports appear across the
+repo, so match the uvicorn you actually started, not a number in a doc.
 
-## Test without Julia
 ```bash
-curl -s localhost:8000/propose -H 'content-type: application/json' \
-  -d '{"event":"Robot R3 reports a motor fault and is immobile.",
-       "open_ids":["RobotID(3)","RobotGoID(7)","FormTransportUnitID(2)"]}' | jq
+python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 ```
 
-## Why a separate process (vs PyCall in-process)
-- Official `anthropic` SDK + Python eval/observability tooling for the Year-3
-  question "which OOD classes does the LLM translate reliably?"
-- Crash isolation: a hung/erroring LLM call cannot take down the Julia sim.
-- Language-agnostic boundary: swap model, add caching, or replace with a
-  fine-tuned local model without recompiling ConstructionBots.
+Deps: `requirements.txt` here lists the subset needed to run the service alone
+(fastapi / uvicorn / pydantic); the root `requirements.txt` is the full analysis
+environment and pins `dspy==3.3.0` — read the comment above that pin before
+bumping it, it is load-bearing.
 
-The grammar in `schema.py` MUST stay in lockstep with `../spec_dsl.jl`. Those two
-files are the same DSL written twice; the verifier in Julia is the safety gate.
+## What survived, and why
+
+`schema.py` stays. It is the **shared proposal schema**, not part of the deleted
+lane: the DSPy lane and the verifier both use it, and its constraint-kind union
+must stay **set-equal** to `EMITTABLE_KINDS` in `../llm_bridge.jl`. Those two
+files are the same DSL written twice.
+
+The safety boundary is unchanged and still on the solver side: whoever proposes,
+Julia does the typed parse (`_parse_proposal` in `../llm_bridge.jl`) and then
+`verify()` decides what is admitted. `schema.py` MUST stay in lockstep with
+`../spec_dsl.jl`.

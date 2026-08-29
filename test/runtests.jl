@@ -121,7 +121,11 @@ end
     # `policy.jl` 의 `include` 동안에만 그리로 돌린 뒤 `finally` 에서 원래 값으로 되돌린다 —
     # **어떤 패키지 제네릭에도 메서드를 심지 않는다.** 그래서 이 게이트 뒤에 오는 인프로세스
     # 시험이 스텁에 걸릴 일이 없다. 왜 그게 중요한가(라운드 5 L4 로 범위를 좁힌 서술):
-    # `replan.jl:726` 이 `llm_to_proposal` 의 예외를 3회 재시도로 삼키고, 끝내 실패하면
+    # ⚠️ 2026-08-29 정정: 아래 서술의 **기전**은 바뀌었다 — `replan.jl` 이 예외를 3회 재시도로
+    # 삼키던 `llm_to_proposal` 호출은 Anthropic 레인과 함께 삭제됐다. 하지만 **결론은 그대로**
+    # 다: 그 자리의 심각도 분기(soft→`:noop`, critical→`engage_fallback!`)가 producer 경로에
+    # 그대로 남아 있어, 조용한-실패 위험은 여전히 soft 이벤트 경로 하나다. (옛 기전 서술:)
+    # `replan.jl` 이 `llm_to_proposal` 의 예외를 3회 재시도로 삼키고, 끝내 실패하면
     # **`_event_criticality(event) === :soft` 인 경우에만**(`:740`) `@warn` 하나 남기고
     # `:noop` 을 돌려준다(`:742`) — critical 이벤트는 `engage_fallback!` 후 `:fallback`(`:746`),
     # 즉 line-stop 이지 침묵이 아니다. 그러니 조용한-실패 위험은 **soft 이벤트 경로 하나**다:
@@ -215,19 +219,13 @@ end
         include("render_lane_uses_llm_agent.jl")
     end
 
-    # 🔴 2026-08-29 (Plan B / T2c): 같은 파일의 **다른 producer** 가 그 문을 안 지나고 있었다.
-    # `set_respec_producer!` 는 `DEMO_LLM` 으로 둘 중 하나를 고르는데(`render_demo.jl:880`),
-    # T2b 가 고친 것은 기본값 쪽(`policy_producer`)뿐이고 `llm_producer`(`DEMO_LLM=1`)는
-    # `llm_to_proposal` 의 제안을 dispatcher 에 **그대로** 넘겼다 — 그 레인에서는 LLM 이 고른
-    # agent 가 접지·출처·강제 거절을 하나도 안 거치고 세계에 닿았다. 이제 그 레인도
-    # `enact.jl` 의 `llm_enact_target` → `enact_target` 을 부른다.
-    # 🔴 이 게이트의 (1) 이 **우회로가 실재했음을 음성 대조로 잰다**: `_default_id_resolver`
-    # (`replan.jl:1687`)는 로봇 열거 앞에 스케줄 정점 id 공간을 먼저 훑으므로 노드 id 문자열이
-    # agent 자리를 통과하고, `ReplaceAgent.agent` 의 타입이 `AbstractID` 라 그 값이 제약에
-    # 실제로 들어간다. 서비스는 안 부른다 — 8000·8077 요청 0건.
-    @testset "llm_producer grounds the agent (Plan B / T2c)" begin
-        include("llm_producer_grounds_agent.jl")
-    end
+    # 🔴 2026-08-29: 여기 있던 게이트 "llm_producer grounds the agent (Plan B / T2c)" 는
+    # **삭제됐다** — 그것이 지키던 `render_demo.jl` 의 `llm_producer`(`DEMO_LLM=1`) 레인이
+    # Anthropic 레인과 함께 사라졌기 때문이다(그 레인은 `llm_to_proposal` 로 :8000 의 파이썬
+    # `/propose` 서비스를 불렀고, 그 서비스의 유일한 구현이 `anthropic.Anthropic()` 이었다).
+    # 지키는 대상이 없는 게이트는 초록이어도 아무것도 안 지킨다.
+    # ⚠️ 위 T2b 게이트는 그대로다: 이 엔진에 남은 유일한 producer 인 `policy_producer` 가
+    # `enact_target` 뒤로 들어가 있다는 성질을 계속 잰다.
 
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
     # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.

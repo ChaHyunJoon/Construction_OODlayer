@@ -1,5 +1,21 @@
 # ForbidZone LLM 레이어 (STEP 5) — 구현·검증 상태 / 핸드오프
 
+> 🔴 **2026-08-29 — the Anthropic `/propose` lane described below was REMOVED.**
+> This document describes the pipeline as it was when Julia POSTed to a Python
+> FastAPI service on :8000 (`llm_service/server.py` → `propose.py` →
+> `anthropic.Anthropic()`) through `llm_to_proposal` in `llm_bridge.jl`. That
+> service, its Julia client, and the `anthropic` dependency are all gone — the lane
+> was measured dead (nothing on :8000, no `ANTHROPIC_API_KEY`, no launcher in the
+> repo, and a default model id that was not a real dated Anthropic model).
+>
+> **What is still true:** the DSL, the typed parse (`_parse_proposal`), `verify()`,
+> the grounding enumerations, and the whole generate→verify→admit→re-solve backbone
+> are unchanged and still on the solver side. Only the *generator* changed: proposals
+> now arrive through the producer seam (`set_respec_producer!`), and the one surviving
+> LLM lane is DSPy (`llm_service/dspy_service.py`, `/macro` on :8077), which never
+> used this client. Read anything below about `/propose`, `server.py`, `propose.py`,
+> `llm_to_proposal` or `respec_service_ready` as history.
+
 자동 작업 세션 산출물. ForbidZone OOD 를 **자연어 → LLM 분류·grounding → 타입 DSL → verify →
 기하 복구** 로 흘리는 레이어를 Stage 1~3 구현. 상위 설계는 같은 폴더의 plan(대화) 참조.
 

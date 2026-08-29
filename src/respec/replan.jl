@@ -113,13 +113,16 @@ const DEPRIORITIZE_KAPPA = Ref(try
 
 # -----------------------------------------------------------------------------
 # PLUGGABLE PROPOSAL PRODUCER — the comparison seam.
-# `maybe_respecify!` normally GENERATES the proposal via the LLM (`llm_to_proposal`).
-# A non-nothing producer here REPLACES that generation step: it is a callable
+# 🔴 2026-08-29: this is now the ONLY way a proposal gets generated. `maybe_respecify!`
+# used to fall back to the Anthropic lane (`llm_to_proposal`) when no producer was set;
+# that lane was deleted as measured-dead, so an unset producer is a no-generator case
+# routed by event criticality (see `maybe_respecify!`), not a hidden LLM call.
+# A non-nothing producer here SUPPLIES that generation step: it is a callable
 # `(env, event::String) -> RespecProposal | Nothing` supplied by whatever DECISION
 # method is under test — a MARL policy (DecPOMDP installs itself here), or a baseline
 # (B1/B2/B3). EVERYTHING downstream (verify -> dispatch -> re-solve -> resume) is
 # identical, so swapping the producer isolates the decision function as the only
-# variable. Default `nothing` => the LLM path, so existing demos are unaffected.
+# variable. Default `nothing` => NO generator (soft events no-op, critical line-stop).
 # -----------------------------------------------------------------------------
 # [한국어] 아래는 그 "제안 생성기 교체 지점(비교 이음새)"의 정의부. 생성 단계만 갈아끼우고 나머지 파이프라인은
 #   동일하게 두어, LLM vs MARL vs baseline 을 공정하게 비교한다.
@@ -709,42 +712,29 @@ function maybe_respecify!(env, ood_queue;
     @info "[RESPEC] OOD event: $event"            # @info : 정보 로그 출력 매크로. $event 로 값 보간.
 
     # --- generate: OOD event -> typed DSL proposal -----------------------------
-    # The PRODUCER is pluggable (the comparison seam, see RESPEC_PRODUCER). Default is
-    # the LLM path (`llm_to_proposal`) with transient-failure retry; a supplied
-    # `producer` (MARL policy / baseline) is asked directly. EITHER way the resulting
-    # proposal flows through the SAME verify/dispatch/re-solve below.
+    # The PRODUCER is pluggable (the comparison seam, see RESPEC_PRODUCER). A supplied
+    # `producer` (MARL policy / baseline / the DSPy lane) is asked directly, and the
+    # resulting proposal flows through the SAME verify/dispatch/re-solve below.
+    #
+    # 🔴 2026-08-29: there is NO built-in generator any more. The default used to be the
+    # Anthropic lane (`llm_to_proposal` -> Python `/propose` on :8000, with 3 retries),
+    # and that lane was deleted as measured-dead. Removing it does NOT change what this
+    # function observably did when no producer was installed: with nothing listening on
+    # :8000 every attempt already threw, so the retry loop always fell through to exactly
+    # the criticality routing kept below — a soft advisory was IGNORED and only a critical
+    # event line-stopped. Same verdicts, minus a dead HTTP call and 0.8 s of sleeps.
+    # Every surviving lane installs one via `set_respec_producer!`.
     local proposal                               # local : 이 이름을 함수 스코프 변수로 선언(if/else 두 갈래 모두에서 씀)
-    if producer === nothing                       # producer 안 꽂혔으면 → 기본 LLM 경로
-        # llm_to_proposal can throw on a TRANSIENT network hiccup (HTTP.RequestError:
-        # POST /propose dropped) — not just on a bad LLM answer. Retry a few times; on
-        # FINAL failure route by criticality (soft advisory -> no-op so a network blip
-        # can never freeze the build; only a critical event keeps the line-stop).
-        # [한국어] LLM 호출은 일시적 네트워크 오류로도 예외를 던질 수 있음 → 최대 3회 재시도.
-        #          끝내 실패하면 안전도로 분기(soft=무시 no-op, hard=line-stop).
-        proposal = nothing
-        gen_err  = nothing                        # 마지막으로 잡힌 예외(성공 시 nothing 으로 리셋)
-        for attempt in 1:3                        # 최대 3번 시도
-            try
-                proposal = llm_to_proposal(event, env; id_resolver = id_resolver)  # NL→타입 있는 DSL 제안
-                gen_err = nothing
-                break                             # 성공하면 루프 탈출
-            catch err
-                gen_err = err
-                if attempt < 3
-                    @warn "[RESPEC] llm_to_proposal attempt $attempt/3 failed; retrying" exception = err
-                    sleep(0.4)                    # 잠깐 쉬고 재시도
-                end
-            end
+    if producer === nothing                       # 제안 생성기가 안 꽂혔다 → 만들어 낼 제안이 없다
+        # [한국어] 생성기가 없으면 제안을 만들 수 없다. 예전 LLM 경로가 3회 실패했을 때와 **같은**
+        #          안전 분기를 그대로 탄다: soft 는 무시하고 빌드 계속, hard 만 line-stop.
+        if _event_criticality(event) === :soft
+            @warn "[RESPEC] no proposal producer installed; SOFT advisory event -> IGNORED (no-op, build continues)" event
+            return :noop                     # soft layer fails to IGNORE, never to a global halt  # soft 는 무시하고 계속
         end
-        if gen_err !== nothing                    # 3번 다 실패했으면
-            if _event_criticality(event) === :soft
-                @warn "[RESPEC] LLM/parse failure on a SOFT advisory event after 3 tries -> IGNORED (no-op, build continues)" exception = gen_err
-                return :noop                     # soft layer fails to IGNORE, never to a global halt  # soft 는 무시하고 계속
-            end
-            @warn "[RESPEC] LLM/parse failure on a CRITICAL event after 3 tries -> fallback (line stop)" exception = gen_err
-            engage_fallback!(env)                # only a safety-critical event line-stops  # hard 만 line-stop
-            return :fallback
-        end
+        @warn "[RESPEC] no proposal producer installed; CRITICAL event -> fallback (line stop)" event
+        engage_fallback!(env)                # only a safety-critical event line-stops  # hard 만 line-stop
+        return :fallback
     else                                          # producer 가 꽂혀 있으면 → MARL/baseline 경로
         # Pluggable producer (MARL / baseline). It returns a RespecProposal or nothing.
         # DISTINGUISH two "nothing"s:

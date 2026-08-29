@@ -6,17 +6,19 @@
 # run_with_stack) defined ONCE. A CLI/ENV dispatcher at the bottom runs any one.
 #
 # Scenario keys:
-#   mock_respec   -- LLM-free e2e of the FULL ForbidZone respec seam (mock /propose over HTTP)
-#   mock_replace  -- LLM-free e2e of the OOD 1-1 ReplaceAgent respec seam (mock /propose over HTTP)
-#   full_loop     -- enabled-seam full-loop RESUME driver (LLM seam or LLM-free reassign)
-#   selfheal      -- headless autonomous self-healing verification harness (REAL LLM on :8000)
+#   full_loop     -- full-loop RESUME driver (LLM-free reassign)
 #   spare_replace -- OOD 1-1 spare 1:1 hand-off done-gate (LLM-free replace_robot!)
-#   live_respec   -- LIVE e2e of the respec seam: real Claude (running Python service) NL->DSL->re-solve
+#
+# 🔴 2026-08-29: four scenarios were REMOVED with the Anthropic lane -- `mock_respec`,
+# `mock_replace`, `selfheal`, `live_respec`. All four drove the Python `/propose` seam
+# (`CB.llm_to_proposal`), whose only server implementation called `anthropic.Anthropic()`.
+# The two `mock_*` ones needed no API key, but they mocked exactly that seam, and the
+# Julia client they exercised is gone too. The surviving LLM lane is DSPy (:8077 /macro).
 #
 # Run:
 #   julia +lts --project=. tools/e2e.jl <key>        (or  ENV E2E=<key>)
 # e.g.
-#   julia +lts --project=. tools/e2e.jl mock_respec
+#   julia +lts --project=. tools/e2e.jl full_loop
 #   E2E=spare_replace julia +lts --project=. tools/e2e.jl
 # Each scenario reads its own ENV knobs at call time (see the comment above each function).
 # These scenarios stand up local mock servers and/or run full sims -- run ONE at a time.
@@ -33,12 +35,12 @@
 #   이 파일의 각 함수(scenario_*)는 그 전체 파이프라인이 실제로 동작하는지 한 번씩 끝까지 돌려보는 시험대.
 #
 #  시나리오(맨 아래 SCENARIOS 표의 키):
-#   · mock_respec  : LLM 없이(mock 서버) ForbidZone respec 전 구간 e2e — 중앙 no-go 구역 주입→복구→완주.
-#   · mock_replace : LLM 없이 ReplaceAgent respec — 로봇 고장→스페어(spare)로 1:1 교체 배선 확인.
 #   · full_loop    : 빌드 중간에 고장 주입→재배정(reassign)으로 "이어서" 완주(끝난 일은 다시 안 함).
-#   · selfheal     : 진짜 LLM 을 켜고 자율 self-healing 을 headless(화면無)로 검증 + 막히면 진단기록.
 #   · spare_replace: LLM 없이 replace_robot! 스페어 1:1 인계가 빌드를 "완주"시키는지 done-gate 검증.
-#   · live_respec  : 진짜 Claude(파이썬 서비스)로 NL→DSL→검증→재solve 하는 라이브 e2e.
+#  🔴 2026-08-29: 네 시나리오(mock_respec·mock_replace·selfheal·live_respec)는 Anthropic 레인과
+#     함께 삭제됐다 — 넷 다 파이썬 `/propose` 이음새를 탔고 그 서비스의 유일한 구현이
+#     `anthropic.Anthropic()` 이었다. mock 둘은 API 키를 안 썼지만 바로 그 이음새를 흉내 낸
+#     것이었고, 그것을 타던 줄리아 클라이언트(`llm_to_proposal`)도 이제 없다.
 #
 #  문법 참고(처음 보는 Julia 문법):
 #   · module E2E ... end        : 이름공간. 안의 함수는 E2E.함수명 으로 호출.
@@ -96,8 +98,8 @@ function _setup_milp!(; time_limit = 300.0, mip_rel_gap = 5.0)
 end
 
 # The identical stack-growing task helper (throws on error, returns the result). Used by
-# mock_respec / mock_replace / full_loop / spare_replace. (selfheal keeps its OWN
-# tuple-returning variant nested inside it -- different error-handling contract.)
+# full_loop / spare_replace. (2026-08-29: mock_respec/mock_replace/selfheal, the other
+# users of this helper, went with the Anthropic lane.)
 # [KO] 함수 f 를 "아주 큰 스택(stacksize 바이트)을 가진 새 태스크"에서 돌리고 결과를 돌려줌.
 #      왜? 빌드/시뮬은 재귀가 깊어 기본 스택으론 stack overflow 가 남 → 큰 스택 태스크로 우회.
 #      에러가 나면 스택트레이스를 찍고 다시 throw(호출자에게 실패 전달). 결과는 res[] 로 빼냄.
@@ -115,522 +117,14 @@ function run_with_stack(f, stacksize::Int)
 end
 
 # =============================================================================
-# mock_respec -- LLM-FREE end-to-end test of the FULL respec seam for the SPATIAL arm.
-#   Stands up a local mock /propose server that answers with the one emittable spatial kind
-#   (grounded from the request's own zones context, mimicking the LLM), enables the RESPEC
-#   seam, injects a CENTRAL zone via schedule_ood! (returning an NL string), and runs the
-#   real sim loop (ood_inject_step! -> step -> respec_step!). This drives the production
-#   path: NL -> push_ood! -> maybe_respecify! -> llm_to_proposal(HTTP mock) -> _parse_proposal
-#   -> TranslateBuild -> _apply_uniform_translation! -> reset_cache_resume! -> completion.
-#   ENV: NAVON_ZONE_R, OOD_STEP.
-#
-#   🔴 2026-08-21 (Task C3): the arm CHANGED. Until D-9 (Task C2) this scenario emitted
-#   ForbidZone/RelocateBuild and the tested tail was verify_zone -> restage_all ->
-#   translate_whole_build!. Both kinds came off the EMITTABLE surface (ForbidZone: empty
-#   domain after the first batch boundary; RelocateBuild: it is a SOLVER, not an action --
-#   `_find_min_translation` picks Δ by itself). The primitive underneath, now emittable with
-#   a FREE Δ, is `TranslateBuild(dx, dy)`. So the mock must now DERIVE a displacement from
-#   the zone geometry, exactly as the real model is instructed to (propose.py ZONES section).
-# =============================================================================
-# [KO] 시나리오1: LLM 없이 공간형 respec 전 구간을 실제 시뮬로 검증.
-#      흐름 = 중앙에 no-go 구역 주입 → NL 방출 → mock 서버가 TranslateBuild(dx,dy) 로 응답 →
-#      파싱·집행(_apply_uniform_translation!)으로 빌드 전체를 비켜 옮김 → 완주.
-function scenario_mock_respec()
-
-# 🔴 **선행조건 — 조용한 미실행 방지 (fix round 1, 컨트롤러 Important 3).**
-# 아래 seam 루프는 `CB.maybe_unwedge_nominal!` 로 루트 엔드게임 carrier 교착을 푼다(:362 참조).
-# 그 함수는 이 작업 트리의 **미커밋 in-flight 변경**(2026-08-20 4팔 축소)에만 있고 HEAD 63ccf524
-# 에는 없다. in-flight 변경이 폐기되면 이 파일은 ~90초짜리 env 빌드를 다 하고 나서야 루프
-# 한복판에서 UndefVarError 로 죽는다 — 그리고 이 파일은 `test/runtests.jl` 밖이라 **아무도 안
-# 돌리면 그 사실조차 안 드러난다.** 그래서 진입 즉시 죽인다. 폴백이 아니라 시끄러운 선행조건이다.
-isdefined(CB, :maybe_unwedge_nominal!) || error("""
-[E2E] scenario 'mock_respec' 의 선행조건 실패: `ConstructionBots.maybe_unwedge_nominal!` 가 없다.
-
-  이 시나리오의 seam 루프는 루트 엔드게임 carrier 교착을 그 함수로 푼다(Task C3 가 죽은
-  `maybe_emit_reform_ood!` 호출을 이것으로 바꿨다 — 그 함수는 2026-08-20 4팔 축소에서 삭제됐고,
-  그것이 만들던 `ReformTeam` 은 D-9 로 emit 불가라 되돌리는 것은 답이 아니다).
-
-  원인: `maybe_unwedge_nominal!` 의 도입은 `src/respec/ood_injection.jl` 의 **미커밋 in-flight
-  변경**이다. 그 변경이 커밋되지 않았거나 되돌려졌다.
-
-  고칠 것: 그 in-flight 변경을 커밋하거나, 교착 복구를 대체할 다른 명목 레인 훅을 정할 것.
-  조용히 우회하지 말 것 — 복구가 없으면 이 시나리오는 정체로 끝나고 게이트는 FAIL 이 된다.
-""")
-
-MOCK_PORT = 8731
-ENV["RESPEC_SERVICE_URL"] = "http://127.0.0.1:$MOCK_PORT"   # CB reads the URL at call time
-                                                            # [KO] CB 가 이 URL 을 실행 중 읽어 /propose 로 요청
-
-ZONE_R = parse(Float64, get(ENV, "NAVON_ZONE_R", "2.5"))   # [KO] 진입금지 구역 반지름(환경변수로 조절)
-OOD_STEP = parse(Int, get(ENV, "OOD_STEP", "5"))           # [KO] 몇 번째 스텝에서 OOD(구역)를 주입할지
-
-_setup_milp!()
-
-# ---- mock /propose server: deterministic, derives TranslateBuild from request context -----
-# [KO] 진짜 LLM 대신 쓰는 가짜 HTTP 서버. /health=살아있음 확인, /propose=OOD 요청에 TranslateBuild 응답.
-#      "결정적(deterministic)" = 무작위 없이 요청 안의 실제 zone/node 정보를 그대로 근거로 답(LLM 흉내).
-function start_mock(port)
-    handler = function (req::HTTP.Request)                 # [KO] 들어온 요청 하나를 처리하는 익명함수
-        path = HTTP.URIs.URI(req.target).path              # 요청 경로(/health 또는 /propose) 추출
-        if path == "/health"
-            return HTTP.Response(200, JSON3.write(Dict("status" => "ok")))   # [KO] 상태확인엔 ok
-        elseif path == "/propose"
-            body  = JSON3.read(String(req.body))            # [KO] 요청 본문(JSON) 파싱
-            zones = haskey(body, "zones") ? body["zones"] : []   # [KO] 있으면 쓰고 없으면 빈 배열(?: = 삼항)
-            nodes = haskey(body, "nodes") ? body["nodes"] : []
-            zkey  = isempty(zones) ? "zone" : String(zones[1]["key"])     # ground the live zone key
-                                                            # [KO] 실제 구역 키를 그대로 사용(없으면 "zone")
-            # ---- 결정 표 (2026-08-21 Task C3 개정) --------------------------------------
-            # 이 mock 은 **실제 LLM 이 프롬프트에서 보는 것과 똑같은 필드**만 쓴다
-            # (covers / covers_root / center / radius — open_zone_descriptors 가 싣는 전부).
-            #
-            #   covers 비었음 ∧ ¬covers_root  -> 제약 없음  (구역이 아무 목표도 안 막음 → 항법이
-            #                                                 우회한다. 개입은 비용만 든다)
-            #   그 외                          -> TranslateBuild(dx, dy)  (빌드 전체를 비켜 옮긴다)
-            #
-            # 🔴 **팀 교착(ReformTeam) 분기는 지웠다** — 두 겹으로 죽어 있었다:
-            #   (1) `maybe_emit_reform_ood!` 가 2026-08-20 4팔 축소에서 **삭제**됐다
-            #       (respec/ood_injection.jl:641). 아래 루프가 그것을 부르고 있었으므로 이 파일은
-            #       C2 의 SKIP 이 없었어도 `UndefVarError` 로 죽었다.
-            #       ⚠️ 정확히: 그 삭제는 **이 작업 트리의 미커밋 in-flight 변경**이다 —
-            #       HEAD(63ccf524)의 `ood_injection.jl` 에는 아직 `maybe_emit_reform_ood!` 가 있다.
-            #   (2) `ReformTeam` 은 D-9 로 emit 표면에서 빠졌다 — 이 응답은 파서에서 죽는다.
-            #   교착 복구는 없어진 게 아니라 **명목 레인으로 내려갔다**: `maybe_unwedge_nominal!`.
-            #   아래 seam 루프가 그것을 부른다(demo_utils.jl:273 · run_demo.jl:832 와 같은 배선).
-            #
-            # 🔴 **Δ 를 어떻게 정하는가 — 이것이 C3 의 요점이다.** `RelocateBuild` 는 Δ 를
-            # `_find_min_translation` 이 **찾아 줬다**(= 감춰 둔 매크로). `TranslateBuild` 는
-            # 제안자가 Δ 를 **직접** 정해야 한다. 이 mock 은 요청이 실어 보낸 기하에서
-            # **하한과 상한을 계산**하고, 그 창 안에서 크기를 고른다.
-            #
-            # ⚠️ **이 mock 이 무엇을 시험하고 무엇을 안 시험하는지 정확히 적는다 (C4 fix 1).**
-            #   시험한다   — 이음새 전체: NL → /propose → 타입 파싱 → `verify_translate` →
-            #                `_apply_uniform_translation!` → 완주. 그리고 요청이 C4 필드를
-            #                **실제로 싣는지**(아래 `error()` 들 = 배선 시험).
-            #   안 시험한다 — 프롬프트의 **방향** 지침. 아래 `+x` 는 이 씬에서 통하는 값이지
-            #                요청이 정당화해 주는 값이 **아니다**. 방향에 대한 주장은
-            #                `test/respec_verify_translate.jl` 의 `[8]` 이 32방향 실측으로 진다.
-            #                (그 시험이 이 하네스보다 촘촘하고 결정적이다 — 여기서 방향을 하나
-            #                 고르는 것은 그 주장을 한 점에서만 건드린다.)
-            #
-            # 🔴 **2026-08-21 Task C4 실측 — 옛 `|Δ| = 3·R` 도, 새 `r+work_reach` 도 규칙이 아니다.**
-            #   컨트롤러 실측대로 `|Δ_min|/R` = 2.34(tractor) vs 2.04(colored_8x8) 라 3·R 은 교정값이다.
-            #   그래서 `work_reach` 를 실어 `r + work_reach` 를 유도하게 했는데, **그것은 하한도
-            #   상한도 아니다** — 32방향 실측으로 세 가지를 확인했다:
-            #   (a) 맞는 것: 갇힌 원반 (c, rᵢ) 는 ‖c−Z‖ ≤ work_reach − rᵢ 이므로 t = r+work_reach
-            #       면 **지금 갇힌** 원반은 어느 방향으로든 전부 나간다(32/32, 최소 여유 9.4e-5 ·
-            #       1.7e-3). 그러나 그 크기에서 **구역 전체가 깨끗한 방향은 2/32 · 16/32 뿐**이고
-            #       (쓸려 들어오는 작업), 진짜 최소는 **그보다 작다**(5.0997 < 5.1978,
-            #       5.9047 < 6.8981). 즉 필요조건도 충분조건도 아닌 **기준 크기**다.
-            #   (b) 🔴 반증(이 시나리오를 실제로 돌려서): tractor 에서 r=2.5, work_reach=4.4 →
-            #       t=1.05·6.9=7.245 를 (build_center−center) 방향으로 냈더니 `verify_translate` 가
-            #       `:residual_blocked` 로 거부했고 판이 145/289 에서 정체했다.
-            #   (c) 🔴 그리고 **분해 측정(fix 1)**: 갈린 것은 크기가 아니라 **방향**이었다.
-            #       같은 씬에서 32방향 최소 소요 t 를 이분법으로 재니 —
-            #         +x: 7.242 · +y: 6.874 · −y: 6.079 · −x: 12.193 · (build_center−center): **19.333**
-            #         (그 방향의 링 예산은 8.58 이라 **어떤 Δ 도 통하지 않는다**), 32방향 중 8개가
-            #         "필요 > 예산" 이다.
-            #       그리고 `1.05·하한 = 7.243` 은 **+x 에서는 통한다**(필요 7.2418). 즉 run2 의 실패는
-            #       3.5% 크기 차이가 아니라 프롬프트가 지시하던 **방향** 때문이었다.
-            #       colored_8x8 에서는 반대로 `3·R = 7.5` 가 +x 에서 **모자란다**(필요 8.264) —
-            #       두 규칙 다 씬 교정값이다. 프롬프트는 이제 방향을 지시하지 않고 **하한·상한과
-            #       "방향이 크기를 정한다"** 는 실측을 말한다.
-            #   ⚠️ 이 반증 자체가 C4 의 증거이기도 하다: 예전이라면 7.245 는 **조용히 집행**되고
-            #      로봇이 구역 가장자리에 영원히 주차했을 것이다(C3 창의 fail-open). 지금은 거부다.
-            # 🔴 조용한 폴백 금지 (fix round 1, 컨트롤러 minor 2). 요청이 기하를 안 실어 보냈는데도
-            #    mock 이 자기가 아는 값으로 답하면 **요청에서 유도했다**는 이 시나리오의 주장 자체가
-            #    거짓이 된다. 그래서 필드가 없으면 때우지 않고 **죽는다** — 이 assert 가
-            #    `open_zone_descriptors`(llm_bridge.jl) 의 회귀를 잡는 배선 시험이기도 하다.
-            isempty(zones) &&
-                error("[E2E] /propose 요청에 zones 가 없다 — mock 은 요청이 실어 보낸 기하에서만 " *
-                      "Δ 를 유도한다(자기가 아는 ZONE_R 로 때우지 않는다).")
-            for fld in ("radius", "center", "work_reach", "build_center", "build_radius", "max_shift")
-                haskey(zones[1], fld) ||
-                    error("[E2E] /propose 요청의 zones 에 `$(fld)` 가 없다 — Task C4 이후 " *
-                          "open_zone_descriptors 는 radius·center·work_reach·build_center·" *
-                          "build_radius·max_shift 를 전부 싣는다. llm_bridge.jl 이 바뀌었는지 확인할 것.")
-            end
-            zr = Float64(zones[1]["radius"])
-            wr = Float64(zones[1]["work_reach"])
-            (zones[1]["build_center"] === nothing || zones[1]["max_shift"] === nothing) &&
-                error("[E2E] build_center/max_shift 가 null 이다 — 옮길 대상(staging_circles)이 " *
-                      "없다는 뜻이고, 그러면 TranslateBuild 는 조용한 no-op 이 된다.")
-            ceil_ = Float64(zones[1]["max_shift"])         # 상한: 어느 방향으로 가도 링 안
-            cov   = zones[1]["covers"]
-            croot = haskey(zones[1], "covers_root") && zones[1]["covers_root"] == true
-            if isempty(cov) && !croot
-                resp = Dict("constraints" => Any[],
-                            "rationale" => "mock: zone blocks no remaining goal (detour-only) -> " *
-                                           "restraint is cheaper than any intervention")
-            else
-                evac_ = zr + wr            # 기준 크기(하한이 아니다 — 위 (c) 실측 참조)
-                evac_ < ceil_ ||
-                    error("[E2E] 창이 비었다: 기준 크기 $(evac_) ≥ 상한 $(ceil_) — 이 씬에서는 " *
-                          "갇힌 작업을 어느 방향으로도 링 안에서 빼낼 수 없다. 게이트가 아니라 씬의 문제다.")
-                # 창 [evac, ceil] 안의 크기. 방향 +x 는 **이 씬에 대한 mock 의 선택**이지
-                # 요청에서 유도한 값이 아니다(위 주석 참조).
-                dx = min(ceil_, max(3.0 * zr, 1.05 * evac_))
-                resp = Dict("constraints" => [Dict("kind" => "TranslateBuild",
-                                                   "dx" => dx, "dy" => 0.0)],
-                            "rationale" => "mock: the zone (r=$(zr)) traps remaining build work out to " *
-                                           "work_reach=$(wr) (covers=$(length(cov)), covers_root=$(croot)) " *
-                                           "-> window [reference $(round(evac_; digits=3)), " *
-                                           "ceiling $(round(ceil_; digits=3))]; propose " *
-                                           "dx=$(round(dx; digits=3)) along +x (direction is this " *
-                                           "harness's scene-specific choice, NOT derived from the " *
-                                           "request -- see test/respec_verify_translate.jl [8])")
-            end
-            return HTTP.Response(200, JSON3.write(resp))
-        end
-        return HTTP.Response(404, "not found")              # [KO] 그 외 경로는 404
-    end
-    return HTTP.serve!(handler, "127.0.0.1", port)   # non-blocking; returns a Server
-                                                     # [KO] 블로킹 안 함 → 서버 객체를 돌려주고 계속 진행
-end
-
-# [KO] scene_tree(장면 트리)에서 로봇 노드만 골라내는 comprehension. matches_template=타입 일치 판정.
-_robot_nodes(env) = [n for n in CB.get_nodes(env.scene_tree) if CB.matches_template(CB.RobotNode, n)]
-# [KO] 3D 자세의 위치를 2D 평면 좌표(Vector{Float64})로 투영. p2 = point-2d.
-_p2(t) = Vector{Float64}(CB.project_to_2d(t.translation))
-# [KO] staging_circles(대기원) 중 반지름이 가장 큰 것의 키 = 빌드 중심(root)로 간주. argmax=최대를 주는 키.
-_root_id(env) = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), collect(keys(env.staging_circles)))
-
-# OOD action: inject the physical zone AND return the NL string (-> push_ood! by ood_inject_step!)
-# [KO] OOD 발동함수: 물리적으로 진입금지 구역을 실제로 추가하고, 사람이 쓸 법한 NL 문장을 반환.
-#      반환된 NL 은 ood_inject_step! 이 push_ood! 로 respec 파이프라인에 밀어넣음.
-function ood_action!(env)
-    gs = CB.root_deposit_goals(env)     # [KO] 최종 조립 지점들의 좌표 목록
-    # [KO] 목표가 있으면 그 평균(무게중심)을, 없으면 중심 대기원의 중심을 구역 중심 zc 로. ./ =원소별 나눗셈.
-    zc = isempty(gs) ? Vector{Float64}(CB.get_center(env.staging_circles[_root_id(env)])[1:2]) : sum(gs) ./ length(gs)
-    CB.add_restriction_zone!(:zone, zc, ZONE_R)   # [KO] 중심 zc, 반지름 ZONE_R 의 실제 금지구역 등록
-    @info "[E2E] OOD action: injected zone@$(round.(zc;digits=2)) R=$ZONE_R; emitting NL"
-    # [KO] LLM 이 받을 자연어 사건 설명. `*` = 문자열 이어붙이기.
-    return "A safety exclusion zone is now active over the central build area; " *
-           "robots must not enter or pass through it."
-end
-
-println(">>> building nav-ON env (tractor)...")
-pp = CB.get_project_params(4)   # [KO] 4 = tractor 프로젝트 파라미터(파일/스케일/로봇수 등) 묶음
-# [KO] 시뮬 시작 직전 상태의 env 를 큰 스택 태스크에서 빌드. do...end = run_with_stack 에 넘기는 함수블록.
-ENV0 = run_with_stack(2_000_000_000) do
-    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
-    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
-        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,   # greedy=탐욕 배정
-        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
-        rvo_flag=true, tangent_bug_flag=true, dispersion_flag=true,      # [KO] nav-ON: RVO 충돌회피/TangentBug/분산 켬
-        open_animation_at_end=false, save_animation=false, write_results=false,
-        overwrite_results=false, look_for_previous_milp_solution=false,
-        save_milp_solution=false, return_env_before_sim=true)           # [KO] 시뮬 돌리지 말고 준비된 env 만 반환
-end
-println(">>> env: $(Graphs.nv(ENV0.sched)) nodes")   # [KO] nv = 스케줄 그래프의 노드(작업) 개수
-
-# bring up the mock + enable the seam
-SRV = start_mock(MOCK_PORT)               # [KO] mock 서버 띄우기(서버 객체 보관 → 나중에 close)
-CB.RESPEC_ENABLED[] = true                # [KO] respec 이음새(seam) 켜기. []=전역 스위치(Ref)에 값 대입
-CB.clear_ood_schedule!(); CB.clear_restriction_zones!()   # [KO] 이전 OOD 예약/구역 깨끗이 초기화
-CB.schedule_ood!(OOD_STEP, ood_action!)   # [KO] OOD_STEP 스텝에 ood_action! 을 한 번 발동하도록 예약
-println(">>> mock /propose up at $(ENV["RESPEC_SERVICE_URL"]); respec_service_ready=$(CB.respec_service_ready()); RESPEC_ENABLED=$(CB.RESPEC_ENABLED[])")
-Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Info))   # [KO] 이후 로그를 Info 레벨로 출력
-
-# ---- stall autopsy: WHAT is left and WHY -----------------------------------------------
-# diagnose_transport_stall 은 "팀 교착인가 아닌가"만 가른다. 정체가 팀 교착이 아닐 때(=SCHEDULING
-# wait) 남은 노드가 정확히 무엇이고 무엇을 기다리는지는 안 알려주므로 여기서 직접 덤프한다.
-# [KO] 남은(안 닫힌) 노드를 타입별로 세고, 그중 active 인 것과 "선행작업이 아직 안 끝난 것"을 구분한다.
-#      EntityGo 계열은 목표 좌표·현재 좌표·거리, 그리고 그 목표가 아직 살아있는 구역 안인지까지 찍는다.
-function _dump_stall(env)
-    sched = env.sched
-    println("\n---- STALL AUTOPSY ----")
-    for (k, b) in CB.RESTRICTION_ZONES[]
-        println("  zone :$k  center=$(round.(Vector{Float64}(CB.get_center(b)[1:2]); digits=2))  r=$(round(Float64(CB.get_radius(b)); digits=2))")
-    end
-    open_v = [v for v in Graphs.vertices(sched) if !(v in env.cache.closed_set)]  # 아직 안 닫힌 정점들
-    bytype = Dict{String,Int}()
-    for v in open_v
-        n = CB.get_node(sched, v).node
-        t = string(typeof(n).name.name)
-        bytype[t] = get(bytype, t, 0) + 1
-    end
-    println("  OPEN nodes: $(length(open_v))  by type: $bytype")
-    println("  active_set: $(length(env.cache.active_set))")
-    for v in open_v
-        n = CB.get_node(sched, v).node
-        nid = CB.get_vtx_id(sched, v)
-        act = v in env.cache.active_set
-        # 아직 안 닫힌 선행작업(=이 노드가 열리지 못하는 이유). 0 이면 "열려야 하는데 안 열림".
-        preds = [u for u in Graphs.inneighbors(sched, v) if !(u in env.cache.closed_set)]
-        extra = ""
-        if CB.matches_template(CB.EntityGo, n)
-            g = try Vector{Float64}(CB.project_to_2d(CB.global_transform(CB.goal_config(n)).translation)) catch; nothing end
-            p = try
-                sn = CB.get_node(env.scene_tree, CB.node_id(CB.entity(n)))
-                Vector{Float64}(CB.project_to_2d(CB.global_transform(sn).translation))
-            catch; nothing end
-            d = (g === nothing || p === nothing) ? NaN : norm(g .- p)
-            # 목표가 구역 안이면 TangentBug 가 로봇을 가장자리에 영원히 세운다. 중요한 건 어느 반지름을
-            # 쓰느냐다 — residual 판정(_count_future_goals_in_zone)은 **맨 반지름**을 쓰는데, 로봇이
-            # 실제로 지켜야 하는 경계는 **맨 반지름 + 로봇 반지름**(팽창 반경)이다. 그 사이 띠(band)에
-            # 목표가 놓이면 residual=0 으로 "복구 완료"라 보고되지만 로봇은 영원히 도달하지 못한다.
-            rr = Float64(CB.default_robot_radius())
-            zflag = ""
-            if g !== nothing
-                for (zk, b) in CB.RESTRICTION_ZONES[]
-                    dz = norm(g .- Vector{Float64}(CB.get_center(b)[1:2]))
-                    zr0 = Float64(CB.get_radius(b))
-                    zflag *= "  d_zone=$(round(dz; digits=3)) bare=$(round(zr0; digits=3)) infl=$(round(zr0+rr; digits=3))" *
-                             (dz < zr0 ? "  GOAL-INSIDE-BARE" :
-                              dz < zr0 + rr ? "  ** GOAL-IN-INFLATED-BAND (residual says CLEAR, nav says BLOCKED) **" : "")
-                end
-            end
-            extra = "  goal=$(g === nothing ? "?" : round.(g; digits=2)) pos=$(p === nothing ? "?" : round.(p; digits=2))" *
-                    " dist=$(round(d; digits=2))$(zflag)"
-        end
-        # 후행 노드 목록(타입만). verify_reform / reform_stuck_teams! / diagnose_transport_stall 은
-        # 전부 `outs[1]` 하나만 보고 "FormTransportUnit 인가"를 판단한다 — 후행이 여러 개거나
-        # RobotGo 가 한 번 더 끼어 있으면 팀을 못 찾는다. 그게 실제로 일어나는지 여기서 확인한다.
-        succ = join([string(typeof(CB.get_node(sched, u).node).name.name) for u in Graphs.outneighbors(sched, v)], ",")
-        println("    v$(v) $(typeof(n).name.name) $(nid)  active=$(act) open_preds=$(length(preds)) succ=[$(succ)]$(extra)")
-    end
-    println("---- END AUTOPSY ----\n")
-end
-
-# real seam loop (mirrors simulate!): ood_inject_step! -> step -> respec_step!
-# [KO] 진짜 시뮬 루프(simulate! 를 흉내): 매 스텝 OOD주입 → 물리 한 스텝 → respec 처리 순서.
-#      동시에 로봇이 금지구역을 침범(penetration)하는지 감시하고, 완주/정체(stall) 여부를 판정.
-#      cap=최대 반복수, stall_limit=진전 없는 스텝이 이만큼이면 정체로 간주. 반환=NamedTuple(요약).
-function run_seam_loop(env; cap=250_000, stall_limit=8000)
-    rr = Float64(CB.default_robot_radius()); robots = _robot_nodes(env)   # rr=로봇 반지름, robots=로봇 노드들
-    zc_ref = Ref{Any}(nothing)
-    # [KO] prev=직전 완료개수, stall=정체 카운터, worst=최악 침범량, viol=침범 스텝수, first_v/last_v=처음/마지막 침범 시점
-    prev = length(env.cache.closed_set); stall = 0; worst = -Inf; viol = 0; first_v = -1; last_v = -1
-    respec_seen = Ref(false)   # [KO] respec 이 한 번이라도 발동했는지 기록(상자)
-    for it in 1:cap
-        CB.ood_inject_step!(env, it)     # [KO] 예약된 OOD 가 이 스텝이면 발동(NL 을 push_ood!)
-        CB.step_environment!(env)        # [KO] 물리 시뮬을 한 스텝 전진(로봇 이동 등)
-        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl scenario_mock_respec")
-        # 🔴 어휘를 여기서 **복제하지 않는다.** 예전엔 `(st in (:admitted,:noop,:fallback,:rejected))`
-        #    라는 사본이 있었고, C1 이 `:partial` 을 들여오자 그 사본이 부분 집행을 **말없이 버려서**
-        #    "respec 이 발동한 적 없다"로 기록했다. 지금은 `assert_respec_verdict` 가 모르는 값을
-        #    error() 로 세우고, "판정을 내렸는가"는 :disabled 의 여집합으로 판정한다.
-        (st !== :disabled) && (respec_seen[] = true; @info "[E2E] respec_step! @it=$it -> $st")
-        try CB.update_planning_cache!(env, 0.0) catch e   # [KO] 계획 캐시 갱신(어느 작업이 열렸/닫혔는지)
-            @warn "[E2E] update_planning_cache! threw @it=$it: $(typeof(e))"
-            # [KO] 갱신이 에러를 던지면(assert류) 실패상태로 조기 반환
-            return (status=:asserted, closed=length(env.cache.closed_set), iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])
-        end
-        if !isempty(CB.RESTRICTION_ZONES[])                 # track penetration once a zone exists
-            # [KO] 구역이 존재하면 침범 감시: z=구역, zc=중심, zr=반지름
-            z = first(values(CB.RESTRICTION_ZONES[])); zc = Vector{Float64}(CB.get_center(z)[1:2]); zr = Float64(CB.get_radius(z))
-            sp = -Inf
-            # [KO] 각 로봇마다 (구역+로봇 반지름) - 중심까지거리 = 침범 깊이. 양수면 겹침. 최댓값을 sp 로.
-            for rb in robots; sp = max(sp, (zr + rr) - norm(_p2(CB.global_transform(rb)) .- zc)); end
-            sp > 1e-6 && (viol += 1; first_v < 0 && (first_v = it); last_v = it)   # 미세오차 넘는 침범이면 카운트
-            sp > worst && (worst = sp)     # [KO] 역대 최악 침범량 갱신
-        end
-        c = length(env.cache.closed_set)   # [KO] 현재까지 완료(closed)된 작업 수
-        stall = c > prev ? 0 : stall + 1; prev = c   # 진전 있으면 정체 0, 없으면 +1
-        # 무진전 교착 복구. zone 대응과 별개의 **2차 사건**이다(존을 다 치운 뒤 루트 엔드게임에서
-        # carrier 팀이 끼는 경우) — 없으면 그대로 정체로 끝난다.
-        #
-        # 🔴 **2026-08-21 (Task C3): `maybe_emit_reform_ood!` → `maybe_unwedge_nominal!` 로 바꿨다.**
-        #   왜 이 대체인가 (브리프가 "정하고 근거를 보고하라" 고 한 결정):
-        #   (1) 옛 호출 대상이 **존재하지 않는다.** `maybe_emit_reform_ood!`(+ `REFORM_INTERVAL` ·
-        #       `set_reform_interval!`)는 2026-08-20 4팔 축소에서 삭제됐다
-        #       (respec/ood_injection.jl:641-660). 이 줄은 `UndefVarError` 였다 — C2 의 SKIP 이
-        #       없었어도 이 시나리오는 여기서 죽었다. 즉 "복구가 사라졌다" 보다 나빴다.
-        #   ⚠️ **의존성 주의 (Task C3 보고서에 올림).** 그 삭제와 `maybe_unwedge_nominal!` 의 도입은
-        #       둘 다 **이 작업 트리의 미커밋 in-flight 변경**이다(HEAD 63ccf524 에는 옛 함수가
-        #       그대로 있다). 그래서 이 줄은 그 in-flight 변경이 커밋된 뒤에야 HEAD 위에서 돈다.
-        #       실측은 작업 트리 상태에서 했다(2026-08-21: complete 279/289 · PASS).
-        #       옛 이름으로 되돌리는 것은 답이 아니다 — 그 함수가 만드는 것은 `ReformTeam` 제안이고
-        #       그건 D-9 로 emit 불가라 파서에서 죽는다.
-        #   (2) `maybe_unwedge_nominal!` 이 **바로 그 자리를 위해 만들어진 대체품**이고, 두 생산
-        #       시뮬 루프에 이미 배선돼 있다(src/demo_utils.jl:273 · tools/monitor/run_demo.jl:832).
-        #       이 손수 만든 seam 루프만 빠져 있었다 — 이 줄이 그 누락을 메운다.
-        #   (3) 같은 복구 사슬을 부른다(`recover_stalled_teams!` = 스냅 → 스케줄 교착 해소 →
-        #       캐리어 강제 전진) + 성공 시 `reset_cache_resume!`. 다른 점은 **결정 epoch 를 만들지
-        #       않는다**는 것뿐이고, 그것이 의도다: 팀 교착은 외생 실패 사건이 아니라 Replace 의
-        #       2차 결과라 결정이 아니라 TAMP 재계획이어야 한다(위 삭제 주석의 논거).
-        #   (4) 대안이었을 "ReformTeam 을 emit 표면에 되돌린다" 는 D-9 를 뒤집는 것이고, 팔 수가
-        #       5 가 아니라 6 이 된다 — 컨트롤러 판정과 정면으로 충돌한다. 채택하지 않았다.
-        #   ⚠️ 트리거 상수도 바뀐다: 옛 `REFORM_INTERVAL` → `UNWEDGE_INTERVAL`(기본 2000, 같은 값).
-        CB.maybe_unwedge_nominal!(env, stall)
-        CB.project_complete(env) && return (status=:complete, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # 완주
-        # 정체로 끝나기 직전에 "무엇이 왜 남았는지"를 한 번 찍는다(수치만 보고 추측하지 않기 위해).
-        stall >= stall_limit && (_dump_stall(env);
-            return (status=:stalled, closed=c, iters=it, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[]))   # 정체 종료
-    end
-    return (status=:capped, closed=prev, iters=cap, worst=worst, viol=viol, first_v=first_v, last_v=last_v, respec=respec_seen[])   # cap 소진
-end
-
-env = deepcopy(ENV0)   # [KO] 원본 env 는 보존하고 복사본에서 시뮬(반복 실행 대비)
-total = Graphs.nv(env.sched); n0 = length(env.cache.closed_set)   # total=전체 작업수, n0=시작 완료수
-r = run_seam_loop(env)
-try close(SRV) catch end   # [KO] mock 서버 닫기(실패해도 무시)
-# [KO] transient(일시적 침범) = 침범이 전혀 없었거나, 마지막 침범이 초반부(=구역 생기기 전 잔여)라면 OK.
-transient = r.viol == 0 || r.last_v < max(2000, 0.1 * r.iters)
-# [KO] PASS 조건: 완주 + respec 발동 + 침범이 일시적(복구 후 재진입 없음).
-pass = r.status == :complete && r.respec && transient
-println("\n==== RESULT (mock e2e: spatial respec — TranslateBuild with a mock-derived Δ) ====")
-println("closed $n0 -> $(r.closed)/$total  status=$(r.status)  respec_fired=$(r.respec)")
-println("zone penetration: worst_pen=$(round(r.worst;digits=3)) viol_steps=$(r.viol) viol_iters=[$(r.first_v)..$(r.last_v)] of $(r.iters)  evac_transient=$transient")
-println(pass ? "PASS (NL -> mock LLM -> TranslateBuild(dx,dy) -> _apply_uniform_translation! -> complete, no re-entry)" : "FAIL")
-CB.RESPEC_ENABLED[] = false; CB.clear_ood_schedule!(); CB.clear_restriction_zones!()   # [KO] 전역 상태 원상복구
-end
-
-# =============================================================================
-# mock_replace -- LLM-FREE end-to-end test of the FULL respec seam for OOD 1-1
-#   ReplaceAgent (robot breakdown -> spare hand-off). Stands up a local mock /propose
-#   that returns a ReplaceAgent grounded from the request's own `agents` context
-#   (mimicking the LLM classifier), enables the RESPEC seam, injects a physical robot
-#   fault via schedule_ood! (fault_robot! returns the NL), and runs the real sim loop
-#   (ood_inject_step! -> step -> respec_step!). This drives the production path:
-#     NL -> push_ood! -> maybe_respecify! -> llm_to_proposal(HTTP mock) -> _parse_proposal
-#     -> ReplaceAgent -> verify_replace -> nearest_pool/pop_spare -> replace_robot!.
-#   SCOPE: asserts the enabled-loop WIRING fires (respec admitted, spare hand-off enacted,
-#   progress monotone). Full COMPLETION is gated on the known R1 frontier-graft stall.
-#   ENV: OOD_STEP, NSPARE, FAULT_AT.
-# =============================================================================
-# [KO] 시나리오2: LLM 없이 ReplaceAgent respec 배선 검증. 로봇 고장 → mock 이 ReplaceAgent DSL 응답 →
-#      검증 → 가장 가까운 스페어(spare) pool 에서 하나 꺼내 replace_robot! 로 1:1 교체까지 "이음새가 켜지는지".
-#      (완주까지는 요구 안 함 — 완주는 알려진 R1 frontier-graft 정체 때문에 별도 이슈.)
-function scenario_mock_replace()
-MOCK_PORT = 8733
-ENV["RESPEC_SERVICE_URL"] = "http://127.0.0.1:$MOCK_PORT"   # CB reads the URL at call time
-
-OOD_STEP = parse(Int, get(ENV, "OOD_STEP", "3"))   # by step ~3 the frontier has opened (closed-count jumps early)
-                                                   # [KO] 스텝 ~3 이면 작업 frontier 가 열려 고장 주입이 의미있음
-NSPARE   = parse(Int, get(ENV, "NSPARE", "2"))     # [KO] pool(방위별) 당 스페어 수. 총 스페어 = 4*NSPARE
-FAULT_AT = parse(Int, get(ENV, "FAULT_AT", "24"))  # [KO] 진전(완료수)이 이 값을 넘겼는지로 hand-off 성공 판정
-
-_setup_milp!()
-
-# ---- mock /propose: deterministic, grounds ReplaceAgent from request `agents` --------
-# [KO] 가짜 서버: 고장 NL 을 받아 어느 로봇인지 파악해 ReplaceAgent DSL 로 응답(LLM 분류기 흉내).
-function start_mock(port)
-    handler = function (req::HTTP.Request)
-        path = HTTP.URIs.URI(req.target).path
-        if path == "/health"
-            return HTTP.Response(200, JSON3.write(Dict("status" => "ok")))
-        elseif path == "/propose"
-            body   = JSON3.read(String(req.body))
-            event  = haskey(body, "event") ? String(body["event"]) : ""    # [KO] 고장 NL 문장
-            agents = haskey(body, "agents") ? body["agents"] : []           # [KO] 요청에 실린 실제 에이전트 목록
-            # ground the faulted robot: parse "Robot R<id>" from the NL, else first agent.
-            # [KO] NL 에서 "R숫자"를 정규식으로 뽑아 그 id 를 가진 에이전트를 찾음. r"..." = 정규식 리터럴.
-            m = match(r"R(\d+)", event)     # \d+ = 숫자 한 개 이상, 괄호=캡처그룹(뽑아낼 부분)
-            aid = ""
-            if m !== nothing
-                want = "($(m.captures[1]))"   # [KO] 캡처한 숫자를 "(3)" 형태로 → 에이전트 id 문자열에 포함되는지 검사
-                for a in agents
-                    occursin(want, String(a["id"])) && (aid = String(a["id"]); break)   # 찾으면 그 id 채택하고 중단
-                end
-            end
-            aid == "" && !isempty(agents) && (aid = String(agents[1]["id"]))   # [KO] 못 찾으면 첫 에이전트로 fallback
-            # [KO] ReplaceAgent 제약: 이 agent 를 after(=0.0, 지금 시점) 이후로 교체하라.
-            resp = Dict("constraints" => [Dict("kind" => "ReplaceAgent", "agent" => aid, "after" => 0.0)],
-                        "rationale" => "mock: robot breakdown -> replace with nearest spare")
-            return HTTP.Response(200, JSON3.write(resp))
-        end
-        return HTTP.Response(404, "not found")
-    end
-    return HTTP.serve!(handler, "127.0.0.1", port)
-end
-
-# OOD action: fault an active robot once the build is underway, emit the NL. Fired
-# once by the one-shot scheduler at OOD_STEP (by which point the frontier has opened).
-# [KO] OOD 발동: 활동 중인 로봇 하나를 고장(fault) 처리하고 그 고장 NL 을 반환. 대상이 없으면 nothing.
-function ood_action!(env)
-    nl = CB.fault_robot!(env)          # [KO] 로봇 하나를 고장 상태로 만들고 설명 NL 을 돌려줌
-    nl === nothing && return nothing   # [KO] 고장 낼 로봇이 없으면 아무 일도 안 함
-    @info "[E2E-1-1] OOD action @closed=$(length(env.cache.closed_set)): faulted a robot; emitting NL"
-    return nl
-end
-
-println(">>> building nav-ON env (tractor) WITH $(4*NSPARE) spares...")
-pp = CB.get_project_params(4)
-# [KO] 스페어풀/고장로봇/구역/OOD예약을 전부 초기화(깨끗한 시작 보장)
-CB.clear_spare_pools!(); CB.clear_faulted_robots!(); CB.clear_restriction_zones!(); CB.clear_ood_schedule!()
-ENV0 = run_with_stack(2_000_000_000) do
-    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
-    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
-        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
-        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
-        rvo_flag=true, tangent_bug_flag=true, dispersion_flag=true, n_spare_per_pool=NSPARE,   # [KO] pool 당 스페어 NSPARE개
-        open_animation_at_end=false, save_animation=false, write_results=false,
-        overwrite_results=false, look_for_previous_milp_solution=false,
-        save_milp_solution=false, return_env_before_sim=true)
-end
-println(">>> env: $(Graphs.nv(ENV0.sched)) nodes; spares=$(length(CB.active_spares()))")
-
-SRV = start_mock(MOCK_PORT)
-CB.RESPEC_ENABLED[] = true
-CB.schedule_ood!(OOD_STEP, ood_action!)   # one-shot fault injection once the frontier has opened
-println(">>> mock /propose up; ready=$(CB.respec_service_ready()); RESPEC_ENABLED=$(CB.RESPEC_ENABLED[])")
-Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Info))
-
-# [KO] 통과/실패 카운터(상자)와 간단한 검사 헬퍼. cond 가 참이면 PASS 출력+통과+1, 아니면 FAIL+실패+1.
-npass = Ref(0); nfail = Ref(0)
-check(name, cond) = (cond ? (npass[] += 1; println("  PASS: $name")) :
-                            (nfail[] += 1; println("  FAIL: $name")))
-
-# seam loop: ood_inject_step! -> step -> respec_step!; capture the respec verdict.
-# [KO] mock_respec 의 루프와 같은 구조지만, respec 판정(admitted/fallback/rejected)과 진전 peak 만 추적.
-function run_seam_loop(env; cap=120_000, stall_limit=8000)
-    prev = length(env.cache.closed_set); stall = 0
-    respec_status = Ref{Symbol}(:none); n0 = prev; peak = prev   # respec_status=마지막 판정, peak=최대 완료수
-    for it in 1:cap
-        CB.ood_inject_step!(env, it)
-        CB.step_environment!(env)
-        st = CB.assert_respec_verdict(CB.respec_step!(env), "e2e.jl scenario_mock_replace")
-        # 🔴 여기도 어휘 사본이었다. :noop/:disabled 는 "아무 결정도 없음"이라 기록하지 않지만,
-        #    그 외 **모든** 판정(:admitted · :partial · :rejected · :fallback)은 기록한다 —
-        #    사본을 두면 새 값이 조용히 :none 으로 남아 아래 check 가 엉뚱한 이유로 빨개진다.
-        if !(st in (:noop, :disabled))
-            respec_status[] = st; @info "[E2E-1-1] respec_step! @it=$it -> $st"   # [KO] 판정을 기록
-        end
-        try CB.update_planning_cache!(env, 0.0) catch e
-            return (status=:asserted, closed=length(env.cache.closed_set), iters=it, respec=respec_status[], peak=peak)
-        end
-        c = length(env.cache.closed_set); peak = max(peak, c)   # [KO] peak=지금까지 도달한 최대 완료수
-        stall = c > prev ? 0 : stall + 1; prev = c
-        CB.project_complete(env) && return (status=:complete, closed=c, iters=it, respec=respec_status[], peak=peak)
-        stall >= stall_limit && return (status=:stalled, closed=c, iters=it, respec=respec_status[], peak=peak)
-    end
-    return (status=:capped, closed=prev, iters=cap, respec=respec_status[], peak=peak)
-end
-
-env = deepcopy(ENV0)
-total = Graphs.nv(env.sched); n0 = length(env.cache.closed_set)
-r = run_seam_loop(env)
-try close(SRV) catch end
-
-println("\n==== RESULT (mock e2e ReplaceAgent seam) ====")
-println("closed $n0 -> $(r.closed) (peak $(r.peak))/$total  status=$(r.status)  respec_verdict=$(r.respec)")
-# Assert the WIRING (not full completion, which is gated on the R1 stall):
-# [KO] 검사하는 건 "배선이 작동하는가"(완주 아님). 아래 4개가 모두 참이어야 seam GREEN.
-check("respec seam fired with :admitted (NL->ReplaceAgent->dispatch->replace_robot!)", r.respec == :admitted)   # respec 이 교체를 승인했는가
-check("no RVO/identity assert (faulted robot didn't crash the sim)", r.status != :asserted)   # 고장 로봇이 시뮬을 크래시내지 않았는가
-check("hand-off made progress past the fault point", r.peak > FAULT_AT)   # 교체 후 고장지점 이상으로 진전했는가
-check("a spare was consumed from a pool", length(CB.active_spares()) == 4*NSPARE - 1)   # 스페어가 딱 1개 소모됐는가
-
-CB.RESPEC_ENABLED[] = false; CB.clear_ood_schedule!(); CB.clear_restriction_zones!()   # [KO] 전역 상태 원상복구
-CB.clear_spare_pools!(); CB.clear_faulted_robots!()
-println("\n==== mock e2e ReplaceAgent: $(npass[]) passed, $(nfail[]) failed ====")
-println(nfail[] == 0 ?
-    "SEAM GREEN (NL -> mock LLM -> ReplaceAgent -> verify_replace -> spare hand-off enacted). " *
-    "Full completion gated on the known R1 frontier-graft stall." :
-    "SOME FAILED")
-nfail[] == 0 || error("mock_replace_e2e had $(nfail[]) failure(s)")   # [KO] 하나라도 실패면 에러로 종료(CI 신호)
-end
-
-# =============================================================================
 # full_loop -- Enabled-seam end-to-end driver for the RESUME full-loop.
 #   Build a real env, run the sim to a mid-build state, inject an OOD (robot fault), and
 #   confirm the build RESUMES through the verified reassignment and reaches project_complete
 #   WITHOUT restarting finished work (closed_set never regresses). Drives the PRODUCTION seam
 #   exactly as simulate! does: step_environment! -> respec_step! -> update_planning_cache!.
-#   Two modes, auto-selected: LLM seam (respec_service_ready) or LLM-free direct reassign.
-#   Force LLM-free with RESPEC_FULLLOOP_NOLLM=1.
+#   2026-08-29: LLM-free direct reassign is now the ONLY mode -- the auto-selected
+#   "LLM seam" alternative went with the Anthropic lane, so RESPEC_FULLLOOP_NOLLM is
+#   no longer read (this path is what that flag used to force).
 # =============================================================================
 # [KO] 시나리오3: 빌드 중간에 고장을 주입해도 "이어서(resume)" 끝까지 완주하는지 확인.
 #      핵심 = 이미 끝난 작업(closed_set)이 절대 되돌아가지 않아야 함(monotone). 두 모드 자동선택:
@@ -707,22 +201,16 @@ function main()
     agent = pick_faultable_agent(env)
     agent === nothing && (println("!! no valid robot to fault — aborting"); return false)   # 고장 낼 로봇 없으면 중단
 
-    # [KO] LLM 사용 여부: NOLLM 환경변수가 없고 서비스가 살아있으면 LLM seam, 아니면 직접 재배정.
-    use_llm = !haskey(ENV, "RESPEC_FULLLOOP_NOLLM") && CB.respec_service_ready()
-    if use_llm
-        k = CB.get_id(agent)
-        event = "Robot R$k has stopped responding and must be removed from service"   # [KO] LLM 에 줄 NL
-        println(">>> OOD inject (LLM seam): \"$event\"  [agent=$agent]")
-        CB.RESPEC_ENABLED[] = true
-        CB.push_ood!(event)
-        # the seam translates+verifies+commits on the next respec_step!
-        # [KO] 다음 respec_step! 에서 번역→검증→반영이 일어남
-    else
-        println(">>> OOD inject (LLM-free): direct reassign of $agent")
-        # [KO] LLM 없이: 로봇 고장+재배정을 직접 호출. resume=이어서, admitted 아니면 중단.
-        res = CB.fault_robot_and_reassign!(env, agent; resume = true, verbose = true)
-        res.status == :admitted || (println("!! reassign $(res.status) — cannot resume"); return false)
-    end
+    # 🔴 2026-08-29: 예전엔 여기서 두 갈래였다 — 서비스가 살아 있으면 LLM 이음새
+    #   (`push_ood!` → `respec_step!` → `llm_to_proposal` → :8000 `/propose`)로, 아니면
+    #   직접 재배정으로. 그 `/propose` 레인이 Anthropic 레인과 함께 삭제됐으므로 갈래가
+    #   하나만 남는다. `RESPEC_FULLLOOP_NOLLM` 은 이제 없는 손잡이다(항상 이 경로다).
+    #   ⚠️ 이 시나리오가 재개(resume)에 대해 재던 성질은 그대로다 — 아래 closed_set 회귀
+    #   검사와 완주 판정은 어느 갈래로 주입했든 같은 것을 봤다.
+    println(">>> OOD inject (LLM-free): direct reassign of $agent")
+    # [KO] 로봇 고장+재배정을 직접 호출. resume=이어서, admitted 아니면 중단.
+    res = CB.fault_robot_and_reassign!(env, agent; resume = true, verbose = true)
+    res.status == :admitted || (println("!! reassign $(res.status) — cannot resume"); return false)
 
     n_after = length(env.cache.closed_set)
     if n_after < n_inject
@@ -755,225 +243,6 @@ end
 
 ok = main()
 exit(ok ? 0 : 1)   # [KO] PASS 면 종료코드 0, 아니면 1(스크립트 성공/실패를 셸에 알림)
-end
-
-# =============================================================================
-# selfheal -- AUTONOMOUS SELF-HEALING VERIFICATION HARNESS (headless).
-#   Run the REAL energy-adaptive build with the live LLM re-spec layer; whenever the LLM's
-#   replan loops on the SAME warning/verdict while the sim makes NO progress, STOP that run,
-#   record a structured diagnostic verdict, and move on. Drives run_lego_demo's FULL simulate!
-#   loop HEADLESS (save_animation=false). Scenario: N_BATTERY soft battery OODs
-#   (soft degradation) + one central NO-GO zone (whole-build relocation) over a real physics
-#   run. REAL LLM service must be UP on :8000 (health checked; aborts if down).
-#   ENV: SEEDS (csv), MAXNP, MODE, N_BATTERY, N_OOD, CLOSED_HI, ZONE_CLOSED, ZONE_R, ENERGY_W,
-#     PROJECT, VERDICT (jsonl out path), RESPEC_SERVICE_URL.
-# =============================================================================
-# [KO] 시나리오4: 진짜 LLM 을 켜고 에너지-적응형 빌드를 headless(화면無)로 돌리는 자율 self-healing 검증.
-#      LLM 이 같은 경고/판정을 반복하는데 시뮬은 전혀 진전 없으면(=헛돎) 그 실행을 멈추고 구조화된 진단을
-#      기록한 뒤 다음 seed 로 넘어감. soft=배터리+중앙구역 / hard=고장+배터리+구역 스트림. LLM 서비스 :8000 필수.
-function scenario_selfheal()
-ENV["RESPEC_SERVICE_URL"] = get(ENV, "RESPEC_SERVICE_URL", "http://127.0.0.1:8000")   # [KO] 진짜 LLM 서비스 주소
-
-# ---- knobs ------------------------------------------------------------------
-# [KO] 아래는 전부 환경변수로 조절하는 손잡이(knob)들. parse.(...) 의 점(.)=벡터 원소마다 parse 적용(브로드캐스트).
-_seeds_env = get(ENV, "SEEDS", "7,11,13,17,23")
-SEEDS       = parse.(Int, split(_seeds_env, ","))         # [KO] "7,11,.." 를 쉼표로 쪼개 정수 배열로
-MAXNP       = parse(Int,     get(ENV, "MAXNP", "4500"))    # no-progress steps -> terminate (allows reform @2000,4000)
-                                                          # [KO] 진전 없는 스텝이 이만큼이면 종료(2000/4000 에서 재형성 여유)
-MODE        = get(ENV, "MODE", "soft")                    # soft = battery+central zone; hard = fault+battery+zone stream
-N_BATTERY   = parse(Int,     get(ENV, "N_BATTERY", "2"))   # [KO] 배터리 OOD 개수
-N_OOD       = parse(Int,     get(ENV, "N_OOD", "6"))       # hard-mode: # of random mixed OOD events
-CLOSED_HI   = parse(Int,     get(ENV, "CLOSED_HI", "200")) # hard-mode: spread OOD up to this closed-count
-ZONE_CLOSED = parse(Int,     get(ENV, "ZONE_CLOSED", "60"))# [KO] 완료수가 이 값일 때 중앙 no-go 구역 발동
-ZONE_R      = parse(Float64, get(ENV, "ZONE_R", "2.5"))
-ENERGY_W    = parse(Float64, get(ENV, "ENERGY_W", "0.01")) # [KO] objective 에서 에너지(효율) 가중치
-PROJECT     = parse(Int,     get(ENV, "PROJECT", "4"))
-VERDICT     = get(ENV, "VERDICT",                          # [KO] seed 별 결과를 한 줄 JSON 으로 남길 파일 경로
-    joinpath(pkgdir(CB), "..", "verify_selfheal_verdicts.jsonl"))
-
-_setup_milp!()
-
-# [KO] 계획 objective 를 "속도 1.0 고정 + 에너지효율 ENERGY_W" 로 설정, 배터리 소모 모델도 세팅.
-CB.set_planning_objective_weights!(speed = 1.0, efficiency = ENERGY_W)
-CB.set_energy_model!(pickup_overhead = 0.0, idle_power = 1.0, load_power = 0.25)
-
-# This scenario's run_with_stack RETURNS (:error, e)/(:ok, res) instead of throwing (its
-# per-seed loop switches on the status), so it keeps its own variant nested here.
-# [KO] 이 시나리오 전용 run_with_stack: 에러를 던지지 않고 (:error, e) / (:ok, 결과) 튜플로 돌려줌.
-#      seed 하나가 예외로 죽어도 전체를 멈추지 않고 다음 seed 로 넘어가려는 것(공용 버전과 계약이 다름).
-function run_with_stack(f, stacksize::Int)
-    res = Ref{Any}(nothing); err = Ref{Any}(nothing)
-    done = Threads.Atomic{Bool}(false)
-    wrapper = function ()   # [KO] 태스크에서 돌 함수: 성공→res, 실패→err, 끝나면 done=true
-        try res[] = f() catch e; err[] = (e, catch_backtrace()) finally done[] = true end
-    end
-    t = ccall(:jl_new_task, Ref{Task}, (Any, Any, Int), wrapper, nothing, stacksize)   # 큰 스택 태스크 생성
-    t.sticky = false; schedule(t)
-    while !done[]; sleep(0.05); end   # [KO] 완료까지 대기(폴링)
-    if err[] !== nothing
-        e, bt = err[]; showerror(stderr, e, bt); println(stderr)
-        return (:error, e)   # [KO] 던지지 않고 에러를 값으로 반환
-    end
-    return (:ok, res[])
-end
-
-# [KO] 반지름 가장 큰 대기원 = 빌드 중심으로 보는 헬퍼(위 다른 시나리오와 동일).
-_root_id(env) = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), collect(keys(env.staging_circles)))
-# [KO] 중앙 no-go 구역 발동: 빌드 중심에 진입금지 구역을 실제로 추가하고 NL 문장을 반환.
-function central_zone_action!(env)
-    gs = CB.root_deposit_goals(env)
-    zc = isempty(gs) ? Vector{Float64}(CB.get_center(env.staging_circles[_root_id(env)])[1:2]) : sum(gs) ./ length(gs)
-    CB.add_restriction_zone!(:zone, zc, ZONE_R)
-    @info "[VERIFY] central no-go ZONE @ $(round.(zc; digits=2)) R=$ZONE_R"
-    return "A safety exclusion zone is now active over the central build area; robots must not enter or pass through it."
-end
-
-# machine-readable verdict line (one JSON obj per seed)
-# [KO] seed 하나의 결과를 기계가 읽을 JSON 한 줄로 파일에 덧붙임(append). 나중 집계/분석용.
-function write_verdict(seed, complete, closed, total, term, extra)
-    rate = total == 0 ? 0.0 : round(closed / total, digits = 4)   # [KO] 완료 비율(0 나눗셈 방지)
-    esc(s) = replace(string(s), "\"" => "'", "\\" => "/")         # [KO] JSON 깨짐 방지용 간단 이스케이프
-    line = string("{\"seed\":", seed,
-        ",\"complete\":", complete,
-        ",\"closed\":", closed, ",\"total\":", total, ",\"rate\":", rate,
-        ",\"term\":\"", esc(term), "\"",
-        ",\"note\":\"", esc(extra), "\"}")
-    open(VERDICT, "a") do io; println(io, line); end   # [KO] "a"=append 모드로 파일 열어 한 줄 추가
-    println("VERDICT ", line); flush(stdout)
-end
-
-# Full dump of the TERMINAL stuck state when a run ends INCOMPLETE — the "stop and
-# diagnose the problem at that point" the harness exists for.
-# [KO] 완주 못 하고 끝났을 때, 그 "막힌 최종 상태"를 자세히 덤프(진단). 이 harness 의 존재 이유.
-#      활동 중 노드 유형별 개수, 목표 도달/이동중 로봇 수, 구역 수, 한 로봇이 여러 팀을 먹이는 과구독 등.
-function terminal_report(env)
-    try CB.diagnose_transport_stall(env) catch e; println("  [TERMINAL] diag failed: $e") end   # 내장 진단(실패해도 무시)
-    sched = env.sched
-    types = Dict{String,Int}(); atg = 0; enr = 0; ds = Float64[]   # types=유형별개수, atg=목표도달수, enr=이동중수, ds=거리들
-    team_load = Dict{Any,Int}()   # robot -> # of FormTransportUnit it feeds (over-subscription)
-                                  # [KO] 로봇 -> 그 로봇이 먹이는 FTU 개수(1 초과면 과구독=정체 원인 후보)
-    ttol = CB.capture_distance_tolerance()   # [KO] "도착했다"고 볼 허용 거리
-    for v in collect(env.cache.active_set)   # [KO] 활동 중(active) 노드들을 순회
-        node = CB.get_node_from_id(sched, CB.get_vtx_id(sched, v))
-        nm = string(nameof(typeof(node)))    # [KO] 노드의 타입 이름(문자열)
-        types[nm] = get(types, nm, 0) + 1     # [KO] 유형별 카운트 +1
-        if node isa CB.RobotGo || node isa CB.TransportUnitGo
-            d = try
-                # [KO] 현재 위치 s 와 목표 g 사이의 2D 거리 계산(abs2=제곱, sum→sqrt=유클리드거리)
-                s = CB.global_transform(CB.entity(node)); g = CB.global_transform(CB.goal_config(node))
-                sqrt(sum(abs2, (Vector{Float64}(s.translation) .- Vector{Float64}(g.translation))[1:2]))
-            catch; NaN end
-            isnan(d) || (push!(ds, d); d <= ttol ? (atg += 1) : (enr += 1))   # 허용거리 내면 도달, 아니면 이동중
-        end
-        if node isa CB.RobotGo
-            outs = CB.Graphs.outneighbors(sched, v)   # [KO] 이 노드의 다음(후속) 노드들
-            if !isempty(outs)
-                nx = CB.get_node_from_id(sched, CB.get_vtx_id(sched, outs[1]))
-                # [KO] 다음이 FormTransportUnit 이면 = 이 로봇이 그 팀을 먹임 → team_load 카운트 +1
-                nx isa CB.FormTransportUnit && (team_load[string(CB.node_id(CB.entity(node)))] = get(team_load, string(CB.node_id(CB.entity(node))), 0) + 1)
-            end
-        end
-    end
-    # [KO] 거리들의 최소/최대/평균 요약 문자열(비었으면 n/a)
-    dsum = isempty(ds) ? "n/a" : "min=$(round(minimum(ds),digits=2)) max=$(round(maximum(ds),digits=2)) mean=$(round(sum(ds)/length(ds),digits=2))"
-    over = sort([(k, c) for (k, c) in team_load if c > 1]; by = x -> -x[2])   # [KO] 과구독(>1) 로봇을 많이 먹인 순으로 정렬
-    println("  [TERMINAL] RESPEC_HOLD=$(CB.RESPEC_HOLD[])  active_types=$types")
-    # [KO] 금지구역 안전 여유 감사(src/safety/zone_guard.jl). 강제는 enforce_restriction_zone_clearance!
-    #      가 이미 하고 있고, 이 줄은 "얼마나 아슬아슬했나"를 실행 끝에 숫자로 남긴다.
-    #      violations>0 이면 스냅 뒤에도 침범이 남았다는 뜻 = 봐야 할 신호.
-    println("  ", try CB.zone_safety_report(env) catch e; "[ZONE] report failed: $e" end)
-    println("  [TERMINAL] Go-nodes: AT-goal/waiting=$atg EN-ROUTE=$enr dist[$dsum] zones=$(length(CB.RESTRICTION_ZONES[]))")
-    println("  [TERMINAL] over-subscribed robots (feeding >1 forming team): $(isempty(over) ? "none" : over)")
-    flush(stdout)
-end
-
-# [KO] seed 사이에 전역 상태(스위치/예약/구역/편향/배터리/카메라)를 모두 원상복구. 오염 방지.
-function reset_globals!()
-    CB.RESPEC_ENABLED[] = false
-    CB.clear_ood_schedule!(); CB.clear_restriction_zones!(); CB.clear_agent_bias!()
-    try CB.BATTERY_FLEET[] = nothing catch end   # [KO] 배터리 상태 초기화(실패해도 무시)
-    CB.CAMERA_FOLLOW[] = false
-end
-
-# assert the real LLM service is reachable BEFORE burning a build
-# [KO] 비싼 빌드를 시작하기 전에 진짜 LLM 서비스가 살아있는지 먼저 확인, 아니면 즉시 종료(1).
-if !CB.respec_service_ready()
-    println("FATAL: LLM service not reachable at $(ENV["RESPEC_SERVICE_URL"]) — start uvicorn on :8000 first.")
-    exit(1)
-end
-println(">>> LLM service UP at $(ENV["RESPEC_SERVICE_URL"]); verdicts -> $VERDICT")
-println(">>> seeds=$(SEEDS)  MAXNP=$MAXNP  N_BATTERY=$N_BATTERY  ZONE_CLOSED=$ZONE_CLOSED  ZONE_R=$ZONE_R  ENERGY_W=$ENERGY_W")
-
-pp = CB.get_project_params(PROJECT)
-
-# [KO] 각 seed 마다: 상태 초기화 → OOD 대본 예약 → 전체 시뮬 실행 → 결과 판정/기록.
-for seed in SEEDS
-    println("\n", "="^78)
-    println("===== SEED $seed =====")
-    println("="^78); flush(stdout)
-    reset_globals!()
-
-    # --- schedule the OOD story (battery x N_BATTERY + one central zone) --------
-    CB.RESPEC_ENABLED[] = true
-    # [KO] 스텝 1 에 배터리 기능을 켜는 OOD 예약(익명함수를 do 없이 인자로 직접 넘김).
-    #      soc_target=0.5 목표로 페널티, hard_mult 는 방전 임박 시 강한 벌점.
-    CB.schedule_ood!(1, function (env)
-        CB.enable_battery!(env; params = CB.demo_battery_params())
-        CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3)
-        @info "[VERIFY] battery ON ($(length(CB.BATTERY_FLEET[].soc)) robots)"
-        return nothing   # [KO] nothing 반환 = 이 OOD 는 NL 을 방출하지 않음(내부 상태만 바꿈)
-    end)
-    if MODE == "hard"
-        # full multi-OOD stream: robot FAULTS (-> ReplaceAgent -> spare hand-off -> the
-        # team-wedge/reform/recovery chain), battery degradations, and no-go zones, at
-        # random build-progress points. This is the path the self-heal recovery exists for.
-        # [KO] hard 모드: 고장/배터리/구역 3종을 무작위 진행지점에 섞어 예약(self-heal 이 진짜 필요한 경로).
-        trg = CB.schedule_random_ood!(; n = N_OOD, kinds = [:fault, :battery, :zone],
-            closed_lo = 8, closed_hi = CLOSED_HI, seed = seed)
-        println("  [hard] scheduled $(length(trg)) mixed OOD at closed=",
-            join(sort([t.closed_at for t in trg]), ","))
-    else
-        # [KO] soft 모드: 배터리 OOD 여러 개 + 완료수 ZONE_CLOSED 에 중앙 구역 하나.
-        CB.schedule_random_ood!(; n = N_BATTERY, kinds = [:battery], closed_lo = 8,
-            closed_hi = max(12, ZONE_CLOSED - 10), seed = seed)
-        CB.schedule_ood_at_closed!(ZONE_CLOSED, central_zone_action!)
-    end
-
-    # --- run the FULL sim loop, headless --------------------------------------
-    # [KO] 전체 시뮬(simulate!)을 화면저장 없이 끝까지 실행. status 는 :ok/:error, payload 는 결과.
-    status, payload = run_with_stack(2_000_000_000) do
-        CB.run_lego_demo(; ldraw_file = pp[:file_name], project_name = pp[:project_name],
-            model_scale = pp[:model_scale], num_robots = pp[:num_robots], assignment_mode = :greedy,
-            milp_optimizer = :highs, optimizer_time_limit = 60, log_level = Logging.Info,
-            rvo_flag = true, tangent_bug_flag = true, dispersion_flag = true,
-            save_animation = false, open_animation_at_end = false,
-            save_animation_along_the_way = false, write_results = false, overwrite_results = false,
-            look_for_previous_milp_solution = false, save_milp_solution = false,
-            max_num_iters_no_progress = MAXNP, return_env_before_sim = false)
-    end
-
-    if status == :error
-        # [KO] 실행이 예외로 죽었으면 예외 첫 줄을 verdict 에 기록하고 다음 seed 로.
-        write_verdict(seed, false, -1, -1, "exception",
-            first(split(sprint(showerror, payload), "\n")))
-        reset_globals!(); continue
-    end
-
-    env, _stats = payload          # [KO] 성공 payload 는 (env, 통계) 튜플. 통계는 여기선 안 씀(_stats).
-    total  = Graphs.nv(env.sched)
-    closed = length(env.cache.closed_set)
-    complete = CB.project_complete(env)
-    term = complete ? "complete" : "no_progress_terminate"   # [KO] 종료 사유
-    complete || terminal_report(env)          # dump the exact terminal stuck state for diagnosis
-                                              # [KO] 완주 못 했으면 막힌 상태를 진단 덤프
-    # [KO] 배터리가 켜져 있었으면 최소 SoC/편차 요약을 verdict 에 덧붙임.
-    batt = CB.BATTERY_FLEET[] === nothing ? "" :
-        (r = CB.battery_report(); "min_soc=$(round(r.min_soc,digits=3)) spread=$(round(r.soc_spread,digits=3))")
-    write_verdict(seed, complete, closed, total, term, batt)
-    reset_globals!()
-end
-
-println("\n>>> DONE. verdicts written to $VERDICT")
 end
 
 # =============================================================================
@@ -1423,183 +692,28 @@ println(nfail[] == 0 ? "ALL GREEN (spare 1:1 hand-off completes the build)" :
 end
 
 # =============================================================================
-# live_respec -- LIVE end-to-end: OOD -> Claude -> DSL -> verify -> admit -> re-solve,
-#   through the RUNNING Python LLM service. This is the LIVE sibling of mock_respec/
-#   mock_replace: real Claude does the NL->DSL translation. Builds the tractor env,
-#   steps to some completed work, then runs 2 live OOD rounds. Bad refs route to the
-#   safe fallback; valid re-specs are verified (completed work frozen) and re-solved.
-#   REQUIRES: the Python service UP (RESPEC_SERVICE_URL, default :8000) with a valid
-#   ANTHROPIC_API_KEY. If the service is down it reports and exits(0) (no LLM call).
+# 🔴 2026-08-29: `live_respec` 와 `selfheal` 시나리오를 **삭제**했다.
+#   둘 다 :8000 의 파이썬 `/propose` 서비스가 떠 있어야 했고(ANTHROPIC_API_KEY 필요),
+#   그 서비스의 유일한 구현이 `anthropic.Anthropic()` 이었다. 그 레인 전체가 죽은 것으로
+#   실측돼 삭제됐으므로(:8000 에 아무도 없음, 키 없음, 실행 스크립트 없음) 두 시나리오는
+#   되살릴 서비스가 없다. `mock_respec`·`mock_replace` 도 같은 이유로 사라졌다 —
+#   API 키는 안 썼지만 둘 다 `CB.llm_to_proposal` 로 그 `/propose` 이음새를 탔고,
+#   그 클라이언트가 이제 없다. 살아 있는 LLM 레인은 DSPy 하나이고 자기 이음새를 쓴다.
 # =============================================================================
-# [KO] 시나리오6: 진짜 Claude(실행 중인 파이썬 서비스)로 NL→DSL→검증→admit→재solve 하는 라이브 e2e.
-#      mock_respec/mock_replace 의 "진짜 LLM" 버전. tractor env 를 짓고 일부 진행시킨 뒤 라이브 OOD 2라운드.
-#      잘못된 참조는 안전 fallback 으로, 유효한 re-spec 은 (끝난 일 freeze 후) 검증·재solve. 서비스 없으면 exit(0).
-function scenario_live_respec()
-# A robot-fault re-spec triggers a real MILP re-solve (reassignment). Greedy
-# assembly never set a default optimizer, so set one with a feasibility-first gap
-# (return the first feasible integer solution rather than proving optimality) so
-# the re-solve is fast & reliable, and silence the per-solve HiGHS log spam.
-# [KO] 로봇 고장 re-spec 은 실제 MILP 재solve(재배정)를 유발함. greedy 조립은 기본 최적화기를 안 세웠으므로
-#      여기서 "최적 증명 말고 첫 실현해(feasible)만 빨리" 반환하도록 세팅(속도·안정) + HiGHS 로그 침묵.
-_setup_milp!()
 
-project_params = get_project_params(4)   # tractor
-
-println(">>> building env (assignment only, no simulation)...")
-env = run_with_stack(2_000_000_000) do   # [KO] 시뮬 없이 배정까지만 된 env 를 큰 스택에서 빌드
-    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
-    run_lego_demo(;
-        ldraw_file=project_params[:file_name],
-        project_name=project_params[:project_name],
-        model_scale=project_params[:model_scale],
-        num_robots=project_params[:num_robots],
-        assignment_mode=:greedy, milp_optimizer=:highs, optimizer_time_limit=60,
-        log_level=Logging.Error,   # silence the benign greedy-assignment @warn spam
-        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
-        open_animation_at_end=false, save_animation=false,
-        save_animation_along_the_way=false,
-        write_results=false, overwrite_results=false,
-        look_for_previous_milp_solution=false, save_milp_solution=false,
-        return_env_before_sim=true,
-    )
-end
-println(">>> env built: $(Graphs.nv(env.sched)) nodes")
-
-# Step a little so the freeze path is exercised live too (some completed work).
-# [KO] 조금 진행시켜 "완료된 일"을 만들어 둠 → freeze(끝난 일 고정) 경로도 라이브로 시험되게. _ = 안 쓰는 변수.
-for _ in 1:1500
-    CB.step_environment!(env); CB.update_planning_cache!(env, 0.0)
-    length(env.cache.closed_set) >= 20 && break   # [KO] 완료 20개 되면 멈춤
-end
-println(">>> stepped: closed=$(length(env.cache.closed_set)) active=$(length(env.cache.active_set))")
-
-# --- Service gate ------------------------------------------------------------
-# [KO] 서비스 관문: LLM 서비스가 없으면 (시뮬은 안 죽음, fallback 으로 감) 안내 후 정상 종료(0).
-if !CB.respec_service_ready()
-    println("""
-
-    !!! Python LLM service is NOT reachable at $(CB._RESPEC_SERVICE_URL).
-        Start it in another terminal (see header of this file), then re-run.
-        (The simulation itself never crashes on a down service — a missing
-         service just routes to the safe fallback.)
-    """)
-    exit(0)
-end
-println(">>> LLM service is UP. Running live OOD rounds...\n")
-
-# One live round: generate -> verify -> (admit:re-solve | reject:fallback).
-# Crash-safe: an unresolvable / ungrammatical LLM proposal is caught and treated
-# exactly as the production maybe_respecify! does — a Reject that routes to the
-# safe fallback, never reaching the solver.
-# [KO] 라이브 1라운드: LLM 생성 → 검증 → (admit 이면 재solve / reject 면 fallback).
-#      크래시 안전: 해석 불가/문법 오류 제안은 잡아서 solver 근처도 못 가게 안전 reject 처리(production 과 동일).
-function live_round(env, title, event)
-    println("\n┌──────────────  $title")
-    println("│ OOD event: ", event)
-    inv = CB.build_invariant(env)   # [KO] 불변식(끝난 일의 시작/끝 시각 고정 등)을 만들어 이후 재solve 를 제약
-    println("│ freeze: $(length(inv.frozen_t0)) t0 bounds, $(length(inv.frozen_tF)) tF bounds (completed work pinned)")
-
-    local proposal   # [KO] try 밖에서도 쓰기 위해 스코프를 미리 선언
-    try
-        # [KO] NL(event)을 Claude 에 보내 DSL 제안으로 번역. id_resolver = "R3" 같은 참조를 실제 노드 id 로 변환.
-        proposal = CB.llm_to_proposal(event, env; id_resolver = ref -> CB._default_id_resolver(env, ref))
-    catch err
-        msg = first(split(sprint(showerror, err), "\n"))
-        println("│ Claude's proposal could NOT be resolved to the DSL: ", msg)
-        println("└ RESULT: SAFELY REJECTED → fallback (nothing reached the solver).")
-        return (title, "REJECT (unresolvable) → fallback", "—")   # [KO] 해석 실패 = 안전 reject
-    end
-
-    println("│ Claude proposed $(length(proposal.constraints)) constraint(s):")
-    for c in proposal.constraints; println("│     ", c); end
-    isempty(proposal.rationale) || println("│ rationale: ", first(split(proposal.rationale, "\n")))
-
-    # A robot-fault (single ForbidAgent) cannot go through the generic compile path
-    # (it would silently compile to zero constraints -> hollow admit). Dispatch to
-    # the reassign machinery, exactly as the production maybe_respecify! now does.
-    # [KO] 로봇 고장(ForbidAgent 하나)은 일반 컴파일 경로로 가면 제약 0개로 조용히 "빈 admit"이 됨.
-    #      그래서 별도 재배정(reassign) 기계로 보냄(production maybe_respecify! 와 동일 처리).
-    if CB._is_robot_fault(proposal)
-        agent  = proposal.constraints[1].agent   # [KO] 고장난 에이전트
-        teams0 = length(CB.transport_teams_with_agent(env, agent; pending_only = true))   # 이전에 속했던 pending 팀 수
-        ms0    = CB.makespan(env.sched)          # [KO] 재배정 전 makespan
-        res    = CB.fault_robot_and_reassign!(env, agent; verbose = false)   # 고장+재배정 실행
-        if res.status == :admitted
-            ms1 = CB.makespan(env.sched)
-            println("│ ForbidAgent → reassign: $(agent) was on $(teams0) pending team(s), now on $(res.teams_after).")
-            println("└ RESULT: ADMIT (reassigned) → makespan $(round(ms0, digits=2)) → $(round(ms1, digits=2))")
-            return (title, "ADMIT (reassigned)",
-                    "teams $(teams0)→$(res.teams_after), makespan $(round(ms0,digits=2))→$(round(ms1,digits=2))")
-        else
-            println("└ RESULT: $(res.status) → fallback (reassignment infeasible; safe-stop, schedule uncorrupted).")
-            return (title, "$(res.status) → fallback", string(get(res, :reason, "—")))
-        end
-    end
-
-    # [KO] 그 외 제약(예: ForbidZone/deadline)은 검증(verify) → Admit 이면 freeze 제약 걸고 MILP 재solve 후 커밋.
-    verdict = CB.verify(proposal, env, inv)
-    if verdict isa CB.Admit
-        ms0 = CB.makespan(env.sched)
-        # [KO] 끝난 일(t0_/tF_)을 고정한 채, 승인된 제약을 추가로 넣어 스케줄을 다시 최적화.
-        milp = CB.formulate_milp(CB.SparseAdjacencyMILP(), env.sched, env.scene_tree;
-            optimizer=CB._respec_optimizer(), t0_=inv.frozen_t0, tF_=inv.frozen_tF,
-            extra_constraints=verdict.proposal)
-        CB.optimize!(milp)
-        CB.commit_respec!(env, milp, verdict.proposal)   # [KO] 재solve 결과를 env 에 반영(커밋)
-        ms1 = CB.makespan(env.sched)
-        println("└ RESULT: ADMIT ($(verdict.n_constraints) constr) → re-solved; makespan $(round(ms0,digits=2)) → $(round(ms1,digits=2))")
-        return (title, "ADMIT → re-solved", "makespan $(round(ms0,digits=2)) → $(round(ms1,digits=2))")
-    else
-        println("└ RESULT: REJECT(:$(verdict.reason)) → fallback. $(verdict.detail)")
-        return (title, "REJECT(:$(verdict.reason)) → fallback", verdict.detail)   # [KO] 검증 실패 = 안전 fallback
-    end
-end
-
-summary = Vector{Any}()   # [KO] 라운드별 결과(title, outcome, detail) 모음
-
-# ROUND 1: a natural-language robot fault. The model tends to name the robot
-# ("R3") rather than a schedule id — a real translation error the gate catches.
-# [KO] 라운드1: 자연어 로봇 고장. 모델은 스케줄 id 대신 "R3" 처럼 부르기 쉬움 → 그 번역 오류를 관문이 잡음.
-push!(summary, live_round(env, "ROUND 1: natural robot-fault event",
-    "Robot R3 reports a motor fault and is immobile and cannot perform any task."))
-
-# ROUND 2: a re-spec the model CAN express against real ids — we embed an actual
-# open node id and a generous deadline so it resolves, verifies, and admits.
-# [KO] 라운드2: 모델이 실제 id 로 표현 가능한 re-spec. 진짜 열린 노드 id + 넉넉한 deadline 을 심어 admit 되게.
-open_ids = [CB.get_vtx_id(env.sched, v) for v in Graphs.vertices(env.sched)
-            if !(CB.get_vtx_id(env.sched, v) in CB.build_invariant(env).closed_nodes)]   # [KO] 아직 안 끝난 노드 id 들
-tgt = string(open_ids[end])   # [KO] 그중 하나를 대상 노드로
-push!(summary, live_round(env, "ROUND 2: explicit deadline on a real node id",
-    "Operations note: node $tgt must be completed no later than time 100000."))
-
-println("\n╔══════════════  LIVE END-TO-END SUMMARY  ══════════════")
-for (title, outcome, detail) in summary
-    println("║ ", rpad(split(title, ":")[1], 8), " → ", outcome, detail == "—" ? "" : "   [$detail]")
-end
-println("╠═══════════════════════════════════════════════════════")
-println("║ Real OOD text → Claude → formal DSL → verified (completed work frozen).")
-println("║ Bad refs are rejected to the safe fallback; valid re-specs admitted & re-solved.")
-println("║ PROOF the LLM was really called: see 'POST /propose 200 OK' in the uvicorn")
-println("║ terminal — one line per round above.")
-println("╚═══════════════════════════════════════════════════════")
-end
 
 # ---- dispatcher -------------------------------------------------------------
 # [KO] "시나리오 키 -> 실행 함수" 표. 아래 실행부에서 이 표로 하나를 골라 부름.
 const SCENARIOS = Dict(
-    "mock_respec"   => scenario_mock_respec,
-    "mock_replace"  => scenario_mock_replace,
     "full_loop"     => scenario_full_loop,
-    "selfheal"      => scenario_selfheal,
     "spare_replace" => scenario_spare_replace,
-    "live_respec"   => scenario_live_respec,
 )
 end # module E2E
 
 # [KO] 이 파일을 직접 실행했을 때만 아래가 돎(엔트리포인트). 다른 데서 include 만 하면 실행 안 됨.
 if abspath(PROGRAM_FILE) == @__FILE__
-    # [KO] 키 우선순위: 환경변수 E2E > 명령줄 첫 인자 > 기본값 "mock_respec".
-    key = get(ENV, "E2E", isempty(ARGS) ? "mock_respec" : ARGS[1])
+    # [KO] 키 우선순위: 환경변수 E2E > 명령줄 첫 인자 > 기본값 "full_loop".
+    key = get(ENV, "E2E", isempty(ARGS) ? "full_loop" : ARGS[1])
     # [KO] 표에 없는 키면 사용 가능한 목록을 알려주며 에러(|| = 앞이 false 일 때만 뒤 실행).
     haskey(E2E.SCENARIOS, key) || error("unknown scenario '$key'. Available: $(join(sort(collect(keys(E2E.SCENARIOS))), ", "))")
     println(">>> running e2e scenario: $key")

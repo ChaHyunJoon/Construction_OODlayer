@@ -37,7 +37,6 @@
 #   deprioritize_integration -- soft AGENT_COST_BIAS mechanism on a REAL env (no LLM)
 #   battery_smoke            -- OFFLINE smoke test of the energy-aware adaptive layer (no env, no LLM)
 #   battery_safety           -- OFFLINE safety/verifiability test of the TIER-2 soft re-spec + bias registry
-#   llm_classification       -- Stage 3 REAL-LLM check (needs the Python service up + ANTHROPIC_API_KEY)
 #   respec_gate              -- LLM-free proof the verify GATE admits feasible / rejects infeasible re-specs (+freeze)
 #   respec_timing            -- LLM-free proof the ForbidWindow timing re-spec PERSISTS past commit (persist_milp_times!)
 #   respec_reassign          -- STAGE 1 smoke: robot fault -> remaining robots take over (fault_robot_and_reassign!)
@@ -47,7 +46,8 @@
 # e.g.
 #   julia +lts --project=. tools/tests.jl forbidzone_parse
 #   TEST=battery_smoke julia +lts --project=. tools/tests.jl
-# Note: battery_smoke/battery_safety are offline; llm_classification needs a LIVE LLM service.
+# Note: battery_smoke/battery_safety are offline. (2026-08-29: the `llm_classification`
+# key was removed with the Anthropic lane — it needed a live /propose service + ANTHROPIC_API_KEY.)
 # =============================================================================
 module Tests
 using ConstructionBots
@@ -1390,74 +1390,6 @@ exit(FAILN[] == 0 ? 0 : 1)
 end
 
 # =============================================================================
-# llm_classification -- Stage 3 REAL-LLM check: does the live service classify a natural-language
-#   OOD event into the CORRECT DSL kind (ForbidZone / ForbidAgent / ForbidWindow) and ground it
-#   onto valid ids? Turn-key: requires the Python service up and ANTHROPIC_API_KEY in THIS shell.
-#     1) In a shell WITH your key (PowerShell):
-#          cd src/respec/llm_service ; uvicorn server:app --host 127.0.0.1 --port 8000
-#     2) In another shell WITH your key:
-#          cd ConstructionBots.jl ; julia +lts --project=. tools/tests.jl llm_classification
-#   (default RESPEC_SERVICE_URL is http://127.0.0.1:8000)
-# =============================================================================
-# [검증 내용] Stage 3 "실제 LLM" 검사: 살아있는 Python 서비스가 자연어 OOD 문장을 올바른 DSL 종류
-#   (ForbidZone / ForbidAgent / ForbidWindow)로 분류하고 유효한 id 에 grounding(연결)하는지 본다.
-#   turn-key: Python 서비스 실행 + ANTHROPIC_API_KEY 가 이 쉘에 있어야 함(없으면 스킵/종료).
-function test_llm_classification()
-_setup_milp!(time_limit = 120.0)
-
-if !CB.respec_service_ready()   # LLM 서비스에 접속 안 되면 안내만 하고 종료(코드1)
-    println("LLM service NOT reachable at ", get(ENV, "RESPEC_SERVICE_URL", "http://127.0.0.1:8000"))
-    println("Start it first:  cd src/respec/llm_service ; uvicorn server:app --port 8000   (in a shell with ANTHROPIC_API_KEY)")
-    exit(1)
-end
-println(">>> service ready. building fast env (tractor, rvo off)...")
-pp = CB.get_project_params(4)
-env = run_with_stack(2_000_000_000) do
-    Logging.global_logger(Logging.ConsoleLogger(stderr, Logging.Error))  # 이 레인이 선언한 로그 레벨을 호출 **전에** 심는다 — run_lego_demo 이 반환 시 호출 시점의 로거를 복원하므로(전역 누수 수정), 반환 후 자기 시뮬 루프도 이 레벨로 조용히 돈다.
-    CB.run_lego_demo(; ldraw_file=pp[:file_name], project_name=pp[:project_name],
-        model_scale=pp[:model_scale], num_robots=pp[:num_robots], assignment_mode=:greedy,
-        milp_optimizer=:highs, optimizer_time_limit=60, log_level=Logging.Error,
-        rvo_flag=false, tangent_bug_flag=false, dispersion_flag=false,
-        open_animation_at_end=false, save_animation=false, write_results=false,
-        overwrite_results=false, look_for_previous_milp_solution=false,
-        save_milp_solution=false, return_env_before_sim=true)
-end
-
-# inject a central zone so the zones-descriptor is non-empty (a real spatial OOD)
-gs = CB.root_deposit_goals(env)
-zc = isempty(gs) ? [1.5, 0.96] : sum(gs) ./ length(gs)
-CB.clear_restriction_zones!(); CB.add_restriction_zone!(:zone, zc, 2.5)
-
-resolver = ref -> CB._default_id_resolver(env, ref)   # 문자열 참조 -> 실제 id 로 변환하는 함수
-kind_of(p) = isempty(p.constraints) ? :none : typeof(p.constraints[1]).name.name  # 제안의 첫 제약 "타입 이름" 추출
-
-# (자연어 문장, 기대하는 DSL 종류) 쌍들 — LLM 이 각 문장을 맞는 종류로 분류해야 통과.
-cases = [
-    ("A safety exclusion zone is now active over the central build area; robots must not enter or pass through it.", :ForbidZone),
-    ("Robot R2 has broken down and can no longer move; take it out of service.", :ForbidAgent),
-    ("The final assembly must not be worked on during the interval t=40 to t=70.", :ForbidWindow),
-]
-npass = 0
-println("\n==== LLM classification ====")
-for (event, want) in cases
-    got = :error
-    try
-        p = CB.llm_to_proposal(event, env; id_resolver = resolver)
-        got = kind_of(p)
-    catch e
-        got = Symbol("error:", typeof(e).name.name)
-    end
-    ok = got == want
-    ok && (npass += 1)
-    println(ok ? "  PASS" : "  FAIL", "  want=$want got=$got")
-    println("        event: ", first(event, 70), "...")
-end
-CB.clear_restriction_zones!()
-println("\n$(npass)/$(length(cases)) classified correctly")
-println(npass == length(cases) ? "ALL GREEN" : "SOME MISCLASSIFIED")
-end
-
-# =============================================================================
 # respec_gate -- Prove the verify GATE on a real schedule, no LLM. Builds a real env
 #   (assignment done, sim NOT started) and checks verify() ADMITS a non-binding
 #   constraint (feasible) and REJECTS an impossible one (:infeasible). Then a FREEZE
@@ -1797,7 +1729,6 @@ const TESTS = Dict(
     "deprioritize_integration" => test_deprioritize_integration,
     "battery_smoke"            => test_battery_smoke,
     "battery_safety"           => test_battery_safety,
-    "llm_classification"       => test_llm_classification,
     "respec_gate"              => test_respec_gate,
     "respec_timing"            => test_respec_timing,
     "respec_reassign"          => test_respec_reassign,

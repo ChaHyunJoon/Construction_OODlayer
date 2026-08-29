@@ -1,6 +1,22 @@
 # LLM Safety Layer — Improvements over SISL ConstructionBots & Self‑Evolution Roadmap
 **2026-06-27 · self-directed proposal**
 
+> 🔴 **2026-08-29 — the Anthropic `/propose` lane described below was REMOVED.**
+> This document describes the pipeline as it was when Julia POSTed to a Python
+> FastAPI service on :8000 (`llm_service/server.py` → `propose.py` →
+> `anthropic.Anthropic()`) through `llm_to_proposal` in `llm_bridge.jl`. That
+> service, its Julia client, and the `anthropic` dependency are all gone — the lane
+> was measured dead (nothing on :8000, no `ANTHROPIC_API_KEY`, no launcher in the
+> repo, and a default model id that was not a real dated Anthropic model).
+>
+> **What is still true:** the DSL, the typed parse (`_parse_proposal`), `verify()`,
+> the grounding enumerations, and the whole generate→verify→admit→re-solve backbone
+> are unchanged and still on the solver side. Only the *generator* changed: proposals
+> now arrive through the producer seam (`set_respec_producer!`), and the one surviving
+> LLM lane is DSPy (`llm_service/dspy_service.py`, `/macro` on :8077), which never
+> used this client. Read anything below about `/propose`, `server.py`, `propose.py`,
+> `llm_to_proposal` or `respec_service_ready` as history.
+
 연구 비전: *Safe Agentic AI for Multi-Robot Manufacturing Task Planning* (research_proposal_1pager.md).
 3 기둥 = **Orchestrate / Verify(★) / Scale & Recover**. 이 문서는 지금까지 만든 LLM 안전 레이어(`src/respec/`)가
 원본 ConstructionBots(SISL, RAS 2025) 대비 **무엇을 개선했는지**와, **안전·효율·비용 축에서 어떻게 더 진화시킬지**를

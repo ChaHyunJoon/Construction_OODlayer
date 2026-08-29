@@ -52,7 +52,7 @@ The machine that produced the 2026-07 results ran these versions:
 | **numpy** | **1.23.5** | **cannot be installed alongside dspy** |
 | scipy | 1.15.1 | |
 | dspy | 3.2.1 | declares `numpy>=1.26.0` |
-| openai / anthropic | 2.48.0 / 0.112.0 | |
+| openai | 2.48.0 | (2026-08-29: `anthropic` was removed with the /propose lane) |
 | fastapi / uvicorn / pydantic | 0.138.1 / 0.49.0 / 2.13.4 | |
 | matplotlib / python-pptx / psutil | 3.10.0 / 1.0.2 / 6.1.1 | |
 
@@ -155,10 +155,9 @@ julia +lts --project=. -e 'using Pkg; Pkg.instantiate()'
 
 ## 4. Known machine-specific leftovers
 
-Two helper scripts still carry absolute interpreter paths from the original
-machine and need editing after a move:
-
-- `tools/translate_eval.py:13`
-- `tools/verify_battery_translation.py:12`
-
-Everything else derives its paths from the script or package location.
+🔴 2026-08-29: the two helper scripts that used to be listed here
+(`tools/translate_eval.py`, `tools/verify_battery_translation.py`) were **removed**
+with the Anthropic lane — both needed `ANTHROPIC_API_KEY` and the deleted
+`/propose` service. Nothing in the repo now carries an absolute interpreter path
+from the original machine; everything derives its paths from the script or
+package location.

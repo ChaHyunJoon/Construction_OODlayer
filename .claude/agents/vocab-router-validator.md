@@ -42,10 +42,13 @@ You verify. You never implement, never fix, never commit, never dispatch subagen
 
 - Julia 는 `julia +lts` (1.10), **항상 `--project=.`**. `Manifest.toml` 이 1.10.11 에 고정.
 - Python 은 `/home/chahj578/Construction_OODlayer/.venv/bin/python`.
-- 🔴 **모든 pytest 호출에 `--ignore=src/respec/llm_service/test_propose.py`.** 그 파일은
-  import 시점에 `sys.exit(1)` 하는 스크립트이고 `ANTHROPIC_API_KEY` 가 있으면 수집 중에
-  **유료 API 호출을 발화시킨다.** 막을 conftest 가 없다. 이 플래그 없는 pytest 호출을 보면
-  그 자체를 결함으로 보고하라.
+- ✅ **2026-08-29: pytest 에 이제 ignore 플래그가 필요 없다 — 그냥 `.venv/bin/python -m pytest .`**
+  그것을 강제하던 `src/respec/llm_service/test_propose.py` 가 Anthropic 레인과 함께 **삭제됐다**.
+  (그 파일은 pytest 테스트가 아니라 import 시점에 `sys.exit(1)` 하는 스크립트였고,
+  `ANTHROPIC_API_KEY` 가 있으면 수집 중에 **유료 API 호출**을 발화시켰다 — 막을 conftest 도 없었다.)
+  삭제 후 실측: 플래그 없는 `pytest .` = **279 passed**, 그리고 `socket.connect` 를 전부
+  예외로 바꾼 재실행도 통과 — 네트워크 호출 0건.
+  🔴 이제 `--ignore=...test_propose.py` 플래그가 붙은 명령을 보면 그쪽이 낡은 것이다.
 - `Pkg.test()` 기준선은 **11 pass / 1 error**(Gurobi 라이선스 없음). 그 1 error 는 회귀가 아니다.
 - 🔴 `dspy_service.py` 의 `import numpy, sklearn.ensemble` 는 `import dspy` **앞에** 있어야
   한다. 순서가 깨지면 surrogate 로드가 죽고 레인이 **에러 없이** canonical 로 내려앉는다.

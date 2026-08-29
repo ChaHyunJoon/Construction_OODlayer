@@ -261,6 +261,13 @@ proposal_agent(prop) =
 
 **LLM 제안이 고른 agent 를 `enact_target` 과 똑같은 문을 통과시킨다.**
 
+⚠️ **2026-08-29(같은 날, 나중): 이 함수는 지금 호출자가 0개다.** 아래가 설명하는 우회로의
+주인공인 `render_demo.jl` 의 `llm_producer` 레인이 Anthropic 레인과 함께 삭제됐기 때문이다
+(그 레인은 `llm_to_proposal` 로 :8000 의 파이썬 `/propose` 서비스를 불렀고, 그 서비스의 유일한
+구현이 `anthropic.Anthropic()` 이었다). 함수를 지우지 않고 남긴 이유는 아래 실측 기록이
+"제안이 고른 agent 를 `enact_target` 과 같은 문으로 보낸다"는 **규칙**을 담고 있어서다 —
+LLM 제안을 집행하는 레인이 다시 생기면 규칙을 다시 유도하지 말고 이 함수를 부를 것.
+
 🔴 왜 이 함수가 있어야 했는가 (2026-08-29, Plan B / T2c — 실측된 우회로)
 ------------------------------------------------------------------------
 `render_demo.jl` 의 `llm_producer`(`DEMO_LLM=1`)는 `llm_to_proposal` 이 돌려준 제안을

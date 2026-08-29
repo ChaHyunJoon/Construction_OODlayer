@@ -35,7 +35,10 @@
 # `Core.kwcall` 정렬 메서드, (iii) 이 모듈 안의 `#post#NN` 본체. 라운드 3 의
 # `Base.delete_method` 는 (i) 만 지웠고 — 그런데 이 레포의 **모든 실제 호출자는 키워드 인자를
 # 넘기므로 전부 (ii) 로 디스패치한다.** 즉 "지웠다"고 주장한 뒤에도 해적 메서드가 실제 호출에
-# 계속 응답했다(라운드 3 validator 실측). 그게 왜 위험한가: `src/respec/llm_bridge.jl:76` 이
+# 계속 응답했다(라운드 3 validator 실측). ⚠️ 2026-08-29 정정: 아래가 인용하는 **호출 경로**
+# (`llm_bridge` 의 `HTTP.post` → `replan.jl` 의 3회 재시도)는 Anthropic 레인과 함께 삭제됐다.
+# 위험의 **모양**은 그대로다 — 심각도 분기가 producer 경로에 남아 있어 soft 이벤트는 여전히
+# 조용히 `:noop` 으로 떨어진다. 옛 경로 서술을 근거로 남긴다: `src/respec/llm_bridge.jl:76` 이
 # 키워드 인자로 `HTTP.post` 를 부르고, 그 호출자인 `src/respec/replan.jl:726` 이
 # `llm_to_proposal` 의 **모든 예외를 잡아 3회 재시도**한다. 끝내 실패했을 때의 처리는 이벤트
 # 안전도로 갈린다(라운드 5 L4 로 좁힌 서술 — 예전 주석은 이 갈림을 뭉갰다):

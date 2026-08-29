@@ -62,7 +62,11 @@ using GLPK                 # 오픈소스 선형/정수계획 솔버
 
 # RESPEC: verified LLM re-specification layer (thin HTTP client to the separate
 # Python LLM service; the verifier/compiler stay here on the solver side).
-using HTTP                  # HTTP 통신 — 별도의 파이썬 LLM 서비스에 요청을 보내는 데 사용
+using HTTP                  # ⚠️ 2026-08-29: 이 패키지 안에서는 이제 아무도 안 쓴다. 유일한 소비처였던
+                            #   `llm_bridge.jl` 의 `/propose` 클라이언트가 Anthropic 레인과 함께 삭제됐다.
+                            #   살아 있는 HTTP 소비처는 `tools/monitor/policy.jl`(DSPy `/decide`·`/health`)인데
+                            #   그 파일은 자기 `import HTTP` 를 갖고 있다. 지우지 않은 이유는 `CB.HTTP` 로
+                            #   접근하는 외부 코드를 조용히 깨뜨릴 수 있어서다 — 의도적으로 남긴 미사용 의존성.
 using JSON3                 # JSON 직렬화/역직렬화(LLM 서비스와 데이터 주고받기)
 
 
@@ -104,7 +108,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        RelocateBuild,                                             # 2번째 공간형 spec: 빌드 전체를 구역 밖으로 평행이동
        TranslateBuild,                                            # L2-b 원시연산(Task C3): 빌드 전체를 **주어진** Δ 만큼 평행이동
        verify, build_invariant, commit_respec!, reset_cache_resume!,  # 검증·불변식·커밋·재개
-       respec_service_ready, fault_robot_and_reassign!,           # LLM 서비스 준비확인·로봇 고장 후 재배정
+       fault_robot_and_reassign!,                                 # 로봇 고장 후 재배정 (2026-08-29: respec_service_ready 는 Anthropic 레인과 함께 삭제)
        replace_robot!, reform_stuck_teams!, hot_swap_robot!,      # OOD 1-1: 예비 로봇 1:1 인계 + 막힌 운반팀 재정립 + 정체성보존 hot-swap
        identity_violations, identity_summary, check_identity!,    # STEP A-1: 로봇 정체성 4-레지스트리 정합성 검사(읽기 전용)
        report_identity_delta,                                     # 변경 전/후 짝 보고(개수를 항상 남김)

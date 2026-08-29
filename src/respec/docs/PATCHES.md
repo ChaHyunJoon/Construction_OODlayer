@@ -1,5 +1,21 @@
 # Verified LLM Re-specification layer — wiring & patches
 
+> 🔴 **2026-08-29 — the Anthropic `/propose` lane described below was REMOVED.**
+> This document describes the pipeline as it was when Julia POSTed to a Python
+> FastAPI service on :8000 (`llm_service/server.py` → `propose.py` →
+> `anthropic.Anthropic()`) through `llm_to_proposal` in `llm_bridge.jl`. That
+> service, its Julia client, and the `anthropic` dependency are all gone — the lane
+> was measured dead (nothing on :8000, no `ANTHROPIC_API_KEY`, no launcher in the
+> repo, and a default model id that was not a real dated Anthropic model).
+>
+> **What is still true:** the DSL, the typed parse (`_parse_proposal`), `verify()`,
+> the grounding enumerations, and the whole generate→verify→admit→re-solve backbone
+> are unchanged and still on the solver side. Only the *generator* changed: proposals
+> now arrive through the producer seam (`set_respec_producer!`), and the one surviving
+> LLM lane is DSPy (`llm_service/dspy_service.py`, `/macro` on :8077), which never
+> used this client. Read anything below about `/propose`, `server.py`, `propose.py`,
+> `llm_to_proposal` or `respec_service_ready` as history.
+
 Backbone: **generate-as-formal-spec → verify → admit → re-solve → resume**, layered
 on top of the untouched MILP/RVO stack. The LLM only translates open-world (OOD)
 observations into a closed formal DSL; a verifier gate admits a proposal to the
