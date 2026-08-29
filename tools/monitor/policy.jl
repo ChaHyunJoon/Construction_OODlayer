@@ -534,7 +534,7 @@ end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
 function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
-                        agents = nothing)
+                        agents = nothing, zones = nothing)
     dspy_ready() || return nothing
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
@@ -575,6 +575,23 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    즉 tool 호출의 접지를 보증하는 층은 **오늘 없다.** 연결은 Plan B 의 경계 작업이다.
     #    (세 부분의 전체 서술과 근거는 스펙 §8 안전 스택 표 아래의 같은 날짜 정정.)
     agents === nothing || (payload["agents"] = agents)
+    # 살아 있는 출입금지 구역 설명(2026-08-29, Plan B / T4b). `agents` 와 **정확히 같은 규약**:
+    # 키워드로 받고, nothing 이 아닐 때만 싣는다 — 안 실으면 서비스의 `MacroRequest.zones` 가
+    # None 으로 남아 `_zones_block` 이 빈 문자열을 내므로, 비-호출자의 프롬프트는 바이트 단위로 그대로다.
+    #
+    # 🔴 왜 방어 코드가 여기 없는가. 서비스 쪽 `zones: Optional[List[Dict[str, Any]]]` 는
+    #    **잘못된 zones 를 422 로 떨어뜨린다**(degradation 이 아니다 — `test_zone_channel.py::
+    #    test_zones_are_rejected_at_the_pydantic_boundary_when_malformed`). 즉 원소 하나라도
+    #    dict 가 아니면 그 결정 요청이 통째로 죽는다. 그런데 이 자리에 가드를 두지 않는 것은
+    #    게으름이 아니라 **`open_zone_descriptors` 의 출력이 구조적으로 항상 well-formed 이기**
+    #    때문이다: 그 함수는 매 반복에서 `Dict{String,Any}(...)` 리터럴 하나만 push! 하므로
+    #    원소는 언제나 JSON object 이고(→ 422 불가), 렌더러가 실제로 읽는 네 키는 전부 non-null
+    #    이다 — `center` 는 `[Float64,Float64]`, `radius`/`work_reach` 는 `Float64`,
+    #    `covers` 는 `String[]`(`ac === nothing && continue` 가 구멍을 막는다), `covers_root` 는
+    #    `Bool`. null 이 **될 수 있는** 것은 `build_center`/`build_radius`/`max_shift` 셋뿐인데
+    #    (`isempty(env.staging_circles)` 인 씬), 값 타입이 `Any` 라 pydantic 이 null 을 받고
+    #    `_zones_block` 은 그 세 키를 **아예 렌더하지 않는다**. 그래서 이 채널로는 422 가 안 난다.
+    zones === nothing || (payload["zones"] = zones)
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
@@ -1307,7 +1324,8 @@ function decide_all(env, truth; nl::AbstractString = "")
     j = (POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
         nothing : service_decide(env, truth; nl = nl, descriptors = desc,
-                                 agents = CB.open_agent_descriptors(env))
+                                 agents = CB.open_agent_descriptors(env),
+                                 zones = CB.open_zone_descriptors(env))
 
     # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
     # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로
