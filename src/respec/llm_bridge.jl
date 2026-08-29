@@ -111,6 +111,42 @@ function open_node_id_strings(env)
 end
 
 """
+    _open_agent_pairs(env) -> Vector{Pair{String,RobotID}}
+
+씬 스케줄의 **열려 있는 로봇 열거 하나**. `open_agent_descriptors`(모델에게 보여 주는 집합)와
+`resolve_agent_id`(모델에게서 받아들이는 집합)가 **둘 다 이 함수만** 부른다 — 두 집합이
+갈라지는 순간 접지가 조용히 깨지기 때문이다(2026-08-29, Plan B / T2 커밋 2).
+
+`RobotGo` 노드에서 열거한다(로봇마다 최소 하나 있고, `entity(node).id` 가 그 로봇의 `RobotID`
+라는 것은 ForbidAgent 컴파일러의 `bound_to_agent` 가 쓰는 것과 같은 접근이다). 로봇당 한 번만
+(문자열 id 기준 중복 제거), 순서는 정점 순회 순서 그대로.
+
+`idstr` 은 `string(rid)` 다 — **손으로 쓰지 않는다.** 그래야 모델에게 보여 준 문자열과
+resolver 가 비교하는 문자열이 같은 호출에서 나온다.
+"""
+function _open_agent_pairs(env)
+    sched = env.sched                       # 스케줄 그래프 꺼내기
+    # Set{String}() : 문자열만 담는 빈 집합(중복 자동 제거). `{String}` 은 "원소 타입이 String"인 빈칸 채우기.
+    seen = Set{String}()                    # 이미 처리한 로봇 id 를 기억(중복 등록 방지)
+    out = Pair{String,RobotID}[]            # (id 문자열 => RobotID) 쌍의 목록
+    for v in Graphs.vertices(sched)         # 모든 정점 순회
+        node = get_node_from_id(sched, get_vtx_id(sched, v))  # 정점 v 의 id 로 실제 노드 객체를 가져옴
+        # `x isa T` : x 가 타입 T 의 인스턴스인지 검사(파이썬 isinstance). `A || continue` 와 합쳐
+        # "이 노드가 RobotGo 타입이 아니면 건너뛴다"는 뜻.
+        node isa RobotGo || continue
+        # try ... catch ... end 를 한 줄 표현식으로 사용: entity(node).id 가 성공하면 그 값을,
+        # 에러가 나면 catch 뒤의 nothing(파이썬 None 에 해당)을 rid 에 담음. `;` 는 catch 와 본문 구분.
+        rid = try entity(node).id catch; nothing end
+        rid isa RobotID || continue         # 꺼낸 값이 진짜 RobotID 타입이 아니면 건너뜀
+        idstr = string(rid)                 # RobotID 를 문자열로 변환(LLM·resolver 가 그대로 주고받을 형태)
+        idstr in seen && continue           # 이미 본 로봇이면 건너뜀(로봇당 한 번만)
+        push!(seen, idstr)                  # 처리했음을 기록
+        push!(out, idstr => rid)
+    end
+    return out
+end
+
+"""
     open_agent_descriptors(env) -> Vector{Dict{String,String}}
 
 The robots (agents) the model may forbid, one entry per distinct robot as
@@ -128,28 +164,36 @@ Enumerated from `RobotGo` nodes (every robot has at least one), where
 ForbidAgent compiler's `bound_to_agent` uses).
 """
 function open_agent_descriptors(env)
-    sched = env.sched                       # 스케줄 그래프 꺼내기
-    # Set{String}() : 문자열만 담는 빈 집합(중복 자동 제거). `{String}` 은 "원소 타입이 String"인 빈칸 채우기.
-    seen = Set{String}()                    # 이미 처리한 로봇 id 를 기억(중복 등록 방지)
-    # Vector{Dict{String,String}}() : "문자열→문자열 딕셔너리들의 배열"인 빈 벡터. (중첩 타입 매개변수)
-    out = Vector{Dict{String,String}}()     # 결과로 돌려줄 로봇 설명 목록
-    for v in Graphs.vertices(sched)         # 모든 정점 순회
-        node = get_node_from_id(sched, get_vtx_id(sched, v))  # 정점 v 의 id 로 실제 노드 객체를 가져옴
-        # `x isa T` : x 가 타입 T 의 인스턴스인지 검사(파이썬 isinstance). `A || continue` 와 합쳐
-        # "이 노드가 RobotGo 타입이 아니면 건너뛴다"는 뜻.
-        node isa RobotGo || continue
-        # try ... catch ... end 를 한 줄 표현식으로 사용: entity(node).id 가 성공하면 그 값을,
-        # 에러가 나면 catch 뒤의 nothing(파이썬 None 에 해당)을 rid 에 담음. `;` 는 catch 와 본문 구분.
-        rid = try entity(node).id catch; nothing end
-        rid isa RobotID || continue         # 꺼낸 값이 진짜 RobotID 타입이 아니면 건너뜀
-        idstr = string(rid)                 # RobotID 를 문자열로 변환(LLM·resolver 가 그대로 주고받을 형태)
-        idstr in seen && continue           # 이미 본 로봇이면 건너뜀(로봇당 한 번만)
-        push!(seen, idstr)                  # 처리했음을 기록
-        # 로봇 하나당 {id, label} 딕셔너리를 추가. label 은 "Robot R3 / robot 3" 같은 사람이 읽을 별칭.
-        # rid.id 는 RobotID 안의 실제 번호 필드.
-        push!(out, Dict("id" => idstr, "label" => "Robot R$(rid.id) / robot $(rid.id)"))
+    # 🔴 열거는 `_open_agent_pairs` **하나**다(2026-08-29, Plan B / T2 커밋 2). 모델에게
+    # **보여준 집합**과 `resolve_agent_id` 가 **받아들이는 집합**이 같은 코드에서 나와야
+    # 둘이 갈라질 수 없다. 손으로 복사한 두 번째 열거는 이 레포가 반복해서 데인 결함이다.
+    # 로봇 하나당 {id, label} 딕셔너리. label 은 "Robot R3 / robot 3" 같은 사람이 읽을 별칭이고
+    # `rid.id` 는 RobotID 안의 실제 번호 필드다.
+    return Dict{String,String}[Dict("id" => idstr,
+                                    "label" => "Robot R$(rid.id) / robot $(rid.id)")
+                               for (idstr, rid) in _open_agent_pairs(env)]
+end
+
+"""
+    resolve_agent_id(env, s::AbstractString) -> Union{RobotID,Nothing}
+
+LLM 이 tool 인자로 돌려준 agent 문자열 `s` 를 **실재 로봇**으로 되돌린다. 없으면 `nothing`.
+
+🔴 **`open_agent_descriptors` 가 도는 바로 그 열거를 돌면서 `string(rid) == s` 로 정확히
+일치하는 것만 돌려준다. 문자열을 파싱하지 않는다.** 이유가 구조적이다: 정수를 파싱해
+`RobotID(n)` 을 만들면 **열거에 없는 id 도 통과하고**, 그 순간 접지(grounding)가 사라진다 —
+모델이 `"RobotID(9999)"` 를 내도 집행이 그대로 받아들이게 된다. 두 함수가 같은
+`_open_agent_pairs` 를 부르므로 "보여준 집합" 과 "받아들이는 집합" 은 갈라질 수 없다.
+
+`nothing` 은 "이 문자열은 열거에 없다" 는 **측정 결과**다 — 호출부(`enact_target`)는 그때
+`truth.robot` 으로 떨어지고 그 사실을 `enact_agent_source = "truth"` 로 **기록한다**(조용한
+폴백 금지, 컨트롤러 판정 R2/R6).
+"""
+function resolve_agent_id(env, s::AbstractString)
+    for (idstr, rid) in _open_agent_pairs(env)
+        idstr == s && return rid
     end
-    return out                              # 로봇 설명 목록 반환
+    return nothing
 end
 
 """
