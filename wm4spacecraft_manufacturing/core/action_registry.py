@@ -29,7 +29,7 @@ REGISTRY_PATH = os.environ.get("ACTION_REGISTRY", os.path.join(HERE, "action_reg
 
 
 def load(path=None):
-    """레지스트리를 {id(int): {name, cost, kinds, doc}} 로 돌려준다."""
+    """레지스트리를 {id(int): {name, cost, kinds, mechanism, when_to_use}} 로 돌려준다."""
     p = path or REGISTRY_PATH
     with open(p, encoding="utf-8") as fh:
         blob = json.load(fh)
