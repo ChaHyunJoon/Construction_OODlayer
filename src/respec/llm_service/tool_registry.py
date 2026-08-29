@@ -122,6 +122,12 @@ def COMMON_ARGS(valid):
 
     🔴 `valid` 를 받는 이유는 `macro` enum 이 **이 사건의** legal 매크로여야 하기 때문이다.
     모듈 상수로 굳히면 사건마다 다른 메뉴를 못 따라간다.
+
+    🔴 fix round 1 (finding 2): `valid` 는 "이 사건에서 legal 한 매크로 전체" 가 아니라
+    **호출자가 실제로 tool 로 내보낼 매크로** 여야 한다 -- `build_tools` 참고. `ranking` 의
+    description 은 건드리지 않는다: 그건 스코어링 메뉴(legal 매크로 전체)를 말하고, `macro`
+    enum 은 콜 가능한 메뉴(실제로 나가는 tool)를 말한다 -- 원래 다른 것을 가리키므로 이건
+    "비대칭"이 아니라 설계다.
     """
     return {
         "macro": {"type": "string", "enum": list(valid),
@@ -160,9 +166,19 @@ def build_tools(agents, valid) -> List[dspy.Tool]:
 
     🔴 2026-08-29: 각 tool 이 `COMMON_ARGS(valid)` 를 함께 싣는다 — 그것이 이 설계에서 결정을
     받는 유일한 채널이다.
+
+    🔴 fix round 1 (finding 2): `COMMON_ARGS` 에는 `valid` 그대로가 아니라 **실제로 tool 로
+    나가는 매크로만** 넘긴다. 안 그러면(예: `agents=[]` 에 `valid=["Replace","NOOP"]`) agent
+    가 하나도 없어 `swap_body` 는 안 나가는데 남은 `no_intervention` 의 `macro` enum 에는
+    여전히 `"Replace"` 가 남아, 모델이 존재하지 않는 tool 을 legal 하다고 답할 길이 생긴다.
+    그 답은 Task 4 에서 `macro_tool_agree=False` 로 기록되는데, 이는 모델의 실수가 아니라
+    스키마 자신이 만든 불일치다.
     """
     agent_ids = [a["id"] for a in (agents or []) if a.get("id")]
-    common = COMMON_ARGS(valid)
+    emitted_macros = [m for m in (valid or [])
+                       if MACRO_TO_TOOL.get(m) is not None
+                       and (agent_ids or not _needs_agent(MACRO_TO_TOOL[m]))]
+    common = COMMON_ARGS(emitted_macros)
     out = []
     for macro in (valid or []):
         name = MACRO_TO_TOOL.get(macro)

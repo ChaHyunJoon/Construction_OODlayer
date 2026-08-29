@@ -360,18 +360,50 @@ def test_the_unique_args_are_untouched():
 
 
 def test_macro_arg_is_an_enum_of_this_events_legal_macros():
-    """어휘 밖 macro 를 낼 여지를 스키마에서 줄인다(강제는 아니다 -- F10)."""
+    """어휘 밖 macro 를 낼 여지를 스키마에서 줄인다(강제는 아니다 -- F10).
+
+    fix round 1 (finding 6): `tools[0]` 하나만 보면 불변이 나머지 tool 에서 깨져도 못 잡는다.
+    나오는 tool 전부를 돈다."""
     tools = reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "NOOP"])
+    for t in tools:
+        p = t.format_as_litellm_function_call()["function"]["parameters"]["properties"]
+        assert p["macro"]["enum"] == ["Replace", "NOOP"]
+
+
+def test_macro_enum_excludes_macros_that_have_no_emitted_tool():
+    """🔴 fix round 1 (finding 2): agents 가 비면 agent-taking 매크로(`Replace`)는 tool 자체가
+    안 나간다(`build_tools` 의 기존 설계, agent id 가 없으면 그 tool 을 아예 안 낸다). 그런데
+    `macro` enum 이 원래의 `valid` 를 그대로 받으면 안 나간 매크로 이름이 남아, 모델이
+    존재하지 않는 tool 을 legal 하다고 답할 길이 생긴다 -- 그 답은 Task 4 에서
+    `macro_tool_agree=False` 로 기록되는 불일치인데, 원인은 모델이 아니라 스키마다.
+    `no_intervention` 하나만 나가는 요청에서는 그 tool 의 `macro` enum 도 `["NOOP"]`
+    하나여야 한다."""
+    tools = reg.build_tools([], ["Replace", "NOOP"])
+    assert len(tools) == 1 and tools[0].name == "no_intervention"
     p = tools[0].format_as_litellm_function_call()["function"]["parameters"]["properties"]
-    assert p["macro"]["enum"] == ["Replace", "NOOP"]
+    assert p["macro"]["enum"] == ["NOOP"], \
+        "안 나간 매크로(Replace)가 여전히 enum 에 남아있다 -- 스키마가 스스로 불일치를 만든다"
 
 
 def test_all_args_are_required():
-    """🔴 `expressible` 이 빠지면 T2 합성의 방아쇠가 사라진다. 스키마에서 요구한다."""
+    """🔴 `expressible` 이 빠지면 T2 합성의 방아쇠가 사라진다 -- 이 시험의 핵심 주장은 첫
+    assert: 네 공통 인자가 전부 `required` 에 있다는 것이다.
+
+    fix round 1 (finding 4): 원래 이 시험은 `set(required) == set(properties)` 하나만
+    쟀는데, 이는 더 약한 별개의 불변이다 -- `expressible` 을 `COMMON_ARGS` 에서 통째로
+    지워도 이 등식은 (존재하는 인자들에 대해) 공허하게 계속 참이라 green 으로 남는다
+    (측정: dspy 는 `required = [k for k in args if "default" not in args[k]]` 로 계산한다
+    -- `dspy/adapters/types/tool.py:157` -- 그러니 이 등식이 지키는 것은 "인자 집합이
+    `expressible` 을 포함하는가" 가 아니라 "어떤 인자가 `default` 를 얻어 조용히 optional
+    이 되지 않았는가" 뿐이다). 그래서 두 번째 assert 로 그 원래 불변을 남기고, 첫 assert 로
+    docstring 이 실제로 주장하는 것을 잰다."""
     tools = reg.build_tools([{"id": "r1", "label": "a"}], ["Replace", "SwapBattery", "NOOP"])
     for t in tools:
         params = t.format_as_litellm_function_call()["function"]["parameters"]
-        assert set(params["required"]) == set(params["properties"])
+        for name in _COMMON:
+            assert name in params["required"], "%s 에 %s 가 required 에 없다" % (t.name, name)
+        assert set(params["required"]) == set(params["properties"]), \
+            "인자가 `default` 를 얻어 조용히 optional 이 됐다"
 
 
 def test_expressible_description_separates_the_two_events():
