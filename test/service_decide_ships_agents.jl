@@ -85,7 +85,13 @@ using ConstructionBots
 const CB = ConstructionBots
 import HTTP, JSON3
 import Random
-import Sockets
+# 🔴 `Sockets` 를 **직접 import 하지 않는다**(라운드 5 K1). stdlib 이라도 `Project.toml` 의
+# `[deps]` 에 없으면 `Pkg.test()` 가 만드는 **샌드박스 환경**에서 안 풀린다 — 실측:
+# `LoadError: ArgumentError: Package Sockets not found in current path.` 로 이 게이트가 통째로
+# 에러였다(`test/runtests.jl:128`). 단독 실행(`julia --project=.`)은 기본 `LOAD_PATH` 의
+# `@stdlib` 덕에 그냥 풀려서 초록이었다 — 그래서 라운드 4 의 "단독 초록" 은 스위트에 대한
+# 증거가 아니었다. `HTTP` 가 `Sockets` 에 의존하고 그 바인딩을 그대로 들고 있으므로
+# `HTTP.Sockets.*` 로 닿는다: 공유 파일인 `Project.toml` 을 건드릴 이유가 없다.
 # Graphs 는 policy.jl 의 `_agent_pending`(ood_features 경유, service_decide 가 부른다)이 쓴다
 # -- policy.jl 은 스크립트라 자기 의존성을 안 들고 온다(CLAUDE.md Gotchas). policy_macro_binding.jl
 # ·battery_menu_lanes_agree.jl 은 service_decide 를 안 불러서 이게 없어도 됐다; 이 파일은 (4)
@@ -101,7 +107,7 @@ isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "n
 # 핸들러는 서버 태스크에서 돌지만, 클라이언트(`HTTP.post`)가 응답을 받을 때까지 블록하므로
 # `_CAPTURED_BODY[]` 를 아래에서 읽는 시점엔 쓰기가 이미 끝나 있다.
 const _CAPTURED_BODY = Ref{Union{Nothing,String}}(nothing)
-const _SERVER = HTTP.serve!(Sockets.localhost, 0; listenany = true, verbose = -1) do req
+const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose = -1) do req
     if req.target == "/health"
         # policy.jl 의 `dspy_ready()` 가 찌르는 자리. 여기서 200 을 안 주면 `service_decide` 가
         # 곧장 nothing 을 돌려주고 (4) 는 "본문을 못 받았다"로 **빨개진다**(조용히 안 샌다).
@@ -120,10 +126,18 @@ const _PORT = HTTP.Servers.port(_SERVER)
 # 도 `decide_all` 도 `dspy_ready` 도 그 include 를 통해 **이 모듈 안에서만** 정의된다.
 # `const DSPY_URL`(policy.jl:19)은 **include 시점에 한 번** ENV 에서 읽히므로, 그 순간에만
 # ENV 를 우리 포트로 돌려놓고 곧바로 되돌린다.
+#
+# 🔴 (라운드 5 K3) `_SERVER` 를 연 뒤부터 모듈 본문이 끝날 때까지, **밖으로 나가는 모든 길**에
+# `close(_SERVER)` 가 있어야 한다. 아래 세 곳이 그 전부다: (i) 이 include, (ii) `TENV` 구축,
+# (iii) 테스트 블록. 라운드 4 는 (iii) 만 감쌌다 — (i)/(ii) 가 던지면 모듈 본문이 (iii) 의
+# `try/finally` 에 닿기 전에 중단돼 리스너가 프로세스 수명 내내 샜다(실측: 아래 K3-a/K3-b).
 const _PREV_DSPY_URL = get(ENV, "DSPY_URL", nothing)
 ENV["DSPY_URL"] = "http://127.0.0.1:$(_PORT)"
 try
     include(joinpath(REPO, "tools", "monitor", "policy.jl"))
+catch
+    close(_SERVER)   # (i) 여기서 죽으면 아래 (iii) 의 finally 에 영영 못 닿는다
+    rethrow()
 finally
     _PREV_DSPY_URL === nothing ? delete!(ENV, "DSPY_URL") : (ENV["DSPY_URL"] = _PREV_DSPY_URL)
 end
@@ -134,16 +148,22 @@ end
 # **스케줄 그래프**뿐이고, 그것은 `run_lego_demo` 가 return_env_before_sim=true 로 돌려주는
 # 시점에 이미 완성돼 있다(로봇 배정까지 끝난 뒤). `@testset` 블록은 로컬 스코프라 `const` 를
 # 그 안에 못 두므로, 모듈 최상위(테스트 블록 바깥)에서 짓는다.
-const TENV = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr",
-                                project_name = "service_decide_agents",
-                                num_robots = 4, assignment_mode = :greedy,
-                                n_spare_per_pool = 2,
-                                open_animation_at_end = false, save_animation = false,
-                                write_results = false, return_env_before_sim = true,
-                                rng = Random.MersenneTwister(1))
+const TENV = try
+    CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr",
+                       project_name = "service_decide_agents",
+                       num_robots = 4, assignment_mode = :greedy,
+                       n_spare_per_pool = 2,
+                       open_animation_at_end = false, save_animation = false,
+                       write_results = false, return_env_before_sim = true,
+                       rng = Random.MersenneTwister(1))
+catch
+    close(_SERVER)   # (ii) 씬 구축이 던져도 리스너는 남기지 않는다
+    rethrow()
+end
 
-# `try/finally` 는 오직 **서버를 닫기 위한** 것이다(테스트가 통과하든, 어서션이 예외를 던지든).
-# 예외를 삼키지 않으므로 실패는 그대로 위로 전파된다 — 라운드 3 의 `catch e` / 재던짐 분기는
+# (iii) 마지막 길. `try/finally` 는 오직 **서버를 닫기 위한** 것이다(테스트가 통과하든,
+# 어서션이 예외를 던지든). 예외를 삼키지 않으므로 실패는 그대로 위로 전파된다 — 라운드 3 의
+# `catch e` / 재던짐 분기는
 # 라운드 4 에서 제거했다(J4): `test/runtests.jl:118-120` 아래서는 이 testset 이 **중첩**이라
 # 실패한 `@test` 가 부모로 기록될 뿐 `TestSetException` 이 여기서 던져지지 않는다 — 그 분기는
 # 실제로 도는 배선에서 한 번도 안 탔다(단독 실행에서만 탔다).
