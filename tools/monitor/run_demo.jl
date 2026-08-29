@@ -47,10 +47,8 @@ const OODC   = lowercase(get(ENV, "DEMO_OOD", "fault"))
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
 # battery OOD 의 severity 손잡이(떨어뜨릴 SoC 양). 0.9=심각(교체가 정답), 0.45 정도면 애매한 구간.
 const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.9")), 0.05, 0.99) catch; 0.9 end
-# 🔴 2026-08-24 (spec §5.5, Task 6): `DEMO_REFORM` · `DEMO_REFORM_MAX` 손잡이를 지웠다.
-# 그 둘이 몰던 것은 `record_ood_truth!(..., CB.ReformTruth())` 하나뿐이고, `ReformTruth` 는
-# 이 커밋에서 사건 종류 자체로 삭제됐다(ood_truth.jl). 손잡이만 남기면 `DEMO_REFORM>0` 이
-# 존재하지 않는 타입을 만들려다 `try/catch` 에 삼켜져 **조용히 아무 일도 안 하는 기능**이 된다.
+# 무진전 몇 스텝마다 "팀 교착" 사건을 결정 레이어에 올릴지. 0=끔(기존 데모 재현 그대로).
+# 오라클 생성기의 DS_REFORM(기본 120)에 대응한다 — 데모에는 그동안 이 장치가 아예 없었다.
 # 빌드 RNG seed. 기존 데모는 1 로 고정돼 있어 **한 판밖에 못 봤다** — 2x2 대조를 여러 seed 로
 # 반복하려면 노브가 필요하다. 기본 1 이므로 기존 스트림 재현은 그대로다.
 const DEMO_SEED = try parse(Int, get(ENV, "DEMO_SEED", "1")) catch; 1 end
@@ -235,9 +233,11 @@ function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     return nothing
 end
 
+include(joinpath(@__DIR__, "zone_gate.jl"))     # DEMO_ZONE/DEMO_ZONE_AT 게이트(두 엔진 공용)
 include(joinpath(@__DIR__, "zone_inject.jl"))   # DEMO_ZONE_AT 용 선언적 주입기
 
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
+include(joinpath(@__DIR__, "enact.jl"))    # 매크로 집행 사슬(테스트가 태울 수 있게 뽑아 둔 것)
 
 # 판 시작 = 여기다, `simulate_case!` 가 아니다. pre-sim OOD arming 블록(아래, DEMO_ZONE_AT 설정
 # 시나 DEMO_ZONE_MODE != "blocking" 일 때)이 `simulate_case!` **호출 전에** `handle_ood!` 를 불러
@@ -371,140 +371,14 @@ function handle_ood!(env, truth, nl)
         "dp_miss"  => (try get(decision.policies["dp"], "dp_miss", nothing) catch; nothing end),
         "nl"       => String(nl))
     push!(_DECISIONS, this_decision)
-    # spec §9(a) 배터리/에너지 훅 활성 검사. 이 데모는 RESPEC_ENABLED=false 로 두고 복구를 직접
-    # 몰기 때문에, replan.jl 의 `[RESPEC] ... energy term` 로그가 있는 maybe_respecify! 경로를
-    # 타지 않는다. 그래서 여기서 직접 본다: 매크로 집행이 MILP 를 다시 정식화했다면
-    # (rebalance_for_battery! 등) LAST_AUTO_EFFICIENCY_W[] > 0 이어야 한다 = 전역 κ 가 그 재풀이에도
-    # 실렸다는 뜻. (0 으로 먼저 지워야 이전 결정의 값이 새 나가지 않는다 — Ref 는 sticky 하다.)
-    #
-    # ⚠️ 세 상태를 구분해야 한다(리뷰 I-3). n_candidate_edges=0 은 "재풀이는 했는데 후보가 없었다"
-    #   와 "재풀이 자체가 없었다"를 구별하지 못한다 — Replace/ReformTeam/RelocateBuild 는
-    #   formulate_milp 을 아예 안 부르므로 항상 후자다. 그래서 센티넬 Dict 를 심어 둔다:
-    #   formulate_milp 이 돌면 LAST_EDGE_COSTS[] 를 **새 Dict 로 교체**하므로 `===` 가 깨진다.
-    local _milp_sentinel = Dict{Tuple{Int,Int},Float64}()
-    CB.LAST_AUTO_EFFICIENCY_W[] = 0.0
-    CB.LAST_EDGE_COSTS[] = _milp_sentinel
-    # 이 사슬은 최종 `else` 가 없고 두 분기는 `truth isa CB.ZoneTruth` 가드가 걸려 있다 — 그래서
-    # 지원 안 하는 매크로(예: fault 사건에 ForbidZone)로 deviate 하면 사슬을 아무 일 없이 통과해
-    # 세계가 안 바뀌는데도 verdict 는 "집행했다"고 말할 수 있다(2026-08-17 재리뷰 F2). 각 분기가
-    # 실제로 탔는지를 여기 플래그로 남긴다 — 조건·순서·본문은 그대로, 계측만 얹는다.
-    local enact_applied = false
-    local ran_milp = false      # G6(spec §5.5): 이 결정에서 f 가 솔버를 불렀는가
-    try
-        if mac == "NOOP"
-            enact_applied = true
-            println("[recover] $tag → NOOP (정책이 개입하지 않기로 결정)")
-        elseif mac == "Replace"
-            # ⚠️ 2026-08-17 재리뷰 C1(B): `enact_applied` 는 **가드 안쪽**이어야 한다. `ReformTruth`
-            # 는 필드가 없는 struct 이고(`src/navigator/ood_truth.jl:97-98`) `ZoneTruth` 에는
-            # `robot` 필드가 없다(`:67-72`) — 가드 밖에 두면 reform/zone 사건에 Replace 로
-            # deviate 했을 때 이 분기가 매치는 됐지만 `hasproperty` 가 false 라 아무 일도 안
-            # 일어났는데 `enact_applied=true` 로 거짓 보고한다.
-            if hasproperty(truth, :robot)
-                enact_applied = true
-                CB.hot_swap_robot!(env, truth.robot; mode = :via_depot, verbose = false)
-                if truth isa CB.BatteryTruth
-                    local f = CB.BATTERY_FLEET[]                   # 스왑된 본체=새 배터리 → SoC 회복
-                    (f !== nothing && haskey(f.soc, truth.robot)) && (f.soc[truth.robot] = 1.0)
-                end
-            end
-        elseif mac == "SwapBattery"
-            # 2026-08-06 (Ch-A): 현장 배터리 교체. Replace 와 달리 **창고 예비 본체를 안 먹는다** —
-            # 그게 두 팔을 따로 두는 이유이고(spec_dsl.jl), 방전 사건에서 싼 정답이 되는 근거다.
-            # 씬트리·스케줄을 안 건드리므로 정체성 위반이 원리적으로 불가능하다.
-            # `enact_applied` 는 Replace 와 같은 이유로 가드 안쪽(2026-08-17 재리뷰 C1(B)).
-            if hasproperty(truth, :robot)
-                enact_applied = true
-                local sw = CB.swap_battery!(env, truth.robot; verbose = false)
-                println("[battery] swap=$(sw.status) soc_before=$(get(sw, :soc_before, nothing))")
-            end
-        elseif mac == "ForbidZone" && truth isa CB.ZoneTruth
-            enact_applied = true
-            # A zone can cover several staging workspaces. Relocate every
-            # blocked subassembly, then minimally translate the whole build
-            # only if fixed/root goals remain covered. Keep the zone active so
-            # routing and the post-RVO clearance gate enforce it continuously.
-            local keys = Symbol[truth.zone]
-            local staged = CB.restage_all_blocked!(env;
-                zone_keys = keys, resume = true, verbose = false)
-            local recovery = staged
-            local overlaps = CB._count_future_work_overlaps(env;
-                zone_keys = keys)
-            local corrections = 0
-            while overlaps > 0 && corrections < 4
-                recovery = CB.translate_whole_build!(env;
-                    zone_keys = keys, resume = true, verbose = false)
-                corrections += 1
-                recovery.status in (:translated, :already_clear, :residual_blocked) || break
-                overlaps = CB._count_future_work_overlaps(env;
-                    zone_keys = keys)
-            end
-            local residual = CB._count_future_work_overlaps(env;
-                zone_keys = keys)
-            residual == 0 || error(
-                "zone recovery left $residual future work discs inside $(truth.zone)")
-            println("[zone] staging=$(staged.status) final=$(recovery.status) " *
-                    "corrections=$corrections active_zone=$(truth.zone) residual=$residual")
-            # 좁은 공장에선 지속 존이 로봇 경로를 막아 nav 교착 → 조립체를 안전지대로 옮긴 뒤
-            # 일시 장애를 해제(transient obstruction)해 완주시킨다. respec(ForbidZone)은 이미 기록됨.
-        elseif mac == "RelocateBuild" && truth isa CB.ZoneTruth
-            enact_applied = true
-            # 2026-08-04: zone 사건의 기본 개입 팔. ForbidZone 분기와 달리 **조립체별 재적치를
-            # 아예 건너뛰고** 빌드 전체를 한 번에 옮긴다(그 전제조건이 빌드 중반에 사라지므로).
-            # 이 분기가 없으면 LLM 이 RelocateBuild 를 골라도 아무 일도 안 일어나고, UI 에는
-            # "LLM 이 개입했다"고 찍히는 최악의 조용한 거짓말이 된다.
-            local zkeys = Symbol[truth.zone]
-            local wb = CB.translate_whole_build!(env; zone_keys = zkeys, resume = true, verbose = true)
-            local left = CB._count_future_work_overlaps(env; zone_keys = zkeys)
-            println("[zone] whole-build=$(wb.status) Δ=$(get(wb, :delta, nothing)) " *
-                    "active_zone=$(truth.zone) residual_work_discs=$left")
-            # :already_clear = Δ0. 구역이 미완 목표를 하나도 안 덮어 옮길 필요가 없었던 경우이며
-            # 실패가 아니다(예전에는 :translated 로 뭉뚱그려져 "0 m 이동"이 성공으로 찍혔다).
-            wb.status in (:translated, :already_clear) ||
-                @warn "RelocateBuild 가 구역을 못 벗어남" status=wb.status residual=left
-        elseif mac == "ReformTeam"
-            enact_applied = true
-            # 루트 엔드게임 교착 복구. 2026-08-04 규명: 이 트윈의 완주 실패는 **전부 루트에서만**
-            # 일어나고(하위 조립체는 항상 7/7 done), 얼어붙는 것은 TransportUnitGo/DepositCargo 사슬이다.
-            # 오라클 생성기는 set_reform_interval! 로 배경 재정렬을 도는데 이 데모는 그게 없어서
-            # 한 번 끼면 그대로 죽었다. 단계적으로 올린다: 팀 재정립 → 안 되면 직렬화 관문 해소.
-            local rec = try CB.recover_stalled_teams!(env) catch e
-                @warn "recover_stalled_teams! 실패" exception=e; (status = :error,)
-            end
-            println("[reform] recover=$(rec.status)")
-            if rec.status in (:snapped, :force_snapped, :restaged, :carrier_closed, :carrier_advanced)
-                CB.reset_cache_resume!(env.cache, env.sched)
-            else
-                local wedge = try CB.resolve_schedule_wedge!(env) catch e
-                    @warn "resolve_schedule_wedge! 실패" exception=e; (status = :no_wedge,)
-                end
-                println("[reform] wedge=$(wedge.status)")
-                wedge.status == :unwedged && CB.reset_cache_resume!(env.cache, env.sched)
-            end
-        end
-        # enact_applied 가 false 면 위 "→ $mac" 은 거짓말이다 — 어느 분기도 안 탔다는 뜻이므로
-        # 그 사실을 로그 문구 자체에 남긴다(2026-08-17 재리뷰 F2). 사슬의 조건·순서·본문은
-        # 그대로다 — 이 줄만 계측이다.
-        local _applied_note = enact_applied ? "" :
-            " [집행 사슬 무동작: 이 사건 타입엔 $(mac) 분기가 없거나 가드에 안 걸렸다]"
-        println("[recover] $tag → $mac$(_applied_note)  (closed=", length(env.cache.closed_set), ")")
-        ran_milp = !(CB.LAST_EDGE_COSTS[] === _milp_sentinel)   # 센티넬이 그대로면 재풀이 없음
-        if CB.LAST_AUTO_EFFICIENCY_W[] > 0.0
-            println("[recover] energy term ON for this re-solve (auto w_eff=",
-                    round(CB.LAST_AUTO_EFFICIENCY_W[]; sigdigits = 3),
-                    ", κ=", CB.AUTO_EFFICIENCY_KAPPA[], ")")
-        elseif !ran_milp
-            println("[recover] energy term N/A for $mac — 이 분기는 formulate_milp 을 아예 부르지 ",
-                    "않는다(재풀이 없음). κ 와 무관한 상태다")
-        else
-            println("[recover] energy term NOT active for $mac — 재풀이는 했다(κ=",
-                    CB.AUTO_EFFICIENCY_KAPPA[], ", n_candidate_edges=",
-                    length(CB.LAST_EDGE_COSTS[]),
-                    "). 후보 엣지가 0 이면 재배정할 자유도가 없어 에너지 항이 실릴 데가 없다는 뜻이다")
-        end
-    catch e
-        println("[recover] $tag ($mac) FAILED: ", first(split(sprint(showerror, e), "\n")))
-    end
+    # ---- 집행 사슬 (2026-08-29, Plan B / T2 커밋 1) ------------------------------------
+    # 사슬 본체는 `tools/monitor/enact.jl` 로 **그대로** 옮겼다(순수 이동). 이유는 그 파일
+    # 헤더에 있다(컨트롤러 판정 R5): 이 파일은 최상위에서 데모를 돌리는 스크립트라 테스트가
+    # include 할 수 없고, 사슬이 여기 있는 한 게이트가 생산 코드를 태울 방법이 없다.
+    local _enacted = enact_macro!(env, truth, mac,
+                                  hasproperty(truth, :robot) ? truth.robot : nothing)
+    local enact_applied = _enacted.enact_applied
+    local ran_milp = _enacted.ran_milp
     # 이 결정 행에 "집행 사슬이 실제로 뭔가 했는가" 를 남긴다 — `deviate_valid`(메뉴 질문)와는
     # 다른 질문이다(2026-08-17 재리뷰 F2, "Critical" 수정). deviate 로 갈아 끼운 팔이 메뉴에는
     # 있었는데(deviate_valid=true) 사슬의 truth-타입 가드에 안 걸려 무동작으로 통과할 수 있다 —
@@ -716,6 +590,10 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
         local skinds = isempty(kinds) ? Symbol[:fault, :battery] : copy(kinds)
         # zonecore 는 이 경로에서 다루지 않는다(중앙 core zone 은 NOOP 이 정답인 별개 가족).
         replace!(skinds, :zonecore => :zone)
+        # 2026-08-25: `DEMO_ZONE=1` 이 이 경로에도 닿아야 한다. 안 그러면 stream3 판에서 그
+        # 손잡이가 **조용한 no-op** 이 되고, 아래 `:zone` 분기(주입기까지 이미 쓰여 있다)는
+        # 계속 도달 불가로 남는다. 기본값 0 이므로 기존 stream3 스윕은 그대로다.
+        zone_requested() && push!(skinds, :zone)
         unique!(skinds)
         local n_ev = demo_n > 0 ? demo_n : max(3, length(skinds))
         local lo = frac_of(DEMO_OOD_LO); local hi = max(lo + 1, frac_of(DEMO_OOD_HI))
@@ -749,7 +627,13 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
                 "[$(join(drawn, ", "))] kinds=$(join(string.(skinds), "/")) " *
                 "(range $lo..$hi of $n_total, severe_frac=$(DEMO_OOD_SEVFRAC))")
     else
-    if :zone in kinds                                     # zone: inject + recover ONCE, before any build step
+    # 🔴 2026-08-25: 조건이 `:zone in kinds` 였다. 2026-08-24 (spec §5.1) 가 zone 을 `case_kinds`
+    # 에서 빼면서 그 조건은 **영원히 false** 가 됐고(그 함수는 zone 계열 인자를 error 로 거부한다),
+    # 아래 주입기 셋이 통째로 도달 불가가 됐다 — 에러 없이. "zone 을 행동 어휘에서 뺐다" 와
+    # "zone 사건을 심지 않는다" 는 다른 결정인데 한 손잡이에 묶여 있었다. 이제 `DEMO_ZONE`
+    # (또는 `DEMO_ZONE_AT`)이 가른다. 기본값 0 이므로 기존 판의 재현은 한 비트도 안 바뀐다.
+    # 술어의 진실원은 `zone_gate.jl` 하나다(render_demo.jl 과 공유 · test_zone_gate.jl 이 지킨다).
+    if zone_requested()                                   # zone: inject + recover ONCE, before any build step
         # DEMO_ZONE_AT 이 있으면 **사람이 고른 좌표**를 심는다(oracle/out/fz_presim.csv 카탈로그).
         # 카탈로그 재현이 걸린 경로이므로 이 우선순위는 그대로 둔다.
         #
@@ -821,7 +705,7 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
         end
     end
     end   # if DEMO_OOD_SEED > 0 ... else ...
-    n_zone = (:zone in kinds) ? 1 : 0                     # zone is ALWAYS fixed at 1 (transform-safe)
+    n_zone = zone_requested() ? 1 : 0                     # zone is ALWAYS fixed at 1 (transform-safe)
     rk_str = isempty(robot_kinds) ? "none" : join(string.(robot_kinds), "/")
     n_tag = demo_n > 0 ? " (DEMO_N)" : ""
     println(">>> OOD armed: zone×$(n_zone) + $(rk_str)×$(n_robot)$(n_tag) @closed≈$(ats)")
@@ -859,24 +743,20 @@ function simulate_case!(env, n_total; max_steps = 20_000, stall_limit = 2_500)
         CB.monitor_track_schedule_step!(env, k; dt=env.dt)
         (k % 50 == 0) && CB.monitor_emit!(env, k)          # 배치마다 프레임 방출
         nc = length(env.cache.closed_set)
+        # 빌드가 실제로 전진했으면 reform 예산도 되돌린다(`render_demo.jl:566-571` 과 동일 규칙).
+        # 즉 DEMO_REFORM_MAX 는 "평생 N 회"가 아니라 "**연속** 무성과 N 회"를 뜻한다.
         # 배터리 교체 대기 중의 정지는 **의도된 라인 정지**이지 교착이 아니다(battery_courier.jl).
         # 여기서 세면 stall_limit 워치독이 배송 왕복(창고 D=20·4 m/s 기준 수백 스텝)을 교착으로
-        # 오판해 판을 STALL 로 끝내고 만다.
+        # 오판해 판을 STALL 로 끝내고, 위의 reform 발화도 없는 팀 교착을 만들어 낸다.
         # render_demo.jl 쪽(demo_utils.simulate!)에 넣은 것과 같은 가드다 — 두 엔진이 같은 세계여야 한다.
         if (try CB.battery_swap_halt_active() catch; false end)
             # 카운터를 그대로 둔다(리셋도 증가도 아님) — 정지 전의 진전 이력을 보존한다.
         elseif nc > last_closed; last_closed = nc; stall = 0; else; stall += 1; end
-        # 🔴 2026-08-24 (spec §5.5, Task 6): 여기 있던 두 번째 reform 발화 경로
-        # (`DEMO_REFORM` 배수마다 `record_ood_truth!(rnl, CB.ReformTruth())`)를 지웠다.
-        # 이유는 하나가 아니라 셋이고 전부 조용한 종류다:
-        #   (1) `ReformTruth` 타입이 이 커밋에서 삭제됐다 — 남겨 두면 `UndefVarError` 가 바로
-        #       위 `try/catch` 에 삼켜져 기능이 **말없이** 죽는다.
-        #   (2) `canonical_respec(::ReformTruth)` 는 2026-08-20 4팔 축소에서 이미 사라져 있었다.
-        #       그래서 오늘 `DEMO_REFORM>0` 은 `policy.jl` 의 `canonical_macro` 안에서
-        #       `MethodError` 를 내고, `prop === nothing` 경로가 그것을 문자열 "NOOP" 으로
-        #       바꿔 **기준정책이 내리지 않은 결정을 내렸다고 기록**하고 있었다.
-        #   (3) 교착 복구 자체는 결정 epoch 를 만들 필요가 없다 — 명목 레인의 unwedge 훅
-        #       (src/respec/ood_injection.jl)이 같은 무진전 트리거로 직접 푼다.
+        # 2026-08-20 (4팔 축소): 여기 있던 두 번째 reform 발화 경로(DEMO_REFORM 배수마다
+        # `record_ood_truth!(..., ReformTruth())`)를 지우고 명목 레인 훅으로 바꿨다. 예전에는
+        # 그 truth 로그가 정책 레이어를 거쳐 `handle_ood!` 의 `mac == "ReformTeam"` 분기로
+        # 돌아와 복구를 불렀다 — 즉 **복구가 결정을 경유했다.** 이제는 직접 부른다.
+        CB.maybe_unwedge_nominal!(env, stall)
         if CB.project_complete(env)
             CB.monitor_emit!(env, k); println(">>> PROJECT COMPLETE @ step $k (closed=$nc)")
             return (status = :complete, steps = k, closed = nc)
