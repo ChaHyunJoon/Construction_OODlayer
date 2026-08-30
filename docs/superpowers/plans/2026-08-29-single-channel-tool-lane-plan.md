@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-29-single-channel-tool-lane-design.md`
 
+🔴 **T8~T12(kind 색인 라우터)에는 설계서가 없다.** 사용자 지시(2026-08-29 2차)로 별도 spec 파일 대신 이 계획서의 **§0-C** 가 설계 근거·실측·이론적 충돌을 전부 진다. T8 을 착수하기 전에 §0-C 를 읽을 것 — 그 절이 없으면 T8~T12 는 근거 없는 변경이다.
+
 ## Global Constraints
 
 - 파이썬 인터프리터는 **`.venv/bin/python`** 하나다. `dspy 3.3.0`.
@@ -36,6 +38,7 @@
 | **T4** | ✅ 완료 (음성 대조 6종) | `7d525078` | **168 passed / 0 failed** |
 | **T5** | ✅ 완료 (음성 대조 4종) | `90cfcc82` | **174 passed / 0 failed** |
 | T6~T7 | ⬜ 미착수 | — | — |
+| **T8~T12** | ⬜ 미착수 — **kind 색인 라우터**(2026-08-29 2차 지시). 착수 전 §0-C 필독 | — | — |
 
 ✅ **T1~T3 이 열어 둔 두 구멍은 T4 가 닫았다**(실측, §0-B ⑪):
 `macro()` 의 `NameError` 는 사라졌고(가짜 LM 으로 끝까지 태워 `decision_source="tool"` 확인),
@@ -206,6 +209,153 @@ dspy 3.3.0 이 두 손잡이를 프로바이더 경계에서 한 객체(`LMToolC
 
 ---
 
+## 0-C. 2026-08-29 (2차 지시): **kind 색인 라우터** — 이 계획이 서 있던 전제 하나가 바뀐다
+
+> **T8~T12 를 착수하기 전에 이 절 전체를 읽을 것.** 여기 적힌 충돌 여덟 개는 전부 이 트리에서
+> 실측했거나 소스를 직접 태워 확인했고, 그중 ①은 **설계를 바꿔야 닫히는 종류**다.
+
+### 사용자 결정 넷 (2026-08-29 대화)
+
+1. 라우터는 **fault kind 하나로** 판정한다. 아는 kind → surrogate, 처음 보는 kind → LLM.
+2. novelty 축(축 2)은 **삭제**한다. 어휘 미달 축(축 1)도 kind 축으로 대체된다.
+3. 고른 레인이 그 사건에서 실패하면 **시끄럽게 죽인다** — 조용한 canonical 폴백을 없앤다.
+4. 안 부른 레인의 **반사실 기록을 지운다**(결정 행의 `llm`·`surrogate`·`agree`, 화면의 비교 줄).
+
+### 실측 (2026-08-29, 이 워크트리)
+
+| 잰 것 | 값 | 출처 |
+|---|---|---|
+| surrogate 학습셋 | **33행 / 12 instance**, `kind` = `battery 27 · fault 6` (**zone 0**) | `oracle/out/oracle_dataset.jsonl` |
+| 그 학습셋의 도장 | 전행이 `train_kinds="battery,fault"` | 같은 파일 |
+| 매크로 지원집합 | `{0:NOOP, 1:Replace, 2:SwapBattery}`, `vocab=v4-3arms` | `eval_surrogate_v2.load_rows` 로 직접 적재 |
+| novelty 교정 파일 | **존재한다** (`alpha=0.05`) | `wm4spacecraft_manufacturing/novelty/novelty_calibration.json` |
+| 그 교정의 기준집합 | 344행 = `fault 134 · battery 120 · **zoneblk 90**` | `oracle/out/firegrid_merged.jsonl` (git 에서 읽음 — 작업 트리엔 미커밋 삭제 상태) |
+| LM 호출 카운터 | `_state["calls"] += 1` 이 `_ask()` 안(`dspy_service.py:1162`)에 있고 `/health` 로 나온다 ⟹ **가짜 LM 으로도 정확히 센다** | 소스 |
+| 엔드포인트 | `/health` · `/macro` · `/decide` **셋뿐**. surrogate 전용 통로 없음 | 소스 |
+
+🔴 **정정 두 건.**
+- `policy.jl` 여러 주석의 *"교정 파일이 없는 이 작업 트리"* 는 **이 트리에 더는 안 맞는다.**
+  교정 JSON 이 있으므로 `have_det=true` 이고 축 2 는 지금 살아 있다.
+- `tool_choice()` 의 docstring(`dspy_service.py:1072`·`:1083`)이 아직 기본값을 `None` 이라
+  적는다. T5 가 상수(`:1056`)만 `"required"` 로 바꾸고 문서를 안 고쳤다. **T12 에서 같이 정정한다.**
+
+🟢 **오늘 데이터에서 kind 규칙과 현행 축 1 은 같은 결정을 낸다.** battery/fault 메뉴는 지원집합
+안에 들어가고(→ surrogate), zone 메뉴 `{NOOP, ForbidZone, RelocateBuild}` 는 뒤의 둘이 밖이다
+(→ dspy). ⟹ **T8~T12 는 라우팅 결과를 안 바꾸고 판정 시점과 비용과 기록만 바꾼다.** 라우팅
+회귀가 나면 그것은 이 등가가 깨진 것이므로 원인을 여기서 찾을 것.
+
+### 🔴 충돌 ① (치명적) — kind 축은 **개방세계 속성을 깨고, 틀린 방향으로 깬다**
+
+`event_descriptors_of` 의 docstring 이 축 2 의 존재 이유를 명시한다:
+
+> *"종류를 안 읽으므로 처음 보는 사건에도 그대로 계산된다 — 새 DSL 종류를 발명할 필요 없이
+> 숫자 6개만 채우면 되는 개방세계 경로."* (`policy.jl:366-370`)
+
+축 2 는 **kind 를 안 읽는 것이 설계 목적**이었다. kind 축은 정확히 그 반대다.
+
+그리고 실패 방향이 최악이다. `ood_features` 의 kind 유도(`policy.jl:192-201`)는
+
+```julia
+kind, agent = if truth isa CB.FaultTruth      ("fault", truth.robot)
+    elseif truth isa CB.BatteryTruth          ("battery", truth.robot)
+    elseif truth isa CB.ZoneTruth             ("zone", nothing)
+    else                                      ("fault", nothing)   # ← 🔴
+end
+```
+
+**정말로 새로운 `OODTruth` 타입은 `else` 로 떨어져 `"fault"` 라는 이름을 얻는다.**
+`fault ∈ train_kinds` ⟹ **surrogate**. 즉 가장 OOD 한 사건이 가장 확신에 찬 레인으로 간다.
+축 2 였다면 서술자 6개가 그 사건을 낯설다고 말했을 자리다.
+
+⟹ **T8 이 라우팅용 kind 를 별도의 전총(total) 함수로 만든다.** `ood_features` 의 `"kind"` 는
+surrogate 피처가 읽으므로 **안 건드린다** — 두 유도를 교차 게이트로 묶는다.
+
+### 충돌 ② — LLM 레인의 사건 집합이 **zone 하나**로 줄고, 그 사건의 메뉴는 `["NOOP"]` 이다
+
+2026-08-24(spec §5.1)가 zone 을 LLM **결정** 레인에서 뺐고, 2026-08-25 가 zone 메뉴를
+`["NOOP"]` 로 고정했다(`policy.jl:340-358`) — 뜻은 *"닫힌 어휘에 이 구역의 수복이 없다"*.
+오늘 kind 는 셋이고 `train_kinds` 는 둘이므로, **kind 라우터에서 dspy 로 가는 사건은 zone 뿐이다.**
+그러면 LLM 은 매번 tool 하나(`no_intervention`)만 든 메뉴를 `required` 로 강제받는다.
+
+- 🟢 **설계 의도와는 맞는다**: `expressible=false` → T2 합성 레인 → L2 제약 신설. 그 파이프라인의
+  방아쇠가 정확히 이 사건이고, `valid_macros` 의 주석이 그 자리를 그렇게 지목한다.
+- 🔴 **그러나 T7 라이브 게이트의 `_IN_VOCAB`(fault·battery)은 새 라우터의 프로덕션 경로에 없다.**
+  그 시험은 `svc.macro()` 를 직접 부르므로 계속 초록이지만, **재는 것이 더는 실행 경로가 아니다.**
+  T11 이 그 사실을 시험 docstring 에 못박는다. (§0-B ⑦ 과 같은 종류의 함정이다 — 초록이
+  레인 건강의 증거가 아닌 자리.)
+
+### 충돌 ③ — `expressible` 과 kind 축이 **같은 질문에 다른 근거로** 답한다
+
+| | 재는 것 | 근거 | 시점 |
+|---|---|---|---|
+| kind 축 | surrogate 가 이 kind 를 배웠나 | 배포 학습 데이터 | 호출 **전** |
+| `expressible` | 이 tool 메뉴로 이 사건을 다룰 수 있나 | LLM 자기신고 | 호출 **후** |
+
+갈리는 조합이 정보다: `kind ∉ train_kinds ∧ expressible=true` = *"surrogate 가 못 배웠을 뿐
+어휘는 충분했다"*. 반대 조합(`kind ∈ train_kinds ∧ expressible=false`)은 **새 라우터에서 관측
+불가능해진다** — 그 사건이 LLM 에 안 가므로.
+
+⟹ **T2 합성 레인의 방아쇠 모집단이 `kind ∉ train_kinds` 로 축소된다.** 이걸 모르면 나중에
+"합성이 왜 안 도나" 를 코드에서 찾게 된다. 원인은 코드가 아니라 라우팅이다.
+(계획서 T1 주석이 이미 인정하듯 `expressible == False` 비율은 부분적으로 프롬프트 준수를
+잰다 — 그 비율을 kind 축과 한 표에 섞지 말 것.)
+
+### 충돌 ④ — novelty 삭제는 `route_verdict` 의 삼상 계약과 `rt["enabled"]` 의 의미를 없앤다
+
+`enabled` = *"novelty 축이 실행을 정했는가"* (`policy.jl:395-397`). 축이 사라지면 이 필드가
+주장할 것이 없다. 결정 행의 `router_p`·`router_novel`, `DEMO_SUMMARY` 의 `router` 필드도 같이
+간다. ⟹ **기존 녹화와의 비교가 이 열들에서 끊긴다.** 되돌릴 수 없는 대가이므로 T12 가 그
+사실을 산출물 스키마 주석에 남긴다.
+
+### 충돌 ⑤ — 축 enum 교체는 R13 과 R5 를 소멸시킨다
+
+R13(*"`select_lane` 의 axis enum 은 안 바꾼다"*)은 그 축들이 존재한다는 전제 위의 판정이었다.
+`control/vocabulary_gap/novelty/none` → `control/known_kind/ood_kind`.
+R5(두 축의 발화 집합이 얼마나 겹치는가)는 **잴 대상이 없어져** 소멸한다 — 축이 하나뿐이다.
+
+### 충돌 ⑥ — T6 과 겹치는 자리 하나 (순서 의존 없음)
+
+T6 Step 3 이 이미 `service_decide` 의 `tool_choice` 키워드와 `:1416` 의 `tool_choice_for(...)`
+호출부를 **제거하기로 되어 있다**. T11 은 그것을 다시 하지 않는다.
+- T6 → T11 순: T11 이 그 자리에 할 일이 없다(이미 닫혀 있다).
+- T11 → T6 순: T6 Step 3 의 그 항목이 이미 닫혀 있다.
+어느 쪽이든 `tool_choice_for` **함수 자체와 그 진리표 시험은 남긴다**(T6 이 정한 규약 그대로).
+
+### 충돌 ⑦ — 비용 절감은 라우터가 아니라 **서비스** 에 있다
+
+surrogate 는 DSPy 서비스 **안**에 살고 유일한 통로가 `/decide` 이며, 그 함수는 맨 앞에서
+`d = macro(req)` 로 LLM 을 부른다(`dspy_service.py:1430`). 엔드포인트 셋 중 surrogate 전용
+통로는 없다.
+
+🔴 **`select_lane` 만 고치면 비용이 1원도 안 준다.** 이것이 T10 이 존재하는 이유이고,
+T10 없이 T11 만 넣으면 "라우터가 비용을 자른다" 는 주장이 **거짓**이 된다.
+
+### 충돌 ⑧ — "시끄럽게 죽인다" 와 고정 정책 비교 런의 fail-open
+
+`dspy_ready()` 는 서비스가 없으면 `@warn` + canonical 로 fail-open 하고, `DEMO_POLICY` 고정
+비교 런(24런)이 그 fail-open 에 의존한다.
+⟹ 죽이는 것은 **`router_drives()` 가 참인 런에서만**이다. 라우터가 안 모는 런의 fail-open 은
+그대로 둔다.
+
+### 결정된 두 자리 — ✅ **둘 다 사용자 확인 완료 (2026-08-29)**
+
+> 이 둘은 제안이 아니라 **확정**이다. T11·T12 가 다른 모양으로 구현하면 그것은 계획 위반이다.
+
+- **zone 에스컬레이션 블록 둘**(`policy.jl:1556-1604`)은 **지운다.** kind 축에서 zone 은 이미
+  dspy 이므로 `enacted != "dspy"` 가드가 절대 참이 안 되는 죽은 코드다.
+  🔴 단 **둘을 남긴다**: `zone_primitives` 기록(조건 없이 남기는 감사 증거)과,
+  `zdg.verdict === :line_stop` 을 `rt["zone_verdict"]` 로 **기록만** 한다(격상 판정으로는 안
+  쓴다). 그래야 *"왜 올렸는가"* 의 진단이 사라지지 않는다.
+- **죽이는 방식은 `error()` 다** — 결정 행에 `died_at` 을 남기고 계속 도는 방식이 **아니다**.
+  이유: 런이 죽으면 그 행을 못 쓰므로 `died_at` 은 자기모순이고, 이 레포엔 이미 같은 모양의
+  선례가 있다 — F1(`011ed3c0`, *"tool_choice 오설정을 요청·부팅 양쪽에서 시끄럽게 죽인다"*).
+  🔴 **부분 완화를 넣지 말 것.** `try/catch` 로 감싸 그 사건만 건너뛰거나, `@error` 를 찍고
+  canonical 로 계속 도는 변형은 전부 이 결정에 반한다 — 그러면 산출물이 *"라우팅했다"* 고
+  주장하면서 실제로는 규칙표가 돈 행을 섞어 담게 되고, 그게 §0-C 가 지우려는 바로 그 상태다.
+  런이 죽는 것이 이 설계에서 **의도된 신호**다.
+
+---
+
 ## 0. 이 계획이 닫는 실패 케이스 — 이것이 계획의 축이다
 
 전부 2026-08-29 에 이 머신에서 실측했거나 설치된 라이브러리를 직접 태워 확인한 것이다.
@@ -246,6 +396,11 @@ dspy 3.3.0 이 두 손잡이를 프로바이더 경계에서 한 객체(`LMToolC
 | `tools/monitor/policy.jl` | `TOOL_LANE_KEYS`·`service_decide` | T6 |
 | `test/tool_choice_gate.jl` | 줄리아 게이트 | T6 |
 | `src/respec/llm_service/test_live_single_channel.py` | 라이브 실측 (유료, 기본 skip) | T7 |
+| `tools/monitor/lane_select.jl` | `routing_kind`·`select_lane` 분기표 (의존성 0) | T8, T11 |
+| `tools/monitor/test_lane_select.jl` | 분기표 전수 게이트 | T8, T11 |
+| `src/respec/llm_service/test_surro_kinds.py` | `/health` 의 kind 집합 유도 게이트 | T9 |
+| `src/respec/llm_service/test_decide_lanes.py` | 🔴 **비용 게이트** (LM 호출 델타 0) | T10 |
+| `tools/monitor/run_demo.jl` · `render_demo.jl` | 결정 행·화면에서 반사실 제거 | T12 |
 
 ---
 
@@ -262,7 +417,13 @@ dspy 3.3.0 이 두 손잡이를 프로바이더 경계에서 한 객체(`LMToolC
 | T5 | 요청 손잡이: `required` 고정 · `parallel_tool_calls=False` · `no_tools` 조기 반환 | F2, F3, F11 | **30~40분** |
 | T6 | 줄리아 배선: `decision_source` 나르기 · `text_rescue` 제거 | — | **40~60분** |
 | T7 | 라이브 실측 게이트 + 전체 회귀 | F1 회귀 · F6 확인 | **30~45분** |
-| | **합계** | | **5.2 ~ 7.3시간** |
+| T8 | 라우팅용 kind 전총 함수 (`routing_kind`) | 🔴 §0-C 충돌 ① | **30~45분** |
+| T9 | `/health` 가 학습행에서 유도한 `surro_kinds` 를 싣는다 | — | **25~35분** |
+| T10 | `/decide` 의 `lanes` + 🔴 비용 게이트 (LM 호출 델타 0) | 🔴 §0-C 충돌 ⑦ | **40~60분** |
+| T11 | `select_lane` 교체 · `decide_all` 배선 · 시끄러운 죽음 | §0-C 결정 1·3 | **60~90분** |
+| T12 | 삭제: 반사실 · novelty · zone 에스컬레이션 · 축 1 잔재 | §0-C 결정 2·4 | **50~70분** |
+| | **합계 (T1~T7)** | | **5.2 ~ 7.3시간** |
+| | **합계 (T8~T12 추가분)** | | **3.4 ~ 5.0시간** |
 
 여기에 마지막 `Pkg.test()` 전체 1회(약 5분)와 유료 호출 약 12건(T7)이 더해진다.
 
@@ -1153,6 +1314,11 @@ git commit -m "T5: required 를 기본으로, 다중 호출을 원천 차단한�
 
 # Task 6: 줄리아 배선
 
+> ⚠️ **T11 과 겹치는 자리 하나** (§0-C 충돌 ⑥). 아래 Step 3 의 *"`service_decide` 의
+> `tool_choice` 키워드와 `:1416` 의 `tool_choice_for(...)` 호출을 제거한다"* 는 T11 과
+> 같은 일이다. **먼저 도는 쪽이 한다** — 뒤에 도는 쪽은 이미 닫혀 있음을 확인만 하고
+> 넘어간다. `tool_choice_for` 함수와 그 진리표 시험은 어느 쪽도 지우지 않는다.
+
 > 🔴 **이 태스크에 일이 하나 늘었다(§0-B ②).** `test/tool_args_grounding.jl` 의 `_PY_EXTRACT`
 > (`:153-159`)가 `inspect.signature(_FUNCS[name])` 를 읽는다 — **파이썬 함수 시그니처**이지
 > `build_tools()` 가 내는 JSON 스키마가 아니다. 그래서 T1 이 tool 마다 인자 넷을 더했는데도
@@ -1371,6 +1537,513 @@ Expected: 기존 baseline + T6 이 더한 만큼. 유일한 error 는 `test/runt
 ```bash
 git add src/respec/llm_service/test_live_single_channel.py
 git commit -m "T7: 라이브 게이트 — 실패 목록이 실제로 닫혔는지 유료로 잰다"
+```
+
+---
+
+# Task 8: 라우팅용 kind 를 **전총 함수**로 유도한다
+
+> 🔴 **이 태스크가 존재하는 유일한 이유는 §0-C 충돌 ①이다.** `ood_features` 의 `"kind"` 를
+> 그대로 라우팅에 쓰면 모르는 `OODTruth` 타입이 `else` 분기에서 `"fault"` 라는 이름을 얻고,
+> `fault ∈ train_kinds` 이므로 **가장 OOD 한 사건이 surrogate 로 간다.** 반드시 먼저 닫는다.
+
+**Files:**
+- Modify: `tools/monitor/lane_select.jl` — `routing_kind` 신설
+- Test: `tools/monitor/test_lane_select.jl`
+
+**Interfaces:**
+- Produces: `routing_kind(type_name::AbstractString) -> String`.
+  `"BatteryTruth"→"battery"` · `"FaultTruth"→"fault"` · `"ZoneTruth"→"zone"` ·
+  그 외 → `"unknown:" * type_name`
+- Consumes: 없음
+
+🔴 **왜 타입 객체가 아니라 이름 문자열을 받나.** `lane_select.jl` 은 파일 머리말이 선언한
+**의존성 0** 계약 위에 있다(그래서 전수 단위검사가 가능하다). `CB.FaultTruth` 를 import 하면
+그 계약이 깨지고 `test_lane_select.jl` 이 ConstructionBots 를 끌고 와야 한다. 호출부가
+`String(nameof(typeof(truth)))` 로 이름만 넘긴다.
+
+🔴 **그 대신 교차 게이트가 필요하다.** 이름 기반 유도는 타입 개명에 약하므로, `ood_features` 의
+`isa` 기반 유도와 **알려진 셋에 대해 같은 값**임을 T11 의 줄리아 시험이 못박는다. 그것이 없으면
+`FaultTruth` 를 개명하는 순간 라우터가 조용히 `"unknown:..."` 을 내고 모든 사건이 dspy 로 간다.
+
+- [ ] **Step 1: 실패하는 시험을 쓴다** — `tools/monitor/test_lane_select.jl` 끝에
+
+```julia
+@testset "routing_kind 는 전총이고, 모르는 타입을 fault 로 접지 않는다" begin
+    @test routing_kind("BatteryTruth") == "battery"
+    @test routing_kind("FaultTruth")   == "fault"
+    @test routing_kind("ZoneTruth")    == "zone"
+    # 🔴 이 단언 하나가 §0-C 충돌 ①의 전부를 진다. `"fault"` 가 나오면 빨갛다.
+    @test routing_kind("MeteorTruth")  == "unknown:MeteorTruth"
+    @test startswith(routing_kind("MeteorTruth"), "unknown:")
+    # 전총: 무엇을 넣어도 던지지 않는다.
+    for n in ("", "X", "Truth", "battery")
+        @test routing_kind(n) isa String
+    end
+end
+```
+
+- [ ] **Step 2: 실패 확인**
+
+Run: `julia --project=. tools/monitor/test_lane_select.jl`
+Expected: FAIL — `routing_kind` 가 정의돼 있지 않다. (⏱ 3~6분, 콜드 컴파일 지배)
+
+- [ ] **Step 3: 구현한다** — `lane_select.jl` 의 `select_lane` **위**에
+
+```julia
+"""
+    routing_kind(type_name) -> String
+
+`OODTruth` 구상 타입의 **이름**에서 라우팅용 kind 를 낸다. **전총이다** — 모르는 이름은
+`"unknown:<이름>"` 이 되고 절대 알려진 kind 로 접히지 않는다.
+
+🔴 왜 `ood_features` 의 `"kind"` 를 안 쓰나. 그 함수의 `else` 분기는 모르는 타입에 `"fault"` 를
+준다(`policy.jl:199-200`). 그 값은 surrogate **피처**로는 옳다(모델이 그 열을 그렇게 배웠다).
+그러나 **라우팅에 쓰면 정반대로 틀린다**: 처음 보는 사건이 `fault ∈ train_kinds` 를 타고
+surrogate 로 간다. 피처용 유도와 라우팅용 유도는 **다른 것을 주장하므로 따로 둔다.**
+"""
+routing_kind(type_name::AbstractString) =
+    type_name == "BatteryTruth" ? "battery" :
+    type_name == "FaultTruth"   ? "fault"   :
+    type_name == "ZoneTruth"    ? "zone"    : "unknown:" * String(type_name)
+```
+
+- [ ] **Step 4: 통과 확인**
+
+Run: `julia --project=. tools/monitor/test_lane_select.jl`
+Expected: PASS (기존 케이스 전부 + 새 testset). ⏱ 3~6분
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add tools/monitor/lane_select.jl tools/monitor/test_lane_select.jl
+git commit -m "T8: 라우팅용 kind 를 전총 함수로 뺀다 — 모르는 타입이 fault 로 안 접힌다"
+```
+
+---
+
+# Task 9: `/health` 가 `surro_kinds` 를 싣는다
+
+> 🔴 **손으로 쓴 kind 목록을 어디에도 만들지 않는다.** 이 레포는 그 사고를 이미 밟았다
+> (`surrogate_rank` 의 `or set(range(5))` — 구세대 리터럴이 지원집합을 조용히 대체해 축 1 이
+> 자기가 존재하는 이유인 그 실패 모드에서 침묵했다, `dspy_service.py:664-668`).
+> kind 집합은 `surro_support` 와 **완전히 같은 모양**으로 학습행에서 유도한다.
+
+**Files:**
+- Modify: `src/respec/llm_service/dspy_service.py` — `_load_surrogate` `:394-411`, `/health` `:957-977`
+- Create: `src/respec/llm_service/test_surro_kinds.py`
+
+**Interfaces:**
+- Produces: `_state["surro_kinds"]` (`set[str]` 또는 `None`) · `/health` 의 `"surro_kinds"`
+  (정렬된 리스트 또는 `None`)
+- 삼상 규약은 `surro_support` 와 같다: `None` = **못 쟀다**, `[]` = 쟀는데 비었다,
+  `[이름…]` = 쟀다.
+
+- [ ] **Step 1: 실패하는 시험을 쓴다** — `test_surro_kinds.py`
+
+```python
+def test_health_carries_the_kind_set_derived_from_the_training_rows():
+    """🔴 실측 기준값: oracle_dataset.jsonl 33행의 kind 는 {battery, fault} 다."""
+    svc._load_surrogate()
+    assert svc._state["surro_kinds"] == {"battery", "fault"}
+    assert svc.health()["surro_kinds"] == ["battery", "fault"]
+
+def test_a_stamp_that_disagrees_with_the_rows_is_reported_not_swallowed(monkeypatch):
+    """🔴 음성 대조. train_kinds 도장과 관측된 kind 가 갈리면 **못 쟀다**(None)로 떨어지고
+    사유가 surro_error 에 남는다. 조용히 한쪽을 믿으면 안 된다."""
+    ... # load_rows 를 monkeypatch 해서 도장만 "battery" 로 어긋낸 행을 낸다
+    assert svc._state["surro_kinds"] is None
+    assert "train_kinds" in (svc._state["surro_error"] or "")
+
+def test_the_service_still_boots_when_the_kind_set_cannot_be_measured(monkeypatch):
+    """🔴 R-25 규약: `_load_surrogate` 실패는 startup 을 죽이지 않는다. /health 로 알린다."""
+```
+
+- [ ] **Step 2: 실패 확인**
+
+Run: `.venv/bin/python -m pytest src/respec/llm_service/test_surro_kinds.py -q`
+Expected: FAIL — `KeyError: 'surro_kinds'`
+
+- [ ] **Step 3: 구현한다** — `_load_surrogate` 의 `support = ...` 바로 아래
+
+```python
+        # ---- kind 지원집합 (2026-08-29, T9) --------------------------------------------
+        # 🔴 `support`(매크로)와 **같은 모양**으로 학습행에서 유도한다. 손으로 쓴 목록은
+        #    두 번째 진실원이 되고, 이 파일은 그 사고를 이미 한 번 밟았다(:664-668).
+        observed = sorted({r["kind"] for r in rows if r.get("kind")})
+        stamps = {r.get("train_kinds") for r in rows}
+        stamp = next(iter(stamps)) if len(stamps) == 1 else None
+        declared = sorted(x for x in (stamp or "").split(",") if x)
+        if stamp is None or declared != observed:
+            # 🔴 **한쪽을 골라 믿지 않는다.** 도장과 행이 갈렸다는 것은 데이터셋 세대가
+            #    섞였다는 뜻이고(C9/R-50 이 이 축을 만든 이유), 그 상태에서 낸 kind 집합은
+            #    라우터를 조용히 틀린 쪽으로 민다. "못 쟀다"(None)로 떨어뜨린다.
+            kinds = None
+            kind_err = ("train_kinds stamp %r disagrees with the observed kinds %r"
+                        % (stamp, observed))
+        else:
+            kinds, kind_err = set(observed), None
+```
+
+`_state.update(...)` 에 `surro_kinds=kinds` 를 더하고, `kind_err` 가 있으면 `surro_error` 에
+합쳐 담는다(기존 값을 덮지 않는다). `/health` 에는 `surro_support` 바로 아래:
+
+```python
+            # 축(2026-08-29 T9): 라우터의 **유일한** 판정 입력. None = 못 쟀다.
+            "surro_kinds": (None if _state.get("surro_kinds") is None
+                            else sorted(_state["surro_kinds"])),
+```
+
+- [ ] **Step 4: 통과 확인**
+
+Run: `.venv/bin/python -m pytest src/respec/llm_service/ -q`
+Expected: 직전 태스크 값 + 3
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add src/respec/llm_service/dspy_service.py src/respec/llm_service/test_surro_kinds.py
+git commit -m "T9: /health 가 학습행에서 유도한 kind 집합을 싣는다"
+```
+
+---
+
+# Task 10: `/decide` 의 `lanes` — 🔴 **비용 절감은 전부 여기 산다**
+
+> 🔴 **§0-C 충돌 ⑦.** surrogate 는 서비스 안에 있고 유일한 통로가 `/decide` 이며 그 함수는
+> 맨 앞에서 `d = macro(req)` 로 LLM 을 부른다(`:1430`). **T11(라우터)만 넣고 이 태스크를
+> 건너뛰면 "라우터가 비용을 자른다" 는 주장이 거짓이 된다.** 순서를 바꾸지 말 것.
+
+**Files:**
+- Modify: `src/respec/llm_service/dspy_service.py` — `MacroRequest` `:484`, `decide()` `:1417`
+- Create: `src/respec/llm_service/test_decide_lanes.py`
+
+**Interfaces:**
+- Produces: `MacroRequest.lanes: Optional[List[str]] = None`. `None` = 둘 다(하위호환).
+- 🔴 **안 요청한 레인은 키 자체를 안 싣는다** — 빈 dict 으로 싣지 않는다. 소비자가
+  *"안 물었다"* 와 *"물었는데 실패했다"* 를 갈라야 한다(줄리아의 `policy_entry(nothing, …)`
+  는 후자만 뜻하도록 남긴다).
+
+- [ ] **Step 1: 실패하는 시험을 쓴다** — `test_decide_lanes.py`
+
+```python
+def test_the_surrogate_lane_costs_zero_lm_calls(fake_lm):
+    """🔴 **이 파일 전체의 존재 이유.** `_state["calls"]` 는 `_ask()` 안(:1162)에서 오르므로
+    가짜 LM 으로도 정확히 센다 — 유료 호출 없이 비용을 잰다."""
+    before = svc._state["calls"]
+    out = svc.decide(_req(lanes=["surrogate"]))
+    assert svc._state["calls"] == before          # 🔴 델타 0
+    assert "surrogate" in out
+    assert "dspy" not in out                      # 키 자체가 없다 (빈 dict 아님)
+
+def test_omitting_lanes_still_calls_both(fake_lm):
+    """🔴 음성 대조. 이게 없으면 위 시험은 '서비스가 아무것도 안 한다' 로도 초록이다."""
+    before = svc._state["calls"]
+    out = svc.decide(_req())                       # lanes 없음 = 하위호환
+    assert svc._state["calls"] == before + 1
+    assert "dspy" in out and "surrogate" in out
+
+def test_an_unknown_lane_name_dies_loudly():
+    """F1 선례와 같은 모양 — 오설정은 조용한 폴백이 아니라 예외다."""
+    with pytest.raises(ValueError):
+        svc.decide(_req(lanes=["surrogate", "surrogat"]))
+```
+
+- [ ] **Step 2: 실패 확인**
+
+Run: `.venv/bin/python -m pytest src/respec/llm_service/test_decide_lanes.py -q`
+Expected: FAIL — `MacroRequest` 에 `lanes` 필드가 없다 (pydantic 이 무시하거나 422)
+
+- [ ] **Step 3: 구현한다**
+
+`MacroRequest` 에 `lanes: Optional[List[str]] = None` 을 더하고, `decide()` 를 다음 모양으로:
+
+```python
+    LANES = ("dspy", "surrogate")
+    want = tuple(req.lanes) if req.lanes is not None else LANES
+    bad = [l for l in want if l not in LANES]
+    if bad:
+        # 🔴 F1 과 같은 규약. 조용히 무시하면 "surrogat" 오타 하나가 그 레인을 통째로
+        #    사라지게 만들고, 줄리아는 그것을 "서비스 장애" 로 읽는다.
+        raise ValueError("unknown lane(s) %r; allowed: %s" % (bad, ", ".join(LANES)))
+
+    if "dspy" in want:
+        d = macro(req)
+        out["dspy"] = { ... 지금 그대로 ... }
+    if "surrogate" in want:
+        scored, err = surrogate_rank(req, valid)
+        ... 지금 그대로 ...
+```
+
+⚠️ `out["valid"]`·`out["state"]`·`out["llm_input"]`·`out["surrogate_input"]` 은 **레인과 무관하게
+그대로 낸다** — 둘 다 요청 자체의 기록이고, 빼면 결정 행의 `valid` 열이 사라진다(채점기가 읽는다).
+
+- [ ] **Step 4: 통과 확인**
+
+Run: `.venv/bin/python -m pytest src/respec/llm_service/ -q`
+Expected: 직전 값 + 3. 🔴 **기존 시험 중 `/decide` 를 부르는 것이 전부 초록이어야 한다**
+(`lanes` 를 안 실으므로 하위호환 경로를 탄다) — 하나라도 빨개지면 기본값이 틀린 것이다.
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add src/respec/llm_service/dspy_service.py src/respec/llm_service/test_decide_lanes.py
+git commit -m "T10: /decide 가 요청된 레인만 계산한다 — surrogate 레인의 LM 호출 0을 측정으로 못박는다"
+```
+
+---
+
+# Task 11: `select_lane` 교체 · `decide_all` 배선 · 시끄러운 죽음
+
+> ⚠️ **§0-C 충돌 ⑥**: T6 Step 3 이 `service_decide` 의 `tool_choice` 키워드와 `:1416` 의
+> `tool_choice_for(...)` 호출부를 이미 제거한다. **여기서 다시 하지 않는다.** 아직 안 돌았으면
+> T6 이 할 일로 남겨 둔다.
+
+**Files:**
+- Modify: `tools/monitor/lane_select.jl` — `select_lane` 교체
+- Modify: `tools/monitor/policy.jl` — `dspy_ready` `:579`, `decide_all` `:1400-1500`
+- Test: `tools/monitor/test_lane_select.jl` · `test/tool_choice_gate.jl`
+
+**Interfaces:**
+- `select_lane(; kind, known_kinds, policy) -> (lane, axis, reason)`.
+  `available`·`novel` 인자가 **사라진다.**
+- `axis ∈ {"control", "known_kind", "ood_kind"}` (🔴 §0-C 충돌 ⑤ — R13 소멸)
+- `surro_kinds() -> Union{Nothing,Set{String}}` — `dspy_ready()` 가 `/health` 본문에서
+  캐시한다. HTTP 호출은 **한 건도 안 는다**(그 함수는 이미 `/health` 를 부르고 본문만 버린다).
+
+- [ ] **Step 1: 실패하는 시험을 쓴다**
+
+`tools/monitor/test_lane_select.jl` — 기존 `select_lane` testset 을 **전부 교체**한다
+(시그니처가 바뀌므로 남기면 컴파일이 안 된다):
+
+```julia
+const KNOWN = Set(["battery", "fault"])
+
+@testset "kind 색인 분기표 (전수)" begin
+    @test select_lane(kind="battery", known_kinds=KNOWN, policy="router").lane == "surrogate"
+    @test select_lane(kind="fault",   known_kinds=KNOWN, policy="router").lane == "surrogate"
+    @test select_lane(kind="zone",    known_kinds=KNOWN, policy="router").lane == "dspy"
+    # 🔴 §0-C 충돌 ① — 처음 보는 타입은 LLM 으로 간다.
+    @test select_lane(kind="unknown:MeteorTruth", known_kinds=KNOWN, policy="router").lane == "dspy"
+    # 축이 데이터로 남는다.
+    @test select_lane(kind="zone", known_kinds=KNOWN, policy="router").axis == "ood_kind"
+    @test select_lane(kind="battery", known_kinds=KNOWN, policy="router").axis == "known_kind"
+    # noop 은 통제 바닥선 — 라우팅 대상이 아니다(이 규칙만 그대로 살아남는다).
+    @test select_lane(kind="zone", known_kinds=KNOWN, policy="noop").lane == "noop"
+    # 🔴 **못 쟀으면 안 고른다.** 조용히 한쪽으로 떨어지면 안 된다.
+    @test_throws Exception select_lane(kind="battery", known_kinds=nothing, policy="router")
+end
+```
+
+`test/tool_choice_gate.jl` 에 교차 게이트(§0-C 충돌 ① 의 그물):
+
+```julia
+@testset "두 kind 유도가 알려진 셋에서 일치한다" begin
+    # 🔴 이게 없으면 `FaultTruth` 개명 한 번에 라우터가 조용히 전 사건을 dspy 로 보낸다.
+    for (t, expect) in ((battery_truth, "battery"), (fault_truth, "fault"), (zone_truth, "zone"))
+        @test routing_kind(String(nameof(typeof(t)))) == expect
+        @test ood_features(env, t)["kind"] == expect
+    end
+end
+```
+
+- [ ] **Step 2: 실패 확인**
+
+Run: `julia --project=. tools/monitor/test_lane_select.jl`
+Expected: FAIL — `select_lane` 이 `kind`/`known_kinds` 키워드를 모른다. (⏱ 3~6분)
+
+- [ ] **Step 3: 구현한다**
+
+**(a) `lane_select.jl`** — `select_lane` 본문을 통째로 교체하고 docstring 을 다시 쓴다.
+🔴 **머리말의 "3-way 인 이유(2026-08-14)" 문단은 역사로 남기되, 그것이 더 이상 현행이 아님을
+명시한다** — 이 레포는 낡은 주석이 다음 사람을 틀린 모델로 미는 실패를 반복했다.
+
+```julia
+function select_lane(; kind::AbstractString, known_kinds, policy::AbstractString)
+    policy == "noop" && return (lane = "noop", axis = "control",
+        reason = "no-adapt floor — routing disabled for this control lane")
+
+    # 🔴 못 쟀으면 안 고른다. `/health` 가 `surro_kinds: null` 이거나 서비스가 없으면 여기다.
+    #    조용히 한쪽으로 떨어지면 "라우팅했다" 는 주장이 근거 없이 산출물에 남는다.
+    known_kinds === nothing && error(
+        "[router] surrogate kind support is unknown — refusing to route. " *
+        "Is the DSPy service up, and does /health carry surro_kinds?")
+
+    kind in known_kinds && return (lane = "surrogate", axis = "known_kind",
+        reason = "the surrogate was trained on '$(kind)' events → surrogate")
+
+    return (lane = "dspy", axis = "ood_kind",
+        reason = "'$(kind)' is outside the surrogate's training kinds → escalate to LLM")
+end
+```
+
+**(b) `policy.jl` 의 `dspy_ready()`** — 지금 버리는 응답 본문을 파싱해 캐시한다:
+
+```julia
+const SURRO_KINDS = Ref{Union{Nothing,Set{String}}}(nothing)
+# ⚠️ 실패와 "아직 안 물었다" 를 가르는 것은 DSPY_HEALTHY[] 다 — SURRO_KINDS[] 의 nothing 은
+#    언제나 "못 쟀다" 하나만 뜻한다.
+```
+`HTTP.get(...)` 의 결과에서 `JSON3.read(r.body)` 로 `surro_kinds` 를 읽어 `Set{String}` 으로
+담는다. 키가 없거나 `null` 이면 `nothing`.
+
+**(c) `decide_all`** — 서비스 호출을 **레인 선택 뒤로** 옮긴다:
+
+```julia
+    rt = route(env, truth)
+    local rkind = routing_kind(String(nameof(typeof(truth))))
+    rt["routing_kind"] = rkind
+    local sel = router_drives() ?
+        select_lane(kind = rkind, known_kinds = surro_kinds(), policy = POLICY) :
+        (lane = POLICY, axis = "fixed",
+         reason = "router off — DEMO_POLICY=$(POLICY) is fixed for this run")
+    rt["router_axis"] = sel.axis
+    rt["lane_reason"] = sel.reason
+
+    # 🔴 고른 레인 **하나만** 청구한다. canonical/noop/oracle 은 줄리아가 자기가 계산하므로
+    #    서비스 호출이 0건이다 — 옛 `DEMO_ALL_POLICIES` 생략 조건을 이 한 줄이 대체한다.
+    local want = sel.lane in ("dspy", "surrogate") ? [sel.lane] : String[]
+    j = isempty(want) ? nothing :
+        service_decide(env, truth; nl = nl, descriptors = get(rt, "descriptors", nothing),
+                       agents = CB.open_agent_descriptors(env),
+                       zones  = CB.open_zone_descriptors(env),
+                       lanes  = want)
+
+    for key in want
+        pol[key] = policy_entry(haskey(j, Symbol(key)) ? j[Symbol(key)] : nothing,
+                                key == "dspy" ? "dspy:LLM" : "surrogate:RandomForest")
+    end
+
+    enacted = sel.lane
+    # ---- 시끄럽게 죽는 자리 (§0-C 사용자 결정 3) --------------------------------------------
+    if enacted in ("dspy", "surrogate")
+        local e = get(pol, enacted, nothing)
+        if e === nothing || e["available"] !== true
+            local why = e === nothing ? "(lane absent from the service response)" :
+                        String(get(e, "error", ""))
+            # 🔴 UNSUPPORTED 는 장애가 아니라 **도장과 어휘가 갈린 것**이라 메시지를 가른다.
+            startswith(why, "UNSUPPORTED:") && error(
+                "[router] '$(rkind)' is in the surrogate's train_kinds stamp, but its arms " *
+                "are not in the macro support set ($(why)). The stamp and the vocabulary " *
+                "have diverged — regenerate the dataset or fix the vocab.")
+            error("[router] lane '$(enacted)' was chosen for a '$(rkind)' event but " *
+                  "returned no decision: $(isempty(why) ? "(no error field)" : why)")
+        end
+    end
+```
+
+`service_decide` 에 `lanes` 키워드를 더한다 — `agents`/`zones` 와 **정확히 같은 규약**
+(키워드로 받고 `nothing`/빈 것이 아닐 때만 payload 에 싣는다).
+
+- [ ] **Step 4: 통과 확인**
+
+Run: `julia --project=. tools/monitor/test_lane_select.jl && julia --project=. test/tool_choice_gate.jl`
+Expected: PASS 둘 다 (⏱ 6~12분)
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add tools/monitor/lane_select.jl tools/monitor/policy.jl \
+        tools/monitor/test_lane_select.jl test/tool_choice_gate.jl
+git commit -m "T11: kind 색인 라우터 — 호출 전에 레인을 정하고 고른 레인만 청구한다"
+```
+
+---
+
+# Task 12: 삭제 — 반사실 · novelty · zone 에스컬레이션 · 축 1 잔재
+
+> 🔴 **이 태스크는 되돌릴 수 없는 것을 지운다.** 지우기 전에 §0-C 충돌 ④를 읽을 것:
+> 기존 녹화와의 비교가 `router_p`·`router_novel`·`llm`·`surrogate`·`agree` 열에서 **끊긴다.**
+
+**Files:**
+- Modify: `tools/monitor/policy.jl` · `tools/monitor/run_demo.jl` · `tools/monitor/render_demo.jl`
+- Modify: `src/respec/llm_service/dspy_service.py` (docstring 정정 1건)
+- Test: `tools/test_policy_escalation.jl` (시그니처 의존이 있다 — 같이 고친다)
+
+- [ ] **Step 1: 지울 것을 실측으로 확정한다**
+
+Run:
+```bash
+grep -rn 'policies\["surrogate"\]\|policies\["dspy"\]\|\.agree\|router_novel\|router_p\|escalation_allowed\|escalation_target\|install_novelty!\|novelty_verdict\|ROUTER_EPS\|support_measured\|vocabulary_gap_arms' \
+  --include='*.jl' tools test src
+```
+🔴 **이 목록을 계획서의 다음 스텝에 그대로 붙일 것.** 여기서 안 잡힌 소비처가 나중에
+`KeyError` 로 터지면 그건 이 스텝을 건너뛴 것이다.
+
+- [ ] **Step 2: 지운다**
+
+| 대상 | 자리 | 남기는 것 |
+|---|---|---|
+| 반사실 열 | `run_demo.jl:345-347` 의 `"llm"`·`"surrogate"`·`"agree"` | — |
+| 비교 줄 | `render_demo.jl:748` | — |
+| `agree`/`others` 계산 | `policy.jl:1681-1688` | — |
+| novelty 일체 | `install_novelty!` · `ROUTER_EPS` · `novelty_verdict` 소비 · `route_verdict` 의 `novel`/`novelty_measured`/`enabled` | 🔴 **`event_descriptors_of` 와 `descriptors` 는 남긴다** — LLM 페이로드가 읽고, 그 함수는 교정값을 안 읽으므로 교정 파일 없이 계산된다 |
+| zone 에스컬레이션 블록 둘 | `policy.jl:1556-1604` | 🔴 **`zone_primitives` 기록**(조건 없는 감사 증거)과 `rt["zone_verdict"] = zdg.verdict`(**기록만**, 격상 판정으로는 안 씀) |
+| 축 1 잔재 | `supported` · `escalation_target` 의 라우팅 사용 · `vocabulary_gap_arms` · `support_measured` | `escalation_target` **함수 자체**는 남긴다(진단용) |
+| `DEMO_ALL_POLICIES` | 반사실을 위한 손잡이였다 | — (T11 의 `want` 가 대체한다) |
+| 낡은 docstring | `dspy_service.py:1072`·`:1083` 이 `TOOL_CHOICE_DEFAULT` 를 아직 `None` 이라 적는다 | 값은 `:1056` 대로 `"required"` — 문서만 정정 |
+
+🔴 **zone 블록은 "지운다/남긴다" 가 표 한 칸으로 안 갈린다** — 남기는 것이 지우는 것 **안에**
+중첩돼 있다. 정확한 모양은 이렇다(`policy.jl:1550-1604`):
+
+```julia
+if truth isa CB.ZoneTruth
+    # ✅ 남긴다 — `check_restage = true` 가 **하중을 진다.** `ood_features` 의
+    #    `zone_diagnosis(env, truth.zone)` 호출은 이 인자가 없어서 restage 가능성을 안 잰다.
+    #    이 줄을 지우면 `verdict` 가 `:line_stop` 이 될 길이 사라진다 = 아래 기록이 영원히
+    #    다른 값만 낸다(에러 없이).
+    local zdg = try CB.zone_diagnosis(env, truth.zone; check_restage = true) catch e
+        @warn "[router] zone_diagnosis failed" exception = e; nothing
+    end
+    # ❌ 지운다 — `local can_escalate = escalation_allowed && enacted != "dspy" && ...`
+    if zdg !== nothing && zdg.exists
+        rt["zone_primitives"] = Dict(...)          # ✅ 남긴다 (조건 없는 감사 증거, 그대로)
+        # ✅ 더한다 (T12) — 🔴 **진단은 남기고 격상은 안 한다.**
+        #    kind 축에서 zone 은 이미 dspy 이므로 격상할 곳이 없다. 그러나 "왜 올랐어야
+        #    했는가" 의 근거(`:line_stop` = 닫힌 어휘에 이 구역의 수복이 없다)는 사후 감사의
+        #    유일한 증거이므로 값으로 남긴다. Symbol 은 JSON 에 안 실리므로 String 으로.
+        rt["zone_verdict"] = String(zdg.verdict)
+        # ❌ 지운다 — `if zdg.n_nav_blocked > 0 && can_escalate ... enacted = "dspy"` 와
+        #             `elseif zdg.verdict === :line_stop && can_escalate ... enacted = "dspy"`
+        #    (둘 다 `rt["escalated_from"]`·`rt["escalation_reason"]` 를 쓰던 자리 포함)
+    end
+end
+```
+
+그리고 `escalation_allowed`(`:1513`)는 이 삭제 뒤 소비처가 `escalation_target(...)` 호출
+(`:1523`) 하나만 남는데 그것도 축 1 잔재로 같이 간다 ⟹ **`escalation_allowed` 정의도 지운다.**
+`rt["escalated_from"]`·`rt["escalation_reason"]` 을 읽는 소비처가 있으면 Step 1 의 grep 이
+잡는다 — 잡히면 그 자리에도 세대 표식을 남길 것.
+
+- [ ] **Step 3: 산출물 스키마에 단절을 적는다**
+
+`run_demo.jl` 의 결정 행 화이트리스트 위에:
+```julia
+# 🔴 2026-08-29 (T12): `llm`·`surrogate`·`agree`·`router_p`·`router_novel` 을 지웠다.
+#    라우터가 사건당 레인 **하나만** 부르므로 안 부른 레인의 값이 존재하지 않는다.
+#    ⟹ 이 커밋 **이전** 녹화와 이 열들에서 비교가 끊긴다. 옛 녹화를 읽는 분석은
+#    키 부재를 "값이 없다" 가 아니라 "세대가 다르다" 로 읽어야 한다.
+```
+
+- [ ] **Step 4: 파이썬 회귀**
+
+Run: `.venv/bin/python -m pytest src/respec/llm_service/ -q`
+Expected: T10 값 그대로(이 태스크는 파이썬 로직을 안 건드린다 — docstring 만)
+
+- [ ] **Step 5: 줄리아 전체 회귀** (⏱ 약 5분)
+
+Run: `julia +lts --project=. -e 'using Pkg; Pkg.test()'`
+Expected: 🔴 **초록을 기대하지 말 것.** `tools/test_policy_escalation.jl` 은 축 1·2 의 게이트라
+설계상 대부분 무효가 된다. **무효가 된 시험은 지우고, 왜 지웠는지를 그 파일 머리말에 적는다** —
+주석 처리하거나 `@test_skip` 으로 남기지 않는다(이 레포가 반복해 데인 자리다).
+유일하게 무관한 error 는 `test/runtests.jl:80` 의 Gurobi 라이선스다.
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add tools/monitor/policy.jl tools/monitor/run_demo.jl tools/monitor/render_demo.jl \
+        tools/test_policy_escalation.jl src/respec/llm_service/dspy_service.py
+git commit -m "T12: 반사실·novelty·zone 에스컬레이션을 지운다 — 한 사건에 한 레인만 남는다"
 ```
 
 ---
