@@ -607,6 +607,15 @@ class MacroRequest(BaseModel):
     #     못 보고, 모든 사건이 "요청이 강제를 안 했다"로 굳는다 — 원인이 호출자에 있는 것처럼
     #     보인다. 이 레포가 `total_nodes`(위)에서 이미 밟은 함정이다.
     tool_choice: Optional[str] = None
+    # lanes : 이 요청이 **실제로 청구하는** 레인 (2026-08-29, T10 / §0-C 충돌 ⑦).
+    #   `None`(또는 키 없음) = 둘 다 = 2026-08-29 이전과 동일(하위호환).
+    #   `["surrogate"]` = surrogate 만 → **LM 호출 0건**. 🔴 이것이 kind 색인 라우터의 비용
+    #   절감이 실제로 사는 유일한 자리다: `select_lane` 만 고치면 이 함수가 맨 앞에서
+    #   `macro(req)` 를 부르므로 비용이 1원도 안 준다.
+    #   `[]` = 아무 레인도 안 청구했다 — `None` 과 **다른 사건**이다(삼상). falsy 로 접지 말 것.
+    #   ★ 선언하지 않으면 pydantic 이 조용히 버리고 모든 사건이 "둘 다" 로 굳는다.
+    #     게이트: test_decide_lanes.py::test_lanes_survives_the_pydantic_boundary
+    lanes: Optional[List[str]] = None
 
 
 _SURRO_INSTANCE = "live"        # 요청 하나 = instance 하나. `choose`/`predict_delta_J` 의 그룹 키.
@@ -1458,78 +1467,99 @@ def decide(req: MacroRequest):
            "llm_input": _llm_input(req), "surrogate_input": _state_line(req),
            "llm_input_mode": "nl" if (req.nl and req.nl.strip()) else "parsed-fields"}
 
-    d = macro(req)                                   # dspy 정책(위 엔드포인트 재사용)
-    out["dspy"] = {"chosen": d["chosen"], "ranking": d["ranking"], "margin": d["margin"],
-                   "rationale": d["reasoning"], "policy": d["policy"],
-                   "coerced": d["coerced"], "error": d["error"],
-                   # ---- 합성 레인 (T2, Plan B / T6b) --------------------------------------
-                   # 🔴 이 둘은 **Plan A 의 tool 레인 키가 아니다.** 아래 `# ---- tool 레인`
-                   #    표식이 이 dict 안에서 그 경계를 선언하고, `test/tool_lane_keys_survive.jl`
-                   #    (6)절이 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과
-                   #    양방향 등호로 대조한다. 그래서 합성 레인 키는 표식 **위**에 둔다 —
-                   #    표식 아래에 두면 그 게이트가 정당하게 빨개진다(다른 레인의 키를
-                   #    tool 레인 목록에 밀어 넣는 셈이므로).
-                   # 🔴 그러므로 줄리아가 이 값을 결정 행으로 나르려면 `TOOL_LANE_KEYS` 에
-                   #    이름을 더하는 것과 **같은 커밋에서** 이 두 줄을 표식 아래로 옮겨야
-                   #    한다. 그 배선은 이 태스크의 범위 밖이고 T6b 보고서가 줄을 짚는다.
-                   # 🔴 `/macro` 에는 이 레포에 **호출자가 0개**다(아래 주석). 라이브 레인은
-                   #    `/decide` 로만 들어오므로(`tools/monitor/policy.jl:559`), 여기 안
-                   #    실으면 `tool_minted` 는 실제로 도는 곳에서 영원히 안 보인다.
-                   "tool_minted": d["tool_minted"], "synthesis": d["synthesis"],
-                   # ---- 레짐 표식 · R26 기록 (Plan B, 2026-08-29) --------------------------
-                   # 🔴 이 셋도 **아래 표식 위**에 산다. `tool_minted`/`synthesis` 와 같은
-                   #    이유다: `test/tool_lane_keys_survive.jl` (6)절이 표식 **아래** 키
-                   #    집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과 **양방향 등호**로 대조하므로,
-                   #    여기 아래에 키를 하나라도 더하면 그 게이트가 정당하게 빨개진다.
-                   #    파이썬 쪽 그물은 `test_synthesize.py` 의
-                   #    `test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy`.
-                   # ⚠️ 그러므로 줄리아의 **결정 행**에는 아직 이 셋이 안 실린다. 실으려면
-                   #    `tools/monitor/policy.jl` 의 `const TOOL_LANE_KEYS` 튜플에 이름을
-                   #    더하고 **같은 커밋에서** 이 줄들을 표식 아래로 옮겨야 한다. 그 배선은
-                   #    이 태스크의 파일 범위 밖이다(보고서가 줄을 짚는다).
-                   # ⚠️ 위 주석 줄은 `# ---- tool ` 로 시작하면 안 된다 — 줄리아 추출기는
-                   #    그 모양의 표식이 이 dict 안에 **정확히 하나**일 것을 요구하고, 둘이면
-                   #    게이트가 죽는다(빨간색이 아니라 추출 실패로).
-                   # 🔴 2026-08-29 (T-C): `tool_choice` 는 여기 있었고 **표식 아래로 내려갔다**.
-                   #    줄리아의 `TOOL_LANE_KEYS` 가 그것을 나르게 됐으므로 양방향 등호가
-                   #    그것을 요구한다. `tool_called_forced` · `tool_args_forced` 는 줄리아가
-                   #    아직 안 읽으므로 그대로 위에 남는다.
-                   "tool_called_forced": d["tool_called_forced"],
-                   "tool_args_forced": d["tool_args_forced"],
-                   # ---- tool 레인 (Plan A) ------------------------------------------------
-                   # 🔴 `/macro` 에는 이 레포에 **호출자가 없다** — 실측(`grep -rn '/macro'
-                   #    --include='*.jl' --include='*.py' src tools wm4spacecraft_manufacturing
-                   #    test`): 정의 1건(`@app.post("/macro")`) · 주석/독스트링 언급 3건 ·
-                   #    **호출 0건**.
-                   #    라이브 레인은 `/decide` 로만 들어온다(`tools/monitor/policy.jl:559`).
-                   #    여기 안 실으면 ②접지가 실제로 도는 곳에서 영원히 안 보인다.
-                   # ⚠️ 여기까지가 Plan A 다. 줄리아의 `policy_entry`(`policy.jl:1034-1046`)는
-                   #    키 목록을 손으로 들고 있어 아래 여덟을 **아직 결정 행으로 안 나른다** —
-                   #    그 배선(`run_demo.jl` 의 `this_decision`)은 Plan B 의 첫 태스크다.
-                   "tool_called": d["tool_called"], "tool_args": d["tool_args"],
-                   "tool_calls_n": d["tool_calls_n"], "tools_offered": d["tools_offered"],
-                   "expressible": d["expressible"], "native_fc": d["native_fc"],
-                   "tool_lane_error": d["tool_lane_error"],
-                   "macro_tool_agree": d["macro_tool_agree"],
-                   # ---- 레짐 표식 · 단일 채널 (2026-08-29) --------------------------------
-                   # 🔴 이 셋은 표식 **아래**다 — 줄리아의 `TOOL_LANE_KEYS` 가 그것을 나르고
-                   #    `test/tool_lane_keys_survive.jl` (6)절이 양방향 등호로 대조한다.
-                   #    (위 `# ---- 레짐 표식 · R26 기록` 주석이 `# ---- tool ` 로 시작하지
-                   #     않는 것이 중요하다 — 표식은 이 dict 안에 정확히 하나여야 한다.)
-                   #
-                   # 🔴 **T4 는 이 자리를 일부러 줄리아와 어긋난 채로 남긴다.** `text_rescue`
-                   #    는 사라졌고(되찾을 텍스트 채널이 없다) `decision_source`·`tool_arg_error`
-                   #    는 새로 생겼는데, `tools/monitor/policy.jl` 의 `TOOL_LANE_KEYS` 는 아직
-                   #    옛 열 개다. 그래서 `test/tool_lane_keys_survive.jl` 의 **(6)절만**
-                   #    정당하게 빨갛다(실측: 이 커밋이 더한 실패는 정확히 2개다 — 그 파일은
-                   #    T4 **전에도** (3)절에서 13개가 빨갰고 그건 이 레인과 무관하다) —
-                   #    T6 이 그 튜플 하나를 고치면 닫힌다(줄리아 단독
-                   #    편집이고, 그것이 T6 의 첫 스텝이다). 파이썬 쪽에서 키를 위로 숨겨
-                   #    초록을 만들지 않는 이유: 그러면 줄리아가 이 셋을 **영원히 안 나르는**
-                   #    상태가 조용해진다 — 이 레포가 반복해 데인 자리다.
-                   "tool_choice": d["tool_choice"],
-                   "decision_source": d["decision_source"],
-                   "tool_arg_error": d["tool_arg_error"]}
+    # ---- 레인 청구 (2026-08-29, T10) ---------------------------------------------------------
+    # 🔴 `req.lanes is None` 과 `req.lanes == []` 는 **다른 사건이다.** `or LANES` 로 쓰면
+    #    빈 목록이 falsy 라 "아무것도 안 물었다" 가 조용히 "둘 다" 가 되고, 이 태스크가
+    #    없애려는 그 비용이 그대로 돌아온다.
+    LANES = ("dspy", "surrogate")
+    want = tuple(req.lanes) if req.lanes is not None else LANES
+    bad = [l for l in want if l not in LANES]
+    if bad:
+        # 🔴 F1 과 같은 규약. 조용히 무시하면 "surrogat" 오타 하나가 그 레인을 통째로
+        #    사라지게 만들고, 줄리아는 그것을 "서비스 장애"(available=false) 로 읽는다.
+        raise ValueError("unknown lane(s) %r; allowed: %s" % (bad, ", ".join(LANES)))
+    # ⚠️ `out["valid"]`·`out["state"]`·`out["llm_input"]`·`out["surrogate_input"]` 은 레인과
+    #    무관하게 위에서 이미 나갔다 — 둘 다 **요청 자체의 기록**이고, 빼면 결정 행의 `valid`
+    #    열이 사라진다(채점기가 읽는다).
+
+    if "dspy" in want:
+        d = macro(req)                                   # dspy 정책(위 엔드포인트 재사용)
+        out["dspy"] = {"chosen": d["chosen"], "ranking": d["ranking"], "margin": d["margin"],
+                       "rationale": d["reasoning"], "policy": d["policy"],
+                       "coerced": d["coerced"], "error": d["error"],
+                       # ---- 합성 레인 (T2, Plan B / T6b) --------------------------------------
+                       # 🔴 이 둘은 **Plan A 의 tool 레인 키가 아니다.** 아래 `# ---- tool 레인`
+                       #    표식이 이 dict 안에서 그 경계를 선언하고, `test/tool_lane_keys_survive.jl`
+                       #    (6)절이 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과
+                       #    양방향 등호로 대조한다. 그래서 합성 레인 키는 표식 **위**에 둔다 —
+                       #    표식 아래에 두면 그 게이트가 정당하게 빨개진다(다른 레인의 키를
+                       #    tool 레인 목록에 밀어 넣는 셈이므로).
+                       # 🔴 그러므로 줄리아가 이 값을 결정 행으로 나르려면 `TOOL_LANE_KEYS` 에
+                       #    이름을 더하는 것과 **같은 커밋에서** 이 두 줄을 표식 아래로 옮겨야
+                       #    한다. 그 배선은 이 태스크의 범위 밖이고 T6b 보고서가 줄을 짚는다.
+                       # 🔴 `/macro` 에는 이 레포에 **호출자가 0개**다(아래 주석). 라이브 레인은
+                       #    `/decide` 로만 들어오므로(`tools/monitor/policy.jl:559`), 여기 안
+                       #    실으면 `tool_minted` 는 실제로 도는 곳에서 영원히 안 보인다.
+                       "tool_minted": d["tool_minted"], "synthesis": d["synthesis"],
+                       # ---- 레짐 표식 · R26 기록 (Plan B, 2026-08-29) --------------------------
+                       # 🔴 이 셋도 **아래 표식 위**에 산다. `tool_minted`/`synthesis` 와 같은
+                       #    이유다: `test/tool_lane_keys_survive.jl` (6)절이 표식 **아래** 키
+                       #    집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과 **양방향 등호**로 대조하므로,
+                       #    여기 아래에 키를 하나라도 더하면 그 게이트가 정당하게 빨개진다.
+                       #    파이썬 쪽 그물은 `test_synthesize.py` 의
+                       #    `test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy`.
+                       # ⚠️ 그러므로 줄리아의 **결정 행**에는 아직 이 셋이 안 실린다. 실으려면
+                       #    `tools/monitor/policy.jl` 의 `const TOOL_LANE_KEYS` 튜플에 이름을
+                       #    더하고 **같은 커밋에서** 이 줄들을 표식 아래로 옮겨야 한다. 그 배선은
+                       #    이 태스크의 파일 범위 밖이다(보고서가 줄을 짚는다).
+                       # ⚠️ 위 주석 줄은 `# ---- tool ` 로 시작하면 안 된다 — 줄리아 추출기는
+                       #    그 모양의 표식이 이 dict 안에 **정확히 하나**일 것을 요구하고, 둘이면
+                       #    게이트가 죽는다(빨간색이 아니라 추출 실패로).
+                       # 🔴 2026-08-29 (T-C): `tool_choice` 는 여기 있었고 **표식 아래로 내려갔다**.
+                       #    줄리아의 `TOOL_LANE_KEYS` 가 그것을 나르게 됐으므로 양방향 등호가
+                       #    그것을 요구한다. `tool_called_forced` · `tool_args_forced` 는 줄리아가
+                       #    아직 안 읽으므로 그대로 위에 남는다.
+                       "tool_called_forced": d["tool_called_forced"],
+                       "tool_args_forced": d["tool_args_forced"],
+                       # ---- tool 레인 (Plan A) ------------------------------------------------
+                       # 🔴 `/macro` 에는 이 레포에 **호출자가 없다** — 실측(`grep -rn '/macro'
+                       #    --include='*.jl' --include='*.py' src tools wm4spacecraft_manufacturing
+                       #    test`): 정의 1건(`@app.post("/macro")`) · 주석/독스트링 언급 3건 ·
+                       #    **호출 0건**.
+                       #    라이브 레인은 `/decide` 로만 들어온다(`tools/monitor/policy.jl:559`).
+                       #    여기 안 실으면 ②접지가 실제로 도는 곳에서 영원히 안 보인다.
+                       # ⚠️ 여기까지가 Plan A 다. 줄리아의 `policy_entry`(`policy.jl:1034-1046`)는
+                       #    키 목록을 손으로 들고 있어 아래 여덟을 **아직 결정 행으로 안 나른다** —
+                       #    그 배선(`run_demo.jl` 의 `this_decision`)은 Plan B 의 첫 태스크다.
+                       "tool_called": d["tool_called"], "tool_args": d["tool_args"],
+                       "tool_calls_n": d["tool_calls_n"], "tools_offered": d["tools_offered"],
+                       "expressible": d["expressible"], "native_fc": d["native_fc"],
+                       "tool_lane_error": d["tool_lane_error"],
+                       "macro_tool_agree": d["macro_tool_agree"],
+                       # ---- 레짐 표식 · 단일 채널 (2026-08-29) --------------------------------
+                       # 🔴 이 셋은 표식 **아래**다 — 줄리아의 `TOOL_LANE_KEYS` 가 그것을 나르고
+                       #    `test/tool_lane_keys_survive.jl` (6)절이 양방향 등호로 대조한다.
+                       #    (위 `# ---- 레짐 표식 · R26 기록` 주석이 `# ---- tool ` 로 시작하지
+                       #     않는 것이 중요하다 — 표식은 이 dict 안에 정확히 하나여야 한다.)
+                       #
+                       # 🔴 **T4 는 이 자리를 일부러 줄리아와 어긋난 채로 남긴다.** `text_rescue`
+                       #    는 사라졌고(되찾을 텍스트 채널이 없다) `decision_source`·`tool_arg_error`
+                       #    는 새로 생겼는데, `tools/monitor/policy.jl` 의 `TOOL_LANE_KEYS` 는 아직
+                       #    옛 열 개다. 그래서 `test/tool_lane_keys_survive.jl` 의 **(6)절만**
+                       #    정당하게 빨갛다(실측: 이 커밋이 더한 실패는 정확히 2개다 — 그 파일은
+                       #    T4 **전에도** (3)절에서 13개가 빨갰고 그건 이 레인과 무관하다) —
+                       #    T6 이 그 튜플 하나를 고치면 닫힌다(줄리아 단독
+                       #    편집이고, 그것이 T6 의 첫 스텝이다). 파이썬 쪽에서 키를 위로 숨겨
+                       #    초록을 만들지 않는 이유: 그러면 줄리아가 이 셋을 **영원히 안 나르는**
+                       #    상태가 조용해진다 — 이 레포가 반복해 데인 자리다.
+                       "tool_choice": d["tool_choice"],
+                       "decision_source": d["decision_source"],
+                       "tool_arg_error": d["tool_arg_error"]}
+
+    if "surrogate" not in want:
+        # 🔴 **키 자체를 안 싣는다.** 빈 dict 으로 실으면 소비자가 "안 물었다" 와
+        #    "물었는데 실패했다" 를 못 가른다 — 후자만 `policy_entry(nothing, …)` 의 뜻이다.
+        return out
 
     scored, err = surrogate_rank(req, valid)         # surrogate 정책(배포 SurrogateV2)
     if scored:
