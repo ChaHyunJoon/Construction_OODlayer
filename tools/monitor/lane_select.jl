@@ -15,6 +15,28 @@
 # =============================================================================
 
 """
+    routing_kind(type_name) -> String
+
+`OODTruth` 구상 타입의 **이름**에서 라우팅용 kind 를 낸다. **전총이다** — 모르는 이름은
+`"unknown:<이름>"` 이 되고 절대 알려진 kind 로 접히지 않는다.
+
+🔴 왜 `ood_features` 의 `"kind"` 를 안 쓰나. 그 함수의 `else` 분기는 모르는 타입에 `"fault"` 를
+준다(`policy.jl:199-200`). 그 값은 surrogate **피처**로는 옳다(모델이 그 열을 그렇게 배웠다).
+그러나 **라우팅에 쓰면 정반대로 틀린다**: 처음 보는 사건이 `fault ∈ train_kinds` 를 타고
+surrogate 로 간다. 피처용 유도와 라우팅용 유도는 **다른 것을 주장하므로 따로 둔다.**
+
+🔴 왜 타입 객체가 아니라 이름 문자열인가. 이 파일은 **의존성 0** 계약 위에 있다(그래서 전수
+단위검사가 된다). `CB.FaultTruth` 를 import 하면 그 계약이 깨진다. 대신 호출부가
+`String(nameof(typeof(truth)))` 를 넘기고, 이름 기반 유도가 `ood_features` 의 `isa` 기반 유도와
+알려진 셋에서 같은 값임을 `test/tool_choice_gate.jl` 의 교차 게이트가 못박는다 — 그것이 없으면
+`FaultTruth` 개명 한 번에 라우터가 조용히 전 사건을 dspy 로 보낸다.
+"""
+routing_kind(type_name::AbstractString) =
+    type_name == "BatteryTruth" ? "battery" :
+    type_name == "FaultTruth"   ? "fault"   :
+    type_name == "ZoneTruth"    ? "zone"    : "unknown:" * String(type_name)
+
+"""
     select_lane(; novel, available, supported, policy) -> (lane, axis, reason)
 
 - `novel`     : novelty 판정 (p < eps). ⚠️ **축 2 의 임시 자리지킴**이다 — 설계서

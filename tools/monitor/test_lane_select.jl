@@ -103,3 +103,17 @@ end
     @test r6.lane == "canonical"
     @test r6.axis == "vocabulary_gap"
 end
+
+# ---- 2026-08-29 (T8, kind 색인 라우터) ------------------------------------------------------
+@testset "routing_kind 는 전총이고, 모르는 타입을 fault 로 접지 않는다" begin
+    @test routing_kind("BatteryTruth") == "battery"
+    @test routing_kind("FaultTruth")   == "fault"
+    @test routing_kind("ZoneTruth")    == "zone"
+    # 🔴 이 단언 하나가 §0-C 충돌 ①의 전부를 진다. `"fault"` 가 나오면 빨갛다.
+    @test routing_kind("MeteorTruth")  == "unknown:MeteorTruth"
+    @test startswith(routing_kind("MeteorTruth"), "unknown:")
+    # 전총: 무엇을 넣어도 던지지 않는다.
+    for n in ("", "X", "Truth", "battery")
+        @test routing_kind(n) isa String
+    end
+end
