@@ -616,6 +616,17 @@ class MacroRequest(BaseModel):
     #   ★ 선언하지 않으면 pydantic 이 조용히 버리고 모든 사건이 "둘 다" 로 굳는다.
     #     게이트: test_decide_lanes.py::test_lanes_survives_the_pydantic_boundary
     lanes: Optional[List[str]] = None
+    # routing_kind : 라우터가 **판정에 쓴** kind (2026-08-29, §A-1). 위 `kind` 와 **다른
+    #   함수**에서 온다: 저쪽(`ood_features`)은 모르는 타입을 surrogate 피처로 쓰려고 "fault"
+    #   로 접지만, 라우팅은 `"unknown:<타입이름>"` 으로 본다. 두 값이 갈리는 사건이 곧 OOD
+    #   사건이고, 그 사실을 `_unfamiliar_block`(아래)이 프롬프트에 싣는다.
+    #   ★ pydantic 은 선언 안 된 키를 조용히 버린다 — 이 선언이 없으면 호출자
+    #     (`policy.jl:service_decide`)가 실어 보내도 무효이고, 증상은 **호출자 쪽 결함처럼**
+    #     보인다. 이 레포가 `total_nodes`·`zones`·`lanes` 에서 이미 세 번 밟은 함정이다.
+    #   🔴 `Optional[...] = None` 이어야 한다 — 이 필드를 안 싣는 옛 호출자의 요청이 422 로
+    #     죽으면 안 된다(하위호환).
+    #   게이트: test_routing_kind_reaches_the_prompt.py
+    routing_kind: Optional[str] = None
 
 
 _SURRO_INSTANCE = "live"        # 요청 하나 = instance 하나. `choose`/`predict_delta_J` 의 그룹 키.
@@ -849,9 +860,13 @@ def _llm_input(r: MacroRequest) -> str:
 
     nl 이 없으면 예전 동작(_state_line)으로 폴백한다 -- 이 파일을 갱신하는 것만으로
     기존 호출자가 깨지지 않게.
+
+    🔴 블록 함수(`_geometry_block`·`_zones_block`·`_unfamiliar_block`)는 **두 반환 경로 모두**에
+    붙는다. 한쪽만 붙이면 그 사실이 옛 호출자(nl 없는 요청)의 프롬프트에서 조용히 사라진다 —
+    그리고 그 누락은 문자열이 짧아진 것 말고는 아무 증상도 안 낸다.
     """
     if not (r.nl and r.nl.strip()):
-        return _state_line(r) + _geometry_block(r) + _zones_block(r)
+        return _state_line(r) + _geometry_block(r) + _zones_block(r) + _unfamiliar_block(r)
     lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip(), getattr(r, "nl_mode", None))]
     if r.descriptors and len(r.descriptors) == len(DESCRIPTOR_NAMES):
         lines += ["",
@@ -859,7 +874,7 @@ def _llm_input(r: MacroRequest) -> str:
                   "each is in [0,1] and means the same thing for any kind of disruption):"]
         for name, v in zip(DESCRIPTOR_NAMES, r.descriptors):
             lines.append("  %-18s = %.2f   (%s)" % (name, float(v), DESCRIPTOR_DOC[name]))
-    return "\n".join(lines) + _geometry_block(r) + _zones_block(r)
+    return "\n".join(lines) + _geometry_block(r) + _zones_block(r) + _unfamiliar_block(r)
 
 
 # 각 원시값이 무엇인지 -- 값만 주면 모델이 뜻을 지어낸다. 설명은 **사실**만 적고
@@ -987,6 +1002,34 @@ def _zones_block(r: "MacroRequest") -> str:
             out.append("    root_goals_inside = %s   (delivery goals of the ROOT assembly lie "
                        "inside this disc)" % ("yes" if z["covers_root"] else "no"))
     return "\n".join(out) if len(out) > 2 else ""
+
+
+# ---- 2026-08-29 (§A-1): 라우터의 낯섦 판정을 프롬프트에 싣는다 -------------------------------
+def _unfamiliar_block(r: MacroRequest) -> str:
+    """라우터가 이 사건을 어떤 학습된 kind 로도 못 놓았다는 **사실**을 프롬프트에 싣는다.
+
+    🔴 왜 필요한가 (2026-08-29, §A-1). 라우터는 `routing_kind` 가 `"unknown:"` 으로 시작하면
+    이 사건을 LLM 으로 보낸다. 그런데 그 판정이 페이로드에 안 실려서, 모델은 자기가 처음 보는
+    사건을 받았다는 것을 모른 채 위의 파싱된 필드(= 가장 가까운 알려진 스키마로의 투영)를
+    사실로 읽었다. `Replace`(로봇 교체)는 빔 붕괴·측위 상실과 아무 상관이 없는데 그것이
+    메뉴의 유일한 개입 팔이다.
+
+    🔴 여기에 **지시절을 적지 않는다**(Global Constraint 5). 적는 것은 사실 셋뿐이다:
+    분류가 실패했다 · 위 필드는 투영이다 · 메뉴는 그 투영에서 만들어졌다.
+    무엇을 할지는 모델이 정하고, 어휘가 모자라면 `expressible=false` 로 신고한다.
+
+    규약은 `_zones_block` 과 **정확히 같다**: 조건이 아니면 **빈 문자열**을 낸다 —
+    알려진 kind 사건(과 이 필드를 안 싣는 옛 호출자)의 프롬프트는 바이트 단위로 예전과 같다.
+    """
+    rk = getattr(r, "routing_kind", None)
+    if not (rk and rk.startswith("unknown:")):
+        return ""
+    return ("\n\nUNFAMILIAR EVENT: the monitor could not place this disruption in any event "
+            "category the surrogate was trained on (its internal type is %r). The parsed "
+            "fields above are a best-effort projection onto the closest known schema, not a "
+            "classification, and the candidate list was built from that same projection -- it "
+            "may not contain anything that resolves what actually happened."
+            % rk[len("unknown:"):])
 
 
 @app.get("/health")

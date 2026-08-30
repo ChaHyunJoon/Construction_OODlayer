@@ -661,6 +661,22 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # (실측: 서술자가 harm=0.02 인데도 "restage 하라"를 따라 ForbidZone 을 골랐다).
     # 서비스는 별도 프로세스라 환경변수로는 못 미치므로 요청에 실어 보낸다. LLM_NL_MODE=raw 로 옛 동작.
     payload["nl_mode"] = lowercase(get(ENV, "LLM_NL_MODE", "observation"))
+    # 라우터가 **판정에 쓴** kind (2026-08-29, §A-1). 위 `payload["kind"]` 와 **다른 함수**에서
+    # 온다: `ood_features` 의 `else` 분기는 모르는 타입을 `"fault"` 로 접고(그건 surrogate
+    # 피처로는 옳다 — 모델이 그 열을 그렇게 배웠다), `routing_kind` 는 같은 타입을
+    # `"unknown:<타입이름>"` 으로 본다. **두 값이 갈리는 사건이 곧 OOD 사건이다.**
+    # 이 줄이 없으면 라우터가 "처음 보는 사건이라 LLM 으로 보낸다" 고 판정해 놓고 그 판정을
+    # 프롬프트에 한 글자도 안 싣게 되어, 모델은 자기가 fault 사건을 받았다고 읽는다.
+    #
+    # 🔴 왜 `agents`/`zones`/`lanes` 처럼 키워드로 안 받는가 (Ruling R1). 저 셋은 호출자만
+    #    아는 값이라 키워드가 옳다. `routing_kind` 는 **타입 이름의 전총 순수 함수**이고
+    #    `decide_all` 의 라우터가 이미 같은 함수로 같은 값을 만든다. 여기서 유도하면 라우터와
+    #    페이로드가 **구조적으로** 갈릴 수 없다 — 키워드로 받으면 호출자가 다른 값을 실을
+    #    여지가 되살아나고, 그 갈림이 §A-1 이 지목한 결함 그 자체다.
+    # 🔴 `payload["kind"]` 는 한 글자도 안 건드린다 — surrogate 피처가 그 열을 그렇게 배웠다.
+    # 게이트: `test/service_decide_ships_routing_kind.jl`(본문) ·
+    #        `src/respec/llm_service/test_routing_kind_reaches_the_prompt.py`(프롬프트).
+    payload["routing_kind"] = routing_kind(String(nameof(typeof(truth))))
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
     # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 = 모델에게 **보여주는** id 가 이것뿐이다.
     # 🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 못 만든다"* 는 **거짓이다.**
