@@ -37,7 +37,8 @@
 | **T3** | ✅ 완료 (검증 1라운드) | `198d0440` → `d2c408a1` | **124 passed / 48 failed** ← 설계대로 |
 | **T4** | ✅ 완료 (음성 대조 6종) | `7d525078` | **168 passed / 0 failed** |
 | **T5** | ✅ 완료 (음성 대조 4종) | `90cfcc82` | **174 passed / 0 failed** |
-| T6~T7 | ⬜ 미착수 | — | — |
+| **T6** | ✅ 완료 | `55936017` | **174 passed / 0 failed** (줄리아: 아래) |
+| **T7** | ✅ 완료 (**유료 4콜 실측 4 passed**) | `25c3a249` | **174 passed / 4 skipped** |
 | **T8~T12** | ⬜ 미착수 — **kind 색인 라우터**(2026-08-29 2차 지시). 착수 전 §0-C 필독 | — | — |
 
 ✅ **T1~T3 이 열어 둔 두 구멍은 T4 가 닫았다**(실측, §0-B ⑪):
@@ -48,12 +49,18 @@
 ✅ **T5 가 ①을 닫았다** — `TOOL_CHOICE_DEFAULT = "required"`, 그리고 `parallel_tool_calls=False`
 가 프로바이더 요청까지 도달한다(실측).
 
-🔴 **그래도 아직 스윕을 돌리지 말 것 — 남은 것은 줄리아 배선 하나다.**
-줄리아 `TOOL_LANE_KEYS` 가 아직 옛 열 개라 `decision_source`·`tool_arg_error` 가 **결정 행에
-안 실린다**(그리고 `test/tool_lane_keys_survive.jl` (6)절이 그 사실로 빨갛다). T6 이 닫는다.
-⟹ 지금 돌리면 죽지 않고 tool 호출도 오지만, **새 진단 키 둘이 기록에서 빠진다** — 즉 실패
-사건의 이름(`no_tools`/`no_call`)과 접지 실패 사유가 사후에 복원 불가능해진다. 스윕을 다시
-돌리는 비용이 그 두 키를 얻는 비용보다 크므로 T6 뒤에 돌리는 것이 맞다.
+✅ **T6 이 줄리아 배선을 닫았다** — `TOOL_LANE_KEYS` 가 파이썬 `out["dspy"]` 의 현행 **열하나**와
+집합 등호이고(`test/tool_lane_keys_survive.jl` (6)절 9/9), `decision_source`·`tool_arg_error` 가
+결정 행에 실린다. 그리고 라우터 게이팅된 `tool_choice` 배선을 지웠다(§0-B ⑯).
+
+✅ **T7 이 레인이 실제로 돈다는 것을 유료로 쟀다** — gpt-4o 4콜 **4 passed**. F3·F5·F6·F9·F10·
+F11·F12 가 실측으로 닫혔다. **이것이 이 계획에서 유일하게 레인 건강을 재는 증거다**(§0-B ⑦).
+
+🟢 **T1~T7 기준으로 스윕을 돌려도 된다.** 막고 있던 두 키가 실렸고, 라이브 호출이 끝까지 돈다.
+⚠️ 다만 T8~T12 는 **라우팅 결과를 안 바꾸고 판정 시점·비용·기록만 바꾼다**(§0-C 🟢)이므로,
+지금 돌린 스윕은 T8~T12 뒤에도 라우팅 축에서는 비교 가능하다. 반면 T12 가 지우는 열
+(`router_p`·`router_novel`·반사실 `llm`/`surrogate`/`agree`)은 **지금 돌려야만 남는다** —
+그 열이 필요하면 T8 착수 **전에** 돌릴 것.
 
 ## 0-B. 실행 중 반증되거나 정정된 것 — **다음 태스크가 이걸 안 읽으면 같은 자리를 다시 밟는다**
 
@@ -206,6 +213,51 @@ dspy 3.3.0 이 두 손잡이를 프로바이더 경계에서 한 객체(`LMToolC
 `json_repair.loads` 로 먼저 푼다. 같은 페이로드를 두 경로로 태우면 `_first_tool_call` 출력이
 **동일하다**(이름·args 타입·키 집합·`check_tool_args` 결과·`_GROUNDING_ARGS` 필터 결과 전부).
 ⟹ T7 의 라이브 게이트가 재는 것은 우리 디코딩이 아니라 **프로바이더의 행동**이다. 범위 그대로.
+
+**⑲ ✅ T6 실행 결과 — 계획서가 파일 하나를 빠뜨렸고, 시험 코드 한 줄이 틀렸다.**
+(a) T6 의 **Files** 목록에 `test/tool_lane_keys_survive.jl` 이 없다. 그런데 그 파일의 픽스처
+둘(`_LANE_FULL`·`_LANE_DECLINED`)이 `text_rescue` 를 **리터럴로** 들고 있고 (0)절이
+`length(TOOL_LANE_KEYS) == 10` 을 못박으므로, `TOOL_LANE_KEYS` 만 고치면 그 파일이 더 빨개진다.
+T6 은 그 파일도 같이 고쳤다(픽스처 → `decision_source`/`tool_arg_error`, 개수 10 → 11).
+(b) 계획서 Step 1 의 `Set(String.(keys(blank)))` 는 **이 harness 에서 틀리다** —
+`tool_lane_fields` 는 `Vector{Pair{String,Any}}` 를 내므로 `keys(...)` 가 이름이 아니라
+색인(`Base.OneTo`)을 내고 `String(1)` 이 `MethodError` 다. 이름을 얻는 것은 `first.(...)`.
+(c) T6 Step 3 은 `service_decide` 의 `tool_choice` 키워드를 지우라고 하는데, **같은 태스크가
+지정한 시험 파일** `test/tool_choice_gate.jl` 의 (3)·(4)절이 정확히 그 키워드의 동작을 잰다.
+Step 4 의 "Expected: PASS" 는 그 두 절을 다시 쓰지 않으면 성립하지 않는다 — §0-B ⑯ 의 지시
+("이 게이팅은 더 이상 작동하지 않는다 를 적을 것")대로 두 절의 **명제를 뒤집어** 다시 썼다.
+(4)절은 이제 `@test_throws MethodError` 로 키워드의 **부재**를 못박는다.
+
+**⑳ 🔴 남은 레드 14개의 뿌리를 **측정으로** 찾았다 — 이 계획에 그 태스크가 없다(§0-B ⑫ 미정 해소).**
+`Pkg.test()` = **1529 pass / 14 fail / 1 error / 1544 total**(2026-08-29, T7 뒤 실측).
+error 는 Gurobi 라이선스 하나로 변경과 무관하다. 14 fail 의 정체:
+
+  · 13 = `test/tool_lane_keys_survive.jl` (3)절. **T4 착수 전부터 빨갛다**(§0-B ⑫).
+  · 1  = `test/tool_choice_gate.jl` (0)절 `@test CB.novelty_detector() === nothing`.
+    🔴 이 절은 **단독 실행에서 초록이고 스위트에서만 빨갛다**(49/49 vs 48/1) — 그 파일 자신의
+    머리말이 경고하는 *"단독 초록은 스위트 초록의 증거가 아니다"* 가 자기 자신에게 걸렸다.
+
+  🔴 **뿌리는 하나이고, 이제 추측이 아니라 실측이다.**
+  `wm4spacecraft_manufacturing/novelty/novelty_calibration.json` 이 **이 트리에 존재한다**
+  (커밋 `1b7db941`, n_instances=82, kinds=`battery,fault,zoneblk`). 그래서 `install_novelty!()`
+  이 첫 `decide_all` 에서 **게으르게** 라우터를 설치하고, 그 라우터가 이 두 게이트의 합성
+  사건을 **novel 로 판정해 `dspy` 로 보낸다** — (3)절의 전제 `enacted == "surrogate"` 가 깨지고
+  아래가 연쇄로 무너진다. 그리고 `test/tool_lane_keys_survive.jl` 은 그 전역
+  (`CB.NOVELTY_DETECTOR[]`)을 **복원하지 않는다**(그 파일에 `clear_novelty_detector!` 참조가
+  0건이다) — 그래서 스위트에서 그 다음에 도는 `tool_choice_gate.jl` (0)절이 죽는다.
+
+  **음성 대조(결정적):** `NOVELTY_CALIB=/nonexistent/none.json julia +lts --project=.
+  test/tool_lane_keys_survive.jl` → **176 / 176 초록.** 즉 이 13 은 T1~T7 과 **무관**하고,
+  교정 파일의 존재 하나가 만든다.
+
+  ⟹ **고칠 자리 둘.** ① `tool_lane_keys_survive.jl` 이 `tool_choice_gate.jl` 처럼 `_PREV_DET`
+  을 저장하고 `finally` 에서 복원할 것(전역 누수 — 1 fail 이 닫힌다). ② (3)절이 레인 선택을
+  라우터에 맡기지 말고 **감지기를 명시적으로 지운 뒤** 재거나, `route`/`select_lane` 을 고정할 것
+  (13 fail 이 닫힌다). 🔴 **T12 가 novelty 축을 통째로 지우므로 그때 자동으로 닫히는 종류이지만,
+  T8~T11 이 도는 동안 이 14 는 계속 빨갛다** — 그 사이 "스위트가 빨갛다" 를 회귀로 오독하지 말 것.
+
+  ⚠️ 그리고 이것이 §0-C 의 정정 *"교정 파일이 없는 이 작업 트리 는 더는 안 맞는다"* 의 **두 번째
+  귀결**이다. 첫 번째는 축 2 가 살아 있다는 것이고, 두 번째가 이 14 개의 레드다.
 
 ---
 
