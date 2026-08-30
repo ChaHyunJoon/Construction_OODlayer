@@ -72,7 +72,12 @@ _IN_VOCAB = {
 _ZONE_MENU = [svc._REG_NAME[i]
               for i in sorted(set([0] + list(svc._REG_KIND_VALID.get("zone", []))))]
 
-# zone 사건 하나 — `policy.jl:344-356` 이 오늘 실제로 내는 메뉴 모양(`_ZONE_MENU`)을 태운다.
+# zone 사건 하나 — `tools/monitor/policy.jl` 의 `valid_macros` 가 `truth isa CB.ZoneTruth`
+# 분기에서 오늘 실제로 내는 메뉴 모양(`_ZONE_MENU`)을 태운다.
+# 🔴 줄번호로 인용하지 않는다. 옛 인용 `policy.jl:344-356` 은 Task 2 시점에는 바로 그 zone 메뉴
+# 블록이었지만(실측: `git show f29292df:tools/monitor/policy.jl | sed -n '344,356p'`),
+# 2026-08-29 §B-1 이 그 파일에서 131줄을 지우면서 그 범위가 **`route_verdict` 의 docstring**
+# 으로 밀렸다 — 같은 커밋이 이 파일 :33 의 인용도 똑같이 썩혔고 그때는 하나만 잡혔다.
 _ZONE_EVENT = dict(
     kind="zone", severity=0.4, progress=0.44, n_active=8,
     nl="A restricted region was declared over the staging area; no known repair macro "

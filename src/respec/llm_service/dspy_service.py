@@ -598,9 +598,19 @@ class MacroRequest(BaseModel):
     # tool_choice : **이 사건에 대해 호출자가 정한** tool 강제 여부 (2026-08-29, Plan B / T-C).
     #   `"required"` = 이 요청은 tool 호출을 요구한다 · `None`/없음 = 요구하지 않는다(그러면
     #   `_ask` 가 그 키를 프로바이더 요청에 **아예 안 싣는다** = 2026-08-29 이전과 바이트 동일).
-    #   유도는 호출자에 있다 — `tools/monitor/policy.jl` 의 `tool_choice_for`(의존성 0 순수
-    #   함수)가 `novelty_measured`·`novel` 둘만 보고 정한다. 서비스는 그것을 **재유도하지
-    #   않는다**: 라우터의 novelty 판정은 여기 없다.
+    #   🔴 **2026-08-29 (Ruling R15): 아래 유도는 더 이상 일어나지 않는다.** 옛 서술은 현재형으로
+    #   *"유도는 호출자에 있다 — `policy.jl` 의 `tool_choice_for` 가 `novelty_measured`·`novel`
+    #   둘만 보고 정한다"* 였다. 두 번 끊겼다: ① **T6** 이 `service_decide` 의 `tool_choice`
+    #   키워드와 `decide_all` 의 유도 호출부를 지워 **줄리아가 이 키를 한 번도 안 싣는다**
+    #   (`test/tool_choice_gate.jl` (3)·(4)절이 그것을 못박는다). ② **§B-1** 이 novelty 축을
+    #   삭제해 `route_verdict` 가 `novelty_measured`·`novel` 을 **더 이상 내지 않는다**
+    #   (`tool_choice_for` 는 되돌릴 때를 위해 남은 죽은 순수 함수이고, 그 docstring 이 근거를 진다).
+    #   🔴 그래서 **"강제가 사건별로 게이팅된다" 고 읽지 말 것** — T5 가 이 서비스의
+    #   `TOOL_CHOICE_DEFAULT` 를 `"required"` 로 세웠으므로, 호출자가 이 키를 안 싣는 것이 곧
+    #   **모든 호출을 강제하는 것**이다. 오늘 강제를 끄는 자리는 이 필드가 아니라 호스트의
+    #   `DSPY_TOOL_CHOICE` 하나다(아래 우선순위 줄).
+    #   이 필드 자체는 남긴다 — 배선을 되돌릴 때 필요하고, 선언을 지우면 pydantic 이 조용히
+    #   버려서 되돌린 호출자가 원인을 못 찾는다(바로 아래 ★).
     #   🔴 우선순위는 `tool_choice(req)` 가 정한다 — **환경변수가 이기고**, 없을 때만 이 값을
     #      쓴다. `DSPY_TOOL_CHOICE` 는 사람이 잡는 양방향 킬스위치이기 때문이다.
     #   ★ 선언하지 않으면 pydantic 이 **조용히 버린다**. 그러면 호출자가 실어 보내도 서비스는

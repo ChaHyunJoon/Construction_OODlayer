@@ -1409,8 +1409,15 @@
         var ax = rt.router_axis || "none";
         var gapArms = (rt.vocabulary_gap_arms && rt.vocabulary_gap_arms.length)
                     ? ' [' + esc(rt.vocabulary_gap_arms.join(", ")) + ']' : '';
+        // 🔴 2026-08-29 (Ruling R12): 이 조건은 `ax === "vocabulary_gap"` **하나**였다. T11 이
+        // 축 이름을 `control`/`known_kind`/`ood_kind`/`fixed` 로 갈아치웠으므로 새 녹화에서는
+        // 그 문자열이 **한 번도 안 나오고**, 결과적으로 `ood_kind`(= 처음 보는 kind → LLM,
+        // 이 화면이 존재하는 이유인 바로 그 사건)까지 `familiar` 로 칠해지고 있었다.
+        // 두 세대를 같이 읽는다 — 옛 녹화의 `vocabulary_gap` 도 예전과 똑같이 `novel` 로 남는다.
+        // ⚠️ **표시 전용이다.** 같은 세대 불일치가 `sweep/llm_ood_eval.py` 의 `ROUTER_AXES`
+        //    에도 있지만 그쪽은 **게이트의 판정**을 바꾸므로 사용자 에스컬레이션으로 남긴다.
         rb.innerHTML = '<span class="rlab">ROUTER</span>'
-          + '<span class="rverdict '+(ax === "vocabulary_gap" ? "novel" : "familiar")+'">'
+          + '<span class="rverdict '+((ax === "ood_kind" || ax === "vocabulary_gap") ? "novel" : "familiar")+'">'
           + 'axis: ' + esc(ax) + gapArms + '</span>'
           + '<span class="rwhy">' + esc(rt.lane_reason || rt.reason || "")
           + ' &middot; enacted=' + esc(din.enacted || rt.target || "?")

@@ -508,7 +508,18 @@ function dspy_ready()
         r.status == 200
     catch; false end
     DSPY_HEALTHY[] = ok
-    ok || @warn "DSPy service unreachable at $DSPY_URL -> falling back to canonical"
+    # 🔴 2026-08-29 (Ruling R13): 문구가 `-> falling back to canonical` 이었다. **T11 이후
+    #    canonical 폴백은 없다.** 서비스가 안 뜨면 위 `SURRO_KINDS[]` 가 `nothing`("못 쟀다")으로
+    #    남고, 라우터가 도는 런은 `lane_select.jl` 의 `select_lane` 이 그 자리에서 판정을
+    #    **거부하며 죽는다**(§0-C 결정 3 — 조용히 한쪽으로 떨어지면 그 런의 모든 행이 근거 없이
+    #    "라우팅했다" 로 기록되므로 일부러 죽인다. `decide_all` 의 `surro_kinds()` 줄 주석 참조).
+    #    계속 도는 것은 라우터가 꺼진 런(`DEMO_ROUTER=0` / `DEMO_POLICY=noop`)뿐이고, 그것은
+    #    줄리아가 자기가 계산하는 레인이라 서비스가 필요 없다.
+    #    옛 문구의 대가가 실제였다: 밤샘 스윕에서 이 줄을 보고 "폴백했겠지" 로 읽으면 실제로는
+    #    죽은 런을 찾는 데 시간을 버린다.
+    ok || @warn "DSPy service unreachable at $DSPY_URL -> surro_kinds unknown; a router-driven " *
+                "run will DIE at select_lane (there is NO canonical fallback since T11). " *
+                "Only DEMO_ROUTER=0 / DEMO_POLICY=noop runs can continue."
     return ok
 end
 

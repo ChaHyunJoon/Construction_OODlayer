@@ -139,9 +139,19 @@ def baseline_b2(decisions, rows):
 
 
 def novelty_gate_replay(rows, decisions):
-    """산출4: router_novel/router_p 는 라우터 on/off 와 무관하게 매 결정에서 계산·기록된다 --
-    그 기록을 사후에 다시 읽을 뿐(라우팅 로직 재구현 아님). "라우터가 켜졌다면 LLM 으로 올라갔을
-    결정" 비율은 router_novel==True 비율로 읽는다."""
+    """산출4: novelty 게이트의 사후 재생.
+
+    🔴 **2026-08-29 (Ruling R14): 이 산출은 입력이 없다.** 옛 docstring 은 현재형으로
+    *"router_novel/router_p 는 라우터 on/off 와 무관하게 매 결정에서 계산·기록된다"* 라고
+    적었는데, T12(`23655a6a`)가 결정 행에서 그 두 열을 지웠고 §B-1 이 그것을 만들던 novelty 축
+    자체를 지웠다. 그래서 새 산출물에서 `ps` 는 언제나 비고 `n_novel` 은 언제나 0 이다 —
+    그 0 은 **"낯선 사건이 없었다" 가 아니라 "그 축이 없다"** 로 읽어야 한다.
+    옛(2026-08-29 이전) 녹화에 대해서는 그대로 동작한다.
+
+    🔴 **로직은 손대지 않았다** — 이 함수를 어떻게 할지(지운다 / 다른 신뢰도 축으로 갈아끼운다)는
+    갭 원장 §F 로 사용자에게 에스컬레이션돼 있다. 여기서는 거짓 현재형 주장만 걷어낸다.
+    (`sweep/llm_ood_eval.py` 의 risk-coverage 도 같은 §F 항목이다.)
+    """
     ps = [d.get("router_p") for d in decisions if d.get("router_p") is not None]
     n_novel = sum(1 for d in decisions if d.get("router_novel"))
     return dict(n=len(decisions), n_novel=n_novel, router_flags=Counter(str(r.get("router")) for r in rows),

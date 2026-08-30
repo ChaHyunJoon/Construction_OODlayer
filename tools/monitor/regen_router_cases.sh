@@ -10,15 +10,27 @@
 #
 # render_demo.jl 을 쓴다 — run_demo.jl 은 스트림만 만들고 애니메이션(MeshCat html)을 안 만든다.
 #
-# 왜 DEMO_POLICY=router 인가(policy.jl 에 없는 이름이라는 점이 핵심):
-#   라우터가 레인을 고르면 `decide_all` 이 `rt["target"]` 에 고른 레인("surrogate"/"dspy")을
-#   적고, 안 고르면 `select_lane` 이 안 불려 `target` 이 base policy 이름 그대로 남는다.
-#   base 를 policy.jl 이 모르는 "router" 로 두면 그 둘을 **사후에 구분할 수 있다.**
-#   🔴 2026-08-29 (§B-1): 이 문단의 옛 기전 서술 — *"route() 가 target 을 덮어쓴다
-#   (policy.jl:349)"* 와 *"NOVELTY_CALIB 이 없으면 policy.jl:67-68 이 라우터를 fail-open 으로
-#   꺼버린다"* — 은 **둘 다 죽었다.** novelty 축이 삭제돼 `install_novelty!()` 도 그 fail-open
-#   경로도 없고, `target` 을 쓰는 곳은 `decide_all` 의 `rt["target"] = sel.lane` 하나다.
-#   구분 자체는 그대로 산다(위 문단) — 라우터를 끄는 것은 이제 DEMO_ROUTER=0 / DEMO_POLICY=noop 뿐.
+# 왜 DEMO_POLICY=router 인가:
+#   이 이름은 policy.jl 이 아는 레인이 아니다. 오늘 그것이 하는 일은 둘뿐이다 —
+#   (a) 산출물 이름과 대시보드 버튼 키가 `…__router` 가 된다(아래 "산출물 이름"),
+#   (b) 라우터가 도는 한 `decide_all` 이 `rt["target"]`·`enacted` 에 **고른 레인**
+#       ("surrogate"/"dspy")을 적으므로 이 base 이름이 결과에 새지 않는다.
+#
+#   🔴 **옛 근거는 이 스크립트에서 거짓이다** (2026-08-29 fix wave 실측). 옛 문단은
+#   *"라우터가 꺼지면 target 이 'router' 로 남아 두 경우를 사후에 구분할 수 있다"* 라고 적었다.
+#   이 스크립트는 `DEMO_ROUTER=auto` 와 `DEMO_POLICY=router` 를 **둘 다 하드코딩한다**(아래
+#   export 두 줄, override 불가) — 애초에 router-off 판을 만들 수 없다. 그리고 억지로
+#   `DEMO_ROUTER=0` 을 넣으면 `decide_all` 이 **첫 OOD 결정에서 죽는다**:
+#       error: [router] DEMO_POLICY='router' names a lane that was never computed
+#   (`policy.jl` 의 `elseif !haskey(pol, enacted)` 분기 — "router" 는 계산된 레인이 아니다).
+#   julia 가 종료코드 != 0 으로 죽으므로 **산출물이 아예 안 생긴다.** ⟹ 사후에 비교할
+#   router-off 녹화라는 것이 **존재하지 않는다.**
+#   ⚠️ 아래 §(3) 의 주석이 말하는 *"DEMO_ROUTER=0 으로 돌려도 `n_routed` 는 ≥1"* 은 **일반
+#   기전**에 대한 서술이다(예: `DEMO_POLICY=canonical` 처럼 끝까지 도는 런). 이 스크립트의
+#   고정 env 에서는 그 런 자체가 완주하지 못하므로 두 서술이 모순이 아니다 — 적용 범위가 다르다.
+#   [역사] 옛 문단이 인용하던 *"route() 가 target 을 덮어쓴다(policy.jl:349)"* 와
+#   *"NOVELTY_CALIB 이 없으면 policy.jl:67-68 이 라우터를 fail-open 으로 꺼버린다"* 는 §B-1 에서
+#   둘 다 죽었다(novelty 축 삭제).
 #
 # 산출물 이름(대시보드가 이 이름으로 찾는다. regen_case_policy_matrix.sh:66-91 과 같은 규칙):
 #   streams/tractor__<case>__router.jsonl
@@ -30,11 +42,18 @@
 # **실패로 기록하고 나머지 case 는 계속 진행**한다 — 절대 조용히 건너뛰지 않는다.
 #
 # 사전조건
-#   · NOVELTY_CALIB 파일이 반드시 있어야 한다(없으면 이 스크립트가 즉시 에러로 죽는다 — 라우터가
-#     fail-open 으로 꺼진 채 "라우터 ON" 이라는 이름의 판이 만들어지는 조용한 실패를 막기 위해).
-#   · DSPy 서비스가 떠 있을 것(주소는 DSPY_URL). 없으면 dspy/surrogate 결정이 canonical 로
-#     폴백되고 그 사실이 verdict 에 남는다 — 다만 라우터의 **판정 자체**(target=surrogate/dspy)는
-#     서비스 가용성과 무관하게 계산되므로 "라우터 구동" 판정에는 영향이 없다.
+#   · NOVELTY_CALIB 은 **필요 없다.** 🔴 2026-08-29 (§B-1 / Ruling R7): 옛 사전조건은
+#     *"반드시 있어야 한다 — 없으면 이 스크립트가 즉시 에러로 죽는다"* 였고, 그 하드 종료를
+#     같은 커밋에서 **지웠다**(아래 `if [ ! -f "$NOVELTY_CALIB" ]` 는 이제 한 줄 안내만 찍는다).
+#     근거였던 fail-open 기전(`install_novelty!()`)이 novelty 축과 함께 삭제됐고, 줄리아 생산
+#     코드에 이 변수를 읽는 곳이 **0곳**이다. 파일이 없어도 렌더는 정상 진행한다.
+#   · 🔴 **DSPy 서비스는 반드시 떠 있어야 한다**(주소는 DSPY_URL). 없으면 이 렌더는 **죽는다** —
+#     `dspy_ready()` 가 실패하면 `SURRO_KINDS[]` 가 `nothing`("못 쟀다")으로 남고,
+#     `lane_select.jl` 의 `select_lane` 이 그때 `error("[router] surrogate kind support is
+#     unknown — refusing to route…")` 로 판정을 거부한다(T11 §0-C 결정 3: 조용히 한쪽으로
+#     떨어지면 그 런의 모든 행이 근거 없이 "라우팅했다" 로 기록되므로 **일부러** 죽인다).
+#     ⚠️ 옛 사전조건은 *"없으면 dspy/surrogate 결정이 canonical 로 폴백된다"* 였다 — **T11 이후
+#     canonical 폴백은 없다.** 서비스가 없으면 산출물이 안 나온다.
 #   · 순차 실행(★ Global Constraint). 렌더가 MeshCat(8700)을 쓰고, julia 시뮬레이션은 이 머신에서
 #     언제나 한 프로세스만 떠 있어야 한다(병렬이면 HiGHS 가 다른 스케줄을 내 비교가 무효가 되고,
 #     판당 ~2.5GB 라 OOM 도 난다).
@@ -96,15 +115,22 @@ echo "NOVELTY_CALIB=$NOVELTY_CALIB (inert since 2026-08-29 §B-1 -- no Julia rea
 # 축이 삭제돼 `install_novelty!()` 도 그 fail-open 경로도 존재하지 않고, 교정 파일 유무는 이
 # 렌더의 라우팅에 아무 영향이 없다. 그 장벽을 남겨 두면 정반대의 조용한 실패가 된다: 운영자가
 # 교정 파일을 넘기고 "라우터가 켜졌다" 고 믿는데 그 파일은 아무 데도 안 읽힌다.
-# 🔴 라우터가 실제로 구동됐는지는 **사후에** 잰다 — 아래 (3)절의 `[router]` 로그 세기다.
+# 🔴 **그 장벽을 없앤 자리를 대신 지키는 자동 검사는 없다.** 여기서 "사후에 (3)절이 잰다" 고
+# 적으면 안 된다 — 아래 §(3) 의 주석이 실측으로 보이듯 그 검사는 `[router]` 줄 수를 셀 뿐이고
+# **router-on 과 router-off 를 구분하지 못한다**(`lane_reason` 이 무조건 쓰인다).
+# 애초에 지운 장벽도 라우터 구동을 재지 않았다(교정 파일 존재만 봤다) — 그러므로 이 삭제는
+# 실재하던 안전장치를 없앤 것이 아니라 **죽은 전제를 없앤 것**이다. 그래도 결과는 같다:
+# 오늘 이 스크립트에 "라우터가 정말 레인을 골랐는가" 를 자동으로 확인하는 수단이 **없다.**
+# 🔴 정직한 신호(로그가 같이 찍는 `axis=` — 라우터가 꺼진 판은 `fixed`)를 검사로 승격하는 것은
+# `ROUTER_AXES` 와 같은 종류의 판단이라 **사용자 에스컬레이션 대상**이고, 여기서 혼자 고르지 않았다.
 if [ ! -f "$NOVELTY_CALIB" ]; then
   echo "-- NOVELTY_CALIB 파일이 없다: $NOVELTY_CALIB (무해 — 이 변수를 읽는 줄리아 코드가 없다)"
 fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
   curl -s --max-time 5 "$DSPY_URL/health" >/dev/null \
-    || echo "!! DSPy service not reachable at $DSPY_URL — surrogate/dspy 결정이 canonical 로 폴백됩니다" \
-           "(라우터 target 판정 자체는 영향받지 않는다)"
+    || echo "!! DSPy service not reachable at $DSPY_URL — 이 렌더는 **죽는다**:" \
+           "select_lane 이 surrogate kind 지원집합을 못 읽어 판정을 거부한다(T11). canonical 폴백은 없다."
 fi
 
 ok_cases=()
