@@ -254,6 +254,10 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
 end
 const _PORT = HTTP.Servers.port(_SERVER)
 
+# ⚠️ 들어올 때의 감지기를 **여기서** 잡는다 — 아래 `decide_all` 이 도는 순간 설치돼 버리므로
+#    그 뒤에 읽으면 "원래 값" 이 아니라 이 파일이 심은 값을 저장하게 된다.
+const _PREV_DET = try CB.novelty_detector() catch; nothing end
+
 # `const DSPY_URL`(policy.jl:19)은 include 시점에 한 번만 ENV 를 읽는다. 그 순간에만 우리
 # 포트로 돌려놓고 곧바로 되돌린다(같은 프로세스의 다른 게이트가 물들지 않도록).
 # 🔴 `_SERVER` 를 연 뒤 밖으로 나가는 **모든 길**에 `close(_SERVER)` 가 있어야 한다 —
@@ -636,6 +640,15 @@ try
     end # testset
 finally
     close(_SERVER)
+    # 🔴 2026-08-29: **전역 복원.** 이 파일은 `decide_all` 을 부르고 그것이 `install_novelty!()`
+    #    를 통해 `CB.NOVELTY_DETECTOR[]` 를 설치한다 — 그런데 여기 그 복원이 **없었다.**
+    #    §0-B ⑳ 이 그 누수를 "고칠 자리 ①" 로 지목했고, 증상은 스위트에서만 보였다:
+    #    뒤따르는 `test/tool_choice_gate.jl` 의 (0)절 `@test CB.novelty_detector() === nothing`
+    #    이 **단독 실행에서는 초록이고 스위트에서만 빨갛다**(실측: 49/49 vs 48/1).
+    #    그 파일의 머리말이 경고하는 *"단독 초록은 스위트 초록의 증거가 아니다"* 가 그 파일
+    #    자신에게 걸린 사건이고, 원인은 그 파일이 아니라 **여기**였다.
+    #    규약은 `tool_choice_gate.jl` 과 같다 — 들어올 때의 값을 잡고 `finally` 에서 되돌린다.
+    _PREV_DET === nothing ? CB.clear_novelty_detector!() : CB.set_novelty_detector!(_PREV_DET)
 end
 
 end # module
