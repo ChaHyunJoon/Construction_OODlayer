@@ -1206,6 +1206,15 @@
 
   function renderRespec(rs, history){
     var rhead = $("rhead"), inC = $("inCode"), outC = $("outCode"), cb = $("candBody"), vb = $("verifyBody"), dh = $("decisionHistory");
+    // 🔴 "이 판에서 라우터가 실제로 레인을 골랐는가" — 이 함수 안에서 **세 곳**이 그것을 묻는다
+    // (ROUTER 배지 · ROUTER 줄 · enacted_by 의 `how`). 세 곳이 각자 판정하던 동안 두 곳이
+    // `rt.enabled` 하나만 봤고, 그것이 2026-08-27 최종 리뷰 F3(라우터가 결정한 판에 대해 화면이
+    // "ROUTER off" 를 렌더한 사건)이 ROUTER 줄에서만 고쳐지고 나머지 둘에 남은 이유다.
+    // 두 세대를 한 술어로 읽는다:
+    //   · 옛 녹화 (~2026-08-29): `enabled` = novelty 축이 실행을 정했는가.  `drives_lane` 없음.
+    //   · 새 녹화 (2026-08-29 §B-1~): novelty 축이 삭제돼 `enabled` 키가 **아예 없다**(undefined).
+    //                                 레인 선택 사실을 나르는 것은 `drives_lane` 하나다.
+    function routerDrove(r){ return !!(r && (r.enabled === true || r.drives_lane === true)); }
     history = history || [];
     if(!history.length && rs){ history = [rs]; }
     if(selectedDecisionIdx == null || selectedDecisionIdx >= history.length){
@@ -1265,14 +1274,20 @@
     rhead.innerHTML = '<span class="trigger mono">RE-SPEC @ t='+esc(selectedDecision.at)+' &nbsp; <b>'
       + esc(shownMacro)+'</b>'+(viewKey!==enacted?' <i style="opacity:.7">(not enacted)</i>':'')+'</span>' + summary
       + '<span class="verdict '+(ok?"ok":"no")+'">'+(ok?"✓ ":"✗ ")+esc(selectedDecision.verdict||"—")+' · auto (no human)</span>'
-      // NOVELTY_CALIB 이 없으면 install_novelty! 이 실패하고 라우터가 **꺼진 채로** DEMO_POLICY 가
-      // 고정 실행된다(policy.jl:335-339, fail-open). 그 사실이 화면에 안 보이면 "라우터 ON" 인
-      // 판으로 오독된다 -- fail-open 을 fail-visible 로 바꾸는 것이 이 배지다(spec §3.3).
+      // 이 배지가 있는 이유(spec §3.3): 라우터가 **꺼진 채로** DEMO_POLICY 가 고정 실행된 판을
+      // 화면에서 구분할 수 없으면 그 녹화가 "라우터 ON" 으로 오독된다 — 안 보이는 fail 을
+      // fail-visible 로 바꾼다.
+      // 🔴 2026-08-29 (§B-1): 옛 근거는 *"NOVELTY_CALIB 이 없으면 install_novelty! 이 실패해
+      // 라우터가 꺼진다(policy.jl:335-339, fail-open)"* 였다. **그 함수도 그 fail-open 경로도
+      // 삭제됐다** — 오늘 라우터를 끄는 것은 `DEMO_ROUTER=0`(또는 `DEMO_POLICY=noop`)뿐이고,
+      // 그 사실은 `drives_lane` 이 나른다. 그래서 이 배지도 `routerDrove()`(위)로 판정한다.
+      // 🔴 옛 근거만 고치고 아래 조건을 `rr.enabled` 로 두면 **새 녹화가 전부 "ROUTER OFF" 로**
+      // 렌더된다(그 키가 이제 없으므로) — 그것이 F3 의 재발이다.
       + (function(){
           var rr = din.router;
           if (!rr) return '<span class="rbadge warn">ROUTER: no record</span>';
-          return rr.enabled ? '<span class="rbadge">ROUTER ON</span>'
-                            : '<span class="rbadge warn">ROUTER OFF (advisory only)</span>';
+          return routerDrove(rr) ? '<span class="rbadge">ROUTER ON</span>'
+                                 : '<span class="rbadge warn">ROUTER OFF (advisory only)</span>';
         })();
 
     // 정책 선택기 — 케이스와 무관하게 "누가 결정했는가"를 여기서 고른다.
@@ -1359,12 +1374,13 @@
     }
     if (rb) {
       rb.hidden = false;
-      // 🔴 `rt.enabled` 는 **novelty 축**이 실행을 정했는가일 뿐이다(교정 JSON 유무를 포함한다).
-      // 2026-08-27 Task 3 이후 라우터는 교정 없이도 레인을 고른다 — 그 사실은 `drives_lane` 이
-      // 나른다. 이 화면이 `enabled` 만 보고 "ROUTER off" 를 렌더한 것이 최종 리뷰 F3 이다:
-      // 라우터가 실제로 결정한 판에 대해 화면이 라우터가 꺼져 있었다고 적었다.
+      // 🔴 `rt.enabled` 는 **novelty 축**이 실행을 정했는가일 뿐이었다(교정 JSON 유무를 포함).
+      // 2026-08-27 Task 3 이후 라우터는 교정 없이도 레인을 고르고, 2026-08-29 §B-1 이 novelty
+      // 축을 지우면서 그 키는 새 녹화에서 **아예 없다** — 레인 선택 사실을 나르는 것은
+      // `drives_lane` 하나다. 이 화면이 `enabled` 만 보고 "ROUTER off" 를 렌더한 것이 최종 리뷰
+      // F3 이다: 라우터가 실제로 결정한 판에 대해 화면이 라우터가 꺼져 있었다고 적었다.
       // 옛 스트림에는 `drives_lane` 키가 없다 → undefined → `enabled` 만 보던 예전 렌더 그대로.
-      var drove = (rt && (rt.enabled === true || rt.drives_lane === true));
+      var drove = routerDrove(rt);
       if (!rt) {
         rb.innerHTML = '<span class="rlab">ROUTER</span><span class="roff">no router record in this stream'
                      + ' (recorded before routing existed, with DEMO_POLICY fixed).</span>';
@@ -1386,6 +1402,10 @@
         // 판이 화면에 "ROUTER off · ... DEMO_POLICY=canonical fixed for the run" 으로 떴다 —
         // 라우터가 실제로 결정한 판에 대해. novelty 축은 교정 파일이 없어 쉬고 있지만
         // (`rt.enabled=false`) 레인 선택은 돌았다(`rt.drives_lane=true`). 그 사실을 그대로 적는다.
+        // 🔴 2026-08-29 (§B-1): 새 녹화에서 `rt.enabled` 는 `false` 가 아니라 **없다**(undefined)
+        // — novelty 축이 삭제됐다. `!rt.enabled` 는 그때도 참이므로 **이 분기가 새 녹화의
+        // 기본 경로**이고, 그게 옳다(레인을 정하는 것은 `router_axis` 다). 위 advisory 분기
+        // (`rt.novel`/`rt.p`)는 **옛 녹화 전용**으로 남긴다 — 지우면 과거 스트림이 안 열린다.
         var ax = rt.router_axis || "none";
         var gapArms = (rt.vocabulary_gap_arms && rt.vocabulary_gap_arms.length)
                     ? ' [' + esc(rt.vocabulary_gap_arms.join(", ")) + ']' : '';
@@ -1487,7 +1507,11 @@
         return ui ? ui.label : k;
       };
       // 그 정책이 어떻게 정해졌는가: 사건별 라우터인가, 런 전체 고정(DEMO_POLICY)인가.
-      var how = (rt && rt.enabled)
+      // 🔴 2026-08-29 (§B-1, fix round 1): 이 줄은 `rt.enabled` **하나만** 봤다 — 위 ROUTER 줄이
+      // 2026-08-27 F3 로 고쳐질 때 같이 안 고쳐진 두 번째 자리이고, §B-1 이 그 키를 지우면서
+      // **모든 새 녹화가 "selected by DEMO_POLICY (fixed for the run)" 으로** 찍히게 됐다 —
+      // 라우터가 실제로 레인을 고른 판에 대해 화면이 정책 고정이었다고 적는, F3 과 똑같은 거짓말.
+      var how = routerDrove(rt)
         ? ("router" + (rt.escalated_from ? " (escalated from " + rt.escalated_from + ")" : ""))
         : "DEMO_POLICY (fixed for the run)";
       outC.textContent = JSON.stringify({

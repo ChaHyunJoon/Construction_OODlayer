@@ -35,8 +35,10 @@ MODEL="${DEMO_MODEL:-tractor.mpd}"
 CASES=(${CASES:-battery fault})
 SEEDS=(${SEEDS:-1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30})
 # 라우터를 끄고 기본 정책(canonical)으로 고정한다: 외부 LLM 서비스가 떠 있는지에 스윕 결과가
-# 좌우되면 "seed 가 만든 차이"와 "서비스가 만든 차이"를 구분할 수 없다. 라우터 판정 자체는
-# 참고용으로 계속 기록된다(policy.jl 의 advisory 경로).
+# 좌우되면 "seed 가 만든 차이"와 "서비스가 만든 차이"를 구분할 수 없다.
+# 🔴 2026-08-29 (§B-1): 여기 있던 *"라우터 판정 자체는 참고용으로 계속 기록된다(policy.jl 의
+# advisory 경로)"* 는 **거짓이 됐다** — 그 advisory 경로는 novelty 축이었고 §B-1 이 지웠다.
+# 이 스윕이 남기는 라우터 기록은 서술자 6개와 `drives_lane=false` 뿐이다.
 export DEMO_ROUTER="${DEMO_ROUTER:-0}"
 
 # printf 를 쓴다 — `echo` 는 개행을 붙이고 `tr -c` 는 그 개행까지 `_` 로 바꾼다. 그러면 base 가

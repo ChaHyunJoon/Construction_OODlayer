@@ -10,9 +10,12 @@
 # (완주/미완주, makespan, 로봇 궤적). 그건 정책마다 세계가 달라지므로 따로 돌려야 한다.
 #
 #   DEMO_ROUTER=0  라우터가 실행을 정하지 못하게 끈다 -> DEMO_POLICY 가 런 전체에 고정된다.
-#                  단, 라우터의 **판정 자체는 참고용으로 계속 기록**된다(policy.jl route 의 advisory).
-#                  그래서 화면에서 "라우터였다면 여기로 보냈을 것 / 이번 녹화는 canonical 고정" 을
-#                  나란히 볼 수 있다.
+#                  🔴 2026-08-29 (§B-1): 여기 있던 *"라우터의 판정 자체는 참고용(advisory)으로
+#                  계속 기록된다"* 는 **거짓이 됐다.** 그 advisory 판정은 covariate novelty 축
+#                  (`route_verdict` 의 `advisory`/`novel`/`p`/`would_route_to`)이었고 §B-1 이
+#                  그 축을 지웠다 — "라우터였다면 여기로 보냈을 것" 은 **더 이상 계산되지 않고**,
+#                  화면에도 안 뜬다. 이 런이 남기는 라우터 기록은 서술자 6개(`descriptors`)와
+#                  손잡이 상태(`drives_lane`=false) 뿐이다.
 #
 # 출력
 #   streams/tractor__<case>__<policy>.jsonl

@@ -23,7 +23,9 @@
 module TestPolicyEscalation
 
 import HTTP, JSON3
-using InteractiveUtils: @code_lowered   # T8 의 정적 검사(아래)가 쓴다 -- stdlib, Pkg.add 아님
+using InteractiveUtils: @code_lowered   # T9 의 정적 검사(아래)가 쓴다 -- stdlib, Pkg.add 아님
+                                       # (2026-08-29 §B-1: 옛 주석은 T8 을 가리켰는데 그 검사는
+                                       #  같은 커밋에서 지웠다. import 는 T9 이 계속 쓴다.)
 include(joinpath(@__DIR__, "monitor", "policy.jl"))
 
 npass = 0; nfail = 0

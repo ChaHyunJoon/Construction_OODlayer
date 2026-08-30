@@ -364,8 +364,13 @@ function handle_ood!(env, truth, nl)
         # 🔴 **세대 표식 (2026-08-29, §B-1 / Ruling R2): 이 열의 뜻이 바뀌었다.** 옛 녹화의
         #    `router_target` 은 **novelty 축이 보냈을 곳**이었고, 이 커밋 이후의 값은 라우터가
         #    **실제로 고른 레인**이다(= `enacted` 와 항상 같다). 두 세대를 같은 표에 섞지 말 것.
-        #    이 열이 계속 사는 이유: 스윕 게이트 `sweep/llm_ood_eval.py::_router_drove` 가
-        #    `router_target ∈ {surrogate,dspy}` 를 읽는다(게이트 `sweep/test_router_drove_gate.py`).
+        #    이 열이 계속 사는 이유는 **산출물 스키마의 정직성**이다: 이 행은 `router_target`
+        #    열을 계속 싣고, 거기 `nothing` 이 들어가면 **"이 결정에는 레인이 없었다"** 로 읽힌다
+        #    — 레인이 실제로 있었던 판에 대해. 값을 아는 자리는 `policy.jl` 의 `sel` 한 곳이다.
+        #    🔴 **스윕 게이트가 이 열을 읽기 때문이 아니다** (2026-08-29 fix round 1, Ruling R6):
+        #    `sweep/llm_ood_eval.py::_router_drove` 는 아래 `router_axis` 키가 있으면(`stamped`)
+        #    `router_target` 분기에 **도달하지 않는다** — 그 키를 이 행이 매 결정에 실으므로 T11
+        #    이후 산출물에서 그 분기는 죽은 코드다(실측: `router_target` 을 통째로 빼도 `ok=True`).
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
         # 🔴 2026-08-29 (T11): 라우팅용 kind. 이제 이 값 하나가 레인을 정한다.
         #    `ood_features` 의 `"kind"` 와 **다른 함수**에서 나온다(§0-C 충돌 ①) — 모르는
@@ -389,6 +394,15 @@ function handle_ood!(env, truth, nl)
         # `router_axis == "none"` 은 "재서 아니었다" 와 "못 쟀다" 둘 다에서 나온다 — 이 필드가
         # 없으면 R5 집계에서 "축 1 미발화" 가 사건 부재인지 미측정인지 산출물만으로 구분 불가다.
         # 🔴 키가 없으면 `nothing`(=기록 없음) — `false`(=재봤는데 못 쟀다)로 채우지 않는다.
+        # 🔴 **세대 표식 (2026-08-29 fix round 1, Ruling R11): 이 열은 T11 이후 영구히 `null` 이다.**
+        #    T11 이 축 1 을 kind 축으로 대체하면서 `decide_all` 의 `rt["support_measured"] = …`
+        #    쓰기를 지웠다 — 레포에 그 값을 심는 코드가 **하나도 없다**(순수 함수
+        #    `surrogate_support_measured` 는 남아 있지만 아무도 안 부른다).
+        #    ⟹ 소비처는 이 열의 `null` 을 **"쓰는 코드가 없다"** 로 읽어야 한다. "재서 없었다"
+        #      도 "못 쟀다" 도 아니다. 그 오독 위에 서 있던 `sweep/llm_ood_eval.py` 의 WARN 은
+        #      같은 커밋에서 지웠다(항상 발화하고 있었다).
+        #    🔴 **열은 그대로 둔다** — 오늘 T12 가 이 행에 이미 한 번 세대 경계를 그었고, 아무도
+        #      안 읽는 값 때문에 하루에 두 번째 경계를 긋지 않는다.
         "support_measured" => (try get(decision.router, "support_measured", nothing) catch; nothing end),
         # 축 1 이 발화했을 때 **어느 팔**이 지원 밖이었는가(설계서 §3 의 `<이름들>`).
         "vocabulary_gap_arms" => (try get(decision.router, "vocabulary_gap_arms", nothing) catch; nothing end),

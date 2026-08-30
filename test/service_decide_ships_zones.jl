@@ -107,8 +107,9 @@ end
 const _PORT = HTTP.Servers.port(_SERVER)
 
 # 🔴 `_SERVER` 를 연 뒤 모듈 본문이 끝날 때까지 **밖으로 나가는 모든 길**에 `close(_SERVER)`
-#    가 있어야 한다(agents 게이트 라운드 5 K3 이 실측한 누수). 아래 셋이 그 전부다:
-#    (i) 이 include, (ii) TENV 구축, (iii) 테스트 블록.
+#    가 있어야 한다(agents 게이트 라운드 5 K3 이 실측한 누수). 아래 넷이 그 전부다:
+#    (i) 이 include, (i-b) `_NOOP_NAME` 유도, (ii) TENV 구축, (iii) 테스트 블록.
+#    ((i-b) 는 2026-08-29 fix round 1 에서 더했다 — 그때까지 감싸여 있지 않았다.)
 const _PREV_DSPY_URL = get(ENV, "DSPY_URL", nothing)
 ENV["DSPY_URL"] = "http://127.0.0.1:$(_PORT)"
 try
@@ -123,7 +124,16 @@ end
 # 🔴 매크로 이름 리터럴을 쓰지 않는다(`test/policy_macro_binding.jl:134` 의 규칙) —
 #    레지스트리에서 유도한다. `ActionRegistry` 는 위 policy.jl include 가 들여온다.
 #    위 서버 클로저는 **호출 시점에** 이 전역을 읽으므로 정의 순서는 무관하다.
-const _NOOP_NAME = ActionRegistry.NAME[0]
+# 🔴 2026-08-29 (fix round 1): 이 줄이 **`close(_SERVER)` 가 없는 유일한 밖으로 나가는 길**이었다
+#    — 레지스트리 색인 0 이 사라지거나 `ActionRegistry` 가 안 들여와지면 여기서 던지고, 그러면
+#    리스너가 열린 채 `Pkg.test()` 의 나머지로 샌다(위 주석이 "아래 셋이 그 전부다" 라고 적은
+#    목록에서 빠져 있던 네 번째 길이다). 형제 게이트 셋과 같은 규약으로 감싼다.
+const _NOOP_NAME = try
+    ActionRegistry.NAME[0]
+catch
+    close(_SERVER)   # (i-b)
+    rethrow()
+end
 
 # 실 env 구축이 이 파일에서 가장 비싼 부분이다(실측: 파일 전체 1:41 중 테스트 블록은 10.7s —
 # 나머지가 패키지 로드 + `run_lego_demo`). 씬은 agents 게이트의 정본과 같다. 시뮬레이션은 한

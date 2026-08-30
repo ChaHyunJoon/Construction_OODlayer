@@ -451,7 +451,12 @@ function route(env, truth)
     # 채널이고, 이 계산이 조기 반환 **뒤에** 있어서 모든 LLM 결정이 문장 한 줄로 내려갔던 것이
     # 2026-08-26 의 회귀다 — `test/route_descriptors_survive.jl` 이 그 순서를 못박는다.
     desc = try event_descriptors_of(env, truth) catch e
-        @warn "descriptor computation failed -> router falls back" exception = e
+        # 🔴 2026-08-29 (§B-1 fix round 1): 문구가 "-> router falls back" 이었다. **폴백하는 것이
+        #    없다** — 옛 판에서는 이 실패가 novelty 판정을 못 하게 만들어 `route()` 가 조기 반환
+        #    분기로 떨어졌는데, 그 분기가 삭제됐다. 오늘은 `desc = nothing` 이 그대로 실려 나가고
+        #    (`route_verdict` 가 키를 안 지운다), 결과는 **LLM 이 숫자 채널을 못 받는 것**이다.
+        @warn "event descriptor computation failed -> descriptors=nothing for this event " *
+              "(the LLM payload loses its numeric channel; the lane is unaffected)" exception = e
         nothing
     end
     return route_verdict(desc = desc, policy = POLICY)
@@ -1386,11 +1391,17 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    보냈을 곳**이었고(`route_verdict` 안의 `drives ? would : policy`), 이 커밋 이후의
     #    `target` 은 **실제로 고른 레인**이다. `enacted` 와 항상 같다.
     #    🔴 **두 세대를 같은 표에 섞지 말 것.**
-    #    왜 여기냐: novelty 축이 사라지면 옛 식은 **언제나 `policy`** 로 붕괴하고, 그러면
-    #    스윕 게이트(`wm4spacecraft_manufacturing/sweep/llm_ood_eval.py::_router_drove`,
-    #    게이트 `sweep/test_router_drove_gate.py`)가 `router_target ∈ {surrogate,dspy}` 를 못 봐서
-    #    **라우터가 실제로 몬 런**을 "라우터가 안 몰았다" 로 판정한다. 오늘 레인을 아는
-    #    유일한 자리가 여기다(`sel` 이 정해진 직후).
+    #    왜 여기냐: novelty 축이 사라지면 옛 식(`route_verdict` 안)은 **언제나 `policy`** 로
+    #    붕괴하는데, `run_demo.jl` 의 결정 행은 `router_target` 열을 계속 싣는다. 붕괴한 값이나
+    #    `nothing` 이 그 열에 들어가면 **"이 결정에는 레인이 없었다"** 로 읽힌다 — 레인이 실제로
+    #    있었던 판에 대해. 산출물이 자기가 아는 사실을 정직하게 적게 하는 것이 이 줄이고,
+    #    레인을 아는 유일한 자리가 여기다(`sel` 이 정해진 직후).
+    #    🔴 **스윕 게이트를 만족시키려고 쓰는 것이 아니다** (2026-08-29 fix round 1, Ruling R6):
+    #    `sweep/llm_ood_eval.py::_router_drove` 는 `router_axis`/`router_drives` 도장이 있으면
+    #    (`stamped`) `router_target` 분기에 **도달하지 않는다.** `run_demo.jl` 이 `router_axis`
+    #    키를 매 결정에 싣기 때문에 T11 이후 산출물에서 그 분기는 **죽은 코드**다(실측: 합성
+    #    행으로 `router_target` 을 통째로 빼도 `ok=True`). 그 게이트를 근거로 이 열을 정당화하면
+    #    다음 사람이 잘못된 이유를 믿게 된다.
     rt["target"] = sel.lane
     # 기존 문구를 **덮어쓰지 않고 덧붙인다** — 판정 근거가 든 줄이 화면에서 사라지면 안 된다.
     rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason

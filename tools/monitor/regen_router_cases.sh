@@ -11,12 +11,14 @@
 # render_demo.jl 을 쓴다 — run_demo.jl 은 스트림만 만들고 애니메이션(MeshCat html)을 안 만든다.
 #
 # 왜 DEMO_POLICY=router 인가(policy.jl 에 없는 이름이라는 점이 핵심):
-#   route() 가 라우터를 실제로 구동하면 target 을 "surrogate"/"dspy" 중 하나로 **덮어쓴다**
-#   (policy.jl:349). base policy 이름을 policy.jl 이 모르는 "router" 로 두면, 라우터가 fail-open
-#   으로 꺼졌을 때 target 이 그대로 "router" 로 남아 **구동 여부를 사후에 구분할 수 있다**
-#   (NOVELTY_CALIB 이 없으면 policy.jl:67-68 이 경고만 찍고 라우터를 꺼버리는 조용한 실패가 있다 —
-#   이 스크립트는 그걸 사전에 걸러 죽인다. render_demo.jl:668 의 "[router] ... → <target>" 로그는
-#   라우터가 실제로 그 사건을 몰았을 때만 찍힌다).
+#   라우터가 레인을 고르면 `decide_all` 이 `rt["target"]` 에 고른 레인("surrogate"/"dspy")을
+#   적고, 안 고르면 `select_lane` 이 안 불려 `target` 이 base policy 이름 그대로 남는다.
+#   base 를 policy.jl 이 모르는 "router" 로 두면 그 둘을 **사후에 구분할 수 있다.**
+#   🔴 2026-08-29 (§B-1): 이 문단의 옛 기전 서술 — *"route() 가 target 을 덮어쓴다
+#   (policy.jl:349)"* 와 *"NOVELTY_CALIB 이 없으면 policy.jl:67-68 이 라우터를 fail-open 으로
+#   꺼버린다"* — 은 **둘 다 죽었다.** novelty 축이 삭제돼 `install_novelty!()` 도 그 fail-open
+#   경로도 없고, `target` 을 쓰는 곳은 `decide_all` 의 `rt["target"] = sel.lane` 하나다.
+#   구분 자체는 그대로 산다(위 문단) — 라우터를 끄는 것은 이제 DEMO_ROUTER=0 / DEMO_POLICY=noop 뿐.
 #
 # 산출물 이름(대시보드가 이 이름으로 찾는다. regen_case_policy_matrix.sh:66-91 과 같은 규칙):
 #   streams/tractor__<case>__router.jsonl
@@ -66,6 +68,9 @@ mkdir -p "$LOGD"                                 # streams/anim 은 render_demo.
 
 # ---- 오늘 밤의 고정 규약(모두 override 가능하되 기본값은 이 값들) ---------------------------
 DSPY_URL="${DSPY_URL:-http://127.0.0.1:8090}"
+# 🔴 2026-08-29 (§B-1): NOVELTY_CALIB 은 **이 렌더에 아무 영향이 없다.** 줄리아 생산 코드에서
+# 이 변수를 읽는 곳이 0곳이다(novelty 축 삭제 — 남은 독자는 손으로 돌리는 라이브러리 게이트
+# tools/test_router.jl 뿐). 기본값과 export 는 옛 호출 습관과의 호환으로만 남긴다.
 NOVELTY_CALIB="${NOVELTY_CALIB:-$REPO_ROOT/wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json}"
 export DSPY_URL NOVELTY_CALIB
 export DEMO_ROUTER=auto
@@ -83,16 +88,17 @@ CASES=("$@")
 echo "=== regen_router_cases.sh $([ "$DRY_RUN" -eq 1 ] && echo "(DRY RUN)") ==="
 echo "DEMO_MODEL=$DEMO_MODEL DEMO_ROUTER=$DEMO_ROUTER DEMO_POLICY=$DEMO_POLICY DEMO_ANIM=$DEMO_ANIM"
 echo "DSPY_URL=$DSPY_URL"
-echo "NOVELTY_CALIB=$NOVELTY_CALIB"
+echo "NOVELTY_CALIB=$NOVELTY_CALIB (inert since 2026-08-29 §B-1 -- no Julia reader)"
 
-# 라우터가 fail-open 으로 꺼진 채 "라우터 ON" 이라는 이름의 판을 만드는 조용한 실패를 막는다.
-# (policy.jl:67-68 — 교정파일이 없으면 경고만 찍고 라우터를 끈다. 여기서 미리 걸러 죽인다.)
+# 🔴 2026-08-29 (§B-1, fix round 1 / Ruling R7): 여기 있던 **하드 종료를 지웠다.**
+# 옛 문구: *"이대로 진행하면 policy.jl 이 라우터를 fail-open 으로 꺼버려 '라우터 ON' 이라는 이름의
+# 렌더가 실제로는 라우터 없이 만들어진다"* (policy.jl:67-68 인용). **그 기전이 없다** — novelty
+# 축이 삭제돼 `install_novelty!()` 도 그 fail-open 경로도 존재하지 않고, 교정 파일 유무는 이
+# 렌더의 라우팅에 아무 영향이 없다. 그 장벽을 남겨 두면 정반대의 조용한 실패가 된다: 운영자가
+# 교정 파일을 넘기고 "라우터가 켜졌다" 고 믿는데 그 파일은 아무 데도 안 읽힌다.
+# 🔴 라우터가 실제로 구동됐는지는 **사후에** 잰다 — 아래 (3)절의 `[router]` 로그 세기다.
 if [ ! -f "$NOVELTY_CALIB" ]; then
-  echo "!! NOVELTY_CALIB 파일이 없다: $NOVELTY_CALIB"
-  echo "!! 이대로 진행하면 policy.jl 이 라우터를 fail-open 으로 꺼버려, '라우터 ON' 이라는 이름의"
-  echo "!! 렌더가 실제로는 라우터 없이 만들어진다 — 진행하지 않는다."
-  echo "STATUS render fail cases=0/${#CASES[@]} failed=all:novelty-calib-missing"
-  exit 1
+  echo "-- NOVELTY_CALIB 파일이 없다: $NOVELTY_CALIB (무해 — 이 변수를 읽는 줄리아 코드가 없다)"
 fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
@@ -189,10 +195,12 @@ sys.exit(0 if all(k in d for k in ("sim_t", "n_closed", "ood")) else 1)
   fi
 
   # ---- (3) 라우터가 실제로 구동됐는가 ------------------------------------------------------------
-  # render_demo.jl:668 은 rt["enabled"]==true 일 때만(=라우터가 이 사건의 실행 정책을 정했을 때만)
-  # "[router] ... → <target>" 을 찍는다(target 은 항상 surrogate/dspy). 한 줄도 없으면 라우터가
-  # fail-open 으로 꺼졌거나(교정 불일치 등) OOD 사건 자체가 없었다는 뜻 -- 둘 다 이번 렌더가
-  # "라우터 ON" 산출물이 아니라는 신호다.
+  # 🔴 2026-08-29 (§B-1): 옛 서술 *"render_demo.jl:668 은 rt["enabled"]==true 일 때만 찍는다"* 는
+  # 파일도 조건도 틀렸다(그 자리는 `run_demo.jl` 의 handle_ood! 안이고, `enabled` 키는 §B-1 에서
+  # 삭제됐다). 오늘 그 줄은 **`rt["drives_lane"] == true`**(= 라우터가 이 런에서 레인을 고른다)
+  # 일 때 `[router] <reason> → enacted=<lane> axis=<axis>` 를 찍는다. 한 줄도 없으면 라우터가
+  # 꺼져 있었거나(DEMO_ROUTER=0 / DEMO_POLICY=noop) OOD 사건 자체가 없었다는 뜻 -- 둘 다 이번
+  # 렌더가 "라우터 ON" 산출물이 아니라는 신호다.
   n_routed=$(tr '\r' '\n' < "$log" | grep -ac '^\[router\]')
   if [ "$n_routed" -gt 0 ]; then
     router_state="ENGAGED ($n_routed decisions routed)"

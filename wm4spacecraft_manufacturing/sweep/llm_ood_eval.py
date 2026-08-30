@@ -67,27 +67,33 @@ DEFAULT_OUT = WM / "results" / "llm_ood_eval.jsonl"    # 결과는 계속 wm4...
 def _validate_router_args(args):
     """1-a/1-b: 라우터 옵트인의 안전장치. 서브프로세스가 뜨기 전에 여기서 걸러야 한다.
 
-    - calib 경로를 줬는데 그 파일이 없으면: router 값과 무관하게 즉시 에러(router=0 이어도
-      advisory 판정이 조용히 깨진 채 도는 것을 막는다).
-    - `--router` 가 "0" 이 아닌데 calib 가 없으면: policy.jl:67-68 이 경고만 찍고 라우터를
-      꺼버린다(fail-open). "라우터 ON" 이라는 이름의 판이 실제로는 OFF 로 측정되는, 이번 STEP 이
-      막아야 할 가장 위험한 조용한 실패다.
-    - `--policies` 에 noop 이 섞여 있으면: policy.jl:332 가 POLICY=="noop" 에서 라우팅 자체를
-      끈다(noop 은 "정책 후보" 가 아니라 통제 실험의 바닥선). `--router` 옵트인과 양립 불가.
+    - calib 경로를 줬는데 그 파일이 없으면: router 값과 무관하게 즉시 에러(경로 오타를 조용히
+      넘기지 않는다).
+    - `--policies` 에 noop 이 섞여 있으면: `router_drives()` 가 POLICY=="noop" 에서 라우팅
+      자체를 끈다(noop 은 "정책 후보" 가 아니라 통제 실험의 바닥선). `--router` 옵트인과 양립 불가.
     반환: None(통과) 또는 에러 메시지 문자열.
+
+    🔴 **2026-08-29 (§B-1 fix round 1, Ruling R7): `--router != 0` 의 `--novelty-calib` 필수
+    요구를 지웠다.** 그 요구의 근거는 *"calib 없이 라우터를 켜면 policy.jl 이 fail-open 으로
+    라우터를 꺼버려 'ON' 이라는 이름의 판이 실제로는 OFF 로 측정된다"* 였다. **그 기전이 없다** —
+    §B-1 이 `install_novelty!()` 와 novelty 축을 지웠고, 오늘 줄리아 생산 코드에 `NOVELTY_CALIB`
+    를 읽는 곳이 **0곳**이다(실측: `grep -rn NOVELTY_CALIB --include='*.jl'` → `tools/test_router.jl`
+    (라이브러리 게이트)과 역사 주석 둘뿐). 라우터를 켜고 끄는 것은 `DEMO_ROUTER` 하나다.
+    🔴 그 요구를 남겨 두면 **정반대의 조용한 실패**가 된다: 운영자가 교정 파일을 넘기고 "라우터가
+    켜졌다" 고 믿은 채 밤새 스윕을 도는데, 그 파일은 아무 데도 안 읽히고 ON/OFF 프레이밍이
+    아무것도 뜻하지 않는다. 그래서 **요구를 없애고 근거를 여기 적는다.**
+    ⚠️ `--novelty-calib` 플래그 자체는 **계속 받는다**(존재만 검사한다) — 기존 스크립트
+    (`tools/monitor/regen_router_cases.sh`)가 넘기고 있어 지우면 그것들이 깨진다. 오늘 그 값은
+    **무해하게 무시된다**(아래 `run_one` 의 env 주석).
     """
     if args.novelty_calib and not Path(args.novelty_calib).exists():
         return "--novelty-calib 경로에 파일이 없다: %s" % args.novelty_calib
     if args.router == "0":
         return None
-    if not args.novelty_calib:
-        return ("--router %s 는 --novelty-calib PATH 가 필요하다. calib 없이 라우터를 켜면 "
-                "policy.jl 이 fail-open 으로 라우터를 꺼버려 'ON' 이라는 이름의 판이 실제로는 "
-                "OFF 로 측정된다." % args.router)
     policies = [s.strip() for s in args.policies.split(",") if s.strip()]
     if "noop" in policies:
         return ("--router %s 와 --policies 의 noop 은 같이 쓸 수 없다 "
-                "(policy.jl:332 가 POLICY==noop 에서 라우팅을 끈다 -- noop 은 통제 바닥선)"
+                "(`router_drives()` 가 POLICY==noop 에서 라우팅을 끈다 -- noop 은 통제 바닥선)"
                 % args.router)
     return None
 
@@ -126,6 +132,10 @@ def run_one(seed, policy, out_path, log_dir, args):
     )
     if args.novelty_calib:
         # 여기도 절대경로로 넘긴다 -- DEMO_SUMMARY 와 같은 함정(julia cwd=repo 루트).
+        # 🔴 2026-08-29 (§B-1): **줄리아 생산 코드에서 이 변수를 읽는 곳이 0곳이다.** novelty
+        #    축이 삭제됐다(`install_novelty!()` 삭제). 그래도 계속 수출하는 이유는 손으로 돌리는
+        #    라이브러리 게이트 `tools/test_router.jl` 이 같은 이름을 읽기 때문이고, 이 런의
+        #    라우팅에는 **아무 영향이 없다.** 라우팅을 켜고 끄는 것은 DEMO_ROUTER 하나다.
         env["NOVELTY_CALIB"] = str(Path(args.novelty_calib).resolve())
     log = log_dir / ("run_s%d_%s.log" % (seed, policy))
     t0 = time.time()
@@ -154,12 +164,18 @@ def _router_drove(out_path, case, ood_seed, policy, want_router):
     🔴 2026-08-27 (최종 리뷰 F7) — 그 뒤 판정(`router_target in {surrogate,dspy}`)이 **양방향으로**
     틀려졌다. Task 3 이 격상·레인 선택을 novelty 교정에서 뗀 뒤로:
 
-      · 거짓 음성: 라우터가 레인을 몰아도 `rt["target"]` 은 기본 정책 이름에 머물 수 있다
-        (`target` 을 덮어쓰는 것은 **novelty 축**(`enabled=true`)뿐이다). 교정 파일이 없는
-        `--router 1 --policies canonical` 런은 라우터가 **실제로 몰았는데** 여기서
-        "gate failed open" 으로 보고된다.
+      · 거짓 음성: 라우터가 레인을 몰아도 `rt["target"]` 은 기본 정책 이름에 머물 수 있었다.
+        (당시 `target` 을 덮어쓰는 것은 novelty 축뿐이었다. 🔴 **2026-08-29 §B-1 이후로는 그
+        서술도 낡았다** — novelty 축이 삭제되고 `target` 은 `decide_all` 이 고른 레인
+        (`sel.lane`)을 그대로 적으므로 이제 `enacted` 와 항상 같다.)
       · 거짓 양성: `--policies surrogate` 면 라우터가 꺼져 있어도 target 이 "surrogate" 라
         이 검사가 그냥 통과한다(옛 docstring 도 괄호로 그 예외를 인정하고 있었다).
+
+    🔴 **오늘 이 게이트를 지는 것은 아래 `stamped` 분기 하나다** (2026-08-29 실측). `run_demo.jl`
+    이 `router_axis` 키를 **매 결정에** 싣기 때문에(값이 `None` 이어도 키는 있다) T11 이후
+    산출물에서는 `stamped` 가 언제나 참이고, 그 아래 `router_target` 분기는 **도달하지 않는다** —
+    합성 행에서 `router_target` 을 통째로 빼도 `ok=True` 가 나온다. 그 분기는 `router_axis`/
+    `router_drives` 키가 **하나도 없는** Task 3 이전 산출물 전용이다.
 
     이제 **진실원을 직접 읽는다**: policy.jl 이 레인을 고를 때만 심는 `router_axis`
     (그리고 그 술어 자체인 `router_drives`). 설계서 §5 — 도장에 소비처를 붙인다.
@@ -191,13 +207,19 @@ def _router_drove(out_path, case, ood_seed, policy, want_router):
                     return False, ("gate failed open: no decision recorded a lane selection "
                                    "(router_axis=%r router_drives=%r) -- see policy.jl router_drives()"
                                    % (sorted(a for a in axes if a), sorted(d for d in drove if d is not None)))
-                # 축 1 의 입력을 한 번도 못 쟀으면, 어휘 미달이 '없었다' 가 아니라 '못 쟀다' 다.
-                # 게이트를 빨갛게 만들지는 않는다(레인 선택 자체는 돌았다) -- 대신 이름을 밝힌다.
-                measured = {d.get("support_measured") for d in decisions}
-                if measured and True not in measured:
-                    print("    WARN: router drove, but surrogate support was never measured "
-                          "(support_measured=%r) -- axis 1 could not have fired in this run"
-                          % sorted(str(m) for m in measured))
+                # 🔴 2026-08-29 (§B-1 fix round 1, Ruling R11): 여기 있던 WARN 을 **지웠다**
+                # (주석 처리도 조건 완화도 아니다 -- 이 레포는 무효가 된 검사를 지우고 이유를 적는다).
+                # 명제는 *"축 1 의 입력을 한 번도 못 쟀으면 어휘 미달이 '없었다' 가 아니라
+                # '못 쟀다' 다"* 였고, 입력은 결정 행의 `support_measured` 였다.
+                # **T11 이 그 값을 심는 코드를 지웠다** -- `decide_all` 에 `rt["support_measured"]`
+                # 를 쓰는 줄이 레포에 하나도 없다(실측: `grep -rn support_measured --include='*.jl'`
+                # 은 `policy.jl` 의 순수 함수 정의와 그 게이트만 낸다). 그래서 이 집합은 언제나
+                # `{None}` 이고 조건이 **항상 참**이라, 라우터가 돈 모든 판에서 이 경고가 찍혔다 --
+                # 항상 켜진 경고는 운영자에게 경고를 무시하도록 가르친다. 문구가 부르던 "축 1"
+                # (어휘 미달) 자체도 T11 이 kind 축으로 대체하면서 없앴다.
+                # (결정 행의 `support_measured` 열은 `run_demo.jl` 이 계속 싣는다 -- 그 열의
+                #  `null` 은 "재서 없었다" 가 아니라 **"쓰는 코드가 없다"** 로 읽어야 한다.
+                #  그 세대 표식은 `run_demo.jl` 의 그 줄에 있다.)
                 return True, None
             targets = {d.get("router_target") for d in decisions}
             if not (targets & ROUTER_ENGAGED_TARGETS):
@@ -553,11 +575,11 @@ def main():
     r.add_argument("--dspy-url", default="http://127.0.0.1:8090")
     r.add_argument("--router", choices=["0", "1", "auto"], default="0",
                    help="DEMO_ROUTER 로 전달. 기본 0 = 정책 고정(기존 동작). 0 이 아니면 "
-                        "--novelty-calib 가 필수다(1-a) -- 없으면 policy.jl 이 fail-open 으로 "
-                        "라우터를 꺼서 'ON' 이라는 판이 실제로는 OFF 로 측정된다.")
+                        "라우터가 kind 색인으로 레인을 고른다(--policies 에 noop 은 못 섞는다).")
     r.add_argument("--novelty-calib", default="",
-                   help="NOVELTY_CALIB 경로. 기본은 빈 문자열(환경변수를 건드리지 않음). "
-                        "--router != 0 이면 필수이고, 그 경로에 파일이 있어야 한다.")
+                   help="[2026-08-29 §B-1 이후 무효] NOVELTY_CALIB 경로. 주면 존재만 검사하고 "
+                        "서브프로세스 env 로 수출하지만, 줄리아 생산 코드에 이 변수를 읽는 곳이 "
+                        "없다(novelty 축 삭제). 플래그는 기존 스크립트 호환으로만 남긴다.")
     r.set_defaults(func=cmd_run)
 
     p = sub.add_parser("report")

@@ -422,6 +422,14 @@ try
         # 전제: 실제로 dspy 가 집행됐는가. 아니면 이 블록은 (3) 을 다시 재는 것이 되어
         # 아무것도 안 잰다.
         @test d.enacted == "dspy"
+        # 🔴 드리프트 가드 (2026-08-29 §B-1 fix round 1): `rt["target"]` 은 §B-1 이 novelty 축에서
+        #    떼어 `decide_all` 로 옮긴 값인데(`rt["target"] = sel.lane`), 그때 **아무 게이트도 그
+        #    값을 안 잡았다** — `sweep/test_router_drove_gate.py:57-62` 는 오히려 `router_target`
+        #    **혼자로는** 게이트를 통과하면 안 된다고 단언할 뿐 값을 제약하지 않는다.
+        #    계약은 한 줄이다: **라우터가 고른 레인 = 집행된 레인.** 이게 갈리면 결정 행의
+        #    `router_target` 열이 실제 집행과 다른 레인을 주장한다(옛 세대의 `target` 은 "novelty
+        #    축이 보냈을 곳" 이라 갈릴 수 있었다 — 그 뜻 차이가 policy.jl 의 그 줄 주석에 있다).
+        @test d.router["target"] == d.enacted
         @test hasproperty(d, :tool_lane)
         local tl = d.tool_lane
         # ---- (1) 여덟이 전부 있고 값이 그대로다 ------------------------------------------

@@ -99,7 +99,7 @@ end
     # 받는다(교정 유무와 서술자 계산이 한 게이트에 묶였던 옛 결함의 재발 방지).
     # 🔴 2026-08-29 (§B-1): novelty 축이 삭제되어 `route()` 에 **분기 자체가 없어졌으므로**
     # 그 파일의 명제는 더 강하게 성립한다("교정 없이도 산다" → "교정이라는 개념이 없다").
-    @testset "router descriptors survive a missing calibration" begin
+    @testset "router descriptors survive (교정이라는 개념 없이)" begin
         include("route_descriptors_survive.jl")
     end
 

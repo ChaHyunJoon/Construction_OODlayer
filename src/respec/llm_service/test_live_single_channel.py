@@ -30,7 +30,8 @@ kwargs 를 단언한다). 그 규약을 깨지 않으려고 유료 시험을 격
   ⑤ **`_IN_VOCAB` 의 초록을 "LLM 레인이 건강하다" 의 증거로 인용하지 말 것.** 이 파일은
      **서비스 함수의 계약**을 잰다 — `svc.macro()` 를 직접 부르므로, `decide_all` 이 그
      사건을 실제로 이 함수까지 보내는지는 이 파일이 재지 않는다. `_IN_VOCAB`(`fault`·
-     `battery`)는 kind 색인 라우터(2026-08-29, T11, `tools/monitor/policy.jl:603-`)에서
+     `battery`)는 kind 색인 라우터(2026-08-29, T11 — `tools/monitor/lane_select.jl` 의
+     `select_lane`, `tools/monitor/policy.jl` 의 `decide_all` 이 `routing_kind(...)` 로 부른다)에서
      **전부 surrogate 로 간다** — 그래서 이 초록은 **프로덕션 LLM 레인이 돈다는 증거가
      아니다.** 프로덕션 LLM 레인의 모양을 재려면 `_OUT_OF_VOCAB`(= zone / 새 `OODTruth`
      타입, 라우터가 아는 kind 를 벗어나는 쪽)로 재야 한다. §0-B ⑦ 과 같은 종류의 오독이다:
