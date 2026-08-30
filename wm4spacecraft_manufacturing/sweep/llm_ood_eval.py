@@ -65,7 +65,10 @@ DEFAULT_OUT = WM / "results" / "llm_ood_eval.jsonl"    # 결과는 계속 wm4...
 #  1. 런 드라이버
 # =========================================================================================
 def _validate_router_args(args):
-    """1-a/1-b: 라우터 옵트인의 안전장치. 서브프로세스가 뜨기 전에 여기서 걸러야 한다.
+    """1-a: 라우터 옵트인의 안전장치. 서브프로세스가 뜨기 전에 여기서 걸러야 한다.
+
+    (옛 요약은 "1-a/1-b" 였다 — 1-b 는 `--novelty-calib` 필수 요구였고 2026-08-29 §B-1 에서
+    지웠다. 아래 🔴 문단이 그 근거다. 오늘 남은 검사는 둘이다: calib 경로 오타, noop 혼용.)
 
     - calib 경로를 줬는데 그 파일이 없으면: router 값과 무관하게 즉시 에러(경로 오타를 조용히
       넘기지 않는다).
@@ -145,7 +148,13 @@ def run_one(seed, policy, out_path, log_dir, args):
     return p.returncode == 0, time.time() - t0, log
 
 
-ROUTER_ENGAGED_TARGETS = {"surrogate", "dspy"}    # route() 가 실제로 고를 수 있는 값은 이 둘뿐(policy.jl:349)
+# 라우터가 레인을 골랐을 때 `router_target` 이 가질 수 있는 값은 이 둘뿐이다 —
+# `lane_select.jl` 의 `select_lane` 이 내는 `lane` 이 그것이고, `policy.jl` 의 `decide_all` 이
+# `rt["target"] = sel.lane` 로 적는다(🔴 줄번호로 인용하지 않는다: 그 인용이 썩는 것을 이 파일이
+# 이미 한 번 겪었다). 라우터가 안 골랐으면 `sel.lane == POLICY` 라 base 정책 이름이 남는다.
+# ⚠️ 이 집합을 쓰는 아래 분기는 `router_axis`/`router_drives` 도장이 **하나도 없는** Task 3
+#    이전 산출물 전용이다(`_router_drove` 의 docstring).
+ROUTER_ENGAGED_TARGETS = {"surrogate", "dspy"}
 
 # 라우터가 레인을 고를 때 policy.jl 이 결정 행에 심는 축 라벨(lane_select.jl 의 enum).
 # None 은 "이 결정에는 레인 선택 기록이 없다" 이고, 그 외는 전부 "레인 선택이 돌았다" 이다.

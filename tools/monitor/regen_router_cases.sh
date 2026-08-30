@@ -194,13 +194,27 @@ sys.exit(0 if all(k in d for k in ("sim_t", "n_closed", "ood")) else 1)
     reason="${reason:+$reason; }no anim (build incomplete -- publish_anim! refused, see $log)"
   fi
 
-  # ---- (3) 라우터가 실제로 구동됐는가 ------------------------------------------------------------
-  # 🔴 2026-08-29 (§B-1): 옛 서술 *"render_demo.jl:668 은 rt["enabled"]==true 일 때만 찍는다"* 는
-  # 파일도 조건도 틀렸다(그 자리는 `run_demo.jl` 의 handle_ood! 안이고, `enabled` 키는 §B-1 에서
-  # 삭제됐다). 오늘 그 줄은 **`rt["drives_lane"] == true`**(= 라우터가 이 런에서 레인을 고른다)
-  # 일 때 `[router] <reason> → enacted=<lane> axis=<axis>` 를 찍는다. 한 줄도 없으면 라우터가
-  # 꺼져 있었거나(DEMO_ROUTER=0 / DEMO_POLICY=noop) OOD 사건 자체가 없었다는 뜻 -- 둘 다 이번
-  # 렌더가 "라우터 ON" 산출물이 아니라는 신호다.
+  # ---- (3) 이 판에 OOD **결정**이 있었는가 ------------------------------------------------------
+  # 🔴 **이름을 믿지 말 것. 이 검사는 "라우터가 구동됐는가" 를 재지 못한다** (2026-08-29,
+  #    fix round 2 실측). 세는 것은 `render_demo.jl` 의 `[router] …` 줄이고, 그 줄의 조건은
+  #    **`haskey(rt, "lane_reason")` 하나**다(render_demo.jl 의 `record_decision!` 바로 뒤).
+  #    그런데 `policy.jl` 의 `decide_all` 은 `rt["lane_reason"] = sel.reason` 을 **삼항식 뒤에서
+  #    무조건** 쓴다 — 라우터가 꺼져 있을 때도 `sel` 이
+  #        (lane = POLICY, axis = "fixed", reason = "router off — DEMO_POLICY=… is fixed …")
+  #    로 채워지므로 그 키가 **언제나 있다.** ⟹ `n_routed` 는 **OOD 결정이 하나라도 있었으면
+  #    ≥1** 이고, DEMO_ROUTER=0 으로 돌려도 똑같이 ≥1 이다. router-on 과 router-off 를
+  #    **구분하지 못한다.**
+  #
+  #    🔴 이 공허는 §B-1 이 만든 것이 **아니다** — 위 두 사실(발화 조건 · 무조건 쓰기)은 전부
+  #    `46470d5a~1` 에 이미 있었다(실측). §B-1 이 한 것은 **옛 주석의 거짓 근거를 드러낸 것**뿐이고,
+  #    진짜 신호를 고르는 것은 별개의 판단이라 이 커밋의 범위 밖이다(주석만 고친다).
+  #    ⚠️ 아래 `router_state` 문자열("ENGAGED"/"NOT ENGAGED")과 `expect_router` 판정도 같은
+  #    한계를 진다 — **"ENGAGED" 를 "라우터가 레인을 골랐다" 의 증거로 인용하지 말 것.**
+  #    오늘 그것이 실제로 뜻하는 것은 "이 렌더에 OOD 결정이 ≥1 건 있었다" 다.
+  #    (참고: 로그의 그 줄은 `axis=<router_axis>` 를 같이 찍고, 라우터가 꺼진 판은 그 값이
+  #     `fixed` 다 — 진짜 신호를 만들려면 거기가 출발점이다. 이 커밋은 고르지 않는다.)
+  #    [역사] 옛 주석은 *"render_demo.jl:668 은 rt["enabled"]==true 일 때만 찍는다"* 였다 —
+  #    줄번호도, 조건도, 키도 틀렸다(`enabled` 는 §B-1 에서 삭제됐다).
   n_routed=$(tr '\r' '\n' < "$log" | grep -ac '^\[router\]')
   if [ "$n_routed" -gt 0 ]; then
     router_state="ENGAGED ($n_routed decisions routed)"
