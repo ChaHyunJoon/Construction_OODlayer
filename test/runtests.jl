@@ -307,6 +307,13 @@ end
         include("battery_menu_lanes_agree.jl")
     end
 
+    # 2026-08-30 (T8): 위 게이트는 두 레인의 **합의**만 본다 — 나란히 개입 팔을 되찾아도
+    # 초록이다. Phase D(합성 발화 → payload 재가격 → 렌더) 전체가 이 데모의 SoC(0.45)에서
+    # 메뉴가 정확히 ["NOOP"] 이라는 값 하나에 걸려 있으므로, 그 값 자체를 못박는다.
+    @testset "mild menu is NOOP only" begin
+        include("mild_menu_is_noop_only.jl")
+    end
+
     # 🔴 2026-08-25: `DS_BSOC` 기본 사다리의 모든 칸이 채점 가능한 deep 구간인가(= 팔을 비교할 수
     # 있는가). mild 칸이 다시 들어오면 대조가 0인 행이 생기고, 칸이 하나로 줄면 2026-08-05 에
     # 고친 "심각도 축이 점 하나" 결함이 재현된다 — 두 어서션이 각각 그 둘을 막는다.
