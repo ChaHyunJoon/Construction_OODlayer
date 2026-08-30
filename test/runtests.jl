@@ -350,6 +350,22 @@ end
         include("minted_tool_resolves.jl")
     end
 
+    # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
+    # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
+    #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 6** 이다(연언지 셋: harness·arity·kwargs).
+    #    `harness_args ⊆ {"env"}` 만 보면 15 가 집행 가능으로 표시되고, 나머지 9 는 호출
+    #    시점 `MethodError` 로 죽어 집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 =
+    #    거절보다 나쁜 거짓 admit. 이 게이트가 그 6 을 이름으로 못 박는다.
+    #  · 🔴 `zone_keys` 를 String 으로 넘기면 `Dict{Symbol,Ball2}` 소비자들이 조용히 걸러
+    #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
+    #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.
+    #  · 🔴 "불렀는데 아무 일도 없었다"(`applied=false`)와 "부르지 않았다"(`:reject`)와
+    #    "던져서 세계가 절반이다"(`partial=true`)는 서로 다른 사건이다(spec §9-2).
+    # 변이 11종(명제마다 하나)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
+    @testset "minted tool enacts" begin
+        include("minted_tool_enacts.jl")
+    end
+
     # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
     # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
     # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다
