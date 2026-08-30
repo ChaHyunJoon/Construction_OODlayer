@@ -23,9 +23,13 @@
 #    CB 심볼표에 존재하는지). 이 파일의 `resolve_primitive` 는 그보다 **더 엄격**하다 —
 #    `isa Function` 까지 요구한다. "해석된다"의 뜻이 두 게이트에서 일부러 다르다.
 #
-# 변이시험: 오염된 레지스트리 사본(`impl` 을 오타)을 PRIMITIVE_REGISTRY 로 물리면
-#           (1) 이 빨개진다. `resolve_primitive` 가 미지 이름에 임의 함수를 돌려주게
-#           바꾸면 (2) 가 빨개진다.
+# 변이시험 (넷 다 실제로 빨개지는 것을 봤다 — task-2-report.md 에 REAL 트랜스크립트):
+#   · 오염된 레지스트리 사본(`impl` 을 오타)을 PRIMITIVE_REGISTRY 로 물리면 (1) 이 빨개진다.
+#   · `resolve_primitive` 가 미지 이름에 임의 함수를 돌려주게 바꾸면 (2) 가 빨개진다.
+#   · `resolve_primitive` 의 `reversible` 을 하드코드 `false` 로 바꾸면 (3) 이 빨개진다
+#     (`r.reversible === true` 실패).
+#   · `PRIMITIVE_TABLE()` 이 파일 없을 때 `error(...)` 대신 빈 `Dict{String,Any}()` 를
+#     돌려주게 바꾸면 (4) 가 빨개진다(`@test_throws Exception` 이 "No exception thrown").
 # =============================================================================
 module MintedToolResolves
 
