@@ -393,6 +393,25 @@ def _load_surrogate():
 
         rows, meta = load_rows(SURRO_DATA)
         support = sorted({int(r["macro"]) for r in rows})
+        # ---- kind 지원집합 (2026-08-29, T9) --------------------------------------------
+        # 🔴 `support`(매크로)와 **같은 모양**으로 학습행에서 유도한다. 손으로 쓴 목록은
+        #    두 번째 진실원이 되고, 이 파일은 그 사고를 이미 한 번 밟았다(:664-668 의
+        #    `or set(range(5))`). 게이트: test_surro_kinds.py 의 리터럴 스캔.
+        observed = sorted({r["kind"] for r in rows if r.get("kind")})
+        stamps = {r.get("train_kinds") for r in rows}
+        stamp = next(iter(stamps)) if len(stamps) == 1 else None
+        declared = sorted(x for x in (stamp or "").split(",") if x)
+        if stamp is None or declared != observed:
+            # 🔴 **한쪽을 골라 믿지 않는다.** 도장과 행이 갈렸다는 것은 데이터셋 세대가
+            #    섞였다는 뜻이고(C9/R-50 이 이 축을 만든 이유), 그 상태에서 낸 kind 집합은
+            #    라우터를 조용히 틀린 쪽으로 민다. "못 쟀다"(None)로 떨어뜨린다.
+            #    ⚠️ 모델 자체는 계속 적재한다 — kind 를 못 쟀다고 surrogate 를 못 쓰게 만들면
+            #    라우팅과 무관한 회귀가 된다. 정지는 라우터(`select_lane`)가 한다.
+            kinds = None
+            kind_err = ("train_kinds stamp %r disagrees with the observed kinds %r"
+                        % (stamp, observed))
+        else:
+            kinds, kind_err = set(observed), None
         # 스레드를 1로 묶는다. 공유 서버(56코어)에서 OpenMP 가 코어 수만큼 스레드를 띄우면
         # 355행짜리 적합이 0.58s -> 132.6s 로 늘어난다(Task 6 실측 227배). 결과는 안 바뀐다.
         with threadpool_limits(limits=1):
@@ -401,7 +420,7 @@ def _load_surrogate():
         # 외삽이고, 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
         # "고를 수조차 없었다"이다. 이 구분이 곧 라우터(낯선 것은 LLM)의 존재 이유다.
         _state.update(surrogate=model, surro_feats=list(FEATURE_NAMES),
-                      surro_support=set(support),
+                      surro_support=set(support), surro_kinds=kinds,
                       surro_data="%s (%d rows / %d instances, macro support %s, rule %s, "
                                  "objective_hash %s, vocab %s)"
                                  % (os.path.basename(SURRO_DATA),
@@ -415,7 +434,14 @@ def _load_surrogate():
     # 그 예외 하나가 LLM 레인 서비스 전체를 못 뜨게 만든다 — R-25 가 의도한 모양은 "실패를
     # /health 에 실어 보고한다" 이고, 아래 한 줄이 그 의도를 실제로 집행한다.
     # `KeyboardInterrupt` 는 일부러 안 잡는다(Ctrl-C 로 서버를 못 죽이게 되면 안 된다).
+        if kind_err:
+            # 🔴 기존 값을 **덮지 않는다** — 두 실패가 동시에 났으면 둘 다 보여야 한다.
+            prev = _state.get("surro_error")
+            _state["surro_error"] = ("%s; %s" % (prev, kind_err)) if prev else kind_err
     except (Exception, SystemExit) as e:
+        # 🔴 여기 오면 kind 도 **못 쟀다.** 낡은 값을 남기면 /health 가 지난 세대의 kind 집합을
+        #    현행이라고 주장하고, 라우터가 그것으로 레인을 고른다.
+        _state["surro_kinds"] = None
         _state["surro_error"] = "%s: %s" % (type(e).__name__, e)
 
 
@@ -974,6 +1000,11 @@ def health():
             #    나왔다 ⟹ support 를 읽었다). 그 값이 결정 행의 `support_measured` 다.
             "surro_support": (None if _state.get("surro_support") is None
                               else sorted(_state["surro_support"])),
+            # 축(2026-08-29 T9): kind 색인 라우터의 **유일한** 판정 입력.
+            # None = 못 쟀다 — 그때 `select_lane` 은 고르지 않고 **죽는다**(§0-C 결정 3).
+            # [] 는 "쟀는데 비었다" 로 다른 사건이다(삼상 규약, `surro_support` 와 같다).
+            "surro_kinds": (None if _state.get("surro_kinds") is None
+                            else sorted(_state["surro_kinds"])),
             "policies": ["dspy", "surrogate"]}
 
 
