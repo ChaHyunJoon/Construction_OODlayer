@@ -19,9 +19,19 @@
 #
 # 변이시험 (실패하는 것을 실제로 볼 것)
 #   · `battery_arms` 의 mild 분기를 `[i for i in up if COST[i] == 0.0]` 에서 `up` 으로
-#     되돌리면 (1) 이 빨개진다.
+#     되돌리면 (1) 의 첫 어서션이 빨개진다.
 #   · 부등호를 `<` 로 바꾸면 (2) 가 빨개진다.
 #   · `soc_split_enabled` 의 기본값을 "0" 으로 바꾸면 (3) 이 빨개진다.
+#   · `battery_arms` 의 `(soc isa Real && isfinite(soc)) || return up` 가드를 지우면 (4) 가
+#     빨개진다(수정 라운드 2, 리뷰 Important 2-a: NaN 이 `Float64(NaN) <= Float64(thr)` 에서
+#     `false` 로 새서 mild 분기로 떨어지고, `nothing` 은 `Float64(nothing)` 에서 아예 죽는다).
+#   · `kind_valid` 에서 `if k in String.(collect(REGISTRY[i].kinds))` 필터를 지우고
+#     `active_ids()` 를 그대로 돌려주면(어떤 kind 를 물어도 필터링을 안 하면) (1) 의 두 번째
+#     어서션(zone 비교)이 빨개진다(수정 라운드 2, 리뷰 Important 2-b) — `kind_valid(:zone)` 이
+#     더는 빈 벡터가 아니라 `kind_valid(:battery)` 와 같은 3팔을 돌려주기 때문이다. 오늘의
+#     레지스트리에서 활성 3팔이 전부 "battery" kind 를 갖고 있어(battery_arms 가 부르는
+#     `kind_valid(:battery)` 는 우연히 그대로라) (1) 의 첫 어서션·(2)·(3)·(4) 는 이 변이로는
+#     안 움직인다 — 딱 이 어서션만 겨눈 변이다.
 #
 # 🔴 2026-08-30, T8 수정 라운드 1: 이 파일을 처음엔 감싸지 않은 채(top-level) 썼더니
 # `Pkg.test()` 전체 스위트에서만 빨개졌다(단독 실행은 초록) — `test/smdp_action_name_smoke.jl`
@@ -71,8 +81,11 @@ end
     mild = AR.battery_arms(nextfloat(_THR), _THR, true)   # 바로 위는 mild
     @test length(deep) > 1
     @test [AR.NAME[i] for i in mild] == ["NOOP"]
-    # 상한이 실제로 셋이라는 것도 같이 본다 — deep 이 줄어들면 이 시험의 뜻이 바뀐다.
-    @test [AR.NAME[i] for i in AR.kind_valid(:battery)] == ["NOOP", "Replace", "SwapBattery"]
+    # 상한이 실제로 셋이라는 것도 같이 본다 — deep 이 줄어들면(예: 2 로) `length(deep) > 1` 은
+    # 여전히 초록이면서 이 시험의 뜻이 바뀐다. 어휘 단일 진실원 규약(이름은 리터럴 금지)에 따라
+    # **개수만** 리터럴로 적는다 — 이름 일치는 이 파일의 몫이 아니라 `policy_macro_binding.jl`
+    # 의 몫이다(그 파일이 리터럴 없이 레지스트리에서 이름을 유도해 잰다).
+    @test length(AR.kind_valid(:battery)) == 3
 end
 
 @testset "(4) soc 가 미기록이면 좁히지 않는다" begin
