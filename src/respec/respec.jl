@@ -31,6 +31,7 @@ include("replan.jl")         # 동결된 상태에서 다시 풀고(re-solve) �
 include("reassign.jl")       # 로봇 고장 시 작업을 다른 로봇에게 재배정
 include("ood_injection.jl")  # physical OOD event GENERATION (front-end; uses push_ood!)  # 물리 OOD 이벤트 "생성"(앞단; push_ood! 사용)
 include("restage_zone.jl")   # ForbidZone enactment: relocate a staging-blocked assembly  # ForbidZone 실행: 적치공간이 막힌 조립체를 옮김
+include("minted_tool.jl")    # 합성된 tool 의 해석·집행 (T2·T3)
 include("replace_robot.jl")  # ReplaceAgent enactment: spare 1:1 chain hand-off  # ReplaceAgent 실행: 예비 로봇으로 잔여 작업 인계(고장 대체)
 include("battery_courier.jl") # SwapBattery enactment: 창고 예비가 배터리를 들고 왕복 배송(시간이 드는 물리적 사건)
 include("zone_diagnosis.jl") # zone VIOLATION PREDICATES (thin composition over restage_zone.jl) — 구역이 씬트리의 무엇을 무효화하는지 계산(오라클 라벨·게이트 근거)

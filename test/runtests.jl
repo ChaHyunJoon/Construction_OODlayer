@@ -343,6 +343,13 @@ end
         include("primitive_registry_resolves.jl")
     end
 
+    # 2026-08-30 (T2): 위 게이트는 이름이 CB 심볼표에 `isdefined` 인지만 잰다. 이 게이트는
+    # 그 이름을 실제로 부를 수 있는 callable 로 해석하는 `CB.resolve_primitive` 자체를
+    # 잰다 — 미지 이름의 거부, harness_args 전달, 레지스트리 부재시 하드 스톱까지 포함해서.
+    @testset "minted tool resolves" begin
+        include("minted_tool_resolves.jl")
+    end
+
     # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
     # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
     # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다
