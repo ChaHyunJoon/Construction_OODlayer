@@ -182,6 +182,16 @@ end
         include("tool_lane_keys_survive.jl")
     end
 
+    # 2026-08-30 (Plan B / T1): DSPy 서비스는 이미 `synthesis` dict(합성 레인, 아홉 키 —
+    # `tool_minted` 는 응답 최상위, 나머지 여덟은 `synthesis` 안, `params` 포함)를 내고
+    # 있었는데 Julia 에 소비자가 0개였다. 이 게이트는 `policy_entry` 의 성공·실패 두 분기가
+    # `SYNTH_LANE_KEYS` 아홉을 전부 나르는지 잰다. `tool_lane_keys_survive.jl` 과 달리 루프백
+    # HTTP 서버가 필요 없다 — `policy_entry` 를 손으로 만든 JSON3 픽스처로 직접 부른다
+    # (policy.jl 은 standalone include 가능, `using ConstructionBots` 불필요, 실측).
+    @testset "synth lane keys survive to policy_entry" begin
+        include("synth_lane_keys_survive.jl")
+    end
+
     # 🔴 2026-08-29 (Plan B / T-C): `tool_choice="required"` 는 공짜가 아니다 — 컨트롤러가 같은
     # 요청·같은 빌드로 그 손잡이만 갈라 유료 2콜을 냈고, 강제 판에서 프로바이더가 message
     # content 를 **비웠다**(`reasoning=""` · `expressible=null` · `chosen=""` → coerced NOOP,

@@ -1150,6 +1150,65 @@ const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offer
                         "decision_source", "tool_arg_error")
 
 """
+    SYNTH_LANE_KEYS
+
+DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 싣는 키 전부
+(`src/respec/llm_service/dspy_service.py` 의 `maybe_synthesize` 반환 dict, 그리고 `macro()` 의
+최상위 `tool_minted`).
+
+🔴 **아홉이다, 여덟이 아니다** (2026-08-30 정정, T1). 애초 계획서에는 `params` 가 빠져 있었다 —
+그 값이 없으면 T3/T4 의 인터프리터가 신설 도구의 원시연산에 넘길 키워드 인자를 못 받아,
+`nothing` 인자로 원시연산을 부르다 던지는데 그 예외가 "성공" 으로 잘못 집계된다. 서비스는
+`params` 를 성공 경로에서 이미 `synthesis` dict 안에 정확히 이 이름으로 싣고 있었다(실측).
+
+🔴 `TOOL_LANE_KEYS` 와 **별개의 튜플이다.** 섞으면 `test/tool_lane_keys_survive.jl` (6)절이
+정당하게 빨개진다 — 그 게이트는 파이썬 표식 **아래** 집합만 본다.
+
+🔴 값의 출처가 둘이다. `tool_minted` 는 응답 최상위(`macro()` 의 반환 dict), 나머지 여덟은
+`response["synthesis"]` 안이다. 한 벌로 뭉개면 "합성 레인이 안 돌았다"(dict 자체가 없다)와
+"돌았는데 값이 없다"(dict 안이 nothing)가 구분 불가능해진다.
+
+🔴 이 아홉이 **항상 함께 도착하는 것이 아니다.** `maybe_synthesize` 의 다섯 탈출 경로 중
+"minted"(성공) 경로만 상세 여덟(`params` 포함)을 다 채운다 — 나머지 네 경로는 `synthesis_event`·
+`synthesis_ran`·`synthesis_error` 정도만 채우고 나머지는 `nothing` 일 수 있다. 그 부재는 여기서도
+"못 쟀다"(spec §9-2)로 그대로 nothing 이 된다 — 흔한 실행 경로이지 예외가 아니다.
+"""
+const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
+                         "tool_name", "body_names", "reach", "missing_primitive", "params")
+
+# `synthesis` dict 안의 키 이름 → 결정 행의 키 이름. 이름이 다른 둘만 적는다
+# (`ran`→`synthesis_ran`, `error`→`synthesis_error`). 나머지는 같은 이름이다(`params` 포함).
+const _SYNTH_RENAME = Dict("synthesis_ran" => "ran", "synthesis_error" => "error")
+
+"""
+    _synth_view(resp) -> Dict{String,Any}
+
+응답에서 합성 레인 아홉을 뽑는다. `resp === nothing`(레인 실패)이거나 합성 dict 이 없으면
+아홉 전부 `nothing` 이다 — **키는 언제나 존재한다.**
+
+🔴 **`Symbol` 키로 읽는다, `String` 이 아니다** (2026-08-30, 전체 스위트 실측으로 잡음).
+`tool_lane_fields`(바로 아래)와 같은 이유다: `tools/test_policy_escalation.jl` 의 `avail()` ·
+`unavail()` 은 `policy_entry` 를 서비스 응답이 아니라 **NamedTuple** 로 부르고
+(`policy_entry` 의 docstring 이 그 계약을 적는다: `get(b, :key, default)` 만 쓰므로 NamedTuple
+로도 부를 수 있다), `get(::NamedTuple, ::String, default)` 는 메서드가 없다 — 처음 이 함수를
+String 키로 짰을 때 전체 스위트가 바로 그 자리에서 `MethodError` 로 죽었다(실측). `JSON3.Object`
+는 `Symbol`·`String` 둘 다 받으므로 `Symbol` 로 통일해도 그쪽은 잃는 것이 없다.
+"""
+function _synth_view(resp)
+    d = Dict{String,Any}(k => nothing for k in SYNTH_LANE_KEYS)
+    resp === nothing && return d
+    d["tool_minted"] = get(resp, :tool_minted, nothing)
+    s = get(resp, :synthesis, nothing)
+    s === nothing && return d
+    for k in SYNTH_LANE_KEYS
+        k == "tool_minted" && continue
+        src = get(_SYNTH_RENAME, k, k)
+        d[k] = get(s, Symbol(src), nothing)
+    end
+    return d
+end
+
+"""
     _tool_args_dict(x)
 
 `tool_args` 만 모양을 고정한다 — 나머지 일곱은 스칼라라 그대로 싣는다.
@@ -1305,7 +1364,11 @@ function policy_entry(b, label)
                         "label" => String(get(b, :policy, label)), "available" => true,
                         # ---- tool 레인 키 (Plan B / T1·T-C, 2026-08-29) ------------------
                         # 여기까지가 배선이다. 집행부가 이 값을 **쓰는** 것은 T2 의 몫.
-                        tool_lane_fields(b)...)
+                        tool_lane_fields(b)...,
+                        # ---- 합성 레인 키 (Plan B / T1, 2026-08-30) -----------------------
+                        # 🔴 두 분기 **모두**에 넣는다(아래 폴백 분기도 참조) — 한쪽만 넣으면
+                        # 실패한 판의 행에서 키가 사라져 "합성이 안 돌았다"로 잘못 읽힌다.
+                        _synth_view(b)...)
         end
     end
     # ---- 폴백 dict 도 `unsupported` 와 **사유**를 싣는다 (2026-08-14 회귀 수정) ----------
@@ -1323,7 +1386,9 @@ function policy_entry(b, label)
                 "label" => label, "available" => false,
                 # 🔴 폴백도 **같은 키 집합**을 낸다(전부 nothing). 키가 사라지면 소비자가
                 # "레인이 안 돌았다"와 "레인이 돌았는데 값이 null 이다"를 못 가른다.
-                tool_lane_fields(nothing)...)
+                tool_lane_fields(nothing)...,
+                # 🔴 합성 레인도 같은 규약: 폴백 판에서도 아홉 키를 전부 nothing 으로 낸다.
+                _synth_view(nothing)...)
 end
 
 
@@ -1637,6 +1702,14 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    `tool_lane_view` 의 docstring 에 **한 벌만** 있다.
     local tool_lane = tool_lane_view(pol, enacted)
 
+    # ---- 합성 레인 노출 (Plan B / T1, 2026-08-30) -----------------------------------------
+    # 🔴 `tool_lane` 과 **같은 규약**: `pol[enacted]` 에서 뽑는다(`pol["dspy"]` 가 아니다).
+    #    집행된 레인이 surrogate 였으면 이 값들은 전부 nothing 이고, 그것이 옳다 —
+    #    surrogate 레인은 합성을 하지 않는다.
+    local synth_lane = let e = get(pol, enacted, nothing)
+        e === nothing ? nothing : Dict{String,Any}(k => get(e, k, nothing) for k in SYNTH_LANE_KEYS)
+    end
+
     # 🔴 2026-08-29 (T11/T12): `llm_macro` 와 `agree` 는 **반사실**이다 — 안 부른 레인의 값을
     #    주장한다. 라우터가 사건당 레인 하나만 부르므로 그 값이 존재하지 않는다(§0-C 결정 4).
     #    필드는 **하위호환을 위해 남기되 `nothing` 으로 붕괴한다**: 소비자가 키 부재를 "값이
@@ -1647,7 +1720,7 @@ function decide_all(env, truth; nl::AbstractString = "")
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],
             llm_macro = (haskey(pol, "dspy") ? pol["dspy"]["chosen"] : nothing),
             verdict = verdict, router = rt,
-            narrative = narrative, tool_lane = tool_lane,
+            narrative = narrative, tool_lane = tool_lane, synth_lane = synth_lane,
             detail = pol[enacted]["rationale"], agree = nothing)
 end
 
