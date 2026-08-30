@@ -132,12 +132,31 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
     if req.target == "/health"
         # policy.jl 의 `dspy_ready()` 가 찌르는 자리. 여기서 200 을 안 주면 `service_decide` 가
         # 곧장 nothing 을 돌려주고 (4) 는 "본문을 못 받았다"로 **빨개진다**(조용히 안 샌다).
-        return HTTP.Response(200, "{\"status\":\"ok\"}")
+        # 🔴 2026-08-29 (T11): `surro_kinds` 를 **반드시** 싣는다. kind 색인 라우터가 이 값을
+        #    `/health` 에서만 받고, 없으면 "못 쟀다"로 캐시한 뒤 `select_lane` 이 그 사건에서
+        #    **죽는다**(§0-C 결정 3 의 설계된 동작). 실측: 이 줄이 없으면 `decide_all` 을
+        #    부르는 절이 "surrogate kind support is unknown" 으로 정당하게 빨개진다.
+        #    값은 서비스의 실측 기준값(`oracle_dataset.jsonl` 33행)과 같다.
+        return HTTP.Response(200, "{\"status\":\"ok\",\"surro_kinds\":[\"battery\",\"fault\"]}")
     elseif req.target == "/decide"
         _CAPTURED_BODY[] = String(req.body)
-        # 서비스의 실제 응답 모양: 레인별 결정 dict. 둘 다 null 이면 policy_entry 가
-        # unavailable 로 채운다 — 이 시험은 응답이 아니라 **요청**을 잰다.
-        return HTTP.Response(200, JSON3.write(Dict("dspy" => nothing, "surrogate" => nothing)))
+        # 🔴 2026-08-29 (T11): 여기 있던 `Dict("dspy"=>nothing,"surrogate"=>nothing)` 은 이제
+        #    **못 쓴다.** 근거였던 *"둘 다 null 이면 policy_entry 가 unavailable 로 채운다"* 는
+        #    참이지만, 새 라우터는 고른 레인이 unavailable 이면 `error()` 로 **죽는다**
+        #    (§0-C 결정 3) — 그러면 요청을 잰다는 이 파일의 목적 자체가 도달 불가가 된다.
+        #    ⟹ **요청된 레인마다 최소한의 유효 결정을 돌려준다.** `payload["lanes"]` 를 읽으므로
+        #    라우팅이 또 바뀌어도 이 픽스처는 안 깨진다(kind 축이 무엇을 고르든 따라간다).
+        #    이 파일은 여전히 응답이 아니라 **요청**을 잰다 — 아래 값은 죽지 않기 위한 최소치다.
+        local _req_lanes = try
+            local pl = JSON3.read(_CAPTURED_BODY[])
+            haskey(pl, :lanes) ? String.(collect(pl[:lanes])) : ["dspy", "surrogate"]
+        catch
+            ["dspy", "surrogate"]
+        end
+        local _ok = Dict{String,Any}("chosen" => _NOOP_NAME, "ranking" => [_NOOP_NAME],
+                                     "margin" => 0.0, "rationale" => "fake (request gate)",
+                                     "policy" => "test", "unsupported" => String[])
+        return HTTP.Response(200, JSON3.write(Dict{String,Any}(l => _ok for l in _req_lanes)))
     end
     return HTTP.Response(404, "")
 end
@@ -162,6 +181,11 @@ catch
 finally
     _PREV_DSPY_URL === nothing ? delete!(ENV, "DSPY_URL") : (ENV["DSPY_URL"] = _PREV_DSPY_URL)
 end
+
+# 🔴 매크로 이름 리터럴을 쓰지 않는다(`test/policy_macro_binding.jl:134` 의 규칙) —
+#    레지스트리에서 유도한다. `ActionRegistry` 는 위 policy.jl include 가 들여온다.
+#    위 서버 클로저는 **호출 시점에** 이 전역을 읽으므로 정의 순서는 무관하다.
+const _NOOP_NAME = ActionRegistry.NAME[0]
 
 # 실 env 를 짓는 것이 이 파일에서 가장 비싼 부분이다(policy_macro_binding.jl 의 env 구축과
 # 비슷한 비용 — 이 시험이 도는 값이다). 씬은 SCENE-INCANTATION 정본과 같되, 여기서는

@@ -64,7 +64,15 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
     if req.target == "/health"
         # `dspy_ready()` 가 찌르는 자리. 200 을 안 주면 `service_decide` 가 곧장 nothing 을
         # 돌려주고 (9) 가 "레인이 안 왔다" 로 **빨개진다**(조용히 안 샌다).
-        return HTTP.Response(200, "{\"status\":\"ok\"}")
+        # 🔴 2026-08-29 (T11): `surro_kinds` 를 **반드시** 싣는다. kind 색인 라우터가 이 값을
+        #    `/health` 에서만 받고, 없으면 "못 쟀다"로 캐시한 뒤 `select_lane` 이 그 사건에서
+        #    **죽는다**(§0-C 결정 3 의 설계된 동작). 실측: 이 줄이 없으면 `decide_all` 을
+        #    부르는 절이 "surrogate kind support is unknown" 으로 정당하게 빨개진다.
+        # 🔴 그리고 여기서는 **빈 목록**이다. 이 파일의 (9)절은 **dspy 가 집행된 판**을 재는데,
+        #    새 라우터에서 그것을 만드는 손잡이는 kind 축이다: 아는 kind 가 없으면 battery
+        #    사건도 `ood_kind` 로 판정돼 LLM 으로 간다. `[]` 는 "쟀는데 비었다" 이고
+        #    `null`("못 쟀다", → 죽는다)과 **다른 사건**이다(삼상 규약).
+        return HTTP.Response(200, "{\"status\":\"ok\",\"surro_kinds\":[]}")
     elseif req.target == "/decide"
         local out = Dict{String,Any}(
             "dspy" => Dict{String,Any}(
@@ -76,7 +84,11 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
                 "tool_calls_n" => 1, "tools_offered" => 3, "expressible" => true,
                 "native_fc" => true, "tool_lane_error" => nothing,
                 "macro_tool_agree" => nothing),
-            # surrogate 를 불가로 두면 `select_lane` 이 dspy 를 고른다(= 레인이 실제로 집행된다).
+            # 🔴 2026-08-29 (T11): 여기 있던 근거 *"surrogate 를 불가로 두면 select_lane 이
+            #    dspy 를 고른다"* 는 **거짓이 됐다** — 가용성으로 레인을 바꾸는 것이 곧
+            #    조용한 폴백이라 §0-C 결정 3 이 그 경로를 없앴다. 지금 dspy 를 고르게 하는
+            #    것은 위 `/health` 의 `surro_kinds: []` 하나다. 이 키는 남겨 두지만
+            #    **라우팅에 아무 영향이 없다**(라우터가 dspy 만 청구하므로 읽히지도 않는다).
             "surrogate" => nothing)
         return HTTP.Response(200, JSON3.write(out))
     end

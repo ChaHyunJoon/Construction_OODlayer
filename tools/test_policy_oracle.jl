@@ -370,10 +370,28 @@ println("\n== 7. 소스 계약 -- 서비스 게이트엔 oracle 이 있고, 표�
 # 깨져도 조용하다: 게이트에서 빠지면 oracle 판이 DSPy 서비스에 의존하게 되고(서비스가 없으면
 # 매 사건 경고 + 지연), 표시 튜플에 들어가면 다른 정책의 판마다 정답이 화면에 상시 노출된다.
 let src = read(joinpath(@__DIR__, "monitor", "policy.jl"), String)
-    check("서비스 생략 게이트가 oracle 을 포함한다",
-          occursin(r"POLICY\s+in\s+\(\"canonical\",\s*\"noop\",\s*\"oracle\"\)", src))
+    # 🔴 2026-08-29 (T11/T12): 이 두 검사의 **대상이 교체됐다.** 명제(= 지키려는 것)는 그대로다.
+    #
+    # (a) 옛 검사: `POLICY in ("canonical","noop","oracle")` 라는 **생략 게이트**가 소스에 있는가.
+    #     그 게이트는 T11 이 지웠다 — 이제 청구 목록을 `select_lane` 의 결과가 정하고
+    #     (`want = sel.lane in ("dspy","surrogate")`), oracle/canonical/noop 은 그 조건에
+    #     안 걸려 **서비스 호출이 구조적으로 0건**이다. 지키려던 것("oracle 판이 DSPy 서비스에
+    #     의존하지 않는다")은 **더 강하게** 성립한다: 예전엔 세 이름을 손으로 적은 목록이라
+    #     새 통제 레인을 더할 때 빠뜨릴 수 있었는데, 이제는 레인 이름이 둘 중 하나가 아니면
+    #     자동으로 안 부른다. 그래서 이름 목록이 아니라 **그 규칙**을 못박는다.
+    check("서비스 청구가 고른 레인 하나로 유도된다(oracle 판은 구조적으로 서비스를 안 부른다)",
+          occursin(r"want\s*=\s*sel\.lane\s+in\s+\(\"dspy\",\s*\"surrogate\"\)", src))
+    #
+    # (b) 옛 검사: 표시 튜플 `("canonical","surrogate","dspy")` 가 **정확히 3곳**.
+    #     T12 가 반사실 비교(`others`)를 지워 **2곳**이 됐다(§0-C 결정 4). 개수를 3 으로
+    #     되돌리려 하지 말 것 — 늘었다면 안 부른 레인을 다시 읽는 자리가 생긴 것이다.
+    #     🔴 지키려는 것은 개수가 아니라 **"oracle 이 표시 튜플에 안 섞인다"** 이므로 그것을
+    #     직접 잰다. 개수는 회귀 감지용으로만 남긴다.
     local disp = collect(eachmatch(r"\(\"canonical\",\s*\"surrogate\",\s*\"dspy\"\)", src))
-    check("표시 튜플 3곳이 그대로다(oracle 미포함)", length(disp) == 3, "found=$(length(disp))")
+    check("표시 튜플이 2곳이다(T12 가 반사실 비교를 지운 뒤의 값)", length(disp) == 2,
+          "found=$(length(disp))")
+    check("표시 튜플 어디에도 oracle 이 없다",
+          isempty(collect(eachmatch(r"\(\"canonical\",[^)]*\"oracle\"[^)]*\"dspy\"\)", src))))
     # "surrogate 가 든 튜플" = 표시/비교용 정책 목록. 그 안에 oracle 이 들어가면 누출이다.
     # (서비스 생략 게이트 `("canonical","noop","oracle")` 에는 surrogate 가 없으므로 안 걸린다.)
     local leaky = [m.match for m in eachmatch(r"\([^()]*\"surrogate\"[^()]*\)", src)
