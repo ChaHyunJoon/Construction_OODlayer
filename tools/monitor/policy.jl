@@ -435,11 +435,18 @@ router_enabled() = false     # 교정 JSON 이 없어 novelty p 를 못 낸다
   · `novelty_measured` = **novelty 축을 실제로 쟀는가.** 앞의 두 분기에서 `false`, 실제 판정
                          분기에서만 `true`.
 
-왜 이 구분이 필요한가: `tool_choice_for`(바로 아래)가 `novel == false` 만 보고 tool 호출을
-강제하면, 교정 파일이 없는 지금의 작업 트리에서 **모든 사건이 "익숙하다"로 읽혀 전부 강제된다.**
-그리고 강제는 프로바이더가 message content 를 비우게 만들어 `expressible` 을 지운다(실측:
-컨트롤러의 짝지은 유료 A/B). 즉 "못 쟀다"를 "익숙하다"로 읽는 순간, 사용자가 명시적으로 원하지
-않는다고 말한 상태 — `expressible` 이 전 사건에서 사라진 판 — 가 조용히 만들어진다.
+왜 이 구분이 필요한가 (2026-08-29 T-C 의 근거): `tool_choice_for`(바로 아래)가 `novel == false`
+만 보고 tool 호출을 강제하면, 교정 파일이 없는 작업 트리에서 **모든 사건이 "익숙하다"로 읽혀
+전부 강제된다.** 그리고 강제는 프로바이더가 message content 를 비우게 만들어 `expressible` 을
+지운다(실측: 컨트롤러의 짝지은 유료 A/B).
+
+🔴 **그 근거는 2026-08-29(단일 채널)에 두 번 끊겼다 — 이 두 키는 이제 `tool_choice` 를 안
+정한다.** ① T3 이 텍스트 `OutputField` 다섯을 지우고 T1 이 `expressible` 을 **tool 인자**로
+옮겼으므로, 강제가 message content 를 비워도 `expressible` 이 안 지워진다. ② T5 가 서비스
+기본값을 `"required"` 로 세우고 T6 이 요청 배선을 지웠으므로, 이 두 키가 무엇이든 **모든 사건이
+강제된다.** 그래도 `novel`·`novelty_measured` 자체는 한 글자도 안 바꾼다 — 기존 녹화와의 비교
+가능성이 거기 걸려 있고, `route_verdict` 의 나머지 소비자(화면의 ROUTER 줄 · `router_p` ·
+`router_novel`)는 그대로 산다.
 
 ⚠️ `v` 를 주면서 `eps` 를 생략하면 아래에서 명시적으로 에러를 던진다(2026-08-26, F5) —
 `round(nothing; digits=3)` 가 `MethodError` 로 죽는 것보다 원인이 뚜렷하다. `route()` 는 둘을
@@ -498,8 +505,26 @@ end
 """
     tool_choice_for(; novelty_measured::Bool, novel::Bool) -> Union{Nothing,String}
 
-이 사건의 `/decide` 요청에 실을 `tool_choice` 값. `nothing` 이면 **그 키를 아예 안 보낸다**
-(= 2026-08-29 이전과 바이트 단위로 같은 요청). 의존성 0 — Bool 둘만 본다.
+🔴 **생산 호출자가 0개다 (2026-08-29, 단일 채널 / T6).** 그리고 그것보다 강한 말이 필요하다:
+
+  🔴 **이 게이팅은 더 이상 작동하지 않는다.** "함수가 안 불릴 뿐" 이 아니라, 불러도 아래
+     진리표의 **세 행이 프로바이더 요청에서 한 값으로 붕괴한다** — T5 가 서비스의
+     `TOOL_CHOICE_DEFAULT` 를 `"required"` 로 세웠으므로 `nothing`("그 키를 안 보낸다")이
+     이제 **강제와 같은 뜻**이다. 강제를 끄는 자리는 이 함수가 아니라 서비스 호스트의
+     `DSPY_TOOL_CHOICE` 하나다.
+
+  ⚠️ 그래서 `test/tool_choice_gate.jl` (1)절이 **초록인 것을 "강제가 게이팅된다"의 증거로
+     인용하지 말 것.** 그 절은 이 순수 함수의 반환값만 재고 그 **효과**는 안 잰다 — 같은
+     종류의 함정을 이 레포는 이미 두 번 밟았다(소스만 읽는 게이트 셋, `tool_args_grounding.jl`).
+     효과를 재는 것은 같은 파일 (3)절이고, 그 절은 T6 뒤 "**어떤 사건에서도 안 싣는다**" 를
+     못박도록 다시 쓰였다.
+
+  🔴 **함수와 진리표 시험은 남긴다** — 되돌릴 때(강제를 다시 라우터에 물릴 때) 필요하고,
+     그때 필요한 것은 유도 규칙 자체이지 배선이 아니다.
+
+이 사건의 `/decide` 요청에 실을 `tool_choice` 값. `nothing` 이면 **그 키를 아예 안 보낸다**.
+의존성 0 — Bool 둘만 본다.
+(옛 괄호 *"= 2026-08-29 이전과 바이트 단위로 같은 요청"* 은 **T5 이후 거짓이다** — 위 참조.)
 
 | `novelty_measured` | `novel` | 결과 | 왜 |
 |---|---|---|---|
@@ -588,7 +613,7 @@ end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
 function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
-                        agents = nothing, zones = nothing, tool_choice = nothing)
+                        agents = nothing, zones = nothing)
     dspy_ready() || return nothing
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
@@ -622,7 +647,7 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #         🟡 2026-08-29 (Plan B / T1) 갱신: 이 문단의 마지막 줄은 *"`policy_entry` 는
     #         키 목록을 손으로 들고 있어 chosen·ranking·margin·rationale·scores·unsupported·
     #         label·available 여덟 개만 나른다"* 였다. **그 부분은 이제 낡았다** — `policy_entry`
-    #         가 `TOOL_LANE_KEYS`(아래, 2026-08-29 T-C 이후 **열 개**)를 두 분기 모두에서 나르고 `decide_all` 이
+    #         가 `TOOL_LANE_KEYS`(아래, 2026-08-29 T6 이후 **열하나**)를 두 분기 모두에서 나르고 `decide_all` 이
     #         `tool_lane` 필드로 노출한다. 🔴 **그러나 위 ③의 결론은 그대로 참이다**: 나르기만
     #         할 뿐 `RespecProposal` 까지 잇는 것은 아직 없으므로 `grammar_ground_check` 는
     #         여전히 이 레인을 못 본다. 그 연결은 T2 다.
@@ -646,19 +671,19 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    (`isempty(env.staging_circles)` 인 씬), 값 타입이 `Any` 라 pydantic 이 null 을 받고
     #    `_zones_block` 은 그 세 키를 **아예 렌더하지 않는다**. 그래서 이 채널로는 422 가 안 난다.
     zones === nothing || (payload["zones"] = zones)
-    # 라우터 게이팅된 `tool_choice`(2026-08-29, Plan B / T-C). `agents`/`zones` 와 **정확히 같은
-    # 규약**: 키워드로 받고, `nothing` 이 아닐 때만 싣는다. 안 실으면 서비스의
-    # `MacroRequest.tool_choice` 가 `None` 으로 남고 `dspy_service.tool_choice(req)` 가 `None` 을
-    # 내므로 — 즉 요청에 그 키가 안 실리므로 — **비-호출자의 요청은 바이트 단위로 예전과 같다.**
-    #
-    # 🔴 값을 여기서 정하지 않는다. 유도는 `tool_choice_for`(위, 의존성 0) 한 곳에만 있고
-    #    호출부(`decide_all`)가 `rt` 를 읽어 넘긴다 — 여기 인라인으로 다시 쓰면 검사되는 것과
-    #    실행되는 것이 갈린다(이 파일이 `policy_entry` 에서 이미 밟은 결함).
-    # 🔴 서비스 쪽 우선순위는 **환경변수 > 요청**이다(`DSPY_TOOL_CHOICE` 는 사람이 잡는
-    #    킬스위치이고 양방향이다). 그러므로 여기서 `"required"` 를 실어도 서비스 호스트에
-    #    `DSPY_TOOL_CHOICE=""` 가 걸려 있으면 강제되지 않는다 — 그 사실은 응답의 `tool_choice`
-    #    표식에 남으므로 행 하나만 보고 갈린다.
-    tool_choice === nothing || (payload["tool_choice"] = String(tool_choice))
+    # 🔴 **`tool_choice` 는 이 요청에 더 이상 실리지 않는다** (2026-08-29, 단일 채널 / T6).
+    #    T-C 가 놓았던 `tool_choice = …` 키워드와 그 payload 줄을 여기서 지웠다. 이유는
+    #    라우터 게이팅이 **의미를 잃었기 때문**이다: T5 가 서비스의 `TOOL_CHOICE_DEFAULT` 를
+    #    `"required"` 로 세웠으므로, 요청이 그 키를 **안 실으면 강제된다**. 즉 예전 규약
+    #    ("안 실으면 2026-08-29 이전과 바이트 동일") 은 이제 거짓이고, 여기서 `nothing` 을
+    #    넘기는 것과 `"required"` 를 넘기는 것이 프로바이더 요청에서 **같은 값**이 된다.
+    #    게이팅의 근거였던 *"강제는 `expressible` 을 지운다"* 는 T3 이 끊었다 — `expressible`
+    #    은 이제 텍스트 채널이 아니라 **tool 인자**로 오므로 강제가 그것을 못 지운다.
+    #    ⟹ 값을 유도해 실어 보내는 사슬 전체가 죽은 코드다. 유도 함수 `tool_choice_for`(위)는
+    #    **되돌릴 때 필요해서 남겼고 생산 호출자가 0개다** — 그 docstring 이 그 사실을 진다.
+    # 🔴 서비스 쪽 킬스위치는 그대로 살아 있다: `DSPY_TOOL_CHOICE` (환경변수 > 요청).
+    #    강제를 끄려면 **서비스 호스트**에서 끈다. 실제로 실린 값은 응답의 `tool_choice` 표식에
+    #    남으므로 행 하나만 보고 어느 레짐이었는지 갈린다.
     # 이 순간 **실제로 실행 가능한** 매크로만 legal 로 넘긴다(valid_macros 주석 참조).
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
@@ -1153,11 +1178,39 @@ const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offer
                         #                  (`"required"` | `"auto"` | … | `nothing` = 안 보냈다).
                         #                  🔴 이것 없이 거절률(C8 ②)을 세면 두 레짐의 행이 한
                         #                  표에 섞인다 — 강제 판에서 ②는 원리상 관측되지 않는다.
-                        # `text_rescue`  = 강제가 텍스트 채널을 비웠고, 그것을 두 번째 호출로
-                        #                  되찾았는가. **삼상**이다(spec §9-2):
-                        #                  `nothing` 붕괴 없음 / `true` 구제 성공 / `false` 실패.
-                        #                  🔴 두 값으로 접지 말 것.
-                        "tool_choice", "text_rescue")
+                        "tool_choice",
+                        # ---- 2026-08-29 (단일 채널 / T6) ------------------------------------
+                        # 🔴 `text_rescue` 는 **여기서 사라졌다.** 그 값이 주장하던 사건(강제가
+                        #   텍스트 채널을 비웠고 2차 호출로 되찾았다)이 이 설계에 없다 — T3 이
+                        #   텍스트 `OutputField` 다섯을 전부 지웠으므로 **되찾을 채널 자체가
+                        #   없고**, T4 가 구제 코드와 그 키를 파이썬에서 지웠다. 옛 녹화의
+                        #   `text_rescue` 열은 그대로 남는다(세대가 갈린 열이다) — 새 행과 한
+                        #   표에 섞지 말 것.
+                        #
+                        # `decision_source` = "tool" | "no_tools" | "no_call".
+                        #   🔴 **두 실패를 한 값으로 접지 않는다.** `no_tools` 는 우리가 메뉴를
+                        #   못 만든 것이고 `no_call` 은 프로바이더가 `required` 계약을 어긴
+                        #   것이다 — 원인도 대응도 다르다.
+                        #   🔴 이 키의 **존재 자체**가 세대 표식이다: 없는 행은 이 설계
+                        #   이전의 것이고, `macro_tool_agree` 와 `expressible` 이 다른 양을
+                        #   재고 있으므로 한 표에 섞으면 안 된다.
+                        #   ⚠️ `no_call` 은 **세 하위 사건**을 덮는다(T4 §0-B ⑪-a). 그 셋을
+                        #   가르는 것은 `error` · `tool_lane_error` · `tool_calls_n` 이고,
+                        #   그중 빈 응답 `AdapterParseError` 는 `tool_lane_error` 로 온다
+                        #   (`error` 는 프로바이더 장애 전용이다 — spec §5-1).
+                        # `tool_arg_error` = 인자 접지 실패 사유(`nothing` 이면 성공).
+                        #   집행에서 뺀 이유가 R26(`expressible=false`)인지 접지 실패인지를
+                        #   이 키가 가른다 — 둘 다 `tool_called === nothing` 이다.
+                        #   🔴 **이 문자열로 실패 종류를 세지 말 것**(§0-B ④): 파이썬
+                        #   `check_tool_args` 는 **처음 걸린 사유 하나만** 내고
+                        #   `agent_outside_enum`(F10)이 순서상 마지막이라, 두 축이 동시에
+                        #   틀리면 F10 은 보고되지 않는다 ⟹ 항상 과소집계다. 축마다 따로 셀 것.
+                        #   🔴 그리고 `=== nothing` 을 "접지 성공" 으로 읽지 말 것(§0-B ⑤):
+                        #   규약대로 만들어진 `no_intervention` 호출도 `nothing` 이다(접지할
+                        #   것이 없다). 줄리아의 `ground_tool_args` 는 같은 호출에
+                        #   `deferred:no_groundable_param` 을 낸다 — 두 레인이 같은 이름의
+                        #   비율을 **다른 분모**로 계산하게 된다.
+                        "decision_source", "tool_arg_error")
 
 """
     _tool_args_dict(x)
@@ -1198,10 +1251,11 @@ _tool_args_dict(x) = x === nothing ? nothing :
 """
     tool_lane_fields(b) -> Vector{Pair{String,Any}}
 
-`TOOL_LANE_KEYS` **열 개**를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
-(2026-08-29 T-C 가 `tool_choice` · `text_rescue` 를 더해 여덟에서 열이 됐다. 이 함수는 그 튜플을
-그대로 도므로 개수를 코드가 다시 들고 있지는 않다 — 하중은 `test/tool_lane_keys_survive.jl`
-(0)절의 길이 검사와 (6)절의 교차언어 등호가 진다.)
+`TOOL_LANE_KEYS` **열하나**를 `b`(서비스 응답 본체 또는 `nothing`)에서 뽑아 dict 조각으로 낸다.
+(2026-08-29 T-C 가 `tool_choice` · `text_rescue` 를 더해 여덟에서 열이 됐고, 같은 날 T6 이
+`text_rescue` 를 빼고 `decision_source` · `tool_arg_error` 를 더해 **열하나**가 됐다. 이 함수는
+그 튜플을 그대로 도므로 개수를 코드가 다시 들고 있지는 않다 — 하중은
+`test/tool_lane_keys_survive.jl` (0)절의 길이 검사와 (6)절의 교차언어 등호가 진다.)
 
 🔴 **삼상 보존 (spec §9-2).** `nothing` = "못 쟀다", `false` = "재서 어긋났다". 여기서
 `something(x, false)` 나 `Bool(x)` 로 감싸면 그 계약이 죽는다. 그러므로 **아무것도 접지
@@ -1216,13 +1270,14 @@ _tool_args_dict(x) = x === nothing ? nothing :
   · `tool_lane_error`  — 레인이 실패하지 않았으면 None
   · `macro_tool_agree` — 비교할 왼쪽이나 오른쪽이 없다
 
-⚠️ `native_fc` 는 **그 넷에 들지 않는다.** `native_fc_active()` 는 언제나 `True`/`False` 를
-내고, `None` 은 그 함수 안에서 조건 1·4 를 **읽을 수 없을 때**(= `dspy.configure` 전)만
-나온다 — `_startup()` 이 항상 `_configure_dspy()` 를 먼저 돌리므로 **어떤 서비스 응답도
-`native_fc: null` 을 만들지 못한다**(`dspy_service.native_fc_active` docstring 의 검증자
-실측: `DSPY_MODEL` 여덟 가지를 훑어도 None 없음). 이 게이트도 그 사실을 그대로 인정한다 —
-`test/tool_lane_keys_survive.jl` 은 `native_fc` 의 `true`/`false` 두 상태만 못박고
-세 번째를 **지어내지 않는다**.
+🔴 **`native_fc` 도 이제 그 목록에 든다 — 다섯이다** (2026-08-29, 단일 채널 / T5·T6).
+여기 있던 문장은 *"`native_fc` 는 그 넷에 들지 않는다 … 어떤 서비스 응답도 `native_fc: null`
+을 만들지 못한다"* 였고, **그것은 이제 거짓이다.** T5 의 `no_tools` 조기 반환은 LM 을 **아예
+안 부르고** 돌아오므로 그 행의 `native_fc` 는 `nothing`("못 쟀다")이지 `false`("물었는데 안
+켜졌다")가 아니다. 두 값을 접으면 정확히 그 두 사건이 섞인다.
+(그 아래의 옛 근거 — `_startup()` 이 늘 `_configure_dspy()` 를 먼저 돌리므로 `native_fc_active()`
+자체는 언제나 `True`/`False` — 는 **여전히 참이다.** 바뀐 것은 그 함수를 **부르지 않고**
+반환하는 경로가 생겼다는 것이다.)
 
 그래서 Julia 쪽에서 `native_fc === nothing` 이 뜻하는 것은 "서비스가 못 쟀다" 가 **아니라**
 셋 중 하나다: ① 집행 레인이 dspy 가 아니었다 ② dspy 항목이 폴백이었다 ③ 그 키를 안 싣는
@@ -1405,17 +1460,11 @@ function decide_all(env, truth; nl::AbstractString = "")
          get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
         nothing : service_decide(env, truth; nl = nl, descriptors = desc,
                                  agents = CB.open_agent_descriptors(env),
-                                 zones = CB.open_zone_descriptors(env),
-                                 # 🔴 라우터가 **익숙하다고 실제로 잰** 사건에만 강제한다
-                                 #    (`tool_choice_for` 의 진리표와 그 두 한계를 읽을 것).
-                                 #    `rt` 는 바로 위 `route(env, truth)` 의 결과다 — 요청보다
-                                 #    먼저 돌아 있으므로 이 시점에 신호가 존재한다.
-                                 #    ⚠️ `get(rt, ..., false) === true` 로 읽는다: 옛 녹화를
-                                 #    재생하는 소비자처럼 키가 없을 수도 있고, 없음은
-                                 #    "못 쟀다" 로 읽어야 안전한 쪽(강제하지 않음)으로 떨어진다.
-                                 tool_choice = tool_choice_for(
-                                     novelty_measured = get(rt, "novelty_measured", false) === true,
-                                     novel = get(rt, "novel", false) === true))
+                                 zones = CB.open_zone_descriptors(env))
+    # 🔴 여기 있던 `tool_choice = tool_choice_for(novelty_measured = …, novel = …)` 는
+    #    2026-08-29(단일 채널 / T6)에 **지웠다**. 근거는 `service_decide` 안의 같은 날짜 블록:
+    #    서비스 기본값이 `"required"` 가 된 이후 그 유도의 세 결과가 프로바이더 요청에서 한
+    #    값으로 붕괴한다. `rt` 는 이 아래에서 계속 쓰이므로 라우터 판정 자체는 그대로 기록된다.
 
     # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
     # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로

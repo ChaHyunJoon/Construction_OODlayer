@@ -28,13 +28,23 @@
 #      🔴 그리고 `novel` 의 값은 **한 글자도 안 바뀌었다** — 기존 녹화와의 비교 가능성이
 #      거기 걸려 있다. 두 키를 나란히 단언한다.
 #  (3) 🔴 **배선이 아니라 발화.** `decide_all` 을 진짜로 돌려 **나가는 요청 본문**을 잰다.
-#      교정이 없는 기본 작업 트리에서는 `tool_choice` 키가 요청에 **아예 없다** = 2026-08-29
-#      이전과 바이트 단위로 같은 요청. 그리고 합성 감지기를 설치해 novelty 축을 **실제로
-#      재게 만들면**, familiar 사건에서 `"required"` 가 실리고 novel 사건에서는 안 실린다.
+#      🔴 **2026-08-29 (단일 채널 / T6) 에 이 절의 명제가 뒤집혔다.** 옛 명제는 "familiar
+#      사건에서만 `"required"` 가 실린다" 였다. T6 이 `service_decide` 의 키워드와 `decide_all`
+#      의 유도 호출부를 지웠으므로 지금 참인 것은 **"세 novelty 상태 전부에서 그 키가 요청에
+#      없다"** 이고, 그것은 강제하지 않는다는 뜻이 **아니다** — T5 가 서비스 기본값을
+#      `"required"` 로 세웠으므로 안 싣는 것이 곧 강제다. 즉 (3) 이 재는 것은
+#      **게이팅이 죽었다는 사실**이다.
 #      (합성 감지기 = `CB.set_novelty_detector!` 로 직접 설치한다. `install_novelty!()` 는
 #       감지기가 이미 있으면 즉시 `true` 를 돌려주므로 교정 **파일**이 필요 없다.)
-#  (4) `service_decide` 의 payload 줄 자체 — 키워드가 `nothing` 이면 안 싣고, 값이 있으면 싣는다
-#      (`agents`/`zones` 와 정확히 같은 규약).
+#  (4) `service_decide` 가 `tool_choice` 를 **받지도 싣지도 않는다** — 키워드의 부재를
+#      `MethodError` 로 못박는다(T6 이 지웠다).
+#  (5) 단일 채널 키 집합: `text_rescue` 가 빠지고 `decision_source` · `tool_arg_error` 가
+#      들어왔고, 폴백 dict 이 같은 집합을 낸다(T6).
+#
+# 🔴 **(1)절의 초록을 "강제가 게이팅된다" 의 증거로 인용하지 말 것.** 그 절은 순수 함수의
+# 반환값만 재고 그 **효과**는 안 잰다. 효과를 재는 것은 (3)·(4) 이고, 둘 다 T6 뒤에는
+# **게이팅이 작동하지 않는다**를 못박는다. (§0-B ⑦ 과 같은 종류의 함정 — 소스만 읽는 게이트
+# 셋이 `macro()` 가 매 호출 NameError 로 죽는 동안에도 초록이었던 그 자리다.)
 #
 # 🔴 **8077(진짜 DSPy 서비스)로는 한 요청도 안 나간다.** `/decide` 는 사용자 계정의 유료
 # OpenAI 호출이다. `const DSPY_URL`(policy.jl)은 include 시점에 한 번 ENV 에서 읽히므로, 그
@@ -146,7 +156,13 @@ try
         # 그러면 (3) 이 "요청이 아예 없었다" 로 빨개지므로 원인을 여기서 직접 이름 붙인다.
         @test !(POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
                 get(ENV, "DEMO_ALL_POLICIES", "1") == "0")
-        # 이 워킹트리의 전제: 교정 파일이 **없다**. 있으면 (3-a) 가 다른 것을 재게 된다.
+        # (3-a) 의 전제: 이 시점에 감지기가 **설치돼 있지 않다**.
+        # 🔴 여기 있던 *"이 워킹트리의 전제: 교정 파일이 없다"* 는 **거짓이다**(2026-08-29 실측):
+        #    `wm4spacecraft_manufacturing/novelty/novelty_calibration.json` 이 존재하고
+        #    `install_novelty!()` 가 실제로 로드한다(n_cal=82, alpha=0.05). 이 단언이 참인
+        #    이유는 파일의 부재가 아니라 **설치가 게으르기 때문**이다 — `install_novelty!()`
+        #    는 `decide_all` 안에서야 불린다. 그래서 (3-a) 는 "교정이 없는 트리" 가 아니라
+        #    "이 호출 직전에 감지기를 지웠다" 로 만들어진다(바로 아래 (3) 의 첫 줄).
         @test CB.novelty_detector() === nothing
     end
 
@@ -213,7 +229,23 @@ try
 
     # -----------------------------------------------------------------------------------------
     @testset "(3) 배선이 아니라 발화 — decide_all 이 낸 **진짜 요청 본문**" begin
-        # (3-a) 교정이 없는 기본 작업 트리: 키가 **아예 없다** = 2026-08-29 이전과 바이트 동일.
+        # 🔴 **2026-08-29 (단일 채널 / T6): 이 절의 주장이 뒤집혔다.**
+        #    T-C 판에서 이 절은 *"familiar 사건에서만 `"required"` 가 실린다"* 를 셋으로 갈라
+        #    쟀다. T6 이 `service_decide` 의 `tool_choice` 키워드와 `decide_all` 의 유도
+        #    호출부를 지웠으므로, 이제 참인 명제는 하나다: **어떤 novelty 상태에서도 요청에
+        #    그 키가 없다.**
+        #
+        #    🔴 그리고 그것은 "강제하지 않는다" 를 뜻하지 **않는다** — 정확히 반대다.
+        #    T5 가 서비스의 `TOOL_CHOICE_DEFAULT` 를 `"required"` 로 세웠으므로 키를 안 싣는
+        #    것이 곧 **강제**다. 즉 이 절이 재는 것은 "게이팅이 산다" 가 아니라
+        #    **"게이팅이 죽었다"** 이고, 세 분기가 실제로 한 값으로 붕괴하는지를 못박는다.
+        #    (§0-B ⑯. 이 절 없이 (1)절만 초록이면 순수 함수의 진리표가 살아 있다는 이유로
+        #     게이팅이 산다고 오독하게 된다 — 이 레포가 반복해 밟은 함정이다.)
+        #
+        #    ⚠️ 강제를 실제로 끄는 손잡이는 이 레인에 없다. 서비스 호스트의
+        #    `DSPY_TOOL_CHOICE` 하나이고, 실린 값은 **응답**의 `tool_choice` 표식에 남는다.
+
+        # (3-a) novelty 를 못 쟀다.
         CB.clear_novelty_detector!()
         _LAST_PAYLOAD[] = nothing
         local n0 = _N_DECIDE[]
@@ -222,8 +254,7 @@ try
         @test _LAST_PAYLOAD[] !== nothing
         @test !haskey(_LAST_PAYLOAD[], :tool_choice)
 
-        # (3-b) novelty 축을 **실제로 재게** 만든다: 이 사건의 서술자를 중심으로 한 감지기 =
-        #       familiar. 이 분기에서만 `"required"` 가 실린다.
+        # (3-b) **익숙하다고 실제로 쟀다** — T-C 판이라면 여기서 `"required"` 가 실렸다.
         local desc = event_descriptors_of(TENV, _truth())
         CB.set_novelty_detector!(_detector(desc))
         try
@@ -231,17 +262,18 @@ try
             local rt = route(TENV, _truth())
             @test rt["novelty_measured"] === true
             @test rt["novel"] === false
+            # 🔴 대조군: 유도 **함수** 는 여전히 `"required"` 를 낸다 = 아래 단언이
+            #    "함수가 죽었다" 가 아니라 **"배선이 죽었다"** 를 잰다는 증거다.
+            @test tool_choice_for(novelty_measured = true, novel = false) == "required"
             _LAST_PAYLOAD[] = nothing
             decide_all(TENV, _truth(); nl = "")
             @test _LAST_PAYLOAD[] !== nothing
-            @test haskey(_LAST_PAYLOAD[], :tool_choice)
-            @test String(_LAST_PAYLOAD[][:tool_choice]) == "required"
+            @test !haskey(_LAST_PAYLOAD[], :tool_choice)
         finally
             CB.clear_novelty_detector!()
         end
 
-        # (3-c) 같은 배선이 **낯선** 사건에서는 안 싣는다 = (3-b) 의 값이 상수가 아니다.
-        #       `mu` 를 서술자에서 멀리 떼면 z 가 cap 에 붙어 p 가 바닥이다.
+        # (3-c) **낯설다고 실제로 쟀다** — 세 분기가 같은 값으로 붕괴하는 것을 여기서 닫는다.
         CB.set_novelty_detector!(_detector(desc .+ 50.0))
         try
             local rt = route(TENV, _truth())
@@ -257,26 +289,56 @@ try
     end
 
     # -----------------------------------------------------------------------------------------
-    @testset "(4) service_decide 의 payload 줄 — agents/zones 와 같은 규약" begin
-        # 🔴 이 절은 `decide_all` 을 **거치지 않고** 그 줄만 직접 태운다. (3) 은 유도까지
-        #    포함한 사슬 전체를, 여기는 실을지 말지의 규약 하나를 잰다.
+    @testset "(4) service_decide 는 tool_choice 를 **받지도 싣지도 않는다**" begin
+        # 🔴 T6 이 그 키워드를 지웠다. 옛 (4)절은 `service_decide(...; tool_choice="required")`
+        #    가 payload 에 실리는 것을 쟀는데, 그 인터페이스가 이제 없다.
+        #    여기서 재는 것 둘:
+        #      ① 기본 호출이 그 키를 안 싣는다(= 서비스 기본값 `"required"` 가 선다).
+        #      ② 🔴 **키워드가 실제로 사라졌다.** `MethodError` 를 못박지 않으면, 누가
+        #         `tool_choice=` 를 다시 넘기는 코드를 써도 Julia 가 조용히 받아 주는 판
+        #         (예: `; kwargs...` 를 나중에 더하는 변경)이 안 잡힌다.
         _LAST_PAYLOAD[] = nothing
         service_decide(TENV, _truth())
         @test _LAST_PAYLOAD[] !== nothing
-        @test !haskey(_LAST_PAYLOAD[], :tool_choice)   # 기본값 nothing = 안 싣는다
+        @test !haskey(_LAST_PAYLOAD[], :tool_choice)
 
+        @test_throws MethodError service_decide(TENV, _truth(); tool_choice = "required")
+
+        # 나머지 채널은 그대로다 — 이 삭제가 기존 payload 를 건드리지 않는다.
         _LAST_PAYLOAD[] = nothing
-        service_decide(TENV, _truth(); tool_choice = "required")
-        @test haskey(_LAST_PAYLOAD[], :tool_choice)
-        @test String(_LAST_PAYLOAD[][:tool_choice]) == "required"
-
-        # 다른 값도 그대로 나른다 — 이 층은 값을 해석하지 않는다(해석은 서비스의 몫).
-        _LAST_PAYLOAD[] = nothing
-        service_decide(TENV, _truth(); tool_choice = "auto")
-        @test String(_LAST_PAYLOAD[][:tool_choice]) == "auto"
-
-        # 나머지 채널은 그대로다 — 이 kwarg 가 기존 payload 를 건드리지 않는다.
+        service_decide(TENV, _truth())
         @test haskey(_LAST_PAYLOAD[], :nl_mode)
+    end
+
+    # -----------------------------------------------------------------------------------------
+    @testset "(5) 단일 채널 키 — T6" begin
+        # 🔴 `text_rescue` 는 사라졌다 — 그 동작(2차 호출)이 이 설계에 없다.
+        @test !("text_rescue" in TOOL_LANE_KEYS)
+        # 🔴 세대 표식이자 실패 사건의 이름.
+        @test "decision_source" in TOOL_LANE_KEYS
+        @test "tool_arg_error" in TOOL_LANE_KEYS
+
+        # 폴백 dict 도 같은 키 집합을 낸다 — 키가 사라지면 "레인이 안 돌았다" 와 "값이 없다" 를
+        # 못 가른다.
+        # 🔴 계획서 Step 1 의 `Set(String.(keys(blank)))` 는 **이 harness 에서 틀리다**:
+        #    `tool_lane_fields` 는 `Vector{Pair{String,Any}}` 를 내므로 `keys(...)` 가
+        #    이름이 아니라 **색인**(`Base.OneTo`)을 낸다 → `String(1)` 이 MethodError.
+        #    이름을 얻는 것은 `first.(...)` 다.
+        local blank = tool_lane_fields(nothing)
+        @test Set(first.(blank)) == Set(TOOL_LANE_KEYS)
+
+        # 실측 응답 모양이 그대로 통과한다.
+        local b = (chosen = "SwapBattery", ranking = ["SwapBattery"], margin = nothing,
+                   rationale = "clearly better than Replace", decision_source = "tool",
+                   tool_called = "deliver_battery", tool_args = Dict("agent" => "r1"),
+                   tool_calls_n = 1, tools_offered = 3, expressible = true,
+                   native_fc = true, tool_lane_error = nothing, macro_tool_agree = true,
+                   tool_choice = "required", tool_arg_error = nothing)
+        local e = policy_entry(b, "dspy")
+        @test e["available"] === true
+        @test e["chosen"] == "SwapBattery"
+        @test e["margin"] === nothing          # 🔴 margin 이 없어도 경계가 안 깨진다
+        @test e["decision_source"] == "tool"
     end
 
     end # testset

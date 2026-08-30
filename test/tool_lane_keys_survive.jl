@@ -1,11 +1,14 @@
 # =============================================================================
-# tool 레인 키 **열 개**가 서비스 응답 → `policy_entry` → `decide_all(...).tool_lane` 까지
-# **살아서** 도착하는지 못박는다. (2026-08-29, Plan B / T1 · T-C)
+# tool 레인 키 **열하나**가 서비스 응답 → `policy_entry` → `decide_all(...).tool_lane` 까지
+# **살아서** 도착하는지 못박는다. (2026-08-29, Plan B / T1 · T-C · 단일 채널 T6)
 #
 # 🔴 T-C(2026-08-29)가 여덟에 **둘을 더했다**: `tool_choice`(이 요청의 첫 시도에 실제로 실린
-# 레짐 표식)와 `text_rescue`(강제가 텍스트 채널을 비웠고 그것을 두 번째 호출로 되찾았는가,
-# **삼상**). 개수를 이 파일이 손으로 들고 있는 자리는 (0)절 한 곳뿐이고, 나머지는 전부
-# `TOOL_LANE_KEYS` 를 돈다.
+# 레짐 표식)와 `text_rescue`(강제가 텍스트 채널을 비웠고 그것을 두 번째 호출로 되찾았는가).
+# 🔴 같은 날 **T6(단일 채널)이 `text_rescue` 를 빼고 둘을 더했다**: `decision_source`
+# (`"tool"`|`"no_tools"`|`"no_call"`)와 `tool_arg_error`(인자 접지 실패 사유). `text_rescue`
+# 가 사라진 이유는 **되찾을 텍스트 채널이 없기 때문**이다 — T3 이 텍스트 `OutputField` 다섯을
+# 전부 지웠고 결정 성분은 이제 tool 인자로만 온다. 개수를 이 파일이 손으로 들고 있는 자리는
+# (0)절 한 곳뿐이고, 나머지는 전부 `TOOL_LANE_KEYS` 를 돈다.
 #
 # 무엇을 지키는가
 # ----------------
@@ -60,16 +63,19 @@
 #      보냈다. 그래서 `expressible` 에 `something(x, false)` 를 씌워도 79개 어서션이 **전부
 #      초록**이었다 — 삼상 계약이 그 키에서만 조용히 죽는다. 서비스가 실제로 `null` 을 낼 수
 #      있는 키는 **여섯**(`tool_called` · `expressible` · `tool_lane_error` ·
-#      `macro_tool_agree` · `tool_choice` · `text_rescue`)이고, `:decline` 시나리오가 그
+#      `macro_tool_agree` · `tool_choice` · `native_fc`)이고, `:decline` 시나리오가 그
 #      여섯을 **동시에** null 로 보낸다.
-#      🔴 뒤의 둘이 T-C 가 더한 것이다. `tool_choice === nothing` = **강제를 안 했다**(옛 레짐
-#      또는 라우터가 novelty 를 못 쟀거나 낯설다고 판정한 사건), `text_rescue === nothing` =
-#      **붕괴가 없었다**. 둘 다 `false` 로 접히면 안 된다 — `text_rescue == false` 는
-#      "붕괴했는데 못 살렸다" 라는 **전혀 다른 사건**이다(spec §9-2).
-#      ⚠️ `native_fc` 는 그 넷에 **없다.** 검증자 실측(2026-08-28): `None` 은 `native_fc_active`
-#      안에서 예외가 나야 나오는데 `_startup()` 이 늘 `_configure_dspy()` 를 먼저 돌리므로
-#      **어떤 서비스 응답도 `native_fc: null` 을 못 만든다**. 그래서 여기서 세 번째 상태를
-#      **지어내지 않는다** — 실재하는 `true`/`false` 둘만 못박고(2/3), 그 사실을 적는다.
+#      🔴 `tool_choice === nothing` = **강제를 안 했다**(옛 레짐, 또는 T5 의 `no_tools` 조기
+#      반환처럼 요청 자체를 안 낸 사건).
+#      🔴 **`native_fc` 가 이 목록에 들어왔다 (2026-08-29 / T5·T6).** 여기 있던
+#      *"`native_fc` 는 그 넷에 없다 … 어떤 서비스 응답도 `native_fc: null` 을 못 만든다"* 는
+#      **이제 거짓이다**: T5 의 `no_tools` 조기 반환은 LM 을 **아예 안 부르고** 돌아오므로
+#      `_blank_decision` 이 `native_fc: None` 을 낸다. 그 `nothing` 은 "못 쟀다" 이지
+#      `false`("물었는데 안 켜졌다")가 아니다 — 접으면 두 사건이 섞인다.
+#      (옛 근거 자체는 여전히 참이다: `native_fc_active()` 는 언제나 `True`/`False` 를 낸다.
+#       바뀐 것은 그 함수를 **부르지 않고** 반환하는 경로가 생겼다는 것이다.)
+#      ⚠️ `text_rescue` 는 T6 이 지웠다 — 그 삼상 계약을 이 파일이 재던 자리는 이제
+#      `decision_source` 가 진다(그쪽은 null 이 아니라 **세 문자열**이라 다른 종류의 계약이다).
 #  (6) 🔴 **교차언어 결속**: Julia 의 `TOOL_LANE_KEYS` 가 파이썬 `dspy_service.py` 의
 #      `out["dspy"]` 리터럴에서 실제로 유도된 키 집합과 **같다**. 라운드 1 에서 Julia 의
 #      목록은 파이썬 이름의 **손으로 쓴 사본**이었고 둘을 잇는 것이 아무것도 없었다 —
@@ -110,7 +116,9 @@ isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "n
 #   :lane      dspy 가용(8키 적재, 두 개는 null) · surrogate 불가 → select_lane 이 dspy 를 고른다
 #   :surro     dspy 가용(8키 적재, null 없음)   · surrogate 가용  → select_lane 이 surrogate 를 고른다
 #   :err       dspy 가 error → policy_entry 의 **폴백 분기** · surrogate 불가 → canonical
-#   :decline   dspy 가용인데 **모델이 메뉴를 거절했다**(C8 ②) — null 가능한 넷이 전부 null
+#   :decline   dspy 가용인데 **결정이 안 왔다** — null 가능한 **여섯**이 전부 null
+#              (T6 이후 이 픽스처는 T5 의 `no_tools` 조기 반환 모양이다: `decision_source`
+#               가 그 사건에 이름을 붙이고 `native_fc` 는 "못 쟀다" 로 온다)
 const _MODE = Ref{Symbol}(:lane)
 
 # 응답에 싣는 tool 레인 값.
@@ -129,9 +137,11 @@ const _LANE_FULL = Dict{String,Any}(
     "native_fc" => true,
     "tool_lane_error" => "tool-call parse failed: unterminated JSON",
     "macro_tool_agree" => true,
-    # T-C: 강제 판이고, 그 강제가 텍스트 채널을 비웠지만 구제가 되찾았다.
+    # T-C: 강제 판이다.
     "tool_choice" => "required",
-    "text_rescue" => true)
+    # T6(단일 채널): 정상 행 = tool 호출이 왔고 인자 접지가 성공했다.
+    "decision_source" => "tool",
+    "tool_arg_error" => nothing)
 
 # (2) 를 위해 **삼상의 왼쪽 끝**을 실제로 보낸다: 두 키를 `null` 로. `nothing` 은 JSON3.write
 # 가 `null` 로 직렬화한다.
@@ -154,14 +164,22 @@ const _LANE_DECLINED = Dict{String,Any}(
     "tool_calls_n" => 0,
     "tools_offered" => 3,
     "expressible" => nothing,
-    "native_fc" => false,
+    # 🔴 T6: `nothing` 이다(옛 픽스처는 `false` 였다). 이 행은 **T5 의 `no_tools` 조기 반환**
+    #    모양으로 다시 맞춰졌다 — LM 을 아예 안 불렀으므로 `native_fc` 를 **못 쟀다**.
+    #    `false`("물었는데 native FC 가 안 켜졌다")와 다른 사건이고, 그 구별이 이 파일이
+    #    지키는 삼상 계약의 여섯 번째 자리다.
+    "native_fc" => nothing,
     "tool_lane_error" => nothing,
     "macro_tool_agree" => nothing,
     # 🔴 T-C: 거절 행은 **강제하지 않은 판**에서만 나온다(강제 판에서 C8 ② 는 원리상 관측되지
-    #    않는다 — `dspy_service.py` 의 소비자 규칙 ⑤). 그래서 이 둘도 `nothing` 이고,
-    #    그것이 이 시나리오가 여섯 번째·다섯 번째 null 을 실제로 보내는 자리다.
+    #    않는다 — `dspy_service.py` 의 소비자 규칙 ⑤). 그래서 이것도 `nothing` 이다.
     "tool_choice" => nothing,
-    "text_rescue" => nothing)
+    # 🔴 T6: 이 행의 **이름**. `no_tools` 는 우리가 메뉴를 못 만든 것이고 `no_call` 은
+    #    프로바이더가 `required` 계약을 어긴 것이다 — 접지 않는다. `tool_arg_error` 는
+    #    `nothing` 인데, 그것은 "접지에 성공했다" 가 아니라 **"접지할 호출이 없었다"** 이다
+    #    (§0-B ⑤ 와 같은 함정: `nothing` 을 성공 분자에 넣지 말 것).
+    "decision_source" => "no_tools",
+    "tool_arg_error" => nothing)
 
 # 🔴 매크로 이름 리터럴을 쓰지 않는다 (2026-08-29 수정 라운드, F6). 이 레포의 규칙은
 #    `test/policy_macro_binding.jl:134` 에 적혀 있다 — 어휘 이름을 테스트에 적으면 그 파일이
@@ -345,8 +363,11 @@ try
         # 빨개지므로, 원인을 여기서 직접 이름 붙인다(skip 조건을 그대로 부정한 형태).
         @test !(POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
                 get(ENV, "DEMO_ALL_POLICIES", "1") == "0")
-        # 여덟이라는 사실도 여기서 못박는다 — 목록이 조용히 줄면 나머지 검사가 그만큼 덜 잰다.
-        @test length(TOOL_LANE_KEYS) == 10
+        # 개수도 여기서 못박는다 — 목록이 조용히 줄면 나머지 검사가 그만큼 덜 잰다.
+        # 여덟(T1) → 열(T-C) → **열하나**(T6: `text_rescue` 빼고 `decision_source` ·
+        # `tool_arg_error` 더함).
+        @test length(TOOL_LANE_KEYS) == 11
+        @test !("text_rescue" in TOOL_LANE_KEYS)
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_FULL))
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_DECLINED))
         # 픽스처의 매크로 이름이 **정말 레지스트리에서 왔는가**(F6). 둘이 같으면 아래
@@ -432,7 +453,7 @@ try
         @test d.tool_lane["lane_available"] === true
     end
 
-    @testset "(5) null 가능한 키 넷이 전부 null 로 살아온다 (거절 행)" begin
+    @testset "(5) null 가능한 키 여섯이 전부 null 로 살아온다 (결정 없음 행)" begin
         # 🔴 F3. 라운드 1 픽스처는 여덟 중 **둘**만 null 로 보냈다. `expressible` 과
         #    `tool_called` 은 어느 시나리오에서도 null 이 아니어서, 그 둘에 `something(x, false)`
         #    를 씌워도 79개가 전부 초록이었다. 이 절이 그 구멍을 막는다.
@@ -452,15 +473,17 @@ try
         @test tl["expressible"] !== false
         @test tl["tool_lane_error"] === nothing
         @test tl["macro_tool_agree"] === nothing
-        # ---- T-C 가 더한 둘도 **이름으로** 못박는다 -----------------------------------------
-        # 🔴 `nothing` 이지 `""`·`false` 가 아니다. `text_rescue` 는 특히 위험하다 — `false` 로
-        #    접히면 "붕괴가 없었다" 가 "붕괴했는데 못 살렸다" 로 둔갑해, 이 레인의 손실률이
-        #    **전 사건에서 100%** 로 읽힌다.
+        # ---- T-C·T6 가 더한 것들도 **이름으로** 못박는다 ------------------------------------
+        # 🔴 `nothing` 이지 `""`·`false` 가 아니다.
         @test tl["tool_choice"] === nothing
         @test tl["tool_choice"] != ""
-        @test tl["text_rescue"] === nothing
-        @test tl["text_rescue"] !== false
-        @test tl["text_rescue"] !== true
+        # 🔴 T6: `decision_source` 는 null 이 **아니다** — 결정을 못 낸 사건에도 **이름이
+        #    붙는 것**이 이 키의 존재 이유다. `nothing` 으로 오면 그 사건이 다시 무명이 된다.
+        @test tl["decision_source"] === "no_tools"
+        @test tl["decision_source"] !== nothing
+        # 🔴 그리고 `tool_arg_error === nothing` 을 "접지 성공" 으로 읽지 말 것 — 이 행은
+        #    접지할 호출 자체가 없었다(§0-B ⑤).
+        @test tl["tool_arg_error"] === nothing
         # ---- F5: `tool_args` 는 **null 이 아니다** ------------------------------------------
         # 서비스의 `_first_tool_call` 이 호출이 없으면 `{}` 를 낸다. 그러므로 이 층에서
         # "tool 을 안 불렀다" 를 가르는 키는 `tool_called` 하나뿐이고, `tool_args` 의 빈 여부가
@@ -468,12 +491,13 @@ try
         @test tl["tool_args"] !== nothing
         @test tl["tool_args"] == Dict{String,Any}()
         @test tl["tool_calls_n"] === 0
-        # ---- native_fc 는 2/3 만 실재한다 -----------------------------------------------------
-        # ⚠️ `false`(재서 꺼져 있었다)가 두 번째이자 **마지막** 실상태다. `nothing` 은
-        #    `native_fc_active` 안에서 예외가 나야 하는데 어떤 서비스 응답도 그것을 못 만든다
-        #    (검증자 실측 2026-08-28). 세 번째를 지어내지 않고, 없다는 사실을 여기 적는다.
-        @test tl["native_fc"] === false
-        @test tl["native_fc"] !== nothing
+        # ---- 🔴 native_fc 는 이제 **3/3 이 실재한다** (2026-08-29 / T5·T6) -------------------
+        # 여기 있던 *"`false` 가 마지막 실상태다 — 어떤 서비스 응답도 `native_fc: null` 을 못
+        # 만든다"* 는 **거짓이 됐다**: T5 의 `no_tools` 조기 반환이 LM 을 안 부르고 돌아오고
+        # `_blank_decision` 이 `native_fc: None` 을 낸다. 이 픽스처가 바로 그 행이다.
+        # `true`(_LANE_FULL) · `false` · `nothing` 셋 다 실재하며, 이 절은 `nothing` 을 잰다.
+        @test tl["native_fc"] === nothing
+        @test tl["native_fc"] !== false
         # 삼분의 (c): 레인은 dspy 이고 항목도 성공이다 → 위 `nothing` 들은 전부 "서비스가 못 쟀다".
         @test tl["lane"] == "dspy"
         @test tl["lane_available"] === true
