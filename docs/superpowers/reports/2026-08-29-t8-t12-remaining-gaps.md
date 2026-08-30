@@ -11,6 +11,10 @@
 **집행된 커밋:** `d2360ef0`(T8) → `7eb0f94d`(T9) → `5ca1dc27`(T10) → `884aa9c9`(T11) →
 `23655a6a`(T12 부분) → `978b905b`(픽스처) → `7620d3ad`(이 문서)
 
+> ⚠️ **줄번호를 인용하지 않는다.** `46470d5a` 가 `policy.jl` 을 1835 → **1704** 줄로 줄여,
+> 그 커밋 이전에 쓰인 `policy.jl:NNN` 인용은 ~440 줄 아래 전부 어긋난다(레포 전체에서 130건 이상).
+> 이 문서는 그래서 **심볼 이름**으로만 가리킨다. 옛 판에서 인용을 옮겨 올 때 주의할 것.
+>
 > ## 🟢 갱신 (2026-08-29, 두 번째 세션 `chahj578-fd`) — **§A-1 · §B-1 · §B-2 · §C-2 가 닫혔다**
 >
 > `351203ed`(§A-1) · `f29292df`(§C-2) · `46470d5a`(§B-1·B-2). 아래 각 절에 ✅ 로 표시했다.
@@ -52,7 +56,7 @@
 >
 > 🔴 **이 문서의 처방과 한 곳이 다르고, 그쪽이 낫다.** 이 문서는 *"`agents`/`zones`/`lanes` 와
 > 같은 키워드로 `decide_all` 이 넘긴다"* 고 적었다. 실제 구현은 **`service_decide` 안에서 직접
-> 유도한다**(`policy.jl:538`) — 근거: 키워드는 *"호출자가 다른 값을 실을 수 있다"* 를 남기는데
+> 유도한다**(`service_decide` 안, `payload["routing_kind"] = …`) — 근거: 키워드는 *"호출자가 다른 값을 실을 수 있다"* 를 남기는데
 > **그것이 바로 §A-1 결함 자체**이므로, 제자리 유도가 갈림을 구조적으로 불가능하게 만든다.
 > ⚠️ 그 대가는 **생산 유도 사이트가 둘**이 된 것이다(`:538` 과 `:1375`). 이 레포는 규칙이 두 벌로
 > 갈리는 사고를 반복했으므로 그 자리엔 기계 게이트가 필요한데, **있다** — 실측 확인:
@@ -100,10 +104,10 @@ kind 축에서 dspy 로 가는 사건은 오늘 **둘뿐**이고 둘 다 메뉴�
 
 | 사건 | 라우팅 | LLM 이 받는 메뉴 | 근거 |
 |---|---|---|---|
-| `ZoneTruth` | ✅ dspy (`ood_kind`) | **`["NOOP"]`** | `valid_macros`, `policy.jl:358-360` |
+| `ZoneTruth` | ✅ dspy (`ood_kind`) | **`["NOOP"]`** | `valid_macros` 의 `truth isa CB.ZoneTruth` 분기 |
 | 새 `OODTruth` 타입 | ✅ dspy (`unknown:X`) | `["NOOP","Replace"]` | `valid_macros` → `String[]` → 서비스 `_valid_for` 폴백 (§A-1) |
 
-zone 의 `["NOOP"]` 은 **결함이 아니라 설계된 OOD 경계 표식**이다(`policy.jl:344-356` 이 근거를
+zone 의 `["NOOP"]` 은 **결함이 아니라 설계된 OOD 경계 표식**이다(`valid_macros` 의 그 분기 위 주석이 근거를
 적는다: *"닫힌 어휘에 이 구역의 수복이 없다"*). LLM 은 `tool_choice="required"` 아래
 `no_intervention` 하나만 든 메뉴를 받고, `expressible=false` 로 그 사실을 신고한다.
 
@@ -194,9 +198,9 @@ grep -rn 'tool_minted|synthesis' --include='*.jl' src tools test   →  0건
 
 | 대상 | 자리 | 상태 |
 |---|---|---|
-| `DEMO_ALL_POLICIES` | `policy.jl:14` 주석 · `tools/test_policy_oracle.jl:352` | 손잡이가 아직 있다. T11 의 `want` 가 이미 대체했으므로 **죽은 손잡이**다 |
-| `llm_macro` · `agrees_with_rule` | `policy.jl:1803`·`:1813` (`DEMO_SUMMARY`) | 값이 `nothing` 으로 붕괴했고 **키는 남겼다** — 옛 녹화와 `KeyError` 로 구별되지 않도록. 의도적이지만 소비자가 그 사실을 모른다 |
-| `escalation_target` · `surrogate_support_measured` | `policy.jl:1149`·`:1160` | 함수는 남겼다(진단용). 🔴 **생산 호출자가 0개**가 됐는데 docstring 이 아직 라우팅 이야기를 한다 |
+| `DEMO_ALL_POLICIES` | `policy.jl` 머리말 ENV 목록 · `tools/test_policy_oracle.jl` | 손잡이가 아직 있다. T11 의 `want` 가 이미 대체했으므로 **죽은 손잡이**다 |
+| `llm_macro` · `agrees_with_rule` | `record_decision!` 의 `DEMO_SUMMARY` input dict | 값이 `nothing` 으로 붕괴했고 **키는 남겼다** — 옛 녹화와 `KeyError` 로 구별되지 않도록. 의도적이지만 소비자가 그 사실을 모른다 |
+| `escalation_target` · `surrogate_support_measured` | `policy.jl` 의 두 함수 정의 | 함수는 남겼다(진단용). 🔴 **생산 호출자가 0개**가 됐는데 docstring 이 아직 라우팅 이야기를 한다 |
 
 ### B-4. 계획서 §0-A 표가 아직 "T8~T12 미착수"로 적혀 있다
 
@@ -364,6 +368,28 @@ zone 에스컬레이션 블록 · `escalation_allowed` · `others`/`agree` · `r
 
 🔴 **아무것도 안 하면 3번조차 아니다** — 지금은 조용히 빈 결과를 낸다.
 
+### F-3. 🔴 **가장 비싼 것** — 죽은 전제가 스윕 실행을 **막는다** (`chahj578-fd` 가 고치는 중)
+
+§F 의 둘은 조용히 빈 결과를 냈다. 이것은 **실행 가능한 소비처**라 청구서가 더 크다.
+실측(2026-08-29, 이 세션이 독립 확인):
+
+```bash
+grep -rn 'NOVELTY_CALIB' --include='*.jl' .
+  → tools/test_router.jl:31 (시험) + 주석 2건.  **생산 소비처 0개.**
+```
+
+| 자리 | 무엇을 하나 |
+|---|---|
+| `sweep/llm_ood_eval.py` 의 `_validate_router_args` | `--router != 0` 인 스윕을 `--novelty-calib PATH` 없이는 **시작 자체를 거부**한다. 사유: *"calib 없이 라우터를 켜면 policy.jl 이 fail-open 으로 라우터를 꺼버려"* — 그 fail-open 은 `46470d5a` 가 지웠다 |
+| `tools/monitor/regen_router_cases.sh` | 같은 죽은 전제로 `failed=all:novelty-calib-missing` 하드 종료 |
+
+🔴 **두 방향으로 틀린다.** ① 교정 파일이 없는 사람은 **아무 이유 없이** 라우터 스윕을 못 돌린다.
+② 파일을 가진 사람은 그것을 넘기고 *"라우터를 켰다"* 고 믿는데, 그 ON/OFF 구분은 이제
+**아무 의미가 없다** — 하룻밤 스윕이 그 틀린 프레이밍 위에서 돈다. argparse help 는 아직
+*"필수다"* 라고 적는다.
+
+✅ **임자 있음** — `chahj578-fd` 가 요구를 제거하고 플래그는 받되 무효임을 문서화한다.
+
 ### F-2. 대시보드 ROUTER 배지 (두 번째 세션이 고치는 중)
 
 `tools/monitor/dashboard.html:1274` 의 배지가 `rr.enabled` **하나만** 읽는다. `enabled` 가
@@ -373,13 +399,66 @@ zone 에스컬레이션 블록 · `escalation_allowed` · `others`/`agree` · `r
 
 ---
 
+## G. 🔴 스윕 사후 게이트 `_router_drove` 가 **실패할 수 없는 게이트**가 됐다 (임자 없음)
+
+`sweep/llm_ood_eval.py` 의 `_router_drove` 는 산출물에서 *"라우터가 **실제로** 몰았는가"* 를
+사후에 재라고 있는 게이트다. T11 의 축 enum 교체가 그것을 자기참조로 만들었다.
+
+**결함 ① (`chahj578-fd` 의 검증자가 찾음, 이 세션이 확인):**
+
+```python
+ROUTER_AXES = {"control", "vocabulary_gap", "novelty", "none"}   # ← T11 이전 enum
+...
+if not ((axes & ROUTER_AXES) or (True in drove)):     # "gate failed open"
+```
+
+T11 이후 실제 산출값은 `control` · **`known_kind`** · **`ood_kind`** · `fixed` 다
+(`lane_select.jl` 의 세 `return` 에서 실측). 라우터가 **몰았을 때** 나오는 두 값
+(`known_kind`/`ood_kind`)이 `ROUTER_AXES` 에 **없다** ⟹ 그 사건에서 축 가지는 언제나 빈 집합이다.
+⚠️ *"항상 빈 집합"* 은 과장이다 — `control`(noop 통제 런)은 아직 양쪽에 다 있다. 그러나
+**이 게이트가 존재하는 이유인 그 사건**에서는 비어 있다.
+⟹ 게이트를 떠받치는 것은 `router_drives` 하나뿐인데, 그 값은 `router_drives()` =
+`ROUTER_MODE != "0" && POLICY != "noop"` — **연산자가 넘긴 플래그의 메아리**이고, 같은 함수가
+한 줄 위에서 `r.get("router") != want_router` 로 **이미 검사한 것**이다.
+즉 게이트가 이제 **행동이 아니라 플래그를 자기 자신과 대조한다.**
+
+**결함 ② 🔴 이 세션이 추가로 찾았다 — 같은 함수의 WARN 이 영구 거짓 소음이 됐다.**
+
+```python
+measured = {d.get("support_measured") for d in decisions}
+if measured and True not in measured:
+    print("    WARN: router drove, but surrogate support was never measured ... axis 1 could not have fired")
+```
+
+실측: `rt["support_measured"] = …` 를 쓰던 줄을 T11 이 지웠고, `policy.jl` 에 남은
+`support_measured` 는 **함수 정의 둘뿐**이다(`grep -n` → 1035·1071, 둘 다 정의). 그래서
+`run_demo.jl` 이 읽는 키가 **영원히 없고** `measured == {None}` 이므로 이 조건이 **항상 참**이다.
+⟹ **모든 라우터 런이 이 경고를 찍는다.** 게다가 문구가 *"축 1 이 발화할 수 없었다"* 라고
+말하는데 **축 1 은 존재하지 않는다.** 항상 켜지는 경고는 연산자에게 경고를 무시하도록 가르치므로,
+빈 결과보다 나쁠 수 있다.
+
+**닫는 법은 사람의 판정이다** — §F 와 같은 종류라 어느 세션도 임의로 정하지 않았다:
+1. `ROUTER_AXES` 를 `{"control","known_kind","ood_kind","fixed"}` 로 갱신하고 WARN 을 지운다
+   (가장 작다. 다만 게이트가 *"플래그의 메아리"* 인 것은 그대로다).
+2. 게이트의 명제를 다시 정한다 — 라우터가 몰았다는 **행동의 증거**는 오늘 무엇인가?
+   후보: 결정 행의 `lanes` 가 **하나**이고 그것이 `router_axis` 와 일관되는가(T11 이 만든,
+   플래그와 독립인 사실).
+3. 게이트를 지운다 — 명제를 다시 못 세우겠으면, 못 재는 게이트를 초록으로 두는 것보다 낫다.
+
+🔴 **1번만 하고 멈추면 "게이트가 초록이다" 가 다시 근거로 인용된다** — 그것이 계획서 §0-B ⑦·⑯이
+두 번 경고한 자리다(순수 함수만 재고 그 **효과**는 안 재는 게이트).
+
+---
+
 ## 우선순위 (닫는 순서 제안)
 
 | # | 항목 | 왜 이 순서인가 | 크기 |
 |---|---|---|---|
 | ~~1~~ | ~~**§C-1** `Pkg.test()` 전체~~ | ✅ **했다.** 그 결과가 §C-3·§C-3b 를 낳았고 둘 다 닫았다. **현행 정상 상태 = 1503 / 1 / 1** | — |
 | ~~1~~ | ~~**§B-1** novelty 삭제~~ | ✅ **`46470d5a` 에서 닫혔다.** 예측대로 fail 이 1 → 0 이 됐다 | — |
-| **1** | **§F** 고아가 된 파이썬 소비처 둘 | 🔴 **임자가 없다.** 조용히 빈 결과를 내므로 발견이 늦다 — 지울지 다시 세울지가 **사람의 판정**이다 | 20분(지우기) ~ 60분(kind 축 재구성) |
+| **1** | **§G** `_router_drove` 게이트 | 🔴 **임자 없음.** 스윕 건강을 재는 게이트가 자기참조가 됐고, WARN 은 매번 켜진다. 명제 재정의는 **사람 판정** | 30~60분 |
+| ~~1~~ | ~~**§F-3** 죽은 NOVELTY_CALIB 전제~~ | ✅ **`chahj578-fd` 가 잡았다** — 실행을 막는 종류라 원래 최우선이었다 | — |
+| 2 | **§F** 고아가 된 파이썬 소비처 둘 | 🔴 **임자가 없다.** 조용히 빈 결과를 내므로 발견이 늦다 — 지울지 다시 세울지가 **사람의 판정**이다 | 20분(지우기) ~ 60분(kind 축 재구성) |
 | ~~2~~ | ~~**§A-1** `routing_kind` 를 페이로드에 싣는다~~ | ✅ **`351203ed`** | — |
 | ~~3~~ | ~~**§C-2** T7 게이트 docstring 정정~~ | ✅ **`f29292df`** | — |
 | ~~4~~ | ~~**§B-1·B-2** novelty 삭제~~ | ✅ **`46470d5a`** | — |
