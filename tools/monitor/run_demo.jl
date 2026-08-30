@@ -342,18 +342,31 @@ function handle_ood!(env, truth, nl)
         "emitted_keys" => emitted_keys_of(try macro_to_proposal(truth, mac; env = env) catch; nothing end),
         "enacted"  => decision.enacted,
         "rule"     => decision.rule_macro,
-        "llm"      => decision.llm_macro,
-        "surrogate" => (try decision.policies["surrogate"]["chosen"] catch; "" end),
-        "agree"    => decision.agree,
+        # 🔴 2026-08-29 (T12): `llm`·`surrogate`·`agree`·`router_p`·`router_novel` 을 **지웠다.**
+        #    라우터가 사건당 레인 **하나만** 부르므로(§0-C 결정 4) 안 부른 레인의 값이
+        #    **존재하지 않는다** — 예전 열은 `try/catch` 로 빈 문자열을 채워 "그 레인이 NOOP 을
+        #    골랐다" 처럼 보이게 만들었을 것이다.
+        #    ⟹ 이 커밋 **이전** 녹화와 이 열들에서 비교가 **끊긴다**. 옛 녹화를 읽는 분석은
+        #      키 부재를 "값이 없다" 가 아니라 **"세대가 다르다"** 로 읽어야 한다.
+        #    집행된 레인의 결정은 `macro_name`·`enacted` 가 그대로 나른다. 규칙표 답
+        #    (`rule`)만 남긴 것은 그것이 줄리아가 **자기가** 계산하는 값이라 반사실이 아니기
+        #    때문이다(비용 0, 안 부른 레인이 아니다).
         # zone 사건의 채점에는 **막힘 원시값**이 있어야 한다. STEP 10 이 실측으로 보인 것:
         # 같은 zone kind 안에서 정답이 뒤집히고(blk→RelocateBuild / cov→NOOP), 그 둘을 가르는 것은
         # kind 도 zone_overlap 도 아니라 (nav_blocked, root_covered) 쌍이다. 이 값이 요약에 없으면
         # 나중에 "옳은 결정이었나"를 물을 수 없다(스트림에서 사후 복원하면 시점이 어긋난다).
         "zone_primitives" => (try get(decision.router, "zone_primitives", nothing) catch; nothing end),
-        "router_novel" => (try get(decision.router, "novel", nothing) catch; nothing end),
-        "router_p"     => (try get(decision.router, "p", nothing) catch; nothing end),
+        # 🔴 2026-08-29 (T12): `router_novel`·`router_p` 를 지웠다 — novelty 축(축 2)이
+        #    삭제됐으므로 그 두 열이 주장할 것이 없다(§0-C 결정 2·충돌 ④).
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
-        # 어느 축(control/vocabulary_gap/novelty/none)이 이 결정을 냈는가 (2026-08-27, Task 3).
+        # 🔴 2026-08-29 (T11): 라우팅용 kind. 이제 이 값 하나가 레인을 정한다.
+        #    `ood_features` 의 `"kind"` 와 **다른 함수**에서 나온다(§0-C 충돌 ①) — 모르는
+        #    타입에서 이 열은 `"unknown:<타입>"` 이고 저쪽은 `"fault"` 다. 섞지 말 것.
+        "routing_kind"  => (try get(decision.router, "routing_kind", nothing) catch; nothing end),
+        # zone 격상은 사라졌지만 **왜 올렸어야 했는가**의 진단은 남는다(§0-C 결정, 기록만).
+        "zone_verdict"  => (try get(decision.router, "zone_verdict", nothing) catch; nothing end),
+        # 어느 축이 이 결정을 냈는가. 🔴 2026-08-29 (T11) enum 교체:
+        # `control/vocabulary_gap/novelty/none` → **`control/known_kind/ood_kind/fixed`**.
         # 설계서 §5: "도장만 찍고 소비처를 안 만드는 것이 kind 경계가 얼어붙은 채 아무도 모르게
         # 만든 그 실패다" — router_axis 를 policy.jl 에 심고 여기 화이트리스트에 안 넣으면
         # 모니터 스트림에는 나가도 결정 행에는 안 실려, 축별 발화 집합(R5)을 잴 수 없다.

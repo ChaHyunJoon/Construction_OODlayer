@@ -233,8 +233,13 @@ else
     #    pol["dspy"] 가 둘 다 unavailable 이라 축 1 이 구조적으로 발화 불가가 된다.
     #    셋 다 같은 술어를 써야 한다: "라우터가 이 런에서 레인을 모는가".
     check("T9 decide_all 의 실제 게이트 세 곳(서비스 호출 · 레인 선택 · 격상)이 " *
-          "router_drives() 를 부른다(정확히 3회 기대)",
-          n_drives == 3, "n_drives=$(n_drives)")
+          # 🔴 2026-08-29 (T11/T12): **3 → 2.** 세 게이트 중 하나(표현력 격상)가 사라졌다 —
+          #    kind 축에서 zone 은 이미 dspy 라 격상할 곳이 없고, 축 1(어휘 미달)은 kind 축으로
+          #    대체됐다(§0-C 결정 2·충돌 ⑤). 남은 둘은 **레인 선택**과 **서비스 청구**다.
+          #    ⚠️ 이 숫자를 다시 3 으로 되돌리려 하지 말 것 — 늘었다면 조용한 폴백이나 격상이
+          #    돌아온 것이고, 그것이 §0-C 결정 3 이 없앤 바로 그 상태다.
+          "router_drives() 를 부른다(정확히 2회 기대)",
+          n_drives == 2, "n_drives=$(n_drives)")
     check("T9b decide_all 은 router_enabled() 를 직접 부르지 않는다 " *
           "(그 함수는 별도 메서드인 route() 안에서만, novelty 축에 정당하게 쓰인다)",
           n_enabled == 0, "n_enabled=$(n_enabled)")
@@ -276,16 +281,18 @@ else
           count("install_novelty", route_src) > 0)
 
     # -----------------------------------------------------------------------------------------
-    # T11 (2026-08-27, 최종 리뷰 F4·F5) `decide_all` 이 두 기록을 **실제로 심는다.**
-    #     T10(아래)은 유도 함수의 계약을, 이것은 그 값이 `rt` 에 실제로 실리는지를 잰다.
-    #     무엇이 바뀌면 빨개지나: `rt["support_measured"] = …` 또는 `rt["vocabulary_gap_arms"] = …`
-    #     를 지우면(= 값을 계산만 하고 버리면 — F5 가 정확히 그 결함이었다) 즉시 빨강.
+    # 🔴 2026-08-29 (T11/T12): 옛 T11·T11b 를 **지웠다** (`@test_skip` 이나 주석 처리가 아니라
+    #    삭제 — 이 레포의 규칙). 명제:
+    #      T11  "decide_all 이 support_measured 를 rt 에 심는다"
+    #      T11b "decide_all 이 vocabulary_gap_arms 를 rt 에 심는다"
+    #    둘 다 **축 1(어휘 미달)의 기록**이고, 그 축이 kind 축으로 대체되면서 계산 자체가
+    #    사라졌다(§0-C 결정 2·충돌 ⑤). 심을 값이 없으므로 "심는지" 를 물을 수 없다.
+    #    그 자리를 대신 지키는 것: `rt["routing_kind"]`·`rt["router_axis"]`·`rt["lane_reason"]`
+    #    이고, 그 셋의 게이트는 `tools/monitor/test_lane_select.jl`(분기표 전수)과
+    #    `test/tool_choice_gate.jl` (7)절(두 kind 유도의 교차 게이트)이다.
+    #    ⚠️ T10(아래, `surrogate_support_measured` 의 순수 함수 계약)은 **남긴다** — 그 함수는
+    #    아직 존재하고 진단용으로 부를 수 있다. 다만 **생산 호출자가 0개**가 됐다.
     # -----------------------------------------------------------------------------------------
-    check("T11 decide_all 이 support_measured 를 rt 에 심는다(F4: '못 쟀다'가 기록에 남는다)",
-          occursin("support_measured", body_src))
-    check("T11b decide_all 이 vocabulary_gap_arms 를 rt 에 심는다 " *
-          "(F5: 미달 팔 이름이 계산만 되고 버려지지 않는다)",
-          occursin("vocabulary_gap_arms", body_src))
 end
 
 # ---------------------------------------------------------------------------------------------

@@ -742,10 +742,13 @@ function policy_producer(env, event)
     end
     record_decision!(env, truth, decision, rec.nl)
     rt = decision.router
-    get(rt, "enabled", false) && println("[router] $(rt["reason"]) → $(rt["target"])")
+    haskey(rt, "lane_reason") && println("[router] $(rt["lane_reason"]) " *
+        "(kind=$(get(rt, "routing_kind", "?")), axis=$(get(rt, "router_axis", "?")))")
+    # 🔴 2026-08-29 (T12): 여기 있던 `surro=… , dspy=…` **비교 줄을 지웠다.** 라우터가 사건당
+    #    레인 하나만 부르므로 안 부른 레인의 `chosen` 이 존재하지 않는다 — 그대로 두면
+    #    `KeyError` 로 죽는다(§0-C 결정 4). 집행된 레인은 `enacted` 가 말한다.
     println("[policy] $(typeof(truth).name.name) → $(decision.macro_name) " *
-            "(enacted=$(decision.enacted); rule=$(decision.rule_macro), " *
-            "surro=$(decision.policies["surrogate"]["chosen"]), dspy=$(decision.policies["dspy"]["chosen"]))")
+            "(enacted=$(decision.enacted); rule=$(decision.rule_macro))")
     # ---- 집행 대상 agent (2026-08-29, Plan B / T2b) ------------------------------------
     # 🔴 여기까지 이 엔진에서 LLM 의 tool 호출은 세계에 대해 인과가 없었다. `macro_to_proposal`
     # 이 `truth.robot`(주입기가 이미 아는 값)으로 `ReplaceAgent`/`SwapBattery` 를 만들고,
