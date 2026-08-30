@@ -12,30 +12,37 @@
 #
 # 사용자 지시(2026-08-29): **라우터가 familiar 라고 판정한 사건에만** 강제한다.
 #
-# 🔴 그런데 `route_verdict` 는 **세 사건을 두 값으로 접고 있었다**: 교정 JSON 이 없어도
-# (`!have_det`) 서술자가 없어도(`v === nothing`) `novel == false` 다 — "익숙하다" 와 정확히
-# 같은 값. 이 작업 트리에는 `wm4spacecraft_manufacturing/novelty/novelty_calibration.json` 이
-# **없으므로**, `novel == false` 만 보고 강제하면 **모든 사건이 강제된다** = 지우지 말라고 한
-# 그 필드가 전 사건에서 사라진다. `novelty_measured` 가 그 붕괴를 푸는 키다.
-# (같은 축의 선례: 같은 파일의 `surrogate_support_measured` — `supported::Bool` 옆에 "쟀는가"를
-#  따로 놓은 F4. 이 파일은 그 형식을 그대로 따른다.)
+# 🔴 **2026-08-29 (§B-1): 이 파일이 지키던 것의 절반이 없어졌다.**
+# 위 지시("familiar 라고 판정한 사건에만 강제한다")를 집행하려면 `route_verdict` 가 "쟀는가"
+# (`novelty_measured`)와 "낯선가"(`novel`)를 **따로** 내야 했다 — 그 둘을 하나로 접으면
+# "못 쟀다" 가 "익숙하다" 로 새어 전 사건이 강제되기 때문이다(F4 의 `surrogate_support_measured`
+# 와 같은 축). §B-1 이 novelty 축 전체를 지우면서 그 두 키도 사라졌다. 유도 **함수**
+# (`tool_choice_for`)는 남는다 — T6 이 "되돌릴 때 필요하다" 로 일부러 남긴 죽은 코드이고,
+# 그때 필요한 것은 유도 규칙이지 배선이 아니다(그 docstring 이 근거를 진다).
+#
+# 🔴 그래서 아래 셋을 **지웠다**(주석 처리도 `@test_skip` 도 아니다 — 이 레포의 규칙):
+#   · **(2)절 전체** — `route_verdict` 의 `novelty_measured` 세 분기 전수. 잴 키도 분기도 없다.
+#   · **(0)절의 `@test CB.novelty_detector() === nothing`** — 그것은 (3-a)("novelty 를 못 쟀다")
+#     의 전제였다. 🔴 오늘 `route()`/`decide_all` 은 그 전역을 **한 번도 안 읽으므로** 감지기가
+#     깔려 있든 없든 이 파일의 어떤 단언도 안 바뀐다 — 지킬 것이 없어진 전제다.
+#     ⚠️ 이 단언이 §B-2 의 증상 그 자체였다: 스위트에서 앞선 파일이 `decide_all` 을 부르면
+#     그것이 `install_novelty!()` 로 감지기를 설치해 여기서 빨개졌다(단독 실행은 초록).
+#     처방은 "전역 복원을 더 넣는다" 가 아니라 **설치하는 코드를 없애는 것**이었고(§B-1),
+#     그래서 이 단언은 고쳐진 것이 아니라 **물어볼 대상이 사라진 것**이다.
+#   · (3)절의 (3-b)·(3-c) — 합성 감지기를 깔아 novelty 축을 "실제로 재게" 만든 뒤 familiar /
+#     novel 두 판을 나란히 재던 가지. 오늘 셋은 **같은 호출**이라 (3-a) 의 중복이다.
+#     그 가지만 쓰던 `_detector(mu)` 헬퍼도 같이 지웠다.
 #
 # 검사하는 명제 넷
 # ----------------
 #  (1) `tool_choice_for` 진리표 **3상태 전수**: 못 쟀다 / 낯설다 / 익숙하다.
-#  (2) `route_verdict` 의 `novelty_measured` 가 **세 분기 전부**에서 옳다(교정 없음 /
-#      descriptors 없음 / 실제 판정). 실제 판정 분기는 `v` 를 주입해 만든다.
-#      🔴 그리고 `novel` 의 값은 **한 글자도 안 바뀌었다** — 기존 녹화와의 비교 가능성이
-#      거기 걸려 있다. 두 키를 나란히 단언한다.
+#      🔴 §B-1 이후 이 세 상태를 **채워 줄 생산자가 레포에 없다** — 순수 함수의 계약만 남는다.
 #  (3) 🔴 **배선이 아니라 발화.** `decide_all` 을 진짜로 돌려 **나가는 요청 본문**을 잰다.
 #      🔴 **2026-08-29 (단일 채널 / T6) 에 이 절의 명제가 뒤집혔다.** 옛 명제는 "familiar
 #      사건에서만 `"required"` 가 실린다" 였다. T6 이 `service_decide` 의 키워드와 `decide_all`
-#      의 유도 호출부를 지웠으므로 지금 참인 것은 **"세 novelty 상태 전부에서 그 키가 요청에
-#      없다"** 이고, 그것은 강제하지 않는다는 뜻이 **아니다** — T5 가 서비스 기본값을
-#      `"required"` 로 세웠으므로 안 싣는 것이 곧 강제다. 즉 (3) 이 재는 것은
-#      **게이팅이 죽었다는 사실**이다.
-#      (합성 감지기 = `CB.set_novelty_detector!` 로 직접 설치한다. `install_novelty!()` 는
-#       감지기가 이미 있으면 즉시 `true` 를 돌려주므로 교정 **파일**이 필요 없다.)
+#      의 유도 호출부를 지웠으므로 지금 참인 것은 **"요청에 그 키가 없다"** 이고, 그것은
+#      강제하지 않는다는 뜻이 **아니다** — T5 가 서비스 기본값을 `"required"` 로 세웠으므로
+#      안 싣는 것이 곧 강제다. 즉 (3) 이 재는 것은 **게이팅이 죽었다는 사실**이다.
 #  (4) `service_decide` 가 `tool_choice` 를 **받지도 싣지도 않는다** — 키워드의 부재를
 #      `MethodError` 로 못박는다(T6 이 지웠다).
 #  (5) 단일 채널 키 집합: `text_rescue` 가 빠지고 `decision_source` · `tool_arg_error` 가
@@ -53,8 +60,10 @@
 # 같은 이유로 `Sockets` 를 **직접 import 하지 않는다**(`Project.toml` 의 `[deps]` 에 없으면
 # `Pkg.test()` 샌드박스에서 안 풀린다 — 그 함정이 형제 게이트를 통째로 에러로 만든 이력이 있다).
 #
-# ⚠️ 이 파일은 **전역을 하나 건드린다**: `CB.NOVELTY_DETECTOR[]`. 스위트의 다른 게이트가 그
-# 값을 보므로, 들어올 때의 값을 저장하고 `finally` 에서 **반드시** 되돌린다.
+# ⚠️ 🔴 **§B-1 이후 이 파일은 `CB.NOVELTY_DETECTOR[]` 를 건드리지 않는다** — 그것을 깔던
+# (3-b)/(3-c) 를 지웠고, `decide_all` 도 더 이상 감지기를 설치하지 않는다. 파일 끝의
+# 저장·복원(`_PREV_DET`)은 **무해한 방어로 남긴다**: 설치하는 코드가 다시 생겨도 스위트가
+# 안 물들게 한다(형제 게이트 `test/tool_lane_keys_survive.jl` 과 같은 규약).
 #
 # 실행: julia +lts --project=. test/tool_choice_gate.jl
 # =============================================================================
@@ -133,24 +142,6 @@ end
 
 _truth() = CB.BatteryTruth(CB.RobotID(1), 0.5)
 
-"""
-    _detector(mu) -> CB.NoveltyDetector
-
-`mu` 를 중심으로 한 합성 감지기. 교정 **파일** 없이 novelty 축을 켜는 유일한 방법이고,
-`install_novelty!()` 가 `novelty_detector() !== nothing` 이면 즉시 `true` 를 내므로
-(`policy.jl` 의 그 함수 첫 줄) 이것만으로 `have_det == true` 가 된다.
-
-  · `mu == desc`  -> score 0 -> 모든 cal_score(1.0)가 그보다 크다 -> p ≈ 1 -> **familiar**
-  · `mu` 가 멀다  -> score = cap -> cal_score 가 하나도 안 크다 -> p = 0.5/(n+1) -> **novel**
-
-`feature_names` 는 `CB.NOVELTY_FEATURES` 와 **같아야** 하지만(로더가 강제한다) 여기서는
-로더를 거치지 않으므로 그 상수를 그대로 쓴다 — 이름을 손으로 적으면 사본이 하나 더 생긴다.
-"""
-_detector(mu) = CB.NoveltyDetector(copy(CB.NOVELTY_FEATURES), collect(Float64, mu),
-                                   fill(1.0, length(mu)), 5.0,
-                                   fill(1.0, 99), 0.05, 1e-6,
-                                   Dict{String,Any}("synthetic" => true))
-
 const _PREV_DET = CB.novelty_detector()
 
 try
@@ -161,20 +152,15 @@ try
         # 그러면 (3) 이 "요청이 아예 없었다" 로 빨개지므로 원인을 여기서 직접 이름 붙인다.
         @test !(POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
                 get(ENV, "DEMO_ALL_POLICIES", "1") == "0")
-        # (3-a) 의 전제: 이 시점에 감지기가 **설치돼 있지 않다**.
-        # 🔴 여기 있던 *"이 워킹트리의 전제: 교정 파일이 없다"* 는 **거짓이다**(2026-08-29 실측):
-        #    `wm4spacecraft_manufacturing/novelty/novelty_calibration.json` 이 존재하고
-        #    `install_novelty!()` 가 실제로 로드한다(n_cal=82, alpha=0.05). 이 단언이 참인
-        #    이유는 파일의 부재가 아니라 **설치가 게으르기 때문**이다 — `install_novelty!()`
-        #    는 `decide_all` 안에서야 불린다. 그래서 (3-a) 는 "교정이 없는 트리" 가 아니라
-        #    "이 호출 직전에 감지기를 지웠다" 로 만들어진다(바로 아래 (3) 의 첫 줄).
-        @test CB.novelty_detector() === nothing
     end
 
     # -----------------------------------------------------------------------------------------
     @testset "(1) tool_choice_for 진리표 — 3상태 전수" begin
         # 🔴 세 상태다. 둘로 접으면(예: `!novel` 하나로) "못 쟀다" 가 "익숙하다" 로 새고,
-        #    교정이 없는 이 작업 트리에서 **모든 사건이 강제된다.**
+        #    교정을 못 읽은 런에서 **모든 사건이 강제된다** — 이 규칙이 존재하는 이유.
+        #    🔴 §B-1 (2026-08-29) 이후 이 세 상태를 채워 줄 생산자는 레포에 없다(`route_verdict`
+        #    가 `novelty_measured`/`novel` 을 안 낸다). 여기 남은 것은 **순수 함수의 계약**뿐이고,
+        #    되돌리려면 novelty 축부터 되살려야 한다(`tool_choice_for` 의 docstring).
         # ① 못 쟀다 -> 강제하지 않는다. `novel` 값과 무관하다(둘 다 친다).
         @test tool_choice_for(novelty_measured = false, novel = false) === nothing
         @test tool_choice_for(novelty_measured = false, novel = true)  === nothing
@@ -192,105 +178,30 @@ try
     end
 
     # -----------------------------------------------------------------------------------------
-    @testset "(2) route_verdict 의 novelty_measured — 세 분기 전부" begin
-        local DESC = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-        # (a) 교정 JSON 이 없다 = **못 쟀다**.
-        #     🔴 변이: 이 분기의 `false` 를 `true` 로 바꾸면 여기가 빨개진다.
-        local a = route_verdict(desc = DESC, have_det = false, drives = false, policy = "canonical")
-        @test haskey(a, "novelty_measured")
-        @test a["novelty_measured"] === false
-        @test a["novel"] === false          # 🔴 `novel` 의 값은 안 바뀐다
-        # 그리고 그 조합이 `tool_choice_for` 에서 "강제하지 않는다" 로 떨어진다.
-        @test tool_choice_for(novelty_measured = a["novelty_measured"], novel = a["novel"]) === nothing
-
-        # (b) descriptors 가 없다(= `v === nothing`) = **못 쟀다**.
-        local b = route_verdict(desc = nothing, have_det = true, drives = true, policy = "canonical")
-        @test b["novelty_measured"] === false
-        @test b["novel"] === false
-        @test tool_choice_for(novelty_measured = b["novelty_measured"], novel = b["novel"]) === nothing
-
-        # (c) 실제 판정 — `v` 를 주입해 만든다. 여기서만 `true` 다.
-        local c_fam = route_verdict(desc = DESC, have_det = true, drives = true, policy = "canonical",
-                                    v = (novel = false, p = 0.9, score = 0.1), eps = 0.05)
-        @test c_fam["novelty_measured"] === true
-        @test c_fam["novel"] === false
-        @test tool_choice_for(novelty_measured = c_fam["novelty_measured"],
-                              novel = c_fam["novel"]) == "required"
-
-        local c_nov = route_verdict(desc = DESC, have_det = true, drives = true, policy = "canonical",
-                                    v = (novel = true, p = 0.01, score = 2.0), eps = 0.05)
-        @test c_nov["novelty_measured"] === true
-        @test c_nov["novel"] === true
-        @test tool_choice_for(novelty_measured = c_nov["novelty_measured"],
-                              novel = c_nov["novel"]) === nothing
-
-        # 🔴 두 키가 **다른 것을 주장한다**: (a)/(b) 와 (c_fam) 은 `novel` 이 같은데
-        #    `novelty_measured` 가 갈린다. 이 줄이 곧 이 태스크의 함정 자체다 — 붕괴가
-        #    살아 있으면 세 사건이 여기서 같은 값을 낸다.
-        @test a["novel"] == b["novel"] == c_fam["novel"] == false
-        @test a["novelty_measured"] == b["novelty_measured"] == false
-        @test c_fam["novelty_measured"] == true
-    end
-
-    # -----------------------------------------------------------------------------------------
     @testset "(3) 배선이 아니라 발화 — decide_all 이 낸 **진짜 요청 본문**" begin
         # 🔴 **2026-08-29 (단일 채널 / T6): 이 절의 주장이 뒤집혔다.**
         #    T-C 판에서 이 절은 *"familiar 사건에서만 `"required"` 가 실린다"* 를 셋으로 갈라
         #    쟀다. T6 이 `service_decide` 의 `tool_choice` 키워드와 `decide_all` 의 유도
-        #    호출부를 지웠으므로, 이제 참인 명제는 하나다: **어떤 novelty 상태에서도 요청에
-        #    그 키가 없다.**
+        #    호출부를 지웠으므로, 이제 참인 명제는 하나다: **요청에 그 키가 없다.**
+        #    🔴 §B-1 (2026-08-29) 이 그 셋을 만들던 novelty 축을 지웠으므로 가지도 하나가
+        #    됐다 — 위 머리말의 삭제 기록 참조.
         #
         #    🔴 그리고 그것은 "강제하지 않는다" 를 뜻하지 **않는다** — 정확히 반대다.
         #    T5 가 서비스의 `TOOL_CHOICE_DEFAULT` 를 `"required"` 로 세웠으므로 키를 안 싣는
         #    것이 곧 **강제**다. 즉 이 절이 재는 것은 "게이팅이 산다" 가 아니라
-        #    **"게이팅이 죽었다"** 이고, 세 분기가 실제로 한 값으로 붕괴하는지를 못박는다.
+        #    **"게이팅이 죽었다"** 이다.
         #    (§0-B ⑯. 이 절 없이 (1)절만 초록이면 순수 함수의 진리표가 살아 있다는 이유로
         #     게이팅이 산다고 오독하게 된다 — 이 레포가 반복해 밟은 함정이다.)
         #
         #    ⚠️ 강제를 실제로 끄는 손잡이는 이 레인에 없다. 서비스 호스트의
         #    `DSPY_TOOL_CHOICE` 하나이고, 실린 값은 **응답**의 `tool_choice` 표식에 남는다.
 
-        # (3-a) novelty 를 못 쟀다.
-        CB.clear_novelty_detector!()
         _LAST_PAYLOAD[] = nothing
         local n0 = _N_DECIDE[]
         decide_all(TENV, _truth(); nl = "")
         @test _N_DECIDE[] == n0 + 1          # 전제: 요청이 실제로 나갔다
         @test _LAST_PAYLOAD[] !== nothing
         @test !haskey(_LAST_PAYLOAD[], :tool_choice)
-
-        # (3-b) **익숙하다고 실제로 쟀다** — T-C 판이라면 여기서 `"required"` 가 실렸다.
-        local desc = event_descriptors_of(TENV, _truth())
-        CB.set_novelty_detector!(_detector(desc))
-        try
-            # 전제: 정말로 재서 익숙하다고 나왔는가. 아니면 아래 단언은 다른 것을 잰다.
-            local rt = route(TENV, _truth())
-            @test rt["novelty_measured"] === true
-            @test rt["novel"] === false
-            # 🔴 대조군: 유도 **함수** 는 여전히 `"required"` 를 낸다 = 아래 단언이
-            #    "함수가 죽었다" 가 아니라 **"배선이 죽었다"** 를 잰다는 증거다.
-            @test tool_choice_for(novelty_measured = true, novel = false) == "required"
-            _LAST_PAYLOAD[] = nothing
-            decide_all(TENV, _truth(); nl = "")
-            @test _LAST_PAYLOAD[] !== nothing
-            @test !haskey(_LAST_PAYLOAD[], :tool_choice)
-        finally
-            CB.clear_novelty_detector!()
-        end
-
-        # (3-c) **낯설다고 실제로 쟀다** — 세 분기가 같은 값으로 붕괴하는 것을 여기서 닫는다.
-        CB.set_novelty_detector!(_detector(desc .+ 50.0))
-        try
-            local rt = route(TENV, _truth())
-            @test rt["novelty_measured"] === true
-            @test rt["novel"] === true
-            _LAST_PAYLOAD[] = nothing
-            decide_all(TENV, _truth(); nl = "")
-            @test _LAST_PAYLOAD[] !== nothing
-            @test !haskey(_LAST_PAYLOAD[], :tool_choice)
-        finally
-            CB.clear_novelty_detector!()
-        end
     end
 
     # -----------------------------------------------------------------------------------------
@@ -372,7 +283,9 @@ try
     end # testset
 finally
     close(_SERVER)
-    # ⚠️ 전역 복원. 이 파일이 설치한 합성 감지기를 남기면 뒤따르는 게이트가 다른 세계를 본다.
+    # ⚠️ 전역 복원. 🔴 **§B-1 이후 이 파일은 감지기를 설치하지 않는다**(합성 감지기를 깔던
+    #    (3-b)/(3-c) 를 지웠고 `decide_all` 도 더 이상 설치하지 않는다) — 그래도 남기는 것은
+    #    설치하는 코드가 다시 생겨도 스위트가 안 물들게 하는 무해한 방어이기 때문이다.
     _PREV_DET === nothing ? CB.clear_novelty_detector!() : CB.set_novelty_detector!(_PREV_DET)
 end
 

@@ -94,10 +94,11 @@ end
         include("policy_macro_binding.jl")
     end
 
-    # 2026-08-26 (tool-lane step A, Task 1): 교정 파일이 없어도 event_descriptors_of 의
-    # 결과가 route() 의 모든 반환 분기에 "descriptors" 키로 실리는지. 이 키가 빠지면 LLM 이
-    # 문장 한 줄만 받고 숫자 서술자를 못 받는다(교정 유무와 서술자 계산이 한 게이트에 묶였던
-    # 옛 결함의 재발 방지).
+    # 2026-08-26 (tool-lane step A, Task 1): event_descriptors_of 의 결과가 route() 의 반환에
+    # "descriptors" 키로 실리는지. 이 키가 빠지면 LLM 이 문장 한 줄만 받고 숫자 서술자를 못
+    # 받는다(교정 유무와 서술자 계산이 한 게이트에 묶였던 옛 결함의 재발 방지).
+    # 🔴 2026-08-29 (§B-1): novelty 축이 삭제되어 `route()` 에 **분기 자체가 없어졌으므로**
+    # 그 파일의 명제는 더 강하게 성립한다("교정 없이도 산다" → "교정이라는 개념이 없다").
     @testset "router descriptors survive a missing calibration" begin
         include("route_descriptors_survive.jl")
     end
@@ -184,15 +185,13 @@ end
     # 🔴 2026-08-29 (Plan B / T-C): `tool_choice="required"` 는 공짜가 아니다 — 컨트롤러가 같은
     # 요청·같은 빌드로 그 손잡이만 갈라 유료 2콜을 냈고, 강제 판에서 프로바이더가 message
     # content 를 **비웠다**(`reasoning=""` · `expressible=null` · `chosen=""` → coerced NOOP,
-    # **예외 없음**). 그래서 강제는 라우터가 **familiar 라고 실제로 잰** 사건에만 건다.
-    # 🔴 함정: `route_verdict` 는 세 사건("교정 없음" · "descriptors 없음" · "재서 익숙하다")을
-    # `novel == false` 라는 **한 값으로 접고 있었다.** 이 워킹트리에는 교정 JSON 이 없으므로
-    # `novel` 만 보고 강제하면 **전 사건이 강제되어** `expressible` 이 통째로 사라진다 —
-    # 사용자가 명시적으로 원하지 않는다고 말한 상태. `novelty_measured` 가 그 붕괴를 푼다
-    # (선례: 같은 파일의 `surrogate_support_measured`, F4 — `supported` 옆의 "쟀는가").
-    # 이 게이트가 재는 것 넷: `tool_choice_for` 진리표 3상태 전수 · `novelty_measured` 의 세
-    # 분기 · 🔴 **나가는 요청 본문**(합성 감지기를 설치해 novelty 축을 실제로 재게 만든 뒤
-    # familiar/novel 두 판을 나란히 잰다) · `service_decide` 의 적재 규약.
+    # **예외 없음**). 그래서 강제는 라우터가 **familiar 라고 실제로 잰** 사건에만 걸기로 했다.
+    # 🔴 2026-08-29 (§B-1): 그 판정을 내던 novelty 축이 삭제됐다 — `route_verdict` 는
+    # `novelty_measured` 도 `novel` 도 더 이상 내지 않으므로, 그 세 상태를 재던 절과 그 전제
+    # (감지기 부재)를 재던 절을 **지웠다**(그 파일 머리말이 무엇을 왜 지웠는지 적는다).
+    # 이 게이트가 지금 재는 것 셋: `tool_choice_for` 진리표 3상태 전수(순수 함수의 계약만
+    # 남았다 — 채울 생산자가 없다) · 🔴 **나가는 요청 본문**에 그 키가 없다는 사실(= 게이팅이
+    # 죽었다) · `service_decide` 의 적재 규약과 단일 채널 키 집합.
     # 위 두 게이트와 같은 루프백 패턴이다 — 8077 로 나가는 요청 0건 = 유료 호출 0건.
     @testset "router-gated tool_choice" begin
         include("tool_choice_gate.jl")
@@ -261,8 +260,12 @@ end
     # `enact_target` 뒤로 들어가 있다는 성질을 계속 잰다.
 
     # 2026-08-27: lane_select.jl 은 의존성 0 인 순수 함수인데 게이트가 배선돼 있지 않았다.
-    # 축 1(어휘 미달)이 이 함수의 우선순위에 얹히므로 이제 하중을 받는다.
-    @testset "lane selection — vocabulary gap outranks novelty" begin
+    # 🔴 2026-08-29 (T11 → §B-1): 이 묶음의 옛 이름 *"vocabulary gap outranks novelty"* 와
+    # *"축 1(어휘 미달)이 이 함수의 우선순위에 얹힌다"* 는 서술은 **둘 다 낡았다.** T11 이 두 축
+    # (어휘 미달 · novelty)을 **kind 색인 라우터 하나**로 갈아치웠고, §B-1 이 novelty 축을
+    # 지웠다 — 우선순위라고 부를 두 축이 이제 없다. 그 파일이 실제로 재는 것은 `select_lane` 의
+    # kind 분기표 전수와 `routing_kind` 의 전총성이다.
+    @testset "lane selection — kind 색인 라우터 분기표" begin
         include(normpath(joinpath(@__DIR__, "..", "tools", "monitor", "test_lane_select.jl")))
     end
 

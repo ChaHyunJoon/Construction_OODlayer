@@ -38,104 +38,52 @@ include(joinpath(@__DIR__, "dp_lane.jl"))
 #     익숙한 사건    -> surrogate 가 0.1 ms 에 대응        (cost efficient)
 #     **그 판별을 시스템이 사건마다 스스로 한다**
 #
-# 판별기는 이미 src/safety/novelty.jl 에 다 있었다(novelty_verdict / event_descriptors /
-# conformal p-value). 다만 아무도 호출하지 않았다 -- 라이브러리만 있고 배선이 없었다. 이 절이 그
-# 배선이다.
-#
-# 신호로 covariate novelty 를 쓰는 이유(측정 결과이지 취향이 아님):
-#   새 *종류* 탐지에서 forest 의 내부 이견(disagreement)은 recall 0.00 이다. 처음 보는 영역에서
-#   나무들은 근거가 없어 **똑같이** 엉뚱한 답을 지지하므로 합의율이 오히려 높다 = "확신함"으로
-#   읽힌다. covariate novelty 는 "학습 입력 분포에서 얼마나 먼가"를 재므로 recall 0.94.
-#   (wm4spacecraft_manufacturing/md/DESIGN_ASSIMILATION.md 4-c 참조)
+# 🔴 **세대 표식 (2026-08-29, §B-1 — novelty 축 삭제).** 2026-07-28~2026-08-29 사이의 이 절은
+# 그 판별을 **covariate novelty**(`src/safety/novelty.jl` 의 conformal p-value)로 했다. 그 축은
+# T11(`884aa9c9`)이 `select_lane` 의 **kind 색인 라우터**로 갈아치우면서 결정에서 완전히 끊겼고,
+# 그 뒤로는 매 사건 계산만 되고 아무것도 정하지 않은 채 `rt["enabled"]` 로 *"novelty 축이 실행을
+# 정했다"* 는 **거짓 주장**만 기록했다. §B-1 이 그 계산과 기록을 지웠다: `ROUTER_EPS` ·
+# `install_novelty!()` · `router_enabled()` · `route_verdict` 의 `enabled`/`advisory`/`novel`/
+# `novelty_measured`/`p`/`score`/`eps`/`would_route_to` 키. 오늘 레인을 정하는 것은 `routing_kind`
+# 하나다(`decide_all` 의 `select_lane` 줄).
+#   ⚠️ **옛 녹화와의 비교가 이 커밋에서 끊긴다** — 그 키들의 부재는 "값이 없다" 가 아니라
+#      **"세대가 다르다"** 로 읽어야 한다. 두 세대를 같은 표에 섞지 말 것.
+#   ⚠️ 판별기 **라이브러리**(`src/safety/novelty.jl`)는 그대로 산다 — 지운 것은 이 파일의
+#      배선뿐이다. `event_descriptors_of`(아래)는 감지기를 안 읽으므로 LLM 페이로드용으로 계속
+#      계산되고, 라이브러리의 게이트는 `tools/test_novelty.jl` · `tools/test_router.jl` 이다.
+#   [역사] 그 축을 고른 근거(취향이 아니라 실측): 새 *종류* 탐지에서 forest 의 내부 이견은
+#      recall 0.00 이다 — 처음 보는 영역에서 나무들은 근거가 없어 **똑같이** 엉뚱한 답을 지지하므로
+#      합의율이 오히려 높아 "확신함" 으로 읽힌다. covariate novelty 는 "학습 입력 분포에서 얼마나
+#      먼가" 를 재므로 recall 0.94(`md/DESIGN_ASSIMILATION.md` 4-c). 🔴 **이 실측은 아직 참이고,
+#      그것이 대체 이유가 아니다** — 대체 이유는 §0-C 결정 1(판정 입력을 kind 하나로 줄인다)이다.
 #
 # ENV
 #   DEMO_ROUTER  auto(기본) | 1 | 0
-#                auto = 낯섦 감지기가 설치돼 있으면 켜고, 없으면 예전처럼 DEMO_POLICY 고정.
-#   ROUTER_EPS   낯섦 p-value 임계. 기본은 교정파일의 alpha.
-#   NOVELTY_CALIB  교정 JSON 경로(기본: wm4spacecraft_manufacturing/novelty/novelty_calibration.json)
+#                "0" 이면 라우터가 레인을 안 고르고 DEMO_POLICY 가 런 전체에 고정된다.
+#                🔴 §B-1 이전의 auto 는 *"낯섦 감지기가 설치돼 있으면 켠다"* 였다 — 그 감지기
+#                축이 사라졌으므로 **이제 auto 와 1 은 같은 뜻**이다(`router_drives()` 참조).
 const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
-const ROUTER_EPS  = (try parse(Float64, ENV["ROUTER_EPS"]) catch; nothing end)
-
-"""
-낯섦 감지기를 한 번 설치한다.
-
-두 가지 실패를 **다르게** 다룬다(2026-07-30):
-
-  · 교정파일이 **없다**        -> 경고만 하고 라우터를 끈 채 진행(fail-open).
-    아직 교정을 안 만든 정상적인 상태이고, 데모는 고정 정책으로 계속 돌아야 한다.
-
-  · 교정파일이 **있는데 안 맞는다** -> 즉시 에러를 던져 런을 세운다(fail-loud).
-    예전에는 이것도 `@warn` 후 라우터만 끄고 넘어갔다. 그러면 "라우팅이 되는 줄 알고" 돌린
-    실험이 사실은 라우터 없이 돈 것이 되고, 로그의 경고 한 줄은 긴 출력에 묻힌다. 낡은/깨진
-    교정은 조용히 무시할 대상이 아니라 고쳐야 할 대상이므로 크게 실패시킨다.
-    (정말로 무시하고 싶으면 DEMO_ROUTER=0 으로 명시적으로 끈다.)
-"""
-function install_novelty!()
-    (try CB.novelty_detector() catch; nothing end) === nothing || return true
-    # 2026-08-20 폴더 재편: 교정 JSON 이 wm4spacecraft_manufacturing/novelty/ 로 옮겨졌다.
-    # 🔴 이 경로가 틀리면 아래 `isfile` 이 false 가 되어 라우터가 **조용히 꺼진 채**(fail-open)
-    # 런이 계속되고, DEMO_SUMMARY 의 "router" 필드는 요청 모드만 되뇌므로 산출물이
-    # 돌지도 않은 라우터를 주장하게 된다. 폴더를 옮길 때는 이 줄을 같이 옮길 것.
-    path = get(ENV, "NOVELTY_CALIB",
-               joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing",   # tools/monitor -> repo 루트
-                        "novelty", "novelty_calibration.json"))
-    isfile(path) || (@warn "novelty calibration not found -> router disabled (fail-open)" path;
-                     return false)
-    try
-        CB.set_novelty_detector!(CB.load_novelty_detector(path))
-        @info "[ROUTER] " * CB.novelty_report()
-        return true
-    catch e
-        # 스키마/서술자 불일치는 조용히 넘기지 않는다.
-        if e isa CB.CalibrationError
-            @error """
-            [ROUTER] novelty calibration at
-                $path
-            does not match this build. Refusing to run with a stale gate -- regenerate it:
-
-                cd wm4spacecraft_manufacturing
-                python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py
-
-            (or set DEMO_ROUTER=0 to run deliberately without the router.)
-            """
-            rethrow()
-        end
-        @warn "novelty calibration failed to load -> router disabled" exception = e
-        return false
-    end
-end
-
-"""
-라우터를 쓸 것인가.
-
-⚠️ 이 함수는 `install_novelty!()` 를 불러 **교정 JSON 유무도 나른다** — "사람이 켠 손잡이"만
-원하면(격상·레인 선택 게이트가 그렇다) 이 함수가 아니라 **`router_drives()`(아래)** 를 써라.
-2026-08-27 에 이 둘을 헷갈려 회귀가 났다(Fix round 1, Ruling R11) — 그 docstring 이 전말이다.
-"""
-router_enabled() = ROUTER_MODE == "0" ? false :
-                   ROUTER_MODE == "1" ? install_novelty!() :
-                   install_novelty!()          # auto: 감지기가 있으면 켠다
 
 """
     router_drives() -> Bool
 
 **사람이 켠 손잡이만** 본다 — 설계서(`2026-08-20-reduced-state-ood-smdp-design.md`) §3 의
-`ROUTER_DRIVES`.
+`ROUTER_DRIVES`. 보는 것은 `ROUTER_MODE`(`DEMO_ROUTER` env)와 `POLICY`(`DEMO_POLICY` env)
+**둘뿐**이다.
 
-🔴 왜 `router_enabled()` 를 그대로 못 썼는가 (2026-08-27, Fix round 1 실측):
-`router_enabled()` 은 `ROUTER_MODE ∈ {"1","auto"}` 일 때 `install_novelty!()` 를 **호출한다** —
-즉 교정 JSON(`wm4spacecraft_manufacturing/novelty/novelty_calibration.json`) 유무를 나른다.
-Task 3 최초 구현이 어휘 미달 격상 게이트를 `router_enabled() && POLICY != "noop"` 로 바꿨는데,
-`have_det`(`route()` 안에서 `install_novelty!()` 를 직접 부르는 줄)와 `router_enabled()` 은
-**같은 함수를 불러 같은 값을 낸다**(`ROUTER_MODE=="0"` 인 경우만 예외) — 그래서 교정 파일이 없으면(이 작업 트리처럼)
-"뗀다"고 한 `have_det` 결합이 **하나도 안 끊겼다.** `router_drives()` 는 `install_novelty!()`
-를 전혀 부르지 않는다 — `ROUTER_MODE`(`DEMO_ROUTER` env)와 `POLICY`(`DEMO_POLICY` env)만
-본다. 이 둘을 다시 헷갈리면 이 결함이 그대로 재발한다.
+🔴 `POLICY != "noop"` 항의 근거 (2026-08-06, STATUS §5 실측): `DEMO_POLICY=noop` 으로 돌린 런이
+3건 모두 Replace 를 집행했다. 라우터가 켜져 그 런의 레인을 대신 골랐기 때문인데, 라우터의 레인은
+surrogate/dspy 뿐이라 noop 은 **절대 실행될 수 없었다.** noop 은 정책 후보가 아니라 **통제 실험의
+바닥선**이다 — 개입이 실제로 이득인지 재려면 아무도 이 레인을 대신 판단해 주면 안 된다. 그래서
+여기서 라우팅 자체를 끈다.
 
-⚠️ novelty 축 자리(`route()` 안의 `drives = have_det && router_enabled() && POLICY != "noop"`)는
-그대로 둔다 — 거기는 여전히 `have_det` 이
-있어야 옳다(교정값이 없으면 novelty p 자체를 계산할 수 없으므로). 이 함수는 어휘 미달
-격상·레인 선택 진입 게이트 **두 곳에만** 쓴다.
+🔴 [역사 · 2026-08-27 Fix round 1, Ruling R11] 이 함수는 `router_enabled()` 와 **구별하려고**
+새로 만들어졌다. 그 함수는 `ROUTER_MODE ∈ {"1","auto"}` 일 때 `install_novelty!()` 를 불러
+**교정 JSON 유무까지 나르는** 술어였고, 어휘 미달 격상 게이트를 그것으로 쓴 판에서 "교정에서
+뗀다" 고 한 결합이 하나도 안 끊겼다. **2026-08-29 §B-1 이 그 두 함수를 지웠다** — novelty 축
+자체가 없어졌으므로 이제 혼동할 상대가 없고, 이것이 라우터 손잡이의 유일한 술어다. 같은 커밋이
+그 혼동의 재발을 막던 정적 검사 다섯(`tools/test_policy_escalation.jl` 의 T8·T8b·T9b·T9c·T9d)도
+지웠다: 막으려던 함수가 더 이상 존재하지 않는다.
 """
 router_drives() = ROUTER_MODE != "0" && POLICY != "noop"
 
@@ -368,9 +316,14 @@ end
 종류 이름 없이 계산되는 물리 서술자 6개
 `[harm, work_at_risk, resource_loss, recovery_capacity, progress, slack]`.
 
-**이게 라우터의 입력이자 LLM 에게 문장과 함께 주는 숫자다.** 종류를 안 읽으므로 처음 보는 사건에도
+**이게 LLM 에게 문장과 함께 주는 숫자다.** 종류를 안 읽으므로 처음 보는 사건에도
 그대로 계산된다 -- 새 DSL 종류를 발명할 필요 없이 숫자 6개만 채우면 되는 개방세계 경로.
-파이썬 features_agnostic.descriptors_from_row 와 계산이 같아야 교정이 의미를 갖는다(novelty.jl 주석).
+🔴 **2026-08-29 (§B-1): "라우터의 입력" 이라는 말은 이제 거짓이다** — 이 값을 읽어 레인을 정하던
+novelty 축이 삭제됐고, 오늘 레인을 정하는 것은 `routing_kind` 하나다. **이 함수는 그대로 남는다**:
+LLM 페이로드(`descriptors`)가 이 값이고, 그 채널이 사라지면 LLM 은 문장 한 줄만 받는다
+(2026-08-26 의 회귀, `test/route_descriptors_survive.jl`).
+파이썬 features_agnostic.descriptors_from_row 와 계산이 같아야 교정이 의미를 갖는다(novelty.jl 주석) —
+그 계약은 `tools/test_novelty.jl` 이 1e-9 로 대조하며 novelty **라이브러리**의 계약으로 살아 있다.
 """
 function event_descriptors_of(env, truth)
     f = ood_features(env, truth)
@@ -388,118 +341,41 @@ function event_descriptors_of(env, truth)
 end
 
 """
-    route_verdict(; desc, have_det, drives, policy, drives_lane=router_drives(),
-                  v=nothing, eps=nothing) -> Dict
+    route_verdict(; desc, policy, drives_lane=router_drives()) -> Dict
 
-라우팅 판정 Dict 를 만든다. **세 분기 전부 `"descriptors"` 키와 `"drives_lane"` 키를 갖는다.**
+라우팅 **기록** Dict 를 만든다. 키는 셋뿐이다: `"descriptors"` · `"drives_lane"` · `"reason"`.
 
-🔴 `enabled` 와 `drives_lane` 은 **다른 것을 주장한다** (2026-08-27, 최종 리뷰 F3):
+🔴 **세대 표식 (2026-08-29, §B-1).** 이 함수는 그날까지 세 분기(교정 없음 · 서술자 없음 · 실제
+novelty 판정)로 갈리며 `enabled`·`advisory`·`novel`·`novelty_measured`·`p`·`score`·`eps`·
+`would_route_to`·`target` 을 함께 냈다. 그 축(covariate novelty)이 T11 에서 결정과 끊기고
+§B-1 에서 삭제됐으므로 **분기 자체가 없어졌다.** 🔴 옛 녹화에 있는 그 키들의 부재는 "값이 없다"
+가 아니라 **"세대가 다르다"** 다. 특히 `target` 은 **자리를 옮겼다** — 이제 `decide_all` 이
+레인을 고른 직후에 쓴다(그 줄의 Ruling R2 주석이 두 세대의 뜻 차이를 적는다).
 
-  · `enabled`     = **novelty 축**이 실행을 정했는가. `have_det`(교정 JSON) 을 포함한다.
-  · `drives_lane` = **라우터가 이 런에서 레인을 고르는가**(`router_drives()`; 사람이 켠 손잡이만).
+  · `descriptors` = 이 사건의 서술자 6개. 🔴 **교정 유무와 무관하게 실린다** —
+    `event_descriptors_of` 는 감지기를 안 읽는다(그 docstring). 이것이 LLM 페이로드의 숫자
+    채널이고, 그래서 novelty 축이 사라져도 이 계산은 그대로 산다. `desc === nothing`
+    (계산 실패)일 때도 **키를 지우지 않는다** — "못 쟀다" 와 "안 실었다" 는 다른 사건이고,
+    키가 없으면 소비처가 둘을 구분할 수 없다(2026-08-26).
+  · `drives_lane` = 라우터가 이 런에서 레인을 고르는가(`router_drives()`; 사람이 켠 손잡이만).
+  · `reason`      = 화면(`dashboard.html`)과 `run_demo.jl` 이 그대로 읽는 유일한 산문.
 
-Task 3 이후 이 둘이 **갈린다.** 기본 작업 트리(교정 파일 없음 · `DEMO_ROUTER=auto` ·
-`DEMO_POLICY=canonical`)의 실측이 정확히 그 자리다:
-
-```
-router_drives()  = true      # decide_all 이 select_lane 으로 레인을 고른다
-router_enabled() = false     # 교정 JSON 이 없어 novelty p 를 못 낸다
-```
-
-그 상태에서 예전 `reason` 은 `"gate inactive (DEMO_POLICY=canonical fixed for the run)"` 이었다 —
-**라우터가 실제로 레인을 고른 판에 대해** 정책이 고정이었다고 적는 자기모순 기록이고,
-`dashboard.html` 이 그 문자열로 `ROUTER off` 를 렌더했다. 그래서 여기서는 `drives_lane` 이
-참이면 그 두 주장(`gate inactive` · `DEMO_POLICY=… fixed for the run`)을 **하지 않는다.**
-격상·레인 선택 동작 자체는 그대로다(그것이 R11 의 옳은 절반이다) — 바뀌는 것은 기록뿐이다.
+🔴 `reason` 이 `drives_lane` 을 보는 이유 (2026-08-27, 최종 리뷰 F3): 라우터가 레인을 몰고 있으면
+"gate inactive" 도 "DEMO_POLICY=… fixed for the run" 도 **거짓이다.** 예전에 그 두 문장을 무조건
+적었고 `dashboard.html` 이 그 문자열로 `ROUTER off` 를 렌더했다 — 라우터가 **실제로 레인을 고른
+판에 대해.** 음성 대조까지 `tools/test_policy_escalation.jl` 의 T12/T12b/T12c 가 못박는다.
 
 ⚠️ `drives_lane` 의 기본값은 `router_drives()` 다(= `route()` 가 넘길 필요가 없다). 검사에서만
 명시적으로 준다 — `ROUTER_MODE`/`POLICY` 가 `const` 라 같은 프로세스에서 ENV 로는 못 가른다.
-
-🔴 왜 분리했나 (2026-08-26): 라우팅은 교정값이 있어야 하지만 서술자 계산은 **필요 없다**
-(`event_descriptors_of` 는 교정값(novelty detector)을 안 읽는다 — 그래서 교정 유무와 무관하게
-계산된다; `ood_features` 를 거쳐 env/CB 내부 상태를 읽고 던질 수 있어 순수 함수는 아니다).
-둘이 한 게이트에 묶여 있어서, 교정 파일이 없는 동안 LLM 이 서술자를 한 번도 못 받았다. 이
-함수는 교정 유무와 무관하게 `desc` 를 그대로 싣는다. `desc === nothing`(계산 실패)일 때도
-**키를 지우지 않는다** — "못 쟀다"와 "안 실었다"는 다른 사건이고, 키가 없으면 소비처가 둘을
-구분할 수 없다.
-
-🔴 `novelty_measured` 는 `novel` 과 **다른 것을 주장한다** (2026-08-29, Plan B / T-C).
-같은 축의 선례가 이 파일에 이미 있다 — `surrogate_support_measured`(아래): 거기서도 `Bool`
-하나(`supported`)가 "재서 없다"와 "못 쟀다"를 같은 값으로 무너뜨렸고, 그래서 **"쟀는가"를
-옆에 따로 놓았다.** 여기가 정확히 같은 자리다:
-
-  · `novel`            = 이 사건이 낯선가. 🔴 **위 세 분기가 그것을 두 값으로 접는다** —
-                         교정 JSON 이 없어도(`!have_det`) 서술자가 없어도(`v === nothing`)
-                         `false` 다. 의미도 값도 **한 글자도 안 바꾼다**: 기존 녹화와의 비교
-                         가능성이 거기 걸려 있다(:1341 의 `would` 판정을 보존하는 것과 같은 이유).
-  · `novelty_measured` = **novelty 축을 실제로 쟀는가.** 앞의 두 분기에서 `false`, 실제 판정
-                         분기에서만 `true`.
-
-왜 이 구분이 필요한가 (2026-08-29 T-C 의 근거): `tool_choice_for`(바로 아래)가 `novel == false`
-만 보고 tool 호출을 강제하면, 교정 파일이 없는 작업 트리에서 **모든 사건이 "익숙하다"로 읽혀
-전부 강제된다.** 그리고 강제는 프로바이더가 message content 를 비우게 만들어 `expressible` 을
-지운다(실측: 컨트롤러의 짝지은 유료 A/B).
-
-🔴 **그 근거는 2026-08-29(단일 채널)에 두 번 끊겼다 — 이 두 키는 이제 `tool_choice` 를 안
-정한다.** ① T3 이 텍스트 `OutputField` 다섯을 지우고 T1 이 `expressible` 을 **tool 인자**로
-옮겼으므로, 강제가 message content 를 비워도 `expressible` 이 안 지워진다. ② T5 가 서비스
-기본값을 `"required"` 로 세우고 T6 이 요청 배선을 지웠으므로, 이 두 키가 무엇이든 **모든 사건이
-강제된다.** 그래도 `novel`·`novelty_measured` 자체는 한 글자도 안 바꾼다 — 기존 녹화와의 비교
-가능성이 거기 걸려 있고, `route_verdict` 의 나머지 소비자(화면의 ROUTER 줄 · `router_p` ·
-`router_novel`)는 그대로 산다.
-
-⚠️ `v` 를 주면서 `eps` 를 생략하면 아래에서 명시적으로 에러를 던진다(2026-08-26, F5) —
-`round(nothing; digits=3)` 가 `MethodError` 로 죽는 것보다 원인이 뚜렷하다. `route()` 는 둘을
-항상 같이 넘기므로 오늘은 이 경로에 도달하지 않지만, 키워드 기본값이 `nothing`/`nothing` 인 한
-그 계약이 signature 만으로는 안 보인다.
 """
-function route_verdict(; desc, have_det::Bool, drives::Bool, policy::AbstractString,
-                       drives_lane::Bool = router_drives(),
-                       v = nothing, eps::Union{Nothing,Real} = nothing)
-    base = Dict{String,Any}("descriptors" => desc, "drives_lane" => drives_lane)
-    # 라우터가 레인을 몰고 있으면 "정책이 런 내내 고정" 도 "게이트 비활성" 도 거짓이다.
-    # 그 두 문장은 화면(dashboard.html)과 스윕 게이트가 그대로 읽는 유일한 산문이다.
-    nocal = drives_lane ?
-        "no novelty calibration installed -> the novelty axis is inactive, " *
-        "but the router still selects the lane (DEMO_ROUTER=$(ROUTER_MODE))" :
-        "no novelty calibration installed -> gate inactive " *
-        "(DEMO_POLICY=$(policy) fixed for the run)"
-    if !have_det
-        return merge(base, Dict{String,Any}(
-            "enabled" => false, "advisory" => false, "target" => policy,
-            # 🔴 `novel => false` 는 "익숙하다"가 아니라 **"못 쟀다"** 다. 그 사실을 값으로
-            #    나르는 것은 옆의 `novelty_measured` 하나뿐이다(위 docstring).
-            "novel" => false, "novelty_measured" => false,
-            "p" => nothing, "score" => nothing, "eps" => nothing,
-            "reason" => nocal))
-    end
-    if v === nothing
-        return merge(base, Dict{String,Any}(
-            "enabled" => false, "advisory" => false, "target" => policy,
-            "novel" => false, "novelty_measured" => false,
-            "p" => nothing, "score" => nothing, "eps" => nothing,
-            "reason" => "descriptors unavailable"))
-    end
-    eps === nothing && error("route_verdict: v is given but eps is nothing -- " *
-                             "caller must pass eps whenever v is non-nothing")
-    would = v.novel ? "dspy" : "surrogate"
-    msg = v.novel ?
-        "novelty p=$(round(v.p; digits=3)) < eps=$(round(eps; digits=3)) — NEVER SEEN THIS BEFORE → ask the LLM" :
-        "novelty p=$(round(v.p; digits=3)) ≥ eps=$(round(eps; digits=3)) — familiar → surrogate (0.11 ms)"
-    return merge(base, Dict{String,Any}(
-        "enabled" => drives, "advisory" => !drives,
-        "target" => drives ? would : policy, "would_route_to" => would,
-        # 🔴 여기가 **유일하게** 실제로 잰 분기다.
-        "novel" => v.novel, "novelty_measured" => true,
-        "p" => (isfinite(v.p) ? v.p : nothing),
-        "score" => (isfinite(v.score) ? v.score : nothing),
-        "eps" => eps,
-        # 🔴 advisory 문구도 `drives_lane` 을 본다: novelty 축이 안 몰아도 라우터가 레인을
-        # 고르고 있으면 "이 녹화는 DEMO_POLICY 고정으로 집행했다" 는 거짓이다.
-        "reason" => drives ? msg :
-            msg * (drives_lane ?
-                   "  (novelty axis advisory only — the lane is still selected by the router)" :
-                   "  (advisory only — this recording enacted DEMO_POLICY=$(policy), fixed)")))
+function route_verdict(; desc, policy::AbstractString,
+                       drives_lane::Bool = router_drives())
+    return Dict{String,Any}(
+        "descriptors" => desc,
+        "drives_lane" => drives_lane,
+        "reason" => drives_lane ?
+            "the router selects the lane (DEMO_ROUTER=$(ROUTER_MODE))" :
+            "gate inactive (DEMO_POLICY=$(policy) fixed for the run)")
 end
 
 """
@@ -546,6 +422,11 @@ message content 를 **비웠다**: `reasoning=""` · `expressible=null` · `chos
   ② 원리적으로는 `/health` 의 `surro_support`(`dspy_service.py:939`, 기계가 읽는 목록)를
      요청 **전에** 읽어 축 1 을 사전 해소할 수 있다. **이번 범위 밖이다** — 구현하지 않았고,
      여기 한계로만 적는다.
+
+🔴 **이 두 인자가 가리키던 novelty 축은 2026-08-29 §B-1 에서 삭제됐다** — `route_verdict` 는
+`novelty_measured` 도 `novel` 도 더 이상 내지 않는다. 그래도 이 함수는 남긴다(위 "되돌릴 때
+필요하다"): 그때 필요한 것은 유도 규칙이지 배선이 아니다. 🔴 다만 **되돌리려면 novelty 축 자체를
+먼저 되살려야 한다** — 오늘 이 두 인자를 채워 줄 생산자가 레포에 하나도 없다.
 """
 tool_choice_for(; novelty_measured::Bool, novel::Bool) =
     (novelty_measured && !novel) ? "required" : nothing
@@ -554,48 +435,26 @@ tool_choice_for(; novelty_measured::Bool, novel::Bool) =
 """
     route(env, truth) -> Dict
 
-이 사건을 누구에게 보낼지 **시스템이** 정한다.
+이 사건의 **기록**을 만든다: LLM 페이로드가 읽는 서술자 6개 + 라우터 손잡이 상태.
+돌려주는 Dict 는 그대로 monitor 레코드에 실려 UI 의 ROUTER 줄이 된다.
 
-  낯설다(p < eps)  -> "dspy"      : LLM 이 자연어 관찰을 읽는다
-  익숙하다         -> "surrogate" : 학습된 forest 가 0.1 ms 에 답한다
-
-돌려주는 Dict 는 그대로 monitor 레코드에 실려 UI 의 ROUTER 줄이 된다. 판정 근거(p, score, eps)를
-전부 남기는 이유: "왜 이쪽으로 보냈는가"가 화면에서 검증 가능해야 하기 때문.
+🔴 **이 함수는 더 이상 레인을 정하지 않는다 (2026-08-29, §B-1).** 레인을 정하는 것은 `decide_all`
+의 `select_lane(kind = routing_kind(...), ...)` 한 줄이다. 이름이 남은 것은 소비처(`rt` ·
+monitor 스트림 · dashboard 의 ROUTER 줄)가 이 Dict 를 그대로 읽기 때문이다.
+[역사] 2026-07-28~2026-08-29 에는 여기서 covariate novelty p 를 계산해 `p < eps ? "dspy" :
+"surrogate"` 로 보냈다(`install_novelty!()` → `CB.novelty_verdict` → `route_verdict`). T11 이
+kind 색인 라우터로 그 판정을 갈아치웠고, §B-1 이 남아 있던 계산과 기록을 지웠다.
 """
 function route(env, truth)
-    # 판정은 **항상** 계산한다. DEMO_ROUTER=0 이어도 마찬가지다.
-    #   enabled=true  : 라우터가 실행 정책을 정한다
-    #   enabled=false : DEMO_POLICY 가 고정 실행되지만, 판정은 참고용(advisory)으로 기록한다
-    # 왜: 정책 고정 비교 녹화(24런)에서도 "라우터였다면 어디로 보냈을까"를 화면에서 같이 보려면
-    #     그 판정이 스트림에 있어야 한다. 계산 비용은 서술자 6개 + z-거리라 사실상 0 이다.
-    # 감지기는 DEMO_ROUTER 설정과 무관하게 **항상** 설치를 시도한다(없으면 조용히 실패).
-    # router_enabled() 는 "0" 일 때 설치 자체를 건너뛰므로, 여기서 먼저 설치해야 참고용 판정이 남는다.
-    have_det = install_novelty!()
-    # ---- no-adapt 바닥선은 라우팅 대상이 아니다 (2026-08-06, STATUS §5 버그) ----------------
-    # 증상: `DEMO_POLICY=noop` 으로 돌린 lane 이 3건 모두 Replace 를 실행했다. 원인은 환경변수
-    # 전달이 아니라 **여기**다 — DEMO_ROUTER 의 기본값이 auto 이고 교정파일이 설치돼 있으면
-    # 라우터가 켜져서 아래 `requested = rt["target"]` 이 POLICY 를 통째로 덮어썼다. 라우터의
-    # target 은 surrogate/dspy 뿐이므로 noop 은 절대 실행될 수 없었다.
-    # noop 은 "정책 후보" 가 아니라 **통제 실험의 바닥선**이다. 개입이 실제로 이득인지 재려면
-    # 아무도 이 lane 을 대신 판단해 주면 안 된다. 그래서 라우팅 자체를 끈다(판정은 참고용 기록).
-    drives = have_det && router_enabled() && POLICY != "noop"
-
-    # 🔴 서술자를 **먼저** 계산한다. 교정 유무와 무관하다 — 계산은 event_descriptors_of 의
-    # docstring 이 말하듯 교정값(novelty detector)을 안 읽는다.
+    # 🔴 서술자는 **항상** 계산한다. 교정값(novelty 감지기)을 안 읽으므로 라우터 설정과도
+    # 무관하다(`event_descriptors_of` 의 docstring). 이것이 LLM 이 문장과 함께 받는 숫자
+    # 채널이고, 이 계산이 조기 반환 **뒤에** 있어서 모든 LLM 결정이 문장 한 줄로 내려갔던 것이
+    # 2026-08-26 의 회귀다 — `test/route_descriptors_survive.jl` 이 그 순서를 못박는다.
     desc = try event_descriptors_of(env, truth) catch e
         @warn "descriptor computation failed -> router falls back" exception = e
         nothing
     end
-
-    have_det || return route_verdict(desc = desc, have_det = false, drives = false,
-                                     policy = POLICY)
-    desc === nothing && return route_verdict(desc = nothing, have_det = true, drives = drives,
-                                             policy = POLICY)
-
-    v = CB.novelty_verdict(desc; eps = ROUTER_EPS)
-    eps = ROUTER_EPS === nothing ? (try CB.novelty_detector().alpha catch; 0.05 end) : ROUTER_EPS
-    return route_verdict(desc = desc, have_det = true, drives = drives, policy = POLICY,
-                         v = v, eps = eps)
+    return route_verdict(desc = desc, policy = POLICY)
 end
 
 const DSPY_HEALTHY = Ref{Union{Nothing,Bool}}(nothing)
@@ -1523,6 +1382,16 @@ function decide_all(env, truth; nl::AbstractString = "")
          reason = "router off — DEMO_POLICY=$(POLICY) is fixed for this run")
     rt["router_axis"] = sel.axis
     rt["lane_reason"] = sel.reason
+    # 🔴 **세대 표식 (2026-08-29, §B-1 / Ruling R2).** 옛 녹화의 `target` 은 **novelty 축이
+    #    보냈을 곳**이었고(`route_verdict` 안의 `drives ? would : policy`), 이 커밋 이후의
+    #    `target` 은 **실제로 고른 레인**이다. `enacted` 와 항상 같다.
+    #    🔴 **두 세대를 같은 표에 섞지 말 것.**
+    #    왜 여기냐: novelty 축이 사라지면 옛 식은 **언제나 `policy`** 로 붕괴하고, 그러면
+    #    스윕 게이트(`wm4spacecraft_manufacturing/sweep/llm_ood_eval.py::_router_drove`,
+    #    게이트 `sweep/test_router_drove_gate.py`)가 `router_target ∈ {surrogate,dspy}` 를 못 봐서
+    #    **라우터가 실제로 몬 런**을 "라우터가 안 몰았다" 로 판정한다. 오늘 레인을 아는
+    #    유일한 자리가 여기다(`sel` 이 정해진 직후).
+    rt["target"] = sel.lane
     # 기존 문구를 **덮어쓰지 않고 덧붙인다** — 판정 근거가 든 줄이 화면에서 사라지면 안 된다.
     rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason
 

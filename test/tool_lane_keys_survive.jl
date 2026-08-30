@@ -254,8 +254,10 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
 end
 const _PORT = HTTP.Servers.port(_SERVER)
 
-# ⚠️ 들어올 때의 감지기를 **여기서** 잡는다 — 아래 `decide_all` 이 도는 순간 설치돼 버리므로
-#    그 뒤에 읽으면 "원래 값" 이 아니라 이 파일이 심은 값을 저장하게 된다.
+# ⚠️ 들어올 때의 감지기를 **여기서** 잡는다(파일 끝 `finally` 의 복원과 짝).
+#    🔴 2026-08-29 (§B-1): 옛 근거 *"아래 `decide_all` 이 도는 순간 설치돼 버린다"* 는 이제
+#    거짓이다 — `install_novelty!()` 가 삭제돼 이 파일은 그 전역을 건드리지 않는다. 그래도
+#    자리를 그대로 둔 이유는 파일 끝 `finally` 의 주석이 적는다(무해한 방어 · Ruling P3).
 const _PREV_DET = try CB.novelty_detector() catch; nothing end
 
 # `const DSPY_URL`(policy.jl:19)은 include 시점에 한 번만 ENV 를 읽는다. 그 순간에만 우리
@@ -640,14 +642,27 @@ try
     end # testset
 finally
     close(_SERVER)
-    # 🔴 2026-08-29: **전역 복원.** 이 파일은 `decide_all` 을 부르고 그것이 `install_novelty!()`
-    #    를 통해 `CB.NOVELTY_DETECTOR[]` 를 설치한다 — 그런데 여기 그 복원이 **없었다.**
-    #    §0-B ⑳ 이 그 누수를 "고칠 자리 ①" 로 지목했고, 증상은 스위트에서만 보였다:
-    #    뒤따르는 `test/tool_choice_gate.jl` 의 (0)절 `@test CB.novelty_detector() === nothing`
-    #    이 **단독 실행에서는 초록이고 스위트에서만 빨갛다**(실측: 49/49 vs 48/1).
-    #    그 파일의 머리말이 경고하는 *"단독 초록은 스위트 초록의 증거가 아니다"* 가 그 파일
-    #    자신에게 걸린 사건이고, 원인은 그 파일이 아니라 **여기**였다.
-    #    규약은 `tool_choice_gate.jl` 과 같다 — 들어올 때의 값을 잡고 `finally` 에서 되돌린다.
+    # 🔴 2026-08-29 (§B-1 이후): **전역 복원 — 무해한 방어.** 근거가 바뀌었으므로 다시 적는다.
+    #
+    #    옛 근거(§0-B ⑳, 이제 **거짓**): *"이 파일은 `decide_all` 을 부르고 그것이
+    #    `install_novelty!()` 를 통해 `CB.NOVELTY_DETECTOR[]` 를 설치한다."* — §B-1 이 novelty
+    #    축을 지우면서 `install_novelty!()` 자체가 사라졌다. **이 파일은 이제 그 전역을 설치도
+    #    변경도 하지 않는다.**
+    #
+    #    🔴 실측이 그 처방까지 반증했다(Ruling P3, 2026-08-29):
+    #      · 증상은 뒤따르는 `test/tool_choice_gate.jl` 의 (0)절
+    #        `@test CB.novelty_detector() === nothing` 이 **단독 실행에서는 초록이고 스위트에서만
+    #        빨간** 것이었다(실측: 49/49 vs 48/1).
+    #      · 그런데 이 복원 코드는 `7620d3ad` 에 **이미 들어와 있었고 그래도 안 닫혔다.**
+    #        이유: 스위트에서 `decide_all` 을 부르는 **첫 파일은 이 파일이 아니라**
+    #        `test/service_decide_ships_agents.jl`(`runtests.jl:141`)이었다. `_PREV_DET` 를
+    #        잡는 시점에 감지기는 이미 설치돼 있었고, 이 파일은 **누수된 값을 충실히 복원**했다.
+    #      · ⟹ 뿌리는 `route()` 안의 `install_novelty!()` 였고, §B-1 의 삭제가 그것을 없앴다.
+    #        "전역 복원을 더 넣는다" 는 처방이 틀렸던 것이다.
+    #
+    #    그래도 코드는 **남긴다**: 설치하는 코드가 다시 생겨도 스위트가 안 물들게 하는 방어이고,
+    #    비용이 0 이다. 규약은 `tool_choice_gate.jl` 과 같다 — 들어올 때의 값을 잡고 `finally`
+    #    에서 되돌린다.
     _PREV_DET === nothing ? CB.clear_novelty_detector!() : CB.set_novelty_detector!(_PREV_DET)
 end
 

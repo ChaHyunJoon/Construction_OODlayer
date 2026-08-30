@@ -149,10 +149,12 @@ pol7 = Dict(
                         "unsupported" => ["SwapBattery"]),
     "dspy"      => Dict("chosen" => "SwapBattery", "available" => true))
 
-# 🔴 이것이 이 태스크의 전부다: 교정 파일이 없어도(=have_det false) 어휘 미달은 격상한다.
-#    `allowed` 는 이제 have_det 이 아니라 사람이 켠 손잡이만 나른다.
+# 🔴 이것이 이 태스크의 전부다: `allowed` 는 novelty 교정이 아니라 **사람이 켠 손잡이만**
+#    나른다. [역사 · 2026-08-29 §B-1] 여기서 "교정 파일 유무"를 나르던 술어가
+#    `have_det`(= `install_novelty!()` 의 반환값)이었고, 그 축이 삭제되면서 그 이름이 가리키던
+#    것이 레포에서 없어졌다 — 이 검사가 지키는 명제("격상은 교정과 무관하다")는 그대로다.
 t7, m7 = escalation_target(pol7, "surrogate", true)
-check("T7 어휘 미달은 손잡이가 켜져 있으면(have_det 와 무관) 격상한다",
+check("T7 어휘 미달은 손잡이가 켜져 있으면 격상한다(novelty 교정과 무관)",
       t7 == "dspy" && m7 == ["SwapBattery"], "target=$(t7) missing=$(m7)")
 
 # 손잡이를 끈 비교 실행에서는 레인이 안 바뀐다 — 그런데 **진단은 남는다.**
@@ -161,36 +163,28 @@ check("T7b 손잡이가 꺼지면 격상은 안 하지만 누락 진단은 남�
       t7b == "" && m7b == ["SwapBattery"], "target=$(t7b) missing=$(m7b)")
 
 # ---------------------------------------------------------------------------------------------
-# T8 (2026-08-27, Fix round 1 — 재발 방지) 격상 손잡이(`router_drives`)는 교정 파일 유무를
-#     나르지 않는다.
+# 🔴 2026-08-29 (§B-1) — **T8 · T8b · T9b · T9c · T9d 를 지웠다** (`@test_skip` 도 주석 처리도
+#    아니다: 이 레포의 규칙은 무효가 된 시험은 지우고 왜 지웠는지를 머리말에 적는 것이다).
 #
-#     round 1 은 `escalation_allowed`/select_lane 게이트에 `router_enabled() && POLICY != "noop"`
-#     를 썼는데, `router_enabled()` 는 `install_novelty!()` 를 불러 **교정 JSON 유무**를 도로
-#     실어 왔다 — "뗀다"고 한 have_det 결합이 하나도 안 끊긴 회귀. 그래서 `router_drives()` 를
-#     새로 만들었다(policy.jl). 🔴 (2026-08-27, Fix round 2 정정) 이 T8/T8b 는 `router_drives()`
-#     **자신의 정의**가 교정 의존을 되찾을 때만 빨개진다 -- decide_all 의 **호출부**가 다시
-#     `router_enabled()` 로 되돌아가는 실제로 일어났던 회귀 경로는 안 잡는다(그건 아래 T9/T9b 가
-#     잡는다). "이 T8 은 그 재발을 막는다" 는 round 1 의 과장이었다.
-#
-#     ENV 를 바꿔 프로세스 재기동으로 검사하는 방법은 안 썼다 — `ROUTER_MODE`/`POLICY` 가
-#     `const` 라 같은 프로세스 안에서는 재현이 안 되고, 이 파일이 여러 프로세스를 띄우면
-#     "시뮬레이터도 서비스도 안 띄운다"는 이 파일의 원래 계약(19행)이 깨진다. 대신 **정적
-#     검사**를 골랐다: `router_drives()` 의 저수준 코드(lowered IR)에 `install_novelty!` 호출이
-#     **문법적으로 존재하지 않는다**는 것은 어떤 ENV 조합에서도 참인, 더 강한 계약이다.
-#     대조군으로 `router_enabled()` 의 lowered 코드에는 그 호출이 실제로 있다는 것도 같이
-#     확인해 이 검사 방법 자체가 뭔가를 놓치고 있지 않다는 것을 보인다(양성 대조).
-# ---------------------------------------------------------------------------------------------
-lowered_drives  = string(@code_lowered router_drives())
-lowered_enabled = string(@code_lowered router_enabled())
-check("T8 router_drives() 의 lowered 코드에 install_novelty! 호출이 없다(정적 -- ENV 무관)",
-      !occursin("install_novelty", lowered_drives), lowered_drives)
-check("T8b (양성 대조) router_enabled() 의 lowered 코드에는 install_novelty! 호출이 있다 " *
-      "-- 즉 위 검사 방법이 실제로 그 호출을 잡아낼 수 있다",
-      occursin("install_novelty", lowered_enabled))
+#    다섯이 지키던 명제는 전부 **`router_drives()` 가 `router_enabled()`/`install_novelty!()` 의
+#    교정 의존을 되찾지 못하게 하는 것**이었다(Ruling R11 회귀). §B-1 이 novelty 축을 통째로
+#    지우면서 `router_enabled()` 도 `install_novelty!()` 도 **레포에 존재하지 않게 됐다** —
+#    막으려던 대상이 없으므로 명제가 무효다.
+#      · T8   `router_drives()` 의 lowered IR 에 `install_novelty!` 가 없다  → 항진명제가 된다
+#      · T8b  (양성 대조) `router_enabled()` 의 lowered IR 에는 있다         → UndefVarError
+#      · T9b  `decide_all` 이 `router_enabled()` 를 안 부른다                → 항진명제
+#      · T9c  `decide_all` 이 `install_novelty!` 을 안 부른다                → 항진명제
+#      · T9d  (양성 대조) `route()` 의 lowered IR 에는 있다                   → **거짓이 된다**
+#    🔴 양성 대조(T8b·T9d)가 가리키던 함수가 사라졌으면 대조도 같이 간다 — 대조 없는 항진명제만
+#    남기면 "검사는 있는데 막으려는 것을 못 막는다" 는 이 파일이 F2 에서 이름 붙인 실패로 돌아간다.
+#    남는 것은 **T9**(`decide_all` 이 `router_drives()` 를 정확히 2회 부른다) 하나이고, 그것은
+#    지금도 실제 호출부를 잰다.
 
 # ---------------------------------------------------------------------------------------------
-# T9 (2026-08-27, Fix round 2 -- 실제 회귀 지점을 겨눈다) decide_all 의 두 게이트가 실제로
-#     router_drives() 를 부르고 router_enabled() 를 안 부른다.
+# T9 (2026-08-27, Fix round 2 -- 실제 회귀 지점을 겨눈다) decide_all 의 게이트들이 실제로
+#     router_drives() 를 부른다.
+#     🔴 2026-08-29 (§B-1): 짝이던 "router_enabled() 를 안 부른다"(T9b) 는 그 함수가 삭제되어
+#     지웠다 -- 위 머리말 참조.
 #
 #     리뷰 지적(round 2, I-2): T8/T8b 는 router_drives() **자신의 정의**만 재서, 실제로 났던
 #     회귀(policy.jl:1073/:1105 의 **호출부**가 router_enabled() 를 썼던 것)를 되돌려도 초록으로
@@ -205,11 +199,11 @@ check("T8b (양성 대조) router_enabled() 의 lowered 코드에는 install_nov
 #     메서드 선택 + 정적 조회뿐이고, 인자 타입이 전부 `Any` 라 `nothing` 으로도 같은 메서드가
 #     골라진다).
 #
-#     소스 텍스트 grep 을 안 쓴 이유: `route()` 안의 `drives = have_det && router_enabled() &&
-#     POLICY != "noop"`(novelty 축, 정당한 용법)에도 `router_enabled` 문자열이 있어서
-#     파일 전체 grep 은 그 정당한 용법에 걸려 항진적으로 "OK" 가 나온다. lowered 코드는
-#     **decide_all 자신의 본문**만 보므로 그 문제가 없다 -- route() 는 별도 메서드라 그 호출은
-#     decide_all 의 lowered 코드에 인라인되지 않고 `Main.route(...)` 한 호출로만 보인다.
+#     소스 텍스트 grep 을 안 쓴 이유: 파일 전체 grep 은 docstring·주석에 있는 같은 이름에
+#     걸려 항진적으로 "OK" 가 나온다(2026-08-29 §B-1 이후 이 파일과 policy.jl 의 역사 주석이
+#     정확히 그런 문자열을 들고 있다). lowered 코드는 **decide_all 자신의 본문**만 보므로 그
+#     문제가 없다 -- route() 는 별도 메서드라 그 호출은 decide_all 의 lowered 코드에
+#     인라인되지 않고 `Main.route(...)` 한 호출로만 보인다.
 # ---------------------------------------------------------------------------------------------
 wrapper_src = string(@code_lowered decide_all(nothing, nothing))
 m9 = match(r"var\"(#decide_all#\d+)\"", wrapper_src)
@@ -224,7 +218,6 @@ else
     local bodyfn = getfield(@__MODULE__, Symbol(m9.captures[1]))
     local body_src = string(Base.uncompressed_ast(only(methods(bodyfn))))
     local n_drives  = count("router_drives", body_src)
-    local n_enabled = count("router_enabled", body_src)
     # 🔴 (2026-08-27 최종 리뷰 F6) 기대값이 2 -> **3** 이 됐다. 세 번째는 서비스 호출 생략
     #    게이트(`j = ... ? nothing : service_decide(...)`)다. 그 자리는 원래
     #    `!get(rt, "enabled", false)` 를 읽었는데, Task 3 이후 `router_drives()` 가 true 인데
@@ -240,45 +233,7 @@ else
           #    돌아온 것이고, 그것이 §0-C 결정 3 이 없앤 바로 그 상태다.
           "router_drives() 를 부른다(정확히 2회 기대)",
           n_drives == 2, "n_drives=$(n_drives)")
-    check("T9b decide_all 은 router_enabled() 를 직접 부르지 않는다 " *
-          "(그 함수는 별도 메서드인 route() 안에서만, novelty 축에 정당하게 쓰인다)",
-          n_enabled == 0, "n_enabled=$(n_enabled)")
 
-    # -----------------------------------------------------------------------------------------
-    # T9c (2026-08-27, 최종 리뷰 F2 — **이름이 아니라 의존을 잰다**)
-    #
-    # 🔴 T8/T9/T9b 는 전부 `router_drives` / `router_enabled` 라는 **이름의 등장 횟수**를 센다.
-    #    독립 검증 에이전트가 실측으로 그 그물의 구멍을 보였다:
-    #
-    #        policy.jl:1112 -> escalation_allowed = router_drives() && install_novelty!()
-    #        tools/test_policy_escalation.jl -> exit=0, "전부 통과 (18)"
-    #
-    #    즉 R11 회귀(어휘 미달 격상이 novelty 교정 파일에 다시 묶이는 것)를 **그대로 되살려도**
-    #    18개 검사가 전부 초록이었다. `router_enabled()` 라는 이름을 안 쓰고 그 함수가 하던
-    #    일(`install_novelty!()`)을 직접 부르면 이름 세기를 통째로 빠져나간다.
-    #
-    #    이것이 이 레포의 시그니처 실패다 — 검사가 있는데 막으려는 것을 못 막는다. 그래서 여기서는
-    #    **금지된 의존 그 자체**를 잰다: `decide_all` 의 kwarg 바디에 `install_novelty` 호출이
-    #    문법적으로 **0회**여야 한다. 어떤 우회 경로로 교정 의존을 되살려도 이 검사는 빨개진다.
-    #
-    #    무엇이 바뀌면 빨개지나: `decide_all` 본문에 `install_novelty!()` 호출을 (직접이든
-    #    `router_enabled()` 를 통해서든 -- 후자는 T9b 가 잡는다) 넣는 순간. 대조군은 아래 T9d.
-    #
-    # ⚠️ `route()` 는 별도 메서드라 그 본문의 `install_novelty!()`(novelty 축의 정당한 용법)는
-    #    `decide_all` 의 lowered 코드에 인라인되지 않는다 -- `Main.route(...)` 한 호출로만 보인다.
-    #    T9d 가 그 사실 자체를 양성 대조로 못박는다(= 이 검사 방법이 호출을 실제로 잡아낸다).
-    # -----------------------------------------------------------------------------------------
-    local n_install = count("install_novelty", body_src)
-    check("T9c decide_all 은 install_novelty! 을 직접 부르지 않는다 " *
-          "(어휘 미달 격상이 novelty 교정 파일에 다시 묶이는 회귀 -- 이름이 아니라 **의존**을 잰다)",
-          n_install == 0, "n_install=$(n_install)")
-
-    # 양성 대조: 같은 방법으로 route() 를 재면 그 호출이 **실제로 보인다**. 이게 없으면 T9c 의
-    # 초록은 "그 문자열이 원래 lowered 코드에 안 나타난다" 라는 항진명제일 수 있다.
-    local route_src = string(@code_lowered route(nothing, nothing))
-    check("T9d (양성 대조) route() 의 lowered 코드에는 install_novelty 호출이 있다 " *
-          "-- 즉 T9c 의 검사 방법이 그 호출을 실제로 잡아낼 수 있다",
-          count("install_novelty", route_src) > 0)
 
     # -----------------------------------------------------------------------------------------
     # 🔴 2026-08-29 (T11/T12): 옛 T11·T11b 를 **지웠다** (`@test_skip` 이나 주석 처리가 아니라
@@ -333,26 +288,30 @@ check("T10c UNSUPPORTED 규약이 나왔으면(= 지원집합을 읽었다) supp
 # ---------------------------------------------------------------------------------------------
 # T12 (2026-08-27, 최종 리뷰 F3) 라우터의 **기록이 자기가 집행한 레인과 모순되지 않는다.**
 #
-# 🔴 실측(작업 트리 기본 env, 교정 파일 없음):
+# 🔴 실측(2026-08-27 당시 작업 트리 기본 env):
 #
 #       router_drives()  = true       # decide_all 이 select_lane 으로 레인을 고른다
-#       router_enabled() = false      # novelty calibration not found
 #       select_lane(...) -> lane=surrogate
 #
-#   그런데 `route_verdict` 는 `"enabled" => false` 와
-#   `"gate inactive (DEMO_POLICY=canonical fixed for the run)"` 을 찍었고, Task 3 이 거기에
-#   `" · LANE: …"` 를 덧붙여 **자기모순 문자열**을 만들었다. `dashboard.html` 이 그 문자열로
-#   `ROUTER off` 를 렌더했다 — 라우터가 실제로 결정한 판에 대해.
+#   그런데 `route_verdict` 는 `"gate inactive (DEMO_POLICY=canonical fixed for the run)"` 을
+#   찍었고, Task 3 이 거기에 `" · LANE: …"` 를 덧붙여 **자기모순 문자열**을 만들었다.
+#   `dashboard.html` 이 그 문자열로 `ROUTER off` 를 렌더했다 — 라우터가 실제로 결정한 판에 대해.
+#   [역사] 당시 그 분기를 고른 술어는 `router_enabled() = false`("novelty calibration not
+#   found")였다. 🔴 2026-08-29 §B-1 이 그 축을 지웠으므로 오늘 `reason` 을 가르는 것은
+#   `drives_lane` **하나뿐**이고, 아래 검사가 재는 명제는 그때와 같다.
+#
+# 🔴 2026-08-29 (§B-1) — **T12d · T12e 를 지웠다.** 그 둘은 `route_verdict` 의 **advisory 분기**
+#    (`have_det=true` · `drives=false` · `v` 주입 → "advisory only …")를 쟀는데, novelty 축이
+#    삭제되면서 그 분기도 `v`/`eps` 키워드도 없어졌다. 잴 대상이 없으므로 지운다(주석 처리도
+#    `@test_skip` 도 아니다). 남는 T12/T12b/T12c 가 같은 명제를 두 분기 전수로 지킨다.
 #
 # 무엇이 바뀌면 빨개지나: `reason` 이 다시 `drives_lane` 과 무관해지거나(= 레인을 몰면서도
 # "fixed for the run"/"gate inactive" 를 주장), `drives_lane` 키가 사라지면.
 # ⚠️ `drives_lane` 을 kwarg 로 명시해 잰다 — `ROUTER_MODE`/`POLICY` 는 `const` 라 같은
-#    프로세스 안에서 ENV 로 가를 수 없다(T8 주석과 같은 이유).
+#    프로세스 안에서 ENV 로 가를 수 없다.
 # ---------------------------------------------------------------------------------------------
-v_drive = route_verdict(desc = nothing, have_det = false, drives = false,
-                        policy = "canonical", drives_lane = true)
-v_fixed = route_verdict(desc = nothing, have_det = false, drives = false,
-                        policy = "canonical", drives_lane = false)
+v_drive = route_verdict(desc = nothing, policy = "canonical", drives_lane = true)
+v_fixed = route_verdict(desc = nothing, policy = "canonical", drives_lane = false)
 check("T12 route_verdict 가 레인 구동 사실(drives_lane)을 나른다",
       v_drive["drives_lane"] === true && v_fixed["drives_lane"] === false,
       "drive=$(get(v_drive, "drives_lane", :MISSING)) fixed=$(get(v_fixed, "drives_lane", :MISSING))")
@@ -363,16 +322,6 @@ check("T12c (음성 대조) 라우터가 안 몰면 예전 문구가 그대로 �
       "— 정책 고정 비교 녹화의 기록이 바뀌면 안 된다",
       occursin("fixed for the run", v_fixed["reason"]) &&
       occursin("gate inactive", v_fixed["reason"]), v_fixed["reason"])
-# novelty 축이 advisory 인 판에서도 같은 규칙이다.
-v_adv_drive = route_verdict(desc = nothing, have_det = true, drives = false, policy = "canonical",
-                            drives_lane = true, v = (novel = false, p = 0.5, score = 1.0), eps = 0.05)
-v_adv_fixed = route_verdict(desc = nothing, have_det = true, drives = false, policy = "canonical",
-                            drives_lane = false, v = (novel = false, p = 0.5, score = 1.0), eps = 0.05)
-check("T12d advisory 문구도 레인을 몰 때 '이 녹화는 DEMO_POLICY 고정으로 집행했다'를 주장하지 않는다",
-      !occursin("fixed", v_adv_drive["reason"]), v_adv_drive["reason"])
-check("T12e (음성 대조) 안 몰면 advisory 문구는 그대로다",
-      occursin("this recording enacted DEMO_POLICY=canonical, fixed", v_adv_fixed["reason"]),
-      v_adv_fixed["reason"])
 
 println()
 println(nfail == 0 ? "전부 통과 ($(npass))" : "$(nfail)개 실패 / $(npass)개 통과")

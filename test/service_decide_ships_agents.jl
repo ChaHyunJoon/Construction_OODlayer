@@ -68,14 +68,15 @@
 #
 # 🔴 라운드 3 H3 은 그 이유를 **틀리게** 적었다("`DEMO_ALL_POLICIES` 가 기본 `\"1\"` 이라는
 # 사실이 유일하게 건너뛰기를 막는다"). 실제 정의를 읽으면 그렇지 않다:
-#     policy.jl:56   const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
-#     policy.jl:140  router_drives() = ROUTER_MODE != "0" && POLICY != "noop"
-# `router_drives()` 는 novelty 교정 파일을 **전혀 보지 않는다**(그건 `router_enabled()` 다 —
-# `policy.jl:108-137` 의 docstring 이 이 구분을 통째로 설명한다). 그래서 기본값
+#     const ROUTER_MODE = lowercase(get(ENV, "DEMO_ROUTER", "auto"))
+#     router_drives()   = ROUTER_MODE != "0" && POLICY != "noop"
+# `router_drives()` 는 novelty 교정 파일을 **전혀 보지 않는다.** 그래서 기본값
 # (`DEMO_ROUTER` 미설정 → `"auto"`, `DEMO_POLICY` 미설정 → `"canonical"`)에서 `router_drives()`
 # 는 **참**이고, `!router_drives()` 가 거짓이라 삼항식은 **그것만으로** 건너뛰지 않는다.
-# "novelty calibration not found -> router disabled" 로그는 `router_enabled()`/`have_det` 쪽
-# 이야기지 이 술어가 아니다. 실측(coordinator, 라운드 5): `withenv("DEMO_ALL_POLICIES"=>"0")`
+# 🔴 [역사 · 2026-08-29 §B-1] 그때 이 술어와 헷갈리던 상대가 `router_enabled()`(= 교정 JSON
+# 유무까지 나르던 술어)였고, "novelty calibration not found -> router disabled" 로그도 그쪽
+# 이야기였다. **그 함수와 novelty 축 전체가 §B-1 에서 삭제됐다** — 이제 헷갈릴 상대가 없고,
+# 위 두 줄이 라우터 손잡이의 전부다. 실측(coordinator, 라운드 5): `withenv("DEMO_ALL_POLICIES"=>"0")`
 # 아래서도 요청 본문은 **여전히 잡혔다**(9 Pass / 1 Fail — 전제 어서션 하나만 실패).
 #
 # 그래서 (4) 안의 전제 어서션은 `DEMO_ALL_POLICIES` 한 항이 아니라 **삼항식의 skip 조건

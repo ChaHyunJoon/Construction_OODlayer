@@ -275,8 +275,11 @@ function handle_ood!(env, truth, nl)
         #    교정(have_det)까지 포함하므로, 교정 파일이 없는 기본 실행에서 **어휘 미달로 레인이
         #    바뀐 사건이 이 줄을 한 줄도 안 찍었다.** 이 레포의 "로그에 안 떴다 ≠ 안 일어났다"
         #    가 세 번째로 반복될 자리다. 라우터가 실제로 레인을 몰았으면(`drives_lane`) 찍는다.
-        #    ⚠️ `enabled` 도 계속 본다 — 두 축은 별개이고 예전 판의 출력이 사라지면 안 된다.
-        if get(rt, "drives_lane", false) === true || get(rt, "enabled", false) === true
+        #    🔴 2026-08-29 (§B-1): `|| get(rt, "enabled", false) === true` 를 **지웠다** —
+        #    novelty 축이 삭제되어 그 키를 만드는 코드가 없다(항상 기본값 `false` 로 떨어지는
+        #    죽은 항이었다). 이 줄은 **살아 있는 런의 stdout** 이지 옛 녹화의 재생이 아니므로
+        #    옛 스트림 호환을 위해 남길 이유도 없다.
+        if get(rt, "drives_lane", false) === true
             local why  = get(rt, "reason", "")
             local axis = something(get(rt, "router_axis", nothing), "-")
             println("[router] ", why, " → enacted=", decision.enacted, " axis=", axis)
@@ -358,6 +361,11 @@ function handle_ood!(env, truth, nl)
         "zone_primitives" => (try get(decision.router, "zone_primitives", nothing) catch; nothing end),
         # 🔴 2026-08-29 (T12): `router_novel`·`router_p` 를 지웠다 — novelty 축(축 2)이
         #    삭제됐으므로 그 두 열이 주장할 것이 없다(§0-C 결정 2·충돌 ④).
+        # 🔴 **세대 표식 (2026-08-29, §B-1 / Ruling R2): 이 열의 뜻이 바뀌었다.** 옛 녹화의
+        #    `router_target` 은 **novelty 축이 보냈을 곳**이었고, 이 커밋 이후의 값은 라우터가
+        #    **실제로 고른 레인**이다(= `enacted` 와 항상 같다). 두 세대를 같은 표에 섞지 말 것.
+        #    이 열이 계속 사는 이유: 스윕 게이트 `sweep/llm_ood_eval.py::_router_drove` 가
+        #    `router_target ∈ {surrogate,dspy}` 를 읽는다(게이트 `sweep/test_router_drove_gate.py`).
         "router_target" => (try get(decision.router, "target", nothing) catch; nothing end),
         # 🔴 2026-08-29 (T11): 라우팅용 kind. 이제 이 값 하나가 레인을 정한다.
         #    `ood_features` 의 `"kind"` 와 **다른 함수**에서 나온다(§0-C 충돌 ①) — 모르는
