@@ -78,7 +78,12 @@ const _N_DECIDE = Ref(0)
 
 const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose = -1) do req
     if req.target == "/health"
-        return HTTP.Response(200, "{\"status\":\"ok\"}")
+        # 🔴 2026-08-29 (T11): `surro_kinds` 를 **반드시** 싣는다. 없으면 `dspy_ready()` 가
+        #    `SURRO_KINDS[] = nothing`("못 쟀다")로 캐시하고 `select_lane` 이 그 사건에서
+        #    **죽는다** — 그것이 §0-C 결정 3 의 설계된 동작이므로 이 픽스처를 안 고치면
+        #    (3)절이 "라우터가 못 쟀다" 로 정당하게 빨개진다(실측: 그렇게 빨갰다).
+        #    값은 서비스의 실측 기준값(`oracle_dataset.jsonl` 33행)과 같다.
+        return HTTP.Response(200, "{\"status\":\"ok\",\"surro_kinds\":[\"battery\",\"fault\"]}")
     elseif req.target == "/decide"
         _LAST_PAYLOAD[] = JSON3.read(String(req.body))
         _N_DECIDE[] += 1
@@ -339,6 +344,29 @@ try
         @test e["chosen"] == "SwapBattery"
         @test e["margin"] === nothing          # 🔴 margin 이 없어도 경계가 안 깨진다
         @test e["decision_source"] == "tool"
+    end
+
+    # ---- (7) 🔴 교차 게이트: 두 kind 유도가 알려진 셋에서 일치한다 (2026-08-29, T11) --------
+    # 이게 없으면 `FaultTruth` 개명 한 번에 `routing_kind` 가 조용히 `"unknown:..."` 을 내고
+    # **모든 사건이 dspy 로 간다** — 에러 없이, 비용만 몇 배로. 이름 기반 유도(라우팅)와
+    # `isa` 기반 유도(surrogate 피처)는 **일부러 다른 함수**이므로(§0-C 충돌 ①), 둘이 갈리지
+    # 않는다는 것을 여기서 못박는 수밖에 없다.
+    @testset "(7) routing_kind 와 ood_features 의 kind 가 알려진 셋에서 일치한다" begin
+        # ⚠️ 구역이 **실재할 필요가 없다** — 이 절이 재는 것은 두 kind 유도의 일치뿐이고,
+        #    둘 다 타입만 본다(`ood_features` 의 zone 분기는 truth.zone 을 안 읽는다).
+        local cases = ((CB.BatteryTruth(CB.RobotID(1), 0.5), "battery"),
+                       (CB.FaultTruth(CB.RobotID(1), [0.0, 0.0, 0.0]), "fault"),
+                       (CB.ZoneTruth(:kind_gate_zone, [0.0, 0.0, 0.0], 1.0), "zone"))
+        for (t, expect) in cases
+            @test routing_kind(String(nameof(typeof(t)))) == expect
+            @test ood_features(TENV, t)["kind"] == expect
+        end
+        # 🔴 그리고 **갈리는 자리**를 명시적으로 잰다: 모르는 타입에서 두 유도는 **일부러
+        #    다르다.** `ood_features` 는 `"fault"`(피처로는 옳다), `routing_kind` 는
+        #    `"unknown:..."`(라우팅으로는 그것만 옳다). 이 비대칭이 사라지면 가장 OOD 한
+        #    사건이 가장 확신에 찬 레인으로 간다.
+        @test routing_kind("MeteorTruth") == "unknown:MeteorTruth"
+        @test !(routing_kind("MeteorTruth") in ("fault", "battery", "zone"))
     end
 
     end # testset

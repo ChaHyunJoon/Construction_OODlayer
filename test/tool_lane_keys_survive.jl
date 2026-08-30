@@ -121,6 +121,23 @@ isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "n
 #               가 그 사건에 이름을 붙이고 `native_fc` 는 "못 쟀다" 로 온다)
 const _MODE = Ref{Symbol}(:lane)
 
+# 🔴 2026-08-29 (T11): 라우팅 손잡이. 위 `/health` 가 이 값을 그대로 낸다.
+const _KINDS = Ref{Vector{String}}(["battery", "fault"])
+
+"""
+    _route_kinds!(ks)
+
+`/health` 가 낼 kind 집합을 바꾸고 **캐시를 무효화한다.** `dspy_ready()` 는 한 번만 묻고
+`DSPY_HEALTHY[]`·`SURRO_KINDS[]` 에 캐시하므로, 이 두 줄이 없으면 첫 testset 의 값이 파일
+전체를 지배한다(에러 없이 — 그래서 위험하다).
+"""
+function _route_kinds!(ks)
+    _KINDS[] = collect(String, ks)
+    DSPY_HEALTHY[] = nothing
+    SURRO_KINDS[] = nothing
+    return ks
+end
+
 # 응답에 싣는 tool 레인 값.
 # 🔴 (2026-08-29 수정 라운드, F7) 이 주석은 **거짓이었다** — (1) 절이 `"deliver_battery"` 같은
 #    인라인 리터럴로 대조했고, 그래서 이 상수와 검사가 실제로는 두 벌이었다. 지금은 (1)·(5)
@@ -200,7 +217,18 @@ const _SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0; listenany = true, verbose
     if req.target == "/health"
         # `dspy_ready()` 가 찌르는 자리. 200 을 안 주면 `service_decide` 가 곧장 nothing 을
         # 돌려주고 아래 검사들이 "레인이 안 왔다"로 **빨개진다**(조용히 안 샌다).
-        return HTTP.Response(200, "{\"status\":\"ok\"}")
+        # 🔴 2026-08-29 (T11): `surro_kinds` 를 **반드시** 싣는다. 없으면 `dspy_ready()` 가
+        #    "못 쟀다"(nothing)로 캐시하고 kind 색인 라우터가 그 사건에서 **죽는다** —
+        #    그것이 §0-C 결정 3 의 설계된 동작이다(실측: 이 픽스처를 안 고치면 (1)~(5)가
+        #    "surrogate kind support is unknown" 으로 정당하게 빨개졌다).
+        # 🔴 2026-08-29 (T11): 어느 레인이 집행되는가는 이제 **kind 축**이 정한다. 그래서
+        #    이 값이 곧 시나리오 손잡이다: `["battery","fault"]` → battery 사건은 surrogate,
+        #    `String[]` → 아는 kind 가 없으므로 battery 사건도 dspy. `_MODE[]` 는 서비스가
+        #    무엇을 **돌려주는가**만 정하고, 누가 **불리는가**는 여기가 정한다.
+        #    ⚠️ `dspy_ready()` 가 첫 호출만 캐시하므로 시험이 `DSPY_HEALTHY[]`/`SURRO_KINDS[]`
+        #    를 직접 되돌려야 한다 — `_route_kinds!` 가 그것을 한다.
+        return HTTP.Response(200, JSON3.write(Dict("status" => "ok",
+                                                   "surro_kinds" => _KINDS[])))
     elseif req.target == "/decide"
         local m = _MODE[]
         local out = if m === :lane
@@ -380,6 +408,10 @@ try
 
     @testset "(1)+(2) dspy 가 집행되면 8키가 값까지 그대로 오고, null 은 null 로 온다" begin
         _MODE[] = :lane
+        # 🔴 2026-08-29 (T11): dspy 가 집행되게 하는 것은 이제 **kind 축**이다. 아는 kind 가
+        #    비면 battery 사건도 `ood_kind` 로 판정돼 LLM 으로 간다. (예전에는 `_MODE[]` 가
+        #    양쪽 레인을 다 내고 novelty 가 골랐다 — 그 축은 사라졌다.)
+        _route_kinds!(String[])
         local d = decide_all(TENV, _truth(); nl = "")
         # 전제: 실제로 dspy 가 집행됐는가. 아니면 이 블록은 (3) 을 다시 재는 것이 되어
         # 아무것도 안 잰다.
@@ -410,14 +442,30 @@ try
 
     @testset "(3) enacted 가 dspy 가 아니면 8키가 전부 nothing 이다" begin
         _MODE[] = :surro
+        # battery ∈ 아는 kind ⟹ surrogate. 이것이 이 절의 라우팅 전제다.
+        _route_kinds!(["battery", "fault"])
         local d = decide_all(TENV, _truth(); nl = "")
-        # 전제 둘. 이 둘이 없으면 아래 어서션은 항진적이다.
         #   ① 실제로 다른 레인이 집행됐는가
         @test d.enacted == "surrogate"
-        #   ② 🔴 그 실행에서 `pol["dspy"]` 는 값을 **들고 있는가**. 안 들고 있으면
-        #      `pol[enacted]` 와 `pol["dspy"]` 가 같은 값을 내므로 이 검사가 하중을 잃는다.
-        @test d.policies["dspy"]["tool_called"] == _LANE_FULL["tool_called"]
-        @test d.policies["dspy"]["macro_tool_agree"] === true
+        #   ② 🔴 **옛 전제는 소멸했다** (2026-08-29, T11). 여기 있던 두 줄은
+        #        `@test d.policies["dspy"]["tool_called"] == _LANE_FULL["tool_called"]`
+        #        `@test d.policies["dspy"]["macro_tool_agree"] === true`
+        #      즉 *"surrogate 가 집행된 사건에서도 `pol["dspy"]` 가 값을 들고 있다"* 였다.
+        #      라우터가 사건당 레인 **하나만** 청구하므로 그 상태를 이제 **만들 수 없다** —
+        #      주석 처리하거나 `@test_skip` 으로 남기지 않고 지운다(이 레포의 규칙).
+        #      🔴 대신 그 자리를 새 계약이 받는다: **키 자체가 없다.** 그리고 그것이 곧
+        #      비용 절감의 증거다(안 부른 레인 = 안 낸 LM 호출, §0-C 충돌 ⑦).
+        @test !haskey(d.policies, "dspy")
+        # ⚠️ 하중 보존. 옛 전제 ②가 막던 것은 "`pol[enacted]` 와 `pol["dspy"]` 가 같은 값을
+        #    내서 검사가 항진적이 되는 것" 이었다. 이제는 그 자리를 이렇게 잰다:
+        #    surrogate 항목은 `policy_entry` 규약대로 레인 키를 **들고는 있되**(두 분기 모두
+        #    나른다) 서비스가 그 키를 안 보냈으므로 값이 전부 `nothing` 이다.
+        #    🔴 실측 정정(2026-08-29): 여기 `!haskey(..., "tool_called")` 를 적었다가 빨갰다 —
+        #    `policy_entry` 는 레인과 무관하게 열한 키를 언제나 짓는다. 존재가 아니라 **값**이
+        #    이 절의 하중이다.
+        @test haskey(d.policies["surrogate"], "tool_called")
+        @test d.policies["surrogate"]["tool_called"] === nothing
+        @test d.policies["surrogate"]["macro_tool_agree"] === nothing
         for k in TOOL_LANE_KEYS
             @test haskey(d.tool_lane, k)   # ℹ️ 존재는 증거가 아니다 — 다음 줄이 하중을 진다
             @test d.tool_lane[k] === nothing
@@ -431,26 +479,28 @@ try
         @test d.tool_lane["lane_available"] === true
     end
 
-    @testset "(4) 폴백 분기에서도 8키가 존재하고 전부 nothing 이다" begin
+    # 🔴 2026-08-29 (T11): 옛 (4)절 *"폴백 분기에서도 8키가 존재하고 전부 nothing 이다"* 는
+    #    **명제가 뒤집혔다.** 그 절은 dspy 가 실패하면 `enacted` 가 조용히 `"canonical"` 로
+    #    떨어지는 것을 전제했는데, §0-C 사용자 결정 3 이 그 조용한 폴백을 없앴다 —
+    #    고른 레인이 그 사건에서 실패하면 `decide_all` 이 `error()` 로 **죽는다**.
+    #    ⟹ 그 절이 재던 상태(`d.enacted == "canonical"` 인 행)를 **이제 만들 수 없다.**
+    #    지우고, 같은 픽스처(`:err`)로 새 계약을 잰다. 8키가 폴백 dict 에 살아 있다는 명제
+    #    자체는 `policy_entry` 축으로 (7)절이 계속 잰다.
+    @testset "(4) 고른 레인이 실패하면 조용히 폴백하지 않고 죽는다 (§0-C 결정 3)" begin
         _MODE[] = :err
-        local d = decide_all(TENV, _truth(); nl = "")
-        local e = d.policies["dspy"]
-        # 전제: 정말 폴백 분기로 떨어졌는가.
-        @test e["available"] === false
-        @test e["error"] == "service blew up"
-        # 🔴 키가 **사라지지 않는다** — 소비자는 `available` 로 "레인이 안 돌았다"를 가른다.
-        for k in TOOL_LANE_KEYS
-            @test haskey(e, k)
-            @test e[k] === nothing
+        _route_kinds!(String[])                     # battery → ood_kind → dspy 를 고른다
+        # 🔴 조용한 canonical 폴백이 돌아오면 이 줄이 빨개진다. 그게 이 절의 전부다 —
+        #    산출물이 "라우팅했다" 고 주장하면서 규칙표가 돈 행을 섞어 담는 상태를 막는다.
+        @test_throws ErrorException decide_all(TENV, _truth(); nl = "")
+        # 사유가 산문에 남는가. 삼킨 뒤 일반 메시지를 내면 진단이 사라진다.
+        local msg = try
+            decide_all(TENV, _truth(); nl = ""); ""
+        catch e
+            sprint(showerror, e)
         end
-        # 그 사건에서 집행된 레인(canonical)의 노출도 같은 모양이다.
-        @test d.enacted == "canonical"
-        for k in TOOL_LANE_KEYS
-            @test haskey(d.tool_lane, k)   # ℹ️ 존재는 증거가 아니다 — 다음 줄이 하중을 진다
-            @test d.tool_lane[k] === nothing
-        end
-        @test d.tool_lane["lane"] == "canonical"
-        @test d.tool_lane["lane_available"] === true
+        @test occursin("[router]", msg)
+        @test occursin("dspy", msg)
+        @test occursin("service blew up", msg)      # 서비스가 낸 사유가 그대로 실린다
     end
 
     @testset "(5) null 가능한 키 여섯이 전부 null 로 살아온다 (결정 없음 행)" begin
@@ -458,6 +508,7 @@ try
         #    `tool_called` 은 어느 시나리오에서도 null 이 아니어서, 그 둘에 `something(x, false)`
         #    를 씌워도 79개가 전부 초록이었다. 이 절이 그 구멍을 막는다.
         _MODE[] = :decline
+        _route_kinds!(String[])                     # battery → ood_kind → dspy
         local d = decide_all(TENV, _truth(); nl = "")
         # 전제: 이 응답은 **성공 분기**다. 그래야 아래 `nothing` 들이 "서비스가 보낸 null"
         # 이라는 뜻이 된다(폴백이면 (4) 를 다시 재는 것이 되어 아무것도 안 잰다).

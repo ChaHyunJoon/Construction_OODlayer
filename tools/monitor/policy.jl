@@ -600,11 +600,48 @@ end
 
 const DSPY_HEALTHY = Ref{Union{Nothing,Bool}}(nothing)
 
+# ---- surrogate 의 kind 지원집합 (2026-08-29, T11) --------------------------------------------
+# `/health` 본문의 `surro_kinds` 를 캐시한다. 🔴 **HTTP 호출은 한 건도 안 는다** —
+# `dspy_ready()` 는 이미 `/health` 를 부르고 본문을 버리고 있었다. 그 본문을 읽을 뿐이다.
+#
+# ⚠️ 실패와 "아직 안 물었다" 를 가르는 것은 `DSPY_HEALTHY[]` 다 — `SURRO_KINDS[]` 의 `nothing`
+#    은 언제나 **"못 쟀다"** 하나만 뜻한다(서비스가 없다 · 키가 없다 · 키가 null 이다).
+#    `Set(String[])` 은 "쟀는데 비었다" 로 **다른 사건**이다. `select_lane` 이 그 둘을 가른다:
+#    앞의 것은 죽고, 뒤의 것은 전부 dspy 로 간다.
+const SURRO_KINDS = Ref{Union{Nothing,Set{String}}}(nothing)
+
+"""
+    surro_kinds() -> Union{Nothing,Set{String}}
+
+surrogate 가 학습셋에서 본 kind 집합. `dspy_ready()` 가 `/health` 응답에서 캐시한다.
+`nothing` = 못 쟀다 — `select_lane` 은 그때 **고르지 않고 죽는다**(§0-C 결정 3).
+
+🔴 손으로 쓴 kind 목록을 여기에 두지 않는다. 서비스 쪽 `_load_surrogate` 가 **학습행에서**
+유도하고(`test_surro_kinds.py` 의 리터럴 스캔이 그것을 지킨다), 줄리아는 그 값을 나르기만 한다.
+두 번째 진실원을 만들면 학습셋이 바뀌어도 라우터가 안 따라간다.
+"""
+function surro_kinds()
+    dspy_ready()            # 아직 안 물었으면 여기서 물어 캐시한다
+    return SURRO_KINDS[]
+end
+
 "DSPy 서비스가 살아 있는지 한 번만 확인해 캐시한다(매 이벤트마다 찌르지 않도록)."
 function dspy_ready()
     DSPY_HEALTHY[] === nothing || return DSPY_HEALTHY[]
     ok = try
-        HTTP.get(DSPY_URL * "/health"; readtimeout = 5, retries = 0).status == 200
+        r = HTTP.get(DSPY_URL * "/health"; readtimeout = 5, retries = 0)
+        if r.status == 200
+            # 🔴 본문을 **여기서** 읽는다. 별도 호출을 만들면 이벤트당 HTTP 가 는다.
+            #    파싱 실패는 "못 쟀다"(nothing)이지 서비스 장애가 아니다 — 두 값을 따로 둔다.
+            SURRO_KINDS[] = try
+                local ks = get(JSON3.read(String(r.body)), :surro_kinds, nothing)
+                ks === nothing ? nothing : Set(String.(ks))
+            catch e
+                @warn "[router] /health surro_kinds unreadable -> kind support unknown" exception = e
+                nothing
+            end
+        end
+        r.status == 200
     catch; false end
     DSPY_HEALTHY[] = ok
     ok || @warn "DSPy service unreachable at $DSPY_URL -> falling back to canonical"
@@ -613,7 +650,7 @@ end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
 function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
-                        agents = nothing, zones = nothing)
+                        agents = nothing, zones = nothing, lanes = nothing)
     dspy_ready() || return nothing
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
@@ -671,6 +708,15 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    (`isempty(env.staging_circles)` 인 씬), 값 타입이 `Any` 라 pydantic 이 null 을 받고
     #    `_zones_block` 은 그 세 키를 **아예 렌더하지 않는다**. 그래서 이 채널로는 422 가 안 난다.
     zones === nothing || (payload["zones"] = zones)
+    # 이 요청이 **실제로 청구하는** 레인 (2026-08-29, T11 / §0-C 충돌 ⑦). `agents`/`zones` 와
+    # **정확히 같은 규약**: 키워드로 받고, `nothing` 이 아닐 때만 payload 에 싣는다 —
+    # 안 실으면 서비스가 둘 다 계산한다(하위호환, 2026-08-29 이전과 바이트 동일).
+    # 🔴 여기가 비용이 실제로 잘리는 자리다. surrogate 로 라우팅된 사건에서 이 키가 없으면
+    #    서비스가 맨 앞에서 `macro(req)` 로 LLM 을 부른다 — `select_lane` 만 고쳐서는
+    #    비용이 1원도 안 준다. 게이트: `test_decide_lanes.py`(LM 호출 델타 0).
+    # ⚠️ 빈 목록도 **싣는다**. 서비스에서 `[]` 는 "아무 레인도 안 청구했다" 로 `None`(둘 다)과
+    #    다른 사건이다 — falsy 로 접으면 그 구별이 여기서 죽는다.
+    lanes === nothing || (payload["lanes"] = collect(String, lanes))
     # 🔴 **`tool_choice` 는 이 요청에 더 이상 실리지 않는다** (2026-08-29, 단일 채널 / T6).
     #    T-C 가 놓았던 `tool_choice = …` 키워드와 그 payload 줄을 여기서 지웠다. 이유는
     #    라우터 게이팅이 **의미를 잃었기 때문**이다: T5 가 서비스의 `TOOL_CHOICE_DEFAULT` 를
@@ -1441,172 +1487,104 @@ function decide_all(env, truth; nl::AbstractString = "")
         end
     end
 
-    rt = route(env, truth)                        # ← 이 사건을 누구에게 보낼지, 시스템이 판정
+    rt = route(env, truth)                        # ← 판정 기록(참고용). 라우팅은 아래 kind 축이 한다.
     desc = get(rt, "descriptors", nothing)
 
-    # oracle 은 canonical/noop 과 마찬가지로 DSPy 서비스 없이도 결정을 내야 한다(a* 는 상태에서
-    # 곧바로 나온다). 여기 빠져 있으면 DEMO_ALL_POLICIES=0 인 oracle 판이 사건마다 서비스를 부른다.
-    # 🔴 2026-08-27 (최종 리뷰 F6): 조건이 `!get(rt, "enabled", false)` 였다. 그 값은 novelty
-    #    교정(have_det)을 포함하므로, Task 3 이후 `router_drives()` 가 true 인데 `rt["enabled"]`
-    #    는 false 인 상태가 **도달 가능해졌다**(교정 파일이 없는 이 작업 트리가 바로 그 상태다).
-    #    그러면 `DEMO_ALL_POLICIES=0` 런이 **라우팅한다고 주장하면서 서비스 호출을 통째로
-    #    건너뛴다** — pol["surrogate"]·pol["dspy"] 가 둘 다 unavailable 이라 축 1 이 발화할
-    #    길 자체가 없고 select_lane 은 언제나 canonical + axis="none" 으로 떨어진다.
-    #    R11 이 고친 바로 그 손잡이 혼동이 한 화면 위에 남아 있었다. 레인을 고르는 게이트와
-    #    **같은 술어**를 쓴다: 라우터가 몰면 서비스가 필요하다.
-    #    (`rt["enabled"] ⟹ router_drives()` 이므로 이 조건은 예전 것보다 엄격히 덜 건너뛴다 —
-    #     라우터가 꺼진 비교 실행의 절약은 그대로 남는다.)
-    j = (POLICY in ("canonical", "noop", "oracle") && !router_drives() &&
-         get(ENV, "DEMO_ALL_POLICIES", "1") == "0") ?
-        nothing : service_decide(env, truth; nl = nl, descriptors = desc,
-                                 agents = CB.open_agent_descriptors(env),
-                                 zones = CB.open_zone_descriptors(env))
-    # 🔴 여기 있던 `tool_choice = tool_choice_for(novelty_measured = …, novel = …)` 는
-    #    2026-08-29(단일 채널 / T6)에 **지웠다**. 근거는 `service_decide` 안의 같은 날짜 블록:
-    #    서비스 기본값이 `"required"` 가 된 이후 그 유도의 세 결과가 프로바이더 요청에서 한
-    #    값으로 붕괴한다. `rt` 는 이 아래에서 계속 쓰이므로 라우터 판정 자체는 그대로 기록된다.
+    # ---- kind 색인 라우터 (2026-08-29, T11 / §0-C 사용자 결정 1) -----------------------------
+    # 🔴 판정 입력이 **kind 하나**다. 아는 kind → surrogate, 처음 보는 kind → LLM.
+    #    `routing_kind` 는 `lane_select.jl` 의 전총 함수이고, `ood_features` 의 `"kind"` 와
+    #    **일부러 다른 함수**다: 저쪽의 `else` 분기가 모르는 타입에 `"fault"` 를 주는데(그건
+    #    surrogate **피처**로는 옳다) 라우팅에 쓰면 가장 OOD 한 사건이 가장 확신에 찬 레인으로
+    #    간다(§0-C 충돌 ①). 두 유도가 알려진 셋에서 같은 값임은 `test/tool_choice_gate.jl` 의
+    #    교차 게이트가 못박는다 — 그게 없으면 `FaultTruth` 개명 한 번에 전 사건이 dspy 로 간다.
+    local rkind = routing_kind(String(nameof(typeof(truth))))
+    rt["routing_kind"] = rkind
+    # 🔴 `surro_kinds()` 가 `nothing`(= 못 쟀다)이면 `select_lane` 이 **죽는다**. 조용히
+    #    한쪽으로 떨어지면 그 런의 모든 행이 근거 없이 "라우팅했다" 로 기록된다.
+    local sel = router_drives() ?
+        select_lane(kind = rkind, known_kinds = surro_kinds(), policy = POLICY) :
+        (lane = POLICY, axis = "fixed",
+         reason = "router off — DEMO_POLICY=$(POLICY) is fixed for this run")
+    rt["router_axis"] = sel.axis
+    rt["lane_reason"] = sel.reason
+    # 기존 문구를 **덮어쓰지 않고 덧붙인다** — 판정 근거가 든 줄이 화면에서 사라지면 안 된다.
+    rt["reason"] = get(rt, "reason", "") * " · LANE: " * sel.reason
 
-    # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy
-    # (DSPY_MODEL 에 따라 "dspy:gpt-4.1" 등)를 그대로 쓴다. 여기 gpt-4o 를 박아두면 다른 모델로
-    # 띄웠을 때 UI 가 거짓말을 한다.
-    # dict 조립은 `policy_entry`(위) 한 곳에만 있다 — 여기서 다시 쓰면 테스트가 검사하는 것과
-    # 실행되는 것이 갈린다(그게 정확히 이 회귀가 검사를 빠져나간 방식이다).
-    for (key, label) in (("dspy", "dspy:LLM"), ("surrogate", "surrogate:RandomForest"))
+    # ---- 고른 레인 **하나만** 청구한다 (2026-08-29, T11 / §0-C 충돌 ⑦) -----------------------
+    # 🔴 여기가 비용이 실제로 잘리는 자리다. surrogate 는 DSPy 서비스 **안**에 살고 유일한
+    #    통로가 `/decide` 인데, 그 함수는 맨 앞에서 `macro(req)` 로 LLM 을 부른다. 이 한 줄이
+    #    없으면 "라우터가 비용을 자른다" 는 주장이 거짓이 된다(T10 이 서비스 쪽을 열었다).
+    # canonical/noop/oracle/dp 는 줄리아가 자기가 계산하므로 서비스 호출이 **0건**이다 —
+    # 옛 `DEMO_ALL_POLICIES` 생략 조건을 이 한 줄이 대체한다(그 손잡이는 T12 가 지운다).
+    local want = sel.lane in ("dspy", "surrogate") ? [sel.lane] : String[]
+    j = isempty(want) ? nothing :
+        service_decide(env, truth; nl = nl, descriptors = desc,
+                       agents = CB.open_agent_descriptors(env),
+                       zones  = CB.open_zone_descriptors(env),
+                       lanes  = want)
+
+    # 폴백 라벨은 모델 이름을 박지 않는다 — 실제 라벨은 서비스가 돌려주는 b.policy 를 쓴다.
+    # dict 조립은 `policy_entry`(위) 한 곳에만 있다.
+    # 🔴 **청구한 레인만** 넣는다. 안 청구한 레인의 키가 `pol` 에 없다는 것이 곧 "안 물었다" 이고,
+    #    `policy_entry(nothing, …)`(available=false)는 "물었는데 실패했다" 다 — 다른 사건이다.
+    for key in want
         pol[key] = policy_entry((j !== nothing && haskey(j, Symbol(key))) ? j[Symbol(key)] : nothing,
-                                label)
+                                key == "dspy" ? "dspy:LLM" : "surrogate:RandomForest")
     end
 
-    # ---- 실행할 레인: 3-way 분기표 (2026-08-14, spec §3) --------------------------------------
-    # 예전에는 `would = novel ? dspy : surrogate` 뿐이었고(:355 — 그 **판정**은 그대로 둔다,
-    # 기존 녹화와의 비교 가능성이 거기 걸려 있다), canonical 은 아래 폴백에서만 등장했다.
-    # 즉 canonical 은 **이미 사실상 세 번째 주자인데 판정에는 그 사실이 안 적혔다.**
-    # select_lane 이 그 규칙을 명시적으로 적는다(의존성 0 · 전수 단위검사 대상).
-    requested = get(rt, "enabled", false) ? String(rt["target"]) : POLICY
-    local avail = Dict{String,Bool}(k => (haskey(pol, k) && pol[k]["available"] === true)
-                                    for k in ("canonical", "surrogate", "dspy", "noop"))
-    # surrogate 가 이 사건의 팔을 학습셋에서 지원하는가 = 기존 에스컬레이션 판정과 **같은 근거**
-    # (`escalation_target` 의 `unsupported` 목록). 프로브 대상은 **언제나 surrogate** 다 —
-    # `requested` 로 물으면 라우터가 이미 dspy 를 고른 사건에서 "지원됨" 이 나와 분기가 뒤집힌다.
-    local _esc_probe, _esc_miss = escalation_target(pol, "surrogate", true)
-    local supported = isempty(_esc_miss)
-    # ---- F4 (2026-08-27 최종 리뷰): "재서 없다" 와 "못 쟀다" 를 기록에서 가른다 -------------
-    # `supported` 는 Bool 하나라 두 사건이 같은 값(true)으로 무너진다:
-    #   지원집합 UNKNOWN(모델 미적재/서비스 부재) → unsupported=[] → supported=true → axis="none"
-    #   진짜로 전부 지원                          → unsupported=[] → supported=true → axis="none"
-    # 앞의 것은 축 1 이 **자기가 존재하는 이유인 그 실패 모드에서 스스로를 과소 집계**하는 것이다
-    # (파이썬에서 Task 4 가 죽인 `set(range(5))` 붕괴가 언어 경계에서 살아 있었다).
-    # 🔴 Ruling R13: `select_lane` 의 axis enum 은 **안 바꾼다**(Task 2 의 계약 · V2 의 몫).
-    #    구분은 axis **옆에** 남긴다.
-    # 판정은 문자열 매칭이 아니라 구조로 한다:
-    #   available == true   ⟹ 점수를 냈다 ⟹ 지원집합이 None 이 아니었다(surrogate_rank 는 None
-    #                         이면 곧바로 되돌아간다) ⟹ 쟀다.
-    #   unsupported ≠ ∅     ⟹ `UNSUPPORTED:` 규약이 나왔다 ⟹ 지원집합을 읽었다 ⟹ 쟀다.
-    #   그 외(서비스 부재 · "support is unknown") ⟹ **못 쟀다.**
-    # 유도는 위 순수 함수 한 곳에만 둔다(`surrogate_support_measured` docstring 이 근거다) —
-    # 여기 인라인으로 다시 쓰면 검사되는 것과 실행되는 것이 갈린다.
-    rt["support_measured"] = surrogate_support_measured(pol["surrogate"], _esc_miss)
-    # ---- F5 (2026-08-27 최종 리뷰): 미달 팔의 **이름**을 남긴다 --------------------------------
-    # `_esc_miss` 는 지금까지 `supported` 라는 Bool 로 접힌 뒤 버려졌다. `rt["requested_unsupported"]`
-    # 는 `requested`(기본 canonical)로 키잉되는데 `pol["canonical"]` 에는 `unsupported` 키가
-    # 없으므로, 기본 설정에서 축 1 이 발화해 dspy 로 보내도 **어느 팔이 없었는지 아무 데도
-    # 안 적혔다.** 설계서 §3 은 `reason = "vocabulary_gap: <이름들>"` 을 명시한다.
-    # 기록은 격상 여부와 무관하게 남긴다(라우터가 꺼진 비교 실행의 진단도 값어치가 있다).
-    isempty(_esc_miss) || (rt["vocabulary_gap_arms"] = _esc_miss)
-
-    enacted = requested
+    enacted = sel.lane
+    # 🔴 `fell_back` 은 **언제나 false 다** (2026-08-29, T11). 조용한 canonical 폴백을 없앤 것이
+    #    §0-C 사용자 결정 3 이고, 아래가 그 결정의 집행이다. 필드는 산출물 스키마 하위호환을
+    #    위해 남기지만 값이 하나로 붕괴했다 — 옛 녹화의 `fell_back=true` 행과 같은 표에 섞지 말 것.
     fell_back = false
-    # 🔴 `get(rt, "enabled", false)` 였다 (2026-08-27). 그 값은 have_det 을 포함하므로 교정 파일이
-    #    없으면 **레인 선택 자체가 안 돌았다** — 축 1 이 select_lane 에 도달조차 못 한다.
-    #    레인 선택은 novelty 수치가 없어도 성립한다: 축 1 은 지원집합만 보고, 축 2(임시 novelty)는
-    #    `rt["novel"]` 이 없으면 false 로 읽혀 그냥 발화하지 않는다.
-    # 🔴 (2026-08-27, Fix round 1) 여기 `router_enabled()` 를 썼던 최초 구현은 틀렸다 —
-    #    그 함수가 `install_novelty!()` 를 불러 교정 파일 유무를 도로 나른다(위 `router_drives()`
-    #    docstring 참고). `router_drives()` 는 그 의존을 안 가진 순수한 사람 손잡이다.
-    if router_drives()
-        local sel = select_lane(novel = get(rt, "novel", false) === true, available = avail,
-                                supported = supported, policy = POLICY)
-        enacted = sel.lane
-        # 🔴 축 1 이 냈으면 **어느 팔이 없었는지**를 산문에도 싣는다(설계서 §3 의 문구:
-        #    `unsupported ≠ ∅ ⟹ escalate, reason = "vocabulary_gap: <이름들>"`).
-        #    조립은 여기서 한다 — `select_lane` 의 시그니처는 안 바꾼다(의존성 0 계약).
-        local lane_reason = (sel.axis == "vocabulary_gap" && !isempty(_esc_miss)) ?
-            sel.reason * " [" * join(_esc_miss, ",") * "]" : sel.reason
-        # 기존 문구를 **덮어쓰지 않고 덧붙인다** — novelty 수치가 든 줄이 화면에서 사라지면 안 된다.
-        rt["reason"] = get(rt, "reason", "") * " · LANE: " * lane_reason
-        rt["lane_reason"] = lane_reason
-        # 어느 축이 이 판정을 냈는가. 산문에서 역파싱하지 않는다 — 설계서 R5 가 이 값을 센다.
-        rt["router_axis"] = sel.axis
-        fell_back = (enacted != requested && enacted == "canonical")
-    end
-    # 고정 정책 실행(라우터 OFF)이거나, 고른 레인이 실제로는 쓸 수 없을 때의 마지막 그물.
-    if !(haskey(pol, enacted) && pol[enacted]["available"])
-        enacted = "canonical"; fell_back = (requested != "canonical")
+
+    # ---- 시끄럽게 죽는 자리 (§0-C 사용자 결정 3) --------------------------------------------
+    # 🔴 `try/catch` 로 이 사건만 건너뛰거나 `@error` 를 찍고 canonical 로 계속 도는 변형은
+    #    전부 이 결정에 반한다 — 그러면 산출물이 "라우팅했다" 고 주장하면서 실제로는 규칙표가
+    #    돈 행을 섞어 담게 되고, 그게 §0-C 가 지우려는 바로 그 상태다. 런이 죽는 것이
+    #    이 설계에서 **의도된 신호**다(선례: F1, `011ed3c0`).
+    if enacted in ("dspy", "surrogate")
+        local e = get(pol, enacted, nothing)
+        if e === nothing || e["available"] !== true
+            local why = e === nothing ? "(lane absent from the service response)" :
+                        String(something(get(e, "error", ""), ""))
+            # 🔴 `UNSUPPORTED:` 는 장애가 아니라 **도장과 어휘가 갈린 것**이라 메시지를 가른다.
+            #    (kind 도장은 이 kind 를 배웠다고 말하는데 그 팔들이 매크로 지원집합에 없다.)
+            startswith(why, "UNSUPPORTED:") && error(
+                "[router] '$(rkind)' is in the surrogate's train_kinds stamp, but its arms " *
+                "are not in the macro support set ($(why)). The stamp and the vocabulary " *
+                "have diverged — regenerate the dataset or fix the vocab.")
+            error("[router] lane '$(enacted)' was chosen for a '$(rkind)' event but " *
+                  "returned no decision: $(isempty(why) ? "(no error field)" : why)")
+        end
+    elseif !haskey(pol, enacted)
+        # 고정 정책(라우터 OFF)이 존재하지 않는 레인을 가리키면 그것도 오설정이다.
+        error("[router] DEMO_POLICY='$(enacted)' names a lane that was never computed")
     end
 
-    # ---- 에스컬레이션은 **라우팅 기능**이다 (2026-08-06) --------------------------------------
-    # 아래 두 블록(행동 표현력 · 관측 표현력)은 지금까지 라우터 설정과 무관하게 항상 돌았다.
-    # 그러면 `DEMO_ROUTER=0` 으로 정책을 고정한 비교 실행에서도 사건에 따라 조용히 dspy 로
-    # 넘어가고, "surrogate 를 쟀다"고 적은 판이 사실은 LLM 판이 된다 — STATUS §5 가 정책 비교 시
-    # 라우터를 끄라고 적은 바로 그 사고다. 그래서 격상은 라우터가 실제로 몰 때만 허용한다.
-    # (진단 기록은 아래에서 조건과 무관하게 계속 남는다 — 감사 증거는 언제나 남긴다는 원칙.)
-    # ---- 격상 손잡이 (2026-08-27, 설계서 §3) -------------------------------------------------
-    # 🔴 예전에는 `get(rt, "enabled", false)` 였다. 그 값은 `have_det && router_enabled() &&
-    #    POLICY != "noop"` 이라 **novelty 교정 파일이 있어야만** 어휘 미달 격상이 열렸다.
-    #    그런데 "이 팔을 학습한 적이 있는가" 는 교정과 아무 상관이 없는 사실이다. 교정 디렉토리가
-    #    없는 동안(= 지금) 어휘 미달은 한 번도 격상할 수 없었다.
-    # ⚠️ 원래 그 게이트가 막으려던 것은 실재한다: DEMO_ROUTER=0 으로 정책을 고정한 비교 실행에서
-    #    사건에 따라 조용히 dspy 로 넘어가면 "surrogate 를 쟀다"고 적은 판이 LLM 판이 된다.
-    #    그래서 그 보호는 **사람이 켠 손잡이**로 보존하고, 교정 유무(have_det)만 뗀다.
-    # 🔴 (2026-08-27, Fix round 1) 여기도 `router_enabled()` 를 썼던 최초 구현은 틀렸다 — 같은
-    #    이유로 `router_drives()` 를 쓴다(위 그 함수의 docstring 이 정확한 사유다).
-    escalation_allowed = router_drives()
-
-    # ---- 표현력 에스컬레이션 (2026-08-04) ---------------------------------------------------
-    # novelty 라우터는 **상태**가 낯선지만 본다. 그런데 싼 정책이 못 하는 이유가 하나 더 있다:
-    # 그 상황의 유효 매크로를 **표현조차 못 할 때**다. 배포 surrogate 는 매크로 0~4 로 학습돼
-    # RelocateBuild(7) 행이 한 줄도 없다 → 고를 수가 없고 조용히 NOOP 으로 떨어진다.
-    # 실측(2026-08-04, zonecore 데모): 구역이 root 하역 목표 8/8 을 삼켰는데 novelty p=0.205 라
-    # "익숙함 → surrogate" 로 갔고, surrogate 는 RelocateBuild 를 못 봐서 NOOP 을 냈다.
-    # 상태가 익숙한 것과 행동을 표현할 수 있는 것은 **다른 조건**이므로, 후자가 깨지면 novelty 와
-    # 무관하게 LLM 으로 올린다. 이게 "새 행동은 LLM, 익숙한 것은 surrogate" 분담의 정확한 형태다.
-    local esc_tgt, esc_missing = escalation_target(pol, requested, escalation_allowed)
-    isempty(esc_missing) || (rt["requested_unsupported"] = esc_missing)
-    if esc_tgt == "dspy"
-        local miss = join(esc_missing, ",")
-        rt["escalated_from"] = requested
-        rt["escalation_reason"] = "no training support for $(miss)"
-        rt["reason"] = get(rt, "reason", "") *
-            " · ESCALATED: $(requested) cannot represent [$(miss)] → dspy"
-        @info "[router] escalate $(requested) → dspy: 학습 근거 없는 매크로 [$(miss)]"
-        enacted = "dspy"
-        # canonical 로 **떨어진** 게 아니라 LLM 으로 **올라갔다**. 플래그를 정직하게 되돌린다.
-        fell_back = false
-    end
-    # ---- 어휘 밖 수복 에스컬레이션 (2026-08-05, STEP 7) -------------------------------------
-    # 위 블록은 "싼 정책이 그 매크로를 학습한 적이 없다"를 본다. 그 위에 한 겹 더 있다:
-    # **닫힌 어휘 자체에 수복이 없는 경우**다. zone_diagnosis 가 :line_stop 을 내면 그 뜻은
-    # "위반은 실재하는데(root 하역목표나 형성 중인 팀이 갇힘) ForbidZone 도 RelocateBuild 도
-    # 그걸 못 치운다" — 즉 NOOP 밖에 못 고르는데 NOOP 은 답이 아니다. 그 자리가 정확히
-    # LLM 에게 **새 수복을 제안**(PROPOSE_NEW)하게 해야 하는 자리다.
-    # novelty(상태가 낯선가)도 아니고 액션 학습근거(그 팔을 본 적 있나)도 아닌, 세 번째 조건 =
-    # **표현 가능성**이다. 상태는 익숙하고 팔도 학습돼 있는데 어떤 팔도 위반을 못 해소할 수 있다.
+    # ---- zone 진단 — 🔴 **기록만 한다. 격상은 더 이상 없다** (2026-08-29, T12 / §0-C) --------
+    # 옛 모양: 이 블록은 두 조건(`n_nav_blocked > 0` · `verdict === :line_stop`)에서 `enacted`
+    # 를 `"dspy"` 로 올렸다. kind 축에서 **zone 은 이미 dspy** 이므로 그 두 분기의 가드
+    # (`enacted != "dspy"`)가 절대 참이 안 되는 죽은 코드다. 지웠다.
     #
-    # ★ 진단은 **에스컬레이션이 필요한지와 무관하게** 돌린다(2026-08-05 첫 라이브 런에서 발견):
-    #   예전 조건은 `enacted != "dspy"` 를 블록 전체에 걸어 두어서, 라우터가 이미 LLM 으로 보낸
-    #   사건에서는 zone_primitives 가 스트림에 **한 줄도 안 남았다**. 그런데 그 값이야말로 "이 구역이
-    #   실제로 무엇을 막았나"라는 사후 감사의 유일한 증거다. 기록은 언제나, 격상만 조건부로 한다.
+    # ✅ **남기는 것 둘.** 격상이 사라져도 *"왜 올렸어야 했는가"* 의 진단은 사후 감사의 유일한
+    #    증거이므로 값으로 남긴다:
+    #      · `zone_primitives` — 조건 없는 감사 증거(그대로).
+    #      · `zone_verdict`    — `:line_stop` = "닫힌 어휘에 이 구역의 수복이 없다". **기록만**
+    #                            하고 격상 판정으로는 쓰지 않는다.
+    #
+    # 🔴 `check_restage = true` 가 **하중을 진다.** `ood_features` 의 `zone_diagnosis(env, zone)`
+    #    호출은 이 인자가 없어서 restage 가능성을 안 잰다. 이 줄을 지우면 `verdict` 가
+    #    `:line_stop` 이 될 길이 사라지고, 아래 기록이 **에러 없이** 영원히 다른 값만 낸다.
     if truth isa CB.ZoneTruth
         local zdg = try
             CB.zone_diagnosis(env, truth.zone; check_restage = true)
         catch e
-            @warn "[router] zone_diagnosis failed -> expressiveness gate skipped" exception = e
+            @warn "[router] zone_diagnosis failed -> zone audit record skipped" exception = e
             nothing
         end
-        local can_escalate = escalation_allowed && enacted != "dspy" &&
-                             haskey(pol, "dspy") && pol["dspy"]["available"]
         if zdg !== nothing && zdg.exists
-            # 판정 자체는 오라클의 것이라 정책에 주지 않는다. 여기 남기는 것은 **원시값**과
-            # "어휘에 수복이 없다"는 사실뿐이다(UI/감사 로그용).
+            # 판정 자체는 오라클의 것이라 정책에 주지 않는다. 여기 남기는 것은 **원시값**뿐이다.
             rt["zone_primitives"] = Dict(
                 "n_blocked" => zdg.n_blocked, "n_restage_feasible" => zdg.n_restage_feasible,
                 "root_covered" => zdg.root_covered, "root_total" => zdg.root_total,
@@ -1618,37 +1596,8 @@ function decide_all(env, truth; nl::AbstractString = "")
                 "n_nav_disconnected" => zdg.n_nav_disconnected,
                 "n_agent_trapped" => zdg.n_agent_trapped,
                 "n_nav_downstream" => zdg.n_nav_downstream)
-            # ---- 관측 표현력 에스컬레이션 (2026-08-05) --------------------------------------
-            # 위 블록(액션 표현력)은 "싼 정책이 그 **매크로**를 학습한 적이 없다"를 본다. 여기 있는 것은
-            # 그 쌍둥이인 **관측** 표현력이다: 배포 서로게이트는 graded_hs_n44 로 적합되고 그 열 목록에
-            # blockage 열이 아예 없다(kind/severity/zone_overlap/progress/… 뿐, features_agnostic 참조).
-            # 즉 "이 구역이 항법 목표를 실제로 막고 있다"는 사실을 담을 **칸 자체가 없으므로**, 이 사건에서
-            # 서로게이트는 원리적으로 옳을 수 없다. 그런데 novelty 는 상태 서술자 6개만 보고 "익숙하다"고
-            # 말한다 — 그게 지금의 오작동이다. 위반이 실재하면(n_nav_blocked>0) novelty 와 무관하게 올린다.
-            #
-            # :line_stop 조건(아래)과의 차이: 저쪽은 "닫힌 어휘에 수복이 **없다**", 이쪽은 "수복은 있는데
-            # 싼 정책이 그 위반을 **볼 수 없다**". 실측상 :line_stop 은 거의 잠들어 있고(작업공간이
-            # 무한이라 Δ 가 늘 존재) 실제로 발화하는 것은 이쪽이다.
-            if zdg.n_nav_blocked > 0 && can_escalate
-                rt["escalated_from"] = enacted
-                rt["escalation_reason"] =
-                    "zone blocks $(zdg.n_nav_blocked)/$(zdg.n_nav_goals) navigable goals " *
-                    "(engulfed $(zdg.n_nav_engulfed), unreachable $(zdg.n_nav_disconnected)); " *
-                    "the surrogate's feature vector has no column for blockage"
-                rt["reason"] = get(rt, "reason", "") *
-                    " · ESCALATED: zone actually blocks $(zdg.n_nav_blocked) navigable goal(s) → dspy"
-                @info "[router] escalate $(enacted) → dspy: 이 구역이 항법 목표 $(zdg.n_nav_blocked)개를 실제로 막는다"
-                enacted = "dspy"
-            elseif zdg.verdict === :line_stop && can_escalate
-                rt["escalated_from"] = enacted
-                rt["escalation_reason"] = "closed vocabulary has no repair for this zone " *
-                    "(root $(zdg.root_covered)/$(zdg.root_total) trapped, " *
-                    "$(zdg.n_teams_covered) team(s) trapped, no clearing translation)"
-                rt["reason"] = get(rt, "reason", "") *
-                    " · ESCALATED: no DSL action clears this zone → dspy (propose new)"
-                @info "[router] escalate $(enacted) → dspy: 닫힌 어휘에 이 구역의 수복이 없다(:line_stop)"
-                enacted = "dspy"
-            end
+            # Symbol 은 JSON 에 안 실리므로 String 으로.
+            rt["zone_verdict"] = String(zdg.verdict)
         end
     end
 
@@ -1711,7 +1660,11 @@ function decide_all(env, truth; nl::AbstractString = "")
 
     # 후보표: 실행 정책의 순위를 쓰되, 각 매크로를 어느 정책이 골랐는지 표시한다.
     ranking = pol[enacted]["ranking"]
-    for m in [pol[k]["chosen"] for k in ("canonical", "surrogate", "dspy") if pol[k]["available"]]
+    # 🔴 2026-08-29 (T11): `haskey` 가드가 필요해졌다. 라우터가 사건당 레인 **하나만** 부르므로
+    #    `pol` 에 `"surrogate"`/`"dspy"` 키가 **없을 수 있다**(= "안 물었다"). 없는 것을 색인하면
+    #    `KeyError` 로 죽는데, 그건 이 설계가 의도한 시끄러운 죽음이 아니라 그냥 결함이다.
+    for m in [pol[k]["chosen"] for k in ("canonical", "surrogate", "dspy")
+              if haskey(pol, k) && pol[k]["available"]]
         (isempty(m) || m in ranking) || push!(ranking, m)
     end
     (forced && !(chosen in ranking)) && push!(ranking, chosen)   # 강제 집행 매크로도 표에 보이게
@@ -1721,29 +1674,24 @@ function decide_all(env, truth; nl::AbstractString = "")
                               "margin $(round(pol[enacted]["margin"]; digits = 2))" : ""),
                   "chosen" => (m == chosen),
                   "rule"   => (m == pol["canonical"]["chosen"]),
+                  # 🔴 2026-08-29 (T11): 같은 `haskey` 가드. 안 부른 레인은 `pol` 에 키가 없다.
+                  #    ⚠️ 이 열의 뜻이 좁아졌다 — 예전엔 "세 레인 중 누가 이 매크로를 골랐나"
+                  #    였는데, 이제 계산된 레인이 둘(canonical + 고른 것)뿐이라 **비교 정보가
+                  #    구조적으로 줄었다.** 옛 녹화와 같은 표에 섞지 말 것(§0-C 충돌 ④).
                   "by"     => join([k for k in ("canonical", "surrogate", "dspy")
-                                    if pol[k]["available"] && pol[k]["chosen"] == m], "+"),
+                                    if haskey(pol, k) && pol[k]["available"] &&
+                                       pol[k]["chosen"] == m], "+"),
                   "verified" => (m == chosen))
              for (i, m) in enumerate(ranking)]
 
-    others = [k for k in ("canonical", "surrogate", "dspy")
-              if k != enacted && pol[k]["available"] && pol[k]["chosen"] != chosen]
-    routed = get(rt, "enabled", false) ?
-             # 표현력 에스컬레이션이 일어났으면 그 사실을 **먼저** 말한다. novelty 판정만 적으면
-             # "familiar → surrogate" 로 보이는데 실제로 실행된 것은 dspy 라 UI 가 거짓말을 한다.
-             (haskey(rt, "escalated_from") ?
-                "ROUTED→$(rt["escalated_from"]) (familiar) → ESCALATED→LLM ($(rt["escalation_reason"])) · " :
-              rt["novel"] ? "ROUTED→LLM (novel) · " : "ROUTED→surrogate (familiar) · ") : ""
+    # 🔴 2026-08-29 (T11): `others`(= 안 부른 레인과의 불일치 목록)는 **사라졌다.** 라우터가
+    #    사건당 레인 하나만 부르므로 비교할 값이 존재하지 않는다 — 예전 코드는 `pol[k]` 를
+    #    무조건 색인해 지금은 `KeyError` 로 죽는다. 화면의 "DIFFERS from …" 줄도 같이 간다.
+    #    ⟹ 이 커밋 **이전** 녹화와 그 줄에서 비교가 끊긴다(§0-C 충돌 ④, 되돌릴 수 없다).
+    routed = router_drives() ? "ROUTED→$(enacted) ($(get(rt, "router_axis", "?"))) · " : ""
     verdict = routed * "ADMITTED · $(pol[enacted]["label"])" *
-              # 폴백 사유를 같이 적는다: "requested surrogate unavailable" 만으로는 **왜**
-              # 못 썼는지가 안 남아, 나중에 이 줄을 읽는 사람이 로그를 다시 파야 한다.
-              (fell_back ? " (requested $(requested) unavailable" *
-                           (haskey(pol, requested) && !isempty(get(pol[requested], "rationale", "")) ?
-                            ": $(pol[requested]["rationale"])" : "") * ")" : "") *
               (forced ? " · FORCED→$(FORCE_MACRO) (control run; policy chose $(rt["forced_from"]))" : "") *
-              (get(rt, "deviated", false) ? " · DEVIATE→$(rt["deviate_arm"]) (1-step; policy chose $(rt["deviate_from"]))" : "") *
-              (isempty(others) ? " · all policies agree" :
-               " · DIFFERS from " * join(["$(k)=$(pol[k]["chosen"])" for k in others], ", "))
+              (get(rt, "deviated", false) ? " · DEVIATE→$(rt["deviate_arm"]) (1-step; policy chose $(rt["deviate_from"]))" : "")
 
     # ---- 자연어 서술 (2026-08-14, spec §4.1) --------------------------------------------------
     # 결정적 템플릿이다(LLM 호출 없음). 여기서 **찍어 넣는** 이유: 대시보드는 스트림을 그대로
@@ -1761,7 +1709,9 @@ function decide_all(env, truth; nl::AbstractString = "")
             "enacted"       => enacted,
             "macro_name"    => chosen,
             "fell_back"     => fell_back,
-            "requested"     => requested,
+            # 🔴 2026-08-29 (T11): `requested` 라는 별개의 값이 없어졌다 — 라우터가 고른 레인이
+            #    곧 집행된 레인이고(조용한 폴백이 사라졌다), 다르면 그 자리에서 죽는다.
+            "requested"     => enacted,
             "policies"      => pol))
     catch e
         # 서술이 실패해도 결정은 계속한다. 다만 **빈 문자열로 조용히 덮지 않는다** — 화면이
@@ -1780,11 +1730,18 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    `tool_lane_view` 의 docstring 에 **한 벌만** 있다.
     local tool_lane = tool_lane_view(pol, enacted)
 
+    # 🔴 2026-08-29 (T11/T12): `llm_macro` 와 `agree` 는 **반사실**이다 — 안 부른 레인의 값을
+    #    주장한다. 라우터가 사건당 레인 하나만 부르므로 그 값이 존재하지 않는다(§0-C 결정 4).
+    #    필드는 **하위호환을 위해 남기되 `nothing` 으로 붕괴한다**: 소비자가 키 부재를 "값이
+    #    없다" 가 아니라 **"세대가 다르다"** 로 읽을 수 있어야 하고, 키를 통째로 없애면
+    #    옛 녹화를 읽는 코드가 `KeyError` 로 죽는 것과 구별이 안 된다.
+    #    ⚠️ dspy 레인이 실제로 집행된 사건에서는 `llm_macro == chosen` 이므로 값이 있다.
     return (macro_name = chosen, candidates = cands, policies = pol, enacted = enacted,
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],
-            llm_macro = pol["dspy"]["chosen"], verdict = verdict, router = rt,
+            llm_macro = (haskey(pol, "dspy") ? pol["dspy"]["chosen"] : nothing),
+            verdict = verdict, router = rt,
             narrative = narrative, tool_lane = tool_lane,
-            detail = pol[enacted]["rationale"], agree = isempty(others))
+            detail = pol[enacted]["rationale"], agree = nothing)
 end
 
 
