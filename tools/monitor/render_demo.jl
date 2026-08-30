@@ -643,7 +643,17 @@ function enact_recovery!(env, truth, prop)
                     CB.hot_swap_robot!(env, truth.robot; mode = :via_depot, verbose = false)
                     local f = CB.BATTERY_FLEET[]; (f !== nothing && haskey(f.soc, truth.robot)) && (f.soc[truth.robot] = 1.0)
                 else
-                    CB.rebalance_for_battery!(env)
+                    # 🔴 2026-08-30 (T0, 음성 대조로 수정): 애초 이 주석은 `enact_recovery!` 가
+                    # battery_mild 에서 LLM 의 NOOP 을 조용히 무시한다고 주장했다. 독립 검증으로
+                    # 반증됐다 — `enact_recovery!`(이 파일, 같은 함수)의 호출부는 **0개**다. 이
+                    # 시뮬레이션 루프가 실제로 쓰는 producer 는 `policy_producer`(이 파일)이고,
+                    # `set_respec_producer!` 로 꽂힌다 — 이 `else` 분기와는 다른 경로다. 그래서
+                    # 이 println 은 "폴백이 실제로 이 판을 침묵으로 덮었다"의 계측이 아니라
+                    # **음성 대조**다: 찍히면 안 되는 게 정상이고, 찍히면 죽은 줄 알았던 경로가
+                    # 실은 살아 있다는 뜻이라 그 자체가 중대 발견이다.
+                    local _rb = CB.rebalance_for_battery!(env)
+                    println("[recover] SILENT-FALLBACK battery rebalance=$(_rb) " *
+                            "(macro_name=$(macro_name) — 이 분기는 결정을 안 본다)")
                 end
             elseif truth isa CB.ZoneTruth && truth.assembly !== nothing
                 CB.restage_assembly!(env, truth.assembly; resume = true, verbose = false)
