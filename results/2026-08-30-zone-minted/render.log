@@ -1,0 +1,339 @@
+The latest version of Julia in the `lts` channel is 1.10.12+0.x64.linux.gnu. You currently have `1.10.11+0.x64.linux.gnu` installed. Run:
+
+  juliaup update
+
+in your terminal shell to install Julia 1.10.12+0.x64.linux.gnu and update the `lts` channel to that version.
+[ Info: [policy] deviation OFF (DS_DEVIATE_AT unset)
+[ Info: Listening on: 127.0.0.1:8700, thread id: 1
+┌ Info: MeshCat server started. You can open the visualizer by visiting the following URL in your browser:
+└ http://127.0.0.1:8700
+Processing file...   3%|█▋                                                |  ETA: 0:00:13 ( 0.22  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:01 (17.75 ms/it)[K
+>>> objective weights: κ=0.01 w_g=0.000745904473072587
+>>> objective_hash: 489268e6659e5ae9  energy_objective=1
+Constructing model spec...done!
+Constructing scene tree...done!
+Computing approximate geometry...done!
+Configuring transport units...done!
+Validating scene tree...done!
+Constructing partial schedule...done!
+Generating staging plan...[DIAG] staging_plan: build step #1 (ConstructionBots.TemplatedID{OpenBuildStep}(19))
+[DIAG] staging_plan: build step #2 (ConstructionBots.TemplatedID{OpenBuildStep}(15))
+[DIAG] staging_plan: build step #3 (ConstructionBots.TemplatedID{OpenBuildStep}(14))
+[DIAG] staging_plan: build step #4 (ConstructionBots.TemplatedID{OpenBuildStep}(13))
+[DIAG] staging_plan: build step #5 (ConstructionBots.TemplatedID{OpenBuildStep}(12))
+[DIAG] staging_plan: build step #6 (ConstructionBots.TemplatedID{OpenBuildStep}(11))
+[DIAG] staging_plan: build step #7 (ConstructionBots.TemplatedID{OpenBuildStep}(10))
+[DIAG] staging_plan: build step #8 (ConstructionBots.TemplatedID{OpenBuildStep}(9))
+[DIAG] staging_plan: build step #9 (ConstructionBots.TemplatedID{OpenBuildStep}(18))
+[DIAG] staging_plan: build step #10 (ConstructionBots.TemplatedID{OpenBuildStep}(8))
+[DIAG] staging_plan: build step #11 (ConstructionBots.TemplatedID{OpenBuildStep}(7))
+[DIAG] staging_plan: build step #12 (ConstructionBots.TemplatedID{OpenBuildStep}(6))
+[DIAG] staging_plan: build step #13 (ConstructionBots.TemplatedID{OpenBuildStep}(5))
+[DIAG] staging_plan: build step #14 (ConstructionBots.TemplatedID{OpenBuildStep}(4))
+[DIAG] staging_plan: build step #15 (ConstructionBots.TemplatedID{OpenBuildStep}(3))
+[DIAG] staging_plan: build step #16 (ConstructionBots.TemplatedID{OpenBuildStep}(2))
+[DIAG] staging_plan: build step #17 (ConstructionBots.TemplatedID{OpenBuildStep}(1))
+[DIAG] staging_plan: build step #18 (ConstructionBots.TemplatedID{OpenBuildStep}(17))
+[DIAG] staging_plan: build step #19 (ConstructionBots.TemplatedID{OpenBuildStep}(16))
+[DIAG] staging_plan: finished 19 build steps; selecting assembly start configs...
+[DIAG] assembly_start: ConstructionBots.AssemblyID(3) outer iter=1, parts_left=2
+[DIAG] assembly_start: ConstructionBots.AssemblyID(2) outer iter=1, parts_left=2
+[DIAG] assembly_start: ConstructionBots.AssemblyID(1) outer iter=1, parts_left=3
+[DIAG] staging_plan: select_assembly_start_configs done
+done!
+Placing objects at starting locations ...[DIAG] get_object_vtx: grid search start. num_objects=20, num_layers=1, init_width=2.2978250586152114, dx=1.2, dy=0.8799999999999999, n_obstacles=8
+[DIAG] get_object_vtx: grid search done after cnt=1 expansions
+[DIAG] place_objects: get_object_vtx returned 20 vtxs; calling select_initial_object_grid_locations!
+[DIAG] place_objects: select_initial_object_grid_locations! done; raising assemblies
+[DIAG] place_objects: raising assembly #1 (ConstructionBots.AssemblyID(1)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #1 done
+[DIAG] place_objects: raising assembly #2 (ConstructionBots.AssemblyID(2)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #2 done
+[DIAG] place_objects: raising assembly #3 (ConstructionBots.AssemblyID(3)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #3 done
+[DIAG] place_objects: raising assembly #4 (ConstructionBots.AssemblyID(4)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #4 done
+[DIAG] place_objects: raising assembly #5 (ConstructionBots.AssemblyID(5)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #5 done
+[DIAG] place_objects: raising assembly #6 (ConstructionBots.AssemblyID(6)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #6 done
+[DIAG] place_objects: raising assembly #7 (ConstructionBots.AssemblyID(7)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #7 done
+[DIAG] place_objects: raising assembly #8 (ConstructionBots.AssemblyID(8)) - get_node
+[DIAG] place_objects:   -> global_transform(start_config)
+[DIAG] place_objects:   -> get_base_geom / compute dh
+[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
+[DIAG] place_objects:   -> assembly #8 done
+[DIAG] place_objects: raised 8 assemblies; calibrate_transport_tasks!
+[DIAG] place_objects: calibrate_transport_tasks! done; validate_schedule_transform_tree
+[DIAG] place_objects: validate done
+Simulating...   0%|                                                  |  ETA: N/A (  N/A  s/it)[K
+   step_num: 2[K
+   n_closed: 54[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   1%|▍                                                 |  ETA: 0:41:08 ( 9.91  s/it)[K
+   step_num: 8[K
+   n_closed: 56[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   3%|█▍                                                |  ETA: 0:12:08 ( 2.99  s/it)[K
+   step_num: 12[K
+   n_closed: 61[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...   9%|████▋                                             |  ETA: 0:03:44 ( 0.98  s/it)[K
+   step_num: 52[K
+   n_closed: 77[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  15%|███████▍                                          |  ETA: 0:02:16 ( 0.64  s/it)[K
+   step_num: 100[K
+   n_closed: 91[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  34%|████████████████▉                                 |  ETA: 0:00:49 ( 0.29  s/it)[K
+   step_num: 177[K
+   n_closed: 139[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  40%|███████████████████▉                              |  ETA: 0:00:39 ( 0.26  s/it)[K
+   step_num: 224[K
+   n_closed: 154[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  52%|██████████████████████████▏                       |  ETA: 0:00:25 ( 0.21  s/it)[K
+   step_num: 353[K
+   n_closed: 185[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  67%|█████████████████████████████████▎                |  ETA: 0:00:14 ( 0.17  s/it)[K
+   step_num: 463[K
+   n_closed: 221[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  80%|████████████████████████████████████████▎         |  ETA: 0:00:07 ( 0.14  s/it)[K
+   step_num: 575[K
+   n_closed: 256[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:06 ( 0.14  s/it)[K
+   step_num: 771[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:06 ( 0.15  s/it)[K
+   step_num: 969[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:07 ( 0.15  s/it)[K
+   step_num: 1174[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:07 ( 0.16  s/it)[K
+   step_num: 1377[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:07 ( 0.16  s/it)[K
+   step_num: 1585[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:07 ( 0.17  s/it)[K
+   step_num: 1791[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:07 ( 0.17  s/it)[K
+   step_num: 1986[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:08 ( 0.18  s/it)[K
+   step_num: 2188[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:08 ( 0.18  s/it)[K
+   step_num: 2396[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  83%|█████████████████████████████████████████▍        |  ETA: 0:00:08 ( 0.19  s/it)[K
+   step_num: 2600[K
+   n_closed: 262[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:06 ( 0.19  s/it)[K
+   step_num: 2746[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.19  s/it)[K
+   step_num: 2918[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.19  s/it)[K
+   step_num: 3089[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.20  s/it)[K
+   step_num: 3269[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.20  s/it)[K
+   step_num: 3450[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.21  s/it)[K
+   step_num: 3630[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:07 ( 0.21  s/it)[K
+   step_num: 3804[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.22  s/it)[K
+   step_num: 4005[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.22  s/it)[K
+   step_num: 4188[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.23  s/it)[K
+   step_num: 4366[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.23  s/it)[K
+   step_num: 4549[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.24  s/it)[K
+   step_num: 4725[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:08 ( 0.24  s/it)[K
+   step_num: 4906[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:09 ( 0.25  s/it)[K
+   step_num: 5087[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:09 ( 0.25  s/it)[K
+   step_num: 5270[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:09 ( 0.26  s/it)[K
+   step_num: 5471[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A
+
+
+[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████       |  ETA: 0:00:09 ( 0.26  s/it)[K
+   step_num: 5652[K
+   n_closed: 270[K
+    n_total: 305[K[A[A[A┌ Warning: No progress for 3000 iterations. Terminating.
+└ @ ConstructionBots ~/Construction_OODlayer/src/demo_utils.jl:279
+
+
+
+[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:56 ( 0.23  s/it)[K
+done!
+Assigning robots...done!
+Animating preprocessing step...done
+>>> battery: capacity=8.279999999999999e6 J (spec, no shrink)  stall=true@0.15  derate=true  courier=true halt=true
+[zone] blocking zone on transport vtx=153 @[1.094, 0.416] r=0.07 -> nav_blocked=3/131
+[zone] diag n_blocked=3 n_nav_blocked=3 root_covered=0/8 n_work_overlap=6 n_teams_covered=0 n_nav_goals=131 n_nav_engulfed=3 n_agent_trapped=0
+    · zone(blocking) injected pre-sim
+>>> OOD armed: zone×1 [blocking, pre-sim] + none×0 [stochastic seed=1, step-window draw]  model=tractor.mpd scale=0.008 robots=10
+[router] 'unknown:zone' is outside the surrogate's training kinds → escalate to LLM (kind=unknown:zone, axis=ood_kind)
+[policy] ZoneTruth → NOOP (enacted=dspy; rule=NOOP)
+[enact] target=- source=none tool_agent=- verify=deferred:no_groundable_param reject=no_tool_agent
+[minted] lane=reach_nothing tool=n/a reach=n/a verdict=deferred applied=false partial=false world_maybe_dirty=false handled=false undo=none resume=none steps=[] ran_milp=n/a(not armed) reason=no synth lane on this decision
+[minted] NOT handled → 기본 복구 사슬로 폴백한다 (이 폴백은 조용하지 않다 — 위 verdict 가 이유다)
+PROJECT INCOMPLETE!
+	(변수 덤프 생략됨 — 사후분석 .jld2를 저장하려면 ENV["CB_VAR_DUMP"]="1")
+[DIAG] animation: 367 clips, max 193 keyframes per track
+ERROR: LoadError: refusing to publish incomplete animation for model=tractor.mpd case=none
+Stacktrace:
+ [1] error(s::String)
+   @ Base ./error.jl:35
+ [2] top-level scope
+   @ ~/Construction_OODlayer/tools/monitor/render_demo.jl:1214
+in expression starting at /home/chahj578/Construction_OODlayer/tools/monitor/render_demo.jl:1214
+Saving animation to /home/chahj578/Construction_OODlayer/src/../results/tractor_render/greedy_RVO_Dispersion_TangentBug/visualization.html
