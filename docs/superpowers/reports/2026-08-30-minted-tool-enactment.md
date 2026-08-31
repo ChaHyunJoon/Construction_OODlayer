@@ -34,6 +34,8 @@
 유료 OpenAI 호출은 이 세션 전체에서 **5건**이다 — T0 의 기준선 2판(2건)과 T5(보드 1판 +
 `/macro` 프로브 2건 = 3건). 🔴 **검증 5라운드는 전부 유료 0건**이었고, §4 의 반증 전부가
 **유료 판을 쓰기 전에** 나왔다.
+🔴 **그 5건 중 1건은 불필요했다**(2026-08-30 최종 리뷰의 정정): T5 의 세 번째 `/macro` 프로브가
+판별하려던 값은 보드가 이미 디스크에 쓴 스트림에 있었다(§2·§3-9). 최종 리뷰는 **유료 0건**이다.
 
 ---
 
@@ -78,7 +80,7 @@ julia +lts --project=. -e 'using Pkg; Pkg.test()'
 |---|---|---|---|---|
 | (착수, 추론) | — | 1553 | — | — |
 | `9c8e8b26`→`3196928a` | T8 | 1561 | **+8** | `test/mild_menu_is_noop_only.jl` 의 8단언 (`task-8-report.md`) |
-| `05f1d2b5` | T1 | *1607* | **+46** | `test/synth_lane_keys_survive.jl` 의 testset 합 1+12+19+4+10 (원장·T1 보고 둘 다 **절대값은 안 적는다** — 1607 은 1561+46 의 산술이다) |
+| `05f1d2b5` | T1 | **1607** | **+46** | `test/synth_lane_keys_survive.jl` 의 testset 합 1+12+19+4+10. 🔴 **1607 은 산술이 아니라 실측이다**(2026-08-30 최종 리뷰의 정정): `task-1-report.md` 가 *"1607 passed / 0 failed / 1 errored"* 를 실행 결과로 적고, 커밋 `05f1d2b5` 의 메시지가 같은 숫자를 반복하며, `task-2-report.md` 가 *"+68 vs. prior 1607"* 로 교차 확인한다 |
 | `d9c00896`→`cca671ec` | T2 | 1675 | **+68** | `test/minted_tool_resolves.jl` 의 새 testset 합 (원장) |
 | `5b9dec28` | T3 | 1739 | **+64** | `test/minted_tool_enacts.jl` 의 단언 수 (`task-3-report.md`: *"델타: 1675 → 1739 = +64. 정확히 `minted_tool_enacts` 의 단언 수다"*) |
 | `29cb0a1d` | T3 fix | 1834 | **+95** | 같은 파일이 12 testset · 159 단언으로 커짐. 🔴 **원장과 T3 재리뷰는 이 구간을 "1675 → 1834 = +159 = 게이트 단언 수" 로 적는다** — 즉 같은 증가를 두 방식으로 분해한 것이고, 두 인용 모두 남긴다 |
@@ -169,11 +171,21 @@ PROJECT INCOMPLETE!
   적는다). 즉 두 판은 **같은 기하의 다른 정점**이고, 완전한 재현이 아니다.
 - `zone_minted` 의 `steps=[]` 와 `ran_milp=n/a(not armed)` 는 **인터프리터가 한 번도 안
   불렸다**는 뜻이다. 배선은 그 앞에서 끝났다.
-- 🔴 `[minted] lane=reach_nothing` 한 줄이 **세 상태를 뭉갠다** — "expressible=true 라서 안
-  쐈다" · "expressible 을 못 쟀다(None)" · "쐈는데 오류" 가 글자 그대로 같은 줄을 낸다.
+- 🔴 `[minted] lane=reach_nothing` 한 줄이 **세 상태를 뭉갰다** — "expressible=true 라서 안
+  쐈다" · "expressible 을 못 쟀다(None)" · "쐈는데 오류" 가 글자 그대로 같은 줄을 냈다.
   이것 때문에 원인 판별에 **유료 호출을 하나 더 썼다**(T5 보고 §7 우려 ①). 그 세 번째 호출이
   `zones`·`routing_kind` 를 실은 프롬프트에서 `expressible: true`, `tool_called:
   no_intervention`, `tool_arg_error: null` 을 관측해 (b)와 (c)를 배제했다.
+  🔴 **그 세 번째 유료 호출은 필요하지 않았다**(2026-08-30 최종 리뷰의 정정). 같은 판별에
+  쓸 값이 **이미 디스크에 있었다**: 보드가 쓴 스트림
+  `tools/monitor/streams/tractor__zone_minted.jsonl`(≈8MB, gitignored, 115행)이 합성 레인을
+  `respec.input.policies.dspy.*` 에 영속시키고, 115행 **전부**가
+  `synthesis_event=false · synthesis_ran=false · synthesis_error=null` 이다(이 보고서를 쓰며
+  그 파일을 직접 집계했다). 그 세 값이 정확히 (a)/(b)/(c) 를 가른다 — `synthesis_event=false`
+  는 "발화할 사건이 아니었다"(= `expressible` 이 `False` 가 아니었다)이고, `ran=false` 는
+  "돌지 않았다", `error=null` 은 "터지지 않았다" 이다. **호출은 낭비였고 그것을 정직하게 적는다.**
+  ⚠️ 결함 자체는 실재했다(줄이 뭉갰다는 것). 결함은 최종 리뷰가 고쳤다 —
+  `enact_minted_decision!` 의 조기 반환이 이제 그 넷을 찍고 갈래마다 다른 사유를 적는다.
 
 ---
 
@@ -234,9 +246,18 @@ PROJECT INCOMPLETE!
    `applied` 는 더 이상 신뢰할 수 없다.** 다만 `steps` 에 status 가 그대로 남으므로 사후
    판별은 가능하다.
 
-9. **결정 JSON 에 합성 집행의 흔적이 없다.** `record_decision!` 이 배선보다 먼저 돌고 수정되지
-   않았다(채점기 비오염을 위한 의도된 설계). 그래서 사후 분석은 **stdout 파싱**뿐인데, 그
-   stdout 이 위 §2 대로 lossy 하다. **현재 사후분석 경로는 양쪽 다 막혀 있다.**
+9. **결정 JSON 에 `[minted]` 의 *집행 결과*가 없다 — 그러나 합성 레인은 있다.**
+   🔴 2026-08-30 최종 리뷰가 이 항목의 **범위를 좁혔다**(이전 판은 "양쪽 다 막혀 있다" 로
+   과장했다). 실측: 보드는 `tools/monitor/streams/tractor__zone_minted.jsonl` 을 **썼고**
+   (≈8MB, gitignored, 115행), 그 안에 합성 레인 아홉이 `respec.input.policies.dspy.*` 로
+   영속돼 있다 — 115행 전부 `synthesis_event=false · synthesis_ran=false ·
+   synthesis_error=null · tool_minted=null · reach=null`. 즉 §2 가 "뭉갰다" 고 적은 세 상태의
+   **판별값은 디스크에 있었다.**
+   진짜로 없는 것은 **집행 결과**다: `applied` · `partial` · `world_maybe_dirty` · `steps` ·
+   `resume` · `handled` 를 이 스트림 전체에서 찾으면 **0건**이다(`record_decision!` 이 배선보다
+   먼저 돌고 수정되지 않았다 — 채점기 비오염을 위한 의도된 설계).
+   ⟹ 사후 분석은 **합성 레인은 스트림으로, 집행 결과는 stdout 파싱으로** 해야 하고, 후자만
+   막혀 있다.
 
 ---
 
@@ -440,19 +461,23 @@ OOD 사건은 소비돼 재시도되지 않는다.** 유료 판 전에 고쳤고
 
 ## 7. 사용자에게 남는 것
 
-### 7-1. 🔴 병합 전 반드시 고칠 것 (T4 의 parked minor 넷 중 첫째)
+### 7-1. ✅ 병합 전 반드시 고칠 것 — **2026-08-30 최종 리뷰가 고쳤다**
 
-**`tools/monitor/test_minted_wiring.jl` 이 반증된 pre-fix 규칙을 아직 단언한다:**
+`tools/monitor/test_minted_wiring.jl` 이 반증된 pre-fix 규칙
+`@test r.world_maybe_dirty === (r.applied || r.partial)` 을 아직 단언하고 있었다. R48 이 그
+등식을 **깼다** — `:residual_blocked` 는 "적응은 못 했다"(`applied=false`)이면서 동시에
+"세계를 만졌다"(`world_maybe_dirty=true`) 이고, `translate_whole_build :already_clear` 도
+`_apply_uniform_translation!` 이 Δ 와 무관하게 `_resync_scene_drift!` 를 부르므로 세계를 만진다.
+초록이던 이유는 그 fixture 둘이 그 status 에 한 번도 안 닿았기 때문이다(fixture 운).
 
-```julia
-@test r.world_maybe_dirty === (r.applied || r.partial)
-```
+**고친 방식:** (i) 게이트 (4) 는 이제 **참인 함의 둘**(`applied ⟹ dirty` · `partial ⟹ dirty`)만
+단언한다. (ii) 새 게이트 (4b) 가 그 status 에 **실제로 닿는 fixture**(오염 레지스트리 →
+`:unreadable_return`)로 옛 등식이 거짓임을 값으로 못박는다. (iii) `enact_minted_decision!` 의
+docstring 에 남아 있던 같은 죽은 등식도 고쳤다. 🔴 반증 실행:
+옛 등식을 (4b) 의 fixture 에 대고 단언하면 **정상 코드를 상대로** `true === false` 로 빨개진다.
 
-R48 이 그 등식을 **깼다** — `:residual_blocked` 는 "적응은 못 했다"(`applied=false`)이면서
-동시에 "세계를 만졌다"(`world_maybe_dirty=true`) 이고, `translate_whole_build :already_clear`
-도 `_apply_uniform_translation!` 이 Δ 와 무관하게 `_resync_scene_drift!` 를 부르므로 세계를
-만진다. **지금 초록인 이유는 그 fixture 둘이 그 status 에 한 번도 안 닿기 때문이고**(fixture
-운), 닿는 순간 이 단언은 거짓말이 된다. 최종 리뷰가 triage 할 것.
+🔴 **그리고 최종 리뷰가 다섯 번째 조용한 미복구를 찾았다** — `resume === :failed` 인데
+`handled=true` 였다. 상세는 `.superpowers/sdd/2026-08-30-minted-tool-enactment-and-render/final-fix-report.md`.
 
 ### 7-2. T4 의 나머지 parked minor 셋
 
@@ -460,21 +485,24 @@ R48 이 그 등식을 **깼다** — `:residual_blocked` 는 "적응은 못 했�
   기록 때문에 **문자 그대로는 거짓**이다.
 - `resume=:issued` 는 아직 **진짜 빌드에서 태워진 적이 없다**(빈 스케줄에서만). T5 의 판이
   그 자리였는데 인터프리터가 안 불렸다 ⟹ **여전히 미실행**.
-- 영속 결정 행에 합성 집행의 흔적이 없다(`record_decision!` 이 배선보다 먼저 돈다). 의도된
-  설계지만 **사후 분석은 stdout 파싱뿐**이고 그 stdout 이 lossy 하다(§2).
+- 영속 결정 행에 **집행 결과**(`applied`/`partial`/`world_maybe_dirty`/`steps`/`resume`)가
+  없다(`record_decision!` 이 배선보다 먼저 돈다) — 스트림 전수 검색 **0건**. 의도된 설계이고,
+  그 부분에 한해 사후 분석은 stdout 파싱뿐이다. ⚠️ **합성 레인 아홉은 예외다**: 그것은
+  `respec.input.policies.dspy.*` 로 스트림에 영속된다(§3-9 의 정정). 이전 판의 "사후 분석
+  경로가 양쪽 다 막혀 있다" 는 **과장이었다.**
 
 ### 7-3. 그 밖의 parked 항목
 
 | 출처 | 항목 |
 |---|---|
 | T8 | 보고서의 `+8 pass / −1 error` 델타는 **사전 기준선 없이 사후 추론**이다(§1-1 이 같은 문제를 안는다) |
-| T8 | 리터럴 제거의 대가로 단언이 약해졌다 — `length(AR.kind_valid(:battery)) == 3`. **이 게이트만으로는 세 팔이 무엇인지 안 잰다**(이름 동일성은 `policy_macro_binding.jl` 이 소유) |
+| T8 | 리터럴 제거의 대가로 단언이 약해졌다 — `length(AR.kind_valid(:battery)) == 3`. **이 게이트만으로는 세 팔이 무엇인지 안 잰다.** 🔴 이름을 못 박는 소유자는 `test/smdp_stamp_smoke.jl` 이다(`@test ActionRegistry.NAME == Dict(0 => "NOOP", 1 => "Replace", 2 => "SwapBattery")`) — 이전 판이 적은 `policy_macro_binding.jl` 은 **틀렸다**(2026-08-30 최종 리뷰의 정정: 그 파일은 이름을 리터럴로 안 적고 메뉴를 레지스트리에서 **뽑아** 쓴다. `MENU`·`pos_arm` 주석이 그 규약을 명시한다) |
 | T0 | dspy 레인이 실제로 구동했다는 증거가 보고서·커밋메시지에 **명시적으로** 적히지 않았다(로그에는 있다) |
 | T0 | board 2 가 foreground 지시 도착 전에 background 로 떠 있었다 — 재실행(유료 1건) 대신 blocking 을 택한 **공개된 이탈** |
 | T1 | 새 게이트가 `"NOOP"` 을 fixture filler 로 4번 리터럴로 적는다(단독 설계가 강제한 것, 단언 대상은 아님) |
 | T3 | 🔴 **세 번째 레지스트리 확장 경로가 열려 있다** — testset (12) 는 `params` 의 **키**만 못박고 **값 스키마**(type/items/enum)와 `mechanism` 산문은 아무것도 안 본다. `synthesize.py::_fmt_params` 가 그 값을 모델에게 렌더하고 `bind_primitive_args` 는 매치된 param 을 **검증 없이** 넘긴다(`zone_keys` 만 강제 변환·확인) |
 | T3 | `ctx.truth` 가 두 함수에서 죽었다(T4 용으로 의도적 보존) |
-| T5 | `[minted] lane=reach_nothing` 이 삼상을 뭉갠다 — 조기 반환 줄에 최소한 `synthesis_event`/`synthesis_ran`/`synthesis_error`/`expressible` 을 실을 것 |
+| T5 | ~~`[minted] lane=reach_nothing` 이 삼상을 뭉갠다~~ → **2026-08-30 최종 리뷰가 고쳤다.** 조기 반환이 `synthesis_event`/`synthesis_ran`/`synthesis_error`/`tool_minted`/`missing_primitive` 를 찍고 갈래마다 다른 사유를 적는다(`test_minted_wiring.jl` (1b)). 🔴 같은 리뷰가 그 결함이 유료 호출 **1건을 낭비시켰다**는 것도 실측했다(§2·§3-9) |
 | T5 | 애니메이션 거부 메시지가 `case=none` 이라고 적는다 — `DEMO_CASE_TAG=zone_minted` 가 그 메시지에 도달하지 않는다 |
 | R45 | `recover_stalled_teams!` 의 `:restaged` 가 숨기는 한 겹 더 깊은 침묵 성공(§3-8) |
 | R46 | 레지스트리 값 스키마 전면 못박기 |
@@ -505,6 +533,18 @@ julia +lts --project=. -e 'using Pkg; Pkg.test()'
 tr '\r' '\n' < results/baseline_2026-08-30/zone_before.log         # §2 의 인용
 tr '\r' '\n' < results/baseline_2026-08-30/battery_mild_before.log # §2 의 인용
 tr '\r' '\n' < results/2026-08-30-zone-minted/render.log           # §2 의 인용
+```
+
+**2026-08-30 최종 리뷰가 추가로 돌린 것**(전부 읽기 전용, 유료 0건):
+
+```bash
+# 스트림이 합성 레인을 영속하는가 · 집행 결과는 있는가 (§2·§3-9 의 정정 근거)
+python3 - < (respec.input.policies.dspy.* 집계 + 집행 키 전수 검색)
+#   → 115행 전부 (synthesis_event, synthesis_ran, synthesis_error, tool_minted, reach)
+#     = (False, False, None, None, None);  집행 키(applied/partial/world_maybe_dirty/
+#       steps/resume/handled) 히트 0건
+grep -n "1607\|passed" .superpowers/sdd/.../task-1-report.md ; git log -1 05f1d2b5   # §1-2 의 정정 근거
+grep -n "NAME ==" test/ tools/ wm4spacecraft_manufacturing/                            # §7-3 의 정정 근거
 ```
 
 `127.0.0.1:8077`·`:8079` 로의 POST 는 **하지 않았다.** `render_demo.jl` 도 **돌리지 않았다.**
