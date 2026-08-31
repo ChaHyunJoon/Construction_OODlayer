@@ -74,8 +74,14 @@ def test_the_unfamiliar_verdict_reaches_the_prompt_on_the_nl_path():
     text = svc._llm_input(_req(routing_kind=UNKNOWN))
     assert "MeteorTruth" in text
     assert "UNFAMILIAR EVENT" in text
-    # 🔴 프롬프트가 나르는 것은 **사실 셋**이다(Global Constraint 5). 지시절이 아니다.
-    assert "projection" in text and "candidate list" in text
+    # 🔴 프롬프트가 나르는 것은 **사실**이다(Global Constraint 5). 지시절이 아니다.
+    # 🔴 2026-08-30: 여기 있던 `assert "projection" in text and "candidate list" in text` 를
+    #    **지웠다.** 그 두 단어가 실린 문장이 거짓이었기 때문이다(둘 다 실측으로 반증 —
+    #    `_unfamiliar_block` 의 docstring §②③ 이 근거를 진다). 시험이 거짓 주장을 **못박고**
+    #    있었으므로, 그 자리를 비워 두지 않고 지금 실제로 참인 둘로 갈아 끼운다:
+    #    ① 학습된 범주에 못 놓았다는 사실 ② 이 행에는 종류별 측정값이 없다는 사실.
+    assert "could not place this disruption" in text
+    assert "placeholder" in text                    # 미지 타입이라 severity 가 상수다
     # 음성 대조 — 결정을 지시하는 어법이 새어 들어가면 측정되는 것이 추론이 아니라 준수가 된다.
     lowered = text.lower()
     for imperative in ("you should", "you must", "prefer ", "instead choose", "therefore choose"):
@@ -116,6 +122,67 @@ def test_the_block_is_the_only_thing_that_changes():
     with_block = svc._llm_input(_req(routing_kind=UNKNOWN))
     assert with_block.startswith(baseline)
     assert with_block[len(baseline):] == svc._unfamiliar_block(_req(routing_kind=UNKNOWN))
+
+
+# ---------------------------------------------------------------------------------------------
+# (4-b) 2026-08-30 — `unknown:` 을 다는 세 사건 전부가 블록을 받는다
+# ---------------------------------------------------------------------------------------------
+def test_every_unknown_prefixed_routing_kind_gets_the_block():
+    """LLM 레인 표식이 `"unknown:"` 접두사 하나로 통일됐다(2026-08-30 사용자 결정).
+
+    🔴 이 시험이 막는 회귀는 실재했던 것이다: 2026-08-30 이전 zone 의 `routing_kind` 는
+    `"zone"` 이라 접두사가 없었고, `"zone" ∉ known_kinds` 라는 **간접 경로**로만 dspy 에
+    갔다. 레인은 갈렸는데 이 블록은 **한 번도 안 붙었다** — 모델은 자기가 학습 범위 밖
+    사건을 받았다는 것을 모른 채 답했다.
+    """
+    for rk in ("unknown:MeteorTruth", "unknown:battery_mild", "unknown:zone"):
+        assert "UNFAMILIAR EVENT" in svc._llm_input(_req(routing_kind=rk))
+
+
+def test_the_placeholder_sentence_only_fires_when_no_measurement_exists():
+    """둘째 문장은 **종류별 측정값이 하나도 없는 행**에만 붙는다.
+
+    🔴 2026-08-30. 옛 블록은 모든 `unknown:` 사건에 *"raw feature row 를 가장 가까운 알려진
+    스키마로 접었다"* 고 적었는데, 그것은 `battery_mild`·`zone` 에서 **거짓**이다 — 그 둘은
+    `ood_features` 의 자기 분기를 타서 `soc`/`zone_overlap` 이 실제 측정값으로 실린다.
+    접히는(=측정값이 없는) 것은 미지 타입뿐이고, 그 행에서만 `severity` 가 상수 1.0 이다.
+
+    ⚠️ 조건은 **`soc` 와 `zone_overlap` 이 둘 다 없는 것**이다. `kind` 문자열을 보지 않는다 —
+    미지 타입의 `kind` 는 `"fault"` 로 접혀 오므로 그 값으로는 두 사건을 못 가른다.
+    """
+    # 미지 타입: 종류별 측정값이 없다 → 붙는다.
+    assert "placeholder" in svc._unfamiliar_block(_req(routing_kind=UNKNOWN))
+    # mild battery: `soc` 가 실측이다 → 안 붙는다.
+    mild = svc._unfamiliar_block(_req(kind="battery", soc=0.55,
+                                      routing_kind="unknown:battery_mild"))
+    assert "UNFAMILIAR EVENT" in mild
+    assert "placeholder" not in mild
+    # zone: `zone_overlap` 이 실측이다 → 안 붙는다.
+    zone = svc._unfamiliar_block(_req(kind="zone", zone_overlap=0.4,
+                                      routing_kind="unknown:zone"))
+    assert "UNFAMILIAR EVENT" in zone
+    assert "placeholder" not in zone
+    # 🔴 0.0 은 "없음" 이 아니다 — falsy 로 접으면 겹침 0인 구역이 "못 쟀다" 로 집계된다.
+    zero = svc._unfamiliar_block(_req(kind="zone", zone_overlap=0.0,
+                                      routing_kind="unknown:zone"))
+    assert "placeholder" not in zero
+    assert "placeholder" not in svc._unfamiliar_block(
+        _req(kind="battery", soc=0.0, routing_kind="unknown:battery_mild"))
+
+
+def test_the_block_no_longer_claims_a_projection_or_a_derived_menu():
+    """지운 두 주장이 되살아나지 않는지 본다 (2026-08-30).
+
+    🔴 둘 다 실측으로 거짓이었다. ② 유사도 계산은 어디에도 없다 — `ood_features` 의
+    `else` 가 리터럴 `"fault"` 를 쓰는 것뿐이고, 숫자 서술자는
+    `features_agnostic.descriptors_from_row` 가 `row['kind']` 를 **안 읽으므로** 애초에
+    투영되지 않는다. ③ 메뉴는 줄리아의 `valid_macros(env, truth)` 가 세계에서 계산해
+    `payload["valid"]` 로 싣고 `_valid_for` 가 그것을 우선한다.
+    """
+    for rk in ("unknown:MeteorTruth", "unknown:battery_mild", "unknown:zone"):
+        block = svc._unfamiliar_block(_req(routing_kind=rk))
+        for lie in ("closest", "folded", "projection", "candidate list"):
+            assert lie not in block, (rk, lie)
 
 
 # ---------------------------------------------------------------------------------------------

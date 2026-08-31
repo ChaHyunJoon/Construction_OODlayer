@@ -28,6 +28,26 @@ include(joinpath(@__DIR__, "lane_select.jl"))
 include(joinpath(@__DIR__, "narrate.jl"))
 include(joinpath(@__DIR__, "dp_lane.jl"))
 
+"""
+    routing_kind_of(truth) -> String
+
+`OODTruth` 하나에 대한 라우팅 kind. `lane_select.jl` 의 순수 함수에 **이 파일이 아는 것**
+(구상 타입과, battery 라면 그 심각도)을 먹여 준다.
+
+🔴 왜 이 래퍼가 있나 (2026-08-30). 유도 지점이 **둘**이었다 — `service_decide` 의 페이로드
+줄과 `decide_all` 의 라우터 줄. §A-1 은 둘을 같게 두는 것을 리뷰가 아니라 기계 게이트
+(`test/service_decide_ships_routing_kind.jl` (2)(3)절)에 맡겼는데, 2026-08-30 에 battery 가
+심각도로 갈리면서 **각 자리가 심각도를 꺼내는 코드까지** 같아야 하게 됐다. 표현이 길어질수록
+두 자리가 갈릴 여지가 커지므로 아예 함수 하나로 접는다 — 이제 두 자리는 같은 이름을 부른다.
+그 게이트는 그대로 남는다(래퍼가 있어도 호출을 **빠뜨리는** 것은 여전히 가능하다).
+
+🔴 `truth.soc_after` 를 여기서만 읽는다. `lane_select.jl` 은 의존성 0 계약 위에 있어
+`CB.BatteryTruth` 를 알면 안 되므로, 타입을 아는 쪽(이 파일)이 스칼라만 꺼내 넘긴다.
+"""
+routing_kind_of(truth) = routing_kind(
+    String(nameof(typeof(truth))),
+    truth isa CB.BatteryTruth ? truth.soc_after : nothing)
+
 # =============================================================================
 #  라우터 (2026-07-28 추가)
 # =============================================================================
@@ -544,14 +564,15 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 프롬프트에 한 글자도 안 싣게 되어, 모델은 자기가 fault 사건을 받았다고 읽는다.
     #
     # 🔴 왜 `agents`/`zones`/`lanes` 처럼 키워드로 안 받는가 (Ruling R1). 저 셋은 호출자만
-    #    아는 값이라 키워드가 옳다. `routing_kind` 는 **타입 이름의 전총 순수 함수**이고
+    #    아는 값이라 키워드가 옳다. `routing_kind_of` 는 **`truth` 하나의 전총 순수 함수**이고
+    #    (2026-08-30 부터 타입 이름 + battery 심각도를 본다 — `lane_select.jl` 의 상수 주석 참조)
     #    `decide_all` 의 라우터가 이미 같은 함수로 같은 값을 만든다. 여기서 유도하면 라우터와
     #    페이로드가 **구조적으로** 갈릴 수 없다 — 키워드로 받으면 호출자가 다른 값을 실을
     #    여지가 되살아나고, 그 갈림이 §A-1 이 지목한 결함 그 자체다.
     # 🔴 `payload["kind"]` 는 한 글자도 안 건드린다 — surrogate 피처가 그 열을 그렇게 배웠다.
     # 게이트: `test/service_decide_ships_routing_kind.jl`(본문) ·
     #        `src/respec/llm_service/test_routing_kind_reaches_the_prompt.py`(프롬프트).
-    payload["routing_kind"] = routing_kind(String(nameof(typeof(truth))))
+    payload["routing_kind"] = routing_kind_of(truth)
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
     # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 = 모델에게 **보여주는** id 가 이것뿐이다.
     # 🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 못 만든다"* 는 **거짓이다.**
@@ -1451,9 +1472,14 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    `routing_kind` 는 `lane_select.jl` 의 전총 함수이고, `ood_features` 의 `"kind"` 와
     #    **일부러 다른 함수**다: 저쪽의 `else` 분기가 모르는 타입에 `"fault"` 를 주는데(그건
     #    surrogate **피처**로는 옳다) 라우팅에 쓰면 가장 OOD 한 사건이 가장 확신에 찬 레인으로
-    #    간다(§0-C 충돌 ①). 두 유도가 알려진 셋에서 같은 값임은 `test/tool_choice_gate.jl` 의
-    #    교차 게이트가 못박는다 — 그게 없으면 `FaultTruth` 개명 한 번에 전 사건이 dspy 로 간다.
-    local rkind = routing_kind(String(nameof(typeof(truth))))
+    #    간다(§0-C 충돌 ①). 두 유도가 **severe battery·fault 에서** 같은 값임은
+    #    `test/tool_choice_gate.jl` 의 교차 게이트가 못박는다 — 그게 없으면 `FaultTruth` 개명
+    #    한 번에 전 사건이 dspy 로 간다.
+    # ⚠️ 2026-08-30 부터 **일치하지 않는 kind 가 셋이다**: mild battery(`kind="battery"` vs
+    #    `"unknown:battery_mild"`) · zone(`"zone"` vs `"unknown:zone"`) · 미지 타입. 앞의 둘은
+    #    이 날 **일부러 갈라 놓은 것**이고(사용자 결정: LLM 레인 표식을 `"unknown:"` 하나로 통일),
+    #    그 게이트가 재는 일치 대상에서 빠져 있다. 갈림 자체는 §A-1 이 이미 배선한 사건이다.
+    local rkind = routing_kind_of(truth)
     rt["routing_kind"] = rkind
     # 🔴 `surro_kinds()` 가 `nothing`(= 못 쟀다)이면 `select_lane` 이 **죽는다**. 조용히
     #    한쪽으로 떨어지면 그 런의 모든 행이 근거 없이 "라우팅했다" 로 기록된다.

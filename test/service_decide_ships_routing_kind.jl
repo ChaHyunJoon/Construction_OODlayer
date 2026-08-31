@@ -181,8 +181,13 @@ try
     @testset "(1) 알려진 kind — routing_kind 가 payload 의 kind 와 같다" begin
         # 두 유도(`ood_features` 의 `isa` 축 · `routing_kind` 의 이름 축)는 **다른 함수**다.
         # 알려진 셋에서 갈리면 그것 자체가 회귀이고, 여기서 **실제로 나간 본문**으로 잰다.
+        # 🔴 **battery 는 severe 여야 한다** (2026-08-30). `routing_kind` 가 이 날부터 심각도를
+        #    보므로, 옛 픽스처(`soc_after = 0.5`)는 이제 `"unknown:battery_mild"` 를 낸다 —
+        #    즉 이 절의 "알려진 kind" 라는 이름이 그 픽스처에 대해 더 이상 참이 아니다.
+        #    경계는 `lane_select.jl` 의 `ROUTING_SEVERE_SOC`(0.1) 이고, 그 상수 주석에 근거와
+        #    대가가 있다. mild 판은 아래 (1-b) 가 **갈린다는 것 자체**를 잰다.
         for truth in (CB.FaultTruth(CB.RobotID(1), Float64[0.0, 0.0]),
-                      CB.BatteryTruth(CB.RobotID(1), 0.5))
+                      CB.BatteryTruth(CB.RobotID(1), 0.02))
             local cap = _capture_decide(truth)
             @test cap.body !== nothing          # 못 받았으면 아무것도 안 잰 것이다
             @test haskey(cap.body, "routing_kind")
@@ -191,6 +196,34 @@ try
             @test String(cap.body["kind"]) ==
                   (truth isa CB.FaultTruth ? "fault" : "battery")
         end
+    end
+
+    @testset "(1-b) mild battery — 같은 타입인데 본문 안에서 두 값이 갈린다" begin
+        # 🔴 이것이 2026-08-30 사용자 결정의 페이로드 쪽 증거다. (2)의 `MeteorTruth` 는 **타입이
+        #    미지**라서 갈리는데, 여기서는 **타입이 알려져 있고 심각도만 다르다.** 즉 갈림이
+        #    "모르는 타입" 축이 아니라 **"학습 범위 밖" 축**에서도 페이로드까지 도착하는가를 잰다.
+        # ⚠️ `kind` 는 여전히 `"battery"` 다 — surrogate 행의 열이라 한 글자도 안 건드린다
+        #    (Global Constraint 3). 갈리는 것은 `routing_kind` 뿐이다.
+        local cap = _capture_decide(CB.BatteryTruth(CB.RobotID(1), 0.5))
+        @test cap.body !== nothing
+        @test String(cap.body["kind"]) == "battery"
+        @test String(cap.body["routing_kind"]) == "unknown:battery_mild"
+        @test String(cap.body["routing_kind"]) != String(cap.body["kind"])
+        # 그리고 그 판정대로 실제 레인이 갈렸다 — 이름만 갈리고 라우팅이 안 갈리면 무의미하다.
+        @test cap.decision.enacted == "dspy"
+        @test cap.decision.router["router_axis"] == "ood_kind"
+        @test String.(collect(cap.body["lanes"])) == ["dspy"]
+    end
+
+    @testset "(1-c) zone — 접두사가 붙고 LLM 레인으로 간다" begin
+        # 🔴 2026-08-30 이전 zone 은 `routing_kind` 가 `"zone"` 을 냈다. dspy 로 가긴 갔지만
+        #    (`"zone" ∉ known_kinds`) 접두사가 없어서 `_unfamiliar_block` 이 **한 번도 안 붙었다.**
+        #    이 절은 그 조용한 구멍이 다시 열리는 것을 막는다.
+        local cap = _capture_decide(CB.ZoneTruth(:rk_gate_zone, [0.0, 0.0, 0.0], 1.0))
+        @test cap.body !== nothing
+        @test String(cap.body["kind"]) == "zone"                  # 피처 열은 그대로
+        @test String(cap.body["routing_kind"]) == "unknown:zone"  # 라우팅만 갈린다
+        @test cap.decision.enacted == "dspy"
     end
 
     @testset "(2) 모르는 타입 — 같은 본문에서 routing_kind 와 kind 가 갈린다" begin

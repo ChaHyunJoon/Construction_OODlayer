@@ -262,22 +262,71 @@ try
     # **모든 사건이 dspy 로 간다** — 에러 없이, 비용만 몇 배로. 이름 기반 유도(라우팅)와
     # `isa` 기반 유도(surrogate 피처)는 **일부러 다른 함수**이므로(§0-C 충돌 ①), 둘이 갈리지
     # 않는다는 것을 여기서 못박는 수밖에 없다.
-    @testset "(7) routing_kind 와 ood_features 의 kind 가 알려진 셋에서 일치한다" begin
-        # ⚠️ 구역이 **실재할 필요가 없다** — 이 절이 재는 것은 두 kind 유도의 일치뿐이고,
-        #    둘 다 타입만 본다(`ood_features` 의 zone 분기는 truth.zone 을 안 읽는다).
-        local cases = ((CB.BatteryTruth(CB.RobotID(1), 0.5), "battery"),
-                       (CB.FaultTruth(CB.RobotID(1), [0.0, 0.0, 0.0]), "fault"),
-                       (CB.ZoneTruth(:kind_gate_zone, [0.0, 0.0, 0.0], 1.0), "zone"))
-        for (t, expect) in cases
-            @test routing_kind(String(nameof(typeof(t)))) == expect
+    @testset "(7) routing_kind 와 ood_features 의 kind — 일치하는 자리와 갈리는 자리" begin
+        # ⚠️ 구역이 **실재할 필요가 없다** — 이 절이 재는 것은 두 kind 유도의 관계뿐이고,
+        #    `ood_features` 의 zone 분기는 truth.zone 을 (이 목적에는) 안 읽는다.
+        #
+        # 🔴 **이 절이 무엇을 지키는가** (2026-08-30 개정). 원래 임무는 하나다:
+        #    `FaultTruth` 개명 한 번에 `routing_kind` 가 조용히 `"unknown:..."` 을 내고
+        #    **모든 사건이 dspy 로 가는 것** — 에러 없이, 비용만 몇 배로. 그 임무는 그대로다.
+        #    바뀐 것은 **어디까지가 "일치해야 하는 자리"인가** 다.
+        #
+        #    2026-08-30 에 사용자 결정으로 LLM 레인 표식이 `"unknown:"` 접두사 하나로 통일되면서
+        #    두 유도가 **일부러 갈리는 자리가 셋으로 늘었다**(mild battery · zone · 미지 타입).
+        #    그래서 옛 판(세 kind 전부 일치)을 그대로 두면 이 절은 설계를 부정하게 된다.
+        #    ⟹ 일치는 **갈리지 않기로 한 둘**(fault · severe battery)에서만 요구하고,
+        #      갈리는 셋은 **갈린다는 것 자체를 단언**한다. 어느 쪽도 조용할 수 없다.
+
+        # ---- (7-a) 일치해야 하는 자리 — 여기가 개명 감지기다 --------------------------------
+        local agree = ((CB.BatteryTruth(CB.RobotID(1), 0.02), "battery"),   # severe (≤ 0.1)
+                       (CB.FaultTruth(CB.RobotID(1), [0.0, 0.0, 0.0]), "fault"))
+        for (t, expect) in agree
+            # 🔴 `routing_kind_of` 를 부른다 — 생산 경로가 실제로 부르는 그 함수다
+            #    (`policy.jl` 의 `service_decide`·`decide_all` 둘 다). 여기서 식을 손으로
+            #    재조립하면 그 조립이 생산과 갈려도 이 절이 초록으로 남는다.
+            @test routing_kind_of(t) == expect
             @test ood_features(TENV, t)["kind"] == expect
         end
-        # 🔴 그리고 **갈리는 자리**를 명시적으로 잰다: 모르는 타입에서 두 유도는 **일부러
-        #    다르다.** `ood_features` 는 `"fault"`(피처로는 옳다), `routing_kind` 는
-        #    `"unknown:..."`(라우팅으로는 그것만 옳다). 이 비대칭이 사라지면 가장 OOD 한
-        #    사건이 가장 확신에 찬 레인으로 간다.
+
+        # ---- (7-b) 일부러 갈리는 자리 셋 — 갈림을 값으로 못박는다 ---------------------------
+        # 규약: `ood_features["kind"]` 는 **안 바뀐다**(surrogate 행의 열), `routing_kind` 만
+        # `"unknown:"` 을 진다. 왼쪽이 따라 움직이면 피처 세대가 조용히 갈린 것이다.
+        local diverge = (
+            # mild battery: 같은 타입, 심각도만 다르다. 피처는 여전히 진짜 battery 행이다.
+            (CB.BatteryTruth(CB.RobotID(1), 0.5), "battery", "unknown:battery_mild"),
+            # zone: 2026-08-30 이전에는 `"zone"` 이라 접두사가 없었고, 그래서 zone 사건은
+            #       `_unfamiliar_block` 을 한 번도 못 받았다(간접 경로로만 dspy 에 갔다).
+            (CB.ZoneTruth(:kind_gate_zone, [0.0, 0.0, 0.0], 1.0), "zone", "unknown:zone"),
+        )
+        for (t, feat_kind, route_kind) in diverge
+            @test ood_features(TENV, t)["kind"] == feat_kind      # 피처는 그대로
+            @test routing_kind_of(t) == route_kind               # 라우팅만 갈린다
+            @test routing_kind_of(t) != ood_features(TENV, t)["kind"]
+            @test startswith(routing_kind_of(t), "unknown:")
+        end
+
+        # 미지 타입: `ood_features` 는 `else` 분기로 `"fault"` 를 준다(그 행의 열로는 옳다).
+        # `routing_kind` 가 그것을 따라가면 **가장 OOD 한 사건이 가장 확신에 찬 레인으로 간다.**
         @test routing_kind("MeteorTruth") == "unknown:MeteorTruth"
         @test !(routing_kind("MeteorTruth") in ("fault", "battery", "zone"))
+
+        # ---- (7-c) 접두사가 곧 레인 표식이다 -----------------------------------------------
+        # 🔴 이 셋이 이 개정의 전부다: LLM 으로 가는 kind 는 **전부** 접두사를 지고,
+        #    surrogate 로 가는 kind 는 **하나도** 안 진다. `_unfamiliar_block` 이 같은 접두사만
+        #    보므로, 이 대응이 깨지면 어떤 사건은 LLM 으로 가면서 "처음 보는 사건" 이라는
+        #    사실이 프롬프트에 한 글자도 안 실린다 — 2026-08-30 이전의 zone 이 정확히 그랬다.
+        local known_kinds = Set(["battery", "fault"])   # 오라클 라벨의 train_kinds (실측)
+        for t in (CB.BatteryTruth(CB.RobotID(1), 0.5),
+                  CB.ZoneTruth(:kind_gate_zone2, [0.0, 0.0, 0.0], 1.0))
+            @test select_lane(kind = routing_kind_of(t),
+                              known_kinds = known_kinds, policy = "router").lane == "dspy"
+        end
+        for t in (CB.BatteryTruth(CB.RobotID(1), 0.02),
+                  CB.FaultTruth(CB.RobotID(1), [0.0, 0.0, 0.0]))
+            @test !startswith(routing_kind_of(t), "unknown:")
+            @test select_lane(kind = routing_kind_of(t),
+                              known_kinds = known_kinds, policy = "router").lane == "surrogate"
+        end
     end
 
     end # testset

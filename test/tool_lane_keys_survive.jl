@@ -364,6 +364,21 @@ end
 _truth() = CB.BatteryTruth(CB.RobotID(1), 0.5)
 
 """
+    _truth_severe()
+
+`routing_kind` 가 **`\"battery\"`(= 아는 kind)로 인정하는** battery 사건.
+
+🔴 2026-08-30. `_truth()`(soc_after 0.5)는 이 날부터 `\"unknown:battery_mild\"` 를 내
+**dspy 로 라우팅된다** — `lane_select.jl` 의 `ROUTING_SEVERE_SOC`(0.1) 경계 때문이다.
+그래서 *"battery 니까 surrogate 로 간다"* 를 전제하는 절(아래 (3))은 이 픽스처를 쓴다.
+나머지 절은 `_truth()` 를 그대로 쓴다 — 그쪽은 dspy 레인을 원하므로 오히려 맞다.
+
+⚠️ 이 값(0.02)은 오라클 라벨 사다리의 맨 아래 칸이기도 하다. 경계 근거와 **대가**
+(사다리의 0.30·0.50 칸이 OOD 로 간다)는 `ROUTING_SEVERE_SOC` 의 주석에 있다.
+"""
+_truth_severe() = CB.BatteryTruth(CB.RobotID(1), 0.02)
+
+"""
     _assert_lane_values(tl, want)
 
 `tl`(= `decide_all(...).tool_lane`)의 여덟 키를 **서버가 실제로 보낸 픽스처 dict** `want` 와
@@ -457,8 +472,11 @@ try
     @testset "(3) enacted 가 dspy 가 아니면 8키가 전부 nothing 이다" begin
         _MODE[] = :surro
         # battery ∈ 아는 kind ⟹ surrogate. 이것이 이 절의 라우팅 전제다.
+        # 🔴 2026-08-30: **`_truth_severe()` 여야 한다.** `_truth()`(soc 0.5)는 이제
+        #    `"unknown:battery_mild"` 라 이 전제를 깬다 — 그 픽스처로 두면 이 절 전체가
+        #    dspy 레인을 재게 되어 "다른 레인이 집행된 사건" 이라는 이름이 거짓이 된다.
         _route_kinds!(["battery", "fault"])
-        local d = decide_all(TENV, _truth(); nl = "")
+        local d = decide_all(TENV, _truth_severe(); nl = "")
         #   ① 실제로 다른 레인이 집행됐는가
         @test d.enacted == "surrogate"
         #   ② 🔴 **옛 전제는 소멸했다** (2026-08-29, T11). 여기 있던 두 줄은

@@ -167,6 +167,30 @@ end
     end
 end
 
+@testset "(E) valid_macros(::ZoneTruth) 는 어휘 밖 팔을 LLM 메뉴에 넣지 않는다" begin
+    # 🔴 2026-08-25. 이 자리는 **비어 있었다**: `valid_macros` 가 zone 에 `String[]` 을 돌려주고,
+    # 그러면 `service_decide` 가 `payload["valid"]` 를 아예 안 싣는다 → 서비스의 `_valid_for` 가
+    # `VALID.get("zone", MACROS)` 로 **전체 3팔로 폴백**한다(레지스트리에 zone 키가 없으므로).
+    # 실측(2026-08-25, gpt-4o): 구역 사건에서 LLM 이 `SwapBattery` 를 2순위로 올렸다. 1순위였다면
+    # `run_demo.jl` 의 집행 사슬이 `hasproperty(truth, :robot)` 가드에 걸려 **아무 일도 안 하는데**
+    # 결정 기록에는 `macro="SwapBattery"` 가 남는다 — 집행되지 않은 팔이 라벨이 되는, 이 파일이
+    # (C) 에서 막으려던 바로 그 오염의 다른 입구다.
+    #
+    # 정직한 메뉴는 `NOOP` 하나다: 닫힌 어휘에 이 구역의 수복이 **없다**(= `:line_stop`).
+    # 그 사실이 메뉴에 드러나야 `decide_all` 의 표현력 에스컬레이션이 의미를 갖는다.
+    # 기대값은 `ood_mdp_shim._zone_arms()` 와 **같은 규약**으로 만든다(NOOP + 레지스트리 zone 팔).
+    local zone_menu = [ActionRegistry.NAME[i]
+                       for i in sort(unique(vcat(0, ActionRegistry.kind_valid(:zone))))]
+    local ztruth = CB.ZoneTruth(:zone_test, Float64[0.0, 0.0], 0.5, nothing)
+
+    @test valid_macros(nothing, ztruth) == zone_menu
+    # 로봇을 지목하는 팔은 zone 사건에서 집행이 **구조적으로** 불가능하다(ZoneTruth 에 :robot 이
+    # 없다). 그 이름이 메뉴에 있으면 그것만으로 거짓 라벨의 입구다.
+    @test !any(m -> m in ("Replace", "SwapBattery"), valid_macros(nothing, ztruth))
+    # 빈 메뉴여도 안 된다 — 빈 벡터는 "호출자가 모른다" 는 신호라 서비스가 다시 3팔로 폴백한다.
+    @test !isempty(valid_macros(nothing, ztruth))
+end
+
 # ---------------------------------------------------------------------------------------------
 # (D2) 진짜 음성 대조. (A)·(D) 는 둘 다 **오늘의** 레지스트리에서 기대값을 만들므로, 누가
 #      오늘의 이름 그대로 리터럴을 다시 박으면 초록으로 통과한다 — 이 계획이 여섯 번 만난

@@ -1024,19 +1024,48 @@ def _unfamiliar_block(r: MacroRequest) -> str:
     사실로 읽었다. `Replace`(로봇 교체)는 빔 붕괴·측위 상실과 아무 상관이 없는데 그것이
     메뉴의 유일한 개입 팔이다.
 
-    🔴 여기에 **지시절을 적지 않는다**(Global Constraint 5). 적는 것은 사실 셋뿐이다:
-    분류가 실패했다 · 원시 피처 행을 가장 가까운 알려진 스키마로 접었다 · 메뉴는 그 투영에서
-    만들어졌다. 무엇을 할지는 모델이 정하고, 어휘가 모자라면 `expressible=false` 로 신고한다.
+    🔴 여기에 **지시절을 적지 않는다**(Global Constraint 5). 무엇을 할지는 모델이 정하고,
+    어휘가 모자라면 `expressible=false` 로 신고한다.
+
+    ────────────────────────────────────────────────────────────────────────────────
+    🔴 2026-08-30 — 이 블록이 하던 **거짓 주장 둘을 지웠다.** 실측으로 반증됐다.
+    ────────────────────────────────────────────────────────────────────────────────
+    옛 본문은 사실 셋을 주장했다. 첫째만 참이었다.
+
+      ① "학습된 어떤 범주에도 못 놓았다"                                    → **참**. 남긴다.
+      ② "raw feature row 를 **가장 가까운** 알려진 스키마로 **접었다**"     → **거짓**.
+      ③ "후보 목록이 그 투영에서 만들어졌다"                                 → **거짓**.
+
+    ② 가 왜 거짓인가. 유사도 계산이 **어디에도 없다.** 접히는 것은 feature row 가 아니라
+      `kind` **문자열**이고, 그것도 `policy.jl:ood_features` 의 `if/elseif` 사슬 마지막
+      `else` 가 리터럴 `("fault", nothing)` 을 쓰는 것뿐이다 — "가장 가까워서" 가 아니라
+      "사슬 끝이라서" 다. 그리고 숫자 서술자는 애초에 투영되지 않는다:
+      `features_agnostic.descriptors_from_row` 가 **`row['kind']` 를 절대 읽지 않고**
+      (그 함수의 계약 문구 그대로) 어떤 필드가 유한한지로만 갈린다. 미지 타입에서 일어나는
+      일은 투영이 아니라 **종류별 측정값이 없는 것**이고, 그때 `severity` 는 재는 대신
+      상수 `1.0` 이 박힌다(`policy.jl` 의 `else` 분기).
+      🔴 그리고 2026-08-30 부터 `"unknown:"` 을 다는 사건이 셋으로 늘었는데
+      (`battery_mild` · `zone` · 미지 타입) **앞의 둘은 접히지도 않는다** — 자기 분기를 타서
+      `soc`/`zone_overlap` 이 실제 측정값으로 실린다. 옛 문구를 그대로 뒀으면 그 둘의
+      프롬프트가 모델에게 거짓말을 했을 것이다.
+
+    ③ 이 왜 거짓인가. 메뉴는 `kind` 에서 안 나온다. 줄리아의 `valid_macros(env, truth)` 가
+      **그 순간 실제로 실행 가능한 매크로**를 세계에서 계산해 `payload["valid"]` 로 싣고,
+      `_valid_for` 가 그것을 우선한다(`VALID.get(req.kind, ...)` 는 그 키가 없을 때의 폴백).
+
+    ⟹ 오늘 싣는 것은 **항상 참인 한 문장** + **조건이 맞을 때만 붙는 한 문장**이다.
+      조건은 `soc` 와 `zone_overlap` 이 **둘 다 없는 것** = 종류별 측정값이 하나도 없는 행
+      = `ood_features` 의 `else` 분기를 탄 행. 새 키가 필요 없다(페이로드에서 바로 읽힌다).
+      🔴 fault 행도 그 둘이 비지만, fault 는 `"unknown:"` 을 달지 않으므로 이 블록에
+      도달하지 않는다 — 위 조기 반환이 그것을 보장한다.
 
     🔴 **왜 "the parsed fields above" 라고 안 쓰는가** (2026-08-29 fix round 1): `nl` 경로에서
     이 블록 **바로 위**에 서는 것은 서술자 블록이고, 그 머리말은 스스로
     *"computed by the monitor **without classifying the event** … means the same thing for any
     kind of disruption"* 이라고 적는다(`_llm_input` 의 "MEASURED STATE" 머리말 -- 🔴 줄번호로
     인용하지 않는다, 이 레포는 그 인용이 조용히 썩는 것을 반복해 겪었다).
-    "위 필드는 투영이다" 를 같이 실으면 **같은
-    프롬프트가 같은 줄에 대해 정반대 주장을 둘** 하게 된다. 그래서 위치("above")가 아니라
-    **출처**(원시 피처 행을 알려진 스키마로 접었다)를 이름 붙인다 — 서술자 블록의 주장과
-    충돌하지 않고, 어느 블록이 실렸든 참이다.
+    위치("above")로 가리키면 같은 프롬프트가 같은 줄에 대해 정반대 주장을 둘 하게 된다.
+    그래서 아래 둘째 문장도 위치가 아니라 **무엇이 없는가**를 이름 붙인다.
 
     규약은 `_zones_block` 과 **정확히 같다**: 조건이 아니면 **빈 문자열**을 낸다 —
     알려진 kind 사건(과 이 필드를 안 싣는 옛 호출자)의 프롬프트는 바이트 단위로 예전과 같다.
@@ -1044,13 +1073,16 @@ def _unfamiliar_block(r: MacroRequest) -> str:
     rk = getattr(r, "routing_kind", None)
     if not (rk and rk.startswith("unknown:")):
         return ""
-    return ("\n\nUNFAMILIAR EVENT: the monitor could not place this disruption in any event "
-            "category the surrogate was trained on (its internal type is %r). To describe it at "
-            "all, the monitor folded this event's raw feature row into the closest known event "
-            "schema -- that projection is a best effort, not a classification, and the candidate "
-            "list was built from it, so the list may not contain anything that resolves what "
-            "actually happened."
-            % rk[len("unknown:"):])
+    block = ("\n\nUNFAMILIAR EVENT: the router could not place this disruption in any event "
+             "category the surrogate was trained on (its routing label is %r)."
+             % rk[len("unknown:"):])
+    # 종류별 측정값이 하나도 없는 행 = `ood_features` 의 `else` 분기를 탄 행. 그 행의
+    # severity 는 잰 값이 아니라 상수다 — 모델이 그것을 측정으로 읽으면 안 된다.
+    if getattr(r, "soc", None) is None and getattr(r, "zone_overlap", None) is None:
+        block += (" No category-specific measurement was recorded for it -- neither state of "
+                  "charge nor zone overlap -- so its severity is a placeholder rather than "
+                  "something the monitor measured.")
+    return block
 
 
 @app.get("/health")
