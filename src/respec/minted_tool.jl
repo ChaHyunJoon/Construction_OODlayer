@@ -215,8 +215,16 @@ _step_applied(prim_name::AbstractString, status::Symbol) =
 """
     WORLD_UNCHANGED_STATUSES
 
-원시가 **세계를 한 바이트도 안 건드리고** 돌아선 경우들. `world_maybe_dirty` 판정이 이 표
-하나만 본다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다(게이트가 `keys(...) ==
+원시가 **세계 상태를 하나도 안 바꾸고** 돌아선 경우들. `world_maybe_dirty` 판정이 이 표
+하나만 본다.
+
+⚠️ "한 바이트도 안 썼다" 가 **아니다**(2026-08-30 T4 리뷰의 parked minor, 최종 리뷰에서 문구
+정정). `force_advance_stuck_carrier!` 는 `:no_carrier` 로 돌아서기 **전에**
+`CARRIER_LAST_D[node_id(tu)] = d` 를 쓴다(`replace_robot.jl` 의 진행 점검 루프). 그럼에도
+분류는 그대로 옳다: 그 dict 은 "직전 점검 때 이 캐리어가 얼마나 멀었나" 를 적는 **진행 메모**
+이지 세계 상태가 아니다 — 씬 노드도, 스케줄 그래프도, 캐시도 아니다(`clear_carrier_progress!`
+가 언제든 통째로 비울 수 있는 것이 그 증거다). 이 표가 재는 것은 **폴백이 그 위에 쌓여도
+되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다(게이트가 `keys(...) ==
 ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 `SILENT_SUCCESS_STATUSES` 와 별개의 표인가** (2026-08-30 T4 리뷰).
@@ -389,6 +397,67 @@ _resume_note(tag::Symbol, detail::AbstractString) =
     tag === :not_needed_untouched ? " [resume=not_needed: 어느 단계도 세계를 안 건드렸다]" : ""
 
 """
+    PARAM_JSON_TYPES
+
+레지스트리 `params` 스키마의 `"type"` 문자열 → 그 값이 **변환될 수 있어야 하는** Julia 타입.
+
+🔴 왜 필요한가 (2026-08-30 최종 리뷰, IMPORTANT — 여섯 번째 조용한 미복구 경로).
+집행 가능한 여섯이 실제로 받는 타입 있는 키워드는 셋이다
+(`reform_stuck_teams!(env; min_ready::Int, snap_all::Bool)` ·
+`force_advance_stuck_carrier!(env; tol::Float64)`). LLM 이 `{"snap_all": "true"}` 나
+`{"min_ready": 1.5}` 를 주면 Julia 는 **호출 경계에서** `convert` 에 실패한다 — impl 본문은
+한 줄도 안 돌고 세계는 **증명 가능하게** 손대지 않은 상태다. 그런데 `enact_minted!` 의
+`catch` 는 그것을 무조건 `partial = true` 로 적고, 그러면 `world_maybe_dirty = true` →
+`handled = true` 가 되어 **아무 일도 안 일어난 세계 위에서 기본 복구 사슬이 건너뛰어진다.**
+그래서 타입 오류는 예외가 아니라 **거절**이어야 한다(거절 = 세계 무접촉 = 폴백이 돈다).
+
+🔴 스키마를 **여기서 두 번째로 적지 않는다.** 판정에 쓰는 것은 레지스트리 항목의 `"type"`
+그 자체이고, 이 표는 그 문자열을 Julia 타입으로 옮기는 사전일 뿐이다.
+
+⚠️ 판정식은 `convert` 다 — "선언된 타입으로 **변환이 되는가**". `isa` 로 재면 `min_ready`
+에 `2.0`(JSON 은 그것을 Float64 로 읽는다)을 준 판이 실제로는 잘 도는데도 거절된다.
+"""
+const PARAM_JSON_TYPES = Dict{String,Type}(
+    "integer" => Integer, "number"  => Real,          "boolean" => Bool,
+    "string"  => AbstractString, "array" => AbstractVector,
+    "object"  => AbstractDict,   "null"  => Nothing)
+
+"""
+    _param_type_reject(spec, v) -> Union{Nothing,String}
+
+레지스트리가 이 param 에 선언한 타입으로 `v` 가 변환되는가. `nothing` 이면 통과, 문자열이면
+거절 사유의 꼬리다.
+
+🔴 **선언이 없거나 모르는 타입이면 거절한다.** 통과시키면 값 스키마를 넓히는 레지스트리 편집이
+게이트 전부 초록인 채로 호출 표면을 넓힌다(T3 가 parked 한 세 번째 확장 경로, R46). 거절은
+세계를 안 건드리므로 그 대가가 폴백 한 번이다.
+
+⚠️ JSON-Schema 의 `["string", "null"]` 같은 **합집합** 선언을 받는다 — 하나라도 변환되면 통과.
+"""
+function _param_type_reject(spec, v)
+    t = try get(spec, "type", nothing) catch; nothing end
+    t === nothing && return "no_declared_type"
+    ts = String[]
+    try
+        ts = t isa AbstractVector ? String[String(x) for x in t] : String[String(t)]
+    catch
+        return "unreadable_declared_type"
+    end
+    isempty(ts) && return "empty_declared_type"
+    for one in ts
+        haskey(PARAM_JSON_TYPES, one) || return "unknown_declared_type:$(one)"
+    end
+    for one in ts
+        try
+            convert(PARAM_JSON_TYPES[one], v)
+            return nothing
+        catch
+        end
+    end
+    return "$(join(ts, "|")):got ::$(typeof(v))"
+end
+
+"""
     bind_primitive_args(prim, ctx) -> Union{String, Tuple{Tuple,NamedTuple}}
 
 한 원시의 실제 호출 인자를 만든다. 문자열이면 **거절 사유**다. 순수 함수 — 세계를 안 건드린다.
@@ -405,6 +474,11 @@ harness 인자를 쓰는 원시는 넷이고(`invariant` `sched`/`scene_tree` `m
 `milp,proposal`), 넓혀도 얻는 것이 없다 — `milp` 는 **solve 를 돌려야만** 생기는데 알파벳에
 solve 하는 원시가 없다(`formulate_milp`·`optimize!` 는 레지스트리에 없다). 그 사실은
 `resolve_primitive` 의 `enactable` 이 들고 다니고, 집행부가 부르기 **전에** 거절한다.
+
+🔴 **이 원시가 선언한 키는 선언한 타입으로 변환돼야 한다** — 아니면 `reject:param_type:…`
+이다(근거는 `PARAM_JSON_TYPES` 의 docstring: 타입 오류를 예외로 흘리면 손도 안 댄 세계가
+`partial=true → handled=true` 로 기록돼 폴백을 삼킨다). ⚠️ 값의 **범위**(`minimum`/`enum`/
+`items`)는 아직 안 본다 — 그것은 R46 이 parked 한 전면 값 스키마 못박기다.
 
 🔴 **모르는 키워드는 여기서 버리지도 거절하지도 않는다.** 합성기는 **tool 하나에 params
 dict 하나**를 낸다 — body 가 원시 둘 이상이면 그 키들은 원시들에 흩어져 있다(예:
@@ -438,7 +512,13 @@ function bind_primitive_args(prim, ctx)
     end
     kw = Dict{Symbol,Any}()
     for (k, v) in ctx.params
-        haskey(prim.params, String(k)) && (kw[Symbol(k)] = v)
+        haskey(prim.params, String(k)) || continue
+        # 🔴 **타입이 안 맞으면 예외가 아니라 거절이다**(`PARAM_JSON_TYPES` 의 docstring).
+        #    안 막으면 호출 경계의 `convert` 실패가 `enact_minted!` 의 `catch` 에서
+        #    `partial = true` 로 적히고, 손도 안 댄 세계가 `handled=true` 로 폴백을 삼킨다.
+        local bad = _param_type_reject(prim.params[String(k)], v)
+        bad === nothing || return "reject:param_type:$(k):$(bad) (원시 $(prim.name))"
+        kw[Symbol(k)] = v
     end
     # zone 계열: 안 주면 키워드를 빼고(= callee 기본값 = 살아 있는 존 전부), 줬으면
     # `Symbol` 로 강제한 뒤 **집행 한 발 전에** 살아 있는 존인지 검사한다. 위 (b) 를 보라.

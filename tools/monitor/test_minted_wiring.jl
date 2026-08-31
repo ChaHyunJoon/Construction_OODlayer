@@ -20,12 +20,29 @@
 #     **참**이어야 한다 — 반쯤 편집된 세계 위에 기본 복구 사슬을 얹는 것이 안 얹는 것보다
 #     나쁘기 때문이다. 판정은 파생 필드 `world_maybe_dirty` 로 한다.
 #
+# (2b) 🔴 **그런데 `resume === :failed` 면 `handled` 는 거짓이다** (2026-08-30 최종 리뷰,
+#     CRITICAL — 다섯 번째 조용한 미복구). 세계는 고쳐졌는데 `_issue_resume!` 이 던져
+#     프론티어가 낡은 채 남은 판이다. `handled=true` 를 내면 `policy_producer` 가 `nothing`
+#     을 반환해 기본 복구 사슬이 통째로 건너뛰어지고 그 OOD 사건은 **이미 소비돼 다시 오지
+#     않는다** — `PRIMITIVE_RESUMES_CACHE` 의 docstring 이 "성공과 구별되지 않는 미복구" 라고
+#     이름 붙인 바로 그 사건이다.
+#     🔴 (2)와 (2b)는 **body 도 결정 행도 같고 오직 env 만 다르다**: (2)의 env 는 진짜
+#     `OperatingSchedule`+`PlanningCache` 를 들어 재개가 성공하고, (2b)의 env 는 안 들어 실패한다.
+#     이 쌍이 없으면 "`partial` 이면 언제나 `handled`" 와 "재개를 봐서 정한다" 가 구분되지 않는다.
+#
 # (3) 조용한 성공(`:admit` 인데 `world_maybe_dirty=false`)은 `handled=false` 다 — 그리고
 #     그 폴백도 조용하지 않다. (2) 와 (3) 이 함께 `world_maybe_dirty` 규칙을 양쪽에서 못박는다.
 #
 # (4) 🔴 **삼상을 이상으로 뭉개지 않는다**(spec §9-2). 로그가 `applied`·`partial`·
 #     `world_maybe_dirty` 를 **각각** 찍는다. 하나로 접으면 "불렀는데 아무 일도 없었다"와
 #     "던져서 세계가 절반이다"가 읽는 사람에게 같은 관측이 된다.
+#     🔴 그리고 그 셋의 **관계**는 룰링 R48 이 정한 `touched || partial` 이지
+#     `applied || partial` 이 **아니다.** 이 파일은 2026-08-30 T4 fix 까지 그 반증된 등식을
+#     단언하고 있었고, 초록이던 이유는 fixture 둘이 "만졌는데 적응은 아님" status 에 한 번도
+#     안 닿았기 때문이다(fixture 운). 닿는 순간 그 단언은 **옳은 코드를 상대로** 빨개지고,
+#     가장 자연스러운 "수정" 은 R48 을 되돌리는 것이 된다. 그래서 여기서는 (i) 참인 함의 둘만
+#     단언하고, (ii) 실제로 그 status 에 **닿는 fixture** 를 하나 만들어 옛 등식이 거짓임을
+#     값으로 못박는다.
 #
 # (5) 🔴 레지스트리가 망가져 `PRIMITIVE_TABLE` 이 `error(...)` 를 내도 **던지지 않는다.**
 #     새면 `maybe_respecify!` 의 producer `try` 로 올라가 비-`:soft` 사건에서
@@ -101,6 +118,24 @@ const QUIET_ENV = (staging_circles = Dict{Symbol,Any}(),)   # → :no_staging (�
 const THROW_ENV = (nope = 1,)                               # → :threw      (세계가 절반일 수 있다)
 const BODY = ["translate_whole_build"]
 
+"""
+    throw_env_with_live_cache() -> NamedTuple
+
+`THROW_ENV` 와 **같은 방식으로 던지는데 재개는 성공하는** env. `test/minted_tool_enacts.jl`
+(13-e) 의 정본 관용구다 — 진짜 `OperatingSchedule` + `initialize_planning_cache` 에 낡은 정점을
+심어 두면, 재개가 실제로 나갔는지가 `active_set` 으로 **관측 가능**해진다.
+
+🔴 이것이 (2)/(2b) 쌍의 **유일한** 차이다: body·결정 행·던지는 지점이 전부 같고
+`env.cache`/`env.sched` 의 유무만 다르다. 그래서 두 판의 `handled` 가 갈리면 그것을 가른 것은
+`resume` 뿐이다.
+"""
+function throw_env_with_live_cache()
+    sched = CB.OperatingSchedule()
+    cache = CB.initialize_planning_cache(sched)
+    push!(cache.active_set, 999)          # 낡은 프론티어 — 재개가 나가면 지워진다
+    return (cache = cache, sched = sched) # `staging_circles` 없음 → translate_whole_build! 이 던진다
+end
+
 @testset "T4 배선 — 합성 tool 집행 진입점" begin
 
     # -------------------------------------------------------------------------------------
@@ -121,26 +156,70 @@ const BODY = ["translate_whole_build"]
                                                            _dec(_sl(reach = nothing))))
         @test r3.handled === false && r3.verdict === :deferred
         @test occursin("lane=reach_nothing", out3)
+
+        # ---- (1b) 🔴 그 줄이 **참인 말을 하고, 손에 든 증거를 버리지 않는다** ------------
+        # 2026-08-30 최종 리뷰(IMPORTANT). 이 갈래는 `sl !== nothing` 이다 — 합성 레인이
+        # **있다.** 그런데도 `reason=no synth lane on this decision` 을 찍고 있었다(거짓 진술),
+        # 그리고 판별에 필요한 값 넷을 이미 손에 들고도 안 찍어서 T5 가 그 판별에 **유료 호출을
+        # 한 번 더 썼다**. 그 넷이 "레인이 안 돌았다" · "돌다 터졌다" · "돌았고 expressible
+        # 이라 안 쐈다" 를 가른다(spec §9-2 — 삼상을 이상으로 뭉개지 않는다).
+        local sl4 = _sl(reach = nothing)
+        sl4["synthesis_event"]  = true
+        sl4["synthesis_ran"]    = false
+        sl4["synthesis_error"]  = "boom: 합성기가 던졌다"
+        sl4["tool_minted"]      = "disabled"
+        r4, out4 = capture_out(() -> enact_minted_decision!(nothing, nothing, _dec(sl4)))
+        @test occursin("lane=reach_nothing", out4)
+        @test occursin("synthesis_event=true", out4)
+        @test occursin("synthesis_ran=false", out4)
+        @test occursin("synthesis_error=boom", out4)
+        @test occursin("tool_minted=disabled", out4)
+        # 🔴 사유가 갈래마다 다르고, 레인이 있는 갈래에서 "레인이 없다" 라고 말하지 않는다.
+        @test !occursin("no synth lane", out4)
+        @test !occursin("no synth lane", r4.reason)
+        @test r4.reason != r.reason               # `sl === nothing` 갈래와 같은 문장이 아니다
+        @test occursin("no synth lane", r.reason)  # 그쪽은 그대로 참이다
+        # 그리고 값이 **없는** 판은 `nothing` 으로 찍힌다 — `false` 로 접히지 않는다.
+        @test occursin("synthesis_event=nothing", out3)
+        @test occursin("synthesis_ran=nothing", out3)
     end
 
     # -------------------------------------------------------------------------------------
-    @testset "(2) 던져서 세계가 절반일 수 있으면 handled=true 다 (applied 가 아니다)" begin
-        r, out = capture_out(() -> enact_minted_decision!(THROW_ENV, nothing, _dec(_sl(names = BODY))))
+    @testset "(2) 던졌고 재개가 성공하면 handled=true 다 (applied 가 아니다)" begin
+        local env = throw_env_with_live_cache()
+        r, out = capture_out(() -> enact_minted_decision!(env, nothing, _dec(_sl(names = BODY))))
         # 먼저 전제를 못박는다 — 이 판이 실제로 `applied=false, partial=true` 인가.
         @test r.verdict === :admit
         @test r.applied === false
         @test r.partial === true
         @test r.world_maybe_dirty === true
+        # 🔴 2026-08-30 T4 리뷰(CRITICAL): 스케줄 캐시 재개 판정이 로그에 실린다.
+        @test r.resume === :issued
+        @test isempty(env.cache.active_set)      # 🔴 재개가 실제로 나갔다 — 세계에 보인다
         # 🔴 이 한 줄이 C1 이다. 브리핑의 `(:admit) && applied` 로 되돌리면 빨개진다.
         @test r.handled === true
         @test occursin("handled=true", out)
         @test !occursin("NOT handled", out)      # 처리했으면 폴백 문구가 없어야 한다
         @test occursin("threw", out)             # 어느 단계가 던졌는지 steps 에 남는다
-        # 🔴 2026-08-30 T4 리뷰(CRITICAL): 스케줄 캐시 재개 판정이 로그에 실린다. 이 판의
-        #    env 는 `cache`/`sched` 가 없어 재개가 실패하고, 그 실패가 **기록**으로 남는다 —
-        #    조용히 넘어가면 "세계는 고쳤는데 프론티어가 낡았다"가 로그에서 사라진다.
-        @test occursin("resume=", out)
+        @test occursin("resume=issued", out)
+    end
+
+    # -------------------------------------------------------------------------------------
+    @testset "(2b) 🔴 재개가 실패하면 handled=false 다 — 폴백을 삼키지 않는다" begin
+        # 같은 body, 같은 던지는 지점. 다른 것은 env 가 `cache`/`sched` 를 안 든다는 것뿐이고
+        # 그래서 `_issue_resume!` 이 실패한다 = 세계는 절반 고쳐졌는데 프론티어가 낡았다.
+        r, out = capture_out(() -> enact_minted_decision!(THROW_ENV, nothing, _dec(_sl(names = BODY))))
+        # 전제 — 이 판이 정말 "던졌고 세계가 더러울 수 있고 재개가 실패했다" 인가.
+        @test r.verdict === :admit
+        @test r.partial === true
+        @test r.world_maybe_dirty === true
         @test r.resume === :failed
+        # 🔴 이 세 줄이 최종 리뷰의 CRITICAL 이다. `handled` 에서 `resume !== :failed` 연언지를
+        #    빼면 전부 빨개진다 — 그리고 그 상태가 곧 다섯 번째 조용한 미복구다.
+        @test r.handled === false
+        @test occursin("handled=false", out)
+        @test occursin("NOT handled", out)       # 🔴 폴백이 **살아 있다**, 그리고 조용하지 않다
+        @test occursin("resume=failed", out)     # 그리고 무엇이 폴백을 살렸는지가 로그에 있다
     end
 
     # -------------------------------------------------------------------------------------
@@ -168,7 +247,12 @@ const BODY = ["translate_whole_build"]
             r = capture_out(() -> enact_minted_decision!(env, nothing, _dec(_sl(names = BODY))))[1]
             @test hasproperty(r, :applied) && hasproperty(r, :partial) &&
                   hasproperty(r, :world_maybe_dirty)
-            @test r.world_maybe_dirty === (r.applied || r.partial)
+            # 🔴 R48. 규칙은 `touched || partial` 이고 `touched` 는 이 경계에서 안 보인다 —
+            #    그래서 여기서 단언할 수 있는 것은 **참인 함의 둘**뿐이다(역은 거짓이다).
+            #    옛 등식 `world_maybe_dirty === (applied || partial)` 을 여기 적으면 아래
+            #    (4b) 의 fixture 에서 옳은 코드를 상대로 빨개진다.
+            @test !r.applied || r.world_maybe_dirty      # applied ⟹ dirty
+            @test !r.partial || r.world_maybe_dirty      # partial ⟹ dirty
         end
 
         # 거절은 세 필드가 전부 거짓이다 — "부르지 않았다".
@@ -178,6 +262,45 @@ const BODY = ["translate_whole_build"]
         @test r.applied === false && r.partial === false && r.world_maybe_dirty === false
         @test r.handled === false
         @test occursin("NOT handled", out)
+    end
+
+    # -------------------------------------------------------------------------------------
+    @testset "(4b) 🔴 옛 등식 `applied || partial` 은 거짓이다 — 닿는 fixture 로 못박는다" begin
+        # 필요한 것은 "세계는 만졌는데 노린 적응은 아니다" 인 status 에 **실제로 닿는** 판이다.
+        # `:residual_blocked` 는 진짜 기하가 있어야 나오므로 `test/minted_tool_enacts.jl` (13-h)
+        # 의 값싼 대체물을 그대로 쓴다: `:unreadable_return` 은 `_step_applied=false`(못 쟀으니
+        # 성공으로 안 센다) · `_step_touched_world=true`(못 쟀으니 깨끗하다고도 못 한다) 다.
+        # 오염 사본으로 `restage_all_blocked` 의 impl 만 "반환 모양을 못 읽는" 함수로 돌린다.
+        mktempdir() do dir
+            local path = joinpath(dir, "primitive_registry.json")
+            write(path, """
+            {"primitives": [
+              {"name":"restage_all_blocked","impl":"process_schedule!","surface":"physical",
+               "harness_args":["env"],"params":{},"reversible":false}
+            ]}""")
+            withenv("PRIMITIVE_REGISTRY" => path) do
+                CB._reset_primitive_table!()
+                local sched = CB.OperatingSchedule()   # env 자리에 그대로 — impl 이 이걸 받는다
+                r, out = capture_out(() -> enact_minted_decision!(
+                    sched, nothing, _dec(_sl(names = ["restage_all_blocked"]))))
+                # 전제 — 이 판이 정말 그 status 에 닿았는가.
+                @test r.verdict === :admit
+                @test length(r.steps) == 1 && r.steps[1].status === :unreadable_return
+                @test r.applied === false
+                @test r.partial === false
+                # 🔴 여기가 요점이다. 옛 등식이면 `false` 여야 하는 자리에서 **참**이다.
+                @test r.world_maybe_dirty === true
+                @test r.world_maybe_dirty !== (r.applied || r.partial)
+                # 그리고 그 참이 실제로 힘을 갖는다 — 폴백이 억제된다.
+                @test r.resume === :not_needed_self
+                @test r.handled === true
+                @test occursin("world_maybe_dirty=true", out)
+                @test occursin("applied=false", out)
+                @test occursin("handled=true", out)
+            end
+            CB._reset_primitive_table!()
+        end
+        @test length(CB.PRIMITIVE_TABLE()) == 19       # 원래 레지스트리로 돌아왔다
     end
 
     # -------------------------------------------------------------------------------------

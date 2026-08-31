@@ -745,6 +745,24 @@ end
 # =============================================================================
 
 """
+    _synth_lane_field(sl, key) -> Any
+
+합성 레인 dict 에서 필드 하나를 읽는다. 없으면 `nothing`.
+
+🔴 왜 자체 헬퍼인가. 이 dict 은 두 모양으로 도착한다 — 생산 경로는
+`policy.jl::_synth_view` 가 만든 **String 키** `Dict{String,Any}` 이고, 게이트와 루프백은
+`JSON3.Object`/NamedTuple 이라 **Symbol 키**다. 한쪽만 보면 다른 쪽에서 조용히 `nothing`
+이 나오고, 그 `nothing` 은 "서비스가 안 실었다"와 **글자 그대로 같은 관측**이 된다(spec §9-2).
+`policy.jl::_synth_view` 가 같은 이유로 같은 왕복을 한다.
+"""
+function _synth_lane_field(sl, key::AbstractString)
+    sl === nothing && return nothing
+    v = try get(sl, key, nothing) catch; nothing end
+    v === nothing && (v = try get(sl, Symbol(key), nothing) catch; nothing end)
+    return v
+end
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 집행한다. `CB.enact_minted!` 를 부르고, **집행 여부를 로그와
@@ -753,12 +771,27 @@ end
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
 
-🔴 **`handled` 의 정의는 `(:admit) && world_maybe_dirty` 다 — `applied` 가 아니다.**
+🔴 **`handled` 의 정의는 `(:admit) && world_maybe_dirty && resume !== :failed` 다 —
+`applied` 가 아니다.**
 `applied` 는 status 전용이라, 1단계가 세계를 바꾸고 2단계가 **던지면** `applied == false` 인데
 세계는 이미 편집돼 있다(`partial == true`, `undo === :none`). 그 반쯤 고쳐진 세계 위에 기본
-복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드
-`world_maybe_dirty (= applied || partial)` 으로 한다. 브리핑의 `(:admit) && applied` 는
-바로 그 경우를 놓친다.
+복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드 `world_maybe_dirty` 로
+한다. 브리핑의 `(:admit) && applied` 는 바로 그 경우를 놓친다.
+
+🔴 **그 파생 필드는 `touched || partial` 이지 `applied || partial` 이 아니다**(룰링 R48).
+`translate_whole_build!` 의 `:residual_blocked`·`:already_clear` 는 `applied == false` 인데
+빌드를 **이미 옮긴 뒤**의 status 다. 여기에 옛 등식을 적으면 그 판이 "세계가 깨끗하다"로
+읽히고, zone 매크로가 어휘로 돌아오는 순간 그 거짓말이 **제어 흐름**이 된다. 정의는
+`enact_minted!` 의 `_r` 하나가 소유한다 — 이 문단은 그것을 **인용**할 뿐 다시 적지 않는다.
+
+🔴 **`resume === :failed` 면 `handled` 는 거짓이다**(2026-08-30 최종 리뷰, CRITICAL — 다섯
+번째 조용한 미복구). 세계는 고쳐졌는데 `_issue_resume!` 이 던져 프론티어가 낡은 채로 남은
+판이다. 그때 `handled=true` 를 내면 `policy_producer` 가 `nothing` 을 반환해 기본 복구
+사슬이 통째로 건너뛰어지고, 그 OOD 사건은 **이미 소비돼 다시 오지 않는다** = 성공과
+구별되지 않는 미복구. 그것이 정확히 `PRIMITIVE_RESUMES_CACHE` 가 막으려고 존재하는 사건이다.
+⚠️ 나머지 넷(`:issued` · `:not_needed_self` · `:not_needed_untouched` · `:none`)은 전부
+"프론티어가 낡지 않았다"이므로 `handled` 를 막지 않는다 — 다섯 상태의 정본 목록은
+`enact_minted!` 의 표에 있다.
 
 🔴 **삼상을 이상으로 뭉개지 않는다**(spec §9-2). 로그는 `applied` · `partial` ·
 `world_maybe_dirty` 를 **따로** 찍는다 — 하나로 접으면 "불렀는데 아무 일도 없었다"(조용한
@@ -795,14 +828,32 @@ function enact_minted_decision!(env, truth, decision)
         local reach = sl === nothing ? nothing : (try get(sl, "reach", nothing) catch; nothing end)
         # ---- 조기 반환도 조용하지 않다 (C5) ------------------------------------------------
         if sl === nothing || reach === nothing
-            println("[minted] lane=", (sl === nothing ? "absent" : "reach_nothing"),
-                    " tool=n/a reach=n/a verdict=deferred applied=false partial=false",
+            # 🔴 **두 갈래는 다른 사건이고 사유도 달라야 한다**(2026-08-30 최종 리뷰, spec §9-2).
+            #    `sl !== nothing && reach === nothing` 에서는 합성 레인이 **있다** — 그런데도
+            #    `reason=no synth lane on this decision` 을 찍는 것은 거짓 진술이었다.
+            # 🔴 그리고 그 갈래는 판별에 필요한 값 넷을 **이미 손에 들고 있다**:
+            #    `synthesis_event`(발화할 사건이었나) · `synthesis_ran`(발화해서 돌았나) ·
+            #    `synthesis_error`(돌다 터졌나) · `tool_minted`(뭘 주조했나). 이 넷이
+            #    "레인이 안 돌았다" · "돌다 터졌다" · "돌았고 expressible 이라 안 쐈다" 를 가른다.
+            #    안 찍으면 그 판별에 **유료 호출을 한 번 더 써야 한다** — T5 가 실제로 그랬다.
+            local lane = sl === nothing ? "absent" : "reach_nothing"
+            local why  = sl === nothing ?
+                "no synth lane on this decision" :
+                "synth lane present but reach is nothing — 아래 네 필드가 원인을 가른다"
+            println("[minted] lane=", lane,
+                    " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
+                    " reach=n/a verdict=deferred applied=false partial=false",
                     " world_maybe_dirty=false handled=false undo=none resume=none steps=[]",
-                    " ran_milp=n/a(not armed) reason=no synth lane on this decision")
+                    " ran_milp=n/a(not armed)",
+                    " synthesis_event=", _synth_lane_field(sl, "synthesis_event"),
+                    " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
+                    " synthesis_error=", _synth_lane_field(sl, "synthesis_error"),
+                    " tool_minted=", _synth_lane_field(sl, "tool_minted"),
+                    " missing_primitive=", _synth_lane_field(sl, "missing_primitive"),
+                    " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
-            return (handled = false, verdict = :deferred,
-                    reason = "no synth lane on this decision",
+            return (handled = false, verdict = :deferred, reason = why,
                     applied = false, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none)
         end
@@ -812,7 +863,11 @@ function enact_minted_decision!(env, truth, decision)
         CB.LAST_EDGE_COSTS[] = _sent
 
         local r = CB.enact_minted!(env, truth, sl)
-        local handled = (r.verdict === :admit) && r.world_maybe_dirty
+        # 🔴 세 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
+        #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그
+        #    조용한 미복구가 된다(2026-08-30 최종 리뷰).
+        local handled = (r.verdict === :admit) && r.world_maybe_dirty &&
+                        (r.resume !== :failed)
 
         println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
@@ -829,7 +884,8 @@ function enact_minted_decision!(env, truth, decision)
         handled || println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                            "(이 폴백은 조용하지 않다 — verdict=", r.verdict,
                            " applied=", r.applied, " partial=", r.partial,
-                           " world_maybe_dirty=", r.world_maybe_dirty, " 가 이유다)")
+                           " world_maybe_dirty=", r.world_maybe_dirty,
+                           " resume=", r.resume, " 가 이유다)")
 
         return (handled = handled, verdict = r.verdict, reason = r.reason,
                 applied = r.applied, partial = r.partial,

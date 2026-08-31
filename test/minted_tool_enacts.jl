@@ -55,6 +55,11 @@
 #           (= 옮겨진 빌드가 world_maybe_dirty=false 로 보고되는 IMPORTANT 결함).
 #   ·(13d): `_step_touched_world` 의 `UNMEASURABLE_STATUSES ? true :` 를 `false` 로.
 #   ·(13e): 던진 경로의 `_issue_resume!` 호출을 지운다.
+#   ·(14a): `bind_primitive_args` 의 `_param_type_reject` 호출을 지운다(= 최종 리뷰 이전 상태 —
+#           타입 틀린 param 이 호출 경계에서 던지고 그 예외가 `partial=true` 로 기록된다).
+#   ·(14b): `PARAM_JSON_TYPES["boolean"]` 을 `Any` 로(= `"true"` 문자열이 통과한다).
+#   ·(14c): `_param_type_reject` 의 `t === nothing && return "no_declared_type"` 을
+#           `t === nothing && return nothing` 으로(= 선언 없는 param 이 조용히 통과한다).
 #
 # 🔴 이 게이트는 서비스도 MILP 도 안 쓴다. (11) 이 부르는 유일한 실제 원시는
 #    `translate_whole_build!` 이고, 그 함수는 `isempty(env.staging_circles)` 첫 줄에서
@@ -554,6 +559,77 @@ end
     # ---- (13-g) 아무것도 안 부른 판의 resume 은 :none 이다 ---------------------------
     @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).resume === :none
     @test CB.enact_minted!(nothing, nothing, _synth(reach = "needs_primitive")).resume === :none
+end
+
+# =============================================================================
+# (14) 🔴 2026-08-30 최종 리뷰 (IMPORTANT) — **타입 틀린 param 은 예외가 아니라 거절이다.**
+#
+# 레지스트리 `params` 의 **값**은 아무것도 못 박혀 있지 않았고 `bind_primitive_args` 는 매치된
+# param 을 검증 없이 넘겼다(`zone_keys` 만 예외). 집행 가능한 여섯이 실제로 받는 타입 있는
+# 키워드는 셋이다: `min_ready::Int` · `snap_all::Bool` · `tol::Float64`.
+#
+# `{"snap_all": "true"}` 는 **호출 경계의 `convert` 에서** 죽는다 — impl 본문은 한 줄도 안
+# 돌았으므로 세계는 **증명 가능하게** 손대지 않은 상태다. 그런데 `enact_minted!` 의 `catch` 는
+# 그것을 무조건 `partial = true` 로 적고, 그러면 `world_maybe_dirty = true` → T4 의
+# `handled = true` 가 되어 **아무 일도 안 일어난 세계 위에서 기본 복구 사슬이 건너뛰어진다.**
+# 즉 LLM 의 오타 하나가 폴백을 삼킨다.
+#
+# 그래서 이 절이 재는 것은 두 가지다: (i) 타입 오류가 `verdict=:reject` 로 나오는가(= 세계
+# 무접촉, `steps` 비어 있음, 폴백이 산다), (ii) **맞는 타입은 여전히 통과하는가**(음성 대조 —
+# 없으면 "전부 거절" 이라는 퇴화한 구현이 이 절을 통째로 초록으로 만든다).
+# =============================================================================
+@testset "(14) 선언된 타입으로 변환 안 되는 param 은 거절이다" begin
+    # ---- 전제: 오늘 집행 가능한 여섯에서 타입 있는 키워드는 이 셋이다 ------------------
+    local rf = CB.resolve_primitive("reform_stuck_teams")
+    local fa = CB.resolve_primitive("force_advance_stuck_carrier")
+    @test String(rf.params["min_ready"]["type"]) == "integer"
+    @test String(rf.params["snap_all"]["type"])  == "boolean"
+    @test String(fa.params["tol"]["type"])       == "number"
+
+    # ---- (14-a) 순수 판정식. 스키마는 레지스트리에서 오고 여기서 다시 안 적는다 ---------
+    @test CB._param_type_reject(rf.params["snap_all"], "true") !== nothing   # 문자열 → Bool 불가
+    @test CB._param_type_reject(rf.params["snap_all"], true)   === nothing
+    @test CB._param_type_reject(rf.params["min_ready"], 1.5)   !== nothing   # InexactError
+    @test CB._param_type_reject(rf.params["min_ready"], 2)     === nothing
+    @test CB._param_type_reject(rf.params["min_ready"], 2.0)   === nothing   # 변환은 된다
+    @test CB._param_type_reject(fa.params["tol"], 0.02)        === nothing
+    @test CB._param_type_reject(fa.params["tol"], "0.02")      !== nothing
+    # 합집합 선언(`["string","null"]`)은 하나라도 변환되면 통과한다.
+    local rp = CB.resolve_primitive("release_pending_assignments")
+    @test CB._param_type_reject(rp.params["faulted"], "R3")    === nothing
+    @test CB._param_type_reject(rp.params["faulted"], nothing) === nothing
+    @test CB._param_type_reject(rp.params["faulted"], 3)       !== nothing
+    # 🔴 선언이 없거나 모르는 타입이면 거절이다 — 통과시키면 레지스트리 편집이 게이트 전부
+    #    초록인 채로 호출 표면을 넓힌다(R46 이 parked 한 확장 경로).
+    @test CB._param_type_reject(Dict{String,Any}(), 1) == "no_declared_type"
+    @test CB._param_type_reject(Dict{String,Any}("type" => "widget"), 1) ==
+          "unknown_declared_type:widget"
+
+    # ---- (14-b) 바인더가 그것을 **거절 문자열**로 낸다 ---------------------------------
+    local bad = CB.bind_primitive_args(rf, (env = Ref(:e), truth = nothing,
+                    params = Dict{String,Any}("snap_all" => "true")))
+    @test bad isa String
+    @test occursin("reject:param_type:snap_all", bad)
+    @test occursin("reform_stuck_teams", bad)          # 어느 원시인지가 사유에 있다
+    # 음성 대조 — 맞는 타입은 통과하고 값이 그대로 실린다("전부 거절" 구현을 막는다).
+    local ok = CB.bind_primitive_args(rf, (env = Ref(:e), truth = nothing,
+                    params = Dict{String,Any}("snap_all" => true, "min_ready" => 2)))
+    @test ok isa Tuple
+    @test ok[2].snap_all === true && ok[2].min_ready == 2
+
+    # ---- (14-c) 🔴 집행부까지: `:reject` 이지 `partial` 이 아니다 -----------------------
+    # 이것이 결함의 실체다. 고치기 전에는 `verdict=:admit, partial=true,
+    # world_maybe_dirty=true` 였고 T4 가 그것을 `handled=true` 로 읽어 폴백을 삼켰다.
+    local r = CB.enact_minted!(Ref(:e), nothing,
+                _synth(names = ["reform_stuck_teams"],
+                       params = Dict{String,Any}("min_ready" => 1.5)))
+    @test r.verdict === :reject
+    @test isempty(r.steps)                 # 🔴 한 발도 안 나갔다
+    @test r.partial === false
+    @test r.applied === false
+    @test r.world_maybe_dirty === false     # ⟹ T4 의 handled 가 거짓 ⟹ 폴백이 산다
+    @test r.resume === :none
+    @test occursin("reject:param_type:min_ready", r.reason)
 end
 
 end # module
