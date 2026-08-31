@@ -213,6 +213,182 @@ _step_applied(prim_name::AbstractString, status::Symbol) =
     !(status in get(SILENT_SUCCESS_STATUSES, String(prim_name), Set{Symbol}()))
 
 """
+    WORLD_UNCHANGED_STATUSES
+
+원시가 **세계를 한 바이트도 안 건드리고** 돌아선 경우들. `world_maybe_dirty` 판정이 이 표
+하나만 본다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다(게이트가 `keys(...) ==
+ENACTABLE_TODAY` 를 못 박는다).
+
+🔴 **왜 `SILENT_SUCCESS_STATUSES` 와 별개의 표인가** (2026-08-30 T4 리뷰).
+한 status 가 동시에 "노린 적응은 안 일어났다"이고 "그런데 세계는 이미 건드렸다"일 수 있다.
+표 하나로는 그 둘을 못 나른다. 실제 사고: `translate_whole_build!` 의 `:residual_blocked` 는
+`_apply_uniform_translation!` 이 **이미 빌드를 통째로 옮긴 뒤**에 나오는 상태인데, 표가 하나뿐일
+때 `applied=false → partial=false → world_maybe_dirty=false` 가 되어 **"세계가 깨끗하다"고
+보고하는 옮겨진 빌드**가 됐다. 오늘은 로그의 거짓말이지만(`macro_to_proposal` 에 zone 분기가
+없어 폴백이 이중 편집을 못 한다), zone 매크로가 어휘로 돌아오는 순간 그것이 **제어 흐름**이 된다.
+
+🔴 **불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`.** 세계를 안 건드렸으면 노린 적응도
+당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, T4 의
+`handled = (:admit) && world_maybe_dirty` 가 `applied` 판정보다 **넓다**는 성질을 준다.
+게이트가 여섯 전부에 대해 이 포함을 잰다.
+
+출처 — 여섯 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):
+  · `restage_all_blocked!` `src/respec/restage_zone.jl:517`
+      안 건드림: `:none`(막힌 조립체 0 → 루프 전에 반환)
+                 `:infeasible`(= `isempty(moved) && !isempty(failed)`; `restage_assembly!` 의
+                 비-`:restaged` 반환은 **전부** 첫 편집(`set_desired_global_transform!`, :235)
+                 **앞**이다)
+      🔴 건드림: `:residual_blocked` — 삼항 사슬상 `moved` 가 비지 않아야 도달한다(비었으면
+                 `:infeasible` 로 먼저 갈린다). 즉 조립체를 **실제로 옮긴 뒤**의 상태다.
+                 `:partial` · `:restaged_all` 도 같다.
+  · `translate_whole_build!` `src/respec/restage_zone.jl:777`
+      안 건드림: `:no_staging` · `:infeasible`(둘 다 `_apply_uniform_translation!` **앞**에서 반환)
+      🔴 건드림: `:residual_blocked` · `:already_clear` · `:translated` — 셋 다
+                 `_apply_uniform_translation!` 이 **이미 돈 뒤**다. `:already_clear`(|Δ|≤1e-9)도
+                 제외하지 않는다: 그 함수는 Δ 와 무관하게 `_resync_scene_drift!(env)` 를 불러
+                 드리프트한 씬 노드를 스냅한다(`restage_zone.jl:629`) = 세계 편집이다.
+  · `force_advance_stuck_carrier!` `src/respec/replace_robot.jl:803`
+      안 건드림: `:disabled`(첫 줄, `CARRIER_RESCUE` 미설정) · `:no_carrier`(= `isempty(teleported)`,
+                 즉 `set_desired_global_transform!` 이 한 번도 안 돌았다)
+      🔴 건드림: `:carrier_closed` · `:carrier_advanced`
+  · `recover_stalled_teams!` `src/respec/replace_robot.jl:588`
+      안 건드림: `:no_team`(하위 호출이 전부 비진행 반환) · `:stuck`(reform 둘 다 0, wedge/carrier 비진행)
+                 그리고 `:disabled`·`:no_carrier`(`SILENT_SUCCESS_STATUSES` 의 키 집합을 그대로
+                 맞춘다 — ⚠️ 실제로는 이 둘이 이 원시에서 **밖으로 올라오지 않는다**: 소스의
+                 전달 조건이 `carrier.status in (:carrier_closed, :carrier_advanced)` 뿐이다.
+                 도달 불가 항목이라 무해하고, 두 표의 키·값 대조를 쉽게 하려고 남긴다)
+      🔴 건드림: `:snapped` · `:restaged` · `:unwedged` · `:force_snapped` · `:carrier_*`
+  · `resolve_schedule_wedge!` `src/respec/replace_robot.jl:979`
+      안 건드림: `:not_applicable` · `:no_wedge`(둘 다 `Graphs.rem_edge!` **앞**에서 반환)
+      🔴 건드림: `:unwedged`
+  · `reform_stuck_teams!` `src/respec/replace_robot.jl:458`
+      안 건드림: `:moved_none`(`n_moved == 0`). 🔴 근거: `wedged` 가 참이면 `members` 는 비지 않고
+                 팀원은 `robot_team(tu)` 에서 왔으므로 `has_component` 가 참이라 `n_moved ≥ 1` 이다.
+                 따라서 `n_moved == 0` ⟹ 어떤 팀도 `wedged` 가 아니었다 ⟹ `capture_robots!` 도
+                 한 번도 안 불렸다.
+      🔴 건드림: `:moved`
+"""
+const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
+    "restage_all_blocked"         => Set([:none, :infeasible]),
+    "translate_whole_build"       => Set([:no_staging, :infeasible]),
+    "force_advance_stuck_carrier" => Set([:disabled, :no_carrier]),
+    "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
+    "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
+    "reform_stuck_teams"          => Set([:moved_none]),
+)
+
+"""
+    _step_touched_world(prim_name, status) -> Bool
+
+한 단계가 **세계에 손을 댔을 수 있는가**. `_step_applied` 와 판정 순서가 **일부러 다르다**:
+
+ 1. `UNMEASURABLE_STATUSES` — 못 쟀다 → 🔴 **참**(보수적). `_step_applied` 는 같은 자리에서
+    거짓을 낸다. 비대칭이 옳다: 반환 모양을 못 읽었다는 것은 "적응했다고 셀 수 없다"인
+    동시에 "세계가 깨끗하다고 말할 수도 없다"이다. 두 질문의 안전한 답이 반대편이다.
+ 2. `WORLD_UNCHANGED_STATUSES` 에 있으면 거짓.
+ 3. 그 외 → 참(보수적).
+"""
+_step_touched_world(prim_name::AbstractString, status::Symbol) =
+    status in UNMEASURABLE_STATUSES ? true :
+    !(status in get(WORLD_UNCHANGED_STATUSES, String(prim_name), Set{Symbol}()))
+
+"""
+    PRIMITIVE_RESUMES_CACHE
+
+원시가 세계를 고친 뒤 **스스로 `reset_cache_resume!` 를 부르는가**. 🔴 키는 집행 가능한
+원시 여섯 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
+
+🔴 **왜 이 표가 필요한가** (2026-08-30 T4 리뷰, CRITICAL).
+`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 여섯 중 셋은 스케줄 캐시를
+스스로 재개하지 않는다 — `reform_stuck_teams!` 의 주석이 직접 그렇게 적는다(*"the callers …
+drive the schedule via reset_cache_resume!"*). 그 대가는 `src/respec/ood_injection.jl` 이
+적어 둔 그대로다: *"그래프는 바뀌었는데 스케줄 캐시가 옛 프론티어를 들고 있어 복구가 아무
+효과가 없다 (예외는 안 난다)"*.
+
+T4 배선이 이것을 **치명적**으로 만든다: body `["recover_stalled_teams"]` 가 `:snapped` 를 내면
+`applied=true → handled=true → policy_producer 가 nothing 반환` = 기본 복구 사슬을 건너뛴다.
+로그는 `verdict=admit applied=true handled=true` 라고 적고, 프론티어는 낡은 채이며, 그 OOD
+사건은 **이미 소비돼 다시 오지 않는다.** 성공과 구별되지 않는 조용한 미복구 — 이 계획이
+막으려는 바로 그 실패다.
+
+출처 (`grep -n reset_cache_resume!` 실측):
+  · `restage_all_blocked!`         **true**  `restage_zone.jl:532` — `(resume && !isempty(moved)) && reset_cache_resume!`
+  · `translate_whole_build!`       **true**  `restage_zone.jl:789` — `_apply_uniform_translation!` 직후
+  · `resolve_schedule_wedge!`      **true**  `replace_robot.jl:1037` (그리고 `:1039` 에서 한 번 더)
+  · `reform_stuck_teams!`          **false** — 자기 주석이 호출자에게 미룬다
+  · `recover_stalled_teams!`       **false** — 본체에 호출 0건. ⚠️ `:restaged`/`:unwedged` 하위
+      경로는 위임한 원시(`restage_all_blocked!`·`translate_whole_build!`·`resolve_schedule_wedge!`)
+      **안에서** 재개된다. 그래도 여기서는 **false** 로 둔다: 가장 흔한 `:snapped`·`:force_snapped`
+      경로가 `reform_stuck_teams!` 만 타서 재개가 없기 때문이다. 그 하위 경로에서는 재개가
+      한 번 더 나가는데, 그것이 안전한 근거는 `_issue_resume!` 의 멱등성 문단에 있다.
+  · `force_advance_stuck_carrier!` **false** — `update_planning_cache!(env, 0.0)` 를 부르지
+      `reset_cache_resume!` 를 부르지 않는다(`replace_robot.jl:875`)
+"""
+const PRIMITIVE_RESUMES_CACHE = Dict{String,Bool}(
+    "restage_all_blocked"         => true,
+    "translate_whole_build"       => true,
+    "resolve_schedule_wedge"      => true,
+    "reform_stuck_teams"          => false,
+    "recover_stalled_teams"       => false,
+    "force_advance_stuck_carrier" => false,
+)
+
+"""
+    _needs_cache_resume(prim_name, status) -> Bool
+
+이 단계 **하나** 때문에 body 끝에서 `reset_cache_resume!` 를 불러야 하는가.
+= 세계를 건드렸을 수 있고(`_step_touched_world`), 그런데 그 원시가 스스로 재개하지 않는다.
+
+⚠️ 표에 없는 이름의 기본값은 **`false`(자체 재개함)** 가 아니라 `true`(안 함)다 — 모르는
+원시를 "알아서 재개하겠지"로 접으면 그것이 곧 조용한 미복구다.
+"""
+_needs_cache_resume(prim_name::AbstractString, status::Symbol) =
+    _step_touched_world(prim_name, status) &&
+    !get(PRIMITIVE_RESUMES_CACHE, String(prim_name), false)
+
+"""
+    _issue_resume!(env) -> (Symbol, String)
+
+`reset_cache_resume!(env.cache, env.sched)` 를 **한 번** 부른다. 반환은
+`(:issued, "")` 또는 `(:failed, "<첫 줄>")`.
+
+🔴 **멱등이다 — 그래서 자체 재개한 원시 뒤에 한 번 더 나가도 해롭지 않다**(리뷰 지시 3).
+근거 셋:
+ 1. 소스(`replan.jl:1577`): `closed_set` 을 **읽기만** 하고 `active_set`·`node_queue` 를 비운 뒤
+    `(sched, closed_set)` 에서 **다시 계산**한다. 진행 상태를 소비하는 부분이 없다.
+    `process_schedule!` 은 지속된 MILP 시각 위에서 고정점이다(그 docstring).
+ 2. 생산 코드의 선례: `resolve_schedule_wedge!` 가 `replace_robot.jl:1037` 과 `:1039` 에서
+    **연달아 두 번** 부른다(사이에 `reform_stuck_teams!` 하나뿐).
+ 3. 게이트가 두 번 불러 `active_set`·`closed_set` 이 같음을 잰다.
+그럼에도 발화 조건은 **좁게** 잡는다(자체 재개 안 하는 원시가 실제로 세계를 건드렸을 때만) —
+멱등이라도 안 해도 되는 일을 하지 않는 편이 읽는 사람에게 정직하다.
+
+⚠️ `env` 가 `cache`/`sched` 를 안 들고 있으면 던진다(손으로 지은 env, `nothing`). 그것을
+**기록**으로 바꾼다 — 여기서 예외가 새면 `enact_minted!` 이 기록 대신 예외로 끝난다.
+"""
+function _issue_resume!(env)
+    try
+        reset_cache_resume!(env.cache, env.sched)
+        return (:issued, "")
+    catch e
+        return (:failed, first(split(sprint(showerror, e), "\n")))
+    end
+end
+
+"""
+    _resume_note(tag, detail) -> String
+
+재개 판정을 **사유 문자열에 싣는다**. 🔴 조용한 폴백 금지: "재개를 안 했다"도 사건이고,
+그 이유(세계를 안 건드렸다 / 원시가 알아서 한다 / 시도했는데 실패했다)가 서로 다르다.
+`resume` 필드가 같은 것을 기계가 읽을 수 있게 나른다 — 둘 다 있어야 사람과 게이트가 함께 본다.
+"""
+_resume_note(tag::Symbol, detail::AbstractString) =
+    tag === :issued               ? " [resume=issued: 자체 재개 안 하는 원시가 세계를 건드려 reset_cache_resume! 를 한 번 불렀다]" :
+    tag === :failed               ? " [resume=FAILED: $(detail) — 🔴 프론티어가 낡은 채로 남았다]" :
+    tag === :not_needed_self      ? " [resume=not_needed: 세계를 건드린 원시가 전부 스스로 재개한다]" :
+    tag === :not_needed_untouched ? " [resume=not_needed: 어느 단계도 세계를 안 건드렸다]" : ""
+
+"""
     bind_primitive_args(prim, ctx) -> Union{String, Tuple{Tuple,NamedTuple}}
 
 한 원시의 실제 호출 인자를 만든다. 문자열이면 **거절 사유**다. 순수 함수 — 세계를 안 건드린다.
@@ -339,7 +515,7 @@ end
     enact_minted!(env, truth, synth) -> NamedTuple
 
 합성된 tool 의 body 를 집행한다. 반환:
-`(verdict, reason, applied, partial, world_maybe_dirty, steps, undo)`. T4 가 읽는다.
+`(verdict, reason, applied, partial, world_maybe_dirty, steps, undo, resume)`. T4 가 읽는다.
 
 | `verdict` | 뜻 |
 |---|---|
@@ -354,7 +530,8 @@ end
 |---|---|
 | `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다** |
 | `partial` | 어떤 단계가 **던졌다** — 세계는 절반만 고쳐졌을 수 있고 되돌릴 방법이 없다 |
-| `world_maybe_dirty` | `applied` 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다 |
+| `world_maybe_dirty` | `touched`(`_step_touched_world`) 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다. ⚠️ `applied` 가 **아니다**: `translate_whole_build!` 의 `:residual_blocked` 는 `applied=false` 인데 빌드를 이미 옮겼다(2026-08-30 T4 리뷰) |
+| `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 여섯 중 셋이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
 
 🔴 세 필드는 **서로 다른 질문**이다. 하나만 읽고 다른 것의 답으로 쓰지 말 것 — 특히
 `applied == false` 는 "세계가 안 변했다"가 아니다(던졌을 수도, 못 쟀을 수도 있다).
@@ -374,13 +551,21 @@ end
 세계를 요구하는 판정보다 앞세우는 것이 옳기도 하다 — env 없이도 body 를 심사할 수 있다.
 """
 function enact_minted!(env, truth, synth)
-    # 🔴 `world_maybe_dirty` 는 파생 필드다(`applied || partial`). 왜 따로 싣는가:
+    # 🔴 `world_maybe_dirty` 는 파생 필드다(`touched || partial`). 왜 따로 싣는가:
     #    `applied` 는 "노린 적응이 일어났나"만 재고 `partial` 은 "던져서 절반일 수 있나"만
     #    잰다 — 둘 중 하나만 읽은 호출자가 다른 쪽의 답을 얻어 가면 안 된다. 다음 태스크는
     #    "이미 더러워진 세계 위에 폴백을 쌓아도 되나"를 이 필드 하나로 결정한다.
-    _r(v, why; steps = NamedTuple[], applied = false, partial = false) =
+    #
+    # 🔴 2026-08-30 T4 리뷰: `applied` 가 아니라 **`touched`**(`_step_touched_world`)로 짓는다.
+    #    한 status 가 동시에 "노린 적응은 아니다"이고 "그런데 세계는 이미 옮겼다"일 수 있고
+    #    (`translate_whole_build!` 의 `:residual_blocked`), `applied` 로 지으면 그 판이
+    #    **"세계가 깨끗하다"고 보고하는 옮겨진 빌드**가 된다. 두 표는 원시마다
+    #    `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 라서 이 변경은 **넓히기만 한다**(applied ⟹ dirty).
+    _r(v, why; steps = NamedTuple[], applied = false, partial = false,
+       touched = false, resume = :none) =
         (verdict = v, reason = why, applied = applied, partial = partial,
-         world_maybe_dirty = applied || partial, steps = steps, undo = :none)
+         world_maybe_dirty = touched || partial, steps = steps, undo = :none,
+         resume = resume)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -432,6 +617,8 @@ function enact_minted!(env, truth, synth)
     # ---- (7) 집행 단계 ---------------------------------------------------------------------
     steps = NamedTuple[]
     applied = false
+    touched = false        # 세계에 손을 댔을 수 있는가 (`applied` 와 다른 질문)
+    need_resume = false    # 스스로 재개하지 않는 원시가 세계를 건드렸는가
     for r in resolved
         local st, dt
         try
@@ -448,15 +635,35 @@ function enact_minted!(env, truth, synth)
             #    그래서 `partial = true` 다. `applied` 는 status 로만 판정하므로 여기서
             #    올리지 않는다: 던진 단계는 status 를 낸 적이 없다. 세계가 어떤 상태인지는
             #    `partial` 이 "모른다, 절반일 수 있다"로 말한다.
-            return _r(:admit, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)";
-                      steps = steps, applied = applied, partial = true)
+            #
+            # 🔴 프론티어도 낡았을 수 있다. 던진 단계가 **무엇을 하다 던졌는지 모르므로**
+            #    보수적으로 재개가 필요하다고 본다 — 반쯤 편집된 그래프 위에 옛 프론티어를
+            #    남겨 두는 것이 이 자리의 최악이다(`ood_injection.jl`: "그래프는 바뀌었는데
+            #    캐시가 옛 프론티어를 들고 있어 복구가 아무 효과가 없다, 예외는 안 난다").
+            local rs_t, rs_d = _issue_resume!(env)
+            return _r(:admit, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
+                              _resume_note(rs_t, rs_d);
+                      steps = steps, applied = applied, partial = true,
+                      touched = touched, resume = rs_t)
         end
         applied |= _step_applied(r.prim.name, st)
+        touched |= _step_touched_world(r.prim.name, st)
+        need_resume |= _needs_cache_resume(r.prim.name, st)
         push!(steps, (name = r.prim.name, status = st, detail = dt))
     end
+
+    # ---- (8) 스케줄 캐시 재개 — 조용한 미복구를 막는 한 걸음 --------------------------------
+    # 🔴 여섯 중 셋(`reform_stuck_teams!` · `recover_stalled_teams!` ·
+    #    `force_advance_stuck_carrier!`)은 스스로 `reset_cache_resume!` 를 부르지 않는다.
+    #    그 사실을 모르고 `handled=true` 로 기본 복구 사슬을 건너뛰면, 세계는 고쳤는데
+    #    프론티어가 낡은 채 남고 사건은 **이미 소비돼** 다시 오지 않는다 = 성공과 구별되지
+    #    않는 미복구. 자세한 근거는 `PRIMITIVE_RESUMES_CACHE` 의 docstring 에 있다.
+    resume_tag, resume_detail = need_resume ? _issue_resume!(env) :
+        (touched ? (:not_needed_self, "") : (:not_needed_untouched, ""))
     quiet = applied ? "" :
         " — 🔴 불렸지만 어느 단계도 세계를 적응시키지 않았다(status: " *
         join(String.(string.([s.status for s in steps])), ",") * ")"
-    return _r(:admit, "body of $(length(names)) primitives$(quiet)";
-              steps = steps, applied = applied)
+    return _r(:admit, "body of $(length(names)) primitives$(quiet)" *
+                      _resume_note(resume_tag, resume_detail);
+              steps = steps, applied = applied, touched = touched, resume = resume_tag)
 end

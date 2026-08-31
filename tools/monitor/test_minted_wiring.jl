@@ -136,6 +136,11 @@ const BODY = ["translate_whole_build"]
         @test occursin("handled=true", out)
         @test !occursin("NOT handled", out)      # 처리했으면 폴백 문구가 없어야 한다
         @test occursin("threw", out)             # 어느 단계가 던졌는지 steps 에 남는다
+        # 🔴 2026-08-30 T4 리뷰(CRITICAL): 스케줄 캐시 재개 판정이 로그에 실린다. 이 판의
+        #    env 는 `cache`/`sched` 가 없어 재개가 실패하고, 그 실패가 **기록**으로 남는다 —
+        #    조용히 넘어가면 "세계는 고쳤는데 프론티어가 낡았다"가 로그에서 사라진다.
+        @test occursin("resume=", out)
+        @test r.resume === :failed
     end
 
     # -------------------------------------------------------------------------------------
@@ -157,6 +162,7 @@ const BODY = ["translate_whole_build"]
             @test occursin("applied=", out)
             @test occursin("partial=", out)
             @test occursin("world_maybe_dirty=", out)
+            @test occursin("resume=", out)
             @test occursin("verdict=admit", out)
             # 반환값에서도 셋이 따로 산다(호출자가 하나만 읽고 다른 것의 답을 얻어 가면 안 된다).
             r = capture_out(() -> enact_minted_decision!(env, nothing, _dec(_sl(names = BODY))))[1]

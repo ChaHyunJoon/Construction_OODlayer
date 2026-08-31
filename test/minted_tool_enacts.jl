@@ -48,6 +48,13 @@
 #           (던진 경우가 깨끗한 세계로 보고된다).
 #   ·(12a): 레지스트리에서 `restage_all_blocked` 의 params 에 `"resume"` 를 더한다.
 #   ·(12b): 레지스트리에서 `resolve_schedule_wedge` 의 impl 을 `recover_stalled_teams!` 로 돌린다.
+#   ·(13a): `PRIMITIVE_RESUMES_CACHE["recover_stalled_teams"]` 를 `true` 로
+#           (= 리뷰가 잡은 CRITICAL 의 상태 — 재개가 조용히 안 나간다).
+#   ·(13b): `enact_minted!` 의 루프 뒤 재개 블록을 통째로 지운다.
+#   ·(13c): `WORLD_UNCHANGED_STATUSES` 를 `SILENT_SUCCESS_STATUSES` 의 별칭으로 되돌린다
+#           (= 옮겨진 빌드가 world_maybe_dirty=false 로 보고되는 IMPORTANT 결함).
+#   ·(13d): `_step_touched_world` 의 `UNMEASURABLE_STATUSES ? true :` 를 `false` 로.
+#   ·(13e): 던진 경로의 `_issue_resume!` 호출을 지운다.
 #
 # 🔴 이 게이트는 서비스도 MILP 도 안 쓴다. (11) 이 부르는 유일한 실제 원시는
 #    `translate_whole_build!` 이고, 그 함수는 `isempty(env.staging_circles)` 첫 줄에서
@@ -383,6 +390,170 @@ const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
         # params 키. 이 집합이 곧 LLM 이 이 원시에 넘길 수 있는 손잡이 전부다.
         @test sort(collect(keys(p.params))) == sort(prms)
     end
+end
+
+# =============================================================================
+# (13) 🔴 2026-08-30 (T4 리뷰). 두 결함을 한꺼번에 막는다.
+#
+#  (a) CRITICAL — **집행 가능한 여섯 중 셋이 스케줄 캐시를 스스로 재개하지 않는다.**
+#      `enact_minted!` 은 `impl(env)` 를 날것으로 부르므로, body `["recover_stalled_teams"]`
+#      가 `:snapped` 를 내면 `applied=true → handled=true` 가 되어 기본 복구 사슬을 건너뛴다.
+#      세계는 고쳐졌는데 프론티어가 낡은 채 남고, 그 OOD 사건은 **이미 소비돼 다시 오지
+#      않는다** = 성공과 구별되지 않는 미복구(`ood_injection.jl`: "예외는 안 난다").
+#
+#  (b) IMPORTANT — **`world_maybe_dirty=false` 인데 빌드가 이미 옮겨져 있다.**
+#      `translate_whole_build!` 의 `:residual_blocked` 는 `_apply_uniform_translation!` 이
+#      돈 **뒤**에 나온다. 표가 하나뿐이면 `applied=false → world_maybe_dirty=false` 라
+#      "세계가 깨끗하다"고 보고하는 옮겨진 빌드가 된다.
+#
+# 🔴 (a) 를 **실제로 볼 수 있는** 픽스처: 손으로 지은 env 로는 못 본다(재개는 `env.cache`·
+#    `env.sched` 를 쓴다). 그래서 **진짜** `OperatingSchedule` + `PlanningCache` 를 만들고
+#    `active_set` 에 낡은 정점을 심어 둔다 — 재개가 실제로 일어나면 그 자리가 비워진다.
+#    아래 (13-e) 가 양성 대조, (13-f) 가 음성 대조다(같은 픽스처, 반대 결과).
+# =============================================================================
+@testset "(13) 스케줄 캐시 재개 · 세계 접촉 표" begin
+    # ---- 표 셋의 커버리지 -------------------------------------------------------------
+    @test sort(collect(keys(CB.WORLD_UNCHANGED_STATUSES))) == ENACTABLE_TODAY
+    @test sort(collect(keys(CB.PRIMITIVE_RESUMES_CACHE)))  == ENACTABLE_TODAY
+
+    # 🔴 불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`. 세계를 안 건드렸으면 노린
+    #    적응도 당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장한다 —
+    #    즉 T4 의 `handled` 판정이 `applied` 판정보다 **넓기만** 하다(좁아지지 않는다).
+    for n in ENACTABLE_TODAY
+        @test issubset(CB.WORLD_UNCHANGED_STATUSES[n], CB.SILENT_SUCCESS_STATUSES[n])
+    end
+
+    # ---- 두 표가 갈리는 자리를 **값으로** 못박는다 (b) --------------------------------
+    # 🔴 이 셋이 결함의 실체다: 조용한 성공이지만 세계는 이미 건드렸다.
+    for (n, st) in (("translate_whole_build", :residual_blocked),
+                    ("translate_whole_build", :already_clear),
+                    ("restage_all_blocked",   :residual_blocked))
+        @test CB._step_applied(n, st) === false         # 노린 적응은 아니다
+        @test CB._step_touched_world(n, st) === true    # 🔴 그러나 세계는 건드렸다
+    end
+    # 나머지 조용한 성공은 두 표에서 같다 — 위 셋만 예외라는 것을 전수로 못박는다.
+    for n in ENACTABLE_TODAY, st in CB.SILENT_SUCCESS_STATUSES[n]
+        expected_touch = (n, st) in (("translate_whole_build", :residual_blocked),
+                                     ("translate_whole_build", :already_clear),
+                                     ("restage_all_blocked",   :residual_blocked))
+        @test CB._step_touched_world(n, st) === expected_touch
+    end
+
+    # 🔴 "못 쟀다"의 답은 두 질문에서 **반대**다. 적응했다고 셀 수는 없지만, 세계가 깨끗하다고
+    #    말할 수도 없다.
+    @test CB._step_applied("translate_whole_build", :unreadable_return) === false
+    @test CB._step_touched_world("translate_whole_build", :unreadable_return) === true
+    # 표에 없는 원시도 마찬가지로 보수적이다(양쪽 다 "건드렸다").
+    @test CB._step_touched_world("primitive_not_in_table", :whatever) === true
+
+    # ---- 재개 표 (a) — 소스에서 읽은 값 그대로 --------------------------------------
+    @test CB.PRIMITIVE_RESUMES_CACHE["restage_all_blocked"]         === true
+    @test CB.PRIMITIVE_RESUMES_CACHE["translate_whole_build"]       === true
+    @test CB.PRIMITIVE_RESUMES_CACHE["resolve_schedule_wedge"]      === true
+    @test CB.PRIMITIVE_RESUMES_CACHE["reform_stuck_teams"]          === false
+    @test CB.PRIMITIVE_RESUMES_CACHE["recover_stalled_teams"]       === false
+    @test CB.PRIMITIVE_RESUMES_CACHE["force_advance_stuck_carrier"] === false
+
+    # `_needs_cache_resume` = 세계를 건드렸고 && 스스로 재개 안 한다. 전수로 잰다.
+    for n in ENACTABLE_TODAY, st in CB.SILENT_SUCCESS_STATUSES[n]
+        @test CB._needs_cache_resume(n, st) ===
+              (CB._step_touched_world(n, st) && !CB.PRIMITIVE_RESUMES_CACHE[n])
+    end
+    # 🔴 실제 적응 상태에서: 자체 재개 안 하는 셋은 참, 하는 셋은 거짓.
+    @test CB._needs_cache_resume("recover_stalled_teams", :snapped) === true
+    @test CB._needs_cache_resume("reform_stuck_teams", :moved) === true
+    @test CB._needs_cache_resume("force_advance_stuck_carrier", :carrier_closed) === true
+    @test CB._needs_cache_resume("translate_whole_build", :translated) === false
+    @test CB._needs_cache_resume("restage_all_blocked", :restaged_all) === false
+    @test CB._needs_cache_resume("resolve_schedule_wedge", :unwedged) === false
+    # 아무 일도 안 한 판은 재개도 필요 없다(멱등이어도 안 해도 되는 일은 안 한다).
+    @test CB._needs_cache_resume("recover_stalled_teams", :stuck) === false
+    # ⚠️ 모르는 원시의 기본값은 "재개 안 함"(참)이다 — 모르는 것을 "알아서 하겠지"로 접으면
+    #    그것이 곧 조용한 미복구다.
+    @test CB._needs_cache_resume("primitive_not_in_table", :whatever) === true
+
+    # ---- (13-c) `_issue_resume!` 가 진짜로 프론티어를 다시 짓는가 --------------------
+    # 🔴 no-op 이 아님을 **세계 상태로** 확인한다: 낡은 정점을 심어 두고, 재개 뒤 사라지는지.
+    let sched = CB.OperatingSchedule(), cache = CB.initialize_planning_cache(sched)
+        push!(cache.active_set, 12345)
+        env = (cache = cache, sched = sched)
+        @test CB._issue_resume!(env) === (:issued, "")
+        @test isempty(cache.active_set)               # 낡은 프론티어가 실제로 지워졌다
+
+        # ---- (13-d) 멱등 — 자체 재개한 원시 뒤에 한 번 더 나가도 해롭지 않다 --------
+        # 근거 셋 중 셋째(소스·생산선례는 PRIMITIVE_RESUMES_CACHE docstring 에 있다).
+        push!(cache.closed_set, 7)
+        CB._issue_resume!(env)
+        local a1, c1 = copy(cache.active_set), copy(cache.closed_set)
+        CB._issue_resume!(env)
+        @test cache.active_set == a1 && cache.closed_set == c1   # 두 번째 호출이 아무것도 안 바꾼다
+    end
+
+    # `env` 가 cache/sched 를 안 들고 있으면 **기록**이지 예외가 아니다.
+    @test CB._issue_resume!((nope = 1,))[1] === :failed
+    @test CB._issue_resume!(nothing)[1] === :failed
+
+    # ---- (13-e) 양성 대조 — enact_minted! 이 실제로 재개를 집행한다 ------------------
+    # 던진 단계는 무엇을 하다 던졌는지 모른다 → 보수적으로 재개한다. 이 판은 **진짜 캐시**를
+    # 들고 있으므로 재개가 성공하고, 낡은 프론티어가 지워진 것이 관측된다.
+    let sched = CB.OperatingSchedule(), cache = CB.initialize_planning_cache(sched)
+        push!(cache.active_set, 999)
+        env = (cache = cache, sched = sched)          # scene_tree 없음 → reform 이 던진다
+        r = CB.enact_minted!(env, nothing, _synth(names = ["reform_stuck_teams"]))
+        @test r.verdict === :admit
+        @test r.partial === true
+        @test r.steps[1].status === :threw
+        @test r.resume === :issued                    # 🔴 재개를 실제로 불렀다
+        @test isempty(cache.active_set)               # 🔴 그리고 그것이 세계에 보인다
+        @test occursin("resume=issued", r.reason)     # 조용하지 않다
+    end
+
+    # ---- (13-f) 음성 대조 — 안 건드렸으면 재개도 안 한다 -----------------------------
+    # 같은 픽스처, 반대 결과. 이 쌍이 (13-e) 를 "언제나 재개한다" 로 읽는 길을 막는다.
+    let sched = CB.OperatingSchedule(), cache = CB.initialize_planning_cache(sched)
+        push!(cache.active_set, 999)
+        env = (cache = cache, sched = sched, staging_circles = Dict{Symbol,Any}())
+        r = CB.enact_minted!(env, nothing, _synth(names = ["translate_whole_build"]))
+        @test r.steps[1].status === :no_staging
+        @test r.world_maybe_dirty === false
+        @test r.resume === :not_needed_untouched
+        @test cache.active_set == Set([999])          # 🔴 프론티어가 그대로 = 재개 안 했다
+        @test occursin("resume=not_needed", r.reason)
+    end
+
+    # ---- (13-h) 🔴 `world_maybe_dirty` 가 `applied` 가 아니라 `touched` 로 지어지는가 ----
+    # (b) 결함의 실체를 **집행 경로 끝에서** 잰다. 그러려면 "조용한 성공인데 세계는 건드렸다"
+    # 인 status 를 실제로 내는 판이 필요한데, `:residual_blocked` 는 진짜 기하가 있어야 나온다.
+    # `:unreadable_return` 이 같은 성질을 값싸게 준다: `_step_applied=false`(못 쟀으니 성공으로
+    # 안 센다) · `_step_touched_world=true`(못 쟀으니 깨끗하다고도 못 한다).
+    # 오염 사본으로 `restage_all_blocked` 의 impl 만 "반환 모양을 못 읽는" 함수로 돌린다.
+    mktempdir() do dir
+        path = joinpath(dir, "primitive_registry.json")
+        write(path, """
+        {"primitives": [
+          {"name":"restage_all_blocked","impl":"process_schedule!","surface":"physical",
+           "harness_args":["env"],"params":{},"reversible":false}
+        ]}""")
+        withenv("PRIMITIVE_REGISTRY" => path) do
+            CB._reset_primitive_table!()
+            local sched = CB.OperatingSchedule()      # env 자리에 그대로 넣는다 — impl 이 이걸 받는다
+            local r = CB.enact_minted!(sched, nothing, _synth(names = ["restage_all_blocked"]))
+            @test r.steps[1].status === :unreadable_return
+            @test r.applied === false                 # 못 쟀으면 적응했다고 안 센다
+            @test r.partial === false                 # 던지지 않았다
+            # 🔴 그런데도 참이다. `_r` 이 `applied || partial` 로 되돌아가면 이 줄이 빨개진다.
+            @test r.world_maybe_dirty === true
+            # 이 원시는 스스로 재개하므로 대신 부르지 않는다(멱등이어도 안 해도 되는 일은 안 한다).
+            @test r.resume === :not_needed_self
+            @test occursin("resume=not_needed", r.reason)
+        end
+        CB._reset_primitive_table!()
+    end
+    @test length(CB.PRIMITIVE_TABLE()) == 19          # 원래 레지스트리로 돌아왔다
+
+    # ---- (13-g) 아무것도 안 부른 판의 resume 은 :none 이다 ---------------------------
+    @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).resume === :none
+    @test CB.enact_minted!(nothing, nothing, _synth(reach = "needs_primitive")).resume === :none
 end
 
 end # module

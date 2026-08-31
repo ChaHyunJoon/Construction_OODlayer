@@ -764,6 +764,11 @@ end
 `world_maybe_dirty` 를 **따로** 찍는다 — 하나로 접으면 "불렀는데 아무 일도 없었다"(조용한
 성공)와 "던져서 세계가 절반이다"가 읽는 사람에게 같은 관측이 된다.
 
+🔴 **`resume` 를 그대로 나른다**(2026-08-30 T4 리뷰, CRITICAL). 집행 가능한 여섯 중 셋은
+스케줄 캐시를 스스로 재개하지 않아 `enact_minted!` 이 대신 부른다 — 안 부르면 세계는 고쳐졌는데
+프론티어가 낡은 채 남고, `handled=true` 가 기본 복구 사슬을 건너뛰며, 그 OOD 사건은 이미
+소비돼 다시 오지 않는다 = **성공과 구별되지 않는 미복구**. 그 판정을 로그가 찍는다.
+
 🔴 **`[minted]` 줄은 모든 경로에서 찍힌다** — `synth_lane` 이 아예 없는 조기 반환에서도, 집행부가
 던진 경로에서도. 이유: `policy_producer` 는 OOD 마다 도달하지 않는다(`is_reform_alarm` 조기
 반환 · `truth_for_event` 의 NL 정확일치 조회 실패). 조건부로 찍으면 "`[minted]` 줄이 없다"가
@@ -792,14 +797,14 @@ function enact_minted_decision!(env, truth, decision)
         if sl === nothing || reach === nothing
             println("[minted] lane=", (sl === nothing ? "absent" : "reach_nothing"),
                     " tool=n/a reach=n/a verdict=deferred applied=false partial=false",
-                    " world_maybe_dirty=false handled=false undo=none steps=[]",
+                    " world_maybe_dirty=false handled=false undo=none resume=none steps=[]",
                     " ran_milp=n/a(not armed) reason=no synth lane on this decision")
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
             return (handled = false, verdict = :deferred,
                     reason = "no synth lane on this decision",
                     applied = false, partial = false, world_maybe_dirty = false,
-                    steps = NamedTuple[], undo = :none)
+                    steps = NamedTuple[], undo = :none, resume = :none)
         end
 
         # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
@@ -812,7 +817,7 @@ function enact_minted_decision!(env, truth, decision)
         println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
                 " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
-                " undo=", r.undo,
+                " undo=", r.undo, " resume=", r.resume,
                 " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 
@@ -828,19 +833,20 @@ function enact_minted_decision!(env, truth, decision)
 
         return (handled = handled, verdict = r.verdict, reason = r.reason,
                 applied = r.applied, partial = r.partial,
-                world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo)
+                world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
+                resume = r.resume)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
         println("[minted] lane=unknown tool=n/a reach=n/a verdict=reject applied=false",
-                " partial=false world_maybe_dirty=false handled=false undo=none steps=[]",
+                " partial=false world_maybe_dirty=false handled=false undo=none resume=none steps=[]",
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
         return (handled = false, verdict = :reject,
                 reason = "enact_minted_decision! threw: " * msg,
                 applied = false, partial = false, world_maybe_dirty = false,
-                steps = NamedTuple[], undo = :none)
+                steps = NamedTuple[], undo = :none, resume = :none)
     end
 end
