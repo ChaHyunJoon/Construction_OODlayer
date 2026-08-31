@@ -134,7 +134,12 @@ module _RenderSandbox
     # 🔴 생산 함수 셋은 **진짜**를 쓴다. 나머지만 스텁이다.
     # (2026-08-29 T2c: `log_enact` 가 추가됐다 — 집행 대상 한 줄 기록을 두 producer 가
     #  **같은 함수**로 찍는다. 스텁으로 두면 이 샌드박스가 생산 코드와 다른 것을 태운다.)
-    import ..enact_target, ..macro_to_proposal, ..log_enact
+    # (2026-08-30 T4: `enact_minted_decision!` 가 추가됐다 — `policy_producer` 가
+    #  `macro_to_proposal` **앞**에서 합성 tool 을 집행한다. 이것도 **진짜**를 쓴다:
+    #  스텁으로 두면 이 샌드박스가 생산 코드와 다른 것을 태우고, 특히 이 판의 결정 행에는
+    #  `synth_lane` 필드가 아예 없으므로 그 조기 반환(=`handled=false`, 폴백이 조용하지
+    #  않다)이 여기서 실제로 굴러야 (B) 가 옛 경로를 계속 잰다는 것이 참이 된다.)
+    import ..enact_target, ..macro_to_proposal, ..log_enact, ..enact_minted_decision!
     const NEXT = Ref{Any}(nothing)                 # 이 결정 하나를 흘려보낸다
     is_reform_alarm(::Any) = false
     truth_for_event(::Any) = (truth = NEXT[].truth, nl = NEXT[].nl)

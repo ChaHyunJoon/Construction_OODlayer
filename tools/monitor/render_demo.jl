@@ -408,6 +408,23 @@ function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
             c = Vector{Float64}(t.goal)
             println("[zone] blocking zone on $(t.kind) vtx=$(t.vtx) @$(round.(c; digits = 3)) " *
                     "r=$(round(r; digits = 3)) -> nav_blocked=$(b.n_blocked)/$(b.n_nav_goals)")
+            # ---- 구역 진단 계측 (2026-08-30, T4) -----------------------------------------
+            # 🔴 위 줄의 `nav_blocked=` 는 `zone_blockage(...).n_blocked` = **항법 차단**이다.
+            #    아래 `zd.n_blocked` 는 `zone_diagnosis` 의 것으로 **막힌 조립체 수**다 —
+            #    다른 술어다. 둘을 합치지 않는다. 왜 이 값이 필요한가: `zd.n_blocked == 0` 이면
+            #    zone 원시들(`restage_all_blocked` …)이 `:none` 으로 조기 반환해 zone 레인이
+            #    **알파벳 이유로** 실패한다. 모델 이유(합성이 틀린 body 를 냈다)와 구분되지
+            #    않으면 다음 태스크가 유료 보드를 그 구분에 쓰게 된다.
+            #
+            # 🔴 **오라클 라벨은 찍지 않는다**: `verdict` · `relocate_norm`(= 오라클의
+            #    `min_shift_to_clear_m`) · `relocate_delta` · `relocate_feasible`. 원시값
+            #    (`n_*` · `root_*`)만 찍는다 — 정답을 프롬프트 경로에 실을 수 있는 자리다.
+            local zd = try CB.zone_diagnosis(env, key; check_paths = false) catch e
+                println("[zone] diag FAILED: ", first(split(sprint(showerror, e), "\n"))); nothing end
+            zd === nothing || println("[zone] diag n_blocked=$(zd.n_blocked) n_nav_blocked=$(zd.n_nav_blocked) ",
+                "root_covered=$(zd.root_covered)/$(zd.root_total) n_work_overlap=$(zd.n_work_overlap) ",
+                "n_teams_covered=$(zd.n_teams_covered) n_nav_goals=$(zd.n_nav_goals) ",
+                "n_nav_engulfed=$(zd.n_nav_engulfed) n_agent_trapped=$(zd.n_agent_trapped)")
             nl = "A no-go exclusion zone has appeared at ($(round(c[1]; digits = 2)), " *
                  "$(round(c[2]; digits = 2))) with radius $(round(r; digits = 2)). " *
                  "Robots that enter the disc are pushed back out of it."
@@ -779,6 +796,20 @@ function policy_producer(env, event)
     #    두 번째 producer `llm_producer` 는 Anthropic 레인과 함께 삭제됐다 — 아래 노트.)
     # 두 producer 가 각자 println 을 들면 한쪽이 `reject` 를 빠뜨리는 순간 폴백이 조용해진다.
     log_enact(_tgt)
+    # ---- 합성 tool 집행 (2026-08-30, T4) --------------------------------------------------
+    # 🔴 `macro_to_proposal` **앞**이다. 합성 tool 이 처리한 사건은 닫힌 어휘의 매크로로
+    #    번역될 수 없다 — 그 어휘에 이 행동이 없다는 것이 애초에 합성이 발화한 이유다.
+    #    처리했으면 `nothing` 을 돌려 프레임워크 dispatch 를 건너뛴다(enact_reform! 과 같은 패턴).
+    #
+    # 🔴 채점기를 오염시키지 않는다: 합성 tool 은 `RespecProposal` 을 만들지 않으므로
+    #    `emitted_key` 로 가지 않는다(spec §7-2). `decision.macro_name` 은 그대로 NOOP 이고
+    #    그것이 옳다 — 채점 어휘에서 이 사건의 정답은 실제로 없다.
+    #
+    # 🔴 `handled` 의 정의는 `(:admit) && world_maybe_dirty` 다(`enact_minted_decision!` 의
+    #    docstring). `applied` 로 판정하면 "1단계가 세계를 바꾸고 2단계가 던진" 판에서
+    #    **반쯤 편집된 세계 위에** 기본 복구 사슬을 얹게 된다.
+    local _m = enact_minted_decision!(env, truth, decision)
+    _m.handled && return nothing
     # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
     # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.
     # 직접 집행하므로 dispatch 는 생략(nothing) — canonical_producer 와 같은 패턴.

@@ -739,3 +739,108 @@ function enact_decision!(env, truth, decision)
         "efficacy"               => res.efficacy,
         "efficacy_checked_paths" => res.efficacy_checked_paths))
 end
+
+# =============================================================================
+# ⑤ 합성 tool 집행 진입점 (2026-08-30, T4) — 여기서 합성 tool 이 세계에 대한 인과를 얻는다.
+# =============================================================================
+
+"""
+    enact_minted_decision!(env, truth, decision) -> NamedTuple
+
+결정 행이 나른 합성 tool 을 집행한다. `CB.enact_minted!` 를 부르고, **집행 여부를 로그와
+반환값 양쪽에 남긴다.** 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool` 을 더한 것이다.
+
+`handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
+`false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
+
+🔴 **`handled` 의 정의는 `(:admit) && world_maybe_dirty` 다 — `applied` 가 아니다.**
+`applied` 는 status 전용이라, 1단계가 세계를 바꾸고 2단계가 **던지면** `applied == false` 인데
+세계는 이미 편집돼 있다(`partial == true`, `undo === :none`). 그 반쯤 고쳐진 세계 위에 기본
+복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드
+`world_maybe_dirty (= applied || partial)` 으로 한다. 브리핑의 `(:admit) && applied` 는
+바로 그 경우를 놓친다.
+
+🔴 **삼상을 이상으로 뭉개지 않는다**(spec §9-2). 로그는 `applied` · `partial` ·
+`world_maybe_dirty` 를 **따로** 찍는다 — 하나로 접으면 "불렀는데 아무 일도 없었다"(조용한
+성공)와 "던져서 세계가 절반이다"가 읽는 사람에게 같은 관측이 된다.
+
+🔴 **`[minted]` 줄은 모든 경로에서 찍힌다** — `synth_lane` 이 아예 없는 조기 반환에서도, 집행부가
+던진 경로에서도. 이유: `policy_producer` 는 OOD 마다 도달하지 않는다(`is_reform_alarm` 조기
+반환 · `truth_for_event` 의 NL 정확일치 조회 실패). 조건부로 찍으면 "`[minted]` 줄이 없다"가
+**"레인이 조용했다"와 "producer 에 도달조차 못 했다"** 두 원인을 갖게 되어 다음 태스크가
+그 둘을 못 가른다. 무조건 찍으면 부재는 후자 하나만 뜻한다.
+
+🔴 **본체 전체가 `try` 안이다.** `resolve_primitive` 와 `PRIMITIVE_TABLE` 은 설계상 `error(...)`
+를 낸다(레지스트리 부재 · impl 이름이 CB 에 없음 …). 그 예외가 여기서 새면 `maybe_respecify!`
+의 producer `try` 로 올라가고, `:soft` 가 아닌 사건에서는 `engage_fallback!` = **라인 정지**가
+걸린다(`release_fallback!` 는 생산 경로에서 그것을 되돌리지 않는다). 즉 JSON 오타 하나가 렌더를
+세우고 로그는 OOD 를 탓하게 된다. 잡아서 크게 찍고 정상 반환한다.
+
+⚠️ 잡은 예외의 반환을 `verdict = :reject`(= 아무것도 부르기 전에 돌아섰다)로 적는 근거: 이
+경로에서 던질 수 있는 것은 **호출 이전** 단계뿐이다(`enact_minted!` 는 원시 호출과 반환값 읽기를
+자기 `try` 로 감싸고 그 예외를 `:threw` **기록**으로 바꿔 정상 반환한다).
+
+⚠️ **MILP 프로브는 센티넬이다**(`enact_macro!` 의 같은 관용구). `LAST_EDGE_COSTS[]` 는 재풀이가
+없으면 **미정의**이지 0 이 아니다 — 맨 `length(...)` 를 찍으면 "후보 간선이 0" 과 "MILP 가 아예
+안 돌았다" 가 같은 관측이 된다. 그래서 `ran_milp` 없이 `length` 를 찍지 않는다.
+"""
+function enact_minted_decision!(env, truth, decision)
+    try
+        local sl = try decision.synth_lane catch; nothing end
+        local reach = sl === nothing ? nothing : (try get(sl, "reach", nothing) catch; nothing end)
+        # ---- 조기 반환도 조용하지 않다 (C5) ------------------------------------------------
+        if sl === nothing || reach === nothing
+            println("[minted] lane=", (sl === nothing ? "absent" : "reach_nothing"),
+                    " tool=n/a reach=n/a verdict=deferred applied=false partial=false",
+                    " world_maybe_dirty=false handled=false undo=none steps=[]",
+                    " ran_milp=n/a(not armed) reason=no synth lane on this decision")
+            println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
+                    "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
+            return (handled = false, verdict = :deferred,
+                    reason = "no synth lane on this decision",
+                    applied = false, partial = false, world_maybe_dirty = false,
+                    steps = NamedTuple[], undo = :none)
+        end
+
+        # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
+        local _sent = Dict{Tuple{Int,Int},Float64}()   # 키 타입은 LAST_EDGE_COSTS 의 실제 타입
+        CB.LAST_EDGE_COSTS[] = _sent
+
+        local r = CB.enact_minted!(env, truth, sl)
+        local handled = (r.verdict === :admit) && r.world_maybe_dirty
+
+        println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
+                " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
+                " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
+                " undo=", r.undo,
+                " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
+                " reason=", r.reason)
+
+        local ran_milp = !(CB.LAST_EDGE_COSTS[] === _sent)   # 센티넬이 그대로면 재풀이 없음
+        println("[minted] ran_milp=", ran_milp, " n_candidate_edges=",
+                ran_milp ? string(length(CB.LAST_EDGE_COSTS[])) : "n/a(no re-solve)",
+                " closed=", (try string(length(env.cache.closed_set)) catch; "n/a" end))
+
+        handled || println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
+                           "(이 폴백은 조용하지 않다 — verdict=", r.verdict,
+                           " applied=", r.applied, " partial=", r.partial,
+                           " world_maybe_dirty=", r.world_maybe_dirty, " 가 이유다)")
+
+        return (handled = handled, verdict = r.verdict, reason = r.reason,
+                applied = r.applied, partial = r.partial,
+                world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo)
+    catch e
+        # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
+        local msg = first(split(sprint(showerror, e), "\n"))
+        println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
+        println("[minted] lane=unknown tool=n/a reach=n/a verdict=reject applied=false",
+                " partial=false world_maybe_dirty=false handled=false undo=none steps=[]",
+                " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
+        println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
+                "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
+        return (handled = false, verdict = :reject,
+                reason = "enact_minted_decision! threw: " * msg,
+                applied = false, partial = false, world_maybe_dirty = false,
+                steps = NamedTuple[], undo = :none)
+    end
+end

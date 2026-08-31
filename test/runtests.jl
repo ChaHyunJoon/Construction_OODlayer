@@ -374,6 +374,24 @@ end
         include("minted_tool_enacts.jl")
     end
 
+    # 2026-08-30 (T4): 위 셋은 `CB.enact_minted!` 까지를 잰다. 이 게이트는 **렌더 레인의
+    # 배선**을 잰다 — `enact.jl::enact_minted_decision!`. 재는 것 넷이 특히 중요하다:
+    #  · 🔴 `handled` 는 `(:admit) && applied` 가 **아니라** `(:admit) && world_maybe_dirty` 다.
+    #    1단계가 세계를 바꾸고 2단계가 던진 판은 `applied=false` 인데 세계는 이미 편집돼
+    #    있다(`undo === :none`). 그 반쯤 고쳐진 세계 위에 기본 복구 사슬을 얹는 것은 안 얹는
+    #    것보다 나쁘다.
+    #  · 🔴 `[minted]` 줄은 **모든 경로**에서 찍힌다(조기 반환·예외 포함). `policy_producer` 는
+    #    OOD 마다 도달하지 않으므로(`is_reform_alarm` · `truth_for_event` 조회 실패), 조건부로
+    #    찍으면 줄의 부재가 원인 셋을 갖게 되어 다음 태스크가 못 가른다.
+    #  · 🔴 레지스트리가 망가져 `PRIMITIVE_TABLE` 이 `error(...)` 를 내도 던지지 않는다.
+    #    새면 `maybe_respecify!` 의 producer `try` 가 잡아 비-`:soft` 사건에서
+    #    `engage_fallback!`(= 라인 정지)이 걸리고 로그는 JSON 오타 대신 OOD 를 탓한다.
+    #  · 🔴 MILP 프로브는 센티넬이다 — 재풀이가 없으면 `n_candidate_edges` 를 숫자로 안 찍는다.
+    # 서비스 호출 0건 · `render_demo.jl` 실행 0회(순수 함수 게이트).
+    @testset "minted tool wiring (tools/monitor/test_minted_wiring.jl)" begin
+        include(normpath(joinpath(@__DIR__, "..", "tools", "monitor", "test_minted_wiring.jl")))
+    end
+
     # 🔴 2026-08-25 (R-66): `tools/test_policy_oracle.jl` 는 위 F1 배선에서 **빠진 네 번째
     # 고아 게이트**였다. 그 결과 `policy.jl` 의 `ORACLE_BATTERY_DEEP_SOC` 가 0.5 로 남아
     # `reference_policy.BATTERY_DEEP_SOC`(0.2)와 갈린 회귀가 최종 리뷰까지 살아남았다
