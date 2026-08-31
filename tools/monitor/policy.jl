@@ -357,7 +357,11 @@ function event_descriptors_of(env, truth)
         spare_count    = get(f, "spare_count", 0.0),
         closed_at_fire = get(f, "closed_at_fire", 0.0),
         total_nodes    = total,
-        progress       = get(f, "progress", 0.0))
+        progress       = get(f, "progress", 0.0),
+        # 🔴 2026-08-31 (S1/T1). `ood_features` 가 이미 싣는 값이다 — 새 계산이 없다.
+        #    없으면 `-1.0`(못 쟀다)이고, 그때 서술자는 옛 공식으로 폴백한다.
+        nav_blocked    = get(f, "zone_nav_blocked", -1.0),
+        nav_downstream = get(f, "zone_nav_downstream", -1.0))
 end
 
 """

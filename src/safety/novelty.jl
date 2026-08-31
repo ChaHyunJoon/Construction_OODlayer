@@ -311,7 +311,8 @@ function event_descriptors(; soc::Real = NaN, agent_pending::Real = -1.0,
                              zone_overlap::Real = -1.0, severity::Real = 0.0,
                              n_active::Real = 1.0, spare_count::Real = 0.0,
                              closed_at_fire::Real = 0.0, total_nodes::Real = 0.0,
-                             progress::Real = 0.0)
+                             progress::Real = 0.0,
+                             nav_blocked::Real = -1.0, nav_downstream::Real = -1.0)
     soc_f = Float64(soc)
     zov = Float64(zone_overlap)
     apend = Float64(agent_pending)
@@ -321,6 +322,16 @@ function event_descriptors(; soc::Real = NaN, agent_pending::Real = -1.0,
     has_soc = isfinite(soc_f)
     is_spatial = isfinite(zov) && zov >= 0.0
     is_agent = isfinite(apend) && apend >= 0.0
+
+    # 🔴 2026-08-31 (S1/T1). 공간 사건의 피해는 **덮임이 아니라 막힘**에서 온다.
+    #    `zone_overlap` 은 staging 원 면적비이고, 실제로 노드를 못 닫게 만드는 것은
+    #    nav goal 의 도착 허용반경이 배제원 안에 통째로 들어간 것이다(다른 기하다).
+    #    그 필드의 계약 문구가 종단성을 직접 주장한다 — "존이 사는 한 절대 안 닫힌다".
+    #    ⚠️ `>= 1.0` 이지 `>= 0.0` 이 아니다: 덮임만으로 1.0 을 만들면 레포 실측
+    #    (root 하역목표 8/8 을 덮은 판이 완주, 시간만 2.1배)과 충돌한다.
+    nblk  = Float64(nav_blocked)
+    ndown = Float64(nav_downstream)
+    zone_terminal = is_spatial && isfinite(nblk) && nblk >= 1.0
 
     pending_total = Float64(total_nodes) - Float64(closed_at_fire)
     (isfinite(pending_total) && pending_total > 0) || (pending_total = 1.0)
@@ -333,7 +344,8 @@ function event_descriptors(; soc::Real = NaN, agent_pending::Real = -1.0,
     # 통하는 지름길이었다 -- 실측으로 확인(descriptor_ablation.py: 배포 조건에서 0.067→0.167 붕괴).
     # 유해/무해 판별은 아래 work_at_risk 가 측정값으로 맡는다.
     harm = has_soc ? (1.0 - soc_f) :
-           (is_spatial ? zov : (is_agent ? 1.0 : Float64(severity)))
+           (zone_terminal ? 1.0 :
+            (is_spatial ? zov : (is_agent ? 1.0 : Float64(severity))))
     harm = clamp(harm, 0.0, 1.0)
 
     # ---- work_at_risk : 이 사건이 위협하는 일의 크기 --------------------------------------
@@ -344,6 +356,9 @@ function event_descriptors(; soc::Real = NaN, agent_pending::Real = -1.0,
     war = if is_agent
         per_robot_share = max(1e-9, pending_total / nact)
         apend / per_robot_share
+    elseif zone_terminal
+        # 얼어붙은 미완 작업의 비율. 못 쟀으면(-1) 덮임으로 폴백한다 — 0 으로 접지 않는다.
+        (isfinite(ndown) && ndown >= 0.0) ? ndown / pending_total : zov
     elseif is_spatial
         zov
     else

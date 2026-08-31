@@ -233,6 +233,12 @@ def descriptors_from_row(row):
     is_spatial = math.isfinite(zov) and zov >= 0.0
     is_agent = math.isfinite(apend) and apend >= 0.0
 
+    # 🔴 2026-08-31 (S1/T1). 줄리아 `event_descriptors` 와 **같은 규칙**이다. 두 벌이
+    #    갈리면 교정이 무의미해진다는 것이 이 함수의 계약이다.
+    nblk = _f(row.get("zone_nav_blocked"), -1.0)
+    ndown = _f(row.get("zone_nav_downstream"), -1.0)
+    zone_terminal = is_spatial and math.isfinite(nblk) and nblk >= 1.0
+
     # 남은 일의 총량(0 나눗셈 방지). 이게 work_at_risk 의 분모.
     pending_total = total_nodes - closed_at_fire
     if not math.isfinite(pending_total) or pending_total <= 0:
@@ -252,6 +258,8 @@ def descriptors_from_row(row):
     #   (개방세계 경로에서는 LLM 이 관찰을 읽고 채워 넣는 자리).
     if has_soc:
         harm = 1.0 - soc
+    elif zone_terminal:
+        harm = 1.0
     elif is_spatial:
         harm = zov
     elif is_agent:
@@ -274,6 +282,8 @@ def descriptors_from_row(row):
     if is_agent:
         per_robot_share = max(1e-9, pending_total / n_active)
         war = apend / per_robot_share
+    elif zone_terminal:
+        war = (ndown / pending_total) if (math.isfinite(ndown) and ndown >= 0.0) else zov
     elif is_spatial:
         war = zov
     else:

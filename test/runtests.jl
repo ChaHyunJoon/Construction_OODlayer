@@ -324,6 +324,13 @@ end
         include("mild_menu_is_noop_only.jl")
     end
 
+    # 2026-08-31 (S1/T1): 공간 사건의 harm 이 덮임(면적비)이 아니라 막힘에서 나오는가.
+    # 2026-08-30 라이브 판에서 프롬프트가 자기모순이었다 — 기하 블록은 "32/251 이 얼어붙었다"
+    # 고 적는데 서술자는 harm=0.00 이었고, 모델의 reason 이 그 0 을 인용하며 NOOP 을 골랐다.
+    @testset "zone harm is blockage" begin
+        include("zone_harm_is_blockage.jl")
+    end
+
     # 🔴 2026-08-25: `DS_BSOC` 기본 사다리의 모든 칸이 채점 가능한 deep 구간인가(= 팔을 비교할 수
     # 있는가). mild 칸이 다시 들어오면 대조가 0인 행이 생기고, 칸이 하나로 줄면 2026-08-05 에
     # 고친 "심각도 축이 점 하나" 결함이 재현된다 — 두 어서션이 각각 그 둘을 막는다.
