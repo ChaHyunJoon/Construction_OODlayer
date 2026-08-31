@@ -360,8 +360,16 @@ end
     #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
     #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.
     #  · 🔴 "불렀는데 아무 일도 없었다"(`applied=false`)와 "부르지 않았다"(`:reject`)와
-    #    "던져서 세계가 절반이다"(`partial=true`)는 서로 다른 사건이다(spec §9-2).
-    # 변이 11종(명제마다 하나)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
+    #    "던져서 세계가 절반이다"(`partial=true`)와 "못 쟀다"(`:unreadable_return`)는 서로
+    #    다른 사건이다(spec §9-2). 파생 `world_maybe_dirty` 가 앞의 둘을 합쳐서 나른다.
+    #    조용한 성공 표는 **집행 가능한 여섯 전부**를 덮어야 한다 — 처음 둘만 채웠을 때
+    #    넷이 아무 일도 안 하고 `applied=true` 를 냈고, 그중 `force_advance_stuck_carrier!`
+    #    는 `CARRIER_RESCUE` 미설정(= 기본 환경)이면 언제나 `:disabled` 다.
+    #  · 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다. 그 둘을 안 재면 params 에
+    #    키를 더하거나 impl 을 다른 함수로 돌리는 편집이 **스위트 전부 초록인 채로**
+    #    LLM 이 부를 수 있는 표면을 넓힌다(`primitive_registry_resolves.jl` 은 `params` 가
+    #    존재하는지만 보지 키를 안 본다).
+    # 변이 18종(명제 12 + 세부 6)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
     @testset "minted tool enacts" begin
         include("minted_tool_enacts.jl")
     end

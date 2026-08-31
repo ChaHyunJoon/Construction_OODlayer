@@ -130,41 +130,86 @@ end
 """
     SILENT_SUCCESS_STATUSES
 
-원시가 **성공 계열 상태를 돌려주면서 그 tool 이 노린 적응은 일으키지 않은** 경우들.
-`applied` 판정이 이 표 하나만 본다.
+원시가 **성공 계열 값을 돌려주면서 그 tool 이 노린 적응은 일으키지 않은** 경우들.
+`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다 —
+게이트 (11) 이 `keys(SILENT_SUCCESS_STATUSES) == ENACTABLE_TODAY` 를 못 박으므로,
+어휘에 집행 가능한 원시가 하나 늘면 이 표를 채우기 전까지 빨갛다.
 
-🔴 이 표가 없으면 조용한 폴백이 된다. 실측(2026-08-30): 존이 이미 비어 있으면
-`translate_whole_build!` 는 Δ=[0,0] 을 계산하고 `:already_clear` 를 돌려주는데, 그 함수의
-주석은 호출자에게 이것을 "성공"으로 취급하라고 적는다 — 그대로 `applied = true` 로 실으면
-**바이트 단위로 동일한 세계**가 "존을 치웠다"는 증거로 결정 행에 남는다.
+🔴 이 표가 없거나 비면 조용한 폴백이 된다. 처음 이 표를 둘만 채웠을 때(2026-08-30 리뷰가
+잡음) **집행 가능한 여섯 중 넷**이 아무 일도 안 하고 `applied = true` 를 냈다 — 그중
+`force_advance_stuck_carrier!` 는 `CARRIER_RESCUE != "1"`, 즉 **기본 환경**에서 항상
+`:disabled` 다. 손 안 댄 환경의 매 런이 "적응했다"로 기록됐을 것이다.
 
-출처(둘 다 `src/respec/restage_zone.jl` 의 docstring 과 status 삼항식에서 그대로 옮겼다):
-  · `restage_all_blocked!`   → `:none`(막힌 조립체가 없다) `:infeasible`(하나도 못 놓았다)
-                                `:residual_blocked`(옮길 수 없는 목표가 존 안에 남았다)
-  · `translate_whole_build!` → `:no_staging`(적치원이 없다) `:infeasible`(갈 곳이 없다)
-                                `:already_clear`(Δ=0, 이미 비어 있었다)
-                                `:residual_blocked`(옮겼는데도 존이 안 비었다)
-  평범한 성공은 `:partial`/`:restaged_all` 과 `:translated` 뿐이다.
+출처 — 여섯 원시의 `return` 문을 전부 읽어서 적었다(추측 없음):
+  · `restage_all_blocked!`   `src/respec/restage_zone.jl`
+      조용: `:none`(막힌 조립체 없음) `:infeasible`(하나도 못 놓음)
+            `:residual_blocked`(못 옮기는 목표가 존에 남음)   실제: `:restaged_all` `:partial`
+  · `translate_whole_build!` `src/respec/restage_zone.jl`
+      조용: `:no_staging` `:infeasible` `:already_clear`(Δ=0) `:residual_blocked`
+      실제: `:translated`
+  · `force_advance_stuck_carrier!` `src/respec/replace_robot.jl`
+      조용: `:disabled`(🔴 `CARRIER_RESCUE` 미설정 = **기본값**, `moved=0`)
+            `:no_carrier`(`moved=0`)          실제: `:carrier_closed` `:carrier_advanced`
+  · `recover_stalled_teams!` `src/respec/replace_robot.jl`
+      조용: `:no_team`(`moved=0`) `:stuck`(`moved=0`)
+            그리고 `force_advance_stuck_carrier!` 의 결과를 **그대로 전달**하므로
+            `:disabled`·`:no_carrier` 도 여기로 올라온다(소스의 `carrier.status` 전달 둘).
+      실제: `:snapped` `:restaged` `:unwedged` `:force_snapped` `:carrier_closed` `:carrier_advanced`
+  · `resolve_schedule_wedge!` `src/respec/replace_robot.jl`
+      조용: `:not_applicable`(`removed=0, moved=0`) `:no_wedge`(`removed=0, moved=0`)
+      실제: `:unwedged`
+  · `reform_stuck_teams!` `src/respec/replace_robot.jl`
+      🔴 이 하나만 **NamedTuple 이 아니라 맨 `Int`**(`n_moved`)를 돌려준다. `_step_status` 가
+      `COUNT_RETURN_PRIMITIVES` 를 보고 `:moved`/`:moved_none` 으로 읽는다.
+      조용: `:moved_none`(`n_moved == 0`)     실제: `:moved`
 
-⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 **빌드를 실제로 옮긴다** — 세계는
-   변했다. 그런데도 여기 있는 이유는 `applied` 가 "세계의 바이트가 변했나"가 아니라
-   "이 tool 이 노린 적응이 일어났나"를 재기 때문이다. 세밀한 사실은 잃지 않는다:
-   그 단계의 실제 status 가 `steps` 에 그대로 실린다.
+⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 빌드를 **실제로 옮긴다** — 세계의
+   바이트는 변한다. 그런데도 여기 있는 이유는 `applied` 가 "바이트가 변했나"가 아니라
+   **"이 tool 이 노린 적응이 일어났나"**를 재기 때문이다. 세밀한 사실은 안 잃는다: 그 단계의
+   실제 status 가 `steps` 에 그대로 실리고, 세계가 더러워졌을 가능성은 `world_maybe_dirty`
+   가 따로 나른다.
 """
 const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
-    "restage_all_blocked"   => Set([:none, :infeasible, :residual_blocked]),
-    "translate_whole_build" => Set([:no_staging, :infeasible, :already_clear, :residual_blocked]),
+    "restage_all_blocked"         => Set([:none, :infeasible, :residual_blocked]),
+    "translate_whole_build"       => Set([:no_staging, :infeasible, :already_clear, :residual_blocked]),
+    "force_advance_stuck_carrier" => Set([:disabled, :no_carrier]),
+    "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
+    "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
+    "reform_stuck_teams"          => Set([:moved_none]),
 )
+
+"""
+    COUNT_RETURN_PRIMITIVES
+
+반환값이 NamedTuple 이 아니라 **옮긴 개수 그 자체(`Int`)** 인 원시들. 오늘은
+`reform_stuck_teams!` 하나다(`src/respec/replace_robot.jl` 의 `return n_moved`).
+이 표가 없으면 그 반환은 "읽을 수 없는 모양"으로 떨어지고, 실제로는 **읽을 수 있는데도**
+못 쟀다고 보고하게 된다.
+"""
+const COUNT_RETURN_PRIMITIVES = Set{String}(["reform_stuck_teams"])
+
+"""
+    UNMEASURABLE_STATUSES
+
+"불렸는데 **무슨 일이 났는지 읽을 수 없었다**"를 뜻하는 status 들. 🔴 이것은 절대
+`applied = true` 가 아니다 — 모양을 못 읽었다는 것은 세계가 변했는지 **모른다**는 뜻이고,
+모르는 것을 "적응했다"로 기록하면 결정 행이 거짓말을 한다. 표에 없는 원시/상태의 보수적
+기본값(참)보다 이쪽이 먼저다.
+"""
+const UNMEASURABLE_STATUSES = Set{Symbol}([:unreadable_return])
 
 """
     _step_applied(prim_name, status) -> Bool
 
-한 단계가 "무언가 했다"고 셀 수 있는가. `SILENT_SUCCESS_STATUSES` 에 적힌 상태만 거짓이다.
-
-🔴 표에 없는 원시·상태는 **참**이다(보수적). 모르는 것을 "아무 일도 안 했다"로 세면
-집행이 조용히 없던 일이 된다 — 이 파일이 막으려는 바로 그 실패 모양이다.
+한 단계에서 **노린 적응이 일어났는가**. 판정 순서는 셋이다:
+ 1. `UNMEASURABLE_STATUSES` — 못 쟀다 → **거짓**(모르는 것을 성공으로 세지 않는다).
+ 2. `SILENT_SUCCESS_STATUSES` — 조용한 성공 → 거짓.
+ 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 여섯은 게이트 (11) 이 (2)의 표에 전부 있음을
+    강제하므로, 이 기본값은 그 여섯에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
+    늘면 표가 비어 있는 동안 게이트가 먼저 빨개진다.
 """
 _step_applied(prim_name::AbstractString, status::Symbol) =
+    status in UNMEASURABLE_STATUSES ? false :
     !(status in get(SILENT_SUCCESS_STATUSES, String(prim_name), Set{Symbol}()))
 
 """
@@ -243,20 +288,58 @@ function _synth_get(synth, key::String, default)
     return v === nothing ? default : v
 end
 
-"호출 결과에서 status 를 읽는다. 🔴 필드 접근을 `hasproperty` 로 감싼다 — `restage_all_blocked!`
-는 `:none` 일 때만 4-필드가 아니라 **3-필드**를 돌려준다(residual 없음). 맨손으로 만지면
-그 자리에서 던지고, 집행부의 `try` 가 그 예외를 `:admit`/집행됨으로 보고한다."
-_step_status(out) = hasproperty(out, :status) ? Symbol(getproperty(out, :status)) : :no_status_field
+"""
+    _step_status(prim_name, out) -> Symbol
+
+호출 결과에서 status 를 읽는다. 세 갈래다:
+ 1. `status` 필드가 있으면 그것.
+ 2. `COUNT_RETURN_PRIMITIVES` 이고 `Integer` 면 개수로 읽어 `:moved`/`:moved_none`.
+ 3. 그 밖 = **모양을 못 읽었다** → `:unreadable_return`(= `applied` 거짓, "못 쟀다").
+
+🔴 필드 접근을 `hasproperty` 로 감싼다 — `restage_all_blocked!` 는 `:none` 일 때만
+4-필드가 아니라 **3-필드**를 돌려준다(residual 없음).
+
+🔴 그리고 그 위를 다시 `try` 로 감싼다. `hasproperty` 가 참이어도 `getproperty` 가 던지는
+반환값이 있을 수 있고, 그 예외가 여기서 새어 나가면 `enact_minted!` 가 **기록 대신
+예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 여섯에는
+그런 반환이 없지만 이 계획의 뒤 태스크가 어휘에 원시를 하나 더한다.
+
+🔴 예전 이름 `:no_status_field` 는 **`applied = true`** 로 흘렀다(2026-08-30 리뷰가 잡음).
+읽을 수 없는 모양은 "세계가 변했다"가 아니라 "변했는지 모른다"이다.
+"""
+function _step_status(prim_name, out)
+    try
+        hasproperty(out, :status) && return Symbol(getproperty(out, :status))
+        if String(prim_name) in COUNT_RETURN_PRIMITIVES && out isa Integer
+            return out > 0 ? :moved : :moved_none
+        end
+        return :unreadable_return
+    catch
+        return :unreadable_return
+    end
+end
 
 _brief_val(x) = x isa AbstractVector ? string(length(x)) : string(x)
-_step_detail(out) = join([string(f, "=", _brief_val(getproperty(out, f)))
-                          for f in (:moved, :failed, :residual, :delta) if hasproperty(out, f)], " ")
+
+"단계 기록에 실을 한 줄. 🔴 읽을 수 없는 모양이면 **그 모양을 이름으로 적는다** — 그래야
+`applied=false` 가 \"재서 아무 일도 없었다\"가 아니라 \"못 쟀다\"로 읽힌다."
+function _step_detail(out)
+    try
+        hasproperty(out, :status) ||
+            return "unreadable return shape ::$(typeof(out))=$(_brief_val(out))"
+        return join([string(f, "=", _brief_val(getproperty(out, f)))
+                     for f in (:moved, :failed, :removed, :residual, :delta) if hasproperty(out, f)], " ")
+    catch e
+        return "unreadable return shape ::$(typeof(out)): " *
+               first(split(sprint(showerror, e), "\n"))
+    end
+end
 
 """
     enact_minted!(env, truth, synth) -> NamedTuple
 
 합성된 tool 의 body 를 집행한다. 반환:
-`(verdict, reason, applied, partial, steps, undo)`. T4 가 읽는다.
+`(verdict, reason, applied, partial, world_maybe_dirty, steps, undo)`. T4 가 읽는다.
 
 | `verdict` | 뜻 |
 |---|---|
@@ -267,10 +350,15 @@ _step_detail(out) = join([string(f, "=", _brief_val(getproperty(out, f)))
 `applied` 와 `partial` 은 verdict 와 **다른 것**을 잰다(spec §9-2 — "불렀는데 아무 일도 없었다"
 와 "부르지 않았다"는 다른 사건이고 반환값에서 구분돼야 한다):
 
-| 필드 | 참일 때 |
+| 필드 | 뜻 |
 |---|---|
-| `applied` | 불린 단계 중 **하나라도** `SILENT_SUCCESS_STATUSES` 밖의 status 를 냈다 |
+| `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다** |
 | `partial` | 어떤 단계가 **던졌다** — 세계는 절반만 고쳐졌을 수 있고 되돌릴 방법이 없다 |
+| `world_maybe_dirty` | `applied` 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다 |
+
+🔴 세 필드는 **서로 다른 질문**이다. 하나만 읽고 다른 것의 답으로 쓰지 말 것 — 특히
+`applied == false` 는 "세계가 안 변했다"가 아니다(던졌을 수도, 못 쟀을 수도 있다).
+그래서 파생인 `world_maybe_dirty` 를 굳이 실어 보낸다.
 
 🔴 **`undo` 는 언제나 `:none`.** Plan B 의 C 단계가 이 계획의 범위 밖이므로, body 중간에서
 던지면 세계는 절반만 고쳐진 채 남는다. 그 사실을 결과가 들고 다닌다.
@@ -286,9 +374,13 @@ _step_detail(out) = join([string(f, "=", _brief_val(getproperty(out, f)))
 세계를 요구하는 판정보다 앞세우는 것이 옳기도 하다 — env 없이도 body 를 심사할 수 있다.
 """
 function enact_minted!(env, truth, synth)
+    # 🔴 `world_maybe_dirty` 는 파생 필드다(`applied || partial`). 왜 따로 싣는가:
+    #    `applied` 는 "노린 적응이 일어났나"만 재고 `partial` 은 "던져서 절반일 수 있나"만
+    #    잰다 — 둘 중 하나만 읽은 호출자가 다른 쪽의 답을 얻어 가면 안 된다. 다음 태스크는
+    #    "이미 더러워진 세계 위에 폴백을 쌓아도 되나"를 이 필드 하나로 결정한다.
     _r(v, why; steps = NamedTuple[], applied = false, partial = false) =
         (verdict = v, reason = why, applied = applied, partial = partial,
-         steps = steps, undo = :none)
+         world_maybe_dirty = applied || partial, steps = steps, undo = :none)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -341,9 +433,14 @@ function enact_minted!(env, truth, synth)
     steps = NamedTuple[]
     applied = false
     for r in resolved
-        local out
+        local st, dt
         try
             out = r.prim.impl(r.args[1]...; r.args[2]...)
+            # 🔴 반환값 읽기도 **이 `try` 안**이다. 밖에 두면 `getproperty` 가 던지는 반환값
+            #    하나가 `enact_minted!` 를 기록 대신 예외로 끝내고, 호출자는 세계 상태를
+            #    알 방법을 잃는다(`_step_status` 의 같은 날짜 주석).
+            st = _step_status(r.prim.name, out)
+            dt = _step_detail(out)
         catch e
             push!(steps, (name = r.prim.name, status = :threw,
                           detail = first(split(sprint(showerror, e), "\n"))))
@@ -354,9 +451,8 @@ function enact_minted!(env, truth, synth)
             return _r(:admit, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)";
                       steps = steps, applied = applied, partial = true)
         end
-        st = _step_status(out)
         applied |= _step_applied(r.prim.name, st)
-        push!(steps, (name = r.prim.name, status = st, detail = _step_detail(out)))
+        push!(steps, (name = r.prim.name, status = st, detail = dt))
     end
     quiet = applied ? "" :
         " — 🔴 불렸지만 어느 단계도 세계를 적응시키지 않았다(status: " *

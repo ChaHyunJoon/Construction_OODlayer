@@ -1,7 +1,7 @@
 # =============================================================================
 # 합성 body 의 집행. (2026-08-30, T3 / spec §5, §9-2)
 #
-# 재는 명제 열하나
+# 재는 명제 열둘
 #   (1) `reach != "composed"` 는 **집행하지 않는다** — `:deferred` 이지 `:admit` 이 아니다.
 #   (2) body 에 미지 원시가 하나라도 있으면 **아무것도 집행하지 않고** `:reject` 다.
 #       부분 집행은 undo 가 없는 이 설계에서 최악이다.
@@ -15,8 +15,12 @@
 #       어느 연언지가 깨졌는지와 함께 거절된다.
 #  (10) 🔴 `zone_keys` 는 유도하지 않는다. 안 주면 키워드를 빼고, 주면 `Symbol` 로 강제해
 #       살아 있는 존인지 **호출 전에** 검사한다.
-#  (11) 🔴 "불렀는데 아무 일도 없었다"와 "부르지 않았다"는 다른 사건이다 — `applied` ·
-#       `partial` 이 verdict 와 별개로 그것을 나른다.
+#  (11) 🔴 "불렀는데 아무 일도 없었다" · "부르지 않았다" · "못 쟀다"는 서로 다른 사건이다 —
+#       `applied`(노린 적응) · `partial`(던졌다) · `world_maybe_dirty`(둘 중 하나) 가 verdict 와
+#       별개로 그것을 나른다. 표는 **집행 가능한 여섯 전부**를 덮어야 한다.
+#  (12) 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다 — (9) 는 이름 집합만 재므로,
+#       params 에 키를 더하거나 impl 을 다른 함수로 돌리면 스위트가 전부 초록인 채
+#       부를 수 있는 표면이 넓어진다.
 #
 # 변이시험 — 열하나 전부 실제로 빨갛게 만든 뒤 되돌렸다. 재현 방법(`src/respec/minted_tool.jl`):
 #   · (1): `enact_minted!` 의 `reach == "composed" || return _r(:deferred, ...)` 줄을 지운다.
@@ -34,6 +38,16 @@
 #   ·(10): `bind_primitive_args` 의 `haskey(live, k) || return "reject:unknown_zone_key:..."`
 #          줄을 지운다.
 #   ·(11): 집행 루프의 `applied |= _step_applied(...)` 를 `applied = true` 로.
+#   ·(11b): `SILENT_SUCCESS_STATUSES` 에서 `"force_advance_stuck_carrier"` 행을 지운다
+#           (= 리뷰 전의 결함 상태. 커버리지 단언과 :disabled 단언이 빨개진다).
+#   ·(11c): `_step_status` 의 `COUNT_RETURN_PRIMITIVES` 갈래를 지운다(맨 Int 를 못 읽는다).
+#   ·(11d): `_step_applied` 의 `status in UNMEASURABLE_STATUSES ? false :` 를 지운다
+#           (= 못 잰 것이 다시 성공으로 샌다).
+#   ·(11e): `_step_status` 의 `try`/`catch` 를 지운다(Hostile 반환이 예외로 새어 나간다).
+#   ·(11f): `_r` 의 `world_maybe_dirty = applied || partial` 를 `= applied` 로
+#           (던진 경우가 깨끗한 세계로 보고된다).
+#   ·(12a): 레지스트리에서 `restage_all_blocked` 의 params 에 `"resume"` 를 더한다.
+#   ·(12b): 레지스트리에서 `resolve_schedule_wedge` 의 impl 을 `recover_stalled_teams!` 로 돌린다.
 #
 # 🔴 이 게이트는 서비스도 MILP 도 안 쓴다. (11) 이 부르는 유일한 실제 원시는
 #    `translate_whole_build!` 이고, 그 함수는 `isempty(env.staging_circles)` 첫 줄에서
@@ -57,6 +71,11 @@ isdefined(CB, :BatteryTruth) ||
 _synth(; reach = "composed", names = String[], params = Dict{String,Any}()) =
     Dict{String,Any}("reach" => reach, "body_names" => names,
                      "tool_name" => "t", "params" => params, "missing_primitive" => nothing)
+
+# `getproperty` 가 던지는 반환값. (11) 이 "못 읽는 모양은 예외가 아니라 기록"을 잰다.
+struct Hostile end
+Base.hasproperty(::Hostile, ::Symbol) = true
+Base.getproperty(::Hostile, ::Symbol) = error("이 반환값은 읽을 수 없다")
 
 @testset "(1) reach=needs_primitive 는 deferred 다" begin
     r = CB.enact_minted!(nothing, nothing,
@@ -230,21 +249,67 @@ end
 end
 
 # =============================================================================
-# (11) 🔴 "불렀는데 아무 일도 없었다" ≠ "부르지 않았다"(spec §9-2).
+# (11) 🔴 "불렀는데 아무 일도 없었다" ≠ "부르지 않았다" ≠ "못 쟀다"(spec §9-2).
 #
-# `translate_whole_build!` 는 적치원이 없으면 `:no_staging` 을 돌려주는데, 그 함수의
-# 상태들은 호출자에게 "성공"으로 취급되게 설계돼 있다. 그대로 `applied = true` 로 실으면
-# **아무것도 안 한 집행**이 결정 행에 적응의 증거로 남는다.
+# 2026-08-30 리뷰가 잡은 결함: 처음 `SILENT_SUCCESS_STATUSES` 를 zone 원시 둘만 채웠더니
+# **집행 가능한 여섯 중 넷**이 아무 일도 안 하고 `applied = true` 를 냈다. 그중
+# `force_advance_stuck_carrier!` 는 `CARRIER_RESCUE != "1"`(= 손 안 댄 **기본 환경**)이면
+# 언제나 `:disabled, moved=0` 이다 — 매 런이 "적응했다"로 결정 행에 남았을 것이다.
+# `reform_stuck_teams!` 는 아예 NamedTuple 이 아니라 맨 `Int` 를 돌려준다.
+# 그래서 이 절은 이제 **여섯 전부**를 이름으로 잰다.
 # =============================================================================
-@testset "(11) applied 는 status 로, partial 은 예외로 판정한다" begin
-    # 순수 판정 함수부터 — 표는 `SILENT_SUCCESS_STATUSES` 하나다.
-    @test CB._step_applied("translate_whole_build", :no_staging)    === false
-    @test CB._step_applied("translate_whole_build", :already_clear) === false
-    @test CB._step_applied("translate_whole_build", :translated)    === true
-    @test CB._step_applied("restage_all_blocked",   :none)          === false
-    @test CB._step_applied("restage_all_blocked",   :restaged_all)  === true
-    # 표에 없는 원시는 보수적으로 참이다 — 모르는 것을 "안 했다"로 세면 조용히 샌다.
-    @test CB._step_applied("resolve_schedule_wedge", :whatever)     === true
+@testset "(11) applied 는 status 로, partial 은 예외로, 못 쟀으면 false 다" begin
+    # 🔴 표는 집행 가능한 여섯을 **빠짐없이** 덮어야 한다. 어휘가 늘면(이 계획의 뒤 태스크가
+    #    원시를 하나 더한다) 표를 채우기 전까지 여기서 먼저 빨개진다 — `_step_applied` 의
+    #    보수적 기본값(참)으로 조용히 새는 길을 막는 것이 이 단언 하나다.
+    @test sort(collect(keys(CB.SILENT_SUCCESS_STATUSES))) == ENACTABLE_TODAY
+
+    # 여섯 원시의 실제 return 문에서 읽은 상태들. 왼쪽=조용한 성공(false), 오른쪽=진짜 적응(true).
+    quiet = [("restage_all_blocked", :none), ("restage_all_blocked", :infeasible),
+             ("restage_all_blocked", :residual_blocked),
+             ("translate_whole_build", :no_staging), ("translate_whole_build", :already_clear),
+             ("translate_whole_build", :infeasible), ("translate_whole_build", :residual_blocked),
+             # 🔴 CARRIER_RESCUE 미설정이 기본값이다 — 이 한 줄이 리뷰가 잡은 결함이다.
+             ("force_advance_stuck_carrier", :disabled), ("force_advance_stuck_carrier", :no_carrier),
+             ("recover_stalled_teams", :no_team), ("recover_stalled_teams", :stuck),
+             # recover 는 carrier 의 결과를 그대로 전달한다 — :disabled 가 여기로도 올라온다.
+             ("recover_stalled_teams", :disabled), ("recover_stalled_teams", :no_carrier),
+             ("resolve_schedule_wedge", :not_applicable), ("resolve_schedule_wedge", :no_wedge),
+             ("reform_stuck_teams", :moved_none)]
+    for (n, st) in quiet
+        @test CB._step_applied(n, st) === false
+    end
+    real = [("restage_all_blocked", :restaged_all), ("restage_all_blocked", :partial),
+            ("translate_whole_build", :translated),
+            ("force_advance_stuck_carrier", :carrier_closed),
+            ("force_advance_stuck_carrier", :carrier_advanced),
+            ("recover_stalled_teams", :snapped), ("recover_stalled_teams", :restaged),
+            ("recover_stalled_teams", :unwedged), ("recover_stalled_teams", :force_snapped),
+            ("resolve_schedule_wedge", :unwedged), ("reform_stuck_teams", :moved)]
+    for (n, st) in real
+        @test CB._step_applied(n, st) === true
+    end
+
+    # 🔴 "못 쟀다"는 성공이 아니다. 모양을 못 읽었다는 것은 세계가 변했는지 **모른다**는 뜻이다.
+    #    이것은 표에 없는 원시의 보수적 기본값(참)보다 **먼저** 판정된다.
+    @test CB._step_applied("restage_all_blocked", :unreadable_return) === false
+    @test CB._step_applied("primitive_not_in_table", :unreadable_return) === false
+    # 표에 없는 원시의 그 밖 상태는 보수적으로 참이다. ⚠️ 위 커버리지 단언 때문에 집행
+    # 가능한 여섯에 대해서는 이 기본값에 **도달할 수 없다**.
+    @test CB._step_applied("primitive_not_in_table", :whatever) === true
+
+    # 반환 모양 읽기 — 세 갈래.
+    @test CB._step_status("translate_whole_build", (status = :translated,)) === :translated
+    @test CB._step_status("reform_stuck_teams", 0) === :moved_none   # 맨 Int 를 개수로 읽는다
+    @test CB._step_status("reform_stuck_teams", 3) === :moved
+    @test CB._step_status("restage_all_blocked", 3) === :unreadable_return  # 개수 원시가 아니다
+    @test CB._step_status("whatever", nothing) === :unreadable_return
+    @test occursin("unreadable return shape", CB._step_detail(nothing))
+
+    # 🔴 `getproperty` 가 던지는 반환값도 **기록**이지 예외가 아니다. 오늘의 여섯에는 그런
+    #    반환이 없지만 이 계획의 뒤 태스크가 어휘에 원시를 하나 더한다.
+    @test CB._step_status("whatever", Hostile()) === :unreadable_return
+    @test occursin("unreadable return shape", CB._step_detail(Hostile()))
 
     # 끝에서 끝까지: 불렸고(:admit), 그러나 세계는 안 바뀌었다(applied=false).
     fake = (staging_circles = Dict{Symbol,Any}(),)      # 첫 줄에서 :no_staging 으로 돌아선다
@@ -252,6 +317,7 @@ end
     @test r.verdict === :admit
     @test r.applied === false                          # 🔴 조용한 성공을 성공으로 세지 않는다
     @test r.partial === false
+    @test r.world_maybe_dirty === false
     @test length(r.steps) == 1
     @test r.steps[1].status === :no_staging
     @test occursin("적응", r.reason)                    # 사유가 그 사실을 말한다
@@ -261,8 +327,62 @@ end
     r2 = CB.enact_minted!((nope = 1,), nothing, _synth(names = ["translate_whole_build"]))
     @test r2.verdict === :admit
     @test r2.partial === true
+    @test r2.applied === false                         # applied 는 status 전용이다(뒤집지 않는다)
+    # 🔴 그래서 파생 필드가 따로 있다 — 한 필드만 읽고 다른 것의 답을 얻어 가면 안 된다.
+    @test r2.world_maybe_dirty === true
     @test r2.steps[1].status === :threw
     @test occursin("undo 없음", r2.reason)
+
+    # 거절은 세계에 손을 안 댔다.
+    @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).world_maybe_dirty === false
+end
+
+# =============================================================================
+# (12) 🔴 레지스트리 편집 둘이 게이트를 전부 초록으로 둔 채 **부를 수 있는 표면을 넓힌다**.
+#   (a) `restage_all_blocked` 의 params 에 `"resume"` 를 더한다 → 연언지 (iii) 은 그대로
+#       성립하고(진짜 kwarg 다) 이름 집합도 그대로라 (9) 는 초록인데, 이제 LLM 이 준
+#       `resume` 가 `reset_cache_resume!` 까지 흘러가고 (8) 의 미지 인자 거절도 그 키를
+#       더는 안 막는다.
+#   (b) `resolve_schedule_wedge` 의 impl 을 `recover_stalled_teams!` 로 돌린다 → arity 1 ·
+#       env-only · 단일 메서드라 여전히 집행 가능, 이름 집합 그대로, 스위트 전부 초록인데
+#       알파벳이 **다른 함수**를 집행한다.
+# `test/primitive_registry_resolves.jl` 은 `params` 가 **존재**하는지만 보지 키를 안 본다.
+# 그래서 이 절이 이름→impl 짝과 params 키 **둘 다**를 못 박는다.
+# =============================================================================
+const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
+    "apply_uniform_translation"   => ("_apply_uniform_translation!", ["delta"]),
+    "commit_respec"               => ("commit_respec!", String[]),
+    "compile_constraint"          => ("compile_constraint!", ["constraint_type"]),
+    "deprioritize_agent"          => ("deprioritize_agent!", ["agent", "factor"]),
+    "dispatch_battery_courier"    => ("dispatch_battery_courier!", ["target"]),
+    "force_advance_stuck_carrier" => ("force_advance_stuck_carrier!", ["tol"]),
+    "hot_swap_robot"              => ("hot_swap_robot!", ["faulted", "mode"]),
+    "pop_spare"                   => ("pop_spare!", ["pool"]),
+    "recover_stalled_teams"       => ("recover_stalled_teams!", String[]),
+    "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
+    "release_pending_assignments" => ("release_pending_assignments!", ["faulted"]),
+    "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
+    "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
+    "resolve_schedule_wedge"      => ("resolve_schedule_wedge!", String[]),
+    "restage_all_blocked"         => ("restage_all_blocked!", ["zone_keys"]),
+    "restage_assembly"            => ("restage_assembly!", ["assembly_id", "zone_keys"]),
+    "rethread_robot_ids"          => ("rethread_robot_ids!", String[]),
+    "swap_battery"                => ("swap_battery!", ["agent"]),
+    "translate_whole_build"       => ("translate_whole_build!", ["zone_keys"]),
+)
+
+@testset "(12) 레지스트리의 이름→impl 짝과 params 키를 못 박는다" begin
+    tbl = CB.PRIMITIVE_TABLE()
+    @test sort(collect(keys(tbl))) == sort(collect(keys(REGISTRY_SURFACE_TODAY)))
+    for (n, (impl, prms)) in REGISTRY_SURFACE_TODAY
+        p = CB.resolve_primitive(n)
+        @test p !== nothing
+        # 이름→impl 짝. `nameof` 로 실제로 해석된 함수의 이름을 되읽는다 — 레지스트리 문자열이
+        # 아니라 **CB 가 준 callable** 을 본다.
+        @test String(nameof(p.impl)) == impl
+        # params 키. 이 집합이 곧 LLM 이 이 원시에 넘길 수 있는 손잡이 전부다.
+        @test sort(collect(keys(p.params))) == sort(prms)
+    end
 end
 
 end # module
