@@ -31,6 +31,36 @@ const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 include(joinpath(pkgdir(CB), "tools", "monitor", "policy.jl"))
 
+"후보 간선 (v,v2) 목록에서 가장 많이 등장하는 유효 owner id. `test/payload_reprice_changes_plan.jl`
+의 `busiest_agent()` / `tools/probes/probe_reprice_moves_assignment.jl` 의 `busiest_agent()` 와
+같은 관용구를 재사용한다 — 세 번째 구현을 만들지 않는다.
+🔴 최종 리뷰 F2: 여기 있던 `agent = string(first(keys(fleet.soc)))` 는 `fleet.soc::Dict{Any,Float64}`
+가 `RobotID`(`AbstractID`) 로 키가 되는데 이 브랜치엔 `bb1b88c4`(내용기반 `Base.hash`)가 없어
+(`git branch --contains bb1b88c4` == `sdd-lane-c7` 뿐) `objectid` 해시로 순회 순서가 실행마다
+갈린다 — 후보 간선을 0개 또는 소수만 가진 로봇이 뽑혀도 재풀이가 사실상 무동작인 채 testset
+3(b) 가 `primal_status==FEASIBLE_POINT` 만 보고 그대로 통과했다(축 자체는 다르지만 방금 고친
+κ 축과 같은 모양의 blind gate). 이제 후보 간선 소유량으로 대상을 유도한다.
+"
+function busiest_agent(env)
+    sched, tree = deepcopy((env.sched, env.scene_tree))
+    shim = (sched = sched, scene_tree = tree, cache = env.cache)
+    CB.release_pending_assignments!(shim, CB.build_invariant(env))
+    sentinel = Dict{Tuple{Int,Int},Float64}()
+    CB.LAST_EDGE_COSTS[] = sentinel
+    CB.formulate_milp(CB.SparseAdjacencyMILP(), sched, tree; optimizer = CB._respec_optimizer())
+    ran = !(CB.LAST_EDGE_COSTS[] === sentinel)
+    ran || error("busiest_agent: formulate_milp did not run (LAST_EDGE_COSTS untouched)")
+    tally = Dict{String,Int}()
+    for (v, _) in keys(CB.LAST_EDGE_COSTS[])
+        id = CB._edge_owner_id(sched, v)
+        id === nothing && continue
+        tally[string(id)] = get(tally, string(id), 0) + 1
+    end
+    isempty(tally) && error("busiest_agent: no valid owner ids among candidate edges")
+    ranked = sort(collect(tally), by = kv -> -kv[2])
+    return (agent = ranked[1][1], n_edges = ranked[1][2], n_candidates = length(CB.LAST_EDGE_COSTS[]))
+end
+
 function fresh_env()
     env = CB.run_lego_demo(; ldraw_file = "tractor.mpd", project_name = "s2safe",
                        num_robots = 10, assignment_mode = :greedy, n_spare_per_pool = 2,
@@ -136,7 +166,11 @@ end
         CB.release_pending_assignments!(shim, CB.build_invariant(env))
         fleet = CB.BATTERY_FLEET[]
         @test fleet !== nothing   # enable_battery! 가 실제로 켰는지 사전조건으로 확인
-        agent = string(first(keys(fleet.soc)))
+        # 🔴 최종 리뷰 F2: `string(first(keys(fleet.soc)))` 대신 후보 간선 소유량으로 대상을
+        # 유도한다 — Dict 순회 순서가 아니라 실제로 재가격이 건드릴 간선을 가진 로봇을 고른다.
+        ba = busiest_agent(env)
+        agent = ba.agent
+        @test ba.n_edges > 0   # 대상이 실제로 소유한 후보 간선이 있다(0-간선 로봇을 뽑지 않았다)
         r = CB.reprice_agent_by_payload!(env; agent = agent, light_bias = 2.0)
         # 🔴 이 단언은 사전조건일 뿐이다 — :repriced 는 이 함수가 리턴하는 순간까지 Ref 둘을
         # 썼을 뿐 세계가 바뀌었다는 증거가 아니다(그 증거는 아래의 실제 재풀이 결과다).
