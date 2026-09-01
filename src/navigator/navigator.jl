@@ -47,6 +47,7 @@ include("controller.jl")          # Controller 추상화 + 모든 열(의존: ba
 include("compare.jl")             # 고정 B0~B3+LLM 사례별 표(의존: baselines, metrics, llm_eval)
 include("compare_controllers.jl") # 일반화된 사다리 + lift + sweep(의존: controller, adaptation_metrics, compare)
 include("battery.jl")             # SoC(배터리) 회계 + battery OOD(의존: CB 내부)
+include("payload_bias.jl")        # payload 축 재가격 (의존: battery)
 include("ood_stream.jl")          # 다중 이벤트 무작위 OOD 스트림(의존: ood_injection, ood_truth, battery)
 
 # 호출자가 "navigator 가 로드됐다"고 확인할 수 있게 해주는 표식 함수.
