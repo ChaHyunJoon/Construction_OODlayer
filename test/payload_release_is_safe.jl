@@ -18,6 +18,11 @@
 # was found) is NOT the same as `INFEASIBLE` (proven no solution exists) — report which one
 # happened, don't collapse them. Wall-clock solve time and final relative MIP gap are measured
 # and reported for both arms side by side (a real operational-cost finding, not just plumbing).
+#
+# Second controller ruling (mid-task): `fresh_env()` now also calls `CB.init_objective_weights!()`
+# (see its docstring-comment below testset 3) -- without it, the payload reprice this file
+# installs never reaches the MILP objective at all, and testset 3's (a)==(b) result would prove
+# nothing about safety.
 module PayloadReleaseIsSafeTest
 using Test
 using ConstructionBots
@@ -36,6 +41,15 @@ function fresh_env()
     # BATTERY_FLEET[] === nothing 을 보고 (status=:no_fleet, installed=false) 로 조용히
     # 아무 훅도 안 심는다(측정된 사실, task-7-addendum.md 정정 1).
     CB.enable_battery!(env; params = CB.BatteryParams())
+    # 🔴🔴 필수(2026-09-01, controller ruling — Task 0 의 halt-gate 전제가 이 태스크로
+    # 전파되지 않았던 구멍): `AUTO_EFFICIENCY_KAPPA[]` 기본값은 `nothing` 이고, 그러면
+    # `get_objective_expr` 이 `edge_costs` 를 통째로 버려 `EDGE_PAYLOAD_MULTIPLIER`(payload
+    # 재가격)가 목적함수에 **전혀 도달하지 못한다**(essential_tg_coponents.jl:1495,
+    # `w_eff == 0.0 && return speed_term`). `init_objective_weights!()` 가 그 Ref 를
+    # objective.json 의 kappa(=0.01)로 채워 살린다 — 생산 경로(tools/monitor/run_demo.jl:531-532,
+    # ENERGY_OBJECTIVE 기본 1)와 Task 0 의 probe(tools/probes/probe_kappa_alive.jl:14)가 이미
+    # 하는 일과 동일하다. 이게 없으면 testset 3 은 절대 실패할 수 없는 시험이었다(아래 참고).
+    CB.init_objective_weights!()
     return env
 end
 
@@ -81,8 +95,10 @@ end
     # 쓴다(tools/tests.jl:78 이 이미 쓰는 패턴과 동형; optimizer factory 를 새로 만들 필요가 없다).
     time_limit_s = 180.0
 
-    # 한 팔을 풀고 (termination_status, primal_status, 경과초, 최종 gap) 을 함께 재는 헬퍼.
-    # 🔴 relative_gap 은 INFEASIBLE/NO_SOLUTION 이면 정의되지 않을 수 있어 try 로 감싼다.
+    # 한 팔을 풀고 (termination_status, primal_status, 경과초, 최종 gap, objective, bound) 을
+    # 함께 재는 헬퍼.
+    # 🔴 relative_gap/objective_value 는 INFEASIBLE/NO_SOLUTION 이면 정의되지 않을 수 있어
+    # try 로 감싼다.
     function _solve_and_measure!(sched, tree; label::AbstractString)
         milp = CB.formulate_milp(CB.SparseAdjacencyMILP(), sched, tree;
                                  optimizer = CB._respec_optimizer())
@@ -91,9 +107,11 @@ end
         ts = CB.termination_status(milp)
         ps = CB.primal_status(milp)
         gap = try CB.relative_gap(milp.model) catch; NaN end
-        @info "$label 풀이 결과" termination_status = ts primal_status = ps solve_seconds = elapsed relative_gap = gap
+        obj = try CB.objective_value(milp.model) catch; NaN end
+        bound = try CB.objective_bound(milp) catch; NaN end
+        @info "$label 풀이 결과" termination_status = ts primal_status = ps solve_seconds = elapsed relative_gap = gap objective_value = obj objective_bound = bound
         return (milp = milp, termination_status = ts, primal_status = ps,
-                seconds = elapsed, gap = gap)
+                seconds = elapsed, gap = gap, objective = obj, bound = bound)
     end
 
     result_a = Ref{Any}(nothing)
@@ -133,33 +151,42 @@ end
         if ra !== nothing && rb !== nothing
             @info "==== (a) vs (b) 시간제한 $(time_limit_s)s 나란히 ====" ta = ra.seconds tb =
                 rb.seconds gap_a = ra.gap gap_b = rb.gap termination_a = ra.termination_status termination_b =
-                rb.termination_status primal_a = ra.primal_status primal_b = rb.primal_status
+                rb.termination_status primal_a = ra.primal_status primal_b = rb.primal_status obj_a =
+                ra.objective obj_b = rb.objective bound_a = ra.bound bound_b = rb.bound
+            same_objective = isfinite(ra.objective) && isfinite(rb.objective) && ra.objective == rb.objective
+            same_bound = isfinite(ra.bound) && isfinite(rb.bound) && ra.bound == rb.bound
+            if same_objective && same_bound
+                @warn "κ 가 살아 있는데도 (a)/(b) objective·bound 가 비트단위로 같다 — 재가격이 이 판에서 목적함수를 전혀 못 움직였다는 뜻(발견, 통과가 아니다)." objective = ra.objective bound = ra.bound
+            end
             # 참고용 관측일 뿐이다(pass/fail 게이트가 아니다) — harder-to-solve 를 발견으로 기록.
             @test true
         end
     end
 
-    # 🔴🔴 실측(2026-09-01, 이 시험 실행 도중 독립 확인): (a)/(b) 의 primal/dual bound 가
-    # 비트단위로 같다(11.674999 / 7.825, 노드수·LP반복만 다름 — 별개의 두 번의 실제 B&B다).
-    # 우연이 아니다. `essential_tg_coponents.jl:1495`
-    # `w_eff == 0.0 && return speed_term` 이 원인이다: `PLANNING_OBJECTIVE_WEIGHTS[]` 기본값이
-    # `(speed=1, efficiency=0)`이고 `AUTO_EFFICIENCY_KAPPA[]` 기본값이 `nothing` 이라(둘 다
-    # `set_planning_objective_weights!`/`init_objective_weights!` 를 명시적으로 불러야만 바뀜 —
-    # 이 시험도, `_respec_optimizer()`/`formulate_milp` 를 쓰는 다른 어떤 호출자도 안 부른다),
-    # `get_objective_expr(::SumOfMakeSpans, ...)` 가 `edge_costs` 를 통째로 버리고 순수 makespan
-    # 항만 돌려준다. `edge_costs` 는 `EDGE_PAYLOAD_MULTIPLIER`(이 파일이 켜는 payload 재가격)가
-    # 유일하게 솔버에 닿는 통로다(payload_bias.jl 머리말) — 그 통로가 objective 조립 단계에서
-    # 원천적으로 끊겨 있다. 독립 검증: 이 시험이 고른 agent(BotID{DeliveryBot}(8))는 release 후
-    # 후보 2103개 중 200개를 소유하고 200개 전부 payload 질량을 잴 수 있다(diagnostic script,
-    # 죽은 agent 를 고른 게 아니다) — 그런데도 (a)==(b) 다. 이 코드 블록 자체의 주석
-    # ("THE BUG THIS FIXES" / AUTO_EFFICIENCY_KAPPA 절, essential_tg_coponents.jl:1279-1310)
-    # 이 이미 이 한계를 문서화해 두었고, DeprioritizeAgent·배터리 SoC 축도 같은 이유로 예전에
-    # 무동작이었다고 적혀 있다 — 이번이 세 번째 사례다.
-    # ⟹ Task 7 의 (a)/(b) 가 같은 결과인 것은 "재가격이 안전하다"는 증거가 **아니다** — 이
-    # 시험이 실행되는 조건(기본 가중치)에서는 재가격이 목적함수에 **전혀 도달하지 않기** 때문에
-    # 같다. spec §9-3 의 위험(재가격이 재풀이를 infeasible 로 만들 수 있는가)은 efficiency
-    # 가중치가 0 이 아닌 조건에서만 실제로 시험되는데, 이 계획(Task 1~7)의 어떤 인터페이스도
-    # 그 가중치를 켜지 않는다. Task 7 의 권한(이 파일 하나만) 밖의 발견이라 여기서 가중치를
-    # 켜서 "고치지" 않는다 — 계획 소유자에게 보고만 한다(기록, 미수정).
+    # 🔴🔴 이 파일은 `fresh_env()` 에서 `CB.init_objective_weights!()` 를 부른다(2026-09-01,
+    # controller ruling). 그전에는 `AUTO_EFFICIENCY_KAPPA[]` 기본값이 `nothing` 이라
+    # `get_objective_expr(::SumOfMakeSpans,...)` 의 `w_eff == 0.0 && return speed_term`
+    # (essential_tg_coponents.jl:1495) 이 `edge_costs` 를 통째로 버렸다 — `EDGE_PAYLOAD_MULTIPLIER`
+    # (payload 재가격)가 솔버에 닿는 유일한 통로가 조립 단계에서 끊겨 있었고, 그때는 (a)==(b) 가
+    # "재가격이 안전하다"는 증거가 아니라 "재가격이 목적함수에 전혀 안 닿았다"는 증거였다
+    # (독립 검증: 그때 고른 agent 는 release 후 후보 2103개 중 200개를 소유하고 200개 전부 질량을
+    # 잴 수 있었다 — 죽은 agent 를 고른 게 아니었는데도 bound 가 비트단위로 같았다).
+    #
+    # `init_objective_weights!()` 는 `objective.json` 의 kappa=0.01 로 `AUTO_EFFICIENCY_KAPPA[]`
+    # 를 채워 살린다(production 경로 tools/monitor/run_demo.jl:531-532 이 ENERGY_OBJECTIVE=1 기본값
+    # 아래서 하는 일, Task 0 의 halt-gate probe tools/probes/probe_kappa_alive.jl:14 가 하는 일과
+    # 동일) — 이제 `w_eff` 가 0 이 아니라 `AUTO_EFFICIENCY_KAPPA[] · speed_scale/eff_scale` 이고
+    # `eff_term = Σ edge_costs[e]·Xa[e]` 가 목적식에 실제로 들어간다.
+    #
+    # 실측(κ 살아있는 상태, 180s 시간제한 두 팔 재실행): (a) release-only 는
+    # objective=12.45098811768997 / bound=8.02862999819935 / gap=35.52%; (b) release+reprice
+    # (light_bias=2.0) 는 objective=12.951084938587051 / bound=8.045273379154887 / gap=37.88% —
+    # 둘 다 `FEASIBLE_POINT`·`TIME_LIMIT` 이고 이번엔 objective·bound 가 **다르다**(재가격이
+    # 목적함수에 실제로 도달했다는 뜻). 게이트가 살아 있고, 살아 있는 상태로 통과했다: 이 판에서
+    # release+재가격은 재풀이를 infeasible 로 만들지 않았다(spec §9-3 의 질문에 대한 실제 답).
+    # `(a) vs (b) 비교 보고` 위 `_solve_and_measure!` 의 `@warn` 은 이 조건(objective·bound 가
+    # 비트단위로 같음)이 다시 나타나면 — 예: 다른 agent/시드/보드에서 κ 가 살아 있어도 재가격이
+    # 목적함수를 못 움직이면(Task 0 이 잰 w=2.8e-5 처럼 항이 너무 작을 때) — 그것도 통과가 아니라
+    # 발견으로 소리 내어 알리기 위한 것이다.
 end
 end # module
