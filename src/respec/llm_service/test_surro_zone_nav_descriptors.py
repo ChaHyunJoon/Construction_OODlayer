@@ -8,19 +8,26 @@
 읽지 않았다 — `descriptors_from_row` 가 -1.0 센티널로 떨어져 `zone_terminal=False` 로 접히고,
 같은 사건에 대해 surrogate 레인은 옛 area-ratio 공식(`harm ≈ zone_overlap`)을 본다.
 
-이 파일은 **같은 `req` 하나**에 대해 surrogate 레인이 실제로 계산하는 서술자 벡터가, `req`가
-실어온 원시값으로 (LLM 레인이 실제로 프롬프트에 놓는 값과 동치인) `descriptors_from_row` 를
-직접 부른 결과와 **일치하는가**를 잰다. 두 계산은 같은 파이썬 함수(`descriptors_from_row`)를
-쓰지만 **입력 딕셔너리를 만드는 경로가 다르다** — `_surro_row`(수복 대상)와, 요청의 원시
-필드를 그대로 읽는 참조 딕셔너리. 결함이 있으면(=`_surro_row`가 두 키를 안 채우면) 전자는
-"안 쟀다"로, 후자는 "쟀다"로 갈려 두 벡터가 갈린다.
+🔴 2026-09-01 (review I-4). 이 파일은 예전에 "surrogate 레인과 LLM 레인이 같은 벡터를 낸다"는
+cross-lane 시험을 자처했지만, 실제로는 `_reference_row`가 `_surro_row`의 몸통을 손으로 그대로
+베낀 사본이어서 구현을 자기 자신의 스냅샷과 비교하고 있었다 — Julia↔Python 발산을, 즉 이 시험이
+막으려던 바로 그 실패 유형을 원리적으로 볼 수 없었다("식을 베껴 쓴 시험"). 진짜 cross-lane
+대조(프로덕션 경로 `MacroRequest` -> `_surro_row` -> `descriptors_from_row` 를 줄리아
+`event_descriptors` 와 1e-12 로 비교)는 이제 `test/zone_harm_is_blockage.jl` 의 testset (6)에
+있다 — 그 파일이 이미 (5)에서 같은 shell-out-to-venv-python 아이디엄으로 파이썬 twin 을 재는
+자리였고, 줄리아가 "정답"(고쳐진 지 오래된 nav-blockage 공식)을 들고 있으므로 대조가 거기서
+서는 것이 자연스럽다. 여기 파이썬 쪽에는 이제 그 골든카피 시험이 없다.
 
-음성 대조: `_surro_row` 를 되돌려 두 키를 빼면 이 파일의 첫 시험이 **반드시** 빨개지는 것을
-`.superpowers/sdd/2026-08-31-s1-observation-and-thresholds/task-surro-report.md` 에 실측으로
-남겼다 — 격리해서 다시 재현하려면 `_surro_row` 반환 dict 에서 `zone_nav_blocked`/
-`zone_nav_downstream` 두 줄을 지우고 이 파일만 돌릴 것.
+남은 둘은 애초에 cross-lane 을 주장한 적이 없는 `_surro_row` 자체의 순수 단위시험이라 그대로
+둔다: 값이 없을 때 0 이 아니라 -1.0 센티널로 접는지(삼상 규약), 그리고 공간이 아닌 사건에서는
+이 필드들이 전혀 안 건드려지는지.
+
+음성 대조: `_surro_row` 를 되돌려 두 키를 빼면 `test/zone_harm_is_blockage.jl` testset (6)이
+**반드시** 빨개지는 것을 이 태스크에서 실측으로 확인했다(4/29 assertion 실패, harm·work_at_risk
+가 옛 area-ratio 값으로 되돌아간다) — 격리해서 다시 재현하려면 `_surro_row` 반환 dict 에서
+`zone_nav_blocked`/`zone_nav_downstream` 두 줄을 지우고
+`julia +lts --project=. test/zone_harm_is_blockage.jl` 을 돌릴 것.
 """
-import math
 import os
 import sys
 
@@ -29,7 +36,6 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import dspy_service as svc  # noqa: E402  (numpy/sklearn-before-dspy 계약, WM/core 경로 부트스트랩)
-import features_agnostic as fa  # noqa: E402  (dspy_service import 가 wm4/core 를 sys.path 에 얹는다)
 
 # 2026-08-30 라이브 판과 같은 자릿수의 zone-nav 사건. `zone_nav_blocked >= 1` 이므로
 # `descriptors_from_row` 의 `zone_terminal` 이 참이어야 한다(고쳐졌다면).
@@ -47,46 +53,13 @@ def _req(**kw):
     return svc.MacroRequest(**d)
 
 
-def _reference_row(req):
-    """LLM 레인이 프롬프트에 놓는 값과 동치인 참조 딕셔너리 -- 요청의 원시 필드를 그대로 읽는다
-    (Julia `CB.event_descriptors` 호출자가 채우는 것과 같은 필드들, `_surro_row` 를 거치지 않는다).
-    """
-    return dict(
-        severity=float(req.severity),
-        soc=(math.nan if req.soc is None else float(req.soc)),
-        zone_overlap=(-1.0 if req.zone_overlap is None else float(req.zone_overlap)),
-        agent_pending=float(req.agent_pending),
-        n_active=float(req.n_active),
-        spare_count=float(req.spare_count),
-        closed_at_fire=float(req.closed_at_fire),
-        total_nodes=svc._total_nodes(req),
-        progress=float(req.progress),
-        zone_nav_blocked=(-1.0 if req.zone_nav_blocked is None else float(req.zone_nav_blocked)),
-        zone_nav_downstream=(-1.0 if req.zone_nav_downstream is None else float(req.zone_nav_downstream)))
-
-
-def test_surrogate_lane_and_llm_lane_compute_the_identical_descriptor_vector_for_a_nav_blocked_zone_event():
-    """핵심 게이트. `zone_nav_blocked=3 >= 1` 인 사건 하나에서, surrogate 레인이 실제로 쓰는
-    경로(`_surro_row` -> `descriptors_from_row`)와 LLM 레인이 보는 값과 동치인 참조 경로가
-    **바이트 단위로 같은 6값 벡터**를 내야 한다. 고치기 전에는 surrogate 쪽이 zone_terminal
-    판정을 놓쳐 harm≈zone_overlap(≈0.0024)를 내고, 참조 쪽은 harm=1.0(종단)을 낸다 — 갈린다.
-    """
-    req = _req()
-    surro_row = svc._surro_row(req, macro=1)
-    surro_desc = fa.descriptors_from_row(surro_row)
-
-    ref_row = _reference_row(req)
-    ref_desc = fa.descriptors_from_row(ref_row)
-
-    # 참조 쪽이 실제로 종단 판정(harm=1.0)을 내는지 먼저 못박는다 -- 이게 안 되면 아래
-    # 비교가 "둘 다 옛 공식으로 우연히 같다"는 거짓양성이 될 수 있다.
-    assert ref_desc["harm"] == 1.0, "reference row failed to hit zone_terminal -- fixture is broken"
-
-    for name in fa.STATE_DESCRIPTORS:
-        a, b = surro_desc[name], ref_desc[name]
-        assert math.isclose(a, b, rel_tol=0, abs_tol=1e-12), (
-            f"surrogate lane and LLM-lane descriptor '{name}' diverge for the same event: "
-            f"surrogate={a!r} reference={b!r}")
+def test_measured_nav_fields_pass_through():
+    """순수 `_surro_row` 단위시험(cross-lane 주장 없음): 측정된 nav 필드가 -1.0 센티널이 아니라
+    원값 그대로 넘어가는지. 이 값이 줄리아의 답과 실제로 일치하는지의 cross-lane 대조는
+    `test/zone_harm_is_blockage.jl` testset (6)의 것이다."""
+    row = svc._surro_row(_req(), macro=1)
+    assert row["zone_nav_blocked"] == 3.0
+    assert row["zone_nav_downstream"] == 32.0
 
 
 def test_negative_control_a_non_zone_event_is_untouched():

@@ -26,6 +26,16 @@
 #   (5) 줄리아·파이썬 twin 이 `zone_terminal` 을 가르는 경계까지 포함해 일치한다
 #       (nblk = -1 · 0 · 1(경계) · NBLK) — 한 점만 대조하면 파이썬이 `nblk > 1.0` 으로
 #       경계를 하루 틀리게 적어도 안 잡힌다(2026-08-31 fix round 1, F3).
+#   (6) 🔴 2026-09-01 (review I-4). `src/respec/llm_service/test_surro_zone_nav_descriptors.py`
+#       의 `_reference_row` 는 `dspy_service._surro_row` 몸통을 손으로 베낀 사본이었다 —
+#       구현을 자기 자신의 스냅샷과 비교하는 시험이라 Julia↔Python 발산을 원리적으로 못
+#       본다("식을 베껴 쓴 시험"). 여기 (6)이 진짜 cross-lane 대조다: (5)와 같은 아이디엄
+#       (줄리아가 venv 파이썬을 shell-out)이지만, raw dict 를 직접 짓는 대신 **프로덕션
+#       경로 그대로** `MacroRequest` -> `dspy_service._surro_row` -> `descriptors_from_row`
+#       를 거친 벡터를 줄리아 `event_descriptors` 와 1e-12 로 비교한다. 파이썬 쪽 시험
+#       파일에는 이제 골든카피 시험이 없다 — 남은 둘(`test_negative_control_*` ·
+#       `test_absent_never_becomes_measured_zero`)은 애초에 cross-lane 을 주장하지 않는
+#       `_surro_row` sentinel 단위시험이라 그대로 둔다.
 #
 # 변이시험 (실패하는 것을 실제로 볼 것 — 아래 넷은 전부 실제로 돌려서 빨간 것을 봤다.
 # 이 목록에 없는 변이 주장은 남기지 않는다: `nav_blocked` 기본값을 `-1.0`→`0.0` 으로
@@ -145,6 +155,52 @@ for r in json.loads(r'''$(rows_json)'''):
     for (i, (nblk, ndown)) in enumerate(cases)
         pyv = [parse(Float64, strip(x)) for x in split(strip(lines[i], ['[', ']', ' ']), ",")]
         jlv = _desc(nav_blocked = nblk, nav_downstream = ndown)
+        @test length(pyv) == 6
+        for k in 1:6
+            @test isapprox(pyv[k], jlv[k]; atol = 1e-12)
+        end
+    end
+    end # if isfile(py)
+end
+
+@testset "(6) _surro_row (프로덕션 row 빌더) 가 줄리아 event_descriptors 와 진짜로 일치한다" begin
+    # 🔴 2026-09-01 (review I-4). raw dict 가 아니라 실제 프로덕션 경로
+    # (`MacroRequest` -> `dspy_service._surro_row` -> `descriptors_from_row`) 를 거친다 --
+    # 이게 골든카피 시험이 못 보던 그 자리다. nblk/ndown 이 `nothing` 이면 두 필드를
+    # MacroRequest 에서 생략(JSON `null`)해 **진짜 삼상 sentinel 경로**(None -> -1.0)를
+    # 태운다 -- (5)처럼 raw dict 에 리터럴 -1 을 박는 것과는 다른, 더 정직한 "못 쟀다".
+    py = joinpath(REPO_ROOT, ".venv", "bin", "python")
+    llm_service = joinpath(REPO_ROOT, "src", "respec", "llm_service")
+    core = joinpath(REPO_ROOT, "wm4spacecraft_manufacturing", "core")
+    if !isfile(py)
+        @test_skip "venv 가 없다 — twin 대조를 건너뛴다 (초록으로 세지 말 것)"
+    else
+    cases6 = [(nothing, nothing), (0, 0), (1, 10), (NBLK, NDOWN)]
+    jsonval(x) = x === nothing ? "null" : string(x)
+    rows6 = ["""{"kind":"zone","severity":$(ZOV),"zone_overlap":$(ZOV),
+                 "n_active":18,"spare_count":8,"closed_at_fire":$(CLOSED),
+                 "total_nodes":$(TOTAL),"progress":0.177,
+                 "zone_nav_blocked":$(jsonval(nblk)),"zone_nav_downstream":$(jsonval(ndown))}"""
+             for (nblk, ndown) in cases6]
+    rows6_json = "[" * join(rows6, ",") * "]"
+    code6 = """
+import sys, json
+sys.path.insert(0, r'$(llm_service)')
+sys.path.insert(0, r'$(core)')
+import dspy_service as svc  # numpy/sklearn-before-dspy 계약은 이 모듈 안에서 이미 지켜진다 (import 만, 서버 기동 없음)
+import features_agnostic as fa
+for r in json.loads(r'''$(rows6_json)'''):
+    req = svc.MacroRequest(**r)
+    row = svc._surro_row(req, macro=1)
+    d = fa.descriptors_from_row(row)
+    print(json.dumps([d[k] for k in fa.STATE_DESCRIPTORS]))
+"""
+    out6 = read(`$(py) -c $(code6)`, String)
+    lines6 = filter(!isempty, split(strip(out6), '\n'))
+    @test length(lines6) == length(cases6)
+    for (i, (nblk, ndown)) in enumerate(cases6)
+        pyv = [parse(Float64, strip(x)) for x in split(strip(lines6[i], ['[', ']', ' ']), ",")]
+        jlv = nblk === nothing ? _desc() : _desc(nav_blocked = nblk, nav_downstream = ndown)
         @test length(pyv) == 6
         for k in 1:6
             @test isapprox(pyv[k], jlv[k]; atol = 1e-12)
