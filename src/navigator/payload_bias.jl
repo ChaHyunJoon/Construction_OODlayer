@@ -83,6 +83,14 @@ end
 함대에서 빼지 않고 가벼운 화물 쪽으로 몰아주는 개입이다. 실행가능집합을 안 바꾸므로 문제를
 infeasible 로 만들 수 없다.
 
+`agent` 는 로봇 id 의 **문자열 형태** — `string(id)` 가 실제로 내는 그대로여야 `Set(string(k)
+for k in keys(fleet.soc))` 와 매칭된다. 이 레포에서 그 형태는 **모듈 한정**이다:
+`string(CB.RobotID(2))` → `"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(2)"` (짧은
+`"BotID{DeliveryBot}(2)"` 가 아니다 — 이 짧은 형태로 부르면 `:unknown_agent` 다). 실측:
+`test_macro_returns_tool_call.py`, `tools/monitor/enact.jl`, `busiest_agent` 모두 완전-한정
+형태를 주고받는다 — 이 함수도 같은 관례를 따른다. 형태를 직접 조립하지 말고 `string(id)` 로
+파생할 것.
+
 🔴 **이것만으로는 무동작이다.** 간선 가중치는 MILP 재풀이가 읽어야 뜻을 갖고, 재풀이가 볼
 후보 간선은 `release_pending_assignments!` 가 슬롯을 풀어야 생긴다. 실측: release 없이
 후보 간선은 **0** 이고 그때 이 배수는 **0번 호출된다.**
