@@ -101,12 +101,60 @@ end
 end
 
 @testset "알파벳이 이 원시를 해석하고 결선한다" begin
-    CB.include(joinpath(pkgdir(CB), "src", "respec", "minted_tool.jl"))
+    # 🔴 최종 리뷰 F1: 여기 있던 `CB.include(.../minted_tool.jl)` 을 지웠다. minted_tool.jl
+    # 은 이미 패키지 안에 있다(`src/respec/respec.jl:34`) — 이 include 는 중복일 뿐 아니라
+    # `enact_minted!`·`bind_primitive_args`·`_step_status`·`_step_detail`·`_synth_get` 등
+    # ~5개 운영 메서드를 런타임에 **재정의**해, 이 파일을 `runtests.jl` 안에 실으면 그
+    # 재정의가 뒤따르는 모든 파일에 남는다.
     tbl = CB.PRIMITIVE_TABLE()
     @test haskey(tbl, "reprice_agent_by_payload")
     r = CB.resolve_primitive("reprice_agent_by_payload")
     @test r.impl === CB.reprice_agent_by_payload!
     @test r.harness_args == ["env"]
     @test Set(keys(r.params)) == Set(["agent", "light_bias"])
+end
+
+# 🔴 최종 리뷰 F7 — 알려진 구멍을 못박는다(고치지 않는다). `reprice_agent_by_payload!` 는
+# **필수 kwarg**(`agent`, 기본값 없음)를 가진 첫 번째 enactable 원시다 — 다른 여섯은 kwarg
+# 를 전부 기본값으로 채운다. `bind_primitive_args`(src/respec/minted_tool.jl:521-536) 는
+# `ctx.params` 를 순회해 "레지스트리가 아는 키인가/타입이 맞는가"만 검사하고, impl 이 요구하는
+# 필수 kwarg 가 빠졌는지는 **절대 검사하지 않는다** — body 가 `["reprice_agent_by_payload"]`,
+# params 가 `{}`(agent 없음)면 바인더를 통과해 `impl(env)` 가 그대로 불리고, Julia 가 호출
+# 경계에서 `UndefKeywordError` 를 던진다. `enact_minted!` 은 이것을 다른 모든 예외와 똑같이
+# `partial=true` 로 적고, `world_maybe_dirty = touched || partial` 이 참이 되어
+# `handled = (verdict===:admit) && world_maybe_dirty && (resume !== :failed)`
+# (tools/monitor/enact.jl:869) 가 **참**이 된다 — 세계는 증명 가능하게 한 바이트도 안 건드렸는데
+# (Ref 둘을 쓰기도 전에 던졌다) 정책 프로듀서는 이것을 "처리됐다"로 읽고 폴백 복구 사슬을
+# 건너뛰며, 그 OOD 사건은 이미 소비돼 다시 오지 않는다.
+#
+# 🔴 **이 테스트는 그 구멍을 고치지 않는다.** `bind_primitive_args` 를 고치면 원시 전부의
+# 행동이 바뀌므로 그 자체가 별도 레인이다(spec/ledger 가 이미 그렇게 범위를 그었다). 여기서는
+# 오늘의 동작을 기록만 해서, `bind_primitive_args` 가 나중에 조용히 넓어져도(혹은 좁아져도)
+# 이 자리가 들키게 한다.
+# 🔴 **바른 장기 수선은 여기가 아니라 `bind_primitive_args` 안에서 필수 kwarg 미충족을
+# `reject:missing_param:agent` 로 거절하는 것**이다(거절 = 세계 무접촉 = 폴백이 정상적으로
+# 돈다) — 이 lane 의 범위 밖이라 손대지 않는다.
+@testset "🔴 알려진 구멍: agent 없이 부르면 UndefKeywordError 가 던져지고 handled=true 가 된다" begin
+    # 🔴 `Ref(:dummy_env)` 는 안 쓴다: `_issue_resume!` 이 `env.cache`/`env.sched` 를 읽는데,
+    # 그게 없으면 그 자체가 던져서 `resume=:failed` 가 되고 `handled` 가 거짓으로 떨어져
+    # (세계를 못 건드린 자리에서도) 구멍을 못 잡는다. `PlanningCache()`/`OperatingSchedule()`
+    # 빈 기본 생성자는 씬을 안 지어도 되고(둘 다 `@with_kw` 기본값이 있다) `reset_cache_resume!`
+    # 가 실제로 성공한다(측정: `resume=(:issued, "")`) — 이게 "진짜 env" 에서 나는 값이다.
+    env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule())
+    synth = Dict{String,Any}("reach" => "composed",
+                              "body_names" => ["reprice_agent_by_payload"],
+                              "params" => Dict{String,Any}())
+    r = CB.enact_minted!(env, nothing, synth)
+    @test r.verdict === :admit
+    @test r.applied === false
+    @test r.partial === true
+    @test r.world_maybe_dirty === true
+    @test length(r.steps) == 1
+    @test r.steps[1].status === :threw
+    @test occursin("UndefKeywordError", r.steps[1].detail)
+    @test occursin("agent", r.steps[1].detail)
+    # 정책 레인의 실제 handled 계산(tools/monitor/enact.jl:869)을 그대로 재현한다.
+    handled = (r.verdict === :admit) && r.world_maybe_dirty && (r.resume !== :failed)
+    @test handled === true   # 🔴 세계를 안 건드렸는데도 참 — 이것이 구멍이다, 통과가 아니다.
 end
 end # module

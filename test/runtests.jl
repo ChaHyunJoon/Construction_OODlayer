@@ -495,4 +495,19 @@ end
         ok || println("---- tools/test_policy_escalation.jl 전체 출력 ----\n", txt)
         @test ok
     end
+
+    # 2026-09-01 (S2 최종 리뷰 F1): edge_cost_multiplier 의 3인자 확장(SoC 훅 뒤에 payload
+    # 훅을 곱하는 자리)이 이제 모든 MILP·greedy edge-cost 호출부에 앉아 있다 — 이 파일은
+    # 그 전역 회귀 가드다(훅 없으면 3인자 == 2인자 바이트 동일). 씬을 안 짓고 ~0.9s.
+    @testset "payload edge multiplier is a global-regression guard" begin
+        include("payload_edge_multiplier.jl")
+    end
+
+    # 2026-09-01 (S2 최종 리뷰 F1): reprice_agent_by_payload! 의 설치·삼상 규약·알파벳 결선을
+    # 잰다. 씬을 안 짓고 ~1.5s. 🔴 여기 있던 `CB.include(.../minted_tool.jl)` 은 파일
+    # 안에서 삭제했다(중복 include 가 운영 메서드 ~5개를 스위트 안에서 재정의했다) — 자세한
+    # 내용은 그 파일의 마지막 testset 주석.
+    @testset "payload reprice install" begin
+        include("payload_reprice_install.jl")
+    end
 end
