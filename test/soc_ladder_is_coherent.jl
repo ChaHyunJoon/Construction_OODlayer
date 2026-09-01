@@ -19,9 +19,12 @@
 #       soc_after <= 1 - DEMO_BSOC 이므로 (1 - DEMO_BSOC) <= stall 이면 충분하다
 #   (4) 두 엔진(run_demo · render_demo)의 DEMO_BSOC·DEMO_STALL_SOC 기본값이 같다
 #   (5) 라벨 레인의 DS_STALL 이 실행 레인의 정지 임계와 같다
-#   (6) `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X` / `try...catch; X end` 류 폴백 리터럴
-#       여섯 곳이 전부 DEEP 과 같다 — navigator.jl 이 include 안 된 경로에서 옛 사다리가
-#       조용히 되살아나는 것을 막는다.
+#   (6) `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X` / `try...catch; X end` 류 폴백 리터럴을
+#       src/·tools/·test/·wm4spacecraft_manufacturing/ 전체에서 **찾아서**(파일 목록을
+#       하드코딩하지 않는다 — 2026-08-31 fix round 1, I-2) 전부 DEEP 과 같은지 잰다.
+#       navigator.jl 이 include 안 된 경로에서 옛 사다리가 조용히 되살아나는 것을 막는다.
+#       (2026-08-31 fix round 2 실측: 8곳. 이 숫자는 게이트가 강제하지 않는다 — 강제하면
+#       또 하드코딩이 된다. 실행 시 진단 출력이 그때그때의 실제 개수를 보여 준다.)
 #
 # 변이시험 — 2026-08-31, 아래 다섯을 전부 실제로 돌려서 각각의 실패를 직접 봤다
 # (task-3-report.md 에 각 mutation 의 실측 출력이 그대로 있다). 넷은 이 파일이 처음부터
@@ -32,8 +35,9 @@
 #     — 실측: 2 passed, 2 failed.
 #   · 두 엔진 중 하나만 DEMO_BSOC 를 고치면(예: run_demo.jl 만 0.97) (4)가 빨개진다 —
 #     실측: 2 passed, 1 failed.
-#   · 폴백 여섯 곳 중 하나(battery.jl)만 리터럴 0.2 로 되돌리면 (6)이 빨개진다 —
-#     실측: 11 passed, 1 failed.
+#   · 발견된 폴백 자리 중 하나(battery.jl)만 리터럴 0.2 로 되돌리면 (6)이 빨개진다 —
+#     실측(fix round 0, 목록이 여섯이던 시절): 11 passed, 1 failed. fix round 2 재구조화 뒤의
+#     같은 실측은 task-3-report.md "Fix round 2" 절 참고.
 #
 # 🔴 **2026-08-31 실측 정정 — 계획 초안의 Step 2 음성대조 주장은 과장이었다.** 계획 초안은
 #    "오늘의 HEAD 에 STALL=0.15 를 박으면 (1)(2)(3) 전부 빨갛다" 고 적었으나, 실제로 돌려
@@ -118,13 +122,18 @@ const FALLBACK_RE = Regex(
     "REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*([0-9]*\\.?[0-9]+)" *
     "|REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*([0-9]*\\.?[0-9]+)\\s*end")
 
-"REPO 아래 `dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다.
-반환: (path, 캡처된 리터럴 문자열) 쌍의 벡터. 하드코딩한 파일 목록에 기대지 않는다 —
-그래야 새로 생긴 폴백 자리도 잡는다(2026-08-31 fix round 1, I-2)."
+"`dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다. 각 `d` 는
+REPO 상대경로(예: \"src\")이거나 절대경로(예: mktempdir() 결과)일 수 있다 — 후자는 (6b) 가
+심는 파일을 REPO 밖의 임시 디렉터리에 두고도 같은 함수로 스캔하기 위해서다(2026-08-31 fix
+round 2, N-3: 예전 버전은 test/ 안에 심어서, 프로세스가 write 와 finally 사이에서 죽으면
+0.2 리터럴을 담은 파일이 test/ 에 그대로 남아 **다음 실행이 원인 모를 이유로 빨개지는**
+위험이 있었다). 반환: (표시용 경로, 캡처된 리터럴 문자열) 쌍의 벡터 — REPO 안쪽 파일은
+상대경로로, 밖은 절대경로로 보여 준다. 하드코딩한 파일 목록에 기대지 않는다 — 그래야 새로
+생긴 폴백 자리도 잡는다(2026-08-31 fix round 1, I-2)."
 function scan_fallback_sites(dirs, re)
     local hits = Tuple{String,String}[]
     for d in dirs
-        local root = joinpath(REPO, d)
+        local root = isabspath(d) ? d : joinpath(REPO, d)
         isdir(root) || continue
         for (dirpath, _, files) in walkdir(root)
             for fn in files
@@ -136,7 +145,9 @@ function scan_fallback_sites(dirs, re)
                     # 하는" 마커가 그렇다) — 그때는 매치 전체 문자열을 리터럴로 쓴다.
                     local lit = isempty(m.captures) ? m.match :
                                 (m.captures[1] === nothing ? m.captures[2] : m.captures[1])
-                    push!(hits, (relpath(fpath, REPO), lit))
+                    # REPO 안쪽이면 상대경로로 짧게, 밖(임시 디렉터리 등)이면 절대경로 그대로.
+                    local shown = startswith(fpath, REPO) ? relpath(fpath, REPO) : fpath
+                    push!(hits, (shown, lit))
                 end
             end
         end
@@ -174,26 +185,30 @@ end
     local nothing_re = Regex(nothing_marker)
     local empty_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), nothing_re)
     @test isempty(empty_hits)
-    # 방향 2: 새 자리를 실제로 심으면 스캐너가 잡아야 한다 — 임시 파일로 증명한다(흔적 없이
-    # try/finally 로 지운다).
-    local planted = joinpath(REPO, "test", "_tmp_i2_planted_fallback.jl")
-    try
+    # 방향 2: 새 자리를 실제로 심으면 스캐너가 잡아야 한다.
+    # 🔴 2026-08-31 fix round 2 (N-3): 예전 버전은 이 파일을 test/ 안에 썼다. `Pkg.test()` 가
+    #    write 와 finally 사이에서 죽으면(kill, OOM, 정전) 0.2 리터럴을 담은 `.jl` 파일이
+    #    test/ 에 그대로 남고, 그 파일은 이 게이트 자신의 (6) 이 훑는 디렉터리 안이라 **다음
+    #    실행이 원인 모를 이유로 빨개진다.** `mktempdir()` 로 REPO 밖에 심어서 이 위험을
+    #    구조적으로 없앤다 — 정리가 안 돼도 (6) 이 안 훑는 곳에 남을 뿐이다.
+    mktempdir() do tmpdir
         # 문자열을 쪼개 이어붙인다 — 통짜 리터럴로 쓰면 **이 게이트 파일 자신의 소스**에
-        # 폴백 패턴과 그대로 맞아떨어지는 부분문자열이 나타나서, 위 (6) 이 test/ 를 훑을 때
-        # 이 파일 자신을 아홉 번째 자리로 잘못 집는다(2026-08-31 fix round 1 중 실측: 자기지시로
-        # (6) 이 빨개졌었다 — 첫 시도는 코드만 쪼개고 이 설명 주석 자체에 그 부분문자열을 다시
+        # 폴백 패턴과 그대로 맞아떨어지는 부분문자열이 나타나서, 위 (6) 이 이 파일 자신을
+        # 아홉 번째 자리로 잘못 집는다(2026-08-31 fix round 1 중 실측: 자기지시로 (6) 이
+        # 빨개졌었다 — 첫 시도는 코드만 쪼개고 이 설명 주석 자체에 그 부분문자열을 다시
         # 써 넣는 바람에 또 걸렸다. 그래서 이 주석도 그 문자열을 통짜로 인용하지 않는다).
         local sym = ":REPLACE_SOC_THRESHOLD"
         local ref = "REPLACE_SOC_THRESHOLD" * "[]"
+        local planted = joinpath(tmpdir, "_tmp_i2_planted_fallback.jl")
         write(planted, "thr = isdefined(@__MODULE__, $(sym)) ? $(ref) : 0.2\n")
-        local planted_hits = scan_fallback_sites(("test",), FALLBACK_RE)
-        @test any(p -> p == "test/_tmp_i2_planted_fallback.jl", first.(planted_hits))
+        local planted_hits = scan_fallback_sites((tmpdir,), FALLBACK_RE)
+        @test any(p -> p == planted, first.(planted_hits))
         # 심은 값(0.2)은 DEEP(0.1)과 다르므로, 실제 (6) 어서션 로직을 그대로 이 hit 에 적용하면
         # 빨개져야 한다 — 그것이 이 전체 방향의 요점이다.
-        local this_hit = only(filter(h -> h[1] == "test/_tmp_i2_planted_fallback.jl", planted_hits))
+        local this_hit = only(filter(h -> h[1] == planted, planted_hits))
         @test parse(Float64, this_hit[2]) != DEEP   # 심은 자리는 DEEP 과 달라야 발견의 의미가 있다
-    finally
-        isfile(planted) && rm(planted)
+        # mktempdir() do 블록이 끝나면(정상/예외 무관) 줄리아가 tmpdir 자체를 지운다 — 여기서
+        # 따로 rm 할 필요가 없다. test/ 는 애초에 건드리지 않았다.
     end
 end
 

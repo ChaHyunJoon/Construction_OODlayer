@@ -91,7 +91,17 @@ Base.@kwdef struct HazardParams
     mtbf_cell_s::Float64    = 1200.0   # 셀 고장/급락 사건의 평균 간격
     cell_severe_frac::Float64 = 0.5    # 이 확률로 "깊은 방전"(고장과 같은 안전 조건을 요구하는 낙폭)
     cell_severe_drop::Float64 = 1.0    # 깊은 방전 시 SoC 낙폭(1.0 = 바닥까지)
-    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한(정답 팔은 깊은 방전과 같은 SwapBattery)
+    # 🔴 2026-08-31 (S1/T3 fix round 2, N-4 — 코디네이터 판정: 옵트인 경로, 이 태스크 범위 밖,
+    #    상수는 건드리지 않는다. 이 자리 자체가 T3 이전부터 이미 거짓이었다 — deep 경계가
+    #    0.2 였을 때도 0.35 는 이미 0.2 보다 컸다). 아래 두 상수는 낙폭(soc_before - soc_after)
+    #    범위지 결과 SoC 가 아니다. soc_before 가 만충(≈1.0)에 가까우면 soc_after ≈ 0.30–0.65
+    #    가 되고, 실측: `ActionRegistry.battery_arms(0.30, 0.1, true)` ·
+    #    `battery_arms(0.475, 0.1, true)` · `battery_arms(0.65, 0.1, true)` 전부 `[0]`(NOOP
+    #    하나뿐) 이다 — "정답 팔은 깊은 방전과 같은 SwapBattery" 라던 옛 주석은 **거짓**이었다.
+    #    실제로는 mild 셀 열화 사건 대부분이 대조가 0인 행(NOOP 하나뿐)을 만든다. 상수를
+    #    옮기면 이 헤저드 레인의 산출물이 바뀌므로 일부러 안 옮긴다 — 후속 작업으로 남긴다.
+    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한 — 위 주석 참고, SwapBattery 라는
+                                       # 옛 주장은 거짓이었다(실측 결과는 대부분 NOOP-only)
     cell_mild_hi::Float64   = 0.70     # 가벼운 열화 낙폭 상한
 
     # --- (C) 통행금지 구역 출현(fleet-level) 위험 --------------------------------
