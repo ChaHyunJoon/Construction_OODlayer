@@ -254,6 +254,55 @@ function candidate_slot_upper_bound(env)
     end
 end
 
+"""
+    release_then_candidates(env) -> Union{Nothing,NamedTuple}
+
+**release 를 먼저 하면 후보 배정 간선이 몇 개 열리는가** — 결정 시점에서, 세계를 안 건드리고.
+`nothing` 은 "못 쟀다"다(삼상 규약: 0 과 절대 섞지 않는다).
+
+🔴 왜 이 값인가 (실측 2026-09-01). `candidate_slot_upper_bound` 는 상계라 `>0` 이어도 아무
+결론이 없다. 정확값을 정답원(`formulate_milp` 이 채우는 `LAST_EDGE_COSTS`)에서 직접 재보니
+**세 판 전부 0** 이었고(tractor·colored_8x8, `:greedy`/`:milp` 무관), 단계별로는
+조건②(`indegree(v2) < n_eligible_predecessors[v2]`)에서 3176 → 0 으로 전멸했다 = **받는 쪽이
+포화**다. 그런데 `release_pending_assignments!` 로 미래 배정 엣지를 떼면 **0 → 2103** 으로
+열린다. ⟹ 후보가 0 인 것은 스케줄의 성질이 아니라 **release 를 안 불렀기 때문**이고,
+`rebalance_for_battery!`(`battery.jl:747`)가 그것을 안 불러서 자유도 0 인 판을 다시 풀고
+`:rebalanced` 를 내는 침묵 성공이 난다.
+⚠️ 그 실측은 전부 `return_env_before_sim=true`(t=0)다. **결정 시점(closed≫0)에서도 열리는지가
+이 프로브가 답하는 유일한 물음이다.**
+
+🔴 **비개입 계약** — `release_pending_assignments!` 는 스케줄만 건드리는 함수가 아니다:
+`reset_slot_to_invalid!` 가 `replace_in_schedule!(sched, env.scene_tree, …)` 로 **scene_tree**
+를 고치고 `get_unique_invalid_id` 로 **전역 `INVALID_ID_COUNTERS`** 를 내린다. 그래서
+  (a) `sched` 와 `scene_tree` 를 **한 번의 `deepcopy` 로 함께** 뜬다 — 따로 뜨면 둘 사이의
+      공유 참조가 끊겨 사본이 원본과 다른 세계가 된다.
+  (b) 무효 ID 카운터를 스냅샷·복원한다. 안 하면 프로브가 발급한 음수 id 만큼 실제 런의
+      id 발급이 밀려 **같은 시드가 다른 판을 만든다**(이 레포가 이미 데인 축).
+검증(실측): 같은 env 에 두 번 불러 원본 `ne` 337 불변 · 카운터 `-48` 불변 · 두 호출 모두
+`(before=0, after=2103, released=43)` — 멱등이고 직접(파괴적) 실험과 값이 같다.
+"""
+function release_then_candidates(env)
+    local saved_ids = copy(CB.INVALID_ID_COUNTERS)
+    return try
+        local sched_c, tree_c = deepcopy((env.sched, env.scene_tree))
+        local shim = (sched = sched_c, scene_tree = tree_c, cache = env.cache)
+        local removed = CB.release_pending_assignments!(shim, CB.build_invariant(env))
+        # 🔴 센티넬. formulate 가 안 돌았는데 0 을 읽으면 "후보 0"(설계를 죽이는 관측)과
+        #    "못 쟀다"가 구별이 안 된다.
+        local sent = Dict{Tuple{Int,Int},Float64}()
+        CB.LAST_EDGE_COSTS[] = sent
+        CB.formulate_milp(CB.SparseAdjacencyMILP(), sched_c, tree_c;
+                          optimizer = CB._respec_optimizer())
+        CB.LAST_EDGE_COSTS[] === sent && return nothing
+        (after = length(CB.LAST_EDGE_COSTS[]), released = length(removed))
+    catch e
+        @warn "release_then_candidates: probe failed" exception = e
+        nothing
+    finally
+        empty!(CB.INVALID_ID_COUNTERS); merge!(CB.INVALID_ID_COUNTERS, saved_ids)
+    end
+end
+
 # zone 이 "아직 안 끝난" staging 원을 얼마나 덮는지(0~1) = zone 의 진짜 severity.
 function _zone_overlap(env, zkey)
     z = try CB.RESTRICTION_ZONES[][zkey] catch; nothing end
@@ -307,6 +356,12 @@ function ood_features(env, truth)
         "total_nodes"   => total,           # surrogate 피처
         "n_spare_cfg"   => 3,               # surrogate 피처(데모의 spare 설정 수준)
     )
+    # ---- S2 창(window): release 뒤에 후보 배정 간선이 몇 개 열리는가 --------------------
+    # 🔴 이 값이 0 이면 **재분배가 원리적으로 불가능한 시점**이다(실측: closed≈247/287 부터
+    #    0). 그 사건에서 정책이 NOOP 을 내는 것은 오답이 아니다 — 평가는 이 값으로 층화한다.
+    # 🔴 `nothing`("못 쟀다")을 0("창이 닫혔다")으로 접지 않는다. 못 쟀으면 키를 안 싣는다.
+    local _win = release_then_candidates(env)
+    _win === nothing || (d["s2_after_release_candidates"] = _win.after)
     if truth isa CB.BatteryTruth
         d["soc"] = Float64(truth.soc_after); d["severity"] = Float64(truth.soc_after)
         # 2026-08-31 (S1/T2): 적재/함대 사실. 값이 없으면 키가 아예 안 생긴다.
