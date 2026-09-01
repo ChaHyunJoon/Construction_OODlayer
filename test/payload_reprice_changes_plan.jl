@@ -68,11 +68,16 @@ function costs(env; release::Bool, agent = nothing, light_bias = 0.5, call_count
 end
 
 """
-    busiest_agent(env) -> (agent::String, owned::Int, unmeasurable::Int)
+    busiest_agent(env) -> (agent::String, owned::Int, unmeasurable::Int, owned_keys::Set{Tuple{Int,Int}})
 
-후보 간선에서 가장 많이 등장하는 유효 owner id, 그 로봇이 소유한 후보 간선 수(`owned`), 그리고
-그 owned 간선 중 `candidate_edge_payload_mass` 가 화물을 못 잰(`nothing`) 것의 수
-(`unmeasurable`). 셋 다 **이 프로세스, 이 env 안에서** 직접 잰다.
+후보 간선에서 가장 많이 등장하는 유효 owner id, 그 로봇이 소유한 후보 간선 수(`owned`), 그
+owned 간선 중 `candidate_edge_payload_mass` 가 화물을 못 잰(`nothing`) 것의 수(`unmeasurable`),
+그리고 owned 간선의 `(v,v2)` 키 집합(`owned_keys`) 자체. 넷 다 **이 프로세스, 이 env 안에서**
+직접 잰다.
+
+`owned_keys` 는 `costs()` 가 낸 `base`/`hot` 딕셔너리를 인덱싱하는 데 쓴다 — vertex `v`/`v2` 는
+그래프 정점 정수 인덱스라 deepcopy 인스턴스가 달라도 값은 같다(검증됨:
+`keys(base)==keys(zero)==keys(hot)` 가 별개의 세 `costs()` 호출에서 항상 성립한다).
 
 🔴 controller 정정 (2026-09-01 후속): 다른 실행(다른 julia 프로세스/워크트리)에서 잰 owner 수를
 여기다 대조하지 않는다 — 이 브랜치엔 `bb1b88c4`(AbstractID 의 내용기반 `Base.hash`)가 없다
@@ -97,16 +102,16 @@ function busiest_agent(env)
         end
         best_agent = first(sort(collect(tally), by = kv -> -kv[2]))[1]
         fleet = CB.BATTERY_FLEET[]
-        owned = 0
+        owned_keys = Set{Tuple{Int,Int}}()
         unmeasurable = 0
         for (v, v2) in keys(CB.LAST_EDGE_COSTS[])
             id = CB._edge_owner_id(sched, v)
             (id === nothing || string(id) != best_agent) && continue
-            owned += 1
+            push!(owned_keys, (v, v2))
             m = CB.candidate_edge_payload_mass(shim, sched, v2, fleet.params)
             m === nothing && (unmeasurable += 1)
         end
-        (agent = best_agent, owned = owned, unmeasurable = unmeasurable)
+        (agent = best_agent, owned = length(owned_keys), unmeasurable = unmeasurable, owned_keys = owned_keys)
     finally
         empty!(CB.INVALID_ID_COUNTERS); merge!(CB.INVALID_ID_COUNTERS, saved_ids)
     end
@@ -130,7 +135,7 @@ end
 @testset "G-4 · release 뒤에는 재가격이 실제로 비용을 바꾼다" begin
     env = fresh_env()
     ba = busiest_agent(env)
-    a, owned, unmeasurable = ba.agent, ba.owned, ba.unmeasurable
+    a, owned, unmeasurable, owned_keys = ba.agent, ba.owned, ba.unmeasurable, ba.owned_keys
     cnt_base = Ref{Union{Nothing,Ref{Int}}}(nothing)
     cnt_zero = Ref{Union{Nothing,Ref{Int}}}(nothing)
     cnt_hot  = Ref{Union{Nothing,Ref{Int}}}(nothing)
@@ -149,12 +154,18 @@ end
     @test cnt_base[] === nothing
     @test cnt_zero[] !== nothing && cnt_zero[][] == length(base)   # 후보 간선마다 한 번씩
     @test cnt_hot[]  !== nothing && cnt_hot[][]  == length(base)
-    # 🔴 후속 정정 (2026-09-01, coordinator): `owned` 는 이 프로세스 안에서 `busiest_agent` 가
-    #    직접 잰 값이다(다른 실행에서 가져온 숫자와 절대 대조하지 않는다 — 이 브랜치는
-    #    `bb1b88c4` 가 없어 objectid 기반 순회 순서가 실행마다 달라질 수 있다). owned 간선
-    #    전부가 측정 가능한 양(+) 화물을 나른다면 `changed == owned` 여야 한다(`_payload_factor`
-    #    는 m>0, bias>0 이면 반드시 배수를 1.0 초과로 올린다).
-    @test changed == owned                           # 🔴 약화 금지 조항: 실패하면 그대로 보고한다
+    # 🔴 소유 간선 중 base 비용이 0 인 것은 곱셈으로 움직일 수 없다 — 재가격은
+    #    edge_energy(dt_min) × multiplier 이므로 0.0 × m == 0.0 이다. 훅은 그 간선에서도
+    #    정상 발화하지만 곱셈이 0 을 못 옮긴다. (실측: owned 224 중 2개가 base==0.0.)
+    #    이것은 spec §4 가 고른 경로 (b)(edge_cost_multiplier)의 구조적 성질이고,
+    #    경로 (a)(edge_energy 배선)라면 없었을 성질이다.
+    # 🔴 durable 한 것은 이 메커니즘이지 224/222 라는 숫자 자체가 아니다 — 이 브랜치는
+    #    `bb1b88c4`(AbstractID 내용기반 해시)가 없어 objectid 기반 Dict/Set 순회 순서가
+    #    실행마다 달라질 수 있다(위 busiest_agent 문서 참조). 그래서 owned/zero_base 의 정확한
+    #    수치가 아니라 `changed + zero_base == owned` 라는 관계식을 잰다.
+    zero_base = count(k -> base[k] == 0.0, owned_keys)
+    @test unmeasurable == 0                 # Task 2 의 2103/2103 을 이 자리에서 다시 못박는다
+    @test changed + zero_base == owned      # base 가 0 이 아닌 소유 간선은 **전부** 올랐다
 end
 
 # Task 6 Step 1 (G-3), 계획서 지시대로 이 파일이 존재한 뒤에 붙인다.
