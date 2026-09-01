@@ -235,7 +235,8 @@ def cost_time_score(complete, closed, makespan, macro, mu):
 def export_forest(model, feature_names, meta):
     """Serialize a fitted RandomForestRegressor to plain arrays the Julia demo can walk.
 
-    A linear model cannot express the GRADED task: the correct macro flips at a THRESHOLD (SoC ~0.15,
+    A linear model cannot express the GRADED task: the correct macro flips at a THRESHOLD (SoC ~0.1,
+    updated 2026-08-31 S1/T3 from the earlier ~0.15 -- see REPLACE_SOC_THRESHOLD/BATTERY_DEEP_SOC;
     zone_overlap ~0.4) and the flip depends on interactions. Even with explicit interaction columns,
     Ridge scored 0.500 decision-regret on the zone instances (top-1 0%). Trees represent thresholds
     natively -- and trees are what E1-E4 actually use (HistGradientBoosting) -- so the demo's producer

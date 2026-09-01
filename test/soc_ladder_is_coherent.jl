@@ -165,6 +165,83 @@ function scan_fallback_sites(dirs, re)
     return hits
 end
 
+# 🔴 2026-08-31 fix round 4 (R4-1): 위 (6)/(6b)/branch-split 은 전부 **정해진 철자**
+# (`isdefined(...) ? ...[] : X` 또는 `try...catch; X end`)에 기댄다 -- 리뷰어가 실제로
+# 증명했다: 같은 결함을 담은 다른 철자 다섯 개(`catch e; 0.2 end`, 줄바꿈 낀 `catch`,
+# `catch; 0.2; end`, `try` **앞**에 리터럴을 두는 형태, `coalesce(...)` 형태)를 심으면
+# 이 정규식 두 개가 하나도 못 잡는데도 (6)이 12/12 그린이었다. 그리고 대안 하나를 **완전히
+# 안 죽이고 좁히기만**해도(여전히 >=1건은 잡으므로 branch-split 가드는 만족) 진짜 자리를
+# 놓칠 수 있다 -- hazard.jl 에서 8곳이 6곳이 됐는데도 그린이었다.
+#
+# 그래서 "철자의 카탈로그"가 아니라 "기호와의 근접성"으로 다시 잡는다: 주석과 세 겹따옴표
+# docstring 을 지운 소스에서 `REPLACE_SOC_THRESHOLD` 라는 글자가 나오는 모든 자리 주변 N 자
+# 안의 모든 소수 리터럴을 찾고, (a) 산술 연산자(+-*/^)로 그 기호와 **결합된** 것(예:
+# `REPLACE_SOC_THRESHOLD[] + 0.22` -- `test/enact_uses_llm_agent.jl` 의 CTRL_SOC, 문턱보다
+# 0.22 위인 SoC 를 일부러 유도하는 정당한 코드), (b) `max(`/`min(`/`clamp(` 의 첫 인자로
+# 쓰인 것(예: `max(0.0, soc - drop)` -- 바닥값이지 폴백이 아니다)만 빼고 나머지는 전부
+# DEEP 과 같아야 한다고 요구한다. 철자를 하나도 안 가리므로 다섯 철자 + 좁히기 사례 전부를
+# 구조적으로 잡는다(카탈로그가 아니라 근접성이라서).
+#
+# N = 40 을 골랐다 -- 실측으로 정했지 추측이 아니다. 처음엔 80으로 시작했는데(위 (a)(b) 제외
+# 규칙과 docstring 제거를 더하기 전) 실제 살아있는 트리에 대고 돌려서 세 가지 오탐을 직접
+# 봤다: `ood_stream.jl` docstring 안의 "default 1.0"(-> docstring 제거로 고침),
+# `hazard.jl` 의 `max(0.0, soc - drop)`(-> max/min/clamp 제외로 고침), 그리고
+# `ood_truth.jl` 의 `STALL_SOC_DEFAULT = Ref(0.05)` -- REPLACE_SOC_THRESHOLD 바로 아래 정의된
+# **별개의, 의도적으로 다른** 상수인데 주석 제거 후에도 기호 끝에서 약 64자 거리라 80 안에
+# 들어왔다. 위 (a)(b) 로는 이 세 번째를 못 걸러서(산술도 아니고 clamp 도 아니다) N 을 64보다
+# 작게 줄이는 수밖에 없었다 -- 40 으로 낮추니 사라졌다. 여덟 개 진짜 폴백 자리는 전부 기호
+# 끝에서 15~20자 안에 있어(실측) 40 은 그보다 두 배 여유가 있다. 아래에서 실제 트리에 대고
+# 돌려 새 오탐이 없음을 확인했다.
+#
+# 🔴 이게 완전성의 증명은 아니다. N=40 은 여덟 개 진짜 자리와 다섯 개 재현 철자(아래서
+# 직접 심어 확인)는 잡지만, 기호에서 40자보다 먼 곳에 리터럴을 두는 폴백(예: 아주 장황한
+# `coalesce` 나 여러 줄에 걸친 무언가)은 놓칠 수 있다. 산술·max/min/clamp 가 아닌 다른
+# 방식으로 리터럴을 기호와 묶는 코드(예: 딕셔너리를 통한 간접참조)도 사각지대다. 주석 안에
+# 진짜로 숨긴 폴백은 이 스캐너가 주석을 지우므로 못 보지만, 그건 애초에 컴파일되는 코드가
+# 아니므로 폴백으로서 기능하지 않는다. N 을 통과할 때까지 넓히지 말라는 지시대로, 이 세
+# 사각지대는 넓히지 않고 그대로 보고한다.
+const PROXIMITY_N = 40
+
+"주석을 지운 뒤 `sym` 이 나오는 모든 자리에서 앞뒤 `n`자 이내의 소수 리터럴(`[0-9]+\\.[0-9]+`)을
+전부 찾는다. 산술 연산자(+-*/^)로 그 리터럴 바로 앞이 결합돼 있으면 뺀다(오프셋 계산이지
+폴백이 아니다). 주석 제거는 줄마다 첫 `#` 이후를 자르는 단순화다(문자열 리터럴 안의 `#` 은
+구분 못한다 -- 이 레포의 대상 자리들에는 해당하지 않는다). 반환: (표시 경로, 리터럴, 주변
+문맥) 쌍의 벡터."
+function scan_proximity_literals(dirs, sym::AbstractString, n::Int)
+    local hits = Tuple{String,String,String}[]
+    local dec_re = r"((?:[+\-*/^]|\bmax\(|\bmin\(|\bclamp\()\s*)?([0-9]+\.[0-9]+)"
+    for d in dirs
+        local root = isabspath(d) ? d : joinpath(REPO, d)
+        isdir(root) || continue
+        for (dirpath, _, files) in walkdir(root)
+            for fn in files
+                endswith(fn, ".jl") || continue
+                local fpath = joinpath(dirpath, fn)
+                local raw = read(fpath, String)
+                # 세 겹따옴표 docstring 도 지운다 -- 안 지우면 문서 문자열 안의
+                # 숫자(예: ood_stream.jl 의 \"default 1.0\")도 코드처럼 걸린다.
+                local no_doc = replace(raw, Regex("\"\"\".*?\"\"\"", "s") => " ")
+                local stripped = join([replace(l, r"#.*$" => "") for l in split(no_doc, '\n')], '\n')
+                local idx = firstindex(stripped)
+                while true
+                    local m = findnext(sym, stripped, idx)
+                    m === nothing && break
+                    local lo = max(firstindex(stripped), first(m) - n)
+                    local hi = min(lastindex(stripped), last(m) + n)
+                    lo = thisind(stripped, lo); hi = thisind(stripped, hi)
+                    local window = stripped[lo:hi]
+                    for dm in eachmatch(dec_re, window)
+                        dm.captures[1] === nothing || continue   # 산술 결합은 제외
+                        push!(hits, (relpath(fpath, REPO), dm.captures[2], strip(window)))
+                    end
+                    idx = last(m) + 1
+                end
+            end
+        end
+    end
+    return hits
+end
+
 @testset "(6) REPLACE_SOC_THRESHOLD 폴백 리터럴이 진실원과 같다 (발견형)" begin
     # 🔴 2026-08-31 fix round 1 (I-2): 예전 버전은 파일 목록 다섯 개를 하드코딩했다 —
     # `test/battery_ladder_is_deep_only.jl` · `test/battery_menu_lanes_agree.jl` 이 각각
@@ -229,6 +306,20 @@ end
         # mktempdir() do 블록이 끝나면(정상/예외 무관) 줄리아가 tmpdir 자체를 지운다 — 여기서
         # 따로 rm 할 필요가 없다. test/ 는 애초에 건드리지 않았다.
     end
+end
+
+@testset "(6c) 근접성 검사 -- 철자를 안 가리는 그물" begin
+    # (6)/(6b)/branch-split 은 정해진 철자에 기댄다. 이건 안 가린다: 소스에서
+    # REPLACE_SOC_THRESHOLD 라는 글자 자체가 나오는 모든 자리 앞뒤 PROXIMITY_N 자 안의 소수
+    # 리터럴은(산술 결합 제외) 전부 DEEP 과 같아야 한다.
+    local prox_hits = scan_proximity_literals(
+        ("src", "tools", "test", "wm4spacecraft_manufacturing"), "REPLACE_SOC_THRESHOLD", PROXIMITY_N)
+    @test length(prox_hits) > 0   # 이 자체가 텅 비면 grep 대상 디렉터리가 잘못됐다는 신호다
+    for (path, lit, ctx) in prox_hits
+        @test parse(Float64, lit) == DEEP
+    end
+    println("    [진단] 근접성 검사 자리 ", length(prox_hits), "곳: ",
+            join(["$(p)=$(l)" for (p, l, c) in prox_hits], ", "))
 end
 
 end # module

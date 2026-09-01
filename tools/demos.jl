@@ -1689,13 +1689,24 @@ function schedule_stream!()
             #    0.2 -> 0.1 로 내려가면서 0.20 이 battery_arms 상 mild 로 넘어가 [0](NOOP
             #    하나뿐, 대조가 0인 행)이 됐다 — `DS_BSOC` 에서 고친 것과 같은 결함. 0.09 는
             #    stall(0.05) 보다 높고 deep(0.1) 이하라 두 경계를 straddle 한다(DS_BSOC 의
-            #    "0.02,0.09" 와 같은 논증). 실측(battery_arms(soc, 0.1, true)):
+            #    "0.02,0.09" 와 같은 논증).
+            #    🔴 2026-08-31 fix round 4 (R4-3): 아래 실측·straddle 주장은 **만충(soc_at_fire
+            #    ≈ 1.0)일 때만** 성립한다 — `CB.battery_action(soc_drop = drop)` 는 `soc_target=`
+            #    이 아니라 `soc_drop=` 을 쓴다(뺄셈 경로: `soc_after = soc_at_fire - drop`).
+            #    `src/navigator/battery.jl` 의 `inject_battery_fault!` 문서화가 정확히 이걸
+            #    경고한다: "사건 시점까지 그 로봇이 이미 얼마나 썼는지에 따라 결과가 흔들려
+            #    사다리 칸이 설계값에서 벗어난다." `soc_at_fire < 1.0` 이면 `soc_after =
+            #    soc_at_fire - drop` 은 아래 `soc` 값과 달라지고, straddle 이 깨질 수 있다 —
+            #    라벨 레인(`gen_oracle_dataset.jl`)이 `DS_BSOC_MODE=abs` 로 `soc_target=` 을 써서
+            #    이 문제를 피하는 것과 대조적이다. 호출은 **그대로 둔다**(코디네이터 판정 —
+            #    바꾸면 이 데모 레인의 다른 동작이 바뀐다). 실측(battery_arms(soc, 0.1, true),
+            #    soc_at_fire = 1.0 가정):
             #      soc=0.05 -> [0, 1, 2]  (여전히 3팔, stall 경계 자체)
             #      soc=0.09 -> [0, 1, 2]  (3팔 — 이번에 고친 칸)
             #      soc=0.55 -> [0]        (NOOP 하나뿐 — 이건 T3 이전부터 그랬다. mild 를
             #                              보여주려는 의도된 셋째 칸이라 손대지 않는다.)
-            soc  = [0.05, 0.09, 0.55][rand(rng, 1:3)]   # 세 값 중 무작위 하나
-            drop = 1.0 - soc                          # 떨어뜨릴 양
+            soc  = [0.05, 0.09, 0.55][rand(rng, 1:3)]   # 세 값 중 무작위 하나(만충 가정하의 목표)
+            drop = 1.0 - soc                          # 떨어뜨릴 양(soc_at_fire < 1.0 이면 결과가 목표에서 벗어난다 — 위 주석)
             bf = CB.battery_action(soc_drop = drop)
             e -> begin
                 CUR_SEV[] = soc                       # 이 사건의 심각도 = 떨어진 SoC
