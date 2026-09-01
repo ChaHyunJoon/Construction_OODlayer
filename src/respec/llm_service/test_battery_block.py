@@ -12,6 +12,7 @@
 적는 순간 재는 것이 추론이 아니라 프롬프트 준수가 된다(spec §6-2 정답 누수).
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,12 +35,15 @@ def test_the_block_is_empty_when_no_value_is_shipped():
 
 
 def test_the_block_renders_every_shipped_value():
+    """Fix round 1, I-5: `"4" in out` 는 `21.34` 의 부분문자열로도 만족돼 `pending_transports`
+    를 0 으로 바꿔도 안 빨개졌다(음성 대조로 확인). 값을 그 라벨의 렌더 줄에 못박는다."""
     out = svc._battery_block(svc.MacroRequest(**_BASE, **_LOAD))
-    assert "pending_transports" in out and "4" in out
-    assert "heaviest_payload_kg" in out and "12.8" in out
-    assert "fleet_soc_median" in out and "0.94" in out
-    assert "robots_with_higher_soc" in out and "7" in out
-    assert "this_robot_soc" in out and "0.55" in out
+    assert re.search(r"pending_transports\s*=\s*4\b", out)
+    assert re.search(r"heaviest_payload_kg\s*=\s*12\.8\b", out)
+    assert re.search(r"total_payload_kg\s*=\s*21\.34\b", out)
+    assert re.search(r"fleet_soc_median\s*=\s*0\.94\b", out)
+    assert re.search(r"robots_with_higher_soc\s*=\s*7\b", out)
+    assert re.search(r"this_robot_soc\s*=\s*0\.55\b", out)
 
 
 def test_a_partial_payload_renders_only_what_was_measured():
@@ -53,11 +57,41 @@ def test_a_partial_payload_renders_only_what_was_measured():
 
 
 def test_the_block_carries_no_verdict():
-    """🔴 정답 누수 금지. 매크로 이름도, 지시절도 없다."""
+    """🔴 정답 누수 금지. 매크로 이름도, 지시절도 없다.
+
+    Fix round 1, I-4: 낱말 목록은 완비될 수 없다(실측: doc string 끝에
+    "; prefer the highest-charge one" 를 붙여도 옛 목록으로는 5/5 초록이었다) — 그래서
+    `prefer`·`highest`·`instead`·`rather`·`consider` 를 더한다. 그래도 이 목록은 여전히
+    불완전하다: 아래 `test_the_block_has_the_expected_line_count` 가 "줄이 늘어나는" 스밈은
+    잡지만, **기존 줄 안에 이어붙는** 판정은 둘 다 못 잡는다(그 잔여 한계는 그 테스트의
+    docstring 에 적는다)."""
     out = svc._battery_block(svc.MacroRequest(**_BASE, **_LOAD)).lower()
     for banned in ("swapbattery", "replace", "noop", "should", "recommend", "must ",
-                   "hand off", "reassign"):
+                   "hand off", "reassign", "prefer", "highest", "instead", "rather",
+                   "consider"):
         assert banned not in out, "판정이 프롬프트에 샜다: %r" % banned
+
+
+def test_the_block_has_the_expected_line_count():
+    """구조 감사(Fix round 1, I-4). 낱말 검사만으로는 새 낱말을 쓰는 판정을 못 잡는다 — 그래서
+    줄 수를 헤더 2개(로드/함대) + 실제로 실린 필드 수(+ soc 줄, 있으면)와 정확히 맞춘다. 기존
+    문장 뒤에 새 문장 하나가 **새 줄로** 붙으면(예: doc string 안이 아니라 블록 끝에) 낱말이
+    낯설어도 이 검사가 잡는다.
+
+    🔴 잔여 한계: 스민 문장이 **기존 줄의 일부**로(줄 수가 안 늘게) 들어가면 이 검사도 못 잡는다
+    — 그 경우는 위 `test_the_block_carries_no_verdict` 의 낱말 목록이 유일한 방어선이고, 그
+    목록도 완비되지 않는다(위 테스트의 docstring 참조)."""
+    r = svc.MacroRequest(**_BASE, **_LOAD)
+    out = svc._battery_block(r)
+    lines = out.split("\n")
+    n_load = len(svc._rows(r, svc._BAT_LOAD))
+    n_fleet = len(svc._rows(r, svc._BAT_FLEET))
+    expected = 0
+    if n_load:
+        expected += 2 + n_load
+    if n_fleet:
+        expected += 2 + n_fleet + (1 if getattr(r, "soc", None) is not None else 0)
+    assert len(lines) == expected, "줄 수가 기대와 다르다(문장이 스몄을 수 있다): %r" % (lines,)
 
 
 def test_the_block_reaches_both_llm_input_paths():

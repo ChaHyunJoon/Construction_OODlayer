@@ -135,10 +135,20 @@ function _battery_fleet_features(agent)
     d = Dict{String,Any}()
     local fleet = try CB.BATTERY_FLEET[] catch; nothing end
     (fleet === nothing || isempty(fleet.soc)) && return d
-    local socs = collect(Float64, values(fleet.soc))
+    # 🔴 [Fix round 1, I-1] 창고 예비(spare)를 뺀다 — `init_battery_fleet!` 는 예비까지
+    #    `fleet.soc` 에 soc0=1.0(안 닳음)으로 넣으므로, 안 빼면 "함대의 나머지가 더 낫다"는
+    #    median·higher_soc_robots 둘 다 위로 새는 방향으로 거짓말을 한다. 같은 판정을
+    #    `battery.jl` 의 `_pick_battery_target` 이미 쓰고 있다(:428-429, "예비를 절대 고르지
+    #    않는 것이 요점") — 그 술어(`is_spare`/`is_recovery_spare`)를 그대로 재사용한다.
+    #    재구현하면 두 판정이 갈라질 수 있다(이 레포가 이미 그 사고를 여러 번 냈다).
+    local nonspare = Dict{Any,Float64}(
+        id => s for (id, s) in fleet.soc
+        if !(try CB.is_spare(id) || CB.is_recovery_spare(id) catch; false end))
+    isempty(nonspare) && return d
+    local socs = collect(Float64, values(nonspare))
     local s = sort(socs); local n = length(s)
     d["battery_fleet_soc_median"] = isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2
-    local mine = get(fleet.soc, agent, nothing)
+    local mine = get(nonspare, agent, nothing)
     mine === nothing || (d["battery_higher_soc_robots"] = count(>(Float64(mine)), socs))
     return d
 end
@@ -147,13 +157,16 @@ end
 # 그 함수가 이미 "미완 RobotGo 중 후속이 FormTransportUnit 인 것"을 세므로, 여기서는 같은
 # 후속 노드에 `_payload_mass` 를 걸기만 한다(추가 계산 없음).
 # 🔴 `_payload_mass` 의 가드가 받는 셋 중 하나가 `FormTransportUnit` 이다 — 그래서 후속
-#    노드를 넘긴다. `RobotGo` 를 넘기면 가드에 걸려 조용히 0.0 이 된다.
+#    노드를 넘긴다. `RobotGo` 를 넘기면 가드에 걸려 조용히 0.0 이 된다(이 함수의 단위검사
+#    범위 밖 — `test/battery_load_features.jl` 머리말 참조).
 function _battery_load_features(env, agent)
     d = Dict{String,Any}()
     agent === nothing && return merge(d, _battery_fleet_features(agent))
     local sched = env.sched
     local p = CB.BatteryParams()
+    local n_jobs = 0
     local masses = Float64[]
+    local mass_ok = true
     for v in Graphs.vertices(sched)
         local node = CB.get_node_from_id(sched, CB.get_vtx_id(sched, v))
         (node isa CB.RobotGo && CB.bound_to_agent(node, agent)) || continue
@@ -161,12 +174,25 @@ function _battery_load_features(env, agent)
         local outs = Graphs.outneighbors(sched, v); isempty(outs) && continue
         local succ = CB.get_node_from_id(sched, CB.get_vtx_id(sched, outs[1]))
         succ isa CB.FormTransportUnit || continue
-        push!(masses, try Float64(CB._payload_mass(env, succ, p)) catch; 0.0 end)
+        n_jobs += 1
+        # 🔴 [Fix round 1, I-6] 못 잰 질량을 `0.0` 으로 접지 않는다(삼상 규약, `_battery_fleet_features`
+        #    와 같은 층위). `pending_transports` 는 **개수**라 그래프 구조만으로 항상 잴 수 있으니
+        #    그대로 두지만, `max`/`total` 은 부분측정 위에서 계산하면 그 자체가 거짓 사실이 된다 —
+        #    하나라도 실패하면 둘 다 통째로 뺀다. `@warn`(`@info` 아님): run_demo.jl 이
+        #    `global_logger(..., Logging.Warn)` 을 심어 `@info` 는 조용히 버려진다.
+        try
+            push!(masses, Float64(CB._payload_mass(env, succ, p)))
+        catch e
+            @warn "_battery_load_features: _payload_mass failed — payload_max/total_kg 를 뺀다 (못 쟀다 ≠ 0)" agent exception = e
+            mass_ok = false
+        end
     end
-    if !isempty(masses)
-        d["battery_pending_transports"] = length(masses)
-        d["battery_payload_max_kg"]     = maximum(masses)
-        d["battery_payload_total_kg"]   = sum(masses)
+    if n_jobs > 0
+        d["battery_pending_transports"] = n_jobs
+        if mass_ok
+            d["battery_payload_max_kg"]   = maximum(masses)
+            d["battery_payload_total_kg"] = sum(masses)
+        end
     end
     return merge(d, _battery_fleet_features(agent))
 end
