@@ -191,16 +191,33 @@ function _responsible_robots(node)
     end
 end
 
-# 짐 질량 근사값: 화물 바운딩박스 부피(반경 곱 8배)×밀도. 운반 안 하거나 형상 접근 실패면 0 으로 폴백(try/catch).
+# 짐 질량 근사값: 화물 바운딩박스 부피(반경 곱 8배)×밀도.
+# `_payload_mass_measured` 가 실측을 시도하고 **못 재면 던진다** — "짐이 없다/못 쟀다"와
+# "짐 질량이 0" 을 구분해야 하는 호출자(예: `tools/monitor/policy.jl::_battery_load_features`,
+# 삼상 규약 대상 — LLM 프롬프트로 나가는 값)는 이 함수를 직접 부르고 자기 try/catch 로
+# "못 쟀다"를 표시한다(값을 아예 안 싣는다). `_payload_mass` 는 그 위에 얇게 덮어 **물리
+# 회계 훅**(`account_battery_step!`)의 옛 계약을 그대로 유지한다 — 거기서는 "짐이 없다" 가
+# 실제로 "질량 0" 과 같은 물리적 사실이라(에너지 소비 계산에 필요한 숫자 하나가 항상 있어야
+# 한다), 조용한 0.0 폴백이 그 자리에선 정당하다. 🔴 2026-09-01 (S1 final wave / F-7): 예전엔
+# 가드·예외를 `_payload_mass` 안에서 함께 삼켜서, `policy.jl` 의 호출측 try/catch(Fix round 1,
+# I-6)가 **둘 다** 못 봤다 — `_payload_mass` 가 절대 안 던지므로 그 try/catch 는 사실상
+# 죽은 코드였다. 계산 로직은 여기 한 곳(`_payload_mass_measured`)뿐이다 — 물리 훅과 프롬프트
+# 호출자가 각각 자기 계약대로 감싼다.
+function _payload_mass_measured(env, node, p::BatteryParams)
+    (node isa TransportUnitGo || node isa DepositCargo || node isa FormTransportUnit) ||
+        error("_payload_mass_measured: $(typeof(node)) 는 화물을 나르는 노드가 아니다 — 짐 질량을 잴 수 없다")
+    cargo = get_node(env.scene_tree, cargo_id(entity(node)))
+    r = get_base_geom(cargo, HyperrectangleKey()).radius
+    return p.payload_density * 8.0 * prod(r)
+end
+
 # Payload mass proxy from the cargo bounding box (HOOK; mirrors edge_energy's payload_mass).
 # bbox half-extents .radius (SVector{3}) -> volume 8·∏radius -> ×density. Falls back to 0 on
-# any node that carries nothing or whose geom is unavailable. VERIFY density/units.
+# any node that carries nothing or whose geom is unavailable — legitimate here (physical
+# accounting always needs a number). VERIFY density/units.
 function _payload_mass(env, node, p::BatteryParams)
-    (node isa TransportUnitGo || node isa DepositCargo || node isa FormTransportUnit) || return 0.0
     try
-        cargo = get_node(env.scene_tree, cargo_id(entity(node)))
-        r = get_base_geom(cargo, HyperrectangleKey()).radius
-        return p.payload_density * 8.0 * prod(r)
+        return _payload_mass_measured(env, node, p)
     catch
         return 0.0
     end

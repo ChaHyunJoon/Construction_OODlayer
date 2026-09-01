@@ -45,6 +45,20 @@
 #     (🔴 이 문장이 가리키던 옛 버전은 "fix round 2 절 참고"였는데 그 절엔 이 특정
 #     mutation 이 없었다 -- 존재하지 않는 곳을 가리키는 죽은 참조였다. 2026-08-31 fix round 3
 #     (리뷰 nit)에서 고쳤다).
+#   · 🔴 2026-09-01 (S1 final wave / F-1). 이 리뷰가 실측으로 뚫었던 다섯 자리를 오늘 실제로
+#     다시 돌려서 확인했다(전부 (6c)/(6) 대상):
+#       - `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl::valid_actions` 의
+#         `thr = Float64(CB.REPLACE_SOC_THRESHOLD[])` 를
+#         `thr = max(0.2, Float64(CB.REPLACE_SOC_THRESHOLD[]))` 로 심으면(라벨 레인이 옛
+#         0.2 경계로 조용히 돌아가는 그 자리) -- 이전엔 전체 Julia 스위트가 2192/0/1 로
+#         byte-identical 이었는데, 지금은 (6c) 가 즉시 잡는다: 실측 `2 passed, 1 failed`
+#         (`wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl=0.2` 로 진단 출력에 찍힌다).
+#         복구 확인: 원본 복사본을 되돌리면 다시 3/3 전부 초록.
+#       - `+0.2`/`2e-1`/`1//5`/`.2` 네 철자를 임시 디렉터리에 심어 `TERNARY_RE`/
+#         `scan_proximity_literals` 로 직접 스캔 -- 넷 다 이제 잡히고, `_parse_soc_literal` 이
+#         넷 다 `0.2` 로 정확히 읽는다(재현: 아래 함수들을 대화형으로 부른 실측, 이 파일
+#         커밋과 함께 기록됨).
+#     이 다섯은 이제 (6c) 진단에서 빨간다 -- 아래 (a)/(b) 절이 그 수정이다.
 #
 # 🔴 **2026-08-31 실측 정정 — 계획 초안의 Step 2 음성대조 주장은 과장이었다.** 계획 초안은
 #    "오늘의 HEAD 에 STALL=0.15 를 박으면 (1)(2)(3) 전부 빨갛다" 고 적었으나, 실제로 돌려
@@ -170,8 +184,23 @@ end
 # (ternary 셋, try/catch 다섯) 이 요구는 손 안 대도 계속 참이고, 어느 한쪽이 실명하면
 # 그 즉시 그 갈래의 `@test length(...) > 0` 이 빨개진다. 발견 총량은 여전히 목록에 안 기대고
 # 스캔한다(파일 목록 하드코딩 금지, I-2 는 그대로 지킨다).
-const TERNARY_RE = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*([0-9]*\\.?[0-9]+)")
-const CATCH_RE   = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*([0-9]*\\.?[0-9]+)\\s*end")
+# 🔴 2026-09-01 (S1 final wave / F-1, 리뷰 실측 task-3-rereview4 항목 1): 숫자 리터럴
+# 패턴을 소수(`[0-9]*\.?[0-9]+`)에서 부호·지수·유리수까지 받게 넓힌다 — 옛 패턴은
+# `+0.2` / `2e-1` / `1//5` 세 철자를 전부 놓쳤다(실측, 8곳이 조용히 12곳처럼 GREEN).
+# (6)/(6b) 는 이 캡처를 **개수 존재 여부**로만 쓰고 Float64 로 파싱하지 않으므로("REPLACE_SOC_THRESHOLD
+# 폴백 리터럴이 하나도 없다" 는 파싱이 필요 없는 명제다), 이 확장에 파싱 위험이 없다.
+const NUM_RE = "[+-]?(?:[0-9]*\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+|[0-9]+//[0-9]+)"
+
+"`NUM_RE` 가 캡처할 수 있는 형태(소수·부호·지수·`a//b` 유리수) 전부를 `Float64` 로 읽는다 --
+`parse(Float64, ...)` 는 `1//5` 같은 유리수 표기를 모른다(던진다), 그래서 `//` 가 있으면
+분자/분모로 쪼개 직접 나눈다."
+function _parse_soc_literal(lit::AbstractString)
+    occursin("//", lit) || return parse(Float64, lit)
+    local parts = split(lit, "//")
+    return parse(Float64, parts[1]) / parse(Float64, parts[2])
+end
+const TERNARY_RE = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*(" * NUM_RE * ")")
+const CATCH_RE   = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*(" * NUM_RE * ")\\s*end")
 const FALLBACK_RE = Regex(TERNARY_RE.pattern * "|" * CATCH_RE.pattern)
 
 "`dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다. 각 `d` 는
@@ -217,12 +246,24 @@ end
 #
 # 그래서 "철자의 카탈로그"가 아니라 "기호와의 근접성"으로 다시 잡는다: 주석과 세 겹따옴표
 # docstring 을 지운 소스에서 `REPLACE_SOC_THRESHOLD` 라는 글자가 나오는 모든 자리 주변 N 자
-# 안의 모든 소수 리터럴을 찾고, (a) 산술 연산자(+-*/^)로 그 기호와 **결합된** 것(예:
-# `REPLACE_SOC_THRESHOLD[] + 0.22` -- `test/enact_uses_llm_agent.jl` 의 CTRL_SOC, 문턱보다
-# 0.22 위인 SoC 를 일부러 유도하는 정당한 코드), (b) `max(`/`min(`/`clamp(` 의 첫 인자로
-# 쓰인 것(예: `max(0.0, soc - drop)` -- 바닥값이지 폴백이 아니다)만 빼고 나머지는 전부
-# DEEP 과 같아야 한다고 요구한다. 철자를 하나도 안 가리므로 다섯 철자 + 좁히기 사례 전부를
-# 구조적으로 잡는다(카탈로그가 아니라 근접성이라서).
+# 안의 모든 소수 리터럴을 찾고, (a) 산술 연산자(+-*/^)로 **그 기호 occurrence 자체와** 직접
+# 결합된 것(예: `REPLACE_SOC_THRESHOLD[] + 0.22` -- `test/enact_uses_llm_agent.jl` 의
+# CTRL_SOC, 문턱보다 0.22 위인 SoC 를 일부러 유도하는 정당한 코드), (b) `max(`/`min(`/`clamp(`
+# 의 첫 인자인데 **그 호출 안에 기호가 없는** 것(예: `max(0.0, soc - drop)` -- 바닥값이지
+# 폴백이 아니다)만 빼고 나머지는 전부 DEEP 과 같아야 한다고 요구한다.
+#
+# 🔴 2026-09-01 (S1 final wave / F-1, review task-3-rereview4 항목 2·3): (a)(b) 는 처음에
+# **더 헐거웠다** -- "리터럴 바로 앞이 아무 연산자"면 (a)로, "리터럴 바로 앞이 `max(`/`min(`/
+# `clamp(` 문자열"이면 (b)로 뺐다. 리뷰어가 실측으로 뚫었다:
+#   · **부호 하나로 (a) 를 속인다**: `: +0.2` -- 리터럴 앞의 `+` 가 기호와 아무 관계 없어도
+#     "리터럴 앞에 연산자가 있다"는 조건만 보므로 빠졌다(12곳, GREEN). 지금은 기호
+#     occurrence 의 끝(또는 시작)과 연산자 사이에 `[]`/공백/필드접근 문자만 있어야 "결합"으로
+#     인정한다(`_arith_bound_to_symbol`) -- 무관한 부호는 이제 안 빠진다.
+#   · **`max(0.2, REPLACE_SOC_THRESHOLD[])` 가 (b) 로 빠진다**: 옛 (b) 는 "literal 바로 앞이
+#     max(/min(/clamp(" 만 봤지 그 호출 **안에 기호가 있는지는 안 봤다** -- 위장 폴백이
+#     진짜 바닥값과 같은 모양이었다(14곳, GREEN, 이 finding 의 F-1 자체가 이 심은 자리다).
+#     지금은 그 호출의 여는 `(` 부터 닫는 `)` 까지의 범위 안에 기호 occurrence 가 겹치는지
+#     확인한다(`_call_floor_exclusion`) -- 겹치면 위장이라 더는 안 뺀다.
 #
 # N = 40 을 골랐다 -- 실측으로 정했지 추측이 아니다. 처음엔 80으로 시작했는데(위 (a)(b) 제외
 # 규칙과 docstring 제거를 더하기 전) 실제 살아있는 트리에 대고 돌려서 세 가지 오탐을 직접
@@ -235,23 +276,79 @@ end
 # 끝에서 15~20자 안에 있어(실측) 40 은 그보다 두 배 여유가 있다. 아래에서 실제 트리에 대고
 # 돌려 새 오탐이 없음을 확인했다.
 #
-# 🔴 이게 완전성의 증명은 아니다. N=40 은 여덟 개 진짜 자리와 다섯 개 재현 철자(아래서
-# 직접 심어 확인)는 잡지만, 기호에서 40자보다 먼 곳에 리터럴을 두는 폴백(예: 아주 장황한
-# `coalesce` 나 여러 줄에 걸친 무언가)은 놓칠 수 있다. 산술·max/min/clamp 가 아닌 다른
-# 방식으로 리터럴을 기호와 묶는 코드(예: 딕셔너리를 통한 간접참조)도 사각지대다. 주석 안에
-# 진짜로 숨긴 폴백은 이 스캐너가 주석을 지우므로 못 보지만, 그건 애초에 컴파일되는 코드가
-# 아니므로 폴백으로서 기능하지 않는다. N 을 통과할 때까지 넓히지 말라는 지시대로, 이 세
-# 사각지대는 넓히지 않고 그대로 보고한다.
+# 🔴 이게 완전성의 증명은 아니다. N=40 이 잡는 것과 못 잡는 것을 전부 아래에 적는다 --
+# 목록이 완결적이라는 인상을 주지 않기 위해 계속 늘려 쓴다(2026-09-01 S1 final wave / F-1(b)):
+#
+# **아직 남은 사각지대 (전부 실측/재현 완료, 넓히지 않고 그대로 보고한다):**
+#   1. **거리 > 40자.** 기호에서 40자보다 먼 곳에 리터럴을 두는 폴백(예: 아주 장황한
+#      `coalesce` 나 여러 줄에 걸친 무언가, 또는 `catch; @warn "..."; 0.2 end` 처럼 문자열
+#      경고를 끼워 거리를 늘린 형태 -- 실측: 12곳 GREEN)은 안 걸린다.
+#   2. **딕셔너리/설정 간접참조.** `const LEGACY_CFG = Dict("deep_soc" => 0.2)` 를 몇 줄 아래
+#      함수에서 else-branch 로 쓰는 형태 -- 실측: 12곳 GREEN. 산술도 max/min/clamp 도 아닌
+#      "다른 방식으로 리터럴을 기호와 묶는" 코드 전부가 이 범주다.
+#   3. **`#`-in-string 이 컴파일되는 코드를 지운다.** 줄 단위 주석 제거(`replace(l, r"#.*$" =>
+#      " ")`)는 문자열 리터럴 안의 `#` 를 못 가른다 -- `tag = "battery#deep"; thr = ... : 0.2`
+#      처럼 문자열 안에 `#` 을 심으면 스트리퍼가 그 줄의 나머지(진짜 컴파일되는 `0.2`)까지
+#      전부 지운다 -- 실측: 12곳 GREEN. 🔴 이 파일의 예전 판은 "주석 안의 폴백은 컴파일 안
+#      되니 무해하다"고 적었는데, **이건 주석 안이 아니라 스트리퍼의 오탐으로 실제 컴파일되는
+#      코드가 사라지는 것**이라 그 논증이 안 통한다 -- 정정한다.
+#   4. **세 겹따옴표가 `#`-주석 한 줄 안에 있으면 docstring 스트리퍼가 오작동한다.**
+#      `no_doc = replace(raw, r"\"\"\".*?\"\"\""s => " ")` 는 **주석 여부를 안 보고** 전체
+#      텍스트에서 `"""..."""` 쌍을 찾는다 -- `# 예: """ 여기부터"""` 같은 한 줄 주석 안에
+#      따옴표 세 개짜리 텍스트가 있으면, 그 주석 뒤에 나오는 **진짜** docstring 의 여는
+#      `"""` 와 잘못 짝지어져 그 사이의 진짜 코드가 통째로 지워질 수 있다(재현 안 함 --
+#      이 레포의 현재 트리에는 그런 조합이 없다고 grep 으로 확인했으나, 심으면 재현될
+#      구조적 결함이다).
+#   5. **(6)/(6b) 의 카탈로그(ternary/catch)에 없는 다섯 철자**(`catch e; 0.2 end` 등, 위
+#      R4-1 문단 참고)는 (6)/(6b) 수준에서는 여전히 안 잡힌다 -- 이 절 (6c) 가 그 철자들의
+#      **일부**(순수 소수 리터럴이 기호 40자 안에 오는 경우)는 잡지만 전부는 아니다(위 1·2·3
+#      과 겹치는 경우는 여전히 샌다).
 const PROXIMITY_N = 40
 
-"주석을 지운 뒤 `sym` 이 나오는 모든 자리에서 앞뒤 `n`자 이내의 소수 리터럴(`[0-9]+\\.[0-9]+`)을
-전부 찾는다. 산술 연산자(+-*/^)로 그 리터럴 바로 앞이 결합돼 있으면 뺀다(오프셋 계산이지
-폴백이 아니다). 주석 제거는 줄마다 첫 `#` 이후를 자르는 단순화다(문자열 리터럴 안의 `#` 은
-구분 못한다 -- 이 레포의 대상 자리들에는 해당하지 않는다). 반환: (표시 경로, 리터럴, 주변
-문맥) 쌍의 벡터."
+"리터럴이 `sym` 의 이 occurrence 와 산술 연산자(+-*/^)로 **직접** 묶여 있는가. 두 방향만
+인정한다: `SYM ... op LIT`(기호 뒤에 `[]`/공백/필드접근 문자만 끼고 연산자, 그 뒤에 공백만
+끼고 리터럴) 또는 그 대칭 `LIT op ... SYM`. 창 안의 다른 위치에 있는 무관한 연산자는 안
+걸린다 -- 그래서 부호 하나(`+0.2`)만으로는 더 이상 안 빠진다(F-1, task-3-rereview4 항목 2)."
+function _arith_bound_to_symbol(window::AbstractString, lstart::Int, lend::Int, sym_lo::Int, sym_hi::Int)
+    if lstart > sym_hi
+        local between = window[nextind(window, sym_hi):prevind(window, lstart)]
+        match(r"^[\[\]\.\w\s]*([+\-*/^])\s*$", between) !== nothing && return true
+    end
+    if sym_lo > lend
+        local between = window[nextind(window, lend):prevind(window, sym_lo)]
+        match(r"^\s*([+\-*/^])[\[\]\.\w\s]*$", between) !== nothing && return true
+    end
+    return false
+end
+
+# 🔴 이 함수의 docstring 은 일부러 이 파일이 지키는 기호 이름 옆에 소수 리터럴 예시를 안 쓴다
+# -- 그렇게 쓰면 이 파일 소스 자신이 (6c) 의 hit 이 된다((6b) 가 이미 밟은 자기지시 함정과
+# 같다). 아래는 그래서 예시를 함수 인자 이름으로만 설명한다.
+"`max(`/`min(`/`clamp(` 의 첫 인자로 쓰인 리터럴을, **그 호출 안에 `sym` occurrence 가
+없을 때만** 무관한 바닥값으로 인정해 뺀다(예: `max(floor, other_var - x)`). 같은 호출 안에
+`sym` 이 있으면(그 호출의 다른 인자 자리에 감시 대상 기호가 나타나면) 위장 폴백이므로 더는
+봐주지 않는다(F-1, task-3-rereview4 항목 3). 호출의 닫는 괄호는 리터럴 뒤 첫 `)` 로 찾는다 --
+이 레포의 실제 자리들은 중첩 괄호가 없으므로 충분하다(아래 실제 게이트 실행으로 확인됨)."
+function _call_floor_exclusion(window::AbstractString, lstart::Int, sym_lo::Int, sym_hi::Int)
+    local before = window[firstindex(window):prevind(window, lstart)]
+    local cm = match(r"\b(?:max|min|clamp)\(\s*$", before)
+    cm === nothing && return false
+    local call_start = cm.offset
+    local close_idx = findnext(')', window, lstart)
+    local call_end = close_idx === nothing ? lastindex(window) : close_idx
+    # 기호가 이 호출 범위 [call_start, call_end] **밖**에 있어야("겹치지 않아야") 무관한
+    # 바닥값으로 인정해 뺀다. 겹치면(위장 폴백) false 를 돌려줘 hit 으로 남긴다.
+    return sym_hi < call_start || sym_lo > call_end
+end
+
+"주석을 지운 뒤 `sym` 이 나오는 모든 자리에서 앞뒤 `n`자 이내의 소수(부호·지수·유리수
+포함) 리터럴을 전부 찾는다. `_arith_bound_to_symbol`/`_call_floor_exclusion` 이 둘 다
+'아니오'라고 답한 것만 hit 으로 남긴다. 주석 제거는 줄마다 첫 `#` 이후를 자르는 단순화다 --
+문자열 리터럴 안의 `#` 은 못 가른다(사각지대로 위에 문서화, 넓히지 않는다). 반환: (표시 경로,
+리터럴, 주변 문맥) 쌍의 벡터."
 function scan_proximity_literals(dirs, sym::AbstractString, n::Int)
     local hits = Tuple{String,String,String}[]
-    local dec_re = r"((?:[+\-*/^]|\bmax\(|\bmin\(|\bclamp\()\s*)?([0-9]+\.[0-9]+)"
+    local dec_re = Regex(NUM_RE)
     for d in dirs
         local root = isabspath(d) ? d : joinpath(REPO, d)
         isdir(root) || continue
@@ -272,9 +369,14 @@ function scan_proximity_literals(dirs, sym::AbstractString, n::Int)
                     local hi = min(lastindex(stripped), last(m) + n)
                     lo = thisind(stripped, lo); hi = thisind(stripped, hi)
                     local window = stripped[lo:hi]
+                    local sym_lo = first(m) - lo + 1
+                    local sym_hi = last(m) - lo + 1
                     for dm in eachmatch(dec_re, window)
-                        dm.captures[1] === nothing || continue   # 산술 결합은 제외
-                        push!(hits, (relpath(fpath, REPO), dm.captures[2], strip(window)))
+                        local lstart = dm.offset
+                        local lend = dm.offset + ncodeunits(dm.match) - 1
+                        _arith_bound_to_symbol(window, lstart, lend, sym_lo, sym_hi) && continue
+                        _call_floor_exclusion(window, lstart, sym_lo, sym_hi) && continue
+                        push!(hits, (relpath(fpath, REPO), dm.match, strip(window)))
                     end
                     idx = last(m) + 1
                 end
@@ -362,7 +464,7 @@ end
         ("src", "tools", "test", "wm4spacecraft_manufacturing"), "REPLACE_SOC_THRESHOLD", PROXIMITY_N)
     @test length(prox_hits) > 0   # 이 자체가 텅 비면 grep 대상 디렉터리가 잘못됐다는 신호다
     for (path, lit, ctx) in prox_hits
-        @test parse(Float64, lit) == DEEP
+        @test _parse_soc_literal(lit) == DEEP
     end
     println("    [진단] 근접성 검사 자리 ", length(prox_hits), "곳: ",
             join(["$(p)=$(l)" for (p, l, c) in prox_hits], ", "))

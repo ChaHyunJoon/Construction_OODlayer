@@ -1391,7 +1391,9 @@ GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 # 내려가면서 stall(0.15) > deep(0.1) 로 역전돼 있었다 — `test/soc_ladder_is_coherent.jl` (2)
 # 가 막는 바로 그 역전이다. 이제 라벨러의 `DS_STALL` 기본값(0.05)과 다시 같다.
 SHRINK     = parse(Float64, get(ENV, "SHRINK", "200.0"))    # 라벨러(DS_SHRINK=1.0)와 다르다 — 위 참조
-STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.05"))  # == DS_STALL (다시 일치)
+STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.05"))  # 오늘 DS_STALL 과 값이 같다 — 기계로
+                                                              # 지켜지지 않는다(soc_ladder_is_coherent.jl
+                                                              # (4)/(5) 어느 쪽도 이 리터럴을 안 본다)
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
 SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SIDEBAR_W  = parse(Int, get(ENV, "SIDEBAR_W", "380"))

@@ -141,9 +141,25 @@ function _battery_fleet_features(agent)
     #    `battery.jl` 의 `_pick_battery_target` 이미 쓰고 있다(:428-429, "예비를 절대 고르지
     #    않는 것이 요점") — 그 술어(`is_spare`/`is_recovery_spare`)를 그대로 재사용한다.
     #    재구현하면 두 판정이 갈라질 수 있다(이 레포가 이미 그 사고를 여러 번 냈다).
+    # 🔴 [Fix round 2, S1 final wave / F-6] 위 둘만으로는 "체크아웃된(반출된) spare" 와
+    #    "고장난 로봇" 이 안 빠졌다 — `replace_robot!` 은 교체 뒤 `spare` 를 `CHECKED_OUT_SPARES`
+    #    에 넣고 물리적으로 은퇴시키지만(`_retire_spare_body!`), `is_recovery_spare` 가 보는
+    #    `RECOVERY_SPARES` 는 그 반대쪽 role(`faulted`)에 찍힌다 — 그래서 은퇴한 `spare` 의
+    #    `fleet.soc` 항목(=1.0, 절대 안 닳는다)이 "활성 로봇"으로 계속 잡혀서
+    #    `robots_with_higher_soc` 라벨("active robots")이 죽은 고충전 로봇을 센다. 아직 교체
+    #    안 된 고장 로봇도 마찬가지로 실제로는 못 움직인다. 새 술어를 짓지 않고 이미 있는
+    #    접근자 둘(`checked_out_spares`/`faulted_robots`, 같은 파일 `ood_injection.jl`)을
+    #    그대로 더 뺀다 — `_hz_excluded()`(`smdp/hazard.jl`)가 정확히 이 셋의 합집합이지만,
+    #    hazard.jl 이 로드 안 된 순수 배터리 런에서는 그 함수가 없어 이 자리에서 부르면 죽는다.
+    local excluded_ids = try
+        Set{Any}(vcat(collect(keys(CB.faulted_robots())), collect(CB.checked_out_spares())))
+    catch
+        Set{Any}()
+    end
     local nonspare = Dict{Any,Float64}(
         id => s for (id, s) in fleet.soc
-        if !(try CB.is_spare(id) || CB.is_recovery_spare(id) catch; false end))
+        if !(try CB.is_spare(id) || CB.is_recovery_spare(id) catch; false end) &&
+           !(id in excluded_ids))
     isempty(nonspare) && return d
     local socs = collect(Float64, values(nonspare))
     local s = sort(socs); local n = length(s)
@@ -156,9 +172,14 @@ end
 # 이 로봇이 아직 맡고 있는 운반 작업의 화물 질량. 순회는 `_agent_pending` 과 **같다** —
 # 그 함수가 이미 "미완 RobotGo 중 후속이 FormTransportUnit 인 것"을 세므로, 여기서는 같은
 # 후속 노드에 `_payload_mass` 를 걸기만 한다(추가 계산 없음).
-# 🔴 `_payload_mass` 의 가드가 받는 셋 중 하나가 `FormTransportUnit` 이다 — 그래서 후속
-#    노드를 넘긴다. `RobotGo` 를 넘기면 가드에 걸려 조용히 0.0 이 된다(이 함수의 단위검사
-#    범위 밖 — `test/battery_load_features.jl` 머리말 참조).
+# 🔴 `_payload_mass_measured` 의 가드가 받는 셋 중 하나가 `FormTransportUnit` 이다 — 그래서
+#    후속 노드를 넘긴다. `RobotGo` 를 넘기면 가드가 던진다(이 함수의 단위검사 범위 밖 —
+#    `test/battery_load_features.jl` 머리말 참조).
+# 🔴 [Fix round 2, S1 final wave / F-7] `CB._payload_mass`(물리 회계 훅용)가 아니라
+#    `CB._payload_mass_measured` 를 부른다 — 전자는 가드·형상실패를 **자체적으로** 0.0 으로
+#    삼켜서 던지지 않으므로, 아래 try/catch 가 절대 안 걸리는 죽은 코드였다(Fix round 1,
+#    I-6 이 지키려던 것을 실제로는 못 지켰다). 후자는 못 재면 던지고, 아래가 그것을 잡아
+#    `mass_ok=false` 로 둘 다(`payload_max/total_kg`) 뺀다 — 삼상 규약("못 쟀다 ≠ 0").
 function _battery_load_features(env, agent)
     d = Dict{String,Any}()
     agent === nothing && return merge(d, _battery_fleet_features(agent))
@@ -181,9 +202,9 @@ function _battery_load_features(env, agent)
         #    하나라도 실패하면 둘 다 통째로 뺀다. `@warn`(`@info` 아님): run_demo.jl 이
         #    `global_logger(..., Logging.Warn)` 을 심어 `@info` 는 조용히 버려진다.
         try
-            push!(masses, Float64(CB._payload_mass(env, succ, p)))
+            push!(masses, Float64(CB._payload_mass_measured(env, succ, p)))
         catch e
-            @warn "_battery_load_features: _payload_mass failed — payload_max/total_kg 를 뺀다 (못 쟀다 ≠ 0)" agent exception = e
+            @warn "_battery_load_features: _payload_mass_measured failed — payload_max/total_kg 를 뺀다 (못 쟀다 ≠ 0)" agent exception = e
             mass_ok = false
         end
     end

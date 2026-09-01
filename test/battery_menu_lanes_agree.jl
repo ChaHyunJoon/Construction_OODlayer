@@ -14,6 +14,16 @@
 # 그래서 분할 규칙 자체를 어휘 단일 진실원(`ActionRegistry.battery_arms`)으로 올리고, 두 레인이
 # **그 함수를 부르게** 한다. 이 게이트는 두 레인의 출력이 실제로 같은지를 잰다.
 #
+# 🔴 **정정 (2026-09-01, S1 final wave / F-1c).** 이 파일 제목이 "라벨 레인과 실행 레인이
+# 같은가" 라고 주장하지만, 오늘까지 이 파일은 **라벨 레인 함수(`ood_mdp_shim.valid_actions`)를
+# 단 한 번도 호출하지 않았다** — `실행 레인 == 어휘 단일 진실원` 만 재고, "라벨 레인도 그
+# 단일 진실원을 실제로 부른다"는 별개의 사실을 **가정**했다. final-review I-1 이 실측으로
+# 증명했다: `valid_actions` 의 battery 분기에 `thr = max(0.2, Float64(CB.REPLACE_SOC_THRESHOLD[]))`
+# 를 심어도(라벨 레인이 조용히 옛 0.2 경계로 돌아가는 자리) 이 파일은 물론 **전체 Julia
+# 스위트가 2192/0/1 로 byte-identical** 이었다 — 라벨 레인 쪽엔 아무 방어가 없었다. 아래
+# "battery 메뉴: 라벨 레인(valid_actions) == 어휘 단일 진실원 (F-1c)" testset이 그 빈 자리를
+# 메운다 — `label_menu` 가 `ood_mdp_shim.valid_actions((type=:battery, soc=s))` 를 직접 부른다.
+#
 # 실행: julia +lts --project=. test/battery_menu_lanes_agree.jl
 # =============================================================================
 module BatteryMenuLanesAgree
@@ -26,6 +36,16 @@ import HTTP, JSON3
 const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 include(joinpath(REPO, "tools", "monitor", "policy.jl"))          # 실행 레인 + ActionRegistry
+# 🔴 2026-09-01 (S1 final wave / F-1c). 라벨 레인 자체(`ood_mdp_shim.valid_actions`)도 로드한다
+# -- 이 파일의 옛 이름("라벨 레인과 실행 레인의 battery 메뉴가 같은가")은 실행 레인
+# (`policy.jl valid_macros`)과 **어휘 단일 진실원**(`ActionRegistry.battery_arms`)만 비교하고
+# 라벨 레인 함수는 한 번도 부르지 않았다 -- final-review I-1 이 실측으로 증명했다: `thr =
+# max(0.2, Float64(CB.REPLACE_SOC_THRESHOLD[]))` 를 `valid_actions` 의 battery 분기에 심어도
+# 전체 스위트가 byte-identical 로 남았다(라벨 레인이 조용히 옛 0.2 경계로 돌아가도 아무것도
+# 안 빨개졌다). `action_registry.jl` 은 위 `include` 가 이미 로드했으므로(`policy.jl` 이
+# 자신의 위에서 로드) 이 include 는 그 위에 `event_context`/`valid_actions`/`canonical_action`/
+# `action_to_proposal` 만 얹는다 -- `test/smdp_stamp_smoke.jl` 이 이미 쓰는 것과 같은 순서.
+include(joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "ood_mdp_shim.jl"))
 
 # navigator.jl 은 위에서 이미 로드를 보장했다(:27) — 심볼이 없으면 이제 UndefVarError 로
 # 죽는다(2026-08-31 폴백 제거).
@@ -41,6 +61,11 @@ end
 registry_menu(soc) =
     [ActionRegistry.NAME[i] for i in ActionRegistry.battery_arms(soc, THR, true)]
 
+"라벨 레인 자신의 메뉴(이름) — `ood_mdp_shim.valid_actions` 를 직접 부른다(F-1c). `gen_oracle_dataset.jl`
+이 라벨을 만들 때 실제로 부르는 그 함수다(`gen_oracle_dataset.jl:1928` 과 같은 NamedTuple 모양)."
+label_menu(soc) =
+    [ActionRegistry.NAME[i] for i in valid_actions((type = :battery, soc = soc))]
+
 @testset "battery 메뉴: 실행 레인 == 어휘 단일 진실원" begin
     local saved = CB.BATTERY_FLEET[]
     try
@@ -51,6 +76,16 @@ registry_menu(soc) =
         end
     finally
         CB.BATTERY_FLEET[] = saved
+    end
+end
+
+@testset "battery 메뉴: 라벨 레인(valid_actions) == 어휘 단일 진실원 (F-1c)" begin
+    # 🔴 이 testset 이 없으면 이 파일의 제목("라벨 레인과 실행 레인이 같은가")이 거짓 광고다 —
+    # 위 testset 은 라벨 레인을 한 번도 안 부른다. `DS_ARMS_LEGACY`/`DS_BATTERY_SOC_SPLIT`
+    # 환경변수를 건드리지 않는 한 `valid_actions` 의 battery 분기는 `soc_split_enabled()==true`
+    # 기본값으로 위 `registry_menu` 와 같은 조건(`split=true`)을 쓴다.
+    for soc in (0.02, 0.10, THR, THR + 0.05, 0.45, 0.90)
+        @test label_menu(soc) == registry_menu(soc)
     end
 end
 

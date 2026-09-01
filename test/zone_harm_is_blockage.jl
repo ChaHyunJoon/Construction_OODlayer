@@ -51,6 +51,13 @@
 #   · war 의 zone_terminal 절에서 "못 쟀으면(-1) zov 로 폴백" 을 "0.0 으로 접는다" 로
 #     바꾸면 (3)의 새 어서션이 빨개진다(0.0 !== 0.0024) — "못 쟀다"를 0 으로 접는
 #     결함의 재현.
+#   · 🔴 2026-09-01 (S1 final wave / F-2). **파이썬 twin** `features_agnostic.py` 의 같은
+#     폴백(`war = (... ) if (...) else zov`)의 `zov` 를 `0.0` 으로 바꾸면 이제 (5)·(6) 이
+#     둘 다 빨개진다 — 실측: (5) 35 passed / 1 failed(`isapprox(0.0, 0.0024…)` 실패),
+#     같은 mutation 아래 `dspy_service._surro_row` 프로덕션 경로로 (NBLK,-1) 을 직접 돌리면
+#     `war=0.0`(정답 0.0024…)이라 (6) 도 대칭으로 빨개진다. 전에는 `cases`/`cases6` 어느
+#     쪽도 `(NBLK, -1)` 행이 없어서(nblk>=1 이면서 ndown 만 못 잰 경우) 이 mutation 아래
+#     70 개 어서션 전부 초록이었다(final-review I-2). 지금은 84개 중 이 한 자리가 잡는다.
 #
 # 실행: julia +lts --project=. test/zone_harm_is_blockage.jl
 # =============================================================================
@@ -133,7 +140,12 @@ end
     # 경계를 하루 틀리게 적어도 안 잡힌다. `zone_terminal` 을 가르는 경계까지 훑는다:
     #   -1(못 쟀다, 비종단) · 0(막힘 없음, 비종단) · 1(경계 그 자체, >= 니까 종단) ·
     #   NBLK(참고용, 원래 fixture 값).
-    cases = [(-1, -1), (0, 0), (1, 10), (NBLK, NDOWN)]
+    # 🔴 2026-09-01 (S1 final wave / F-2). `(NBLK, -1)` — 막힘은 쟀는데(종단) downstream 을
+    #   못 쟀을 때: 이 자리가 (3)의 새 삼상 경로("war 는 0 이 아니라 zov 로 폴백")를 파이썬
+    #   twin 에도 재는 유일한 행이다. 이 행이 없으면 파이썬의 `war = (... ) if (...) else zov`
+    #   폴백을 통째로 `0.0` 으로 바꿔도 이 파일 70개 어서션이 전부 초록이었다(실측, 아래 F-2
+    #   음성대조 및 final-review I-2).
+    cases = [(-1, -1), (0, 0), (1, 10), (NBLK, NDOWN), (NBLK, -1)]
     rows = ["""{"kind":"zone","zone_overlap":$(ZOV),"severity":$(ZOV),"soc":null,
                 "agent_pending":-1,"n_active":18,"spare_count":8,"closed_at_fire":$(CLOSED),
                 "total_nodes":$(TOTAL),"progress":0.177,
@@ -175,7 +187,10 @@ end
     if !isfile(py)
         @test_skip "venv 가 없다 — twin 대조를 건너뛴다 (초록으로 세지 말 것)"
     else
-    cases6 = [(nothing, nothing), (0, 0), (1, 10), (NBLK, NDOWN)]
+    # 🔴 2026-09-01 (S1 final wave / F-2). `(NBLK, -1)` 을 여기도 더한다 — 이 testset 이
+    #   골든카피를 대체한 **진짜** cross-lane 대조이므로, (5)에만 있고 여기 없으면 F-2 가
+    #   지키려는 것(프로덕션 `_surro_row` 경로에서도 이 자리가 새지 않는다는 것)을 못 잰다.
+    cases6 = [(nothing, nothing), (0, 0), (1, 10), (NBLK, NDOWN), (NBLK, -1)]
     jsonval(x) = x === nothing ? "null" : string(x)
     rows6 = ["""{"kind":"zone","severity":$(ZOV),"zone_overlap":$(ZOV),
                  "n_active":18,"spare_count":8,"closed_at_fire":$(CLOSED),

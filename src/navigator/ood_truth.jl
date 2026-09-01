@@ -134,11 +134,20 @@ const REPLACE_SOC_THRESHOLD = Ref(0.1)
 "Set the SoC at/below which a battery event's canonical response flips soft→hard (Replace)."
 set_replace_soc_threshold!(x::Real) = (REPLACE_SOC_THRESHOLD[] = Float64(x); nothing)
 
-# 로봇이 물리적으로 멈추는 SoC 의 **기본값**. `DEMO_STALL_SOC`/`DS_STALL` 이 이 값을 쓴다.
-# 🔴 `REPLACE_SOC_THRESHOLD` 에서 **유도하지 않는다.** 같게 두면 deep 구간 전체가 "정지"라
-#    감속 구간이 사라지고, `test/battery_ladder_is_deep_only.jl` 단언 2(사다리가 정지 임계를
-#    걸친다 — 2026-08-05 "심각도 축이 점 하나" 회귀 방지)를 만족하는 사다리가 **존재하지
-#    않게 된다.** 그래서 별개의 상수이고, `stall < deep` 만 게이트가 강제한다.
+# 로봇이 물리적으로 멈추는 SoC 의 **선언된 기본값** — 🔴 2026-09-01 실측 정정: 이 값을 실제로
+# **읽는 프로덕션 소비처는 0개다.** `DEMO_STALL_SOC`(`run_demo.jl`/`render_demo.jl`)·
+# `DS_STALL`(`gen_oracle_dataset.jl`)·`STALL_SOC`(`tools/demos.jl`) 는 각자 독립된
+# `get(ENV, "NAME", "0.05")` 문자열 리터럴을 든다 — 이 상수에서 유도하지 않는다(할 수도 없다:
+# `test/soc_ladder_is_coherent.jl` (4)/(5) 의 `envdefault` 파서는 그 자리가 **벌거벗은 문자열
+# 리터럴**이어야만 읽는다 — `string(STALL_SOC_DEFAULT[])` 같은 식으로 바꾸면 정규식이 못
+# 찾아 gate 가 죽는다). 그래서 이 `Ref` 는 그 세 리터럴이 서로 같은지 비교하는 **기준점**일
+# 뿐이고, "이 값을 쓴다"는 옛 서술은 거짓이었다. `stall < deep`(`REPLACE_SOC_THRESHOLD` 와
+# 다른 값이어야 하는 이유)만 게이트가 강제한다 — 같게 두면 deep 구간 전체가 "정지"라 감속
+# 구간이 사라지고, `test/battery_ladder_is_deep_only.jl` 단언 2(사다리가 정지 임계를 걸친다 —
+# 2026-08-05 "심각도 축이 점 하나" 회귀 방지)를 만족하는 사다리가 **존재하지 않게 된다.**
+# ⚠️ `tools/demos.jl` 의 `STALL_SOC` 리터럴은 `soc_ladder_is_coherent.jl` (4)/(5) 어느 쪽에도
+# 안 걸린다 — (4)는 run_demo/render_demo 둘만, (5)는 gen_oracle_dataset 의 DS_STALL 만 본다.
+# 오늘은 세 리터럴이 우연히 다 "0.05"로 같지만, 그 일치를 지키는 기계 게이트가 없다.
 const STALL_SOC_DEFAULT = Ref(0.05)
 
 # truth_key : 정답 라벨을 "비교 가능한 키(튜플)"로 바꾼다 = 채점 때 대응이 맞는지 대조할 열쇠.
