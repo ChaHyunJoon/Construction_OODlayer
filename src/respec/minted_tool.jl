@@ -60,7 +60,7 @@ end
 unenactable_why)`.
 
 🔴 `enactable` 은 "이 원시를 `bind_primitive_args` 가 만드는 인자로 **실제로 부를 수
-있는가**"다(연언지 셋은 `_enactability` 를 보라). 오늘 레지스트리 19 중 **6** 만 참이다.
+있는가**"다(연언지 셋은 `_enactability` 를 보라). 오늘 레지스트리 20 중 **7** 만 참이다.
 집행부는 이것이 거짓인 원시를 **부르기 전에** 거절한다 — 부르면 `MethodError` 가 나고
 `try` 가 그것을 "집행됐다"로 보고해서 거짓 admit 이 된다.
 """
@@ -94,8 +94,8 @@ end
 둘째 값이 어느 연언지가 깨졌는지 말한다(`:harness`/`:multimethod`/`:arity`/`:kwargs`).
 통과하면 `(true, :ok)`.
 
-🔴 연언지는 **셋**이다. `harness_args ⊆ {"env"}` 하나만 보면(2026-08-30 실측) 19 중 15 가
-집행 가능으로 표시되는데 실제로 부를 수 있는 것은 **6** 뿐이다. 나머지 9 는 호출 시점에
+🔴 연언지는 **셋**이다. `harness_args ⊆ {"env"}` 하나만 보면(2026-09-01 실측) 20 중 16 가
+집행 가능으로 표시되는데 실제로 부를 수 있는 것은 **7** 뿐이다. 나머지 9 는 호출 시점에
 `MethodError` 로 죽고, 집행부의 `try` 는 그것을 `:admit`/집행됨으로 보고한다 — 거절보다
 나쁘다(거짓 admit). 그래서 부르기 전에 시그니처를 직접 읽는다:
 
@@ -131,7 +131,7 @@ end
     SILENT_SUCCESS_STATUSES
 
 원시가 **성공 계열 값을 돌려주면서 그 tool 이 노린 적응은 일으키지 않은** 경우들.
-`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다 —
+`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 일곱 전부**여야 한다 —
 게이트 (11) 이 `keys(SILENT_SUCCESS_STATUSES) == ENACTABLE_TODAY` 를 못 박으므로,
 어휘에 집행 가능한 원시가 하나 늘면 이 표를 채우기 전까지 빨갛다.
 
@@ -140,7 +140,7 @@ end
 `force_advance_stuck_carrier!` 는 `CARRIER_RESCUE != "1"`, 즉 **기본 환경**에서 항상
 `:disabled` 다. 손 안 댄 환경의 매 런이 "적응했다"로 기록됐을 것이다.
 
-출처 — 여섯 원시의 `return` 문을 전부 읽어서 적었다(추측 없음):
+출처 — 일곱 원시의 `return` 문을 전부 읽어서 적었다(추측 없음):
   · `restage_all_blocked!`   `src/respec/restage_zone.jl`
       조용: `:none`(막힌 조립체 없음) `:infeasible`(하나도 못 놓음)
             `:residual_blocked`(못 옮기는 목표가 존에 남음)   실제: `:restaged_all` `:partial`
@@ -162,6 +162,11 @@ end
       🔴 이 하나만 **NamedTuple 이 아니라 맨 `Int`**(`n_moved`)를 돌려준다. `_step_status` 가
       `COUNT_RETURN_PRIMITIVES` 를 보고 `:moved`/`:moved_none` 으로 읽는다.
       조용: `:moved_none`(`n_moved == 0`)     실제: `:moved`
+  · `reprice_agent_by_payload!` `src/navigator/payload_bias.jl`
+      조용: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**, `:repriced` 도 포함이다
+      (S2 lane Ruling 5). 이 원시는 Ref 둘만 쓸 뿐 재풀이를 스스로 하지 않는다 — 노린 적응
+      (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
+      MILP 재풀이의 몫이다.
 
 ⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 빌드를 **실제로 옮긴다** — 세계의
    바이트는 변한다. 그런데도 여기 있는 이유는 `applied` 가 "바이트가 변했나"가 아니라
@@ -205,8 +210,8 @@ const UNMEASURABLE_STATUSES = Set{Symbol}([:unreadable_return])
 한 단계에서 **노린 적응이 일어났는가**. 판정 순서는 셋이다:
  1. `UNMEASURABLE_STATUSES` — 못 쟀다 → **거짓**(모르는 것을 성공으로 세지 않는다).
  2. `SILENT_SUCCESS_STATUSES` — 조용한 성공 → 거짓.
- 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 여섯은 게이트 (11) 이 (2)의 표에 전부 있음을
-    강제하므로, 이 기본값은 그 여섯에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
+ 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 일곱은 게이트 (11) 이 (2)의 표에 전부 있음을
+    강제하므로, 이 기본값은 그 일곱에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
     늘면 표가 비어 있는 동안 게이트가 먼저 빨개진다.
 """
 _step_applied(prim_name::AbstractString, status::Symbol) =
@@ -225,7 +230,7 @@ _step_applied(prim_name::AbstractString, status::Symbol) =
 분류는 그대로 옳다: 그 dict 은 "직전 점검 때 이 캐리어가 얼마나 멀었나" 를 적는 **진행 메모**
 이지 세계 상태가 아니다 — 씬 노드도, 스케줄 그래프도, 캐시도 아니다(`clear_carrier_progress!`
 가 언제든 통째로 비울 수 있는 것이 그 증거다). 이 표가 재는 것은 **폴백이 그 위에 쌓여도
-되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 여섯 전부**여야 한다(게이트가 `keys(...) ==
+되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 일곱 전부**여야 한다(게이트가 `keys(...) ==
 ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 `SILENT_SUCCESS_STATUSES` 와 별개의 표인가** (2026-08-30 T4 리뷰).
@@ -239,9 +244,9 @@ ENACTABLE_TODAY` 를 못 박는다).
 🔴 **불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`.** 세계를 안 건드렸으면 노린 적응도
 당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, T4 의
 `handled = (:admit) && world_maybe_dirty` 가 `applied` 판정보다 **넓다**는 성질을 준다.
-게이트가 여섯 전부에 대해 이 포함을 잰다.
+게이트가 일곱 전부에 대해 이 포함을 잰다.
 
-출처 — 여섯 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):
+출처 — 일곱 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):
   · `restage_all_blocked!` `src/respec/restage_zone.jl:517`
       안 건드림: `:none`(막힌 조립체 0 → 루프 전에 반환)
                  `:infeasible`(= `isempty(moved) && !isempty(failed)`; `restage_assembly!` 의
@@ -276,6 +281,10 @@ ENACTABLE_TODAY` 를 못 박는다).
                  따라서 `n_moved == 0` ⟹ 어떤 팀도 `wedged` 가 아니었다 ⟹ `capture_robots!` 도
                  한 번도 안 불렸다.
       🔴 건드림: `:moved`
+  · `reprice_agent_by_payload!` `src/navigator/payload_bias.jl`
+      안 건드림: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**. 본체가 하는 일은
+                 `EDGE_PAYLOAD_MULTIPLIER[]`·`PAYLOAD_BIAS[]` 두 `Ref` 에 클로저를 쓰는 것뿐이다 —
+                 씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다.
 """
 const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "restage_all_blocked"         => Set([:none, :infeasible]),
@@ -306,10 +315,10 @@ _step_touched_world(prim_name::AbstractString, status::Symbol) =
     PRIMITIVE_RESUMES_CACHE
 
 원시가 세계를 고친 뒤 **스스로 `reset_cache_resume!` 를 부르는가**. 🔴 키는 집행 가능한
-원시 여섯 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
+원시 일곱 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 이 표가 필요한가** (2026-08-30 T4 리뷰, CRITICAL).
-`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 여섯 중 셋은 스케줄 캐시를
+`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 일곱 중 넷은 스케줄 캐시를
 스스로 재개하지 않는다 — `reform_stuck_teams!` 의 주석이 직접 그렇게 적는다(*"the callers …
 drive the schedule via reset_cache_resume!"*). 그 대가는 `src/respec/ood_injection.jl` 이
 적어 둔 그대로다: *"그래프는 바뀌었는데 스케줄 캐시가 옛 프론티어를 들고 있어 복구가 아무
@@ -405,9 +414,10 @@ _resume_note(tag::Symbol, detail::AbstractString) =
 레지스트리 `params` 스키마의 `"type"` 문자열 → 그 값이 **변환될 수 있어야 하는** Julia 타입.
 
 🔴 왜 필요한가 (2026-08-30 최종 리뷰, IMPORTANT — 여섯 번째 조용한 미복구 경로).
-집행 가능한 여섯이 실제로 받는 타입 있는 키워드는 셋이다
+집행 가능한 일곱이 실제로 받는 타입 있는 키워드는 다섯이다
 (`reform_stuck_teams!(env; min_ready::Int, snap_all::Bool)` ·
-`force_advance_stuck_carrier!(env; tol::Float64)`). LLM 이 `{"snap_all": "true"}` 나
+`force_advance_stuck_carrier!(env; tol::Float64)` ·
+`reprice_agent_by_payload!(env; agent::AbstractString, light_bias::Real)`). LLM 이 `{"snap_all": "true"}` 나
 `{"min_ready": 1.5}` 를 주면 Julia 는 **호출 경계에서** `convert` 에 실패한다 — impl 본문은
 한 줄도 안 돌고 세계는 **증명 가능하게** 손대지 않은 상태다. 그런데 `enact_minted!` 의
 `catch` 는 그것을 무조건 `partial = true` 로 적고, 그러면 `world_maybe_dirty = true` →
@@ -560,8 +570,9 @@ end
 
 🔴 그리고 그 위를 다시 `try` 로 감싼다. `hasproperty` 가 참이어도 `getproperty` 가 던지는
 반환값이 있을 수 있고, 그 예외가 여기서 새어 나가면 `enact_minted!` 가 **기록 대신
-예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 여섯에는
-그런 반환이 없지만 이 계획의 뒤 태스크가 어휘에 원시를 하나 더한다.
+예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 일곱에는
+그런 반환이 없다(이 레인이 더한 `reprice_agent_by_payload!` 도 평범한 NamedTuple 리터럴이라
+해당 없음을 확인했다) — 그래도 어휘가 다시 늘면 이 위험은 새로 열린다.
 
 🔴 예전 이름 `:no_status_field` 는 **`applied = true`** 로 흘렀다(2026-08-30 리뷰가 잡음).
 읽을 수 없는 모양은 "세계가 변했다"가 아니라 "변했는지 모른다"이다.
@@ -614,7 +625,7 @@ end
 | `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다** |
 | `partial` | 어떤 단계가 **던졌다** — 세계는 절반만 고쳐졌을 수 있고 되돌릴 방법이 없다 |
 | `world_maybe_dirty` | `touched`(`_step_touched_world`) 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다. ⚠️ `applied` 가 **아니다**: `translate_whole_build!` 의 `:residual_blocked` 는 `applied=false` 인데 빌드를 이미 옮겼다(2026-08-30 T4 리뷰) |
-| `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 여섯 중 셋이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
+| `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 일곱 중 넷이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
 
 🔴 세 필드는 **서로 다른 질문**이다. 하나만 읽고 다른 것의 답으로 쓰지 말 것 — 특히
 `applied == false` 는 "세계가 안 변했다"가 아니다(던졌을 수도, 못 쟀을 수도 있다).
@@ -736,8 +747,9 @@ function enact_minted!(env, truth, synth)
     end
 
     # ---- (8) 스케줄 캐시 재개 — 조용한 미복구를 막는 한 걸음 --------------------------------
-    # 🔴 여섯 중 셋(`reform_stuck_teams!` · `recover_stalled_teams!` ·
-    #    `force_advance_stuck_carrier!`)은 스스로 `reset_cache_resume!` 를 부르지 않는다.
+    # 🔴 일곱 중 넷(`reform_stuck_teams!` · `recover_stalled_teams!` ·
+    #    `force_advance_stuck_carrier!` · `reprice_agent_by_payload!`)은 스스로
+    #    `reset_cache_resume!` 를 부르지 않는다.
     #    그 사실을 모르고 `handled=true` 로 기본 복구 사슬을 건너뛰면, 세계는 고쳤는데
     #    프론티어가 낡은 채 남고 사건은 **이미 소비돼** 다시 오지 않는다 = 성공과 구별되지
     #    않는 미복구. 자세한 근거는 `PRIMITIVE_RESUMES_CACHE` 의 docstring 에 있다.
