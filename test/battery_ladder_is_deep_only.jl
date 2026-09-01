@@ -37,7 +37,9 @@ isdefined(@__MODULE__, :ActionRegistry) ||
     include(joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
 
 const GEN = joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "gen_oracle_dataset.jl")
-const THR = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
+# navigator.jl 은 위에서 이미 로드를 보장했다(:35) — 심볼이 없으면 이제 UndefVarError 로
+# 죽는다(2026-08-31 폴백 제거).
+const THR = Float64(CB.REPLACE_SOC_THRESHOLD[])
 
 "소스에서 `DS_BSOC` 기본 사다리를 읽는다."
 function default_ladder()

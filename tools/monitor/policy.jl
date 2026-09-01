@@ -393,7 +393,10 @@ function valid_macros(env, truth)
         # 수 있는데 라벨 격자엔 그 행이 없어, 그 결정이 surrogate 가 본 적 없는 팔로 남는다.
         # 분할 규칙과 손잡이 판독점을 어휘 단일 진실원으로 올렸다(`ActionRegistry.battery_arms`
         # · `soc_split_enabled`). 게이트: `test/battery_menu_lanes_agree.jl`.
-        local thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
+        # policy.jl 은 navigator.jl 이 로드된 뒤에만 include 된다(run_demo.jl/render_demo.jl/
+        # test_policy_{zone,oracle}.jl 이 전부 이 순서를 지킨다) — 심볼이 없으면 이제
+        # UndefVarError 로 죽는다(2026-08-31 폴백 제거).
+        local thr = Float64(CB.REPLACE_SOC_THRESHOLD[])
         local ids = ActionRegistry.battery_arms(Float64(truth.soc_after), thr,
                                                 ActionRegistry.soc_split_enabled())
         if !have_fleet

@@ -233,8 +233,11 @@ function valid_actions(ctx)
         # 2026-08-16 계획의 1차 목표다 — 실행 레인이 이 사건에서 실제로 쓰는 팔이다.
         return ActionRegistry.kind_valid(:fault)
     elseif ctx.type === :battery
+        # navigator.jl 은 이 파일을 include 하는 두 자리(gen_oracle_dataset.jl:58-60,
+        # test/smdp_stamp_smoke.jl:10-179) 모두에서 이 함수가 처음 불리기 전에 이미 로드된다
+        # — 심볼이 없으면 이제 UndefVarError 로 죽는다(2026-08-31 폴백 제거).
         _legacy_arms() && begin
-            thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
+            thr0 = Float64(CB.REPLACE_SOC_THRESHOLD[])
             return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 2] : [0, 2]
         end
         # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 `kind_valid(:battery)` 의
@@ -257,7 +260,8 @@ function valid_actions(ctx)
         # **실행 레인(`policy.jl valid_macros`)에는 이 분할이 아예 없어서** 두 레인의 행동공간이
         # 갈려 있었다. 분할 규칙을 어휘 단일 진실원으로 올리고 두 레인이 같은 함수를 부른다.
         # 게이트: `test/battery_menu_lanes_agree.jl`.
-        thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
+        # navigator.jl 로드 보장은 위 legacy 분기 주석 참조 — 심볼이 없으면 UndefVarError.
+        thr = Float64(CB.REPLACE_SOC_THRESHOLD[])
         return ActionRegistry.battery_arms(ctx.soc, thr, soc_split_enabled())
     elseif ctx.type === :zone
         # 2026-08-24: 레지스트리에 zone 팔이 없다 -> `[0]`. 결정 시점 기하로 좁히던 경로

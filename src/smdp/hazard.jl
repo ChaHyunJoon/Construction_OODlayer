@@ -656,7 +656,9 @@ function _hz_fire_cell!(env, st::HazardState, id, soc, mode)
     BATTERY_FLEET[] === nothing && return nothing        # 배터리 계층이 없으면 이 위험은 의미 없음
     drop = _hz_draw_cell_drop!(st, id)      # 유예되면 같은 값을 재사용한다(CRN, spec §5.7)
     # 이 낙폭이 "깊은 방전"인지 = 결과 SoC 가 REPLACE_SOC_THRESHOLD 이하로 떨어지는지.
-    thr_replace = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.1
+    # navigator.jl 이 smdp/mdp.jl 보다 항상 먼저 로드된다(모든 호출자가 지키는 순서, mdp.jl:8
+    # 주석 참조) — 심볼이 없으면 이제 UndefVarError 로 죽는다(2026-08-31 폴백 제거).
+    thr_replace = REPLACE_SOC_THRESHOLD[]
     if max(0.0, soc - drop) <= thr_replace               # 깊은 방전 -> 고장과 동일한 안전 조건 요구
         p.fire_safe_target && !_hz_safe_target(env, id) && return nothing
         if p.fire_require_spare

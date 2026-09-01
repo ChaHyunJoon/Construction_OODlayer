@@ -27,7 +27,9 @@ const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 include(joinpath(REPO, "tools", "monitor", "policy.jl"))          # 실행 레인 + ActionRegistry
 
-const THR = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
+# navigator.jl 은 위에서 이미 로드를 보장했다(:27) — 심볼이 없으면 이제 UndefVarError 로
+# 죽는다(2026-08-31 폴백 제거).
+const THR = Float64(CB.REPLACE_SOC_THRESHOLD[])
 
 "실행 레인의 메뉴(이름)."
 live_menu(soc) = begin

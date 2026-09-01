@@ -19,12 +19,13 @@
 #       soc_after <= 1 - DEMO_BSOC 이므로 (1 - DEMO_BSOC) <= stall 이면 충분하다
 #   (4) 두 엔진(run_demo · render_demo)의 DEMO_BSOC·DEMO_STALL_SOC 기본값이 같다
 #   (5) 라벨 레인의 DS_STALL 이 실행 레인의 정지 임계와 같다
-#   (6) `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X` / `try...catch; X end` 류 폴백 리터럴을
-#       src/·tools/·test/·wm4spacecraft_manufacturing/ 전체에서 **찾아서**(파일 목록을
-#       하드코딩하지 않는다 — 2026-08-31 fix round 1, I-2) 전부 DEEP 과 같은지 잰다.
-#       navigator.jl 이 include 안 된 경로에서 옛 사다리가 조용히 되살아나는 것을 막는다.
-#       (2026-08-31 fix round 2 실측: 8곳. 이 숫자는 게이트가 강제하지 않는다 — 강제하면
-#       또 하드코딩이 된다. 실행 시 진단 출력이 그때그때의 실제 개수를 보여 준다.)
+#   (6) `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X` / `try...catch; X end` 류 폴백 리터럴이
+#       src/·tools/·test/·wm4spacecraft_manufacturing/ 전체에 **하나도 없다**(파일 목록을
+#       하드코딩하지 않는다 — 2026-08-31 fix round 1, I-2). 🔴 2026-08-31 (fallback-removal
+#       task): 여덟 곳 전부를 없애 이제 명제가 뒤집혔다 — "폴백이 있으면 DEEP 과 같다"(있는
+#       것을 전제)가 아니라 **"폴백이 아예 없다"**(더 강한 명제, 재도입 즉시 빨개진다)를 잰다.
+#       비어 있는 스캔이 "실패할 수 없는 게이트"가 되는 것은 (6b)의 심은-자리 자기증명이
+#       독립적으로 막는다 — 스캐너 자체가 죽었는지는 (6b)가, 실제 트리가 깨끗한지는 (6)이 잰다.
 #
 # 변이시험 — 2026-08-31, 아래 다섯을 전부 실제로 돌려서 각각의 실패를 직접 봤다
 # (task-3-report.md 에 각 mutation 의 실측 출력이 그대로 있다). 넷은 이 파일이 처음부터
@@ -281,32 +282,24 @@ function scan_proximity_literals(dirs, sym::AbstractString, n::Int)
     return hits
 end
 
-@testset "(6) REPLACE_SOC_THRESHOLD 폴백 리터럴이 진실원과 같다 (발견형)" begin
-    # 🔴 2026-08-31 fix round 1 (I-2): 예전 버전은 파일 목록 다섯 개를 하드코딩했다 —
-    # `test/battery_ladder_is_deep_only.jl` · `test/battery_menu_lanes_agree.jl` 이 각각
-    # `catch; 0.2 end` 폴백을 갖고 있었는데도 목록에 없어서 스캔이 안 됐고, `total_sites == 6`
-    # 이 그 틀린 개수를 굳혔다. 리뷰어가 새 폴백 파일을 심었는데도 6/6 그린이었다 — 저자가
-    # 이미 아는 자리만 보는 게이트는 "단일 진실원" 보장이 아니다. 이제 파일 목록을 아예 없애고
-    # src/·tools/·test/·wm4spacecraft_manufacturing/ 를 직접 훑는다.
+@testset "(6) REPLACE_SOC_THRESHOLD 폴백 리터럴이 하나도 없다" begin
+    # 🔴 2026-08-31 (fallback-removal task): 명제가 뒤집혔다. 예전엔 "폴백이 있다 —
+    # 그것들이 전부 DEEP 과 같은가" 를 쟀다(발견형, hits > 0 을 전제). 이제 여덟 곳을 전부
+    # 지웠으므로 "폴백이 **아예 없다**" 를 잰다 — 더 단순하고, 더 강하고, 누가 하나라도
+    # 다시 심으면 즉시 빨개진다. (여전히 파일 목록은 하드코딩하지 않는다 — 2026-08-31
+    # fix round 1, I-2 의 규약을 그대로 지킨다.)
     local hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), FALLBACK_RE)
-    # 🔴 스캐너가 하나도 못 찾으면 "패턴이 텅 비어도 통과하는" 실패할 수 없는 게이트가 된다
-    # (I-2 의 경고 그대로) — 그래서 발견 개수 자체를 셈한다.
-    @test length(hits) > 0
-    # 🔴 2026-08-31 fix round 3 (R3-2): 총량이 0 보다 큰 것만으로는 **부분 실명**을 못
-    # 잡는다 -- 대안 두 개(TERNARY_RE/CATCH_RE) 중 하나가 죽어도 나머지 대안이 본 자리만으로
-    # 총량은 계속 양수다. 그래서 두 대안을 **따로** 스캔해 각각 최소 1건을 요구한다 -- 이건
-    # 손으로 개수를 박는 게 아니라(그러면 I-2 가 도로 난다) "두 형태가 살아 있는가" 만 묻는다.
     local ternary_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), TERNARY_RE)
     local catch_hits   = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), CATCH_RE)
-    @test length(ternary_hits) > 0   # `isdefined(...) ? ...[] : X` 갈래가 실명하지 않았다
-    @test length(catch_hits) > 0     # `try ... catch; X end` 갈래가 실명하지 않았다
+    # 🔴 "스캐너가 하나도 못 찾는" 상태가 이제 통과 조건 자체다 — 그래서 이 스캔만으로는
+    # "패턴이 죽어서 텅 비었다" 와 "정말로 깨끗해서 텅 비었다" 를 못 가른다(I-2 의 원래
+    # 경고). 그 구분은 (6b)의 심은-자리 자기증명이 진다: 거기서 합성 폴백을 심고 이
+    # 스캐너가 여전히 잡는지 독립적으로 확인한다. (6)은 "실제 트리가 비었다" 만 잰다.
+    @test length(hits) == 0
+    @test length(ternary_hits) == 0   # `isdefined(...) ? ...[] : X` 갈래
+    @test length(catch_hits) == 0     # `try ... catch; X end` 갈래
     @test length(ternary_hits) + length(catch_hits) == length(hits)   # 두 갈래의 합 == 합친 스캔
-    for (path, lit) in hits
-        @test parse(Float64, lit) == DEEP
-    end
-    # 2026-08-31 fix round 1 실측: 여덟 곳(src 셋 + tools 하나 + wm4 둘 + test 둘).
-    # 이 숫자는 어서션이 아니라 진단용 출력이다 — 스캐너가 목록을 강제하면 I-2 가 도로 난다.
-    println("    [진단] REPLACE_SOC_THRESHOLD 폴백 자리 ", length(hits), "곳: ",
+    isempty(hits) || println("    [진단] 남은 REPLACE_SOC_THRESHOLD 폴백 자리 ", length(hits), "곳: ",
             join(["$(p)=$(l)" for (p, l) in hits], ", "))
 end
 
@@ -348,9 +341,21 @@ end
 end
 
 @testset "(6c) 근접성 검사 -- 철자를 안 가리는 그물" begin
-    # (6)/(6b)/branch-split 은 정해진 철자에 기댄다. 이건 안 가린다: 소스에서
-    # REPLACE_SOC_THRESHOLD 라는 글자 자체가 나오는 모든 자리 앞뒤 PROXIMITY_N 자 안의 소수
-    # 리터럴은(산술 결합 제외) 전부 DEEP 과 같아야 한다.
+    # (6)/(6b)/branch-split 은 정해진 철자(`isdefined(...) ? ...[] : X` / `try...catch; X end`)에
+    # 기댄다. 이건 안 가린다: 소스에서 REPLACE_SOC_THRESHOLD 라는 글자 자체가 나오는 모든 자리
+    # 앞뒤 PROXIMITY_N 자 안의 소수 리터럴은(산술 결합 제외) 전부 DEEP 과 같아야 한다.
+    #
+    # 🔴 2026-08-31 (fallback-removal task) 유지 결정: 여덟 폴백이 전부 사라져 (6)이
+    # "폴백 리터럴 0건" 을 직접 증명하는 지금도, 이 절은 트리비얼하게 통과하는 게 아니다 --
+    # (6)은 **두 정해진 철자**만 스캔하고, 이 절은 철자와 무관하게 기호 근처 모든 소수
+    # 리터럴을 잡는다(fix round 4 가 이 절을 만든 이유 자체가 "철자 카탈로그는 다섯 개
+    # 재현 사례에서 실제로 뚫렸다"였다). 누가 아홉 번째 철자(`coalesce(...)` 등)로 폴백을
+    # 되살리면 (6)은 못 잡고 이 절만 잡는다 -- 그래서 지운다. 반대로 이 절만 남기고 (6)을
+    # 지우면 "정확히 어느 두 철자가 사라졌는가" 를 증명하는 별도의 근거(위 (6b)의 심은-자리
+    # 자기증명)가 없어진다 -- 그래서 둘 다 남긴다. `const REPLACE_SOC_THRESHOLD = Ref(0.1)`
+    # 정의 자체(ood_truth.jl)가 이 절의 상시 non-vacuous 증거다: 그 줄의 "0.1" 이 산술·
+    # max/min/clamp 결합이 아닌 채로 항상 하나 잡히므로, 대상 디렉터리가 잘못돼 텅 비는
+    # 사고(위 `length(prox_hits) > 0` 어서션의 원래 취지)는 폴백 유무와 무관하게 계속 걸린다.
     local prox_hits = scan_proximity_literals(
         ("src", "tools", "test", "wm4spacecraft_manufacturing"), "REPLACE_SOC_THRESHOLD", PROXIMITY_N)
     @test length(prox_hits) > 0   # 이 자체가 텅 비면 grep 대상 디렉터리가 잘못됐다는 신호다

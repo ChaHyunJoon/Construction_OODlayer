@@ -354,12 +354,13 @@ function inject_battery_fault!(env; target=nothing, soc_drop::Float64=0.6,
         clamp(soc_target, fleet.params.floor_soc, 1.0)                  # 결과 SoC 를 직접 지정
     soc_after = fleet.soc[id]
     soc_pct = round(Int, 100 * soc_after)                # 퍼센트 표기용 반올림
-    # Guard the threshold: REPLACE_SOC_THRESHOLD lives in ood_truth.jl; fall back to 0.1 if a demo
-    # include'd battery.jl standalone (matches the file's other isdefined cross-layer guards).
-    # 🔴 2026-08-31 (S1/T3): 폴백 0.2 -> 0.1, REPLACE_SOC_THRESHOLD 사다리 이동과 같이 옮겼다
-    #    (test/soc_ladder_is_coherent.jl (6) 이 이 리터럴을 진실원과 대조한다).
-    # 임계값은 ood_truth.jl 소속; 이 파일만 단독 include 된 데모 대비해 없으면 0.1 로 폴백(isdefined 로 존재 확인).
-    thr = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.1
+    # REPLACE_SOC_THRESHOLD lives in ood_truth.jl, which navigator.jl always loads before
+    # battery.jl (navigator.jl:43 precedes :49) -- every real caller loads navigator.jl as a
+    # unit, so the symbol is always defined here. An unloaded symbol is now an UndefVarError,
+    # not a silently-substituted literal (2026-08-31, fallback-removal sweep).
+    # 🔴 2026-08-31 (S1/T3): 폴백 리터럴을 없앴다 — 이제 진실원 하나만 읽는다
+    #    (test/soc_ladder_is_coherent.jl (6) 이 폴백 자리가 더는 없음을 지킨다).
+    thr = REPLACE_SOC_THRESHOLD[]
     # =========================================================================
     #  NL 은 **증상만** 말한다 — 처방을 말하지 않는다 (2026-08-05)
     # -------------------------------------------------------------------------
