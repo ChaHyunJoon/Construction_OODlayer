@@ -27,24 +27,32 @@
 #    그 판이 정상 완주하는 것으로 확인한다. 이 파일의 초록을 "프로브가 실제 보드에서
 #    작동한다"는 증거로 읽지 말 것 — n=1 실측은 T5 의 몫이다.
 #
-# 🔴 실측된 변이시험 결과 — 계획대로 안 됐다
-# ---------------------------------------
-# `candidate_slot_upper_bound` 안에는 조기 반환(`sched === nothing && return nothing`)과
-# 그 뒤의 `try ... catch e; @warn ...; nothing end` 두 자리가 있다. 이 파일의 세 어서션은
-# `(sched = nothing,)` 과 `nothing` 만 넣는데, 둘 다 **조기 반환**으로 빠져서 뒤의
-# `catch` 블록에 한 번도 안 닿는다. 그래서 `catch; nothing end` 를 `catch; 0 end` 로
-# 바꿔 실제로 돌려봐도(2026-08-31 실측) **세 어서션이 전부 그대로 PASS 한다** — (3)은
-# 안 빨개진다. 즉 이 파일은 "스케줄이 아예 없다" 경로만 재고, docstring 이 존재 이유로
-# 대는 "스케줄은 있는데 전처리가 던진다" 경로(진짜 `catch` 블록)는 **이 파일에서 미검증
-# 이다.** 그 경로는 T5 의 실제 보드(예외를 던지는 실 스케줄이 없는 한 발화조차 안 함)로도
-# 안 채워진다 — 사람이 알고 있어야 하는 남은 구멍이다.
+# 🔴 변이시험 — 실측대로 적는다 (2026-08-31 fix round 1)
+# ------------------------------------------------------
+# `candidate_slot_upper_bound` 안에는 두 개의 서로 다른 "nothing 을 낸다" 자리가 있다:
+#   (a) 조기 반환 — `sched === nothing && return nothing`
+#   (b) `catch` 블록 — `try ... catch e; @warn ...; nothing end`
+# 처음 이 파일은 (3)에 `(sched = nothing,)` 과 `nothing` 만 넣었는데, 이 둘은 **모두 (a)로
+# 빠져서 (b)에 한 번도 안 닿는다.** 그래서 `catch` 를 `catch; 0 end` 로 바꿔 실제로 돌려봐도
+# 세 어서션이 그대로 PASS 했다 — (b)는 미검증인 채로 초록이었다. 이 회차에서
+# `(sched = "not a schedule",)` 를 추가해 (b)를 실제로 덮었다. `sched` 가 있으므로 (a)를
+# 피하고, `preprocess_project_schedule` 이 `String` 을 받아 `get_graph(::String)` 에서
+# `MethodError` 를 던지는 것을 실측으로 확인했다(`src/graph_utils_essentials.jl:771-772` 에
+# `AbstractCustomGraph`/`AbstractGraph` 특화만 있다) — 그래서 (b)로 들어간다.
 #
-# 변이시험 (실측대로 다시 적음)
-#   · 조기 반환 경로: 위 세 어서션이 이미 지킨다(둘 다 nothing 을 낸다).
-#   · `catch` 블록 경로(`sched` 가 있는데 전처리가 던지는 경우)는 **이 파일에서 미검증** —
-#     위 박스 참조. 재려면 전처리가 던지도록 만드는 가짜 `sched` 를 따로 넣어야 한다.
-#   · 프로브 안에서 `sched` 를 변경하는 줄을 넣으면 (2)가 빨개진다(단, (2)는 이 파일에서
-#     측정되지 않는다 — 위 경계 참조).
+# 아래 두 변이를 **각각 실제로 걸어서** 확인했다(둘 다 원복함):
+#   · `catch e; @warn ...; nothing end` 를 `catch e; @warn ...; 0 end` 로 바꾸면 —
+#     새 testset (3b)의 `=== nothing`·`!== 0` 두 어서션이 빨개진다(`0 !== 0` 은 거짓).
+#     `@test_logs` 어서션은 **그대로 PASS** 한다 — `@warn` 은 안 지웠으니까(변이가 값만
+#     건드렸다는 것을 이 비대칭이 보여준다).
+#   · `@warn "candidate_slot_upper_bound: probe failed" exception = e` 줄을 지우면 —
+#     새 testset (3b)의 `@test_logs` 어서션이 빨개진다(`Captured Logs:` 가 빈다). 값
+#     어서션 둘은 그대로 PASS 한다(반환값은 안 바뀌었으니까).
+# 이 비대칭이 두 손잡이(반환값의 삼상 규약 vs 경고의 존재)가 **서로 독립적으로** 지켜지고
+# 있음을 보인다 — 하나가 죽어도 다른 하나가 대신 초록이 되어 숨겨주지 않는다.
+#
+# (1)(2)에 대해서는 이 파일에 어떤 어서션도 없으므로 "무엇을 변이하면 빨개지는가"를 이
+# 파일 기준으로 주장하지 않는다 — 위 ⚠️ 경계가 그 이유(진짜 `env` 가 필요함)를 적는다.
 #
 # 실행: julia +lts --project=. test/milp_slot_probe_is_pure.jl
 # =============================================================================
@@ -64,6 +72,21 @@ include(joinpath(REPO, "tools", "monitor", "policy.jl"))
     # 🔴 `0` 으로 접히면 안 된다 — 그러면 "후보 0"(S2 를 죽이는 관측)과 "못 쟀다"가
     #    같은 값이 되어 판별이 사라진다.
     @test candidate_slot_upper_bound(nothing) !== 0
+end
+
+@testset "(3b) catch 경로 실측 — sched 는 있는데 전처리가 던진다" begin
+    # `sched` 필드가 있는 값을 넣으면 조기 반환((a))을 피해서 진짜 `try/catch`((b))에
+    # 들어간다. `String` 을 넣으면 `preprocess_project_schedule` → `get_graph(::String)` 에서
+    # `MethodError` 가 난다(실측 확인, `src/graph_utils_essentials.jl:771-772` 는
+    # `AbstractCustomGraph`/`AbstractGraph` 특화만 있다) — 즉 (b)의 `catch` 가 반드시 돈다.
+    local bad_env = (sched = "not a schedule",)
+    # 삼상 규약: (b)로 들어가도 여전히 nothing 이지 0 이 아니다.
+    @test candidate_slot_upper_bound(bad_env) === nothing
+    @test candidate_slot_upper_bound(bad_env) !== 0
+    # 🔴 경고는 손잡이다 — 없으면 "못 쟀다(genuinely unmeasurable)"와 "배선이 깨졌다"가
+    #    로그에서 구별 안 된다. `run_demo.jl` 이 `Logging.Warn` 을 심으므로 `@info` 는 버려진다
+    #    (그래서 `@warn` 이어야 하고, 이 어서션이 그 사실 자체를 지킨다).
+    @test_logs (:warn, r"candidate_slot_upper_bound: probe failed") match_mode = :any candidate_slot_upper_bound(bad_env)
 end
 
 end # module
