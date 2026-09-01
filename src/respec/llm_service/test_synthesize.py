@@ -83,7 +83,7 @@ def test_context_carries_every_operational_mechanism_verbatim():
         assert p["mechanism"] in ctx, (
             "원시 %r 의 mechanism 이 context 에 없다 -- 합성기가 그 원시의 존재나 함정을 "
             "못 본다." % p["name"])
-    assert len(prims) == len(_prim.PRIMITIVE_NAMES) == 19, (
+    assert len(prims) == len(_prim.PRIMITIVE_NAMES) == 20, (
         "운용 원시 수가 19 에서 움직였다(%d) -- 이 게이트의 다른 어서션은 레지스트리에서 "
         "유도되므로 계속 옳지만, 브리프가 못박은 19 라는 사실이 갈렸다는 것은 "
         "보고돼야 한다." % len(prims))

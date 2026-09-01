@@ -176,6 +176,7 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
+    "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
 )
 
 """
@@ -283,6 +284,7 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
+    "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
 )
 
 """
@@ -339,6 +341,7 @@ const PRIMITIVE_RESUMES_CACHE = Dict{String,Bool}(
     "reform_stuck_teams"          => false,
     "recover_stalled_teams"       => false,
     "force_advance_stuck_carrier" => false,
+    "reprice_agent_by_payload"    => false,
 )
 
 """

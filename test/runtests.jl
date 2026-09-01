@@ -387,10 +387,10 @@ end
 
     # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
-    #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 6** 이다(연언지 셋: harness·arity·kwargs).
-    #    `harness_args ⊆ {"env"}` 만 보면 15 가 집행 가능으로 표시되고, 나머지 9 는 호출
+    #  · 🔴 알파벳 20 중 **실제로 부를 수 있는 것은 7** 이다(연언지 셋: harness·arity·kwargs).
+    #    `harness_args ⊆ {"env"}` 만 보면 16 이 집행 가능으로 표시되고, 나머지 9 는 호출
     #    시점 `MethodError` 로 죽어 집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 =
-    #    거절보다 나쁜 거짓 admit. 이 게이트가 그 6 을 이름으로 못 박는다.
+    #    거절보다 나쁜 거짓 admit. 이 게이트가 그 7 을 이름으로 못 박는다.
     #  · 🔴 `zone_keys` 를 String 으로 넘기면 `Dict{Symbol,Ball2}` 소비자들이 조용히 걸러
     #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
     #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.

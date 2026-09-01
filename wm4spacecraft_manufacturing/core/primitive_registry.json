@@ -789,6 +789,35 @@
         "a_scope": 3.0
       },
       "source": "src/respec/replan.jl:1621"
+    },
+    {
+      "name": "reprice_agent_by_payload",
+      "surface": "env_param",
+      "params": {
+        "agent": {"type": "string", "description": "robot id whose candidate assignment edges are repriced"},
+        "light_bias": {"type": "number", "minimum": 0.0, "maximum": 4.0,
+                       "description": "how strongly heavier cargo is penalised for that robot; 0 disables the payload term"}
+      },
+      "mechanism": "Multiplies ONE robot's CANDIDATE assignment-edge costs by a factor that grows with the cargo mass the edge would carry, on top of the existing SoC-based multiplier (the SoC term is preserved byte-for-byte; the two multiply). The robot identity is read from the edge source; the cargo mass from the FormTransportUnit that follows the target slot. The factor is never below 1.0 -- a robot can be made more expensive, never cheaper -- and the feasible set is unchanged, so this cannot make the problem infeasible. Edges whose cargo cannot be measured keep factor 1.0. THIS IS INERT ON ITS OWN: it only changes weights that a MILP re-solve reads, and the only edges that carry these weights are the candidate edges that exist when pending assignments have been released; measured on this model, with no release there are zero such edges and this factor is evaluated zero times. There is no local undo: clearing the bias drops the hook but does not restore whatever plan the biased re-solve replaced.",
+      "when_to_use": "The load axis when a robot must stay in service but should carry less.",
+      "reversible": false,
+      "consumes": [],
+      "preconditions": [
+        "the battery fleet must be initialised (enable_battery!)",
+        "candidate assignment edges must exist for the weights to be read",
+        "a MILP re-solve must run after this call or it has no effect"
+      ],
+      "gate": null,
+      "gate_arity": null,
+      "impl": "reprice_agent_by_payload!",
+      "harness_args": ["env"],
+      "psi": {
+        "a_cost": 0.3, "a_intervenes": 1.0, "a_soft": 1.0, "a_restores_capacity": 0.0,
+        "a_relocates_work": 0.5, "a_spatial": 0.0, "a_consumes_spare": 0.0,
+        "a_reversible": 0.0, "a_scope": 1.0
+      },
+      "source": "src/navigator/payload_bias.jl",
+      "notes": "S2 spec 4. psi 아홉 축은 판단이지 유도가 아니다 — deprioritize_agent(같은 soft/env_param 계열)에 앵커했고 a_relocates_work 만 0.5 로 뒀다(일을 없애지 않고 옮긴다)."
     }
   ],
   "predicates": [

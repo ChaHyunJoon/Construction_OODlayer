@@ -33,4 +33,14 @@ end
         CB.PAYLOAD_BIAS[] = nothing
     end
 end
+
+@testset "알파벳이 이 원시를 해석하고 결선한다" begin
+    CB.include(joinpath(pkgdir(CB), "src", "respec", "minted_tool.jl"))
+    tbl = CB.PRIMITIVE_TABLE()
+    @test haskey(tbl, "reprice_agent_by_payload")
+    r = CB.resolve_primitive("reprice_agent_by_payload")
+    @test r.impl === CB.reprice_agent_by_payload!
+    @test r.harness_args == ["env"]
+    @test Set(keys(r.params)) == Set(["agent", "light_bias"])
+end
 end # module

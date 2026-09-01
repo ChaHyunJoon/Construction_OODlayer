@@ -11,7 +11,7 @@
 #   (6) `env` 가 있으면 위치인자로 들어간다.
 #   (7) 여러 원시가 하나의 params dict 을 나눠 갖는다 — 원시 단위 off-schema 거절 금지.
 #   (8) 그러나 **아무 원시도 모르는** 인자는 body 전체를 본 뒤 거절된다(조용히 안 버린다).
-#   (9) 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 6** 이고, 나머지는 **부르기 전에**
+#   (9) 🔴 알파벳 20 중 **실제로 부를 수 있는 것은 7** 이고, 나머지는 **부르기 전에**
 #       어느 연언지가 깨졌는지와 함께 거절된다.
 #  (10) 🔴 `zone_keys` 는 유도하지 않는다. 안 주면 키워드를 빼고, 주면 `Symbol` 로 강제해
 #       살아 있는 존인지 **호출 전에** 검사한다.
@@ -158,20 +158,21 @@ end
 # =============================================================================
 # (9) 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다**.
 #
-# 그 술어 하나만 보면 19 중 15 가 집행 가능으로 표시되는데(빈 `harness_args` 가 공짜로
-# 통과한다), 실제로 부를 수 있는 것은 6 뿐이다. 나머지 9 는 호출 시점 `MethodError` 로
+# 그 술어 하나만 보면 20 중 16 이 집행 가능으로 표시되는데(빈 `harness_args` 가 공짜로
+# 통과한다), 실제로 부를 수 있는 것은 7 뿐이다. 나머지 9 는 호출 시점 `MethodError` 로
 # 죽고 집행부의 `try` 가 그것을 `:admit`/`applied` 로 보고한다 = 거절보다 나쁜 거짓 admit.
-# 이 절이 그 6 을 **이름으로** 못 박는다 — 레지스트리 편집이 조용히 어휘를 좁히면 빨개진다.
+# 이 절이 그 7 을 **이름으로** 못 박는다 — 레지스트리 편집이 조용히 어휘를 좁히면 빨개진다.
 # =============================================================================
 const ENACTABLE_TODAY = sort(["force_advance_stuck_carrier", "recover_stalled_teams",
-                              "reform_stuck_teams", "resolve_schedule_wedge",
+                              "reform_stuck_teams", "reprice_agent_by_payload",
+                              "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
 
-@testset "(9) 알파벳 19 중 집행 가능은 6 이고, 나머지는 부르기 전에 거절된다" begin
+@testset "(9) 알파벳 20 중 집행 가능은 7 이고, 나머지는 부르기 전에 거절된다" begin
     tbl = CB.PRIMITIVE_TABLE()
-    @test length(tbl) == 19
+    @test length(tbl) == 20
     got = sort([n for n in keys(tbl) if CB.resolve_primitive(n).enactable])
-    @test got == ENACTABLE_TODAY               # 🔴 6/19. 넓어져도 좁아져도 빨개진다.
+    @test got == ENACTABLE_TODAY               # 🔴 20 중 7. 넓어져도 좁아져도 빨개진다.
 
     # 집행 불가는 **부르기 전에**, 어느 연언지가 깨졌는지와 함께 거절된다.
     #  · commit_respec  — harness 에 `milp`/`proposal` 이 있다(solve 없이는 공급 불가) → :harness
@@ -207,7 +208,7 @@ const ENACTABLE_TODAY = sort(["force_advance_stuck_carrier", "recover_stalled_te
         end
         CB._reset_primitive_table!()
     end
-    @test length(CB.PRIMITIVE_TABLE()) == 19   # 원래 레지스트리로 돌아왔다
+    @test length(CB.PRIMITIVE_TABLE()) == 20   # 원래 레지스트리로 돌아왔다
 end
 
 # =============================================================================
@@ -374,6 +375,7 @@ const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
     "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
     "release_pending_assignments" => ("release_pending_assignments!", ["faulted"]),
     "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
+    "reprice_agent_by_payload"    => ("reprice_agent_by_payload!", ["agent", "light_bias"]),
     "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
     "resolve_schedule_wedge"      => ("resolve_schedule_wedge!", String[]),
     "restage_all_blocked"         => ("restage_all_blocked!", ["zone_keys"]),
@@ -554,7 +556,7 @@ end
         end
         CB._reset_primitive_table!()
     end
-    @test length(CB.PRIMITIVE_TABLE()) == 19          # 원래 레지스트리로 돌아왔다
+    @test length(CB.PRIMITIVE_TABLE()) == 20          # 원래 레지스트리로 돌아왔다
 
     # ---- (13-g) 아무것도 안 부른 판의 resume 은 :none 이다 ---------------------------
     @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).resume === :none

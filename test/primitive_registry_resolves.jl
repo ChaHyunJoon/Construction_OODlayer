@@ -33,6 +33,15 @@ import JSON3
 using ConstructionBots
 const CB = ConstructionBots
 
+# 🔴 이 파일을 단독 실행하면 `reprice_agent_by_payload` 의 impl(`src/navigator/payload_bias.jl`)
+# 이 CB 심볼표에 없다 — 그 파일은 navigator 트리에서 런타임 `include` 로 들어온다. `Pkg.test()`
+# 안에서는 `runtests.jl:87` 이 이 include 를 먼저 밟아서 초록이지만, 그 초록의 색은 스위트
+# 순서에 기댄 것이지 이 파일 혼자서는 보장이 아니다(측정: 단독 실행 23 pass / 1 fail). 다른 세
+# minted 시험 파일(`minted_tool_resolves.jl:41`·`minted_tool_enacts.jl:80`·
+# `test_minted_wiring.jl:80`)과 같은 관용구로 가드를 건다.
+isdefined(CB, :BatteryTruth) ||
+    CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
+
 # `ACTION_REGISTRY` 와 같은 규약으로 경로를 갈아 끼울 수 있게 둔다. 이유는 편의가 아니라
 # **변이시험**이다: 이 게이트가 실제로 실패하는 것을 보려면 오염된 레지스트리 사본을 물려야
 # 하는데, 배포되는 파일을 편집해서 재는 것은 그 자체가 사고 경로다.
