@@ -579,7 +579,7 @@ def main():
     r.add_argument("--spares", type=int, default=3)
     # 2026-08-24 (판정 R-45): `--reform` / `--reform-max` 를 지웠다 — 파싱만 되고
     # 아무것도 안 하는 플래그가 정확히 제거 대상이다. 이제 주면 argparse 가 죽는다.
-    r.add_argument("--bsoc", type=float, default=0.9)
+    r.add_argument("--bsoc", type=float, default=0.96)
     r.add_argument("--sev-frac", type=float, default=0.5)
     r.add_argument("--dspy-url", default="http://127.0.0.1:8090")
     r.add_argument("--router", choices=["0", "1", "auto"], default="0",

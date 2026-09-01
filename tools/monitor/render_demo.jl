@@ -21,7 +21,7 @@ const HERE  = @__DIR__
 const MODEL = get(ENV, "DEMO_MODEL", "tractor.mpd")
 const OODC  = lowercase(get(ENV, "DEMO_OOD", "fault"))
 # battery OOD 의 SoC 낙폭. run_demo.jl 과 **같은 이름·같은 기본값**이어야 한다(두 엔진이 같은
-# 손잡이를 읽어야 같은 세계를 만든다). 0.9=심각, 0.45 정도면 정책이 갈리는 애매한 구간.
+# 손잡이를 읽어야 같은 세계를 만든다). 0.96=심각, 0.45 정도면 정책이 갈리는 애매한 구간.
 const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.96")), 0.05, 0.99) catch; 0.96 end
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
 # ---------------------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # 
 #   DEMO_SEED=k>1       다른 추첨 -> streams/…_sk.jsonl 로 따로 캐시된다.
 #   DEMO_SEED=0         옛 고정 슬롯 스케줄(재현용) -> …_s0.jsonl
 #
-# severity 는 추첨하지 않는다: ① Battery=심각(0.9) / ⑦ Battery(mild)=애매(0.45) 라는 케이스의 의미가
+# severity 는 추첨하지 않는다: ① Battery=심각(0.96) / ⑦ Battery(mild)=애매(0.45) 라는 케이스의 의미가
 # 무작위 심각도에 씻겨나가면 안 되기 때문. 심각도까지 추첨하려면 DEMO_BSEVERE_FRAC>0 을 준다.
 # ---------------------------------------------------------------------------------------------
 const DEMO_SEED = try max(0, parse(Int, get(ENV, "DEMO_SEED", "1"))) catch; 1 end
@@ -1080,7 +1080,7 @@ pre = function (env)
                 # avoids creating a hidden second zone that could block compound Break+Zone construction.
                 CB.schedule_ood_at_closed!(at, CB.fault_action(; safe = true, obstacle = false))
             elseif kind === :battery
-                # soc_drop 은 DEMO_BSOC 로 조절한다(기본 0.9 = 심각 -> 규칙이 ReplaceAgent 를 냄).
+                # soc_drop 은 DEMO_BSOC 로 조절한다(기본 0.96 = 심각 -> 규칙이 ReplaceAgent 를 냄).
                 # 0.45 정도면 애매한 구간이 되어 정책마다 답이 갈린다(대시보드 ⑦ Battery (mild)).
                 CB.schedule_ood_at_closed!(at, CB.battery_action(soc_drop = DEMO_BSOC))
             end

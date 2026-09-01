@@ -96,11 +96,14 @@ end
     @test routing_kind("BatteryTruth", 0.0)                       == "battery"
 
     # 🔴 **severe 데모가 known 쪽에 떨어지는가.** `inject_battery_fault!` 는
-    #    `soc_after = max(floor_soc=0.0, soc_at_fire - soc_drop)` 이고 `DEMO_BSOC=0.9` 다.
-    #    최악의 경우(만충 1.0)를 여기서 그대로 계산한다 — 손으로 "≈0.1" 이라고 적어 두면
-    #    부동소수점이 어느 쪽으로 떨어지는지 아무도 모른다(1.0-0.9 = 0.09999999999999998).
+    #    `soc_after = max(floor_soc=0.0, soc_at_fire - soc_drop)` 이고, 2026-08-31 부터 이
+    #    데모의 값은 `DEMO_BSOC=0.96` 이다(옛 0.9 는 정지 임계가 0.05 로 내려가면서 여유가
+    #    6e-4 로 얇아져 "확실히 정지한다"는 논증이 깨졌었다 — task-3-report.md, `lane_select.jl`
+    #    ROUTING_SEVERE_SOC 주석 참고).
+    #    최악의 경우(만충 1.0)를 여기서 그대로 계산한다 — 손으로 "≈0.04" 라고 적어 두면
+    #    부동소수점이 어느 쪽으로 떨어지는지 아무도 모른다(1.0-0.96 = 0.040000000000000036).
     for soc_at_fire in (1.0, 0.999, 0.95, 0.9)
-        @test routing_kind("BatteryTruth", max(0.0, soc_at_fire - 0.9)) == "battery"
+        @test routing_kind("BatteryTruth", max(0.0, soc_at_fire - 0.96)) == "battery"
     end
     # mild 데모(DEMO_BSOC=0.45)는 반대쪽이다.
     for soc_at_fire in (1.0, 0.999, 0.95)

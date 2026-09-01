@@ -27,7 +27,7 @@ const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 include(joinpath(REPO, "tools", "monitor", "policy.jl"))          # 실행 레인 + ActionRegistry
 
-const THR = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+const THR = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
 
 "실행 레인의 메뉴(이름)."
 live_menu(soc) = begin

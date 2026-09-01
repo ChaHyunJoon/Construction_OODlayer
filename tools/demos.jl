@@ -1387,9 +1387,11 @@ GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 # (같은 상태의 자매 자리 — 전부 그대로 둔 것이다:
 #  `grep -n 'ENV, "SHRINK"' tools/demos.jl` 의 나머지 두 곳, 그리고
 #  `wm4spacecraft_manufacturing/oracle/probe_fire_points.jl` 의 `DS_SHRINK` 기본값 200.0.)
-# STALL_SOC 0.15 는 여전히 라벨러의 `DS_STALL` 기본값과 같다.
+# 🔴 2026-08-31 (S1/T3 fix round 1): STALL_SOC 기본값 0.15 -> 0.05. deep 경계가 0.2 -> 0.1 로
+# 내려가면서 stall(0.15) > deep(0.1) 로 역전돼 있었다 — `test/soc_ladder_is_coherent.jl` (2)
+# 가 막는 바로 그 역전이다. 이제 라벨러의 `DS_STALL` 기본값(0.05)과 다시 같다.
 SHRINK     = parse(Float64, get(ENV, "SHRINK", "200.0"))    # 라벨러(DS_SHRINK=1.0)와 다르다 — 위 참조
-STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.15"))  # == DS_STALL (여전히 일치)
+STALL_SOC  = parse(Float64, get(ENV, "STALL_SOC", "0.05"))  # == DS_STALL (다시 일치)
 OPEN_ANIM  = get(ENV, "OPEN_ANIM", "1") == "1"
 SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SIDEBAR_W  = parse(Int, get(ENV, "SIDEBAR_W", "380"))

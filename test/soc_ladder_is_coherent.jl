@@ -109,32 +109,92 @@ end
     end
 end
 
-@testset "(6) REPLACE_SOC_THRESHOLD 폴백 리터럴이 진실원과 같다" begin
-    # `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X` 류(그리고 `try ... catch; X end` 류) 폴백이
-    # navigator.jl 이 include 되지 않은 경로에서 X 를 조용히 쓴다. X 가 DEEP 과 갈리면 그 경로만
-    # 옛 사다리에 남는다 — 에러 없이. 2026-08-31 (S1/T3) 실측: 여섯 곳 모두 리터럴 0.2 였다.
-    local fallback_re = r"REPLACE_SOC_THRESHOLD\[\]\s*:\s*([0-9]*\.?[0-9]+)|REPLACE_SOC_THRESHOLD\[\]\)\s*catch;\s*([0-9]*\.?[0-9]+)\s*end"
-    local fallback_files = [
-        "src/respec/replace_robot.jl",
-        "src/navigator/battery.jl",
-        "src/smdp/hazard.jl",
-        "tools/monitor/policy.jl",
-        "wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl",
-    ]
-    local total_sites = 0
-    for f in fallback_files
-        local src_text = read(joinpath(REPO, f), String)
-        local matches = collect(eachmatch(fallback_re, src_text))
-        @test length(matches) >= 1
-        for m in matches
-            local lit = m.captures[1] === nothing ? m.captures[2] : m.captures[1]
-            @test parse(Float64, lit) == DEEP
-            total_sites += 1
+# 폴백 정규식 — REPLACE_SOC_THRESHOLD 를 못 읽을 때 쓰는 리터럴을 두 형태로 잡는다:
+#   `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X`   그리고   `try ... catch; X end`
+# 모듈 스코프 상수로 둔 이유: 아래에서 스캐너 자신에게도 적용해 자기지시(self-match) 여부를
+# 확인해야 하고(테스트 (6b)), 스캔 함수와 어서션 양쪽이 같은 패턴을 공유해야 "찾은 것과 잰
+# 것이 같은 정규식"이라고 말할 수 있다.
+const FALLBACK_RE = Regex(
+    "REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*([0-9]*\\.?[0-9]+)" *
+    "|REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*([0-9]*\\.?[0-9]+)\\s*end")
+
+"REPO 아래 `dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다.
+반환: (path, 캡처된 리터럴 문자열) 쌍의 벡터. 하드코딩한 파일 목록에 기대지 않는다 —
+그래야 새로 생긴 폴백 자리도 잡는다(2026-08-31 fix round 1, I-2)."
+function scan_fallback_sites(dirs, re)
+    local hits = Tuple{String,String}[]
+    for d in dirs
+        local root = joinpath(REPO, d)
+        isdir(root) || continue
+        for (dirpath, _, files) in walkdir(root)
+            for fn in files
+                endswith(fn, ".jl") || continue
+                local fpath = joinpath(dirpath, fn)
+                local text = read(fpath, String)
+                for m in eachmatch(re, text)
+                    # 캡처 그룹이 없는 정규식으로 부를 수도 있다((6b)의 "아무것도 안 잡아야
+                    # 하는" 마커가 그렇다) — 그때는 매치 전체 문자열을 리터럴로 쓴다.
+                    local lit = isempty(m.captures) ? m.match :
+                                (m.captures[1] === nothing ? m.captures[2] : m.captures[1])
+                    push!(hits, (relpath(fpath, REPO), lit))
+                end
+            end
         end
     end
-    # 여섯 폴백 자리 전부를 봤는가 — 하나라도 빠지면(파일 경로가 바뀌거나 패턴이 안 맞으면)
-    # 이 카운트가 먼저 샌다.
-    @test total_sites == 6
+    return hits
+end
+
+@testset "(6) REPLACE_SOC_THRESHOLD 폴백 리터럴이 진실원과 같다 (발견형)" begin
+    # 🔴 2026-08-31 fix round 1 (I-2): 예전 버전은 파일 목록 다섯 개를 하드코딩했다 —
+    # `test/battery_ladder_is_deep_only.jl` · `test/battery_menu_lanes_agree.jl` 이 각각
+    # `catch; 0.2 end` 폴백을 갖고 있었는데도 목록에 없어서 스캔이 안 됐고, `total_sites == 6`
+    # 이 그 틀린 개수를 굳혔다. 리뷰어가 새 폴백 파일을 심었는데도 6/6 그린이었다 — 저자가
+    # 이미 아는 자리만 보는 게이트는 "단일 진실원" 보장이 아니다. 이제 파일 목록을 아예 없애고
+    # src/·tools/·test/·wm4spacecraft_manufacturing/ 를 직접 훑는다.
+    local hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), FALLBACK_RE)
+    # 🔴 스캐너가 하나도 못 찾으면 "패턴이 텅 비어도 통과하는" 실패할 수 없는 게이트가 된다
+    # (I-2 의 경고 그대로) — 그래서 발견 개수 자체를 셈한다.
+    @test length(hits) > 0
+    for (path, lit) in hits
+        @test parse(Float64, lit) == DEEP
+    end
+    # 2026-08-31 fix round 1 실측: 여덟 곳(src 셋 + tools 하나 + wm4 둘 + test 둘).
+    # 이 숫자는 어서션이 아니라 진단용 출력이다 — 스캐너가 목록을 강제하면 I-2 가 도로 난다.
+    println("    [진단] REPLACE_SOC_THRESHOLD 폴백 자리 ", length(hits), "곳: ",
+            join(["$(p)=$(l)" for (p, l) in hits], ", "))
+end
+
+@testset "(6b) 스캐너 자기증명 — 두 방향" begin
+    # 방향 1: 패턴이 아무것도 안 잡으면 빨개져야 한다(실패할 수 없는 게이트 방지, I-2).
+    # 존재하지 않을 패턴으로 스캔해서 직접 확인한다.
+    # 마커도 쪼개 이어붙인다 — 통짜 리터럴로 쓰면 이 정규식의 "정의 자체"가 test/ 스캔 대상인
+    # 이 파일 소스 안에서 자기 자신과 매치돼(위 (6) 수정 때 밟은 것과 같은 함정) "아무것도 안
+    # 잡는 패턴"을 만들려던 의도가 깨진다.
+    local nothing_marker = "THIS_PATTERN" * "_MATCHES_NOTHING_" * "2026_08_31_FIX_ROUND_1"
+    local nothing_re = Regex(nothing_marker)
+    local empty_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), nothing_re)
+    @test isempty(empty_hits)
+    # 방향 2: 새 자리를 실제로 심으면 스캐너가 잡아야 한다 — 임시 파일로 증명한다(흔적 없이
+    # try/finally 로 지운다).
+    local planted = joinpath(REPO, "test", "_tmp_i2_planted_fallback.jl")
+    try
+        # 문자열을 쪼개 이어붙인다 — 통짜 리터럴로 쓰면 **이 게이트 파일 자신의 소스**에
+        # 폴백 패턴과 그대로 맞아떨어지는 부분문자열이 나타나서, 위 (6) 이 test/ 를 훑을 때
+        # 이 파일 자신을 아홉 번째 자리로 잘못 집는다(2026-08-31 fix round 1 중 실측: 자기지시로
+        # (6) 이 빨개졌었다 — 첫 시도는 코드만 쪼개고 이 설명 주석 자체에 그 부분문자열을 다시
+        # 써 넣는 바람에 또 걸렸다. 그래서 이 주석도 그 문자열을 통짜로 인용하지 않는다).
+        local sym = ":REPLACE_SOC_THRESHOLD"
+        local ref = "REPLACE_SOC_THRESHOLD" * "[]"
+        write(planted, "thr = isdefined(@__MODULE__, $(sym)) ? $(ref) : 0.2\n")
+        local planted_hits = scan_fallback_sites(("test",), FALLBACK_RE)
+        @test any(p -> p == "test/_tmp_i2_planted_fallback.jl", first.(planted_hits))
+        # 심은 값(0.2)은 DEEP(0.1)과 다르므로, 실제 (6) 어서션 로직을 그대로 이 hit 에 적용하면
+        # 빨개져야 한다 — 그것이 이 전체 방향의 요점이다.
+        local this_hit = only(filter(h -> h[1] == "test/_tmp_i2_planted_fallback.jl", planted_hits))
+        @test parse(Float64, this_hit[2]) != DEEP   # 심은 자리는 DEEP 과 달라야 발견의 의미가 있다
+    finally
+        isfile(planted) && rm(planted)
+    end
 end
 
 end # module

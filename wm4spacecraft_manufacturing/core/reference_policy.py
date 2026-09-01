@@ -226,9 +226,11 @@ def reference_action(ev):
             # 않았다 -- SoC 0.02 에서만 테스트됐고 거기서도 미완주).
             return ("SwapBattery" if "SwapBattery" in valid else "Replace"), "battery", \
                    "deep discharge (SoC<=%.2f): restore charge, cheapest/fastest restoring arm" % BATTERY_DEEP_SOC
-        # SoC > BATTERY_DEEP_SOC(현재 0.2)는 이 격자가 테스트한 사다리 안에서도 채점 근거가
-        # 없는 구간이다(0.2 로 내리면서 n44_plus78_d20 사다리의 0.30·0.50 rung 이 이 가지로
-        # 밀려났다 -- 위 BATTERY_DEEP_SOC 대입부의 대가 주석 참고). 근거가 없는 구간에서 NOOP 을
+        # SoC > BATTERY_DEEP_SOC(2026-08-31 이후 현재 0.1)는 이 격자가 테스트한 사다리 안에서도
+        # 채점 근거가 없는 구간이다(2026-08-24 에 0.5->0.2 로 내리면서 n44_plus78_d20 사다리의
+        # 0.30·0.50 rung 이 이 가지로 밀려났다 -- 위 BATTERY_DEEP_SOC 대입부의 대가 주석 참고;
+        # 그 뒤 2026-08-31 에 REPLACE_SOC_THRESHOLD 사다리 이동으로 0.2->0.1 이 됐다). 근거가
+        # 없는 구간에서 NOOP 을
         # 정답이라고 채점하면 없는 정답을 지어내는 것이 된다 -- 아래 reform 축과 **같은 이유로
         # 채점하지 않는다**(unscored).
         # 🔴 2026-08-25 정정(최종 브랜치 리뷰 F2): 여기 있던 "지금 커밋된 라벨의 BatteryTruth 는

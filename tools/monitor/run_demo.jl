@@ -21,7 +21,7 @@
 #   DEMO_OOD     none|battery|fault|zone|fault_battery|fault_zone|battery_zone (기본 fault)
 #   DEMO_ROBOTS  로봇 수 (기본 10)
 #   DEMO_POLICY  canonical|dspy (기본 canonical)
-#   DEMO_BSOC    battery OOD 의 SoC 낙폭 (기본 0.9=심각). 낮추면 애매한 구간이 되어 두 정책이 갈린다.
+#   DEMO_BSOC    battery OOD 의 SoC 낙폭 (기본 0.96=심각). 낮추면 애매한 구간이 되어 두 정책이 갈린다.
 #   DSPY_URL     DSPy producer 주소 (기본 http://127.0.0.1:8077)
 #   MONITOR_STREAM  출력 경로 (미지정 시 streams/<model>__<case>.jsonl)
 #   DEMO_SEED    **world** = 로봇 초기 배치 (기본 1). 같은 공장/같은 제품이면 고정해서 쓴다.
@@ -45,7 +45,7 @@ const HERE   = @__DIR__
 const MODEL  = get(ENV, "DEMO_MODEL", "tractor.mpd")
 const OODC   = lowercase(get(ENV, "DEMO_OOD", "fault"))
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
-# battery OOD 의 severity 손잡이(떨어뜨릴 SoC 양). 0.9=심각(교체가 정답), 0.45 정도면 애매한 구간.
+# battery OOD 의 severity 손잡이(떨어뜨릴 SoC 양). 0.96=심각(교체가 정답), 0.45 정도면 애매한 구간.
 const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.96")), 0.05, 0.99) catch; 0.96 end
 # 무진전 몇 스텝마다 "팀 교착" 사건을 결정 레이어에 올릴지. 0=끔(기존 데모 재현 그대로).
 # 오라클 생성기의 DS_REFORM(기본 120)에 대응한다 — 데모에는 그동안 이 장치가 아예 없었다.
@@ -763,7 +763,7 @@ let kinds = case_kinds(OODC), slots = [0.10, 0.32, 0.55]
             # 빌드 도중 발화. 여기가 기존 :zone 분기(시작 전 1회)와 갈리는 지점.
             CB.schedule_ood_at_closed!(at, e -> inject_core_zone!(e))
         elseif kind === :battery
-            # soc_drop 은 DEMO_BSOC 로 조절 가능(기본 0.9 = 심각 → 규칙이 ReplaceAgent 를 냄).
+            # soc_drop 은 DEMO_BSOC 로 조절 가능(기본 0.96 = 심각 → 규칙이 ReplaceAgent 를 냄).
             # 낮추면(예: 0.45) 가벼운 열화가 되어 **규칙과 LLM 의 답이 갈리는** 장면을 만들 수 있다:
             # 규칙은 임계값만 보고 Deprioritize, DSPy 는 상태를 읽고 NOOP(개입 비용이 회수 안 됨)을 고르는 식.
             CB.schedule_ood_at_closed!(at, CB.battery_action(soc_drop = DEMO_BSOC))
