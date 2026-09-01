@@ -1945,12 +1945,17 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    없다" 가 아니라 **"세대가 다르다"** 로 읽을 수 있어야 하고, 키를 통째로 없애면
     #    옛 녹화를 읽는 코드가 `KeyError` 로 죽는 것과 구별이 안 된다.
     #    ⚠️ dspy 레인이 실제로 집행된 사건에서는 `llm_macro == chosen` 이므로 값이 있다.
+    # 🔴 fix round 1 (controller): s2_after_release_candidates 는 `_f`(위에서 이미 계산한
+    #    ood_features 결과)에서 재사용한다 -- release_then_candidates 를 여기서 다시 부르면
+    #    결정마다 deepcopy+formulate_milp 가 세 번째로 도는 셈이라 안 된다. 삼상 규약: 못 쟀으면
+    #    (키가 없으면) nothing 을 낸다 -- 0 으로 접지 않는다(아래 run_demo.jl 쪽에서도 같은 규약).
     return (macro_name = chosen, candidates = cands, policies = pol, enacted = enacted,
             policy = pol[enacted]["label"], rule_macro = pol["canonical"]["chosen"],
             llm_macro = (haskey(pol, "dspy") ? pol["dspy"]["chosen"] : nothing),
             verdict = verdict, router = rt,
             narrative = narrative, tool_lane = tool_lane, synth_lane = synth_lane,
-            detail = pol[enacted]["rationale"], agree = nothing)
+            detail = pol[enacted]["rationale"], agree = nothing,
+            s2_after_release_candidates = get(_f, "s2_after_release_candidates", nothing))
 end
 
 

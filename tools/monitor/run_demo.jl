@@ -430,6 +430,11 @@ function handle_ood!(env, truth, nl)
         # 뭉뚱그리면 낮은 커버리지가 "알고리즘이 판단을 보류했다" 로 오독된다.
         "dp_miss"  => (try get(decision.policies["dp"], "dp_miss", nothing) catch; nothing end),
         "nl"       => String(nl))
+    # 🔴 fix round 1 (controller, G-3): S2 창(release 뒤 후보 배정 간선 수)을 결정 행에
+    #    싣는다. 삼상 규약 -- `decision.s2_after_release_candidates` 가 `nothing`(못 쟀다)이면
+    #    키를 아예 안 싣는다; 0(창이 닫혔다)과 못 쟀다를 절대 같은 값으로 접지 않는다.
+    local _s2w = (try decision.s2_after_release_candidates catch; nothing end)
+    _s2w === nothing || (this_decision["s2_after_release_candidates"] = _s2w)
     push!(_DECISIONS, this_decision)
     # ---- 집행 (2026-08-29, Plan B / T2·T3·T5 + 수정 라운드 항목 0) ----------------------
     # 🔴 **집행부는 `tools/monitor/enact.jl` 의 `enact_decision!` 이다 — 이 파일에는 이 두 줄
