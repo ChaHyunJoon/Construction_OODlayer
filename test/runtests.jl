@@ -331,6 +331,12 @@ end
         include("zone_harm_is_blockage.jl")
     end
 
+    # 2026-08-31 (S1/T2): battery 사건이 payload/함대 사실을 싣는가. 🔴 이 게이트는 함대 절만
+    # 잰다 — 운반 작업 순회는 진짜 env 가 필요하므로 여기 없다(파일 머리말이 그 경계를 적는다).
+    @testset "battery load features" begin
+        include("battery_load_features.jl")
+    end
+
     # 🔴 2026-08-25: `DS_BSOC` 기본 사다리의 모든 칸이 채점 가능한 deep 구간인가(= 팔을 비교할 수
     # 있는가). mild 칸이 다시 들어오면 대조가 0인 행이 생기고, 칸이 하나로 줄면 2026-08-05 에
     # 고친 "심각도 축이 점 하나" 결함이 재현된다 — 두 어서션이 각각 그 둘을 막는다.

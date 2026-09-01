@@ -14,6 +14,7 @@
 # ENV: DEMO_POLICY(canonical|noop|oracle|surrogate|dspy) · DSPY_URL · DEMO_ALL_POLICIES(0 이면 비교값 수집 생략)
 # =============================================================================
 import HTTP, JSON3
+using Graphs
 
 const POLICY   = lowercase(get(ENV, "DEMO_POLICY", "canonical"))
 const DSPY_URL = rstrip(get(ENV, "DSPY_URL", "http://127.0.0.1:8077"), '/')
@@ -127,6 +128,49 @@ function _agent_pending(env, agent)
     return n
 end
 
+# 함대 SoC 통계만. 세계를 안 보므로 단위검사가 된다(`test/battery_load_features.jl`).
+# 🔴 배터리 레이어가 꺼져 있으면 **빈 Dict** 다 — 0 으로 접지 않는다. "재 봤더니 0" 과
+#    "안 쟀다" 는 다른 사건이고, 0 을 실으면 프롬프트가 모델에게 거짓말을 한다.
+function _battery_fleet_features(agent)
+    d = Dict{String,Any}()
+    local fleet = try CB.BATTERY_FLEET[] catch; nothing end
+    (fleet === nothing || isempty(fleet.soc)) && return d
+    local socs = collect(Float64, values(fleet.soc))
+    local s = sort(socs); local n = length(s)
+    d["battery_fleet_soc_median"] = isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2
+    local mine = get(fleet.soc, agent, nothing)
+    mine === nothing || (d["battery_higher_soc_robots"] = count(>(Float64(mine)), socs))
+    return d
+end
+
+# 이 로봇이 아직 맡고 있는 운반 작업의 화물 질량. 순회는 `_agent_pending` 과 **같다** —
+# 그 함수가 이미 "미완 RobotGo 중 후속이 FormTransportUnit 인 것"을 세므로, 여기서는 같은
+# 후속 노드에 `_payload_mass` 를 걸기만 한다(추가 계산 없음).
+# 🔴 `_payload_mass` 의 가드가 받는 셋 중 하나가 `FormTransportUnit` 이다 — 그래서 후속
+#    노드를 넘긴다. `RobotGo` 를 넘기면 가드에 걸려 조용히 0.0 이 된다.
+function _battery_load_features(env, agent)
+    d = Dict{String,Any}()
+    agent === nothing && return merge(d, _battery_fleet_features(agent))
+    local sched = env.sched
+    local p = CB.BatteryParams()
+    local masses = Float64[]
+    for v in Graphs.vertices(sched)
+        local node = CB.get_node_from_id(sched, CB.get_vtx_id(sched, v))
+        (node isa CB.RobotGo && CB.bound_to_agent(node, agent)) || continue
+        v in env.cache.closed_set && continue
+        local outs = Graphs.outneighbors(sched, v); isempty(outs) && continue
+        local succ = CB.get_node_from_id(sched, CB.get_vtx_id(sched, outs[1]))
+        succ isa CB.FormTransportUnit || continue
+        push!(masses, try Float64(CB._payload_mass(env, succ, p)) catch; 0.0 end)
+    end
+    if !isempty(masses)
+        d["battery_pending_transports"] = length(masses)
+        d["battery_payload_max_kg"]     = maximum(masses)
+        d["battery_payload_total_kg"]   = sum(masses)
+    end
+    return merge(d, _battery_fleet_features(agent))
+end
+
 # zone 이 "아직 안 끝난" staging 원을 얼마나 덮는지(0~1) = zone 의 진짜 severity.
 function _zone_overlap(env, zkey)
     z = try CB.RESTRICTION_ZONES[][zkey] catch; nothing end
@@ -182,6 +226,8 @@ function ood_features(env, truth)
     )
     if truth isa CB.BatteryTruth
         d["soc"] = Float64(truth.soc_after); d["severity"] = Float64(truth.soc_after)
+        # 2026-08-31 (S1/T2): 적재/함대 사실. 값이 없으면 키가 아예 안 생긴다.
+        merge!(d, _battery_load_features(env, agent))
     elseif truth isa CB.ZoneTruth
         local ov = _zone_overlap(env, truth.zone)
         d["zone_overlap"] = ov; d["severity"] = ov

@@ -564,6 +564,18 @@ class MacroRequest(BaseModel):
     zone_agent_trapped: Optional[int] = None       # 구역 안에 주차된 이동체 수
     zone_nav_downstream: Optional[int] = None      # 막힌 노드 뒤에 걸려 함께 얼어붙는 미완 작업 수
     zone_unfinished_total: Optional[int] = None    # 그 비교 분모(전체 미완 노드 수)
+
+    # ---- battery 적재/함대 상태 (2026-08-31, S1/T2) ------------------------------------
+    # 🔴 왜. 2026-08-30 실측: battery_mild 사건의 프롬프트에 payload 질량이 한 글자도 없어
+    #    "낮은 SoC 로봇이 무거운 짐을 맡으면 SoC 가 더 빨리 떨어진다"는 추론이 원리적으로
+    #    불가능했다. 여기 있는 것은 전부 **사실**이고 판정은 하나도 없다.
+    # ⚠️ 다섯이 함께 오지 않는다: 배터리 레이어가 꺼져 있으면 SoC 셋이 빠지고, 그 로봇에
+    #    미완 운반 작업이 없으면 payload 둘이 빠진다. `_battery_block` 이 키마다 거른다.
+    battery_pending_transports: Optional[int] = None    # 이 로봇이 아직 맡고 있는 운반 작업 수
+    battery_payload_max_kg: Optional[float] = None      # 그중 가장 무거운 화물의 질량
+    battery_payload_total_kg: Optional[float] = None    # 그 작업들의 화물 질량 합
+    battery_fleet_soc_median: Optional[float] = None    # 함대 SoC 의 중앙값
+    battery_higher_soc_robots: Optional[int] = None     # 이 로봇보다 SoC 가 높은 활성 로봇 수
     # valid : 호출자가 **세계를 보고** 계산한 legal 매크로 목록(2026-08-05 추가).
     #   kind 만으로 정하면 전제조건이 있는 팔(구 어휘의 ForbidZone: 아직 시작 안 한 조립체만 옮길 수
     #   있음)을 "언제나 불법" 또는 "언제나 합법" 중 하나로만 둘 수 있다. 둘 다 틀린다 — 전자는 실행
@@ -871,12 +883,13 @@ def _llm_input(r: MacroRequest) -> str:
     nl 이 없으면 예전 동작(_state_line)으로 폴백한다 -- 이 파일을 갱신하는 것만으로
     기존 호출자가 깨지지 않게.
 
-    🔴 블록 함수(`_geometry_block`·`_zones_block`·`_unfamiliar_block`)는 **두 반환 경로 모두**에
-    붙는다. 한쪽만 붙이면 그 사실이 옛 호출자(nl 없는 요청)의 프롬프트에서 조용히 사라진다 —
-    그리고 그 누락은 문자열이 짧아진 것 말고는 아무 증상도 안 낸다.
+    🔴 블록 함수(`_geometry_block`·`_zones_block`·`_battery_block`·`_unfamiliar_block`)는
+    **두 반환 경로 모두**에 붙는다. 한쪽만 붙이면 그 사실이 옛 호출자(nl 없는 요청)의
+    프롬프트에서 조용히 사라진다 — 그리고 그 누락은 문자열이 짧아진 것 말고는 아무 증상도 안 낸다.
     """
     if not (r.nl and r.nl.strip()):
-        return _state_line(r) + _geometry_block(r) + _zones_block(r) + _unfamiliar_block(r)
+        return (_state_line(r) + _geometry_block(r) + _zones_block(r)
+                + _battery_block(r) + _unfamiliar_block(r))
     lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip(), getattr(r, "nl_mode", None))]
     if r.descriptors and len(r.descriptors) == len(DESCRIPTOR_NAMES):
         lines += ["",
@@ -884,7 +897,8 @@ def _llm_input(r: MacroRequest) -> str:
                   "each is in [0,1] and means the same thing for any kind of disruption):"]
         for name, v in zip(DESCRIPTOR_NAMES, r.descriptors):
             lines.append("  %-18s = %.2f   (%s)" % (name, float(v), DESCRIPTOR_DOC[name]))
-    return "\n".join(lines) + _geometry_block(r) + _zones_block(r) + _unfamiliar_block(r)
+    return ("\n".join(lines) + _geometry_block(r) + _zones_block(r)
+            + _battery_block(r) + _unfamiliar_block(r))
 
 
 # 각 원시값이 무엇인지 -- 값만 주면 모델이 뜻을 지어낸다. 설명은 **사실**만 적고
@@ -1012,6 +1026,52 @@ def _zones_block(r: "MacroRequest") -> str:
             out.append("    root_goals_inside = %s   (delivery goals of the ROOT assembly lie "
                        "inside this disc)" % ("yes" if z["covers_root"] else "no"))
     return "\n".join(out) if len(out) > 2 else ""
+
+
+# ---- 2026-08-31 (S1/T2): battery 사건의 적재/함대 사실 블록 ---------------------------------
+# 규약은 위 `_zones_block` 과 **정확히 같다** — 조건이 아니면 빈 문자열을 낸다. 그래야
+# 비-battery 사건(과 이 필드를 안 싣는 옛 호출자)의 프롬프트가 바이트 단위로 예전과 같다.
+#
+# 🔴 **사실만 적는다.** "더 높은 SoC 로봇에게 넘겨라" 로 번역하지 않는다 — 그것은 오라클의
+#    판정이고, 적는 순간 재는 것이 추론이 아니라 프롬프트 준수가 된다(spec §6-2). 같은 이유로
+#    `_GEOM_COVERAGE` 도 `covers_root` 를 "빌드를 옮겨라" 로 안 적는다.
+_BAT_LOAD = [
+    ("battery_pending_transports", "pending_transports",
+     "unfinished transport jobs this robot is committed to"),
+    ("battery_payload_max_kg", "heaviest_payload_kg",
+     "mass of the heaviest cargo among them"),
+    ("battery_payload_total_kg", "total_payload_kg",
+     "sum of cargo mass over those jobs"),
+]
+# 🔴 `soc` 는 **여기 없다.** battery 사건이면 그 필드가 언제나 실려 있어서, 이 목록에 넣으면
+#    "값이 하나도 없으면 빈 문자열" 규약이 깨진다(블록이 항상 렌더된다). `soc` 는 아래에서
+#    함대 절이 실제로 생길 때만 **머리 줄로** 붙인다 — 비교 대상(중앙값)이 있어야 뜻이 있는 값이다.
+_BAT_FLEET = [
+    ("battery_fleet_soc_median", "fleet_soc_median",
+     "median charge across the robots the monitor is accounting for"),
+    ("battery_higher_soc_robots", "robots_with_higher_soc",
+     "active robots whose charge is above this robot's"),
+]
+
+
+def _battery_block(r: "MacroRequest") -> str:
+    load = _rows(r, _BAT_LOAD)
+    fleet = _rows(r, _BAT_FLEET)
+    if not load and not fleet:
+        return ""
+    out = []
+    if load:
+        out += ["", "THIS ROBOT'S REMAINING TRANSPORT LOAD (measured):"]
+        for lbl, v, doc in load:
+            out.append("  %-22s = %-6s (%s)" % (lbl, v, doc))
+    if fleet:
+        out += ["", "FLEET STATE OF CHARGE (measured):"]
+        if getattr(r, "soc", None) is not None:
+            out.append("  %-22s = %-6s (%s)"
+                       % ("this_robot_soc", r.soc, "this robot's remaining charge"))
+        for lbl, v, doc in fleet:
+            out.append("  %-22s = %-6s (%s)" % (lbl, v, doc))
+    return "\n".join(out)
 
 
 # ---- 2026-08-29 (§A-1): 라우터의 낯섦 판정을 프롬프트에 싣는다 -------------------------------
