@@ -160,9 +160,13 @@ soc_after  routing_kind            menu
 ```
 
 **(0.1, 0.2] 구간은 LLM 레인으로 가면서 개입 팔을 다 갖는다** — 그 구간에서 합성 레인은
-구조적으로 절대 발화하지 않는다. 두 임계를 함께 보는 게이트는 레포에 **0개**다:
-`test_lane_select.jl` 은 `REPLACE_SOC_THRESHOLD`/`battery_arms` 를 0회 언급하고,
-`test/mild_menu_is_noop_only.jl` 은 `ROUTING_SEVERE_SOC`/`routing_kind` 를 0회 언급한다.
+구조적으로 절대 발화하지 않는다. 두 임계를 함께 보는 게이트는 레포에 **0개**였다(이 설계
+당시 실측): `test_lane_select.jl` 은 `REPLACE_SOC_THRESHOLD`/`battery_arms` 를 0회 언급하고,
+그 시절의 `test/mild_menu_is_noop_only.jl` 은 `ROUTING_SEVERE_SOC`/`routing_kind` 를 0회
+언급했다. (그 격차가 `test/soc_ladder_is_coherent.jl` 을 낳았다. 🔴 `mild_menu_is_noop_only.jl`
+자체는 2026-08-31 뒤이은 정리로 지워졌다 — mild 가 NOOP-only 라는 전제를 사용자가 의도적으로
+뒤집을 예정이었기 때문이고, 그 파일이 지키던 명제 중 미기록 soc 를 다루던 것만
+`battery_menu_lanes_agree.jl` 로 옮겨졌다.)
 
 세 번째 임계도 갈라져 있다: `DEMO_STALL_SOC` 기본값이 **0.15**(`run_demo.jl`·`render_demo.jl`
 두 곳의 리터럴)이다. 오늘은 stall(≤0.15) ⊂ deep(≤0.2) 이라 정합적이다.
@@ -443,8 +447,11 @@ C5 를 움직여 푼다:
 | 임계 교차 | SoC 사다리 전 구간에서 `routing_kind=="battery"` ⟺ `battery_arms` 가 3팔 | **오늘 코드에 대고 돌리면 실제로 빨갛다** — (0.1,0.2] 밴드를 값으로 못박는 자리 |
 | 프로브 | 전후 env 지문 동일 | 개입이 섞이면 빨개진다 |
 
-`test/mild_menu_is_noop_only.jl` (1) 은 `DEMO_BSOC=0.45` 리터럴을 쓰므로 **그대로 초록이어야
-한다** — 0.45 는 양쪽 임계에서 mild 다. 이 파일이 빨개지면 변경이 의도 밖으로 샌 것이다.
+(이 설계 당시 살아 있던 `test/mild_menu_is_noop_only.jl` (1) 은 `DEMO_BSOC=0.45` 리터럴을
+쓰므로 **그대로 초록이어야 한다** — 0.45 는 양쪽 임계에서 mild 다. 이 파일이 빨개지면 변경이
+의도 밖으로 샌 것이다. 🔴 그 파일은 2026-08-31 뒤이은 정리로 지워졌다 — mild 가 NOOP-only 라는
+(1)(2)(3) 을 사용자가 의도적으로 뒤집을 예정이라 그 게이트가 앞길을 막았기 때문이고, 남는
+회귀 대상은 `test/battery_menu_lanes_agree.jl` 로 옮겨간 (4) 뿐이다.)
 
 ---
 

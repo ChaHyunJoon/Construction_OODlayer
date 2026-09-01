@@ -902,8 +902,9 @@ Create `test/soc_ladder_is_coherent.jl`:
 # `unknown:battery_mild`(LLM 레인)를 내면서 `battery_arms` 는 개입 팔 셋을 다 준다 —
 # 즉 그 구간에서 합성 레인은 구조적으로 절대 발화하지 않는다.
 # 🔴 그리고 두 임계를 **함께 보는 게이트가 레포에 0개였다**: `test_lane_select.jl` 은
-# REPLACE_SOC_THRESHOLD/battery_arms 를 0회 언급하고, `mild_menu_is_noop_only.jl` 은
-# ROUTING_SEVERE_SOC/routing_kind 를 0회 언급한다. 이 파일이 그 사이를 잇는다.
+# REPLACE_SOC_THRESHOLD/battery_arms 를 0회 언급하고, 그 시절의 `test/mild_menu_is_noop_only.jl`
+# 은 ROUTING_SEVERE_SOC/routing_kind 를 0회 언급했다(이 파일이 생기던 당시 실측 — 그 파일은
+# 2026-08-31 뒤이은 정리로 지워졌다). 이 파일이 그 사이를 잇는다.
 #
 # 재는 명제 다섯
 #   (1) 라우팅 경계와 메뉴 경계가 **같다** — 사다리 전 구간에서 두 판정이 일치한다
@@ -1110,14 +1111,14 @@ julia +lts --project=. test/soc_ladder_is_coherent.jl
 
 ```bash
 julia +lts --project=. test/battery_ladder_is_deep_only.jl
-julia +lts --project=. test/mild_menu_is_noop_only.jl
 julia +lts --project=. test/battery_menu_lanes_agree.jl
 .venv/bin/python -m pytest wm4spacecraft_manufacturing/core/test_soc_threshold_agrees.py -q
 ```
 
-기대: 전부 PASS. `mild_menu_is_noop_only.jl` 은 `DEMO_BSOC=0.45` 리터럴을 쓰므로 **그대로
-초록이어야 한다**(0.45 는 양쪽 경계에서 mild). 🔴 **이 파일이 빨개지면 변경이 의도 밖으로
-샌 것이다 — 멈추고 원인을 찾는다.**
+기대: 전부 PASS. 🔴 **2026-08-31 뒤이은 정리로 `test/mild_menu_is_noop_only.jl` 은 지워졌다**
+(mild 가 NOOP-only 라는 (1)(2)(3) 을 사용자가 의도적으로 뒤집을 예정이라 그 게이트가 앞길을
+막았다) — 명제 (4)("미기록 soc 는 메뉴를 안 좁힌다")만 `battery_menu_lanes_agree.jl` 로 옮겨
+살아 있다. 이 커맨드 목록에서 그 파일을 빼는 것이 그 삭제의 귀결이다.
 
 - [ ] **Step 10: 🔴 severe 데모가 실제로 정지하는지 확인한다 (유료 0건)**
 

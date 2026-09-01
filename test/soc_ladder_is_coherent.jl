@@ -7,8 +7,10 @@
 # `unknown:battery_mild`(LLM 레인)를 내면서 `battery_arms` 는 개입 팔 셋을 다 준다 —
 # 즉 그 구간에서 합성 레인은 구조적으로 절대 발화하지 않는다.
 # 🔴 그리고 두 임계를 **함께 보는 게이트가 레포에 0개였다**: `test_lane_select.jl` 은
-# REPLACE_SOC_THRESHOLD/battery_arms 를 0회 언급하고, `mild_menu_is_noop_only.jl` 은
-# ROUTING_SEVERE_SOC/routing_kind 를 0회 언급한다. 이 파일이 그 사이를 잇는다.
+# REPLACE_SOC_THRESHOLD/battery_arms 를 0회 언급하고, 그 시절의 `test/mild_menu_is_noop_only.jl`
+# 은 ROUTING_SEVERE_SOC/routing_kind 를 0회 언급했다(이 파일이 생기던 당시 실측 — 그 파일은
+# 2026-08-31 뒤이은 정리로 지워졌고, 그 파일이 지키던 명제 (4) 는 `battery_menu_lanes_agree.jl`
+# 로 옮겨갔다). 이 파일이 그 사이를 잇는다.
 #
 # 재는 명제 여섯
 #   (1) 라우팅 경계와 메뉴 경계가 **같다** — 사다리 전 구간에서 두 판정이 일치한다

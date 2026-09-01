@@ -13,7 +13,7 @@
 #    그 레인은 navigator 를 로드한다. 이 계획의 뒤 태스크가 어휘에 navigator-layer 원시를
 #    하나 더한다 — 그 `impl` 은 bare `using ConstructionBots` 아래서는 정의돼 있지 않다.
 #    이 guard 없이 이 파일이 단독으로 돌면, 진짜 결함과 무관한 이유로 빨개진다
-#    (`test/battery_menu_lanes_agree.jl` · `test/mild_menu_is_noop_only.jl` 과 같은 관용구).
+#    (`test/battery_menu_lanes_agree.jl` · `test/battery_ladder_is_deep_only.jl` 과 같은 관용구).
 #
 # 🔴 `test/runtests.jl` 은 모든 시험 파일을 **같은 `Main` 스코프**에 include 한다 — 그래서
 #    이 파일도 자기 `module` 로 감싼다(안 그러면 다른 파일의 top-level `const` 와 충돌한다,

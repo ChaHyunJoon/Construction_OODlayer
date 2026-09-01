@@ -312,16 +312,13 @@ end
 
     # 🔴 2026-08-25: battery 메뉴의 SoC 분할이 **두 레인에서 같은가**. 라벨 레인만 갈랐던 시절엔
     # mild 에서 실행 레인이 라벨 격자에 없는 팔을 골랐다(= surrogate 가 본 적 없는 팔).
-    # 같은 파일이 mild 가 NOOP-only 라는 설계 결정(= L2 인계 표식)도 함께 지킨다.
+    # 같은 파일이 mild 가 NOOP-only 라는 설계 결정(= L2 인계 표식)도 함께 지킨다. 🔴 2026-08-31:
+    # `test/mild_menu_is_noop_only.jl`(T8, "mild 는 NOOP 하나뿐" (1)(2)(3))이 지워졌다 — 사용자가
+    # mild 하게 닳은 로봇을 저부하 조립으로 라우팅할 수 있게 그 설계를 의도적으로 뒤집을 예정이라
+    # 그 게이트가 앞길을 막았다. 명제 (4)("미기록 soc 는 메뉴를 안 좁힌다", 그 명제와 무관해서
+    # 살아남았다)만 이 파일로 옮겨 아래에 살아 있다.
     @testset "battery menu lanes agree" begin
         include("battery_menu_lanes_agree.jl")
-    end
-
-    # 2026-08-30 (T8): 위 게이트는 두 레인의 **합의**만 본다 — 나란히 개입 팔을 되찾아도
-    # 초록이다. Phase D(합성 발화 → payload 재가격 → 렌더) 전체가 이 데모의 SoC(0.45)에서
-    # 메뉴가 정확히 ["NOOP"] 이라는 값 하나에 걸려 있으므로, 그 값 자체를 못박는다.
-    @testset "mild menu is NOOP only" begin
-        include("mild_menu_is_noop_only.jl")
     end
 
     # 2026-08-31 (S1/T1): 공간 사건의 harm 이 덮임(면적비)이 아니라 막힘에서 나오는가.

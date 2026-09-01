@@ -78,4 +78,26 @@ end
     @test any(i -> ActionRegistry.COST[i] > 0.0, ActionRegistry.battery_arms(0.02, THR, true))
 end
 
+# =============================================================================
+# (4) soc 가 미기록이면 좁히지 않는다 — 2026-08-31 파일 정리로 `test/mild_menu_is_noop_only.jl`
+# 에서 이 파일로 옮겨왔다.
+#
+# 원래 그 파일은 명제 넷을 재고 있었다: (1)(2) mild 구간의 메뉴가 정확히 `["NOOP"]` 이라는 것과
+# 그 경계, (3) `DS_BATTERY_SOC_SPLIT` 손잡이 기본값. 사용자가 mild 를 "SwapBattery 하나만
+# NOOP" 으로 두던 설계를 의도적으로 뒤집을 예정이라 — 배터리가 mild 하게 닳은 로봇이 가벼운
+# 화물 조립으로 라우팅될 수 있어야 한다 — (1)(2)(3) 은 그 방향과 정면으로 충돌해서 파일째
+# 지웠다. (4) 는 **무관하다**: 이것은 이 레포의 삼상 규약("못 쟀다 ≠ 0")이 배터리 메뉴에
+# 적용된 자리다 — 잰 적 없는 SoC 를 근거로 로봇의 선택지를 조용히 좁히면 안 된다는 계약이고,
+# mild 가 무엇이든(NOOP-only 로 남든 나중에 넓어지든) 계속 참이어야 한다.
+#
+# 변이시험(원본 파일 수정 라운드 2, 리뷰 Important 2-a 에서 실측): `battery_arms` 의
+# `(soc isa Real && isfinite(soc)) || return up` 가드를 지우면 이 testset 이 빨개진다 — NaN 은
+# `Float64(NaN) <= Float64(thr)` 에서 `false` 로 새서 mild 분기로 떨어지고, `nothing` 은
+# `Float64(nothing)` 에서 아예 죽는다(`battery_arms` 의 docstring).
+# =============================================================================
+@testset "(4) soc 가 미기록이면 좁히지 않는다" begin
+    @test length(ActionRegistry.battery_arms(NaN, THR, true)) > 1
+    @test length(ActionRegistry.battery_arms(nothing, THR, true)) > 1
+end
+
 end # module
