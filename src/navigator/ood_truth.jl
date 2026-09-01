@@ -126,9 +126,20 @@ ground_truth_labels() = OODTruth[e.truth for e in OOD_TRUTH_LOG[]]
 # 놓을 두 번째 팔이 어휘에 없기 때문이다. 이 상수는 채점 키에서 빠졌고, 남은 소비처는
 # reference_policy 의 "정답 vs unscored" 판정 하나다.
 # 배터리 사건의 깊은 방전 판정 SoC 경계값. 전역 조정 가능.
-const REPLACE_SOC_THRESHOLD = Ref(0.2)
+# 🔴 2026-08-31 (S1/T3): 0.2 -> 0.1. `tools/monitor/lane_select.jl` 의 라우팅 경계
+#    `ROUTING_SEVERE_SOC` 와 **같은 값**이어야 한다. 갈라져 있던 동안 (0.1, 0.2] 구간이
+#    LLM 레인으로 가면서 개입 팔을 다 갖는 죽은 밴드였다(합성이 구조적으로 발화 불가).
+#    두 값이 갈리는 것은 `test/soc_ladder_is_coherent.jl` (1) 이 막는다.
+const REPLACE_SOC_THRESHOLD = Ref(0.1)
 "Set the SoC at/below which a battery event's canonical response flips soft→hard (Replace)."
 set_replace_soc_threshold!(x::Real) = (REPLACE_SOC_THRESHOLD[] = Float64(x); nothing)
+
+# 로봇이 물리적으로 멈추는 SoC 의 **기본값**. `DEMO_STALL_SOC`/`DS_STALL` 이 이 값을 쓴다.
+# 🔴 `REPLACE_SOC_THRESHOLD` 에서 **유도하지 않는다.** 같게 두면 deep 구간 전체가 "정지"라
+#    감속 구간이 사라지고, `test/battery_ladder_is_deep_only.jl` 단언 2(사다리가 정지 임계를
+#    걸친다 — 2026-08-05 "심각도 축이 점 하나" 회귀 방지)를 만족하는 사다리가 **존재하지
+#    않게 된다.** 그래서 별개의 상수이고, `stall < deep` 만 게이트가 강제한다.
+const STALL_SOC_DEFAULT = Ref(0.05)
 
 # truth_key : 정답 라벨을 "비교 가능한 키(튜플)"로 바꾼다 = 채점 때 대응이 맞는지 대조할 열쇠.
 truth_key(t::FaultTruth)   = (:fault, t.robot)   # 고장 = (:fault, 그 로봇)

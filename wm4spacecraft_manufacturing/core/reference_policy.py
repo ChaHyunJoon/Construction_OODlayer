@@ -70,8 +70,8 @@ n 이 작은 축(zone n=2)은 그대로 작다고 적는다. 규칙의 신뢰도
 
 import math
 
-BATTERY_DEEP_SOC = 0.2      # Julia ood_truth.jl 의 REPLACE_SOC_THRESHOLD 와 통일(2026-08-24, 심볼로
-                             # 맞출 것 -- 줄번호는 이 파일 안에서도 이미 한 번 밀렸다).
+BATTERY_DEEP_SOC = 0.1      # Julia ood_truth.jl 의 REPLACE_SOC_THRESHOLD 와 통일(2026-08-31,
+                             # 심볼로 파싱해 대조: core/test_soc_threshold_agrees.py)
                              # ⚠️ 공개된 대가: 0.5 였을 때는 n44_plus78_d20 사다리의 0.30·0.50 rung 이
                              # 이 가지 안에 있어 채점 근거가 있었다(세 rung 전부에서 SwapBattery 가
                              # 이겼다 -- 위 BASIS["battery"] 참고). 0.2 로 내리면 그 두 rung 이

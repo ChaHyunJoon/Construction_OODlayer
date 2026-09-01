@@ -1522,7 +1522,7 @@ function hot_swap_robot!(env, faulted::AbstractID;
     dispatch_pt = _robot_scene_pos2d(env, spare)    # where the spare was parked = F's emergence point (spare가 있던 자리 = F가 나타날 지점)
     _retire_spare_body!(env, spare)                 # inventory visibly drops by one body (그 몸체는 화면 밖 은퇴)
     push!(CHECKED_OUT_SPARES[], spare)              # 체크아웃된 spare 기록
-    threshold = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.2
+    threshold = isdefined(@__MODULE__, :REPLACE_SOC_THRESHOLD) ? REPLACE_SOC_THRESHOLD[] : 0.1
     cause = failed_soc isa Real && failed_soc <= threshold ? :battery : :fault
     HOT_SWAP_ASSETS[][faulted] = (spare=spare, failed_soc=failed_soc,
                                   position=Vector{Float64}(pos), cause=cause, depot=key)

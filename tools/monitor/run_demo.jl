@@ -46,7 +46,7 @@ const MODEL  = get(ENV, "DEMO_MODEL", "tractor.mpd")
 const OODC   = lowercase(get(ENV, "DEMO_OOD", "fault"))
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
 # battery OOD 의 severity 손잡이(떨어뜨릴 SoC 양). 0.9=심각(교체가 정답), 0.45 정도면 애매한 구간.
-const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.9")), 0.05, 0.99) catch; 0.9 end
+const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.96")), 0.05, 0.99) catch; 0.96 end
 # 무진전 몇 스텝마다 "팀 교착" 사건을 결정 레이어에 올릴지. 0=끔(기존 데모 재현 그대로).
 # 오라클 생성기의 DS_REFORM(기본 120)에 대응한다 — 데모에는 그동안 이 장치가 아예 없었다.
 # 빌드 RNG seed. 기존 데모는 1 로 고정돼 있어 **한 판밖에 못 봤다** — 2x2 대조를 여러 seed 로
@@ -568,14 +568,16 @@ try CB.set_battery_penalty!(gain = 6.0, soc_target = 0.5, hard_mult = 1.0e3) cat
 #
 # 임계값은 라벨러 레인(`gen_oracle_dataset.jl:_arm_battery!`)과 **같은 값**을 쓴다. 두 레인이
 # 다른 물리를 쓰면 오라클 라벨과 4pol 평가가 같은 축에 못 올라간다.
-#   · threshold 0.15 — 주입 OOD 의 결과 SoC 는 DEMO_BSOC=0.9 → ≈0.10 이므로 확실히 정지한다.
+#   · threshold 0.05 — 주입 OOD 의 결과 SoC 는 DEMO_BSOC=0.96 → ≈0.04 이므로 확실히 정지한다.
+#     🔴 2026-08-31: 이 셋(0.05 / 0.96 / deep 0.1)은 함께 움직인다. 하나만 고치면
+#     test/soc_ladder_is_coherent.jl 이 빨개진다.
 #   · derate hi=0.5, min_factor=0.35 — 정지 경계 위의 **감속 구간**. 이게 없으면 심각도
 #     0.3 과 0.5 가 둘 다 속도배율 1.0 으로 겹쳐 사다리가 한 점으로 무너진다(battery.jl:518-534).
 #
 # ⚠️ 알려진 결합: `soc_speed_factor` 는 첫 줄에서 stall 여부로 조기반환하므로 **derate 는 stall 이
 #    켜져 있을 때만 동작한다.** derate 만 켜는 조합은 조용히 무동작이다.
 CB.set_battery_stall!(enabled = get(ENV, "DEMO_STALL", "1") == "1",
-                      threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.15")) catch; 0.15 end),
+                      threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.05")) catch; 0.05 end),
                       clear = true, obstacle = false)
 CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
                        hi = 0.5, min_factor = 0.35)

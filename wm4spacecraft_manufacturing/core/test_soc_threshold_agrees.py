@@ -63,10 +63,28 @@ def test_reference_policy_arms_are_in_the_vocabulary():
 
 
 def test_scoring_grid():
-    """SoC 격자에서 정답/채점제외가 임계값과 정확히 일치하는지."""
+    """SoC 격자에서 정답/채점제외가 임계값과 정확히 일치하는지.
+
+    🔴 2026-08-31 (S1/T3): 경계가 0.2 -> 0.1 로 옮겨지면서 옛 격자의 (0.15, "SwapBattery") ·
+    (0.20, "SwapBattery") 두 행은 더 이상 참이 아니다(0.15 > 0.1, 0.20 > 0.1 이므로 이제
+    unscored). 지우지 않고 **기대값을 새 경계에 맞게 고쳤다** -- 그리고 경계 자체를 못박는 행
+    셋(0.09/0.10 deep 쪽, 0.11 mild 쪽)을 새로 더했다. 이 파일이 임계값을 리터럴로 다시
+    베끼면 안 되므로(단일 진실원 위반), 대신 `reference_policy.BATTERY_DEEP_SOC` 를 통해서만
+    "경계가 어디인가"를 판정한다 -- 이 파일 자체는 0.1 을 어디에도 안 적는다.
+    """
     valid = ["NOOP", "Replace", "SwapBattery"]
-    for soc, expected in ((0.02, "SwapBattery"), (0.15, "SwapBattery"),
-                          (0.20, "SwapBattery"), (0.25, None), (0.45, None), (0.60, None)):
+    deep = reference_policy.BATTERY_DEEP_SOC
+    for soc, expected in (
+        (0.02, "SwapBattery"),
+        (deep - 0.01, "SwapBattery"),   # 0.09 -- deep 쪽, 경계 바로 아래
+        (deep, "SwapBattery"),          # 0.10 -- 경계 자체(포함, <=)
+        (deep + 0.01, None),            # 0.11 -- mild 쪽, 경계 바로 위(unscored)
+        (0.15, None),
+        (0.20, None),
+        (0.25, None),
+        (0.45, None),
+        (0.60, None),
+    ):
         ev = {"truth": "BatteryTruth", "soc": soc, "valid": valid}
         a_star, basis, _ = reference_policy.reference_action(ev)
         assert basis == "battery"

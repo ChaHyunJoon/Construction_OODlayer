@@ -22,11 +22,11 @@
 # `routing_kind` 가 battery 를 **아는 kind** 로 인정하는 경계다. `BatteryTruth.soc_after` 가 이
 # 값 이하일 때만 `"battery"` 이고, 그보다 높으면 `"unknown:battery_mild"` 로 LLM 레인에 간다.
 #
-# 🔴 값의 근거는 **"SoC 가 90% 깎였는가"** 다(데모의 `DEMO_BSOC=0.9`). `inject_battery_fault!`
-#    (`src/navigator/battery.jl:352`)이 `soc_after = max(floor_soc, soc_at_fire - soc_drop)` 이고
-#    `floor_soc = 0.0`(`battery.jl:74`), `soc_at_fire ≤ 1.0` 이므로 severe 데모는 언제나 이
-#    경계 **아래**로 떨어진다. ⚠️ 여유가 얇다(1.0 - 0.9 = 0.09999999999999998). 그 경계는
-#    `tools/monitor/test_lane_select.jl` 이 못박는다 — 손으로 계산해 확인하지 말 것.
+# 🔴 값의 근거는 **"SoC 가 90% 깎였는가"** 다. 그 정의는 그대로이고, 2026-08-31 부터 데모의
+#    severe 프리셋은 `DEMO_BSOC=0.96` 으로 그 경계보다 **더 깊다**(soc_after ≈ 0.04).
+#    옛 프리셋(0.9)은 soc_after 가 0.0994 라 경계 여유가 6e-4 였고, 정지 임계가 0.05 로
+#    내려가면서 "확실히 정지한다"는 논증이 깨졌다 — 그래서 프리셋을 같이 옮겼다.
+#    이 셋의 정합성은 `test/soc_ladder_is_coherent.jl` 이 지킨다.
 #
 # ⚠️ **대가 — 사용자가 알고 고른 것이다 (2026-08-30).** 오라클 학습셋(`oracle_dataset.jsonl`)의
 #    battery 27행은 SoC 사다리 `{0.02: 9행, 0.30: 9행, 0.50: 9행}` 이다(실측). 이 경계에서

@@ -234,7 +234,7 @@ function valid_actions(ctx)
         return ActionRegistry.kind_valid(:fault)
     elseif ctx.type === :battery
         _legacy_arms() && begin
-            thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+            thr0 = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
             return (isfinite(ctx.soc) && ctx.soc <= thr0) ? [0, 1, 2] : [0, 2]
         end
         # SoC 분할은 **좁히는** 규칙이라 유지한다(레지스트리 상한 `kind_valid(:battery)` 의
@@ -257,7 +257,7 @@ function valid_actions(ctx)
         # **실행 레인(`policy.jl valid_macros`)에는 이 분할이 아예 없어서** 두 레인의 행동공간이
         # 갈려 있었다. 분할 규칙을 어휘 단일 진실원으로 올리고 두 레인이 같은 함수를 부른다.
         # 게이트: `test/battery_menu_lanes_agree.jl`.
-        thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+        thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
         return ActionRegistry.battery_arms(ctx.soc, thr, soc_split_enabled())
     elseif ctx.type === :zone
         # 2026-08-24: 레지스트리에 zone 팔이 없다 -> `[0]`. 결정 시점 기하로 좁히던 경로

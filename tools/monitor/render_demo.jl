@@ -22,7 +22,7 @@ const MODEL = get(ENV, "DEMO_MODEL", "tractor.mpd")
 const OODC  = lowercase(get(ENV, "DEMO_OOD", "fault"))
 # battery OOD 의 SoC 낙폭. run_demo.jl 과 **같은 이름·같은 기본값**이어야 한다(두 엔진이 같은
 # 손잡이를 읽어야 같은 세계를 만든다). 0.9=심각, 0.45 정도면 정책이 갈리는 애매한 구간.
-const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.9")), 0.05, 0.99) catch; 0.9 end
+const DEMO_BSOC = try clamp(parse(Float64, get(ENV, "DEMO_BSOC", "0.96")), 0.05, 0.99) catch; 0.96 end
 const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # # OOD events (0=case default)
 # ---------------------------------------------------------------------------------------------
 # DEMO_SEED — 로봇 OOD(fault/battery)의 **발생 시점을 확률적으로** 만든다. 이것이 이제 기본값이다.
@@ -851,7 +851,7 @@ pre = function (env)
     # 방전 → 정지 / 감속. 이게 없으면 배터리가 방전돼도 로봇이 멈추지 않아서, 대시보드가
     # "로봇이 그 자리에 멈췄다"는 NL 을 띄우면서 화면에서는 멀쩡히 계속 움직인다.
     CB.set_battery_stall!(enabled = get(ENV, "DEMO_STALL", "1") == "1",
-                          threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.15")) catch; 0.15 end),
+                          threshold = (try parse(Float64, get(ENV, "DEMO_STALL_SOC", "0.05")) catch; 0.05 end),
                           clear = true, obstacle = false)
     CB.set_battery_derate!(enabled = get(ENV, "DEMO_DERATE", "1") == "1",
                            hi = 0.5, min_factor = 0.35)

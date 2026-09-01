@@ -1304,7 +1304,7 @@ function _arm_battery!(env; dynamics::Bool = true)
             shrink = parse(Float64, get(ENV, "DS_SHRINK", "1.0"))))
         dynamics || return nothing                                            # energy-only: 여기서 끝
         CB.set_battery_stall!(enabled = true,
-            threshold = parse(Float64, get(ENV, "DS_STALL", "0.15")), clear = true, obstacle = false)
+            threshold = parse(Float64, get(ENV, "DS_STALL", "0.05")), clear = true, obstacle = false)
         CB.set_battery_derate!(enabled  = get(ENV, "DS_DERATE", "1") == "1",   # 감속 구간(기본 ON)
                                hi       = parse(Float64, get(ENV, "DS_DERATE_HI",  "0.5")),
                                min_factor = parse(Float64, get(ENV, "DS_DERATE_MIN", "0.35")))
@@ -2063,14 +2063,17 @@ function main()
             # 구간을 이미 `None`(unscored) 로 뺀다. 2026-08-24 에 같은 이유로 `zoneblk` 를
             # `DS_EP_KINDS` 기본값에서 뺐다.
             #
-            # 칸을 하나(0.02)로 줄이지 **않은** 이유가 위 2026-08-05 문단이다. 정지 경계 0.15 가
-            # deep 구간(<=0.2) **안에** 있으므로, deep 만으로도 거동이 갈리는 두 칸을 잡을 수 있다
-            # (실측 2026-08-25, DS_STALL=0.15 / DS_DERATE_HI=0.5):
-            #     0.02 -> 속도배율 0.0    즉시 정지
-            #     0.18 -> 속도배율 0.406  감속하며 계속 일함   (둘 다 채점 구간, 메뉴는 3팔)
+            # 칸을 하나(0.02)로 줄이지 **않은** 이유가 위 2026-08-05 문단이다. 정지 경계가
+            # deep 구간 **안에** 있으므로, deep 만으로도 거동이 갈리는 두 칸을 잡을 수 있다.
             # 게이트: `test/battery_ladder_is_deep_only.jl` (두 어서션이 이 둘을 각각 지킨다).
-            # 옛 사다리는 `DS_BSOC` 로 언제든 재현 가능하다 — mild 를 굴리고 싶으면 명시적으로 준다.
-            for s in [parse(Float64, x) for x in split(get(ENV, "DS_BSOC", "0.02,0.18"), ",")]
+            #
+            #  [2026-08-31 경계 이동] deep 경계가 0.2 -> 0.1 로 내려가면서 옛 사다리 "0.02,0.18" 의
+            #  0.18 칸이 mild(= ["NOOP"], 대조가 0인 행)로 넘어갔다. 새 사다리(DS_BSOC = 0.02 / 0.09):
+            #      0.02  < DS_STALL(0.05)        -> 즉시 정지          (개입 필요)
+            #      0.09  in (0.05, deep 0.1]     -> 감속·계속 일함      (개입은 선택)
+            #  🔴 이전 주석은 "기본 = 0.02 / 0.3 / 0.5" 라고 적었으나 그때 이미 코드는 "0.02,0.18"
+            #  이었다 — 낡은 주석이었다. 이 값을 인용하기 전에 코드를 볼 것.
+            for s in [parse(Float64, x) for x in split(get(ENV, "DS_BSOC", "0.02,0.09"), ",")]
                 push!(instances, (:battery, s, seed, 3))   # 각 목표 SoC 값을 severity 로
             end
         elseif kind === :zoneharm

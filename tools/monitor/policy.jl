@@ -357,7 +357,7 @@ function valid_macros(env, truth)
         # 수 있는데 라벨 격자엔 그 행이 없어, 그 결정이 surrogate 가 본 적 없는 팔로 남는다.
         # 분할 규칙과 손잡이 판독점을 어휘 단일 진실원으로 올렸다(`ActionRegistry.battery_arms`
         # · `soc_split_enabled`). 게이트: `test/battery_menu_lanes_agree.jl`.
-        local thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.2 end
+        local thr = try Float64(CB.REPLACE_SOC_THRESHOLD[]) catch; 0.1 end
         local ids = ActionRegistry.battery_arms(Float64(truth.soc_after), thr,
                                                 ActionRegistry.soc_split_enabled())
         if !have_fleet
@@ -819,7 +819,12 @@ end
 # 0절이 `reference_policy.py` 를 정규식으로 직접 읽어 이 상수와 대조한다. 그 게이트는
 # 2026-08-25 부터 `test/runtests.jl` 에 배선돼 있다 — 그 전까지 **고아 게이트**였고, 그래서
 # 이 회귀(0.5 대 0.2)가 최종 리뷰까지 살아남았다. 배선을 빼면 방어선이 사라진다.
-const ORACLE_BATTERY_DEEP_SOC = 0.2      # == reference_policy.py `BATTERY_DEEP_SOC` (게이트: tools/test_policy_oracle.jl 0절)
+const ORACLE_BATTERY_DEEP_SOC = 0.1      # == reference_policy.py `BATTERY_DEEP_SOC` (게이트: tools/test_policy_oracle.jl 0절)
+# 🔴 2026-08-31 (S1/T3): 0.2 -> 0.1, REPLACE_SOC_THRESHOLD/BATTERY_DEEP_SOC 사다리 이동과 같이 옮긴다.
+#    이 상수는 그 6+6 목록 밖에 있던 열세 번째 자리였다 -- 전체 스위트를 실제로 돌려서 잡았다
+#    (tools/test_policy_oracle.jl 0절이 REPLACE_SOC_THRESHOLD 를 전혀 언급하지 않는 별도 게이트라서
+#    grep 으로는 안 잡혔다).
+
 
 # ---- "지금 운반체가 이동 중인가" 술어 (2026-08-13) ------------------------------------------
 # **oracle 레인 전용이다.** 이 함수는 `oracle_macro` 만 부른다 — 공유 장부(RECOVERY_SPARES)를
