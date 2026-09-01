@@ -53,7 +53,11 @@
 #         0.2 경계로 조용히 돌아가는 그 자리) -- 이전엔 전체 Julia 스위트가 2192/0/1 로
 #         byte-identical 이었는데, 지금은 (6c) 가 즉시 잡는다: 실측 `2 passed, 1 failed`
 #         (`wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl=0.2` 로 진단 출력에 찍힌다).
-#         복구 확인: 원본 복사본을 되돌리면 다시 3/3 전부 초록.
+#         복구 확인: 원본 복사본을 되돌리면 다시 2/2 전부 초록. 🔴 2026-09-01 (correction
+#         pass, C-4) 정정: 바로 이 문장이 예전엔 "3/3" 이라고 적었는데 틀렸다 -- 베이스라인
+#         (6c) 는 히트 1곳(정의 자리 `ood_truth.jl=0.1`)뿐이라 `@test length(prox_hits) > 0`
+#         하나 + 루프 단언 하나 = **2** 개다. "3" 은 심은 상태(히트 2곳 -> 1 + 2 = 3)의 개수를
+#         복구 뒤에도 그대로 인용한 것이었다(final-fix-wave-rereview.md "New breakage" 항목 2).
 #       - `+0.2`/`2e-1`/`1//5`/`.2` 네 철자를 임시 디렉터리에 심어 `TERNARY_RE`/
 #         `scan_proximity_literals` 로 직접 스캔 -- 넷 다 이제 잡히고, `_parse_soc_literal` 이
 #         넷 다 `0.2` 로 정확히 읽는다(재현: 아래 함수들을 대화형으로 부른 실측, 이 파일
@@ -191,16 +195,40 @@ end
 # 폴백 리터럴이 하나도 없다" 는 파싱이 필요 없는 명제다), 이 확장에 파싱 위험이 없다.
 const NUM_RE = "[+-]?(?:[0-9]*\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+|[0-9]+//[0-9]+)"
 
-"`NUM_RE` 가 캡처할 수 있는 형태(소수·부호·지수·`a//b` 유리수) 전부를 `Float64` 로 읽는다 --
-`parse(Float64, ...)` 는 `1//5` 같은 유리수 표기를 모른다(던진다), 그래서 `//` 가 있으면
-분자/분모로 쪼개 직접 나눈다."
+# 🔴 2026-09-01 (correction pass, C-1): 위 문단이 세던 세 철자(부호·지수·유리수) 확장은
+# **정수 리터럴**(`: 0`, `catch; 0 end`)을 조용히 깼다 -- 옛 정규식(`[0-9]*\.?[0-9]+`)은 정수를
+# 잡았는데 `NUM_RE` 는 소수점·지수·`//` 중 하나를 요구해서 안 잡는다(음성대조 실측: `test/`
+# 안에 `? SYM[] : 0` / `catch; 0 end` / `? SYM[] : 1/5` / `? SYM[] : 2/10` 넷을 심고 이 파일을
+# 돌리면, `NUM_RE` 그대로는 (6) 이 초록으로 남고 -- 아래 `FALLBACK_NUM_RE` 로 바꾸면 4/4 전부
+# 잡혀 (6) 이 `4 == 0` 로 빨개진다. 심은 파일은 확인 뒤 지웠다 -- final-fix-wave-rereview.md
+# F-1(b) 항목 3, "New breakage" 항목 1).
+#
+# **`NUM_RE` 자체는 고치지 않는다.** (6c)/`scan_proximity_literals` 도 이 상수를 공유해서 쓰는데,
+# 거기에 정수·단일 `/` 대안을 더하면 살아있는 트리에서 `REPLACE_SOC_THRESHOLD` 근처 40자 안의
+# **무관한** 정수(`PROXIMITY_N=40`, testset 번호 `6`/`4`, 배열 인덱스 `0` 등)까지 리터럴로 잡혀
+# (6c) 가 거짓양성으로 빨개진다(실측: 12곳 중 8곳이 `64`/`6`/`4`/`0` 같은 무관 정수 -- 아래
+# `PROXIMITY_N` 노트가 경고하던 바로 그 함정이다). 그래서 **정수·단일 `/` 확장은 (6)/(6b) 의
+# ternary·catch 정규식(`TERNARY_RE`/`CATCH_RE`)에만** 준다 -- 그 둘은 `REPLACE_SOC_THRESHOLD[] :`
+# 또는 `catch;` 바로 뒤 한 자리만 보므로 근접성 스캔과 달리 무관한 정수를 주울 여지가 없다.
+const FALLBACK_NUM_RE = "[+-]?(?:[0-9]*\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+|[0-9]+//[0-9]+|[0-9]+/[0-9]+|[0-9]+)"
+
+"`FALLBACK_NUM_RE`/`NUM_RE` 가 캡처할 수 있는 형태(정수·소수·부호·지수·`a//b` 유리수·단일 `/`
+나눗셈) 전부를 `Float64` 로 읽는다 -- `parse(Float64, ...)` 는 `1//5`·`1/5` 같은 나눗셈 표기를
+모른다(던진다), 그래서 `//` 또는 `/` 가 있으면 분자/분모로 쪼개 직접 나눈다(`//` 를 먼저
+검사한다 -- `1//5` 에도 `/` 가 들어 있어 순서를 바꾸면 `//` 표기가 `/` 갈래로 잘못 쪼개진다)."
 function _parse_soc_literal(lit::AbstractString)
-    occursin("//", lit) || return parse(Float64, lit)
-    local parts = split(lit, "//")
-    return parse(Float64, parts[1]) / parse(Float64, parts[2])
+    if occursin("//", lit)
+        local parts = split(lit, "//")
+        return parse(Float64, parts[1]) / parse(Float64, parts[2])
+    elseif occursin("/", lit)
+        local parts = split(lit, "/")
+        return parse(Float64, parts[1]) / parse(Float64, parts[2])
+    else
+        return parse(Float64, lit)
+    end
 end
-const TERNARY_RE = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*(" * NUM_RE * ")")
-const CATCH_RE   = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*(" * NUM_RE * ")\\s*end")
+const TERNARY_RE = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*(" * FALLBACK_NUM_RE * ")")
+const CATCH_RE   = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*(" * FALLBACK_NUM_RE * ")\\s*end")
 const FALLBACK_RE = Regex(TERNARY_RE.pattern * "|" * CATCH_RE.pattern)
 
 "`dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다. 각 `d` 는
@@ -292,6 +320,12 @@ end
 #      전부 지운다 -- 실측: 12곳 GREEN. 🔴 이 파일의 예전 판은 "주석 안의 폴백은 컴파일 안
 #      되니 무해하다"고 적었는데, **이건 주석 안이 아니라 스트리퍼의 오탐으로 실제 컴파일되는
 #      코드가 사라지는 것**이라 그 논증이 안 통한다 -- 정정한다.
+#      🔴 2026-09-01 (correction pass, C-4) 정정 — 위 1·2·3의 "12곳 GREEN" 세 인용은 **낡은
+#      트리에 대고 잰 값이다.** fix round 4 시절(폴백 8곳이 실제로 살아 있던 트리)의 측정을
+#      오늘 날짜 절에 그대로 남긴 것 -- 오늘 트리는 실제 폴백이 0곳이라 (6c)의 근접성 히트
+#      자체가 1곳(정의 자리 `ood_truth.jl=0.1`)뿐이다. 이 세 사각지대는 여전히 실재하고
+#      기제(거리·간접참조·주석-속-문자열)는 오늘도 그대로 성립하지만, "12곳" 이라는 숫자를
+#      오늘 트리의 증거로 인용하면 안 된다(final-fix-wave-rereview.md "New breakage" 항목 3).
 #   4. **세 겹따옴표가 `#`-주석 한 줄 안에 있으면 docstring 스트리퍼가 오작동한다.**
 #      `no_doc = replace(raw, r"\"\"\".*?\"\"\""s => " ")` 는 **주석 여부를 안 보고** 전체
 #      텍스트에서 `"""..."""` 쌍을 찾는다 -- `# 예: """ 여기부터"""` 같은 한 줄 주석 안에
@@ -303,6 +337,24 @@ end
 #      R4-1 문단 참고)는 (6)/(6b) 수준에서는 여전히 안 잡힌다 -- 이 절 (6c) 가 그 철자들의
 #      **일부**(순수 소수 리터럴이 기호 40자 안에 오는 경우)는 잡지만 전부는 아니다(위 1·2·3
 #      과 겹치는 경우는 여전히 샌다).
+#   6. **🔴 2026-09-01 (correction pass, C-4, 리뷰 실측) 산술 결합이 값을 바꾸는데 잡힌
+#      리터럴은 안 바뀐다.** `thr = Float64(REPLACE_SOC_THRESHOLD[]) + 0.1` 처럼 DEEP(오늘
+#      0.1)에 산술을 더해 실제 값을 폐기된 경계 0.2 로 되돌려도, (6c)가 뽑아내는 텍스트는
+#      더한 결과가 아니라 **소스에 적힌 리터럴 `"0.1"`** 이고 그 리터럴 자체는 DEEP 과 우연히
+#      같다 -- 그래서 `_parse_soc_literal(lit) == DEEP` 이 참으로 통과한다. `_arith_bound_to_symbol`
+#      이 이 자리를 "정당한 산술"(예: `enact_uses_llm_agent.jl` 의 CTRL_SOC)로 **일부러**
+#      봐주는 규칙(R4-1 (a))이기 때문에 걸러지지 않는다 -- 제외 규칙이 스캐너의 눈을 가리는
+#      바로 그 자리다. 실측(이 파일 커밋과 함께 기록): `test/` 안에 그 한 줄을 심으면 (6)도
+#      (6c)도 전부 그대로 초록(2/2 → 3/3, 새 히트가 `lit=0.1` 로 DEEP 과 일치해서 통과), 심은
+#      파일을 지우면 다시 2/2. **정수·단일 `/` 나눗셈 철자(`: 0`·`catch; 0 end`·`1/5`·`2/10`)
+#      자체는 C-1 이 (6)/(6b) 의 ternary·catch 정규식에서 복구했다** -- 위 두 형태(`? SYM[] : X`
+#      / `catch; X end`)로 쓰인 폴백은 이제 정수·단일 `/` 여도 잡힌다(실측: 4/4 RED). 남는
+#      것은 그 두 카탈로그 **밖의** 철자(예: `max(2/10, SYM[])` 처럼 호출 인자로 쓰는 형태) —
+#      실측: `test/` 에 `max(2/10, REPLACE_SOC_THRESHOLD[])` 를 심으면 (6)은 애초에 ternary도
+#      catch도 아니라서 못 보고, (6c)의 `dec_re` 는 일부러 정수·단일 `/` 를 안 받게 남겨뒀으므로
+#      (근접성 스캔까지 넓히면 살아있는 트리에서 `PROXIMITY_N`·testset 번호 같은 무관한 정수가
+#      쏟아져 거짓양성이 난다, 위 C-1 노트 참고) 역시 못 본다 -- 완전히 초록. 항목 5 의 "카탈로그
+#      밖 철자는 안 잡힌다"의 한 사례다.
 const PROXIMITY_N = 40
 
 "리터럴이 `sym` 의 이 occurrence 와 산술 연산자(+-*/^)로 **직접** 묶여 있는가. 두 방향만

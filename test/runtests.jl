@@ -321,9 +321,14 @@ end
     # 🔴 **정정 (2026-09-01, S1 final wave / F-3)**: 이전 판의 이 주석은 "(4)만 옮겨와 살아
     # 있다"고 적어 (1)(2)까지 잃은 것처럼 읽혔는데, 그건 거짓이었다 — (1)(2)("mild 는
     # NOOP-only")는 파일 삭제와 무관하게 위 testset이 계속 지키고 있었다(옮겨온 게 아니라
-    # 애초에 여기 따로 있었다). 실제로 게이트 없이 남은 것은 명제 (3)
-    # (`DS_BATTERY_SOC_SPLIT` 기본값)뿐이다 — `soc_ladder_is_coherent.jl` (1)은
-    # `split=true` 를 명시로 넘기므로 기본값이 뒤집혀도 안 잡힌다.
+    # 애초에 여기 따로 있었다). 🔴 **재정정 (2026-09-01, correction pass C-2)**: 바로 위
+    # "실제로 게이트 없이 남은 것은 명제 (3) 뿐"도 **거짓이었다** — 세 번째로 틀린 서술.
+    # **실측**: `action_registry.jl :: soc_split_enabled` 기본값을 `"1"` → `"0"` 으로 뒤집으면
+    # `soc_ladder_is_coherent.jl` (1)이 아니라 이 파일의 첫 testset("실행 레인 == 어휘
+    # 단일 진실원")이 빨개진다(3 passed / 3 failed) — `live_menu` 가 `soc_split_enabled()` 를
+    # 거치고 `registry_menu` 는 `split=true` 리터럴을 넘기므로 그 기본값에서 갈린다.
+    # **`mild_menu_is_noop_only.jl` 삭제로 게이트를 잃은 명제는 없다** — (1)(2)는 위
+    # testset이, (3)은 방금 잰 첫 testset이, (4)는 F-1c testset이 지킨다.
     @testset "battery menu lanes agree" begin
         include("battery_menu_lanes_agree.jl")
     end

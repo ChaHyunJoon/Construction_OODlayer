@@ -395,6 +395,16 @@ mild 를 뒤집으면 `test/battery_menu_lanes_agree.jl` 의
 (`soc_ladder_is_coherent.jl` (1) 은 `split=true` 를 명시적으로 넘기므로 기본값이 뒤집혀도
 못 잡는다).
 
+🔴 **재정정 (2026-09-01, correction pass C-2)**: 바로 위 "실제로 게이트를 잃은 명제는 (3)
+뿐이다" 도 **거짓이었다** — 이 삭제에 대해 이 문서에 실린 (그리고 spec 에 실린) **세 번째
+잘못된 서술**. `soc_ladder_is_coherent.jl` (1) 이 (3) 을 못 잡는다는 절반은 맞지만, (3) 을
+잡는 다른 게이트가 있다는 것을 아무도 확인하지 않았다. **실측**:
+`action_registry.jl :: soc_split_enabled` 기본값을 `"1"` → `"0"` 으로 뒤집으면
+`battery_menu_lanes_agree.jl` 의 **첫** testset("battery 메뉴: 실행 레인 == 어휘 단일
+진실원")이 곧바로 빨개진다(3 passed / 3 failed) — `live_menu`(→`valid_macros`→
+`soc_split_enabled()`)와 `registry_menu`(`split=true` 리터럴)가 그 기본값에서 갈리기
+때문이다. **`mild_menu_is_noop_only.jl` 삭제로 게이트를 잃은 명제는 하나도 없다.**
+
 🔴 **그리고 그 거짓 문장이 구속력 있는 spec 에까지 들어갔다가** `bb34dcc8`(F-3)에서
 정정됐다 — spec §1-6/§7, `test/runtests.jl` 의 블록 주석, `progress.md`, 그리고 해당 태스크
 보고서. (레포 관례대로 원문은 남기고 정정을 덧붙이는 방식으로.) **구속력 있는 문서의 거짓

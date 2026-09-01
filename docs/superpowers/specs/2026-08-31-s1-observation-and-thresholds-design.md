@@ -170,11 +170,17 @@ soc_after  routing_kind            menu
 그 파일이 지키던 명제 (1)(2)("mild 구간의 메뉴가 정확히 `["NOOP"]`")는 `ae7e935c` 이후
 바뀐 적 없는 `test/battery_menu_lanes_agree.jl` 의 "mild 는 닫힌 어휘에 수복이 없다" testset이
 **계속 지키고 있었다**(삭제와 무관하게 살아 있었다 — 옮겨진 게 아니라 애초에 거기 있었다).
-미기록 soc 를 다루던 명제 (4) 도 같은 파일로 옮겨졌다. **실제로 잃은 것은 명제 (3)
-(`DS_BATTERY_SOC_SPLIT` 손잡이 기본값)뿐**이다 — `soc_ladder_is_coherent.jl` (1)은
-`split=true` 를 명시적으로 넘기므로 기본값이 뒤집혀도 안 잡힌다. 사용자가 S2 에서 mild 를
-뒤집으면 `battery_menu_lanes_agree.jl` 의 그 testset이 **그때** 빨개진다 — 이 게이트는
-아직 살아 있고, 삭제로 치웠다고 생각한 장애물이 아니다.)
+미기록 soc 를 다루던 명제 (4) 도 같은 파일로 옮겨졌다. 🔴 **재정정 (2026-09-01, correction
+pass C-2)**: 바로 위 "실제로 잃은 것은 명제 (3)(`DS_BATTERY_SOC_SPLIT` 손잡이 기본값)뿐"은
+이 삭제에 대해 이 문서에 실린 **세 번째 잘못된 서술**이었다 — 틀렸다. **실측**:
+`action_registry.jl :: soc_split_enabled` 의 기본값을 `"1"` → `"0"` 으로 뒤집으면
+`soc_ladder_is_coherent.jl` (1)이 아니라 `battery_menu_lanes_agree.jl` 의 **첫**
+testset("battery 메뉴: 실행 레인 == 어휘 단일 진실원")이 곧바로 빨개진다(실측 3 passed /
+3 failed) — `live_menu`(→`valid_macros`→`soc_split_enabled()`)와 `registry_menu`(`split=true`
+리터럴)가 그 기본값에서 갈리기 때문이다. 즉 (3) 도 이미 게이트돼 있었다 —
+**`mild_menu_is_noop_only.jl` 삭제로 게이트를 잃은 명제는 하나도 없다.** 사용자가 S2 에서
+mild 를 뒤집으면 `battery_menu_lanes_agree.jl` 의 두 testset 모두 **그때** 빨개진다 — 이
+게이트는 아직 살아 있고, 삭제로 치웠다고 생각한 장애물이 아니다.)
 
 세 번째 임계도 갈라져 있다: `DEMO_STALL_SOC` 기본값이 **0.15**(`run_demo.jl`·`render_demo.jl`
 두 곳의 리터럴)이다. 오늘은 stall(≤0.15) ⊂ deep(≤0.2) 이라 정합적이다.
@@ -462,8 +468,14 @@ C5 를 움직여 푼다:
 🔴 **정정 (2026-09-01, S1 final wave / F-3)**: "남는 회귀 대상은 (4) 뿐이다"는 **거짓이었다**.
 (1)(2)("mild 는 NOOP-only")는 `test/battery_menu_lanes_agree.jl` 의 "mild 는 닫힌 어휘에
 수복이 없다" testset이 `ae7e935c` 이후 손 안 대고 계속 지키고 있다 — 파일 삭제로 없어진
-적이 없다. (4)(미기록 soc)도 같은 파일로 옮겨갔다. **실제로 남는 게이트 없는 규정은 (3)
-(`DS_BATTERY_SOC_SPLIT` 기본값)뿐**이다.)
+적이 없다. (4)(미기록 soc)도 같은 파일로 옮겨갔다. 🔴 **재정정 (2026-09-01, correction pass
+C-2)**: "실제로 남는 게이트 없는 규정은 (3) 뿐이다" 도 **거짓이었다** — 세 번째로 틀린
+서술. **실측**: `action_registry.jl :: soc_split_enabled` 기본값을 `"1"` → `"0"` 으로 뒤집으면
+`battery_menu_lanes_agree.jl` 의 첫 testset("실행 레인 == 어휘 단일 진실원")이 빨개진다
+(3 passed / 3 failed) — `live_menu` 가 그 기본값을 읽는 `soc_split_enabled()` 를 거치고
+`registry_menu` 는 `split=true` 를 그대로 넘기기 때문이다. **`mild_menu_is_noop_only.jl`
+삭제로 게이트가 사라진 명제는 없다** — (1)(2)는 위 문단대로, (3)은 방금 잰 이 testset이,
+(4)는 같은 파일로 옮겨간 F-1c testset이 지킨다.)
 
 ---
 

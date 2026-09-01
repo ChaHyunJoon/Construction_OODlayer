@@ -147,7 +147,13 @@ set_replace_soc_threshold!(x::Real) = (REPLACE_SOC_THRESHOLD[] = Float64(x); not
 # 2026-08-05 "심각도 축이 점 하나" 회귀 방지)를 만족하는 사다리가 **존재하지 않게 된다.**
 # ⚠️ `tools/demos.jl` 의 `STALL_SOC` 리터럴은 `soc_ladder_is_coherent.jl` (4)/(5) 어느 쪽에도
 # 안 걸린다 — (4)는 run_demo/render_demo 둘만, (5)는 gen_oracle_dataset 의 DS_STALL 만 본다.
-# 오늘은 세 리터럴이 우연히 다 "0.05"로 같지만, 그 일치를 지키는 기계 게이트가 없다.
+# 🔴 2026-09-01 (correction pass, C-3) 정정: 바로 위 문장이 "오늘은 세 리터럴이 우연히 다
+# 0.05로 같다"고 적었는데 틀렸다 — 실측: `tools/demos.jl` 안에만 `STALL_SOC` 리터럴이 **둘**
+# 있고 값도 서로 **다르다**(`:1059` `demo_energy_stall_replace` 블록은 `"0.02"`, `:1394` OOD
+# 블록은 `"0.05"`). 그래서 이름 셋(`DEMO_STALL_SOC`·`DS_STALL`·`STALL_SOC`)이 아니라 리터럴이
+# **넷**이고, 값도 전부 같지 않다. `envdefault` 는 `match`(첫 매치)로 읽으므로 같은 이름이
+# 한 파일에 두 번 나오면 첫 자리만 본다 — `tools/demos.jl` 에 `STALL_SOC` gate 를 새로 달아도
+# 첫 번째 자리(`0.02`)만 잡히고 두 번째 자리(`0.05`)는 이 파서로 주소를 못 딴다.
 const STALL_SOC_DEFAULT = Ref(0.05)
 
 # truth_key : 정답 라벨을 "비교 가능한 키(튜플)"로 바꾼다 = 채점 때 대응이 맞는지 대조할 열쇠.
