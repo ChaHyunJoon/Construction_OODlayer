@@ -246,10 +246,18 @@ function run_board(ldraw, nrobots, project_name, time_limit)
                 " so the decision itself did not change. This is a legitimate, reportable negative",
                 " result — light_bias=2.0 was not re-tried at other values.")
     else
-        println("Repricing (light_bias=2.0) DID move the argmin: ", length(diff_AT),
-                " assignment edge(s) differ between control and treatment, ", n_owned_AT,
-                " of them on the repriced agent ", target, ". The MILP assigned different work",
-                " to a different robot as a direct result of the payload bias.")
+        # 🔴 최종 리뷰 F3: 여기서 "DID move the argmin" 이라 적었던 것은 이 파일 자신의
+        # TRACTOR NON-CONVERGENCE FINDING(아래, ~280줄)과 모순이었다 — 어느 팔도 OPTIMAL 에
+        # 도달하지 못했고(35-36% gap), 진짜 최적해는 한 번도 계산되지 않았다. 이 측정이
+        # 뒷받침하는 것은 "재풀이가 다른 계획을 낸다"는 것뿐이다: |AΔB|=0(잡음 바닥)이라
+        # |AΔT|=80 을 bias 탓으로 돌릴 근거는 있지만, 그것이 진짜 argmin/optimum 이
+        # 옮겨갔다는 증거는 아니다.
+        println("Repricing (light_bias=2.0): the re-solve returns a different plan: ",
+                length(diff_AT), " assignment edge(s) differ between control and treatment, ",
+                n_owned_AT, " of them on the repriced agent ", target, " (time-limited",
+                " incumbents, gaps 35-36%; the true optimum was never computed). This is NOT a",
+                " claim that the true argmin/optimum moved — only that the time-limited re-solve",
+                " returned a different incumbent plan.")
     end
     return (board = ldraw, control_ok = true, A = A, B = B, T = T, target = target, diff_AT = diff_AT)
 end
