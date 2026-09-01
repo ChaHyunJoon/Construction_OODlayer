@@ -344,6 +344,12 @@ end
         include("soc_ladder_is_coherent.jl")
     end
 
+    # 2026-08-31 (S1/T4): 결정 시점 후보 간선 상계 프로브가 세계를 안 건드리는가.
+    # 🔴 이 프로브는 상계만 낸다 — 0 이면 결론이고 >0 이면 아무 결론도 아니다(파일 머리말).
+    @testset "MILP slot probe is pure" begin
+        include("milp_slot_probe_is_pure.jl")
+    end
+
     # 🔴 2026-08-25: `DS_BSOC` 기본 사다리의 모든 칸이 채점 가능한 deep 구간인가(= 팔을 비교할 수
     # 있는가). mild 칸이 다시 들어오면 대조가 0인 행이 생기고, 칸이 하나로 줄면 2026-08-05 에
     # 고친 "심각도 축이 점 하나" 결함이 재현된다 — 두 어서션이 각각 그 둘을 막는다.

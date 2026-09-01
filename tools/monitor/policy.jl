@@ -197,6 +197,42 @@ function _battery_load_features(env, agent)
     return merge(d, _battery_fleet_features(agent))
 end
 
+"""
+    candidate_slot_upper_bound(env) -> Union{Nothing,Int}
+
+결정 시점에 **배정 슬롯이 몇 개나 비어 있는가**의 상계. `nothing` 은 "못 쟀다"다.
+
+🔴 이 값은 후보 `(v, v2)` **쌍**의 상계가 아니다. `formulate_milp` 의 Big-M 루프는 세
+조건을 모두 만족하는 `(v, v2)` 쌍에만 `edge_costs` 를 채우는데, 그 첫 조건이
+`outdegree(sched, v) < n_eligible_successors[v]` 다. 여기서는 **그 조건만** 통과하는
+**정점(vertex)** 수를 센다 — 정점 하나가 여러 쌍에 기여할 수도, 하나도 기여하지 않을 수도
+있으므로 이 카운트는 쌍의 개수를 어느 방향으로도 상계짓지 못한다. 나머지 둘(선행 여유 ·
+템플릿 매치)을 복제하면 hot loop 의 판정식이 두 벌이 되고, 이 레포는 그런 두 벌이 조용히
+갈리는 사고를 반복해 겪었다.
+⟹ **0 이면 후보 간선이 증명 가능하게 0 이고, >0 이면 아무 결론도 안 준다.**
+
+🔴 왜 이 값이 중요한가. `edge_costs` 가 비면 `get_objective_expr` 이 조기 반환해 목적식이
+**순수 makespan 으로 후퇴한다.** 그러면 `EDGE_COST_MULTIPLIER` 든 payload 든 어떤 배수도
+목적식에 닿지 못한다 — 결정 시점 재가격이 원리적으로 무효가 된다.
+
+🔴 이 값은 **"MILP 가 돌았는가"를 주장하지 않는다.** 그건 `enact.jl` 의 센티넬이 잰다.
+두 관측을 한 숫자로 섞지 말 것.
+
+**순수하다** — `preprocess_project_schedule` 은 `sched` 만 읽고 아무것도 안 바꾼다.
+"""
+function candidate_slot_upper_bound(env)
+    local sched = try env.sched catch; nothing end
+    sched === nothing && return nothing
+    return try
+        local pp = CB.preprocess_project_schedule(sched)
+        local nes = pp[3]                      # n_eligible_successors (8-튜플의 3번째)
+        count(v -> Graphs.outdegree(sched, v) < nes[v], Graphs.vertices(sched))
+    catch e
+        @warn "candidate_slot_upper_bound: probe failed" exception = e
+        nothing                                # 🔴 0 이 아니다 — 삼상 규약
+    end
+end
+
 # zone 이 "아직 안 끝난" staging 원을 얼마나 덮는지(0~1) = zone 의 진짜 severity.
 function _zone_overlap(env, zkey)
     z = try CB.RESTRICTION_ZONES[][zkey] catch; nothing end
@@ -1504,6 +1540,13 @@ end
 라우터가 꺼져 있으면 예전대로 DEMO_POLICY 로 런 전체 고정 -- 기존 데모 재현이 깨지지 않게.
 """
 function decide_all(env, truth; nl::AbstractString = "")
+    # ---- 후보 간선 상계 프로브 (2026-08-31, S1/T4) -----------------------------------------
+    # S2(결정 시점 payload 재가격)의 전제조건을 결정 시점에 **비개입으로** 잰다.
+    # 🔴 "못 쟀다"를 0 으로 찍지 않는다 — 그러면 "후보 0"(재가격이 원리적으로 무효라는 관측)과
+    #    구별이 안 된다.
+    local _slots = candidate_slot_upper_bound(env)
+    println("[milp-probe] slots_upper_bound=", _slots === nothing ? "n/a" : string(_slots),
+            " measured_at_closed=", (try string(length(env.cache.closed_set)) catch; "n/a" end))
     canon = canonical_macro(env, truth)     # 규칙표 → 지금 실행 가능한 어휘로 투영
     pol = Dict{String,Any}()
     pol["canonical"] = Dict("chosen" => canon, "ranking" => [canon],
