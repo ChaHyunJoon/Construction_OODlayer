@@ -14,6 +14,7 @@ using ConstructionBots
 import Random, Graphs
 const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
+include(joinpath(pkgdir(CB), "tools", "monitor", "policy.jl"))   # G-3: ood_features (module top level, not inside a testset)
 
 function fresh_env()
     env = CB.run_lego_demo(; ldraw_file = "tractor.mpd", project_name = "s2chain",
@@ -66,7 +67,20 @@ function costs(env; release::Bool, agent = nothing, light_bias = 0.5, call_count
     end
 end
 
-"후보 간선에서 가장 많이 등장하는 유효 owner id (재가격 대상으로 쓴다)."
+"""
+    busiest_agent(env) -> (agent::String, owned::Int, unmeasurable::Int)
+
+후보 간선에서 가장 많이 등장하는 유효 owner id, 그 로봇이 소유한 후보 간선 수(`owned`), 그리고
+그 owned 간선 중 `candidate_edge_payload_mass` 가 화물을 못 잰(`nothing`) 것의 수
+(`unmeasurable`). 셋 다 **이 프로세스, 이 env 안에서** 직접 잰다.
+
+🔴 controller 정정 (2026-09-01 후속): 다른 실행(다른 julia 프로세스/워크트리)에서 잰 owner 수를
+여기다 대조하지 않는다 — 이 브랜치엔 `bb1b88c4`(AbstractID 의 내용기반 `Base.hash`)가 없다
+(`git branch --contains bb1b88c4` == `sdd-lane-c7` 뿐, `grep "function Base.hash" src/` == 0건).
+그래서 `AbstractID` 는 `objectid` 로 해시되고 ID-키 `Dict`/`Set` 순회 순서가 실행마다 다를 수
+있다 — "233" 같은 숫자를 다른 프로세스에서 가져와 이 프로세스의 값과 비교하는 것은 원리적으로
+근거가 없다. `owned` 는 항상 같은 호출 안에서 재유도한다.
+"""
 function busiest_agent(env)
     saved_ids = copy(CB.INVALID_ID_COUNTERS)              # 🔴 addendum 정정 3
     return try
@@ -81,7 +95,18 @@ function busiest_agent(env)
             id === nothing && continue
             tally[string(id)] = get(tally, string(id), 0) + 1
         end
-        first(sort(collect(tally), by = kv -> -kv[2]))[1]
+        best_agent = first(sort(collect(tally), by = kv -> -kv[2]))[1]
+        fleet = CB.BATTERY_FLEET[]
+        owned = 0
+        unmeasurable = 0
+        for (v, v2) in keys(CB.LAST_EDGE_COSTS[])
+            id = CB._edge_owner_id(sched, v)
+            (id === nothing || string(id) != best_agent) && continue
+            owned += 1
+            m = CB.candidate_edge_payload_mass(shim, sched, v2, fleet.params)
+            m === nothing && (unmeasurable += 1)
+        end
+        (agent = best_agent, owned = owned, unmeasurable = unmeasurable)
     finally
         empty!(CB.INVALID_ID_COUNTERS); merge!(CB.INVALID_ID_COUNTERS, saved_ids)
     end
@@ -89,7 +114,7 @@ end
 
 @testset "G-2 · release 가 없으면 후보 간선이 없고 재가격은 무동작이다" begin
     env = fresh_env()
-    a = busiest_agent(env)
+    a = busiest_agent(env).agent
     cnt_plain = Ref{Union{Nothing,Ref{Int}}}(nothing)
     cnt_bias  = Ref{Union{Nothing,Ref{Int}}}(nothing)
     no_rel_plain = costs(env; release = false, call_counter = cnt_plain)
@@ -104,7 +129,8 @@ end
 
 @testset "G-4 · release 뒤에는 재가격이 실제로 비용을 바꾼다" begin
     env = fresh_env()
-    a = busiest_agent(env)
+    ba = busiest_agent(env)
+    a, owned, unmeasurable = ba.agent, ba.owned, ba.unmeasurable
     cnt_base = Ref{Union{Nothing,Ref{Int}}}(nothing)
     cnt_zero = Ref{Union{Nothing,Ref{Int}}}(nothing)
     cnt_hot  = Ref{Union{Nothing,Ref{Int}}}(nothing)
@@ -123,5 +149,24 @@ end
     @test cnt_base[] === nothing
     @test cnt_zero[] !== nothing && cnt_zero[][] == length(base)   # 후보 간선마다 한 번씩
     @test cnt_hot[]  !== nothing && cnt_hot[][]  == length(base)
+    # 🔴 후속 정정 (2026-09-01, coordinator): `owned` 는 이 프로세스 안에서 `busiest_agent` 가
+    #    직접 잰 값이다(다른 실행에서 가져온 숫자와 절대 대조하지 않는다 — 이 브랜치는
+    #    `bb1b88c4` 가 없어 objectid 기반 순회 순서가 실행마다 달라질 수 있다). owned 간선
+    #    전부가 측정 가능한 양(+) 화물을 나른다면 `changed == owned` 여야 한다(`_payload_factor`
+    #    는 m>0, bias>0 이면 반드시 배수를 1.0 초과로 올린다).
+    @test changed == owned                           # 🔴 약화 금지 조항: 실패하면 그대로 보고한다
+end
+
+# Task 6 Step 1 (G-3), 계획서 지시대로 이 파일이 존재한 뒤에 붙인다.
+# 🔴 이것은 feature dict 에 대한 UNIT 수준 확인이다 — 값이 결정 행(row)까지 실제로 도달한다는
+#    증거가 아니다. 그 증거는 데모 실행 쪽이다(6개 결정 행 전부에 이 키가 값 1320,890,591,387,80,0
+#    으로 찍힌 것이 별도로 확인됐다).
+@testset "G-3 · 창의 상태가 특징으로 남는다" begin
+    env = fresh_env()
+    truth = CB.BatteryTruth(CB.RobotID(3), 0.55)
+    d = ood_features(env, truth)
+    @test haskey(d, "s2_after_release_candidates")
+    @test d["s2_after_release_candidates"] isa Int
+    @test d["s2_after_release_candidates"] > 0
 end
 end # module
