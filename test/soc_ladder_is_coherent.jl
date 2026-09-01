@@ -36,8 +36,12 @@
 #   · 두 엔진 중 하나만 DEMO_BSOC 를 고치면(예: run_demo.jl 만 0.97) (4)가 빨개진다 —
 #     실측: 2 passed, 1 failed.
 #   · 발견된 폴백 자리 중 하나(battery.jl)만 리터럴 0.2 로 되돌리면 (6)이 빨개진다 —
-#     실측(fix round 0, 목록이 여섯이던 시절): 11 passed, 1 failed. fix round 2 재구조화 뒤의
-#     같은 실측은 task-3-report.md "Fix round 2" 절 참고.
+#     실측(fix round 0, 파일 목록을 하드코딩하던 시절): 11 passed, 1 failed. 그 뒤 게이트
+#     구조가 두 번 더 바뀌었다(fix round 1: 발견형 스캔, fix round 3: 두 정규식 대안을 따로
+#     검사) -- 각 라운드의 실제 mutation 출력은 task-3-report.md 의 해당 라운드 절에 있다
+#     (🔴 이 문장이 가리키던 옛 버전은 "fix round 2 절 참고"였는데 그 절엔 이 특정
+#     mutation 이 없었다 -- 존재하지 않는 곳을 가리키는 죽은 참조였다. 2026-08-31 fix round 3
+#     (리뷰 nit)에서 고쳤다).
 #
 # 🔴 **2026-08-31 실측 정정 — 계획 초안의 Step 2 음성대조 주장은 과장이었다.** 계획 초안은
 #    "오늘의 HEAD 에 STALL=0.15 를 박으면 (1)(2)(3) 전부 빨갛다" 고 적었으나, 실제로 돌려
@@ -113,14 +117,20 @@ end
     end
 end
 
-# 폴백 정규식 — REPLACE_SOC_THRESHOLD 를 못 읽을 때 쓰는 리터럴을 두 형태로 잡는다:
-#   `isdefined(...) ? REPLACE_SOC_THRESHOLD[] : X`   그리고   `try ... catch; X end`
-# 모듈 스코프 상수로 둔 이유: 아래에서 스캐너 자신에게도 적용해 자기지시(self-match) 여부를
-# 확인해야 하고(테스트 (6b)), 스캔 함수와 어서션 양쪽이 같은 패턴을 공유해야 "찾은 것과 잰
-# 것이 같은 정규식"이라고 말할 수 있다.
-const FALLBACK_RE = Regex(
-    "REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*([0-9]*\\.?[0-9]+)" *
-    "|REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*([0-9]*\\.?[0-9]+)\\s*end")
+# 폴백 정규식 -- REPLACE_SOC_THRESHOLD 를 못 읽을 때 쓰는 리터럴을 두 형태로 잡는다.
+# 🔴 2026-08-31 fix round 3 (R3-2): 예전에는 이 둘을 하나의 `FALLBACK_RE` 로만 두고
+# `length(hits) > 0` 하나로 지켰다 -- 그런데 그 어서션은 **완전 실명**만 잡는다. 두 대안 중
+# 하나만 매치를 멈추면(예: 누군가 정규식을 고치다 한쪽을 깨면) 8곳이 조용히 5곳(또는 3곳)으로
+# 줄어들고도 `length(hits) > 0` 은 여전히 참이라 초록으로 남는다 -- "모든 폴백이 일치한다"는
+# 보장이 "살아남은 한쪽 대안이 본 폴백만 일치한다"로 조용히 줄어드는 것이다. 개수를 손으로
+# 박는 대신(그러면 다시 I-2 식 하드코딩이 된다), **대안 두 개를 따로 컴파일해 각각 최소
+# 1건은 찾아야 한다**고 요구한다 -- 오늘 실제로 두 형태 다 살아 있는 자리가 있으므로
+# (ternary 셋, try/catch 다섯) 이 요구는 손 안 대도 계속 참이고, 어느 한쪽이 실명하면
+# 그 즉시 그 갈래의 `@test length(...) > 0` 이 빨개진다. 발견 총량은 여전히 목록에 안 기대고
+# 스캔한다(파일 목록 하드코딩 금지, I-2 는 그대로 지킨다).
+const TERNARY_RE = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\s*:\\s*([0-9]*\\.?[0-9]+)")
+const CATCH_RE   = Regex("REPLACE_SOC_THRESHOLD" * "\\[\\]\\)\\s*catch;\\s*([0-9]*\\.?[0-9]+)\\s*end")
+const FALLBACK_RE = Regex(TERNARY_RE.pattern * "|" * CATCH_RE.pattern)
 
 "`dirs` 각각을 재귀적으로 훑어 `.jl` 파일에서 `re` 에 맞는 모든 자리를 찾는다. 각 `d` 는
 REPO 상대경로(예: \"src\")이거나 절대경로(예: mktempdir() 결과)일 수 있다 — 후자는 (6b) 가
@@ -166,6 +176,15 @@ end
     # 🔴 스캐너가 하나도 못 찾으면 "패턴이 텅 비어도 통과하는" 실패할 수 없는 게이트가 된다
     # (I-2 의 경고 그대로) — 그래서 발견 개수 자체를 셈한다.
     @test length(hits) > 0
+    # 🔴 2026-08-31 fix round 3 (R3-2): 총량이 0 보다 큰 것만으로는 **부분 실명**을 못
+    # 잡는다 -- 대안 두 개(TERNARY_RE/CATCH_RE) 중 하나가 죽어도 나머지 대안이 본 자리만으로
+    # 총량은 계속 양수다. 그래서 두 대안을 **따로** 스캔해 각각 최소 1건을 요구한다 -- 이건
+    # 손으로 개수를 박는 게 아니라(그러면 I-2 가 도로 난다) "두 형태가 살아 있는가" 만 묻는다.
+    local ternary_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), TERNARY_RE)
+    local catch_hits   = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), CATCH_RE)
+    @test length(ternary_hits) > 0   # `isdefined(...) ? ...[] : X` 갈래가 실명하지 않았다
+    @test length(catch_hits) > 0     # `try ... catch; X end` 갈래가 실명하지 않았다
+    @test length(ternary_hits) + length(catch_hits) == length(hits)   # 두 갈래의 합 == 합친 스캔
     for (path, lit) in hits
         @test parse(Float64, lit) == DEEP
     end

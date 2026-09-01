@@ -1684,8 +1684,17 @@ function schedule_stream!()
             e -> (CUR_SEV[] = 1.0; tf(e))            # 심각도 1.0 설정 후 고장 실행
         elseif kind === :battery
             # the SEVERITY LADDER measured by the oracle (GRADED_OOD_DESIGN.md §2.1).
-            # 오라클이 측정한 심각도 사다리: SoC 를 세 단계 중 하나로 떨어뜨림(0.05/0.20/0.55).
-            soc  = [0.05, 0.20, 0.55][rand(rng, 1:3)]   # 세 값 중 무작위 하나
+            # 오라클이 측정한 심각도 사다리: SoC 를 세 단계 중 하나로 떨어뜨림(0.05/0.09/0.55).
+            # 🔴 2026-08-31 (S1/T3 fix round 3, R3-1): 가운데 칸 0.20 -> 0.09. deep 경계가
+            #    0.2 -> 0.1 로 내려가면서 0.20 이 battery_arms 상 mild 로 넘어가 [0](NOOP
+            #    하나뿐, 대조가 0인 행)이 됐다 — `DS_BSOC` 에서 고친 것과 같은 결함. 0.09 는
+            #    stall(0.05) 보다 높고 deep(0.1) 이하라 두 경계를 straddle 한다(DS_BSOC 의
+            #    "0.02,0.09" 와 같은 논증). 실측(battery_arms(soc, 0.1, true)):
+            #      soc=0.05 -> [0, 1, 2]  (여전히 3팔, stall 경계 자체)
+            #      soc=0.09 -> [0, 1, 2]  (3팔 — 이번에 고친 칸)
+            #      soc=0.55 -> [0]        (NOOP 하나뿐 — 이건 T3 이전부터 그랬다. mild 를
+            #                              보여주려는 의도된 셋째 칸이라 손대지 않는다.)
+            soc  = [0.05, 0.09, 0.55][rand(rng, 1:3)]   # 세 값 중 무작위 하나
             drop = 1.0 - soc                          # 떨어뜨릴 양
             bf = CB.battery_action(soc_drop = drop)
             e -> begin
