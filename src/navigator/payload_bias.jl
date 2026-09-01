@@ -53,3 +53,62 @@ function candidate_edge_payload_mass(env, sched, v2, p::BatteryParams)
         nothing            # 화물을 나르는 노드가 아니다 = 못 쟀다 (0 이 아니다)
     end
 end
+
+"설치된 재가격 상태. `(agent::String, light_bias::Float64, params::BatteryParams)`."
+const PAYLOAD_BIAS = Ref{Union{Nothing,NamedTuple}}(nothing)
+
+"""
+    payload_edge_multiplier(env, sched, v, v2) -> Float64
+
+후보 간선 `(v, v2)` 의 payload 배수. 재가격 대상이 **아닌** 로봇의 간선에서는 1.0 이므로
+설치 전후로 다른 로봇의 비용은 바이트 동일이다.
+
+계약(실측 근거는 이 파일 머리말): 로봇 신원은 `v` 에서, 화물은 `v2` 한 홉 아래에서.
+화물을 못 재면 1.0 이다 — 모르는 것을 근거로 벌하지 않는다(삼상 규약).
+"""
+function payload_edge_multiplier(env, sched, v, v2)
+    st = PAYLOAD_BIAS[]
+    st === nothing && return 1.0
+    owner = _edge_owner_id(sched, v)
+    (owner === nothing || string(owner) != st.agent) && return 1.0
+    m = candidate_edge_payload_mass(env, sched, v2, st.params)
+    m === nothing && return 1.0
+    return _payload_factor(m, st.light_bias)
+end
+
+"""
+    reprice_agent_by_payload!(env; agent, light_bias = 0.5) -> NamedTuple
+
+한 로봇의 **후보 배정 간선** 비용을 그 간선이 나르게 될 화물 질량에 비례해 올린다. 로봇을
+함대에서 빼지 않고 가벼운 화물 쪽으로 몰아주는 개입이다. 실행가능집합을 안 바꾸므로 문제를
+infeasible 로 만들 수 없다.
+
+🔴 **이것만으로는 무동작이다.** 간선 가중치는 MILP 재풀이가 읽어야 뜻을 갖고, 재풀이가 볼
+후보 간선은 `release_pending_assignments!` 가 슬롯을 풀어야 생긴다. 실측: release 없이
+후보 간선은 **0** 이고 그때 이 배수는 **0번 호출된다.**
+
+🔴 국소 undo 는 없다. `clear_payload_bias!` 는 훅을 떼지만 그 편향으로 푼 계획은 못 되돌린다.
+"""
+function reprice_agent_by_payload!(env; agent::AbstractString, light_bias::Real = 0.5)
+    fleet = BATTERY_FLEET[]
+    fleet === nothing && return (status = :no_fleet, agent = String(agent), installed = false)
+    known = Set(string(k) for k in keys(fleet.soc))
+    String(agent) in known ||
+        return (status = :unknown_agent, agent = String(agent), installed = false)
+    PAYLOAD_BIAS[] = (agent = String(agent), light_bias = Float64(light_bias),
+                      params = fleet.params)
+    EDGE_PAYLOAD_MULTIPLIER[] = (sched, v, v2) -> payload_edge_multiplier(env, sched, v, v2)
+    return (status = :repriced, agent = String(agent), installed = true)
+end
+
+"""
+    clear_payload_bias!() -> Nothing
+
+payload 훅만 뗀다. `EDGE_COST_MULTIPLIER`(SoC·agent 축)는 **건드리지 않는다** — 두 축을 한
+상자에 넣었다면 여기서 SoC 항까지 사라졌을 것이다(그래서 Ref 를 둘로 나눴다).
+"""
+function clear_payload_bias!()
+    PAYLOAD_BIAS[] = nothing
+    EDGE_PAYLOAD_MULTIPLIER[] = nothing
+    return nothing
+end
