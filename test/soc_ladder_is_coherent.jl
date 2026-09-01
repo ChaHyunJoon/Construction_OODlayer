@@ -76,6 +76,16 @@ function envdefault(path, name)
     return m.captures[1]
 end
 
+"`envdefault` 와 같은 이유(두 번째 진실원 방지) -- `get(ENV, ...)` 가 아니라 `Base.@kwdef`
+구조체 필드의 리터럴 기본값(`name::Float64 = 값`)을 소스에서 읽는다. `hazard.jl` 의
+`cell_mild_lo/hi` 처럼 ENV 손잡이가 아닌 상수를 지키는 자리에 쓴다."
+function fielddefault(path, name)
+    src = read(joinpath(REPO, path), String)
+    m = match(Regex("$(name)::Float64\\s*=\\s*([0-9]*\\.?[0-9]+)"), src)
+    m === nothing && error("$(path) 에서 $(name) 필드 기본값을 못 찾았다 — 정규식을 고칠 것")
+    return m.captures[1]
+end
+
 @testset "(1) 라우팅 경계와 메뉴 경계가 같다" begin
     for s in (0.0, 0.02, 0.05, DEEP - 1e-9, DEEP, nextfloat(DEEP), 0.15, 0.2, 0.3, 0.45, 0.9)
         local severe_by_routing = routing_kind("BatteryTruth", s) == "battery"
@@ -115,6 +125,35 @@ end
     for s in [parse(Float64, x) for x in split(envdefault(gen, "DS_BSOC"), ",")]
         @test length(AR.battery_arms(s, DEEP, true)) > 1
     end
+end
+
+# 2026-08-31 parked-constants 태스크 -- T3 가 부지된 두 자리를 여기서 마저 잇는다.
+# (7)은 (5)와 같은 명제(deep 안에서 대조가 있다)를 에피소드 모드의 severity 자리에 다시
+# 묻고, (8)은 정반대 방향(mild 로 남아야 하는 자리가 실제로 mild 인가)을 묻는다 -- 사다리
+# 전체가 "훈련 축은 deep 안, 배경 소음 축은 deep 밖" 이라는 하나의 불변식으로 맞물려야 한다.
+@testset "(7) 에피소드 모드 DS_EP_BSOC 는 deep 안에서 대조가 있다" begin
+    # DS_EP_BSOC 는 (5)의 DS_BSOC 와 달리 사건 뒤 SoC(절대값) 하나뿐인 스칼라다(comma 사다리
+    # 아님) -- gen_oracle_dataset.jl EP_SEV[:battery] 참고. `DS_BSOC_MODE=abs` 규약과 같으므로
+    # (5)와 같은 함수(`AR.battery_arms(soc, DEEP, true)`)로 바로 잰다.
+    local gen = "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl"
+    local s = parse(Float64, envdefault(gen, "DS_EP_BSOC"))
+    @test length(AR.battery_arms(s, DEEP, true)) > 1
+end
+
+@testset "(8) cell_mild_lo/hi 는 mild(대조 없음)로 남는다 -- (7)과 반대 방향 가드" begin
+    # hazard.jl 의 cell_mild_lo/hi 는 DS_BSOC/DS_EP_BSOC 같은 훈련 사다리가 아니라
+    # `_hz_fire_cell!` 이 배경에서 확률적으로 굴리는 열화 모형의 "가벼운" 갈래다
+    # (`cell_severe_frac`=0.5 가 나머지 절반을 깊은 방전으로 이미 가른다). 여기선 대조가
+    # **있으면** 오히려 틀린다 -- `policy.jl:804` `canonical_macro(env, truth)` 가
+    # `valid_macros` 에 SwapBattery 가 없을 때 그 답을 NOOP 으로 투영하는 것이 설계이므로
+    # (`baselines.jl:176-179`), 이 값이 deep 으로 새면 "mild" 라는 이름과 그 설계가 어긋난다.
+    local hz = "src/smdp/hazard.jl"
+    local lo = parse(Float64, fielddefault(hz, "cell_mild_lo"))
+    local hi = parse(Float64, fielddefault(hz, "cell_mild_hi"))
+    # 만충(soc_before=1.0) 기준 최소/최대 결과 SoC 둘 다 mild 안에 머물러야 한다 -- 최소
+    # 결과 SoC 는 최대 낙폭(hi)에서, 최대 결과 SoC 는 최소 낙폭(lo)에서 나온다.
+    @test length(AR.battery_arms(1.0 - hi, DEEP, true)) == 1
+    @test length(AR.battery_arms(1.0 - lo, DEEP, true)) == 1
 end
 
 # 폴백 정규식 -- REPLACE_SOC_THRESHOLD 를 못 읽을 때 쓰는 리터럴을 두 형태로 잡는다.

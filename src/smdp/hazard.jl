@@ -109,11 +109,33 @@ Base.@kwdef struct HazardParams
     #    위 `_hz_fire_cell!`)는 이 혼동 없이 SoC 대 SoC 로 정확히 비교하며, 위 문단도 이제
     #    soc_after(결과 SoC)를 경계와 비교하는 형태로 다시 썼다 -- 순전히 이 주석의 표현
     #    문제였고 코드·상수는 그대로다.
-    #    실제로는 mild 셀 열화 사건 대부분이 대조가 0인 행(NOOP 하나뿐)을 만든다. 상수를
-    #    옮기면 이 헤저드 레인의 산출물이 바뀌므로 일부러 안 옮긴다 -- 후속 작업으로 남긴다.
-    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한 — 위 주석 참고, SwapBattery 라는
-                                       # 옛 주장은 거짓이었다(실측 결과는 대부분 NOOP-only)
-    cell_mild_hi::Float64   = 0.70     # 가벼운 열화 낙폭 상한
+    #    실제로는 mild 셀 열화 사건 대부분이 대조가 0인 행(NOOP 하나뿐)을 만든다.
+    #
+    # 🔴 2026-08-31 후속(parked-constants 태스크) -- 값은 그대로 둔다. "mild" 가 진짜 의도다.
+    #    (A)의 DS_EP_BSOC 와 이름이 비슷해 같은 결함처럼 보이지만 소비 경로가 다르다:
+    #    DS_EP_BSOC/DS_BSOC 는 의도적으로 스윕하는 훈련 사다리(대조 있는 라벨 행을 만드는
+    #    것이 존재 이유)인 반면, cell_mild_lo/hi 는 _hz_fire_cell! 이 배경에서 확률적으로
+    #    발화시키는 현실적 열화 모형의 한 갈래고, cell_severe_frac(0.5) 이 이미 "50% 깊은
+    #    방전 / 50% 가벼운 열화" 로 심각도를 가른다. 이 갈래를 deep 안으로 밀어 넣으면 그
+    #    이분법이 사실상 없어진다(둘 다 깊은 방전이 되어 버린다) -- 상수 이동이 아니라 모형
+    #    자체를 바꾸는 것이다.
+    #    아래로 향하는 소비처를 실측했다: ood_stream.jl:82 의 battery_action 이 SoC 를
+    #    떨어뜨리고 BatteryTruth(robot, soc_after) 를 기록 -> baselines.jl:96
+    #    canonical_respec(::BatteryTruth) 는 심각도 무관하게 항상 SwapBattery 를 내지만, 그
+    #    답을 실제로 집행하는 policy.jl:804 canonical_macro(env, truth) 는 valid_macros(=
+    #    ActionRegistry.battery_arms 가 SoC 로 가르는 메뉴)에 그 팔이 없으면 NOOP 으로
+    #    투영한다(policy.jl:807-808, baselines.jl:176-179 가 이 분업을 그대로 문서화한다:
+    #    "심각도로 갈리는 것은 메뉴 쪽이고, mild 에서는 호출자가 이 답을 NOOP 으로 투영한다").
+    #    즉 mild 셀 열화가 NOOP 으로 집행되는 것은 버그가 아니라 이 레포 전역이 합의한
+    #    설계고, cell_mild_* 가 여기 어긋나면 오히려 그 설계와 불일치한다.
+    #    상수를 옮기지 않는다 -- 옮기면 이 헤저드 레인의 산출물(발화하는 심각도 분포)이
+    #    바뀐다. 게이트: test/soc_ladder_is_coherent.jl (8) -- cell_mild_lo/hi 가(만충 기준)
+    #    계속 mild(NOOP-only) 안에 머무는지, 즉 deep 으로 새지 않는지를 지킨다(반대 방향
+    #    가드 -- (7)이 "deep 안에서 대조가 있는가" 를 지키는 것과 대칭이다).
+    cell_mild_lo::Float64   = 0.35     # 가벼운 열화 낙폭 하한 -- 위 주석 참고, SwapBattery 라는
+                                       # 옛 주장은 거짓이었다(실측 결과는 대부분 NOOP-only).
+                                       # 값은 의도적으로 그대로다 -- 위 2026-08-31 후속 문단 참고
+    cell_mild_hi::Float64   = 0.70     # 가벼운 열화 낙폭 상한 -- 값 유지 이유는 cell_mild_lo 와 같다
 
     # --- (C) 통행금지 구역 출현(fleet-level) 위험 --------------------------------
     mtbf_zone_s::Float64    = 1800.0   # D-4 (2026-08-20): 유한값으로 켠다. 기본이 Inf 였던 탓에

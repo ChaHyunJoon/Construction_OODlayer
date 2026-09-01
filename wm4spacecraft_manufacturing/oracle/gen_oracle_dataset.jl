@@ -1161,14 +1161,20 @@ const EP_LO     = parse(Int, get(ENV, "DS_EP_LO", "8"))         # 사건이 터�
 const EP_HI     = parse(Int, get(ENV, "DS_EP_HI", "60"))
 # 🔴 2026-08-31 (S1/T3 fix round 2, N-4 — 코디네이터 판정: 옵트인 경로, 이 태스크 범위 밖,
 #    값은 건드리지 않는다). 에피소드 모드의 `:battery` severity 는 **사건 뒤 SoC** 이므로
-#    (`DS_BSOC_MODE=abs` 규약과 같다), `DS_EP_BSOC` 기본값 0.12 는 이제 새 deep 경계(0.1) **위**
-#    다. 실측: `ActionRegistry.battery_arms(0.12, 0.1, true) == [0]`(NOOP 하나뿐, 대조가 0인
+#    (`DS_BSOC_MODE=abs` 규약과 같다), `DS_EP_BSOC` 기본값 0.12 는 그때 새 deep 경계(0.1) **위**
+#    였다. 실측: `ActionRegistry.battery_arms(0.12, 0.1, true) == [0]`(NOOP 하나뿐, 대조가 0인
 #    행) — `battery_arms(0.09, 0.1, true)` / `battery_arms(0.02, 0.1, true)` 는 둘 다
-#    `[0, 1, 2]`(팔 셋, 채점 가능)다. 즉 이 태스크가 `DS_BSOC` 에서 고친 것과 **같은 결함**이
-#    에피소드 모드의 이 자리에 그대로 있다. 일부러 안 옮긴다 — 이 값은 다른 레인(에피소드
-#    생성)이 소비하고, 옮기면 그 레인의 산출물이 바뀐다. 후속 작업으로 남긴다.
+#    `[0, 1, 2]`(팔 셋, 채점 가능)다. 즉 그때는 이 태스크가 `DS_BSOC` 에서 고친 것과 **같은
+#    결함**이 에피소드 모드의 이 자리에 그대로 있었다.
+# 🔴 2026-08-31 후속(parked-constants 태스크) — 위 결함을 옮겼다. `0.12 -> 0.09`.
+#    `0.09` 를 고른 이유는 `DS_BSOC` 와 같다: `battery_arms(0.09, 0.1, true) == [0, 1, 2]`(deep
+#    안, 대조 있음)이고, `0.09 ∈ (STALL=0.05, deep=0.1]` — 정지는 안 하지만 감속하며 계속
+#    일하는 칸이라 즉시-정지 칸(0.02, DS_BSOC 의 다른 rung)과 물리적으로도 다른 것을 가리킨다.
+#    이 값은 에피소드 생성 레인이 소비하므로 그 레인의 산출물이 바뀐다 — 라벨을 재생성하지
+#    않는다(이 태스크 범위 밖, 기본값만 옮긴다). 게이트:
+#    `test/soc_ladder_is_coherent.jl` (7).
 const EP_SEV    = Dict(:fault   => 1.0,
-                       :battery => parse(Float64, get(ENV, "DS_EP_BSOC",  "0.12")),
+                       :battery => parse(Float64, get(ENV, "DS_EP_BSOC",  "0.09")),
                        :zoneblk => parse(Float64, get(ENV, "DS_EP_ZFRAC", "0.9")),
                        # :zonecore 의 severity 는 **root 하역 목표를 삼키는 비율**이다(offset 이 아니다).
                        # 1.0 = 최종 조립 목표 전부를 덮음 = NOOP 으로는 완주 불가.
