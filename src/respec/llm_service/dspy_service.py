@@ -679,6 +679,15 @@ def _surro_row(req: "MacroRequest", macro: int) -> dict:
     새 표현은 종류 이름을 한 번도 읽지 않으므로, 예전의 `zone -> zoneblk` 매핑 같은
     어휘 정렬 자체가 필요 없어졌다(그 매핑이 어긋나면 one-hot 이 전부 0이 되던 실패 모드가
     구조적으로 사라진 것).
+
+    🔴 2026-08-31 (S1). `zone_nav_blocked`/`zone_nav_downstream` 을 여기서 빠뜨리면
+    `descriptors_from_row` 가 그 둘을 -1.0 센티널로 읽어 `zone_terminal=False` 로 접는다 —
+    같은 사건인데 LLM 레인(`_llm_input`)은 새 nav-blockage `harm` 을, surrogate 레인은
+    옛 area-ratio `harm` 을 본다. 두 레인이 **같은 req** 에서 값을 읽으므로 규약은
+    `zone_overlap` 과 동일: 없으면 `None` -> -1.0 센티널("안 쟀다")로만 접는다.
+    🔴 **0 으로 접지 말 것** — 0 은 "쟀는데 안 막혔다"이고 그러면 `zone_terminal` 판정 자체는
+    `nblk >= 1.0` 이라 여전히 False 로 떨어지지만, 의미가 "안 쟀다"에서 "쟀다"로 거짓 이동한다.
+    게이트: `test_surro_zone_nav_descriptors.py`.
     """
     return dict(
         instance=_SURRO_INSTANCE, macro=int(macro),
@@ -690,7 +699,9 @@ def _surro_row(req: "MacroRequest", macro: int) -> dict:
         spare_count=float(req.spare_count),
         closed_at_fire=float(req.closed_at_fire),
         total_nodes=_total_nodes(req),
-        progress=float(req.progress))
+        progress=float(req.progress),
+        zone_nav_blocked=(-1.0 if req.zone_nav_blocked is None else float(req.zone_nav_blocked)),
+        zone_nav_downstream=(-1.0 if req.zone_nav_downstream is None else float(req.zone_nav_downstream)))
 
 
 def _unsupported_for(req, valid):
