@@ -2,6 +2,24 @@
 
 Behavioral guidelines are inherited from `venv/.claude/CLAUDE.md` (auto-loaded). This file is project context only.
 
+## 🔀 2026-09-01 — SoC 사다리 단일 진실원 (S1) — **현행값**
+
+`REPLACE_SOC_THRESHOLD = Ref(0.1)`(= 메뉴 경계 = 라우팅 경계) · `STALL_SOC_DEFAULT = Ref(0.05)` ·
+`DEMO_BSOC 0.96` · `DS_BSOC "0.02,0.09"` · `DS_STALL`/`DEMO_STALL_SOC 0.05` · `BATTERY_DEEP_SOC 0.1`.
+옛 (0.1, 0.2] 죽은 밴드는 사라졌다 — 그 구간은 LLM 레인으로 가면서 개입 팔을 다 가져 합성이
+구조적으로 발화 불가였다.
+
+🔴 **`isdefined(…) ? REPLACE_SOC_THRESHOLD[] : 0.2` 류 폴백을 되살리지 말 것.** 8곳 있던 것을
+전부 지웠다 — 심볼이 없으면 **에러가 나야** 한다. `test/soc_ladder_is_coherent.jl` 이 그 부재를 지킨다.
+⚠️ 그 게이트의 보장은 **어휘적**이고, 머리말이 자기 blind spot 을 적어 둔다(예: `SYM[] + 0.1` 은
+리터럴 텍스트만 읽어서 못 잡는다). **"게이트가 초록" 을 "사다리가 기계로 보장됨" 으로 읽지 말 것** —
+계획서가 6개라 한 상수가 실제 16곳이었고, 스윕이 **네 번 연속** "다 찾았다" 다음에 틀렸다.
+
+⚠️ `expressible` 이 두 OOD 레인에서 여전히 `true` 다(S1 실측). 원인은 서술자가 아니라
+**모델이 개입을 불필요하다고 판단**하는 것이다 — `_EXPRESSIBLE_DESC` 가 "개입이 불필요해서 NOOP"
+을 명시적으로 `true` 로 가르친다. zone 은 `kind_valid(:zone)==[]` 이라 메뉴 조건은 이미 충족돼 있다.
+막힌 것은 `work_at_risk = 32/251 = 0.13` 이 "낮다" 로 읽히는 것이고, **비율은 종단성을 못 나른다**.
+
 ## 🔀 2026-08-21 — 상태 7필드 · 행동공간 5종 · 행동 신설(L2) — **현행 세대**
 
 지도교수 피드백 셋(상태 축소 가정 · OOD 사건 정의 · replay buffer)을 반영한 개정.
@@ -159,6 +177,9 @@ Windows 전용). 판정 기준은 "결과를 만드는가, 보기만 하는가".
 5. **스윕 사전조건 게이트**(`gate_prereq.sh`) — 🔴 **DSPy `/health` 확인이 사라졌다.** 서비스가
    죽어 있으면 dspy·surrogate 레인이 조용히 canonical 로 내려앉은 채 스윕이 다 돈다.
    스윕 전 `DSPY_URL` 손확인 + 스윕 후 `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것
+6. **게이트가 무엇을 덮는가** — 시험 파일을 지우거나 옮기기 전에 그 성질에 **변이를 심어
+   빨개지는지 볼 것.** 머리말의 "이 파일이 X 를 지킨다" 는 증거가 아니다. 2026-09-01 에 같은
+   문장을 세 번 틀리게 적었고 세 번 다 spec 에 들어갔다 — 변이 한 번으로 판명됐다.
 
 ## 🔴 세대 도장 — 규칙과 현행값
 
@@ -313,13 +334,13 @@ julia +lts --project=. -i tools/dev_session.jl      # Revise REPL: t() re-checks
 ```
 Key can also come from an env var (`DEMO=`, `TEST=`, ...), which takes precedence over `ARGS[1]`.
 
-**기대 baseline(실패 아님):** `Pkg.test()` = **710 pass / 0 fail / 1 error / 711 total**
-(≈4m50s, 2026-08-29 `c81fad02` 실측). 유일한 error 는 `test/runtests.jl:80` 의 `Demo` —
+**기대 baseline(실패 아님):** `Pkg.test()` = **2212 pass / 0 fail / 1 error / 2213 total**
+(≈6m15s, 2026-09-01 `013969da` 실측). 유일한 error 는 `test/runtests.jl:80` 의 `Demo` —
 `Gurobi Error 10009: No Gurobi license found` 이고 **변경과 무관하다.**
 
 🔴 **이 숫자는 자라는 중이다 — 인용하지 말고 재유도해라.** Plan B(2026-08-29,
 `docs/superpowers/plans/2026-08-29-tool-enactment-lane-plan-b.md`)가 태스크마다 게이트를 더한다.
-경과: 254(08-28) → 631(`36bb917b`, B0 이 +367) → 710(`c81fad02`, T1 이 +79).
+경과: 254(08-28) → 631 → 710(08-29) → 2082(08-31 S1 착수) → 2212(`013969da`, S1 완료).
 회귀 판정에 쓸 값은 **네가 지금 잰 값**이고, 이 줄은 자릿수 감각용이다.
 (옛 "254" 를 2026-08-29 에 그대로 두면 377 pass 만큼 낡은 값이 되고, 옛 "11 pass" 는 상위
 testset 개수를 전체 단언 수로 잘못 읽은 것이었다 — 같은 종류의 사고가 이 줄에서 두 번 났다.)
@@ -333,10 +354,25 @@ testset 개수를 전체 단언 수로 잘못 읽은 것이었다 — 같은 종
 🔴 **삭제된 검사 도구들**(2026-08-18 정리, `git show 8e005842:wm4spacecraft_manufacturing/<name>`):
 `verify.py` · `audit_objective.py` · `audit_action_vocab.py` · `test_objective.py` ·
 `test_surrogate_support.py` · `measure_objective_scales.py` · dp 테스트 넷.
-**계약은 살아 있고 검사만 없다** — 위 §2026-08-18 절의 다섯 항목이 그 목록이다.
+**계약은 살아 있고 검사만 없다** — 위 §2026-08-18 절의 **1~5 항목**이 그 목록이다(6 은 삭제된
+도구가 아니라 2026-09-01 에 새로 물린 자리다).
 ⚠️ 옛 결과("8/8 PASS" 등)를 인용하지 말 것 — 어떤 기존 덤프로도 재현되지 않는다.
 
 ## Gotchas
+- 🔴 **DSPy 는 `~/.dspy_cache` 를 모든 서비스 인스턴스가 공유한다(`cache=True`).** `/health` 의
+  `calls` 는 `prog()` **뒤**에서 증가해 캐시 히트도 세므로 **과금 카운터가 아니다**. 2026-09-01
+  실측: "유료 4건" 중 실제 모델 호출은 2건. 🔴 **음성 대조가 특히 위험하다** — 옛 값으로 되돌려
+  던지면 프롬프트가 옛 판과 바이트 동일이라 **그때 응답을 재생**한다(오늘의 모델을 잰 게 아니다).
+  같은 이유로 n 을 늘리는 재표집이 **구조적으로 막힌다**. 프로브 전후 `~/.dspy_cache` 새 항목 수를
+  세는 것이 현재 유일한 판별법이다.
+- 🔴 **`Pkg.test()` 안에서만 빨개지는 시험은 전역 오염을 의심하라.**
+  `test/service_decide_ships_agents.jl` 이 `SPARE_POOLS[:east]` 를 안 치우고 나간다. 전역을 읽는
+  시험은 `try/finally` 로 직접 소유·복원할 것(단독 실행은 초록, 스위트에서만 빨갛다).
+- **`n_stalled` 은 `run_demo.jl` 에만 있다** — `render_demo.jl` 은 별개 엔진이고
+  `DEMO_SUMMARY`/`stalled_robots` 참조가 0개다. 렌더 보드로 정지를 확인하려 하지 말 것.
+- **프롬프트 렌더 확인은 무료다**: `/decide` 에 `lanes:[]` 를 주면 LM 호출 0회로 프롬프트가 나온다.
+- **보드 로그의 줄 순서는 시간 순서가 아니다**(stderr 무버퍼 vs stdout 블록버퍼). 순서 논증은
+  로그가 아니라 코드로 재확인할 것.
 - **`tools/*.jl` with no key runs a default silently** (`demos.jl` → `original_baseline`) instead of erroring. Read the `DEMOS` dict at the bottom of the file for valid keys.
 - Behavior is driven by ~180 env-var knobs. Discover them, don't guess:
   `grep -rho 'get(ENV, *"[A-Z0-9_]*"' src tools | sort -u`
