@@ -1138,7 +1138,7 @@ function formulate_milp(
                                 # ×edge_cost_multiplier(sched,v): per-robot SoC bias (1.0 unless battery hook installed).
                                 # (한국어) 이 엣지의 비용 = 이동에너지(edge_energy) × 로봇별 배율(edge_cost_multiplier).
                                 #   배율은 기본 1.0(배터리/우선순위 훅이 없으면 원래 거리비용 그대로).
-                                edge_costs[(v, v2)] = edge_energy(dt_min) * edge_cost_multiplier(sched, v)
+                                edge_costs[(v, v2)] = edge_energy(dt_min) * edge_cost_multiplier(sched, v, v2)
                                 if warm_start
                                     Xa[v, v2] = @variable(model, binary = true, start = warm_start_soln[v, v2])   # 따뜻한 시작값 포함 변수
                                 else
@@ -1368,6 +1368,12 @@ end
 # (한국어) EDGE_COST_MULTIPLIER = (선택적) 배터리 SoC 배율 함수 상자. Ref{Any} 라 어떤 함수든/nothing 담을 수 있음.
 #   기본 nothing → 배율 1.0. navigator/battery.jl 가 여기에 "SoC 낮은 로봇 엣지는 >1" 함수를 꽂음.
 const EDGE_COST_MULTIPLIER = Ref{Any}(nothing)
+# payload 축 훅 (2026-09-01, S2). `EDGE_COST_MULTIPLIER`(SoC·agent 축)와 **별개의 상자**다.
+# 🔴 왜 따로 두나: 하나로 합치면 재가격을 뗄 때 `nothing` 을 넣게 되고 그러면 SoC 항까지
+#    같이 사라진다(2026-08-30 계획서가 그 위험을 직접 적었다). 두 축은 곱해지고 따로 꺼진다.
+# 서명은 `(sched, v, v2) -> Float64` — payload 는 후보 간선의 **목적지 쪽**에 붙어 있어서
+# `v` 만으로는 볼 수 없다(실측: 후보 2103개 전부 v/v2 가 RobotGo 이고 화물은 v2 한 홉 아래).
+const EDGE_PAYLOAD_MULTIPLIER = Ref{Any}(nothing)
 const MAX_AGENT_COST_BIAS  = 1.0e3   # 로봇별 소프트 비용배율의 상한(수치 안전용 — 너무 큰 값 방지)
 # 로봇ID → 비용배율 을 담는 전역 딕셔너리 상자. DSL 의 DeprioritizeAgent 가 여기에 "로봇=>배율"을 등록.
 const AGENT_COST_BIAS      = Ref(Dict{AbstractID,Float64}())
@@ -1402,6 +1408,14 @@ function edge_cost_multiplier(sched, v)
         id === nothing || (m *= agent_cost_bias(id))   # `조건 || 식` = 조건이 거짓일 때만 식 실행. id 있으면 배율 곱함
     end
     EDGE_COST_MULTIPLIER[] === nothing || (m *= EDGE_COST_MULTIPLIER[](sched, v))   # 배터리 함수가 꽂혀 있으면 그 배율도 곱함
+    return m
+end
+
+# (한국어) 후보 간선 (v -> v2) 의 최종 비용배율 = 기존 2인자 배율 × payload 배율.
+# 훅이 없으면 곱이 1.0 이라 2인자와 **바이트 동일**이다 — 기존 호출자·시험은 그대로 초록.
+function edge_cost_multiplier(sched, v, v2)
+    m = edge_cost_multiplier(sched, v)
+    EDGE_PAYLOAD_MULTIPLIER[] === nothing || (m *= EDGE_PAYLOAD_MULTIPLIER[](sched, v, v2))
     return m
 end
 
@@ -1583,7 +1597,7 @@ function greedy_edge_cost(::GreedyEnergyAwareCost, sched, v, v2, dt::Float64)
     w = GREEDY_ENERGY_W[]
     w === nothing && error("GreedyEnergyAwareCost 를 쓰려면 w_g 가 필요하다 — objective.json 의 " *
                            "kappa/T_scale/Eg_scale 로 init_objective_weights! 를 먼저 부를 것 (spec §5).")
-    return get_tF(sched, v) + dt + w * edge_energy(dt) * edge_cost_multiplier(sched, v)
+    return get_tF(sched, v) + dt + w * edge_energy(dt) * edge_cost_multiplier(sched, v, v2)
 end
 
 """
