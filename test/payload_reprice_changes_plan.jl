@@ -60,9 +60,12 @@ function costs(env; release::Bool, agent = nothing, light_bias = 0.5, call_count
         CB.formulate_milp(CB.SparseAdjacencyMILP(), sched, tree; optimizer = CB._respec_optimizer())
         @assert !(CB.LAST_EDGE_COSTS[] === sent) "formulate 가 안 돌았다"
         out = copy(CB.LAST_EDGE_COSTS[])
-        CB.clear_payload_bias!()
         out
     finally
+        # 🔴 최종 리뷰 F8: `clear_payload_bias!()` 를 `try` 마지막 줄이 아니라 여기로 옮겼다.
+        # `formulate_milp` 가 던지면(예: 위 `@assert` 실패) 옛 위치는 건너뛰어져 훅이 다음
+        # testset 으로 샌다 — `finally` 는 정상 반환이든 예외든 항상 돈다.
+        CB.clear_payload_bias!()
         empty!(CB.INVALID_ID_COUNTERS); merge!(CB.INVALID_ID_COUNTERS, saved_ids)
     end
 end

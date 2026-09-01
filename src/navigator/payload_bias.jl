@@ -27,8 +27,16 @@ const _PAYLOAD_REF = Ref(12.8)
     _payload_factor(m_payload, light_bias) -> Float64
 
 화물 질량 → 비용 배수 `1 + light_bias·(m/_PAYLOAD_REF)`. 순수 함수.
-**절대 1.0 미만이 되지 않는다** — 이 축은 로봇을 비싸게만 만들고 인센티브를 주지 않는다
-(`deprioritize_agent` 의 clamp 와 같은 규약). 음의 비용은 MILP 를 깨뜨린다.
+**절대 1.0 미만이 되지 않는다** — 이 축은 로봇을 비싸게만 만들고 인센티브를 주지 않는다.
+음의 비용은 MILP 를 깨뜨린다.
+
+🔴 최종 리뷰 F8 정정: 여기 있던 "`deprioritize_agent` 의 clamp 와 같은 규약" 은 거짓이었다.
+`deprioritize_agent!`(`essential_tg_coponents.jl:1386`)는 **양쪽 다** 자른다—
+`clamp(factor, 1.0, MAX_AGENT_COST_BIAS)`(상한 1.0e3). 이 함수는 **아래쪽만** 자른다
+(`max(0.0, ...)` 을 두 인자 각각에 걸 뿐, 결과 배수 자체에는 상한이 없다) — `light_bias`·
+`m_payload` 를 크게 주면 배수가 그만큼 커진다. 🔴 상한을 새로 넣지 않는다 — 그것은 이
+레인의 범위를 넘는 행동 변경이고, 이 무제한 손잡이는 **미룬 위험으로 기록**만 한다(조용히
+막지 않는다).
 """
 _payload_factor(m_payload::Real, light_bias::Real) =
     1.0 + max(0.0, Float64(light_bias)) * max(0.0, Float64(m_payload)) / _PAYLOAD_REF[]
