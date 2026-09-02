@@ -84,7 +84,7 @@ testset 은 **뒤집지 않는다**(S1 보고서 §4-2 의 예고는 집행되�
 
 ### 1-4. `release_pending_assignments!` 가 그 포화를 푼다 — 그러나 창이 닫힌다
 
-`release_pending_assignments!`(`reassign.jl:149`)는 미래 배정 엣지를 `rem_edge!` 로 제거하고
+`release_pending_assignments!`(`src/respec/reassign.jl`)는 미래 배정 엣지를 `rem_edge!` 로 제거하고
 슬롯을 미배정 상태로 되돌린다 = 조건②를 여는 유일한 동작.
 
 **t=0 짝 대조**: 43개 해제(`ne` 337→294) ⟹ 후보 **0 → 2103**.

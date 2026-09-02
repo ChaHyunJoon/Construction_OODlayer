@@ -229,8 +229,16 @@ NOOP 포함 모든 팔 뒤에 무조건 부른다. 이 문단을 읽고 "미구�
 **전 구간 0** 이고, release 없는 후보 간선도 전 구간 0 이다
 (`tools/probes/probe_release_in_harness.jl`). `resolve_assignments!` 가
 `release_pending_assignments!` 를 안 부르기 때문이다. 아무도 못 본 이유는
-`test/smdp_common_resolve.jl:97` 의 단언이 `@test r.n_reassigned >= 0` 이라는 **항진**이라서다.
-오늘 release 하는 production 팔은 fault 하나뿐이다(`replan.jl:888` → `reassign.jl:374`).
+`test/smdp_common_resolve.jl` 의 `[2] 스텁이 아니다` testset 단언이 `@test r.n_reassigned >= 0`
+이라는 **항진**이라서다.
+오늘 release 하는 production 팔은 fault 하나뿐이다 — `replan.jl` 의 robot-fault 분기가
+`fault_robot_and_reassign!`(`respec/reassign.jl`)를 부르고, **그 함수 안에서**
+`release_pending_assignments!(…; faulted = agent)` 가 불린다.
+⚠️ 이 문단은 원래 `smdp_common_resolve.jl:97` · `reassign.jl:374` 로 줄번호를 적었고 **둘 다
+낡았다**(2026-09-02 실측: 각각 `:103` · `:416`). 낡은 `:374` 는 그 사이 함수 중간의 `end` 줄이
+되어 있었고, 한 세션이 그것을 그대로 인용해 **도달 불가능한 호출 경로를 사실처럼 보고했다**.
+🔴 **이 파일에서 코드를 가리킬 때는 함수·testset **이름**으로 적을 것** — 줄번호는 조용히 낡고,
+이 파일은 모든 세션이 검증 없이 전제로 읽는다.
 ⟹ release 는 **팔이 정한다**(harness 로 옮기면 NOOP 이 함대를 통째로 재배정하는 가장 파괴적인
 팔이 된다). 그리고 전체 release 는 어느 시점에도 60초 안에 최적성을 증명 못 한다 —
 대상 에이전트로 **범위를 좁히면** 후보가 1/19 로 줄고 0.2초에 `OPTIMAL` 이 나온다.
