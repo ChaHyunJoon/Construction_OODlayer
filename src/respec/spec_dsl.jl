@@ -62,6 +62,36 @@ struct ForbidAgent <: ConstraintSpec
 end
 
 """
+    ForbidHeavyCargo(agent, n)
+
+"`agent` 는 자기가 맡을 예정인 화물 중 **1대당 부담 상위 `n` 개**를 맡지 않는다."
+
+`ForbidAgent`(로봇 통째 퇴역)의 **좁힌 판**이다 — 로봇은 계속 살아서 다른 일을 한다.
+1대당 부담 = `화물질량 / 팀크기`. 나누는 이유는 `battery.jl` 의 `share` 가 그렇게 나누기
+때문이다: `moved_mass = m_robot·|team| + m_payload` 를 `length(robots)` 로 균등분배한다 —
+팀이 크면 짐을 **나눠 진다**. 실측(tractor)에서 이 나눗셈이 순서를 7.5% 바꾼다
+(`m=12.8, 팀4 → 3.20` 이 `m=9.011, 팀2 → 4.506` 보다 **가볍다**).
+단일 진실원은 `cargo_burden_after`(`src/navigator/payload_bias.jl`)다 — 질량 공식을
+컴파일러 쪽에 복제하지 않는다(`_payload_mass_measured` 가 유일한 추정량이다).
+
+🔴 **금지 대상은 컴파일할 때마다 다시 찾는다.** 목록을 얼려 두면 그래프가 바뀐 뒤 그 참조가
+결정변수가 아니게 되어 `Reject(:ungrammatical)` 이 되고, 고장 경로에서 그것은 라인 영구
+정지다(`replan.jl` → `engage_fallback!`). `Xa` 는 `formulate_milp` **안에서만** 존재한다
+(`verifier.jl` 의 MILP 실행가능성 게이트가 그 사실을 명시한다).
+
+🔴 `n >= 1` 을 생성자가 강제한다 — `n = 0` 은 "0개를 금지" 라서 검증을 통과하고도 아무것도
+안 막는 **hollow admit** 이다.
+"""
+struct ForbidHeavyCargo <: ConstraintSpec
+    agent::AbstractID   # 금지를 적용할 로봇/에이전트의 ID (퇴역이 아니라 화물 선별)
+    n::Int              # 금지할 상위 부담 화물의 개수 (1 이상)
+    function ForbidHeavyCargo(agent::AbstractID, n::Integer)
+        n >= 1 || error("ForbidHeavyCargo: n 은 1 이상이어야 한다 — 0 개 금지는 hollow admit 이다 (받은 값: $(n))")
+        return new(agent, Int(n))
+    end
+end
+
+"""
     ForbidWindow(node, t_lo, t_hi)
 
 "Node `node` may not be ACTIVE during [t_lo, t_hi]" — encoded as the node either

@@ -62,6 +62,47 @@ function candidate_edge_payload_mass(env, sched, v2, p::BatteryParams)
     end
 end
 
+"""
+    cargo_burden_after(env, sched, v, p::BatteryParams) -> Union{Nothing,Float64}
+
+배정 슬롯 `v` 가 나르게 될 화물의 **1대당 부담** = 화물질량 / 팀크기.
+
+`nothing` 은 **"못 쟀다"** 다(삼상 규약) — 0 이 아니다. 호출자는 그것을 0 으로 접지 마라.
+못 재는 경우 셋: 후속 노드가 없다 · 후속이 화물을 나르는 노드가 아니다 · 팀 크기를 못 얻거나
+0 이다. 셋 다 `nothing` 이고, 그중 어느 것도 "부담 0" 이 아니다.
+
+**왜 팀 크기로 나누나** — `account_battery_step!`(`battery.jl`)의 `share` 가
+`moved_mass = m_robot·|team| + m_payload` 를 `length(robots)` 로 균등분배한다. 팀이 크면 같은
+화물이라도 1대당 부담은 작다. 실측(tractor): `m=12.8, 팀4 → 3.20` < `m=9.011, 팀2 → 4.506`.
+
+🔴 **단일 진실원이다.** 질량은 `candidate_edge_payload_mass` → `_payload_mass_measured` 한
+곳에서만 나온다(그 계약은 `battery.jl` 의 `_payload_mass_measured` 위 주석이 못 박는다).
+소비자가 둘이다 — `compile_constraint!(…, ::ForbidHeavyCargo)`(MILP 금지 대상 선정)와
+LLM 프롬프트의 부담 순위. 두 번째 추정량을 만들지 마라.
+
+⚠️ `p.payload_density` 는 `# TUNING KNOB` 이라 **절대값에 뜻이 없다.** 모든 후보에 공통인
+양의 스칼라이므로 **순위는 `p` 와 무관하게 불변**이다 — 순위 용도에서는 어떤 `p` 를 줘도
+같은 답이다. `p` 를 인자로 남긴 것은 절대값을 쓰는 호출자가 자기 출처를 고르게 하기 위해서다
+(컴파일러는 `BATTERY_FLEET[].params`, 프롬프트 레인은 `BatteryParams()`).
+
+⚠️ `env` 는 `env.scene_tree` 하나만 읽힌다 — `(scene_tree = …,)` NamedTuple 로도 부를 수 있다
+(컴파일러가 `RESPEC_SCENE_TREE[]` 로 그렇게 부른다).
+"""
+function cargo_burden_after(env, sched, v, p::BatteryParams)
+    outs = Graphs.outneighbors(sched, v)
+    isempty(outs) && return nothing                      # 후속이 없다 = 못 쟀다
+    inner = get_node_from_id(sched, get_vtx_id(sched, outs[1]))
+    m = candidate_edge_payload_mass(env, sched, v, p)    # 같은 한 홉·같은 단일 추정량
+    m === nothing && return nothing                      # 화물을 나르는 노드가 아니다 = 못 쟀다
+    team = try
+        length(robot_team(entity(inner)))
+    catch
+        0                                                # 팀을 못 읽었다
+    end
+    team > 0 || return nothing   # 🔴 0 으로 나누지 않는다. "팀 없음" = 못 쟀다 (∞ 도, 0 도 아니다)
+    return Float64(m) / team
+end
+
 "설치된 재가격 상태. `(agent::String, light_bias::Float64, params::BatteryParams)`."
 const PAYLOAD_BIAS = Ref{Union{Nothing,NamedTuple}}(nothing)
 

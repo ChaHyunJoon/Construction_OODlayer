@@ -1217,7 +1217,19 @@ function formulate_milp(
     # `nothing` (the default) is a no-op, so existing call sites are unchanged.
     # `!==` : "동일 객체가 아님"(파이썬 is not). 추가제약이 주어졌을 때만 컴파일해 모델에 주입.
     if extra_constraints !== nothing
-        compile_proposal!(model, t0, tF, Xa, sched, extra_constraints)   # LLM 재명세 제약을 모델에 추가
+        # RESPEC_SCENE_TREE: 이 solve 의 씬트리를 컴파일러에 나른다(`compiler.jl` 의 docstring
+        # 참조). `problem_spec` 은 호출지점 16곳 전부에서 `env.scene_tree` 다.
+        # `ForbidHeavyCargo` 가 `_payload_mass_measured` 로 화물 bbox 를 읽는 유일한 통로이고,
+        # `RESPEC_FROZEN`/`RESPEC_PINNED` 와 같은 기전이다(시그니처를 안 바꾼다).
+        # 🔴 `finally` 로 반드시 되돌린다 — 전역에 낡은 씬트리를 남기면 다음 solve 가 남의
+        #    세계에서 부담을 재게 되고, 그 실패는 에러가 아니라 조용한 오답으로만 샌다.
+        prev_scene = RESPEC_SCENE_TREE[]
+        RESPEC_SCENE_TREE[] = problem_spec
+        try
+            compile_proposal!(model, t0, tF, Xa, sched, extra_constraints)   # LLM 재명세 제약을 모델에 추가
+        finally
+            RESPEC_SCENE_TREE[] = prev_scene
+        end
     end
 
     milp = SparseAdjacencyMILP(model, Xa, Xj, milp_model.job_shop) #, job_shop_variables   # 래퍼 구조체로 묶기

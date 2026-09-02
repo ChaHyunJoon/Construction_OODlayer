@@ -686,6 +686,7 @@ _carries_llm_grammar(p::RespecProposal) =
 # `(x,)` : 원소 1개짜리 튜플(파이썬과 동일하게 쉼표 필요). 결과를 항상 순회 가능한 묶음으로 통일.
 referenced_ids(cs::ForbidWindow) = (cs.node,)    # 시간창 제약은 그 대상 작업 노드 하나를 건드림
 referenced_ids(cs::ForbidAgent)  = (cs.agent,)   # 로봇금지 제약은 그 로봇(agent) 하나를 건드림
+referenced_ids(cs::ForbidHeavyCargo) = (cs.agent,)  # 화물금지도 그 로봇 하나를 건드림(대상 화물은 컴파일 때 다시 찾는다)
 referenced_ids(cs::ForbidZone)   = (cs.assembly,)  # 구역 제약은 (grounding 한) 그 막힌 조립체 하나를 건드림
 referenced_ids(cs::ReplaceAgent) = (cs.agent,)   # 교체 제약은 고장난 그 로봇(agent) 하나를 건드림
 referenced_ids(cs::ReformTeam)   = ()            # 팀 재정립은 특정 노드를 안 지목(기하가 막힌 팀을 찾음)

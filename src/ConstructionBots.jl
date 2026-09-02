@@ -100,6 +100,7 @@ include("respec/respec.jl")  # RESPEC: 반드시 마지막 — 위에서 정의�
 export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명세(respec) + 명목 레인 교착 해소
        RESPEC_VERDICTS, assert_respec_verdict,   # 판정 어휘의 단일 진실원 + 조용한 버림 방지 관문
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
+       ForbidHeavyCargo,                                          # 좁힌 금지: 1대당 부담 상위 N 화물만 그 로봇에게서 뗀다
        SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
        set_battery_courier!, battery_courier_enabled,            # SwapBattery 물리 배송: 창고 예비가 배터리를 들고 왕복
        battery_deliveries, is_battery_courier, awaiting_battery_swap,

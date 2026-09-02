@@ -378,6 +378,17 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :ZONE_DOMAIN_GATE       => :setup,
     :AUTO_EFFICIENCY_KAPPA  => :setup,
     :EDGE_COST_MULTIPLIER   => :setup,
+    :RESPEC_SCENE_TREE      => :setup,   # 신규(cargo-ban Task 2). compiler.jl — `formulate_milp`
+                                          # 이 자기 `problem_spec`(= 씬트리)을 여기 넣고
+                                          # `compile_proposal!` 직후 `finally` 로 되돌린다.
+                                          # 🔴 `RESPEC_FROZEN`/`RESPEC_PINNED` 가 :setup → :state
+                                          # 로 재분류된 이유(호출자가 solve 전에 채워 두면 그
+                                          # 값이 프론티어 판정을 가른다)가 여기엔 **없다**:
+                                          # 이 상자는 `formulate_milp` 자신이 채우고 같은 호출
+                                          # 안에서 지우므로 solve 밖에서는 **항상 `nothing`**
+                                          # 이고, 스냅샷이 찍히는 어떤 지점에서도 값이 없다 —
+                                          # 복원할 내용이 없으므로 s 가 아니다. 배선 통로라는
+                                          # 점에서 `EDGE_COST_MULTIPLIER`(바로 윗줄)와 같은 부류다.
     :ENERGY_MODEL           => :setup,
     :GREEDY_ENERGY_W        => :setup,
     :PLANNING_OBJECTIVE_WEIGHTS => :setup,

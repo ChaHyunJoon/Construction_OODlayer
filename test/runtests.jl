@@ -517,4 +517,12 @@ end
     @testset "scoped release" begin
         include("scoped_release.jl")
     end
+
+    # 2026-09-02 (cargo-ban T2): 제약 종류 `ForbidHeavyCargo` — 타입 계약 · 컴파일러가 실제로
+    # 행을 추가하는가(G-1, 0행이면 빨강) · `RESPEC_SCENE_TREE` 배선과 복원 · 결정론적 동점
+    # 처리 · `cargo_burden_after` 의 삼상 규약.
+    # 🔴 씬을 짓는다(tractor/10대/closed=60) — 한 번만 짓고 formulate 만 반복한다.
+    @testset "ForbidHeavyCargo" begin
+        include("forbid_heavy_cargo.jl")
+    end
 end

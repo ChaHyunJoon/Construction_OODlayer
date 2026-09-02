@@ -82,6 +82,93 @@ function compile_constraint!(model, t0, tF, Xa, sched, cs::ForbidAgent)
     return n                                                  # 총 추가 제약 개수 반환
 end
 
+# --- ForbidHeavyCargo: 1대당 부담 상위 N 화물만 그 로봇에게서 뗀다 -----------------
+# `ForbidAgent`(로봇 통째 퇴역)의 **좁힌 판**이다. 조건은 같다(후보 간선만, 확정 간선은 절대
+# 안 건드림) — 다른 것은 도착점을 부담 상위 `n` 개로 좁힌다는 것 하나뿐이다.
+
+"""
+    _heavy_cargo_targets(sched, Xa, agent, n) -> Vector{Int}
+
+`agent` 소유의 **후보** 배정 간선이 닿는 도착 슬롯 `v2` 중 1대당 부담 상위 `n` 개(정점 번호).
+
+후보의 정의는 `ForbidAgent` 와 **같다**: `Xa[u,v2]` 가 실제 결정변수이고
+`!Graphs.has_edge(sched, u, v2)`(이미 확정된 구조적 간선은 절대 금지하지 않는다).
+소유자 선택자는 `_edge_owner_id(sched, u)` 다 — Task 1 이 **측정으로** 정했다:
+`is_agent_frontier` 는 16/16 레짐 행에서 후보 쌍이 **0** 이라 이 제약을 아예 표현하지 못했고,
+`_edge_owner_id` 는 판정 가능한 23/23 칸에서 대상 로봇에게서 화물을 뗐다.
+⚠️ `_edge_owner_id` 는 TransportUnit 계열 노드에서 항상 `nothing` 이다(그 노드에 `.id` 필드가
+없다). 실제로 집히는 `u` 는 `RobotGo`/`RobotStart` 이고 그것이 정상이다.
+
+🔴 **결정론**: 후보는 `Xa` 의 희소구조(열 → 행)를 순회해 `Vector` 로 모으고
+`(-부담, string(get_vtx_id(sched, v2)))` 로 정렬한다. `Set`/`Dict` 를 **순회하지 않는다** —
+이 브랜치에는 `AbstractID` 의 내용기반 `Base.hash` 가 없어 ID-키 컨테이너의 순회 순서가
+빌드마다 갈린다(MEMORY: 시뮬레이션은 시드 고정으로 재현돼야 함). 2차 키를 **정점 번호(Int)로
+하면 안 된다**: release/commit 이 그래프를 바꾸면 번호가 재배정되는데 컴파일러는 바로 그
+변형된 그래프 위에서 돈다. `string(get_vtx_id(...))` 는 타입이름 + 정수라 내용 파생이고
+프로세스 간 안정적이다. 동점은 예외가 아니라 **정상**이다 — 실측에서 `colored_8x8` 은 후보
+도착점의 부담 **고유값이 1개**(전부 동점)이고, 그 판에서는 이 2차 키가 유일한 결정 규칙이다.
+
+🔴 부담을 **못 잰 `v2` 는 건너뛴다**(0 으로 접지 않는다 — 삼상 규약). 반대로 씬트리·함대가
+통째로 없는 것은 "못 쟀다" 가 아니라 **배선 결함**이라 조용한 0행이 아니라 `error` 다.
+"""
+function _heavy_cargo_targets(sched, Xa::SparseMatrixCSC, agent::AbstractID, n::Int)
+    # 🔴 세 가드 전부 error 다. `return 0` 이면 0행 = hollow admit 이 된다.
+    isdefined(@__MODULE__, :cargo_burden_after) && isdefined(@__MODULE__, :BATTERY_FLEET) || error(
+        "ForbidHeavyCargo: navigator 레이어가 로드되지 않았다 — " *
+        "CB.include(joinpath(pkgdir(CB), \"src\", \"navigator\", \"navigator.jl\")) 를 먼저 하라")
+    st = RESPEC_SCENE_TREE[]
+    st === nothing && error(
+        "ForbidHeavyCargo: RESPEC_SCENE_TREE[] 가 비어 있다 — formulate_milp 밖에서 컴파일됐다. " *
+        "이것은 배선 결함이지 부담을 못 쟀다가 아니다.")
+    fleet = BATTERY_FLEET[]
+    fleet === nothing && error(
+        "ForbidHeavyCargo: BATTERY_FLEET[] 가 비어 있다 — enable_battery! 를 먼저 하라 " *
+        "(1대당 부담을 잴 파라미터가 없다).")
+    p = fleet.params
+    env_like = (scene_tree = st,)   # `_payload_mass_measured` 는 env.scene_tree 하나만 읽는다
+    cands = Tuple{Int,Float64,String}[]                    # (v2, 부담, 2차 정렬키) — Vector 다
+    rv = rowvals(Xa)
+    for v2 in 1:size(Xa, 2)                                # 열 순회: 결정적
+        owned = false
+        for k in nzrange(Xa, v2)                           # 그 열의 채워진 행 = 후보 간선의 출발점
+            u = rv[k]
+            Graphs.has_edge(sched, u, v2) && continue      # 확정(구조적) 간선은 후보가 아니다
+            o = _edge_owner_id(sched, u)
+            (o !== nothing && o == agent) || continue
+            owned = true
+            break
+        end
+        owned || continue
+        b = cargo_burden_after(env_like, sched, v2, p)
+        b === nothing && continue                          # 못 쟀다 → 건너뛴다 (0 이 아니다)
+        push!(cands, (v2, Float64(b), string(get_vtx_id(sched, v2))))
+    end
+    sort!(cands; by = c -> (-c[2], c[3]))                  # 부담 내림차순, 동점은 내용파생 문자열
+    return Int[c[1] for c in cands[1:min(n, length(cands))]]
+end
+
+# 이 버전은 cs::ForbidHeavyCargo(그 로봇에게서 부담 상위 n 개 화물만 뗀다)일 때 실행됨.
+# 🔴 반환값은 **모델에 실제로 추가한 행 수**다. 거짓말하면 hollow admit 을 못 잡는다
+#    (`test/respec_grammar.jl` 이 다른 제약들에 대해 이미 그 계약을 단언한다).
+function compile_constraint!(model, t0, tF, Xa, sched, cs::ForbidHeavyCargo)
+    targets = _heavy_cargo_targets(sched, Xa, cs.agent, cs.n)
+    n = 0
+    rv = rowvals(Xa)
+    for v2 in targets                                      # Vector 순회 — 결정적
+        for k in nzrange(Xa, v2)
+            u = rv[k]
+            Graphs.has_edge(sched, u, v2) && continue      # 확정 간선은 절대 안 건드린다
+            o = _edge_owner_id(sched, u)
+            # 🔴 **그 로봇의 간선만** 막는다. 이 제약은 "이 로봇이 안 맡는다" 이지
+            #    "아무도 안 맡는다" 가 아니다 — 후자면 화물이 영영 안 옮겨진다.
+            (o !== nothing && o == cs.agent) || continue
+            @constraint(model, Xa[u, v2] == 0)
+            n += 1
+        end
+    end
+    return n
+end
+
 # 🔴 2026-08-24 (spec §5.4, Task 5): 여기 있던 `cs::DeprioritizeAgent` no-op 메서드를 지웠다 —
 #   그 kind 가 DSL 에서 통째로 삭제됐으므로 닫힌 합집합에 그 자리가 없다. (소프트 비용편향 기전
 #   `AGENT_COST_BIAS` 자체는 essential_tg_coponents.jl 에 남아 있다.)
@@ -201,6 +288,25 @@ one (or a RobotStart). Both empty at t=0, where origin == frontier.
 # (각 solve 직전에 fault_robot_and_reassign! 이 내용을 채워, frontier 계산의 "과거/미래 경계"로 씀.)
 const RESPEC_FROZEN = Ref{Set{AbstractID}}(Set{AbstractID}())  # 빈 집합으로 초기화한 상자
 const RESPEC_PINNED = Ref{Set{AbstractID}}(Set{AbstractID}())  # 빈 집합으로 초기화한 상자
+
+"""
+이 solve 의 씬트리. `formulate_milp` 이 자기 `problem_spec` 인자에서 채우고 컴파일이 끝나면
+`finally` 로 되돌린다(`essential_tg_coponents.jl` 의 RESPEC 훅). `RESPEC_FROZEN`/
+`RESPEC_PINNED` 와 **같은 기전**이다 — solve 범위 데이터를 `compile_constraint!` 로 나르되
+`formulate_milp` 의 시그니처를 안 바꾼다.
+
+🔴 두 전역과 다른 점 하나: 저 둘은 **호출자**가 solve 전에 채우지만 이것은
+`formulate_milp` **자신이** 채우고 스스로 되돌린다 — 그래서 stale 이 될 수 없고, solve 밖에서는
+항상 `nothing` 이다. `ForbidHeavyCargo` 컴파일러는 `nothing` 을 보면 **조용히 0행을 내지 않고
+에러를 낸다**: 0행은 hollow admit 이고, 전역이 비어 있는 것은 "부담을 못 쟀다"(삼상 규약의
+`nothing`)가 아니라 **배선 결함**이다. 두 경우를 구별해서 다룬다.
+
+왜 씬트리가 필요한가: `_payload_mass_measured` 가 `env.scene_tree` 에서 화물 노드를 꺼내
+bbox 부피를 읽는다. `compile_constraint!` 는 `env` 를 못 받으므로(인자가 `model, t0, tF, Xa,
+sched, cs` 뿐) 이 상자가 유일한 통로다. 호출지점 16곳 전부가 `problem_spec` 자리에
+`env.scene_tree` 를 넘긴다(실측).
+"""
+const RESPEC_SCENE_TREE = Ref{Any}(nothing)
 
 # Xa[v,v2] 자리가 "실제 변수(후보 배정 엣지)"인지 검사하는 헬퍼. Xa 는 희소행렬(SparseMatrixCSC)이라 대부분 칸이 비어있음.
 "True if `Xa[v, v2]` holds a real VariableRef (a candidate assignment edge)."
