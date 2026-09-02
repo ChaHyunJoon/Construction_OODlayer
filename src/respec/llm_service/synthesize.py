@@ -157,9 +157,11 @@ PHYSICAL PRINCIPLES OF THIS BUILD
 1. SCHEDULE (a DAG). The build is a precedence graph of nodes. A node becomes active exactly
    when ALL of its predecessors are closed -- the frontier rule is pure DAG reachability, with
    no side conditions (ConstructionBots essential_tg_coponents.jl). The build is finished when
-   every node is closed. Assignment edges (which robot does which slot) are chosen by a MILP;
-   editing those edges without a following MILP re-solve leaves the schedule with fewer
-   assignments and no replacement plan.
+   every node is closed. Assignment edges (which robot does which slot) are chosen by a MILP.
+   THE HARNESS RE-SOLVES THAT MILP AUTOMATICALLY AFTER EVERY TOOL BODY, on the graph the body
+   leaves behind, with no extra constraints. So a body that edits assignment edges or edge
+   weights is completed by that re-solve; it must NOT contain a commit, re-solve, or formulate
+   step of its own, and this inventory deliberately contains no primitive that performs one.
 
 2. SCENE TREE (geometry). A separate tree holds the nested assembly geometry: where each
    sub-assembly is staged, where cargo is deposited, and the transforms that relate them.
@@ -305,7 +307,18 @@ def build_context(state: str,
               "PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
               "Each entry states which surface it edits, what it consumes, whether it can be "
               "undone, and its full mechanism including the conditions under which it does "
-              "nothing at all."]
+              "nothing at all.",
+              # 🔴 2026-09-01. 이 두 줄이 없으면 모델이 body 끝에 커밋 단계를 **지어낸다**
+              #    (`commit_respec` 이 실제로 그렇게 나왔다). 원인은 프롬프트가 네 곳에서
+              #    "재풀이가 따라와야 한다"고 말하면서 그것을 할 원시를 하나도 안 주는
+              #    것이었다. 이제 그 문장들은 주체를 harness 로 바꿨고, 여기서 한 번 더
+              #    못박는다. `test_body_rule_forbids_a_commit_step` 가 이 줄을 지킨다.
+              "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
+              "The harness re-solves the MILP after every body, so never write a commit, "
+              "re-solve, formulate, or persist step -- there is no such primitive here, and a "
+              "body naming one cannot be enacted at all. If what you need is genuinely absent, "
+              "do not invent a name inside the body: set reach to \"needs_primitive\" and "
+              "describe it in missing_primitive."]
     parts += primitive_inventory_lines(blob)
     parts += ["",
               "PURE PREDICATES -- measurement only. Never put one in a body."]
@@ -336,7 +349,10 @@ def parse_body(text: Optional[str]) -> Tuple[List[str], str]:
     방식은 둘이고 어느 쪽이었는지를 함께 돌려준다(조용히 다른 것을 세지 않기 위해):
       "calls" : `name(...)` 꼴을 찾았다.
       "names" : 괄호가 하나도 없었다 -> 알려진 원시 이름을 **등장 순서대로** 스캔했다.
-                (모델이 "1. translate_whole_build then commit_respec" 처럼 쓰는 경우.)
+                (모델이 "1. translate_whole_build then restage_all_blocked" 처럼 쓰는 경우.)
+                🔴 스캔은 **알파벳 안의 이름만** 줍는다. 알파벳 밖 이름은 조용히 사라지는데,
+                괄호 꼴(`_CALL_RE`)은 레지스트리를 안 보므로 그대로 뽑혀 집행부에서
+                "unknown primitive" 로 거절된다 — 같은 의도가 표기에 따라 갈린다.
       "empty" : 아무것도 못 찾았다.
     ⚠️ 중복은 **접지 않는다.** 같은 원시를 두 번 부르는 body 는 ψ 의 `a_cost` 가 합이라
     다른 점이고, 그것을 정규형에서 지우면 그 차이가 기록에서 사라진다.

@@ -85,11 +85,13 @@ def test_context_carries_every_operational_mechanism_verbatim():
         assert p["mechanism"] in ctx, (
             "원시 %r 의 mechanism 이 context 에 없다 -- 합성기가 그 원시의 존재나 함정을 "
             "못 본다." % p["name"])
-    assert len(prims) == len(_prim.PRIMITIVE_NAMES) == 20, (
-        "운용 원시 수가 20 에서 움직였다(%d) -- 이 게이트의 다른 어서션은 레지스트리에서 "
-        "유도되므로 계속 옳지만, 이 파일이 못박은 20(2026-09-01, S2 lane 의 "
-        "reprice_agent_by_payload 추가로 19->20) 이라는 사실이 갈렸다는 것은 "
-        "보고돼야 한다." % len(prims))
+    assert len(prims) == len(_prim.PRIMITIVE_NAMES) == 19, (
+        "운용 원시 수가 19 에서 움직였다(%d) -- 이 게이트의 다른 어서션은 레지스트리에서 "
+        "유도되므로 계속 옳지만, 이 파일이 못박은 19 라는 사실이 갈렸다는 것은 "
+        "보고돼야 한다. 이력: 19 -> 20 (2026-09-01, S2 lane 의 reprice_agent_by_payload "
+        "추가) -> 19 (2026-09-01, commit_respec 제거 — MILP 재풀이와 그 write-back 은 "
+        "body 가 아니라 harness 의 몫이다. T13 `resolve_assignments!` 가 `apply_action!` "
+        "안에서 모든 팔 뒤에 돈다)." % len(prims))
 
 
 def test_context_carries_the_trap_items_that_make_tools_silently_no_op():
@@ -219,8 +221,17 @@ def test_body_grammar_knows_predicates_have_no_psi():
 def test_parse_body_falls_back_to_a_name_scan_and_says_so():
     """모델이 괄호 없이 쓰는 경우가 실재한다. 폴백은 두되 **어느 방식이었는지 기록**한다 —
     조용히 다른 것을 세면 canon 의 뜻이 갈린다."""
-    names, how = syn.parse_body("first translate_whole_build then commit_respec")
-    assert (names, how) == (["translate_whole_build", "commit_respec"], "names")
+    names, how = syn.parse_body(
+        "first translate_whole_build then release_pending_assignments")
+    assert (names, how) == (
+        ["translate_whole_build", "release_pending_assignments"], "names")
+    # 🔴 이름 스캔은 **알파벳 안의 이름만** 줍는다(`known` 필터). 그래서 알파벳에서 빠진
+    #    이름은 여기서 조용히 사라진다 — 2026-09-01 에 `commit_respec` 이 그렇게 됐다.
+    #    ⚠️ 괄호 꼴은 다르다: `_CALL_RE` 는 레지스트리를 안 보므로 `commit_respec()` 은
+    #    이름으로 뽑히고, 그 body 는 `enact_minted!` 에서 "unknown primitive" 로 거절된다.
+    #    같은 의도가 표기에 따라 "조용히 탈락" 과 "통째 거절"로 갈린다 — 알려진 비대칭이다.
+    assert syn.parse_body("first translate_whole_build then commit_respec") == (
+        ["translate_whole_build"], "names")
     assert syn.parse_body("nothing here")[1] == "empty"
 
 
@@ -612,3 +623,76 @@ def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
     allk = [k.value for k in d.keys]
     assert "tool_minted" in allk and "synthesis" in allk, (
         "합성 레인 키가 /decide 응답에서 사라졌다 -- 라이브 레인은 /decide 로만 들어온다.")
+
+
+# ==========================================================================================
+# 🔴 2026-09-01 — 모델이 `commit_respec` 을 뱉지 않게 만든 것을 렌더된 프롬프트에서 잰다.
+#
+# 원인은 few-shot 도 캐시도 아니었다(합성 레인은 `dspy.ChainOfThought(SynthesizeTool)` 제로샷
+# 이다). 프롬프트가 **네 곳**에서 "재풀이가 따라와야 한다"고 말하면서 그것을 할 원시를 하나도
+# 안 줬다 — PHYSICAL_PRINCIPLES §1, 그리고 release/deprioritize/reprice 의 precondition 셋.
+# 그 상태에서 모델이 커밋 단계를 지어내는 것은 프롬프트를 잘 따른 결과다.
+#
+# 고친 방향은 사실을 지우는 것이 아니라 **행위 주체를 옮기는 것**이다: 재풀이는 harness 가
+# 모든 body 뒤에 자동으로 돈다(T13 `resolve_assignments!`, `src/smdp/generative.jl:360`).
+# 그래서 "네가 붙여라"가 "이미 붙는다, 쓰지 마라"가 된다.
+# ==========================================================================================
+_RESOLVE_IMPERATIVES = (
+    "must follow in the same enactment",
+    "must run after this call",
+    "the caller's formulate_milp",
+)
+
+
+def test_rendered_prompt_never_names_commit_respec():
+    """알파벳 밖 이름은 프롬프트 어디에도 없어야 한다 -- 인벤토리도, 원리도, 술어도."""
+    ctx = syn.build_context(state="obs")
+    assert "commit_respec" not in ctx, (
+        "렌더된 프롬프트가 알파벳 밖 이름 commit_respec 을 아직 가르친다. 그 이름이 든 body 는 "
+        "`enact_minted!` 이 통째로 거절한다(unknown primitive).")
+
+
+def test_rendered_prompt_never_names_commit_respec_with_tools_attached_either():
+    """🔴 `tools=None` 만 재면 구멍이 남는다 -- "TOOLS YOU ALREADY HAVE" 블록은 각 tool 의
+    docstring 을 그대로 싣고, 그것도 모델이 읽는 텍스트다. 실제 tool 을 붙여서도 잰다."""
+    import tool_registry as _tr
+    # 🔴 `valid` 는 **매크로** 이름이다(tool 이름이 아니다) -- 진실원은 MACRO_TO_TOOL 이고,
+    #    리터럴을 적으면 매크로가 늘어도 이 게이트가 안 자란다.
+    tools = _tr.build_tools([{"id": "r1", "label": "robot 1"}],
+                            sorted(_tr.MACRO_TO_TOOL.keys()))
+    ctx = syn.build_context(state="obs", tools=tools)
+    assert "commit_respec" not in ctx
+    assert "- (none: this event was offered no tool at all)" not in ctx, (
+        "tool 이 하나도 안 실렸다 -- 이 테스트가 공허하게 통과한다.")
+
+
+def test_prompt_moves_the_resolve_to_the_harness_instead_of_ordering_one():
+    """🔴 이 파일에서 가장 load-bearing 한 어서션. 사실("이 원시는 혼자서는 무효다")은 남기되
+    지시("재풀이를 붙여라")는 없어야 한다 -- 붙일 원시가 인벤토리에 없기 때문이다."""
+    ctx = syn.build_context(state="obs")
+    for bad in _RESOLVE_IMPERATIVES:
+        assert bad not in ctx, (
+            "프롬프트가 아직 %r 라고 말한다 -- 모델에게 인벤토리에 없는 단계를 지으라고 "
+            "시키는 문장이다." % bad)
+    # 대신 harness 가 한다는 사실이 있어야 한다. 없으면 모델은 이 원시들이 즉시 효과를
+    # 낸다고 오해한다(반대 방향의 실패).
+    assert "RE-SOLVES THAT MILP AUTOMATICALLY AFTER EVERY TOOL BODY" in ctx
+    assert "The harness re-solves the MILP after every body" in ctx
+
+
+def test_body_rule_forbids_a_commit_step():
+    """BODY RULE 이 렌더된다. 인벤토리 항목 하나하나가 아니라 **body 를 쓰는 규칙**이 필요한
+    이유: 모델은 개별 원시 설명이 아니라 '무엇을 써도 되는가'에서 이름을 짓는다."""
+    ctx = syn.build_context(state="obs")
+    assert "BODY RULE:" in ctx
+    assert "never write a commit, re-solve, formulate, or persist step" in ctx
+    # 없는 것을 지어내는 대신 갈 곳을 알려 준다 -- 그게 reach="needs_primitive" 다.
+    assert 'set reach to "needs_primitive"' in ctx
+
+
+def test_every_alphabet_name_is_visible_in_the_prompt():
+    """🔴 모델이 보는 알파벳 == 집행부가 아는 알파벳. 어긋나면 두 방향 모두 사고다:
+    안 보이는 이름은 영영 안 쓰이고, 보이는데 없는 이름은 body 를 통째로 거절시킨다."""
+    ctx = syn.build_context(state="obs")
+    for n in _prim.PRIMITIVE_NAMES:
+        assert n in ctx, "원시 %r 이 프롬프트에 안 보인다 -- 모델은 그것을 못 쓴다." % n
