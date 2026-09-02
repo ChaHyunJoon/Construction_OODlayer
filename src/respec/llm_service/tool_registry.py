@@ -97,8 +97,9 @@ assert len(TOOL_TO_MACRO) == len(MACRO_TO_TOOL), \
 #    를 비운다. 그러면 텍스트 OutputField 는 `adapters/base.py:168·181` 이 **예외 없이** 전부
 #    `None` 으로 만든다. 즉 강제 하에서 결정을 받을 수 있는 채널은 tool 인자 **하나뿐**이다.
 _EXPRESSIBLE_DESC = (
-    "false if NOTHING in this tool menu can remove the CAUSE of what you observed -- "
-    "i.e. you are calling a tool only because you must, not because it fixes anything. "
+    "false if NOTHING in this tool menu OTHER THAN NOOP can remove the CAUSE of what you "
+    "observed -- i.e. you are calling a tool only because you must, not because it fixes "
+    "anything. NOOP changes nothing, so it never counts as a way to remove a cause. "
     "Answering NOOP because intervening is unnecessary is NOT this: that is true. "
     "Set false when the fix this event needs is outside the menu entirely.")
 # 🔴 마지막 두 문장이 하중을 받는다. 실측(2026-08-29): 이 두 문장이 없는 옛 문구
@@ -107,6 +108,18 @@ _EXPRESSIBLE_DESC = (
 #    거짓 양성은 안 생겼다.
 #    ⚠️ 대가: 이 문구는 모델에게 *언제 false 라고 말할지*를 가르친다. 그래서 `expressible ==
 #    False` 비율은 부분적으로 **프롬프트 준수**를 잰다. 세대를 가르는 키는 `decision_source` 다.
+#
+# 🔴 2026-09-01 개정 — 질문의 **범위**에서 NOOP 을 뺐다("OTHER THAN NOOP" + 그 다음 문장).
+#    왜. `expressible` 은 "이 메뉴로 원인을 없앨 수 있나" 를 묻는데, 메뉴 셋 중 하나(NOOP)는
+#    정의상 아무것도 안 바꾸는 물건이다. 그래서 옛 문구의 "NOTHING in this tool menu" 는
+#    세는 대상이 흐렸다 — NOOP 을 후보에 넣고 세면 "메뉴로 못 고친다" 가 성립할 수 없는
+#    것처럼 읽힐 여지가 있었고, 그 혼동을 세 번째 문장 하나가 사후에 지우고 있었다. 이제
+#    범위 자체가 NOOP 을 배제하므로 그 문장은 보강이지 유일한 방벽이 아니다.
+#    ⚠️ NOOP 을 **메뉴에서** 뺀 것이 아니다(D-1). `tool_choice="required"` 판에서
+#    `expressible=False` 를 나르는 운반체는 `no_intervention` 하나뿐이라, 메뉴에서 빼면
+#    "메뉴 밖" 을 신고할 채널이 사라진다. 바뀐 것은 설명문뿐 — tool 도 인자도 그대로다.
+#    🔴 대가: 위 3/3 실측은 **옛 문구에 대한 것**이다. 이 개정본은 아직 산 호출로 재지
+#    않았다 — 어휘 밖 3건 + 대조군을 다시 재기 전까지 3/3 을 이 문구의 성적으로 인용하지 말 것.
 
 _REASONING_DESC = (
     "one sentence: why this action, and how clearly it beats the runner-up -- "

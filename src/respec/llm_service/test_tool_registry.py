@@ -465,6 +465,38 @@ def test_expressible_description_separates_the_two_events():
         "두 사건을 가르는 문장이 빠지면 발화율이 1/3 로 돌아간다"
 
 
+def test_expressible_scope_excludes_noop():
+    """🔴 2026-09-01: 질문의 **범위**에서 NOOP 을 뺀 개정을 지킨다.
+
+    `expressible` 은 "이 메뉴로 원인을 없앨 수 있나" 를 묻는데, 메뉴 셋 중 NOOP 은 정의상
+    아무것도 안 바꾼다. 범위에 NOOP 이 남아 있으면 "메뉴로 못 고친다" 의 셈 대상이 흐려진다.
+
+    🔴 이 시험이 잡는 변형: 누군가 첫 문장을 옛 형태("NOTHING in this tool menu can remove")
+    로 되돌리는 것. 위 시험은 그때도 green 이다 — "unnecessary"·"outside the menu" 는
+    뒤쪽 두 문장에 있어 그대로 남기 때문이다. 그래서 이 시험이 따로 필요하다.
+    """
+    d = reg.COMMON_ARGS(["Replace", "NOOP"])["expressible"]["description"]
+    assert "OTHER THAN NOOP" in d, "질문의 범위에서 NOOP 을 배제하는 절이 사라졌다"
+    assert "NOOP changes nothing" in d, \
+        "NOOP 이 왜 후보가 아닌지 말하는 문장이 사라졌다 — 배제만 하고 이유를 안 주면 모델이 되묻는다"
+
+
+def test_noop_is_still_on_the_menu():
+    """🔴 D-1: 범위에서 뺀 것과 **메뉴에서** 뺀 것은 다르다.
+
+    `tool_choice="required"` 판에서 `expressible=False` 를 나르는 운반체는
+    `no_intervention` 하나뿐이다(spec 2026-08-29 §423). 메뉴에서 빼면 모델이 "메뉴 밖"
+    을 신고할 채널 자체가 사라진다 — 위 개정을 "NOOP 을 없애라" 로 오독한 변형을 잡는다.
+    """
+    tools = reg.build_tools([{"id": "r1", "label": "r1"}], ["Replace", "NOOP"])
+    names = [t.name for t in tools]
+    assert "no_intervention" in names, "NOOP 운반체가 메뉴에서 사라졌다"
+    assert "expressible" in \
+        tools[names.index("no_intervention")] \
+        .format_as_litellm_function_call()["function"]["parameters"]["properties"], \
+        "운반체가 `expressible` 인자를 잃었다 — 메뉴 밖을 신고할 길이 없다"
+
+
 def test_reasoning_description_asks_for_the_gap_in_words():
     """`margin` 스칼라를 없앤 대가로 이 문장이 그 자리를 나른다(spec §3-3)."""
     d = reg.COMMON_ARGS(["Replace", "NOOP"])["reasoning"]["description"]
