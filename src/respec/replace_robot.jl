@@ -1454,9 +1454,12 @@ end
 """
     _apply_battery_swap!(env, role; courier=nothing, verbose=true) -> NamedTuple
 
-교체를 **실제로 적용**한다(SoC 완충 + stall/deplete/fault 게이트 해제 + 장부 기록).
+교체를 **실제로 적용**한다(SoC 완충 + stall/deplete/fault 게이트 해제 + 화물 금지 해제 + 장부 기록).
 예전 `swap_battery!` 의 본체 그대로다 — 갈라 놓은 이유는 배송 경로에서 이 순간이
 "파견 시점"이 아니라 **"배송 로봇이 도착한 시점"** 이 되어야 하기 때문.
+
+🔴 여기가 화물 금지(`STANDING_CARGO_BANS`)의 **수명이 끝나는 자리**다 — `clear_cargo_ban!(role)`
+로 **그 로봇의** 금지만 지운다(cargo-ban Task 4, 게이트 G-3).
 """
 function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose::Bool = true)
     has_vertex(env.scene_tree, role) ||
@@ -1469,6 +1472,15 @@ function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose:
     end
     pos = get(FAULTED_ROBOTS[], role, _robot_scene_pos2d(env, role))  # 교체가 일어난 위치(기록용)
     _reset_robot_health!(env, role)                    # SoC 완충 + stall/deplete/fault 게이트 해제
+    # 🔴 배터리를 갈았으므로 이 로봇의 화물 금지는 목적을 다했다(수명 계약, 사용자 결정 2026-09-01).
+    #    금지는 "SoC 가 낮은 동안 무거운 짐을 피한다" 이고, 교체가 그 조건을 없앤다.
+    #    🔴 `clear_cargo_ban!(role)` — **그 로봇 하나만**이다. `clear_all_cargo_bans!()` 로 지우면
+    #    한 대의 회복이 함대 전체의 금지를 날린다(test/cargo_ban_lifetime.jl 의 G-3 가 잡는다).
+    #    🔴 자리가 `swap_battery!` 이 아니라 여기인 이유: 배송(courier)이 켜지면 `swap_battery!` 은
+    #    파견만 하고 SoC 는 그대로다 — 거기서 풀면 아직 방전된 로봇이 무거운 짐을 되찾는다.
+    #    교체가 **실제로 적용되는** 자리는 여기 하나뿐이고(즉시 교체 · 배송 도착 둘 다 여기로 온다),
+    #    수명 계약이 말하는 사건이 바로 이것이다.
+    clear_cargo_ban!(role)
     # 자산은 그대로 — 장부에는 "정비 사건"으로만 남고 세대는 안 오른다(asset_ledger.jl).
     record_asset_swap!(role, asset_of(role); event = :battery_swap, cause = :battery,
                        step = _current_sim_step(), soc = soc_before, position = pos)

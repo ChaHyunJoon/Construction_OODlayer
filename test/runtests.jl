@@ -536,4 +536,17 @@ end
     @testset "cargo ban store" begin
         include("cargo_ban_store.jl")
     end
+
+    # 2026-09-02 (cargo-ban T4): 화물 금지의 **수명** — 금지는 그 로봇의 배터리가 갈리는 순간까지
+    # 산다(술어가 아니라 사건). G-3 은 두 방향을 함께 잰다: 교체된 로봇은 풀리고, **다른 로봇의
+    # 금지는 살아남는다**(후자가 `clear_all_cargo_bans!()` 식 과잉 해제를 잡는다). 교체 전에 둘
+    # 다 걸려 있다는 양성 대조가 "지울 것이 없어서 초록" 을 막는다.
+    # 🔴 여기서 세는 3 단언은 **자식 프로세스 게이트**다 — 진짜 시험 20 단언은 깨끗한 프로세스
+    #    안에서 돈다. 이유(스위트 꼬리에서 HEAD 코드 `_soc_of` 가 세그폴트한다 — navigator.jl
+    #    중복 include 로 `const BATTERY_FLEET` 이 재정의되기 때문)는 그 파일 머리말에 실측과
+    #    스택트레이스까지 적혀 있다. 자식이 일찍 죽으면 sentinel 이 없어 부모가 빨개진다.
+    #    씬은 짓지만 전진시키지 않는다(수명 계약은 스케줄 진행과 무관) — MILP 를 안 푼다.
+    @testset "cargo ban lifetime" begin
+        include("cargo_ban_lifetime.jl")
+    end
 end
