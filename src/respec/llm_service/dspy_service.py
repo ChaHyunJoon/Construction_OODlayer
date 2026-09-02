@@ -52,6 +52,12 @@ WM = os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
     "wm4spacecraft_manufacturing")
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
+# [2026-09-01] 캐시는 **기본 on** 이다: temperature 를 낮게 두어도 API 레벨 결정성은
+# 보장되지 않으므로, 시드 고정 스윕의 재현성이 사실상 여기에 기대고 있다. 라이브 호출이
+# 실제로 나가야 하는 측정(합성 레인 발화 / 지연·비용)에서만 `DSPY_CACHE=0` 으로
+# **재시작**해 끈다. 장수 프로세스라 환경변수만 바꾸면 옛 레짐이 계속 돌기 때문에,
+# 레짐(`cache`)은 `/health` 와 매 응답에 실어 보낸다 -- 산출물이 자기 레짐을 말해야 한다.
+CACHE = os.environ.get("DSPY_CACHE", "1") != "0"
 
 # 데이터셋 경로는 wm4 쪽 core/wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
 # 경로에 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이
@@ -248,8 +254,30 @@ def build_adapter():
     return dspy.ChatAdapter(use_native_function_calling=True)
 
 
-_state = {"program": None, "instructions": None, "demos": 0, "calls": 0,
+_state = {"program": None, "instructions": None, "demos": 0, "calls": 0, "billed": 0,
           "surrogate": None, "surro_feats": None, "surro_data": None, "surro_error": None}
+
+
+def _was_billed():
+    """직전 LM 호출이 캐시 히트가 아니라 **실제 과금 호출**이었는가.
+    dspy 3.3 의 history 엔트리는 `cache_hit` 을 싣고 `cost` 는 캐시 히트에서 None 이다.
+    판별 불가면 False -- 세지 못한 호출이 남는 건 회복 가능하지만, 부풀린 과금 수는
+    그대로 인용된다. `CACHE` 가 꺼져 있으면 애초에 히트가 없으므로 전부 과금이다."""
+    if not CACHE:
+        return True
+    try:
+        e = dspy.settings.lm.history[-1]
+    except Exception:
+        return False
+    hit = getattr(e, "cache_hit", None)
+    if hit is None:
+        try:
+            hit = e["cache_hit"]
+        except Exception:
+            hit = None
+    if hit is not None:
+        return not hit
+    return bool(getattr(e, "cost", None))
 
 
 def native_fc_active(signature=None):
@@ -486,7 +514,7 @@ def _configure_dspy():
     LM **객체 생성**은 connect 0건이고, 이 함수는 provider 호출을 내지 않는다 — 과금 0건이다.
     (여기서 `supports_function_calling` 을 읽지는 않는다. 그 속성의 성질은 `native_fc_active`
     아래 주석 참조: 읽으면 원격 cost map fetch 를 시도한다.)"""
-    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=True)
+    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=CACHE)
     dspy.configure(lm=lm, adapter=build_adapter())
     return lm
 
@@ -1183,6 +1211,9 @@ def health():
     return {"status": "ok", "policy": "dspy:%s" % MODEL,
             "program": os.path.basename(PROGRAM) if os.path.exists(PROGRAM) else "(seed only)",
             "demos": _state["demos"], "calls": _state["calls"],
+            # calls 는 요청 수(캐시 히트 포함), billed 가 실제 과금 호출 수다. 둘을 한
+            # 이름으로 뭉치면 캐시 재생이 라이브 유료 측정처럼 보인다.
+            "cache": CACHE, "billed": _state["billed"],
             "surrogate": _state["surro_data"] or ("ERROR: " + str(_state["surro_error"])),
             # 축 1(어휘 미달)의 입력. 산문(`surrogate` 필드)이 아니라 **기계가 읽는 목록**이다.
             # None 은 "못 쟀다"(모델 미적재)이고 [] 는 "아무 팔도 지원 안 한다" — 다른 사건이다.
@@ -1397,7 +1428,9 @@ def _ask(prog, sig, line, valid, tools, choice=None):
             #        · ::test_turning_the_knob_off_sends_neither_key (킬스위치 OFF 방향)
             kw["config"] = {"tool_choice": choice, "parallel_tool_calls": False}
     pred = prog(**kw)
-    _state["calls"] += 1
+    _state["calls"] += 1                    # 요청 수(캐시 히트 포함) -- 과금 수가 아니다
+    if _was_billed():
+        _state["billed"] += 1
     return pred
 
 
@@ -1428,7 +1461,8 @@ def _blank_decision(valid, line, source, tools_offered):
     _blank = maybe_synthesize(expressible=None, kind=None, state=line)
     return {"policy": "dspy:%s" % MODEL, "chosen": "", "ranking": list(valid),
             "margin": None, "reasoning": "", "valid": valid, "coerced": False,
-            "state": line, "llm_calls": _state["calls"], "error": None,
+            "state": line, "llm_calls": _state["calls"],
+            "cache": CACHE, "llm_billed": _state["billed"], "error": None,
             "decision_source": source,
             "tool_called": None, "tool_args": {},
             "tool_called_forced": None, "tool_args_forced": {},
@@ -1607,7 +1641,8 @@ def macro(req: MacroRequest):
             #    키가 사라지면 소비자가 "레인이 안 돌았다" 와 "값이 없다" 를 못 가른다.
             #    그 내용은 `reasoning` 이 산문으로 나른다.
             "margin": None, "reasoning": reasoning, "valid": valid,
-            "coerced": coerced, "state": line, "llm_calls": _state["calls"], "error": err,
+            "coerced": coerced, "state": line, "llm_calls": _state["calls"],
+            "cache": CACHE, "llm_billed": _state["billed"], "error": err,
             # ---- tool 레인 (Plan A) ----------------------------------------------------------
             # 🔴 `decision_source` 가 C8 의 옛 세 사건 서술을 대체한다. 예전에는 소비자가
             #    `tools_offered` · `tool_called` · `tool_lane_error` · `tool_calls_n` ·
