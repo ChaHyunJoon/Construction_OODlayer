@@ -549,4 +549,16 @@ end
     @testset "cargo ban lifetime" begin
         include("cargo_ban_lifetime.jl")
     end
+
+    # 2026-09-02 (cargo-ban T5): **고장 수습이 마모 평준화를 이긴다** — `fault_robot_and_reassign!`
+    # 본문 전체가 금지를 끈 채 돌고 `finally` 로 되살린다(이른 return 이 여럿이라 손으로 복원을
+    # 심으면 하나를 빠뜨린다). 보험이지 관측된 결함에 대한 대응이 **아니다**(그 함수의 주석 참조).
+    # 🔴 이 시험의 급소: `released_faulted` 레짐에서는 예외가 없어도 금지가 0 행을 낸다(Task 1
+    #    실측). 그래서 행 수가 아니라 **그 formulate 시점의 보관소 내용물**을 잰다 — 옵티마이저
+    #    팩토리 스파이가 formulate 마다 보관소 스냅샷을 남기고, 같은 판에서 "행 수로는 못 가른다"
+    #    (49308 == 49308)는 것 자체를 양성 대조로 단언한다(파일 머리말).
+    #    씬을 짓고 closed=60 까지 전진시킨 뒤 **실제로 푼다**(mip_rel_gap 5.0 — 목적값 인용 금지).
+    @testset "cargo ban fault exception" begin
+        include("cargo_ban_fault_exception.jl")
+    end
 end

@@ -444,86 +444,125 @@ layer will later drive from a natural-language fault report:
 
 Returns a NamedTuple with `:status` in (:admitted, :rejected, :fallback) plus
 diagnostics. NEVER lets an unverified schedule become the schedule-of-record.
+
+🔴 **이 함수가 도는 동안 `STANDING_CARGO_BANS` 는 비어 있다** — 화물 금지(마모 평준화)가
+고장 수습을 막지 못하게 하는 보험이고, 나가는 모든 경로에서 `finally` 로 되살린다.
+⚠️ **관측된 결함에 대한 대응이 아니다** — 근거와 실측은 본문 첫 주석에 있다.
 """
 # 로봇 고장 → 검증된 재배정의 최상위 함수(Stage-1 핵심 로직, LLM 없이도 동작).
 # 키워드 인자: optimizer(솔버), verbose(로그 출력 여부), resume(중간 재개 모드 여부).
 function fault_robot_and_reassign!(env, agent::AbstractID;
                                    optimizer = _respec_optimizer(), verbose::Bool = true,
                                    resume::Bool = false)
-    sched = env.sched
-    teams_before = transport_teams_with_agent(env, agent; pending_only = true)  # 재배정 전, agent 가 속한 운반팀 수(검증용)
-    ms0 = makespan(sched)                        # 재배정 전 전체 완료시간(makespan)
+    # ------------------------------------------------------------------------
+    # 🔴 고장 수습은 마모 평준화보다 우선한다 — 본문 전체가 **화물 금지를 끈 채** 돈다.
+    #    이유: 금지 때문에 재배정이 실행 불가가 되면 `_enact_one!`(`replan.jl` 의
+    #    robot-fault 분기)이 `engage_fallback!` 을 부르고, 그 함수의 docstring 이 스스로
+    #    "first fallback = permanent end of the run, and that is the design" 이라고 적는다 —
+    #    푸는 production 호출자가 **0개**다(설계상). 즉 **복구 불가능한 런 종료**다.
+    #
+    #    ⚠️ 🔴 **이것은 관측된 결함에 대한 대응이 아니라 보험이다.** 여기서 문제가 났던 적이
+    #    없다. 계획서가 기록한 실측(2026-09-01, `tools/probes/probe_ban_vs_fault.jl`,
+    #    tractor·closed=60,
+    #    상한 60s): 로봇 1/2/3 대에 금지를 걸고 고장 1건을 얹어도 **전부 실행 가능**했다
+    #    (금지행 4/8/11 at N=1, 13/25/35 at N=3). 그 판들은 전 팔이 `TIME_LIMIT` 이라
+    #    목적값은 비교 불가이고, 건전한 것은 실행가능 판정뿐이다 — 그리고 그것은 **한 판·
+    #    한 시점**이다(그리고 이 변경은 그 프로브를 재실행하지 않았다). 넣는 이유는
+    #    **비대칭**이다: 예외 비용은 네 줄, 안 넣고 틀렸을 때
+    #    비용은 되돌릴 수 없는 런 종료. 나중에 이 자리를 읽고 "여기서 실제로 문제가 났었구나"
+    #    라고 읽지 말 것.
+    #
+    #    🔴 `finally` 인 이유: 아래 본문에는 이른 `return` 이 여럿 있다(`:rejected` ·
+    #    `:fallback`). `return` 앞마다 복원을 손으로 심으면 **하나만 빠뜨려도 금지가 영영
+    #    사라진다.** `finally` 는 이른 return 도 예외도 전부 덮는다.
+    #
+    #    ⚠️ `copy` 는 `Dict` 를 **한 겹만** 복사한다(shallow). 값이 `Int` 인 지금은 충분하다 —
+    #    `Int` 는 불변이라 얕은 복사와 깊은 복사가 구별되지 않는다. 🔴 **값 타입이 가변으로
+    #    바뀌면(예: `ForbidHeavyCargo` 인스턴스나 벡터) 이 줄이 조용히 깨진다** — 복원한
+    #    `_saved_bans` 가 본문이 변형한 그 객체를 그대로 가리키게 된다. 그때는 `deepcopy` 로
+    #    바꾸거나, `STANDING_CARGO_BANS` 의 값 타입을 불변으로 유지할 것.
+    # ------------------------------------------------------------------------
+    local _saved_bans = copy(STANDING_CARGO_BANS[])   # 지금 서 있는 금지를 통째로 들고 있는다
+    empty!(STANDING_CARGO_BANS[])                     # 이 함수가 부르는 모든 formulate 는 금지를 못 본다
+    try
+        sched = env.sched
+        teams_before = transport_teams_with_agent(env, agent; pending_only = true)  # 재배정 전, agent 가 속한 운반팀 수(검증용)
+        ms0 = makespan(sched)                        # 재배정 전 전체 완료시간(makespan)
 
-    invariant = build_invariant(env)             # 얼린 과거(완료/진행중) + 시간 경계 등 불변식 구성
-    # Tell the ForbidAgent compiler which nodes are the frozen past, so it can
-    # locate the faulted agent's emergence frontier (== origin at t=0).
-    closed_ids = Set{AbstractID}(get_vtx_id(sched, v) for v in env.cache.closed_set)  # 완료 노드 ID 집합
-    active_ids = Set{AbstractID}(get_vtx_id(sched, v) for v in env.cache.active_set)  # 진행중 노드 ID 집합
-    RESPEC_FROZEN[] = closed_ids                 # completed: not a frontier  # 전역 상자에 완료집합 저장(=경계가 아님)
-    RESPEC_PINNED[] = union(closed_ids, active_ids)  # pinned: a frontier's predecessor  # 핀된 집합(경계의 선행자)
-    # Snapshot the (feasible) pre-fault assignment BEFORE surgery; it warm-starts
-    # the re-solve so the solver only has to *repair* the faulted robot's share
-    # instead of re-deriving the whole assignment from scratch (much faster and,
-    # for the worst-case t=0 full re-solve, the difference between reliably
-    # finding a feasible point and timing out).
-    # 수술(엣지 제거) 전에 현재 배정을 스냅샷 → 재최적화의 "워밍스타트"(따뜻한 출발점)로 사용해 속도/안정성 향상.
-    warm = SparseMatrixCSC{Float64,Int}(adjacency_matrix(sched))  # 인접행렬을 희소행렬로 저장
-    removed = release_pending_assignments!(env, invariant; faulted = agent)  # 미래 배정 엣지 제거(스케줄 수술)
-    # `verbose && @info ...` : verbose 가 참일 때만 정보 로그 출력. `*` 로 여러 문자열을 이어붙임.
-    verbose && @info "[REASSIGN] released $(length(removed)) pending assignment edge(s); " *
-                     "frozen: $(length(invariant.frozen_t0)) t0 / $(length(invariant.frozen_tF)) tF; " *
-                     "agent $(agent) was on $(length(teams_before)) pending transport team(s)."
+        invariant = build_invariant(env)             # 얼린 과거(완료/진행중) + 시간 경계 등 불변식 구성
+        # Tell the ForbidAgent compiler which nodes are the frozen past, so it can
+        # locate the faulted agent's emergence frontier (== origin at t=0).
+        closed_ids = Set{AbstractID}(get_vtx_id(sched, v) for v in env.cache.closed_set)  # 완료 노드 ID 집합
+        active_ids = Set{AbstractID}(get_vtx_id(sched, v) for v in env.cache.active_set)  # 진행중 노드 ID 집합
+        RESPEC_FROZEN[] = closed_ids                 # completed: not a frontier  # 전역 상자에 완료집합 저장(=경계가 아님)
+        RESPEC_PINNED[] = union(closed_ids, active_ids)  # pinned: a frontier's predecessor  # 핀된 집합(경계의 선행자)
+        # Snapshot the (feasible) pre-fault assignment BEFORE surgery; it warm-starts
+        # the re-solve so the solver only has to *repair* the faulted robot's share
+        # instead of re-deriving the whole assignment from scratch (much faster and,
+        # for the worst-case t=0 full re-solve, the difference between reliably
+        # finding a feasible point and timing out).
+        # 수술(엣지 제거) 전에 현재 배정을 스냅샷 → 재최적화의 "워밍스타트"(따뜻한 출발점)로 사용해 속도/안정성 향상.
+        warm = SparseMatrixCSC{Float64,Int}(adjacency_matrix(sched))  # 인접행렬을 희소행렬로 저장
+        removed = release_pending_assignments!(env, invariant; faulted = agent)  # 미래 배정 엣지 제거(스케줄 수술)
+        # `verbose && @info ...` : verbose 가 참일 때만 정보 로그 출력. `*` 로 여러 문자열을 이어붙임.
+        verbose && @info "[REASSIGN] released $(length(removed)) pending assignment edge(s); " *
+                         "frozen: $(length(invariant.frozen_t0)) t0 / $(length(invariant.frozen_tF)) tF; " *
+                         "agent $(agent) was on $(length(teams_before)) pending transport team(s)."
 
-    # 형식 제약(ForbidAgent: 이 로봇 사용 금지)을 담은 재명세 제안 생성.
-    # ConstraintSpec[ ... ] : ConstraintSpec 타입 원소를 담는 배열 리터럴. 0.0 은 적용 시점(t=0).
-    proposal = RespecProposal(ConstraintSpec[ForbidAgent(agent, 0.0)],
-                              "robot $(agent) reported a fault and is removed from service",  # 사람이 읽을 설명
-                              "robot_fault")                                                   # 이벤트 종류 태그
+        # 형식 제약(ForbidAgent: 이 로봇 사용 금지)을 담은 재명세 제안 생성.
+        # ConstraintSpec[ ... ] : ConstraintSpec 타입 원소를 담는 배열 리터럴. 0.0 은 적용 시점(t=0).
+        proposal = RespecProposal(ConstraintSpec[ForbidAgent(agent, 0.0)],
+                                  "robot $(agent) reported a fault and is removed from service",  # 사람이 읽을 설명
+                                  "robot_fault")                                                   # 이벤트 종류 태그
 
-    # 제안을 검증(얼린 과거 + 제약을 두고 시험 풀이). 반환은 Reject 또는 통과한 verdict.
-    verdict = verify(proposal, env, invariant; optimizer = optimizer, warm_start = warm)
-    if verdict isa Reject                        # 검증 거부(재배정 불가능)면
-        verbose && @warn "[REASSIGN] REJECTED ($(verdict.reason)): $(verdict.detail) -> fallback"  # 경고 로그
-        # NamedTuple 반환: `(이름 = 값, ...)` 형태. 파이썬의 딕셔너리 비슷하지만 점(.)으로 접근하는 가벼운 묶음.
-        return (status = :rejected, reason = verdict.reason, detail = verdict.detail,
-                removed = length(removed), teams_before = length(teams_before))
+        # 제안을 검증(얼린 과거 + 제약을 두고 시험 풀이). 반환은 Reject 또는 통과한 verdict.
+        verdict = verify(proposal, env, invariant; optimizer = optimizer, warm_start = warm)
+        if verdict isa Reject                        # 검증 거부(재배정 불가능)면
+            verbose && @warn "[REASSIGN] REJECTED ($(verdict.reason)): $(verdict.detail) -> fallback"  # 경고 로그
+            # NamedTuple 반환: `(이름 = 값, ...)` 형태. 파이썬의 딕셔너리 비슷하지만 점(.)으로 접근하는 가벼운 묶음.
+            return (status = :rejected, reason = verdict.reason, detail = verdict.detail,
+                    removed = length(removed), teams_before = length(teams_before))
+        end
+
+        # --- commit the verified re-solve ----------------------------------------
+        # 검증을 통과했으니 실제로 재최적화(MILP 풀이)를 수행해 새 스케줄을 확정.
+        # t0_/tF_ 는 얼린 시간 경계, warm_start_soln 은 따뜻한 출발점, extra_constraints 는 검증된 제약.
+        milp = formulate_milp(SparseAdjacencyMILP(), sched, env.scene_tree;
+            optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF,
+            warm_start_soln = warm, extra_constraints = verdict.proposal)
+        optimize!(milp)                              # 최적화 실행
+        if primal_status(milp) != MOI.FEASIBLE_POINT  # 해를 못 찾으면(검증과 불일치하는 드문 경우)
+            verbose && @warn "[REASSIGN] committed solve disagreed with verifier -> fallback"
+            return (status = :fallback, reason = :committed_infeasible,  # 안전 폴백으로 처리
+                    removed = length(removed), teams_before = length(teams_before))
+        end
+
+        ok = update_project_schedule!(nothing, milp, sched, env.scene_tree)  # 풀이 결과를 실제 스케줄에 반영(로봇 id 재기록 포함)
+        # NOTE: an authoritative id re-thread (`rethread_robot_ids!`) was tried here as
+        # the doc's Option 1 and shown INSUFFICIENT — geometry-miss orphan RobotGos keep
+        # stale ids and still double-book (see docs/resume_fulloop_status_2026-06-24.md).
+        # Left unwired so the production path matches the recorded known state.
+        # Measure the agent's remaining pending teams BEFORE reset_cache! (which
+        # empties closed_set and would make completed teams look "pending").
+        teams_after = transport_teams_with_agent(env, agent; pending_only = true)  # 재배정 후 agent 의 남은 팀 수(0 이어야 정상)
+        ms1 = makespan(sched)                        # 재배정 후 makespan
+        # reset_cache! re-seeds the cache from ROOT nodes and clears closed_set: correct
+        # for a from-scratch plan, but it ERASES execution progress. For true mid-sim
+        # resumption (resume=true, the live-sim / maybe_respecify! path) we keep the
+        # already-closed nodes and re-seed only the remaining frontier so the build
+        # continues to completion instead of restarting. Default false preserves the
+        # original from-scratch behaviour for the standalone reassign tests.
+        # 삼항식: resume 참이면 진행상태를 보존한 채 재개(중간 재개), 거짓이면 처음부터 다시(기본 — 단독 테스트용).
+        resume ? reset_cache_resume!(env.cache, sched) : reset_cache!(env.cache, sched)
+        verbose && @info "[REASSIGN] ADMITTED $(verdict.n_constraints) forbid-constraint(s); " *
+                         "valid=$(ok); agent now on $(length(teams_after)) pending team(s); " *
+                         "makespan $(round(ms0, digits=2)) -> $(round(ms1, digits=2))"
+        # 성공 결과를 NamedTuple 로 반환(상태, 유효성, 제약 수, 제거 엣지 수, 전/후 팀 수와 makespan).
+        return (status = :admitted, valid = ok, n_constraints = verdict.n_constraints,
+                removed = length(removed), teams_before = length(teams_before),
+                teams_after = length(teams_after), makespan_before = ms0, makespan_after = ms1)
+    finally
+        # 🔴 어떤 경로로 나가든(정상 return · 이른 return · 예외) 금지를 되살린다.
+        STANDING_CARGO_BANS[] = _saved_bans
     end
-
-    # --- commit the verified re-solve ----------------------------------------
-    # 검증을 통과했으니 실제로 재최적화(MILP 풀이)를 수행해 새 스케줄을 확정.
-    # t0_/tF_ 는 얼린 시간 경계, warm_start_soln 은 따뜻한 출발점, extra_constraints 는 검증된 제약.
-    milp = formulate_milp(SparseAdjacencyMILP(), sched, env.scene_tree;
-        optimizer = optimizer, t0_ = invariant.frozen_t0, tF_ = invariant.frozen_tF,
-        warm_start_soln = warm, extra_constraints = verdict.proposal)
-    optimize!(milp)                              # 최적화 실행
-    if primal_status(milp) != MOI.FEASIBLE_POINT  # 해를 못 찾으면(검증과 불일치하는 드문 경우)
-        verbose && @warn "[REASSIGN] committed solve disagreed with verifier -> fallback"
-        return (status = :fallback, reason = :committed_infeasible,  # 안전 폴백으로 처리
-                removed = length(removed), teams_before = length(teams_before))
-    end
-
-    ok = update_project_schedule!(nothing, milp, sched, env.scene_tree)  # 풀이 결과를 실제 스케줄에 반영(로봇 id 재기록 포함)
-    # NOTE: an authoritative id re-thread (`rethread_robot_ids!`) was tried here as
-    # the doc's Option 1 and shown INSUFFICIENT — geometry-miss orphan RobotGos keep
-    # stale ids and still double-book (see docs/resume_fulloop_status_2026-06-24.md).
-    # Left unwired so the production path matches the recorded known state.
-    # Measure the agent's remaining pending teams BEFORE reset_cache! (which
-    # empties closed_set and would make completed teams look "pending").
-    teams_after = transport_teams_with_agent(env, agent; pending_only = true)  # 재배정 후 agent 의 남은 팀 수(0 이어야 정상)
-    ms1 = makespan(sched)                        # 재배정 후 makespan
-    # reset_cache! re-seeds the cache from ROOT nodes and clears closed_set: correct
-    # for a from-scratch plan, but it ERASES execution progress. For true mid-sim
-    # resumption (resume=true, the live-sim / maybe_respecify! path) we keep the
-    # already-closed nodes and re-seed only the remaining frontier so the build
-    # continues to completion instead of restarting. Default false preserves the
-    # original from-scratch behaviour for the standalone reassign tests.
-    # 삼항식: resume 참이면 진행상태를 보존한 채 재개(중간 재개), 거짓이면 처음부터 다시(기본 — 단독 테스트용).
-    resume ? reset_cache_resume!(env.cache, sched) : reset_cache!(env.cache, sched)
-    verbose && @info "[REASSIGN] ADMITTED $(verdict.n_constraints) forbid-constraint(s); " *
-                     "valid=$(ok); agent now on $(length(teams_after)) pending team(s); " *
-                     "makespan $(round(ms0, digits=2)) -> $(round(ms1, digits=2))"
-    # 성공 결과를 NamedTuple 로 반환(상태, 유효성, 제약 수, 제거 엣지 수, 전/후 팀 수와 makespan).
-    return (status = :admitted, valid = ok, n_constraints = verdict.n_constraints,
-            removed = length(removed), teams_before = length(teams_before),
-            teams_after = length(teams_after), makespan_before = ms0, makespan_after = ms1)
 end
