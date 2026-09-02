@@ -53,7 +53,7 @@ const REPO = abspath(joinpath(@__DIR__, ".."))
 const CHILD_FLAG = "CB_CARGO_BAN_LIFETIME_CHILD"
 # 🔴 자식이 실제로 통과시켜야 하는 단언 수. 늘리거나 줄이면 여기도 고쳐야 한다 —
 #    "몇 개든 통과하면 초록" 은 0개를 처리하고 초록이 되는 문을 열어 준다.
-const EXPECTED_ASSERTIONS = 20
+const EXPECTED_ASSERTIONS = 28
 
 if get(ENV, CHILD_FLAG, "0") == "1"
 # ============================================================================
@@ -167,8 +167,55 @@ ts3 = @testset "🔴 해제는 파견이 아니라 **적용**에 묶여 있다(�
     end
 end
 
-# 🔴 sentinel. 여기까지 왔다 = 세 testset 이 전부 통과했다(@testset 은 실패하면 던진다).
-println("CARGO_BAN_LIFETIME_PASSED=", sum(t -> t.n_passed, (ts1, ts2, ts3)))
+ts4 = @testset "🔴 hot_swap_robot!(본체 교체)도 그 로봇의 금지만 지운다" begin
+    # 🔴 왜 이 팔이 있나: `hot_swap_robot!` 은 `_reset_robot_health!` 로 SoC 를 1.0 으로 되돌리는데,
+    #    RobotID 는 **설계상 보존**되므로 보관소 키가 살아남는다. 해제가 `_apply_battery_swap!` 에만
+    #    있으면 본체를 갈아 낀 로봇이 근거(낮은 SoC) 없는 금지를 에피소드 끝까지 조용히 이고 간다
+    #    — 경고도 status 도 없이. 해제를 `_reset_robot_health!` 의 SoC guard 안으로 옮겨 막았고,
+    #    이 절이 그 두 방향(풀린다 / 남의 것은 안 풀린다)을 전부 잰다.
+    env = ENV_
+    a = CB.RobotID(3); b = CB.RobotID(7)
+    fleet = CB.BATTERY_FLEET[]
+    CB.clear_all_cargo_bans!()
+    try
+        fleet.soc[a] = 0.05                        # 교체가 **세계를 바꾸는지** 보려고 낮춰 둔다
+        CB.set_cargo_ban!(a, 2); CB.set_cargo_ban!(b, 1)
+        @test length(CB.STANDING_CARGO_BANS[]) == 2     # 🔴 양성 대조 — 지울 것이 실제로 있다
+
+        # `:in_place` 는 재배치(`_rehome_robot!`)를 건너뛰지만 `_reset_robot_health!` 는 두 팔
+        # (`:via_depot`/`:in_place`)이 똑같이 지나가는 마지막 줄이다 — 해제 자리를 그대로 잰다.
+        res = CB.hot_swap_robot!(env, a; mode = :in_place, verbose = false)
+
+        # 🔴 반환 심볼만으로는 세계가 변했다는 증거가 아니다(S-3) — SoC 를 직접 잰다.
+        @test res.status === :swapped               # early return(:no_robot/:no_spare)이 아니다
+        @test CB.BATTERY_FLEET[].soc[a] == 1.0      # SoC 가 실제로 복구됐다
+
+        @test !haskey(CB.STANDING_CARGO_BANS[], a)  # 🔴 a 의 금지가 풀렸다
+        @test CB.STANDING_CARGO_BANS[][b] == 1      # 🔴 b 는 그대로 — 남의 금지를 지우면 안 된다
+        @test length(CB.STANDING_CARGO_BANS[]) == 1 # 전체 삭제 구현이면 여기서 빨강
+    finally
+        CB.clear_all_cargo_bans!()
+    end
+end
+
+ts5 = @testset "🔴 실패한 hot_swap 은 금지를 유지한다(early return)" begin
+    # 씬트리에 없는 로봇 ⟹ `:no_robot` 으로 `_reset_robot_health!` 전에 return 한다.
+    # SoC 가 복구되지 않았으니 금지의 근거도 그대로다 — 풀리면 안 된다.
+    env = ENV_
+    ghost = CB.RobotID(999_999)
+    CB.clear_all_cargo_bans!()
+    try
+        CB.set_cargo_ban!(ghost, 2)
+        res = CB.hot_swap_robot!(env, ghost; mode = :in_place, verbose = false)
+        @test res.status === :no_robot
+        @test CB.STANDING_CARGO_BANS[][ghost] == 2   # 🔴 실패 경로에서 금지는 살아 있다
+    finally
+        CB.clear_all_cargo_bans!()
+    end
+end
+
+# 🔴 sentinel. 여기까지 왔다 = 다섯 testset 이 전부 통과했다(@testset 은 실패하면 던진다).
+println("CARGO_BAN_LIFETIME_PASSED=", sum(t -> t.n_passed, (ts1, ts2, ts3, ts4, ts5)))
 
 else
 # ============================================================================

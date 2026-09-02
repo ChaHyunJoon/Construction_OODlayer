@@ -121,6 +121,8 @@ end
 비워진 채 버려진다. 오늘 무해한 이유는 아래 세 함수가 **어떤 `Dict` 도 캐시하지 않고 매번
 현재 `Ref` 내용물**만 보기 때문이다. 🔴 어딘가가 `STANDING_CARGO_BANS[]` 를 지역변수나
 필드로 붙들어 두면 그 순간 조용히 깨진다(붙든 쪽은 버려진 빈 Dict 를 계속 본다) — 붙들지 말 것.
+🔴 같은 관용구에는 **쓰기 유실** 위험도 있다: 고장 수습 창 안에서 `set_cargo_ban!` 을 부르면
+그 항목은 곧 `Ref` 복원이 통째로 버릴 Dict 에 앉으므로 조용히 사라진다(오늘 그런 경로는 없다).
 
 읽는 쪽은 한 자리다: 바로 아래 `_compile_standing_cargo_bans!` 를
 `formulate_milp`(`essential_tg_coponents.jl`)이 **매번** 부른다.

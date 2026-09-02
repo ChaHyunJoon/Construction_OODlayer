@@ -1388,6 +1388,20 @@ function _reset_robot_health!(env, rid::AbstractID)
         if fleet !== nothing && haskey(fleet.soc, rid)
             fleet.soc[rid] = 1.0                            # SoC(충전상태)를 100%로
             delete!(fleet.depleted, rid)                    # 방전 표시 제거
+            # 🔴 여기가 화물 금지(`STANDING_CARGO_BANS`)의 **수명이 끝나는 유일한 자리**다
+            #    (cargo-ban Task 4, 게이트 G-3; 사용자 결정 2026-09-01).
+            #    금지의 뜻은 "SoC 가 낮은 동안 무거운 짐을 피한다" 이고, 그 조건을 없애는 것은
+            #    **SoC 복구** 그 자체다 — 그래서 해제를 `_apply_battery_swap!` 이 아니라 SoC 를
+            #    실제로 되돌리는 이 줄 옆, **이 guard 안**에 둔다. 그래야 SoC 가 복구된 곳에서만
+            #    풀린다(배터리 레이어가 없거나 이 로봇이 fleet 에 없으면 금지도 안 풀린다).
+            #    🔴 이 자리가 아니면 `hot_swap_robot!`(본체 교체)이 SoC 를 1.0 으로 되돌리고도
+            #    금지를 안 풀어, RobotID 가 보존되는 설계 탓에 보관소 키가 살아남아 그 로봇이
+            #    **에피소드 끝까지 조용히** 화물 금지를 이고 간다(근거가 되는 저 SoC 는 이미
+            #    사라진 뒤인데도). 실패한 hot-swap 은 여기까지 오기 전에 early return 하므로
+            #    금지를 그대로 유지한다.
+            #    🔴 **그 로봇 하나만**이다. `clear_all_cargo_bans!()` 로 지우면 한 대의 회복이
+            #    함대 전체의 금지를 날린다(test/cargo_ban_lifetime.jl 의 G-3 가 잡는다).
+            clear_cargo_ban!(rid)
         end
     end
     isdefined(@__MODULE__, :STALLED_ROBOTS) && delete!(STALLED_ROBOTS[], rid)  # reopen motion gate (정지 해제=다시 움직임)
@@ -1458,8 +1472,9 @@ end
 예전 `swap_battery!` 의 본체 그대로다 — 갈라 놓은 이유는 배송 경로에서 이 순간이
 "파견 시점"이 아니라 **"배송 로봇이 도착한 시점"** 이 되어야 하기 때문.
 
-🔴 여기가 화물 금지(`STANDING_CARGO_BANS`)의 **수명이 끝나는 자리**다 — `clear_cargo_ban!(role)`
-로 **그 로봇의** 금지만 지운다(cargo-ban Task 4, 게이트 G-3).
+🔴 여기가 화물 금지(`STANDING_CARGO_BANS`)의 수명이 끝나는 경로다 — 해제 자체는
+`_reset_robot_health!` 의 SoC guard 안에서 `clear_cargo_ban!(role)` 로, **그 로봇의** 금지만
+지운다(cargo-ban Task 4, 게이트 G-3). `hot_swap_robot!` 도 같은 함수를 지나므로 같이 풀린다.
 """
 function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose::Bool = true)
     has_vertex(env.scene_tree, role) ||
@@ -1471,16 +1486,11 @@ function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose:
         nothing
     end
     pos = get(FAULTED_ROBOTS[], role, _robot_scene_pos2d(env, role))  # 교체가 일어난 위치(기록용)
-    _reset_robot_health!(env, role)                    # SoC 완충 + stall/deplete/fault 게이트 해제
-    # 🔴 배터리를 갈았으므로 이 로봇의 화물 금지는 목적을 다했다(수명 계약, 사용자 결정 2026-09-01).
-    #    금지는 "SoC 가 낮은 동안 무거운 짐을 피한다" 이고, 교체가 그 조건을 없앤다.
-    #    🔴 `clear_cargo_ban!(role)` — **그 로봇 하나만**이다. `clear_all_cargo_bans!()` 로 지우면
-    #    한 대의 회복이 함대 전체의 금지를 날린다(test/cargo_ban_lifetime.jl 의 G-3 가 잡는다).
-    #    🔴 자리가 `swap_battery!` 이 아니라 여기인 이유: 배송(courier)이 켜지면 `swap_battery!` 은
-    #    파견만 하고 SoC 는 그대로다 — 거기서 풀면 아직 방전된 로봇이 무거운 짐을 되찾는다.
-    #    교체가 **실제로 적용되는** 자리는 여기 하나뿐이고(즉시 교체 · 배송 도착 둘 다 여기로 온다),
-    #    수명 계약이 말하는 사건이 바로 이것이다.
-    clear_cargo_ban!(role)
+    # 🔴 화물 금지 해제는 `_reset_robot_health!` **안**에 있다(그 함수의 SoC guard 안, 위 주석 참조).
+    #    자리가 `swap_battery!` 이 아닌 이유: 배송(courier)이 켜지면 `swap_battery!` 은 파견만 하고
+    #    SoC 는 그대로다 — 거기서 풀면 아직 방전된 로봇이 무거운 짐을 되찾는다. 즉시 교체 · 배송
+    #    도착 둘 다 이 함수로 오고, 이 함수는 SoC 복구를 `_reset_robot_health!` 에 위임한다.
+    _reset_robot_health!(env, role)                    # SoC 완충 + 화물 금지 해제 + stall/deplete/fault 게이트 해제
     # 자산은 그대로 — 장부에는 "정비 사건"으로만 남고 세대는 안 오른다(asset_ledger.jl).
     record_asset_swap!(role, asset_of(role); event = :battery_swap, cause = :battery,
                        step = _current_sim_step(), soc = soc_before, position = pos)
@@ -1556,7 +1566,11 @@ function hot_swap_robot!(env, faulted::AbstractID;
         # its unfinished task wedges the downstream build.
         mark_recovery_spare!(faulted)               # 먼 depot 서 혼잡한 빌드까지 복귀하도록 RVO 우선순위↑
     end
-    _reset_robot_health!(env, faulted)              # 배터리·고장 상태 리셋(건강 회복)
+    # 🔴 `_reset_robot_health!` 이 SoC 를 1.0 으로 되돌리면서 **그 로봇의 화물 금지도 푼다**
+    #    (그 함수의 SoC guard 안). RobotID 는 보존되므로 보관소 키가 살아남는다 — 여기서 안 풀면
+    #    본체를 갈아 낀 로봇이 근거 없는 금지를 에피소드 끝까지 조용히 이고 간다.
+    #    실패한 hot-swap(`:no_robot`/`:no_spare`)은 이 줄 전에 return 하므로 금지를 유지한다.
+    _reset_robot_health!(env, faulted)              # 배터리·고장 상태 리셋(건강 회복) + 화물 금지 해제
 
     # 로그에 "무슨 사건이었나(event)"와 "그 자리의 본체 세대(gen)"를 함께 남긴다 — 이 둘이 없으면
     # 로그만 보고 배터리 교체와 본체 교체를 구분할 수 없다(둘 다 예전엔 그냥 "hot-swapped"였다).

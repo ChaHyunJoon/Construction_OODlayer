@@ -447,7 +447,17 @@ diagnostics. NEVER lets an unverified schedule become the schedule-of-record.
 
 🔴 **이 함수가 도는 동안 `STANDING_CARGO_BANS` 는 비어 있다** — 화물 금지(마모 평준화)가
 고장 수습을 막지 못하게 하는 보험이고, 나가는 모든 경로에서 `finally` 로 되살린다.
-⚠️ **관측된 결함에 대한 대응이 아니다** — 근거와 실측은 본문 첫 주석에 있다.
+⚠️ **관측된 결함에 대한 대응이 아니다** — 근거와 실측은 본문 첫 주석에 있다. 필요성 측정
+(`tools/probes/probe_ban_vs_fault.jl`)은 **다시 돌리지 않았다** — 보험이라는 틀은 그대로 선다.
+
+🔴 **보험 말고 또 하나의 귀결이 있다(행동 변경이 아니라 기록이다).** 금지가 매달릴 수 있는
+유일한 대상은 **후보 간선**이고, 후보 간선은 `release_pending_assignments!` **직후에만**
+존재한다. 그 release 가 일어나는 production 자리는 정확히 둘이다:
+  1. 주조 tool body 안의 `release_pending_assignments` 원시,
+  2. 바로 이 함수의 `reassign.jl:506`.
+그런데 (2) 는 억제가 보관소를 비워 두는 바로 그 창이다. ⟹ **이 억제는 이미 서 있는 금지가
+간선에 매달릴 수 있는 마지막 non-tool 기회까지 함께 없앤다.** 즉 오늘 서 있는 금지가 실제로
+구속력을 갖는 길은 tool 경로 하나뿐이다. (설계상 받아들인 대가이지 결함 보고가 아니다.)
 """
 # 로봇 고장 → 검증된 재배정의 최상위 함수(Stage-1 핵심 로직, LLM 없이도 동작).
 # 키워드 인자: optimizer(솔버), verbose(로그 출력 여부), resume(중간 재개 모드 여부).
