@@ -8,9 +8,15 @@
 # 🔴 **계획서 Step 1 의 시험 스니펫을 그대로 못 쓴다** (2026-08-21 실측):
 #   · `include("smdp_fixtures.jl")` — 그 파일은 **없다**(T12 보고서가 이미 지적했다).
 #     T12 처럼 자립형으로 픽스처를 짓는다.
-#   · `CB.validate(env.sched)` — **맨이름 `validate` 는 존재하지 않는다**
-#     (`validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐, 셋 다 씬트리용).
-#     그래서 "스케줄이 유효하다" 를 **진짜 불변식**으로 바꿨다: 비순환 + 진행도 보존.
+#   · `CB.validate(env.sched)` — 🔴 **2026-09-02 정정: 여기 적혀 있던 근거가 거짓이었다.**
+#     원문은 "맨이름 `validate` 는 존재하지 않는다" 였다. 실제로는
+#     `validate(sched::OperatingSchedule)` 가 **실재하고**(`essential_tg_coponents.jl:313`),
+#     `essential_tg_coponents.jl:1796` 과 `full_demo.jl:670` 에서 스케줄에 **실제로 쓰인다**.
+#     맨이름이 없는 것은 **씬트리** 쪽이고, 그쪽이
+#     `validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 다.
+#     이 파일은 그 거짓 전제 위에서 "스케줄이 유효하다" 를 더 약한 불변식(비순환 + 진행도
+#     보존)으로 **대체**했다. 🔴 대체된 단언은 이번에 **고치지 않았다**(범위 밖) — 전제가
+#     거짓이었던 이상 **약한 불변식이 여전히 옳은 선택인지는 T13 담당자에게 열린 질문이다.**
 #
 #   julia +lts --project=. -e 'using ConstructionBots, Test; include("test/smdp_common_resolve.jl")'
 # =============================================================================

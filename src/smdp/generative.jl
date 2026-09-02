@@ -202,8 +202,11 @@ const RESOLVE_CALLS = Ref(0)
     (`src/respec/reassign.jl:149`. 🔴 `faulted` 와 `agent` 는 **배타적**이다 — 둘 다 주면 `ArgumentError`.
      `agent` 는 범위를 **좁힌다**: 그 로봇이 소유한 미래 배정 간선**만 떼고** 나머지는 그대로 둔다)
   · `assign_collaborative_tasks!`  → 첫 인자가 `model` 이다(`task_assignment.jl:433`)
-  · 맨이름 `validate` 는 **존재하지 않는다**
-    (`validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐)
+  · 맨이름 `validate` 는 **스케줄용으로 실재한다** — `validate(sched::OperatingSchedule)`
+    (`essential_tg_coponents.jl:313`; 호출부 `essential_tg_coponents.jl:1796` · `full_demo.jl:670`).
+    없는 것은 **씬트리용** 맨이름 `validate` 이고, 그쪽은
+    `validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐이다.
+    (🔴 2026-09-02 정정: 이 줄은 "맨이름 `validate` 는 존재하지 않는다" 로 적혀 있었고 **거짓**이었다.)
 대신 **`rebalance_for_battery!`(`battery.jl:715`)의 모양**을 그대로 쓴다 — 그 함수는 이름만 배터리이고, 하는 일은 `build_invariant` 로 완료·진행중을
 얼리고 추가 제약 없이 재정식화 + `optimize!` + `commit_respec!` 다.
 
