@@ -300,6 +300,10 @@ end
             end
             CB._reset_primitive_table!()
         end
+        # 🔴 2026-09-02 (cargo-ban T7) 실측 재확인: 표는 **19 그대로다**.
+        #    `reprice_agent_by_payload` 가 나가고 `forbid_heavy_cargo` 가 들어온 1:1 교체라
+        #    개수가 안 움직였다 — 즉 **이 숫자는 알파벳 교체를 못 잡는다.** 이름을 재는 것은
+        #    `test/minted_tool_enacts.jl` 의 `ENACTABLE_TODAY`·`REGISTRY_SURFACE_TODAY` 다.
         @test length(CB.PRIMITIVE_TABLE()) == 19       # 원래 레지스트리로 돌아왔다
     end
 

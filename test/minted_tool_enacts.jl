@@ -74,6 +74,7 @@ module MintedToolEnacts
 
 using Test
 using ConstructionBots
+using Graphs
 const CB = ConstructionBots
 
 isdefined(CB, :BatteryTruth) ||
@@ -88,6 +89,18 @@ _synth(; reach = "composed", names = String[], params = Dict{String,Any}()) =
 struct Hostile end
 Base.hasproperty(::Hostile, ::Symbol) = true
 Base.getproperty(::Hostile, ::Symbol) = error("이 반환값은 읽을 수 없다")
+
+# 🔴 (16) 용 스텁 스케줄. `payload_reprice_install.jl` 의 `_StubSched` 와 같은 관용구다 —
+#    씬·솔버 없이 `_resolve_schedule_agent` 의 순회·필터를 정확히 겨냥한다. 정점마다 소유자
+#    id 를 **직접** 준다: 유효 `BotID` · 무효(음수) `BotID` · 로봇이 아닌 id · `nothing` 을
+#    한 스케줄에 섞어 두면, 필터 네 갈래가 전부 이 하나의 픽스처에서 돈다.
+#    ⚠️ 스텁이 재지 **못하는** 것 하나: 진짜 스케줄이 실제로 이 문자열 형태를 내는가.
+#       그것은 out-of-band 프로브(task-7-report.md §실측)가 진짜 env 로 쟀다.
+struct _BanSched
+    owners::Vector{Any}
+end
+ConstructionBots.get_graph(s::_BanSched) = Graphs.SimpleDiGraph(length(s.owners))
+ConstructionBots._edge_owner_id(s::_BanSched, v) = s.owners[v]
 
 @testset "(1) reach=needs_primitive 는 deferred 다" begin
     r = CB.enact_minted!(nothing, nothing,
@@ -169,10 +182,18 @@ end
 #    write-back 은 body 가 아니라 harness 의 몫이고(T13, `resolve_assignments!` 가
 #    `apply_action!` 안에서 모든 팔 뒤에 돈다), body 는 "무엇을 열고 무엇을 재가격할지"만
 #    말한다.
+#
+# 🔴 2026-09-02 (cargo-ban T7): **알파벳 교체 1:1**. `reprice_agent_by_payload` 가 나가고
+#    `forbid_heavy_cargo` 가 들어왔다 — 표 개수는 19 그대로, 집행 가능도 8 그대로다(실측).
+#    뺀 이유는 실측이다: 그 soft 재가격은 어느 판에서도 argmin 을 못 움직였다(bias 32 까지
+#    대상 로봇이 일을 하나도 안 잃는다). 남겨 두면 모델이 무효한 재료를 골라 `handled=true`
+#    인데 세계는 바이트 동일인 판이 생긴다. 구현(`src/navigator/payload_bias.jl`)과 그
+#    시험은 **음성 대조로 남는다** — 지운 것은 알파벳뿐이다.
 # =============================================================================
-const ENACTABLE_TODAY = sort(["force_advance_stuck_carrier", "recover_stalled_teams",
+const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier",
+                              "recover_stalled_teams",
                               "reform_stuck_teams", "release_pending_assignments",
-                              "reprice_agent_by_payload", "resolve_schedule_wedge",
+                              "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
 
 @testset "(9) 알파벳 19 중 집행 가능은 8 이고, 나머지는 부르기 전에 거절된다" begin
@@ -298,7 +319,14 @@ end
              # recover 는 carrier 의 결과를 그대로 전달한다 — :disabled 가 여기로도 올라온다.
              ("recover_stalled_teams", :disabled), ("recover_stalled_teams", :no_carrier),
              ("resolve_schedule_wedge", :not_applicable), ("resolve_schedule_wedge", :no_wedge),
-             ("reform_stuck_teams", :moved_none)]
+             ("reform_stuck_teams", :moved_none),
+             # 🔴 2026-09-02 (T7) — `forbid_heavy_cargo` 는 **네 갈래 전부**가 조용한 성공이다.
+             #    실제 적응 status 가 하나도 없는 첫 원시다: 이 원시는 `STANDING_CARGO_BANS[]`
+             #    에 항목 하나를 쓸 뿐이고, 노린 적응(재풀이가 무거운 화물을 뗀다)은 **다음
+             #    formulate** 의 몫이다. `:banned` 를 성공으로 세면 세계가 바이트 동일인데도
+             #    `applied=true` 가 되어 폴백이 삼켜진다.
+             ("forbid_heavy_cargo", :banned), ("forbid_heavy_cargo", :unknown_agent),
+             ("forbid_heavy_cargo", :no_schedule), ("forbid_heavy_cargo", :invalid_n)]
     for (n, st) in quiet
         @test CB._step_applied(n, st) === false
     end
@@ -377,6 +405,7 @@ const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
     "compile_constraint"          => ("compile_constraint!", ["constraint_type"]),
     "deprioritize_agent"          => ("deprioritize_agent!", ["agent", "factor"]),
     "dispatch_battery_courier"    => ("dispatch_battery_courier!", ["target"]),
+    "forbid_heavy_cargo"          => ("forbid_heavy_cargo!", ["agent", "n"]),
     "force_advance_stuck_carrier" => ("force_advance_stuck_carrier!", ["tol"]),
     "hot_swap_robot"              => ("hot_swap_robot!", ["faulted", "mode"]),
     "pop_spare"                   => ("pop_spare!", ["pool"]),
@@ -384,7 +413,6 @@ const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
     "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
     "release_pending_assignments" => ("release_pending_assignments!", ["faulted", "agent"]),
     "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
-    "reprice_agent_by_payload"    => ("reprice_agent_by_payload!", ["agent", "light_bias"]),
     "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
     "resolve_schedule_wedge"      => ("resolve_schedule_wedge!", String[]),
     "restage_all_blocked"         => ("restage_all_blocked!", ["zone_keys"]),
@@ -726,6 +754,95 @@ end
     @test CB._step_applied("release_pending_assignments", :released)       === true
     @test CB._step_applied("release_pending_assignments", :released_none)  === false
     @test CB._step_touched_world("release_pending_assignments", :released_none) === true
+end
+
+# =============================================================================
+# (16) 🔴 2026-09-02 (cargo-ban T7) — `forbid_heavy_cargo` 는 **보관소에 실제로 쓴다.**
+#
+# 왜 이 절이 있는가: 이 원시의 네 status 는 **전부 조용한 성공**이라 위 (11)(13) 의 표
+# 게이트만으로는 "아무것도 안 하는 원시"와 구별되지 않는다. 반환 심볼은 세계가 변했다는
+# 증거가 아니다(S-3) — 그래서 여기서는 **보관소 내용물을 직접 잰다.**
+#   양성: `:banned` 뒤에 `STANDING_CARGO_BANS[]` 가 그 항목을 얻는다.
+#   음성: 짧게 쓴 id 는 `:unknown_agent` 이고 보관소는 **바이트 동일**이다.
+# 음성 대조가 없으면 양성은 "무조건 쓴다"와 구별되지 않는다.
+#
+# 🔴 `agent` 문자열을 리터럴로 적지 않는다 — `string(CB.RobotID(4))` 에서 **파생**한다.
+#    손으로 짧게 쓴 형태는 조용히 `:unknown_agent` 가 되고, 이 레포가 이미 데인 자리다.
+#    (그 짧은 형태를 아래에서 **음성 대조로** 실제로 던져 본다.)
+#
+# 🔴 이 절은 전역(`STANDING_CARGO_BANS[]`)을 건드리므로 `try/finally` 로 직접 소유·복원한다.
+#    안 비우면 뒤따르는 시험 파일의 모든 `formulate_milp` 이 조용히 달라진다.
+# =============================================================================
+@testset "(16) forbid_heavy_cargo 가 보관소에 쓴다 (양성 · 음성 대조)" begin
+    saved = copy(CB.STANDING_CARGO_BANS[])
+    try
+        CB.clear_all_cargo_bans!()
+        id4   = CB.RobotID(4)
+        good  = string(id4)                       # 파생 — 리터럴로 적지 않는다
+        short = replace(good, "ConstructionBots." => "")   # 손으로 짧게 쓴 형태
+        @test short != good                        # 🔴 전제: 두 형태가 실제로 다르다
+        sched = _BanSched(Any[id4,                        # 유효 로봇
+                              CB.RobotID(-2),             # 무효 id (풀린 슬롯의 자리표)
+                              CB.ObjectID(4),             # 로봇이 아닌 id
+                              nothing])                   # 소유자 없음
+        env = (sched = sched,)
+
+        # ---- 양성 -------------------------------------------------------------------
+        r = CB.forbid_heavy_cargo!(env; agent = good, n = 2)
+        @test r.status === :banned
+        @test r.agent == good
+        @test r.n == 2
+        @test haskey(CB.STANDING_CARGO_BANS[], id4)       # 🔴 보관소가 실제로 얻었다
+        @test CB.STANDING_CARGO_BANS[][id4] == 2
+        @test length(CB.STANDING_CARGO_BANS[]) == 1       # 다른 것은 안 썼다
+
+        # 덮어쓴다(누적 아님) — 보관소 계약 그대로.
+        @test CB.forbid_heavy_cargo!(env; agent = good, n = 1).status === :banned
+        @test CB.STANDING_CARGO_BANS[][id4] == 1
+        @test length(CB.STANDING_CARGO_BANS[]) == 1
+
+        # ---- 음성 대조 셋 — 전부 보관소를 **바이트 동일**로 둔다 ---------------------
+        before = copy(CB.STANDING_CARGO_BANS[])
+        for (why, call) in (
+                (:unknown_agent, () -> CB.forbid_heavy_cargo!(env; agent = short, n = 1)),
+                (:unknown_agent, () -> CB.forbid_heavy_cargo!(env; agent = string(CB.RobotID(-2)), n = 1)),
+                (:unknown_agent, () -> CB.forbid_heavy_cargo!(env; agent = string(CB.ObjectID(4)), n = 1)),
+                (:invalid_n,     () -> CB.forbid_heavy_cargo!(env; agent = good, n = 0)),
+                (:invalid_n,     () -> CB.forbid_heavy_cargo!(env; agent = good, n = -3)),
+                (:invalid_n,     () -> CB.forbid_heavy_cargo!(env; agent = good, n = 1.5)),
+                (:no_schedule,   () -> CB.forbid_heavy_cargo!((nope = 1,); agent = good, n = 1)),
+                (:no_schedule,   () -> CB.forbid_heavy_cargo!(nothing; agent = good, n = 1)))
+            out = call()
+            @test out.status === why
+            @test CB.STANDING_CARGO_BANS[] == before      # 🔴 한 항목도 안 움직였다
+        end
+
+        # 🔴 `n = 0` 은 **clamp 되지 않는다**. clamp 했다면 위 루프의 보관소 비교가 통과하고
+        #    이 줄만 빨개진다 — 두 단언이 함께 있어야 "안 썼다"와 "1 로 올려 썼다"가 갈린다.
+        @test CB.STANDING_CARGO_BANS[][id4] == 1
+
+        # ---- 진짜 `OperatingSchedule` 로도 음성 대조(스텁이 아니다) -------------------
+        # 로봇이 하나도 없는 실제 스케줄에서 어떤 이름도 안 풀린다.
+        @test CB.forbid_heavy_cargo!((sched = CB.OperatingSchedule(),);
+                                     agent = good, n = 1).status === :unknown_agent
+
+        # ---- 집행부 끝에서 끝까지 ----------------------------------------------------
+        CB.clear_all_cargo_bans!()
+        res = CB.enact_minted!(env, nothing,
+                _synth(names = ["forbid_heavy_cargo"],
+                       params = Dict{String,Any}("agent" => good, "n" => 3)))
+        @test res.verdict === :admit
+        @test res.steps[1].status === :banned
+        @test CB.STANDING_CARGO_BANS[][id4] == 3          # 🔴 body 를 통해서도 실제로 썼다
+        # 🔴 그런데 `applied` 는 **거짓**이고 `world_maybe_dirty` 도 **거짓**이다 — 노린 적응
+        #    (재풀이가 무거운 화물을 뗀다)은 다음 formulate 의 몫이고, 이 원시는 세계(씬·
+        #    스케줄·캐시)를 안 건드렸다. 그래서 기본 복구 사슬이 그대로 돈다.
+        @test res.applied === false
+        @test res.world_maybe_dirty === false
+        @test res.resume === :not_needed_untouched
+    finally
+        CB.STANDING_CARGO_BANS[] = saved
+    end
 end
 
 end # module

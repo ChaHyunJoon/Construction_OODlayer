@@ -766,33 +766,32 @@
       "source": "src/respec/compiler.jl:38,66,143,178"
     },
     {
-      "name": "reprice_agent_by_payload",
-      "surface": "env_param",
+      "name": "forbid_heavy_cargo",
+      "surface": "milp",
       "params": {
-        "agent": {"type": "string", "description": "robot id whose candidate assignment edges are repriced"},
-        "light_bias": {"type": "number", "minimum": 0.0, "maximum": 4.0,
-                       "description": "how strongly heavier cargo is penalised for that robot; 0 disables the payload term"}
+        "agent": {"type": "string", "description": "robot that must not take its heaviest pending cargo"},
+        "n": {"type": "integer", "minimum": 1, "maximum": 3,
+              "description": "how many of that robot's heaviest pending cargo items to forbid"}
       },
-      "mechanism": "Multiplies ONE robot's CANDIDATE assignment-edge costs by a factor that grows with the cargo mass the edge would carry, on top of the existing SoC-based multiplier (the SoC term is preserved byte-for-byte; the two multiply). The robot identity is read from the edge source; the cargo mass from the FormTransportUnit that follows the target slot. The factor is never below 1.0 -- a robot can be made more expensive, never cheaper -- and the feasible set is unchanged, so this cannot make the problem infeasible. Edges whose cargo cannot be measured keep factor 1.0. THIS IS INERT ON ITS OWN: it only changes weights that a MILP re-solve reads, and the only edges that carry these weights are the candidate edges that exist when pending assignments have been released; measured on this model, with no release there are zero such edges and this factor is evaluated zero times. There is no local undo: clearing the bias drops the hook but does not restore whatever plan the biased re-solve replaced.",
-      "when_to_use": "The load axis when a robot must stay in service but should carry less.",
+      "mechanism": "Registers a STANDING BAN that keeps ONE named robot from taking the n candidate cargo items with the highest per-robot burden, and does nothing else: the call writes a single {robot -> n} entry into a store and returns. It edits no schedule, no scene tree, no cache and no cost weight, so the world is unchanged when it returns -- the status :banned means the entry was written, never that any cargo moved. THIS IS INERT ON ITS OWN: that entry becomes constraint rows at the NEXT MILP formulation, and the harness runs that formulation automatically after the body, which is where and when the ban takes effect. Those rows forbid only that robot's CANDIDATE assignment edges into the chosen targets; already-committed structural edges are never touched and other robots may still take the cargo, so the work is redistributed rather than dropped. Per-robot burden is a proxy, not a weighed mass: cargo bounding-box volume times a density knob, divided by the size of the team that would carry it. n is an upper bound and not a promise -- fewer targets are forbidden when the robot owns fewer measurable candidates, and when the burden layer is absent (no battery fleet) that formulation warns loudly and forbids nothing at all. An agent string that names no robot in the schedule is rejected with :unknown_agent and writes nothing, and the hand-shortened id form silently lands there. An n below 1 is rejected with :invalid_n and is never raised to 1. The ban stands until something else clears it and this alphabet has no undo for it: dropping the entry later does not restore whatever plan the constrained re-solve replaced.",
+      "when_to_use": "The load axis when a robot must stay in service but must not be handed the heaviest cargo still waiting to be assigned.",
       "reversible": false,
       "consumes": [],
       "preconditions": [
-        "the battery fleet must be initialised (enable_battery!)",
-        "candidate assignment edges must exist for the weights to be read",
-        "inert until the harness's automatic post-body MILP re-solve reads these weights; do NOT add a re-solve step to the body"
+        "the agent must be the module-qualified robot id string the schedule produces",
+        "inert until the harness's automatic post-body MILP re-solve reads it; do NOT add a re-solve step to the body"
       ],
       "gate": null,
       "gate_arity": null,
-      "impl": "reprice_agent_by_payload!",
+      "impl": "forbid_heavy_cargo!",
       "harness_args": ["env"],
       "psi": {
-        "a_cost": 0.3, "a_intervenes": 1.0, "a_soft": 1.0, "a_restores_capacity": 0.0,
+        "a_cost": 0.5, "a_intervenes": 1.0, "a_soft": 0.0, "a_restores_capacity": 0.0,
         "a_relocates_work": 0.5, "a_spatial": 0.0, "a_consumes_spare": 0.0,
         "a_reversible": 0.0, "a_scope": 1.0
       },
-      "source": "src/navigator/payload_bias.jl",
-      "notes": "S2 spec 4. psi 아홉 축은 판단이지 유도가 아니다 — deprioritize_agent(같은 soft/env_param 계열)에 앵커했고 a_relocates_work 만 0.5 로 뒀다(일을 없애지 않고 옮긴다)."
+      "source": "src/respec/cargo_ban_primitive.jl",
+      "notes": "cargo-ban Task 7. Replaces reprice_agent_by_payload in the alphabet (removed the same commit): that soft weight could not move the argmin on any measured board. psi 는 아홉 축이다(레지스트리 최상위 psi_axes 가 진실원 — 계획서의 '10축' 은 실측과 다르다). 값은 판단이지 유도가 아니다: compile_constraint(같은 hard-row 계열)에 a_cost·a_soft 를 앵커했고, a_relocates_work 만 0.5 로 뒀다(일을 없애지 않고 다른 로봇에게 옮긴다). a_reversible·a_consumes_spare·a_spatial 셋만 primitive_registry.py 가 다른 필드에서 유도해 검사한다."
     }
   ],
   "predicates": [

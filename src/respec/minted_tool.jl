@@ -192,11 +192,18 @@ end
       🔴 이 하나만 **NamedTuple 이 아니라 맨 `Int`**(`n_moved`)를 돌려준다. `_step_status` 가
       `COUNT_RETURN_PRIMITIVES` 를 보고 `:moved`/`:moved_none` 으로 읽는다.
       조용: `:moved_none`(`n_moved == 0`)     실제: `:moved`
-  · `reprice_agent_by_payload!` `src/navigator/payload_bias.jl`
-      조용: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**, `:repriced` 도 포함이다
-      (S2 lane Ruling 5). 이 원시는 Ref 둘만 쓸 뿐 재풀이를 스스로 하지 않는다 — 노린 적응
-      (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
-      MILP 재풀이의 몫이다.
+  · `forbid_heavy_cargo!` `src/respec/cargo_ban_primitive.jl`
+      조용: `:banned` `:unknown_agent` `:no_schedule` `:invalid_n` — 🔴 **넷 다**, `:banned` 도
+      포함이다(S2 lane Ruling 5 와 같은 논거). 이 원시가 하는 일은 `STANDING_CARGO_BANS[]` 에
+      항목 하나를 쓰는 것뿐이고 재풀이를 스스로 하지 않는다 — 노린 적응(재풀이가 그 로봇에게서
+      무거운 화물을 떼는 것)이 일어났는지는 이 원시의 반환이 아니라 **다음 formulate** 의
+      몫이다. 🔴 그러므로 **실제 적응 status 가 하나도 없다**: 이 원시는 네 갈래 전부가
+      조용한 성공이고, 그것이 이 원시의 성질이지 표를 덜 채운 것이 아니다.
+      ⚠️ `:invalid_n` 은 `n < 1`(또는 비정수)을 **보관소 경계에 닿기 전에** 잡는다 —
+      `set_cargo_ban!` 은 그 값에 `error` 를 내고, 집행부의 `try` 가 그것을 `partial=true` 로
+      적어 손도 안 댄 세계가 폴백을 삼킨다. 거절은 세계 무접촉이라 폴백이 정상으로 돈다.
+      ⚠️ `:no_schedule` 은 `:unknown_agent` 와 **다른 사건**이다: 이름을 해석할 권위(스케줄)를
+      아예 못 읽었다는 뜻이고, 못 읽은 것을 "그런 로봇 없다" 로 접지 않는다(삼상 규약).
   · `release_pending_assignments!` `src/respec/reassign.jl:194`
       조용: `:released_none`(= `removed` 가 비었다) · `:unknown_agent`. 실제: `:released`.
             🔴 **둘을 가르는 것이 2026-09-02 의 수정이다.** 예전엔 `:released_none` 의 원인이
@@ -211,7 +218,7 @@ end
          `_step_status` 가 `EDGELIST_RETURN_PRIMITIVES` 를 보고 위 둘로 읽는다.
       ⚠️ `:released` 는 "노린 적응이 일어났다"가 맞다: 간선을 실제로 뗐다는 것은 다음
          재풀이가 다시 결정할 수 있는 후보가 생겼다는 뜻이고, 그것이 이 원시가 노리는
-         전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 reprice 와 같음).
+         전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 `forbid_heavy_cargo` 와 같음).
       ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의 `WORLD_UNCHANGED_STATUSES` 행에
          `:released_none` 은 **일부러 없으므로**(아래 그 표의 문단) `_step_touched_world = true`
          → `world_maybe_dirty = true` → `enact.jl:869` 의 `handled = true` 가 된다. 깨끗한 판에서
@@ -239,7 +246,7 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
-    "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
+    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n]),
     "release_pending_assignments" => Set([:released_none, :unknown_agent]),
 )
 
@@ -356,10 +363,15 @@ ENACTABLE_TODAY` 를 못 박는다).
                  따라서 `n_moved == 0` ⟹ 어떤 팀도 `wedged` 가 아니었다 ⟹ `capture_robots!` 도
                  한 번도 안 불렸다.
       🔴 건드림: `:moved`
-  · `reprice_agent_by_payload!` `src/navigator/payload_bias.jl`
-      안 건드림: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**. 본체가 하는 일은
-                 `EDGE_PAYLOAD_MULTIPLIER[]`·`PAYLOAD_BIAS[]` 두 `Ref` 에 클로저를 쓰는 것뿐이다 —
-                 씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다.
+  · `forbid_heavy_cargo!` `src/respec/cargo_ban_primitive.jl`
+      안 건드림: `:banned` `:unknown_agent` `:no_schedule` `:invalid_n` — 🔴 **넷 다**. 본체가
+                 하는 일은 `STANDING_CARGO_BANS[]` 에 `{로봇 → n}` 하나를 쓰는 것뿐이다 —
+                 씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다. 앞의 셋은 그 한 줄 **앞에서**
+                 돌아서므로 아무것도 안 쓰고, `:banned` 도 보관소 항목 하나일 뿐이다.
+                 ⚠️ 그 항목은 **다음 `formulate_milp`** 을 바꾼다(Task 3 의 훅이 모든 정식화에서
+                 읽는다). 이 표가 재는 것은 "폴백이 그 위에 쌓여도 되는가" 이고, 그 질문에 대해
+                 아직 아무 정식화도 안 돈 보관소 항목은 `AGENT_COST_BIAS`·`PAYLOAD_BIAS` 와
+                 같은 부류다 — 세계(씬·스케줄·캐시)가 아니라 **다음 argmin 의 입력**이다.
   · `release_pending_assignments!` `src/respec/reassign.jl:194`
       안 건드림: `:unknown_agent` — 🔴 2026-09-02 추가, **이 행에 들어오는 유일한 것**.
                  `agent` 가 `_schedule_agent_ids(sched)` 에 없으면 원시가 `Graphs.rem_edge!` 는
@@ -386,7 +398,7 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
-    "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
+    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n]),
     "release_pending_assignments" => Set([:unknown_agent]),  # 🔴 `:released_none` 은 일부러 빠졌다 — 위 문단
 )
 
@@ -449,7 +461,10 @@ const PRIMITIVE_RESUMES_CACHE = Dict{String,Bool}(
     "reform_stuck_teams"          => false,
     "recover_stalled_teams"       => false,
     "force_advance_stuck_carrier" => false,
-    "reprice_agent_by_payload"    => false,
+    # 🔴 캐시 재개는커녕 세계를 아예 안 건드린다 — 보관소에 항목 하나를 쓰고 끝난다.
+    #    그래서 `_needs_cache_resume` 은 이 원시의 네 status 전부에서 거짓이다
+    #    (`_step_touched_world` 가 이미 거짓이므로 이 값과 무관하게 거짓이다).
+    "forbid_heavy_cargo"          => false,
     "release_pending_assignments" => false,
 )
 
@@ -517,7 +532,7 @@ _resume_note(tag::Symbol, detail::AbstractString) =
 집행 가능한 여덟이 실제로 받는 타입 있는 키워드는 다섯이다
 (`reform_stuck_teams!(env; min_ready::Int, snap_all::Bool)` ·
 `force_advance_stuck_carrier!(env; tol::Float64)` ·
-`reprice_agent_by_payload!(env; agent::AbstractString, light_bias::Real)`). LLM 이 `{"snap_all": "true"}` 나
+`forbid_heavy_cargo!(env; agent::AbstractString, n::Real)`). LLM 이 `{"snap_all": "true"}` 나
 `{"min_ready": 1.5}` 를 주면 Julia 는 **호출 경계에서** `convert` 에 실패한다 — impl 본문은
 한 줄도 안 돌고 세계는 **증명 가능하게** 손대지 않은 상태다. 그런데 `enact_minted!` 의
 `catch` 는 그것을 무조건 `partial = true` 로 적고, 그러면 `world_maybe_dirty = true` →
@@ -595,8 +610,8 @@ solve 하는 원시가 없다(`formulate_milp`·`optimize!` 는 레지스트리�
 
 🔴 **모르는 키워드는 여기서 버리지도 거절하지도 않는다.** 합성기는 **tool 하나에 params
 dict 하나**를 낸다 — body 가 원시 둘 이상이면 그 키들은 원시들에 흩어져 있다(예:
-`{agent, light_bias}` 는 `reprice_agent_by_payload` 의 것이고 `commit_respec` 은 둘 다
-모른다). 그러므로 여기서는 **이 원시가 선언한 키만 골라 넘긴다**. 어느 원시도 모르는 키가
+`{agent, n}` 은 `forbid_heavy_cargo` 의 것이고 `release_pending_assignments` 는 `agent` 만
+안다). 그러므로 여기서는 **이 원시가 선언한 키만 골라 넘긴다**. 어느 원시도 모르는 키가
 있는지는 `enact_minted!` 가 body 전체를 본 뒤에 판정한다 — 원시 단위로 거절하면 정상 body
 가 두 번째 원시에서 죽고, 조용히 버리면 LLM 이 준 인자가 없는 것처럼 집행되면서 결정 행에는
 그 인자가 그대로 남아 기록과 세계가 어긋난다.
@@ -689,7 +704,7 @@ end
 🔴 그리고 그 위를 다시 `try` 로 감싼다. `hasproperty` 가 참이어도 `getproperty` 가 던지는
 반환값이 있을 수 있고, 그 예외가 여기서 새어 나가면 `enact_minted!` 가 **기록 대신
 예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 여덟에는
-그런 반환이 없다(이 레인이 더한 `reprice_agent_by_payload!` 도 평범한 NamedTuple 리터럴이라
+그런 반환이 없다(이 레인이 더한 `forbid_heavy_cargo!` 도 평범한 NamedTuple 리터럴이라
 해당 없음을 확인했다) — 그래도 어휘가 다시 늘면 이 위험은 새로 열린다.
 
 🔴 예전 이름 `:no_status_field` 는 **`applied = true`** 로 흘렀다(2026-08-30 리뷰가 잡음).
@@ -876,7 +891,7 @@ function enact_minted!(env, truth, synth)
 
     # ---- (8) 스케줄 캐시 재개 — 조용한 미복구를 막는 한 걸음 --------------------------------
     # 🔴 여덟 중 다섯(`reform_stuck_teams!` · `recover_stalled_teams!` ·
-    #    `force_advance_stuck_carrier!` · `reprice_agent_by_payload!` ·
+    #    `force_advance_stuck_carrier!` · `forbid_heavy_cargo!` ·
     #    `release_pending_assignments!`)은 스스로
     #    `reset_cache_resume!` 를 부르지 않는다.
     #    그 사실을 모르고 `handled=true` 로 기본 복구 사슬을 건너뛰면, 세계는 고쳤는데

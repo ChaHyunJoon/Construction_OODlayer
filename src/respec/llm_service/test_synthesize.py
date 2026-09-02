@@ -91,7 +91,16 @@ def test_context_carries_every_operational_mechanism_verbatim():
         "보고돼야 한다. 이력: 19 -> 20 (2026-09-01, S2 lane 의 reprice_agent_by_payload "
         "추가) -> 19 (2026-09-01, commit_respec 제거 — MILP 재풀이와 그 write-back 은 "
         "body 가 아니라 harness 의 몫이다. T13 `resolve_assignments!` 가 `apply_action!` "
-        "안에서 모든 팔 뒤에 돈다)." % len(prims))
+        "안에서 모든 팔 뒤에 돈다) -> 19 (2026-09-02, cargo-ban T7: "
+        "reprice_agent_by_payload 제거 + forbid_heavy_cargo 추가 = 1:1 교체)." % len(prims))
+    # 🔴 2026-09-02 (cargo-ban T7): 위 개수 tripwire 는 **이 변경에 침묵했다** — 1:1 교체라
+    #    19 가 그대로였기 때문이다. 개수는 알파벳의 세대를 못 나른다. 이름까지 잰다:
+    #    아래 두 줄이 그 침묵을 메운다(무엇이 나갔고 무엇이 들어왔는지).
+    assert "forbid_heavy_cargo" in _prim.PRIMITIVE_NAMES, (
+        "forbid_heavy_cargo 가 알파벳에 없다 -- T7 이 되돌려졌거나 다른 레지스트리를 물렸다.")
+    assert "reprice_agent_by_payload" not in _prim.PRIMITIVE_NAMES, (
+        "reprice_agent_by_payload 가 알파벳에 돌아왔다 -- 실측상 argmin 을 못 움직이는 "
+        "재료를 모델에게 다시 주는 것이므로, 되살렸다면 그 근거가 기록돼야 한다.")
 
 
 def test_context_carries_the_trap_items_that_make_tools_silently_no_op():

@@ -100,31 +100,52 @@ end
     end
 end
 
-@testset "알파벳이 이 원시를 해석하고 결선한다" begin
-    # 🔴 최종 리뷰 F1: 여기 있던 `CB.include(.../minted_tool.jl)` 을 지웠다. minted_tool.jl
-    # 은 이미 패키지 안에 있다(`src/respec/respec.jl:34`) — 이 include 는 중복일 뿐 아니라
-    # `enact_minted!`·`bind_primitive_args`·`_step_status`·`_step_detail`·`_synth_get` 등
-    # ~5개 운영 메서드를 런타임에 **재정의**해, 이 파일을 `runtests.jl` 안에 실으면 그
-    # 재정의가 뒤따르는 모든 파일에 남는다.
+# 🔴 2026-09-02 (cargo-ban T7): 이 testset 은 **뒤집혔다.** 예전에는 이 원시가 알파벳에
+# 있다는 것을 못 박았는데, 사용자 결정으로 `reprice_agent_by_payload` 는 **레지스트리에서만**
+# 빠졌다 — 실측상 argmin 을 못 움직이기 때문이다(두 판·전 체크포인트·`light_bias` 32 까지
+# 대상 로봇이 일을 하나도 안 잃고, 음성 대조와 `n_reassigned` 이 완전히 같다). 구현
+# (`src/navigator/payload_bias.jl`)과 이 파일의 나머지 testset 은 **음성 대조로 남는다**.
+# 🔴 그러므로 여기서 재는 것은 **부재**다. 부재 게이트는 공허해지기 쉬우므로 양성 대조를
+#    함께 단다: (a) 구현은 여전히 CB 에 있고 부를 수 있다, (b) 그 자리를 이어받은
+#    `forbid_heavy_cargo` 는 알파벳에 있고 해석된다. 셋이 함께 있어야 "레지스트리를 못 읽어서
+#    전부 없다" 와 "이 하나만 뺐다" 가 구별된다.
+@testset "🔴 알파벳은 이 원시를 더 이상 모른다 (구현은 남는다)" begin
     tbl = CB.PRIMITIVE_TABLE()
-    @test haskey(tbl, "reprice_agent_by_payload")
-    r = CB.resolve_primitive("reprice_agent_by_payload")
-    @test r.impl === CB.reprice_agent_by_payload!
+    @test !haskey(tbl, "reprice_agent_by_payload")
+    @test CB.resolve_primitive("reprice_agent_by_payload") === nothing
+    # (a) 양성 대조 — 구현은 살아 있다. 지워진 것은 알파벳 항목뿐이다.
+    @test isdefined(CB, :reprice_agent_by_payload!)
+    @test CB.reprice_agent_by_payload! isa Function
+    # (b) 양성 대조 — 표 자체는 읽혔고, 그 자리를 이어받은 원시가 실제로 있다.
+    @test haskey(tbl, "forbid_heavy_cargo")
+    local r = CB.resolve_primitive("forbid_heavy_cargo")
+    @test r.impl === CB.forbid_heavy_cargo!
     @test r.harness_args == ["env"]
-    @test Set(keys(r.params)) == Set(["agent", "light_bias"])
+    @test Set(keys(r.params)) == Set(["agent", "n"])
+    # (c) 그리고 body 에 옛 이름을 쓰면 **한 발도 안 나가고** 거절된다.
+    local rej = CB.enact_minted!(nothing, nothing,
+        Dict{String,Any}("reach" => "composed",
+                         "body_names" => ["reprice_agent_by_payload"],
+                         "params" => Dict{String,Any}()))
+    @test rej.verdict === :reject
+    @test isempty(rej.steps)
+    @test rej.world_maybe_dirty === false
 end
 
-# 🔴 최종 리뷰 F7 — 알려진 구멍을 못박는다(고치지 않는다). `reprice_agent_by_payload!` 는
-# **필수 kwarg**(`agent`, 기본값 없음)를 가진 첫 번째 enactable 원시다 — 다른 여섯은 kwarg
-# 를 전부 기본값으로 채운다. `bind_primitive_args`(src/respec/minted_tool.jl:521-536) 는
+# 🔴 최종 리뷰 F7 — 알려진 구멍을 못박는다(고치지 않는다). 🔴 2026-09-02 (T7): 이 구멍의
+# 표본이 `reprice_agent_by_payload!` 에서 `forbid_heavy_cargo!` 로 **옮겨졌다** — 전자가
+# 알파벳에서 빠지면서 그 자리(**필수 kwarg `agent`, 기본값 없음**를 가진 유일한 enactable
+# 원시)를 후자가 그대로 이어받았다. 구멍은 `bind_primitive_args` 의 성질이라 원시와 무관하다.
+# 다른 일곱은 kwarg
+# 를 전부 기본값으로 채운다. `bind_primitive_args`(`src/respec/minted_tool.jl`) 는
 # `ctx.params` 를 순회해 "레지스트리가 아는 키인가/타입이 맞는가"만 검사하고, impl 이 요구하는
-# 필수 kwarg 가 빠졌는지는 **절대 검사하지 않는다** — body 가 `["reprice_agent_by_payload"]`,
+# 필수 kwarg 가 빠졌는지는 **절대 검사하지 않는다** — body 가 `["forbid_heavy_cargo"]`,
 # params 가 `{}`(agent 없음)면 바인더를 통과해 `impl(env)` 가 그대로 불리고, Julia 가 호출
 # 경계에서 `UndefKeywordError` 를 던진다. `enact_minted!` 은 이것을 다른 모든 예외와 똑같이
 # `partial=true` 로 적고, `world_maybe_dirty = touched || partial` 이 참이 되어
 # `handled = (verdict===:admit) && world_maybe_dirty && (resume !== :failed)`
 # (tools/monitor/enact.jl:869) 가 **참**이 된다 — 세계는 증명 가능하게 한 바이트도 안 건드렸는데
-# (Ref 둘을 쓰기도 전에 던졌다) 정책 프로듀서는 이것을 "처리됐다"로 읽고 폴백 복구 사슬을
+# (보관소에 한 항목도 쓰기 전에 던졌다) 정책 프로듀서는 이것을 "처리됐다"로 읽고 폴백 복구 사슬을
 # 건너뛰며, 그 OOD 사건은 이미 소비돼 다시 오지 않는다.
 #
 # 🔴 **이 테스트는 그 구멍을 고치지 않는다.** `bind_primitive_args` 를 고치면 원시 전부의
@@ -142,7 +163,7 @@ end
     # 가 실제로 성공한다(측정: `resume=(:issued, "")`) — 이게 "진짜 env" 에서 나는 값이다.
     env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule())
     synth = Dict{String,Any}("reach" => "composed",
-                              "body_names" => ["reprice_agent_by_payload"],
+                              "body_names" => ["forbid_heavy_cargo"],
                               "params" => Dict{String,Any}())
     r = CB.enact_minted!(env, nothing, synth)
     @test r.verdict === :admit
