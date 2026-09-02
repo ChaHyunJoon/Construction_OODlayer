@@ -1335,6 +1335,12 @@ skip 은 같은 구멍에 단계만 더한 것이다.
 """
 const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offered",
                         "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
+                        # ---- 2026-09-02 (귀속용 두 번째 질문) --------------------------------
+                        # `expressible` 은 **NOOP 을 뺀** 메뉴를 묻고 이것은 **메뉴 전체**를
+                        # 묻는다(옛 문구 그대로). 둘의 차이가 곧 "메뉴 artifact 의 크기" 다.
+                        # 🔴 측정 전용 — 결정에는 안 쓴다. 그래도 결정 행에 실어야 사후에
+                        # 층화해 읽을 수 있다.
+                        "menu_expressible",
                         # ---- 2026-08-29 (Plan B / T-C): 레짐 표식과 그 대가 ------------------
                         # `tool_choice`  = 이 요청의 **첫 시도**에 실제로 실린 값
                         #                  (`"required"` | `"auto"` | … | `nothing` = 안 보냈다).

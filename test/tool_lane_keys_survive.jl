@@ -151,6 +151,9 @@ const _LANE_FULL = Dict{String,Any}(
     "tool_calls_n" => 1,
     "tools_offered" => 3,
     "expressible" => true,
+    # 🔴 2026-09-02: 대조용 두 번째 질문. `expressible` 과 **다른 값**을 쓴다 — 둘이 같으면
+    #    두 키가 뒤바뀌어도 이 픽스처가 못 잡는다(값으로 구별되는 통제가 죽는다).
+    "menu_expressible" => false,
     "native_fc" => true,
     "tool_lane_error" => "tool-call parse failed: unterminated JSON",
     "macro_tool_agree" => true,
@@ -181,6 +184,8 @@ const _LANE_DECLINED = Dict{String,Any}(
     "tool_calls_n" => 0,
     "tools_offered" => 3,
     "expressible" => nothing,
+    # 🔴 2026-09-02: 결정이 없는 행에서는 대조용 질문도 **못 쟀다** = `nothing` 이다.
+    "menu_expressible" => nothing,
     # 🔴 T6: `nothing` 이다(옛 픽스처는 `false` 였다). 이 행은 **T5 의 `no_tools` 조기 반환**
     #    모양으로 다시 맞춰졌다 — LM 을 아예 안 불렀으므로 `native_fc` 를 **못 쟀다**.
     #    `false`("물었는데 native FC 가 안 켜졌다")와 다른 사건이고, 그 구별이 이 파일이
@@ -415,7 +420,8 @@ try
         # 개수도 여기서 못박는다 — 목록이 조용히 줄면 나머지 검사가 그만큼 덜 잰다.
         # 여덟(T1) → 열(T-C) → **열하나**(T6: `text_rescue` 빼고 `decision_source` ·
         # `tool_arg_error` 더함).
-        @test length(TOOL_LANE_KEYS) == 11
+        # 🔴 2026-09-02: `menu_expressible`(귀속용 두 번째 질문)이 열두 번째로 들어왔다.
+        @test length(TOOL_LANE_KEYS) == 12
         @test !("text_rescue" in TOOL_LANE_KEYS)
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_FULL))
         @test Set(TOOL_LANE_KEYS) == Set(keys(_LANE_DECLINED))
@@ -493,7 +499,7 @@ try
         #    surrogate 항목은 `policy_entry` 규약대로 레인 키를 **들고는 있되**(두 분기 모두
         #    나른다) 서비스가 그 키를 안 보냈으므로 값이 전부 `nothing` 이다.
         #    🔴 실측 정정(2026-08-29): 여기 `!haskey(..., "tool_called")` 를 적었다가 빨갰다 —
-        #    `policy_entry` 는 레인과 무관하게 열한 키를 언제나 짓는다. 존재가 아니라 **값**이
+        #    `policy_entry` 는 레인과 무관하게 (2026-09-02 현재 열두) 키를 언제나 짓는다. 존재가 아니라 **값**이
         #    이 절의 하중이다.
         @test haskey(d.policies["surrogate"], "tool_called")
         @test d.policies["surrogate"]["tool_called"] === nothing

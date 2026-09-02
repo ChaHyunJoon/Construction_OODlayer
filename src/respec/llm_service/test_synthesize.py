@@ -580,7 +580,7 @@ def test_synthesize_keeps_the_numpy_before_dspy_contract():
 
 def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
     """🔴 교차언어 결속. `test/tool_lane_keys_survive.jl` (6)절은 `out["dspy"]` dict 안의
-    `# ---- tool 레인 …` 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS` 여덟과 **양방향
+    `# ---- tool 레인 …` 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS`(2026-09-02 현재 **열둘**)와 **양방향
     등호**로 대조한다(`test/tool_lane_keys_survive.jl:462`). 그러므로 표식 아래에 합성 레인
     키를 하나라도 넣으면 그 줄리아 게이트가 정당하게 빨개진다 — 이 태스크는 줄리아를 안
     건드리므로 키를 표식 **위**에 둔다.
@@ -623,12 +623,18 @@ def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
         "요구하고 아니면 그 게이트가 죽는다." % len(marks))
     lane = [k.value for k in d.keys if k.lineno > marks[0]]
     # 🔴 2026-08-29 (T4): `text_rescue` 가 빠지고 `decision_source`·`tool_arg_error` 가
-    #    들어와 **열한 개**다. ⚠️ 줄리아의 `TOOL_LANE_KEYS` 는 아직 옛 열 개라 그 파일의
-    #    (6)절이 지금 정당하게 빨갛다(실측: T4 가 더한 실패는 정확히 2개) — T6 이 닫는다. 파이썬에서 키를
-    #    표식 위로 숨겨 초록을 만들지 않는 이유는 그 상태가 조용해지기 때문이다.
+    #    들어와 열한 개가 됐고, 2026-09-02 에 `menu_expressible` 이 들어와 **열두 개**다.
+    #    ✅ 줄리아의 `TOOL_LANE_KEYS` 도 같은 커밋에서 열둘이 됐다 — (6)절은 **초록**이다
+    #    (실측 140/140). 옛 판에서 이 자리는 "줄리아가 아직 옛 열 개라 (6)절이 정당하게
+    #    빨갛다" 였는데, 그 서술은 2026-09-02 부터 거짓이다. 파이썬에서 키를 표식 위로 숨겨
+    #    초록을 만들지 않는 규칙은 그대로다 — 숨기면 줄리아가 안 나르는 상태가 조용해진다.
+    # 🔴 2026-09-02: `menu_expressible` 이 열두 번째로 들어왔다(귀속용 두 번째 질문).
+    #    이 집합 · 줄리아 `TOOL_LANE_KEYS` · `test_tool_choice_forced.py` 의 같은 집합 ·
+    #    `test_macro_returns_tool_call.py` 의 `_LANE_KEYS` 는 **한 커밋에서 함께** 움직인다.
     assert set(lane) == {"tool_called", "tool_args", "tool_calls_n", "tools_offered",
                          "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
-                         "tool_choice", "decision_source", "tool_arg_error"}, lane
+                         "tool_choice", "decision_source", "tool_arg_error",
+                         "menu_expressible"}, lane
     allk = [k.value for k in d.keys]
     assert "tool_minted" in allk and "synthesis" in allk, (
         "합성 레인 키가 /decide 응답에서 사라졌다 -- 라이브 레인은 /decide 로만 들어온다.")

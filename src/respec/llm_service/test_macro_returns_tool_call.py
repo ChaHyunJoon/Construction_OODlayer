@@ -350,18 +350,13 @@ _LANE_KEYS = ("tool_called", "tool_args", "expressible", "macro_tool_agree", "na
               # 🔴 `decision_source` 는 옛 재구성 규칙(다섯 키를 조합해 사건 종류를 알아내던
               #    것)을 대체한다. `tool_arg_error` 는 R26 억제와 접지 실패 억제를 가른다 —
               #    둘 다 `tool_called is None` 이다.
-              "decision_source", "tool_arg_error")
-# 🔴 2026-09-02 — `menu_expressible` 은 **일부러 여기 없다.** 이 튜플은
-#    `test_decide_carries_the_lane_keys_into_the_dspy_block` 도 쓰는데, 그 시험이 보는
-#    `/decide` 의 `out["dspy"]` 는 아직 그 키를 안 나른다(Wave 2). 여기 넣으면 그 시험이
-#    빨개지고, 고치려면 `/decide` dict 에 키를 더해야 하는데 그 순간
-#    `test/tool_lane_keys_survive.jl` **(6)절**(Julia `TOOL_LANE_KEYS` ↔ 파이썬 레인 키
-#    집합의 **양방향 등호**)이 12 vs 11 로 빨개진다 — 실측: 지금 양쪽 다 11 로 맞아 있다
-#    (게이트 자신의 추출기를 돌려 확인, Julia 실행 없이).
-#    ⚠️ 표식 **위**로 숨겨 초록을 만들지 않는다 — `dspy_service.py` 의 그 자리 주석이
-#    금지하는 바로 그 행위다(줄리아가 영원히 안 나르는 상태가 조용해진다).
-#    ⟹ 올바른 수정은 한 커밋에서 셋을 함께 움직이는 것이다: `/decide` dict · Julia
-#    `TOOL_LANE_KEYS` · 이 튜플. 그건 Julia 를 돌릴 수 있을 때 한다(Wave 2).
+              "decision_source", "tool_arg_error",
+              # ---- 2026-09-02 (귀속용 두 번째 질문) ------------------------------------------
+              # 🔴 셋이 **한 커밋에서 함께** 움직여야 하는 자리다: `/decide` 의 `out["dspy"]`
+              #    dict(표식 아래) · 줄리아 `TOOL_LANE_KEYS` · 이 튜플. 하나만 고치면
+              #    `test/tool_lane_keys_survive.jl` (6)절의 **양방향 등호**가 즉시 빨개진다
+              #    (실측: 셋 다 고치기 전 양쪽 11, 고친 뒤 양쪽 12).
+              "menu_expressible")
 
 
 def test_macro_reports_every_lane_key():
@@ -395,7 +390,11 @@ def test_decide_carries_the_lane_keys_into_the_dspy_block():
                                      _call("swap_body", macro="Replace")["action"]["tool_calls"][0]]}}
 
     def _plain():
-        _install(_call(), _call(), fc=False)
+        # 🔴 2026-09-02: 대조용 두 번째 질문을 **이 시나리오에서만** 싣는다. 다른 셋은 `None`
+        #    이므로 그 키가 시나리오 사이에서 실제로 **변한다** — 이 시험의 계약이 바로
+        #    "상수인 키는 하드코딩 변이를 못 잡는다" 이고, 안 싣고 키만 더했을 때 이 시험이
+        #    정확히 그 사실을 붉혔다(실측).
+        _install(_call(menu_expressible=True), _call(menu_expressible=True), fc=False)
 
     def _bad_agent():
         bad = _call(agent="ConstructionBots.BotID{ConstructionBots.DeliveryBot}(99)")

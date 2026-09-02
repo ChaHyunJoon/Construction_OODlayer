@@ -95,7 +95,7 @@ from tool_registry import (MACRO_TO_TOOL, TOOL_TO_MACRO, build_tools,   # noqa: 
 # 🔴 이 import 는 과금 0건이다: 모듈 최상위에서 LM 을 만들지도 부르지도 않는다.
 #    합성이 실제로 도는 것은 `TOOL_SYNTHESIS=1` + `expressible == False` 두 조건이
 #    함께 참일 때뿐이다(`maybe_synthesize` 의 docstring, 컨트롤러 판정 R13).
-from synthesize import maybe_synthesize                        # noqa: E402
+from synthesize import maybe_synthesize, run_synthesis         # noqa: E402
 from dspy.utils.exceptions import AdapterParseError            # noqa: E402
 
 
@@ -1639,8 +1639,12 @@ def macro(req: MacroRequest):
     # ---- T2: tool 합성 레인 (Plan B / T6b, spec §5) -----------------------------------------
     # 🔴 발화 조건은 **`expressible == False`** 하나다. `None`("못 쟀다")은 발화가 아니다.
     # ⚠️ `line` 을 그대로 넘긴다: T4a 가 프롬프트에서 지운 정답 행의 제거를 합성 레인이 승계한다.
-    synthesis = maybe_synthesize(expressible=expressible, kind=req.kind, state=line,
-                                 tools=tools)
+    # 🔴 `run_synthesis` 가 단일 입구다 — `SYNTH_MULTI_AGENT=1` 이면 3-agent 파이프라인이,
+    #    아니면 오늘의 단일 agent 가 돈다. multi 레인은 여기서 넘기는 `expressible` 을
+    #    **안 쓴다**: 그 판정을 agent-2 가 자기 출력 필드로 내기 때문이다(출처가 하나가
+    #    되어 "모델이 인자를 생략해서 못 쟀다" 가 사라진다).
+    synthesis = run_synthesis(expressible=expressible, kind=req.kind, state=line,
+                              tools=tools)
     return {"policy": "dspy:%s" % MODEL, "chosen": chosen, "ranking": ranking,
             # 🔴 `margin` 은 이 설계가 없앴다(spec §3-3). **키는 남기고 값은 안 채운다** —
             #    키가 사라지면 소비자가 "레인이 안 돌았다" 와 "값이 없다" 를 못 가른다.
@@ -1775,6 +1779,12 @@ def decide(req: MacroRequest):
                        "tool_called": d["tool_called"], "tool_args": d["tool_args"],
                        "tool_calls_n": d["tool_calls_n"], "tools_offered": d["tools_offered"],
                        "expressible": d["expressible"], "native_fc": d["native_fc"],
+                       # 🔴 2026-09-02 — 대조용 두 번째 질문. 라이브 레인은 `/decide` 로만
+                       #    들어오므로(`policy.jl` 의 `decide_all`) 여기 없으면 그 필드는
+                       #    `/macro` 에서만 사는 죽은 값이 된다. 표식 **아래**에 둔다:
+                       #    위로 숨기면 `TOOL_LANE_KEYS` 와의 양방향 등호가 그것을 못 보고,
+                       #    줄리아가 영영 안 나르는 상태가 조용해진다.
+                       "menu_expressible": d["menu_expressible"],
                        "tool_lane_error": d["tool_lane_error"],
                        "macro_tool_agree": d["macro_tool_agree"],
                        # ---- 레짐 표식 · 단일 채널 (2026-08-29) --------------------------------

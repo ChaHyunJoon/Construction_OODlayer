@@ -350,10 +350,12 @@ def test_the_new_keys_stay_above_the_tool_lane_marker():
     와 양방향 등호로 대조한다. 여기서는 그 집합이 **의도한 그대로인지**를 잰다.
 
     🔴 2026-08-29 (T4): 기대 집합이 바뀌었다 — `text_rescue` 가 빠지고
-    `decision_source`·`tool_arg_error` 가 들어왔다. ⚠️ **줄리아 쪽 `TOOL_LANE_KEYS` 는 아직
-    옛 열 개다.** 그래서 `test/tool_lane_keys_survive.jl` **(6)절**이 지금 **정당하게
-    빨갛다**(실측: T4 가 더한 실패는 정확히 2개) — T6 이 그 튜플 하나를 고치면 닫힌다. 파이썬에서 키를 표식 위로 숨겨 초록을
-    만들지 않는 이유: 그러면 줄리아가 이 셋을 영원히 안 나르는 상태가 조용해진다.
+    `decision_source`·`tool_arg_error` 가 들어왔고, 2026-09-02 에 `menu_expressible` 이
+    들어와 **열둘**이다. ✅ 줄리아 쪽 `TOOL_LANE_KEYS` 도 **같은 커밋에서** 열둘이 됐다 —
+    `test/tool_lane_keys_survive.jl` (6)절은 **초록**이다(실측 140/140). 옛 판의 "줄리아가
+    아직 옛 열 개라 (6)절이 정당하게 빨갛다" 는 2026-09-02 부터 거짓이다. 파이썬에서 키를
+    표식 위로 숨겨 초록을 만들지 않는 규칙은 그대로다: 그러면 줄리아가 안 나르는 상태가
+    조용해진다.
     `test_synthesize.py` 의 같은 이름 시험과 짝이다."""
     import ast as _ast
     import re as _re
@@ -385,9 +387,13 @@ def test_the_new_keys_stay_above_the_tool_lane_marker():
     lane = [k.value for k in d.keys if k.lineno > marks[0]]
     # 🔴 2026-08-29 (T4): `text_rescue` 는 사라졌고(되찾을 텍스트 채널이 없다)
     #    `decision_source`·`tool_arg_error` 가 들어왔다. 줄리아 쪽 동기화는 T6.
+    # 🔴 2026-09-02: `menu_expressible` 이 열두 번째로 들어왔다. 이 집합·줄리아
+    #    `TOOL_LANE_KEYS`·`test_macro_returns_tool_call.py` 의 `_LANE_KEYS` 셋은 **한 커밋에서
+    #    함께** 움직여야 한다 — 하나만 고치면 (6)절의 양방향 등호가 즉시 빨개진다.
     assert set(lane) == {"tool_called", "tool_args", "tool_calls_n", "tools_offered",
                          "expressible", "native_fc", "tool_lane_error", "macro_tool_agree",
-                         "tool_choice", "decision_source", "tool_arg_error"}, lane
+                         "tool_choice", "decision_source", "tool_arg_error",
+                         "menu_expressible"}, lane
     allk = [k.value for k in d.keys]
     # R26 기록 둘은 **범위 밖**이라 표식 위에 그대로 남는다(줄리아가 아직 안 읽는다).
     for k in ("tool_called_forced", "tool_args_forced"):
