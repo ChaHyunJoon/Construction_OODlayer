@@ -344,6 +344,235 @@ def build_context(state: str,
 
 
 # ==========================================================================================
+# (2-b) The 3-agent pipeline -- observe / design / compose
+# ==========================================================================================
+# Why (2026-08-30, the user's decision). On the single-prompt version the model answered
+# `expressible: true`. That answer was **not unreasonable for the input it saw** -- `_zones_block`
+# deliberately withholds `build_center`/`build_radius`/`max_shift`/`work_reach` so the oracle
+# cannot leak. So the place to change is not the wording but the **decomposition of the
+# reasoning**, and these three signatures are that decomposition.
+#
+# 🔴 Two blindnesses are the heart of the design, and the tests pin both
+#    (`test_synthesize_multi.py`):
+#      · agent-2 **cannot see the observation** (information bottleneck: needed to measure
+#        whether the decomposition actually processed information)
+#      · agent-2 **cannot see the primitives** (showing the existing vocabulary to whoever
+#        designs a tool for an unfamiliar event turns the measurement from design into
+#        projection onto that vocabulary)
+#    The price is paid honestly: if agent-3 cannot compose it, `reach="needs_primitive"`, and
+#    that `missing_primitive` is **this lane's output** (not an enacted world).
+
+
+class ObserveEvent(dspy.Signature):
+    """You are looking at a disruption in a running multi-robot construction build.
+    Describe what this event has BROKEN -- which capabilities, reachability, or resources
+    are no longer what the plan assumed. Report only what the observation supports.
+    Do not propose a repair, do not name a tool, and do not guess a numeric fix."""
+    context: str = dspy.InputField(desc=
+        "physical principles of this build, the final goal, what is known about the event's "
+        "novelty, what must change, and the decision-time observation")
+    observation: str = dspy.InputField(desc="the measured state at the moment of the event")
+
+    reasoning_log: str = dspy.OutputField(desc=
+        "natural-language account of what the event broke and what is now unreachable or "
+        "frozen; the ONLY account the later stages will read")
+
+
+class DesignToolSpec(dspy.Signature):
+    """You are given an account of what a disruption broke. Decide whether the existing
+    recovery vocabulary can express a response, and specify the tool that IS needed.
+    Specify it freely: name the parameters the tool must take for its mechanism to be
+    well-defined, even if you do not know what implements it. You are not shown an
+    inventory on purpose -- do not restrict the design to operations you can name."""
+    context: str = dspy.InputField(desc=
+        "physical principles of this build, the final goal, what is known about the event's "
+        "novelty, and what must change")
+    reasoning_log: str = dspy.InputField(desc="what the event broke")
+    existing_vocabulary: str = dspy.InputField(desc=
+        "the response options this event was actually offered")
+    ungrounded_feedback: str = dspy.InputField(desc=
+        "empty on the first attempt. On a redesign it names the parameters of your previous "
+        "specification that the world cannot supply -- each of them selects among behaviours "
+        "instead of carrying a value. Replace them by committing to one mechanism.")
+
+    expressible: bool = dspy.OutputField(desc=
+        "true if the existing vocabulary above can already express an adequate response; "
+        "false if a new tool is required")
+    tool_name: str = dspy.OutputField()
+    params: str = dspy.OutputField(desc=
+        "JSON schema of the parameters the tool must take")
+    mechanism: str = dspy.OutputField(desc=
+        "exactly what this tool changes and how; what it consumes; preconditions; whether "
+        "it can be undone. Be exhaustive -- this is the specification the next stage builds.")
+
+
+class ComposeToolBody(dspy.Signature):
+    """You are given a tool specification and a fixed inventory of primitive operations.
+    Write the tool's BODY as an ordered sequence of primitive calls from the inventory.
+    You never write code. If the inventory cannot express the specified mechanism, say so
+    and name the missing primitive precisely -- that answer is as valuable as a body."""
+    spec: str = dspy.InputField(desc=
+        "physical principles of this build, the final goal, what the event broke, and the "
+        "tool to build: name, parameter schema, mechanism")
+    inventory: str = dspy.InputField(desc=
+        "the alphabet a body may be composed from, with each primitive's full mechanism")
+
+    body: str = dspy.OutputField(desc="ordered list of primitive calls, with arguments")
+    reach: str = dspy.OutputField(desc=
+        '"composed" if every primitive in the body exists in the inventory; '
+        '"needs_primitive" otherwise')
+    missing_primitive: str = dspy.OutputField(desc=
+        "if reach is needs_primitive: name, edit surface (sched|scene_tree|env_param|"
+        "physical), params, preconditions, reversibility, what it consumes, and WHY no "
+        "composition over the inventory can substitute for it. Empty otherwise.")
+
+
+# ---- The task-side blocks, per stage ------------------------------------------------------
+# 🔴 2026-09-02. `NOVEL PROPERTIES` and `WHAT MUST CHANGE` were missing from BOTH multi-agent
+#    context builders: agent-2 was specifying a tool without ever being told what counts as
+#    success. They go in now -- but NOT by reusing the single-agent strings. Those contain the
+#    deictics "the observation above" and "the existing tools below", and for agent-2 neither
+#    referent is in its context (the observation is the bottleneck, the vocabulary is a separate
+#    input field). A pointer to something that is not there reads as a missing block, so each
+#    stage gets the wording that is true where it is rendered.
+# 🔴 These strings must name NO primitive and NO predicate -- `test_design_context_names_no_primitive`
+#    checks the whole registry against agent-2's context.
+_NOVEL_OBSERVE = """\
+NOVEL PROPERTIES OF THE EVENT
+The monitor did not classify this event. Its novelty is exactly what the observation reports --
+no event-type label was applied, and no field named after a known failure mode was populated.
+Do not assume it is one of the failure modes this build has met before."""
+
+_NOVEL_DESIGN = """\
+NOVEL PROPERTIES OF THE EVENT
+The monitor did not classify this event -- no event-type label was applied, and no field named
+after a known failure mode was populated. The account you are given is all that is known about
+it, and the response options you are shown separately were built for failure modes this event
+was never matched to."""
+
+_MUST_CHANGE_OBSERVE = """\
+WHAT MUST CHANGE
+The schedule must reach a state in which every remaining node can close. The observation is the
+ONLY evidence of what currently prevents that; nothing here tells you which edit is correct, and
+no minimum repair has been computed for you."""
+
+# 🔴 2026-09-02, R2 실측. 이 문단이 없을 때 agent-2 는 **두 레인 모두에서 disturbance 자체를
+#    되돌리는** 도구를 설계했다: zone 에서는 존을 옮기거나 지우는 `ExclusionZoneModifier`,
+#    battery 에서는 물리적으로 존재하지 않는 "일시적 배터리 증폭". agent-3 는 둘 다 조합하지
+#    못해 `needs_primitive` 로 끝났고, 그 `missing_primitive` 는 **알파벳에 답이 있는데도**
+#    "없다" 고 적었다.
+#
+# 🔴 이것이 왜 정답 누수가 **아닌가.** 여기 적는 것은 "무엇을 하라" 가 아니라 **"무엇이
+#    불변인가"** 다 — `PHYSICAL_PRINCIPLES` 의 "depot spares are scarce and are NOT
+#    replenished" 와 같은 범주의 세계 사실이다. 어느 편집 표면을 쓰라고도, 어느 원시를
+#    쓰라고도 말하지 않는다. 게이트가 그것을 지킨다:
+#    `test_the_invariant_clause_names_no_primitive_and_no_oracle_field` 가 레지스트리
+#    전수 + 오라클 필드 + 매크로/사건 이름을 이 문자열에 대고 훑는다.
+#
+# ⚠️ 대가(공개): 이 문단은 "undo 는 답이 아니다" 라고 말하므로, 모델이 설계를 포기하고
+#    `expressible=True` 로 도망갈 여지를 만든다. 그래서 마지막 문장이 **대안의 모양**을
+#    명시한다 — 어휘가 충분하다고 선언하라는 것이 아니라, disturbance 가 선 채로 빌드가
+#    무엇을 달리 할지 적으라는 것. 이 대가가 실현되는지는 재측정의 `expressible` 이 답한다.
+_INVARIANT_DESIGN = """\
+WHAT MAY NOT CHANGE
+The disruption is exogenous. It is a fact of the world at this moment -- not an object your tool
+is allowed to edit, move, relax, or delete. A restriction that has been imposed on a region, a
+charge level that has fallen, a body that has failed: your tool does not get to revoke any of
+them, and none of the edit surfaces described above exposes them as something a recovery may
+write to. Your tool may only change what the build DOES while they stand.
+If the only repair you can imagine is undoing the disruption, that is not a repair, and naming
+the power to undo it as a missing primitive is not a finding. Specify instead what the build
+must do differently while the disruption stands."""
+
+_MUST_CHANGE_DESIGN = """\
+WHAT MUST CHANGE
+The schedule must reach a state in which every remaining node can close. The account you are
+given is the ONLY evidence of what currently prevents that; nothing here tells you which edit is
+correct, and no minimum repair has been computed for you.
+
+""" + _INVARIANT_DESIGN
+
+
+def build_observe_context(state: str, principles: Optional[str] = None,
+                          goal: Optional[str] = None,
+                          novel: Optional[str] = None,
+                          must_change: Optional[str] = None) -> str:
+    """agent-1's context. The observation enters the pipeline **only through here**."""
+    return "\n".join([principles or PHYSICAL_PRINCIPLES, "",
+                      goal or FINAL_GOAL, "",
+                      novel or _NOVEL_OBSERVE, "",
+                      must_change or _MUST_CHANGE_OBSERVE, "",
+                      "CURRENT STATE (decision-time observation, produced without "
+                      "classifying the event)", state or "(no observation was supplied)"])
+
+
+def build_design_context(reasoning_log: str, principles: Optional[str] = None,
+                         goal: Optional[str] = None,
+                         novel: Optional[str] = None,
+                         must_change: Optional[str] = None) -> str:
+    """agent-2's context.
+
+    🔴 It takes no `state` -- that is the bottleneck. 🔴 It carries no inventory -- that is the
+    blindness. Add a parameter to this function that lets either one in and
+    `test_synthesize_multi.py` goes red.
+    """
+    return "\n".join([principles or PHYSICAL_PRINCIPLES, "",
+                      goal or FINAL_GOAL, "",
+                      novel or _NOVEL_DESIGN, "",
+                      must_change or _MUST_CHANGE_DESIGN, "",
+                      "WHAT THE EVENT BROKE (an account produced from the measured state)",
+                      reasoning_log or "(no account was produced)"])
+
+
+def build_compose_context(spec: Dict[str, Any], reasoning_log: str = "", blob=None,
+                          principles: Optional[str] = None,
+                          goal: Optional[str] = None) -> str:
+    """agent-3's spec string. The inventory travels in the signature's own separate field.
+
+    🔴 2026-09-02. This used to be four lines -- name, parameters, mechanism -- against a
+    ~25,000-character inventory, a task-to-alphabet ratio of about 1:29. agent-3 was composing
+    a body without being told what event the tool is for, that there are five edit surfaces, or
+    that the harness re-solves the MILP by itself. The principles, the goal and agent-1's
+    account go in for that reason.
+    🔴 The account goes in HERE rather than as a fourth signature field so it is rendered once
+    and so the leak guards stay on exactly the three prompt builders (contract (C) of
+    `test_synthesize_multi.py`). The bottleneck is unaffected: what crosses is agent-1's prose
+    account, never the raw observation.
+    """
+    return "\n".join([
+        principles or PHYSICAL_PRINCIPLES,
+        "",
+        goal or FINAL_GOAL,
+        "",
+        "WHAT THE EVENT BROKE (an account produced from the measured state)",
+        reasoning_log or "(no account was produced)",
+        "",
+        "TOOL TO BUILD",
+        "  name: %s" % (spec.get("tool_name") or "(unnamed)"),
+        "  parameters: %s" % (spec.get("params") or "(none specified)"),
+        "  mechanism: %s" % (spec.get("mechanism") or "(none specified)"),
+    ])
+
+
+def build_inventory_block(blob=None) -> str:
+    """The alphabet agent-3 reads. Uses **the same renderer** as `build_context` -- two copies
+    and only one of them grows."""
+    parts = ["PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
+             "Each entry states which surface it edits, what it consumes, whether it can be "
+             "undone, and its full mechanism including the conditions under which it does "
+             "nothing at all.",
+             "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
+             "The harness re-solves the MILP after every body, so never write a commit, "
+             "re-solve, formulate, or persist step -- there is no such primitive here, and a "
+             "body naming one cannot be enacted at all. If what you need is genuinely absent, "
+             "do not invent a name inside the body: set reach to \"needs_primitive\" and "
+             "describe it in missing_primitive."]
+    parts += primitive_inventory_lines(blob)
+    parts += ["", "PURE PREDICATES -- measurement only. Never put one in a body."]
+    parts += predicate_inventory_lines(blob)
+    return "\n".join(parts)
+
+# ==========================================================================================
 # (3) canonicalisation · ψ · |K|
 # ==========================================================================================
 # Where `name(` or `name!(` is called. Julia impl names end in `!` (the registry's `impl`), so
@@ -637,64 +866,14 @@ def _blank(rec_kind, expressible, ledger) -> Dict[str, Any]:
             "K": ledger.K, "error": None, "reason": None}
 
 
-def maybe_synthesize(expressible,
-                     kind: Optional[str] = None,
-                     state: str = "",
-                     tools=None,
-                     novel: Optional[str] = None,
-                     must_change: Optional[str] = None,
-                     ledger: Optional[SynthesisLedger] = None,
-                     program=None,
-                     blob=None) -> Dict[str, Any]:
-    """Decide whether to fire T2, and actually synthesise if it is switched on.
+def _finish_record(rec, kind, led, blob):
+    """Take a `rec` whose six output fields are filled and finish it: parse, psi, canon, ledger.
 
-    The firing condition is exactly the rate spec §8-1 names as the substitute signal:
-    **`expressible == False`** -- the signal that the closed tool set cannot express this event.
-    Neither `None` ("we could not measure it") nor `True` fires. Only then do we look at R13's
-    flag (the ordering argument is in the module docstring at the top).
-
-    🔴 If `TOOL_SYNTHESIS != "1"`, this function **calls no LM, builds no context, and opens no
-    socket.** The gate measures that by intercepting the socket.
+    🔴 The single-agent lane (`maybe_synthesize`) and the 3-agent lane (`synthesize_multi`) use
+    **the same function**. Kept as two copies, only one of them grows, and then the two lanes'
+    records quietly come to mean different things -- the failure shape this repo already walked
+    into with `train_kinds` and `require_vocab`.
     """
-    led = ledger if ledger is not None else LEDGER
-    rec = _blank(kind, expressible, led)
-
-    if expressible is not False:
-        rec["reason"] = ("not a firing event: expressible is %r; T2 fires only on False "
-                         "(spec 8-1)" % (expressible,))
-        return rec
-
-    rec["synthesis_event"] = True
-    if not synthesis_enabled():
-        # 🔴 R13. `"disabled"`, not `None` -- "it did not run because it was off" and "it ran and
-        #    minted nothing" are different events, and this repo really does contain a primitive
-        #    that emits success-shaped output while switched off
-        #    (`force_advance_stuck_carrier!` + `CARRIER_RESCUE`).
-        rec["tool_minted"] = "disabled"
-        rec["reason"] = ("%s != '1': synthesis is OFF by default because one firing is a "
-                         "billable OpenAI call (R13)" % SYNTHESIS_ENV)
-        return rec
-
-    ctx = build_context(state=state, tools=tools, novel=novel,
-                        must_change=must_change, blob=blob)
-    rec["context_chars"] = len(ctx)
-    prog = program if program is not None else dspy.ChainOfThought(SynthesizeTool)
-    rec["ran"] = True
-    try:
-        pred = prog(context=ctx, question=(novel or state or ""))
-    except Exception as e:
-        # The fifth event. `tool_minted` is None, but `ran=True · error!=None` separates it from
-        # "this was not a firing event" (synthesis_event=False) -- the table in the module docstring.
-        rec["error"] = "%s: %s" % (type(e).__name__, e)
-        rec["reason"] = "synthesis ran but the call failed; nothing was minted"
-        return rec
-
-    # ---- Preserve the output whole. 🔴 Even when inexpressible, the definition is recorded in
-    #      full (spec §5-1). ------------------------------------------------------------------
-    for f in ("tool_name", "params", "mechanism", "body", "reach", "missing_primitive"):
-        rec[f] = (getattr(pred, f, "") or "")
-    rec["reasoning"] = (getattr(pred, "reasoning", "") or "")
-
     names, how = parse_body(rec["body"])
     cls = classify(names)
     rec["body_names"] = names
@@ -757,3 +936,341 @@ def maybe_synthesize(expressible,
                      "canon already observed -- the model re-derived a behaviour it already "
                      "had; this is a point on the |K| curve, not a failure (spec 5-2-3)")
     return rec
+
+
+def maybe_synthesize(expressible,
+                     kind: Optional[str] = None,
+                     state: str = "",
+                     tools=None,
+                     novel: Optional[str] = None,
+                     must_change: Optional[str] = None,
+                     ledger: Optional[SynthesisLedger] = None,
+                     program=None,
+                     blob=None) -> Dict[str, Any]:
+    """Decide whether to fire T2, and actually synthesise if it is switched on.
+
+    The firing condition is exactly the rate spec §8-1 names as the substitute signal:
+    **`expressible == False`** -- the signal that the closed tool set cannot express this event.
+    Neither `None` ("we could not measure it") nor `True` fires. Only then do we look at R13's
+    flag (the ordering argument is in the module docstring at the top).
+
+    🔴 If `TOOL_SYNTHESIS != "1"`, this function **calls no LM, builds no context, and opens no
+    socket.** The gate measures that by intercepting the socket.
+    """
+    led = ledger if ledger is not None else LEDGER
+    rec = _blank(kind, expressible, led)
+
+    if expressible is not False:
+        rec["reason"] = ("not a firing event: expressible is %r; T2 fires only on False "
+                         "(spec 8-1)" % (expressible,))
+        return rec
+
+    rec["synthesis_event"] = True
+    if not synthesis_enabled():
+        # 🔴 R13. `"disabled"`, not `None` -- "it did not run because it was off" and "it ran and
+        #    minted nothing" are different events, and this repo really does contain a primitive
+        #    that emits success-shaped output while switched off
+        #    (`force_advance_stuck_carrier!` + `CARRIER_RESCUE`).
+        rec["tool_minted"] = "disabled"
+        rec["reason"] = ("%s != '1': synthesis is OFF by default because one firing is a "
+                         "billable OpenAI call (R13)" % SYNTHESIS_ENV)
+        return rec
+
+    ctx = build_context(state=state, tools=tools, novel=novel,
+                        must_change=must_change, blob=blob)
+    rec["context_chars"] = len(ctx)
+    prog = program if program is not None else dspy.ChainOfThought(SynthesizeTool)
+    rec["ran"] = True
+    try:
+        pred = prog(context=ctx, question=(novel or state or ""))
+    except Exception as e:
+        # The fifth event. `tool_minted` is None, but `ran=True · error!=None` separates it from
+        # "this was not a firing event" (synthesis_event=False) -- the table in the module docstring.
+        rec["error"] = "%s: %s" % (type(e).__name__, e)
+        rec["reason"] = "synthesis ran but the call failed; nothing was minted"
+        return rec
+
+    # ---- Preserve the output whole. 🔴 Even when inexpressible, the definition is recorded in
+    #      full (spec §5-1). ------------------------------------------------------------------
+    for f in ("tool_name", "params", "mechanism", "body", "reach", "missing_primitive"):
+        rec[f] = (getattr(pred, f, "") or "")
+    rec["reasoning"] = (getattr(pred, "reasoning", "") or "")
+
+    return _finish_record(rec, kind, led, blob)
+
+
+# ==========================================================================================
+# (4-b) The groundability gate -- between agent-2 and agent-3
+# ==========================================================================================
+# 🔴 Why (2026-08-30, measured). On the live version agent-2 put `resolution_strategy` into its
+#    specification, and **that one parameter alone** made agent-3 give up on composing. But it
+#    is not a value, it is a **choice of mechanism** -- the design decision was deferred, not
+#    made, and no implementation can meaningfully receive it.
+#
+# 🔴 **This is not written as a check against the alphabet.** The reduced alphabet has no
+#    scene_tree surface at all, so `blocked_areas`, `zone` and `resolution_strategy` would all
+#    three come back as "no primitive takes this" -- it cannot tell them apart. And feeding the
+#    alphabet back here would leak agent-2's blindness.
+#
+# ⟹ The single criterion is **is it grounded in the world**. This is the SAME axis as the
+#    derived-param channel: only a parameter the harness can supply is legitimate.
+
+# Names that refer to an object in the world. The harness can confirm they exist, or derive
+# them from `env`.
+# 🔴 Written as a literal on purpose: derive it from the registry and the alphabet leaks into
+#    this verdict, and the moment the alphabet shrinks a perfectly good world reference flips to
+#    "ungrounded" (which is exactly why this gate must not be an alphabet check).
+_WORLD_REFERENT_NAMES = frozenset({
+    "agent", "agents", "assembly_id", "assembly_ids", "blocked_areas", "faulted", "spare",
+    "pool", "robot", "robots", "slot_v", "target", "zone", "zones", "zone_key", "zone_keys",
+})
+
+# Names that select a mechanism. They carry not a value but **a choice among behaviours that
+# have not been implemented yet**.
+_MECHANISM_CHOICE_SUFFIXES = ("_strategy", "_method", "_approach", "_mode", "_policy",
+                              "_algorithm", "_scheme", "_tactic",
+                              # 🔴 2026-09-02, R2 실측. agent-2 가 zone 레인에서 낸
+                              #    `"action": "string"`(= move/resize/remove 중 택1)을 이
+                              #    표가 **못 잡았고**, 그래서 재설계가 0회 돌고 agent-3 이
+                              #    미정 명세를 조합하지 못해 `needs_primitive` 로 끝났다.
+                              #    이 셋은 앞의 여덟과 같은 범주다 — 값이 아니라 행동의 선택.
+                              "_action", "_operation", "_command")
+
+# 맨이름 형태. 🔴 **접미사에서 유도한다.** 예전에는 `("strategy","method","approach","mode")`
+# 라는 손으로 든 두 번째 목록이 아래 판정식 안에 박혀 있었고, 그것이 이미 접미사 여덟 중
+# 넷만 덮고 있었다(`policy`·`algorithm`·`scheme`·`tactic` 은 맨이름으로 오면 안 잡혔다).
+# 두 벌은 갈린다 — 이 레포가 반복해 밟은 모양이라 진실원을 하나로 접는다.
+_MECHANISM_CHOICE_BARE = tuple(s.lstrip("_") for s in _MECHANISM_CHOICE_SUFFIXES)
+
+_SCALAR_JSON_TYPES = frozenset({"integer", "number", "boolean", "null"})
+
+
+def ungrounded_params(params_text):
+    """The **names** of the parameters that are not grounded. `None` if unreadable (which is
+    not the same thing as an empty list).
+
+    One of three ways to pass:
+      (1) the harness can derive it from `env`         -> `_WORLD_REFERENT_NAMES`
+      (2) it refers to an object in the world          -> the same table
+      (3) it is a value a callee can receive           -> scalar, or a closed string enum
+
+    🔴 `None` ("could not measure") and `[]` ("measured and passed") are never mixed. This repo
+    has been burned by mixing those two more than once, and mixing them here would record a run
+    whose params failed to parse as "no groundability problem", so the redesign never fires.
+    """
+    d, shape = _params_view(params_text)
+    if shape == "unparseable":
+        return None
+    bad = []
+    for name, spec in d.items():
+        if name in _WORLD_REFERENT_NAMES:
+            continue
+        # Schema shape: read the declaration -- scalar, or carrying an enum, means grounded.
+        if isinstance(spec, dict):
+            t = spec.get("type")
+            ts = t if isinstance(t, list) else [t]
+            if any(isinstance(x, str) and x in _SCALAR_JSON_TYPES for x in ts):
+                continue
+            if spec.get("enum"):
+                continue
+        # Value shape: look at the type of the value.
+        elif not isinstance(spec, str):
+            continue                      # number, boolean, list -- not a mechanism choice
+        # What is left is a free string with no enum. If the name selects a mechanism, it is
+        # not grounded.
+        if name.endswith(_MECHANISM_CHOICE_SUFFIXES) or name in _MECHANISM_CHOICE_BARE:
+            bad.append(name)
+    return sorted(bad)
+
+
+def _params_view(params_text):
+    """Read `params` as `(dict, shape)`. The Python counterpart of Julia's `normalize_params`.
+
+    ⚠️ Two copies and only one of them grows. Here we return **both values and schemas as they
+    are** -- this gate has to judge declarations as well as values, so unlike the Julia side it
+    does not blank the schema out.
+    """
+    if params_text is None:
+        return {}, "unparseable"
+    if isinstance(params_text, dict):
+        return params_text, "values"
+    s = str(params_text).strip()
+    if not s:
+        return {}, "unparseable"
+    try:
+        blob = json.loads(s)
+    except Exception:
+        return {}, "unparseable"
+    if not isinstance(blob, dict):
+        return {}, "unparseable"
+    props = blob.get("properties")
+    if isinstance(props, dict):
+        return props, "schema"
+    return blob, "values"
+
+
+# ==========================================================================================
+# (5) The 3-agent pipeline itself
+# ==========================================================================================
+MULTI_AGENT_ENV = "SYNTH_MULTI_AGENT"
+
+
+def multi_agent_enabled() -> bool:
+    """True only when `SYNTH_MULTI_AGENT=1`. **Exactly `"1"`**.
+
+    🔴 Two reasons the default is off. (a) This lane turns one billable call per decision into
+    three. (b) The comparison against the old (single-agent) version only holds if the default
+    path does not change -- if the new lane quietly becomes the default, earlier runs cannot be
+    put in the same table.
+    """
+    return os.environ.get(MULTI_AGENT_ENV, "") == "1"
+
+
+def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
+                  programs=None, blob=None) -> Dict[str, Any]:
+    """The single door the service calls. One flag decides which lane runs.
+
+    🔴 The multi lane **does not use** the caller's `expressible`. On the single-agent version
+    that value was a tool argument of the decision agent (omitted by the model = `None` = "could
+    not measure"); in the multi version agent-2 emits it as its own output field. Mixing the two
+    sources computes the same-named rate over different denominators -- a place this repo has
+    already stood, with `macro_tool_agree`.
+    """
+    if multi_agent_enabled():
+        return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
+                                programs=programs, blob=blob)
+    return maybe_synthesize(expressible=expressible, kind=kind, state=state, tools=tools,
+                            ledger=ledger, blob=blob)
+
+
+def synthesize_multi(state: str,
+                     tools=None,
+                     kind: Optional[str] = None,
+                     ledger: Optional[SynthesisLedger] = None,
+                     programs: Optional[Dict[str, Any]] = None,
+                     blob=None) -> Dict[str, Any]:
+    """observe -> design -> compose. The record has **the same shape** as the single-agent lane.
+
+    🔴 The source of the firing verdict changes. On the single version `expressible` was a **tool
+    argument of the decision agent** (`dspy_service.py`), and if the model omitted that argument
+    it became `None` ("could not measure") and synthesis quietly did not run. Here agent-2 emits
+    it as **its own output field** -- the omission risk disappears and the verdict has one source.
+
+    ⚠️ **The price is recorded right here.** The `expressible=false` rate is now not a measurement
+    but a **construction**: the pipeline decomposes the reasoning so that this answer comes out.
+    So reading this lane's result as "the model noticed on its own that its vocabulary was short"
+    is **false**. What this lane measures is "given the right decomposition, does it design the
+    right tool", and those are different questions.
+
+    🔴 If agent-2 answers `expressible=True`, **agent-3 is not called** -- it saves one billable
+    call, and it separates "this was not an event to synthesise for" from "we synthesised and
+    minted nothing" in the record.
+    """
+    led = ledger if ledger is not None else LEDGER
+    rec = _blank(kind, None, led)
+    rec["stages"] = []
+
+    if not synthesis_enabled():
+        rec["tool_minted"] = "disabled"
+        rec["reason"] = ("%s != '1': synthesis is OFF by default because one firing is a "
+                         "billable OpenAI call (R13)" % SYNTHESIS_ENV)
+        return rec
+
+    progs = programs or {}
+    observe = progs.get("observe") or dspy.ChainOfThought(ObserveEvent)
+    design = progs.get("design") or dspy.ChainOfThought(DesignToolSpec)
+    compose = progs.get("compose") or dspy.ChainOfThought(ComposeToolBody)
+
+    # ---- agent-1: observation -> what broke ------------------------------------------------
+    octx = build_observe_context(state)
+    rec["observe_context_chars"] = len(octx)
+    try:
+        p1 = observe(context=octx, observation=state or "")
+    except Exception as e:
+        rec["error"] = "observe: %s: %s" % (type(e).__name__, e)
+        rec["reason"] = "stage 1 (observe) failed; nothing was minted"
+        return rec
+    rec["reasoning_log"] = (getattr(p1, "reasoning_log", "") or "")
+    rec["stages"].append("observe")
+
+    # ---- agent-2: the log -> what tool is needed (+ expressible) ---------------------------
+    # 🔴 `state` is not passed (the bottleneck). 🔴 Nor is the inventory (the blindness). The
+    #    tests pin both.
+    dctx = build_design_context(rec["reasoning_log"])
+    rec["design_context_chars"] = len(dctx)
+    vocab = "\n".join(_tool_lines(tools))
+
+    def _design(feedback=""):
+        return design(context=dctx, reasoning_log=rec["reasoning_log"],
+                      existing_vocabulary=vocab, ungrounded_feedback=feedback)
+
+    try:
+        p2 = _design()
+    except Exception as e:
+        rec["error"] = "design: %s: %s" % (type(e).__name__, e)
+        rec["reason"] = "stage 2 (design) failed; nothing was minted"
+        return rec
+    rec["stages"].append("design")
+
+    ex = getattr(p2, "expressible", None)
+    # 🔴 Not wrapped in `bool()` -- `bool("False") is True`, so a false True would be recorded.
+    rec["expressible"] = ex if isinstance(ex, bool) else None
+    for f in ("tool_name", "params", "mechanism"):
+        rec[f] = (getattr(p2, f, "") or "")
+
+    # ---- the groundability gate: if the world cannot supply a parameter, redesign **once** --
+    # 🔴 Only the parameter **names** are fed back. Leak the alphabet and agent-2's blindness
+    #    breaks, and that blindness is the premise of "design a tool for an unfamiliar event".
+    # 🔴 The redesign runs **at most once**. If it does not converge we record and move on -- an
+    #    infinite loop is the worst outcome, and a second failure is itself data
+    #    (`ungrounded_after_redesign`).
+    rec["redesigned"] = False
+    rec["ungrounded_after_redesign"] = None
+    bad = ungrounded_params(rec["params"])
+    rec["ungrounded_params"] = bad
+    if bad:
+        fb = ("These parameters of your previous specification cannot be supplied by the "
+              "world -- each names a choice among behaviours rather than a value: %s. "
+              "Commit to one mechanism and specify it directly." % ", ".join(bad))
+        try:
+            p2b = _design(fb)
+        except Exception as e:
+            rec["error"] = "design(redesign): %s: %s" % (type(e).__name__, e)
+            rec["reason"] = "stage 2 redesign failed; nothing was minted"
+            return rec
+        rec["stages"].append("design")
+        rec["redesigned"] = True
+        ex = getattr(p2b, "expressible", None)
+        rec["expressible"] = ex if isinstance(ex, bool) else rec["expressible"]
+        for f in ("tool_name", "params", "mechanism"):
+            rec[f] = (getattr(p2b, f, "") or "")
+        # 🔴 `ungrounded_params` keeps **what was caught the first time**. Overwrite it when the
+        #    redesign succeeds and the fact that the gate fired disappears from the record, and
+        #    the gate's effect can no longer be counted afterwards. Whether it survived is
+        #    carried separately by the two fields below.
+        again = ungrounded_params(rec["params"])
+        rec["ungrounded_params_after"] = again
+        rec["ungrounded_after_redesign"] = bool(again)
+
+    if rec["expressible"] is not False:
+        rec["reason"] = ("not a firing event: agent-2 reported expressible=%r; the pipeline "
+                         "fires only on False" % (rec["expressible"],))
+        return rec
+    rec["synthesis_event"] = True
+    rec["ran"] = True
+
+    # ---- agent-3: the specification -> a body ----------------------------------------------
+    spec = {k: rec[k] for k in ("tool_name", "params", "mechanism")}
+    try:
+        p3 = compose(spec=build_compose_context(spec, rec["reasoning_log"], blob),
+                     inventory=build_inventory_block(blob))
+    except Exception as e:
+        rec["error"] = "compose: %s: %s" % (type(e).__name__, e)
+        rec["reason"] = "stage 3 (compose) failed; nothing was minted"
+        return rec
+    rec["stages"].append("compose")
+    for f in ("body", "reach", "missing_primitive"):
+        rec[f] = (getattr(p3, f, "") or "")
+    rec["reasoning"] = (getattr(p3, "reasoning", "") or "")
+
+    return _finish_record(rec, kind, led, blob)
