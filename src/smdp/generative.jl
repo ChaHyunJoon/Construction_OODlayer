@@ -199,7 +199,7 @@ const RESOLVE_CALLS = Ref(0)
 
 ⚠️ **실측된 시그니처 셋**(직관과 다르니 확인하고 쓸 것):
   · `release_pending_assignments!` → `(env, invariant::InvariantSpec; faulted, agent)`
-    (`src/respec/reassign.jl:149`. 🔴 `faulted` 와 `agent` 는 **배타적**이다 — 둘 다 주면 `ArgumentError`.
+    (`src/respec/reassign.jl:194`. 🔴 `faulted` 와 `agent` 는 **배타적**이다 — 둘 다 주면 `ArgumentError`.
      `agent` 는 범위를 **좁힌다**: 그 로봇이 소유한 미래 배정 간선**만 떼고** 나머지는 그대로 둔다)
   · `assign_collaborative_tasks!`  → 첫 인자가 `model` 이다(`task_assignment.jl:433`)
   · 맨이름 `validate` 는 **스케줄용으로 실재한다** — `validate(sched::OperatingSchedule)`

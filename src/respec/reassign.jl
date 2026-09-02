@@ -102,7 +102,39 @@ function reset_slot_to_invalid!(env, slot_v::Int)
 end
 
 """
-    release_pending_assignments!(env, invariant; faulted, agent) -> Vector{Tuple{Int,Int}}
+    _schedule_agent_ids(sched) -> Set{String}
+
+The robot ids that ACTUALLY APPEAR in `sched`, as the module-qualified strings
+`string(id)` produces. This is the authority for "is this `agent` a name I know?" in
+`release_pending_assignments!`.
+
+🔴 Derived from the SCHEDULE, deliberately not from `BATTERY_FLEET[]` (which is what
+`reprice_agent_by_payload!` uses). This primitive operates on the schedule graph and must
+not acquire a battery dependency, nor start returning `:no_fleet` on an unbatteried board.
+
+🔴 What it is NOT: it is not "robots that own a releasable edge right now". A robot whose
+future assignment edges are all pinned (closed/active) or already released is still a
+KNOWN name — scoping to it legitimately releases nothing and must read `:released_none`,
+not `:unknown_agent`. The two causes are different events for the caller: a wrong string
+should fall back to the default recovery chain, an empty-but-real scope should not.
+
+Same selector as the release filter (`_edge_owner_id`), swept over every vertex rather
+than over assignment-edge sources, and filtered to VALID `BotID`s — `reset_slot_to_invalid!`
+stamps freed slots with negative placeholder ids, and object/assembly nodes yield
+non-robot ids; neither is a robot name a caller could legitimately mean.
+"""
+function _schedule_agent_ids(sched)
+    known = Set{String}()
+    for v in Graphs.vertices(get_graph(sched))
+        id = _edge_owner_id(sched, v)
+        id isa BotID && valid_id(id) && push!(known, string(id))
+    end
+    return known
+end
+
+"""
+    release_pending_assignments!(env, invariant; faulted, agent)
+        -> Vector{Tuple{Int,Int}}  |  NamedTuple (unknown `agent` only)
 
 Remove the assignment edges (free -> slot) the re-solve is allowed to re-decide,
 AND reset each freed slot to the unassigned (invalid-id) state so id propagation
@@ -119,6 +151,18 @@ assignment edge is released. Given a module-qualified robot id string (the form
 `string(_edge_owner_id(sched, v))` produces, e.g.
 `"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`), ONLY the future
 assignment edges that robot OWNS are released; everything else is kept.
+
+🔴 An `agent` string that names NO robot in the schedule is REJECTED before any edit:
+the call returns the NamedTuple `(status = :unknown_agent, agent = <the string>,
+released = 0)` instead of an edge list, and the graph is untouched. `_step_status` reads
+the `status` field first, so the enactment lane sees `:unknown_agent`, which IS in this
+primitive's `WORLD_UNCHANGED_STATUSES` row — so `world_maybe_dirty` stays false and the
+caller falls back to the default recovery chain instead of consuming the OOD event on a
+release that released nothing. The short (module-unqualified) form `"BotID{DeliveryBot}(4)"`
+lands here. 🔴 A REAL robot that simply has no releasable future edges right now is a
+DIFFERENT event: it keeps the normal empty-`Vector` return and reads `:released_none`,
+which is deliberately NOT in that row (see `minted_tool.jl`, the `faulted` reason).
+The authority for "known" is `_schedule_agent_ids(env.sched)`, above.
 
 Why the scope exists — ONE-BOARD PROBE MEASUREMENT, not a property of this function: on
 `colored_8x8.ldr` with 6 robots a full release burned the whole 60s limit without proving
@@ -140,7 +184,8 @@ filters edges that actually exist in the schedule graph. The MILP COMPILER surfa
 `docs/superpowers/specs/2026-09-01-cargo-ban-design.md` §6) has its own selector
 question, settled separately — do not assume the two are interchangeable.
 
-Returns the removed (src,dst) vertex pairs. Does not re-solve — the caller's
+Returns the removed (src,dst) vertex pairs (or the `:unknown_agent`
+NamedTuple above). Does not re-solve — the caller's
 `formulate_milp` + `update_project_schedule!` do that.
 """
 # 재최적화가 다시 결정해도 되는 "미래의 배정 엣지(free→slot)"들을 제거하고, 풀린 슬롯을 미배정 상태로 되돌린다.
@@ -154,6 +199,16 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
         "release_pending_assignments!: `faulted` 와 `agent` 는 동시에 줄 수 없다 — " *
         "`faulted` 는 범위를 넓히고(진행 중 목표까지 해제) `agent` 는 좁힌다. 하나만 줄 것."))
     sched = env.sched
+    # 🔴 아는 이름인가 — **어떤 편집보다도 먼저** 판정한다(아래 루프가 첫 편집이다).
+    #    `removed == []` 의 세 번째 원인("문자열이 아무것도 안 가리킨다")을 status 로 갈라
+    #    내지 않으면 `_step_status` 가 그것을 `:released_none` 으로 읽고, 이 원시의
+    #    `WORLD_UNCHANGED_STATUSES` 행이 (faulted 때문에) 비어 있어 `world_maybe_dirty=true`
+    #    → `enact.jl` 의 `handled=true` 가 된다 = **아무것도 안 풀린 채 복구 사슬을 건너뛴다**.
+    if agent !== nothing
+        known = _schedule_agent_ids(sched)
+        String(agent) in known || return (status = :unknown_agent,
+                                          agent = String(agent), released = 0)
+    end
     G = get_graph(sched)                         # 스케줄의 실제 그래프 구조
     closed = invariant.closed_nodes              # 이미 완료된(닫힌) 노드 ID 집합 = "얼린 과거"
     # 현재 진행 중인 노드 ID 집합 — 컴프리헨션으로 만들어 Set 으로 감쌈.

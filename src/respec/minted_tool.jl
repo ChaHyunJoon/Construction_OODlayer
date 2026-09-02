@@ -197,25 +197,34 @@ end
       (S2 lane Ruling 5). 이 원시는 Ref 둘만 쓸 뿐 재풀이를 스스로 하지 않는다 — 노린 적응
       (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
       MILP 재풀이의 몫이다.
-  · `release_pending_assignments!` `src/respec/reassign.jl:149`
-      조용: `:released_none`(= `removed` 가 비었다). 🔴 **원인이 둘이다** — (a) 풀 수 있는
-            미래 배정 간선이 애초에 하나도 없었다, (b) `agent` 로 범위를 좁혔는데 그 문자열이
-            소유한 미래 배정 간선이 하나도 없었다. (b) 에는 **형태를 틀린 호출**이 포함된다:
-            `agent` 는 모듈 한정 id 문자열이어야 하고(짧은 형태는 아무것도 안 맞는다) 값 형태를
-            재는 검사가 없다(`bind_primitive_args` 는 타입만 본다). 실제: `:released`.
+  · `release_pending_assignments!` `src/respec/reassign.jl:194`
+      조용: `:released_none`(= `removed` 가 비었다) · `:unknown_agent`. 실제: `:released`.
+            🔴 **둘을 가르는 것이 2026-09-02 의 수정이다.** 예전엔 `:released_none` 의 원인이
+            둘이었다 — (a) 풀 수 있는 미래 배정 간선이 애초에 없었다, (b) `agent` 문자열이
+            **스케줄의 어떤 로봇도 안 가리켰다**(모듈 한정이 아닌 짧은 형태 등; `bind_primitive_args`
+            는 타입만 보고 값 형태를 안 잰다). 이제 (b) 는 원시가 **편집 전에** 돌아서며
+            `(status = :unknown_agent, …)` 를 내므로 `:released_none` 의 원인은 (a) **하나뿐**이다
+            — 정확히는 "실재하는 로봇인데 지금 풀 것이 없다" 도 (a) 다.
+            권위는 `_schedule_agent_ids(env.sched)`(`reassign.jl`)이고, `BATTERY_FLEET[]` 이
+            **아니다**(이 원시는 스케줄 위에서 돌고 배터리 의존을 얻으면 안 된다).
       🔴 이 원시는 NamedTuple 을 안 돌려준다 — `Vector{Tuple{Int,Int}}`(떼어낸 간선)이다.
          `_step_status` 가 `EDGELIST_RETURN_PRIMITIVES` 를 보고 위 둘로 읽는다.
       ⚠️ `:released` 는 "노린 적응이 일어났다"가 맞다: 간선을 실제로 뗐다는 것은 다음
          재풀이가 다시 결정할 수 있는 후보가 생겼다는 뜻이고, 그것이 이 원시가 노리는
          전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 reprice 와 같음).
-      ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의
-         `WORLD_UNCHANGED_STATUSES` 는 **일부러 빈 집합**이라(아래 그 표의 문단)
-         `_step_touched_world = true` → `world_maybe_dirty = true` → `enact.jl:869` 의
-         `handled = true` 가 된다. 즉 **아무 간선도 안 풀린 채로** OOD 사건이 소비되고 기본
-         복구 사슬을 건너뛴다. 🔴 **그러나 이 경로는 조용하지 않다** — `enact_minted!` 가
-         `quiet` 주석("불렸지만 어느 단계도 세계를 적응시키지 않았다")을 reason 에 붙이고
-         `enact.jl:873` 이 `applied=false` 를 찍는다. 로그에 증거가 남는다는 뜻이므로
-         이것을 조용한 미복구로 읽어 과잉 대응하지 말 것.
+      ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의 `WORLD_UNCHANGED_STATUSES` 행에
+         `:released_none` 은 **일부러 없으므로**(아래 그 표의 문단) `_step_touched_world = true`
+         → `world_maybe_dirty = true` → `enact.jl:869` 의 `handled = true` 가 된다. 깨끗한 판에서
+         재개가 한 번 더 나가는 것이 대가이고, 그 대가는 `faulted` 경로에서 더러워진 세계를
+         "깨끗하다"고 보고하지 않으려고 치른다. 🔴 그리고 이 경로는 조용하지 않다 —
+         `enact_minted!` 가 `quiet` 주석("불렸지만 어느 단계도 세계를 적응시키지 않았다")을
+         reason 에 붙이고 `enact.jl:873` 이 `applied=false` 를 찍는다.
+      🔴 `:unknown_agent` 는 **반대쪽**이다 — 첫 편집 전에 돌아서므로 `WORLD_UNCHANGED` 에 들어
+         있고, `_step_touched_world = false` → `handled = false` → **기본 복구 사슬로 폴백한다**.
+         그 폴백도 조용하지 않다(`enact.jl` 이 "NOT handled → 기본 복구 사슬로 폴백한다" 를 찍는다).
+         🔴 `SILENT_SUCCESS` 에 함께 있는 것은 불변식이 강제해서이기도 하고 **사실이기도 하다**:
+         이름을 못 찾았으니 노린 적응은 일어나지 않았다(`applied=false`). 여기서 "silent" 는
+         "로그가 조용하다"가 아니라 "성공 계열 값인데 노린 적응은 없었다"를 뜻한다.
 
 ⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 빌드를 **실제로 옮긴다** — 세계의
    바이트는 변한다. 그런데도 여기 있는 이유는 `applied` 가 "바이트가 변했나"가 아니라
@@ -231,7 +240,7 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
     "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
-    "release_pending_assignments" => Set([:released_none]),
+    "release_pending_assignments" => Set([:released_none, :unknown_agent]),
 )
 
 """
@@ -248,7 +257,7 @@ const COUNT_RETURN_PRIMITIVES = Set{String}(["reform_stuck_teams"])
     EDGELIST_RETURN_PRIMITIVES
 
 반환값이 NamedTuple 도 `Int` 도 아니라 **떼어낸 간선의 목록(`Vector{Tuple{Int,Int}}`)** 인
-원시들. 오늘은 `release_pending_assignments!` 하나다(`src/respec/reassign.jl:149` 의
+원시들. 오늘은 `release_pending_assignments!` 하나다(`src/respec/reassign.jl:194` 의
 `return removed`).
 
 🔴 이 표가 없으면 그 반환은 `:unreadable_return` 으로 떨어지고, **실제로는 읽을 수 있는데도**
@@ -351,17 +360,24 @@ ENACTABLE_TODAY` 를 못 박는다).
       안 건드림: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**. 본체가 하는 일은
                  `EDGE_PAYLOAD_MULTIPLIER[]`·`PAYLOAD_BIAS[]` 두 `Ref` 에 클로저를 쓰는 것뿐이다 —
                  씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다.
-  · `release_pending_assignments!` `src/respec/reassign.jl:149`
-      🔴 **행이 비어 있다 — `:released_none` 조차 여기 넣지 않는다.** 이 표는 (이름, status)
+  · `release_pending_assignments!` `src/respec/reassign.jl:194`
+      안 건드림: `:unknown_agent` — 🔴 2026-09-02 추가, **이 행에 들어오는 유일한 것**.
+                 `agent` 가 `_schedule_agent_ids(sched)` 에 없으면 원시가 `Graphs.rem_edge!` 는
+                 물론 `active_ids` 계산보다도 **먼저** 돌아선다(`reassign.jl` 의 이른 반환).
+                 params 와 무관하게 참이다: `faulted` 와 `agent` 를 함께 주는 것은 `ArgumentError`
+                 이므로 이 갈래에서는 아래 faulted 블록이 **구조적으로 도달 불가**다. 즉 이 표가
+                 (이름, status) 만 보고도 확실히 말할 수 있는 유일한 자리다.
+      🔴 **`:released_none` 은 여기 넣지 않는다.** 이 표는 (이름, status)
          만 보는데, 이 원시의 세계 접촉은 **params 에 달려 있다**: `faulted !== nothing` 이면
-         `removed` 가 비어도 마지막 블록(`reassign.jl:217-230`)이 하류의 낡은 id 노드마다
+         `removed` 가 비어도 마지막 블록(`reassign.jl:272-285`)이 하류의 낡은 id 노드마다
          `reset_slot_to_invalid!` 를 부른다 = `removed == []` 인데 세계는 편집됐다.
          표가 그 경우를 구별할 수 없으므로 **보수적인 쪽**을 고른다: 언제나 "건드렸을 수
          있다". 대가는 깨끗한 판에서도 재개가 한 번 더 나가는 것뿐이고, 그것은
          `_issue_resume!` 의 멱등성 문단이 무해하다고 못박은 일이다. 반대로 골랐다면
          faulted 모드에서 더러워진 세계를 "깨끗하다"고 보고했을 것이다 — 그쪽이 이 표가
          존재하는 이유인 실패다.
-      (`WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 불변식은 빈 집합이 자명하게 만족한다.)
+      (`WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 불변식: `:unknown_agent` 는 `SILENT_SUCCESS` 에도
+       있다 — 강제된 것이 아니라 참이다. 이름을 못 찾았으면 노린 적응도 안 일어났다.)
 """
 const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "restage_all_blocked"         => Set([:none, :infeasible]),
@@ -371,7 +387,7 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
     "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
-    "release_pending_assignments" => Set{Symbol}(),   # 🔴 일부러 비었다 — 바로 위 문단을 보라
+    "release_pending_assignments" => Set([:unknown_agent]),  # 🔴 `:released_none` 은 일부러 빠졌다 — 위 문단
 )
 
 """

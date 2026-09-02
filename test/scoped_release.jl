@@ -171,4 +171,82 @@ end
                                           faulted = CB.RobotID(1)) isa Vector
 end
 
+# ---------------------------------------------------------------------------
+#  🔴 2026-09-02 — 틀린 `agent` 문자열이 만든 구멍을 막는다.
+#
+#  Task 6 이 `agent` 를 더하면서 `removed == []` 의 **세 번째 원인**이 생겼다: "그 문자열이
+#  스케줄의 어떤 로봇도 가리키지 않는다". 그런데 `_step_status` 는 그것을 `:released_none`
+#  으로 읽고, `WORLD_UNCHANGED_STATUSES["release_pending_assignments"]` 는 (faulted 때문에)
+#  **일부러 비어 있어** `_step_touched_world = true` → `world_maybe_dirty = true` →
+#  `tools/monitor/enact.jl:869` 의 `handled = true` 가 된다. 즉 **아무것도 안 풀린 채** OOD
+#  사건이 소비되고 기본 복구 사슬을 건너뛴다.
+#
+#  고치는 방향은 표를 느슨하게 하는 것이 **아니라**(그러면 faulted 경로에서 더러워진 세계를
+#  깨끗하다고 보고한다) 세 번째 원인을 **구별 가능하게** 만드는 것이다: 모르는 이름이면
+#  세계를 건드리기 **전에** `:unknown_agent` 로 돌아선다.
+#
+#  🔴 권위의 구분이 이 시험의 전부다:
+#    · 스케줄에 아예 없는 이름  → `:unknown_agent` (문자열이 틀렸다 → 폴백을 받아야 한다)
+#    · 실재하는 로봇인데 지금 풀 간선이 없다 → `:released_none` (정당하게 비었다 → 폴백 없음)
+# ---------------------------------------------------------------------------
+
+"짧은(모듈 비한정) 형태 — 레지스트리가 '아무것도 안 맞는다'고 경고한 바로 그 오용."
+short_form(a) = replace(a, "ConstructionBots." => "")
+
+# 🔴 넷을 **하나의 부모 testset 안에** 둔다. 최상위 testset 은 실패하면 그 자리에서 던져
+#    파일을 중단시키므로, 빨간 상태에서 나머지 셋의 실패 이유를 볼 수 없다(TDD 의 red 단계가
+#    반쪽이 된다). 중첩이면 자식이 전부 돈 뒤 부모가 던진다.
+@testset "agent 가 스케줄에 없는 이름일 때" begin
+
+@testset "스케줄에 없는 agent 문자열은 :unknown_agent 로 갈리고 아무것도 안 뗀다" begin
+    env  = fork(ENV0)
+    a    = busiest_pending_agent_string(env)
+    before = releasable_edges(env)            # 🔴 호출 전에 잰다
+    @test !isempty(before)                    # 빈-통과 방지
+
+    for bad in (short_form(a), "ConstructionBots.BotID{ConstructionBots.DeliveryBot}(99999)",
+                "not-a-robot-at-all")
+        @test bad != a                        # 🔴 음성 대조가 진짜 음성인지 먼저 못 박는다
+        out = CB.release_pending_assignments!(env, CB.build_invariant(env); agent = bad)
+        @test CB._step_status("release_pending_assignments", out) === :unknown_agent
+        @test hasproperty(out, :released) && out.released == 0
+        @test releasable_edges(env) == before # 세계를 한 간선도 안 건드렸다
+    end
+end
+
+@testset "🔴 해저드가 닫혔다 — 두 status 가 _step_touched_world 에서 갈린다" begin
+    # 이 두 줄이 수정의 본체다. 반환 심볼만 보는 시험은 복구 사슬이 살아났음을 증명하지 못한다.
+    @test CB._step_touched_world("release_pending_assignments", :unknown_agent) == false
+    @test CB._step_touched_world("release_pending_assignments", :released_none) == true
+    # 표에 들어간 것은 `:unknown_agent` **하나뿐**이다(`:released_none` 은 faulted 때문에 밖에).
+    @test CB.WORLD_UNCHANGED_STATUSES["release_pending_assignments"] == Set([:unknown_agent])
+    # 불변식 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 는 게이트 (13) 이 잰다 — 여기서도 확인.
+    @test :unknown_agent in CB.SILENT_SUCCESS_STATUSES["release_pending_assignments"]
+    @test !(:released_none in CB.WORLD_UNCHANGED_STATUSES["release_pending_assignments"])
+end
+
+@testset "실재하는 로봇인데 풀 간선이 0 이면 여전히 빈-벡터 → :released_none" begin
+    env = fork(ENV0)
+    a   = busiest_pending_agent_string(env)
+    CB.release_pending_assignments!(env, CB.build_invariant(env))   # 창을 통째로 닫는다
+    @test isempty(releasable_edges(env; agent = a))                 # 이제 풀 것이 없다
+    @test a in CB._schedule_agent_ids(env.sched)                    # 🔴 그래도 **아는 이름**이다
+    out = CB.release_pending_assignments!(env, CB.build_invariant(env); agent = a)
+    @test out isa Vector{Tuple{Int,Int}} && isempty(out)
+    @test CB._step_status("release_pending_assignments", out) === :released_none
+end
+
+@testset "권위 측정 — 아는 이름 집합의 크기" begin
+    known = CB._schedule_agent_ids(ENV0.sched)
+    a = busiest_pending_agent_string(ENV0)
+    println("[scoped_release] |known agent ids| = ", length(known),
+            "  busiest=", a, "  in_known=", a in known)
+    @test !isempty(known)
+    @test a in known
+    @test !(short_form(a) in known)
+end
+
+end   # "agent 가 스케줄에 없는 이름일 때"
+
+
 end # module
