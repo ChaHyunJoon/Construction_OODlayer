@@ -102,7 +102,7 @@ function reset_slot_to_invalid!(env, slot_v::Int)
 end
 
 """
-    release_pending_assignments!(env, invariant; faulted) -> Vector{Tuple{Int,Int}}
+    release_pending_assignments!(env, invariant; faulted, agent) -> Vector{Tuple{Int,Int}}
 
 Remove the assignment edges (free -> slot) the re-solve is allowed to re-decide,
 AND reset each freed slot to the unassigned (invalid-id) state so id propagation
@@ -113,12 +113,46 @@ re-stamps it with the robot the solver actually assigns. Release policy:
   * the FAULTED robot's edge is kept only if an endpoint is CLOSED — a faulted
     robot also drops its current (active) target, so that work gets reassigned.
 
+`agent::Union{Nothing,AbstractString}` SCOPES the release. With `agent === nothing`
+(the default) the behaviour is byte-for-byte what it has always been: every future
+assignment edge is released. Given a module-qualified robot id string (the form
+`string(_edge_owner_id(sched, v))` produces, e.g.
+`"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`), ONLY the future
+assignment edges that robot OWNS are released; everything else is kept.
+
+Why the scope exists: a full release opens thousands of candidate assignment edges
+and the MILP re-solve that follows then burns its whole time limit without proving
+optimality at ANY point of the build (measured: 60s TIME_LIMIT at closed =
+0/62/120/170/220/250, still TIME_LIMIT with only 364 candidates left). Scoping to
+one robot shrinks the candidate set to ~1/19 — the reduction is superlinear because
+candidates are edge PAIRS, not robots — and the same re-solve returns OPTIMAL in
+~0.2s. See `tools/probes/probe_release_in_harness.jl` · `probe_scoped_release.jl`.
+
+🔴 `faulted` and `agent` are OPPOSITES and may NOT be combined: `faulted` WIDENS the
+release (it additionally drops that robot's in-progress target) while `agent` NARROWS
+it. There is no unique composed meaning, and silently ignoring one of the two is the
+worst outcome, so passing both raises `ArgumentError`.
+
+🔴 The ownership selector used here is `_edge_owner_id(sched, u)` on the edge's SOURCE
+vertex, compared as a string. This is the selector for the RELEASE surface, which
+filters edges that actually exist in the schedule graph. The MILP COMPILER surface
+(scanning the structural nonzeros of `Xa`, design doc
+`docs/superpowers/specs/2026-09-01-cargo-ban-design.md` §6) has its own selector
+question, settled separately — do not assume the two are interchangeable.
+
 Returns the removed (src,dst) vertex pairs. Does not re-solve — the caller's
 `formulate_milp` + `update_project_schedule!` do that.
 """
 # 재최적화가 다시 결정해도 되는 "미래의 배정 엣지(free→slot)"들을 제거하고, 풀린 슬롯을 미배정 상태로 되돌린다.
 # 이미 끝났거나 진행 중인 작업(과거)은 절대 건드리지 않음. faulted 는 "고장난 로봇"(없으면 nothing).
-function release_pending_assignments!(env, invariant::InvariantSpec; faulted = nothing)
+# agent 는 **범위를 좁히는** 인자(없으면 nothing = 오늘과 같은 전체 release).
+function release_pending_assignments!(env, invariant::InvariantSpec; faulted = nothing,
+                                      agent::Union{Nothing,AbstractString} = nothing)
+    # 🔴 faulted 는 넓히고 agent 는 좁힌다 — 합성 의미가 유일하지 않으므로 조용히 하나를
+    #    무시하지 않고 막는다(조용한 무시가 최악이다).
+    faulted !== nothing && agent !== nothing && throw(ArgumentError(
+        "release_pending_assignments!: `faulted` 와 `agent` 는 동시에 줄 수 없다 — " *
+        "`faulted` 는 범위를 넓히고(진행 중 목표까지 해제) `agent` 는 좁힌다. 하나만 줄 것."))
     sched = env.sched
     G = get_graph(sched)                         # 스케줄의 실제 그래프 구조
     closed = invariant.closed_nodes              # 이미 완료된(닫힌) 노드 ID 집합 = "얼린 과거"
@@ -139,6 +173,14 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
             in_closed(id1) || in_closed(id2)               # faulted: keep only completed  # 고장 로봇: 완료된 것만 유지(진행중도 떼어 재배정)
         else
             in_closed(id1) || in_closed(id2) || in_active(id1) || in_active(id2)  # 정상 로봇: 완료/진행중이면 유지
+        end
+        # 소유자 범위 필터 — 기존 keep 규칙 **위에 하나 더** 얹는 조건이다(기존 규칙은 그대로).
+        # agent 가 주어졌는데 이 엣지의 출발점 소유자가 그 로봇이 아니면 유지(= 안 뗀다).
+        # 소유자를 못 읽으면(`nothing`) 그것도 "그 로봇 것이 아니다" 로 읽어 유지한다 —
+        # 좁히는 인자가 알 수 없는 엣지를 뜯는 것이 더 나쁘다.
+        if !keep && agent !== nothing
+            own = _edge_owner_id(sched, v)
+            keep = own === nothing || string(own) != agent
         end
         keep && continue                         # 유지 대상이면 제거하지 않고 다음으로
         Graphs.rem_edge!(G, v, v2)               # 그 외(미래 배정)는 엣지 제거 — 재최적화가 다시 결정하게 함

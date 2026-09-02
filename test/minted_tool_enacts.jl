@@ -382,7 +382,7 @@ const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
     "pop_spare"                   => ("pop_spare!", ["pool"]),
     "recover_stalled_teams"       => ("recover_stalled_teams!", String[]),
     "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
-    "release_pending_assignments" => ("release_pending_assignments!", ["faulted"]),
+    "release_pending_assignments" => ("release_pending_assignments!", ["faulted", "agent"]),
     "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
     "reprice_agent_by_payload"    => ("reprice_agent_by_payload!", ["agent", "light_bias"]),
     "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
@@ -645,6 +645,11 @@ end
     @test CB._param_type_reject(rp.params["faulted"], "R3")    === nothing
     @test CB._param_type_reject(rp.params["faulted"], nothing) === nothing
     @test CB._param_type_reject(rp.params["faulted"], 3)       !== nothing
+    # 2026-09-01 (cargo-ban T6): `agent` 범위 인자도 같은 합집합 선언이다. 🔴 `"null"` 이
+    # 빠지면 기본 호출(`agent = nothing`)이 타입 거절되므로 그 자리를 못 박는다.
+    @test CB._param_type_reject(rp.params["agent"], "R3")      === nothing
+    @test CB._param_type_reject(rp.params["agent"], nothing)   === nothing
+    @test CB._param_type_reject(rp.params["agent"], 3)         !== nothing
     # 🔴 선언이 없거나 모르는 타입이면 거절이다 — 통과시키면 레지스트리 편집이 게이트 전부
     #    초록인 채로 호출 표면을 넓힌다(R46 이 parked 한 확장 경로).
     @test CB._param_type_reject(Dict{String,Any}(), 1) == "no_declared_type"

@@ -510,4 +510,11 @@ end
     @testset "payload reprice install" begin
         include("payload_reprice_install.jl")
     end
+
+    # 2026-09-01 (cargo-ban T6): release_pending_assignments! 의 `agent` 범위 인자.
+    # 기본값 보존(= 오늘과 바이트 동일) · 좁힘의 정확성 · faulted×agent 금지를 못 박는다.
+    # 🔴 씬을 짓는다(tractor/10대/closed=60) — 한 번만 짓고 fork 로 복제한다.
+    @testset "scoped release" begin
+        include("scoped_release.jl")
+    end
 end

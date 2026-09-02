@@ -84,6 +84,13 @@
             "null"
           ],
           "description": "robot id whose ACTIVE target should also be released; null releases only not-yet-started work"
+        },
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "release only the future assignment edges owned by this robot; null releases all of them. NARROWS the release, unlike faulted which WIDENS it -- passing both raises ArgumentError"
         }
       },
       "mechanism": "Removes free->slot ASSIGNMENT EDGES from the schedule graph so a following MILP re-solve is free to re-decide who does that work, and resets each freed slot to the unassigned (invalid-id) state so id propagation re-stamps it with whatever robot the solver actually picks. Release policy is asymmetric on purpose: a HEALTHY robot's edge is KEPT (pinned) if either endpoint is closed or active -- finished and in-progress work is never disturbed; the FAULTED robot's edge is kept only if an endpoint is CLOSED, so a faulted robot also drops its current active target and that work gets reassigned. Returns the removed (src,dst) vertex pairs. It does NOT re-solve by itself; the harness's automatic post-body MILP re-solve is what turns the freed slots back into a plan. INERT ON ITS OWN: it only changes state that a later MILP re-solve reads. The harness runs that re-solve automatically after EVERY tool body, so do NOT put a commit/re-solve/formulate step in the body -- no such primitive exists in this inventory and naming one makes the whole body unenactable. IRREVERSIBLE: the removed edges are not recorded anywhere that can put them back; measured blast radius is large (Xa nonzero 423 -> 3197).",
