@@ -119,8 +119,25 @@ end
 """
 const STANDING_CARGO_BANS = Ref(Dict{AbstractID,Int}())
 
-"`agent` 에게 부담 상위 `n` 개 화물 금지를 건다. 같은 로봇에 다시 걸면 **덮어쓴다**(누적 아님)."
-set_cargo_ban!(agent::AbstractID, n::Integer) = (STANDING_CARGO_BANS[][agent] = Int(n); nothing)
+"""
+`agent` 에게 부담 상위 `n` 개 화물 금지를 건다. 같은 로봇에 다시 걸면 **덮어쓴다**(누적 아님).
+
+🔴 **`n >= 1` 을 보관소 경계에서 강제한다** — `ForbidHeavyCargo` 생성자와 **같은 계약**이고,
+같은 이유다(0 개 금지는 hollow admit). 여기서 안 막으면 `0`/음수가 조용히 들어앉고 폭발은
+**한참 뒤 `formulate_milp` 안**에서 난다: 훅이 그 값을 생성자에 넘기는 순간이다. 그 자리는
+치명적이다 — `verifier.jl` 은 LLM 문법(`LinearConstraint`/`Disjunction`)이 실린 제안에서만
+컴파일 예외를 `Reject(:ungrammatical)` 로 바꾸고 **그 밖에서는 되던지며**, `maybe_respecify!`
+에는 `try` 가 없어 예외가 `route_planning.jl` 까지 풀려 올라가 **런을 죽인다.** 그리고 훅은
+**무조건** 도니까, 죽는 것은 나쁜 값을 준 제안이 아니라 **그 다음 아무 `verify`** 다.
+⟹ 나쁜 값을 준 **그 호출자에게, 그 순간** 에러를 떨군다. 실제 시나리오: 후보 개수에서 `n` 을
+계산하는 호출자가 빈 메뉴에서 `0` 을 얻어 `set_cargo_ban!(r, 0)` 을 부른다.
+"""
+function set_cargo_ban!(agent::AbstractID, n::Integer)
+    n >= 1 || error("set_cargo_ban!: n 은 1 이상이어야 한다 — 0 개 금지는 hollow admit 이다 " *
+                    "(받은 값: $(n), 대상: $(agent))")
+    STANDING_CARGO_BANS[][agent] = Int(n)
+    return nothing
+end
 
 "있었으면 지우고 `true`, 없었으면 `false`. 🔴 조용한 성공을 만들지 않으려고 값을 돌려준다."
 clear_cargo_ban!(agent::AbstractID) = (pop!(STANDING_CARGO_BANS[], agent, nothing) !== nothing)
@@ -154,16 +171,23 @@ clear_all_cargo_bans!() = (empty!(STANDING_CARGO_BANS[]); nothing)
 (`AbstractID` 의 내용 기반 `Base.hash`)는 **이 브랜치의 조상이 아니다** — 여기서는 이 정렬이
 유일한 방어선이다. 2차 키가 필요 없는 이유: 키는 로봇 id 라 `string(id)` 가 유일하다.
 
-🔴 **부담 계층이 없을 때의 처신을 이 함수가 직접 정한다**(컨트롤러 판정 2026-09-02).
-`compile_constraint!(…, ::ForbidHeavyCargo)` 는 `BATTERY_FLEET[] === nothing` 에서 **에러**를
-낸다. 그것은 제안이 명시적으로 그 제약을 실은 경우에는 옳다 — 누군가 이 solve 에서 그것을
-요구했는데 못 재는 것은 배선 결함이다. 그러나 이 훅은 **모든** formulate 에서 돈다. 배터리는
-opt-in 이고 `run_lego_demo` 는 켜지 않으므로, "금지가 서 있다 × 배터리 없는 판" 조합이 그
-에러를 **모든 solve 자리에서 도달 가능**하게 만든다. 그리고 `verifier.jl` 은 LLM 문법
+🔴 **부담 계층이 없을 때의 처신은 `compiler.jl` 한 자리에서 나온다** — 이 훅은 가드를
+**들고 있지 않다**(2026-09-02 리뷰: 사본 둘이 갈릴 수 있다). 술어는
+`_cargo_burden_layer_available()`(`compiler.jl`) 하나이고, 그것을 보는 자리도
+`_heavy_cargo_targets` 하나다. 그 함수는 계층이 없으면 **`@warn` 을 내고 빈 목록**을 돌려주므로
+`compile_constraint!(…, ::ForbidHeavyCargo)` 가 0 행을 내고, 훅의 합계도 0 행이 된다 —
+가드가 있던 때와 **행 수·경고 유무가 같다.** (예전에는 이 함수가 자기 사본을 들고 있었다.
+사본이 갈리면: 누군가 `_cargo_burden_layer_available()` 에 네 번째 절을 더할 때 제안 경로는
+곱게 물러나는데 **보관소 경로만 낡은 3절 가드를 통과해** `compile_constraint!` 로 들어가
+`BATTERY_FLEET[].params` 에서 죽는다. 그것이 아래 문단이 피하려던 바로 그 사고다.)
+
+왜 죽이면 안 되는가(컨트롤러 판정 2026-09-02). 이 훅은 **모든** formulate 에서 돈다. 배터리는
+opt-in 이고 `run_lego_demo` 는 켜지 않으므로 "금지가 서 있다 × 배터리 없는 판" 조합이
+**모든 solve 자리에서 도달 가능**하다. 그리고 `verifier.jl` 은 LLM 문법
 (`LinearConstraint`/`Disjunction`)이 실린 제안에서만 컴파일 예외를 `Reject(:ungrammatical)`
 로 바꾸고 그 밖에서는 **되던진다** — `maybe_respecify!` 에 `try` 가 없어 예외가
 `route_planning.jl` 까지 풀려 올라가 **런을 죽인다.**
-⟹ 여기서는 죽이지 않는다. 대신 **`@warn` 으로 크게 알리고 0 행을 낸다.** 이것은 조용한
+⟹ 죽이지 않는다. 대신 **`@warn` 으로 크게 알리고 0 행을 낸다.** 이것은 조용한
 0 이 **아니다**: `run_demo.jl` 이 심는 `global_logger(…, Logging.Warn)` 아래에서 `@info` 는
 버려지지만 `@warn` 은 남는다(CLAUDE.md 의 알려진 함정). 🔴 그래도 대가는 실재한다 —
 **그 formulate 에서 금지는 집행되지 않는다.** 금지를 거는 레인(Task 4·5·7)은 배터리 레인이라
@@ -172,16 +196,9 @@ opt-in 이고 `run_lego_demo` 는 켜지 않으므로, "금지가 서 있다 × 
 function _compile_standing_cargo_bans!(model, t0, tF, Xa, sched)
     bans = STANDING_CARGO_BANS[]
     isempty(bans) && return 0                 # 금지가 없으면 누를 것이 없는 게 맞다(진짜 0)
-    # 🔴 구조적 사전조건. `&&` 는 왼쪽이 거짓이면 오른쪽을 **평가하지 않는다** — navigator 가
-    #    안 실렸으면 `BATTERY_FLEET` 이라는 이름 자체가 없으므로 순서가 load-bearing 이다.
-    if !(isdefined(@__MODULE__, :cargo_burden_after) &&
-         isdefined(@__MODULE__, :BATTERY_FLEET) && BATTERY_FLEET[] !== nothing)
-        @warn "STANDING_CARGO_BANS: 화물 금지가 서 있는데 1대당 부담을 잴 계층이 없다 " *
-              "(navigator 미로드 또는 enable_battery! 미호출). 이 formulate 는 금지를 " *
-              "**집행하지 않는다** — 0 행. 그 로봇이 무거운 화물을 다시 맡을 수 있다." *
-              " (죽이지 않는 이유는 이 함수의 docstring 참조.)" bans = sort(string.(collect(keys(bans))))
-        return 0
-    end
+    # 🔴 부담 계층 부재 가드는 **여기 없다** — `compiler.jl` 의 `_cargo_burden_layer_available()`
+    #    한 자리뿐이고, `_heavy_cargo_targets` 가 로봇마다 그것을 보고 @warn + 빈 목록을 낸다
+    #    ⟹ 여기서는 그대로 0 행이 된다. 사본을 두면 갈린다(위 docstring).
     n = 0
     for agent in sort(collect(keys(bans)), by = string)
         n += compile_constraint!(model, t0, tF, Xa, sched, ForbidHeavyCargo(agent, bans[agent]))

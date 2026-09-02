@@ -95,9 +95,15 @@ end
 🔴 `&&` 의 단축평가 순서가 load-bearing 이다: navigator 가 안 실렸으면 `BATTERY_FLEET` 이라는
 **이름 자체가 없어** 오른쪽을 평가하면 `UndefVarError` 다.
 
-⚠️ `spec_dsl.jl::_compile_standing_cargo_bans!`(Task 3)가 **같은 술어를 인라인으로** 들고 있다.
-합치는 것이 옳지만 그 파일은 지금 다른 작업자 소유라 손대지 않았다 — 두 사본이 갈리면
-"금지가 서 있는데 배터리가 없다" 의 처신이 보관소 경로와 제안 경로에서 달라진다. 기록해 둔다.
+🔴 **이것이 유일한 사본이다**(2026-09-02 리뷰에서 합쳤다). 예전에는
+`spec_dsl.jl::_compile_standing_cargo_bans!`(Task 3)가 **같은 세 절을 인라인으로** 들고 있었다.
+사본이 갈리는 시나리오는 구체적이었다 — 여기 네 번째 절(예: `BATTERY_FLEET[].params !== nothing`)
+을 더하면 제안 경로는 곱게 물러나는데 **보관소 경로만 낡은 3절 가드를 통과해**
+`compile_constraint!` 로 들어가 아래 `BATTERY_FLEET[].params` 에서 `formulate_milp` **안의**
+에러를 낸다(= 런 사망). 지금 보관소 훅은 가드를 아예 안 들고 로봇마다 `compile_constraint!` 를
+부르며, 그 안의 `_heavy_cargo_targets` 가 이 술어를 보고 @warn + 빈 목록 → 0 행을 낸다.
+**절을 더하려면 여기서만 더하면 된다.**
+⚠️ 그러므로 **이 함수를 지우거나 조건을 느슨하게 하면 보관소 경로도 함께 움직인다.**
 """
 _cargo_burden_layer_available() =
     isdefined(@__MODULE__, :cargo_burden_after) &&

@@ -46,6 +46,21 @@ isdefined(CB, :simstate_of)  || CB.include(joinpath(REPO, "src", "smdp", "mdp.jl
     @test length(CB.STANDING_CARGO_BANS[]) == 1
     CB.clear_all_cargo_bans!()
     @test isempty(CB.STANDING_CARGO_BANS[])
+    # 🔴 `n >= 1` 을 **보관소 경계에서** 강제한다 (2026-09-02 리뷰 Fix 1).
+    #    `ForbidHeavyCargo` 생성자와 같은 계약인데, 보관소가 그것을 통과시키면 폭발이 한참 뒤
+    #    `formulate_milp` **안**(훅이 생성자를 부르는 자리)으로 미뤄진다. 거기서는 `verifier.jl`
+    #    이 LLM 문법 없는 제안의 컴파일 예외를 되던지고 `maybe_respecify!` 에 `try` 가 없어
+    #    `route_planning.jl` 까지 풀려 올라가 **런이 죽는다** — 그것도 나쁜 값을 준 제안이
+    #    아니라 그 다음 **아무 `verify`** 에서(훅은 무조건 도니까). 여기서 죽어야 한다.
+    @test_throws ErrorException CB.set_cargo_ban!(r3, 0)     # 0 개 금지 = hollow admit
+    @test_throws ErrorException CB.set_cargo_ban!(r3, -1)    # 음수는 말이 안 된다
+    # 🔴 거절이 **부작용을 남기지 않는다** — 안 그러면 보관소에 쓰레기가 앉는다.
+    @test !haskey(CB.STANDING_CARGO_BANS[], r3)
+    @test isempty(CB.STANDING_CARGO_BANS[])
+    # 🔴 경계값은 통과한다 — 위 둘이 "전부 거절" 이라서 초록인 것이 아님을 못 박는다.
+    CB.set_cargo_ban!(r3, 1)
+    @test CB.STANDING_CARGO_BANS[][r3] == 1
+    CB.clear_all_cargo_bans!()
     # 🔴 반환 계약을 못 박는다: 세우기·전체지우기는 `nothing`(장부가 아니라 부작용).
     @test CB.set_cargo_ban!(r3, 1) === nothing
     @test CB.clear_all_cargo_bans!() === nothing
