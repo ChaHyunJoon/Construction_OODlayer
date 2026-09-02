@@ -457,9 +457,32 @@ git commit
 - Julia(`policy.jl` 의 결정행 배선)를 안 건드린다.
 - 유료 호출을 **한 번도 안 낸다.** 측정은 cargo-ban 착지 후 별도 라운드다.
 
+## 집행 결과 (2026-09-02 01:25)
+
+**두 태스크 다 집행됐다.** Task 1 = `e5b7cfb7`, Task 2 = `ee94f66e`.
+스위트 **222 passed / 5 skipped** (기준선 213 → +9). 변이 8건 전부 RED 확인 후 복원.
+Julia 는 한 번도 안 켰고, `test/runtests.jl` 도 안 건드렸다.
+
+🔴 **계획서가 놓친 세 번째 자리를 변이 시험이 찾아냈다.** `/decide` 의 `out["dspy"]` 가 레인
+키를 **손으로** 들고 있고(`dspy_service.py:1776-1782`), **라이브 레인은 `/decide` 로만 들어온다**
+(`policy.jl:559`). ⟹ 지금 `menu_expressible` 은 **`/macro` 에서만 관측된다.**
+
+오늘 밤 안 고친 이유(측정으로 뒷받침, Julia 실행 없이):
+게이트 `test/tool_lane_keys_survive.jl` **(6)절**이 Julia `TOOL_LANE_KEYS` 와 파이썬 레인 키
+집합을 **양방향 등호**로 묶는다. 그 게이트 자신의 추출기(`_PY_EXTRACT`, 순수 파이썬)를 떼어
+돌려 재니 **양쪽 다 11 로 맞아 있다.** 올바른 자리(표식 **아래**)에 키를 넣으면 12 vs 11 로
+그 게이트가 빨개지는데, cargo-ban 레인이 지금 Julia 스위트를 돌리는 중이라 **검증 못 하는
+빨강을 남의 레인에 얹지 않는다.** 표식 **위로 숨겨** 초록을 만드는 것은 소스 주석이 명시적으로
+금지한다(줄리아가 영원히 안 나르는 상태가 조용해진다).
+
 ## 집행 후 남는 것 (아침에 결정할 것)
 
-1. **유료 라운드 설계** — 어휘 밖 3건 + 대조군, `DSPY_CACHE=0` 으로 재시작해서. 보고할 것:
-   2×2 표 · 새 필드 **채움률** · `macro`/`ranking` 형식 유효율(스키마가 길어진 대가, spec §7-2).
-2. **`menu_expressible` 을 결정행에** — `policy_entry` 가 키를 손으로 들고 있다(Julia).
-3. 사실 블록 Wave 2 — `policy.jl` 이 팀 크기와 창 상태를 싣게 한다.
+1. 🔴 **셋을 한 커밋에서 함께 움직인다 — 유료 측정의 전제조건이다.**
+   `/decide` 의 `out["dspy"]` dict(표식 아래) · Julia `tools/monitor/policy.jl` 의
+   `TOOL_LANE_KEYS` · `test_macro_returns_tool_call.py` 의 `_LANE_KEYS`.
+   그리고 `julia +lts --project=. test/tool_lane_keys_survive.jl` 로 (6)절이 초록인지 확인.
+   ⚠️ 그 다음 층이 하나 더 있다: Julia `policy_entry` 가 결정행 키를 손으로 든다(spec §3-5).
+2. **유료 라운드 설계** — 어휘 밖 3건 + 대조군, `DSPY_CACHE=0` 으로 **재시작**해서(장수
+   프로세스라 환경변수만 바꾸면 옛 레짐이 돈다). 보고할 것: 2×2 표 · 새 필드 **채움률** ·
+   `macro`/`ranking` 형식 유효율(스키마가 길어진 대가, spec §7-2) · `llm_billed` 대 `llm_calls`.
+3. 사실 블록 Wave 2 — `policy.jl` 이 팀 크기(`m/T`)와 창 상태를 싣게 한다.
