@@ -1467,7 +1467,7 @@ def _blank_decision(valid, line, source, tools_offered):
             "tool_called": None, "tool_args": {},
             "tool_called_forced": None, "tool_args_forced": {},
             "tool_calls_n": 0, "tools_offered": tools_offered, "tool_arg_error": None,
-            "expressible": None, "macro_tool_agree": None,
+            "expressible": None, "menu_expressible": None, "macro_tool_agree": None,
             "native_fc": None, "tool_choice": None, "tool_lane_error": None,
             # 🔴 합성 레인은 `expressible == False` 하나로만 발화한다. 여기서는 그것을 **못
             #    쟀으므로**(None) 부르지만 안 돈다 — 그 사실이 `synthesis["reason"]` 에 남는다.
@@ -1584,6 +1584,11 @@ def macro(req: MacroRequest):
     # 🔴 `bool()` 로 **감싸지 않는다**(F13). 감싸면 `bool("False") is True` 라 거짓 `True` 가
     #    조용히 기록된다. 못 읽었으면 None = "못 쟀다"(spec §9-2).
     expressible = expressible if isinstance(expressible, bool) else None
+    # 🔴 2026-09-02 — 대조용 두 번째 질문(spec §3-1). 기존 `expressible` 과 **같은 삼상 규약**:
+    #    bool 이 아니면 `None`("못 쟀다")이지 `False` 가 아니다. 이 필드는 **측정 전용**이고
+    #    결정(`chosen`·`ranking`)과 합성 발화 조건에는 절대 안 들어간다.
+    menu_expressible = tool_args_all.get("menu_expressible")
+    menu_expressible = menu_expressible if isinstance(menu_expressible, bool) else None
     reasoning = (tool_args_all.get("reasoning") or "").strip()
     raw_rank = (tool_args_all.get("ranking") or "").strip()
 
@@ -1669,6 +1674,9 @@ def macro(req: MacroRequest):
             #    유일한 키다 — 둘 다 `tool_called is None` 이다.
             "tool_arg_error": tool_arg_error,
             "expressible": expressible,
+            # 🔴 측정 전용. `expressible` 과 나란히 두는 이유는 소비자가 둘의 **차이**를
+            #    읽기 때문이다(spec §3-1 의 2x2 표). 결정에는 안 쓴다.
+            "menu_expressible": menu_expressible,
             # 배선이 아니라 발화. 이 요청이 실제로 쓴 시그니처 기준(None = 못 쟀다).
             "native_fc": native_fc,
             # §4-1: 레인은 실패했는데 결정은 살아남은 사건. `error` 와 **다른 자리**여야 한다.

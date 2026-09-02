@@ -351,6 +351,17 @@ _LANE_KEYS = ("tool_called", "tool_args", "expressible", "macro_tool_agree", "na
               #    것)을 대체한다. `tool_arg_error` 는 R26 억제와 접지 실패 억제를 가른다 —
               #    둘 다 `tool_called is None` 이다.
               "decision_source", "tool_arg_error")
+# 🔴 2026-09-02 — `menu_expressible` 은 **일부러 여기 없다.** 이 튜플은
+#    `test_decide_carries_the_lane_keys_into_the_dspy_block` 도 쓰는데, 그 시험이 보는
+#    `/decide` 의 `out["dspy"]` 는 아직 그 키를 안 나른다(Wave 2). 여기 넣으면 그 시험이
+#    빨개지고, 고치려면 `/decide` dict 에 키를 더해야 하는데 그 순간
+#    `test/tool_lane_keys_survive.jl` **(6)절**(Julia `TOOL_LANE_KEYS` ↔ 파이썬 레인 키
+#    집합의 **양방향 등호**)이 12 vs 11 로 빨개진다 — 실측: 지금 양쪽 다 11 로 맞아 있다
+#    (게이트 자신의 추출기를 돌려 확인, Julia 실행 없이).
+#    ⚠️ 표식 **위**로 숨겨 초록을 만들지 않는다 — `dspy_service.py` 의 그 자리 주석이
+#    금지하는 바로 그 행위다(줄리아가 영원히 안 나르는 상태가 조용해진다).
+#    ⟹ 올바른 수정은 한 커밋에서 셋을 함께 움직이는 것이다: `/decide` dict · Julia
+#    `TOOL_LANE_KEYS` · 이 튜플. 그건 Julia 를 돌릴 수 있을 때 한다(Wave 2).
 
 
 def test_macro_reports_every_lane_key():
@@ -645,3 +656,55 @@ def test_a_provider_outage_still_fills_error():
     assert out["decision_source"] == "no_call"
     assert out["error"] is not None and "LMError" in out["error"]
     assert out["tool_lane_error"] is None, "파싱 실패가 아니다"
+
+
+# =================================================================================================
+# 2026-09-02 — 대조용 두 번째 질문이 응답에 실린다 (G-4)
+# spec: docs/superpowers/specs/2026-09-02-expressible-attribution-design.md
+# =================================================================================================
+
+def test_menu_expressible_is_reported_when_the_model_answers_it():
+    """모델이 두 질문에 **다르게** 답한 사건이 이 레인이 재려는 바로 그 사건이다.
+
+    `expressible=False`(NOOP 빼면 못 고친다) + `menu_expressible=True`(메뉴 전체로는 된다)
+    = **메뉴 artifact 가 실재한다**.
+    """
+    _install(_call("deliver_battery", expressible=False, menu_expressible=True), fc=False)
+    out = svc.macro(_req())
+    assert out["expressible"] is False
+    assert out["menu_expressible"] is True
+    assert out["tool_arg_error"] is None, "정상 호출이 거절되면 안 된다: %r" % out["tool_arg_error"]
+
+
+def test_a_missing_menu_expressible_is_none_not_false():
+    """🔴 삼상 규약. 안 실린 것은 **못 쟀다**(`None`)이지 `False` 가 아니다.
+
+    `False` 로 접으면 "메뉴 artifact 가 실재한다" 칸의 집계가 거짓으로 부풀어 오른다 --
+    이 레인이 재려는 바로 그 값이다.
+    """
+    _install(_call("deliver_battery", expressible=False), fc=False)   # 새 필드 없이
+    out = svc.macro(_req())
+    assert out["expressible"] is False
+    assert out["menu_expressible"] is None, "빠진 것을 False 로 접었다"
+    assert out["tool_arg_error"] is None, "선택 필드 부재가 거절이 되면 안 된다"
+
+
+def test_a_non_bool_menu_expressible_is_none_and_never_erases_the_decision():
+    """파싱 실패도 `None` 이고, **결정은 살아남는다.**
+
+    기존 `expressible` 이 같은 축에서 그렇게 동작한다
+    (`test_a_non_bool_expressible_is_none_not_a_false_true`) -- 측정용 필드가 그보다 더 큰
+    권한을 가지면 안 된다.
+    """
+    _install(_call("deliver_battery", menu_expressible="False"), fc=False)
+    out = svc.macro(_req())
+    assert out["menu_expressible"] is None, "bool() 로 감싸면 여기가 True 가 된다"
+    assert out["chosen"] == "SwapBattery", "측정용 필드가 결정을 지웠다"
+    assert out["tool_arg_error"] is not None and "menu_expressible" in out["tool_arg_error"]
+
+
+def test_the_blank_decision_carries_the_key_too():
+    """레인이 안 돈 사건에서도 **키는 있어야** 한다 -- 없으면 소비자가 두 사건을 못 가른다."""
+    blank = svc._blank_decision(["NOOP"], "state line", "no_tools", [])
+    assert "menu_expressible" in blank, "키가 통째로 사라지면 '안 돌았다' 와 '값 없다' 가 같아진다"
+    assert blank["menu_expressible"] is None
