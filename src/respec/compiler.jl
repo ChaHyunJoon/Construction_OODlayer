@@ -87,6 +87,24 @@ end
 # 안 건드림) — 다른 것은 도착점을 부담 상위 `n` 개로 좁힌다는 것 하나뿐이다.
 
 """
+    _cargo_burden_layer_available() -> Bool
+
+1대당 부담을 **지금** 잴 수 있는가 — navigator 가 실렸고(`cargo_burden_after`·`BATTERY_FLEET`
+이름이 존재) 함대가 켜져 있는가(`BATTERY_FLEET[] !== nothing`).
+
+🔴 `&&` 의 단축평가 순서가 load-bearing 이다: navigator 가 안 실렸으면 `BATTERY_FLEET` 이라는
+**이름 자체가 없어** 오른쪽을 평가하면 `UndefVarError` 다.
+
+⚠️ `spec_dsl.jl::_compile_standing_cargo_bans!`(Task 3)가 **같은 술어를 인라인으로** 들고 있다.
+합치는 것이 옳지만 그 파일은 지금 다른 작업자 소유라 손대지 않았다 — 두 사본이 갈리면
+"금지가 서 있는데 배터리가 없다" 의 처신이 보관소 경로와 제안 경로에서 달라진다. 기록해 둔다.
+"""
+_cargo_burden_layer_available() =
+    isdefined(@__MODULE__, :cargo_burden_after) &&
+    isdefined(@__MODULE__, :BATTERY_FLEET) &&
+    BATTERY_FLEET[] !== nothing
+
+"""
     _heavy_cargo_targets(sched, Xa, agent, n) -> Vector{Int}
 
 `agent` 소유의 **후보** 배정 간선이 닿는 도착 슬롯 `v2` 중 1대당 부담 상위 `n` 개(정점 번호).
@@ -108,23 +126,41 @@ end
 프로세스 간 안정적이다. 동점은 예외가 아니라 **정상**이다 — 실측에서 `colored_8x8` 은 후보
 도착점의 부담 **고유값이 1개**(전부 동점)이고, 그 판에서는 이 2차 키가 유일한 결정 규칙이다.
 
-🔴 부담을 **못 잰 `v2` 는 건너뛴다**(0 으로 접지 않는다 — 삼상 규약). 반대로 씬트리·함대가
-통째로 없는 것은 "못 쟀다" 가 아니라 **배선 결함**이라 조용한 0행이 아니라 `error` 다.
+🔴 부담을 **못 잰 `v2` 는 건너뛴다**(0 으로 접지 않는다 — 삼상 규약).
+
+씬트리 부재(**배선 결함**)와 부담 계층 부재(**정당한 구성**)는 다르게 다룬다 — 전자는 `error`,
+후자는 `@warn` + 빈 목록이다. 근거는 함수 본문의 주석에 있다.
+
+⚠️ **`n` 은 상한이지 보장이 아니다.** 잰 후보가 `n` 보다 적으면 있는 만큼만 돌려준다
+(`min(n, length(cands))`). 그러므로 호출자는 `compile_constraint!` 의 반환값(행 수)을
+**"화물 `n` 개를 금지했다" 로 읽으면 안 된다** — 행 수는 (고른 도착점 수) × (그 도착점으로
+가는 그 로봇의 후보 간선 수)이고, 고른 도착점 수 자체가 `n` 보다 작을 수 있다.
 """
 function _heavy_cargo_targets(sched, Xa::SparseMatrixCSC, agent::AbstractID, n::Int)
-    # 🔴 세 가드 전부 error 다. `return 0` 이면 0행 = hollow admit 이 된다.
-    isdefined(@__MODULE__, :cargo_burden_after) && isdefined(@__MODULE__, :BATTERY_FLEET) || error(
-        "ForbidHeavyCargo: navigator 레이어가 로드되지 않았다 — " *
-        "CB.include(joinpath(pkgdir(CB), \"src\", \"navigator\", \"navigator.jl\")) 를 먼저 하라")
+    # 🔴 씬트리 부재는 **배선 결함**이다 — `formulate_milp` 안에서는 절대 `nothing` 일 수 없다
+    #    (그 함수가 자기 `problem_spec` 으로 채운다). 그러므로 여기서는 죽는 것이 옳다.
     st = RESPEC_SCENE_TREE[]
     st === nothing && error(
         "ForbidHeavyCargo: RESPEC_SCENE_TREE[] 가 비어 있다 — formulate_milp 밖에서 컴파일됐다. " *
         "이것은 배선 결함이지 부담을 못 쟀다가 아니다.")
-    fleet = BATTERY_FLEET[]
-    fleet === nothing && error(
-        "ForbidHeavyCargo: BATTERY_FLEET[] 가 비어 있다 — enable_battery! 를 먼저 하라 " *
-        "(1대당 부담을 잴 파라미터가 없다).")
-    p = fleet.params
+    # 🔴 반대로 **부담 계층 부재는 정당한 구성**이다 — 배터리는 opt-in 이고 `run_lego_demo` 는
+    #    켜지 않는다. 예전에는 여기서 `error` 를 냈는데 그것이 런을 죽였다: `verifier.jl` 은
+    #    LLM 문법(`LinearConstraint`/`Disjunction`)이 실린 제안에서만 컴파일 예외를
+    #    `Reject(:ungrammatical)` 로 바꾸고 **그 밖에서는 되던진다**. `maybe_respecify!` 에는
+    #    `try` 가 없어 예외가 `route_planning.jl` 까지 풀려 올라간다. 즉 **순수
+    #    `ForbidHeavyCargo` 제안은 치명적, 같은 실패가 MIXED 제안 안에서는 깔끔한 Reject** 라는
+    #    비일관까지 있었다. 이제 Task 3 의 보관소 훅(`_compile_standing_cargo_bans!`)과 **같은
+    #    처신**을 한다: 크게 경고하고 0 행.
+    #    🔴 대가는 실재하고 숨기지 않는다 — 그 formulate 에서 이 금지는 **집행되지 않는다.**
+    #    조용한 0 이 아니다: `run_demo.jl` 의 `global_logger(…, Logging.Warn)` 아래에서 `@info`
+    #    는 버려지지만 `@warn` 은 남는다.
+    if !_cargo_burden_layer_available()
+        @warn "ForbidHeavyCargo: 1대당 부담을 잴 계층이 없다 (navigator 미로드 또는 " *
+              "enable_battery! 미호출). 이 formulate 는 이 금지를 **집행하지 않는다** — 0 행. " *
+              "그 로봇이 무거운 화물을 다시 맡을 수 있다." agent = string(agent) n = n
+        return Int[]
+    end
+    p = BATTERY_FLEET[].params
     env_like = (scene_tree = st,)   # `_payload_mass_measured` 는 env.scene_tree 하나만 읽는다
     cands = Tuple{Int,Float64,String}[]                    # (v2, 부담, 2차 정렬키) — Vector 다
     rv = rowvals(Xa)

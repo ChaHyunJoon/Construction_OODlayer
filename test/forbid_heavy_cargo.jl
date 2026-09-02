@@ -106,11 +106,25 @@ const _PREV_ATTRS = copy(CB.default_milp_optimizer_attributes())
 CB.set_default_milp_optimizer!(CB.HiGHS.Optimizer)
 CB.clear_default_milp_optimizer_attributes!()
 
+"빌린 솔버 전역 둘을 원래대로 돌려놓는다. 여러 번 불러도 안전하다(멱등)."
+function _restore_solver_globals!()
+    CB.set_default_milp_optimizer!(_PREV_OPT)
+    CB.clear_default_milp_optimizer_attributes!()
+    CB.set_default_milp_optimizer_attributes!(_PREV_ATTRS)
+    return nothing
+end
+
 _build(extra) = CB.formulate_milp(CB.SparseAdjacencyMILP(), SCHED, ENV0.scene_tree;
                                   optimizer = CB.HiGHS.Optimizer, extra_constraints = extra)
 _prop(cs) = CB.RespecProposal(CB.ConstraintSpec[cs])
 
-const BASE    = _build(nothing)
+# 🔴 여기서 던지면(솔버·씬 문제) 빌린 전역이 스위트 나머지로 샌다 — 되돌리고 다시 던진다.
+const BASE    = try
+    _build(nothing)
+catch
+    _restore_solver_globals!()
+    rethrow()
+end
 const BASE_NC = _nconstr(BASE.model)
 const XA      = BASE.Xa
 
@@ -151,6 +165,12 @@ function oracle_rows(sched, Xa, agent, targets)
     end
     return c
 end
+
+# 🔴 아래 testset 중 **하나라도 실패하면 그 자리에서 던져 파일이 중단된다** — 그러면 맨 끝의
+#    복원 줄에 영영 못 닿아 HiGHS + 비워진 속성이 스위트 나머지로 샌다. `finally` 로 막는다.
+#    (이 구간에는 `const` 선언이 없어서 try 블록 안에 넣을 수 있다 — `const` 는 지역 스코프에
+#    들어갈 수 없다.)
+try
 
 @testset "🔴 픽스처가 비퇴화다 (이걸 먼저 단언한다)" begin
     @test length(RELEASED) > 0                       # release 가 실제로 간선을 뗐다
@@ -251,6 +271,82 @@ end
     length(meas) >= 3 && @test r3 > r1                # 대상이 늘면 행도 는다(공허하지 않다)
 end
 
+@testset "🔴 못 잰 도착점은 대상에서 빠진다 (컴파일러 삼상 skip 의 살아있는 대조)" begin
+    # ---------------------------------------------------------------------
+    # 실측: 이 픽스처의 소유 도착점 33개는 **전부 측정 가능**하다(못잰=0). 그래서 예전 판의
+    # `@test isempty(intersect(t3, unmeas))` 는 **빈 집합과의 교집합**이라 공허했고,
+    # 컴파일러의 `b === nothing && continue` 를 `b = something(b, 0.0)` 으로 바꿔도 아무것도
+    # 빨개지지 않았다. G-1 이 잡는 자리보다 **한 단계 아래**의 "0개를 처리하고 초록" 이다.
+    #
+    # ⟹ 못 재는 도착점을 **하나 만들어 넣는다**: 후속이 없는 정점(실측 v=137)에 대상 로봇
+    #    소유의 후보 간선을 하나 더한 `Xa2` 를 만든다. `cargo_burden_after` 는 거기서
+    #    `nothing`(못 쟀다)이다 — 질량 0 이 아니다.
+    # ---------------------------------------------------------------------
+    novtx = findfirst(v -> isempty(Graphs.outneighbors(SCHED, v)), 1:Graphs.nv(SCHED))
+    @test novtx !== nothing
+    @test CB.cargo_burden_after(ENV0, SCHED, novtx, CB.BATTERY_FLEET[].params) === nothing
+
+    # 대상 로봇이 소유한 후보 간선의 출발점 하나를 실제 Xa 에서 고른다.
+    u = 0
+    for v2 in 1:size(XA, 2), k in SparseArrays.nzrange(XA, v2)
+        uu = SparseArrays.rowvals(XA)[k]
+        Graphs.has_edge(SCHED, uu, v2) && continue
+        o = CB._edge_owner_id(SCHED, uu)
+        (o !== nothing && o == AGENT) || continue
+        u = uu; break
+    end
+    @test u != 0                                   # 🔴 못 찾으면 아래가 전부 공허하다
+    @test !Graphs.has_edge(SCHED, u, novtx)        # 확정 간선이 아니다 = 진짜 후보 자리다
+
+    Xa2 = copy(XA)
+    Xa2[u, novtx] = first(BASE.model[:t0])         # 구조적 비영 하나 추가(값은 안 읽힌다)
+    @test SparseArrays.nnz(Xa2) == SparseArrays.nnz(XA) + 1
+
+    meas2, unmeas2 = oracle_burdens(ENV0, SCHED, Xa2, AGENT)
+    @test !isempty(unmeas2)                        # 🔴 이제 "못 잰 것" 이 실재한다
+    @test novtx in unmeas2
+    @test length(meas2) == length(oracle_burdens(ENV0, SCHED, XA, AGENT)[1])  # 잰 것은 그대로
+
+    old = CB.RESPEC_SCENE_TREE[]
+    CB.RESPEC_SCENE_TREE[] = ENV0.scene_tree
+    try
+        # n 을 후보 수보다 크게 줘서 **고를 수 있는 것은 다 고르게** 한다. 그래도 못 잰 것은
+        # 안 들어와야 한다. 🔴 skip 을 `something(b, 0.0)` 로 바꾸면 여기서 빨개진다.
+        big   = length(meas2) + 5
+        t_all = CB._heavy_cargo_targets(SCHED, Xa2, AGENT, big)
+        @test length(t_all) == length(meas2)
+        @test !(novtx in t_all)
+        @test isempty(intersect(t_all, unmeas2))   # 이제 공허하지 않다
+    finally
+        CB.RESPEC_SCENE_TREE[] = old
+    end
+end
+
+@testset "🔴 부담 계층이 없으면 죽이지 않고 크게 경고하고 0 행 (제안 경로)" begin
+    # ---------------------------------------------------------------------
+    # 예전에는 `BATTERY_FLEET[] === nothing` 에서 **error** 였다. 그런데 `verifier.jl` 은
+    # LLM 문법이 실린 제안에서만 컴파일 예외를 `Reject(:ungrammatical)` 로 바꾸고 그 밖에서는
+    # 되던지며 `maybe_respecify!` 에 `try` 가 없다 → 순수 `ForbidHeavyCargo` 제안이 배터리
+    # 꺼진 판에서 **런을 죽였다**(같은 실패가 MIXED 제안에서는 깔끔한 Reject 인 비일관까지).
+    # 배터리는 opt-in 이고 `run_lego_demo` 는 켜지 않으므로 이것은 정당한 구성이다.
+    # Task 3 의 보관소 훅과 **같은 처신**(경고 + 0 행)으로 맞춘다.
+    # ---------------------------------------------------------------------
+    cs   = CB.ForbidHeavyCargo(AGENT, 1)
+    prev = CB.BATTERY_FLEET[]
+    @test prev !== nothing                          # 🔴 음성 대조가 성립하려면 켜져 있어야 한다
+    try
+        CB.BATTERY_FLEET[] = nothing
+        n_off = Ref(-1)                             # -1 = 아직 안 쟀다 (0 과 구별된다)
+        @test_logs (:warn,) match_mode = :any (n_off[] =
+            _nconstr(_build(_prop(cs)).model) - BASE_NC)   # 던지지 않고 값을 낸다
+        @test n_off[] == 0                          # 죽지 않는다. 0 행이다.
+    finally
+        CB.BATTERY_FLEET[] = prev
+    end
+    # 🔴 음성 대조 — 되돌리면 같은 금지가 행을 낸다. 없으면 위 0 은 공허하다.
+    @test _nconstr(_build(_prop(cs)).model) - BASE_NC > 0
+end
+
 @testset "cargo_burden_after 의 삼상 규약과 나눗셈" begin
     p = CB.BATTERY_FLEET[].params
     meas, unmeas = oracle_burdens(ENV0, SCHED, XA, AGENT)
@@ -259,23 +355,51 @@ end
     novtx = findfirst(v -> isempty(Graphs.outneighbors(SCHED, v)), 1:Graphs.nv(SCHED))
     @test novtx !== nothing
     @test CB.cargo_burden_after(ENV0, SCHED, novtx, p) === nothing   # 0 이 아니라 nothing
-    # 부담 = 질량 / 팀크기 — 정의를 못 박는다(그냥 질량이면 여기서 갈린다).
-    v2 = meas[1][1]
-    m = CB.candidate_edge_payload_mass(ENV0, SCHED, v2, p)
-    @test m !== nothing
-    inner = CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, Graphs.outneighbors(SCHED, v2)[1]))
-    team = length(CB.robot_team(CB.entity(inner)))
-    @test team >= 1
-    @test meas[1][2] ≈ m / team
-    team > 1 && @test meas[1][2] < m                  # 팀이 크면 1대당 부담이 실제로 작다
+    # ---------------------------------------------------------------------
+    # 🔴 부담 = 질량 / 팀크기. **이 나눗셈에 살아있는 단언을 건다.**
+    #
+    # 예전 판은 `meas[1]`(= Xa 열 순서상 첫 도착점)에 걸었는데 실측으로 그 팀 크기가 **1** 이라
+    # `burden ≈ m / 1` 이 `m ≈ m` 으로 퇴화했고, 짝이 되는 `team > 1 && @test …` 는 아예 안
+    # 돌았다(보고서 표의 `7 7` 이 8개 중 7개만 돌았다는 증거였다). 그 상태에서 production 의
+    # `/ team` 을 지워도 40 단언이 전부 초록이었다 — 이 태스크의 핵심 보장이 무방비였다.
+    # ---------------------------------------------------------------------
+    massof(v2) = CB.candidate_edge_payload_mass(ENV0, SCHED, v2, p)
+    function teamof(v2)
+        outs = Graphs.outneighbors(SCHED, v2); isempty(outs) && return 0
+        inner = CB.get_node_from_id(SCHED, CB.get_vtx_id(SCHED, outs[1]))
+        return try length(CB.robot_team(CB.entity(inner))) catch; 0 end
+    end
+    keyof(v2) = string(CB.get_vtx_id(SCHED, v2))
+
+    # 픽스처 비퇴화: 팀 크기가 **여러 종류**여야 나눗셈이 순서를 바꿀 수 있다 (실측 {1, 2, 4}).
+    @test length(unique(teamof(v2) for (v2, _) in meas)) > 1
+
+    srt          = sort(meas, by = c -> (-c[2], keyof(c[1])))
+    v_top_burden = srt[1][1]
+    by_mass      = sort([(v2, massof(v2)) for (v2, _) in meas], by = c -> (-c[2], keyof(c[1])))
+    v_top_mass   = by_mass[1][1]
+
+    # 🔴 **나눗셈이 순서를 실제로 뒤집는다.** 이것이 나눗셈의 존재 이유 전부다.
+    #    실측: 부담 1위 v2=304 (질량 9.0112, 팀 2 → 4.5056) ≠ 질량 1위 v2=298
+    #    (질량 12.800, 팀 4 → 3.2000). `/ team` 을 지우면 둘이 같아져 이 줄이 빨개진다.
+    @test v_top_burden != v_top_mass
+    @test massof(v_top_burden) < massof(v_top_mass)   # 금지되는 쪽이 **더 가벼운** 화물이다
+
+    # 🔴 조건부가 아니다 — 부담 1위 도착점의 팀은 실측 2 다.
+    team_top = teamof(v_top_burden)
+    @test team_top > 1
+    m_top = massof(v_top_burden)
+    @test m_top !== nothing
+    @test srt[1][2] ≈ m_top / team_top                # 나눴다 (m ≈ m 퇴화가 아니다)
+    @test srt[1][2] < m_top                           # 팀이 크면 1대당 부담이 실제로 작다
     # `env` 자리에 (scene_tree = …,) NamedTuple 만 줘도 같은 답이다(컴파일러가 그렇게 부른다).
-    @test CB.cargo_burden_after((scene_tree = ENV0.scene_tree,), SCHED, v2, p) ≈ meas[1][2]
+    @test CB.cargo_burden_after((scene_tree = ENV0.scene_tree,), SCHED, v_top_burden, p) ≈ srt[1][2]
 end
 
 # 🔴 빌린 전역을 돌려준다. (이 파일이 runtests.jl 의 **마지막**이라 뒤가 없지만, 순서가 바뀌어도
 #    남의 세계를 바꿔 놓지 않도록 명시적으로 복원한다.)
-CB.set_default_milp_optimizer!(_PREV_OPT)
-CB.clear_default_milp_optimizer_attributes!()
-CB.set_default_milp_optimizer_attributes!(_PREV_ATTRS)
+finally
+    _restore_solver_globals!()
+end
 
 end # module
