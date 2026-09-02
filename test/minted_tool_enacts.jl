@@ -95,7 +95,17 @@ Base.getproperty(::Hostile, ::Symbol) = error("이 반환값은 읽을 수 없�
 #    id 를 **직접** 준다: 유효 `BotID` · 무효(음수) `BotID` · 로봇이 아닌 id · `nothing` 을
 #    한 스케줄에 섞어 두면, 필터 네 갈래가 전부 이 하나의 픽스처에서 돈다.
 #    ⚠️ 스텁이 재지 **못하는** 것 하나: 진짜 스케줄이 실제로 이 문자열 형태를 내는가.
-#       그것은 out-of-band 프로브(task-7-report.md §실측)가 진짜 env 로 쟀다.
+#       2026-09-02 에 out-of-band 프로브가 **진짜 env 로 쟀다**(`run_lego_demo`,
+#       `tractor.mpd`, `num_robots=10`, `MersenneTwister(1)`, `closed=54`):
+#         · 정점 305 중 유효 `BotID` 소유가 122, 서로 다른 문자열은 18 개였고
+#           **전부** `"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(k)"` 형태였다.
+#         · 그중 하나를 그대로 넣으면 `forbid_heavy_cargo!` 가 `:banned` 를 내고
+#           `STANDING_CARGO_BANS[]` 에 `{BotID(1) => 2}` 가 실제로 앉았다.
+#         · 음성 대조: 모듈 한정만 벗긴 `"BotID{DeliveryBot}(1)"` 은 `:unknown_agent` 이고
+#           보관소 크기가 안 늘었다(1 → 1).
+#       기록: `.superpowers/sdd/2026-09-01-cargo-ban/task-7-report.md` §2·§3.
+#       🔴 그 디렉터리는 **gitignore** 다 — 클론에는 그 파일이 없다. 그래서 재현에 필요한
+#          것(판·형태·왕복·음성 대조)을 위에 통째로 적어 두었다. 파일이 없으면 위가 절차다.
 struct _BanSched
     owners::Vector{Any}
 end

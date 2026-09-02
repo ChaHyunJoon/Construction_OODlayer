@@ -56,14 +56,42 @@ end
 스케줄이 아니다)와 "스케줄은 읽었는데 그런 로봇이 없다"는 다른 사건이고, 전자를 후자로 접으면
 배선 결함이 오탈자처럼 보인다(삼상 규약).
 
-⚠️ `try` 를 **별도 함수로** 뺀 이유는 문체가 아니다: `catch` 안에서 `return` 하는 형태를
-호출자 본문에 두면 이 브랜치의 julia 1.10.11 에서 `Unreachable reached` 로 프로세스가 죽는다
-(실측 — `test/minted_tool_enacts.jl` (16) 이 SIGILL 로 넘어갔다). 되돌리지 말 것.
+⚠️ `try` 를 **별도 함수로** 뺀 이유는 문체가 아니다: **`forbid_heavy_cargo!` 본문 안에**
+`catch` → `return` 을 직접 두었을 때 이 브랜치의 julia 1.10.11 에서 `Unreachable reached` 로
+프로세스가 죽는 것을 봤다(2026-09-02 Task 7 — `test/minted_tool_enacts.jl` (16) 이 SIGILL 로
+넘어갔다). 그래서 되돌리지 말 것.
+
+🔴 **그러나 이것을 "`catch` 안의 `return` 은 위험하다" 로 일반화하지 말 것 — 그 일반화는
+틀렸다.** 2026-09-02 실측(이 트리, `src/**/*.jl` 정규식 스캔): `catch` 뒤 3줄 안에서
+`return` 하는 자리가 **27 곳**, 6줄까지 넓히면 **41 곳**이고 전부 멀쩡히 돈다. 확인한 표본:
+`src/essential_tg_coponents.jl:1420`(= **`_edge_owner_id` 자신**, 바로 위 순회가 매 정점마다
+부르는 그 함수다) · `src/respec/compiler.jl:393` · `src/respec/verifier.jl:195` ·
+`src/respec/minted_tool.jl:508`(집행부 본체) · `src/navigator/payload_bias.jl:99`.
+⟹ `Unreachable reached` 는 실재하는 codegen/추론 버그지만 부르는 것은 **구문 부류가 아니라
+특정 추론 형상**이다. 여기 적힌 것은 **이 함수에서 관측된 한 사례**이고, 다른 40 곳을
+"같은 버그" 로 보고 고치러 가지 말 것. 이 자리에서는 회피 비용이 함수 하나라 그대로 둔다.
 """
 _try_resolve_schedule_agent(env, agent::AbstractString) =
     try
         (true, _resolve_schedule_agent(env.sched, agent))
     catch
+        # 🔴 **여기서 잡히는 것이 전부 `:no_schedule` 은 아니다 — 알면서 그렇게 접는다.**
+        # 세 표(`minted_tool.jl` 의 `SILENT_SUCCESS_STATUSES`·`WORLD_UNCHANGED_STATUSES` 와
+        # 아래 `forbid_heavy_cargo!` 의 status 목록)가 정의하는 `:no_schedule` 은
+        # "손으로 지은 env / `sched` 필드 부재 / 스케줄이 아닌 값" 뿐인데, 이 `catch` 는
+        # `_resolve_schedule_agent` 의 **순회 자체가 던지는 모든 예외**도 같이 삼킨다.
+        # 오늘 그 표면은 `get_graph(sched)`·`Graphs.vertices` 와 `valid_id`/`string` 이다
+        # (`_edge_owner_id` 는 자기 안에서 이미 전부 삼키고 `nothing` 을 낸다).
+        # ⟹ 나중에 순회가 던지게 되면 원인은 "스케줄 워커가 깨졌다" 인데 로그는
+        #    "env 에 스케줄이 없다" 라고 말한다 = **오귀인**. `:no_schedule` 을 디버깅할 때
+        #    env 배선부터 보지 말고 **이 순회부터** 볼 것.
+        #
+        # 🔴 그래도 status 를 안 늘린다: `:no_schedule` 은 위 세 표의 **키**이고 게이트
+        #    (`test/minted_tool_enacts.jl` (11)·(16))가 그 집합을 그대로 못 박는다.
+        # 🔴 좁혀 잡지도 않는다: 빠져나간 예외는 `enact_minted!` 의 `try` 가
+        #    `partial = true` 로 적고, **손도 안 댄 세계**가 `world_maybe_dirty = true →
+        #    handled = true` 로 기록돼 기본 복구 사슬을 삼킨다(아래 `:invalid_n` 와 같은 논거).
+        # ⟹ **방향은 안전하다 — 이 갈래는 아무것도 안 쓴다. 거친 것은 진단뿐이다.**
         (false, nothing)
     end
 

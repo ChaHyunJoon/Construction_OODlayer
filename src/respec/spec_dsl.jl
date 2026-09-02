@@ -109,10 +109,18 @@ end
 수명은 "그 로봇에 `swap_battery!` 가 일어날 때까지" 다(사용자 결정 2026-09-01) —
 술어가 아니라 **사건**이라 임계값도 확인 시점도 정할 필요가 없다. (수명 배선은 Task 4.)
 
-🔴 **`Ref` 를 통째로 갈아끼우는 것과 `empty!` 로 비우는 것이 둘 다 안전해야 한다** — Task 5 가
-고장 수습 중 `STANDING_CARGO_BANS[] = Dict{AbstractID,Int}()` 로 껐다가 `finally` 로
-`STANDING_CARGO_BANS[] = _saved_bans` 로 되돌린다. 아래 세 함수는 전부 **현재 `Ref` 내용물**
-을 통해서만 움직이므로 그 교체와 공존한다(어떤 Dict 도 캐시하지 않는다).
+🔴 **`Ref` 를 통째로 갈아끼우는 것과 `empty!` 로 비우는 것이 둘 다 안전해야 한다** — Task 5
+(`fault_robot_and_reassign!`, `src/respec/reassign.jl`)가 **두 관용구를 섞어 쓰기 때문이다**:
+
+  · 끄기  — `_saved_bans = copy(STANDING_CARGO_BANS[])` 로 사본을 뜬 뒤
+            `empty!(STANDING_CARGO_BANS[])` 로 **제자리에서** 비운다 (`reassign.jl:485-486`).
+  · 켜기  — `finally` 안에서 `STANDING_CARGO_BANS[] = _saved_bans` 로 **`Ref` 를 대입**한다
+            (`reassign.jl:566`).
+
+⚠️ 그래서 그 함수가 나가고 나면 **`Ref` 는 처음과 다른 `Dict` 를 가리킨다** — 원래 객체는
+비워진 채 버려진다. 오늘 무해한 이유는 아래 세 함수가 **어떤 `Dict` 도 캐시하지 않고 매번
+현재 `Ref` 내용물**만 보기 때문이다. 🔴 어딘가가 `STANDING_CARGO_BANS[]` 를 지역변수나
+필드로 붙들어 두면 그 순간 조용히 깨진다(붙든 쪽은 버려진 빈 Dict 를 계속 본다) — 붙들지 말 것.
 
 읽는 쪽은 한 자리다: 바로 아래 `_compile_standing_cargo_bans!` 를
 `formulate_milp`(`essential_tg_coponents.jl`)이 **매번** 부른다.

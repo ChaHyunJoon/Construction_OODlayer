@@ -65,12 +65,38 @@ isdefined(CB, :simstate_of)  || CB.include(joinpath(REPO, "src", "smdp", "mdp.jl
     @test CB.set_cargo_ban!(r3, 1) === nothing
     @test CB.clear_all_cargo_bans!() === nothing
     @test isempty(CB.STANDING_CARGO_BANS[])
-    # 🔴 T3-R6: Task 5 가 `Ref` 를 통째로 갈아끼웠다가 되돌린다. 두 방식이 공존해야 한다.
+    # 🔴 T3-R6: `Ref` 통째 교체와 제자리 `empty!` 가 **둘 다** 안전해야 한다.
+    #    ⚠️ 2026-09-02 정정: 여기 있던 주석은 "Task 5 가 `Ref` 를 통째로 갈아끼워 **끈다**"
+    #       고 적었는데 그런 코드는 없다. Task 5(`fault_robot_and_reassign!`)의 **실제**
+    #       관용구는 섞여 있다 — 끄기는 제자리 `empty!`(`reassign.jl:485-486`, 앞서 `copy`
+    #       로 사본을 뜬다), 되돌리기는 `finally` 안의 `Ref` 대입(`reassign.jl:566`)이다.
+    #       아래는 그 **실제** 순서를 그대로 재현하고, `Ref` 통째 교체로 **끄는** 쪽은
+    #       보관소 계약으로서 따로 잰다.
+    # (a) Task 5 가 실제로 하는 것: copy → 제자리 empty! → Ref 대입 복원
     CB.set_cargo_ban!(r3, 2)
-    saved = CB.STANDING_CARGO_BANS[]
-    CB.STANDING_CARGO_BANS[] = Dict{CB.AbstractID,Int}()      # Task 5 의 "끄기"
+    orig  = CB.STANDING_CARGO_BANS[]                          # 지금 Ref 가 가리키는 그 객체
+    saved = copy(CB.STANDING_CARGO_BANS[])                    # Task 5: 사본을 뜬다
+    empty!(CB.STANDING_CARGO_BANS[])                          # Task 5 의 "끄기" — **제자리**
     @test isempty(CB.STANDING_CARGO_BANS[])
-    CB.STANDING_CARGO_BANS[] = saved                          # Task 5 의 `finally` 복원
+    CB.STANDING_CARGO_BANS[] = saved                          # Task 5 의 `finally` 복원 — Ref 대입
+    @test CB.STANDING_CARGO_BANS[][r3] == 2
+    # 🔴 그 결과 `Ref` 는 **처음과 다른 Dict** 를 가리키고 원본은 비워진 채 버려진다.
+    #    오늘 무해한 이유는 세 함수가 어떤 Dict 도 캐시하지 않기 때문이다 — 그 성질을
+    #    여기서 못 박는다(캐시가 생기면 아래 두 줄이 빨개진다).
+    @test CB.STANDING_CARGO_BANS[] !== orig
+    @test isempty(orig)                                       # 버려진 원본
+    CB.set_cargo_ban!(r3, 3)                                  # 갈아끼운 Dict 위에서도 정상 동작
+    @test CB.STANDING_CARGO_BANS[][r3] == 3
+    CB.clear_cargo_ban!(r3)
+    @test isempty(CB.STANDING_CARGO_BANS[])
+    # (b) `Ref` 통째 교체로 **끄는** 방향도 안전해야 한다(Task 5 가 쓰지 않는 방향이지만
+    #     "세 함수는 현재 Ref 내용물만 본다" 는 주장의 나머지 반쪽이다).
+    CB.set_cargo_ban!(r3, 2)
+    keep = CB.STANDING_CARGO_BANS[]
+    CB.STANDING_CARGO_BANS[] = Dict{CB.AbstractID,Int}()
+    @test isempty(CB.STANDING_CARGO_BANS[])
+    @test CB.clear_cargo_ban!(r3) === false                   # 교체된 빈 Dict 를 본다
+    CB.STANDING_CARGO_BANS[] = keep
     @test CB.STANDING_CARGO_BANS[][r3] == 2
     CB.clear_all_cargo_bans!()
     @test isempty(CB.STANDING_CARGO_BANS[])
