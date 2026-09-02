@@ -121,6 +121,30 @@ _EXPRESSIBLE_DESC = (
 #    🔴 대가: 위 3/3 실측은 **옛 문구에 대한 것**이다. 이 개정본은 아직 산 호출로 재지
 #    않았다 — 어휘 밖 3건 + 대조군을 다시 재기 전까지 3/3 을 이 문구의 성적으로 인용하지 말 것.
 
+# =================================================================================================
+# 🔴 2026-09-02 — 대조용 두 번째 질문. spec: 2026-09-02-expressible-attribution-design.md
+#
+# 이것은 `2633d855` **직전**의 `_EXPRESSIBLE_DESC` 를 **바이트 그대로** 되살린 것이다.
+# 왜 두 벌인가. `expressible=true` 의 원인이 둘이고(메뉴 artifact / 사실 부재) 지금 못 가른다.
+# `2633d855` 가 질문 범위에서 NOOP 을 빼면서 디스크의 모든 녹화(S1 의 115/115 · 6/6 포함)와
+# 비교할 축이 사라졌다 — 그 커밋이 스스로 "옛 3/3 은 이 문구의 성적이 아니다" 라고 적었다.
+# 두 질문을 한 호출에서 나란히 물으면 그 축이 **같은 샘플 안에서** 돌아온다.
+#
+# 🔴 이 문자열을 `_EXPRESSIBLE_DESC` 에서 **유도하지 않는다.** 이 레포는 "두 벌은 갈린다" 를
+#    원칙으로 삼지만 여기서는 그 반대가 목적이다 — 결정용 문구를 고칠 때 비교축이 조용히
+#    따라 움직이면 대조가 무효가 된다. 갈리는 것을 막는 것은 `test_tool_registry.py` 의
+#    `test_menu_expressible_asks_the_old_question_byte_for_byte` 이고, 그 시험은 비교
+#    문자열을 **리터럴로** 들고 있다(코드에서 유도하면 항진이 된다).
+#
+# 🔴 이 필드는 **측정 전용**이다. 결정(`chosen`·`ranking`)에도, L2 합성 발화 조건에도 절대
+#    들어가지 않는다. 합성은 계속 `expressible == False` 하나로만 쏜다.
+# =================================================================================================
+_MENU_EXPRESSIBLE_DESC = (
+    "false if NOTHING in this tool menu can remove the CAUSE of what you observed -- "
+    "i.e. you are calling a tool only because you must, not because it fixes anything. "
+    "Answering NOOP because intervening is unnecessary is NOT this: that is true. "
+    "Set false when the fix this event needs is outside the menu entirely.")
+
 _REASONING_DESC = (
     "one sentence: why this action, and how clearly it beats the runner-up -- "
     "say that in words (e.g. \"clearly better than X\" / \"only marginally better than X\" / "
@@ -130,7 +154,7 @@ _REASONING_DESC = (
 #    문구로 3/3 이 비교 절을 산문에 담았고, 어느 대안보다 나은지까지 말해 숫자보다 정보가 많다.
 
 
-def COMMON_ARGS(emitted):
+def COMMON_ARGS_REQUIRED(emitted):
     """세 tool 이 **전부** 갖는 결정 성분 인자. 고유 인자(`agent`/`reason`)와 합쳐 쓴다.
 
     🔴 fix round 2 (N2): 이 인자의 이름은 `valid` 가 아니라 `emitted` 다 -- 계약은 "이
@@ -155,6 +179,27 @@ def COMMON_ARGS(emitted):
     }
 
 
+# 🔴 선택 인자 — 스키마에는 실리지만 `check_tool_args` 의 **필수 집합에는 안 들어간다.**
+#    왜 이 구별이 필요한가(실측): `check_tool_args` 는 `want = set(COMMON_ARGS_REQUIRED(...))`
+#    로 필수 집합을 만들고 `missing = want - set(args)` 가 비지 않으면 거절한다. 동시에
+#    `off_schema_args` 가 `want` 밖의 키를 거절한다. 즉 새 키를 그냥 더하면 **받아지려면
+#    필수여야** 하고, 모델이 한 번 빠뜨리는 순간 `missing_args` -> `chosen=""` ->
+#    `available=false` -> `policy.jl:1703` 이 런을 죽인다. 측정용 필드가 런을 죽이면 안 된다.
+COMMON_ARGS_OPTIONAL = ("menu_expressible",)
+
+
+def COMMON_ARGS(emitted):
+    """tool 스키마에 실리는 **전체** 인자 = 필수 ∪ 선택. `build_tools` 가 이것을 쓴다.
+
+    🔴 `check_tool_args` 는 이 함수를 쓰지 않는다 — 거기서는 `COMMON_ARGS_REQUIRED` 다.
+    두 자리가 같은 함수를 쓰면 선택 인자가 조용히 필수가 된다.
+    """
+    args = COMMON_ARGS_REQUIRED(emitted)
+    args["menu_expressible"] = {"type": "boolean",
+                                "description": _MENU_EXPRESSIBLE_DESC}
+    return args
+
+
 def check_tool_args(name, args, valid, agent_ids):
     """tool 호출 인자를 검증한다. `None` = 접지 성공, 문자열 = **거절 사유**.
 
@@ -166,7 +211,9 @@ def check_tool_args(name, args, valid, agent_ids):
     🔴 사유 문자열은 **그대로 응답의 `tool_arg_error` 에 실린다.** 사람이 읽고 바로 고칠 수
     있어야 하므로 나쁜 값과 기대값을 둘 다 담는다.
 
-    🔴 `COMMON_ARGS(...)` 는 여기서 **키 이름 집합**(필수 인자 이름 집합)에만 쓴다 — `valid`
+    🔴 `COMMON_ARGS_REQUIRED(...)` 는 여기서 **키 이름 집합**(필수 인자 이름 집합)에만 쓴다 —
+    2026-09-02 이후 `COMMON_ARGS` 가 **아니다**: 그건 선택 인자까지 담은 스키마용이라
+    여기서 쓰면 측정용 선택 필드가 조용히 필수가 된다(그 대가는 런 사망이다). `valid`
     (이 사건의 legal 매크로 전체)를 그대로 넘기지만, 그건 `macro` enum 을 만들기 위해서가
     아니라 (Task 2 는 그 enum 을 안 쓴다) 네 공통 키 이름을 얻기 위해서다. `macro` 자신의
     합법성은 아래에서 `valid` 와 **별도로** 검사한다(`args["macro"] not in valid`). `valid`
@@ -176,8 +223,11 @@ def check_tool_args(name, args, valid, agent_ids):
 
     🔴 fix round 1 (검사 순서, 고정) + fix round 2 (두 축 추가): `unknown_tool →
     args_not_a_dict → tool_missing_impl → valid_not_a_sequence → agent_ids_not_a_sequence →
-    missing_args → off_schema_args → expressible_not_a_bool → macro_outside_menu →
-    agent_outside_enum` 순으로 검사하고, **처음으로 걸리는 사유 하나만** 돌려준다(리뷰가 이
+    missing_args → off_schema_args → expressible_not_a_bool → menu_expressible_not_a_bool →
+    macro_outside_menu → agent_outside_enum` 순으로 검사하고, **처음으로 걸리는 사유 하나만**
+    돌려준다(2026-09-02 에 `menu_expressible_not_a_bool` 이 그 자리에 들어왔다 — 결정용
+    `expressible` **뒤**여야 한다. 앞에 두면 측정용 필드가 결정용 필드의 결함을 가려서 그 행을
+    읽는 사람이 원인을 반대로 읽는다). 나머지 순서는 그대로다(리뷰가 이
     순서를 실측했고 재배열하지 말라고 못박았다 -- `unknown_tool` 이 `_FUNCS` 를 건드리는
     무엇보다도 먼저인 것만 하중을 받는다). 그래서 두 축이 동시에 잘못된 호출은 **뒤쪽 축의
     사유를 절대 내지 않는다** -- 예를 들어 `expressible` 도 틀리고 `agent` 도 메뉴 밖인 호출은
@@ -216,17 +266,24 @@ def check_tool_args(name, args, valid, agent_ids):
                 "문자열이면 `in` 이 부분일치로 샌다)") % (agent_ids,)
     valid = valid or []
     agent_ids = agent_ids or []
-    want = set(COMMON_ARGS(valid)) | ({"agent"} if _needs_agent(name) else {"reason"})
+    want = set(COMMON_ARGS_REQUIRED(valid)) | ({"agent"} if _needs_agent(name) else {"reason"})
     missing = sorted(want - set(args))
     if missing:
         return "missing_args: %s (요구=%s 실려온=%s)" % (
             ",".join(missing), ",".join(sorted(want)), ",".join(sorted(args)))
-    extra = sorted(set(args) - want)
+    # 🔴 선택 인자는 `want` 에 없지만 실려도 정상이다. `want` 로만 판정하면 새 필드가
+    #    `off_schema_args` 로 튕겨 나가 애초에 받을 수가 없다.
+    extra = sorted(set(args) - want - set(COMMON_ARGS_OPTIONAL))
     if extra:
-        return "off_schema_args: %s (요구=%s)" % (",".join(extra), ",".join(sorted(want)))
+        return "off_schema_args: %s (요구=%s 선택=%s)" % (
+            ",".join(extra), ",".join(sorted(want)), ",".join(COMMON_ARGS_OPTIONAL))
     # 🔴 bool 은 `isinstance` 로 본다. `bool("False") is True` 라 캐스팅하면 거짓 True 가 난다.
     if not isinstance(args["expressible"], bool):
         return "expressible_not_a_bool: %r" % (args["expressible"],)
+    # 🔴 선택 인자라 **실려 있을 때만** 본다. 그리고 위치가 계약이다 — 결정용 필드의 사유가
+    #    먼저 나와야 한다(측정용이 결정용의 결함을 가리면 원인을 반대로 읽는다).
+    if "menu_expressible" in args and not isinstance(args["menu_expressible"], bool):
+        return "menu_expressible_not_a_bool: %r" % (args["menu_expressible"],)
     if args["macro"] not in valid:
         return "macro_outside_menu: %r (이 사건의 메뉴=%s)" % (args["macro"], ",".join(valid))
     if _needs_agent(name) and args["agent"] not in agent_ids:

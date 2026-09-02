@@ -707,3 +707,116 @@ def test_no_intervention_needs_reason_not_agent():
     # 빠졌는지와 무관하게 항상 참이었다. 메시지 머리가 정확히 `reason`(그 뒤에 공백, "reasoning"
     # 이 아니라)으로 시작하는지를 본다.
     assert why is not None and why.startswith("missing_args: reason ")
+
+
+# =================================================================================================
+# 2026-09-02 — `expressible` 의 귀속: 옛 문구를 두 번째 필드로 되살린다
+# spec: docs/superpowers/specs/2026-09-02-expressible-attribution-design.md
+# =================================================================================================
+
+# 🔴 G-2 의 비교 대상. `2633d855` **직전**의 `_EXPRESSIBLE_DESC` 를 **손으로 박은 것**이다.
+#    코드에서 유도하면(예: `tool_registry._MENU_EXPRESSIBLE_DESC`) 이 시험은 항진이 된다 --
+#    비교축이 조용히 따라 움직이는 것을 잡는 게 목적이므로 리터럴이어야 한다.
+#    출처: git show 2633d855^:src/respec/llm_service/tool_registry.py
+_OLD_WORDING_VERBATIM = (
+    "false if NOTHING in this tool menu can remove the CAUSE of what you observed -- "
+    "i.e. you are calling a tool only because you must, not because it fixes anything. "
+    "Answering NOOP because intervening is unnecessary is NOT this: that is true. "
+    "Set false when the fix this event needs is outside the menu entirely.")
+
+
+def test_menu_expressible_is_on_every_tool_schema():
+    """G-1. 두 질문을 나란히 물으려면 **세 tool 전부** 두 필드를 들고 있어야 한다.
+
+    한 tool 만 빠지면 그 tool 이 불린 사건에서 대조가 통째로 비는데, 응답 모양은 정상이라
+    아무도 못 본다.
+    """
+    tools = build_tools(AGENTS, ["NOOP", "Replace", "SwapBattery"])
+    assert len(tools) == 3, "빈-통과 방지: tool 이 3개가 아니면 이 시험은 아무것도 안 잰다"
+    for t in tools:
+        keys = set(t.args)
+        assert "expressible" in keys, "결정용 필드가 사라졌다: %s" % sorted(keys)
+        assert "menu_expressible" in keys, \
+            "대조용 필드가 %r 에 없다 -- 이 tool 이 불린 사건은 대조가 빈다" % (t.name,)
+
+
+def test_menu_expressible_asks_the_old_question_byte_for_byte():
+    """G-2. 비교축이 성립하려면 **옛 녹화가 받은 질문과 같은 질문**이어야 한다.
+
+    🔴 한 글자라도 다르면 S1 의 115/115 · 6/6 과 나란히 놓을 수 없다. 그래서 바이트 동일이
+    계약이고, 위 리터럴이 그 계약의 진실원이다.
+    """
+    assert tool_registry._MENU_EXPRESSIBLE_DESC == _OLD_WORDING_VERBATIM
+
+    # 그리고 두 질문이 **실제로 다른 질문**이어야 한다 -- 같아지면 대조가 무의미하다.
+    assert tool_registry._EXPRESSIBLE_DESC != tool_registry._MENU_EXPRESSIBLE_DESC
+    assert "OTHER THAN NOOP" in tool_registry._EXPRESSIBLE_DESC, \
+        "결정용 문구가 NOOP 을 범위에서 빼고 있어야 한다(2633d855)"
+    assert "OTHER THAN NOOP" not in tool_registry._MENU_EXPRESSIBLE_DESC, \
+        "대조용 문구는 옛 범위(메뉴 전체)를 그대로 물어야 한다"
+
+
+def test_a_missing_menu_expressible_is_not_a_rejection():
+    """🔴 G-3. 측정용 필드 하나가 **런을 죽일 수 있으면 안 된다.**
+
+    `check_tool_args` 는 `want` 에 없는 키를 `off_schema_args` 로 거절하고, `want` 에 있는데
+    안 실린 키를 `missing_args` 로 거절한다. 즉 새 키를 그냥 `COMMON_ARGS` 에 더하면 자동으로
+    **필수**가 되고, 모델이 빠뜨리는 순간 `chosen=""` -> `available=false` -> `policy.jl:1703`
+    이 런을 죽인다.
+    """
+    valid = ["NOOP", "Replace", "SwapBattery"]
+    ids = [a["id"] for a in AGENTS]
+    without = {"agent": ids[0], "macro": "SwapBattery", "reasoning": "r",
+               "expressible": True, "ranking": "SwapBattery, Replace, NOOP"}
+
+    assert tool_registry.check_tool_args("deliver_battery", without, valid, ids) is None, \
+        "선택 필드가 빠졌다고 거절하면 안 된다"
+
+    # 실려도 정상이어야 한다(`off_schema_args` 로 튕기면 애초에 받을 수가 없다).
+    with_it = dict(without, menu_expressible=False)
+    assert tool_registry.check_tool_args("deliver_battery", with_it, valid, ids) is None
+
+    # 🔴 음성 대조 -- 검사가 통째로 죽은 것과 구별한다. **필수** 키가 빠지면 여전히 거절이다.
+    for key in ("expressible", "macro", "reasoning", "ranking"):
+        broken = {k: v for k, v in without.items() if k != key}
+        why = tool_registry.check_tool_args("deliver_battery", broken, valid, ids)
+        assert why is not None and why.startswith("missing_args"), \
+            "필수 키 %r 이 빠졌는데 통과했다 -- 검사가 죽었다: %r" % (key, why)
+
+
+def test_a_non_bool_menu_expressible_is_named_and_never_masks_the_decision_field():
+    """G-5. 실렸는데 bool 이 아니면 **그 사유로** 거절된다. 그리고 검사 **순서**를 지킨다.
+
+    🔴 기존 순서는 리뷰가 실측으로 고정했다. `expressible` 과 `menu_expressible` 이 동시에
+    잘못된 호출은 **결정용 필드의 사유**를 내야 한다 -- 측정용 필드가 결정용 필드의 결함을
+    가리면 그 행을 읽는 사람이 원인을 반대로 읽는다.
+    """
+    valid = ["NOOP", "Replace", "SwapBattery"]
+    ids = [a["id"] for a in AGENTS]
+    base = {"agent": ids[0], "macro": "SwapBattery", "reasoning": "r",
+            "expressible": True, "ranking": "SwapBattery, Replace, NOOP"}
+
+    why = tool_registry.check_tool_args(
+        "deliver_battery", dict(base, menu_expressible="False"), valid, ids)
+    assert why is not None and why.startswith("menu_expressible_not_a_bool"), why
+
+    both = dict(base, expressible="False", menu_expressible="False")
+    why2 = tool_registry.check_tool_args("deliver_battery", both, valid, ids)
+    assert why2 is not None and why2.startswith("expressible_not_a_bool"), \
+        "측정용 필드가 결정용 필드의 사유를 가렸다: %r" % why2
+
+
+def test_the_decision_field_is_untouched_by_this_lane():
+    """G-6. 이 레인이 `2633d855` 을 안 건드렸다는 증거.
+
+    이 파일의 기존 게이트 둘(`test_expressible_scope_excludes_noop` ·
+    `test_noop_is_still_on_the_menu`)이 그대로 초록인 것과 짝이다. 여기서는 결정 경로가
+    **여전히 `expressible` 하나만** 본다는 것을 못박는다.
+    """
+    valid = ["NOOP", "Replace", "SwapBattery"]
+    ids = [a["id"] for a in AGENTS]
+    # 결정용은 참, 측정용은 거짓 -- 이 조합이 거절되면 두 필드가 얽힌 것이다.
+    args = {"agent": ids[0], "macro": "SwapBattery", "reasoning": "r",
+            "expressible": True, "menu_expressible": False,
+            "ranking": "SwapBattery, Replace, NOOP"}
+    assert tool_registry.check_tool_args("deliver_battery", args, valid, ids) is None
