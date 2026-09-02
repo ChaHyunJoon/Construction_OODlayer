@@ -106,6 +106,20 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :STALLED_ROBOTS         => :state,   # Fleet.stalled_r — 빼면 복구 판정이 갈린다
     :BATTERY_DELIVERIES     => :state,   # Courier 블록 전체
     :AGENT_COST_BIAS        => :state,   # G 의 엣지 가중치 배수 (Deprioritize 의 지연 효과)
+    :STANDING_CARGO_BANS    => :state,   # 화물 금지. swap_battery! 까지 산다 (cargo-ban Task 3)
+                                          # 🔴 `AGENT_COST_BIAS`(바로 윗줄)와 **같은 부류**다:
+                                          # 로봇 id → 스칼라의 `Ref{Dict}` 이고, OOD 처리 도중에
+                                          # 채워져 다음 MILP 정식화를 가른다. 다른 점은 이쪽이
+                                          # 소프트 비용편향이 아니라 **하드 제약**이라는 것뿐이라
+                                          # 오염됐을 때의 대가가 더 크다(다음 판의 로봇이 이유
+                                          # 없이 화물을 못 맡는다).
+                                          # 🔴 :setup 이 아닌 이유 — `RESPEC_SCENE_TREE`(아래
+                                          # :setup 절)는 `formulate_milp` 이 스스로 채우고 같은
+                                          # 호출 안에서 지워 solve 밖에서는 항상 `nothing` 이지만,
+                                          # 이 상자는 **에피소드 중에 걸려 그대로 살아 있는 것이
+                                          # 목적**이다(수명 = 그 로봇의 swap_battery! 사건까지).
+                                          # 롤아웃 경계에서 안 지우면 이전 판의 금지가 다음 판을
+                                          # 오염시킨다 — 에러가 아니라 조용한 다른 세계로 샌다.
     :RESTRICTION_ZONES      => :state,   # Geo: 활성 no-go 구역
     :SPARE_POOLS            => :state,   # Fleet.role_r 이 여기서 유도된다
     :SPARE_SLOTS            => :state,

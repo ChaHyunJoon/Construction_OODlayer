@@ -1214,22 +1214,32 @@ function formulate_milp(
     # RESPEC: inject verified LLM re-specification constraints. This runs AFTER
     # all native constraints and BEFORE @objective, so it can only ADD
     # constraints (shrink the feasible set) and can never touch the objective.
-    # `nothing` (the default) is a no-op, so existing call sites are unchanged.
-    # `!==` : "동일 객체가 아님"(파이썬 is not). 추가제약이 주어졌을 때만 컴파일해 모델에 주입.
-    if extra_constraints !== nothing
-        # RESPEC_SCENE_TREE: 이 solve 의 씬트리를 컴파일러에 나른다(`compiler.jl` 의 docstring
-        # 참조). `problem_spec` 은 호출지점 16곳 전부에서 `env.scene_tree` 다.
-        # `ForbidHeavyCargo` 가 `_payload_mass_measured` 로 화물 bbox 를 읽는 유일한 통로이고,
-        # `RESPEC_FROZEN`/`RESPEC_PINNED` 와 같은 기전이다(시그니처를 안 바꾼다).
-        # 🔴 `finally` 로 반드시 되돌린다 — 전역에 낡은 씬트리를 남기면 다음 solve 가 남의
-        #    세계에서 부담을 재게 되고, 그 실패는 에러가 아니라 조용한 오답으로만 샌다.
-        prev_scene = RESPEC_SCENE_TREE[]
-        RESPEC_SCENE_TREE[] = problem_spec
-        try
+    # RESPEC_SCENE_TREE: 이 solve 의 씬트리를 컴파일러에 나른다(`compiler.jl` 의 docstring
+    # 참조). `problem_spec` 은 호출지점 16곳 전부에서 `env.scene_tree` 다.
+    # `ForbidHeavyCargo` 가 `_payload_mass_measured` 로 화물 bbox 를 읽는 유일한 통로이고,
+    # `RESPEC_FROZEN`/`RESPEC_PINNED` 와 같은 기전이다(시그니처를 안 바꾼다).
+    # 🔴 `finally` 로 반드시 되돌린다 — 전역에 낡은 씬트리를 남기면 다음 solve 가 남의
+    #    세계에서 부담을 재게 되고, 그 실패는 에러가 아니라 조용한 오답으로만 샌다.
+    # 🔴 cargo-ban Task 3: 이 블록은 이제 `if extra_constraints !== nothing` **밖**에 있다 —
+    #    아래 지속 화물 금지가 `extra_constraints` 없는 formulate 에서도 씬트리를 필요로 한다.
+    #    금지도 제안도 없으면 `Ref` 대입 두 번뿐이라 비용은 사실상 0 이다.
+    prev_scene = RESPEC_SCENE_TREE[]
+    RESPEC_SCENE_TREE[] = problem_spec
+    try
+        # `nothing` (the default) is a no-op, so existing call sites are unchanged.
+        # `!==` : "동일 객체가 아님"(파이썬 is not). 추가제약이 주어졌을 때만 컴파일해 모델에 주입.
+        if extra_constraints !== nothing
             compile_proposal!(model, t0, tF, Xa, sched, extra_constraints)   # LLM 재명세 제약을 모델에 추가
-        finally
-            RESPEC_SCENE_TREE[] = prev_scene
         end
+        # 🔴 지속 화물 금지: **모든** formulate 가 읽는다(사용자 결정 2026-09-01).
+        #    T13 재풀이만 읽게 하면 verify · fault_robot_and_reassign! · rebalance_for_battery! 가
+        #    금지를 무시해서, 고장 재배정 한 번에 무거운 짐이 그 로봇에게 돌아간다.
+        #    ⚠️ `rebalance_for_battery!` 는 `extra_constraints` 를 안 준다 — 그래서 이 호출이
+        #    위 `if` 안에 들어가면 그 경로가 **조용히** 샌다(`test/cargo_ban_store.jl` 의 G-5 가
+        #    정확히 `extra_constraints = nothing` 으로 그 자리를 겨눈다).
+        _compile_standing_cargo_bans!(model, t0, tF, Xa, sched)
+    finally
+        RESPEC_SCENE_TREE[] = prev_scene
     end
 
     milp = SparseAdjacencyMILP(model, Xa, Xj, milp_model.job_shop) #, job_shop_variables   # 래퍼 구조체로 묶기

@@ -525,4 +525,15 @@ end
     @testset "ForbidHeavyCargo" begin
         include("forbid_heavy_cargo.jl")
     end
+
+    # 2026-09-02 (cargo-ban T3): 지속 화물 금지 보관소 `STANDING_CARGO_BANS` 와 **모든**
+    # formulate_milp 이 그것을 읽는다는 계약. G-5(= `extra_constraints = nothing` 인
+    # `rebalance_for_battery!` 모양의 formulate 도 금지를 읽는가 + 금지 전에는 그 로봇이 그
+    # 화물을 **가져갔다**는 양성 대조) · G-6(`:state` 등록과 롤아웃 리셋).
+    # 🔴 씬을 짓고 **실제로 푼다**(tractor/10대/closed=60, 좁힌 release → OPTIMAL ~0.2s).
+    #    🔴 이 파일은 `STANDING_CARGO_BANS` 를 채운다 — 스스로 `finally` 로 비우지만, 뒤에
+    #    다른 시험을 넣을 때는 그 전역이 비어 있는지 의심할 것(모든 formulate 가 읽는다).
+    @testset "cargo ban store" begin
+        include("cargo_ban_store.jl")
+    end
 end

@@ -91,6 +91,104 @@ struct ForbidHeavyCargo <: ConstraintSpec
     end
 end
 
+# --- 지속 화물 금지 보관소 (cargo-ban Task 3) -------------------------------------
+"""
+    STANDING_CARGO_BANS
+
+지금 살아있는 화물 금지들: `{로봇 id → n}`. `ForbidHeavyCargo(로봇, n)` 로 컴파일된다.
+
+🔴 **`ForbidHeavyCargo` 인스턴스가 아니라 `n` 만 담는다.** 금지 대상 화물은 컴파일할 때마다
+다시 찾아야 하기 때문이다(위 `ForbidHeavyCargo` docstring: 목록을 얼리면 그래프가 바뀐 뒤
+그 참조가 결정변수가 아니게 되어 `Reject(:ungrammatical)` 이 되고, 고장 경로에서 그것은
+라인 영구 정지다). `n` 만 들고 있으면 그 사고가 구조적으로 불가능하다.
+
+🔴 **에피소드 중에 변한다** — `src/smdp/state_globals.jl` 에 **`:state` 로 등록해야 한다.**
+선례는 같은 파일의 `:AGENT_COST_BIAS => :state  # Deprioritize 의 지연 효과` 다. 등록을
+빠뜨리면 롤아웃 경계에서 안 지워져 **이전 판의 금지가 다음 판을 오염시킨다.**
+
+수명은 "그 로봇에 `swap_battery!` 가 일어날 때까지" 다(사용자 결정 2026-09-01) —
+술어가 아니라 **사건**이라 임계값도 확인 시점도 정할 필요가 없다. (수명 배선은 Task 4.)
+
+🔴 **`Ref` 를 통째로 갈아끼우는 것과 `empty!` 로 비우는 것이 둘 다 안전해야 한다** — Task 5 가
+고장 수습 중 `STANDING_CARGO_BANS[] = Dict{AbstractID,Int}()` 로 껐다가 `finally` 로
+`STANDING_CARGO_BANS[] = _saved_bans` 로 되돌린다. 아래 세 함수는 전부 **현재 `Ref` 내용물**
+을 통해서만 움직이므로 그 교체와 공존한다(어떤 Dict 도 캐시하지 않는다).
+
+읽는 쪽은 한 자리다: 바로 아래 `_compile_standing_cargo_bans!` 를
+`formulate_milp`(`essential_tg_coponents.jl`)이 **매번** 부른다.
+"""
+const STANDING_CARGO_BANS = Ref(Dict{AbstractID,Int}())
+
+"`agent` 에게 부담 상위 `n` 개 화물 금지를 건다. 같은 로봇에 다시 걸면 **덮어쓴다**(누적 아님)."
+set_cargo_ban!(agent::AbstractID, n::Integer) = (STANDING_CARGO_BANS[][agent] = Int(n); nothing)
+
+"있었으면 지우고 `true`, 없었으면 `false`. 🔴 조용한 성공을 만들지 않으려고 값을 돌려준다."
+clear_cargo_ban!(agent::AbstractID) = (pop!(STANDING_CARGO_BANS[], agent, nothing) !== nothing)
+
+"금지를 전부 해제한다. 롤아웃 경계와 시험 격리가 쓴다."
+clear_all_cargo_bans!() = (empty!(STANDING_CARGO_BANS[]); nothing)
+
+"""
+    _compile_standing_cargo_bans!(model, t0, tF, Xa, sched) -> Int
+
+살아있는 화물 금지(`STANDING_CARGO_BANS[]`)를 전부 컴파일한다. **추가한 행 수**를 반환.
+
+🔴 **`formulate_milp` 이 매번 부른다 — `extra_constraints` 가 있든 없든.** 사용자 결정
+(2026-09-01): T13 재풀이만 읽게 하면 `verify` · `fault_robot_and_reassign!` ·
+`rebalance_for_battery!` 가 금지를 무시한다. 그 셋 중 `rebalance_for_battery!` 는
+`extra_constraints` 를 **아예 안 준다**(`navigator/battery.jl`) — 그래서 훅이
+`if extra_constraints !== nothing` 안에 있으면 그 경로가 조용히 샌다. 그러면 고장 재배정
+한 번에 무거운 짐이 그 로봇에게 **돌아가고**, 수명 계약과 정면으로 모순이다.
+`test/cargo_ban_store.jl` 의 G-5 가 정확히 `extra_constraints = nothing` 으로 그 자리를 겨눈다.
+
+🔴 **여기(spec_dsl.jl)에 사는 이유가 둘이다.**
+(1) `essential_tg_coponents.jl` 은 `ConstructionBots.jl` 의 include 순서에서 `respec/` 보다
+    **앞**이라 `ForbidHeavyCargo` 타입이 그 시점에 없다. 호출은 함수 본문 안에서 일어나므로
+    (런타임 늦은 바인딩) `formulate_milp` 이 이 이름을 부르는 것은 안전하다 —
+    `compile_proposal!` 이 이미 정확히 같은 모양이다(T3-R5: 순환 의존을 만들지 마라).
+(2) 보관소와 그 유일한 읽는 자리를 한 파일에 둔다. `compiler.jl` 은 Task 2 소유라
+    편집 충돌을 피한다(컨트롤러 판정 2026-09-02).
+
+🔴 **순회 순서를 고정한다** — `Dict` 순회 순서가 모델 구성 순서를 바꾸면 같은 시드가 다른 판을
+만든다(MEMORY: sim-runs-must-be-seed-reproducible). ⚠️ 그 부류를 뿌리 뽑은 커밋 `bb1b88c4`
+(`AbstractID` 의 내용 기반 `Base.hash`)는 **이 브랜치의 조상이 아니다** — 여기서는 이 정렬이
+유일한 방어선이다. 2차 키가 필요 없는 이유: 키는 로봇 id 라 `string(id)` 가 유일하다.
+
+🔴 **부담 계층이 없을 때의 처신을 이 함수가 직접 정한다**(컨트롤러 판정 2026-09-02).
+`compile_constraint!(…, ::ForbidHeavyCargo)` 는 `BATTERY_FLEET[] === nothing` 에서 **에러**를
+낸다. 그것은 제안이 명시적으로 그 제약을 실은 경우에는 옳다 — 누군가 이 solve 에서 그것을
+요구했는데 못 재는 것은 배선 결함이다. 그러나 이 훅은 **모든** formulate 에서 돈다. 배터리는
+opt-in 이고 `run_lego_demo` 는 켜지 않으므로, "금지가 서 있다 × 배터리 없는 판" 조합이 그
+에러를 **모든 solve 자리에서 도달 가능**하게 만든다. 그리고 `verifier.jl` 은 LLM 문법
+(`LinearConstraint`/`Disjunction`)이 실린 제안에서만 컴파일 예외를 `Reject(:ungrammatical)`
+로 바꾸고 그 밖에서는 **되던진다** — `maybe_respecify!` 에 `try` 가 없어 예외가
+`route_planning.jl` 까지 풀려 올라가 **런을 죽인다.**
+⟹ 여기서는 죽이지 않는다. 대신 **`@warn` 으로 크게 알리고 0 행을 낸다.** 이것은 조용한
+0 이 **아니다**: `run_demo.jl` 이 심는 `global_logger(…, Logging.Warn)` 아래에서 `@info` 는
+버려지지만 `@warn` 은 남는다(CLAUDE.md 의 알려진 함정). 🔴 그래도 대가는 실재한다 —
+**그 formulate 에서 금지는 집행되지 않는다.** 금지를 거는 레인(Task 4·5·7)은 배터리 레인이라
+정상 경로에서는 이 가지가 안 돈다.
+"""
+function _compile_standing_cargo_bans!(model, t0, tF, Xa, sched)
+    bans = STANDING_CARGO_BANS[]
+    isempty(bans) && return 0                 # 금지가 없으면 누를 것이 없는 게 맞다(진짜 0)
+    # 🔴 구조적 사전조건. `&&` 는 왼쪽이 거짓이면 오른쪽을 **평가하지 않는다** — navigator 가
+    #    안 실렸으면 `BATTERY_FLEET` 이라는 이름 자체가 없으므로 순서가 load-bearing 이다.
+    if !(isdefined(@__MODULE__, :cargo_burden_after) &&
+         isdefined(@__MODULE__, :BATTERY_FLEET) && BATTERY_FLEET[] !== nothing)
+        @warn "STANDING_CARGO_BANS: 화물 금지가 서 있는데 1대당 부담을 잴 계층이 없다 " *
+              "(navigator 미로드 또는 enable_battery! 미호출). 이 formulate 는 금지를 " *
+              "**집행하지 않는다** — 0 행. 그 로봇이 무거운 화물을 다시 맡을 수 있다." *
+              " (죽이지 않는 이유는 이 함수의 docstring 참조.)" bans = sort(string.(collect(keys(bans))))
+        return 0
+    end
+    n = 0
+    for agent in sort(collect(keys(bans)), by = string)
+        n += compile_constraint!(model, t0, tF, Xa, sched, ForbidHeavyCargo(agent, bans[agent]))
+    end
+    return n
+end
+
 """
     ForbidWindow(node, t_lo, t_hi)
 
