@@ -572,8 +572,8 @@ class MacroRequest(BaseModel):
     # ⚠️ 다섯이 함께 오지 않는다: 배터리 레이어가 꺼져 있으면 SoC 셋이 빠지고, 그 로봇에
     #    미완 운반 작업이 없으면 payload 둘이 빠진다. `_battery_block` 이 키마다 거른다.
     battery_pending_transports: Optional[int] = None    # 이 로봇이 아직 맡고 있는 운반 작업 수
-    battery_payload_max_kg: Optional[float] = None      # 그중 가장 무거운 화물의 질량
-    battery_payload_total_kg: Optional[float] = None    # 그 작업들의 화물 질량 합
+    battery_payload_proxy_max: Optional[float] = None      # 그중 가장 큰 화물의 대리값(밀도 x bbox 부피)
+    battery_payload_proxy_total: Optional[float] = None    # 그 대리값을 그 작업들에 대해 합한 것
     battery_fleet_soc_median: Optional[float] = None    # 함대 SoC 의 중앙값
     battery_higher_soc_robots: Optional[int] = None     # 이 로봇보다 SoC 가 높은 활성 로봇 수
     # valid : 호출자가 **세계를 보고** 계산한 legal 매크로 목록(2026-08-05 추가).
@@ -1046,13 +1046,35 @@ def _zones_block(r: "MacroRequest") -> str:
 # 🔴 **사실만 적는다.** "더 높은 SoC 로봇에게 넘겨라" 로 번역하지 않는다 — 그것은 오라클의
 #    판정이고, 적는 순간 재는 것이 추론이 아니라 프롬프트 준수가 된다(spec §6-2). 같은 이유로
 #    `_GEOM_COVERAGE` 도 `covers_root` 를 "빌드를 옮겨라" 로 안 적는다.
+# 🔴 2026-09-01 — 아래 두 화물 값의 서술을 **참으로 고쳤다.** 옛 문구("mass of the heaviest
+#    cargo" / "sum of cargo mass")는 두 번 과장했다. 실제 산출식은 `battery.jl:211`
+#    `p.payload_density * 8.0 * prod(r)` = **밀도 x 경계상자 부피**이고,
+#      (a) `prod(r)` 는 화물의 실제 기하가 아니라 **bounding box** 다 -- 과대추정이다.
+#      (b) `payload_density = 100.0` 은 물성이 아니라 `# TUNING KNOB`(`battery.jl:72`)이다.
+#    그래서 **렌더 라벨의 `_kg` 도 뗐다**(`heaviest_payload_kg` -> `heaviest_payload_proxy`).
+#    괄호 안 설명만 고치는 것으로는 부족하다: 모델이 먼저 읽는 것은 설명이 아니라
+#    `heaviest_payload_kg = 12.8` 이라는 **이름과 숫자**이고, 거기서 "12.8 킬로그램" 을
+#    읽는다. 차원만 보면 kg 이 맞지만(`payload_density` 의 단위가 kg/부피단위),
+#    그 100.0 이 손잡이라 **200 으로 바꾸면 모든 "킬로그램" 이 두 배가 되는데 물리적으로는
+#    아무것도 안 변한다.** ⟹ 절대값에는 뜻이 없고 **화물 사이의 비율에만** 뜻이 있다.
+#    그것이 이 값을 쓰는 유일하게 타당한 방법이라, 이름이 그렇게 말해야 한다.
+#    ⚠️ 여기 적은 것은 **산출식과 그 값의 성질(사실)** 이지 "그러니 믿지 마라"(판정)가 아니다.
+#    🔴 **와이어 필드명도 같이 바꿨다** (`battery_payload_proxy_max` -> `battery_payload_proxy_max`).
+#    모델은 그 이름을 안 보지만, 거짓 이름은 그 값을 읽는 **사람**도 속인다. 이건 언어를
+#    건너는 rename 이라 **반쪽으로 끝나면 초록으로 실패한다** -- 줄리아 키만 바뀌면 pydantic
+#    이 그 키를 조용히 버리고 필드가 `None` 으로 남아 적재 절이 프롬프트에서 통째로 사라지는데,
+#    파이썬 시험은 `MacroRequest` 를 파이썬 이름으로 직접 만들어서 전부 초록이다.
+#    ⟹ `test_battery_block.py::test_every_battery_key_julia_emits_has_a_python_field` 를
+#    **먼저 걸고**(반쪽 rename 에 RED 인 것을 실측) 그 다음에 바꿨다.
 _BAT_LOAD = [
     ("battery_pending_transports", "pending_transports",
      "unfinished transport jobs this robot is committed to"),
-    ("battery_payload_max_kg", "heaviest_payload_kg",
-     "mass of the heaviest cargo among them"),
-    ("battery_payload_total_kg", "total_payload_kg",
-     "sum of cargo mass over those jobs"),
+    ("battery_payload_proxy_max", "heaviest_payload_proxy",
+     "largest cargo among them, as density x bounding-box volume -- the density is a "
+     "fixed model constant, so this number has no physical unit and only its ratio to "
+     "the other cargo figures here carries information"),
+    ("battery_payload_proxy_total", "total_payload_proxy",
+     "that same proxy summed over those jobs"),
 ]
 # 🔴 `soc` 는 **여기 없다.** battery 사건이면 그 필드가 언제나 실려 있어서, 이 목록에 넣으면
 #    "값이 하나도 없으면 빈 문자열" 규약이 깨진다(블록이 항상 렌더된다). `soc` 는 아래에서

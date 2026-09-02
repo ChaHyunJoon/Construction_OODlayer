@@ -211,8 +211,8 @@ function _battery_load_features(env, agent)
     if n_jobs > 0
         d["battery_pending_transports"] = n_jobs
         if mass_ok
-            d["battery_payload_max_kg"]   = maximum(masses)
-            d["battery_payload_total_kg"] = sum(masses)
+            d["battery_payload_proxy_max"]   = maximum(masses)
+            d["battery_payload_proxy_total"] = sum(masses)
         end
     end
     return merge(d, _battery_fleet_features(agent))

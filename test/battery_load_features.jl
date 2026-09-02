@@ -5,13 +5,13 @@
 # 함수이므로 최소 fixture 로 잰다. 진짜 빌드에서의 값은 T5 의 보드가 낸다.
 #
 # ⚠️ **여기 없는 것** (Fix round 1, I-3 — 가짜 세계를 짓지 않는다. 이름만 붙여 정직하게
-#    비워 둔다): `battery_pending_transports`/`battery_payload_max_kg`/`battery_payload_total_kg`
+#    비워 둔다): `battery_pending_transports`/`battery_payload_proxy_max`/`battery_payload_proxy_total`
 #    를 내는 운반 작업 순회(`_battery_load_features` 의 `for v in Graphs.vertices(sched)` 루프)
 #    는 진짜 `OperatingSchedule`/`env` 가 필요해 이 파일의 최소 fixture 로는 못 잰다. 특히
 #    **`succ`(FormTransportUnit) 대신 `RobotGo` 를 `_payload_mass` 에 넘기는 버그**(가드에
 #    걸려 조용히 `0.0` 이 된다 — 정확히 정책이 코드 옆 주석으로 경고하는 그 사고)는 이 스위트를
 #    그대로 두고 넣어도 **초록이 안 빨개진다.** 이 초록을 "적재 순회 로직까지 검증됐다"는
-#    증거로 읽지 말 것 — 그 명제는 T5 의 보드가 `battery_payload_max_kg` 가 실제로 0 이 아닌
+#    증거로 읽지 말 것 — 그 명제는 T5 의 보드가 `battery_payload_proxy_max` 가 실제로 0 이 아닌
 #    값으로 실리는지로, 오직 거기서만 확인한다.
 #
 # 변이시험(전부 이 파일에서 실행해 확인한 것만 적는다 — Fix round 1, I-2: 검증 안 한 주장을
