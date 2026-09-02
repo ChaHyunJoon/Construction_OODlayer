@@ -120,13 +120,13 @@ assignment edge is released. Given a module-qualified robot id string (the form
 `"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`), ONLY the future
 assignment edges that robot OWNS are released; everything else is kept.
 
-Why the scope exists: a full release opens thousands of candidate assignment edges
-and the MILP re-solve that follows then burns its whole time limit without proving
-optimality at ANY point of the build (measured: 60s TIME_LIMIT at closed =
-0/62/120/170/220/250, still TIME_LIMIT with only 364 candidates left). Scoping to
-one robot shrinks the candidate set to ~1/19 — the reduction is superlinear because
-candidates are edge PAIRS, not robots — and the same re-solve returns OPTIMAL in
-~0.2s. See `tools/probes/probe_release_in_harness.jl` · `probe_scoped_release.jl`.
+Why the scope exists — ONE-BOARD PROBE MEASUREMENT, not a property of this function: on
+`colored_8x8.ldr` with 6 robots a full release burned the whole 60s limit without proving
+optimality at ANY point of the build (TIME_LIMIT at closed = 0/62/120/170/220/250, still
+TIME_LIMIT with only 364 candidates left); scoping to one robot shrank the candidate set
+to ~1/19 — superlinear, candidates are edge PAIRS — and returned OPTIMAL in ~0.2s. 🔴 The
+scoped arm ran on `probe_scoped_release.jl`'s own `release_scoped!` (self-described
+가설 측정용), NOT this path — nothing here re-solves. See `probe_release_in_harness.jl`.
 
 🔴 `faulted` and `agent` are OPPOSITES and may NOT be combined: `faulted` WIDENS the
 release (it additionally drops that robot's in-progress target) while `agent` NARROWS

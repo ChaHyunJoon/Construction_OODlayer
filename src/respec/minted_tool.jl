@@ -198,13 +198,24 @@ end
       (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
       MILP 재풀이의 몫이다.
   · `release_pending_assignments!` `src/respec/reassign.jl:149`
-      조용: `:released_none`(= `removed` 가 비었다 = 풀 수 있는 미래 배정 간선이 하나도
-            없었다). 실제: `:released`.
+      조용: `:released_none`(= `removed` 가 비었다). 🔴 **원인이 둘이다** — (a) 풀 수 있는
+            미래 배정 간선이 애초에 하나도 없었다, (b) `agent` 로 범위를 좁혔는데 그 문자열이
+            소유한 미래 배정 간선이 하나도 없었다. (b) 에는 **형태를 틀린 호출**이 포함된다:
+            `agent` 는 모듈 한정 id 문자열이어야 하고(짧은 형태는 아무것도 안 맞는다) 값 형태를
+            재는 검사가 없다(`bind_primitive_args` 는 타입만 본다). 실제: `:released`.
       🔴 이 원시는 NamedTuple 을 안 돌려준다 — `Vector{Tuple{Int,Int}}`(떼어낸 간선)이다.
          `_step_status` 가 `EDGELIST_RETURN_PRIMITIVES` 를 보고 위 둘로 읽는다.
       ⚠️ `:released` 는 "노린 적응이 일어났다"가 맞다: 간선을 실제로 뗐다는 것은 다음
          재풀이가 다시 결정할 수 있는 후보가 생겼다는 뜻이고, 그것이 이 원시가 노리는
          전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 reprice 와 같음).
+      ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의
+         `WORLD_UNCHANGED_STATUSES` 는 **일부러 빈 집합**이라(아래 그 표의 문단)
+         `_step_touched_world = true` → `world_maybe_dirty = true` → `enact.jl:869` 의
+         `handled = true` 가 된다. 즉 **아무 간선도 안 풀린 채로** OOD 사건이 소비되고 기본
+         복구 사슬을 건너뛴다. 🔴 **그러나 이 경로는 조용하지 않다** — `enact_minted!` 가
+         `quiet` 주석("불렸지만 어느 단계도 세계를 적응시키지 않았다")을 reason 에 붙이고
+         `enact.jl:873` 이 `applied=false` 를 찍는다. 로그에 증거가 남는다는 뜻이므로
+         이것을 조용한 미복구로 읽어 과잉 대응하지 말 것.
 
 ⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 빌드를 **실제로 옮긴다** — 세계의
    바이트는 변한다. 그런데도 여기 있는 이유는 `applied` 가 "바이트가 변했나"가 아니라
