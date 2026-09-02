@@ -586,4 +586,15 @@ end
     @testset "cargo ban moves work" begin
         include("cargo_ban_moves_work.jl")
     end
+
+    # 🔴 재현성 회귀 가드 (2026-09-02, `bb5e23f2` 체리픽과 같은 날 배선). 씬을 안 짓고 ~1.4s.
+    #    지키는 것: `AbstractID` 의 해시가 **내용에서만** 나온다는 것. 이 성질이 깨지면 Julia
+    #    기본 해시가 `objectid` 를 타고, 프리컴파일이 바이트 재현되지 않으므로 ID-키
+    #    `Dict`/`Set` 의 **순회 순서가 빌드마다 갈린다** — 같은 시드가 재빌드마다 다른 세계를
+    #    낸다(실측: makespan 4빌드 20.150/19.650/23.575/21.950 → 고친 뒤 23.825 ×4).
+    #    §3 이 재발 감지기(새 프로세스에서 같은 리터럴 값), §5 가 음성 대조(기본 해시와 다름).
+    #    ⚠️ 이 게이트가 빨개지면 그 빌드의 **모든 측정이 재현 불가**라는 뜻이다 — 무시하지 말 것.
+    @testset "abstractid content hash" begin
+        include("abstractid_content_hash.jl")
+    end
 end
