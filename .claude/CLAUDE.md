@@ -215,11 +215,25 @@ hazard 는 opt-in 이고 기본이 꺼짐이라 **기본 실행의 모든 산출
 ⚠️ 🔴 **2026-08-21 계획서 A Task T6 이 `generation` 을 다시 올린다**(D-5·D-6 이 동역학을 가른다).
 그러면 **커밋된 모든 산출물이 구세대로 재분류된다** — 설계대로다.
 
-## ⏳ 2026-08-20 — 확정 설계, 아직 미구현: 모든 팔 뒤에 공통 MILP 재풀이
+## ✅⚠️ 2026-08-20 확정 → 2026-09-01 **구현됐고, 그런데 무동작이다**: 모든 팔 뒤에 공통 MILP 재풀이
 
-**사용자 결정.** 실행 레인의 `handle_ood!` 가 매크로 dispatch 뒤 **모든 팔에 대해** 무제약
-재풀이를 부른다. 즉 `(s,a) → s⁺` 가 팔과 무관하게 같은 argmin 을 통과한다.
-**코드는 아직 안 바뀌었다** — 계획서 A **Task T13** 이 집행한다.
+**사용자 결정.** 실행 레인이 매크로 dispatch 뒤 **모든 팔에 대해** 무제약 재풀이를 부른다.
+즉 `(s,a) → s⁺` 가 팔과 무관하게 같은 argmin 을 통과한다.
+
+🔴 **2026-09-01 정정 — 아래 "코드는 아직 안 바뀌었다" 는 틀렸다.** 구현돼 있다:
+`resolve_assignments!`(`src/smdp/generative.jl:238`)이고 `apply_action!`(`:360`)이
+NOOP 포함 모든 팔 뒤에 무조건 부른다. 이 문단을 읽고 "미구현" 이라고 판단하지 말 것 —
+2026-09-01 세션이 실제로 그렇게 오판했다.
+
+🔴 **그러나 실측하면 아무것도 안 바꾼다.** `n_reassigned` 이 closed 0/62/120/170/220/250
+**전 구간 0** 이고, release 없는 후보 간선도 전 구간 0 이다
+(`tools/probes/probe_release_in_harness.jl`). `resolve_assignments!` 가
+`release_pending_assignments!` 를 안 부르기 때문이다. 아무도 못 본 이유는
+`test/smdp_common_resolve.jl:97` 의 단언이 `@test r.n_reassigned >= 0` 이라는 **항진**이라서다.
+오늘 release 하는 production 팔은 fault 하나뿐이다(`replan.jl:888` → `reassign.jl:374`).
+⟹ release 는 **팔이 정한다**(harness 로 옮기면 NOOP 이 함대를 통째로 재배정하는 가장 파괴적인
+팔이 된다). 그리고 전체 release 는 어느 시점에도 60초 안에 최적성을 증명 못 한다 —
+대상 에이전트로 **범위를 좁히면** 후보가 1/19 로 줄고 0.2초에 `OPTIMAL` 이 나온다.
 
 **왜 — 코드를 읽고 확정된 사실 셋:**
 1. 🔴 **"action 후 MILP 재풀이" 공통 파이프라인은 레포 어디에도 없다.** `maybe_respecify!` 는
