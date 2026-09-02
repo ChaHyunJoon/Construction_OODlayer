@@ -96,3 +96,6 @@ wm4spacecraft_manufacturing/results_4pol_reformfix/shards/
 #  (b) 커밋된 파일이 **하나도 없는** 트리 -> 통째로 배제한다.
 wm4spacecraft_manufacturing/results_4pol_repro/
 wm4spacecraft_manufacturing/results_4pol_oldgen_2026-08-13/
+
+# 2026-08-30 정리: 재생성 가능한 산출물 파킹 (outdated/README.md 참조)
+outdated/
