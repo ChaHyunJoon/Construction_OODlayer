@@ -148,7 +148,11 @@ end
     @test Set(scoped) == want_a
     @test length(scoped) == length(want_a)
     @test length(scoped) < full               # 좁아졌다
-    @test issubset(want_a, want_all)          # 넓힌 게 아니라 좁힌 것이다
+    # 🔴 여기 있던 `@test issubset(want_a, want_all)` 은 **삭제했다** — 오라클끼리의 비교라
+    #    `releasable_edges` 와 fork 의 결정성만으로 참이고, 어떤 생산 변경으로도 빨개질 수
+    #    없었다(이 레포가 `@test r.n_reassigned >= 0` 항진으로 무동작 기능을 몇 주 놓친 자리다).
+    #    포함관계는 위 두 집합 동일성이 이미 함의한다: testset 1 이 기본 경로 == want_all 을,
+    #    여기가 좁힌 경로 == want_a 를 못 박고, want_a 는 정의상 want_all 의 부분집합이다.
 end
 
 @testset "faulted 와 agent 를 둘 다 주면 ArgumentError" begin
