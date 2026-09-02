@@ -388,9 +388,15 @@ end
     # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
     #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이다(연언지 셋: harness·arity·kwargs).
-    #    `harness_args ⊆ {"env"}` 만 보면 16 이 집행 가능으로 표시되고, 나머지 9 는 호출
-    #    시점 `MethodError` 로 죽어 집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 =
-    #    거절보다 나쁜 거짓 admit. 이 게이트가 그 7 을 이름으로 못 박는다.
+    #    (2026-09-02 실측: 표 19 · 집행 가능 8. 연언지 (i) 만 보면 `harness_args ⊆ {"env"}`
+    #    로는 16, `BINDABLE_HARNESS_ARGS = {"env","invariant"}` 로는 17 이 통과한다 — 즉
+    #    (i) 만 믿으면 **여덟 개**가 호출 시점 `MethodError` 로 죽고 집행부의 `try` 가 그것을
+    #    `:admit`/집행됨으로 보고한다 = 거절보다 나쁜 거짓 admit. 실제 사유 분포도 실측이다:
+    #    `:arity` 9 · `:harness` 2.) 이 게이트가 그 **8** 을 이름으로 못 박는다.
+    #  · 🔴 2026-09-02 (cargo-ban T7) 알파벳 교체 1:1 — `reprice_agent_by_payload` 가 나가고
+    #    `forbid_heavy_cargo` 가 들어왔다. **개수는 19/8 그대로이고 이름 집합만 갈렸다** —
+    #    그래서 개수만 세는 게이트는 이 변경에 침묵한다. `ENACTABLE_TODAY` 와
+    #    `REGISTRY_SURFACE_TODAY` 가 **이름으로** 못 박는 것이 그 침묵을 막는다.
     #  · 🔴 `zone_keys` 를 String 으로 넘기면 `Dict{Symbol,Ball2}` 소비자들이 조용히 걸러
     #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
     #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.
@@ -503,10 +509,14 @@ end
         include("payload_edge_multiplier.jl")
     end
 
-    # 2026-09-01 (S2 최종 리뷰 F1): reprice_agent_by_payload! 의 설치·삼상 규약·알파벳 결선을
-    # 잰다. 씬을 안 짓고 ~1.5s. 🔴 여기 있던 `CB.include(.../minted_tool.jl)` 은 파일
+    # 2026-09-01 (S2 최종 리뷰 F1): reprice_agent_by_payload! 의 설치·삼상 규약을 잰다.
+    # 씬을 안 짓고 ~1.5s. 🔴 여기 있던 `CB.include(.../minted_tool.jl)` 은 파일
     # 안에서 삭제했다(중복 include 가 운영 메서드 ~5개를 스위트 안에서 재정의했다) — 자세한
     # 내용은 그 파일의 마지막 testset 주석.
+    # 🔴 2026-09-02 (cargo-ban T7): 이 원시는 **알파벳에서 빠졌다**(레지스트리에서만; 구현과
+    # 이 시험은 음성 대조로 남는다 — 실측상 argmin 을 못 움직이는 재료를 모델에게 주지 않는다).
+    # 그래서 이 파일의 "알파벳 결선" testset 은 **부재를 못 박는 쪽으로 뒤집혔고**, 필수 kwarg
+    # 구멍은 그 자리를 이어받은 `forbid_heavy_cargo` 로 옮겨 그대로 기록된다.
     @testset "payload reprice install" begin
         include("payload_reprice_install.jl")
     end
@@ -560,5 +570,20 @@ end
     #    씬을 짓고 closed=60 까지 전진시킨 뒤 **실제로 푼다**(mip_rel_gap 5.0 — 목적값 인용 금지).
     @testset "cargo ban fault exception" begin
         include("cargo_ban_fault_exception.jl")
+    end
+
+    # 2026-09-02 (cargo-ban T8): **종단** — 주조된 tool 의 body(release + forbid_heavy_cargo)가
+    # `enact_minted!` 로 집행되면 **그 로봇이 실제로 그 화물을 잃는다**(게이트 G-2).
+    # 🔴 판정은 `binding` 이 아니라 `JuMP.value(Xa[u,v2]) > 0.5` **+ 음성 대조**다: 아무것도 안
+    #    누른 대조에서도 A 가 이미 묶인 정점 2~11개를 잃고(재풀이 잡음), release 가 표적 슬롯을
+    #    solve 전에 무효 id 로 되돌려 `binding` 에는 잃을 것이 남지 않는다(Task 1 실측, S-4.4).
+    #    두 팔은 **같은 env·같은 그래프**를 보고 commit 을 안 한다 — 다른 것은
+    #    `STANDING_CARGO_BANS[]` 하나뿐이다.
+    # 🔴 공허한 초록 방지: release 가 슬롯을 실제로 뗐는지, 금지가 **행을 실제로 걸었는지**
+    #    (`nconstr` 차이 > 0)를 먼저 단언한다. 변이(금지 제거) 확인 완료 — 그때 빨개진다.
+    #    씬을 짓고 closed=60 까지 전진시킨 뒤 **두 번 푼다**(좁힌 release 라 각 OPTIMAL ~0.2s).
+    #    솔버 전역 둘(HiGHS + 빈 속성)을 빌렸다 `finally` 로 되돌린다.
+    @testset "cargo ban moves work" begin
+        include("cargo_ban_moves_work.jl")
     end
 end
