@@ -198,7 +198,9 @@ const RESOLVE_CALLS = Ref(0)
 돌아야 `Ĵ(a)` 의 차이가 **팔의 차이**가 된다.
 
 ⚠️ **실측된 시그니처 셋**(직관과 다르니 확인하고 쓸 것):
-  · `release_pending_assignments!` → `(env, invariant::InvariantSpec; faulted)`
+  · `release_pending_assignments!` → `(env, invariant::InvariantSpec; faulted, agent)`
+    (`src/respec/reassign.jl:149`. 🔴 `faulted` 와 `agent` 는 **배타적**이다 — 둘 다 주면 `ArgumentError`.
+     `agent` 는 범위를 **좁힌다**: 그 로봇이 소유한 미래 배정 간선만 둔다)
   · `assign_collaborative_tasks!`  → 첫 인자가 `model` 이다(`task_assignment.jl:433`)
   · 맨이름 `validate` 는 **존재하지 않는다**
     (`validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐)

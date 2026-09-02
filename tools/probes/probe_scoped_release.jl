@@ -25,7 +25,7 @@ CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 const TL = 60.0
 
 """
-`release_pending_assignments!`(reassign.jl:121) 의 keep 규칙을 **그대로** 옮기되, `agent`
+`release_pending_assignments!`(reassign.jl:149) 의 keep 규칙을 **그대로** 옮기되, `agent`
 가 주어지면 그 에이전트가 소유한 간선만 뗀다. 프로덕션 원시가 아니라 **가설 측정용**이다 —
 여기서 수렴이 안 나오면 원시를 안 만든다.
 """

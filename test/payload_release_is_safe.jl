@@ -105,7 +105,7 @@ end
     # task-7-addendum.md 정정 2: 빈 removed 면 아래 루프는 아무것도 단언하지 않는다(공허한 통과).
     @test !isempty(removed)
     # ⚠️ 기록만 하고 안 고친다(addendum 이 명시적으로 금지): 이 루프 안의 단언은
-    # release_pending_assignments! (src/respec/reassign.jl:127-146) 이 계산하는
+    # release_pending_assignments! (src/respec/reassign.jl:164-188) 이 계산하는
     # `keep = in_closed(id1)||in_closed(id2)||in_active(id1)||in_active(id2)` 를 그대로
     # 재유도한 것이라 그 불리언 자체가 바뀌지 않는 한 실패할 수 없다. 두 번째 구멍: 여기서
     # 읽는 id2 는 reset_slot_to_invalid! 가 그 슬롯을 재도장한 **뒤**의 값이라, 애초에

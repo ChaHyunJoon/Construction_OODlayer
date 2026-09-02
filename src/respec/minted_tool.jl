@@ -197,7 +197,7 @@ end
       (S2 lane Ruling 5). 이 원시는 Ref 둘만 쓸 뿐 재풀이를 스스로 하지 않는다 — 노린 적응
       (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
       MILP 재풀이의 몫이다.
-  · `release_pending_assignments!` `src/respec/reassign.jl:121`
+  · `release_pending_assignments!` `src/respec/reassign.jl:149`
       조용: `:released_none`(= `removed` 가 비었다 = 풀 수 있는 미래 배정 간선이 하나도
             없었다). 실제: `:released`.
       🔴 이 원시는 NamedTuple 을 안 돌려준다 — `Vector{Tuple{Int,Int}}`(떼어낸 간선)이다.
@@ -237,7 +237,7 @@ const COUNT_RETURN_PRIMITIVES = Set{String}(["reform_stuck_teams"])
     EDGELIST_RETURN_PRIMITIVES
 
 반환값이 NamedTuple 도 `Int` 도 아니라 **떼어낸 간선의 목록(`Vector{Tuple{Int,Int}}`)** 인
-원시들. 오늘은 `release_pending_assignments!` 하나다(`src/respec/reassign.jl:121` 의
+원시들. 오늘은 `release_pending_assignments!` 하나다(`src/respec/reassign.jl:149` 의
 `return removed`).
 
 🔴 이 표가 없으면 그 반환은 `:unreadable_return` 으로 떨어지고, **실제로는 읽을 수 있는데도**
@@ -340,10 +340,10 @@ ENACTABLE_TODAY` 를 못 박는다).
       안 건드림: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**. 본체가 하는 일은
                  `EDGE_PAYLOAD_MULTIPLIER[]`·`PAYLOAD_BIAS[]` 두 `Ref` 에 클로저를 쓰는 것뿐이다 —
                  씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다.
-  · `release_pending_assignments!` `src/respec/reassign.jl:121`
+  · `release_pending_assignments!` `src/respec/reassign.jl:149`
       🔴 **행이 비어 있다 — `:released_none` 조차 여기 넣지 않는다.** 이 표는 (이름, status)
          만 보는데, 이 원시의 세계 접촉은 **params 에 달려 있다**: `faulted !== nothing` 이면
-         `removed` 가 비어도 마지막 블록(`reassign.jl:175-188`)이 하류의 낡은 id 노드마다
+         `removed` 가 비어도 마지막 블록(`reassign.jl:217-230`)이 하류의 낡은 id 노드마다
          `reset_slot_to_invalid!` 를 부른다 = `removed == []` 인데 세계는 편집됐다.
          표가 그 경우를 구별할 수 없으므로 **보수적인 쪽**을 고른다: 언제나 "건드렸을 수
          있다". 대가는 깨끗한 판에서도 재개가 한 번 더 나가는 것뿐이고, 그것은
