@@ -300,7 +300,7 @@ end
             end
             CB._reset_primitive_table!()
         end
-        @test length(CB.PRIMITIVE_TABLE()) == 20       # 원래 레지스트리로 돌아왔다
+        @test length(CB.PRIMITIVE_TABLE()) == 19       # 원래 레지스트리로 돌아왔다
     end
 
     # -------------------------------------------------------------------------------------
@@ -323,7 +323,7 @@ end
             end
             CB._reset_primitive_table!()
         end
-        @test length(CB.PRIMITIVE_TABLE()) == 20                 # 원래 레지스트리로 돌아왔다
+        @test length(CB.PRIMITIVE_TABLE()) == 19                 # 원래 레지스트리로 돌아왔다
     end
 
     # -------------------------------------------------------------------------------------

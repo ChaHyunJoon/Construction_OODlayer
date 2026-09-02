@@ -60,7 +60,7 @@ end
 unenactable_why)`.
 
 🔴 `enactable` 은 "이 원시를 `bind_primitive_args` 가 만드는 인자로 **실제로 부를 수
-있는가**"다(연언지 셋은 `_enactability` 를 보라). 오늘 레지스트리 20 중 **7** 만 참이다.
+있는가**"다(연언지 셋은 `_enactability` 를 보라). 오늘 레지스트리 19 중 **8** 만 참이다(2026-09-01 실측).
 집행부는 이것이 거짓인 원시를 **부르기 전에** 거절한다 — 부르면 `MethodError` 가 나고
 `try` 가 그것을 "집행됐다"로 보고해서 거짓 admit 이 된다.
 """
@@ -88,20 +88,50 @@ function resolve_primitive(name::AbstractString)
 end
 
 """
+    BINDABLE_HARNESS_ARGS
+
+`bind_primitive_args` 가 **실제로 만들어 줄 수 있는** harness 위치인자의 이름들.
+
+🔴 이 상수가 존재하는 이유는 하나다: `_enactability` 의 연언지 (i) 과 `bind_primitive_args`
+   의 분기가 **같은 사실을 두 곳에 손으로 적고 있었다**. 둘이 어긋나면 정확히 두 가지 중
+   하나가 난다 — 좁은 쪽이 판정이면 부를 수 있는 원시를 부르기 전에 거절하고(조용한 어휘
+   축소), 넓은 쪽이 판정이면 호출 시점 `MethodError` 가 나서 집행부의 `try` 가 그것을
+   `:admit`/집행됨으로 보고한다(거짓 admit). 이제 두 자리가 이 하나를 읽는다.
+
+⚠️ 여기에 이름을 더하는 것은 **어휘를 넓히는 행위다**. 더하려면 `bind_primitive_args` 에
+   그 값을 만드는 갈래를 같이 넣어야 하고(둘은 한 커밋에서만 움직인다), 새로 집행 가능해진
+   원시마다 `SILENT_SUCCESS_STATUSES`·`WORLD_UNCHANGED_STATUSES`·`PRIMITIVE_RESUMES_CACHE`
+   세 표의 행을 채워야 한다. 안 채우면 게이트 (9)(11)(13) 이 먼저 빨개진다 — 그것이 설계다.
+
+  · `"env"`       — `ctx.env` 그대로.
+  · `"invariant"` — `build_invariant(ctx.env)`. env 의 **순수 함수**라 만들 수 있다
+                    (얼린 과거를 읽을 뿐 세계를 안 쓴다). 2026-09-01 추가.
+
+🔴 `"milp"`·`"proposal"` 은 여기에 **못 들어온다**. `commit_respec!` 이 요구하는 그 둘은
+   *이미 풀린* MILP 와 그것을 만든 제안이고, 알파벳에 solve 하는 원시가 없으므로
+   `(env, truth, params)` 에서 만들어낼 방법이 없다. 그리고 만들 필요도 없다 —
+   `apply_action!` 이 **모든 팔 뒤에** 공통 MILP 재풀이(T13, `resolve_assignments!`,
+   `src/smdp/generative.jl:238`)를 돌리므로 write-back 은 harness 의 몫이지 body 의 몫이
+   아니다. 그래서 `commit_respec` 은 2026-09-01 에 레지스트리에서 **제거됐다**.
+"""
+const BINDABLE_HARNESS_ARGS = Set{String}(["env", "invariant"])
+
+"""
     _enactability(impl, harness_args, params) -> (Bool, Symbol)
 
 이 원시를 `bind_primitive_args` 가 만드는 인자로 **실제로 부를 수 있는가**. `false` 면
 둘째 값이 어느 연언지가 깨졌는지 말한다(`:harness`/`:multimethod`/`:arity`/`:kwargs`).
 통과하면 `(true, :ok)`.
 
-🔴 연언지는 **셋**이다. `harness_args ⊆ {"env"}` 하나만 보면(2026-09-01 실측) 20 중 16 가
-집행 가능으로 표시되는데 실제로 부를 수 있는 것은 **7** 뿐이다. 나머지 9 는 호출 시점에
+🔴 연언지는 **셋**이다. 연언지 (i) 하나만 보면(2026-09-01 실측) 19 중 17 이
+집행 가능으로 표시되는데 실제로 부를 수 있는 것은 **8** 뿐이다. 나머지 11 은 호출 시점에
 `MethodError` 로 죽고, 집행부의 `try` 는 그것을 `:admit`/집행됨으로 보고한다 — 거절보다
 나쁘다(거짓 admit). 그래서 부르기 전에 시그니처를 직접 읽는다:
 
-  (i)   `harness_args` 가 전부 `"env"` 여야 한다. 바인더가 아는 harness 인자는 `env` 하나다
-        (`bind_primitive_args` 의 같은 날짜 주석 — `milp`·`proposal` 은 **solve 를 돌려야만**
-        공급되는데 알파벳에 solve 하는 원시가 없다). 빈 `harness_args` 는 이 절을 공짜로
+  (i)   `harness_args` 가 전부 `BINDABLE_HARNESS_ARGS` 안에 있어야 한다 — 오늘은
+        `{"env", "invariant"}` 다. 🔴 이 집합을 **여기 다시 적지 않는다**: 예전에는 이 절이
+        `a == "env"` 를 손으로 적고 `bind_primitive_args` 가 같은 사실을 따로 적어서, 둘이
+        어긋나면 거짓 admit 이나 조용한 어휘 축소가 났다. 빈 `harness_args` 는 이 절을 공짜로
         통과하므로 (ii) 가 반드시 뒤따라야 한다(`pop_spare`·`deprioritize_agent` 가 그 예다).
   (ii)  위치인자 개수가 `harness_args` 개수와 같아야 한다. `swap_battery!(env, role)` 는
         `harness_args == ["env"]` 이지만 위치인자가 둘이다 — 바인더는 하나만 만든다.
@@ -113,7 +143,7 @@ end
    가 던지게 두면 `resolve_primitive` 자체가 죽어서 T2 게이트까지 같이 빨개진다.
 """
 function _enactability(impl, harness_args, params)
-    all(a == "env" for a in harness_args) || return (false, :harness)
+    all(a in BINDABLE_HARNESS_ARGS for a in harness_args) || return (false, :harness)
     ms = methods(impl)
     length(ms) == 1 || return (false, :multimethod)
     m = first(ms)
@@ -131,7 +161,7 @@ end
     SILENT_SUCCESS_STATUSES
 
 원시가 **성공 계열 값을 돌려주면서 그 tool 이 노린 적응은 일으키지 않은** 경우들.
-`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 일곱 전부**여야 한다 —
+`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 여덟 전부**여야 한다 —
 게이트 (11) 이 `keys(SILENT_SUCCESS_STATUSES) == ENACTABLE_TODAY` 를 못 박으므로,
 어휘에 집행 가능한 원시가 하나 늘면 이 표를 채우기 전까지 빨갛다.
 
@@ -140,7 +170,7 @@ end
 `force_advance_stuck_carrier!` 는 `CARRIER_RESCUE != "1"`, 즉 **기본 환경**에서 항상
 `:disabled` 다. 손 안 댄 환경의 매 런이 "적응했다"로 기록됐을 것이다.
 
-출처 — 일곱 원시의 `return` 문을 전부 읽어서 적었다(추측 없음):
+출처 — 여덟 원시의 `return` 문을 전부 읽어서 적었다(추측 없음):
   · `restage_all_blocked!`   `src/respec/restage_zone.jl`
       조용: `:none`(막힌 조립체 없음) `:infeasible`(하나도 못 놓음)
             `:residual_blocked`(못 옮기는 목표가 존에 남음)   실제: `:restaged_all` `:partial`
@@ -167,6 +197,14 @@ end
       (S2 lane Ruling 5). 이 원시는 Ref 둘만 쓸 뿐 재풀이를 스스로 하지 않는다 — 노린 적응
       (재풀이가 다른 계획을 고르는 것)이 일어났는지는 이 원시의 반환이 아니라 뒤이은
       MILP 재풀이의 몫이다.
+  · `release_pending_assignments!` `src/respec/reassign.jl:121`
+      조용: `:released_none`(= `removed` 가 비었다 = 풀 수 있는 미래 배정 간선이 하나도
+            없었다). 실제: `:released`.
+      🔴 이 원시는 NamedTuple 을 안 돌려준다 — `Vector{Tuple{Int,Int}}`(떼어낸 간선)이다.
+         `_step_status` 가 `EDGELIST_RETURN_PRIMITIVES` 를 보고 위 둘로 읽는다.
+      ⚠️ `:released` 는 "노린 적응이 일어났다"가 맞다: 간선을 실제로 뗐다는 것은 다음
+         재풀이가 다시 결정할 수 있는 후보가 생겼다는 뜻이고, 그것이 이 원시가 노리는
+         전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 reprice 와 같음).
 
 ⚠️ `translate_whole_build!` 의 `:residual_blocked` 는 빌드를 **실제로 옮긴다** — 세계의
    바이트는 변한다. 그런데도 여기 있는 이유는 `applied` 가 "바이트가 변했나"가 아니라
@@ -182,6 +220,7 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
     "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
+    "release_pending_assignments" => Set([:released_none]),
 )
 
 """
@@ -193,6 +232,22 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
 못 쟀다고 보고하게 된다.
 """
 const COUNT_RETURN_PRIMITIVES = Set{String}(["reform_stuck_teams"])
+
+"""
+    EDGELIST_RETURN_PRIMITIVES
+
+반환값이 NamedTuple 도 `Int` 도 아니라 **떼어낸 간선의 목록(`Vector{Tuple{Int,Int}}`)** 인
+원시들. 오늘은 `release_pending_assignments!` 하나다(`src/respec/reassign.jl:121` 의
+`return removed`).
+
+🔴 이 표가 없으면 그 반환은 `:unreadable_return` 으로 떨어지고, **실제로는 읽을 수 있는데도**
+   "못 쟀다"로 보고된다. 그러면 `applied` 는 영원히 거짓이고 `world_maybe_dirty` 는 영원히
+   참이라, 몇 개를 풀었는지가 결정 행에서 사라진다 — 이 원시의 유일한 관측량이 그 개수다.
+   (`0 → 2103`: S2 레인 실측, `tools/monitor/policy.jl:267`.)
+
+상태 이름: 비었으면 `:released_none`, 아니면 `:released`.
+"""
+const EDGELIST_RETURN_PRIMITIVES = Set{String}(["release_pending_assignments"])
 
 """
     UNMEASURABLE_STATUSES
@@ -210,8 +265,8 @@ const UNMEASURABLE_STATUSES = Set{Symbol}([:unreadable_return])
 한 단계에서 **노린 적응이 일어났는가**. 판정 순서는 셋이다:
  1. `UNMEASURABLE_STATUSES` — 못 쟀다 → **거짓**(모르는 것을 성공으로 세지 않는다).
  2. `SILENT_SUCCESS_STATUSES` — 조용한 성공 → 거짓.
- 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 일곱은 게이트 (11) 이 (2)의 표에 전부 있음을
-    강제하므로, 이 기본값은 그 일곱에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
+ 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 여덟은 게이트 (11) 이 (2)의 표에 전부 있음을
+    강제하므로, 이 기본값은 그 여덟에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
     늘면 표가 비어 있는 동안 게이트가 먼저 빨개진다.
 """
 _step_applied(prim_name::AbstractString, status::Symbol) =
@@ -230,7 +285,7 @@ _step_applied(prim_name::AbstractString, status::Symbol) =
 분류는 그대로 옳다: 그 dict 은 "직전 점검 때 이 캐리어가 얼마나 멀었나" 를 적는 **진행 메모**
 이지 세계 상태가 아니다 — 씬 노드도, 스케줄 그래프도, 캐시도 아니다(`clear_carrier_progress!`
 가 언제든 통째로 비울 수 있는 것이 그 증거다). 이 표가 재는 것은 **폴백이 그 위에 쌓여도
-되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 일곱 전부**여야 한다(게이트가 `keys(...) ==
+되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 여덟 전부**여야 한다(게이트가 `keys(...) ==
 ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 `SILENT_SUCCESS_STATUSES` 와 별개의 표인가** (2026-08-30 T4 리뷰).
@@ -244,9 +299,9 @@ ENACTABLE_TODAY` 를 못 박는다).
 🔴 **불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`.** 세계를 안 건드렸으면 노린 적응도
 당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, T4 의
 `handled = (:admit) && world_maybe_dirty` 가 `applied` 판정보다 **넓다**는 성질을 준다.
-게이트가 일곱 전부에 대해 이 포함을 잰다.
+게이트가 여덟 전부에 대해 이 포함을 잰다.
 
-출처 — 일곱 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):
+출처 — 여덟 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):
   · `restage_all_blocked!` `src/respec/restage_zone.jl:517`
       안 건드림: `:none`(막힌 조립체 0 → 루프 전에 반환)
                  `:infeasible`(= `isempty(moved) && !isempty(failed)`; `restage_assembly!` 의
@@ -285,6 +340,17 @@ ENACTABLE_TODAY` 를 못 박는다).
       안 건드림: `:no_fleet` `:unknown_agent` `:repriced` — 🔴 **셋 다**. 본체가 하는 일은
                  `EDGE_PAYLOAD_MULTIPLIER[]`·`PAYLOAD_BIAS[]` 두 `Ref` 에 클로저를 쓰는 것뿐이다 —
                  씬 노드도, 스케줄 그래프도, 캐시도 안 건드린다.
+  · `release_pending_assignments!` `src/respec/reassign.jl:121`
+      🔴 **행이 비어 있다 — `:released_none` 조차 여기 넣지 않는다.** 이 표는 (이름, status)
+         만 보는데, 이 원시의 세계 접촉은 **params 에 달려 있다**: `faulted !== nothing` 이면
+         `removed` 가 비어도 마지막 블록(`reassign.jl:175-188`)이 하류의 낡은 id 노드마다
+         `reset_slot_to_invalid!` 를 부른다 = `removed == []` 인데 세계는 편집됐다.
+         표가 그 경우를 구별할 수 없으므로 **보수적인 쪽**을 고른다: 언제나 "건드렸을 수
+         있다". 대가는 깨끗한 판에서도 재개가 한 번 더 나가는 것뿐이고, 그것은
+         `_issue_resume!` 의 멱등성 문단이 무해하다고 못박은 일이다. 반대로 골랐다면
+         faulted 모드에서 더러워진 세계를 "깨끗하다"고 보고했을 것이다 — 그쪽이 이 표가
+         존재하는 이유인 실패다.
+      (`WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 불변식은 빈 집합이 자명하게 만족한다.)
 """
 const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "restage_all_blocked"         => Set([:none, :infeasible]),
@@ -294,6 +360,7 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
     "reprice_agent_by_payload"    => Set([:repriced, :no_fleet, :unknown_agent]),
+    "release_pending_assignments" => Set{Symbol}(),   # 🔴 일부러 비었다 — 바로 위 문단을 보라
 )
 
 """
@@ -315,10 +382,10 @@ _step_touched_world(prim_name::AbstractString, status::Symbol) =
     PRIMITIVE_RESUMES_CACHE
 
 원시가 세계를 고친 뒤 **스스로 `reset_cache_resume!` 를 부르는가**. 🔴 키는 집행 가능한
-원시 일곱 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
+원시 여덟 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 이 표가 필요한가** (2026-08-30 T4 리뷰, CRITICAL).
-`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 일곱 중 넷은 스케줄 캐시를
+`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 여덟 중 다섯은 스케줄 캐시를
 스스로 재개하지 않는다 — `reform_stuck_teams!` 의 주석이 직접 그렇게 적는다(*"the callers …
 drive the schedule via reset_cache_resume!"*). 그 대가는 `src/respec/ood_injection.jl` 이
 적어 둔 그대로다: *"그래프는 바뀌었는데 스케줄 캐시가 옛 프론티어를 들고 있어 복구가 아무
@@ -342,6 +409,11 @@ T4 배선이 이것을 **치명적**으로 만든다: body `["recover_stalled_te
       한 번 더 나가는데, 그것이 안전한 근거는 `_issue_resume!` 의 멱등성 문단에 있다.
   · `force_advance_stuck_carrier!` **false** — `update_planning_cache!(env, 0.0)` 를 부르지
       `reset_cache_resume!` 를 부르지 않는다(`replace_robot.jl:875`)
+  · `release_pending_assignments!` **false** — 자기 docstring 이 "Does not re-solve: the
+      caller's `formulate_milp` + `update_project_schedule!` do that" 라고 선언한다. 캐시
+      재개는커녕 재풀이도 안 한다. 🔴 그래서 이 원시가 든 body 는 **뒤에 재풀이가 따라와야**
+      한다 — 레지스트리의 precondition 이 그것을 요구하고, `apply_action!` 의 공통 재풀이
+      (T13, `src/smdp/generative.jl:360`)가 모든 팔 뒤에 돌아 그것을 구조적으로 보장한다.
 """
 const PRIMITIVE_RESUMES_CACHE = Dict{String,Bool}(
     "restage_all_blocked"         => true,
@@ -351,6 +423,7 @@ const PRIMITIVE_RESUMES_CACHE = Dict{String,Bool}(
     "recover_stalled_teams"       => false,
     "force_advance_stuck_carrier" => false,
     "reprice_agent_by_payload"    => false,
+    "release_pending_assignments" => false,
 )
 
 """
@@ -414,7 +487,7 @@ _resume_note(tag::Symbol, detail::AbstractString) =
 레지스트리 `params` 스키마의 `"type"` 문자열 → 그 값이 **변환될 수 있어야 하는** Julia 타입.
 
 🔴 왜 필요한가 (2026-08-30 최종 리뷰, IMPORTANT — 여섯 번째 조용한 미복구 경로).
-집행 가능한 일곱이 실제로 받는 타입 있는 키워드는 다섯이다
+집행 가능한 여덟이 실제로 받는 타입 있는 키워드는 다섯이다
 (`reform_stuck_teams!(env; min_ready::Int, snap_all::Bool)` ·
 `force_advance_stuck_carrier!(env; tol::Float64)` ·
 `reprice_agent_by_payload!(env; agent::AbstractString, light_bias::Real)`). LLM 이 `{"snap_all": "true"}` 나
@@ -519,7 +592,25 @@ function bind_primitive_args(prim, ctx)
         if a == "env"
             ctx.env === nothing && return "reject:missing_harness_arg:env"
             push!(pos, ctx.env)
+        elseif a == "invariant"
+            # `build_invariant(env)` 는 env 의 순수 함수 — 얼린 과거(closed/frozen_t0/tF)를 읽어
+            # `InvariantSpec` 을 만들 뿐 세계를 쓰지 않는다. 그래서 바인더가 만들어도 안전하다.
+            # 🔴 던지면 거절이지 예외가 아니다: 여기서 새어 나가면 `enact_minted!` 이 기록 대신
+            #    예외로 끝나고 호출자는 세계 상태를 알 방법을 잃는다(집행 루프의 같은 논거).
+            ctx.env === nothing && return "reject:missing_harness_arg:invariant(env is nothing)"
+            local inv
+            try
+                inv = build_invariant(ctx.env)
+            catch e
+                return "reject:harness_arg_build_failed:invariant:" *
+                       first(split(sprint(showerror, e), "\n"))
+            end
+            push!(pos, inv)
         else
+            # 🔴 도달 불가여야 한다 — `_enactability` 의 연언지 (i) 이 `BINDABLE_HARNESS_ARGS`
+            #    밖의 이름을 가진 원시를 **부르기 전에** 거절한다. 그래도 남겨 둔다: 두 자리가
+            #    같은 상수를 읽으므로 어긋날 수 없지만, 어긋난다면 거짓 admit 이 아니라 거절로
+            #    떨어지는 쪽이 옳다.
             return "reject:unknown_harness_arg:$(a)"
         end
     end
@@ -570,7 +661,7 @@ end
 
 🔴 그리고 그 위를 다시 `try` 로 감싼다. `hasproperty` 가 참이어도 `getproperty` 가 던지는
 반환값이 있을 수 있고, 그 예외가 여기서 새어 나가면 `enact_minted!` 가 **기록 대신
-예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 일곱에는
+예외**로 끝난다 — 호출자는 세계가 어떤 상태인지 알 방법이 없어진다. 오늘의 여덟에는
 그런 반환이 없다(이 레인이 더한 `reprice_agent_by_payload!` 도 평범한 NamedTuple 리터럴이라
 해당 없음을 확인했다) — 그래도 어휘가 다시 늘면 이 위험은 새로 열린다.
 
@@ -583,6 +674,9 @@ function _step_status(prim_name, out)
         if String(prim_name) in COUNT_RETURN_PRIMITIVES && out isa Integer
             return out > 0 ? :moved : :moved_none
         end
+        if String(prim_name) in EDGELIST_RETURN_PRIMITIVES && out isa AbstractVector
+            return isempty(out) ? :released_none : :released
+        end
         return :unreadable_return
     catch
         return :unreadable_return
@@ -593,8 +687,15 @@ _brief_val(x) = x isa AbstractVector ? string(length(x)) : string(x)
 
 "단계 기록에 실을 한 줄. 🔴 읽을 수 없는 모양이면 **그 모양을 이름으로 적는다** — 그래야
 `applied=false` 가 \"재서 아무 일도 없었다\"가 아니라 \"못 쟀다\"로 읽힌다."
-function _step_detail(out)
+function _step_detail(out, prim_name = "")
     try
+        # 🔴 읽을 수 있는 모양을 "unreadable" 이라고 적으면 그것 자체가 기록의 거짓말이다.
+        #    `_step_status` 가 `EDGELIST_RETURN_PRIMITIVES` 로 읽어낸 것과 **같은 사실**을
+        #    detail 도 읽는다 — 안 그러면 status 는 `:released` 인데 detail 은 "못 읽었다" 가
+        #    되어 한 줄 안에서 두 말이 어긋난다(2026-09-01 프로브가 실제로 그 줄을 냈다).
+        if String(prim_name) in EDGELIST_RETURN_PRIMITIVES && out isa AbstractVector
+            return "released=$(length(out))"
+        end
         hasproperty(out, :status) ||
             return "unreadable return shape ::$(typeof(out))=$(_brief_val(out))"
         return join([string(f, "=", _brief_val(getproperty(out, f)))
@@ -625,7 +726,7 @@ end
 | `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다** |
 | `partial` | 어떤 단계가 **던졌다** — 세계는 절반만 고쳐졌을 수 있고 되돌릴 방법이 없다 |
 | `world_maybe_dirty` | `touched`(`_step_touched_world`) 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다. ⚠️ `applied` 가 **아니다**: `translate_whole_build!` 의 `:residual_blocked` 는 `applied=false` 인데 빌드를 이미 옮겼다(2026-08-30 T4 리뷰) |
-| `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 일곱 중 넷이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
+| `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 여덟 중 다섯이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
 
 🔴 세 필드는 **서로 다른 질문**이다. 하나만 읽고 다른 것의 답으로 쓰지 말 것 — 특히
 `applied == false` 는 "세계가 안 변했다"가 아니다(던졌을 수도, 못 쟀을 수도 있다).
@@ -721,7 +822,7 @@ function enact_minted!(env, truth, synth)
             #    하나가 `enact_minted!` 를 기록 대신 예외로 끝내고, 호출자는 세계 상태를
             #    알 방법을 잃는다(`_step_status` 의 같은 날짜 주석).
             st = _step_status(r.prim.name, out)
-            dt = _step_detail(out)
+            dt = _step_detail(out, r.prim.name)
         catch e
             push!(steps, (name = r.prim.name, status = :threw,
                           detail = first(split(sprint(showerror, e), "\n"))))
@@ -747,8 +848,9 @@ function enact_minted!(env, truth, synth)
     end
 
     # ---- (8) 스케줄 캐시 재개 — 조용한 미복구를 막는 한 걸음 --------------------------------
-    # 🔴 일곱 중 넷(`reform_stuck_teams!` · `recover_stalled_teams!` ·
-    #    `force_advance_stuck_carrier!` · `reprice_agent_by_payload!`)은 스스로
+    # 🔴 여덟 중 다섯(`reform_stuck_teams!` · `recover_stalled_teams!` ·
+    #    `force_advance_stuck_carrier!` · `reprice_agent_by_payload!` ·
+    #    `release_pending_assignments!`)은 스스로
     #    `reset_cache_resume!` 를 부르지 않는다.
     #    그 사실을 모르고 `handled=true` 로 기본 복구 사슬을 건너뛰면, 세계는 고쳤는데
     #    프론티어가 낡은 채 남고 사건은 **이미 소비돼** 다시 오지 않는다 = 성공과 구별되지

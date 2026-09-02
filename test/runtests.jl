@@ -387,7 +387,7 @@ end
 
     # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
-    #  · 🔴 알파벳 20 중 **실제로 부를 수 있는 것은 7** 이다(연언지 셋: harness·arity·kwargs).
+    #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이다(연언지 셋: harness·arity·kwargs).
     #    `harness_args ⊆ {"env"}` 만 보면 16 이 집행 가능으로 표시되고, 나머지 9 는 호출
     #    시점 `MethodError` 로 죽어 집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 =
     #    거절보다 나쁜 거짓 admit. 이 게이트가 그 7 을 이름으로 못 박는다.
@@ -397,7 +397,7 @@ end
     #  · 🔴 "불렀는데 아무 일도 없었다"(`applied=false`)와 "부르지 않았다"(`:reject`)와
     #    "던져서 세계가 절반이다"(`partial=true`)와 "못 쟀다"(`:unreadable_return`)는 서로
     #    다른 사건이다(spec §9-2). 파생 `world_maybe_dirty` 가 앞의 둘을 합쳐서 나른다.
-    #    조용한 성공 표는 **집행 가능한 여섯 전부**를 덮어야 한다 — 처음 둘만 채웠을 때
+    #    조용한 성공 표는 **집행 가능한 여덟 전부**를 덮어야 한다 — 처음 둘만 채웠을 때
     #    넷이 아무 일도 안 하고 `applied=true` 를 냈고, 그중 `force_advance_stuck_carrier!`
     #    는 `CARRIER_RESCUE` 미설정(= 기본 환경)이면 언제나 `:disabled` 다.
     #  · 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다. 그 둘을 안 재면 params 에

@@ -11,13 +11,13 @@
 #   (6) `env` 가 있으면 위치인자로 들어간다.
 #   (7) 여러 원시가 하나의 params dict 을 나눠 갖는다 — 원시 단위 off-schema 거절 금지.
 #   (8) 그러나 **아무 원시도 모르는** 인자는 body 전체를 본 뒤 거절된다(조용히 안 버린다).
-#   (9) 🔴 알파벳 20 중 **실제로 부를 수 있는 것은 7** 이고, 나머지는 **부르기 전에**
+#   (9) 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이고, 나머지는 **부르기 전에**
 #       어느 연언지가 깨졌는지와 함께 거절된다.
 #  (10) 🔴 `zone_keys` 는 유도하지 않는다. 안 주면 키워드를 빼고, 주면 `Symbol` 로 강제해
 #       살아 있는 존인지 **호출 전에** 검사한다.
 #  (11) 🔴 "불렀는데 아무 일도 없었다" · "부르지 않았다" · "못 쟀다"는 서로 다른 사건이다 —
 #       `applied`(노린 적응) · `partial`(던졌다) · `world_maybe_dirty`(둘 중 하나) 가 verdict 와
-#       별개로 그것을 나른다. 표는 **집행 가능한 여섯 전부**를 덮어야 한다.
+#       별개로 그것을 나른다. 표는 **집행 가능한 여덟 전부**를 덮어야 한다.
 #  (12) 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다 — (9) 는 이름 집합만 재므로,
 #       params 에 키를 더하거나 impl 을 다른 함수로 돌리면 스위트가 전부 초록인 채
 #       부를 수 있는 표면이 넓어진다.
@@ -158,26 +158,36 @@ end
 # =============================================================================
 # (9) 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다**.
 #
-# 그 술어 하나만 보면 20 중 16 이 집행 가능으로 표시되는데(빈 `harness_args` 가 공짜로
-# 통과한다), 실제로 부를 수 있는 것은 7 뿐이다. 나머지 9 는 호출 시점 `MethodError` 로
+# 그 술어 하나만 보면 19 중 17 이 집행 가능으로 표시되는데(빈 `harness_args` 가 공짜로
+# 통과한다), 실제로 부를 수 있는 것은 8 뿐이다. 나머지 11 은 호출 시점 `MethodError` 로
 # 죽고 집행부의 `try` 가 그것을 `:admit`/`applied` 로 보고한다 = 거절보다 나쁜 거짓 admit.
-# 이 절이 그 7 을 **이름으로** 못 박는다 — 레지스트리 편집이 조용히 어휘를 좁히면 빨개진다.
+# 이 절이 그 8 을 **이름으로** 못 박는다 — 레지스트리 편집이 조용히 어휘를 좁히면 빨개진다.
+#
+# 🔴 2026-09-01: 7 → 8. `bind_primitive_args` 가 `invariant` 를 만들 줄 알게 되어
+#    `release_pending_assignments` 가 집행 가능해졌고, 같은 커밋에서 `commit_respec` 이
+#    레지스트리에서 빠졌다(20 → 19). 그 둘은 **한 결정의 양면**이다: MILP 재풀이와 그
+#    write-back 은 body 가 아니라 harness 의 몫이고(T13, `resolve_assignments!` 가
+#    `apply_action!` 안에서 모든 팔 뒤에 돈다), body 는 "무엇을 열고 무엇을 재가격할지"만
+#    말한다.
 # =============================================================================
 const ENACTABLE_TODAY = sort(["force_advance_stuck_carrier", "recover_stalled_teams",
-                              "reform_stuck_teams", "reprice_agent_by_payload",
-                              "resolve_schedule_wedge",
+                              "reform_stuck_teams", "release_pending_assignments",
+                              "reprice_agent_by_payload", "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
 
-@testset "(9) 알파벳 20 중 집행 가능은 7 이고, 나머지는 부르기 전에 거절된다" begin
+@testset "(9) 알파벳 19 중 집행 가능은 8 이고, 나머지는 부르기 전에 거절된다" begin
     tbl = CB.PRIMITIVE_TABLE()
-    @test length(tbl) == 20
+    @test length(tbl) == 19
     got = sort([n for n in keys(tbl) if CB.resolve_primitive(n).enactable])
-    @test got == ENACTABLE_TODAY               # 🔴 20 중 7. 넓어져도 좁아져도 빨개진다.
+    @test got == ENACTABLE_TODAY               # 🔴 19 중 8. 넓어져도 좁아져도 빨개진다.
 
     # 집행 불가는 **부르기 전에**, 어느 연언지가 깨졌는지와 함께 거절된다.
-    #  · commit_respec  — harness 에 `milp`/`proposal` 이 있다(solve 없이는 공급 불가) → :harness
-    #  · swap_battery   — harness 는 env 하나인데 위치인자가 둘이다          → :arity
-    for (nm, why) in (("commit_respec", :harness), ("swap_battery", :arity))
+    #  · compile_constraint — harness 에 `model`·`t0`·`tF`·`Xa`·`sched` 가 있다. 바인더가
+    #       만들 수 있는 것은 `BINDABLE_HARNESS_ARGS` = {env, invariant} 뿐이다  → :harness
+    #  · swap_battery       — harness 는 env 하나인데 위치인자가 둘이다        → :arity
+    # ⚠️ 이 자리의 `:harness` 표본은 2026-09-01 까지 `commit_respec` 이었다. 그 원시는 같은 날
+    #    레지스트리에서 빠졌으므로(재풀이 write-back 은 harness 의 몫) 다른 자연 표본으로 옮겼다.
+    for (nm, why) in (("compile_constraint", :harness), ("swap_battery", :arity))
         p = CB.resolve_primitive(nm)
         @test p.enactable === false
         @test p.unenactable_why === why
@@ -208,7 +218,7 @@ const ENACTABLE_TODAY = sort(["force_advance_stuck_carrier", "recover_stalled_te
         end
         CB._reset_primitive_table!()
     end
-    @test length(CB.PRIMITIVE_TABLE()) == 20   # 원래 레지스트리로 돌아왔다
+    @test length(CB.PRIMITIVE_TABLE()) == 19   # 원래 레지스트리로 돌아왔다
 end
 
 # =============================================================================
@@ -364,7 +374,6 @@ end
 # =============================================================================
 const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
     "apply_uniform_translation"   => ("_apply_uniform_translation!", ["delta"]),
-    "commit_respec"               => ("commit_respec!", String[]),
     "compile_constraint"          => ("compile_constraint!", ["constraint_type"]),
     "deprioritize_agent"          => ("deprioritize_agent!", ["agent", "factor"]),
     "dispatch_battery_courier"    => ("dispatch_battery_courier!", ["target"]),
@@ -432,17 +441,23 @@ end
 
     # ---- 두 표가 갈리는 자리를 **값으로** 못박는다 (b) --------------------------------
     # 🔴 이 셋이 결함의 실체다: 조용한 성공이지만 세계는 이미 건드렸다.
-    for (n, st) in (("translate_whole_build", :residual_blocked),
-                    ("translate_whole_build", :already_clear),
-                    ("restage_all_blocked",   :residual_blocked))
+    # 🔴 넷째(2026-09-01): `release_pending_assignments` 의 `:released_none`. 앞의 셋과 이유가
+    #    다르다 — 앞 셋은 그 status 로 가는 경로가 이미 세계를 편집한 뒤이고, 이쪽은 `faulted`
+    #    **params 에 따라** 편집일 수도 아닐 수도 있어 (이름, status) 표가 구별할 수 없다.
+    #    표가 못 가르는 곳에서는 보수적인 쪽("건드렸을 수 있다")을 고른다.
+    for (n, st) in (("translate_whole_build",       :residual_blocked),
+                    ("translate_whole_build",       :already_clear),
+                    ("restage_all_blocked",         :residual_blocked),
+                    ("release_pending_assignments", :released_none))
         @test CB._step_applied(n, st) === false         # 노린 적응은 아니다
         @test CB._step_touched_world(n, st) === true    # 🔴 그러나 세계는 건드렸다
     end
     # 나머지 조용한 성공은 두 표에서 같다 — 위 셋만 예외라는 것을 전수로 못박는다.
     for n in ENACTABLE_TODAY, st in CB.SILENT_SUCCESS_STATUSES[n]
-        expected_touch = (n, st) in (("translate_whole_build", :residual_blocked),
-                                     ("translate_whole_build", :already_clear),
-                                     ("restage_all_blocked",   :residual_blocked))
+        expected_touch = (n, st) in (("translate_whole_build",       :residual_blocked),
+                                     ("translate_whole_build",       :already_clear),
+                                     ("restage_all_blocked",         :residual_blocked),
+                                     ("release_pending_assignments", :released_none))
         @test CB._step_touched_world(n, st) === expected_touch
     end
 
@@ -460,6 +475,9 @@ end
     @test CB.PRIMITIVE_RESUMES_CACHE["reform_stuck_teams"]          === false
     @test CB.PRIMITIVE_RESUMES_CACHE["recover_stalled_teams"]       === false
     @test CB.PRIMITIVE_RESUMES_CACHE["force_advance_stuck_carrier"] === false
+    # 🔴 자기 docstring 이 "Does not re-solve: the caller's formulate_milp +
+    #    update_project_schedule! do that" 라고 선언한다 — 캐시 재개도 당연히 안 한다.
+    @test CB.PRIMITIVE_RESUMES_CACHE["release_pending_assignments"] === false
 
     # `_needs_cache_resume` = 세계를 건드렸고 && 스스로 재개 안 한다. 전수로 잰다.
     for n in ENACTABLE_TODAY, st in CB.SILENT_SUCCESS_STATUSES[n]
@@ -470,6 +488,7 @@ end
     @test CB._needs_cache_resume("recover_stalled_teams", :snapped) === true
     @test CB._needs_cache_resume("reform_stuck_teams", :moved) === true
     @test CB._needs_cache_resume("force_advance_stuck_carrier", :carrier_closed) === true
+    @test CB._needs_cache_resume("release_pending_assignments", :released) === true
     @test CB._needs_cache_resume("translate_whole_build", :translated) === false
     @test CB._needs_cache_resume("restage_all_blocked", :restaged_all) === false
     @test CB._needs_cache_resume("resolve_schedule_wedge", :unwedged) === false
@@ -556,12 +575,37 @@ end
         end
         CB._reset_primitive_table!()
     end
-    @test length(CB.PRIMITIVE_TABLE()) == 20          # 원래 레지스트리로 돌아왔다
+    @test length(CB.PRIMITIVE_TABLE()) == 19          # 원래 레지스트리로 돌아왔다
 
     # ---- (13-g) 아무것도 안 부른 판의 resume 은 :none 이다 ---------------------------
     @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).resume === :none
     @test CB.enact_minted!(nothing, nothing, _synth(reach = "needs_primitive")).resume === :none
 end
+
+# =============================================================================
+# (14) 🔴 2026-09-01 — `invariant` 하네스 인자와 `commit_respec` 제거.
+#
+# 이 절이 재는 것은 **한 결정의 양면**이다.
+#   · MILP 재풀이와 그 write-back 은 body 가 아니라 **harness** 의 몫이다 — `apply_action!`
+#     이 모든 팔 뒤에 `resolve_assignments!` (T13, `src/smdp/generative.jl:238`) 를 돌린다.
+#     그래서 `commit_respec` 은 알파벳에서 빠졌다. 남겨 두면 LLM 이 계속 body 끝에 붙이고
+#     (`synthesize.py` 의 파싱 예시들이 그렇게 가르쳤다), 그때마다 body 가 통째로 거절된다.
+#   · body 가 말해야 하는 것은 "무엇을 열고 무엇을 재가격할지"뿐이고, 그 "여는" 쪽인
+#     `release_pending_assignments` 는 `invariant` 를 요구한다. `build_invariant(env)` 는
+#     env 의 순수 함수라 바인더가 만들 수 있다.
+#
+# 🔴 두 자리가 **같은 상수**(`BINDABLE_HARNESS_ARGS`)를 읽는지도 여기서 잰다. 예전에는
+#    `_enactability` 의 연언지 (i) 과 `bind_primitive_args` 의 분기가 같은 사실을 각자
+#    적고 있었다 — 어긋나면 조용한 어휘 축소(좁은 쪽이 판정) 또는 거짓 admit(넓은 쪽이 판정)이다.
+#
+# 변이시험 — 넷 다 실제로 빨갛게 만든 뒤 되돌렸다:
+#   ·(14a): `BINDABLE_HARNESS_ARGS` 에서 `"invariant"` 를 뺀다 → (9)(14) 가 빨개진다.
+#   ·(14b): `bind_primitive_args` 의 `elseif a == "invariant"` 갈래만 지운다(상수는 그대로)
+#           → 두 자리가 어긋나 `unknown_harness_arg:invariant` 로 떨어진다.
+#   ·(14c): `_step_status` 의 `EDGELIST_RETURN_PRIMITIVES` 갈래를 지운다
+#           → `:unreadable_return` = 읽을 수 있는데 "못 쟀다"로 보고한다.
+#   ·(14d): `_step_detail` 의 같은 갈래를 지운다 → status 는 `:released` 인데 detail 은
+#           "unreadable return shape" = 한 줄 안에서 두 말이 어긋난다.
 
 # =============================================================================
 # (14) 🔴 2026-08-30 최종 리뷰 (IMPORTANT) — **타입 틀린 param 은 예외가 아니라 거절이다.**
@@ -632,6 +676,51 @@ end
     @test r.world_maybe_dirty === false     # ⟹ T4 의 handled 가 거짓 ⟹ 폴백이 산다
     @test r.resume === :none
     @test occursin("reject:param_type:min_ready", r.reason)
+end
+
+# =============================================================================
+@testset "(15) invariant 하네스 인자 · commit_respec 제거" begin
+    # ---- (15-a) 상수 하나가 두 자리를 지배한다 ---------------------------------------
+    @test CB.BINDABLE_HARNESS_ARGS == Set(["env", "invariant"])
+
+    # ---- (15-b) release 는 이제 집행 가능하다 ----------------------------------------
+    rp = CB.resolve_primitive("release_pending_assignments")
+    @test rp.harness_args == ["env", "invariant"]      # 레지스트리가 실제 시그니처를 적는다
+    @test rp.enactable === true
+    @test rp.unenactable_why === :ok
+
+    # ---- (15-c) commit_respec 은 알파벳 밖이다 ---------------------------------------
+    @test CB.resolve_primitive("commit_respec") === nothing
+    r = CB.enact_minted!(nothing, nothing,
+                         _synth(names = ["release_pending_assignments", "commit_respec"]))
+    @test r.verdict === :reject
+    @test occursin("unknown primitive: commit_respec", r.reason)
+    @test isempty(r.steps)                              # 🔴 한 발도 안 나갔다
+
+    # ---- (15-d) 바인더가 만들다 실패하면 **거절**이지 예외가 아니다 -------------------
+    # `Ref(:e)` 는 env 가 아니므로 `build_invariant` 가 던진다. 그 예외가 새어 나가면
+    # `enact_minted!` 이 기록 대신 예외로 끝나고 호출자는 세계 상태를 알 방법을 잃는다.
+    r2 = CB.enact_minted!(Ref(:e), nothing, _synth(names = ["release_pending_assignments"]))
+    @test r2.verdict === :reject
+    @test occursin("reject:harness_arg_build_failed:invariant", r2.reason)
+    @test isempty(r2.steps)
+
+    # ---- (15-e) 간선 목록 반환을 **읽는다** ------------------------------------------
+    @test CB._step_status("release_pending_assignments", Tuple{Int,Int}[]) === :released_none
+    @test CB._step_status("release_pending_assignments", [(1, 2), (3, 4)]) === :released
+    # 🔴 다른 원시의 Vector 반환까지 삼키지는 않는다 — 표에 이름이 있어야 읽는다.
+    @test CB._step_status("reform_stuck_teams", [(1, 2)]) === :unreadable_return
+
+    # ---- (15-f) detail 이 status 와 같은 말을 한다 -----------------------------------
+    @test CB._step_detail([(1, 2), (3, 4)], "release_pending_assignments") == "released=2"
+    @test CB._step_detail(Tuple{Int,Int}[], "release_pending_assignments") == "released=0"
+    # 이름을 안 주면 예전 그대로 "못 읽었다" 다(1-인자 호출자는 안 깨진다).
+    @test occursin("unreadable return shape", CB._step_detail([(1, 2)]))
+
+    # ---- (15-g) 삼상: `:released_none` 은 "적응 안 함"이되 "세계는 모른다" -----------
+    @test CB._step_applied("release_pending_assignments", :released)       === true
+    @test CB._step_applied("release_pending_assignments", :released_none)  === false
+    @test CB._step_touched_world("release_pending_assignments", :released_none) === true
 end
 
 end # module

@@ -48,7 +48,7 @@
     "",
     "🔴 a_relocates_work 는 '작업이 재분배되는가'이지 '집행자가 바뀌는가'가 아니다 —",
     "_PRIMITIVE_TABLE 의 ReplaceAgent 가 relocates=0·restores=1 인 것이 그 규약의 근거다.",
-    "그래서 replace_robot·hot_swap_robot 도 relocates=0 이고, commit_respec 도 0 이다",
+    "그래서 replace_robot·hot_swap_robot 도 relocates=0 이다",
     "(옮기는 것은 그 앞의 release/constraint 이고 commit 은 그것을 실체화할 뿐이다).",
     "",
     "predicates 에는 psi 를 싣지 않는다 — 순수 술어는 아무것도 안 바꾸므로 효과 서술자가 없다.",
@@ -83,15 +83,15 @@
             "string",
             "null"
           ],
-          "description": "robot id whose ACTIVE target should also be released; null releases only未started work"
+          "description": "robot id whose ACTIVE target should also be released; null releases only not-yet-started work"
         }
       },
-      "mechanism": "Removes free->slot ASSIGNMENT EDGES from the schedule graph so a following MILP re-solve is free to re-decide who does that work, and resets each freed slot to the unassigned (invalid-id) state so id propagation re-stamps it with whatever robot the solver actually picks. Release policy is asymmetric on purpose: a HEALTHY robot's edge is KEPT (pinned) if either endpoint is closed or active -- finished and in-progress work is never disturbed; the FAULTED robot's edge is kept only if an endpoint is CLOSED, so a faulted robot also drops its current active target and that work gets reassigned. Returns the removed (src,dst) vertex pairs. It does NOT re-solve: the caller's formulate_milp + update_project_schedule! do that, so calling this alone leaves the schedule with fewer assignments and no replacement plan. IRREVERSIBLE: the removed edges are not recorded anywhere that can put them back; measured blast radius is large (Xa nonzero 423 -> 3197).",
+      "mechanism": "Removes free->slot ASSIGNMENT EDGES from the schedule graph so a following MILP re-solve is free to re-decide who does that work, and resets each freed slot to the unassigned (invalid-id) state so id propagation re-stamps it with whatever robot the solver actually picks. Release policy is asymmetric on purpose: a HEALTHY robot's edge is KEPT (pinned) if either endpoint is closed or active -- finished and in-progress work is never disturbed; the FAULTED robot's edge is kept only if an endpoint is CLOSED, so a faulted robot also drops its current active target and that work gets reassigned. Returns the removed (src,dst) vertex pairs. It does NOT re-solve by itself; the harness's automatic post-body MILP re-solve is what turns the freed slots back into a plan. INERT ON ITS OWN: it only changes state that a later MILP re-solve reads. The harness runs that re-solve automatically after EVERY tool body, so do NOT put a commit/re-solve/formulate step in the body -- no such primitive exists in this inventory and naming one makes the whole body unenactable. IRREVERSIBLE: the removed edges are not recorded anywhere that can put them back; measured blast radius is large (Xa nonzero 423 -> 3197).",
       "when_to_use": "Only when the assignment itself is the thing that must change and a MILP re-solve will follow in the same step.",
       "reversible": false,
       "consumes": [],
       "preconditions": [
-        "a MILP re-solve must follow in the same enactment, or the build loses assignments"
+        "the harness re-solves the MILP after every body, which is what turns the released slots back into a plan; the body itself must NOT contain a commit or re-solve step"
       ],
       "gate": null,
       "gate_arity": null,
@@ -333,12 +333,12 @@
           "description": "cost multiplier on that robot's assignment edges; CLAMPED to [1, 1e3]"
         }
       },
-      "mechanism": "Registers a soft per-agent cost bias in AGENT_COST_BIAS. The energy-aware re-solve then multiplies that robot's frontier assignment edges by the factor, routing work AWAY from it WITHOUT removing it -- the feasible set is unchanged, so this cannot make the problem infeasible. The value is CLAMPED to [1, MAX_AGENT_COST_BIAS = 1.0e3]: never below 1 (a robot cannot be incentivised) and never a blow-up value. 🔴 THIS IS INERT ON ITS OWN. It only changes edge weights that a MILP re-solve reads. Without a re-solve in the same enactment, registering a bias changes nothing observable and the world is byte-identical. There is also no local undo today: clear_agent_bias! drops the bias but does not restore whatever plan the biased re-solve replaced.",
+      "mechanism": "Registers a soft per-agent cost bias in AGENT_COST_BIAS. The energy-aware re-solve then multiplies that robot's frontier assignment edges by the factor, routing work AWAY from it WITHOUT removing it -- the feasible set is unchanged, so this cannot make the problem infeasible. The value is CLAMPED to [1, MAX_AGENT_COST_BIAS = 1.0e3]: never below 1 (a robot cannot be incentivised) and never a blow-up value. 🔴 THIS IS INERT ON ITS OWN. It only changes edge weights that a MILP re-solve reads. Registering a bias changes nothing observable until a re-solve reads it; until then the world is byte-identical. INERT ON ITS OWN: it only changes state that a later MILP re-solve reads. The harness runs that re-solve automatically after EVERY tool body, so do NOT put a commit/re-solve/formulate step in the body -- no such primitive exists in this inventory and naming one makes the whole body unenactable. There is also no local undo today: clear_agent_bias! drops the bias but does not restore whatever plan the biased re-solve replaced.",
       "when_to_use": "The load axis, once a re-solve is wired into the same enactment.",
       "reversible": false,
       "consumes": [],
       "preconditions": [
-        "a MILP re-solve must run after this call or it has no effect"
+        "inert until the harness's automatic post-body MILP re-solve reads these weights; do NOT add a re-solve step to the body"
       ],
       "gate": null,
       "gate_arity": null,
@@ -759,38 +759,6 @@
       "source": "src/respec/compiler.jl:38,66,143,178"
     },
     {
-      "name": "commit_respec",
-      "surface": "milp",
-      "params": {},
-      "mechanism": "Writes a solved MILP back onto the live schedule, making the re-spec real. Everything upstream of it (releasing edges, registering a cost bias, compiling constraints) is inert until this runs. IRREVERSIBLE in practice: the previous schedule is overwritten and nothing here restores it.",
-      "when_to_use": "The terminal step of any load-axis or constraint-axis edit.",
-      "reversible": false,
-      "consumes": [],
-      "preconditions": [
-        "a feasible solved MILP for this proposal exists"
-      ],
-      "gate": null,
-      "gate_arity": null,
-      "impl": "commit_respec!",
-      "harness_args": [
-        "env",
-        "milp",
-        "proposal"
-      ],
-      "psi": {
-        "a_cost": 1.0,
-        "a_intervenes": 1.0,
-        "a_soft": 0.0,
-        "a_restores_capacity": 0.0,
-        "a_relocates_work": 0.0,
-        "a_spatial": 0.0,
-        "a_consumes_spare": 0.0,
-        "a_reversible": 0.0,
-        "a_scope": 3.0
-      },
-      "source": "src/respec/replan.jl:1621"
-    },
-    {
       "name": "reprice_agent_by_payload",
       "surface": "env_param",
       "params": {
@@ -805,7 +773,7 @@
       "preconditions": [
         "the battery fleet must be initialised (enable_battery!)",
         "candidate assignment edges must exist for the weights to be read",
-        "a MILP re-solve must run after this call or it has no effect"
+        "inert until the harness's automatic post-body MILP re-solve reads these weights; do NOT add a re-solve step to the body"
       ],
       "gate": null,
       "gate_arity": null,
