@@ -156,7 +156,6 @@ import numpy as np
 import pandas as pd
 
 import action_registry as _reg                                      # noqa: E402
-import primitive_registry as _prim                                  # noqa: E402
 
 # 전체 macro 목록과 개입 비용(e1_analyze / export_surrogate 와 동일한 값이어야 함).
 # 2026-08-15: 리터럴을 **action_registry.json 파생**으로 바꿨다(단일 진실원). 예전 리터럴에는
@@ -402,30 +401,17 @@ _PRIMITIVE_TABLE = {
 PSI_AXES = ACTION_DESCRIPTORS + ["a_n_specs", "a_consumes_spare", "a_reversible", "a_scope"]
 
 # ------------------------------------------------------------------------------------------
-# 운용 원시 알파벳 (`core/primitive_registry.json`, 19종) -- 2026-08-29 Plan B / T6a
-# ------------------------------------------------------------------------------------------
-# 🔴 왜 두 번째 표가 필요한가: 위 `_PRIMITIVE_TABLE` 은 **DSL 원시**(src/respec/spec_dsl.jl 의
-# 제약 문법)의 표다. T2(tool 합성)가 조합하는 것은 그것이 아니라 primitive_registry.json 의
-# **운용 원시**(release_pending_assignments! · translate_whole_build! …)이고, 그 이름들은
-# 여기 하나도 없었다. 아래 `psi` 의 리스트 경로가 `if n in _PRIMITIVE_TABLE` 로 거른 뒤
-# 영벡터를 돌려줬으므로 **모든 운용 원시가 ψ 공간에서 같은 점(원점)**이었다. 실측:
-#     psi(['release_pending_assignments']) == psi(['translate_whole_build'])   -> True
-#     psi(['nonsense_operation_xyz'])                                          -> 10축 전부 0.0
-# 이 상태로 spec §5-2-2 ②(ψ 근접으로 중복 판정)를 켜면 그 판정이 **항진명제**가 된다.
+# 🔴 2026-09-03: 운용 원시 알파벳(`core/primitive_registry.json`, 19종)을 **없앴다.**
 #
-# 표의 열 순서는 리터럴이 아니라 `PSI_AXES` 에서 파생한다 -- `a_n_specs` 만 빼면 아래
-# 튜플의 열 순서와 정확히 같다. 레지스트리 쪽 축 이름 집합이 여기서 어긋나면
-# `psi_tuples` 가 **로드 시점에 죽는다**(빠진 축이 조용히 0 이 되는 것을 막는 자리).
-_PRIM_TABLE_AXES = [a for a in PSI_AXES if a != "a_n_specs"]
-_OPERATIONAL_TABLE = _prim.psi_tuples(_PRIM_TABLE_AXES)
+# 그 표는 "고정된 19개 어휘" 를 전제로 손으로 적힌 ψ 계수였다. tool 합성이 이제 어휘를
+# **런타임에 생성**하므로(agent-3 이 Julia 구현을 쓴다) 그 전제 자체가 사라졌다 — 생성된
+# 이름은 정의상 이 표에 없고, 손으로 계수를 적어 둘 대상도 없다.
+# 사용자 결정(2026-09-03): ψ 는 합성 레인의 기록에서 뺀다.
+#
+# ⚠️ 아래 `_PRIMITIVE_TABLE`(DSL 원시)은 **남는다** — 그것은 서로게이트 레인의 매크로 ψ 이고
+#    합성 어휘와 무관하다. 지우면 `/decide` 의 서로게이트 특징이 죽는다.
+# ------------------------------------------------------------------------------------------
 
-# ⚠️ 두 이름 공간은 **서로소여야 한다.** 겹치면 아래 조회 순서(DSL -> 운용)가 "어느 표가
-# 이기는가" 라는 조용한 결정이 된다. 겹치는 즉시 import 에서 죽인다.
-_NS_CLASH = set(_PRIMITIVE_TABLE) & set(_OPERATIONAL_TABLE)
-if _NS_CLASH:
-    raise ValueError(
-        "DSL 원시 이름과 운용 원시(primitive_registry.json) 이름이 겹친다: %s -- "
-        "어느 표가 이기는지가 조용한 결정이 되므로 여기서 죽인다." % sorted(_NS_CLASH))
 
 # 매크로 -> primitive 조합.
 #
@@ -522,19 +508,14 @@ def psi(action):
     for n in names:
         if n in _PRIMITIVE_TABLE:                  # DSL 원시 (spec_dsl.jl 의 제약 문법)
             v.append(_PRIMITIVE_TABLE[n])
-        elif n in _OPERATIONAL_TABLE:              # 운용 원시 (primitive_registry.json)
-            v.append(_OPERATIONAL_TABLE[n])
         else:
-            hint = ("그 이름은 primitive_registry.json 의 **순수 술어**다 -- 술어는 아무것도 "
-                    "바꾸지 않으므로 ψ(효과 서술자)가 없다. tool 의 body 는 운용 원시로만 "
-                    "이루어져야 한다."
-                    if n in _prim.PREDICATE_NAMES else
-                    "오타이거나, 아직 레지스트리에 등재되지 않은 합성 원시를 의심하라.")
+            # 🔴 영벡터 폴백은 여전히 두지 않는다(그 조용한 무너짐이 psi(8) 사고였다).
+            #    다만 이름 공간은 이제 **DSL 원시 하나**다 — 운용 원시 알파벳은 없어졌다.
             raise KeyError(
-                "psi: 원시 이름 %r 가 어느 이름 공간에도 없다 -- 조용히 걸러내고 영벡터를 "
-                "돌려주지 않는다. 현행 이름 공간은 둘이다: DSL 원시(spec_dsl.jl) %s · "
-                "운용 원시(primitive_registry.json) %s. %s"
-                % (n, sorted(_PRIMITIVE_TABLE), sorted(_OPERATIONAL_TABLE), hint))
+                "psi: 원시 이름 %r 가 DSL 원시 이름 공간에 없다 -- 조용히 걸러내고 영벡터를 "
+                "돌려주지 않는다. 현행 이름 공간: %s. 합성 레인의 생성 원시라면 ψ 를 묻지 "
+                "말 것 — 2026-09-03 부로 합성 기록에서 ψ 를 뺐다."
+                % (n, sorted(_PRIMITIVE_TABLE)))
     cols = list(zip(*v))                           # 축별 열
     out = {
         "a_cost":              float(sum(cols[0])),
