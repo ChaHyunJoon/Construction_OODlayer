@@ -22,7 +22,10 @@
        전부 "비었다" 로 읽힌다. 그래서 **핀의 근거**(agent-3 에게 채울 이름이 아직 없다)를
        시험으로 못박는다: agent-3 의 출력 필드 집합이 움직이는 순간 이 파일이 빨개진다.
 """
+import ast
+import io
 import os
+import re
 import sys
 
 import pytest
@@ -161,13 +164,92 @@ def test_the_two_minted_rows_are_separated_by_the_ledger_count():
     assert _matching(dict(base, canon_count=2)) == ["re-derived"]
 
 
+#: body 를 든 기록의 `canon_count` 가 가질 수 있는 값 전부 → 맞아야 하는 행 하나.
+#: 🔴 R3 (2026-09-03). `canon_count` 가 **없거나 0** 이면 맞는 행이 하나도 없었다
+#:    ("re-derived" 는 `> 1`, "new canon" 은 `== 1` 을 요구한다). 오늘 도달 불가능한 것은
+#:    `_finish_record` 의 `body_names = []` 핀이 버티고 있어서일 뿐이고, Task 8 이 그 핀을
+#:    푸는 날 도달한다. normative 라고 선언한 표에 구멍이 있는 것이 이 표를 다시 쓴 이유다.
+#: 🔴 부재/0 은 `False`("쟀는데 재유도였다")가 아니라 **`None`("못 쟀다")** 로 간다 —
+#:    이 레인의 삼상 규약. 0 은 원장이 `observe` 를 안 거친 기록이라는 뜻이다.
+_CANON_COUNT_CASES = [({}, "canon count unmeasured"),
+                      ({"canon_count": None}, "canon count unmeasured"),
+                      ({"canon_count": 0}, "canon count unmeasured"),
+                      ({"canon_count": 1}, "new canon"),
+                      ({"canon_count": 2}, "re-derived"),
+                      ({"canon_count": 17}, "re-derived")]
+
+
+def test_a_body_bearing_record_always_matches_exactly_one_rule():
+    """🔴 R3. Task 8 이 `body_names` 를 채우는 순간 열리는 공간 전체를 덮는다."""
+    base = {"enabled": True, "refused": False, "ran": True, "error": None,
+            "body_names": ["swap_battery"]}
+    for extra, expected in _CANON_COUNT_CASES:
+        rec = dict(base, **extra)
+        assert _matching(rec) == [expected], (
+            "canon_count=%r 에서 맞은 행이 %s 다 (기대 %r)"
+            % (extra.get("canon_count", "<없음>"), _matching(rec), expected))
+
+
+def test_every_rule_has_at_least_one_witness(monkeypatch):
+    """표에 **증인 없는 행**이 생기면 빨개진다 — 죽은 행은 갈라 둘 이유가 없는 행이다."""
+    seen = {name for name, _ in _exit_paths(monkeypatch)}
+    seen |= {expected for _, expected in _CANON_COUNT_CASES}
+    assert seen == {r.name for r in SY.CONSUMER_RULES}
+
+
+def test_the_exit_paths_helper_covers_every_semantic_exit(monkeypatch):
+    """🔴 R2 트립와이어. `_exit_paths` 가 "탈출 경로 전부" 라고 주장하므로 그것을 잰다.
+
+    🔴 `return` 문의 **개수**가 곧 탈출 경로의 개수는 아니다: 중첩 클로저 `_design` 의
+    `return` 은 `synthesize_multi` 에서 나가지 않는다. 그래서 AST 로 그것을 빼고 센다.
+    `raise` 는 하나도 없고 마지막 문이 `return` 이라(암묵적 낙하 없음) 이 수가 전부다.
+    """
+    src = io.open(os.path.join(HERE, "synthesize.py"), encoding="utf-8").read()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "synthesize_multi")
+    inner = {r.lineno
+             for nested in ast.walk(fn)
+             if isinstance(nested, (ast.FunctionDef, ast.Lambda)) and nested is not fn
+             for r in ast.walk(nested) if isinstance(r, ast.Return)}
+    exits = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Return)
+             if n.lineno not in inner]
+    assert not [n for n in ast.walk(fn) if isinstance(n, ast.Raise)], "이 경로는 거절이지 예외가 아니다"
+    assert isinstance(fn.body[-1], ast.Return), "암묵적 낙하가 생겼다 — 세는 법이 달라진다"
+    assert len(exits) == len(_exit_paths(monkeypatch)), (
+        "의미상 탈출 경로 %d 개인데 `_exit_paths` 는 %d 개를 몬다 (줄: %s)"
+        % (len(exits), len(_exit_paths(monkeypatch)), sorted(exits)))
+
+
+#: 산문 표가 `tool_minted` 를 적는 네 가지 모양. 코드의 값 → 산문의 문구.
+#: 🔴 `dict` 키로 `False`/`True`/`None`/`"disabled"` 를 쓴다 — 넷 다 서로 다른 해시라
+#:    파이썬의 `False == 0` 함정에 걸리지 않는다(`0` 키가 없다).
+_PROSE_OUTCOME = {"disabled": '-> tool_minted == "disabled"',
+                  None: "-> tool_minted is None",
+                  False: "-> tool_minted == False",
+                  True: "-> tool_minted == True"}
+_OUTCOME_RE = re.compile(r'-> tool_minted (?:is None|== "disabled"|== False|== True)')
+
+
 def test_the_prose_table_and_the_code_table_do_not_fork():
     """🔴 진실원 하나. docstring 의 표는 `CONSUMER_RULES` 를 사람이 읽는 모양으로 편 것이고,
-    이 레포는 같은 사실이 두 자리에 사는 것으로 세 번 데었다."""
+    이 레포는 같은 사실이 두 자리에 사는 것으로 세 번 데었다.
+
+    🔴 R4 (2026-09-03). 이 시험은 `name` 과 `condition` 만 봐서 **결과 열(`tool_minted`)의
+    포크를 공허하게 통과시켰다** — I5 가 바로 그 열에 대한 결함이었는데. 이제 각 행의
+    조건 **뒤에 처음 오는** `-> tool_minted …` 를 읽어 코드의 값과 대조한다.
+    """
     doc = " ".join((SY.__doc__ or "").split())
     for r in SY.CONSUMER_RULES:
         assert r.name in doc, "규칙 %r 이 모듈 docstring 의 표에 없다" % r.name
-        assert r.condition in doc, "규칙 %r 의 조건이 표와 갈렸다: %r" % (r.name, r.condition)
+        # 조건은 표에 **정확히 한 번** 나온다 — 아니면 아래 `index` 가 엉뚱한 행을 읽는다.
+        assert doc.count(r.condition) == 1, (
+            "규칙 %r 의 조건이 표에 %d 번 나온다: %r" % (r.name, doc.count(r.condition),
+                                                        r.condition))
+        m = _OUTCOME_RE.search(doc, doc.index(r.condition))
+        assert m is not None, "규칙 %r 의 조건 뒤에 결과 열이 없다" % r.name
+        assert m.group(0) == _PROSE_OUTCOME[r.tool_minted], (
+            "규칙 %r 의 **결과 열**이 갈렸다: 산문 %r vs 코드 tool_minted=%r"
+            % (r.name, m.group(0), r.tool_minted))
 
 
 def test_no_two_rules_share_a_condition():

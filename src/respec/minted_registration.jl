@@ -12,10 +12,12 @@
 #      `reset_minted_table!` 은 표만 비운다 — 이름은 여전히 `isdefined` 다.
 #
 #    귀결(한 프로세스가 런을 둘 처리할 때): 뒤 런이 앞 런과 **같은 이름**을 다시 주조하려
-#    하면 규약 5 에 걸려 거절된다. 그 거절은 아래에서 **세 번째 사유**
+#    하면 규약 5 에 걸려 거절된다. 그 거절은 아래 표에서 **네 번째 사유**
 #    (`reject:impl_name_already_minted`)로 따로 나간다 — 안 가르면 그것이 C3 의 D6 신호
 #    (`…_withheld` = 모델이 비공개 능력을 스스로 재유도했다)로 오분류되고, 이 레인의 첫
 #    측정이 프로세스 재사용이라는 배관 사실 때문에 거짓 양성을 낸다.
+#    (같은 부류의 두 번째 누출을 R1 이 막았다: CB 가 `using` 하는 모듈의 이름도 export 는
+#    안 돼 있어 D6 신호로 새고 있었다 → `reject:impl_name_exists_imported`.)
 #
 #    ⚠️ **런 경계를 세우는 기전은 아직 없다.** `reset_minted_table!` 의 생산 호출자는
 #    **0개**이고(시험만 부른다) 어느 코드도 "런이 끝났다" 를 이 파일에 알리지 않는다.
@@ -53,10 +55,12 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    arity·kwargs 연언지를 **구성상** 통과한다. 오늘 19개 중 9개를 막고 있는 그 결함
    (impl 이 params 를 위치인자로 받는다)이 새 원시에서는 원천적으로 안 생긴다.
 🔴 규약 5 는 이 사슬에서 가장 나쁜 사고를 막는다 — `Core.eval` 이 기존 이름을 덮으면
-   시뮬레이터 코드를 런타임에 교체한다. **검사는 그대로 `isdefined` 다**(export 여부로
-   좁히면 그 사고가 비공개 이름으로 그대로 열린다).
+   시뮬레이터 코드를 런타임에 교체한다. **검사 자체는 그대로 `isdefined` 다**(export
+   여부로 좁히면 그 사고가 비공개 이름으로 그대로 열린다). 아래에서 갈리는 것은 **거절
+   사유**뿐이고, 무엇을 거절하는지는 한 톨도 안 좁아진다.
 
-🔴 **그런데 충돌은 한 사건이 아니라 셋이고, 사유가 갈려야 한다** (2026-09-03 최종 리뷰 C3).
+🔴 **그런데 충돌은 한 사건이 아니라 넷이고, 사유가 갈려야 한다** (2026-09-03 최종 리뷰
+   C3 이 셋으로 갈랐고, R1 이 넷째를 더했다).
    모델이 본 표면은 `names(@__MODULE__)`(export 된 것)뿐이다 — 산출물
    `world_interface.json` 이 바로 그 집합에서 생성되고, 설계 D6 이 비공개 impl 열을
    **일부러** 안 보여준다. 그래서:
@@ -64,10 +68,11 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    | 사유 | 뜻 | 이것이 말하는 것 |
    |---|---|---|
    | `impl_name_exists_shown` | 인터페이스에 실린 이름을 덮으려 했다 | 모델이 준 인터페이스를 안 읽었다 = 모델의 실수 |
-   | `impl_name_exists_withheld` | **안 보여준** 비공개 결속의 이름을 골랐다 | 🔴 **D6 신호** — 우리가 감춘 능력을 스스로 다시 유도했다 |
+   | `impl_name_exists_withheld` | **안 보여준** 비공개 결속이고 **CB 자신의 것**이다 | 🔴 **D6 신호** — 우리가 감춘 능력을 스스로 다시 유도했다 |
+   | `impl_name_exists_imported` | CB 가 `using` 하는 **남의 모듈**의 이름이다 | 모델이 `Base`/`Graphs` 가 이미 쓰는 이름을 골랐다 — 위 둘 **어느 쪽도 아니다** |
    | `impl_name_already_minted` | 이 프로세스가 앞서 주조한 이름이다 | 배관 사실(머리말 I1)이지 모델에 대한 사실이 **아니다** |
 
-   🔴 가운데 줄이 이 레인의 **첫 측정 대상**이다. 설계 §9 는 "모델이 export 안 된 능력
+   🔴 둘째 줄(`…_withheld`)이 이 레인의 **첫 측정 대상**이다. 설계 §9 는 "모델이 export 안 된 능력
    (`release_pending_assignments!`)을 처음부터 못 쓸 수 있다" 를 첫 번째 실현 가능성
    위험으로 적었다 — 그 이름을 **모델이 스스로 골랐다**는 것은 그 위험이 실현되지 않았다는
    증거이고, 사유가 하나뿐이던 어제까지는 그 증거가 "너는 기존 이름을 덮으려 했다" 라는
@@ -75,8 +80,30 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    `release_pending_assignments!` · `recover_stalled_teams!` · `resolve_schedule_wedge!` ·
    `force_advance_stuck_carrier!` · `forbid_heavy_cargo!`.
 
-   ⚠️ 셋째 줄이 없으면 둘째 줄이 오염된다: `Core.eval` 한 이름은 export 되지 않으므로,
+   ⚠️ 넷째 줄이 없으면 둘째 줄이 오염된다: `Core.eval` 한 이름은 export 되지 않으므로,
    앞 런이 주조한 이름을 다시 주조하려는 시도가 **D6 신호로 오분류**된다(머리말 I1).
+
+   🔴 **셋째 줄이 없어도 둘째 줄이 오염된다** (R1, 2026-09-03). `isdefined && !exported`
+   는 뜻보다 훨씬 넓다 — CB 는 `Graphs`·`MetaGraphs`·`DataStructures`·`Base` 등 ~30 모듈을
+   `using` 하므로 평범한 이름이 전부 그 술어를 만족한다(실측: `add_edge!`·`rem_edge!` →
+   `Graphs.SimpleGraphs`, `set_prop!` → `MetaGraphs`, `push!`·`empty!` → `Base`). 그래프를
+   편집하는 원시를 `add_edge!` 라 이름 붙이는 것은 전혀 이상하지 않은데, 좁히기 전에는
+   그것이 **D6 적중으로 기록됐다** — Task 11 의 첫 유료 런이 재려는 단 하나의 측정이다.
+   가르는 사실은 **결속의 소유 모듈**이고 `Base.binding_module(@__MODULE__, sym)` 이 낸다.
+   ⚠️ `parentmodule` 이 아니다: 그것은 함수·타입에만 있어 `_MINTED_TABLE` 같은 값 결속에서
+   `MethodError` 를 던진다(실측) — 이 경로는 거절이지 예외가 아니어야 한다.
+   🔴 **CB 가 남의 모듈에서 확장하는 이름**(`push!`)의 소유 모듈은 여전히 `Base` 이고,
+   그것이 우리가 원하는 분류다. D6 은 "우리가 **감춘** 능력" 에 대한 사건인데 `push!` 은
+   감춘 능력이 아니라 누구나 아는 이름이다 — CB 가 거기에 메서드를 얹었다는 사실은 모델이
+   무엇을 재유도했는지에 대해 아무 말도 하지 않는다.
+
+   🔴 **네 사유는 이름 공간을 분할한다**(시험 (15)). 결정 트리는 ① 이 프로세스가
+   주조했나 → ② export 됐나 → ③ 소유 모듈이 CB 인가 이고, 물음이 셋 다 이지선다라 잎이
+   정확히 하나 골라진다(겹치지 않음). `isdefined` 가 거짓인 이름만 규약 5 를 통과한다 —
+   그것이 사유 없이 빠져나가는 유일한 길이다(빠짐없음).
+   ⚠️ **순서가 뜻을 정한다.** ①이 ③보다 앞이어야 한다: `Core.eval` 로 심은 이름의 소유
+   모듈은 CB 이므로, 순서를 바꾸면 앞 런이 주조한 이름이 다시 `withheld` 로 샌다
+   (시험 (13) 이 그 순서를 잰다).
 
    ⚠️ 이 함수는 이제 프로세스 상태(`_MINTED_EVER`·모듈 심볼 표)를 **읽는다**. 여전히
    세계도 `eval` 도 안 건드린다 — 순수함의 뜻은 그것이었다.
@@ -91,12 +118,23 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
         return "reject:impl_name_already_minted:$(name) — 이 프로세스가 앞서 주조해 " *
                "`Core.eval` 한 이름이다. 표는 리셋돼도 정의는 안 지워진다(파일 머리말 I1)"
     elseif isdefined(@__MODULE__, sym)
-        return sym in names(@__MODULE__) ?
-            "reject:impl_name_exists_shown:$(name) — 세계 인터페이스에 실려 있는 이름이다. " *
-            "기존 이름을 덮을 수 없다 — 다른 이름을 고르라" :
+        if sym in names(@__MODULE__)
+            return "reject:impl_name_exists_shown:$(name) — 세계 인터페이스에 실려 있는 " *
+                   "이름이다. 기존 이름을 덮을 수 없다 — 다른 이름을 고르라"
+        end
+        # 🔴 R1. export 안 됐다는 것만으로는 **비공개 CB 능력**이 아니다 — 결속의 소유
+        #    모듈을 봐야 한다(위 표 둘째·셋째 줄). `Base.binding_module` 은 정의된 결속마다
+        #    모듈을 **하나** 내므로 아래 둘은 서로 배타적이고 함께 빠짐없다.
+        owner = Base.binding_module(@__MODULE__, sym)
+        # 🔴 괄호가 필요하다 — `@__MODULE__ ?` 는 매크로가 `?` 를 삼켜 파스가 깨진다.
+        return owner === (@__MODULE__) ?
             "reject:impl_name_exists_withheld:$(name) — 🔴 이 이름은 모듈에 **있지만** " *
             "인터페이스에는 안 실린다(설계 D6, export 안 됨). 덮을 수는 없으니 다른 이름을 " *
-            "고르라 — 그러나 이 거절은 모델이 감춰진 능력을 스스로 다시 유도했다는 신호다"
+            "고르라 — 그러나 이 거절은 모델이 감춰진 능력을 스스로 다시 유도했다는 신호다" :
+            "reject:impl_name_exists_imported:$(name) — 이 이름은 `ConstructionBots` 가 " *
+            "`using` 하는 모듈($(owner))의 것이다. 덮을 수는 없으니 다른 이름을 고르라 — " *
+            "그러나 이것은 D6 신호가 **아니다**: 우리가 감춘 능력이 아니라 남의 모듈이 이미 " *
+            "쓰는 이름을 골랐다는 사실이다"
     end
 
     local top

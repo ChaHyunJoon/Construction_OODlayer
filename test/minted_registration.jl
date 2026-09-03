@@ -337,4 +337,74 @@ end
     @test occursin("already_minted", why)         # 세 번째 사건이다
     @test !occursin("withheld", why)              # 🔴 D6 신호로 오분류되지 않는다
 end
+# 🔴 R1 (2026-09-03, 최종 수정 라운드). testset (12) 의 `withheld` 갈래는
+#    `isdefined(CB, sym) && !exported` 로 계산됐는데, 그 술어는 뜻보다 **훨씬 넓다**:
+#    `ConstructionBots` 는 `Graphs`·`MetaGraphs`·`DataStructures`·`Base` 등 ~30 모듈을
+#    `using` 하므로 평범한 이름들이 전부 "정의됐지만 export 안 됨" 이다(실측:
+#    `add_edge!`→Graphs.SimpleGraphs · `set_prop!`→MetaGraphs · `push!`/`empty!`→Base).
+#    ⟹ 그래프를 편집하는 원시를 `add_edge!` 라 이름 붙인 모델이 **D6 신호로 기록된다** —
+#    Task 11 의 첫 유료 런이 재려는 단 하나의 측정에 거짓양성이 실린다.
+#    가르는 사실은 **결속의 소유 모듈**이고, `Base.binding_module` 이 그것을 낸다
+#    (`parentmodule` 은 함수·타입에만 있어 `_MINTED_TABLE` 같은 값에서 MethodError 를
+#    던진다 — 이 경로는 거절이지 예외가 아니어야 한다).
+#    🔴 `push!` 은 CB 가 **확장**하는 이름이다. 소유 모듈은 여전히 `Base` 이고, 그것이
+#    우리가 원하는 분류다 — "모델이 Base 가 이미 쓰는 이름을 골랐다" 는 "우리가 감춘
+#    능력을 재유도했다" 와 다른 사실이다.
+@testset "(14) 🔴 R1: 남의 모듈에서 온 이름은 D6 신호가 아니다" begin
+    # 전제 — 넷 다 `isdefined && !exported` 다. 옛 술어는 이것을 전부 withheld 로 읽었다.
+    for s in (:add_edge!, :set_prop!, :rem_edge!, :push!, :empty!)
+        @test isdefined(CB, s)
+        @test !(s in names(CB))
+    end
+    _code(n) = "function $(n)(env; k = 1)\n    return :ok\nend\n"
+    _reason_code(w) = join(split(w, ":")[1:2], ":")
+
+    imported = Dict(n => something(CB.check_impl_conventions(n, _code(n)), "")
+                    for n in ("add_edge!", "set_prop!", "rem_edge!", "push!", "empty!"))
+    for (n, w) in imported
+        @test startswith(w, "reject:impl_name_exists_imported:")
+        # 🔴 이것이 오늘의 red 다: 넷 다 `withheld` 로 나온다 = D6 거짓양성.
+        @test !occursin("withheld", w)
+        @test occursin("name_exists", w)          # 낡은 소비자 호환(테스트셋 12 와 같은 계약)
+    end
+
+    # CB 자신의 비공개 결속은 **여전히** D6 신호다 — 좁히기가 신호를 죽이지 않았다.
+    withheld = something(CB.check_impl_conventions(
+        "release_pending_assignments!", _code("release_pending_assignments!")), "")
+    @test startswith(withheld, "reject:impl_name_exists_withheld:")
+
+    # 셋이 서로 다른 사유 **코드**다(agent-3 에게 되먹임되는 것이 그것이다).
+    shown = something(CB.check_impl_conventions(
+        "reform_stuck_teams!", _code("reform_stuck_teams!")), "")
+    codes = _reason_code.([shown, withheld, imported["add_edge!"]])
+    @test length(unique(codes)) == 3
+end
+
+# 🔴 R1 의 두 번째 절반: 사유들이 공간을 **분할**한다(빠짐없이 · 겹치지 않게). 위 넷은
+#    표본이고, 이것은 그 표본을 낳은 결정 트리 자체를 잰다.
+@testset "(15) 🔴 R1: 규약 5 의 네 사유가 이름 공간을 분할한다" begin
+    _code(n) = "function $(n)(env; k = 1)\n    return :ok\nend\n"
+    # 사유 → 그 사유를 내야 하는 실제 이름 하나. 넷을 덮는다.
+    cases = [("reject:impl_name_already_minted:",   "twice_minted!"),          # (13) 이 심었다
+             ("reject:impl_name_exists_shown:",     "reform_stuck_teams!"),
+             ("reject:impl_name_exists_withheld:",  "recover_stalled_teams!"),
+             ("reject:impl_name_exists_imported:",  "set_prop!")]
+    for (prefix, n) in cases
+        w = something(CB.check_impl_conventions(n, _code(n)), "")
+        @test startswith(w, prefix)
+        # 겹치지 않는다: 다른 셋 중 어느 접두사도 이 사유의 접두사가 아니다.
+        @test count(p -> startswith(w, p), first.(cases)) == 1
+    end
+    # 빠짐없다: 정의된 이름은 넷 중 하나로 **반드시** 떨어진다. 규약 5 를 통과하는 유일한
+    # 길은 `isdefined == false` 다.
+    for n in ("add_edge!", "push!", "release_pending_assignments!", "reform_stuck_teams!",
+              "twice_minted!")
+        w = something(CB.check_impl_conventions(n, _code(n)), "")
+        @test count(p -> startswith(w, p), first.(cases)) == 1
+    end
+    @test !isdefined(CB, :a_name_no_module_owns!)
+    @test CB.check_impl_conventions(
+        "a_name_no_module_owns!", _code("a_name_no_module_owns!")) === nothing
+end
+
 end # module

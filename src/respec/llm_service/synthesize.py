@@ -62,7 +62,7 @@ called -- so a switched-off row carries `synthesis_event == False` **and**
 record's own field, stamped from `synthesis_enabled()` when the record is created), and
 equivalently `tool_minted == "disabled"`. It is NOT `synthesis_event`.
 
-🔴 **The table lives in code, as `CONSUMER_RULES` below.** What follows is the same eight rows
+🔴 **The table lives in code, as `CONSUMER_RULES` below.** What follows is the same nine rows
 spelled out for a human, and `test_synthesis_record_contract.py` asserts the two do not fork --
 one source of truth, because this repo has been burned three times by the same fact living in
 two places. Every row's condition is **sufficient on its own**: exactly one of them matches any
@@ -73,6 +73,12 @@ conditions** (`ran == True and error is None and body_names != []`) and opposite
 fact that actually separates them is the **ledger novelty of the canon key**, and the record
 carries it as `canon_count` (1 = this record is the first of its canonical form). It is in the
 conditions now; without it a consumer indexing by this table cannot tell the two apart.
+
+⚠️ **2026-09-03 (R3): those two conditions left a hole.** `body_names != []` with `canon_count`
+absent or `0` matched **no** row at all -- "re-derived" wants `> 1` and "new canon" wants `== 1`.
+A normative table with a hole is the failure mode this table was rewritten to remove, so the
+third case is a row of its own now ("canon count unmeasured"), and the three are read through
+**one** helper (`_canon_count`) so they cannot drift apart again.
 
     was switched off  enabled == False
                       (synthesis_event == False · ran == False · error is None · stages == []
@@ -99,6 +105,16 @@ conditions now; without it a consumer indexing by this table cannot tell the two
                       and canon_count > 1                     -> tool_minted == False
     new canon         ran == True and error is None and body_names != []
                       and canon_count == 1                    -> tool_minted == True
+    canon count unmeasured
+                      ran == True and error is None and body_names != []
+                      and canon_count is absent or < 1
+                      (🔴 R3. `_finish_record` writes `canon_count` from the ledger, where it
+                       is >= 1 by construction -- so absent or 0 means **the ledger never
+                       observed this record**, e.g. a row written by a producer that does not
+                       keep one. That is "could not measure", which is `None`, and NOT the
+                       `False` of "we measured, and the model re-derived". Unreachable today
+                       only because the `body_names` pin holds; Task 8 opens it)
+                                                              -> tool_minted is None
 
 ⚠️ Records written **before 2026-09-03** carry no `refused` key at all. Absent is not `False`:
 it means the guard did not exist yet, and such a row cannot be indexed by the two rows that
@@ -817,8 +833,10 @@ def params_flatness(params_text: Optional[str]) -> Tuple[Optional[bool], str]:
 # (4) firing · tool_minted
 # ==========================================================================================
 #: The consumer rules of this module's docstring, **as code**. The prose table up there is the
-#: same eight rows for a human reader, and `test_synthesis_record_contract.py` asserts the two
-#: never fork (name and condition string are looked for verbatim in `__doc__`).
+#: same nine rows for a human reader, and `test_synthesis_record_contract.py` asserts the two
+#: never fork -- name, condition string **and the `tool_minted` outcome column** are all read
+#: back out of `__doc__` (before R3 the outcome column was never checked, so a fork in exactly
+#: the column finding I5 was about passed green).
 #:
 #: 🔴 Each `condition` is **sufficient on its own** -- exactly one rule matches any record
 #: `synthesize_multi` returns, and that file drives every exit path to prove it rather than
@@ -827,6 +845,23 @@ def params_flatness(params_text: Optional[str]) -> Tuple[Optional[bool], str]:
 #: 🔴 `matches` uses `.get` throughout: a record that returned early does not carry the keys of
 #: the later stages, and a KeyError in a rule would turn "this row does not apply" into a crash.
 ConsumerRule = namedtuple("ConsumerRule", "name condition tool_minted matches")
+
+
+def _canon_count(rec):
+    """`canon_count` as a **measured** ledger count, or `None` when it was not measured.
+
+    🔴 One source of truth for the last three rows. `_finish_record` takes this value from
+    `SynthesisLedger.entries[key]["count"]`, which is `>= 1` the moment `observe` has run --
+    so absent, `0`, or a non-int all mean the same thing: no ledger observation stands behind
+    this record. Three-state, as everywhere in this file: `None` is "could not measure", and
+    it must not collapse into the `False` of "measured, and the canon was already seen".
+    ⚠️ `bool` is excluded explicitly -- `isinstance(True, int)` is `True` in Python, and
+    `True == 1`, so a stray boolean would otherwise be read as the count `1` ("new canon").
+    """
+    v = rec.get("canon_count")
+    if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+        return None
+    return v
 
 CONSUMER_RULES = (
     ConsumerRule(
@@ -856,12 +891,21 @@ CONSUMER_RULES = (
         "re-derived",
         "ran == True and error is None and body_names != [] and canon_count > 1", False,
         lambda r: (r.get("ran") is True and r.get("error") is None
-                   and bool(r.get("body_names")) and (r.get("canon_count") or 0) > 1)),
+                   and bool(r.get("body_names")) and (_canon_count(r) or 0) > 1)),
     ConsumerRule(
         "new canon",
         "ran == True and error is None and body_names != [] and canon_count == 1", True,
         lambda r: (r.get("ran") is True and r.get("error") is None
-                   and bool(r.get("body_names")) and r.get("canon_count") == 1)),
+                   and bool(r.get("body_names")) and _canon_count(r) == 1)),
+    # 🔴 R3. The three rows above split `_canon_count(r)` into `None` / `== 1` / `> 1`, which
+    #    is exhaustive and disjoint by construction -- a body-bearing record can no longer fall
+    #    through the table.
+    ConsumerRule(
+        "canon count unmeasured",
+        "ran == True and error is None and body_names != [] "
+        "and canon_count is absent or < 1", None,
+        lambda r: (r.get("ran") is True and r.get("error") is None
+                   and bool(r.get("body_names")) and _canon_count(r) is None)),
 )
 
 

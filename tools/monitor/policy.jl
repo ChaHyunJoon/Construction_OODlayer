@@ -1414,12 +1414,20 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 "돌았는데 값이 없다"(dict 안이 nothing)가 구분 불가능해진다.
 
 🔴 이 열이 **항상 함께 도착하는 것이 아니다.** `synthesize_multi` 의 탈출 경로는
-**일곱**이다(2026-09-03 재실측 — 예전 문구의 "다섯" 은 삭제된 `maybe_synthesize` 의 숫자였다).
-이른 반환 여섯 — (1) 플래그 꺼짐(`tool_minted="disabled"`) · (2) observe 실패 ·
-(3) design 실패 · (4) redesign 실패 · (5) `expressible is not False`(발화 사건이 아니다) ·
-(6) compose 실패 — 과 정상 종료 하나(`_finish_record`)다. 상세를 다 채우는 것은 마지막
-하나뿐이고, 나머지 여섯은 `synthesis_event`·`synthesis_ran`·`synthesis_error` 정도만 채운 채
-나머지를 `nothing` 으로 남긴다. 그 부재는 여기서도 "못 쟀다"(spec §9-2)로 그대로 nothing 이
+**여덟**이다(2026-09-03 재실측 두 번째 — "다섯" 은 삭제된 `maybe_synthesize` 의 숫자였고,
+"일곱" 은 G1 거절이 들어오기 직전의 숫자다). 소스 순서로 이른 반환 일곱 —
+(1) 플래그 꺼짐(`tool_minted="disabled"`) · (2) 🔴 G1 거절(`refused="no_compose_interface"`,
+과금 0건이라 `stages==[]`) · (3) observe 실패 · (4) design 실패 · (5) redesign 실패 ·
+(6) `expressible is not False`(발화 사건이 아니다) · (7) compose 실패 — 과 정상 종료
+하나(`_finish_record`)다. 상세를 다 채우는 것은 마지막 하나뿐이고, 나머지 일곱은
+`synthesis_event`·`synthesis_ran`·`synthesis_error`(또는 `refused`) 정도만 채운 채 나머지를
+`nothing` 으로 남긴다.
+
+⚠️ **`return` 문의 개수가 곧 탈출 경로의 개수가 아니다.** 그 함수 안의 `return` 은 아홉인데
+하나는 중첩 클로저 `_design` 의 것이라 `synthesize_multi` 에서 나가지 않는다. `raise` 는
+0개이고 마지막 문이 `return` 이라(암묵적 낙하 없음) 여덟이 전부다 — AST 로 셌고,
+`test_synthesis_record_contract.py` 의 `test_the_exit_paths_helper_covers_every_semantic_exit`
+가 그 수를 코드로 못박는다. 그 부재는 여기서도 "못 쟀다"(spec §9-2)로 그대로 nothing 이
 된다 — 흔한 실행 경로이지 예외가 아니다.
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
