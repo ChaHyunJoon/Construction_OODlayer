@@ -426,6 +426,11 @@ class DesignToolSpec(dspy.Signature):
         "empty on the first attempt. On a redesign it names the parameters of your previous "
         "specification that the world cannot supply -- each of them selects among behaviours "
         "instead of carrying a value. Replace them by committing to one mechanism.")
+    composer_feedback: str = dspy.InputField(desc=
+        "empty on the first attempt. On a redesign it reports that the stage which builds "
+        "your tool out of primitive operations could not realise the mechanism you "
+        "specified, and which capability it found missing. The operations it holds are "
+        "deliberately not shown to you.")
 
     expressible: bool = dspy.OutputField(desc=
         "true if the existing vocabulary above can already express an adequate response; "
@@ -1140,6 +1145,76 @@ def _params_view(params_text):
 
 
 # ==========================================================================================
+# (4-c) The composer's verdict travels back to agent-2 -- F2
+# ==========================================================================================
+# 🔴 Why (2026-09-02, measured on the F5 run). agent-3 answered `reach="needs_primitive"` on a
+#    body it had **already composed**: `release_pending_assignments(agent=R4)` was in the body,
+#    and the only thing it declared missing was the **priority ordering agent-2 had asked for**
+#    ("... can release tasks, but it does not consider task priority"). Nothing in the pipeline
+#    read that verdict. The redesign loop above fires on ungrounded **parameters** only, so a
+#    specification that is perfectly grounded and simply unrealisable ends the run.
+#
+# 🔴 Why the feedback is REDACTED (the user's decision, 2026-09-02). agent-3's prose **names the
+#    inventory** -- the sentence above quotes `release_pending_assignments` by name. Handing it
+#    to agent-2 verbatim would end contract (B) of `test_synthesize_multi.py` (agent-2 must not
+#    see the alphabet), and from that point on this lane no longer measures design, it measures
+#    projection onto the vocabulary. So every registry name is replaced by a neutral placeholder
+#    before agent-2 reads it; what survives is the part that carries the signal ("the ordering
+#    you asked for is not implementable"). The names that were removed are **recorded**, so a
+#    run where the redaction destroyed the feedback can be told apart from one where it removed
+#    nothing at all.
+_REDACTED_NAME = "[an operation the composer already has]"
+
+
+def _inventory_names(blob=None) -> List[str]:
+    """Every name agent-2 must not read -- primitives **and** pure predicates.
+
+    🔴 Read from the registry, never a literal list: the leak guards in
+    `test_synthesize_multi.py` iterate the same registry, so a primitive added tomorrow is
+    redacted and asserted on without either side being edited.
+    """
+    b = blob if blob is not None else _prim.REGISTRY
+    return [p["name"] for p in b["primitives"]] + [q["name"] for q in b["predicates"]]
+
+
+def redact_inventory_names(text: Optional[str], blob=None) -> Tuple[str, List[str]]:
+    """Replace every inventory name in `text` with `_REDACTED_NAME`. Returns (text, names hit).
+
+    🔴 Longest name first. `release_pending_assignments` and a hypothetical
+    `release_pending` would otherwise leave the tail of the longer name behind as a bare
+    fragment -- half a name is still a name.
+    🔴 The Julia impls end in `!`, and the model quotes both spellings, so the trailing `!` is
+    swallowed by the same match rather than left dangling.
+    """
+    s = text or ""
+    hits: List[str] = []
+    for name in sorted(set(_inventory_names(blob)), key=len, reverse=True):
+        pat = re.compile(r"(?<![A-Za-z0-9_])%s!?(?![A-Za-z0-9_])" % re.escape(name))
+        s, n = pat.subn(_REDACTED_NAME, s)
+        if n:
+            hits.append(name)
+    return s, hits
+
+
+# 🔴 The last sentence is not decoration. Without it a model that genuinely cannot re-specify
+#    invents *something* to fill the field, and "the gap is real" becomes unobservable. Asking
+#    it to repeat the specification unchanged makes that answer a **measurable** one
+#    (`spec_changed_by_feedback`).
+_COMPOSE_FEEDBACK = (
+    "A composer holding a fixed inventory of primitive operations tried to realise your "
+    "specification and could not. It reported that this capability is missing from "
+    "everything it has:\n\n%s\n\n"
+    "The operations it does have are withheld from you on purpose -- do not try to guess "
+    "their names. Re-specify the tool so that its mechanism no longer depends on the "
+    "capability above: either drop the part of the mechanism that requires it, or commit to "
+    "a different mechanism that reaches the same goal. If no such re-specification is "
+    "possible, repeat your previous specification unchanged.")
+
+_SPEC_FIELDS = ("tool_name", "params", "mechanism")
+_BODY_FIELDS = ("body", "reach", "missing_primitive")
+
+
+# ==========================================================================================
 # (5) The 3-agent pipeline itself
 # ==========================================================================================
 MULTI_AGENT_ENV = "SYNTH_MULTI_AGENT"
@@ -1230,9 +1305,10 @@ def synthesize_multi(state: str,
     rec["design_context_chars"] = len(dctx)
     vocab = "\n".join(_tool_lines(tools))
 
-    def _design(feedback=""):
+    def _design(feedback="", composer_feedback=""):
         return design(context=dctx, reasoning_log=rec["reasoning_log"],
-                      existing_vocabulary=vocab, ungrounded_feedback=feedback)
+                      existing_vocabulary=vocab, ungrounded_feedback=feedback,
+                      composer_feedback=composer_feedback)
 
     try:
         p2 = _design()
@@ -1299,8 +1375,65 @@ def synthesize_multi(state: str,
         rec["reason"] = "stage 3 (compose) failed; nothing was minted"
         return rec
     rec["stages"].append("compose")
-    for f in ("body", "reach", "missing_primitive"):
+    for f in _BODY_FIELDS:
         rec[f] = (getattr(p3, f, "") or "")
     rec["reasoning"] = (getattr(p3, "reasoning", "") or "")
+
+    # ---- (F2) agent-3 -> agent-2: the composer's verdict, redacted, **once** ---------------
+    # 🔴 Fires on `needs_primitive` **only**, and only when the definition is non-empty. Any
+    #    other `reach` (including a malformed one) is not worth two more billable calls, and
+    #    "we could not read the verdict" must not look like "the verdict was acted on".
+    # 🔴 At most one round trip, for the same reason the groundability loop is capped: a loop
+    #    that does not converge is the worst outcome, and a second failure is itself data.
+    # 🔴 `expressible` is NOT overwritten here. It is the firing verdict of this event and it
+    #    has already fired; a second answer to the same question is recorded beside it
+    #    (`expressible_after_recompose`) so the rate keeps one denominator.
+    rec["recomposed"] = False
+    rec["compose_feedback"] = None
+    rec["compose_feedback_redacted"] = None
+    rec["recompose_skipped"] = None
+    rec["recompose_error"] = None
+    rec["spec_changed_by_feedback"] = None
+    rec["expressible_after_recompose"] = None
+    rec["ungrounded_params_after_recompose"] = None
+
+    if rec["reach"] == "needs_primitive" and rec["missing_primitive"].strip():
+        first = {f: rec[f] for f in _SPEC_FIELDS + _BODY_FIELDS}
+        for f, v in first.items():
+            rec[f + "_first"] = v          # the first attempt survives whatever happens below
+        red, hits = redact_inventory_names(rec["missing_primitive"], blob)
+        rec["compose_feedback"] = _COMPOSE_FEEDBACK % red
+        rec["compose_feedback_redacted"] = hits
+        try:
+            p2c = _design(composer_feedback=rec["compose_feedback"])
+        except Exception as e:
+            rec["recompose_error"] = "design(recompose): %s: %s" % (type(e).__name__, e)
+        else:
+            rec["stages"].append("design")
+            ex2 = getattr(p2c, "expressible", None)
+            rec["expressible_after_recompose"] = ex2 if isinstance(ex2, bool) else None
+            spec2 = {f: (getattr(p2c, f, "") or "") for f in _SPEC_FIELDS}
+            if not (spec2["tool_name"].strip() or spec2["mechanism"].strip()):
+                # 🔴 Do not spend the second compose call on an empty specification, and do not
+                #    leave the record half-and-half (spec from attempt 2, body from attempt 1).
+                rec["recompose_skipped"] = ("the redesign returned no specification; the first "
+                                            "attempt stands")
+            else:
+                rec.update(spec2)
+                rec["spec_changed_by_feedback"] = any(
+                    spec2[f].strip() != first[f].strip() for f in _SPEC_FIELDS)
+                rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
+                try:
+                    p3b = compose(spec=build_compose_context(spec2, rec["reasoning_log"], blob),
+                                  inventory=build_inventory_block(blob))
+                except Exception as e:
+                    rec["recompose_error"] = "compose(recompose): %s: %s" % (type(e).__name__, e)
+                    rec.update(first)      # all six go back -- never a spliced record
+                else:
+                    rec["stages"].append("compose")
+                    for f in _BODY_FIELDS:
+                        rec[f] = (getattr(p3b, f, "") or "")
+                    rec["reasoning"] = (getattr(p3b, "reasoning", "") or "")
+                    rec["recomposed"] = True
 
     return _finish_record(rec, kind, led, blob)

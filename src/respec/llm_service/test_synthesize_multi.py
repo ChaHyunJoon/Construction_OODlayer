@@ -535,3 +535,205 @@ def test_the_body_rule_says_an_uncallable_primitive_kills_the_whole_body():
         assert rule, "BODY RULE 줄이 없다"
         assert syn._NOT_CALLABLE_MARK in rule[0], \
             "BODY RULE 이 표식을 지목하지 않는다 -- 모델이 표식의 뜻을 모른다"
+
+
+# =====================================================================================
+# 2026-09-02 (F2) — agent-3 의 판정이 agent-2 로 되돌아간다. 유료 0건.
+#
+# 계기는 F5 런의 실측이다: mild 레인에서 agent-3 은 body 를 **이미 조합해 놓고도**
+# `reach="needs_primitive"` 를 냈다. 없다고 한 것은 원시가 아니라 **agent-2 가 요구한
+# 우선순위 정렬**이었고("... can release tasks, but it does not consider task priority"),
+# 그 판정을 읽는 코드가 없었다. 아래 게이트들이 그 되먹임을 못박는다.
+#
+# 🔴 사용자 결정(2026-09-02): 되먹임은 **가려서** 보낸다. agent-3 의 산문이 인벤토리
+#    이름을 그대로 적기 때문이고, 그대로 넘기면 계약 (B)(agent-2 의 알파벳 실명)가 끝난다.
+# =====================================================================================
+
+# 🔴 F5 런에서 agent-3 이 실제로 낸 문자열이다(`r2_after_f5.json` 의 mild 레인
+#    `missing_primitive`). 손으로 지어낸 입력으로 가림을 재면 "가리고 싶은 모양" 을 재는
+#    것이지 "실제로 새어 나온 모양" 을 재는 것이 아니다 — F3 게이트와 같은 규율.
+_F5_MISSING = (
+    "name: prioritize_task_reassignment\n"
+    "edit surface: sched\n"
+    'params: {"task_id": "string", "priority_level": "integer"}\n'
+    "preconditions: Tasks must be released and available for reassignment.\n"
+    "reversibility: NO\n"
+    "consumes: computational resources\n"
+    "WHY: The current inventory lacks a mechanism to prioritize tasks during reassignment. "
+    "While `release_pending_assignments` can release tasks from a faulted robot, it does not "
+    "consider task priority. A new primitive is needed to ensure that critical tasks are "
+    "reassigned first, which is essential for the task_reallocation_tool to function as "
+    "specified.")
+
+
+def test_redaction_removes_every_inventory_name():
+    """🔴 레지스트리 전수. 목록을 여기 리터럴로 두면 원시가 늘어도 이 시험이 안 자란다."""
+    names = [p["name"] for p in syn._prim.REGISTRY["primitives"]]
+    names += [q["name"] for q in syn._prim.REGISTRY["predicates"]]
+    text = "\n".join("the composer has %s and also %s!(x)" % (n, n) for n in names)
+    red, hits = syn.redact_inventory_names(text)
+    for n in names:
+        assert n not in red, "가림이 %s 를 흘렸다" % n
+    assert set(hits) == set(names), "기록된 적중 목록이 실제와 다르다: %s" % (
+        set(names) ^ set(hits))
+
+
+def test_redaction_keeps_the_signal_that_f5_measured():
+    """🔴 가림이 신호까지 지우면 F2 는 아무것도 안 나른다.
+
+    지워져야 하는 것은 **인벤토리 이름 하나**이고, 남아야 하는 것은 (a) agent-3 이 지어낸
+    이름(인벤토리에 없다)과 (b) 이유 문장이다.
+    """
+    red, hits = syn.redact_inventory_names(_F5_MISSING)
+    assert hits == ["release_pending_assignments"], "가린 이름이 예상과 다르다: %s" % (hits,)
+    assert "release_pending_assignments" not in red
+    assert syn._REDACTED_NAME in red
+    assert "does not consider task priority" in red, "신호 문장이 같이 지워졌다"
+    assert "prioritize_task_reassignment" in red, "agent-3 이 지어낸 이름까지 지웠다"
+
+
+def test_redaction_does_not_maul_a_longer_identifier():
+    """`release_pending_assignments_v2` 는 인벤토리에 없다 — 부분 일치로 자르면 안 된다."""
+    red, hits = syn.redact_inventory_names("call release_pending_assignments_v2 now")
+    assert hits == [] and red == "call release_pending_assignments_v2 now"
+
+
+def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MISSING,
+                  missing_always=False):
+    """agent-2·agent-3 이 호출마다 **다른 답**을 내는 가짜 셋. 프로바이더에 안 나간다.
+
+    🔴 `missing_always` 는 라이브에서 실제로 있을 수 있는 모양을 만든다 — 모델이 `reach`
+    를 `composed` 로 내면서 `missing_primitive` 필드도 같이 채우는 경우.
+    """
+    seen = {"design": 0, "compose": 0}
+    kw_log = {"design": [], "compose": []}
+
+    def observe(**kw):
+        spy is None or spy.append("observe")
+        return _Pred(reasoning_log=REASONING_LOG)
+
+    def design(**kw):
+        i = seen["design"]
+        seen["design"] += 1
+        kw_log["design"].append(kw)
+        spy is None or spy.append("design")
+        ex = expressibles[min(i, len(expressibles) - 1)]
+        return _Pred(expressible=ex, tool_name="%s_%d" % (SPEC["tool_name"], i),
+                     params=SPEC["params"], mechanism="%s (attempt %d)" % (SPEC["mechanism"], i))
+
+    def compose(**kw):
+        i = seen["compose"]
+        seen["compose"] += 1
+        kw_log["compose"].append(kw)
+        spy is None or spy.append("compose")
+        reach = reaches[min(i, len(reaches) - 1)]
+        return _Pred(body="1. translate_whole_build()", reach=reach,
+                     missing_primitive=(
+                         missing if (missing_always or reach == "needs_primitive") else ""))
+
+    return {"observe": observe, "design": design, "compose": compose}, kw_log
+
+
+def test_the_composer_verdict_reaches_agent_2(monkeypatch):
+    """🔴 배선 시험. 되먹임을 만들어도 두 번째 design 호출에 안 실리면 소용이 없다."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, kw = _seq_programs(["needs_primitive", "composed"])
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert rec["stages"] == ["observe", "design", "compose", "design", "compose"]
+    assert kw["design"][0]["composer_feedback"] == "", "첫 설계가 되먹임을 봤다"
+    fb = kw["design"][1]["composer_feedback"]
+    assert fb and "does not consider task priority" in fb
+    assert rec["recomposed"] is True and rec["reach"] == "composed"
+
+
+def test_the_feedback_agent_2_reads_names_no_primitive(monkeypatch):
+    """🔴 계약 (B). 실제로 **보내진** 문자열을 레지스트리 전수로 본다 — 빌더가 아니라."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, kw = _seq_programs(["needs_primitive", "composed"])
+    syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                         programs=progs)
+    fb = kw["design"][1]["composer_feedback"]
+    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+        assert q["name"] not in fb, "agent-2 가 되먹임에서 원시 %s 를 봤다" % q["name"]
+
+
+def test_a_composed_body_does_not_trigger_the_loop(monkeypatch):
+    """조합에 성공한 판에서 두 번 더 과금하지 않는다."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    spy = []
+    progs, _ = _seq_programs(["composed"], spy=spy)
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert spy == ["observe", "design", "compose"]
+    assert rec["recomposed"] is False and rec["compose_feedback"] is None
+
+
+def test_composed_does_not_trigger_even_when_the_field_is_filled_in(monkeypatch):
+    """🔴 발화 조건은 `reach == "needs_primitive"` 하나다 — 필드의 유무가 아니다.
+
+    라이브 모델은 `reach="composed"` 를 내면서 `missing_primitive` 를 **같이 채운다**. 발화를
+    "정의가 비지 않았는가" 로만 걸면 조합에 성공한 판에서 유료 2건이 조용히 나간다.
+    (변이 M2 가 이 시험 없이는 초록이었다 — 다른 가드가 변이를 대신 막고 있었다.)
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    spy = []
+    progs, _ = _seq_programs(["composed"], spy=spy, missing_always=True)
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert spy == ["observe", "design", "compose"]
+    assert rec["recomposed"] is False and rec["compose_feedback"] is None
+
+
+def test_an_empty_missing_primitive_does_not_trigger_the_loop(monkeypatch):
+    """🔴 `needs_primitive` 인데 정의가 비면 되먹일 내용이 없다 — 유료 2건을 아낀다."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    spy = []
+    progs, _ = _seq_programs(["needs_primitive"], spy=spy, missing="   ")
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert spy == ["observe", "design", "compose"]
+    assert rec["recomposed"] is False
+
+
+def test_the_loop_runs_at_most_once(monkeypatch):
+    """🔴 두 번째도 실패하면 기록하고 넘어간다 — 안 도는 루프가 최악이다."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    spy = []
+    progs, _ = _seq_programs(["needs_primitive"], spy=spy)
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert spy.count("design") == 2 and spy.count("compose") == 2
+    assert rec["recomposed"] is True and rec["reach"] == "needs_primitive"
+
+
+def test_the_first_attempt_survives_in_the_record(monkeypatch):
+    """🔴 되먹임이 성공하면 무엇이 그 전에 있었는지가 기록에서 사라지면 안 된다.
+
+    `ungrounded_params` 가 첫 적중을 보존하는 것과 같은 규율 — 게이트의 효과를 나중에
+    셀 수 있어야 한다.
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, _ = _seq_programs(["needs_primitive", "composed"])
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert rec["reach_first"] == "needs_primitive" and rec["reach"] == "composed"
+    assert rec["missing_primitive_first"] == _F5_MISSING
+    assert rec["tool_name_first"].endswith("_0") and rec["tool_name"].endswith("_1")
+    assert rec["spec_changed_by_feedback"] is True
+    assert rec["compose_feedback_redacted"] == ["release_pending_assignments"]
+
+
+def test_the_redesign_does_not_overwrite_the_firing_verdict(monkeypatch):
+    """🔴 `expressible` 은 이 사건의 발화 판정이고 이미 발화했다. 두 번째 답은 옆에 적는다.
+
+    덮어쓰면 `expressible=False` 비율의 분모가 사건마다 달라진다 — 이 레포가 이미 밟은 자리
+    (`macro_tool_agree`).
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, _ = _seq_programs(["needs_primitive", "composed"], expressibles=(False, True))
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert rec["expressible"] is False
+    assert rec["expressible_after_recompose"] is True
+    assert rec["synthesis_event"] is True
