@@ -366,24 +366,12 @@ end
         include("battery_ladder_is_deep_only.jl")
     end
 
-    # 2026-08-29 (Plan B / B0): `primitive_registry.json` 은 T2(tool 합성)의 원시 연산
-    # 알파벳인데, 그 소비자(T2)가 아직 안 지어졌다. 소비자 없는 레지스트리는 아무도 안 읽는
-    # JSON 이고 조용히 썩는다 — 그리고 썩은 채로 B3 에 도착하면 "합성기가 이상한 tool 을
-    # 만든다"라는 증상으로 나타나 원인 추적이 길어진다. 이 게이트가 그 사이를 버틴다:
-    # 레지스트리가 이름 짓는 impl·gate·predicate 가 전부 오늘 CB 에서 해석되는가, 그리고
-    # spec §7-2 의 "채점 어휘와 섞지 않는다"가 이름 공간 수준에서 지켜지는가.
-    # 변이 4종(impl 오타 · gate 오타 · 채점 어휘와 이름 충돌 · when_to_use 공백)으로
-    # 실제로 빨개지는 것을 확인했다 — `PRIMITIVE_REGISTRY` 로 오염 사본을 물려서 쟀다.
-    @testset "primitive registry resolves" begin
-        include("primitive_registry_resolves.jl")
-    end
+    # 🔴 2026-09-03: `primitive_registry.json`(19종 고정 어휘)을 없애면서 그 게이트 둘
+    #    ("primitive registry resolves" · "minted tool resolves")을 지웠다. 재던 명제가
+    #    "레지스트리가 이름 짓는 impl 이 CB 에서 해석되는가" 였는데 레지스트리가 없다.
+    #    합성 어휘는 이제 런타임에 생성되고, 그 자리를 대신할 게이트는 생성 원시의 등록·
+    #    시그니처 규약을 재는 새 게이트다(설계 §3 규약 다섯).
 
-    # 2026-08-30 (T2): 위 게이트는 이름이 CB 심볼표에 `isdefined` 인지만 잰다. 이 게이트는
-    # 그 이름을 실제로 부를 수 있는 callable 로 해석하는 `CB.resolve_primitive` 자체를
-    # 잰다 — 미지 이름의 거부, harness_args 전달, 레지스트리 부재시 하드 스톱까지 포함해서.
-    @testset "minted tool resolves" begin
-        include("minted_tool_resolves.jl")
-    end
 
     # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
@@ -411,6 +399,11 @@ end
     #    LLM 이 부를 수 있는 표면을 넓힌다(`primitive_registry_resolves.jl` 은 `params` 가
     #    존재하는지만 보지 키를 안 본다).
     # 변이 18종(명제 12 + 세부 6)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
+    # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
+    @testset "world interface is current" begin
+        include("world_interface_current.jl")
+    end
+
     @testset "minted tool enacts" begin
         include("minted_tool_enacts.jl")
     end

@@ -1,0 +1,1008 @@
+{
+    "methods": [
+        {
+            "name": "active_restriction_zones",
+            "signature": "Tuple{typeof(active_restriction_zones)}"
+        },
+        {
+            "name": "active_spares",
+            "signature": "Tuple{typeof(active_spares)}"
+        },
+        {
+            "name": "add_directional_spare_pools!",
+            "signature": "Tuple{typeof(add_directional_spare_pools!), Any}"
+        },
+        {
+            "name": "add_restriction_zone!",
+            "signature": "Tuple{typeof(add_restriction_zone!), Symbol, AbstractVector, Real}"
+        },
+        {
+            "name": "agent_disc_radius",
+            "signature": "Tuple{typeof(agent_disc_radius), Any}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), CloseBuildStep, Nothing, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), DepositCargo, Twist, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), FormTransportUnit, Twist, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), LiftIntoPlace, Twist, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), OpenBuildStep, Nothing, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, Any, PlannerEnv}"
+        },
+        {
+            "name": "apply_cmd!",
+            "signature": "Tuple{typeof(apply_cmd!), Union{TransportUnitGo, RobotGo}, Twist, PlannerEnv}"
+        },
+        {
+            "name": "assert_respec_verdict",
+            "signature": "Tuple{typeof(assert_respec_verdict), Symbol, AbstractString}"
+        },
+        {
+            "name": "assert_respec_verdict",
+            "signature": "Tuple{typeof(assert_respec_verdict), Symbol}"
+        },
+        {
+            "name": "asset_generation",
+            "signature": "Tuple{typeof(asset_generation), ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "asset_history",
+            "signature": "Tuple{typeof(asset_history), ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "asset_ledger",
+            "signature": "Tuple{typeof(asset_ledger)}"
+        },
+        {
+            "name": "asset_ledger_summary",
+            "signature": "Tuple{typeof(asset_ledger_summary)}"
+        },
+        {
+            "name": "asset_of",
+            "signature": "Tuple{typeof(asset_of), ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "avoid_staging_areas",
+            "signature": "Tuple{typeof(avoid_staging_areas)}"
+        },
+        {
+            "name": "awaiting_battery_swap",
+            "signature": "Tuple{typeof(awaiting_battery_swap), Any}"
+        },
+        {
+            "name": "battery_courier_enabled",
+            "signature": "Tuple{typeof(battery_courier_enabled)}"
+        },
+        {
+            "name": "battery_courier_step!",
+            "signature": "Tuple{typeof(battery_courier_step!), Any}"
+        },
+        {
+            "name": "battery_deliveries",
+            "signature": "Tuple{typeof(battery_deliveries)}"
+        },
+        {
+            "name": "battery_swap_halt_active",
+            "signature": "Tuple{typeof(battery_swap_halt_active)}"
+        },
+        {
+            "name": "battery_swap_pending",
+            "signature": "Tuple{typeof(battery_swap_pending)}"
+        },
+        {
+            "name": "build_invariant",
+            "signature": "Tuple{typeof(build_invariant), Any}"
+        },
+        {
+            "name": "cargo_deployed_config",
+            "signature": "Tuple{typeof(cargo_deployed_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "cargo_deployed_config",
+            "signature": "Tuple{typeof(cargo_deployed_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "cargo_deployed_config",
+            "signature": "Tuple{typeof(cargo_deployed_config), DepositCargo}"
+        },
+        {
+            "name": "cargo_deployed_config",
+            "signature": "Tuple{typeof(cargo_deployed_config), FormTransportUnit}"
+        },
+        {
+            "name": "cargo_goal_config",
+            "signature": "Tuple{typeof(cargo_goal_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "cargo_goal_config",
+            "signature": "Tuple{typeof(cargo_goal_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "cargo_goal_config",
+            "signature": "Tuple{typeof(cargo_goal_config), Union{DepositCargo, FormTransportUnit}}"
+        },
+        {
+            "name": "cargo_loaded_config",
+            "signature": "Tuple{typeof(cargo_loaded_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "cargo_loaded_config",
+            "signature": "Tuple{typeof(cargo_loaded_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "cargo_loaded_config",
+            "signature": "Tuple{typeof(cargo_loaded_config), DepositCargo}"
+        },
+        {
+            "name": "cargo_loaded_config",
+            "signature": "Tuple{typeof(cargo_loaded_config), FormTransportUnit}"
+        },
+        {
+            "name": "cargo_start_config",
+            "signature": "Tuple{typeof(cargo_start_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "cargo_start_config",
+            "signature": "Tuple{typeof(cargo_start_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "cargo_start_config",
+            "signature": "Tuple{typeof(cargo_start_config), Union{DepositCargo, FormTransportUnit}}"
+        },
+        {
+            "name": "check_identity!",
+            "signature": "Tuple{typeof(check_identity!), Any, AbstractString}"
+        },
+        {
+            "name": "checked_out_spares",
+            "signature": "Tuple{typeof(checked_out_spares)}"
+        },
+        {
+            "name": "clear_all_cargo_bans!",
+            "signature": "Tuple{typeof(clear_all_cargo_bans!)}"
+        },
+        {
+            "name": "clear_battery_deliveries!",
+            "signature": "Tuple{typeof(clear_battery_deliveries!)}"
+        },
+        {
+            "name": "clear_cargo_ban!",
+            "signature": "Tuple{typeof(clear_cargo_ban!), ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "clear_decommissioned_markers!",
+            "signature": "Tuple{typeof(clear_decommissioned_markers!)}"
+        },
+        {
+            "name": "clear_depot_markers!",
+            "signature": "Tuple{typeof(clear_depot_markers!)}"
+        },
+        {
+            "name": "clear_faulted_robots!",
+            "signature": "Tuple{typeof(clear_faulted_robots!)}"
+        },
+        {
+            "name": "clear_identity_seen!",
+            "signature": "Tuple{typeof(clear_identity_seen!)}"
+        },
+        {
+            "name": "clear_novelty_detector!",
+            "signature": "Tuple{typeof(clear_novelty_detector!)}"
+        },
+        {
+            "name": "clear_ood_schedule!",
+            "signature": "Tuple{typeof(clear_ood_schedule!)}"
+        },
+        {
+            "name": "clear_restriction_zones!",
+            "signature": "Tuple{typeof(clear_restriction_zones!)}"
+        },
+        {
+            "name": "clear_spare_pools!",
+            "signature": "Tuple{typeof(clear_spare_pools!)}"
+        },
+        {
+            "name": "clear_zone_markers!",
+            "signature": "Tuple{typeof(clear_zone_markers!)}"
+        },
+        {
+            "name": "close_node!",
+            "signature": "Tuple{typeof(close_node!), CloseBuildStep, PlannerEnv}"
+        },
+        {
+            "name": "close_node!",
+            "signature": "Tuple{typeof(close_node!), ConstructionBots.ScheduleNode, PlannerEnv}"
+        },
+        {
+            "name": "close_node!",
+            "signature": "Tuple{typeof(close_node!), ConstructionPredicate, PlannerEnv}"
+        },
+        {
+            "name": "close_node!",
+            "signature": "Tuple{typeof(close_node!), OpenBuildStep, PlannerEnv}"
+        },
+        {
+            "name": "commit_respec!",
+            "signature": "Tuple{typeof(commit_respec!), Any, Any, RespecProposal}"
+        },
+        {
+            "name": "conformal_pvalue",
+            "signature": "Tuple{typeof(conformal_pvalue), NoveltyDetector, Real}"
+        },
+        {
+            "name": "construct_partial_construction_schedule",
+            "signature": "Tuple{typeof(construct_partial_construction_schedule), Any, Any, Any}"
+        },
+        {
+            "name": "construct_partial_construction_schedule",
+            "signature": "Tuple{typeof(construct_partial_construction_schedule), Vararg{Any, 4}}"
+        },
+        {
+            "name": "core_zone_for_severity",
+            "signature": "Tuple{typeof(core_zone_for_severity), Any, Real}"
+        },
+        {
+            "name": "decision_margin",
+            "signature": "Tuple{typeof(decision_margin), AbstractVector{<:Real}}"
+        },
+        {
+            "name": "decommissioned_bodies",
+            "signature": "Tuple{typeof(decommissioned_bodies)}"
+        },
+        {
+            "name": "depot_available",
+            "signature": "Tuple{typeof(depot_available), Symbol}"
+        },
+        {
+            "name": "depot_centers_fixed",
+            "signature": "Tuple{typeof(depot_centers_fixed), Real}"
+        },
+        {
+            "name": "depot_centers_fixed",
+            "signature": "Tuple{typeof(depot_centers_fixed)}"
+        },
+        {
+            "name": "depot_info",
+            "signature": "Tuple{typeof(depot_info)}"
+        },
+        {
+            "name": "dispatch_battery_courier!",
+            "signature": "Tuple{typeof(dispatch_battery_courier!), Any, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "draw_decommissioned_robots!",
+            "signature": "Tuple{typeof(draw_decommissioned_robots!), Any}"
+        },
+        {
+            "name": "draw_restriction_zones!",
+            "signature": "Tuple{typeof(draw_restriction_zones!), Any}"
+        },
+        {
+            "name": "draw_spare_depots!",
+            "signature": "Tuple{typeof(draw_spare_depots!), Any}"
+        },
+        {
+            "name": "entity",
+            "signature": "Tuple{typeof(entity), Any}"
+        },
+        {
+            "name": "entity",
+            "signature": "Tuple{typeof(entity), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "entity",
+            "signature": "Tuple{typeof(entity), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "escalation_verdict",
+            "signature": "Tuple{typeof(escalation_verdict)}"
+        },
+        {
+            "name": "event_descriptors",
+            "signature": "Tuple{typeof(event_descriptors)}"
+        },
+        {
+            "name": "fault_robot!",
+            "signature": "Tuple{typeof(fault_robot!), Any}"
+        },
+        {
+            "name": "fault_robot_and_reassign!",
+            "signature": "Tuple{typeof(fault_robot_and_reassign!), Any, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "faulted_robots",
+            "signature": "Tuple{typeof(faulted_robots)}"
+        },
+        {
+            "name": "find_clear_staging_center",
+            "signature": "Tuple{typeof(find_clear_staging_center), Any, ConstructionBots.AbstractID, Float64}"
+        },
+        {
+            "name": "free_space_status",
+            "signature": "Tuple{typeof(free_space_status), Any, Any, Any, Real}"
+        },
+        {
+            "name": "get_cmd",
+            "signature": "Tuple{typeof(get_cmd), LiftIntoPlace, PlannerEnv}"
+        },
+        {
+            "name": "get_cmd",
+            "signature": "Tuple{typeof(get_cmd), Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, PlannerEnv}"
+        },
+        {
+            "name": "get_cmd",
+            "signature": "Tuple{typeof(get_cmd), Union{DepositCargo, FormTransportUnit}, PlannerEnv}"
+        },
+        {
+            "name": "get_cmd",
+            "signature": "Tuple{typeof(get_cmd), Union{TransportUnitGo, RobotGo}, PlannerEnv}"
+        },
+        {
+            "name": "get_project_params",
+            "signature": "Tuple{typeof(get_project_params), AbstractString}"
+        },
+        {
+            "name": "get_project_params",
+            "signature": "Tuple{typeof(get_project_params), Int64}"
+        },
+        {
+            "name": "get_project_params",
+            "signature": "Tuple{typeof(get_project_params), Symbol}"
+        },
+        {
+            "name": "goal_config",
+            "signature": "Tuple{typeof(goal_config), Any}"
+        },
+        {
+            "name": "goal_config",
+            "signature": "Tuple{typeof(goal_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "goal_config",
+            "signature": "Tuple{typeof(goal_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "goal_config",
+            "signature": "Tuple{typeof(goal_config), EntityConfigPredicate}"
+        },
+        {
+            "name": "goal_config",
+            "signature": "Tuple{typeof(goal_config), Union{DepositCargo, FormTransportUnit}}"
+        },
+        {
+            "name": "goal_engulfed",
+            "signature": "Tuple{typeof(goal_engulfed), Any, Real, Any}"
+        },
+        {
+            "name": "hot_swap_enabled",
+            "signature": "Tuple{typeof(hot_swap_enabled)}"
+        },
+        {
+            "name": "hot_swap_robot!",
+            "signature": "Tuple{typeof(hot_swap_robot!), Any, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "identity_summary",
+            "signature": "Tuple{typeof(identity_summary), Any}"
+        },
+        {
+            "name": "identity_violations",
+            "signature": "Tuple{typeof(identity_violations), Any}"
+        },
+        {
+            "name": "integrate_twist",
+            "signature": "Tuple{typeof(integrate_twist), Any, Any}"
+        },
+        {
+            "name": "is_battery_courier",
+            "signature": "Tuple{typeof(is_battery_courier), Any}"
+        },
+        {
+            "name": "is_within_capture_distance",
+            "signature": "Tuple{typeof(is_within_capture_distance), Any, Any, Any}"
+        },
+        {
+            "name": "is_within_capture_distance",
+            "signature": "Tuple{typeof(is_within_capture_distance), Any, Any}"
+        },
+        {
+            "name": "is_within_capture_distance",
+            "signature": "Tuple{typeof(is_within_capture_distance), ConstructionBots.SceneNode, ConstructionBots.SceneNode, Vararg{Any}}"
+        },
+        {
+            "name": "is_within_capture_distance",
+            "signature": "Tuple{typeof(is_within_capture_distance), Vararg{Any, 4}}"
+        },
+        {
+            "name": "list_projects",
+            "signature": "Tuple{typeof(list_projects)}"
+        },
+        {
+            "name": "load_novelty_detector",
+            "signature": "Tuple{typeof(load_novelty_detector), AbstractString}"
+        },
+        {
+            "name": "maybe_respecify!",
+            "signature": "Tuple{typeof(maybe_respecify!), Any, Any}"
+        },
+        {
+            "name": "maybe_unwedge_nominal!",
+            "signature": "Tuple{typeof(maybe_unwedge_nominal!), Any, Integer}"
+        },
+        {
+            "name": "nearest_pool",
+            "signature": "Tuple{typeof(nearest_pool), Any}"
+        },
+        {
+            "name": "novelty_report",
+            "signature": "Tuple{typeof(novelty_report)}"
+        },
+        {
+            "name": "novelty_score",
+            "signature": "Tuple{typeof(novelty_score), NoveltyDetector, AbstractVector{<:Real}}"
+        },
+        {
+            "name": "novelty_verdict",
+            "signature": "Tuple{typeof(novelty_verdict), AbstractVector{<:Real}}"
+        },
+        {
+            "name": "ood_inject_step!",
+            "signature": "Tuple{typeof(ood_inject_step!), Any, Int64}"
+        },
+        {
+            "name": "optimal_twist",
+            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 4}}"
+        },
+        {
+            "name": "optimal_twist",
+            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 5}}"
+        },
+        {
+            "name": "optimal_twist",
+            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 6}}"
+        },
+        {
+            "name": "parent_build_step_is_active",
+            "signature": "Tuple{typeof(parent_build_step_is_active), Any, PlannerEnv}"
+        },
+        {
+            "name": "parent_build_step_is_active",
+            "signature": "Tuple{typeof(parent_build_step_is_active), ConstructionBots.AbstractID, PlannerEnv}"
+        },
+        {
+            "name": "pool_centers",
+            "signature": "Tuple{typeof(pool_centers), Any}"
+        },
+        {
+            "name": "pop_spare!",
+            "signature": "Tuple{typeof(pop_spare!), Symbol}"
+        },
+        {
+            "name": "preprocess_env!",
+            "signature": "Tuple{typeof(preprocess_env!), PlannerEnv}"
+        },
+        {
+            "name": "project_complete",
+            "signature": "Tuple{typeof(project_complete), PlannerEnv}"
+        },
+        {
+            "name": "push_ood!",
+            "signature": "Tuple{typeof(push_ood!), AbstractString}"
+        },
+        {
+            "name": "random_restriction_zone!",
+            "signature": "Tuple{typeof(random_restriction_zone!), Any}"
+        },
+        {
+            "name": "record_asset_swap!",
+            "signature": "Tuple{typeof(record_asset_swap!), ConstructionBots.AbstractID, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any, Any}"
+        },
+        {
+            "name": "recurse_child_geometry",
+            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any}"
+        },
+        {
+            "name": "reform_stuck_teams!",
+            "signature": "Tuple{typeof(reform_stuck_teams!), Any}"
+        },
+        {
+            "name": "register_spare!",
+            "signature": "Tuple{typeof(register_spare!), Symbol, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
+        },
+        {
+            "name": "release_fallback!",
+            "signature": "Tuple{typeof(release_fallback!)}"
+        },
+        {
+            "name": "remove_geometry!",
+            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.GeometryHierarchy, Any}"
+        },
+        {
+            "name": "remove_geometry!",
+            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.SceneNode, Any}"
+        },
+        {
+            "name": "remove_geometry!",
+            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.SceneTree, Any}"
+        },
+        {
+            "name": "remove_restriction_zone!",
+            "signature": "Tuple{typeof(remove_restriction_zone!), Symbol}"
+        },
+        {
+            "name": "replace_robot!",
+            "signature": "Tuple{typeof(replace_robot!), Any, ConstructionBots.AbstractID, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "report_identity_delta",
+            "signature": "Tuple{typeof(report_identity_delta), Any, Int64, AbstractString}"
+        },
+        {
+            "name": "reset_asset_ledger!",
+            "signature": "Tuple{typeof(reset_asset_ledger!)}"
+        },
+        {
+            "name": "reset_cache_resume!",
+            "signature": "Tuple{typeof(reset_cache_resume!), ConstructionBots.PlanningCache, ConstructionBots.OperatingSchedule}"
+        },
+        {
+            "name": "restage_all_blocked!",
+            "signature": "Tuple{typeof(restage_all_blocked!), Any}"
+        },
+        {
+            "name": "restage_assembly!",
+            "signature": "Tuple{typeof(restage_assembly!), Any, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "restriction_zones",
+            "signature": "Tuple{typeof(restriction_zones)}"
+        },
+        {
+            "name": "root_deposit_goals",
+            "signature": "Tuple{typeof(root_deposit_goals), Any}"
+        },
+        {
+            "name": "root_goal_coverage",
+            "signature": "Tuple{typeof(root_goal_coverage), Any, Any, Any}"
+        },
+        {
+            "name": "run_lego_demo",
+            "signature": "Tuple{typeof(run_lego_demo)}"
+        },
+        {
+            "name": "schedule_ood!",
+            "signature": "Tuple{typeof(schedule_ood!), Int64, Function}"
+        },
+        {
+            "name": "set_avoid_staging_areas!",
+            "signature": "Tuple{typeof(set_avoid_staging_areas!), Any}"
+        },
+        {
+            "name": "set_battery_courier!",
+            "signature": "Tuple{typeof(set_battery_courier!)}"
+        },
+        {
+            "name": "set_cargo_ban!",
+            "signature": "Tuple{typeof(set_cargo_ban!), ConstructionBots.AbstractID, Integer}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.CustomNode, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.GeomNode, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.SceneNode, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.TransformNode, Any, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, Any, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform!",
+            "signature": "Tuple{typeof(set_desired_global_transform!), Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, ConstructionBots.TransformNode, Vararg{Any}}"
+        },
+        {
+            "name": "set_desired_global_transform_without_affecting_children!",
+            "signature": "Tuple{typeof(set_desired_global_transform_without_affecting_children!), ConstructionBots.TransformNode, Any, Vararg{Any}}"
+        },
+        {
+            "name": "set_hot_swap!",
+            "signature": "Tuple{typeof(set_hot_swap!)}"
+        },
+        {
+            "name": "set_identity_check!",
+            "signature": "Tuple{typeof(set_identity_check!)}"
+        },
+        {
+            "name": "set_novelty_detector!",
+            "signature": "Tuple{typeof(set_novelty_detector!), Any}"
+        },
+        {
+            "name": "set_scene_tree_to_initial_condition!",
+            "signature": "Tuple{typeof(set_scene_tree_to_initial_condition!), Any, Any}"
+        },
+        {
+            "name": "set_sim_step!",
+            "signature": "Tuple{typeof(set_sim_step!), Integer}"
+        },
+        {
+            "name": "set_spare_depot_distance!",
+            "signature": "Tuple{typeof(set_spare_depot_distance!), Real}"
+        },
+        {
+            "name": "set_spare_pool_margin!",
+            "signature": "Tuple{typeof(set_spare_pool_margin!), Real}"
+        },
+        {
+            "name": "set_unwedge_interval!",
+            "signature": "Tuple{typeof(set_unwedge_interval!), Integer}"
+        },
+        {
+            "name": "set_use_rvo!",
+            "signature": "Tuple{typeof(set_use_rvo!), Any}"
+        },
+        {
+            "name": "spare_depot_distance",
+            "signature": "Tuple{typeof(spare_depot_distance)}"
+        },
+        {
+            "name": "spare_pool_centers",
+            "signature": "Tuple{typeof(spare_pool_centers)}"
+        },
+        {
+            "name": "spare_pools",
+            "signature": "Tuple{typeof(spare_pools)}"
+        },
+        {
+            "name": "spare_slots",
+            "signature": "Tuple{typeof(spare_slots)}"
+        },
+        {
+            "name": "start_config",
+            "signature": "Tuple{typeof(start_config), Any}"
+        },
+        {
+            "name": "start_config",
+            "signature": "Tuple{typeof(start_config), ConstructionBots.CustomNode}"
+        },
+        {
+            "name": "start_config",
+            "signature": "Tuple{typeof(start_config), ConstructionBots.ScheduleNode}"
+        },
+        {
+            "name": "start_config",
+            "signature": "Tuple{typeof(start_config), EntityConfigPredicate}"
+        },
+        {
+            "name": "start_config",
+            "signature": "Tuple{typeof(start_config), Union{DepositCargo, FormTransportUnit}}"
+        },
+        {
+            "name": "station_keeping_goal",
+            "signature": "Tuple{typeof(station_keeping_goal), Any}"
+        },
+        {
+            "name": "step_environment!",
+            "signature": "Tuple{typeof(step_environment!), PlannerEnv, Any}"
+        },
+        {
+            "name": "step_environment!",
+            "signature": "Tuple{typeof(step_environment!), PlannerEnv}"
+        },
+        {
+            "name": "swap_battery!",
+            "signature": "Tuple{typeof(swap_battery!), Any, ConstructionBots.AbstractID}"
+        },
+        {
+            "name": "swap_event_kind",
+            "signature": "Tuple{typeof(swap_event_kind)}"
+        },
+        {
+            "name": "translate_whole_build!",
+            "signature": "Tuple{typeof(translate_whole_build!), Any}"
+        },
+        {
+            "name": "update_parent_build_status!",
+            "signature": "Tuple{typeof(update_parent_build_status!), PlannerEnv, Any}"
+        },
+        {
+            "name": "update_planning_cache!",
+            "signature": "Tuple{typeof(update_planning_cache!), Any, ConstructionBots.OperatingSchedule, ConstructionBots.PlanningCache, Int64, Any}"
+        },
+        {
+            "name": "update_planning_cache!",
+            "signature": "Tuple{typeof(update_planning_cache!), Any, ConstructionBots.OperatingSchedule, ConstructionBots.PlanningCache, Int64}"
+        },
+        {
+            "name": "update_planning_cache!",
+            "signature": "Tuple{typeof(update_planning_cache!), PlannerEnv, Float64}"
+        },
+        {
+            "name": "use_rvo",
+            "signature": "Tuple{typeof(use_rvo)}"
+        },
+        {
+            "name": "validate_schedule_transform_tree",
+            "signature": "Tuple{typeof(validate_schedule_transform_tree), Any}"
+        },
+        {
+            "name": "verify",
+            "signature": "Tuple{typeof(verify), RespecProposal, Any, ConstructionBots.InvariantSpec}"
+        },
+        {
+            "name": "verify_swap_battery",
+            "signature": "Tuple{typeof(verify_swap_battery), RespecProposal, Any}"
+        },
+        {
+            "name": "vote_disagreement",
+            "signature": "Tuple{typeof(vote_disagreement), AbstractVector}"
+        },
+        {
+            "name": "warn_depot_clearance",
+            "signature": "Tuple{typeof(warn_depot_clearance), Any}"
+        },
+        {
+            "name": "zone_blockage",
+            "signature": "Tuple{typeof(zone_blockage), Any}"
+        },
+        {
+            "name": "zone_blocked_assemblies",
+            "signature": "Tuple{typeof(zone_blocked_assemblies), Any}"
+        },
+        {
+            "name": "zone_clearance",
+            "signature": "Tuple{typeof(zone_clearance), Any}"
+        },
+        {
+            "name": "zone_clears_root_goals",
+            "signature": "Tuple{typeof(zone_clears_root_goals), Any, Any, Any}"
+        },
+        {
+            "name": "zone_diagnoses",
+            "signature": "Tuple{typeof(zone_diagnoses), Any}"
+        },
+        {
+            "name": "zone_diagnosis",
+            "signature": "Tuple{typeof(zone_diagnosis), Any, Symbol}"
+        },
+        {
+            "name": "zone_relocatable",
+            "signature": "Tuple{typeof(zone_relocatable), Any, Any, Any}"
+        },
+        {
+            "name": "zone_safety_report",
+            "signature": "Tuple{typeof(zone_safety_report), Any}"
+        },
+        {
+            "name": "zone_team_coverage",
+            "signature": "Tuple{typeof(zone_team_coverage), Any, Any, Real}"
+        }
+    ],
+    "types": [
+        {
+            "name": "PlannerEnv",
+            "fields": [
+                {
+                    "name": "sched",
+                    "type": "ConstructionBots.OperatingSchedule"
+                },
+                {
+                    "name": "scene_tree",
+                    "type": "ConstructionBots.SceneTree"
+                },
+                {
+                    "name": "cache",
+                    "type": "ConstructionBots.PlanningCache"
+                },
+                {
+                    "name": "staging_circles",
+                    "type": "Dict{ConstructionBots.AbstractID, LazySets.Ball2Module.Ball2}"
+                },
+                {
+                    "name": "active_build_steps",
+                    "type": "Set{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "dt",
+                    "type": "Float64"
+                },
+                {
+                    "name": "agent_policies",
+                    "type": "Dict"
+                },
+                {
+                    "name": "agent_parent_build_step_active",
+                    "type": "Dict"
+                },
+                {
+                    "name": "staging_buffers",
+                    "type": "Dict{ConstructionBots.AbstractID, Float64}"
+                },
+                {
+                    "name": "max_robot_go_id",
+                    "type": "Int64"
+                },
+                {
+                    "name": "max_cargo_id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "OperatingSchedule",
+            "fields": [
+                {
+                    "name": "graph",
+                    "type": "Graphs.SimpleGraphs.SimpleDiGraph"
+                },
+                {
+                    "name": "nodes",
+                    "type": "Vector{ConstructionBots.ScheduleNode}"
+                },
+                {
+                    "name": "vtx_map",
+                    "type": "Dict{ConstructionBots.AbstractID, Int64}"
+                },
+                {
+                    "name": "vtx_ids",
+                    "type": "Vector{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "terminal_vtxs",
+                    "type": "Vector{Int64}"
+                },
+                {
+                    "name": "weights",
+                    "type": "Dict{Int64, Float64}"
+                }
+            ]
+        },
+        {
+            "name": "SceneTree",
+            "fields": [
+                {
+                    "name": "graph",
+                    "type": "Graphs.SimpleGraphs.SimpleDiGraph"
+                },
+                {
+                    "name": "nodes",
+                    "type": "Vector{ConstructionBots.SceneNode}"
+                },
+                {
+                    "name": "vtx_map",
+                    "type": "Dict{ConstructionBots.AbstractID, Int64}"
+                },
+                {
+                    "name": "vtx_ids",
+                    "type": "Vector{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "inedges",
+                    "type": "Vector{Dict{Int64, ConstructionBots.SceneTreeEdge}}"
+                },
+                {
+                    "name": "outedges",
+                    "type": "Vector{Dict{Int64, ConstructionBots.SceneTreeEdge}}"
+                }
+            ]
+        },
+        {
+            "name": "PlanningCache",
+            "fields": [
+                {
+                    "name": "closed_set",
+                    "type": "Set{Int64}"
+                },
+                {
+                    "name": "active_set",
+                    "type": "Set{Int64}"
+                },
+                {
+                    "name": "node_queue",
+                    "type": "DataStructures.PriorityQueue{Int64, Tuple{Int64, Float64}}"
+                }
+            ]
+        },
+        {
+            "name": "Dict",
+            "fields": [
+                {
+                    "name": "slots",
+                    "type": "Vector{UInt8}"
+                },
+                {
+                    "name": "keys",
+                    "type": "Vector{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "vals",
+                    "type": "Vector{LazySets.Ball2Module.Ball2}"
+                },
+                {
+                    "name": "ndel",
+                    "type": "Int64"
+                },
+                {
+                    "name": "count",
+                    "type": "Int64"
+                },
+                {
+                    "name": "age",
+                    "type": "UInt64"
+                },
+                {
+                    "name": "idxfloor",
+                    "type": "Int64"
+                },
+                {
+                    "name": "maxprobe",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "Set",
+            "fields": [
+                {
+                    "name": "dict",
+                    "type": "Dict{ConstructionBots.AbstractID, Nothing}"
+                }
+            ]
+        }
+    ]
+}
