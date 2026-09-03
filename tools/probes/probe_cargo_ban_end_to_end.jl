@@ -306,8 +306,8 @@ function solve_control(env, aid, astr, released_slots)
 end
 
 # ── 한 판 ────────────────────────────────────────────────────────────────────
-_synth(agent) = Dict{String,Any}(
-    "reach" => "composed",
+_synth(agent; reach = "composed") = Dict{String,Any}(
+    "reach" => reach,
     "body_names" => ["release_pending_assignments", "forbid_heavy_cargo"],
     "tool_name" => "cargo_ban_wear_level",
     "params" => Dict{String,Any}("agent" => agent, "n" => 1),
@@ -335,9 +335,14 @@ end
 
 🔴 **이 절은 인과를 판정하지 않는다.** 판정 1(공통 재풀이) 이후 그것이 여기서 불가능하다 —
 머리말 (12) 를 읽어라. 인과는 절 B 가 진다.
+
+`reach` 는 이 body 의 합성 레인 표지다(`("composed", "needs_primitive")` 두 팔로 돌린다 —
+T3+T4). 🔴 **팔마다 이 함수가 새로 호출되고, 그 안에서 `fixture(...)` 가 매번 새 env 를
+짓는다** — 두 번째 팔이 첫 팔의 잔해(재풀이·전역 `SIM_STEP`/`ASSET_LEDGER`) 위에서 돌지
+않는다. 같은 body·같은 인자, 다른 것은 `reach` 문자열 하나뿐이다.
 """
-function enact_section(board, nr, target_closed)
-    println("\n---- 절 A: 집행 경로 (G-8) ----")
+function enact_section(board, nr, target_closed; reach = "composed")
+    println("\n---- 절 A: 집행 경로 (G-8) · reach = ", reach, " ----")
     CB.clear_all_cargo_bans!()
     fx  = fixture(board = board, nr = nr, target_closed = target_closed)
     env = fx.env
@@ -352,15 +357,23 @@ function enact_section(board, nr, target_closed)
     println("집행 전: 배정 간선 = ", length(E0),
             " · STANDING_CARGO_BANS[] = ", isempty(bans_before) ? "비었다" : string(bans_before))
 
-    r = CB.enact_minted!(env, nothing, _synth(ag.str))
+    r = CB.enact_minted!(env, nothing, _synth(ag.str; reach = reach))
     E1 = assignment_edges(env.sched)
     bans_after = _ban_keys()
     rel_rep = _released_reported(r.steps)
+    sanctioned = reach == "composed"
+    threw = count(s -> s.status === :threw, r.steps)
 
+    # 🔴 공허가 맨 먼저다 — 아래 verdict/applied/... 를 GREEN/RED 처럼 읽기 전에 판정한다.
+    if isempty(r.steps)
+        println("⚪ VOID — 아무 단계도 안 불렸다(verdict=", r.verdict,
+                "). 아래 숫자를 인용하지 마라.")
+    end
     println("verdict = ", r.verdict, "   applied = ", r.applied, "   partial = ", r.partial,
             "   world_maybe_dirty = ", r.world_maybe_dirty)
     println("resume = ", r.resume, "   resolve = ", r.resolve)
     println("reason = ", r.reason)
+    println("sanctioned = ", sanctioned, "   threw = ", threw)
     println("steps (", length(r.steps), "):")
     for s in r.steps
         println("   · ", s.name, "  status=", s.status, "  detail=", s.detail)
@@ -374,7 +387,8 @@ function enact_section(board, nr, target_closed)
     return (closed = fx.closed, agent = ag.str, verdict = r.verdict, applied = r.applied,
             steps = r.steps, resume = r.resume, resolve = r.resolve,
             released_reported = rel_rep, edges = (length(E0), length(E1)),
-            bans = (bans_before, bans_after), ban_is_a = ag.str in bans_after)
+            bans = (bans_before, bans_after), ban_is_a = ag.str in bans_after,
+            reach = reach, sanctioned = sanctioned, threw = threw)
 end
 
 # ── 절 B: 인과 (G-2) ─────────────────────────────────────────────────────────
@@ -493,9 +507,11 @@ function run_board(board, nr, target_closed)
     println("\n", "="^92)
     println("BOARD = ", board, "   robots = ", nr, "   target_closed = ", target_closed)
     println("="^92)
-    a = enact_section(board, nr, target_closed)
+    # 🔴 절 A 를 reach 두 팔로 돌린다 — 팔마다 이 호출이 내부에서 새 fixture(env) 를 짓는다.
+    a_composed  = enact_section(board, nr, target_closed; reach = "composed")
+    a_primitive = enact_section(board, nr, target_closed; reach = "needs_primitive")
     b = causal_section(board, nr, target_closed)
-    return (board = board, enact = a, causal = b)
+    return (board = board, enact = (a_composed, a_primitive), causal = b)
 end
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -517,14 +533,16 @@ function main()
     println("="^92)
     println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 9), rpad("applied", 9),
             rpad("resume", 9), rpad("resolve", 12), rpad("release 보고", 13),
-            rpad("간선 전/후", 13), "금지 전/후")
+            rpad("간선 전/후", 13), rpad("금지 전/후", 12), rpad("sanctioned", 12), "threw")
     for x in results
-        e = x.enact
-        println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 9),
-                rpad(string(e.applied), 9), rpad(string(e.resume), 9),
-                rpad(string(e.resolve), 12), rpad(_s(e.released_reported), 13),
-                rpad(string(e.edges[1], "→", e.edges[2]), 13),
-                string(length(e.bans[1]), "→", length(e.bans[2])))
+        for e in x.enact
+            println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 9),
+                    rpad(string(e.applied), 9), rpad(string(e.resume), 9),
+                    rpad(string(e.resolve), 12), rpad(_s(e.released_reported), 13),
+                    rpad(string(e.edges[1], "→", e.edges[2]), 13),
+                    rpad(string(length(e.bans[1]), "→", length(e.bans[2])), 12),
+                    rpad(string(e.sanctioned), 12), string(e.threw))
+        end
     end
 
     println("\n", "="^92)

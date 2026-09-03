@@ -142,9 +142,11 @@ end
 # 필수 kwarg 가 빠졌는지는 **절대 검사하지 않는다** — body 가 `["forbid_heavy_cargo"]`,
 # params 가 `{}`(agent 없음)면 바인더를 통과해 `impl(env)` 가 그대로 불리고, Julia 가 호출
 # 경계에서 `UndefKeywordError` 를 던진다. `enact_minted!` 은 이것을 다른 모든 예외와 똑같이
-# `partial=true` 로 적고, `world_maybe_dirty = touched || partial` 이 참이 되어
-# `handled = (verdict===:admit) && world_maybe_dirty && (resume !== :failed)`
-# (tools/monitor/enact.jl:869) 가 **참**이 된다 — 세계는 증명 가능하게 한 바이트도 안 건드렸는데
+# `partial=true` 로 적고, `world_maybe_dirty = touched || partial` 이 참이 된다.
+# `handled` 의 정본은 `tools/monitor/enact.jl:879` 의 **네** 연언지다 —
+# `CB.minted_handled_verdict_ok(verdict) && world_maybe_dirty && (resume !== :failed) && !resolve_failed`.
+# 🔴 여기에 그 식을 다시 베끼지 마라: 예전 3-연언지 복사본은 실측에서 프로덕션과 갈렸다(2026-09-02).
+# 이 판에서는 그 정본이 **참**이 된다 — 세계는 증명 가능하게 한 바이트도 안 건드렸는데
 # (보관소에 한 항목도 쓰기 전에 던졌다) 정책 프로듀서는 이것을 "처리됐다"로 읽고 폴백 복구 사슬을
 # 건너뛰며, 그 OOD 사건은 이미 소비돼 다시 오지 않는다.
 #

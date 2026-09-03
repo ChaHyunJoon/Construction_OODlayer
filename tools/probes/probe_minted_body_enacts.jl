@@ -124,18 +124,25 @@ function main()
     h = enact_minted_decision!(env, nothing, dec)
     println("\n---- T4 (enact_minted_decision!) — 이미 풀린 판 위의 두 번째 집행 ----")
     println("handled = ", h.handled, "   verdict = ", h.verdict,
-            "   applied = ", h.applied, "   world_maybe_dirty = ", h.world_maybe_dirty)
+            "   applied = ", h.applied, "   world_maybe_dirty = ", h.world_maybe_dirty,
+            "   sanctioned = ", dec.synth_lane["reach"] == "composed",
+            "   threw = ", count(s -> s.status === :threw, h.steps))
     println("(참고) 첫 집행의 판정으로 계산하면 handled = ",
-            r.verdict === :admit && r.world_maybe_dirty && r.resume !== :failed)
+            CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
+            (r.resume !== :failed) &&
+            !(r.resolve === :infeasible || r.resolve === :commit_failed || r.resolve === :threw))
 
     released_ok = edges_after < edges_before
     reprice_ok  = CB.EDGE_PAYLOAD_MULTIPLIER[] !== nothing
     println("\n---- VERDICT ----")
     println("release changed the world?  ", released_ok)
     println("reprice installed the hook? ", reprice_ok)
-    if r.verdict === :admit && released_ok && reprice_ok
+    if isempty(r.steps)
+        println("⚪ VOID — 아무 단계도 안 불렸다(verdict=", r.verdict,
+                "). 아래 숫자를 인용하지 마라.")
+    elseif CB.minted_handled_verdict_ok(r.verdict) && released_ok && reprice_ok
         println("🟢 GREEN — body enacted AND both halves are visible in the world.")
-    elseif r.verdict === :admit
+    elseif CB.minted_handled_verdict_ok(r.verdict)
         println("🔴 SILENT SUCCESS — :admit but the world did not move. This is the worst case.")
     else
         println("🔴 RED — verdict=", r.verdict, " (world untouched, as :reject promises)")
