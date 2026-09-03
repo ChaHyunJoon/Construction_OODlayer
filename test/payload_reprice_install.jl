@@ -7,6 +7,13 @@ using ConstructionBots
 const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 
+# 🔴 2026-09-03 (Task 10). 아래 마지막 testset 이 `forbid_heavy_cargo` 를 body 이름으로 쓰는데,
+#    원시 표는 이제 런 스코프이고 기본이 비어 있다(Task 2) — 씨를 안 뿌리면 그 절이
+#    "unknown primitive" 로 죽어 재려던 것(`:missing_agent` 로 돌아서고 폴백이 정상으로 돈다)을
+#    **한 번도 안 태운다.** 근거는 그 픽스처 파일의 머리말에 있다.
+include(joinpath(@__DIR__, "minted_seed_fixture.jl"))
+seed_minted_fixture!()
+
 # 🔴 FIX ROUND 1 / Finding 3 재료: get_vtx_id · get_node_from_id · Graphs.outneighbors 를
 # 이 더미 타입에 대해서만 확장해, 실제 스케줄/씬 없이 payload_edge_multiplier 의 두 내부
 # 1.0-반환 분기(소유자 불일치 · 화물 못잼)를 각각 단독으로 겨냥한다. 구조체는 module 최상위에
@@ -100,38 +107,18 @@ end
     end
 end
 
-# 🔴 2026-09-02 (cargo-ban T7): 이 testset 은 **뒤집혔다.** 예전에는 이 원시가 알파벳에
-# 있다는 것을 못 박았는데, 사용자 결정으로 `reprice_agent_by_payload` 는 **레지스트리에서만**
-# 빠졌다 — 실측상 argmin 을 못 움직이기 때문이다(두 판·전 체크포인트·`light_bias` 32 까지
-# 대상 로봇이 일을 하나도 안 잃고, 음성 대조와 `n_reassigned` 이 완전히 같다). 구현
-# (`src/navigator/payload_bias.jl`)과 이 파일의 나머지 testset 은 **음성 대조로 남는다**.
-# 🔴 그러므로 여기서 재는 것은 **부재**다. 부재 게이트는 공허해지기 쉬우므로 양성 대조를
-#    함께 단다: (a) 구현은 여전히 CB 에 있고 부를 수 있다, (b) 그 자리를 이어받은
-#    `forbid_heavy_cargo` 는 알파벳에 있고 해석된다. 셋이 함께 있어야 "레지스트리를 못 읽어서
-#    전부 없다" 와 "이 하나만 뺐다" 가 구별된다.
-@testset "🔴 알파벳은 이 원시를 더 이상 모른다 (구현은 남는다)" begin
-    tbl = CB.PRIMITIVE_TABLE()
-    @test !haskey(tbl, "reprice_agent_by_payload")
-    @test CB.resolve_primitive("reprice_agent_by_payload") === nothing
-    # (a) 양성 대조 — 구현은 살아 있다. 지워진 것은 알파벳 항목뿐이다.
-    @test isdefined(CB, :reprice_agent_by_payload!)
-    @test CB.reprice_agent_by_payload! isa Function
-    # (b) 양성 대조 — 표 자체는 읽혔고, 그 자리를 이어받은 원시가 실제로 있다.
-    @test haskey(tbl, "forbid_heavy_cargo")
-    local r = CB.resolve_primitive("forbid_heavy_cargo")
-    @test r.impl === CB.forbid_heavy_cargo!
-    @test r.harness_args == ["env"]
-    @test Set(keys(r.params)) == Set(["agent", "n"])
-    # (c) 그리고 body 에 옛 이름을 쓰면 **한 발도 안 나가고** 거절된다.
-    local rej = CB.enact_minted!(nothing, nothing,
-        Dict{String,Any}("reach" => "composed",
-                         "body_names" => ["reprice_agent_by_payload"],
-                         "params" => Dict{String,Any}()))
-    @test rej.verdict === :reject
-    @test isempty(rej.steps)
-    @test rej.world_maybe_dirty === false
-end
-
+# 🔴 2026-09-03 (Task 10) — **"알파벳은 이 원시를 더 이상 모른다" testset 은 삭제됐다.**
+#
+# 그것은 2026-09-02 에 뒤집힌 절이었다: `reprice_agent_by_payload` 가 고정 레지스트리에서
+# 빠졌다는 **부재**를 재고, 그 부재가 "레지스트리를 못 읽어서 전부 없다" 와 구별되도록
+# 양성 대조 둘(`forbid_heavy_cargo` 가 표에 있다 · 표 자체는 읽혔다)을 달고 있었다.
+#
+# 오늘 그 부재는 **모든 이름에 대해 참**이다 — 표는 런 스코프이고 기본이 비어 있으므로
+# `resolve_primitive(<아무 이름>) === nothing` 이 항진이다. 양성 대조도 같이 죽는다:
+# "표 자체는 읽혔다" 라는 사실이 존재하지 않는다(읽을 파일이 없다). 즉 절 전체가 잴 대상을
+# 잃었다. 🔴 남길 가치가 있던 한 줄("구현은 살아 있다")은 이 파일의 나머지 testset 전부가
+# `CB.reprice_agent_by_payload!` 를 **실제로 불러서** 매번 다시 증명한다.
+#
 # 🔴 최종 리뷰 F7 — 알려진 구멍을 못박는다(고치지 않는다). 🔴 2026-09-02 (T7): 이 구멍의
 # 표본이 `reprice_agent_by_payload!` 에서 `forbid_heavy_cargo!` 로 **옮겨졌다** — 전자가
 # 알파벳에서 빠지면서 그 자리(**필수 kwarg `agent`, 기본값 없음**를 가진 유일한 enactable
@@ -166,7 +153,10 @@ end
     #    **세계를 한 바이트도 안 건드린 판이** `handled=true` 로 기본 복구 사슬을 삼켰다.
     #    (그 사실을 이 자리가 박제하고 있었다 — 이제 그 반대를 박제한다.)
     env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule())
-    synth = Dict{String,Any}("reach" => "composed",
+    # 🔴 2026-09-03 (Task 10). 미끼는 `reach` 가 아니라 `impl_name` 이다(Task 9) — `reach` 는
+    #    `SYNTH_LANE_KEYS` 에서 빠져 파이썬→줄리아 경계를 아예 못 넘으므로, 그 필드만 채운
+    #    픽스처는 오늘 게이트에서 `:deferred` 로 떨어져 이 절을 한 줄도 안 태운다.
+    synth = Dict{String,Any}("impl_name" => "forbid_heavy_cargo",
                               "body_names" => ["forbid_heavy_cargo"],
                               "params" => Dict{String,Any}())
     r = CB.enact_minted!(env, nothing, synth)

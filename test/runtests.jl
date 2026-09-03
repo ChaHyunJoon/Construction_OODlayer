@@ -372,16 +372,17 @@ end
     #    합성 어휘는 이제 런타임에 생성되고, 그 자리를 **두 게이트가 나눠** 대신한다 —
     #    생성 agent 가 보는 인터페이스 산출물의 최신성은 바로 아래 "world interface is
     #    current" 가, 등록·시그니처 규약 다섯은 그다음 "minted registration" 이 잰다(설계 §3).
-    #    🔴 2026-09-03 정정(최종 리뷰): 남은 레지스트리-의존 게이트는 **하나가 아니라 셋**이다.
-    #    셋 다 `CB.PRIMITIVE_TABLE()` 을 부르는데 그 함수는 이 브랜치에 **없다** — 즉 셋 다
-    #    지금 빨갛고, 그것이 의도된 중간 상태다(설계 §9 마지막 줄). Task 10 이 지울 목록:
-    #      1. `test/minted_tool_enacts.jl`      — 아래 "minted tool enacts"(길이 19 를 잰다)
-    #      2. `test/payload_reprice_install.jl:113` — 아래 "payload reprice install"(:537)
-    #      3. `tools/monitor/test_minted_wiring.jl` — 아래 "minted tool wiring"(:449)
-    #    ⚠️ 2·3 은 `PRIMITIVE_TABLE` 말고도 **알파벳이 파일에서 씨를 받는다**고 전제한다 —
-    #    오늘 `resolve_primitive` 는 런-스코프 표만 읽으므로 그 fixture 들의 body 는 전부
-    #    `reject:unknown primitive` 로 떨어진다(실측). 고치는 길은 표를 손으로 씨 뿌리거나
-    #    `register_minted_primitive!` 로 주조하는 것이고, 그 판정도 Task 10 의 몫이다.
+    #    ✅ 2026-09-03 (Task 10) 해소. 그 셋(`minted_tool_enacts.jl` ·
+    #    `payload_reprice_install.jl` · `tools/monitor/test_minted_wiring.jl`)에서
+    #    `PRIMITIVE_TABLE`/`_reset_primitive_table!`/`PRIMITIVE_REGISTRY` 인용을 전부 지웠다.
+    #    **판정은 "표를 손으로 씨 뿌린다" 였다**(`register_minted_primitive!` 가 아니라):
+    #    그 함수는 행에 `"generated" => true` 를 찍고 `_step_applied`/`_step_touched_world`
+    #    가 그것을 읽어 삼상을 다르게 내므로, 그 표들을 재려던 절이 자기 픽스처 때문에 다른
+    #    갈래를 태우게 된다. 씨는 `test/minted_seed_fixture.jl` 한 자리에 있다.
+    #    함께 은퇴한 명제 넷(잴 대상이 없어졌다): `minted_tool_enacts` (9)(9b)(12) ·
+    #    `test_minted_wiring` (5). (5) 는 **줄 단위로 고치면 안 되는** 자리였다 —
+    #    `@test_throws Exception CB.PRIMITIVE_TABLE()` 이 `UndefVarError <: Exception` 이라
+    #    심볼이 없어도 통과하는 **조용한 항진**이기 때문이다(실측).
 
     # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
     @testset "world interface is current" begin
@@ -411,16 +412,13 @@ end
 
     # 2026-08-30 (T3): 이 게이트는 합성 원시의 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
-    #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이다(연언지 셋: harness·arity·kwargs).
-    #    (2026-09-02 실측: 표 19 · 집행 가능 8. 연언지 (i) 만 보면 `harness_args ⊆ {"env"}`
-    #    로는 16, `BINDABLE_HARNESS_ARGS = {"env","invariant"}` 로는 17 이 통과한다 — 즉
-    #    (i) 만 믿으면 **여덟 개**가 호출 시점 `MethodError` 로 죽고 집행부의 `try` 가 그것을
-    #    `:admit`/집행됨으로 보고한다 = 거절보다 나쁜 거짓 admit. 실제 사유 분포도 실측이다:
-    #    `:arity` 9 · `:harness` 2.) 이 게이트가 그 **8** 을 이름으로 못 박는다.
-    #  · 🔴 2026-09-02 (cargo-ban T7) 알파벳 교체 1:1 — `reprice_agent_by_payload` 가 나가고
-    #    `forbid_heavy_cargo` 가 들어왔다. **개수는 19/8 그대로이고 이름 집합만 갈렸다** —
-    #    그래서 개수만 세는 게이트는 이 변경에 침묵한다. `ENACTABLE_TODAY` 와
-    #    `REGISTRY_SURFACE_TODAY` 가 **이름으로** 못 박는 것이 그 침묵을 막는다.
+    #  · 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다**(연언지 셋: harness·arity·
+    #    kwargs). 그 술어만 믿으면 부를 수 없는 원시가 호출 시점 `MethodError` 로 죽고
+    #    집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 = 거절보다 나쁜 거짓 admit.
+    #    ⚠️ 2026-09-03 (Task 10): 옛 문구("알파벳 19 중 8")는 **삭제된 고정 레지스트리**에
+    #    대한 사실이었다 — 표는 이제 런 스코프이고 크기는 그 런이 주조한 만큼이다. 그래서
+    #    개수를 재던 명제 (9)(9b)(12) 는 은퇴했고, 남은 것은 `ENACTABLE_TODAY` 를
+    #    `keys(CB.SILENT_SUCCESS_STATUSES)` 와 대조하는 **생산 표에 대한** 단언이다.
     #  · 🔴 `zone_keys` 를 String 으로 넘기면 `Dict{Symbol,Ball2}` 소비자들이 조용히 걸러
     #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
     #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.
@@ -430,11 +428,12 @@ end
     #    조용한 성공 표는 **집행 가능한 여덟 전부**를 덮어야 한다 — 처음 둘만 채웠을 때
     #    넷이 아무 일도 안 하고 `applied=true` 를 냈고, 그중 `force_advance_stuck_carrier!`
     #    는 `CARRIER_RESCUE` 미설정(= 기본 환경)이면 언제나 `:disabled` 다.
-    #  · 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다. 그 둘을 안 재면 params 에
-    #    키를 더하거나 impl 을 다른 함수로 돌리는 편집이 **스위트 전부 초록인 채로**
-    #    LLM 이 부를 수 있는 표면을 넓힌다(과거 `primitive_registry_resolves.jl` 은
-    #    `params` 가 존재하는지만 보고 키를 안 봤다 — 그 파일은 2026-09-03 에 삭제됐다).
+    #  · 🔴 선언된 타입으로 변환 안 되는 param 은 **호출 전에** 거절이다. 안 재면 타입이
+    #    틀린 인자가 호출 경계에서 던지고 그 예외가 `partial=true` 로 기록돼, 세계를 한
+    #    바이트도 안 건드린 판이 `handled=true` 로 폴백을 삼킨다.
     # 변이 18종(명제 12 + 세부 6)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
+    # ⚠️ 그중 셋(옛 (1)·(12a)·(12b))은 2026-09-03 에 **은퇴했다** — 그 자리의 주석이 근거를 적고,
+    #    픽스처가 하중을 지는지는 새 변이 (F1)(씨뿌리기 제거)이 잰다.
     @testset "minted tool enacts" begin
         include("minted_tool_enacts.jl")
     end
@@ -449,16 +448,17 @@ end
     #  · 🔴 `handled` 는 `applied` 가 아니라 `world_maybe_dirty` 로 판정한다. 정본 식은
     #    `tools/monitor/enact.jl` 의 `minted_handled`(**네** 연언지)다 — 여기에 베끼지 않는다(손베낀
     #    복사본이 프로덕션과 갈린 것을 2026-09-02 검증이 실측했다). verdict 항은
-    #    `CB.minted_handled_verdict_ok` 이고 `:admit` 하나가 아니다.
+    #    `CB.minted_handled_verdict_ok` 이고, 정본은 `CB.ENACTED_VERDICTS` 다(크기를 여기
+    #    다시 안 적는다 — 2026-09-02 에 둘이었고 2026-09-03 Task 9 가 다시 하나로 좁혔다).
     #    1단계가 세계를 바꾸고 2단계가 던진 판은 `applied=false` 인데 세계는 이미 편집돼
     #    있다(`undo === :none`). 그 반쯤 고쳐진 세계 위에 기본 복구 사슬을 얹는 것은 안 얹는
     #    것보다 나쁘다.
     #  · 🔴 `[minted]` 줄은 **모든 경로**에서 찍힌다(조기 반환·예외 포함). `policy_producer` 는
     #    OOD 마다 도달하지 않으므로(`is_reform_alarm` · `truth_for_event` 조회 실패), 조건부로
     #    찍으면 줄의 부재가 원인 셋을 갖게 되어 다음 태스크가 못 가른다.
-    #  · 🔴 레지스트리가 망가져 `PRIMITIVE_TABLE` 이 `error(...)` 를 내도 던지지 않는다.
-    #    새면 `maybe_respecify!` 의 producer `try` 가 잡아 비-`:soft` 사건에서
-    #    `engage_fallback!`(= 라인 정지)이 걸리고 로그는 JSON 오타 대신 OOD 를 탓한다.
+    #  · 🔴 (옛 항목) "레지스트리가 망가져도 던지지 않는다" 는 2026-09-03 에 **삭제됐다** —
+    #    전제(`PRIMITIVE_TABLE` 이 설계상 던진다)가 두 겹으로 사라졌고 그 전제 줄 자체가
+    #    조용한 항진이었다. 근거는 그 파일의 (5) 자리 주석에 있다.
     #  · 🔴 MILP 프로브는 센티넬이다 — 재풀이가 없으면 `n_candidate_edges` 를 숫자로 안 찍는다.
     # 서비스 호출 0건 · `render_demo.jl` 실행 0회(순수 함수 게이트).
     @testset "minted tool wiring (tools/monitor/test_minted_wiring.jl)" begin
@@ -547,8 +547,9 @@ end
     # 내용은 그 파일의 마지막 testset 주석.
     # 🔴 2026-09-02 (cargo-ban T7): 이 원시는 **알파벳에서 빠졌다**(레지스트리에서만; 구현과
     # 이 시험은 음성 대조로 남는다 — 실측상 argmin 을 못 움직이는 재료를 모델에게 주지 않는다).
-    # 그래서 이 파일의 "알파벳 결선" testset 은 **부재를 못 박는 쪽으로 뒤집혔고**, 필수 kwarg
-    # 구멍은 그 자리를 이어받은 `forbid_heavy_cargo` 로 옮겨 그대로 기록된다.
+    # ⚠️ 2026-09-03 (Task 10): 그 부재를 못 박던 testset 은 **삭제됐다** — 표가 런 스코프가
+    # 되면서 "표에 없다" 가 모든 이름에 대해 참이 되어 잴 대상이 사라졌다(그 자리의 주석 참고).
+    # 필수 kwarg 구멍은 그 자리를 이어받은 `forbid_heavy_cargo` 로 옮겨 그대로 기록된다.
     @testset "payload reprice install" begin
         include("payload_reprice_install.jl")
     end

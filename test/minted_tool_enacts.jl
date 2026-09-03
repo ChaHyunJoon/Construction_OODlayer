@@ -1,13 +1,18 @@
 # =============================================================================
 # 합성 body 의 집행. (2026-08-30, T3 / spec §5, §9-2)
 #
+# 🔴 2026-09-03 (Task 10) — 이 파일은 **집행 기계**를 재지 알파벳을 재지 않는다.
+#   알파벳(고정 19-원시 레지스트리 파일)은 이 계획이 지웠고 표는 런 스코프가 됐다. 그래서
+#   (9)(9b)(12) 세 명제는 은퇴했고(각 자리의 주석이 근거를 적는다), 나머지 열둘이 쓰는 원시
+#   이름들은 `test/minted_seed_fixture.jl` 이 **손으로 씨 뿌린다** — 그 이름들이 집행부의
+#   생산 표 다섯(`SILENT_SUCCESS_STATUSES` 등)의 키이고, 씨를 안 뿌리면 그 표를 재는 절이
+#   전부 "unknown primitive" 로 죽어 **한 번도 안 태워진다.**
+#
 # 재는 명제 열둘
-#   (1) 🔴 2026-09-02 결정 2: 게이트는 자기신고가 아니라 **body** 를 심사한다 — 이름이
-#       전부 해석되고 전부 집행가능하고 인자가 전부 바인딩되면 `reach != "composed"` 여도
-#       불린다. 다만 `reach` 가 신고한 값과 다르게 실제로 굴렸다는 사실은 verdict 에
-#       남는다: `:admit`(composed 로 신고) 이 아니라 `:admit_unsanctioned`(그 밖의 신고,
-#       body 는 조합돼 있어 굴렸다). `reach === nothing`(못 쟀다, 합성 기록 자체가 없음)
-#       만 예전처럼 `:deferred` 다.
+#   (1) 🔴 게이트는 자기신고가 아니라 **body** 를 심사한다 — 이름이 전부 해석되고 전부
+#       집행가능하고 인자가 전부 바인딩되면 굴린다. 미끼는 `impl_name` 이고(2026-09-03,
+#       Task 9), 그것이 없으면 "못 쟀다" = `:deferred` 다. `reach` 자기신고는 판정에
+#       **안 들어간다**(경계 키에서도 빠졌다) — 옛 `:admit_unsanctioned` 구분과 함께 사라졌다.
 #   (2) body 에 미지 원시가 하나라도 있으면 **아무것도 집행하지 않고** `:reject` 다.
 #       부분 집행은 undo 가 없는 이 설계에서 최악이다.
 #   (3) 빈 body 는 `:admit` 이 아니다.
@@ -16,21 +21,19 @@
 #   (6) `env` 가 있으면 위치인자로 들어간다.
 #   (7) 여러 원시가 하나의 params dict 을 나눠 갖는다 — 원시 단위 off-schema 거절 금지.
 #   (8) 그러나 **아무 원시도 모르는** 인자는 body 전체를 본 뒤 거절된다(조용히 안 버린다).
-#   (9) 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이고, 나머지는 **부르기 전에**
-#       어느 연언지가 깨졌는지와 함께 거절된다.
 #  (10) 🔴 `zone_keys` 는 유도하지 않는다. 안 주면 키워드를 빼고, 주면 `Symbol` 로 강제해
 #       살아 있는 존인지 **호출 전에** 검사한다.
 #  (11) 🔴 "불렀는데 아무 일도 없었다" · "부르지 않았다" · "못 쟀다"는 서로 다른 사건이다 —
 #       `applied`(노린 적응) · `partial`(던졌다) · `world_maybe_dirty`(둘 중 하나) 가 verdict 와
 #       별개로 그것을 나른다. 표는 **집행 가능한 여덟 전부**를 덮어야 한다.
-#  (12) 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다 — (9) 는 이름 집합만 재므로,
-#       params 에 키를 더하거나 impl 을 다른 함수로 돌리면 스위트가 전부 초록인 채
-#       부를 수 있는 표면이 넓어진다.
+#       🔴 한 발도 안 굴린 판(`:deferred`/`:reject`)의 `applied` 는 `false` 가 아니라
+#       **`nothing`("못 쟀다")** 이다 — `_r` 의 기본값이 그 삼상을 나른다(C1, Task 9 F6-4).
+#  (13)~(19) 재개·타입·invariant·보관소·status·calls 배선·교차언어 왕복.
 #
 # 변이시험 — 열하나 전부 실제로 빨갛게 만든 뒤 되돌렸다. 재현 방법(`src/respec/minted_tool.jl`):
-#   · (1): `enact_minted!` 의 `admit_verdict = sanctioned ? :admit : :admit_unsanctioned` 를
-#          `admit_verdict = :admit` 로 고정한다 → `r.verdict === :admit_unsanctioned` 단언이
-#          빨개진다(needs_primitive 로 신고했는데 `:admit` 이 나온다, S7 2026-09-02 실측).
+#   · (1): 🔴 이 변이는 **은퇴했다** — `sanctioned`/`:admit_unsanctioned` 가 없어졌다
+#          (Task 9). 오늘 (1) 을 잡는 변이는 `nm === nothing && return _r(:deferred, …)` 를
+#          지우는 것이다 → `r3.verdict === :deferred` 가 빨개진다.
 #   · (2): `enact_minted!` 의 해석 루프에서 `p === nothing && return _r(:reject, ...)` 를
 #          `p === nothing && continue` 로 바꾼다.
 #   · (3): `isempty(names) && return _r(:reject, "empty body: ...")` 의 `:reject` 를 `:admit` 로.
@@ -41,7 +44,8 @@
 #   · (7): 같은 함수의 kw 선별 루프를 원시 단위 off-schema 거절로 되돌린다
 #          (`haskey(prim.params, String(k)) || return "reject:off_schema:$(k)"`).
 #   · (8): `enact_minted!` 의 `let known = ...` 블록 전체를 지운다.
-#   · (9): `_enactability` 의 본문을 `return (true, :ok)` 하나로 바꾼다.
+#   · (9): 🔴 명제 (9) 는 은퇴했지만 이 변이는 **살아 있다** — `_enactability` 의 본문을
+#          `return (true, :ok)` 로 바꾸면 (1) 의 `swap_battery` 거절 단언이 빨개진다.
 #   ·(10): `bind_primitive_args` 의 `haskey(live, k) || return "reject:unknown_zone_key:..."`
 #          줄을 지운다.
 #   ·(11): 집행 루프의 `applied |= _step_applied(...)` 를 `applied = true` 로.
@@ -53,13 +57,15 @@
 #   ·(11e): `_step_status` 의 `try`/`catch` 를 지운다(Hostile 반환이 예외로 새어 나간다).
 #   ·(11f): `_r` 의 `world_maybe_dirty = applied || partial` 를 `= applied` 로
 #           (던진 경우가 깨끗한 세계로 보고된다).
-#   ·(12a): 레지스트리에서 `restage_all_blocked` 의 params 에 `"resume"` 를 더한다.
-#   ·(12b): 레지스트리에서 `resolve_schedule_wedge` 의 impl 을 `recover_stalled_teams!` 로 돌린다.
+#   ·(12a)(12b): 🔴 은퇴했다 — 둘 다 **레지스트리 JSON 을 편집하는** 변이였고 그 파일이 없다.
+#          오늘 이름→impl 짝은 `register_minted_primitive!` 가 구성상 고정한다.
 #   ·(13a): `PRIMITIVE_RESUMES_CACHE["recover_stalled_teams"]` 를 `true` 로
 #           (= 리뷰가 잡은 CRITICAL 의 상태 — 재개가 조용히 안 나간다).
 #   ·(13b): `enact_minted!` 의 루프 뒤 재개 블록을 통째로 지운다.
 #   ·(13c): `WORLD_UNCHANGED_STATUSES` 를 `SILENT_SUCCESS_STATUSES` 의 별칭으로 되돌린다
 #           (= 옮겨진 빌드가 world_maybe_dirty=false 로 보고되는 IMPORTANT 결함).
+#   ·(F1): `test/minted_seed_fixture.jl` 의 `seed_minted_fixture!` 호출을 지운다 → 표가 비어
+#          이 파일의 거의 모든 절이 "unknown primitive" 로 빨개진다(픽스처가 하중을 진다).
 #   ·(13d): `_step_touched_world` 의 `UNMEASURABLE_STATUSES ? true :` 를 `false` 로.
 #   ·(13e): 던진 경로의 `_issue_resume!` 호출을 지운다.
 #   ·(14a): `bind_primitive_args` 의 `_param_type_reject` 호출을 지운다(= 최종 리뷰 이전 상태 —
@@ -88,9 +94,24 @@ const CB = ConstructionBots
 isdefined(CB, :BatteryTruth) ||
     CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 
+# 🔴 2026-09-03 (Task 10). 원시 표는 이제 **런 스코프**이고 기본이 비어 있다(Task 2). 이 파일이
+#    재는 것은 알파벳이 아니라 **집행 기계**(인자 바인딩·타입 검사·삼상·재개·calls 배선)이고,
+#    그 기계는 손으로 쓴 원시들로 색인된 생산 표 다섯을 통과해야 태워진다. 그래서 픽스처가
+#    직접 씨를 뿌린다 — 근거와 `register_minted_primitive!` 를 안 쓰는 이유는 그 파일에 있다.
+include(joinpath(@__DIR__, "minted_seed_fixture.jl"))
+seed_minted_fixture!()
+
 # 세계를 안 건드리는 최소 컨텍스트. env 를 요구하는 원시는 (11) 말고는 안 부른다.
-_synth(; reach = "composed", names = String[], params = Dict{String,Any}(), calls = nothing) =
-    Dict{String,Any}("reach" => reach, "body_names" => names,
+# 🔴 `impl_name` 을 함께 싣는다(2026-09-03, Task 9). 집행 게이트의 미끼가 `reach` 에서
+#    `impl_name` 으로 옮겨졌고, 경계(`enact_minted_decision!`)는 `impl_name === nothing` **단독**
+#    으로 막는다. 픽스처가 그 값을 안 실으면 이 파일의 모든 판이 `:deferred` 로 떨어진다.
+#    ⚠️ 일부러 `impl_name` 을 이름에서 **유도**한다 — `minted_tool.jl` 안쪽 게이트가
+#    `impl_name === nothing`(단독)이든 `impl_name === nothing && isempty(body_names)`(연언)이든
+#    이 픽스처는 양쪽에서 같은 갈래를 태운다. 게이트의 현재 모양에 매이지 않는다.
+#    `impl_name = nothing` 을 명시하면 "합성 레인이 값을 안 실었다" 갈래를 겨냥할 수 있다.
+_synth(; reach = "composed", names = String[], params = Dict{String,Any}(), calls = nothing,
+         impl_name = isempty(names) ? nothing : first(names)) =
+    Dict{String,Any}("reach" => reach, "body_names" => names, "impl_name" => impl_name,
                      "tool_name" => "t", "params" => params, "missing_primitive" => nothing,
                      # 🔴 삼상: 기본은 `nothing`("못 쟀다") 이지 `[]`("읽었는데 비었다") 가 아니다.
                      "calls" => calls)
@@ -122,48 +143,60 @@ end
 ConstructionBots.get_graph(s::_BanSched) = Graphs.SimpleDiGraph(length(s.owners))
 ConstructionBots._edge_owner_id(s::_BanSched, v) = s.owners[v]
 
-@testset "(1) reach=needs_primitive 여도 body 가 조합돼 있으면 집행한다" begin
-    # 🔴 자기신고가 아니라 body 를 믿는다(F5 실측: agent-3 가 이미 조합한 body 에
-    #    needs_primitive 를 붙였다 — synthesize.py:1195).
+@testset "(1) 게이트는 자기신고가 아니라 body 를 심사한다" begin
+    # 🔴 2026-09-03 (Task 10). **이 절은 다시 쓰였다 — 재던 성질은 그대로다.**
+    #    Task 9 가 `:admit_unsanctioned` verdict 를 지웠다: 그것은 "agent-3 이 조합에 실패했다고
+    #    신고했는데 body 는 있다"(`reach != "composed"`)를 재던 구분인데, **조합 단계 자체가
+    #    없어졌다**(D8 — agent-3 은 인벤토리에서 조합하지 않고 구현을 쓴다). 그리고 `reach` 는
+    #    `SYNTH_LANE_KEYS` 에서 빠져 경계를 못 넘는다. 그래서 그 verdict 를 기대하던 단언 넷은
+    #    **잴 대상이 없어졌다**(a). 살아 있는 성질은 이것이고 아래가 그것을 잰다:
+    #      · 게이트는 자기신고가 아니라 **body** 를 본다 — 이름이 전부 해석되고 전부
+    #        집행가능하고 인자가 전부 바인딩되면 굴린다.
+    #      · 자격 없는 body 는 여전히 세계 무접촉이다((3)(4)(6) 이 그대로 산다).
+    #      · 못 쟀다(`impl_name` 도 `body_names` 도 없다) ≠ 아니라고 했다 → `:deferred`.
     fake = (staging_circles = Dict{Symbol,Any}(),)   # :no_staging 으로 첫 줄에서 돌아선다
+
+    # 🔴 `reach` 가 무엇이든 결과가 **바이트 동일**이다 — 자기신고는 이제 판정에 안 들어간다.
     r = CB.enact_minted!(fake, nothing,
                          _synth(reach = "needs_primitive", names = ["translate_whole_build"]))
-    @test r.verdict === :admit_unsanctioned          # 굴렸다, 그러나 허락은 없었다
-    @test length(r.steps) == 1 && r.steps[1].status === :no_staging
-    @test occursin("needs_primitive", r.reason)      # 사유가 자기신고를 그대로 인용한다
-    @test r.undo === :none
-
-    # 같은 body 를 composed 로 신고하면 verdict 만 갈린다 — 나머지는 바이트 동일이다.
     r2 = CB.enact_minted!(fake, nothing, _synth(names = ["translate_whole_build"]))
-    @test r2.verdict === :admit
+    @test r.verdict === :admit && r2.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :no_staging
     @test [(s.name, s.status) for s in r2.steps] == [(s.name, s.status) for s in r.steps]
     @test r2.applied === r.applied && r2.world_maybe_dirty === r.world_maybe_dirty
+    @test r.undo === :none
 
-    # 🔴 못 쟀다 ≠ 아니라고 했다. reach 가 없으면 예전처럼 deferred 다.
-    r3 = CB.enact_minted!(fake, nothing, _synth(reach = nothing, names = ["translate_whole_build"]))
+    # 🔴 못 쟀다 ≠ 아니라고 했다. 합성 레인이 값을 하나도 안 실으면 `:deferred` 다.
+    r3 = CB.enact_minted!(fake, nothing, _synth(impl_name = nothing, names = String[]))
     @test r3.verdict === :deferred
     @test isempty(r3.steps)
 
-    # 🔴 게이트가 열려도 (3)(4)(6) 은 그대로다 — 자격 없는 body 는 여전히 세계 무접촉이다.
+    # 🔴 자격 없는 body 는 여전히 세계 무접촉이다.
     @test CB.enact_minted!(fake, nothing,
-              _synth(reach = "needs_primitive", names = ["teleport_the_build"])).verdict === :reject
+              _synth(names = ["teleport_the_build"])).verdict === :reject   # 알파벳 밖
     @test CB.enact_minted!(fake, nothing,
-              _synth(reach = "needs_primitive", names = ["swap_battery"])).verdict === :reject
+              _synth(names = ["swap_battery"])).verdict === :reject         # 집행 불가(:arity)
     @test CB.enact_minted!(nothing, nothing,
-              _synth(reach = "needs_primitive", names = ["restage_all_blocked"])).world_maybe_dirty === false
+              _synth(names = ["restage_all_blocked"])).world_maybe_dirty === false
 
-    # 🔴 게이트의 첫 연언지가 새 verdict 를 받아들인다(T2 가 이 술어를 부른다).
-    @test CB.minted_handled_verdict_ok(:admit_unsanctioned) === true
+    # 🔴 게이트의 첫 연언지 — 집행 계열 verdict 는 이제 `:admit` **하나**다(T2 가 이 술어를 부른다).
+    @test CB.ENACTED_VERDICTS === (:admit,)
     @test CB.minted_handled_verdict_ok(:admit) === true
     @test CB.minted_handled_verdict_ok(:reject) === false
     @test CB.minted_handled_verdict_ok(:deferred) === false
+    # 음성 대조: 사라진 verdict 가 되살아나면 여기서 빨개진다.
+    @test CB.minted_handled_verdict_ok(:admit_unsanctioned) === false
 end
 
 @testset "(2) 미지 원시 하나면 아무것도 안 한다" begin
     r = CB.enact_minted!(nothing, nothing,
                          _synth(names = ["restage_all_blocked", "teleport_the_build"]))
     @test r.verdict === :reject
-    @test r.applied === false
+    # 🔴 2026-09-03 (Task 10). `false`("쟀는데 적응이 없었다") 가 아니라 **`nothing`
+    #    ("못 쟀다")** 이다 — 한 발도 안 굴렸으니 잰 것이 없다. `_r` 의 기본값이 그 삼상을
+    #    나르고(`applied = nothing`), C1 이 그것을 계약으로 세웠다
+    #    (`test/minted_registration.jl` (8)(9)(11)).
+    @test r.applied === nothing
     @test occursin("teleport_the_build", r.reason)
     # 🔴 첫 원시가 해석 가능해도 **집행 시도조차 없어야** 한다. undo 가 없으므로
     #    부분 집행은 되돌릴 수 없는 손상이다.
@@ -171,9 +204,15 @@ end
 end
 
 @testset "(3) 빈 body 는 admit 이 아니다" begin
-    r = CB.enact_minted!(nothing, nothing, _synth(names = String[]))
+    # 🔴 2026-09-03 (Task 10). 게이트가 `impl_name` 으로 옮겨졌으므로(Task 9) "빈 body" 를
+    #    겨냥하려면 **`impl_name` 은 있고 `body_names` 만 빈** 기록이 필요하다. 그 조합은
+    #    라이브에서 실재한다: 파이썬은 `body_names = [impl_name] if impl_name else []` 로
+    #    채우지만 경계를 넘는 것은 dict 이고, 둘 중 하나만 실린 찢어진 기록이 오면 여기가
+    #    막는 자리다. `impl_name` 도 없는 판은 (1) 이 `:deferred` 로 따로 잰다 — 못 쟀다와
+    #    빈 body 는 다른 사건이다.
+    r = CB.enact_minted!(nothing, nothing, _synth(names = String[], impl_name = "ghost!"))
     @test r.verdict === :reject
-    @test r.applied === false
+    @test r.applied === nothing          # 한 발도 안 굴렸다 = 못 쟀다(삼상)
     @test occursin("empty", r.reason)
 end
 
@@ -214,114 +253,31 @@ end
                                 params = Dict{String,Any}("nonsense_knob" => 1)))
     @test r.verdict === :reject
     @test occursin("nonsense_knob", r.reason)
-    @test r.applied === false
+    @test r.applied === nothing          # 거절은 못 잰 것이지 잰 0 이 아니다
 end
 
 # =============================================================================
-# (9) 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다**.
+# 🔴 2026-09-03 (Task 10) — **명제 (9)(9b) 는 은퇴했다.**
 #
-# 그 술어 하나만 보면 19 중 17 이 집행 가능으로 표시되는데(빈 `harness_args` 가 공짜로
-# 통과한다), 실제로 부를 수 있는 것은 8 뿐이다. 나머지 11 은 호출 시점 `MethodError` 로
-# 죽고 집행부의 `try` 가 그것을 `:admit`/`applied` 로 보고한다 = 거절보다 나쁜 거짓 admit.
-# 이 절이 그 8 을 **이름으로** 못 박는다 — 레지스트리 편집이 조용히 어휘를 좁히면 빨개진다.
+# 둘은 "알파벳 19 중 집행 가능은 8" 과 "레지스트리의 `enactable` 도장이 Julia 의 계산과
+# 일치한다" 를 쟀다. 그 알파벳은 파일(`core/primitive_registry.json`)이었고 이 계획이 그것을
+# 지웠다(설계 §7, Task 2) — 표는 이제 런에서 생성되고 크기는 그 런이 주조한 만큼이다.
+# 도장 축도 함께 사라졌다: 그것을 나르던 JSON 이 없고, 파이썬 프롬프트가 렌더할 인벤토리도
+# 없다(D5). 즉 **재던 대상이 없어졌다** — 항진으로 고쳐 남기면 이 자리는 초록인 채 아무것도
+# 안 지킨다.
 #
-# 🔴 2026-09-01: 7 → 8. `bind_primitive_args` 가 `invariant` 를 만들 줄 알게 되어
-#    `release_pending_assignments` 가 집행 가능해졌고, 같은 커밋에서 `commit_respec` 이
-#    레지스트리에서 빠졌다(20 → 19). 그 둘은 **한 결정의 양면**이다: MILP 재풀이와 그
-#    write-back 은 body 가 아니라 harness 의 몫이고(T13, `resolve_assignments!` 가
-#    `apply_action!` 안에서 모든 팔 뒤에 돈다), body 는 "무엇을 열고 무엇을 재가격할지"만
-#    말한다.
-#
-# 🔴 2026-09-02 (cargo-ban T7): **알파벳 교체 1:1**. `reprice_agent_by_payload` 가 나가고
-#    `forbid_heavy_cargo` 가 들어왔다 — 표 개수는 19 그대로, 집행 가능도 8 그대로다(실측).
-#    뺀 이유는 실측이다: 그 soft 재가격은 어느 판에서도 argmin 을 못 움직였다(bias 32 까지
-#    대상 로봇이 일을 하나도 안 잃는다). 남겨 두면 모델이 무효한 재료를 골라 `handled=true`
-#    인데 세계는 바이트 동일인 판이 생긴다. 구현(`src/navigator/payload_bias.jl`)과 그
-#    시험은 **음성 대조로 남는다** — 지운 것은 알파벳뿐이다.
+# 🔴 그러나 그 절들이 쓰던 `ENACTABLE_TODAY` 는 **남는다.** 그 상수는 알파벳에 대한 주장이
+# 아니라 **생산 표에 대한 주장**이고, 아래 (11) 이 그것으로
+# `keys(CB.SILENT_SUCCESS_STATUSES)` 를 대조한다 — 표를 안 채우고 원시를 더하면
+# `_step_applied` 의 보수적 기본값으로 조용히 새는 길이 그 단언 하나로 막힌다.
+# 집행 불가 갈래(`:arity`·`:harness`)는 위 (1) 이 `swap_battery` 로,
+# 아래 (14)(15) 가 `compile_constraint`/`invariant` 로 각각 계속 태운다.
 # =============================================================================
 const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier",
                               "recover_stalled_teams",
                               "reform_stuck_teams", "release_pending_assignments",
                               "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
-
-@testset "(9b) 레지스트리의 enactable 도장이 Julia 가 계산한 판정과 일치한다" begin
-    # 🔴 2026-09-02 (F5). 파이썬 합성 프롬프트가 "이 원시는 harness 가 못 부른다" 를 렌더하려면
-    #    그 사실이 레지스트리에 **도장**으로 실려야 한다 — 파이썬은 계산할 수 없다
-    #    (`_enactability` 의 세 연언지 중 둘이 메서드 시그니처를 읽는다: `methods` ·
-    #    `Base.kwarg_decl`). 그래서 판정은 여기(Julia)가 하고 JSON 이 나른다.
-    #
-    # 🔴 이 게이트가 없으면 도장은 **조용히 썩는다**: impl 의 시그니처가 하나 바뀌는 순간
-    #    계산값은 따라가고 JSON 은 안 따라가는데, 파이썬 시험은 자기 JSON 만 보므로 전부
-    #    초록이다. 그러면 프롬프트가 못 부르는 원시를 "부를 수 있다" 고 광고하고, 그 body 는
-    #    `reject:unenactable` 로 한 발도 안 굴러간다 — 정확히 F5 가 고치려는 결함의 재발이다.
-    tbl = CB.PRIMITIVE_TABLE()
-    @test length(tbl) == 19                    # 빈-통과 방지: 표가 비면 아래 루프가 0회다
-    n_stamped_false = 0
-    for (nm, entry) in tbl
-        computed = CB.resolve_primitive(nm).enactable
-        @test haskey(entry, "enactable")       # 부재는 "못 쟀다" 이고 조용히 통과하면 안 된다
-        @test Bool(entry["enactable"]) === computed
-        if !computed
-            n_stamped_false += 1
-            # 못 부르면 **왜** 못 부르는지가 같이 실려야 한다 — 그 원시를 고칠 사람이 읽는다.
-            @test haskey(entry, "unenactable_why")
-            @test !isempty(strip(String(entry["unenactable_why"])))
-            # 산문이 계산된 연언지를 실제로 지목하는가(`arity` / `harness` / …).
-            @test occursin(String(CB.resolve_primitive(nm).unenactable_why),
-                           String(entry["unenactable_why"]))
-        else
-            @test !haskey(entry, "unenactable_why")
-        end
-    end
-    @test n_stamped_false == 11                # 8 callable / 11 not. 어느 쪽이 움직여도 빨갛다.
-end
-
-@testset "(9) 알파벳 19 중 집행 가능은 8 이고, 나머지는 부르기 전에 거절된다" begin
-    tbl = CB.PRIMITIVE_TABLE()
-    @test length(tbl) == 19
-    got = sort([n for n in keys(tbl) if CB.resolve_primitive(n).enactable])
-    @test got == ENACTABLE_TODAY               # 🔴 19 중 8. 넓어져도 좁아져도 빨개진다.
-
-    # 집행 불가는 **부르기 전에**, 어느 연언지가 깨졌는지와 함께 거절된다.
-    #  · compile_constraint — harness 에 `model`·`t0`·`tF`·`Xa`·`sched` 가 있다. 바인더가
-    #       만들 수 있는 것은 `BINDABLE_HARNESS_ARGS` = {env, invariant} 뿐이다  → :harness
-    #  · swap_battery       — harness 는 env 하나인데 위치인자가 둘이다        → :arity
-    # ⚠️ 이 자리의 `:harness` 표본은 2026-09-01 까지 `commit_respec` 이었다. 그 원시는 같은 날
-    #    레지스트리에서 빠졌으므로(재풀이 write-back 은 harness 의 몫) 다른 자연 표본으로 옮겼다.
-    for (nm, why) in (("compile_constraint", :harness), ("swap_battery", :arity))
-        p = CB.resolve_primitive(nm)
-        @test p.enactable === false
-        @test p.unenactable_why === why
-        r = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm]))
-        @test r.verdict === :reject
-        @test occursin("reject:unenactable:$(nm):$(why)", r.reason)
-        @test isempty(r.steps)               # 한 발도 안 나갔다
-    end
-
-    # 나머지 두 연언지(`:kwargs`·`:multimethod`)는 오늘 레지스트리에 자연 표본이 없다 —
-    # 오염 사본을 물려서 잰다(T2 게이트 (4) 와 같은 관용구).
-    mktempdir() do dir
-        path = joinpath(dir, "primitive_registry.json")
-        write(path, """
-        {"primitives": [
-          {"name":"kw_bad","impl":"recover_stalled_teams!","surface":"physical",
-           "harness_args":["env"],"params":{"no_such_kwarg":{"type":"int"}},"reversible":false},
-          {"name":"mm_bad","impl":"compile_constraint!","surface":"milp",
-           "harness_args":[],"params":{},"reversible":false}
-        ]}""")
-        withenv("PRIMITIVE_REGISTRY" => path) do
-            CB._reset_primitive_table!()
-            @test CB.resolve_primitive("kw_bad").unenactable_why === :kwargs
-            # 🔴 메서드가 여럿이어도 **던지지 않는다** (`compile_constraint!` 는 6개).
-            @test CB.resolve_primitive("mm_bad").unenactable_why === :multimethod
-            @test occursin("reject:unenactable:kw_bad:kwargs",
-                           CB.enact_minted!(Ref(:e), nothing, _synth(names = ["kw_bad"])).reason)
-        end
-        CB._reset_primitive_table!()
-    end
-    @test length(CB.PRIMITIVE_TABLE()) == 19   # 원래 레지스트리로 돌아왔다
-end
 
 # =============================================================================
 # (10) 🔴 `zone_keys` 를 truth 에서 유도하면 안 되는 이유는 실측 셋이다:
@@ -366,7 +322,7 @@ end
                 _synth(names = ["restage_all_blocked"],
                        params = Dict{String,Any}("zone_keys" => ["zone_blk_9"])))
         @test r.verdict === :reject
-        @test r.applied === false
+        @test r.applied === nothing      # 거절은 못 잰 것이지 잰 0 이 아니다
         @test isempty(r.steps)
     finally
         CB.RESTRICTION_ZONES[] = saved
@@ -472,71 +428,14 @@ end
 end
 
 # =============================================================================
-# (12) 🔴 레지스트리 편집 둘이 게이트를 전부 초록으로 둔 채 **부를 수 있는 표면을 넓힌다**.
-#   (a) `restage_all_blocked` 의 params 에 `"resume"` 를 더한다 → 연언지 (iii) 은 그대로
-#       성립하고(진짜 kwarg 다) 이름 집합도 그대로라 (9) 는 초록인데, 이제 LLM 이 준
-#       `resume` 가 `reset_cache_resume!` 까지 흘러가고 (8) 의 미지 인자 거절도 그 키를
-#       더는 안 막는다.
-#   (b) `resolve_schedule_wedge` 의 impl 을 `recover_stalled_teams!` 로 돌린다 → arity 1 ·
-#       env-only · 단일 메서드라 여전히 집행 가능, 이름 집합 그대로, 스위트 전부 초록인데
-#       알파벳이 **다른 함수**를 집행한다.
-# `test/primitive_registry_resolves.jl` 은 `params` 가 **존재**하는지만 보지 키를 안 본다.
-# 그래서 이 절이 이름→impl 짝과 params 키 **둘 다**를 못 박는다.
-# =============================================================================
-const REGISTRY_SURFACE_TODAY = Dict{String,Tuple{String,Vector{String}}}(
-    "apply_uniform_translation"   => ("_apply_uniform_translation!", ["delta"]),
-    "compile_constraint"          => ("compile_constraint!", ["constraint_type"]),
-    "deprioritize_agent"          => ("deprioritize_agent!", ["agent", "factor"]),
-    "dispatch_battery_courier"    => ("dispatch_battery_courier!", ["target"]),
-    "forbid_heavy_cargo"          => ("forbid_heavy_cargo!", ["agent", "n"]),
-    "force_advance_stuck_carrier" => ("force_advance_stuck_carrier!", ["tol"]),
-    "hot_swap_robot"              => ("hot_swap_robot!", ["faulted", "mode"]),
-    "pop_spare"                   => ("pop_spare!", ["pool"]),
-    "recover_stalled_teams"       => ("recover_stalled_teams!", String[]),
-    "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
-    "release_pending_assignments" => ("release_pending_assignments!", ["faulted", "agent"]),
-    "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
-    "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
-    "resolve_schedule_wedge"      => ("resolve_schedule_wedge!", String[]),
-    "restage_all_blocked"         => ("restage_all_blocked!", ["zone_keys"]),
-    "restage_assembly"            => ("restage_assembly!", ["assembly_id", "zone_keys"]),
-    "rethread_robot_ids"          => ("rethread_robot_ids!", String[]),
-    "swap_battery"                => ("swap_battery!", ["agent"]),
-    "translate_whole_build"       => ("translate_whole_build!", ["zone_keys"]),
-)
-
-@testset "(12) 레지스트리의 이름→impl 짝과 params 키를 못 박는다" begin
-    tbl = CB.PRIMITIVE_TABLE()
-    @test sort(collect(keys(tbl))) == sort(collect(keys(REGISTRY_SURFACE_TODAY)))
-    for (n, (impl, prms)) in REGISTRY_SURFACE_TODAY
-        p = CB.resolve_primitive(n)
-        @test p !== nothing
-        # 이름→impl 짝. `nameof` 로 실제로 해석된 함수의 이름을 되읽는다 — 레지스트리 문자열이
-        # 아니라 **CB 가 준 callable** 을 본다.
-        @test String(nameof(p.impl)) == impl
-        # params 키. 이 집합이 곧 LLM 이 이 원시에 넘길 수 있는 손잡이 전부다.
-        @test sort(collect(keys(p.params))) == sort(prms)
-    end
-end
-
-# =============================================================================
-# (13) 🔴 2026-08-30 (T4 리뷰). 두 결함을 한꺼번에 막는다.
+# 🔴 2026-09-03 (Task 10) — **명제 (12) 는 은퇴했다.**
 #
-#  (a) CRITICAL — **집행 가능한 여섯 중 셋이 스케줄 캐시를 스스로 재개하지 않는다.**
-#      `enact_minted!` 은 `impl(env)` 를 날것으로 부르므로, body `["recover_stalled_teams"]`
-#      가 `:snapped` 를 내면 `applied=true → handled=true` 가 되어 기본 복구 사슬을 건너뛴다.
-#      세계는 고쳐졌는데 프론티어가 낡은 채 남고, 그 OOD 사건은 **이미 소비돼 다시 오지
-#      않는다** = 성공과 구별되지 않는 미복구(`ood_injection.jl`: "예외는 안 난다").
-#
-#  (b) IMPORTANT — **`world_maybe_dirty=false` 인데 빌드가 이미 옮겨져 있다.**
-#      `translate_whole_build!` 의 `:residual_blocked` 는 `_apply_uniform_translation!` 이
-#      돈 **뒤**에 나온다. 표가 하나뿐이면 `applied=false → world_maybe_dirty=false` 라
-#      "세계가 깨끗하다"고 보고하는 옮겨진 빌드가 된다.
-#
-# 🔴 (a) 를 **실제로 볼 수 있는** 픽스처: 손으로 지은 env 로는 못 본다(재개는 `env.cache`·
-#    `env.sched` 를 쓴다). 그래서 **진짜** `OperatingSchedule` + `PlanningCache` 를 만들고
-#    `active_set` 에 낡은 정점을 심어 둔다 — 재개가 실제로 일어나면 그 자리가 비워진다.
-#    아래 (13-e) 가 양성 대조, (13-f) 가 음성 대조다(같은 픽스처, 반대 결과).
+# 그것은 "레지스트리의 이름→impl 짝과 params 키를 못 박는다" 였고, 변이 (12a)(12b) 가
+# **레지스트리 JSON 을 편집하는** 변이였다. 그 파일이 없다 — 오늘 이름→impl 짝을 정하는 것은
+# `register_minted_primitive!` 이고, 그 함수는 `"impl" => String(name)`(함수 자신이 원시다,
+# 이름이 둘일 이유가 없다)로 **구성상** 짝을 고정한다. 즉 이 절이 막던 실패 모드(짝을 조용히
+# 다른 함수로 돌리기)가 기전 자체로 불가능해졌다. `test/minted_registration.jl` (2)(4) 가
+# 그 기전을 잰다.
 # =============================================================================
 @testset "(13) 스케줄 캐시 재개 · 세계 접촉 표" begin
     # ---- 표 셋의 커버리지 -------------------------------------------------------------
@@ -663,16 +562,18 @@ end
     # 인 status 를 실제로 내는 판이 필요한데, `:residual_blocked` 는 진짜 기하가 있어야 나온다.
     # `:unreadable_return` 이 같은 성질을 값싸게 준다: `_step_applied=false`(못 쟀으니 성공으로
     # 안 센다) · `_step_touched_world=true`(못 쟀으니 깨끗하다고도 못 한다).
-    # 오염 사본으로 `restage_all_blocked` 의 impl 만 "반환 모양을 못 읽는" 함수로 돌린다.
-    mktempdir() do dir
-        path = joinpath(dir, "primitive_registry.json")
-        write(path, """
-        {"primitives": [
-          {"name":"restage_all_blocked","impl":"process_schedule!","surface":"physical",
-           "harness_args":["env"],"params":{},"reversible":false}
-        ]}""")
-        withenv("PRIMITIVE_REGISTRY" => path) do
-            CB._reset_primitive_table!()
+    # 🔴 2026-09-03 (Task 10). 옛 판은 오염된 **레지스트리 파일 사본**(`PRIMITIVE_REGISTRY` env
+    #    var + `_reset_primitive_table!`)으로 이 갈래를 만들었다. 그 파일 경로도 그 두 심볼도
+    #    삭제됐다(Task 2) — 오늘은 런-스코프 표에 행 하나를 **직접** 돌려 넣는다.
+    #    재는 성질은 한 글자도 안 바뀌었다: `restage_all_blocked` 의 impl 만 "반환 모양을 못
+    #    읽는" 함수로 바꾼다. 🔴 `"generated"` 표시는 **안 붙인다** — 붙이면 `_step_applied`
+    #    가 생성 갈래(`nothing`)로 빠져 이 절이 다른 것을 재게 된다.
+    let saved = copy(CB.minted_table())
+        try
+            CB.minted_table()["restage_all_blocked"] = Dict{String,Any}(
+                "name" => "restage_all_blocked", "impl" => "process_schedule!",
+                "surface" => "physical", "harness_args" => ["env"],
+                "params" => Dict{String,Any}(), "reversible" => false)
             local sched = CB.OperatingSchedule()      # env 자리에 그대로 넣는다 — impl 이 이걸 받는다
             local r = CB.enact_minted!(sched, nothing, _synth(names = ["restage_all_blocked"]))
             @test r.steps[1].status === :unreadable_return
@@ -683,10 +584,12 @@ end
             # 이 원시는 스스로 재개하므로 대신 부르지 않는다(멱등이어도 안 해도 되는 일은 안 한다).
             @test r.resume === :not_needed_self
             @test occursin("resume=not_needed", r.reason)
+        finally
+            CB.minted_table()["restage_all_blocked"] = saved["restage_all_blocked"]
         end
-        CB._reset_primitive_table!()
     end
-    @test length(CB.PRIMITIVE_TABLE()) == 19          # 원래 레지스트리로 돌아왔다
+    # 🔴 픽스처가 온전히 돌아왔다 — 표는 프로세스 전역이라 뒤 절·뒤 파일이 이것을 물려받는다.
+    @test CB.resolve_primitive("restage_all_blocked").impl === CB.restage_all_blocked!
 
     # ---- (13-g) 아무것도 안 부른 판의 resume 은 :none 이다 ---------------------------
     @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).resume === :none
@@ -788,7 +691,7 @@ end
     @test r.verdict === :reject
     @test isempty(r.steps)                 # 🔴 한 발도 안 나갔다
     @test r.partial === false
-    @test r.applied === false
+    @test r.applied === nothing            # 거절은 못 잰 것이지 잰 0 이 아니다
     @test r.world_maybe_dirty === false     # ⟹ T4 의 handled 가 거짓 ⟹ 폴백이 산다
     @test r.resume === :none
     @test occursin("reject:param_type:min_ready", r.reason)
@@ -1001,8 +904,12 @@ _c(name; args = Dict{String,Any}()) =
     @test r.verdict === :admit
     @test length(r.steps) == 1 && r.steps[1].status === :no_staging
 
-    # 키가 아예 없는 합성 기록(낡은 서비스)도 같은 결과여야 한다.
-    bare = Dict{String,Any}("reach" => "composed", "body_names" => ["translate_whole_build"])
+    # `calls` 키가 아예 없는 합성 기록(낡은 서비스)도 같은 결과여야 한다.
+    # 🔴 2026-09-03 (Task 10). `impl_name` 은 넣는다 — 그것이 없는 기록은 오늘 `calls` 문제가
+    #    아니라 **게이트**에서 `:deferred` 로 막히고(Task 9), 그러면 이 절이 재려던
+    #    "params 경로가 그대로 돈다" 를 한 번도 안 태운 채 초록이 된다.
+    bare = Dict{String,Any}("impl_name" => "translate_whole_build",
+                            "body_names" => ["translate_whole_build"])
     r2 = CB.enact_minted!(fake, nothing, bare)
     @test r2.verdict === :admit && [s.status for s in r2.steps] == [s.status for s in r.steps]
 end
@@ -1135,7 +1042,8 @@ end
 
     # 🔴 판정 자리에 도달하지 못한 판은 `nothing` 이다 — `:params` 로 적으면 "옛 경로로
     #    굴렀다" 는 거짓 진술이 된다(아무 경로로도 안 굴렀다).
-    r3 = CB.enact_minted!(fake, nothing, _synth(reach = nothing, names = one))
+    # (미끼는 `reach` 가 아니라 `impl_name` 이다 — Task 9.)
+    r3 = CB.enact_minted!(fake, nothing, _synth(impl_name = nothing, names = one))
     @test r3.verdict === :deferred && r3.args_from === nothing && r3.n_calls === nothing
     r4 = CB.enact_minted!(fake, nothing, _synth(names = ["teleport_the_build"]))
     @test r4.verdict === :reject && r4.args_from === nothing
@@ -1199,12 +1107,22 @@ end
 
 @testset "(19) 파이썬이 낸 calls 가 JSON 왕복 뒤 집행부에 도착한다" begin
     fake = (staging_circles = Dict{Symbol,Any}(),)
-    # 🔴 원문은 **줄리아가 소유한다.** `name` 별칭과 꼬리 `!` 를 일부러 쓴다 — 라이브에서
-    #    실제로 나오는 표기이고, 파이썬이 그것을 접어 주지 않으면 아래 이름 일치가 깨진다.
-    raw = """[{"name": "translate_whole_build!", "args": {"zone_keys": ["유령존"]}}]"""
+    # 🔴 원문은 **줄리아가 소유한다.** `name` 별칭을 일부러 쓴다 — 라이브에서 실제로 나오는
+    #    표기이고, 파이썬이 그것을 접어 주지 않으면 아래 이름 일치가 깨진다.
+    # 🔴 2026-09-03 (Task 10) — **꼬리 `!` 는 더 이상 접히지 않는다. 그것이 계약이다.**
+    #    Task 8 이 파이썬 `normalize_calls` 에서 `!` 벗김을 지웠고 그 제거가 옳다고 판정됐다:
+    #    줄리아의 `normalize_calls` 는 한 번도 안 벗기고, `check_impl_conventions` 는 `!` 로
+    #    안 끝나는 이름을 **거절**하므로 등록된 원시 이름에는 `!` 가 반드시 있다. 파이썬이
+    #    벗기면 `calls` 의 이름과 `body_names`(= `[impl_name]`, `!` 포함)가 언제나 어긋나
+    #    모든 집행이 `calls_disagree_with_body` 로 거절된다.
+    #    ⟹ 이 절은 그 무손실을 **양방향으로** 못박는다: `!` 는 살아남고, 별칭은 접힌다.
+    raw_bang = """[{"name": "translate_whole_build!", "args": {}}]"""
+    @test py_normalize_calls(raw_bang)[1]["primitive"] == "translate_whole_build!"
+
+    raw = """[{"name": "translate_whole_build", "args": {"zone_keys": ["유령존"]}}]"""
     calls = py_normalize_calls(raw)
     @test length(calls) == 1
-    @test calls[1]["primitive"] == "translate_whole_build"    # 별칭·`!` 가 접혔다
+    @test calls[1]["primitive"] == "translate_whole_build"    # `name` 별칭이 접혔다
 
     # 값이 그 호출에 실제로 도착했다는 증거: 살아 있지 않은 존이라 **호출 전에** 거절된다.
     r = CB.enact_minted!(fake, nothing,

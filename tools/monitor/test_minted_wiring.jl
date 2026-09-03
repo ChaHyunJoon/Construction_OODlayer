@@ -44,9 +44,11 @@
 #     단언하고, (ii) 실제로 그 status 에 **닿는 fixture** 를 하나 만들어 옛 등식이 거짓임을
 #     값으로 못박는다.
 #
-# (5) 🔴 레지스트리가 망가져 `PRIMITIVE_TABLE` 이 `error(...)` 를 내도 **던지지 않는다.**
-#     새면 `maybe_respecify!` 의 producer `try` 로 올라가 비-`:soft` 사건에서
-#     `engage_fallback!`(= 라인 정지)이 걸리고, 로그는 JSON 오타가 아니라 OOD 를 탓하게 된다.
+# (5) 🔴 **삭제됨** (2026-09-03, Task 10). 전제(`PRIMITIVE_TABLE` 이 설계상 던진다)가 두 겹으로
+#     사라졌고, 그 전제 줄 자체가 **조용한 항진**이었다 — `@test_throws Exception
+#     CB.PRIMITIVE_TABLE()` 은 `UndefVarError <: Exception` 이라 심볼이 없어도 통과한다(실측).
+#     줄 단위로 고치면 커버리지 0 인 자리에 초록 체크가 생기므로 절을 통째로 지웠다. 자세한
+#     근거는 그 자리의 주석에 있다.
 #
 # (6) 🔴 MILP 프로브는 **센티넬**이다. 재풀이가 없으면 `n_candidate_edges` 를 숫자로 찍지
 #     않는다 — `LAST_EDGE_COSTS[]` 는 그때 0 이 아니라 **미정의**이고, 맨 `length` 를 찍으면
@@ -61,12 +63,19 @@
 #     찍지도 않는다. 그리고 찍는 아홉 필드 이름을 **진짜 `zone_diagnosis` 반환값**에 대고
 #     잰다(그 println 은 렌더를 돌려야만 실행되므로 오타가 런타임까지 산다).
 #
-# (9) 🔴 `:admit_unsanctioned`(2026-09-02 결정 2)도 폴백을 건너뛴다 — 그러나 로그가 그
-#     사실을 적는다. 나머지 세 연언지는 하나도 안 풀린다(같은 body, env 만 다른 세 판).
+# (9) 🔴 자기신고와 무관하게 `handled` 는 **세계가** 정한다. 나머지 세 연언지는 하나도 안
+#     풀린다(같은 body, env 만 다른 세 판). ⚠️ 옛 제목은 "`:admit_unsanctioned` 도 폴백을
+#     건너뛴다" 였다 — 그 verdict 는 Task 9 가 지웠다(조합 단계가 없어졌다, D8). 재던 성질은
+#     그대로이고 verdict 자리만 오늘의 값이다.
 #
 # (10) 🔴 `handled` 의 **첫** 연언지(`CB.minted_handled_verdict_ok`)를 verdict 하나만 움직여
 #     고립시킨다. 오늘 이 조합은 `_r` 의 기본 인자 때문에 도달 불가지만, 그 기본값이 바뀌는
 #     날 첫 연언지가 유일한 방어선이 된다 — 절 (10) 의 주석이 근거를 적는다.
+#
+# 🔴 2026-09-03 (Task 10) — 원시 표는 런 스코프이고 기본이 비어 있다. 이 파일의 body 이름들은
+#     `test/minted_seed_fixture.jl` 이 손으로 씨 뿌리고, 합성 레인 dict 의 미끼는 `reach` 가
+#     아니라 `impl_name` 이다(Task 9). 그 둘 중 하나만 빠져도 이 파일의 거의 모든 절이
+#     `verdict=deferred`/`unknown primitive` 로 떨어져 **배선을 한 줄도 안 태운 채** 빨개진다.
 #
 # ⚠️ `Suppressor` 는 이 프로젝트에 **없다**(`Project.toml`·`Manifest.toml` 둘 다 0건, 실측).
 #    `@capture_out` 대신 stdlib `redirect_stdout` 을 쓴다. 레포에 기존 stdout 캡처 관용구가
@@ -89,6 +98,12 @@ isdefined(CB, :BatteryTruth) ||
 # 생산 코드. `enact.jl` 은 최상위 부작용이 없다(T2 커밋 1 의 요구조건) — 함수 정의뿐이라
 # 이렇게 태울 수 있다. include 하는 쪽이 `const CB` 를 이미 들고 있어야 한다(위 줄).
 include(joinpath(@__DIR__, "enact.jl"))
+
+# 🔴 2026-09-03 (Task 10). 원시 표는 런 스코프이고 기본이 비어 있다(Task 2). 이 파일이 재는
+#    것은 알파벳이 아니라 `enact_minted_decision!` 의 **배선**이고, 그 배선을 태우려면 body 의
+#    이름이 표에서 해석돼야 한다. 근거·`register_minted_primitive!` 를 안 쓰는 이유는 그 파일에.
+include(joinpath(@__DIR__, "..", "..", "test", "minted_seed_fixture.jl"))
+seed_minted_fixture!()
 
 """
     capture_out(f) -> (value, stdout_text)
@@ -114,11 +129,20 @@ end
 # `decide_all` 이 만드는 결정 행과 **같은 모양**의 최소 대역. `synth_lane` 만이 이 함수의 입력이다.
 _dec(sl) = (macro_name = "NOOP", synth_lane = sl)
 
-# 합성 레인 dict — `policy.jl::SYNTH_LANE_KEYS` 아홉 중 집행부가 읽는 것만 채운다.
-# (아홉 키가 전부 존재한다는 계약은 `test/synth_lane_keys_survive.jl` 이 지킨다.)
+# 합성 레인 dict — `policy.jl::SYNTH_LANE_KEYS` 열셋 중 집행부가 읽는 것만 채운다.
+# (그 키들이 전부 존재한다는 계약은 `test/synth_lane_keys_survive.jl` 이 지킨다.)
+# 🔴 2026-09-03 (Task 10). 미끼가 `reach` 에서 `impl_name` 으로 옮겨졌다(Task 9) — 경계
+#    (`enact_minted_decision!`)가 `impl_name === nothing` 하나로 막으므로, 그 값을 안 실은
+#    픽스처는 전부 `lane=impl_name_nothing verdict=deferred` 로 떨어져 **이 파일이 재려던
+#    배선을 한 줄도 안 태운다.** 기본값을 body 의 첫 이름에서 유도하고, "값을 안 실었다"
+#    갈래를 겨냥할 때만 `impl_name = nothing` 을 명시한다.
+#    ⚠️ `impl_code` 는 **안 싣는다.** 실으면 경계가 `register_minted_primitive!` 를 불러
+#    `Core.eval` 로 이름을 CB 에 영구히 심는다 — 이 파일은 그 등록 경로가 아니라 그 뒤의
+#    배선을 재고, 등록 경로는 `test/minted_end_to_end.jl` 이 잰다.
 _sl(; reach = "composed", names = String[], params = Dict{String,Any}(), tool = "MintedTool",
-      calls = nothing) =
+      calls = nothing, impl_name = isempty(names) ? nothing : first(names)) =
     Dict{String,Any}("reach" => reach, "body_names" => names, "tool_name" => tool,
+                     "impl_name" => impl_name,
                      "params" => params, "missing_primitive" => nothing,
                      # 🔴 삼상: 기본은 `nothing`("이 필드를 안 실었다")이지 `[]` 가 아니다.
                      "calls" => calls)
@@ -163,9 +187,9 @@ end
         @test occursin("lane=absent", out2)
 
         r3, out3 = capture_out(() -> enact_minted_decision!(nothing, nothing,
-                                                           _dec(_sl(reach = nothing))))
+                                                           _dec(_sl(impl_name = nothing))))
         @test r3.handled === false && r3.verdict === :deferred
-        @test occursin("lane=reach_nothing", out3)
+        @test occursin("lane=impl_name_nothing", out3)
 
         # ---- (1b) 🔴 그 줄이 **참인 말을 하고, 손에 든 증거를 버리지 않는다** ------------
         # 2026-08-30 최종 리뷰(IMPORTANT). 이 갈래는 `sl !== nothing` 이다 — 합성 레인이
@@ -173,13 +197,13 @@ end
         # 그리고 판별에 필요한 값 넷을 이미 손에 들고도 안 찍어서 T5 가 그 판별에 **유료 호출을
         # 한 번 더 썼다**. 그 넷이 "레인이 안 돌았다" · "돌다 터졌다" · "돌았고 expressible
         # 이라 안 쐈다" 를 가른다(spec §9-2 — 삼상을 이상으로 뭉개지 않는다).
-        local sl4 = _sl(reach = nothing)
+        local sl4 = _sl(impl_name = nothing)
         sl4["synthesis_event"]  = true
         sl4["synthesis_ran"]    = false
         sl4["synthesis_error"]  = "boom: 합성기가 던졌다"
         sl4["tool_minted"]      = "disabled"
         r4, out4 = capture_out(() -> enact_minted_decision!(nothing, nothing, _dec(sl4)))
-        @test occursin("lane=reach_nothing", out4)
+        @test occursin("lane=impl_name_nothing", out4)
         @test occursin("synthesis_event=true", out4)
         @test occursin("synthesis_ran=false", out4)
         @test occursin("synthesis_error=boom", out4)
@@ -270,15 +294,16 @@ end
         # `surface="sched"` 인 원시 하나. impl 은 세계를 안 건드리는 것으로 두고(측정 대상은
         # 재풀이의 발화이지 그 원시의 효과가 아니다), env 는 재풀이가 **성립하지 않는** 스텁이라
         # `resolve` 가 실패로 끝난다 = "간선을 뗐는데 아무도 재배정 못 했다" 의 값싼 재현이다.
-        mktempdir() do dir
-            local path = joinpath(dir, "primitive_registry.json")
-            write(path, """
-            {"primitives": [
-              {"name":"release_pending_assignments","impl":"process_schedule!","surface":"sched",
-               "harness_args":["env"],"params":{},"reversible":false}
-            ]}""")
-            withenv("PRIMITIVE_REGISTRY" => path) do
-                CB._reset_primitive_table!()
+            # 🔴 2026-09-03 (Task 10). 옛 판은 오염된 **레지스트리 파일 사본**
+            #    (`PRIMITIVE_REGISTRY` + `_reset_primitive_table!`)으로 이 행을 만들었다.
+            #    그 경로도 그 두 심볼도 삭제됐다(Task 2) — 런-스코프 표에 행 하나를 직접
+            #    돌려 넣고 `finally` 로 픽스처를 되돌린다. 재는 성질은 안 바뀌었다.
+        let saved = copy(CB.minted_table())
+            try
+                CB.minted_table()["release_pending_assignments"] = Dict{String,Any}(
+                    "name" => "release_pending_assignments", "impl" => "process_schedule!",
+                    "surface" => "sched", "harness_args" => ["env"],
+                    "params" => Dict{String,Any}(), "reversible" => false)
                 local n0 = CB.RESOLVE_CALLS[]
                 # 🔴 **재개가 성공하는** env 를 쓴다. 여기서 스텁 `OperatingSchedule` 을 넘기면
                 #    `_issue_resume!` 이 먼저 실패해 `handled=false` 를 **재개 가드가 설명**하고,
@@ -298,22 +323,25 @@ end
                 @test r.handled === false
                 @test occursin("resolve=", out)
                 @test occursin("NOT handled", out)
+            finally
+                CB.minted_table()["release_pending_assignments"] =
+                    saved["release_pending_assignments"]
             end
-            CB._reset_primitive_table!()
         end
     end
 
     @testset "(2d) 배정을 안 건드리는 body 뒤에는 안 돈다 — 그리고 그 사실이 기록된다" begin
         # 음성 대조. (2c) 와 **한 글자만 다르다**: surface 가 scene_tree 다.
-        mktempdir() do dir
-            local path = joinpath(dir, "primitive_registry.json")
-            write(path, """
-            {"primitives": [
-              {"name":"restage_all_blocked","impl":"process_schedule!","surface":"scene_tree",
-               "harness_args":["env"],"params":{},"reversible":false}
-            ]}""")
-            withenv("PRIMITIVE_REGISTRY" => path) do
-                CB._reset_primitive_table!()
+            # 🔴 2026-09-03 (Task 10). 옛 판은 오염된 **레지스트리 파일 사본**
+            #    (`PRIMITIVE_REGISTRY` + `_reset_primitive_table!`)으로 이 행을 만들었다.
+            #    그 경로도 그 두 심볼도 삭제됐다(Task 2) — 런-스코프 표에 행 하나를 직접
+            #    돌려 넣고 `finally` 로 픽스처를 되돌린다. 재는 성질은 안 바뀌었다.
+        let saved = copy(CB.minted_table())
+            try
+                CB.minted_table()["restage_all_blocked"] = Dict{String,Any}(
+                    "name" => "restage_all_blocked", "impl" => "process_schedule!",
+                    "surface" => "scene_tree", "harness_args" => ["env"],
+                    "params" => Dict{String,Any}(), "reversible" => false)
                 local n0 = CB.RESOLVE_CALLS[]
                 local sched = CB.OperatingSchedule()
                 r, out = capture_out(() -> enact_minted_decision!(
@@ -323,8 +351,9 @@ end
                 @test r.resolve === :not_needed_surface  # 🔴 조용히 안 부른 것이 아니라 기록됐다
                 @test r.handled === true                 # 배정을 안 건드렸으니 폴백 억제는 그대로
                 @test occursin("resolve=not_needed_surface", out)
+            finally
+                CB.minted_table()["restage_all_blocked"] = saved["restage_all_blocked"]
             end
-            CB._reset_primitive_table!()
         end
     end
 
@@ -363,11 +392,14 @@ end
             @test !r.partial || r.world_maybe_dirty      # partial ⟹ dirty
         end
 
-        # 거절은 세 필드가 전부 거짓이다 — "부르지 않았다".
+        # 거절은 "부르지 않았다" 이다.
+        # 🔴 2026-09-03 (Task 10). `applied` 는 `false` 가 아니라 **`nothing`("못 쟀다")** 이다 —
+        #    한 발도 안 굴렸으니 잰 것이 없다(`_r` 의 기본값, C1/Task 9 F6-4). `false` 로
+        #    적으면 "쟀는데 적응이 0 이었다" 는 다른 주장이 된다.
         r, out = capture_out(() -> enact_minted_decision!(THROW_ENV, nothing,
                                                           _dec(_sl(names = ["teleport_the_build"]))))
         @test r.verdict === :reject
-        @test r.applied === false && r.partial === false && r.world_maybe_dirty === false
+        @test r.applied === nothing && r.partial === false && r.world_maybe_dirty === false
         @test r.handled === false
         @test occursin("NOT handled", out)
     end
@@ -378,16 +410,15 @@ end
         # `:residual_blocked` 는 진짜 기하가 있어야 나오므로 `test/minted_tool_enacts.jl` (13-h)
         # 의 값싼 대체물을 그대로 쓴다: `:unreadable_return` 은 `_step_applied=false`(못 쟀으니
         # 성공으로 안 센다) · `_step_touched_world=true`(못 쟀으니 깨끗하다고도 못 한다) 다.
-        # 오염 사본으로 `restage_all_blocked` 의 impl 만 "반환 모양을 못 읽는" 함수로 돌린다.
-        mktempdir() do dir
-            local path = joinpath(dir, "primitive_registry.json")
-            write(path, """
-            {"primitives": [
-              {"name":"restage_all_blocked","impl":"process_schedule!","surface":"physical",
-               "harness_args":["env"],"params":{},"reversible":false}
-            ]}""")
-            withenv("PRIMITIVE_REGISTRY" => path) do
-                CB._reset_primitive_table!()
+        # 🔴 2026-09-03 (Task 10). 오염된 레지스트리 **파일 사본** 대신 런-스코프 표에 행 하나를
+        #    직접 돌려 넣는다(그 파일 경로도 `_reset_primitive_table!` 도 삭제됐다).
+        #    `restage_all_blocked` 의 impl 만 "반환 모양을 못 읽는" 함수로 돌린다.
+        let saved = copy(CB.minted_table())
+            try
+                CB.minted_table()["restage_all_blocked"] = Dict{String,Any}(
+                    "name" => "restage_all_blocked", "impl" => "process_schedule!",
+                    "surface" => "physical", "harness_args" => ["env"],
+                    "params" => Dict{String,Any}(), "reversible" => false)
                 local sched = CB.OperatingSchedule()   # env 자리에 그대로 — impl 이 이걸 받는다
                 r, out = capture_out(() -> enact_minted_decision!(
                     sched, nothing, _dec(_sl(names = ["restage_all_blocked"]))))
@@ -405,43 +436,36 @@ end
                 @test occursin("world_maybe_dirty=true", out)
                 @test occursin("applied=false", out)
                 @test occursin("handled=true", out)
+            finally
+                CB.minted_table()["restage_all_blocked"] = saved["restage_all_blocked"]
             end
-            CB._reset_primitive_table!()
         end
-        # 🔴 2026-09-02 (cargo-ban T7) 실측 재확인: 표는 **19 그대로다**.
-        #    `reprice_agent_by_payload` 가 나가고 `forbid_heavy_cargo` 가 들어온 1:1 교체라
-        #    개수가 안 움직였다 — 즉 **이 숫자는 알파벳 교체를 못 잡는다.** 이름을 재는 것은
-        #    `test/minted_tool_enacts.jl` 의 `ENACTABLE_TODAY`·`REGISTRY_SURFACE_TODAY` 다.
-        @test length(CB.PRIMITIVE_TABLE()) == 19       # 원래 레지스트리로 돌아왔다
+        # 🔴 2026-09-03 (Task 10). 옛 판은 여기서 `length(CB.PRIMITIVE_TABLE()) == 19` 로
+        #    "원래 레지스트리로 돌아왔다" 를 확인했다. 그 심볼도 그 파일도 없다 — 오늘
+        #    `finally` 가 행 하나를 제자리에 돌려놓고, 그 복구를 이렇게 잰다.
+        @test CB.resolve_primitive("restage_all_blocked").impl === CB.restage_all_blocked!
     end
 
     # -------------------------------------------------------------------------------------
-    @testset "(5) 레지스트리가 망가져도 던지지 않는다 — 렌더를 세우지 않는다" begin
-        # 🔴 `PRIMITIVE_TABLE` 은 레지스트리가 없으면 설계상 `error(...)` 다. 그 예외가
-        #    `enact_minted_decision!` 밖으로 새면 `maybe_respecify!` 의 producer `try` 가
-        #    잡아 비-`:soft` 사건에서 `engage_fallback!`(라인 정지)을 건다.
-        mktempdir() do dir
-            withenv("PRIMITIVE_REGISTRY" => joinpath(dir, "__no_such_registry__.json")) do
-                CB._reset_primitive_table!()
-                @test_throws Exception CB.PRIMITIVE_TABLE()      # 전제: 정말로 던진다
-                r, out = capture_out(() ->
-                    enact_minted_decision!(THROW_ENV, nothing, _dec(_sl(names = BODY))))
-                @test r.handled === false
-                @test r.verdict === :reject                      # 아무것도 부르기 전에 돌아섰다
-                @test occursin("FAILED", out)                    # 크게 찍는다
-                @test occursin("[minted]", out)
-                @test occursin("NOT handled", out)
-                @test occursin("primitive_registry", r.reason)   # **무엇이** 틀렸는지가 사유다
-                # 🔴 Step 5. 세 반환 자리의 **모양이 같아야** 한다 — 이 자리만 필드를 빼면
-                #    `r.args_from` 을 읽는 소비자가 던지는 판에서만 죽는다(가장 나쁜 시점).
-                @test r.args_from === nothing && r.n_calls === nothing
-                @test occursin("args_from=n/a", out)
-            end
-            CB._reset_primitive_table!()
-        end
-        @test length(CB.PRIMITIVE_TABLE()) == 19                 # 원래 레지스트리로 돌아왔다
-    end
+    # 🔴 2026-09-03 (Task 10) — **명제 (5) 는 통째로 삭제됐다. 고쳐 남기면 안 되는 자리다.**
+    #
+    # 그것이 재던 것: "레지스트리 파일이 없어 `PRIMITIVE_TABLE` 이 `error(...)` 를 내도 그
+    # 예외가 `enact_minted_decision!` 밖으로 안 샌다". 그 전제는 두 겹으로 사라졌다 —
+    # 레지스트리 파일이 없고(Task 2), `resolve_primitive` 는 이제 **던지지 않는다**(빈 표는
+    # 그냥 `nothing` → `:reject`).
+    #
+    # 🔴 그리고 이 자리는 **조용한 항진(vacuous pass)의 실증 사례**다. 전제 줄이
+    #   `@test_throws Exception CB.PRIMITIVE_TABLE()` 인데 `UndefVarError <: Exception` 이라
+    #   심볼이 아예 없어도 **통과한다**(2026-09-03 직접 실측: `isdefined(CB,:PRIMITIVE_TABLE)
+    #   = false` 인데 그 단언 하나짜리 testset 이 `1 pass`). 오늘 이 절이 초록이 아닌 유일한
+    #   이유는 바로 윗줄 `CB._reset_primitive_table!()` 이 먼저 죽어서다 — 그 줄만 지우고
+    #   전제를 남기면 **커버리지 0 인 자리에 초록 체크가 생긴다.** 그래서 줄 단위 수리를
+    #   하지 않고 절을 통째로 지웠다.
+    #
+    # 남아 있는 성질("집행부는 던지지 않는다")은 다른 자리가 이미 잰다: `enact.jl` 의 본체가
+    # 통째로 `try` 안이고, 미지 원시는 (4) 의 `teleport_the_build` 판이 `:reject` 로 잰다.
 
+    # -------------------------------------------------------------------------------------
     # -------------------------------------------------------------------------------------
     @testset "(6) MILP 프로브는 센티넬이다 — 재풀이가 없으면 숫자를 안 찍는다" begin
         # 이 두 판은 `formulate_milp` 을 아예 안 부른다(zone 원시 하나뿐).
@@ -539,49 +563,62 @@ end
     end
 
     # -------------------------------------------------------------------------------------
-    @testset "(9) unsanctioned 도 폴백을 건너뛴다 — 그러나 로그가 그 사실을 적는다" begin
-        # 🔴 2026-09-02 결정 2·3. 모델이 `reach="needs_primitive"` 라고 신고했는데 body 가
-        #    조합돼 있어 굴린 행이다. 세계는 이미 절반 고쳐졌을 수 있으므로(undo 없음) 그 위에
-        #    기본 복구 사슬을 얹지 않는다 — 자기신고와 무관하게 `handled` 의 판정은 세계가 한다.
+    # 🔴 2026-09-03 (Task 10) — 옛 제목은 "(9) unsanctioned 도 폴백을 건너뛴다" 였다.
+    #    `:admit_unsanctioned` verdict 자체가 사라졌다(Task 9): 그것은 "모델이 조합에
+    #    실패했다고 신고했는데 body 는 있다" 를 재던 구분인데 **조합 단계가 없어졌다**(D8).
+    #    그래서 verdict 를 재던 단언 넷은 잴 대상이 없어졌다(a).
+    #    🔴 그러나 이 절의 **본체**는 verdict 가 아니라 `handled` 의 나머지 세 연언지가
+    #    "같은 body·같은 던지는 지점, env 만 다른 세 판" 으로 하나도 안 풀린다는 것이고,
+    #    그것은 그대로 살아 있는 계약이다. verdict 자리만 오늘의 값으로 바꿔 유지한다.
+    @testset "(9) 자기신고와 무관하게 handled 는 세계가 정한다" begin
+        # 🔴 판정의 근거는 자기신고가 아니라 세계다. `reach` 를 무엇으로 신고하든 결과가 같다.
         local env = throw_env_with_live_cache()
         r, out = capture_out(() -> enact_minted_decision!(
             env, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
         # 전제부터 못박는다 — 이 판이 정말 "굴렸고 던졌고 재개는 성공했다" 인가.
-        @test r.verdict === :admit_unsanctioned
+        @test r.verdict === :admit
         @test r.partial === true
         @test r.world_maybe_dirty === true
         @test r.resume === :issued
         @test r.handled === true                       # 🔴 D3
-        @test occursin("verdict=admit_unsanctioned", out)
-        @test occursin("reach=needs_primitive", out)
+        @test occursin("verdict=admit", out)
+        # 🔴 `reach` 는 이제 경계 키가 아니다 — 그 값이 로그로 새면 죽은 어휘가 되살아난다.
+        @test !occursin("reach=", out)
         @test !occursin("NOT handled", out)
 
+        # 음성 대조: 같은 판을 `reach` 없이 보내도 **바이트 동일**이다(자기신고가 안 읽힌다).
+        local env_b = throw_env_with_live_cache()
+        rb, _ = capture_out(() -> enact_minted_decision!(env_b, nothing, _dec(_sl(names = BODY))))
+        @test (rb.verdict, rb.partial, rb.resume, rb.handled) ==
+              (r.verdict, r.partial, r.resume, r.handled)
+
         # 🔴 나머지 세 연언지는 하나도 안 풀렸다. 같은 body·같은 던지는 지점, env 만 다르다 —
-        #    재개가 실패하면 unsanctioned 여도 폴백이 돈다(게이트는 **넓어지기만** 했다).
+        #    재개가 실패하면 폴백이 돈다.
         r2, out2 = capture_out(() -> enact_minted_decision!(
-            THROW_ENV, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
-        @test r2.verdict === :admit_unsanctioned
+            THROW_ENV, nothing, _dec(_sl(names = BODY))))
+        @test r2.verdict === :admit
         @test r2.resume === :failed
         @test r2.handled === false
         @test occursin("NOT handled", out2)
 
-        # 🔴 그리고 세계를 안 건드린 조용한 성공도 그대로다 — verdict 만 갈리고 handled 는 거짓.
+        # 🔴 그리고 세계를 안 건드린 조용한 성공도 그대로다 — verdict 는 같고 handled 는 거짓.
         r3, out3 = capture_out(() -> enact_minted_decision!(
-            QUIET_ENV, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
-        @test r3.verdict === :admit_unsanctioned
+            QUIET_ENV, nothing, _dec(_sl(names = BODY))))
+        @test r3.verdict === :admit
         @test r3.world_maybe_dirty === false
         @test r3.handled === false
         @test occursin("NOT handled", out3)
 
-        # 🔴 `reach === nothing` 은 여전히 조기 반환이다 — "못 쟀다"를 "아니라고 했다"로 접지 않는다.
+        # 🔴 `impl_name === nothing` 은 여전히 조기 반환이다 — "못 쟀다"를 "아니라고 했다"로
+        #    접지 않는다. (미끼가 `reach` 에서 여기로 옮겨졌다, Task 9.)
         r4, out4 = capture_out(() -> enact_minted_decision!(
-            env, nothing, _dec(_sl(reach = nothing, names = BODY))))
+            env, nothing, _dec(_sl(impl_name = nothing, names = BODY))))
         @test r4.verdict === :deferred && r4.handled === false
-        @test occursin("lane=reach_nothing", out4)
+        @test occursin("lane=impl_name_nothing", out4)
     end
 
     # -------------------------------------------------------------------------------------
-    @testset "(10) `handled` 의 첫 연언지 — 집행 계열 verdict 둘만 통과한다" begin
+    @testset "(10) `handled` 의 첫 연언지 — 집행 계열 verdict 하나만 통과한다" begin
         # 🔴 **왜 이 시험이 있는가 — 이 절을 "도달 불가한 판을 재는 죽은 시험" 이라고 지우지 마라.**
         #    T7 의 변이시험 실측: `minted_handled` 에서 첫 연언지(`CB.minted_handled_verdict_ok`)를
         #    통째로 지워도 이 파일은 154/154 초록이었다. 오늘 `enact_minted!` 의 `:reject` 반환이
@@ -598,15 +635,19 @@ end
         _verdict_row(v) = (verdict = v, world_maybe_dirty = true,
                            resume = :issued, resolve = :resolved)
 
-        # 🔴 대조 팔. 이 둘이 없으면 아래 두 줄은 "함수가 늘 false 를 돌려준다" 로도 통과한다(공허).
-        #    `:admit_unsanctioned` 는 이 레인(2026-09-02 결정 2)의 존재 이유이고, 이 한 줄이
-        #    `CB.ENACTED_VERDICTS` 가 다시 `:admit` 하나로 좁아지는 회귀를 잡는다.
+        # 🔴 대조 팔. 이것이 없으면 아래 세 줄은 "함수가 늘 false 를 돌려준다" 로도 통과한다(공허).
         @test minted_handled(_verdict_row(:admit)) === true
-        @test minted_handled(_verdict_row(:admit_unsanctioned)) === true
 
         # 집행 계열이 아닌 verdict 는 나머지 셋이 다 통과해도 `handled` 가 아니다.
         @test minted_handled(_verdict_row(:reject)) === false
         @test minted_handled(_verdict_row(:deferred)) === false
+        # 🔴 2026-09-03 (Task 10). 옛 판은 `:admit_unsanctioned` 를 **통과 팔**로 썼고, 그 한 줄이
+        #    "`ENACTED_VERDICTS` 가 다시 `:admit` 하나로 좁아지는 회귀를 잡는다" 고 적혀 있었다.
+        #    그 좁힘은 회귀가 아니라 **설계 결정으로 일어났다**(Task 9, D8 — 조합 단계가 없어져
+        #    "허락 없이 굴렸다" 라는 사건 자체가 없다). 그래서 기대를 뒤집는다: 사라진 verdict 가
+        #    되살아나면 여기서 빨개진다. 정본은 `CB.ENACTED_VERDICTS` 이고 크기를 여기 안 적는다.
+        @test minted_handled(_verdict_row(:admit_unsanctioned)) === false
+        @test :admit_unsanctioned ∉ CB.ENACTED_VERDICTS
     end
 end
 
@@ -636,17 +677,27 @@ end
     # -------------------------------------------------------------------------------------
     @testset "(10) 🔴 발화한 판의 [minted] 줄이 agent-3 의 답을 싣는다" begin
         # 2026-09-03 라이브 실측이 계기: mild 보드에서 합성이 **발화했는데**
-        # `reason=empty body` 로 거절됐고, agent-3 이 무엇을 없다고 했는지는 **어디에도 안 남았다**
-        # — `lane=present` 분기가 `missing_primitive` 를 안 찍고(조기반환 분기는 찍는다),
-        # 스트림 jsonl 에는 합성 필드가 없고, 서비스는 기록을 파일로 안 쓴다. 값은 이미
-        # `SYNTH_LANE_KEYS` 로 도착해 있었다 — 관측면만 없었다.
+        # `reason=empty body` 로 거절됐고, agent-3 이 무엇을 냈는지는 **어디에도 안 남았다** —
+        # `lane=present` 분기가 그것을 안 찍고, 스트림 jsonl 에는 합성 필드가 없고, 서비스는
+        # 기록을 파일로 안 썼다. 값은 이미 `SYNTH_LANE_KEYS` 로 도착해 있었다 — 관측면만 없었다.
+        #
+        # 🔴 2026-09-03 (Task 10). 재던 필드가 옮겨졌다. `missing_primitive` 는 agent-3 의
+        #    출력 필드가 아니게 됐고(`WriteToolImpl` 이 선언하지 않는다 — 라이브 판에서는
+        #    언제나 `""`), Task 9 가 그 인용을 로그에서 지웠다. 오늘 같은 자리를 나르는 것은
+        #    `registered`/`impl_rejected_why`(등록이 됐나, 안 됐으면 왜)와 `n_body_names` 다.
+        #    ⟹ 재는 성질("발화했는데 거절된 판이 왜 그랬는지가 줄에 남는가")은 그대로다.
         _, out = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
-            _dec(Dict{String,Any}("reach" => "needs_primitive", "body_names" => String[],
-                                  "tool_name" => "DynamicTaskAdjustment", "params" => Dict{String,Any}(),
-                                  "calls" => nothing,
-                                  "missing_primitive" => "the inventory lacks a way to X"))))
-        @test occursin("missing_primitive=the inventory lacks a way to X", out)
+            _dec(Dict{String,Any}("impl_name" => "adjust_tasks!", "body_names" => String[],
+                                  "tool_name" => "DynamicTaskAdjustment",
+                                  "params" => Dict{String,Any}(), "calls" => nothing))))
+        @test occursin("tool=DynamicTaskAdjustment", out)
         @test occursin("n_body_names=0", out)
+        @test occursin("verdict=reject", out)          # 빈 body 는 거절이다
+        # 🔴 등록 시도의 결과가 줄에 있다 — `impl_code` 가 없으면 등록은 안 돌았다("못 쟀다").
+        @test occursin("registered=", out)
+        # 🔴 죽은 어휘가 로그로 되살아나지 않는다.
+        @test !occursin("missing_primitive=", out)
+        @test !occursin("reach=", out)
 
         # 양성 대조: body 가 있는 판은 같은 자리에 그 수가 찍힌다(빈-통과 방지).
         _, out2 = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
