@@ -719,6 +719,31 @@ function retrying_action(inner; at::Int, every::Int, max_tries::Int = 200, tag::
 end
 
 include(joinpath(@__DIR__, "policy.jl"))   # 결정 정책 레이어(canonical/surrogate/dspy 공용)
+
+# ---- 세대 게이트 (2026-09-03) ---------------------------------------------------------------
+# 🔴 왜 여기인가. 08-30/08-31 기동 uvicorn **다섯**이 사흘째 `/health` 200 을 냈고 그중 어느
+#    것도 `synthesize_multi`(09-02 도입)를 안 갖고 있었다 — 그 위에서 잰 결과가 "모델이 이렇게
+#    답했다" 로 읽혔다. 셸 레시피 넷은 이제 `tools/require_current_service.sh` 로 막지만,
+#    S1 이 실제로 쓴 경로는 **`julia … render_demo.jl` 직접 호출**이라 그 넷을 안 지난다.
+# 🔴 판정식을 Julia 에 다시 적지 않는다 — 정본은 `generation.py` 의 `check_health` 하나이고
+#    여기서는 그것을 **부른다**. 두 벌이면 갈린다(이 레포가 반복해 밟은 실패 모양).
+# 🔴 탈출구를 두지 않았다. 게이트를 끄는 환경변수를 만들면 그것을 켜는 법부터 배우게 되고,
+#    그 순간 이 게이트는 오늘 지운 `curl … >/dev/null` 과 같은 것이 된다. 틀리면 **닫히는
+#    쪽으로** 틀린다(런이 안 뜬다) — 조용히 낡은 세대를 재는 것보다 압도적으로 싸다.
+# 🔴 `policy.jl` 은 안 건드린다: 그 파일의 `dspy_ready()` 는 시험 여섯이 가짜 `/health` 를
+#    띄워 부르는 자리이고(`test/service_decide_ships_*.jl` 외 3), 거기에 도장을 요구하면
+#    그 여섯이 세대와 무관하게 빨개진다. 게이트는 **런 진입점**에 산다.
+let _need = (POLICY in ("dspy", "surrogate")) || ROUTER_MODE != "0"
+    if _need
+        _gate = joinpath(pkgdir(CB), "tools", "require_current_service.sh")
+        _cmd  = "source '" * _gate * "' && require_current_service '" * DSPY_URL * "'"
+        if !success(pipeline(`bash -c $_cmd`; stdout = stdout, stderr = stderr))
+            error("[generation] 이 런은 DSPy 서비스를 쓴다(DEMO_POLICY=$(POLICY), " *
+                  "DEMO_ROUTER=$(ROUTER_MODE))는데 그 서비스가 이 트리를 서빙하고 있지 않다. " *
+                  "위 [generation] 줄이 사유다. 실행줄: src/respec/llm_service/README.md")
+        end
+    end
+end
 # 🔴 2026-08-29 (Plan B / T2b): 집행 대상 선택 seam. `run_demo.jl` 과 **같은 함수**를 부른다.
 # 두 엔진이 각자 규칙을 들고 있으면 갈릴 수 있고, 이 레포는 그 사고를 이미 여러 번 밟았다
 # (`has_zone` 술어, `record_decision!` 쌍둥이). `enact.jl` 은 최상위 부작용이 없다.

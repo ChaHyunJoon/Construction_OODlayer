@@ -160,7 +160,13 @@ RelocateBuild 어휘가 통째로 없다(그 instruction 이 `SEED_DOC` 을 대�
 seed 는 RelocateBuild, 컴파일본은 NOOP.
 
 ```bash
-cd src/respec/llm_service && DSPY_PROGRAM=/nonexistent python -m uvicorn dspy_service:app --port 8080 &
+# 🔴 포트: server.jl 이 MONITOR_PORT 기본값 8080 을 이미 점유한다(이 README 상단의 모니터 UI).
+#    예전 이 줄은 8080 이었고, 모니터가 떠 있으면 그대로는 뜨지 않는다. 8077 을 쓴다.
+# 🔴 합성 레인 두 플래그는 기본 OFF 다. 빼면 이 데모는 T2 를 한 번도 안 태운다
+#    (근거·함정은 src/respec/llm_service/README.md 의 "두 합성 플래그" 절).
+cd src/respec/llm_service && \
+  DSPY_PROGRAM=/nonexistent TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=1 \
+  python -m uvicorn dspy_service:app --port 8077 &
 ```
 
 ## seed 스윕 — 로봇 OOD 를 여러 판 생성 (`run_seed_sweep.sh`)
@@ -294,7 +300,8 @@ LLM 입력 배지가 `파싱된 필드`(주황)로 뜨면 그 사건은 문장�
 
 ```bash
 # DSPy 서비스를 먼저 띄운다(주소는 DSPY_URL 로 넘긴다)
-cd src/respec/llm_service && LLM_NL_MODE=raw python -m uvicorn dspy_service:app --port 8078 &
+cd src/respec/llm_service && LLM_NL_MODE=raw TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=1 \
+  python -m uvicorn dspy_service:app --port 8078 &
 
 cd ConstructionBots.jl
 DSPY_URL=http://127.0.0.1:8078 \

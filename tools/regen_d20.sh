@@ -12,6 +12,9 @@
 # 전부 순차 실행이다. 동시에 두 개를 돌리면 HiGHS 가 다른 스케줄을 내 비교가 무효가 된다.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+_REPO="$(pwd)"                                  # 🔴 여기서 한 번 고정한다 — 아래 게이트가 쓴다.
+                                                #    이 스크립트는 뒤에서 더 깊이 cd 하므로
+                                                #    상대 $0 재평가는 그때 깨진다(2026-09-03 실측).
 MODE="${1:?usage: regen_d20.sh oracle|matrix <seed>|ui}"
 DSPY="${DSPY_URL:-http://127.0.0.1:8077}"
 
@@ -36,9 +39,11 @@ case "$MODE" in
     SEED="${2:?usage: regen_d20.sh matrix <seed>}"
     OUT="${3:-results/matrix_d20.jsonl}"
     cd wm4spacecraft_manufacturing || exit 2
-    if ! curl -s --max-time 5 "$DSPY/health" > /dev/null; then
-      echo "ABORT  DSPy service down at $DSPY -- surrogate/dspy would silently fall back to canonical"
-      echo "       while the summary row still says policy=dspy. Refusing to generate a corrupt column."
+    # 🔴 2026-09-03: 이 자리는 원래도 중단했지만 **200 만** 봤다 — 낡은 서비스는 200 을 낸다.
+    #    이제 세대까지 본다. 사유는 CLI 가 코드로 찍는다(unstamped/blind/stale/flag_off).
+    source "$_REPO/tools/require_current_service.sh"
+    if ! require_current_service "$DSPY"; then
+      echo "ABORT  요약 행은 policy=dspy 라고 적힐 텐데 그 열은 오염된다. 생성을 거부한다."
       exit 3
     fi
     # 기본은 7 케이스 전부. REGEN_CASES 로 부분집합만 돌릴 수 있다 — zone 축만 재측정할 때 쓴다

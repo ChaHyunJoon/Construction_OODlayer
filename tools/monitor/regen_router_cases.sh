@@ -128,9 +128,13 @@ if [ ! -f "$NOVELTY_CALIB" ]; then
 fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
-  curl -s --max-time 5 "$DSPY_URL/health" >/dev/null \
-    || echo "!! DSPy service not reachable at $DSPY_URL — 이 렌더는 **죽는다**:" \
-           "select_lane 이 surrogate kind 지원집합을 못 읽어 판정을 거부한다(T11). canonical 폴백은 없다."
+  # 🔴 2026-09-03: 경고만 찍던 자리. 바로 아래 문장이 이미 "이 렌더는 죽는다" 라고 적고
+  #    있었는데도 계속 진행했다 — 그러면 그 문장은 경고가 아니라 사후 변명이다.
+  source "$REPO_ROOT/tools/require_current_service.sh"
+  require_current_service "$DSPY_URL" || {
+    echo "!! select_lane 이 surrogate kind 지원집합을 못 읽어 판정을 거부한다(T11). canonical 폴백은 없다."
+    exit 3
+  }
 fi
 
 ok_cases=()

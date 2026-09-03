@@ -13,11 +13,15 @@
 # Usage: bash tools/monitor/regen_all_cases.sh [case ...]     (인자 없으면 전체)
 set -u
 cd "$(dirname "$0")/../.."                      # ConstructionBots.jl
+_REPO="$(pwd)"                                  # 🔴 여기서 한 번 고정한다 — 아래 게이트가 쓴다
 LOGD=tools/monitor/regen_case_logs; mkdir -p "$LOGD"
 POLICY="${DEMO_POLICY:-dspy}"                   # 실행(enact)할 정책. 세 정책의 판단은 어차피 모두 기록된다.
 
-curl -s --max-time 5 http://127.0.0.1:8077/health >/dev/null \
-  || echo "!! DSPy service (:8077) not reachable — runs will fall back to canonical"
+# 🔴 2026-09-03 두 가지를 고쳤다. (a) 포트가 하드코딩이라 `DSPY_URL` 을 무시했다 — 다른
+#    포트에 띄운 서비스를 쓰면 검사와 런이 **다른 프로세스**를 봤다. (b) 문구가 거짓이었다:
+#    "runs will fall back to canonical" 은 T11 이후 참이 아니다(select_lane 이 거부하고 죽는다).
+source "$_REPO/tools/require_current_service.sh"
+require_current_service "${DSPY_URL:-http://127.0.0.1:8077}" || exit 3
 
 run_case() {                                    # $1=케이스 키  $2..=추가 env
   local case="$1"; shift

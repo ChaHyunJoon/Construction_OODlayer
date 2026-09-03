@@ -148,6 +148,19 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
     exit 0
 fi
 
+# ---- 세대 게이트 (2026-09-03) ---------------------------------------------------------------
+# 🔴 이 레인에는 `/health` 검사가 **하나도 없었다**(실측: run_4pol_parallel.sh · run_shard.sh ·
+#    llm_ood_eval.py 에 `health` 문자열 0건). 그래서 08-30/08-31 기동 낡은 서비스 다섯이
+#    살아 있는 동안 스윕을 돌렸다면 **어느 세대를 쟀는지 사후에 알 방법이 없었다** — 그리고
+#    아래 provenance 도장은 `commit=$HEAD_SHA`(줄리아/레포 쪽)만 적으므로 그 오염을 못 잡는다.
+# 🔴 DRY_RUN 위에 두지 않는다: dry 는 서비스를 안 부른다.
+source "$REPO/tools/require_current_service.sh"
+if ! require_current_service "$DSPY_URL"; then
+    echo "[shard] ABORT case=$CASE seed=$SEED — DSPy 서비스가 이 트리를 서빙하고 있지 않다."
+    echo "        이 샤드를 돌리면 rows.jsonl 에 어느 세대인지 알 수 없는 행이 남는다."
+    exit 4
+fi
+
 cd "$WM"        # 결과/로그 상대경로는 계속 wm4 폴더 기준이다
 t0=$SECONDS
 "${CMD[@]}" > "$OUTDIR/shard.log" 2>&1

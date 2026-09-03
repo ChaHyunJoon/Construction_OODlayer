@@ -34,6 +34,7 @@
 # ============================================================================================
 set -u
 cd "$(dirname "$0")/../.."                      # ConstructionBots.jl
+_REPO="$(pwd)"                                  # 🔴 여기서 한 번 고정한다 — 아래 게이트가 쓴다
 LOGD=tools/monitor/regen_case_logs; mkdir -p "$LOGD"
 STREAMS=tools/monitor/streams
 ANIM=tools/monitor/anim; mkdir -p "$ANIM"
@@ -45,8 +46,14 @@ export DEMO_ROUTER=0                            # 실행 정책을 고정한다(
 # 한 매트릭스 안에서는 **같은 seed** 여야 24 개 녹화가 같은 교란을 두고 정책만 다른 비교가 된다.
 export DEMO_SEED="${DEMO_SEED:-1}"
 
-curl -s --max-time 5 "$DSPY_URL/health" >/dev/null \
-  || echo "!! DSPy service not reachable at $DSPY_URL — surrogate/dspy 결정이 canonical 로 폴백됩니다"
+# 🔴 2026-09-03: `curl /health >/dev/null` 이었다 — **200 이면 통과**라 08-30/08-31 기동
+#    낡은 서비스 다섯을 전부 통과시켰을 검사다. 그리고 실패해도 경고만 찍고 24 런을 그대로
+#    돌렸다. 이제 세대까지 보고 **중단한다**(판정식 정본: generation.py 의 check_health).
+source "$_REPO/tools/require_current_service.sh"
+require_current_service "$DSPY_URL" || {
+  echo "!! 이 매트릭스는 24 런이다 — 낡은/죽은 서비스 위에서 돌리면 24 개 녹화가 전부 버려진다."
+  exit 3
+}
 
 CASES=("$@")
 [ ${#CASES[@]} -eq 0 ] && CASES=(none battery fault zone fault_battery fault_zone battery_zone battery_mild)

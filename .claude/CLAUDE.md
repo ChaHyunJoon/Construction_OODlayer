@@ -174,7 +174,10 @@ Windows 전용). 판정 기준은 "결과를 만드는가, 보기만 하는가".
    샌다 — `SwapBattery` 한 줄이 battery 적중 0/6 → 6/6 을 갈랐다
 3. **dp 비용 분해 충실성** · Bellman·칸키 동치 (구 `dp_oracle/test_*.py`)
 4. **발행 문서의 표본수 문구 회귀** (구 `test_report_sample_size.py`)
-5. **스윕 사전조건 게이트**(`gate_prereq.sh`) — 🔴 **DSPy `/health` 확인이 사라졌다.** 서비스가
+5. **스윕 사전조건 게이트**(`gate_prereq.sh`) — 🔴 **DSPy `/health` 확인이 사라졌다.**
+   ✅ 2026-09-03 부분 복구: 데모 레시피 넷 + `render_demo.jl` 은 세대 게이트로 막았다(위 절).
+   🔴 그러나 `wm4spacecraft_manufacturing/sweep/` 레인은 **여전히 무방비**다. 아래 문장은
+   그 레인에 대해 그대로 참이다. 서비스가
    죽어 있으면 dspy·surrogate 레인이 조용히 canonical 로 내려앉은 채 스윕이 다 돈다.
    스윕 전 `DSPY_URL` 손확인 + 스윕 후 `decisions[].enacted` 레인 히스토그램으로 사후 확인할 것
 6. **게이트가 무엇을 덮는가** — 시험 파일을 지우거나 옮기기 전에 그 성질에 **변이를 심어
@@ -407,6 +410,26 @@ testset 개수를 전체 단언 수로 잘못 읽은 것이었다 — 같은 종
 - LLM lane은 `DSPY_PROGRAM=__seed_only__`. 컴파일된 `dspy_real_program_gpt4o.json`은 battery 전용이라
   zone·RelocateBuild 어휘가 없다 — 그걸로 zone을 재면 어휘 밖 사건을 재는 것이 된다.
 - `DSPY_URL` 포트는 레포에 6종이 흩어져 있다. 문서 숫자 말고 **띄운 uvicorn 포트**에 맞출 것.
+- 🔴 **합성 레인은 플래그 둘이 다 `"1"` 일 때만 돈다: `TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=1`.**
+  정본 레시피와 근거는 `src/respec/llm_service/README.md` 의 "두 합성 플래그" 절이다(여기 안 베낀다).
+  둘째 것 없이 띄우면 단일 agent 레인이 도는데, 그 레인의 `expressible` 은 2026-08-31 라이브에서
+  두 OOD 레인 다 `True` 였다(= 발화 0). 3-agent 레인은 같은 두 사건에서 `False` 다(2026-09-02).
+  ⟹ **플래그가 빠진 서비스로 "합성이 안 터진다" 를 관측하면 그것은 모델에 대한 사실이 아니다.**
+- 🔴 **`/health` 200 은 세대 증거가 아니다.** 2026-09-03 에 08-30/08-31 기동 uvicorn **다섯**이
+  전부 200 을 내고 있었고(둘은 cwd 가 **삭제된 worktree**), 그 다섯 중 어느 것도 `synthesize_multi`
+  (09-02 16:45 도입)를 안 갖고 있었다. mtime 도 두 번 거짓 신호였다(S1 task-5). 판정은
+  `ps -p <pid> -o lstart` × `git log -1 --format=%ad -- src/respec/llm_service/` 로 한다.
+  그 다섯은 2026-09-03 에 정리했다 — 지금 뜨는 서비스는 새로 띄운 것이어야 한다.
+- ✅ **2026-09-03: 그 구멍에 게이트가 생겼다.** `/health` 가 세대 도장을 싣고
+  (`source_dir` · `code_fingerprint`(임포트 시점 **동결**) · 플래그 둘), 판정 정본은
+  `src/respec/llm_service/generation.py` 의 `check_health` **하나**다 —
+  `unstamped`/`blind`/`stale`/`flag_off`/`unreachable` 을 **다른 사유로** 가른다(처방이 다르다).
+  셸은 `tools/require_current_service.sh` 를 source 해서 부르고, `render_demo.jl` 은
+  policy.jl include 직후 같은 CLI 를 부른다. 🔴 **Julia 에 판정식을 다시 적지 말 것** — 부른다.
+  🔴 `policy.jl` 의 `dspy_ready()` 는 **일부러 안 막았다**: 시험 여섯이 가짜 `/health` 를
+  띄워 그 경로를 태우므로 거기에 도장을 요구하면 세대와 무관하게 여섯이 빨개진다.
+  ⚠️ **아직 안 덮인 곳**: `wm4spacecraft_manufacturing/sweep/`(`run_4pol_parallel.sh` ·
+  `run_shard.sh` · `llm_ood_eval.py`)에는 `/health` 검사가 **하나도 없다**(실측).
 - `_first_pending_assignment`는 "일감 유무"가 아니라 **"작업 경계"** — 중반 이후 조용히 틀림.
 - 배포 surrogate 의 **매크로 지원 집합**은 학습셋이 정한다. 🔴 **현행 학습셋은
   `wm_datasets.ORACLE_DATASET` 이다** — `dspy_service.py:241` 의 `SURRO_DATA`, 그리고

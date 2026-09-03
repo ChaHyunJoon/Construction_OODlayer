@@ -95,8 +95,24 @@ from tool_registry import (MACRO_TO_TOOL, TOOL_TO_MACRO, build_tools,   # noqa: 
 # 🔴 이 import 는 과금 0건이다: 모듈 최상위에서 LM 을 만들지도 부르지도 않는다.
 #    합성이 실제로 도는 것은 `TOOL_SYNTHESIS=1` + `expressible == False` 두 조건이
 #    함께 참일 때뿐이다(`maybe_synthesize` 의 docstring, 컨트롤러 판정 R13).
-from synthesize import maybe_synthesize, run_synthesis         # noqa: E402
+from synthesize import (maybe_synthesize, run_synthesis,          # noqa: E402
+                        synthesis_enabled, multi_agent_enabled)
+# ---- 세대 도장 (2026-09-03) ----------------------------------------------------------------
+# 🔴 `generation` 은 stdlib 만 쓰므로 numpy/sklearn-before-dspy 계약과 무관하다.
+import generation as _generation                                # noqa: E402
 from dspy.utils.exceptions import AdapterParseError            # noqa: E402
+
+# 이 모듈이 **실제로 로드된 자리**. cwd 가 아니다 — uvicorn 을 다른 디렉토리에서 띄우면
+# 둘은 갈리고, 서빙되는 코드를 정하는 것은 후자다.
+SOURCE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 🔴 **임포트 시점에 한 번** 계산하고 얼린다. 요청마다 다시 재면 게이트가 반대 방향으로
+#    거짓말한다: 소스를 고쳐도 uvicorn 은 옛 바이트를 계속 서빙하는데 `/health` 는 디스크를
+#    읽어 "현행" 이라 보고한다 — 정확히 이 도장이 잡으라고 존재하는 판을 통과시킨다.
+#    도장은 **임포트된 바이트**에 대한 주장이다. 게이트: `test_service_generation.py` 의
+#    `test_the_fingerprint_is_frozen_at_import_not_recomputed_per_request`.
+# `None` 이면 "자기 소스를 못 읽는다" — 삭제된 worktree 에서 뜬 프로세스가 내는 값이다.
+CODE_FINGERPRINT = _generation.code_fingerprint(SOURCE_DIR)
 
 
 def _model_tag(model=None):
@@ -1234,6 +1250,20 @@ def health():
             # [] 는 "쟀는데 비었다" 로 다른 사건이다(삼상 규약, `surro_support` 와 같다).
             "surro_kinds": (None if _state.get("surro_kinds") is None
                             else sorted(_state["surro_kinds"])),
+            # ---- 세대 도장 (2026-09-03) ------------------------------------------------
+            # 🔴 왜: 08-30/08-31 기동 uvicorn 다섯이 사흘째 200 을 냈고 그중 어느 것도
+            #    `synthesize_multi`(09-02 도입)를 안 갖고 있었다. 둘은 cwd 가 삭제된
+            #    worktree 였다. `/health` 200 이 세대 증거가 아니었기 때문에 그 위에서 잰
+            #    "합성이 안 터진다" 가 모델에 대한 사실로 읽혔다.
+            # `code_fingerprint`: 임포트 시점에 **얼린** 값. `None` = 자기 소스를 못 읽는다.
+            "source_dir": SOURCE_DIR,
+            "code_fingerprint": CODE_FINGERPRINT,
+            # 🔴 raw env echo 가 **아니다** — 레인이 부르는 그 함수의 값이다. 두 플래그는
+            #    리터럴 `"1"` 만 참으로 읽으므로(`true`/`TRUE`/`on` 은 전부 OFF), raw 를
+            #    실으면 판독자가 `SYNTH_MULTI_AGENT=true` 인 서비스를 "켜짐" 으로 읽는다.
+            #    호출 시점에 잰다 — 레인도 호출 시점에 읽기 때문이다.
+            "synth_tool_synthesis": synthesis_enabled(),
+            "synth_multi_agent": multi_agent_enabled(),
             "policies": ["dspy", "surrogate"]}
 
 
