@@ -155,7 +155,9 @@ end
                                         params = Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
                                         surface = "sched", reversible = true) === nothing
     fake = (staging_circles = Dict{Symbol,Any}(),)
-    synth = Dict{String,Any}("reach" => "composed", "body_names" => ["touch_nothing!"],
+    # 🔴 F1(2026-09-03 최종 리뷰). `reach` 대신 `impl_name` — 경계를 건너오는 실제 미끼다
+    #    (`enact_minted!` 의 step (1) 게이트가 보는 것이 그것이다, R1).
+    synth = Dict{String,Any}("impl_name" => "touch_nothing!", "body_names" => ["touch_nothing!"],
                              "tool_name" => "t", "params" => Dict{String,Any}(),
                              "missing_primitive" => nothing,
                              "calls" => [Dict{String,Any}("primitive" => "touch_nothing!",
@@ -193,7 +195,8 @@ end
     end
     """
     fake = (staging_circles = Dict{Symbol,Any}(),)
-    synth = Dict{String,Any}("reach" => "composed", "body_names" => ["single_frame_thing!"],
+    # 🔴 F1(2026-09-03 최종 리뷰). `reach` 대신 `impl_name`(R1).
+    synth = Dict{String,Any}("impl_name" => "single_frame_thing!", "body_names" => ["single_frame_thing!"],
                              "tool_name" => "t", "params" => Dict{String,Any}(),
                              "missing_primitive" => nothing,
                              "calls" => [Dict{String,Any}("primitive" => "single_frame_thing!",
@@ -270,7 +273,8 @@ end
                                         params = Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
                                         surface = "sched", reversible = false) === nothing
     fake = (staging_circles = Dict{Symbol,Any}(),)
-    synth = Dict{String,Any}("reach" => "composed", "body_names" => ["returns_a_symbol!"],
+    # 🔴 F1(2026-09-03 최종 리뷰). `reach` 대신 `impl_name`(R1).
+    synth = Dict{String,Any}("impl_name" => "returns_a_symbol!", "body_names" => ["returns_a_symbol!"],
                              "tool_name" => "t", "params" => Dict{String,Any}(),
                              "missing_primitive" => nothing,
                              "calls" => [Dict{String,Any}("primitive" => "returns_a_symbol!",

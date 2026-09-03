@@ -772,7 +772,7 @@ end
 
 | 연언지 | 왜 |
 |---|---|
-| `CB.minted_handled_verdict_ok(verdict)` | 집행된 verdict 둘(`ENACTED_VERDICTS`)만 통과 |
+| `CB.minted_handled_verdict_ok(verdict)` | 집행된 verdict 로 등재된 것만 통과(정본은 `CB.ENACTED_VERDICTS` — 크기를 여기 다시 안 적는다. 2026-09-03 최종 리뷰 F6: 2026-09-02 결정 2·3 이 둘로 넓혔던 것을 Task 9(R1)가 다시 하나로 좁혔다) |
 | `world_maybe_dirty` | 🔴 `applied` 가 **아니다** — 조용한 성공은 폴백해야 하고, 던져서 세계가 절반인 판은 폴백하면 안 된다 |
 | `resume !== :failed` | 세계는 고쳤는데 프론티어가 낡았다 = 성공과 구별되지 않는 미복구 |
 | `!resolve_failed` | 재풀이가 `:infeasible`/`:commit_failed`/`:threw` = 간선을 뗐는데 아무도 재배정 못 했다 |
@@ -794,17 +794,24 @@ end
 결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
 **보다 먼저** 부르고(Task 9 — 생성 원시는 그 순간까지 존재하지 않는다), 등록·집행 여부를
 로그와 반환값 양쪽에 남긴다. 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool`·
-`registered::Bool`·`impl_rejected_why::Union{Nothing,String}` 를 더한 것이다.
+`registered::Union{Nothing,Bool}`·`impl_rejected_why::Union{Nothing,String}` 를 더한 것이다.
+
+🔴 **`registered` 는 셋이다**(2026-09-03 최종 리뷰 F2, 컨트롤러 판정 R7 — R2 를 대체한다).
+`nothing` = 등록이 실제로 됐는지 이 함수가 판정하지 못했다(catch 로 떨어졌는데 그 지점까지
+`registered` 를 확정할 자리에 한 번도 안 닿았다) · `false` = 봤는데 등록이 안 됐다(시도 안
+했거나, 시도했는데 거절됐다) · `true` = 등록이 실제로 됐다. `Bool` 하나로는 "몰라서 못
+쟀다"와 "봤는데 안 됐다"가 같은 값으로 뭉개진다 — 이 파일이 도처에서 지키는 삼상 규약을
+이 필드에만 안 지킬 이유가 없다.
 
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
 
-🔴 **`registered`·`impl_rejected_why` 는 이 함수의 반환 자리 넷 전부에 있다**(설계 §8,
-2026-09-03 컨트롤러 판정 R2). 한 자리라도 빠뜨리면 Julia 소비자는 NamedTuple 을 이름으로
+🔴 **`registered`·`impl_rejected_why` 는 이 함수의 반환 자리 넷 전부에 있고 필드 집합이
+바이트 동일하다**(설계 §8, Task 9 컨트롤러 판정 R2, 2026-09-03 최종 리뷰 F2 로 `registered`
+의 타입이 R7 로 갱신됐다). 한 자리라도 빠뜨리면 Julia 소비자는 NamedTuple 을 이름으로
 읽으므로 "모델이 코드를 안 냈다"(`impl_name` 이 없어 조기 반환)와 "냈는데 규약 위반으로
 거절됐다"(`register_minted_primitive!` 가 문자열을 돌려줬다)가 **같은 관측**이 된다 —
 이 레포가 `train_kinds`·`require_vocab`·`handled` 에서 이미 세 번 데인 실패 모양이다.
-`registered` 는 이번 호출에서 실제로 등록이 성공했는가(시도 안 했어도 `false`)이고,
 `impl_rejected_why` 는 등록을 시도했는데 거절된 경우에만 그 사유 문자열이다 — 나머지는
 전부 `nothing`("등록을 시도하지 않았다" 또는 "몰라서 못 쟀다").
 
@@ -866,6 +873,18 @@ end
 안 돌았다" 가 같은 관측이 된다. 그래서 `ran_milp` 없이 `length` 를 찍지 않는다.
 """
 function enact_minted_decision!(env, truth, decision)
+    # 🔴 F2(2026-09-03 최종 리뷰, 컨트롤러 판정 R7). `registered`·`impl_rejected_why` 를
+    #    `try` **안에서** `local` 선언하면 Julia 의 try/catch 는 그 결속을 catch 에 안
+    #    보인다(실측: `UndefVarError` — try 와 catch 는 서로 다른 지역이다). 그래서 옛
+    #    catch 경로는 그 값을 "손으로 다시" 리터럴 `false` 로 적을 수밖에 없었고, 그 자리가
+    #    바로 R2 시절의 결함이었다: 등록이 실제로 성공한 **뒤에** `CB.enact_minted!` 가
+    #    던지면 `minted_table()` 에는 원시가 실제로 있는데 기록은 "등록 안 됐다" 고
+    #    거짓말했다. `try` **밖**에서 선언하면 두 블록이 **같은 결속**을 보므로, catch 는
+    #    "예외 직전까지 실제로 관측된 값"을 그대로 돌려준다 — 등록이 이미 끝난 뒤 던지면
+    #    `true` 를 정확히 안다. 그 값에 **한 번도 도달하지 못하고** 던지면(결정 지점 이전)
+    #    `nothing`("몰라서 못 쟀다")으로 남는다.
+    local registered::Union{Nothing,Bool} = nothing
+    local impl_rejected_why::Union{Nothing,String} = nothing
     try
         local sl = try decision.synth_lane catch; nothing end
         # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
@@ -876,6 +895,7 @@ function enact_minted_decision!(env, truth, decision)
         local nm = sl === nothing ? nothing : _synth_lane_field(sl, "impl_name")
         # ---- 조기 반환도 조용하지 않다 (C5) ------------------------------------------------
         if sl === nothing || nm === nothing
+            registered = false   # 확정이다 — 등록할 코드 자체가 없어 시도조차 안 했다.
             # 🔴 **두 갈래는 다른 사건이고 사유도 달라야 한다**(2026-08-30 최종 리뷰, spec §9-2).
             #    `sl !== nothing && nm === nothing` 에서는 합성 레인이 **있다** — 그런데도
             #    `reason=no synth lane on this decision` 을 찍는 것은 거짓 진술이었다.
@@ -898,7 +918,7 @@ function enact_minted_decision!(env, truth, decision)
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
                     " synthesis_error=", _synth_lane_field(sl, "synthesis_error"),
                     " tool_minted=", _synth_lane_field(sl, "tool_minted"),
-                    " registered=false impl_rejected_why=n/a",
+                    " registered=", registered, " impl_rejected_why=n/a",
                     " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
@@ -906,33 +926,80 @@ function enact_minted_decision!(env, truth, decision)
                     applied = false, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none,
                     resolve = :none, args_from = nothing, n_calls = nothing,
-                    registered = false, impl_rejected_why = nothing)
+                    registered = registered, impl_rejected_why = impl_rejected_why)
         end
 
         # ---- 등록이 먼저다 (Task 9) ---------------------------------------------------------
         # 🔴 등록이 먼저다. 생성 원시는 이 순간까지 존재하지 않는다 — 등록에 실패하면
         #    집행을 시도하지 않고 그 사유를 그대로 나른다(예외가 아니라 거절). `nm` 은 바로
         #    위에서 이미 읽었다 — 두 번 읽지 않는다(진실원 하나).
-        local registered = false
-        local impl_rejected_why = nothing
+        # 🔴 F3(2026-09-03 최종 리뷰). 여기서 타입을 지키지 않으면 규약 위반 payload 넷
+        #    (`impl_name` 이 숫자·`surface` 가 숫자·`params` 가 리스트·문자열)이 전부
+        #    `String(...)`/`register_minted_primitive!` 안에서 **던지고**, 바깥 `try` 의
+        #    catch 가 그것을 삼켜 `registered=nothing, impl_rejected_why=nothing` 으로
+        #    적는다 — "모델이 코드를 안 냈다"(조기 deferred)와 **글자 그대로 같은 관측**이
+        #    된다. R2 가 그 둘을 가르려고 만든 필드인데 타입 검사가 없으면 목적이 무너진다.
+        #    그래서 여기서 **거절로** 잡는다(예외가 아니라) — 클래스마다 자기 사유를 낸다.
+        _reject_malformed(why) = begin
+            registered = false
+            impl_rejected_why = why
+            println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
+                    " verdict=reject registered=false impl_rejected_why=", why, " reason=", why)
+            println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
+                    "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
+            return (handled = false, verdict = :reject, reason = why,
+                    applied = false, partial = false, world_maybe_dirty = false,
+                    steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
+                    args_from = nothing, n_calls = nothing,
+                    registered = registered, impl_rejected_why = impl_rejected_why)
+        end
+        nm isa AbstractString ||
+            return _reject_malformed("reject:impl_name_not_a_string:$(typeof(nm))")
+        # 🔴 F6(3)(2026-09-03 최종 리뷰). `impl_name` 이 **빈 문자열**(`nothing` 이 아니다)로
+        #    도착하는 것은 실재하는 판이다 — agent-3 이 compose 단계까지는 갔는데 이름을
+        #    못 냈을 때 파이썬 쪽 `_copy_body_fields` 의 `getattr(pred, f, "") or ""` 관용구가
+        #    정확히 이 값을 만든다(`synthesize.py`). 이걸 조용히 등록만 건너뛰면(옛 코드)
+        #    `body_names` 가 이름이 다른 무언가를 들고 있는 판에서 `enact_minted!` 이
+        #    "unknown primitive: … 알파벳 밖이다" 를 내는데, 그 알파벳은 애초에 이 이름을
+        #    맡아 달라는 요청을 받은 적이 없다 — **오귀인**이다. 그래서 여기서 먼저 자기
+        #    사유로 거절한다.
+        isempty(nm) && return _reject_malformed("reject:impl_name_is_empty")
         local cd = _synth_lane_field(sl, "impl_code")
-        if cd !== nothing && !isempty(String(nm))
+        if cd !== nothing
+            cd isa AbstractString ||
+                return _reject_malformed("reject:impl_code_not_a_string:$(typeof(cd))")
+            local surf_raw = _synth_lane_field(sl, "surface")
+            (surf_raw === nothing || surf_raw isa AbstractString) ||
+                return _reject_malformed("reject:surface_not_a_string:$(typeof(surf_raw))")
+            local praw = _synth_lane_field(sl, "params")
+            (praw === nothing || praw isa AbstractDict) ||
+                return _reject_malformed("reject:params_not_an_object:$(typeof(praw))")
             local why = CB.register_minted_primitive!(
                 name = String(nm), code = String(cd),
-                params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
-                surface = String(something(_synth_lane_field(sl, "surface"), "unknown")),
+                params = something(praw, Dict{String,Any}()),
+                surface = String(something(surf_raw, "unknown")),
                 reversible = something(_synth_lane_field(sl, "reversible"), false) === true)
             if why !== nothing
+                registered = false
                 impl_rejected_why = why
+                # 🔴 F6(2)(2026-09-03 최종 리뷰). `reason` 과 `impl_rejected_why` 가 여기서
+                #    바이트 동일한 것은 **의도적**이다 — 이 시점엔 실행이 아직 시작되지도
+                #    않아서(`enact_minted!` 를 부르기 전) `reason` 에 얹을 추가 맥락
+                #    (steps·resume·resolve 노트)이 하나도 없다. 아래 `:admit`/`:threw` 경로의
+                #    `reason` 은 이 문자열들 위에 그 맥락을 이어붙이므로 거기서는 갈린다 —
+                #    `impl_rejected_why` 는 그 이어붙임과 무관하게 **등록 거절 사유만** 남기는
+                #    자리이고, 지금은 이어붙일 것이 없어 우연히 같다.
                 println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                         " verdict=reject registered=false impl_rejected_why=", why, " reason=", why)
                 return (handled = false, verdict = :reject, reason = why,
                         applied = false, partial = false, world_maybe_dirty = false,
                         steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                         args_from = nothing, n_calls = nothing,
-                        registered = false, impl_rejected_why = why)
+                        registered = registered, impl_rejected_why = impl_rejected_why)
             end
             registered = true
+        else
+            registered = false   # 코드가 없다 — 등록을 시도하지 않았다(확정, 못 잰 게 아니다)
         end
 
         # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
@@ -995,15 +1062,19 @@ function enact_minted_decision!(env, truth, decision)
                 registered = registered, impl_rejected_why = impl_rejected_why)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
-        # 🔴 `registered=false impl_rejected_why=n/a` 다 — 이 자리에서는 등록이 실제로
-        #    끝까지 갔는지조차 모른다(예외가 등록 도중 났을 수도 있다). "몰라서 nothing" 이
-        #    맞다, "쟀는데 거절됐다" 로 적으면 없는 사유를 지어내는 셈이다.
+        # 🔴 F2(2026-09-03 최종 리뷰, R7). `registered`·`impl_rejected_why` 는 **손으로
+        #    다시 안 적는다** — 함수 맨 위에서 `try` 밖에 선언한 그 결속을 그대로 읽는다.
+        #    예외가 등록 이전에 났으면 둘 다 초기값 `nothing`("몰라서 못 쟀다")이고,
+        #    등록이 이미 끝난 뒤(성공/거절 불문) 다른 곳에서 던졌으면 그 결정된 값을
+        #    그대로 정직하게 나른다 — 리터럴 `false` 를 적으면 "등록이 성공한 뒤
+        #    `CB.enact_minted!` 가 던졌다" 는 판을 "등록이 안 됐다" 는 거짓으로 덮는다.
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
         println("[minted] lane=unknown tool=n/a verdict=reject applied=false",
                 " partial=false world_maybe_dirty=false handled=false undo=none resume=none",
                 " args_from=n/a n_calls=n/a steps=[]",
-                " registered=false impl_rejected_why=n/a",
+                " registered=", something(registered, "n/a"),
+                " impl_rejected_why=", something(impl_rejected_why, "n/a"),
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
@@ -1012,6 +1083,6 @@ function enact_minted_decision!(env, truth, decision)
                 applied = false, partial = false, world_maybe_dirty = false,
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                 args_from = nothing, n_calls = nothing,
-                registered = false, impl_rejected_why = nothing)
+                registered = registered, impl_rejected_why = impl_rejected_why)
     end
 end

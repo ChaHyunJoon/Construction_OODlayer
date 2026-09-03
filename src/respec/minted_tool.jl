@@ -965,7 +965,7 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 |---|---|
 | `:admit` | body 의 모든 원시가 해석·집행가능·바인딩됐고 **하나도 빠짐없이 불렸다** |
 | `:reject` | 아무것도 부르기 **전에** 돌아섰다 — 세계는 손대지 않았다 |
-| `:deferred` | 집행할 사건이 아니었다(합성 기록이 없거나, `impl_name` 도 `body_names` 도 없음 — 못 쟀다) |
+| `:deferred` | 집행할 사건이 아니었다(합성 기록이 없거나 `impl_name` 이 없음 — 못 쟀다) |
 
 🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1): `:admit_unsanctioned` 는 사라졌다. 그것은 "모델이
 조합에 실패했다고 신고했는데 body 는 있다" 를 재던 구분인데, D8 로 agent-3 이 인벤토리에서
@@ -1019,7 +1019,15 @@ function enact_minted!(env, truth, synth)
     #    한 자리를 빠뜨리는 순간 그 판만 조용히 `nothing` 이 된다).
     local args_from = nothing
     local n_calls   = nothing
-    _r(v, why; steps = NamedTuple[], applied = false, partial = false,
+    # 🔴 F6(4)(2026-09-03 최종 리뷰). `applied` 의 기본값은 `nothing` 이지 `false` 가 아니다.
+    #    이 함수 안의 조기 반환(`:deferred`·`:reject`, 예: 바로 위 (1)(2))은 `applied=` 를
+    #    명시적으로 안 넘기므로 이 기본값을 그대로 받는데, `false` 는 "불렀는데 적응이
+    #    없었다"(쟀다)를 뜻해 **아무것도 부르지 않았다**는 사실과 어긋난다 — 세 줄 위
+    #    `args_from`/`n_calls` 가 이미 같은 사건에 `nothing`("그 판정 자리에 도달 못
+    #    했다")을 쓰고, 그 규약과 맞춘다. Task 9 전에는 `:deferred` 가 사실상 도달 불가
+    #    (레지스트리가 항상 값을 실었다)에 가까워 파장이 작았지만, 이제 `impl_name` 결측이
+    #    라이브 판에서 실제로 발화하므로 이 결함의 반경이 커졌다 — 지금 고친다.
+    _r(v, why; steps = NamedTuple[], applied = nothing, partial = false,
        touched = false, resume = :none, resolve = :none) =
         (verdict = v, reason = why, applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
@@ -1028,27 +1036,25 @@ function enact_minted!(env, truth, synth)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
-    # 🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1). 미끼가 `reach` 에서 `impl_name` 으로 옮겨왔다 —
-    #    agent-3 이 이제 인벤토리에서 조합하는 대신 원시 자신을 코드로 쓴다(D8). `reach` 는
-    #    경계 키에서 빠졌으므로(`SYNTH_LANE_KEYS`) 그 자리에 그대로 두면 **모든 집행이
-    #    deferred 로 떨어진다.**
+    # 🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1, **F1 로 원상복구**). 미끼가 `reach` 에서
+    #    `impl_name` 으로 옮겨왔다 — agent-3 이 이제 인벤토리에서 조합하는 대신 원시 자신을
+    #    코드로 쓴다(D8). `reach` 는 경계 키에서 빠졌으므로(`SYNTH_LANE_KEYS`) 그 자리에
+    #    그대로 두면 **모든 집행이 deferred 로 떨어진다.**
+    # 🔴 R1 최종(F1 재리뷰): 한때 이 자리를 `impl_name === nothing && isempty(body_names)`
+    #    로 완화했었다 — `test/minted_registration.jl` 의 register→enact 단일 프레임 시험
+    #    셋이 `impl_name` 없이 `body_names` 만 채운 옛 픽스처였기 때문이다. 그런데 그 완화는
+    #    **생산 게이트를, 범위 밖 시험 픽스처를 통과시키려고 넓힌 것**이었고, 아래
+    #    `enact_minted_decision!`(`tools/monitor/enact.jl`) 이 "두 게이트는 같은 미끼를
+    #    써야 한다" 고 적어 놓고 정작 이 자리만 미끼를 넓히는 자기모순이었다(리뷰 F1).
+    #    올바른 수선은 게이트가 아니라 **픽스처**다 — `impl_name` 을 채우면 셋 다 초록이고
+    #    (실측), 그 편이 3줄 수정이다. 그래서 게이트를 브리프 원안대로 되돌린다.
     nm = _synth_get(synth, "impl_name", nothing)
-    names = String[String(n) for n in _synth_get(synth, "body_names", String[])]
-    # 🔴 **못 쟀다는 `impl_name` 도 없고 `body_names` 도 비었을 때뿐이다.** 두 신호 중
-    #    하나만 보면 회귀가 난다(2026-09-03 실측, `test/minted_registration.jl` (8)(9)(11)):
-    #    그 게이트들은 `register_minted_primitive!` 를 **먼저** 부르고 `enact_minted!` 를
-    #    직접(경계를 거치지 않고) 부른다 — 그 자리의 synth dict 은 이미 조합·등록이 끝난
-    #    body 를 `body_names` 로 들고 오지만 옛 필드 이름(`reach`)만 채워 `impl_name` 이
-    #    없다. 실행에 진짜 필요한 것은 부를 이름(`body_names`)이지 메타데이터(`impl_name`)가
-    #    아니다 — 이름이 있으면 (3) 이하가 알파벳으로 직접 판정한다. `impl_name` 은 경계
-    #    (`enact_minted_decision!`)가 등록 여부를 결정할 때만 쓰는 신호이지, 이미 이름이
-    #    있는 body 의 집행 자격을 다시 묻는 신호가 아니다.
-    nm === nothing && isempty(names) &&
-        return _r(:deferred, "impl_name missing and body empty — 합성 레인이 값을 안 실었다")
+    nm === nothing && return _r(:deferred, "impl_name missing — 합성 레인이 값을 안 실었다")
     # 🔴 `sanctioned`/`admit_unsanctioned` 는 사라진다. 그것은 "모델이 조합에 실패했다고
     #    신고했는데 body 는 있다" 를 재던 구분인데, 조합 단계 자체가 없어졌다.
     admit_verdict = :admit
 
+    names = String[String(n) for n in _synth_get(synth, "body_names", String[])]
     isempty(names) && return _r(:reject, "empty body: 조합할 원시가 하나도 없다")
 
     # ---- (3) 이름을 전부 해석한다 ----------------------------------------------------------

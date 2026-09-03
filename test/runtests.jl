@@ -400,6 +400,15 @@ end
         include("minted_registration.jl")
     end
 
+    # 🔴 2026-09-03 (Task 9 최종 리뷰 F4): `test/minted_end_to_end.jl` 이 여기 include 되지
+    #    않는 한 이 계획이 만든 유일한 e2e 게이트(경계 → 등록 → 집행)가 한 번도 안 돈다 —
+    #    CLAUDE.md 가 `test/smdp_global_inventory.jl` 에 대해 이미 적은 것과 같은 실패
+    #    모양이다. `minted_registration.jl` 처럼 이름을 CB 에 영구히 심으므로(`e2e_touch!`)
+    #    세션당 한 번만 안전하다 — 그래서 바로 위 게이트 옆에 둔다.
+    @testset "minted end to end" begin
+        include("minted_end_to_end.jl")
+    end
+
     # 2026-08-30 (T3): 이 게이트는 합성 원시의 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
     #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이다(연언지 셋: harness·arity·kwargs).
