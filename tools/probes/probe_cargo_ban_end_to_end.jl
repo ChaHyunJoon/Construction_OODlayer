@@ -8,8 +8,11 @@
 #   1. release_pending_assignments(agent="…")     ← 좁힌 release (b20c01ab)
 #   2. forbid_heavy_cargo(agent="…", n=1)
 #
-# `tools/probes/probe_minted_body_enacts.jl` 의 모양을 그대로 따르되(집행 전/후로 세계를 직접
-# 잰다), body 를 바꾸고 **음성 대조를 더했다.**
+# 🔴 **절이 둘이고, 각각 다른 주장을 진다**(2026-09-02 재구성 — 이유는 아래 (12)):
+#   · 절 A (G-8)  `enact_minted!` 로 body 를 굴리고 **집행이 무엇을 기록하는가**를 잰다.
+#                 verdict · steps · resume · **resolve** · 보관소. 인과는 판정하지 않는다.
+#   · 절 B (G-2)  두 원시를 **직접** 부르고 그 뜬 그래프 위에서 두 팔을 세운다. **인과는 여기다.**
+#   두 절은 각자 픽스처를 짓는다. 같은 세계여야 하는 것은 **절 B 안의 두 팔**뿐이다.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # 🔴 판정 규율 — Task 1(`5456124f`)이 실측으로 못박은 것들. 어기면 거짓 성공을 보고한다.
@@ -45,6 +48,22 @@
 #      일반화하지 말 것** — `src/` 에 같은 모양이 27~41 곳 있고 전부 멀쩡히 돈다
 #      (`cargo_ban_primitive.jl::_try_resolve_schedule_agent` 의 docstring 이 실측을 적는다).
 #      이 파일은 `catch` 를 두 곳에서만 쓰고 둘 다 값으로 끝난다.
+# (12) 🔴 **집행 직후에 그래프를 읽어 인과를 판정할 수 없다 — 판정 1 이 그 길을 닫았다.**
+#      `enact_minted!` 은 body 를 다 굴린 뒤 공통 MILP 재풀이를 부른다(`RESOLVE_SURFACES` 에
+#      `sched`·`milp` 이 있고 이 body 는 둘 다 건드린다). 그래서 집행이 돌아오는 시점이면
+#      하네스가 **뜬 슬롯을 이미 다시 붙여 놨다.** 2026-09-02 실측(이 프로브를 안 고치고 그대로
+#      돌린 값, 두 판 모두):
+#          tractor      간선 43→43 · 뗀슬롯 2 · ncand 0 · 금지행 0 · 표적 nothing
+#          colored_8x8  간선 68→68 · 뗀슬롯 2 · ncand 0 · 금지행 0 · 표적 nothing
+#      ⚠️ 그때 요약표는 "대조 잃음 1 · 처리 잃음 1" 을 찍어 **결과처럼 보였다** — 두 팔이 같은
+#      값이니 효과가 0 이라는 뜻인데, 공허 판정이 세부에만 있고 표에 없었기 때문이다. 그래서
+#      이 재구성은 **`금지행` 을 요약표로 올리고 공허를 판정에 넣었다.**
+#      원인은 위 (판정 규율) 목록의 그것과 같다: `_edge_owner_id` 는 release **후에만** 쌍을
+#      내므로, 재풀이가 MILP 관점에서 그래프를 release 이전으로 되돌리면 후보가 0 이고
+#      **어떤 금지도 0 행**이다. 빨개지는 게 아니라 **조용히 공허해지는** 종류의 사고다.
+#      ⟹ 인과는 절 B(원시 직접 호출)가 지고, 집행 경로 자체는 절 A 와
+#        `test/minted_tool_enacts.jl` · `tools/monitor/test_minted_wiring.jl` (2c)/(2d) 가 진다.
+#        게이트 시험 `test/cargo_ban_moves_work.jl` 도 같은 이유로 같은 형태로 옮겼다(커밋 `6f543940`).
 # ─────────────────────────────────────────────────────────────────────────────
 using ConstructionBots
 using Random, Graphs, JuMP, SparseArrays
@@ -296,65 +315,110 @@ _synth(agent) = Dict{String,Any}(
 
 _ban_keys() = sort(string.(collect(keys(CB.STANDING_CARGO_BANS[]))))
 
-function run_board(board, nr, target_closed)
-    println("\n", "="^92)
-    println("BOARD = ", board, "   robots = ", nr, "   target_closed = ", target_closed)
-    println("="^92)
-    CB.clear_all_cargo_bans!()                     # 판 사이 격리
-    fx = fixture(board = board, nr = nr, target_closed = target_closed)
+
+"""
+`release_pending_assignments` 단계가 **자기 입으로 보고한** 뗀 간선 수.
+`_step_status`/`_step_detail` 이 `EDGELIST_RETURN_PRIMITIVES` 를 보고 `"released=N"` 을 만든다.
+🔴 판정 1 이후 이것이 집행 경로에서 **release 의 크기를 아는 유일한 길**이다 — 그래프의 간선
+수는 재풀이가 되돌려 놓기 때문이다(머리말 (12)). 못 읽으면 `nothing`(0 이 아니다).
+"""
+function _released_reported(steps)
+    i = findfirst(s -> String(s.name) == "release_pending_assignments", steps)
+    i === nothing && return nothing
+    m = match(r"^released=(\d+)$", String(steps[i].detail))
+    return m === nothing ? nothing : parse(Int, m.captures[1])
+end
+
+# ── 절 A: 집행 경로 (G-8) ────────────────────────────────────────────────────
+"""
+`enact_minted!` 로 body 를 굴리고 **집행이 무엇을 하고 무엇을 기록하는가**만 잰다.
+
+🔴 **이 절은 인과를 판정하지 않는다.** 판정 1(공통 재풀이) 이후 그것이 여기서 불가능하다 —
+머리말 (12) 를 읽어라. 인과는 절 B 가 진다.
+"""
+function enact_section(board, nr, target_closed)
+    println("\n---- 절 A: 집행 경로 (G-8) ----")
+    CB.clear_all_cargo_bans!()
+    fx  = fixture(board = board, nr = nr, target_closed = target_closed)
     env = fx.env
     println("closed 도달값 = ", fx.closed, "  (target = ", target_closed, ", steps = ", fx.steps, ")")
     println("BATTERY_FLEET[] = ", CB.BATTERY_FLEET[] === nothing ? "nothing" : "installed")
-
     ag = busiest_pending_agent(env)
     ag.id === nothing && error("미래 배정 간선이 0 — 재분배 창이 닫혔다. target_closed 를 줄여라")
-    println("target agent = ", ag.str)
-    println("  (미래 간선 소유 히스토그램 = ", sort(collect(ag.tally), by = kv -> (-kv[2], kv[1])),
-            " · 최댓값 동점 = ", ag.tied, ")")
+    println("target agent = ", ag.str, "   (최댓값 동점 = ", ag.tied, ")")
 
-    # ---- 세계 (전) -----------------------------------------------------------
     E0 = assignment_edges(env.sched)
     bans_before = _ban_keys()
-    println("\n---- 세계 (집행 전) ----")
-    println("배정 간선 = ", length(E0))
-    println("STANDING_CARGO_BANS[] = ", isempty(bans_before) ? "비었다" : bans_before)
+    println("집행 전: 배정 간선 = ", length(E0),
+            " · STANDING_CARGO_BANS[] = ", isempty(bans_before) ? "비었다" : string(bans_before))
 
-    # ---- body 집행 -----------------------------------------------------------
     r = CB.enact_minted!(env, nothing, _synth(ag.str))
-    println("\n---- enact_minted! ----")
-    println("verdict           = ", r.verdict)
-    println("reason            = ", r.reason)
-    println("applied           = ", r.applied, "   partial = ", r.partial,
-            "   world_maybe_dirty = ", r.world_maybe_dirty, "   resume = ", r.resume)
+    E1 = assignment_edges(env.sched)
+    bans_after = _ban_keys()
+    rel_rep = _released_reported(r.steps)
+
+    println("verdict = ", r.verdict, "   applied = ", r.applied, "   partial = ", r.partial,
+            "   world_maybe_dirty = ", r.world_maybe_dirty)
+    println("resume = ", r.resume, "   resolve = ", r.resolve)
+    println("reason = ", r.reason)
     println("steps (", length(r.steps), "):")
     for s in r.steps
         println("   · ", s.name, "  status=", s.status, "  detail=", s.detail)
     end
-
-    # ---- 세계 (후) -----------------------------------------------------------
-    E1 = assignment_edges(env.sched)
-    bans_after = _ban_keys()
-    removed = collect(setdiff(E0, E1))
-    released_slots = sort!(unique!([v2 for (_, v2) in removed]))
-    println("\n---- 세계 (집행 후) — 🔴 반환 심볼이 아니라 이것이 증거다 ----")
-    println("배정 간선 전/후        = ", length(E0), " / ", length(E1),
-            "   (뗀 간선 = ", length(removed), ")")
+    println("release 자체보고(뗀 간선) = ", _s(rel_rep))
+    println("배정 간선 전/후 = ", length(E0), " / ", length(E1),
+            "   🔴 되돌아오는 것이 **정상**이다 — 재풀이가 뜬 슬롯을 다시 붙인다(머리말 (12))")
     println("STANDING_CARGO_BANS[] 전/후 = ",
             (isempty(bans_before) ? "비었다" : string(bans_before)), " / ", bans_after)
-    println("release 가 뗀 슬롯 수  = ", length(released_slots))
-    println("금지 대상이 A 인가      = ", ag.str in bans_after)
+    println("금지 대상이 A 인가 = ", ag.str in bans_after)
+    return (closed = fx.closed, agent = ag.str, verdict = r.verdict, applied = r.applied,
+            steps = r.steps, resume = r.resume, resolve = r.resolve,
+            released_reported = rel_rep, edges = (length(E0), length(E1)),
+            bans = (bans_before, bans_after), ban_is_a = ag.str in bans_after)
+end
 
-    if isempty(released_slots)
+# ── 절 B: 인과 (G-2) ─────────────────────────────────────────────────────────
+"""
+**금지된 로봇이 그 화물을 실제로 잃는가.** body 의 두 원시를 **직접** 부르고, 그 뜬 그래프
+위에서 두 팔(금지 없음 / 있음)을 세운다.
+
+🔴 **새 픽스처를 짓는다.** 절 A 의 env 위에서는 안 된다 — 그 재풀이가 `commit_respec!` 로
+세계를 바꿔 놨고 뜬 슬롯이 남아 있지 않다. 두 절은 **다른 주장**이므로 같은 세계일 필요가
+없다. 반드시 같은 세계여야 하는 것은 **이 절 안의 두 팔**이고, 그 둘은 같은 env·같은
+그래프를 보고 commit 도 fork 도 하지 않는다(머리말 (2)(6)).
+"""
+function causal_section(board, nr, target_closed)
+    println("\n---- 절 B: 인과 (G-2) — 원시 직접 호출 ----")
+    CB.clear_all_cargo_bans!()
+    fx  = fixture(board = board, nr = nr, target_closed = target_closed)
+    env = fx.env
+    println("closed 도달값 = ", fx.closed, "  (target = ", target_closed, ", steps = ", fx.steps, ")")
+    ag = busiest_pending_agent(env)
+    ag.id === nothing && error("미래 배정 간선이 0 — 재분배 창이 닫혔다. target_closed 를 줄여라")
+    println("target agent = ", ag.str, "   (최댓값 동점 = ", ag.tied, ")")
+
+    E0 = assignment_edges(env.sched)
+    # 🔴 인자 결합은 집행부의 harness 바인딩과 같다(`invariant` ← `build_invariant(env)`).
+    rel = CB.release_pending_assignments!(env, CB.build_invariant(env); agent = ag.str)
+    ban = CB.forbid_heavy_cargo!(env; agent = ag.str, n = 1)
+    E1 = assignment_edges(env.sched)
+    released_slots = sort!(unique!([v2 for (_, v2) in setdiff(E0, E1)]))
+    println("release 반환 = ",
+            rel isa AbstractVector ? string(length(rel), " 간선") : string(rel),
+            "   forbid 반환 = ", ban)
+    println("배정 간선 전/후 = ", length(E0), " / ", length(E1),
+            "   release 가 뗀 슬롯 = ", length(released_slots))
+    println("STANDING_CARGO_BANS[] = ", _ban_keys())
+
+    if !(rel isa AbstractVector) || isempty(released_slots)
         println("\n🔴 VACUOUS — release 가 아무 슬롯도 안 뗐다. 아래 판정은 공허하므로 중단한다.")
-        return (board = board, closed = fx.closed, agent = ag.str, verdict = r.verdict,
-                steps = r.steps, edges = (length(E0), length(E1)),
-                bans = (bans_before, bans_after), control = nothing, treatment = nothing,
-                vacuous = true, tied_agents = ag.tied)
+        return (closed = fx.closed, agent = ag.str, released_slots = Int[],
+                control = nothing, treatment = nothing, vacuous = true,
+                verdict = :vacuous, extra = Int[], ban_rows = nothing)
     end
 
-    # ---- 두 팔 ---------------------------------------------------------------
     # 🔴 대조를 **먼저** 돈다. 두 팔은 같은 env·같은 그래프를 보고 commit 을 안 하므로
-    #    순서가 결과를 바꿀 수 없어야 한다 — 그 사실을 프로브가 직접 확인한다(구조 대조 아래).
+    #    순서가 결과를 바꿀 수 없어야 한다 — 아래 구조 대조가 그것을 직접 확인한다.
     ctl = solve_control(env, ag.id, ag.str, released_slots)
     trt = solve_arm(env, ag.id, ag.str, released_slots, :treatment)
     for a in (ctl, trt)
@@ -379,38 +443,59 @@ function run_board(board, nr, target_closed)
         println("목적값 = ", _r(a.obj), a.tstat == CB.MOI.OPTIMAL ? "" : "   ⚠️ 종료가 OPTIMAL 이 아니다 — 인용 금지")
     end
 
-    # ---- 구조 대조: 두 팔이 같은 판을 봤는가 --------------------------------
-    if ctl.status === :ok && trt.status === :ok
-        println("\n---- 구조 대조 (두 팔이 같은 판을 봤는지) ----")
-        println("표적 v2 일치     = ", ctl.target_v2 == trt.target_v2,
-                "   (", _s(ctl.target_v2), " vs ", _s(trt.target_v2), ")")
-        println("후보 간선 수 일치 = ", ctl.ncand == trt.ncand, "   (", ctl.ncand, " vs ", trt.ncand, ")")
-        println("제약 행 수 차이   = ", trt.nconstr - ctl.nconstr,
-                "   🔴 0 이면 금지가 한 행도 안 걸린 것이다(공허)")
-        println("\n---- G-2 판정 ----")
-        println("대조(금지 없음) 잃은 작업 = ", ctl.lost, "  ", ctl.lost_slots)
-        println("처리(금지 있음) 잃은 작업 = ", trt.lost, "  ", trt.lost_slots)
-        # 🔴 판정은 **차집합**이다 — 절대값이 아니다. 대조도 슬롯을 잃을 수 있고(재풀이 잡음),
-        #    그 잡음은 양쪽에 공통이라 차집합에서 저절로 지워진다. 남는 것이 금지의 효과다.
-        #    (실측: `Pkg.test()` 안에서는 대조가 표적이 **아닌** 슬롯 하나를 잃었다.)
-        extra = setdiff(trt.lost_slots, ctl.lost_slots)
-        println("처리가 **추가로** 잃은 슬롯 = ", extra, "   (표적 = ", _s(ctl.target_v2), ")")
-        println("대조 잃음 ⊆ 처리 잃음 = ", issubset(ctl.lost_slots, trt.lost_slots))
-        if ctl.at_target == 0
-            println("🔴 VACUOUS — 대조에서도 A 가 표적을 안 집는다. 금지의 효과를 잴 수 없다.")
-        elseif extra == [ctl.target_v2] && trt.at_target == 0
-            println("🟢 GREEN — 금지가 **정확히 그 화물 하나**를 A 에게서 뗐다 ",
-                    "(대조 회수 ", ctl.recovered, "/", ctl.n_released_slots,
-                    ", 처리 회수 ", trt.recovered, "/", trt.n_released_slots, ").")
-        else
-            println("🔴 RED — 차집합이 표적 하나가 아니다. 금지가 노린 것을 못 옮겼거나 ",
-                    "다른 것까지 옮겼다.")
-        end
+    (ctl.status === :ok && trt.status === :ok) || begin
+        println("\n🔴 한 팔이라도 못 풀었다 — 판정 불가(0 이 아니다).")
+        return (closed = fx.closed, agent = ag.str, released_slots = released_slots,
+                control = ctl, treatment = trt, vacuous = true,
+                verdict = :unmeasured, extra = Int[], ban_rows = nothing)
     end
-    return (board = board, closed = fx.closed, agent = ag.str, verdict = r.verdict,
-            steps = r.steps, edges = (length(E0), length(E1)),
-            bans = (bans_before, bans_after), control = ctl, treatment = trt,
-            vacuous = false, tied_agents = ag.tied)
+
+    println("\n---- 구조 대조 (두 팔이 같은 판을 봤는지) ----")
+    ban_rows = trt.nconstr - ctl.nconstr
+    println("표적 v2 일치     = ", ctl.target_v2 == trt.target_v2,
+            "   (", _s(ctl.target_v2), " vs ", _s(trt.target_v2), ")")
+    println("후보 간선 수 일치 = ", ctl.ncand == trt.ncand, "   (", ctl.ncand, " vs ", trt.ncand, ")")
+    println("제약 행 수 차이   = ", ban_rows,
+            "   🔴 0 이면 금지가 한 행도 안 걸린 것이다(공허)")
+
+    println("\n---- G-2 판정 ----")
+    println("대조(금지 없음) 잃은 작업 = ", ctl.lost, "  ", ctl.lost_slots)
+    println("처리(금지 있음) 잃은 작업 = ", trt.lost, "  ", trt.lost_slots)
+    # 🔴 판정은 **차집합**이다 — 절대값이 아니다. 대조도 슬롯을 잃을 수 있고(재풀이 잡음),
+    #    그 잡음은 양쪽에 공통이라 차집합에서 저절로 지워진다. 남는 것이 금지의 효과다.
+    extra = sort!(collect(setdiff(trt.lost_slots, ctl.lost_slots)))
+    println("처리가 **추가로** 잃은 슬롯 = ", extra, "   (표적 = ", _s(ctl.target_v2), ")")
+    # 🔴 공허 판정이 **먼저**다 — 후보 0 / 금지행 0 이면 그 아래 숫자는 전부 뜻이 없다.
+    verdict = if ban_rows == 0 || ctl.ncand == 0
+        println("🔴 VACUOUS — 금지가 한 행도 안 걸렸다(또는 후보 간선이 0). 아래 숫자는 뜻이 없다.")
+        :vacuous
+    elseif ctl.at_target == 0
+        println("🔴 VACUOUS — 대조에서도 A 가 표적을 안 집는다. 금지의 효과를 잴 수 없다.")
+        :vacuous
+    elseif ctl.target_v2 ∈ extra && trt.at_target == 0
+        # 🔴 **소속**이지 상등이 아니다. 금지 행을 더한 재풀이는 같은 비용의 다른 최적해로 갈
+        #    자유가 있어(해의 퇴화) 무관한 배정이 팔 사이에서 뒤섞인다 — 그 부수적 이동은
+        #    이 주장을 반증하지 않는다(G-2 시험 머리말 (H) 가 같은 실측을 적는다).
+        println("🟢 GREEN — 금지가 **그 화물을** A 에게서 뗐다 ",
+                "(대조 회수 ", ctl.recovered, "/", ctl.n_released_slots,
+                ", 처리 회수 ", trt.recovered, "/", trt.n_released_slots, ").")
+        :green
+    else
+        println("🔴 RED — 표적이 차집합 안에 없다. 금지가 노린 것을 못 옮겼다.")
+        :red
+    end
+    return (closed = fx.closed, agent = ag.str, released_slots = released_slots,
+            control = ctl, treatment = trt, vacuous = verdict === :vacuous,
+            verdict = verdict, extra = extra, ban_rows = ban_rows)
+end
+
+function run_board(board, nr, target_closed)
+    println("\n", "="^92)
+    println("BOARD = ", board, "   robots = ", nr, "   target_closed = ", target_closed)
+    println("="^92)
+    a = enact_section(board, nr, target_closed)
+    b = causal_section(board, nr, target_closed)
+    return (board = board, enact = a, causal = b)
 end
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -425,21 +510,42 @@ function main()
     for (b, nr, tc) in boards
         push!(results, run_board(b, nr, tc))
     end
+
     println("\n", "="^92)
-    println("G-8 요약표  (🔴 `nothing` = 못 쟀다, 0 이 아니다)")
+    println("절 A 요약 — G-8: body 가 집행되고 하네스가 그것을 기록한다")
+    println("🔴 `간선 전/후` 가 **같아지는 것이 정상**이다(재풀이). release 의 크기는 그 옆 칸이다.")
     println("="^92)
-    println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 9), rpad("간선 전/후", 13),
-            rpad("금지 전/후", 12), rpad("대조 잃음", 10), rpad("처리 잃음", 10), "재풀이 종료/시간")
+    println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 9), rpad("applied", 9),
+            rpad("resume", 9), rpad("resolve", 12), rpad("release 보고", 13),
+            rpad("간선 전/후", 13), "금지 전/후")
     for x in results
-        c = x.control; t = x.treatment
-        lo_c = (c === nothing || c.status !== :ok) ? nothing : c.lost
-        lo_t = (t === nothing || t.status !== :ok) ? nothing : t.lost
-        term = (t === nothing || t.status !== :ok) ? "nothing" :
-               string(t.tstat, " / ", _r(t.wall, 3), "s")
-        println(rpad(x.board, 17), rpad(string(x.closed), 8), rpad(string(x.verdict), 9),
-                rpad(string(x.edges[1], "→", x.edges[2]), 13),
-                rpad(string(length(x.bans[1]), "→", length(x.bans[2])), 12),
-                rpad(_s(lo_c), 10), rpad(_s(lo_t), 10), term)
+        e = x.enact
+        println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 9),
+                rpad(string(e.applied), 9), rpad(string(e.resume), 9),
+                rpad(string(e.resolve), 12), rpad(_s(e.released_reported), 13),
+                rpad(string(e.edges[1], "→", e.edges[2]), 13),
+                string(length(e.bans[1]), "→", length(e.bans[2])))
+    end
+
+    println("\n", "="^92)
+    println("절 B 요약 — G-2: 금지된 로봇이 그 화물을 실제로 잃는다 (원시 직접 호출)")
+    println("🔴 `금지행` 이 0 이면 그 행은 **공허**다 — 나머지 숫자를 인용하지 마라.")
+    println("="^92)
+    println(rpad("판", 17), rpad("뗀슬롯", 8), rpad("ncand", 7), rpad("금지행", 8),
+            rpad("표적", 8), rpad("대조 잃음", 10), rpad("처리 잃음", 10),
+            rpad("차집합", 12), "판정")
+    for x in results
+        c = x.causal
+        ok = c.control !== nothing && c.treatment !== nothing &&
+             c.control.status === :ok && c.treatment.status === :ok
+        println(rpad(x.board, 17), rpad(string(length(c.released_slots)), 8),
+                rpad(ok ? string(c.control.ncand) : "nothing", 7),
+                rpad(_s(c.ban_rows), 8),
+                rpad(ok ? _s(c.control.target_v2) : "nothing", 8),
+                rpad(ok ? string(c.control.lost) : "nothing", 10),
+                rpad(ok ? string(c.treatment.lost) : "nothing", 10),
+                rpad(string(c.extra), 12),
+                uppercase(string(c.verdict)))
     end
     CB.clear_all_cargo_bans!()
     return results
