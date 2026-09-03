@@ -201,12 +201,20 @@ function main()
     end
 
     # 판정 사슬은 공허와 **독립**으로 굴린다 — 공허인 판에서도 GREEN/SILENT/RED 가 찍힌다.
+    # 🔴 세 팔 다 **리터럴 verdict 를 박지 않고 `r.verdict` 를 그대로 싣는다.** 술어는
+    #    `CB.minted_handled_verdict_ok` 라 집행 계열 **둘**(`:admit`·`:admit_unsanctioned`)이
+    #    걸리는데, 문구가 `:admit` 이라고 적으면 이 레인이 가르려고 존재한 그 둘을 판정 줄이
+    #    다시 뭉갠다(2026-09-02 결정 2). `else` 팔도 마찬가지로 `:reject` 하나가 아니다 —
+    #    `:deferred` 도 여기로 온다. 🔴 여기에 verdict 이름을 손으로 적지 마라.
     if CB.minted_handled_verdict_ok(r.verdict) && released_ok && reprice_ok
-        println("🟢 GREEN — body enacted AND both halves are visible in the world.")
+        println("🟢 GREEN — body enacted (verdict=", r.verdict,
+                ") AND both halves are visible in the world.")
     elseif CB.minted_handled_verdict_ok(r.verdict)
-        println("🔴 SILENT SUCCESS — :admit but the world did not move. This is the worst case.")
+        println("🔴 SILENT SUCCESS — verdict=", r.verdict,
+                " (집행 계열) but the world did not move. This is the worst case.")
     else
-        println("🔴 RED — verdict=", r.verdict, " (world untouched, as :reject promises)")
+        println("🔴 RED — verdict=", r.verdict,
+                " (world untouched, as a non-enacted verdict promises)")
     end
 end
 
