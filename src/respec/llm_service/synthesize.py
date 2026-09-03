@@ -1419,6 +1419,49 @@ def multi_agent_enabled() -> bool:
     return os.environ.get(MULTI_AGENT_ENV, "") == "1"
 
 
+# ==========================================================================================
+# (5-b) 합성 기록을 파일로 — 라이브 판을 사후에 읽을 수 있게
+# ==========================================================================================
+# 🔴 왜 (2026-09-03 라이브 실측). mild 보드에서 합성이 **발화했는데** `empty body` 로 거절됐고,
+#    agent-3 이 무엇을 답했는지는 어디에도 안 남았다: `[minted]` 의 발화 분기가 그것을 안 찍었고
+#    (같은 날 고쳤다), 스트림 jsonl 은 프레임 기록이라 합성 필드가 0개이며, 서비스는 결정을
+#    파일로 안 쓴다. 유료 런을 하고도 "왜 body 가 비었나" 를 답할 수 없었다.
+#
+# 🔴 `body` 산문은 `SYNTH_LANE_KEYS` 로 **안 올린다.** 그 경계의 계약은 "집행부가 읽는 것" 이고
+#    산문은 집행이 안 읽는다. 진단은 파일로 남기고 경계는 좁게 둔다.
+SYNTH_RECORD_ENV = "SYNTH_RECORD_LOG"
+
+
+def default_record_path() -> str:
+    """`<repo>/results/synth_lane_records.jsonl`. 🔴 `results/` 는 gitignore 다 — 기본 경로가
+    추적되는 자리면 아무도 재현하지 않은 숫자가 커밋된다(이 레포의 규약)."""
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+    return os.path.join(repo, "results", "synth_lane_records.jsonl")
+
+
+def append_synthesis_record(rec, path=None) -> Optional[str]:
+    """기록 한 줄을 append 한다. 쓴 경로, 또는 `None`(안 썼다).
+
+    🔴 **절대 던지지 않는다.** 진단이 결정을 죽이면 진단을 켠 것이 사고의 원인이 된다 —
+    줄리아 집행부가 같은 이유로 예외 대신 거절을 내는 것과 같은 규약이다.
+    🔴 인코딩 못 하는 값은 `default=str` 로 접는다. 값 하나 때문에 줄 전체를 잃지 않는다.
+    """
+    if path is None:
+        env = os.environ.get(SYNTH_RECORD_ENV)
+        if env is not None and env.strip() in ("", "0"):
+            return None
+        path = env or default_record_path()
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+        return path
+    except Exception:
+        return None
+
+
 def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
                   programs=None, blob=None) -> Dict[str, Any]:
     """The single door the service calls. One flag decides which lane runs.

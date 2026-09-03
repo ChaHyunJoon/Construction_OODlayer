@@ -918,6 +918,12 @@ function enact_minted_decision!(env, truth, decision)
                 #    🔴 `nothing` 은 `n/a` 로 찍는다 — "0" 도 "params" 도 아니고 **도달 못 했다**.
                 " args_from=", something(r.args_from, "n/a"),
                 " n_calls=", something(r.n_calls, "n/a"),
+                # 🔴 2026-09-03 라이브 실측이 계기. 합성이 **발화했는데** `empty body` 로
+                #    거절된 판에서 agent-3 이 무엇을 없다고 했는지가 **어디에도 안 남았다** —
+                #    스트림 jsonl 에 합성 필드가 없고 서비스도 기록을 파일로 안 쓴다. 값은
+                #    이미 `SYNTH_LANE_KEYS` 로 도착해 있었고 관측면만 없었다.
+                " n_body_names=", length(something(get(sl, "body_names", nothing), [])),
+                " missing_primitive=", something(_synth_lane_field(sl, "missing_primitive"), "n/a"),
                 " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 

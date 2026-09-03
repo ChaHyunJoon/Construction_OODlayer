@@ -631,4 +631,25 @@ end
         @test occursin("args_from=n/a", out_n)
     end
 
+    # -------------------------------------------------------------------------------------
+    @testset "(10) 🔴 발화한 판의 [minted] 줄이 agent-3 의 답을 싣는다" begin
+        # 2026-09-03 라이브 실측이 계기: mild 보드에서 합성이 **발화했는데**
+        # `reason=empty body` 로 거절됐고, agent-3 이 무엇을 없다고 했는지는 **어디에도 안 남았다**
+        # — `lane=present` 분기가 `missing_primitive` 를 안 찍고(조기반환 분기는 찍는다),
+        # 스트림 jsonl 에는 합성 필드가 없고, 서비스는 기록을 파일로 안 쓴다. 값은 이미
+        # `SYNTH_LANE_KEYS` 로 도착해 있었다 — 관측면만 없었다.
+        _, out = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+            _dec(Dict{String,Any}("reach" => "needs_primitive", "body_names" => String[],
+                                  "tool_name" => "DynamicTaskAdjustment", "params" => Dict{String,Any}(),
+                                  "calls" => nothing,
+                                  "missing_primitive" => "the inventory lacks a way to X"))))
+        @test occursin("missing_primitive=the inventory lacks a way to X", out)
+        @test occursin("n_body_names=0", out)
+
+        # 양성 대조: body 가 있는 판은 같은 자리에 그 수가 찍힌다(빈-통과 방지).
+        _, out2 = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+                                        _dec(_sl(names = BODY))))
+        @test occursin("n_body_names=1", out2)
+    end
+
 end # module

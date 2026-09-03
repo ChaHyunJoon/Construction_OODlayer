@@ -95,7 +95,8 @@ from tool_registry import (MACRO_TO_TOOL, TOOL_TO_MACRO, build_tools,   # noqa: 
 # 🔴 이 import 는 과금 0건이다: 모듈 최상위에서 LM 을 만들지도 부르지도 않는다.
 #    합성이 실제로 도는 것은 `TOOL_SYNTHESIS=1` + `expressible == False` 두 조건이
 #    함께 참일 때뿐이다(`maybe_synthesize` 의 docstring, 컨트롤러 판정 R13).
-from synthesize import (maybe_synthesize, run_synthesis,          # noqa: E402
+from synthesize import (append_synthesis_record as _append_synthesis_record,  # noqa: E402
+                        maybe_synthesize, run_synthesis,          # noqa: E402
                         synthesis_enabled, multi_agent_enabled)
 # ---- 세대 도장 (2026-09-03) ----------------------------------------------------------------
 # 🔴 `generation` 은 stdlib 만 쓰므로 numpy/sklearn-before-dspy 계약과 무관하다.
@@ -1675,6 +1676,11 @@ def macro(req: MacroRequest):
     #    되어 "모델이 인자를 생략해서 못 쟀다" 가 사라진다).
     synthesis = run_synthesis(expressible=expressible, kind=req.kind, state=line,
                               tools=tools)
+    # 🔴 2026-09-03. 라이브 판의 합성 기록을 파일로 남긴다. 그 전에는 `body` 산문도
+    #    `body_parse` 도 `missing_primitive` 도 **어디에도 안 남아서**, 유료 런에서 합성이
+    #    발화하고 `empty body` 로 거절된 판을 놓고 "왜 비었나" 를 답할 수 없었다.
+    #    던지지 않는다 — 진단이 결정을 죽이면 진단을 켠 것이 사고의 원인이 된다.
+    _append_synthesis_record(synthesis)
     return {"policy": "dspy:%s" % MODEL, "chosen": chosen, "ranking": ranking,
             # 🔴 `margin` 은 이 설계가 없앴다(spec §3-3). **키는 남기고 값은 안 채운다** —
             #    키가 사라지면 소비자가 "레인이 안 돌았다" 와 "값이 없다" 를 못 가른다.

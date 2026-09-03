@@ -103,7 +103,12 @@ for name, kind, state in CASES:
     print("calls           =", rec.get("calls"))
     print("calls_match_body=", rec.get("calls_match_body"),
           " calls_flat =", rec.get("calls_flat"),
+          " unreadable =", rec.get("calls_unreadable"),
           " | ", (rec.get("calls_flat_detail") or "")[:90])
+    # 🔴 F8(2026-09-03)의 판정 대상은 바로 이 산문이다 — agent-2 가 **기전**을 골랐나,
+    #    아니면 **효과**를 적었나. JSON 에만 있고 화면에 없으면 런을 하고도 못 읽는다.
+    print("mechanism       =", repr((rec.get("mechanism") or "")[:420]))
+    print("missing_prim    =", repr((rec.get("missing_primitive") or "")[:300]))
     print("tool_minted     =", repr(rec.get("tool_minted")), " reason =", rec.get("reason"))
     print("error           =", rec.get("error"))
     print("lm calls        =", rec["_n_lm_calls"], rec["_finish_reasons"], rec["_usage"])
