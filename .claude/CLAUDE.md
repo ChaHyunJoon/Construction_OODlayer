@@ -221,8 +221,9 @@ hazard 는 opt-in 이고 기본이 꺼짐이라 **기본 실행의 모든 산출
 즉 `(s,a) → s⁺` 가 팔과 무관하게 같은 argmin 을 통과한다.
 
 🔴 **2026-09-01 정정 — 아래 "코드는 아직 안 바뀌었다" 는 틀렸다.** 구현돼 있다:
-`resolve_assignments!`(`src/smdp/generative.jl:238`)이고 `apply_action!`(`:360`)이
-NOOP 포함 모든 팔 뒤에 무조건 부른다. 이 문단을 읽고 "미구현" 이라고 판단하지 말 것 —
+`resolve_assignments!`(`src/respec/common_resolve.jl`)이고 `apply_action!`
+(`src/smdp/generative.jl`)이 NOOP 포함 모든 팔 뒤에 무조건 부른다.
+이 문단을 읽고 "미구현" 이라고 판단하지 말 것 —
 2026-09-01 세션이 실제로 그렇게 오판했다.
 
 🔴 **그러나 실측하면 아무것도 안 바꾼다.** `n_reassigned` 이 closed 0/62/120/170/220/250
@@ -249,13 +250,13 @@ NOOP 포함 모든 팔 뒤에 무조건 부른다. 이 문단을 읽고 "미구�
 2. 🔴 **`RESPEC_ENABLED[]=true` 로 플래그만 켜는 것은 답이 아니다** — 그 플래그는 **넷**을
    한꺼번에 켜고(큐 처리 · OOD 큐 적재 · `_enforce_serial_frontiers!` · 포획 드리프트 복구),
    `run_demo.jl` 은 큐를 우회해 자기가 복구하므로 **이중 복구**가 된다.
-3. **부품은 이미 있다.** `rebalance_for_battery!`(`battery.jl:715`)는 배터리와 무관하다 —
+3. **부품은 이미 있다.** `rebalance_for_battery!`(`src/navigator/battery.jl`)는 배터리와 무관하다 —
    `build_invariant` 로 완료·진행중을 얼리고 추가 제약 없이 재정식화 + `optimize!` +
    `commit_respec!` 한다. 이름만 배터리다.
 
 **구현자가 부딪힐 지점 (미리 실측):**
-- 전제조건은 충족된다 — `run_demo.jl:531-532` 가 `ENERGY_OBJECTIVE=1`(기본)일 때
-  `init_objective_weights!()` 를 부른다
+- 전제조건은 충족된다 — `tools/monitor/run_demo.jl` 의 `ENERGY_ON` 분기가
+  `ENERGY_OBJECTIVE=1`(기본)일 때 `init_objective_weights!()` 를 부른다
 - **반환값을 무시하면 안 된다** — `:rebalanced | :infeasible | :commit_failed` 인데 현재
   배터리 분기(`run_demo.jl:391`)는 **아예 안 본다**
 - **중복 호출 제거**: 배터리 분기 안의 `rebalance_for_battery!` 를 빼야 두 번 안 푼다
