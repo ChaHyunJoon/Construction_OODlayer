@@ -123,6 +123,8 @@ function main()
                "missing_primitive" => nothing))
     h = enact_minted_decision!(env, nothing, dec)
     println("\n---- T4 (enact_minted_decision!) — 이미 풀린 판 위의 두 번째 집행 ----")
+    # 🔴 `sanctioned` 은 아직 측정값이 아니다 — 이 프로브는 두 팔 구조가 아니라 `dec.synth_lane`
+    #    이 `"reach" => "composed"` 를 리터럴로 들고 있으므로 이 열은 오늘 늘 `true` 를 찍는다.
     println("handled = ", h.handled, "   verdict = ", h.verdict,
             "   applied = ", h.applied, "   world_maybe_dirty = ", h.world_maybe_dirty,
             "   sanctioned = ", dec.synth_lane["reach"] == "composed",

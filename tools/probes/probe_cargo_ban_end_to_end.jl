@@ -363,9 +363,12 @@ function enact_section(board, nr, target_closed; reach = "composed")
     rel_rep = _released_reported(r.steps)
     sanctioned = reach == "composed"
     threw = count(s -> s.status === :threw, r.steps)
+    void = isempty(r.steps)
 
     # 🔴 공허가 맨 먼저다 — 아래 verdict/applied/... 를 GREEN/RED 처럼 읽기 전에 판정한다.
-    if isempty(r.steps)
+    # 🔴 `void` 는 요약표까지 실려 간다(아래 return) — 절 B 의 `:vacuous` 가 `판정` 열에 굽히는
+    #    것과 같은 이유다: 이 사실이 상세 출력에만 있으면 요약표만 훑는 사람에게는 안 보인다.
+    if void
         println("⚪ VOID — 아무 단계도 안 불렸다(verdict=", r.verdict,
                 "). 아래 숫자를 인용하지 마라.")
     end
@@ -388,7 +391,7 @@ function enact_section(board, nr, target_closed; reach = "composed")
             steps = r.steps, resume = r.resume, resolve = r.resolve,
             released_reported = rel_rep, edges = (length(E0), length(E1)),
             bans = (bans_before, bans_after), ban_is_a = ag.str in bans_after,
-            reach = reach, sanctioned = sanctioned, threw = threw)
+            reach = reach, sanctioned = sanctioned, threw = threw, void = void)
 end
 
 # ── 절 B: 인과 (G-2) ─────────────────────────────────────────────────────────
@@ -531,9 +534,14 @@ function main()
     println("절 A 요약 — G-8: body 가 집행되고 하네스가 그것을 기록한다")
     println("🔴 `간선 전/후` 가 **같아지는 것이 정상**이다(재풀이). release 의 크기는 그 옆 칸이다.")
     println("="^92)
+    # 🔴 `판정` 이 마지막 열이다 — 절 B 가 `:vacuous` 를 `판정` 열에 굽히는 것과 같은 자리다.
+    #    절 A 는 인과를 판정하지 않으므로(머리말 (12)) GREEN/RED 를 내지 않는다 — 이 열이 낼 수
+    #    있는 값은 `VOID`(아무 단계도 안 불렸다, 나머지 열 인용 금지) 아니면 `OK`(공허는 아니다,
+    #    그 이상의 판정은 없다) 둘뿐이다.
     println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 9), rpad("applied", 9),
             rpad("resume", 9), rpad("resolve", 12), rpad("release 보고", 13),
-            rpad("간선 전/후", 13), rpad("금지 전/후", 12), rpad("sanctioned", 12), "threw")
+            rpad("간선 전/후", 13), rpad("금지 전/후", 12), rpad("sanctioned", 12),
+            rpad("threw", 7), "판정")
     for x in results
         for e in x.enact
             println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 9),
@@ -541,7 +549,8 @@ function main()
                     rpad(string(e.resolve), 12), rpad(_s(e.released_reported), 13),
                     rpad(string(e.edges[1], "→", e.edges[2]), 13),
                     rpad(string(length(e.bans[1]), "→", length(e.bans[2])), 12),
-                    rpad(string(e.sanctioned), 12), string(e.threw))
+                    rpad(string(e.sanctioned), 12), rpad(string(e.threw), 7),
+                    e.void ? "VOID" : "OK")
         end
     end
 
