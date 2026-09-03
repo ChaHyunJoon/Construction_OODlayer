@@ -1394,6 +1394,7 @@ def synthesize_multi(state: str,
     rec["recompose_skipped"] = None
     rec["recompose_error"] = None
     rec["spec_changed_by_feedback"] = None
+    rec["spec_changed_fields"] = None
     rec["expressible_after_recompose"] = None
     rec["ungrounded_params_after_recompose"] = None
 
@@ -1420,8 +1421,14 @@ def synthesize_multi(state: str,
                                             "attempt stands")
             else:
                 rec.update(spec2)
-                rec["spec_changed_by_feedback"] = any(
-                    spec2[f].strip() != first[f].strip() for f in _SPEC_FIELDS)
+                # 🔴 Which field moved, not just "something moved" (measured 2026-09-02):
+                #    on the mild lane the redesign rewrote the mechanism prose to claim it no
+                #    longer needs the missing capability and left `params` **byte-identical**.
+                #    A single boolean calls that a change, and the record can then no longer
+                #    tell a real re-specification from an assertion of compliance.
+                rec["spec_changed_fields"] = [f for f in _SPEC_FIELDS
+                                              if spec2[f].strip() != first[f].strip()]
+                rec["spec_changed_by_feedback"] = bool(rec["spec_changed_fields"])
                 rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
                 try:
                     p3b = compose(spec=build_compose_context(spec2, rec["reasoning_log"], blob),

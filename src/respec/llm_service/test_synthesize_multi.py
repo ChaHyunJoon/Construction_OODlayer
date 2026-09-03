@@ -737,3 +737,18 @@ def test_the_redesign_does_not_overwrite_the_firing_verdict(monkeypatch):
     assert rec["expressible"] is False
     assert rec["expressible_after_recompose"] is True
     assert rec["synthesis_event"] is True
+
+
+def test_the_record_says_which_spec_fields_the_feedback_moved(monkeypatch):
+    """🔴 2026-09-02 F2 실측. mild 레인에서 재설계는 mechanism 산문에 "이제 그 없는 능력을
+    요구하지 않는다" 는 문장을 **덧붙이고** `params` 는 바이트 동일로 두었다. 불리언 하나로는
+    진짜 재명세와 준수 선언이 같은 값이 된다.
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, _ = _seq_programs(["needs_primitive", "composed"])
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    # 가짜 agent-2 는 이름과 기전만 바꾸고 params 는 그대로 둔다 — 실측된 모양 그대로다.
+    assert rec["spec_changed_fields"] == ["tool_name", "mechanism"]
+    assert "params" not in rec["spec_changed_fields"]
+    assert rec["spec_changed_by_feedback"] is True
