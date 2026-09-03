@@ -199,7 +199,8 @@ PHYSICAL PRINCIPLES OF THIS BUILD
    THE HARNESS RE-SOLVES THAT MILP AUTOMATICALLY AFTER EVERY TOOL BODY, on the graph the body
    leaves behind, with no extra constraints. So a body that edits assignment edges or edge
    weights is completed by that re-solve; it must NOT contain a commit, re-solve, or formulate
-   step of its own, and this inventory deliberately contains no primitive that performs one.
+   step of its own, and the alphabet a body is composed from deliberately contains no
+   primitive that performs one.
 
 2. SCENE TREE (geometry). A separate tree holds the nested assembly geometry: where each
    sub-assembly is staged, where cargo is deposited, and the transforms that relate them.
@@ -521,6 +522,45 @@ If the only repair you can imagine is undoing the disruption, that is not a repa
 the power to undo it as a missing primitive is not a finding. Specify instead what the build
 must do differently while the disruption stands."""
 
+# ---- F7 (2026-09-02): 명세자에게의 분업 ---------------------------------------------------
+# 🔴 왜 (F2 런의 실측). agent-2 와 agent-3 이 **같은 것**을 없다고 지목했다. agent-2 는
+#    "속도·전하·우선순위·에너지비용을 동시에 고려해 최적 배정을 찾는" 도구를 명세했고,
+#    agent-3 의 WHY 는 *"The inventory lacks a primitive that can optimize task allocation
+#    based on multiple parameters"* 였다. 둘 다 맞다 — 그런 원시는 없다. **MILP 가 그
+#    일을 하기 때문이다.** 두 agent 가 harness 자신을 없는 원시로 지목하고 있었다.
+#
+# 🔴 그리고 agent-2 는 그 사실을 **이미 읽는다**(실측): `PHYSICAL_PRINCIPLES` §1 의
+#    "THE HARNESS RE-SOLVES THAT MILP AUTOMATICALLY AFTER EVERY TOOL BODY" 가 그 컨텍스트에
+#    들어 있다. 없던 것은 **명세자에게의 귀결**이다 — 그 문단의 결론 문장은 *body* 작성자
+#    에게 말하고("a body that edits assignment edges ... is completed by that re-solve"),
+#    게다가 "this inventory" 라는, agent-2 의 문맥에 **없는 것을 가리키는 지시어**를 달고
+#    있었다(위에서 같이 고쳤다 — 그 대가는 단일 agent 레인의 프롬프트도 바이트가 바뀐다는
+#    것이고, 그 문장은 어느 렌더에서나 참인 형태로만 바뀌었다).
+#
+# 🔴 **탈출로를 막지 않는다 (사용자 결정, 2026-09-02).** "그러니 기존 어휘로 충분하다고
+#    답하지 말라" 류의 문장을 여기 넣으면 이 개입의 대가가 **관측 불가능해진다.** 대가는
+#    `expressible` **한 필드로** 드러나야 한다: 모델이 "그 최적화가 자동이면 새 도구는
+#    필요 없다" 로 도망가면 그 답은 `expressible=True` 로 나오고, agent-3 는 안 불리며
+#    (`synthesis_event=False`) 그 사건은 기록에서 "발화 아님" 으로 남는다.
+#    ⟹ **이 문단은 세계만 서술하고 답을 서술하지 않는다.** 그 규칙을 게이트가 어휘로
+#    강제한다(`test_the_division_clause_describes_the_world_not_the_answer`).
+#
+# ⚠️ F1 과 같은 범주다: "무엇을 하라" 가 아니라 **누가 무엇을 하는가**라는 세계 사실이고,
+#    어느 원시도 어느 편집 표면도 지목하지 않는다.
+_DIVISION_DESIGN = """\
+WHAT IS ALREADY DONE FOR YOU
+Choosing which robot does which slot is not your tool's work. After your tool runs, that
+assignment problem is solved again from scratch on the graph your tool leaves behind, by the
+same solver that produced the plan you are repairing -- ordering, load balancing and the
+trade-off between delay and energy are settled there, with each robot's charge and speed
+already inside that model. So a tool whose mechanism is to compute a better allocation
+specifies work that is then done a second time, and it is the second one that stands.
+Specify instead what your tool CHANGES about the situation that solver is handed: which
+possibilities it closes off or opens up, which restriction holds while it is in force, which
+geometry moves. An optimiser over speeds, charges, priorities and costs is not a capability
+this build is missing -- it is the part that already runs, and naming it as the missing piece
+is not a finding."""
+
 _MUST_CHANGE_DESIGN = """\
 WHAT MUST CHANGE
 The schedule must reach a state in which every remaining node can close. The account you are
@@ -546,17 +586,22 @@ def build_observe_context(state: str, principles: Optional[str] = None,
 def build_design_context(reasoning_log: str, principles: Optional[str] = None,
                          goal: Optional[str] = None,
                          novel: Optional[str] = None,
-                         must_change: Optional[str] = None) -> str:
+                         must_change: Optional[str] = None,
+                         division: Optional[str] = None) -> str:
     """agent-2's context.
 
     🔴 It takes no `state` -- that is the bottleneck. 🔴 It carries no inventory -- that is the
     blindness. Add a parameter to this function that lets either one in and
     `test_synthesize_multi.py` goes red.
+    🔴 F7: the division of labour goes to **agent-2 only**. agent-3 already reads the same fact
+    from `PHYSICAL_PRINCIPLES` §1 in the form addressed to a body author, and agent-1 designs
+    nothing.
     """
     return "\n".join([principles or PHYSICAL_PRINCIPLES, "",
                       goal or FINAL_GOAL, "",
                       novel or _NOVEL_DESIGN, "",
                       must_change or _MUST_CHANGE_DESIGN, "",
+                      division or _DIVISION_DESIGN, "",
                       "WHAT THE EVENT BROKE (an account produced from the measured state)",
                       reasoning_log or "(no account was produced)"])
 

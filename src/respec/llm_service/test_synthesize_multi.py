@@ -175,8 +175,14 @@ def test_design_task_framing_points_at_nothing_it_cannot_see():
     지시어는 블록이 빠진 것처럼 읽히므로 단계마다 참인 문구를 쓴다.
     """
     ctx = syn.build_design_context(REASONING_LOG)
-    assert "observation above" not in ctx
-    assert "tools below" not in ctx
+    # 🔴 2026-09-02 (F7). 이 목록은 원래 둘뿐이었고 **셋째가 살아 있었다**:
+    #    `PHYSICAL_PRINCIPLES` §1 이 "this inventory deliberately contains no primitive…" 로
+    #    끝나는데 agent-2 의 문맥에는 인벤토리가 없다(별도 입력 필드다). 지시어를 일반 규칙으로
+    #    잡을 방법은 없어서 — "this"/"above"/"below" 를 전부 금지하면 참인 문장까지 걸린다 —
+    #    목록으로 둔다. **새 블록을 agent-2 에 더할 때마다 여기 한 줄이 늘어야 한다.**
+    for deictic in ("observation above", "tools below", "this inventory",
+                    "the inventory above", "the inventory below", "listed below"):
+        assert deictic not in ctx, "agent-2 가 없는 것을 가리키는 지시어를 읽는다: %r" % deictic
 
 
 def test_compose_spec_carries_the_principles_the_goal_and_the_account():
@@ -752,3 +758,80 @@ def test_the_record_says_which_spec_fields_the_feedback_moved(monkeypatch):
     assert rec["spec_changed_fields"] == ["tool_name", "mechanism"]
     assert "params" not in rec["spec_changed_fields"]
     assert rec["spec_changed_by_feedback"] is True
+
+
+# =====================================================================================
+# 2026-09-02 (F7) — 명세자에게의 분업. 유료 0건.
+#
+# F2 런의 실측: agent-2 는 "속도·전하·우선순위·에너지비용을 동시에 고려해 최적 배정을
+# 찾는" 도구를 명세했고, agent-3 은 *"The inventory lacks a primitive that can optimize
+# task allocation based on multiple parameters"* 로 답했다. **둘 다 맞다** — 그 최적화기가
+# harness 자신이라서 알파벳에 없다. agent-2 는 재풀이 사실을 이미 읽고 있었고(실측),
+# 없던 것은 **명세자에게의 귀결**이었다.
+# =====================================================================================
+
+def test_design_context_says_the_assignment_choice_is_not_its_job():
+    """🔴 F7. agent-2 는 **무엇이 이미 되어 있는지**를 들어야 한다."""
+    ctx = syn.build_design_context(REASONING_LOG)
+    assert syn._DIVISION_DESIGN in ctx, "agent-2 가 분업 문단을 못 받았다"
+    assert syn._DIVISION_DESIGN.strip(), "빈-통과 방지: 문단이 비면 위 단언은 항진이다"
+
+
+def test_the_division_clause_names_no_primitive_and_no_oracle_field():
+    """🔴 F7 의 대가를 여기서 막는다 — F1 문단과 같은 검사다(레지스트리 전수)."""
+    clause = syn._DIVISION_DESIGN
+    for p in syn._prim.REGISTRY["primitives"]:
+        assert p["name"] not in clause, "분업 문단이 원시 %s 를 흘린다" % p["name"]
+    for q in syn._prim.REGISTRY["predicates"]:
+        assert q["name"] not in clause, "분업 문단이 술어 %s 를 흘린다" % q["name"]
+    assert "zone_relocate_norm" not in clause
+    for word in ("battery_mild", "SwapBattery", "Replace", "NOOP"):
+        assert word not in clause, "분업 문단이 사건/매크로 이름 %s 를 지목한다" % word
+
+
+def test_the_division_clause_describes_the_world_not_the_answer():
+    """🔴 사용자 결정(2026-09-02): 이 개입의 대가는 **`expressible` 한 필드로** 드러나야 한다.
+
+    F7 은 "그 최적화는 이미 자동으로 돈다" 를 agent-2 에게 말한다. 그래서 모델이 "그러면 새
+    도구는 필요 없다" 로 도망갈 여지가 생기고, 그 답은 `expressible=True` → agent-3 미호출 →
+    `synthesis_event=False` 로 기록에 남는다. 그것이 **관측 가능한 대가**다.
+
+    🔴 그러니 이 문단은 무엇을 답하라고 말하면 안 된다. "기존 어휘로 충분하다고 답하지 말라"
+    류의 한 문장이 들어가는 순간 대가가 관측 불가능해지고, 남는 것은 "개입했더니 좋아졌다" 는
+    **재보증 불가능한 주장**뿐이다.
+
+    🔴 문구 금지 목록은 못 지킨다 — 첫 판이 그랬고 변이 N3 이 그대로 통과했다
+    ("This is not a reason to answer that the existing vocabulary suffices." 는 금지어를
+    하나도 안 쓴다). 그래서 **닫힌 어휘**로 뒤집는다: 이 문단은 세계를 서술하므로 모델의
+    **응답**을 가리키는 낱말이 하나도 필요 없다. 하나라도 들어오면 그것이 답을 지시하려는
+    시도이고, 여기서 멈춘다.
+    """
+    clause = syn._DIVISION_DESIGN.lower()
+    # 응답을 가리키는 낱말 — 세계를 서술하는 문단에는 등장할 이유가 없다.
+    for banned in ("expressible", "answer", "report", "respond", "vocabulary",
+                   "suffice", "sufficient", "adequate", "enough", "conclude",
+                   "you must", "you should", "always", "never say"):
+        assert banned not in clause, (
+            "분업 문단이 모델의 응답을 가리킨다(%r) — 그 순간 이 개입의 대가가 "
+            "`expressible` 에서 안 보이게 된다" % banned)
+    # 빈-통과 방지: 문단이 비면 위 루프는 항진이다.
+    assert len(clause.split()) > 60, "문단이 비었거나 잘렸다 — 위 단언들이 항진이 된다"
+
+
+def test_only_agent_2_reads_the_division_of_labour():
+    """agent-1 은 설계를 안 하고, agent-3 은 같은 사실을 body 작성자용 문장으로 이미 읽는다.
+
+    표면을 셋으로 늘리면 누수 가드도 셋이 된다 — 계약 (C) 의 논거와 같다.
+    """
+    assert syn._DIVISION_DESIGN not in syn.build_observe_context(OBSERVATION)
+    assert syn._DIVISION_DESIGN not in syn.build_compose_context(SPEC, REASONING_LOG)
+
+
+def test_the_principles_deictic_is_true_in_every_render():
+    """🔴 `PHYSICAL_PRINCIPLES` 는 세 빌더가 **공유**한다 — 한 곳에서만 참인 지시어를 담으면
+    안 된다. agent-2 에게 인벤토리는 그 프롬프트에 없다.
+    """
+    assert "this inventory" not in syn.PHYSICAL_PRINCIPLES
+    # 사실 자체는 남아 있어야 한다 — 지시어만 고쳤지 문장을 지운 것이 아니다.
+    assert "RE-SOLVES THAT MILP AUTOMATICALLY" in syn.PHYSICAL_PRINCIPLES
+    assert "contains no" in syn.PHYSICAL_PRINCIPLES
