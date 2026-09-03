@@ -74,7 +74,7 @@ admit_verdict = sanctioned ? :admit : :admit_unsanctioned
 ```
 
 - **`:admit` 과 같은 것을 뜻한다**(불렀고 끝까지 갔다). 다른 것은 **누가 허락했는가** 뿐이다.
-- 🔴 **던진 경로(`catch` 안의 `_r(:admit, ...)`, `minted_tool.jl:970`)도 같이 바꾼다.** 안 바꾸면
+- 🔴 **던진 경로(`src/respec/minted_tool.jl` 의 `enact_minted!` 안 body 루프 `catch` 가 내는 반환)도 같이 바꾼다.** 안 바꾸면
   "모델이 부족하다고 한 body 가 세계를 절반 고치고 던졌다" 가 정상 `:admit` 으로 기록된다 —
   정확히 D2 가 남기려는 행이 그 자리에서 사라진다.
 - reason 이 근거를 나른다: `"unsanctioned(reach=needs_primitive, missing=<missing_primitive>)"`.
@@ -121,7 +121,8 @@ local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &
   알파벳 밖이면 그것은 **모델이 옳았던 행**이다. 새 verdict 를 안 붙인다 — 교차표
   `verdict × reach` 가 그 칸을 이미 센다.
 - **`bind_primitive_args` 의 필수 kwarg 구멍은 안 고친다**(§4 R1). 다른 레인의 범위다
-  (`test/payload_reprice_install.jl:150-158` 이 그렇게 못 박았다).
+  (`test/payload_reprice_install.jl` 의 testset "🟢 그 구멍은 닫혔다: agent 없이 부르면
+  `:missing_agent` 이고 폴백이 정상으로 돈다" 와 그 머리말이 그렇게 못 박았다).
 - **`expressible`·L2 발화·되먹임**은 안 건드린다. 이것은 집행부 한 자리다.
 - **기본 복구 사슬 자체**는 안 건드린다.
 
@@ -279,7 +280,8 @@ end
 ```
 - [ ] **S2 빨간지 확인한다**
 `julia --project -e 'include("test/minted_tool_enacts.jl")'` → `(1)` 에서 `:deferred !== :admit_unsanctioned`.
-- [ ] **S3 최소 구현** — `src/respec/minted_tool.jl:891-893` 을 바꾼다
+- [ ] **S3 최소 구현** — `src/respec/minted_tool.jl` 의 `enact_minted!` 단계 (1)(2)(`reach` 를
+  읽고 집행할 사건인지 가르는 자리)를 바꾼다
 ```julia
     reach = _synth_get(synth, "reach", nothing)
     # 🔴 못 쟀다(nothing)만 deferred 다. "모델이 부족하다고 했다"는 **집행을 막지 않는다** —
@@ -293,9 +295,10 @@ end
         "모델은 부족하다고 했는데 body 는 조합돼 있어 굴렸다"
 ```
   그리고 `:admit` 리터럴 **두 자리**를 `admit_verdict` 로, reason 끝에 `unsanctioned_note` 를 붙인다:
-  `minted_tool.jl:970`(던진 경로) 과 `:999`(정상 경로).
+  `minted_tool.jl` 의 `enact_minted!` 안 두 자리 — body 루프 `catch` 가 내는 반환(던진 경로)과
+  루프를 다 돈 뒤의 마지막 반환(정상 경로).
 - [ ] **S4 새 상수** — `ENACTED_VERDICTS` 와 `minted_handled_verdict_ok` 를 `enact_minted!` 위에 둔다(§2-4 코드).
-- [ ] **S5 docstring 표에 네 번째 줄** (`minted_tool.jl:839-843`)
+- [ ] **S5 docstring 표에 네 번째 줄** (`minted_tool.jl` 의 `enact_minted!` docstring 안 verdict 표)
 ```
 | `:admit_unsanctioned` | `:admit` 과 같다 — 다만 모델이 `reach != "composed"` 라고 신고한 body 였다 |
 ```
@@ -342,10 +345,12 @@ end
 
 ### T3 — 복사된 `handled` 식 세 벌 (25 – 35분)
 
-- [ ] **S1** `tools/probes/probe_minted_body_enacts.jl:129` · `:136` · `:138` 을
-  `CB.minted_handled_verdict_ok(r.verdict)` 로 바꾼다. (그 파일은 이미 "식으로 베끼지 않는다" 를
-  주석으로 적어 뒀는데 `:129` 에서 스스로 어겼다 — 그 주석을 참으로 만든다.)
-- [ ] **S2** `test/payload_reprice_install.jl:178` 도 같은 함수로. 🔴 T0-S3 에서 잰 값이
+- [ ] **S1** `tools/probes/probe_minted_body_enacts.jl` 의 `main()` 안 `---- VERDICT ----`
+  블록에서 `handled` 를 손으로 판정하던 자리들을 `CB.minted_handled_verdict_ok(r.verdict)` 로
+  바꾼다. (그 파일은 이미 "식으로 베끼지 않는다" 를 주석으로 적어 뒀는데 그 자리에서 스스로
+  어겼다 — 그 주석을 참으로 만든다.)
+- [ ] **S2** `test/payload_reprice_install.jl` 의 "🟢 그 구멍은 닫혔다…" testset 안 같은 자리도
+  같은 함수로. 🔴 T0-S3 에서 잰 값이
   `:resolved` 가 아니었다면 `@test handled === true` 는 **틀린 단언**이므로, 잰 값으로
   고치고 그 사실을 주석에 적는다("이 시험의 복사본은 결정 1 뒤로 낡아 있었다").
 - [ ] **S3** 두 파일 실행 → 초록 확인 → 커밋.
@@ -402,7 +407,8 @@ end
 
 ## 8. T0.5 — R1 (B): 인자 오류를 예외 대신 status 로 (45 – 60분)
 
-**Files:** `src/respec/cargo_ban_primitive.jl:140` · `src/respec/reassign.jl:194-200` ·
+**Files:** `src/respec/cargo_ban_primitive.jl` 의 `forbid_heavy_cargo!` ·
+`src/respec/reassign.jl` 의 `release_pending_assignments!` ·
 `src/respec/minted_tool.jl` (두 표) · `test/minted_tool_enacts.jl` (명제 (11) 커버리지)
 
 🔴 **왜 새 status 두 개인가**(`:unknown_agent` 재사용이 아니라). spec §9-2 — "인자를 **안 줬다**"
@@ -410,9 +416,9 @@ end
 표 두 줄씩 더 쓰는 것이 그 구별의 값보다 싸다.
 
 🔴 **반환 모양은 이미 섞여 있어도 된다.** `_step_status` 는 `hasproperty(out, :status)` 를
-**맨 먼저** 본다(`minted_tool.jl:797`) — `release_pending_assignments!` 가 평소 `Vector` 를
-돌려주면서 조기 반환에서만 NamedTuple 을 내는 것은 `:unknown_agent`(`reassign.jl:207`) 가
-이미 쓰는 관용구다.
+**맨 먼저** 본다(`minted_tool.jl` 의 `_step_status`) — `release_pending_assignments!` 가 평소 `Vector` 를
+돌려주면서 조기 반환에서만 NamedTuple 을 내는 것은 `:unknown_agent`(같은 함수가 이름을
+스케줄에서 못 찾았을 때의 조기 반환, `src/respec/reassign.jl`) 가 이미 쓰는 관용구다.
 
 🔴 **프로덕션 호출자 전수 확인 (실측 2026-09-02).** `release_pending_assignments!` 호출 17곳을
 전부 읽었다 — `faulted` 와 `agent` 를 **동시에 주는 호출자는 하나도 없다**. 그러므로 예외를
@@ -450,7 +456,7 @@ end
 ```
 - [ ] **S2 빨간지 확인** — 오늘은 `:threw` 이고 `partial === true` 다.
 `julia --project -e 'include("test/minted_tool_enacts.jl")'`
-- [ ] **S3 `forbid_heavy_cargo!` 를 고친다** (`src/respec/cargo_ban_primitive.jl:140-142`)
+- [ ] **S3 `forbid_heavy_cargo!` 를 고친다** (`src/respec/cargo_ban_primitive.jl` 의 그 함수 머리)
 ```julia
 function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
     a = String(agent)
@@ -461,7 +467,7 @@ function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
     isempty(a) && return (status = :missing_agent, agent = a, n = n)
 ```
   (나머지 본문은 그대로. `n` 은 요청값 그대로 싣는 규약을 지킨다.)
-- [ ] **S4 `release_pending_assignments!` 를 고친다** (`src/respec/reassign.jl:198-200`)
+- [ ] **S4 `release_pending_assignments!` 를 고친다** (`src/respec/reassign.jl` 의 그 함수 본문 첫 판정)
   — `throw(ArgumentError(...))` 를 지우고 같은 자리에서 status 로 돌아선다
 ```julia
     # 🔴 던지지 않는다 (R1, 2026-09-02). 이 판정은 **첫 편집 전**이라 세계가 증명 가능하게
@@ -477,7 +483,8 @@ function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
                 agent = string(agent), released = 0)
     end
 ```
-- [ ] **S5 두 표에 넉 줄** (`src/respec/minted_tool.jl:246-254`, `:394-403`)
+- [ ] **S5 두 표에 넉 줄** (`src/respec/minted_tool.jl` 의 `SILENT_SUCCESS_STATUSES` 와
+  `WORLD_UNCHANGED_STATUSES`)
 ```julia
     "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n, :missing_agent]),
     "release_pending_assignments" => Set([:released_none, :unknown_agent, :both_scopes]),
@@ -485,7 +492,8 @@ function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
   (`SILENT_SUCCESS_STATUSES` 와 `WORLD_UNCHANGED_STATUSES` **둘 다**. 🔴 불변식
   `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 를 지킨다 — 둘 다 첫 편집 전 반환이므로 양쪽에 들어간다.
   `WORLD_UNCHANGED` 의 `release_pending_assignments` 행에 `:released_none` 은 여전히 **넣지 않는다**.)
-- [ ] **S6 명제 (11) 의 `quiet` 목록에 둘을 더한다** (`test/minted_tool_enacts.jl:369-371`)
+- [ ] **S6 명제 (11) 의 `quiet` 목록에 둘을 더한다** (`test/minted_tool_enacts.jl` 의 testset
+  "(11) applied 는 status 로, partial 은 예외로, 못 쟀으면 false 다")
 ```julia
              ("forbid_heavy_cargo", :missing_agent),
              ("release_pending_assignments", :both_scopes),
