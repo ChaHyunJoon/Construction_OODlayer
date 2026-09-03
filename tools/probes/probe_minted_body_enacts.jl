@@ -5,8 +5,14 @@
 #
 # Body under test:  ["release_pending_assignments", "reprice_agent_by_payload"]
 #   `commit_respec` is deliberately ABSENT: the common MILP re-solve (T13,
-#   `resolve_assignments!`, src/smdp/generative.jl:238) runs after every arm inside
-#   `apply_action!`, so the body must NOT carry the write-back step.
+#   `resolve_assignments!` in src/respec/common_resolve.jl) runs after every arm inside
+#   `apply_action!` (src/smdp/generative.jl, which calls it), so the body must NOT carry
+#   the write-back step.
+#   🔴 2026-09-03: this line used to cite `src/smdp/generative.jl:238` as the DEFINITION.
+#      That is not a stale line number, it is the WRONG FILE — 판정 1 moved `RESOLVE_CALLS`
+#      and `resolve_assignments!` out of `generative.jl` into `common_resolve.jl` (that move
+#      is the precondition this lane declares it stands on), and the comment left at the old
+#      site says so. Cite path + function name here, never a line number.
 #
 # 🔴 RETURN SYMBOLS ARE NOT EVIDENCE. `:admit`/`applied` are bookkeeping; this probe
 #    reports them AND independently measures the world on both sides of the call:
@@ -55,6 +61,32 @@ function busiest_owner(sched)
     isempty(tally) && return nothing
     return sort(collect(tally), by = kv -> -kv[2])[1][1]
 end
+
+"""
+    _void_kind(r) -> Symbol
+
+🔴 **정본은 `tools/probes/probe_cargo_ban_end_to_end.jl` 의 같은 이름 함수다** — 식도
+라벨(`VOID_NOSTEP` · `VOID_UNAPPLIED`)도 거기서 그대로 가져왔고 근거 docstring 도 거기 있다.
+두 프로브가 같은 이름의 판정을 다르게 정의하면 둘을 나란히 읽는 사람이 갈린다(2026-09-03 T9).
+⚠️ 두 파일 다 최상위에서 `main()` 을 부르는 스크립트라 서로 include 할 수 없다 — 그래서
+복사본 하나가 불가피하고, 그 대신 이 문단이 정본을 가리킨다.
+
+| 값 | 라벨 | 뜻 |
+|---|---|---|
+| `:nostep` | `VOID_NOSTEP` | 아무 단계도 안 불렸다 — 나머지 숫자를 인용하지 마라 |
+| `:unapplied` | `VOID_UNAPPLIED` | 단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 하나도 없다 |
+| `:ok` | (라벨 없음) | 공허는 아니다. 🔴 그 이상의 판정은 아니다 |
+
+🔴 **옛 판정 `isempty(r.steps)` 하나로는 집행된 행에서 절대 안 켜진다**(T7 이 첫 프로브에서
+실측했다). 잡아야 할 공허는 "단계 목록이 비었다" 가 아니라 **"세계를 바꿨다고 잴 수 있는 단계가
+하나도 없다"** 다.
+
+🔴 **`VOID_UNAPPLIED` 를 "세계가 깨끗하다" 로 읽지 마라** — `applied=false` 는 조용한 성공
+(`SILENT_SUCCESS_STATUSES`)과 못 쟀다(`UNMEASURABLE_STATUSES`)를 둘 다 삼킨다. 다행히 이
+프로브는 세계를 **직접** 잰다(배정 간선 · `EDGE_PAYLOAD_MULTIPLIER[]`) — 그 두 줄이 이 라벨
+바로 위에 찍히므로, 라벨이 움직인 세계를 가리지 않는다.
+"""
+_void_kind(r) = isempty(r.steps) ? :nostep : (r.applied ? :ok : :unapplied)
 
 _synth(names, params) = Dict{String,Any}(
     "reach" => "composed", "body_names" => names, "tool_name" => "payload_wear_level",
@@ -138,9 +170,21 @@ function main()
     println("\n---- VERDICT ----")
     println("release changed the world?  ", released_ok)
     println("reprice installed the hook? ", reprice_ok)
-    if isempty(r.steps)
-        println("⚪ VOID — 아무 단계도 안 불렸다(verdict=", r.verdict,
+    # 🔴 공허가 맨 앞이다(이 레인 T3+4 의 결론) — GREEN/RED 로 읽기 **전에** 판정한다.
+    #    갈래는 첫 프로브와 **같은 둘**이다(위 `_void_kind` 의 docstring 이 정본을 가리킨다).
+    local void = _void_kind(r)
+    if void === :nostep
+        println("⚪ VOID_NOSTEP — 아무 단계도 안 불렸다(verdict=", r.verdict,
                 "). 아래 숫자를 인용하지 마라.")
+    elseif void === :unapplied
+        println("⚪ VOID_UNAPPLIED — 단계는 ", length(r.steps),
+                " 개 불렸는데 applied=false 다(verdict=", r.verdict,
+                "). 잴 수 있는 편집이 하나도 없다 — 숫자를 효과로 인용하지 마라.")
+        println("   🔴 이것은 \"세계가 깨끗하다\" 가 아니다: `applied=false` 는 조용한 성공과",
+                " 못 쟀다를 둘 다 삼킨다. 원인은 위 단계별 status 로 갈라라",
+                " (world_maybe_dirty = ", r.world_maybe_dirty, ").")
+        println("   ⚠️ 바로 위 두 줄(release/reprice)이 true 면 이 라벨에도 불구하고 세계는",
+                " 움직였다 — 이 프로브는 세계를 직접 잰다.")
     elseif CB.minted_handled_verdict_ok(r.verdict) && released_ok && reprice_ok
         println("🟢 GREEN — body enacted AND both halves are visible in the world.")
     elseif CB.minted_handled_verdict_ok(r.verdict)

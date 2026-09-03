@@ -7,7 +7,7 @@
 #    `enact_minted_decision!` 하나이고, 세계는 손으로 지은 최소 env 로 대신한다
 #    (`test/minted_tool_enacts.jl` (11) 의 정본 관용구를 그대로 쓴다).
 #
-# 재는 명제 여덟
+# 재는 명제 열
 # --------------
 # (1) `synth_lane` 이 없으면 `handled=false` 이고 **조용하지 않다** — 조기 반환에서도
 #     `[minted]` 줄과 폴백 사유가 찍힌다.
@@ -60,6 +60,13 @@
 # (8) 구역 진단 계측이 원시값만 찍는다 — 🔴 오라클 라벨(`verdict`·`relocate_*`)은 읽지도
 #     찍지도 않는다. 그리고 찍는 아홉 필드 이름을 **진짜 `zone_diagnosis` 반환값**에 대고
 #     잰다(그 println 은 렌더를 돌려야만 실행되므로 오타가 런타임까지 산다).
+#
+# (9) 🔴 `:admit_unsanctioned`(2026-09-02 결정 2)도 폴백을 건너뛴다 — 그러나 로그가 그
+#     사실을 적는다. 나머지 세 연언지는 하나도 안 풀린다(같은 body, env 만 다른 세 판).
+#
+# (10) 🔴 `handled` 의 **첫** 연언지(`CB.minted_handled_verdict_ok`)를 verdict 하나만 움직여
+#     고립시킨다. 오늘 이 조합은 `_r` 의 기본 인자 때문에 도달 불가지만, 그 기본값이 바뀌는
+#     날 첫 연언지가 유일한 방어선이 된다 — 절 (10) 의 주석이 근거를 적는다.
 #
 # ⚠️ `Suppressor` 는 이 프로젝트에 **없다**(`Project.toml`·`Manifest.toml` 둘 다 0건, 실측).
 #    `@capture_out` 대신 stdlib `redirect_stdout` 을 쓴다. 레포에 기존 stdout 캡처 관용구가
@@ -562,6 +569,35 @@ end
             env, nothing, _dec(_sl(reach = nothing, names = BODY))))
         @test r4.verdict === :deferred && r4.handled === false
         @test occursin("lane=reach_nothing", out4)
+    end
+
+    # -------------------------------------------------------------------------------------
+    @testset "(10) `handled` 의 첫 연언지 — 집행 계열 verdict 둘만 통과한다" begin
+        # 🔴 **왜 이 시험이 있는가 — 이 절을 "도달 불가한 판을 재는 죽은 시험" 이라고 지우지 마라.**
+        #    T7 의 변이시험 실측: `minted_handled` 에서 첫 연언지(`CB.minted_handled_verdict_ok`)를
+        #    통째로 지워도 이 파일은 154/154 초록이었다. 오늘 `enact_minted!` 의 `:reject` 반환이
+        #    전부 `_r(...)` 를 kwargs 없이 부르고 `_r` 이 `world_maybe_dirty = touched || partial`
+        #    을 **둘 다 기본 `false`** 로 지으며, `:deferred` 는 `enact.jl` 의 조기 반환이라 식에
+        #    도달조차 안 한다 — 즉 **둘째 연언지가 첫째를 오늘 완전히 가린다**.
+        #    ⟹ 첫 연언지는 구멍이 아니라 오늘 항진적으로 잉여이고, 그것을 지키는 방어선이 `_r` 의
+        #    **기본 인자 하나**뿐이다. 누가 그 기본값을 바꾸거나 `:reject` 경로에서 `partial=true`
+        #    를 넘기는 날 첫 연언지가 유일한 방어선이 된다. 이 절은 **그날을 위한 것**이다.
+        #
+        # 🔴 나머지 세 연언지는 전부 통과값으로 고정한다 — verdict 하나만 움직여 첫 연언지를
+        #    고립시키는 것이 이 절의 전부다(`resolve = :resolved` 는 `minted_tool.jl` 이 실제로
+        #    쓰는 성공 태그이고 `resolve_failed` 셋 중 하나가 아니다).
+        _verdict_row(v) = (verdict = v, world_maybe_dirty = true,
+                           resume = :issued, resolve = :resolved)
+
+        # 🔴 대조 팔. 이 둘이 없으면 아래 두 줄은 "함수가 늘 false 를 돌려준다" 로도 통과한다(공허).
+        #    `:admit_unsanctioned` 는 이 레인(2026-09-02 결정 2)의 존재 이유이고, 이 한 줄이
+        #    `CB.ENACTED_VERDICTS` 가 다시 `:admit` 하나로 좁아지는 회귀를 잡는다.
+        @test minted_handled(_verdict_row(:admit)) === true
+        @test minted_handled(_verdict_row(:admit_unsanctioned)) === true
+
+        # 집행 계열이 아닌 verdict 는 나머지 셋이 다 통과해도 `handled` 가 아니다.
+        @test minted_handled(_verdict_row(:reject)) === false
+        @test minted_handled(_verdict_row(:deferred)) === false
     end
 end
 
