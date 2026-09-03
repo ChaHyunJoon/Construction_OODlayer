@@ -163,13 +163,26 @@ env → `partial=true`, `world_maybe_dirty=true`, **`handled=TRUE`** 인데 **�
 → 완화 선택지는 §7-2 에 셋으로 적었다. 🔴 어느 쪽을 고르든 T5 는 **새 verdict 행의
 `steps[].status === :threw` 비율**을 센다 — 그 숫자가 이 항목의 사후 검증이다.
 
-**R2 `handled` 식이 세 벌 복사돼 있다.**
-`tools/monitor/enact.jl` 의 `minted_handled`(정본) · `tools/probes/probe_minted_body_enacts.jl:129` ·
-`test/payload_reprice_install.jl:178`. 🔴 뒤의 둘은 **이미 낡았다** — 셋 다 결정 1 의
-`!resolve_failed` 가 빠진 세 연언지다. `forbid_heavy_cargo` 의 surface 는 `milp` 이고
-`RESOLVE_SURFACES` 안이므로, 그 시험의 던지는 판은 이제 재풀이를 거친다 = 복사본과
-프로덕션이 **오늘 이미 갈렸을 수 있다**(미측정 — T0 에서 잰다).
-→ 완화: `CB.minted_handled_verdict_ok` 를 도입하는 김에 세 벌을 전부 그 함수로 바꾼다.
+**🔀 R2 `handled` 식의 손베낀 복사본.**
+
+**착수 시점**: 세 벌이었다 — `tools/monitor/enact.jl` 의 인라인 식(정본) ·
+`tools/probes/probe_minted_body_enacts.jl` · `test/payload_reprice_install.jl`.
+🔴 뒤의 둘은 그때 **이미 낡아 있었다** — 셋 다 결정 1 의 `!resolve_failed` 가 빠진 세
+연언지였다. `forbid_heavy_cargo` 의 surface 는 `milp` 이고 `RESOLVE_SURFACES` 안이므로 그
+시험의 던지는 판은 재풀이를 거친다 = 복사본과 프로덕션이 갈릴 수 있었다. **T0 이 실측했다**:
+복사본의 3-연언지 = `true`, 프로덕션의 4-연언지 = `false` — 갈렸다.
+
+**오늘은 한 벌이다.** T3 이 두 소비자를 정본 술어 호출로 바꿨고, T7 이 인라인 식마저 함수로
+추출하면서 남은 손베낀 벌을 **전부 지웠다**(§0 표의 `handled` 행과 같은 사실이다). 정본은
+`tools/monitor/enact.jl` 의 `minted_handled` 이고, 두 소비자는 식을 베끼지 않고 **부른다** —
+`tools/probes/probe_minted_body_enacts.jl` 이 `minted_handled` 를,
+`test/payload_reprice_install.jl` 이 `CB.minted_handled_verdict_ok` 를 부른다.
+🔴 **베낀 벌은 0 이다**(실측: 네 연언지의 `resume !== :failed` 항이 **실행되는 줄**로 나타나는
+자리는 `minted_handled` 안 한 곳뿐이고, 나머지 일치는 전부 산문이다).
+
+→ 완화는 **집행됐다**(계획대로 `CB.minted_handled_verdict_ok` 를 도입하는 김에 세 벌을 전부 그
+함수로 바꿨다). 🔴 남은 규율 둘: **식을 어디에도 다시 베끼지 않는다**, 그리고 **자리를
+줄번호로 박지 않는다** — 이 항목이 달고 있던 줄번호 둘은 T7·T9 커밋에서 다시 밀렸다.
 
 **R3 망가진 `reach` 값도 이제 집행된다.**
 `"Composed"`·`"unknown"` 같은 값은 `reach === nothing` 이 아니므로 통과해 `:admit_unsanctioned`
