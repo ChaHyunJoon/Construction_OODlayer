@@ -1429,10 +1429,18 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 `test_synthesis_record_contract.py` 의 `test_the_exit_paths_helper_covers_every_semantic_exit`
 가 그 수를 코드로 못박는다. 그 부재는 여기서도 "못 쟀다"(spec §9-2)로 그대로 nothing 이
 된다 — 흔한 실행 경로이지 예외가 아니다.
+
+🔴 **2026-09-03 (Task 9): `reach`·`missing_primitive` 를 빼고 다섯을 더했다.** agent-3 은
+이제 인벤토리에서 조합하는 대신 **원시 자신을 Julia 코드로 쓴다**(D8) — "조합했는가" 를 재던
+`reach`/`missing_primitive` 는 더 이상 나는 사실이 없고, 대신 나르는 것은 `impl_name`·
+`impl_code`·`surface`·`reversible`·`wrote` 다섯이다. 이 다섯은 `register_minted_primitive!`
+(`minted_registration.jl`)가 그대로 받는 키워드 이름과 같다 — 이름을 다시 짓지 않는다
+(진실원 하나). 위 문단들의 "아홉"·"열"·"reach"·"missing_primitive" 서술은 그 이전 세대
+(조합 레인)를 가리키고, 지우지 않은 것은 이 파일의 역사 규약 때문이다.
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
-                         "tool_name", "body_names", "reach", "missing_primitive", "params",
-                         "calls")
+                         "tool_name", "body_names", "params", "calls",
+                         "impl_name", "impl_code", "surface", "reversible", "wrote")
 
 # `synthesis` dict 안의 키 이름 → 결정 행의 키 이름. 이름이 다른 둘만 적는다
 # (`ran`→`synthesis_ran`, `error`→`synthesis_error`). 나머지는 같은 이름이다(`params` 포함).

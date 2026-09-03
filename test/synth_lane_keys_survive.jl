@@ -42,10 +42,14 @@ import JSON3
 include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
 
 @testset "SYNTH_LANE_KEYS 의 내용" begin
-    # (1) 이 계획이 나르기로 한 아홉. 리터럴로 못박는다 — 이 목록이 계약이다.
+    # (1) 🔴 2026-09-03 (Task 9): `reach`·`missing_primitive` 를 빼고 다섯을 더한 열셋.
+    #    agent-3 이 인벤토리에서 조합하는 대신 원시 자신을 코드로 쓴다(D8) — "조합했는가" 를
+    #    재던 둘은 더 이상 나는 사실이 없고, 대신 `impl_name`·`impl_code`·`surface`·
+    #    `reversible`·`wrote` 다섯이 나른다. 리터럴로 못박는다 — 이 목록이 계약이다.
     @test Set(SYNTH_LANE_KEYS) == Set(["tool_minted", "synthesis_event", "synthesis_ran",
                                        "synthesis_error", "tool_name", "body_names",
-                                       "reach", "missing_primitive", "params", "calls"])
+                                       "params", "calls", "impl_name", "impl_code",
+                                       "surface", "reversible", "wrote"])
 end
 
 @testset "성공 분기가 열을 전부 나른다" begin
@@ -62,7 +66,9 @@ end
             "synthesis_event" => true, "ran" => true, "error" => nothing,
             "tool_name" => "clear_zone_and_resume",
             "body_names" => ["restage_all_blocked", "translate_whole_build"],
-            "reach" => "composed", "missing_primitive" => nothing,
+            # 🔴 2026-09-03 (Task 9): `reach`/`missing_primitive` 대신 agent-3 이 쓴 코드 자체.
+            "impl_name" => "restage_all_blocked", "impl_code" => "function restage_all_blocked(env)\n    return :ok\nend\n",
+            "surface" => "sched", "reversible" => true, "wrote" => true,
             "params" => Dict{String,Any}("threshold" => 0.3, "zone" => "A"),
             # 🔴 B1(2026-09-03). agent-3 이 body 와 **같은 순서로** 내는 구조화 호출열.
             #    `params`(도구 하나에 dict 하나)와 달리 원시마다 자기 인자를 들고 온다.
@@ -71,19 +77,22 @@ end
                         Dict{String,Any}("primitive" => "translate_whole_build",
                                          "args" => Dict{String,Any}("zone_keys" => ["A"]))]))))
     e = policy_entry(fake, "dspy")
-    # 성공 분기가 실제로 태워졌는지 먼저 확인한다 — 그렇지 않으면 아래 아홉 키 단언은
+    # 성공 분기가 실제로 태워졌는지 먼저 확인한다 — 그렇지 않으면 아래 열셋 키 단언은
     # "실패 분기가 우연히 값을 갖는다" 는 것을 재는 것일 수 있다.
     @test e["available"] === true
     @test e["chosen"] == "NOOP"
-    # 아홉 키가 전부 있고, 값이 응답에서 온 그대로다.
+    # 열셋 키가 전부 있고, 값이 응답에서 온 그대로다.
     @test e["tool_minted"] === true
     @test e["synthesis_event"] === true
     @test e["synthesis_ran"] === true
     @test e["synthesis_error"] === nothing
     @test e["tool_name"] == "clear_zone_and_resume"
     @test e["body_names"] == ["restage_all_blocked", "translate_whole_build"]
-    @test e["reach"] == "composed"
-    @test e["missing_primitive"] === nothing
+    @test e["impl_name"] == "restage_all_blocked"
+    @test occursin("function restage_all_blocked", e["impl_code"])
+    @test e["surface"] == "sched"
+    @test e["reversible"] === true
+    @test e["wrote"] === true
     @test e["params"]["threshold"] == 0.3
     @test e["params"]["zone"] == "A"
     @test length(e["calls"]) == 2
@@ -110,13 +119,13 @@ end
     e = policy_entry(fake, "dspy")
     @test e["available"] === true
     @test e["tool_minted"] === nothing
-    @test e["reach"] === nothing
+    @test e["impl_name"] === nothing
     @test e["params"] === nothing
     @test e["calls"] === nothing        # 🔴 낡은 서비스는 이 필드를 아예 모른다
 end
 
-@testset "합성 dict 은 있는데 상세 아홉이 없다 — 흔한 실행 경로" begin
-    # `maybe_synthesize` 의 다섯 탈출 경로 중 성공("minted") 경로만 상세를 전부 채운다.
+@testset "합성 dict 은 있는데 상세 열셋이 없다 — 흔한 실행 경로" begin
+    # `synthesize_multi` 의 이른 탈출 경로 중 성공("minted") 경로만 상세를 전부 채운다.
     # 이것은 예외가 아니라 **흔한** 모양이다 — `synthesis_event`/`synthesis_ran`/
     # `synthesis_error` 만 있고 나머지는 없는 사건.
     fake = JSON3.read(JSON3.write(Dict{String,Any}(
@@ -133,8 +142,11 @@ end
     @test e["synthesis_error"] == "no_missing_primitive"
     @test e["tool_name"] === nothing
     @test e["body_names"] === nothing
-    @test e["reach"] === nothing
-    @test e["missing_primitive"] === nothing
+    @test e["impl_name"] === nothing
+    @test e["impl_code"] === nothing
+    @test e["surface"] === nothing
+    @test e["reversible"] === nothing
+    @test e["wrote"] === nothing
     @test e["params"] === nothing
     @test e["calls"] === nothing
 end
@@ -194,6 +206,22 @@ rec = set()
 def is_rec_sub(t, pred):
     return (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
             and t.value.id == "rec" and pred(t.slice))
+# 🔴 2026-09-03 (Task 9). `for f in _BODY_FIELDS:` 는 순회 대상이 리터럴이 아니라 **이름**이다
+#    (`_BODY_FIELDS = (...)` 가 모듈 최상위에 따로 있다). 그 자리를 못 풀면 `impl_name`·
+#    `impl_code`·`surface`·`reversible` 가 `_copy_body_fields` 안에서 실제로 `rec[f] = ...`
+#    로 쓰이는데도 추출기 눈에는 안 보인다 — 거짓 음성이지 파이썬 쪽 결함이 아니다. 그래서
+#    `n.iter` 가 `ast.Name` 이면 모듈 최상위에서 같은 이름의 튜플/리스트 리터럴 대입을 찾아
+#    푼다(한 단계 별칭만 — 그 이상은 이 게이트의 범위가 아니다).
+def resolve_iter_elts(iter_node):
+    if isinstance(iter_node, (ast.Tuple, ast.List)):
+        return iter_node.elts
+    if isinstance(iter_node, ast.Name):
+        for s in ast.walk(tree):
+            if (isinstance(s, ast.Assign) and len(s.targets) == 1
+                    and isinstance(s.targets[0], ast.Name) and s.targets[0].id == iter_node.id
+                    and isinstance(s.value, (ast.Tuple, ast.List))):
+                return s.value.elts
+    return None
 for n in ast.walk(tree):
     if isinstance(n, ast.Assign) and len(n.targets) == 1 and is_rec_sub(
             n.targets[0], lambda s: isinstance(s, ast.Constant) and isinstance(s.value, str)):
@@ -204,12 +232,15 @@ for n in ast.walk(tree):
                 for k in sub.value.keys:
                     if isinstance(k, ast.Constant) and isinstance(k.value, str):
                         rec.add(k.value)
-    if isinstance(n, ast.For) and isinstance(n.target, ast.Name) and isinstance(n.iter, ast.Tuple):
+    if isinstance(n, ast.For) and isinstance(n.target, ast.Name):
+        elts = resolve_iter_elts(n.iter)
+        if elts is None:
+            continue
         var = n.target.id
         if any(isinstance(s, ast.Assign) and len(s.targets) == 1 and is_rec_sub(
                    s.targets[0], lambda sl: isinstance(sl, ast.Name) and sl.id == var)
                for s in ast.walk(n)):
-            for e in n.iter.elts:
+            for e in elts:
                 if isinstance(e, ast.Constant) and isinstance(e.value, str):
                     rec.add(e.value)
 if not rec:

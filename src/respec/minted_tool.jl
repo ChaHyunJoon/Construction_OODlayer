@@ -941,19 +941,18 @@ end
 """
     ENACTED_VERDICTS · minted_handled_verdict_ok(v) -> Bool
 
-`handled` 판정의 **첫 연언지**. 🔴 오늘 집행 계열 verdict 는 **둘**이다 — `:admit` 과
-`:admit_unsanctioned`(2026-09-02 결정 2 가 더했다). 그 집합의 정본은 바로 아래
-`ENACTED_VERDICTS` 하나이고, 소비자가 리터럴 대신 이 이름을 부르므로 그때 **한 자리만** 바뀌었다.
+`handled` 판정의 **첫 연언지**. 🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1): 집행 계열 verdict 는
+다시 **하나** `:admit` 뿐이다. `:admit_unsanctioned`(2026-09-02 결정 2 가 더했던 것)는 모델이
+`reach != "composed"` 라고 신고했는데 body 는 조합돼 있어 굴린 행을 가리켰는데, D8 로 agent-3 이
+더 이상 인벤토리에서 조합하지 않고 원시 자신을 코드로 쓴다 — "조합에 실패했다고 자기신고했다"
+는 구분 자체가 없어졌다. 그 집합의 정본은 바로 아래 `ENACTED_VERDICTS` 하나이고, 소비자가
+리터럴 대신 이 이름을 부르므로 그때 **한 자리만** 바뀌었다.
 
 🔴 `handled` 자체는 여기 없다 — 나머지 세 연언지(`world_maybe_dirty` · `resume !== :failed` ·
 `!resolve_failed`)는 `tools/monitor/enact.jl` 이 소유한다. 이 함수는 그중 첫째만 답한다.
 실측 근거: 손으로 베낀 3-연언지 복사본이 프로덕션 4-연언지와 갈렸다(2026-09-02 T0).
-
-🔴 2026-09-02 결정 2: 둘째 값 `:admit_unsanctioned` — 모델이 `reach != "composed"` 라고
-신고했는데 body 가 조합돼 있어 굴린 행. `:admit` 과 **같은 것**을 뜻한다(불렀고 끝까지 갔다)
-— 다른 것은 누가 허락했는가뿐이다.
 """
-const ENACTED_VERDICTS = (:admit, :admit_unsanctioned)
+const ENACTED_VERDICTS = (:admit,)
 minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 """
@@ -966,8 +965,11 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 |---|---|
 | `:admit` | body 의 모든 원시가 해석·집행가능·바인딩됐고 **하나도 빠짐없이 불렸다** |
 | `:reject` | 아무것도 부르기 **전에** 돌아섰다 — 세계는 손대지 않았다 |
-| `:deferred` | 집행할 사건이 아니었다(`reach` 가 없음 — 못 쟀다, 합성 기록 없음) |
-| `:admit_unsanctioned` | `:admit` 과 같다 — 다만 모델이 `reach != "composed"` 라고 신고한 body 였다 |
+| `:deferred` | 집행할 사건이 아니었다(합성 기록이 없거나, `impl_name` 도 `body_names` 도 없음 — 못 쟀다) |
+
+🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1): `:admit_unsanctioned` 는 사라졌다. 그것은 "모델이
+조합에 실패했다고 신고했는데 body 는 있다" 를 재던 구분인데, D8 로 agent-3 이 인벤토리에서
+조합하는 단계 자체가 없어졌다 — `reach`/`missing_primitive` 는 더 이상 경계로 안 건너온다.
 
 `applied` 와 `partial` 은 verdict 와 **다른 것**을 잰다(spec §9-2 — "불렀는데 아무 일도 없었다"
 와 "부르지 않았다"는 다른 사건이고 반환값에서 구분돼야 한다):
@@ -1026,18 +1028,27 @@ function enact_minted!(env, truth, synth)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
-    reach = _synth_get(synth, "reach", nothing)
-    # 🔴 못 쟀다(nothing)만 deferred 다. "모델이 부족하다고 했다"는 **집행을 막지 않는다** —
-    #    게이트가 재려는 것은 body 가 조합됐는가이고, 그것은 아래 (3)(4)(6) 이 판정한다.
-    #    자기신고를 믿었을 때 무엇을 잃었는지: synthesize.py:1195 (F5 실측).
-    reach === nothing && return _r(:deferred, "reach missing — 합성 레인이 값을 안 실었다")
-    sanctioned = (reach == "composed")
-    admit_verdict = sanctioned ? :admit : :admit_unsanctioned
-    unsanctioned_note = sanctioned ? "" :
-        " — 🔴 unsanctioned(reach=$(reach), missing=$(something(_synth_get(synth, "missing_primitive", nothing), "n/a"))): " *
-        "모델은 부족하다고 했는데 body 는 조합돼 있어 굴렸다"
-
+    # 🔴 2026-09-03 (Task 9, 컨트롤러 판정 R1). 미끼가 `reach` 에서 `impl_name` 으로 옮겨왔다 —
+    #    agent-3 이 이제 인벤토리에서 조합하는 대신 원시 자신을 코드로 쓴다(D8). `reach` 는
+    #    경계 키에서 빠졌으므로(`SYNTH_LANE_KEYS`) 그 자리에 그대로 두면 **모든 집행이
+    #    deferred 로 떨어진다.**
+    nm = _synth_get(synth, "impl_name", nothing)
     names = String[String(n) for n in _synth_get(synth, "body_names", String[])]
+    # 🔴 **못 쟀다는 `impl_name` 도 없고 `body_names` 도 비었을 때뿐이다.** 두 신호 중
+    #    하나만 보면 회귀가 난다(2026-09-03 실측, `test/minted_registration.jl` (8)(9)(11)):
+    #    그 게이트들은 `register_minted_primitive!` 를 **먼저** 부르고 `enact_minted!` 를
+    #    직접(경계를 거치지 않고) 부른다 — 그 자리의 synth dict 은 이미 조합·등록이 끝난
+    #    body 를 `body_names` 로 들고 오지만 옛 필드 이름(`reach`)만 채워 `impl_name` 이
+    #    없다. 실행에 진짜 필요한 것은 부를 이름(`body_names`)이지 메타데이터(`impl_name`)가
+    #    아니다 — 이름이 있으면 (3) 이하가 알파벳으로 직접 판정한다. `impl_name` 은 경계
+    #    (`enact_minted_decision!`)가 등록 여부를 결정할 때만 쓰는 신호이지, 이미 이름이
+    #    있는 body 의 집행 자격을 다시 묻는 신호가 아니다.
+    nm === nothing && isempty(names) &&
+        return _r(:deferred, "impl_name missing and body empty — 합성 레인이 값을 안 실었다")
+    # 🔴 `sanctioned`/`admit_unsanctioned` 는 사라진다. 그것은 "모델이 조합에 실패했다고
+    #    신고했는데 body 는 있다" 를 재던 구분인데, 조합 단계 자체가 없어졌다.
+    admit_verdict = :admit
+
     isempty(names) && return _r(:reject, "empty body: 조합할 원시가 하나도 없다")
 
     # ---- (3) 이름을 전부 해석한다 ----------------------------------------------------------
@@ -1159,7 +1170,7 @@ function enact_minted!(env, truth, synth)
             #    무엇을 했는지는 모르므로 그 단계 자신도 포함한다(보수적).
             local rv_t, rv_d = _resolve_if_needed!(env, resolved[1:ri])
             return _r(admit_verdict, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
-                              _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d) * unsanctioned_note;
+                              _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d);
                       steps = steps, applied = applied, partial = true,
                       touched = touched, resume = rs_t, resolve = rv_t)
         end
@@ -1195,7 +1206,7 @@ function enact_minted!(env, truth, synth)
     resolve_tag, resolve_detail = _resolve_if_needed!(env, resolved)
     return _r(admit_verdict, "body of $(length(names)) primitives$(quiet)" *
                       _resume_note(resume_tag, resume_detail) *
-                      _resolve_note(resolve_tag, resolve_detail) * unsanctioned_note;
+                      _resolve_note(resolve_tag, resolve_detail);
               steps = steps, applied = applied, touched = touched,
               resume = resume_tag, resolve = resolve_tag)
 end

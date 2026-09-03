@@ -791,17 +791,31 @@ end
 """
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
-결정 행이 나른 합성 tool 을 집행한다. `CB.enact_minted!` 를 부르고, **집행 여부를 로그와
-반환값 양쪽에 남긴다.** 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool` 을 더한 것이다.
+결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
+**보다 먼저** 부르고(Task 9 — 생성 원시는 그 순간까지 존재하지 않는다), 등록·집행 여부를
+로그와 반환값 양쪽에 남긴다. 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool`·
+`registered::Bool`·`impl_rejected_why::Union{Nothing,String}` 를 더한 것이다.
 
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
 
+🔴 **`registered`·`impl_rejected_why` 는 이 함수의 반환 자리 넷 전부에 있다**(설계 §8,
+2026-09-03 컨트롤러 판정 R2). 한 자리라도 빠뜨리면 Julia 소비자는 NamedTuple 을 이름으로
+읽으므로 "모델이 코드를 안 냈다"(`impl_name` 이 없어 조기 반환)와 "냈는데 규약 위반으로
+거절됐다"(`register_minted_primitive!` 가 문자열을 돌려줬다)가 **같은 관측**이 된다 —
+이 레포가 `train_kinds`·`require_vocab`·`handled` 에서 이미 세 번 데인 실패 모양이다.
+`registered` 는 이번 호출에서 실제로 등록이 성공했는가(시도 안 했어도 `false`)이고,
+`impl_rejected_why` 는 등록을 시도했는데 거절된 경우에만 그 사유 문자열이다 — 나머지는
+전부 `nothing`("등록을 시도하지 않았다" 또는 "몰라서 못 쟀다").
+
 🔴 **`handled` 의 정의는 바로 위 `minted_handled(r)` 하나가 소유한다 — `applied` 가 아니다.**
 이 문단은 그 함수를 **인용**할 뿐 식을 다시 적지 않는다(손베낀 복사본이 이미 한 번 갈렸다).
-🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3) —
-`CB.minted_handled_verdict_ok` 가 그 판정을 대신한다. 나머지 셋(`world_maybe_dirty` ·
-`resume !== :failed` · `!resolve_failed`)은 그대로 — 게이트는 첫 연언지만 넓어졌다.
+🔴 첫 연언지는 `CB.ENACTED_VERDICTS`(정본은 `minted_tool.jl`)가 정한다 — 2026-09-02 결정
+2·3 은 그 집합을 `:admit`·`:admit_unsanctioned` 둘로 넓혔었는데, 2026-09-03 (Task 9, 컨트롤러
+판정 R1) 이 `:admit_unsanctioned` 를 다시 지웠다(조합 단계 자체가 없어져 그 구분이 무의미해
+졌다) — 오늘은 다시 `:admit` 하나다. `CB.minted_handled_verdict_ok` 가 그 판정을 대신하므로
+이 파일은 집합의 크기를 손으로 세지 않는다. 나머지 셋(`world_maybe_dirty` · `resume !== :failed`
+· `!resolve_failed`)은 그대로.
 `applied` 는 status 전용이라, 1단계가 세계를 바꾸고 2단계가 **던지면** `applied == false` 인데
 세계는 이미 편집돼 있다(`partial == true`, `undo === :none`). 그 반쯤 고쳐진 세계 위에 기본
 복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드 `world_maybe_dirty` 로
@@ -854,24 +868,29 @@ end
 function enact_minted_decision!(env, truth, decision)
     try
         local sl = try decision.synth_lane catch; nothing end
-        local reach = sl === nothing ? nothing : (try get(sl, "reach", nothing) catch; nothing end)
+        # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
+        #    `reach` 는 경계 키에서 빠졌으므로(agent-3 이 이제 조합이 아니라 코드를 쓴다, D8)
+        #    같은 자리를 `impl_name` 이 대신한다 — `minted_tool.jl` 의 step (1) 게이트와
+        #    **같은 미끼**를 써야 한다. 안 맞추면 여기서 먼저 deferred 로 떨어져 그 게이트에
+        #    영영 안 닿는다.
+        local nm = sl === nothing ? nothing : _synth_lane_field(sl, "impl_name")
         # ---- 조기 반환도 조용하지 않다 (C5) ------------------------------------------------
-        if sl === nothing || reach === nothing
+        if sl === nothing || nm === nothing
             # 🔴 **두 갈래는 다른 사건이고 사유도 달라야 한다**(2026-08-30 최종 리뷰, spec §9-2).
-            #    `sl !== nothing && reach === nothing` 에서는 합성 레인이 **있다** — 그런데도
+            #    `sl !== nothing && nm === nothing` 에서는 합성 레인이 **있다** — 그런데도
             #    `reason=no synth lane on this decision` 을 찍는 것은 거짓 진술이었다.
             # 🔴 그리고 그 갈래는 판별에 필요한 값 넷을 **이미 손에 들고 있다**:
             #    `synthesis_event`(발화할 사건이었나) · `synthesis_ran`(발화해서 돌았나) ·
             #    `synthesis_error`(돌다 터졌나) · `tool_minted`(뭘 주조했나). 이 넷이
             #    "레인이 안 돌았다" · "돌다 터졌다" · "돌았고 expressible 이라 안 쐈다" 를 가른다.
             #    안 찍으면 그 판별에 **유료 호출을 한 번 더 써야 한다** — T5 가 실제로 그랬다.
-            local lane = sl === nothing ? "absent" : "reach_nothing"
+            local lane = sl === nothing ? "absent" : "impl_name_nothing"
             local why  = sl === nothing ?
                 "no synth lane on this decision" :
-                "synth lane present but reach is nothing — 아래 네 필드가 원인을 가른다"
+                "synth lane present but impl_name is nothing — 아래 네 필드가 원인을 가른다"
             println("[minted] lane=", lane,
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
-                    " reach=n/a verdict=deferred applied=false partial=false",
+                    " verdict=deferred applied=false partial=false",
                     " world_maybe_dirty=false handled=false undo=none resume=none",
                     " args_from=n/a n_calls=n/a steps=[]",
                     " ran_milp=n/a(not armed)",
@@ -879,14 +898,41 @@ function enact_minted_decision!(env, truth, decision)
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
                     " synthesis_error=", _synth_lane_field(sl, "synthesis_error"),
                     " tool_minted=", _synth_lane_field(sl, "tool_minted"),
-                    " missing_primitive=", _synth_lane_field(sl, "missing_primitive"),
+                    " registered=false impl_rejected_why=n/a",
                     " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
             return (handled = false, verdict = :deferred, reason = why,
                     applied = false, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none,
-                    resolve = :none, args_from = nothing, n_calls = nothing)
+                    resolve = :none, args_from = nothing, n_calls = nothing,
+                    registered = false, impl_rejected_why = nothing)
+        end
+
+        # ---- 등록이 먼저다 (Task 9) ---------------------------------------------------------
+        # 🔴 등록이 먼저다. 생성 원시는 이 순간까지 존재하지 않는다 — 등록에 실패하면
+        #    집행을 시도하지 않고 그 사유를 그대로 나른다(예외가 아니라 거절). `nm` 은 바로
+        #    위에서 이미 읽었다 — 두 번 읽지 않는다(진실원 하나).
+        local registered = false
+        local impl_rejected_why = nothing
+        local cd = _synth_lane_field(sl, "impl_code")
+        if cd !== nothing && !isempty(String(nm))
+            local why = CB.register_minted_primitive!(
+                name = String(nm), code = String(cd),
+                params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
+                surface = String(something(_synth_lane_field(sl, "surface"), "unknown")),
+                reversible = something(_synth_lane_field(sl, "reversible"), false) === true)
+            if why !== nothing
+                impl_rejected_why = why
+                println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
+                        " verdict=reject registered=false impl_rejected_why=", why, " reason=", why)
+                return (handled = false, verdict = :reject, reason = why,
+                        applied = false, partial = false, world_maybe_dirty = false,
+                        steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
+                        args_from = nothing, n_calls = nothing,
+                        registered = false, impl_rejected_why = why)
+            end
+            registered = true
         end
 
         # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
@@ -908,7 +954,7 @@ function enact_minted_decision!(env, truth, decision)
         #    한 번 갈렸다, 2026-09-02 T0).
         local handled = minted_handled(r)
 
-        println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
+        println("[minted] lane=present tool=", get(sl, "tool_name", "?"),
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
                 " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
                 " undo=", r.undo, " resume=", r.resume, " resolve=", r.resolve,
@@ -923,7 +969,10 @@ function enact_minted_decision!(env, truth, decision)
                 #    스트림 jsonl 에 합성 필드가 없고 서비스도 기록을 파일로 안 쓴다. 값은
                 #    이미 `SYNTH_LANE_KEYS` 로 도착해 있었고 관측면만 없었다.
                 " n_body_names=", length(something(get(sl, "body_names", nothing), [])),
-                " missing_primitive=", something(_synth_lane_field(sl, "missing_primitive"), "n/a"),
+                # 🔴 Task 9(설계 §8). 등록 결과 — "모델이 코드를 안 냈다" 와 "냈는데 규약
+                #    위반으로 거절됐다" 를 가른다. 여기까지 왔다는 것은 등록을 시도했다면
+                #    통과했다는 뜻이므로 `impl_rejected_why` 는 언제나 nothing 이다.
+                " registered=", registered, " impl_rejected_why=", something(impl_rejected_why, "n/a"),
                 " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 
@@ -942,14 +991,19 @@ function enact_minted_decision!(env, truth, decision)
                 applied = r.applied, partial = r.partial,
                 world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
                 resume = r.resume, resolve = r.resolve,
-                args_from = r.args_from, n_calls = r.n_calls)
+                args_from = r.args_from, n_calls = r.n_calls,
+                registered = registered, impl_rejected_why = impl_rejected_why)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
+        # 🔴 `registered=false impl_rejected_why=n/a` 다 — 이 자리에서는 등록이 실제로
+        #    끝까지 갔는지조차 모른다(예외가 등록 도중 났을 수도 있다). "몰라서 nothing" 이
+        #    맞다, "쟀는데 거절됐다" 로 적으면 없는 사유를 지어내는 셈이다.
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
-        println("[minted] lane=unknown tool=n/a reach=n/a verdict=reject applied=false",
+        println("[minted] lane=unknown tool=n/a verdict=reject applied=false",
                 " partial=false world_maybe_dirty=false handled=false undo=none resume=none",
                 " args_from=n/a n_calls=n/a steps=[]",
+                " registered=false impl_rejected_why=n/a",
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
@@ -957,6 +1011,7 @@ function enact_minted_decision!(env, truth, decision)
                 reason = "enact_minted_decision! threw: " * msg,
                 applied = false, partial = false, world_maybe_dirty = false,
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
-                args_from = nothing, n_calls = nothing)
+                args_from = nothing, n_calls = nothing,
+                registered = false, impl_rejected_why = nothing)
     end
 end
