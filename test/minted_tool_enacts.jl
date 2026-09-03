@@ -2,7 +2,12 @@
 # 합성 body 의 집행. (2026-08-30, T3 / spec §5, §9-2)
 #
 # 재는 명제 열둘
-#   (1) `reach != "composed"` 는 **집행하지 않는다** — `:deferred` 이지 `:admit` 이 아니다.
+#   (1) 🔴 2026-09-02 결정 2: 게이트는 자기신고가 아니라 **body** 를 심사한다 — 이름이
+#       전부 해석되고 전부 집행가능하고 인자가 전부 바인딩되면 `reach != "composed"` 여도
+#       불린다. 다만 `reach` 가 신고한 값과 다르게 실제로 굴렸다는 사실은 verdict 에
+#       남는다: `:admit`(composed 로 신고) 이 아니라 `:admit_unsanctioned`(그 밖의 신고,
+#       body 는 조합돼 있어 굴렸다). `reach === nothing`(못 쟀다, 합성 기록 자체가 없음)
+#       만 예전처럼 `:deferred` 다.
 #   (2) body 에 미지 원시가 하나라도 있으면 **아무것도 집행하지 않고** `:reject` 다.
 #       부분 집행은 undo 가 없는 이 설계에서 최악이다.
 #   (3) 빈 body 는 `:admit` 이 아니다.
@@ -23,7 +28,9 @@
 #       부를 수 있는 표면이 넓어진다.
 #
 # 변이시험 — 열하나 전부 실제로 빨갛게 만든 뒤 되돌렸다. 재현 방법(`src/respec/minted_tool.jl`):
-#   · (1): `enact_minted!` 의 `reach == "composed" || return _r(:deferred, ...)` 줄을 지운다.
+#   · (1): `enact_minted!` 의 `admit_verdict = sanctioned ? :admit : :admit_unsanctioned` 를
+#          `admit_verdict = :admit` 로 고정한다 → `r.verdict === :admit_unsanctioned` 단언이
+#          빨개진다(needs_primitive 로 신고했는데 `:admit` 이 나온다, S7 2026-09-02 실측).
 #   · (2): `enact_minted!` 의 해석 루프에서 `p === nothing && return _r(:reject, ...)` 를
 #          `p === nothing && continue` 로 바꾼다.
 #   · (3): `isempty(names) && return _r(:reject, "empty body: ...")` 의 `:reject` 를 `:admit` 로.
