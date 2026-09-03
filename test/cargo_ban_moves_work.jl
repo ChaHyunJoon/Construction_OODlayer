@@ -1,11 +1,11 @@
 # test/cargo_ban_moves_work.jl
 # ============================================================================
-#  이 파일이 지키는 것: 주조된 tool 의 **body 가 집행되면 그 로봇이 실제로 그 화물을 잃는다**
+#  이 파일이 지키는 것: 주조된 tool 의 **body 가 돈 세계에서 그 로봇이 실제로 그 화물을 잃는다**
 #  (cargo-ban 계획 Task 8, 게이트 G-2).
 #
-#  body 는 둘이다:
-#      1. release_pending_assignments(agent="…")      ← 좁힌 release
-#      2. forbid_heavy_cargo(agent="…", n=1)
+#  body 는 둘이다 — 이 파일은 그 둘을 **원시로 직접** 부른다(집행 진입점을 안 지난다, 아래 (I)):
+#      1. release_pending_assignments!(env, invariant; agent="…")   ← 좁힌 release
+#      2. forbid_heavy_cargo!(env; agent="…", n=1)
 #
 # ----------------------------------------------------------------------------
 #  🔴 이 게이트가 반드시 피해야 하는 **거짓 초록** (전부 Task 1 이 실측했다, `5456124f`)
@@ -23,8 +23,8 @@
 #  (D) 🔴 **`makespan(env.sched)` 도 목적값도 판정에 안 쓴다.** 전자는 Big-M 센티넬(10012 등)이
 #      나왔고, 후자는 `TIME_LIMIT` 행에서 제약을 더했는데 내려가는 판이 실제로 나온다.
 #  (E) 🔴 **`_edge_owner_id` 는 release **후에만** 쌍을 낸다**(S-4.2). release 전에 금지를 재면
-#      후보가 0 이라 **어떤 금지도 0 행**이고 그 초록은 공허하다. 그래서 body 의 1단계가
-#      release 이고, 이 파일은 "release 가 실제로 슬롯을 뗐다"를 먼저 단언한다.
+#      후보가 0 이라 **어떤 금지도 0 행**이고 그 초록은 공허하다. 그래서 `measure()` 의 첫
+#      원시가 release 이고, 이 파일은 "release 가 실제로 슬롯을 뗐다"를 먼저 단언한다.
 #  (F) 🔴 **commit 하지 않는다.** 판정이 `value(Xa)` 이므로 필요 없고, 안 하면 두 팔이
 #      바이트 동일한 그래프를 본다. `fork()`(→ `rvo_rebuild!` 가 프로세스 전역 RVO 를 변형)도
 #      쓰지 않는다 — Task 1 의 한 라운드가 그 오염으로 통째로 철회됐다(S-4.7).
@@ -51,8 +51,39 @@
 #      `표적 ∈ setdiff(처리 잃음, 대조 잃음)` + 양성 대조(대조는 가져간다) + 음성(처리는 안 가져간다).
 #      같은 이유로 단조성 `issubset` 과 개수 비교 `처리.lost > 대조.lost` 도 뺐다(둘 다 퇴화 민감).
 #
-#  🔴 **변이 시험을 했다**(2026-09-02): 금지를 어느 층에서 제거하든 빨개진다(보고서에 양방향
-#     기록: body 에서 원시 제거 · 처리 팔을 금지 없이 풀기 · G-2 단언 직접 노출).
+#  (I) 🔴 **이 파일은 `enact_minted!` 를 지나지 않는다 — 2026-09-02 에 측정을 밖으로 뺐다.**
+#      판정 1 이 집행부 끝에 **공통 재풀이**를 넣었다(`src/respec/minted_tool.jl` (9) 단계의
+#      `_resolve_if_needed!`). 이 파일은 집행 **직후에** 간선을 읽는데, 그 시점이면 하네스가
+#      뜬 슬롯을 이미 다시 붙여 놨다. 실측 대조(2026-09-02, 같은 픽스처):
+#          간선 43→38 · 뗀 슬롯 5 · 표적 v2=237  · 금지가 건 행 4      ← 판정 1 **이전**
+#          간선 43→43 · 뗀 슬롯 2 · 표적 nothing · 금지가 건 행 0      ← 판정 1 **이후**
+#      🔴 마지막 칸이 곧 위 (E) 다. 재풀이는 MILP 관점에서 그래프를 **release 이전** 조건으로
+#      되돌리므로 후보 간선이 0 이 되고, 그러면 **어떤 금지도 0 행**이라 초록이 공허해진다.
+#      (뗀 슬롯 2 도 금지의 효과가 아니라 재풀이 잡음이다 — (G) 가 잰 그 잡음이다.)
+#      ⟹ `measure()` 가 두 원시를 **직접** 부른다. 인자 결합은 집행부의 harness 바인딩과 같다
+#      (`invariant` ← `build_invariant(env)`, `minted_tool.jl:727`). 거짓 초록 방어 (A)~(H) 는
+#      **전부 그대로** 유지된다: 같은 env · commit 없음 · fork 없음 · 차집합 · 소속, 그리고
+#      픽스처는 하나다.
+#      🔴 **"커밋된 세계로 판정" 은 선택지가 아니다** — (A)(C)(D) 가 이미 그 길을 닫았고, 게다가
+#      대조군을 만들려면 금지 없는 세계가 하나 더 필요해 `fixture()` 를 두 번 지어야 하는데
+#      (= `run_lego_demo` + 6000 스텝 재실행) 두 보드가 바이트 동일하다는 보장이 없다. 차집합
+#      트릭 전체가 "두 팔이 같은 세계를 본다"는 (F)의 전제 위에 서 있다.
+#      대가는 하나뿐이다: 이 파일은 더 이상 "**집행 경로를 지나서**" 를 한 호흡에 주장하지 않는다.
+#      **그 절반은 다른 곳이 진다**:
+#        · `tools/monitor/test_minted_wiring.jl` (2c)/(2d) — sched·milp 표면 body 뒤에 재풀이가
+#          실제로 불리고(실패하면 `handled=false`), 아닌 표면 뒤엔 안 불리며 그 사실이
+#          `resolve=not_needed_surface` 로 기록된다.
+#        · `test/minted_tool_enacts.jl` — body 집행 자체(단계·status·삼상).
+#      여기가 지는 것은 **인과 한 줄**이다: 그 두 원시가 돈 세계에서 금지된 로봇이 그 화물을 잃는다.
+#
+#  🔴 **변이 시험을 다시 했다**(2026-09-02, 측정을 (I) 로 옮긴 **뒤**). 셋 다 빨개진다 —
+#     그리고 셋 다 **자칭 성공을 무시하고 세계를 잰 줄**이 잡았다:
+#       · m1 금지 원시를 **안 부르고** `(status=:banned,…)` 를 자칭한다
+#         → `length(STANDING_CARGO_BANS[]) == 1` 과 소유자 이름 줄이 빨개진다(8 pass / 2 fail).
+#       · m2 release 를 **안 하고** 간선 목록 `[(0,0)]` 을 자칭한다
+#         → `M.e1 < M.e0` · `!isempty(M.slots)` 가 빨개진다(간선 43→43, 뗀슬롯 0 = 위 (E)의 세계).
+#       · m3 처리 팔을 **금지 없이** 푼다 → `M.trt.nconstr > M.ctl.nconstr` 가 빨개진다(금지행 0).
+#     ⟹ `M.rel`/`M.ban` 의 반환값 단언은 진단용이고, 게이트를 실제로 지는 것은 그 아래 세 줄이다.
 #
 #  🔴 runtests.jl 이 모든 시험 파일을 같은 `Main` 스코프에 include 하므로 자기 module 로 감싼다.
 # ============================================================================
@@ -232,17 +263,15 @@ function _restore_globals!()
     return nothing
 end
 
-# body 는 계획서가 못박은 그대로다. 🔴 `n` 은 `1` — 레지스트리가 `"integer"` 로 선언한다.
-_synth(agent) = Dict{String,Any}(
-    "reach" => "composed",
-    "body_names" => ["release_pending_assignments", "forbid_heavy_cargo"],
-    "tool_name" => "cargo_ban_wear_level",
-    "params" => Dict{String,Any}("agent" => agent, "n" => 1),
-    "missing_primitive" => nothing)
-
 """
-한 번의 측정 전체 — 픽스처 · body 집행 · 두 팔. 🔴 **집계는 전부 함수 안**이다(Julia soft scope:
-최상위 `for` 의 카운터는 조용한 0 이 된다). 반환값 하나를 아래 testset 들이 나눠 읽는다.
+한 번의 측정 전체 — 픽스처 · **두 원시 직접 호출** · 두 팔. 🔴 **집계는 전부 함수 안**이다
+(Julia soft scope: 최상위 `for` 의 카운터는 조용한 0 이 된다). 반환값 하나를 아래 testset 들이
+나눠 읽는다.
+
+🔴 **여기를 `enact_minted!` 한 줄로 "복원" 하지 마라 — 머리말 (I) 가 그 자리다.** 집행부 (9)
+단계의 공통 재풀이가 아래 `e1` 을 읽기 **전에** 뜬 슬롯을 다시 붙여, 금지가 0 행이 되고 초록이
+공허해진다(= (E)). 두 원시의 인자 결합은 집행부의 harness 바인딩과 같다
+(`invariant` ← `build_invariant(env)`, `minted_tool.jl:727`; `n=1` — 레지스트리가 `"integer"`).
 """
 function measure()
     CB.clear_all_cargo_bans!()
@@ -250,7 +279,8 @@ function measure()
     ag   = busiest_pending_agent(env)
     e0   = assignment_edges(env.sched)
     b0   = length(CB.STANDING_CARGO_BANS[])
-    r    = CB.enact_minted!(env, nothing, _synth(ag.str))
+    rel  = CB.release_pending_assignments!(env, CB.build_invariant(env); agent = ag.str)
+    ban  = CB.forbid_heavy_cargo!(env; agent = ag.str, n = 1)
     e1   = assignment_edges(env.sched)
     slots = sort!(unique!([v2 for (_, v2) in setdiff(e0, e1)]))
     # 🔴 대조를 먼저 돈다. 두 팔은 같은 env·같은 그래프를 보고 commit 을 안 하므로 순서가
@@ -258,7 +288,7 @@ function measure()
     ctl = solve_control(env, ag.id, slots)
     trt = solve_arm(env, ag.id, slots)
     return (env = env, agent = ag, e0 = length(e0), e1 = length(e1), bans0 = b0,
-            r = r, slots = slots, ctl = ctl, trt = trt)
+            rel = rel, ban = ban, slots = slots, ctl = ctl, trt = trt)
 end
 
 # 🔴 여기서 던지면 빌린 전역이 스위트 나머지로 샌다 — 되돌리고 다시 던진다.
@@ -277,13 +307,14 @@ try
 @testset "🔴 픽스처가 비퇴화다 (이걸 먼저 단언한다)" begin
     @test CB.BATTERY_FLEET[] !== nothing              # 부담을 잴 계층이 있다
     @test M.bans0 == 0                                # 금지가 없는 데서 출발했다
-    @test M.r.verdict === :admit                      # body 가 통째로 집행됐다
-    @test length(M.r.steps) == 2                      # 두 단계가 다 불렸다
-    @test M.r.steps[1].name == "release_pending_assignments"
-    @test M.r.steps[2].name == "forbid_heavy_cargo"
-    @test M.r.steps[1].status === :released           # 🔴 :released_none/:unknown_agent 면 공허
-    @test M.r.steps[2].status === :banned
-    # 🔴 반환 심볼은 증거가 아니다 — 세계를 직접 잰다.
+    # 🔴 두 원시가 각각 **읽을 수 있는 성공**을 냈다. release 는 간선 목록을 돌려준다
+    #    (`EDGELIST_RETURN_PRIMITIVES`) — NamedTuple 이면 집행부가 `:unknown_agent` 로 읽을
+    #    모양이고, 빈 목록이면 `:released_none` 이다. 둘 다 그 뒤가 통째로 공허하다.
+    @test M.rel isa Vector{Tuple{Int,Int}}            # 🔴 :unknown_agent 면 여기서 죽는다
+    @test !isempty(M.rel)                             # 🔴 :released_none 이면 공허
+    @test M.ban.status === :banned                    # 🔴 :invalid_n/:no_schedule/:unknown_agent 면 공허
+    @test M.ban.n == 1
+    # 🔴 반환값은 증거가 아니다 — 세계를 직접 잰다.
     @test M.e1 < M.e0                                 # release 가 실제로 간선을 뗐다
     @test !isempty(M.slots)                           # 🔴 뗀 슬롯이 0 이면 아래 전부 공허하다
     @test length(CB.STANDING_CARGO_BANS[]) == 1       # 보관소에 항목이 정확히 하나 생겼다

@@ -573,14 +573,19 @@ end
     end
 
     # 2026-09-02 (cargo-ban T8): **종단** — 주조된 tool 의 body(release + forbid_heavy_cargo)가
-    # `enact_minted!` 로 집행되면 **그 로봇이 실제로 그 화물을 잃는다**(게이트 G-2).
+    # **돈 세계에서 그 로봇이 실제로 그 화물을 잃는다**(게이트 G-2).
+    # 🔴 이 파일은 `enact_minted!` 를 **안 지나고 두 원시를 직접 부른다** — 판정 1 이 집행부 끝에
+    #    넣은 공통 재풀이가 뜬 슬롯을 다시 붙여, 측정 시점에 후보 간선이 0 이 되고 금지가 0 행이
+    #    되기 때문이다(그 파일 머리말 (I) 가 실측 대조를 적는다). 집행 경로 자체는
+    #    `test/minted_tool_enacts.jl` 과 `tools/monitor/test_minted_wiring.jl` (2c)/(2d) 가 진다.
     # 🔴 판정은 `binding` 이 아니라 `JuMP.value(Xa[u,v2]) > 0.5` **+ 음성 대조**다: 아무것도 안
     #    누른 대조에서도 A 가 이미 묶인 정점 2~11개를 잃고(재풀이 잡음), release 가 표적 슬롯을
     #    solve 전에 무효 id 로 되돌려 `binding` 에는 잃을 것이 남지 않는다(Task 1 실측, S-4.4).
     #    두 팔은 **같은 env·같은 그래프**를 보고 commit 을 안 한다 — 다른 것은
     #    `STANDING_CARGO_BANS[]` 하나뿐이다.
     # 🔴 공허한 초록 방지: release 가 슬롯을 실제로 뗐는지, 금지가 **행을 실제로 걸었는지**
-    #    (`nconstr` 차이 > 0)를 먼저 단언한다. 변이(금지 제거) 확인 완료 — 그때 빨개진다.
+    #    (`nconstr` 차이 > 0)를 먼저 단언한다. 변이 셋(금지 원시 미호출 · release 미호출 ·
+    #    처리 팔을 금지 없이 풀기) 확인 완료 — 셋 다 빨개진다.
     #    씬을 짓고 closed=60 까지 전진시킨 뒤 **두 번 푼다**(좁힌 release 라 각 OPTIMAL ~0.2s).
     #    솔버 전역 둘(HiGHS + 빈 속성)을 빌렸다 `finally` 로 되돌린다.
     @testset "cargo ban moves work" begin
