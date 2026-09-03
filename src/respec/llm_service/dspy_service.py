@@ -94,10 +94,10 @@ from tool_registry import (MACRO_TO_TOOL, TOOL_TO_MACRO, build_tools,   # noqa: 
 #    `synthesize.py` 도 그 가드를 독립적으로 들고 있다 — 둘 중 하나만 남기지 말 것.
 # 🔴 이 import 는 과금 0건이다: 모듈 최상위에서 LM 을 만들지도 부르지도 않는다.
 #    합성이 실제로 도는 것은 `TOOL_SYNTHESIS=1` + `expressible == False` 두 조건이
-#    함께 참일 때뿐이다(`maybe_synthesize` 의 docstring, 컨트롤러 판정 R13).
+#    함께 참일 때뿐이다(`run_synthesis` 가 부르는 `synthesize_multi` 의 docstring, 판정 R13).
 from synthesize import (append_synthesis_record as _append_synthesis_record,  # noqa: E402
-                        maybe_synthesize, run_synthesis,          # noqa: E402
-                        synthesis_enabled, multi_agent_enabled)
+                        blank_synthesis_record, run_synthesis,    # noqa: E402
+                        synthesis_enabled)
 # ---- 세대 도장 (2026-09-03) ----------------------------------------------------------------
 # 🔴 `generation` 은 stdlib 만 쓰므로 numpy/sklearn-before-dspy 계약과 무관하다.
 import generation as _generation                                # noqa: E402
@@ -114,6 +114,24 @@ SOURCE_DIR = os.path.dirname(os.path.abspath(__file__))
 #    `test_the_fingerprint_is_frozen_at_import_not_recomputed_per_request`.
 # `None` 이면 "자기 소스를 못 읽는다" — 삭제된 worktree 에서 뜬 프로세스가 내는 값이다.
 CODE_FINGERPRINT = _generation.code_fingerprint(SOURCE_DIR)
+
+
+# 🔴 2026-09-03 (판정 R-FLAG). `SYNTH_MULTI_AGENT` 는 **레인 스위치가 아니다.** 단일 agent
+#    레인은 D8 로 삭제됐고 `synthesize.run_synthesis` 에는 분기가 없다 — 그래서 이 플래그를
+#    읽는 함수도 `synthesize.py` 에서 사라졌다(`multi_agent_enabled`).
+# 🔴 그런데 `/health` 의 `synth_multi_agent` 필드는 **세대 도장**으로 살아 있다:
+#    `generation.check_health` 가 그것을 요구하고, 셸·Julia·시험 여섯 진입점이 그 판정을
+#    거쳐 간다. 지금 필드를 지우면 그 여섯이 한꺼번에 죽는다.
+# ⟹ 이 로컬 판독기가 그 자리를 잇는다. **`/health` 전용이고, 아무 레인도 이것을 안 읽는다.**
+#    Task 11 이 레시피에서 플래그를 걷어낼 때 이 함수와 그 필드가 함께 사라진다.
+# 🔴 raw echo 가 아니라 리터럴 `"1"` 판정인 것은 옛 함수와 같다 — `true`/`TRUE`/`on` 은 전부
+#    OFF 로 읽혔고, 판독자가 그것을 "켜짐" 으로 오독하는 것을 막는 것이 이 규약의 이유였다.
+SYNTH_MULTI_AGENT_ENV = "SYNTH_MULTI_AGENT"
+
+
+def _synth_multi_agent_stamp() -> bool:
+    """`/health` 의 `synth_multi_agent`. 세대 도장일 뿐, 레인은 이것을 안 본다."""
+    return os.environ.get(SYNTH_MULTI_AGENT_ENV, "") == "1"
 
 
 def _model_tag(model=None):
@@ -1259,12 +1277,15 @@ def health():
             # `code_fingerprint`: 임포트 시점에 **얼린** 값. `None` = 자기 소스를 못 읽는다.
             "source_dir": SOURCE_DIR,
             "code_fingerprint": CODE_FINGERPRINT,
-            # 🔴 raw env echo 가 **아니다** — 레인이 부르는 그 함수의 값이다. 두 플래그는
-            #    리터럴 `"1"` 만 참으로 읽으므로(`true`/`TRUE`/`on` 은 전부 OFF), raw 를
-            #    실으면 판독자가 `SYNTH_MULTI_AGENT=true` 인 서비스를 "켜짐" 으로 읽는다.
-            #    호출 시점에 잰다 — 레인도 호출 시점에 읽기 때문이다.
+            # 🔴 raw env echo 가 **아니다** — 둘 다 리터럴 `"1"` 만 참으로 읽는다
+            #    (`true`/`TRUE`/`on` 은 전부 OFF). raw 를 실으면 판독자가
+            #    `SYNTH_MULTI_AGENT=true` 인 서비스를 "켜짐" 으로 읽는다.
+            # ⚠️ 2026-09-03. 둘의 **의미가 갈렸다.** `synth_tool_synthesis` 는 레인이 실제로
+            #    부르는 함수의 값이지만, `synth_multi_agent` 는 이제 **어느 레인도 안 읽는
+            #    세대 도장**이다(위 `_synth_multi_agent_stamp` 의 판정 R-FLAG 주석).
+            #    호출 시점에 잰다 — 앞엣것은 레인도 호출 시점에 읽기 때문이다.
             "synth_tool_synthesis": synthesis_enabled(),
-            "synth_multi_agent": multi_agent_enabled(),
+            "synth_multi_agent": _synth_multi_agent_stamp(),
             "policies": ["dspy", "surrogate"]}
 
 
@@ -1489,7 +1510,7 @@ def _blank_decision(valid, line, source, tools_offered):
     🔴 호출자가 `error` / `tool_lane_error` / `tool_calls_n` 을 **덮어쓴다.** 그 셋이
     `no_call` 안의 세 사건을 가르는 유일한 키다(아래 `macro()` 의 같은 이름 주석).
     """
-    _blank = maybe_synthesize(expressible=None, kind=None, state=line)
+    _blank = blank_synthesis_record(kind=None, expressible=None)
     return {"policy": "dspy:%s" % MODEL, "chosen": "", "ranking": list(valid),
             "margin": None, "reasoning": "", "valid": valid, "coerced": False,
             "state": line, "llm_calls": _state["calls"],
@@ -1502,8 +1523,9 @@ def _blank_decision(valid, line, source, tools_offered):
             "native_fc": None, "tool_choice": None, "tool_lane_error": None,
             # 🔴 합성 레인은 `expressible == False` 하나로만 발화한다. 여기서는 그것을 **못
             #    쟀으므로**(None) 부르지만 안 돈다 — 그 사실이 `synthesis["reason"]` 에 남는다.
-            #    상수 dict 을 지어 두지 않는 이유: 그러면 그 상수와 `maybe_synthesize` 의
-            #    반환 모양이 조용히 갈릴 수 있다(이 레포가 반복해 밟은 두 벌 문제).
+            #    상수 dict 을 지어 두지 않는 이유: 그러면 그 상수와 `synthesize.py` 의
+            #    `blank_synthesis_record` 반환 모양이 조용히 갈릴 수 있다(이 레포가 반복해
+            #    밟은 두 벌 문제). 빈 기록의 **모양**은 진실원이 하나다.
             "tool_minted": _blank["tool_minted"], "synthesis": _blank}
 
 
@@ -1670,10 +1692,10 @@ def macro(req: MacroRequest):
     # ---- T2: tool 합성 레인 (Plan B / T6b, spec §5) -----------------------------------------
     # 🔴 발화 조건은 **`expressible == False`** 하나다. `None`("못 쟀다")은 발화가 아니다.
     # ⚠️ `line` 을 그대로 넘긴다: T4a 가 프롬프트에서 지운 정답 행의 제거를 합성 레인이 승계한다.
-    # 🔴 `run_synthesis` 가 단일 입구다 — `SYNTH_MULTI_AGENT=1` 이면 3-agent 파이프라인이,
-    #    아니면 오늘의 단일 agent 가 돈다. multi 레인은 여기서 넘기는 `expressible` 을
-    #    **안 쓴다**: 그 판정을 agent-2 가 자기 출력 필드로 내기 때문이다(출처가 하나가
-    #    되어 "모델이 인자를 생략해서 못 쟀다" 가 사라진다).
+    # 🔴 `run_synthesis` 가 단일 입구이고 **분기가 없다** — 단일 agent 레인은 D8 로 삭제됐다
+    #    (2026-09-03). 남은 3-agent 레인은 여기서 넘기는 `expressible` 을 **안 쓴다**: 그
+    #    판정을 agent-2 가 자기 출력 필드로 내기 때문이다(출처가 하나가 되어 "모델이 인자를
+    #    생략해서 못 쟀다" 가 사라진다).
     synthesis = run_synthesis(expressible=expressible, kind=req.kind, state=line,
                               tools=tools)
     # 🔴 2026-09-03. 라이브 판의 합성 기록을 파일로 남긴다. 그 전에는 `body` 산문도

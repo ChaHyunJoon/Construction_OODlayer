@@ -1,13 +1,18 @@
 """T2 -- **synthesise a NEW tool** for an unfamiliar event (Plan B / T6b, spec §5).
 
-This file does four things.
+🔴 2026-09-03 (D5 · D7 · D8). The **primitive inventory is gone.** There is no
+`primitive_registry` any more: the vocabulary is generated at runtime, so this file no longer
+renders an alphabet, no longer parses a body against one, and no longer computes a ψ distance
+over one. With the inventory went the **single-agent lane** (`SynthesizeTool` ·
+`maybe_synthesize` · `build_context`) -- it could not run without a registry, and keeping a lane
+that cannot run is a comparison arm that only looks like one. The deletion list is in
+`docs/superpowers/specs/2026-09-03-generated-primitive-synthesis-design.md`.
 
-  (1) The `SynthesizeTool` signature (spec §5-1, **verbatim**).
-  (2) It builds the `context` -- the physical principles of this build, the current state,
-      the final goal, the novel properties of the event, what must change, the tools we
-      already have, and **the primitive inventory with each primitive's mechanism**.
-  (3) **Canonicalisation** of the output, ψ-distance **recording**, and the `|K|` counter.
-  (4) The verdict on whether T2 fires, and the four values of `tool_minted`.
+This file does three things.
+
+  (1) The 3-agent pipeline (observe / design / compose) and its prompt blocks.
+  (2) **Canonicalisation** of the output and the `|K|` counter.
+  (3) The verdict on whether T2 fires, and the four values of `tool_minted`.
 
 🔴 This file is the Python half only. The Julia wiring that puts `tool_minted` on a decision
 row (`TOOL_LANE_KEYS` in `policy.jl`, `this_decision` in `run_demo.jl`) was **deliberately
@@ -24,11 +29,19 @@ exactly that trap (a no-op without `CARRIER_RESCUE`, yet the log looks normal). 
     tool_minted == "disabled"  ->  this event WOULD have fired, but **the flag was off**
     tool_minted is None        ->  this was not a firing event (expressible != False)
 
-🔴 **The order of the verdict is "firing condition first, flag second."** Reversed (flag
+🔴 **The order of the verdict was "firing condition first, flag second."** Reversed (flag
 first), **every decision row** of a default run becomes `"disabled"`, and at that moment the
 `expressible == false` rate (the very number spec §8-1 names as the substitute signal for the
-promotion gate) can no longer be recovered from this field. In the present order, the count of
-`"disabled"` IS "how many times it would have fired had we turned it on".
+promotion gate) can no longer be recovered from this field.
+
+⚠️ **2026-09-03 -- that ordering no longer holds, and the reading it licensed is now false.**
+It belonged to the deleted single-agent lane, where `expressible` arrived as a caller argument
+and could be judged before spending anything. On the surviving 3-agent lane the firing verdict
+is **agent-2's own output field**, so it does not exist until the pipeline has already run --
+which means `synthesize_multi` must check the flag first and returns `"disabled"` with
+`synthesis_event=False`. ⟹ **Do not read the count of `"disabled"` as "how many times it would
+have fired".** With the flag off, that number is "how many decisions there were", and the
+`expressible == false` rate is simply not observable without paying for it.
 
 🔴 **The four values are not a partition.** There is a fifth event: **it ran and the LM/parse
 failed.** That row has `tool_minted is None` but `synthesis_event=True · ran=True ·
@@ -44,26 +57,14 @@ events landing in another lane's bucket and inflating the rate (the three events
     new canon        ran == True and error is None                 -> tool_minted == True
 
 ────────────────────────────────────────────────────────────────────────────────
-🔴 R19 -- the ψ distance is **record-only**. It merges on no threshold whatsoever.
+🔴 R19 (2026-09-03) -- the ψ distance is **gone**, not merely record-only.
 ────────────────────────────────────────────────────────────────────────────────
-The T6a measurement cut the discriminating power of this space: of the 19 `a_cost` values only
-4 are anchored to real numbers, and two of those exist to break a ψ collision · `a_intervenes`
-is 1.0 for all 19 (zero information in the distance) · the two namespaces disagree on
-`a_reversible` for the same physical action. So this file **computes the distance and records
-it only**, and does not invent a τ. The provenance of the standardisation statistics comes out
-alongside them from `psi_stats()` -- keeping the numbers without the provenance would erase
-those 15 judgements from the record.
-
-────────────────────────────────────────────────────────────────────────────────
-🔴 R7 -- `when_to_use` touches no prompt path whatsoever.
-────────────────────────────────────────────────────────────────────────────────
-It is the **answer condition**, and putting it in the prompt would mean what we measure is not
-reasoning but prompt compliance (spec §6-2, the measurement at `dspy_service.py:155-165`). The
-inventory render in this file **does not read** that field -- the field name occurs exactly once
-in this module, in `_NEVER_RENDER` below. The gate is the **substitution-invariance** check in
-`test_synthesize.py` (replace every when_to_use with a sentinel: is the render byte-identical?).
-Why a 20-character sliding window cannot be run against the **original** when_to_use text of the
-live registry is in that test's docstring, with the measurement.
+ψ was a vector over the 19 operational primitives of the deleted registry, and the
+standardisation population was those same 19. With the registry gone there is no population and
+no axis table, so `psi_stats` · `psi_of` · `standardized_distance` · `reference_psis` and every
+`psi*` field of the record went with it. 🔴 The fields are **removed, not nulled**: a `psi` key
+that is always `None` would read as "we could not measure it" on a lane where the quantity does
+not exist at all, and this repo has been burned by exactly that conflation.
 
 ────────────────────────────────────────────────────────────────────────────────
 🔴 params must be **flat scalars only** -- this closes a trap left behind by T1.
@@ -79,7 +80,6 @@ recorded with `params_flat=False`, and the definition is kept in full (spec §5-
 """
 import json
 import os
-import re
 import sys
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -104,42 +104,10 @@ import numpy, sklearn.ensemble  # noqa: F401,E401  -- pinned order: before dspy
 
 import dspy  # noqa: E402
 
-import features_agnostic as _fa       # noqa: E402  (psi -- takes operational primitive names, KeyError if unknown)
-import primitive_registry as _prim    # noqa: E402  (registry loader. never copy-paste literals)
-
-# 🔴 This is the **only place** in this whole module where the name `when_to_use` occurs. The
-#    render functions never read that key from a primitive dict -- and the gate measures that
-#    very fact as substitution invariance. It is here so the code distinguishes "forgotten"
-#    from "deliberately left out".
-_NEVER_RENDER = ("when_to_use",)
-
-# ---- F5 (2026-09-02): 못 부르는 원시의 표식과, 그 표식을 지목하는 body 규칙 -----------------
-# 🔴 **BODY RULE 은 한 벌이다.** 2026-09-02 까지 이 문자열이 `build_context` 와
-#    `build_inventory_block` 에 **두 벌**로 복사돼 있었다 — 한쪽만 고치면 단일 agent 레인과
-#    3-agent 레인이 서로 다른 규칙을 읽는데 어느 시험도 안 빨개진다(둘 다 자기 사본을 본다).
-#    게이트가 두 렌더러 모두에 대해 이 상수를 요구한다.
-_NOT_CALLABLE_MARK = "[NOT CALLABLE BY THE HARNESS TODAY]"
-
-_INVENTORY_HEADER = [
-    "PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
-    "Each entry states which surface it edits, what it consumes, whether it can be undone, "
-    "and its full mechanism including the conditions under which it does nothing at all.",
-]
-
-# 🔴 2026-09-01 의 두 문장(harness 가 재풀이의 주체다)은 그대로 둔다 — 그것이 없으면 모델이
-#    body 끝에 commit 단계를 **지어낸다**(`commit_respec` 이 실제로 그렇게 나왔다).
-# 🔴 2026-09-02 가 더한 것은 마지막 문장 하나다: 표식의 **귀결**. 표식만 붙이고 귀결을 안
-#    적으면 모델은 그것을 경고로 읽고 그냥 쓴다.
-_BODY_RULE = (
-    "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
-    "The harness re-solves the MILP after every body, so never write a commit, "
-    "re-solve, formulate, or persist step -- there is no such primitive here, and a "
-    "body naming one cannot be enacted at all. If what you need is genuinely absent, "
-    "do not invent a name inside the body: set reach to \"needs_primitive\" and "
-    "describe it in missing_primitive. "
-    "An entry marked " + _NOT_CALLABLE_MARK + " is listed so you can reason about what "
-    "this build can and cannot do, but the harness cannot call it: naming one anywhere in "
-    "a body makes the WHOLE body unenactable, so cite it in missing_primitive instead.")
+# 🔴 2026-09-03. `import features_agnostic as _fa` 와 `import primitive_registry as _prim` 은
+#    여기 있었다. `primitive_registry` 는 삭제됐고(그 순간 이 모듈의 import 가 죽어 서비스
+#    전체가 못 떴다), `_fa` 는 ψ 하나에만 쓰였는데 ψ 가 통째로 사라졌다. 어느 쪽도 되살리지
+#    말 것 — 알파벳은 이제 런타임에 생성되고, 파일에서 읽는 어휘는 없다.
 
 SYNTHESIS_ENV = "TOOL_SYNTHESIS"
 
@@ -151,38 +119,12 @@ def synthesis_enabled() -> bool:
 
 
 # ==========================================================================================
-# (1) The signature -- spec §5-1 **verbatim**. Do not casually reword field names or descs.
+# (1) The shared prompt blocks
 # ==========================================================================================
-class SynthesizeTool(dspy.Signature):
-    """You design a NEW recovery tool for a disruption that no existing tool addresses.
-    A tool is a NAME, a PARAMETER SCHEMA, a MECHANISM description, and a BODY.
-    The BODY is a sequence of primitive operations. Prefer primitives from the inventory
-    you are given. If the inventory cannot express what is needed, you may still define
-    the tool -- but you must name the missing primitive precisely (what it edits, its
-    preconditions, whether it can be undone) and set reach to "needs_primitive".
-    You never write code: a body is a call sequence, a missing primitive is a spec."""
-    context: str  = dspy.InputField(desc=
-        "physical principles of this build (3-layer robot policy, scene tree, DAG design), "
-        "current state, final goal, novel properties of the event, what should change, "
-        "existing tools, and the PRIMITIVE INVENTORY with each primitive's mechanism")
-    question: str = dspy.InputField(desc="the properties of the OOD failure event")
-
-    tool_name: str = dspy.OutputField()
-    params: str    = dspy.OutputField(desc="JSON schema of the parameters")
-    mechanism: str = dspy.OutputField(desc=
-        "exactly which graph surface this edits and how; what it consumes; preconditions; "
-        "whether it can be undone. Be exhaustive -- a later decision reads only this.")
-    body: str      = dspy.OutputField(desc=
-        "ordered list of primitive calls, with arguments")
-    reach: str     = dspy.OutputField(desc=
-        '"composed" if every primitive in the body exists in the inventory; '
-        '"needs_primitive" otherwise')
-    missing_primitive: str = dspy.OutputField(desc=
-        "if reach is needs_primitive: name, edit surface (sched|scene_tree|env_param|"
-        "physical), params, preconditions, reversibility, what it consumes, and WHY no "
-        "composition over the inventory can substitute for it. Empty otherwise.")
-
-
+# 🔴 2026-09-03 (D8). `class SynthesizeTool(dspy.Signature)` stood here -- the single-agent
+#    lane's whole signature, whose `context` field advertised "the PRIMITIVE INVENTORY with each
+#    primitive's mechanism". There is no inventory to advertise, so the signature is gone and so
+#    is the lane it drove. The 3-agent signatures below are the only ones left.
 # ==========================================================================================
 # (2) context
 # ==========================================================================================
@@ -236,66 +178,9 @@ alive but leaves one node permanently unclosable has failed, and a plan that spe
 spare to close a node that would have closed anyway has paid for nothing."""
 
 
-def _fmt_params(p: Dict[str, Any]) -> str:
-    return json.dumps(p, ensure_ascii=False, sort_keys=True)
-
-
-def primitive_inventory_lines(blob=None) -> List[str]:
-    """Render the 19 operational primitives as prompt lines.
-
-    🔴 Only each primitive's **`mechanism`** goes in. when_to_use is not read (R7).
-    ⚠️ **The trap entries go in as they are** -- `force_advance_stuck_carrier` is a no-op
-    without `CARRIER_RESCUE=1`, `rethread_robot_ids` needs PARKED, `deprioritize_agent` is void
-    without a MILP re-solve. Those facts are already inside each entry's `mechanism` prose,
-    which is why the mechanism goes in **in full, never truncated**. Truncate it and the
-    synthesiser builds a tool that quietly does nothing.
-    """
-    b = blob if blob is not None else _prim.REGISTRY
-    out: List[str] = []
-    for p in b["primitives"]:
-        # 🔴 2026-09-02 (F5). 이 알파벳은 19개를 광고하는데 harness 가 실제로 부를 수 있는
-        #    것은 8개다. 표시하지 않았을 때의 대가는 실측이다: F1 직후 재측정에서 mild 레인이
-        #    처음 낸 body 의 두 번째 원시가 `deprioritize_agent`(집행 불가)였고, 그 body 는
-        #    `enact_minted!` 에서 `reject:unenactable` 로 **한 발도 안 굴러간다.**
-        # 🔴 판정은 파이썬이 못 한다 — Julia `_enactability` 가 메서드 시그니처를 읽어 정하고
-        #    레지스트리에 도장으로 실린다. 여기서는 그 도장을 읽기만 한다.
-        # 🔴 도장이 **없으면 "부를 수 있음" 으로 기울지 않는다.** 부재는 "못 쟀다" 이고, 그
-        #    상태에서 body 에 넣는 것은 여전히 위험하므로 보수적으로 표시하되 이유를 그렇게
-        #    적는다. 부재 자체는 게이트가 빨갛게 만든다
-        #    (`test_every_primitive_declares_whether_the_harness_can_call_it`).
-        stamped = p.get("enactable")
-        callable_ = stamped is True
-        out.append("- %s   [surface=%s  reversible=%s  consumes=%s]%s" % (
-            p["name"], p["surface"],
-            "yes" if p["reversible"] else "NO",
-            (", ".join(p["consumes"]) if p["consumes"] else "nothing"),
-            "" if callable_ else "   " + _NOT_CALLABLE_MARK))
-        if not callable_:
-            out.append("    why not callable: %s" % (
-                (p.get("unenactable_why") or "").strip()
-                or "callability was never recorded for this primitive"))
-        out.append("    params: %s" % _fmt_params(p["params"]))
-        if p.get("preconditions"):
-            out.append("    preconditions: %s" % "; ".join(p["preconditions"]))
-        out.append("    mechanism: %s" % p["mechanism"])
-    return out
-
-
-def predicate_inventory_lines(blob=None) -> List[str]:
-    """Pure predicates. **They must not go in a body** -- we tell the model so.
-
-    Why this is needed: `features_agnostic.psi()` raises KeyError on a predicate name (and the
-    message says separately "this is a predicate"). If a predicate lands in a body, the ψ
-    distance in this file becomes uncomputable, and that fact is recorded as `psi_error` -- it
-    does not quietly become 0.
-    """
-    b = blob if blob is not None else _prim.REGISTRY
-    out: List[str] = []
-    for q in b["predicates"]:
-        out.append("- %s   [PURE PREDICATE -- reads geometry, edits nothing. It has no effect "
-                   "descriptor and MUST NOT appear in a tool body.]" % q["name"])
-        out.append("    mechanism: %s" % q["mechanism"])
-    return out
+# 🔴 2026-09-03 (D5). `_fmt_params` · `primitive_inventory_lines` · `predicate_inventory_lines`
+#    stood here and rendered `primitive_registry.json` into prompt lines. The registry is gone.
+#    Nothing in this file reads an alphabet from a file any more; do not rebuild one.
 
 
 def _tool_lines(tools) -> List[str]:
@@ -318,62 +203,10 @@ def _tool_lines(tools) -> List[str]:
     return out
 
 
-_NOVEL_FALLBACK = """\
-The monitor did not classify this event. Its novelty is exactly what the observation above
-reports and what the existing tools below cannot address -- no event-type label was applied,
-and no field named after a known failure mode was populated."""
-
-_MUST_CHANGE_FALLBACK = """\
-The schedule must reach a state in which every remaining node can close. The observation above
-is the ONLY evidence of what currently prevents that; nothing here tells you which edit is
-correct, and no minimum repair has been computed for you."""
-
-
-def build_context(state: str,
-                  tools=None,
-                  novel: Optional[str] = None,
-                  must_change: Optional[str] = None,
-                  goal: Optional[str] = None,
-                  principles: Optional[str] = None,
-                  blob=None) -> str:
-    """The body of `SynthesizeTool.context`.
-
-    Seven blocks, in the order of the signature's desc: physical principles · current state ·
-    final goal · novel properties of the event · what must change · the tools we have ·
-    the primitive inventory.
-
-    🔴 There is no path at all that reads when_to_use (R7). Gate: substitution invariance.
-    🔴 It carries no answers: `min_shift_to_clear_m` (= the answer **solved** by
-       `_find_min_translation`) was deleted from the prompt by T4a, and since this file takes
-       the `state` string as-is it inherits that removal automatically. Neither fallback above
-       writes a single line of "what to do".
-    """
-    parts = [
-        principles or PHYSICAL_PRINCIPLES,
-        "",
-        "CURRENT STATE (decision-time observation, produced without classifying the event)",
-        state or "(no observation was supplied)",
-        "",
-        goal or FINAL_GOAL,
-        "",
-        "NOVEL PROPERTIES OF THE EVENT",
-        novel or _NOVEL_FALLBACK,
-        "",
-        "WHAT MUST CHANGE",
-        must_change or _MUST_CHANGE_FALLBACK,
-        "",
-        "TOOLS YOU ALREADY HAVE (a new tool must do something these cannot)",
-    ]
-    parts += _tool_lines(tools)
-    # 🔴 2026-09-02: 머리말도 BODY RULE 도 이제 **모듈 상수 한 벌**이다(위 `_BODY_RULE`).
-    #    `build_inventory_block` 이 같은 상수를 쓴다 — 두 벌이던 시절에는 한쪽만 고쳐도
-    #    어느 시험도 안 빨개졌다.
-    parts += [""] + _INVENTORY_HEADER + [_BODY_RULE]
-    parts += primitive_inventory_lines(blob)
-    parts += ["",
-              "PURE PREDICATES -- measurement only. Never put one in a body."]
-    parts += predicate_inventory_lines(blob)
-    return "\n".join(parts)
+# 🔴 2026-09-03 (D8). `_NOVEL_FALLBACK` · `_MUST_CHANGE_FALLBACK` · `build_context` stood here.
+#    They existed for exactly one caller -- `SynthesizeTool.context` of the single-agent lane --
+#    and their last two blocks were the inventory render. Both are gone. The 3-agent lane has
+#    its own three context builders below, each worded for where it is actually rendered.
 
 
 # ==========================================================================================
@@ -663,66 +496,25 @@ def build_compose_context(spec: Dict[str, Any], reasoning_log: str = "", blob=No
     ])
 
 
-def build_inventory_block(blob=None) -> str:
-    """The alphabet agent-3 reads. Uses **the same renderer** as `build_context` -- two copies
-    and only one of them grows.
+# 🔴 2026-09-03 (D5). `build_inventory_block` stood here -- the alphabet agent-3 read. There is
+#    no alphabet. `synthesize_multi` passes `inventory=""` until Task 8 replaces that stage's
+#    signature with one that is handed the **world interface** instead.
 
-    🔴 2026-09-02: that sentence was only half true until today. `primitive_inventory_lines`
-    was indeed shared, but the header and the BODY RULE were **literal copies** here and in
-    `build_context` -- edit one and the single-agent lane and the 3-agent lane read different
-    rules, with no test going red (each asserted against its own copy). Both now come from
-    `_INVENTORY_HEADER` / `_BODY_RULE`.
-    """
-    parts = list(_INVENTORY_HEADER) + [_BODY_RULE]
-    parts += primitive_inventory_lines(blob)
-    parts += ["", "PURE PREDICATES -- measurement only. Never put one in a body."]
-    parts += predicate_inventory_lines(blob)
-    return "\n".join(parts)
 
 # ==========================================================================================
-# (3) canonicalisation · ψ · |K|
+# (3) canonicalisation · |K|
 # ==========================================================================================
-# Where `name(` or `name!(` is called. Julia impl names end in `!` (the registry's `impl`), so
-# whichever of the two the model writes normalises to the same name.
-_CALL_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)!?\s*\(")
-_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*!?")
+# 🔴 2026-09-03 (D5 · D7). `_CALL_RE` · `_WORD_RE` · `parse_body` stood here. `parse_body` read a
+#    body's prose and matched it **against the registry** -- both of its two ways did (the
+#    paren form for the shape, the name scan for membership). With no registry there is nothing
+#    to match against, and a parser that silently matches nothing is worse than no parser.
+#    Task 8 fills `body_names` from agent-3's own `impl_name` instead.
+# 🔴 `_norm` survives on its own: `normalize_calls` uses it, and the `!` convention (Julia impl
+#    names end in `!`) outlives the registry that documented it.
 
 
 def _norm(name: str) -> str:
     return name[:-1] if name.endswith("!") else name
-
-
-def parse_body(text: Optional[str]) -> Tuple[List[str], str]:
-    """body text -> (primitive names, how it was parsed).
-
-    🔴 **Arguments are not returned.** This is where spec §5-2-2's *"parameters are not part of
-    the canonical form"* lives -- `shift_build(dx=2.38)` and `shift_build(dx=2.40)` are the same
-    behaviour, and their difference lies on the parameter axis. Extracting names only is the
-    **structural** enforcement of that rule.
-
-    There are two ways, and which one it was is returned alongside (so we never quietly count
-    something else):
-      "calls" : found `name(...)` forms.
-      "names" : there were no parentheses at all -> scanned for known primitive names **in
-                order of appearance**. (For when the model writes "1. translate_whole_build
-                then restage_all_blocked".)
-                🔴 The scan only picks up **names inside the alphabet**. Names outside it
-                vanish silently, whereas the parenthesised form (`_CALL_RE`) does not consult
-                the registry and so comes out and gets rejected downstream as an "unknown
-                primitive" -- the same intent forks on notation.
-      "empty" : nothing was found.
-    ⚠️ Duplicates are **not collapsed.** A body that calls the same primitive twice is a
-    different point because ψ's `a_cost` is a sum, and erasing that in the canonical form would
-    erase the difference from the record.
-    """
-    t = text or ""
-    names = [_norm(m.group(1)) for m in _CALL_RE.finditer(t)]
-    if names:
-        return names, "calls"
-    known = set(_prim.PRIMITIVE_NAMES) | set(_prim.PREDICATE_NAMES)
-    scan = [_norm(m.group(0)) for m in _WORD_RE.finditer(t)]
-    names = [n for n in scan if n in known]
-    return (names, "names") if names else ([], "empty")
 
 
 #: 호출 인자로 허용되는 값의 타입. `params_flatness` 의 `_SCALAR_TYPES` 와 **같은 축**이지만
@@ -796,9 +588,11 @@ def calls_flatness(calls) -> Tuple[Optional[bool], str]:
 def canon(names: Sequence[str], kind: Optional[str]) -> Tuple[Tuple[str, ...], str]:
     """The canonical form of spec §5-2-2: `(sorted(primitive names of the body), target kind)`.
 
-    🔴 Parameters do not go in -- `names` has no arguments in it to begin with (see
-    `parse_body`). If there is no `kind` it stays `""` (the empty string and `"battery"` are
-    different canonical forms).
+    🔴 Parameters do not go in -- `names` carries names only, never arguments (they travel on
+    the `calls` channel). If there is no `kind` it stays `""` (the empty string and `"battery"`
+    are different canonical forms).
+    ⚠️ 2026-09-03: until Task 8 fills `body_names`, every record of a kind reaches this with
+    `[]`, so all of them share one canonical form and `|K|` counts kinds, not behaviours.
     """
     return (tuple(sorted(names)), kind or "")
 
@@ -809,109 +603,15 @@ def canon_key(c) -> str:
     return "%s::%s" % ("|".join(c[0]), c[1])
 
 
-def classify(names: Sequence[str]) -> Dict[str, List[str]]:
-    """Split names into four namespaces. Order is preserved.
-
-    operational : operational primitives of `primitive_registry.json` (they have a ψ)
-    predicate   : pure predicates from the same file (they have **no** ψ -- must not be in a body)
-    dsl         : DSL primitives of `features_agnostic._PRIMITIVE_TABLE` (ReplaceAgent …)
-    unknown     : nowhere to be found -- either a typo or a primitive that does not exist yet
-    """
-    op, pred, dsl, unk = [], [], [], []
-    for n in names:
-        if n in _prim.PSI_TABLE:
-            op.append(n)
-        elif n in _prim.PREDICATE_NAMES:
-            pred.append(n)
-        elif n in _fa._PRIMITIVE_TABLE:
-            dsl.append(n)
-        else:
-            unk.append(n)
-    return {"operational": op, "predicate": pred, "dsl": dsl, "unknown": unk}
-
-
-_PSI_STATS_CACHE: Dict[int, Dict[str, Any]] = {}
-
-
-def psi_stats(blob=None) -> Dict[str, Any]:
-    """Per-axis standardisation statistics + **the provenance of those statistics**.
-
-    ⚠️ The ψ axes have wildly different scales (`a_cost` continuous · `a_scope` integer · the
-    rest 0/1). Use a Euclidean distance without per-axis standardisation and `a_cost` monopolises
-    it. The population is **the single-primitive ψ vectors of the 19 operational primitives**,
-    and there is no other sample in this repo that speaks to the ψ distribution of synthesised
-    tools (the first observations are what give that distribution -- spec §5-2-2).
-
-    🔴 Emitting `provenance` alongside is half of what this function is for. Keep the numbers
-    only and what T6a measured disappears from the record -- that of the 19 `a_cost` values only
-    4 are anchored to real numbers, that two of those exist to break a ψ collision, and that
-    `a_intervenes` is 1.0 for all 19 and therefore carries zero information in the distance.
-
-    Zero-variance axes are **dropped** from the distance (you cannot divide by zero). That list
-    is recorded too -- "there are 10 axes" and "this many axes actually contribute to the
-    distance" are different facts.
-    """
-    b = blob if blob is not None else _prim.REGISTRY
-    key = id(b)
-    if key in _PSI_STATS_CACHE:
-        return _PSI_STATS_CACHE[key]
-    names = sorted(_prim.psi_table(b))
-    vecs = [_fa.psi([n]) for n in names]
-    axes = list(_fa.PSI_AXES)
-    mean, std = {}, {}
-    for a in axes:
-        col = [v[a] for v in vecs]
-        m = sum(col) / len(col)
-        mean[a] = m
-        std[a] = (sum((x - m) ** 2 for x in col) / len(col)) ** 0.5
-    zero = [a for a in axes if std[a] == 0.0]
-    out = {
-        "axes": axes,
-        "mean": mean,
-        "std": std,
-        "zero_variance_axes": zero,
-        "n_population": len(names),
-        "provenance": {
-            "population": "the %d operational primitives of primitive_registry.json, each as "
-                          "psi([name])" % len(names),
-            "source_file": "wm4spacecraft_manufacturing/core/primitive_registry.json",
-            "schema_version": b.get("schema_version"),
-            "statistic_used_in_distance": "per-axis population std (mean cancels in a "
-                                          "difference and is recorded for audit only)",
-            "machine_derived_axes": ["a_reversible", "a_consumes_spare", "a_spatial"],
-            "hand_judged_axes": ["a_cost", "a_intervenes", "a_soft", "a_restores_capacity",
-                                 "a_relocates_work", "a_scope"],
-            "a_cost_note": "T6a measurement: of 19 a_cost values only 4 are anchored to real "
-                           "numbers (SwapBattery 0.2 / ReplaceAgent 1.0 / RelocateBuild 1.5 "
-                           "and the registry MACRO_COST scale); the other 15 are ordering "
-                           "judgements, and 2 of those (1.2 / 1.3) exist only to break psi "
-                           "collisions. a_cost is the only continuous axis, so the whole "
-                           "standardisation rests on those 15 judgements.",
-            "zero_variance_note": "axes with zero variance carry no information and are "
-                                  "dropped from the distance; a_intervenes is 1.0 for all 19.",
-            "merging": "R19: distance is RECORDED ONLY. No threshold, no merge. The first "
-                       "observations are what give the distance distribution.",
-        },
-    }
-    _PSI_STATS_CACHE[key] = out
-    return out
-
-
-def psi_of(names: Sequence[str]) -> Dict[str, float]:
-    """The ψ of operational primitive names. Dies with `KeyError` on a predicate or an
-    unregistered name (features_agnostic)."""
-    return _fa.psi(list(names))
-
-
-def standardized_distance(u: Dict[str, float], v: Dict[str, float], stats) -> float:
-    """Per-axis standardised Euclidean distance. Zero-variance axes drop out."""
-    s = 0.0
-    for a in stats["axes"]:
-        sd = stats["std"][a]
-        if sd == 0.0:
-            continue
-        s += ((u[a] - v[a]) / sd) ** 2
-    return s ** 0.5
+# 🔴 2026-09-03 (D5 · D7). Five things stood here and all five were registry-shaped:
+#      `classify`             split a body's names into the registry's four namespaces
+#      `_PSI_STATS_CACHE`     memoised the standardisation statistics **by registry blob id**
+#      `psi_stats`            standardised over the 19 operational primitives of the registry
+#      `psi_of`               `features_agnostic.psi(names)` -- KeyError outside that alphabet
+#      `standardized_distance` the per-axis distance those statistics were for
+#    With the alphabet generated at runtime there is no population to standardise over and no
+#    namespace table to classify into, so the ψ record fields are **removed, not nulled** (a
+#    permanently-`None` field reads as "could not measure", which is a different claim).
 
 
 class SynthesisLedger:
@@ -951,25 +651,9 @@ class SynthesisLedger:
         e["tool_names"].append(tool_name)
         return False
 
-    def reference_psis(self) -> List[Tuple[str, Dict[str, float]]]:
-        """The reference set for the ψ distance: those canonical forms in the ledger **whose ψ
-        is computable**.
-
-        ⚠️ T1's three tools (`swap_body`·`deliver_battery`·`no_intervention`) are **not** here.
-        They have no body made of operational primitives, and borrowing a ψ from the DSL
-        namespace would put the same behaviour at two points, because the two namespaces
-        disagree on `a_reversible` for the same physical action (T6a measurement). The
-        `reference` of the distance record carries that exclusion fact alongside.
-        """
-        out = []
-        for k, e in self.entries.items():
-            if not e["primitives"]:
-                continue
-            try:
-                out.append((k, psi_of(e["primitives"])))
-            except KeyError:
-                continue
-        return out
+    # 🔴 2026-09-03. `reference_psis()` stood here: the ledger's canons whose ψ was
+    #    computable, i.e. the reference set of the ψ distance. ψ is gone (see above), and with
+    #    it its only caller. The ledger keeps its one job -- counting distinct canons (|K|).
 
 
 LEDGER = SynthesisLedger()      # process-global |K|. Tests pass their own ledger.
@@ -1042,22 +726,17 @@ def _blank(rec_kind, expressible, ledger) -> Dict[str, Any]:
 
 
 def _finish_record(rec, kind, led, blob):
-    """Take a `rec` whose six output fields are filled and finish it: parse, psi, canon, ledger.
+    """Take a `rec` whose output fields are filled and finish it: canon, ledger, |K|.
 
-    🔴 The single-agent lane (`maybe_synthesize`) and the 3-agent lane (`synthesize_multi`) use
-    **the same function**. Kept as two copies, only one of them grows, and then the two lanes'
-    records quietly come to mean different things -- the failure shape this repo already walked
-    into with `train_kinds` and `require_vocab`.
+    🔴 2026-09-03. This used to open by parsing `rec["body"]` against the registry and by
+    computing a ψ distance over it. Both are gone with the registry (D5 · D7). What is left is
+    the part that never depended on an alphabet: the canonical form, the ledger, and `|K|`.
     """
-    names, how = parse_body(rec["body"])
-    cls = classify(names)
-    rec["body_names"] = names
-    rec["body_parse"] = how
-    rec.update({"body_%s" % k: v for k, v in cls.items()})
-    # Does `reach` disagree with the body -- **recorded only**, never enforced.
-    rec["reach_matches_body"] = (
-        None if rec["reach"] not in ("composed", "needs_primitive") else
-        (rec["reach"] == "composed") == (not cls["unknown"]))
+    # 🔴 `body_names` stays in the record and stays a **list**. Task 8 fills it with
+    #    `[impl_name]`; the Julia enactment path reads this key, and key-absence must not be
+    #    confused with an empty body. Until then it is `[]` -- "we ran and there is no body
+    #    name", never a missing key.
+    rec["body_names"] = []
     # 🔴 If it is inexpressible and the definition is empty, the record loses what was needed
     #    in that event.
     rec["missing_primitive_recorded"] = (
@@ -1066,60 +745,23 @@ def _finish_record(rec, kind, led, blob):
     rec["params_flat"], rec["params_flat_detail"] = params_flatness(rec["params"])
 
     # ---- 인자 채널 (2026-09-03, A) ----------------------------------------------------------
-    # 🔴 `body_names` 를 **여기서 안 바꾼다.** 그것이 canon·psi·ledger·`tool_minted` 의 계보이고,
-    #    출처를 갈면 이 기록을 F2/F7 과 같은 표에 못 올린다. `calls` 는 인자 채널로만 더하고,
-    #    둘의 어긋남은 `reach_matches_body` 와 **같은 관용**으로 기록만 한다(강제 안 한다).
-    # 🔴 단일 agent 레인(`SynthesizeTool`)에는 이 필드가 **없다** — 일부러 안 더했다. 더하면
-    #    그 레인의 프롬프트가 바뀌어 대조군이 사라진다. 그 레인에서 이 값은 `None`(못 쟀다)이다.
-    # 🔴 Step 5. `normalize_calls` 는 "필드가 없었다" 와 "있었는데 못 읽었다" 를 둘 다 `None`
-    #    으로 낸다(전부-아니면-전무의 대가). 줄리아는 `nothing` 을 "못 쟀다 → 옛 `params`
-    #    경로" 로 읽으므로 세계는 안 상하지만 **기록이 상한다** — 못 읽은 판이 안 낸 판과
-    #    구별되지 않는다. 그래서 원문의 유무를 옆에 적어 셋을 일대일로 만든다.
+    # 🔴 `normalize_calls` 는 "필드가 없었다" 와 "있었는데 못 읽었다" 를 둘 다 `None` 으로
+    #    낸다(전부-아니면-전무의 대가). 줄리아는 `nothing` 을 "못 쟀다 → 옛 `params` 경로" 로
+    #    읽으므로 세계는 안 상하지만 **기록이 상한다** — 못 읽은 판이 안 낸 판과 구별되지
+    #    않는다. 그래서 원문의 유무를 옆에 적어 셋을 일대일로 만든다.
     _raw_calls = rec.get("calls")
     rec["calls"] = normalize_calls(_raw_calls)
     rec["calls_unreadable"] = (_raw_calls is not None and rec["calls"] is None)
+    # 🔴 기록만 하고 강제하지 않는다(옛 `reach_matches_body` 와 같은 관용). Task 8 이
+    #    `body_names` 를 채우기 전까지 이 값은 구조적으로 `False` 다 — `[]` 와 비교하기 때문.
     rec["calls_match_body"] = (
         None if rec["calls"] is None else
-        [c["primitive"] for c in rec["calls"]] == names)
+        [c["primitive"] for c in rec["calls"]] == rec["body_names"])
     rec["calls_flat"], rec["calls_flat_detail"] = calls_flatness(rec["calls"])
 
-    c = canon(names, kind)
+    c = canon(rec["body_names"], kind)
     rec["canon"] = {"primitives": list(c[0]), "kind": c[1]}
     rec["canon_key"] = canon_key(c)
-
-    # ---- (2) ψ proximity -- **the distance is recorded, nothing is folded** (R19). Measure it
-    #      **before** putting the entry in the ledger: measure it after, and the distance 0 to
-    #      itself is always the minimum. -------------------------------------------------------
-    stats = psi_stats(blob)
-    rec["psi_provenance"] = stats["provenance"]
-    rec["psi_zero_variance_axes"] = stats["zero_variance_axes"]
-    rec["psi"] = rec["psi_distance"] = rec["psi_nearest"] = None
-    rec["psi_error"] = None
-    rec["psi_reference_n"] = 0
-    if cls["operational"] and not (cls["predicate"] or cls["dsl"] or cls["unknown"]):
-        try:
-            v = psi_of(names)
-        except KeyError as e:
-            rec["psi_error"] = "KeyError: %s" % e
-        else:
-            rec["psi"] = v
-            refs = led.reference_psis()
-            rec["psi_reference_n"] = len(refs)
-            if refs:
-                d = [(standardized_distance(v, u, stats), k) for k, u in refs]
-                d.sort()
-                rec["psi_distance"], rec["psi_nearest"] = d[0][0], d[0][1]
-            else:
-                rec["psi_error"] = ("no reference points yet: the ledger holds no canon with a "
-                                    "computable psi (T1's three tools are deliberately not in "
-                                    "the reference set -- see reference_psis)")
-    else:
-        rec["psi_error"] = (
-            "psi not computed: the body is not made only of operational primitives "
-            "(predicates=%r dsl=%r unknown=%r). Predicates change nothing so they have no "
-            "effect descriptor; mixing the DSL namespace in would put the same physical "
-            "action at two points (T6a: a_reversible disagrees across the two namespaces)."
-            % (cls["predicate"], cls["dsl"], cls["unknown"]))
 
     minted = led.observe(c, params=rec["params"], tool_name=rec["tool_name"])
     rec["tool_minted"] = bool(minted)
@@ -1131,65 +773,26 @@ def _finish_record(rec, kind, led, blob):
     return rec
 
 
-def maybe_synthesize(expressible,
-                     kind: Optional[str] = None,
-                     state: str = "",
-                     tools=None,
-                     novel: Optional[str] = None,
-                     must_change: Optional[str] = None,
-                     ledger: Optional[SynthesisLedger] = None,
-                     program=None,
-                     blob=None) -> Dict[str, Any]:
-    """Decide whether to fire T2, and actually synthesise if it is switched on.
+def blank_synthesis_record(kind: Optional[str] = None,
+                           expressible=None,
+                           ledger: Optional[SynthesisLedger] = None) -> Dict[str, Any]:
+    """The record of an event that is **not a firing event**. No LM, no socket, no charge.
+
+    🔴 One source of truth for the blank shape. `dspy_service._blank_decision` used to obtain it
+    by calling `maybe_synthesize(expressible=None, ...)` purely for the shape of that function's
+    early return; `maybe_synthesize` is gone with the single-agent lane (D8), and replacing that
+    call with `run_synthesis` would have run the **paid** 3-agent pipeline for a shape. So the
+    early-return branch moved here, verbatim, `reason` string included -- a hand-built constant
+    dict on the service side would fork from this one the first time either grew.
 
     The firing condition is exactly the rate spec §8-1 names as the substitute signal:
-    **`expressible == False`** -- the signal that the closed tool set cannot express this event.
-    Neither `None` ("we could not measure it") nor `True` fires. Only then do we look at R13's
-    flag (the ordering argument is in the module docstring at the top).
-
-    🔴 If `TOOL_SYNTHESIS != "1"`, this function **calls no LM, builds no context, and opens no
-    socket.** The gate measures that by intercepting the socket.
+    **`expressible == False`**. Neither `None` ("we could not measure it") nor `True` fires.
     """
     led = ledger if ledger is not None else LEDGER
     rec = _blank(kind, expressible, led)
-
-    if expressible is not False:
-        rec["reason"] = ("not a firing event: expressible is %r; T2 fires only on False "
-                         "(spec 8-1)" % (expressible,))
-        return rec
-
-    rec["synthesis_event"] = True
-    if not synthesis_enabled():
-        # 🔴 R13. `"disabled"`, not `None` -- "it did not run because it was off" and "it ran and
-        #    minted nothing" are different events, and this repo really does contain a primitive
-        #    that emits success-shaped output while switched off
-        #    (`force_advance_stuck_carrier!` + `CARRIER_RESCUE`).
-        rec["tool_minted"] = "disabled"
-        rec["reason"] = ("%s != '1': synthesis is OFF by default because one firing is a "
-                         "billable OpenAI call (R13)" % SYNTHESIS_ENV)
-        return rec
-
-    ctx = build_context(state=state, tools=tools, novel=novel,
-                        must_change=must_change, blob=blob)
-    rec["context_chars"] = len(ctx)
-    prog = program if program is not None else dspy.ChainOfThought(SynthesizeTool)
-    rec["ran"] = True
-    try:
-        pred = prog(context=ctx, question=(novel or state or ""))
-    except Exception as e:
-        # The fifth event. `tool_minted` is None, but `ran=True · error!=None` separates it from
-        # "this was not a firing event" (synthesis_event=False) -- the table in the module docstring.
-        rec["error"] = "%s: %s" % (type(e).__name__, e)
-        rec["reason"] = "synthesis ran but the call failed; nothing was minted"
-        return rec
-
-    # ---- Preserve the output whole. 🔴 Even when inexpressible, the definition is recorded in
-    #      full (spec §5-1). ------------------------------------------------------------------
-    for f in ("tool_name", "params", "mechanism", "body", "reach", "missing_primitive"):
-        rec[f] = (getattr(pred, f, "") or "")
-    rec["reasoning"] = (getattr(pred, "reasoning", "") or "")
-
-    return _finish_record(rec, kind, led, blob)
+    rec["reason"] = ("not a firing event: expressible is %r; T2 fires only on False "
+                     "(spec 8-1)" % (expressible,))
+    return rec
 
 
 # ==========================================================================================
@@ -1328,46 +931,14 @@ def _params_view(params_text):
 #    read that verdict. The redesign loop above fires on ungrounded **parameters** only, so a
 #    specification that is perfectly grounded and simply unrealisable ends the run.
 #
-# 🔴 Why the feedback is REDACTED (the user's decision, 2026-09-02). agent-3's prose **names the
-#    inventory** -- the sentence above quotes `release_pending_assignments` by name. Handing it
-#    to agent-2 verbatim would end contract (B) of `test_synthesize_multi.py` (agent-2 must not
-#    see the alphabet), and from that point on this lane no longer measures design, it measures
-#    projection onto the vocabulary. So every registry name is replaced by a neutral placeholder
-#    before agent-2 reads it; what survives is the part that carries the signal ("the ordering
-#    you asked for is not implementable"). The names that were removed are **recorded**, so a
-#    run where the redaction destroyed the feedback can be told apart from one where it removed
-#    nothing at all.
-_REDACTED_NAME = "[an operation the composer already has]"
-
-
-def _inventory_names(blob=None) -> List[str]:
-    """Every name agent-2 must not read -- primitives **and** pure predicates.
-
-    🔴 Read from the registry, never a literal list: the leak guards in
-    `test_synthesize_multi.py` iterate the same registry, so a primitive added tomorrow is
-    redacted and asserted on without either side being edited.
-    """
-    b = blob if blob is not None else _prim.REGISTRY
-    return [p["name"] for p in b["primitives"]] + [q["name"] for q in b["predicates"]]
-
-
-def redact_inventory_names(text: Optional[str], blob=None) -> Tuple[str, List[str]]:
-    """Replace every inventory name in `text` with `_REDACTED_NAME`. Returns (text, names hit).
-
-    🔴 Longest name first. `release_pending_assignments` and a hypothetical
-    `release_pending` would otherwise leave the tail of the longer name behind as a bare
-    fragment -- half a name is still a name.
-    🔴 The Julia impls end in `!`, and the model quotes both spellings, so the trailing `!` is
-    swallowed by the same match rather than left dangling.
-    """
-    s = text or ""
-    hits: List[str] = []
-    for name in sorted(set(_inventory_names(blob)), key=len, reverse=True):
-        pat = re.compile(r"(?<![A-Za-z0-9_])%s!?(?![A-Za-z0-9_])" % re.escape(name))
-        s, n = pat.subn(_REDACTED_NAME, s)
-        if n:
-            hits.append(name)
-    return s, hits
+# 🔴 2026-09-03 (D5). The feedback used to be **redacted**: `_REDACTED_NAME` ·
+#    `_inventory_names` · `redact_inventory_names` stood here and replaced every registry name
+#    in agent-3's prose with a neutral placeholder, because contract (B) of
+#    `test_synthesize_multi.py` said agent-2 must not see the alphabet. **Contract (B) is
+#    abolished**: there is no alphabet to leak. agent-3 no longer holds a fixed inventory, so a
+#    name it mentions is a name it wrote itself, not a vocabulary item agent-2 would project
+#    onto. The feedback now travels verbatim and `compose_feedback_redacted` is `None`
+#    ("no redaction ran"), never `[]` ("redaction ran and hit nothing").
 
 
 # 🔴 The last sentence is not decoration. Without it a model that genuinely cannot re-specify
@@ -1405,18 +976,11 @@ def _copy_body_fields(rec, pred):
 # ==========================================================================================
 # (5) The 3-agent pipeline itself
 # ==========================================================================================
-MULTI_AGENT_ENV = "SYNTH_MULTI_AGENT"
-
-
-def multi_agent_enabled() -> bool:
-    """True only when `SYNTH_MULTI_AGENT=1`. **Exactly `"1"`**.
-
-    🔴 Two reasons the default is off. (a) This lane turns one billable call per decision into
-    three. (b) The comparison against the old (single-agent) version only holds if the default
-    path does not change -- if the new lane quietly becomes the default, earlier runs cannot be
-    put in the same table.
-    """
-    return os.environ.get(MULTI_AGENT_ENV, "") == "1"
+# 🔴 2026-09-03 (D8). `MULTI_AGENT_ENV` · `multi_agent_enabled()` stood here and chose between
+#    two lanes. There is one lane now, so the switch is gone from this file and `run_synthesis`
+#    has no branch. ⚠️ The env var name `SYNTH_MULTI_AGENT` still lives in `dspy_service.py`,
+#    read there by a local `_synth_multi_agent_stamp()` for `/health` **only** -- as a generation
+#    stamp, not as a lane switch. Do not reintroduce a reader here.
 
 
 # ==========================================================================================
@@ -1464,19 +1028,16 @@ def append_synthesis_record(rec, path=None) -> Optional[str]:
 
 def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
                   programs=None, blob=None) -> Dict[str, Any]:
-    """The single door the service calls. One flag decides which lane runs.
+    """The single door the service calls. **There is no branch** -- one lane, always.
 
-    🔴 The multi lane **does not use** the caller's `expressible`. On the single-agent version
-    that value was a tool argument of the decision agent (omitted by the model = `None` = "could
-    not measure"); in the multi version agent-2 emits it as its own output field. Mixing the two
-    sources computes the same-named rate over different denominators -- a place this repo has
-    already stood, with `macro_tool_agree`.
+    🔴 The caller's `expressible` is accepted and **not used**. agent-2 emits that verdict as its
+    own output field, so the record has one source for it; taking it from the caller as well
+    would compute the same-named rate over two different denominators -- a place this repo has
+    already stood, with `macro_tool_agree`. The parameter stays in the signature because the
+    service passes it positionally and its absence would be a silent API break.
     """
-    if multi_agent_enabled():
-        return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
-                                programs=programs, blob=blob)
-    return maybe_synthesize(expressible=expressible, kind=kind, state=state, tools=tools,
-                            ledger=ledger, blob=blob)
+    return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
+                            programs=programs, blob=blob)
 
 
 def synthesize_multi(state: str,
@@ -1597,8 +1158,11 @@ def synthesize_multi(state: str,
     # ---- agent-3: the specification -> a body ----------------------------------------------
     spec = {k: rec[k] for k in ("tool_name", "params", "mechanism")}
     try:
+        # 🔴 2026-09-03. `inventory=build_inventory_block(blob)` stood here. There is no
+        #    inventory; the field is fed the empty string so the signature still binds. Task 8
+        #    replaces this stage with one that receives the **world interface** instead.
         p3 = compose(spec=build_compose_context(spec, rec["reasoning_log"], blob),
-                     inventory=build_inventory_block(blob))
+                     inventory="")
     except Exception as e:
         rec["error"] = "compose: %s: %s" % (type(e).__name__, e)
         rec["reason"] = "stage 3 (compose) failed; nothing was minted"
@@ -1630,9 +1194,15 @@ def synthesize_multi(state: str,
         first = {f: rec[f] for f in _SPEC_FIELDS + _BODY_FIELDS}
         for f, v in first.items():
             rec[f + "_first"] = v          # the first attempt survives whatever happens below
-        red, hits = redact_inventory_names(rec["missing_primitive"], blob)
+        # 🔴 2026-09-03 (D5). 되먹임은 이제 **날것 그대로** 간다. 옛 코드는
+        #    `redact_inventory_names` 로 레지스트리 이름을 가렸는데, 그 목적은 계약 (B)
+        #    (agent-2 가 알파벳을 보면 설계가 어휘로의 투영이 된다)였다. 알파벳이 없으므로
+        #    가릴 것이 없고 계약 (B) 도 폐지됐다.
+        # 🔴 `compose_feedback_redacted` 는 `None`("가림이 안 돌았다")이지 `[]`("돌았는데
+        #    하나도 안 걸렸다")가 아니다 — 이 파일이 지키는 삼상 규약.
+        red = rec["missing_primitive"]
         rec["compose_feedback"] = _COMPOSE_FEEDBACK % red
-        rec["compose_feedback_redacted"] = hits
+        rec["compose_feedback_redacted"] = None
         try:
             p2c = _design(composer_feedback=rec["compose_feedback"])
         except Exception as e:
@@ -1660,7 +1230,7 @@ def synthesize_multi(state: str,
                 rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
                 try:
                     p3b = compose(spec=build_compose_context(spec2, rec["reasoning_log"], blob),
-                                  inventory=build_inventory_block(blob))
+                                  inventory="")
                 except Exception as e:
                     rec["recompose_error"] = "compose(recompose): %s: %s" % (type(e).__name__, e)
                     rec.update(first)      # all six go back -- never a spliced record
