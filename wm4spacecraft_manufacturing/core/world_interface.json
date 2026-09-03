@@ -957,52 +957,6 @@
                     "type": "DataStructures.PriorityQueue{Int64, Tuple{Int64, Float64}}"
                 }
             ]
-        },
-        {
-            "name": "Dict",
-            "fields": [
-                {
-                    "name": "slots",
-                    "type": "Vector{UInt8}"
-                },
-                {
-                    "name": "keys",
-                    "type": "Vector{ConstructionBots.AbstractID}"
-                },
-                {
-                    "name": "vals",
-                    "type": "Vector{LazySets.Ball2Module.Ball2}"
-                },
-                {
-                    "name": "ndel",
-                    "type": "Int64"
-                },
-                {
-                    "name": "count",
-                    "type": "Int64"
-                },
-                {
-                    "name": "age",
-                    "type": "UInt64"
-                },
-                {
-                    "name": "idxfloor",
-                    "type": "Int64"
-                },
-                {
-                    "name": "maxprobe",
-                    "type": "Int64"
-                }
-            ]
-        },
-        {
-            "name": "Set",
-            "fields": [
-                {
-                    "name": "dict",
-                    "type": "Dict{ConstructionBots.AbstractID, Nothing}"
-                }
-            ]
         }
     ]
 }

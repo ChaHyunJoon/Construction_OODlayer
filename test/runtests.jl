@@ -369,11 +369,31 @@ end
     # 🔴 2026-09-03: `primitive_registry.json`(19종 고정 어휘)을 없애면서 그 게이트 둘
     #    ("primitive registry resolves" · "minted tool resolves")을 지웠다. 재던 명제가
     #    "레지스트리가 이름 짓는 impl 이 CB 에서 해석되는가" 였는데 레지스트리가 없다.
-    #    합성 어휘는 이제 런타임에 생성되고, 그 자리를 대신할 게이트는 생성 원시의 등록·
-    #    시그니처 규약을 재는 새 게이트다(설계 §3 규약 다섯).
+    #    합성 어휘는 이제 런타임에 생성되고, 그 자리를 **두 게이트가 나눠** 대신한다 —
+    #    생성 agent 가 보는 인터페이스 산출물의 최신성은 바로 아래 "world interface is
+    #    current" 가, 등록·시그니처 규약 다섯은 그다음 "minted registration" 이 잰다(설계 §3).
+    #    세 번째 레지스트리-의존 게이트는 아직 안 지웠다 — 아래 "minted tool enacts"
+    #    (`minted_tool_enacts.jl`) 는 여전히 `CB.PRIMITIVE_TABLE()` 을 부르고 길이 19 를
+    #    잰다. 그 정리는 이 세션 범위 밖의 Task 10 이다.
 
+    # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
+    @testset "world interface is current" begin
+        include("world_interface_current.jl")
+    end
 
-    # 2026-08-30 (T3): 위 둘은 **이름**만 잰다. 이 게이트는 그 이름을 실제 호출로 바꾸는
+    # 🔴 2026-09-03 (F9): 생성 원시의 등록 규약(다섯) · `Core.eval` 등록 · 런-스코프 표
+    #    (`minted_table()`) · `invokelatest` world-age 계약을 잰다(설계 §3). 순서 안전:
+    #    이 파일은 세션당 한 번만 안전하다(`adjust_thing!`·`touch_nothing!`·
+    #    `single_frame_thing!` 을 CB 에 영구히 심는다 — 파일 머리말 R-RERUN, 의도된 동작).
+    #    재검증은 항상 새 프로세스로: `julia +lts --project=. -e 'include("test/minted_registration.jl")'`.
+    #    바로 위 "world interface is current" 는 이 심음에 안전하다 — testset (1)·(3)·(4) 는
+    #    커밋된 JSON 만 읽고 testset (2) 는 완전히 새 서브프로세스에서 재생성하므로, 이
+    #    프로세스에 심긴 이름을 셋 다 볼 길이 없다.
+    @testset "minted registration" begin
+        include("minted_registration.jl")
+    end
+
+    # 2026-08-30 (T3): 이 게이트는 합성 원시의 이름을 실제 호출로 바꾸는
     # `bind_primitive_args`·`enact_minted!` 를 잰다. 재는 것 셋이 특히 중요하다:
     #  · 🔴 알파벳 19 중 **실제로 부를 수 있는 것은 8** 이다(연언지 셋: harness·arity·kwargs).
     #    (2026-09-02 실측: 표 19 · 집행 가능 8. 연언지 (i) 만 보면 `harness_args ⊆ {"env"}`
@@ -396,20 +416,20 @@ end
     #    는 `CARRIER_RESCUE` 미설정(= 기본 환경)이면 언제나 `:disabled` 다.
     #  · 🔴 레지스트리의 이름→impl 짝과 params 키를 못 박는다. 그 둘을 안 재면 params 에
     #    키를 더하거나 impl 을 다른 함수로 돌리는 편집이 **스위트 전부 초록인 채로**
-    #    LLM 이 부를 수 있는 표면을 넓힌다(`primitive_registry_resolves.jl` 은 `params` 가
-    #    존재하는지만 보지 키를 안 본다).
+    #    LLM 이 부를 수 있는 표면을 넓힌다(과거 `primitive_registry_resolves.jl` 은
+    #    `params` 가 존재하는지만 보고 키를 안 봤다 — 그 파일은 2026-09-03 에 삭제됐다).
     # 변이 18종(명제 12 + 세부 6)으로 각각 빨개지는 것을 확인했다 — task-3-report.md 에 트랜스크립트.
-    # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
-    @testset "world interface is current" begin
-        include("world_interface_current.jl")
-    end
-
     @testset "minted tool enacts" begin
         include("minted_tool_enacts.jl")
     end
 
-    # 2026-08-30 (T4): 위 셋은 `CB.enact_minted!` 까지를 잰다. 이 게이트는 **렌더 레인의
-    # 배선**을 잰다 — `enact.jl::enact_minted_decision!`. 재는 것 넷이 특히 중요하다:
+    # 2026-08-30 (T4): 🔴 2026-09-03 정정 — 바로 위 두 게이트("minted registration" 의
+    # testset (8)·(9), 그리고 "minted tool enacts")가 `CB.enact_minted!` 까지를 잰다(그
+    # 위 "world interface is current" 는 별개 관심사다 — 생성 산출물이 현행 코드와 같은지를
+    # 재지, `enact_minted!` 경로를 안 잰다). 예전엔 이 자리에 그 경로를 단계별로 재는
+    # 셋이 있어 "위 셋" 이었다 — 지금은 둘이다.
+    # 이 게이트는 **렌더 레인의 배선**을 잰다 — `enact.jl::enact_minted_decision!`.
+    # 재는 것 넷이 특히 중요하다:
     #  · 🔴 `handled` 는 `applied` 가 아니라 `world_maybe_dirty` 로 판정한다. 정본 식은
     #    `tools/monitor/enact.jl` 의 `minted_handled`(**네** 연언지)다 — 여기에 베끼지 않는다(손베낀
     #    복사본이 프로덕션과 갈린 것을 2026-09-02 검증이 실측했다). verdict 항은
