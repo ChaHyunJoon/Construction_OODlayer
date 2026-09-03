@@ -76,3 +76,14 @@ def test_a_stage_that_refuses_records_it(monkeypatch):
                                           calls=[], surface="", reversible=False, wrote=False)
     rec = SY.synthesize_multi(state="s", tools=[], ledger=SY.SynthesisLedger(), programs=progs)
     assert rec["wrote"] is False and rec["body_names"] == []
+
+
+def test_wrote_is_none_when_the_field_is_missing(monkeypatch):
+    """🔴 삼상 (fix round 1). `wrote` 를 아예 안 낸 판은 "못 썼다"(`False`)가 아니라
+    "못 읽었다"(`None`)다 -- `or ""` 로 접으면 `False` 가 `""` 로 뭉개져 이 구별과 F2 의
+    `wrote is False` 분기가 둘 다 죽는다."""
+    monkeypatch.setenv(SY.SYNTHESIS_ENV, "1")
+    progs = _programs()
+    progs["compose"] = lambda **kw: _Pred(impl_name="", impl_code="")   # `wrote` 자체가 없다
+    rec = SY.synthesize_multi(state="s", tools=[], ledger=SY.SynthesisLedger(), programs=progs)
+    assert rec["wrote"] is None

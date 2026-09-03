@@ -1144,13 +1144,21 @@ def _params_view(params_text):
 #    invents *something* to fill the field, and "the gap is real" becomes unobservable. Asking
 #    it to repeat the specification unchanged makes that answer a **measurable** one
 #    (`spec_changed_by_feedback`).
+# ✅ Task 8 (fix round 1). This used to say "a composer holding a fixed inventory ... tried to
+#    realise your specification and could not", with `%s` filled by `missing_primitive` -- a
+#    field `WriteToolImpl` does not emit. Left unchanged, the slot was always empty and every
+#    firing spent two more billable calls (a redesign + a recompose) asking agent-2 to react to
+#    nothing. There is no composer and no inventory any more: agent-3 was asked to WRITE Julia
+#    code and self-reported `wrote=false`. The only thing it actually produces that could explain
+#    why is `reasoning` -- the chain-of-thought `dspy.ChainOfThought` attaches to every stage --
+#    so that is the evidence slot now, and the trigger below refuses to fire without one.
 _COMPOSE_FEEDBACK = (
-    "A composer holding a fixed inventory of primitive operations tried to realise your "
-    "specification and could not. What it reported missing is the mechanism you named, which "
-    "is not necessarily the effect you were after:\n\n%s\n\n"
-    "The operations it does have are withheld from you on purpose -- do not try to guess their "
-    "names, and do not answer by naming a different mechanism you cannot see either. Restate "
-    "the tool as the effect it must produce. If it is the effect itself that cannot be "
+    "A writer was given your specification and the world interface and asked to WRITE a Julia "
+    "implementation. It reported it could not (wrote=false). Its own account of why:\n\n%s\n\n"
+    "There is no fixed catalogue it composes from -- it may write any function the world "
+    "interface supports, so a missing capability is not the same kind of gap it used to be. "
+    "Restate the tool as the effect it must produce; do not name a specific mechanism, since "
+    "choosing one is the writer's job, not yours. If it is the effect itself that cannot be "
     "produced, repeat your previous specification unchanged.\n\n" + _EFFECT_NOT_MECHANISM)
 
 _SPEC_FIELDS = ("tool_name", "params", "mechanism")
@@ -1166,15 +1174,27 @@ _BODY_FIELDS = ("impl_name", "impl_code", "surface", "reversible", "wrote", "cal
 #: (`[]` = "읽었는데 비었다" 가 `""` = "못 읽었다" 로 접히면 삼상이 깨진다). `reversible`·
 #: `wrote` 는 **bool** 이다 -- 표가 없으면 `getattr(p, "wrote", "") or ""` 가
 #: `wrote=False`(못 쓰겠다는 자기신고)를 `""`(못 읽었다)로 접어 F2 의 `wrote is False`
-#: 분기가 영영 못 켜진다.
+#: 분기가 영영 못 켜진다. ✅ fix round 1 -- `reversible` 도 `_copy_body_fields` 안에서 같은
+#: `isinstance(..., bool)` 판정을 받는다: 모델이 `"true"` 처럼 문자열을 내면 그 판정이 없으면
+#: jsonl 의 이 열은 독자가 bool 로 읽는데 실제로는 문자열이 저장된다 -- 삼상이 깨지는 자리는
+#: `enact.jl` 의 `=== true` 가드가 세계는 지키지만 **기록**은 안 지킨다.
 _NON_STR_BODY_FIELDS = frozenset({"calls", "reversible", "wrote"})
 
 
 def _copy_body_fields(rec, pred):
     """agent-3(`WriteToolImpl`) 의 출력을 기록으로. 문자열 필드만 `""` 로 접고 `calls`·
     `reversible`·`wrote` 는 **날것 그대로** 둔다(정규화는 `_finish_record` 가 한 번만 한다 --
-    두 자리에서 하면 갈린다). `wrote` 는 bool 이 아니면 `None`("못 읽었다")으로 접고,
-    `body_names` 는 여기서 바로 `[impl_name]` 로 채운다 -- 집행부가 읽는 자리다."""
+    두 자리에서 하면 갈린다). `wrote`·`reversible` 는 bool 이 아니면 `None`("못 읽었다")으로
+    접고, `body_names` 는 여기서 바로 `[impl_name]` 로 채운다 -- 집행부가 읽는 자리다.
+
+    🔴 R6 (컨트롤러 결정, fix round 1). `params` 는 **agent-3 가 이긴다.** `enact.jl` 이
+    `synth["params"]` 를 `register_minted_primitive!` 에 그대로 넘기고, 그 스키마에 없는
+    키워드로 부르면 `enact_minted!` 가 거절한다 -- agent-2 의 명세가 아니라 **agent-3 가 실제로
+    쓴 함수의 키워드**가 호출 가능성을 정하므로, 둘이 갈리면 agent-3 쪽이 맞아야 primitive 가
+    평생 호출 불가가 되지 않는다. agent-2 의 스키마를 잃지 않도록 `spec_params` 에 옮겨 둔다
+    (덮어쓰기 직전 값 -- 재설계가 있었으면 그 재설계의 스키마). 둘이 다르다는 사실 자체가 첫
+    라이브 런에서 읽을 가치가 있는 관측이다.
+    """
     for f in _BODY_FIELDS:
         if f in _NON_STR_BODY_FIELDS:
             rec[f] = getattr(pred, f, None)
@@ -1182,7 +1202,11 @@ def _copy_body_fields(rec, pred):
             rec[f] = (getattr(pred, f, "") or "")
     w = rec["wrote"]
     rec["wrote"] = w if isinstance(w, bool) else None
+    r = rec["reversible"]
+    rec["reversible"] = r if isinstance(r, bool) else None
     rec["body_names"] = [rec["impl_name"]] if rec["impl_name"] else []
+    rec["spec_params"] = rec.get("params")
+    rec["params"] = (getattr(pred, "params", "") or "")
 
 
 # ==========================================================================================
@@ -1312,7 +1336,28 @@ def synthesize_multi(state: str,
     #    ran and passed, a string is the reason code. It is NOT collapsed into `enabled`
     #    ("the lane was switched off") nor into `wrote is False` ("agent-3 declined", which has
     #    `ran == True`): this repo has twice paid for folding distinct events into one observable.
-    iface = compose_interface(blob)
+    # ✅ Fix round 1. `compose_interface(blob)` can now raise: it calls
+    #    `world_interface.load_world_interface()`, which dies loudly (`os.stat` uncaught) when
+    #    `world_interface.json` is missing or `WM_DIR` points at nothing -- Task 7's ruling, kept
+    #    on purpose (no silent empty interface). Left uncaught here, that exception would escape
+    #    `synthesize_multi` and, above it, the `/macro` handler's only `try` (`dspy_service.py`),
+    #    turning into an HTTP 500 that Julia reads as "service down" with no record of why -- an
+    #    exception on the enactment path, which this repo does not allow. The fix is a fourth
+    #    `refused` reason code, right where the other three already live, so Task 7's loudness and
+    #    "rejection, not exception" both hold: the exception is caught **here**, once, and turned
+    #    into a record before it can reach any caller.
+    try:
+        iface = compose_interface(blob)
+    except Exception as e:
+        rec["refused"] = "world_interface_unreadable: %s: %s" % (type(e).__name__, e)
+        rec["reason"] = (
+            "refused before spending: compose_interface(blob) raised (%s) while building the "
+            "world interface -- Task 7's world_interface.load_world_interface() is meant to die "
+            "loudly on a missing/unreadable world_interface.json rather than fall back to an "
+            "empty interface, and this guard is what stops that loudness from becoming an "
+            "uncaught exception on the enactment path; nothing was billed (stages == [])"
+            % rec["refused"])
+        return rec
     rec["refused"] = False if (iface or "").strip() else "no_compose_interface"
     if rec["refused"]:
         rec["reason"] = (
@@ -1421,12 +1466,19 @@ def synthesize_multi(state: str,
     rec["reasoning"] = (getattr(p3, "reasoning", "") or "")
 
     # ---- (F2) agent-3 -> agent-2: the composer's verdict, redacted, **once** ---------------
-    # ✅ Task 8. Fires on `wrote is False` **only** -- agent-3 no longer reports
+    # ✅ Task 8. Fires on `wrote is False` -- agent-3 no longer reports
     #    `reach == "needs_primitive"` (that field is `WriteToolImpl`'s dead vocabulary now, kept
     #    in the record per R1 but never populated by a live run). `wrote is False` is agent-3's
     #    own refusal to write an implementation, the direct analogue of the old "could not
     #    compose from the inventory" signal. `None` (unreadable) does NOT fire -- "we could not
     #    read the verdict" must not look like "the verdict was acted on".
+    # 🔴 Fix round 1. `wrote is False` alone is not enough: the old trigger's second clause
+    #    (`and rec["missing_primitive"].strip()`) existed precisely to stop a firing with nothing
+    #    to say, and dropping it along with the first clause let two billable calls go out with
+    #    an empty evidence slot (measured live-shaped: the feedback string had `"\n\n\n\n"` where
+    #    the missing primitive used to be). `reasoning` -- `WriteToolImpl`'s own chain-of-thought,
+    #    the only thing agent-3 actually produces that could explain a refusal -- plays that role
+    #    now: no non-empty account, no feedback call.
     # 🔴 At most one round trip, for the same reason the groundability loop is capped: a loop
     #    that does not converge is the worst outcome, and a second failure is itself data.
     # 🔴 `expressible` is NOT overwritten here. It is the firing verdict of this event and it
@@ -1442,8 +1494,15 @@ def synthesize_multi(state: str,
     rec["expressible_after_recompose"] = None
     rec["ungrounded_params_after_recompose"] = None
 
-    if rec["wrote"] is False:
+    if rec["wrote"] is False and rec["reasoning"].strip():
         first = {f: rec[f] for f in _SPEC_FIELDS + _BODY_FIELDS}
+        # ✅ Fix round 1 (a side effect of R6 above). `first["params"]` is agent-3's code schema
+        #    now (`_copy_body_fields` already overwrote `rec["params"]` for the first attempt) --
+        #    right for restoring `rec["params"]` if the recompose write fails below, WRONG as the
+        #    baseline for "did agent-2's own specification change" a few lines down. `spec_params`
+        #    is agent-2's schema at this same point (also just set by `_copy_body_fields`), so it
+        #    is captured here, before anything downstream can move it.
+        first_agent2_params = rec.get("spec_params")
         for f, v in first.items():
             rec[f + "_first"] = v          # the first attempt survives whatever happens below
         # 🔴 2026-09-03 (D5). 되먹임은 이제 **날것 그대로** 간다. 옛 코드는
@@ -1455,8 +1514,11 @@ def synthesize_multi(state: str,
         # ⚠️ 긴장 하나를 정직하게 적어 둔다(컨트롤러가 **고치지 말라고** 보류한 항목):
         #    이 파일의 R19 주석은 "영영 `None` 인 필드는 삼상을 오독시키므로 키째 지운다" 고
         #    적고 ψ 를 그렇게 처리했는데, 이 필드는 브리프 지시대로 남아서 영영 `None` 이다.
-        #    같은 파일이 같은 상황에 두 규칙을 쓴다. Task 8 이 F2 되먹임 경로를 다시 연다.
-        red = rec["missing_primitive"]
+        #    같은 파일이 같은 상황에 두 규칙을 쓴다.
+        # ✅ Fix round 1. 되먹임의 증거는 이제 `missing_primitive`(agent-3 가 더는 안 낸다)가
+        #    아니라 `reasoning`(`WriteToolImpl` 의 chain-of-thought, `wrote=false` 를 설명하는
+        #    유일한 실제 출력)이다.
+        red = rec["reasoning"]
         rec["compose_feedback"] = _COMPOSE_FEEDBACK % red
         rec["compose_feedback_redacted"] = None
         try:
@@ -1480,8 +1542,15 @@ def synthesize_multi(state: str,
                 #    longer needs the missing capability and left `params` **byte-identical**.
                 #    A single boolean calls that a change, and the record can then no longer
                 #    tell a real re-specification from an assertion of compliance.
-                rec["spec_changed_fields"] = [f for f in _SPEC_FIELDS
-                                              if spec2[f].strip() != first[f].strip()]
+                # ✅ Fix round 1. `params` compares against `first_agent2_params`, not `first`
+                #    (which holds agent-3's code schema) -- otherwise this would compare agent-2's
+                #    redesigned schema against agent-3's *code*, two different authors' schemas,
+                #    and read a difference as "agent-2 changed its spec" when agent-2 may not have
+                #    moved at all.
+                rec["spec_changed_fields"] = [
+                    f for f in _SPEC_FIELDS
+                    if spec2[f].strip() != (first_agent2_params if f == "params"
+                                            else first[f]).strip()]
                 rec["spec_changed_by_feedback"] = bool(rec["spec_changed_fields"])
                 rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
                 try:
