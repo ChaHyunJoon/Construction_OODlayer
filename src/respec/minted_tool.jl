@@ -839,8 +839,12 @@ end
 🔴 `handled` 자체는 여기 없다 — 나머지 세 연언지(`world_maybe_dirty` · `resume !== :failed` ·
 `!resolve_failed`)는 `tools/monitor/enact.jl` 이 소유한다. 이 함수는 그중 첫째만 답한다.
 실측 근거: 손으로 베낀 3-연언지 복사본이 프로덕션 4-연언지와 갈렸다(2026-09-02 T0).
+
+🔴 2026-09-02 결정 2: 둘째 값 `:admit_unsanctioned` — 모델이 `reach != "composed"` 라고
+신고했는데 body 가 조합돼 있어 굴린 행. `:admit` 과 **같은 것**을 뜻한다(불렀고 끝까지 갔다)
+— 다른 것은 누가 허락했는가뿐이다.
 """
-const ENACTED_VERDICTS = (:admit,)
+const ENACTED_VERDICTS = (:admit, :admit_unsanctioned)
 minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 """
@@ -853,7 +857,8 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 |---|---|
 | `:admit` | body 의 모든 원시가 해석·집행가능·바인딩됐고 **하나도 빠짐없이 불렸다** |
 | `:reject` | 아무것도 부르기 **전에** 돌아섰다 — 세계는 손대지 않았다 |
-| `:deferred` | 집행할 사건이 아니었다(`reach != "composed"`, 합성 기록 없음) |
+| `:deferred` | 집행할 사건이 아니었다(`reach` 가 없음 — 못 쟀다, 합성 기록 없음) |
+| `:admit_unsanctioned` | `:admit` 과 같다 — 다만 모델이 `reach != "composed"` 라고 신고한 body 였다 |
 
 `applied` 와 `partial` 은 verdict 와 **다른 것**을 잰다(spec §9-2 — "불렀는데 아무 일도 없었다"
 와 "부르지 않았다"는 다른 사건이고 반환값에서 구분돼야 한다):
@@ -902,8 +907,15 @@ function enact_minted!(env, truth, synth)
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
     reach = _synth_get(synth, "reach", nothing)
-    reach == "composed" || return _r(:deferred,
-        "reach=$(reach === nothing ? "nothing" : reach) — needs_primitive/미측정은 집행하지 않는다")
+    # 🔴 못 쟀다(nothing)만 deferred 다. "모델이 부족하다고 했다"는 **집행을 막지 않는다** —
+    #    게이트가 재려는 것은 body 가 조합됐는가이고, 그것은 아래 (3)(4)(6) 이 판정한다.
+    #    자기신고를 믿었을 때 무엇을 잃었는지: synthesize.py:1195 (F5 실측).
+    reach === nothing && return _r(:deferred, "reach missing — 합성 레인이 값을 안 실었다")
+    sanctioned = (reach == "composed")
+    admit_verdict = sanctioned ? :admit : :admit_unsanctioned
+    unsanctioned_note = sanctioned ? "" :
+        " — 🔴 unsanctioned(reach=$(reach), missing=$(something(_synth_get(synth, "missing_primitive", nothing), "n/a"))): " *
+        "모델은 부족하다고 했는데 body 는 조합돼 있어 굴렸다"
 
     names = String[String(n) for n in _synth_get(synth, "body_names", String[])]
     isempty(names) && return _r(:reject, "empty body: 조합할 원시가 하나도 없다")
@@ -980,8 +992,8 @@ function enact_minted!(env, truth, synth)
             #    ⚠️ 표면 판정은 **던지기 전까지 실제로 굴린 것들** 기준이다 — 던진 단계가
             #    무엇을 했는지는 모르므로 그 단계 자신도 포함한다(보수적).
             local rv_t, rv_d = _resolve_if_needed!(env, resolved[1:ri])
-            return _r(:admit, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
-                              _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d);
+            return _r(admit_verdict, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
+                              _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d) * unsanctioned_note;
                       steps = steps, applied = applied, partial = true,
                       touched = touched, resume = rs_t, resolve = rv_t)
         end
@@ -1009,9 +1021,9 @@ function enact_minted!(env, truth, synth)
     #    재풀이가 밀어내면 안 된다. 재풀이 자신의 `commit_respec!(…; resume=true)` 는 그 위에서
     #    멱등이다(`_issue_resume!` 의 멱등성 문단).
     resolve_tag, resolve_detail = _resolve_if_needed!(env, resolved)
-    return _r(:admit, "body of $(length(names)) primitives$(quiet)" *
+    return _r(admit_verdict, "body of $(length(names)) primitives$(quiet)" *
                       _resume_note(resume_tag, resume_detail) *
-                      _resolve_note(resolve_tag, resolve_detail);
+                      _resolve_note(resolve_tag, resolve_detail) * unsanctioned_note;
               steps = steps, applied = applied, touched = touched,
               resume = resume_tag, resolve = resolve_tag)
 end

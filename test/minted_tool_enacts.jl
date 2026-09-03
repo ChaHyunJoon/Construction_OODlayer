@@ -112,12 +112,41 @@ end
 ConstructionBots.get_graph(s::_BanSched) = Graphs.SimpleDiGraph(length(s.owners))
 ConstructionBots._edge_owner_id(s::_BanSched, v) = s.owners[v]
 
-@testset "(1) reach=needs_primitive 는 deferred 다" begin
-    r = CB.enact_minted!(nothing, nothing,
-                         _synth(reach = "needs_primitive", names = ["restage_all_blocked"]))
-    @test r.verdict === :deferred
-    @test r.applied === false
-    @test occursin("needs_primitive", r.reason)
+@testset "(1) reach=needs_primitive 여도 body 가 조합돼 있으면 집행한다" begin
+    # 🔴 자기신고가 아니라 body 를 믿는다(F5 실측: agent-3 가 이미 조합한 body 에
+    #    needs_primitive 를 붙였다 — synthesize.py:1195).
+    fake = (staging_circles = Dict{Symbol,Any}(),)   # :no_staging 으로 첫 줄에서 돌아선다
+    r = CB.enact_minted!(fake, nothing,
+                         _synth(reach = "needs_primitive", names = ["translate_whole_build"]))
+    @test r.verdict === :admit_unsanctioned          # 굴렸다, 그러나 허락은 없었다
+    @test length(r.steps) == 1 && r.steps[1].status === :no_staging
+    @test occursin("needs_primitive", r.reason)      # 사유가 자기신고를 그대로 인용한다
+    @test r.undo === :none
+
+    # 같은 body 를 composed 로 신고하면 verdict 만 갈린다 — 나머지는 바이트 동일이다.
+    r2 = CB.enact_minted!(fake, nothing, _synth(names = ["translate_whole_build"]))
+    @test r2.verdict === :admit
+    @test [(s.name, s.status) for s in r2.steps] == [(s.name, s.status) for s in r.steps]
+    @test r2.applied === r.applied && r2.world_maybe_dirty === r.world_maybe_dirty
+
+    # 🔴 못 쟀다 ≠ 아니라고 했다. reach 가 없으면 예전처럼 deferred 다.
+    r3 = CB.enact_minted!(fake, nothing, _synth(reach = nothing, names = ["translate_whole_build"]))
+    @test r3.verdict === :deferred
+    @test isempty(r3.steps)
+
+    # 🔴 게이트가 열려도 (3)(4)(6) 은 그대로다 — 자격 없는 body 는 여전히 세계 무접촉이다.
+    @test CB.enact_minted!(fake, nothing,
+              _synth(reach = "needs_primitive", names = ["teleport_the_build"])).verdict === :reject
+    @test CB.enact_minted!(fake, nothing,
+              _synth(reach = "needs_primitive", names = ["swap_battery"])).verdict === :reject
+    @test CB.enact_minted!(nothing, nothing,
+              _synth(reach = "needs_primitive", names = ["restage_all_blocked"])).world_maybe_dirty === false
+
+    # 🔴 게이트의 첫 연언지가 새 verdict 를 받아들인다(T2 가 이 술어를 부른다).
+    @test CB.minted_handled_verdict_ok(:admit_unsanctioned) === true
+    @test CB.minted_handled_verdict_ok(:admit) === true
+    @test CB.minted_handled_verdict_ok(:reject) === false
+    @test CB.minted_handled_verdict_ok(:deferred) === false
 end
 
 @testset "(2) 미지 원시 하나면 아무것도 안 한다" begin
