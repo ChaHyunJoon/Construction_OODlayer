@@ -364,8 +364,13 @@ end
   `_void_kind` / `_VOID_LABEL` 이 `VOID_NOSTEP`(아무 단계도 안 불렸다)와
   `VOID_UNAPPLIED`(단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 0)를 구별한다.
   이 계획이 적은 한 갈래(`steps` 가 비었나)는 그중 앞의 것 하나뿐이었고, 실측에서 그
-  갈래만으로는 `VOID` 가 한 번도 안 탔다. (`probe_minted_body_enacts.jl` 은 아직 갈리지 않은
-  `⚪ VOID` 한 벌이다.)
+  갈래만으로는 `VOID` 가 한 번도 안 탔다.
+  🔀 **그 뒤 T9(2026-09-03)가 `probe_minted_body_enacts.jl` 도 같은 두 갈래로 갈랐다** — 같은
+  이름의 `_void_kind` 와 같은 라벨 둘을 쓴다. 즉 오늘 두 프로브의 공허 정의는 **하나**다.
+  🔴 다만 그 판정은 아직 **복사본**이다: 둘째 프로브의 `_void_kind` docstring 이 스스로
+  "정본은 `probe_cargo_ban_end_to_end.jl` 의 같은 이름 함수이고 식도 라벨도 거기서 그대로
+  가져왔다" 라고 적는다(`_VOID_LABEL` 표는 첫 프로브에만 있다). §4 R2 가 `handled` 에 대해
+  세운 규율("식을 베끼지 않고 정본을 부른다")이 `_void_kind` 에는 **아직 안 걸려 있다.**
 - [ ] **S3** 커밋.
 
 ⏱ 20 – 30분.
