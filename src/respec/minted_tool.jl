@@ -1,10 +1,11 @@
 # =============================================================================
-# 합성된 tool 의 집행. (2026-08-30, T2·T3 / spec §3-1, §5)
+# 합성된 tool 의 집행. (2026-08-30, T2·T3 / spec §3-1, §5; 2026-09-03 갱신)
 #
-# LLM 은 **코드를 생성하지 않는다.** 기존 원시의 호출 시퀀스만 조합한다. 이 파일은 그
-# 시퀀스를 받아 `primitive_registry.json` 을 통해 실제 CB 함수로 해석하고 집행한다.
+# LLM 은 시퀀스를 조합하고, 원시 자신은 **런에서 생성된다** — `register_minted_primitive!`
+# (`minted_registration.jl`)이 규약을 검사하고 `Core.eval` 로 심는다. 이 파일은 그 시퀀스를
+# 받아 **런-스코프 표**(`minted_table()`)를 통해 실제 함수로 해석하고 집행한다.
 #
-# 🔴 알파벳은 레지스트리이지 CB 의 심볼 표가 아니다. `isdefined(CB, Symbol(name))` 로
+# 🔴 알파벳은 그 런-스코프 표이지 CB 의 심볼 표가 아니다. `isdefined(CB, Symbol(name))` 로
 #    해석하면 합성기가 `run_lego_demo` 든 무엇이든 부를 수 있고, 그 순간 안전층이
 #    검사할 대상 자체가 정의되지 않는다(spec §3-1 의 마지막 문단).
 #
@@ -21,37 +22,6 @@
 # 이 파일에는 적용되지 않는다 — `resolve_primitive` 는 navigator 타입을 이름으로 쓰지 않는다.
 # =============================================================================
 
-const _PRIM_TABLE = Ref{Union{Nothing,Dict{String,Any}}}(nothing)
-
-_primitive_registry_path() = get(ENV, "PRIMITIVE_REGISTRY",
-    normpath(joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing",
-                      "core", "primitive_registry.json")))
-
-"내부용. 테스트가 경로를 갈아 끼운 뒤 캐시를 비우는 자리."
-_reset_primitive_table!() = (_PRIM_TABLE[] = nothing; nothing)
-
-"""
-    PRIMITIVE_TABLE() -> Dict{String,Any}
-
-`name => 레지스트리 항목` 표. 첫 호출에 읽고 캐시한다.
-
-🔴 파일이 없으면 **던진다.** 빈 표를 돌려주면 모든 body 가 "미지 원시"로 보이고 원인이
-레지스트리 부재라는 사실이 기록에서 사라진다 — `action_registry.jl` 과 같은 규약.
-"""
-function PRIMITIVE_TABLE()
-    _PRIM_TABLE[] === nothing || return _PRIM_TABLE[]
-    path = _primitive_registry_path()
-    isfile(path) || error("primitive_registry 를 못 찾았다: $(path). " *
-                          "PRIMITIVE_REGISTRY 로 경로를 줄 수 있다.")
-    reg = JSON3.read(read(path, String))
-    tbl = Dict{String,Any}()
-    for p in reg["primitives"]
-        tbl[String(p["name"])] = p
-    end
-    _PRIM_TABLE[] = tbl
-    return tbl
-end
-
 """
     resolve_primitive(name) -> Union{Nothing,NamedTuple}
 
@@ -65,7 +35,7 @@ unenactable_why)`.
 `try` 가 그것을 "집행됐다"로 보고해서 거짓 admit 이 된다.
 """
 function resolve_primitive(name::AbstractString)
-    tbl = PRIMITIVE_TABLE()
+    tbl = minted_table()
     haskey(tbl, String(name)) || return nothing
     p = tbl[String(name)]
     sym = Symbol(String(p["impl"]))
@@ -426,7 +396,8 @@ _step_touched_world(prim_name::AbstractString, status::Symbol) =
 원시 여덟 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **왜 이 표가 필요한가** (2026-08-30 T4 리뷰, CRITICAL).
-`enact_minted!` 은 `r.prim.impl(env)` 를 **날것으로** 부른다. 여덟 중 다섯은 스케줄 캐시를
+`enact_minted!` 은 `r.prim.impl(env)` 를 부른다(2026-09-03 부터 world age 때문에
+`Base.invokelatest` 로 — Task 5). 여덟 중 다섯은 스케줄 캐시를
 스스로 재개하지 않는다 — `reform_stuck_teams!` 의 주석이 직접 그렇게 적는다(*"the callers …
 drive the schedule via reset_cache_resume!"*). 그 대가는 `src/respec/ood_injection.jl` 이
 적어 둔 그대로다: *"그래프는 바뀌었는데 스케줄 캐시가 옛 프론티어를 들고 있어 복구가 아무
@@ -1052,7 +1023,11 @@ function enact_minted!(env, truth, synth)
     for (ri, r) in enumerate(resolved)
         local st, dt
         try
-            out = r.prim.impl(r.args[1]...; r.args[2]...)
+            # 🔴 `invokelatest` 다. 생성 원시는 이 호출 **직전**에 `Core.eval` 로 정의되므로
+            #    현재 world age 에서는 안 보인다. 맨 호출은 `MethodError` 가 되고 아래 `try`
+            #    가 그것을 `:threw`/`partial=true` 로 적어 "세계가 절반일 수 있다" 는 **거짓
+            #    기록**을 남긴다 — 세계는 손도 안 댄 상태인데.
+            out = Base.invokelatest(r.prim.impl, r.args[1]...; r.args[2]...)
             # 🔴 반환값 읽기도 **이 `try` 안**이다. 밖에 두면 `getproperty` 가 던지는 반환값
             #    하나가 `enact_minted!` 를 기록 대신 예외로 끝내고, 호출자는 세계 상태를
             #    알 방법을 잃는다(`_step_status` 의 같은 날짜 주석).
