@@ -68,8 +68,13 @@ end
 🔴 **정본은 `tools/probes/probe_cargo_ban_end_to_end.jl` 의 같은 이름 함수다** — 식도
 라벨(`VOID_NOSTEP` · `VOID_UNAPPLIED`)도 거기서 그대로 가져왔고 근거 docstring 도 거기 있다.
 두 프로브가 같은 이름의 판정을 다르게 정의하면 둘을 나란히 읽는 사람이 갈린다(2026-09-03 T9).
-⚠️ 두 파일 다 최상위에서 `main()` 을 부르는 스크립트라 서로 include 할 수 없다 — 그래서
-복사본 하나가 불가피하고, 그 대신 이 문단이 정본을 가리킨다.
+⚠️ 두 파일 다 최상위에서 `main()` 을 부르는 스크립트라 **서로** include 할 수 없다. 🔴 그러나
+그것이 복사본을 불가피하게 만들지는 **않는다** — 이 파일이 스스로 반증한다: 바로 위에서
+`include(... "tools", "monitor", "enact.jl")` 로 **제3의 공용 자리**를 불러 정본 `minted_handled`
+를 쓰고 있다(T7 이 손베낀 4-연언지 복사본을 없앤 그 패턴이다). 이 복사본이 남은 진짜 이유는
+**T9 의 편집 표면이 두 파일로 제한됐기 때문**이고, 옳은 해법은 `_void_kind` 를 같은 공용 자리
+(`enact.jl`)로 올려 두 프로브가 함께 부르는 것이다 — **후속 작업으로 남아 있다.**
+그때까지 이 문단이 정본을 가리킨다. 🔴 이것을 "설계상 어쩔 수 없는 것" 으로 읽고 방치하지 마라.
 
 | 값 | 라벨 | 뜻 |
 |---|---|---|
@@ -170,7 +175,14 @@ function main()
     println("\n---- VERDICT ----")
     println("release changed the world?  ", released_ok)
     println("reprice installed the hook? ", reprice_ok)
-    # 🔴 공허가 맨 앞이다(이 레인 T3+4 의 결론) — GREEN/RED 로 읽기 **전에** 판정한다.
+    # 🔴 공허가 맨 **앞**이다(이 레인 T3+4 의 결론) — 그러나 *앞*이지 *대신*이 아니다.
+    #    그래서 이 `if` 는 아래 GREEN/SILENT/RED 사슬과 **분리된 독립 if** 다. 첫 프로브
+    #    (`probe_cargo_ban_end_to_end.jl`)가 이미 그 모양이고, 이유가 있다: 공허 라벨은
+    #    "아래 숫자를 인용하지 마라" 라는 **경고**이지 판정의 **대체**가 아니다.
+    #    🔴 T9 fix round 1 (2026-09-03): 이 둘을 한 배타 사슬로 묶었더니 `steps` 가 비지 않고
+    #    `applied=false` 인 판에서 `🔴 SILENT SUCCESS`(최악의 경우)가 **영영 안 찍혔다** —
+    #    ⚪ 공허가 그 자리를 먹었다. 옛 `:nostep` 은 사문이라 그 결함이 잠자고 있었지만
+    #    `:unapplied` 는 실제로 켜지므로 활성 결함이 된다. 절대 다시 합치지 마라.
     #    갈래는 첫 프로브와 **같은 둘**이다(위 `_void_kind` 의 docstring 이 정본을 가리킨다).
     local void = _void_kind(r)
     if void === :nostep
@@ -179,13 +191,17 @@ function main()
     elseif void === :unapplied
         println("⚪ VOID_UNAPPLIED — 단계는 ", length(r.steps),
                 " 개 불렸는데 applied=false 다(verdict=", r.verdict,
-                "). 잴 수 있는 편집이 하나도 없다 — 숫자를 효과로 인용하지 마라.")
-        println("   🔴 이것은 \"세계가 깨끗하다\" 가 아니다: `applied=false` 는 조용한 성공과",
-                " 못 쟀다를 둘 다 삼킨다. 원인은 위 단계별 status 로 갈라라",
-                " (world_maybe_dirty = ", r.world_maybe_dirty, ").")
+                "). 잴 수 있는 편집이 하나도 없다 — 아래 숫자를 효과로 인용하지 마라.")
+        println("   🔴 이것은 \"세계가 깨끗하다\" 가 아니다: `applied=false` 는 조용한 성공",
+                "(SILENT_SUCCESS_STATUSES)과 못 쟀다(UNMEASURABLE_STATUSES)를 둘 다 삼킨다.",
+                " 원인은 위 단계별 status 로 갈라라 (world_maybe_dirty = ",
+                r.world_maybe_dirty, ").")
         println("   ⚠️ 바로 위 두 줄(release/reprice)이 true 면 이 라벨에도 불구하고 세계는",
                 " 움직였다 — 이 프로브는 세계를 직접 잰다.")
-    elseif CB.minted_handled_verdict_ok(r.verdict) && released_ok && reprice_ok
+    end
+
+    # 판정 사슬은 공허와 **독립**으로 굴린다 — 공허인 판에서도 GREEN/SILENT/RED 가 찍힌다.
+    if CB.minted_handled_verdict_ok(r.verdict) && released_ok && reprice_ok
         println("🟢 GREEN — body enacted AND both halves are visible in the world.")
     elseif CB.minted_handled_verdict_ok(r.verdict)
         println("🔴 SILENT SUCCESS — :admit but the world did not move. This is the worst case.")
