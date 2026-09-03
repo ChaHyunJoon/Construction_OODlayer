@@ -32,6 +32,7 @@ include("reassign.jl")       # 로봇 고장 시 작업을 다른 로봇에게 �
 include("ood_injection.jl")  # physical OOD event GENERATION (front-end; uses push_ood!)  # 물리 OOD 이벤트 "생성"(앞단; push_ood! 사용)
 include("restage_zone.jl")   # ForbidZone enactment: relocate a staging-blocked assembly  # ForbidZone 실행: 적치공간이 막힌 조립체를 옮김
 include("cargo_ban_primitive.jl") # 알파벳 원시 forbid_heavy_cargo!: 지속 화물 금지 보관소에 항목 하나를 쓴다(세계는 안 바꾼다)
+include("common_resolve.jl") # 공통 MILP 재풀이 한 벌 (판정 1) — SMDP 의 apply_action! 과 주조 body 집행이 **같은 함수**를 부른다
 include("minted_tool.jl")    # 합성된 tool 의 해석·집행 (T2·T3)
 include("replace_robot.jl")  # ReplaceAgent enactment: spare 1:1 chain hand-off  # ReplaceAgent 실행: 예비 로봇으로 잔여 작업 인계(고장 대체)
 include("battery_courier.jl") # SwapBattery enactment: 창고 예비가 배터리를 들고 왕복 배송(시간이 드는 물리적 사건)

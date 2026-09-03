@@ -178,18 +178,10 @@ function _node_mode(node)
     return IDLE                 # RobotStart and anything else: baseline only
 end
 
-# 이 노드의 일을 실제로 하는 물리 로봇들: RobotGo 는 한 대, 운반유닛(TransportUnit)은 팀 전원에 분산. RobotID 벡터 반환.
-# Physical robots responsible for an active node: a RobotGo is one robot; a TransportUnit
-# spreads work over its whole team. Returns a Vector of RobotIDs.
-function _responsible_robots(node)
-    if node isa RobotGo || node isa RobotStart
-        return [node_id(entity(node))]
-    elseif node isa TransportUnitGo || node isa FormTransportUnit || node isa DepositCargo
-        return collect(keys(robot_team(node)))     # robot_team(pred) -> robot_team(entity) -> n.robots
-    else
-        return Any[]
-    end
-end
+# 🔴 2026-09-02 (판정 1). `_responsible_robots` 는 여기 있었고 **`src/respec/common_resolve.jl`
+#    (CB 본체)로 옮겼다.** 배터리와 무관한 순수 스케줄 접근자인데, 여기 두면 공통 재풀이가
+#    navigator 런타임 include 에 의존하게 된다. 이 파일의 두 호출자(`:272`·`:593` 근방)는
+#    같은 모듈이라 그대로 돈다.
 
 # 짐 질량 근사값: 화물 바운딩박스 부피(반경 곱 8배)×밀도.
 # `_payload_mass_measured` 가 실측을 시도하고 **못 재면 던진다** — "짐이 없다/못 쟀다"와

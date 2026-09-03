@@ -326,7 +326,8 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
 
     # ---- log ---------------------------------------------------------------------------
     :OOD_TRUTH_LOG          => :log,
-    :RESOLVE_CALLS          => :log,     # smdp/generative.jl — Task T13 의 공통 MILP 재풀이
+    :RESOLVE_CALLS          => :log,     # respec/common_resolve.jl(2026-09-02 이전엔
+                                          # smdp/generative.jl) — 공통 MILP 재풀이
                                           # 자리를 몇 번 지났나. 순수 진단 카운터라 s 도 ξ 도
                                           # 아니다. 스텁이 **조용히 무동작**이 아님을
                                           # test/smdp_generative.jl 이 이 값으로 본다.

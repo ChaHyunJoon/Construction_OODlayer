@@ -187,81 +187,11 @@ _arm_key(x) = error(
 # =============================================================================
 #  집행
 # =============================================================================
-"""공통 재풀이가 실제로 돈 횟수. **조용히 무동작**이 아니라는 것을 시험이 이걸로 본다."""
-const RESOLVE_CALLS = Ref(0)
-
-"""
-    resolve_assignments!(env; optimizer = _respec_optimizer()) -> (; ran_milp, n_reassigned, status)
-
-**모든 팔 뒤에 도는 공통 MILP 재풀이** (확정 설계 `.claude/CLAUDE.md` §⏳ 2026-08-20).
-남은 스케줄을 현재 그래프·기하 위에서 **추가 제약 없이** 다시 푼다. 어떤 팔에서든 같은 코드가
-돌아야 `Ĵ(a)` 의 차이가 **팔의 차이**가 된다.
-
-⚠️ **실측된 시그니처 셋**(직관과 다르니 확인하고 쓸 것):
-  · `release_pending_assignments!` → `(env, invariant::InvariantSpec; faulted, agent)`
-    (`src/respec/reassign.jl:194`. 🔴 `faulted` 와 `agent` 는 **배타적**이다 — 둘 다 주면 `ArgumentError`.
-     `agent` 는 범위를 **좁힌다**: 그 로봇이 소유한 미래 배정 간선**만 떼고** 나머지는 그대로 둔다)
-  · `assign_collaborative_tasks!`  → 첫 인자가 `model` 이다(`task_assignment.jl:433`)
-  · 맨이름 `validate` 는 **스케줄용으로 실재한다** — `validate(sched::OperatingSchedule)`
-    (`essential_tg_coponents.jl:313`; 호출부 `essential_tg_coponents.jl:1796` · `full_demo.jl:670`).
-    없는 것은 **씬트리용** 맨이름 `validate` 이고, 그쪽은
-    `validate_tree`/`validate_embedded_tree`/`validate_sub_tree` 뿐이다.
-    (🔴 2026-09-02 정정: 이 줄은 "맨이름 `validate` 는 존재하지 않는다" 로 적혀 있었고 **거짓**이었다.)
-대신 **`rebalance_for_battery!`(`battery.jl:715`)의 모양**을 그대로 쓴다 — 그 함수는 이름만 배터리이고, 하는 일은 `build_invariant` 로 완료·진행중을
-얼리고 추가 제약 없이 재정식화 + `optimize!` + `commit_respec!` 다.
-
-### 기록된 의미 결정 — **NOOP 도 재푼다**
-
-CLAUDE.md 가 "NOOP 도 재풀이할 것인가는 **의미 결정**이다" 라고 남겨 둔 자리다.
-**재푼다.** 안 그러면 NOOP 만 체계적으로 다른 파이프라인을 타고, 그 차이가 팔의 성질로
-오독된다 — 이 태스크의 존재 이유가 정확히 그것을 막는 것이다.
-⚠️ 대가: NOOP 이 "아무것도 안 함" 이 아니라 **"제약 변화 없이 다시 품"** 이 된다. 그것이
-`Ĵ(NOOP)` 의 정의이고, 논문이 NOOP 을 그렇게 서술해야 한다.
-
-### ⚠️ 항진성 — `n_reassigned` 를 반드시 볼 것
-
-CLAUDE.md 경고: 관측된 판들은 `n_candidate_edges = 0` 이라 MILP 가 순수 makespan 으로
-후퇴했다. **후보 간선이 0 이면 공통 재풀이가 아무것도 안 바꾼다.**
-그래서 `ran_milp` 은 증거가 **아니다** — 설계상 모든 팔에서 `true` 다(CLAUDE.md: "G6 은 모든
-팔에서 `ran_milp=true` 가 되고 그게 설계상 정상이다. 'G6 PASS' 를 인용하지 말 것").
-증거는 `n_reassigned` 다.
-
-`n_reassigned` 의 정의: **재풀이 전후로 `binding` 이 바뀐 정점 수.**
-`simstate_of(env).g.binding` 을 쓴다 — 배정을 읽는 두 번째 구현을 만들지 않기 위해서다.
-⚠️ **하한이다**: `binding` 은 팀에서 `first(sort(...))` 하나만 담으므로(`observe.jl:96`),
-정렬 첫째가 안 바뀌는 팀 구성 변경은 여기서 안 보인다. 0 이 아니면 확실히 바뀐 것이고,
-0 이라고 안 바뀐 것은 아니다.
-
-### 실패 경로 — 조용히 넘어가지 않는다
-
-`:infeasible` / `:commit_failed` 를 **반환한다**(던지지 않는다). CLAUDE.md 가 "반환값을
-무시하면 안 된다 — 현재 배터리 분기(`run_demo.jl:391`)는 아예 안 본다" 고 적은 그 자리이므로,
-호출자가 반드시 보게 한다(`apply_action!` 이 죽는다).
-🔴 **D-14 가 이 자리를 다시 연다**: 재풀이 불능은 "버그"가 아니라 세계의 사실일 수 있고,
-그러면 예외가 아니라 **terminal 전이**여야 한다(`briefs/task-D14-brief.md`).
-"""
-function resolve_assignments!(env; optimizer = _respec_optimizer())
-    RESOLVE_CALLS[] += 1
-    before = simstate_of(env).g.binding
-    inv    = build_invariant(env)                     # 이미 한/하는 일은 고정
-    milp   = formulate_milp(SparseAdjacencyMILP(), env.sched, env.scene_tree;
-                            optimizer = optimizer,
-                            t0_ = inv.frozen_t0, tF_ = inv.frozen_tF)   # extra_constraints 없음
-    optimize!(milp)
-    if primal_status(milp) != MOI.FEASIBLE_POINT
-        return (ran_milp = true, n_reassigned = 0, status = :infeasible)
-    end
-    ok = commit_respec!(env, milp,
-                        RespecProposal(ConstraintSpec[], "common re-solve (T13)", "smdp-generative");
-                        resume = true)                # 🔴 resume=true — 진행도를 보존한다
-    ok === false && return (ran_milp = true, n_reassigned = 0, status = :commit_failed)
-    after = simstate_of(env).g.binding
-    n = 0
-    for v in union(keys(before), keys(after))
-        get(before, v, -1) == get(after, v, -1) || (n += 1)
-    end
-    return (ran_milp = true, n_reassigned = n, status = :resolved)
-end
+# 🔴 2026-09-02 (판정 1). `RESOLVE_CALLS` 와 `resolve_assignments!` 는 여기 있었고
+#    **`src/respec/common_resolve.jl`(CB 본체)로 옮겼다.** 이유는 그 파일 머리말에 있다:
+#    프로덕션 집행 엔진(`tools/monitor/render_demo.jl`)은 `smdp/mdp.jl` 을 include 하지
+#    **않으므로**, 여기 있는 한 주조 body 뒤의 재풀이는 존재하지 않았다(프롬프트가 약속한
+#    것과 반대). 아래 `apply_action!` 은 **같은 함수**를 계속 부른다 — 복제 금지.
 
 """
     _assert_spares_available(env, prop) -> Nothing

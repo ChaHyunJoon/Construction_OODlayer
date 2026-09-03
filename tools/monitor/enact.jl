@@ -855,7 +855,8 @@ function enact_minted_decision!(env, truth, decision)
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
             return (handled = false, verdict = :deferred, reason = why,
                     applied = false, partial = false, world_maybe_dirty = false,
-                    steps = NamedTuple[], undo = :none, resume = :none)
+                    steps = NamedTuple[], undo = :none, resume = :none,
+                    resolve = :none)
         end
 
         # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
@@ -863,16 +864,25 @@ function enact_minted_decision!(env, truth, decision)
         CB.LAST_EDGE_COSTS[] = _sent
 
         local r = CB.enact_minted!(env, truth, sl)
-        # 🔴 세 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
+        # 🔴 **네** 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
         #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그
         #    조용한 미복구가 된다(2026-08-30 최종 리뷰).
+        # 🔴 2026-09-02 (판정 1) 넷째: 재풀이가 **실패**한 판도 같은 사고다. body 가 배정
+        #    간선을 떼고 재풀이가 `:infeasible`/`:commit_failed`/`:threw` 로 끝나면 아무도
+        #    재배정하지 않은 세계가 남는데, `handled=true` 면 그 위에서 기본 복구 사슬까지
+        #    건너뛰고 그 OOD 사건은 **이미 소비돼** 다시 오지 않는다.
+        #    `resume` 과 **같은 모양**으로 막는다: 다섯 상태 중 실패 셋만 막고 `:resolved` 와
+        #    `:none`(재풀이를 부를 자리에 도달 못 한 판정/거절 행)은 통과시킨다 — 게이트는
+        #    넓어지기만 해야 한다.
+        local resolve_failed = r.resolve === :infeasible || r.resolve === :commit_failed ||
+                               r.resolve === :threw
         local handled = (r.verdict === :admit) && r.world_maybe_dirty &&
-                        (r.resume !== :failed)
+                        (r.resume !== :failed) && !resolve_failed
 
         println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
                 " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
-                " undo=", r.undo, " resume=", r.resume,
+                " undo=", r.undo, " resume=", r.resume, " resolve=", r.resolve,
                 " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 
@@ -890,7 +900,7 @@ function enact_minted_decision!(env, truth, decision)
         return (handled = handled, verdict = r.verdict, reason = r.reason,
                 applied = r.applied, partial = r.partial,
                 world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
-                resume = r.resume)
+                resume = r.resume, resolve = r.resolve)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
         local msg = first(split(sprint(showerror, e), "\n"))
@@ -903,6 +913,6 @@ function enact_minted_decision!(env, truth, decision)
         return (handled = false, verdict = :reject,
                 reason = "enact_minted_decision! threw: " * msg,
                 applied = false, partial = false, world_maybe_dirty = false,
-                steps = NamedTuple[], undo = :none, resume = :none)
+                steps = NamedTuple[], undo = :none, resume = :none, resolve = :none)
     end
 end

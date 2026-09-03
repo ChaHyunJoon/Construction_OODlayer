@@ -57,20 +57,10 @@ function simstate_of(env)
     for e in Graphs.edges(sched)
         push!(edges, (Graphs.src(e), Graphs.dst(e)))
     end
-    binding = Dict{Int,Int}()
-    for v in Graphs.vertices(sched)
-        # 🔴 이 호출을 `try ... catch; () end` 로 감싸지 말 것.
-        # `_responsible_robots`(battery.jl:184-192)는 else 분기에서 항상 `Any[]` 를 반환하고
-        # **절대 던지지 않으므로** 그 catch 는 죽은 방어 코드가 아니라 "조용한 폴백 금지" 원칙
-        # 위반이다: 어느 날 새 노드 타입이 추가돼 이 호출이 정말로 던지면 그 정점이 `binding`
-        # 에서 **조용히** 빠진다(이 루프는 `binding` 에 들어간 것만 보므로 그 누락은 어디서도
-        # 안 보인다).
-        rs = _responsible_robots(get_node(sched, v).node)
-        isempty(rs) && continue
-        # ⚠️ `_responsible_robots` 는 **정렬돼 있지 않다**(Dict 순회 순서).
-        # 정렬 첫째를 쓴다. 안 하면 같은 세계가 프로세스마다 다른 binding 을 얻는다.
-        binding[v] = _int_key(first(sort!(collect(rs); by = string)))
-    end
+    # 🔴 2026-09-02 (판정 1). 이 루프는 `assignment_binding`(`src/respec/common_resolve.jl`)
+    #    으로 뽑혔다 — 공통 재풀이의 `n_reassigned` 가 **같은 함수**를 부른다. 배정을 읽는
+    #    두 번째 구현을 만들지 않기 위해서다(그 규칙은 원래 재풀이 docstring 이 적어 뒀다).
+    binding = assignment_binding(sched)
     g = GraphBlock(edges = edges, binding = binding)
 
     # --- Geo: 조립체 기하 + zone(중심·반지름까지) --------------------------------------
@@ -119,27 +109,6 @@ end
 # 보조 함수 — 전부 읽기 전용
 # =============================================================================
 
-"""
-    _int_key(id) -> Int
-
-`AbstractID` 를 `s` 의 정수 키로. **`hash` 폴백을 두지 않는다** — 조용한 충돌은 서로 다른 두
-로봇을 한 레코드로 합치고(그러면 `s` 가 거짓말을 한다), 그 사고는 에러 없이 성능으로만 샌다.
-모양이 다르면 죽는 편이 낫다.
-"""
-function _int_key(id)
-    hasproperty(id, :id) ||
-        error("_int_key: $(typeof(id)) 에 `.id` 가 없다 — s 의 정수 키를 만들 수 없다 " *
-              "(hash 폴백은 두지 않는다: 조용한 충돌보다 죽는 편이 낫다)")
-    v = getproperty(id, :id)
-    # 🔴 `Bool <: Integer` **다**. `v isa Integer` 만 보면 `.id === true` 인 id 가 통과해 `1` 이
-    # 되고 `RobotID(1)` 과 **조용히 충돌한다** — 이 함수가 막으라고 존재하는 바로 그 사고가
-    # 이 함수 안에서 일어난다(리뷰 라운드 2 실측: `_int_key((id=true,)) == _int_key(RobotID(1))`).
-    # 오늘의 id 타입 중 `Bool` 페이로드는 없지만, 이 가드의 존재 이유는 **아무도 예상 못 한
-    # id 모양**을 잡는 것이다 — 그 역할에 구멍이 있으면 가드가 아니다.
-    v isa Bool &&
-        error("_int_key: $(typeof(id)).id 가 Bool 이다(값: $(v)) — Julia 에서 `Bool <: Integer` 라 " *
-              "`Int(true) == 1` 이 되어 RobotID(1) 과 조용히 충돌한다. 정수 키로 받지 않는다")
-    v isa Integer ||
-        error("_int_key: $(typeof(id)).id 가 $(typeof(v)) 다(Integer 가 아니다) — 값: $(v)")
-    return Int(v)
-end
+# 🔴 2026-09-02 (판정 1). `_int_key` 는 여기 있었고 **`src/respec/common_resolve.jl`(CB 본체)로
+#    옮겼다** — `assignment_binding` 이 부르는데 이 파일은 런타임 include 라서다. 이 파일의
+#    나머지 호출자는 같은 모듈이라 그대로 돈다.

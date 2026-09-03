@@ -223,6 +223,102 @@ end
     end
 
     # -------------------------------------------------------------------------------------
+    @testset "(2a) 🔴 재풀이가 CB 본체에 산다 — 런타임 include 없이 존재한다" begin
+        # 판정 1 의 근거였던 실측: 이 단언들은 2026-09-02 이전에 **거짓이었다.**
+        #   `using ConstructionBots` 뒤 `isdefined(CB, :resolve_assignments!) == false`
+        # 재풀이가 `src/smdp/mdp.jl` 의 런타임 include 안에만 살았기 때문이고, 이 파일이
+        # 재는 프로덕션 집행 엔진(`render_demo.jl`)은 그 모듈을 include 하지 **않는다**.
+        # ⟹ 프롬프트가 두 번 약속한 "the harness re-solves that MILP after every tool body"
+        #   가 이 엔진에서 거짓이었고, body 가 배정 간선을 떼면 아무도 재배정하지 않았다.
+        @test isdefined(CB, :resolve_assignments!)
+        @test isdefined(CB, :assignment_binding)
+        @test isdefined(CB, :RESOLVE_CALLS)
+        # 🔴 `isdefined` 만으로는 부족하다 — 스위트 안에서는 다른 파일이 런타임 include 를
+        #    먼저 했을 수 있어 **어디에 정의됐는지**가 진짜 명제다. 메서드의 소스 위치로 잰다.
+        local loc = string(first(Base.functionloc(first(methods(CB.resolve_assignments!)))))
+        @test occursin(joinpath("src", "respec"), loc)
+        @test !occursin(joinpath("src", "smdp"), loc)
+        # 배정을 읽는 구현도 한 벌이다 — `simstate_of` 가 이 함수를 부른다.
+        local locb = string(first(Base.functionloc(first(methods(CB.assignment_binding)))))
+        @test occursin(joinpath("src", "respec"), locb)
+    end
+
+    # -------------------------------------------------------------------------------------
+    # 2026-09-02 (판정 1) — 공통 MILP 재풀이가 주조 body 뒤에 실제로 돈다.
+    #
+    # 🔴 계기는 실측이다. `synthesize.py` 는 프롬프트에서 두 번 "THE HARNESS RE-SOLVES THAT
+    #    MILP AUTOMATICALLY AFTER EVERY TOOL BODY" 라고 약속하는데, 그 약속이 이 엔진에서
+    #    **거짓이었다**: 재풀이는 SMDP 런타임 모듈 안에만 살았고 이 파일의 유일한 프로덕션
+    #    호출자(render_demo.jl)는 그 모듈을 include 하지 않는다. 그래서 body 가 배정 간선을
+    #    떼면 아무도 재배정하지 않은 채 `handled=true` 로 폴백까지 삼켰다.
+    #    2026-09-02 F7 이후 mild 레인이 실제로 `release_pending_assignments` 하나짜리
+    #    `composed` body 를 내기 시작했으므로, 그때까지 우리를 **우연히** 보호하던
+    #    `reach=="composed"` 게이트도 사라졌다.
+    #
+    # 아래 셋은 **같은 body·같은 env, 레지스트리의 `surface` 만 다른 쌍**으로 가른다.
+    @testset "(2c) 🔴 배정을 건드리는 body 뒤에는 재풀이가 돈다 — 실패하면 handled=false" begin
+        # `surface="sched"` 인 원시 하나. impl 은 세계를 안 건드리는 것으로 두고(측정 대상은
+        # 재풀이의 발화이지 그 원시의 효과가 아니다), env 는 재풀이가 **성립하지 않는** 스텁이라
+        # `resolve` 가 실패로 끝난다 = "간선을 뗐는데 아무도 재배정 못 했다" 의 값싼 재현이다.
+        mktempdir() do dir
+            local path = joinpath(dir, "primitive_registry.json")
+            write(path, """
+            {"primitives": [
+              {"name":"release_pending_assignments","impl":"process_schedule!","surface":"sched",
+               "harness_args":["env"],"params":{},"reversible":false}
+            ]}""")
+            withenv("PRIMITIVE_REGISTRY" => path) do
+                CB._reset_primitive_table!()
+                local n0 = CB.RESOLVE_CALLS[]
+                # 🔴 **재개가 성공하는** env 를 쓴다. 여기서 스텁 `OperatingSchedule` 을 넘기면
+                #    `_issue_resume!` 이 먼저 실패해 `handled=false` 를 **재개 가드가 설명**하고,
+                #    이 시험은 재풀이에 대해 아무것도 못 재게 된다(실측: 그 판에서 변이 R4 —
+                #    handled 에서 재풀이 항을 빼기 — 가 초록이었다).
+                local env = throw_env_with_live_cache()
+                r, out = capture_out(() -> enact_minted_decision!(
+                    env, nothing, _dec(_sl(names = ["release_pending_assignments"]))))
+                @test r.verdict === :admit
+                @test r.world_maybe_dirty === true
+                # 전제: 다른 가드는 **열려 있다** — 그래야 아래 handled 가 재풀이의 몫이다.
+                @test r.resume !== :failed
+                # 🔴 재풀이가 **실제로 불렸다** — 카운터가 증거다(로그 문자열이 아니라).
+                @test CB.RESOLVE_CALLS[] == n0 + 1
+                @test r.resolve === :threw
+                # 🔴 그리고 그 실패가 힘을 갖는다: 폴백이 살아난다.
+                @test r.handled === false
+                @test occursin("resolve=", out)
+                @test occursin("NOT handled", out)
+            end
+            CB._reset_primitive_table!()
+        end
+    end
+
+    @testset "(2d) 배정을 안 건드리는 body 뒤에는 안 돈다 — 그리고 그 사실이 기록된다" begin
+        # 음성 대조. (2c) 와 **한 글자만 다르다**: surface 가 scene_tree 다.
+        mktempdir() do dir
+            local path = joinpath(dir, "primitive_registry.json")
+            write(path, """
+            {"primitives": [
+              {"name":"restage_all_blocked","impl":"process_schedule!","surface":"scene_tree",
+               "harness_args":["env"],"params":{},"reversible":false}
+            ]}""")
+            withenv("PRIMITIVE_REGISTRY" => path) do
+                CB._reset_primitive_table!()
+                local n0 = CB.RESOLVE_CALLS[]
+                local sched = CB.OperatingSchedule()
+                r, out = capture_out(() -> enact_minted_decision!(
+                    sched, nothing, _dec(_sl(names = ["restage_all_blocked"]))))
+                @test r.verdict === :admit
+                @test CB.RESOLVE_CALLS[] == n0          # 🔴 한 번도 안 불렸다
+                @test r.resolve === :not_needed_surface  # 🔴 조용히 안 부른 것이 아니라 기록됐다
+                @test r.handled === true                 # 배정을 안 건드렸으니 폴백 억제는 그대로
+                @test occursin("resolve=not_needed_surface", out)
+            end
+            CB._reset_primitive_table!()
+        end
+    end
+
+    # -------------------------------------------------------------------------------------
     @testset "(3) 조용한 성공은 handled=false 이고 그 폴백도 조용하지 않다" begin
         r, out = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing, _dec(_sl(names = BODY))))
         @test r.verdict === :admit

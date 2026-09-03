@@ -511,6 +511,88 @@ function _issue_resume!(env)
 end
 
 """
+    RESOLVE_SURFACES
+
+**재풀이가 필요한 편집 표면.** body 가 이 표면의 원시를 하나라도 굴렸을 때만 공통 MILP
+재풀이가 돈다.
+
+🔴 왜 "모든 body 뒤" 가 아닌가 (2026-09-02, 판정 1 집행 중의 범위 결정). 프롬프트의 약속
+문장 자신이 범위를 적는다: *"a body that edits **assignment edges or edge weights** is
+completed by that re-solve"*. 배정 문제를 건드리지 않는 표면(`scene_tree`·`physical`)은
+간선을 **매달아 놓지 않는다** — 계획은 그대로 유효하고, 거기서 재풀이는 순수 재최적화다.
+그 대가는 공짜가 아니다: 재풀이 하나가 최악 60초(S2 실측)이고 그것이 **렌더 루프 안**에서
+돈다. 그래서 약속의 범위 그대로 좁힌다.
+
+🔴 `milp` 이 여기 들어가는 이유는 `sched` 와 다르다. `forbid_heavy_cargo!` 는 지속 금지
+보관소에 한 줄 쓰는 것이 전부이고 **세계를 안 바꾼다** — 그 다음 `formulate` 가 그것을 읽어야
+비로소 효과가 생긴다. 재풀이가 없으면 그 원시는 `applied=true` 로 기록되면서 **아무 일도
+일으키지 않는다**(이 레포가 `deprioritize_agent` 에서 이미 밟은 자리: "MILP 재풀이 없이는 무효").
+
+⚠️ 건너뛴 판은 `resolve = :not_needed_surface` 로 **기록된다.** 조용히 안 부르지 않는다 —
+"안 필요해서 안 불렀다" 와 "부르고 실패했다" 는 다른 사건이다.
+"""
+const RESOLVE_SURFACES = Set(["sched", "milp"])
+
+"""
+    _issue_resolve!(env) -> (Symbol, String)
+
+**주조 body 뒤의 공통 MILP 재풀이** (판정 1, 2026-09-02). `resolve_assignments!`
+(`src/respec/common_resolve.jl`)를 한 번 부르고 그 판정을 기록용 태그로 돌려준다.
+
+🔴 왜 여기가 그 자리인가. `synthesize.py` 는 프롬프트에서 두 번
+*"THE HARNESS RE-SOLVES THAT MILP AUTOMATICALLY AFTER EVERY TOOL BODY"* 라고 약속하고,
+2026-09-01 에 `commit_respec` 을 알파벳에서 뺀 근거가 그 문장이다. 그 약속이 이 엔진에서는
+**거짓이었다**: 재풀이는 SMDP 런타임 모듈 안에만 살았고 이 파일의 유일한 프로덕션
+호출자(`render_demo.jl`)는 그 모듈을 include 하지 않는다. 그래서 body 가 배정 간선을 떼면
+**아무도 재배정하지 않은 채** `handled=true` 로 기본 복구 사슬까지 삼켰다.
+
+🔴 **던지지 않는다.** 여기서 예외가 새면 `enact_minted!` 이 기록 대신 예외로 끝나고 호출자는
+세계 상태를 알 방법을 잃는다 — `_issue_resume!` 과 같은 논거다.
+
+⚠️ **시간의 대가는 공개다**(S2 실측): 범위를 안 좁힌 전 구간 release 뒤의 재풀이는 60초
+`TIME_LIMIT` 을 친다(좁힌 release 는 0.2초 `OPTIMAL`). `_respec_optimizer()` 에 시간 제한이
+없으므로 그런 body 는 집행 경로를 그만큼 잡아 둔다. 숨기지 않고 status 와 함께 적는다.
+"""
+function _issue_resolve!(env)
+    try
+        r = resolve_assignments!(env)
+        return (r.status, "n_reassigned=$(r.n_reassigned)")
+    catch e
+        return (:threw, first(split(sprint(showerror, e), "\n")))
+    end
+end
+
+"""
+    _resolve_note(tag, detail) -> String
+
+재풀이 판정을 사유 문자열에 싣는다. 🔴 `_resume_note` 와 같은 규율 — "재풀이가 실패했다"도
+사건이고, 그 사실이 로그와 `resolve` 필드 **양쪽**에 있어야 사람과 게이트가 같이 본다.
+"""
+_resolve_note(tag::Symbol, detail::AbstractString) =
+    tag === :resolved      ? " [resolve=resolved: $(detail)]" :
+    tag === :infeasible    ? " [resolve=INFEASIBLE — 🔴 body 가 편집한 세계에서 배정을 다시 못 풀었다]" :
+    tag === :commit_failed ? " [resolve=COMMIT_FAILED — 🔴 재풀이는 됐는데 반영이 거부됐다]" :
+    tag === :threw         ? " [resolve=THREW: $(detail) — 🔴 재풀이가 던졌다]" :
+    tag === :not_needed_surface ? " [resolve=not_needed: $(detail)]" : ""
+
+"""
+    _resolve_if_needed!(env, ran) -> (Symbol, String)
+
+`ran` 중 하나라도 `RESOLVE_SURFACES` 의 표면을 건드리면 재풀이를 부르고, 아니면
+`(:not_needed_surface, ...)` 를 기록한다.
+"""
+function _resolve_if_needed!(env, ran)
+    hit = String[]
+    for r in ran
+        r.prim.surface in RESOLVE_SURFACES && push!(hit, r.prim.name)
+    end
+    isempty(hit) && return (:not_needed_surface,
+                            "배정 문제를 건드린 원시가 없다(표면: " *
+                            join(unique([r.prim.surface for r in ran]), ",") * ")")
+    return _issue_resolve!(env)
+end
+
+"""
     _resume_note(tag, detail) -> String
 
 재개 판정을 **사유 문자열에 싣는다**. 🔴 조용한 폴백 금지: "재개를 안 했다"도 사건이고,
@@ -799,10 +881,10 @@ function enact_minted!(env, truth, synth)
     #    **"세계가 깨끗하다"고 보고하는 옮겨진 빌드**가 된다. 두 표는 원시마다
     #    `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 라서 이 변경은 **넓히기만 한다**(applied ⟹ dirty).
     _r(v, why; steps = NamedTuple[], applied = false, partial = false,
-       touched = false, resume = :none) =
+       touched = false, resume = :none, resolve = :none) =
         (verdict = v, reason = why, applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
-         resume = resume)
+         resume = resume, resolve = resolve)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -856,7 +938,7 @@ function enact_minted!(env, truth, synth)
     applied = false
     touched = false        # 세계에 손을 댔을 수 있는가 (`applied` 와 다른 질문)
     need_resume = false    # 스스로 재개하지 않는 원시가 세계를 건드렸는가
-    for r in resolved
+    for (ri, r) in enumerate(resolved)
         local st, dt
         try
             out = r.prim.impl(r.args[1]...; r.args[2]...)
@@ -878,10 +960,17 @@ function enact_minted!(env, truth, synth)
             #    남겨 두는 것이 이 자리의 최악이다(`ood_injection.jl`: "그래프는 바뀌었는데
             #    캐시가 옛 프론티어를 들고 있어 복구가 아무 효과가 없다, 예외는 안 난다").
             local rs_t, rs_d = _issue_resume!(env)
+            # 🔴 던진 판에서도 재풀이는 **돈다**. 앞선 원시가 이미 배정 간선을 뗐을 수 있고,
+            #    그 세계를 다시 안 풀면 정확히 판정 1 이 막으려는 사고(아무도 재배정하지 않은
+            #    채 handled=true)가 절반쯤 편집된 세계 위에서 일어난다. 실패하면 그 사실이
+            #    `resolve` 로 나가고 `handled` 가 false 가 되어 폴백이 돈다.
+            #    ⚠️ 표면 판정은 **던지기 전까지 실제로 굴린 것들** 기준이다 — 던진 단계가
+            #    무엇을 했는지는 모르므로 그 단계 자신도 포함한다(보수적).
+            local rv_t, rv_d = _resolve_if_needed!(env, resolved[1:ri])
             return _r(:admit, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
-                              _resume_note(rs_t, rs_d);
+                              _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d);
                       steps = steps, applied = applied, partial = true,
-                      touched = touched, resume = rs_t)
+                      touched = touched, resume = rs_t, resolve = rv_t)
         end
         applied |= _step_applied(r.prim.name, st)
         touched |= _step_touched_world(r.prim.name, st)
@@ -902,7 +991,14 @@ function enact_minted!(env, truth, synth)
     quiet = applied ? "" :
         " — 🔴 불렸지만 어느 단계도 세계를 적응시키지 않았다(status: " *
         join(String.(string.([s.status for s in steps])), ",") * ")"
+    # ---- (9) 공통 MILP 재풀이 — 프롬프트의 약속을 참으로 만든다 (판정 1, 2026-09-02) --------
+    # 🔴 재개 **뒤에** 부른다. 재개의 다섯 상태는 이미 게이트가 걸린 계약이고, 그 판정을
+    #    재풀이가 밀어내면 안 된다. 재풀이 자신의 `commit_respec!(…; resume=true)` 는 그 위에서
+    #    멱등이다(`_issue_resume!` 의 멱등성 문단).
+    resolve_tag, resolve_detail = _resolve_if_needed!(env, resolved)
     return _r(:admit, "body of $(length(names)) primitives$(quiet)" *
-                      _resume_note(resume_tag, resume_detail);
-              steps = steps, applied = applied, touched = touched, resume = resume_tag)
+                      _resume_note(resume_tag, resume_detail) *
+                      _resolve_note(resolve_tag, resolve_detail);
+              steps = steps, applied = applied, touched = touched,
+              resume = resume_tag, resolve = resolve_tag)
 end
