@@ -54,6 +54,12 @@ end
     # 규약 1: 키워드는 기본값이 있어야 한다
     bad2 = "function f!(env; k)\n    return :ok\nend\n"
     @test CB.check_impl_conventions("f!", bad2) !== nothing
+    # 🔴 F3(2026-09-03): 실제로 나는 사유를 못박는다 — `!== nothing` 만 재면 사유가 틀려도
+    #    초록이다. `:parameters` 블록이 `Expr(:call,...)` 의 args 에서 위치인자보다 **먼저**
+    #    오는 것을 실측으로 확인했다(`f!(env; k)` → `Expr(:call, :f!, Expr(:parameters, :k),
+    #    :env)`) — `check_impl_conventions` 는 `findfirst` 로 위치 무관하게 찾으므로 이 사유가
+    #    맞다.
+    @test CB.check_impl_conventions("f!", bad2) == "reject:impl_keyword_needs_a_default:k"
 
     # 규약 4: 최상위 표현식이 둘
     bad3 = "const X = 1\nfunction f!(env; k = 1)\n    return :ok\nend\n"
@@ -71,8 +77,22 @@ end
     @test occursin("name_exists",
                    something(CB.check_impl_conventions("reform_stuck_teams!", clash), ""))
 
-    # 파싱 불가
-    @test CB.check_impl_conventions("f!", "function f!(env; k = 1)\n") !== nothing
+    # 파싱 불가 — 잘린 입력(unterminated). 🔴 F3(2026-09-03, 컨트롤러 실측 재확인): 이 코드는
+    #    `Meta.parseall` 이 **던지지 않는다** — 대신 `top.args` 안에 `Expr(:incomplete, ...)`
+    #    를 데이터로 심는다. 옛 단언(`!== nothing`)은 사유가 `impl_not_a_function`(완전히
+    #    틀린 사유 — agent-3 에게 "함수를 안 냈다" 대신 "잘렸다"고 말해야 한다)이어도 초록
+    #    이었다. 사유 문자열 자체를 못박는다.
+    trunc = CB.check_impl_conventions("f!", "function f!(env; k = 1)\n")
+    @test trunc !== nothing
+    @test startswith(something(trunc, ""), "reject:impl_parse_failed:")
+
+    # 파싱 불가 — 또 다른 깨진 입력 종류: 남는 `end`(뒤쪽 문에서 깨진다. 앞쪽 문은 완전한
+    # 함수라 `Expr(:function,...)` 로 정상 파싱된다 — `:error` 노드는 **두 번째** top.args
+    # 원소로 온다는 것까지 실측으로 확인했다).
+    stray_end = "function f!(env; k = 1)\n    return :ok\nend\nend\n"
+    r_stray = CB.check_impl_conventions("f!", stray_end)
+    @test r_stray !== nothing
+    @test startswith(something(r_stray, ""), "reject:impl_parse_failed:")
 end
 
 @testset "(5) 등록하면 해석되고 집행 가능하다" begin

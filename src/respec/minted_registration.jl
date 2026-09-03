@@ -34,7 +34,28 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
     try
         top = Meta.parseall(code)          # 🔴 parse 가 아니라 parseall — parse 는 첫 식만 읽는다
     catch e
+        # 🔴 벨트-앤-브레이시스다, 주 경로가 아니다(2026-09-03 F3 실측). Julia 1.10 의
+        #    `Meta.parseall` 은 불완전/깨진 입력 11종(잘림 · 쓰레기 연산자 · 남는 `end` ·
+        #    나쁜 토큰 · null byte · 잘못된 UTF-8 · 300단 중첩 괄호 · 빈 문자열 등) **어느
+        #    쪽에서도 안 던졌다** — 대신 `:incomplete`/`:error` head 를 가진 `Expr` 을 결과
+        #    안에 **데이터로** 심어 정상 반환한다(아래에서 그것을 찾는다). 이 `catch` 는 미래
+        #    Julia 판이 실제로 던질 경우에 대비한 방어일 뿐, 지금은 도달하지 않는다(비용은
+        #    거의 0이라 남겨 둔다).
         return "reject:impl_parse_failed:" * first(split(sprint(showerror, e), "\n"))
+    end
+    # 🔴 F3: 위 `try`/`catch` 가 못 잡는 진짜 경로. `parseall` 은 불완전/깨진 입력을
+    #    `Expr(:incomplete, ParseError(...))` 또는 `Expr(:error, ParseError(...))` 로 결과의
+    #    `:toplevel` 블록 **안에** 심는다(여러 문 중 뒤쪽 문에서 깨져도 마찬가지 — 실측
+    #    확인). 아래를 안 넣으면 이 경우 잘린 코드가 `impl_not_a_function`(또는 문장 수가
+    #    둘 이상이면 `impl_not_single_expression`)으로 새어나가 agent-3 에게 틀린 수리
+    #    신호를 준다 — verdict 는 여전히 거절(`!== nothing`)이라 낡은 단언(`!== nothing` 만
+    #    보는 시험)은 이걸 못 잡는다(설계 §8, 컨트롤러 F3).
+    bad = findfirst(x -> x isa Expr && x.head in (:incomplete, :error), top.args)
+    if bad !== nothing
+        pe = top.args[bad].args[1]
+        msg = pe isa Base.Meta.ParseError ? replace(pe.msg, "\n" => " / ") :
+                                             sprint(showerror, pe)
+        return "reject:impl_parse_failed:$(msg)"
     end
     exprs = [x for x in top.args if !(x isa LineNumberNode)]
     length(exprs) == 1 ||
