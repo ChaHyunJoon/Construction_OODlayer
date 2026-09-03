@@ -124,11 +124,11 @@ mention `refused`. Read the lane's date before pooling old rows with new ones.
 set on the same line. Keep reading both anyway: a future lane may separate them, and a consumer
 that silently depends on the coincidence is how the C8 accident happened.
 
-⚠️ **Until Task 8 the last two rows are unreachable.** `body_names` is pinned to `[]`
-(R-BODYNAMES), so every record of a kind collapses to one canonical form and "already observed"
-would be an artefact of the empty body rather than a fact about the tool. `tool_minted` is
-therefore `None` ("not knowable") on every row that runs, not `False`. **`|K|` is not a curve
-right now** -- it counts kinds.
+✅ **Task 8 (2026-09-03) opened the last two rows.** `body_names` was pinned to `[]`
+(R-BODYNAMES) because agent-3 had no name to fill it with; now agent-3 (`WriteToolImpl`) writes
+`impl_name`, and `body_names` is `[impl_name]`. A kind's records no longer all collapse onto one
+canonical form, so "already observed" is a fact about the tool again and `tool_minted` can be
+`True`/`False`, not only `None`. **`|K|` is a curve now** -- it counts behaviours, not just kinds.
 
 ────────────────────────────────────────────────────────────────────────────────
 🔴 R19 (2026-09-03) -- the ψ distance is **gone**, not merely record-only.
@@ -178,6 +178,8 @@ for _d in (os.path.join(WM, "core"),):
 import numpy, sklearn.ensemble  # noqa: F401,E401  -- pinned order: before dspy
 
 import dspy  # noqa: E402
+
+import world_interface as WI  # noqa: E402  -- Task 8: agent-3 이 받는 세계 인터페이스의 렌더러
 
 # 🔴 2026-09-03. `import features_agnostic as _fa` 와 `import primitive_registry as _prim` 은
 #    여기 있었다. `primitive_registry` 는 삭제됐고(그 순간 이 모듈의 import 가 죽어 서비스
@@ -369,57 +371,36 @@ class DesignToolSpec(dspy.Signature):
 
 
 # ==========================================================================================
-# 🔴🔴 STANDING INSTRUCTION (2026-09-03): DO NOT RUN A PAID SYNTHESIS BEFORE TASK 8. 🔴🔴
+# 🔴 Task 8 (2026-09-03). agent-3 이 조합기에서 **Julia 구현 작성자**로 바뀐다.
 # ==========================================================================================
-# This signature is a **live prompt that lies**, knowingly, for one task's duration.
-#
-#   · Its docstring and five field descriptions below tell agent-3 it holds "a fixed inventory
-#     of primitive operations" and to emit "a name from the inventory". There is no inventory:
-#     `synthesize_multi` feeds `inventory=""` (D5 deleted the registry and its renderer).
-#   · So a paid run instructs the model to pick names out of an empty list. What comes back is
-#     invented names, or a refusal, and **neither is a measurement of anything.**
-#   · The gate that used to catch invented names was `parse_body` -- it matched the body against
-#     the registry and surfaced the mismatch as `body_unknown` / `reach_matches_body`. Task 1
-#     deleted it along with the registry it consulted. **There is now no downstream check at all
-#     on what this stage returns**, so the garbage would land in the ledger and in
-#     `synth_lane_records.jsonl` looking exactly like a real record.
-#
-# 🔴 The wording is deliberately NOT patched. Task 8 replaces this whole signature with
-#    `WriteToolImpl` (agent-3 becomes a **writer** of Julia, handed the world interface instead
-#    of an alphabet). Rewording five descs here would change the live prompt bytes twice, and
-#    the intermediate wording -- "compose from this empty inventory" -- is not less false than
-#    what stands, only differently false. One rewrite, at Task 8.
-class ComposeToolBody(dspy.Signature):
-    """You are given a tool specification and a fixed inventory of primitive operations.
-    Write the tool's BODY as an ordered sequence of primitive calls from the inventory.
-    You never write code. If the inventory cannot express the specified mechanism, say so
-    and name the missing primitive precisely -- that answer is as valuable as a body."""
+# 이 자리에는 "DO NOT RUN A PAID SYNTHESIS BEFORE TASK 8" 경고와 `ComposeToolBody` 가 있었다 --
+# 인벤토리 없이 "인벤토리에서 조합하라" 고 시키는 거짓 프롬프트였다. `WriteToolImpl` 은 그
+# 거짓을 안 든다: 알파벳이 아니라 **세계 인터페이스**(타입·필드·이미 있는 함수·호출 규약)를
+# 받고, 조합이 아니라 **코드를 쓴다.** `compose_interface()` 가 이제 그 인터페이스를 실제로
+# 채워 넣으므로(아래) 이 자리부터는 살아 있는 프롬프트다.
+class WriteToolImpl(dspy.Signature):
+    """You are given a tool specification and the schema and function signatures of a
+    running multi-robot construction simulator. WRITE THE JULIA IMPLEMENTATION of the
+    specified tool as a single function. You are not given a catalogue of ready-made
+    operations -- there is none. Read the world's types and the functions the module
+    already has, and write the code that produces the specified effect."""
     spec: str = dspy.InputField(desc=
         "physical principles of this build, the final goal, what the event broke, and the "
         "tool to build: name, parameter schema, mechanism")
-    inventory: str = dspy.InputField(desc=
-        "the alphabet a body may be composed from, with each primitive's full mechanism")
+    world_interface: str = dspy.InputField(desc=
+        "the world's types and fields, the functions the module already has, and the hard "
+        "requirements your function must satisfy to be callable")
 
-    body: str = dspy.OutputField(desc="ordered list of primitive calls, with arguments")
-    # 🔴 2026-09-03 (A). `body` 는 **산문**이다. 옛날엔 canon/psi/ledger 가 그것을 읽었다
-    #    (오늘은 아니다 — ψ 는 D7 로 사라졌고 canon 은 `body_names` 를 읽는다). 그 표기법은
-    #    고정돼 있지 않아 인자를 기계가 못 꺼낸다(실측: kwarg 형태와 Julia 리터럴에서 정규식이
-    #    깨지고, 괄호 없는 나열에서는 이름만 살아남고 인자가 사라진다). 그래서 인자는 파싱하지
-    #    않고 **모델이 데이터로 낸다.** `body` 는 그대로 두므로 canon 의 계보가 안 끊긴다.
+    impl_name: str = dspy.OutputField(desc="the Julia function name; must end with `!`")
+    impl_code: str = dspy.OutputField(desc=
+        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
+    params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
     calls: List[Dict[str, Any]] = dspy.OutputField(desc=
-        "the SAME body as data, in the same order: "
-        '[{"primitive": "<name from the inventory>", "args": {<argument name>: <value>}}]. '
-        "Every argument value must be a flat scalar (string, number, boolean, or null) -- "
-        "the harness passes these straight to the primitive. Use the exact argument names the "
-        "inventory lists for that primitive. An empty object is correct for a primitive that "
-        "takes none. This field is what actually gets executed, so it must agree with `body`.")
-    reach: str = dspy.OutputField(desc=
-        '"composed" if every primitive in the body exists in the inventory; '
-        '"needs_primitive" otherwise')
-    missing_primitive: str = dspy.OutputField(desc=
-        "if reach is needs_primitive: name, edit surface (sched|scene_tree|env_param|"
-        "physical), params, preconditions, reversibility, what it consumes, and WHY no "
-        "composition over the inventory can substitute for it. Empty otherwise.")
+        'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
+        '"args": {<keyword>: <value>}}]')
+    surface: str = dspy.OutputField(desc="which world surface this edits")
+    reversible: bool = dspy.OutputField(desc="can this be undone")
+    wrote: bool = dspy.OutputField(desc="false if you could not write an implementation")
 
 
 # ---- The task-side blocks, per stage ------------------------------------------------------
@@ -598,22 +579,22 @@ def build_compose_context(spec: Dict[str, Any], reasoning_log: str = "", blob=No
 
 
 # 🔴 2026-09-03 (D5). `build_inventory_block` stood here -- the alphabet agent-3 read. There is
-#    no alphabet. `compose_interface()` below is what the compose stage is handed until Task 8
-#    replaces that stage's signature with one that is given the **world interface** instead.
+#    no alphabet. `compose_interface()` below is what the compose stage is handed, and Task 8
+#    is where it starts returning the **world interface** instead of the empty string.
 def compose_interface(blob=None) -> str:
     """**One source of truth** for the interface text the compose stage (agent-3) is handed.
 
-    🔴 It returns the empty string, and that is the whole point of the G1 guard in
-    `synthesize_multi`: today agent-3 would be told to compose from an **empty catalogue**, so a
-    live run of this lane spends money to measure nothing. The guard reads this function and
-    both compose call sites are fed from it, so there is exactly one place that decides what
-    agent-3 sees -- and Task 8 flips the lane on by making this return the world interface
-    (`world_interface.build_world_interface_block`), without touching the guard.
+    🔴 Task 8. It now returns `world_interface.build_world_interface_block(blob)` -- agent-3 is
+    handed the world's types, fields and existing functions instead of an alphabet. The G1 guard
+    in `synthesize_multi` is untouched: it only ever asked "is this empty", never what filled it,
+    so a real interface passes it exactly the way the old empty string failed it. Both compose
+    call sites still read this one function, so there is still exactly one place that decides
+    what agent-3 sees.
 
     ⚠️ It is a **function, not a constant**, so a test can supply an interface without a paid
     call and without an extra parameter threaded through `run_synthesis`.
     """
-    return ""
+    return WI.build_world_interface_block(blob)
 
 
 # ==========================================================================================
@@ -624,12 +605,11 @@ def compose_interface(blob=None) -> str:
 #    paren form for the shape, the name scan for membership). With no registry there is nothing
 #    to match against, and a parser that silently matches nothing is worse than no parser.
 #    Task 8 fills `body_names` from agent-3's own `impl_name` instead.
-# 🔴 `_norm` survives on its own: `normalize_calls` uses it, and the `!` convention (Julia impl
-#    names end in `!`) outlives the registry that documented it.
-
-
-def _norm(name: str) -> str:
-    return name[:-1] if name.endswith("!") else name
+# ✅ Task 8. `_norm` (stripped a trailing `!` so a call's `primitive` would match a registry key
+#    that never carried one) is **gone, not kept**. Its premise no longer holds: `calls_match_body`
+#    now compares against `body_names = [impl_name]`, which keeps the `!` (`WriteToolImpl.calls`
+#    is defined to name `"<impl_name>"` verbatim), so stripping it here would make a correct
+#    self-report read as a mismatch.
 
 
 #: 호출 인자로 허용되는 값의 타입. `params_flatness` 의 `_SCALAR_TYPES` 와 **같은 축**이지만
@@ -674,7 +654,7 @@ def normalize_calls(raw) -> Optional[List[Dict[str, Any]]]:
             args = {}
         if not isinstance(args, dict):
             return None
-        out.append({"primitive": _norm(nm.strip()), "args": dict(args)})
+        out.append({"primitive": nm.strip(), "args": dict(args)})
     return out
 
 
@@ -706,8 +686,8 @@ def canon(names: Sequence[str], kind: Optional[str]) -> Tuple[Tuple[str, ...], s
     🔴 Parameters do not go in -- `names` carries names only, never arguments (they travel on
     the `calls` channel). If there is no `kind` it stays `""` (the empty string and `"battery"`
     are different canonical forms).
-    ⚠️ 2026-09-03: until Task 8 fills `body_names`, every record of a kind reaches this with
-    `[]`, so all of them share one canonical form and `|K|` counts kinds, not behaviours.
+    ✅ Task 8 (2026-09-03): `body_names` is `[impl_name]` now, so records of the same kind no
+    longer collapse onto one canonical form.
     """
     return (tuple(sorted(names)), kind or "")
 
@@ -929,18 +909,19 @@ def _finish_record(rec, kind, led, blob):
     computing a ψ distance over it. Both are gone with the registry (D5 · D7). What is left is
     the part that never depended on an alphabet: the canonical form, the ledger, and `|K|`.
     """
-    # 🔴 `body_names` stays in the record and stays a **list**, and Task 8 fills it with
-    #    `[impl_name]`. The reason is that **the record shape stays stable across Task 8** --
-    #    a jsonl whose columns change under readers written against it is the expensive kind of
-    #    churn, and both Julia readers already type this key as a list.
-    # ⚠️ It is NOT because absence would be misread: measured 2026-09-03, both readers default
-    #    absence to empty and land on the same verdict --
-    #    `minted_tool.jl:937` `_synth_get(synth, "body_names", String[])` and
-    #    `enact.jl:925` `something(get(sl, "body_names", nothing), [])`, both -> `:reject
-    #    "empty body"`. Do not cite a distinction the enactment path does not draw.
-    rec["body_names"] = []
-    # 🔴 If it is inexpressible and the definition is empty, the record loses what was needed
-    #    in that event.
+    # ✅ Task 8. `body_names` is filled **before** this function runs -- `synthesize_multi` sets
+    #    it from agent-3's own `impl_name` right after the write stage (and again after a
+    #    recompose). This function used to overwrite it to `[]` unconditionally (R-BODYNAMES);
+    #    it must not do that any more, or every generated body would read as empty. The record
+    #    shape itself did not change: the key stays a **list**, and both Julia readers
+    #    (`minted_tool.jl` `_synth_get(synth, "body_names", String[])` ·
+    #    `enact.jl` `something(get(sl, "body_names", nothing), [])`) already type it that way.
+    # 🔴 `reach`/`missing_primitive` are kept in the record (R1 -- they are not renamed or
+    #    deleted), but `WriteToolImpl` does not declare them as output fields, so they are
+    #    agent-3's self-report only when a caller's fake still sets them; on a live run they are
+    #    simply `""`. `missing_primitive_recorded` below is therefore `None` on every live row --
+    #    the concept it measured (a named, non-empty missing primitive) does not exist for a
+    #    writer that either writes code or says `wrote=False`.
     rec["missing_primitive_recorded"] = (
         None if rec["reach"] != "needs_primitive" else bool(rec["missing_primitive"].strip()))
 
@@ -955,12 +936,11 @@ def _finish_record(rec, kind, led, blob):
     rec["calls"] = normalize_calls(_raw_calls)
     rec["calls_unreadable"] = (_raw_calls is not None and rec["calls"] is None)
     # 🔴 기록만 하고 강제하지 않는다(옛 `reach_matches_body` 와 같은 관용).
-    # 🔴 `body_names` 가 R-BODYNAMES 로 `[]` 에 못박혀 있는 동안은 **`None`("못 쟀다")이다.**
-    #    비교를 그대로 두면 agent-3 이 호출을 낼 때마다 구조적으로 `False` 가 나오는데,
-    #    `False` 는 "쟀고 어긋났다" 는 주장이라 지속되는 jsonl 을 읽는 사람에게는 **모델이
-    #    자기모순을 냈다**고 보인다. 잰 것이 없으므로 `None` 이다(이 파일의 삼상 규약).
-    #    Task 8 이 `body_names` 를 `[impl_name]` 로 채우는 순간 다시 측정 가능해진다 —
-    #    아래 식은 그때 손대지 않고도 살아난다.
+    # 🔴 `body_names` 가 비어 있으면(= agent-3 이 안 썼다, `wrote is False`) **`None`("못
+    #    쟀다")이다.** `False` 는 "쟀고 어긋났다" 는 주장이라, 쓰지도 않은 판을 그렇게 적으면
+    #    지속되는 jsonl 을 읽는 사람에게는 **모델이 자기모순을 냈다**고 보인다. 잰 것이 없으므로
+    #    `None` 이다(이 파일의 삼상 규약). ✅ Task 8 이 `body_names` 를 `[impl_name]` 로 채우는
+    #    한, agent-3 이 실제로 쓴 판에서는 이 식이 다시 측정 가능하다.
     rec["calls_match_body"] = (
         None if (rec["calls"] is None or not rec["body_names"]) else
         [c["primitive"] for c in rec["calls"]] == rec["body_names"])
@@ -973,19 +953,17 @@ def _finish_record(rec, kind, led, blob):
     minted = led.observe(c, params=rec["params"], tool_name=rec["tool_name"])
     rec["K"] = led.K
     rec["canon_count"] = led.entries[rec["canon_key"]]["count"]
-    # 🔴 `body_names` 가 비어 있는 동안 `tool_minted` 는 **`None`("못 쟀다")이지 `False`
-    #    ("이미 본 canon")가 아니다.** R-BODYNAMES 가 `body_names` 를 `[]` 로 못박아서 한
-    #    `kind` 의 모든 기록이 canonical form 하나로 붕괴한다 — 그래서 두 번째 기록부터는
-    #    **진짜로 새로운 도구인데도** `False` 가 나온다. 그것은 빠진 값이 아니라 **틀린
-    #    값**이고, 틀린 값은 `|K|` 곡선에 그대로 실린다. `led.observe` 는 계속 부른다:
-    #    `canon_count` 는 "이 축퇴된 canon 을 몇 개의 기록이 공유했나" 라는 참인 사실이다.
-    #    Task 8 이 `body_names` 를 채우면 아래 분기가 그대로 살아난다.
+    # 🔴 `body_names` 가 비어 있으면(agent-3 이 아무 이름도 못 냈다) `tool_minted` 는
+    #    **`None`("못 쟀다")이지 `False`("이미 본 canon")가 아니다.** `led.observe` 는 그래도
+    #    부른다 -- 빈 canon (`()::kind`) 도 하나의 canonical form이고, `canon_count` 는 "이
+    #    (빈) canon 을 몇 개의 기록이 공유했나" 라는 참인 사실이다. 그것을 `tool_minted` 로
+    #    올리지 않는 이유는 빈 body 에 대한 "새 canon"/"재도출" 은 도구에 대한 사실이 아니라
+    #    **쓰지 않았다는 사실**이기 때문이다.
     if not rec["body_names"]:
         rec["tool_minted"] = None
-        rec["reason"] = ("tool_minted is not knowable until Task 8 fills body_names: with an "
-                         "empty body every record of this kind collapses to the same canonical "
-                         "form (%s), so 'already observed' would be an artefact of the empty "
-                         "body and not a fact about the tool (spec 5-2-3)" % rec["canon_key"])
+        rec["reason"] = ("tool_minted is not knowable: agent-3 wrote no implementation for this "
+                         "event (body_names is empty, canon %s), so there is no behaviour to "
+                         "check against the ledger (spec 5-2-3)" % rec["canon_key"])
     else:
         rec["tool_minted"] = bool(minted)
         rec["reason"] = ("new canon" if minted else
@@ -1176,22 +1154,35 @@ _COMPOSE_FEEDBACK = (
     "produced, repeat your previous specification unchanged.\n\n" + _EFFECT_NOT_MECHANISM)
 
 _SPEC_FIELDS = ("tool_name", "params", "mechanism")
-_BODY_FIELDS = ("body", "reach", "missing_primitive", "calls")
+# ✅ Task 8. agent-3(`WriteToolImpl`) 의 출력 모양이 바뀌었다: `body`/`reach`/`missing_primitive`
+#    대신 `impl_name`/`impl_code`/`surface`/`reversible`/`wrote`. 🔴 R1 (컨트롤러 결정) --
+#    `reach`·`missing_primitive` 는 기록에서 **지우지 않는다**: `WriteToolImpl` 이 그 둘을
+#    선언하지 않으므로 `getattr` 은 그냥 기본값(`""`)으로 떨어진다 -- 필드를 지운 것이 아니라
+#    자기신고가 더 이상 그것을 내지 않는 것이다.
+_BODY_FIELDS = ("impl_name", "impl_code", "surface", "reversible", "wrote", "calls",
+               "reach", "missing_primitive")
 
-#: `_BODY_FIELDS` 중 **문자열이 아닌** 것. 🔴 왜 표가 필요한가: 나머지 셋은 `getattr(p, f, "")
-#: or ""` 로 복사하는데 `calls` 에 그것을 쓰면 `[]`(읽었는데 비었다)가 `""` 로 접혀 `None`
-#: (못 읽었다)과 구별 불가능해진다 — 이 파일이 지키는 삼상 규약을 복사 한 줄이 깨뜨린다.
-_NON_STR_BODY_FIELDS = frozenset({"calls"})
+#: `_BODY_FIELDS` 중 **`or ""` 로 접으면 안 되는** 것. `calls` 는 예전과 같은 이유
+#: (`[]` = "읽었는데 비었다" 가 `""` = "못 읽었다" 로 접히면 삼상이 깨진다). `reversible`·
+#: `wrote` 는 **bool** 이다 -- 표가 없으면 `getattr(p, "wrote", "") or ""` 가
+#: `wrote=False`(못 쓰겠다는 자기신고)를 `""`(못 읽었다)로 접어 F2 의 `wrote is False`
+#: 분기가 영영 못 켜진다.
+_NON_STR_BODY_FIELDS = frozenset({"calls", "reversible", "wrote"})
 
 
 def _copy_body_fields(rec, pred):
-    """agent-3 의 출력 넷을 기록으로. 문자열 셋만 `""` 로 접고 `calls` 는 **날것 그대로** 둔다
-    (정규화는 `_finish_record` 가 한 번만 한다 — 두 자리에서 하면 갈린다)."""
+    """agent-3(`WriteToolImpl`) 의 출력을 기록으로. 문자열 필드만 `""` 로 접고 `calls`·
+    `reversible`·`wrote` 는 **날것 그대로** 둔다(정규화는 `_finish_record` 가 한 번만 한다 --
+    두 자리에서 하면 갈린다). `wrote` 는 bool 이 아니면 `None`("못 읽었다")으로 접고,
+    `body_names` 는 여기서 바로 `[impl_name]` 로 채운다 -- 집행부가 읽는 자리다."""
     for f in _BODY_FIELDS:
         if f in _NON_STR_BODY_FIELDS:
             rec[f] = getattr(pred, f, None)
         else:
             rec[f] = (getattr(pred, f, "") or "")
+    w = rec["wrote"]
+    rec["wrote"] = w if isinstance(w, bool) else None
+    rec["body_names"] = [rec["impl_name"]] if rec["impl_name"] else []
 
 
 # ==========================================================================================
@@ -1257,11 +1248,13 @@ def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
     already stood, with `macro_tool_agree`. The parameter stays in the signature because the
     service passes it positionally and its absence would be a silent API break.
 
-    ⚠️ 2026-09-03: `blob` is **threaded dead**. It used to be the registry blob and every callee
-    read it; today it reaches `synthesize_multi` -> `build_compose_context` / `_finish_record` /
-    `compose_interface` and **not one of them looks at it**. It is kept, not removed, because
-    Task 8's code passes it at the same call sites -- deleting the parameter now would only mean
-    re-adding it. If Task 8 leaves it unread as well, delete it there.
+    ✅ Task 8 (2026-09-03): `blob` is read again. It used to be the registry blob (dead since
+    D5 -- `build_compose_context` / `_finish_record` never looked at it, and `compose_interface`
+    returned `""` regardless of `blob`). Now `compose_interface(blob)` forwards it to
+    `world_interface.build_world_interface_block(blob)`, which uses it as an override for the
+    on-disk `world_interface.json` when a caller (a test) supplies one -- the same reason a test
+    can drive `synthesize_multi` without touching disk. `build_compose_context` / `_finish_record`
+    still do not read it.
     """
     return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
                             programs=programs, blob=blob)
@@ -1310,30 +1303,28 @@ def synthesize_multi(state: str,
     #    agent-2 have already been paid for. A run that ends in this refusal spends **nothing**
     #    -- `stages` stays empty and the spy in `test_synthesis_record_contract.py` sees no
     #    stage at all.
-    # 🔴 Why it exists at all. `ComposeToolBody` is fed `compose_interface()` and that
-    #    is the empty string until Task 8, i.e. agent-3 would be told to compose from an empty
-    #    catalogue. Until today the only thing stopping such a run was a sentence in a human
-    #    ledger, and `results/` shows runs like this do get launched.
+    # ✅ Task 8. `WriteToolImpl` is fed `compose_interface()`, which now renders the real world
+    #    interface -- this guard stays because a caller (a test, or a broken `WM_DIR`) can still
+    #    monkeypatch or starve it back to empty, and the guard's job was always "is this empty",
+    #    never "what generation of catalogue was this".
     # 🔴 A rejection, not an exception (the repo's idiom): it returns a record whose
     #    `refused` field a reader can index. Three-state -- `None` never ran (above), `False`
     #    ran and passed, a string is the reason code. It is NOT collapsed into `enabled`
-    #    ("the lane was switched off") nor into `reach == "needs_primitive"` ("agent-3
-    #    declined", which has `ran == True`): this repo has twice paid for folding distinct
-    #    events into one observable.
+    #    ("the lane was switched off") nor into `wrote is False` ("agent-3 declined", which has
+    #    `ran == True`): this repo has twice paid for folding distinct events into one observable.
     iface = compose_interface(blob)
     rec["refused"] = False if (iface or "").strip() else "no_compose_interface"
     if rec["refused"]:
         rec["reason"] = (
             "refused before spending: the compose stage would have been handed no world "
-            "interface (compose_interface() is empty until Task 8), so agent-3 would be asked "
-            "to compose from an empty catalogue and the run would measure nothing; nothing "
-            "was billed (stages == [])")
+            "interface (compose_interface() returned empty), so agent-3 would be asked to write "
+            "code blind and the run would measure nothing; nothing was billed (stages == [])")
         return rec
 
     progs = programs or {}
     observe = progs.get("observe") or dspy.ChainOfThought(ObserveEvent)
     design = progs.get("design") or dspy.ChainOfThought(DesignToolSpec)
-    compose = progs.get("compose") or dspy.ChainOfThought(ComposeToolBody)
+    compose = progs.get("compose") or dspy.ChainOfThought(WriteToolImpl)
 
     # ---- agent-1: observation -> what broke ------------------------------------------------
     octx = build_observe_context(state)
@@ -1415,12 +1406,12 @@ def synthesize_multi(state: str,
     # ---- agent-3: the specification -> a body ----------------------------------------------
     spec = {k: rec[k] for k in ("tool_name", "params", "mechanism")}
     try:
-        # 🔴 2026-09-03. `inventory=build_inventory_block(blob)` stood here. There is no
-        #    inventory; the field is fed `compose_interface(blob)` -- empty until Task 8, and
-        #    the G1 guard above has already refused if it is. Task 8 replaces this stage with
-        #    one that receives the **world interface** instead.
+        # ✅ Task 8. agent-3 receives the **world interface** (`iface`, already computed by the
+        #    G1 guard above) instead of an inventory -- reusing `iface` rather than calling
+        #    `compose_interface(blob)` again keeps the guard's verdict and what agent-3 actually
+        #    sees from being able to drift apart.
         p3 = compose(spec=build_compose_context(spec, rec["reasoning_log"], blob),
-                     inventory=iface)
+                     world_interface=iface)
     except Exception as e:
         rec["error"] = "compose: %s: %s" % (type(e).__name__, e)
         rec["reason"] = "stage 3 (compose) failed; nothing was minted"
@@ -1430,9 +1421,12 @@ def synthesize_multi(state: str,
     rec["reasoning"] = (getattr(p3, "reasoning", "") or "")
 
     # ---- (F2) agent-3 -> agent-2: the composer's verdict, redacted, **once** ---------------
-    # 🔴 Fires on `needs_primitive` **only**, and only when the definition is non-empty. Any
-    #    other `reach` (including a malformed one) is not worth two more billable calls, and
-    #    "we could not read the verdict" must not look like "the verdict was acted on".
+    # ✅ Task 8. Fires on `wrote is False` **only** -- agent-3 no longer reports
+    #    `reach == "needs_primitive"` (that field is `WriteToolImpl`'s dead vocabulary now, kept
+    #    in the record per R1 but never populated by a live run). `wrote is False` is agent-3's
+    #    own refusal to write an implementation, the direct analogue of the old "could not
+    #    compose from the inventory" signal. `None` (unreadable) does NOT fire -- "we could not
+    #    read the verdict" must not look like "the verdict was acted on".
     # 🔴 At most one round trip, for the same reason the groundability loop is capped: a loop
     #    that does not converge is the worst outcome, and a second failure is itself data.
     # 🔴 `expressible` is NOT overwritten here. It is the firing verdict of this event and it
@@ -1448,7 +1442,7 @@ def synthesize_multi(state: str,
     rec["expressible_after_recompose"] = None
     rec["ungrounded_params_after_recompose"] = None
 
-    if rec["reach"] == "needs_primitive" and rec["missing_primitive"].strip():
+    if rec["wrote"] is False:
         first = {f: rec[f] for f in _SPEC_FIELDS + _BODY_FIELDS}
         for f, v in first.items():
             rec[f + "_first"] = v          # the first attempt survives whatever happens below
@@ -1492,10 +1486,10 @@ def synthesize_multi(state: str,
                 rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
                 try:
                     p3b = compose(spec=build_compose_context(spec2, rec["reasoning_log"], blob),
-                                  inventory=iface)
+                                  world_interface=iface)
                 except Exception as e:
                     rec["recompose_error"] = "compose(recompose): %s: %s" % (type(e).__name__, e)
-                    rec.update(first)      # all six go back -- never a spliced record
+                    rec.update(first)      # every captured field goes back -- never a spliced record
                 else:
                     rec["stages"].append("compose")
                     _copy_body_fields(rec, p3b)
