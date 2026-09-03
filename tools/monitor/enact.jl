@@ -763,6 +763,32 @@ function _synth_lane_field(sl, key::AbstractString)
 end
 
 """
+    minted_handled(r) -> Bool
+
+🔴 **`handled` 4-연언지의 정본은 이 함수다.** `CB.enact_minted!` 의 결과 네임드튜플 하나를
+받아 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라" 를 판정한다.
+`CB.minted_handled_verdict_ok` 의 이웃이다 — 그 함수가 **첫** 연언지를 답하고, 이 함수가
+그것을 부르며 나머지 셋을 더한다.
+
+| 연언지 | 왜 |
+|---|---|
+| `CB.minted_handled_verdict_ok(verdict)` | 집행된 verdict 둘(`ENACTED_VERDICTS`)만 통과 |
+| `world_maybe_dirty` | 🔴 `applied` 가 **아니다** — 조용한 성공은 폴백해야 하고, 던져서 세계가 절반인 판은 폴백하면 안 된다 |
+| `resume !== :failed` | 세계는 고쳤는데 프론티어가 낡았다 = 성공과 구별되지 않는 미복구 |
+| `!resolve_failed` | 재풀이가 `:infeasible`/`:commit_failed`/`:threw` = 간선을 뗐는데 아무도 재배정 못 했다 |
+
+🔴 **이 식을 어디에도 베끼지 마라 — 이름으로 불러라.** 손으로 베낀 3-연언지 복사본이
+프로덕션 4-연언지와 이미 갈렸던 것이 실측됐다(2026-09-02 T0). 소비자가 둘이다:
+아래 `enact_minted_decision!` 과 `tools/probes/probe_minted_body_enacts.jl`.
+"""
+function minted_handled(r)
+    local resolve_failed = r.resolve === :infeasible || r.resolve === :commit_failed ||
+                           r.resolve === :threw
+    return CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
+           (r.resume !== :failed) && !resolve_failed
+end
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 집행한다. `CB.enact_minted!` 를 부르고, **집행 여부를 로그와
@@ -771,8 +797,8 @@ end
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
 
-🔴 **`handled` 의 정의는 `CB.minted_handled_verdict_ok(verdict) && world_maybe_dirty &&
-resume !== :failed && !resolve_failed` 다 — `applied` 가 아니다.**
+🔴 **`handled` 의 정의는 바로 위 `minted_handled(r)` 하나가 소유한다 — `applied` 가 아니다.**
+이 문단은 그 함수를 **인용**할 뿐 식을 다시 적지 않는다(손베낀 복사본이 이미 한 번 갈렸다).
 🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3) —
 `CB.minted_handled_verdict_ok` 가 그 판정을 대신한다. 나머지 셋(`world_maybe_dirty` ·
 `resume !== :failed` · `!resolve_failed`)은 그대로 — 게이트는 첫 연언지만 넓어졌다.
@@ -877,10 +903,9 @@ function enact_minted_decision!(env, truth, decision)
         #    `resume` 과 **같은 모양**으로 막는다: 다섯 상태 중 실패 셋만 막고 `:resolved` 와
         #    `:none`(재풀이를 부를 자리에 도달 못 한 판정/거절 행)은 통과시킨다 — 게이트는
         #    넓어지기만 해야 한다.
-        local resolve_failed = r.resolve === :infeasible || r.resolve === :commit_failed ||
-                               r.resolve === :threw
-        local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
-                        (r.resume !== :failed) && !resolve_failed
+        #    🔴 식 자체는 여기 없다 — 정본은 위 `minted_handled` 하나다(손베낀 복사본이 이미
+        #    한 번 갈렸다, 2026-09-02 T0).
+        local handled = minted_handled(r)
 
         println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,

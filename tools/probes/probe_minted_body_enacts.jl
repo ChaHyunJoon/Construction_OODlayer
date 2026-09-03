@@ -129,10 +129,9 @@ function main()
             "   applied = ", h.applied, "   world_maybe_dirty = ", h.world_maybe_dirty,
             "   sanctioned = ", dec.synth_lane["reach"] == "composed",
             "   threw = ", count(s -> s.status === :threw, h.steps))
-    println("(참고) 첫 집행의 판정으로 계산하면 handled = ",
-            CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
-            (r.resume !== :failed) &&
-            !(r.resolve === :infeasible || r.resolve === :commit_failed || r.resolve === :threw))
+    # 🔴 식을 베끼지 않는다 — `enact.jl` 의 정본 `minted_handled` 를 **부른다**(위에서 include
+    #    했다). 손베낀 복사본이 프로덕션과 갈렸던 것이 이 레인의 T0 실측이다.
+    println("(참고) 첫 집행의 판정으로 계산하면 handled = ", minted_handled(r))
 
     released_ok = edges_after < edges_before
     reprice_ok  = CB.EDGE_PAYLOAD_MULTIPLIER[] !== nothing

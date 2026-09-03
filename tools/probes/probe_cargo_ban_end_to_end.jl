@@ -329,6 +329,35 @@ function _released_reported(steps)
     return m === nothing ? nothing : parse(Int, m.captures[1])
 end
 
+"""
+    _void_kind(r) -> Symbol · `_VOID_LABEL`
+
+절 A 요약표 `판정` 열의 **공허 판정**. 세 값뿐이다:
+
+| 값 | 라벨 | 뜻 |
+|---|---|---|
+| `:nostep` | `VOID_NOSTEP` | 아무 단계도 안 불렸다 — 나머지 열을 인용하지 마라 |
+| `:unapplied` | `VOID_UNAPPLIED` | 단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 하나도 없다 |
+| `:ok` | `OK` | 공허는 아니다. 🔴 그 이상의 판정은 아니다(절 A 는 인과를 안 잰다) |
+
+🔴 **옛 판정 `void = isempty(r.steps)` 는 집행된 행에서 절대 안 켜졌다** — `steps == 0 ∧
+handled == true` 는 구조적으로 불가능하고, 2026-09-02 재측정에서 두 팔 다 `steps` 가 안 비어
+`VOID` 가 한 번도 안 탔다. 잡아야 할 공허는 "단계 목록이 비었다" 가 아니라 **"세계를 바꿨다고
+잴 수 있는 단계가 하나도 없다"** 다.
+
+🔴 **`VOID_UNAPPLIED` 를 "세계가 깨끗하다" 로 읽지 마라.** `minted_tool.jl` 의 `_step_applied`
+docstring 이 못박듯 `applied=false` 는 두 원인을 삼킨다 — `SILENT_SUCCESS_STATUSES`("불렀는데
+아무 일도 없었다") 와 `UNMEASURABLE_STATUSES`("못 쟀다"). 그래서 라벨이 원인을 주장하지 않고
+`applied` 라는 **사실**만 적는다. 두 원인을 가르는 것은 상세 출력의 단계별 `status` 다.
+⚠️ 반대 방향도 조심하라: `applied=false` 인데 `world_maybe_dirty=true` 일 수 있다
+(`:residual_blocked` 처럼 이미 옮긴 뒤의 status) — 그 경우 세계는 더러운데 이 열은 공허다.
+"""
+_void_kind(r) = isempty(r.steps) ? :nostep : (r.applied ? :ok : :unapplied)
+
+const _VOID_LABEL = Dict(:nostep    => "VOID_NOSTEP",
+                         :unapplied => "VOID_UNAPPLIED",
+                         :ok        => "OK")
+
 # ── 절 A: 집행 경로 (G-8) ────────────────────────────────────────────────────
 """
 `enact_minted!` 로 body 를 굴리고 **집행이 무엇을 하고 무엇을 기록하는가**만 잰다.
@@ -363,14 +392,23 @@ function enact_section(board, nr, target_closed; reach = "composed")
     rel_rep = _released_reported(r.steps)
     sanctioned = reach == "composed"
     threw = count(s -> s.status === :threw, r.steps)
-    void = isempty(r.steps)
+    void = _void_kind(r)
 
     # 🔴 공허가 맨 먼저다 — 아래 verdict/applied/... 를 GREEN/RED 처럼 읽기 전에 판정한다.
     # 🔴 `void` 는 요약표까지 실려 간다(아래 return) — 절 B 의 `:vacuous` 가 `판정` 열에 굽히는
     #    것과 같은 이유다: 이 사실이 상세 출력에만 있으면 요약표만 훑는 사람에게는 안 보인다.
-    if void
-        println("⚪ VOID — 아무 단계도 안 불렸다(verdict=", r.verdict,
+    # 🔴 두 갈래를 한 라벨로 뭉개지 않는다 — `_void_kind` 의 docstring 이 근거다.
+    if void === :nostep
+        println("⚪ VOID_NOSTEP — 아무 단계도 안 불렸다(verdict=", r.verdict,
                 "). 아래 숫자를 인용하지 마라.")
+    elseif void === :unapplied
+        println("⚪ VOID_UNAPPLIED — 단계는 ", length(r.steps),
+                " 개 불렸는데 applied=false 다(verdict=", r.verdict,
+                "). 잴 수 있는 편집이 하나도 없다 — 아래 숫자를 효과로 인용하지 마라.")
+        println("   🔴 이것은 \"세계가 깨끗하다\" 가 아니다: `applied=false` 는 조용한 성공",
+                "(SILENT_SUCCESS_STATUSES)과 못 쟀다(UNMEASURABLE_STATUSES)를 둘 다 삼킨다.",
+                " 원인은 아래 단계별 status 로 갈라라 (world_maybe_dirty = ",
+                r.world_maybe_dirty, ").")
     end
     println("verdict = ", r.verdict, "   applied = ", r.applied, "   partial = ", r.partial,
             "   world_maybe_dirty = ", r.world_maybe_dirty)
@@ -536,21 +574,25 @@ function main()
     println("="^92)
     # 🔴 `판정` 이 마지막 열이다 — 절 B 가 `:vacuous` 를 `판정` 열에 굽히는 것과 같은 자리다.
     #    절 A 는 인과를 판정하지 않으므로(머리말 (12)) GREEN/RED 를 내지 않는다 — 이 열이 낼 수
-    #    있는 값은 `VOID`(아무 단계도 안 불렸다, 나머지 열 인용 금지) 아니면 `OK`(공허는 아니다,
-    #    그 이상의 판정은 없다) 둘뿐이다.
-    println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 9), rpad("applied", 9),
-            rpad("resume", 9), rpad("resolve", 12), rpad("release 보고", 13),
+    #    있는 값은 `_VOID_LABEL` 의 **셋**뿐이다: `VOID_NOSTEP`(아무 단계도 안 불렸다) ·
+    #    `VOID_UNAPPLIED`(단계는 불렸는데 잴 수 있는 편집이 0) · `OK`(공허는 아니다, 그 이상의
+    #    판정은 없다). 앞의 둘에서는 나머지 열을 효과로 인용하지 마라.
+    # 🔴 폭은 **오늘 가능한 가장 긴 값 + 여백 ≥ 1** 로 잡는다(헤더 줄과 행 줄을 **같이**):
+    #    verdict `admit_unsanctioned`(18) → 20 · resume `not_needed_untouched`(20) → 22 ·
+    #    resolve `not_needed_surface`(18) → 20. 옛 폭 9/9/12 에서는 셋 다 옆 칸에 붙었다.
+    println(rpad("판", 17), rpad("closed", 8), rpad("verdict", 20), rpad("applied", 9),
+            rpad("resume", 22), rpad("resolve", 20), rpad("release 보고", 13),
             rpad("간선 전/후", 13), rpad("금지 전/후", 12), rpad("sanctioned", 12),
             rpad("threw", 7), "판정")
     for x in results
         for e in x.enact
-            println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 9),
-                    rpad(string(e.applied), 9), rpad(string(e.resume), 9),
-                    rpad(string(e.resolve), 12), rpad(_s(e.released_reported), 13),
+            println(rpad(x.board, 17), rpad(string(e.closed), 8), rpad(string(e.verdict), 20),
+                    rpad(string(e.applied), 9), rpad(string(e.resume), 22),
+                    rpad(string(e.resolve), 20), rpad(_s(e.released_reported), 13),
                     rpad(string(e.edges[1], "→", e.edges[2]), 13),
                     rpad(string(length(e.bans[1]), "→", length(e.bans[2])), 12),
                     rpad(string(e.sanctioned), 12), rpad(string(e.threw), 7),
-                    e.void ? "VOID" : "OK")
+                    _VOID_LABEL[e.void])
         end
     end
 
