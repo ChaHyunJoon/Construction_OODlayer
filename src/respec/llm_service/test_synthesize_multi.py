@@ -453,3 +453,85 @@ def test_the_invariant_clause_names_no_primitive_and_no_oracle_field():
     # 🔴 특정 사건 종류를 지목하면 그 사건에서만 참인 지시가 된다. 문단은 종류-무관이어야 한다.
     for word in ("battery_mild", "SwapBattery", "Replace", "NOOP"):
         assert word not in clause, "불변 문단이 사건/매크로 이름 %s 를 지목한다" % word
+
+
+# =====================================================================================
+# 2026-09-02 (F5) — 알파벳은 19개를 광고하는데 harness 가 부를 수 있는 것은 8개다.
+#
+# 측정(F1 직후 재실행, 유료 3): mild 레인이 처음으로 body 를 냈는데 그 두 번째 원시가
+# `deprioritize_agent` 였다 — **집행 불가**(`ENACTABLE_TODAY` 밖). 즉 프롬프트가 못 부르는
+# 원시 열하나를 부를 수 있는 것처럼 보여준 대가를 라이브에서 치렀다. 08-30 판정 R40 이
+# 우려로 적어 둔 자리이고, 이제 실측된 실패다.
+#
+# 🔴 파이썬은 이 사실을 **계산할 수 없다.** `_enactability`(Julia)의 세 연언지 중 둘이
+#    메서드 시그니처를 읽는다(`methods` · `Base.kwarg_decl`). 그래서 판정은 Julia 가 하고
+#    레지스트리에 **도장**으로 실리며, 그 도장이 계산값과 일치하는지는 Julia 게이트가 잰다
+#    (`test/minted_tool_enacts.jl`). 여기서는 **도장이 있고 렌더에 반영되는지**를 잰다.
+# =====================================================================================
+
+def _enactability_split():
+    """레지스트리에서 (부를 수 있는 것, 못 부르는 것). 리터럴 목록을 여기 두지 않는다."""
+    yes, no = [], []
+    for p in syn._prim.REGISTRY["primitives"]:
+        (yes if p.get("enactable") else no).append(p["name"])
+    return yes, no
+
+
+def test_every_primitive_declares_whether_the_harness_can_call_it():
+    """🔴 F5 의 데이터 채널. 도장이 없는 항목은 **조용히 부를 수 있는 것이 된다.**
+
+    삼상 규약: `True`/`False` 는 판정이고 **키 부재는 "못 쟀다"** 다. 이 시험이 부재를
+    빨간색으로 만들어, 새 원시를 도장 없이 추가하는 것 자체를 막는다.
+    """
+    prims = syn._prim.REGISTRY["primitives"]
+    assert len(prims) > 0, "빈-통과 방지: 원시가 0개면 아래 루프는 아무것도 안 잰다"
+    for p in prims:
+        assert "enactable" in p, (
+            "원시 %s 에 enactable 도장이 없다 -- 파이썬은 이것을 계산할 수 없고, "
+            "없으면 렌더가 '부를 수 있음' 으로 조용히 기울어진다" % p["name"])
+        assert isinstance(p["enactable"], bool), \
+            "%s 의 enactable 이 bool 이 아니다: %r" % (p["name"], p["enactable"])
+        if not p["enactable"]:
+            assert (p.get("unenactable_why") or "").strip(), (
+                "%s 는 못 부르는데 이유가 비었다 -- 어느 연언지가 깨졌는지는 "
+                "그 원시를 고칠 사람이 읽어야 하는 사실이다" % p["name"])
+
+
+def test_the_inventory_marks_every_primitive_the_harness_cannot_call():
+    """🔴 F5. 못 부르는 것에는 표식이 붙고, 부를 수 있는 것에는 **안 붙는다.**
+
+    두 렌더러(단일 agent 의 `build_context` · 3-agent 의 `build_inventory_block`)가
+    **같은 함수**를 쓰지만 둘 다 잰다 — 한쪽만 재면 다른 쪽이 조용히 갈릴 때 초록이다.
+    """
+    yes, no = _enactability_split()
+    assert yes and no, "빈-통과 방지: 두 집합이 다 비지 않아야 대조가 성립한다 (%d/%d)" % (
+        len(yes), len(no))
+    for render in (syn.build_inventory_block(), syn.build_context(state="s")):
+        lines = render.splitlines()
+        marked = {ln.split()[1].rstrip(":") for ln in lines if syn._NOT_CALLABLE_MARK in ln
+                  and ln.strip().startswith("-")}
+        # 표식은 항목 헤더 줄에 붙는다. 이름으로 직접 훑는 편이 파싱보다 정직하다.
+        for name in no:
+            hdr = [ln for ln in lines if ln.startswith("- %s " % name)]
+            assert hdr, "인벤토리에 %s 항목 헤더가 없다" % name
+            assert syn._NOT_CALLABLE_MARK in hdr[0], \
+                "%s 는 못 부르는데 표식이 없다" % name
+        for name in yes:
+            hdr = [ln for ln in lines if ln.startswith("- %s " % name)]
+            assert hdr, "인벤토리에 %s 항목 헤더가 없다" % name
+            assert syn._NOT_CALLABLE_MARK not in hdr[0], \
+                "%s 는 부를 수 있는데 못 부른다고 표시됐다 -- 알파벳이 조용히 줄어든다" % name
+        del marked
+
+
+def test_the_body_rule_says_an_uncallable_primitive_kills_the_whole_body():
+    """F5. 표식만으로는 부족하다 — body 규칙이 **귀결**을 말해야 한다.
+
+    귀결은 실측이다: `enact_minted!` 은 body 의 원시 하나라도 `enactable == false` 면
+    `reject:unenactable:<name>` 로 **한 발도 집행하지 않고** 돌아선다.
+    """
+    for render in (syn.build_inventory_block(), syn.build_context(state="s")):
+        rule = [ln for ln in render.splitlines() if ln.startswith("BODY RULE:")]
+        assert rule, "BODY RULE 줄이 없다"
+        assert syn._NOT_CALLABLE_MARK in rule[0], \
+            "BODY RULE 이 표식을 지목하지 않는다 -- 모델이 표식의 뜻을 모른다"

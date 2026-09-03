@@ -113,6 +113,34 @@ import primitive_registry as _prim    # noqa: E402  (registry loader. never copy
 #    from "deliberately left out".
 _NEVER_RENDER = ("when_to_use",)
 
+# ---- F5 (2026-09-02): 못 부르는 원시의 표식과, 그 표식을 지목하는 body 규칙 -----------------
+# 🔴 **BODY RULE 은 한 벌이다.** 2026-09-02 까지 이 문자열이 `build_context` 와
+#    `build_inventory_block` 에 **두 벌**로 복사돼 있었다 — 한쪽만 고치면 단일 agent 레인과
+#    3-agent 레인이 서로 다른 규칙을 읽는데 어느 시험도 안 빨개진다(둘 다 자기 사본을 본다).
+#    게이트가 두 렌더러 모두에 대해 이 상수를 요구한다.
+_NOT_CALLABLE_MARK = "[NOT CALLABLE BY THE HARNESS TODAY]"
+
+_INVENTORY_HEADER = [
+    "PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
+    "Each entry states which surface it edits, what it consumes, whether it can be undone, "
+    "and its full mechanism including the conditions under which it does nothing at all.",
+]
+
+# 🔴 2026-09-01 의 두 문장(harness 가 재풀이의 주체다)은 그대로 둔다 — 그것이 없으면 모델이
+#    body 끝에 commit 단계를 **지어낸다**(`commit_respec` 이 실제로 그렇게 나왔다).
+# 🔴 2026-09-02 가 더한 것은 마지막 문장 하나다: 표식의 **귀결**. 표식만 붙이고 귀결을 안
+#    적으면 모델은 그것을 경고로 읽고 그냥 쓴다.
+_BODY_RULE = (
+    "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
+    "The harness re-solves the MILP after every body, so never write a commit, "
+    "re-solve, formulate, or persist step -- there is no such primitive here, and a "
+    "body naming one cannot be enacted at all. If what you need is genuinely absent, "
+    "do not invent a name inside the body: set reach to \"needs_primitive\" and "
+    "describe it in missing_primitive. "
+    "An entry marked " + _NOT_CALLABLE_MARK + " is listed so you can reason about what "
+    "this build can and cannot do, but the harness cannot call it: naming one anywhere in "
+    "a body makes the WHOLE body unenactable, so cite it in missing_primitive instead.")
+
 SYNTHESIS_ENV = "TOOL_SYNTHESIS"
 
 
@@ -224,10 +252,27 @@ def primitive_inventory_lines(blob=None) -> List[str]:
     b = blob if blob is not None else _prim.REGISTRY
     out: List[str] = []
     for p in b["primitives"]:
-        out.append("- %s   [surface=%s  reversible=%s  consumes=%s]" % (
+        # 🔴 2026-09-02 (F5). 이 알파벳은 19개를 광고하는데 harness 가 실제로 부를 수 있는
+        #    것은 8개다. 표시하지 않았을 때의 대가는 실측이다: F1 직후 재측정에서 mild 레인이
+        #    처음 낸 body 의 두 번째 원시가 `deprioritize_agent`(집행 불가)였고, 그 body 는
+        #    `enact_minted!` 에서 `reject:unenactable` 로 **한 발도 안 굴러간다.**
+        # 🔴 판정은 파이썬이 못 한다 — Julia `_enactability` 가 메서드 시그니처를 읽어 정하고
+        #    레지스트리에 도장으로 실린다. 여기서는 그 도장을 읽기만 한다.
+        # 🔴 도장이 **없으면 "부를 수 있음" 으로 기울지 않는다.** 부재는 "못 쟀다" 이고, 그
+        #    상태에서 body 에 넣는 것은 여전히 위험하므로 보수적으로 표시하되 이유를 그렇게
+        #    적는다. 부재 자체는 게이트가 빨갛게 만든다
+        #    (`test_every_primitive_declares_whether_the_harness_can_call_it`).
+        stamped = p.get("enactable")
+        callable_ = stamped is True
+        out.append("- %s   [surface=%s  reversible=%s  consumes=%s]%s" % (
             p["name"], p["surface"],
             "yes" if p["reversible"] else "NO",
-            (", ".join(p["consumes"]) if p["consumes"] else "nothing")))
+            (", ".join(p["consumes"]) if p["consumes"] else "nothing"),
+            "" if callable_ else "   " + _NOT_CALLABLE_MARK))
+        if not callable_:
+            out.append("    why not callable: %s" % (
+                (p.get("unenactable_why") or "").strip()
+                or "callability was never recorded for this primitive"))
         out.append("    params: %s" % _fmt_params(p["params"]))
         if p.get("preconditions"):
             out.append("    preconditions: %s" % "; ".join(p["preconditions"]))
@@ -319,23 +364,10 @@ def build_context(state: str,
         "TOOLS YOU ALREADY HAVE (a new tool must do something these cannot)",
     ]
     parts += _tool_lines(tools)
-    parts += ["",
-              "PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
-              "Each entry states which surface it edits, what it consumes, whether it can be "
-              "undone, and its full mechanism including the conditions under which it does "
-              "nothing at all.",
-              # 🔴 2026-09-01. Without these two lines the model **invents** a commit step at
-              #    the end of the body (`commit_respec` actually came out that way). The cause
-              #    was a prompt that says in four places "a re-solve must follow" while giving
-              #    no primitive that performs one. Those sentences now name the harness as the
-              #    subject, and this line nails it down once more.
-              #    `test_body_rule_forbids_a_commit_step` guards this line.
-              "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
-              "The harness re-solves the MILP after every body, so never write a commit, "
-              "re-solve, formulate, or persist step -- there is no such primitive here, and a "
-              "body naming one cannot be enacted at all. If what you need is genuinely absent, "
-              "do not invent a name inside the body: set reach to \"needs_primitive\" and "
-              "describe it in missing_primitive."]
+    # 🔴 2026-09-02: 머리말도 BODY RULE 도 이제 **모듈 상수 한 벌**이다(위 `_BODY_RULE`).
+    #    `build_inventory_block` 이 같은 상수를 쓴다 — 두 벌이던 시절에는 한쪽만 고쳐도
+    #    어느 시험도 안 빨개졌다.
+    parts += [""] + _INVENTORY_HEADER + [_BODY_RULE]
     parts += primitive_inventory_lines(blob)
     parts += ["",
               "PURE PREDICATES -- measurement only. Never put one in a body."]
@@ -556,17 +588,15 @@ def build_compose_context(spec: Dict[str, Any], reasoning_log: str = "", blob=No
 
 def build_inventory_block(blob=None) -> str:
     """The alphabet agent-3 reads. Uses **the same renderer** as `build_context` -- two copies
-    and only one of them grows."""
-    parts = ["PRIMITIVE INVENTORY -- the alphabet a body may be composed from.",
-             "Each entry states which surface it edits, what it consumes, whether it can be "
-             "undone, and its full mechanism including the conditions under which it does "
-             "nothing at all.",
-             "BODY RULE: use ONLY names that appear in this inventory, exactly as spelled. "
-             "The harness re-solves the MILP after every body, so never write a commit, "
-             "re-solve, formulate, or persist step -- there is no such primitive here, and a "
-             "body naming one cannot be enacted at all. If what you need is genuinely absent, "
-             "do not invent a name inside the body: set reach to \"needs_primitive\" and "
-             "describe it in missing_primitive."]
+    and only one of them grows.
+
+    🔴 2026-09-02: that sentence was only half true until today. `primitive_inventory_lines`
+    was indeed shared, but the header and the BODY RULE were **literal copies** here and in
+    `build_context` -- edit one and the single-agent lane and the 3-agent lane read different
+    rules, with no test going red (each asserted against its own copy). Both now come from
+    `_INVENTORY_HEADER` / `_BODY_RULE`.
+    """
+    parts = list(_INVENTORY_HEADER) + [_BODY_RULE]
     parts += primitive_inventory_lines(blob)
     parts += ["", "PURE PREDICATES -- measurement only. Never put one in a body."]
     parts += predicate_inventory_lines(blob)

@@ -118,7 +118,8 @@
         "a_reversible": 0.0,
         "a_scope": 3.0
       },
-      "source": "src/respec/reassign.jl:194"
+      "source": "src/respec/reassign.jl:194",
+      "enactable": true
     },
     {
       "name": "reset_slot_to_invalid",
@@ -153,7 +154,9 @@
         "a_reversible": 1.0,
         "a_scope": 1.0
       },
-      "source": "src/respec/reassign.jl:81"
+      "source": "src/respec/reassign.jl:81",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "rethread_robot_ids",
@@ -185,7 +188,9 @@
         "a_scope": 3.0
       },
       "source": "src/respec/reassign.jl:245",
-      "notes": "PARKED building block. Not wired into any enactment path."
+      "notes": "PARKED building block. Not wired into any enactment path.",
+      "enactable": false,
+      "unenactable_why": "harness: this primitive needs harness arguments the binder cannot build (it can build only `env` and `invariant`)"
     },
     {
       "name": "reform_stuck_teams",
@@ -226,7 +231,8 @@
         "a_reversible": 0.0,
         "a_scope": 2.0
       },
-      "source": "src/respec/replace_robot.jl:458"
+      "source": "src/respec/replace_robot.jl:458",
+      "enactable": true
     },
     {
       "name": "recover_stalled_teams",
@@ -256,7 +262,8 @@
         "a_reversible": 0.0,
         "a_scope": 3.0
       },
-      "source": "src/respec/replace_robot.jl:588"
+      "source": "src/respec/replace_robot.jl:588",
+      "enactable": true
     },
     {
       "name": "force_advance_stuck_carrier",
@@ -293,7 +300,8 @@
         "a_scope": 2.0
       },
       "source": "src/respec/replace_robot.jl:803",
-      "notes": "Environment-gated no-op by default. Do not treat a :disabled status as an enactment."
+      "notes": "Environment-gated no-op by default. Do not treat a :disabled status as an enactment.",
+      "enactable": true
     },
     {
       "name": "resolve_schedule_wedge",
@@ -323,7 +331,8 @@
         "a_reversible": 0.0,
         "a_scope": 3.0
       },
-      "source": "src/respec/replace_robot.jl:979"
+      "source": "src/respec/replace_robot.jl:979",
+      "enactable": true
     },
     {
       "name": "deprioritize_agent",
@@ -363,7 +372,9 @@
         "a_scope": 1.0
       },
       "source": "src/essential_tg_coponents.jl:1379",
-      "notes": "spec 9-3: a local undo for this knob is the HARD precondition before the load axis may be enacted."
+      "notes": "spec 9-3: a local undo for this knob is the HARD precondition before the load axis may be enacted.",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "restage_assembly",
@@ -406,7 +417,9 @@
         "a_reversible": 1.0,
         "a_scope": 2.0
       },
-      "source": "src/respec/restage_zone.jl:202"
+      "source": "src/respec/restage_zone.jl:202",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "restage_all_blocked",
@@ -444,7 +457,8 @@
         "a_reversible": 1.0,
         "a_scope": 3.0
       },
-      "source": "src/respec/restage_zone.jl:517"
+      "source": "src/respec/restage_zone.jl:517",
+      "enactable": true
     },
     {
       "name": "translate_whole_build",
@@ -483,7 +497,8 @@
         "a_reversible": 1.0,
         "a_scope": 3.0
       },
-      "source": "src/respec/restage_zone.jl:777"
+      "source": "src/respec/restage_zone.jl:777",
+      "enactable": true
     },
     {
       "name": "apply_uniform_translation",
@@ -524,7 +539,9 @@
         "a_scope": 3.0
       },
       "source": "src/respec/restage_zone.jl:616",
-      "notes": "Exact inverse: apply the negated delta. The only primitive here with a cheap local undo."
+      "notes": "Exact inverse: apply the negated delta. The only primitive here with a cheap local undo.",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "swap_battery",
@@ -559,7 +576,9 @@
         "a_reversible": 0.0,
         "a_scope": 1.0
       },
-      "source": "src/respec/replace_robot.jl:1419"
+      "source": "src/respec/replace_robot.jl:1419",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "dispatch_battery_courier",
@@ -594,7 +613,9 @@
         "a_reversible": 1.0,
         "a_scope": 1.0
       },
-      "source": "src/respec/battery_courier.jl:167"
+      "source": "src/respec/battery_courier.jl:167",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "replace_robot",
@@ -636,7 +657,9 @@
         "a_reversible": 0.0,
         "a_scope": 1.0
       },
-      "source": "src/respec/replace_robot.jl:1212"
+      "source": "src/respec/replace_robot.jl:1212",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "hot_swap_robot",
@@ -683,7 +706,9 @@
         "a_scope": 1.0
       },
       "source": "src/respec/replace_robot.jl:1499",
-      "notes": "This is the primitive the current Replace enactment actually calls."
+      "notes": "This is the primitive the current Replace enactment actually calls.",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "pop_spare",
@@ -718,7 +743,9 @@
         "a_reversible": 0.0,
         "a_scope": 1.0
       },
-      "source": "src/respec/ood_injection.jl:387"
+      "source": "src/respec/ood_injection.jl:387",
+      "enactable": false,
+      "unenactable_why": "arity: the implementation takes more positional arguments than the harness binder can construct (it builds one per declared harness_arg)"
     },
     {
       "name": "compile_constraint",
@@ -763,15 +790,24 @@
         "a_reversible": 1.0,
         "a_scope": 2.0
       },
-      "source": "src/respec/compiler.jl:38,66,143,178"
+      "source": "src/respec/compiler.jl:38,66,143,178",
+      "enactable": false,
+      "unenactable_why": "harness: this primitive needs harness arguments the binder cannot build (it can build only `env` and `invariant`)"
     },
     {
       "name": "forbid_heavy_cargo",
       "surface": "milp",
       "params": {
-        "agent": {"type": "string", "description": "robot that must not take its heaviest pending cargo"},
-        "n": {"type": "integer", "minimum": 1, "maximum": 3,
-              "description": "how many of that robot's heaviest pending cargo items to forbid"}
+        "agent": {
+          "type": "string",
+          "description": "robot that must not take its heaviest pending cargo"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "how many of that robot's heaviest pending cargo items to forbid"
+        }
       },
       "mechanism": "Registers a STANDING BAN that keeps ONE named robot from taking the n candidate cargo items with the highest per-robot burden, and does nothing else: the call writes a single {robot -> n} entry into a store and returns. It edits no schedule, no scene tree, no cache and no cost weight, so the world is unchanged when it returns -- the status :banned means the entry was written, never that any cargo moved. THIS IS INERT ON ITS OWN: that entry becomes constraint rows at the NEXT MILP formulation, and the harness runs that formulation automatically after the body, which is where and when the ban takes effect. Those rows forbid only that robot's CANDIDATE assignment edges into the chosen targets; already-committed structural edges are never touched and other robots may still take the cargo, so the work is redistributed rather than dropped. Per-robot burden is a proxy, not a weighed mass: cargo bounding-box volume times a density knob, divided by the size of the team that would carry it. n is an upper bound and not a promise -- fewer targets are forbidden when the robot owns fewer measurable candidates, and when the burden layer is absent (no battery fleet) that formulation warns loudly and forbids nothing at all. An agent string that names no robot in the schedule is rejected with :unknown_agent and writes nothing, and the hand-shortened id form silently lands there. An n below 1 is rejected with :invalid_n and is never raised to 1. The ban stands until something else clears it and this alphabet has no undo for it: dropping the entry later does not restore whatever plan the constrained re-solve replaced.",
       "when_to_use": "The load axis when a robot must stay in service but must not be handed the heaviest cargo still waiting to be assigned.",
@@ -784,14 +820,23 @@
       "gate": null,
       "gate_arity": null,
       "impl": "forbid_heavy_cargo!",
-      "harness_args": ["env"],
+      "harness_args": [
+        "env"
+      ],
       "psi": {
-        "a_cost": 0.5, "a_intervenes": 1.0, "a_soft": 0.0, "a_restores_capacity": 0.0,
-        "a_relocates_work": 0.5, "a_spatial": 0.0, "a_consumes_spare": 0.0,
-        "a_reversible": 0.0, "a_scope": 1.0
+        "a_cost": 0.5,
+        "a_intervenes": 1.0,
+        "a_soft": 0.0,
+        "a_restores_capacity": 0.0,
+        "a_relocates_work": 0.5,
+        "a_spatial": 0.0,
+        "a_consumes_spare": 0.0,
+        "a_reversible": 0.0,
+        "a_scope": 1.0
       },
       "source": "src/respec/cargo_ban_primitive.jl",
-      "notes": "cargo-ban Task 7. Replaces reprice_agent_by_payload in the alphabet (removed the same commit): that soft weight could not move the argmin on any measured board. psi 는 아홉 축이다(레지스트리 최상위 psi_axes 가 진실원 — 계획서의 '10축' 은 실측과 다르다). 값은 판단이지 유도가 아니다: compile_constraint(같은 hard-row 계열)에 a_cost·a_soft 를 앵커했고, a_relocates_work 만 0.5 로 뒀다(일을 없애지 않고 다른 로봇에게 옮긴다). a_reversible·a_consumes_spare·a_spatial 셋만 primitive_registry.py 가 다른 필드에서 유도해 검사한다."
+      "notes": "cargo-ban Task 7. Replaces reprice_agent_by_payload in the alphabet (removed the same commit): that soft weight could not move the argmin on any measured board. psi 는 아홉 축이다(레지스트리 최상위 psi_axes 가 진실원 — 계획서의 '10축' 은 실측과 다르다). 값은 판단이지 유도가 아니다: compile_constraint(같은 hard-row 계열)에 a_cost·a_soft 를 앵커했고, a_relocates_work 만 0.5 로 뒀다(일을 없애지 않고 다른 로봇에게 옮긴다). a_reversible·a_consumes_spare·a_spatial 셋만 primitive_registry.py 가 다른 필드에서 유도해 검사한다.",
+      "enactable": true
     }
   ],
   "predicates": [

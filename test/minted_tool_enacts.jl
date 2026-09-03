@@ -206,6 +206,38 @@ const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier
                               "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
 
+@testset "(9b) 레지스트리의 enactable 도장이 Julia 가 계산한 판정과 일치한다" begin
+    # 🔴 2026-09-02 (F5). 파이썬 합성 프롬프트가 "이 원시는 harness 가 못 부른다" 를 렌더하려면
+    #    그 사실이 레지스트리에 **도장**으로 실려야 한다 — 파이썬은 계산할 수 없다
+    #    (`_enactability` 의 세 연언지 중 둘이 메서드 시그니처를 읽는다: `methods` ·
+    #    `Base.kwarg_decl`). 그래서 판정은 여기(Julia)가 하고 JSON 이 나른다.
+    #
+    # 🔴 이 게이트가 없으면 도장은 **조용히 썩는다**: impl 의 시그니처가 하나 바뀌는 순간
+    #    계산값은 따라가고 JSON 은 안 따라가는데, 파이썬 시험은 자기 JSON 만 보므로 전부
+    #    초록이다. 그러면 프롬프트가 못 부르는 원시를 "부를 수 있다" 고 광고하고, 그 body 는
+    #    `reject:unenactable` 로 한 발도 안 굴러간다 — 정확히 F5 가 고치려는 결함의 재발이다.
+    tbl = CB.PRIMITIVE_TABLE()
+    @test length(tbl) == 19                    # 빈-통과 방지: 표가 비면 아래 루프가 0회다
+    n_stamped_false = 0
+    for (nm, entry) in tbl
+        computed = CB.resolve_primitive(nm).enactable
+        @test haskey(entry, "enactable")       # 부재는 "못 쟀다" 이고 조용히 통과하면 안 된다
+        @test Bool(entry["enactable"]) === computed
+        if !computed
+            n_stamped_false += 1
+            # 못 부르면 **왜** 못 부르는지가 같이 실려야 한다 — 그 원시를 고칠 사람이 읽는다.
+            @test haskey(entry, "unenactable_why")
+            @test !isempty(strip(String(entry["unenactable_why"])))
+            # 산문이 계산된 연언지를 실제로 지목하는가(`arity` / `harness` / …).
+            @test occursin(String(CB.resolve_primitive(nm).unenactable_why),
+                           String(entry["unenactable_why"]))
+        else
+            @test !haskey(entry, "unenactable_why")
+        end
+    end
+    @test n_stamped_false == 11                # 8 callable / 11 not. 어느 쪽이 움직여도 빨갛다.
+end
+
 @testset "(9) 알파벳 19 중 집행 가능은 8 이고, 나머지는 부르기 전에 거절된다" begin
     tbl = CB.PRIMITIVE_TABLE()
     @test length(tbl) == 19
