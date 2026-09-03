@@ -175,7 +175,11 @@ scoped arm ran on `probe_scoped_release.jl`'s own `release_scoped!` (self-descri
 🔴 `faulted` and `agent` are OPPOSITES and may NOT be combined: `faulted` WIDENS the
 release (it additionally drops that robot's in-progress target) while `agent` NARROWS
 it. There is no unique composed meaning, and silently ignoring one of the two is the
-worst outcome, so passing both raises `ArgumentError`.
+worst outcome, so passing both is REJECTED BEFORE ANY EDIT: the call does NOT throw, it
+returns `(status = :both_scopes, faulted, agent, released = 0)` and the schedule is
+untouched, so the harness reports the tool as NOT having handled the event and the
+default recovery chain still runs. (`:both_scopes` is in this primitive's
+`WORLD_UNCHANGED_STATUSES` row for exactly that reason.)
 
 🔴 The ownership selector used here is `_edge_owner_id(sched, u)` on the edge's SOURCE
 vertex, compared as a string. This is the selector for the RELEASE surface, which
@@ -201,8 +205,8 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
     #    "name at most one" 이라고 경고까지 하고 있다 = 이 실수는 도달 가능하다.
     #    ⚠️ 호출자 17곳을 전수 확인했다 — 둘을 동시에 주는 호출자는 없다(동작 변화 없음).
     if faulted !== nothing && agent !== nothing
-        return (status = :both_scopes, faulted = String(faulted),
-                agent = String(agent), released = 0)
+        return (status = :both_scopes, faulted = string(faulted),
+                agent = string(agent), released = 0)
     end
     sched = env.sched
     # 🔴 아는 이름인가 — **어떤 편집보다도 먼저** 판정한다(아래 루프가 첫 편집이다).

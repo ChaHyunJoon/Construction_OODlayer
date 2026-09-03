@@ -10,8 +10,11 @@
 #  이 파일이 못 박는 것 셋:
 #   [1] 기본 경로(`agent` 없음/`nothing`)가 떼는 집합 == 계약이 정의하는 해제가능 집합 **전부**.
 #   [2] `agent` 를 주면 떼는 집합 == 계약이 정의하는 **그 로봇 소유분 전부**(건전성 + 완전성).
-#   [3] `faulted` 와 `agent` 를 둘 다 주면 `ArgumentError` — 하나는 범위를 넓히고 하나는
-#       좁히므로 합성 의미가 유일하지 않다. 조용히 하나를 무시하는 것이 최악이다.
+#   [3] `faulted` 와 `agent` 를 둘 다 주면 **던지지 않고** `status = :both_scopes` 로
+#       돌아선다(released 0, 스케줄 무접촉) — 하나는 범위를 넓히고 하나는 좁히므로 합성
+#       의미가 유일하지 않다. 조용히 하나를 무시하는 것이 최악이고, **예외도 그 다음으로
+#       나쁘다**(R1, 2026-09-02): 집행부가 예외를 `partial=true → world_maybe_dirty=true`
+#       로 적어 아무것도 안 한 판이 기본 복구 사슬을 삼킨다.
 #
 #  🔴 [1]·[2] 는 **독립 오라클과의 집합 동일성**이다. 이전 판은 (a) `f(e1,inv1)` 을
 #     `f(e2,inv2; agent=nothing)` 과 비교했는데 두 호출은 **같은 인자값으로 같은 메서드**에
@@ -155,14 +158,27 @@ end
     #    여기가 좁힌 경로 == want_a 를 못 박고, want_a 는 정의상 want_all 의 부분집합이다.
 end
 
-@testset "faulted 와 agent 를 둘 다 주면 ArgumentError" begin
+@testset "faulted 와 agent 를 둘 다 주면 던지지 않고 :both_scopes 로 돌아선다" begin
     e = fork(ENV0)
     a = busiest_pending_agent_string(e)
     inv = CB.build_invariant(e)
+    before = releasable_edges(e)              # 🔴 호출 **전에** 잰다
+    @test !isempty(before)                    # 빈-통과 방지
     # `faulted` 는 범위를 **넓히고**(그 로봇의 진행 중 목표까지 뗀다) `agent` 는 **좁힌다**.
     # 합성 의미가 유일하지 않으므로 조용히 하나를 무시하지 않고 막는다.
-    @test_throws ArgumentError CB.release_pending_assignments!(
-        e, inv; faulted = CB.RobotID(1), agent = a)
+    # 🔴 그러나 **예외로 나가지 않는다**(R1, 2026-09-02). 이 판정은 본문 첫 문장이라 세계가
+    #    증명 가능하게 깨끗한데, 예외로 나가면 집행부가 `partial=true → world_maybe_dirty=true`
+    #    로 적어 아무것도 안 한 판이 기본 복구 사슬을 삼킨다(`handled` 의 정본 식은
+    #    `tools/monitor/enact.jl:882-883` 이다 — 여기에 다시 베끼지 않는다).
+    # 🔴 `faulted` 를 `RobotID` 로 주는 것이 이 단언의 요점이다: 이 레포에서 가장 흔한
+    #    `faulted` 타입이고, `String(::RobotID)` 는 **메서드가 없다.** 반환문이 `String(...)`
+    #    을 쓰면 이 호출은 status 가 아니라 `MethodError` 로 나가고 R1 이 이 입력 부류에서
+    #    통째로 무의미해진다(2026-09-02 독립 검증이 실측했다). `string(...)` 이라야 닫힌다.
+    out = CB.release_pending_assignments!(e, inv; faulted = CB.RobotID(1), agent = a)
+    @test CB._step_status("release_pending_assignments", out) === :both_scopes
+    @test hasproperty(out, :released) && out.released == 0
+    @test releasable_edges(e) == before        # 세계를 한 간선도 안 건드렸다
+    @test CB._step_touched_world("release_pending_assignments", :both_scopes) == false
     # 🔴 음성 대조: 각각 하나만 주는 것은 여전히 통과해야 한다(위 단언이 항진이 아님을 보인다).
     e2 = fork(ENV0)
     @test CB.release_pending_assignments!(e2, CB.build_invariant(e2); agent = a) isa Vector
@@ -177,8 +193,9 @@ end
 #  Task 6 이 `agent` 를 더하면서 `removed == []` 의 **세 번째 원인**이 생겼다: "그 문자열이
 #  스케줄의 어떤 로봇도 가리키지 않는다". 그런데 `_step_status` 는 그것을 `:released_none`
 #  으로 읽고, `WORLD_UNCHANGED_STATUSES["release_pending_assignments"]` 는 (faulted 때문에)
-#  **일부러 비어 있어** `_step_touched_world = true` → `world_maybe_dirty = true` →
-#  `tools/monitor/enact.jl:869` 의 `handled = true` 가 된다. 즉 **아무것도 안 풀린 채** OOD
+#  `:released_none` 을 **일부러 안 담아** `_step_touched_world = true` → `world_maybe_dirty =
+#  true` → `tools/monitor/enact.jl:882-883` 의 `handled`(정본 — 식을 여기 베끼지 않는다) 가
+#  true 가 된다. 즉 **아무것도 안 풀린 채** OOD
 #  사건이 소비되고 기본 복구 사슬을 건너뛴다.
 #
 #  고치는 방향은 표를 느슨하게 하는 것이 **아니라**(그러면 faulted 경로에서 더러워진 세계를
@@ -218,10 +235,17 @@ end
     # 이 두 줄이 수정의 본체다. 반환 심볼만 보는 시험은 복구 사슬이 살아났음을 증명하지 못한다.
     @test CB._step_touched_world("release_pending_assignments", :unknown_agent) == false
     @test CB._step_touched_world("release_pending_assignments", :released_none) == true
-    # 표에 들어간 것은 `:unknown_agent` **하나뿐**이다(`:released_none` 은 faulted 때문에 밖에).
-    @test CB.WORLD_UNCHANGED_STATUSES["release_pending_assignments"] == Set([:unknown_agent])
+    # 🔴 표에 들어간 것은 **정확히 둘**이다: `:unknown_agent`(틀린 이름 — 첫 편집 전에 돌아선다)
+    #    와 `:both_scopes`(두 범위를 동시에 줬다 — 본문 첫 문장에서 돌아선다). `:released_none`
+    #    은 faulted 때문에 일부러 밖이다(위 문단).
+    #    이 단언은 **집합 동일성**이라 양쪽으로 샌다: status 를 더하면(표가 넓어져 세계가
+    #    더러운 판을 "깨끗하다"고 보고하게 된다) 빨개지고, 빼도(R1 이 그 입력 부류에서
+    #    무의미해진다) 빨개진다. 넓힌 뒤에도 공허하지 않은 이유가 그것이다.
+    @test CB.WORLD_UNCHANGED_STATUSES["release_pending_assignments"] ==
+          Set([:unknown_agent, :both_scopes])
     # 불변식 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 는 게이트 (13) 이 잰다 — 여기서도 확인.
     @test :unknown_agent in CB.SILENT_SUCCESS_STATUSES["release_pending_assignments"]
+    @test :both_scopes in CB.SILENT_SUCCESS_STATUSES["release_pending_assignments"]
     @test !(:released_none in CB.WORLD_UNCHANGED_STATUSES["release_pending_assignments"])
 end
 

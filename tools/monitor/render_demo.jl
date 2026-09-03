@@ -805,8 +805,10 @@ function policy_producer(env, event)
     #    `emitted_key` 로 가지 않는다(spec §7-2). `decision.macro_name` 은 그대로 NOOP 이고
     #    그것이 옳다 — 채점 어휘에서 이 사건의 정답은 실제로 없다.
     #
-    # 🔴 `handled` 의 정의는 `(:admit) && world_maybe_dirty` 다(`enact_minted_decision!` 의
-    #    docstring). `applied` 로 판정하면 "1단계가 세계를 바꾸고 2단계가 던진" 판에서
+    # 🔴 `handled` 의 **정본은 `tools/monitor/enact.jl:882-883` 의 네 연언지**다 — 여기에
+    #    다시 베끼지 않는다(손베낀 복사본이 프로덕션과 갈린 것을 2026-09-02 검증이 실측했다).
+    #    verdict 항은 `CB.minted_handled_verdict_ok` 이고 `:admit` 하나가 아니다.
+    #    `applied` 로 판정하면 "1단계가 세계를 바꾸고 2단계가 던진" 판에서
     #    **반쯤 편집된 세계 위에** 기본 복구 사슬을 얹게 된다.
     local _m = enact_minted_decision!(env, truth, decision)
     _m.handled && return nothing

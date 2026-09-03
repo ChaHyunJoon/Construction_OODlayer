@@ -107,10 +107,16 @@ _try_resolve_schedule_agent(env, agent::AbstractString) =
 `formulate_milp(::SparseAdjacencyMILP, …)` 에서 돈다). 그래서 `:banned` 는 **조용한 성공**
 이고 이 원시는 `WORLD_UNCHANGED` 다.
 
-status — 넷. **이 목록이 `minted_tool.jl` 의 세 표의 진실원이다**(표는 이 `return` 문들을
-읽어서 채웠다):
+status — **다섯**. **이 목록이 `minted_tool.jl` 의 세 표의 진실원이다**(표는 이 `return` 문들을
+읽어서 채웠다). 🔴 이 목록을 줄이면 표가 따라 줄어 T0.5(2026-09-02)가 조용히 되돌아간다 —
+새 갈래를 더할 때는 **여기부터** 적을 것:
 
   · `:banned`        보관소에 `{id → n}` 을 썼다. 유일하게 무언가를 남기는 갈래다.
+  · `:missing_agent` `agent` 를 **안 줬다**(기본값 `""`). 아무것도 안 쓴다. `:unknown_agent`
+                     로 접지 않는다 — "안 줬다" 와 "틀린 걸 줬다" 는 다른 사건이다.
+                     기본값이 없으면 Julia 가 호출 경계에서 `UndefKeywordError` 를 던지고,
+                     집행부가 그것을 `partial=true` 로 적어 손도 안 댄 세계가 기본 복구
+                     사슬을 삼킨다(R1) — 그래서 status 로 거절한다.
   · `:unknown_agent` 문자열이 스케줄의 어떤 로봇도 안 가리킨다 — **던지지 않는다.**
                      아무것도 안 쓴다. 짧게 쓴 id 형태가 여기로 온다.
   · `:no_schedule`   `env` 에서 스케줄을 못 읽었다(손으로 지은 env, `sched` 필드 부재,

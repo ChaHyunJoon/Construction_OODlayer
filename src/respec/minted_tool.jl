@@ -221,11 +221,12 @@ end
          전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 `forbid_heavy_cargo` 와 같음).
       ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의 `WORLD_UNCHANGED_STATUSES` 행에
          `:released_none` 은 **일부러 없으므로**(아래 그 표의 문단) `_step_touched_world = true`
-         → `world_maybe_dirty = true` → `enact.jl:869` 의 `handled = true` 가 된다. 깨끗한 판에서
+         → `world_maybe_dirty = true` → `enact.jl:882-883` 의 `handled`(정본; 여기 베끼지
+         않는다) 가 true 가 된다. 깨끗한 판에서
          재개가 한 번 더 나가는 것이 대가이고, 그 대가는 `faulted` 경로에서 더러워진 세계를
          "깨끗하다"고 보고하지 않으려고 치른다. 🔴 그리고 이 경로는 조용하지 않다 —
          `enact_minted!` 가 `quiet` 주석("불렸지만 어느 단계도 세계를 적응시키지 않았다")을
-         reason 에 붙이고 `enact.jl:873` 이 `applied=false` 를 찍는다.
+         reason 에 붙이고 `enact.jl` 의 `[minted] lane=present` 줄이 `applied=false` 를 찍는다.
       🔴 `:unknown_agent` 는 **반대쪽**이다 — 첫 편집 전에 돌아서므로 `WORLD_UNCHANGED` 에 들어
          있고, `_step_touched_world = false` → `handled = false` → **기본 복구 사슬로 폴백한다**.
          그 폴백도 조용하지 않다(`enact.jl` 이 "NOT handled → 기본 복구 사슬로 폴백한다" 를 찍는다).
@@ -324,8 +325,9 @@ ENACTABLE_TODAY` 를 못 박는다).
 없어 폴백이 이중 편집을 못 한다), zone 매크로가 어휘로 돌아오는 순간 그것이 **제어 흐름**이 된다.
 
 🔴 **불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`.** 세계를 안 건드렸으면 노린 적응도
-당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, T4 의
-`handled = (:admit) && world_maybe_dirty` 가 `applied` 판정보다 **넓다**는 성질을 준다.
+당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, `handled`(정본은
+`tools/monitor/enact.jl:882-883` — 식을 여기 베끼지 않는다) 가 `applied` 판정보다 **넓다**는
+성질을 준다.
 게이트가 여덟 전부에 대해 이 포함을 잰다.
 
 출처 — 여덟 원시의 소스에서 "첫 세계 편집 전에 돌아서는가"를 읽어서 적었다(추측 없음):

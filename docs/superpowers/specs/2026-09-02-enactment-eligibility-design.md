@@ -153,7 +153,7 @@ F7 에서 mild 레인이 **실제로 조합해 낸 그 원시**이고, 레지스
 `!resolve_failed` 가 빠진 세 연언지다. `forbid_heavy_cargo` 의 surface 는 `milp` 이고
 `RESOLVE_SURFACES` 안이므로, 그 시험의 던지는 판은 이제 재풀이를 거친다 = 복사본과
 프로덕션이 **오늘 이미 갈렸을 수 있다**(미측정 — T0 에서 잰다).
-→ 완화: `CB.minted_enacted` 를 도입하는 김에 세 벌을 전부 그 함수로 바꾼다.
+→ 완화: `CB.minted_handled_verdict_ok` 를 도입하는 김에 세 벌을 전부 그 함수로 바꾼다.
 
 **R3 망가진 `reach` 값도 이제 집행된다.**
 `"Composed"`·`"unknown"` 같은 값은 `reach === nothing` 이 아니므로 통과해 `:admit_unsanctioned`
@@ -265,7 +265,7 @@ end
 ```
   그리고 `:admit` 리터럴 **두 자리**를 `admit_verdict` 로, reason 끝에 `unsanctioned_note` 를 붙인다:
   `minted_tool.jl:970`(던진 경로) 과 `:999`(정상 경로).
-- [ ] **S4 새 상수** — `ENACTED_VERDICTS` 와 `minted_enacted` 를 `enact_minted!` 위에 둔다(§2-4 코드).
+- [ ] **S4 새 상수** — `ENACTED_VERDICTS` 와 `minted_handled_verdict_ok` 를 `enact_minted!` 위에 둔다(§2-4 코드).
 - [ ] **S5 docstring 표에 네 번째 줄** (`minted_tool.jl:839-843`)
 ```
 | `:admit_unsanctioned` | `:admit` 과 같다 — 다만 모델이 `reach != "composed"` 라고 신고한 body 였다 |
@@ -306,7 +306,7 @@ end
 - [ ] **S4 docstring** — `enact_minted_decision!` 의 `handled` 문단에 한 줄 더한다:
   *"🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3).
   나머지 셋은 그대로 — 게이트는 넓어지기만 한다."*
-- [ ] **S5 초록 확인 + 변이** (`minted_enacted` → `=== :admit` 로 되돌려 빨강 확인)
+- [ ] **S5 초록 확인 + 변이** (`minted_handled_verdict_ok` → `=== :admit` 로 되돌려 빨강 확인)
 - [ ] **S6 커밋**
 
 ⏱ 30 – 40분.
@@ -314,7 +314,7 @@ end
 ### T3 — 복사된 `handled` 식 세 벌 (25 – 35분)
 
 - [ ] **S1** `tools/probes/probe_minted_body_enacts.jl:129` · `:136` · `:138` 을
-  `CB.minted_enacted(r.verdict)` 로 바꾼다. (그 파일은 이미 "식으로 베끼지 않는다" 를
+  `CB.minted_handled_verdict_ok(r.verdict)` 로 바꾼다. (그 파일은 이미 "식으로 베끼지 않는다" 를
   주석으로 적어 뒀는데 `:129` 에서 스스로 어겼다 — 그 주석을 참으로 만든다.)
 - [ ] **S2** `test/payload_reprice_install.jl:178` 도 같은 함수로. 🔴 T0-S3 에서 잰 값이
   `:resolved` 가 아니었다면 `@test handled === true` 는 **틀린 단언**이므로, 잰 값으로
@@ -430,9 +430,12 @@ function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
     #    되어 아무것도 안 한 판이 기본 복구 사슬을 삼킨다. 레지스트리 산문이 모델에게
     #    "name at most one" 이라고 경고까지 하고 있다 = 이 실수는 도달 가능하다.
     #    ⚠️ 호출자 17곳을 전수 확인했다 — 둘을 동시에 주는 호출자는 없다(동작 변화 없음).
+    #    🔴 `string` 이지 `String` 이 아니다 — `String(::RobotID)` 는 메서드가 없어서
+    #    가장 흔한 `faulted` 타입에서 이 반환문 자체가 `MethodError` 로 나간다(= 예외의
+    #    이름만 바뀌고 R1 은 안 닫힌다). 2026-09-02 독립 검증이 실측했고 T6 이 고쳤다.
     if faulted !== nothing && agent !== nothing
-        return (status = :both_scopes, faulted = String(faulted),
-                agent = String(agent), released = 0)
+        return (status = :both_scopes, faulted = string(faulted),
+                agent = string(agent), released = 0)
     end
 ```
 - [ ] **S5 두 표에 넉 줄** (`src/respec/minted_tool.jl:246-254`, `:394-403`)
