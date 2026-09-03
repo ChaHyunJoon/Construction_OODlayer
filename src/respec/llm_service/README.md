@@ -122,6 +122,32 @@ serve a fake `/health` from a loopback server to exercise the real lane
 turn all six red for reasons unrelated to any service generation. The gate lives at the **run
 entry point** instead, which no test goes through.
 
+### 🔴 인자 채널 — `params` 가 아니라 `calls` 다 (2026-09-03, B1)
+
+`params` 는 **값이 아니라 JSON 스키마**로 도착한다(`{"agent": {"type": "string"}}`), 그리고
+도구 하나에 dict 하나라 body 가 원시 둘 이상이면 어느 인자가 어느 원시의 것인지 안 적힌다.
+그래서 agent-3 이 `calls` 를 낸다 — body 와 **같은 순서**의
+`[{"primitive": ..., "args": {평평한 스칼라}}]`. 값이고, 원시 단위로 스코프가 있다.
+
+경계: `policy.jl::SYNTH_LANE_KEYS` **열** 중 하나(`calls`) → `_synth_view` →
+`minted_tool.jl::normalize_calls` → 호출마다 다른 ctx 로 `bind_primitive_args`.
+`calls` 가 있으면 `params` 는 **안 읽는다**(스키마이지 값이 아니므로).
+
+런 뒤에 **로그로 확인할 것**:
+
+```
+[minted] ... args_from=calls n_calls=1 steps=[...]
+```
+
+| `args_from` | 뜻 |
+|---|---|
+| `calls` | 구조화 호출열로 인자를 묶었다 (B1 이 노린 경로) |
+| `params` | `calls` 가 없어 옛 공유 dict 경로로 떨어졌다 — 단일 agent 레인·낡은 서비스 |
+| `n/a` | 그 판정 자리에 **도달 못 했다**(조기 deferred·거절). "인자가 없다" 가 아니다 |
+
+🔴 `args_from=params` 인데 3-agent 레인이었다면 서비스가 낡았거나 agent-3 이 필드를 안 낸
+것이다 — 합성 기록의 `calls_unreadable` 이 그 둘을 가른다(`true` = 냈는데 못 읽었다).
+
 ### 🔴 `DSPY_CACHE` — on by default, and a replay looks exactly like a live call
 
 `/health` reports `cache` (measured `true` on a service started with the recipe above). With the

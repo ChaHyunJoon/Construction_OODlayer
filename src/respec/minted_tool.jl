@@ -775,6 +775,38 @@ function _synth_get(synth, key::String, default)
 end
 
 """
+    normalize_calls(x) -> Union{Nothing, String, Vector{Tuple{String,Dict{String,Any}}}}
+
+agent-3 의 `calls` 를 읽는다. **삼상이다**: `nothing`(못 쟀다 — 이 필드를 모르는 레인/세대),
+`String`(거절 사유), 또는 `(원시이름, 인자dict)` 의 순서 있는 벡터.
+
+🔴 왜 이 필드가 필요한가 (2026-09-03 실측). `params` 는 값이 아니라 **JSON 스키마**로 도착한다
+(`{"agent": {"type": "string"}}`) — 집행부가 그것을 값으로 읽으면 원시가 스키마 dict 을 인자로
+받는다. 게다가 `params` 는 **도구 하나에 dict 하나**라서 body 가 원시 둘 이상이면 어느 인자가
+어느 원시의 것인지 적히지 않는다. `calls` 는 원시마다 자기 인자를 값으로 들고 온다.
+
+🔴 **모양이 틀리면 거절이지 예외가 아니다.** 여기서 예외가 새면 `enact_minted!` 이 기록 대신
+예외로 끝나고 호출자는 세계 상태를 알 방법을 잃는다(이 파일이 여러 자리에서 지키는 규약).
+
+🔴 **전부-아니면-전무.** 항목 하나가 안 읽히면 나머지를 살려 쓰지 않는다 — 반쪽 호출열로
+집행하면 undo 없는 세계가 모델이 뜻한 적 없는 상태로 남는다.
+"""
+function normalize_calls(x)
+    x === nothing && return nothing
+    x isa AbstractVector || return "reject:calls_not_a_list:$(typeof(x))"
+    out = Tuple{String,Dict{String,Any}}[]
+    for (i, c) in enumerate(x)
+        c isa AbstractDict || return "reject:calls_item_not_an_object:$(i):$(typeof(c))"
+        local nm = _synth_get(c, "primitive", nothing)
+        nm isa AbstractString || return "reject:calls_item_has_no_primitive:$(i)"
+        local a = _synth_get(c, "args", Dict{String,Any}())
+        a isa AbstractDict || return "reject:calls_args_not_an_object:$(i):$(typeof(a))"
+        push!(out, (String(nm), Dict{String,Any}(String(k) => v for (k, v) in pairs(a))))
+    end
+    return out
+end
+
+"""
     _step_status(prim_name, out) -> Symbol
 
 호출 결과에서 status 를 읽는다. 세 갈래다:
@@ -901,11 +933,22 @@ function enact_minted!(env, truth, synth)
     #    (`translate_whole_build!` 의 `:residual_blocked`), `applied` 로 지으면 그 판이
     #    **"세계가 깨끗하다"고 보고하는 옮겨진 빌드**가 된다. 두 표는 원시마다
     #    `WORLD_UNCHANGED ⊆ SILENT_SUCCESS` 라서 이 변경은 **넓히기만 한다**(applied ⟹ dirty).
+    # 🔴 Step 5(2026-09-03). 인자를 **어디서** 묶었는지가 결과에 실린다. 없으면 유료 런의
+    #    로그로 "calls 로 값이 도착해 굴렀다" 와 "calls 가 없어 옛 params 경로로 떨어져 인자
+    #    없이 굴렀다" 를 구별할 수 없다 — B1 의 목적이 그 구별인데 관측할 창이 없어진다.
+    # 🔴 삼상이다. `nothing` 은 "인자가 없다" 가 아니라 **그 판정 자리에 도달 못 했다** 이다
+    #    (조기 deferred·거절). `:params` 로 적으면 굴린 적 없는 경로를 굴렸다고 적는 셈이다.
+    # 🔴 두 지역변수를 `_r` **앞에** 선언한다 — 클로저가 같은 결속을 보므로 아래에서 값을
+    #    정하면 이후의 모든 `_r(...)` 이 자동으로 그것을 싣는다(반환 자리마다 손으로 넘기면
+    #    한 자리를 빠뜨리는 순간 그 판만 조용히 `nothing` 이 된다).
+    local args_from = nothing
+    local n_calls   = nothing
     _r(v, why; steps = NamedTuple[], applied = false, partial = false,
        touched = false, resume = :none, resolve = :none) =
         (verdict = v, reason = why, applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
-         resume = resume, resolve = resolve)
+         resume = resume, resolve = resolve,
+         args_from = args_from, n_calls = n_calls)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -940,23 +983,63 @@ function enact_minted!(env, truth, synth)
             "레지스트리는 이 원시를 이름 짓지만 바인더가 만드는 인자로는 부를 수 없다")
     end
 
-    params = Dict{String,Any}(String(k) => v for (k, v) in pairs(_synth_get(synth, "params", Dict())))
+    # ---- (4-b) 🔴 B1(2026-09-03): 인자를 어디서 읽을지 정한다 -------------------------------
+    # `calls` 가 있으면 **그것이 인자다**(원시마다 값). 없으면(`nothing` = 못 쟀다: 단일 agent
+    # 레인에는 이 필드가 아예 없고 낡은 서비스도 마찬가지) 예전처럼 공유 `params` 를 쓴다.
+    # 🔴 `calls` 가 있을 때 `params` 는 **읽지 않는다.** 그 자리에 오는 것은 스키마이지 값이
+    #    아니고, 둘을 합치면 스키마 조각이 인자로 새어 들어간다.
+    calls = normalize_calls(_synth_get(synth, "calls", nothing))
+    calls isa String && return _r(:reject, calls)
+    if calls !== nothing
+        args_from = :calls          # 🔴 **읽은 시점**에 적는다 — 아래 어긋남 거절도 이 사실을
+        n_calls   = length(calls)   #    싣고 나가야 "몇 개를 읽고 거절했나" 가 남는다.
+    end
 
-    # ---- (5) body 전체를 본 뒤에야 "아무도 모르는 인자"를 판정한다 --------------------------
-    # 원시 단위로 거절하면 정상 body 가 두 번째 원시에서 죽는다(`bind_primitive_args` 주석).
-    # ⚠️ 조용히 버리지 않는 이유: 버리면 LLM 이 준 인자가 없는 것처럼 집행되고, 결정 행에는
-    #    그 인자가 그대로 남아 기록과 세계가 어긋난다.
-    let known = reduce(union, [Set(keys(p.params)) for p in prims]; init = Set{String}())
-        for k in keys(params)
-            k in known || return _r(:reject, "arg matches no primitive in body: $(k)")
+    local ctxs::Vector{Any}
+    if calls === nothing
+        # 🔴 문자열 `params`(= JSON 스키마 원문)는 **거절이지 예외가 아니다.** `pairs("...")` 는
+        #    MethodError 이고, 그것이 새면 집행부가 기록 대신 예외로 끝난다(실측 2026-09-03).
+        local praw = _synth_get(synth, "params", Dict{String,Any}())
+        praw isa AbstractDict || return _r(:reject, "reject:params_not_an_object:$(typeof(praw))")
+        params = Dict{String,Any}(String(k) => v for (k, v) in pairs(praw))
+        args_from = :params
+
+        # ---- (5) body 전체를 본 뒤에야 "아무도 모르는 인자"를 판정한다 ----------------------
+        # 원시 단위로 거절하면 정상 body 가 두 번째 원시에서 죽는다(`bind_primitive_args` 주석).
+        # ⚠️ 조용히 버리지 않는 이유: 버리면 LLM 이 준 인자가 없는 것처럼 집행되고, 결정 행에는
+        #    그 인자가 그대로 남아 기록과 세계가 어긋난다.
+        let known = reduce(union, [Set(keys(p.params)) for p in prims]; init = Set{String}())
+            for k in keys(params)
+                k in known || return _r(:reject, "arg matches no primitive in body: $(k)")
+            end
         end
+        ctxs = Any[(env = env, truth = truth, params = params) for _ in prims]
+    else
+        # 🔴 D2: 어긋나면 거절이다. undo 가 없으므로 어느 쪽이 모델의 뜻인지 모르는 채로
+        #    세계를 편집할 수 없다 — 고르는 것보다 안 하는 것이 옳다.
+        local cnames = String[c[1] for c in calls]
+        cnames == names || return _r(:reject,
+            "reject:calls_disagree_with_body: calls=[$(join(cnames, ", "))] " *
+            "body=[$(join(names, ", "))]")
+        # (5') 호출 단위 미지 인자. `calls` 는 원시마다 스코프가 있으므로 (5) 의 "body 전체
+        #      기준" 논거가 여기서는 성립하지 않는다 — 이 원시가 모르는 키는 **그 호출의**
+        #      오류다. 공유 dict 이었다면 못 했을 판정이다.
+        for (i, (nm, a)) in enumerate(calls)
+            for k in keys(a)
+                haskey(prims[i].params, k) || return _r(:reject,
+                    "reject:arg_matches_no_primitive_in_call:$(k) (원시 $(nm), 호출 $(i))")
+            end
+        end
+        ctxs = Any[(env = env, truth = truth, params = calls[i][2]) for i in eachindex(prims)]
     end
 
     # ---- (6) 인자를 전부 바인딩한다. 여기까지 통과해야 한 발이라도 집행한다 ------------------
-    ctx = (env = env, truth = truth, params = params)
+    # 🔴 ctx 가 **호출마다** 다르다(B1). `calls` 가 없으면 위에서 같은 dict 을 n 벌 깔았으므로
+    #    옛 동작과 바이트 동일이다 — 바인더 자체는 한 벌 그대로다(타입 검사·zone_keys 강제가
+    #    두 경로에서 같은 코드를 지난다).
     resolved = Any[]
-    for p in prims
-        b = bind_primitive_args(p, ctx)
+    for (i, p) in enumerate(prims)
+        b = bind_primitive_args(p, ctxs[i])
         b isa String && return _r(:reject, "$(b) (원시 $(p.name))")
         push!(resolved, (prim = p, args = b))
     end

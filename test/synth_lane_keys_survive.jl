@@ -45,10 +45,10 @@ include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
     # (1) 이 계획이 나르기로 한 아홉. 리터럴로 못박는다 — 이 목록이 계약이다.
     @test Set(SYNTH_LANE_KEYS) == Set(["tool_minted", "synthesis_event", "synthesis_ran",
                                        "synthesis_error", "tool_name", "body_names",
-                                       "reach", "missing_primitive", "params"])
+                                       "reach", "missing_primitive", "params", "calls"])
 end
 
-@testset "성공 분기가 아홉을 전부 나른다" begin
+@testset "성공 분기가 열을 전부 나른다" begin
     # 서비스 응답을 흉내낸 dict. `policy_entry` 는 `b` 를 **Symbol 키**로 읽는다
     # (`get(b, :error, nothing)` 등) — 실제 응답은 JSON3.Object 이지 Dict{String,Any} 가
     # 아니다. Dict{String,Any} 픽스처를 그대로 넘기면 모든 Symbol 조회가 미스해
@@ -63,7 +63,13 @@ end
             "tool_name" => "clear_zone_and_resume",
             "body_names" => ["restage_all_blocked", "translate_whole_build"],
             "reach" => "composed", "missing_primitive" => nothing,
-            "params" => Dict{String,Any}("threshold" => 0.3, "zone" => "A")))))
+            "params" => Dict{String,Any}("threshold" => 0.3, "zone" => "A"),
+            # 🔴 B1(2026-09-03). agent-3 이 body 와 **같은 순서로** 내는 구조화 호출열.
+            #    `params`(도구 하나에 dict 하나)와 달리 원시마다 자기 인자를 들고 온다.
+            "calls" => [Dict{String,Any}("primitive" => "restage_all_blocked",
+                                         "args" => Dict{String,Any}()),
+                        Dict{String,Any}("primitive" => "translate_whole_build",
+                                         "args" => Dict{String,Any}("zone_keys" => ["A"]))]))))
     e = policy_entry(fake, "dspy")
     # 성공 분기가 실제로 태워졌는지 먼저 확인한다 — 그렇지 않으면 아래 아홉 키 단언은
     # "실패 분기가 우연히 값을 갖는다" 는 것을 재는 것일 수 있다.
@@ -80,9 +86,12 @@ end
     @test e["missing_primitive"] === nothing
     @test e["params"]["threshold"] == 0.3
     @test e["params"]["zone"] == "A"
+    @test length(e["calls"]) == 2
+    @test e["calls"][1]["primitive"] == "restage_all_blocked"
+    @test e["calls"][2]["args"]["zone_keys"] == ["A"]
 end
 
-@testset "실패 분기도 아홉을 나른다 — 값은 nothing 이다" begin
+@testset "실패 분기도 열을 나른다 — 값은 nothing 이다" begin
     # 🔴 키를 빼지 않는다. 키가 사라지면 소비자가 "레인이 안 돌았다" 와 "값이 없다" 를
     #     못 가른다 — `margin` 에서 이미 세운 규약이다.
     e = policy_entry(nothing, "dspy")
@@ -103,9 +112,10 @@ end
     @test e["tool_minted"] === nothing
     @test e["reach"] === nothing
     @test e["params"] === nothing
+    @test e["calls"] === nothing        # 🔴 낡은 서비스는 이 필드를 아예 모른다
 end
 
-@testset "합성 dict 은 있는데 상세 여덟이 없다 — 흔한 실행 경로" begin
+@testset "합성 dict 은 있는데 상세 아홉이 없다 — 흔한 실행 경로" begin
     # `maybe_synthesize` 의 다섯 탈출 경로 중 성공("minted") 경로만 상세를 전부 채운다.
     # 이것은 예외가 아니라 **흔한** 모양이다 — `synthesis_event`/`synthesis_ran`/
     # `synthesis_error` 만 있고 나머지는 없는 사건.
@@ -126,6 +136,7 @@ end
     @test e["reach"] === nothing
     @test e["missing_primitive"] === nothing
     @test e["params"] === nothing
+    @test e["calls"] === nothing
 end
 
 # =============================================================================
@@ -226,7 +237,7 @@ function _py_synth_keys(svc::AbstractString, syn::AbstractString)
     return (Set(String.(j["above"])), Set(String.(j["rec"])), Int(j["marker"]))
 end
 
-@testset "🔴 교차언어 — 합성 아홉이 파이썬 소스에 묶여 있다" begin
+@testset "🔴 교차언어 — 합성 열이 파이썬 소스에 묶여 있다" begin
     local (above, rec, marker) = _py_synth_keys(_PY_SVC, _PY_SYN)
     println("    python out[\"dspy\"] 표식 위 = ", join(sort(collect(above)), " · "))
     println("    python 합성 기록 키       = ", join(sort(collect(rec)), " · "))

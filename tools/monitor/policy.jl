@@ -1392,6 +1392,13 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 `nothing` 인자로 원시연산을 부르다 던지는데 그 예외가 "성공" 으로 잘못 집계된다. 서비스는
 `params` 를 성공 경로에서 이미 `synthesis` dict 안에 정확히 이 이름으로 싣고 있었다(실측).
 
+🔴 **열이다** (2026-09-03, B1). `params` 는 실제로는 **값이 아니라 JSON 스키마**로 도착한다
+(`{"agent": {"type": "string"}}`) — 그리고 도구 하나에 dict 하나라서 body 가 원시 둘 이상이면
+어느 인자가 어느 원시의 것인지도 안 적힌다. `calls` 는 agent-3 이 body 와 **같은 순서로** 내는
+`[{"primitive": ..., "args": {...}}]` 이고, 원시마다 자기 인자를 값으로 들고 온다. `params` 는
+그대로 둔다 — 단일 agent 레인에는 `calls` 필드가 아예 없고(비교군), 그 레인은 이 키로 계속
+도착한다.
+
 🔴 `TOOL_LANE_KEYS` 와 **별개의 튜플이다.** 섞으면 `test/tool_lane_keys_survive.jl` (6)절이
 정당하게 빨개진다 — 그 게이트는 파이썬 표식 **아래** 집합만 본다.
 
@@ -1405,7 +1412,8 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 "못 쟀다"(spec §9-2)로 그대로 nothing 이 된다 — 흔한 실행 경로이지 예외가 아니다.
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
-                         "tool_name", "body_names", "reach", "missing_primitive", "params")
+                         "tool_name", "body_names", "reach", "missing_primitive", "params",
+                         "calls")
 
 # `synthesis` dict 안의 키 이름 → 결정 행의 키 이름. 이름이 다른 둘만 적는다
 # (`ran`→`synthesis_ran`, `error`→`synthesis_error`). 나머지는 같은 이름이다(`params` 포함).

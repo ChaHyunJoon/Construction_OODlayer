@@ -116,9 +116,12 @@ _dec(sl) = (macro_name = "NOOP", synth_lane = sl)
 
 # 합성 레인 dict — `policy.jl::SYNTH_LANE_KEYS` 아홉 중 집행부가 읽는 것만 채운다.
 # (아홉 키가 전부 존재한다는 계약은 `test/synth_lane_keys_survive.jl` 이 지킨다.)
-_sl(; reach = "composed", names = String[], params = Dict{String,Any}(), tool = "MintedTool") =
+_sl(; reach = "composed", names = String[], params = Dict{String,Any}(), tool = "MintedTool",
+      calls = nothing) =
     Dict{String,Any}("reach" => reach, "body_names" => names, "tool_name" => tool,
-                     "params" => params, "missing_primitive" => nothing)
+                     "params" => params, "missing_primitive" => nothing,
+                     # 🔴 삼상: 기본은 `nothing`("이 필드를 안 실었다")이지 `[]` 가 아니다.
+                     "calls" => calls)
 
 # `test/minted_tool_enacts.jl` (11) 의 정본 두 세계. 하나는 조용한 성공, 하나는 던진다.
 const QUIET_ENV = (staging_circles = Dict{Symbol,Any}(),)   # → :no_staging (조용한 성공)
@@ -427,6 +430,10 @@ end
                 @test occursin("[minted]", out)
                 @test occursin("NOT handled", out)
                 @test occursin("primitive_registry", r.reason)   # **무엇이** 틀렸는지가 사유다
+                # 🔴 Step 5. 세 반환 자리의 **모양이 같아야** 한다 — 이 자리만 필드를 빼면
+                #    `r.args_from` 을 읽는 소비자가 던지는 판에서만 죽는다(가장 나쁜 시점).
+                @test r.args_from === nothing && r.n_calls === nothing
+                @test occursin("args_from=n/a", out)
             end
             CB._reset_primitive_table!()
         end
@@ -600,5 +607,28 @@ end
         @test minted_handled(_verdict_row(:deferred)) === false
     end
 end
+
+    # -------------------------------------------------------------------------------------
+    @testset "(9) 🔴 인자 출처가 [minted] 줄에 찍힌다 (Step 5, B1)" begin
+        # 없으면 유료 런의 로그로 "calls 로 값이 도착해 굴렀다" 와 "calls 가 없어 옛 params
+        # 경로로 떨어져 인자 없이 굴렀다" 를 구별할 수 없다 — B1 을 배선한 목적이 그 구별이다.
+        _, out_c = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+            _dec(_sl(names = BODY,
+                     calls = [Dict{String,Any}("primitive" => "translate_whole_build",
+                                               "args" => Dict{String,Any}())]))))
+        @test occursin("args_from=calls", out_c)
+        @test occursin("n_calls=1", out_c)
+
+        r_p, out_p = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+                                          _dec(_sl(names = BODY))))
+        @test occursin("args_from=params", out_p)
+        @test occursin("n_calls=n/a", out_p)          # 🔴 "0" 이 아니다 — 못 쟀다
+        @test r_p.args_from === :params                # 반환값에도 실린다(로그만이 아니다)
+
+        # 조기 반환(합성 레인 없음)에서도 줄은 찍히고, 그 자리는 "도달 못 했다" 다.
+        _, out_n = capture_out(() -> enact_minted_decision!(nothing, nothing,
+                                          (macro_name = "NOOP",)))
+        @test occursin("args_from=n/a", out_n)
+    end
 
 end # module

@@ -82,15 +82,18 @@ module MintedToolEnacts
 using Test
 using ConstructionBots
 using Graphs
+import JSON3          # (19) 교차언어 절이 파이썬 출력을 실제 응답과 같은 타입으로 읽는다
 const CB = ConstructionBots
 
 isdefined(CB, :BatteryTruth) ||
     CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 
 # 세계를 안 건드리는 최소 컨텍스트. env 를 요구하는 원시는 (11) 말고는 안 부른다.
-_synth(; reach = "composed", names = String[], params = Dict{String,Any}()) =
+_synth(; reach = "composed", names = String[], params = Dict{String,Any}(), calls = nothing) =
     Dict{String,Any}("reach" => reach, "body_names" => names,
-                     "tool_name" => "t", "params" => params, "missing_primitive" => nothing)
+                     "tool_name" => "t", "params" => params, "missing_primitive" => nothing,
+                     # 🔴 삼상: 기본은 `nothing`("못 쟀다") 이지 `[]`("읽었는데 비었다") 가 아니다.
+                     "calls" => calls)
 
 # `getproperty` 가 던지는 반환값. (11) 이 "못 읽는 모양은 예외가 아니라 기록"을 잰다.
 struct Hostile end
@@ -951,6 +954,282 @@ end
              _synth(names = ["forbid_heavy_cargo"],
                     params = Dict{String,Any}("agent" => "no_such_robot")))
     @test r3.steps[1].status !== :missing_agent     # :unknown_agent 또는 :no_schedule
+end
+
+# =============================================================================
+# (18) 🔴 B1 (2026-09-03) — 인자는 `params` 가 아니라 `calls` 로 온다.
+#
+# 실측이 계기다. `params` 는 값이 아니라 **JSON 스키마**로 도착한다
+# (`{"agent": {"type": "string"}}`) — 집행부가 그것을 값으로 읽으면 원시가 스키마 dict 을
+# 인자로 받는다. 게다가 `params` 는 **도구 하나에 dict 하나**라서 body 가 원시 둘 이상이면
+# 어느 인자가 어느 원시의 것인지 적히지 않는다.
+#
+# agent-3 이 이제 `calls` 를 낸다: body 와 **같은 순서**의
+# `[{"primitive": ..., "args": {평평한 스칼라}}]`. 값이고, 원시 단위로 스코프가 있다.
+#
+# 🔴 설계 결정 넷(2026-09-03, 사용자 승인):
+#   D1 `calls` 가 있으면 집행은 **거기서** 인자를 묶는다. `body_names` 는 canon/ledger 의
+#      계보 기록으로 그대로 남는다(`parse_body` 산출물이라 psi·원장이 그것을 읽는다).
+#   D2 `calls` 와 `body_names` 가 **어긋나면 `:reject`**. undo 가 없으므로 어느 쪽이 의도인지
+#      모르는 채로 세계를 편집할 수 없다 — 고르는 것보다 안 하는 것이 옳다.
+#   D3 `calls === nothing`("못 쟀다": 단일 agent 레인에는 이 필드가 아예 없고, 낡은 서비스도
+#      마찬가지) 이면 지금의 `params` 경로 그대로다.
+#   D4 모양이 틀린 `calls`·`params`(예: 문자열)는 **예외가 아니라 `:reject`** 다. 예외로 새면
+#      `enact_minted!` 이 기록 대신 예외로 끝나고 호출자는 세계 상태를 알 방법을 잃는다.
+#
+# 변이시험(`src/respec/minted_tool.jl`):
+#   ·(18a): `normalize_calls` 의 `x === nothing && return nothing` 을 `return String[]` 로
+#           (= 못 쟀다가 빈 호출열이 되어 D3 폴백이 죽는다).
+#   ·(18b): 호출별 ctx 를 만드는 자리에서 `call_args` 대신 `params` 를 넘긴다(= 스코프 소실).
+#   ·(18c): 이름 일치 검사(`names_from_calls == names`)를 지운다.
+#   ·(18d): 미지 인자 검사를 호출 단위에서 body 전체 기준으로 되돌린다.
+#   ·(18e): `params` 의 `pairs()` 앞 모양 검사를 지운다(= 문자열이 MethodError 로 던진다).
+# =============================================================================
+
+# `calls` 항목 하나. 서비스가 보내는 모양 그대로(String 키 dict) 짓는다.
+_c(name; args = Dict{String,Any}()) =
+    Dict{String,Any}("primitive" => name, "args" => args)
+
+# 🔴 여섯을 **한 겹 안에** 둔다. 최상위 `@testset` 은 자기가 끝나는 순간 던지므로, 평평하게
+#    두면 앞의 하나가 빨개진 자리에서 파일이 멈춰 나머지 다섯을 **RED 로 본 적이 없게** 된다.
+@testset "(18) calls 배선" begin
+
+@testset "(18a) calls 가 없으면(못 쟀다) params 경로가 그대로 돈다" begin
+    # 🔴 단일 agent 레인에는 `calls` 필드가 아예 없다 — 그 레인이 이 배선으로 죽으면 안 된다.
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    r = CB.enact_minted!(fake, nothing, _synth(names = ["translate_whole_build"]))
+    @test r.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :no_staging
+
+    # 키가 아예 없는 합성 기록(낡은 서비스)도 같은 결과여야 한다.
+    bare = Dict{String,Any}("reach" => "composed", "body_names" => ["translate_whole_build"])
+    r2 = CB.enact_minted!(fake, nothing, bare)
+    @test r2.verdict === :admit && [s.status for s in r2.steps] == [s.status for s in r.steps]
+end
+
+@testset "(18b) 인자 스코프가 원시 단위다 — params 로는 표현 못 하는 것" begin
+    # `n` 은 `forbid_heavy_cargo` 의 것이고 `translate_whole_build` 는 모른다.
+    # calls 로 주면 **그 호출이** 거절된다.
+    names = ["translate_whole_build", "forbid_heavy_cargo"]
+    r = CB.enact_minted!(nothing, nothing,
+            _synth(names = names,
+                   calls = [_c("translate_whole_build", args = Dict{String,Any}("n" => 2)),
+                            _c("forbid_heavy_cargo")]))
+    @test r.verdict === :reject
+    # 🔴 사유를 정확히 못박는다. `occursin("n", ...)` 같은 느슨한 검사는 아무 단어에나 걸려
+    #    **구현이 없어도 초록**이다(첫 판이 실제로 그랬다 — env 없음 거절 문구에 걸렸다).
+    @test occursin("arg_matches_no_primitive_in_call:n", r.reason)
+    @test occursin("translate_whole_build", r.reason)
+    @test isempty(r.steps) && r.world_maybe_dirty === false
+
+    # 🔴 음성 대조. 같은 인자를 **공유 params** 로 주면 (8) 은 통과한다(어떤 원시는 안다) —
+    #    즉 위의 거절은 이 배선이 새로 만든 것이지 옛 게이트가 이미 하던 일이 아니다.
+    r2 = CB.enact_minted!(nothing, nothing,
+            _synth(names = names, params = Dict{String,Any}("n" => 2)))
+    @test r2.verdict === :reject
+    @test occursin("missing_harness_arg:env", r2.reason)               # 다른 이유로 돌아섰다
+    @test !occursin("arg_matches_no_primitive_in_call", r2.reason)     # 이 게이트는 안 걸렸다
+end
+
+@testset "(18c) calls 와 body_names 가 어긋나면 거절이다" begin
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    two = ["translate_whole_build", "restage_all_blocked"]
+
+    # 순서가 다르다
+    r1 = CB.enact_minted!(fake, nothing,
+            _synth(names = two, calls = [_c("restage_all_blocked"), _c("translate_whole_build")]))
+    @test r1.verdict === :reject && occursin("calls_disagree_with_body", r1.reason)
+    @test isempty(r1.steps)
+
+    # 길이가 다르다
+    r2 = CB.enact_minted!(fake, nothing,
+            _synth(names = two, calls = [_c("translate_whole_build")]))
+    @test r2.verdict === :reject && isempty(r2.steps)
+
+    # 🔴 읽었는데 비었다(`[]`) ≠ 못 쟀다(`nothing`). body 가 비지 않았으므로 어긋남이다.
+    r3 = CB.enact_minted!(fake, nothing, _synth(names = two, calls = Any[]))
+    @test r3.verdict === :reject && isempty(r3.steps)
+
+    # 양성 대조: 같은 순서면 통과해 집행까지 간다.
+    r4 = CB.enact_minted!(fake, nothing,
+            _synth(names = ["translate_whole_build"], calls = [_c("translate_whole_build")]))
+    @test r4.verdict === :admit && length(r4.steps) == 1
+end
+
+@testset "(18d) 모양이 틀린 calls 는 예외가 아니라 거절이다" begin
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    one = ["translate_whole_build"]
+    bad = Any["문자열이다",                                        # 리스트가 아니다
+              Any["translate_whole_build"],                       # 항목이 dict 이 아니다
+              Any[Dict{String,Any}("args" => Dict{String,Any}())],  # primitive 키가 없다
+              Any[Dict{String,Any}("primitive" => "translate_whole_build",
+                                   "args" => "dict 이 아니다")]]
+    for b in bad
+        r = CB.enact_minted!(fake, nothing, _synth(names = one, calls = b))
+        @test r.verdict === :reject
+        @test isempty(r.steps) && r.world_maybe_dirty === false
+    end
+
+    # 🔴 변이 18d 가 위 넷으로는 **살아남았다**(2026-09-03 실측): 항목 검사를 `continue` 로
+    #    바꿔도 넷은 전부 다른 게이트(리스트 아님 · primitive 없음 · args 모양 · 이름 불일치)에
+    #    걸려 거절됐다. 즉 저 넷은 이 검사를 재고 있지 않았다.
+    #    이 판이 진짜 위험한 모양이다: **정상 호출 하나 + 못 읽는 항목 하나.** 항목을 조용히
+    #    건너뛰면 남은 하나가 body 와 일치해 **집행까지 간다** — 모델이 뜻한 적 없는 body 를
+    #    undo 없이 굴리는 것이고, 그것이 `normalize_calls` 가 전부-아니면-전무인 이유다.
+    r5 = CB.enact_minted!(fake, nothing,
+            _synth(names = one,
+                   calls = Any[_c("translate_whole_build"), "못 읽는 항목"]))
+    @test r5.verdict === :reject
+    @test occursin("calls_item_not_an_object", r5.reason)
+    @test isempty(r5.steps) && r5.world_maybe_dirty === false
+end
+
+@testset "(18e) 문자열 params 는 예외가 아니라 거절이다" begin
+    # 🔴 서비스는 `params` 를 JSON **스키마 문자열**로 보낼 수 있다. `pairs("...")` 는
+    #    MethodError 이고, 그것이 새면 집행부가 기록 대신 예외로 끝난다.
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    r = CB.enact_minted!(fake, nothing,
+            _synth(names = ["translate_whole_build"],
+                   params = "{\"zone_keys\": {\"type\": \"array\"}}"))
+    @test r.verdict === :reject
+    @test isempty(r.steps) && r.world_maybe_dirty === false
+end
+
+@testset "(18f) calls 경로에서도 zone_keys 강제와 타입 검사가 그대로 돈다" begin
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    # 살아 있지 않은 존을 주면 **호출 전에** 거절된다 = 값이 실제로 그 호출에 도착했다는 증거.
+    r = CB.enact_minted!(fake, nothing,
+            _synth(names = ["translate_whole_build"],
+                   calls = [_c("translate_whole_build",
+                               args = Dict{String,Any}("zone_keys" => ["유령존"]))]))
+    @test r.verdict === :reject && occursin("unknown_zone_key", r.reason)
+    @test isempty(r.steps)
+
+    # 음성 대조: 안 주면 그 거절이 없다(키워드를 빼서 callee 기본값이 쓰인다).
+    r2 = CB.enact_minted!(fake, nothing,
+            _synth(names = ["translate_whole_build"], calls = [_c("translate_whole_build")]))
+    @test r2.verdict === :admit
+
+    # 선언된 타입으로 변환 안 되는 값도 그대로 거절이다((14) 와 같은 검사가 돈다).
+    r3 = CB.enact_minted!(fake, nothing,
+            _synth(names = ["forbid_heavy_cargo"],
+                   calls = [_c("forbid_heavy_cargo",
+                               args = Dict{String,Any}("agent" => "a", "n" => "둘"))]))
+    @test r3.verdict === :reject && occursin("param_type", r3.reason)
+end
+
+# 🔴 (18g) Step 5. 어느 경로로 인자를 묶었는지가 **결과에 실려야** 한다.
+#    없으면 유료 런이 끝난 뒤 로그만 보고 "calls 로 값이 도착해서 굴렀다" 와 "calls 가 없어
+#    옛 params 경로로 떨어져 인자 없이 굴렀다" 를 구별할 수 없다 — B1 을 배선한 목적이
+#    정확히 그 구별인데 관측할 창이 없는 셈이다.
+#    삼상이다: `:calls` · `:params` · `nothing`(그 자리에 **도달 못 했다**, "인자가 없다" 가 아니다).
+@testset "(18g) 인자 출처가 결과에 실린다" begin
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    one  = ["translate_whole_build"]
+
+    r1 = CB.enact_minted!(fake, nothing, _synth(names = one, calls = [_c("translate_whole_build")]))
+    @test r1.verdict === :admit && r1.args_from === :calls && r1.n_calls == 1
+
+    r2 = CB.enact_minted!(fake, nothing, _synth(names = one))
+    @test r2.verdict === :admit && r2.args_from === :params && r2.n_calls === nothing
+
+    # 🔴 판정 자리에 도달하지 못한 판은 `nothing` 이다 — `:params` 로 적으면 "옛 경로로
+    #    굴렀다" 는 거짓 진술이 된다(아무 경로로도 안 굴렀다).
+    r3 = CB.enact_minted!(fake, nothing, _synth(reach = nothing, names = one))
+    @test r3.verdict === :deferred && r3.args_from === nothing && r3.n_calls === nothing
+    r4 = CB.enact_minted!(fake, nothing, _synth(names = ["teleport_the_build"]))
+    @test r4.verdict === :reject && r4.args_from === nothing
+
+    # calls 를 **읽고 나서** 거절한 판은 그 사실이 남는다(읽은 개수까지).
+    r5 = CB.enact_minted!(fake, nothing,
+             _synth(names = one, calls = [_c("translate_whole_build"), _c("restage_all_blocked")]))
+    @test r5.verdict === :reject && r5.args_from === :calls && r5.n_calls == 2
+end
+
+end # (18)
+
+# =============================================================================
+# (19) 🔴 교차언어 — 파이썬이 정규화한 `calls` 가 JSON 왕복 뒤 집행부에 그대로 도착한다.
+#
+# (18) 은 **손으로 지은** 픽스처로 잰다. 그 픽스처가 파이썬이 실제로 보내는 모양과 다르면
+# 줄리아 게이트는 전부 초록인데 라이브에서만 인자가 사라진다 — 이 레포가 `ran`/`synthesis_ran`
+# 에서 이미 밟은 모양이고, `test/synth_lane_keys_survive.jl` 이 그것 때문에 존재한다.
+#
+# 그래서 여기서는 픽스처를 **파이썬에게 만들게 한다**: 원문을 줄리아가 소유하고,
+# `synthesize.normalize_calls` 를 실제로 태우고, JSON 으로 받아 `JSON3` 로 읽어 집행부에 먹인다.
+# 이 절이 덮는 것 넷 — 출력 키 이름(`primitive`) · `name` 별칭 · 꼬리 `!` 제거 ·
+# `JSON3.Array{JSON3.Object}` 타입이 `normalize_calls`(줄리아)를 통과한다는 것.
+#
+# 🔴 못 하면 **skip 이 아니라 빨개진다**. 유료 호출 0건(모델을 안 부르고 함수만 태운다).
+# 변이시험: ·(19a) 파이썬 `normalize_calls` 의 출력 키를 `"prim"` 으로 개명한다(**사본 위에서**)
+#           → 줄리아가 `calls_item_has_no_primitive` 로 거절한다.
+# =============================================================================
+const REPO   = normpath(joinpath(@__DIR__, ".."))
+const PY_BIN = joinpath(REPO, ".venv", "bin", "python")
+const SYNDIR = joinpath(REPO, "src", "respec", "llm_service")
+# 🔴 `synthesize.py` 는 형제 모듈(`features_agnostic`)의 자리를 `__file__` 에서 유도한다 —
+#    사본을 /tmp 에 두면 그 유도가 틀려 import 에서 죽는다(실측). 그 파일이 그러라고 둔
+#    탈출구가 `WM_DIR` 이다. 두 판 모두 같은 값을 주므로 양성·음성의 차이는 사본 하나뿐이다.
+const WMDIR  = joinpath(REPO, "wm4spacecraft_manufacturing")
+
+# 🔴 `sys.path` 를 **여러 개** 받는다(`:` 구분). 음성 대조는 `synthesize.py` 한 장만 사본으로
+#    두고 형제 모듈(`features_agnostic` 등)은 진짜 디렉터리에서 찾게 해야 한다 — 첫 판은
+#    `*.py` 를 통째로 복사했는데 그 모듈이 이 디렉터리에 없어 import 에서 죽었다(실측).
+const _PY_NORM = raw"""
+import json, sys
+for p in reversed(sys.argv[1].split(":")):
+    sys.path.insert(0, p)
+import synthesize as syn
+print(json.dumps(syn.normalize_calls(json.loads(sys.argv[2])), ensure_ascii=False))
+"""
+
+"파이썬 `normalize_calls` 를 실제로 태우고 JSON3 값으로 돌려준다. 실패는 **예외**다(skip 아님)."
+function py_normalize_calls(raw_json::AbstractString; syndir::AbstractString = SYNDIR)
+    isfile(PY_BIN) || error("교차언어 게이트: 파이썬이 없다 — $(PY_BIN) (skip 하지 않는다)")
+    isfile(joinpath(syndir, "synthesize.py")) || error("합성기 소스가 없다 — $(syndir)")
+    local path = syndir == SYNDIR ? syndir : "$(syndir):$(SYNDIR)"
+    local o = IOBuffer(); local e = IOBuffer()
+    local pr = run(pipeline(ignorestatus(
+        `env -u OPENAI_API_KEY WM_DIR=$(WMDIR) $(PY_BIN) -c $(_PY_NORM) $(path) $(raw_json)`);
+        stdout = o, stderr = e))
+    local out = String(take!(o))
+    pr.exitcode == 0 || error("정규화 실패 (rc=$(pr.exitcode))\n$(String(take!(e)))")
+    return JSON3.read(out)
+end
+
+@testset "(19) 파이썬이 낸 calls 가 JSON 왕복 뒤 집행부에 도착한다" begin
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    # 🔴 원문은 **줄리아가 소유한다.** `name` 별칭과 꼬리 `!` 를 일부러 쓴다 — 라이브에서
+    #    실제로 나오는 표기이고, 파이썬이 그것을 접어 주지 않으면 아래 이름 일치가 깨진다.
+    raw = """[{"name": "translate_whole_build!", "args": {"zone_keys": ["유령존"]}}]"""
+    calls = py_normalize_calls(raw)
+    @test length(calls) == 1
+    @test calls[1]["primitive"] == "translate_whole_build"    # 별칭·`!` 가 접혔다
+
+    # 값이 그 호출에 실제로 도착했다는 증거: 살아 있지 않은 존이라 **호출 전에** 거절된다.
+    r = CB.enact_minted!(fake, nothing,
+            _synth(names = ["translate_whole_build"], calls = calls))
+    @test r.verdict === :reject && occursin("unknown_zone_key", r.reason)
+    @test isempty(r.steps)
+
+    # 양성 대조: 같은 경로로 인자 없이 오면 집행까지 간다.
+    ok = py_normalize_calls("""[{"primitive": "translate_whole_build", "args": {}}]""")
+    r2 = CB.enact_minted!(fake, nothing, _synth(names = ["translate_whole_build"], calls = ok))
+    @test r2.verdict === :admit && length(r2.steps) == 1
+
+    # 🔴 음성 대조 — 이 절이 정말 하중을 지는가. 파이썬 출력 키를 개명한 **사본**을 태운다.
+    #    생산 소스는 안 건드린다.
+    mktempdir() do dir
+        local src = read(joinpath(SYNDIR, "synthesize.py"), String)
+        write(joinpath(dir, "synthesize.py"),
+              replace(src, "out.append({\"primitive\":" => "out.append({\"prim\":"))
+        local bad = py_normalize_calls(raw; syndir = dir)
+        @test !haskey(bad[1], :primitive)                       # 개명이 실제로 먹혔다
+        local r3 = CB.enact_minted!(fake, nothing,
+                       _synth(names = ["translate_whole_build"], calls = bad))
+        @test r3.verdict === :reject
+        @test occursin("calls_item_has_no_primitive", r3.reason)
+    end
 end
 
 end # module

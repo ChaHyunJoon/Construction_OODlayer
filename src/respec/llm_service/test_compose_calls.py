@@ -228,3 +228,46 @@ def test_an_explicitly_empty_call_list_survives_the_copy_as_empty(monkeypatch):
                                              calls=[])))
     assert rec["calls"] == []          # 🔴 `None` 이 아니다 — 모델은 답했고, 그 답이 "없음" 이다
     assert rec["calls"] is not None
+
+
+# =====================================================================================
+# 🔴 Step 5 (2026-09-03) — "필드가 없었다" 와 "있었는데 못 읽었다" 를 가른다.
+#
+# `normalize_calls` 는 둘 다 `None` 으로 낸다(전부-아니면-전무의 대가). 줄리아는 `nothing` 을
+# "못 쟀다 → 옛 `params` 경로" 로 읽으므로 **세계는 안 상한다** — 상하는 것은 기록이다:
+# agent-3 이 못 읽을 `calls` 를 낸 판이 아예 안 낸 판과 구별되지 않는다.
+#
+# ⟹ 짝으로 만든다. `(calls, calls_unreadable)` 세 조합이 세 사건과 일대일이다:
+#     (None, False) 필드가 없었다 · (list, False) 읽었다 · (None, True) 있었는데 못 읽었다
+#
+# 🔴 `SYNTH_LANE_KEYS` 에는 **안 올린다**(2026-09-03 결정). 집행 판정에 쓸 값이 아니라 사후
+#    분석용이고, 그 경계 튜플은 "집행부가 읽는 것" 으로 좁게 유지하는 것이 지금 계약이다.
+# =====================================================================================
+
+def test_a_missing_calls_field_is_absent_not_unreadable():
+    r = SY._finish_record(_rec(body="release_pending_assignments()", calls=None),
+                          "mild_battery", SY.SynthesisLedger(), None)
+    assert r["calls"] is None
+    assert r["calls_unreadable"] is False, "안 낸 것을 못 읽었다고 적으면 안 된다"
+
+
+def test_an_unreadable_calls_field_is_recorded_as_unreadable():
+    r = SY._finish_record(_rec(body="release_pending_assignments()", calls="garbage"),
+                          "mild_battery", SY.SynthesisLedger(), None)
+    assert r["calls"] is None                 # 값은 여전히 "없다"
+    assert r["calls_unreadable"] is True      # 그러나 이유가 다르다
+
+
+def test_a_readable_call_list_is_not_unreadable():
+    r = SY._finish_record(_rec(body="release_pending_assignments()",
+                               calls=[{"primitive": "release_pending_assignments",
+                                       "args": {}}]),
+                          "mild_battery", SY.SynthesisLedger(), None)
+    assert r["calls_unreadable"] is False
+
+
+def test_an_empty_list_is_read_not_unreadable():
+    """🔴 `[]` 는 "읽었는데 비었다" 다 — 이 짝이 그 구별을 지워서는 안 된다."""
+    r = SY._finish_record(_rec(body="release_pending_assignments()", calls=[]),
+                          "mild_battery", SY.SynthesisLedger(), None)
+    assert r["calls"] == [] and r["calls_unreadable"] is False

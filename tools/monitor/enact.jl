@@ -872,7 +872,8 @@ function enact_minted_decision!(env, truth, decision)
             println("[minted] lane=", lane,
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
                     " reach=n/a verdict=deferred applied=false partial=false",
-                    " world_maybe_dirty=false handled=false undo=none resume=none steps=[]",
+                    " world_maybe_dirty=false handled=false undo=none resume=none",
+                    " args_from=n/a n_calls=n/a steps=[]",
                     " ran_milp=n/a(not armed)",
                     " synthesis_event=", _synth_lane_field(sl, "synthesis_event"),
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
@@ -885,7 +886,7 @@ function enact_minted_decision!(env, truth, decision)
             return (handled = false, verdict = :deferred, reason = why,
                     applied = false, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none,
-                    resolve = :none)
+                    resolve = :none, args_from = nothing, n_calls = nothing)
         end
 
         # ---- 재풀이 센티넬을 먼저 심는다 (C6) ----------------------------------------------
@@ -911,6 +912,12 @@ function enact_minted_decision!(env, truth, decision)
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
                 " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
                 " undo=", r.undo, " resume=", r.resume, " resolve=", r.resolve,
+                # 🔴 Step 5 (B1, 2026-09-03). 인자를 **어디서** 묶었는지. 이것이 없으면 유료
+                #    런의 로그로 "calls 로 값이 도착해 굴렀다" 와 "calls 가 없어 옛 params
+                #    경로로 떨어져 인자 없이 굴렀다" 가 같은 관측이 된다.
+                #    🔴 `nothing` 은 `n/a` 로 찍는다 — "0" 도 "params" 도 아니고 **도달 못 했다**.
+                " args_from=", something(r.args_from, "n/a"),
+                " n_calls=", something(r.n_calls, "n/a"),
                 " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 
@@ -928,19 +935,22 @@ function enact_minted_decision!(env, truth, decision)
         return (handled = handled, verdict = r.verdict, reason = r.reason,
                 applied = r.applied, partial = r.partial,
                 world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
-                resume = r.resume, resolve = r.resolve)
+                resume = r.resume, resolve = r.resolve,
+                args_from = r.args_from, n_calls = r.n_calls)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
         println("[minted] lane=unknown tool=n/a reach=n/a verdict=reject applied=false",
-                " partial=false world_maybe_dirty=false handled=false undo=none resume=none steps=[]",
+                " partial=false world_maybe_dirty=false handled=false undo=none resume=none",
+                " args_from=n/a n_calls=n/a steps=[]",
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
         return (handled = false, verdict = :reject,
                 reason = "enact_minted_decision! threw: " * msg,
                 applied = false, partial = false, world_maybe_dirty = false,
-                steps = NamedTuple[], undo = :none, resume = :none, resolve = :none)
+                steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
+                args_from = nothing, n_calls = nothing)
     end
 end

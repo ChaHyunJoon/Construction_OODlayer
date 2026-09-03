@@ -1071,7 +1071,13 @@ def _finish_record(rec, kind, led, blob):
     #    둘의 어긋남은 `reach_matches_body` 와 **같은 관용**으로 기록만 한다(강제 안 한다).
     # 🔴 단일 agent 레인(`SynthesizeTool`)에는 이 필드가 **없다** — 일부러 안 더했다. 더하면
     #    그 레인의 프롬프트가 바뀌어 대조군이 사라진다. 그 레인에서 이 값은 `None`(못 쟀다)이다.
-    rec["calls"] = normalize_calls(rec.get("calls"))
+    # 🔴 Step 5. `normalize_calls` 는 "필드가 없었다" 와 "있었는데 못 읽었다" 를 둘 다 `None`
+    #    으로 낸다(전부-아니면-전무의 대가). 줄리아는 `nothing` 을 "못 쟀다 → 옛 `params`
+    #    경로" 로 읽으므로 세계는 안 상하지만 **기록이 상한다** — 못 읽은 판이 안 낸 판과
+    #    구별되지 않는다. 그래서 원문의 유무를 옆에 적어 셋을 일대일로 만든다.
+    _raw_calls = rec.get("calls")
+    rec["calls"] = normalize_calls(_raw_calls)
+    rec["calls_unreadable"] = (_raw_calls is not None and rec["calls"] is None)
     rec["calls_match_body"] = (
         None if rec["calls"] is None else
         [c["primitive"] for c in rec["calls"]] == names)
@@ -1283,7 +1289,11 @@ def ungrounded_params(params_text):
 
 
 def _params_view(params_text):
-    """Read `params` as `(dict, shape)`. The Python counterpart of Julia's `normalize_params`.
+    """Read `params` as `(dict, shape)`.
+
+    🔴 2026-09-03 정정. 여기 "줄리아의 `normalize_params` 의 파이썬 짝" 이라고 적혀 있었는데
+    **그런 함수는 없다**(레포 전수 0건). 줄리아 쪽 짝은 `minted_tool.jl::enact_minted!` 안에서
+    `params` 를 dict 으로 펴는 자리이고, 그쪽은 값만 본다.
 
     ⚠️ Two copies and only one of them grows. Here we return **both values and schemas as they
     are** -- this gate has to judge declarations as well as values, so unlike the Julia side it
