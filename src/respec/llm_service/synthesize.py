@@ -28,7 +28,10 @@ exactly that trap (a no-op without `CARRIER_RESCUE`, yet the log looks normal). 
 
     tool_minted == "disabled"  ->  the flag was off, so the pipeline never ran
                                   🔴 NOT "this event would have fired" -- see the 09-03 note below
-    tool_minted is None        ->  it did not fire, or it fired and minted nothing
+    tool_minted is None        ->  it did not fire, or it fired and minted nothing, **or we
+                                  refused to spend on it** (G1, 2026-09-03). `None` is not one
+                                  event; `refused` and `ran` are what tell those apart, and the
+                                  rules table below is the normative way to index them.
 
 🔴 **The order of the verdict was "firing condition first, flag second."** Reversed (flag
 first), **every decision row** of a default run becomes `"disabled"`, and at that moment the
@@ -57,25 +60,49 @@ called -- so a switched-off row carries `synthesis_event == False` **and**
 
 🔴 **The key that separates "did not fire" from "was switched off" is now `enabled`** (the
 record's own field, stamped from `synthesis_enabled()` when the record is created), and
-equivalently `tool_minted == "disabled"`. It is NOT `synthesis_event`. Rules, each one true of
-`synthesize_multi` today:
+equivalently `tool_minted == "disabled"`. It is NOT `synthesis_event`.
+
+🔴 **The table lives in code, as `CONSUMER_RULES` below.** What follows is the same eight rows
+spelled out for a human, and `test_synthesis_record_contract.py` asserts the two do not fork --
+one source of truth, because this repo has been burned three times by the same fact living in
+two places. Every row's condition is **sufficient on its own**: exactly one of them matches any
+record `synthesize_multi` returns, and the same file drives every exit path to prove it.
+
+⚠️ **2026-09-03 (fix round 2): "re-derived" and "new canon" used to carry byte-identical
+conditions** (`ran == True and error is None and body_names != []`) and opposite outcomes. The
+fact that actually separates them is the **ledger novelty of the canon key**, and the record
+carries it as `canon_count` (1 = this record is the first of its canonical form). It is in the
+conditions now; without it a consumer indexing by this table cannot tell the two apart.
 
     was switched off  enabled == False
-                      (synthesis_event == False · ran == False · error is None · stages == [])
+                      (synthesis_event == False · ran == False · error is None · stages == []
+                       · refused is None -- the G1 guard never ran)
                                                               -> tool_minted == "disabled"
-    a stage failed    enabled == True and ran == False and error is not None
+    refused           enabled == True and refused is a str
+                      (G1: the compose stage would have been handed no interface. NOTHING was
+                       billed -- stages == [] · ran == False · error is None)
+                                                              -> tool_minted is None
+    a stage failed    enabled == True and refused == False and ran == False
+                      and error is not None
                       (observe / design / redesign died; the verdict never existed)
                                                               -> tool_minted is None
-    did not fire      enabled == True and ran == False and error is None
+    did not fire      enabled == True and refused == False and ran == False
+                      and error is None
                       (agent-2 answered expressible != False)  -> tool_minted is None
     ran and failed    ran == True and error is not None
                       (the compose stage died)                 -> tool_minted is None
     ran, no body      ran == True and error is None and body_names == []
-                      (see the Task 8 note below)              -> tool_minted is None
+                      (see the Task 8 note below; agent-3 declining -- `needs_primitive` --
+                       lands here, and `ran == True` is what separates it from "refused")
+                                                              -> tool_minted is None
     re-derived        ran == True and error is None and body_names != []
-                                                              -> tool_minted == False
+                      and canon_count > 1                     -> tool_minted == False
     new canon         ran == True and error is None and body_names != []
-                                                              -> tool_minted == True
+                      and canon_count == 1                    -> tool_minted == True
+
+⚠️ Records written **before 2026-09-03** carry no `refused` key at all. Absent is not `False`:
+it means the guard did not exist yet, and such a row cannot be indexed by the two rows that
+mention `refused`. Read the lane's date before pooling old rows with new ones.
 
 🔴 **`ran == True` implies `synthesis_event == True` and vice versa** on this lane -- they are
 set on the same line. Keep reading both anyway: a future lane may separate them, and a consumer
@@ -112,6 +139,7 @@ recorded with `params_flat=False`, and the definition is kept in full (spec §5-
 import json
 import os
 import sys
+from collections import namedtuple
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -554,8 +582,22 @@ def build_compose_context(spec: Dict[str, Any], reasoning_log: str = "", blob=No
 
 
 # 🔴 2026-09-03 (D5). `build_inventory_block` stood here -- the alphabet agent-3 read. There is
-#    no alphabet. `synthesize_multi` passes `inventory=""` until Task 8 replaces that stage's
-#    signature with one that is handed the **world interface** instead.
+#    no alphabet. `compose_interface()` below is what the compose stage is handed until Task 8
+#    replaces that stage's signature with one that is given the **world interface** instead.
+def compose_interface(blob=None) -> str:
+    """**One source of truth** for the interface text the compose stage (agent-3) is handed.
+
+    🔴 It returns the empty string, and that is the whole point of the G1 guard in
+    `synthesize_multi`: today agent-3 would be told to compose from an **empty catalogue**, so a
+    live run of this lane spends money to measure nothing. The guard reads this function and
+    both compose call sites are fed from it, so there is exactly one place that decides what
+    agent-3 sees -- and Task 8 flips the lane on by making this return the world interface
+    (`world_interface.build_world_interface_block`), without touching the guard.
+
+    ⚠️ It is a **function, not a constant**, so a test can supply an interface without a paid
+    call and without an extra parameter threaded through `run_synthesis`.
+    """
+    return ""
 
 
 # ==========================================================================================
@@ -774,10 +816,64 @@ def params_flatness(params_text: Optional[str]) -> Tuple[Optional[bool], str]:
 # ==========================================================================================
 # (4) firing · tool_minted
 # ==========================================================================================
+#: The consumer rules of this module's docstring, **as code**. The prose table up there is the
+#: same eight rows for a human reader, and `test_synthesis_record_contract.py` asserts the two
+#: never fork (name and condition string are looked for verbatim in `__doc__`).
+#:
+#: 🔴 Each `condition` is **sufficient on its own** -- exactly one rule matches any record
+#: `synthesize_multi` returns, and that file drives every exit path to prove it rather than
+#: reasoning about it. The 09-03 defect this replaces was two rows with byte-identical
+#: conditions and opposite `tool_minted`.
+#: 🔴 `matches` uses `.get` throughout: a record that returned early does not carry the keys of
+#: the later stages, and a KeyError in a rule would turn "this row does not apply" into a crash.
+ConsumerRule = namedtuple("ConsumerRule", "name condition tool_minted matches")
+
+CONSUMER_RULES = (
+    ConsumerRule(
+        "was switched off", "enabled == False", "disabled",
+        lambda r: r.get("enabled") is False),
+    ConsumerRule(
+        "refused", "enabled == True and refused is a str", None,
+        lambda r: r.get("enabled") is True and isinstance(r.get("refused"), str)),
+    ConsumerRule(
+        "a stage failed",
+        "enabled == True and refused == False and ran == False and error is not None", None,
+        lambda r: (r.get("enabled") is True and r.get("refused") is False
+                   and r.get("ran") is False and r.get("error") is not None)),
+    ConsumerRule(
+        "did not fire",
+        "enabled == True and refused == False and ran == False and error is None", None,
+        lambda r: (r.get("enabled") is True and r.get("refused") is False
+                   and r.get("ran") is False and r.get("error") is None)),
+    ConsumerRule(
+        "ran and failed", "ran == True and error is not None", None,
+        lambda r: r.get("ran") is True and r.get("error") is not None),
+    ConsumerRule(
+        "ran, no body", "ran == True and error is None and body_names == []", None,
+        lambda r: (r.get("ran") is True and r.get("error") is None
+                   and r.get("body_names") == [])),
+    ConsumerRule(
+        "re-derived",
+        "ran == True and error is None and body_names != [] and canon_count > 1", False,
+        lambda r: (r.get("ran") is True and r.get("error") is None
+                   and bool(r.get("body_names")) and (r.get("canon_count") or 0) > 1)),
+    ConsumerRule(
+        "new canon",
+        "ran == True and error is None and body_names != [] and canon_count == 1", True,
+        lambda r: (r.get("ran") is True and r.get("error") is None
+                   and bool(r.get("body_names")) and r.get("canon_count") == 1)),
+)
+
+
 def _blank(rec_kind, expressible, ledger) -> Dict[str, Any]:
+    # 🔴 `refused` is three-state and starts at `None` = **the G1 guard did not run**. It is
+    #    `False` once the guard has run and passed, and a string (the reason code) when it
+    #    refused. A blank record never enters `synthesize_multi`, so `None` is the true value
+    #    there -- and it is what keeps "the lane was switched off" from colliding with
+    #    "we refused to spend on this event".
     return {"tool_minted": None,
             "synthesis_event": False, "ran": False,
-            "enabled": synthesis_enabled(),
+            "enabled": synthesis_enabled(), "refused": None,
             "kind": rec_kind, "expressible": expressible,
             "K": ledger.K, "error": None, "reason": None}
 
@@ -1118,10 +1214,10 @@ def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
     service passes it positionally and its absence would be a silent API break.
 
     ⚠️ 2026-09-03: `blob` is **threaded dead**. It used to be the registry blob and every callee
-    read it; today it reaches `synthesize_multi` -> `build_compose_context` / `_finish_record`
-    and **not one of them looks at it**. It is kept, not removed, because Task 8's code passes
-    it at the same call sites -- deleting the parameter now would only mean re-adding it. If
-    Task 8 leaves it unread as well, delete it there.
+    read it; today it reaches `synthesize_multi` -> `build_compose_context` / `_finish_record` /
+    `compose_interface` and **not one of them looks at it**. It is kept, not removed, because
+    Task 8's code passes it at the same call sites -- deleting the parameter now would only mean
+    re-adding it. If Task 8 leaves it unread as well, delete it there.
     """
     return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
                             programs=programs, blob=blob)
@@ -1149,6 +1245,11 @@ def synthesize_multi(state: str,
     🔴 If agent-2 answers `expressible=True`, **agent-3 is not called** -- it saves one billable
     call, and it separates "this was not an event to synthesise for" from "we synthesised and
     minted nothing" in the record.
+
+    🔴 G1 (2026-09-03). Before any of that it **refuses** -- without spending a cent -- when
+    `compose_interface()` is empty, i.e. when agent-3 would be handed no catalogue at all. The
+    refusal is a record (`refused == "no_compose_interface"`), never an exception, and it is a
+    distinct observable from both "the lane was switched off" and "agent-3 declined".
     """
     led = ledger if ledger is not None else LEDGER
     rec = _blank(kind, None, led)
@@ -1158,6 +1259,31 @@ def synthesize_multi(state: str,
         rec["tool_minted"] = "disabled"
         rec["reason"] = ("%s != '1': synthesis is OFF by default because one firing is a "
                          "billable OpenAI call (R13)" % SYNTHESIS_ENV)
+        return rec
+
+    # ---- G1: refuse rather than bill when agent-3 would be handed no interface -------------
+    # 🔴 Why this is here and not one line above the compose call: by then agent-1 and
+    #    agent-2 have already been paid for. A run that ends in this refusal spends **nothing**
+    #    -- `stages` stays empty and the spy in `test_synthesis_record_contract.py` sees no
+    #    stage at all.
+    # 🔴 Why it exists at all. `ComposeToolBody` is fed `compose_interface()` and that
+    #    is the empty string until Task 8, i.e. agent-3 would be told to compose from an empty
+    #    catalogue. Until today the only thing stopping such a run was a sentence in a human
+    #    ledger, and `results/` shows runs like this do get launched.
+    # 🔴 A rejection, not an exception (the repo's idiom): it returns a record whose
+    #    `refused` field a reader can index. Three-state -- `None` never ran (above), `False`
+    #    ran and passed, a string is the reason code. It is NOT collapsed into `enabled`
+    #    ("the lane was switched off") nor into `reach == "needs_primitive"` ("agent-3
+    #    declined", which has `ran == True`): this repo has twice paid for folding distinct
+    #    events into one observable.
+    iface = compose_interface(blob)
+    rec["refused"] = False if (iface or "").strip() else "no_compose_interface"
+    if rec["refused"]:
+        rec["reason"] = (
+            "refused before spending: the compose stage would have been handed no world "
+            "interface (compose_interface() is empty until Task 8), so agent-3 would be asked "
+            "to compose from an empty catalogue and the run would measure nothing; nothing "
+            "was billed (stages == [])")
         return rec
 
     progs = programs or {}
@@ -1246,10 +1372,11 @@ def synthesize_multi(state: str,
     spec = {k: rec[k] for k in ("tool_name", "params", "mechanism")}
     try:
         # 🔴 2026-09-03. `inventory=build_inventory_block(blob)` stood here. There is no
-        #    inventory; the field is fed the empty string so the signature still binds. Task 8
-        #    replaces this stage with one that receives the **world interface** instead.
+        #    inventory; the field is fed `compose_interface(blob)` -- empty until Task 8, and
+        #    the G1 guard above has already refused if it is. Task 8 replaces this stage with
+        #    one that receives the **world interface** instead.
         p3 = compose(spec=build_compose_context(spec, rec["reasoning_log"], blob),
-                     inventory="")
+                     inventory=iface)
     except Exception as e:
         rec["error"] = "compose: %s: %s" % (type(e).__name__, e)
         rec["reason"] = "stage 3 (compose) failed; nothing was minted"
@@ -1321,7 +1448,7 @@ def synthesize_multi(state: str,
                 rec["ungrounded_params_after_recompose"] = ungrounded_params(rec["params"])
                 try:
                     p3b = compose(spec=build_compose_context(spec2, rec["reasoning_log"], blob),
-                                  inventory="")
+                                  inventory=iface)
                 except Exception as e:
                     rec["recompose_error"] = "compose(recompose): %s: %s" % (type(e).__name__, e)
                     rec.update(first)      # all six go back -- never a spliced record

@@ -26,11 +26,30 @@ def test_the_single_agent_lane_is_gone():
 
 
 def test_run_synthesis_has_no_lane_branch():
-    """🔴 분기가 남아 있으면 플래그 없는 서비스가 조용히 죽은 레인으로 간다."""
+    """🔴 분기가 남아 있으면 플래그 없는 서비스가 조용히 죽은 레인으로 간다.
+
+    ⚠️ 2026-09-03. 옛 판은 `inspect.getsource` 를 두 **리터럴 이름**(`maybe_synthesize` ·
+    `multi_agent_enabled`)으로 훑었다 — 이름을 바꾼 분기에 대해 **공백 통과**다. 지운 두
+    이름의 부재는 위 `test_the_single_agent_lane_is_gone` 이 이미 재고 있으므로, 여기서는
+    이름이 아니라 **모양**을 잰다: 이 함수는 분기가 하나도 없고 `synthesize_multi` 로 가는
+    `return` 하나뿐이다. 어떤 이름의 분기가 들어와도 빨개진다.
+    """
+    import ast
     import inspect
+    import textwrap
     import synthesize as SY
-    src = inspect.getsource(SY.run_synthesis)
-    assert "maybe_synthesize" not in src and "multi_agent_enabled" not in src
+    fn = ast.parse(textwrap.dedent(inspect.getsource(SY.run_synthesis))).body[0]
+
+    branches = [n for n in ast.walk(fn)
+                if isinstance(n, (ast.If, ast.IfExp, ast.Try, ast.Match))]
+    assert not branches, "run_synthesis 에 분기가 생겼다 (%d개) — 레인이 다시 갈렸는지 볼 것" % (
+        len(branches),)
+
+    rets = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
+    assert len(rets) == 1, "탈출 경로가 %d개다 — 하나여야 한다" % len(rets)
+    call = rets[0].value
+    assert isinstance(call, ast.Call) and getattr(call.func, "id", None) == "synthesize_multi", \
+        "유일한 return 이 synthesize_multi 호출이 아니다"
 
 
 def test_what_must_survive_survives():

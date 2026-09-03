@@ -12,17 +12,32 @@ WM = os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))), "wm4spacecraft_manufacturing")
 ARTIFACT = os.path.join(WM, "core", "world_interface.json")
 
+#: 경로 -> (파일 도장, blob). 🔴 **키가 경로만이면 안 된다.** DSPy 서비스는 오래 살고,
+#: 산출물의 최신성을 지키는 것은 줄리아 시험(`test/world_interface_current.jl`) 하나인데
+#: **돌고 있는 서비스는 그것을 절대 안 본다.** 이 레포는 이미 그 모양으로 데었다 — 나흘 묵은
+#: uvicorn 이 며칠 전에 들어온 코드를 안 가진 채 `/health` 200 을 내고 있었고, `/health` 의
+#: 세대 도장 기계는 그 사고 때문에 생겼다. 낡은 스키마를 받은 모델이 쓴 코드는 기록에서
+#: **모델의 실패**로 남는다. 그래서 도장으로 (mtime_ns, size) 를 같이 본다.
 _CACHE: Dict[str, Any] = {}
 
 
 def load_world_interface(path: Optional[str] = None) -> Dict[str, Any]:
     """🔴 조용한 폴백을 두지 않는다 — 파일이 없으면 큰 소리로 죽는다. 빈 인터페이스로
-    돌면 모델은 아무것도 못 부르는 코드를 쓰고, 그 실패가 모델 탓으로 기록된다."""
+    돌면 모델은 아무것도 못 부르는 코드를 쓰고, 그 실패가 모델 탓으로 기록된다.
+
+    🔴 `os.stat` 이 **캐시 히트에서도** 먼저 돈다. 그래야 (1) 다시 생성된 산출물을
+    프로세스를 안 죽이고 읽고, (2) 지워진 산출물이 캐시에서 조용히 계속 나오지 않는다 —
+    없는 파일은 히트에서도 큰 소리로 죽는 쪽이 이 파일의 규약과 같다.
+    """
     p = path or ARTIFACT
-    if p not in _CACHE:
+    st = os.stat(p)                      # 🔴 없으면 여기서 죽는다(조용한 폴백 없음)
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _CACHE.get(p)
+    if hit is None or hit[0] != stamp:
         with open(p, encoding="utf-8") as fh:
-            _CACHE[p] = json.load(fh)
-    return _CACHE[p]
+            hit = (stamp, json.load(fh))
+        _CACHE[p] = hit
+    return hit[1]
 
 
 _RULES = (

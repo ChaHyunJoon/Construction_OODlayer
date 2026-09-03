@@ -30,11 +30,26 @@ agent-2 가 낸 **JSON 스키마**다(`{"affected_robot": "string", ...}`). 그�
 import os
 import sys
 
+import pytest
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import synthesize as SY  # noqa: E402
+
+
+# =====================================================================================
+# G1 (2026-09-03). `synthesize_multi` **거절한다** — agent-3 에게 넘길 인터페이스가 비었으면
+# 유료 호출 하나도 안 쓰고 기록으로 거절한다(`refused`). 이 파일의 시험들은 그 가드 **아래**의
+# 단계들을 재므로 인터페이스를 하나 준다. 가드 자체는
+# `test_synthesis_record_contract.py` 가 재고, **비-공백 짝**(인터페이스가 있으면 안 터진다)은
+# 아래 fixture 를 쓰는 시험 전부가 매번 다시 증명한다.
+# =====================================================================================
+@pytest.fixture(autouse=True)
+def _supply_a_compose_interface(monkeypatch):
+    monkeypatch.setattr(SY, "compose_interface",
+                        lambda blob=None: "WORLD INTERFACE (test double)")
 
 
 # ---- (1) 시그니처 ---------------------------------------------------------------------------
