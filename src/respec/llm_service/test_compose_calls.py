@@ -12,12 +12,23 @@ agent-2 가 낸 **JSON 스키마**다(`{"affected_robot": "string", ...}`). 그�
 나열에서는 **이름은 살아남고 인자만 사라진다**. 기록된 non-empty body 는 딱 2개, 둘 다 같은
 문자열이라 "된다" 의 표본이 1형태뿐이었다.
 
-🔴 **`body_names` 의 출처는 바꾸지 않는다.** 그것이 canon·ψ·원장·`tool_minted` 의 계보이고,
+🔴 **`body_names` 의 출처는 바꾸지 않는다.** 그것이 canon·원장·`tool_minted` 의 계보이고,
 바꾸면 F2/F7 기록과 같은 표에 못 올린다. `calls` 는 **인자 채널**로만 더하고, 둘의 불일치는
-`reach_matches_body` 와 같은 관용으로 **기록만** 한다(강제하지 않는다).
+옛 `reach_matches_body` 와 같은 관용으로 **기록만** 한다(강제하지 않는다).
+
+🔴 2026-09-03 (Task 10) — **이 파일은 다시 쓰였고 지워지지 않았다.** 이유: 여기가 지키는
+계약(`enact_minted!` 이 `calls` 의 이름과 `body_names` 가 어긋난 body 를 거절한다 —
+`cnames == names || return _r(:reject, …)`)은 **살아 있는 생산 경로**다. 바뀐 것은 그 계약이
+아니라 재는 자리다:
+  · agent-3 의 시그니처가 `ComposeToolBody` → `WriteToolImpl` 로 옮겨졌다(Task 8, D8).
+  · `body_names` 의 출처가 `parse_body(body)`(Task 1 이 레지스트리와 함께 삭제) →
+    `[impl_name]`(`_copy_body_fields` 가 채운다)로 옮겨졌다. 그래서 픽스처가 `body` 산문이
+    아니라 `body_names` 를 **직접** 준다 — `_finish_record` 가 실제로 받는 입력이 그것이다.
+  · `!` **벗김이 사라졌다**(아래 (2') 참조). 그 시험은 지운 것이 아니라 **기대를 뒤집었다.**
 
 재는 명제 여덟
-  (1) `ComposeToolBody` 가 `calls` 를 출력 필드로 선언한다.
+  (1) `WriteToolImpl` 이 `calls` 를 출력 필드로 선언한다(옛 `ComposeToolBody` 는 없다).
+ (2') 🔴 `!` 는 **살아남는다** — 줄리아 쪽이 그것을 요구하기 때문이다(그 시험의 docstring).
   (2) 정규화는 **전부 아니면 없음**이다 — 한 항목이라도 못 읽으면 `None`(삼상).
       집행에 먹일 채널에서 부분 파싱은 반쯤 굴린 body 와 같은 종류의 사고다.
   (3) `[]`(빈 리스트, 읽었는데 비었다)와 `None`(못 읽었다)은 다른 사건이다.
@@ -54,7 +65,12 @@ def _supply_a_compose_interface(monkeypatch):
 
 # ---- (1) 시그니처 ---------------------------------------------------------------------------
 def test_compose_signature_declares_a_calls_output_field():
-    assert "calls" in SY.ComposeToolBody.output_fields
+    # ✅ Task 8 (2026-09-03). agent-3 의 시그니처가 `ComposeToolBody`(인벤토리 조합기)에서
+    #    `WriteToolImpl`(Julia 구현 작성자)로 바뀌었다. **`calls` 는 그 이사에서 살아남아야
+    #    한다** — 그것이 B1 의 인자 채널이고, 없으면 집행부가 `params`(= 스키마)를 값으로
+    #    읽는 옛 결함으로 조용히 되돌아간다.
+    assert not hasattr(SY, "ComposeToolBody"), "옛 시그니처가 아직 있다 — 이 시험이 낡았다"
+    assert "calls" in SY.WriteToolImpl.output_fields
 
 
 # ---- (2)~(6) 정규화 -------------------------------------------------------------------------
@@ -65,10 +81,23 @@ def test_a_well_formed_call_list_normalises():
                     "args": {"agent": "R4", "faulted": None}}]
 
 
-def test_a_trailing_bang_is_stripped_like_everywhere_else():
-    """`parse_body` 의 `_norm` 과 같은 규약 — Julia impl 이름은 `!` 로 끝난다."""
+def test_a_trailing_bang_survives_because_the_julia_side_requires_it():
+    """🔴 2026-09-03 (Task 10). **이 시험은 기대가 뒤집혔다 — 지운 것이 아니다.**
+
+    옛 판은 `parse_body` 의 `_norm`(canon 규약: `!` 를 벗긴다)과 짝을 맞추려고 여기서도
+    벗기라고 요구했다. Task 8 이 `normalize_calls` 에서 그 벗김을 **일부러 뺐고**, 컨트롤러가
+    그 제거를 옳다고 판정했다. 근거 둘:
+      · 줄리아의 `normalize_calls`(`src/respec/minted_tool.jl`)는 `!` 를 **한 번도 안 벗긴다.**
+      · `check_impl_conventions`(`src/respec/minted_registration.jl`)는 `!` 로 안 끝나는
+        이름을 **거절한다** — 즉 등록된 원시 이름에는 `!` 가 반드시 있다.
+    그래서 파이썬이 벗기면 `calls` 의 이름과 `body_names`(= `[impl_name]`, `!` 포함)가 항상
+    어긋나 모든 집행이 `calls_disagree_with_body` 로 거절된다. 벗김의 부재가 계약이다.
+    """
     got = SY.normalize_calls([{"primitive": "swap_battery!", "args": {}}])
-    assert got[0]["primitive"] == "swap_battery"
+    assert got[0]["primitive"] == "swap_battery!"
+    # 음성 대조: `!` 가 없는 이름은 그대로 통과한다 — 벗김이 아니라 **무손실**이 규약이다.
+    assert SY.normalize_calls([{"primitive": "swap_battery", "args": {}}])[0]["primitive"] \
+        == "swap_battery"
 
 
 def test_a_call_without_args_is_not_a_failure():
@@ -106,31 +135,40 @@ def test_one_malformed_entry_makes_the_whole_thing_unreadable():
 
 
 # ---- (7)(8) 기록되는 두 사실 -----------------------------------------------------------------
-def _rec(**kw):
+def _rec(body_names=(), **kw):
+    """`_finish_record` 가 받는 모양. 🔴 2026-09-03 (Task 10): `body_names` 를 **여기서**
+    준다.
+
+    옛 판은 `body="release_pending_assignments()"` 를 주고 `_finish_record` 안의
+    `parse_body` 가 이름을 뽑기를 기대했다. `parse_body` 는 레지스트리와 함께 지워졌고
+    (Task 1), 오늘 `body_names` 는 `_copy_body_fields` 가 agent-3 의 `impl_name` 에서
+    **바로 앞 단계에서** 채운다. 그러니 픽스처도 같은 자리에서 채운다 — 그것이 이 함수가
+    실제로 받는 입력이다.
+    """
     base = {"body": "", "reach": "composed", "missing_primitive": "", "params": "",
-            "tool_name": "t", "calls": None}
+            "tool_name": "t", "calls": None, "body_names": list(body_names)}
     base.update(kw)
     return base
 
 
 def test_calls_disagreeing_with_the_body_is_recorded_not_enforced():
-    r = SY._finish_record(_rec(body="release_pending_assignments()",
-                               calls=[{"primitive": "forbid_heavy_cargo", "args": {}}]),
+    r = SY._finish_record(_rec(["release_pending_assignments!"],
+                               calls=[{"primitive": "forbid_heavy_cargo!", "args": {}}]),
                           "battery", SY.SynthesisLedger(), None)
     assert r["calls_match_body"] is False
-    assert r["body_names"] == ["release_pending_assignments"]     # 🔴 canon 계보는 안 바뀐다
-    assert r["canon"]["primitives"] == ["release_pending_assignments"]
+    assert r["body_names"] == ["release_pending_assignments!"]    # 🔴 canon 계보는 안 바뀐다
+    assert r["canon"]["primitives"] == ["release_pending_assignments!"]
 
 
 def test_calls_agreeing_with_the_body_is_recorded_true():
-    r = SY._finish_record(_rec(body="release_pending_assignments()",
-                               calls=[{"primitive": "release_pending_assignments", "args": {}}]),
+    r = SY._finish_record(_rec(["release_pending_assignments!"],
+                               calls=[{"primitive": "release_pending_assignments!", "args": {}}]),
                           "battery", SY.SynthesisLedger(), None)
     assert r["calls_match_body"] is True
 
 
 def test_unreadable_calls_make_the_match_unmeasured_not_false():
-    r = SY._finish_record(_rec(body="release_pending_assignments()", calls="garbage"),
+    r = SY._finish_record(_rec(["release_pending_assignments!"], calls="garbage"),
                           "battery", SY.SynthesisLedger(), None)
     assert r["calls"] is None
     assert r["calls_match_body"] is None          # 🔴 "못 쟀다" 이지 "어긋났다" 가 아니다
@@ -138,11 +176,11 @@ def test_unreadable_calls_make_the_match_unmeasured_not_false():
 
 def test_nested_call_args_are_recorded_as_not_flat():
     """`params_flat` 과 같은 이유다 — 중첩 값은 Julia 경계의 얕은 변환을 조용히 깨뜨린다."""
-    r = SY._finish_record(_rec(body="x()", calls=[{"primitive": "x",
-                                                   "args": {"zone": {"center": [1, 2]}}}]),
+    r = SY._finish_record(_rec(["x!"], calls=[{"primitive": "x!",
+                                               "args": {"zone": {"center": [1, 2]}}}]),
                           "zone", SY.SynthesisLedger(), None)
     assert r["calls_flat"] is False
-    r2 = SY._finish_record(_rec(body="x()", calls=[{"primitive": "x", "args": {"n": 2}}]),
+    r2 = SY._finish_record(_rec(["x!"], calls=[{"primitive": "x!", "args": {"n": 2}}]),
                            "zone", SY.SynthesisLedger(), None)
     assert r2["calls_flat"] is True
 
@@ -175,16 +213,33 @@ def _progs(compose_out, second_compose=None):
     return {"observe": observe, "design": design, "compose": compose}
 
 
+def _wrote(calls=..., name="release_pending_assignments!"):
+    """agent-3(`WriteToolImpl`)의 성공 응답 하나. `calls=...` 는 **필드 자체를 안 낸다**.
+
+    🔴 2026-09-03 (Task 10). 옛 가짜는 `body`/`reach`/`missing_primitive` 를 냈다 — Task 8 이
+    agent-3 을 조합기에서 구현 작성자로 바꾸면서 그 셋은 출력 필드에서 빠졌다. 가짜가 옛
+    모양을 계속 내면 이 파일은 초록인 채 **아무도 안 내는 모양**을 재게 된다.
+    """
+    kw = dict(impl_name=name,
+              impl_code="function %s(env; agent = nothing)\n    return (status = :released,)\nend\n"
+                        % name,
+              params='{"agent": {"type": "string"}}',
+              surface="sched", reversible=False, wrote=True,
+              reasoning="the faulted robot still holds pending assignments")
+    if calls is not ...:
+        kw["calls"] = calls
+    return _Pred(**kw)
+
+
 def test_the_multi_lane_carries_agent3_calls_into_the_record(monkeypatch):
     monkeypatch.setenv("TOOL_SYNTHESIS", "1")
     rec = SY.synthesize_multi(
         state="s", tools=[], kind="battery", ledger=SY.SynthesisLedger(),
-        programs=_progs(_Pred(body="release_pending_assignments(...)", reach="composed",
-                              missing_primitive="",
-                              calls=[{"primitive": "release_pending_assignments",
-                                      "args": {"agent": "R4", "faulted": None}}])))
-    assert rec["calls"] == [{"primitive": "release_pending_assignments",
+        programs=_progs(_wrote(calls=[{"primitive": "release_pending_assignments!",
+                                       "args": {"agent": "R4", "faulted": None}}])))
+    assert rec["calls"] == [{"primitive": "release_pending_assignments!",
                              "args": {"agent": "R4", "faulted": None}}]
+    assert rec["body_names"] == ["release_pending_assignments!"]
     assert rec["calls_match_body"] is True
     assert rec["calls_flat"] is True
 
@@ -194,26 +249,30 @@ def test_a_compose_stage_that_omits_calls_records_none_and_does_not_crash(monkey
     monkeypatch.setenv("TOOL_SYNTHESIS", "1")
     rec = SY.synthesize_multi(
         state="s", tools=[], kind="battery", ledger=SY.SynthesisLedger(),
-        programs=_progs(_Pred(body="release_pending_assignments()", reach="composed",
-                              missing_primitive="")))
+        programs=_progs(_wrote()))
     assert rec["calls"] is None
     assert rec["calls_match_body"] is None
-    assert rec["body_names"] == ["release_pending_assignments"]     # 나머지는 그대로 돈다
+    assert rec["body_names"] == ["release_pending_assignments!"]    # 나머지는 그대로 돈다
 
 
 def test_a_failed_recompose_puts_calls_back_with_the_rest(monkeypatch):
     """🔴 '갈라진 기록을 절대 만들지 않는다' 는 이미 있는 계약이다(`rec.update(first)`).
     `calls` 를 그 묶음에 안 넣으면 **명세는 2차, 인자는 1차** 인 기록이 나온다."""
     monkeypatch.setenv("TOOL_SYNTHESIS", "1")
-    first_calls = [{"primitive": "translate_whole_build", "args": {}}]
+    first_calls = [{"primitive": "translate_whole_build!", "args": {}}]
+    # 🔴 되먹임 트리거는 `wrote is False`(+ 비지 않은 `reasoning`)다 — 옛 `reach ==
+    #    "needs_primitive"` 가 아니다(Task 8). `wrote=False` 여도 agent-3 이 낸 값들은
+    #    전부 기록되고, 둘째 compose 가 던지면 **그 1차가 통째로 돌아와야** 한다.
     rec = SY.synthesize_multi(
         state="s", tools=[], kind="zone", ledger=SY.SynthesisLedger(),
-        programs=_progs(_Pred(body="translate_whole_build()", reach="needs_primitive",
-                              missing_primitive="lift_cargo_over_zone",
+        programs=_progs(_Pred(impl_name="translate_whole_build!", impl_code="function f!() end",
+                              params="{}", surface="scene_tree", reversible=True, wrote=False,
+                              reasoning="no way to lift cargo over the zone",
                               calls=first_calls)))
     assert rec["recompose_error"] is not None          # 둘째 compose 가 던졌다
     assert rec["calls"] == first_calls                 # 1차가 통째로 돌아왔다
-    assert rec["body"] == "translate_whole_build()"
+    assert rec["impl_name"] == "translate_whole_build!"
+    assert rec["wrote"] is False
 
 
 # ---- 변이가 살아남아 드러난 구멍 둘 (2026-09-03) ----------------------------------------------
@@ -236,11 +295,13 @@ def test_an_explicitly_empty_call_list_survives_the_copy_as_empty(monkeypatch):
     monkeypatch.setenv("TOOL_SYNTHESIS", "1")
     rec = SY.synthesize_multi(
         state="s", tools=[], kind="zone", ledger=SY.SynthesisLedger(),
-        programs=_progs(_Pred(body="N/A", reach="needs_primitive",
-                              missing_primitive="lift_cargo_over_zone", calls=[]),
-                        second_compose=_Pred(body="N/A", reach="needs_primitive",
-                                             missing_primitive="lift_cargo_over_zone",
-                                             calls=[])))
+        programs=_progs(_Pred(impl_name="", impl_code="", params="{}", surface="scene_tree",
+                              reversible=False, wrote=False,
+                              reasoning="no way to lift cargo over the zone", calls=[]),
+                        second_compose=_Pred(impl_name="", impl_code="", params="{}",
+                                             surface="scene_tree", reversible=False,
+                                             wrote=False,
+                                             reasoning="still no way", calls=[])))
     assert rec["calls"] == []          # 🔴 `None` 이 아니다 — 모델은 답했고, 그 답이 "없음" 이다
     assert rec["calls"] is not None
 
@@ -260,22 +321,22 @@ def test_an_explicitly_empty_call_list_survives_the_copy_as_empty(monkeypatch):
 # =====================================================================================
 
 def test_a_missing_calls_field_is_absent_not_unreadable():
-    r = SY._finish_record(_rec(body="release_pending_assignments()", calls=None),
+    r = SY._finish_record(_rec(["release_pending_assignments!"], calls=None),
                           "mild_battery", SY.SynthesisLedger(), None)
     assert r["calls"] is None
     assert r["calls_unreadable"] is False, "안 낸 것을 못 읽었다고 적으면 안 된다"
 
 
 def test_an_unreadable_calls_field_is_recorded_as_unreadable():
-    r = SY._finish_record(_rec(body="release_pending_assignments()", calls="garbage"),
+    r = SY._finish_record(_rec(["release_pending_assignments!"], calls="garbage"),
                           "mild_battery", SY.SynthesisLedger(), None)
     assert r["calls"] is None                 # 값은 여전히 "없다"
     assert r["calls_unreadable"] is True      # 그러나 이유가 다르다
 
 
 def test_a_readable_call_list_is_not_unreadable():
-    r = SY._finish_record(_rec(body="release_pending_assignments()",
-                               calls=[{"primitive": "release_pending_assignments",
+    r = SY._finish_record(_rec(["release_pending_assignments!"],
+                               calls=[{"primitive": "release_pending_assignments!",
                                        "args": {}}]),
                           "mild_battery", SY.SynthesisLedger(), None)
     assert r["calls_unreadable"] is False
@@ -283,6 +344,6 @@ def test_a_readable_call_list_is_not_unreadable():
 
 def test_an_empty_list_is_read_not_unreadable():
     """🔴 `[]` 는 "읽었는데 비었다" 다 — 이 짝이 그 구별을 지워서는 안 된다."""
-    r = SY._finish_record(_rec(body="release_pending_assignments()", calls=[]),
+    r = SY._finish_record(_rec(["release_pending_assignments!"], calls=[]),
                           "mild_battery", SY.SynthesisLedger(), None)
     assert r["calls"] == [] and r["calls_unreadable"] is False

@@ -52,7 +52,8 @@ class _Pred:
         self.__dict__.update(kw)
 
 
-def _progs(expressible=False, spy=None, raise_at=None, reach="composed", design_seq=None):
+def _progs(expressible=False, spy=None, raise_at=None, impl_name="", design_seq=None,
+           reasoning=""):
     """세 단계를 대신하는 순수 함수 셋. 프로바이더에 안 나간다 — 과금 0건.
 
     `raise_at` 은 그 단계에서 예외를 낸다. `design_seq` 는 호출 순서대로 쓸 design 응답들.
@@ -80,7 +81,21 @@ def _progs(expressible=False, spy=None, raise_at=None, reach="composed", design_
         spy is None or spy.append("compose")
         if raise_at == "compose":
             raise RuntimeError("boom")
-        return _Pred(body="1. translate_whole_build()", reach=reach, missing_primitive="")
+        # ✅ Task 8 (2026-09-03). agent-3(`WriteToolImpl`)의 출력 모양. `impl_name=""` 은
+        #    "못 쓰겠다"(= `body_names` 가 비는 유일한 길)이고 기본값이 그것이다 — 이 파일의
+        #    규칙표 시험 대부분이 "ran, no body" 행을 태우기 때문이다.
+        return _Pred(impl_name=impl_name,
+                     impl_code=("function %s(env; max_shift = 1.0)\n"
+                                "    return (status = :moved,)\nend\n" % impl_name
+                                if impl_name else ""),
+                     params=SPEC["params"], surface="scene_tree",
+                     reversible=True, wrote=bool(impl_name),
+                     # 🔴 기본은 **빈 설명**이다. `wrote is False` + 비지 않은 `reasoning`
+                     #    이 F2 되먹임의 트리거라(`synthesize.py`), 여기서 설명을 채우면 이
+                     #    파일의 모든 픽스처가 유료 왕복 두 번을 더 도는 판이 된다 —
+                     #    `stages` 를 세는 시험들이 그 순간 무엇을 재는지 갈린다.
+                     #    되먹임 루프 자체는 `test_synthesize_multi.py` 가 잰다.
+                     reasoning=reasoning)
 
     return {"observe": observe, "design": design, "compose": compose}
 
@@ -117,6 +132,20 @@ def _exit_paths(monkeypatch):
 
     monkeypatch.setenv(SY.SYNTHESIS_ENV, "1")
     monkeypatch.setattr(SY, "compose_interface", lambda blob=None: "")
+    out.append(("refused",
+                SY.synthesize_multi(state=OBSERVATION, tools=[], kind="zone",
+                                    ledger=SY.SynthesisLedger(), programs=_progs())))
+
+    # 🔴 2026-09-03 (Task 10). **아홉 번째 탈출 경로.** Task 8 의 G1 수정이 더한 것이다:
+    #    `compose_interface(blob)` 가 **던지면**(없거나 못 읽는 `world_interface.json` —
+    #    `load_world_interface` 는 폴백 대신 크게 죽도록 설계됐다) 그 예외가 집행 경로로
+    #    새어 HTTP 500 → 조용한 canonical 폴백이 된다. 그래서 거절 **사유 코드**로 접는다.
+    #    두 거절은 같은 규칙 행("refused")에 맞지만 **서로 다른 사유 코드**를 낸다 — 그
+    #    구별이 사라지면 "인터페이스가 비었다" 와 "인터페이스를 못 읽었다" 가 한 관측이 된다.
+    def _boom(blob=None):
+        raise IOError("world_interface.json 을 못 읽는다")
+
+    monkeypatch.setattr(SY, "compose_interface", _boom)
     out.append(("refused",
                 SY.synthesize_multi(state=OBSERVATION, tools=[], kind="zone",
                                     ledger=SY.SynthesisLedger(), programs=_progs())))
@@ -299,9 +328,17 @@ def test_the_refusal_is_distinguishable_from_the_lane_being_off(monkeypatch):
 
 
 def test_the_refusal_is_distinguishable_from_agent_3_declining(monkeypatch, iface):
-    """agent-3 가 "못 하겠다"(`needs_primitive`) 고 한 것과 우리가 안 물어본 것은 다른 사건이다."""
-    declined = _drive(monkeypatch, programs=_progs(reach="needs_primitive"))
-    assert declined["ran"] is True and declined["reach"] == "needs_primitive"
+    """agent-3 가 "못 하겠다" 고 한 것과 우리가 안 물어본 것은 다른 사건이다.
+
+    🔴 2026-09-03 (Task 10). agent-3 의 거절 신호가 `reach == "needs_primitive"` 에서
+    **`wrote is False`** 로 옮겨졌다(Task 8: 조합기 → 구현 작성자). `WriteToolImpl` 은
+    `reach` 를 출력 필드로 선언하지 않으므로 라이브 판의 `reach` 는 언제나 `""` 다 —
+    그것으로 이 구별을 계속 재면 **아무것도 안 재게 된다.** 재는 사실은 그대로다:
+    `ran == True` 가 "물어봤다" 를, `refused` 가 "안 물어봤다" 를 나른다.
+    """
+    declined = _drive(monkeypatch, programs=_progs())      # impl_name="" → wrote=False
+    assert declined["ran"] is True and declined["wrote"] is False
+    assert declined["body_names"] == []
     assert declined["refused"] is False, "물어봤으면 거절이 아니다"
     assert _matching(declined) == ["ran, no body"]
 
@@ -361,30 +398,51 @@ def test_the_blank_record_never_claims_the_guard_ran():
 
 
 # =====================================================================================
-# (R-BODYNAMES) Task 8 트립와이어
+# (R-BODYNAMES) 🔴 2026-09-03 (Task 10) — **트립와이어는 설계대로 발화했고, 은퇴한다.**
+#
+# 그것이 지키던 핀은 `_finish_record` 의 `rec["body_names"] = []`(무조건 덮어쓰기)였고,
+# 그 핀이 옳았던 이유는 "오늘 agent-3 에게 채울 이름이 없다" 였다. Task 8 이 도착해
+# agent-3 의 출력 필드가 `{body, calls, reach, missing_primitive}` 에서
+# `{impl_name, impl_code, params, calls, surface, reversible, wrote}` 로 바뀌었고, 트립와이어
+# 둘이 그 순간 정확히 빨개졌다 — 그것이 이 자리가 존재한 목적 전부다.
+#
+# 🔴 은퇴는 "지우고 끝" 이 아니다. 트립와이어가 지키려던 **위험**(생성된 body 가 전부
+#    "비었다" 로 읽혀 `tool_minted`·|K| 가 영영 "못 쟀다" 로 남는 것)은 여전히 실재하므로,
+#    그 위험을 오늘의 기전으로 다시 못박는다: `body_names` 는 이제 `_copy_body_fields` 가
+#    agent-3 의 `impl_name` 에서 채우고 `_finish_record` 는 **그것을 안 덮어쓴다.**
 # =====================================================================================
-#: 오늘 agent-3 가 내는 출력 필드 전부. 🔴 이 집합이 움직이는 것이 **Task 8 이 도착했다**는
-#: 신호다(설계: `ComposeToolBody` → `WriteToolImpl`, 알파벳 대신 세계 인터페이스, `impl_name`).
-_COMPOSE_OUTPUTS_TODAY = {"body", "calls", "reach", "missing_primitive"}
-
-_TRIPWIRE = (
-    "R-BODYNAMES 트립와이어. `_finish_record` 는 `rec['body_names'] = []` 로 값을 **덮어쓴다**. "
-    "그 핀이 옳은 이유는 오늘 agent-3 에게 채울 이름이 없기 때문이고, 지금 agent-3 의 출력이 "
-    "바뀌었다 = Task 8 이 도착했다. 핀과 Task 8 의 채움은 **같은 줄**이라 잊어도 아무것도 "
-    "안 빨개진다 — 생성된 body 가 전부 '비었다'로 읽히고 `tool_minted`·|K| 가 영영 "
-    "'못 쟀다'로 남는다. body_names 를 agent-3 의 이름으로 채우고 이 시험을 갱신할 것."
-)
+#: 오늘 agent-3(`WriteToolImpl`)이 내는 출력 필드 전부. 이 집합이 다시 움직이면 `body_names`
+#: 의 출처(`impl_name`)가 사라졌을 수 있다 — 그때 아래 두 시험이 그것을 잡는다.
+_COMPOSE_OUTPUTS_TODAY = {"impl_name", "impl_code", "params", "calls",
+                          "surface", "reversible", "wrote"}
 
 
-def test_the_bodynames_pin_expires_when_agent_3_gains_a_name_to_fill_it_from():
-    sig = getattr(SY, "ComposeToolBody", None)
-    assert sig is not None, _TRIPWIRE
-    assert set(sig.output_fields) == _COMPOSE_OUTPUTS_TODAY, _TRIPWIRE
+def test_agent_3_still_emits_the_name_body_names_is_filled_from():
+    """🔴 `body_names` 의 출처는 agent-3 의 `impl_name` **하나**다. 그 필드가 시그니처에서
+    사라지면 생성된 body 가 전부 "비었다" 로 읽히고 `tool_minted` 가 영영 `None` 이 된다 —
+    옛 R-BODYNAMES 트립와이어가 경고하던 바로 그 사고이고, 원인만 반대편으로 옮겨졌다."""
+    assert not hasattr(SY, "ComposeToolBody"), (
+        "옛 조합기 시그니처가 되살아났다 — agent-3 은 인벤토리에서 조합하지 않는다(D8)")
+    assert set(SY.WriteToolImpl.output_fields) == _COMPOSE_OUTPUTS_TODAY, (
+        "agent-3 의 출력 필드가 움직였다: %s" % (
+            set(SY.WriteToolImpl.output_fields) ^ _COMPOSE_OUTPUTS_TODAY))
 
 
-def test_the_pin_holds_today(monkeypatch, iface):
-    """짝: 오늘은 핀이 실제로 걸려 있고 그 결과가 `tool_minted is None` 이다."""
-    rec = _drive(monkeypatch, programs=_progs())
-    assert rec["body_names"] == []
-    assert rec["tool_minted"] is None
-    assert "Task 8" in rec["reason"]
+def test_finish_record_no_longer_overwrites_body_names(monkeypatch, iface):
+    """🔴 핀이 **실제로 풀렸는지**를 값으로 잰다 — 시그니처만 보면 `_finish_record` 안의
+    한 줄이 되살아나도 초록이다(그 한 줄이 원래 이 트립와이어의 대상이었다).
+
+    짝을 이룬다: 이름을 낸 판은 `tool_minted` 가 측정되고, 안 낸 판(`wrote=False`)은
+    `None`("못 쟀다")이지 `False`("쟀는데 재유도")가 아니다.
+    """
+    rec = _drive(monkeypatch, programs=_progs(impl_name="clear_staging_obstruction!"))
+    assert rec["body_names"] == ["clear_staging_obstruction!"], (
+        "`_finish_record` 가 `body_names` 를 다시 덮어쓴다 — R-BODYNAMES 의 재발이다")
+    assert rec["tool_minted"] is True
+    assert rec["canon"]["primitives"] == ["clear_staging_obstruction!"]
+
+    # 음성 대조: agent-3 이 이름을 안 내면 그때는 정말로 비고, `tool_minted` 는 삼상의 `None`.
+    rec2 = _drive(monkeypatch, programs=_progs(impl_name=""))
+    assert rec2["body_names"] == []
+    assert rec2["tool_minted"] is None
+    assert "wrote no implementation" in rec2["reason"]

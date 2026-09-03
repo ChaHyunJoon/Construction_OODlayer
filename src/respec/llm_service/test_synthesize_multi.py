@@ -14,10 +14,18 @@
   (A) **정보 병목.** agent-2 는 원본 관측을 **못 본다.** 그래야 "분해가 실제로 정보를
       가공했는가" 가 측정 가능해지고, agent-1 이 놓친 것은 agent-2 도 못 본다.
 
-  (B) **알파벳 실명(失明).** agent-2 는 19개 원시를 **못 본다.** 처음 보는 사건에 맞는
-      tool 을 설계하는데 기존 어휘를 보여주면, 재는 것이 설계 능력이 아니라 **기존
-      어휘로의 투영**이 된다. 대가는 정직하게: agent-3 가 조합 못 하면 `needs_primitive`
-      이고, 그 `missing_primitive` 가 이 레인의 산출물이다.
+  (B) **구현 어휘 실명(失明).** agent-2 는 구현 함수 이름을 **못 본다.** 처음 보는 사건에
+      맞는 tool 을 설계하는데 기존 어휘를 보여주면, 재는 것이 설계 능력이 아니라 **기존
+      어휘로의 투영**이 된다. 대가는 정직하게: agent-3 가 못 쓰겠으면 `wrote=false` 이고,
+      그 `reasoning` 이 이 레인의 산출물이다.
+
+      🔴 2026-09-03 (Task 10). **모집단이 바뀌었다.** 옛 판은 이 계약을 삭제된 19-원시
+      레지스트리(`primitive_registry.py`) 전수로 쟀다 — D5·D7·D8 이 그 인벤토리를 없앴으므로
+      그 시험들은 `AttributeError` 로 죽었다(= 게이트가 아니라 빨간 시험). 계약 자체는
+      살아 있고, 오늘 그것을 나르는 살아 있는 모집단은 **`world_interface.json` 의 메서드
+      이름 147개**다: agent-3 은 그 인터페이스를 입력 필드로 **정당하게** 받고, agent-2 는
+      받으면 안 된다. 그래서 아래 누수 가드들은 `_impl_names()` 를 쓴다.
+      ⚠️ 리터럴 목록을 복붙하지 않는 규율은 그대로다 — 모집단이 자라면 가드도 자란다.
 
   (C) **오라클 무접촉.** 어느 프롬프트에도 오라클 판정이 안 들어간다.
       `zone_relocate_norm`(= 최소 이동거리 = 사실상 정답)은 `MacroRequest` **스키마에는
@@ -32,6 +40,35 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import synthesize as syn  # noqa: E402
+import world_interface as WI  # noqa: E402
+
+
+def _impl_names():
+    """계약 (B) 의 **살아 있는 모집단**: 이 모듈이 이미 가진 함수 이름 전부.
+
+    🔴 리터럴이 아니라 `world_interface.json` 에서 읽는다 — 인터페이스가 자라면 이 가드도
+    자란다. 그것이 옛 레지스트리 전수 규율의 후계다.
+    """
+    return sorted({m["name"] for m in WI.load_world_interface()["methods"]})
+
+
+def test_the_leak_population_is_not_empty_and_the_detector_fires():
+    """🔴 음성 대조. 모집단이 비면 아래 누수 가드 전부가 **공허하게** 통과한다 — 옛
+    레지스트리 판이 정확히 그 방식으로 죽었다(모듈이 없어져 `AttributeError`).
+    그리고 검출기가 실제로 잡는지도 여기서 태운다."""
+    names = _impl_names()
+    assert len(names) > 100, "모집단이 %d 개다 — world_interface.json 이 비었거나 못 읽었다" % len(
+        names)
+    # 🔴 부분 일치가 아니라 **부분 문자열 검출**이다(가드 본문과 같은 `in`) — 심은 이름 하나가
+    #    다른 이름의 접미사이면 히트가 둘일 수 있다. 그래서 등호가 아니라 **포함**을 잰다.
+    #    (`aa910a5b` 시점 실측: `active_restriction_zones` 를 심으면 `restriction_zones` 도 걸린다.)
+    leaky = "you may call %s to fix this" % names[0]
+    assert names[0] in [n for n in names if n in leaky], "검출기가 심은 누수를 못 봤다"
+    clean = "the zone froze three staging areas and nothing can reach them"
+    assert [n for n in names if n in clean] == [], (
+        "깨끗한 문장에서 오탐이 났다 — 이 모집단으로는 가드가 못 쓴다: %s"
+        % [n for n in names if n in clean])
+
 
 OBSERVATION = (
     "MEASURED STATE\n"
@@ -99,14 +136,12 @@ def test_observe_context_carries_the_observation():
 def test_design_context_names_no_primitive():
     """🔴 agent-2 의 프롬프트에 원시 이름이 하나라도 있으면 설계가 어휘로 투영된다.
 
-    레지스트리 전수로 검사한다 — 목록을 여기 리터럴로 복붙하면 레지스트리가 자라도
-    이 시험이 안 자란다.
+    `world_interface.json` 전수로 검사한다 — 목록을 여기 리터럴로 복붙하면 인터페이스가
+    자라도 이 시험이 안 자란다(옛 레지스트리 전수 규율의 후계, 헤더 (B) 참조).
     """
     ctx = syn.build_design_context(REASONING_LOG)
-    for p in syn._prim.REGISTRY["primitives"]:
-        assert p["name"] not in ctx, "agent-2 가 원시 %s 를 봤다" % p["name"]
-    for q in syn._prim.REGISTRY["predicates"]:
-        assert q["name"] not in ctx, "agent-2 가 술어 %s 를 봤다" % q["name"]
+    for n in _impl_names():
+        assert n not in ctx, "agent-2 가 구현 함수 %s 를 봤다" % n
 
 
 def test_compose_context_carries_the_spec():
@@ -115,37 +150,6 @@ def test_compose_context_carries_the_spec():
     assert SPEC["mechanism"] in ctx
     assert SPEC["params"] in ctx
     assert SPEC["tool_name"] in ctx
-
-
-def test_inventory_block_carries_the_whole_alphabet():
-    """agent-3 는 알파벳에 있는 것을 전부 본다 — 조합이 그 일이므로.
-
-    🔴 `enactable` 로 거르지 **않는다.** 오늘 집행 가능한 것은 넷뿐이지만, 프롬프트에서
-    나머지를 숨기면 재는 것이 "모델의 조합 능력" 이 아니라 "하네스가 남긴 것" 이 된다
-    (R40). 높은 reject 율은 정상 동작이고 그 자체가 산출물이다.
-
-    🔴 반면 `known_lane == false` 로는 **거른다.** 그것은 하네스의 성질이 아니라 이 실험이
-    zone 을 OOD 로 성립시키기 위해 정한 경계다(레지스트리의 `excluded_why`). 두 필터는 서로
-    다른 것을 뜻하므로 하나로 읽으면 안 된다.
-    """
-    inv = syn.build_inventory_block()
-    inside = [p for p in syn._prim.REGISTRY["primitives"] if p.get("known_lane") is not False]
-    outside = [p for p in syn._prim.REGISTRY["primitives"] if p.get("known_lane") is False]
-    assert inside
-    if not outside:
-        # 🔴 2026-09-02. `known_lane` 은 zone 절단 작업(`bca453d6`·`85ee99fa`)이 만든 필드이고
-        #    이 브랜치의 레지스트리에는 **아직 없다**. 여기서 단언을 무르게 고치면
-        #    (`>= 0` 류) 항진 명제가 되어 병합 뒤에도 아무것도 안 지킨다. 그래서 크게 건너뛴다 —
-        #    zone 절단이 병합되는 순간 `outside` 가 채워지고 이 시험이 저절로 살아난다.
-        pytest.skip("이 브랜치의 레지스트리에 known_lane=false 인 원시가 없다 "
-                    "(zone 절단 미병합). 알파벳 밖 원시가 프롬프트에 안 실리는지는 "
-                    "그 작업이 들어온 뒤에만 잴 수 있다.")
-    for p in inside:
-        assert p["name"] in inv
-    for p in outside:
-        assert p["name"] not in inv, "알파벳 밖 원시 %s 가 프롬프트에 있다" % p["name"]
-    for q in syn._prim.REGISTRY["predicates"]:
-        assert q["name"] in inv
 
 
 def test_compose_context_excludes_the_raw_observation():
@@ -215,7 +219,7 @@ def test_compose_spec_carries_the_principles_the_goal_and_the_account():
 def test_compose_spec_names_no_primitive_outside_the_inventory_block():
     """🔴 늘어난 spec 블록이 알파벳을 두 번 싣지 않는다 — 인벤토리는 별도 필드 하나다."""
     ctx = syn.build_compose_context(SPEC, REASONING_LOG)
-    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+    for q in [{"name": n} for n in _impl_names()]:
         assert q["name"] not in ctx, "spec 블록이 원시 %s 를 실었다" % q["name"]
 
 
@@ -235,18 +239,6 @@ def test_agent_3_actually_receives_the_account(monkeypatch):
     syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                          programs=progs)
     assert REASONING_LOG in seen["spec"], "agent-3 가 agent-1 의 로그를 못 받았다"
-
-
-def test_inventory_block_carries_the_body_rule():
-    """🔴 `5f71e3fd` 의 수정이 agent-3 에도 걸린다.
-
-    그 커밋의 근거: 재풀이의 주체를 안 적으면 모델이 알파벳 밖 commit 단계를 지어낸다
-    (`commit_respec` 이 실제로 그렇게 나왔다). 단일 판 `build_context` 에만 걸어 두면
-    3-agent 레인의 agent-3 는 그 문장을 못 읽는다.
-    """
-    inv = syn.build_inventory_block()
-    assert "BODY RULE" in inv
-    assert "never write a commit" in inv
 
 
 # =====================================================================================
@@ -317,29 +309,6 @@ def test_expressible_true_stops_before_agent_3(monkeypatch):
 # 배선 — 어느 레인이 도는가는 플래그 하나가 정한다
 # =====================================================================================
 
-def test_multi_agent_is_off_by_default(monkeypatch):
-    """🔴 기본은 단일 agent 다. 새 레인이 조용히 기본이 되면 옛 판과 비교가 깨진다."""
-    monkeypatch.delenv("SYNTH_MULTI_AGENT", raising=False)
-    assert syn.multi_agent_enabled() is False
-
-
-def test_multi_agent_flag_is_exactly_one(monkeypatch):
-    """`"true"`/`"yes"` 를 받아 주지 않는다 — 유료 호출을 3배로 여는 스위치다."""
-    monkeypatch.setenv("SYNTH_MULTI_AGENT", "true")
-    assert syn.multi_agent_enabled() is False
-    monkeypatch.setenv("SYNTH_MULTI_AGENT", "1")
-    assert syn.multi_agent_enabled() is True
-
-
-def test_run_synthesis_dispatches_to_the_single_lane_by_default(monkeypatch):
-    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    monkeypatch.delenv("SYNTH_MULTI_AGENT", raising=False)
-    rec = syn.run_synthesis(expressible=True, kind="zone", state=OBSERVATION, tools=[],
-                            ledger=syn.SynthesisLedger())
-    assert "stages" not in rec                 # 단일 판의 레코드에는 없는 키
-    assert rec["synthesis_event"] is False     # expressible=True 라 발화 아님
-
-
 def test_run_synthesis_dispatches_to_the_multi_lane_when_on(monkeypatch):
     """🔴 multi 레인에서는 호출자가 준 `expressible` 을 **안 쓴다** — agent-2 가 낸다."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
@@ -372,8 +341,15 @@ def _fake_programs(expressible=False, spy=None):
 
     def compose(**kw):
         spy is None or spy.append("compose")
-        return _Pred(body="1. translate_whole_build()", reach="composed",
-                     missing_primitive="")
+        # ✅ Task 8 (2026-09-03). agent-3 은 인벤토리에서 조합하지 않고 **구현을 쓴다** —
+        #    출력 필드가 `body`/`reach`/`missing_primitive` 에서 아래 여섯으로 바뀌었다.
+        #    가짜가 옛 모양을 내면 이 파일은 초록인 채 **아무도 안 내는 모양**을 재게 된다.
+        return _Pred(impl_name="clear_staging_obstruction!",
+                     impl_code=("function clear_staging_obstruction!(env; max_shift = 1.0)\n"
+                                "    return (status = :moved,)\nend\n"),
+                     params='{"max_shift": {"type": "number"}}',
+                     surface="scene_tree", reversible=True, wrote=True,
+                     reasoning="the staging discs can be shifted out of the blocked region")
 
     return {"observe": observe, "design": design, "compose": compose}
 
@@ -408,7 +384,7 @@ def test_ungrounded_catches_the_mechanism_selector_that_r2_leaked():
     """🔴 F3. `action` 은 값이 아니라 **행동의 선택**이다 — 재설계가 걸려야 한다.
 
     이 단언이 없으면 agent-2 는 "무엇을 할지는 나중에 정한다" 는 명세를 그대로 통과시키고,
-    agent-3 는 그 미정 명세를 조합할 수 없어 `needs_primitive` 를 낸다. R2 에서 실제로
+    agent-3 는 그 미정 명세로 구현을 못 써서 `wrote=false` 를 낸다. R2 에서 실제로
     일어난 일이다.
     """
     bad = syn.ungrounded_params(_R2_ZONE_PARAMS)
@@ -461,99 +437,15 @@ def test_design_context_says_the_disruption_is_not_editable():
 def test_the_invariant_clause_names_no_primitive_and_no_oracle_field():
     """🔴 F1 의 대가를 여기서 막는다 — 이 문단이 어휘나 정답을 흘리면 안 된다.
 
-    레지스트리 전수 + 오라클 필드 이름. 리터럴 목록을 여기 복붙하지 않는다.
+    `world_interface.json` 전수 + 오라클 필드 이름. 리터럴 목록을 여기 복붙하지 않는다.
     """
     clause = syn._INVARIANT_DESIGN
-    for p in syn._prim.REGISTRY["primitives"]:
-        assert p["name"] not in clause, "불변 문단이 원시 %s 를 흘린다" % p["name"]
-    for q in syn._prim.REGISTRY["predicates"]:
-        assert q["name"] not in clause, "불변 문단이 술어 %s 를 흘린다" % q["name"]
+    for n in _impl_names():
+        assert n not in clause, "불변 문단이 구현 함수 %s 를 흘린다" % n
     assert "zone_relocate_norm" not in clause
     # 🔴 특정 사건 종류를 지목하면 그 사건에서만 참인 지시가 된다. 문단은 종류-무관이어야 한다.
     for word in ("battery_mild", "SwapBattery", "Replace", "NOOP"):
         assert word not in clause, "불변 문단이 사건/매크로 이름 %s 를 지목한다" % word
-
-
-# =====================================================================================
-# 2026-09-02 (F5) — 알파벳은 19개를 광고하는데 harness 가 부를 수 있는 것은 8개다.
-#
-# 측정(F1 직후 재실행, 유료 3): mild 레인이 처음으로 body 를 냈는데 그 두 번째 원시가
-# `deprioritize_agent` 였다 — **집행 불가**(`ENACTABLE_TODAY` 밖). 즉 프롬프트가 못 부르는
-# 원시 열하나를 부를 수 있는 것처럼 보여준 대가를 라이브에서 치렀다. 08-30 판정 R40 이
-# 우려로 적어 둔 자리이고, 이제 실측된 실패다.
-#
-# 🔴 파이썬은 이 사실을 **계산할 수 없다.** `_enactability`(Julia)의 세 연언지 중 둘이
-#    메서드 시그니처를 읽는다(`methods` · `Base.kwarg_decl`). 그래서 판정은 Julia 가 하고
-#    레지스트리에 **도장**으로 실리며, 그 도장이 계산값과 일치하는지는 Julia 게이트가 잰다
-#    (`test/minted_tool_enacts.jl`). 여기서는 **도장이 있고 렌더에 반영되는지**를 잰다.
-# =====================================================================================
-
-def _enactability_split():
-    """레지스트리에서 (부를 수 있는 것, 못 부르는 것). 리터럴 목록을 여기 두지 않는다."""
-    yes, no = [], []
-    for p in syn._prim.REGISTRY["primitives"]:
-        (yes if p.get("enactable") else no).append(p["name"])
-    return yes, no
-
-
-def test_every_primitive_declares_whether_the_harness_can_call_it():
-    """🔴 F5 의 데이터 채널. 도장이 없는 항목은 **조용히 부를 수 있는 것이 된다.**
-
-    삼상 규약: `True`/`False` 는 판정이고 **키 부재는 "못 쟀다"** 다. 이 시험이 부재를
-    빨간색으로 만들어, 새 원시를 도장 없이 추가하는 것 자체를 막는다.
-    """
-    prims = syn._prim.REGISTRY["primitives"]
-    assert len(prims) > 0, "빈-통과 방지: 원시가 0개면 아래 루프는 아무것도 안 잰다"
-    for p in prims:
-        assert "enactable" in p, (
-            "원시 %s 에 enactable 도장이 없다 -- 파이썬은 이것을 계산할 수 없고, "
-            "없으면 렌더가 '부를 수 있음' 으로 조용히 기울어진다" % p["name"])
-        assert isinstance(p["enactable"], bool), \
-            "%s 의 enactable 이 bool 이 아니다: %r" % (p["name"], p["enactable"])
-        if not p["enactable"]:
-            assert (p.get("unenactable_why") or "").strip(), (
-                "%s 는 못 부르는데 이유가 비었다 -- 어느 연언지가 깨졌는지는 "
-                "그 원시를 고칠 사람이 읽어야 하는 사실이다" % p["name"])
-
-
-def test_the_inventory_marks_every_primitive_the_harness_cannot_call():
-    """🔴 F5. 못 부르는 것에는 표식이 붙고, 부를 수 있는 것에는 **안 붙는다.**
-
-    두 렌더러(단일 agent 의 `build_context` · 3-agent 의 `build_inventory_block`)가
-    **같은 함수**를 쓰지만 둘 다 잰다 — 한쪽만 재면 다른 쪽이 조용히 갈릴 때 초록이다.
-    """
-    yes, no = _enactability_split()
-    assert yes and no, "빈-통과 방지: 두 집합이 다 비지 않아야 대조가 성립한다 (%d/%d)" % (
-        len(yes), len(no))
-    for render in (syn.build_inventory_block(), syn.build_context(state="s")):
-        lines = render.splitlines()
-        marked = {ln.split()[1].rstrip(":") for ln in lines if syn._NOT_CALLABLE_MARK in ln
-                  and ln.strip().startswith("-")}
-        # 표식은 항목 헤더 줄에 붙는다. 이름으로 직접 훑는 편이 파싱보다 정직하다.
-        for name in no:
-            hdr = [ln for ln in lines if ln.startswith("- %s " % name)]
-            assert hdr, "인벤토리에 %s 항목 헤더가 없다" % name
-            assert syn._NOT_CALLABLE_MARK in hdr[0], \
-                "%s 는 못 부르는데 표식이 없다" % name
-        for name in yes:
-            hdr = [ln for ln in lines if ln.startswith("- %s " % name)]
-            assert hdr, "인벤토리에 %s 항목 헤더가 없다" % name
-            assert syn._NOT_CALLABLE_MARK not in hdr[0], \
-                "%s 는 부를 수 있는데 못 부른다고 표시됐다 -- 알파벳이 조용히 줄어든다" % name
-        del marked
-
-
-def test_the_body_rule_says_an_uncallable_primitive_kills_the_whole_body():
-    """F5. 표식만으로는 부족하다 — body 규칙이 **귀결**을 말해야 한다.
-
-    귀결은 실측이다: `enact_minted!` 은 body 의 원시 하나라도 `enactable == false` 면
-    `reject:unenactable:<name>` 로 **한 발도 집행하지 않고** 돌아선다.
-    """
-    for render in (syn.build_inventory_block(), syn.build_context(state="s")):
-        rule = [ln for ln in render.splitlines() if ln.startswith("BODY RULE:")]
-        assert rule, "BODY RULE 줄이 없다"
-        assert syn._NOT_CALLABLE_MARK in rule[0], \
-            "BODY RULE 이 표식을 지목하지 않는다 -- 모델이 표식의 뜻을 모른다"
 
 
 # =====================================================================================
@@ -564,14 +456,26 @@ def test_the_body_rule_says_an_uncallable_primitive_kills_the_whole_body():
 # 우선순위 정렬**이었고("... can release tasks, but it does not consider task priority"),
 # 그 판정을 읽는 코드가 없었다. 아래 게이트들이 그 되먹임을 못박는다.
 #
-# 🔴 사용자 결정(2026-09-02): 되먹임은 **가려서** 보낸다. agent-3 의 산문이 인벤토리
-#    이름을 그대로 적기 때문이고, 그대로 넘기면 계약 (B)(agent-2 의 알파벳 실명)가 끝난다.
+# 🔴 2026-09-03 (Task 10) — **되먹임의 트리거와 증거가 둘 다 옮겨졌다. 루프 자체는 그대로다.**
+#   · 트리거: `reach == "needs_primitive"` → **`wrote is False`**. agent-3 은 인벤토리에서
+#     조합하지 않고 코드를 쓰므로(D8) "조합 못 하겠다" 라는 사건이 "구현을 못 쓰겠다" 가 됐다.
+#     `WriteToolImpl` 은 `reach` 를 출력 필드로 **선언하지 않는다** — 라이브 판에서 그 값은
+#     언제나 `""` 라, 옛 트리거를 그대로 두면 이 루프가 **영영 안 돈다**(조용한 무동작).
+#   · 증거: `missing_primitive`(agent-3 이 더는 안 낸다) → **`reasoning`**
+#     (`WriteToolImpl` 의 chain-of-thought, `wrote=false` 를 설명하는 유일한 실제 출력).
+#   · 가림(`redact_inventory_names`)은 **사라졌다** — 계약 (B) 의 옛 모집단(19-원시 알파벳)이
+#     없으므로 가릴 것이 없다(D5). `compose_feedback_redacted` 는 그래서 영영 `None`
+#     ("가림이 안 돌았다")이고 `[]`("돌았는데 하나도 안 걸렸다")가 아니다 — 삼상 규약.
+#   🔴 `None` 은 `synthesize.py` 가 스스로 적어 둔 긴장이다(같은 파일이 R19 의 "영영 None 인
+#      필드는 키째 지운다" 규칙과 다르게 처리한다). 여기서는 **오늘의 값을 박제**한다 —
+#      그 결정은 이 태스크의 소유가 아니다.
 # =====================================================================================
 
-# 🔴 F5 런에서 agent-3 이 실제로 낸 문자열이다(`r2_after_f5.json` 의 mild 레인
-#    `missing_primitive`). 손으로 지어낸 입력으로 가림을 재면 "가리고 싶은 모양" 을 재는
-#    것이지 "실제로 새어 나온 모양" 을 재는 것이 아니다 — F3 게이트와 같은 규율.
-_F5_MISSING = (
+# 🔴 F5 런에서 agent-3 이 실제로 낸 문자열이다(`r2_after_f5.json` 의 mild 레인). 손으로
+#    지어낸 입력으로 되먹임을 재면 "보내고 싶은 모양" 을 재는 것이지 "실제로 나온 모양" 을
+#    재는 것이 아니다 — F3 게이트와 같은 규율. (필드 이름만 `missing_primitive` →
+#    `reasoning` 으로 옮겼고 **문자열은 한 글자도 안 바꿨다**.)
+_F5_ACCOUNT = (
     "name: prioritize_task_reassignment\n"
     "edit surface: sched\n"
     'params: {"task_id": "string", "priority_level": "integer"}\n'
@@ -585,44 +489,13 @@ _F5_MISSING = (
     "specified.")
 
 
-def test_redaction_removes_every_inventory_name():
-    """🔴 레지스트리 전수. 목록을 여기 리터럴로 두면 원시가 늘어도 이 시험이 안 자란다."""
-    names = [p["name"] for p in syn._prim.REGISTRY["primitives"]]
-    names += [q["name"] for q in syn._prim.REGISTRY["predicates"]]
-    text = "\n".join("the composer has %s and also %s!(x)" % (n, n) for n in names)
-    red, hits = syn.redact_inventory_names(text)
-    for n in names:
-        assert n not in red, "가림이 %s 를 흘렸다" % n
-    assert set(hits) == set(names), "기록된 적중 목록이 실제와 다르다: %s" % (
-        set(names) ^ set(hits))
-
-
-def test_redaction_keeps_the_signal_that_f5_measured():
-    """🔴 가림이 신호까지 지우면 F2 는 아무것도 안 나른다.
-
-    지워져야 하는 것은 **인벤토리 이름 하나**이고, 남아야 하는 것은 (a) agent-3 이 지어낸
-    이름(인벤토리에 없다)과 (b) 이유 문장이다.
-    """
-    red, hits = syn.redact_inventory_names(_F5_MISSING)
-    assert hits == ["release_pending_assignments"], "가린 이름이 예상과 다르다: %s" % (hits,)
-    assert "release_pending_assignments" not in red
-    assert syn._REDACTED_NAME in red
-    assert "does not consider task priority" in red, "신호 문장이 같이 지워졌다"
-    assert "prioritize_task_reassignment" in red, "agent-3 이 지어낸 이름까지 지웠다"
-
-
-def test_redaction_does_not_maul_a_longer_identifier():
-    """`release_pending_assignments_v2` 는 인벤토리에 없다 — 부분 일치로 자르면 안 된다."""
-    red, hits = syn.redact_inventory_names("call release_pending_assignments_v2 now")
-    assert hits == [] and red == "call release_pending_assignments_v2 now"
-
-
-def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MISSING,
-                  missing_always=False, params=None):
+def _seq_programs(wrotes, expressibles=(False, False), spy=None, account=_F5_ACCOUNT,
+                  account_always=False, params=None):
     """agent-2·agent-3 이 호출마다 **다른 답**을 내는 가짜 셋. 프로바이더에 안 나간다.
 
-    🔴 `missing_always` 는 라이브에서 실제로 있을 수 있는 모양을 만든다 — 모델이 `reach`
-    를 `composed` 로 내면서 `missing_primitive` 필드도 같이 채우는 경우.
+    `wrotes` 는 agent-3 의 `wrote` 자기신고 순열이다(`False` = 못 쓰겠다 = 되먹임 발화).
+    🔴 `account_always` 는 라이브에서 실제로 있을 수 있는 모양을 만든다 — 모델이
+    `wrote=true` 를 내면서 `reasoning` 도 같이 채우는 경우(거의 언제나 그렇다).
     """
     seen = {"design": 0, "compose": 0}
     kw_log = {"design": [], "compose": []}
@@ -646,10 +519,13 @@ def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MI
         seen["compose"] += 1
         kw_log["compose"].append(kw)
         spy is None or spy.append("compose")
-        reach = reaches[min(i, len(reaches) - 1)]
-        return _Pred(body="1. translate_whole_build()", reach=reach,
-                     missing_primitive=(
-                         missing if (missing_always or reach == "needs_primitive") else ""))
+        wrote = wrotes[min(i, len(wrotes) - 1)]
+        return _Pred(impl_name=("clear_staging_obstruction!" if wrote else ""),
+                     impl_code=("function clear_staging_obstruction!(env; max_shift = 1.0)\n"
+                                "    return (status = :moved,)\nend\n" if wrote else ""),
+                     params='{"max_shift": {"type": "number"}}',
+                     surface="scene_tree", reversible=True, wrote=wrote,
+                     reasoning=(account if (account_always or not wrote) else ""))
 
     return {"observe": observe, "design": design, "compose": compose}, kw_log
 
@@ -657,24 +533,31 @@ def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MI
 def test_the_composer_verdict_reaches_agent_2(monkeypatch):
     """🔴 배선 시험. 되먹임을 만들어도 두 번째 design 호출에 안 실리면 소용이 없다."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, kw = _seq_programs(["needs_primitive", "composed"])
+    progs, kw = _seq_programs([False, True])
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert rec["stages"] == ["observe", "design", "compose", "design", "compose"]
     assert kw["design"][0]["composer_feedback"] == "", "첫 설계가 되먹임을 봤다"
     fb = kw["design"][1]["composer_feedback"]
     assert fb and "does not consider task priority" in fb
-    assert rec["recomposed"] is True and rec["reach"] == "composed"
+    assert rec["recomposed"] is True and rec["wrote"] is True
 
 
 def test_the_feedback_agent_2_reads_names_no_primitive(monkeypatch):
-    """🔴 계약 (B). 실제로 **보내진** 문자열을 레지스트리 전수로 본다 — 빌더가 아니라."""
+    """🔴 계약 (B). 실제로 **보내진** 문자열을 `world_interface.json` 전수로 본다 — 빌더가
+    아니라. ⚠️ 오늘 되먹임은 **날것 그대로** 간다(가림 폐지, D5). 그러므로 이 가드는
+    "가림이 잘 도는가" 가 아니라 **"agent-3 의 설명 자체가 구현 이름을 안 흘리는가"** 를
+    잰다 — `_F5_ACCOUNT` 는 실측 문자열이고 그 안에 `release_pending_assignments` 가
+    들어 있으므로, 이 시험은 **오늘 정당하게 빨갛다면 그것이 참인 관측이다.**
+    (`_F5_ACCOUNT` 의 그 이름은 삭제된 알파벳의 이름이고 `world_interface.json` 의 메서드가
+    아니다 — 그래서 오늘 이 가드는 통과한다. 그 이름이 인터페이스에 생기는 날 빨개지고,
+    그때 가릴지 말지는 그 시점의 결정이다.)"""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, kw = _seq_programs(["needs_primitive", "composed"])
+    progs, kw = _seq_programs([False, True])
     syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                          programs=progs)
     fb = kw["design"][1]["composer_feedback"]
-    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+    for q in [{"name": n} for n in _impl_names()]:
         assert q["name"] not in fb, "agent-2 가 되먹임에서 원시 %s 를 봤다" % q["name"]
 
 
@@ -682,7 +565,7 @@ def test_a_composed_body_does_not_trigger_the_loop(monkeypatch):
     """조합에 성공한 판에서 두 번 더 과금하지 않는다."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
     spy = []
-    progs, _ = _seq_programs(["composed"], spy=spy)
+    progs, _ = _seq_programs([True], spy=spy)
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert spy == ["observe", "design", "compose"]
@@ -690,15 +573,15 @@ def test_a_composed_body_does_not_trigger_the_loop(monkeypatch):
 
 
 def test_composed_does_not_trigger_even_when_the_field_is_filled_in(monkeypatch):
-    """🔴 발화 조건은 `reach == "needs_primitive"` 하나다 — 필드의 유무가 아니다.
+    """🔴 발화 조건은 `wrote is False` 하나다 — 증거 필드의 유무가 아니다.
 
-    라이브 모델은 `reach="composed"` 를 내면서 `missing_primitive` 를 **같이 채운다**. 발화를
-    "정의가 비지 않았는가" 로만 걸면 조합에 성공한 판에서 유료 2건이 조용히 나간다.
-    (변이 M2 가 이 시험 없이는 초록이었다 — 다른 가드가 변이를 대신 막고 있었다.)
+    라이브 모델은 `wrote=true` 를 내면서 `reasoning` 을 **언제나 채운다**(chain-of-thought
+    라서 비는 판이 없다). 발화를 "설명이 비지 않았는가" 로만 걸면 성공한 판에서 유료 2건이
+    조용히 나간다. (변이 M2 가 이 시험 없이는 초록이었다 — 다른 가드가 변이를 대신 막고 있었다.)
     """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
     spy = []
-    progs, _ = _seq_programs(["composed"], spy=spy, missing_always=True)
+    progs, _ = _seq_programs([True], spy=spy, account_always=True)
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert spy == ["observe", "design", "compose"]
@@ -706,10 +589,13 @@ def test_composed_does_not_trigger_even_when_the_field_is_filled_in(monkeypatch)
 
 
 def test_an_empty_missing_primitive_does_not_trigger_the_loop(monkeypatch):
-    """🔴 `needs_primitive` 인데 정의가 비면 되먹일 내용이 없다 — 유료 2건을 아낀다."""
+    """🔴 `wrote=false` 인데 설명이 비면 되먹일 내용이 없다 — 유료 2건을 아낀다.
+
+    🔴 이 연언지는 fix round 1 이 실측으로 되살린 것이다: `wrote is False` 하나로 걸었더니
+    되먹임 문자열에 증거 자리가 `"\n\n\n\n"` 인 채로 유료 2건이 나갔다."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
     spy = []
-    progs, _ = _seq_programs(["needs_primitive"], spy=spy, missing="   ")
+    progs, _ = _seq_programs([False], spy=spy, account="   ")
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert spy == ["observe", "design", "compose"]
@@ -720,11 +606,11 @@ def test_the_loop_runs_at_most_once(monkeypatch):
     """🔴 두 번째도 실패하면 기록하고 넘어간다 — 안 도는 루프가 최악이다."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
     spy = []
-    progs, _ = _seq_programs(["needs_primitive"], spy=spy)
+    progs, _ = _seq_programs([False], spy=spy)
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert spy.count("design") == 2 and spy.count("compose") == 2
-    assert rec["recomposed"] is True and rec["reach"] == "needs_primitive"
+    assert rec["recomposed"] is True and rec["wrote"] is False
 
 
 def test_the_first_attempt_survives_in_the_record(monkeypatch):
@@ -734,14 +620,16 @@ def test_the_first_attempt_survives_in_the_record(monkeypatch):
     셀 수 있어야 한다.
     """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, _ = _seq_programs(["needs_primitive", "composed"])
+    progs, _ = _seq_programs([False, True])
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
-    assert rec["reach_first"] == "needs_primitive" and rec["reach"] == "composed"
-    assert rec["missing_primitive_first"] == _F5_MISSING
+    assert rec["wrote_first"] is False and rec["wrote"] is True
+    assert rec["impl_name_first"] == "" and rec["impl_name"] == "clear_staging_obstruction!"
     assert rec["tool_name_first"].endswith("_0") and rec["tool_name"].endswith("_1")
     assert rec["spec_changed_by_feedback"] is True
-    assert rec["compose_feedback_redacted"] == ["release_pending_assignments"]
+    # 🔴 삼상. 가림은 **안 돈다**(계약 (B) 의 옛 모집단이 없다) — `None`("안 돌았다")이지
+    #    `[]`("돌았는데 하나도 안 걸렸다")가 아니다.
+    assert rec["compose_feedback_redacted"] is None
 
 
 def test_the_redesign_does_not_overwrite_the_firing_verdict(monkeypatch):
@@ -751,7 +639,7 @@ def test_the_redesign_does_not_overwrite_the_firing_verdict(monkeypatch):
     (`macro_tool_agree`).
     """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, _ = _seq_programs(["needs_primitive", "composed"], expressibles=(False, True))
+    progs, _ = _seq_programs([False, True], expressibles=(False, True))
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert rec["expressible"] is False
@@ -765,7 +653,7 @@ def test_the_record_says_which_spec_fields_the_feedback_moved(monkeypatch):
     진짜 재명세와 준수 선언이 같은 값이 된다.
     """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, _ = _seq_programs(["needs_primitive", "composed"])
+    progs, _ = _seq_programs([False, True])
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     # 가짜 agent-2 는 이름과 기전만 바꾸고 params 는 그대로 둔다 — 실측된 모양 그대로다.
@@ -794,10 +682,8 @@ def test_design_context_says_the_assignment_choice_is_not_its_job():
 def test_the_division_clause_names_no_primitive_and_no_oracle_field():
     """🔴 F7 의 대가를 여기서 막는다 — F1 문단과 같은 검사다(레지스트리 전수)."""
     clause = syn._DIVISION_DESIGN
-    for p in syn._prim.REGISTRY["primitives"]:
-        assert p["name"] not in clause, "분업 문단이 원시 %s 를 흘린다" % p["name"]
-    for q in syn._prim.REGISTRY["predicates"]:
-        assert q["name"] not in clause, "분업 문단이 술어 %s 를 흘린다" % q["name"]
+    for n in _impl_names():
+        assert n not in clause, "분업 문단이 구현 함수 %s 를 흘린다" % n
     assert "zone_relocate_norm" not in clause
     for word in ("battery_mild", "SwapBattery", "Replace", "NOOP"):
         assert word not in clause, "분업 문단이 사건/매크로 이름 %s 를 지목한다" % word
@@ -902,7 +788,7 @@ def test_no_surface_tells_agent_2_to_commit_to_a_mechanism():
 def test_the_effect_clause_names_no_primitive_and_no_oracle_field():
     """🔴 계약 (B)·(C). 이 절은 agent-2 가 읽는다 — 인벤토리도 오라클도 새면 안 된다."""
     clause = syn._EFFECT_NOT_MECHANISM
-    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+    for q in [{"name": n} for n in _impl_names()]:
         assert q["name"] not in clause, "효과-우선 절이 %s 를 흘린다" % q["name"]
     assert "zone_relocate_norm" not in clause
 
@@ -934,7 +820,7 @@ def test_the_groundability_feedback_reaches_agent_2(monkeypatch):
     같이 못박는다. 첫 호출은 비어 있어야 하고, 둘째는 잡힌 이름을 실은 그 상수여야 한다.
     """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, kw = _seq_programs(["composed"], params='{"bypass_method": {"type": "string"}}')
+    progs, kw = _seq_programs([True], params='{"bypass_method": {"type": "string"}}')
     rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                                programs=progs)
     assert rec["ungrounded_params"] == ["bypass_method"] and rec["redesigned"] is True
@@ -945,11 +831,11 @@ def test_the_groundability_feedback_reaches_agent_2(monkeypatch):
 def test_the_groundability_feedback_names_no_primitive(monkeypatch):
     """🔴 계약 (B). 실제로 **보내진** 문자열을 레지스트리 전수로 본다 — F2 와 같은 검사."""
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
-    progs, kw = _seq_programs(["composed"], params='{"bypass_method": {"type": "string"}}')
+    progs, kw = _seq_programs([True], params='{"bypass_method": {"type": "string"}}')
     syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
                          programs=progs)
     fb = kw["design"][1]["ungrounded_feedback"]
-    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+    for q in [{"name": n} for n in _impl_names()]:
         assert q["name"] not in fb, "agent-2 가 접지 되먹임에서 원시 %s 를 봤다" % q["name"]
 
 
