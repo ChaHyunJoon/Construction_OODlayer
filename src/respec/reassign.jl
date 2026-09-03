@@ -195,9 +195,15 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
                                       agent::Union{Nothing,AbstractString} = nothing)
     # 🔴 faulted 는 넓히고 agent 는 좁힌다 — 합성 의미가 유일하지 않으므로 조용히 하나를
     #    무시하지 않고 막는다(조용한 무시가 최악이다).
-    faulted !== nothing && agent !== nothing && throw(ArgumentError(
-        "release_pending_assignments!: `faulted` 와 `agent` 는 동시에 줄 수 없다 — " *
-        "`faulted` 는 범위를 넓히고(진행 중 목표까지 해제) `agent` 는 좁힌다. 하나만 줄 것."))
+    # 🔴 던지지 않는다 (R1, 2026-09-02). 이 판정은 **첫 편집 전**이라 세계가 증명 가능하게
+    #    깨끗한데, 예외로 나가면 `partial=true → world_maybe_dirty=true → handled=true` 가
+    #    되어 아무것도 안 한 판이 기본 복구 사슬을 삼킨다. 레지스트리 산문이 모델에게
+    #    "name at most one" 이라고 경고까지 하고 있다 = 이 실수는 도달 가능하다.
+    #    ⚠️ 호출자 17곳을 전수 확인했다 — 둘을 동시에 주는 호출자는 없다(동작 변화 없음).
+    if faulted !== nothing && agent !== nothing
+        return (status = :both_scopes, faulted = String(faulted),
+                agent = String(agent), released = 0)
+    end
     sched = env.sched
     # 🔴 아는 이름인가 — **어떤 편집보다도 먼저** 판정한다(아래 루프가 첫 편집이다).
     #    `removed == []` 의 세 번째 원인("문자열이 아무것도 안 가리킨다")을 status 로 갈라

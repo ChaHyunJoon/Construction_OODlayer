@@ -246,8 +246,8 @@ const SILENT_SUCCESS_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
-    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n]),
-    "release_pending_assignments" => Set([:released_none, :unknown_agent]),
+    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n, :missing_agent]),
+    "release_pending_assignments" => Set([:released_none, :unknown_agent, :both_scopes]),
 )
 
 """
@@ -398,8 +398,8 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
     "recover_stalled_teams"       => Set([:no_team, :stuck, :disabled, :no_carrier]),
     "resolve_schedule_wedge"      => Set([:not_applicable, :no_wedge]),
     "reform_stuck_teams"          => Set([:moved_none]),
-    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n]),
-    "release_pending_assignments" => Set([:unknown_agent]),  # 🔴 `:released_none` 은 일부러 빠졌다 — 위 문단
+    "forbid_heavy_cargo"          => Set([:banned, :unknown_agent, :no_schedule, :invalid_n, :missing_agent]),
+    "release_pending_assignments" => Set([:unknown_agent, :both_scopes]),  # 🔴 `:released_none` 은 일부러 빠졌다 — 위 문단
 )
 
 """
@@ -829,6 +829,19 @@ function _step_detail(out, prim_name = "")
                first(split(sprint(showerror, e), "\n"))
     end
 end
+
+"""
+    ENACTED_VERDICTS · minted_handled_verdict_ok(v) -> Bool
+
+`handled` 판정의 **첫 연언지**. 오늘은 `:admit` 하나지만, 소비자가 이 이름을 부르게 해서
+2026-09-02 결정 2(네 번째 verdict `:admit_unsanctioned`)가 들어올 때 **한 자리만** 바뀌게 한다.
+
+🔴 `handled` 자체는 여기 없다 — 나머지 세 연언지(`world_maybe_dirty` · `resume !== :failed` ·
+`!resolve_failed`)는 `tools/monitor/enact.jl` 이 소유한다. 이 함수는 그중 첫째만 답한다.
+실측 근거: 손으로 베낀 3-연언지 복사본이 프로덕션 4-연언지와 갈렸다(2026-09-02 T0).
+"""
+const ENACTED_VERDICTS = (:admit,)
+minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 """
     enact_minted!(env, truth, synth) -> NamedTuple

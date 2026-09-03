@@ -137,8 +137,13 @@ status — 넷. **이 목록이 `minted_tool.jl` 의 세 표의 진실원이다*
 (navigator 미로드 또는 `enable_battery!` 미호출) 그 formulate 는 이 금지를 **집행하지 않는다** —
 `@warn` + 0 행이다. `:banned` 를 "화물 n 개가 실제로 떨어져 나갔다" 로 읽으면 안 된다.
 """
-function forbid_heavy_cargo!(env; agent::AbstractString, n::Real = 1)
+function forbid_heavy_cargo!(env; agent::AbstractString = "", n::Real = 1)
     a = String(agent)
+    # 🔴 (0) 안 준 인자 먼저. 기본값이 없으면 Julia 가 호출 경계에서 `UndefKeywordError` 를
+    #     던지고, 집행부의 `try` 가 그것을 `partial=true` 로 적어 **세계를 안 건드린 판이**
+    #     `handled=true` 로 기본 복구 사슬을 삼킨다(R1). 거절 = 세계 무접촉 = 폴백 정상.
+    #     `:unknown_agent` 로 접지 않는다 — "안 줬다" 와 "틀린 걸 줬다" 는 다른 사건이다.
+    isempty(a) && return (status = :missing_agent, agent = a, n = n)
     # (1) 순수 인자 검사 먼저 — 세계를 안 읽어도 판정된다. 🔴 `isinteger` 가 `Inf`·`NaN` 도 막는다.
     #     🔴 `n` 필드는 **요청값 그대로**를 싣는다(`-3` 을 `0` 으로 적으면 기록이 거짓말한다).
     (isinteger(n) && n >= 1) || return (status = :invalid_n, agent = a, n = Float64(n))

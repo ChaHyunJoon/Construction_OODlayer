@@ -155,12 +155,10 @@ end
 # 🔴 **바른 장기 수선은 여기가 아니라 `bind_primitive_args` 안에서 필수 kwarg 미충족을
 # `reject:missing_param:agent` 로 거절하는 것**이다(거절 = 세계 무접촉 = 폴백이 정상적으로
 # 돈다) — 이 lane 의 범위 밖이라 손대지 않는다.
-@testset "🔴 알려진 구멍: agent 없이 부르면 UndefKeywordError 가 던져지고 handled=true 가 된다" begin
-    # 🔴 `Ref(:dummy_env)` 는 안 쓴다: `_issue_resume!` 이 `env.cache`/`env.sched` 를 읽는데,
-    # 그게 없으면 그 자체가 던져서 `resume=:failed` 가 되고 `handled` 가 거짓으로 떨어져
-    # (세계를 못 건드린 자리에서도) 구멍을 못 잡는다. `PlanningCache()`/`OperatingSchedule()`
-    # 빈 기본 생성자는 씬을 안 지어도 되고(둘 다 `@with_kw` 기본값이 있다) `reset_cache_resume!`
-    # 가 실제로 성공한다(측정: `resume=(:issued, "")`) — 이게 "진짜 env" 에서 나는 값이다.
+@testset "🟢 그 구멍은 닫혔다: agent 없이 부르면 :missing_agent 이고 폴백이 정상으로 돈다" begin
+    # 🔴 2026-09-02 (R1-B). 예전엔 여기서 `UndefKeywordError` 가 나 `partial=true` 가 되고,
+    #    **세계를 한 바이트도 안 건드린 판이** `handled=true` 로 기본 복구 사슬을 삼켰다.
+    #    (그 사실을 이 자리가 박제하고 있었다 — 이제 그 반대를 박제한다.)
     env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule())
     synth = Dict{String,Any}("reach" => "composed",
                               "body_names" => ["forbid_heavy_cargo"],
@@ -168,14 +166,13 @@ end
     r = CB.enact_minted!(env, nothing, synth)
     @test r.verdict === :admit
     @test r.applied === false
-    @test r.partial === true
-    @test r.world_maybe_dirty === true
+    @test r.partial === false                    # 던지지 않는다
+    @test r.world_maybe_dirty === false          # 세계 무접촉이 그대로 보고된다
     @test length(r.steps) == 1
-    @test r.steps[1].status === :threw
-    @test occursin("UndefKeywordError", r.steps[1].detail)
-    @test occursin("agent", r.steps[1].detail)
-    # 정책 레인의 실제 handled 계산(tools/monitor/enact.jl:869)을 그대로 재현한다.
-    handled = (r.verdict === :admit) && r.world_maybe_dirty && (r.resume !== :failed)
-    @test handled === true   # 🔴 세계를 안 건드렸는데도 참 — 이것이 구멍이다, 통과가 아니다.
+    @test r.steps[1].status === :missing_agent
+    # 🔴 `handled` 를 손으로 베끼지 않는다 — 복사본은 실측에서 프로덕션과 갈렸다
+    #    (T0: copy3=true vs prod4=false). 정본 술어를 부른다.
+    @test CB.minted_handled_verdict_ok(r.verdict) === true    # 아래 B 참조
+    @test r.world_maybe_dirty === false          # ⟹ handled=false ⟹ 폴백이 정상으로 돈다
 end
 end # module

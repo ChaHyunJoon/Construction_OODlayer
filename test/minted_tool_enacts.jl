@@ -368,7 +368,9 @@ end
              #    formulate** 의 몫이다. `:banned` 를 성공으로 세면 세계가 바이트 동일인데도
              #    `applied=true` 가 되어 폴백이 삼켜진다.
              ("forbid_heavy_cargo", :banned), ("forbid_heavy_cargo", :unknown_agent),
-             ("forbid_heavy_cargo", :no_schedule), ("forbid_heavy_cargo", :invalid_n)]
+             ("forbid_heavy_cargo", :no_schedule), ("forbid_heavy_cargo", :invalid_n),
+             ("forbid_heavy_cargo", :missing_agent),
+             ("release_pending_assignments", :both_scopes)]
     for (n, st) in quiet
         @test CB._step_applied(n, st) === false
     end
@@ -885,6 +887,34 @@ end
     finally
         CB.STANDING_CARGO_BANS[] = saved
     end
+end
+
+@testset "(17) 인자 오류는 예외가 아니라 status 다 — 폴백을 삼키지 않는다" begin
+    # 🔴 R1. 예외로 나가면 partial=true → world_maybe_dirty=true → handled=true 가 되어
+    #    **세계를 한 바이트도 안 건드린 판이** 기본 복구 사슬을 삼킨다(사건은 이미 소비됐다).
+    env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule())
+
+    # (a) forbid_heavy_cargo 를 agent 없이 부른다 (여덟 중 유일하게 기본값 없던 kwarg)
+    r = CB.enact_minted!(env, nothing,
+                         _synth(names = ["forbid_heavy_cargo"], params = Dict{String,Any}()))
+    @test r.steps[1].status === :missing_agent      # 던지지 않는다
+    @test r.partial === false
+    @test r.world_maybe_dirty === false             # ⟹ handled=false ⟹ 폴백이 정상으로 돈다
+    @test r.applied === false
+
+    # (b) release_pending_assignments 에 faulted 와 agent 를 둘 다 준다
+    r2 = CB.enact_minted!(env, nothing,
+             _synth(names = ["release_pending_assignments"],
+                    params = Dict{String,Any}("faulted" => "R1", "agent" => "R2")))
+    @test r2.steps[1].status === :both_scopes
+    @test r2.partial === false
+    @test r2.world_maybe_dirty === false
+
+    # 🔴 음성 대조: "안 줬다" 와 "틀린 걸 줬다" 는 **다른 status** 다(spec §9-2).
+    r3 = CB.enact_minted!(env, nothing,
+             _synth(names = ["forbid_heavy_cargo"],
+                    params = Dict{String,Any}("agent" => "no_such_robot")))
+    @test r3.steps[1].status !== :missing_agent     # :unknown_agent 또는 :no_schedule
 end
 
 end # module
