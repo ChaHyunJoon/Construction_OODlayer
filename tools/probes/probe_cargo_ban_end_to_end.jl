@@ -338,6 +338,7 @@ end
 |---|---|---|
 | `:nostep` | `VOID_NOSTEP` | 아무 단계도 안 불렸다 — 나머지 열을 인용하지 마라 |
 | `:unapplied` | `VOID_UNAPPLIED` | 단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 하나도 없다 |
+| `:unmeasured` | `VOID_UNMEASURED` | 단계는 불렸는데 `applied=nothing` — **잴 수 있는지 자체가 선언 안 된 원시**(생성 원시) |
 | `:ok` | `OK` | 공허는 아니다. 🔴 그 이상의 판정은 아니다(절 A 는 인과를 안 잰다) |
 
 🔴 **옛 판정 `void = isempty(r.steps)` 는 집행된 행에서 절대 안 켜졌다** — `steps == 0 ∧
@@ -352,11 +353,17 @@ docstring 이 못박듯 `applied=false` 는 두 원인을 삼킨다 — `SILENT_
 ⚠️ 반대 방향도 조심하라: `applied=false` 인데 `world_maybe_dirty=true` 일 수 있다
 (`:residual_blocked` 처럼 이미 옮긴 뒤의 status) — 그 경우 세계는 더러운데 이 열은 공허다.
 """
-_void_kind(r) = isempty(r.steps) ? :nostep : (r.applied ? :ok : :unapplied)
+# 🔴 삼상이다(2026-09-03 C1). `applied` 는 이제 `nothing`("못 쟀다")을 낼 수 있고 —
+#    생성 원시는 자기 status 어휘를 선언하지 않는다 — 예전 삼항 `r.applied ? … : …` 은
+#    그 값에서 **TypeError 로 죽는다**(non-boolean in boolean context).
+_void_kind(r) = isempty(r.steps) ? :nostep :
+                r.applied === true    ? :ok :
+                r.applied === nothing ? :unmeasured : :unapplied
 
-const _VOID_LABEL = Dict(:nostep    => "VOID_NOSTEP",
-                         :unapplied => "VOID_UNAPPLIED",
-                         :ok        => "OK")
+const _VOID_LABEL = Dict(:nostep     => "VOID_NOSTEP",
+                         :unapplied  => "VOID_UNAPPLIED",
+                         :unmeasured => "VOID_UNMEASURED",
+                         :ok         => "OK")
 
 # ── 절 A: 집행 경로 (G-8) ────────────────────────────────────────────────────
 """
@@ -401,6 +408,12 @@ function enact_section(board, nr, target_closed; reach = "composed")
     if void === :nostep
         println("⚪ VOID_NOSTEP — 아무 단계도 안 불렸다(verdict=", r.verdict,
                 "). 아래 숫자를 인용하지 마라.")
+    elseif void === :unmeasured
+        println("⚪ VOID_UNMEASURED — 단계는 ", length(r.steps),
+                " 개 불렸는데 applied=nothing 이다(verdict=", r.verdict,
+                "). 🔴 이것은 \"아무 일도 안 났다\" 가 **아니다** — 이 원시의 status 어휘가",
+                " 선언돼 있지 않아 노린 적응이 일어났는지 **잴 수 없었다**는 뜻이다.",
+                " 성공률의 분자에도 분모에도 넣지 마라.")
     elseif void === :unapplied
         println("⚪ VOID_UNAPPLIED — 단계는 ", length(r.steps),
                 " 개 불렸는데 applied=false 다(verdict=", r.verdict,

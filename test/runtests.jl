@@ -372,9 +372,16 @@ end
     #    합성 어휘는 이제 런타임에 생성되고, 그 자리를 **두 게이트가 나눠** 대신한다 —
     #    생성 agent 가 보는 인터페이스 산출물의 최신성은 바로 아래 "world interface is
     #    current" 가, 등록·시그니처 규약 다섯은 그다음 "minted registration" 이 잰다(설계 §3).
-    #    세 번째 레지스트리-의존 게이트는 아직 안 지웠다 — 아래 "minted tool enacts"
-    #    (`minted_tool_enacts.jl`) 는 여전히 `CB.PRIMITIVE_TABLE()` 을 부르고 길이 19 를
-    #    잰다. 그 정리는 이 세션 범위 밖의 Task 10 이다.
+    #    🔴 2026-09-03 정정(최종 리뷰): 남은 레지스트리-의존 게이트는 **하나가 아니라 셋**이다.
+    #    셋 다 `CB.PRIMITIVE_TABLE()` 을 부르는데 그 함수는 이 브랜치에 **없다** — 즉 셋 다
+    #    지금 빨갛고, 그것이 의도된 중간 상태다(설계 §9 마지막 줄). Task 10 이 지울 목록:
+    #      1. `test/minted_tool_enacts.jl`      — 아래 "minted tool enacts"(길이 19 를 잰다)
+    #      2. `test/payload_reprice_install.jl:113` — 아래 "payload reprice install"(:537)
+    #      3. `tools/monitor/test_minted_wiring.jl` — 아래 "minted tool wiring"(:449)
+    #    ⚠️ 2·3 은 `PRIMITIVE_TABLE` 말고도 **알파벳이 파일에서 씨를 받는다**고 전제한다 —
+    #    오늘 `resolve_primitive` 는 런-스코프 표만 읽으므로 그 fixture 들의 body 는 전부
+    #    `reject:unknown primitive` 로 떨어진다(실측). 고치는 길은 표를 손으로 씨 뿌리거나
+    #    `register_minted_primitive!` 로 주조하는 것이고, 그 판정도 Task 10 의 몫이다.
 
     # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
     @testset "world interface is current" begin

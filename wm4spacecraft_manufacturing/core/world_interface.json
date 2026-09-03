@@ -2,835 +2,835 @@
     "methods": [
         {
             "name": "active_restriction_zones",
-            "signature": "Tuple{typeof(active_restriction_zones)}"
+            "signature": "()"
         },
         {
             "name": "active_spares",
-            "signature": "Tuple{typeof(active_spares)}"
+            "signature": "()"
         },
         {
             "name": "add_directional_spare_pools!",
-            "signature": "Tuple{typeof(add_directional_spare_pools!), Any}"
+            "signature": "(scene_tree; n_spare, distance, bbox, margin, geom, spacing)"
         },
         {
             "name": "add_restriction_zone!",
-            "signature": "Tuple{typeof(add_restriction_zone!), Symbol, AbstractVector, Real}"
+            "signature": "(key::Symbol, center::AbstractVector, radius::Real)"
         },
         {
             "name": "agent_disc_radius",
-            "signature": "Tuple{typeof(agent_disc_radius), Any}"
+            "signature": "(agent)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), CloseBuildStep, Nothing, PlannerEnv}"
+            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, cmd, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), DepositCargo, Twist, PlannerEnv}"
+            "signature": "(node::CloseBuildStep, cmd::Nothing, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), FormTransportUnit, Twist, PlannerEnv}"
+            "signature": "(node::DepositCargo, twist::Twist, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), LiftIntoPlace, Twist, PlannerEnv}"
+            "signature": "(node::FormTransportUnit, twist::Twist, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), OpenBuildStep, Nothing, PlannerEnv}"
+            "signature": "(node::LiftIntoPlace, twist::Twist, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, Any, PlannerEnv}"
+            "signature": "(node::OpenBuildStep, cmd::Nothing, env::PlannerEnv)"
         },
         {
             "name": "apply_cmd!",
-            "signature": "Tuple{typeof(apply_cmd!), Union{TransportUnitGo, RobotGo}, Twist, PlannerEnv}"
+            "signature": "(node::Union{TransportUnitGo, RobotGo}, twist::Twist, env::PlannerEnv)"
         },
         {
             "name": "assert_respec_verdict",
-            "signature": "Tuple{typeof(assert_respec_verdict), Symbol, AbstractString}"
+            "signature": "(verdict::Symbol)"
         },
         {
             "name": "assert_respec_verdict",
-            "signature": "Tuple{typeof(assert_respec_verdict), Symbol}"
+            "signature": "(verdict::Symbol, where::AbstractString)"
         },
         {
             "name": "asset_generation",
-            "signature": "Tuple{typeof(asset_generation), ConstructionBots.AbstractID}"
+            "signature": "(role::ConstructionBots.AbstractID)"
         },
         {
             "name": "asset_history",
-            "signature": "Tuple{typeof(asset_history), ConstructionBots.AbstractID}"
+            "signature": "(role::ConstructionBots.AbstractID)"
         },
         {
             "name": "asset_ledger",
-            "signature": "Tuple{typeof(asset_ledger)}"
+            "signature": "()"
         },
         {
             "name": "asset_ledger_summary",
-            "signature": "Tuple{typeof(asset_ledger_summary)}"
+            "signature": "()"
         },
         {
             "name": "asset_of",
-            "signature": "Tuple{typeof(asset_of), ConstructionBots.AbstractID}"
+            "signature": "(role::ConstructionBots.AbstractID)"
         },
         {
             "name": "avoid_staging_areas",
-            "signature": "Tuple{typeof(avoid_staging_areas)}"
+            "signature": "()"
         },
         {
             "name": "awaiting_battery_swap",
-            "signature": "Tuple{typeof(awaiting_battery_swap), Any}"
+            "signature": "(rid)"
         },
         {
             "name": "battery_courier_enabled",
-            "signature": "Tuple{typeof(battery_courier_enabled)}"
+            "signature": "()"
         },
         {
             "name": "battery_courier_step!",
-            "signature": "Tuple{typeof(battery_courier_step!), Any}"
+            "signature": "(env)"
         },
         {
             "name": "battery_deliveries",
-            "signature": "Tuple{typeof(battery_deliveries)}"
+            "signature": "()"
         },
         {
             "name": "battery_swap_halt_active",
-            "signature": "Tuple{typeof(battery_swap_halt_active)}"
+            "signature": "()"
         },
         {
             "name": "battery_swap_pending",
-            "signature": "Tuple{typeof(battery_swap_pending)}"
+            "signature": "()"
         },
         {
             "name": "build_invariant",
-            "signature": "Tuple{typeof(build_invariant), Any}"
+            "signature": "(env)"
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "Tuple{typeof(cargo_deployed_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "Tuple{typeof(cargo_deployed_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "Tuple{typeof(cargo_deployed_config), DepositCargo}"
+            "signature": "(n::DepositCargo)"
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "Tuple{typeof(cargo_deployed_config), FormTransportUnit}"
+            "signature": "(n::FormTransportUnit)"
         },
         {
             "name": "cargo_goal_config",
-            "signature": "Tuple{typeof(cargo_goal_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "cargo_goal_config",
-            "signature": "Tuple{typeof(cargo_goal_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "cargo_goal_config",
-            "signature": "Tuple{typeof(cargo_goal_config), Union{DepositCargo, FormTransportUnit}}"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "Tuple{typeof(cargo_loaded_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "Tuple{typeof(cargo_loaded_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "Tuple{typeof(cargo_loaded_config), DepositCargo}"
+            "signature": "(n::DepositCargo)"
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "Tuple{typeof(cargo_loaded_config), FormTransportUnit}"
+            "signature": "(n::FormTransportUnit)"
         },
         {
             "name": "cargo_start_config",
-            "signature": "Tuple{typeof(cargo_start_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "cargo_start_config",
-            "signature": "Tuple{typeof(cargo_start_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "cargo_start_config",
-            "signature": "Tuple{typeof(cargo_start_config), Union{DepositCargo, FormTransportUnit}}"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
         },
         {
             "name": "check_identity!",
-            "signature": "Tuple{typeof(check_identity!), Any, AbstractString}"
+            "signature": "(env, tag::AbstractString; step)"
         },
         {
             "name": "checked_out_spares",
-            "signature": "Tuple{typeof(checked_out_spares)}"
+            "signature": "()"
         },
         {
             "name": "clear_all_cargo_bans!",
-            "signature": "Tuple{typeof(clear_all_cargo_bans!)}"
+            "signature": "()"
         },
         {
             "name": "clear_battery_deliveries!",
-            "signature": "Tuple{typeof(clear_battery_deliveries!)}"
+            "signature": "()"
         },
         {
             "name": "clear_cargo_ban!",
-            "signature": "Tuple{typeof(clear_cargo_ban!), ConstructionBots.AbstractID}"
+            "signature": "(agent::ConstructionBots.AbstractID)"
         },
         {
             "name": "clear_decommissioned_markers!",
-            "signature": "Tuple{typeof(clear_decommissioned_markers!)}"
+            "signature": "()"
         },
         {
             "name": "clear_depot_markers!",
-            "signature": "Tuple{typeof(clear_depot_markers!)}"
+            "signature": "()"
         },
         {
             "name": "clear_faulted_robots!",
-            "signature": "Tuple{typeof(clear_faulted_robots!)}"
+            "signature": "()"
         },
         {
             "name": "clear_identity_seen!",
-            "signature": "Tuple{typeof(clear_identity_seen!)}"
+            "signature": "()"
         },
         {
             "name": "clear_novelty_detector!",
-            "signature": "Tuple{typeof(clear_novelty_detector!)}"
+            "signature": "()"
         },
         {
             "name": "clear_ood_schedule!",
-            "signature": "Tuple{typeof(clear_ood_schedule!)}"
+            "signature": "()"
         },
         {
             "name": "clear_restriction_zones!",
-            "signature": "Tuple{typeof(clear_restriction_zones!)}"
+            "signature": "()"
         },
         {
             "name": "clear_spare_pools!",
-            "signature": "Tuple{typeof(clear_spare_pools!)}"
+            "signature": "()"
         },
         {
             "name": "clear_zone_markers!",
-            "signature": "Tuple{typeof(clear_zone_markers!)}"
+            "signature": "()"
         },
         {
             "name": "close_node!",
-            "signature": "Tuple{typeof(close_node!), CloseBuildStep, PlannerEnv}"
+            "signature": "(_::ConstructionPredicate, env::PlannerEnv)"
         },
         {
             "name": "close_node!",
-            "signature": "Tuple{typeof(close_node!), ConstructionBots.ScheduleNode, PlannerEnv}"
+            "signature": "(n::OpenBuildStep, env::PlannerEnv)"
         },
         {
             "name": "close_node!",
-            "signature": "Tuple{typeof(close_node!), ConstructionPredicate, PlannerEnv}"
+            "signature": "(node::CloseBuildStep, env::PlannerEnv)"
         },
         {
             "name": "close_node!",
-            "signature": "Tuple{typeof(close_node!), OpenBuildStep, PlannerEnv}"
+            "signature": "(node::ConstructionBots.ScheduleNode, env::PlannerEnv)"
         },
         {
             "name": "commit_respec!",
-            "signature": "Tuple{typeof(commit_respec!), Any, Any, RespecProposal}"
+            "signature": "(env, milp, proposal::RespecProposal; resume)"
         },
         {
             "name": "conformal_pvalue",
-            "signature": "Tuple{typeof(conformal_pvalue), NoveltyDetector, Real}"
+            "signature": "(det::NoveltyDetector, score::Real)"
         },
         {
             "name": "construct_partial_construction_schedule",
-            "signature": "Tuple{typeof(construct_partial_construction_schedule), Any, Any, Any}"
+            "signature": "(mpd_model, model_spec, scene_tree)"
         },
         {
             "name": "construct_partial_construction_schedule",
-            "signature": "Tuple{typeof(construct_partial_construction_schedule), Vararg{Any, 4}}"
+            "signature": "(mpd_model, model_spec, scene_tree, id_map)"
         },
         {
             "name": "core_zone_for_severity",
-            "signature": "Tuple{typeof(core_zone_for_severity), Any, Real}"
+            "signature": "(env, frac::Real; pad, root)"
         },
         {
             "name": "decision_margin",
-            "signature": "Tuple{typeof(decision_margin), AbstractVector{<:Real}}"
+            "signature": "(values::AbstractVector{<:Real})"
         },
         {
             "name": "decommissioned_bodies",
-            "signature": "Tuple{typeof(decommissioned_bodies)}"
+            "signature": "()"
         },
         {
             "name": "depot_available",
-            "signature": "Tuple{typeof(depot_available), Symbol}"
+            "signature": "(key::Symbol)"
         },
         {
             "name": "depot_centers_fixed",
-            "signature": "Tuple{typeof(depot_centers_fixed), Real}"
+            "signature": "()"
         },
         {
             "name": "depot_centers_fixed",
-            "signature": "Tuple{typeof(depot_centers_fixed)}"
+            "signature": "(d::Real)"
         },
         {
             "name": "depot_info",
-            "signature": "Tuple{typeof(depot_info)}"
+            "signature": "()"
         },
         {
             "name": "dispatch_battery_courier!",
-            "signature": "Tuple{typeof(dispatch_battery_courier!), Any, ConstructionBots.AbstractID}"
+            "signature": "(env, target::ConstructionBots.AbstractID)"
         },
         {
             "name": "draw_decommissioned_robots!",
-            "signature": "Tuple{typeof(draw_decommissioned_robots!), Any}"
+            "signature": "(vis)"
         },
         {
             "name": "draw_restriction_zones!",
-            "signature": "Tuple{typeof(draw_restriction_zones!), Any}"
+            "signature": "(vis)"
         },
         {
             "name": "draw_spare_depots!",
-            "signature": "Tuple{typeof(draw_spare_depots!), Any}"
+            "signature": "(vis)"
         },
         {
             "name": "entity",
-            "signature": "Tuple{typeof(entity), Any}"
+            "signature": "(n)"
         },
         {
             "name": "entity",
-            "signature": "Tuple{typeof(entity), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "entity",
-            "signature": "Tuple{typeof(entity), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "escalation_verdict",
-            "signature": "Tuple{typeof(escalation_verdict)}"
+            "signature": "(; descriptors, values, member_values, eps, margin_thresh, disagree_thresh)"
         },
         {
             "name": "event_descriptors",
-            "signature": "Tuple{typeof(event_descriptors)}"
+            "signature": "(; soc, agent_pending, zone_overlap, severity, n_active, spare_count, closed_at_fire, total_nodes, progress, nav_blocked, nav_downstream)"
         },
         {
             "name": "fault_robot!",
-            "signature": "Tuple{typeof(fault_robot!), Any}"
+            "signature": "(env; target, obstacle, clear, safe)"
         },
         {
             "name": "fault_robot_and_reassign!",
-            "signature": "Tuple{typeof(fault_robot_and_reassign!), Any, ConstructionBots.AbstractID}"
+            "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose, resume)"
         },
         {
             "name": "faulted_robots",
-            "signature": "Tuple{typeof(faulted_robots)}"
+            "signature": "()"
         },
         {
             "name": "find_clear_staging_center",
-            "signature": "Tuple{typeof(find_clear_staging_center), Any, ConstructionBots.AbstractID, Float64}"
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin, zone_margin_frac, ring_step, n_angles, max_rings)"
         },
         {
             "name": "free_space_status",
-            "signature": "Tuple{typeof(free_space_status), Any, Any, Any, Real}"
+            "signature": "(start, goal, zones, agent_radius::Real; cell, margin)"
         },
         {
             "name": "get_cmd",
-            "signature": "Tuple{typeof(get_cmd), LiftIntoPlace, PlannerEnv}"
+            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, env::PlannerEnv)"
         },
         {
             "name": "get_cmd",
-            "signature": "Tuple{typeof(get_cmd), Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, PlannerEnv}"
+            "signature": "(node::LiftIntoPlace, env::PlannerEnv)"
         },
         {
             "name": "get_cmd",
-            "signature": "Tuple{typeof(get_cmd), Union{DepositCargo, FormTransportUnit}, PlannerEnv}"
+            "signature": "(node::Union{DepositCargo, FormTransportUnit}, env::PlannerEnv)"
         },
         {
             "name": "get_cmd",
-            "signature": "Tuple{typeof(get_cmd), Union{TransportUnitGo, RobotGo}, PlannerEnv}"
+            "signature": "(node::Union{TransportUnitGo, RobotGo}, env::PlannerEnv)"
         },
         {
             "name": "get_project_params",
-            "signature": "Tuple{typeof(get_project_params), AbstractString}"
+            "signature": "(file_name::AbstractString)"
         },
         {
             "name": "get_project_params",
-            "signature": "Tuple{typeof(get_project_params), Int64}"
+            "signature": "(project::Int64)"
         },
         {
             "name": "get_project_params",
-            "signature": "Tuple{typeof(get_project_params), Symbol}"
+            "signature": "(project::Symbol)"
         },
         {
             "name": "goal_config",
-            "signature": "Tuple{typeof(goal_config), Any}"
+            "signature": "(n)"
         },
         {
             "name": "goal_config",
-            "signature": "Tuple{typeof(goal_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "goal_config",
-            "signature": "Tuple{typeof(goal_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "goal_config",
-            "signature": "Tuple{typeof(goal_config), EntityConfigPredicate}"
+            "signature": "(n::EntityConfigPredicate)"
         },
         {
             "name": "goal_config",
-            "signature": "Tuple{typeof(goal_config), Union{DepositCargo, FormTransportUnit}}"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
         },
         {
             "name": "goal_engulfed",
-            "signature": "Tuple{typeof(goal_engulfed), Any, Real, Any}"
+            "signature": "(goal, agent_radius::Real, zones; ttol, margin)"
         },
         {
             "name": "hot_swap_enabled",
-            "signature": "Tuple{typeof(hot_swap_enabled)}"
+            "signature": "()"
         },
         {
             "name": "hot_swap_robot!",
-            "signature": "Tuple{typeof(hot_swap_robot!), Any, ConstructionBots.AbstractID}"
+            "signature": "(env, faulted::ConstructionBots.AbstractID; mode, verbose)"
         },
         {
             "name": "identity_summary",
-            "signature": "Tuple{typeof(identity_summary), Any}"
+            "signature": "(env)"
         },
         {
             "name": "identity_violations",
-            "signature": "Tuple{typeof(identity_violations), Any}"
+            "signature": "(env; tol)"
         },
         {
             "name": "integrate_twist",
-            "signature": "Tuple{typeof(integrate_twist), Any, Any}"
+            "signature": "(twist, dt)"
         },
         {
             "name": "is_battery_courier",
-            "signature": "Tuple{typeof(is_battery_courier), Any}"
+            "signature": "(rid)"
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "Tuple{typeof(is_within_capture_distance), Any, Any, Any}"
+            "signature": "(parent::ConstructionBots.SceneNode, child::ConstructionBots.SceneNode, args::Vararg{Any})"
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "Tuple{typeof(is_within_capture_distance), Any, Any}"
+            "signature": "(t, t_des)"
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "Tuple{typeof(is_within_capture_distance), ConstructionBots.SceneNode, ConstructionBots.SceneNode, Vararg{Any}}"
+            "signature": "(t, t_des, ttol)"
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "Tuple{typeof(is_within_capture_distance), Vararg{Any, 4}}"
+            "signature": "(t, t_des, ttol, rtol)"
         },
         {
             "name": "list_projects",
-            "signature": "Tuple{typeof(list_projects)}"
+            "signature": "()"
         },
         {
             "name": "load_novelty_detector",
-            "signature": "Tuple{typeof(load_novelty_detector), AbstractString}"
+            "signature": "(path::AbstractString)"
         },
         {
             "name": "maybe_respecify!",
-            "signature": "Tuple{typeof(maybe_respecify!), Any, Any}"
+            "signature": "(env, ood_queue; id_resolver, optimizer, producer)"
         },
         {
             "name": "maybe_unwedge_nominal!",
-            "signature": "Tuple{typeof(maybe_unwedge_nominal!), Any, Integer}"
+            "signature": "(env, no_progress::Integer)"
         },
         {
             "name": "nearest_pool",
-            "signature": "Tuple{typeof(nearest_pool), Any}"
+            "signature": "(pos; nonempty)"
         },
         {
             "name": "novelty_report",
-            "signature": "Tuple{typeof(novelty_report)}"
+            "signature": "()"
         },
         {
             "name": "novelty_score",
-            "signature": "Tuple{typeof(novelty_score), NoveltyDetector, AbstractVector{<:Real}}"
+            "signature": "(det::NoveltyDetector, x::AbstractVector{<:Real})"
         },
         {
             "name": "novelty_verdict",
-            "signature": "Tuple{typeof(novelty_verdict), AbstractVector{<:Real}}"
+            "signature": "(x::AbstractVector{<:Real}; eps)"
         },
         {
             "name": "ood_inject_step!",
-            "signature": "Tuple{typeof(ood_inject_step!), Any, Int64}"
+            "signature": "(env, k::Int64)"
         },
         {
             "name": "optimal_twist",
-            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 4}}"
+            "signature": "(tf_error, v_max, ω_max, dt)"
         },
         {
             "name": "optimal_twist",
-            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 5}}"
+            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x)"
         },
         {
             "name": "optimal_twist",
-            "signature": "Tuple{typeof(optimal_twist), Vararg{Any, 6}}"
+            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x, ϵ_θ)"
         },
         {
             "name": "parent_build_step_is_active",
-            "signature": "Tuple{typeof(parent_build_step_is_active), Any, PlannerEnv}"
+            "signature": "(id::ConstructionBots.AbstractID, env::PlannerEnv)"
         },
         {
             "name": "parent_build_step_is_active",
-            "signature": "Tuple{typeof(parent_build_step_is_active), ConstructionBots.AbstractID, PlannerEnv}"
+            "signature": "(node, env::PlannerEnv)"
         },
         {
             "name": "pool_centers",
-            "signature": "Tuple{typeof(pool_centers), Any}"
+            "signature": "(_; margin)"
         },
         {
             "name": "pop_spare!",
-            "signature": "Tuple{typeof(pop_spare!), Symbol}"
+            "signature": "(key::Symbol)"
         },
         {
             "name": "preprocess_env!",
-            "signature": "Tuple{typeof(preprocess_env!), PlannerEnv}"
+            "signature": "(env::PlannerEnv)"
         },
         {
             "name": "project_complete",
-            "signature": "Tuple{typeof(project_complete), PlannerEnv}"
+            "signature": "(env::PlannerEnv)"
         },
         {
             "name": "push_ood!",
-            "signature": "Tuple{typeof(push_ood!), AbstractString}"
+            "signature": "(event::AbstractString)"
         },
         {
             "name": "random_restriction_zone!",
-            "signature": "Tuple{typeof(random_restriction_zone!), Any}"
+            "signature": "(env; key, seed, placement, radius, max_radius, attempts)"
         },
         {
             "name": "record_asset_swap!",
-            "signature": "Tuple{typeof(record_asset_swap!), ConstructionBots.AbstractID, ConstructionBots.AbstractID}"
+            "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event, cause, step, soc, position)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any, Any, Any}"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any, Any}"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), ConstructionBots.SceneNode, Any}"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key, depth)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any, Any, Any}"
+            "signature": "(node::ConstructionBots.SceneNode, tree)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any, Any}"
+            "signature": "(node::ConstructionBots.SceneNode, tree, key)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Dict{T, CoordinateTransformations.Transformation} where T, Any}"
+            "signature": "(node::ConstructionBots.SceneNode, tree, key, depth)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any, Any, Any}"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any, Any}"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key)"
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "Tuple{typeof(recurse_child_geometry), Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, Any}"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key, depth)"
         },
         {
             "name": "reform_stuck_teams!",
-            "signature": "Tuple{typeof(reform_stuck_teams!), Any}"
+            "signature": "(env; min_ready, snap_all)"
         },
         {
             "name": "register_spare!",
-            "signature": "Tuple{typeof(register_spare!), Symbol, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
+            "signature": "(key::Symbol, rid::ConstructionBots.BotID{ConstructionBots.DeliveryBot})"
         },
         {
             "name": "release_fallback!",
-            "signature": "Tuple{typeof(release_fallback!)}"
+            "signature": "()"
         },
         {
             "name": "remove_geometry!",
-            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.GeometryHierarchy, Any}"
+            "signature": "(n::ConstructionBots.GeometryHierarchy, key)"
         },
         {
             "name": "remove_geometry!",
-            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.SceneNode, Any}"
+            "signature": "(n::ConstructionBots.SceneNode, key)"
         },
         {
             "name": "remove_geometry!",
-            "signature": "Tuple{typeof(remove_geometry!), ConstructionBots.SceneTree, Any}"
+            "signature": "(scene_tree::ConstructionBots.SceneTree, key)"
         },
         {
             "name": "remove_restriction_zone!",
-            "signature": "Tuple{typeof(remove_restriction_zone!), Symbol}"
+            "signature": "(key::Symbol)"
         },
         {
             "name": "replace_robot!",
-            "signature": "Tuple{typeof(replace_robot!), Any, ConstructionBots.AbstractID, ConstructionBots.AbstractID}"
+            "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume, verbose, park_rests)"
         },
         {
             "name": "report_identity_delta",
-            "signature": "Tuple{typeof(report_identity_delta), Any, Int64, AbstractString}"
+            "signature": "(env, before::Int64, tag::AbstractString)"
         },
         {
             "name": "reset_asset_ledger!",
-            "signature": "Tuple{typeof(reset_asset_ledger!)}"
+            "signature": "()"
         },
         {
             "name": "reset_cache_resume!",
-            "signature": "Tuple{typeof(reset_cache_resume!), ConstructionBots.PlanningCache, ConstructionBots.OperatingSchedule}"
+            "signature": "(cache::ConstructionBots.PlanningCache, sched::ConstructionBots.OperatingSchedule)"
         },
         {
             "name": "restage_all_blocked!",
-            "signature": "Tuple{typeof(restage_all_blocked!), Any}"
+            "signature": "(env; zone_keys, resume, verbose)"
         },
         {
             "name": "restage_assembly!",
-            "signature": "Tuple{typeof(restage_assembly!), Any, ConstructionBots.AbstractID}"
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume, verbose)"
         },
         {
             "name": "restriction_zones",
-            "signature": "Tuple{typeof(restriction_zones)}"
+            "signature": "()"
         },
         {
             "name": "root_deposit_goals",
-            "signature": "Tuple{typeof(root_deposit_goals), Any}"
+            "signature": "(env; root)"
         },
         {
             "name": "root_goal_coverage",
-            "signature": "Tuple{typeof(root_goal_coverage), Any, Any, Any}"
+            "signature": "(center, r, env; margin)"
         },
         {
             "name": "run_lego_demo",
-            "signature": "Tuple{typeof(run_lego_demo)}"
+            "signature": "(; kwargs...)"
         },
         {
             "name": "schedule_ood!",
-            "signature": "Tuple{typeof(schedule_ood!), Int64, Function}"
+            "signature": "(step::Int64, action!::Function)"
         },
         {
             "name": "set_avoid_staging_areas!",
-            "signature": "Tuple{typeof(set_avoid_staging_areas!), Any}"
+            "signature": "(val)"
         },
         {
             "name": "set_battery_courier!",
-            "signature": "Tuple{typeof(set_battery_courier!)}"
+            "signature": "(; enabled, speed, arrive_r, halt_build)"
         },
         {
             "name": "set_cargo_ban!",
-            "signature": "Tuple{typeof(set_cargo_ban!), ConstructionBots.AbstractID, Integer}"
+            "signature": "(agent::ConstructionBots.AbstractID, n::Integer)"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.CustomNode, Vararg{Any}}"
+            "signature": "(g::ConstructionBots.GeomNode, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.GeomNode, Vararg{Any}}"
+            "signature": "(n::ConstructionBots.CustomNode, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.SceneNode, Vararg{Any}}"
+            "signature": "(n::ConstructionBots.SceneNode, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), ConstructionBots.TransformNode, Any, Vararg{Any}}"
+            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, Any, Vararg{Any}}"
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, n::ConstructionBots.TransformNode, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "Tuple{typeof(set_desired_global_transform!), Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, ConstructionBots.TransformNode, Vararg{Any}}"
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, v, args::Vararg{Any})"
         },
         {
             "name": "set_desired_global_transform_without_affecting_children!",
-            "signature": "Tuple{typeof(set_desired_global_transform_without_affecting_children!), ConstructionBots.TransformNode, Any, Vararg{Any}}"
+            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"
         },
         {
             "name": "set_hot_swap!",
-            "signature": "Tuple{typeof(set_hot_swap!)}"
+            "signature": "(; enabled, mode)"
         },
         {
             "name": "set_identity_check!",
-            "signature": "Tuple{typeof(set_identity_check!)}"
+            "signature": "(; enabled, every, strict)"
         },
         {
             "name": "set_novelty_detector!",
-            "signature": "Tuple{typeof(set_novelty_detector!), Any}"
+            "signature": "(d)"
         },
         {
             "name": "set_scene_tree_to_initial_condition!",
-            "signature": "Tuple{typeof(set_scene_tree_to_initial_condition!), Any, Any}"
+            "signature": "(scene_tree, sched; remove_all_edges)"
         },
         {
             "name": "set_sim_step!",
-            "signature": "Tuple{typeof(set_sim_step!), Integer}"
+            "signature": "(k::Integer)"
         },
         {
             "name": "set_spare_depot_distance!",
-            "signature": "Tuple{typeof(set_spare_depot_distance!), Real}"
+            "signature": "(d::Real)"
         },
         {
             "name": "set_spare_pool_margin!",
-            "signature": "Tuple{typeof(set_spare_pool_margin!), Real}"
+            "signature": "(factor::Real)"
         },
         {
             "name": "set_unwedge_interval!",
-            "signature": "Tuple{typeof(set_unwedge_interval!), Integer}"
+            "signature": "(n::Integer)"
         },
         {
             "name": "set_use_rvo!",
-            "signature": "Tuple{typeof(set_use_rvo!), Any}"
+            "signature": "(val)"
         },
         {
             "name": "spare_depot_distance",
-            "signature": "Tuple{typeof(spare_depot_distance)}"
+            "signature": "()"
         },
         {
             "name": "spare_pool_centers",
-            "signature": "Tuple{typeof(spare_pool_centers)}"
+            "signature": "()"
         },
         {
             "name": "spare_pools",
-            "signature": "Tuple{typeof(spare_pools)}"
+            "signature": "()"
         },
         {
             "name": "spare_slots",
-            "signature": "Tuple{typeof(spare_slots)}"
+            "signature": "()"
         },
         {
             "name": "start_config",
-            "signature": "Tuple{typeof(start_config), Any}"
+            "signature": "(n)"
         },
         {
             "name": "start_config",
-            "signature": "Tuple{typeof(start_config), ConstructionBots.CustomNode}"
+            "signature": "(n::ConstructionBots.CustomNode)"
         },
         {
             "name": "start_config",
-            "signature": "Tuple{typeof(start_config), ConstructionBots.ScheduleNode}"
+            "signature": "(n::ConstructionBots.ScheduleNode)"
         },
         {
             "name": "start_config",
-            "signature": "Tuple{typeof(start_config), EntityConfigPredicate}"
+            "signature": "(n::EntityConfigPredicate)"
         },
         {
             "name": "start_config",
-            "signature": "Tuple{typeof(start_config), Union{DepositCargo, FormTransportUnit}}"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
         },
         {
             "name": "station_keeping_goal",
-            "signature": "Tuple{typeof(station_keeping_goal), Any}"
+            "signature": "(rid)"
         },
         {
             "name": "step_environment!",
-            "signature": "Tuple{typeof(step_environment!), PlannerEnv, Any}"
+            "signature": "(env::PlannerEnv)"
         },
         {
             "name": "step_environment!",
-            "signature": "Tuple{typeof(step_environment!), PlannerEnv}"
+            "signature": "(env::PlannerEnv, sim)"
         },
         {
             "name": "swap_battery!",
-            "signature": "Tuple{typeof(swap_battery!), Any, ConstructionBots.AbstractID}"
+            "signature": "(env, role::ConstructionBots.AbstractID; verbose)"
         },
         {
             "name": "swap_event_kind",
-            "signature": "Tuple{typeof(swap_event_kind)}"
+            "signature": "(; cause, captured)"
         },
         {
             "name": "translate_whole_build!",
-            "signature": "Tuple{typeof(translate_whole_build!), Any}"
+            "signature": "(env; zone_keys, resume, verbose)"
         },
         {
             "name": "update_parent_build_status!",
-            "signature": "Tuple{typeof(update_parent_build_status!), PlannerEnv, Any}"
+            "signature": "(env::PlannerEnv, node)"
         },
         {
             "name": "update_planning_cache!",
-            "signature": "Tuple{typeof(update_planning_cache!), Any, ConstructionBots.OperatingSchedule, ConstructionBots.PlanningCache, Int64, Any}"
+            "signature": "(env::PlannerEnv, time_stamp::Float64)"
         },
         {
             "name": "update_planning_cache!",
-            "signature": "Tuple{typeof(update_planning_cache!), Any, ConstructionBots.OperatingSchedule, ConstructionBots.PlanningCache, Int64}"
+            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64)"
         },
         {
             "name": "update_planning_cache!",
-            "signature": "Tuple{typeof(update_planning_cache!), PlannerEnv, Float64}"
+            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64, t)"
         },
         {
             "name": "use_rvo",
-            "signature": "Tuple{typeof(use_rvo)}"
+            "signature": "()"
         },
         {
             "name": "validate_schedule_transform_tree",
-            "signature": "Tuple{typeof(validate_schedule_transform_tree), Any}"
+            "signature": "(sched; post_staging)"
         },
         {
             "name": "verify",
-            "signature": "Tuple{typeof(verify), RespecProposal, Any, ConstructionBots.InvariantSpec}"
+            "signature": "(proposal::RespecProposal, env, invariant::ConstructionBots.InvariantSpec; optimizer, warm_start)"
         },
         {
             "name": "verify_swap_battery",
-            "signature": "Tuple{typeof(verify_swap_battery), RespecProposal, Any}"
+            "signature": "(proposal::RespecProposal, env)"
         },
         {
             "name": "vote_disagreement",
-            "signature": "Tuple{typeof(vote_disagreement), AbstractVector}"
+            "signature": "(member_values::AbstractVector)"
         },
         {
             "name": "warn_depot_clearance",
-            "signature": "Tuple{typeof(warn_depot_clearance), Any}"
+            "signature": "(env)"
         },
         {
             "name": "zone_blockage",
-            "signature": "Tuple{typeof(zone_blockage), Any}"
+            "signature": "(env; zone_keys, cell, check_paths, margin)"
         },
         {
             "name": "zone_blocked_assemblies",
-            "signature": "Tuple{typeof(zone_blocked_assemblies), Any}"
+            "signature": "(env; zone_keys, margin)"
         },
         {
             "name": "zone_clearance",
-            "signature": "Tuple{typeof(zone_clearance), Any}"
+            "signature": "(env)"
         },
         {
             "name": "zone_clears_root_goals",
-            "signature": "Tuple{typeof(zone_clears_root_goals), Any, Any, Any}"
+            "signature": "(center, r, env; margin)"
         },
         {
             "name": "zone_diagnoses",
-            "signature": "Tuple{typeof(zone_diagnoses), Any}"
+            "signature": "(env; check_restage, check_teams)"
         },
         {
             "name": "zone_diagnosis",
-            "signature": "Tuple{typeof(zone_diagnosis), Any, Symbol}"
+            "signature": "(env, zone::Symbol; margin, check_restage, check_teams, check_blockage, check_paths)"
         },
         {
             "name": "zone_relocatable",
-            "signature": "Tuple{typeof(zone_relocatable), Any, Any, Any}"
+            "signature": "(center, r, env; margin, n_angles)"
         },
         {
             "name": "zone_safety_report",
-            "signature": "Tuple{typeof(zone_safety_report), Any}"
+            "signature": "(env)"
         },
         {
             "name": "zone_team_coverage",
-            "signature": "Tuple{typeof(zone_team_coverage), Any, Any, Real}"
+            "signature": "(env, center, radius::Real; margin)"
         }
     ],
     "types": [

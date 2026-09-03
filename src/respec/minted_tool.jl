@@ -30,18 +30,29 @@
 unenactable_why)`.
 
 🔴 `enactable` 은 "이 원시를 `bind_primitive_args` 가 만드는 인자로 **실제로 부를 수
-있는가**"다(연언지 셋은 `_enactability` 를 보라). 오늘 레지스트리 19 중 **8** 만 참이다(2026-09-01 실측).
+있는가**"다(연언지 셋은 `_enactability` 를 보라).
 집행부는 이것이 거짓인 원시를 **부르기 전에** 거절한다 — 부르면 `MethodError` 가 나고
 `try` 가 그것을 "집행됐다"로 보고해서 거짓 admit 이 된다.
+
+⚠️ **"19 중 8" 은 이제 이 자리의 사실이 아니다**(2026-09-03 정정). 그 비율은 삭제된 고정
+레지스트리(`core/primitive_registry.json`, 설계 §7)에 대한 2026-09-01 실측이었다. 오늘 표는
+런에서 생성되고 크기는 그 런이 주조한 만큼이다. 그리고 규약 1(`f(env; kw…)`)이 arity·kwargs
+연언지를 **구성상** 통과시키므로 생성 원시는 원리상 전부 `enactable` 이다 —
+`test/minted_registration.jl` testset (5) 가 그 한 줄을 잰다.
 """
 function resolve_primitive(name::AbstractString)
     tbl = minted_table()
     haskey(tbl, String(name)) || return nothing
     p = tbl[String(name)]
     sym = Symbol(String(p["impl"]))
+    # 🔴 2026-09-03 정정: 예전 문구는 `test/primitive_registry_resolves.jl` 이 이걸 잡는다고
+    #    적었는데 그 파일은 이 브랜치에서 **삭제됐다**(설계 §7). 그리고 이 자리는 생성 행에서는
+    #    도달 불가다 — `register_minted_primitive!` 가 `Core.eval` **성공 뒤에만** 행을 쓴다.
+    #    여기 오는 것은 표에 **손으로 씨 뿌린** 행(시험·프로브)이 CB 에 없는 impl 을 가리킬
+    #    때뿐이고, 그 행을 쓴 코드가 고칠 일이다.
     isdefined(@__MODULE__, sym) || error(
-        "레지스트리가 이름 짓는 impl 이 CB 에 없다: $(p["impl"]) (원시 $(name)). " *
-        "test/primitive_registry_resolves.jl 이 이걸 잡았어야 한다.")
+        "표의 행이 이름 짓는 impl 이 CB 에 없다: $(p["impl"]) (원시 $(name)). " *
+        "생성 행은 eval 성공 뒤에만 쓰이므로, 이 행은 손으로 씨 뿌린 것이다.")
     f = getfield(@__MODULE__, sym)
     f isa Function || error("$(p["impl"]) 이 callable 이 아니다 (원시 $(name))")
     harness = String[String(a) for a in get(p, "harness_args", [])]
@@ -131,9 +142,16 @@ end
     SILENT_SUCCESS_STATUSES
 
 원시가 **성공 계열 값을 돌려주면서 그 tool 이 노린 적응은 일으키지 않은** 경우들.
-`applied` 판정이 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시 여덟 전부**여야 한다 —
-게이트 (11) 이 `keys(SILENT_SUCCESS_STATUSES) == ENACTABLE_TODAY` 를 못 박으므로,
-어휘에 집행 가능한 원시가 하나 늘면 이 표를 채우기 전까지 빨갛다.
+`applied` 판정이 **손으로 적은 어휘에 대해** 이 표 하나만 본다. 🔴 키는 **집행 가능한 원시
+여덟 전부**여야 한다 — 게이트 (11) 이 `keys(SILENT_SUCCESS_STATUSES) == ENACTABLE_TODAY` 를
+못 박으므로, 어휘에 집행 가능한 원시가 하나 늘면 이 표를 채우기 전까지 빨갛다.
+
+🔴 **이 못박음은 정적이다 — 런타임에 주조된 이름은 볼 수 없다**(2026-09-03 최종 리뷰 C1).
+`ENACTABLE_TODAY` 는 `test/minted_tool_enacts.jl` 이 손으로 적은 여덟 짜리 리터럴이고,
+`Core.eval` 로 이 프로세스에 심긴 이름은 그 게이트가 도는 시점에 존재하지도 않는다.
+그러므로 "어휘가 늘면 게이트가 먼저 빨개진다" 는 **손으로 늘린 어휘에 대해서만** 참이다.
+생성 어휘에 대해서는 이 표가 통째로 미스이고, 그 미스를 기본값으로 접지 않도록
+`_step_applied`/`_step_touched_world` 가 `"generated"` 행을 **따로** 처리한다.
 
 🔴 이 표가 없거나 비면 조용한 폴백이 된다. 처음 이 표를 둘만 채웠을 때(2026-08-30 리뷰가
 잡음) **집행 가능한 여섯 중 넷**이 아무 일도 안 하고 `applied = true` 를 냈다 — 그중
@@ -258,18 +276,67 @@ const EDGELIST_RETURN_PRIMITIVES = Set{String}(["release_pending_assignments"])
 const UNMEASURABLE_STATUSES = Set{Symbol}([:unreadable_return])
 
 """
-    _step_applied(prim_name, status) -> Bool
+    _is_generated(prim_name) -> Bool
 
-한 단계에서 **노린 적응이 일어났는가**. 판정 순서는 셋이다:
- 1. `UNMEASURABLE_STATUSES` — 못 쟀다 → **거짓**(모르는 것을 성공으로 세지 않는다).
- 2. `SILENT_SUCCESS_STATUSES` — 조용한 성공 → 거짓.
- 3. 그 외 → 참(보수적). ⚠️ 집행 가능한 원시 여덟은 게이트 (11) 이 (2)의 표에 전부 있음을
-    강제하므로, 이 기본값은 그 여덟에 대해서는 **도달할 수 없는 자리**다. 미래에 어휘가
-    늘면 표가 비어 있는 동안 게이트가 먼저 빨개진다.
+이 이름의 표 행이 **생성 코드에서 왔는가**(= `register_minted_primitive!` 가
+`Core.eval` 로 심었는가). `minted_registration.jl` 이 행에 `"generated" => true` 를 쓰고,
+이 술어가 그것을 읽는다.
+
+🔴 **판별자가 "`minted_table()` 에 있는가" 가 아닌 이유** (2026-09-03 최종 리뷰 C1).
+오늘은 **모든** 원시가 그 표를 지난다 — 알려진 여덟도 시험·프로브가 손으로 행을 씨 뿌려
+넣는다. 표 멤버십으로 가르면 그 여덟까지 "못 잰다" 로 무너진다. 구별되는 사실은 오직
+"`Core.eval` 로 주조됐는가" 이고 그것을 아는 곳은 등록 함수 하나뿐이다.
+"""
+_is_generated(prim_name::AbstractString) =
+    get(get(minted_table(), String(prim_name), Dict{String,Any}()), "generated", false) === true
+
+"""
+    _step_applied(prim_name, status) -> Union{Bool,Nothing}
+
+한 단계에서 **노린 적응이 일어났는가**. 🔴 **삼상이다**(2026-09-03 최종 리뷰 C1):
+`true` = 일어났다 · `false` = 안 일어났다(쟀다) · `nothing` = **못 쟀다**.
+판정 순서는 셋이다:
+
+ 1. 🔴 **생성 원시면 `nothing`.** 이 원시의 status 가 "조용한 성공" 인지 "노린 적응" 인지
+    말해 주는 표가 **없다** — 아래 `SILENT_SUCCESS_STATUSES` 는 고정 어휘 19가 있던 시절에
+    손으로 적혔고, 그 키에 런타임 이름이 있을 수 없다. 모르는 것을 성공으로도 실패로도
+    적지 않는다.
+ 2. `UNMEASURABLE_STATUSES` — 반환 모양을 못 읽었다 → **거짓**. (이쪽은 손으로 적은 어휘
+    전용이다. 그 여덟에 대해서는 status 어휘를 알기 때문에 "읽을 수 있었어야 하는데 못
+    읽었다" 가 곧 "노린 적응은 확인되지 않았다" 이고, 게이트 셋이 그 값을 못 박는다.)
+ 3. `SILENT_SUCCESS_STATUSES` — 조용한 성공 → 거짓. 그 밖 → 참.
+
+🔴 **왜 (1) 이 필요했나 — 실측(2026-09-03).** `_step_applied("touch_nothing!", :did_nothing)`
+이 `true` 였다. `:did_nothing` 은 원시 자신이 "아무것도 안 했다" 고 적은 status 인데,
+이름이 세 표 어디에도 없어 미스 기본값(3)으로 떨어졌기 때문이다. 그 기본값은 "집행 가능한
+여덟" 을 전제로 쓰였고 그 전제는 이 브랜치가 없앴다 — 즉 **집행된 모든 생성 body 가
+`applied=true`** 였고, Task 11 의 성공률은 구조적으로 100% 가 될 참이었다.
+
+🔴 **`nothing` 을 내보내도 되는지 소비자를 먼저 봤다**(삼상 규약). `applied` 는 하류에서
+찍히고(`tools/monitor/enact.jl` 의 `[minted]` 줄) 그대로 전달될 뿐, **불리언 문맥에 안
+들어간다** — 들어가는 것은 `world_maybe_dirty` 이고(그 함수 `minted_handled`), 그래서
+아래 `_step_touched_world` 는 삼상이 **아니다**. 프로브 둘(`probe_minted_body_enacts.jl` ·
+`probe_cargo_ban_end_to_end.jl`)의 `_void_kind` 만 삼항으로 읽고 있었고, 같은 커밋에서
+`:unmeasured` 갈래를 더했다.
+
+⚠️ **`nothing` 에서 값으로 올라가는 길**: 등록 행이 자기 status 어휘를 **선언**하면 된다
+(agent-3 의 계약에 그 필드를 더하는 일 = Task 8~9). 오늘의 계약(설계 §5)에는 없으므로
+오늘의 정직한 답이 `nothing` 이다.
 """
 _step_applied(prim_name::AbstractString, status::Symbol) =
-    status in UNMEASURABLE_STATUSES ? false :
+    _is_generated(prim_name)           ? nothing :
+    status in UNMEASURABLE_STATUSES    ? false :
     !(status in get(SILENT_SUCCESS_STATUSES, String(prim_name), Set{Symbol}()))
+
+"""
+    _merge_applied(acc, one) -> Union{Bool,Nothing}
+
+`applied` 는 단계들에 대한 **선언**(하나라도 적응했으면 참)이다. 삼상에서의 선언은
+Kleene 이다: 참이 하나라도 있으면 참, 없고 미상이 있으면 미상, 그 밖이면 거짓.
+🔴 `|=` 로 접으면 `nothing` 이 곧바로 `MethodError` 다 — 그래서 이름 붙은 함수 하나가 소유한다.
+"""
+_merge_applied(acc, one) = (acc === true || one === true) ? true :
+                           (acc === nothing || one === nothing) ? nothing : false
 
 """
     WORLD_UNCHANGED_STATUSES
@@ -284,7 +351,7 @@ _step_applied(prim_name::AbstractString, status::Symbol) =
 이지 세계 상태가 아니다 — 씬 노드도, 스케줄 그래프도, 캐시도 아니다(`clear_carrier_progress!`
 가 언제든 통째로 비울 수 있는 것이 그 증거다). 이 표가 재는 것은 **폴백이 그 위에 쌓여도
 되는가**이고, 그 질문에 대해 진행 메모는 무관하다. 🔴 키는 **집행 가능한 원시 여덟 전부**여야 한다(게이트가 `keys(...) ==
-ENACTABLE_TODAY` 를 못 박는다).
+ENACTABLE_TODAY` 를 못 박는다 — 단 그 못박음은 정적이다, `SILENT_SUCCESS_STATUSES` 의 같은 문단).
 
 🔴 **왜 `SILENT_SUCCESS_STATUSES` 와 별개의 표인가** (2026-08-30 T4 리뷰).
 한 status 가 동시에 "노린 적응은 안 일어났다"이고 "그런데 세계는 이미 건드렸다"일 수 있다.
@@ -379,13 +446,29 @@ const WORLD_UNCHANGED_STATUSES = Dict{String,Set{Symbol}}(
 
 한 단계가 **세계에 손을 댔을 수 있는가**. `_step_applied` 와 판정 순서가 **일부러 다르다**:
 
- 1. `UNMEASURABLE_STATUSES` — 못 쟀다 → 🔴 **참**(보수적). `_step_applied` 는 같은 자리에서
+ 1. 🔴 **생성 원시면 참** (2026-09-03 최종 리뷰 C1, 명시 갈래). 미스 기본값으로 떨어져서가
+    아니라 **잰 값이다**: 임의의 생성 코드가 라이브 `env` 를 위치인자로 받아 끝까지 돌았다.
+    이 필드가 묻는 것은 "세계가 변했나" 가 아니라 "손을 댔을 **수** 있는가" 이고, 그 가능성
+    질문의 답은 참이다.
+    🔴 **여기는 `nothing` 이 아니다** — `_step_applied` 와 다른 이유가 둘이다.
+      (a) 위 문단대로 이 질문에 대해서는 실제로 **잰 것이 있다**(못 잰 것은 "노린 적응이
+          일어났는가" 쪽이다).
+      (b) 소비자가 Bool 을 요구한다. `world_maybe_dirty` 는 `tools/monitor/enact.jl` 의
+          `minted_handled`(정본, 식을 여기 베끼지 않는다)에서 `&&` 의 항으로 들어가므로
+          `nothing` 이 가면 그 함수가 `TypeError` 로 죽고, 집행 결과가 기록 대신 예외가 된다 —
+          이 파일 전체가 막는 실패 모양이다.
+    ⚠️ 대가는 정직하다: 아무것도 안 한 생성 body 도 `world_maybe_dirty=true` → `handled=true`
+       라서 기본 복구 사슬을 건너뛴다. 그것이 이 필드의 계약이다(더러워졌을 수 있는 세계 위에
+       폴백을 쌓는 것이 더 나쁘다). "정말로 적응했나" 를 재는 필드는 `applied` 이고, 그 필드가
+       이제 `nothing` 으로 **모른다고 말한다** — 성공률을 그 위에서 세면 100% 가 안 나온다.
+ 2. `UNMEASURABLE_STATUSES` — 못 쟀다 → 🔴 **참**(보수적). `_step_applied` 는 같은 자리에서
     거짓을 낸다. 비대칭이 옳다: 반환 모양을 못 읽었다는 것은 "적응했다고 셀 수 없다"인
     동시에 "세계가 깨끗하다고 말할 수도 없다"이다. 두 질문의 안전한 답이 반대편이다.
- 2. `WORLD_UNCHANGED_STATUSES` 에 있으면 거짓.
- 3. 그 외 → 참(보수적).
+ 3. `WORLD_UNCHANGED_STATUSES` 에 있으면 거짓.
+ 4. 그 외 → 참(보수적).
 """
 _step_touched_world(prim_name::AbstractString, status::Symbol) =
+    _is_generated(prim_name)        ? true :
     status in UNMEASURABLE_STATUSES ? true :
     !(status in get(WORLD_UNCHANGED_STATUSES, String(prim_name), Set{Symbol}()))
 
@@ -393,7 +476,10 @@ _step_touched_world(prim_name::AbstractString, status::Symbol) =
     PRIMITIVE_RESUMES_CACHE
 
 원시가 세계를 고친 뒤 **스스로 `reset_cache_resume!` 를 부르는가**. 🔴 키는 집행 가능한
-원시 여덟 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다).
+원시 여덟 전부여야 한다(게이트가 `keys(...) == ENACTABLE_TODAY` 를 못 박는다 — 정적 못박음이다,
+`SILENT_SUCCESS_STATUSES` 의 같은 문단). 생성 원시는 여기서도 미스이고, 그 미스 기본값은
+`_needs_cache_resume` 의 문단이 적은 대로 **`true`(스스로 재개 안 함)** 라서 보수적인 쪽이다 —
+`applied` 의 미스 기본값과 달리 이쪽은 고칠 것이 없다.
 
 🔴 **왜 이 표가 필요한가** (2026-08-30 T4 리뷰, CRITICAL).
 `enact_minted!` 은 `r.prim.impl(env)` 를 부른다(2026-09-03 부터 world age 때문에
@@ -780,10 +866,21 @@ end
 """
     _step_status(prim_name, out) -> Symbol
 
-호출 결과에서 status 를 읽는다. 세 갈래다:
- 1. `status` 필드가 있으면 그것.
- 2. `COUNT_RETURN_PRIMITIVES` 이고 `Integer` 면 개수로 읽어 `:moved`/`:moved_none`.
- 3. 그 밖 = **모양을 못 읽었다** → `:unreadable_return`(= `applied` 거짓, "못 쟀다").
+호출 결과에서 status 를 읽는다. 네 갈래다:
+ 1. 🔴 **맨 `Symbol` 이면 그것이 status 다** (2026-09-03 최종 리뷰 C2).
+ 2. `status` 필드가 있으면 그것.
+ 3. `COUNT_RETURN_PRIMITIVES` 이고 `Integer` 면 개수로 읽어 `:moved`/`:moved_none`.
+ 4. 그 밖 = **모양을 못 읽었다** → `:unreadable_return`(= `applied` 거짓, "못 쟀다").
+
+🔴 **왜 (1) 을 더했나.** 프롬프트가 모델에게 약속하는 반환 모양은 **둘**이다 —
+`src/respec/llm_service/world_interface.py` 의 `_RULES` 3: *"Return a value the harness can
+read a status from: either a Symbol, or a NamedTuple with a `status::Symbol` field."*
+하네스는 뒤엣것만 읽었다. 실측(2026-09-03): 맨 `:did_the_thing` 을 돌려주는 생성 원시가
+`status=:unreadable_return` 으로 떨어졌다 — 즉 **합법이라고 가르친 모양의 절반이 영구히
+"못 쟀다"** 였다. 판정은 **하네스를 넓히는 쪽**이다(프롬프트를 좁히지 않는다): 맨 Symbol 은
+완벽히 읽을 수 있는 status 이고, 이 방향은 잃는 것이 없다.
+⚠️ 갈래 순서는 뜻이 없다(`Symbol` 에는 `:status` 프로퍼티가 없다) — 읽는 사람을 위해
+약속된 두 모양을 맨 앞에 나란히 둔다.
 
 🔴 필드 접근을 `hasproperty` 로 감싼다 — `restage_all_blocked!` 는 `:none` 일 때만
 4-필드가 아니라 **3-필드**를 돌려준다(residual 없음).
@@ -799,6 +896,7 @@ end
 """
 function _step_status(prim_name, out)
     try
+        out isa Symbol && return out          # 🔴 C2 — 프롬프트가 약속한 두 모양 중 하나
         hasproperty(out, :status) && return Symbol(getproperty(out, :status))
         if String(prim_name) in COUNT_RETURN_PRIMITIVES && out isa Integer
             return out > 0 ? :moved : :moved_none
@@ -825,6 +923,11 @@ function _step_detail(out, prim_name = "")
         if String(prim_name) in EDGELIST_RETURN_PRIMITIVES && out isa AbstractVector
             return "released=$(length(out))"
         end
+        # 🔴 C2(2026-09-03): 맨 Symbol 은 **읽을 수 있는 모양**이다 — "unreadable" 이라고
+        #    적으면 `_step_status` 가 이미 읽어낸 것과 한 줄 안에서 두 말이 어긋난다(바로 위
+        #    EDGELIST 갈래와 같은 논거). 상세 필드는 없으므로 `(status = :x,)` 짜리
+        #    NamedTuple 이 내는 것과 **같은 빈 문자열**을 낸다 — 정보량이 실제로 같다.
+        out isa Symbol && return ""
         hasproperty(out, :status) ||
             return "unreadable return shape ::$(typeof(out))=$(_brief_val(out))"
         return join([string(f, "=", _brief_val(getproperty(out, f)))
@@ -871,7 +974,7 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 | 필드 | 뜻 |
 |---|---|
-| `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다** |
+| `applied` | **노린 적응이 일어났다** — 불린 단계 중 하나라도 `SILENT_SUCCESS_STATUSES` 에도 `UNMEASURABLE_STATUSES` 에도 없는 status 를 냈다. "세계의 바이트가 변했나"가 **아니다**. 🔴 **삼상이다**(2026-09-03 C1): 생성 원시는 status 어휘를 아는 표가 없어 `nothing`(못 쟀다)이 된다 — `false`(쟀는데 없었다)와 **다른 사건**이고, 성공률을 셀 때 분자에도 분모에도 넣으면 안 된다 |
 | `partial` | 어떤 단계가 **던졌다** — 세계는 절반만 고쳐졌을 수 있고 되돌릴 방법이 없다 |
 | `world_maybe_dirty` | `touched`(`_step_touched_world`) 또는 `partial` — "세계에 손을 댔을 수 있는가". 다음 태스크가 **이미 더러워진 세계 위에 폴백을 쌓아도 되나**를 이 필드로 정한다. ⚠️ `applied` 가 **아니다**: `translate_whole_build!` 의 `:residual_blocked` 는 `applied=false` 인데 빌드를 이미 옮겼다(2026-08-30 T4 리뷰) |
 | `resume` | 스케줄 캐시 재개 판정 다섯 상태: `:issued` · `:failed` · `:not_needed_self` · `:not_needed_untouched` · `:none`(아무것도 안 불렀다). 🔴 여덟 중 다섯이 스스로 재개하지 않아 여기서 대신 부른다 — 안 부르면 세계는 고쳐졌는데 프론티어가 낡아 **성공과 구별되지 않는 미복구**가 된다 |
@@ -1017,7 +1120,9 @@ function enact_minted!(env, truth, synth)
 
     # ---- (7) 집행 단계 ---------------------------------------------------------------------
     steps = NamedTuple[]
-    applied = false
+    # 🔴 삼상이다(2026-09-03 C1). 한 단계도 안 굴린 채 나가는 자리에서는 `false` 가 맞다
+    #    (부르지 않았으니 적응도 없었다 — 쟀다). `nothing` 은 **불렀는데 못 쟀다** 뿐이다.
+    applied::Union{Bool,Nothing} = false
     touched = false        # 세계에 손을 댔을 수 있는가 (`applied` 와 다른 질문)
     need_resume = false    # 스스로 재개하지 않는 원시가 세계를 건드렸는가
     for (ri, r) in enumerate(resolved)
@@ -1058,7 +1163,8 @@ function enact_minted!(env, truth, synth)
                       steps = steps, applied = applied, partial = true,
                       touched = touched, resume = rs_t, resolve = rv_t)
         end
-        applied |= _step_applied(r.prim.name, st)
+        # 🔴 `|=` 가 아니라 Kleene 선언이다 — `nothing` 이 오면 `|=` 는 MethodError 다.
+        applied = _merge_applied(applied, _step_applied(r.prim.name, st))
         touched |= _step_touched_world(r.prim.name, st)
         need_resume |= _needs_cache_resume(r.prim.name, st)
         push!(steps, (name = r.prim.name, status = st, detail = dt))
@@ -1074,9 +1180,14 @@ function enact_minted!(env, truth, synth)
     #    않는 미복구. 자세한 근거는 `PRIMITIVE_RESUMES_CACHE` 의 docstring 에 있다.
     resume_tag, resume_detail = need_resume ? _issue_resume!(env) :
         (touched ? (:not_needed_self, "") : (:not_needed_untouched, ""))
-    quiet = applied ? "" :
-        " — 🔴 불렸지만 어느 단계도 세계를 적응시키지 않았다(status: " *
-        join(String.(string.([s.status for s in steps])), ",") * ")"
+    # 🔴 삼상을 삼상으로 찍는다(2026-09-03 C1). "적응 안 했다" 와 "적응했는지 못 쟀다" 를
+    #    한 문장으로 접으면, 생성 어휘 전체가 전자로 보이거나 후자로 보인다.
+    local status_list = join(String.(string.([s.status for s in steps])), ",")
+    quiet = applied === true ? "" :
+            applied === false ?
+        " — 🔴 불렸지만 어느 단계도 세계를 적응시키지 않았다(status: " * status_list * ")" :
+        " — 🔴 적응이 일어났는지 **못 쟀다**: 생성 원시의 status 어휘가 선언돼 있지 않다" *
+        "(status: " * status_list * ")"
     # ---- (9) 공통 MILP 재풀이 — 프롬프트의 약속을 참으로 만든다 (판정 1, 2026-09-02) --------
     # 🔴 재개 **뒤에** 부른다. 재개의 다섯 상태는 이미 게이트가 걸린 계약이고, 그 판정을
     #    재풀이가 밀어내면 안 된다. 재풀이 자신의 `commit_respec!(…; resume=true)` 는 그 위에서

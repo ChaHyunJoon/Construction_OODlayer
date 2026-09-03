@@ -1384,8 +1384,10 @@ const TOOL_LANE_KEYS = ("tool_called", "tool_args", "tool_calls_n", "tools_offer
     SYNTH_LANE_KEYS
 
 DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 싣는 키 전부
-(`src/respec/llm_service/dspy_service.py` 의 `maybe_synthesize` 반환 dict, 그리고 `macro()` 의
-최상위 `tool_minted`).
+(`src/respec/llm_service/synthesize.py` 의 `run_synthesis` → `synthesize_multi` 반환 dict,
+그리고 `macro()` 의 최상위 `tool_minted`).
+🔴 2026-09-03 정정: 예전 문구는 `maybe_synthesize` 를 가리켰는데 그 함수는 D8 로 **삭제됐다**
+(`test_no_inventory.py` 가 부재를 지킨다). 입구는 `run_synthesis` 하나이고 **분기가 없다**.
 
 🔴 **아홉이다, 여덟이 아니다** (2026-08-30 정정, T1). 애초 계획서에는 `params` 가 빠져 있었다 —
 그 값이 없으면 T3/T4 의 인터프리터가 신설 도구의 원시연산에 넘길 키워드 인자를 못 받아,
@@ -1395,21 +1397,30 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 🔴 **열이다** (2026-09-03, B1). `params` 는 실제로는 **값이 아니라 JSON 스키마**로 도착한다
 (`{"agent": {"type": "string"}}`) — 그리고 도구 하나에 dict 하나라서 body 가 원시 둘 이상이면
 어느 인자가 어느 원시의 것인지도 안 적힌다. `calls` 는 agent-3 이 body 와 **같은 순서로** 내는
-`[{"primitive": ..., "args": {...}}]` 이고, 원시마다 자기 인자를 값으로 들고 온다. `params` 는
-그대로 둔다 — 단일 agent 레인에는 `calls` 필드가 아예 없고(비교군), 그 레인은 이 키로 계속
-도착한다.
+`[{"primitive": ..., "args": {...}}]` 이고, 원시마다 자기 인자를 값으로 들고 온다.
+🔴 2026-09-03 정정: `params` 를 남기는 근거가 예전엔 "단일 agent 레인이 이 키로 계속 도착한다"
+였는데 **그 레인은 D8 로 삭제됐다**. 오늘의 근거는 둘이고 둘 다 현행 코드다 —
+(a) `params` 는 등록 행의 **타입 스키마**다(`register_minted_primitive!(params=…)` →
+    `bind_primitive_args` 의 `_param_type_reject` 가 그것을 읽는다). `calls` 는 값이지 스키마가
+    아니므로 이 역할을 대신 못 한다.
+(b) `calls` 가 `nothing` 인 판(이 필드를 아직 안 싣는 서비스 세대)에서 `enact_minted!` 이
+    `params` 로 폴백하고 그 사실을 `args_from = :params` 로 기록한다.
 
 🔴 `TOOL_LANE_KEYS` 와 **별개의 튜플이다.** 섞으면 `test/tool_lane_keys_survive.jl` (6)절이
 정당하게 빨개진다 — 그 게이트는 파이썬 표식 **아래** 집합만 본다.
 
-🔴 값의 출처가 둘이다. `tool_minted` 는 응답 최상위(`macro()` 의 반환 dict), 나머지 여덟은
-`response["synthesis"]` 안이다. 한 벌로 뭉개면 "합성 레인이 안 돌았다"(dict 자체가 없다)와
+🔴 값의 출처가 둘이다. `tool_minted` 는 응답 최상위(`macro()` 의 반환 dict), 나머지 **아홉**은
+`response["synthesis"]` 안이다(2026-09-03 정정: `calls` 가 들어오면서 여덟이 아홉이 됐다). 한 벌로 뭉개면 "합성 레인이 안 돌았다"(dict 자체가 없다)와
 "돌았는데 값이 없다"(dict 안이 nothing)가 구분 불가능해진다.
 
-🔴 이 아홉이 **항상 함께 도착하는 것이 아니다.** `maybe_synthesize` 의 다섯 탈출 경로 중
-"minted"(성공) 경로만 상세 여덟(`params` 포함)을 다 채운다 — 나머지 네 경로는 `synthesis_event`·
-`synthesis_ran`·`synthesis_error` 정도만 채우고 나머지는 `nothing` 일 수 있다. 그 부재는 여기서도
-"못 쟀다"(spec §9-2)로 그대로 nothing 이 된다 — 흔한 실행 경로이지 예외가 아니다.
+🔴 이 열이 **항상 함께 도착하는 것이 아니다.** `synthesize_multi` 의 탈출 경로는
+**일곱**이다(2026-09-03 재실측 — 예전 문구의 "다섯" 은 삭제된 `maybe_synthesize` 의 숫자였다).
+이른 반환 여섯 — (1) 플래그 꺼짐(`tool_minted="disabled"`) · (2) observe 실패 ·
+(3) design 실패 · (4) redesign 실패 · (5) `expressible is not False`(발화 사건이 아니다) ·
+(6) compose 실패 — 과 정상 종료 하나(`_finish_record`)다. 상세를 다 채우는 것은 마지막
+하나뿐이고, 나머지 여섯은 `synthesis_event`·`synthesis_ran`·`synthesis_error` 정도만 채운 채
+나머지를 `nothing` 으로 남긴다. 그 부재는 여기서도 "못 쟀다"(spec §9-2)로 그대로 nothing 이
+된다 — 흔한 실행 경로이지 예외가 아니다.
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
                          "tool_name", "body_names", "reach", "missing_primitive", "params",

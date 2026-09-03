@@ -80,6 +80,7 @@ end
 |---|---|---|
 | `:nostep` | `VOID_NOSTEP` | 아무 단계도 안 불렸다 — 나머지 숫자를 인용하지 마라 |
 | `:unapplied` | `VOID_UNAPPLIED` | 단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 하나도 없다 |
+| `:unmeasured` | `VOID_UNMEASURED` | 단계는 불렸는데 `applied=nothing` — **잴 수 있는지 자체가 선언 안 된 원시**(생성 원시) |
 | `:ok` | (라벨 없음) | 공허는 아니다. 🔴 그 이상의 판정은 아니다 |
 
 🔴 **옛 판정 `isempty(r.steps)` 하나로는 집행된 행에서 절대 안 켜진다**(T7 이 첫 프로브에서
@@ -91,7 +92,12 @@ end
 프로브는 세계를 **직접** 잰다(배정 간선 · `EDGE_PAYLOAD_MULTIPLIER[]`) — 그 두 줄이 이 라벨
 바로 위에 찍히므로, 라벨이 움직인 세계를 가리지 않는다.
 """
-_void_kind(r) = isempty(r.steps) ? :nostep : (r.applied ? :ok : :unapplied)
+# 🔴 삼상이다(2026-09-03 C1). `applied` 는 이제 `nothing`("못 쟀다")을 낼 수 있고 —
+#    생성 원시는 자기 status 어휘를 선언하지 않는다 — 예전 삼항 `r.applied ? … : …` 은
+#    그 값에서 **TypeError 로 죽는다**(non-boolean in boolean context).
+_void_kind(r) = isempty(r.steps) ? :nostep :
+                r.applied === true    ? :ok :
+                r.applied === nothing ? :unmeasured : :unapplied
 
 _synth(names, params) = Dict{String,Any}(
     "reach" => "composed", "body_names" => names, "tool_name" => "payload_wear_level",
@@ -188,6 +194,12 @@ function main()
     if void === :nostep
         println("⚪ VOID_NOSTEP — 아무 단계도 안 불렸다(verdict=", r.verdict,
                 "). 아래 숫자를 인용하지 마라.")
+    elseif void === :unmeasured
+        println("⚪ VOID_UNMEASURED — 단계는 ", length(r.steps),
+                " 개 불렸는데 applied=nothing 이다(verdict=", r.verdict,
+                "). 🔴 이것은 \"아무 일도 안 났다\" 가 **아니다** — 이 원시의 status 어휘가",
+                " 선언돼 있지 않아 노린 적응이 일어났는지 **잴 수 없었다**는 뜻이다.",
+                " 성공률의 분자에도 분모에도 넣지 마라.")
     elseif void === :unapplied
         println("⚪ VOID_UNAPPLIED — 단계는 ", length(r.steps),
                 " 개 불렸는데 applied=false 다(verdict=", r.verdict,

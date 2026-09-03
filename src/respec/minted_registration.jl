@@ -1,15 +1,46 @@
 # =============================================================================
 # 생성 원시의 표와 등록. (2026-09-03, 설계 §6)
 #
-# 🔴 왜 파일이 아니라 런-스코프인가. 어휘는 이제 **런타임에 생성된다**. 파일에 쓰면 런끼리
-#    오염되고(앞 런이 만든 원시를 뒤 런이 물려받는다), 추적되는 파일을 LLM 이 쓰는 것이 된다.
+# 🔴 **무엇이 런 스코프이고 무엇이 아닌가** (2026-09-03 최종 리뷰 I1 이 정정. 이 머리말은
+#    전에 "런끼리 오염되지 않는다" 라고만 적어서, 참이 아닌 절반을 참인 절반으로 덮었다).
+#
+#    · **표(`_MINTED_TABLE`)는 런 스코프다.** `reset_minted_table!()` 이 비우고, 파일에
+#      안 쓴다. 그래서 앞 런이 등록한 원시가 뒤 런의 **어휘**로 남지 않는다 —
+#      `resolve_primitive` 는 이 표만 읽으므로 리셋 뒤에는 그 이름이 해석되지 않는다.
+#    · 🔴 **`Core.eval` 로 심은 함수는 런 스코프가 아니다.** 그것은 `ConstructionBots`
+#      모듈에 프로세스 수명 내내 남고, 되돌리는 길이 없다(Julia 는 메서드 정의를 못 지운다).
+#      `reset_minted_table!` 은 표만 비운다 — 이름은 여전히 `isdefined` 다.
+#
+#    귀결(한 프로세스가 런을 둘 처리할 때): 뒤 런이 앞 런과 **같은 이름**을 다시 주조하려
+#    하면 규약 5 에 걸려 거절된다. 그 거절은 아래에서 **세 번째 사유**
+#    (`reject:impl_name_already_minted`)로 따로 나간다 — 안 가르면 그것이 C3 의 D6 신호
+#    (`…_withheld` = 모델이 비공개 능력을 스스로 재유도했다)로 오분류되고, 이 레인의 첫
+#    측정이 프로세스 재사용이라는 배관 사실 때문에 거짓 양성을 낸다.
+#
+#    ⚠️ **런 경계를 세우는 기전은 아직 없다.** `reset_minted_table!` 의 생산 호출자는
+#    **0개**이고(시험만 부른다) 어느 코드도 "런이 끝났다" 를 이 파일에 알리지 않는다.
+#    그 배선은 Task 9 의 몫이다 — 여기서 지어내지 않는다.
 # =============================================================================
 const _MINTED_TABLE = Ref{Dict{String,Any}}(Dict{String,Any}())
+
+"""
+    _MINTED_EVER
+
+이 **프로세스**가 `Core.eval` 로 심은 생성 원시 이름 전부. 🔴 표와 달리 절대 안 비운다 —
+비우면 거짓말이 된다(함수는 여전히 모듈에 있다). 위 머리말의 비대칭을 기계가 볼 수 있게
+만드는 유일한 자리이고, `check_impl_conventions` 의 세 번째 충돌 사유가 이것을 읽는다.
+"""
+const _MINTED_EVER = Set{String}()
 
 "이 런에서 등록된 원시들. `resolve_primitive` 가 읽는 유일한 표다."
 minted_table() = _MINTED_TABLE[]
 
-"표를 비운다. 시험과 런 경계에서 부른다."
+"""
+표를 비운다. 시험과 런 경계에서 부른다.
+
+🔴 **`Core.eval` 은 안 되돌린다** — 심긴 함수는 프로세스에 그대로 남는다(머리말). 이 함수가
+지우는 것은 어휘이지 정의가 아니다.
+"""
 reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
 
 """
@@ -22,13 +53,51 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    arity·kwargs 연언지를 **구성상** 통과한다. 오늘 19개 중 9개를 막고 있는 그 결함
    (impl 이 params 를 위치인자로 받는다)이 새 원시에서는 원천적으로 안 생긴다.
 🔴 규약 5 는 이 사슬에서 가장 나쁜 사고를 막는다 — `Core.eval` 이 기존 이름을 덮으면
-   시뮬레이터 코드를 런타임에 교체한다.
+   시뮬레이터 코드를 런타임에 교체한다. **검사는 그대로 `isdefined` 다**(export 여부로
+   좁히면 그 사고가 비공개 이름으로 그대로 열린다).
+
+🔴 **그런데 충돌은 한 사건이 아니라 셋이고, 사유가 갈려야 한다** (2026-09-03 최종 리뷰 C3).
+   모델이 본 표면은 `names(@__MODULE__)`(export 된 것)뿐이다 — 산출물
+   `world_interface.json` 이 바로 그 집합에서 생성되고, 설계 D6 이 비공개 impl 열을
+   **일부러** 안 보여준다. 그래서:
+
+   | 사유 | 뜻 | 이것이 말하는 것 |
+   |---|---|---|
+   | `impl_name_exists_shown` | 인터페이스에 실린 이름을 덮으려 했다 | 모델이 준 인터페이스를 안 읽었다 = 모델의 실수 |
+   | `impl_name_exists_withheld` | **안 보여준** 비공개 결속의 이름을 골랐다 | 🔴 **D6 신호** — 우리가 감춘 능력을 스스로 다시 유도했다 |
+   | `impl_name_already_minted` | 이 프로세스가 앞서 주조한 이름이다 | 배관 사실(머리말 I1)이지 모델에 대한 사실이 **아니다** |
+
+   🔴 가운데 줄이 이 레인의 **첫 측정 대상**이다. 설계 §9 는 "모델이 export 안 된 능력
+   (`release_pending_assignments!`)을 처음부터 못 쓸 수 있다" 를 첫 번째 실현 가능성
+   위험으로 적었다 — 그 이름을 **모델이 스스로 골랐다**는 것은 그 위험이 실현되지 않았다는
+   증거이고, 사유가 하나뿐이던 어제까지는 그 증거가 "너는 기존 이름을 덮으려 했다" 라는
+   되먹임 문장 안에서 통째로 파괴됐다. 실측 대상 다섯(`isdefined` 참 · export 거짓):
+   `release_pending_assignments!` · `recover_stalled_teams!` · `resolve_schedule_wedge!` ·
+   `force_advance_stuck_carrier!` · `forbid_heavy_cargo!`.
+
+   ⚠️ 셋째 줄이 없으면 둘째 줄이 오염된다: `Core.eval` 한 이름은 export 되지 않으므로,
+   앞 런이 주조한 이름을 다시 주조하려는 시도가 **D6 신호로 오분류**된다(머리말 I1).
+
+   ⚠️ 이 함수는 이제 프로세스 상태(`_MINTED_EVER`·모듈 심볼 표)를 **읽는다**. 여전히
+   세계도 `eval` 도 안 건드린다 — 순수함의 뜻은 그것이었다.
 """
 function check_impl_conventions(name::AbstractString, code::AbstractString)
     endswith(name, "!") || return "reject:impl_name_must_end_with_bang:$(name)"
     Base.isidentifier(chop(name)) || return "reject:impl_name_not_an_identifier:$(name)"
-    isdefined(@__MODULE__, Symbol(name)) &&
-        return "reject:impl_name_exists:$(name) — 기존 이름을 덮을 수 없다"
+    # 규약 5 — 충돌 셋을 가른다(위 표). 순서가 뜻을 정한다: 이 프로세스가 스스로 심은
+    # 이름이 먼저다(그것은 모델에 대한 사실이 아니다), 그다음이 모델이 본/못 본 표면이다.
+    local sym = Symbol(name)
+    if String(name) in _MINTED_EVER
+        return "reject:impl_name_already_minted:$(name) — 이 프로세스가 앞서 주조해 " *
+               "`Core.eval` 한 이름이다. 표는 리셋돼도 정의는 안 지워진다(파일 머리말 I1)"
+    elseif isdefined(@__MODULE__, sym)
+        return sym in names(@__MODULE__) ?
+            "reject:impl_name_exists_shown:$(name) — 세계 인터페이스에 실려 있는 이름이다. " *
+            "기존 이름을 덮을 수 없다 — 다른 이름을 고르라" :
+            "reject:impl_name_exists_withheld:$(name) — 🔴 이 이름은 모듈에 **있지만** " *
+            "인터페이스에는 안 실린다(설계 D6, export 안 됨). 덮을 수는 없으니 다른 이름을 " *
+            "고르라 — 그러나 이 거절은 모델이 감춰진 능력을 스스로 다시 유도했다는 신호다"
+    end
 
     local top
     try
@@ -100,12 +169,19 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
     catch e
         return "reject:impl_eval_failed:" * first(split(sprint(showerror, e), "\n"))
     end
+    push!(_MINTED_EVER, String(name))    # 🔴 표와 달리 안 비운다 — 정의가 안 지워지므로
     minted_table()[String(name)] = Dict{String,Any}(
         "name"         => String(name),
         "impl"         => String(name),   # 함수 자신이 원시다 — 이름이 둘일 이유가 없다
         "surface"      => String(surface),
         "harness_args" => ["env"],        # 규약 1
         "params"       => Dict{String,Any}(String(k) => v for (k, v) in pairs(params)),
-        "reversible"   => reversible)
+        "reversible"   => reversible,
+        # 🔴 C1 (2026-09-03 최종 리뷰). **이 행이 생성 코드에서 왔다**는 표시. 집행부의
+        #    `_step_applied`·`_step_touched_world` 가 이것을 읽어 "이 원시의 status 어휘를
+        #    아는 표가 없다" 를 안다. 판별자가 "`minted_table()` 에 있는가" 이면 안 되는
+        #    이유: 알려진 원시 여덟도 (시험·프로브가) **손으로 씨 뿌려** 같은 표에 들어온다.
+        #    구별되는 사실은 오직 "`Core.eval` 로 주조됐는가" 이고, 그것을 아는 곳은 여기뿐이다.
+        "generated"    => true)
     return nothing
 end

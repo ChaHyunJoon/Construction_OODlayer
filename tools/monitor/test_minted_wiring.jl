@@ -357,7 +357,9 @@ end
             #    그래서 여기서 단언할 수 있는 것은 **참인 함의 둘**뿐이다(역은 거짓이다).
             #    옛 등식 `world_maybe_dirty === (applied || partial)` 을 여기 적으면 아래
             #    (4b) 의 fixture 에서 옳은 코드를 상대로 빨개진다.
-            @test !r.applied || r.world_maybe_dirty      # applied ⟹ dirty
+            # 🔴 2026-09-03 (C1): `applied` 는 삼상이다 — `!r.applied` 는 `nothing` 에서
+            #    TypeError 다. 함의는 `applied === true` 일 때만 뜻이 있다.
+            @test r.applied !== true || r.world_maybe_dirty      # applied ⟹ dirty
             @test !r.partial || r.world_maybe_dirty      # partial ⟹ dirty
         end
 
@@ -396,7 +398,7 @@ end
                 @test r.partial === false
                 # 🔴 여기가 요점이다. 옛 등식이면 `false` 여야 하는 자리에서 **참**이다.
                 @test r.world_maybe_dirty === true
-                @test r.world_maybe_dirty !== (r.applied || r.partial)
+                @test r.world_maybe_dirty !== (r.applied === true || r.partial)   # C1: 삼상 안전
                 # 그리고 그 참이 실제로 힘을 갖는다 — 폴백이 억제된다.
                 @test r.resume === :not_needed_self
                 @test r.handled === true

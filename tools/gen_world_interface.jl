@@ -31,6 +31,40 @@ function type_entry(T)
                       for (f, t) in zip(fieldnames(T), fieldtypes(T))])
 end
 
+"""
+    _sig_string(m) -> String
+
+메서드 하나를 **모델이 호출을 쓸 수 있는 모양**으로 렌더한다: `(env::PlannerEnv; min_ready, snap_all)`.
+
+🔴 **왜 `string(m.sig)` 이 아닌가** (2026-09-03 최종 리뷰 I3). 그 표현은 `Tuple{typeof(f), Any}`
+   다 — 208개 메서드 **전부**가 그 모양이었다. 인자 **이름이 없고 키워드가 통째로 없다.**
+   이 산출물의 존재 이유는 모델이 이 함수들을 **부르는 코드를 쓰는 것**인데, 부를 때 필요한
+   두 가지가 정확히 그 둘이다. `Base.method_argnames` 와 `Base.kwarg_decl` 이 둘 다 준다.
+
+🔴 **결정성**(게이트 (2) 가 새 서브프로세스 재생성물과 바이트 비교한다). 세 자리 다 안정적이다:
+   `unwrap_unionall(m.sig).parameters` 는 선언 순서, `method_argnames` 도 선언 순서,
+   `kwarg_decl` 도 선언 순서다. 정렬이나 집합 순회가 끼지 않는다.
+
+⚠️ 이름이 없는 인자(`f(::Int)`)는 `method_argnames` 가 `#unused#` 같은 젠심을 준다 —
+   그런 이름은 `_` 로 정규화한다. 젠심을 그대로 실으면 모델이 그것을 인자 이름으로 읽는다.
+⚠️ `Any` 는 타입 주석을 **안 붙인다**. 208개 중 다수가 타입 없이 선언돼 있고, `x::Any` 는
+   정보가 0인데 줄만 길게 만든다.
+"""
+function _sig_string(m::Method)
+    sig = Base.unwrap_unionall(m.sig)
+    Ts  = collect(sig.parameters)[2:end]        # 첫째는 typeof(f)
+    nms = Base.method_argnames(m)               # 첫째는 #self#
+    parts = String[]
+    for (i, T) in enumerate(Ts)
+        nm = length(nms) >= i + 1 ? String(nms[i + 1]) : ""
+        (isempty(nm) || startswith(nm, "#")) && (nm = "_")
+        ts = string(T)
+        push!(parts, ts == "Any" ? nm : string(nm, "::", ts))
+    end
+    kws = Base.kwarg_decl(m)
+    return "(" * join(parts, ", ") * (isempty(kws) ? "" : "; " * join(String.(kws), ", ")) * ")"
+end
+
 function method_entries()
     out = Dict{String,Any}[]
     for n in sort(names(CB))
@@ -38,7 +72,7 @@ function method_entries()
         f = getfield(CB, n)
         f isa Function || continue
         for m in methods(f)
-            push!(out, Dict("name" => string(n), "signature" => string(m.sig)))
+            push!(out, Dict("name" => string(n), "signature" => _sig_string(m)))
         end
     end
     # 결정적 정렬 (Ruling R-SORT): Julia 의 method-table 순회 순서는 보장된 계약이
