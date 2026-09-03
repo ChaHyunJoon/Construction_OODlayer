@@ -1,0 +1,33 @@
+OBSERVATION: A no-go exclusion zone has appeared at (1.09, 0.42) with radius 0.07. Robots that enter the disc are pushed back out of it.
+
+MEASURED STATE (computed by the monitor without classifying the event;
+each is in [0,1] and means the same thing for any kind of disruption):
+  harm               = 1.00   (how damaging the event is (1 = maximally damaging))
+  work_at_risk       = 0.13   (how much work this event threatens, measured in units of ONE ROBOT'S AVERAGE SHARE of the remaining work (1.0 = this agent alone was holding a full average robot's worth of work; 0 = it was holding none))
+  resource_loss      = 0.00   (how much of the AFFECTED ROBOT'S own capability was lost (1.0 = the robot is gone; 0 = this event does not involve a robot at all))
+  recovery_capacity  = 0.31   (spare provisioning relative to the active fleet)
+  progress           = 0.18   (build progress when the event fired)
+  slack              = 0.60   (remaining parallelism (active fleet vs reference fleet))
+WHAT THIS ZONE COVERS (geometry only):
+  zone_blocked           = 0      (sub-assemblies whose staging area the zone covers AND that have not started building)
+    of which movable     = 0      (of those, how many have a zone-clear spot to be restaged into)
+  root_goals_trapped     = 0      (delivery goals of the ROOT assembly inside the zone; the root cannot be restaged. These are placed by a lift that moves the cargo directly, not by a navigating agent)
+  work_discs_overlapped  = 6      (unfinished work areas the zone intersects)
+  teams_forming          = 7      (transport teams currently gathering)
+    of which trapped     = 0      (of those, how many must gather inside the zone (they cannot form where they stand))
+  (the root has 8 delivery goals in total)
+
+WHAT THIS ZONE CAN ACTUALLY BLOCK:
+  nav_goals              = 131    (unfinished goals whose mover is a navigating agent; the zone is enforced only on navigating agents, so these are the only goals it can stop)
+    of which blocked     = 3      (their arrival tolerance lies entirely inside the enforced exclusion disc, so the node can never close while the zone lives. This is a lower bound: a goal that is still clear but has no surviving route to it is not counted here)
+    work frozen by those = 32     (unfinished schedule nodes that are those blocked nodes or wait on them further down the precedence graph; none of them can close while the zone lives. Compare this with how much of the build is left -- a blocked count that looks small can still freeze most of it)
+  agents_parked_inside   = 0      (movers standing inside the zone right now (they were parked when it appeared))
+  (the build has 251 unfinished nodes in total)
+ACTIVE NO-GO ZONES (geometry as measured; one disc per live zone):
+  zone "zone_blk_1"
+    center            = [1.09, 0.42]
+    radius            = 0.07
+    covers            = 0 sub-assemblies whose staging area this disc overlaps
+    root_goals_inside = no   (delivery goals of the ROOT assembly lie inside this disc)
+
+UNFAMILIAR EVENT: the router could not place this disruption in any event category the surrogate was trained on (its routing label is 'zone').
