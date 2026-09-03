@@ -140,14 +140,19 @@ end
 # 를 전부 기본값으로 채운다. `bind_primitive_args`(`src/respec/minted_tool.jl`) 는
 # `ctx.params` 를 순회해 "레지스트리가 아는 키인가/타입이 맞는가"만 검사하고, impl 이 요구하는
 # 필수 kwarg 가 빠졌는지는 **절대 검사하지 않는다** — body 가 `["forbid_heavy_cargo"]`,
-# params 가 `{}`(agent 없음)면 바인더를 통과해 `impl(env)` 가 그대로 불리고, Julia 가 호출
-# 경계에서 `UndefKeywordError` 를 던진다. `enact_minted!` 은 이것을 다른 모든 예외와 똑같이
-# `partial=true` 로 적고, `world_maybe_dirty = touched || partial` 이 참이 된다.
-# `handled` 의 정본은 `tools/monitor/enact.jl:882-883` 의 **네** 연언지다.
+# params 가 `{}`(agent 없음)면 바인더를 통과해 `impl(env)` 가 그대로 불린다. 🔴 **그 다음이
+# 2026-09-02 (T0.5/R1-B) 에 바뀌었다**: 예전엔 Julia 가 호출 경계에서 `UndefKeywordError` 를
+# 던졌고, `enact_minted!` 이 그것을 다른 모든 예외와 똑같이 `partial=true` 로 적어
+# `world_maybe_dirty = touched || partial` 이 참이 됐다 — 세계는 증명 가능하게 한 바이트도 안
+# 건드렸는데(보관소에 한 항목도 쓰기 전에 던졌다) 정책 프로듀서가 이것을 "처리됐다"로 읽고 폴백
+# 복구 사슬을 건너뛰며, 그 OOD 사건은 이미 소비돼 다시 오지 않았다.
+# **오늘은 던지지 않는다** — `agent` 에 기본값이 생겨 `impl` 이 `:missing_agent` status 로
+# 돌아서고 `world_maybe_dirty=false` 다(아래 testset 이 그것을 박제한다).
+# `handled` 의 정본은 `tools/monitor/enact.jl` 의 `minted_handled`(**네** 연언지)다.
 # 🔴 여기에 그 식을 다시 베끼지 마라: 예전 3-연언지 복사본은 실측에서 프로덕션과 갈렸다(2026-09-02).
-# 이 판에서는 그 정본이 **참**이 된다 — 세계는 증명 가능하게 한 바이트도 안 건드렸는데
-# (보관소에 한 항목도 쓰기 전에 던졌다) 정책 프로듀서는 이것을 "처리됐다"로 읽고 폴백 복구 사슬을
-# 건너뛰며, 그 OOD 사건은 이미 소비돼 다시 오지 않는다.
+#
+# 🔴 **바인더의 구멍 자체는 아직 열려 있다** — 닫힌 것은 `forbid_heavy_cargo!` 라는 입력 모양
+# 하나뿐이고, `bind_primitive_args` 는 여전히 필수 kwarg 미충족을 검사하지 않는다.
 #
 # 🔴 **이 테스트는 그 구멍을 고치지 않는다.** `bind_primitive_args` 를 고치면 원시 전부의
 # 행동이 바뀌므로 그 자체가 별도 레인이다(spec/ledger 가 이미 그렇게 범위를 그었다). 여기서는

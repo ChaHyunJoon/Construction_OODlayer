@@ -418,7 +418,7 @@ end
     # 2026-08-30 (T4): 위 셋은 `CB.enact_minted!` 까지를 잰다. 이 게이트는 **렌더 레인의
     # 배선**을 잰다 — `enact.jl::enact_minted_decision!`. 재는 것 넷이 특히 중요하다:
     #  · 🔴 `handled` 는 `applied` 가 아니라 `world_maybe_dirty` 로 판정한다. 정본 식은
-    #    `tools/monitor/enact.jl:882-883` 의 **네** 연언지다 — 여기에 베끼지 않는다(손베낀
+    #    `tools/monitor/enact.jl` 의 `minted_handled`(**네** 연언지)다 — 여기에 베끼지 않는다(손베낀
     #    복사본이 프로덕션과 갈린 것을 2026-09-02 검증이 실측했다). verdict 항은
     #    `CB.minted_handled_verdict_ok` 이고 `:admit` 하나가 아니다.
     #    1단계가 세계를 바꾸고 2단계가 던진 판은 `applied=false` 인데 세계는 이미 편집돼

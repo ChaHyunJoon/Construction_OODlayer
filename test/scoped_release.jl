@@ -169,7 +169,7 @@ end
     # 🔴 그러나 **예외로 나가지 않는다**(R1, 2026-09-02). 이 판정은 본문 첫 문장이라 세계가
     #    증명 가능하게 깨끗한데, 예외로 나가면 집행부가 `partial=true → world_maybe_dirty=true`
     #    로 적어 아무것도 안 한 판이 기본 복구 사슬을 삼킨다(`handled` 의 정본 식은
-    #    `tools/monitor/enact.jl:882-883` 이다 — 여기에 다시 베끼지 않는다).
+    #    `tools/monitor/enact.jl` 의 `minted_handled` 이다 — 여기에 다시 베끼지 않는다).
     # 🔴 `faulted` 를 `RobotID` 로 주는 것이 이 단언의 요점이다: 이 레포에서 가장 흔한
     #    `faulted` 타입이고, `String(::RobotID)` 는 **메서드가 없다.** 반환문이 `String(...)`
     #    을 쓰면 이 호출은 status 가 아니라 `MethodError` 로 나가고 R1 이 이 입력 부류에서
@@ -194,7 +194,7 @@ end
 #  스케줄의 어떤 로봇도 가리키지 않는다". 그런데 `_step_status` 는 그것을 `:released_none`
 #  으로 읽고, `WORLD_UNCHANGED_STATUSES["release_pending_assignments"]` 는 (faulted 때문에)
 #  `:released_none` 을 **일부러 안 담아** `_step_touched_world = true` → `world_maybe_dirty =
-#  true` → `tools/monitor/enact.jl:882-883` 의 `handled`(정본 — 식을 여기 베끼지 않는다) 가
+#  true` → `tools/monitor/enact.jl` 의 `minted_handled`(정본 — 식을 여기 베끼지 않는다) 가
 #  true 가 된다. 즉 **아무것도 안 풀린 채** OOD
 #  사건이 소비되고 기본 복구 사슬을 건너뛴다.
 #

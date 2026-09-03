@@ -8,13 +8,20 @@
 
 ## 0. 오늘의 사실 (전부 코드에서 읽었다, 추측 없음)
 
+🔴 **이 표를 읽는 법(2026-09-03 T8 이 못박는다).** 표는 원래 **이 설계를 시작할 때**
+(`6de80454` 위)의 사실로 적혔고, 그 뒤 이 레인(T0.5·T1·T2·T3+4·T5·T6·T7)이 그중 몇 행을
+실제로 바꿨다. 갈린 행에는 **🔀** 를 붙이고 착수 시점의 사실과 **오늘의 사실을 같은 칸에**
+적는다 — 지나간 사실을 지우지 않고 옆에 놓는 것이 이 문서의 관용구다.
+🔴 **자리는 줄번호가 아니라 이름으로 가리킨다** — 이 레인에서 `enact.jl` 의 줄번호 인용이
+**같은 밤에 두 번** 낡았고, 낡은 뒤에는 엉뚱한 코드를 가리켰다.
+
 | 사실 | 자리 |
 |---|---|
-| 게이트: `reach == "composed"` 가 아니면 `:deferred` 로 돌아선다 | `src/respec/minted_tool.jl:891-893` |
-| verdict 는 셋이다 — `:admit` · `:reject` · `:deferred` | `src/respec/minted_tool.jl:839-843` (docstring 표) |
-| `handled = (:admit) && world_maybe_dirty && (resume !== :failed) && !resolve_failed` — **네 연언지** | `tools/monitor/enact.jl:875-881` |
-| 프로덕션 소비자는 `.handled` **하나만** 읽는다 | `tools/monitor/render_demo.jl:811-812` (`_m.handled && return nothing`) |
-| 알파벳 19, 집행 가능 8. `release_pending_assignments`·`forbid_heavy_cargo`·`resolve_schedule_wedge` 는 재풀이 표면(`sched`/`milp`) | `wm4spacecraft_manufacturing/core/primitive_registry.json`, `minted_tool.jl:534` |
+| 🔀 **착수 시점**: 게이트가 `reach == "composed"` 가 아니면 `:deferred` 로 돌아섰다. **오늘 그 게이트는 없다**(결정 2 = 이 문서가 만든 변경) — `reach === nothing`(못 쟀다)만 `:deferred` 이고, `reach != "composed"` 는 `sanctioned = false` 로 기록되며 `:admit_unsanctioned` 로 굴린다 | `src/respec/minted_tool.jl` 의 `enact_minted!` 단계 (1)(2) |
+| 🔀 **착수 시점**: verdict 는 셋이었다 — `:admit` · `:reject` · `:deferred`. **오늘은 넷이다** — `:admit_unsanctioned` 가 더해졌고(결정 2), 그중 집행 계열 둘의 정본 집합이 `ENACTED_VERDICTS` 다 | `src/respec/minted_tool.jl` 의 `enact_minted!` docstring 표 |
+| 🔀 `handled` 는 **네 연언지**의 논리곱이다. **오늘 그 정의를 소유하는 것은 함수 하나**다(T7 이 인라인 식을 추출했고 손베낀 복사본은 전부 지웠다). 첫 연언지는 `:admit` 리터럴이 아니라 `CB.minted_handled_verdict_ok`(= `ENACTED_VERDICTS`)이고 나머지 셋은 안 바뀌었다 — 🔴 식을 여기 베끼지 않는다 | `tools/monitor/enact.jl` 의 `minted_handled` |
+| 프로덕션 소비자는 `.handled` **하나만** 읽는다 | `tools/monitor/render_demo.jl` 의 `policy_producer` (`_m.handled && return nothing`) |
+| 알파벳 19, 집행 가능 8. `release_pending_assignments`·`forbid_heavy_cargo`·`resolve_schedule_wedge` 는 재풀이 표면(`sched`/`milp`) | `wm4spacecraft_manufacturing/core/primitive_registry.json`, `minted_tool.jl` 의 `RESOLVE_SURFACES` |
 | 파이썬은 `reach` 와 body 의 불일치를 **이미 기록한다 — 강제는 안 한다** (`reach_matches_body`) | `src/respec/llm_service/synthesize.py:962-965` |
 | F5 실측: agent-3 가 **이미 조합한 body** 에 `reach="needs_primitive"` 를 붙였다. 모자란다고 한 것은 원시가 아니라 agent-2 가 요구한 **우선순위 정렬**이었다 | `src/respec/llm_service/synthesize.py:1195-1200` |
 
@@ -88,7 +95,7 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 ```
 
 ```julia
-# tools/monitor/enact.jl:879
+# tools/monitor/enact.jl — 🔀 오늘 이 두 줄은 `minted_handled` 안에 있다(T7 이 추출했다)
 local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
                 (r.resume !== :failed) && !resolve_failed
 ```
@@ -99,7 +106,8 @@ local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &
 
 ### 2-5. 기록 (D2 의 "있어야 한다" 를 실제로 있게 하는 자리)
 
-1. `[minted]` 로그 줄은 이미 `verdict=` 와 `reach=` 를 **둘 다** 찍는다(`enact.jl:882-883`).
+1. `[minted]` 로그 줄은 이미 `verdict=` 와 `reach=` 를 **둘 다** 찍는다(`enact.jl` 의
+   `enact_minted_decision!` 이 내는 `[minted] lane=present` 줄).
    새 verdict 는 그 줄에 자동으로 나타난다 — 새 println 을 더하지 않는다.
 2. 🔴 그러나 `NOT handled` 줄과 요약 프로브는 `verdict === :admit` 을 **식으로 베낀 자리**가
    셋 있다(§4 R2). 그 셋이 새 verdict 를 모르면 요약표가 "굴렸는데 안 굴렸다" 고 적는다 —
@@ -123,9 +131,9 @@ local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &
 
 **R1 (🔴 가장 큰 것) 알려진 구멍의 통행량이 는다.**
 집행 중 **예외가 나면** `enact_minted!` 의 `catch` 가 `partial = true` 로 적고
-(`minted_tool.jl:952-970`), `world_maybe_dirty = touched || partial` 이 참이 되어
+(`minted_tool.jl` 의 `enact_minted!` 안 `catch`), `world_maybe_dirty = touched || partial` 이 참이 되어
 `handled = true` 가 된다 — **세계를 한 바이트도 안 건드리고 던진 경우에도.** 그러면
-`render_demo.jl:812` 가 기본 복구 사슬을 통째로 건너뛰고 그 OOD 사건은 **이미 소비돼**
+`render_demo.jl` 의 `policy_producer` 가 기본 복구 사슬을 통째로 건너뛰고 그 OOD 사건은 **이미 소비돼**
 다시 오지 않는다 = 성공과 구별되지 않는 미복구.
 
 🔴 그 예외를 내는 자리를 **여덟 개 원시에서 전부 읽었다**(2026-09-02 실측, 추측 없음).
@@ -133,8 +141,8 @@ local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &
 
 | 원시 | 던지는 조건 | 예외 | 자리 |
 |---|---|---|---|
-| `forbid_heavy_cargo` | `agent` 를 **안 주면** (유일하게 기본값 없는 kwarg) | `UndefKeywordError` | `cargo_ban_primitive.jl:140` |
-| `release_pending_assignments` | `faulted` 와 `agent` 를 **둘 다** 주면 | `ArgumentError` | `reassign.jl:198-200` |
+| 🔀 `forbid_heavy_cargo` | `agent` 를 **안 주면** (착수 시점엔 유일하게 기본값 없는 kwarg 였다) | **착수 시점** `UndefKeywordError`. **오늘은 안 던진다**(T0.5/T6): `agent` 에 기본값이 생겨 status `:missing_agent` 로 돌아서고 세계는 무접촉이다 | `cargo_ban_primitive.jl` 의 `forbid_heavy_cargo!` 단계 (0) |
+| 🔀 `release_pending_assignments` | `faulted` 와 `agent` 를 **둘 다** 주면 | **착수 시점** `ArgumentError`. **오늘은 안 던진다**(T0.5/T6): status `:both_scopes` · `released = 0` · 스케줄 무접촉 | `reassign.jl` 의 `release_pending_assignments!` 첫 판정 |
 
 🔴 **둘째 줄이 이 위험을 가설에서 실측으로 바꾼다.** `release_pending_assignments` 는
 F7 에서 mild 레인이 **실제로 조합해 낸 그 원시**이고, 레지스트리의 `mechanism` 산문이
@@ -144,11 +152,19 @@ F7 에서 mild 레인이 **실제로 조합해 낸 그 원시**이고, 레지스
 
 오늘은 `reach=="composed"` 행만 그 자리에 닿는다. 게이트를 열면 `needs_primitive` 행도 닿는다.
 
+🔴 **닫힌 것은 위 두 입력 모양뿐이고, R1 의 일반형은 그대로 열려 있다.** `world_maybe_dirty`
+가 "세계가 편집됐다" 가 아니라 "**던졌다**" 를 뜻하기 때문에, **첫 편집 전에 던지는 어떤
+원시든** `handled=true` 로 기본 복구 사슬을 삼킨다 — 위 표의 둘은 그 일반형의 사례 둘이었을
+뿐이다. 실측(독립 검증, `9006bdcd`): body `["translate_whole_build"]` + `staging_circles` 없는
+env → `partial=true`, `world_maybe_dirty=true`, **`handled=TRUE`** 인데 **세계는 한 바이트도 안
+변했다**. ⟹ 이 위험은 **미해결**이고, 일반형 수선(`bind_primitive_args` 의 필수 kwarg 검사,
+또는 `world_maybe_dirty` 의 의미 자체)은 사용자 결정 대기 중이다.
+
 → 완화 선택지는 §7-2 에 셋으로 적었다. 🔴 어느 쪽을 고르든 T5 는 **새 verdict 행의
 `steps[].status === :threw` 비율**을 센다 — 그 숫자가 이 항목의 사후 검증이다.
 
 **R2 `handled` 식이 세 벌 복사돼 있다.**
-`tools/monitor/enact.jl:879`(정본) · `tools/probes/probe_minted_body_enacts.jl:129` ·
+`tools/monitor/enact.jl` 의 `minted_handled`(정본) · `tools/probes/probe_minted_body_enacts.jl:129` ·
 `test/payload_reprice_install.jl:178`. 🔴 뒤의 둘은 **이미 낡았다** — 셋 다 결정 1 의
 `!resolve_failed` 가 빠진 세 연언지다. `forbid_heavy_cargo` 의 surface 는 `milp` 이고
 `RESOLVE_SURFACES` 안이므로, 그 시험의 던지는 판은 이제 재풀이를 거친다 = 복사본과
@@ -283,7 +299,7 @@ git commit -m "결정 2: 게이트가 자기신고 대신 body 를 본다 — �
 
 ### T2 — `handled` 가 새 verdict 를 받는다 (30 – 40분)
 
-**Files:** `tools/monitor/enact.jl:875-881` + docstring, `tools/monitor/test_minted_wiring.jl`
+**Files:** `tools/monitor/enact.jl` (오늘의 `minted_handled`) + docstring, `tools/monitor/test_minted_wiring.jl`
 
 - [ ] **S1 실패하는 시험** — `test_minted_wiring.jl` 에 절을 더한다
 ```julia
@@ -302,7 +318,7 @@ git commit -m "결정 2: 게이트가 자기신고 대신 body 를 본다 — �
 end
 ```
 - [ ] **S2 빨간지 확인** (`r.handled === false` 로 떨어진다)
-- [ ] **S3 구현** — `enact.jl:879` 를 §2-4 의 두 줄로 바꾼다.
+- [ ] **S3 구현** — `enact.jl` 의 `handled` 식을 §2-4 의 두 줄로 바꾼다.
 - [ ] **S4 docstring** — `enact_minted_decision!` 의 `handled` 문단에 한 줄 더한다:
   *"🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3).
   나머지 셋은 그대로 — 게이트는 넓어지기만 한다."*
@@ -330,8 +346,13 @@ end
 
 - [ ] **S1** `probe_cargo_ban_end_to_end.jl` 절 A 와 `probe_minted_body_enacts.jl` 요약 줄에
   `verdict` · `sanctioned`(= `reach=="composed"`) · `threw_steps`(= `:threw` 인 단계 수) 세 열을 더한다.
-- [ ] **S2** 판정 순서 맨 앞에 공허를 둔다 — `steps` 가 비었으면 GREEN/RED 를 아예 안 찍고
-  `⚪ VOID (아무 단계도 안 불렸다)` 를 찍는다.
+- [ ] **S2** 판정 순서 맨 앞에 공허를 둔다 — 공허면 GREEN/RED 를 아예 안 찍는다.
+  🔀 **오늘의 사실**: T7 이 그 판정을 **두 갈래**로 갈랐다. `probe_cargo_ban_end_to_end.jl` 의
+  `_void_kind` / `_VOID_LABEL` 이 `VOID_NOSTEP`(아무 단계도 안 불렸다)와
+  `VOID_UNAPPLIED`(단계는 불렸는데 `applied=false` — 잴 수 있는 편집이 0)를 구별한다.
+  이 계획이 적은 한 갈래(`steps` 가 비었나)는 그중 앞의 것 하나뿐이었고, 실측에서 그
+  갈래만으로는 `VOID` 가 한 번도 안 탔다. (`probe_minted_body_enacts.jl` 은 아직 갈리지 않은
+  `⚪ VOID` 한 벌이다.)
 - [ ] **S3** 커밋.
 
 ⏱ 20 – 30분.

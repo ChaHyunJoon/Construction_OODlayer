@@ -221,8 +221,8 @@ end
          전부다. 재풀이가 **다른 답을 고르는지**는 이 원시의 몫이 아니다(위 `forbid_heavy_cargo` 와 같음).
       ⚠️ `:released_none` 이 무엇을 지나가는가: 이 원시의 `WORLD_UNCHANGED_STATUSES` 행에
          `:released_none` 은 **일부러 없으므로**(아래 그 표의 문단) `_step_touched_world = true`
-         → `world_maybe_dirty = true` → `enact.jl:882-883` 의 `handled`(정본; 여기 베끼지
-         않는다) 가 true 가 된다. 깨끗한 판에서
+         → `world_maybe_dirty = true` → `tools/monitor/enact.jl` 의 `minted_handled`(정본;
+         식을 여기 베끼지 않는다) 가 true 가 된다. 깨끗한 판에서
          재개가 한 번 더 나가는 것이 대가이고, 그 대가는 `faulted` 경로에서 더러워진 세계를
          "깨끗하다"고 보고하지 않으려고 치른다. 🔴 그리고 이 경로는 조용하지 않다 —
          `enact_minted!` 가 `quiet` 주석("불렸지만 어느 단계도 세계를 적응시키지 않았다")을
@@ -326,7 +326,7 @@ ENACTABLE_TODAY` 를 못 박는다).
 
 🔴 **불변식: 원시마다 `WORLD_UNCHANGED ⊆ SILENT_SUCCESS`.** 세계를 안 건드렸으면 노린 적응도
 당연히 안 일어났다. 이 포함이 `applied ⟹ world_maybe_dirty` 를 보장하고, `handled`(정본은
-`tools/monitor/enact.jl:882-883` — 식을 여기 베끼지 않는다) 가 `applied` 판정보다 **넓다**는
+`tools/monitor/enact.jl` 의 `minted_handled` — 식을 여기 베끼지 않는다) 가 `applied` 판정보다 **넓다**는
 성질을 준다.
 게이트가 여덟 전부에 대해 이 포함을 잰다.
 
@@ -835,8 +835,9 @@ end
 """
     ENACTED_VERDICTS · minted_handled_verdict_ok(v) -> Bool
 
-`handled` 판정의 **첫 연언지**. 오늘은 `:admit` 하나지만, 소비자가 이 이름을 부르게 해서
-2026-09-02 결정 2(네 번째 verdict `:admit_unsanctioned`)가 들어올 때 **한 자리만** 바뀌게 한다.
+`handled` 판정의 **첫 연언지**. 🔴 오늘 집행 계열 verdict 는 **둘**이다 — `:admit` 과
+`:admit_unsanctioned`(2026-09-02 결정 2 가 더했다). 그 집합의 정본은 바로 아래
+`ENACTED_VERDICTS` 하나이고, 소비자가 리터럴 대신 이 이름을 부르므로 그때 **한 자리만** 바뀌었다.
 
 🔴 `handled` 자체는 여기 없다 — 나머지 세 연언지(`world_maybe_dirty` · `resume !== :failed` ·
 `!resolve_failed`)는 `tools/monitor/enact.jl` 이 소유한다. 이 함수는 그중 첫째만 답한다.
