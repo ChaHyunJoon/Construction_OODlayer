@@ -771,10 +771,11 @@ end
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
 
-🔴 **`handled` 의 정의는 `(:admit) && world_maybe_dirty && resume !== :failed` 다 —
-`applied` 가 아니다.**
-🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3).
-나머지 셋은 그대로 — 게이트는 넓어지기만 한다.
+🔴 **`handled` 의 정의는 `CB.minted_handled_verdict_ok(verdict) && world_maybe_dirty &&
+resume !== :failed && !resolve_failed` 다 — `applied` 가 아니다.**
+🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3) —
+`CB.minted_handled_verdict_ok` 가 그 판정을 대신한다. 나머지 셋(`world_maybe_dirty` ·
+`resume !== :failed` · `!resolve_failed`)은 그대로 — 게이트는 첫 연언지만 넓어졌다.
 `applied` 는 status 전용이라, 1단계가 세계를 바꾸고 2단계가 **던지면** `applied == false` 인데
 세계는 이미 편집돼 있다(`partial == true`, `undo === :none`). 그 반쯤 고쳐진 세계 위에 기본
 복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드 `world_maybe_dirty` 로
