@@ -39,7 +39,7 @@ TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=1 \
 | flag | what turns on | cost |
 |---|---|---|
 | `TOOL_SYNTHESIS=1` | the T2 tool-synthesis lane. Without it `maybe_synthesize`/`synthesize_multi` return `tool_minted="disabled"` and **open no socket at all** (R13). | one billable call per firing |
-| `SYNTH_MULTI_AGENT=1` | `run_synthesis` picks the **3-agent** lane (`observe → design → compose`) instead of the single-agent one. | 3 calls per firing, 5 when the F2 feedback loop fires |
+| `SYNTH_MULTI_AGENT=1` | `run_synthesis` picks the **3-agent** lane (`observe → design → compose`) instead of the single-agent one. | 3 per firing; **+1** if the groundability gate fires, **+2** if F2 does — measured 6 (zone) and 5 (mild) on 2026-09-03 |
 
 🔴 **Both are compared against the literal string `"1"`.** `true`, `yes`, `TRUE` and `on` all
 read as OFF, silently — the lane just reports that it did not fire.

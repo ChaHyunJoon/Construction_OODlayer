@@ -411,6 +411,22 @@ class ObserveEvent(dspy.Signature):
         "frozen; the ONLY account the later stages will read")
 
 
+# 🔴 2026-09-03 (F8), 실측이 계기. 09-03 런2 에서 두 레인 다 agent-3 이 `needs_primitive`
+#    를 냈고, 없던 것은 인벤토리 이해가 아니라 **agent-2 가 고른 기전**이었다(zone: 수직
+#    lift — 인벤토리는 수평 이동뿐 / mild: 특정 대체 로봇 지정 + 우선순위 조정). agent-2 는
+#    인벤토리를 일부러 못 보므로(계약 B), 기전을 고르게 두는 한 그 선택은 어휘 밖으로 나간다.
+#
+# 🔴 그때까지 agent-2 를 미는 문장 셋이 **전부 같은 방향**이었다 — 이 필드 설명의 "Be
+#    exhaustive", 접지 게이트의 "Commit to one mechanism", F2 의 "commit to a different
+#    mechanism". "효과를 적고 기전은 강제될 때만 골라라" 라고 말하는 자리는 없었다. 셋이
+#    **이 한 문자열을 공유한다** — 세 벌로 두면 갈리고, 갈리면 서로를 지운다.
+_EFFECT_NOT_MECHANISM = (
+    "Specify the REQUIRED EFFECT: the difference between the world before and after the tool "
+    "runs, stated over the objects the account above already mentions. Fix a mechanism only "
+    "where the physics leaves no alternative; where more than one way of producing that effect "
+    "would do, state the effect and say that the way is open.")
+
+
 class DesignToolSpec(dspy.Signature):
     """You are given an account of what a disruption broke. Decide whether the existing
     recovery vocabulary can express a response, and specify the tool that IS needed.
@@ -440,8 +456,8 @@ class DesignToolSpec(dspy.Signature):
     params: str = dspy.OutputField(desc=
         "JSON schema of the parameters the tool must take")
     mechanism: str = dspy.OutputField(desc=
-        "exactly what this tool changes and how; what it consumes; preconditions; whether "
-        "it can be undone. Be exhaustive -- this is the specification the next stage builds.")
+        "what this tool changes; what it consumes; preconditions; whether it can be undone. "
+        + _EFFECT_NOT_MECHANISM)
 
 
 class ComposeToolBody(dspy.Signature):
@@ -456,6 +472,17 @@ class ComposeToolBody(dspy.Signature):
         "the alphabet a body may be composed from, with each primitive's full mechanism")
 
     body: str = dspy.OutputField(desc="ordered list of primitive calls, with arguments")
+    # 🔴 2026-09-03 (A). `body` 는 **산문**이고 canon/psi/ledger 가 그것을 읽는다. 그 표기법은
+    #    고정돼 있지 않아 인자를 기계가 못 꺼낸다(실측: kwarg 형태와 Julia 리터럴에서 정규식이
+    #    깨지고, 괄호 없는 나열에서는 이름만 살아남고 인자가 사라진다). 그래서 인자는 파싱하지
+    #    않고 **모델이 데이터로 낸다.** `body` 는 그대로 두므로 canon 의 계보가 안 끊긴다.
+    calls: List[Dict[str, Any]] = dspy.OutputField(desc=
+        "the SAME body as data, in the same order: "
+        '[{"primitive": "<name from the inventory>", "args": {<argument name>: <value>}}]. '
+        "Every argument value must be a flat scalar (string, number, boolean, or null) -- "
+        "the harness passes these straight to the primitive. Use the exact argument names the "
+        "inventory lists for that primitive. An empty object is correct for a primitive that "
+        "takes none. This field is what actually gets executed, so it must agree with `body`.")
     reach: str = dspy.OutputField(desc=
         '"composed" if every primitive in the body exists in the inventory; '
         '"needs_primitive" otherwise')
@@ -696,6 +723,74 @@ def parse_body(text: Optional[str]) -> Tuple[List[str], str]:
     scan = [_norm(m.group(0)) for m in _WORD_RE.finditer(t)]
     names = [n for n in scan if n in known]
     return (names, "names") if names else ([], "empty")
+
+
+#: 호출 인자로 허용되는 값의 타입. `params_flatness` 의 `_SCALAR_TYPES` 와 **같은 축**이지만
+#: 저쪽은 JSON *스키마*의 타입 이름을, 이쪽은 실제 *값*을 본다 — 다른 것을 재므로 다른 표다.
+_SCALAR_VALUES = (str, int, float, bool, type(None))
+
+
+def normalize_calls(raw) -> Optional[List[Dict[str, Any]]]:
+    """agent-3 의 `calls` 를 `[{"primitive": str, "args": dict}, ...]` 로. 못 읽으면 `None`.
+
+    🔴 **전부 아니면 없음이다.** 한 항목이라도 못 읽으면 전체가 `None` 이다. 이 값은 집행에
+    먹일 인자이고 이 알파벳에는 undo 가 없다 — 절반만 읽어 넘기는 것은 "반쯤 굴린 body" 와
+    같은 종류의 사고다. 부분 성공을 성공으로 보고하지 않는다.
+
+    🔴 **삼상이다.** `[]` 는 "읽었는데 비었다", `None` 은 "못 읽었다". 두 사건을 뭉개면
+    "모델이 호출을 하나도 안 냈다" 와 "우리가 그 필드를 못 읽었다" 가 구별 불가능해진다.
+
+    받아 주는 변형은 **둘뿐**이고 둘 다 이유가 있다:
+      · `name` 을 `primitive` 대신 쓴 경우 — 같은 것을 가리키는 흔한 표기이고, 이 하나 때문에
+        유료 런을 통째로 잃는 것은 비싸다.
+      · 리스트가 아니라 JSON **문자열**로 온 경우 — dspy 의 타입 강제가 실패하면 그렇게 온다.
+    그 밖의 관용은 넣지 않는다: 여기서 넓히는 만큼 "모델이 계약을 지켰는가" 를 못 재게 된다.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return None
+    if not isinstance(raw, list):
+        return None
+    out: List[Dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        nm = item.get("primitive", item.get("name"))
+        if not isinstance(nm, str) or not nm.strip():
+            return None
+        args = item.get("args", {})
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            return None
+        out.append({"primitive": _norm(nm.strip()), "args": dict(args)})
+    return out
+
+
+def calls_flatness(calls) -> Tuple[Optional[bool], str]:
+    """호출 인자가 전부 평평한 스칼라인가. `(verdict, reason)`, 못 쟀으면 `(None, ...)`.
+
+    `params_flatness` 와 같은 이유로 존재한다: 중첩 값은 Julia 경계의 **얕은** 변환
+    (`tools/monitor/policy.jl` 의 `_tool_args_dict`)을 에러 없이 통과한 뒤 `JSON3.Object` 인
+    채로 남아 `Dict{String,Any}` 가정을 깨뜨린다. 여기서도 **기록만 하고 강제하지 않는다.**
+    """
+    if calls is None:
+        return None, "calls unreadable -- nothing to measure"
+    if not calls:
+        return None, "calls is empty -- nothing to measure"
+    bad = []
+    for c in calls:
+        for k, v in c["args"].items():
+            if not isinstance(v, _SCALAR_VALUES):
+                bad.append("%s.%s: %s" % (c["primitive"], k, type(v).__name__))
+    if bad:
+        return False, ("non-scalar argument values would silently break the Julia boundary: "
+                       + "; ".join(bad))
+    return True, "all argument values are flat scalars"
 
 
 def canon(names: Sequence[str], kind: Optional[str]) -> Tuple[Tuple[str, ...], str]:
@@ -970,6 +1065,18 @@ def _finish_record(rec, kind, led, blob):
 
     rec["params_flat"], rec["params_flat_detail"] = params_flatness(rec["params"])
 
+    # ---- 인자 채널 (2026-09-03, A) ----------------------------------------------------------
+    # 🔴 `body_names` 를 **여기서 안 바꾼다.** 그것이 canon·psi·ledger·`tool_minted` 의 계보이고,
+    #    출처를 갈면 이 기록을 F2/F7 과 같은 표에 못 올린다. `calls` 는 인자 채널로만 더하고,
+    #    둘의 어긋남은 `reach_matches_body` 와 **같은 관용**으로 기록만 한다(강제 안 한다).
+    # 🔴 단일 agent 레인(`SynthesizeTool`)에는 이 필드가 **없다** — 일부러 안 더했다. 더하면
+    #    그 레인의 프롬프트가 바뀌어 대조군이 사라진다. 그 레인에서 이 값은 `None`(못 쟀다)이다.
+    rec["calls"] = normalize_calls(rec.get("calls"))
+    rec["calls_match_body"] = (
+        None if rec["calls"] is None else
+        [c["primitive"] for c in rec["calls"]] == names)
+    rec["calls_flat"], rec["calls_flat_detail"] = calls_flatness(rec["calls"])
+
     c = canon(names, kind)
     rec["canon"] = {"primitives": list(c[0]), "kind": c[1]}
     rec["canon_key"] = canon_key(c)
@@ -1124,6 +1231,18 @@ _MECHANISM_CHOICE_BARE = tuple(s.lstrip("_") for s in _MECHANISM_CHOICE_SUFFIXES
 
 _SCALAR_JSON_TYPES = frozenset({"integer", "number", "boolean", "null"})
 
+# 🔴 F8. 이 되먹임은 09-03 까지 **함수 안의 리터럴**이었고 끝에서 끝까지 재본 적이 없었다.
+# 🔴 옛 문구는 "Commit to one mechanism and specify it directly." 로 끝났다. 그런데 이 게이트는
+#    `params` 만 보고 `mechanism` 산문은 절대 안 본다 — 그래서 그 문장이 낸 결과는 선택이
+#    사라지는 것이 아니라 **선택이 산문으로 이사하는 것**이었고, 그게 정확히 agent-3 이 조합
+#    못 하는 상태다. (zone 런2: 재설계를 한 번 돌고도 `bypass_method` 가 그대로 남았다.)
+_UNGROUNDED_FEEDBACK = (
+    "These parameters of your previous specification cannot be supplied by the world -- each "
+    "names a choice among behaviours rather than a value: %s. Replace each one with the effect "
+    "it was standing in for, or with a value the world can hand you. Do not move the choice "
+    "into the mechanism description: a behaviour named there and implemented nowhere is the "
+    "same undecided choice in another place.\n\n" + _EFFECT_NOT_MECHANISM)
+
 
 def ungrounded_params(params_text):
     """The **names** of the parameters that are not grounded. `None` if unreadable (which is
@@ -1247,16 +1366,30 @@ def redact_inventory_names(text: Optional[str], blob=None) -> Tuple[str, List[st
 #    (`spec_changed_by_feedback`).
 _COMPOSE_FEEDBACK = (
     "A composer holding a fixed inventory of primitive operations tried to realise your "
-    "specification and could not. It reported that this capability is missing from "
-    "everything it has:\n\n%s\n\n"
-    "The operations it does have are withheld from you on purpose -- do not try to guess "
-    "their names. Re-specify the tool so that its mechanism no longer depends on the "
-    "capability above: either drop the part of the mechanism that requires it, or commit to "
-    "a different mechanism that reaches the same goal. If no such re-specification is "
-    "possible, repeat your previous specification unchanged.")
+    "specification and could not. What it reported missing is the mechanism you named, which "
+    "is not necessarily the effect you were after:\n\n%s\n\n"
+    "The operations it does have are withheld from you on purpose -- do not try to guess their "
+    "names, and do not answer by naming a different mechanism you cannot see either. Restate "
+    "the tool as the effect it must produce. If it is the effect itself that cannot be "
+    "produced, repeat your previous specification unchanged.\n\n" + _EFFECT_NOT_MECHANISM)
 
 _SPEC_FIELDS = ("tool_name", "params", "mechanism")
-_BODY_FIELDS = ("body", "reach", "missing_primitive")
+_BODY_FIELDS = ("body", "reach", "missing_primitive", "calls")
+
+#: `_BODY_FIELDS` 중 **문자열이 아닌** 것. 🔴 왜 표가 필요한가: 나머지 셋은 `getattr(p, f, "")
+#: or ""` 로 복사하는데 `calls` 에 그것을 쓰면 `[]`(읽었는데 비었다)가 `""` 로 접혀 `None`
+#: (못 읽었다)과 구별 불가능해진다 — 이 파일이 지키는 삼상 규약을 복사 한 줄이 깨뜨린다.
+_NON_STR_BODY_FIELDS = frozenset({"calls"})
+
+
+def _copy_body_fields(rec, pred):
+    """agent-3 의 출력 넷을 기록으로. 문자열 셋만 `""` 로 접고 `calls` 는 **날것 그대로** 둔다
+    (정규화는 `_finish_record` 가 한 번만 한다 — 두 자리에서 하면 갈린다)."""
+    for f in _BODY_FIELDS:
+        if f in _NON_STR_BODY_FIELDS:
+            rec[f] = getattr(pred, f, None)
+        else:
+            rec[f] = (getattr(pred, f, "") or "")
 
 
 # ==========================================================================================
@@ -1380,9 +1513,7 @@ def synthesize_multi(state: str,
     bad = ungrounded_params(rec["params"])
     rec["ungrounded_params"] = bad
     if bad:
-        fb = ("These parameters of your previous specification cannot be supplied by the "
-              "world -- each names a choice among behaviours rather than a value: %s. "
-              "Commit to one mechanism and specify it directly." % ", ".join(bad))
+        fb = _UNGROUNDED_FEEDBACK % ", ".join(bad)
         try:
             p2b = _design(fb)
         except Exception as e:
@@ -1420,8 +1551,7 @@ def synthesize_multi(state: str,
         rec["reason"] = "stage 3 (compose) failed; nothing was minted"
         return rec
     rec["stages"].append("compose")
-    for f in _BODY_FIELDS:
-        rec[f] = (getattr(p3, f, "") or "")
+    _copy_body_fields(rec, p3)
     rec["reasoning"] = (getattr(p3, "reasoning", "") or "")
 
     # ---- (F2) agent-3 -> agent-2: the composer's verdict, redacted, **once** ---------------
@@ -1483,8 +1613,7 @@ def synthesize_multi(state: str,
                     rec.update(first)      # all six go back -- never a spliced record
                 else:
                     rec["stages"].append("compose")
-                    for f in _BODY_FIELDS:
-                        rec[f] = (getattr(p3b, f, "") or "")
+                    _copy_body_fields(rec, p3b)
                     rec["reasoning"] = (getattr(p3b, "reasoning", "") or "")
                     rec["recomposed"] = True
 

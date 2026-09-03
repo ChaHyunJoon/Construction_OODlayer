@@ -605,7 +605,7 @@ def test_redaction_does_not_maul_a_longer_identifier():
 
 
 def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MISSING,
-                  missing_always=False):
+                  missing_always=False, params=None):
     """agent-2·agent-3 이 호출마다 **다른 답**을 내는 가짜 셋. 프로바이더에 안 나간다.
 
     🔴 `missing_always` 는 라이브에서 실제로 있을 수 있는 모양을 만든다 — 모델이 `reach`
@@ -625,7 +625,8 @@ def _seq_programs(reaches, expressibles=(False, False), spy=None, missing=_F5_MI
         spy is None or spy.append("design")
         ex = expressibles[min(i, len(expressibles) - 1)]
         return _Pred(expressible=ex, tool_name="%s_%d" % (SPEC["tool_name"], i),
-                     params=SPEC["params"], mechanism="%s (attempt %d)" % (SPEC["mechanism"], i))
+                     params=(SPEC["params"] if params is None else params),
+                     mechanism="%s (attempt %d)" % (SPEC["mechanism"], i))
 
     def compose(**kw):
         i = seen["compose"]
@@ -835,3 +836,117 @@ def test_the_principles_deictic_is_true_in_every_render():
     # 사실 자체는 남아 있어야 한다 — 지시어만 고쳤지 문장을 지운 것이 아니다.
     assert "RE-SOLVES THAT MILP AUTOMATICALLY" in syn.PHYSICAL_PRINCIPLES
     assert "contains no" in syn.PHYSICAL_PRINCIPLES
+
+
+# =====================================================================================
+# 2026-09-03 (F8) — 기전을 고르라는 지시를 한 곳으로 접는다. 유료 0건.
+#
+# 실측(09-03 런2, `results/2026-09-03-ab2-synth-multi.json`): 두 레인 다 agent-3 이
+# `needs_primitive` 를 냈고, 그 이유는 인벤토리 이해가 아니라 **agent-2 가 고른 기전**이었다.
+#   · zone : agent-2 가 "수직 lift" 를 명세 → 인벤토리는 수평 이동뿐
+#   · mild : "특정 대체 로봇으로 재배정 + 우선순위 조정" → release 는 되지만 대상 지정이 없다
+# agent-2 는 인벤토리를 **일부러 못 본다**(계약 B). 그러니 기전을 고르게 두는 한 그 선택은
+# 어휘 밖으로 나갈 수밖에 없다.
+#
+# 🔴 그런데 지금 agent-2 를 미는 세 문장이 **전부 같은 방향**이었다:
+#     (1) `DesignToolSpec.mechanism` 설명 — "exactly what this tool changes and how … Be
+#         exhaustive"  ← 세 번의 design 호출 전부에 걸리는 상시 압력
+#     (2) 접지 게이트 되먹임 — "Commit to one mechanism and specify it directly."
+#     (3) F2 되먹임        — "commit to a different mechanism that reaches the same goal."
+#    "필요한 **효과**를 적고 기전은 강제될 때만 골라라" 라고 말하는 자리는 **하나도 없었다.**
+#
+# ⟹ 그 한 문장을 만들어 셋이 **공유**한다. 세 벌로 두면 갈린다 — 이 레포가 반복해 밟은 모양.
+# =====================================================================================
+
+def _agent_2_instruction_surfaces():
+    """agent-2 가 기전에 대해 읽는 **전부**. 늘어나면 여기에 더한다 — 아래 시험 둘이 같이 큰다."""
+    return {
+        "mechanism 필드 설명": syn.DesignToolSpec.output_fields["mechanism"].json_schema_extra["desc"],
+        "접지 게이트 되먹임": syn._UNGROUNDED_FEEDBACK,
+        "F2 되먹임": syn._COMPOSE_FEEDBACK,
+    }
+
+
+def test_the_effect_clause_is_one_string_that_all_three_surfaces_share():
+    """🔴 진실원 하나. 셋 중 하나만 고치면 나머지 둘이 반대로 밀어 서로를 지운다."""
+    clause = syn._EFFECT_NOT_MECHANISM
+    assert clause.strip(), "빈-통과 방지: 절이 비면 아래 단언들이 항진이다"
+    for where, text in _agent_2_instruction_surfaces().items():
+        assert clause in text, "%s 가 효과-우선 절을 안 싣는다" % where
+
+
+def test_no_surface_tells_agent_2_to_commit_to_a_mechanism():
+    """🔴 F7 의 교훈대로 **금지 목록은 약한 가드다**(변이 N3 이 그대로 통과했었다). 진짜
+    가드는 위의 긍정 못박기이고, 이것은 옛 문장 셋이 실제로 사라졌는지만 확인한다.
+    """
+    for where, text in _agent_2_instruction_surfaces().items():
+        low = text.lower()
+        for banned in ("commit to", "be exhaustive", "specify it directly",
+                       "choose a mechanism", "pick a mechanism", "select a mechanism"):
+            assert banned not in low, "%s 가 여전히 기전 확정을 지시한다(%r)" % (where, banned)
+
+
+def test_the_effect_clause_names_no_primitive_and_no_oracle_field():
+    """🔴 계약 (B)·(C). 이 절은 agent-2 가 읽는다 — 인벤토리도 오라클도 새면 안 된다."""
+    clause = syn._EFFECT_NOT_MECHANISM
+    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+        assert q["name"] not in clause, "효과-우선 절이 %s 를 흘린다" % q["name"]
+    assert "zone_relocate_norm" not in clause
+
+
+def test_only_agent_2_reads_the_effect_clause():
+    """표면을 셋으로 늘리면 누수 가드도 셋이 된다 — F7 과 같은 논거."""
+    assert syn._EFFECT_NOT_MECHANISM not in syn.build_observe_context(OBSERVATION)
+    assert syn._EFFECT_NOT_MECHANISM not in syn.build_compose_context(SPEC, REASONING_LOG)
+
+
+def test_the_mechanism_field_still_asks_for_what_the_registry_records():
+    """🔴 "how" 를 뺀다고 소비·선행조건·가역성까지 빼면 주조 레지스트리 항목이 빈다."""
+    desc = syn.DesignToolSpec.output_fields["mechanism"].json_schema_extra["desc"].lower()
+    for need in ("consume", "precondition", "undo"):
+        assert need in desc, "mechanism 설명이 %r 를 더 이상 안 묻는다" % need
+
+
+def test_the_groundability_feedback_says_the_prose_is_not_an_escape():
+    """🔴 09-03 실측: 게이트는 `params` 만 보고 `mechanism` 산문은 **절대 안 본다.** 그래서
+    agent-2 의 가장 쉬운 탈출로가 "선택을 산문으로 옮기기" 이고, 그게 정확히 agent-3 이 조합
+    못 하는 상태다(zone: `bypass_method` 가 재설계 후에도 그대로 남았다).
+    """
+    assert "mechanism description" in syn._UNGROUNDED_FEEDBACK, (
+        "게이트 되먹임이 산문 탈출로를 막지 않는다")
+
+
+def test_the_groundability_feedback_reaches_agent_2(monkeypatch):
+    """🔴 배선 시험. 이 되먹임은 지금까지 **끝에서 끝까지 재본 적이 없다** — 상수로 접으면서
+    같이 못박는다. 첫 호출은 비어 있어야 하고, 둘째는 잡힌 이름을 실은 그 상수여야 한다.
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, kw = _seq_programs(["composed"], params='{"bypass_method": {"type": "string"}}')
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
+    assert rec["ungrounded_params"] == ["bypass_method"] and rec["redesigned"] is True
+    assert kw["design"][0]["ungrounded_feedback"] == "", "첫 설계가 되먹임을 봤다"
+    assert kw["design"][1]["ungrounded_feedback"] == syn._UNGROUNDED_FEEDBACK % "bypass_method"
+
+
+def test_the_groundability_feedback_names_no_primitive(monkeypatch):
+    """🔴 계약 (B). 실제로 **보내진** 문자열을 레지스트리 전수로 본다 — F2 와 같은 검사."""
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    progs, kw = _seq_programs(["composed"], params='{"bypass_method": {"type": "string"}}')
+    syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                         programs=progs)
+    fb = kw["design"][1]["ungrounded_feedback"]
+    for q in syn._prim.REGISTRY["primitives"] + syn._prim.REGISTRY["predicates"]:
+        assert q["name"] not in fb, "agent-2 가 접지 되먹임에서 원시 %s 를 봤다" % q["name"]
+
+
+def test_the_effect_clause_carries_both_halves():
+    """🔴 변이 M6 이 살아남아서 추가한다. 마지막 문장을 지워도 절은 여전히 **비어 있지 않아**
+    세 표면이 '공유'는 한다 — 공유하는 내용이 반쪽이어도. 그런데 이 개입은 두 반쪽이 다
+    있어야 뜻이 있다: (a) 효과를 요구한다, (b) 기전을 놓아준다. (b) 가 빠지면 남는 것은
+    "효과도 적고 기전도 exhaustive 하게 적어라" 이고, 그건 09-03 이전의 압력 그대로다.
+    """
+    clause = syn._EFFECT_NOT_MECHANISM
+    assert "REQUIRED EFFECT" in clause, "(a) 효과를 요구하는 반쪽이 없다"
+    assert "the way is open" in clause, "(b) 기전을 놓아주는 반쪽이 없다"
+    assert len(clause.split()) >= 50, "절이 잘렸다 — 위 두 못박기가 문구만 남긴다"

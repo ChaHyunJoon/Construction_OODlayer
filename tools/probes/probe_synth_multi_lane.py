@@ -99,15 +99,27 @@ for name, kind, state in CASES:
     print("tool_name       =", repr(rec.get("tool_name")))
     print("reach           =", repr(rec.get("reach")))
     print("body_names      =", rec.get("body_names"))
+    # ---- A (2026-09-03): 구조화 인자 채널. 🔴 이걸 안 찍으면 유료 런을 하고도 못 본다.
+    print("calls           =", rec.get("calls"))
+    print("calls_match_body=", rec.get("calls_match_body"),
+          " calls_flat =", rec.get("calls_flat"),
+          " | ", (rec.get("calls_flat_detail") or "")[:90])
     print("tool_minted     =", repr(rec.get("tool_minted")), " reason =", rec.get("reason"))
     print("error           =", rec.get("error"))
     print("lm calls        =", rec["_n_lm_calls"], rec["_finish_reasons"], rec["_usage"])
 
 # 🔴 Default lands in `results/` -- that path is gitignored, so a live run's raw JSON never
 #    becomes a committed number nobody re-derived.
-dst = os.environ.get("PROBE_OUT") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "results", "synth_multi_lane_result.json")
+# 🔴 2026-09-03: `PROBE_OUT` 이 **상대경로면 저장이 죽는다** — 이 파일은 import 시점에
+#    `os.chdir(SVC)` 를 하므로 상대경로가 `src/respec/llm_service/` 기준으로 풀린다. 실제로
+#    한 번 그렇게 잃었다: 유료 10콜이 돌고 난 **뒤에** FileNotFoundError 가 나서 원본 기록이
+#    통째로 사라졌다(화면 출력만 남았다). 이제 레포 루트 기준으로 풀고 디렉토리도 만든다.
+#    🔴 그리고 저장을 **모든 LM 호출보다 뒤가 아니라, 실패해도 잃지 않도록** 절대경로로
+#    먼저 확정해 둔다.
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_p = os.environ.get("PROBE_OUT") or os.path.join("results", "synth_multi_lane_result.json")
+dst = _p if os.path.isabs(_p) else os.path.join(REPO, _p)
+os.makedirs(os.path.dirname(dst), exist_ok=True)
 json.dump(out, open(dst, "w", encoding="utf-8"), indent=1, ensure_ascii=False, default=str)
 print("\nwrote", dst)
 print("TOTAL BILLED ROUND TRIPS =", sum(c["_n_lm_calls"] for c in out["cases"].values()))
