@@ -221,13 +221,51 @@ def test_expressible_false_survives_a_forced_tool_call():
     assert out["tool_arg_error"] is None, "억제 이유가 R26 이지 접지 실패가 아니어야 한다"
 
 
-def test_expressible_false_still_fires_the_synthesis_lane():
-    """합성 레인의 **유일한** 발화 조건이 `expressible == False` 다(spec §8-1). 강제 호출이
-    그 발화를 삼키면 T2 가 영원히 안 돈다."""
+def test_a_forced_call_still_reaches_the_synthesis_lane_with_expressible_false():
+    """강제 호출이 합성 레인 자체를 삼키지는 않는다. 🔴 그러나 **무엇을 잃었는지 읽을 것.**
+
+    ⚠️ 2026-09-03 (D8). 이 시험은 원래
+    `test_expressible_false_still_fires_the_synthesis_lane` 이었고
+    `synthesis["synthesis_event"] is True` 를 단언했다. 그 단언은 `ad867d4f` 에서 초록이었고
+    지금은 **구조적으로 불가능**하다. 옛 단일 agent 레인(`maybe_synthesize`)은 호출자가 준
+    `expressible` 로 **플래그를 보기 전에** 발화를 판정했으므로, `TOOL_SYNTHESIS` 가 꺼진
+    기본 런에서도 `synthesis_event=True · tool_minted="disabled"` 를 낼 수 있었다. D8 이
+    그 레인을 지웠고, 남은 3-agent 레인은 발화 판정이 **agent-2 의 출력 필드**라 파이프라인을
+    돌리기 전에는 존재하지 않는다 — 플래그가 꺼져 있으면 agent-2 는 아예 안 불린다.
+
+    🔴 **정확히 무엇을 잃었나.** spec §8-1 이 승급 게이트의 대체 신호로 지목한
+    `expressible == false` **율**은 옛 레인에서 **공짜로** 관측됐다(합성을 켜지 않은 런의
+    `tool_minted == "disabled"` 개수를 세면 됐다). 이제 그 율은 **유료 런 없이는 관측
+    불가능**하다: 플래그가 꺼진 런의 모든 행이 `synthesis_event=False · tool_minted="disabled"`
+    로 똑같이 생겼고, 그중 어느 것이 발화했을 사건인지 기록에 남지 않는다.
+    ⟹ §8-1 의 율을 인용하려면 그 숫자가 **어느 유료 런에서 나왔는지**를 함께 대야 한다.
+
+    아래는 D8 이후에도 참인 것만 단언한다: 강제된 호출이 (a) `expressible` 을 삼키지 않고,
+    (b) 합성 레인을 도달 불가로 만들지 않으며, (c) 그 기록이 "발화 안 함" 이 아니라
+    **"플래그가 꺼짐"** 이라고 스스로 말한다.
+    """
+    assert os.environ.get("TOOL_SYNTHESIS", "") != "1", (
+        "이 시험은 합성이 꺼진 기본 세계를 재는 것이다 — 켜져 있으면 유료 호출이 돈다")
     _install(_answer(action=_call(expressible=False)))
     out = svc.macro(_req())
-    assert out["synthesis"]["synthesis_event"] is True, (
-        "강제 호출이 온 사건에서 합성 발화가 사라졌다 — R26 구현이 expressible 을 덮었다는 뜻")
+    syn = out["synthesis"]
+
+    # (a) 강제 호출이 판정을 덮지 않았다 — 이것이 R26 이 지키는 것이고 D8 과 무관하다.
+    assert out["expressible"] is False
+
+    # (b) 레인은 실제로 불렸다(기록이 있고 장애가 아니다).
+    assert syn is not None and syn["error"] is None
+
+    # (c) 🔴 기록이 두 버킷을 가른다. `synthesis_event` 는 더 이상 그 일을 못 한다 —
+    #     가르는 키는 `enabled`(= `tool_minted == "disabled"`)다. 머리말의 소비자 규칙표와
+    #     같은 자리이므로, 표가 갈리면 여기가 빨개진다.
+    assert syn["enabled"] is False
+    assert syn["tool_minted"] == "disabled"
+    assert syn["ran"] is False
+    assert syn["synthesis_event"] is False, (
+        "D8 이후 꺼진 런은 `synthesis_event=False` 다. 이것이 True 로 돌아왔다면 발화 판정의 "
+        "출처가 다시 호출자 인자로 바뀐 것이고, 그러면 §8-1 의 율이 두 분모로 계산된다")
+    assert "TOOL_SYNTHESIS" in syn["reason"], "왜 안 돌았는지가 기록에 남아야 한다"
 
 
 # ---------------------------------------------------------------------------------------------

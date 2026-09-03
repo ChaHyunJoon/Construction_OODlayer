@@ -26,8 +26,9 @@ One synthesis = one **billable OpenAI call** on the user's account. But when it 
 not quietly emit success-shaped output -- `force_advance_stuck_carrier!` in this repo is
 exactly that trap (a no-op without `CARRIER_RESCUE`, yet the log looks normal). Hence:
 
-    tool_minted == "disabled"  ->  this event WOULD have fired, but **the flag was off**
-    tool_minted is None        ->  this was not a firing event (expressible != False)
+    tool_minted == "disabled"  ->  the flag was off, so the pipeline never ran
+                                  🔴 NOT "this event would have fired" -- see the 09-03 note below
+    tool_minted is None        ->  it did not fire, or it fired and minted nothing
 
 🔴 **The order of the verdict was "firing condition first, flag second."** Reversed (flag
 first), **every decision row** of a default run becomes `"disabled"`, and at that moment the
@@ -43,18 +44,48 @@ which means `synthesize_multi` must check the flag first and returns `"disabled"
 have fired".** With the flag off, that number is "how many decisions there were", and the
 `expressible == false` rate is simply not observable without paying for it.
 
-🔴 **The four values are not a partition.** There is a fifth event: **it ran and the LM/parse
-failed.** That row has `tool_minted is None` but `synthesis_event=True · ran=True ·
-error!=None`, which **distinguishes** it from "this was not a firing event"
-(`synthesis_event=False`). This repo has twice already stepped on the accident of one lane's
-events landing in another lane's bucket and inflating the rate (the three events of C8, the
-100% vs 23% fault firing rate). Consumer rules:
+🔴 **The values are not a partition, and `synthesis_event` no longer separates the buckets.**
+This repo has twice already stepped on the accident of one lane's events landing in another
+lane's bucket and inflating the rate (the three events of C8, the 100% vs 23% fault firing
+rate), so the rules below are normative for consumers -- index by them, not by intuition.
 
-    did not fire     synthesis_event == False                      -> tool_minted is None
-    was switched off synthesis_event == True and ran == False      -> tool_minted == "disabled"
-    ran and failed   ran == True and error is not None             -> tool_minted is None
-    re-derived       ran == True and error is None                 -> tool_minted == False
-    new canon        ran == True and error is None                 -> tool_minted == True
+⚠️ **2026-09-03: the old table said "was switched off -> `synthesis_event == True` and
+`ran == False`". That is now FALSE and it collided two buckets.** `synthesize_multi` cannot set
+`synthesis_event` before it knows agent-2's answer, and with the flag off agent-2 is never
+called -- so a switched-off row carries `synthesis_event == False` **and**
+`tool_minted == "disabled"` together, which the old table's first row read as "did not fire".
+
+🔴 **The key that separates "did not fire" from "was switched off" is now `enabled`** (the
+record's own field, stamped from `synthesis_enabled()` when the record is created), and
+equivalently `tool_minted == "disabled"`. It is NOT `synthesis_event`. Rules, each one true of
+`synthesize_multi` today:
+
+    was switched off  enabled == False
+                      (synthesis_event == False · ran == False · error is None · stages == [])
+                                                              -> tool_minted == "disabled"
+    a stage failed    enabled == True and ran == False and error is not None
+                      (observe / design / redesign died; the verdict never existed)
+                                                              -> tool_minted is None
+    did not fire      enabled == True and ran == False and error is None
+                      (agent-2 answered expressible != False)  -> tool_minted is None
+    ran and failed    ran == True and error is not None
+                      (the compose stage died)                 -> tool_minted is None
+    ran, no body      ran == True and error is None and body_names == []
+                      (see the Task 8 note below)              -> tool_minted is None
+    re-derived        ran == True and error is None and body_names != []
+                                                              -> tool_minted == False
+    new canon         ran == True and error is None and body_names != []
+                                                              -> tool_minted == True
+
+🔴 **`ran == True` implies `synthesis_event == True` and vice versa** on this lane -- they are
+set on the same line. Keep reading both anyway: a future lane may separate them, and a consumer
+that silently depends on the coincidence is how the C8 accident happened.
+
+⚠️ **Until Task 8 the last two rows are unreachable.** `body_names` is pinned to `[]`
+(R-BODYNAMES), so every record of a kind collapses to one canonical form and "already observed"
+would be an artefact of the empty body rather than a fact about the tool. `tool_minted` is
+therefore `None` ("not knowable") on every row that runs, not `False`. **`|K|` is not a curve
+right now** -- it counts kinds.
 
 ────────────────────────────────────────────────────────────────────────────────
 🔴 R19 (2026-09-03) -- the ψ distance is **gone**, not merely record-only.
@@ -293,6 +324,27 @@ class DesignToolSpec(dspy.Signature):
         + _EFFECT_NOT_MECHANISM)
 
 
+# ==========================================================================================
+# 🔴🔴 STANDING INSTRUCTION (2026-09-03): DO NOT RUN A PAID SYNTHESIS BEFORE TASK 8. 🔴🔴
+# ==========================================================================================
+# This signature is a **live prompt that lies**, knowingly, for one task's duration.
+#
+#   · Its docstring and five field descriptions below tell agent-3 it holds "a fixed inventory
+#     of primitive operations" and to emit "a name from the inventory". There is no inventory:
+#     `synthesize_multi` feeds `inventory=""` (D5 deleted the registry and its renderer).
+#   · So a paid run instructs the model to pick names out of an empty list. What comes back is
+#     invented names, or a refusal, and **neither is a measurement of anything.**
+#   · The gate that used to catch invented names was `parse_body` -- it matched the body against
+#     the registry and surfaced the mismatch as `body_unknown` / `reach_matches_body`. Task 1
+#     deleted it along with the registry it consulted. **There is now no downstream check at all
+#     on what this stage returns**, so the garbage would land in the ledger and in
+#     `synth_lane_records.jsonl` looking exactly like a real record.
+#
+# 🔴 The wording is deliberately NOT patched. Task 8 replaces this whole signature with
+#    `WriteToolImpl` (agent-3 becomes a **writer** of Julia, handed the world interface instead
+#    of an alphabet). Rewording five descs here would change the live prompt bytes twice, and
+#    the intermediate wording -- "compose from this empty inventory" -- is not less false than
+#    what stands, only differently false. One rewrite, at Task 8.
 class ComposeToolBody(dspy.Signature):
     """You are given a tool specification and a fixed inventory of primitive operations.
     Write the tool's BODY as an ordered sequence of primitive calls from the inventory.
@@ -305,7 +357,8 @@ class ComposeToolBody(dspy.Signature):
         "the alphabet a body may be composed from, with each primitive's full mechanism")
 
     body: str = dspy.OutputField(desc="ordered list of primitive calls, with arguments")
-    # 🔴 2026-09-03 (A). `body` 는 **산문**이고 canon/psi/ledger 가 그것을 읽는다. 그 표기법은
+    # 🔴 2026-09-03 (A). `body` 는 **산문**이다. 옛날엔 canon/psi/ledger 가 그것을 읽었다
+    #    (오늘은 아니다 — ψ 는 D7 로 사라졌고 canon 은 `body_names` 를 읽는다). 그 표기법은
     #    고정돼 있지 않아 인자를 기계가 못 꺼낸다(실측: kwarg 형태와 Julia 리터럴에서 정규식이
     #    깨지고, 괄호 없는 나열에서는 이름만 살아남고 인자가 사라진다). 그래서 인자는 파싱하지
     #    않고 **모델이 데이터로 낸다.** `body` 는 그대로 두므로 canon 의 계보가 안 끊긴다.
@@ -333,8 +386,12 @@ class ComposeToolBody(dspy.Signature):
 #    referent is in its context (the observation is the bottleneck, the vocabulary is a separate
 #    input field). A pointer to something that is not there reads as a missing block, so each
 #    stage gets the wording that is true where it is rendered.
-# 🔴 These strings must name NO primitive and NO predicate -- `test_design_context_names_no_primitive`
-#    checks the whole registry against agent-2's context.
+# 🔴 These strings must name NO primitive and NO predicate.
+# ⚠️ 2026-09-03: **that rule is currently ungated.** The gate that enforced it,
+#    `test_synthesize_multi.py::test_design_context_names_no_primitive`, iterated
+#    `syn._prim` (the registry) and now dies with AttributeError before it asserts
+#    anything -- a red test is not a gate. Task 10 owns that file. Until then this is a
+#    rule kept by hand.
 _NOVEL_OBSERVE = """\
 NOVEL PROPERTIES OF THE EVENT
 The monitor did not classify this event. Its novelty is exactly what the observation reports --
@@ -732,10 +789,15 @@ def _finish_record(rec, kind, led, blob):
     computing a ψ distance over it. Both are gone with the registry (D5 · D7). What is left is
     the part that never depended on an alphabet: the canonical form, the ledger, and `|K|`.
     """
-    # 🔴 `body_names` stays in the record and stays a **list**. Task 8 fills it with
-    #    `[impl_name]`; the Julia enactment path reads this key, and key-absence must not be
-    #    confused with an empty body. Until then it is `[]` -- "we ran and there is no body
-    #    name", never a missing key.
+    # 🔴 `body_names` stays in the record and stays a **list**, and Task 8 fills it with
+    #    `[impl_name]`. The reason is that **the record shape stays stable across Task 8** --
+    #    a jsonl whose columns change under readers written against it is the expensive kind of
+    #    churn, and both Julia readers already type this key as a list.
+    # ⚠️ It is NOT because absence would be misread: measured 2026-09-03, both readers default
+    #    absence to empty and land on the same verdict --
+    #    `minted_tool.jl:937` `_synth_get(synth, "body_names", String[])` and
+    #    `enact.jl:925` `something(get(sl, "body_names", nothing), [])`, both -> `:reject
+    #    "empty body"`. Do not cite a distinction the enactment path does not draw.
     rec["body_names"] = []
     # 🔴 If it is inexpressible and the definition is empty, the record loses what was needed
     #    in that event.
@@ -752,10 +814,15 @@ def _finish_record(rec, kind, led, blob):
     _raw_calls = rec.get("calls")
     rec["calls"] = normalize_calls(_raw_calls)
     rec["calls_unreadable"] = (_raw_calls is not None and rec["calls"] is None)
-    # 🔴 기록만 하고 강제하지 않는다(옛 `reach_matches_body` 와 같은 관용). Task 8 이
-    #    `body_names` 를 채우기 전까지 이 값은 구조적으로 `False` 다 — `[]` 와 비교하기 때문.
+    # 🔴 기록만 하고 강제하지 않는다(옛 `reach_matches_body` 와 같은 관용).
+    # 🔴 `body_names` 가 R-BODYNAMES 로 `[]` 에 못박혀 있는 동안은 **`None`("못 쟀다")이다.**
+    #    비교를 그대로 두면 agent-3 이 호출을 낼 때마다 구조적으로 `False` 가 나오는데,
+    #    `False` 는 "쟀고 어긋났다" 는 주장이라 지속되는 jsonl 을 읽는 사람에게는 **모델이
+    #    자기모순을 냈다**고 보인다. 잰 것이 없으므로 `None` 이다(이 파일의 삼상 규약).
+    #    Task 8 이 `body_names` 를 `[impl_name]` 로 채우는 순간 다시 측정 가능해진다 —
+    #    아래 식은 그때 손대지 않고도 살아난다.
     rec["calls_match_body"] = (
-        None if rec["calls"] is None else
+        None if (rec["calls"] is None or not rec["body_names"]) else
         [c["primitive"] for c in rec["calls"]] == rec["body_names"])
     rec["calls_flat"], rec["calls_flat_detail"] = calls_flatness(rec["calls"])
 
@@ -764,12 +831,26 @@ def _finish_record(rec, kind, led, blob):
     rec["canon_key"] = canon_key(c)
 
     minted = led.observe(c, params=rec["params"], tool_name=rec["tool_name"])
-    rec["tool_minted"] = bool(minted)
     rec["K"] = led.K
     rec["canon_count"] = led.entries[rec["canon_key"]]["count"]
-    rec["reason"] = ("new canon" if minted else
-                     "canon already observed -- the model re-derived a behaviour it already "
-                     "had; this is a point on the |K| curve, not a failure (spec 5-2-3)")
+    # 🔴 `body_names` 가 비어 있는 동안 `tool_minted` 는 **`None`("못 쟀다")이지 `False`
+    #    ("이미 본 canon")가 아니다.** R-BODYNAMES 가 `body_names` 를 `[]` 로 못박아서 한
+    #    `kind` 의 모든 기록이 canonical form 하나로 붕괴한다 — 그래서 두 번째 기록부터는
+    #    **진짜로 새로운 도구인데도** `False` 가 나온다. 그것은 빠진 값이 아니라 **틀린
+    #    값**이고, 틀린 값은 `|K|` 곡선에 그대로 실린다. `led.observe` 는 계속 부른다:
+    #    `canon_count` 는 "이 축퇴된 canon 을 몇 개의 기록이 공유했나" 라는 참인 사실이다.
+    #    Task 8 이 `body_names` 를 채우면 아래 분기가 그대로 살아난다.
+    if not rec["body_names"]:
+        rec["tool_minted"] = None
+        rec["reason"] = ("tool_minted is not knowable until Task 8 fills body_names: with an "
+                         "empty body every record of this kind collapses to the same canonical "
+                         "form (%s), so 'already observed' would be an artefact of the empty "
+                         "body and not a fact about the tool (spec 5-2-3)" % rec["canon_key"])
+    else:
+        rec["tool_minted"] = bool(minted)
+        rec["reason"] = ("new canon" if minted else
+                         "canon already observed -- the model re-derived a behaviour it already "
+                         "had; this is a point on the |K| curve, not a failure (spec 5-2-3)")
     return rec
 
 
@@ -1035,6 +1116,12 @@ def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
     would compute the same-named rate over two different denominators -- a place this repo has
     already stood, with `macro_tool_agree`. The parameter stays in the signature because the
     service passes it positionally and its absence would be a silent API break.
+
+    ⚠️ 2026-09-03: `blob` is **threaded dead**. It used to be the registry blob and every callee
+    read it; today it reaches `synthesize_multi` -> `build_compose_context` / `_finish_record`
+    and **not one of them looks at it**. It is kept, not removed, because Task 8's code passes
+    it at the same call sites -- deleting the parameter now would only mean re-adding it. If
+    Task 8 leaves it unread as well, delete it there.
     """
     return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
                             programs=programs, blob=blob)
@@ -1200,6 +1287,10 @@ def synthesize_multi(state: str,
         #    가릴 것이 없고 계약 (B) 도 폐지됐다.
         # 🔴 `compose_feedback_redacted` 는 `None`("가림이 안 돌았다")이지 `[]`("돌았는데
         #    하나도 안 걸렸다")가 아니다 — 이 파일이 지키는 삼상 규약.
+        # ⚠️ 긴장 하나를 정직하게 적어 둔다(컨트롤러가 **고치지 말라고** 보류한 항목):
+        #    이 파일의 R19 주석은 "영영 `None` 인 필드는 삼상을 오독시키므로 키째 지운다" 고
+        #    적고 ψ 를 그렇게 처리했는데, 이 필드는 브리프 지시대로 남아서 영영 `None` 이다.
+        #    같은 파일이 같은 상황에 두 규칙을 쓴다. Task 8 이 F2 되먹임 경로를 다시 연다.
         red = rec["missing_primitive"]
         rec["compose_feedback"] = _COMPOSE_FEEDBACK % red
         rec["compose_feedback_redacted"] = None
