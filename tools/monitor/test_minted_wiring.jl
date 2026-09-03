@@ -521,6 +521,48 @@ end
             @test hasproperty(real, f)
         end
     end
+
+    # -------------------------------------------------------------------------------------
+    @testset "(9) unsanctioned 도 폴백을 건너뛴다 — 그러나 로그가 그 사실을 적는다" begin
+        # 🔴 2026-09-02 결정 2·3. 모델이 `reach="needs_primitive"` 라고 신고했는데 body 가
+        #    조합돼 있어 굴린 행이다. 세계는 이미 절반 고쳐졌을 수 있으므로(undo 없음) 그 위에
+        #    기본 복구 사슬을 얹지 않는다 — 자기신고와 무관하게 `handled` 의 판정은 세계가 한다.
+        local env = throw_env_with_live_cache()
+        r, out = capture_out(() -> enact_minted_decision!(
+            env, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
+        # 전제부터 못박는다 — 이 판이 정말 "굴렸고 던졌고 재개는 성공했다" 인가.
+        @test r.verdict === :admit_unsanctioned
+        @test r.partial === true
+        @test r.world_maybe_dirty === true
+        @test r.resume === :issued
+        @test r.handled === true                       # 🔴 D3
+        @test occursin("verdict=admit_unsanctioned", out)
+        @test occursin("reach=needs_primitive", out)
+        @test !occursin("NOT handled", out)
+
+        # 🔴 나머지 세 연언지는 하나도 안 풀렸다. 같은 body·같은 던지는 지점, env 만 다르다 —
+        #    재개가 실패하면 unsanctioned 여도 폴백이 돈다(게이트는 **넓어지기만** 했다).
+        r2, out2 = capture_out(() -> enact_minted_decision!(
+            THROW_ENV, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
+        @test r2.verdict === :admit_unsanctioned
+        @test r2.resume === :failed
+        @test r2.handled === false
+        @test occursin("NOT handled", out2)
+
+        # 🔴 그리고 세계를 안 건드린 조용한 성공도 그대로다 — verdict 만 갈리고 handled 는 거짓.
+        r3, out3 = capture_out(() -> enact_minted_decision!(
+            QUIET_ENV, nothing, _dec(_sl(reach = "needs_primitive", names = BODY))))
+        @test r3.verdict === :admit_unsanctioned
+        @test r3.world_maybe_dirty === false
+        @test r3.handled === false
+        @test occursin("NOT handled", out3)
+
+        # 🔴 `reach === nothing` 은 여전히 조기 반환이다 — "못 쟀다"를 "아니라고 했다"로 접지 않는다.
+        r4, out4 = capture_out(() -> enact_minted_decision!(
+            env, nothing, _dec(_sl(reach = nothing, names = BODY))))
+        @test r4.verdict === :deferred && r4.handled === false
+        @test occursin("lane=reach_nothing", out4)
+    end
 end
 
 end # module

@@ -773,6 +773,8 @@ end
 
 🔴 **`handled` 의 정의는 `(:admit) && world_maybe_dirty && resume !== :failed` 다 —
 `applied` 가 아니다.**
+🔴 첫 연언지는 `:admit` 하나가 아니라 `ENACTED_VERDICTS` 둘이다(2026-09-02 결정 2·3).
+나머지 셋은 그대로 — 게이트는 넓어지기만 한다.
 `applied` 는 status 전용이라, 1단계가 세계를 바꾸고 2단계가 **던지면** `applied == false` 인데
 세계는 이미 편집돼 있다(`partial == true`, `undo === :none`). 그 반쯤 고쳐진 세계 위에 기본
 복구 사슬을 얹는 것은 안 얹는 것보다 나쁘다. 그래서 판정은 파생 필드 `world_maybe_dirty` 로
@@ -876,7 +878,7 @@ function enact_minted_decision!(env, truth, decision)
         #    넓어지기만 해야 한다.
         local resolve_failed = r.resolve === :infeasible || r.resolve === :commit_failed ||
                                r.resolve === :threw
-        local handled = (r.verdict === :admit) && r.world_maybe_dirty &&
+        local handled = CB.minted_handled_verdict_ok(r.verdict) && r.world_maybe_dirty &&
                         (r.resume !== :failed) && !resolve_failed
 
         println("[minted] lane=present tool=", get(sl, "tool_name", "?"), " reach=", reach,
