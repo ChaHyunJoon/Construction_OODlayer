@@ -109,6 +109,14 @@ end
     @test isempty(CB.minted_table())
 end
 
+# 🔴 이 testset 혼자서는 invokelatest 누락을 못 잡는다(2026-09-03 컨트롤러 F1 실측).
+#    `@testset` 본문은 top-level 인터프리터 경로로 평가되므로, 그 안에서
+#    `register_minted_primitive!` 를 부른 뒤 **별도의 문**으로 `enact_minted!` 를 불러도
+#    각 문이 그때그때 최신 world 를 다시 조회한다 — world age 가 얼지 않는다. 실제로
+#    `src/respec/minted_tool.jl` 의 `invokelatest` 를 원래의 raw 호출로 되돌려도 이 testset은
+#    5/5 로 통과한다(측정 완료, 아래 testset (9) 참고). world age 동결은 **eval 과 그 결과를
+#    부르는 호출이 하나의 컴파일된 함수 프레임 안에** 같이 있을 때만 걸린다 — 계획의
+#    Task 9(`enact_minted_decision!`)가 만들 실제 프로덕션 모양이 정확히 그것이다.
 @testset "(8) 🔴 방금 eval 한 함수를 같은 호출 스택에서 부를 수 있다 (world age)" begin
     # Julia 는 `Core.eval` 로 정의된 메서드를 **현재 world** 에서 직접 못 부른다.
     # `invokelatest` 없이는 여기서 MethodError 가 나고, 집행부의 try 가 그것을
@@ -132,6 +140,43 @@ end
     @test r.verdict === :admit
     @test length(r.steps) == 1 && r.steps[1].status === :did_nothing
     @test r.partial === false                   # 🔴 world age 로 던지지 않았다
+    @test r.args_from === :calls && r.n_calls == 1
+end
+
+# 🔴 F1 (컨트롤러 fix round 1, 2026-09-03): register 와 enact 를 **같은 컴파일된 함수 프레임
+#    안에서** 잇달아 부른다 — 계획의 Task 9(`enact_minted_decision!`)가 실제로 이 모양이다.
+#    testset (8) 은 두 호출을 서로 다른 top-level 문으로 적어서 world age 가 안 얼기 때문에
+#    invokelatest 가 없어도 통과한다(위 (8) 머리말 참고, 컨트롤러가 직접 변이시켜 확인했다).
+#    이 함수 하나가 그 자리를 메운다: eval 과 호출이 한 프레임 안에 있다.
+function _register_then_enact_single_frame(; name, code, params, surface, reversible, fake, synth)
+    why = CB.register_minted_primitive!(name = name, code = code, params = params,
+                                        surface = surface, reversible = reversible)
+    why === nothing || return why
+    return CB.enact_minted!(fake, nothing, synth)   # 위 register 의 eval 과 같은 프레임
+end
+
+@testset "(9) 🔴 F1: register→enact 가 한 프레임 안에 있으면 invokelatest 가 진짜로 필요하다" begin
+    CB.reset_minted_table!()
+    code = """
+    function single_frame_thing!(env; note = "y")
+        return (status = :did_nothing, note = note)
+    end
+    """
+    fake = (staging_circles = Dict{Symbol,Any}(),)
+    synth = Dict{String,Any}("reach" => "composed", "body_names" => ["single_frame_thing!"],
+                             "tool_name" => "t", "params" => Dict{String,Any}(),
+                             "missing_primitive" => nothing,
+                             "calls" => [Dict{String,Any}("primitive" => "single_frame_thing!",
+                                                          "args" => Dict{String,Any}("note" => "hi"))])
+    out = _register_then_enact_single_frame(
+        name = "single_frame_thing!", code = code,
+        params = Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
+        surface = "sched", reversible = true, fake = fake, synth = synth)
+    @test out isa NamedTuple   # register 성공(문자열이 아니라 enact_minted! 의 NamedTuple 이 왔다)
+    r = out
+    @test r.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :did_nothing
+    @test r.partial === false                   # 🔴 이게 이 testset 의 핵심 단언 — 여기가 빨개져야 진짜 게이트다
     @test r.args_from === :calls && r.n_calls == 1
 end
 end # module
