@@ -91,20 +91,20 @@ end
     end
     @test count(m -> m.callable === true, ms) == 186   # 실측. Vararg 고침 전에는 181
 end
-@testset "(7) 🔴 R11 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
+@testset "(7) 🔴 R11·R33 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
     j = JSON3.read(read(ART, String))
     ms = collect(j.methods)
     @test all(m -> haskey(m, :missing), ms)
 
-    # 🔴 R11. 이전 판은 인자당 `first(ps)` **하나**만 실었다 — `AbstractID` 의 9개 경로 중
-    #    사전순 첫째 하나. 그 컬렉션의 실측 조성은 {TemplatedID 28, ObjectID 20, BotID 18,
-    #    AssemblyID 8} 이라 로봇 id 를 요구하는 메서드가 로봇을 받을 확률이 18/74 였다.
-    #    이제 인자당 최대 4개를 싣는다 — 설계 §6.2 의 예시 경로가 그 안에 있어야 한다.
+    # 🔴 R11 → R33. 이전 판은 인자당 `first(ps)` **하나**만 실었다 — `AbstractID` 의 9개
+    #    경로 중 사전순 첫째 하나. R11 이 그것을 넷으로 올렸고, 판정 R33 이 **상한을 아예
+    #    안 물리게** 했다(어느 경로가 더 정밀한지는 선언에서 유도할 수 없다 — 아홉 경로의
+    #    선언된 산출 타입이 9/9 동일하다는 실측). 이제 인자 하나가 아홉을 다 본다.
     ag = only(filter(m -> String(m.name) == "asset_generation", ms))
-    @test length(ag.argpaths) == 4                       # 인자 하나 × 최대 4
+    @test length(ag.argpaths) == 9                       # 인자 하나 × 경로 아홉 (안 자른다)
     @test any(p -> occursin("env.sched.vtx_ids", String(p)), ag.argpaths)
     rr = only(filter(m -> String(m.name) == "replace_robot!", ms))
-    @test length(rr.argpaths) == 8                       # AbstractID 인자 둘 × 4
+    @test length(rr.argpaths) == 18                      # AbstractID 인자 둘 × 9
 
     # 🔴 설계 §6.2. 둘째 표제의 **모든** 항목은 무엇이 없는지를 말해야 한다.
     later = [m for m in ms if m.callable !== true]
@@ -123,41 +123,90 @@ end
                           occursin("ScheduleNode", String(m.signature)), ms))
     @test isempty(cn.missing) && !isempty(cn.argpaths)
 end
-@testset "(8) 🔴 N2: 인자당 상한은 사전순이 아니라 **정밀도순**으로 자른다" begin
-    # R11 이 `first(ps)` 를 최대 4개로 바꿨지만 **어느 4개인가** 는 여전히 사전순이었다.
-    # 실측(이 산출물, R11 이후): `swap_battery!(env, role::AbstractID)` 가 받은 넷은
-    # {scene_tree.vtx_ids, sched.vtx_ids, active_build_steps, agent_parent_build_step_active}
-    # 이고, `keys(env.agent_policies)` — env 위에서 **로봇 id 만** 담긴 유일한 컬렉션 —
-    # 은 사전순 5번째라 잘려 나갔다. R11 의 논거("모델이 고를 수 있는 선택지")는
-    # 고를 것 중에 답이 있을 때만 성립한다.
+@testset "(8) 🔴 R33: 인자당 경로는 **자르지 않는다** — 정당화할 수 없는 순위를 프롬프트가 암시하지 않는다" begin
+    # ── 이 testset 이 지키는 것과 지키지 **않는** 것 (리뷰 I3 를 정직하게 갚는다) ──────────
     #
-    # 🔴 여기서 고정하는 것은 기전이 아니라 **성질**이다: 어떤 타입의 가장 정밀한 원은
-    #    상한에 잘려서는 안 된다. 정밀함의 정적 정의는 생성기가 정한다(진실원 하나) —
-    #    이 시험은 그 정의가 산출물에서 실제로 지켜졌는지만 본다.
+    #  지킨다 (전부 산출물만 읽어서 판정된다):
+    #    (a) `access` 색인이 아홉을 다 들고 있다,
+    #    (b) 🔴 **어떤 인자의 경로 목록도 잘리지 않는다** — 렌더에 실린 경로 집합이 색인의
+    #        경로 집합과 **같다**. `_MAX_PATHS` 는 이제 무음 절단기가 아니라 **트립와이어**다:
+    #        상한이 물면 이 단언이 빨개진다(조용히 사전순으로 넷을 고르는 대신),
+    #    (c) 목록이 **사전순**이다 — 즉 위치가 순위를 뜻하지 않는다,
+    #    (d) 설계 §6.2 가 이름 댄 두 경로와 `restage_assembly!` 의 전제조건 집합이 실제로 실린다.
+    #
+    #  🔴 지키지 **못한다**: "1위가 실제로 로봇 id 를 준다" 같은 **실행시각 조성**은 이 파일이
+    #     `env` 를 안 만들므로 잴 수 없다. 그것은 정적 성질이 아니다 — wave-b-review 가 살아
+    #     있는 `PlannerEnv` 에서 한 번 쟀고(`keys(env.agent_policies)` = {BotID 18,
+    #     TemplatedID{TransportUnitNode} 27}), 그 조성은 보드·함대 크기에 따라 움직인다.
+    #     예전 판의 주석은 "기전이 아니라 성질을 고정한다" 고 적어 놓고 문자열 하나
+    #     (`first(ids) == "keys(env.agent_policies)"`)를 단언했다 — 그 문장이 거짓이었다.
+    #
+    # ── 왜 더 나은 순위가 아니라 **컷 제거**인가 (판정 R33) ──────────────────────────────
+    #  R21 은 "정밀한 출처를 남기라" 였고 wave B 는 그것을 `Dict` 의 **선언된 값 타입**으로
+    #  구현했다(CB 소유면 "키가 역할을 이름한다"). 그 규칙은 오늘 데이터에서 **반상관**이다:
+    #  `agent_policies`(값=`VelocityController`, 1등급) 키는 40% 만 로봇이고,
+    #  `staging_circles`(값=`Ball2`, 최하등급) 키는 **8/8 이 `AssemblyID`** 다.
+    #  그리고 정적으로는 가를 수가 없다 — 실측: `AbstractID` 를 내는 아홉 경로의 **선언된
+    #  산출 타입은 9/9 가 `ConstructionBots.AbstractID` 하나**다(distinct = 1). 선언에는
+    #  정밀도 정보가 0비트 들어 있다. 그래서 순위를 매기는 대신 **아무것도 안 자른다.**
     j = JSON3.read(read(ART, String))
     ms = collect(j.methods)
     acc = Dict(String(k) => String[String(x) for x in v] for (k, v) in pairs(j.access))
     ids = acc["AbstractID"]
 
-    # 색인 자체는 아무것도 안 잃는다 — 상한은 **렌더에만** 건다.
+    # (a) 색인은 아홉을 다 들고 있다.
     @test length(ids) == 9
-    # 정밀원이 첫째다. `Dict{AbstractID,VelocityController}` 의 키집합은 "정책을 가진
-    # 것들" = 에이전트(로봇)다. 나머지 여덟은 전체 모집단(vtx_ids)이거나 값 타입이
-    # 스칼라/서드파티인 조회표(vtx_map·staging_*·..._active)라 무엇의 id 인지 말하지 않는다.
-    @test first(ids) == "keys(env.agent_policies)"
-    # 🔴 음성 대조: 순서가 진짜로 사전순에서 벗어났다(안 그러면 위 단언이 우연이다).
-    @test ids != sort(ids)
+    # (c) 사전순이다 — 위치가 순위가 아니다. (옛 판의 `ids != sort(ids)` 는 정확히 반대를
+    #     요구했고, 그것은 "정밀도순" 이라는 정당화 못 하는 주장의 대리였다.)
+    @test ids == sort(ids)
 
-    # 로봇 id 를 요구하는 메서드들이 로봇 id 원을 **본다**.
+    # (b) 🔴 어떤 메서드의 어떤 인자도 잘리지 않는다. `argpaths` 는 `"<인자이름> <- <경로>"`
+    #     줄이므로 인자 이름으로 묶으면 한 묶음이 곧 한 인자의 경로 집합이다. 그 집합은
+    #     반드시 **어떤 타입의 색인 전체**와 같아야 한다 — 부분집합이면 상한이 문 것이다.
+    full = Set(Set(v) for v in values(acc))
+    ntrunc = 0
+    for m in ms
+        isempty(m.argpaths) && continue
+        byarg = Dict{String,Set{String}}()
+        for line in m.argpaths
+            s = String(line); i = findfirst(" <- ", s)
+            nm = s[1:first(i)-1]; pt = s[last(i)+1:end]
+            push!(get!(byarg, nm, Set{String}()), pt)
+        end
+        for (_, ps) in byarg
+            ps in full || (ntrunc += 1)
+        end
+    end
+    @test ntrunc == 0
+    # 빈-통과 방지: 위 루프가 실제로 무언가를 봤다.
+    @test count(m -> !isempty(m.argpaths), ms) > 0
+
+    # (d) `AbstractID` 인자는 아홉을 다 본다 — 예전엔 넷이었다.
+    sb = only(filter(x -> String(x.name) == "swap_battery!", ms))
+    @test length(sb.argpaths) == 9
+    _rhs(line) = (s = String(line); i = findfirst(" <- ", s); s[last(i)+1:end])
+    sbp = Set(String[_rhs(p) for p in sb.argpaths])
+    @test sbp == Set(ids)
+    # 🔴 설계 §6.2 가 `swap_battery!` 의 예시로 직접 이름 댄 두 경로가 **둘 다** 있다
+    #    (리뷰 I4: 상한이 4 였을 때 `env.sched.vtx_ids[i]` 는 마지막 칸에 겨우 걸려 있었다).
+    @test "env.sched.vtx_ids[i]" in sbp
+    @test "keys(env.agent_policies)" in sbp
+    # 🔴 리뷰 I1 회귀: `keys(env.staging_circles)` 는 `restage_assembly!` 의 **전제조건 집합**
+    #    이다(`haskey(env.staging_circles, assembly_id) || return (status = :no_staging, …)`,
+    #    src/respec/restage_zone.jl). 등급 규칙은 그것을 컷 아래로 보냈다 — 값 타입이
+    #    서드파티(`LazySets.Ball2`)라서. 실측하면 그 키집합은 8/8 이 `AssemblyID` 다.
+    for nm in ("restage_assembly!", "find_clear_staging_center")
+        m = only(filter(x -> String(x.name) == nm, ms))
+        @test any(p -> occursin("keys(env.staging_circles)", String(p)), m.argpaths)
+    end
+    # 로봇 id 를 요구하는 메서드들도 그 출처를 여전히 본다.
     for nm in ("swap_battery!", "hot_swap_robot!", "dispatch_battery_courier!")
         m = only(filter(x -> String(x.name) == nm, ms))
         @test any(p -> occursin("keys(env.agent_policies)", String(p)), m.argpaths)
     end
-
-    # 빈-통과 방지 ①: 상한은 여전히 문다 — 아홉 중 넷만 실린다.
-    sb = only(filter(x -> String(x.name) == "swap_battery!", ms))
-    @test length(sb.argpaths) == 4
-    # 빈-통과 방지 ②: 잘려 나간 쪽은 값 타입이 세계 타입이 아닌 조회표다.
-    @test !any(p -> occursin("vtx_map", String(p)), sb.argpaths)
+    # 빈-통과 방지: 옛 판이 "잘려 나갔다" 의 증거로 쓰던 `vtx_map` 둘이 이제 **실린다**.
+    #    (옛 단언 `!any(occursin("vtx_map", …))` 은 등급을 어떻게 뒤집어도 참이라 사실상
+    #     항진이었다 — 리뷰 m-3.)
+    @test count(p -> occursin("vtx_map", String(p)), sb.argpaths) == 2
 end
 end # module

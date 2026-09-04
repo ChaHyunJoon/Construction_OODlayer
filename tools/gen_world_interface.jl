@@ -234,20 +234,35 @@ function _sig_string(m::Method)
     return "(" * join(parts, ", ") * (isempty(kws) ? "" : "; " * join(String.(kws), ", ")) * ")"
 end
 
-# 경로의 **정밀도 등급** (N2). 작을수록 정밀하다. 🔴 생성기에는 살아 있는 env 가 없으므로
-# 등급은 **선언된 구조**에서만 유도한다 — 컨테이너 종류와 선언된 키/값 타입, 그리고 env 로부터의
-# 홉 수. "이 컬렉션은 실행시각에 비어 있다" 같은 판정은 여기서 원리적으로 불가능하다.
+# ── 🔴 여기 있던 **정밀도 등급**(N2, `_PATH_SINGULAR`/`_PATH_ROLE_KEYS`/`_PATH_POPULATION`/
+#    `_PATH_LOOKUP_KEYS`)은 삭제됐다 (판정 R33, 2026-09-04). 남겨 두면 안 되는 이유를
+#    실측과 함께 적어 둔다 — 이 레포는 같은 종류의 거짓 전제를 세 번 물려받았다.
 #
-# 🔴 **왜 `keys(d)` 가 둘로 갈리는가** — 이것이 N2 의 전부다. `Dict{K,V}` 의 키집합은
-#    "V 를 가진 K 들" 이다. `V` 가 **세계 타입**이면 그 값 타입이 키가 무엇인지 이름을 대준다:
-#    `Dict{AbstractID,VelocityController}`(= `env.agent_policies`)의 키는 "이동 정책을 가진 것"
-#    = 에이전트, 즉 **로봇 id 만** 담긴 유일한 컬렉션이다. 반대로 `V` 가 스칼라·서드파티면
-#    (`Dict{AbstractID,Int}` = `vtx_map`, `Dict{AbstractID,Bool}`, `Dict{AbstractID,Ball2}`)
-#    그것은 조회표이고 키집합은 무엇의 id 인지 한 글자도 말하지 않는다.
-const _PATH_SINGULAR    = 0   # 컨테이너를 한 번도 안 거친 필드 사슬. 고를 것이 없으니 가장 정밀하다.
-const _PATH_ROLE_KEYS   = 1   # `keys(d)` — 값 타입이 세계 타입인 사상의 정의역.
-const _PATH_POPULATION  = 2   # 컨테이너의 원소. 완전하지만 무엇의 id 인지는 안 말한다.
-const _PATH_LOOKUP_KEYS = 3   # `keys(d)` — 값 타입이 스칼라·서드파티인 조회표의 키.
+#    그 규칙은 "`Dict{K,V}` 의 `V` 가 CB 소유 타입이면 그 키집합은 역할을 이름한다" 였다.
+#    **살아 있는 `PlannerEnv` 에서 반상관이다**(tractor.mpd / 10로봇 / seed 1):
+#      · `keys(env.agent_policies)`   V=`VelocityController`(CB) → 1등급, 1위로 승격.
+#        실제 키: {BotID 18, TemplatedID{TransportUnitNode} 27} = **로봇 40%**
+#      · `keys(env.staging_circles)`  V=`LazySets.Ball2`(서드파티) → 최하등급, 컷 아래.
+#        실제 키: **8/8 이 `AssemblyID`** = `restage_assembly!` 의 전제조건 집합 그 자체
+#      · `keys(env.agent_parent_build_step_active)`(V=`Bool`, 최하등급)은 400스텝에서
+#        `agent_policies` 와 **키 집합이 같다**(wave-b-review 실측; 이 라운드는 t=0 에서만
+#        재유도했고 거기서는 둘 다 관측 가능하다) — 값 타입이 다를 뿐 정밀도가 동일하다.
+#    즉 판별자가 완벽히 정밀한 출처를 강등하고 섞인 출처를 승격했다.
+#
+# 🔴 **그리고 정적으로는 가를 수 없다**(재유도 실측): `AbstractID` 를 내는 아홉 경로의
+#    선언된 **산출 타입은 9/9 가 `ConstructionBots.AbstractID`** 하나다(distinct = 1).
+#    컨테이너 선언이 다른 것은 **값** 타입뿐이고 그것이 바로 위에서 반상관으로 측정된 축이다.
+#    ⟹ 선언에는 정밀도 정보가 **0비트** 있다. 생성기에는 살아 있는 env 가 없고(설계상 그렇다),
+#    그래서 옳은 처방은 더 나은 순위가 아니라 **순위를 안 매기는 것**이다: 목록은 사전순으로
+#    싣고 아무것도 자르지 않는다(`_MAX_PATHS` 참조). 모델이 고른다.
+#
+# ⚠️ 같은 이유로 **홉 수 타이브레이크도 없앴다**(리뷰 I-2). 옛 정렬 키 `(등급, 홉, 경로)` 는
+#    hop 0 이라는 이유만으로 `for x in env.active_build_steps` 를 3위 → 2위로 올렸는데,
+#    t=0 에서 n=0 은 이 라운드가 재유도했고, 400스텝에서 n=3 이며 **셋 다 scene tree 밖**
+#    이라는 것은 wave-b-review 의 실측이다.
+#    "실행시각에 비어 있다" 는 여기서 원리적으로 못 잰다(살아 있는 env 가 없다) — 그래서
+#    고침은 그것을 뒤로 미는 더 나은 순위가 아니라 **아무것도 안 자르는 것**이다.
+#    컷이 없으면 순서가 뭘 놓치게 만들지 않으므로 이 축의 위험이 소멸한다.
 
 """
     access_index(closure) -> AbstractDict{String,Vector{String}}
@@ -259,32 +274,33 @@ const _PATH_LOOKUP_KEYS = 3   # `keys(d)` — 값 타입이 스칼라·서드파
 🔴 이 색인이 §1.2 의 실패를 정면으로 겨냥한다: 모델이 지어낸 것은 전부 "그 값을 어디서
    얻는지 안 적힌" 타입이었다.
 
-🔴 **목록의 순서는 정밀도순이다** (N2, R11 의 후속). 여기서 첫째로 오는 것이 곧
-   `_MAX_PATHS` 상한을 살아남는 것이므로, **이 정렬이 상한의 의미를 정한다** —
-   상한을 씌우는 자리(`method_entries`)는 이미 정렬된 목록을 자르기만 한다(진실원 하나).
-   정렬 키는 `(등급, 홉 수, 경로 문자열)` 이고 경로 문자열은 유일하므로 **전순서**다.
+🔴 **목록의 순서는 사전순이다 — 그리고 그것이 주장의 전부다** (판정 R33). 위 블록이
+   실측으로 적은 대로, 어느 경로가 더 정밀한 id 를 내는지는 **선언에서 유도할 수 없다**
+   (아홉 경로의 선언된 산출 타입이 9/9 동일). 그래서 순서는 의미를 나르지 않고,
+   상한도 이제 아무것도 안 자른다(`_MAX_PATHS`) — 위치를 순위로 읽을 여지를 없앤다.
 
 🔴 **결정성은 구조로 지킨다**(게이트 (2) 가 새 서브프로세스 재생성물과 바이트 비교한다).
-   세 자리 다 순회 순서와 무관하다: (a) 정렬 키가 경로의 구조만의 함수다, (b) 같은 경로가
-   두 번 발견되면 **등급의 최솟값**을 취하므로 발견 순서가 안 남는다(`min` 은 교환법칙이
-   성립한다), (c) 키 순서는 `OrderedDict` + 정렬 키다 — 맨 `Dict` 는 삽입 순서(= BFS 발견
+   세 자리 다 순회 순서와 무관하다: (a) 경로 문자열이 경로의 구조만의 함수이고 유일하므로
+   사전순은 **전순서**다, (b) 같은 경로가 두 번 발견되면 `Set` 에 한 번만 남는다 —
+   저장하는 부가 정보가 없으므로 발견 순서가 남을 자리 자체가 없다(예전 판은 `(등급, 홉)`
+   튜플의 사전식 최솟값을 취했고 docstring 은 그것을 "등급의 최솟값" 이라 잘못 적었다 —
+   리뷰 m-2), (c) 키 순서는 `OrderedDict` + 정렬이다 — 맨 `Dict` 는 삽입 순서(= BFS 발견
    순서)가 해시 레이아웃에 남으므로 결정적이긴 해도 그 결정성이 우연에 가깝다.
-   실측(2026-09-04): BFS→DFS · 필드 순서 역전 · 둘 다에서 산출물이 **바이트 동일**이고,
-   `_MAX_PATHS` 4→3 의 양성 대조에서는 44줄이 움직인다.
+   섭동 대조(BFS→DFS · 필드 순서 역전 · 폐포 쪽까지)와 양성 대조는 보고서에 적는다 —
+   🔴 **여기에 그 날짜와 줄 수를 박지 않는다**(리뷰 m-1: 상한이나 필드가 바뀌면 조용히 낡는다).
 """
 function access_index(closure)
     want = Set(String[_tname(S) for S in closure])
-    # 타입 이름 -> (경로 -> 정렬 키). 🔴 `Vector` 가 아니라 `Dict` 인 이유는 위 (b) 다.
-    out  = Dict{String,Dict{String,Tuple{Int,Int}}}()
-    function add!(n, p, cls, hop)
+    # 타입 이름 -> 경로 집합. 🔴 `Vector` 가 아니라 `Set` 인 이유는 위 (b) 다 — 같은 경로를
+    # 두 번 발견해도 흔적이 안 남는다(순서를 나르는 부가 정보를 아예 안 들고 있다).
+    out  = Dict{String,Set{String}}()
+    function add!(n, p)
         n in want || return nothing
-        d = get!(out, n, Dict{String,Tuple{Int,Int}}())
-        r = (cls, hop)
-        (!haskey(d, p) || r < d[p]) && (d[p] = r)
+        push!(get!(out, n, Set{String}()), p)
         return nothing
     end
     # 너비 우선. 경로가 길어지면 모델에게 쓸모가 없으므로 3 홉에서 끊는다.
-    frontier = Tuple{DataType,String,Int,Int}[(CB.PlannerEnv, "env", 0, _PATH_SINGULAR)]
+    frontier = Tuple{DataType,String,Int}[(CB.PlannerEnv, "env", 0)]
     seen = Set{String}(["PlannerEnv"])
 
     # 🔴 **중첩 컨테이너는 재귀로 푼다** (Task 4 실측 정정, 계획서의 1단계 분기를 대체한다).
@@ -296,45 +312,38 @@ function access_index(closure)
     #    `values(env.scene_tree.inedges[i])` 다.
     # 🔴 같은 이유로 **CB 밖 구조체의 필드로는 한 걸음도 내려가지 않는다** —
     #    `_defined_in_cb` 가 폐포에서 하는 역할을 여기서도 한다.
-    # ⚠️ `cls` 는 **누적 최댓값**이다(약한 고리). 컨테이너를 한 번이라도 거치면 그 아래의
-    #    어떤 필드도 다시 `_PATH_SINGULAR` 이 될 수 없다 — `env.sched.nodes[i].spec` 은
-    #    `[i]` 를 거쳤으므로 단수 필드가 아니다.
-    function visit!(U, path, hop, cls, d = 0)
+    function visit!(U, path, hop, d = 0)
         (U isa DataType && d <= 3) || return
         if U <: AbstractVector && length(U.parameters) >= 1
-            visit!(_unwrap(U.parameters[1]), string(path, "[i]"), hop,
-                   max(cls, _PATH_POPULATION), d + 1)
+            visit!(_unwrap(U.parameters[1]), string(path, "[i]"), hop, d + 1)
         elseif U <: AbstractDict && length(U.parameters) >= 2
             K = _unwrap(U.parameters[1])
             V = _unwrap(U.parameters[2])
-            kcls = _defined_in_cb(V) ? _PATH_ROLE_KEYS : _PATH_LOOKUP_KEYS
-            K isa DataType && add!(_tname(K), string("keys(", path, ")"), max(cls, kcls), hop)
-            visit!(V, string("values(", path, ")"), hop, max(cls, _PATH_POPULATION), d + 1)
+            K isa DataType && add!(_tname(K), string("keys(", path, ")"))
+            visit!(V, string("values(", path, ")"), hop, d + 1)
         elseif U <: AbstractSet && length(U.parameters) >= 1
             E = _unwrap(U.parameters[1])
-            E isa DataType &&
-                add!(_tname(E), string("for x in ", path), max(cls, _PATH_POPULATION), hop)
+            E isa DataType && add!(_tname(E), string("for x in ", path))
         else
-            add!(_tname(U), path, cls, hop)
+            add!(_tname(U), path)
             (_defined_in_cb(U) && !(_tname(U) in seen)) &&
-                (push!(seen, _tname(U)); push!(frontier, (U, path, hop + 1, cls)))
+                (push!(seen, _tname(U)); push!(frontier, (U, path, hop + 1)))
         end
         return nothing
     end
 
     while !isempty(frontier)
-        (S, path, hop, cls) = popfirst!(frontier)
+        (S, path, hop) = popfirst!(frontier)
         hop >= 3 && continue
         isabstracttype(S) && continue
         for (f, ft) in zip(fieldnames(S), fieldtypes(S))
-            visit!(_unwrap(ft), string(path, ".", f), hop, cls)
+            visit!(_unwrap(ft), string(path, ".", f), hop)
         end
     end
-    # 🔴 결정성: 경로 목록은 정밀도순(전순서)으로, 키는 정렬된 순서로 싣는다.
+    # 🔴 결정성: 경로 목록도 키도 사전순이다. 여기서 순서가 나르는 주장은 **없다**(R33).
     ord = DataStructures.OrderedDict{String,Vector{String}}()
     for k in sort(collect(keys(out)))
-        d = out[k]
-        ord[k] = sort!(collect(keys(d)), by = p -> (d[p][1], d[p][2], p))
+        ord[k] = sort!(collect(out[k]))
     end
     return ord
 end
@@ -362,22 +371,30 @@ function _arg_obtainable(T, reach)
     return _tname(S) in reach
 end
 
-"""렌더가 인자 하나에 실을 경로의 상한 (Ruling R11).
+"""렌더가 인자 하나에 실을 경로의 상한 — 오늘은 **트립와이어이지 절단기가 아니다**
+(Ruling R11 → R33).
 
-`AbstractID` 는 경로가 9개다. 하나로 접으면 사전순 첫째가 뽑히는데, 그것은 의미순이 아니라
-**동전던지기에 답의 옷을 입힌 것**이다(실측: 그 컬렉션의 조성이 {TemplatedID 28, ObjectID 20,
-BotID 18, AssemblyID 8} 이라 로봇 id 를 요구하는 메서드가 로봇을 받을 확률이 18/74 = 24%).
-넷이면 모델이 **고를 수 있는** 선택지가 되고 프롬프트는 몇백 줄만 는다.
+R11 이 `first(ps)` 하나를 넷으로 올렸다. 근거는 옳았다: `AbstractID` 는 경로가 아홉인데
+하나로 접으면 사전순 첫째가 뽑히고, 그것은 의미순이 아니라 **동전던지기에 답의 옷을
+입힌 것**이다. 그런데 넷으로 자르는 것도 같은 문제를 5분의 4 크기로 남긴다 — 무엇을
+남길지 고르려면 **어느 경로가 더 정밀한가** 를 알아야 하는데, 위 `access_index` 앞의
+블록이 실측으로 적은 대로 그 판정은 **선언에서 유도할 수 없다**(아홉 경로의 선언된 산출
+타입이 9/9 동일하고, 유일하게 갈리는 값 타입은 실제 조성과 **반상관**이다).
 
-🔴 **N2 (2026-09-04): 상한을 넷으로 올린 것만으로는 R11 의 목표가 반만 이뤄졌다.** 자르는
-   순서가 여전히 사전순이라, 살아남은 넷은 `swap_battery!(env, role::AbstractID)` 기준으로
-   {scene_tree.vtx_ids, sched.vtx_ids, active_build_steps, agent_parent_build_step_active} 였고
-   **로봇 id 만 담긴 유일한 컬렉션 `keys(env.agent_policies)` 가 사전순 5번째라 잘렸다** —
-   모델에게 넷을 주면서 답을 뺀 셈이다. 고침은 상한이 아니라 **순서**다: `access_index` 가
-   목록을 정밀도순으로 싣고 여기서는 그것을 자르기만 한다. 상한은 4 그대로다 —
-   프롬프트의 argpath 줄 수도 86 그대로다(실측).
+🔴 **판정 R33 의 처방: 자르지 않는다.** 인자 하나가 아홉 줄을 받는다. 그러면 프롬프트가
+   정당화할 수 없는 순위를 암시하지 않고, 컷이 없앴던 것들이 돌아온다 —
+   `keys(env.staging_circles)`(= `restage_assembly!` 의 전제조건 집합, 실측 8/8 `AssemblyID`),
+   `vtx_map` 둘, 그리고 설계 §6.2 가 이름 댄 `env.sched.vtx_ids[i]`.
+
+⚠️ 그래서 이 상수는 **오늘 아무것도 안 문다**(최댓값 9 < 12). 남겨 두는 이유는 프롬프트가
+   무한정 자라는 것을 막기 위해서이고, 물게 되면 `test/world_interface_closure.jl` 의
+   testset (8) 이 **빨개진다** — 조용히 사전순으로 몇 개를 고르는 대신. 상한을 올리거나
+   내리는 것은 그 게이트를 통과해야 하는 결정이다.
+
+⚠️ 대가는 프롬프트 길이다. 실측치는 보고서에 적는다(🔴 여기에 숫자를 박지 않는다 —
+   필드가 하나 늘면 조용히 낡는다. 리뷰 m-1).
 """
-const _MAX_PATHS = 4
+const _MAX_PATHS = 12
 
 """
     _arg_sourceable(T, acc) -> Bool
@@ -460,8 +477,9 @@ function method_entries(reach, acc)
                     isempty(ps) && continue
                     nm = length(nms) >= i + 1 ? String(nms[i + 1]) : "_"
                     startswith(nm, "#") && (nm = "_")
-                    # Ruling R11: 사전순 첫째 하나로 접지 않는다. `ps` 는 이미 정렬돼
-                    # 있으므로 상한만 씌운다 — 결정성은 구조(정렬)이지 우연이 아니다.
+                    # Ruling R11 → R33: 하나로 접지도, 정밀도순으로 자르지도 않는다.
+                    # `ps` 는 이미 사전순이고 상한은 오늘 안 문다 — 판정식이 여기 없다는
+                    # 사실(진실원 하나)은 그대로다.
                     for p in first(ps, _MAX_PATHS)
                         push!(paths, string(nm, " <- ", p))
                     end

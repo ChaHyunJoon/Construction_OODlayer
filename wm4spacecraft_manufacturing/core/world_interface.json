@@ -144,10 +144,15 @@
             ],
             "signature": "(role::ConstructionBots.AbstractID)",
             "argpaths": [
-                "role <- keys(env.agent_policies)",
-                "role <- for x in env.active_build_steps",
                 "role <- env.scene_tree.vtx_ids[i]",
-                "role <- env.sched.vtx_ids[i]"
+                "role <- env.sched.vtx_ids[i]",
+                "role <- for x in env.active_build_steps",
+                "role <- keys(env.agent_parent_build_step_active)",
+                "role <- keys(env.agent_policies)",
+                "role <- keys(env.scene_tree.vtx_map)",
+                "role <- keys(env.sched.vtx_map)",
+                "role <- keys(env.staging_buffers)",
+                "role <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -157,10 +162,15 @@
             ],
             "signature": "(role::ConstructionBots.AbstractID)",
             "argpaths": [
-                "role <- keys(env.agent_policies)",
-                "role <- for x in env.active_build_steps",
                 "role <- env.scene_tree.vtx_ids[i]",
-                "role <- env.sched.vtx_ids[i]"
+                "role <- env.sched.vtx_ids[i]",
+                "role <- for x in env.active_build_steps",
+                "role <- keys(env.agent_parent_build_step_active)",
+                "role <- keys(env.agent_policies)",
+                "role <- keys(env.scene_tree.vtx_map)",
+                "role <- keys(env.sched.vtx_map)",
+                "role <- keys(env.staging_buffers)",
+                "role <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -188,10 +198,15 @@
             ],
             "signature": "(role::ConstructionBots.AbstractID)",
             "argpaths": [
-                "role <- keys(env.agent_policies)",
-                "role <- for x in env.active_build_steps",
                 "role <- env.scene_tree.vtx_ids[i]",
-                "role <- env.sched.vtx_ids[i]"
+                "role <- env.sched.vtx_ids[i]",
+                "role <- for x in env.active_build_steps",
+                "role <- keys(env.agent_parent_build_step_active)",
+                "role <- keys(env.agent_policies)",
+                "role <- keys(env.scene_tree.vtx_map)",
+                "role <- keys(env.sched.vtx_map)",
+                "role <- keys(env.staging_buffers)",
+                "role <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -468,10 +483,15 @@
             ],
             "signature": "(agent::ConstructionBots.AbstractID)",
             "argpaths": [
-                "agent <- keys(env.agent_policies)",
-                "agent <- for x in env.active_build_steps",
                 "agent <- env.scene_tree.vtx_ids[i]",
-                "agent <- env.sched.vtx_ids[i]"
+                "agent <- env.sched.vtx_ids[i]",
+                "agent <- for x in env.active_build_steps",
+                "agent <- keys(env.agent_parent_build_step_active)",
+                "agent <- keys(env.agent_policies)",
+                "agent <- keys(env.scene_tree.vtx_map)",
+                "agent <- keys(env.sched.vtx_map)",
+                "agent <- keys(env.staging_buffers)",
+                "agent <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -704,10 +724,15 @@
             ],
             "signature": "(env, target::ConstructionBots.AbstractID)",
             "argpaths": [
-                "target <- keys(env.agent_policies)",
-                "target <- for x in env.active_build_steps",
                 "target <- env.scene_tree.vtx_ids[i]",
-                "target <- env.sched.vtx_ids[i]"
+                "target <- env.sched.vtx_ids[i]",
+                "target <- for x in env.active_build_steps",
+                "target <- keys(env.agent_parent_build_step_active)",
+                "target <- keys(env.agent_policies)",
+                "target <- keys(env.scene_tree.vtx_map)",
+                "target <- keys(env.sched.vtx_map)",
+                "target <- keys(env.staging_buffers)",
+                "target <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -800,10 +825,15 @@
             ],
             "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose, resume)",
             "argpaths": [
-                "agent <- keys(env.agent_policies)",
-                "agent <- for x in env.active_build_steps",
                 "agent <- env.scene_tree.vtx_ids[i]",
-                "agent <- env.sched.vtx_ids[i]"
+                "agent <- env.sched.vtx_ids[i]",
+                "agent <- for x in env.active_build_steps",
+                "agent <- keys(env.agent_parent_build_step_active)",
+                "agent <- keys(env.agent_policies)",
+                "agent <- keys(env.scene_tree.vtx_map)",
+                "agent <- keys(env.sched.vtx_map)",
+                "agent <- keys(env.staging_buffers)",
+                "agent <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -822,10 +852,15 @@
             ],
             "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin, zone_margin_frac, ring_step, n_angles, max_rings)",
             "argpaths": [
-                "assembly_id <- keys(env.agent_policies)",
-                "assembly_id <- for x in env.active_build_steps",
                 "assembly_id <- env.scene_tree.vtx_ids[i]",
-                "assembly_id <- env.sched.vtx_ids[i]"
+                "assembly_id <- env.sched.vtx_ids[i]",
+                "assembly_id <- for x in env.active_build_steps",
+                "assembly_id <- keys(env.agent_parent_build_step_active)",
+                "assembly_id <- keys(env.agent_policies)",
+                "assembly_id <- keys(env.scene_tree.vtx_map)",
+                "assembly_id <- keys(env.sched.vtx_map)",
+                "assembly_id <- keys(env.staging_buffers)",
+                "assembly_id <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -978,10 +1013,15 @@
             ],
             "signature": "(env, faulted::ConstructionBots.AbstractID; mode, verbose)",
             "argpaths": [
-                "faulted <- keys(env.agent_policies)",
-                "faulted <- for x in env.active_build_steps",
                 "faulted <- env.scene_tree.vtx_ids[i]",
-                "faulted <- env.sched.vtx_ids[i]"
+                "faulted <- env.sched.vtx_ids[i]",
+                "faulted <- for x in env.active_build_steps",
+                "faulted <- keys(env.agent_parent_build_step_active)",
+                "faulted <- keys(env.agent_policies)",
+                "faulted <- keys(env.scene_tree.vtx_map)",
+                "faulted <- keys(env.sched.vtx_map)",
+                "faulted <- keys(env.staging_buffers)",
+                "faulted <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1176,10 +1216,15 @@
             ],
             "signature": "(id::ConstructionBots.AbstractID, env::PlannerEnv)",
             "argpaths": [
-                "id <- keys(env.agent_policies)",
-                "id <- for x in env.active_build_steps",
                 "id <- env.scene_tree.vtx_ids[i]",
-                "id <- env.sched.vtx_ids[i]"
+                "id <- env.sched.vtx_ids[i]",
+                "id <- for x in env.active_build_steps",
+                "id <- keys(env.agent_parent_build_step_active)",
+                "id <- keys(env.agent_policies)",
+                "id <- keys(env.scene_tree.vtx_map)",
+                "id <- keys(env.sched.vtx_map)",
+                "id <- keys(env.staging_buffers)",
+                "id <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1252,14 +1297,24 @@
             ],
             "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event, cause, step, soc, position)",
             "argpaths": [
-                "role <- keys(env.agent_policies)",
-                "role <- for x in env.active_build_steps",
                 "role <- env.scene_tree.vtx_ids[i]",
                 "role <- env.sched.vtx_ids[i]",
-                "new_asset <- keys(env.agent_policies)",
-                "new_asset <- for x in env.active_build_steps",
+                "role <- for x in env.active_build_steps",
+                "role <- keys(env.agent_parent_build_step_active)",
+                "role <- keys(env.agent_policies)",
+                "role <- keys(env.scene_tree.vtx_map)",
+                "role <- keys(env.sched.vtx_map)",
+                "role <- keys(env.staging_buffers)",
+                "role <- keys(env.staging_circles)",
                 "new_asset <- env.scene_tree.vtx_ids[i]",
-                "new_asset <- env.sched.vtx_ids[i]"
+                "new_asset <- env.sched.vtx_ids[i]",
+                "new_asset <- for x in env.active_build_steps",
+                "new_asset <- keys(env.agent_parent_build_step_active)",
+                "new_asset <- keys(env.agent_policies)",
+                "new_asset <- keys(env.scene_tree.vtx_map)",
+                "new_asset <- keys(env.sched.vtx_map)",
+                "new_asset <- keys(env.staging_buffers)",
+                "new_asset <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1426,14 +1481,24 @@
             ],
             "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume, verbose, park_rests)",
             "argpaths": [
-                "faulted <- keys(env.agent_policies)",
-                "faulted <- for x in env.active_build_steps",
                 "faulted <- env.scene_tree.vtx_ids[i]",
                 "faulted <- env.sched.vtx_ids[i]",
-                "spare <- keys(env.agent_policies)",
-                "spare <- for x in env.active_build_steps",
+                "faulted <- for x in env.active_build_steps",
+                "faulted <- keys(env.agent_parent_build_step_active)",
+                "faulted <- keys(env.agent_policies)",
+                "faulted <- keys(env.scene_tree.vtx_map)",
+                "faulted <- keys(env.sched.vtx_map)",
+                "faulted <- keys(env.staging_buffers)",
+                "faulted <- keys(env.staging_circles)",
                 "spare <- env.scene_tree.vtx_ids[i]",
-                "spare <- env.sched.vtx_ids[i]"
+                "spare <- env.sched.vtx_ids[i]",
+                "spare <- for x in env.active_build_steps",
+                "spare <- keys(env.agent_parent_build_step_active)",
+                "spare <- keys(env.agent_policies)",
+                "spare <- keys(env.scene_tree.vtx_map)",
+                "spare <- keys(env.sched.vtx_map)",
+                "spare <- keys(env.staging_buffers)",
+                "spare <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1481,10 +1546,15 @@
             ],
             "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume, verbose)",
             "argpaths": [
-                "assembly_id <- keys(env.agent_policies)",
-                "assembly_id <- for x in env.active_build_steps",
                 "assembly_id <- env.scene_tree.vtx_ids[i]",
-                "assembly_id <- env.sched.vtx_ids[i]"
+                "assembly_id <- env.sched.vtx_ids[i]",
+                "assembly_id <- for x in env.active_build_steps",
+                "assembly_id <- keys(env.agent_parent_build_step_active)",
+                "assembly_id <- keys(env.agent_policies)",
+                "assembly_id <- keys(env.scene_tree.vtx_map)",
+                "assembly_id <- keys(env.sched.vtx_map)",
+                "assembly_id <- keys(env.staging_buffers)",
+                "assembly_id <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1558,10 +1628,15 @@
             ],
             "signature": "(agent::ConstructionBots.AbstractID, n::Integer)",
             "argpaths": [
-                "agent <- keys(env.agent_policies)",
-                "agent <- for x in env.active_build_steps",
                 "agent <- env.scene_tree.vtx_ids[i]",
-                "agent <- env.sched.vtx_ids[i]"
+                "agent <- env.sched.vtx_ids[i]",
+                "agent <- for x in env.active_build_steps",
+                "agent <- keys(env.agent_parent_build_step_active)",
+                "agent <- keys(env.agent_policies)",
+                "agent <- keys(env.scene_tree.vtx_map)",
+                "agent <- keys(env.sched.vtx_map)",
+                "agent <- keys(env.staging_buffers)",
+                "agent <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -1835,10 +1910,15 @@
             ],
             "signature": "(env, role::ConstructionBots.AbstractID; verbose)",
             "argpaths": [
-                "role <- keys(env.agent_policies)",
-                "role <- for x in env.active_build_steps",
                 "role <- env.scene_tree.vtx_ids[i]",
-                "role <- env.sched.vtx_ids[i]"
+                "role <- env.sched.vtx_ids[i]",
+                "role <- for x in env.active_build_steps",
+                "role <- keys(env.agent_parent_build_step_active)",
+                "role <- keys(env.agent_policies)",
+                "role <- keys(env.scene_tree.vtx_map)",
+                "role <- keys(env.sched.vtx_map)",
+                "role <- keys(env.staging_buffers)",
+                "role <- keys(env.staging_circles)"
             ],
             "callable": true
         },
@@ -2953,15 +3033,15 @@
     ],
     "access": {
         "AbstractID": [
-            "keys(env.agent_policies)",
-            "for x in env.active_build_steps",
             "env.scene_tree.vtx_ids[i]",
             "env.sched.vtx_ids[i]",
+            "for x in env.active_build_steps",
             "keys(env.agent_parent_build_step_active)",
-            "keys(env.staging_buffers)",
-            "keys(env.staging_circles)",
+            "keys(env.agent_policies)",
             "keys(env.scene_tree.vtx_map)",
-            "keys(env.sched.vtx_map)"
+            "keys(env.sched.vtx_map)",
+            "keys(env.staging_buffers)",
+            "keys(env.staging_circles)"
         ],
         "OperatingSchedule": [
             "env.sched"

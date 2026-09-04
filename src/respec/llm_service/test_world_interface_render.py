@@ -73,11 +73,16 @@ def test_the_first_heading_admits_the_arguments_it_cannot_source():
     assert len(ok) == 1 and "missing:" not in ok[0], ok
 
 
-def test_an_id_argument_shows_more_than_one_source():
-    """🔴 R11. 인자당 `first(ps)` 하나만 실으면 `AbstractID` 의 9개 경로 중 사전순 첫째
-    (`env.scene_tree.vtx_ids[i]`)만 보인다. 그 컬렉션의 실측 조성은 {TemplatedID 28,
-    ObjectID 20, BotID 18, AssemblyID 8} — 로봇 id 를 요구하는 메서드가 로봇을 받을
-    확률이 18/74 = 24% 다. 설계 §6.2 의 예시 경로가 보여야 한다.
+def test_an_id_argument_shows_every_source_and_ranks_none():
+    """🔴 R11 → R33. 인자당 `first(ps)` 하나만 실으면 `AbstractID` 의 9개 경로 중 사전순
+    첫째만 보인다 — 답의 외양을 한 동전던지기다. R11 이 그것을 넷으로 올렸지만 **어느
+    넷인가** 는 여전히 정당화가 필요했고, wave B 가 쓴 판별자(`Dict` 의 선언된 값 타입)는
+    실측에서 **반상관**이었다(`agent_policies` 키의 40%만 로봇 / `staging_circles` 키는
+    8/8 `AssemblyID` 인데 최하등급).
+
+    🔴 판정 R33: 정적으로 가를 수 없으므로(아홉 경로의 선언된 산출 타입이 9/9 동일)
+    **자르지 않는다.** 렌더는 아홉을 다 보여 주고 **사전순**이라 위치가 순위를 뜻하지
+    않는다. 설계 §6.2 가 이름 댄 경로도 그 안에 있다.
     """
     b = _block()
     head, _, _ = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
@@ -85,8 +90,13 @@ def test_an_id_argument_shows_more_than_one_source():
     ag = [x for x in blocks if x.startswith("asset_generation ")]
     assert len(ag) == 1, ag
     paths = [l.strip() for l in ag[0].splitlines() if " <- " in l]
-    assert len(paths) == 4, paths
+    assert len(paths) == 9, paths
     assert any("env.sched.vtx_ids" in p for p in paths), paths
+    # 🔴 I1 회귀 방지: `restage_assembly!` 의 전제조건 집합이 렌더에 살아 있다.
+    assert any("keys(env.staging_circles)" in p for p in paths), paths
+    # 위치가 순위가 아니다 — 사전순 그대로다.
+    rhs = [p.split(" <- ", 1)[1] for p in paths]
+    assert rhs == sorted(rhs), rhs
 
 
 def test_the_ambient_accessor_states_its_precondition():
