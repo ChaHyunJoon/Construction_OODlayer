@@ -1436,6 +1436,16 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 `impl_code`·`surface`·`reversible`·`wrote` 다섯이다. 위 문단들의 "아홉"·"열"·"reach"·
 "missing_primitive" 서술은 그 이전 세대(조합 레인)를 가리키고, 지우지 않은 것은 이 파일의
 역사 규약 때문이다.
+🔴 **2026-09-04 (Wave A, W5): `mechanism` 이 들어왔다.** 이 키는 파이썬 기록에는 **처음부터
+있었는데**(`synthesize.py` 의 `_SPEC_FIELDS = ("tool_name", "params", "mechanism")`) 이 튜플에
+없어서 `_synth_view` 가 아예 안 실었다. 그 대가는 하나였고 컸다 — `enact.jl::_rewrite_once` 가
+`/rewrite` 에 싣는 `spec` 이 **생산 경로에서 언제나 빈 문자열**이었다(Task 9 실측: 가짜 서버가
+받은 payload 의 `spec` = `''`). 즉 D17 의 되먹임은 agent-3 에게 **명세 없이** "이 거절을
+고쳐라" 를 보내고 있었고, 그 판의 실패율은 모델이 아니라 우리 배선의 수치다.
+⚠️ 이 키는 `params` 와 **다른 것**을 나른다: `params` 는 등록 행이 읽는 타입 스키마이고
+`mechanism` 은 agent-2 가 고른 **기전 산문**이다. 소비자도 다르다(전자는
+`register_minted_primitive!`, 후자는 `/rewrite` 의 `spec`).
+
 🔴 **2026-09-03 최종 리뷰 정정.** 여기 "이 다섯은 `register_minted_primitive!` 가 그대로 받는
 키워드 이름과 같다 — 진실원 하나" 라고 적혀 있었는데 **다섯 중 셋이 거짓**이다. 그 함수의
 키워드는 `name`·`code`·`params`·`surface`·`reversible` 이고, `impl_name`/`impl_code` 는
@@ -1469,7 +1479,7 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
                          "refused",
-                         "tool_name", "body_names", "params", "calls",
+                         "tool_name", "mechanism", "body_names", "params", "calls",
                          "impl_name", "impl_code", "surface", "reversible", "wrote")
 
 # `synthesis` dict 안의 키 이름 → 결정 행의 키 이름. 이름이 다른 둘만 적는다

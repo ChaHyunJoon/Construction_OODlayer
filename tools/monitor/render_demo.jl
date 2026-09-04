@@ -836,6 +836,14 @@ function policy_producer(env, event)
     #    `applied` 로 판정하면 "1단계가 세계를 바꾸고 2단계가 던진" 판에서
     #    **반쯤 편집된 세계 위에** 기본 복구 사슬을 얹게 된다.
     local _m = enact_minted_decision!(env, truth, decision)
+    # 🔴 F1(2026-09-03 리뷰): `world_delta` 를 **구조화된 행**에도 싣는다. `record_decision!`
+    #    (위)이 결정 행을 집행 **앞**에서 닫으므로, 집행이 낸 유일한 "세계가 실제로 바뀌었나"
+    #    관측이 여기서 버려지면 stdout 파싱 말고는 채점 수단이 없다(사전등록 결정 6 은
+    #    `world_delta` 하나를 L4 판정으로 쓴다). 🔴 `_m.handled` 판정 **앞**이다 — 뒤에 두면
+    #    생성 body 의 지배적인 판(handled=true)에서 행이 통째로 비어 버린다.
+    #    🔴 함수의 정본은 `enact.jl::record_world_delta!` 하나다(직렬화 모양·삼상·안 던짐의
+    #    근거를 그 docstring 이 소유한다). 여기 다시 적지 않는다.
+    record_world_delta!(_m)
     _m.handled && return nothing
     # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
     # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.

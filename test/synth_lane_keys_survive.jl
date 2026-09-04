@@ -49,10 +49,17 @@ include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
     #    🔴 2026-09-03 최종 리뷰: `refused` 가 열넷째로 들어왔다. 이 키가 없으면 G1 거절
     #    (돈을 쓰기 전에 돌아선 사건)이 줄리아 쪽에서 "발화할 사건이 아니었다" 와 **바이트
     #    동일**해진다 — 처방이 정반대인 두 사건이다(근거 전문은 `SYNTH_LANE_KEYS` docstring).
+    #    🔴 2026-09-04 (Wave A, W5): `mechanism` 이 열다섯째로 들어왔다. 이 키가 없으면
+    #    `/rewrite` 의 `spec` 이 **생산 경로에서 언제나 빈 문자열**이다(Task 9 실측: 가짜
+    #    서버가 받은 payload 의 `spec` = `''`) — 즉 agent-3 이 **명세 없이** "이 거절을
+    #    고쳐라" 를 받는다. 그 상태로 유료 런을 돌리면 되먹임 성공률이 아래로 편향되고
+    #    원인이 모델이 아니라 우리 배선이 되는데, D17 이 재려는 수치가 정확히 그 성공률이다.
+    #    파이썬 쪽에는 이 키가 **이미 있었다**(`synthesize.py` 의 `_SPEC_FIELDS`, 그리고
+    #    아래 교차언어 절이 AST 로 그것을 재확인한다) — 못 건넌 것은 줄리아 목록뿐이었다.
     @test Set(SYNTH_LANE_KEYS) == Set(["tool_minted", "synthesis_event", "synthesis_ran",
                                        "synthesis_error", "refused", "tool_name", "body_names",
                                        "params", "calls", "impl_name", "impl_code",
-                                       "surface", "reversible", "wrote"])
+                                       "surface", "reversible", "wrote", "mechanism"])
 end
 
 @testset "성공 분기가 열을 전부 나른다" begin
@@ -72,6 +79,8 @@ end
             # 🔴 2026-09-03 (Task 9): `reach`/`missing_primitive` 대신 agent-3 이 쓴 코드 자체.
             "impl_name" => "restage_all_blocked", "impl_code" => "function restage_all_blocked(env)\n    return :ok\nend\n",
             "surface" => "sched", "reversible" => true, "wrote" => true,
+            # 🔴 W5: agent-2 가 고른 기전 산문. `/rewrite` 의 `spec` 이 이 값이다.
+            "mechanism" => "release the pending assignments, then re-solve",
             # 🔴 G1 가드가 돌고 통과한 판이다 — `false`("쟀고 통과") 이지 `nothing`("안 돌았다")
             #    도 문자열(사유)도 아니다.
             "refused" => false,
@@ -100,6 +109,7 @@ end
     @test e["reversible"] === true
     @test e["wrote"] === true
     @test e["refused"] === false
+    @test e["mechanism"] == "release the pending assignments, then re-solve"
     @test e["params"]["threshold"] == 0.3
     @test e["params"]["zone"] == "A"
     @test length(e["calls"]) == 2
@@ -155,6 +165,10 @@ end
     @test e["reversible"] === nothing
     @test e["wrote"] === nothing
     @test e["refused"] === nothing
+    # 🔴 W5: 이른 탈출 경로에서는 `mechanism` 도 없다 — `""`(빈 명세)가 아니라 `nothing`
+    #    ("못 쟀다")이다. 이 구별이 무너지면 "agent-2 가 기전을 안 냈다" 와 "합성이 그
+    #    단계까지 못 갔다" 가 같은 값이 된다.
+    @test e["mechanism"] === nothing
     @test e["params"] === nothing
     @test e["calls"] === nothing
 end

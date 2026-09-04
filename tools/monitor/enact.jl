@@ -812,8 +812,18 @@ end
    0 이 아니면 배정이 확실히 바뀐 것이고, **0 이라고 안 바뀐 것은 아니다.**
 
 ⚠️ `CB.Graphs` 로 부른다(맨 `Graphs` 가 아니라). 이 파일은 `using Graphs` 를 안 하는 모듈로도
-   include 된다(`test/minted_end_to_end.jl` 이 그렇다) — 맨 이름을 쓰면 `UndefVarError` 가
-   나고 위 `catch` 가 그것을 `nothing` 으로 삼켜 **다이제스트가 조용히 영영 꺼진다.**
+   include 된다 — 맨 이름을 쓰면 `UndefVarError` 가 나고 위 `catch` 가 그것을 `nothing` 으로
+   삼켜 **다이제스트가 조용히 영영 꺼진다**(`ConstructionBots` 는 `Graphs` 를 export 하지
+   않는다).
+   🔴 **여기 있던 예(`test/minted_end_to_end.jl` 이 그렇다)는 틀렸었다**(2026-09-03 리뷰 m1):
+   그 파일은 `policy.jl` 을 먼저 include 하고 `policy.jl` 이 `using Graphs` 다 — 그래서 그
+   파일에서는 맨 이름도 잘 돈다. 진짜로 `Graphs` 가 없는 includer 는 넷이다(실측):
+   `tools/probes/probe_minted_body_enacts.jl` · `tools/monitor/test_minted_wiring.jl` ·
+   `test/enact_uses_llm_agent.jl` · `test/efficacy_measures_the_edit.jl`.
+   🔴 그리고 그 위험은 2026-09-04 까지 **미게이트**였다(검증자의 변이 M3: 맨 이름으로
+   되돌려도 두 게이트가 전부 초록). 지금은 `test/minted_end_to_end.jl` (18) 이 예를
+   인용하는 대신 **`Graphs` 없는 모듈을 실제로 만들어** 지문이 나오는지 보고, 같은 자리에서
+   맨 이름 사본이 `nothing` 을 내는 것을 음성 대조로 확인한다.
 """
 function _world_digest(env)
     try
@@ -834,18 +844,126 @@ end
 🔴 **삼상**: `nothing`(못 쟀다) ≠ 0 의 튜플(쟀는데 안 바뀌었다). 무동작 body 가 오늘의
    지배적인 판이므로(위 R11 문단) 그 둘을 뭉개면 이 필드는 **모든** 판에서 `nothing` 으로
    보이고 아무것도 안 재게 된다. `test/minted_end_to_end.jl` (11) 이 그 구별을 못 박는다.
+
+🔴 **`_world_digest` 와 같은 이유로 던지지 않는다**(2026-09-03 리뷰 m5). 초판에는 이
+   `try`/`catch` 가 없었다. `binding` 이 `Dict` 가 아니면 여기서 던지는데(실측:
+   `binding = "not a dict"` → `BoundsError`) 이 호출은 `CB.enact_minted!` 가 **이미 돌아온
+   뒤**라서, 그 예외를 바깥 `catch` 가 삼키면 **body 가 이미 세계를 편집한 판**이
+   `verdict=:reject reason="… threw"` 로 기록된다 — `_world_digest` 가 막겠다고 적은 사고의
+   나머지 반쪽이다. 오늘은 `assignment_binding` 이 `Dict{Int,Int}` 를 무조건 내므로 도달
+   불가지만, 도달 불가에 기대는 것과 못 던지게 막는 것은 다르다.
 """
 function _world_delta(a, b)
     (a === nothing || b === nothing) && return nothing
-    changed = 0
-    for (v, r) in b.binding
-        get(a.binding, v, nothing) === r || (changed += 1)
+    # 🔴 `try`/`catch` 로는 **못 막는 자리**가 하나 있다(2026-09-04 실측). `binding` 이
+    #    `String` 이면 이 함수는 던지지 않는다 — `String` 이 `get`·`keys` 를 둘 다 갖고 있어서
+    #    아래 두 루프가 조용히 돌고 `n_binding_changed = 10`(= 문자열의 길이)이라는 **거짓
+    #    측정값**이 나온다(`_world_delta((…, binding="not a dict"), (…, binding=Dict(1=>1)))`
+    #    실측). 예외라면 아래 `catch` 가 `nothing`("못 쟀다")으로 바꿔 주는데, 이 모양은
+    #    "쟀다" 를 참칭한다 — 삼상 규약이 막으려는 것 그 자체다. 그래서 모양을 먼저 본다.
+    (a.binding isa AbstractDict && b.binding isa AbstractDict) || return nothing
+    try
+        changed = 0
+        for (v, r) in b.binding
+            get(a.binding, v, nothing) === r || (changed += 1)
+        end
+        for v in keys(a.binding); haskey(b.binding, v) || (changed += 1); end
+        return (closed = b.closed - a.closed,
+                active = b.active - a.active,
+                n_edges = b.n_edges - a.n_edges,
+                n_binding_changed = changed)
+    catch
+        return nothing
     end
-    for v in keys(a.binding); haskey(b.binding, v) || (changed += 1); end
-    return (closed = b.closed - a.closed,
-            active = b.active - a.active,
-            n_edges = b.n_edges - a.n_edges,
-            n_binding_changed = changed)
+end
+
+"""
+    _world_delta_str(wd) -> String
+
+`world_delta` 를 로그 한 조각으로. **네 로그 자리가 이 함수 하나를 쓴다**(조기 `:deferred` ·
+`_reject_malformed` · 성공 · 바깥 `catch`).
+
+🔴 왜 함수인가 (2026-09-03 리뷰 m3·m4). 초판은 자리마다 문자열을 손으로 적었고 그래서 둘이
+   갈렸다:
+   · m3 — 조기 두 자리는 값을 **안 읽고** `n/a(not measured)` 를 리터럴로 적었다. 오늘은
+     참이지만(그 자리들은 지문 앞이다) 거절 자리가 지문 **뒤**로 옮겨지는 순간 그 리터럴이
+     조용히 거짓말한다. 이제는 값을 읽으므로 거짓말이 **불가능**하다.
+   · m4 — 성공 줄에만 하한 각주가 붙고 catch 줄에는 없었다. 로그를 정규식으로 읽는 소비자가
+     같은 사실의 두 모양을 따로 다뤄야 했다.
+   `test/minted_end_to_end.jl` (17) 이 리터럴이 한 벌인 것을 어휘적으로 지킨다.
+
+⚠️ 각주가 나르는 사실: `n_binding_changed` 가 나르는 것은 **하한**이다(정본 근거는
+   `_world_digest` 의 docstring — `> 0` 은 바뀐 것을 증명하고 `== 0` 은 안 바뀐 것을 증명하지
+   못한다).
+"""
+_world_delta_str(wd) = wd === nothing ? "n/a(not measured)" :
+    string("closed=", wd.closed, " active=", wd.active,
+           " n_edges=", wd.n_edges, " n_binding_changed=", wd.n_binding_changed,
+           " (n_binding_changed 는 하한이다)")
+
+"""
+    _delta_scope(resolve) -> String
+
+`world_delta` 가 **누구의 편집**을 잰 것인가. F4(2026-09-03 리뷰).
+
+🔴 `_issue_resume!` 와 `_resolve_if_needed!` 는 `CB.enact_minted!` **안**에서 불린다
+   (`src/respec/minted_tool.jl`). 그래서 `surface ∈ RESOLVE_SURFACES`(= `sched`·`milp`)인
+   판에서는 사후 지문에 **하네스의 공통 MILP 재풀이가 한 편집**까지 들어온다. 게다가
+   `resolve_assignments!` 의 `n_reassigned` 과 `world_delta.n_binding_changed` 는 **같은
+   `assignment_binding`** 에서 나오는, 같은 것을 세는 두 수다 — 그 판의
+   `n_binding_changed > 0` 은 "모델이 바꿨다" 가 아니라 "모델이 부른 뒤 하네스가 다시
+   풀었다" 일 수 있다.
+
+🔴 **집행을 바꾸지 않는다.** 판독 규칙은 코드 변경 0으로 이미 손에 있었다 — `r.resolve` 가
+   같은 반환 튜플과 같은 로그 줄에 있다. 이 함수는 그 판독을 라이브 로그에 **명시**할 뿐이다.
+   (`test/minted_end_to_end.jl` (10)(11)(15) 는 전부 `env_param` 이라 `:not_needed_surface`
+   다 — 즉 유료 런이 들어갈 수 있는 `sched`/`milp` 체제를 시험이 안 덮는다. 그 사실이
+   이 판독을 로그에 적어야 하는 이유다.)
+
+⚠️ 실패 셋과 `:none`(재풀이 자리에 도달 못 한 판정/거절 행)은 **모른다**로 남긴다 —
+   "body 단독" 으로 넓히면 못 쟀다가 측정처럼 보인다.
+"""
+_delta_scope(resolve) = resolve === :not_needed_surface ? "body_only" :
+                        resolve === :resolved           ? "body+harness_resolve" : "unknown"
+
+"""
+    record_world_delta!(m) -> Nothing
+
+집행 결과 `m` 의 `world_delta` 를 **살아 있는 결정 행**에 제자리로 싣는다. F1(2026-09-03 리뷰).
+
+🔴 왜 필요한가. `record_decision!`(`tools/monitor/render_demo.jl`)은 결정 행을 집행 **앞**에서
+   닫고, 집행 뒤에는 `_m.handled` 하나만 읽혔다 — `world_delta` 는 stdout 으로만 나갔다.
+   (stdout 채점은 실제로 가능하다: `println` 이라 `global_logger(…, Logging.Warn)` 를 통과하는
+   것을 검증자가 짝지은 대조로 확인했다. 즉 독자 0개의 write-only 도장은 **아니었다**.
+   그래도 스윕 규모의 집계는 구조화된 행이 있어야 한다.)
+
+🔴 **패턴은 하나다.** `monitor_record_verification!`(`src/monitor/monitor.jl`)이 이미 쓰는
+   제자리 변이 그대로다 — `MONITOR_RESPEC[]` 은 `monitor_emit!` 때 직렬화되는 살아 있는
+   Dict 다. 두 번째 기록 경로를 만들지 않는다.
+
+🔴 **삼상이 행에서도 산다.** 행이 있으면 키는 **언제나** 쓰인다: `nothing`(못 쟀다)은
+   `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 네 키를 가진 dict 이다.
+   키의 **부재**는 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
+
+🔴 **절대 안 던진다.** 이 호출은 `enact_minted_decision!` 의 `try` **밖**이다(호출부는
+   `policy_producer` 안이고, 거기서 새는 예외는 `engage_fallback!` = 라인 정지로 간다).
+   `m` 에 필드가 없을 수도(구세대 집행부), 행이 dict 이 아닐 수도 있다.
+"""
+function record_world_delta!(m)
+    try
+        local rs = CB.MONITOR_RESPEC[]
+        rs isa AbstractDict || return nothing
+        local wd = m.world_delta
+        rs["world_delta"] = wd === nothing ? nothing :
+            Dict{String,Any}("closed" => wd.closed, "active" => wd.active,
+                             "n_edges" => wd.n_edges,
+                             "n_binding_changed" => wd.n_binding_changed)
+    catch e
+        # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
+        println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",
+                first(split(sprint(showerror, e), "\n")))
+    end
+    return nothing
 end
 
 """
@@ -896,18 +1014,20 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
         return nothing
     end
     try
-        # 🔴 2026-09-04 실측 — **`spec` 은 오늘 언제나 빈 문자열이다.** `mechanism` 은
-        #    파이썬 기록에는 있는데(`synthesize.py` 의 `_SPEC_FIELDS`) 경계를 못 건넌다:
-        #    `policy.jl` 의 `SYNTH_LANE_KEYS` 열넷에 그 키가 없어서 `_synth_view` 가 아예
-        #    안 싣는다. 그래서 agent-3 은 **명세 없이** "이걸 고쳐라" 를 받는다.
-        #    고치려면 `SYNTH_LANE_KEYS` 에 `"mechanism"` 을 더하고 그 짝인 교차언어 게이트
-        #    (`test/synth_lane_keys_survive.jl` 의 키 집합 단언)도 함께 고쳐야 한다 —
-        #    둘 다 이 태스크(D17)의 파일이 아니라 그대로 뒀다. 여기서는 **조용히 빈 값을
-        #    보내지 않는다**: 부재를 로그로 시끄럽게 만든다(이 레포가 반복해 밟은,
-        #    "빈 값이 정상처럼 보이는" 실패 모드).
+        # ✅ 2026-09-04 (Wave A, W5) — **배선됐다.** Task 9 가 실측했던 "`spec` 은 언제나
+        #    빈 문자열이다" 는 이제 거짓이다: 원인이던 `SYNTH_LANE_KEYS` 의 `mechanism`
+        #    누락이 메워졌고(`policy.jl` 의 그 튜플 docstring 이 근거를 소유한다), 파이썬
+        #    쪽에는 그 키가 처음부터 있었다(`synthesize.py` 의 `_SPEC_FIELDS`).
+        # 🔴 그래도 빈 값은 여전히 **날 수 있다** — 그리고 이제 그것은 배선이 아니라 사건에
+        #    대한 사실이다: 합성이 design 단계 전에 빠져나온 판(이른 탈출 일곱)에서는
+        #    `mechanism` 이 `nothing` 이고, agent-2 가 산문을 안 낸 판에서는 `""` 다.
+        #    조용히 보내지 않는다 — 부재를 로그로 시끄럽게 만든다(이 레포가 반복해 밟은
+        #    "빈 값이 정상처럼 보이는" 실패 모드). 🔴 이 줄이 유료 런에서 **한 번이라도**
+        #    뜨면 그 판의 되먹임 실패는 모델의 수치로 세면 안 된다.
         local spec = something(_synth_lane_field(sl, "mechanism"), "")
         isempty(spec) && println("[minted] rewrite: ⚠️ spec 이 비었다 — agent-3 이 명세 ",
-                                 "없이 고쳐야 한다 (SYNTH_LANE_KEYS 에 \"mechanism\" 이 없다)")
+                                 "없이 고쳐야 한다 (배선은 됐다: 이 판의 synth_lane 에 ",
+                                 "mechanism 이 없거나 빈 문자열이다)")
         body = JSON3.write(Dict(
             "tool_name" => something(_synth_lane_field(sl, "tool_name"), ""),
             "spec"      => spec,
@@ -1122,7 +1242,9 @@ function enact_minted_decision!(env, truth, decision)
                     # 🔴 D18. 여기까지 온 판은 세계를 읽은 적이 없다 — `closed=0` 이 아니라
                     #    **못 쟀다**. 이 줄이 없으면 라이브 로그에서 `world_delta` 의 부재가
                     #    "조기 반환" 과 "이 코드 이전 세대" 두 가지를 뜻하게 된다.
-                    " world_delta=n/a(not measured)",
+                    # 🔴 m3(2026-09-03 리뷰): 값을 **읽는다**. 예전엔 여기에 문자열을 손으로
+                    #    적었고, 그러면 이 자리가 지문 뒤로 옮겨지는 날 조용히 거짓말한다.
+                    " world_delta=", _world_delta_str(world_delta),
                     " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
@@ -1166,7 +1288,11 @@ function enact_minted_decision!(env, truth, decision)
             impl_rejected_why = why
             println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                     " verdict=reject registered=false impl_rejected_why=", why,
-                    " world_delta=n/a(not measured)",   # 🔴 D18: 집행 전에 돌아섰다 — 세계를 안 읽었다
+                    # 🔴 D18: 집행 전에 돌아섰다 — 세계를 안 읽었다. 🔴 m3: 그래도 값을
+                    #    **읽는다**(리터럴을 손으로 적지 않는다) — Task 9 가 이 클로저
+                    #    주변을 실제로 건드렸고, 거절 자리가 지문 뒤로 옮겨지는 날 손으로
+                    #    적은 `n/a` 는 아무 소리 없이 거짓이 된다.
+                    " world_delta=", _world_delta_str(world_delta),
                     " reason=", why)
             # 🔴 2026-09-03 최종 리뷰(deferred item). 이 줄이 빠져 있으면 등록 거절 —
             #    **실제 라이브 런에서 가장 자주 밟힐 reject 경로**(자기신고 규약 위반)만
@@ -1255,8 +1381,19 @@ function enact_minted_decision!(env, truth, decision)
 
         # ---- D18: 세계 지문을 **전후**로 찍는다 --------------------------------------------
         # 🔴 `_pre` 는 `CB.enact_minted!` **직전**이어야 한다 — 등록·타입검사는 세계를 안
-        #    건드리지만 body 는 건드린다. 사후 지문은 호출이 돌아온 **직후**다(아래 println
-        #    들은 세계를 안 읽고 안 바꾼다).
+        #    건드리지만 body 는 건드린다. 사후 지문은 호출이 돌아온 **직후**다.
+        # ⚠️ m6(2026-09-03 리뷰 정정): 여기 있던 "아래 println 들은 세계를 **안 읽고** 안
+        #    바꾼다" 는 틀렸다 — 아래 `ran_milp` 줄은 `env.cache.closed_set` 을 읽는다.
+        #    참인 것은 "안 **바꾼다**" 이고, 읽기가 무해한 이유는 사후 지문이 그보다
+        #    **먼저**이기 때문이다.
+        # 🔴 F4 — 이 차분이 재는 것은 body 가 아니라 **집행 봉투**다. `_issue_resume!` 와
+        #    `_resolve_if_needed!` 는 `CB.enact_minted!` **안**에서 돌므로
+        #    (`src/respec/minted_tool.jl`), `surface ∈ RESOLVE_SURFACES`(`sched`·`milp`)인
+        #    판에서는 하네스의 공통 MILP 재풀이가 한 편집이 사후 지문에 들어온다. 그리고
+        #    `resolve_assignments!` 의 `n_reassigned` 과 아래 `n_binding_changed` 는 **같은
+        #    `assignment_binding`** 에서 나오는 두 수다. 그 둘을 가르는 값은 이미 같은 튜플
+        #    안에 있다 — `r.resolve` — 그래서 아래 로그가 `_delta_scope` 로 그 판독을 명시한다.
+        #    집행은 **안 바꾼다**(재구조화는 이 판독을 얻는 데 필요하지 않다).
         local _pre = _world_digest(env)
         local r = CB.enact_minted!(env, truth, sl)
         world_delta = _world_delta(_pre, _world_digest(env))
@@ -1313,11 +1450,11 @@ function enact_minted_decision!(env, truth, decision)
         # 🔴 `@info` 가 아니라 `println` 이다 — `run_demo.jl` 이 `global_logger(…, Logging.Warn)`
         #    를 심어 `@info` 는 프로세스 전역에서 버려진다(이 파일의 다른 `[minted]` 줄과 같은
         #    이유). 🔴 `n/a(not measured)` 와 `closed=0` 은 **다른 관측**이다.
-        println("[minted] world_delta=", world_delta === nothing ? "n/a(not measured)" :
-                string("closed=", world_delta.closed, " active=", world_delta.active,
-                       " n_edges=", world_delta.n_edges,
-                       " n_binding_changed=", world_delta.n_binding_changed,
-                       " (n_binding_changed 는 하한이다)"))
+        # 🔴 `delta_scope` 는 F4 의 판독이다: `body_only` 인 판의 차분만 **body 단독**이고,
+        #    `body+harness_resolve` 인 판은 하네스의 공통 MILP 재풀이까지 포함한 봉투 전체의
+        #    차분이다. 이 값을 안 적으면 유료 런의 로그를 읽는 사람이 그 둘을 못 가른다.
+        println("[minted] world_delta=", _world_delta_str(world_delta),
+                " delta_scope=", _delta_scope(r.resolve))
 
         handled || println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                            "(이 폴백은 조용하지 않다 — verdict=", r.verdict,
@@ -1352,10 +1489,12 @@ function enact_minted_decision!(env, truth, decision)
                 # 🔴 D18(B4 와 같은 이유 — 로그와 반환이 다른 말을 하면 라이브 판독이
                 #    갈린다). 이 경로의 `world_delta` 는 `n/a` 로 **고정이 아니다**: 예외가
                 #    차분 계산 뒤에 났으면 실제로 잰 값이 여기 실린다.
-                " world_delta=", world_delta === nothing ? "n/a(not measured)" :
-                    string("closed=", world_delta.closed, " active=", world_delta.active,
-                           " n_edges=", world_delta.n_edges,
-                           " n_binding_changed=", world_delta.n_binding_changed),
+                # 🔴 m4(2026-09-03 리뷰): 성공 줄과 **같은 포맷터**를 쓴다. 예전엔 이
+                #    줄에만 하한 각주가 없어서, 로그를 정규식으로 읽는 소비자가 같은 사실의
+                #    두 모양을 따로 다뤄야 했다.
+                " world_delta=", _world_delta_str(world_delta),
+                # 🔴 이 경로에는 `r` 이 없다 — 재풀이가 돌았는지조차 모른다. `unknown` 이다.
+                " delta_scope=", _delta_scope(nothing),
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")

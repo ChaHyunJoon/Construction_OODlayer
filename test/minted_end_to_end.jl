@@ -81,9 +81,15 @@ const BARE_ENV = (staging_circles = Dict{Symbol,Any}(),)
 """
     live_cache_env() -> NamedTuple
 
-`reset_cache_resume!` 이 실제로 나갈 수 있는 최소 env. `tools/monitor/test_minted_wiring.jl`
-의 `throw_env_with_live_cache()` 와 같은 관용구이고, 낡은 정점 하나를 심어 두어 **재개가
+`reset_cache_resume!` 이 실제로 나갈 수 있는 최소 env. 낡은 정점 하나를 심어 두어 **재개가
 실제로 나갔는지가 `active_set` 으로 관측 가능**하게 만든다.
+
+🔴 **m2(2026-09-03 리뷰): 여기 있던 "`tools/monitor/test_minted_wiring.jl` 의
+`throw_env_with_live_cache()` 와 같은 관용구" 라는 문장은 낡았다.** D18 이 아래
+`active_build_steps` 를 더하면서 **둘이 갈렸다** — 그쪽 픽스처는 그 필드가 없고, 그래서 그
+파일의 모든 판에서 `world_delta` 가 **언제나 `nothing`** 이다(그 게이트는 다이제스트를 아예
+못 본다). 그 파일은 이 파동의 경로 밖이라 안 건드렸다. 여기서 그 사실을 적어 두는 이유:
+"wiring 게이트도 초록이다" 를 "다이제스트가 거기서도 검증됐다" 로 읽으면 틀린다.
 
 🔴 2026-09-04 (D18). `active_build_steps` 는 **이 시험을 위해 나중에 더한 필드다.** 그 전
 판은 `(cache, sched)` 둘뿐이었고, 그래서 `_world_digest` 가 이 env 에서 통째로 `nothing`
@@ -701,6 +707,300 @@ end
     b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
     @test b isa String
     @test startswith(b, "reject:param_annotation_unreadable:xs:")
+end
+
+# =============================================================================
+# 유료 런 직전 배선 파동 (Wave A, 2026-09-04) — W1~W6
+#
+# 🔴 사전등록 결정 6 은 `world_delta` **하나**를 L4 판정으로 쓴다(다른 넷은 구성상 상수거나
+#    모델의 자기신고다). 그러므로 유료 런 전에 그 필드에 대해 참이어야 하는 것 셋:
+#      · 네 반환 자리 **전부**가 그 필드를 나른다 — 소비자가 `try` **밖**에서 읽는다 (W1)
+#      · 그 값이 stdout 만이 아니라 **구조화된 행**으로도 나간다 (W2)
+#      · 네 성분이 **전부** 0 이외의 값을 낼 수 있다는 것이 실측돼 있다 (W3)
+#    아래 다섯 testset 이 그 셋과 F4·m1·m3·m4·m5 를 잰다.
+# =============================================================================
+
+const ENACT_PATH  = normpath(joinpath(@__DIR__, "..", "tools", "monitor", "enact.jl"))
+const RENDER_PATH = normpath(joinpath(@__DIR__, "..", "tools", "monitor", "render_demo.jl"))
+
+"""
+    _return_site_fieldsets(path, fname) -> Vector{Tuple{Int,Vector{Symbol}}}
+
+`path` 를 **파싱해서**(로드하지 않는다) `fname` 함수 본문의 `return (a = …, b = …)` 자리마다
+`(줄번호, 필드 이름 순서)` 를 낸다. 중첩 클로저의 `return` 도 그 함수 본문 안이므로 포함된다
+(`_reject_malformed` 가 그 자리다 — 넷 중 하나다).
+
+🔴 **왜 AST 인가.** 이 규약("네 자리가 같은 NamedTuple 을 낸다")은 2026-09-03 리뷰까지
+사람이 손으로만 지켰고, 검증자의 변이 M8 이 그것을 실측했다: **넷 중 셋에서 `world_delta` 를
+지워도 두 게이트가 전부 초록**이다. 문법적 사실이므로 문법으로 잰다 — 값이 아니라 모양을
+재는 것이라 픽스처도 env 도 필요 없고, 라이브에서만 도달하는 자리(조기 `:deferred` — 유료
+런에서 **가장 흔한 판**)까지 덮는다.
+"""
+function _return_site_fieldsets(path::AbstractString, fname::Symbol)
+    local top = Meta.parseall(read(path, String); filename = path)
+    local fdef = Ref{Any}(nothing)
+    function findfn(x)
+        fdef[] === nothing || return
+        x isa Expr || return
+        if x.head === :function && x.args[1] isa Expr &&
+           x.args[1].head === :call && x.args[1].args[1] === fname
+            fdef[] = x; return
+        end
+        for a in x.args; findfn(a); end
+    end
+    findfn(top)
+    fdef[] === nothing && error("AST 게이트: $(fname) 를 $(path) 에서 못 찾았다")
+    local res = Vector{Tuple{Int,Vector{Symbol}}}()
+    local cur = Ref(0)
+    function walk(x)
+        if x isa LineNumberNode; cur[] = x.line; return; end
+        x isa Expr || return
+        if x.head === :return && length(x.args) == 1 &&
+           x.args[1] isa Expr && x.args[1].head === :tuple
+            local ks = Symbol[]; local ok = true
+            for e in x.args[1].args
+                if e isa Expr && (e.head === :(=) || e.head === :kw) && e.args[1] isa Symbol
+                    push!(ks, e.args[1])
+                else
+                    ok = false
+                end
+            end
+            ok && !isempty(ks) && push!(res, (cur[], ks))
+        end
+        for a in x.args; walk(a); end
+    end
+    walk(fdef[])
+    return res
+end
+
+@testset "(14) 🔴 W1: 반환 자리 넷의 필드 집합을 **기계가** 지킨다" begin
+    local sites = _return_site_fieldsets(ENACT_PATH, :enact_minted_decision!)
+    println("    return sites = ", length(sites), " → ",
+            join([string("~", ln, "(n=", length(ks), ")") for (ln, ks) in sites], " "))
+    # 자리 넷 = 조기 `:deferred` · `_reject_malformed` 클로저 · 성공 · 바깥 `catch`.
+    @test length(sites) == 4
+    local first_keys = sites[1][2]
+    for (ln, ks) in sites
+        # 🔴 집합만이 아니라 **순서**까지 같다 — 파일의 규약이 그렇고, 순서가 갈리면 diff 를
+        #    읽는 사람이 필드 하나가 빠진 것과 옮겨진 것을 못 가른다.
+        @test ks == first_keys
+        # 🔴 소비자가 `enact_minted_decision!` 의 `try` **밖**에서 읽는 둘. 여기가 비면
+        #    `type NamedTuple has no field …` 가 `policy_producer` 안에서 터져 렌더가 선다.
+        @test :world_delta in ks
+        @test :handled in ks
+    end
+
+    # ---- 🔴 음성 대조: 이 게이트가 정말로 빨개질 수 있는가 (변이 M8 을 in-test 로) ----------
+    # 생산 소스는 안 건드린다 — 전부 `mktempdir()` 안의 사본이다
+    # (`test/synth_lane_keys_survive.jl` 의 관용구와 같다).
+    mktempdir() do dir
+        local lines = split(read(ENACT_PATH, String), "\n")
+        local idx = findall(l -> occursin(r"^\s*world_delta = world_delta\)\s*$", l), lines)
+        @test length(idx) == 4                      # 변이 지점을 실제로 넷 다 찾았다
+        lines[idx[1]] = replace(lines[idx[1]], "world_delta = world_delta)" => ")")
+        local p = joinpath(dir, "enact_dropped_field.jl")
+        write(p, join(lines, "\n"))
+        local mut = _return_site_fieldsets(p, :enact_minted_decision!)
+        @test length(mut) == 4                       # 자리 수는 그대로 — 필드만 빠졌다
+        @test !all(ks == mut[1][2] for (_, ks) in mut)          # 동일성이 깨진다
+        @test !all(:world_delta in ks for (_, ks) in mut)       # 그리고 그 필드가 빠진 것이다
+    end
+end
+
+@testset "(15) 🔴 W3: active·n_edges·n_binding_changed 양성 대조" begin
+    # 🔴 F3(2026-09-03 리뷰). `world_delta` 의 네 성분 중 **`closed` 만** 움직이는 것이
+    #    관측된 적이 있다. 그러면 라이브의 `active=0 n_edges=0` 을 "안 바뀌었다" 로 읽을
+    #    근거가 없다 — "이 축은 원래 안 움직인다"(=배선이 죽었다) 와 구별이 안 된다.
+    #    결정 6 이 `world_delta` **만** 본다고 적었으므로 그 구별이 곧 유료 런의 결론이다.
+    # ⚠️ 함정(검증자 실측): `Graphs.add_vertex!(sched.graph)` 로 정점만 늘리면
+    #    `assignment_binding` 이 `get_node` 에서 던져 **지문이 통째로 `nothing`** 이 된다.
+    #    반드시 `add_node!(sched, ScheduleNode(node_id(n), n))` 를 쓸 것.
+    # ⚠️ `surface` 는 (10)(11) 과 같은 이유로 `env_param` 이다 — 아래 `resolve` 단언이
+    #    이 판이 **body 단독** 체제라는 것을 재유도한다(W4/F4).
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d18_move_world!",
+        "impl_code" => "function d18_move_world!(env; v::Int = 1)\n" *
+                       "    push!(env.active_build_steps, RobotID(1))\n" *
+                       "    push!(env.active_build_steps, RobotID(2))\n" *
+                       "    a = RobotStart(RobotNode(RobotID(1), GeomNode(nothing)))\n" *
+                       "    b = RobotGo(RobotNode(RobotID(2), GeomNode(nothing)))\n" *
+                       "    add_node!(env.sched, ScheduleNode(node_id(a), a))\n" *
+                       "    add_node!(env.sched, ScheduleNode(node_id(b), b))\n" *
+                       "    add_edge!(env.sched, node_id(a), node_id(b))\n" *
+                       "    return (status = :d18_moved,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["d18_move_world!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d18_move_world!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local r = enact_minted_decision!(env, nothing, _dec(e))
+    # 전제 — 이 판이 정말 생성 경로이고 body 가 끝까지 돌았는가.
+    @test r.registered === true
+    @test r.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :d18_moved
+    # 🔴 재는 것 — 세 축이 **각각** 0 이 아닌 값을 낸다.
+    @test r.world_delta !== nothing
+    @test r.world_delta.active == 2
+    @test r.world_delta.n_edges == 1
+    @test r.world_delta.n_binding_changed == 2
+    # 🔴 음성 대조: 넷이 뭉뚱그려 움직이는 것이 아니다. body 는 `closed_set` 을 안 건드렸고
+    #    그 축은 0 이다 — 이 줄이 없으면 위 셋은 "지문이 아무 숫자나 낸다" 와 구별이 안 된다.
+    @test r.world_delta.closed == 0
+    # 🔴 W4/F4: 이 차분에 하네스의 공통 MILP 재풀이가 안 섞였다는 것을 재유도한다.
+    @test r.resolve === :not_needed_surface
+    @test _delta_scope(r.resolve) == "body_only"
+end
+
+@testset "(16) 🔴 W2: world_delta 가 **구조화된 행**으로도 나간다" begin
+    # 🔴 F1(2026-09-03 리뷰). `record_decision!`(`render_demo.jl`)은 집행 **앞**에서 결정 행을
+    #    닫고, 집행 뒤에는 `_m.handled` 하나만 읽혔다 — `world_delta` 는 stdout 으로만 나갔다.
+    #    (stdout 채점은 실제로 가능하다: `println` 이라 `global_logger(…, Logging.Warn)` 를
+    #    통과하는 것을 검증자가 짝지은 대조로 확인했다. 즉 write-only 도장은 아니었다.
+    #    그래도 스윕 규모의 집계는 행이 있어야 한다.)
+    # 🔴 패턴은 `monitor_record_verification!`(`src/monitor/monitor.jl`)의 **제자리 변이**
+    #    그대로다 — `MONITOR_RESPEC[]` 은 `monitor_emit!` 때 직렬화되는 살아 있는 Dict 다.
+    #    두 번째 패턴을 만들지 않는다(진실원 하나).
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        local row = Dict{String,Any}()
+        CB.MONITOR_RESPEC[] = row
+        # ---- 삼상이 **행 안에서** 살아남는가 ------------------------------------------------
+        record_world_delta!((world_delta = nothing,))
+        @test haskey(row, "world_delta")            # 키는 언제나 있다(부재 = 이 코드 이전 세대)
+        @test row["world_delta"] === nothing        # 🔴 "못 쟀다" 는 0 도 {} 도 아니다
+        @test occursin("\"world_delta\":null", JSON3.write(row))   # 직렬화까지 살아남는다
+        record_world_delta!((world_delta = (closed = 0, active = 0,
+                                            n_edges = 0, n_binding_changed = 0),))
+        @test row["world_delta"] isa AbstractDict   # 🔴 "쟀는데 0" 은 **다른 관측**이다
+        @test row["world_delta"]["closed"] == 0
+        @test length(row["world_delta"]) == 4
+        record_world_delta!((world_delta = (closed = 1, active = 2,
+                                            n_edges = 3, n_binding_changed = 4),))
+        @test row["world_delta"]["active"] == 2
+        @test row["world_delta"]["n_binding_changed"] == 4
+        # ---- 🔴 안 던진다. 이 호출은 `enact_minted_decision!` 의 `try` **밖**이다 ----------
+        record_world_delta!((;))                    # 필드가 아예 없는 반환(구세대 집행부)
+        @test row["world_delta"]["active"] == 2     # 직전 값이 그대로 — 덮어쓰지도 죽지도 않았다
+        CB.MONITOR_RESPEC[] = nothing               # 결정 행이 아예 없는 판(레인 미개시)
+        @test record_world_delta!((world_delta = nothing,)) === nothing
+    finally
+        CB.MONITOR_RESPEC[] = saved
+    end
+    # ---- 생산 경로가 실제로 그 함수를 부르는가, 그리고 **조기 반환보다 먼저** 부르는가 ------
+    # 🔴 순서가 하중이다: `_m.handled` 가 참인 판(생성 body 의 지배적인 판)에서 뒤에 두면
+    #    행에 아무것도 안 실린다.
+    local rd = read(RENDER_PATH, String)
+    local i_call = findfirst("record_world_delta!(_m)", rd)
+    local i_ret  = findfirst("_m.handled && return nothing", rd)
+    @test i_call !== nothing
+    @test i_ret !== nothing
+    @test first(i_call) < first(i_ret)
+end
+
+@testset "(17) 🔴 W4/m3/m4: delta 의 **범위**가 읽히고, 로그 문구의 진실원이 하나다" begin
+    # 🔴 F4. `_issue_resume!`/`_resolve_if_needed!` 는 `CB.enact_minted!` **안**에서 돈다.
+    #    그래서 `surface ∈ {"sched","milp"}` 인 판의 사후 지문에는 하네스의 공통 MILP
+    #    재풀이가 한 편집이 들어온다 — 그리고 `resolve_assignments!` 의 `n_reassigned` 과
+    #    `world_delta.n_binding_changed` 는 **같은 `assignment_binding`** 에서 나온다.
+    #    집행을 바꾸지 않는다. 이미 손에 있는 `r.resolve` 로 그 판독을 명시할 뿐이다.
+    @test _delta_scope(:not_needed_surface) == "body_only"
+    @test _delta_scope(:resolved) == "body+harness_resolve"
+    # ⚠️ 실패 셋과 `:none` 은 **모른다**로 남긴다 — "body 단독" 으로 넓히면 못 쟀다가
+    #    측정처럼 보인다.
+    @test _delta_scope(:none) == "unknown"
+    @test _delta_scope(:threw) == "unknown"
+    @test _delta_scope(nothing) == "unknown"
+
+    # ---- m3·m4: 네 로그 자리가 **한 벌**의 문구를 쓴다 ------------------------------------
+    # m3 — 조기 두 자리가 값을 안 읽고 `n/a(not measured)` 를 **손으로** 적고 있었다. 오늘은
+    #      참이지만 거절 자리가 지문 뒤로 옮겨지는 순간 그 리터럴이 조용히 거짓말한다.
+    # m4 — 성공 줄에는 하한 각주가 붙고 catch 줄에는 없었다. 로그를 정규식으로 읽는 소비자가
+    #      두 모양을 따로 다뤄야 했다.
+    # ⚠️ 이 단언은 **어휘적**이다(소스 문자열을 센다). 그래서 잡는 것은 "리터럴이 두 벌
+    #    생겼다" 뿐이고, 포맷터가 잘못 계산하는 것은 위 (10)(11)(15) 가 잡는다.
+    local src = read(ENACT_PATH, String)
+    # ⚠️ **백틱 인용만** 뺀다(주석·docstring 에서 이 문구를 인용하는 것은 사본이 아니라
+    #    설명이다). 🔴 처음엔 `"n/a(not measured)"` 를 따옴표까지 붙여 셌는데, 그러면
+    #    `" world_delta=n/a(not measured)"` 처럼 **문자열 안에 박힌** 사본을 놓친다 —
+    #    그리고 그것이 정확히 m3 이 고친 옛 코드의 모양이었다(2026-09-04 변이로 실측:
+    #    그 판의 게이트는 초록이었다).
+    @test length(collect(eachmatch(r"(?<!`)n/a\(not measured\)", src))) == 1
+    @test length(collect(eachmatch(r"n_binding_changed 는 하한이다", src))) == 1
+    @test _world_delta_str(nothing) == "n/a(not measured)"
+    local s = _world_delta_str((closed = 1, active = 2, n_edges = 3, n_binding_changed = 4))
+    @test occursin("closed=1 active=2 n_edges=3 n_binding_changed=4", s)
+    @test occursin("하한", s)     # 🔴 하한 각주가 **네 자리 전부**에 붙는다(m4)
+end
+
+@testset "(18) 🔴 m1/m5: CB.Graphs 가 하중을 지고, _world_delta 는 안 던진다" begin
+    # ---- m1. 검증자의 변이 M3: 맨 `Graphs.ne` 로 되돌려도 **두 게이트가 전부 초록**이었다.
+    #      `CB.` 를 붙이는 판단은 옳았는데 그 위험을 잡는 시험이 레포에 0개였다.
+    #      (그리고 그 자리의 docstring 이 든 예가 반대로 적혀 있었다 — `minted_end_to_end.jl`
+    #      은 `policy.jl` 경유로 `Graphs` 를 **갖는다**. 진짜 예는 `test_minted_wiring.jl` 등
+    #      넷이다. 그래서 이 게이트는 예를 인용하는 대신 **그 모양의 모듈을 만들어** 잰다.)
+    local env = live_cache_env()
+    local m = Module(:D18NoGraphsProbe)
+    Core.eval(m, :(const CB = $(CB)))
+    Base.include(m, ENACT_PATH)
+    # 🔴 음성 대조가 공허하지 않다는 증거: 이 모듈에 `Graphs` 는 **실제로 없다**.
+    @test Core.eval(m, :(isdefined(@__MODULE__, :Graphs))) === false
+    @test Base.invokelatest(Core.eval(m, :(_world_digest)), env) !== nothing
+    # 🔴 그리고 맨 이름으로 되돌리면 지문이 **통째로 꺼진다**(변이 M3 을 in-test 로).
+    mktempdir() do dir
+        local p = joinpath(dir, "enact_bare_graphs.jl")
+        write(p, replace(read(ENACT_PATH, String), "CB.Graphs.ne" => "Graphs.ne"))
+        local m2 = Module(:D18BareGraphsProbe)
+        Core.eval(m2, :(const CB = $(CB)))
+        Base.include(m2, p)
+        @test Base.invokelatest(Core.eval(m2, :(_world_digest)), env) === nothing
+    end
+
+    # ---- m5. `_world_delta` 에는 `try`/`catch` 가 없었다. 오늘 도달 불가지만(`assignment_binding`
+    #      이 `Dict{Int,Int}` 고정) 던지면 **body 가 이미 세계를 편집한 뒤**에 바깥 catch 가
+    #      그것을 삼켜 `verdict=:reject reason="… threw"` 로 기록된다 — `_world_digest` 가
+    #      막겠다고 적은 사고의 나머지 반쪽이다.
+    # 🔴 2026-09-04 실측 — 리뷰의 처방(`try`/`catch`)만으로는 **반쪽**이다. 두 방향이 서로
+    #    다른 사고를 낸다:
+    #      · `_world_delta(ok, bad)` → 던진다(사후 지문의 `binding` 을 순회하다 죽는다).
+    #        `try`/`catch` 가 그것을 `nothing`("못 쟀다")으로 바꾼다.
+    #      · `_world_delta(bad, ok)` → **안 던진다.** `String` 이 `get`·`keys` 를 둘 다 갖고
+    #        있어 두 루프가 조용히 돌고 `n_binding_changed = 10`(= 문자열 길이)이 나온다.
+    #        `try`/`catch` 로는 절대 못 잡는다 — 그리고 이쪽이 더 나쁘다: 예외는 "못 쟀다"
+    #        가 되는데 이 거짓 숫자는 **"쟀다"를 참칭한다**(삼상 규약이 막으려는 것 그 자체).
+    #    그래서 모양 가드가 `try` **앞**에 있다.
+    local ok  = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 1))
+    local bad = (closed = 0, active = 0, n_edges = 0, binding = "not a dict")
+    @test _world_delta(ok, bad) === nothing
+    @test _world_delta(bad, ok) === nothing
+    # 🔴 비-0 대조: 이 함수가 여전히 **잰다**(항진적으로 nothing 을 내는 것이 아니다).
+    local moved = (closed = 1, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 2))
+    @test _world_delta(ok, moved) == (closed = 1, active = 0,
+                                      n_edges = 0, n_binding_changed = 1)
+end
+
+@testset "(19) 🔴 W5: /rewrite 의 spec 이 더 이상 **구조적으로** 비지 않는다" begin
+    # 🔴 Task 9 실측: 가짜 `/rewrite` 서버가 받은 payload 의 `spec` 이 `''` 였다 —
+    #    **생산 경로의 모든 판에서**. 원인은 모델이 아니라 배선이었다: `mechanism` 은
+    #    파이썬 기록에 있었는데(`synthesize.py` 의 `_SPEC_FIELDS`) `SYNTH_LANE_KEYS` 에
+    #    없어 `_synth_view` 가 안 실었다. 그 상태의 유료 런은 "명세 없이 고치라는 요청에
+    #    agent-3 이 실패한 비율" 을 재게 되고, D17 이 재려는 것은 그 수치가 아니다.
+    # 🔴 이름 축의 게이트는 `test/synth_lane_keys_survive.jl` 이 소유한다(파이썬 AST 대조
+    #    포함). 여기서 재는 것은 **값이 집행부의 그 읽기 자리까지 실제로 도착하는가** 다.
+    local sl = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "w5_probe!", "wrote" => true,
+        "mechanism" => "release the pending assignments, then re-solve"))
+    @test _synth_lane_field(sl, "mechanism") == "release the pending assignments, then re-solve"
+    @test !isempty(something(_synth_lane_field(sl, "mechanism"), ""))
+    # 🔴 음성 대조 — 기전이 없는 판은 **여전히** 비어 있고, 이제 그것은 배선이 아니라
+    #    사건에 대한 사실이다(design 단계 전에 빠져나온 이른 탈출). 이 줄이 없으면 위 둘은
+    #    "이 필드는 언제나 값이 있다" 라는 항진명제와 구별이 안 된다.
+    local sl0 = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => false, "error" => "no_missing_primitive"))
+    @test _synth_lane_field(sl0, "mechanism") === nothing
 end
 
 end # module
