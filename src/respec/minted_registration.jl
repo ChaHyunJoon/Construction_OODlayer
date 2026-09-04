@@ -70,6 +70,97 @@ _is_env_positional(a) =
     (a isa Expr && a.head === :(::) && length(a.args) == 2 && a.args[1] === :env)
 
 """
+    _walk_body!(calls, fields, locals, ex)
+
+body 의 AST 를 걸어 (1) 호출 대상 이름 (2) `수신자.필드` 쌍 (3) 지역 정의 이름을 모은다.
+🔴 **보수적이다.** 모르면 안 모은다 — 거짓 거절은 모델의 옳은 코드를 우리 파서의 한계로
+   막고, 그것은 이 레인이 재려는 것 자체를 파괴한다.
+"""
+function _walk_body!(calls, fields, locals, ex)
+    ex isa Expr || return
+    if ex.head === :call && !isempty(ex.args) && ex.args[1] isa Symbol
+        push!(calls, ex.args[1])
+    elseif ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :call &&
+           ex.args[1].args[1] isa Symbol
+        push!(locals, ex.args[1].args[1])            # `helper(x) = …` 지역 정의
+    elseif ex.head === :function && ex.args[1] isa Expr && ex.args[1].head === :call &&
+           ex.args[1].args[1] isa Symbol
+        push!(locals, ex.args[1].args[1])            # 중첩 `function helper(x) … end`
+    elseif ex.head === :. && length(ex.args) == 2 && ex.args[2] isa QuoteNode
+        push!(fields, (ex.args[1], ex.args[2].value))
+    end
+    for a in ex.args; _walk_body!(calls, fields, locals, a); end
+end
+
+"""
+    _concrete_struct(T) -> Union{Nothing,DataType}
+
+`T` 를 **필드를 물어봐도 되는 타입**으로 좁힌다. 아니면 `nothing`("못 쟀다").
+
+두 조건을 요구한다: (1) 비추상 struct 여야 필드 **이름**이 확정된다 — `Float64`·`Int64`
+같은 primitive 와 추상 타입은 여기서 떨어진다(실측: `isstructtype(Float64)` = `false`).
+🔴 **구체성(`isconcretetype`)을 요구하면 안 된다** — 처음에 그렇게 썼다가 시험 (22) 가
+빨갰다. `ScheduleNode` 는 파라미터 있는 struct 라 `isconcretetype` 이 **false** 인데
+(실측 2026-09-04), 파라미터를 몰라도 `fieldnames` 는 `(:id, :node, :spec)` 로 확정된다 —
+우리가 묻는 것은 필드의 **타입**이 아니라 **이름**이므로 그 정도면 충분하다.
+
+(2) 🔴 **`getproperty` 가 기본 구현이어야 한다.** 재정의한 타입에서는 `x.foo` 가
+필드일 필요가 없으므로 `fieldnames` 로 판정하면 **거짓 거절**이 난다 — 아래
+`_static_receiver_type` 이 `env` 에서 임의 깊이로 걸어 들어가므로 남의 패키지(LazySets ·
+Graphs) 타입에 닿을 수 있고, 그 축은 우리가 통제 못 한다. 2026-09-04 실측: 오늘 닿는 여덟
+타입은 전부 기본 구현이고(`PlannerEnv`·`OperatingSchedule`·`SceneTree`·`PlanningCache`·
+`Dict` 둘·`ScheduleNode`·`Vector{ScheduleNode}`), `getproperty` 를 재정의한 대조 타입
+하나는 정확히 `false` 로 갈렸다 — 여덟 개의 `true` 를 비-`true` 대조와 짝지어 읽은 값이다.
+"""
+function _concrete_struct(T)
+    T isa Type || return nothing
+    S = T isa UnionAll ? Base.unwrap_unionall(T) : T
+    (S isa DataType && isstructtype(S) && !isabstracttype(S)) || return nothing
+    which(Base.getproperty, Tuple{S,Symbol}).sig ===
+        Tuple{typeof(Base.getproperty),Any,Symbol} || return nothing
+    return S
+end
+
+"""
+    _static_receiver_type(recv) -> Union{Nothing,DataType}
+
+`recv` 의 타입을 **확실히 아는 경우에만** 낸다. 그 외에는 전부 `nothing` — 모른다고 답한다.
+
+뿌리는 `env`(= `PlannerEnv`) 하나뿐이고, 거기서 두 걸음만 인정한다:
+필드 접근(`x.f`)과 **구체 eltype 을 가진 배열**의 인덱싱(`x[i]`).
+
+🔴 **왜 브리프가 적은 `env` / `env.<f>` 두 모양보다 넓은가 — 실측이 그렇게 시켰다.**
+   브리프의 시험 (22) 은 `env.sched.nodes[1].assigned_robot` 이 거절되고 그 문장이
+   `ScheduleNode` 의 실제 필드 `(id, node, spec)` 을 실어야 한다고 못박는다. 그런데
+   그 수신자의 AST 는 `Expr(:ref, Expr(:., Expr(:., :env, :sched), :nodes), 1)` 이라
+   `env.<f>` 두 모양으로는 **구조적으로 도달 불가능**이다 — 브리프의 도우미를 글자
+   그대로 옮기고 돌린 결과 (22) 는 `why === nothing` 으로 빨갰다(실측 2026-09-04).
+   그래서 넓힌 것은 **딱 그 두 걸음**이고, 각 걸음은 여전히 타입이 확정될 때만 나아간다.
+🔴 **넓힌 방향은 안전한 쪽이 아니다 — 거짓 거절이 늘 수 있는 쪽이다.** 그래서 방어를
+   `_concrete_struct` 에 몰아넣었고(위 docstring), 모르는 모양은 전부 `nothing` 으로
+   떨어진다: `Dict` 인덱싱(`AbstractArray` 가 아니다), 호출 결과(`first(...)`), 지역
+   변수(`sched.nodes` 처럼 `env` 에 뿌리를 안 둔 것), 추상 필드 타입. 시험 (24) 가 그 성질을
+   음성으로 잰다.
+"""
+function _static_receiver_type(recv)
+    recv === :env && return PlannerEnv
+    if recv isa Expr && recv.head === :. && length(recv.args) == 2 &&
+       recv.args[2] isa QuoteNode
+        S = _static_receiver_type(recv.args[1])
+        S === nothing && return nothing
+        f = recv.args[2].value
+        f in fieldnames(S) || return nothing      # 모르는 필드 → 타입도 모른다
+        return _concrete_struct(fieldtype(S, f))
+    end
+    if recv isa Expr && recv.head === :ref && length(recv.args) >= 2
+        S = _static_receiver_type(recv.args[1])
+        (S === nothing || !(S <: AbstractArray)) && return nothing
+        return _concrete_struct(eltype(S))
+    end
+    return nothing
+end
+
+"""
     check_impl_conventions(name, code) -> Union{Nothing,String}
 
 설계 §5 의 규약 다섯. 통과하면 `nothing`, 아니면 **거절 사유**다. 순수 함수 —
@@ -274,6 +365,43 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
     for k in kws
         (k isa Expr && k.head === :kw) ||
             return "reject:impl_keyword_needs_a_default:$(k)"
+    end
+
+    # 🔴 D15. 지어낸 이름·필드는 **eval 전에** 거절한다. 실측(프로브 P2·P3): 오늘은
+    #    둘 다 `Core.eval` 을 통과해 **집행 중에** UndefVarError 로 터진다 — 그때는 세계가
+    #    이미 반쯤 편집됐을 수 있고, agent-3 에게 돌아갈 문장도 raw 예외다.
+    # 🔴 **자리가 계약이다** — 이 검사는 규약 다섯 **전부의 뒤**에 온다. 특히
+    #    `impl_not_single_expression`(규약 4) 뒤여야 한다: run 2 의 실제 코드는 최상위
+    #    정의가 둘이면서 **동시에** 미정의 `find_suitable_robot` 을 부르므로, 앞으로
+    #    옮기면 시험 (20) 의 바이트 고정(`reject:impl_not_single_expression:2`)이 D15
+    #    사유로 갈린다. 그 시험은 규약 4 를 지키는 게이트다(D14) — 옮기지 말 것.
+    local body = length(f.args) >= 2 ? f.args[2] : nothing
+    if body !== nothing
+        local cs, fs, ls = Symbol[], Tuple{Any,Symbol}[], Symbol[]
+        _walk_body!(cs, fs, ls, body)
+        # 시그니처의 키워드 이름도 지역이다
+        for k in kws; (k isa Expr && k.args[1] isa Symbol) && push!(ls, k.args[1]); end
+        for k in kws
+            k isa Expr && k.args[1] isa Expr && k.args[1].head === :(::) &&
+                k.args[1].args[1] isa Symbol && push!(ls, k.args[1].args[1])
+        end
+        push!(ls, :env, Symbol(name))
+        for c in unique(cs)
+            (c in ls) && continue
+            isdefined(@__MODULE__, c) && continue
+            isdefined(Base, c) && continue
+            isdefined(Core, c) && continue
+            return "reject:impl_unknown_call:$(c) — 이 이름의 함수는 이 모듈에도 Base 에도 " *
+                   "없다. 세계 인터페이스가 실제로 가진 함수만 부르거나, 도우미를 body " *
+                   "**안쪽**에 정의하라"
+        end
+        for (recv, fld) in fs
+            S = _static_receiver_type(recv)
+            S === nothing && continue                # 🔴 모르면 통과 (시험 (24))
+            fld in fieldnames(S) && continue
+            return "reject:impl_unknown_field:$(nameof(S)).$(fld) — fields are " *
+                   "($(join(String.(collect(fieldnames(S))), ", ")))"
+        end
     end
     return nothing
 end

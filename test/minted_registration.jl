@@ -570,7 +570,19 @@ const LIVE_FIRST_FN = LIVE_BARE[1:(findfirst("\nend\n", LIVE_BARE)).stop]
 
 @testset "(18) 🔴 R18 FIX B: 위치인자 env 는 타입 표기를 달아도 된다" begin
     # 라이브 모양 그대로 — `env::PlannerEnv` + 타입 붙은 키워드 + 기본값.
-    @test CB.check_impl_conventions("TaskRedistributor!", LIVE_FIRST_FN) === nothing
+    # 🔴 D15(Task 6, 2026-09-03)로 이 단언이 `=== nothing` 에서 바뀌었다 — **완화가 아니라
+    #    조임이다.** 브리프 Step 4 진단을 실제로 돌린 결과
+    #    (`julia +lts --project=. -e 'using ConstructionBots; …isdefined(CB,s)/Base/Core'`)
+    #    `find_suitable_robot` 은 **CB=false Base=false Core=false** 였다 — 즉 이 라이브 body 는
+    #    부르면 집행 중에 UndefVarError 로 죽는 코드였고, 옛 `=== nothing` 은 그 느슨함에
+    #    기대고 있었다(브리프 Step 4 의 둘째 갈래: "존재하지 않는다 → 시험을 고치되 왜
+    #    고쳤는지 그 자리에 적는다").
+    #    🔴 이 자리가 재는 것은 **여전히 규약 1** 이다: 규약 1 이 회귀하면 사유가
+    #    `impl_positional_args_must_be_exactly_env` 로 바뀐다 — 그 검사는 D15 보다 **앞**에서
+    #    돌기 때문이다. 그래서 아래 두 줄은 `=== nothing` 보다 더 많은 것을 못박는다.
+    local why18 = CB.check_impl_conventions("TaskRedistributor!", LIVE_FIRST_FN)
+    @test why18 !== nothing
+    @test startswith(something(why18, ""), "reject:impl_unknown_call:find_suitable_robot")
     # 표기 없는 옛 모양도 그대로 통과한다(넓히기이지 갈아타기가 아니다).
     @test CB.check_impl_conventions("f!", "function f!(env; k = 1)\n    return :ok\nend\n") === nothing
     @test CB.check_impl_conventions("f!", "function f!(env::Any; k = 1)\n    return :ok\nend\n") === nothing
@@ -612,6 +624,61 @@ end
     # 🔴 이 단언이 빨개지면 규약을 고칠 것이 아니라 **그것이 발견**이다.
     @test CB.check_impl_conventions("TaskRedistributor!", LIVE_BARE) ==
           "reject:impl_not_single_expression:2"
+end
+
+@testset "(21) 🔴 D15: 미정의 호출 대상은 eval 전에 거절된다" begin
+    # run 2·3 이 실제로 쓴 모양이다.
+    code = """
+    function d15_probe_a!(env; x::Int=1)
+        r = find_suitable_robot(x)
+        return (status = :ok,)
+    end
+    """
+    why = CB.check_impl_conventions("d15_probe_a!", code)
+    @test why !== nothing
+    @test startswith(why, "reject:impl_unknown_call:")
+    @test occursin("find_suitable_robot", why)
+    # 🔴 등록 자체가 막혀야 한다 — eval 이 돌면 이 태스크는 실패다.
+    @test !isdefined(CB, :d15_probe_a!)
+end
+
+@testset "(22) 🔴 D15: 없는 필드 접근도 eval 전에 거절된다" begin
+    code = """
+    function d15_probe_b!(env; x::Int=1)
+        return (status = Symbol(env.sched.nodes[1].assigned_robot),)
+    end
+    """
+    why = CB.check_impl_conventions("d15_probe_b!", code)
+    @test why !== nothing
+    @test startswith(why, "reject:impl_unknown_field:")
+    @test occursin("assigned_robot", why)
+    # 되먹임이 쓸모 있으려면 **실제 필드가 문장 안에** 있어야 한다
+    @test occursin("id", why) && occursin("node", why) && occursin("spec", why)
+end
+
+@testset "(23) 🔴 D15 음성 대조 — 옳은 body 는 통과한다" begin
+    # 기존 함수를 부르고 존재하는 필드만 읽는다. 지역 클로저도 쓴다(규약 4 는 허용).
+    code = """
+    function d15_probe_ok!(env; t::Float64=0.0)
+        pick(v) = v
+        update_planning_cache!(env, t)
+        n = length(env.cache.closed_set)
+        return (status = Symbol("closed_", pick(n)),)
+    end
+    """
+    @test CB.check_impl_conventions("d15_probe_ok!", code) === nothing
+end
+
+@testset "(24) 🔴 D15 는 모르면 통과시킨다 (거짓 거절 금지)" begin
+    # 수신자 타입을 정적으로 못 아는 필드 접근은 **막지 않는다**.
+    code = """
+    function d15_probe_dyn!(env; x::Int=1)
+        y = env.agent_policies
+        z = first(values(y)).nominal_policy
+        return (status = :ok,)
+    end
+    """
+    @test CB.check_impl_conventions("d15_probe_dyn!", code) === nothing
 end
 
 end # module
