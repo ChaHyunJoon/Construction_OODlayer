@@ -36,6 +36,19 @@ def test_the_block_says_the_signature_convention():
     assert "(env;" in s and "keyword" in s.lower()
 
 
+def test_the_block_allows_helper_closures_inside_the_body():
+    """🔴 F21(2026-09-03 최종 리뷰). R15: check_impl_conventions 는 몸통 안의 도우미
+    클로저를 허용한다(최상위 정의가 정확히 하나이면 됨) — 규약 4 문구가 예전엔
+    "no helper functions" 라고만 적어 그 검사기와 글자로 어긋났다(Task 9 최종 리뷰
+    라운드 4 가 고쳤다). 옛 문구를 그대로 되돌리는 다음 드리프트가 이 단언 없이는
+    조용히 통과한다 — 여기서 빨갛게 만든다.
+    """
+    s = WI.build_world_interface_block()
+    assert "TOP-LEVEL" in s or "top-level" in s
+    assert "inside your function body are fine" in s.lower()
+    assert "no helper functions.\n" not in s   # 옛 무조건 금지 문구가 되살아나지 않았다
+
+
 # =====================================================================================
 # I4 — 산출물이 다시 생성되면 **프로세스를 안 죽이고** 그것을 읽는다. 유료 0건.
 #
