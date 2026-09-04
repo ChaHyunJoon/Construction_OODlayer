@@ -797,4 +797,70 @@ end
         "function d15_h4!(env; x::Int=1)\n    Main.zzz_qualified_undefined(x)\n    return (status = :ok,)\nend\n") === nothing
 end
 
+@testset "(29) 🔴 D16/F1: `f(…).x` 모양 주석은 shape 게이트를 못 넘는다" begin
+    # 🔴 2026-09-04 fix round 1 (F1). `_is_type_shape` 의 `:.` 갈래가 `e.args[2]` 만
+    #    `QuoteNode` 인지 봤고 `e.args[1]` 은 **아무 표현식이나** 될 수 있었다 — `:call`
+    #    포함. 그래서 `f(…).x` 모양 주석이 모양 게이트를 통과해 `impl_param_types` 의
+    #    `Core.eval` 이 그것을 돌렸다(파일 생성·삭제를 리뷰가 실측). 시그니처에 있는
+    #    호출이라 `_walk_body!`(= 몸통만 걷는다)의 `impl_unknown_call` 도 못 본다.
+    CB.reset_minted_table!()
+    local dir = mktempdir()
+    try
+        local p1 = joinpath(dir, "PWNED.txt")
+        local p2 = joinpath(dir, "SILENT.txt")
+        local p3 = joinpath(dir, "NOT_A_SANDBOX.txt")
+        # (a) 시끄러운 변종 — `write` 는 `Int` 를 내고 `.x` 가 던진다.
+        local code1 = "function d16_pwn_tool!(env; n::(write($(repr(p1)), \"PWNED\").x) = 0)\n" *
+                      "    return (status = :ok,)\nend\n"
+        # (b) 🔴 완전히 조용한 변종 — 부작용을 내면서 **진짜 `Type`** 을 돌려준다.
+        #     초판에서는 이것이 `param_types[\"n\"] == Int64` 로 등록까지 성공했다(사유 0개).
+        local code2 = "function d16_silent_tool!(env; n::(open(io -> (T = Int,), $(repr(p2)), \"a\").T) = 0)\n" *
+                      "    return (status = :ok,)\nend\n"
+        @test CB._is_type_shape(Meta.parse("write(\"a\", \"b\").x")) === false
+        @test CB._is_type_shape(Meta.parse("Vector{write(\"a\", \"b\").y}")) === false
+        @test !(get(CB.impl_param_types(code1), "n", nothing) isa Type)
+        @test !isfile(p1)              # 🔴 `impl_param_types` 가 세계를 안 건드렸다
+        @test !(get(CB.impl_param_types(code2), "n", nothing) isa Type)
+        @test !isfile(p2)
+        # 🔴 **이 검사는 샌드박스가 아니다 — 좁힘이다.** Julia 는 kwarg 타입 주석을 메서드
+        #    정의 시점에 평가하므로, 같은 문자열을 등록에 주면 본래의 `Core.eval` 이 그것을
+        #    똑같이 돌린다(부모 커밋 `80c62d49` 에서도 그랬다 — 리뷰가 실측). 즉 D16 이
+        #    도달 가능한 능력을 넓히지는 않았고, 이 고침도 그것을 닫지는 못한다. 이 두 줄이
+        #    그 사실의 진실원이다(두 docstring 이 여기를 가리킨다) — 다음 세션이
+        #    "모양 검사가 eval 을 막는다" 를 전제로 물려받지 않도록.
+        local why = CB.register_minted_primitive!(name = "d16_notsandbox_tool!",
+            code = "function d16_notsandbox_tool!(env; n::(write($(repr(p3)), \"X\").x) = 0)\n" *
+                   "    return (status = :ok,)\nend\n",
+            params = Dict{String,Any}("n" => Dict("type" => "integer")),
+            surface = "sched", reversible = false)
+        @test why !== nothing                       # 등록은 거절됐다(`.x` 가 던진다)
+        @test isfile(p3)                            # 🔴 그런데 세계는 이미 만져졌다
+    finally
+        rm(dir; recursive = true, force = true)
+    end
+end
+
+@testset "(30) 🔴 D16/F5: `_is_type_shape` 의 열한 모양 — 여덟은 참, 셋은 **일부러** 거짓" begin
+    # 🔴 2026-09-04 fix round 1 (F5). 이 프로브는 Task 7 보고서와 docstring 에만 있었고
+    #    스위트에 없었다 — `Val{:x}`·`NTuple{3,Int}` 갈래가 나중에 좁아져도 아무것도
+    #    안 빨개졌다(덮이던 유일한 모양이 `Array{String,1}` 하나였다). 여기가 그 게이트다.
+    for s in ["Array{String,1}", "Vector{String}", "Int", "Base.RefValue{Int}",
+              "Dict{String,Any}", "Matrix{Float64}", "Val{:x}", "NTuple{3,Int}"]
+        @test CB._is_type_shape(Meta.parse(s)) === true
+    end
+    # 셋은 설계상 거짓이다: 호출 · 보간 · `where`(UnionAll).
+    for s in ["f(x)", "\$(T)", "Array{String,N} where N"]
+        @test CB._is_type_shape(Meta.parse(s)) === false
+    end
+    # `impl_param_types` 직접 단위 — 삼상이 한 판에 다 나온다.
+    local pt = CB.impl_param_types(
+        "function d16_unit_probe!(env; xs::Vector{String}=String[], y::Int=0,\n" *
+        "                         zs::Vector{<:AbstractString}=String[], w=1)\n" *
+        "    return (status = :ok,)\nend\n")
+    @test pt["xs"] === Vector{String}          # 읽었다
+    @test pt["y"]  === Int                     # 읽었다
+    @test haskey(pt, "zs") && !(pt["zs"] isa Type)   # 주석은 있는데 못 읽었다
+    @test !haskey(pt, "w")                     # 주석이 없다 (키가 없다)
+end
+
 end # module

@@ -473,28 +473,40 @@ end
 
 @testset "(7) 🔴 D16: JSON3 배열·객체가 선언 타입으로 변환돼 호출이 산다" begin
     CB.reset_minted_table!()
+    # 🔴 2026-09-04 fix round 1 (F4). 이 testset 의 **이름**은 처음부터 "배열·객체" 였는데
+    #    배열과 `Int` 만 태우고 있었다 — 객체 사례가 세 시험 어디에도 없었다. 그리고 그
+    #    빈 자리에 실제 결함이 있었다: `JSON3.Object` 의 `keytype` 은 `Symbol` 이라
+    #    `convert(Dict{String,Any}, ::JSON3.Object)` 는 **던진다**. 즉 이 레포가 도처에서
+    #    쓰는 가장 자연스러운 철자로 주석한 객체 인자가 전부 `reject:param_convert:` 로
+    #    막혀 원시가 영영 안 돌았다(거절이라 안전하지만 채널은 닫힌 것이다).
     code = """
-    function d16_array_tool!(env; task_ids::Array{String,1}=String[], k::Int=0)
-        return (status = Symbol("saw_", length(task_ids), "_", k),)
+    function d16_array_tool!(env; task_ids::Array{String,1}=String[], k::Int=0,
+                             meta::Dict{String,Any}=Dict{String,Any}())
+        return (status = Symbol("saw_", length(task_ids), "_", k, "_", length(meta)),)
     end
     """
     params = Dict{String,Any}("task_ids" => Dict("type" => "array",
                                                  "items" => Dict("type" => "string")),
-                              "k" => Dict("type" => "integer"))
+                              "k" => Dict("type" => "integer"),
+                              "meta" => Dict("type" => "object"))
     @test CB.register_minted_primitive!(name = "d16_array_tool!", code = code,
                                         params = params, surface = "sched",
                                         reversible = false) === nothing
     prim = CB.resolve_primitive("d16_array_tool!")
     @test prim !== nothing
     calls = CB.normalize_calls(JSON3.read(
-        """[{"primitive":"d16_array_tool!","args":{"task_ids":["t1","t2","t3"],"k":7}}]"""))
+        """[{"primitive":"d16_array_tool!","args":{"task_ids":["t1","t2","t3"],"k":7,""" *
+        """"meta":{"a":1,"b":2}}}]"""))
     @test !(calls isa String)
     b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
     @test !(b isa String)
     # 🔴 뷰가 아니라 네이티브 컨테이너여야 한다
     @test b[2].task_ids isa Vector{String}
+    # 🔴 F4: 키를 `Symbol` 에서 `String` 으로 옮겨 주는 것은 **경계의 몫**이다.
+    @test b[2].meta isa Dict{String,Any}
+    @test b[2].meta["a"] == 1 && b[2].meta["b"] == 2
     r = Base.invokelatest(getfield(CB, Symbol("d16_array_tool!")), b[1]...; b[2]...)
-    @test r.status === :saw_3_7
+    @test r.status === :saw_3_7_2
 end
 
 @testset "(8) 🔴 D16: 변환 실패는 예외가 아니라 거절이다" begin
@@ -619,6 +631,76 @@ end
     @test r0.verdict === :admit
     @test length(r0.steps) == 1 && r0.steps[1].status === :d18_did_nothing
     @test r0.world_delta === nothing                  # 🔴 그런데 지문은 못 찍었다
+end
+
+@testset "(12) 🔴 D16/F2: zone 블록이 선언 타입 변환을 덮어쓰지 않는다" begin
+    # 🔴 2026-09-04 fix round 1 (F2). `bind_primitive_args` 의 키워드 루프 **뒤**에 오는
+    #    zone 블록이 `kw[:zone_keys]` 를 **무조건** `Vector{Symbol}` 로 갈아 끼웠다.
+    #    생성 원시가 `zone_keys::Array{String,1}` 로 주석하면 D16 이 만들어 준
+    #    `Vector{String}` 이 그 자리에서 되돌아가고, 호출이
+    #    `TypeError: in keyword argument zone_keys, expected Vector{String}, got
+    #    Vector{Symbol}` 로 죽는다 — **거절이 아니라 예외**라 `enact_minted!` 의 catch 가
+    #    손도 안 댄 세계를 `partial=true → handled=true` 로 적어 폴백을 삼킨다. 그것이
+    #    정확히 이 태스크가 없애려던 사건이다.
+    CB.reset_minted_table!()
+    code = """
+    function d16_zone_tool!(env; zone_keys::Array{String,1}=String[])
+        return (status = Symbol("zones_", length(zone_keys)),)
+    end
+    """
+    CB.RESTRICTION_ZONES[][:d16zone] = CB.LazySets.Ball2([0.0, 0.0], 1.0)
+    try
+        @test CB.register_minted_primitive!(name = "d16_zone_tool!", code = code,
+            params = Dict{String,Any}("zone_keys" =>
+                Dict("type" => "array", "items" => Dict("type" => "string"))),
+            surface = "sched", reversible = false) === nothing
+        prim = CB.resolve_primitive("d16_zone_tool!")
+        @test prim.param_types["zone_keys"] === Vector{String}
+        calls = CB.normalize_calls(JSON3.read(
+            """[{"primitive":"d16_zone_tool!","args":{"zone_keys":["d16zone"]}}]"""))
+        b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
+        @test !(b isa String)
+        @test b[2].zone_keys isa Vector{String}
+        r = Base.invokelatest(getfield(CB, Symbol("d16_zone_tool!")), b[1]...; b[2]...)
+        @test r.status === :zones_1
+        # 🔴 음성 대조 — 비켜서기가 **살아 있는 존 검사까지** 끄지 않았다. 이 줄이 없으면
+        #    zone 블록을 통째로 건너뛰는 구현도 위를 전부 통과한다.
+        calls2 = CB.normalize_calls(JSON3.read(
+            """[{"primitive":"d16_zone_tool!","args":{"zone_keys":["d16_not_a_live_zone"]}}]"""))
+        b2 = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls2[1][2]))
+        @test b2 isa String
+        @test startswith(b2, "reject:unknown_zone_key:")
+    finally
+        delete!(CB.RESTRICTION_ZONES[], :d16zone)
+    end
+end
+
+@testset "(13) 🔴 D16/F3: 못 읽는 주석은 **거절**이지 예외가 아니다" begin
+    # 🔴 2026-09-04 fix round 1 (F3). `Vector{<:AbstractString}` 는
+    #    `Expr(:curly, :Vector, Expr(:<:, :AbstractString))` 이라 `_is_type_shape` 가
+    #    거짓이다. 초판은 그 키를 **버렸고**, 그러면 JSON3 뷰가 그대로 흘러 호출이
+    #    `TypeError` 로 죽는다 — F2 와 같은 `partial=true → handled=true` 삼킴이다.
+    #    즉 "키를 조용히 버린다" 는 이 태스크가 고치려던 바로 그 실패를 남기는 선택지다.
+    #    그래서 **삼상**으로 만들었다: 키 없음(주석 없음, testset (9)) · `Type`(읽었다) ·
+    #    `String`(주석은 있는데 못 읽었다) — 셋째는 값이 실제로 올 때만 거절이 된다.
+    CB.reset_minted_table!()
+    code = """
+    function d16_where_tool!(env; xs::Vector{<:AbstractString}=String[])
+        return (status = :ok,)
+    end
+    """
+    @test CB.register_minted_primitive!(name = "d16_where_tool!", code = code,
+        params = Dict{String,Any}("xs" =>
+            Dict("type" => "array", "items" => Dict("type" => "string"))),
+        surface = "sched", reversible = false) === nothing
+    prim = CB.resolve_primitive("d16_where_tool!")
+    @test haskey(prim.param_types, "xs")            # 🔴 키가 **있다** — (9) 와 다른 상태다
+    @test !(prim.param_types["xs"] isa Type)        #    값은 못 읽은 주석의 **원문**이다
+    calls = CB.normalize_calls(JSON3.read(
+        """[{"primitive":"d16_where_tool!","args":{"xs":["a","b"]}}]"""))
+    b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
+    @test b isa String
+    @test startswith(b, "reject:param_annotation_unreadable:xs:")
 end
 
 end # module

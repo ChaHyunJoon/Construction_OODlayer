@@ -520,14 +520,37 @@ end
 """
     impl_param_types(code) -> Dict{String,Any}
 
-시그니처의 키워드에서 **타입 주석**만 뽑는다. 주석이 없거나 우리가 못 읽는 모양이면
-그 키는 **없다**(`nothing` 을 값으로 넣지 않는다 — 삼상 규약).
+시그니처의 키워드에서 **타입 주석**만 뽑는다. 값은 **삼상**이다:
 
-🔴 `T` 는 모델이 쓴 **AST 조각**이지 `Type` 이 아니다. `Core.eval` 로 바꿔야 하는데 그
-   eval 은 임의 코드를 돌릴 수 있다. 그래서 **타입 표현식의 모양**(`Symbol` ·
-   `Expr(:curly, …)`)만 통과시키고, 아니면 그 키를 버린다 — 거절이 아니다.
-   여기서 거절하면 모델의 정상 코드를 우리 파서의 한계로 막는다.
-🔴 순수 함수다. eval 은 **타입 표현식 하나**에만 돌고 세계를 안 건드린다.
+| 이 키워드는 | `param_types` 에서 | `bind_primitive_args` 는 |
+|---|---|---|
+| 주석이 없다 | **키가 없다** | 값을 그대로 흘린다 (오늘의 동작) |
+| 주석이 있고 우리가 읽었다 | `Type` | `convert` 하거나 `reject:param_convert:` |
+| 주석이 있는데 못 읽었다 | 주석의 **원문**(`String`) | `reject:param_annotation_unreadable:` |
+
+🔴 `nothing` 은 어느 상태에서도 값으로 안 들어간다(삼상 규약).
+
+🔴 **셋째 상태는 2026-09-04 fix round 1 (F3) 에 생겼다.** 초판은 못 읽는 주석의 키를
+   **버렸는데**, 버리면 `Vector{<:AbstractString}` 같은 철자에서 JSON3 뷰가 그대로 흘러
+   호출이 `TypeError` 로 죽는다 — 그리고 그것은 거절이 아니라 **예외**라 `enact_minted!`
+   의 catch 가 손도 안 댄 세계를 `partial=true → handled=true` 로 적어 폴백을 삼킨다.
+   즉 조용히 버리는 것이 이 태스크가 없애려던 바로 그 사건을 남기는 선택지였다.
+   ⚖️ 대신 갚는 대가: 못 읽는 주석을 단 키워드는 값이 **실제로 올 때** 거절된다(안 오면
+   오늘과 같다). 모양을 더 읽는 쪽(`:<:`·`:where` 갈래 추가)을 안 고른 이유는 둘이다 —
+   (1) 그 모양들은 읽어 봐야 `convert(Vector{<:AbstractString}, ::JSON3.Array)` 자체가
+   `MethodError` 라 결국 같은 거절로 끝난다, (2) F1 의 구멍이 바로 모양 게이트라 그것을
+   닫은 커밋에서 같은 게이트를 넓히는 것은 방향이 반대다.
+
+🔴 **eval 을 돈다. 그리고 이 함수의 모양 검사는 샌드박스가 아니다** (F1, 2026-09-04).
+   `T` 는 모델이 쓴 **AST 조각**이지 `Type` 이 아니라 `Core.eval` 이 필요하다.
+   `_is_type_shape` 는 그 eval 에 들어가는 것을 **타입 표현식의 모양**으로 좁힐 뿐이고,
+   좁힘은 봉쇄가 아니다: Julia 는 kwarg 타입 주석을 **메서드 정의 시점에** 평가하므로
+   같은 주석이 아래 `register_minted_primitive!` 의 본래 `Core.eval` 에서 어차피 돈다
+   (부모 커밋 `80c62d49` 에서도 그랬다 — 실측). 그러므로 이 검사의 값은 "임의 코드를
+   막는다" 가 아니라 **"이 조용한 eval(`catch; continue`)이 본래의 eval 보다 먼저,
+   사유 없이 도는 일을 줄인다"** 이다.
+   진실원: `test/minted_registration.jl` testset (29).
+
 🔴 **`check_impl_conventions` 와 일부러 중복한다**(P5). 그 함수는 `Union{Nothing,String}` 을
    돌려주므로 타입을 실어 보낼 자리가 없고, 반환형을 넓히면 호출자 전부와 시험 열몇이
    따라 바뀐다. 키워드 블록을 두 번 걷는 값이 그것보다 싸다.
@@ -549,18 +572,51 @@ function impl_param_types(code::AbstractString)
         lhs = k.args[1]
         (lhs isa Expr && lhs.head === :(::) && length(lhs.args) == 2 &&
          lhs.args[1] isa Symbol) || continue
+        local nm = String(lhs.args[1])
         texpr = lhs.args[2]
-        _is_type_shape(texpr) || continue
+        if !_is_type_shape(texpr)
+            out[nm] = _unreadable_annotation(texpr); continue
+        end
         local T
-        try; T = Core.eval(@__MODULE__, texpr); catch; continue; end
-        T isa Type || continue
-        out[String(lhs.args[1])] = T
+        try
+            T = Core.eval(@__MODULE__, texpr)
+        catch
+            out[nm] = _unreadable_annotation(texpr); continue
+        end
+        if !(T isa Type)
+            out[nm] = _unreadable_annotation(texpr); continue
+        end
+        out[nm] = T
     end
     return out
 end
 
 """
+못 읽은 주석을 **원문**으로 적는다. `Type` 이 아닌 값이 param_types 에 들어가는 유일한
+자리이고, `bind_primitive_args` 는 `T isa Type` 하나로 그 상태를 가른다.
+거절 사유에 그대로 실리므로 길이를 자른다 — 사유 문자열은 D17 이 모델에게 되먹인다.
+"""
+function _unreadable_annotation(texpr)
+    local t = try string(texpr) catch; "?" end
+    return length(t) > 120 ? first(t, 117) * "..." : t
+end
+
+"""
 타입 표현식의 **모양**인가. 호출·보간·매크로는 전부 거짓이다.
+
+🔴 **이것은 샌드박스가 아니라 좁힘이다** (2026-09-04 fix round 1, F1). `false` 를 냈다고
+   그 주석이 안 돌아가는 것이 아니다 — Julia 는 kwarg 타입 주석을 **메서드 정의 시점에**
+   평가하므로 `register_minted_primitive!` 의 본래 `Core.eval` 이 어차피 돌린다(부모 커밋
+   에서도 그랬다). 여기가 막는 것은 `impl_param_types` 의 **조용한** eval
+   (`catch; continue` — 사유를 안 남긴다)뿐이다. 진실원: `test/minted_registration.jl`
+   testset (29). 이 docstring 의 이전 판은 "eval 이 임의 코드를 돌릴 수 있다, 그래서
+   모양만 통과시킨다" 고 적어 봉쇄를 주장했고 그것이 **측정으로 거짓**이었다.
+
+🔴 `:.` 갈래는 `e.args[1]` 도 **재귀로** 검사한다. 안 하면 `args[1]` 이 아무 표현식이나
+   될 수 있어 `write(path, "PWNED").x` 가 모양 게이트를 통과했다(리뷰가 파일 생성·삭제를
+   실측했고, `open(io->(T=Int,), path, "a").T` 는 진짜 `Type` 을 돌려주며 **사유 없이**
+   등록까지 성공시켰다). 시그니처에 있는 호출이라 `_walk_body!`(몸통만 걷는다)의
+   `impl_unknown_call` 도 못 본다. 재귀를 넣어도 정당한 여덟 모양은 하나도 안 깎인다(실측).
 
 🔴 `Integer`·`QuoteNode` 갈래는 계획서 초안에 없었고 **실측으로 더했다**(2026-09-04).
    초안의 세 갈래(`Symbol` · `:curly` · 점 이름)만으로는 `Array{String,1}` 이 거짓이다 —
@@ -576,7 +632,8 @@ _is_type_shape(e) =
     e isa Integer ||                                     # `Array{String,1}` 의 `1`
     (e isa QuoteNode && e.value isa Symbol) ||           # `Val{:x}`
     (e isa Expr && e.head === :curly && all(_is_type_shape, e.args)) ||
-    (e isa Expr && e.head === :. && length(e.args) == 2 && e.args[2] isa QuoteNode)
+    (e isa Expr && e.head === :. && length(e.args) == 2 &&
+     _is_type_shape(e.args[1]) && e.args[2] isa QuoteNode)   # 🔴 F1: 수신자도 모양이어야 한다
 
 """
     register_minted_primitive!(; name, code, params, surface, reversible) -> Union{Nothing,String}
@@ -632,8 +689,11 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
             return "reject:params_keys_not_strings:$(typeof(k))"
     end
     # 🔴 D16. 키워드의 **선언 타입**을 여기서 뽑는다 — 규약 검사가 통과한 뒤, `Core.eval`
-    #    **전에**(F7 의 "검증은 eval 앞" 불변식 안쪽이다). 순수 함수이고 못 읽는 모양은
-    #    거절이 아니라 **그 키를 버린다** — 우리 파서의 한계로 모델의 정상 코드를 막지 않는다.
+    #    **전에**(F7 의 "검증은 eval 앞" 불변식 안쪽이다). 던지지 않으므로 부분 등록을 새로
+    #    만들지 않는다. 못 읽는 주석은 거절도 아니고 버려지지도 않는다 — 원문이 실려
+    #    `bind_primitive_args` 가 **값이 실제로 올 때** 거절한다(삼상, F3).
+    #    ⚠️ 이 함수는 타입 표현식에 `Core.eval` 을 돈다. 아래 `Core.eval` 이 어차피 같은
+    #    주석을 평가하므로 새 능력은 아니지만 **순수하지도 않다** — 그 docstring 을 볼 것.
     local _ptypes = impl_param_types(code)
     try
         Core.eval(@__MODULE__, Meta.parseall(code))
@@ -653,10 +713,11 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
         #    쓰면 순회가 한 번이라 이 사고 자체가 안 생긴다.
         "params"       => Dict{String,Any}(String(k) => v for (k, v) in _pk),
         "reversible"   => reversible,
-        # 🔴 D16. 키워드 이름 → `Type`. `bind_primitive_args` 가 이것으로 JSON3 의 지연
-        #    뷰를 네이티브 컨테이너로 바꾼다 — Julia 의 키워드 인자는 `convert` 가 아니라
-        #    **타입 단언**이라 경계가 안 바꿔 주면 호출이 `TypeError` 로 죽는다(실측 P1).
-        #    주석 없는 키워드는 **키가 없다**(삼상 규약).
+        # 🔴 D16. 키워드 이름 → `Type`(읽었다) 또는 주석 원문 `String`(못 읽었다).
+        #    `bind_primitive_args` 가 이것으로 JSON3 의 지연 뷰를 네이티브 컨테이너로
+        #    바꾼다 — Julia 의 키워드 인자는 `convert` 가 아니라 **타입 단언**이라 경계가
+        #    안 바꿔 주면 호출이 `TypeError` 로 죽는다(실측 P1).
+        #    주석 없는 키워드는 **키가 없다**(삼상 규약 — `impl_param_types` 의 표).
         "param_types"  => _ptypes,
         # 🔴 C1 (2026-09-03 최종 리뷰). **이 행이 생성 코드에서 왔다**는 표시. 집행부의
         #    `_step_applied`·`_step_touched_world` 가 이것을 읽어 "이 원시의 status 어휘를

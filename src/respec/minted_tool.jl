@@ -735,6 +735,37 @@ function _param_type_reject(spec, v)
 end
 
 """
+    _convert_arg(T, v) -> Any    (던질 수 있다 — 호출자가 거절로 바꾼다)
+
+값 하나를 선언 타입 `T` 로 옮긴다. 기본은 `convert` 그대로다.
+
+🔴 **`AbstractDict` 만 예외다** (2026-09-04 fix round 1, F4). `JSON3.Object` 의 `keytype`
+   은 `Symbol` 이라 `convert(Dict{String,Any}, ::JSON3.Object)` 가 **던진다**(`Cannot
+   convert an object of type Symbol to an object of type String`). 그런데
+   `Dict{String,Any}` 는 이 레포가 도처에서 쓰는 철자이고 모델이 객체 인자에 가장 자연스럽게
+   쓸 철자다 — 그대로 두면 **모든 객체 인자가 `reject:param_convert:` 로 막혀** 원시가 영영
+   안 돈다(거절이라 안전하지만 채널은 닫힌 것이다). 키를 옮겨 주는 것이 경계의 몫이다.
+
+⚠️ 얕다. `Vector{Dict{String,Any}}` 처럼 **컨테이너 안의** 객체는 여전히 `convert` 가
+   던지고 거절이 된다 — 라이브에서 그 철자가 실제로 나오는지 안 쟀으므로 넓히지 않는다
+   (안 넓힌 대가는 예외가 아니라 거절이다). 진실원: `test/minted_end_to_end.jl` testset (7).
+"""
+_convert_arg(T, v) = convert(T, v)
+function _convert_arg(T::Type{<:AbstractDict}, v::AbstractDict)
+    local K, V = keytype(T), valtype(T)
+    local d = Dict{K,V}()
+    for k in keys(v)
+        d[_dict_key(K, k)] = v[k]
+    end
+    return convert(T, d)
+end
+
+"`Symbol` ↔ `String` 사이에는 `convert` 메서드가 없다 — 생성자를 써야 한다."
+_dict_key(::Type{String}, k) = String(k)
+_dict_key(::Type{Symbol}, k) = Symbol(k)
+_dict_key(::Type{K}, k) where {K} = convert(K, k)
+
+"""
     bind_primitive_args(prim, ctx) -> Union{String, Tuple{Tuple,NamedTuple}}
 
 한 원시의 실제 호출 인자를 만든다. 문자열이면 **거절 사유**다. 순수 함수 — 세계를 안 건드린다.
@@ -773,6 +804,8 @@ dict 하나**를 낸다 — body 가 원시 둘 이상이면 그 키들은 원�
       `translate_whole_build!` 는 Δ=[0,0] · 잔여를 0개 존에 대해 세고 `:already_clear` 를
       돌려준다 = 맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 그래서 **호출 전에**
       `Symbol` 로 강제하고 살아 있는 존인지 확인한다.
+      ⚠️ 그 **강제는 조건부다** — 선언 타입이 있는 원시(= 생성 원시)에는 안 한다.
+      살아 있는 존 검사는 무조건 돈다. 근거는 아래 zone 블록의 F2 주석에 한 번만 적는다.
   (c) 유도값은 callee 기본값보다 **좁다** — `restage_all_blocked!`·`translate_whole_build!`
       둘 다 `zone_keys` 를 `collect(keys(RESTRICTION_ZONES[]))` 로 기본한다. 안 주면
       **키워드를 아예 빼서** 그 기본값(= 살아 있는 존 전부)이 그대로 쓰이게 한다.
@@ -819,13 +852,19 @@ function bind_primitive_args(prim, ctx)
         #    등록이 처음 성공하는 순간 호출이 `TypeError` 로 죽는다(실측). 변환은 우리 몫이다.
         #    🔴 예외가 아니라 거절이다: 여기서 던지면 `enact_minted!` 의 catch 가 손도 안 댄
         #    세계를 `partial=true → handled=true` 로 적어 폴백을 삼킨다.
+        #    🔴 삼상이다(`impl_param_types` 의 표가 진실원): 키 없음 = 주석 없음(오늘 그대로
+        #    흐른다) · `Type` = 읽었다(변환한다) · `String` = 주석은 있는데 **못 읽었다**.
+        #    셋째를 그냥 흘리면 뷰가 그대로 호출에 닿아 `TypeError` 로 죽는다 — 예외라
+        #    위의 삼킴이 그대로 난다. 그래서 값이 실제로 온 이 자리에서 거절한다(F3).
         local T = get(prim.param_types, String(k), nothing)
         if T === nothing
             kw[Symbol(k)] = v                 # 주석 없는 키워드는 오늘 그대로 흐른다
+        elseif !(T isa Type)
+            return "reject:param_annotation_unreadable:$(k):$(T) (원시 $(prim.name))"
         else
             local cv
             try
-                cv = convert(T, v)
+                cv = _convert_arg(T, v)
             catch
                 return "reject:param_convert:$(k):expected $(T), got $(typeof(v)) (원시 $(prim.name))"
             end
@@ -844,7 +883,18 @@ function bind_primitive_args(prim, ctx)
             haskey(live, k) || return "reject:unknown_zone_key:$(k):" *
                 "live=$(join(sort(String.(string.(collect(keys(live))))), ","))"
         end
-        kw[:zone_keys] = ks
+        # 🔴 D16 (2026-09-04 fix round 1, F2). 선언 타입이 있으면 **덮어쓰지 않는다.**
+        #    생성 원시가 `zone_keys::Array{String,1}` 로 주석하면 위 루프가 이미
+        #    `Vector{String}` 을 만들어 놨는데, 이 줄이 무조건 `Vector{Symbol}` 로 되돌리면
+        #    호출이 `TypeError: in keyword argument zone_keys, expected Vector{String}, got
+        #    Vector{Symbol}` 로 죽는다(실측). 그리고 그것은 거절이 아니라 **예외**라
+        #    `enact_minted!` 의 catch 가 손도 안 댄 세계를 `partial=true → handled=true` 로
+        #    적어 폴백을 삼킨다 — 이 태스크가 없애려던 바로 그 사건이다.
+        #    ⚠️ **비켜서는 것은 대입뿐이다.** 위의 `unknown_zone_key`/`empty_zone_keys`
+        #    검사는 선언 타입이 있든 없든 그대로 돈다 — 그 검사는 타입이 아니라 **살아 있는
+        #    세계**에 대한 것이고, 건너뛰면 집행부가 없는 존을 만진다.
+        #    진실원: `test/minted_end_to_end.jl` testset (12)(음성 대조 포함).
+        haskey(prim.param_types, "zone_keys") || (kw[:zone_keys] = ks)
     end
     return (Tuple(pos), NamedTuple(kw))
 end
