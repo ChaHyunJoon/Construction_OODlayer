@@ -1052,9 +1052,13 @@ const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "syn
         end
 ```
 
-🔴 **`enact_minted!` 의 `reach` 게이트도 같이 바꾼다.** `minted_tool.jl` step (1) 이
-`reach === nothing && return _r(:deferred, …)` 이다 — `reach` 를 경계 키에서 빼면 **모든
-집행이 deferred 로 떨어진다**. 그 자리를 `impl_name` 으로 옮긴다:
+🔴 **`reach` 게이트는 하나가 아니라 둘이다 — 둘 다 바꿔야 한다.**
+⚠️ 2026-09-03 실행 중 정정(독립 검증): 아래 문단은 원래 `minted_tool.jl` step (1) 하나만
+가리켰는데 **틀렸다**. `tools/monitor/enact.jl` 이 `enact_minted!` 를 부르기 전에 **자기
+`reach` 게이트를 따로** 갖고 있고 **그것이 먼저 발화한다** — `minted_tool.jl` step (1) 은
+그 경로에서 도달조차 되지 않는다. 그래서 계획서 문장대로 `minted_tool.jl` 만 고치면
+**모든 집행이 여전히 deferred 인데 로그는 방금 고친 자리를 지목한다.**
+`reach` 를 경계 키에서 빼면 두 게이트 다 `impl_name` 으로 옮긴다:
 
 ```julia
     nm = _synth_get(synth, "impl_name", nothing)
@@ -1067,8 +1071,14 @@ const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "syn
 명제 (1) 이 그 구분을 재므로 Task 10 에서 함께 갱신한다.
 
 🔴 **등록 결과를 기록에 남긴다**(설계 §8). `enact_minted_decision!` 의 반환과 `[minted]`
-줄에 `registered::Bool` 과 `impl_rejected_why::Union{Nothing,String}` 을 싣는다 — 없으면
+줄에 `registered` 와 `impl_rejected_why::Union{Nothing,String}` 을 싣는다 — 없으면
 "모델이 코드를 안 냈다" 와 "냈는데 규약 위반으로 거절됐다" 가 같은 관측이 된다.
+⚠️ 2026-09-03 정정(Ruling R7): 원래 여기 `registered::Bool` 이라고 적혀 있었고 **그 타입이
+틀렸다.** `catch` 스코프는 `try` 안에서 선언된 `local registered` 를 못 본다 — `Core.eval` 이
+성공한 **뒤에** 던지면 표에는 원시가 있는데 기록은 `registered=false` 라고 **거짓말한다.**
+정직한 타입은 `Union{Nothing,Bool}` 이고, 선언은 `try` **앞**이다.
+🔴 그리고 이 두 필드는 **반환 경로 전부**에 실어야 한다(계획서의 거절-경로 코드 조각은 그 둘을
+빠뜨린다). 한 경로에만 없으면 소비자가 키 부재로 두 사건을 못 가른다.
 
 `test/synth_lane_keys_survive.jl` 의 (1)절 리터럴과 픽스처를 새 키 집합으로 갱신한다.
 
@@ -1142,7 +1152,13 @@ cd src/respec/llm_service
 TOOL_SYNTHESIS=1 DSPY_CACHE=0 ../../../.venv/bin/python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 ```
 확인: `python3 src/respec/llm_service/generation.py --url http://127.0.0.1:8077` 가 `OK`.
-🔴 `SYNTH_MULTI_AGENT` 은 없어졌다(D8) — 레인이 하나다.
+⚠️ 2026-09-03 정정(독립 검증, C11.1): 원래 여기 "🔴 `SYNTH_MULTI_AGENT` 은 없어졌다(D8)" 라고
+적혀 있었고 **거짓이다.** 없어진 것은 `synthesize.py` 의 **레인 분기**뿐이고, 그 환경변수는
+`dspy_service.py` 와 `generation.py` 가 **아직 읽는다**. 즉 올바른 서비스도 세대 도장에
+`synth_multi_agent: false` 를 실을 수 있다 — 그 값을 "레인이 안 돈다" 로 읽지 말 것.
+🔴 그리고 `render_demo.jl` 은 세대 게이트를 **추가 요구 없이** 부르므로 `TOOL_SYNTHESIS=1` 이
+없는 서비스도 게이트를 통과한다 → **조용히 비어 있는 유료 런**이 된다. `REQUIRE_TOOL_SYNTHESIS=1`
+을 export 할 것.
 
 - [ ] **Step 2: mild 보드를 돌린다 (유료)**
 
@@ -1156,7 +1172,9 @@ env DEMO_MODEL=tractor.mpd DEMO_OOD=battery DEMO_BSOC=0.45 DEMO_CASE_TAG=battery
 
 ```bash
 /usr/bin/grep -aE "\[router\]|\[minted\]" <로그>
-python3 -c "import json; r=json.loads(open('results/synth_lane_records.jsonl').readline()); \
+# ⚠️ 2026-09-03 정정(C11.3): 원래 `readline()` 이었고 **틀렸다** — 이 파일은 append 이고
+#    첫 줄은 Task 8 **이전**의 낡은 행이다. 마지막 줄을 읽는다.
+python3 -c "import json; r=json.loads(open('results/synth_lane_records.jsonl').readlines()[-1]); \
 print(r['impl_name']); print(r['impl_code']); print(r['wrote'])"
 ```
 
