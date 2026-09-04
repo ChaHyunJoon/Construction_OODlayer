@@ -234,6 +234,21 @@ function _sig_string(m::Method)
     return "(" * join(parts, ", ") * (isempty(kws) ? "" : "; " * join(String.(kws), ", ")) * ")"
 end
 
+# 경로의 **정밀도 등급** (N2). 작을수록 정밀하다. 🔴 생성기에는 살아 있는 env 가 없으므로
+# 등급은 **선언된 구조**에서만 유도한다 — 컨테이너 종류와 선언된 키/값 타입, 그리고 env 로부터의
+# 홉 수. "이 컬렉션은 실행시각에 비어 있다" 같은 판정은 여기서 원리적으로 불가능하다.
+#
+# 🔴 **왜 `keys(d)` 가 둘로 갈리는가** — 이것이 N2 의 전부다. `Dict{K,V}` 의 키집합은
+#    "V 를 가진 K 들" 이다. `V` 가 **세계 타입**이면 그 값 타입이 키가 무엇인지 이름을 대준다:
+#    `Dict{AbstractID,VelocityController}`(= `env.agent_policies`)의 키는 "이동 정책을 가진 것"
+#    = 에이전트, 즉 **로봇 id 만** 담긴 유일한 컬렉션이다. 반대로 `V` 가 스칼라·서드파티면
+#    (`Dict{AbstractID,Int}` = `vtx_map`, `Dict{AbstractID,Bool}`, `Dict{AbstractID,Ball2}`)
+#    그것은 조회표이고 키집합은 무엇의 id 인지 한 글자도 말하지 않는다.
+const _PATH_SINGULAR    = 0   # 컨테이너를 한 번도 안 거친 필드 사슬. 고를 것이 없으니 가장 정밀하다.
+const _PATH_ROLE_KEYS   = 1   # `keys(d)` — 값 타입이 세계 타입인 사상의 정의역.
+const _PATH_POPULATION  = 2   # 컨테이너의 원소. 완전하지만 무엇의 id 인지는 안 말한다.
+const _PATH_LOOKUP_KEYS = 3   # `keys(d)` — 값 타입이 스칼라·서드파티인 조회표의 키.
+
 """
     access_index(closure) -> AbstractDict{String,Vector{String}}
 
@@ -244,17 +259,32 @@ end
 🔴 이 색인이 §1.2 의 실패를 정면으로 겨냥한다: 모델이 지어낸 것은 전부 "그 값을 어디서
    얻는지 안 적힌" 타입이었다.
 
+🔴 **목록의 순서는 정밀도순이다** (N2, R11 의 후속). 여기서 첫째로 오는 것이 곧
+   `_MAX_PATHS` 상한을 살아남는 것이므로, **이 정렬이 상한의 의미를 정한다** —
+   상한을 씌우는 자리(`method_entries`)는 이미 정렬된 목록을 자르기만 한다(진실원 하나).
+   정렬 키는 `(등급, 홉 수, 경로 문자열)` 이고 경로 문자열은 유일하므로 **전순서**다.
+
 🔴 **결정성은 구조로 지킨다**(게이트 (2) 가 새 서브프로세스 재생성물과 바이트 비교한다).
-   경로 목록은 `sort(unique(...))` 이고, **키 순서는 `OrderedDict` + 정렬 키**다 —
-   맨 `Dict` 는 삽입 순서(= BFS 발견 순서)가 해시 레이아웃에 남으므로 결정적이긴 해도
-   그 결정성이 우연에 가깝다. 여기서는 산출물의 키 순서가 **키 집합만의 함수**다.
+   세 자리 다 순회 순서와 무관하다: (a) 정렬 키가 경로의 구조만의 함수다, (b) 같은 경로가
+   두 번 발견되면 **등급의 최솟값**을 취하므로 발견 순서가 안 남는다(`min` 은 교환법칙이
+   성립한다), (c) 키 순서는 `OrderedDict` + 정렬 키다 — 맨 `Dict` 는 삽입 순서(= BFS 발견
+   순서)가 해시 레이아웃에 남으므로 결정적이긴 해도 그 결정성이 우연에 가깝다.
+   실측(2026-09-04): BFS→DFS · 필드 순서 역전 · 둘 다에서 산출물이 **바이트 동일**이고,
+   `_MAX_PATHS` 4→3 의 양성 대조에서는 44줄이 움직인다.
 """
 function access_index(closure)
     want = Set(String[_tname(S) for S in closure])
-    out  = Dict{String,Vector{String}}()
-    add!(n, p) = (n in want && push!(get!(out, n, String[]), p))
+    # 타입 이름 -> (경로 -> 정렬 키). 🔴 `Vector` 가 아니라 `Dict` 인 이유는 위 (b) 다.
+    out  = Dict{String,Dict{String,Tuple{Int,Int}}}()
+    function add!(n, p, cls, hop)
+        n in want || return nothing
+        d = get!(out, n, Dict{String,Tuple{Int,Int}}())
+        r = (cls, hop)
+        (!haskey(d, p) || r < d[p]) && (d[p] = r)
+        return nothing
+    end
     # 너비 우선. 경로가 길어지면 모델에게 쓸모가 없으므로 3 홉에서 끊는다.
-    frontier = Tuple{DataType,String,Int}[(CB.PlannerEnv, "env", 0)]
+    frontier = Tuple{DataType,String,Int,Int}[(CB.PlannerEnv, "env", 0, _PATH_SINGULAR)]
     seen = Set{String}(["PlannerEnv"])
 
     # 🔴 **중첩 컨테이너는 재귀로 푼다** (Task 4 실측 정정, 계획서의 1단계 분기를 대체한다).
@@ -266,36 +296,46 @@ function access_index(closure)
     #    `values(env.scene_tree.inedges[i])` 다.
     # 🔴 같은 이유로 **CB 밖 구조체의 필드로는 한 걸음도 내려가지 않는다** —
     #    `_defined_in_cb` 가 폐포에서 하는 역할을 여기서도 한다.
-    function visit!(U, path, hop, d = 0)
+    # ⚠️ `cls` 는 **누적 최댓값**이다(약한 고리). 컨테이너를 한 번이라도 거치면 그 아래의
+    #    어떤 필드도 다시 `_PATH_SINGULAR` 이 될 수 없다 — `env.sched.nodes[i].spec` 은
+    #    `[i]` 를 거쳤으므로 단수 필드가 아니다.
+    function visit!(U, path, hop, cls, d = 0)
         (U isa DataType && d <= 3) || return
         if U <: AbstractVector && length(U.parameters) >= 1
-            visit!(_unwrap(U.parameters[1]), string(path, "[i]"), hop, d + 1)
+            visit!(_unwrap(U.parameters[1]), string(path, "[i]"), hop,
+                   max(cls, _PATH_POPULATION), d + 1)
         elseif U <: AbstractDict && length(U.parameters) >= 2
             K = _unwrap(U.parameters[1])
-            K isa DataType && add!(_tname(K), string("keys(", path, ")"))
-            visit!(_unwrap(U.parameters[2]), string("values(", path, ")"), hop, d + 1)
+            V = _unwrap(U.parameters[2])
+            kcls = _defined_in_cb(V) ? _PATH_ROLE_KEYS : _PATH_LOOKUP_KEYS
+            K isa DataType && add!(_tname(K), string("keys(", path, ")"), max(cls, kcls), hop)
+            visit!(V, string("values(", path, ")"), hop, max(cls, _PATH_POPULATION), d + 1)
         elseif U <: AbstractSet && length(U.parameters) >= 1
             E = _unwrap(U.parameters[1])
-            E isa DataType && add!(_tname(E), string("for x in ", path))
+            E isa DataType &&
+                add!(_tname(E), string("for x in ", path), max(cls, _PATH_POPULATION), hop)
         else
-            add!(_tname(U), path)
+            add!(_tname(U), path, cls, hop)
             (_defined_in_cb(U) && !(_tname(U) in seen)) &&
-                (push!(seen, _tname(U)); push!(frontier, (U, path, hop + 1)))
+                (push!(seen, _tname(U)); push!(frontier, (U, path, hop + 1, cls)))
         end
         return nothing
     end
 
     while !isempty(frontier)
-        (S, path, hop) = popfirst!(frontier)
+        (S, path, hop, cls) = popfirst!(frontier)
         hop >= 3 && continue
         isabstracttype(S) && continue
         for (f, ft) in zip(fieldnames(S), fieldtypes(S))
-            visit!(_unwrap(ft), string(path, ".", f), hop)
+            visit!(_unwrap(ft), string(path, ".", f), hop, cls)
         end
     end
-    # 🔴 결정성: 경로 목록도 정렬하고, 키도 정렬된 순서로 싣는다.
+    # 🔴 결정성: 경로 목록은 정밀도순(전순서)으로, 키는 정렬된 순서로 싣는다.
     ord = DataStructures.OrderedDict{String,Vector{String}}()
-    for k in sort(collect(keys(out))); ord[k] = sort(unique(out[k])); end
+    for k in sort(collect(keys(out)))
+        d = out[k]
+        ord[k] = sort!(collect(keys(d)), by = p -> (d[p][1], d[p][2], p))
+    end
     return ord
 end
 
@@ -328,6 +368,14 @@ end
 **동전던지기에 답의 옷을 입힌 것**이다(실측: 그 컬렉션의 조성이 {TemplatedID 28, ObjectID 20,
 BotID 18, AssemblyID 8} 이라 로봇 id 를 요구하는 메서드가 로봇을 받을 확률이 18/74 = 24%).
 넷이면 모델이 **고를 수 있는** 선택지가 되고 프롬프트는 몇백 줄만 는다.
+
+🔴 **N2 (2026-09-04): 상한을 넷으로 올린 것만으로는 R11 의 목표가 반만 이뤄졌다.** 자르는
+   순서가 여전히 사전순이라, 살아남은 넷은 `swap_battery!(env, role::AbstractID)` 기준으로
+   {scene_tree.vtx_ids, sched.vtx_ids, active_build_steps, agent_parent_build_step_active} 였고
+   **로봇 id 만 담긴 유일한 컬렉션 `keys(env.agent_policies)` 가 사전순 5번째라 잘렸다** —
+   모델에게 넷을 주면서 답을 뺀 셈이다. 고침은 상한이 아니라 **순서**다: `access_index` 가
+   목록을 정밀도순으로 싣고 여기서는 그것을 자르기만 한다. 상한은 4 그대로다 —
+   프롬프트의 argpath 줄 수도 86 그대로다(실측).
 """
 const _MAX_PATHS = 4
 

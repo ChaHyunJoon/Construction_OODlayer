@@ -123,4 +123,41 @@ end
                           occursin("ScheduleNode", String(m.signature)), ms))
     @test isempty(cn.missing) && !isempty(cn.argpaths)
 end
+@testset "(8) 🔴 N2: 인자당 상한은 사전순이 아니라 **정밀도순**으로 자른다" begin
+    # R11 이 `first(ps)` 를 최대 4개로 바꿨지만 **어느 4개인가** 는 여전히 사전순이었다.
+    # 실측(이 산출물, R11 이후): `swap_battery!(env, role::AbstractID)` 가 받은 넷은
+    # {scene_tree.vtx_ids, sched.vtx_ids, active_build_steps, agent_parent_build_step_active}
+    # 이고, `keys(env.agent_policies)` — env 위에서 **로봇 id 만** 담긴 유일한 컬렉션 —
+    # 은 사전순 5번째라 잘려 나갔다. R11 의 논거("모델이 고를 수 있는 선택지")는
+    # 고를 것 중에 답이 있을 때만 성립한다.
+    #
+    # 🔴 여기서 고정하는 것은 기전이 아니라 **성질**이다: 어떤 타입의 가장 정밀한 원은
+    #    상한에 잘려서는 안 된다. 정밀함의 정적 정의는 생성기가 정한다(진실원 하나) —
+    #    이 시험은 그 정의가 산출물에서 실제로 지켜졌는지만 본다.
+    j = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    acc = Dict(String(k) => String[String(x) for x in v] for (k, v) in pairs(j.access))
+    ids = acc["AbstractID"]
+
+    # 색인 자체는 아무것도 안 잃는다 — 상한은 **렌더에만** 건다.
+    @test length(ids) == 9
+    # 정밀원이 첫째다. `Dict{AbstractID,VelocityController}` 의 키집합은 "정책을 가진
+    # 것들" = 에이전트(로봇)다. 나머지 여덟은 전체 모집단(vtx_ids)이거나 값 타입이
+    # 스칼라/서드파티인 조회표(vtx_map·staging_*·..._active)라 무엇의 id 인지 말하지 않는다.
+    @test first(ids) == "keys(env.agent_policies)"
+    # 🔴 음성 대조: 순서가 진짜로 사전순에서 벗어났다(안 그러면 위 단언이 우연이다).
+    @test ids != sort(ids)
+
+    # 로봇 id 를 요구하는 메서드들이 로봇 id 원을 **본다**.
+    for nm in ("swap_battery!", "hot_swap_robot!", "dispatch_battery_courier!")
+        m = only(filter(x -> String(x.name) == nm, ms))
+        @test any(p -> occursin("keys(env.agent_policies)", String(p)), m.argpaths)
+    end
+
+    # 빈-통과 방지 ①: 상한은 여전히 문다 — 아홉 중 넷만 실린다.
+    sb = only(filter(x -> String(x.name) == "swap_battery!", ms))
+    @test length(sb.argpaths) == 4
+    # 빈-통과 방지 ②: 잘려 나간 쪽은 값 타입이 세계 타입이 아닌 조회표다.
+    @test !any(p -> occursin("vtx_map", String(p)), sb.argpaths)
+end
 end # module
