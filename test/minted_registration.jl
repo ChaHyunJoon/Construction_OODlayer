@@ -1039,4 +1039,103 @@ end
     @test get(CB.minted_table()["hand_seeded"], "interface_calls", nothing) === nothing
 end
 
+# =============================================================================
+# 🔴 F-2 (2026-09-04). 아래 둘이 재는 명제 하나: **L3 의 "인터페이스" 는 산출물이다.**
+#
+#    Wave C2 는 그것을 `names(CB)` 로 놨고 docstring 이 그 차 39를 "전부 모델에게 보이는
+#    표면" 이라고 적었다. 실측(2026-09-04, 이 게이트가 매번 다시 유도한다): 39 중 **21은
+#    산출물이 이름으로 광고하지 않는다** — 그리고 그 21에는 D-9 이 행동공간에서 뺀
+#    `SwapBattery` · `ForbidZone` · `TranslateBuild` · `ReplaceAgent` · `RelocateBuild` 가
+#    **생성자로 여전히 부를 수 있는 채** 들어 있다. 즉 모델이 본 적 없는 이름을 찍으면
+#    "우리가 준 인터페이스를 썼다" 는 뜻의 등급이 초록이 됐다.
+#
+#    ⚠️ **D15 는 이 좁힘의 대상이 아니다**(`_d15_name_is_visible`). 그쪽 질문은 "이 이름이
+#    실재하는가 = 거절하면 안 되는가" 라서 `names(CB)` 가 맞다(테스트셋 (26)). 두 술어는
+#    다른 질문이고, 이 게이트 둘이 그 분리를 못박는다.
+# =============================================================================
+
+"산출물이 **이름으로** 광고하는 것 전부. 🔴 리터럴 복붙 금지 — 산출물에서 읽는다."
+function _advertised_names_from_artifact()
+    local art = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core",
+                         "world_interface.json")
+    local j = JSON3.read(read(art, String))
+    local out = Set{String}()
+    for m in j["methods"];  push!(out, String(m["name"]));  end
+    for t in j["types"]
+        push!(out, String(t["name"]))
+        for s in (get(t, :subtypes, nothing) === nothing ? String[] : t["subtypes"])
+            push!(out, String(s))
+        end
+    end
+    for a in j["ambient"];  push!(out, String(first(split(String(a["accessor"]), "("))));  end
+    return out
+end
+
+_l3_probe_body(n) =
+    "function l3_adv_probe!(env; x::Int=1)\n    " * n * "(env)\n    return (status = :ok,)\nend\n"
+
+@testset "(34) 🔴 F-2: 광고 안 한 이름은 L3 을 못 받는다" begin
+    local adv = _advertised_names_from_artifact()
+    local ident = r"^[A-Za-z_][A-Za-z0-9_!]*$"
+    @test length(adv) > 150                       # 🔴 빈 집합이 공허하게 초록이 되는 것을 막는다
+
+    # ① 음성: `names(CB)` 에는 있는데 산출물이 광고 안 하는 이름 — 전수.
+    local unadv = sort(String[String(n) for n in names(CB)
+                              if !(String(n) in adv) && occursin(ident, String(n))])
+    @test !isempty(unadv)
+    @test length(unadv) == 21                     # 실측 2026-09-04 (187 - 148 = 39, 그중 21)
+    #    🔴 카나리아: D-9 이 행동공간에서 뺀 행동 타입들이 바로 그 안에 있다.
+    for n in ["SwapBattery", "ForbidZone", "TranslateBuild", "ReplaceAgent", "RelocateBuild"]
+        @test n in unadv
+    end
+    local scored = String[n for n in unadv if CB.impl_interface_calls(_l3_probe_body(n)) != String[]]
+    @test scored == String[]                      # 🔴 F-2 그 자체: 하나도 L3 을 못 받는다
+
+    # ② 양성 대조 — 위 0 이 항진이 아니다. 광고된 이름은 전수로 실린다.
+    local advc = sort(String[n for n in adv if occursin(ident, n)])
+    @test length(advc) > 150
+    local missed = String[n for n in advc if CB.impl_interface_calls(_l3_probe_body(n)) != [n]]
+    @test missed == String[]
+
+    # ③ 광고된 **타입** 이름도 인터페이스다(모델은 그것을 WORLD TYPES 표제에서 봤다).
+    local advtype = sort(String[String(n) for n in names(CB) if String(n) in adv])
+    @test length(advtype) == 166                  # 실측 2026-09-04: 148 + 광고된 타입 18
+end
+
+@testset "(35) 🔴 F-2: 못 읽은 산출물은 `nothing` 이지 `[]` 가 아니다" begin
+    # 🔴 삼상 규약. 인터페이스를 못 읽었으면 "재서 없다"(`[]`) 가 아니라 "못 쟀다" 다.
+    #    그리고 **틀린 타입에서 값을 조용히 재지 않는다** — 모양이 아닌 JSON 은 빈 집합이
+    #    아니라 `nothing` 이다(이 계획이 이미 두 번 밟은 자리: `_world_delta(bad, ok)` 가
+    #    문자열 길이를 `n_binding_changed` 로 냈다).
+    @test CB._artifact_interface_names(joinpath(mktempdir(), "no_such_file.json")) === nothing
+    @test CB._artifact_interface_names(mktempdir()) === nothing          # 디렉터리
+    @test CB._artifact_interface_names(nothing) === nothing
+    local d = mktempdir()
+    local bad = joinpath(d, "broken.json");   write(bad, "{not json at all")
+    @test CB._artifact_interface_names(bad) === nothing
+    for (fn, txt) in (("arr.json", "[1, 2, 3]"),
+                      ("wrongtype.json", "{\"methods\": 5, \"types\": [], \"ambient\": []}"),
+                      ("noname.json", "{\"methods\": [{\"signature\": \"(x)\"}], \"types\": [], \"ambient\": []}"),
+                      ("empty.json", "{\"methods\": [], \"types\": [], \"ambient\": []}"))
+        local p = joinpath(d, fn);  write(p, txt)
+        @test CB._artifact_interface_names(p) === nothing
+    end
+    # 양성 대조 — 진짜 산출물은 `nothing` 이 아니고 크다.
+    local real = CB._artifact_interface_names()
+    @test real !== nothing && length(real) > 150
+
+    # 🔴 그리고 그 `nothing` 이 `impl_interface_calls` 까지 산다: 같은 body, 같은 순회,
+    #    산출물만 못 읽었을 때 — `[]` 가 아니라 `nothing`.
+    local body = "function l3_art!(env; x::Int=1)\n    battery_report()\n    return (status = :ok,)\nend\n"
+    @test CB.impl_interface_calls(body) == ["battery_report"]
+    @test CB.impl_interface_calls(body, artifact = joinpath(d, "no_such_file.json")) === nothing
+    # 삼상이 여기서도 안 무너진다: 세 상태가 서로 유도 불가다.
+    local st = v -> v === nothing ? :unmeasured : (isempty(v) ? :measured_none : :measured_some)
+    @test st(CB.impl_interface_calls(body)) === :measured_some
+    @test st(CB.impl_interface_calls(
+        "function l3_art2!(env; x::Int=1)\n    return (status = :ok,)\nend\n")) === :measured_none
+    @test st(CB.impl_interface_calls(body, artifact = joinpath(d, "no_such_file.json"))) === :unmeasured
+    @test st(CB.impl_interface_calls("1 + 1")) === :unmeasured
+end
+
 end # module

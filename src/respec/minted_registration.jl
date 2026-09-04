@@ -660,10 +660,85 @@ _is_type_shape(e) =
      _is_type_shape(e.args[1]) && e.args[2] isa QuoteNode)   # 🔴 F1: 수신자도 모양이어야 한다
 
 """
-    impl_interface_calls(code) -> Union{Nothing,Vector{String}}
+    _world_interface_path() -> Union{Nothing,String}
+
+agent-3 에게 렌더되는 세계 인터페이스 산출물의 경로. 패키지 뿌리를 못 찾으면 `nothing`
+이다(그 경우 L3 은 "못 쟀다" 가 된다 — 지어낸 경로로 조용히 넘어가지 않는다).
+"""
+_world_interface_path() =
+    (d = pkgdir(@__MODULE__);
+     d === nothing ? nothing :
+     joinpath(d, "wm4spacecraft_manufacturing", "core", "world_interface.json"))
+
+"""
+    _artifact_interface_names(path = _world_interface_path()) -> Union{Nothing,Set{Symbol}}
+
+**"모델에게 보여 준 이름" 의 유일한 자리**(F-2 · 판정 R32). 산출물에서 읽는다 — 여기에
+리터럴 목록을 적지 않는다. 네 갈래는 `build_world_interface_block`
+(`src/respec/llm_service/world_interface.py`)이 프롬프트에 실제로 렌더하는 것 그대로다:
+
+  · `methods[].name`        — "FUNCTIONS YOU CAN CALL NOW" · "…CANNOT OBTAIN YET" 두 표제
+  · `types[].name`          — "WORLD TYPES" 표제(생성자로 부를 수 있는 이름이다)
+  · `types[].subtypes[]`    — 같은 표제의 `(abstract; one of: …)` 줄
+  · `ambient[].accessor`    — "AMBIENT WORLD STATE" 표제, `(` 앞까지
+
+🔴 **던지지 않는다.** 등록 경로가 이것을 부르는데, 이 파일 전체의 규약이 "예외가 아니라
+   거절" 이다. 없는 파일 · 디렉터리 · 깨진 JSON · **모양이 아닌 JSON** 전부 `nothing` 이다.
+
+🔴 **틀린 타입에서 값을 조용히 재지 않는다.** `{"methods": 5}` 는 빈 집합이 아니라
+   `nothing` 이다 — 빈 집합을 냈다면 그 뒤의 교집합이 **아무 이름도 없는 인터페이스**로
+   조용히 `[]`("재서 없다") 를 만들어 낸다. 이 계획은 그 모양을 이미 두 번 밟았다
+   (`_world_delta(bad, ok)` 가 문자열 길이를 `n_binding_changed` 로 냈다). 같은 이유로
+   **빈 결과도 `nothing`** 이다 — 이름 0개인 인터페이스는 측정이 아니라 고장이다.
+
+⚠️ **캐시가 없다**(의도). 파일은 83KB 고 이 함수는 등록 한 번에 한 번 돈다. 도장 캐시를
+   두면 다시 생성된 산출물을 조용히 놓치는 창이 생긴다 — 이 레포는 나흘 묵은 서비스
+   프로세스로 이미 그 값을 치렀다.
+"""
+function _artifact_interface_names(path::Union{Nothing,AbstractString} = _world_interface_path())
+    path isa AbstractString || return nothing
+    out = Set{Symbol}()
+    try
+        isfile(path) || return nothing
+        j = JSON3.read(read(path, String))
+        j isa JSON3.Object || return nothing
+        for k in (:methods, :types, :ambient)
+            haskey(j, k) && j[k] isa JSON3.Array || return nothing
+        end
+        for m in j[:methods]
+            m isa JSON3.Object && haskey(m, :name) && m[:name] isa AbstractString ||
+                return nothing
+            push!(out, Symbol(m[:name]))
+        end
+        for t in j[:types]
+            t isa JSON3.Object && haskey(t, :name) && t[:name] isa AbstractString ||
+                return nothing
+            push!(out, Symbol(t[:name]))
+            haskey(t, :subtypes) || continue
+            t[:subtypes] isa JSON3.Array || return nothing
+            for sub in t[:subtypes]
+                sub isa AbstractString || return nothing
+                push!(out, Symbol(sub))
+            end
+        end
+        for a in j[:ambient]
+            a isa JSON3.Object && haskey(a, :accessor) && a[:accessor] isa AbstractString ||
+                return nothing
+            push!(out, Symbol(first(split(a[:accessor], "("))))
+        end
+    catch
+        return nothing                      # 🔴 예외가 아니라 "못 쟀다"
+    end
+    return isempty(out) ? nothing : out
+end
+
+"""
+    impl_interface_calls(code; artifact = _world_interface_path()) -> Union{Nothing,Vector{String}}
 
 **L3 의 생산자** (spec §0, 판정 R24). body 의 정적 호출 대상 중 **세계 인터페이스에 있는
-것들**을 정렬된 이름 목록으로 낸다. 순수 함수 — `eval` 도 세계도 표도 안 건드린다.
+것들**을 정렬된 이름 목록으로 낸다. `eval` 도 세계도 표도 안 건드리고 던지지도 않는다.
+⚠️ **순수하지는 않다**(F-2 이후): 인터페이스 목록을 산출물 파일에서 읽는다 — 아래
+`_artifact_interface_names` 하나를 통해서다.
 
 🔴 **왜 별도 함수인가** (P5). spec §0 의 L3 행은 이 값을 "D15 의 AST 순회가 이미 만드는
    값" 이라고 적는데, 그 `cs` 는 `check_impl_conventions` 안에서 **버려진다**(Task 6 리뷰
@@ -676,7 +751,7 @@ _is_type_shape(e) =
 
 | 반환 | 뜻 | 언제 |
 |---|---|---|
-| `nothing` | **못 쟀다** | 순회할 함수 정의에 도달 못 했다(파스 실패 · 최상위 정의가 하나가 아님 · `function` 이 아님 · 시그니처가 호출 모양이 아님) |
+| `nothing` | **못 쟀다** | 순회할 함수 정의에 도달 못 했다(파스 실패 · 최상위 정의가 하나가 아님 · `function` 이 아님 · 시그니처가 호출 모양이 아님) **또는 인터페이스 목록을 못 읽었다**(F-2: 산출물이 없다 · 못 읽는다 · 모양이 아니다). 🔴 못 읽은 인터페이스는 `[]` 가 아니다 — 그렇게 적으면 "안 불렀다" 와 "인터페이스를 모른다" 가 한 값이 된다 |
 | `String[]` | **재서 없다** | 걸었는데 인터페이스 이름을 하나도 안 불렀다 |
 | 비어 있지 않은 `Vector{String}` | 인터페이스 함수를 불렀다 | L3 = `!isempty(...)` |
 
@@ -688,15 +763,31 @@ _is_type_shape(e) =
    **목록**으로 남기는 이유는 그 반대쪽이다: 나중에 더 좁게(예: 산출물의 `methods` 블록만)
    다시 세고 싶으면 목록에서 재유도할 수 있지만 불리언에서는 못 한다.
 
-🔴 **인터페이스 = `names(@__MODULE__)`.** 파일을 안 읽는다. 근거는 `_d15_name_is_visible`
-   의 넷째 갈래와 같다 — 산출물 `wm4spacecraft_manufacturing/core/world_interface.json` 이
-   **바로 그 집합에서 생성된다.** 실측(2026-09-04): 산출물이 광고하는 이름 148개가
-   **전부** `names(CB)`(187) 안에 있다(밖 = 0개). 그 187과 148의 차 39는
-   광고된 타입 18 + 나머지 CB export 21 로, 전부 모델에게 보이는 표면이다. 산출물을
-   런타임에 읽는 길을 안 고른 이유 둘: (1) 순수 함수에 파일 I/O 가 들어간다,
-   (2) 그 파일은 다른 레인이 재생성하는 중이라 이 값이 파일 세대에 묶인다.
-   ⚠️ `_d15_name_is_visible` 을 그대로 쓰면 **안 된다** — 그것은 `Base`/`Core` 까지
-   포함하는 넓은 술어라 `println` 호출이 L3 을 초록으로 만든다.
+🔴 **인터페이스 = 산출물이 광고하는 이름**(F-2 · 판정 R32, 2026-09-04). `names(CB)` 가
+   **아니다.** spec §0 의 L3 판정식은 "정적 호출 대상 ∩ **인터페이스**" 이고 인터페이스는
+   **모델에게 보여 준 것**이다. 그 목록의 유일한 자리는 `_artifact_interface_names` 다.
+
+   🔴 **왜 `names(CB)` 가 틀렸는가.** 이 자리의 옛 머리말은 `names(CB)`(187)와 산출물이
+   광고하는 메서드 이름(148)의 차 39를 "전부 모델에게 보이는 표면" 이라고 적었다. 그것이
+   거짓이었다(2026-09-04 재유도). 39 중 **18** 은 산출물의 `types` 블록이 실제로
+   광고하므로 인터페이스가 맞지만, 나머지 **21** 은 산출물이 이름으로 광고하지 않는다 —
+   그중 18 은 산출물 본문에 **한 글자도 안 나오고**(`SwapBattery` · `ForbidZone` ·
+   `TranslateBuild` · `ReplaceAgent` · `RelocateBuild` 를 포함한다 — D-9 이 행동공간에서
+   뺀 행동 타입들인데 **생성자로는 여전히 부를 수 있다**), 셋(`ConstructionBots` ·
+   `NoveltyDetector` · `RespecProposal`)은 남의 시그니처 문자열 안에만 나온다.
+   좁히기 전에는 그 21 중 하나를 **찍기만 해도** "우리가 준 인터페이스를 썼다" 는 뜻의
+   등급이 초록이 됐다. 🔴 숫자와 목록의 진실원은 이 주석이 아니라 테스트셋 (34) 다 —
+   그것이 산출물에서 매번 다시 유도한다.
+
+   ⚠️ **대가**(R32 가 알고 고른 것). 우리가 광고하지 않은 진짜 CB 함수를 부른 body 는
+   이제 `[]` 를 받는다. "우리가 준 인터페이스를 썼는가" 에는 그것이 정직한 답이고,
+   "실재하는 무엇을 불렀는가" 는 L3 의 질문이 아니다(그 질문의 자리는 D15 다).
+
+   🔴 **`_d15_name_is_visible` 은 이 좁힘의 대상이 아니다** — 좁히면 안 된다. 그쪽 질문은
+   "이 이름이 실재하는가 = 거절하면 안 되는가" 라서 `names(CB)` 가 맞고, 그 폭이 게이트
+   레인과 집행 레인을 구성상 같게 만든다(테스트셋 (26)). 두 술어는 다른 질문이다.
+   그리고 그것을 여기서 그대로 쓰면 **안 된다** — `Base`/`Core` 까지 포함하는 넓은
+   술어라 `println` 호출이 L3 을 초록으로 만든다.
 
 ⚠️ **`check_impl_conventions` 와 같은 순회를 쓴다**(body → 키워드 기본값 순). 그것이
    spec §0 의 괄호("D15 의 AST 순회가 이미 만드는 값")가 뜻하는 바다. 지역 결속 이름 ·
@@ -705,7 +796,8 @@ _is_type_shape(e) =
 
 ⚠️ **이 함수는 거절을 만들지 않는다.** 무엇을 돌려주든 등록은 안 막힌다 — 계측 채널이다.
 """
-function impl_interface_calls(code::AbstractString)
+function impl_interface_calls(code::AbstractString;
+                              artifact::Union{Nothing,AbstractString} = _world_interface_path())
     local top
     try; top = Meta.parseall(code); catch; return nothing; end
     any(x -> x isa Expr && x.head in (:incomplete, :error), top.args) && return nothing
@@ -732,7 +824,11 @@ function impl_interface_calls(code::AbstractString)
     end
     push!(ls, :env)
     sig.args[1] isa Symbol && push!(ls, sig.args[1])   # 자기 이름(재귀)은 인터페이스가 아니다
-    local iface = Set{Symbol}(names(@__MODULE__))
+    # 🔴 F-2. 인터페이스는 산출물이다. 못 읽으면 `[]`("재서 없다") 가 아니라
+    #    `nothing`("못 쟀다") — 순회는 됐지만 **무엇과 교집합할지를 모른다**.
+    #    순회 뒤에 읽는다: 걷지도 못한 입력은 파일 I/O 를 치르지 않는다.
+    local iface = _artifact_interface_names(artifact)
+    iface === nothing && return nothing
     local out = String[String(c) for c in unique(cs) if !(c in ls) && c in iface]
     sort!(out)                       # 🔴 결정적 — `Set`/`Dict` 순회가 기록에 안 들어간다
     return out
