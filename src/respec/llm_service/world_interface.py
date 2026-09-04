@@ -69,7 +69,17 @@ def build_world_interface_block(blob=None) -> str:
         for a in amb:
             parts.append("- %s" % a["name"])
             parts.append("    %s  ->  %s" % (a["accessor"], a["returns"]))
-    parts += ["", "FUNCTIONS THE MODULE ALREADY HAS (call any of these from your body):"]
-    for m in b["methods"]:
+    # 🔴 D11. 평평한 한 목록은 "선택자가 없다" 로 읽혔다(설계 §1.2) — 모델이 placeholder 를
+    #    썼다. 가르는 것은 **렌더**이지 모집단이 아니다: 두 표제 다 같은 `b["methods"]` 에서
+    #    나오고, D6 이 감춘 다섯은 애초에 산출물에 없다.
+    now = [m for m in b["methods"] if m.get("callable")]
+    later = [m for m in b["methods"] if not m.get("callable")]
+    parts += ["", "FUNCTIONS YOU CAN CALL NOW (every argument is obtainable from env):"]
+    for m in now:
+        parts.append("- %s %s" % (m["name"], m["signature"]))
+        for p in m.get("argpaths") or []:
+            parts.append("      %s" % p)
+    parts += ["", "FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET:"]
+    for m in later:
         parts.append("- %s %s" % (m["name"], m["signature"]))
     return "\n".join(parts)

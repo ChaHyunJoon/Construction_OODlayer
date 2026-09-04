@@ -5,6 +5,7 @@
 using ConstructionBots
 using InteractiveUtils     # subtypes
 import JSON3
+import DataStructures      # OrderedDict — access 색인의 키 순서를 구조로 고정한다
 const CB = ConstructionBots
 
 # 🔴 navigator 층은 **런타임 include** 다(`src/navigator/navigator.jl`). 그것 없이는
@@ -199,14 +200,122 @@ function _sig_string(m::Method)
     return "(" * join(parts, ", ") * (isempty(kws) ? "" : "; " * join(String.(kws), ", ")) * ")"
 end
 
-function method_entries()
+"""
+    access_index(closure) -> AbstractDict{String,Vector{String}}
+
+폐포의 각 타입에 대해 `env` 로부터 그 값을 얻는 **경로 문자열**들. 필드 그래프의 순수
+순회이므로 결정적이다. 컨테이너는 원소를 꺼내는 모양으로 적는다 —
+`Vector{T}` 는 `…[i]`, `Dict{K,V}` 는 `keys(…)`/`values(…)`.
+
+🔴 이 색인이 §1.2 의 실패를 정면으로 겨냥한다: 모델이 지어낸 것은 전부 "그 값을 어디서
+   얻는지 안 적힌" 타입이었다.
+
+🔴 **결정성은 구조로 지킨다**(게이트 (2) 가 새 서브프로세스 재생성물과 바이트 비교한다).
+   경로 목록은 `sort(unique(...))` 이고, **키 순서는 `OrderedDict` + 정렬 키**다 —
+   맨 `Dict` 는 삽입 순서(= BFS 발견 순서)가 해시 레이아웃에 남으므로 결정적이긴 해도
+   그 결정성이 우연에 가깝다. 여기서는 산출물의 키 순서가 **키 집합만의 함수**다.
+"""
+function access_index(closure)
+    want = Set(String[_tname(S) for S in closure])
+    out  = Dict{String,Vector{String}}()
+    add!(n, p) = (n in want && push!(get!(out, n, String[]), p))
+    # 너비 우선. 경로가 길어지면 모델에게 쓸모가 없으므로 3 홉에서 끊는다.
+    frontier = Tuple{DataType,String,Int}[(CB.PlannerEnv, "env", 0)]
+    seen = Set{String}(["PlannerEnv"])
+
+    # 🔴 **중첩 컨테이너는 재귀로 푼다** (Task 4 실측 정정, 계획서의 1단계 분기를 대체한다).
+    #    계획서 판은 `Vector{Dict{Int,SceneTreeEdge}}`(= `SceneTree.inedges` 의 실제 타입)의
+    #    안쪽 `Dict` 를 **구조체로 착각해 필드로 내려갔고**, 그래서 산출물에
+    #    `env.scene_tree.inedges[i].vals[i]` 라는 **해시테이블 내부 경로**가 실렸다(실측).
+    #    그 경로는 이 파일이 `_defined_in_cb` 로 막기로 한 바로 그것이고, 게다가 `Dict.vals`
+    #    는 빈 슬롯이 `#undef` 라 순회 자체가 안전하지 않다. 옳은 경로는
+    #    `values(env.scene_tree.inedges[i])` 다.
+    # 🔴 같은 이유로 **CB 밖 구조체의 필드로는 한 걸음도 내려가지 않는다** —
+    #    `_defined_in_cb` 가 폐포에서 하는 역할을 여기서도 한다.
+    function visit!(U, path, hop, d = 0)
+        (U isa DataType && d <= 3) || return
+        if U <: AbstractVector && length(U.parameters) >= 1
+            visit!(_unwrap(U.parameters[1]), string(path, "[i]"), hop, d + 1)
+        elseif U <: AbstractDict && length(U.parameters) >= 2
+            K = _unwrap(U.parameters[1])
+            K isa DataType && add!(_tname(K), string("keys(", path, ")"))
+            visit!(_unwrap(U.parameters[2]), string("values(", path, ")"), hop, d + 1)
+        elseif U <: AbstractSet && length(U.parameters) >= 1
+            E = _unwrap(U.parameters[1])
+            E isa DataType && add!(_tname(E), string("for x in ", path))
+        else
+            add!(_tname(U), path)
+            (_defined_in_cb(U) && !(_tname(U) in seen)) &&
+                (push!(seen, _tname(U)); push!(frontier, (U, path, hop + 1)))
+        end
+        return nothing
+    end
+
+    while !isempty(frontier)
+        (S, path, hop) = popfirst!(frontier)
+        hop >= 3 && continue
+        isabstracttype(S) && continue
+        for (f, ft) in zip(fieldnames(S), fieldtypes(S))
+            visit!(_unwrap(ft), string(path, ".", f), hop)
+        end
+    end
+    # 🔴 결정성: 경로 목록도 정렬하고, 키도 정렬된 순서로 싣는다.
+    ord = DataStructures.OrderedDict{String,Vector{String}}()
+    for k in sort(collect(keys(out))); ord[k] = sort(unique(out[k])); end
+    return ord
+end
+
+const _SCALARISH = (Real, AbstractString, Symbol, Bool, Char)
+
+"이 인자 타입을 모델이 손에 넣을 수 있는가."
+function _arg_obtainable(T, reach)
+    T isa Union && return _arg_obtainable(T.a, reach) && _arg_obtainable(T.b, reach)
+    S = _unwrap(T)
+    S === Any && return true
+    S === CB.PlannerEnv && return true
+    S isa DataType || return false
+    S === Nothing && return true
+    any(P -> S <: P, _SCALARISH) && return true
+    return _tname(S) in reach
+end
+
+"""
+    method_entries(reach, acc) -> Vector{Dict}
+
+각 메서드에 **호출 가능성**(`callable`)과 **인자마다의 도달 경로**(`argpaths`)를 붙인다.
+`callable` 은 "모든 인자를 `env` 에서(또는 스칼라로) 손에 넣을 수 있다" 는 뜻이고,
+`argpaths` 는 그 손에 넣는 방법을 `이름 <- 경로` 로 적은 줄들이다.
+
+⚠️ **둘은 같은 강도의 주장이 아니다.** `callable` 이 보는 것은 `reach`(= 폐포 **멤버십**)이고
+   `argpaths` 가 보는 것은 `acc`(= 실제 **경로**)다. 폐포에는 있는데 `env` 로부터의 경로가
+   아직 없는 타입이 있으므로 — 오늘 `callable` 인 것의 다수가 `argpaths` 가 비어 있다 —
+   `callable=true` 를 "이 줄만 보고 바로 부를 수 있다" 로 읽으면 안 된다. 그 강한 주장을
+   나르는 것은 **`argpaths` 가 비어 있지 않은 항목**뿐이다.
+"""
+function method_entries(reach, acc)
     out = Dict{String,Any}[]
     for n in sort(names(CB))
         isdefined(CB, n) || continue
         f = getfield(CB, n)
         f isa Function || continue
         for m in methods(f)
-            push!(out, Dict("name" => string(n), "signature" => _sig_string(m)))
+            Ts = collect(Base.unwrap_unionall(m.sig).parameters)[2:end]
+            callable = all(T -> _arg_obtainable(T, reach), Ts)
+            paths = String[]
+            if callable
+                nms = Base.method_argnames(m)
+                for (i, T) in enumerate(Ts)
+                    S = _unwrap(T)
+                    (S === CB.PlannerEnv || S === Any) && continue
+                    ps = get(acc, _tname(S), String[])
+                    isempty(ps) && continue
+                    nm = length(nms) >= i + 1 ? String(nms[i + 1]) : "_"
+                    startswith(nm, "#") && (nm = "_")
+                    push!(paths, string(nm, " <- ", first(ps)))
+                end
+            end
+            push!(out, Dict("name" => string(n), "signature" => _sig_string(m),
+                            "callable" => callable, "argpaths" => paths))
         end
     end
     # 결정적 정렬 (Ruling R-SORT): Julia 의 method-table 순회 순서는 보장된 계약이
@@ -221,14 +330,18 @@ function method_entries()
     return out
 end
 
-types = Dict{String,Any}[type_entry(T) for T in world_type_closure()]
+closure = world_type_closure()
+types   = Dict{String,Any}[type_entry(T) for T in closure]
+acc     = access_index(closure)
+reach   = Set(String[_tname(S) for S in closure])
 
 dst = length(ARGS) >= 1 ? ARGS[1] :
       normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",
                         "world_interface.json"))
 open(dst, "w") do io
     JSON3.pretty(io, Dict("types" => types,
-                          "methods" => method_entries(),
+                          "access" => acc,
+                          "methods" => method_entries(reach, acc),
                           "ambient" => [Dict("name" => a.name, "accessor" => a.accessor,
                                              "returns" => a.returns)
                                         for a in AMBIENT_ROOTS]))

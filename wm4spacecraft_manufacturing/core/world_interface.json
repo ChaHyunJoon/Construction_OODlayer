@@ -2,843 +2,1508 @@
     "methods": [
         {
             "name": "active_restriction_zones",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "active_spares",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "add_directional_spare_pools!",
-            "signature": "(scene_tree; n_spare, distance, bbox, margin, geom, spacing)"
+            "signature": "(scene_tree; n_spare, distance, bbox, margin, geom, spacing)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "add_restriction_zone!",
-            "signature": "(key::Symbol, center::AbstractVector, radius::Real)"
+            "signature": "(key::Symbol, center::AbstractVector, radius::Real)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "agent_disc_radius",
-            "signature": "(agent)"
+            "signature": "(agent)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, cmd, env::PlannerEnv)"
+            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, cmd, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::CloseBuildStep, cmd::Nothing, env::PlannerEnv)"
+            "signature": "(node::CloseBuildStep, cmd::Nothing, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::DepositCargo, twist::Twist, env::PlannerEnv)"
+            "signature": "(node::DepositCargo, twist::Twist, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::FormTransportUnit, twist::Twist, env::PlannerEnv)"
+            "signature": "(node::FormTransportUnit, twist::Twist, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::LiftIntoPlace, twist::Twist, env::PlannerEnv)"
+            "signature": "(node::LiftIntoPlace, twist::Twist, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::OpenBuildStep, cmd::Nothing, env::PlannerEnv)"
+            "signature": "(node::OpenBuildStep, cmd::Nothing, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "apply_cmd!",
-            "signature": "(node::Union{TransportUnitGo, RobotGo}, twist::Twist, env::PlannerEnv)"
+            "signature": "(node::Union{TransportUnitGo, RobotGo}, twist::Twist, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "assert_respec_verdict",
-            "signature": "(verdict::Symbol)"
+            "signature": "(verdict::Symbol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "assert_respec_verdict",
-            "signature": "(verdict::Symbol, where::AbstractString)"
+            "signature": "(verdict::Symbol, where::AbstractString)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "asset_generation",
-            "signature": "(role::ConstructionBots.AbstractID)"
+            "signature": "(role::ConstructionBots.AbstractID)",
+            "argpaths": [
+                "role <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "asset_history",
-            "signature": "(role::ConstructionBots.AbstractID)"
+            "signature": "(role::ConstructionBots.AbstractID)",
+            "argpaths": [
+                "role <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "asset_ledger",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "asset_ledger_summary",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "asset_of",
-            "signature": "(role::ConstructionBots.AbstractID)"
+            "signature": "(role::ConstructionBots.AbstractID)",
+            "argpaths": [
+                "role <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "avoid_staging_areas",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "awaiting_battery_swap",
-            "signature": "(rid)"
+            "signature": "(rid)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_courier_enabled",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_courier_step!",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_deliveries",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_report",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_report",
-            "signature": "(fleet::ConstructionBots.BatteryFleet)"
+            "signature": "(fleet::ConstructionBots.BatteryFleet)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "battery_swap_halt_active",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "battery_swap_pending",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "build_invariant",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "(n::DepositCargo)"
+            "signature": "(n::DepositCargo)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_deployed_config",
-            "signature": "(n::FormTransportUnit)"
+            "signature": "(n::FormTransportUnit)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_goal_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "cargo_goal_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "cargo_goal_config",
-            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "(n::DepositCargo)"
+            "signature": "(n::DepositCargo)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_loaded_config",
-            "signature": "(n::FormTransportUnit)"
+            "signature": "(n::FormTransportUnit)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "cargo_start_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "cargo_start_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "cargo_start_config",
-            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "check_identity!",
-            "signature": "(env, tag::AbstractString; step)"
+            "signature": "(env, tag::AbstractString; step)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "checked_out_spares",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_all_cargo_bans!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_battery_deliveries!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_cargo_ban!",
-            "signature": "(agent::ConstructionBots.AbstractID)"
+            "signature": "(agent::ConstructionBots.AbstractID)",
+            "argpaths": [
+                "agent <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "clear_decommissioned_markers!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_depot_markers!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_faulted_robots!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_identity_seen!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_novelty_detector!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_ood_schedule!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_restriction_zones!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_spare_pools!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "clear_zone_markers!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "close_node!",
-            "signature": "(_::ConstructionPredicate, env::PlannerEnv)"
+            "signature": "(_::ConstructionPredicate, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "close_node!",
-            "signature": "(n::OpenBuildStep, env::PlannerEnv)"
+            "signature": "(n::OpenBuildStep, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "close_node!",
-            "signature": "(node::CloseBuildStep, env::PlannerEnv)"
+            "signature": "(node::CloseBuildStep, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "close_node!",
-            "signature": "(node::ConstructionBots.ScheduleNode, env::PlannerEnv)"
+            "signature": "(node::ConstructionBots.ScheduleNode, env::PlannerEnv)",
+            "argpaths": [
+                "node <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "commit_respec!",
-            "signature": "(env, milp, proposal::RespecProposal; resume)"
+            "signature": "(env, milp, proposal::RespecProposal; resume)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "conformal_pvalue",
-            "signature": "(det::NoveltyDetector, score::Real)"
+            "signature": "(det::NoveltyDetector, score::Real)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "construct_partial_construction_schedule",
-            "signature": "(mpd_model, model_spec, scene_tree)"
+            "signature": "(mpd_model, model_spec, scene_tree)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "construct_partial_construction_schedule",
-            "signature": "(mpd_model, model_spec, scene_tree, id_map)"
+            "signature": "(mpd_model, model_spec, scene_tree, id_map)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "core_zone_for_severity",
-            "signature": "(env, frac::Real; pad, root)"
+            "signature": "(env, frac::Real; pad, root)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "decision_margin",
-            "signature": "(values::AbstractVector{<:Real})"
+            "signature": "(values::AbstractVector{<:Real})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "decommissioned_bodies",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "depot_available",
-            "signature": "(key::Symbol)"
+            "signature": "(key::Symbol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "depot_centers_fixed",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "depot_centers_fixed",
-            "signature": "(d::Real)"
+            "signature": "(d::Real)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "depot_info",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "dispatch_battery_courier!",
-            "signature": "(env, target::ConstructionBots.AbstractID)"
+            "signature": "(env, target::ConstructionBots.AbstractID)",
+            "argpaths": [
+                "target <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "draw_decommissioned_robots!",
-            "signature": "(vis)"
+            "signature": "(vis)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "draw_restriction_zones!",
-            "signature": "(vis)"
+            "signature": "(vis)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "draw_spare_depots!",
-            "signature": "(vis)"
+            "signature": "(vis)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "entity",
-            "signature": "(n)"
+            "signature": "(n)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "entity",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "entity",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "escalation_verdict",
-            "signature": "(; descriptors, values, member_values, eps, margin_thresh, disagree_thresh)"
+            "signature": "(; descriptors, values, member_values, eps, margin_thresh, disagree_thresh)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "event_descriptors",
-            "signature": "(; soc, agent_pending, zone_overlap, severity, n_active, spare_count, closed_at_fire, total_nodes, progress, nav_blocked, nav_downstream)"
+            "signature": "(; soc, agent_pending, zone_overlap, severity, n_active, spare_count, closed_at_fire, total_nodes, progress, nav_blocked, nav_downstream)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "fault_robot!",
-            "signature": "(env; target, obstacle, clear, safe)"
+            "signature": "(env; target, obstacle, clear, safe)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "fault_robot_and_reassign!",
-            "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose, resume)"
+            "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose, resume)",
+            "argpaths": [
+                "agent <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "faulted_robots",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "find_clear_staging_center",
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin, zone_margin_frac, ring_step, n_angles, max_rings)"
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin, zone_margin_frac, ring_step, n_angles, max_rings)",
+            "argpaths": [
+                "assembly_id <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "free_space_status",
-            "signature": "(start, goal, zones, agent_radius::Real; cell, margin)"
+            "signature": "(start, goal, zones, agent_radius::Real; cell, margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_cmd",
-            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, env::PlannerEnv)"
+            "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_cmd",
-            "signature": "(node::LiftIntoPlace, env::PlannerEnv)"
+            "signature": "(node::LiftIntoPlace, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_cmd",
-            "signature": "(node::Union{DepositCargo, FormTransportUnit}, env::PlannerEnv)"
+            "signature": "(node::Union{DepositCargo, FormTransportUnit}, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_cmd",
-            "signature": "(node::Union{TransportUnitGo, RobotGo}, env::PlannerEnv)"
+            "signature": "(node::Union{TransportUnitGo, RobotGo}, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_project_params",
-            "signature": "(file_name::AbstractString)"
+            "signature": "(file_name::AbstractString)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_project_params",
-            "signature": "(project::Int64)"
+            "signature": "(project::Int64)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "get_project_params",
-            "signature": "(project::Symbol)"
+            "signature": "(project::Symbol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "goal_config",
-            "signature": "(n)"
+            "signature": "(n)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "goal_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "goal_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "goal_config",
-            "signature": "(n::EntityConfigPredicate)"
+            "signature": "(n::EntityConfigPredicate)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "goal_config",
-            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "goal_engulfed",
-            "signature": "(goal, agent_radius::Real, zones; ttol, margin)"
+            "signature": "(goal, agent_radius::Real, zones; ttol, margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "hot_swap_enabled",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "hot_swap_robot!",
-            "signature": "(env, faulted::ConstructionBots.AbstractID; mode, verbose)"
+            "signature": "(env, faulted::ConstructionBots.AbstractID; mode, verbose)",
+            "argpaths": [
+                "faulted <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "identity_summary",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "identity_violations",
-            "signature": "(env; tol)"
+            "signature": "(env; tol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "integrate_twist",
-            "signature": "(twist, dt)"
+            "signature": "(twist, dt)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "is_battery_courier",
-            "signature": "(rid)"
+            "signature": "(rid)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "(parent::ConstructionBots.SceneNode, child::ConstructionBots.SceneNode, args::Vararg{Any})"
+            "signature": "(parent::ConstructionBots.SceneNode, child::ConstructionBots.SceneNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "(t, t_des)"
+            "signature": "(t, t_des)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "(t, t_des, ttol)"
+            "signature": "(t, t_des, ttol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "is_within_capture_distance",
-            "signature": "(t, t_des, ttol, rtol)"
+            "signature": "(t, t_des, ttol, rtol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "list_projects",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "load_novelty_detector",
-            "signature": "(path::AbstractString)"
+            "signature": "(path::AbstractString)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "maybe_respecify!",
-            "signature": "(env, ood_queue; id_resolver, optimizer, producer)"
+            "signature": "(env, ood_queue; id_resolver, optimizer, producer)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "maybe_unwedge_nominal!",
-            "signature": "(env, no_progress::Integer)"
+            "signature": "(env, no_progress::Integer)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "nearest_pool",
-            "signature": "(pos; nonempty)"
+            "signature": "(pos; nonempty)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "novelty_report",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "novelty_score",
-            "signature": "(det::NoveltyDetector, x::AbstractVector{<:Real})"
+            "signature": "(det::NoveltyDetector, x::AbstractVector{<:Real})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "novelty_verdict",
-            "signature": "(x::AbstractVector{<:Real}; eps)"
+            "signature": "(x::AbstractVector{<:Real}; eps)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "ood_inject_step!",
-            "signature": "(env, k::Int64)"
+            "signature": "(env, k::Int64)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "optimal_twist",
-            "signature": "(tf_error, v_max, ω_max, dt)"
+            "signature": "(tf_error, v_max, ω_max, dt)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "optimal_twist",
-            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x)"
+            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "optimal_twist",
-            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x, ϵ_θ)"
+            "signature": "(tf_error, v_max, ω_max, dt, ϵ_x, ϵ_θ)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "parent_build_step_is_active",
-            "signature": "(id::ConstructionBots.AbstractID, env::PlannerEnv)"
+            "signature": "(id::ConstructionBots.AbstractID, env::PlannerEnv)",
+            "argpaths": [
+                "id <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "parent_build_step_is_active",
-            "signature": "(node, env::PlannerEnv)"
+            "signature": "(node, env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "pool_centers",
-            "signature": "(_; margin)"
+            "signature": "(_; margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "pop_spare!",
-            "signature": "(key::Symbol)"
+            "signature": "(key::Symbol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "preprocess_env!",
-            "signature": "(env::PlannerEnv)"
+            "signature": "(env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "project_complete",
-            "signature": "(env::PlannerEnv)"
+            "signature": "(env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "push_ood!",
-            "signature": "(event::AbstractString)"
+            "signature": "(event::AbstractString)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "random_restriction_zone!",
-            "signature": "(env; key, seed, placement, radius, max_radius, attempts)"
+            "signature": "(env; key, seed, placement, radius, max_radius, attempts)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "record_asset_swap!",
-            "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event, cause, step, soc, position)"
+            "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event, cause, step, soc, position)",
+            "argpaths": [
+                "role <- env.scene_tree.vtx_ids[i]",
+                "new_asset <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree)"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key)"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key, depth)"
+            "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key, depth)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::ConstructionBots.SceneNode, tree)"
+            "signature": "(node::ConstructionBots.SceneNode, tree)",
+            "argpaths": [
+                "node <- env.scene_tree.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::ConstructionBots.SceneNode, tree, key)"
+            "signature": "(node::ConstructionBots.SceneNode, tree, key)",
+            "argpaths": [
+                "node <- env.scene_tree.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::ConstructionBots.SceneNode, tree, key, depth)"
+            "signature": "(node::ConstructionBots.SceneNode, tree, key, depth)",
+            "argpaths": [
+                "node <- env.scene_tree.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree)"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key)"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "recurse_child_geometry",
-            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key, depth)"
+            "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key, depth)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "reform_stuck_teams!",
-            "signature": "(env; min_ready, snap_all)"
+            "signature": "(env; min_ready, snap_all)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "register_spare!",
-            "signature": "(key::Symbol, rid::ConstructionBots.BotID{ConstructionBots.DeliveryBot})"
+            "signature": "(key::Symbol, rid::ConstructionBots.BotID{ConstructionBots.DeliveryBot})",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "release_fallback!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "remove_geometry!",
-            "signature": "(n::ConstructionBots.GeometryHierarchy, key)"
+            "signature": "(n::ConstructionBots.GeometryHierarchy, key)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "remove_geometry!",
-            "signature": "(n::ConstructionBots.SceneNode, key)"
+            "signature": "(n::ConstructionBots.SceneNode, key)",
+            "argpaths": [
+                "n <- env.scene_tree.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "remove_geometry!",
-            "signature": "(scene_tree::ConstructionBots.SceneTree, key)"
+            "signature": "(scene_tree::ConstructionBots.SceneTree, key)",
+            "argpaths": [
+                "scene_tree <- env.scene_tree"
+            ],
+            "callable": true
         },
         {
             "name": "remove_restriction_zone!",
-            "signature": "(key::Symbol)"
+            "signature": "(key::Symbol)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "replace_robot!",
-            "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume, verbose, park_rests)"
+            "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume, verbose, park_rests)",
+            "argpaths": [
+                "faulted <- env.scene_tree.vtx_ids[i]",
+                "spare <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "report_identity_delta",
-            "signature": "(env, before::Int64, tag::AbstractString)"
+            "signature": "(env, before::Int64, tag::AbstractString)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "reset_asset_ledger!",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "reset_cache_resume!",
-            "signature": "(cache::ConstructionBots.PlanningCache, sched::ConstructionBots.OperatingSchedule)"
+            "signature": "(cache::ConstructionBots.PlanningCache, sched::ConstructionBots.OperatingSchedule)",
+            "argpaths": [
+                "cache <- env.cache",
+                "sched <- env.sched"
+            ],
+            "callable": true
         },
         {
             "name": "restage_all_blocked!",
-            "signature": "(env; zone_keys, resume, verbose)"
+            "signature": "(env; zone_keys, resume, verbose)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "restage_assembly!",
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume, verbose)"
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume, verbose)",
+            "argpaths": [
+                "assembly_id <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "restriction_zones",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "root_deposit_goals",
-            "signature": "(env; root)"
+            "signature": "(env; root)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "root_goal_coverage",
-            "signature": "(center, r, env; margin)"
+            "signature": "(center, r, env; margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "run_lego_demo",
-            "signature": "(; kwargs...)"
+            "signature": "(; kwargs...)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "schedule_ood!",
-            "signature": "(step::Int64, action!::Function)"
+            "signature": "(step::Int64, action!::Function)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_avoid_staging_areas!",
-            "signature": "(val)"
+            "signature": "(val)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_battery_courier!",
-            "signature": "(; enabled, speed, arrive_r, halt_build)"
+            "signature": "(; enabled, speed, arrive_r, halt_build)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_cargo_ban!",
-            "signature": "(agent::ConstructionBots.AbstractID, n::Integer)"
+            "signature": "(agent::ConstructionBots.AbstractID, n::Integer)",
+            "argpaths": [
+                "agent <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(g::ConstructionBots.GeomNode, args::Vararg{Any})"
+            "signature": "(g::ConstructionBots.GeomNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(n::ConstructionBots.CustomNode, args::Vararg{Any})"
+            "signature": "(n::ConstructionBots.CustomNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(n::ConstructionBots.SceneNode, args::Vararg{Any})"
+            "signature": "(n::ConstructionBots.SceneNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"
+            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, n::ConstructionBots.TransformNode, args::Vararg{Any})"
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, n::ConstructionBots.TransformNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform!",
-            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, v, args::Vararg{Any})"
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, v, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_desired_global_transform_without_affecting_children!",
-            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"
+            "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "set_hot_swap!",
-            "signature": "(; enabled, mode)"
+            "signature": "(; enabled, mode)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_identity_check!",
-            "signature": "(; enabled, every, strict)"
+            "signature": "(; enabled, every, strict)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_novelty_detector!",
-            "signature": "(d)"
+            "signature": "(d)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_scene_tree_to_initial_condition!",
-            "signature": "(scene_tree, sched; remove_all_edges)"
+            "signature": "(scene_tree, sched; remove_all_edges)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_sim_step!",
-            "signature": "(k::Integer)"
+            "signature": "(k::Integer)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_spare_depot_distance!",
-            "signature": "(d::Real)"
+            "signature": "(d::Real)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_spare_pool_margin!",
-            "signature": "(factor::Real)"
+            "signature": "(factor::Real)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_unwedge_interval!",
-            "signature": "(n::Integer)"
+            "signature": "(n::Integer)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "set_use_rvo!",
-            "signature": "(val)"
+            "signature": "(val)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "spare_depot_distance",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "spare_pool_centers",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "spare_pools",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "spare_slots",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "start_config",
-            "signature": "(n)"
+            "signature": "(n)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "start_config",
-            "signature": "(n::ConstructionBots.CustomNode)"
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "start_config",
-            "signature": "(n::ConstructionBots.ScheduleNode)"
+            "signature": "(n::ConstructionBots.ScheduleNode)",
+            "argpaths": [
+                "n <- env.sched.nodes[i]"
+            ],
+            "callable": true
         },
         {
             "name": "start_config",
-            "signature": "(n::EntityConfigPredicate)"
+            "signature": "(n::EntityConfigPredicate)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "start_config",
-            "signature": "(n::Union{DepositCargo, FormTransportUnit})"
+            "signature": "(n::Union{DepositCargo, FormTransportUnit})",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "station_keeping_goal",
-            "signature": "(rid)"
+            "signature": "(rid)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "step_environment!",
-            "signature": "(env::PlannerEnv)"
+            "signature": "(env::PlannerEnv)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "step_environment!",
-            "signature": "(env::PlannerEnv, sim)"
+            "signature": "(env::PlannerEnv, sim)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "swap_battery!",
-            "signature": "(env, role::ConstructionBots.AbstractID; verbose)"
+            "signature": "(env, role::ConstructionBots.AbstractID; verbose)",
+            "argpaths": [
+                "role <- env.scene_tree.vtx_ids[i]"
+            ],
+            "callable": true
         },
         {
             "name": "swap_event_kind",
-            "signature": "(; cause, captured)"
+            "signature": "(; cause, captured)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "translate_whole_build!",
-            "signature": "(env; zone_keys, resume, verbose)"
+            "signature": "(env; zone_keys, resume, verbose)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "update_parent_build_status!",
-            "signature": "(env::PlannerEnv, node)"
+            "signature": "(env::PlannerEnv, node)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "update_planning_cache!",
-            "signature": "(env::PlannerEnv, time_stamp::Float64)"
+            "signature": "(env::PlannerEnv, time_stamp::Float64)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "update_planning_cache!",
-            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64)"
+            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64)",
+            "argpaths": [
+                "sched <- env.sched",
+                "cache <- env.cache"
+            ],
+            "callable": true
         },
         {
             "name": "update_planning_cache!",
-            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64, t)"
+            "signature": "(solver, sched::ConstructionBots.OperatingSchedule, cache::ConstructionBots.PlanningCache, v::Int64, t)",
+            "argpaths": [
+                "sched <- env.sched",
+                "cache <- env.cache"
+            ],
+            "callable": true
         },
         {
             "name": "use_rvo",
-            "signature": "()"
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "validate_schedule_transform_tree",
-            "signature": "(sched; post_staging)"
+            "signature": "(sched; post_staging)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "verify",
-            "signature": "(proposal::RespecProposal, env, invariant::ConstructionBots.InvariantSpec; optimizer, warm_start)"
+            "signature": "(proposal::RespecProposal, env, invariant::ConstructionBots.InvariantSpec; optimizer, warm_start)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "verify_swap_battery",
-            "signature": "(proposal::RespecProposal, env)"
+            "signature": "(proposal::RespecProposal, env)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "vote_disagreement",
-            "signature": "(member_values::AbstractVector)"
+            "signature": "(member_values::AbstractVector)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "warn_depot_clearance",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_blockage",
-            "signature": "(env; zone_keys, cell, check_paths, margin)"
+            "signature": "(env; zone_keys, cell, check_paths, margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_blocked_assemblies",
-            "signature": "(env; zone_keys, margin)"
+            "signature": "(env; zone_keys, margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_clearance",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_clears_root_goals",
-            "signature": "(center, r, env; margin)"
+            "signature": "(center, r, env; margin)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_diagnoses",
-            "signature": "(env; check_restage, check_teams)"
+            "signature": "(env; check_restage, check_teams)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_diagnosis",
-            "signature": "(env, zone::Symbol; margin, check_restage, check_teams, check_blockage, check_paths)"
+            "signature": "(env, zone::Symbol; margin, check_restage, check_teams, check_blockage, check_paths)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_relocatable",
-            "signature": "(center, r, env; margin, n_angles)"
+            "signature": "(center, r, env; margin, n_angles)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_safety_report",
-            "signature": "(env)"
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "zone_team_coverage",
-            "signature": "(env, center, radius::Real; margin)"
+            "signature": "(env, center, radius::Real; margin)",
+            "argpaths": [
+            ],
+            "callable": true
         }
     ],
     "types": [
@@ -1752,6 +2417,44 @@
             ]
         }
     ],
+    "access": {
+        "AbstractID": [
+            "env.scene_tree.vtx_ids[i]",
+            "env.sched.vtx_ids[i]",
+            "for x in env.active_build_steps",
+            "keys(env.agent_parent_build_step_active)",
+            "keys(env.agent_policies)",
+            "keys(env.scene_tree.vtx_map)",
+            "keys(env.sched.vtx_map)",
+            "keys(env.staging_buffers)",
+            "keys(env.staging_circles)"
+        ],
+        "OperatingSchedule": [
+            "env.sched"
+        ],
+        "PathSpec": [
+            "env.sched.nodes[i].spec"
+        ],
+        "PlanningCache": [
+            "env.cache"
+        ],
+        "SceneNode": [
+            "env.scene_tree.nodes[i]"
+        ],
+        "SceneTree": [
+            "env.scene_tree"
+        ],
+        "SceneTreeEdge": [
+            "values(env.scene_tree.inedges[i])",
+            "values(env.scene_tree.outedges[i])"
+        ],
+        "ScheduleNode": [
+            "env.sched.nodes[i]"
+        ],
+        "VelocityController": [
+            "values(env.agent_policies)"
+        ]
+    },
     "ambient": [
         {
             "name": "battery fleet",

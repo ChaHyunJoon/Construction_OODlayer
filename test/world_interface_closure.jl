@@ -47,4 +47,28 @@ end
     ns = String[String(t.name) for t in j.types]
     @test ns == sort(ns)
 end
+
+@testset "(5) 도달 경로 색인이 run 3 이 필요로 한 타입들을 짚는다" begin
+    j = JSON3.read(read(ART, String))
+    @test haskey(j, :access)
+    acc = Dict(String(k) => String[String(x) for x in v] for (k, v) in pairs(j.access))
+    @test any(p -> occursin("env.sched.nodes", p), acc["ScheduleNode"])
+    @test any(p -> occursin("env.agent_policies", p), acc["VelocityController"])
+    # 빈-통과 방지: 도달 못 하는 타입은 색인에 키가 없거나 빈 목록이다
+    @test all(v -> v isa Vector, values(acc))
+end
+
+@testset "(6) 🔴 호출 가능성 분할 — 오늘 5 에서 16 으로" begin
+    j = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    @test all(m -> haskey(m, :callable), ms)
+    envms = [m for m in ms if occursin("PlannerEnv", String(m.signature))]
+    @test length(envms) == 23                      # 실측
+    ok = [m for m in envms if m.callable === true]
+    @test length(ok) == 23                         # D9 의 씨앗 확장이 전부 연다
+    bang = [m for m in ok if endswith(String(m.name), "!")]
+    @test length(bang) == 16                       # 오늘은 5 였다
+    @test "apply_cmd!" in Set(String[String(m.name) for m in bang])
+    @test "close_node!" in Set(String[String(m.name) for m in bang])
+end
 end # module

@@ -394,6 +394,14 @@ end
         include("world_interface_current.jl")
     end
 
+    # 🔴 사용자 결정 U3 (2026-09-04, Task 4). 위 게이트는 "산출물 == 생성기" 를 지키지
+    #    "생성기 == 옳다" 를 지키지 않는다 — 폐포·도달 경로·호출 가능성의 **내용**을 재는
+    #    시험 여섯이 스위트 밖에 있으면 이 레포가 반복해 밟은 "사람만 기억하는 게이트"
+    #    실패 모드가 그대로 재현된다(`train_kinds`·`require_dynamics` 와 같은 자리).
+    @testset "world interface closure is correct" begin
+        include("world_interface_closure.jl")
+    end
+
     # 🔴 2026-09-03 (F9): 생성 원시의 등록 규약(다섯) · `Core.eval` 등록 · 런-스코프 표
     #    (`minted_table()`) · `invokelatest` world-age 계약을 잰다(설계 §3). 순서 안전:
     #    이 파일은 세션당 한 번만 안전하다(`adjust_thing!`·`touch_nothing!`·
