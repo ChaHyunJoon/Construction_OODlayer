@@ -746,13 +746,27 @@ end
    쓸 철자다 — 그대로 두면 **모든 객체 인자가 `reject:param_convert:` 로 막혀** 원시가 영영
    안 돈다(거절이라 안전하지만 채널은 닫힌 것이다). 키를 옮겨 주는 것이 경계의 몫이다.
 
-⚠️ 얕다. `Vector{Dict{String,Any}}` 처럼 **컨테이너 안의** 객체는 여전히 `convert` 가
-   던지고 거절이 된다 — 라이브에서 그 철자가 실제로 나오는지 안 쟀으므로 넓히지 않는다
-   (안 넓힌 대가는 예외가 아니라 거절이다). 진실원: `test/minted_end_to_end.jl` testset (7).
+⚠️ **얕다, 그리고 얕음의 결과는 두 갈래다**(2026-09-04 fix round 2, NEW-5 — 이전 판은
+   거절 쪽만 적어 조용한 쪽을 숨겼다).
+   1. **컨테이너 안의** 객체(`Vector{Dict{String,Any}}` ← 객체 배열)는 이 메서드가 안 붙고
+      `convert` 가 던져 **거절**이 된다.
+   2. 🔴 **변환된 dict 안의** 중첩 객체는 거절도 예외도 아니라 **살아 있는 `JSON3.Object`
+      인 채로 집행에 들어가고 호출이 성공한다** — 최상위 키만 옮기기 때문이다.
+   라이브에서 어느 철자가 실제로 나오는지 안 쟀으므로 넓히지 않는다.
+   진실원: `test/minted_tool_enacts.jl` testset (20d)(두 갈래를 다 태운다).
 """
 _convert_arg(T, v) = convert(T, v)
 function _convert_arg(T::Type{<:AbstractDict}, v::AbstractDict)
-    local K, V = keytype(T), valtype(T)
+    # 🔴 매개변수 **없는** 철자(`Dict` · `AbstractDict`)에도 이 메서드가 붙는다 — 둘 다
+    #    `UnionAll` 이라 `keytype`/`valtype` 에 메서드가 없어 **던진다**. 던지면 호출자가
+    #    `reject:param_convert:` 로 바꾸므로, fix round 1 은 철자 하나를 열면서 부모에서
+    #    되던 철자 둘을 닫았다(재리뷰 NEW-2, 실측). 옮길 키 타입을 모르면 옛 길로 간다.
+    local K, V
+    try
+        K, V = keytype(T), valtype(T)
+    catch
+        return convert(T, v)
+    end
     local d = Dict{K,V}()
     for k in keys(v)
         d[_dict_key(K, k)] = v[k]
@@ -893,8 +907,27 @@ function bind_primitive_args(prim, ctx)
         #    ⚠️ **비켜서는 것은 대입뿐이다.** 위의 `unknown_zone_key`/`empty_zone_keys`
         #    검사는 선언 타입이 있든 없든 그대로 돈다 — 그 검사는 타입이 아니라 **살아 있는
         #    세계**에 대한 것이고, 건너뛰면 집행부가 없는 존을 만진다.
-        #    진실원: `test/minted_end_to_end.jl` testset (12)(음성 대조 포함).
-        haskey(prim.param_types, "zone_keys") || (kw[:zone_keys] = ks)
+        #    진실원: `test/minted_end_to_end.jl` testset (12) ·
+        #    `test/minted_tool_enacts.jl` testset (20a)(세 상태 전부, 음성 대조 포함).
+        #    🔴 판정식은 `param_types` 의 **삼상**을 그대로 읽는다(위 루프와 같은 술어
+        #    `isa Type`). fix round 1 은 여기서 `haskey` 로 이상만 갈랐고, 그래서 `Any` 는
+        #    "선언 타입이 있다"로 읽혀 비켜서는데 `_convert_arg(Any, view) === view` 라
+        #    **날 `JSON3.Array` 가 kwarg 에 닿았다**(재리뷰 NEW-1·NEW-3, 실측). 그것은
+        #    예외도 거절도 안 내고, 소비처가 전부 `haskey(RESTRICTION_ZONES[], k)` 로
+        #    거르므로 `String` 원소가 **조용히 다 걸러져** "존을 치웠다"는 거짓 증거가 된다.
+        #    ⚠️ 비켜서는 조건은 "주석이 있다"가 아니라 **"선언 타입이 `Symbol` 벡터를 못
+        #    받는다"** 이다 — 그때만 강제가 `TypeError` 를 내기 때문이다(`Vector{String}`).
+        #    받을 수 있으면(`Any`·`Vector{Any}`·`Vector{Symbol}`) 강제가 이긴다.
+        local Tz = get(prim.param_types, "zone_keys", nothing)
+        local forced, coerced = true, ks
+        if Tz isa Type
+            try
+                coerced = convert(Tz, ks)
+            catch
+                forced = false
+            end
+        end
+        forced && (kw[:zone_keys] = coerced)
     end
     return (Tuple(pos), NamedTuple(kw))
 end
@@ -1102,9 +1135,18 @@ function enact_minted!(env, truth, synth)
     #    했다")을 쓰고, 그 규약과 맞춘다. Task 9 전에는 `:deferred` 가 사실상 도달 불가
     #    (레지스트리가 항상 값을 실었다)에 가까워 파장이 작았지만, 이제 `impl_name` 결측이
     #    라이브 판에서 실제로 발화하므로 이 결함의 반경이 커졌다 — 지금 고친다.
+    # 🔴 **사유는 한 줄이다**(2026-09-04 fix round 2, NEW-4). `[minted]` 레코드는 한 줄에
+    #    한 판이고(`tools/monitor/enact.jl`), D17 의 `/rewrite` 가 이 문자열을 agent-3 에게
+    #    그대로 되먹인다. 그런데 사유에는 모델이 쓴 원문이 실린다 — 못 읽은 주석의 블록
+    #    표현식(`q::(if true; …; end)`)도, `unknown_zone_key` 가 싣는 `string(::JSON3.Object)`
+    #    도 여러 줄이다(둘 다 실측). **여기 하나에서** 접는 이유는 사유가 이 기록으로
+    #    들어가는 자리가 여기뿐이기 때문이다 — 반환 자리마다 접으면 한 자리를 빠뜨린다.
+    #    ⚠️ 홑 공백은 `r"\s+" => " "` 로 바뀌지 않으므로 기존 사유들은 **바이트 동일**하다.
+    #    진실원: `test/minted_tool_enacts.jl` testset (20c).
+    _one_line(x) = x isa AbstractString ? String(strip(replace(x, r"\s+" => " "))) : x
     _r(v, why; steps = NamedTuple[], applied = nothing, partial = false,
        touched = false, resume = :none, resolve = :none) =
-        (verdict = v, reason = why, applied = applied, partial = partial,
+        (verdict = v, reason = _one_line(why), applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
          resume = resume, resolve = resolve,
          args_from = args_from, n_calls = n_calls)

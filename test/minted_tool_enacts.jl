@@ -1315,4 +1315,295 @@ end
     end
 end
 
+# =============================================================================
+# (20) 🔴 D16 fix round 2 — fix round 1 이 낸 회귀 둘과 문서 결함 셋 (2026-09-04).
+#
+# 재리뷰(`.superpowers/sdd/2026-09-03-callable-world-interface/task-7-rereview.md`)가
+# `d53a649d` 의 fix diff **자체**에서 찾은 것들이다. 이 절이 그 다섯을 다 태운다.
+#
+# 🔴 여기서 씨를 뿌리는 원시는 **생성 원시**(`register_minted_primitive!`)다 — 위의 손씨앗
+#    픽스처와 달리 `param_types` 열을 갖는 유일한 갈래이고, 이 절이 재는 것이 정확히 그
+#    열이다. 그래서 `finally` 에서 표에서 **지운다**: (9) 가 표의 이름 집합에 등호를 걸고
+#    `check_minted_fixture()` 가 include 시점에 같은 등호를 건다.
+#    ⚠️ 이름 재사용은 안 된다(`_MINTED_EVER` 가 프로세스 수명 내내 막는다) — 접미사를 붙인다.
+# =============================================================================
+
+"이 절 전용: 생성 원시를 심고 → 바인드하고 → 표에서 지운다. 표를 안 남긴다."
+function _t20_bind(nm, code, params, args_json)
+    why = CB.register_minted_primitive!(name = nm, code = code, params = params,
+                                        surface = "sched", reversible = false)
+    why === nothing || return (why = why, prim = nothing, bound = nothing)
+    local prim = CB.resolve_primitive(nm)
+    local calls = CB.normalize_calls(JSON3.read(
+        """[{"primitive":"$(nm)","args":$(args_json)}]"""))
+    calls isa String && return (why = calls, prim = prim, bound = nothing)
+    return (why = nothing, prim = prim,
+            bound = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                                                  params = calls[1][2])))
+end
+
+@testset "(20) 🔴 D16 fix round 2" begin
+
+# -----------------------------------------------------------------------------
+# (20a) NEW-1 · NEW-3. `zone_keys` 의 선언 타입을 **삼상 하나의 판정식**으로 가른다.
+#
+# 🔴 결함(측정, `d53a649d`): 비켜서기의 판정식이 `haskey(prim.param_types,"zone_keys")`
+#    **하나**였다. `Any` 도 `Type` 이라 키가 있고, `_convert_arg(Any, view) === view` 라
+#    변환도 없다 ⟹ **날 `JSON3.Array` 가 kwarg 에 그대로 닿았다.** 부모 커밋에서는 이
+#    자리가 무조건 `Vector{Symbol}` 이었으므로 fix round 1 이 만든 회귀다.
+# 🔴 무엇이 깨지는가(아래 (20a-0) 가 잰다): 소비처는 전부
+#    `[RESTRICTION_ZONES[][k] for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]`
+#    (`restage_zone.jl` 여섯 자리)이고 저장소는 `Dict{Symbol,…}` 이라 `String` 원소는
+#    **조용히 전부 걸러진다** — 예외도 거절도 없이 "존을 치웠다"는 거짓 증거가 남는다.
+# 🔴 NEW-3: `:859` 는 `T isa Type`(삼상), `:897` 은 `haskey`(이상)였다. 한 술어가 두
+#    자리에서 다른 것을 뜻하면 다음 사람이 "주석이 있다"를 "타입을 안다"로 읽는다.
+#    아래 세 판이 그 하나의 판정식을 세 상태 모두에 대해 못박는다.
+# -----------------------------------------------------------------------------
+@testset "(20a) NEW-1·NEW-3: zone_keys 의 선언 타입은 삼상 하나로 갈린다" begin
+    saved = CB.RESTRICTION_ZONES[]
+    made = String[]
+    try
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+
+        # (20a-0) 함정 자체를 먼저 잰다 — 0 을 비-0 대조와 짝지어 읽는다.
+        @test haskey(CB.RESTRICTION_ZONES[], :pz) === true
+        @test haskey(CB.RESTRICTION_ZONES[], "pz") === false
+
+        # ---- (20a-1) `::Any` — 🔴 이 회귀. Symbol 강제가 살아 있어야 한다 -------------
+        nm = "t20_zone_any!"; push!(made, nm)
+        r = _t20_bind(nm,
+            "function $(nm)(env; zone_keys::Any=Symbol[])\n" *
+            "    zs = [k for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]\n" *
+            "    return (status = isempty(zs) ? :already_clear : :moved, n = length(zs))\n" *
+            "end\n",
+            Dict{String,Any}("zone_keys" => Dict("type" => "array",
+                                                 "items" => Dict("type" => "string"))),
+            """{"zone_keys":["pz"]}""")
+        @test r.why === nothing
+        @test r.prim.param_types["zone_keys"] === Any        # 전제: 세 상태 중 `Type` 이다
+        @test !(r.bound isa String)
+        @test r.bound[2].zone_keys isa Vector{Symbol}        # 🔴 날 뷰가 아니다
+        @test r.bound[2].zone_keys == Symbol[:pz]
+        # 🔴 도달성: 이 값이 실제로 생성 body 안의 소비 관용구까지 간다.
+        out = Base.invokelatest(getfield(CB, Symbol(nm)), r.bound[1]...; r.bound[2]...)
+        @test out.n == 1 && out.status === :moved            # 조용한 `:already_clear` 가 아니다
+
+        # ---- (20a-2) `::Vector{String}` — F2 가 연 비켜서기는 그대로 산다 -------------
+        nm2 = "t20_zone_str!"; push!(made, nm2)
+        r2 = _t20_bind(nm2,
+            "function $(nm2)(env; zone_keys::Vector{String}=String[])\n" *
+            "    return (status = :ok, n = length(zone_keys))\nend\n",
+            Dict{String,Any}("zone_keys" => Dict("type" => "array",
+                                                 "items" => Dict("type" => "string"))),
+            """{"zone_keys":["pz"]}""")
+        @test r2.why === nothing
+        @test !(r2.bound isa String)
+        @test r2.bound[2].zone_keys isa Vector{String}       # 선언 타입이 이긴다(안 그러면 TypeError)
+        @test Base.invokelatest(getfield(CB, Symbol(nm2)),
+                                r2.bound[1]...; r2.bound[2]...).n == 1
+
+        # ---- (20a-3) `::Vector{Any}` — `Any` 와 같은 함정이고 같은 줄이 닫는다 --------
+        nm3 = "t20_zone_vany!"; push!(made, nm3)
+        r3 = _t20_bind(nm3,
+            "function $(nm3)(env; zone_keys::Vector{Any}=[])\n" *
+            "    zs = [k for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]\n" *
+            "    return (status = :ok, n = length(zs))\nend\n",
+            Dict{String,Any}("zone_keys" => Dict("type" => "array",
+                                                 "items" => Dict("type" => "string"))),
+            """{"zone_keys":["pz"]}""")
+        @test r3.why === nothing
+        @test !(r3.bound isa String)
+        @test eltype(typeof(r3.bound[2].zone_keys)) === Any  # 선언 타입 그대로다
+        @test all(x -> x isa Symbol, r3.bound[2].zone_keys)  # 🔴 원소는 Symbol 이다
+        @test Base.invokelatest(getfield(CB, Symbol(nm3)),
+                                r3.bound[1]...; r3.bound[2]...).n == 1
+
+        # ---- (20a-4) 셋째 상태(못 읽은 주석, 원문 `String`) — 루프가 먼저 거절한다 ----
+        #      NEW-3 의 본체: `haskey` 로 갈랐다면 이 상태가 `Type` 과 같은 쪽에 붙는다.
+        nm4 = "t20_zone_unre!"; push!(made, nm4)
+        r4 = _t20_bind(nm4,
+            "function $(nm4)(env; zone_keys::Vector{<:AbstractString}=String[])\n" *
+            "    return (status = :ok,)\nend\n",
+            Dict{String,Any}("zone_keys" => Dict("type" => "array",
+                                                 "items" => Dict("type" => "string"))),
+            """{"zone_keys":["pz"]}""")
+        @test r4.why === nothing
+        @test !(r4.prim.param_types["zone_keys"] isa Type)   # 전제: 원문 String 이다
+        @test r4.bound isa String
+        @test occursin("reject:param_annotation_unreadable:zone_keys", r4.bound)
+
+        # ---- (20a-5) 첫째 상태(키 없음) — 손씨앗 원시는 오늘 그대로 Symbol 강제 -------
+        local p = CB.resolve_primitive("restage_all_blocked")
+        @test !haskey(p.param_types, "zone_keys")
+        @test CB.bind_primitive_args(p, (env = Ref(:e), truth = nothing,
+                    params = Dict{String,Any}("zone_keys" => ["pz"])))[2].zone_keys ==
+              Symbol[:pz]
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+# -----------------------------------------------------------------------------
+# (20b) NEW-2. 매개변수 **없는** `Dict`·`AbstractDict` 는 부모에서 되던 철자다.
+#
+# 🔴 회귀(측정, `d53a649d`): 새 메서드 `_convert_arg(::Type{<:AbstractDict}, ::AbstractDict)`
+#    는 `UnionAll` 인 `Dict`·`AbstractDict` 에도 붙는데, 그 자리에서 `keytype(T)`/`valtype(T)`
+#    는 메서드가 없어 **던진다** ⟹ 호출자의 catch 가 `reject:param_convert:` 로 바꾼다.
+#    즉 F4 는 철자 하나(`Dict{String,Any}`)를 열면서 철자 둘을 닫았다.
+# -----------------------------------------------------------------------------
+@testset "(20b) NEW-2: 매개변수 없는 Dict·AbstractDict 도 바인드된다" begin
+    made = String[]
+    try
+        # 전제 — 왜 던지는지를 이 자리에서 못박는다(지어낸 이유가 아니다).
+        @test_throws MethodError keytype(Dict)
+        @test_throws MethodError keytype(AbstractDict)
+
+        for (suf, ann) in (("bare", "Dict"), ("abs", "AbstractDict"))
+            nm = "t20_dict_$(suf)!"; push!(made, nm)
+            r = _t20_bind(nm,
+                "function $(nm)(env; d::$(ann)=Dict())\n" *
+                "    return (status = :ok, n = length(d))\nend\n",
+                Dict{String,Any}("d" => Dict("type" => "object")),
+                """{"d":{"a":1,"b":2}}""")
+            @test r.why === nothing
+            @test !(r.bound isa String)                      # 🔴 거절이 아니다
+            @test r.bound[2].d isa AbstractDict
+            @test length(r.bound[2].d) == 2
+            # 호출까지 산다 — kwarg 단언이 통과한다.
+            @test Base.invokelatest(getfield(CB, Symbol(nm)),
+                                    r.bound[1]...; r.bound[2]...).n == 2
+        end
+
+        # 🔴 음성 대조 — 폴백이 "전부 통과"가 아니다. 매개변수가 있고 옮길 수 없는 키는
+        #    여전히 거절이다(이 절이 F4 를 되돌리지 않았다는 증거).
+        nm = "t20_dict_int!"; push!(made, nm)
+        r = _t20_bind(nm,
+            "function $(nm)(env; d::Dict{Int,Any}=Dict{Int,Any}())\n" *
+            "    return (status = :ok,)\nend\n",
+            Dict{String,Any}("d" => Dict("type" => "object")),
+            """{"d":{"a":1}}""")
+        @test r.bound isa String
+        @test occursin("reject:param_convert:d:", r.bound)
+
+        # 양성 대조 — F4 가 연 철자는 그대로 열려 있다.
+        nm = "t20_dict_sa!"; push!(made, nm)
+        r = _t20_bind(nm,
+            "function $(nm)(env; d::Dict{String,Any}=Dict{String,Any}())\n" *
+            "    return (status = :ok,)\nend\n",
+            Dict{String,Any}("d" => Dict("type" => "object")),
+            """{"d":{"a":1}}""")
+        @test !(r.bound isa String)
+        @test r.bound[2].d isa Dict{String,Any}
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+# -----------------------------------------------------------------------------
+# (20c) NEW-4. 거절 사유는 **한 줄**이다.
+#
+# 🔴 `[minted]` 레코드는 한 줄이 계약이고(`tools/monitor/enact.jl`), D17 의 `/rewrite` 가
+#    이 문자열을 agent-3 에게 **그대로** 되먹인다. 그런데 사유에는 모델이 쓴 원문이 실리고
+#    그 원문은 여러 줄일 수 있다. 🔴 원천이 **둘**이다(둘 다 이 절의 스윕이 실측했다):
+#      · 못 읽은 주석의 블록 표현식 — `string(texpr)` 이 줄바꿈 + `#= none:1 =#` 를 싣는다
+#      · `unknown_zone_key` — 원소가 객체면 `string(::JSON3.Object)` 가 여러 줄이다
+#    그래서 접는 자리는 `_unreadable_annotation` 이 아니라 **사유가 레코드로 들어가는 유일한
+#    자리**(`enact_minted!` 안의 `_r`)다. 아래 (ii)(iii) 이 그 두 원천을 같은 자리에서 잰다.
+# -----------------------------------------------------------------------------
+@testset "(20c) NEW-4: 거절 사유는 한 줄이다" begin
+    made = String[]
+    saved = CB.RESTRICTION_ZONES[]
+    try
+        local multi = "function t20_multi!(env; q::(if true; Int; else; Float64; end)=1)\n" *
+                      "    return (status = :ok,)\nend\n"
+        # (i) 원문 기록은 라인노트를 안 싣고 상한 안에 있다(자르기 전에 압축하기 때문이다).
+        local pt = CB.impl_param_types(multi)
+        @test haskey(pt, "q") && !(pt["q"] isa Type)         # 전제: 못 읽은 주석이다
+        @test !occursin("#=", pt["q"])                       # 파서 라인노트는 원문이 아니다
+        @test length(pt["q"]) <= 120                         # 길이 상한은 그대로다
+        @test occursin("Int", pt["q"]) && occursin("Float64", pt["q"])   # 다 지우지는 않는다
+
+        # (ii) 🔴 원천 1 — 레코드의 사유가 한 줄이다.
+        nm = "t20_multi!"; push!(made, nm)
+        local reg = CB.register_minted_primitive!(name = nm, code = multi,
+            params = Dict{String,Any}("q" => Dict("type" => "integer")),
+            surface = "sched", reversible = false)
+        @test reg === nothing
+        local r = CB.enact_minted!(:DUMMY, nothing,
+            _synth(names = [nm], calls = [Dict{String,Any}("primitive" => nm,
+                       "args" => Dict{String,Any}("q" => 1))]))
+        @test r.verdict === :reject
+        @test occursin("reject:param_annotation_unreadable:q:", r.reason)
+        @test !occursin("\n", r.reason)                       # 🔴 이 줄이 계약이다
+        @test occursin("Int", r.reason) && occursin("Float64", r.reason)
+
+        # (iii) 🔴 원천 2 — `unknown_zone_key` 는 모델이 준 **값**을 싣는다. 객체를 주면
+        #       `string(::JSON3.Object)` 가 여러 줄이다(스윕 실측). 같은 자리가 접는다.
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+        nm2 = "t20_zoneobj!"; push!(made, nm2)
+        local reg2 = CB.register_minted_primitive!(name = nm2,
+            code = "function $(nm2)(env; zone_keys::Any=Symbol[])\n" *
+                   "    return (status = :ok,)\nend\n",
+            params = Dict{String,Any}("zone_keys" => Dict("type" => "array")),
+            surface = "sched", reversible = false)
+        @test reg2 === nothing
+        local args2 = JSON3.read("""{"zone_keys":[{"a":1}]}""")
+        local r2 = CB.enact_minted!(:DUMMY, nothing,
+            _synth(names = [nm2], calls = [Dict{String,Any}("primitive" => nm2,
+                       "args" => Dict{String,Any}("zone_keys" => args2["zone_keys"]))]))
+        @test r2.verdict === :reject
+        @test occursin("reject:unknown_zone_key:", r2.reason)
+        @test !occursin("\n", r2.reason)                      # 🔴 두 번째 원천도 한 줄이다
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+# -----------------------------------------------------------------------------
+# (20d) NEW-5. `_convert_arg` 의 **얕음**은 두 갈래다 — 하나는 거절, 하나는 조용한 통과.
+#
+# 🔴 fix round 1 의 docstring 은 얕음의 결과를 "거절이 된다" 하나로 적어 조용한 절반을
+#    숨겼고, 진실원으로 지목한 게이트가 그 둘 중 어느 것도 안 태우고 있었다. 이 절이
+#    그 docstring 의 진실원이다 — 두 갈래를 다 태운다.
+# -----------------------------------------------------------------------------
+@testset "(20d) NEW-5: 얕음의 두 갈래 — 컨테이너 안은 거절, 변환된 dict 안은 통과" begin
+    made = String[]
+    try
+        # ---- (i) 조용한 절반: 최상위만 실체화되고 한 겹 아래는 **살아 있는 뷰**다 ------
+        nm = "t20_nest!"; push!(made, nm)
+        local r = _t20_bind(nm,
+            "function $(nm)(env; d::Dict{String,Any}=Dict{String,Any}())\n" *
+            "    return (status = :ok, inner = string(typeof(d[\"a\"])))\nend\n",
+            Dict{String,Any}("d" => Dict("type" => "object")),
+            """{"d":{"a":{"b":1}}}""")
+        @test r.why === nothing
+        @test !(r.bound isa String)                          # 거절이 아니다
+        @test r.bound[2].d isa Dict{String,Any}              # 최상위는 실체화됐다
+        @test r.bound[2].d["a"] isa JSON3.Object             # 🔴 한 겹 아래는 뷰인 채다
+        # 🔴 그리고 호출이 **실제로 돈다** — 예외도 거절도 아닌 조용한 통과다.
+        local out = Base.invokelatest(getfield(CB, Symbol(nm)), r.bound[1]...; r.bound[2]...)
+        @test out.status === :ok
+        @test occursin("JSON3.Object", out.inner)
+
+        # ---- (ii) 거절하는 절반: 컨테이너 **안의** 객체 -------------------------------
+        nm2 = "t20_vecdict!"; push!(made, nm2)
+        local r2 = _t20_bind(nm2,
+            "function $(nm2)(env; xs::Vector{Dict{String,Any}}=Dict{String,Any}[])\n" *
+            "    return (status = :ok,)\nend\n",
+            Dict{String,Any}("xs" => Dict("type" => "array")),
+            """{"xs":[{"a":1}]}""")
+        @test r2.why === nothing
+        @test r2.bound isa String
+        @test occursin("reject:param_convert:xs:", r2.bound)
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+end # (20)
+
 end # module

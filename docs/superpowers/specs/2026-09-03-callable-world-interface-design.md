@@ -376,10 +376,10 @@ needs: str = dspy.OutputField(desc=
 값은 등록 행의 `param_types` 열이 된다. 주석 없는 kwarg 는 이 dict 에 **키가 없다**
 (`nothing` 을 값으로 넣지 않는다 — 삼상 규약).
 
-`bind_primitive_args` 는 그 타입이 **있을 때만** 변환한다:
+`bind_primitive_args` 는 그 값이 `Type` 일 때만 변환한다:
 
 ```julia
-converted = try convert(T, v) catch; return "reject:param_convert:$(k):expected $(T), got $(typeof(v))" end
+converted = try _convert_arg(T, v) catch; return "reject:param_convert:$(k):expected $(T), got $(typeof(v))" end
 ```
 
 이것이 §1.7 의 두 원인을 한꺼번에 닫는다 — JSON3 뷰는 실체화되고(`convert(Vector{String},
@@ -388,8 +388,18 @@ JSON3.Array{String})` 은 통과한다), 안 되는 경우는 예외가 아니�
 ⚠️ 타입 주석이 없는 kwarg 는 `param_types` 에 키가 없고 **오늘 그대로** 흐른다 — 넓히지 않는다.
 ⚠️ `T` 는 모델이 쓴 **AST 조각**이지 `Type` 이 아니다. `Core.eval` 로 타입으로 바꿔야 하는데,
 그 eval 은 임의 코드를 돌릴 수 있다 — `Meta.parseall` 결과가 타입 표현식의 모양
-(`Symbol` · `Expr(:curly, …)`)인지 먼저 검사하고, 아니면 그 키를 **버린다**(거절이 아니라
-"주석 없음" 과 같이 취급한다: 여기서 거절하면 모델의 정상 코드를 우리 파서의 한계로 막는다).
+(`Symbol` · `Expr(:curly, …)` · 수신자까지 모양인 점 접근)인지 먼저 검사한다.
+🔴 **모양이 아니면 그 키를 버리지 않는다 — 주석의 원문(`String`)을 그 자리에 기록한다.**
+그래서 `param_types` 의 값은 **삼상**이다: 키 없음(주석이 없다) · `Type`(읽었다) ·
+`String`(주석은 있는데 못 읽었다). 버리면 "주석 없음" 과 같아져 JSON3 뷰가 그대로 흘러
+호출이 `TypeError` 로 죽는데, 그것은 거절이 아니라 **예외**라 위의 "예외가 아니라 거절"을
+정면으로 깬다. 대신 `bind_primitive_args` 가 `T isa Type` 로 셋을 가르고, 그 kwarg 에
+**값이 실제로 올 때만** `reject:param_annotation_unreadable:` 를 낸다(값이 안 오면 callee
+기본값으로 그대로 집행된다 — 파서의 한계로 정상 코드를 막지 않는다).
+🔴 그리고 이 모양 검사는 **샌드박스가 아니라 좁힘이다**: Julia 는 kwarg 타입 주석을 메서드
+정의 시점에 평가하므로 같은 주석이 아래 본래의 `Core.eval` 에서 어차피 돈다. 이 검사가
+막는 것은 `impl_param_types` 의 **조용한** eval(사유를 안 남긴다)뿐이다.
+진실원: `test/minted_registration.jl` testset (29)(30) · `test/minted_end_to_end.jl` (13).
 
 ---
 

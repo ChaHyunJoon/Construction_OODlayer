@@ -610,9 +610,18 @@ end
 못 읽은 주석을 **원문**으로 적는다. `Type` 이 아닌 값이 param_types 에 들어가는 유일한
 자리이고, `bind_primitive_args` 는 `T isa Type` 하나로 그 상태를 가른다.
 거절 사유에 그대로 실리므로 길이를 자른다 — 사유 문자열은 D17 이 모델에게 되먹인다.
+
+🔴 **파서가 붙인 라인노트는 안 싣는다**(2026-09-04 fix round 2, NEW-4). 주석이 블록
+   표현식이면 `string(texpr)` 이 `#= none:1 =#` 를 섞어 넣는데(실측:
+   `q::(if true; Int; else; Float64; end)`), 그것은 **모델이 쓴 원문이 아니라** 파서의
+   부산물이고 D17 이 그것을 agent-3 에게 되먹인다.
+   ⚠️ 기록의 "사유는 **한 줄**" 계약을 지키는 자리는 여기가 아니다 — 사유가 레코드로
+   들어가는 유일한 자리(`enact_minted!` 안의 `_r`)가 진다. 원천이 이 함수만이 아니기
+   때문이다(`unknown_zone_key` 도 모델이 준 값을 그대로 싣는다).
 """
 function _unreadable_annotation(texpr)
     local t = try string(texpr) catch; "?" end
+    t = replace(t, r"#=.*?=#" => "")
     return length(t) > 120 ? first(t, 117) * "..." : t
 end
 
