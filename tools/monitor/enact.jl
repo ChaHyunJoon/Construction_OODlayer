@@ -833,28 +833,6 @@ F14 가 `check_impl_conventions` 맨 앞에 `isvalid(name) || return "reject:imp
 막는 던지는 자리는 둘이다). 그래도 **함수 자체의 계약**(예외가 아니라 거절)은 입력의
 출처와 무관하게 지켜야 하므로 고쳤다 — 도달가능성과 무관하게.
 
-🔴 **2026-09-03 최종 리뷰 F19: 도달가능성 문단을 다섯 번째로 다시 쓰는 대신 지운다.**
-그 문단은 "`JSON3.read` 가 `_synth_lane_field` 의 try-가드 안에서 막는다" 고 적었는데
-**둘 다 틀렸다** — `_synth_lane_field` 는 `JSON3.read` 를 아예 안 부른다(`get` 만
-부른다). 실제로 지연 물질화가 던질 수 있는 자리는 `policy.jl::_synth_view` 안의
-`get(s, Symbol(src), nothing)` 이고, 그 경로(`policy_entry` → `decide_all`)에는
-try/catch 가 하나도 없다 — 외톨이 서로게이트가 왔다면 `:deferred` 로 안 내려가고
-`decide_all` 밖으로 던져 런을 멈췄을 것이다. 라운드 2·3·4 에 걸쳐 "이 축을 측정했다"
-는 문장이 네 번 틀렸다 — 축을 하나씩 세는 방식 자체가 다음 축을 부른다. 그래서
-**셀 수 있는 축 대신 구조를 적는다**: 이 함수의 pre-assignment 구간에 있는 무가드
-연산은 전부 **`String`(Julia 표준 문자열 타입) 위에서 total** 이고, 이 경계로 들어올
-수 있는 것은 **`String` 뿐**이다 — `sl` 은 `policy.jl::_synth_view` 가 `Dict{String,Any}`
-로 짓고, 그 값은 `get(::JSON3.Object, ::Symbol, nothing)` 에서 나오며, JSON3 는 원시
-`0xff` 바이트가 섞인 문자열조차 `String` 으로 물질화한다(직접 재현: `JSON3.read` 가
-`isvalid=false` 인 `String` 을 **던지지 않고** 돌려준다 — `JSON3.PointerString` 도
-`SubString` 도 아니다). 이 문장이 안 덮는 것 둘을 명시한다: (1) `Core.eval` 이 병적인
-코드를 컴파일하다 내는 `InterruptException`/`StackOverflowError`/OOM — 이런 자원 고갈
-류는 타입과 무관하게 어디서나 날 수 있고 이 논증 밖이다. (2) `pairs` 가 규약을 안
-지키는 손으로 지은 `AbstractDict`(예: 원소를 낼 때마다 자기 상태를 지우는 것) — 그런
-값은 이 경계로 못 들어오지만(F3 가 `AbstractDict` 인지만 보고 그 하위 계약까지는 안
-본다), 직접 `enact_minted_decision!`/`register_minted_primitive!` 를 부르는 시험
-코드가 그런 값을 손으로 만들면 여전히 가능한 구멍이다.
-
 그래도 `registered` 의 타입을 `Bool` 로 좁히지 않는다 — 이 함수(`enact_minted_decision!`)
 자신의 나머지 코드(`decision.synth_lane` 이후, `CB.enact_minted!` 호출 등)에 미래에
 새 예외 경로가 생기면 그 지점 이전의 `registered` 는 다시 `nothing` 이 정직한 값이기
@@ -965,7 +943,7 @@ function enact_minted_decision!(env, truth, decision)
             local lane = sl === nothing ? "absent" : "impl_name_nothing"
             local why  = sl === nothing ?
                 "no synth lane on this decision" :
-                "synth lane present but impl_name is nothing — 아래 네 필드가 원인을 가른다"
+                "synth lane present but impl_name is nothing — 아래 여섯 필드가 원인을 가른다"
             println("[minted] lane=", lane,
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
                     " verdict=deferred applied=n/a partial=false",
@@ -976,6 +954,17 @@ function enact_minted_decision!(env, truth, decision)
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
                     " synthesis_error=", _synth_lane_field(sl, "synthesis_error"),
                     " tool_minted=", _synth_lane_field(sl, "tool_minted"),
+                    # 🔴 2026-09-03 최종 리뷰. `wrote` 와 `refused` 는 **여기가 유일한 줄리아
+                    #    독자**다(정본 근거는 `SYNTH_LANE_KEYS` 의 docstring). 이 갈래는
+                    #    "이름이 안 왔다" 하나로 뭉쳐 있는데 그 원인이 넷이다 —
+                    #      · `refused` 가 문자열: 돈을 쓰기 전에 G1 가드가 돌아섰다
+                    #      · `wrote === false`: agent-3 이 못 쓰겠다고 자기신고했다
+                    #      · `wrote === nothing` + `synthesis_ran===true`: 썼다는데 이름이 없다
+                    #      · `synthesis_event === false`: 발화할 사건이 아니었다
+                    #    앞의 둘을 안 찍으면 그 판별이 로그로 불가능해지고, 이 레포는 그 판별에
+                    #    유료 호출을 한 번 더 쓴 전례가 있다(T5).
+                    " wrote=", _synth_lane_field(sl, "wrote"),
+                    " refused=", _synth_lane_field(sl, "refused"),
                     " registered=", registered, " impl_rejected_why=n/a",
                     " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
@@ -1149,7 +1138,9 @@ function enact_minted_decision!(env, truth, decision)
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
         println("[minted] lane=unknown tool=n/a verdict=reject applied=n/a",
-                " partial=false world_maybe_dirty=n/a handled=false undo=none resume=none",
+                # 🔴 B4: `n/a` 가 아니다. 이 경로의 `world_maybe_dirty` 는 확정된 `true` 이고
+                #    (아래 반환 참조), 로그가 반환과 다른 말을 하면 라이브 판독이 갈린다.
+                " partial=false world_maybe_dirty=true handled=false undo=none resume=none",
                 " args_from=n/a n_calls=n/a steps=[]",
                 " registered=", something(registered, "n/a"),
                 " impl_rejected_why=", something(impl_rejected_why, "n/a"),
@@ -1161,20 +1152,25 @@ function enact_minted_decision!(env, truth, decision)
         #    "원시를 하나도 안 불렀다" 조차 확신할 수 없다(F2 문단과 같은 이유로
         #    `registered`/`impl_rejected_why` 는 정직하게 나르지만, `applied` 는 이 함수가
         #    직접 계산한 적이 없으므로 언제나 못 쟀다).
-        # 🔴 F20(2026-09-03 최종 리뷰). 같은 이유로 `world_maybe_dirty` 도 `false` 가
-        #    아니라 `nothing` 이다 — 이 자리를 리터럴 `false` 로 적었던 것 자체가 F20 이
-        #    잡은 결함이었다: `CB.enact_minted!` 가 돌아온 **뒤**(세계를 이미 편집했을
-        #    수 있는 시점)에도 이 함수 자신의 후처리 코드(`get(sl, ...)` 직접 호출,
-        #    F20 이 `_synth_lane_field` 로 돌렸다)가 던질 수 있는 자리가 있었다 —
-        #    그 경로로 여기 온 판에서 `false` 는 "세계가 안 더러워졌다" 는 이 함수가
-        #    증명할 수 없는 주장이었다. `applied`/`registered`/`impl_rejected_why` 와
-        #    같은 규약: 이 catch 는 예외 **이전**에 무엇이 실행됐는지 재구성하지 않는다
-        #    (재구성하려면 `enact_minted!` 호출 전후를 가르는 새 플래그가 필요하고,
-        #    그 자체가 F2 가 `registered`/`impl_rejected_why` 에 이미 한 일이다 — 여기
-        #    `world_maybe_dirty` 에 똑같이 하는 것은 이번 라운드 범위 밖이라 남겨 둔다).
+        # 🔴 **`world_maybe_dirty = true`** (2026-09-03 최종 리뷰 B4 — F20 의 `nothing` 을
+        #    되돌린다). 이 필드만은 `applied`/`registered` 와 **다른 종류의 질문**이다:
+        #    가능성 술어(`touched || partial`, "세계가 더러울 **수** 있는가")이지 관측이
+        #    아니다. 그러므로 "세계가 더러울 수 있는지를 못 쟀다" 는 **"더러울 수 있다"로
+        #    무너진다** — `nothing` 이 나르는 구별이 없고 타입만 하나 넓어진다.
+        #    F20 이 고친 진짜 결함은 리터럴 `false` 였다: 이 catch 는 `CB.enact_minted!` 가
+        #    돌아온 **뒤**에도 도달할 수 있어서(그때는 세계가 이미 편집돼 있다) `false` 는
+        #    이 함수가 증명 못 하는 주장이었다. 보수적으로 옳은 값은 `true` 다.
+        #    🔴 그리고 소비자가 `Bool` 을 요구한다 — `minted_handled` 가 이 값을 `&&` 의
+        #    항으로 읽으므로 `nothing` 이 가면 `TypeError` 로 죽는다(실측:
+        #    `minted_handled((verdict=:admit, world_maybe_dirty=nothing, …))` 가 던진다).
+        #    오늘 안전한 것은 이 경로가 `verdict=:reject` 를 하드코딩하고
+        #    `ENACTED_VERDICTS === (:admit,)` 라 첫 연언지가 단락 평가로 먼저 죽기 때문뿐이고,
+        #    그 튜플은 이번 달에만 두 번 바뀌었다. `src/respec/minted_tool.jl` 의
+        #    `_step_touched_world` 와 `test/minted_registration.jl` 이 **이미 같은 근거로**
+        #    이 필드의 `nothing` 을 문서에서 거절한다 — 이 자리만 예외로 둘 이유가 없었다.
         return (handled = false, verdict = :reject,
                 reason = "enact_minted_decision! threw: " * msg,
-                applied = nothing, partial = false, world_maybe_dirty = nothing,
+                applied = nothing, partial = false, world_maybe_dirty = true,
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                 args_from = nothing, n_calls = nothing,
                 registered = registered, impl_rejected_why = impl_rejected_why)

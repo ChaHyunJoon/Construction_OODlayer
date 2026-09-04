@@ -70,7 +70,15 @@ end
     @test occursin("single_expression", something(CB.check_impl_conventions("f!", bad3), ""))
 
     # 규약 4: 함수가 아니다
-    @test CB.check_impl_conventions("f!", "x = 1\n") !== nothing
+    # 🔴 2026-09-03 최종 리뷰. `!== nothing` 만 재면 이 자리가 **파싱 실패**로 오진돼도,
+    #    **이름 충돌**로 오진돼도 초록이다 — 바로 위 세 줄과 바로 아래 두 줄이 이미
+    #    사유 문자열을 못박아 경화한 그 축이고, 여기만 안 하고 있었다. 사유는
+    #    agent-3 으로 가는 되먹임 채널이므로(설계 §8 `impl_rejected_why`) 오진은
+    #    "엉뚱한 것을 고치라" 는 지시가 된다.
+    @test CB.check_impl_conventions("f!", "x = 1\n") == "reject:impl_not_a_function"
+    # 같은 사유의 둘째 모양 — 최상위 표현식이 **하나**이고 그것이 함수가 아니다
+    # (`single_expression` 도 `parse_failed` 도 아니라는 것을 음성으로 가른다).
+    @test CB.check_impl_conventions("f!", "const f! = 1\n") == "reject:impl_not_a_function"
 
     # 이름 불일치
     @test occursin("name_mismatch",

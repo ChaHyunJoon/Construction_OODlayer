@@ -1433,12 +1433,42 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 🔴 **2026-09-03 (Task 9): `reach`·`missing_primitive` 를 빼고 다섯을 더했다.** agent-3 은
 이제 인벤토리에서 조합하는 대신 **원시 자신을 Julia 코드로 쓴다**(D8) — "조합했는가" 를 재던
 `reach`/`missing_primitive` 는 더 이상 나는 사실이 없고, 대신 나르는 것은 `impl_name`·
-`impl_code`·`surface`·`reversible`·`wrote` 다섯이다. 이 다섯은 `register_minted_primitive!`
-(`minted_registration.jl`)가 그대로 받는 키워드 이름과 같다 — 이름을 다시 짓지 않는다
-(진실원 하나). 위 문단들의 "아홉"·"열"·"reach"·"missing_primitive" 서술은 그 이전 세대
-(조합 레인)를 가리키고, 지우지 않은 것은 이 파일의 역사 규약 때문이다.
+`impl_code`·`surface`·`reversible`·`wrote` 다섯이다. 위 문단들의 "아홉"·"열"·"reach"·
+"missing_primitive" 서술은 그 이전 세대(조합 레인)를 가리키고, 지우지 않은 것은 이 파일의
+역사 규약 때문이다.
+🔴 **2026-09-03 최종 리뷰 정정.** 여기 "이 다섯은 `register_minted_primitive!` 가 그대로 받는
+키워드 이름과 같다 — 진실원 하나" 라고 적혀 있었는데 **다섯 중 셋이 거짓**이다. 그 함수의
+키워드는 `name`·`code`·`params`·`surface`·`reversible` 이고, `impl_name`/`impl_code` 는
+호출부(`enact.jl`)에서 `name =`/`code =` 로 **개명돼** 넘어가며 `wrote` 는 애초에 그 함수의
+인자가 아니다. 실제로 이름이 같은 것은 `surface`·`reversible` 둘뿐이다. 개명이 일어나는
+자리는 `enact_minted_decision!` 의 `CB.register_minted_primitive!(...)` 호출 **하나**이고,
+그 한 자리가 이 경계 이름과 등록 키워드 사이의 유일한 사전이다.
+
+🔴 **`wrote` 는 오늘 줄리아 소비자가 "결정에 쓰는" 자리가 없다** — 경계를 건너는 이유는
+관측이다: 조기 반환 갈래(`impl_name === nothing`)의 `[minted]` 줄이 그것을 찍어
+"agent-3 이 못 쓰겠다고 자기신고했다"(`false`)와 "그 필드를 못 읽었다"(`nothing`)를
+가른다. 그 갈래에서 이미 찍는 `synthesis_event`·`synthesis_ran`·`synthesis_error`·
+`tool_minted` 와 **같은 목적, 같은 자리**다. 판정에 안 쓰이므로 `enact.jl` 의 게이트는
+`impl_name` 하나로 남는다(미끼를 둘로 늘리지 않는다).
+
+🔴 **`refused` 도 건넌다** (2026-09-03 최종 리뷰). G1 거절(`"no_compose_interface"` ·
+`"world_interface_unreadable: …"`)은 **돈을 쓰기 전에 돌아선 사건**인데, 이 키가 없으면
+줄리아 쪽에서 그 판이 `synthesis_event=false, synthesis_ran=false` 로 도착해
+"발화할 사건이 아니었다" 와 **바이트 동일**해진다 — 처방이 정반대인 두 사건이다(하나는
+`world_interface.json` 을 고쳐야 하고 하나는 아무것도 안 해도 된다). 삼상이다:
+`nothing`(가드가 안 돌았다) · `false`(돌았고 통과) · 문자열(사유). jsonl 에 남기는 것만으로는
+부족한 이유는 라이브 판정이 렌더 로그로 이뤄지기 때문이다.
+
+🔴 **`tool_minted` 는 전선에 두 번 실린다** (2026-09-03 최종 리뷰 정정). 위 "값의 출처가
+둘이다" 문단은 이 키가 응답 **최상위에만** 있는 것처럼 적지만, `synthesis` dict **안에도**
+같은 값이 있다(`dspy_service.py` 의 `/macro` 반환이 `"tool_minted": synthesis["tool_minted"]`
+로 최상위 사본을 만든다). 진실원은 **합성 기록 안의 것**이고 최상위는 그 투영이다 —
+`_synth_view` 는 최상위만 읽고(`k == "tool_minted" && continue`) 안쪽 사본은 안 읽으므로
+줄리아 쪽에서 둘이 갈릴 자리는 없다. 사본이 사는 이유는 `TOOL_LANE_KEYS` 와의 경계
+문단이 적는 그대로다(`out["dspy"]` 의 표식 위에 있어야 한다).
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
+                         "refused",
                          "tool_name", "body_names", "params", "calls",
                          "impl_name", "impl_code", "surface", "reversible", "wrote")
 
@@ -1449,8 +1479,10 @@ const _SYNTH_RENAME = Dict("synthesis_ran" => "ran", "synthesis_error" => "error
 """
     _synth_view(resp) -> Dict{String,Any}
 
-응답에서 합성 레인 아홉을 뽑는다. `resp === nothing`(레인 실패)이거나 합성 dict 이 없으면
-아홉 전부 `nothing` 이다 — **키는 언제나 존재한다.**
+응답에서 합성 레인 키를 전부 뽑는다(`SYNTH_LANE_KEYS`, 오늘 열넷). `resp === nothing`
+(레인 실패)이거나 합성 dict 이 없으면 전부 `nothing` 이다 — **키는 언제나 존재한다.**
+🔴 개수를 여기 숫자로 다시 적지 않는다(이 파일에서 그 숫자가 세 번 낡았다) — 정본은
+`SYNTH_LANE_KEYS` 튜플 자신이고 이 함수는 그것을 순회한다.
 
 🔴 **`Symbol` 키로 읽는다, `String` 이 아니다** (2026-08-30, 전체 스위트 실측으로 잡음).
 `tool_lane_fields`(바로 아래)와 같은 이유다: `tools/test_policy_escalation.jl` 의 `avail()` ·

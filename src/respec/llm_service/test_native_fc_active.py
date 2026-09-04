@@ -177,6 +177,26 @@ def test_configure_dspy_installs_the_native_fc_adapter():
         assert dspy.settings.lm.supports_function_calling is True
 
 
+def test_the_lm_budget_fits_a_written_function_body():
+    """🔴 B1 (2026-09-03). **첫 유료 런의 3단계를 죽인 것이 이 한 줄이었다.**
+
+    `max_tokens=500` 에서 `WriteToolImpl` 의 응답이 `params` 한가운데서 잘렸고
+    (그 잘린 응답 자체가 tiktoken `o200k_base` 로 501 토큰이다 = 상한에 정확히 닿았다),
+    JSONAdapter 가 `AdapterParseError` 로 죽어 모델이 쓴 구현이 통째로 버려졌다.
+    근거와 2000 이라는 숫자의 산술은 `dspy_service.MAX_TOKENS` 의 주석에 있다 —
+    여기 다시 적지 않는다.
+
+    🔴 상수만 읽지 않고 **실제로 LM 에 실리는지**를 잰다. 예전에 이 파일이 배운 것이
+    그것이다(V6: 프로덕션 한 줄이 사라져도 손으로 부르는 시험은 전부 초록이었다).
+    과금 0건: `dspy.LM(...)` 은 객체를 만들 뿐이다."""
+    with _dspy_settings_restored():
+        lm = _configure_dspy()
+        assert lm.kwargs["max_tokens"] == dspy_service.MAX_TOKENS
+        # 하한은 "잘린 그 판이 완주하는 데 필요했던 값"(~580)보다 넉넉히 위여야 한다.
+        assert lm.kwargs["max_tokens"] >= 1500, lm.kwargs["max_tokens"]
+        assert dspy.settings.lm.kwargs["max_tokens"] == dspy_service.MAX_TOKENS
+
+
 def test_the_program_that_actually_runs_is_what_gets_measured():
     """🔴 B1/V7. `native_fc_active()` 는 모듈 상수 `SelectTool` 이 아니라 **실제로 도는
     프로그램의 시그니처**를 읽어야 한다.

@@ -58,6 +58,28 @@ MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 # **재시작**해 끈다. 장수 프로세스라 환경변수만 바꾸면 옛 레짐이 계속 돌기 때문에,
 # 레짐(`cache`)은 `/health` 와 매 응답에 실어 보낸다 -- 산출물이 자기 레짐을 말해야 한다.
 CACHE = os.environ.get("DSPY_CACHE", "1") != "0"
+# 🔴 [2026-09-03 B1] 이 값은 **한 줄로 첫 유료 런의 3단계를 통째로 죽였다.** 옛 값은 500 이고,
+#    `WriteToolImpl` 은 여덟 필드(`reasoning` + 일곱)를 내야 하는데 그중 하나가 Julia 함수
+#    **본문 전체**다. 라이브 응답은 `params` 한가운데서 잘렸고 JSONAdapter 는
+#    `AdapterParseError` 로 죽었다 — 모델이 쓴 구현은 예외 문자열 안에만 남고 Julia 로는
+#    아무것도 안 갔다(`stages == ['observe','design']`).
+#
+#    **숫자의 근거**(추측이 아니라 실측 위의 산술이다):
+#      · 잘린 그 응답 자체가 tiktoken `o200k_base` 로 **501 토큰**(2103자) = 상한에 정확히 닿았다.
+#      · 남은 것은 `params` 꼬리 + `calls`·`surface`·`reversible`·`wrote` ≈ 330자 ≈ 80 토큰
+#        ⟹ **그 한 판이 완주하는 데 필요했던 값은 ~580** 이었다.
+#      · 그 판의 `impl_code` 는 25줄(~1200자)이다. 이 설계가 재려는 것은 "모델이 감춰진 능력을
+#        재유도하는가"(D6)이고, 그런 body 는 25줄보다 길 수 있다 — 60줄(~3000자 ≈ 750 토큰)을
+#        상정하면 전체는 ~1100 토큰이다.
+#    ⟹ **2000**. 관측된 요구의 3.4배, 60줄 body 상정의 1.8배다.
+#
+#    ⚠️ 이것은 **상한이지 지출이 아니다** — 과금은 실제로 낸 토큰에 붙는다. 그리고 이 LM 은
+#    `dspy.configure` 로 설치되는 **전역**이라 네 프로그램이 전부 공유한다:
+#    `SelectTool`(결정 레인) · `ObserveEvent` · `DesignToolSpec` · `WriteToolImpl`.
+#    앞의 셋은 오늘 500 안에서 끝난다(첫 유료 런에서 셋 다 통과했다) — 상한을 올려도 그것들이
+#    더 쓰게 되는 것은 모델이 스스로 길게 쓸 때뿐이다. 잃는 것은 병적으로 긴 생성 하나가
+#    500 이 아니라 2000 토큰까지 갈 수 있다는 것이고, 그것이 이 상한의 유일한 비용이다.
+MAX_TOKENS = 2000
 
 # 데이터셋 경로는 wm4 쪽 core/wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
 # 경로에 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이
@@ -549,7 +571,7 @@ def _configure_dspy():
     LM **객체 생성**은 connect 0건이고, 이 함수는 provider 호출을 내지 않는다 — 과금 0건이다.
     (여기서 `supports_function_calling` 을 읽지는 않는다. 그 속성의 성질은 `native_fc_active`
     아래 주석 참조: 읽으면 원격 cost map fetch 를 시도한다.)"""
-    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=500, cache=CACHE)
+    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=MAX_TOKENS, cache=CACHE)
     dspy.configure(lm=lm, adapter=build_adapter())
     return lm
 
@@ -1755,6 +1777,14 @@ def macro(req: MacroRequest):
             # 🔴 네 값: "disabled" | False | True | None. **네 값은 분할이 아니다** — 다섯 번째
             #    사건(돌았는데 실패)이 `None` 을 공유하고, 그것을 가르는 키는 같은 응답의
             #    `synthesis["ran"]` · `synthesis["error"]` 다.
+            # 🔴 2026-09-03 최종 리뷰. **이 값은 전선에 두 번 실린다** — 여기 최상위 사본과
+            #    `synthesis["tool_minted"]` 원본. 그것을 명시해 둔다(policy.jl 의
+            #    `SYNTH_LANE_KEYS` docstring 이 오래 "최상위에만 있다" 처럼 읽히게 적혀
+            #    있었고, 이번 리뷰가 그 문장을 고쳤다). 진실원은 **합성 기록 안의 것**이고
+            #    이 줄은 그 투영이다: 값을 여기서 계산하지 않고 그대로 읽는다. 사본이 사는
+            #    이유는 `out["dspy"]` 의 `# ---- tool 레인` 표식 **위**에 이 키가 있어야
+            #    하고(아래 그 dict 의 주석), 줄리아의 `_synth_view` 가 최상위만 읽기
+            #    때문이다 — 그래서 둘이 갈릴 자리는 없다.
             "tool_minted": synthesis["tool_minted"],
             "synthesis": synthesis}
 

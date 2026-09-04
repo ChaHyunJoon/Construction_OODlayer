@@ -156,7 +156,7 @@ import json
 import os
 import sys
 from collections import namedtuple
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # HERE = <repo>/src/respec/llm_service -> three levels up is the repo root. Same rule as
@@ -391,16 +391,35 @@ class WriteToolImpl(dspy.Signature):
         "the world's types and fields, the functions the module already has, and the hard "
         "requirements your function must satisfy to be callable")
 
+    # 🔴 **출력 순서는 계약이다** (2026-09-03 B1). 첫 유료 런에서 응답이 `params` 한가운데서
+    #    잘렸다 — 그때의 순서는 `impl_name · impl_code · params · calls · surface ·
+    #    reversible · wrote` 였고, 값싼 스칼라 넷이 **가장 긴 필드 뒤에** 있었다.
+    #
+    #    ⚠️ 정직하게: **순서만으로는 잘림이 구제되지 않는다.** DSPy 의 JSONAdapter 는 선언된
+    #    출력 필드가 하나라도 없으면 `AdapterParseError` 를 던지므로(dspy 3.3.0 소스 직독:
+    #    `AdapterParseError(..., parsed_result=...)`), 어느 순서든 잘리면 그 단계는 죽고
+    #    기록에는 `stages == [...,'design']` 만 남는다. 잘림을 실제로 막는 것은 위
+    #    `MAX_TOKENS` 이고, 이 순서가 사는 이유는 그 다음이다:
+    #      (1) 예산이 그래도 모자란 판에서 **먼저 완성되는 것**이 판정에 필요한 값이 된다.
+    #          `wrote` 는 F2 되먹임의 트리거이고, `impl_name` 은 Julia 경계의 미끼이며,
+    #          `surface`·`reversible` 은 등록 행의 나머지 전부다 — 넷 다 한 줄짜리다.
+    #      (2) `impl_code` 를 `params`·`calls` **앞**에 둔다. 그 둘은 코드에서 **유도되는**
+    #          값이라(키워드 스키마 · 이 사건에서 쓸 인자) 코드보다 먼저 내라고 하면 모델은
+    #          시그니처를 확정하기 전에 그것을 약속해야 한다. 이 브랜치가 재는 단 하나의
+    #          측정(D6)이 바로 그 body 의 품질이므로 그 의존 순서는 뒤집지 않는다.
+    #      (3) 실제로 잘린 그 판에서 `impl_code` 는 **완전했다**(잘린 것은 `params` 였다) —
+    #          즉 이 순서였다면 그 응답은 여덟 필드 중 일곱까지 갔다.
+    #    🔴 `impl_code` 를 맨 앞으로 되돌리지 말 것: 그러면 잘림이 스칼라 넷을 통째로 먹는다.
+    wrote: bool = dspy.OutputField(desc="false if you could not write an implementation")
     impl_name: str = dspy.OutputField(desc="the Julia function name; must end with `!`")
+    surface: str = dspy.OutputField(desc="which world surface this edits")
+    reversible: bool = dspy.OutputField(desc="can this be undone")
     impl_code: str = dspy.OutputField(desc=
         "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
     params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
     calls: List[Dict[str, Any]] = dspy.OutputField(desc=
         'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
         '"args": {<keyword>: <value>}}]')
-    surface: str = dspy.OutputField(desc="which world surface this edits")
-    reversible: bool = dspy.OutputField(desc="can this be undone")
-    wrote: bool = dspy.OutputField(desc="false if you could not write an implementation")
 
 
 # ---- The task-side blocks, per stage ------------------------------------------------------
@@ -741,7 +760,7 @@ class SynthesisLedger:
     def K(self) -> int:
         return len(self.entries)
 
-    def observe(self, c, params: Optional[str] = None,
+    def observe(self, c, params: Union[None, str, Dict[str, Any]] = None,
                 tool_name: Optional[str] = None) -> bool:
         """Record one canonical form. **True if it is a new one.**"""
         k = canon_key(c)
@@ -772,7 +791,7 @@ _NESTING_KEYS = ("properties", "items", "$ref", "allOf", "anyOf", "oneOf", "patt
                  "additionalProperties", "prefixItems")
 
 
-def params_flatness(params_text: Optional[str]) -> Tuple[Optional[bool], str]:
+def params_flatness(params_text: Union[None, str, Dict[str, Any]]) -> Tuple[Optional[bool], str]:
     """Is the `params` JSON schema **flat scalars only**? (verdict, reason).
 
     A verdict of `None` means **we could not measure** (it is not JSON, or the shape differs) --
@@ -782,15 +801,25 @@ def params_flatness(params_text: Optional[str]) -> Tuple[Optional[bool], str]:
     Two accepted shapes:
       {"dx": {"type": "number"}, ...}                      (properties only)
       {"type": "object", "properties": {"dx": {...}}}      (a full schema)
+
+    🔴 2026-09-03 (B2). `rec["params"]` is a **parsed object** now, not schema text -- so this
+    takes either. A `dict` skips the parse (there is nothing left to fail at); a `str` is still
+    accepted because agent-2's schema (`spec_params`, and `rec["params"]` before the write
+    stage overwrites it) is text and callers pass it here in tests.
     """
-    if params_text is None or not str(params_text).strip():
-        return None, "params is empty -- nothing to measure"
-    try:
-        blob = json.loads(params_text)
-    except Exception as e:
-        return None, "params is not JSON (%s: %s)" % (type(e).__name__, e)
-    if not isinstance(blob, dict):
-        return None, "params is JSON but not an object (got %s)" % type(blob).__name__
+    if isinstance(params_text, dict):
+        blob = params_text
+        if not blob:
+            return None, "params is empty -- nothing to measure"
+    else:
+        if params_text is None or not str(params_text).strip():
+            return None, "params is empty -- nothing to measure"
+        try:
+            blob = json.loads(params_text)
+        except Exception as e:
+            return None, "params is not JSON (%s: %s)" % (type(e).__name__, e)
+        if not isinstance(blob, dict):
+            return None, "params is JSON but not an object (got %s)" % type(blob).__name__
     props = blob.get("properties") if isinstance(blob.get("properties"), dict) else blob
     if not isinstance(props, dict) or not props:
         return None, "params has no property map to measure"
@@ -1113,17 +1142,24 @@ def _params_view(params_text):
     """
     if params_text is None:
         return {}, "unparseable"
+    # 🔴 2026-09-03 (B2). A `dict` used to short-circuit **before** the `properties` unwrapping
+    #    below and was always reported as shape "values". That was harmless while `rec["params"]`
+    #    was text and only hand-built dicts reached here; it stops being harmless the moment the
+    #    live record carries a parsed **schema** (`{"type": "object", "properties": {...}}`),
+    #    because then `ungrounded_params` would walk `{"type", "properties", "required"}` as if
+    #    those were the parameter names. Both inputs take the same road now.
     if isinstance(params_text, dict):
-        return params_text, "values"
-    s = str(params_text).strip()
-    if not s:
-        return {}, "unparseable"
-    try:
-        blob = json.loads(s)
-    except Exception:
-        return {}, "unparseable"
-    if not isinstance(blob, dict):
-        return {}, "unparseable"
+        blob = params_text
+    else:
+        s = str(params_text).strip()
+        if not s:
+            return {}, "unparseable"
+        try:
+            blob = json.loads(s)
+        except Exception:
+            return {}, "unparseable"
+        if not isinstance(blob, dict):
+            return {}, "unparseable"
     props = blob.get("properties")
     if isinstance(props, dict):
         return props, "schema"
@@ -1191,6 +1227,49 @@ _BODY_FIELDS = ("impl_name", "impl_code", "surface", "reversible", "wrote", "cal
 _NON_STR_BODY_FIELDS = frozenset({"calls", "reversible", "wrote"})
 
 
+def params_object(raw):
+    """agent-3 이 **텍스트로 쓴** JSON 스키마 -> 파싱된 객체. 못 읽으면 `None`.
+
+    🔴 2026-09-03 (B2, 컨트롤러 판정 R17). `rec["params"]` 는 경계를 건너 Julia 의
+    `register_minted_primitive!(params = ...)` 로 **그대로** 들어가고, 그 가드는
+    `AbstractDict` 를 요구한다(`enact.jl` 의 `reject:params_not_an_object:$(typeof(praw))`).
+    문자열을 보내면 등록이 거절되고 `Core.eval` 에 **도달조차 못 한다** — 실측: 라이브
+    모양은 거절/0 steps, `Dict{String,Any}` 는 `admit, registered=true`. 이 브랜치의 유일한
+    측정(D6)이 그 거절 뒤에 있으므로 오늘의 배선으로는 아무것도 기록되지 않는다.
+
+    🔴 **파싱은 여기(파이썬)서 한다, 줄리아가 아니라.** 스키마는 모델이 텍스트로 쓰고, 그
+    텍스트를 이미 파이썬이 검증한다(`params_flatness` · `ungrounded_params`). 줄리아에서
+    다시 파싱하면 같은 사실의 진실원이 둘이 된다.
+
+    🔴 **삼상.** 못 읽으면 `None`("못 쟀다")이지 `{}`("쟀는데 비었다")가 아니다. 이 둘은
+    다른 사건이고, `{}` 를 보내면 **빈 스키마로 등록이 성공한 뒤** `enact_minted!` 이
+    모든 호출 인자를 스키마 밖이라고 거절해 원시가 평생 호출 불가가 된다 — 조용한 실패다.
+    (`None` 이면 `enact.jl` 의 `praw === nothing` 갈래로 가 빈 스키마로 등록되는 것은
+    같지만, **기록**은 "스키마를 못 읽었다" 를 정직하게 남긴다.) 반대로 모델이 **읽히는
+    빈 객체**를 냈으면 `{}` 를 그대로 낸다 — "키워드가 없는 함수를 썼다" 는 참인 관측이다.
+
+    🔴🔴 **타입만이 아니라 모양도 맞춰야 한다** (2026-09-03, 새 교차언어 게이트가 실측으로
+    잡았다 — 그 게이트가 없었으면 이 층은 또 안 보였다). 줄리아 등록 행의 `params` 는
+    JSON Schema **봉투**가 아니라 **키워드 맵**이다: `_enactability` 의 연언지 (iii) 이
+    "레지스트리 `params` 의 키가 전부 그 메서드의 키워드여야 한다" 를 요구하므로,
+    라이브 모델이 실제로 내는 `{"type": "object", "properties": {...}, "required": [...]}`
+    를 그대로 파싱해 보내면 키가 `type`·`properties`·`required` 가 되어 원시가
+    `reject:unenactable:<name>:kwargs` 로 **등록은 되고 영영 호출 불가**가 된다
+    (실측: 파이썬이 실제로 낸 기록으로 그 거절을 재현했다 — 첫 유료 런의 잘린 응답도
+    정확히 이 봉투 모양이었다). 그래서 봉투를 여기서 벗긴다. 무엇이 "파라미터 맵" 인가는
+    `_params_view` **하나**가 정하고(이 파일이 이미 그 판정을 갖고 있다) 여기서 다시 적지
+    않는다 — 두 벌이 되는 순간 한쪽이 조용히 낡는다.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) and not str(raw).strip():
+        return None                      # 필드는 있었는데 빈 문자열 = 읽을 것이 없었다
+    d, shape = _params_view(raw)
+    if shape == "unparseable":
+        return None
+    return d
+
+
 def _copy_body_fields(rec, pred):
     """agent-3(`WriteToolImpl`) 의 출력을 기록으로. 문자열 필드만 `""` 로 접고 `calls`·
     `reversible`·`wrote` 는 **날것 그대로** 둔다(정규화는 `_finish_record` 가 한 번만 한다 --
@@ -1215,8 +1294,22 @@ def _copy_body_fields(rec, pred):
     r = rec["reversible"]
     rec["reversible"] = r if isinstance(r, bool) else None
     rec["body_names"] = [rec["impl_name"]] if rec["impl_name"] else []
+    # 🔴 `spec_params` 는 **문자열로 남긴다** (B2 에서 명시적으로 결정). agent-2 의 스키마는
+    #    (a) 경계를 안 건너고(`SYNTH_LANE_KEYS` 에 없다) (b) 이 파일에서 하는 일이
+    #    `spec_changed_fields` 의 **텍스트 동일성 비교** 하나뿐이다
+    #    (`spec2["params"].strip() != first_agent2_params.strip()`). 파싱하면 그 비교가
+    #    dict 과 str 을 견주게 되고, "agent-2 가 명세를 바꿨나" 를 재던 관측이 죽는다.
+    #    agent-3 의 `params` 만 파싱되는 이유는 그것만이 등록 스키마로 쓰이기 때문이다(R6).
     rec["spec_params"] = rec.get("params")
-    rec["params"] = (getattr(pred, "params", "") or "")
+    _praw = getattr(pred, "params", None)
+    rec["params"] = params_object(_praw)
+    # 🔴 `calls_unreadable`(`_finish_record`)와 **같은 이유, 같은 관용구**. `params_object` 는
+    #    "필드가 없었다" 와 "있었는데 못 읽었다" 를 둘 다 `None` 으로 낸다 — 파싱이 이 자리로
+    #    올라오면서 `params_flat_detail` 이 나르던 그 구별("params is not JSON (...)")이
+    #    사라지기 때문에, 원문이 **있었는지**를 옆에 적어 셋을 일대일로 되돌린다.
+    #    경계로는 안 보낸다(줄리아는 `praw === nothing` 하나만 알면 되고, 진단은 jsonl 의 몫이다).
+    rec["params_unreadable"] = (_praw is not None and str(_praw).strip() != ""
+                                and rec["params"] is None)
 
 
 # ==========================================================================================

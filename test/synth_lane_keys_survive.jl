@@ -42,12 +42,15 @@ import JSON3
 include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
 
 @testset "SYNTH_LANE_KEYS 의 내용" begin
-    # (1) 🔴 2026-09-03 (Task 9): `reach`·`missing_primitive` 를 빼고 다섯을 더한 열셋.
+    # (1) 🔴 2026-09-03 (Task 9): `reach`·`missing_primitive` 를 빼고 다섯을 더했다.
     #    agent-3 이 인벤토리에서 조합하는 대신 원시 자신을 코드로 쓴다(D8) — "조합했는가" 를
     #    재던 둘은 더 이상 나는 사실이 없고, 대신 `impl_name`·`impl_code`·`surface`·
     #    `reversible`·`wrote` 다섯이 나른다. 리터럴로 못박는다 — 이 목록이 계약이다.
+    #    🔴 2026-09-03 최종 리뷰: `refused` 가 열넷째로 들어왔다. 이 키가 없으면 G1 거절
+    #    (돈을 쓰기 전에 돌아선 사건)이 줄리아 쪽에서 "발화할 사건이 아니었다" 와 **바이트
+    #    동일**해진다 — 처방이 정반대인 두 사건이다(근거 전문은 `SYNTH_LANE_KEYS` docstring).
     @test Set(SYNTH_LANE_KEYS) == Set(["tool_minted", "synthesis_event", "synthesis_ran",
-                                       "synthesis_error", "tool_name", "body_names",
+                                       "synthesis_error", "refused", "tool_name", "body_names",
                                        "params", "calls", "impl_name", "impl_code",
                                        "surface", "reversible", "wrote"])
 end
@@ -69,6 +72,9 @@ end
             # 🔴 2026-09-03 (Task 9): `reach`/`missing_primitive` 대신 agent-3 이 쓴 코드 자체.
             "impl_name" => "restage_all_blocked", "impl_code" => "function restage_all_blocked(env)\n    return :ok\nend\n",
             "surface" => "sched", "reversible" => true, "wrote" => true,
+            # 🔴 G1 가드가 돌고 통과한 판이다 — `false`("쟀고 통과") 이지 `nothing`("안 돌았다")
+            #    도 문자열(사유)도 아니다.
+            "refused" => false,
             "params" => Dict{String,Any}("threshold" => 0.3, "zone" => "A"),
             # 🔴 B1(2026-09-03). agent-3 이 body 와 **같은 순서로** 내는 구조화 호출열.
             #    `params`(도구 하나에 dict 하나)와 달리 원시마다 자기 인자를 들고 온다.
@@ -93,6 +99,7 @@ end
     @test e["surface"] == "sched"
     @test e["reversible"] === true
     @test e["wrote"] === true
+    @test e["refused"] === false
     @test e["params"]["threshold"] == 0.3
     @test e["params"]["zone"] == "A"
     @test length(e["calls"]) == 2
@@ -147,6 +154,7 @@ end
     @test e["surface"] === nothing
     @test e["reversible"] === nothing
     @test e["wrote"] === nothing
+    @test e["refused"] === nothing
     @test e["params"] === nothing
     @test e["calls"] === nothing
 end
@@ -162,6 +170,14 @@ end
 #   (b) 나머지 여덟은 `synthesize.py` 가 짓는 **합성 기록 dict** 안이다. 이름이 둘만 다르고
 #       (`synthesis_ran`→`ran`, `synthesis_error`→`error`) 그 사전이 `policy.jl::_SYNTH_RENAME`
 #       이다 — 그러므로 대조도 그 사전을 통해서 한다. 사전을 두 벌 적지 않는다.
+#
+# 🔴 **이 게이트는 이름 축만 잰다 — 타입 축은 `test/minted_end_to_end.jl` (5) 가 잰다.**
+#    (2026-09-03 최종 리뷰 B3.) `_PY_EXTRACT` 는 AST 로 **키 이름**만 견준다: 타입도 값도
+#    안 본다. 그래서 파이썬이 `params` 를 JSON 스키마 **문자열**로 내고 줄리아 등록 가드가
+#    `AbstractDict` 를 요구하는 파열이 이 게이트 초록인 채로 다섯 리뷰 라운드를 살아남았다.
+#    타입/모양은 여기서 재지 않는다 — 그러려면 파이썬을 **돌려서** 진짜 기록을 만들고
+#    줄리아 경계에 먹여야 하고, 그것은 `ConstructionBots` 가 로드된 파일의 몫이다(이 파일은
+#    일부러 standalone 이다). 두 축이 한 집씩 갖는다: 이름은 여기, 타입은 저기.
 #
 # 🔴 파이썬에 못 닿으면 **skip 이 아니라 빨개진다** — skip 은 같은 구멍에 단계만 더한 것이다.
 # 🔴 서비스를 **import 하지 않는다**: `ast` 로 소스만 읽고, 모든 호출을 `env -u OPENAI_API_KEY`
