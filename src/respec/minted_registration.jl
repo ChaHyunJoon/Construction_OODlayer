@@ -196,12 +196,51 @@ end
 🔴 **던지지 않는다.** 여기서 예외가 새면 집행부가 기록 대신 예외로 끝나고 호출자는 세계
    상태를 알 방법을 잃는다 — 이 파일 전체가 지키는 규약이다.
 🔴 **부분 등록이 없다.** eval 이 실패하면 표에 아무것도 안 남는다.
+
+🔴 2026-09-03 (Task 9 최종 리뷰 F7, 컨트롤러 판정 R8). 이 둘을 한꺼번에 어기는 자리가
+있었다 — `params` 의 키를 `Dict{String,Any}(String(k) => v for (k,v) in pairs(params))`
+로 바꾸는 자리가 `Core.eval` **뒤**였다. 정수·부동소수 키(`Dict{Int,Any}`·`Dict{Float64,Any}`)
+는 `String(k)` 가 없어 여기서 던졌고(실측: `String`·`Symbol` 키는 통과, `Int`·`Float64` 는
+`MethodError`), 그 순간 `Core.eval` 은 이미 끝나 있었다 — `isdefined(CB, name) == true` 이고
+`name ∈ _MINTED_EVER == true` 인데 `minted_table()` 에는 행이 없다.
+🔴 **정정(2026-09-03): D6 신호는 안 오염된다 — 그 자리를 근거로 적지 말 것.** 처음엔
+이 반쪽 상태 뒤 같은 이름을 재등록하면 그 재시도가 `check_impl_conventions` 의
+"withheld"(D6 신호, C3) 로 오분류된다고 판단했는데 틀렸다. `push!(_MINTED_EVER, …)` 가
+`Dict` 컴프리헨션(그 자리에서 던지는 지점)**보다 앞**이라, 재시도는 `_MINTED_EVER` 멤버십
+검사(`check_impl_conventions` 의 규약 5, D6 판정보다 **먼저** 도는 이름-충돌 검사)에서
+`reject:impl_name_already_minted` 로 걸린다(직접 재현: 반쪽 상태를 만든 뒤 재등록하면
+정확히 이 사유가 나오고 "withheld" 는 안 나온다). **그래도 Critical 인 진짜 이유는 둘이다**
+(D6 과 무관): (1) 이 함수의 docstring 이 "던지지 않는다" 를 약속하는데 여기서 던지면
+그 약속을 지키는 방어선이 `enact_minted_decision!` 의 바깥 `try` **하나뿐**이 된다(이
+계획의 구속 조건인 예외가 아니라 거절이 한 겹짜리 방어로 줄어든다). (2) `push!(
+_MINTED_EVER, …)` 가 던지는 지점보다 앞이므로, 이 반쪽 상태를 만든 뒤에는 그 **이름이
+프로세스 수명 내내 영구히 막힌다** — `Core.eval` 로 실제로 쓸모 있는 것은 아무것도 안
+심겼는데도 그 이름으로의 모든 재시도가 `already_minted` 로 거절된다. 이것은 모델의 재시도
+자체를 스스로 막는 자기부과 거부이고, D6 신호와 무관하게 그 자체로 고칠 이유가 충분하다.
+**고친 방법: 검증을 eval **앞**으로 옮긴다**(설계 §8 이 제시한 두 갈래 중 이쪽을 골랐다 —
+"eval 을 기록해 두고 재시도가 정직하게 읽게 한다" 쪽은 eval 자체를 되돌릴 길이 없는 이
+파일의 전제와 충돌해 상태 기계가 하나 더 필요해진다). 검증이 먼저이면 eval 은 **검증을
+통과한 뒤에만** 돈다 — 그 뒤로는 이 함수 안에 던질 자리가 없으므로 "부분 등록" 자체가
+구조적으로 불가능해지고, 위 (2)의 영구 차단도 함께 사라진다(검증에서 거절되면
+`_MINTED_EVER` 에 아예 안 들어간다 — 재시도가 자유롭다).
 """
 function register_minted_primitive!(; name::AbstractString, code::AbstractString,
                                      params, surface::AbstractString = "unknown",
                                      reversible::Bool = false)
     why = check_impl_conventions(name, code)
     why === nothing || return why
+    # 🔴 F7. `Core.eval` **전에** 검증한다 — 이 검증이 eval 뒤에 있었던 것이 결함의
+    #    전부였다. `pairs(params)` 자체가 못 도는 모양(비-순회형)도 예외가 아니라 거절이다.
+    local _pk
+    try
+        _pk = collect(pairs(params))
+    catch e
+        return "reject:params_unreadable:" * first(split(sprint(showerror, e), "\n"))
+    end
+    for (k, _) in _pk
+        (k isa AbstractString || k isa Symbol) ||
+            return "reject:params_keys_not_strings:$(typeof(k))"
+    end
     try
         Core.eval(@__MODULE__, Meta.parseall(code))
     catch e

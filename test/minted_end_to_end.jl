@@ -5,7 +5,11 @@
 # `surface`·`reversible` 가 `enact_minted_decision!` 안에서 `register_minted_primitive!`
 # 로 등록되고, 그 직후 같은 프레임에서 `enact_minted!` 가 그 이름을 부를 수 있어야 한다
 # (world age — `test/minted_registration.jl` (9) 의 F1 과 같은 모양). 그리고 `registered`·
-# `impl_rejected_why`(R2/R7) 가 그 셋을 실제로 가른다 — 성공 · 등록 거절 · 판정 불가.
+# `impl_rejected_why`(R2/R7) 가 성공 · 등록 거절 · (등록은 됐는데 그 뒤가 던졌다) 를
+# 가른다. 🔴 `registered === nothing`(판정 불가) 은 2026-09-03 최종 리뷰 F7 이후
+# **오늘 도달 가능한 생산자가 없다**(R8 이 그 유일한 생산자였던
+# `register_minted_primitive!` 의 계약 위반을 고쳤다) — `tools/monitor/enact.jl` 의
+# `registered` docstring 참고.
 #
 # 🔴 서비스 응답과 **같은 타입**으로 왕복시킨다. 손으로 지은 Dict{String,Any} 픽스처는
 #    JSON3.Object 가 아니라서, 라이브에서만 나는 실패를 못 잡는다.
@@ -91,32 +95,39 @@ end
     @test !isdefined(CB, :e2e_bad!)   # Core.eval 자체가 안 됐다는 것을 직접 잰다
 end
 
-@testset "(3) 🔴 F5/F2: 등록 도중 던지면 registered 는 false 가 아니라 nothing 이다" begin
+@testset "(3) 🔴 F5/F2: 등록은 성공했는데 enact_minted! 가 던지면 registered=true 가 정직하게 남는다" begin
+    # 🔴 2026-09-03 최종 리뷰 F7 재작성. 이전 판은 `registered === nothing` 을
+    #    `register_minted_primitive!` 자신의 계약 위반(`params` 가 정수 키 dict 이면
+    #    `String(::Int64)` 로 **던졌다** — R8 이 그 자체를 결함으로 잡아 지금은
+    #    거절 문자열을 낸다, `src/respec/minted_registration.jl` 참고)에 기대어 재고
+    #    있었다 — 컨트롤러 재검증: **그 던지기가 오늘 `registered === nothing` 의 유일한
+    #    생산자였다**(`decision.synth_lane`·`_synth_lane_field` 는 둘 다 내부에서
+    #    try-가드돼 있고, 나머지 모든 갈래는 `registered` 를 명시로 `false`/`true` 로
+    #    적는다). 그 결함을 고친 지금, `nothing` 은 **오늘 도달 가능한 생산자가 없다**
+    #    (아래 `registered` docstring 에도 적어 둔다 — 나중에 `Bool` 로 되돌리거나 이
+    #    상태를 재려고 또 다른 버그에 기대는 시험을 짓지 않도록).
+    #
+    #    F5 가 진짜로 재려던 것은 "등록 뒤에 다른 자리가 던지면 그 사실을 안 잃는가" 다 —
+    #    R2 의 옛 리터럴 `false` 가 거짓말하던 자리가 정확히 이것이다. 컨트롤러가 검증한
+    #    깨끗한 예: 등록은 정상 규약이고, `body_names` 가 `[1, 2]`(정수) 라서
+    #    `enact_minted!` 이 `minted_tool.jl:1057` 의 `String.(body_names)` 에서 던진다 —
+    #    등록 자체는 아무 규약도 안 어겼다.
     CB.reset_minted_table!()
-    # 🔴 `register_minted_primitive!` 는 "던지지 않는다" 를 약속하지만(그 자신의 docstring),
-    #    `params` 의 키 타입은 검사하지 않는다 — `Dict{String,Any}(String(k) => v for (k,v)
-    #    in pairs(params))` 가 `String(::Int64)` 에서 던진다(실측, 이 파일 맨 아래 "변이
-    #    기록" 참고). `enact.jl` 의 F3 타입 가드는 `praw isa AbstractDict` 만 보므로
-    #    Int-키 dict 은 통과해 그 안쪽 던지기에 그대로 노출된다 — JSON 은 키가 항상
-    #    문자열이라 이 모양은 라이브 payload 로는 못 오지만(JSON3 round-trip 으로는 못
-    #    만든다), **바깥 `try` 가 그 예외를 삼킨 뒤에도 `registered` 가 거짓말을 하지
-    #    않는지**(R7 이 진짜로 지키는 계약)를 재는 유일한 창이다. 그래서 여기만 raw Dict
-    #    픽스처를 쓴다.
-    sl3 = Dict{String,Any}("impl_name" => "e2e_nothing_check!",
-                            "impl_code" => "function e2e_nothing_check!(env; note = \"x\")\n    return :ok\nend\n",
+    sl3 = Dict{String,Any}("impl_name" => "alt_ok!",
+                            "impl_code" => "function alt_ok!(env; note = \"x\")\n    return :ok\nend\n",
                             "surface" => "sched", "reversible" => false,
-                            "params" => Dict{Int,Any}(1 => "x"),
-                            "body_names" => ["e2e_nothing_check!"], "calls" => nothing)
+                            "params" => Dict{String,Any}(),
+                            "body_names" => [1, 2], "calls" => nothing)
     dec3 = (macro_name = "NOOP", synth_lane = sl3)
     r3 = enact_minted_decision!((staging_circles = Dict{Symbol,Any}(),), nothing, dec3)
     @test r3.verdict === :reject
-    @test occursin("threw", r3.reason)
-    # 🔴 핵심 단언. `false` 가 아니라 `nothing` 이어야 한다 — R2 시절이었다면 이 자리에
-    #    리터럴 `false` 가 나와 "등록이 안 됐다" 고 **확정 진술**했을 것이다. 실제로는
-    #    `Core.eval` 이 돌았는지조차 이 함수가 판정할 자리에 못 닿고 던졌다 — "몰라서
-    #    못 쟀다" 가 정직한 값이다.
-    @test r3.registered === nothing
+    @test occursin("threw", r3.reason) && occursin("String", r3.reason)
+    # 🔴 핵심 단언 — R2 시절 리터럴 `false` 가 거짓말했을 자리. 등록은 실제로 성공했다
+    #    (`minted_table()` 에 행이 있다) — 이 예외는 그 **뒤** `enact_minted!` 안에서
+    #    났다. `registered` 는 그 사실을 안 잃는다.
+    @test r3.registered === true
     @test r3.impl_rejected_why === nothing
+    @test haskey(CB.minted_table(), "alt_ok!")
     @test r3.handled === false
 end
 

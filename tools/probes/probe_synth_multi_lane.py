@@ -26,7 +26,13 @@ import synthesize as SY             # noqa: E402
 from tool_registry import build_tools   # noqa: E402
 
 assert S.CACHE is False, "cache did not turn off -- abort, the numbers would be replays"
-assert SY.synthesis_enabled() and SY.multi_agent_enabled()
+# 🔴 2026-09-03 (컨트롤러 판정, Task 9 fix round 2). `SY.multi_agent_enabled()` was deleted
+# by Task 1 under D8 -- there is one synthesis lane now, so the old dual-lane switch this
+# assert checked no longer exists in `synthesize.py` (see its own "(5) The 3-agent pipeline
+# itself" comment). `SYNTH_MULTI_AGENT` still gets set above for `dspy_service.py`'s
+# `/health` generation stamp only, not as a lane switch -- this probe does not need to
+# re-check it.
+assert SY.synthesis_enabled()
 
 S._configure_dspy()                 # production LM + native-FC adapter. 0 calls.
 import dspy                          # noqa: E402
