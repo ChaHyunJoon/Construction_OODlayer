@@ -250,8 +250,14 @@ class _P:
 
 # 큰따옴표는 chr(34) 로 짓는다 — 이유는 줄리아 쪽 `_PY_RECORD` 의 주석에 있다.
 Q = chr(34)
-CODE = ("function " + NAME + "(env; note = " + Q + "x" + Q + ")\n"
+BARE = ("function " + NAME + "(env; note = " + Q + "x" + Q + ")\n"
         "    return (status = :crosslang_ok, note = note)\nend\n")
+# 🔴 R18 (2026-09-03) — **자극**이 라이브 모양으로 바뀌었다: 모델은 코드를 마크다운
+#    펜스로 감싼다(두 번째 유료 런의 실측 모양). 이것을 벗기는 것은 파이썬의 몫이고
+#    (`synthesize.strip_code_fence`), 이 게이트는 그 정규화가 **경계를 건너 살아 있는지**
+#    를 잰다 — 펜스가 그대로 오면 줄리아 등록이 `reject:impl_code_is_fenced` 로 거절해
+#    아래 (5-b) 가 통째로 빨개진다.
+CODE = "```julia\n" + BARE + "```"
 progs = {
     "observe": lambda **kw: _P(reasoning_log="the robot is degraded"),
     "design":  lambda **kw: _P(expressible=False, tool_name="CrossLangProbe",
@@ -339,6 +345,12 @@ const BOUNDARY_TYPES = [
     @test e["available"] === true
     @test e["impl_name"] == NAME
 
+    # ---- (5-0) 🔴 R18 FIX A: 펜스는 경계를 못 건넌다 ------------------------------------------
+    # 자극은 펜스로 감싼 코드였다(위 `_PY_RECORD`). 경계에 도착하는 것은 맨 Julia 다 —
+    # 정규화는 파이썬 하나가 하고(`strip_code_fence`), 줄리아는 진단만 한다.
+    @test !occursin("`", e["impl_code"])
+    @test startswith(e["impl_code"], "function " * NAME)
+
     # ---- (5-a) 타입 계약 -------------------------------------------------------------------
     for (k, T) in BOUNDARY_TYPES
         @test haskey(e, k)
@@ -385,6 +397,25 @@ const BOUNDARY_TYPES = [
     @test r_text.impl_rejected_why == "reject:params_not_an_object:String"
     @test isempty(r_text.steps)
     @test !isdefined(CB, :crosslang_probe_text!)   # Core.eval 에 도달조차 못 했다
+
+    # ---- (5-d) 🔴 R18 FIX C 음성 대조: 펜스가 **정말로** 경계에서 거절되는가 -------------------
+    # 위 (5-0) 은 "파이썬이 벗겼다" 를 잰다. 그것이 하중을 지려면 **안 벗겼을 때 실제로
+    # 거절된다**는 것이 참이어야 한다 — 아니면 (5-0) 은 아무것도 안 지키는 단언이다.
+    # 🔴 이 사유는 **진단이지 둘째 고침이 아니다**: 정상 배관에서 펜스는 여기 못 온다.
+    #    오면 파이썬 정규화가 실패했다는 뜻이고, `impl_not_a_function`(=agent-3 에게 가는
+    #    틀린 수리 신호)이 아니라 배관 고장을 가리키는 이름으로 도착해야 한다.
+    local as_fenced = Dict{String,Any}(String(k) => v for (k, v) in pairs(resp[:synthesis]))
+    as_fenced["impl_name"] = "crosslang_probe_fenced!"
+    as_fenced["impl_code"] = "```julia\n" *
+        replace(String(e["impl_code"]), NAME => "crosslang_probe_fenced!") * "```"
+    as_fenced["body_names"] = ["crosslang_probe_fenced!"]
+    as_fenced["calls"] = nothing
+    local r_fenced = enact_minted_decision!(BARE_ENV, nothing, _dec(_lane(as_fenced)))
+    @test r_fenced.verdict === :reject
+    @test r_fenced.registered === false
+    @test r_fenced.impl_rejected_why == "reject:impl_code_is_fenced"
+    @test isempty(r_fenced.steps)
+    @test !isdefined(CB, :crosslang_probe_fenced!)
 end
 
 @testset "(6) 🔴 B6: 무동작 생성 원시도 handled=true 다 — 행동이 아니라 **측정**이다" begin

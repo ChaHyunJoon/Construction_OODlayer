@@ -46,6 +46,30 @@ minted_table() = _MINTED_TABLE[]
 reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
 
 """
+    _is_env_positional(a) -> Bool
+
+규약 1 의 위치인자 하나가 `env` 인가. **`env` 와 `env::T`(어떤 `T` 든) 둘 다 참이다.**
+
+🔴 **왜 타입 표기가 허용인가** (2026-09-03, 컨트롤러 판정 R18 — 다음 독자가 이것을 다시
+   "조이지" 않도록 이유를 여기 적는다). 규약 1 이 존재하는 이유는 아래
+   `check_impl_conventions` 의 docstring 이 적는 그대로 `_enactability` 의
+   **arity·kwargs 연언지를 구성상 통과시키는 것**이다. 타입
+   표기는 그 둘 중 **어느 것도 안 바꾼다**: `f(env::PlannerEnv; k=1)` 의 위치인자 수는
+   여전히 1 이고 `f(env; k=1)` 과 똑같이 부를 수 있다. 오히려 `env::PlannerEnv` 는
+   `env` 보다 **더 좁다** — 규약이 지키려는 것을 더 강하게 지킨다.
+   그래서 이것을 거절하면 우리는 모델이 아니라 **우리 쪽 엄격함**을 재게 된다. 두 번째
+   유료 런에서 실제로 그랬다(라이브 모델이 낸 시그니처가 정확히 `env::PlannerEnv` 였다).
+
+⚠️ **넓어지는 것은 이 한 축뿐이다.** 이름이 다른 위치인자 · 위치인자가 둘 이상 · slurp
+   (`env...`) · 기본값(`env = 1`) · 이름 없는 표기(`::PlannerEnv`)는 **전과 똑같이**
+   거절된다. `Expr(:(::), :env, T)` 는 인자가 정확히 둘이고 첫째가 `:env` 여야 참이다 —
+   이름 없는 `::T` 는 `Expr(:(::), T)` 로 인자가 하나라 여기 안 걸린다(실측).
+"""
+_is_env_positional(a) =
+    a === :env ||
+    (a isa Expr && a.head === :(::) && length(a.args) == 2 && a.args[1] === :env)
+
+"""
     check_impl_conventions(name, code) -> Union{Nothing,String}
 
 설계 §5 의 규약 다섯. 통과하면 `nothing`, 아니면 **거절 사유**다. 순수 함수 —
@@ -54,6 +78,9 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
 🔴 규약 1 이 존재 이유의 절반이다: `f(env; kw…)` 로 고정하면 `_enactability` 의
    arity·kwargs 연언지를 **구성상** 통과한다. 오늘 19개 중 9개를 막고 있는 그 결함
    (impl 이 params 를 위치인자로 받는다)이 새 원시에서는 원천적으로 안 생긴다.
+   ✅ 2026-09-03 (판정 R18): 그 위치인자는 `env` **와 `env::T` 둘 다**다. 타입 표기는
+   arity 도 호출가능성도 안 바꾸므로 규약 1 의 존재 이유를 하나도 안 흔든다 — 근거 전문은
+   `_is_env_positional` 의 docstring 에 있다. **다시 조이지 말 것.**
 
 🔴 **규약 2("문장 하나")는 "정의 하나"를 재지 "결속 하나"를 재지 않는다 — 결정, 사고가
    아니다**(2026-09-03 최종 리뷰 F16, 컨트롤러 판정 R15). `body` **안에** 중첩된 내부
@@ -158,6 +185,20 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
             "쓰는 이름을 골랐다는 사실이다"
     end
 
+    # 🔴 FIX C (2026-09-03, 판정 R18) — **진단이지 둘째 고침이 아니다.**
+    #    마크다운 펜스를 벗기는 것은 **파이썬**의 몫이다(`llm_service/synthesize.py` 의
+    #    `strip_code_fence`, 판정 R17 의 선례: LM 이 쓴 것을 정규화하는 자리는 LM 응답을
+    #    먼저 보는 파이썬 하나다 — `params` 파싱도 `calls` 정규화도 거기서 한다).
+    #    그러므로 정상 배관에서는 펜스가 **여기까지 못 온다.**
+    #    🔴 진실원은 여전히 하나다: 파이썬은 **정규화**하고 줄리아는 **진단**한다. 여기
+    #    펜스가 도착했다는 것은 파이썬의 정규화가 실패했다는 뜻이고, 그 사건은 조용하지
+    #    말고 시끄러워야 한다. 이 사유가 없으면 그 사건은 `impl_not_a_function` 으로
+    #    도착하는데(실측: Julia 가 ` ``` ` 를 삼중 백틱 **명령 리터럴**로 파싱해
+    #    `Expr(:macrocall, Symbol("@cmd"), …)` 하나를 낸다), 그것은 모델에게 "함수를 안
+    #    냈다" 는 **틀린** 수리 신호이고(agent-3 되먹임 채널이다) 우리에게는 배관 고장을
+    #    가리키는 이름이 아니다.
+    occursin(r"^\s*`{3,}", code) && return "reject:impl_code_is_fenced"
+
     local top
     try
         top = Meta.parseall(code)          # 🔴 parse 가 아니라 parseall — parse 는 첫 식만 읽는다
@@ -228,7 +269,7 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
     kwblock = findfirst(x -> x isa Expr && x.head === :parameters, rest)
     kws = kwblock === nothing ? Any[] : rest[kwblock].args
     pos = kwblock === nothing ? rest : rest[setdiff(eachindex(rest), kwblock)]
-    (length(pos) == 1 && pos[1] === :env) ||
+    (length(pos) == 1 && _is_env_positional(pos[1])) ||
         return "reject:impl_positional_args_must_be_exactly_env:$(pos)"
     for k in kws
         (k isa Expr && k.head === :kw) ||

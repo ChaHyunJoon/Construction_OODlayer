@@ -206,3 +206,75 @@ def test_an_empty_but_readable_schema_is_not_unreadable(monkeypatch):
     rec = SY.synthesize_multi(state="s", tools=[], ledger=SY.SynthesisLedger(), programs=progs)
     assert rec["params"] == {}
     assert rec["params_unreadable"] is False
+
+
+# =============================================================================
+# 🔴 R18 FIX A (2026-09-03) — 마크다운 펜스는 **우리 쪽** 원인이다
+#
+# 두 번째 유료 런에서 agent-3 은 레인을 끝까지 돌았는데(`stages` 셋 · `wrote=True` ·
+# `calls_match_body=True`) 등록이 `reject:impl_not_a_function` 으로 거절됐다. 실측한 원인
+# 셋 중 첫째가 이것이다: 모델이 코드를 ` ```julia … ``` ` 로 감쌌다. 코드를 펜스로 감싸는
+# 것은 **모든** LM 의 보편 행동이지 규약 위반이 아니다 — 그것을 거절하면 우리는 모델이
+# 아니라 **우리 파서**를 재게 된다(컨트롤러 판정 R18).
+#
+# 🔴 **정규화는 파이썬이 한다**(판정 R17 의 선례 그대로: `params` 파싱도 `calls` 정규화도
+#    여기서 한다). 파이썬이 LM 응답을 먼저 보고, 줄리아는 진실원이 하나인 값을 받는다.
+# 🔴 **삼상.** 코드가 비었거나 벗기고 나서 비면 그것은 `""`("쟀는데 없다")이지
+#    `None`("못 쟀다")이 아니다 — `_copy_body_fields` 가 필드가 아예 없을 때 내는 값과
+#    같다(`getattr(pred, f, "") or ""`).
+# =============================================================================
+FENCED_CODE = "```julia\n" + OK_CODE + "```"
+
+
+def test_a_markdown_fence_never_reaches_the_record(monkeypatch):
+    """라이브 모양: agent-3 이 펜스로 감싼 코드를 낸다 → 기록에는 맨 Julia 만 남는다."""
+    monkeypatch.setenv(SY.SYNTHESIS_ENV, "1")
+    rec = SY.synthesize_multi(state="s", tools=[], ledger=SY.SynthesisLedger(),
+                              programs=_programs(code=FENCED_CODE))
+    assert "`" not in rec["impl_code"]
+    assert rec["impl_code"].startswith("function adjust_thing!")
+    assert rec["impl_code"] == OK_CODE
+
+
+def test_the_fence_forms_models_actually_emit_are_all_stripped():
+    """```julia · ```jl · 맨 ``` · 대문자/공백 섞인 info string · 펜스 주변 공백 ·
+    **닫히지 않은** 펜스(잘림)."""
+    for opener in ("```julia", "```jl", "```", "```Julia", "```  julia  ", "````julia"):
+        closer = "`" * (len(opener) - len(opener.lstrip("`")))
+        assert SY.strip_code_fence(opener + "\n" + OK_CODE + closer) == OK_CODE, opener
+        # 펜스 바깥의 공백은 결과를 바꾸지 않는다
+        assert SY.strip_code_fence("\n  " + opener + "\n" + OK_CODE + closer + "\n\n") == OK_CODE
+    # 🔴 잘림: 여는 펜스만 있고 닫는 펜스가 없다. 그래도 여는 줄은 벗긴다 —
+    #    남는 것이 잘린 Julia 라는 사실은 줄리아의 `impl_parse_failed` 가 정직하게 말한다.
+    assert SY.strip_code_fence("```julia\nfunction f!(env; k = 1)\n") == \
+        "function f!(env; k = 1)\n"
+
+
+def test_unfenced_code_passes_through_byte_identical():
+    """🔴 펜스가 없으면 **한 바이트도** 안 건드린다."""
+    for raw in (OK_CODE,
+                "  \n" + OK_CODE + "\n\n",              # 바깥 공백도 그대로 둔다
+                "function f!(env)\n    run(`ls`)\nend\n",
+                "x = 1\n", ""):
+        assert SY.strip_code_fence(raw) == raw
+
+
+def test_the_interior_is_not_touched():
+    """벗기는 것은 **여는 줄과 닫는 줄뿐**이다. 안쪽의 공백·빈 줄·펜스처럼 생긴 줄은 남는다."""
+    inner = "function f!(env; k = 1)\n\n    # ```\n        return :ok\nend\n"
+    assert SY.strip_code_fence("```julia\n" + inner + "```") == inner
+
+
+def test_empty_stays_measured_empty_not_unmeasurable():
+    """🔴 삼상: 비면 `""`("쟀는데 없다")이지 `None`("못 쟀다")이 아니다."""
+    assert SY.strip_code_fence("") == ""
+    assert SY.strip_code_fence("```julia\n```") == ""
+    assert SY.strip_code_fence("```") == ""
+    assert SY.strip_code_fence("   ```julia   \n   ```   ") == ""
+
+
+def test_a_non_string_impl_code_does_not_throw():
+    """🔴 예외가 아니라 거절. 타입 위반은 줄리아의 `reject:impl_code_not_a_string` 이
+    말한다 — 여기서 던지면 그 사유가 영영 기록되지 않는다."""
+    assert SY.strip_code_fence(None) is None
+    assert SY.strip_code_fence(["```julia"]) == ["```julia"]

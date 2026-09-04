@@ -1270,6 +1270,54 @@ def params_object(raw):
     return d
 
 
+def strip_code_fence(code):
+    """agent-3 이 코드를 감싼 마크다운 펜스를 벗긴다. 펜스가 없으면 **바이트 동일**로 통과.
+
+    🔴 2026-09-03 (R18, 컨트롤러 판정). 두 번째 유료 런은 레인을 끝까지 돌았는데
+    (`stages` 셋 · `wrote=True` · `params` 진짜 dict · `calls_match_body=True`) 등록이
+    `reject:impl_not_a_function` 으로 거절됐다. 모델이 낸 것은 ` ```julia\\n…\\n``` ` 였다.
+    **코드를 펜스로 감싸는 것은 모든 LM 의 보편 행동이지 규약 위반이 아니다** — 그것을
+    거절하면 우리가 재는 것은 모델의 준수도가 아니라 **우리 파서**다.
+
+    🔴 **정규화는 파이썬이 한다, 줄리아가 아니라** (판정 R17 의 선례 그대로). 이 파일은
+    이미 `params` 를 파싱하고(`params_object`) `calls` 를 정규화한다(`normalize_calls`) —
+    LM 응답을 먼저 보는 것이 파이썬이고, 진실원은 하나여야 한다. 줄리아 쪽
+    `check_impl_conventions` 의 `reject:impl_code_is_fenced` 는 **고침이 아니라 진단**이다:
+    여기까지 펜스가 도착했다는 것은 이 함수가 실패했다는 뜻이고 그것은 시끄러워야 한다.
+
+    🔴 **삼상.** 코드가 비었거나 벗기고 나면 비는 경우는 `""`("쟀는데 아무것도 없다")이지
+    `None`("못 쟀다")이 아니다 — `_copy_body_fields` 가 필드가 **아예 없을 때** 내는 값이
+    이미 `""` 다(`getattr(pred, f, "") or ""`). 여기서 `None` 을 내면 그 둘이 갈라지는 것이
+    아니라 **한 사건이 두 이름을 갖게 된다**.
+
+    🔴 **예외가 아니라 거절.** 문자열이 아닌 값은 그대로 통과시킨다 — 타입 위반을 말하는
+    자리는 줄리아의 `reject:impl_code_not_a_string` 하나이고, 여기서 던지면 그 사유가
+    영영 기록되지 않는다.
+
+    받아 주는 모양(모델이 실제로 내는 것): ` ```julia ` · ` ```jl ` · 맨 ` ``` ` ·
+    대문자/공백이 섞인 info string · 펜스 **바깥**의 앞뒤 공백 · **닫히지 않은** 펜스(잘림).
+    ⚠️ **안쪽은 한 줄도 안 건드린다.** 벗기는 것은 여는 줄과 **마지막** 줄의 닫는 펜스뿐이라,
+    몸통 한가운데의 ` ``` ` 처럼 생긴 줄은 그대로 남는다.
+    """
+    if not isinstance(code, str):
+        return code
+    s = code.strip()
+    if not s.startswith("```"):
+        return code                      # 펜스가 아니다 — 한 바이트도 안 건드린다
+    first, _, rest = s.partition("\n")
+    n = len(first) - len(first.lstrip("`"))
+    if "`" in first[n:]:
+        return code                      # info string 에 백틱은 못 온다 = 펜스가 아니다
+    lines = rest.split("\n") if rest else []
+    if lines:
+        tail = lines[-1].strip()
+        # 닫는 펜스는 백틱만으로 된 줄이고 여는 것보다 짧지 않다(CommonMark).
+        if tail and tail == "`" * len(tail) and len(tail) >= n:
+            lines = lines[:-1]
+    out = "\n".join(lines)
+    return out + "\n" if out else ""
+
+
 def _copy_body_fields(rec, pred):
     """agent-3(`WriteToolImpl`) 의 출력을 기록으로. 문자열 필드만 `""` 로 접고 `calls`·
     `reversible`·`wrote` 는 **날것 그대로** 둔다(정규화는 `_finish_record` 가 한 번만 한다 --
@@ -1289,6 +1337,10 @@ def _copy_body_fields(rec, pred):
             rec[f] = getattr(pred, f, None)
         else:
             rec[f] = (getattr(pred, f, "") or "")
+    # 🔴 R18 FIX A. 펜스는 **여기서** 벗긴다 — 기록에도, 경계 너머 줄리아에도 맨 Julia 만
+    #    간다(근거 전문은 `strip_code_fence`). 삼상은 안 바뀐다: 위 루프가 이미 `""` 로
+    #    접은 값에 대해 이 함수는 `""` 를 그대로 낸다.
+    rec["impl_code"] = strip_code_fence(rec["impl_code"])
     w = rec["wrote"]
     rec["wrote"] = w if isinstance(w, bool) else None
     r = rec["reversible"]

@@ -508,4 +508,110 @@ end
     @test why2 !== nothing && startswith(why2, "reject:impl_name_not_utf8:")
 end
 
+# =============================================================================
+# 🔴 R18 (2026-09-03) — **두 번째 유료 런의 진짜 코드**가 픽스처다
+#
+# 그 런은 레인을 끝까지 돌았고(`stages` 셋 · `wrote=True` · `calls_match_body=True`)
+# 등록에서 거절됐다. 원인이 셋 쌓여 있었고, 컨트롤러 판정 R18 이 **무엇을 재는가**로
+# 그것을 갈랐다:
+#
+#   | 층 | 사유 | 누구의 것인가 |
+#   |---|---|---|
+#   | 마크다운 펜스 | `impl_not_a_function` | **우리 것** — 코드를 펜스로 감싸는 것은 모든 LM 의 보편 행동이지 규약 위반이 아니다. 파이썬이 벗긴다(FIX A) |
+#   | 최상위 함수 **둘** | `impl_not_single_expression:2` | 🔴 **모델의 것** — 프롬프트가 "최상위 도우미는 금지, 도우미는 몸통 **안**" 이라고 명시하는데 모델이 `find_suitable_robot` 을 최상위로 냈다. 이 거절은 규약이 제 일을 한 것이고 **모델 준수도의 정직한 측정**이다. 절대 완화하지 않는다 |
+#   | `env::PlannerEnv` | `impl_positional_args_must_be_exactly_env` | **우리 것** — 타입 표기는 arity 도 호출가능성도 안 바꾼다(FIX B) |
+#
+# 그래서 이 파일이 못박는 명제는 **"우리 쪽 둘이 사라지고 모델의 것 하나가 남는다"** 다.
+#
+# 🔴 **출처**: `results/synth_lane_records.jsonl` 의 마지막 줄, `impl_code` 필드(1387 바이트,
+#    2026-09-03 20:39). 아래는 그 값에서 여는/닫는 펜스 줄만 뺀 것이고 안쪽은 **바이트 그대로**다.
+#    `results/` 는 gitignore 이므로 픽스처를 여기 박아 둔다 — 그 파일을 읽는 시험을 쓰면
+#    체크아웃에 따라 조용히 skip 되거나 다른 런의 코드를 잰다.
+# =============================================================================
+const LIVE_BARE = raw"""
+function TaskRedistributor!(env::PlannerEnv; affected_robot::String="R1", current_soc::Float64=0.5, current_speed::Float64=0.5, available_robots::Vector{String}=String[], slack_value::Float64=0.1)
+    # Extract the operating schedule
+    sched = env.sched
+    nodes = sched.nodes
+    vtx_map = sched.vtx_map
+
+    # Identify tasks assigned to the affected robot
+    affected_tasks = [node for node in nodes if node.assigned_robot == affected_robot]
+
+    # Redistribute tasks based on available robots and their capabilities
+    for task in affected_tasks
+        # Find a suitable robot from the available list
+        suitable_robot = find_suitable_robot(available_robots, current_soc, current_speed, slack_value)
+        if suitable_robot !== nothing
+            # Reassign the task to the suitable robot
+            task.assigned_robot = suitable_robot
+        end
+    end
+
+    return NamedTuple{(:status,)}((:success,))
+end
+
+function find_suitable_robot(available_robots::Vector{String}, current_soc::Float64, current_speed::Float64, slack_value::Float64)
+    # Placeholder logic to find a suitable robot
+    # In a real scenario, this would involve more complex logic considering SOC, speed, and slack
+    for robot in available_robots
+        if robot != "R1" # Avoid reassigning to the affected robot
+            return robot
+        end
+    end
+    return nothing
+end
+"""
+const LIVE_FENCED = "```julia\n" * LIVE_BARE * "```"
+
+# 위 코드의 **첫 함수만** — 최상위가 하나가 되면 그다음 관문이 규약 1 이다.
+# 🔴 이것을 손으로 다시 적지 않는다: 진실원은 `LIVE_BARE` 하나다.
+const LIVE_FIRST_FN = LIVE_BARE[1:(findfirst("\nend\n", LIVE_BARE)).stop]
+
+@testset "(18) 🔴 R18 FIX B: 위치인자 env 는 타입 표기를 달아도 된다" begin
+    # 라이브 모양 그대로 — `env::PlannerEnv` + 타입 붙은 키워드 + 기본값.
+    @test CB.check_impl_conventions("TaskRedistributor!", LIVE_FIRST_FN) === nothing
+    # 표기 없는 옛 모양도 그대로 통과한다(넓히기이지 갈아타기가 아니다).
+    @test CB.check_impl_conventions("f!", "function f!(env; k = 1)\n    return :ok\nend\n") === nothing
+    @test CB.check_impl_conventions("f!", "function f!(env::Any; k = 1)\n    return :ok\nend\n") === nothing
+    @test CB.check_impl_conventions("f!", "function f!(env::PlannerEnv)\n    return :ok\nend\n") === nothing
+
+    # 🔴 나머지는 **한 톨도** 안 넓어진다. 다섯 음성 대조:
+    for bad in ("function f!(other::PlannerEnv; k = 1)\n    return :ok\nend\n",   # 이름이 다르다
+                "function f!(env::PlannerEnv, other; k = 1)\n    return :ok\nend\n", # 위치인자 둘
+                "function f!(env...; k = 1)\n    return :ok\nend\n",              # slurp
+                "function f!(env::PlannerEnv...; k = 1)\n    return :ok\nend\n",   # 타입 붙은 slurp
+                "function f!(env = 1; k = 1)\n    return :ok\nend\n",              # 기본값
+                "function f!(::PlannerEnv; k = 1)\n    return :ok\nend\n",         # 이름이 없다
+                "function f!(; k = 1)\n    return :ok\nend\n")                     # 위치인자 0
+        local why = CB.check_impl_conventions("f!", bad)
+        @test why !== nothing &&
+              startswith(why, "reject:impl_positional_args_must_be_exactly_env:")
+    end
+    # 키워드 규약은 타입 표기가 붙어도 그대로다 — 기본값 없는 키워드는 여전히 거절.
+    @test CB.check_impl_conventions("f!", "function f!(env::PlannerEnv; k::Int)\n    return :ok\nend\n") ==
+          "reject:impl_keyword_needs_a_default:k::Int"
+end
+
+@testset "(19) 🔴 R18 FIX C: 펜스가 줄리아까지 오면 그 사실을 이름으로 말한다" begin
+    # 진단이지 둘째 고침이 아니다 — FIX A 뒤로 펜스는 여기 오면 안 된다. 오면
+    # 그것은 파이썬 정규화가 실패했다는 뜻이고, 조용하지 말고 시끄러워야 한다.
+    @test CB.check_impl_conventions("TaskRedistributor!", LIVE_FENCED) ==
+          "reject:impl_code_is_fenced"
+    for fenced in ("```julia\nfunction f!(env; k = 1)\n    return :ok\nend\n```",
+                   "```\nfunction f!(env)\n    return :ok\nend\n```",
+                   "  \n```jl\nfunction f!(env)\nend\n")   # 안 닫힌 펜스도 펜스다
+        @test CB.check_impl_conventions("f!", fenced) == "reject:impl_code_is_fenced"
+    end
+    # 🔴 음성 대조: 맨 Julia 는 이 사유를 절대 안 받는다.
+    @test CB.check_impl_conventions("f!", "function f!(env)\n    run(`ls`)\nend\n") === nothing
+end
+
+@testset "(20) 🔴 R18: 우리 쪽 둘이 사라지고 **모델의 것** 하나가 남는다" begin
+    # 펜스를 벗긴 라이브 코드에 남는 유일한 거절은 최상위 함수가 둘이라는 것이다.
+    # 🔴 이 단언이 빨개지면 규약을 고칠 것이 아니라 **그것이 발견**이다.
+    @test CB.check_impl_conventions("TaskRedistributor!", LIVE_BARE) ==
+          "reject:impl_not_single_expression:2"
+end
+
 end # module
