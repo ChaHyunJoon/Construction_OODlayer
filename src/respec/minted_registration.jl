@@ -407,6 +407,67 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
 end
 
 """
+    impl_param_types(code) -> Dict{String,Any}
+
+시그니처의 키워드에서 **타입 주석**만 뽑는다. 주석이 없거나 우리가 못 읽는 모양이면
+그 키는 **없다**(`nothing` 을 값으로 넣지 않는다 — 삼상 규약).
+
+🔴 `T` 는 모델이 쓴 **AST 조각**이지 `Type` 이 아니다. `Core.eval` 로 바꿔야 하는데 그
+   eval 은 임의 코드를 돌릴 수 있다. 그래서 **타입 표현식의 모양**(`Symbol` ·
+   `Expr(:curly, …)`)만 통과시키고, 아니면 그 키를 버린다 — 거절이 아니다.
+   여기서 거절하면 모델의 정상 코드를 우리 파서의 한계로 막는다.
+🔴 순수 함수다. eval 은 **타입 표현식 하나**에만 돌고 세계를 안 건드린다.
+🔴 **`check_impl_conventions` 와 일부러 중복한다**(P5). 그 함수는 `Union{Nothing,String}` 을
+   돌려주므로 타입을 실어 보낼 자리가 없고, 반환형을 넓히면 호출자 전부와 시험 열몇이
+   따라 바뀐다. 키워드 블록을 두 번 걷는 값이 그것보다 싸다.
+"""
+function impl_param_types(code::AbstractString)
+    out = Dict{String,Any}()
+    local top
+    try; top = Meta.parseall(code); catch; return out; end
+    exprs = [x for x in top.args if !(x isa LineNumberNode)]
+    length(exprs) == 1 || return out
+    f = exprs[1]
+    (f isa Expr && f.head === :function) || return out
+    sig = f.args[1]
+    (sig isa Expr && sig.head === :call) || return out
+    kb = findfirst(x -> x isa Expr && x.head === :parameters, sig.args[2:end])
+    kb === nothing && return out
+    for k in sig.args[2:end][kb].args
+        (k isa Expr && k.head === :kw) || continue
+        lhs = k.args[1]
+        (lhs isa Expr && lhs.head === :(::) && length(lhs.args) == 2 &&
+         lhs.args[1] isa Symbol) || continue
+        texpr = lhs.args[2]
+        _is_type_shape(texpr) || continue
+        local T
+        try; T = Core.eval(@__MODULE__, texpr); catch; continue; end
+        T isa Type || continue
+        out[String(lhs.args[1])] = T
+    end
+    return out
+end
+
+"""
+타입 표현식의 **모양**인가. 호출·보간·매크로는 전부 거짓이다.
+
+🔴 `Integer`·`QuoteNode` 갈래는 계획서 초안에 없었고 **실측으로 더했다**(2026-09-04).
+   초안의 세 갈래(`Symbol` · `:curly` · 점 이름)만으로는 `Array{String,1}` 이 거짓이다 —
+   `Expr(:curly, :Array, :String, 1)` 의 셋째 인자가 `Symbol` 도 `Expr` 도 아닌 `Int` 라
+   `all(_is_type_shape, …)` 가 무너진다. 그것은 정확히 시험 (7) 이 쓰는 주석이고,
+   `Vector{String}` 의 가장 흔한 다른 철자다. 같은 구멍에 `NTuple{3,Int}`·`Val{:x}` 도
+   걸렸다(11 모양 프로브: 초안은 5/11, 지금은 8/11 — 나머지 셋 `f(x)`·`\$(T)`·`where` 는
+   **일부러** 거짓이다). 리터럴 정수와 `QuoteNode(:sym)` 은 코드가 아니라 값이므로
+   `Core.eval` 로 무엇도 실행시킬 수 없다 — 넓히는 대가가 없다.
+"""
+_is_type_shape(e) =
+    e isa Symbol ||
+    e isa Integer ||                                     # `Array{String,1}` 의 `1`
+    (e isa QuoteNode && e.value isa Symbol) ||           # `Val{:x}`
+    (e isa Expr && e.head === :curly && all(_is_type_shape, e.args)) ||
+    (e isa Expr && e.head === :. && length(e.args) == 2 && e.args[2] isa QuoteNode)
+
+"""
     register_minted_primitive!(; name, code, params, surface, reversible) -> Union{Nothing,String}
 
 규약 검사 → `Core.eval` → 런-스코프 표에 등록. 통과하면 `nothing`, 아니면 거절 사유.
@@ -459,6 +520,10 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
         (k isa AbstractString || k isa Symbol) ||
             return "reject:params_keys_not_strings:$(typeof(k))"
     end
+    # 🔴 D16. 키워드의 **선언 타입**을 여기서 뽑는다 — 규약 검사가 통과한 뒤, `Core.eval`
+    #    **전에**(F7 의 "검증은 eval 앞" 불변식 안쪽이다). 순수 함수이고 못 읽는 모양은
+    #    거절이 아니라 **그 키를 버린다** — 우리 파서의 한계로 모델의 정상 코드를 막지 않는다.
+    local _ptypes = impl_param_types(code)
     try
         Core.eval(@__MODULE__, Meta.parseall(code))
     catch e
@@ -477,6 +542,11 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
         #    쓰면 순회가 한 번이라 이 사고 자체가 안 생긴다.
         "params"       => Dict{String,Any}(String(k) => v for (k, v) in _pk),
         "reversible"   => reversible,
+        # 🔴 D16. 키워드 이름 → `Type`. `bind_primitive_args` 가 이것으로 JSON3 의 지연
+        #    뷰를 네이티브 컨테이너로 바꾼다 — Julia 의 키워드 인자는 `convert` 가 아니라
+        #    **타입 단언**이라 경계가 안 바꿔 주면 호출이 `TypeError` 로 죽는다(실측 P1).
+        #    주석 없는 키워드는 **키가 없다**(삼상 규약).
+        "param_types"  => _ptypes,
         # 🔴 C1 (2026-09-03 최종 리뷰). **이 행이 생성 코드에서 왔다**는 표시. 집행부의
         #    `_step_applied`·`_step_touched_world` 가 이것을 읽어 "이 원시의 status 어휘를
         #    아는 표가 없다" 를 안다. 판별자가 "`minted_table()` 에 있는가" 이면 안 되는

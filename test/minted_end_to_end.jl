@@ -460,4 +460,63 @@ end
     @test r.handled === true
 end
 
+
+@testset "(7) 🔴 D16: JSON3 배열·객체가 선언 타입으로 변환돼 호출이 산다" begin
+    CB.reset_minted_table!()
+    code = """
+    function d16_array_tool!(env; task_ids::Array{String,1}=String[], k::Int=0)
+        return (status = Symbol("saw_", length(task_ids), "_", k),)
+    end
+    """
+    params = Dict{String,Any}("task_ids" => Dict("type" => "array",
+                                                 "items" => Dict("type" => "string")),
+                              "k" => Dict("type" => "integer"))
+    @test CB.register_minted_primitive!(name = "d16_array_tool!", code = code,
+                                        params = params, surface = "sched",
+                                        reversible = false) === nothing
+    prim = CB.resolve_primitive("d16_array_tool!")
+    @test prim !== nothing
+    calls = CB.normalize_calls(JSON3.read(
+        """[{"primitive":"d16_array_tool!","args":{"task_ids":["t1","t2","t3"],"k":7}}]"""))
+    @test !(calls isa String)
+    b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
+    @test !(b isa String)
+    # 🔴 뷰가 아니라 네이티브 컨테이너여야 한다
+    @test b[2].task_ids isa Vector{String}
+    r = Base.invokelatest(getfield(CB, Symbol("d16_array_tool!")), b[1]...; b[2]...)
+    @test r.status === :saw_3_7
+end
+
+@testset "(8) 🔴 D16: 변환 실패는 예외가 아니라 거절이다" begin
+    CB.reset_minted_table!()
+    code = """
+    function d16_bad_tool!(env; n::Int=0)
+        return (status = :ok,)
+    end
+    """
+    @test CB.register_minted_primitive!(name = "d16_bad_tool!", code = code,
+        params = Dict{String,Any}("n" => Dict("type" => "string")),
+        surface = "sched", reversible = false) === nothing
+    calls = CB.normalize_calls(JSON3.read(
+        """[{"primitive":"d16_bad_tool!","args":{"n":"not a number"}}]"""))
+    b = CB.bind_primitive_args(CB.resolve_primitive("d16_bad_tool!"),
+                               (env = :DUMMY, truth = nothing, params = calls[1][2]))
+    @test b isa String
+    @test startswith(b, "reject:param_convert:n:")
+end
+
+@testset "(9) 🔴 D16: 주석 없는 키워드는 오늘 그대로 흐른다" begin
+    CB.reset_minted_table!()
+    code = """
+    function d16_plain_tool!(env; anything="x")
+        return (status = :ok,)
+    end
+    """
+    @test CB.register_minted_primitive!(name = "d16_plain_tool!", code = code,
+        params = Dict{String,Any}("anything" => Dict("type" => "string")),
+        surface = "sched", reversible = false) === nothing
+    prim = CB.resolve_primitive("d16_plain_tool!")
+    @test !haskey(prim.param_types, "anything")   # 키가 **없다** (nothing 을 넣지 않는다)
+end
+
 end # module

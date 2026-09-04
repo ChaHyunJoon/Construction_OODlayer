@@ -57,12 +57,20 @@ function resolve_primitive(name::AbstractString)
     f isa Function || error("$(p["impl"]) 이 callable 이 아니다 (원시 $(name))")
     harness = String[String(a) for a in get(p, "harness_args", [])]
     prms    = Dict{String,Any}(String(k) => v for (k, v) in pairs(get(p, "params", Dict())))
+    # 🔴 D16. 키워드의 **선언 타입**(이름 → `Type`). 기본값은 **빈 `Dict`** 이지 `nothing`
+    #    이 아니다 — 손으로 씨 뿌린 알려진 원시(`test/minted_seed_fixture.jl` 의
+    #    `MINTED_FIXTURE_ROWS`, 2026-09-04 실측 **19행**)에는 이 열이 아예 없고, 그때
+    #    `bind_primitive_args` 는 "선언 타입을 모른다 ⟹ 값을 그대로 흘린다" 로 가야 한다
+    #    (오늘의 동작). `nothing` 을 넣으면 그 자리가 `haskey`/`get` 두 어휘로 갈린다.
+    ptypes  = Dict{String,Any}(String(k) => v
+                               for (k, v) in pairs(get(p, "param_types", Dict())))
     en, why = _enactability(f, harness, prms)
     return (name           = String(name),
             impl           = f,
             surface        = String(p["surface"]),
             harness_args   = harness,
             params         = prms,
+            param_types    = ptypes,
             reversible     = Bool(get(p, "reversible", false)),
             enactable      = en,
             unenactable_why = why)
@@ -805,7 +813,24 @@ function bind_primitive_args(prim, ctx)
         #    `partial = true` 로 적히고, 손도 안 댄 세계가 `handled=true` 로 폴백을 삼킨다.
         local bad = _param_type_reject(prim.params[String(k)], v)
         bad === nothing || return "reject:param_type:$(k):$(bad) (원시 $(prim.name))"
-        kw[Symbol(k)] = v
+        # 🔴 D16 (프로브 P1). Julia 의 **키워드 인자는 `convert` 가 아니라 타입 단언**이다 —
+        #    위치인자와 달리 자동 변환이 없다. 그리고 `/decide` 를 거쳐 온 값은 네이티브
+        #    컨테이너가 아니라 `JSON3.Array`/`JSON3.Object` 의 **지연 뷰**다. 둘이 겹쳐,
+        #    등록이 처음 성공하는 순간 호출이 `TypeError` 로 죽는다(실측). 변환은 우리 몫이다.
+        #    🔴 예외가 아니라 거절이다: 여기서 던지면 `enact_minted!` 의 catch 가 손도 안 댄
+        #    세계를 `partial=true → handled=true` 로 적어 폴백을 삼킨다.
+        local T = get(prim.param_types, String(k), nothing)
+        if T === nothing
+            kw[Symbol(k)] = v                 # 주석 없는 키워드는 오늘 그대로 흐른다
+        else
+            local cv
+            try
+                cv = convert(T, v)
+            catch
+                return "reject:param_convert:$(k):expected $(T), got $(typeof(v)) (원시 $(prim.name))"
+            end
+            kw[Symbol(k)] = cv
+        end
     end
     # zone 계열: 안 주면 키워드를 빼고(= callee 기본값 = 살아 있는 존 전부), 줬으면
     # `Symbol` 로 강제한 뒤 **집행 한 발 전에** 살아 있는 존인지 검사한다. 위 (b) 를 보라.
