@@ -61,13 +61,13 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    통과한다(실측: `exprs` 가 `Expr(:function, ...)` 하나만 요구하고, 그 함수의 몸통
    안쪽은 안 들여다본다). **이것은 앞으로도 허용이다** — 재는 것은 "최상위 정의가
    정확히 하나" 이고, 그 하나의 정의 안에 사는 도우미 클로저는 그 규약을 하나도 안
-   어긴다. 모델이 긴 몸통을 내부 클로저로 나눈 것은 잘못이 아니다. ⚠️ 이 규약은
-  agent-3 에게 보여주는 프롬프트 문구(`src/respec/llm_service/world_interface.py`
-  의 "No other definitions -- no `const`, no macros, no helper functions.")와
-  글자로는 어긋난다 — 그 문구는 이 파일(`src/respec/minted_registration.jl`) 소유가
-  아니라서 여기서 못 고친다. 프롬프트 쪽 문구를 "최상위(top-level) 정의는 하나뿐" 으로
-  누그러뜨리는 쪽이 맞다(모델이 몸통을 내부 클로저로 나눈 것은 잘못이 아니라는 것이
-  컨트롤러 판정이다) — 이 파일의 검사를 좁혀 지금 통과하는 것을 막는 쪽이 아니다.
+   어긴다. 모델이 긴 몸통을 내부 클로저로 나눈 것은 잘못이 아니다. ✅ 2026-09-03
+  (같은 리뷰 라운드): agent-3 에게 보여주는 프롬프트 문구(`src/respec/llm_service/
+  world_interface.py` 의 규약 4)가 예전엔 "No other definitions -- no `const`,
+  no macros, no helper functions." 라고 적어 이 규약과 글자로 어긋났다 — 컨트롤러가
+  그 파일을 이 태스크에 임시로 열어 줘서 "최상위(top-level) 정의는 하나뿐, 몸통
+  **안**의 도우미 클로저는 괜찮다" 로 고쳤다. 지금은 프롬프트와 이 검사기가 같은
+  결론을 낸다.
 🔴 규약 5 는 이 사슬에서 가장 나쁜 사고를 막는다 — `Core.eval` 이 기존 이름을 덮으면
    시뮬레이터 코드를 런타임에 교체한다. **검사 자체는 그대로 `isdefined` 다**(export
    여부로 좁히면 그 사고가 비공개 이름으로 그대로 열린다). 아래에서 갈리는 것은 **거절

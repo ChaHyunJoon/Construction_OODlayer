@@ -49,7 +49,8 @@ _RULES = (
     "  2. The name must end with `!` and must NOT already exist in the module.\n"
     "  3. Return a value the harness can read a status from: either a Symbol, or a NamedTuple\n"
     "     with a `status::Symbol` field. That status is how the record says what happened.\n"
-    "  4. No other definitions -- no `const`, no macros, no helper functions.\n"
+    "  4. Exactly one TOP-LEVEL definition -- no other top-level `const`, macros, or\n"
+    "     helper functions. Helper closures defined INSIDE your function body are fine.\n"
 )
 
 
