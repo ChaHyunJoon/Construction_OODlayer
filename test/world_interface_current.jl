@@ -27,13 +27,15 @@ end
     #    path` 로 죽는다(실측, 재현: `JULIA_LOAD_PATH="@:/tmp/x" julia +lts --project=.
     #    tools/gen_world_interface.jl` 로 격리 재현). Task 2 는 전체 `Pkg.test()` 를
     #    지시대로 돌리지 않아 이 결함이 그때부터 안 잡혔다. 고침: 자식 프로세스에서
-    #    두 env var 를 지워 기본 LOAD_PATH(`@stdlib` 포함)로 돌아가게 한다.
+    #    `JULIA_LOAD_PATH` 를 지워 기본 LOAD_PATH(`@stdlib` 포함)로 돌아가게 한다.
+    #    ⚠️ 인과는 `JULIA_LOAD_PATH` **하나**다. 이전 판은 `JULIA_PROJECT` 도 같이 지우고
+    #    주석에 "두 env var" 라 적었는데, 자식이 항상 넘기는 `--project=` 플래그가 어느
+    #    조합에서도 `JULIA_PROJECT` 를 이긴다(실측). 없는 기전을 찾게 만드는 죽은 줄이라 뺐다.
     mktempdir() do dir
         out = joinpath(dir, "regen.json")
         cmd = `julia +lts --project=$(normpath(joinpath(@__DIR__, ".."))) $(normpath(joinpath(@__DIR__, "..", "tools", "gen_world_interface.jl"))) $(out)`
         env = copy(ENV)
         delete!(env, "JULIA_LOAD_PATH")
-        delete!(env, "JULIA_PROJECT")
         run(setenv(cmd, env))
         @test read(out, String) == read(ART, String)
     end
@@ -80,16 +82,65 @@ end
 end
 
 @testset "(7) 🔴 D12: env 밖 세계 상태가 실리고, 그 접근자는 실제로 부를 수 있다" begin
+    # ⚠️ 이 게이트가 증명하는 것은 **산출물↔산출물 자기일관성**이다 — `ambient` 와
+    #    `methods` 가 **같은 생성기 실행**에서 나오기 때문이다. 집행 프로세스에서의
+    #    도달성은 증명하지 않는다(리뷰 I5); 그것은 아래 (8) 이 따로 지킨다.
     j = JSON3.read(read(ART, String))
-    @test haskey(j, :ambient) && !isempty(j.ambient)
-    accs = Set(String[String(a.accessor) for a in j.ambient])
-    @test "battery_report()" in accs
-    # 🔴 산출물이 **부를 수 없는 이름을 광고하면 안 된다**. 접근자의 이름이 실제로
-    #    export 표면에 있어야 한다 — 없으면 모델이 그것을 부르고 UndefVarError 로 죽는다.
-    ms = Set(String[String(m.name) for m in j.methods])
-    for a in j.ambient
-        base = first(split(String(a.accessor), "("))
-        @test base in ms
+    @test haskey(j, :ambient)
+    # 🔴 리뷰 m2: 아래를 `@test` **밖에서** 던지게 두면(예전 판) 키가 없을 때 KeyError 가
+    #    Fail 이 아니라 **Error** 로 세어져 스위트의 바이트 고정 기준 "1 errored (Gurobi)"
+    #    가 "2 errored" 가 된다 — 환경 문제로 오독되는 모양이다.
+    if haskey(j, :ambient)
+        @test !isempty(j.ambient)
+        accs = Set(String[String(a.accessor) for a in j.ambient])
+        @test "battery_report()" in accs
+        # 🔴 산출물이 **부를 수 없는 이름을 광고하면 안 된다**. 접근자의 이름이 실제로
+        #    export 표면에 있어야 한다 — 없으면 모델이 그것을 부르고 UndefVarError 로 죽는다.
+        ms = Set(String[String(m.name) for m in j.methods])
+        for a in j.ambient
+            base = first(split(String(a.accessor), "("))
+            @test base in ms
+        end
+        # 🔴 I4. 전제조건이 빠진 광고는 **모델이 못 지킨 것을 모델 탓으로** 기록하게 만든다.
+        #    실측: `BATTERY_FLEET[] === nothing`(배터리 회계는 opt-in 이라 이것이 기본값)
+        #    에서 `battery_report()` 는 `MethodError: no method matching
+        #    battery_report(::Nothing)` 를 던진다. 프로덕션 호출자 둘이 전부 try/catch 로
+        #    감싸는 이유가 그것이고, 그 사실이 프롬프트에는 한 글자도 없었다.
+        for a in j.ambient
+            @test haskey(a, :precondition) && !isempty(String(a.precondition))
+        end
+        bf = only(filter(a -> String(a.accessor) == "battery_report()", collect(j.ambient)))
+        @test occursin("BATTERY_FLEET", String(get(bf, :precondition, "")))
     end
+end
+
+@testset "(8) 🔴 I5: 집행 프로세스가 그 접근자를 실제로 볼 수 있다" begin
+    # 🔴 (7) 이 증명하지 **못하는** 것을 여기서 증명한다. 주조 body 는 `Core.eval` 로 CB 에
+    #    심겨(`src/respec/minted_registration.jl`) `tools/monitor/*.jl` 이 만든 프로세스에서
+    #    돈다. 그 프로세스가 navigator 를 include 하지 않거나 `enact.jl` **뒤에** 하면
+    #    `battery_report` 는 그 세계에 없고 body 는 UndefVarError 로 죽는데 — (7) 은 초록으로
+    #    남는다(실측: 이 include 를 고정하는 시험이 레포에 하나도 없었다).
+    #    두 스크립트는 최상위 부작용이 있어 include 할 수 없으므로(runtests.jl:254) 텍스트로
+    #    고정한다. 이 단언이 곧 "주석이 아니라 게이트" 다.
+    navpat = "CB.include(joinpath(pkgdir(CB), \"src\", \"navigator\", \"navigator.jl\"))"
+    enapat = "include(joinpath(@__DIR__, \"enact.jl\"))"
+    for f in ("render_demo.jl", "run_demo.jl")
+        src = read(joinpath(@__DIR__, "..", "tools", "monitor", f), String)
+        nav = findfirst(navpat, src)
+        ena = findfirst(enapat, src)
+        @test nav !== nothing
+        @test ena !== nothing
+        @test !(nav === nothing || ena === nothing) && first(nav) < first(ena)
+    end
+end
+
+@testset "(9) 🔴 m4: export 표면에 정의 없는 이름은 battery_report 하나뿐이다" begin
+    # D12 가 `battery_report` 를 export 하면서 이 패키지의 첫 **exported-but-undefined**
+    # 이름이 생겼다(실측: 그 전에는 공집합). 정당한 예외다 — navigator 층은 런타임
+    # `include` 라서 `using ConstructionBots` 만으로는 정의되지 않는다. 정당한 예외가
+    # **하나뿐**이라는 것이 계약이고, export 줄의 주석이 아니라 이 단언이 그것을 지킨다.
+    # ⚠️ 부분집합인 이유: 앞선 시험이 navigator 를 이미 include 했으면 좌변이 공집합이 된다.
+    undefd = Symbol[n for n in names(CB) if !isdefined(CB, n)]
+    @test issubset(Set(undefd), Set([:battery_report]))
 end
 end # module

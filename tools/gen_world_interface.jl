@@ -16,13 +16,47 @@ const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 
 """
+    _returns_string(f, sig) -> String
+
+접근자의 반환 모양을 **시그니처에서 유도한다**. 🔴 리뷰 m5: 옛 판은 `battery.jl` 의
+반환 NamedTuple 을 손으로 베껴 `AMBIENT_ROOTS` 에 문자열로 들고 있었다 — 기계가 아무것도
+안 보므로 드리프트가 조용히 모델의 프롬프트에 실린다. 이제 진실원이 함수 하나다.
+
+🔴 **조용한 폴백을 두지 않는다.** 추론이 NamedTuple 을 안 주면 큰 소리로 죽는다 —
+빈 문자열을 실으면 모델이 "반환이 없다" 로 읽는다.
+⚠️ 결정성: 같은 코드·같은 줄리아에서 재현된다(세 프로세스 실측, 바이트 동일). 흔들리면
+게이트 (2) 의 바이트 비교가 **빨개진다** — 조용히 새지 않는다.
+"""
+function _returns_string(f, sig)
+    rts = Base.return_types(f, sig)
+    length(rts) == 1 || error("앰비언트 접근자의 반환 타입이 하나로 추론되지 않는다: ", rts)
+    rt = only(rts)
+    (rt isa DataType && rt <: NamedTuple) ||
+        error("앰비언트 접근자가 NamedTuple 을 안 준다: ", rt)
+    return "(" * join([string(n, "::", t)
+                       for (n, t) in zip(fieldnames(rt), fieldtypes(rt))], ", ") * ")"
+end
+
+"""
 앰비언트 세계 상태 — `PlannerEnv` 에 없지만 세계인 것. **손으로 유지되는 유일한 목록**이고,
-그래서 게이트 `(7)` 이 "접근자가 `names(CB)` 에 있다" 를 지킨다.
+그래서 게이트 `(7)` 이 "접근자가 `names(CB)` 에 있다" 를, 게이트 `(8)` 이 "집행 프로세스가
+그것을 실제로 로드한다" 를 지킨다.
+
+🔴 `precondition` 은 선택 필드가 아니다(리뷰 I4, 게이트 (7) 이 강제한다). 전제조건 없이
+   광고하면, 모델이 그대로 부르고 body 가 던진 것이 기록에 `verdict=reject
+   world_maybe_dirty=true` = **모델의 저작 실패**로 남는다 — 사실은 우리 프롬프트의 누락이다.
+   실측: `BATTERY_FLEET[] === nothing`(배터리 회계는 opt-in 이라 이것이 기본값)에서
+   `battery_report()` 는 `MethodError: no method matching battery_report(::Nothing)` 를
+   던진다. 프로덕션 호출자 둘(`render_demo.jl`·`run_demo.jl`)이 전부 try/catch 로 감싸고
+   `battery_metrics_kwargs` 는 `fleet === nothing` 을 먼저 검사한다.
 """
 const AMBIENT_ROOTS = [
     (name = "battery fleet", accessor = "battery_report()",
-     returns = "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, " *
-               "soc_spread::Float64, n_depleted::Int, soc::Dict{Any,Float64})"),
+     returns = _returns_string(CB.battery_report, Tuple{CB.BatteryFleet}),
+     precondition = "only when ConstructionBots.BATTERY_FLEET[] !== nothing. Battery " *
+                    "accounting is opt-in and OFF by default; calling the accessor with " *
+                    "no fleet throws MethodError. Check it first and report `nothing` " *
+                    "for the unmeasured case instead of letting the call throw."),
 ]
 
 _unwrap(T) = T isa UnionAll ? Base.unwrap_unionall(T) : T
@@ -172,7 +206,7 @@ end
 메서드 하나를 **모델이 호출을 쓸 수 있는 모양**으로 렌더한다: `(env::PlannerEnv; min_ready, snap_all)`.
 
 🔴 **왜 `string(m.sig)` 이 아닌가** (2026-09-03 최종 리뷰 I3). 그 표현은 `Tuple{typeof(f), Any}`
-   다 — 208개 메서드 **전부**가 그 모양이었다. 인자 **이름이 없고 키워드가 통째로 없다.**
+   다 — 메서드 **전부**가 그 모양이었다. 인자 **이름이 없고 키워드가 통째로 없다.**
    이 산출물의 존재 이유는 모델이 이 함수들을 **부르는 코드를 쓰는 것**인데, 부를 때 필요한
    두 가지가 정확히 그 둘이다. `Base.method_argnames` 와 `Base.kwarg_decl` 이 둘 다 준다.
 
@@ -182,7 +216,7 @@ end
 
 ⚠️ 이름이 없는 인자(`f(::Int)`)는 `method_argnames` 가 `#unused#` 같은 젠심을 준다 —
    그런 이름은 `_` 로 정규화한다. 젠심을 그대로 실으면 모델이 그것을 인자 이름으로 읽는다.
-⚠️ `Any` 는 타입 주석을 **안 붙인다**. 208개 중 다수가 타입 없이 선언돼 있고, `x::Any` 는
+⚠️ `Any` 는 타입 주석을 **안 붙인다**. 다수가 타입 없이 선언돼 있고, `x::Any` 는
    정보가 0인데 줄만 길게 만든다.
 """
 function _sig_string(m::Method)
@@ -267,8 +301,17 @@ end
 
 const _SCALARISH = (Real, AbstractString, Symbol, Bool, Char)
 
-"이 인자 타입을 모델이 손에 넣을 수 있는가."
+"""
+이 인자 타입이 **폐포 멤버십(또는 스칼라/Any)** 기준을 통과하는가 (설계 §6.2 의 판정).
+
+🔴 리뷰 I2: `Vararg{Any}` 는 `isa DataType` 가 **false** 라 아래 `S isa DataType ||
+   return false` 에 걸려 통째로 떨어졌다 — `Any` 는 true 인데 `Vararg{Any}` 는 false 였다.
+   그래서 `set_desired_global_transform!(n::SceneNode, args...)` 처럼 **경로가 이미 있는**
+   세계 변경자 다섯이 "obtain 할 수 없다" 쪽에 실렸다. 모델이 조립체를 옮기려는데 유일한
+   공개 변경자가 못 부른다고 적혀 있으면, L3 이 0 인 이유가 어휘가 아니라 이 한 줄이 된다.
+"""
 function _arg_obtainable(T, reach)
+    T isa Core.TypeofVararg && return _arg_obtainable(Base.unwrapva(T), reach)
     T isa Union && return _arg_obtainable(T.a, reach) && _arg_obtainable(T.b, reach)
     S = _unwrap(T)
     S === Any && return true
@@ -277,6 +320,57 @@ function _arg_obtainable(T, reach)
     S === Nothing && return true
     any(P -> S <: P, _SCALARISH) && return true
     return _tname(S) in reach
+end
+
+"""렌더가 인자 하나에 실을 경로의 상한 (Ruling R11).
+
+`AbstractID` 는 경로가 9개다. 하나로 접으면 사전순 첫째가 뽑히는데, 그것은 의미순이 아니라
+**동전던지기에 답의 옷을 입힌 것**이다(실측: 그 컬렉션의 조성이 {TemplatedID 28, ObjectID 20,
+BotID 18, AssemblyID 8} 이라 로봇 id 를 요구하는 메서드가 로봇을 받을 확률이 18/74 = 24%).
+넷이면 모델이 **고를 수 있는** 선택지가 되고 프롬프트는 몇백 줄만 는다.
+"""
+const _MAX_PATHS = 4
+
+"""
+    _arg_sourceable(T, acc) -> Bool
+
+이 인자의 **값을 실제로 손에 넣을 수 있는가**. `_arg_obtainable`(폐포 **멤버십**)보다 강한
+주장이다 — 여기서 보는 것은 `acc`(= `env` 로부터의 실제 경로)다. 리터럴로 쓸 수 있는 것
+(스칼라·`Nothing`·`Any`)과 하네스가 주는 `env` 는 경로가 필요 없다.
+"""
+function _arg_sourceable(T, acc)
+    T isa Core.TypeofVararg && return _arg_sourceable(Base.unwrapva(T), acc)
+    # Union 은 **한 갈래만** 손에 넣어도 호출할 값이 생긴다 (`_arg_obtainable` 의 `&&` 와 다르다).
+    T isa Union && return _arg_sourceable(T.a, acc) || _arg_sourceable(T.b, acc)
+    S = _unwrap(T)
+    (S === Any || S === CB.PlannerEnv || S === Nothing) && return true
+    S isa DataType || return false
+    any(P -> S <: P, _SCALARISH) && return true
+    return !isempty(get(acc, _tname(S), String[]))
+end
+
+"""
+    _missing_types(Ts, acc) -> Vector{String}
+
+이 메서드를 부르려면 필요한데 **얻는 방법이 없는** 인자 타입들. 설계 §6.2 의
+`missing: <타입>` 이 이것이고, 두 표제 **모두**가 이것을 싣는다:
+
+* 둘째 표제(못 부른다)에서는 "폐포 밖이라 못 부른다" 의 이름이고,
+* 첫째 표제(부를 수 있다)에서는 🔴 **표제가 32건에 대해 하는 거짓 약속**을 갚는다 —
+  "every argument is obtainable from env" 아래에 경로 없는 인자를 가진 항목이 앉아 있었고,
+  모델이 `apply_cmd!(node, twist, env)` 를 쓰려다 `node` 의 출처를 못 찾고 placeholder 를
+  쓰는 것이 정확히 설계 §1.2, 즉 D11 이 없애려던 실패다(리뷰 I1).
+
+⚠️ 이름은 `_tname` 이다 — WORLD TYPES 블록·`access` 색인과 **같은 어휘**여야 모델이 이어
+   읽는다(따라서 `AbstractVector` 는 `AbstractArray` 로 적힌다).
+"""
+function _missing_types(Ts, acc)
+    ns = String[]
+    for T in Ts
+        _arg_sourceable(T, acc) && continue
+        push!(ns, _tname(T isa Core.TypeofVararg ? Base.unwrapva(T) : T))
+    end
+    return sort!(unique!(ns))
 end
 
 """
@@ -291,6 +385,13 @@ end
    아직 없는 타입이 있으므로 — 오늘 `callable` 인 것의 다수가 `argpaths` 가 비어 있다 —
    `callable=true` 를 "이 줄만 보고 바로 부를 수 있다" 로 읽으면 안 된다. 그 강한 주장을
    나르는 것은 **`argpaths` 가 비어 있지 않은 항목**뿐이다.
+
+🔴 그 정직함이 줄리아 주석에만 있고 모델이 읽는 표제에는 반대로 적혀 있던 것이 리뷰 I1 이다.
+   그래서 셋째 필드 `missing` 을 같이 싣는다(`_missing_types`) — 렌더는 두 표제 **모두**에
+   그것을 적으므로, 프롬프트와 이 주석이 같은 것을 말한다.
+
+⚠️ `argpaths` 는 `callable` 인 항목에만 붙는다(설계 §6.2 의 둘째 표제 모양은 경로 줄이 없다).
+   못 부르는 것의 "무엇이 없나" 는 `missing` 이 나른다.
 """
 function method_entries(reach, acc)
     out = Dict{String,Any}[]
@@ -311,17 +412,22 @@ function method_entries(reach, acc)
                     isempty(ps) && continue
                     nm = length(nms) >= i + 1 ? String(nms[i + 1]) : "_"
                     startswith(nm, "#") && (nm = "_")
-                    push!(paths, string(nm, " <- ", first(ps)))
+                    # Ruling R11: 사전순 첫째 하나로 접지 않는다. `ps` 는 이미 정렬돼
+                    # 있으므로 상한만 씌운다 — 결정성은 구조(정렬)이지 우연이 아니다.
+                    for p in first(ps, _MAX_PATHS)
+                        push!(paths, string(nm, " <- ", p))
+                    end
                 end
             end
             push!(out, Dict("name" => string(n), "signature" => _sig_string(m),
-                            "callable" => callable, "argpaths" => paths))
+                            "callable" => callable, "argpaths" => paths,
+                            "missing" => _missing_types(Ts, acc)))
         end
     end
     # 결정적 정렬 (Ruling R-SORT): Julia 의 method-table 순회 순서는 보장된 계약이
     # 아니다. testset (2) 가 새 서브프로세스 재생성물과 커밋된 사본을 바이트째 비교하므로,
     # 이 정렬이 없으면 그 비교가 실행마다 이유 없이 흔들릴 수 있다.
-    # F6: `alg=MergeSort` 로 명시 — 기본 정렬은 안정 정렬이 아니다. 오늘의 208개 항목은
+    # F6: `alg=MergeSort` 로 명시 — 기본 정렬은 안정 정렬이 아니다. 오늘의 항목들은
     # (name, signature) 쌍이 우연히 전부 유일해서 불안정 정렬로도 바이트가 재현됐을 뿐이고,
     # 그 유일성은 계약이 아니다(같은 이름·같은 시그니처 문자열을 내는 두 메서드가 생기면
     # 불안정 정렬은 둘의 순서를 실행마다 바꿀 수 있다) — 안정 정렬이면 그 경우에도 항상
@@ -343,7 +449,8 @@ open(dst, "w") do io
                           "access" => acc,
                           "methods" => method_entries(reach, acc),
                           "ambient" => [Dict("name" => a.name, "accessor" => a.accessor,
-                                             "returns" => a.returns)
+                                             "returns" => a.returns,
+                                             "precondition" => a.precondition)
                                         for a in AMBIENT_ROOTS]))
 end
 println("wrote ", dst)

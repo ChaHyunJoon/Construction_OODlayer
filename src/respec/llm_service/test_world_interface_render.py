@@ -40,3 +40,62 @@ def test_the_rules_text_is_byte_identical():
     assert WI._RULES.startswith("HOW YOUR CODE IS CALLED")
     assert "Helper closures defined INSIDE your function body are fine." in WI._RULES
     assert _block().startswith(WI._RULES)
+
+
+def test_the_second_heading_names_what_is_missing():
+    """🔴 설계 §6.2. 둘째 표제는 `- <이름> (…)      missing: <타입>` 이다.
+
+    이름과 시그니처만 있는 평평한 목록은 §1.2 가 문제 삼은 바로 그 모양이고, 이 주석이
+    D13(`needs` 채널)의 입력이다 — 모델이 무엇이 없는지 모르면 `needs` 가 0 을 낸다.
+    """
+    b = _block()
+    _, _, tail = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    lines = [l for l in tail.splitlines() if l.startswith("- ")]
+    assert lines, "둘째 표제가 비었다"
+    assert all("missing: " in l for l in lines), \
+        [l for l in lines if "missing: " not in l][:3]
+
+
+def test_the_first_heading_admits_the_arguments_it_cannot_source():
+    """🔴 I1. "every argument is obtainable from env" 아래에 경로 없는 인자를 가진 항목이
+    앉아 있었다(실측 32건) — 모델은 `apply_cmd!(node, twist, env)` 를 쓰려다 `node` 를
+    어디서 얻는지 못 찾고 다시 placeholder 를 쓴다. 그것이 D11 이 없애려던 §1.2 다.
+    """
+    b = _block()
+    head, _, _ = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    line = [l for l in head.splitlines()
+            if l.startswith("- apply_cmd!") and "DepositCargo" in l]
+    assert len(line) == 1, line
+    assert "missing: DepositCargo, Twist" in line[0]
+    # 빈-통과 방지: 인자를 전부 손에 넣을 수 있는 항목에는 그 주석이 없다
+    ok = [l for l in head.splitlines()
+          if l.startswith("- close_node!") and "ScheduleNode" in l]
+    assert len(ok) == 1 and "missing:" not in ok[0], ok
+
+
+def test_an_id_argument_shows_more_than_one_source():
+    """🔴 R11. 인자당 `first(ps)` 하나만 실으면 `AbstractID` 의 9개 경로 중 사전순 첫째
+    (`env.scene_tree.vtx_ids[i]`)만 보인다. 그 컬렉션의 실측 조성은 {TemplatedID 28,
+    ObjectID 20, BotID 18, AssemblyID 8} — 로봇 id 를 요구하는 메서드가 로봇을 받을
+    확률이 18/74 = 24% 다. 설계 §6.2 의 예시 경로가 보여야 한다.
+    """
+    b = _block()
+    head, _, _ = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    blocks = head.split("\n- ")
+    ag = [x for x in blocks if x.startswith("asset_generation ")]
+    assert len(ag) == 1, ag
+    paths = [l.strip() for l in ag[0].splitlines() if " <- " in l]
+    assert len(paths) == 4, paths
+    assert any("env.sched.vtx_ids" in p for p in paths), paths
+
+
+def test_the_ambient_accessor_states_its_precondition():
+    """🔴 I4. `battery_report()` 는 `BATTERY_FLEET[] === nothing`(기본값)에서 던진다.
+    전제조건 없이 광고하면, 모델이 그것을 부르고 body 가 던진 것이 기록에
+    `verdict=reject world_maybe_dirty=true` = **모델의 저작 실패**로 남는다.
+    """
+    b = _block()
+    _, _, amb = b.partition("AMBIENT WORLD STATE")
+    amb = amb.partition("FUNCTIONS YOU CAN CALL NOW")[0]
+    assert "battery_report()" in amb
+    assert "BATTERY_FLEET" in amb, amb

@@ -54,6 +54,24 @@ _RULES = (
 )
 
 
+def _method_line(m) -> str:
+    """`- <이름> (…)      missing: <타입>` — 설계 §6.2 의 모양.
+
+    🔴 `missing` 은 **두 표제 모두**에 붙는다. 둘째 표제(못 부른다)에서는 스펙이 요구하는
+    그대로이고, 첫째 표제에서는 리뷰 I1 을 갚는다: "every argument is obtainable from env"
+    아래에 경로 없는 인자를 가진 항목이 32건 앉아 있었고, 모델은 `apply_cmd!(node, twist,
+    env)` 를 쓰려다 `node` 의 출처를 못 찾고 다시 placeholder 를 쓴다 — 그것이 설계 §1.2,
+    즉 D11 이 없애려던 실패 그 자체이고, 그 실패는 기록에 **모델의 실패**로 남는다.
+
+    판정도 문구도 생성기(`_missing_types`)가 정한다 — 여기서 다시 계산하지 않는다.
+    """
+    line = "- %s %s" % (m["name"], m["signature"])
+    miss = m.get("missing") or []
+    if miss:
+        line += "      missing: %s" % ", ".join(miss)
+    return line
+
+
 def build_world_interface_block(blob=None) -> str:
     b = blob if blob is not None else load_world_interface()
     parts = [_RULES, "", "WORLD TYPES (fields you may read and write):"]
@@ -67,8 +85,14 @@ def build_world_interface_block(blob=None) -> str:
     if amb:
         parts += ["", "AMBIENT WORLD STATE (not on env; read it with the accessor shown):"]
         for a in amb:
-            parts.append("- %s" % a["name"])
-            parts.append("    %s  ->  %s" % (a["accessor"], a["returns"]))
+            # 🔴 `.get`. 무조건 첨자는 Task 2 리뷰가 Critical 로 잡은 `t["fields"]` KeyError
+            #    와 같은 모양이다 — 생성기가 유일한 생산자라 오늘은 잠재적이지만, 그 모양을
+            #    한 태스크 만에 다시 열지 않는다(리뷰 m3).
+            parts.append("- %s" % a.get("name", ""))
+            parts.append("    %s  ->  %s" % (a.get("accessor", ""), a.get("returns", "")))
+            # 🔴 I4. 전제조건 없는 광고는 모델이 못 지킨 것을 **모델의 실패**로 기록되게 한다.
+            if a.get("precondition"):
+                parts.append("    valid %s" % a["precondition"])
     # 🔴 D11. 평평한 한 목록은 "선택자가 없다" 로 읽혔다(설계 §1.2) — 모델이 placeholder 를
     #    썼다. 가르는 것은 **렌더**이지 모집단이 아니다: 두 표제 다 같은 `b["methods"]` 에서
     #    나오고, D6 이 감춘 다섯은 애초에 산출물에 없다.
@@ -76,10 +100,10 @@ def build_world_interface_block(blob=None) -> str:
     later = [m for m in b["methods"] if not m.get("callable")]
     parts += ["", "FUNCTIONS YOU CAN CALL NOW (every argument is obtainable from env):"]
     for m in now:
-        parts.append("- %s %s" % (m["name"], m["signature"]))
+        parts.append(_method_line(m))
         for p in m.get("argpaths") or []:
             parts.append("      %s" % p)
     parts += ["", "FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET:"]
     for m in later:
-        parts.append("- %s %s" % (m["name"], m["signature"]))
+        parts.append(_method_line(m))
     return "\n".join(parts)

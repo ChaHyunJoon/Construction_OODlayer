@@ -54,11 +54,16 @@ end
     acc = Dict(String(k) => String[String(x) for x in v] for (k, v) in pairs(j.access))
     @test any(p -> occursin("env.sched.nodes", p), acc["ScheduleNode"])
     @test any(p -> occursin("env.agent_policies", p), acc["VelocityController"])
-    # 빈-통과 방지: 도달 못 하는 타입은 색인에 키가 없거나 빈 목록이다
-    @test all(v -> v isa Vector, values(acc))
+    # 🔴 색인의 계약: **키가 있으면 경로가 있다.** 도달 못 하는 타입은 키 자체가 없다
+    #    (`add!` 는 push 와 함께만 키를 만든다) — 빈 목록으로 실리면 렌더가 "경로가 있다"
+    #    고 읽고 `missing` 주석을 안 붙인다. 이전 판의 `v isa Vector` 단언은 바로 윗줄의
+    #    `String[...]` 내포가 값을 이미 Vector 로 짓기 때문에 **항진**이었다(리뷰 M1).
+    @test all(!isempty, values(acc))
 end
 
-@testset "(6) 🔴 호출 가능성 분할 — 오늘 5 에서 16 으로" begin
+@testset "(6) 🔴 호출 가능성 분할 — PlannerEnv 메서드 23 중 23, 그중 세계 변경자 16" begin
+    # ⚠️ 표제의 수는 전부 **오늘 잰 값**이다. 이전 판 표제의 "오늘 5 에서" 의 5 는 계획서·
+    #    설계 어디에서도 재유도되지 않아 지웠다(리뷰 M3).
     j = JSON3.read(read(ART, String))
     ms = collect(j.methods)
     @test all(m -> haskey(m, :callable), ms)
@@ -67,8 +72,55 @@ end
     ok = [m for m in envms if m.callable === true]
     @test length(ok) == 23                         # D9 의 씨앗 확장이 전부 연다
     bang = [m for m in ok if endswith(String(m.name), "!")]
-    @test length(bang) == 16                       # 오늘은 5 였다
+    @test length(bang) == 16
     @test "apply_cmd!" in Set(String[String(m.name) for m in bang])
     @test "close_node!" in Set(String[String(m.name) for m in bang])
+    # 🔴 I2: `Vararg{Any}` 는 `isa DataType` 가 false 라 `_arg_obtainable` 이 통째로
+    #    떨어뜨렸다 — 그래서 **경로가 이미 있는** 기하 변경자가 "못 부른다" 쪽에 실렸다.
+    #    이 다섯이 유일하게 Vararg 하나로만 막혀 있던 것들이다(실측).
+    for (nm, sig) in (
+            ("set_desired_global_transform!", "(g::ConstructionBots.GeomNode, args::Vararg{Any})"),
+            ("set_desired_global_transform!", "(n::ConstructionBots.SceneNode, args::Vararg{Any})"),
+            ("set_desired_global_transform!", "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"),
+            ("set_desired_global_transform_without_affecting_children!",
+             "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})"),
+            ("is_within_capture_distance",
+             "(parent::ConstructionBots.SceneNode, child::ConstructionBots.SceneNode, args::Vararg{Any})"))
+        m = only(filter(x -> String(x.name) == nm && String(x.signature) == sig, ms))
+        @test m.callable === true
+    end
+    @test count(m -> m.callable === true, ms) == 186   # 실측. Vararg 고침 전에는 181
+end
+@testset "(7) 🔴 R11 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
+    j = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    @test all(m -> haskey(m, :missing), ms)
+
+    # 🔴 R11. 이전 판은 인자당 `first(ps)` **하나**만 실었다 — `AbstractID` 의 9개 경로 중
+    #    사전순 첫째 하나. 그 컬렉션의 실측 조성은 {TemplatedID 28, ObjectID 20, BotID 18,
+    #    AssemblyID 8} 이라 로봇 id 를 요구하는 메서드가 로봇을 받을 확률이 18/74 였다.
+    #    이제 인자당 최대 4개를 싣는다 — 설계 §6.2 의 예시 경로가 그 안에 있어야 한다.
+    ag = only(filter(m -> String(m.name) == "asset_generation", ms))
+    @test length(ag.argpaths) == 4                       # 인자 하나 × 최대 4
+    @test any(p -> occursin("env.sched.vtx_ids", String(p)), ag.argpaths)
+    rr = only(filter(m -> String(m.name) == "replace_robot!", ms))
+    @test length(rr.argpaths) == 8                       # AbstractID 인자 둘 × 4
+
+    # 🔴 설계 §6.2. 둘째 표제의 **모든** 항목은 무엇이 없는지를 말해야 한다.
+    later = [m for m in ms if m.callable !== true]
+    @test !isempty(later)
+    @test all(m -> !isempty(m.missing), later)
+
+    # 🔴 I1. 첫째 표제도 거짓말을 했다 — `callable=true` 인데 경로가 없는 인자를 가진 항목
+    #    32건이 "every argument is obtainable" 아래 앉아 있었다. 같은 `missing` 채널로 갚는다.
+    ap = only(filter(m -> String(m.name) == "apply_cmd!" &&
+                          occursin("DepositCargo", String(m.signature)), ms))
+    @test ap.callable === true
+    @test Set(String.(collect(ap.missing))) == Set(["DepositCargo", "Twist"])
+    @test count(m -> m.callable === true && !isempty(m.missing), ms) == 32   # 실측
+    # 빈-통과 방지: 경로가 다 있는 항목은 missing 이 비어야 한다
+    cn = only(filter(m -> String(m.name) == "close_node!" &&
+                          occursin("ScheduleNode", String(m.signature)), ms))
+    @test isempty(cn.missing) && !isempty(cn.argpaths)
 end
 end # module
