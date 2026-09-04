@@ -1182,7 +1182,12 @@ print(r['impl_name']); print(r['impl_code']); print(r['wrote'])"
 1. `wrote` 가 true 인가 — 모델이 코드를 쓰려고 했는가
 2. 등록이 통과했는가(`registered` / `[minted] … registered=false reason=…`)
 3. `args_from=calls` 가 찍혔는가 — 🔴 B1 배선이 라이브에서 처음 증명되는 자리
-4. `steps[1].status` 가 무엇인가 — 세계가 실제로 바뀌었는가
+4. `steps[1].status` 가 무엇인가 — 모델이 **무슨 심볼을 반환했나**
+   ⚠️ 2026-09-03 정정: 원래 "세계가 실제로 바뀌었는가" 라고 적혀 있었고 **거짓이다.**
+   `steps[i].status` 는 모델의 **자기신고**이지 세계 변화의 증거가 아니다. 정본은 계획서가
+   아니라 사전등록 문서다 — `docs/superpowers/reports/2026-09-03-task11-measurement-preregistration.md`
+   결정 1: **Task 11 은 세계가 바뀌었는지 못 잰다**(`handled` 는 구성상 ~100%, `applied` 는 항상
+   `nothing`, `world_maybe_dirty` 는 무조건 true). 계획서 텍스트로 런을 읽으면 과대주장하게 된다.
 
 - [ ] **Step 4: 🔴 D6 판정을 기록한다**
 
