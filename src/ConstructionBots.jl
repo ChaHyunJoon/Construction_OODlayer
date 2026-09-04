@@ -107,6 +107,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        battery_deliveries, is_battery_courier, awaiting_battery_swap,
        battery_swap_pending, battery_swap_halt_active,           # 미적용 교체 존재 여부 / 그동안 라인 정지
        dispatch_battery_courier!, battery_courier_step!, clear_battery_deliveries!,
+       battery_report,                                           # D12: SoC 읽기(순수). 정의는 navigator/battery.jl(런타임 include)
        RelocateBuild,                                             # 2번째 공간형 spec: 빌드 전체를 구역 밖으로 평행이동
        TranslateBuild,                                            # L2-b 원시연산(Task C3): 빌드 전체를 **주어진** Δ 만큼 평행이동
        verify, build_invariant, commit_respec!, reset_cache_resume!,  # 검증·불변식·커밋·재개

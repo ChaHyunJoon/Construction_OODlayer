@@ -63,6 +63,12 @@ def build_world_interface_block(blob=None) -> str:
             parts.append("    %s :: %s" % (f["name"], f["type"]))
         if t.get("subtypes"):
             parts.append("    (abstract; one of: %s)" % ", ".join(t["subtypes"]))
+    amb = b.get("ambient") or []
+    if amb:
+        parts += ["", "AMBIENT WORLD STATE (not on env; read it with the accessor shown):"]
+        for a in amb:
+            parts.append("- %s" % a["name"])
+            parts.append("    %s  ->  %s" % (a["accessor"], a["returns"]))
     parts += ["", "FUNCTIONS THE MODULE ALREADY HAS (call any of these from your body):"]
     for m in b["methods"]:
         parts.append("- %s %s" % (m["name"], m["signature"]))

@@ -7,6 +7,23 @@ using InteractiveUtils     # subtypes
 import JSON3
 const CB = ConstructionBots
 
+# 🔴 navigator 층은 **런타임 include** 다(`src/navigator/navigator.jl`). 그것 없이는
+#    `battery_report` 가 아예 정의되지 않아(실측: UndefVarError) 아래 method_entries 의
+#    `isdefined` 검사에서 조용히 빠진다 — 산출물이 export 목록과 어긋난다.
+#    집행 경로도 같은 include 를 한다(`tools/monitor/render_demo.jl:18`), 그러므로
+#    생성기와 런타임이 **같은 모듈**을 본다. 비용은 1.9초(실측).
+CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
+
+"""
+앰비언트 세계 상태 — `PlannerEnv` 에 없지만 세계인 것. **손으로 유지되는 유일한 목록**이고,
+그래서 게이트 `(7)` 이 "접근자가 `names(CB)` 에 있다" 를 지킨다.
+"""
+const AMBIENT_ROOTS = [
+    (name = "battery fleet", accessor = "battery_report()",
+     returns = "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, " *
+               "soc_spread::Float64, n_depleted::Int, soc::Dict{Any,Float64})"),
+]
+
 _unwrap(T) = T isa UnionAll ? Base.unwrap_unionall(T) : T
 
 # 🔴 `Union` 에는 `nameof` 가 없다 — `apply_cmd!(node::Union{TransportUnitGo,RobotGo}, …)`
@@ -210,6 +227,10 @@ dst = length(ARGS) >= 1 ? ARGS[1] :
       normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",
                         "world_interface.json"))
 open(dst, "w") do io
-    JSON3.pretty(io, Dict("types" => types, "methods" => method_entries()))
+    JSON3.pretty(io, Dict("types" => types,
+                          "methods" => method_entries(),
+                          "ambient" => [Dict("name" => a.name, "accessor" => a.accessor,
+                                             "returns" => a.returns)
+                                        for a in AMBIENT_ROOTS]))
 end
 println("wrote ", dst)

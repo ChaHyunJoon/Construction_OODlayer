@@ -97,6 +97,14 @@
             "signature": "()"
         },
         {
+            "name": "battery_report",
+            "signature": "()"
+        },
+        {
+            "name": "battery_report",
+            "signature": "(fleet::ConstructionBots.BatteryFleet)"
+        },
+        {
             "name": "battery_swap_halt_active",
             "signature": "()"
         },
@@ -1742,6 +1750,13 @@
             "name": "ZonotopeKey",
             "fields": [
             ]
+        }
+    ],
+    "ambient": [
+        {
+            "name": "battery fleet",
+            "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int, soc::Dict{Any,Float64})",
+            "accessor": "battery_report()"
         }
     ]
 }
