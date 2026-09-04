@@ -80,8 +80,15 @@ body 의 AST 를 걸어 (1) 호출 대상 이름 (2) `수신자.필드` 쌍 (3) 
    처음에는 `helper(x) = …` 와 중첩 `function helper(x)` **두 모양만** 모았다. 그래서
    함수를 담은 지역 이름을 부르는 **여섯 모양**이 전부 거짓 거절이 났다(실측):
    람다 대입 · `let` 결속 · 호출 결과 대입 · 별칭(`cb = println`) · 튜플 분해 ·
-   `for` 루프 변수. 🔴 그 자리가 **D15 에서 유일하게 "모르면 거절"** 이었다 — 검사의
-   나머지 전부가 지키는 규칙을 한 자리에서만 깨고 있었다.
+   `for` 루프 변수.
+   🔴 **정정 (Wave C2, 2026-09-04): 그 자리가 "유일하게 모르면 거절" 이라던 이 머리말의
+   앞 판은 측정으로 거짓이었다** — 커밋 `2b63ffae` 의 제목("모르면 통과를 마지막 한
+   자리까지 밀고")도 같은 것을 주장했고 같이 틀렸다. **둘째 자리는 위 `:call` 갈래
+   자신**이고(점 연산자 심볼), 여섯 지역-결속 모양보다 **훨씬 흔했다**(31모양 프로브 중
+   19개 거짓 거절). 그 자리는 이 라운드에서 닫혔다(테스트셋 (31)). 이 파일은 머리말이
+   적은 근거를 다음 세션이 검증 없이 전제로 읽는 자리다 — **"유일한/마지막" 이라고 다시
+   적지 말 것.** 오늘 남아 있는 "모르면 거절" 자리를 세는 단일 진실원은 테스트셋 (31)·(28)
+   두 개이고, 산문이 아니라 그 단언들이다.
    지금은 `Expr(:(=))` 의 좌변이 Symbol 이거나 튜플이면 결속으로 본다. `let`·`for` 는
    자기 결속을 `Expr(:(=))` 로 싣기 때문에 재귀 순회가 같은 두 갈래로 덮는다 —
    네 갈래를 따로 쓰지 않는다. 여섯 모양의 회귀 시험은 테스트셋 **(25)** 다.
@@ -97,7 +104,15 @@ body 의 AST 를 걸어 (1) 호출 대상 이름 (2) `수신자.필드` 쌍 (3) 
 function _walk_body!(calls, fields, locals, ex)
     ex isa Expr || return
     if ex.head === :call && !isempty(ex.args) && ex.args[1] isa Symbol
-        push!(calls, ex.args[1])
+        # 🔴 B (Wave C2, 2026-09-04). 점 연산자(`.+` · `.==` · `.<` · `.|>` · `.∈` · 단항
+        #    `.-`/`.!` …)는 `Expr(:call, :.+, …)` 로 실려 여기 그대로 모였는데,
+        #    `isdefined(Base, Symbol(".+")) == false` 라 이름 우주에 없어 **전부 거짓
+        #    거절**이었다(실측 2026-09-04: 31모양 프로브 중 19개). 벡터 산술은 수치
+        #    Julia 에서 가장 흔한 관용구다 — 모델이 `soc .< 0.1` 을 쓰면 그 거절이 유료
+        #    런에서 모델의 실패로 기록된다. 식별자는 `.` 로 시작할 수 없으므로 이 규칙이
+        #    진짜 이름을 하나도 안 삼킨다(음성 대조는 테스트셋 (31)). 인자는 아래 재귀가
+        #    그대로 걷으므로 점 연산자 **안**의 지어낸 호출은 여전히 잡힌다.
+        startswith(String(ex.args[1]), ".") || push!(calls, ex.args[1])
     elseif ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :call &&
            ex.args[1].args[1] isa Symbol
         push!(locals, ex.args[1].args[1])            # `helper(x) = …` 지역 정의
@@ -636,6 +651,85 @@ _is_type_shape(e) =
      _is_type_shape(e.args[1]) && e.args[2] isa QuoteNode)   # 🔴 F1: 수신자도 모양이어야 한다
 
 """
+    impl_interface_calls(code) -> Union{Nothing,Vector{String}}
+
+**L3 의 생산자** (spec §0, 판정 R24). body 의 정적 호출 대상 중 **세계 인터페이스에 있는
+것들**을 정렬된 이름 목록으로 낸다. 순수 함수 — `eval` 도 세계도 표도 안 건드린다.
+
+🔴 **왜 별도 함수인가** (P5). spec §0 의 L3 행은 이 값을 "D15 의 AST 순회가 이미 만드는
+   값" 이라고 적는데, 그 `cs` 는 `check_impl_conventions` 안에서 **버려진다**(Task 6 리뷰
+   §7-2 가 실측했고 Task 10 사전등록이 독립적으로 같은 결론에 도달해 결정 12 로 적었다 —
+   그래서 L3 이 오늘 `nothing` 이다). 그 함수의 반환형(`Union{Nothing,String}`)을 넓히면
+   호출자 전부와 시험 열몇이 따라 바뀐다. 그래서 `impl_param_types` 와 **같은 패턴**으로
+   짓는다: 같은 도우미(`_walk_body!`)를 다시 부르는 독립 순수 함수.
+
+🔴 **삼상 규약** — 이 셋이 무너지면 L3 을 못 읽는다.
+
+| 반환 | 뜻 | 언제 |
+|---|---|---|
+| `nothing` | **못 쟀다** | 순회할 함수 정의에 도달 못 했다(파스 실패 · 최상위 정의가 하나가 아님 · `function` 이 아님 · 시그니처가 호출 모양이 아님) |
+| `String[]` | **재서 없다** | 걸었는데 인터페이스 이름을 하나도 안 불렀다 |
+| 비어 있지 않은 `Vector{String}` | 인터페이스 함수를 불렀다 | L3 = `!isempty(...)` |
+
+🔴 **왜 원본 호출 대상이 아니라 교집합을 내는가.** L3 의 판정식 자체가
+   "정적 호출 대상 ∩ 인터페이스 ≠ ∅" 이다. 원본을 실어 보내면 **인터페이스 술어가 두
+   곳에 살게 되고**(여기와 읽는 쪽), 기록에 실린 값의 뜻이 나중에 누가 어떤 필터를
+   거는지에 달린다 — 이 파일이 지키는 진실원 하나 규약을 어긴다. 그리고 원본에는 지역
+   이름 · Base · 자기 자신이 섞여 있어 L3 의 증거가 **아니다**. 이름을 불리언이 아니라
+   **목록**으로 남기는 이유는 그 반대쪽이다: 나중에 더 좁게(예: 산출물의 `methods` 블록만)
+   다시 세고 싶으면 목록에서 재유도할 수 있지만 불리언에서는 못 한다.
+
+🔴 **인터페이스 = `names(@__MODULE__)`.** 파일을 안 읽는다. 근거는 `_d15_name_is_visible`
+   의 넷째 갈래와 같다 — 산출물 `wm4spacecraft_manufacturing/core/world_interface.json` 이
+   **바로 그 집합에서 생성된다.** 실측(2026-09-04): 산출물이 광고하는 이름 148개가
+   **전부** `names(CB)`(187) 안에 있다(밖 = 0개). 그 187과 148의 차 39는
+   광고된 타입 18 + 나머지 CB export 21 로, 전부 모델에게 보이는 표면이다. 산출물을
+   런타임에 읽는 길을 안 고른 이유 둘: (1) 순수 함수에 파일 I/O 가 들어간다,
+   (2) 그 파일은 다른 레인이 재생성하는 중이라 이 값이 파일 세대에 묶인다.
+   ⚠️ `_d15_name_is_visible` 을 그대로 쓰면 **안 된다** — 그것은 `Base`/`Core` 까지
+   포함하는 넓은 술어라 `println` 호출이 L3 을 초록으로 만든다.
+
+⚠️ **`check_impl_conventions` 와 같은 순회를 쓴다**(body → 키워드 기본값 순). 그것이
+   spec §0 의 괄호("D15 의 AST 순회가 이미 만드는 값")가 뜻하는 바다. 지역 결속 이름 ·
+   `env` · 자기 이름은 D15 와 **같은 규칙으로** 제외된다 — 지역에 담긴 이름을 부른 것은
+   인터페이스를 부른 것이 아니다.
+
+⚠️ **이 함수는 거절을 만들지 않는다.** 무엇을 돌려주든 등록은 안 막힌다 — 계측 채널이다.
+"""
+function impl_interface_calls(code::AbstractString)
+    local top
+    try; top = Meta.parseall(code); catch; return nothing; end
+    any(x -> x isa Expr && x.head in (:incomplete, :error), top.args) && return nothing
+    exprs = [x for x in top.args if !(x isa LineNumberNode)]
+    length(exprs) == 1 || return nothing
+    f = exprs[1]
+    (f isa Expr && f.head === :function) || return nothing
+    sig = f.args[1]
+    (sig isa Expr && sig.head === :call) || return nothing
+    local cs, fs, ls = Symbol[], Tuple{Any,Symbol}[], Symbol[]
+    # 🔴 순서는 `check_impl_conventions` 와 같다: body 먼저, 키워드 기본값 나중.
+    length(f.args) >= 2 && _walk_body!(cs, fs, ls, f.args[2])
+    local rest = sig.args[2:end]
+    local kwblock = findfirst(x -> x isa Expr && x.head === :parameters, rest)
+    if kwblock !== nothing
+        for k in rest[kwblock].args
+            k isa Expr && !isempty(k.args) || continue
+            local a1 = k.args[1]
+            a1 isa Symbol && push!(ls, a1)
+            a1 isa Expr && a1.head === :(::) && !isempty(a1.args) &&
+                a1.args[1] isa Symbol && push!(ls, a1.args[1])
+            k.head === :kw && length(k.args) >= 2 && _walk_body!(cs, fs, ls, k.args[2])
+        end
+    end
+    push!(ls, :env)
+    sig.args[1] isa Symbol && push!(ls, sig.args[1])   # 자기 이름(재귀)은 인터페이스가 아니다
+    local iface = Set{Symbol}(names(@__MODULE__))
+    local out = String[String(c) for c in unique(cs) if !(c in ls) && c in iface]
+    sort!(out)                       # 🔴 결정적 — `Set`/`Dict` 순회가 기록에 안 들어간다
+    return out
+end
+
+"""
     register_minted_primitive!(; name, code, params, surface, reversible) -> Union{Nothing,String}
 
 규약 검사 → `Core.eval` → 런-스코프 표에 등록. 통과하면 `nothing`, 아니면 거절 사유.
@@ -695,6 +789,9 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
     #    ⚠️ 이 함수는 타입 표현식에 `Core.eval` 을 돈다. 아래 `Core.eval` 이 어차피 같은
     #    주석을 평가하므로 새 능력은 아니지만 **순수하지도 않다** — 그 docstring 을 볼 것.
     local _ptypes = impl_param_types(code)
+    # 🔴 L3 의 생산자(판정 R24). `impl_param_types` 와 같은 자리·같은 성질이다 — 규약 검사
+    #    통과 뒤, `Core.eval` 전, 순수, 던지지 않음, 거절을 만들지 않음.
+    local _icalls = impl_interface_calls(code)
     try
         Core.eval(@__MODULE__, Meta.parseall(code))
     catch e
@@ -719,6 +816,11 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
         #    안 바꿔 주면 호출이 `TypeError` 로 죽는다(실측 P1).
         #    주석 없는 키워드는 **키가 없다**(삼상 규약 — `impl_param_types` 의 표).
         "param_types"  => _ptypes,
+        # 🔴 L3 (spec §0, 판정 R24). body 의 정적 호출 대상 ∩ 세계 인터페이스, 정렬됨.
+        #    판정은 `!isempty(...)` 이고, **삼상**이다: `nothing`(못 쟀다) ≠ `[]`(재서 없다).
+        #    이름은 여기 하나뿐이다 — 같은 사실에 둘째 이름을 붙이지 말 것(진실원 하나).
+        #    읽는 자리: 이 열, 또는 `resolve_primitive(name).interface_calls`.
+        "interface_calls" => _icalls,
         # 🔴 C1 (2026-09-03 최종 리뷰). **이 행이 생성 코드에서 왔다**는 표시. 집행부의
         #    `_step_applied`·`_step_touched_world` 가 이것을 읽어 "이 원시의 status 어휘를
         #    아는 표가 없다" 를 안다. 판별자가 "`minted_table()` 에 있는가" 이면 안 되는

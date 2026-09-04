@@ -9,8 +9,8 @@
 #    `julia +lts --project=. -e 'include("test/minted_registration.jl")'`
 #    🔴 이 파일이 CB 에 **영구히** 심는 이름(2026-09-03 최종 리뷰로 늘었다):
 #    `adjust_thing!` · `touch_nothing!` · `single_frame_thing!` · `measures_nothing!` ·
-#    `returns_a_symbol!` · `twice_minted!`. 되돌리는 길은 없다 — testset (13) 이 그 사실
-#    자체를 잰다.
+#    `returns_a_symbol!` · `twice_minted!` · `l3_row_tool!` · `l3_row_empty!`(Wave C2).
+#    되돌리는 길은 없다 — testset (13) 이 그 사실 자체를 잰다.
 # =============================================================================
 module MintedRegistration
 using Test
@@ -703,9 +703,11 @@ end
 # =============================================================================
 
 @testset "(25) 🔴 C1: 함수를 담은 지역 이름을 부르는 여섯 모양은 거절되지 않는다" begin
-    # 🔴 이것이 D15 에서 유일하게 **"모르면 거절"** 이던 자리다 — 검사의 나머지 전부가
+    # 🔴 이것은 D15 의 **"모르면 거절" 자리 둘 중 하나**였다 — 검사의 나머지 전부가
     #    "모르면 통과" 인데 지역 정의 수집만 `f(x) = …` 와 중첩 `function f(x)` 두 모양만
-    #    봤다. 아래 여섯은 **전부 이 세계에 대해 옳은 Julia** 이고, 우리 파서의 한계로
+    #    봤다. ⚠️ **정정(Wave C2, 2026-09-04)**: 이 주석의 앞 판은 "유일하게" 라고 적었고
+    #    그것은 거짓이었다 — 둘째 자리가 점 연산자(`Expr(:call, :.+, …)`)이고 이 여섯보다
+    #    흔했다. 그 자리의 게이트는 테스트셋 (31) 이다. 아래 여섯은 **전부 이 세계에 대해 옳은 Julia** 이고, 우리 파서의 한계로
     #    모델의 옳은 코드를 막는 것은 이 레인이 재려는 것 자체를 파괴한다.
     #    (2026-09-04 실측: 고치기 전 여섯 다 `reject:impl_unknown_call:<지역이름>`.)
     local shapes = Dict(
@@ -861,6 +863,180 @@ end
     @test pt["y"]  === Int                     # 읽었다
     @test haskey(pt, "zs") && !(pt["zs"] isa Type)   # 주석은 있는데 못 읽었다
     @test !haskey(pt, "w")                     # 주석이 없다 (키가 없다)
+end
+
+# =============================================================================
+# 🔴 2026-09-04 Wave C2 — 판정 R24(L3 생산자) · Task 6 out-of-scope 1(점 연산자).
+# =============================================================================
+
+@testset "(31) 🔴 B: 점 연산자는 거짓 거절이 아니다" begin
+    # 🔴 `Meta.parse("a .+ b")` 는 `Expr(:call, :.+, :a, :b)` 다 — 즉 점 연산자는
+    #    **호출 대상 이름**으로 실린다. 그런데 `isdefined(Base, Symbol(".+")) == false`
+    #    이므로 D15 의 이름 우주에 없고, 고치기 전에는 전부 `reject:impl_unknown_call:.+`
+    #    이었다(2026-09-04 실측: 31모양 프로브 중 **19개** 거짓 거절 — 리뷰가 적은 7보다
+    #    넓다). 벡터 산술은 수치 Julia 에서 가장 흔한 관용구이고, 모델이 `soc .< 0.1` 을
+    #    쓰면 그 거절이 유료 런에서 **모델의 실패**로 기록된다.
+    #    가족별로 한 줄씩 — 하나가 열려도 그 가족이 통째로 샌다.
+    local families = [
+        ("arith",      "    y = [1] .+ [2] .- [3] .* [4] ./ [5] .^ 2\n"),
+        ("intdiv",     "    y = [4] .÷ [2] .% [3]\n"),
+        ("compare",    "    y = ([1] .== [2]) .!= ([1] .< [2]) .| ([1] .<= [2]) .| ([1] .> [2])\n"),
+        ("bitwise",    "    y = ([true] .& [false]) .| [true]\n"),
+        ("pipe",       "    y = [1] .|> identity\n"),
+        ("membership", "    y = [1] .∈ Ref([1, 2])\n"),
+        ("unary",      "    y = .-([1])\n"),
+        ("unary_not",  "    y = .!([true])\n"),
+        ("soc_idiom",  "    y = [0.5] .< 0.1\n"),
+    ]
+    for (tag, b) in families
+        local nm = "d15_dot_$(tag)!"
+        @test CB.check_impl_conventions(nm,
+            "function $(nm)(env; x::Int=1)\n$(b)    return (status = :ok,)\nend\n") === nothing
+    end
+    # 🔴 음성 대조 — 넓힘이 검사를 은퇴시키지 않는다. 점 연산자 **안에** 든 지어낸 이름은
+    #    여전히 거절된다(순회가 인자까지 들어가므로).
+    @test startswith(something(CB.check_impl_conventions("d15_dot_ctl!",
+        "function d15_dot_ctl!(env; x::Int=1)\n    y = zzz_inside_broadcast(x) .+ [1]\n    return (status = :ok,)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_inside_broadcast")
+    # 🔴 점 이름이 **아닌** 진짜 호출은 그대로 걷힌다 — 접두 `.` 규칙이 너무 넓지 않다.
+    @test startswith(something(CB.check_impl_conventions("d15_dot_ctl2!",
+        "function d15_dot_ctl2!(env; x::Int=1)\n    y = zzz_plain_undefined.([1])\n    return (status = :ok,)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_plain_undefined")
+
+    # 🔴 **연산자꼴 중 호출 노드가 아닌 것들** — 여기서 핀으로 못박는다(덮개 서술의 진실원).
+    #    `.=` · `.+=` · `.&&` · `.||` 는 `:call` 이 아니라 자기 head 를 가지므로 애초에
+    #    호출 대상으로 안 모인다(실측: 고치기 전에도 넷 다 통과했다). `:comparison`
+    #    (`1 < x < 3`)도 마찬가지다. 그러나 그 **안에 든** 지어낸 호출은 재귀 순회가 잡는다 —
+    #    이 두 성질이 함께 참이어야 "구멍이 아니라 모양" 이다.
+    for (tag, b) in [("dotassign",  "    y = [1, 2]\n    y .= 3\n"),
+                     ("dotupdate",  "    y = [1, 2]\n    y .+= 1\n"),
+                     ("dotand",     "    y = [true] .&& [false]\n"),
+                     ("dotor",      "    y = [true] .|| [false]\n"),
+                     ("comparison", "    y = 1 < x < 3\n")]
+        local nm = "d15_op_$(tag)!"
+        @test CB.check_impl_conventions(nm,
+            "function $(nm)(env; x::Int=1)\n$(b)    return (status = :ok,)\nend\n") === nothing
+    end
+    @test startswith(something(CB.check_impl_conventions("d15_op_ctl!",
+        "function d15_op_ctl!(env; x::Int=1)\n    y = [1, 2]\n    y .= zzz_inside_dotassign(x)\n    return (status = :ok,)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_inside_dotassign")
+    @test startswith(something(CB.check_impl_conventions("d15_op_ctl2!",
+        "function d15_op_ctl2!(env; x::Int=1)\n    y = 1 < zzz_inside_comparison(x) < 3\n    return (status = :ok,)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_inside_comparison")
+end
+
+@testset "(32) 🔴 A(R24): L3 생산자 — 삼상이고, 정렬되고, 교집합이다" begin
+    # 🔴 spec §0 의 L3 판정식은 "정적 호출 대상 ∩ 인터페이스 ≠ ∅" 이고, 괄호가
+    #    "D15 의 AST 순회가 이미 만드는 값" 이라고 적는다. 그런데 그 값(`cs`)은
+    #    `check_impl_conventions` 안에서 **버려진다**(Task 6 리뷰 §7-2 · Task 10 결정 12).
+    #    그래서 사전등록은 L3 을 `nothing`("못 쟀다") 으로 적어야 했다. 이 게이트가
+    #    그 생산자를 못박는다.
+
+    # ① 인터페이스 함수를 실제로 부른 body → 비어 있지 않다
+    local hit = CB.impl_interface_calls("""
+    function l3_hit!(env; x::Int=1)
+        r = battery_report()
+        s = active_spares(env)
+        return (status = :ok,)
+    end
+    """)
+    @test hit == ["active_spares", "battery_report"]      # 정렬됨 · 교집합만
+    # ② 아무것도 안 부른 body → `String[]`("재서 없다"), `nothing` 이 **아니다**
+    local none = CB.impl_interface_calls("""
+    function l3_none!(env; x::Int=1)
+        y = x + 1
+        z = string(y)
+        return (status = :ok,)
+    end
+    """)
+    @test none == String[]
+    @test none !== nothing                                # 🔴 삼상이 안 무너진다
+    # ③ 걷지 못한 입력 → `nothing`("못 쟀다")
+    for bad in ["function l3_broken!(env; x::Int=1",           # 잘림
+                "1 + 1",                                        # 함수가 아니다
+                "function a!(env) end\nfunction b!(env) end\n", # 최상위 정의 둘
+                ""]                                             # 빈 입력
+        @test CB.impl_interface_calls(bad) === nothing
+    end
+    # 🔴 ②와 ③은 **다른 상태**여야 한다 — 이 구분이 L3 이 오늘 `nothing` 인 이유 그 자체다.
+    #    ⚠️ `a !== b` 로 쓰면 안 된다: 서로 다른 두 `String[]` 도 `!==` 라 삼상이 무너져도
+    #    초록인 항진이 된다(변이 MUT-D 로 확인). 상태 자체를 비교한다.
+    @test (CB.impl_interface_calls("1 + 1") === nothing) !=
+          (CB.impl_interface_calls(
+              "function l3_none2!(env; x::Int=1)\n    return (status = :ok,)\nend\n") === nothing)
+
+    # 교집합이다: Base 이름도, 지역 이름도, 자기 이름도 안 실린다.
+    local filt = CB.impl_interface_calls("""
+    function l3_filter!(env; x::Int=1)
+        g = y -> y + 1
+        a = string(g(x))
+        b = close_node!
+        l3_filter!(env; x = x - 1)
+        return (status = :ok,)
+    end
+    """)
+    @test filt == String[]        # `string`(Base) · `g`(지역) · `l3_filter!`(자기) 전부 빠진다
+    # 🔴 음성 대조: 같은 자리에 인터페이스 이름을 **부르면** 실린다(위 0 이 항진이 아니다).
+    @test CB.impl_interface_calls("""
+    function l3_filter2!(env; x::Int=1)
+        a = string(x)
+        close_node!(env, x)
+        return (status = :ok,)
+    end
+    """) == ["close_node!"]
+    # 키워드 **기본값**의 호출도 같은 순회가 본다(D15 와 같은 값이라는 것이 요점이다).
+    @test CB.impl_interface_calls(
+        "function l3_kw!(env; x = active_spares(env))\n    return (status = :ok,)\nend\n") ==
+        ["active_spares"]
+    # 결정성 — 다섯 번 불러도 바이트 동일이고 정렬돼 있다(`Set`/`Dict` 순회 금지 규약).
+    local reps = [CB.impl_interface_calls("""
+    function l3_det!(env; x::Int=1)
+        swap_battery!(env, x)
+        battery_report()
+        active_spares(env)
+        close_node!(env, x)
+        return (status = :ok,)
+    end
+    """) for _ in 1:5]
+    @test all(r -> r == reps[1], reps)
+    @test reps[1] == sort(reps[1])
+    @test length(reps[1]) == 4
+end
+
+@testset "(33) 🔴 A(R24): L3 값이 등록 행까지 산다 — 그리고 삼상이 거기서도 산다" begin
+    # 🔴 진실원 하나: 이름은 `interface_calls` **하나**이고, 그 열이 이 사실의 유일한
+    #    자리다. 나중 구현자(집행 기록 배선)가 읽을 곳:
+    #        `ConstructionBots.minted_table()[name]["interface_calls"]`
+    #    L3 판정 = `v !== nothing && !isempty(v)`; `nothing` 은 "못 쟀다" 다.
+    #    ⚠️ `resolve_primitive`(`src/respec/minted_tool.jl`)에 같은 이름의 필드를 얹는 것은
+    #    한 줄이지만 그 파일은 이 라운드의 경로 밖이라 안 건드렸다 — 얹을 때도 **이름은
+    #    `interface_calls` 하나**여야 하고 기본값은 `[]` 가 아니라 `nothing` 이어야 한다
+    #    (손으로 씨 뿌린 행은 순회한 적이 없다).
+    CB.reset_minted_table!()
+    local code = """
+    function l3_row_tool!(env; x::Int=1)
+        r = battery_report()
+        return (status = :ok,)
+    end
+    """
+    @test CB.register_minted_primitive!(name = "l3_row_tool!", code = code,
+                                        params = Dict("x" => 1)) === nothing
+    local row = CB.minted_table()["l3_row_tool!"]
+    @test haskey(row, "interface_calls")
+    @test row["interface_calls"] == ["battery_report"]
+    @test row["interface_calls"] isa Vector{String}
+    # 🔴 아무것도 안 부른 원시는 같은 열에 `[]` 를 싣는다 — `nothing` 이 아니다.
+    #    (등록되는 모든 행은 `check_impl_conventions` 를 통과했으므로 순회는 항상 됐다.)
+    @test CB.register_minted_primitive!(name = "l3_row_empty!", code =
+        "function l3_row_empty!(env; x::Int=1)\n    y = x + 1\n    return (status = :ok,)\nend\n",
+        params = Dict("x" => 1)) === nothing
+    @test CB.minted_table()["l3_row_empty!"]["interface_calls"] == String[]
+    # 🔴 손으로 씨 뿌린 행에는 이 열이 **없다** → 읽는 쪽이 `nothing`("못 쟀다")을 본다.
+    #    `[]` 로 채우면 "안 불렀다" 와 "순회한 적 없다" 가 무너진다.
+    CB.minted_table()["hand_seeded"] = Dict{String,Any}(
+        "name" => "hand_seeded", "impl" => "l3_row_tool!", "surface" => "unknown",
+        "harness_args" => ["env"], "params" => Dict{String,Any}(), "reversible" => false)
+    @test get(CB.minted_table()["hand_seeded"], "interface_calls", nothing) === nothing
 end
 
 end # module
