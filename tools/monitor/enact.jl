@@ -789,12 +789,77 @@ function minted_handled(r)
 end
 
 """
+    _world_digest(env) -> Union{Nothing,NamedTuple}
+
+값싼 세계 지문. 집행 **전후**로 찍어 차분을 낸다. 못 찍으면 `nothing`("못 쟀다").
+
+🔴 **왜 필요한가**(사전등록 결정 1 = R11). 오늘의 관측 넷 중 어느 것도 "세계가 바뀌었다" 를
+   못 잰다: `handled` 는 생성 body 면 구성상 ~100%(`minted_handled` 의 네 연언지가 전부
+   참이 되는 것이 무동작 body 의 **정상**이다 — `test/minted_end_to_end.jl` (6) 이 그것을
+   실측한다), `applied` 는 생성 원시의 status 어휘가 없어 항상 `nothing`,
+   `world_maybe_dirty` 는 가능성 술어라 무조건 `true`, `steps.status` 는 모델의 자기신고다.
+   이 함수는 그 넷과 달리 **세계를 직접 읽는다**.
+
+🔴 **예외가 아니라 `nothing` 이다.** 여기서 예외가 새면 `enact_minted_decision!` 이 기록
+   대신 예외로 끝나고 호출자는 세계 상태를 통째로 잃는다. `env` 는 이 함수의 계약을 모르는
+   임의의 모양으로 온다(시험 픽스처 · 부분 env) — 필드가 없으면 그냥 못 잰 것이다.
+
+🔴 **넷을 전부 읽어야 지문이다.** 하나라도 못 읽으면 `nothing` 을 낸다 — 반쯤 잰 지문의
+   차분은 무엇을 뜻하는지 아무도 적을 수 없고, 그 모호함이 정확히 이 필드가 없애려는 것이다.
+
+⚠️ `binding` 은 **하한**이다(정본 근거는 `assignment_binding`(`src/respec/common_resolve.jl`)
+   의 docstring — 팀이 맡은 정점은 정렬 첫째만 담는다). 그래서 아래 `n_binding_changed` 가
+   0 이 아니면 배정이 확실히 바뀐 것이고, **0 이라고 안 바뀐 것은 아니다.**
+
+⚠️ `CB.Graphs` 로 부른다(맨 `Graphs` 가 아니라). 이 파일은 `using Graphs` 를 안 하는 모듈로도
+   include 된다(`test/minted_end_to_end.jl` 이 그렇다) — 맨 이름을 쓰면 `UndefVarError` 가
+   나고 위 `catch` 가 그것을 `nothing` 으로 삼켜 **다이제스트가 조용히 영영 꺼진다.**
+"""
+function _world_digest(env)
+    try
+        return (closed   = length(env.cache.closed_set),
+                active   = length(env.active_build_steps),
+                n_edges  = CB.Graphs.ne(env.sched.graph),
+                binding  = CB.assignment_binding(env.sched))
+    catch
+        return nothing
+    end
+end
+
+"""
+    _world_delta(a, b) -> Union{Nothing,NamedTuple}
+
+두 지문의 차분. 한쪽이라도 `nothing` 이면 `nothing`("못 쟀다").
+
+🔴 **삼상**: `nothing`(못 쟀다) ≠ 0 의 튜플(쟀는데 안 바뀌었다). 무동작 body 가 오늘의
+   지배적인 판이므로(위 R11 문단) 그 둘을 뭉개면 이 필드는 **모든** 판에서 `nothing` 으로
+   보이고 아무것도 안 재게 된다. `test/minted_end_to_end.jl` (11) 이 그 구별을 못 박는다.
+"""
+function _world_delta(a, b)
+    (a === nothing || b === nothing) && return nothing
+    changed = 0
+    for (v, r) in b.binding
+        get(a.binding, v, nothing) === r || (changed += 1)
+    end
+    for v in keys(a.binding); haskey(b.binding, v) || (changed += 1); end
+    return (closed = b.closed - a.closed,
+            active = b.active - a.active,
+            n_edges = b.n_edges - a.n_edges,
+            n_binding_changed = changed)
+end
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
 **보다 먼저** 부르고(Task 9 — 생성 원시는 그 순간까지 존재하지 않는다), 등록·집행 여부를
 로그와 반환값 양쪽에 남긴다. 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool`·
-`registered::Union{Nothing,Bool}`·`impl_rejected_why::Union{Nothing,String}` 를 더한 것이다.
+`registered::Union{Nothing,Bool}`·`impl_rejected_why::Union{Nothing,String}`·
+`world_delta::Union{Nothing,NamedTuple}` 를 더한 것이다.
+
+🔴 **`world_delta` 는 D18 이 더한 유일한 "세계가 실제로 바뀌었나" 관측이다** — 정의도 근거도
+위 `_world_digest`/`_world_delta` 가 소유한다(여기 다시 적지 않는다). 삼상이다: `nothing` =
+지문을 못 찍었다, 0 의 튜플 = 찍었는데 안 바뀌었다.
 
 🔴 **`registered` 는 셋이다**(2026-09-03 최종 리뷰 F2, 컨트롤러 판정 R7 — R2 를 대체한다).
 `nothing` = 등록이 실제로 됐는지 이 함수가 판정하지 못했다(catch 로 떨어졌는데 그 지점까지
@@ -921,6 +986,13 @@ function enact_minted_decision!(env, truth, decision)
     #    `nothing`("몰라서 못 쟀다")으로 남는다.
     local registered::Union{Nothing,Bool} = nothing
     local impl_rejected_why::Union{Nothing,String} = nothing
+    # 🔴 D18. `registered` 와 **같은 이유로** `try` 밖이다(F2/R7 문단): try 의 결속은 catch 에
+    #    안 보이므로, 안에서 선언하면 catch 는 값을 손으로 다시 적을 수밖에 없고 그 복사본이
+    #    거짓말을 한다. 밖에서 선언하면 catch 는 "예외 직전까지 실제로 관측된 값"을 그대로
+    #    나른다 — 차분을 이미 계산한 뒤에 던졌으면 그 차분을, 그 전에 던졌으면 `nothing`
+    #    ("못 쟀다")을. 지문을 아예 안 찍는 반환 자리(조기 deferred · `_reject_malformed`)는
+    #    초기값 그대로 `nothing` 이다: **0 의 튜플이 아니다** — 그 자리들은 세계를 안 읽었다.
+    local world_delta::Union{Nothing,NamedTuple} = nothing
     try
         local sl = try decision.synth_lane catch; nothing end
         # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
@@ -966,6 +1038,10 @@ function enact_minted_decision!(env, truth, decision)
                     " wrote=", _synth_lane_field(sl, "wrote"),
                     " refused=", _synth_lane_field(sl, "refused"),
                     " registered=", registered, " impl_rejected_why=n/a",
+                    # 🔴 D18. 여기까지 온 판은 세계를 읽은 적이 없다 — `closed=0` 이 아니라
+                    #    **못 쟀다**. 이 줄이 없으면 라이브 로그에서 `world_delta` 의 부재가
+                    #    "조기 반환" 과 "이 코드 이전 세대" 두 가지를 뜻하게 된다.
+                    " world_delta=n/a(not measured)",
                     " reason=", why)
             println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                     "(이 폴백은 조용하지 않다 — 위 verdict 가 이유다)")
@@ -978,7 +1054,8 @@ function enact_minted_decision!(env, truth, decision)
                     applied = nothing, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none,
                     resolve = :none, args_from = nothing, n_calls = nothing,
-                    registered = registered, impl_rejected_why = impl_rejected_why)
+                    registered = registered, impl_rejected_why = impl_rejected_why,
+                    world_delta = world_delta)
         end
 
         # ---- 등록이 먼저다 (Task 9) ---------------------------------------------------------
@@ -1007,7 +1084,9 @@ function enact_minted_decision!(env, truth, decision)
             registered = false
             impl_rejected_why = why
             println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
-                    " verdict=reject registered=false impl_rejected_why=", why, " reason=", why)
+                    " verdict=reject registered=false impl_rejected_why=", why,
+                    " world_delta=n/a(not measured)",   # 🔴 D18: 집행 전에 돌아섰다 — 세계를 안 읽었다
+                    " reason=", why)
             # 🔴 2026-09-03 최종 리뷰(deferred item). 이 줄이 빠져 있으면 등록 거절 —
             #    **실제 라이브 런에서 가장 자주 밟힐 reject 경로**(자기신고 규약 위반)만
             #    비대칭 로그를 낸다: 다른 모든 handled=false 반환은 이 줄을 찍는데 여기만
@@ -1021,7 +1100,8 @@ function enact_minted_decision!(env, truth, decision)
                     applied = nothing, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                     args_from = nothing, n_calls = nothing,
-                    registered = registered, impl_rejected_why = impl_rejected_why)
+                    registered = registered, impl_rejected_why = impl_rejected_why,
+                    world_delta = world_delta)
         end
         nm isa AbstractString ||
             return _reject_malformed("reject:impl_name_not_a_string:$(typeof(nm))")
@@ -1063,7 +1143,13 @@ function enact_minted_decision!(env, truth, decision)
         local _sent = Dict{Tuple{Int,Int},Float64}()   # 키 타입은 LAST_EDGE_COSTS 의 실제 타입
         CB.LAST_EDGE_COSTS[] = _sent
 
+        # ---- D18: 세계 지문을 **전후**로 찍는다 --------------------------------------------
+        # 🔴 `_pre` 는 `CB.enact_minted!` **직전**이어야 한다 — 등록·타입검사는 세계를 안
+        #    건드리지만 body 는 건드린다. 사후 지문은 호출이 돌아온 **직후**다(아래 println
+        #    들은 세계를 안 읽고 안 바꾼다).
+        local _pre = _world_digest(env)
         local r = CB.enact_minted!(env, truth, sl)
+        world_delta = _world_delta(_pre, _world_digest(env))
         # 🔴 **네** 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
         #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그
         #    조용한 미복구가 된다(2026-08-30 최종 리뷰).
@@ -1114,6 +1200,14 @@ function enact_minted_decision!(env, truth, decision)
         println("[minted] ran_milp=", ran_milp, " n_candidate_edges=",
                 ran_milp ? string(length(CB.LAST_EDGE_COSTS[])) : "n/a(no re-solve)",
                 " closed=", (try string(length(env.cache.closed_set)) catch; "n/a" end))
+        # 🔴 `@info` 가 아니라 `println` 이다 — `run_demo.jl` 이 `global_logger(…, Logging.Warn)`
+        #    를 심어 `@info` 는 프로세스 전역에서 버려진다(이 파일의 다른 `[minted]` 줄과 같은
+        #    이유). 🔴 `n/a(not measured)` 와 `closed=0` 은 **다른 관측**이다.
+        println("[minted] world_delta=", world_delta === nothing ? "n/a(not measured)" :
+                string("closed=", world_delta.closed, " active=", world_delta.active,
+                       " n_edges=", world_delta.n_edges,
+                       " n_binding_changed=", world_delta.n_binding_changed,
+                       " (n_binding_changed 는 하한이다)"))
 
         handled || println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                            "(이 폴백은 조용하지 않다 — verdict=", r.verdict,
@@ -1126,7 +1220,8 @@ function enact_minted_decision!(env, truth, decision)
                 world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
                 resume = r.resume, resolve = r.resolve,
                 args_from = r.args_from, n_calls = r.n_calls,
-                registered = registered, impl_rejected_why = impl_rejected_why)
+                registered = registered, impl_rejected_why = impl_rejected_why,
+                world_delta = world_delta)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
         # 🔴 F2(2026-09-03 최종 리뷰, R7). `registered`·`impl_rejected_why` 는 **손으로
@@ -1144,6 +1239,13 @@ function enact_minted_decision!(env, truth, decision)
                 " args_from=n/a n_calls=n/a steps=[]",
                 " registered=", something(registered, "n/a"),
                 " impl_rejected_why=", something(impl_rejected_why, "n/a"),
+                # 🔴 D18(B4 와 같은 이유 — 로그와 반환이 다른 말을 하면 라이브 판독이
+                #    갈린다). 이 경로의 `world_delta` 는 `n/a` 로 **고정이 아니다**: 예외가
+                #    차분 계산 뒤에 났으면 실제로 잰 값이 여기 실린다.
+                " world_delta=", world_delta === nothing ? "n/a(not measured)" :
+                    string("closed=", world_delta.closed, " active=", world_delta.active,
+                           " n_edges=", world_delta.n_edges,
+                           " n_binding_changed=", world_delta.n_binding_changed),
                 " ran_milp=n/a(threw) reason=enact_minted_decision! threw: ", msg)
         println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                 "(이 폴백은 조용하지 않다 — 위 FAILED 가 이유다)")
@@ -1173,6 +1275,7 @@ function enact_minted_decision!(env, truth, decision)
                 applied = nothing, partial = false, world_maybe_dirty = true,
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                 args_from = nothing, n_calls = nothing,
-                registered = registered, impl_rejected_why = impl_rejected_why)
+                registered = registered, impl_rejected_why = impl_rejected_why,
+                world_delta = world_delta)
     end
 end

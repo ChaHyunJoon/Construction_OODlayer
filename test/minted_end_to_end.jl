@@ -84,12 +84,22 @@ const BARE_ENV = (staging_circles = Dict{Symbol,Any}(),)
 `reset_cache_resume!` 이 실제로 나갈 수 있는 최소 env. `tools/monitor/test_minted_wiring.jl`
 의 `throw_env_with_live_cache()` 와 같은 관용구이고, 낡은 정점 하나를 심어 두어 **재개가
 실제로 나갔는지가 `active_set` 으로 관측 가능**하게 만든다.
+
+🔴 2026-09-04 (D18). `active_build_steps` 는 **이 시험을 위해 나중에 더한 필드다.** 그 전
+판은 `(cache, sched)` 둘뿐이었고, 그래서 `_world_digest` 가 이 env 에서 통째로 `nothing`
+을 냈다(실측: `type NamedTuple has no field active_build_steps` → 다이제스트의 `catch` 가
+`nothing` 으로 삼킨다). 즉 **"쟀는데 0" 과 "못 쟀다" 를 가르는 testset (10)(11) 이 이 env
+에서는 후자만 볼 수 있었다.** 필드 이름·타입의 진실원은 `PlannerEnv`(`src/route_planning.jl`
+의 `active_build_steps::Set{AbstractID}`)이고 여기는 그 모양을 빈 채로 흉내낼 뿐이다.
+⚠️ 다이제스트는 넷을 **전부** 읽어야 지문을 낸다 — 하나라도 없으면 `nothing` 이다. 그것이
+설계다(반쯤 잰 지문의 차분은 무엇을 뜻하는지 아무도 못 적는다).
 """
 function live_cache_env()
     sched = CB.OperatingSchedule()
     cache = CB.initialize_planning_cache(sched)
     push!(cache.active_set, 999)
-    return (cache = cache, sched = sched)
+    return (cache = cache, sched = sched,
+            active_build_steps = Set{CB.AbstractID}())
 end
 
 const OK_SYNTH = Dict{String,Any}(
@@ -517,6 +527,98 @@ end
         surface = "sched", reversible = false) === nothing
     prim = CB.resolve_primitive("d16_plain_tool!")
     @test !haskey(prim.param_types, "anything")   # 키가 **없다** (nothing 을 넣지 않는다)
+end
+
+
+@testset "(10) 🔴 D18: 집행 전후 세계 다이제스트가 기록된다" begin
+    # 🔴 사전등록 결정 1(R11)이 "못 잰다" 고 적은 축. 오늘의 관측 넷 중 어느 것도 **세계가
+    #    바뀌었다** 를 못 잰다: `handled` 는 생성 body 면 구성상 ~100%, `applied` 는 항상
+    #    `nothing`, `world_maybe_dirty` 는 무조건 `true`(testset (6) 이 그것을 실측한다),
+    #    `steps.status` 는 모델의 자기신고다. `world_delta` 가 그 자리를 대신한다.
+    # 🔴 브리핑의 픽스처(`enact_minted_decision!(env, nothing, sl)` — 손으로 지은
+    #    `Dict{String,Any}` 를 **decision 자리에** 직접)는 이 파일에서 못 쓴다: 셋째 인자는
+    #    `decision` 이라 `decision.synth_lane` 을 읽는데 `Dict` 에는 그 필드가 없어
+    #    조기 `:deferred` 로 떨어진다(= body 가 아예 안 돈다). 이 파일의 규약대로
+    #    `_lane(...)`(JSON3 왕복) → `_dec(...)` 를 지나간다.
+    # ⚠️ `surface` 는 `env_param` 이다(브리핑의 `sched` 가 아니라). `sched` 는
+    #    `RESOLVE_SURFACES` 안이라 공통 MILP 재풀이가 돌고, 그러면 이 시험이 재려는 차분에
+    #    body 가 아닌 재풀이의 편집이 섞인다 — testset (6) 이 같은 이유로 같은 선택을 했다.
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local before = length(env.cache.closed_set)
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d18_touch_tool!",
+        "impl_code" => "function d18_touch_tool!(env; v::Int = 1)\n" *
+                       "    push!(env.cache.closed_set, v)\n" *
+                       "    return (status = :d18_touched,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["d18_touch_tool!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d18_touch_tool!",
+                                     "args" => Dict{String,Any}("v" => 999_001))]))
+    local r = enact_minted_decision!(env, nothing, _dec(e))
+    # 전제 — 이 판이 정말 생성 경로이고 body 가 돌았는가(음성 대조 없이 0 을 읽지 않는다).
+    @test r.registered === true
+    @test r.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :d18_touched
+    @test 999_001 in env.cache.closed_set
+    # 🔴 재는 것.
+    @test r.world_delta !== nothing
+    @test r.world_delta.closed == length(env.cache.closed_set) - before
+    @test r.world_delta.closed == 1
+end
+
+@testset "(11) 🔴 D18: 무동작 원시의 차분은 0 이다 — nothing 이 아니다" begin
+    # 🔴 **이 testset 이 삼상 규약 그 자체다.** `nothing`("못 쟀다")과 0 의 튜플("쟀는데
+    #    안 바뀌었다")은 서로 다른 관측이고, `_world_digest` 의 `catch` 가 그 둘을 뭉개면
+    #    D18 은 아무것도 안 재는 필드가 된다 — 세계를 안 바꾸는 body 가 정확히 오늘의
+    #    지배적인 판이므로(testset (6)), 뭉개진 판에서는 **모든** 판이 `nothing` 으로 보인다.
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d18_noop_tool!",
+        # 세계를 한 바이트도 안 건드린다 — `env` 를 읽지도 않는다((6) 과 같은 body 모양).
+        "impl_code" => "function d18_noop_tool!(env; v::Int = 1)\n" *
+                       "    return (status = :d18_did_nothing,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["d18_noop_tool!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d18_noop_tool!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local r = enact_minted_decision!(env, nothing, _dec(e))
+    @test r.registered === true
+    @test r.verdict === :admit
+    @test length(r.steps) == 1 && r.steps[1].status === :d18_did_nothing
+    @test r.world_delta !== nothing            # 🔴 "쟀는데 0" 이지 "못 쟀다" 가 아니다
+    @test r.world_delta.closed == 0
+    @test r.world_delta.active == 0
+    @test r.world_delta.n_edges == 0
+    @test r.world_delta.n_binding_changed == 0
+    # 🔴 음성 대조. 지문을 못 찍는 env 에서는 **같은 모양의 body** 가 `nothing` 을 낸다 —
+    #    이 줄이 없으면 위 네 0 이 "다이제스트가 살아 있다" 의 증거가 못 된다(`world_delta`
+    #    로 상수 0-튜플을 돌려주는 구현도 위 넷을 전부 통과한다). `BARE_ENV` 에는
+    #    `cache`/`sched`/`active_build_steps` 가 하나도 없다.
+    # 🔴 **이름을 바꿔야 한다.** 위 body 를 그대로 재사용하면 등록이
+    #    `reject:impl_name_already_minted` 로 먼저 돌아서서(실측) 다이제스트 자리에 아예
+    #    도달하지 않는다 — 그러면 `nothing` 은 "지문을 못 찍었다" 가 아니라 "집행 전에
+    #    거절됐다" 의 증거가 되어 이 대조가 재려던 것을 못 잰다.
+    local e0 = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d18_noop_bare!",
+        "impl_code" => "function d18_noop_bare!(env; v::Int = 1)\n" *
+                       "    return (status = :d18_did_nothing,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["d18_noop_bare!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d18_noop_bare!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local r0 = enact_minted_decision!(BARE_ENV, nothing, _dec(e0))
+    @test r0.registered === true                      # 집행 자리까지 실제로 갔다
+    @test r0.verdict === :admit
+    @test length(r0.steps) == 1 && r0.steps[1].status === :d18_did_nothing
+    @test r0.world_delta === nothing                  # 🔴 그런데 지문은 못 찍었다
 end
 
 end # module
