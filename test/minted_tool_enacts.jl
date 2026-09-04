@@ -1606,4 +1606,175 @@ end
 
 end # (20)
 
+
+# =============================================================================
+# (21) 🔴 D6 (Ruling R30, **개정판**) — 두 철자와 네 칸.
+#
+# 🔴 HEAD 실측 네 칸(이 절을 짓기 전, 같은 body 관용구
+#    `[k for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]`):
+#      ① `Vector{Symbol}` + 살아 있는 키 → `reject:param_convert:zone_keys:…`  (큰 실패)
+#      ② `Vector{Symbol}` + 없는 키      → **같은** `param_convert` — 진짜 사유인
+#                                          `unknown_zone_key` 에 도달조차 못 한다
+#      ③ `Vector{String}` + 살아 있는 키 → 바인딩 성공 → `(:already_clear, n = 0)` (조용한 실패)
+#      ④ `Vector{String}` + 없는 키      → `reject:unknown_zone_key:nope:live=pz`
+#
+# 이 절이 닫는 것: ①②. `Vector{Symbol}` 은 잘 아는 모델이 **써야 하는** 철자이고
+# (존 키가 실제로 Symbol 이다), JSON 에 symbol 이 없으니 `["zone_a"]` 를 보내는 것 말고
+# 할 수 있는 일이 없다 — 경계에서 옮기는 것이 D16 의 존재 이유다.
+#
+# 🔴 **`_convert_arg` 에 전역 규칙을 넣지 않는다**(R30 개정). `Dict{Symbol,…}` 인 다른
+#    전역 셋 셋(`SPARE_POOLS` · `SPARE_POOL_CENTERS` · `DEPOT_INFO`)에는 살아 있음 검사가
+#    **없어서**, 전역 강제는 "String 키가 조용히 걸러진다" 는 함정을 아무도 안 지키는 세
+#    자리로 넓힌다. 그래서 강제는 **`zone_keys` 자리**(가드가 사는 곳)에서만 한다.
+#
+# 🔴 ③에 대한 판정 — **고치지 않는다, 그리고 그 이유를 측정으로 적는다.**
+#    ③을 `(:moved, n=1)` 로 뒤집으려면 `Vector{String}` 선언 kwarg 에 `Vector{Symbol}` 을
+#    넣어야 하는데, 줄리아의 키워드는 convert 가 아니라 **단언**이라 그것은 `TypeError` 다
+#    — 그리고 그 예외를 `enact_minted!` 의 catch 가 `partial=true → handled=true` 로 적어
+#    폴백을 삼킨다(F2 가 실측하고 일부러 막은 사고, testset (20a-2) 가 그 계약을 지킨다).
+#    남는 길은 `Vector{String}` 주석을 **거절**하는 것인데, `Symbol(k)` 로 안에서 옮기는
+#    body 는 정당하므로 그것은 거짓 거절이다. 그래서 ③은 **시끄럽게** 만든다(아래 (21d)):
+#    로그 한 줄이 그 판의 `n=0` 을 "이미 깨끗했다" 로 읽지 말라고 적는다.
+#    ⚠️ 그리고 ④가 이미 참이다 — **나쁜 키는 두 철자 모두에서 보고된다**(걸러지지 않는다).
+# =============================================================================
+@testset "(21) 🔴 D6/R30(개정): zone_keys 의 두 철자와 네 칸" begin
+
+"이 절 전용: 네 칸을 같은 body 관용구로 태운다. 표를 안 남긴다."
+function _t21_cell(nm, ann, keyjson)
+    local dflt = ann == "Vector{Symbol}" ? "Symbol[]" : "String[]"
+    return _t20_bind(nm,
+        "function $(nm)(env; zone_keys::$(ann)=$(dflt))\n" *
+        "    zs = [k for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]\n" *
+        "    return (status = isempty(zs) ? :already_clear : :moved, n = length(zs))\nend\n",
+        Dict{String,Any}("zone_keys" => Dict("type" => "array",
+                                             "items" => Dict("type" => "string"))),
+        """{"zone_keys":$(keyjson)}""")
+end
+
+@testset "(21a) ① Vector{Symbol} + 살아 있는 키 — 큰 실패를 닫는다" begin
+    saved = CB.RESTRICTION_ZONES[]
+    made = String[]
+    try
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+        nm = "t21_sym_live!"; push!(made, nm)
+        local r = _t21_cell(nm, "Vector{Symbol}", """["pz"]""")
+        @test r.why === nothing
+        @test r.prim.param_types["zone_keys"] === Vector{Symbol}       # 전제
+        @test !(r.bound isa String)                                    # 🔴 D6 그 자체
+        @test r.bound[2].zone_keys isa Vector{Symbol}
+        @test r.bound[2].zone_keys == Symbol[:pz]
+        # 🔴 도달성: 값이 body 의 소비 관용구까지 가서 **조용한 0 이 아니다**.
+        local out = Base.invokelatest(getfield(CB, Symbol(nm)), r.bound[1]...; r.bound[2]...)
+        @test out.status === :moved && out.n == 1
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+@testset "(21b) ② Vector{Symbol} + 없는 키 — **진짜 사유**가 나온다" begin
+    saved = CB.RESTRICTION_ZONES[]
+    made = String[]
+    try
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+        nm = "t21_sym_bad!"; push!(made, nm)
+        local r = _t21_cell(nm, "Vector{Symbol}", """["nope"]""")
+        @test r.why === nothing
+        @test r.bound isa String
+        # 🔴 고치기 전에는 여기가 `param_convert` 였다 — 살아 있음 검사에 도달조차 못 했다.
+        @test occursin("reject:unknown_zone_key:nope", r.bound)
+        @test !occursin("param_convert", r.bound)
+        # 🔴 원소가 문자열이 아닌 판도 **같은 자리에서** 걸린다(규칙이 안 넓어졌다).
+        nm2 = "t21_sym_int!"; push!(made, nm2)
+        local r2 = _t21_cell(nm2, "Vector{Symbol}", """[1]""")
+        @test r2.bound isa String
+        @test occursin("reject:unknown_zone_key:1", r2.bound)
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+@testset "(21c) ④ Vector{String} + 없는 키 — 나쁜 키는 **두 철자 모두** 보고된다" begin
+    saved = CB.RESTRICTION_ZONES[]
+    made = String[]
+    try
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+        nm = "t21_str_bad!"; push!(made, nm)
+        local r = _t21_cell(nm, "Vector{String}", """["nope"]""")
+        @test r.why === nothing
+        @test r.bound isa String
+        @test occursin("reject:unknown_zone_key:nope", r.bound)
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+@testset "(21d) ③ Vector{String} + 살아 있는 키 — 조용한 0 이 **시끄러워진다**" begin
+    saved = CB.RESTRICTION_ZONES[]
+    made = String[]
+    try
+        CB.RESTRICTION_ZONES[] = Dict{Symbol,CB.LazySets.Ball2}(
+            :pz => CB.LazySets.Ball2([0.0, 0.0, 0.0], 1.0))
+        nm = "t21_str_live!"; push!(made, nm)
+        local r, logged
+        mktemp() do path, io
+            redirect_stdout(io) do
+                r = _t21_cell(nm, "Vector{String}", """["pz"]""")
+            end
+            flush(io); logged = read(path, String)
+        end
+        # 행동은 **안 바꿨다**(F2 의 계약: 선언 타입이 이긴다 — 안 그러면 TypeError).
+        @test r.why === nothing
+        @test !(r.bound isa String)
+        @test r.bound[2].zone_keys isa Vector{String}
+        local out = Base.invokelatest(getfield(CB, Symbol(nm)), r.bound[1]...; r.bound[2]...)
+        @test out.status === :already_clear && out.n == 0     # 🔴 측정된 사실(고치지 않았다)
+        # 🔴 그러나 조용하지 않다 — 이 줄이 유료 런에서 그 0 의 뜻을 가른다.
+        @test occursin("zone_keys 가 Symbol 이 아닌 원소 타입으로 바인딩된다", logged)
+        @test occursin("already_clear", logged)
+        # 🔴 음성 대조: Symbol 철자에서는 그 줄이 **안 뜬다**(항진이 아니다).
+        nm2 = "t21_sym_quiet!"; push!(made, nm2)
+        local logged2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                _t21_cell(nm2, "Vector{Symbol}", """["pz"]""")
+            end
+            flush(io); logged2 = read(path, String)
+        end
+        @test !occursin("zone_keys 가 Symbol 이 아닌", logged2)
+    finally
+        CB.RESTRICTION_ZONES[] = saved
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+@testset "(21e) 🔴 `_convert_arg` 는 안 넓어졌다 — 전역 규칙이 아니다" begin
+    # R30 개정의 (b): 전역 강제는 살아 있음 검사가 없는 세 자리로 함정을 퍼뜨린다.
+    @test_throws Exception CB._convert_arg(Vector{Symbol}, ["a"])
+    # 비-0 대조: 같은 함수가 여전히 자기 일은 한다(dict 키 옮기기, D16).
+    @test CB._convert_arg(Dict{String,Any}, JSON3.read("""{"a":1}""")) isa Dict{String,Any}
+    # 그리고 zone 아닌 키에는 아무 강제도 없다.
+    made = String[]
+    try
+        nm = "t21_tags_sym!"; push!(made, nm)
+        local r = _t20_bind(nm,
+            "function $(nm)(env; tags::Vector{Symbol}=Symbol[])\n" *
+            "    return (status = :ok,)\nend\n",
+            Dict{String,Any}("tags" => Dict("type" => "array")),
+            """{"tags":["a"]}""")
+        @test r.why === nothing
+        @test r.bound isa String
+        @test occursin("reject:param_convert:tags:", r.bound)
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+end # (21)
+
 end # module

@@ -99,3 +99,61 @@ def test_params_crosses_the_boundary_as_an_object_not_a_string():
                            impl_rejected_why="reject:w",
                            program=lambda **kw: _Unreadable())
     assert out2["params"] is None
+
+
+def test_the_channel_actually_carries_the_fixed_body():
+    """🔴 D3 (Wave D, Task 9 리뷰 I1). 이 채널의 **존재 이유**인 `impl_code` 를 단언하는
+    시험이 하나도 없었다 — 실측 변이: `out["impl_code"]`·`out["calls"]`·`out["surface"]`
+    를 전부 `None` 으로 죽여도(= 채널이 나르는 산출물 넷 중 셋을 제거) 이 파일이 **5
+    passed** 였다. 즉 payload 가 파이썬 쪽에서도 무방비였고, 그래서 C1 이 눈에 안 띄었다.
+
+    🔴 여기서 재는 것은 **경계 계약**이다: 이 넷이 그대로 Julia 로 건너가
+    `register_minted_primitive!(name=, code=, params=, surface=, reversible=)` 와
+    `sl["calls"]` 를 채운다(`tools/monitor/enact.jl` 의 되먹임 성공 분기). 하나라도
+    `None` 이면 그 자리가 조용히 기본값으로 떨어지거나 등록이 거절된다."""
+    import synthesize as SY
+    out = SY.rewrite_impl(tool_name="t!", spec="s", impl_name="broken_tool!",
+                          impl_code="function broken_tool!(env) end",
+                          impl_rejected_why="reject:whatever", program=_fake_program)
+    assert out["impl_code"] == _FakePred.impl_code
+    assert out["surface"] == "sched"
+    assert out["reversible"] is False              # 🔴 `None`(못 쟀다)이 아니다
+    assert out["calls"] == [{"primitive": "fixed_tool!", "args": {"k": 1}}]
+    # 🔴 코드 펜스는 벗겨진다 — 그대로 넘기면 Julia 가 `impl_not_a_function` 으로 거절한다
+    #    (유료 런 2 가 정확히 그 자리에서 죽었다).
+    class _Fenced(_FakePred):
+        impl_code = "```julia\n" + _FakePred.impl_code + "\n```"
+
+    out2 = SY.rewrite_impl(tool_name="t!", spec="s", impl_name="b!", impl_code="x",
+                           impl_rejected_why="reject:w", program=lambda **kw: _Fenced())
+    assert out2["impl_code"].strip() == _FakePred.impl_code.strip(), out2["impl_code"]
+    assert "```" not in out2["impl_code"]
+
+
+def test_the_tri_state_survives_on_every_carried_field():
+    """🔴 삼상은 `wrote` 만의 계약이 아니다. 모델이 필드를 안 채우면 `None`("못 쟀다")이지
+    `""`/`[]`("재서 비었다")가 아니어야 한다 — 뭉개면 Julia 쪽에서 "되먹임이 코드를 안
+    줬다" 와 "빈 코드를 줬다" 가 같은 관측이 된다."""
+    import synthesize as SY
+
+    class _Blank:
+        wrote = True
+        impl_name = ""
+        impl_code = ""
+        params = None
+        calls = None
+        surface = ""
+        reversible = "not a bool"
+
+    out = SY.rewrite_impl(tool_name="t!", spec="s", impl_name="b!", impl_code="x",
+                          impl_rejected_why="reject:w", program=lambda **kw: _Blank())
+    assert out["impl_name"] is None
+    assert out["impl_code"] is None
+    assert out["surface"] is None
+    assert out["params"] is None
+    assert out["reversible"] is None               # 비-bool 은 "못 쟀다"
+    # 🔴 비-0 대조: 같은 함수가 채워진 판에서는 값을 낸다(위 단언이 항진이 아니다).
+    ok = SY.rewrite_impl(tool_name="t!", spec="s", impl_name="b!", impl_code="x",
+                         impl_rejected_why="reject:w", program=_fake_program)
+    assert ok["impl_name"] == "fixed_tool!" and ok["impl_code"]
+

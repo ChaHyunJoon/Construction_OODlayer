@@ -52,9 +52,123 @@ module MintedEndToEnd
 using Test
 using ConstructionBots
 import JSON3
+import HTTP
 const CB = ConstructionBots
-include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
+
+# =============================================================================
+# 🔴 D2 (Wave D, 2026-09-04) — **이 파일은 살아 있는 서비스로 한 요청도 안 낸다.**
+#
+# 결함(실측, 이 파동 전): `enact_minted_decision!` 은 등록 거절마다 `$DSPY_URL/rewrite`
+# 로 POST 한다(D17). 이 파일은 등록 거절을 **셋** 만들므로 한 번 돌 때마다 요청 3건이
+# 8077 로 나갔다 — 오늘은 그 포트의 서비스가 09-03 세대라 `/rewrite` 라우트가 없어
+# 404 이고 그래서 공짜였다(실측: `[minted] rewrite: 왕복 실패 … StatusError(404` ×3).
+# 🔴 그 공짜는 **서비스 세대에 우연히 의존한다**: Task 10 이 현행 세대를 8077 에 올리는
+#    순간 `Pkg.test()` 한 번이 유료 호출 3건이 되고, 그 프롬프트가 `~/.dspy_cache`
+#    (공유 · `cache=True`)에 들어앉아 정작 측정할 런의 캐시를 오염시킨다. 🔴 캐시 오염이
+#    과금보다 나쁘다 — 나중의 음성 대조가 바이트 동일 프롬프트로 **옛 응답을 재생**한다.
+#
+# 처방: **루프백 대역 서버**다(환경변수 opt-in 이 아니라). 근거 셋 —
+#   (1) opt-in 플래그는 기본값에서 게이트를 **끄는** 것이라, 되먹임 경로가 아무도 안 돌린
+#       채 유료 런에 들어간다. 이 레포의 서명 실패 모드(빨개질 수 없는 게이트)와 같은 자리다.
+#   (2) 루프백은 그 경로를 **매번** 태우면서 유료 0건이다 — 그리고 이 파일이 필요로 하는
+#       것(고친 body 를 실제로 받는 판)은 가짜 응답 없이는 아예 못 짓는다(testset (20)).
+#   (3) 이 레포에 이미 정본 관용구가 있다(`test/tool_lane_keys_survive.jl` ·
+#       `test/runtests.jl` 의 agents/zones/routing_kind 게이트): 루프백 `HTTP.serve!` +
+#       `policy.jl` 의 `const DSPY_URL` 을 include 하는 동안만 치환 + `finally` 복원.
+#
+# 🔴 **구조적 보장**: `DSPY_URL` 은 `policy.jl:20` 의 `const` 라 include 시점에 **한 번**
+#    ENV 에서 읽힌다. 그 순간 값이 우리 포트이므로, 이 모듈 안의 어떤 코드도 8077 로 갈
+#    수 없다 — 문자열이 그 자리에 없다. testset (0) 이 그것을 단언으로 못박고,
+#    testset (20) 이 우리 서버가 받은 요청 수를 **비-0 대조**로 센다.
+#
+# 기본 모드는 `:off` = 404 다. 그래서 (2)(4)(5) 의 거절 판은 이 파동 **전과 바이트 동일한
+# 경로**를 탄다(왕복 실패 → 원래 거절 보존). 그것이 D17 의 계약이고, 그 계약이 여기서
+# 계속 측정된다.
+# =============================================================================
+const _RW_MODE = Ref{Symbol}(:off)
+const _RW_HITS = Ref{Int}(0)
+const _RW_LAST = Ref{Any}(nothing)          # 마지막으로 받은 요청 본문(payload 단언용)
+
+"고친 body 한 벌. `surface`/`params` 는 인자로 열어 둔다 — D4 가 그 둘을 겨눈다."
+_rw_fix(nm; code = nothing, surface = "env_param", params = nothing, reversible = false) =
+    Dict{String,Any}(
+        "wrote" => true, "impl_name" => nm,
+        "impl_code" => code === nothing ?
+            "function $(nm)(env; note = \"x\")\n    return (status = :rw_ok, note = note)\nend\n" :
+            code,
+        "surface" => surface, "reversible" => reversible,
+        "params" => params === nothing ?
+            Dict{String,Any}("note" => Dict{String,Any}("type" => "string")) : params,
+        "calls" => [Dict{String,Any}("primitive" => nm,
+                                     "args" => Dict{String,Any}("note" => "rw"))],
+        "error" => nothing, "rewrite_of_why" => "n/a")
+
+const _RW_RESPONSES = Dict{Symbol,Function}(
+    # 🔴 D1 의 측정 장치: 고친 body 의 **이름이 바뀐다**. 이름을 바꿔야만 고쳐지는 거절
+    #    가족(`impl_name_must_end_with_bang` … `impl_name_exists_withheld`)의 모양이다.
+    :rename      => () -> _rw_fix("rw_fixed!"),
+    # 같은 변이를 (20c) 가 사본 위에서 다시 태운다. 🔴 이름을 재사용할 수 없다 —
+    # `_MINTED_EVER` 가 프로세스 수명 내내 막는다(`impl_name_already_minted`).
+    :rename_mut  => () -> _rw_fix("rw_mut_fixed!"),
+    # 대조(A2): 이름을 **유지**한다. D1 이전에도 통과하던 유일한 갈래다.
+    :keep        => () -> _rw_fix("rw_keep!"),
+    # D4: 되먹임이 문자열이 아닌 `surface` 를 낸다. 본 경로는 이 모양을 거절한다.
+    :bad_surface => () -> _rw_fix("rw_surf!"; surface = 7),
+    # D4: 되먹임이 날것 문자열 `params` 를 낸다(파이썬 `params_object` 가 죽은 판).
+    :bad_params  => () -> _rw_fix("rw_praw!"; params = "{\"note\": {\"type\": \"string\"}}"),
+    # D5: 고친 body 가 **인터페이스 함수를 부른다** — L3 이 참인 판.
+    :l3          => () -> _rw_fix("rw_l3!";
+        code = "function rw_l3!(env; note = \"x\")\n" *
+               "    n = length(env.active_build_steps)\n" *
+               "    push!(env.active_build_steps, RobotID(7))\n" *
+               "    return (status = :rw_ok, n = n)\nend\n"))
+
+const _RW_SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0;
+                               listenany = true, verbose = -1) do req
+    if req.target == "/rewrite"
+        _RW_HITS[] += 1
+        _RW_LAST[] = try JSON3.read(String(req.body)) catch; nothing end
+        haskey(_RW_RESPONSES, _RW_MODE[]) || return HTTP.Response(404, "")
+        return HTTP.Response(200, JSON3.write(_RW_RESPONSES[_RW_MODE[]]()))
+    end
+    # 🔴 `/health`·`/decide` 도 404 다. 이 파일은 그 둘을 안 태우는데, 태우게 되는 날
+    #    조용히 8077 로 나가는 것보다 빨개지는 쪽이 옳다.
+    return HTTP.Response(404, "")
+end
+const _RW_PORT = HTTP.Servers.port(_RW_SERVER)
+
+# `const DSPY_URL`(policy.jl)은 include 시점에 한 번만 ENV 를 읽는다. 그 순간에만 우리
+# 포트로 돌려놓고 곧바로 되돌린다(같은 프로세스의 다른 게이트가 물들지 않도록).
+const _PREV_DSPY_URL = get(ENV, "DSPY_URL", nothing)
+ENV["DSPY_URL"] = "http://127.0.0.1:$(_RW_PORT)"
+try
+    include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
+catch
+    close(_RW_SERVER)
+    rethrow()
+finally
+    _PREV_DSPY_URL === nothing ? delete!(ENV, "DSPY_URL") :
+                                 (ENV["DSPY_URL"] = _PREV_DSPY_URL)
+end
 include(joinpath(@__DIR__, "..", "tools", "monitor", "enact.jl"))
+
+@testset "(0) 🔴 D2: 되먹임은 루프백으로만 나간다 — 유료 경로가 구조적으로 닫혔다" begin
+    # 🔴 이 단언이 D2 의 증명이다: `DSPY_URL` 은 `const` 이고 그 값이 우리 포트다.
+    #    `_rewrite_once` 는 `DSPY_URL * "/rewrite"` 만 부르므로 다른 목적지가 없다.
+    @test DSPY_URL == "http://127.0.0.1:$(_RW_PORT)"
+    @test occursin(r"^http://127\.0\.0\.1:\d+$", DSPY_URL)
+    @test !occursin("8077", DSPY_URL)
+    # 🔴 ENV 는 원래대로 복원됐다 — 같은 프로세스의 다음 게이트가 물들지 않는다.
+    @test get(ENV, "DSPY_URL", nothing) == _PREV_DSPY_URL
+    # 비-0 대조: 서버가 실제로 살아 있고 우리 포트에서 응답한다(없으면 위 단언들은
+    # "아무 데도 안 간다"와 구별이 안 된다).
+    @test _RW_PORT > 0
+    local probe = HTTP.post(DSPY_URL * "/rewrite", ["Content-Type" => "application/json"],
+                            "{}"; status_exception = false, retries = 0)
+    @test probe.status == 404          # 기본 모드 `:off`
+    @test _RW_HITS[] == 1              # **우리** 서버가 받았다
+    _RW_HITS[] = 0
+end
 
 """
     _resp(synth::Dict{String,Any}) -> JSON3.Object
@@ -788,6 +902,9 @@ end
         #    `type NamedTuple has no field …` 가 `policy_producer` 안에서 터져 렌더가 선다.
         @test :world_delta in ks
         @test :handled in ks
+        # 🔴 D5(Wave D): L3 도 네 자리 전부에 있어야 한다 — L4 와 같은 이유로
+        #    소비자가 `try` 밖에서 읽는다.
+        @test :interface_calls in ks
     end
 
     # ---- 🔴 음성 대조: 이 게이트가 정말로 빨개질 수 있는가 (변이 M8 을 in-test 로) ----------
@@ -795,9 +912,12 @@ end
     # (`test/synth_lane_keys_survive.jl` 의 관용구와 같다).
     mktempdir() do dir
         local lines = split(read(ENACT_PATH, String), "\n")
-        local idx = findall(l -> occursin(r"^\s*world_delta = world_delta\)\s*$", l), lines)
+        # ⚠️ D5(Wave D) 뒤로 `world_delta` 는 튜플의 **마지막 필드가 아니다** —
+        #    `interface_calls` 가 그 뒤에 붙었다. 그래서 변이 지점의 모양이 `…)` 가 아니라
+        #    `…,` 다. 이 줄이 낡으면 `length(idx) == 4` 가 먼저 빨개진다(조용히 안 샌다).
+        local idx = findall(l -> occursin(r"^\s*world_delta = world_delta,\s*$", l), lines)
         @test length(idx) == 4                      # 변이 지점을 실제로 넷 다 찾았다
-        lines[idx[1]] = replace(lines[idx[1]], "world_delta = world_delta)" => ")")
+        lines[idx[1]] = replace(lines[idx[1]], "world_delta = world_delta," => "")
         local p = joinpath(dir, "enact_dropped_field.jl")
         write(p, join(lines, "\n"))
         local mut = _return_site_fieldsets(p, :enact_minted_decision!)
@@ -1002,5 +1122,513 @@ end
         "synthesis_event" => true, "ran" => false, "error" => "no_missing_primitive"))
     @test _synth_lane_field(sl0, "mechanism") === nothing
 end
+
+
+# =============================================================================
+# (20) 🔴 D1(Critical) — 되먹임이 **이름을 바꾸면** 고친 body 가 실제로 불리는가.
+#
+# 결함(리뷰 C1, 실측): 되먹임 성공 시 `sl` 에 쓰는 키는 다섯이었다 —
+# `impl_name`·`impl_code`·`params`·`calls`·`surface`. 그런데 `enact_minted!` 이
+# **실행할 원시를 고르는 자리**는 그 다섯이 아니라 `body_names` 다. 그래서 고친 body 가
+# 등록되고(`Core.eval` 까지 돌고) **영영 안 불렸다**:
+#   `verdict=reject registered=true impl_rejected_why=nothing reason="unknown primitive:
+#    rw_bad — 알파벳 밖이다"`
+#
+# 🔴 왜 Critical 인가. 이름을 **반드시** 바꿔야만 고쳐지는 거절 가족이 있고, 그 가족이
+#    하필 D6 신호 그 자체다(`impl_name_must_end_with_bang` · `_not_an_identifier` ·
+#    `_already_minted` · `_exists_shown` · 🔴 `_exists_withheld`(감춘 능력을 스스로 다시
+#    유도했다는 유일한 자기신고) · `_exists_imported`). 그 전부에서 되먹임은 **성공하는데**
+#    기록은 "모델이 어휘 밖 이름을 냈다" 로 남는다 — 우리 배선의 실패를 agent-3 의 실패로
+#    적는 것이고, 문구가 하필 "알파벳 밖이다" 다.
+#
+# 이 절은 **A/B 대조**다. 유일한 차이는 고친 body 의 이름이 바뀌는가이고, 두 판이 같은
+# 결과(`:admit`, 그 body 가 실제로 불림)를 내야 한다. D1 이전에는 (20a) 만 빨갛다.
+# =============================================================================
+
+"등록이 **거절되는** 합성 레인 한 벌. `why` 가 이름 축이면 되먹임이 개명해야만 고친다."
+_rw_lane(nm, code) = _lane(Dict{String,Any}(
+    "synthesis_event" => true, "ran" => true, "error" => nothing,
+    "tool_name" => "T", "impl_name" => nm, "impl_code" => code,
+    "surface" => "env_param", "reversible" => false,
+    "params" => Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
+    "body_names" => [nm], "wrote" => true, "mechanism" => "fix it",
+    "calls" => [Dict{String,Any}("primitive" => nm,
+                                 "args" => Dict{String,Any}("note" => "hi"))]))
+
+@testset "(20) 🔴 D1: 되먹임이 고친 body 가 실제로 불린다 (이름 A/B 대조)" begin
+
+@testset "(20a) 🔴 이름이 **바뀌는** 판 — C1 그 자체" begin
+    CB.reset_minted_table!()
+    _RW_MODE[] = :rename
+    _RW_HITS[] = 0
+    # 이름 축의 거절: `!` 로 안 끝난다 ⟹ 고치려면 **반드시** 이름이 바뀐다.
+    local sl = _rw_lane("rw_bad",
+        "function rw_bad(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    @test _RW_HITS[] == 1                       # 왕복은 정확히 한 번(구조로)
+    @test m.registered === true                 # 고친 body 는 등록됐다
+    @test isdefined(CB, :rw_fixed!)             # 그리고 Core.eval 까지 됐다
+    # 🔴 여기가 D1 이다. 고치기 전에는 `:reject` 이고 사유가
+    #    "unknown primitive: rw_bad — 알파벳 밖이다" 였다.
+    @test m.verdict === :admit
+    @test !occursin("unknown primitive", m.reason)
+    @test length(m.steps) == 1
+    @test m.steps[1].name == "rw_fixed!"        # **고친** 이름이 불렸다
+    @test m.steps[1].status !== nothing
+    @test m.args_from === :calls
+    @test m.n_calls == 1
+    # 🔴 `body_names` 가 갱신됐다는 것을 자리에서 직접 잰다(사후 상태가 진실원).
+    @test String[String(x) for x in sl["body_names"]] == ["rw_fixed!"]
+    # 🔴 되먹임은 **원래 사유**를 실어 보냈다 — 이 채널의 존재 이유(D17).
+    @test _RW_LAST[] !== nothing
+    @test occursin("impl_name_must_end_with_bang", String(_RW_LAST[][:impl_rejected_why]))
+    # ⚠️ 전선 이름은 `impl_code` 다(`_rewrite_once` 의 payload). 파이썬 시그니처의
+    #    입력 이름 `rejected_impl_code` 는 `dspy_service.py` 가 그 값에 붙이는 이름이다.
+    @test String(_RW_LAST[][:impl_code]) != ""
+    @test String(_RW_LAST[][:spec]) == "fix it"     # W5 의 값이 실제로 실린다
+end
+
+@testset "(20b) 대조(A2): 이름을 **유지**하는 판 — D1 이전에도 통과하던 유일한 갈래" begin
+    CB.reset_minted_table!()
+    _RW_MODE[] = :keep
+    _RW_HITS[] = 0
+    # 이름 축이 아닌 거절: 최상위 정의가 둘이다 ⟹ 이름을 안 바꾸고 고칠 수 있다.
+    local sl = _rw_lane("rw_keep!",
+        "function rw_keep!(env; note = \"x\")\n    return (status = :nope,)\nend\n" *
+        "function rw_helper(x)\n    return x\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    @test _RW_HITS[] == 1
+    @test m.registered === true
+    @test m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].name == "rw_keep!"
+    # 🔴 이 대조가 비어 있지 않다는 증거: (20a) 와 **같은 env·같은 경로**인데 (20a) 만
+    #    고치기 전에 빨갰다. 즉 (20a) 의 실패는 env 의 성질이 아니라 배선 결함이다.
+    @test String[String(x) for x in sl["body_names"]] == ["rw_keep!"]
+end
+
+@testset "(20c) 🔴 D3: 되먹임 채널을 지우면 이 게이트가 빨개진다 (변이 대조)" begin
+    # 🔴 리뷰 I1: `enact.jl` 의 D17 블록 27줄을 통째로 지워도 이 파일이 **대조와 동일**했다
+    #    (Pass 수까지). 즉 채널이 무방비였다. 이 절은 그 변이를 **시험 안에서** 실행한다 —
+    #    생산 소스는 안 건드리고 `mktempdir()` 사본만 태운다((14) 의 관용구와 같다).
+    local src = read(ENACT_PATH, String)
+    # 변이 지점: 되먹임 성공 후 `body_names` 를 갱신하는 줄(D1)을 지운다.
+    @test occursin("sl[\"body_names\"] = [fx.impl_name]", src)
+    mktempdir() do dir
+        local p = joinpath(dir, "enact_no_body_names.jl")
+        write(p, replace(src, "sl[\"body_names\"] = [fx.impl_name]" => "", count = 1))
+        @test !occursin("sl[\"body_names\"] = [fx.impl_name]", read(p, String))
+        # 사본을 **별도 모듈**에 include 해서 생산 정의를 덮지 않는다.
+        local M = Module(:EnactMutant)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, p)
+        CB.reset_minted_table!()
+        _RW_MODE[] = :rename_mut
+        _RW_HITS[] = 0
+        local sl = _rw_lane("rw_mut",
+            "function rw_mut(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+        local m = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                    live_cache_env(), nothing, _dec(sl))
+        @test _RW_HITS[] == 1
+        @test m.registered === true            # 등록은 됐는데
+        @test m.verdict === :reject            # 🔴 아무도 안 불렀다
+        @test occursin("unknown primitive", m.reason)
+        @test occursin("rw_mut", m.reason)     # 그리고 **옛** 이름을 탓한다
+    end
+    _RW_MODE[] = :off
+end
+
+end
+
+
+# =============================================================================
+# (21) 🔴 D4 — 재등록 자리의 가드 둘. 본 경로에는 있고 되먹임 경로에는 없었다.
+#
+# (a) `surface` 타입 가드. 본 경로는 `surf_raw isa AbstractString` 을 먼저 보는데
+#     되먹임 경로는 `String(something(fx.surface, "unknown"))` 을 가드 없이 불렀다.
+#     실측(리뷰 I3): `surface: 7` → `MethodError: no method matching String(::Int64)` →
+#     바깥 `catch` → `verdict=reject registered=nothing impl_rejected_why=nothing`.
+#     🔴 대가 셋: 헌장의 "예외가 아니라 거절" 이 깨지고 · **이미 측정돼 있던 첫 거절
+#     사유가 사라지고**(삼상이 "못 쟀다" 로 붕괴) · 세계를 확실히 안 건드렸는데
+#     `world_maybe_dirty=true` 다.
+# (b) `params_not_an_object` 사전 가드. 없으면 같은 결함이 시도 1 과 시도 2 에서
+#     **다른 사유 이름**을 낸다(`params_not_an_object:String` vs
+#     `params_keys_not_strings:Int64`) — D17 이 재려는 것이 정확히 "되먹임이 무엇을
+#     고쳤고 무엇을 못 고쳤나" 의 **사유 히스토그램**이라, 어휘가 갈리면 그 표가 거짓이 된다.
+#
+# ⚠️ 오늘 이 둘이 도달 불가한 이유는 파이썬 쪽 한 겹뿐이다(`RewriteToolImpl.surface: str` ·
+#    `params_object` 정규화). 본 경로가 같은 자리를 굳이 막고 있는데 이쪽만 안 막는 것은
+#    비대칭이고, 이 파일이 그 비대칭을 없앤다.
+# =============================================================================
+@testset "(21) 🔴 D4: 되먹임 payload 도 본 경로와 같은 사유로 거절된다" begin
+
+@testset "(21a) surface 가 문자열이 아니면 **예외가 아니라 거절**이다" begin
+    CB.reset_minted_table!()
+    _RW_MODE[] = :bad_surface
+    _RW_HITS[] = 0
+    local sl = _rw_lane("rw_surf",
+        "function rw_surf(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    @test _RW_HITS[] == 1
+    @test m.verdict === :reject
+    # 🔴 예외로 새면 이 셋이 전부 반대로 나온다(nothing · nothing · true).
+    @test m.registered === false
+    @test m.impl_rejected_why !== nothing
+    @test m.impl_rejected_why == "reject:surface_not_a_string:Int64"
+    @test m.world_maybe_dirty === false
+    @test !occursin("threw", m.reason)
+    # 🔴 갱신 **전에** 거절한다 — 못 쓸 값이 `sl` 에 남지 않는다.
+    @test sl["surface"] == "env_param"
+    @test sl["impl_name"] == "rw_surf"
+    @test !isdefined(CB, :rw_surf!)
+end
+
+@testset "(21b) 날것 params 는 본 경로와 **같은 이름**의 사유를 낸다" begin
+    CB.reset_minted_table!()
+    _RW_MODE[] = :bad_params
+    _RW_HITS[] = 0
+    local sl = _rw_lane("rw_praw",
+        "function rw_praw(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    @test _RW_HITS[] == 1
+    @test m.verdict === :reject
+    @test m.registered === false
+    # 🔴 히스토그램 계약: 시도 1 과 시도 2 가 같은 결함에 **같은 어휘**를 쓴다.
+    @test m.impl_rejected_why == "reject:params_not_an_object:String"
+    @test !occursin("params_keys_not_strings", m.impl_rejected_why)
+    @test sl["params"] isa AbstractDict          # 못 쓸 값이 안 실렸다
+    _RW_MODE[] = :off
+end
+
+@testset "(21c) 🔴 변이 대조: 가드 둘을 지우면 이 게이트가 빨개진다" begin
+    # 생산 소스는 안 건드린다 — `mktempdir()` 사본만 태운다((14)(20c) 의 관용구).
+    local src = read(ENACT_PATH, String)
+    local marker_s = "reject:surface_not_a_string:\$(typeof(surf2))"
+    local marker_p = "reject:params_not_an_object:\$(typeof(praw2))"
+    @test occursin(marker_s, src)
+    @test occursin(marker_p, src)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_no_guards.jl")
+        # 가드 둘의 `||` 반환줄만 항진으로 바꾼다(다른 줄은 안 건드린다).
+        local mut = replace(src,
+            "(surf2 === nothing || surf2 isa AbstractString) ||" =>
+                "(surf2 === nothing || true) ||",
+            "(praw2 === nothing || praw2 isa AbstractDict) ||" =>
+                "(praw2 === nothing || true) ||")
+        @test !occursin(marker_s * "\")", mut) || true   # 문자열 자체는 남는다(도달 불가일 뿐)
+        write(q, mut)
+        local M = Module(:EnactNoGuards)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        _RW_MODE[] = :bad_surface
+        local sl = _rw_lane("rw_surf2",
+            "function rw_surf2(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+        local m = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                    live_cache_env(), nothing, _dec(sl))
+        # 🔴 가드가 없으면 예외로 샌다: 삼상이 "못 쟀다" 로 붕괴한다.
+        @test m.registered === nothing
+        @test m.impl_rejected_why === nothing
+        @test occursin("threw", m.reason)
+        _RW_MODE[] = :off
+    end
+end
+
+end
+
+
+# =============================================================================
+# (22) 🔴 D7 — `_world_digest` 도 **잘못된 타입에서 수를 지어내면 안 된다**.
+#
+# Wave A 자체 발견 1 과 **같은 부류**다: `_world_delta(bad, ok)` 가 `binding = "not a dict"`
+# 에서 안 던지고 `n_binding_changed = 10`(문자열의 길이)을 조용히 돌려줬다. Wave A 는
+# `try` **앞에** 모양 가드를 두어 그것을 닫았다. 검증자가 실측한 것은 그 가드의 **위쪽 짝**이
+# 아직 열려 있다는 것이다:
+#   `closed_set = "abcdefghij"` → `closed = 10` · `active_build_steps = "xyz"` → `active = 3`
+# 둘 다 안 던진다. 🔴 예외라면 `catch` 가 `nothing`("못 쟀다")으로 바꿔 주는데, 이 수들은
+# **"쟀다" 를 참칭한다** — 그리고 여기가 더 나쁘다: `_world_digest` 의 docstring 이 임의의
+# env 모양을 **의도된 입력**이라고 적으므로, 읽는 사람에게 그 수가 허구라는 신호가 없다.
+#
+# ⚠️ "진짜 `PlannerEnv` 로는 도달 불가" 는 근거가 못 된다 — Wave A 가 `_world_delta` 에서
+#    바로 그 논거를 불충분하다고 판정하고 가드를 넣었다. 같은 기준을 여기 적용한다.
+#    생산 타입은 둘 다 `Set` 이다(`essential_tg_coponents.jl` 의 `closed_set::Set{Int}` ·
+#    `route_planning.jl` 의 `active_build_steps::Set{AbstractID}`).
+# =============================================================================
+@testset "(22) 🔴 D7: 잘못된 타입의 세계는 수가 아니라 nothing 이다" begin
+    local ok = live_cache_env()
+    # 🔴 양성 대조 먼저 — 0 을 비-0 과 짝지어 읽는다. 진짜 모양에서는 지문이 **나온다**.
+    local d_ok = _world_digest(ok)
+    @test d_ok !== nothing
+    @test d_ok.closed == 0 && d_ok.active == 0
+
+    # (a) `closed_set` 이 문자열 — 실측된 거짓 측정값 `closed = 10`.
+    local bad_c = (cache = (closed_set = "abcdefghij",), sched = ok.sched,
+                   active_build_steps = ok.active_build_steps)
+    @test _world_digest(bad_c) === nothing
+
+    # (b) `active_build_steps` 가 문자열 — 실측된 거짓 측정값 `active = 3`.
+    local bad_a = (cache = ok.cache, sched = ok.sched, active_build_steps = "xyz")
+    @test _world_digest(bad_a) === nothing
+
+    # (c) 문자열이 아닌 다른 잘못된 모양도 마찬가지다 — 술어는 "문자열이 아니다" 가 아니라
+    #     **"집합이다"** 여야 한다(`length` 를 갖는 모양은 문자열 말고도 많다).
+    @test _world_digest((cache = (closed_set = [1, 2, 3],), sched = ok.sched,
+                         active_build_steps = ok.active_build_steps)) === nothing
+    @test _world_digest((cache = ok.cache, sched = ok.sched,
+                         active_build_steps = Dict(1 => 2))) === nothing
+
+    # (d) 🔴 그리고 **차분이 그 붕괴를 삼키지 않는다**: 한쪽이 `nothing` 이면 `nothing` 이다.
+    @test _world_delta(_world_digest(bad_c), d_ok) === nothing
+    @test _world_delta(d_ok, _world_digest(bad_a)) === nothing
+    # 비-0 대조: 진짜 둘의 차분은 `nothing` 이 **아니라** 0 의 튜플이다(삼상).
+    @test _world_delta(d_ok, d_ok) !== nothing
+    @test _world_delta(d_ok, d_ok).closed == 0
+
+    # ---- 🔴 변이 대조: 가드를 지우면 거짓 측정값이 되돌아온다 ------------------------------
+    local src = read(ENACT_PATH, String)
+    @test occursin("_is_countable_world_set", src)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_no_digest_guard.jl")
+        # 술어를 항진으로 만든다(다른 줄은 안 건드린다).
+        write(q, replace(src, "_is_countable_world_set(x) = x isa AbstractSet" =>
+                              "_is_countable_world_set(x) = true", count = 1))
+        local M = Module(:EnactNoDigestGuard)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        local mut = Base.invokelatest(getfield(M, :_world_digest), bad_c)
+        @test mut !== nothing         # 🔴 가드가 없으면 "쟀다" 고 주장한다
+        @test mut.closed == 10        # 그리고 그 수는 문자열의 길이다
+    end
+end
+
+# =============================================================================
+# (23) 🔴 D5 — L3(spec §0)이 **기록까지** 간다. L4 를 읽는 것과 같은 방법으로.
+#
+# Wave C2 가 생산자를 지었다(`impl_interface_calls`, `Core.eval` **전에** 등록 행에 실린다).
+# 그러나 그 값은 행에만 있었고 집행 경로에도 결정 행에도 없었다 — 유료 런이 L4(`world_delta`)
+# 는 읽는데 L3 은 못 읽는 상태였다. 이 절이 두 자리를 잰다:
+#   (a) `resolve_primitive(...).interface_calls` — 삼상 그대로
+#   (b) 집행 결과 `m.interface_calls` + `record_world_delta!` 이 쓰는 결정 행의 키
+# =============================================================================
+@testset "(23) 🔴 D5: L3 이 집행 결과와 결정 행까지 간다" begin
+
+@testset "(23a) 인터페이스를 부르는 body — L3 = 참" begin
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d5_l3_true!",
+        "impl_code" => "function d5_l3_true!(env; v::Int = 1)\n" *
+                       "    a = RobotStart(RobotNode(RobotID(v), GeomNode(nothing)))\n" *
+                       "    add_node!(env.sched, ScheduleNode(node_id(a), a))\n" *
+                       "    return (status = :d5_ok,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["d5_l3_true!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d5_l3_true!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local prev = CB.MONITOR_RESPEC[]
+    try
+        CB.MONITOR_RESPEC[] = Dict{String,Any}()
+        local m = enact_minted_decision!(env, nothing, _dec(e))
+        @test m.verdict === :admit
+        # (a) 집행 경로가 그 값을 든다.
+        local p = CB.resolve_primitive("d5_l3_true!")
+        @test p.interface_calls isa Vector{String}
+        @test !isempty(p.interface_calls)
+        @test issorted(p.interface_calls)
+        # ⚠️ 교집합은 `names(CB)` 와 진다 — `add_node!` 는 CB 가 export 하지 않아
+        #    빠지고, 실려 있는 타입 생성자들이 남는다(실측). 인용하지 않고 **자리에서**
+        #    확인한다: 이 값이 곧 L3 의 증거다.
+        @test "ScheduleNode" in p.interface_calls
+        # ⚠️ 인터페이스 집합 자체의 계약(교집합의 정의)은 Wave C2 의
+        #    `test/minted_registration.jl` (32)(33) 이 소유한다 — 여기서 다시 안 잰다.
+        # 🔴 진실원 하나: 행과 집행 경로가 같은 값을 든다.
+        @test p.interface_calls ==
+              String[String(x) for x in CB.minted_table()["d5_l3_true!"]["interface_calls"]]
+        # (b) 집행 결과가 나른다 — L4 를 읽는 것과 같은 자리에서.
+        @test m.interface_calls == p.interface_calls
+        # (c) 결정 행까지 간다(삼상이 JSON 직전 모양에서도 산다).
+        record_world_delta!(m)
+        local rs = CB.MONITOR_RESPEC[]
+        @test haskey(rs, "interface_calls")
+        @test rs["interface_calls"] == p.interface_calls
+        @test haskey(rs, "world_delta")                # L4 는 그대로 있다
+    finally
+        CB.MONITOR_RESPEC[] = prev
+    end
+end
+
+@testset "(23b) 아무것도 안 부르는 body — L3 = `[]`(재서 없다), `nothing` 이 아니다" begin
+    CB.reset_minted_table!()
+    local prev = CB.MONITOR_RESPEC[]
+    try
+        CB.MONITOR_RESPEC[] = Dict{String,Any}()
+        # ⚠️ 이름을 재사용할 수 없다 — `_MINTED_EVER` 가 프로세스 수명 내내 막는다
+        #    (testset (1) 이 `e2e_touch!` 를 이미 주조했다). 같은 **모양**의 새 이름을 쓴다.
+        local m = enact_minted_decision!(live_cache_env(), nothing, _dec(_lane(
+            merge(OK_SYNTH, Dict{String,Any}(
+                "impl_name" => "d5_l3_none!",
+                "impl_code" => "function d5_l3_none!(env; note = \"x\")\n" *
+                               "    return (status = :d5_ok, note = note)\nend\n",
+                "body_names" => ["d5_l3_none!"],
+                "calls" => [Dict{String,Any}("primitive" => "d5_l3_none!",
+                                             "args" => Dict{String,Any}("note" => "hi"))])))))
+        @test m.verdict === :admit
+        @test m.interface_calls == String[]
+        @test m.interface_calls !== nothing         # 🔴 삼상의 가운데 상태다
+        record_world_delta!(m)
+        @test CB.MONITOR_RESPEC[]["interface_calls"] == String[]
+    finally
+        CB.MONITOR_RESPEC[] = prev
+    end
+end
+
+@testset "(23c) 등록조차 안 된 판 — L3 = `nothing`(못 쟀다)" begin
+    CB.reset_minted_table!()
+    local prev = CB.MONITOR_RESPEC[]
+    try
+        CB.MONITOR_RESPEC[] = Dict{String,Any}()
+        # 규약 위반이라 등록 자체가 거절된다 ⟹ 걸어 본 적이 없다.
+        local sl = _rw_lane("d5_never",
+            "function d5_never(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+        local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+        @test m.verdict === :reject
+        @test m.registered === false
+        # 🔴 `[]` 이면 "재서 없다" 를 주장하게 된다 — 안 잰 것을 잰 것처럼 적는 것이다.
+        @test m.interface_calls === nothing
+        record_world_delta!(m)
+        # 🔴 키는 **언제나** 쓰인다(`world_delta` 와 같은 규약): `null` 로 직렬화되고
+        #    `[]` 가 되지 않는다. 키의 **부재**는 셋째 사건(이 코드 이전 세대)을 뜻한다.
+        @test haskey(CB.MONITOR_RESPEC[], "interface_calls")
+        @test CB.MONITOR_RESPEC[]["interface_calls"] === nothing
+        @test JSON3.write(CB.MONITOR_RESPEC[]) |> x -> occursin("\"interface_calls\":null", x)
+    finally
+        CB.MONITOR_RESPEC[] = prev
+    end
+end
+
+@testset "(23d) 손으로 씨 뿌린 행 — 기본값이 `[]` 가 아니라 `nothing` 이다" begin
+    # 🔴 Wave C2 §7 이 못박은 자리. 씨앗 행(`test/minted_seed_fixture.jl` 의
+    #    `MINTED_FIXTURE_ROWS`)에는 이 열이 **아예 없다** — 그 body 는 한 번도 안 걸렸다.
+    #    `[]` 를 기본값으로 두면 "재서 인터페이스 호출이 없더라" 를 주장하게 된다.
+    # 여기서는 그 모양을 **실제로 만든다**(씨앗 파일을 include 하지 않는다 — 이 파일의
+    # 다른 절이 표에 등호를 걸므로 표를 오염시키지 않는 쪽이 옳다).
+    CB.reset_minted_table!()
+    local why = CB.register_minted_primitive!(
+        name = "d5_seedlike!",
+        code = "function d5_seedlike!(env; v::Int = 1)\n    return (status = :ok,)\nend\n",
+        params = Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        surface = "env_param", reversible = false)
+    @test why === nothing
+    # 열을 지워 **씨앗 행과 바이트 동일한 모양**으로 만든다.
+    delete!(CB.minted_table()["d5_seedlike!"], "interface_calls")
+    @test !haskey(CB.minted_table()["d5_seedlike!"], "interface_calls")
+    @test CB.resolve_primitive("d5_seedlike!").interface_calls === nothing
+    # 🔴 음성 대조 — 열이 있으면 `nothing` 이 아니다(위 단언이 항진이 아니다).
+    CB.minted_table()["d5_seedlike!"]["interface_calls"] = ["zzz"]
+    @test CB.resolve_primitive("d5_seedlike!").interface_calls == ["zzz"]
+end
+
+@testset "(23e) 되먹임으로 고친 body 의 L3 도 기록된다 — **고친** 이름의 것이다" begin
+    CB.reset_minted_table!()
+    _RW_MODE[] = :l3
+    _RW_HITS[] = 0
+    local sl = _rw_lane("d5_rw",
+        "function d5_rw(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    @test _RW_HITS[] == 1
+    @test m.verdict === :admit
+    @test m.steps[1].name == "rw_l3!"
+    # 🔴 D1 과 같은 이유로 **고친** 이름의 값이어야 한다 — 옛 이름은 등록조차 안 됐다.
+    @test m.interface_calls == CB.resolve_primitive("rw_l3!").interface_calls
+    @test m.interface_calls !== nothing
+    _RW_MODE[] = :off
+end
+
+end
+
+
+# =============================================================================
+# (24) 🔴 D8 — `[minted]` **기록 줄은 한 줄이다**, 모델이 개행을 보내도.
+#
+# 실측(검증자): `impl_name = "bad\nname!"` 로 `enact_minted_decision!` 을 끝까지 몰면
+# 기록 줄이 **실제로 두 줄로 쪼개졌다**. 등록 거절 사유가 그 이름을 그대로 보간하는데
+# (`reject:impl_name_not_an_identifier:$(name)`), 그 사유가 `reason=` 뒤에 실리기 때문이다.
+# Task 7 fix round 2 가 더한 `_one_line` 은 `enact_minted!` 의 `_r`(= **사유** 문자열)에
+# 살아서, 등록 거절 경로와 조기 `:deferred` 경로와 성공 줄은 그 보호 밖이었다.
+#
+# 🔴 왜 계약인가. 유료 런은 `world_delta` 와 `interface_calls` 를 **`[minted]` 줄을
+#    grep 해서** 읽는다(사전등록 결정). 줄이 쪼개지면 파서가 그 결정을 통째로 잃는다 —
+#    그리고 그것은 에러가 아니라 **누락**으로만 드러난다.
+# 🔴 접는 자리는 하나다(`_rec_line`). 값마다 손으로 접으면 새 값을 더하는 사람이 빠뜨린다.
+# =============================================================================
+@testset "(24) 🔴 D8: 기록 줄은 개행이 든 payload 에서도 한 줄이다" begin
+    CB.reset_minted_table!()
+    local sl = _rw_lane("bad\nname!",
+        "function bad_name!(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+        end
+        flush(io); out = read(path, String)
+    end
+    local recs = [l for l in split(out, "\n") if startswith(l, "[minted] lane=")]
+    # 🔴 기록 줄이 **정확히 하나**다(쪼개지면 둘이 되고, 둘째 조각은 `[minted]` 로 시작하지
+    #    않으므로 이 개수가 아니라 아래 단언이 그것을 잡는다).
+    @test length(recs) == 1
+    @test occursin("impl_name_not_an_identifier", recs[1])
+    # 🔴 사유의 **꼬리까지** 같은 줄에 있다 — 쪼개지면 이 조각이 다음 줄로 넘어간다.
+    @test occursin("name!", recs[1])
+    @test occursin("verdict=reject", recs[1])
+    # 🔴 그리고 어떤 줄도 `[minted]`/`(` 로 시작하지 않은 채 사유 조각을 들고 있지 않다.
+    @test !any(l -> startswith(l, "name!"), split(out, "\n"))
+
+    # ---- 자리 계약: 네 기록 줄이 **전부** 같은 접는 자리를 지난다 -------------------------
+    local src = read(ENACT_PATH, String)
+    @test occursin("_one_line_rec(x::AbstractString)", src)
+    # `[minted] lane=` 으로 시작하는 println 은 0 이어야 한다 — 전부 `_rec_line` 이다.
+    @test !occursin("println(\"[minted] lane=", src)
+    @test count(i -> true, findall("_rec_line(\"[minted] lane=", src)) == 4
+
+    # ---- 🔴 변이 대조: 접기를 항진으로 만들면 이 게이트가 빨개진다 -----------------------
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_no_collapse.jl")
+        write(q, replace(src,
+            "_one_line_rec(x::AbstractString) = String(strip(replace(x, r\"\\s+\" => \" \")))" =>
+            "_one_line_rec(x::AbstractString) = String(x)", count = 1))
+        local M = Module(:EnactNoCollapse)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local sl2 = _rw_lane("bad\nname2!",
+            "function bad_name2!(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+        local out2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                  live_cache_env(), nothing, _dec(sl2))
+            end
+            flush(io); out2 = read(path, String)
+        end
+        local recs2 = [l for l in split(out2, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs2) == 1
+        # 🔴 접기가 없으면 기록이 쪼개진다: 사유의 꼬리가 **다음 줄**에 있다.
+        @test !occursin("name2!", recs2[1])
+        @test any(l -> startswith(l, "name2!"), split(out2, "\n"))
+    end
+end
+
+# 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
+#    여기 못 오지만, 그때는 프로세스가 곧 끝난다 — 포트는 프로세스와 함께 반납된다.)
+close(_RW_SERVER)
 
 end # module

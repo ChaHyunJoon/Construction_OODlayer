@@ -789,6 +789,67 @@ function minted_handled(r)
 end
 
 """
+    _interface_calls_of(name) -> Union{Nothing,Vector{String}}
+
+주조된 원시 하나의 **L3 증거**(spec §0). 삼상이다: `nothing`("못 쟀다") · `String[]`
+("재서 없다") · 비지 않은 정렬된 목록(L3 참, 증거는 목록 자체).
+
+🔴 **판정을 여기서 다시 하지 않는다.** 값을 만드는 것은 `impl_interface_calls(code)`
+(`src/respec/minted_registration.jl`)이고 `register_minted_primitive!` 이 `Core.eval`
+**전에** 등록 행에 싣는다. 이 함수는 그 행을 `CB.resolve_primitive` 를 통해 **읽기만**
+한다 — 인터페이스 술어가 두 곳에 살면 기록에 실린 값의 뜻이 나중 필터에 달린다.
+
+🔴 **절대 안 던진다.** `resolve_primitive` 는 설계상 `error(...)` 를 낼 수 있고
+(표의 행이 이름 짓는 impl 이 CB 에 없는 손씨앗 행), 이 호출은 집행 **전** 자리라 그
+예외가 새면 세계를 안 건드린 판이 "던졌다" 로 기록된다. 못 읽으면 `nothing` 이다.
+"""
+_interface_calls_of(name) =
+    try
+        local p = CB.resolve_primitive(String(name))
+        p === nothing ? nothing : p.interface_calls
+    catch
+        nothing
+    end
+
+"""
+    _rec_line(parts...) -> Nothing
+
+`[minted]` **기록 줄** 하나를 찍는다. 조각을 이어 붙인 뒤 **공백을 한 번 접어** 정확히 한
+줄로 만든다.
+
+🔴 **왜 (D8, Wave D).** 이 파일의 기록 줄은 유료 런의 채점 채널이다 — `world_delta`
+   와 `interface_calls` 를 `[minted]` 줄을 grep 해서 읽는다(사전등록 결정). 그런데 줄에
+   실리는 값 여럿이 **모델이 준 문자열**이고(`tool_name` · 등록 거절 사유에 보간된
+   `impl_name` · `steps` 의 detail · 예외 메시지), 그중 하나에 개행이 있으면 **기록이 두
+   줄로 쪼개진다.** 실측(검증자): `impl_name` 에 개행이 든 판(`"bad" * 개행 * "name!"`)으로 `enact_minted_decision!`
+   을 끝까지 몰면 `[minted]` 줄이 실제로 쪼개졌다.
+🔴 **접는 자리가 하나여야 한다.** 값마다 손으로 접으면 새 값을 더하는 사람이 그것을
+   빠뜨리고, 그 누락은 라이브에서 파서가 한 줄을 잃는 것으로만 드러난다(에러가 아니다).
+   그래서 **줄 전체**를 여기서 한 번 접는다 — 이 함수를 지나는 한 어떤 값도 못 새어 나간다.
+   `enact_minted!` 쪽의 짝은 `_r` 의 `_one_line`(`src/respec/minted_tool.jl`)이고, 그것은
+   **사유 문자열**을 접는다. 두 자리는 서로 다른 것을 접는다(줄 vs 사유) — 겹치지 않는다.
+⚠️ 잘 만들어진 줄에는 **무동작**이다: 조각 사이 구분자가 전부 단일 공백이라
+   `r"\\s+" => " "` 가 아무 바이트도 안 바꾼다(Task 7 fix2 가 `_r` 에서 같은 논거로 확인).
+   그래서 로그 문구를 못박는 시험((17))은 바이트 동일로 초록이다.
+"""
+_rec_line(parts...) = println(_one_line_rec(string(parts...)))
+
+"기록 줄 하나를 한 줄로 접는다. D8 의 술어이고 진실원은 여기 하나다."
+_one_line_rec(x::AbstractString) = String(strip(replace(x, r"\s+" => " ")))
+
+"""
+    _is_countable_world_set(x) -> Bool
+
+`length(x)` 가 **세계의 크기**를 뜻하는 모양인가. D7 의 술어이고 진실원은 여기 하나다
+(`_world_digest` 의 두 축이 이것을 부른다 — 같은 판정을 두 곳에 적지 않는다).
+
+🔴 생산 타입은 둘 다 `Set` 이다: `closed_set::Set{Int}`(`essential_tg_coponents.jl`) ·
+`active_build_steps::Set{AbstractID}`(`route_planning.jl`). 그래서 술어가 `AbstractSet` 이다.
+넓히면(예: "문자열이 아니다") `length` 가 성공하는 다른 모양들이 다시 수를 지어낸다.
+"""
+_is_countable_world_set(x) = x isa AbstractSet
+
+"""
     _world_digest(env) -> Union{Nothing,NamedTuple}
 
 값싼 세계 지문. 집행 **전후**로 찍어 차분을 낸다. 못 찍으면 `nothing`("못 쟀다").
@@ -827,6 +888,28 @@ end
 """
 function _world_digest(env)
     try
+        # 🔴 **D7 (Wave D). 모양을 먼저 본다 — `try` 로는 못 막는 자리다.**
+        #    Wave A 자체 발견 1 과 **같은 부류**이고(그 근거는 `_world_delta` 의 같은 가드가
+        #    소유한다), 검증자가 이 위쪽 짝이 아직 열려 있는 것을 실측했다:
+        #      `closed_set = "abcdefghij"` → `closed = 10` · `active_build_steps = "xyz"` →
+        #      `active = 3`. **둘 다 안 던진다.** 예외라면 아래 `catch` 가 `nothing`
+        #      ("못 쟀다")으로 바꿔 주는데, 이 수들은 **"쟀다" 를 참칭한다**.
+        # 🔴 여기가 `_world_delta` 보다 한 겹 더 나쁘다: 이 함수의 docstring 이 임의의
+        #    env 모양을 **의도된 입력**이라고 적으므로(시험 픽스처·부분 env), 읽는 사람에게
+        #    그 수가 허구라는 신호가 하나도 없다.
+        # ⚠️ "진짜 `PlannerEnv` 로는 도달 불가" 는 근거가 못 된다 — Wave A 가 `_world_delta`
+        #    에서 바로 그 논거를 불충분하다고 판정하고 가드를 넣었다. 같은 기준이다.
+        # 🔴 술어가 "문자열이 아니다" 가 **아니라** "집합이다" 인 이유: `length` 를 갖는
+        #    모양은 문자열 말고도 많고(`Vector`·`Dict`·`Tuple`), 그 어느 것도 이 두 축의
+        #    생산 타입이 아니다 — `closed_set::Set{Int}`(`essential_tg_coponents.jl`) ·
+        #    `active_build_steps::Set{AbstractID}`(`route_planning.jl`)가 진실원이다.
+        #    좁은 술어라야 "센 수가 무엇의 크기인가" 가 한 가지 뜻만 갖는다.
+        # 🔴 `n_edges`·`binding` 축은 이미 **던지는** 쪽이다(`Graphs.ne` 와
+        #    `assignment_binding` 은 엉뚱한 모양에서 `MethodError` 를 낸다) — 그래서 아래
+        #    `catch` 가 그 둘을 정직하게 `nothing` 으로 바꾼다. 여기 가드가 필요한 것은
+        #    **`length` 가 조용히 성공하는 두 축**뿐이다.
+        _is_countable_world_set(env.cache.closed_set) || return nothing
+        _is_countable_world_set(env.active_build_steps) || return nothing
         return (closed   = length(env.cache.closed_set),
                 active   = length(env.active_build_steps),
                 n_edges  = CB.Graphs.ne(env.sched.graph),
@@ -958,6 +1041,17 @@ function record_world_delta!(m)
             Dict{String,Any}("closed" => wd.closed, "active" => wd.active,
                              "n_edges" => wd.n_edges,
                              "n_binding_changed" => wd.n_binding_changed)
+        # 🔴 **D5 (Wave D). 같은 호출이 L3 도 싣는다.** 사다리(spec §0)의 두 칸이
+        #    같은 결정 행에서 같은 방식으로 읽혀야 유료 런이 둘을 짝지어 채점할 수 있다.
+        #    호출 자리를 하나 더 만들지 않는 이유: 이 함수의 유일한 호출자는
+        #    `tools/monitor/render_demo.jl` 인데 그 파일은 이 파동의 경로 밖이다 —
+        #    두 번째 기록 경로를 만들면 그 둘이 갈릴 자리가 생긴다(이 함수 docstring 의
+        #    "패턴은 하나다" 와 같은 논거).
+        #    ⚠️ 그래서 **이름이 `record_world_delta!` 인 채로 두 칸을 싣는다.** 이름이
+        #    좁은 것은 사실이고, 여기 적어 둔다(이름을 바꾸려면 호출자를 같이 옮겨야 한다).
+        # 🔴 삼상이 행에서도 산다: `nothing` 은 `null` 로 직렬화되고 `[]` 가 되지 않는다.
+        #    키의 **부재**만이 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
+        rs["interface_calls"] = m.interface_calls
     catch e
         # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
         println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",
@@ -1194,6 +1288,12 @@ function enact_minted_decision!(env, truth, decision)
     #    ("못 쟀다")을. 지문을 아예 안 찍는 반환 자리(조기 deferred · `_reject_malformed`)는
     #    초기값 그대로 `nothing` 이다: **0 의 튜플이 아니다** — 그 자리들은 세계를 안 읽었다.
     local world_delta::Union{Nothing,NamedTuple} = nothing
+    # 🔴 D5 (Wave D). **L3 이 L4 와 같은 자리에서 읽힌다.** `world_delta` 와 **같은
+    #    이유로** `try` 밖이다(위 F2/R7 문단): try 의 결속은 catch 에 안 보이므로, 안에서
+    #    선언하면 catch 가 값을 손으로 다시 적을 수밖에 없고 그 복사본이 거짓말을 한다.
+    #    삼상: `nothing`(못 쟀다 — 등록 자체가 없었거나 행을 못 읽었다) · `String[]`(재서
+    #    없다) · 비지 않은 정렬된 목록(L3 참). 정의는 `_interface_calls_of` 가 소유한다.
+    local interface_calls::Union{Nothing,Vector{String}} = nothing
     try
         local sl = try decision.synth_lane catch; nothing end
         # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
@@ -1217,7 +1317,7 @@ function enact_minted_decision!(env, truth, decision)
             local why  = sl === nothing ?
                 "no synth lane on this decision" :
                 "synth lane present but impl_name is nothing — 아래 여섯 필드가 원인을 가른다"
-            println("[minted] lane=", lane,
+            _rec_line("[minted] lane=", lane,
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
                     " verdict=deferred applied=n/a partial=false",
                     " world_maybe_dirty=false handled=false undo=none resume=none",
@@ -1258,7 +1358,8 @@ function enact_minted_decision!(env, truth, decision)
                     steps = NamedTuple[], undo = :none, resume = :none,
                     resolve = :none, args_from = nothing, n_calls = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
-                    world_delta = world_delta)
+                    world_delta = world_delta,
+                    interface_calls = interface_calls)
         end
 
         # ---- 등록이 먼저다 (Task 9) ---------------------------------------------------------
@@ -1286,7 +1387,7 @@ function enact_minted_decision!(env, truth, decision)
         _reject_malformed(why) = begin
             registered = false
             impl_rejected_why = why
-            println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
+            _rec_line("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                     " verdict=reject registered=false impl_rejected_why=", why,
                     # 🔴 D18: 집행 전에 돌아섰다 — 세계를 안 읽었다. 🔴 m3: 그래도 값을
                     #    **읽는다**(리터럴을 손으로 적지 않는다) — Task 9 가 이 클로저
@@ -1308,7 +1409,8 @@ function enact_minted_decision!(env, truth, decision)
                     steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                     args_from = nothing, n_calls = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
-                    world_delta = world_delta)
+                    world_delta = world_delta,
+                    interface_calls = interface_calls)
         end
         nm isa AbstractString ||
             return _reject_malformed("reject:impl_name_not_a_string:$(typeof(nm))")
@@ -1352,7 +1454,54 @@ function enact_minted_decision!(env, truth, decision)
                 #    이 대입이 안전한 것은 `_rewrite_once` 가 왕복 **전에**
                 #    `_sl_is_rewritable` 로 판정했기 때문이다(그 술어가 근거를 소유한다) —
                 #    `nothing` 이 아닌 값을 돌려줬다는 것 자체가 그 판정을 통과했다는 뜻이다.
+                # 🔴 **D4 (Wave D, Task 9 리뷰 I3·I4).** 되먹임 payload 도 **본 경로와 같은
+                #    순서·같은 사유 이름**으로 검사한다. 두 가지가 걸려 있다:
+                #    (a) `surface` — 아래 `String(something(fx.surface, "unknown"))` 은 가드가
+                #        없으면 비-문자열에서 **던진다**(실측: `surface: 7` →
+                #        `MethodError: no method matching String(::Int64)`). 바깥 `catch` 가
+                #        받으므로 예외가 탈출하지는 않지만 대가가 셋이다: 헌장의 "예외가 아니라
+                #        거절" 이 깨지고 · `registered`/`impl_rejected_why` 가 둘 다 `nothing`
+                #        ("못 쟀다")으로 붕괴하는데 **첫 등록 거절 사유는 이미 측정돼 있었고** ·
+                #        세계를 확실히 안 건드렸는데 `world_maybe_dirty=true` 가 된다.
+                #    (b) `params` — 사전 가드가 없으면 `register_minted_primitive!` 안쪽의
+                #        `pairs("…")` 가 `reject:params_keys_not_strings:Int64` 를 내서, **같은
+                #        결함이 시도 1 과 시도 2 에서 다른 사유 이름을 갖는다**(본 경로는
+                #        `reject:params_not_an_object:String`). D17 이 재려는 것이 "되먹임이
+                #        무엇을 고쳤나" 의 **사유 히스토그램**이므로 어휘가 갈리면 그 표가 거짓이 된다.
+                # 🔴 **갱신보다 먼저다.** 아래 다섯 대입 뒤에 두면 못 쓸 값이 `sl` 에 남아,
+                #    이 판을 나중에 읽는 소비자에게 거짓말을 한다(리뷰 우려 (2)-4 와 같은 결).
+                # ⚠️ 사유는 **두 번째 시도의 것**이다 — 첫 사유로 덮으면 되먹임이 무엇을 못
+                #    고쳤는지가 기록에서 사라진다(아래 `why2` 와 같은 규약).
+                # ⚠️ 오늘 이 둘이 도달 불가한 이유는 파이썬 한 겹뿐이다
+                #    (`RewriteToolImpl.surface: str` · `params_object` 정규화). 본 경로가 같은
+                #    자리를 굳이 막고 있는데 이쪽만 안 막는 것은 비대칭이다.
+                local surf2 = fx.surface
+                (surf2 === nothing || surf2 isa AbstractString) ||
+                    return _reject_malformed("reject:surface_not_a_string:$(typeof(surf2))")
+                local praw2 = fx.params
+                (praw2 === nothing || praw2 isa AbstractDict) ||
+                    return _reject_malformed("reject:params_not_an_object:$(typeof(praw2))")
                 sl["impl_name"] = fx.impl_name
+                # 🔴 **D1 (Wave D, Task 9 리뷰 C1 — Critical).** 이 한 줄이 없으면 고친
+                #    body 가 등록되고 `Core.eval` 까지 된 뒤 **영영 안 불린다**: `enact_minted!`
+                #    이 실행할 원시를 고르는 자리는 위의 다섯 키가 아니라 `body_names` 다
+                #    (`src/respec/minted_tool.jl` 의 `names = ... _synth_get(synth,"body_names",...)`).
+                #    그러면 기록은 `verdict=reject registered=true impl_rejected_why=nothing
+                #    reason="unknown primitive: <옛 이름> — 알파벳 밖이다"` 로 남는다 — 즉
+                #    **우리 배선의 실패가 "모델이 어휘 밖 이름을 냈다" 로 적힌다.**
+                # 🔴 그리고 그 오귀속이 하필 D6 을 정통으로 때린다: 이름을 **반드시** 바꿔야만
+                #    고쳐지는 거절 가족이 `impl_name_must_end_with_bang` · `_not_an_identifier` ·
+                #    `_not_utf8` · `_already_minted` · `_exists_shown` ·
+                #    `_exists_withheld`(= 감춘 능력을 스스로 다시 유도했다는 D6 의 유일한
+                #    자기신고) · `_exists_imported` 이고, 그 전부에서 되먹임 성공이 실패로 기록됐다.
+                # 🔴 값이 `[fx.impl_name]` 인 근거: 본 경로에서 `body_names` 는 agent-3 자신의
+                #    `impl_name` 에서 나온다(`synthesize.py` 의 D8 주석이 진실원) — 갱신 뒤에도
+                #    `body_names == [impl_name]` 이 유지돼야 한다. 진실원 하나: 아래 집행부가
+                #    이름을 고르는 자리와 등록에 먹인 이름이 같은 값에서 나온다.
+                #    ⚠️ `calls` 의 primitive 이름도 이것과 같아야 한다 — 어긋나면
+                #    `enact_minted!` 이 `reject:calls_disagree_with_body` 로 **거절**한다(예외가
+                #    아니다). 그 어긋남은 agent-3 의 응답에 대한 사실이므로 여기서 안 고친다.
+                sl["body_names"] = [fx.impl_name]
                 sl["impl_code"] = fx.impl_code
                 fx.params  !== nothing && (sl["params"]  = fx.params)
                 fx.calls   !== nothing && (sl["calls"]   = fx.calls)
@@ -1363,7 +1512,9 @@ function enact_minted_decision!(env, truth, decision)
                 local why2 = CB.register_minted_primitive!(
                     name = fx.impl_name, code = fx.impl_code,
                     params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
-                    surface = String(something(fx.surface, "unknown")),
+                    # 🔴 D4: 위에서 이미 타입을 확정한 `surf2` 를 쓴다 — `fx.surface` 를
+                    #    다시 읽으면 검사한 값과 먹이는 값이 두 자리에서 나온다(진실원 하나).
+                    surface = String(something(surf2, "unknown")),
                     reversible = fx.reversible === true)
                 # 🔴 두 번째 거절은 **그 사유**를 나른다 — 첫 사유로 덮으면 되먹임이
                 #    무엇을 못 고쳤는지가 기록에서 사라진다. 이 채널을 측정 가능하게
@@ -1371,6 +1522,13 @@ function enact_minted_decision!(env, truth, decision)
                 why2 !== nothing && return _reject_malformed(why2)
             end
             registered = true
+            # 🔴 **D5 (Wave D). L3 을 여기서 읽는다 — 등록이 실제로 성공한 직후.**
+            #    이름은 `_synth_lane_field(sl, "impl_name")` 에서 읽는다: 되먹임이 성공한
+            #    판에서는 바로 위에서 `fx.impl_name` 으로 **갱신돼 있고**, 그 이름이 실제로
+            #    등록된 이름이다(D1 이 `body_names` 를 같은 값으로 맞춘 자리와 같은 근거).
+            #    `nm` 을 쓰면 되먹임 판에서 **등록된 적 없는 옛 이름**의 L3 을 읽는다.
+            interface_calls = _interface_calls_of(
+                something(_synth_lane_field(sl, "impl_name"), nm))
         else
             registered = false   # 코드가 없다 — 등록을 시도하지 않았다(확정, 못 잰 게 아니다)
         end
@@ -1421,7 +1579,7 @@ function enact_minted_decision!(env, truth, decision)
         #    를 하드코딩한다 — 안 지킬 수 있는 주장. `_synth_lane_field` 로 돌려서 이
         #    던지는 자리 자체를 없앤다(그 함수는 두 키 모양을 다 시도하고 실패해도 예외
         #    대신 `nothing` 을 낸다).
-        println("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
+        _rec_line("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                 " verdict=", r.verdict, " applied=", r.applied, " partial=", r.partial,
                 " world_maybe_dirty=", r.world_maybe_dirty, " handled=", handled,
                 " undo=", r.undo, " resume=", r.resume, " resolve=", r.resolve,
@@ -1468,7 +1626,8 @@ function enact_minted_decision!(env, truth, decision)
                 resume = r.resume, resolve = r.resolve,
                 args_from = r.args_from, n_calls = r.n_calls,
                 registered = registered, impl_rejected_why = impl_rejected_why,
-                world_delta = world_delta)
+                world_delta = world_delta,
+                interface_calls = interface_calls)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
         # 🔴 F2(2026-09-03 최종 리뷰, R7). `registered`·`impl_rejected_why` 는 **손으로
@@ -1479,7 +1638,7 @@ function enact_minted_decision!(env, truth, decision)
         #    `CB.enact_minted!` 가 던졌다" 는 판을 "등록이 안 됐다" 는 거짓으로 덮는다.
         local msg = first(split(sprint(showerror, e), "\n"))
         println("[minted] FAILED (집행부가 던졌다 — 렌더는 계속한다): ", msg)
-        println("[minted] lane=unknown tool=n/a verdict=reject applied=n/a",
+        _rec_line("[minted] lane=unknown tool=n/a verdict=reject applied=n/a",
                 # 🔴 B4: `n/a` 가 아니다. 이 경로의 `world_maybe_dirty` 는 확정된 `true` 이고
                 #    (아래 반환 참조), 로그가 반환과 다른 말을 하면 라이브 판독이 갈린다.
                 " partial=false world_maybe_dirty=true handled=false undo=none resume=none",
@@ -1525,6 +1684,7 @@ function enact_minted_decision!(env, truth, decision)
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                 args_from = nothing, n_calls = nothing,
                 registered = registered, impl_rejected_why = impl_rejected_why,
-                world_delta = world_delta)
+                world_delta = world_delta,
+                interface_calls = interface_calls)
     end
 end

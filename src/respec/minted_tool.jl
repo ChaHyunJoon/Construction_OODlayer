@@ -26,8 +26,12 @@
     resolve_primitive(name) -> Union{Nothing,NamedTuple}
 
 원시 이름 하나를 해석한다. 레지스트리에 **없으면 `nothing`** 이다 — 조용히 통과시키지
-않는다. 있으면 `(name, impl, surface, harness_args, params, reversible, enactable,
-unenactable_why)`.
+않는다. 있으면 `(name, impl, surface, harness_args, params, param_types,
+interface_calls, reversible, enactable, unenactable_why)`.
+
+🔴 `interface_calls` 는 **삼상**이다(정의는 `impl_interface_calls` 가 소유한다):
+`nothing`("못 쟀다" — 손씨앗 행처럼 body 를 걸어 본 적이 없다) · `String[]`("재서 없다") ·
+비지 않은 **정렬된** `Vector{String}`(spec §0 의 L3 이 참, 증거는 그 목록 자체).
 
 🔴 `enactable` 은 "이 원시를 `bind_primitive_args` 가 만드는 인자로 **실제로 부를 수
 있는가**"다(연언지 셋은 `_enactability` 를 보라).
@@ -64,6 +68,19 @@ function resolve_primitive(name::AbstractString)
     #    (오늘의 동작). `nothing` 을 넣으면 그 자리가 `haskey`/`get` 두 어휘로 갈린다.
     ptypes  = Dict{String,Any}(String(k) => v
                                for (k, v) in pairs(get(p, "param_types", Dict())))
+    # 🔴 D5 (Wave D, R24/Wave C2 §7). **L3 의 증거를 행에서 꺼내 집행 경로에 싣는다.**
+    #    값은 `impl_interface_calls(code)`(`src/respec/minted_registration.jl`)가 `Core.eval`
+    #    **전에** 계산해 행에 실은 것이고, 그 함수의 docstring 이 정의의 진실원이다
+    #    (여기서 술어를 다시 적지 않는다 — 적으면 인터페이스 판정이 두 곳에 산다).
+    # 🔴 **기본값이 `nothing` 이다 — `param_types` 의 빈 `Dict` 와 정반대의 이유다.**
+    #    손으로 씨 뿌린 행(`test/minted_seed_fixture.jl` 의 `MINTED_FIXTURE_ROWS`)에는 이 열이
+    #    아예 없는데, 그 body 는 **한 번도 걸어 본 적이 없다.** `String[]` 을 기본값으로 두면
+    #    "재서 인터페이스 호출이 없더라" 를 주장하게 된다 — 안 잰 것을 잰 것처럼 적는 것이고,
+    #    이 파동 전체가 막으려는 실패 모드 그 자체다.
+    # 🔴 삼상: `nothing`(못 쟀다) ≠ `String[]`(재서 없다) ≠ 비지 않은 정렬된 목록(L3 참).
+    icalls = let v = get(p, "interface_calls", nothing)
+        v === nothing ? nothing : String[String(x) for x in v]
+    end
     en, why = _enactability(f, harness, prms)
     return (name           = String(name),
             impl           = f,
@@ -71,6 +88,7 @@ function resolve_primitive(name::AbstractString)
             harness_args   = harness,
             params         = prms,
             param_types    = ptypes,
+            interface_calls = icalls,
             reversible     = Bool(get(p, "reversible", false)),
             enactable      = en,
             unenactable_why = why)
@@ -871,7 +889,30 @@ function bind_primitive_args(prim, ctx)
         #    셋째를 그냥 흘리면 뷰가 그대로 호출에 닿아 `TypeError` 로 죽는다 — 예외라
         #    위의 삼킴이 그대로 난다. 그래서 값이 실제로 온 이 자리에서 거절한다(F3).
         local T = get(prim.param_types, String(k), nothing)
-        if T === nothing
+        # 🔴 **D6 / Ruling R30 (개정, Wave D).** `zone_keys` 의 변환은 **아래 zone
+        #    블록이 소유한다** — 이 루프가 먼저 물면 안 된다.
+        # 🔴 무엇이 결함이었나(실측 2026-09-04, 네 칸 전부):
+        #      `Vector{Symbol}` + 살아 있는 키 → `reject:param_convert:zone_keys:expected
+        #                                         Vector{Symbol}, got JSON3.Array{String,…}`
+        #      `Vector{Symbol}` + 없는 키     → **같은** `param_convert` (진짜 사유인
+        #                                         `unknown_zone_key` 에 도달조차 못 한다)
+        #    `Vector{Symbol}` 은 잘 아는 모델이 **써야 하는** 철자다(존 키는 실제로 Symbol
+        #    이다). JSON 에 symbol 타입이 없으므로 `["zone_a"]` 를 보내는 것 말고 할 수 있는
+        #    일이 없고, 경계에서 그것을 옮기는 것이 D16 의 존재 이유다. 즉 오늘의 기록은
+        #    **가장 올바른 답에 "모델이 실패" 를 적는다.**
+        # 🔴 **그런데 규칙을 `_convert_arg` 에 넣지 않는다** (R30 개정의 핵심). 그것은
+        #    전역 규칙이 되고, `Dict{Symbol,…}` 인 다른 전역 셋이 **살아 있음 검사 없이**
+        #    존재한다(`SPARE_POOLS` · `SPARE_POOL_CENTERS` · `DEPOT_INFO`,
+        #    `src/respec/ood_injection.jl`). 거기에 같은 강제를 퍼뜨리면 "String 키가 조용히
+        #    전부 걸러진다" 는 함정을 아무도 안 지키는 세 자리로 넓히게 된다.
+        #    `zone_keys` 에는 **살아 있음 검사가 이미 있다**(아래 `unknown_zone_key`) —
+        #    그래서 강제는 그 가드가 사는 자리에서만 한다.
+        # 🔴 술어가 `Vector{Symbol} <: T` 인 이유: 아래 블록이 만드는 값이 정확히
+        #    `Vector{Symbol}` 이고, 그것을 담을 수 있는 선언 타입에서만 비켜선다.
+        #    `Vector{String}`·`Vector{Int}` 는 여기 안 걸리므로 옛 경로 그대로다(넓히지 않는다).
+        if String(k) == "zone_keys" && T isa Type && Vector{Symbol} <: T
+            kw[Symbol(k)] = v
+        elseif T === nothing
             kw[Symbol(k)] = v                 # 주석 없는 키워드는 오늘 그대로 흐른다
         elseif !(T isa Type)
             return "reject:param_annotation_unreadable:$(k):$(T) (원시 $(prim.name))"
@@ -928,6 +969,27 @@ function bind_primitive_args(prim, ctx)
             end
         end
         forced && (kw[:zone_keys] = coerced)
+        # 🔴 **D6 (Wave D) — 조용한 무동작을 시끄럽게 만든다.** 실측(네 칸 중 셋째):
+        #      `zone_keys::Vector{String}` + 살아 있는 키 → 바인딩 성공 → body 실행 →
+        #      `(status = :already_clear, n = 0)`. **거절도 예외도 없이 "존을 치웠다" 가
+        #      아니라 "치울 게 없었다" 로 기록된다.**
+        #    원인은 우리 경계가 아니라 body 의 자기모순이다: `Vector{String}` 이라 주석해
+        #    놓고 값을 `Dict{Symbol,…}` 의 키로 쓴다(`haskey(RESTRICTION_ZONES[], k)`).
+        # 🔴 **그래도 거절하지 않는다.** `Symbol(k)` 로 안에서 옮기는 body 는 정당하고,
+        #    그런 판을 막으면 거짓 거절이 는다. 그리고 **강제도 못 한다** — 선언 타입이
+        #    `Vector{String}` 인 kwarg 에 `Vector{Symbol}` 을 넣으면 `TypeError` 이고(키워드는
+        #    convert 가 아니라 단언이다), 그 예외를 `enact_minted!` 의 catch 가
+        #    `partial=true → handled=true` 로 적어 폴백을 삼킨다(F2 가 실측하고 막은 사고).
+        # 🔴 그래서 **부재를 로그로 시끄럽게** 만든다: 이 줄이 유료 런에서 뜬 판의
+        #    `n=0`/`:already_clear` 는 "존이 이미 깨끗했다" 로 읽으면 안 된다.
+        #    ⚠️ 살아 있음 검사는 이 철자에서도 **그대로 돈다**(실측: 없는 키는
+        #    `reject:unknown_zone_key` 다) — 즉 나쁜 키는 걸러지는 게 아니라 보고된다.
+        if !(eltype(typeof(kw[:zone_keys])) === Symbol)
+            println("[minted] \u26a0\ufe0f zone_keys 가 Symbol 이 아닌 원소 타입으로 바인딩된다 ",
+                    "(", typeof(kw[:zone_keys]), ", 원시 ", prim.name, ") — ",
+                    "body 가 haskey(RESTRICTION_ZONES[], k) 관용구를 쓰면 원소가 **전부 조용히 ",
+                    "걸러져** :already_clear/n=0 이 된다. 이 판의 0 을 '이미 깨끗했다' 로 읽지 말 것.")
+        end
     end
     return (Tuple(pos), NamedTuple(kw))
 end
