@@ -98,6 +98,15 @@ function integrate_twist(twist, dt)
     return Δ                                      # 이번 스텝의 강체 변환(증분) 반환
 end
 
+# @with_kw mutable struct : 키워드 생성자 자동생성 + "mutable"(필드 값을 나중에 바꿀 수 있는 가변 구조체).
+# 일반 struct 는 만든 뒤 필드 변경 불가지만, mutable 은 가능(파이썬 일반 객체처럼).
+# 한 에이전트의 속도 제어기 — 두 가지 정책(주 이동/분산)을 담음.
+@with_kw mutable struct VelocityController
+    nominal_policy = nothing # TangentBugPolicy   # 주 이동 정책(TangentBug; 장애물 우회)
+    dispersion_policy = nothing # potential field  # 분산 정책(포텐셜장; 서로 밀어냄)
+    # RVO policy
+end
+
 """
     PlannerEnv
 
@@ -112,8 +121,8 @@ Contains the Environment state and definition.
     staging_circles::Dict{AbstractID,LazySets.Ball2} = Dict{AbstractID,LazySets.Ball2}()  # 각 조립체의 적치 원(부품을 모아두는 원형 구역)
     active_build_steps::Set{AbstractID} = Set{AbstractID}()  # 현재 활성인 조립단계들의 ID 집합
     dt::Float64 = rvo_default_time_step()           # 한 시간스텝의 길이(초)
-    agent_policies::Dict = Dict()                   # 각 에이전트(로봇)의 이동 정책(TangentBug/포텐셜장 등)
-    agent_parent_build_step_active::Dict = Dict()   # 각 에이전트의 상위 조립단계 활성 여부 캐시
+    agent_policies::Dict{AbstractID,VelocityController} = Dict{AbstractID,VelocityController}()   # 각 에이전트(로봇)의 이동 정책(TangentBug/포텐셜장 등)
+    agent_parent_build_step_active::Dict{AbstractID,Bool} = Dict{AbstractID,Bool}()               # 각 에이전트의 상위 조립단계 활성 여부 캐시
     staging_buffers::Dict{AbstractID,Float64} = Dict{AbstractID,Float64}() # dynamic buffer for staging areas  # 적치 원의 동적 여유반경(막히면 키움)
     max_robot_go_id::Int64 = Inf                    # 로봇 이동노드 ID 의 최댓값(우선순위 정규화용)
     max_cargo_id::Int64 = Inf                       # 화물 ID 의 최댓값(우선순위 정규화용)
@@ -967,15 +976,6 @@ function inflate_staging_circle_buffers!(env, policy, agent, circle_ids;
             end
         end
     end
-end
-
-# @with_kw mutable struct : 키워드 생성자 자동생성 + "mutable"(필드 값을 나중에 바꿀 수 있는 가변 구조체).
-# 일반 struct 는 만든 뒤 필드 변경 불가지만, mutable 은 가능(파이썬 일반 객체처럼).
-# 한 에이전트의 속도 제어기 — 두 가지 정책(주 이동/분산)을 담음.
-@with_kw mutable struct VelocityController
-    nominal_policy = nothing # TangentBugPolicy   # 주 이동 정책(TangentBug; 장애물 우회)
-    dispersion_policy = nothing # potential field  # 분산 정책(포텐셜장; 서로 밀어냄)
-    # RVO policy
 end
 
 """

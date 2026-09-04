@@ -37,4 +37,16 @@ end
     @test !("release_pending_assignments!" in ms)
     @test "reform_stuck_teams!" in ms          # 빈-통과 방지: export 된 것은 실린다
 end
+
+@testset "(5) 🔴 D10: 무타입 Dict 두 개가 값 타입을 말한다" begin
+    j = JSON3.read(read(ART, String))
+    t = only(filter(x -> x.name == "PlannerEnv", collect(j.types)))
+    ft = Dict(String(f.name) => String(f.type) for f in t.fields)
+    # 🔴 이것이 없으면 모델은 `robot.charge` 를 지어낸다 (설계 §1.5)
+    @test occursin("VelocityController", ft["agent_policies"])
+    @test occursin("Bool", ft["agent_parent_build_step_active"])
+    # 빈-통과 방지: 이미 타입이 실려 있던 필드는 그대로여야 한다
+    @test occursin("Ball2", ft["staging_circles"])
+    @test occursin("Float64", ft["staging_buffers"])
+end
 end # module

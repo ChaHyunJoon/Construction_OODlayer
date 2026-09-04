@@ -863,11 +863,11 @@
                 },
                 {
                     "name": "agent_policies",
-                    "type": "Dict"
+                    "type": "Dict{ConstructionBots.AbstractID, ConstructionBots.VelocityController}"
                 },
                 {
                     "name": "agent_parent_build_step_active",
-                    "type": "Dict"
+                    "type": "Dict{ConstructionBots.AbstractID, Bool}"
                 },
                 {
                     "name": "staging_buffers",
