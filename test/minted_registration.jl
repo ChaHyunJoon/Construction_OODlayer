@@ -15,6 +15,7 @@
 module MintedRegistration
 using Test
 using ConstructionBots
+using JSON3          # 🔴 (26): D15 의 이름 우주 게이트가 산출물에서 광고 목록을 읽는다
 const CB = ConstructionBots
 
 @testset "(1) 표는 런 스코프이고 빈 채로 시작한다" begin
@@ -638,8 +639,24 @@ end
     @test why !== nothing
     @test startswith(why, "reject:impl_unknown_call:")
     @test occursin("find_suitable_robot", why)
-    # 🔴 등록 자체가 막혀야 한다 — eval 이 돌면 이 태스크는 실패다.
-    @test !isdefined(CB, :d15_probe_a!)
+    # 🔴 M-1(2026-09-04 독립 검증). 옛 줄 `@test !isdefined(CB, :d15_probe_a!)` 는 **아무것도
+    #    안 쟀다** — 이 테스트셋은 `check_impl_conventions` 만 부르므로 `Core.eval` 경로에
+    #    애초에 들어가지 않고, 그래서 그 단언은 항진이었다. 재려던 성질은 "**등록 자체가
+    #    막힌다**" 이므로 등록을 **실제로 시도**한다. 이제 D15 를 빼면 이 세 줄이 빨개진다.
+    local why_reg = CB.register_minted_primitive!(name = "d15_probe_a!", code = code,
+                                                  params = Dict{String,Any}())
+    @test why_reg == why                        # 등록은 규약 검사와 **같은 사유**로 거절된다
+    @test !isdefined(CB, :d15_probe_a!)         # ⟹ 항진이 아니다: eval 이 안 돌았다
+    @test !haskey(CB.minted_table(), "d15_probe_a!")
+
+    # 🔴 C5(같은 검증). 이 사유는 Task 9 의 `/rewrite` 가 agent-3 에게 **바이트 그대로**
+    #    나른다. 필드 거절은 실제 필드를 싣는데 호출 거절은 아무 대안도 안 실었다 —
+    #    되먹임 채널의 두 갈래 중 한쪽만 행동 가능했다. 이제 둘 다 싣는다.
+    local cands = CB._near_miss_names(:find_suitable_robot)
+    @test !isempty(cands)
+    @test all(c -> Symbol(c) in names(CB), cands)          # 지어내지 않는다
+    @test cands == CB._near_miss_names(:find_suitable_robot)   # 결정적이다
+    @test occursin(first(cands), why)
 end
 
 @testset "(22) 🔴 D15: 없는 필드 접근도 eval 전에 거절된다" begin
@@ -679,6 +696,105 @@ end
     end
     """
     @test CB.check_impl_conventions("d15_probe_dyn!", code) === nothing
+end
+
+# =============================================================================
+# 🔴 2026-09-04 fix round 1 — 독립 검증(task-6-review.md)의 C1·C2·C4·C5.
+# =============================================================================
+
+@testset "(25) 🔴 C1: 함수를 담은 지역 이름을 부르는 여섯 모양은 거절되지 않는다" begin
+    # 🔴 이것이 D15 에서 유일하게 **"모르면 거절"** 이던 자리다 — 검사의 나머지 전부가
+    #    "모르면 통과" 인데 지역 정의 수집만 `f(x) = …` 와 중첩 `function f(x)` 두 모양만
+    #    봤다. 아래 여섯은 **전부 이 세계에 대해 옳은 Julia** 이고, 우리 파서의 한계로
+    #    모델의 옳은 코드를 막는 것은 이 레인이 재려는 것 자체를 파괴한다.
+    #    (2026-09-04 실측: 고치기 전 여섯 다 `reject:impl_unknown_call:<지역이름>`.)
+    local shapes = Dict(
+        "lambda"      => "function d15_l1!(env; x::Int=1)\n    g = y -> y + 1\n    return (status = Symbol(g(x)),)\nend\n",
+        "let"         => "function d15_l2!(env; x::Int=1)\n    let q = y -> y + 1\n        return (status = Symbol(q(x)),)\n    end\nend\n",
+        "assign_call" => "function d15_l3!(env; x::Int=1)\n    hh = get(Dict(), :k, identity)\n    return (status = Symbol(hh(x)),)\nend\n",
+        "alias"       => "function d15_l4!(env; x::Int=1)\n    cb = identity\n    return (status = Symbol(cb(x)),)\nend\n",
+        "tuple"       => "function d15_l5!(env; x::Int=1)\n    (aa, bb) = (identity, identity)\n    return (status = Symbol(aa(x)),)\nend\n",
+        "for"         => "function d15_l6!(env; x::Int=1)\n    for zz in (identity,)\n        zz(x)\n    end\n    return (status = :ok,)\nend\n",
+    )
+    for (tag, code) in sort(collect(shapes))
+        local nm = match(r"function (\w+!)", code).captures[1]
+        @test CB.check_impl_conventions(nm, code) === nothing
+    end
+    # 🔴 음성 대조 — 넓힘이 검사를 은퇴시키지 않았다. 지역에 **안 담긴** 지어낸 이름은
+    #    같은 모양 안에서도 여전히 거절된다.
+    local ctl = "function d15_l7!(env; x::Int=1)\n    g = y -> y + 1\n    return (status = Symbol(g(zzz_still_undefined(x))),)\nend\n"
+    @test startswith(something(CB.check_impl_conventions("d15_l7!", ctl), ""),
+                     "reject:impl_unknown_call:zzz_still_undefined")
+end
+
+@testset "(26) 🔴 C2: D15 의 이름 우주 ⊇ 인터페이스가 광고하는 이름 전부" begin
+    # 🔴 재는 명제: **게이트 레인과 집행 레인의 세계가 같다.** 광고한 이름을 거절하면
+    #    우리는 agent-3 에게 부를 수 있다고 말해 놓고 그 body 를 막는 것이다.
+    #    실측(2026-09-04): 148개 중 `battery_report` **하나**가 `isdefined` 삼중으로
+    #    안 보였다 — 정의가 런타임 include 되는 `src/navigator/battery.jl` 에 있어서
+    #    **프로세스 상태에 따라 판정이 갈렸다**(include 전 거절 / 후 통과). 이 레포가
+    #    `DS_HOTSWAP` 으로 이미 밟은 자리다. 리터럴 복붙 금지 — 산출물에서 읽는다.
+    local art = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core",
+                         "world_interface.json")
+    @test isfile(art)
+    local j = JSON3.read(read(art, String))
+    local advertised = String[]
+    for m in j["methods"];  push!(advertised, String(m["name"]));  end
+    for a in j["ambient"];  push!(advertised, String(first(split(String(a["accessor"]), "("))));  end
+    unique!(advertised)
+    @test length(advertised) > 100          # 🔴 빈 목록이 공허하게 초록이 되는 것을 막는다
+    @test "battery_report" in advertised    # 🔴 정확히 그 한 이름이 목록 안에 있다
+    local invisible = String[n for n in advertised if !CB._d15_name_is_visible(Symbol(n))]
+    @test invisible == String[]
+    # 음성 대조 — 술어가 항진이 아니다.
+    @test !CB._d15_name_is_visible(:find_suitable_robot)
+    @test !CB._d15_name_is_visible(:zzz_definitely_not_a_name)
+    # 그리고 그 이름을 실제로 부르는 body 는 **이 프로세스 상태에서** 통과한다
+    # (navigator 를 include 하지 않은 채로 — 그것이 이 게이트의 요점이다).
+    @test !isdefined(CB, :battery_report)      # 🔴 여기서 정의는 아직 없다
+    @test CB.check_impl_conventions("d15_amb!", """
+    function d15_amb!(env; x::Int=1)
+        r = battery_report()
+        return (status = Symbol(x),)
+    end
+    """) === nothing
+end
+
+@testset "(27) 🔴 C4: `:ref` 걸음은 인덱스가 리터럴 정수일 때만 나아간다" begin
+    # 실측(2026-09-04, 고치기 전): `env.sched.nodes[1:2]` 를 `ScheduleNode` 로 답했다.
+    # 실제 타입은 `Vector{ScheduleNode}` 다 — 즉 docstring 의 "각 걸음은 타입이 확정될
+    # 때만 나아간다" 가 그 자리에서 참이 아니었다. 오늘 그 결과로 거절되는 것은 이미
+    # 틀린 코드뿐이라 거짓 거절은 아직 없었지만, 과장된 머리말은 다음 세션이 검증 없이
+    # 전제로 읽는다.
+    @test CB._static_receiver_type(:(env.sched.nodes[1])) !== nothing
+    for e in (:(env.sched.nodes[1:2]), :(env.sched.nodes[i]), :(env.sched.nodes[end]),
+              :(env.sched.nodes[1, 2]))
+        @test CB._static_receiver_type(e) === nothing
+    end
+    # 귀결(보수적인 쪽): 슬라이스에 대한 필드 접근은 **거절되지 않는다**.
+    @test CB.check_impl_conventions("d15_slice!", """
+    function d15_slice!(env; x::Int=1)
+        return (status = Symbol(env.sched.nodes[1:2].assigned_robot),)
+    end
+    """) === nothing
+end
+
+@testset "(28) 🔴 C5: 덮개 구멍 넷 — 둘은 닫았고 둘은 **일부러** 열려 있다" begin
+    # 🔴 이 네 줄이 구멍 목록의 단일 진실원이다(생산 쪽 docstring 이 여기를 가리킨다).
+    # 닫은 둘 — 둘 다 진짜 집행-중 UndefVarError 경로다.
+    @test startswith(something(CB.check_impl_conventions("d15_h1!",
+        "function d15_h1!(env; x::Int = zzz_kwdefault_undefined())\n    return (status = Symbol(x),)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_kwdefault_undefined")   # 기본값은 매 호출에서 평가된다
+    @test startswith(something(CB.check_impl_conventions("d15_h2!",
+        "function d15_h2!(env; x::Int=1)\n    zzz_bcast_undefined.([1])\n    return (status = :ok,)\nend\n"), ""),
+        "reject:impl_unknown_call:zzz_bcast_undefined")       # `f.(x)` 는 흔한 관용구다
+    # 열어 둔 둘 — 보수적이다(거짓 거절을 안 낸다). 매크로는 지역에 못 담기지만 한정
+    # 매크로(`@Base.foo`)와 패키지 매크로를 우리가 못 가르고, 한정 호출은 모듈 경로를
+    # 풀어야 한다 — 둘 다 풀려다 틀리면 **거짓 거절**이 나는 쪽이라 안 건드린다.
+    @test CB.check_impl_conventions("d15_h3!",
+        "function d15_h3!(env; x::Int=1)\n    @zzz_undefined_macro env\n    return (status = :ok,)\nend\n") === nothing
+    @test CB.check_impl_conventions("d15_h4!",
+        "function d15_h4!(env; x::Int=1)\n    Main.zzz_qualified_undefined(x)\n    return (status = :ok,)\nend\n") === nothing
 end
 
 end # module

@@ -72,9 +72,27 @@ _is_env_positional(a) =
 """
     _walk_body!(calls, fields, locals, ex)
 
-body 의 AST 를 걸어 (1) 호출 대상 이름 (2) `수신자.필드` 쌍 (3) 지역 정의 이름을 모은다.
+body 의 AST 를 걸어 (1) 호출 대상 이름 (2) `수신자.필드` 쌍 (3) 지역 결속 이름을 모은다.
 🔴 **보수적이다.** 모르면 안 모은다 — 거짓 거절은 모델의 옳은 코드를 우리 파서의 한계로
    막고, 그것은 이 레인이 재려는 것 자체를 파괴한다.
+
+🔴 **`locals` 는 "정의" 가 아니라 "결속" 을 모은다** (2026-09-04 독립 검증 C-1 이 정정).
+   처음에는 `helper(x) = …` 와 중첩 `function helper(x)` **두 모양만** 모았다. 그래서
+   함수를 담은 지역 이름을 부르는 **여섯 모양**이 전부 거짓 거절이 났다(실측):
+   람다 대입 · `let` 결속 · 호출 결과 대입 · 별칭(`cb = println`) · 튜플 분해 ·
+   `for` 루프 변수. 🔴 그 자리가 **D15 에서 유일하게 "모르면 거절"** 이었다 — 검사의
+   나머지 전부가 지키는 규칙을 한 자리에서만 깨고 있었다.
+   지금은 `Expr(:(=))` 의 좌변이 Symbol 이거나 튜플이면 결속으로 본다. `let`·`for` 는
+   자기 결속을 `Expr(:(=))` 로 싣기 때문에 재귀 순회가 같은 두 갈래로 덮는다 —
+   네 갈래를 따로 쓰지 않는다. 여섯 모양의 회귀 시험은 테스트셋 **(25)** 다.
+
+🔴 **덮개 구멍은 넷이고, 그 목록의 단일 진실원은 테스트셋 (28) 이다**(2026-09-04 독립
+   검증 M-2 가 하나에서 넷으로 정정). 넷 다 **거절을 안 하는** 쪽이라 거짓 거절은 없다.
+   그중 둘(키워드 기본값 · 브로드캐스트 `f.(x)`)은 이 라운드에서 닫혔고 — 앞의 것은
+   기본값이 매 호출에서 평가되므로 **진짜 집행-중 UndefVarError 경로**였다 — 나머지
+   둘(매크로 호출 · 한정 호출 `Mod.f(x)`)은 **일부러 연 채로 둔다**: 매크로 이름 해석과
+   모듈 경로 해석은 틀리면 **거짓 거절**이 나는 쪽이고, 그 대가가 이 레인이 재려는 것보다
+   비싸다.
 """
 function _walk_body!(calls, fields, locals, ex)
     ex isa Expr || return
@@ -83,13 +101,75 @@ function _walk_body!(calls, fields, locals, ex)
     elseif ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :call &&
            ex.args[1].args[1] isa Symbol
         push!(locals, ex.args[1].args[1])            # `helper(x) = …` 지역 정의
+    elseif ex.head === :(=) && ex.args[1] isa Symbol
+        push!(locals, ex.args[1])                    # C-1: 람다·별칭·호출결과 대입,
+                                                     # 그리고 `let q = …` · `for zz in …`
+    elseif ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :tuple
+        for t in ex.args[1].args                     # C-1: `(aa, bb) = (identity, identity)`
+            t isa Symbol && push!(locals, t)
+        end
     elseif ex.head === :function && ex.args[1] isa Expr && ex.args[1].head === :call &&
            ex.args[1].args[1] isa Symbol
         push!(locals, ex.args[1].args[1])            # 중첩 `function helper(x) … end`
     elseif ex.head === :. && length(ex.args) == 2 && ex.args[2] isa QuoteNode
         push!(fields, (ex.args[1], ex.args[2].value))
+    elseif ex.head === :. && length(ex.args) == 2 && ex.args[1] isa Symbol &&
+           ex.args[2] isa Expr && ex.args[2].head === :tuple
+        push!(calls, ex.args[1])                     # C-5: 브로드캐스트 `f.(x)`
     end
     for a in ex.args; _walk_body!(calls, fields, locals, a); end
+end
+
+"""
+    _d15_name_is_visible(s::Symbol) -> Bool
+
+D15 가 "이 이름은 이 세계에 있다" 고 판정하는 **단일 술어**. 거절 루프도, 그 판정을 전수로
+재는 테스트셋 (26) 도 이 함수 하나를 부른다 — 판정식을 두 곳에 적지 않는다.
+
+🔴 **`names(@__MODULE__)` 이 네 번째 갈래인 이유**(2026-09-04 독립 검증 I-1).
+   `isdefined` 삼중만으로는 인터페이스가 광고하는 148개 이름 중 **`battery_report`
+   하나**가 안 보였다 — 정의가 **런타임 include** 되는 `src/navigator/battery.jl` 에 있어서
+   include 전에는 `isdefined(CB, :battery_report) == false` 이고 include 후에는 `true` 다
+   (실측). 즉 D15 의 판정이 **프로세스 상태에 의존**했다: 집행 하네스 넷은 navigator 를
+   include 하므로 통과하고, navigator 를 안 켜는 레인에서는 같은 body 가 거절됐다.
+   이 레포는 그 모양을 이미 밟았다(`DS_HOTSWAP` 하나가 발화율을 100%에서 23%로 옮겼다).
+   `export battery_report` 는 `ConstructionBots.jl` 에 있고 Julia 의 `names(M)` 은 정의
+   여부와 **무관하게** export 를 싣는다 — 그리고 `world_interface.json` 이 바로 그
+   `names(CB)` 집합에서 생성된다. 그래서 이 갈래를 더하면 **D15 가 보는 이름 우주와
+   agent-3 에게 광고한 이름 우주가 구성상 같아진다** — 하네스가 무엇을 include 했는지와
+   무관하게. 넓히는 방향이므로 거절이 줄지 늘지 않는다.
+"""
+_d15_name_is_visible(s::Symbol) =
+    isdefined(@__MODULE__, s) || isdefined(Base, s) || isdefined(Core, s) ||
+    s in names(@__MODULE__)
+
+"""
+    _near_miss_names(c::Symbol; limit = 5) -> Vector{String}
+
+거절된 호출 이름 `c` 와 `_` 토큰을 공유하는, **이 모듈이 실제로 export 하는** 이름들.
+겹치는 토큰 수(내림) → 사전순으로 고르므로 **결정적**이다(`Dict`/`Set` 순회가 사유
+문자열에 안 들어간다 — 시드 재현성 규약).
+
+🔴 **왜 있는가**(2026-09-04 독립 검증 M-3). Task 9 의 `/rewrite` 가 이 사유 문자열을
+   agent-3 에게 **바이트 그대로** 나른다. 필드 거절은 실제 필드 목록을 실어서 행동
+   가능한데(`— fields are (id, node, spec)`) 호출 거절은 대안을 하나도 안 실었다 —
+   되먹임 채널의 두 갈래 중 한쪽만 쓸모가 있었다. 지어내지 않는다: 후보는 전부
+   `names(@__MODULE__)` 에서 오고, 그 집합이 산출물이 광고하는 표면과 같은 집합이다.
+"""
+function _near_miss_names(c::Symbol; limit::Int = 5)
+    target = String(c)
+    toks = Set(t for t in split(target, '_') if length(t) >= 3)
+    isempty(toks) && return String[]
+    scored = Tuple{Int,String}[]
+    for n in names(@__MODULE__)
+        str = String(n)
+        (isempty(str) || str == target || startswith(str, "#")) && continue
+        k = count(t -> t in toks, split(str, '_'))
+        k == 0 && continue
+        push!(scored, (-k, str))          # 겹침이 많을수록 앞, 같으면 사전순
+    end
+    sort!(scored)
+    return String[str for (_, str) in scored[1:min(end, limit)]]
 end
 
 """
@@ -107,10 +187,24 @@ end
 (2) 🔴 **`getproperty` 가 기본 구현이어야 한다.** 재정의한 타입에서는 `x.foo` 가
 필드일 필요가 없으므로 `fieldnames` 로 판정하면 **거짓 거절**이 난다 — 아래
 `_static_receiver_type` 이 `env` 에서 임의 깊이로 걸어 들어가므로 남의 패키지(LazySets ·
-Graphs) 타입에 닿을 수 있고, 그 축은 우리가 통제 못 한다. 2026-09-04 실측: 오늘 닿는 여덟
-타입은 전부 기본 구현이고(`PlannerEnv`·`OperatingSchedule`·`SceneTree`·`PlanningCache`·
-`Dict` 둘·`ScheduleNode`·`Vector{ScheduleNode}`), `getproperty` 를 재정의한 대조 타입
-하나는 정확히 `false` 로 갈렸다 — 여덟 개의 `true` 를 비-`true` 대조와 짝지어 읽은 값이다.
+Graphs · DataStructures) 타입에 닿을 수 있고, 그 축은 우리가 통제 못 한다.
+
+🔴 **모집단은 여덟이 아니라 39다** (2026-09-04 독립 검증 I-2 가 정정했고, 이 라운드에서
+   다시 유도했다). 앞서 이 자리는 "오늘 닿는 여덟 타입" 이라고 적었는데 그 여덟은 시험이
+   실제로 지나간 경로였지 폐포가 아니었다 — 이 레포는 머리말이 적은 근거를 다음 세션이
+   검증 없이 전제로 읽는다.
+   **39가 어떻게 유도된 집합인가**: `PlannerEnv` 에서 출발해 `_static_receiver_type` 이
+   취하는 **두 걸음의 고정점**이다 — (a) 모든 필드에 대해 `fieldtype(S, f)`,
+   (b) `S <: AbstractArray` 이면 `eltype(S)`. 각 후보는 위 (1) 의 술어
+   (`isstructtype && !isabstracttype`, UnionAll 언랩)로 거른다. 그 폐포에는
+   `LazySets.Ball2` · `Graphs.SimpleDiGraph` · `DataStructures.PriorityQueue` 처럼
+   **남의 패키지 타입이 실제로 들어 있다** — 이 가드가 지키려는 축은 가상이 아니다.
+   판정 결과: 가드가 판정을 요구받은 38개 타입 중 **`getproperty` 재정의 = 0개**.
+   즉 결론("오늘은 전부 기본 구현")은 전수로 다시 재도 참이고, 가드가 없어도 **오늘은**
+   같은 답이 나온다. 🔴 그래도 지운다는 뜻이 아니다: 재유도는 오늘의 스냅샷이고 그것을
+   지키는 게이트는 여전히 없다.
+   ⚠️ 0 은 반드시 비-0 대조와 짝지어 읽는다 — 같은 프로브에서
+   `Base.Pairs`(= `getproperty` 재정의 타입)는 정확히 `false` 로 갈렸다.
 """
 function _concrete_struct(T)
     T isa Type || return nothing
@@ -127,7 +221,16 @@ end
 `recv` 의 타입을 **확실히 아는 경우에만** 낸다. 그 외에는 전부 `nothing` — 모른다고 답한다.
 
 뿌리는 `env`(= `PlannerEnv`) 하나뿐이고, 거기서 두 걸음만 인정한다:
-필드 접근(`x.f`)과 **구체 eltype 을 가진 배열**의 인덱싱(`x[i]`).
+필드 접근(`x.f`)과 **구체 eltype 을 가진 배열의 리터럴 정수 인덱싱**(`x[1]`).
+
+🔴 **인덱스 모양을 본다** (2026-09-04 독립 검증 I-3). 전에는 `head === :ref` 이기만 하면
+   `eltype` 로 나아갔고, 그래서 `env.sched.nodes[1:2]` 를 `ScheduleNode` 라고 답했다 —
+   실제 타입은 `Vector{ScheduleNode}` 다(실측). 그 결과로 오늘 거절되는 것은 이미 틀린
+   코드뿐이라 거짓 거절은 아직 없었지만, 아래 "각 걸음은 타입이 확정될 때만 나아간다" 는
+   이 머리말의 주장이 그 자리에서 **참이 아니었다** — 과장된 머리말은 다음 세션이 검증
+   없이 전제로 읽는 종류다. 지금은 인덱스가 **리터럴 `Integer` 하나**일 때만 나아간다:
+   슬라이스(`[1:2]`) · 변수(`[i]`) · `[end]` · 다차원(`[1,2]`)은 전부 `nothing`("모른다")
+   으로 떨어져 **통과**한다. 회귀 시험은 테스트셋 **(27)** 이다.
 
 🔴 **왜 브리프가 적은 `env` / `env.<f>` 두 모양보다 넓은가 — 실측이 그렇게 시켰다.**
    브리프의 시험 (22) 은 `env.sched.nodes[1].assigned_robot` 이 거절되고 그 문장이
@@ -152,7 +255,8 @@ function _static_receiver_type(recv)
         f in fieldnames(S) || return nothing      # 모르는 필드 → 타입도 모른다
         return _concrete_struct(fieldtype(S, f))
     end
-    if recv isa Expr && recv.head === :ref && length(recv.args) >= 2
+    if recv isa Expr && recv.head === :ref && length(recv.args) == 2 &&
+       recv.args[2] isa Integer
         S = _static_receiver_type(recv.args[1])
         (S === nothing || !(S <: AbstractArray)) && return nothing
         return _concrete_struct(eltype(S))
@@ -379,21 +483,28 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
     if body !== nothing
         local cs, fs, ls = Symbol[], Tuple{Any,Symbol}[], Symbol[]
         _walk_body!(cs, fs, ls, body)
-        # 시그니처의 키워드 이름도 지역이다
-        for k in kws; (k isa Expr && k.args[1] isa Symbol) && push!(ls, k.args[1]); end
+        # 시그니처의 키워드 이름도 지역이고, 🔴 **기본값도 걷는다**(2026-09-04 독립 검증
+        # M-2). 기본값은 매 호출에서 평가되므로 거기 있는 지어낸 이름은 진짜 집행-중
+        # UndefVarError 경로다. 🔴 **body 를 걸은 뒤에** 걷는 것은 계약이다: 사유는
+        # `unique(cs)` 의 **첫** 미지 이름이 정하므로, 순서를 바꾸면 시험 (18)·(20) 이
+        # 바이트로 고정한 사유가 갈릴 수 있다.
         for k in kws
-            k isa Expr && k.args[1] isa Expr && k.args[1].head === :(::) &&
-                k.args[1].args[1] isa Symbol && push!(ls, k.args[1].args[1])
+            k isa Expr && !isempty(k.args) || continue
+            local a1 = k.args[1]
+            a1 isa Symbol && push!(ls, a1)
+            a1 isa Expr && a1.head === :(::) && !isempty(a1.args) &&
+                a1.args[1] isa Symbol && push!(ls, a1.args[1])
+            k.head === :kw && length(k.args) >= 2 && _walk_body!(cs, fs, ls, k.args[2])
         end
         push!(ls, :env, Symbol(name))
         for c in unique(cs)
             (c in ls) && continue
-            isdefined(@__MODULE__, c) && continue
-            isdefined(Base, c) && continue
-            isdefined(Core, c) && continue
+            _d15_name_is_visible(c) && continue        # 🔴 판정식은 그 술어 하나다
+            local near = _near_miss_names(c)
             return "reject:impl_unknown_call:$(c) — 이 이름의 함수는 이 모듈에도 Base 에도 " *
                    "없다. 세계 인터페이스가 실제로 가진 함수만 부르거나, 도우미를 body " *
-                   "**안쪽**에 정의하라"
+                   "**안쪽**에 정의하라" *
+                   (isempty(near) ? "" : " — 가까운 이름: " * join(near, ", "))
         end
         for (recv, fld) in fs
             S = _static_receiver_type(recv)
