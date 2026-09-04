@@ -3,10 +3,18 @@
 # 🔴 손으로 적지 않는다. `primitive_registry.json` 과 같은 패턴 — Julia 가 생성하고 두
 #    언어가 읽는 한 파일이며, 게이트가 현행 코드와의 일치를 지킨다.
 using ConstructionBots
+using InteractiveUtils     # subtypes
 import JSON3
 const CB = ConstructionBots
 
-_tname(T) = string(nameof(T isa UnionAll ? Base.unwrap_unionall(T) : T))
+_unwrap(T) = T isa UnionAll ? Base.unwrap_unionall(T) : T
+
+# 🔴 `Union` 에는 `nameof` 가 없다 — `apply_cmd!(node::Union{TransportUnitGo,RobotGo}, …)`
+#    의 렌더가 정확히 여기서 MethodError 로 죽는다(실측).
+function _tname(T)
+    S = _unwrap(T)
+    S isa DataType ? string(nameof(S)) : string(T)
+end
 
 # F2: 1단계 전개 후보는 ConstructionBots(또는 그 하위 모듈)가 **정의한** 타입만 받는다.
 # `Dict`/`Set` 같은 Base 컨테이너는 `isstructtype` 이 true 라 전개 후보에 걸리지만, 그
@@ -25,10 +33,99 @@ function _defined_in_cb(S)
     end
 end
 
+"""
+    _type_candidates!(acc, T, d=0)
+
+필드 타입 하나에서 "모델이 알아야 할 타입" 을 전부 뽑아 `acc` 에 넣는다.
+`Dict{AbstractID,Ball2}` 는 자기 자신 + `AbstractID` + `Ball2` 를 낳는다.
+`TypeVar` 는 상한(`ub`)으로 내려간다. `Union` 은 양쪽으로 갈라진다.
+`d` 는 **타입 매개변수 중첩**의 상한이지 폐포의 깊이가 아니다 — 폐포는 고정점이다.
+"""
+function _type_candidates!(acc, T, d = 0)
+    d > 4 && return acc
+    T isa TypeVar && return _type_candidates!(acc, T.ub, d + 1)
+    if T isa Union
+        _type_candidates!(acc, T.a, d + 1); _type_candidates!(acc, T.b, d + 1); return acc
+    end
+    S = _unwrap(T)
+    S isa DataType || return acc
+    push!(acc, S)
+    for p in S.parameters
+        (p isa Type || p isa TypeVar) && _type_candidates!(acc, p, d + 1)
+    end
+    return acc
+end
+
+"""
+    world_type_closure() -> Vector{DataType}
+
+`PlannerEnv` **와 `PlannerEnv` 를 인자로 받는 모든 메서드의 인자 타입**을 씨앗으로,
+CB 소유 타입만 따라가는 고정점. 이름으로 정렬해 반환한다.
+
+🔴 **씨앗에 메서드 인자를 넣는 이유**(설측). 필드만 따라가면 49타입이고
+`PlannerEnv` 를 받는 23개 메서드 중 13개만 호출 가능해진다. 메서드 인자까지 넣으면
+66타입이고 **23개 전부**가 열린다 — 새로 열리는 11개는 전부 `apply_cmd!`(7)·
+`close_node!`(4) 로, 스케줄 노드를 실제로 여닫고 명령을 먹이는 유일한 공개 경로다.
+
+🔴 **CB-only 필터는 절대 풀지 않는다.** 실측: 풀면 깊이 2 에서 1,302타입,
+깊이 3 에서 25,160타입이다.
+"""
+function world_type_closure()
+    seeds = Any[CB.PlannerEnv]
+    for n in sort(names(CB))
+        isdefined(CB, n) || continue
+        f = getfield(CB, n)
+        f isa Function || continue
+        for m in methods(f)
+            Ts = collect(_unwrap(m.sig).parameters)[2:end]
+            any(T -> _unwrap(T) === CB.PlannerEnv, Ts) || continue
+            for T in Ts; _type_candidates!(seeds, T); end
+        end
+    end
+    seen = Dict{String,DataType}()
+    frontier = copy(seeds)
+    while !isempty(frontier)
+        S = _unwrap(popfirst!(frontier))
+        S isa DataType || continue
+        n = _tname(S)
+        (haskey(seen, n) || !_defined_in_cb(S)) && continue
+        seen[n] = S
+        nexts = Any[]
+        if isabstracttype(S)
+            append!(nexts, subtypes(S))
+        else
+            try
+                for ft in fieldtypes(S); _type_candidates!(nexts, ft); end
+            catch
+                # 🔴 구상 타입인데 fieldtypes 가 던지는 모양은 오늘 없다. 던지면
+                #    그 타입은 필드 없이 실린다 — 조용한 폴백이 아니라 아래 type_entry
+                #    가 같은 판정을 다시 하고 정직하게 빈 fields 를 낸다.
+            end
+        end
+        append!(frontier, nexts)
+    end
+    # 🔴 `subtypes` 의 순서는 계약이 아니다. 정렬해야 게이트 (2) 의 바이트 비교가 산다.
+    return DataType[seen[k] for k in sort(collect(keys(seen)))]
+end
+
+"""
+    type_entry(T) -> Dict
+
+구상 타입이면 `fields`, 추상 타입이면 `subtypes`. **둘 다 실지 않는다** —
+독자(시험 (2)·파이썬 렌더)가 어느 쪽인지로 분기한다.
+
+🔴 `fieldnames(SceneTreeEdge)` 는 `ArgumentError: type does not have a definite
+   number of fields` 를 **던진다**(실측). 추상 타입에 필드를 물으면 안 된다.
+"""
 function type_entry(T)
-    Dict("name" => _tname(T),
-         "fields" => [Dict("name" => string(f), "type" => string(t))
-                      for (f, t) in zip(fieldnames(T), fieldtypes(T))])
+    S = _unwrap(T)
+    isabstracttype(S) && return Dict(
+        "name" => _tname(S),
+        "subtypes" => sort(String[_tname(U) for U in subtypes(S)]))
+    return Dict(
+        "name" => _tname(S),
+        "fields" => [Dict("name" => string(f), "type" => string(t))
+                     for (f, t) in zip(fieldnames(S), fieldtypes(S))])
 end
 
 """
@@ -87,18 +184,7 @@ function method_entries()
     return out
 end
 
-# 타입은 PlannerEnv 에서 **1단계만** 전개한다 (무한 전개 금지).
-roots = [CB.PlannerEnv]
-seen  = Set{String}()
-types = Dict{String,Any}[]
-for T in roots
-    push!(types, type_entry(T)); push!(seen, _tname(T))
-    for ft in fieldtypes(T)
-        S = ft isa UnionAll ? Base.unwrap_unionall(ft) : ft
-        (S isa DataType && isstructtype(S) && _defined_in_cb(S) && !(_tname(S) in seen)) || continue
-        push!(types, type_entry(S)); push!(seen, _tname(S))
-    end
-end
+types = Dict{String,Any}[type_entry(T) for T in world_type_closure()]
 
 dst = length(ARGS) >= 1 ? ARGS[1] :
       normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",

@@ -49,4 +49,10 @@ end
     @test occursin("Ball2", ft["staging_circles"])
     @test occursin("Float64", ft["staging_buffers"])
 end
+
+@testset "(6) 🔴 폐포가 폭발하지 않았다" begin
+    j = JSON3.read(read(ART, String))
+    @test 40 <= length(j.types) <= 120     # 실측 67. 서드파티 필터를 풀면 1,302 이상이다.
+    @test !isempty(j.methods)
+end
 end # module

@@ -835,6 +835,542 @@
     ],
     "types": [
         {
+            "name": "AbstractID",
+            "subtypes": [
+                "ActionID",
+                "AgentID",
+                "AssemblyID",
+                "BotID",
+                "BuildStepID",
+                "GeomID",
+                "LocationID",
+                "ObjectID",
+                "OperationID",
+                "SubFileRefID",
+                "SubModelPlanID",
+                "TemplatedID",
+                "TransformNodeID",
+                "VtxID"
+            ]
+        },
+        {
+            "name": "AbstractRobotType",
+            "subtypes": [
+                "DeliveryBot"
+            ]
+        },
+        {
+            "name": "ActionID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "AgentID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "AssemblyComplete",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.AssemblyNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "inner_staging_circle",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "outer_staging_circle",
+                    "type": "ConstructionBots.GeomNode"
+                }
+            ]
+        },
+        {
+            "name": "AssemblyID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "AssemblyNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.AssemblyID"
+                },
+                {
+                    "name": "geom",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "components",
+                    "type": "Dict{Union{ConstructionBots.AssemblyID, ConstructionBots.ObjectID}, CoordinateTransformations.Transformation}"
+                },
+                {
+                    "name": "geom_hierarchy",
+                    "type": "ConstructionBots.GeometryHierarchy"
+                }
+            ]
+        },
+        {
+            "name": "AssemblyStart",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.AssemblyNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "BaseGeomKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "BotID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "BuildPhasePredicate",
+            "subtypes": [
+                "CloseBuildStep",
+                "OpenBuildStep"
+            ]
+        },
+        {
+            "name": "BuildStepID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "CachedElement",
+            "fields": [
+                {
+                    "name": "element",
+                    "type": "CoordinateTransformations.Transformation"
+                },
+                {
+                    "name": "is_up_to_date",
+                    "type": "Bool"
+                },
+                {
+                    "name": "timestamp",
+                    "type": "Float64"
+                }
+            ]
+        },
+        {
+            "name": "CachedTreeNode",
+            "subtypes": [
+                "GeomNode",
+                "TransformNode",
+                "TreeNode"
+            ]
+        },
+        {
+            "name": "CircleKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "CloseBuildStep",
+            "fields": [
+                {
+                    "name": "assembly",
+                    "type": "ConstructionBots.AssemblyNode"
+                },
+                {
+                    "name": "components",
+                    "type": "Dict{Union{ConstructionBots.AssemblyID, ConstructionBots.ObjectID}, CoordinateTransformations.Transformation}"
+                },
+                {
+                    "name": "staging_circle",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "bounding_circle",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "ConstructionPredicate",
+            "subtypes": [
+                "BuildPhasePredicate",
+                "DepositCargo",
+                "EntityConfigPredicate",
+                "EntityGo",
+                "FormTransportUnit",
+                "ProjectComplete"
+            ]
+        },
+        {
+            "name": "ConvexHullKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "CylinderKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "DeliveryBot",
+            "fields": [
+            ]
+        },
+        {
+            "name": "DepositCargo",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.TransportUnitNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "cargo_start_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "cargo_goal_config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "EntityConfigPredicate",
+            "subtypes": [
+                "AssemblyComplete",
+                "AssemblyStart",
+                "ObjectStart",
+                "RobotStart"
+            ]
+        },
+        {
+            "name": "EntityGo",
+            "subtypes": [
+                "LiftIntoPlace",
+                "RobotGo",
+                "TransportUnitGo"
+            ]
+        },
+        {
+            "name": "FormTransportUnit",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.TransportUnitNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "cargo_start_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "cargo_goal_config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "GeomID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "GeomNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.GeomID"
+                },
+                {
+                    "name": "base_geom",
+                    "type": "G"
+                },
+                {
+                    "name": "parent",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "cached_geom",
+                    "type": "ConstructionBots.CachedElement{G}"
+                }
+            ]
+        },
+        {
+            "name": "GeometryHierarchy",
+            "fields": [
+                {
+                    "name": "graph",
+                    "type": "Graphs.SimpleGraphs.SimpleDiGraph"
+                },
+                {
+                    "name": "nodes",
+                    "type": "Vector{ConstructionBots.GeomNode}"
+                },
+                {
+                    "name": "vtx_map",
+                    "type": "Dict{ConstructionBots.GeometryKey, Int64}"
+                },
+                {
+                    "name": "vtx_ids",
+                    "type": "Vector{ConstructionBots.GeometryKey}"
+                }
+            ]
+        },
+        {
+            "name": "GeometryKey",
+            "subtypes": [
+                "BaseGeomKey",
+                "CircleKey",
+                "ConvexHullKey",
+                "CylinderKey",
+                "HyperrectangleKey",
+                "HypersphereKey",
+                "OctagonalPrismKey",
+                "PolygonKey",
+                "PolyhedronKey",
+                "ZonotopeKey"
+            ]
+        },
+        {
+            "name": "HyperrectangleKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "HypersphereKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "LiftIntoPlace",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "C"
+                },
+                {
+                    "name": "start_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "goal_config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "LocationID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "ObjectID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "ObjectNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.ObjectID"
+                },
+                {
+                    "name": "geom",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "geom_hierarchy",
+                    "type": "ConstructionBots.GeometryHierarchy"
+                }
+            ]
+        },
+        {
+            "name": "ObjectStart",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.ObjectNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "OctagonalPrismKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "OpenBuildStep",
+            "fields": [
+                {
+                    "name": "assembly",
+                    "type": "ConstructionBots.AssemblyNode"
+                },
+                {
+                    "name": "components",
+                    "type": "Dict{Union{ConstructionBots.AssemblyID, ConstructionBots.ObjectID}, CoordinateTransformations.Transformation}"
+                },
+                {
+                    "name": "staging_circle",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "bounding_circle",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "OperatingSchedule",
+            "fields": [
+                {
+                    "name": "graph",
+                    "type": "Graphs.SimpleGraphs.SimpleDiGraph"
+                },
+                {
+                    "name": "nodes",
+                    "type": "Vector{ConstructionBots.ScheduleNode}"
+                },
+                {
+                    "name": "vtx_map",
+                    "type": "Dict{ConstructionBots.AbstractID, Int64}"
+                },
+                {
+                    "name": "vtx_ids",
+                    "type": "Vector{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "terminal_vtxs",
+                    "type": "Vector{Int64}"
+                },
+                {
+                    "name": "weights",
+                    "type": "Dict{Int64, Float64}"
+                }
+            ]
+        },
+        {
+            "name": "OperationID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "PathSpec",
+            "fields": [
+                {
+                    "name": "t0",
+                    "type": "Float64"
+                },
+                {
+                    "name": "min_duration",
+                    "type": "Float64"
+                },
+                {
+                    "name": "tF",
+                    "type": "Float64"
+                },
+                {
+                    "name": "slack",
+                    "type": "Vector{Float64}"
+                },
+                {
+                    "name": "local_slack",
+                    "type": "Vector{Float64}"
+                },
+                {
+                    "name": "plan_path",
+                    "type": "Bool"
+                },
+                {
+                    "name": "tight",
+                    "type": "Bool"
+                },
+                {
+                    "name": "static",
+                    "type": "Bool"
+                },
+                {
+                    "name": "free",
+                    "type": "Bool"
+                },
+                {
+                    "name": "fixed",
+                    "type": "Bool"
+                }
+            ]
+        },
+        {
+            "name": "PermanentEdge",
+            "fields": [
+            ]
+        },
+        {
             "name": "PlannerEnv",
             "fields": [
                 {
@@ -884,32 +1420,109 @@
             ]
         },
         {
-            "name": "OperatingSchedule",
+            "name": "PlanningCache",
             "fields": [
                 {
-                    "name": "graph",
-                    "type": "Graphs.SimpleGraphs.SimpleDiGraph"
+                    "name": "closed_set",
+                    "type": "Set{Int64}"
                 },
                 {
-                    "name": "nodes",
-                    "type": "Vector{ConstructionBots.ScheduleNode}"
+                    "name": "active_set",
+                    "type": "Set{Int64}"
                 },
                 {
-                    "name": "vtx_map",
-                    "type": "Dict{ConstructionBots.AbstractID, Int64}"
-                },
-                {
-                    "name": "vtx_ids",
-                    "type": "Vector{ConstructionBots.AbstractID}"
-                },
-                {
-                    "name": "terminal_vtxs",
-                    "type": "Vector{Int64}"
-                },
-                {
-                    "name": "weights",
-                    "type": "Dict{Int64, Float64}"
+                    "name": "node_queue",
+                    "type": "DataStructures.PriorityQueue{Int64, Tuple{Int64, Float64}}"
                 }
+            ]
+        },
+        {
+            "name": "PolygonKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "PolyhedronKey",
+            "fields": [
+            ]
+        },
+        {
+            "name": "ProjectComplete",
+            "fields": [
+                {
+                    "name": "project_id",
+                    "type": "Int64"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "RobotGo",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "R"
+                },
+                {
+                    "name": "start_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "goal_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.ActionID"
+                }
+            ]
+        },
+        {
+            "name": "RobotNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.BotID{R}"
+                },
+                {
+                    "name": "geom",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "geom_hierarchy",
+                    "type": "ConstructionBots.GeometryHierarchy"
+                }
+            ]
+        },
+        {
+            "name": "RobotStart",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.RobotNode"
+                },
+                {
+                    "name": "config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "SceneAssemblyNode",
+            "subtypes": [
+            ]
+        },
+        {
+            "name": "SceneNode",
+            "subtypes": [
+                "AssemblyNode",
+                "ObjectNode",
+                "RobotNode",
+                "SceneAssemblyNode",
+                "TransportUnitNode"
             ]
         },
         {
@@ -942,20 +1555,192 @@
             ]
         },
         {
-            "name": "PlanningCache",
+            "name": "SceneTreeEdge",
+            "subtypes": [
+                "PermanentEdge",
+                "TemporaryEdge"
+            ]
+        },
+        {
+            "name": "ScheduleNode",
             "fields": [
                 {
-                    "name": "closed_set",
-                    "type": "Set{Int64}"
+                    "name": "id",
+                    "type": "I<:ConstructionBots.AbstractID"
                 },
                 {
-                    "name": "active_set",
-                    "type": "Set{Int64}"
+                    "name": "node",
+                    "type": "V"
                 },
                 {
-                    "name": "node_queue",
-                    "type": "DataStructures.PriorityQueue{Int64, Tuple{Int64, Float64}}"
+                    "name": "spec",
+                    "type": "ConstructionBots.PathSpec"
                 }
+            ]
+        },
+        {
+            "name": "SubFileRefID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "SubModelPlanID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "TemplatedID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "TemporaryEdge",
+            "fields": [
+            ]
+        },
+        {
+            "name": "TransformNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ConstructionBots.TransformNodeID"
+                },
+                {
+                    "name": "local_transform",
+                    "type": "CoordinateTransformations.Transformation"
+                },
+                {
+                    "name": "global_transform",
+                    "type": "ConstructionBots.CachedElement{CoordinateTransformations.Transformation}"
+                },
+                {
+                    "name": "parent",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "children",
+                    "type": "Dict{ConstructionBots.AbstractID, ConstructionBots.CachedTreeNode}"
+                }
+            ]
+        },
+        {
+            "name": "TransformNodeID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "TransportUnitGo",
+            "fields": [
+                {
+                    "name": "entity",
+                    "type": "ConstructionBots.TransportUnitNode"
+                },
+                {
+                    "name": "start_config",
+                    "type": "ConstructionBots.TransformNode"
+                },
+                {
+                    "name": "goal_config",
+                    "type": "ConstructionBots.TransformNode"
+                }
+            ]
+        },
+        {
+            "name": "TransportUnitNode",
+            "fields": [
+                {
+                    "name": "geom",
+                    "type": "ConstructionBots.GeomNode"
+                },
+                {
+                    "name": "cargo",
+                    "type": "Pair{C<:Union{ConstructionBots.AssemblyID, ConstructionBots.ObjectID}, T}"
+                },
+                {
+                    "name": "robots",
+                    "type": "Dict{ConstructionBots.BotID, CoordinateTransformations.Transformation}"
+                },
+                {
+                    "name": "geom_hierarchy",
+                    "type": "ConstructionBots.GeometryHierarchy"
+                }
+            ]
+        },
+        {
+            "name": "TreeNode",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "ID"
+                },
+                {
+                    "name": "element",
+                    "type": "ConstructionBots.CachedElement{E}"
+                },
+                {
+                    "name": "parent",
+                    "type": "ConstructionBots.TreeNode"
+                },
+                {
+                    "name": "children",
+                    "type": "Dict{ID, ConstructionBots.TreeNode{E, ID}}"
+                }
+            ]
+        },
+        {
+            "name": "Twist",
+            "fields": [
+                {
+                    "name": "vel",
+                    "type": "StaticArraysCore.SVector{3, Float64}"
+                },
+                {
+                    "name": "ω",
+                    "type": "StaticArraysCore.SVector{3, Float64}"
+                }
+            ]
+        },
+        {
+            "name": "VelocityController",
+            "fields": [
+                {
+                    "name": "nominal_policy",
+                    "type": "Any"
+                },
+                {
+                    "name": "dispersion_policy",
+                    "type": "Any"
+                }
+            ]
+        },
+        {
+            "name": "VtxID",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "Int64"
+                }
+            ]
+        },
+        {
+            "name": "ZonotopeKey",
+            "fields": [
             ]
         }
     ]
