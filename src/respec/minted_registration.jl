@@ -54,6 +54,20 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
 🔴 규약 1 이 존재 이유의 절반이다: `f(env; kw…)` 로 고정하면 `_enactability` 의
    arity·kwargs 연언지를 **구성상** 통과한다. 오늘 19개 중 9개를 막고 있는 그 결함
    (impl 이 params 를 위치인자로 받는다)이 새 원시에서는 원천적으로 안 생긴다.
+
+🔴 **규약 2("문장 하나")는 "정의 하나"를 재지 "결속 하나"를 재지 않는다 — 결정, 사고가
+   아니다**(2026-09-03 최종 리뷰 F16, 컨트롤러 판정 R15). `body` **안에** 중첩된 내부
+   함수(예: `function outer!(env); helper(x) = x+1; return helper(1); end`)는 지금도
+   통과한다(실측: `exprs` 가 `Expr(:function, ...)` 하나만 요구하고, 그 함수의 몸통
+   안쪽은 안 들여다본다). **이것은 앞으로도 허용이다** — 재는 것은 "최상위 정의가
+   정확히 하나" 이고, 그 하나의 정의 안에 사는 도우미 클로저는 그 규약을 하나도 안
+   어긴다. 모델이 긴 몸통을 내부 클로저로 나눈 것은 잘못이 아니다. ⚠️ 이 규약은
+  agent-3 에게 보여주는 프롬프트 문구(`src/respec/llm_service/world_interface.py`
+  의 "No other definitions -- no `const`, no macros, no helper functions.")와
+  글자로는 어긋난다 — 그 문구는 이 파일(`src/respec/minted_registration.jl`) 소유가
+  아니라서 여기서 못 고친다. 프롬프트 쪽 문구를 "최상위(top-level) 정의는 하나뿐" 으로
+  누그러뜨리는 쪽이 맞다(모델이 몸통을 내부 클로저로 나눈 것은 잘못이 아니라는 것이
+  컨트롤러 판정이다) — 이 파일의 검사를 좁혀 지금 통과하는 것을 막는 쪽이 아니다.
 🔴 규약 5 는 이 사슬에서 가장 나쁜 사고를 막는다 — `Core.eval` 이 기존 이름을 덮으면
    시뮬레이터 코드를 런타임에 교체한다. **검사 자체는 그대로 `isdefined` 다**(export
    여부로 좁히면 그 사고가 비공개 이름으로 그대로 열린다). 아래에서 갈리는 것은 **거절
@@ -109,6 +123,13 @@ reset_minted_table!() = (_MINTED_TABLE[] = Dict{String,Any}(); nothing)
    세계도 `eval` 도 안 건드린다 — 순수함의 뜻은 그것이었다.
 """
 function check_impl_conventions(name::AbstractString, code::AbstractString)
+    # 🔴 F14(2026-09-03 최종 리뷰, 컨트롤러 판정). `Base.isidentifier(chop(name))` 는
+    #    `name` 을 문자 단위로 훑는다 — 유효하지 않은 UTF-8(예: 외톨이 연속 바이트
+    #    `0xff`)이 섞여 있으면 `Base.InvalidCharError` 를 **던진다**(실측). `endswith`·
+    #    문자열 보간은 안 던지므로 그 자리만 놓치기 쉬웠다. F9 의 헤지("두 함수 안에
+    #    무가드 변환이 없다")가 놓친 축이 정확히 이것이다 — AST 모양이 아니라 **`name`
+    #    인자의 바이트 내용**. `isvalid` 로 여기서 먼저 잡는다.
+    isvalid(name) || return "reject:impl_name_not_utf8:$(repr(name))"
     endswith(name, "!") || return "reject:impl_name_must_end_with_bang:$(name)"
     Base.isidentifier(chop(name)) || return "reject:impl_name_not_an_identifier:$(name)"
     # 규약 5 — 충돌 셋을 가른다(위 표). 순서가 뜻을 정한다: 이 프로세스가 스스로 심은

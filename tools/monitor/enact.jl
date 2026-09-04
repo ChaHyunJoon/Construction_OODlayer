@@ -820,19 +820,31 @@ end
 `reject:impl_name_is_qualified:...`/`_is_interpolated:...`/
 `impl_signature_is_callable_object:...` 를 던지지 않고 반환한다).
 
-**재도출(다시 가정하지 않는다).** F7+F9 이후 `register_minted_primitive!` 와
-`check_impl_conventions` 를 다시 훑었다 — `name`/`code`/`surface` 는 `enact.jl` 의 F3
-가드가 이미 `AbstractString` 으로 좁혀 놓고 들어오고, `params` 는 F7 이 `AbstractDict`
-+ 키 타입(`AbstractString`/`Symbol`)을 등록 전에 확인하며, `check_impl_conventions` 의
-나머지 분기(`endswith`·`isidentifier`·`Symbol(name)`·kwblock 처리)는 전부 값을 보고
-`return` 하거나 안전한 표준 연산이지 무가드 변환이 없다. **오늘, 이 두 함수 안에서
-알려진(측정된) 모델-도달가능 입력으로 던지는 자리는 없다** — 단, 이것은 두 함수의
-파싱 가능한 모든 AST 모양을 남김없이 센 증명이 아니라 **실측한 형태들**에 대한 결론이다.
-그래도 타입을 `Bool` 로 좁히지 않는다 — 이 함수(`enact_minted_decision!`) 자신의
-나머지 코드(`decision.synth_lane` 이후, `CB.enact_minted!` 호출 등)에 미래에 새 예외
-경로가 생기면 그 지점 이전의 `registered` 는 다시 `nothing` 이 정직한 값이기 때문이다.
-**이 자리를 다시 재려고 아래 두 함수에 또 버그를 기대는 시험을 짓지 말 것** —
-`test/minted_end_to_end.jl` (3)이 그 함정에 한 번 빠졌었고 F7 이 그것을 고쳤다.
+**재도출(다시 가정하지 않는다) — 세 번째 갱신, F14.** F9 직후 이 문단은 "`name`/
+`code`/`surface` 가 `AbstractString` 으로 좁혀져 들어오니 무가드 변환이 없다" 고
+적었는데 **틀렸다** — `AbstractString` 이라는 **타입**은 유효한 UTF-8 이라는 **내용**을
+보장하지 않는다. `Base.isidentifier(chop(name))` 는 `name` 을 문자 단위로 훑는데,
+`name` 에 유효하지 않은 UTF-8(외톨이 연속 바이트 등)이 섞여 있으면 `Base.InvalidCharError`
+로 던졌다(실측) — F9 가 막은 것은 **AST 모양** 축이고, 이것은 **`name` 인자의 바이트
+내용** 축이라 F9 의 헤지가 아예 안 짚은 자리였다(같은 실수를 라운드 2·3 에 걸쳐 두
+번 반복한 것과 같은 결의 실수 — "타입이 맞으니 안전하다" 를 검증 없이 가정했다).
+F14 가 `check_impl_conventions` 맨 앞에 `isvalid(name) || return "reject:impl_name_not_utf8:…"`
+를 넣어 이 축을 닫았다. ⚠️ 이 결함은 **모델-도달가능성이 증명되지 않았다** — 실제
+LLM 이 낼 법한 모양(외톨이 서로게이트 이스케이프)은 `JSON3.read` 가 `_synth_lane_field`
+의 try-가드 안에서 `ArgumentError` 로 먼저 걸러 `:deferred` 로 조용히 내려가고,
+파이썬 `json.dumps` 는 외톨이 서로게이트를 그 자체로도 다시 이스케이프하므로 전송
+경로로 raw `0xff` 바이트가 올 일이 없다 — 그래도 **함수 자체의 계약**(예외가 아니라
+거절)은 입력의 출처와 무관하게 지켜야 하므로 고쳤다.
+
+**오늘, 이 두 함수 안에서 실측한 두 축(AST 모양·`name` 바이트 내용)으로 던지는 자리는
+없다** — 그러나 이것은 두 함수의 모든 입력 축을 남김없이 센 증명이 아니라 **실측한
+두 축**에 대한 결론이다(`code`/`surface`/`params` 의 값도 문자-단위 검증을 타는 자리가
+새로 생기면 같은 사고가 또 날 수 있다). 그래도 타입을 `Bool` 로 좁히지 않는다 — 이
+함수(`enact_minted_decision!`) 자신의 나머지 코드(`decision.synth_lane` 이후,
+`CB.enact_minted!` 호출 등)에 미래에 새 예외 경로가 생기면 그 지점 이전의 `registered`
+는 다시 `nothing` 이 정직한 값이기 때문이다. **이 자리를 다시 재려고 아래 두 함수에
+또 버그를 기대는 시험을 짓지 말 것** — `test/minted_end_to_end.jl` (3)이 그 함정에
+한 번 빠졌었고 F7 이 그것을 고쳤다.
 
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.

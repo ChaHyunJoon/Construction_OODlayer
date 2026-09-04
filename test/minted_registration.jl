@@ -463,4 +463,41 @@ end
           !haskey(CB.minted_table(), "qual_e2e!")
 end
 
+# 🔴 (17) F14(2026-09-03 최종 리뷰, 컨트롤러 판정). `Base.isidentifier(chop(name))` 는
+#    `name` 을 문자 단위로 훑는다 — 유효하지 않은 UTF-8(외톨이 연속 바이트 등)이 섞여
+#    있으면 `Base.InvalidCharError` 로 **던졌다**(실측: `String(UInt8[0x67,0xff,0x21])`).
+#    F9 의 헤지("두 함수 안에 무가드 변환이 없다")가 놓친 축이었다 — F9 는 **AST 모양**
+#    (콜리가 Symbol 인가)만 봤고, 이것은 **`name` 인자의 바이트 내용** 축이다.
+#    `isvalid(name)` 가드를 함수 맨 앞에 넣어 막는다.
+#
+# 변이시험(실제로 빨갛게 만든 뒤 되돌렸다): `isvalid(name) || return "reject:..."` 줄을
+# 지우면 이 testset 의 "안 던진다" 단언이 `Base.InvalidCharError` 로 죽는다(재현 로그는
+# 이 파일의 fix-round-4 보고서에 있다).
+@testset "(17) 🔴 F14: 유효하지 않은 UTF-8 이름은 던지지 않고 자기 사유로 거절된다" begin
+    local bad_name = String(UInt8[0x67, 0xff, 0x21])   # "g" + 외톨이 연속 바이트 + "!"
+    @test !isvalid(bad_name)   # 전제부터 못 박는다 — 정말로 유효하지 않은 UTF-8 이다
+    local code = "function foo!(env; note = 1)\n    return :ok\nend\n"
+    local why
+    try
+        why = CB.check_impl_conventions(bad_name, code)
+    catch e
+        @test false   # 던지면 여기서 실패로 남긴다
+        println("  던졌다: ", sprint(showerror, e))
+        why = nothing
+    end
+    @test why !== nothing && startswith(why, "reject:impl_name_not_utf8:")
+    # 🔴 이 자리는 규약 1(문자 검사)보다도 먼저이므로 `Core.eval` 근처에 얼씬도 못 한다 —
+    #    셋이 일관되게 "없음" 이다.
+    @test !isdefined(CB, Symbol(bad_name))
+    @test !(bad_name in CB._MINTED_EVER)
+    @test !haskey(CB.minted_table(), bad_name)
+
+    # register_minted_primitive! 를 끝까지 불러도 던지지 않는지 직접 확인한다.
+    CB.reset_minted_table!()
+    local why2 = CB.register_minted_primitive!(
+        name = bad_name, code = code, params = Dict{String,Any}(),
+        surface = "sched", reversible = false)
+    @test why2 !== nothing && startswith(why2, "reject:impl_name_not_utf8:")
+end
+
 end # module
