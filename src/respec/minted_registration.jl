@@ -172,8 +172,36 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
 
     sig = f.args[1]
     (sig isa Expr && sig.head === :call) || return "reject:impl_signature_unreadable"
-    String(sig.args[1]) == String(name) ||
-        return "reject:impl_name_mismatch:$(sig.args[1]) != $(name)"
+    # 🔴 F9(2026-09-03 최종 리뷰, 컨트롤러 판정 R9). `sig.args[1]` 이 `Symbol` 이 아닌
+    #    모델-도달가능 모양 셋에서 바로 아래 `String(sig.args[1])` 이 던진다(실측: 셋 다
+    #    `MethodError`) — 한정 이름(`Base.foo!`) · 보간(`$(...)`) · callable 객체
+    #    (`(o::T)(...)`). 이 검사는 `register_minted_primitive!` 의 `params` 검사보다
+    #    **먼저** 도는데(호출 순서: 규약 검사 → `params` 검사 → eval), 여기서 던지면
+    #    그 아래 F7 의 "검증이 먼저면 이 함수 안에 던질 자리가 없다" 는 불변식이 이
+    #    함수(`check_impl_conventions`) 자체 안에서는 성립하지 않은 채였다.
+    # 🔴 셋 중 가장 위험한 것은 한정 이름이다 — 모델이 쓸 법한 가장 흔한 한정 이름은
+    #    바로 D6 이 재려는 사건(`ConstructionBots.release_pending_assignments!` 처럼
+    #    가려진 능력을 다시 이름 붙이려는 시도)이다. 던지면 그 사건이
+    #    `impl_rejected_why=nothing` 인 raw `MethodError` 로 새어 나가 D6 신호가
+    #    **오염이 아니라 소실**된다 — 이 계획이 재려는 단 하나의 관측이 기록조차 안 된다.
+    #    agent-3 에게 되먹임될 수 있는 것이 이 사유 문자열이므로(F2 recompose 루프),
+    #    셋을 뭉뚱그리지 않고 각자 자기 사유를 낸다 — F3 가 `impl_name`/`impl_code`/
+    #    `surface`/`params` 타입 위반에 준 것과 같은 결.
+    callee = sig.args[1]
+    if !(callee isa Symbol)
+        return callee isa Expr && callee.head === :. ?
+            "reject:impl_name_is_qualified:$(callee) — 정의는 한정 이름(모듈 접두사)으로 " *
+            "못 쓴다. 이름 하나만 적으라" :
+        callee isa Expr && callee.head === :$ ?
+            "reject:impl_name_is_interpolated:$(callee) — 정의 이름 자리에 보간을 못 쓴다. " *
+            "리터럴 이름을 적으라" :
+        callee isa Expr && callee.head === :(::) ?
+            "reject:impl_signature_is_callable_object:$(callee) — callable 객체 정의 " *
+            "(`(o::T)(...)`)는 규약 밖이다. 이름 있는 함수로 적으라" :
+            "reject:impl_name_unreadable:$(typeof(callee))"
+    end
+    String(callee) == String(name) ||
+        return "reject:impl_name_mismatch:$(callee) != $(name)"
 
     rest = sig.args[2:end]
     kwblock = findfirst(x -> x isa Expr && x.head === :parameters, rest)
@@ -252,7 +280,12 @@ function register_minted_primitive!(; name::AbstractString, code::AbstractString
         "impl"         => String(name),   # 함수 자신이 원시다 — 이름이 둘일 이유가 없다
         "surface"      => String(surface),
         "harness_args" => ["env"],        # 규약 1
-        "params"       => Dict{String,Any}(String(k) => v for (k, v) in pairs(params)),
+        # 🔴 2026-09-03 최종 리뷰(deferred item). `pairs(params)` 를 여기서 **다시** 부르지
+        #    않는다 — 위에서 이미 `_pk` 로 한 번 모았다. 두 번째 순회를 상태 있는
+        #    반복자(예: 스스로 소진되는 제너레이터)에게 시키면 여기서는 **던지지 않고
+        #    조용히 빈 dict** 을 남긴다 — 예외보다 나쁜 조용한 오값이다. `_pk` 를 그대로
+        #    쓰면 순회가 한 번이라 이 사고 자체가 안 생긴다.
+        "params"       => Dict{String,Any}(String(k) => v for (k, v) in _pk),
         "reversible"   => reversible,
         # 🔴 C1 (2026-09-03 최종 리뷰). **이 행이 생성 코드에서 왔다**는 표시. 집행부의
         #    `_step_applied`·`_step_touched_world` 가 이것을 읽어 "이 원시의 status 어휘를

@@ -804,18 +804,35 @@ end
 이 필드에만 안 지킬 이유가 없다.
 
 🔴 **`Union{Nothing,Bool}` 을 그대로 둘 것 — `Bool` 로 되돌리지 말 것**(2026-09-03 최종
-리뷰 F7, 컨트롤러 판정 R8). 방어적 타입이다: `nothing` 은 **오늘** 도달 가능한 생산자가
-없다 — `decision.synth_lane` 접근과 `_synth_lane_field` 는 둘 다 내부에서 이미
-try-가드돼 있고(예외를 스스로 삼켜 `nothing` 값으로 바꾼다, 반환값이지 던지는 게 아니다),
-등록 시도 여부를 판정하는 모든 갈래가 `registered` 를 명시로 `false`/`true` 로 적는다.
-그 셋째 상태의 **유일한** 생산자는 `register_minted_primitive!` 의 계약 위반(정수 키
-`params` 가 `String(k)` 에서 던짐)이었는데, `src/respec/minted_registration.jl` 이 그
-위반을 고쳐(등록 전에 키 타입을 검사) 이제 그 함수는 정말로 안 던진다. 그래도 타입을
-좁히지 않는다 — 이 함수 자신의 나머지 코드(`decision.synth_lane` 이후, `CB.enact_minted!`
-호출 등)에 미래에 새 예외 경로가 생기면 그 지점 이전의 `registered` 는 다시 `nothing` 이
-정직한 값이기 때문이다. **이 자리를 다시 재려고 `register_minted_primitive!` 에 또
-버그를 기대는 시험을 짓지 말 것** — `test/minted_end_to_end.jl` (3)이 그 함정에 빠졌었고
-F7 이 그것을 고쳤다.
+리뷰 F7/F9, 컨트롤러 판정 R8/R9). 방어적 타입이다.
+
+🔴 **F7 직후에 적힌 "오늘 도달 가능한 생산자가 없다" 는 그 시점에 거짓이었다**(F9 최종
+리뷰가 잡았다). F7 은 `register_minted_primitive!` 자신의 `params` 키-타입 위반만
+고쳤는데, 그 함수가 **먼저** 부르는 `check_impl_conventions`(`minted_registration.jl`)
+안에 **던지는 자리가 하나 더** 있었다 — 파싱된 함수 시그니처의 콜리(`sig.args[1]`)가
+`Symbol` 이 아닌 세 모양(한정 이름 `Base.foo!` · 보간 `\$(...)` · callable 객체
+`(o::T)(...)`)에서 `String(sig.args[1])` 이 던졌다. 그중 한정 이름은 **모델이 실제로
+쓸 법한** 모양이고, 가장 위험한 예가 정확히 D6 이 재려는 사건
+(`ConstructionBots.release_pending_assignments!` 처럼 가려진 능력을 다시 이름 붙이는
+시도)이다 — 그 사건이 이 자리에서 던지면 `impl_rejected_why=nothing` 인 raw
+`MethodError` 로 새어 나가 D6 신호가 **기록되지 않는다.** F9 가 `check_impl_conventions`
+에 그 세 모양의 거절 사유를 각각 더해 이 던지기를 없앴다(실측: 셋 다 이제
+`reject:impl_name_is_qualified:...`/`_is_interpolated:...`/
+`impl_signature_is_callable_object:...` 를 던지지 않고 반환한다).
+
+**재도출(다시 가정하지 않는다).** F7+F9 이후 `register_minted_primitive!` 와
+`check_impl_conventions` 를 다시 훑었다 — `name`/`code`/`surface` 는 `enact.jl` 의 F3
+가드가 이미 `AbstractString` 으로 좁혀 놓고 들어오고, `params` 는 F7 이 `AbstractDict`
++ 키 타입(`AbstractString`/`Symbol`)을 등록 전에 확인하며, `check_impl_conventions` 의
+나머지 분기(`endswith`·`isidentifier`·`Symbol(name)`·kwblock 처리)는 전부 값을 보고
+`return` 하거나 안전한 표준 연산이지 무가드 변환이 없다. **오늘, 이 두 함수 안에서
+알려진(측정된) 모델-도달가능 입력으로 던지는 자리는 없다** — 단, 이것은 두 함수의
+파싱 가능한 모든 AST 모양을 남김없이 센 증명이 아니라 **실측한 형태들**에 대한 결론이다.
+그래도 타입을 `Bool` 로 좁히지 않는다 — 이 함수(`enact_minted_decision!`) 자신의
+나머지 코드(`decision.synth_lane` 이후, `CB.enact_minted!` 호출 등)에 미래에 새 예외
+경로가 생기면 그 지점 이전의 `registered` 는 다시 `nothing` 이 정직한 값이기 때문이다.
+**이 자리를 다시 재려고 아래 두 함수에 또 버그를 기대는 시험을 짓지 말 것** —
+`test/minted_end_to_end.jl` (3)이 그 함정에 한 번 빠졌었고 F7 이 그것을 고쳤다.
 
 `handled == true` 는 "이 사건은 합성 tool 이 처리했으니 기본 복구 사슬을 타지 말라"는 뜻이다.
 `false` 면 호출자는 예전 경로를 그대로 탄다 — 그 폴백이 **조용하지 않도록** 여기서 찍는다.
@@ -956,9 +973,13 @@ function enact_minted_decision!(env, truth, decision)
         #    (`impl_name` 이 숫자·`surface` 가 숫자·`params` 가 리스트·문자열)이 전부
         #    `String(...)`/`register_minted_primitive!` 안에서 **던지고**, 바깥 `try` 의
         #    catch 가 그것을 삼켜 `registered=nothing, impl_rejected_why=nothing` 으로
-        #    적는다 — "모델이 코드를 안 냈다"(조기 deferred)와 **글자 그대로 같은 관측**이
-        #    된다. R2 가 그 둘을 가르려고 만든 필드인데 타입 검사가 없으면 목적이 무너진다.
-        #    그래서 여기서 **거절로** 잡는다(예외가 아니라) — 클래스마다 자기 사유를 낸다.
+        #    적는다 — ⚠️ (2026-09-03 최종 리뷰 정정) `registered` 필드만 보면 "모델이
+        #    코드를 안 냈다"(조기 deferred, `registered=false`)와 **다르게** 남는다(하나는
+        #    `false` 하나는 `nothing`) — 그러니 그 둘을 정말로 구별 불가능하게 만드는 것은
+        #    `impl_rejected_why` 다: 둘 다 `nothing` 이라 "코드가 없었다" 와 "코드는 있었는데
+        #    타입이 틀려 등록 도중 던졌다" 를 그 필드 하나로는 못 가른다. R2 가 그 구별을
+        #    위해 만든 필드인데 타입 검사가 없으면 목적이 무너진다. 그래서 여기서 **거절로**
+        #    잡는다(예외가 아니라) — 클래스마다 자기 사유를 낸다.
         # 🔴 F6(2)(2026-09-03 최종 리뷰). `reason` 과 `impl_rejected_why` 가 이 클로저에서
         #    바이트 동일한 것은 **의도적**이다 — 이 지점(등록 전 타입 검사, 또는 등록 자체의
         #    거절)엔 실행이 아직 시작되지도 않아서(`enact_minted!` 를 부르기 전) `reason` 에

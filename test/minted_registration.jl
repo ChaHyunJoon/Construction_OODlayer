@@ -411,4 +411,56 @@ end
         "a_name_no_module_owns!", _code("a_name_no_module_owns!")) === nothing
 end
 
+# 🔴 (16) F9(2026-09-03 최종 리뷰, 컨트롤러 판정 R9). `sig.args[1]`(파싱된 함수 정의의
+#    콜리)이 `Symbol` 이 아닌 세 모양에서 `String(sig.args[1])` 이 예전엔 **던졌다**
+#    (`MethodError`) — 한정 이름(`Base.foo!`) · 보간(`$(...)`) · callable 객체
+#    (`(o::T)(...)`). 셋 중 한정 이름이 가장 위험하다: 모델이 D6 이 재려는 가려진
+#    능력을 다시 이름 붙이려 할 때 가장 흔히 쓸 모양이고, 던지면 그 사건이
+#    `impl_rejected_why=nothing` 인 raw MethodError 로 새어 나가 D6 신호 자체가
+#    소실된다. 이 testset 은 셋 다 던지지 않고 자기 사유로 거절되는지, 그리고 각
+#    거절이 `Core.eval` **전**이라 `isdefined`/`_MINTED_EVER`/표 셋이 일관되게 "없음"
+#    으로 남는지 잰다.
+#
+# 변이시험(실제로 빨갛게 만든 뒤 되돌렸다): `minted_registration.jl` 의 F9 가드
+# (`callee isa Symbol` 검사와 그 뒤 세 갈래)를 지우면 이 testset 의 "안 던진다" 단언
+# 셋이 전부 `MethodError` 로 죽는다(재현: `git stash`/수동 되돌림으로 확인, 이 파일의
+# fix-round-3 보고서에 실측 로그가 있다).
+@testset "(16) 🔴 F9: 콜리가 Symbol 이 아닌 세 모양은 던지지 않고 자기 사유로 거절된다" begin
+    _sig_code(sig_src) = "function $(sig_src)(env; note = 1)\n    return :ok\nend\n"
+    cases = [
+        # (신고할 이름, 실제 정의 시그니처 소스, 기대 사유 접두사)
+        ("qual_target!", "ConstructionBots.qual_target!", "reject:impl_name_is_qualified:"),
+        ("interp_target!", "\$(Symbol(\"interp_target!\"))", "reject:impl_name_is_interpolated:"),
+        ("callable_target!", "(o::T)", "reject:impl_signature_is_callable_object:"),
+    ]
+    for (name, sig_src, prefix) in cases
+        local code = _sig_code(sig_src)
+        local w
+        try
+            w = CB.check_impl_conventions(name, code)
+        catch e
+            @test false   # 던지면 이 자리에서 바로 실패로 남긴다(어느 사례인지 이름으로 보인다)
+            println("  ($(name)) 던졌다: ", sprint(showerror, e))
+            continue
+        end
+        @test w !== nothing && startswith(w, prefix)
+        # 🔴 이 세 사례는 규약 5(이름 충돌)를 통과한 뒤 파싱 단계에서 거절되므로 —
+        #    `Core.eval` 자체가 도달 불가다. 셋이 일관되게 "없음" 이어야 한다.
+        @test !isdefined(CB, Symbol(name))
+        @test !(name in CB._MINTED_EVER)
+        @test !haskey(CB.minted_table(), name)
+    end
+
+    # 🔴 D6-모양 자체: 위 표본은 `sig.args[1]` 만 겨냥했다 — 실제로 `register_minted_primitive!`
+    #    를 끝까지 불러도 던지지 않는지, 그리고 D6 이 원하는 신호(`impl_name_is_qualified`,
+    #    또는 이름 자체가 이미 존재하면 `withheld`)가 살아 나오는지 직접 확인한다.
+    CB.reset_minted_table!()
+    local why = CB.register_minted_primitive!(
+        name = "qual_e2e!", code = "function ConstructionBots.qual_e2e!(env; note = 1)\n    return :ok\nend\n",
+        params = Dict{String,Any}(), surface = "sched", reversible = false)
+    @test why !== nothing && startswith(why, "reject:impl_name_is_qualified:")
+    @test !isdefined(CB, :qual_e2e!) && !("qual_e2e!" in CB._MINTED_EVER) &&
+          !haskey(CB.minted_table(), "qual_e2e!")
+end
+
 end # module

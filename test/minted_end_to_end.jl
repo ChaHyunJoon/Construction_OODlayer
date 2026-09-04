@@ -6,10 +6,15 @@
 # 로 등록되고, 그 직후 같은 프레임에서 `enact_minted!` 가 그 이름을 부를 수 있어야 한다
 # (world age — `test/minted_registration.jl` (9) 의 F1 과 같은 모양). 그리고 `registered`·
 # `impl_rejected_why`(R2/R7) 가 성공 · 등록 거절 · (등록은 됐는데 그 뒤가 던졌다) 를
-# 가른다. 🔴 `registered === nothing`(판정 불가) 은 2026-09-03 최종 리뷰 F7 이후
-# **오늘 도달 가능한 생산자가 없다**(R8 이 그 유일한 생산자였던
-# `register_minted_primitive!` 의 계약 위반을 고쳤다) — `tools/monitor/enact.jl` 의
-# `registered` docstring 참고.
+# 가른다. 🔴 `registered === nothing`(판정 불가) 은 2026-09-03 최종 리뷰 F7 **직후엔
+# 아직 있었다** — F7 은 `register_minted_primitive!` 자신의 `params` 키-타입 위반만
+# 고쳤는데, 그 함수가 먼저 부르는 `check_impl_conventions` 안에 콜리(함수 시그니처
+# 이름)가 `Symbol` 이 아닌 세 모양(한정 이름·보간·callable 객체)에서 던지는 **다른**
+# 자리가 남아 있었다(F9 최종 리뷰가 잡았다 — 그중 한정 이름은 D6 이 재려는 사건과
+# 겹쳐서 이 계획의 핵심 측정을 raw MethodError 로 날릴 뻔했다). F9 가 그것도 고친
+# **지금은** 이 두 함수 안에서 실측한 모델-도달가능 모양 중 던지는 자리가 없다 —
+# `tools/monitor/enact.jl` 의 `registered` docstring 이 그 재도출을 적는다(모든 AST
+# 모양을 남김없이 센 증명은 아니라고 그 자리에 명시한다).
 #
 # 🔴 서비스 응답과 **같은 타입**으로 왕복시킨다. 손으로 지은 Dict{String,Any} 픽스처는
 #    JSON3.Object 가 아니라서, 라이브에서만 나는 실패를 못 잡는다.
@@ -96,16 +101,16 @@ end
 end
 
 @testset "(3) 🔴 F5/F2: 등록은 성공했는데 enact_minted! 가 던지면 registered=true 가 정직하게 남는다" begin
-    # 🔴 2026-09-03 최종 리뷰 F7 재작성. 이전 판은 `registered === nothing` 을
-    #    `register_minted_primitive!` 자신의 계약 위반(`params` 가 정수 키 dict 이면
-    #    `String(::Int64)` 로 **던졌다** — R8 이 그 자체를 결함으로 잡아 지금은
-    #    거절 문자열을 낸다, `src/respec/minted_registration.jl` 참고)에 기대어 재고
-    #    있었다 — 컨트롤러 재검증: **그 던지기가 오늘 `registered === nothing` 의 유일한
-    #    생산자였다**(`decision.synth_lane`·`_synth_lane_field` 는 둘 다 내부에서
-    #    try-가드돼 있고, 나머지 모든 갈래는 `registered` 를 명시로 `false`/`true` 로
-    #    적는다). 그 결함을 고친 지금, `nothing` 은 **오늘 도달 가능한 생산자가 없다**
-    #    (아래 `registered` docstring 에도 적어 둔다 — 나중에 `Bool` 로 되돌리거나 이
-    #    상태를 재려고 또 다른 버그에 기대는 시험을 짓지 않도록).
+    # 🔴 2026-09-03 최종 리뷰 F7 재작성, F9 로 근거 갱신. 이전 판은 `registered === nothing`
+    #    을 `register_minted_primitive!` 자신의 계약 위반(`params` 가 정수 키 dict 이면
+    #    `String(::Int64)` 로 **던졌다** — R8 이 고쳤다, `src/respec/minted_registration.jl`
+    #    참고)에 기대어 재고 있었다. F7 시점엔 "그 던지기가 유일한 생산자다" 라고 적었는데
+    #    **틀렸다** — 그 함수가 먼저 부르는 `check_impl_conventions` 안에 **다른** 던지는
+    #    자리(콜리가 `Symbol` 이 아닌 세 모양 — 한정 이름·보간·callable 객체)가 남아 있었고,
+    #    F9 최종 리뷰가 그것을 잡았다. 두 결함을 다 고친 **지금**, 실측한 모델-도달가능
+    #    모양 중 이 두 함수가 던지는 자리는 없다(아래 `registered` docstring 이 재도출을
+    #    적는다 — 이것도 모든 AST 모양을 남김없이 센 증명은 아니다). **나중에 `Bool` 로
+    #    되돌리거나 이 상태를 재려고 또 다른 버그에 기대는 시험을 짓지 말 것.**
     #
     #    F5 가 진짜로 재려던 것은 "등록 뒤에 다른 자리가 던지면 그 사실을 안 잃는가" 다 —
     #    R2 의 옛 리터럴 `false` 가 거짓말하던 자리가 정확히 이것이다. 컨트롤러가 검증한
@@ -129,6 +134,33 @@ end
     @test r3.impl_rejected_why === nothing
     @test haskey(CB.minted_table(), "alt_ok!")
     @test r3.handled === false
+end
+
+@testset "(4) 🔴 F9(R9): 한정 이름(D6-모양) 이 경계 끝까지 던지지 않고 자기 사유로 거절된다" begin
+    # 🔴 2026-09-03 최종 리뷰 F9. 셋 중 **가장 위험한 모양** — 모델이 가려진 능력을 다시
+    #    이름 붙이려 할 때 실제로 쓸 법한 것은 한정 이름(`ConstructionBots.foo!`)이다.
+    #    F9 전에는 이 payload 가 `check_impl_conventions` 안의 `String(sig.args[1])` 에서
+    #    던져 `verdict=:reject, registered=nothing, impl_rejected_why=nothing,
+    #    reason="...threw: MethodError..."` 로 도착했다 — D6 신호가 기록되지 않고
+    #    소실됐다. 지금은 등록 단계에서 **거절**로 잡혀 사유가 남는다.
+    CB.reset_minted_table!()
+    sl4 = Dict{String,Any}("impl_name" => "qual_e2e_touch!",
+                            "impl_code" => "function ConstructionBots.qual_e2e_touch!(env; note = \"x\")\n    return :ok\nend\n",
+                            "surface" => "sched", "reversible" => false,
+                            "params" => Dict{String,Any}(),
+                            "body_names" => ["qual_e2e_touch!"], "calls" => nothing)
+    dec4 = (macro_name = "NOOP", synth_lane = sl4)
+    r4 = enact_minted_decision!((staging_circles = Dict{Symbol,Any}(),), nothing, dec4)
+    @test r4.verdict === :reject
+    @test !occursin("threw", r4.reason)   # 예외가 아니라 거절이다 — 던진 적이 없다
+    # 🔴 핵심 단언. `registered` 는 `nothing`(판정 불가)이 아니라 `false`(봤는데 안
+    #    됐다)다 — 등록 시도가 실제로 돌아 규약 위반으로 거절됐음을 안다.
+    @test r4.registered === false
+    @test r4.impl_rejected_why !== nothing &&
+          startswith(r4.impl_rejected_why, "reject:impl_name_is_qualified:")
+    @test isempty(r4.steps)
+    @test !isdefined(CB, :qual_e2e_touch!)
+    @test r4.handled === false
 end
 
 end # module
