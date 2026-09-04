@@ -414,6 +414,9 @@ class WriteToolImpl(dspy.Signature):
     impl_name: str = dspy.OutputField(desc="the Julia function name; must end with `!`")
     surface: str = dspy.OutputField(desc="which world surface this edits")
     reversible: bool = dspy.OutputField(desc="can this be undone")
+    needs: str = dspy.OutputField(desc=
+        "a capability your body required that you could not find in the world interface; "
+        "empty string if none")
     impl_code: str = dspy.OutputField(desc=
         "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
     params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
@@ -938,7 +941,13 @@ def _blank(rec_kind, expressible, ledger) -> Dict[str, Any]:
             "synthesis_event": False, "ran": False,
             "enabled": synthesis_enabled(), "refused": None,
             "kind": rec_kind, "expressible": expressible,
-            "K": ledger.K, "error": None, "reason": None}
+            "K": ledger.K, "error": None, "reason": None,
+            # 🔴 삼상 (D13). `_blank` 은 `_BODY_FIELDS` 를 순회하지 않는다 — 나머지 body 필드는
+            # (`impl_name` 등) agent-3 가 실제로 불릴 때까지 이 딕셔너리에 아예 없다. `needs` 만
+            # 예외로 명시하는 이유: "못 쟀다" (`None`)와 "쟀는데 없다" (`""`)를 가르는 삼상 값이
+            # 정의역에 없는 채로 있으면 안 되고, blank 기록은 정의상 agent-3 를 아직 안 불렀으므로
+            # 참값은 `None` 하나뿐이다.
+            "needs": None}
 
 
 def _finish_record(rec, kind, led, blob):
@@ -1214,7 +1223,7 @@ _SPEC_FIELDS = ("tool_name", "params", "mechanism")
 #    선언하지 않으므로 `getattr` 은 그냥 기본값(`""`)으로 떨어진다 -- 필드를 지운 것이 아니라
 #    자기신고가 더 이상 그것을 내지 않는 것이다.
 _BODY_FIELDS = ("impl_name", "impl_code", "surface", "reversible", "wrote", "calls",
-               "reach", "missing_primitive")
+               "reach", "missing_primitive", "needs")
 
 #: `_BODY_FIELDS` 중 **`or ""` 로 접으면 안 되는** 것. `calls` 는 예전과 같은 이유
 #: (`[]` = "읽었는데 비었다" 가 `""` = "못 읽었다" 로 접히면 삼상이 깨진다). `reversible`·

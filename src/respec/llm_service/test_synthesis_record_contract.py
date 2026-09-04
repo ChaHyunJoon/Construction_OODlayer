@@ -508,7 +508,7 @@ def test_the_blank_record_never_claims_the_guard_ran():
 #: 오늘 agent-3(`WriteToolImpl`)이 내는 출력 필드 전부. 이 집합이 다시 움직이면 `body_names`
 #: 의 출처(`impl_name`)가 사라졌을 수 있다 — 그때 아래 두 시험이 그것을 잡는다.
 _COMPOSE_OUTPUTS_TODAY = {"impl_name", "impl_code", "params", "calls",
-                          "surface", "reversible", "wrote"}
+                          "surface", "reversible", "wrote", "needs"}
 
 
 def test_agent_3_still_emits_the_name_body_names_is_filled_from():
