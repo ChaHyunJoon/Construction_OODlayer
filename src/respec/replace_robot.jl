@@ -1411,12 +1411,45 @@ function _reset_robot_health!(env, rid::AbstractID)
 end
 
 """
+    _battery_bearing_robot(env, role) -> Union{RobotNode,Nothing}
+
+`role` 이 **배터리를 지닌 로봇**이면 그 씬 노드를, 아니면 `nothing`.
+
+🔴 이 술어가 따로 있는 이유 (wave-b-review C1, 판정 R34 — 2026-09-04 실측):
+`has_vertex(env.scene_tree, role)` 는 "로봇인가" 를 **못 가른다.** `TransportUnitNode` 도
+씬트리 안에 있으므로 운반유닛 id 가 문을 통과했고, `swap_battery!` 는
+`(status = :battery_swapped, soc_before = nothing)` 을 돌려주면서 아무 로봇의 배터리도
+안 갈고 `record_asset_swap!` 만 장부에 찍었다 — **조용한 거짓 성공**이다. 유료 런의
+사다리는 `applied`·`world_maybe_dirty`·L4 `world_delta` 로 "모델이 세계를 바꿨다" 를
+읽으므로, 그 셋이 **엉뚱한 개체에 대해** 움직이면 틀린 호출이 옳은 호출로 기록된다.
+
+`test/swap_battery_rejects_non_robot.jl` 이 이 삼상(로봇/없음/로봇 아님)을 못박는다.
+"""
+function _battery_bearing_robot(env, role::AbstractID)
+    has_vertex(env.scene_tree, role) || return nothing
+    n = try get_node(env.scene_tree, role) catch; nothing end
+    return n isa RobotNode ? n : nothing
+end
+
+# 씬 노드는 있는데 로봇이 아닐 때의 **정직한 거절**. `:no_robot`(노드 자체가 없다)과
+# 일부러 다른 심볼이다 — 하나로 뭉치면 "왜 실패했나" 가 사라진다.
+function _not_a_robot(env, role::AbstractID)
+    n = try get_node(env.scene_tree, role) catch; nothing end
+    return (status = :not_a_robot, role = role,
+            detail = "$(role) is a $(n === nothing ? "non-robot node" : nameof(typeof(n)))" *
+                     ", not a battery-bearing RobotNode")
+end
+
+"""
     swap_battery!(env, role; verbose=true) -> NamedTuple
 
 Enact `SwapBattery` (spec_dsl.jl): restore `role`'s charge IN THE FIELD, keeping the same
 physical body. Status:
 - `:battery_swapped` — done. `soc_before` echoed so the caller can log how flat it was.
 - `:no_robot`        — `role` has no scene node.
+- `:not_a_robot`     — `role` HAS a scene node but it is not a `RobotNode` (e.g. a
+                       `TransportUnitNode`). 🔴 Reporting success here would be a lie: no
+                       battery exists to swap. See `_battery_bearing_robot`.
 
 Deliberately does NOT call `pop_spare!`: a battery is unmetered (cost only), while a depot
 BODY is the scarce resource `ReplaceAgent` spends. Keeping the two accounts separate is what
@@ -1433,6 +1466,9 @@ in the vocabulary, and structurally cannot produce an identity violation.
 function swap_battery!(env, role::AbstractID; verbose::Bool = true)
     has_vertex(env.scene_tree, role) ||
         return (status = :no_robot, detail = "no scene node for $(role)")
+    # 🔴 R34: 문지기는 **배송 파견보다 앞**이다 — 뒤에 두면 로봇도 아닌 대상에게 예비 로봇이
+    #    배터리를 들고 출발한다(그것도 세계를 바꾼다).
+    _battery_bearing_robot(env, role) === nothing && return _not_a_robot(env, role)
     # ---- 배송 경로(battery_courier.jl) ----------------------------------------------------
     # 켜져 있으면 교체는 **여기서 일어나지 않는다**: 가장 가까운 창고의 예비 로봇이 배터리를 들고
     # 출발하고, 그 로봇이 현장에 도착한 스텝에 `_apply_battery_swap!` 이 불린다. 그래서
@@ -1479,6 +1515,9 @@ end
 function _apply_battery_swap!(env, role::AbstractID; courier = nothing, verbose::Bool = true)
     has_vertex(env.scene_tree, role) ||
         return (status = :no_robot, detail = "no scene node for $(role)")
+    # 🔴 R34: 여기에도 있어야 한다 — 배송이 켜지면 도착 시점에 `battery_courier.jl` 이 이
+    #    함수를 **직접** 부르므로, `swap_battery!` 의 문지기만으로는 그 경로가 안 막힌다.
+    _battery_bearing_robot(env, role) === nothing && return _not_a_robot(env, role)
     soc_before = try                                   # 갈기 전 SoC(배터리 레이어가 없을 수도 있어 방어적으로)
         fleet = BATTERY_FLEET[]
         fleet === nothing ? nothing : get(fleet.soc, role, nothing)

@@ -596,6 +596,14 @@ end
         include("cargo_ban_store.jl")
     end
 
+    # 2026-09-04 (callable-world-interface, wave B fix / 판정 R34): `swap_battery!` 의 문지기가
+    # `has_vertex` 하나라서 **운반유닛 id 가 `:battery_swapped` 를 받아 갔다**(거짓 성공, 실측).
+    # 씬을 안 짓는다 — `env` 는 무타입이고 이 경로가 읽는 것은 `env.scene_tree` 뿐이라
+    # 진짜 노드 둘만 넣은 `SceneTree` 로 잰다(~1s). 삼상(로봇/없음/로봇 아님)을 못박는다.
+    @testset "swap_battery rejects non-robot" begin
+        include("swap_battery_rejects_non_robot.jl")
+    end
+
     # 2026-09-02 (cargo-ban T4): 화물 금지의 **수명** — 금지는 그 로봇의 배터리가 갈리는 순간까지
     # 산다(술어가 아니라 사건). G-3 은 두 방향을 함께 잰다: 교체된 로봇은 풀리고, **다른 로봇의
     # 금지는 살아남는다**(후자가 `clear_all_cargo_bans!()` 식 과잉 해제를 잡는다). 교체 전에 둘
