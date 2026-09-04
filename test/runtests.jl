@@ -127,8 +127,8 @@ end
     # 다: 그 자리의 심각도 분기(soft→`:noop`, critical→`engage_fallback!`)가 producer 경로에
     # 그대로 남아 있어, 조용한-실패 위험은 여전히 soft 이벤트 경로 하나다. (옛 기전 서술:)
     # `replan.jl` 이 `llm_to_proposal` 의 예외를 3회 재시도로 삼키고, 끝내 실패하면
-    # **`_event_criticality(event) === :soft` 인 경우에만**(`:740`) `@warn` 하나 남기고
-    # `:noop` 을 돌려준다(`:742`) — critical 이벤트는 `engage_fallback!` 후 `:fallback`(`:746`),
+    # **`_event_criticality(event) === :soft` 인 경우에만** `@warn` 하나 남기고
+    # `:noop` 을 돌려준다 — critical 이벤트는 `engage_fallback!` 후 `:fallback` 이고,
     # 즉 line-stop 이지 침묵이 아니다. 그러니 조용한-실패 위험은 **soft 이벤트 경로 하나**다:
     # 그 경로 위의 인프로세스 시험이 스텁에 걸리면 "초록인데 아무것도 안 재는" 상태가 된다.
     # 실측 환경을 밝혀 둔다(라운드 5 L5): 두 줄을 각각 `error(...)`로 바꾼 것과 원래 버그

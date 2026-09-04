@@ -120,7 +120,7 @@ def test_the_socket_spy_can_actually_see_a_connection():
 # (B) params 평평함 — T1 이 남긴 얕은 변환 함정을 여기서 닫는다
 # ==========================================================================================
 def test_flat_params_pass_and_nested_params_are_flagged():
-    """🔴 줄리아의 `_tool_args_dict`(`tools/monitor/policy.jl:1138`)는 **얕다**. 중첩 인자를
+    """🔴 줄리아의 `_tool_args_dict`(`tools/monitor/policy.jl`)는 **얕다**. 중첩 인자를
     가진 tool 을 합성하는 순간 그 값은 `JSON3.Object` 로 남아 `Dict{String,Any}` 가정을
     **에러 없이** 깬다. 줄리아를 못 건드리는 이 태스크는 `params` 를 평평한 스칼라로 제약하고
     그 제약을 여기서 잡는다."""
@@ -243,7 +243,8 @@ def _svc():
 
 def test_macro_and_decide_carry_tool_minted(monkeypatch):
     """🔴 배선을 잰다. `/macro` 에는 이 레포에 호출자가 0개이고 라이브 레인은 `/decide` 로만
-    들어오므로(`tools/monitor/policy.jl:559`), **둘 다** 확인한다."""
+    들어오므로(`tools/monitor/policy.jl` 의 `HTTP.post(DSPY_URL * "/decide", …)`),
+    **둘 다** 확인한다."""
     monkeypatch.delenv(syn.SYNTHESIS_ENV, raising=False)
     svc = _svc()
     AG = [{"id": "R5", "label": "Robot R5"}]
@@ -306,7 +307,8 @@ def test_macro_and_decide_carry_tool_minted(monkeypatch):
 
 
 def test_synthesize_keeps_the_numpy_before_dspy_contract():
-    """🔴 `dspy_service.py:44` · `tool_registry.py` 와 같은 계약. 수집 순서가 바뀌면 이 파일이
+    """🔴 `dspy_service.py` 의 `import numpy, sklearn.ensemble` 줄 · `tool_registry.py` 와 같은
+    계약. 수집 순서가 바뀌면 이 파일이
     혼자 먼저 dspy 를 심을 수 있다."""
     src = open(syn.__file__, encoding="utf-8").read()
     assert src.index("import numpy, sklearn.ensemble") < src.index("\nimport dspy")
@@ -315,7 +317,8 @@ def test_synthesize_keeps_the_numpy_before_dspy_contract():
 def test_synthesis_keys_sit_above_the_tool_lane_marker_in_out_dspy():
     """🔴 교차언어 결속. `test/tool_lane_keys_survive.jl` (6)절은 `out["dspy"]` dict 안의
     `# ---- tool 레인 …` 표식 **아래** 키 집합을 Julia 의 `TOOL_LANE_KEYS`(2026-09-02 현재 **열둘**)와 **양방향
-    등호**로 대조한다(`test/tool_lane_keys_survive.jl:462`). 그러므로 표식 아래에 합성 레인
+    등호**로 대조한다(그 파일의 `@testset "(6) 🔴 교차언어 — Julia 의 키 목록이 파이썬 소스에
+    묶여 있다"`). 그러므로 표식 아래에 합성 레인
     키를 하나라도 넣으면 그 줄리아 게이트가 정당하게 빨개진다 — 이 태스크는 줄리아를 안
     건드리므로 키를 표식 **위**에 둔다.
 
