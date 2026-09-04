@@ -3,7 +3,6 @@ using Test
 using ConstructionBots
 import JSON3
 const CB = ConstructionBots
-const GEN = normpath(joinpath(@__DIR__, "..", "tools", "gen_world_interface.jl"))
 const ART = normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",
                               "world_interface.json"))
 
@@ -38,7 +37,7 @@ end
     for gone in ("Dict", "Set", "SimpleDiGraph", "PriorityQueue", "Ball2")
         @test !(gone in ns)
     end
-    @test 40 <= length(ns) <= 120   # 상한: 폭발 트립와이어. 실측 66.
+    @test 40 <= length(ns) <= 120   # 상한: 폭발 트립와이어. 실측 67(Task 1 이전 66 + VelocityController).
 end
 
 @testset "(4) 폐포는 이름으로 정렬돼 결정적이다" begin

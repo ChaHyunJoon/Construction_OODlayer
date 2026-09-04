@@ -16,12 +16,15 @@ function _tname(T)
     S isa DataType ? string(nameof(S)) : string(T)
 end
 
-# F2: 1단계 전개 후보는 ConstructionBots(또는 그 하위 모듈)가 **정의한** 타입만 받는다.
+# F2 (Task 2 이후: 고정점 폐포 `world_type_closure()` 전체의 문지기다, 1단계 전개가 아니다).
+# 폐포가 몇 단계를 따라가든 ConstructionBots(또는 그 하위 모듈)가 **정의한** 타입만 받는다.
 # `Dict`/`Set` 같은 Base 컨테이너는 `isstructtype` 이 true 라 전개 후보에 걸리지만, 그
 # 슬롯 레이아웃(`slots`·`keys`·`vals`·`ndel`·`count`·`age`·`idxfloor`·`maxprobe`, `dict`)은
 # 모델이 다룰 세계가 아니다 — 모델이 필요한 것은 컨테이너의 **원소 타입**(필드의 `type`
 # 문자열에 이미 `Dict{AbstractID,Ball2}` 로 실린다)이지 해시테이블 내부 구현이 아니다.
 # 그 내부를 WORLD TYPES 로 얹으면 모델이 해시테이블을 직접 주무르라는 초대장이 된다.
+# 🔴 이 필터를 풀면 폐포가 폭발한다(실측: 깊이 2 에서 1,302타입, 깊이 3 에서 25,160타입) —
+# `world_type_closure` 의 while 루프가 CB 밖으로 한 걸음도 못 나가게 막는 것이 바로 이 함수다.
 function _defined_in_cb(S)
     S isa DataType || return false
     m = parentmodule(S)
@@ -64,8 +67,11 @@ CB 소유 타입만 따라가는 고정점. 이름으로 정렬해 반환한다.
 
 🔴 **씨앗에 메서드 인자를 넣는 이유**(설측). 필드만 따라가면 49타입이고
 `PlannerEnv` 를 받는 23개 메서드 중 13개만 호출 가능해진다. 메서드 인자까지 넣으면
-66타입이고 **23개 전부**가 열린다 — 새로 열리는 11개는 전부 `apply_cmd!`(7)·
+67타입이고 **23개 전부**가 열린다 — 새로 열리는 11개는 전부 `apply_cmd!`(7)·
 `close_node!`(4) 로, 스케줄 노드를 실제로 여닫고 명령을 먹이는 유일한 공개 경로다.
+(리뷰 라운드 1: 계획서의 "66"은 Task 1 이전 — `PlannerEnv`의 무타입 `Dict` 둘을 그냥
+`Dict`로 되돌리고 재본 수다. Task 1 이 그 둘을 `Dict{AbstractID,VelocityController}`·
+`Dict{AbstractID,Bool}`로 좁히며 `VelocityController` 하나가 폐포에 새로 들어와 67이 됐다.)
 
 🔴 **CB-only 필터는 절대 풀지 않는다.** 실측: 풀면 깊이 2 에서 1,302타입,
 깊이 3 에서 25,160타입이다.
@@ -87,6 +93,20 @@ function world_type_closure()
     while !isempty(frontier)
         S = _unwrap(popfirst!(frontier))
         S isa DataType || continue
+        # 🔴 리뷰 라운드 1 픽스. `S` 는 발견된 자리에 따라 파라메트릭 타입의 **서로 다른
+        #    구체 인스턴스**일 수 있다(예: `CachedElement{Ball2}` 대 `CachedElement{Transformation}`)
+        #    — 같은 이름으로 `seen`에 접히므로, 정준화 없이는 "누가 먼저 팝됐나"가 산출물의
+        #    필드 타입 문자열을 결정해 버린다(실측: `popfirst!`→`pop!` 하나로
+        #    `CachedElement.element`가 `CoordinateTransformations.Transformation`→`G`로 뒤집힘).
+        #    고정: 발견된 구체 인스턴스가 무엇이든 `.name.wrapper`를 다시 풀어 그 타입의
+        #    **제네릭 바디**(타입변수 그대로인 선언형, 예: `CachedElement{E}`)로 정준화한다.
+        #    이러면 같은 이름이 갖는 후보가 전부 같은 객체로 수렴해 프런티어 순서와 무관해진다
+        #    — "누가 이기는가" 를 정하는 타이브레이크가 아니라 애초에 경합을 없앤다.
+        #    대가: 필드가 자기 타입 매개변수를 그대로 쓰면(`element::E`) 렌더가 구체 타입 대신
+        #    바로 그 타입변수를 보인다(`element :: E`) — 정보는 줄지만 결정적이고, 이미
+        #    `LiftIntoPlace.entity :: C`가 오늘도 그 모양이다(비파라메트릭 타입은
+        #    `S.name.wrapper`가 자기 자신이라 변화 없음).
+        S = _unwrap(S.name.wrapper)
         n = _tname(S)
         (haskey(seen, n) || !_defined_in_cb(S)) && continue
         seen[n] = S
