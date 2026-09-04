@@ -379,10 +379,15 @@ end
     #    그 함수는 행에 `"generated" => true` 를 찍고 `_step_applied`/`_step_touched_world`
     #    가 그것을 읽어 삼상을 다르게 내므로, 그 표들을 재려던 절이 자기 픽스처 때문에 다른
     #    갈래를 태우게 된다. 씨는 `test/minted_seed_fixture.jl` 한 자리에 있다.
-    #    함께 은퇴한 명제 넷(잴 대상이 없어졌다): `minted_tool_enacts` (9)(9b)(12) ·
-    #    `test_minted_wiring` (5). (5) 는 **줄 단위로 고치면 안 되는** 자리였다 —
+    #    함께 은퇴한 명제는 **둘**이다(잴 대상이 없어졌다): `minted_tool_enacts` **(9b)**
+    #    (레지스트리의 `enactable` 도장 — 그것을 나르던 JSON 도, 렌더할 파이썬 인벤토리도
+    #    없다) · `test_minted_wiring` **(5)**. (5) 는 **줄 단위로 고치면 안 되는** 자리였다 —
     #    `@test_throws Exception CB.PRIMITIVE_TABLE()` 이 `UndefVarError <: Exception` 이라
     #    심볼이 없어도 통과하는 **조용한 항진**이기 때문이다(실측).
+    #    ⚠️ 2026-09-03 fix round 1·2 정정: 1차는 여기에 "명제 넷 — (9)(9b)(12)·(5)" 라고
+    #    적었다. (9)(12) 는 **은퇴시킬 것이 아니었고** 1차 리뷰가 그것을 잡아 되살렸다 —
+    #    (9) 는 `_enactability` 의 사유 코드 넷과 `reject:unenactable:` 경로를,
+    #    (12) 는 씨뿌리기 픽스처 자신의 이름→impl 짝과 params 키를 잰다. 둘 다 살아 있다.
 
     # 🔴 생성 agent 가 보는 세계 인터페이스가 현행 코드와 같은가. 손 사본은 반드시 낡는다.
     @testset "world interface is current" begin
@@ -417,8 +422,11 @@ end
     #    집행부의 `try` 가 그것을 `:admit`/집행됨으로 보고한다 = 거절보다 나쁜 거짓 admit.
     #    ⚠️ 2026-09-03 (Task 10): 옛 문구("알파벳 19 중 8")는 **삭제된 고정 레지스트리**에
     #    대한 사실이었다 — 표는 이제 런 스코프이고 크기는 그 런이 주조한 만큼이다. 그래서
-    #    개수를 재던 명제 (9)(9b)(12) 는 은퇴했고, 남은 것은 `ENACTABLE_TODAY` 를
-    #    `keys(CB.SILENT_SUCCESS_STATUSES)` 와 대조하는 **생산 표에 대한** 단언이다.
+    #    명제 (9) 는 **개수를 안 잰다**: 오늘 재는 것은 (i) 씨 뿌린 표의 enactable **이름**
+    #    집합과 (ii) 못 부르는 원시가 **부르기 전에** 깨진 연언지 이름과 함께 거절되는가
+    #    (`reject:unenactable:<이름>:<사유>` — "모르는 이름" 과 다른 사유다) 이고, 그 옆에
+    #    `ENACTABLE_TODAY` 를 `keys(CB.SILENT_SUCCESS_STATUSES)` 와 대조하는 **생산 표에 대한**
+    #    단언이 (11) 에 있다. 은퇴한 것은 도장 축 하나, 즉 (9b) 뿐이다.
     #  · 🔴 `zone_keys` 를 String 으로 넘기면 `Dict{Symbol,Ball2}` 소비자들이 조용히 걸러
     #    `zones == []` 가 되고 `translate_whole_build!` 가 `:already_clear` 를 낸다 =
     #    맞는 답이 "존을 치웠다"는 거짓 증거로 둔갑한다. 호출 전에 Symbol 강제 + 생존 검사.

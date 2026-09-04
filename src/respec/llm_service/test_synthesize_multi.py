@@ -611,9 +611,12 @@ def test_the_withheld_capabilities_are_absent_from_the_rendered_interface():
     blob = WI.build_world_interface_block()
     assert len(blob) > 1000, "인터페이스 블록이 비었다 — 아래 루프가 공허하게 통과한다"
     for n in _WITHHELD_FIVE:
-        assert n not in blob, "숨긴 능력 %s 가 렌더된 인터페이스에 있다" % n
-        # 🔴 `!` 없는 형태도 본다 — 렌더가 bang 을 벗기면 이름은 그대로 새어 나간다.
-        assert n[:-1] not in blob, "숨긴 능력 %s 가 bang 없이 렌더됐다" % n[:-1]
+        # 🔴 2026-09-03 fix round 2 (F13). **bang 없는 형태 하나만 본다.** 다섯은 전부 `!` 로
+        #    끝나므로 `n[:-1] not in blob` 이 `n not in blob` 을 **함의한다**(`n` 이 있으면
+        #    그 접두사도 있다) — 둘을 나란히 두면 앞 줄이 결코 단독으로 빨개질 수 없는
+        #    잉여 단언이 된다. 더 강한 쪽만 남긴다: 렌더가 bang 을 벗겨도 잡힌다.
+        assert n[:-1] not in blob, (
+            "숨긴 능력 %s 가 렌더된 인터페이스에 있다(bang 유무 무관)" % n)
 
 
 def test_the_withheld_detector_actually_fires():

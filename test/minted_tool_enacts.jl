@@ -3,12 +3,18 @@
 #
 # 🔴 2026-09-03 (Task 10) — 이 파일은 **집행 기계**를 재지 알파벳을 재지 않는다.
 #   알파벳(고정 19-원시 레지스트리 파일)은 이 계획이 지웠고 표는 런 스코프가 됐다. 그래서
-#   (9)(9b)(12) 세 명제는 은퇴했고(각 자리의 주석이 근거를 적는다), 나머지 열둘이 쓰는 원시
-#   이름들은 `test/minted_seed_fixture.jl` 이 **손으로 씨 뿌린다** — 그 이름들이 집행부의
-#   생산 표 다섯(`SILENT_SUCCESS_STATUSES` 등)의 키이고, 씨를 안 뿌리면 그 표를 재는 절이
-#   전부 "unknown primitive" 로 죽어 **한 번도 안 태워진다.**
+#   이 파일이 쓰는 원시 이름들은 `test/minted_seed_fixture.jl` 이 **손으로 씨 뿌린다** —
+#   그 이름들이 집행부의 생산 표 다섯(`SILENT_SUCCESS_STATUSES` 등)의 키이고, 씨를 안 뿌리면
+#   그 표를 재는 절이 전부 "unknown primitive" 로 죽어 **한 번도 안 태워진다.**
 #
-# 재는 명제 열둘
+# 🔴 2026-09-03 fix round 2 (F10) — **이 머리말은 한 라운드 동안 거짓이었다.** fix round 1 의
+#   판이 "(9)(9b)(12) 세 명제는 은퇴했다 / 나머지 열둘" 이라고 적어 놨는데, 바로 그 라운드가
+#   (9) 와 (12) 를 **되살렸다**(각각 `:334`·`:300` 에 살아 있다). 은퇴한 것은 **(9b) 하나**다.
+#   ⚠️ 이것은 F1 이 잡은 결함과 **같은 종류**다(색인이 커버리지에 대해 거짓을 말한다) —
+#   F1 을 고치면서 그 자리에서 다시 냈다. 이 파일이 무엇을 덮는지 판단하는 다음 사람은
+#   testset 목록이 아니라 **이 머리말**을 읽는다. 명제를 더하거나 빼면 여기도 같이 고칠 것.
+#
+# 재는 명제 열아홉 — (1)~(19). 은퇴한 것은 **(9b)** 하나뿐이다.
 #   (1) 🔴 게이트는 자기신고가 아니라 **body** 를 심사한다 — 이름이 전부 해석되고 전부
 #       집행가능하고 인자가 전부 바인딩되면 굴린다. 미끼는 `impl_name` 이고(2026-09-03,
 #       Task 9), 그것이 없으면 "못 쟀다" = `:deferred` 다. `reach` 자기신고는 판정에
@@ -21,6 +27,13 @@
 #   (6) `env` 가 있으면 위치인자로 들어간다.
 #   (7) 여러 원시가 하나의 params dict 을 나눠 갖는다 — 원시 단위 off-schema 거절 금지.
 #   (8) 그러나 **아무 원시도 모르는** 인자는 body 전체를 본 뒤 거절된다(조용히 안 버린다).
+#   (9) 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다**(연언지 셋). 못 부르는 원시는
+#       **부르기 전에**, 어느 연언지가 깨졌는지(`:harness`·`:arity`·`:kwargs`·`:multimethod`)와
+#       함께 `reject:unenactable:<이름>:<사유>` 로 거절된다 — "모르는 이름" 과 **다른 사유**다.
+#       ⚠️ 파일 위치가 (12) **뒤**다(`:334`) — 픽스처 검사기를 먼저 태우기 위해서다.
+#  (9b) 🔴 **은퇴했다**(이 파일에서 유일하게 은퇴한 명제). "레지스트리의 `enactable` 도장이
+#       Julia 의 계산과 일치한다" 를 쟀는데 그 도장을 나르던 JSON 도, 그것을 렌더할 파이썬
+#       인벤토리도 없다(D5). 근거는 (9) 자리의 주석에 있다.
 #  (10) 🔴 `zone_keys` 는 유도하지 않는다. 안 주면 키워드를 빼고, 주면 `Symbol` 로 강제해
 #       살아 있는 존인지 **호출 전에** 검사한다.
 #  (11) 🔴 "불렀는데 아무 일도 없었다" · "부르지 않았다" · "못 쟀다"는 서로 다른 사건이다 —
@@ -28,6 +41,10 @@
 #       별개로 그것을 나른다. 표는 **집행 가능한 여덟 전부**를 덮어야 한다.
 #       🔴 한 발도 안 굴린 판(`:deferred`/`:reject`)의 `applied` 는 `false` 가 아니라
 #       **`nothing`("못 쟀다")** 이다 — `_r` 의 기본값이 그 삼상을 나른다(C1, Task 9 F6-4).
+#  (12) 🔴 **픽스처**의 이름→impl 짝과 params 키를 못 박는다(`check_minted_fixture`).
+#       옛 판은 삭제된 레지스트리 JSON 을 쟀고, 오늘은 세 시험 파일이 공유하는 씨뿌리기
+#       표를 잰다 — 그 표의 한 행이 조용히 바뀌면 **세 파일이 동시에 초록**이 되기 때문이다.
+#       음성 대조 셋(impl 교체 · params 키 추가 · 이름 삭제)이 검사기의 하중을 확인한다.
 #  (13)~(19) 재개·타입·invariant·보관소·status·calls 배선·교차언어 왕복.
 #
 # 변이시험 — 열하나 전부 실제로 빨갛게 만든 뒤 되돌렸다. 재현 방법(`src/respec/minted_tool.jl`):
@@ -303,12 +320,30 @@ const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier
     # 🔴 음성 대조 셋. 리뷰가 이름 지은 시나리오를 그대로 태운다:
     #    "impl 을 다른 함수로 돌리거나 params 에 키를 더하면 스위트 전부 초록인 채로
     #     부를 수 있는 표면이 넓어진다."
+    #
+    # 🔴 2026-09-03 fix round 2 (F12) — **맨 `@test_throws Exception` 은 쓰지 않는다.**
+    #    이 레포는 정확히 그 약한 형태에 데었다: `tools/monitor/test_minted_wiring.jl` 의 옛
+    #    (5)절 `@test_throws Exception CB.PRIMITIVE_TABLE()` 은 심볼이 아예 없어져
+    #    `UndefVarError` 가 나는데도 **통과했다**(`UndefVarError <: Exception`) — 재려던 사건
+    #    ("레지스트리 파일이 없으면 error 를 낸다")과 실제로 난 사건("그 이름이 없다")이
+    #    그 단언에는 같은 관측이었다. 그래서 여기서는 셋 다 (a) 타입을 `ErrorException` 으로
+    #    좁히고 (b) **사유 문자열까지** 대조한다. 헬퍼가 그 둘을 한 자리에서 한다.
+    _why_of(f) = try
+        f()
+        "(안 던졌다)"
+    catch e
+        sprint(showerror, e)
+    end
     let saved = copy(CB.minted_table())
         try
             row = copy(CB.minted_table()["resolve_schedule_wedge"])
             row["impl"] = "recover_stalled_teams!"        # 짝을 다른 함수로 돌린다
             CB.minted_table()["resolve_schedule_wedge"] = row
-            @test_throws Exception check_minted_fixture()
+            @test_throws ErrorException check_minted_fixture()
+            local why = _why_of(check_minted_fixture)
+            @test occursin("이름→impl 짝이 어긋났다", why)     # 의도한 검사가 걸렸다
+            @test occursin("resolve_schedule_wedge", why)      # 어느 행인지가 사유에 있다
+            @test occursin("recover_stalled_teams!", why)      # 무엇으로 바뀌었는지도
         finally
             CB.minted_table()["resolve_schedule_wedge"] = saved["resolve_schedule_wedge"]
         end
@@ -317,13 +352,19 @@ const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier
             row["params"] = merge(row["params"],
                                   Dict{String,Any}("resume" => Dict{String,Any}("type" => "boolean")))
             CB.minted_table()["restage_all_blocked"] = row
-            @test_throws Exception check_minted_fixture()   # params 에 키를 더한다
+            @test_throws ErrorException check_minted_fixture()   # params 에 키를 더한다
+            local why = _why_of(check_minted_fixture)
+            @test occursin("params 키가 어긋났다", why)        # 짝 검사가 아니라 키 검사가 걸렸다
+            @test occursin("resume", why)                      # 더해진 키가 사유에 있다
         finally
             CB.minted_table()["restage_all_blocked"] = saved["restage_all_blocked"]
         end
         try
             delete!(CB.minted_table(), "pop_spare")          # 이름이 통째로 빠진다
-            @test_throws Exception check_minted_fixture()
+            @test_throws ErrorException check_minted_fixture()
+            local why = _why_of(check_minted_fixture)
+            @test occursin("이름 집합이", why)                  # 집합 검사가 걸렸다(짝 검사가 아니라)
+            @test occursin("pop_spare", why)                    # 어느 이름이 빠졌는지가 사유에 있다
         finally
             CB.minted_table()["pop_spare"] = saved["pop_spare"]
         end

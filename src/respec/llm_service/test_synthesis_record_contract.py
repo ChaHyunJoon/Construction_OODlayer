@@ -9,18 +9,29 @@
        🔴 표는 **`synthesize.CONSUMER_RULES` 하나**이고 docstring 의 산문은 그것을 사람이 읽는
        모양으로 편 것이다. 이 파일이 둘이 안 갈리는 것을 지킨다(진실원 하나).
 
-  (G1) `ComposeToolBody` 는 Task 8 까지 `inventory=""` 를 받는다 — agent-3 에게 **빈 카탈로그**
-       에서 조합하라고 시키는 것이다. 오늘 그 런을 막는 것은 사람의 노트 한 줄뿐이고,
-       `results/` 를 보면 이런 런이 실제로 발사된다. 그래서 파이프라인은 **던지지 않고 거절**
-       한다(이 레포의 관용: rejections, not exceptions). 거절은
+  (G1) 🔴 **유료 무의미 실행을 거절로 막는다.** agent-3 에게 넘길 세계 인터페이스가 비었거나
+       읽히지 않으면 파이프라인은 **던지지 않고 거절**한다(이 레포의 관용: rejections, not
+       exceptions) — 던지면 그 예외가 집행 경로로 새어 HTTP 500 → 조용한 canonical 폴백이
+       된다. 거절은
          · "레인이 꺼졌다"(`enabled == False`) 와도
-         · "agent-3 가 못 하겠다고 했다"(`ran == True` · `reach == "needs_primitive"`) 와도
+         · "agent-3 가 못 하겠다고 했다"(`ran == True` · `wrote is False`) 와도
        구별돼야 한다 — 이 레포는 서로 다른 사건을 한 관측치로 접어 두 번 대가를 치렀다.
+       그리고 거절 **둘**(비었다 / 못 읽었다)도 서로 다른 사유 코드를 낸다: 처방이 다르다
+       (앞은 산출물 재생성, 뒤는 파일 복구).
+       ⚠️ 2026-09-03 fix round 2 (F10): 이 문단은 fix round 1 까지 `ComposeToolBody` 와
+       `reach == "needs_primitive"` 를 인용하고 있었다 — 둘 다 Task 8 이 지운 어휘다
+       (agent-3 은 `WriteToolImpl` 이고 거절 신호는 `wrote is False` 다).
 
-  (R-BODYNAMES 트립와이어) `_finish_record` 의 `rec["body_names"] = []` 는 핀이고, **Task 8 이
-       그 값을 채울 자리도 같은 줄**이다. Task 8 이 잊으면 아무것도 안 빨개지고 생성된 body 가
-       전부 "비었다" 로 읽힌다. 그래서 **핀의 근거**(agent-3 에게 채울 이름이 아직 없다)를
-       시험으로 못박는다: agent-3 의 출력 필드 집합이 움직이는 순간 이 파일이 빨개진다.
+  (canon) 🔴 `canon()` 은 **kind 를 정규형에 넣고 순서는 지운다.** kind 가 빠지면 다른 kind 의
+       기록이 한 canon 으로 합쳐지고 **|K| 가 조용히 과소계수된다** — 이 계획의 헤드라인
+       곡선이 그 값이다. (2026-09-03 fix round 1 / F6-3 에서 이 파일로 옮겨왔다: 옛 소비처가
+       `parse_body` 와 함께 은퇴하면서 이 성질을 재는 곳이 0개가 돼 있었다.)
+
+  ⚠️ **R-BODYNAMES 트립와이어는 은퇴했다** (2026-09-03, Task 10). 그것은 `_finish_record` 의
+       `rec["body_names"] = []` 핀을 지키던 자리였고 **설계대로 발화한 뒤** 역할이 끝났다 —
+       Task 8 이 그 핀을 풀고 `body_names` 를 agent-3 의 `impl_name` 에서 채운다. 그 자리를
+       이어받은 것은 두 시험이다: agent-3 이 그 이름을 **여전히 내는가**, 그리고
+       `_finish_record` 가 그것을 **안 덮어쓰는가**(음성 대조 포함). 근거는 그 자리의 주석에.
 """
 import ast
 import io
