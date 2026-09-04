@@ -14,18 +14,29 @@
   (A) **정보 병목.** agent-2 는 원본 관측을 **못 본다.** 그래야 "분해가 실제로 정보를
       가공했는가" 가 측정 가능해지고, agent-1 이 놓친 것은 agent-2 도 못 본다.
 
-  (B) **구현 어휘 실명(失明).** agent-2 는 구현 함수 이름을 **못 본다.** 처음 보는 사건에
-      맞는 tool 을 설계하는데 기존 어휘를 보여주면, 재는 것이 설계 능력이 아니라 **기존
-      어휘로의 투영**이 된다. 대가는 정직하게: agent-3 가 못 쓰겠으면 `wrote=false` 이고,
-      그 `reasoning` 이 이 레인의 산출물이다.
+  (B) 🔴 **계약 (B)(agent-2 의 알파벳 실명)는 폐지됐다** (2026-09-03, D5 + 컨트롤러 판정 R13).
+      옛 계약은 "agent-2 는 19개 원시를 못 본다 — 보여주면 재는 것이 설계 능력이 아니라
+      기존 어휘로의 투영이 된다" 였고, 그것을 집행하던 기전이 둘(인벤토리 블록을 안 준다 ·
+      되먹임에서 이름을 가린다)이었다. **둘 다 없어졌다**: 인벤토리가 삭제됐고(D5),
+      `synthesize.py` 는 되먹임을 **날것 그대로** 보낸다("알파벳이 없으므로 가릴 것이 없고
+      계약 (B) 도 폐지됐다" — 그 파일이 그렇게 적는다).
+      ⚠️ 이 머리말은 fix round 1 이전까지 계약 (B) 를 **살아 있다고** 선언하고 있었다.
+      두 파일이 같은 사실에 대해 서로 다른 말을 하고 있었고, `synthesize.py` 가 옳다.
 
-      🔴 2026-09-03 (Task 10). **모집단이 바뀌었다.** 옛 판은 이 계약을 삭제된 19-원시
-      레지스트리(`primitive_registry.py`) 전수로 쟀다 — D5·D7·D8 이 그 인벤토리를 없앴으므로
-      그 시험들은 `AttributeError` 로 죽었다(= 게이트가 아니라 빨간 시험). 계약 자체는
-      살아 있고, 오늘 그것을 나르는 살아 있는 모집단은 **`world_interface.json` 의 메서드
-      이름 147개**다: agent-3 은 그 인터페이스를 입력 필드로 **정당하게** 받고, agent-2 는
-      받으면 안 된다. 그래서 아래 누수 가드들은 `_impl_names()` 를 쓴다.
-      ⚠️ 리터럴 목록을 복붙하지 않는 규율은 그대로다 — 모집단이 자라면 가드도 자란다.
+      🔴 **그러나 이 실험이 실제로 의존하는 성질은 남아 있고, 그것은 가림이 아니라
+      원천 차단이다**: 숨긴 능력 다섯(`release_pending_assignments!` ·
+      `recover_stalled_teams!` · `resolve_schedule_wedge!` · `force_advance_stuck_carrier!` ·
+      `forbid_heavy_cargo!`)은 `world_interface.json` 에 **아예 없다.** agent-3 은 그것들을
+      본 적이 없으므로 `reasoning` 으로 agent-2 에게 흘릴 수도 없다 — 가림이 없어도 성립하는
+      이유가 이것이다. `test_the_withheld_capabilities_are_absent_from_the_rendered_interface`
+      가 그 부재를, 그 짝이 검출기의 발화를 잰다.
+      (정본: `docs/superpowers/reports/2026-09-03-task11-measurement-preregistration.md` 결정 2.)
+
+      🔴 별개로 살아 있는 것 하나: **프롬프트 빌더의 문자열들**은 여전히 구현 함수 이름을
+      하나도 이름 지어서는 안 된다(`_NOVEL_*`·`_INVARIANT_DESIGN`·분업 문단·효과 문단).
+      그 가드들은 `_impl_names()`(= `world_interface.json` 의 메서드 147개)를 모집단으로
+      쓰고, **생산 문자열**을 훑으므로 반증 가능하다 — 누가 그 문단에 함수 이름을 적으면
+      빨개진다. 옛 되먹임 가드는 시험 상수를 훑어서 그렇지 않았고, 그래서 지웠다.
 
   (C) **오라클 무접촉.** 어느 프롬프트에도 오라클 판정이 안 들어간다.
       `zone_relocate_norm`(= 최소 이동거리 = 사실상 정답)은 `MacroRequest` **스키마에는
@@ -543,22 +554,76 @@ def test_the_composer_verdict_reaches_agent_2(monkeypatch):
     assert rec["recomposed"] is True and rec["wrote"] is True
 
 
-def test_the_feedback_agent_2_reads_names_no_primitive(monkeypatch):
-    """🔴 계약 (B). 실제로 **보내진** 문자열을 `world_interface.json` 전수로 본다 — 빌더가
-    아니라. ⚠️ 오늘 되먹임은 **날것 그대로** 간다(가림 폐지, D5). 그러므로 이 가드는
-    "가림이 잘 도는가" 가 아니라 **"agent-3 의 설명 자체가 구현 이름을 안 흘리는가"** 를
-    잰다 — `_F5_ACCOUNT` 는 실측 문자열이고 그 안에 `release_pending_assignments` 가
-    들어 있으므로, 이 시험은 **오늘 정당하게 빨갛다면 그것이 참인 관측이다.**
-    (`_F5_ACCOUNT` 의 그 이름은 삭제된 알파벳의 이름이고 `world_interface.json` 의 메서드가
-    아니다 — 그래서 오늘 이 가드는 통과한다. 그 이름이 인터페이스에 생기는 날 빨개지고,
-    그때 가릴지 말지는 그 시점의 결정이다.)"""
+def test_the_feedback_reaches_agent_2_raw_because_there_is_nothing_left_to_scrub(monkeypatch):
+    """🔴 2026-09-03 (Task 10 fix round 1 / 컨트롤러 판정 R13). **이 자리의 옛 시험은
+    반증 불가능했다 — 지우고 참인 것으로 바꿨다.**
+
+    옛 판은 되먹임 문자열 안에서 `world_interface.json` 의 이름 147개를 찾았다. 그런데 그
+    문자열은 이 파일의 하드코딩 상수(`_F5_ACCOUNT`)에서 그대로 오고 파이프라인은 아무것도
+    가리지 않으므로(`synthesize.py` 의 `red = rec["reasoning"]` — 날것 그대로 간다), **어떤
+    구현 변경으로도 빨개질 수 없었다.** 실측 확인: 그 계정 문자열에 인터페이스 이름을 하나
+    심으면 그것이 그대로 agent-2 에 도착한다.
+
+    ⟹ 오늘 참인 것은 이것이다. 계약 (B)(agent-2 의 알파벳 실명)는 **폐지됐다** — 가릴 알파벳이
+    없다. 그 자리를 대신하는 설계상의 보장은 **agent-3 이 애초에 본 적 없는 것은 흘릴 수
+    없다** 는 것이고, 그것을 나르는 사실이 `world_interface.json` 의 내용이다. 아래
+    `test_the_withheld_capabilities_are_absent_from_the_rendered_interface` 가 그것을 잰다.
+
+    여기서는 되먹임의 **배선**만 남긴다: 되먹임이 agent-2 에 실제로 도착하고, 가림이 안
+    돌았다는 사실이 삼상으로 기록된다.
+    """
     monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
     progs, kw = _seq_programs([False, True])
-    syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
-                         programs=progs)
+    rec = syn.synthesize_multi(state=OBSERVATION, tools=[], ledger=syn.SynthesisLedger(),
+                               programs=progs)
     fb = kw["design"][1]["composer_feedback"]
-    for q in [{"name": n} for n in _impl_names()]:
-        assert q["name"] not in fb, "agent-2 가 되먹임에서 원시 %s 를 봤다" % q["name"]
+    # agent-3 의 설명이 **날것 그대로** 실렸다 — 잘리거나 가려지지 않았다.
+    assert "does not consider task priority" in fb
+    assert _F5_ACCOUNT in fb, "되먹임이 agent-3 의 설명을 통째로 나르지 않는다"
+    # 🔴 삼상. 가림이 **안 돌았다**(`None`)이지 "돌았는데 하나도 안 걸렸다"(`[]`)가 아니다.
+    assert rec["compose_feedback_redacted"] is None
+    assert not hasattr(syn, "redact_inventory_names"), (
+        "가림 함수가 되살아났다 — 계약 (B) 는 폐지됐고(R13) 되살리는 것은 이 결정의 번복이다")
+
+
+#: 🔴 D6 신호로 세는 다섯. 정본은
+#: `docs/superpowers/reports/2026-09-03-task11-measurement-preregistration.md` 의 결정 2 이고,
+#: 그 문서가 "`withheld` 버킷은 532 이름 폭이다 — D6 로 세는 것은 이 다섯뿐" 이라고 적는다.
+#: 여기 리터럴로 두는 이유: 이 시험이 재는 것은 그 버킷의 크기가 아니라 **이 다섯이 렌더된
+#: 인터페이스에 없다**는 사실이고, 그것은 다섯 이름에 대한 주장이다.
+_WITHHELD_FIVE = ("release_pending_assignments!", "recover_stalled_teams!",
+                  "resolve_schedule_wedge!", "force_advance_stuck_carrier!",
+                  "forbid_heavy_cargo!")
+
+
+def test_the_withheld_capabilities_are_absent_from_the_rendered_interface():
+    """🔴 계약 (B) 의 **살아 있는 후계** (Task 10 fix round 1, 컨트롤러 판정 R13).
+
+    계약 (B) 자체는 폐지됐다: agent-2 에게 알파벳을 감추는 기전(인벤토리·가림)이 둘 다
+    없어졌고 `synthesize.py` 가 그 폐지를 명시한다. 그런데 이 실험이 실제로 의존하는 성질은
+    가림이 아니라 **원천 차단**이다 — 위 다섯은 세계 인터페이스 산출물에 **아예 없으므로**
+    agent-3 이 그것들을 본 적이 없고, 따라서 `reasoning` 을 통해 agent-2 에게 흘릴 수도 없다.
+    가림이 없어도 그 성질이 성립하는 이유가 이것이고, 이 시험이 그것을 못박는다.
+
+    🔴 다섯 중 하나가 인터페이스에 새어 들어오는 순간 D6 신호(`…_exists_withheld`)의 뜻이
+    바뀐다 — "모델이 없는 능력을 지어냈다" 가 "모델이 본 것을 다시 썼다" 가 된다.
+    """
+    blob = WI.build_world_interface_block()
+    assert len(blob) > 1000, "인터페이스 블록이 비었다 — 아래 루프가 공허하게 통과한다"
+    for n in _WITHHELD_FIVE:
+        assert n not in blob, "숨긴 능력 %s 가 렌더된 인터페이스에 있다" % n
+        # 🔴 `!` 없는 형태도 본다 — 렌더가 bang 을 벗기면 이름은 그대로 새어 나간다.
+        assert n[:-1] not in blob, "숨긴 능력 %s 가 bang 없이 렌더됐다" % n[:-1]
+
+
+def test_the_withheld_detector_actually_fires():
+    """🔴 음성 대조. 위 시험은 **부재**를 재므로 검출기가 죽어 있어도 초록이다.
+    실제 인터페이스에 있는 이름 하나를 같은 검출기에 통과시켜 발화를 확인한다."""
+    blob = WI.build_world_interface_block()
+    present = [m["name"] for m in WI.load_world_interface()["methods"] if m["name"] in blob]
+    assert present, "인터페이스에 실린 이름을 하나도 못 찾았다 — 검출기가 죽었다"
+    # 그리고 다섯은 그 목록에 없다(위 시험과 같은 사실을 반대편에서 본다).
+    assert not (set(_WITHHELD_FIVE) & set(present))
 
 
 def test_a_composed_body_does_not_trigger_the_loop(monkeypatch):

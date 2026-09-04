@@ -13,7 +13,13 @@
 게이트는 전부 이 파일에만 있다). 그래서 파일을 통째로 지우지 않았다.
 
   (A) 꺼져 있으면 **소켓이 0** 이다 (R13, 과금 0건). 음성 대조가 함께 있다.
-  (B) `params` 평평함 — Julia 경계의 얕은 변환 함정.
+      🔴 그 판에서 **잃은 정보**가 무엇인지도 함께 못박는다(그 시험의 주석 참고).
+  (B) `params` 평평함 — Julia 경계의 얕은 변환 함정. 🔴 순수 함수(`params_flatness`)와
+      **기록되는가**(`rec["params_flat"]`) 를 **둘 다** 잰다.
+      ⚠️ 2026-09-03 fix round 1 정정: 1차에서 뒤엣것을 "삭제된 `maybe_synthesize` 를 부르니
+      (a)" 로 판정해 지웠는데, 죽은 것은 **호출**이었고 성질이 아니었다 — 그 결과
+      `_finish_record` 의 기록 줄을 지워도 아무것도 안 빨개지는 상태가 됐고, 이 머리말은
+      그 동안에도 (B) 를 유지 항목으로 적고 있었다. 되살렸다(변이로 확인).
   (C) 원장은 중복에서 파라미터를 따로 쌓는다 (spec §5-2-2 ①).
   (D) 서비스 배선 — `/macro`·`/decide` 가 값을 나르고, 합성 레인 키가 `out["dspy"]` 의
       tool 레인 표식 **위**에 앉는다(줄리아 게이트와의 교차언어 결속).
@@ -138,6 +144,66 @@ def test_unmeasurable_params_are_none_not_false():
         assert why
 
 
+class _Pred:
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+def _flat_progs(params):
+    """세 단계를 대신하는 순수 함수 셋. 프로바이더에 안 나간다 — 과금 0건."""
+    def observe(**kw):
+        return _Pred(reasoning_log="the zone froze three staging areas")
+
+    def design(**kw):
+        return _Pred(expressible=False, tool_name="T",
+                     params='{"a": {"type": "string"}}', mechanism="m")
+
+    def compose(**kw):
+        # 🔴 R6: `rec["params"]` 는 **agent-3** 의 스키마다(agent-2 의 것은 `spec_params`).
+        #    평평함이 재는 것은 집행부가 실제로 받을 그 스키마이므로 여기에 심는다.
+        return _Pred(impl_name="clear_staging_obstruction!",
+                     impl_code="function clear_staging_obstruction!(env; a = 1)\n    return :ok\nend\n",
+                     params=params, surface="scene_tree", reversible=True, wrote=True,
+                     reasoning="r")
+
+    return {"observe": observe, "design": design, "compose": compose}
+
+
+def test_a_nested_params_answer_is_recorded_but_not_dropped(monkeypatch):
+    """🔴 F4 (2026-09-03, fix round 1). **이 시험은 은퇴시켰다가 되살렸다.**
+
+    1차에서 "삭제된 `maybe_synthesize` 를 부르므로 (a)" 로 판정하고 지웠는데 그것이 틀렸다:
+    죽은 것은 **호출**이었고 **성질**이 아니었다. `params_flatness` 를 부르는 생산 코드
+    (`_finish_record` 의 `rec["params_flat"], rec["params_flat_detail"] = ...`)는 그대로
+    살아 있는데, 그 줄을 지워도 **아무것도 안 빨개지는 상태**가 됐다 — 이 파일의 머리말이
+    "(B) params 평평함" 을 유지 항목으로 적어 놓고 정작 기록되는지는 아무도 안 쟀다.
+
+    재는 것 둘: (i) 제약을 어긴 출력도 **버리지 않는다**(정의는 끝까지 남고 판정만 기록된다),
+    (ii) 그 판정이 **기록에 실제로 실린다**.
+    """
+    monkeypatch.setenv(syn.SYNTHESIS_ENV, "1")
+    nested = '{"where": {"type": "object", "properties": {"x": {"type": "number"}}}}'
+    rec = syn.synthesize_multi(state="obs", tools=[], kind="zone",
+                               ledger=syn.SynthesisLedger(),
+                               programs=_flat_progs(nested))
+    assert rec["params_flat"] is False, "평평함 판정이 기록에 안 실린다"
+    assert "JSON3.Object" in (rec["params_flat_detail"] or ""), "왜 어겼는지가 안 남았다"
+    assert rec["mechanism"] and rec["impl_code"], "정의는 끝까지 기록된다"
+    assert rec["tool_minted"] is True, "판정만 기록하고 **버리지는 않는다**"
+
+    # 양성 대조: 평평한 스키마는 같은 경로에서 `True` 다(위 줄이 상수가 아니다).
+    ok = syn.synthesize_multi(state="obs", tools=[], kind="zone",
+                              ledger=syn.SynthesisLedger(),
+                              programs=_flat_progs('{"a": {"type": "string"}}'))
+    assert ok["params_flat"] is True
+
+    # 🔴 삼상: 못 잰 판은 `False`("재서 어겼다")가 아니라 `None` 이다.
+    un = syn.synthesize_multi(state="obs", tools=[], kind="zone",
+                              ledger=syn.SynthesisLedger(), programs=_flat_progs(""))
+    assert un["params_flat"] is None
+
+
 
 # ==========================================================================================
 # (C) 원장 — 중복은 차단이 아니라 **측정**이다
@@ -206,12 +272,25 @@ def test_macro_and_decide_carry_tool_minted(monkeypatch):
     #    는 플래그를 먼저 보고 `_blank` 를 그대로 돌려주므로 그 자리는 `False` 다.
     #    🔴 **이것은 새는 것이 아니라 선언된 계약이다**: `synthesize.CONSUMER_RULES` 의
     #    "was switched off" 행이 `synthesis_event == False` 를 명시적으로 적고
-    #    `test_synthesis_record_contract.py` 가 그 표를 코드와 대조한다. 잃은 정보도 없다 —
-    #    "꺼졌다" 는 `tool_minted == "disabled"` 가 나르고 `expressible` 은 따로 실린다.
+    #    `test_synthesis_record_contract.py` 가 그 표를 코드와 대조한다.
+    # 🔴 **그러나 정보는 잃었다** (2026-09-03 fix round 1 정정 — 이 주석의 1차 판은
+    #    "잃은 정보도 없다 … `expressible` 은 따로 실린다" 고 적었고 그것은 **거짓**이다).
+    #    실측: 플래그가 꺼진 판의 기록에서 `expressible` 은 **`None`** 이다 —
+    #    `run_synthesis` 가 호출자의 값을 일부러 버리고(D8) agent-2 는 돌지도 않았다.
+    #    옛 단일 레인의 `synthesis_event=True` 가 "이 사건은 발화할 사건이었다" 를 나르는
+    #    **유일한** 운반체였고, 오늘 그것을 나르는 필드는 기록에 없다.
+    #    ⟹ 🔴 **꺼진 판의 행으로 발화율(분자든 분모든)을 계산하지 말 것.** 그 분모는 존재하지
+    #    않는다 — `run_synthesis` 의 docstring 이 `macro_tool_agree` 로 이름 지은 "같은 이름의
+    #    비율을 서로 다른 분모 위에서 계산하는" 사고가 정확히 이 자리에서 다시 가능하다.
+    #    (지금 이 아래 두 줄이 그 부재를 값으로 못박는다.)
     #    ⚠️ 이 회귀는 `primitive_registry` 수집 에러 뒤에 **가려져 있었다**(이 파일은 16faa75c
     #       부터 한 번도 수집되지 않았다). 지우지 않고 기대를 뒤집는 이유가 그것이다.
     assert d["synthesis"]["synthesis_event"] is False
     assert d["synthesis"]["enabled"] is False
+    # 🔴 위 문단이 주장하는 손실을 **값으로** 못박는다: 발화 자격을 나르는 필드가 없다.
+    assert d["synthesis"]["expressible"] is None, (
+        "꺼진 판에서 `expressible` 이 값을 갖게 됐다면 위 문단의 손실 서술이 낡은 것이다")
+    assert d["synthesis"]["ran"] is False
     out = svc.decide(req)
     # 🔴 2026-09-03 (Task 10). 여기도 뒤집혔다. 옛 판은 "두 번째 응답은 expressible=True 라
     #    발화 사건이 아니므로 `tool_minted is None`" 을 단언했는데, `run_synthesis` 는

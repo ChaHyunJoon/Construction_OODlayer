@@ -13,6 +13,7 @@ CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 #    **한 번도 안 태운다.** 근거는 그 픽스처 파일의 머리말에 있다.
 include(joinpath(@__DIR__, "minted_seed_fixture.jl"))
 seed_minted_fixture!()
+check_minted_fixture()   # 🔴 F2: 오염된 픽스처로 아래를 돌리지 않는다
 
 # 🔴 FIX ROUND 1 / Finding 3 재료: get_vtx_id · get_node_from_id · Graphs.outneighbors 를
 # 이 더미 타입에 대해서만 확장해, 실제 스케줄/씬 없이 payload_edge_multiplier 의 두 내부

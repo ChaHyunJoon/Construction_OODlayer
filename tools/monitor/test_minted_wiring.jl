@@ -104,6 +104,7 @@ include(joinpath(@__DIR__, "enact.jl"))
 #    이름이 표에서 해석돼야 한다. 근거·`register_minted_primitive!` 를 안 쓰는 이유는 그 파일에.
 include(joinpath(@__DIR__, "..", "..", "test", "minted_seed_fixture.jl"))
 seed_minted_fixture!()
+check_minted_fixture()   # 🔴 F2: 오염된 픽스처로 아래를 돌리지 않는다
 
 """
     capture_out(f) -> (value, stdout_text)
@@ -693,11 +694,64 @@ end
         @test occursin("tool=DynamicTaskAdjustment", out)
         @test occursin("n_body_names=0", out)
         @test occursin("verdict=reject", out)          # 빈 body 는 거절이다
-        # 🔴 등록 시도의 결과가 줄에 있다 — `impl_code` 가 없으면 등록은 안 돌았다("못 쟀다").
-        @test occursin("registered=", out)
         # 🔴 죽은 어휘가 로그로 되살아나지 않는다.
         @test !occursin("missing_primitive=", out)
         @test !occursin("reach=", out)
+    end
+
+    # -------------------------------------------------------------------------------------
+    # 🔴 F6(2) (2026-09-03 fix round 1). 앞 절은 `occursin("registered=", out)` 이었다 —
+    #    **부분문자열 존재**만 보므로 `registered=true` 도 `registered=false` 도 똑같이
+    #    통과했다. 그런데 그 자리의 주석은 삼상 성질을 주장하고 있었다. `registered` 는
+    #    `Union{Nothing,Bool}` 이고 로그에 **세 모양**으로 찍힌다. 값을 직접 가른다.
+    #
+    #    🔴 `false` 는 **두 사건을 덮는다** — "등록할 코드가 없어 시도조차 안 했다" 와
+    #    "시도했는데 규약 위반으로 거절됐다". 둘을 가르는 것은 `impl_rejected_why` 이고,
+    #    그래서 두 필드를 **짝으로** 읽어야 세 사건이 일대일이 된다.
+    @testset "(11) 🔴 registered 는 삼상이고 로그가 그것을 접지 않는다" begin
+        # (a) 등록을 **시도조차 안 했다** — `impl_code` 가 없다. `false` + 사유 없음.
+        _, out_a = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+                                        _dec(_sl(names = BODY))))
+        @test occursin("registered=false", out_a)
+        @test occursin("impl_rejected_why=n/a", out_a)
+
+        # (b) 조기 반환(`impl_name` 이 없다)도 같은 모양이다 — 확정된 `false` 다.
+        r_b, out_b = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,
+                                          _dec(_sl(impl_name = nothing, names = BODY))))
+        @test r_b.registered === false
+        @test occursin("registered=false", out_b) && occursin("impl_rejected_why=n/a", out_b)
+
+        # (c) 🔴 **시도했는데 거절됐다** — 같은 `false` 인데 사유가 붙는다. 이 짝이 (a)/(b) 와
+        #     (c) 를 가르는 전부다. ⚠️ `check_impl_conventions` 는 `Core.eval` **앞**에서
+        #     거절하므로 이 픽스처는 CB 에 아무 이름도 안 심는다(이 파일이 등록 경로를
+        #     피하는 이유 그대로다 — 규약 위반은 그 경로에 안 들어간다).
+        #     이름은 픽스처에 없는 것을 쓴다 — 등록이 **거절되므로** 표에 안 들어가고,
+        #     따라서 뒤 절·뒤 파일이 이 이름을 물려받지 않는다.
+        local bad = _sl(names = ["t10_wiring_bad_probe!"], impl_name = "t10_wiring_bad_probe!")
+        bad["impl_code"] = "function t10_wiring_bad_probe!(env, other; k = 1)\n    return :ok\nend\n"
+        r_c, out_c = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing, _dec(bad)))
+        @test r_c.registered === false
+        @test r_c.impl_rejected_why !== nothing
+        @test occursin("reject:impl_positional_args_must_be_exactly_env", r_c.impl_rejected_why)
+        @test occursin("registered=false", out_c)
+        @test !occursin("impl_rejected_why=n/a", out_c)   # 🔴 여기서 (a)/(b) 와 갈린다
+        @test r_c.verdict === :reject && isempty(r_c.steps)   # 등록 실패는 집행을 안 시도한다
+        @test !haskey(CB.minted_table(), "t10_wiring_bad_probe!")   # 표를 안 건드렸다
+        @test !isdefined(CB, Symbol("t10_wiring_bad_probe!"))       # eval 도 안 돌았다
+
+        # (d) 🔴 `nothing`("몰라서 못 쟀다")은 `n/a` 로 찍힌다 — `false` 와 **다른 글자**여야
+        #     한다. 그 갈래는 catch 경로(등록 판정에 닿기 전에 던진다)이고 이 파일의 순수 함수
+        #     픽스처로는 못 만든다. 그래서 여기서는 **렌더가 두 값을 안 접는다**는 사실만
+        #     못박고, 그 경로 자체는 `test/minted_end_to_end.jl` (3) 이 값으로 잰다.
+        @test string(false) != "n/a"
+        @test !occursin("registered=n/a", out_a)   # 확정된 false 를 "못 쟀다" 로 적지 않는다
+        @test !occursin("registered=nothing", out_a)
+
+        # (e) `registered=true` 는 `Core.eval` 이 실제로 성공해야 나오고, 그것은 CB 에 이름을
+        #     **영구히** 심는다(세션당 한 번만 안전). 이 파일은 순수 함수 게이트라 그 경로를
+        #     일부러 안 태운다 — `test/minted_end_to_end.jl` (1) 이 그것을 잰다.
+        #     여기서는 이 파일의 픽스처가 그 경로에 **안 들어갔다**는 것만 확인한다.
+        @test !occursin("registered=true", out_a)
 
         # 양성 대조: body 가 있는 판은 같은 자리에 그 수가 찍힌다(빈-통과 방지).
         _, out2 = capture_out(() -> enact_minted_decision!(QUIET_ENV, nothing,

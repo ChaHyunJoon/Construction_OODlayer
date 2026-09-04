@@ -177,6 +177,34 @@ def test_every_rule_predicts_tool_minted(monkeypatch):
         assert got is want or got == want, "%s: tool_minted=%r (기대 %r)" % (expected, got, want)
 
 
+def test_canon_separates_kinds_and_erases_order():
+    """🔴 F6(3) (2026-09-03 fix round 1). `canon()` 은 살아 있는데(`synthesize.py`) 그 두 성질을
+    재는 곳이 **0개**가 됐다 — 옛 `test_synthesize.py` 의 canon 절이 `parse_body` 와 함께
+    은퇴하면서 같이 사라졌다.
+
+    실패 모드가 이 계획의 헤드라인에 직접 걸린다: `kind` 가 정규형 키에서 빠지면 서로 다른
+    kind 의 기록이 한 canon 으로 합쳐지고 **|K| 가 조용히 과소계수된다.**
+    """
+    x = ["translate_whole_build!"]
+    y = ["restage_assembly!"]
+    # (i) kind 가 정규형을 가른다.
+    assert SY.canon(x, "zone") != SY.canon(x, "battery")
+    assert SY.canon_key(SY.canon(x, "zone")) != SY.canon_key(SY.canon(x, "battery"))
+    # (ii) 다른 원시는 다른 정규형이다(음성 대조 — 없으면 (i) 은 "canon 이 전부 상수" 로도 통과).
+    assert SY.canon(x, "zone") != SY.canon(y, "zone")
+    # (iii) 🔴 순서는 지워진다(spec §5-2-2). 같은 집합의 다른 배열은 같은 정규형이다.
+    z = ["a!", "b!"]
+    w = ["b!", "a!"]
+    assert SY.canon(z, "zone") == SY.canon(w, "zone")
+    assert SY.canon_key(SY.canon(z, "zone")) == SY.canon_key(SY.canon(w, "zone"))
+    # (iv) |K| 로 이어지는 귀결을 값으로 못박는다 — kind 가 갈리면 원장도 갈린다.
+    led = SY.SynthesisLedger()
+    assert led.observe(SY.canon(x, "zone")) is True
+    assert led.observe(SY.canon(x, "battery")) is True, (
+        "kind 가 다른데 재도출로 접혔다 — |K| 가 과소계수된다")
+    assert led.K == 2
+
+
 def test_the_two_minted_rows_are_separated_by_the_ledger_count():
     """🔴 두 행을 실제로 가르는 사실은 **원장의 canon 신규성**이고, 기록에서 그것을 나르는 것은
     `canon_count` 다. 옛 표에는 그 사실이 아예 없었다."""
@@ -219,11 +247,66 @@ def test_a_body_bearing_record_always_matches_exactly_one_rule():
             % (extra.get("canon_count", "<없음>"), _matching(rec), expected))
 
 
+def test_a_real_lane_record_reaches_tool_minted_false(monkeypatch, iface):
+    """🔴 F6(4) (2026-09-03 fix round 1). `tool_minted is False`("모델이 이미 가진 행동을
+    재도출했다")는 |K| 곡선의 한 점이고 실패가 아니다 — 그런데 그 값을 **실제 레인 기록**으로
+    내는 시험이 하나도 없었다. 규칙표 쪽에는 손으로 지은 dict 으로만 있었고, 손으로 지은 dict
+    은 `_finish_record` 가 그 값을 정말로 낼 수 있는지에 대해 아무것도 안 말한다.
+
+    같은 원장에 같은 body 를 두 번 보낸다: 첫 판 `True`(새 canon), 둘째 판 `False`(재도출).
+    """
+    led = SY.SynthesisLedger()
+    monkeypatch.setenv(SY.SYNTHESIS_ENV, "1")
+    kw = dict(state=OBSERVATION, tools=[], kind="zone",
+              programs=_progs(impl_name="clear_staging_obstruction!"))
+    first = SY.synthesize_multi(ledger=led, **kw)
+    second = SY.synthesize_multi(ledger=led, **kw)
+    assert first["tool_minted"] is True and first["canon_count"] == 1
+    assert second["tool_minted"] is False, "재도출이 실제 레인 기록에서 도달 불가다"
+    assert second["canon_count"] == 2
+    assert led.K == 1, "재도출이 |K| 를 올렸다"
+    assert "not a failure" in second["reason"], (
+        "`False` 를 실패로 적으면 |K| 곡선을 잘못 읽는다")
+    assert _matching(second) == ["re-derived"]
+
+
 def test_every_rule_has_at_least_one_witness(monkeypatch):
     """표에 **증인 없는 행**이 생기면 빨개진다 — 죽은 행은 갈라 둘 이유가 없는 행이다."""
     seen = {name for name, _ in _exit_paths(monkeypatch)}
     seen |= {expected for _, expected in _CANON_COUNT_CASES}
     assert seen == {r.name for r in SY.CONSUMER_RULES}
+
+
+def test_the_two_refusals_carry_distinct_reason_codes(monkeypatch):
+    """🔴 F6(1) (2026-09-03 fix round 1). `_exit_paths` 에 9번째 경로를 등재하면서 "그 구별이
+    사라지면 두 사건이 한 관측이 된다" 고 적었는데, 정작 단언은 **개수만** 셌다 — 두 갈래가
+    같은 사유 코드로 접혀도 AST 카운트는 9 그대로다. 코드를 직접 가른다.
+
+    두 사건: "인터페이스가 **비었다**"(파일은 읽혔는데 내용이 없다) vs "인터페이스를 **못
+    읽었다**"(`load_world_interface` 가 크게 죽도록 설계된 그 죽음을 가드가 기록으로 접었다).
+    처방이 다르다 — 앞은 산출물 재생성, 뒤는 파일 복구다.
+    """
+    monkeypatch.setenv(SY.SYNTHESIS_ENV, "1")
+
+    monkeypatch.setattr(SY, "compose_interface", lambda blob=None: "")
+    empty = SY.synthesize_multi(state=OBSERVATION, tools=[], kind="zone",
+                                ledger=SY.SynthesisLedger(), programs=_progs())
+
+    def _boom(blob=None):
+        raise IOError("world_interface.json 을 못 읽는다")
+
+    monkeypatch.setattr(SY, "compose_interface", _boom)
+    unreadable = SY.synthesize_multi(state=OBSERVATION, tools=[], kind="zone",
+                                     ledger=SY.SynthesisLedger(), programs=_progs())
+
+    assert empty["refused"] == "no_compose_interface"
+    assert unreadable["refused"].startswith("world_interface_unreadable:")
+    assert "OSError" in unreadable["refused"] or "IOError" in unreadable["refused"]
+    assert empty["refused"] != unreadable["refused"], "두 거절이 같은 사유 코드로 접혔다"
+    # 같은 규칙 행에 맞는 것은 **설계대로**다 — 갈리는 것은 소비자가 읽는 사유 코드다.
+    assert _matching(empty) == _matching(unreadable) == ["refused"]
+    # 둘 다 과금 0건이다(거절은 지출 **전에** 일어난다).
+    assert empty["stages"] == [] and unreadable["stages"] == []
 
 
 def test_the_exit_paths_helper_covers_every_semantic_exit(monkeypatch):

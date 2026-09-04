@@ -304,3 +304,70 @@ function seed_minted_fixture!(names::AbstractString...)
     end
     return nothing
 end
+
+# =============================================================================
+# 🔴 픽스처의 자기검사 (2026-09-03, Task 10 fix round 1 / F2)
+#
+# **왜 여기 있는가.** 옛 `test/minted_tool_enacts.jl` 명제 (12)(`REGISTRY_SURFACE_TODAY`)가
+# 이름→impl 짝과 params 키를 못 박았고, 그 자리의 주석이 막으려던 사건을 **글자 그대로**
+# 적어 두었다: "impl 을 다른 함수로 돌리거나 params 에 키를 더하면 스위트 전부 초록인 채로
+# 부를 수 있는 표면이 넓어진다". (12) 는 삭제된 레지스트리 JSON 을 재고 있어서 은퇴시켰는데,
+# **그 삭제와 같은 커밋이 이 공유 픽스처를 도입했다** — 그래서 오늘 이 표의 한 행이
+# `"resolve_schedule_wedge" => impl "recover_stalled_teams!"` 로 조용히 바뀌어도 **시험 파일
+# 셋이 동시에 초록**이다. 그 구멍을 여기서 닫는다.
+#
+# 🔴 재는 것은 JSON 이 아니라 **오늘 표에서 실제로 해석된 callable** 이다 — `resolve_primitive`
+#    를 거쳐 `nameof(p.impl)` 을 되읽으므로, 문자열이 CB 의 어느 함수로 풀리는지까지 잰다.
+# =============================================================================
+
+#: 이름 → (impl 함수 이름, params 키 집합). 옛 (12) 의 `REGISTRY_SURFACE_TODAY` 를 그대로 옮겼다.
+const FIXTURE_SURFACE = Dict{String,Tuple{String,Vector{String}}}(
+    "apply_uniform_translation"   => ("_apply_uniform_translation!", ["delta"]),
+    "compile_constraint"          => ("compile_constraint!", ["constraint_type"]),
+    "deprioritize_agent"          => ("deprioritize_agent!", ["agent", "factor"]),
+    "dispatch_battery_courier"    => ("dispatch_battery_courier!", ["target"]),
+    "forbid_heavy_cargo"          => ("forbid_heavy_cargo!", ["agent", "n"]),
+    "force_advance_stuck_carrier" => ("force_advance_stuck_carrier!", ["tol"]),
+    "hot_swap_robot"              => ("hot_swap_robot!", ["faulted", "mode"]),
+    "pop_spare"                   => ("pop_spare!", ["pool"]),
+    "recover_stalled_teams"       => ("recover_stalled_teams!", String[]),
+    "reform_stuck_teams"          => ("reform_stuck_teams!", ["min_ready", "snap_all"]),
+    "release_pending_assignments" => ("release_pending_assignments!", ["faulted", "agent"]),
+    "replace_robot"               => ("replace_robot!", ["faulted", "spare"]),
+    "reset_slot_to_invalid"       => ("reset_slot_to_invalid!", ["slot_v"]),
+    "resolve_schedule_wedge"      => ("resolve_schedule_wedge!", String[]),
+    "restage_all_blocked"         => ("restage_all_blocked!", ["zone_keys"]),
+    "restage_assembly"            => ("restage_assembly!", ["assembly_id", "zone_keys"]),
+    "rethread_robot_ids"          => ("rethread_robot_ids!", String[]),
+    "swap_battery"                => ("swap_battery!", ["agent"]),
+    "translate_whole_build"       => ("translate_whole_build!", ["zone_keys"]),
+)
+
+"""
+    check_minted_fixture()
+
+씨 뿌린 표가 `FIXTURE_SURFACE` 와 어긋나지 않는지 확인하고, 어긋나면 **던진다.**
+
+🔴 `@test` 가 아니라 `error(...)` 인 이유: 이 함수는 시험 파일의 `@testset` **밖**(모듈 최상위,
+씨뿌리기 직후)에서 불린다. 픽스처가 오염된 채로 아래 절 수백 개가 도는 것보다, 그 자리에서
+크게 죽는 편이 낫다 — 오염된 픽스처는 초록을 만들지 빨강을 만들지 예측할 수 없다.
+`test/minted_tool_enacts.jl` 이 이 성질을 `@testset` 안에서도 한 번 더 잰다(음성 대조 포함).
+"""
+function check_minted_fixture()
+    tbl = ConstructionBots.minted_table()
+    got  = sort(collect(keys(tbl)))
+    want = sort(collect(keys(FIXTURE_SURFACE)))
+    got == want || error("픽스처 표의 이름 집합이 FIXTURE_SURFACE 와 다르다: " *
+                         "빠짐=$(setdiff(want, got)) 남음=$(setdiff(got, want))")
+    for (n, (impl, prms)) in FIXTURE_SURFACE
+        p = ConstructionBots.resolve_primitive(n)
+        p === nothing && error("픽스처가 $(n) 을 심지 못했다")
+        # 🔴 문자열이 아니라 **CB 가 준 callable** 의 이름을 되읽는다.
+        String(nameof(p.impl)) == impl ||
+            error("이름→impl 짝이 어긋났다: $(n) → $(nameof(p.impl)) (기대 $(impl))")
+        # params 키 = LLM 이 이 원시에 넘길 수 있는 손잡이 전부.
+        sort(collect(keys(p.params))) == sort(prms) ||
+            error("params 키가 어긋났다: $(n) → $(sort(collect(keys(p.params)))) (기대 $(sort(prms)))")
+    end
+    return nothing
+end

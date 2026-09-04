@@ -411,12 +411,22 @@ class WriteToolImpl(dspy.Signature):
 #    referent is in its context (the observation is the bottleneck, the vocabulary is a separate
 #    input field). A pointer to something that is not there reads as a missing block, so each
 #    stage gets the wording that is true where it is rendered.
-# 🔴 These strings must name NO primitive and NO predicate.
-# ⚠️ 2026-09-03: **that rule is currently ungated.** The gate that enforced it,
-#    `test_synthesize_multi.py::test_design_context_names_no_primitive`, iterated
-#    `syn._prim` (the registry) and now dies with AttributeError before it asserts
-#    anything -- a red test is not a gate. Task 10 owns that file. Until then this is a
-#    rule kept by hand.
+# 🔴 These strings must name NO implementation function and NO predicate.
+# ✅ 2026-09-03 (Task 10): **the gate is back, with a different population.** It used to
+#    enumerate `syn._prim` (the 19-name registry), which D5 deleted -- the test then died
+#    with AttributeError before asserting anything, and a red test is not a gate. It now
+#    enumerates the **147 method names in `world_interface.json`**
+#    (`test_synthesize_multi.py::_impl_names`), which is the live vocabulary agent-3 is
+#    legitimately handed and agent-2 must not be. Measured at the time of the swap: zero
+#    false positives against these strings, and the detector is proved to fire by a
+#    planted-name control (`test_the_leak_population_is_not_empty_and_the_detector_fires`).
+# 🔴 Do not read this as "contract (B) is alive". Contract (B) -- hiding the alphabet from
+#    agent-2 -- is **abolished** (D5, controller ruling R13), and the recompose block below
+#    says so where it sends the feedback raw. What survives is narrower and is a property of
+#    *these strings*: a prompt builder must not teach agent-2 an implementation name. The
+#    design's actual protection for the withheld capabilities is that they are absent from
+#    `world_interface.json` altogether, pinned by
+#    `test_the_withheld_capabilities_are_absent_from_the_rendered_interface`.
 _NOVEL_OBSERVE = """\
 NOVEL PROPERTIES OF THE EVENT
 The monitor did not classify this event. Its novelty is exactly what the observation reports --

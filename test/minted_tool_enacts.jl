@@ -100,6 +100,7 @@ isdefined(CB, :BatteryTruth) ||
 #    직접 씨를 뿌린다 — 근거와 `register_minted_primitive!` 를 안 쓰는 이유는 그 파일에 있다.
 include(joinpath(@__DIR__, "minted_seed_fixture.jl"))
 seed_minted_fixture!()
+check_minted_fixture()   # 🔴 F2: 오염된 픽스처로 아래를 돌리지 않는다
 
 # 세계를 안 건드리는 최소 컨텍스트. env 를 요구하는 원시는 (11) 말고는 안 부른다.
 # 🔴 `impl_name` 을 함께 싣는다(2026-09-03, Task 9). 집행 게이트의 미끼가 `reach` 에서
@@ -257,27 +258,140 @@ end
 end
 
 # =============================================================================
-# 🔴 2026-09-03 (Task 10) — **명제 (9)(9b) 는 은퇴했다.**
+# (9) 🔴 집행 가능성은 `harness_args ⊆ {"env"}` 가 **아니다** — 연언지 셋이다.
 #
-# 둘은 "알파벳 19 중 집행 가능은 8" 과 "레지스트리의 `enactable` 도장이 Julia 의 계산과
-# 일치한다" 를 쟀다. 그 알파벳은 파일(`core/primitive_registry.json`)이었고 이 계획이 그것을
-# 지웠다(설계 §7, Task 2) — 표는 이제 런에서 생성되고 크기는 그 런이 주조한 만큼이다.
-# 도장 축도 함께 사라졌다: 그것을 나르던 JSON 이 없고, 파이썬 프롬프트가 렌더할 인벤토리도
-# 없다(D5). 즉 **재던 대상이 없어졌다** — 항진으로 고쳐 남기면 이 자리는 초록인 채 아무것도
-# 안 지킨다.
+# 그 술어 하나만 보면 빈 `harness_args` 가 공짜로 통과한다. 실제로 부를 수 없는 원시를
+# 부르면 호출 시점 `MethodError` 가 나고 집행부의 `try` 가 그것을 `:admit`/집행됨으로
+# 보고한다 = **거절보다 나쁜 거짓 admit**. 그래서 `_enactability` 는 부르기 **전에** 거절하고
+# 어느 연언지가 깨졌는지를 함께 낸다.
 #
-# 🔴 그러나 그 절들이 쓰던 `ENACTABLE_TODAY` 는 **남는다.** 그 상수는 알파벳에 대한 주장이
-# 아니라 **생산 표에 대한 주장**이고, 아래 (11) 이 그것으로
-# `keys(CB.SILENT_SUCCESS_STATUSES)` 를 대조한다 — 표를 안 채우고 원시를 더하면
-# `_step_applied` 의 보수적 기본값으로 조용히 새는 길이 그 단언 하나로 막힌다.
-# 집행 불가 갈래(`:arity`·`:harness`)는 위 (1) 이 `swap_battery` 로,
-# 아래 (14)(15) 가 `compile_constraint`/`invariant` 로 각각 계속 태운다.
+# 🔴 2026-09-03 (Task 10, fix round 1) — **이 절은 은퇴했다가 되살아났다.**
+#   1차에서 "알파벳이 없어졌으니 잴 대상도 없어졌다" 로 판정하고 지웠는데, 그것이 틀렸다:
+#   사라진 것은 **개수**(19 중 8)라는 알파벳에 대한 주장뿐이고, `_enactability` 의 판정과
+#   `reject:unenactable:` 생산 경로는 그대로다. 그리고 같은 커밋이 더한 씨뿌리기 픽스처가
+#   그 판정을 **완전히 측정 가능하게** 만든다 — 표를 `minted_table()` 로 바꾸는 두 줄이면
+#   전부 초록이었다. 지운 대가는 `:harness`/`:arity` 사유 코드와 `reject:unenactable:` 경로의
+#   커버리지 **0** 이었고, 그 회귀는 (1) 의 맨 `verdict === :reject` 로는 "unknown primitive"
+#   와 구별되지 않는다.
+#   ⚠️ 1차의 은퇴 주석은 "(14)(15) 가 `compile_constraint` 로 계속 태운다" 고 적었는데
+#   **거짓**이었다 — `compile_constraint` 는 그 주석 밖 이 파일 어디에도 없었다.
+#
+# 🔴 여기서 재는 것은 **오늘의 픽스처 표에 대한 사실**이지 삭제된 알파벳에 대한 사실이 아니다.
+#   개수(19/8)는 안 잰다. 재는 것은 (i) 씨 뿌린 표에서 집행 가능한 이름 집합이
+#   `ENACTABLE_TODAY` 와 같은가, (ii) 못 부르는 것이 **부르기 전에** 자기 연언지 이름과 함께
+#   거절되는가다. (ii) 가 이 절의 본체이고 알파벳과 무관하다.
+#
+# 🔴 (9b)(레지스트리의 `enactable` 도장이 Julia 의 계산과 일치한다)는 **은퇴한 채로 둔다** —
+#   그 도장을 나르던 JSON 이 없고, 파이썬 프롬프트가 렌더할 인벤토리도 없다(D5). 오늘 그
+#   자리를 대신 지키는 것은 규약 1(`f(env; kw…)`)이 생성 원시를 구성상 전부 enactable 로
+#   만든다는 사실이고, 그 한 줄을 재는 것은 `test/minted_registration.jl` testset **(6)** 이다
+#   (규약 위반이 등록 자체에서 거절된다 — 그래서 표에 못 들어온다).
 # =============================================================================
 const ENACTABLE_TODAY = sort(["forbid_heavy_cargo", "force_advance_stuck_carrier",
                               "recover_stalled_teams",
                               "reform_stuck_teams", "release_pending_assignments",
                               "resolve_schedule_wedge",
                               "restage_all_blocked", "translate_whole_build"])
+
+# 🔴 2026-09-03 (Task 10 fix round 1 / F2). 옛 명제 (12)(레지스트리의 이름→impl 짝과 params
+#    키)를 픽스처 자신으로 옮겼다 — 그 표가 세 시험 파일의 공유 진실원이 됐기 때문이다.
+#    `check_minted_fixture()` 는 파일 머리에서 이미 한 번 돌았고(오염된 채 아래를 돌지 않게),
+#    여기서는 그것이 **하중을 지는지**를 음성 대조로 잰다: 던지지 않는 검사기는 검사기가 아니다.
+@testset "(12) 픽스처의 이름→impl 짝과 params 키가 못박혀 있다" begin
+    @test check_minted_fixture() === nothing          # 오늘의 표는 통과한다
+
+    # 🔴 음성 대조 셋. 리뷰가 이름 지은 시나리오를 그대로 태운다:
+    #    "impl 을 다른 함수로 돌리거나 params 에 키를 더하면 스위트 전부 초록인 채로
+    #     부를 수 있는 표면이 넓어진다."
+    let saved = copy(CB.minted_table())
+        try
+            row = copy(CB.minted_table()["resolve_schedule_wedge"])
+            row["impl"] = "recover_stalled_teams!"        # 짝을 다른 함수로 돌린다
+            CB.minted_table()["resolve_schedule_wedge"] = row
+            @test_throws Exception check_minted_fixture()
+        finally
+            CB.minted_table()["resolve_schedule_wedge"] = saved["resolve_schedule_wedge"]
+        end
+        try
+            row = copy(CB.minted_table()["restage_all_blocked"])
+            row["params"] = merge(row["params"],
+                                  Dict{String,Any}("resume" => Dict{String,Any}("type" => "boolean")))
+            CB.minted_table()["restage_all_blocked"] = row
+            @test_throws Exception check_minted_fixture()   # params 에 키를 더한다
+        finally
+            CB.minted_table()["restage_all_blocked"] = saved["restage_all_blocked"]
+        end
+        try
+            delete!(CB.minted_table(), "pop_spare")          # 이름이 통째로 빠진다
+            @test_throws Exception check_minted_fixture()
+        finally
+            CB.minted_table()["pop_spare"] = saved["pop_spare"]
+        end
+        @test check_minted_fixture() === nothing          # 셋 다 되돌아왔다
+    end
+end
+
+@testset "(9) 집행 불가는 부르기 전에, 깨진 연언지와 함께 거절된다" begin
+    # (i) 씨 뿌린 표에서 실제로 부를 수 있는 이름 집합. 🔴 개수가 아니라 **이름**이다 —
+    #     표가 넓어져도 좁아져도 빨개진다.
+    got = sort([n for n in keys(CB.minted_table()) if CB.resolve_primitive(n).enactable])
+    @test got == ENACTABLE_TODAY
+    # 빈-통과 방지: 표가 비면 위 줄은 `[] == ENACTABLE_TODAY` 로 정직하게 빨개지지만,
+    #     `ENACTABLE_TODAY` 가 비는 편집에는 침묵한다. 그 길을 막는다.
+    @test !isempty(ENACTABLE_TODAY) && length(CB.minted_table()) > length(ENACTABLE_TODAY)
+
+    # (ii) 🔴 본체. 못 부르는 것은 **부르기 전에**, 어느 연언지가 깨졌는지와 함께 거절된다.
+    #  · compile_constraint — harness 에 `model`·`t0`·`tF`·`Xa`·`sched` 가 있다. 바인더가
+    #       만들 수 있는 것은 `BINDABLE_HARNESS_ARGS` = {env, invariant} 뿐이다  → :harness
+    #  · swap_battery       — harness 는 env 하나인데 위치인자가 둘이다        → :arity
+    for (nm, why) in (("compile_constraint", :harness), ("swap_battery", :arity))
+        p = CB.resolve_primitive(nm)
+        @test p !== nothing                    # 전제: 표에 있다(= "모르는 이름" 과 다른 사건이다)
+        @test p.enactable === false
+        @test p.unenactable_why === why
+        r = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm]))
+        @test r.verdict === :reject
+        # 🔴 사유가 **자기 이름과 연언지**를 싣는다. 이것이 (1) 의 맨 `:reject` 와 이 절을
+        #    가르는 전부다 — 그것 없이는 "집행 불가" 와 "모르는 이름" 이 한 관측이 된다.
+        @test occursin("reject:unenactable:$(nm):$(why)", r.reason)
+        @test !occursin("unknown primitive", r.reason)
+        @test isempty(r.steps)                 # 한 발도 안 나갔다
+    end
+
+    # 음성 대조: 같은 경로로 **부를 수 있는** 원시를 보내면 그 거절이 안 난다.
+    #    (없으면 위 루프는 "`enact_minted!` 가 늘 거절한다" 로도 통과한다.)
+    let ok = CB.enact_minted!((staging_circles = Dict{Symbol,Any}(),), nothing,
+                              _synth(names = ["translate_whole_build"]))
+        @test ok.verdict === :admit
+        @test !occursin("unenactable", ok.reason)
+    end
+
+    # 🔴 나머지 두 연언지(`:kwargs`·`:multimethod`)는 오늘 픽스처에 자연 표본이 없다 —
+    #    런-스코프 표에 행 둘을 직접 돌려 넣어 잰다(옛 판은 오염된 레지스트리 **파일 사본**을
+    #    썼고 그 경로는 삭제됐다).
+    let saved = copy(CB.minted_table())
+        try
+            CB.minted_table()["kw_bad"] = Dict{String,Any}(
+                "name" => "kw_bad", "impl" => "recover_stalled_teams!", "surface" => "physical",
+                "harness_args" => ["env"],
+                "params" => Dict{String,Any}("no_such_kwarg" => Dict{String,Any}("type" => "integer")),
+                "reversible" => false)
+            CB.minted_table()["mm_bad"] = Dict{String,Any}(
+                "name" => "mm_bad", "impl" => "compile_constraint!", "surface" => "milp",
+                "harness_args" => String[], "params" => Dict{String,Any}(), "reversible" => false)
+            @test CB.resolve_primitive("kw_bad").unenactable_why === :kwargs
+            # 🔴 메서드가 여럿이어도 **던지지 않는다** (`compile_constraint!` 는 6개).
+            @test CB.resolve_primitive("mm_bad").unenactable_why === :multimethod
+            @test occursin("reject:unenactable:kw_bad:kwargs",
+                           CB.enact_minted!(Ref(:e), nothing, _synth(names = ["kw_bad"])).reason)
+        finally
+            delete!(CB.minted_table(), "kw_bad")
+            delete!(CB.minted_table(), "mm_bad")
+        end
+        # 🔴 픽스처가 온전히 돌아왔다 — 표는 프로세스 전역이고 뒤 절·뒤 파일이 물려받는다.
+        @test sort(collect(keys(CB.minted_table()))) == sort(collect(keys(saved)))
+    end
+end
 
 # =============================================================================
 # (10) 🔴 `zone_keys` 를 truth 에서 유도하면 안 되는 이유는 실측 셋이다:
