@@ -1789,6 +1789,32 @@ def macro(req: MacroRequest):
             "synthesis": synthesis}
 
 
+class RewriteRequest(BaseModel):
+    tool_name: str = ""
+    spec: str = ""
+    impl_name: str = ""
+    impl_code: str = ""
+    impl_rejected_why: str = ""
+
+
+@app.post("/rewrite")
+def rewrite(req: RewriteRequest):
+    """D17. 등록/바인딩 거절 사유를 agent-3 에게 **한 번** 되먹인다.
+
+    🔴 재시도 상한은 호출자(Julia)가 지킨다 — 이 엔드포인트는 상태가 없다. `enact.jl` 의
+       `_rewrite_once` 는 두 번째 거절을 `_reject_malformed` 로 **즉시 반환**하므로 상한이
+       루프가 아니라 **구조**로 하나다. 여기에 카운터를 두면 진실원이 둘이 된다.
+
+    🔴 이 함수는 던지지 않는다 — `rewrite_impl` 이 자기 규약으로 그것을 보장하고
+       (그 docstring 이 근거의 진실원이다), 여기서 다시 감싸면 두 벌이 된다. 500 이
+       올라가면 줄리아는 원래 거절을 그대로 들고 돌아선다(그것도 정상 경로다).
+    """
+    import synthesize as SY
+    return SY.rewrite_impl(tool_name=req.tool_name, spec=req.spec,
+                           impl_name=req.impl_name, impl_code=req.impl_code,
+                           impl_rejected_why=req.impl_rejected_why)
+
+
 @app.post("/decide")
 def decide(req: MacroRequest):
     """한 번의 호출로 **모든 비-규칙 정책**의 결정을 돌려준다.

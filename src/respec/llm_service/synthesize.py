@@ -425,6 +425,111 @@ class WriteToolImpl(dspy.Signature):
         '"args": {<keyword>: <value>}}]')
 
 
+# ==========================================================================================
+# D17 -- 거절 사유 되먹임. agent-3 에게 **한 번** 더 묻는다.
+# ==========================================================================================
+# 🔴 이것은 엔드포인트가 아니라 **채널**이다. `impl_rejected_why` 는 여기가 생기기 전까지
+#    `tools/monitor/enact.jl` 안에만 있었고 파이썬으로 돌아오는 길이 없었다 — 즉 경계가
+#    "무엇이 왜 거절됐는가" 를 정확히 알면서 그것을 쓴 당사자에게 말할 방법이 없었다.
+#    `WriteToolImpl` 과 **별개의 시그니처**인 이유: 저쪽은 "빈 종이에서 써라" 이고 이쪽은
+#    "이 한 가지를 고쳐라" 다. 하나로 합치면 프롬프트가 두 과제를 동시에 시키게 되고,
+#    D6 이 재려는 것(첫 시도의 품질)과 이 채널이 재려는 것(되먹임이 무엇을 고치는가)이
+#    같은 숫자로 뭉개진다.
+class RewriteToolImpl(dspy.Signature):
+    """Your previous Julia implementation was REJECTED before it ran. You are given the
+    exact rejection reason. Fix that one problem and return the corrected implementation.
+    Change nothing else. The same hard requirements still apply."""
+    spec: str = dspy.InputField(desc="the tool specification you were given")
+    world_interface: str = dspy.InputField(desc=
+        "the world's types and fields, the functions the module already has, and the hard "
+        "requirements your function must satisfy to be callable")
+    # 🔴 **`impl_code` 라고 부를 수 없다.** dspy 시그니처는 pydantic 모델이라 한 이름이
+    #    입력이면서 동시에 출력일 수 없고, 둘 다 선언하면 **에러 없이 뒤엣것만 남는다.**
+    #    브리프의 코드 블록이 정확히 그랬고, 실측하면 대가가 둘이었다(2026-09-04):
+    #      (1) 입력 `impl_code` 가 통째로 사라져 시그니처가
+    #          `(spec, world_interface, impl_rejected_why -> ...)` 로 해소됐다 —
+    #          **agent-3 이 고쳐야 할 코드를 못 본다.** 이 채널의 존재 이유가 없어진다.
+    #      (2) 출력 순서가 `impl_code, wrote, impl_name, …` 로 뒤집혔다. 입력 선언이 그
+    #          슬롯을 먼저 잡기 때문이다 — `WriteToolImpl` 이 굵은 빨강으로 "맨 앞으로
+    #          되돌리지 말 것" 이라고 적은 바로 그 순서다(잘림이 스칼라 넷을 먹는다).
+    #    출력 이름 `impl_code` 는 전선 계약이라(줄리아가 `f.impl_code` 로 읽는다) 못 바꾼다.
+    #    그러므로 **입력**을 개명한다.
+    rejected_impl_code: str = dspy.InputField(desc="the implementation that was rejected")
+    impl_rejected_why: str = dspy.InputField(desc=
+        "the exact reason it was rejected -- fix this and only this")
+
+    # 🔴 출력 순서는 `WriteToolImpl` 과 **같은 계약**이다(그 자리의 긴 근거를 여기 안 베낀다):
+    #    값싼 스칼라가 먼저, `impl_code` 가 `params`·`calls` 앞. 잘림이 스칼라 넷을 먹지 않게.
+    wrote: bool = dspy.OutputField(desc="false if you cannot fix it")
+    impl_name: str = dspy.OutputField(desc="the Julia function name; must end with `!`")
+    surface: str = dspy.OutputField(desc="which world surface this edits")
+    reversible: bool = dspy.OutputField(desc="can this be undone")
+    impl_code: str = dspy.OutputField(desc=
+        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
+    params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
+    calls: List[Dict[str, Any]] = dspy.OutputField(desc=
+        'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
+        '"args": {<keyword>: <value>}}]')
+
+
+def rewrite_impl(*, tool_name, spec, impl_name, impl_code, impl_rejected_why,
+                 blob=None, program=None):
+    """agent-3 을 **한 번** 더 돌려 거절을 고치게 한다.
+
+    🔴 **절대 안 던진다.** 이 경로에서 새는 예외는 Julia 쪽 집행부가 기록 대신 예외로
+       끝나게 하고, 호출자는 세계 상태를 알 방법을 잃는다.
+    🔴 삼상: `wrote` 는 `None`("못 쟀다") · `False`("못 고치겠다") · `True`.
+
+    🔴 **재시도 상한은 여기가 아니라 호출자(Julia)가 지킨다** — 이 함수는 상태가 없고,
+       한 번 부르면 한 번 묻는다. 상한이 하나인 것은 `enact.jl` 의 구조(두 번째 거절은
+       `_reject_malformed` 로 **즉시 반환**)가 보장한다.
+
+    ⚠️ `tool_name` 은 받아만 두고 프롬프트에 안 싣는다. 이름은 `impl_code` 의 시그니처와
+       `spec` 안에 이미 두 번 들어 있고, 세 번째 사본을 만들면 셋이 갈릴 자리가 생긴다.
+       그래도 인자로 받는 이유는 전선 계약(`RewriteRequest`)이 그것을 나르기 때문이다.
+    """
+    out = {"wrote": None, "impl_name": None, "impl_code": None, "params": None,
+           "calls": None, "surface": None, "reversible": None, "error": None,
+           "rewrite_of_why": impl_rejected_why}
+    try:
+        # 🔴 브리프는 `prog = program or dspy.ChainOfThought(...)` 를 `try` **밖**에 뒀다.
+        #    그 한 줄이 이 함수에서 유일하게 보호되지 않는 실제 호출이었다(시그니처 해석·
+        #    어댑터 구성이 거기서 돈다). "절대 안 던진다" 가 구조로 참이어야 하므로 안으로
+        #    옮긴다 — 측정되는 경로는 하나도 안 바뀐다(가짜 program 은 이 줄을 건너뛴다).
+        prog = program or dspy.ChainOfThought(RewriteToolImpl)
+        p = prog(spec=spec, world_interface=compose_interface(blob),
+                 rejected_impl_code=impl_code, impl_rejected_why=impl_rejected_why)
+    except Exception as e:                      # noqa: BLE001 -- 위 규약
+        out["error"] = "rewrite: %s: %s" % (type(e).__name__, e)
+        return out
+    try:
+        w = getattr(p, "wrote", None)
+        out["wrote"] = w if isinstance(w, bool) else None
+        out["impl_name"] = getattr(p, "impl_name", None) or None
+        out["impl_code"] = strip_code_fence(getattr(p, "impl_code", None) or "") or None
+        # 🔴 2026-09-04 실측 정정. 브리프는 `getattr(p, "params", None) or None` 로 **날것**
+        #    을 실었다. 그런데 `RewriteToolImpl.params` 는 `str` 이고, 이 값은 경계를 건너
+        #    `register_minted_primitive!(params = ...)` 로 **그대로** 들어간다 — 그 가드는
+        #    `AbstractDict` 를 요구한다(`enact.jl` 의 `reject:params_not_an_object:`).
+        #    즉 되먹임이 성공해도 고친 body 가 **우리 쪽 직렬화 때문에** 거절되고,
+        #    기록에는 "agent-3 이 또 실패했다" 로 남는다 — 이 채널이 재려는 바로 그 수치를
+        #    오염시킨다. 본 경로(`_finish_record`)는 `params_object` 로 파싱해서 건넨다.
+        #    **같은 정규화기를 쓴다** — 두 벌을 만들지 않는다(판정 R17: 정규화는 파이썬이).
+        out["params"] = params_object(getattr(p, "params", None))
+        out["calls"] = normalize_calls(getattr(p, "calls", None))
+        out["surface"] = getattr(p, "surface", None) or None
+        rv = getattr(p, "reversible", None)
+        out["reversible"] = rv if isinstance(rv, bool) else None
+    except Exception as e:                      # noqa: BLE001
+        # 🔴 **접두어가 다르다.** 응답을 못 받은 것(`rewrite:`)과 받아 놓고 못 읽은 것
+        #    (`rewrite_read:`)은 처방이 다른 사건이다 — 하나로 뭉개면 프로바이더를
+        #    탓하면서 우리 파서를 고치지 않게 된다. 여기까지 왔으면 `wrote` 는 이미
+        #    갱신됐을 수도 있으므로 삼상을 "못 쟀다" 로 되돌린다.
+        out["wrote"] = None
+        out["error"] = "rewrite_read: %s: %s" % (type(e).__name__, e)
+    return out
+
+
 # ---- The task-side blocks, per stage ------------------------------------------------------
 # 🔴 2026-09-02. `NOVEL PROPERTIES` and `WHAT MUST CHANGE` were missing from BOTH multi-agent
 #    context builders: agent-2 was specifying a tool without ever being told what counts as

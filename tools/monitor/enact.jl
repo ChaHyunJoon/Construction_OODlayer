@@ -849,6 +849,87 @@ function _world_delta(a, b)
 end
 
 """
+    _sl_is_rewritable(sl) -> Bool
+
+`sl` 에 **String 키를 새로 써 넣어도 안전한가**. 되먹임이 성공했을 때 이 dict 을 갱신해야
+하는데(아래 `_rewrite_once` 호출부의 근거), 그 대입이 던지는 모양이 실재한다.
+
+🔴 브리프는 `sl isa AbstractDict && !(sl isa JSON3.Object)` 를 요구했다. 실측하면 그 술어는
+**필요조건이지 충분조건이 아니다**(2026-09-04, `julia +lts` 직접 확인):
+  · `JSON3.Object <: AbstractDict` 이고 그 `keytype` 은 `Symbol` 이다 — 그래서 브리프의
+    두 번째 절이 필요했다.
+  · 그런데 `keytype` 이 `Symbol` 인 **보통** `Dict{Symbol,Any}` 도 같은 이유로 던지는데
+    (`convert(Symbol, "impl_name")` 이 없다) 브리프의 술어는 그것을 통과시킨다.
+    `_synth_lane_field` 의 docstring 이 적듯 이 dict 은 **Symbol 키로도 도착한다**.
+그러므로 판정은 타입 이름이 아니라 **키·값 타입**으로 한다 — 이쪽이 브리프의 술어를
+포함하면서(`JSON3.Object` 는 `keytype === Symbol` 이라 여기서 이미 걸린다) 실제로 위험한
+모양을 하나 더 막는다. 생산 모양은 `policy.jl::_synth_view` 의 `Dict{String,Any}` 다.
+
+🔴 **던지지 않는다.** `keytype` 은 dict 이 아닌 것에 대해 던질 수 있고, 이 술어가 던지면
+집행부가 기록 대신 예외로 끝난다 — 이 파일 전체가 지키는 규약이다.
+"""
+_sl_is_rewritable(sl) =
+    try sl isa AbstractDict && keytype(sl) === String && valtype(sl) === Any
+    catch; false end
+
+"""
+    _rewrite_once(sl, nm, cd, why) -> Union{Nothing,NamedTuple}
+
+거절 사유를 agent-3 에게 **한 번** 되먹여 고친 body 를 받는다. 못 받으면 `nothing`.
+
+🔴 **절대 안 던진다.** 여기서 새면 집행부가 기록 대신 예외로 끝나고 호출자는 세계 상태를
+   잃는다 — 이 파일 전체가 지키는 규약이다. 서비스가 안 떠 있는 것도 정상 경로다.
+🔴 세계를 안 건드린다. 이 시점에 등록은 실패했고 `Core.eval` 은 안 돌았다.
+
+⚠️ `DSPY_URL`·`HTTP`·`JSON3` 의 진실원은 `tools/monitor/policy.jl` 이다(여기서 두 번째
+   벌을 만들지 않는다). 그 파일을 include 하지 않은 채 이 파일만 태우는 자리가 실재하고
+   (`tools/monitor/test_minted_wiring.jl`), 거기서는 이 이름들이 `UndefVarError` 를 낸다 —
+   그것도 `catch` 로 떨어져 **원래 거절이 그대로 남는다**. 되먹임은 있으면 좋은 것이지
+   반드시 도는 것이 아니므로 그 자리에 로드 순서를 강제하지 않는다.
+"""
+function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::AbstractString)
+    # 🔴 왕복 **전에** 판정한다. 고친 body 를 받아 놓고 `sl` 을 못 갱신하면, 새 body 를
+    #    등록해 놓고 **낡은 인자**로 부르게 된다(아래 호출부의 근거) — 그 판이 제일 나쁘다.
+    if !_sl_is_rewritable(sl)
+        println("[minted] rewrite: 건너뜀 — synth_lane 이 갱신 가능한 모양이 아니다 ",
+                "(", typeof(sl), "). 원래 거절이 그대로 남는다.")
+        return nothing
+    end
+    try
+        # 🔴 2026-09-04 실측 — **`spec` 은 오늘 언제나 빈 문자열이다.** `mechanism` 은
+        #    파이썬 기록에는 있는데(`synthesize.py` 의 `_SPEC_FIELDS`) 경계를 못 건넌다:
+        #    `policy.jl` 의 `SYNTH_LANE_KEYS` 열넷에 그 키가 없어서 `_synth_view` 가 아예
+        #    안 싣는다. 그래서 agent-3 은 **명세 없이** "이걸 고쳐라" 를 받는다.
+        #    고치려면 `SYNTH_LANE_KEYS` 에 `"mechanism"` 을 더하고 그 짝인 교차언어 게이트
+        #    (`test/synth_lane_keys_survive.jl` 의 키 집합 단언)도 함께 고쳐야 한다 —
+        #    둘 다 이 태스크(D17)의 파일이 아니라 그대로 뒀다. 여기서는 **조용히 빈 값을
+        #    보내지 않는다**: 부재를 로그로 시끄럽게 만든다(이 레포가 반복해 밟은,
+        #    "빈 값이 정상처럼 보이는" 실패 모드).
+        local spec = something(_synth_lane_field(sl, "mechanism"), "")
+        isempty(spec) && println("[minted] rewrite: ⚠️ spec 이 비었다 — agent-3 이 명세 ",
+                                 "없이 고쳐야 한다 (SYNTH_LANE_KEYS 에 \"mechanism\" 이 없다)")
+        body = JSON3.write(Dict(
+            "tool_name" => something(_synth_lane_field(sl, "tool_name"), ""),
+            "spec"      => spec,
+            "impl_name" => nm, "impl_code" => cd, "impl_rejected_why" => why))
+        resp = HTTP.post(DSPY_URL * "/rewrite",
+                         ["Content-Type" => "application/json"], body;
+                         readtimeout = 120, retries = 0)
+        f = JSON3.read(String(resp.body))
+        (get(f, :wrote, nothing) === true) || return nothing
+        (get(f, :impl_code, nothing) isa AbstractString) || return nothing
+        (get(f, :impl_name, nothing) isa AbstractString) || return nothing
+        return (impl_name = String(f.impl_name), impl_code = String(f.impl_code),
+                params = get(f, :params, nothing), calls = get(f, :calls, nothing),
+                surface = get(f, :surface, nothing), reversible = get(f, :reversible, nothing))
+    catch e
+        println("[minted] rewrite: 왕복 실패 (원래 거절이 그대로 남는다): ",
+                first(split(sprint(showerror, e), "\n")))
+        return nothing
+    end
+end
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
@@ -1133,7 +1214,36 @@ function enact_minted_decision!(env, truth, decision)
             #    손으로 다시 적은 복사본이 "NOT handled" 줄 하나를 빠뜨려 이 자리(가장
             #    자주 밟힐 등록-거절 경로)만 비대칭 로그를 냈던 것이 실제 결함이었다.
             #    하나의 함수로 합치면 그 종류의 갈림이 구조적으로 불가능해진다.
-            why !== nothing && return _reject_malformed(why)
+            # 🔴 D17. 거절 사유를 agent-3 에게 **한 번** 되먹인다. 재시도가 한 번인 것은
+            #    루프가 아니라 **구조**다 — 두 번째 거절은 곧장 `_reject_malformed` 로 간다.
+            #    (`@goto` 는 여기서 못 쓴다: Julia 의 `@goto` 는 `try` 블록 안팎으로 못 뛴다.)
+            if why !== nothing
+                local fx = _rewrite_once(sl, String(nm), String(cd), why)
+                fx === nothing && return _reject_malformed(why)
+                println("[minted] rewrite: 되먹임 1회 — 원래 사유=", why)
+                # 🔴 `sl` 을 갱신한다: 아래 집행부가 `calls`/`params` 를 여기서 읽는다.
+                #    안 갱신하면 새 body 를 등록해 놓고 **낡은 인자**로 부른다.
+                #    이 대입이 안전한 것은 `_rewrite_once` 가 왕복 **전에**
+                #    `_sl_is_rewritable` 로 판정했기 때문이다(그 술어가 근거를 소유한다) —
+                #    `nothing` 이 아닌 값을 돌려줬다는 것 자체가 그 판정을 통과했다는 뜻이다.
+                sl["impl_name"] = fx.impl_name
+                sl["impl_code"] = fx.impl_code
+                fx.params  !== nothing && (sl["params"]  = fx.params)
+                fx.calls   !== nothing && (sl["calls"]   = fx.calls)
+                fx.surface !== nothing && (sl["surface"] = fx.surface)
+                # 🔴 `params` 는 **갱신된 `sl` 에서 다시 읽는다**(`fx.params` 를 직접 쓰지
+                #    않는다). 등록에 먹이는 값과 아래 집행부가 읽는 값이 같은 자리에서
+                #    나와야 둘이 갈릴 수 없다 — 진실원 하나.
+                local why2 = CB.register_minted_primitive!(
+                    name = fx.impl_name, code = fx.impl_code,
+                    params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
+                    surface = String(something(fx.surface, "unknown")),
+                    reversible = fx.reversible === true)
+                # 🔴 두 번째 거절은 **그 사유**를 나른다 — 첫 사유로 덮으면 되먹임이
+                #    무엇을 못 고쳤는지가 기록에서 사라진다. 이 채널을 측정 가능하게
+                #    만드는 것이 정확히 그 차이다.
+                why2 !== nothing && return _reject_malformed(why2)
+            end
             registered = true
         else
             registered = false   # 코드가 없다 — 등록을 시도하지 않았다(확정, 못 잰 게 아니다)
