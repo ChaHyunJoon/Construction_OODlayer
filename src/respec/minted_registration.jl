@@ -327,9 +327,14 @@ end
    (`release_pending_assignments!`)을 처음부터 못 쓸 수 있다" 를 첫 번째 실현 가능성
    위험으로 적었다 — 그 이름을 **모델이 스스로 골랐다**는 것은 그 위험이 실현되지 않았다는
    증거이고, 사유가 하나뿐이던 어제까지는 그 증거가 "너는 기존 이름을 덮으려 했다" 라는
-   되먹임 문장 안에서 통째로 파괴됐다. 실측 대상 다섯(`isdefined` 참 · export 거짓):
-   `release_pending_assignments!` · `recover_stalled_teams!` · `resolve_schedule_wedge!` ·
-   `force_advance_stuck_carrier!` · `forbid_heavy_cargo!`.
+   되먹임 문장 안에서 통째로 파괴됐다. 실측 대상 **넷**(`isdefined` 참 · export 거짓):
+   `recover_stalled_teams!` · `resolve_schedule_wedge!` · `force_advance_stuck_carrier!` ·
+   `forbid_heavy_cargo!`.
+   🔴 **S4 (2026-09-04): `release_pending_assignments!` 는 이 목록에서 빠졌다.** 그 첫 측정은
+   끝났고 답은 "모델이 그 능력을 다시 유도하지 못한다" 였다 — 세계 delta 5축이 전부 0 이고
+   모델이 재배정 로직을 **주석으로** 썼다. 그래서 그 동사를 광고 목록에 넣었다(`export`).
+   이제 그 이름을 고르면 `…_exists_shown` 이다(갈래는 `names(@__MODULE__)` 를 런타임에
+   읽으므로 자동으로 따라온다 — `test/minted_registration.jl` 의 testset (12) 가 잰다).
 
    ⚠️ 넷째 줄이 없으면 둘째 줄이 오염된다: `Core.eval` 한 이름은 export 되지 않으므로,
    앞 런이 주조한 이름을 다시 주조하려는 시도가 **D6 신호로 오분류**된다(머리말 I1).

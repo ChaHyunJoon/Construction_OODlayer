@@ -26,12 +26,30 @@ def test_a_callable_method_carries_its_argument_paths():
 
 
 def test_the_withheld_capabilities_are_in_neither_heading():
-    """🔴 D6. 가르는 것은 렌더이지 모집단이 아니다."""
+    """🔴 D6. 가르는 것은 렌더이지 모집단이 아니다.
+
+    🔴 S4 (2026-09-04): 감춘 것은 다섯이 아니라 **넷**이다 —
+    `release_pending_assignments!` 는 광고로 넘어갔다.
+    """
     b = _block()
-    for hidden in ("release_pending_assignments!", "recover_stalled_teams!",
-                   "resolve_schedule_wedge!", "force_advance_stuck_carrier!",
-                   "forbid_heavy_cargo!"):
+    for hidden in ("recover_stalled_teams!", "resolve_schedule_wedge!",
+                   "force_advance_stuck_carrier!", "forbid_heavy_cargo!"):
         assert hidden not in b, "%s 가 샜다" % hidden
+
+
+def test_the_reassignment_verb_is_under_the_callable_heading():
+    """🔴 S4. 이 태스크의 성패가 정확히 이 단언이다.
+
+    `export` 한 줄만으로는 둘째 표제 아래 실렸다(실측: `InvariantSpec` 이 타입 폐포 밖이라
+    `callable=false`) — 모델이 "지금은 못 부른다" 로 읽으면 광고가 무동작이다.
+    """
+    b = _block()
+    head, _, tail = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    line = [l for l in head.splitlines() if l.startswith("- release_pending_assignments!")]
+    assert len(line) == 1, line
+    # 정직함: 부를 수는 있지만 `invariant` 를 env 에서 길어 올릴 경로는 없다고 적는다.
+    assert "missing: InvariantSpec" in line[0]
+    assert "release_pending_assignments!" not in tail
 
 
 def test_the_rules_text_is_byte_identical():

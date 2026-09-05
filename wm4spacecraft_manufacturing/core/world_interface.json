@@ -1437,6 +1437,16 @@
             "callable": true
         },
         {
+            "name": "release_pending_assignments!",
+            "missing": [
+                "InvariantSpec"
+            ],
+            "signature": "(env, invariant::ConstructionBots.InvariantSpec; faulted, agent)",
+            "argpaths": [
+            ],
+            "callable": true
+        },
+        {
             "name": "remove_geometry!",
             "missing": [
                 "GeometryHierarchy"
@@ -2472,6 +2482,23 @@
         {
             "name": "HypersphereKey",
             "fields": [
+            ]
+        },
+        {
+            "name": "InvariantSpec",
+            "fields": [
+                {
+                    "name": "closed_nodes",
+                    "type": "Set{ConstructionBots.AbstractID}"
+                },
+                {
+                    "name": "frozen_t0",
+                    "type": "Dict{ConstructionBots.AbstractID, Float64}"
+                },
+                {
+                    "name": "frozen_tF",
+                    "type": "Dict{ConstructionBots.AbstractID, Float64}"
+                }
             ]
         },
         {

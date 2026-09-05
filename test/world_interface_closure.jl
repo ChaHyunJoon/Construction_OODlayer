@@ -37,7 +37,7 @@ end
     for gone in ("Dict", "Set", "SimpleDiGraph", "PriorityQueue", "Ball2")
         @test !(gone in ns)
     end
-    @test 40 <= length(ns) <= 120   # 상한: 폭발 트립와이어. 실측 67(Task 1 이전 66 + VelocityController).
+    @test 40 <= length(ns) <= 120   # 상한: 폭발 트립와이어. 실측 68(66 → Task 1 의 VelocityController → S4 의 InvariantSpec).
 end
 
 @testset "(4) 폐포는 이름으로 정렬돼 결정적이다" begin
@@ -89,7 +89,7 @@ end
         m = only(filter(x -> String(x.name) == nm && String(x.signature) == sig, ms))
         @test m.callable === true
     end
-    @test count(m -> m.callable === true, ms) == 186   # 실측. Vararg 고침 전에는 181
+    @test count(m -> m.callable === true, ms) == 187   # 실측. Vararg 고침 전 181, S4 의 `InvariantSpec` 씨앗 전 186
 end
 @testset "(7) 🔴 R11·R33 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
     j = JSON3.read(read(ART, String))
@@ -117,7 +117,7 @@ end
                           occursin("DepositCargo", String(m.signature)), ms))
     @test ap.callable === true
     @test Set(String.(collect(ap.missing))) == Set(["DepositCargo", "Twist"])
-    @test count(m -> m.callable === true && !isempty(m.missing), ms) == 32   # 실측
+    @test count(m -> m.callable === true && !isempty(m.missing), ms) == 33   # 실측 (S4 전에는 32)
     # 빈-통과 방지: 경로가 다 있는 항목은 missing 이 비어야 한다
     cn = only(filter(m -> String(m.name) == "close_node!" &&
                           occursin("ScheduleNode", String(m.signature)), ms))
@@ -208,5 +208,33 @@ end
     #    (옛 단언 `!any(occursin("vtx_map", …))` 은 등급을 어떻게 뒤집어도 참이라 사실상
     #     항진이었다 — 리뷰 m-3.)
     @test count(p -> occursin("vtx_map", String(p)), sb.argpaths) == 2
+end
+
+# 🔴 S4 (2026-09-04). `export` 한 줄만으로는 재배정 동사가 **호출 불가**로 렌더된다 — 씨앗
+#    프록시가 시그니처의 `PlannerEnv` **주석**을 보는데 respec 층은 `env` 를 무타입으로
+#    받기 때문이다(실측: export 만 한 산출물에서 `callable == false`, 렌더 제목은
+#    `FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET`). `_CURATED_SEEDS` 가 그것을
+#    고치고, 이 testset 이 그 고침과 **넓히지 않았다**는 사실을 함께 잰다.
+@testset "(9) 🔴 S4: 재배정 동사가 실제로 호출 가능하게 렌더된다" begin
+    j = JSON3.read(read(ART, String))
+    ns = Set(String[String(t.name) for t in j.types])
+    ms = collect(j.methods)
+    @test "InvariantSpec" in ns
+    rel = only(filter(m -> String(m.name) == "release_pending_assignments!", ms))
+    # 🔴 이것이 이 태스크의 성패다. `false` 면 모델이 "지금은 못 부른다" 로 읽고 광고가 무동작이다.
+    @test rel.callable === true
+    # 설계상 `argpaths` 는 비어 있다 — `InvariantSpec` 은 `env` 의 필드가 아니라
+    # `build_invariant(env)` 가 만든다. 그 이음매를 모델이 스스로 잇는지가 실험이다.
+    @test isempty(rel.argpaths)
+    @test Set(String.(collect(rel.missing))) == Set(["InvariantSpec"])
+    # `build_invariant` 가 같은 산출물에 호출 가능하게 실려 있어야 그 이음매가 성립한다.
+    bi = only(filter(m -> String(m.name) == "build_invariant", ms))
+    @test bi.callable === true
+    # 🔴 음성 대조 — 프록시를 넓히지 **않았다**. 넓혔다면 respec DSL 문법 열다섯이 들어와
+    #    모델이 보는 표면이 통째로 달라진다(실측: 67 → 82).
+    for gone in ("RespecProposal", "ConstraintSpec", "LinearConstraint", "Disjunction",
+                 "VarRef", "ForbidZone", "ForbidAgent", "SwapBattery")
+        @test !(gone in ns)
+    end
 end
 end # module

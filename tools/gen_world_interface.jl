@@ -127,9 +127,38 @@ CB 소유 타입만 따라가는 고정점. 이름으로 정렬해 반환한다.
 
 🔴 **CB-only 필터는 절대 풀지 않는다.** 실측: 풀면 깊이 2 에서 1,302타입,
 깊이 3 에서 25,160타입이다.
+
+🔴 **`_CURATED_SEEDS` 가 왜 있나** (S4, 2026-09-04, 실측). 위 프록시("메서드가 `PlannerEnv`
+를 인자로 받는다")는 **충분조건이지 필요조건이 아니다** — 그것이 보는 것은 시그니처의
+**주석**이고, respec 층의 세계 동사들은 `env` 를 무타입(`Any`)으로 받는다. 그래서
+`release_pending_assignments!(env, invariant::InvariantSpec; …)` 를 export 해도 씨앗
+루프가 그 메서드를 아예 **안 본다**: `InvariantSpec` 이 폐포에 안 들어오고 `callable`
+이 `false` 가 되어, 방금 광고한 동사가 `FUNCTIONS THAT NEED SOMETHING YOU CANNOT
+OBTAIN YET` 아래 렌더된다 = 광고가 무동작이 된다(실측: export 만 한 산출물에서
+`release_pending_assignments!` 의 `callable == false`).
+
+🔴 **프록시를 넓히는 것은 이 자리에서 할 결정이 아니다** [실측 2026-09-04]. "첫 위치인자의
+**이름**이 `env` 인 메서드도 씨앗" 으로 넓히면 폐포가 **67 → 82** 가 되고, 새로 들어오는
+열다섯이 respec DSL 문법 전체다(`RespecProposal` · `ConstraintSpec` · `LinearConstraint` ·
+`Disjunction` · `VarRef` · `ForbidZone` · `ForbidAgent` · `ForbidWindow` ·
+`ForbidHeavyCargo` · `ReplaceAgent` · `ReformTeam` · `RelocateBuild` · `TranslateBuild` ·
+`SwapBattery` · `InvariantSpec`). 그러면 `verify` · `commit_respec!` 이 통째로 열려
+**모델이 보는 표면이 이 태스크가 재려는 것과 다른 것**이 된다 — 설계 D6 의 측정을 오염시키는
+변경이고, 하려면 별도 결정이다.
+
+⟹ 그래서 **광고된 메서드가 요구하는 타입만** 손으로 씨앗에 넣는다. `AMBIENT_ROOTS` 와
+같은 패턴이다(손으로 유지되는 목록 + 게이트). 이 목록을 지키는 것은
+`test/world_interface_closure.jl` 의 testset
+`"(9) 🔴 S4: 재배정 동사가 실제로 호출 가능하게 렌더된다"` 이고, 그 testset 이 동시에
+**넓히기가 일어나지 않았다**(respec 문법이 여전히 폐포 밖이다)를 잰다.
+⚠️ 여기 이름을 더하는 것은 모델이 보는 표면을 넓히는 것이다 — 광고(`export`) 없이 더하면
+아무 효과도 없고, 광고와 함께 더하면 그 게이트를 다시 판정해야 한다.
 """
+const _CURATED_SEEDS = Any[CB.InvariantSpec]
+
 function world_type_closure()
     seeds = Any[CB.PlannerEnv]
+    append!(seeds, _CURATED_SEEDS)
     for n in sort(names(CB))
         isdefined(CB, n) || continue
         f = getfield(CB, n)

@@ -304,15 +304,19 @@ end
 #          이라고 적은 바로 그 신호다. 사유가 하나뿐이면 그 측정이 파괴된다.
 @testset "(12) 🔴 C3: 이름 충돌 두 사건이 서로 다른 사유를 낸다 (D6 신호)" begin
     # 전제부터 못 박는다 — 정말로 하나는 export 됐고 하나는 아니다.
-    @test isdefined(CB, :release_pending_assignments!)
-    @test !(:release_pending_assignments! in names(CB))     # 모델은 이 이름을 본 적이 없다
+    # 🔴 S4 (2026-09-04): 이 자리의 withheld 예시는 `release_pending_assignments!` 였다.
+    #    그 이름이 **광고로 넘어갔으므로**(export) 이제 `shown` 쪽이다. 갈래를 정하는 것은
+    #    하드코딩 목록이 아니라 `names(@__MODULE__)` 를 런타임에 읽는 판정이므로 재분류는
+    #    자동으로 따라온다 — 아래 마지막 단언이 바로 그 사실을 잰다.
+    @test isdefined(CB, :recover_stalled_teams!)
+    @test !(:recover_stalled_teams! in names(CB))           # 모델은 이 이름을 본 적이 없다
     @test :reform_stuck_teams! in names(CB)                 # 모델은 이 이름을 봤다
 
     shown = CB.check_impl_conventions(
         "reform_stuck_teams!", "function reform_stuck_teams!(env; k = 1)\n    return :ok\nend\n")
     withheld = CB.check_impl_conventions(
-        "release_pending_assignments!",
-        "function release_pending_assignments!(env; k = 1)\n    return :ok\nend\n")
+        "recover_stalled_teams!",
+        "function recover_stalled_teams!(env; k = 1)\n    return :ok\nend\n")
     @test shown !== nothing && withheld !== nothing
     # 🔴 오늘의 red 는 "문자열이 같다" 가 **아니다** — 이름이 박혀 있어 문자열은 이미 달랐다.
     #    같았던 것은 **사유 코드**다(둘 다 `reject:impl_name_exists:`). agent-3 에게 되먹임되는
@@ -324,6 +328,14 @@ end
     # 낡은 소비자 호환: 둘 다 여전히 "name_exists" 를 포함한다.
     @test occursin("name_exists", something(shown, ""))
     @test occursin("name_exists", something(withheld, ""))
+    # 🔴 S4 의 재판정 [실측]. 규약 5 의 갈래는 산출물이 아니라 `names(CB)` 를 읽으므로
+    #    광고된 이름은 자동으로 `…_shown` 이 된다. 하드코딩 목록이었다면 여기가 빨갛다.
+    @test :release_pending_assignments! in names(CB)
+    rel = something(CB.check_impl_conventions(
+        "release_pending_assignments!",
+        "function release_pending_assignments!(env; k = 1)\n    return :ok\nend\n"), "")
+    @test startswith(rel, "reject:impl_name_exists_shown:")
+    @test !occursin("withheld", rel)
 end
 
 # 🔴 I1 (2026-09-03 최종 리뷰). "런 스코프" 는 **표**에 대해서만 참이다. `Core.eval` 은
@@ -382,8 +394,10 @@ end
     end
 
     # CB 자신의 비공개 결속은 **여전히** D6 신호다 — 좁히기가 신호를 죽이지 않았다.
+    # (S4: 예시를 `release_pending_assignments!` → `recover_stalled_teams!` 로 옮겼다.
+    #  앞의 것은 이제 export 돼 있어 `shown` 이다.)
     withheld = something(CB.check_impl_conventions(
-        "release_pending_assignments!", _code("release_pending_assignments!")), "")
+        "recover_stalled_teams!", _code("recover_stalled_teams!")), "")
     @test startswith(withheld, "reject:impl_name_exists_withheld:")
 
     # 셋이 서로 다른 사유 **코드**다(agent-3 에게 되먹임되는 것이 그것이다).
@@ -1128,7 +1142,7 @@ _l3_probe_body(n) =
 
     # ③ 광고된 **타입** 이름도 인터페이스다(모델은 그것을 WORLD TYPES 표제에서 봤다).
     local advtype = sort(String[String(n) for n in names(CB) if String(n) in adv])
-    @test length(advtype) == 166                  # 실측 2026-09-04: 148 + 광고된 타입 18
+    @test length(advtype) == 167                  # 실측 2026-09-04: S4 가 `release_pending_assignments!` 를 광고해 166 → 167
 end
 
 @testset "(35) 🔴 F-2: 못 읽은 산출물은 `nothing` 이지 `[]` 가 아니다" begin

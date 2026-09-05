@@ -25,9 +25,33 @@ def test_the_block_carries_method_signatures():
 
 
 def test_the_block_hides_the_non_exported_impls():
-    """🔴 설계 D6. 이것이 참이라서 첫 측정이 뜻을 갖는다."""
+    """🔴 설계 D6. 이것이 참이라서 첫 측정이 뜻을 갖는다.
+
+    🔴 S4 (2026-09-04): `release_pending_assignments!` 는 이 목록에서 **빠졌다** — 첫 측정이
+    끝났고(세계 delta 5축 전부 0, 모델이 재배정을 주석으로 썼다) 그 동사를 광고하는 것이
+    다음 측정이다. 남은 넷은 그대로 감춘다.
+    """
     s = WI.build_world_interface_block()
-    assert "release_pending_assignments!" not in s
+    for hidden in ("recover_stalled_teams!", "resolve_schedule_wedge!",
+                   "force_advance_stuck_carrier!", "forbid_heavy_cargo!"):
+        assert hidden not in s, hidden
+
+
+def test_the_block_advertises_the_reassignment_verb():
+    """🔴 S4 의 양성 단언 — 감춤 게이트만 남기면 광고가 도착했는지 아무도 안 본다.
+
+    🔴 그리고 **어느 표제 아래인지**가 이 태스크의 성패다. 둘째 표제("...CANNOT OBTAIN
+    YET") 아래 실리면 모델은 "지금은 못 부른다" 로 읽고 광고가 무동작이 된다 — 실측으로
+    한 번 그렇게 됐다(`export` 만 하면 `InvariantSpec` 이 타입 폐포 밖이라
+    `callable=false`). 생성기의 `_CURATED_SEEDS` 가 그것을 고쳤다.
+    """
+    s = WI.build_world_interface_block()
+    head, _, tail = s.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    assert "release_pending_assignments!" in head
+    assert "release_pending_assignments!" not in tail
+    # 조합 부담은 **일부러** 남긴다: `invariant` 는 env 의 필드가 아니라
+    # `build_invariant(env)` 가 만든다. 그 이음매를 모델이 스스로 잇는지가 실험이다.
+    assert "build_invariant" in head
 
 
 def test_the_block_says_the_signature_convention():
