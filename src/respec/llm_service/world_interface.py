@@ -55,6 +55,25 @@ _RULES = (
     "     `env` is the ONLY positional argument. Every other argument is a keyword and MUST\n"
     "     have a default. The harness builds `env` and passes your declared parameters as\n"
     "     keywords; any other shape cannot be called and is rejected before it runs.\n"
+    # 🔴 2026-09-04, 유료 런 3. 규약 6 을 더한 직후 body 가 `function T!(env;
+    #    affected_robot, affected_tasks, alternative_robots)` 로 나와
+    #    `reject:impl_keyword_needs_a_default:affected_robot` 에서 죽었다 — L1 이 무너졌다.
+    #    이것은 모델의 실수가 아니라 **우리가 준 두 규약의 모순**이다: 규약 6 이 "id 는
+    #    env 에서 얻은 객체" 라고 하는데 규약 1 은 "모든 키워드에 기본값" 을 요구하고,
+    #    기본값은 **리터럴**이라 env 객체가 될 수 없다. 모델은 둘 중 하나를 버려야 했고
+    #    방금 배운 쪽을 지켰다. 화해시키는 자리는 **의무가 적힌 곳**(규약 1)이다 —
+    #    모델은 위에서 아래로 읽으므로 압력이 생기기 **전에** 해법이 도착해야 한다.
+    #    🔴 의무는 안 약화시킨다: `check_impl_conventions`
+    #    (`minted_registration.jl`, 모든 kw 가 `Expr(:kw)` 여야 한다)가 그대로 집행한다.
+    #    그리고 이 패턴은 편의가 아니라 **유일한 길**이다: `bind_primitive_args`
+    #    (`minted_tool.jl`)가 kw 를 `ctx.params` 의 JSON 값에서 만들고
+    #    `_param_type_reject` 가 JSON 타입을 강제하므로 **id 객체는 그 채널로 못 온다.**
+    "     A world object cannot be a literal, so a keyword that carries one defaults to\n"
+    "     `nothing` and the body resolves it from env first -- literally\n"
+    "     `function f!(env; affected_robot = nothing)`, then\n"
+    "     `affected_robot === nothing && (affected_robot = first(keys(env.agent_policies)))`.\n"
+    "     Keyword values arrive as JSON, so an id object can ONLY reach the body that way;\n"
+    "     dropping the default is rejected before the code runs.\n"
     "  2. The name must end with `!` and must NOT already exist in the module.\n"
     "  3. Return a value the harness can read a status from: either a Symbol, or a NamedTuple\n"
     "     with a `status::Symbol` field. That status is how the record says what happened.\n"
@@ -81,7 +100,7 @@ _RULES = (
     "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`)\n"
     "     and pass that object. A `Dict{Any, ...}` handed back by an accessor is keyed\n"
     "     by those same id objects, so indexing it with a name you invented throws\n"
-    "     `KeyError`.\n"
+    "     `KeyError`. A keyword that carries an id defaults to `nothing` -- see rule 1.\n"
 )
 
 

@@ -240,3 +240,59 @@ def test_the_rules_explain_the_opaque_dict_any_key_type():
     assert "Dict{Any, Float64}" in b, "사인의 전제가 사라졌다 — 규약 6 의 대상이 렌더에 없다"
     r = b.partition("\n\nWORLD TYPES")[0]
     assert "`Dict{Any, ...}`" in r, r
+
+
+# =====================================================================================
+# 2026-09-04, 유료 런 3 — 규약 1 과 규약 6 은 **동시에 지킬 수 있어야** 한다.
+#
+# 런 3 의 body 에는 `"R1"` 이 없었다(규약 6 이 먹혔다). 대신 이렇게 나왔다:
+#
+#     function TaskReallocationTool!(env; affected_robot, affected_tasks, alternative_robots)
+#
+# → `reject:impl_keyword_needs_a_default:affected_robot`. **L1 이 무너졌다** — 사다리에서
+# 규약 6 이전 런보다 낮은 점수다.
+#
+# 🔴 이것은 모델의 실수가 아니라 **우리가 준 두 규약의 모순**이다. 규약 6 = "id 는 env 에서
+#    얻은 **객체**", 규약 1 = "모든 키워드에 **기본값**". 기본값은 리터럴이어야 하고 env 객체는
+#    리터럴이 될 수 없다. 모델은 둘 중 하나를 버려야 했고 방금 배운 쪽을 지켰다.
+#
+# 화해는 **의무가 적힌 자리**(규약 1)에서 한다 — 모델은 위에서 아래로 읽으므로 압력이 생기기
+# 전에 해법이 도착해야 한다. 그리고 이것은 편의가 아니라 **유일한 길**이다:
+# `bind_primitive_args`(`src/respec/minted_tool.jl`)가 키워드를 `ctx.params` 의 **JSON** 값에서
+# 만들고 `_param_type_reject` 가 JSON 타입을 강제하므로 id **객체**는 그 채널로 못 온다.
+# =====================================================================================
+def _rules_by_number(r):
+    import re
+    parts = re.split(r"\n  (\d)\. ", "\n" + r)
+    return {int(parts[i]): parts[i + 1] for i in range(1, len(parts), 2)}
+
+
+def test_rule_1_shows_how_an_env_object_becomes_a_keyword_default():
+    import world_interface as WI
+    r1 = _rules_by_number(WI._RULES)[1]
+    assert "cannot be a literal" in r1, r1
+    # 🔴 산문이 아니라 **지난번처럼 리터럴 예시**가 착지한다.
+    assert "affected_robot = nothing" in r1, r1
+    assert ("affected_robot === nothing && "
+            "(affected_robot = first(keys(env.agent_policies)))") in r1, r1
+    # 렌더에도 실제로 실린다 — `_RULES` 만 보고 끝내지 않는다.
+    assert "affected_robot = nothing" in _block()
+
+
+def test_the_keyword_default_obligation_is_not_weakened():
+    """🔴 모순을 없애는 것이지 **의무를 없애는 것이 아니다.**
+    `check_impl_conventions`(`src/respec/minted_registration.jl`)는 모든 kw 가 `Expr(:kw)`
+    이기를 그대로 요구한다 — 프롬프트가 "생략해도 된다" 로 새면 거절이 거짓 실패로 기록된다.
+    """
+    import world_interface as WI
+    r1 = _rules_by_number(WI._RULES)[1]
+    assert "MUST" in r1 and "have a default" in r1, r1
+    assert "dropping the default is rejected" in r1, r1
+    for weasel in ("optional", "may omit", "you can leave", "if possible"):
+        assert weasel not in r1.lower(), weasel
+
+
+def test_rule_6_points_back_at_rule_1_for_defaults():
+    """양방향이다 — 규약 6 만 읽고 코드를 쓰는 경로에서도 해법이 보여야 한다."""
+    import world_interface as WI
+    assert "see rule 1" in _rules_by_number(WI._RULES)[6]
