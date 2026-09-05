@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleNoRelease",
+  "mechanism": "negative control for task-oracle (2026-09-05): same lane, same surface=sched, same harness resume + MILP re-solve, but releases ZERO edges. Isolates whether the wedge comes from the reassignment or from the harness machinery.",
+  "impl_name": "OracleNoRelease!",
+  "impl_code": "function OracleNoRelease!(env)\n    rid = ood_event_target()\n    rid === nothing && return :no_target\n    inv = build_invariant(env)\n    return (; status = :probed, removed = 0)\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleNoRelease!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleNoRelease!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

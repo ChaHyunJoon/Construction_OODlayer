@@ -13,7 +13,7 @@
 #
 # ENV: DEMO_POLICY(canonical|noop|oracle|surrogate|dspy) · DSPY_URL · DEMO_ALL_POLICIES(0 이면 비교값 수집 생략)
 # =============================================================================
-import HTTP, JSON3
+import HTTP, JSON3, SHA
 using Graphs
 
 const POLICY   = lowercase(get(ENV, "DEMO_POLICY", "canonical"))
@@ -1516,6 +1516,88 @@ function _synth_view(resp)
     return d
 end
 
+# =============================================================================
+# 🔴 시험 전용 오라클 우회 — `DEMO_SYNTH_FIXTURE` (2026-09-05)
+# =============================================================================
+"""
+    SYNTH_FIXTURE_PATH
+
+`DEMO_SYNTH_FIXTURE` env. 비어 있으면(기본) 이 파일은 **바이트 동일하게** 오늘과 같이
+동작한다 — 아래 `synth_fixture_lane` 이 첫 줄에서 그대로 돌려준다.
+
+🔴 **이것은 시험 장치이지 레인이 아니다.** 값이 켜진 런의 합성 레인은 모델이 쓴 것이
+아니라 사람이 쓴 픽스처다. 그 사실이 로그와 산출물 양쪽에 남지 않으면 다음 세션이
+오라클 런을 유료 런으로 읽는다 — 이 레포에 기록된 가장 나쁜 실패 모양이다. 그래서
+이 손잡이는 **조용할 수 없게** 지어져 있다:
+  · 파일을 못 읽으면 `error` 로 **런을 죽인다**(조용한 폴백 금지 — 폴백하면 그 런은
+    "모델이 아무것도 안 냈다" 와 바이트 동일해진다).
+  · 결정마다 배너를 stdout 에 찍는다.
+  · `rt["synth_fixture"]` 로 라우터 기록(= 결정 행)에 경로와 해시를 남긴다.
+
+🔴 **규약을 하나도 안 느슨하게 한다.** 픽스처는 `enact_minted_decision!` →
+`register_minted_primitive!` → `check_impl_conventions` 를 모델의 출력과 **같은 코드로**
+지난다. 통과 못 하면 그것이 관측이다.
+"""
+const SYNTH_FIXTURE_PATH = get(ENV, "DEMO_SYNTH_FIXTURE", "")
+
+"""
+    synth_fixture_lane(sl, rt) -> Union{Nothing,Dict{String,Any}}
+
+`sl`(생산 경로가 만든 합성 레인) 위에 픽스처 파일의 값을 덮어 돌려준다. 손잡이가
+꺼져 있으면 `sl` 을 **그대로** 돌려준다(무동작).
+
+픽스처 파일은 JSON 객체 하나이고, `SYNTH_LANE_KEYS` 에 있는 키만 읽힌다(그 밖의 키는
+무시되고 그 사실이 배너에 찍힌다). 오늘 쓰는 것은 `impl_name`·`impl_code`·`params`·
+`calls`·`surface`·`reversible`·`body_names`·`tool_name` 이다.
+"""
+function synth_fixture_lane(sl, rt = nothing)
+    isempty(SYNTH_FIXTURE_PATH) && return sl
+    local raw
+    try
+        raw = read(SYNTH_FIXTURE_PATH, String)
+    catch e
+        # 🔴 조용히 폴백하지 않는다. 픽스처를 요구한 런이 픽스처 없이 도는 것은
+        #    "모델이 아무것도 안 냈다" 와 로그로 구별이 안 된다.
+        error("[synth-fixture] DEMO_SYNTH_FIXTURE='$(SYNTH_FIXTURE_PATH)' 를 못 읽었다: " *
+              first(split(sprint(showerror, e), "\n")))
+    end
+    local fx = try
+        JSON3.read(raw)
+    catch e
+        error("[synth-fixture] '$(SYNTH_FIXTURE_PATH)' 가 JSON 객체가 아니다: " *
+              first(split(sprint(showerror, e), "\n")))
+    end
+    local d = sl === nothing ? Dict{String,Any}(k => nothing for k in SYNTH_LANE_KEYS) :
+              Dict{String,Any}(sl)
+    local used = String[]
+    for k in SYNTH_LANE_KEYS
+        haskey(fx, Symbol(k)) || continue
+        d[k] = fx[Symbol(k)]
+        push!(used, k)
+    end
+    local ignored = [String(k) for k in keys(fx) if !(String(k) in SYNTH_LANE_KEYS)]
+    local digest = bytes2hex(SHA.sha256(raw))[1:16]
+    # ---- 배너. 매 결정마다, 무조건 ------------------------------------------------------
+    println("=" ^ 78)
+    println("🔴🔴🔴 [synth-fixture] ORACLE BYPASS ACTIVE — 이 판의 합성 레인은 **모델이 쓴 것이 아니다**")
+    println("🔴 path=", SYNTH_FIXTURE_PATH, "  sha256[1:16]=", digest)
+    println("🔴 impl_name=", repr(get(d, "impl_name", nothing)),
+            "  body_names=", repr(get(d, "body_names", nothing)),
+            "  surface=", repr(get(d, "surface", nothing)),
+            "  reversible=", repr(get(d, "reversible", nothing)))
+    println("🔴 keys_overridden=[", join(used, ", "), "]",
+            isempty(ignored) ? "" : "  keys_ignored_not_in_SYNTH_LANE_KEYS=[" * join(ignored, ", ") * "]")
+    println("🔴 규약 검사·타입 검사·게이트는 **하나도 완화되지 않았다** — 모델 출력과 같은 코드를 지난다")
+    println("=" ^ 78)
+    if rt !== nothing
+        rt["synth_fixture"] = Dict{String,Any}(
+            "path" => SYNTH_FIXTURE_PATH, "sha256_16" => digest,
+            "keys_overridden" => used, "keys_ignored" => ignored,
+            "impl_name" => get(d, "impl_name", nothing))
+    end
+    return d
+end
+
 """
     _tool_args_dict(x)
 
@@ -2029,6 +2111,13 @@ function decide_all(env, truth; nl::AbstractString = "")
     local synth_lane = let e = get(pol, enacted, nothing)
         e === nothing ? nothing : Dict{String,Any}(k => get(e, k, nothing) for k in SYNTH_LANE_KEYS)
     end
+    # ---- 🔴 시험 전용 오라클 우회 (2026-09-05, task-oracle) ---------------------------------
+    #    `DEMO_SYNTH_FIXTURE` 가 켜져 있으면 **모델의 출력 자리에 픽스처를 꽂는다.** 나머지
+    #    경로(등록 → 규약 검사 → 인자 바인딩 → 집행 → 재개 → 재풀이 → 세계 지문)는 한 줄도
+    #    안 바뀐다. 이 우회는 **조용하지 않다** — `synth_fixture_lane` 이 매 결정마다 배너를
+    #    찍고 `rt["synth_fixture"]` 로 산출물에도 도장을 남긴다. 이 레포의 최악의 실패
+    #    모양이 "오라클 런을 모델 런으로 오독" 이다.
+    synth_lane = synth_fixture_lane(synth_lane, rt)
 
     # 🔴 2026-08-29 (T11/T12): `llm_macro` 와 `agree` 는 **반사실**이다 — 안 부른 레인의 값을
     #    주장한다. 라우터가 사건당 레인 하나만 부르므로 그 값이 존재하지 않는다(§0-C 결정 4).

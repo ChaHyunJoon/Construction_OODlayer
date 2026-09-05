@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleReassign",
+  "mechanism": "oracle fixture (task-oracle, 2026-09-05): release the OOD target robot's future assignment edges and let the harness re-solve the MILP on surface=sched.",
+  "impl_name": "OracleReassign!",
+  "impl_code": "function OracleReassign!(env)\n    rid = ood_event_target()\n    rid === nothing && return :no_target\n    inv = build_invariant(env)\n    edges = release_pending_assignments!(env, inv; agent = string(rid))\n    edges isa AbstractVector || return edges\n    return (; status = :released, removed = length(edges))\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleReassign!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleReassign!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}
