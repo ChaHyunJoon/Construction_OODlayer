@@ -89,7 +89,11 @@ end
         m = only(filter(x -> String(x.name) == nm && String(x.signature) == sig, ms))
         @test m.callable === true
     end
-    @test count(m -> m.callable === true, ms) == 188   # 실측. Vararg 고침 전 181, S4 의 `InvariantSpec` 씨앗 전 186, S3 의 `ood_event_target()`(무인자라 자명하게 callable) 전 187
+    # 🔴 재유도해서 적을 것 — 이 숫자는 export 를 더할 때마다 낡는다(testset (34) 의 짝이
+    #    실제로 낡은 채 커밋돼 HEAD 를 빨갛게 했다). 실측 2026-09-05 (S5) = **189**.
+    #    직전 이력: Vararg 고침 전 181 · S4 의 `InvariantSpec` 씨앗 전 186 ·
+    #    S3 의 `ood_event_target()` 전 187 · S5 의 `forbid_heavy_cargo!` 전 188.
+    @test count(m -> m.callable === true, ms) == 189
 end
 @testset "(7) 🔴 R11·R33 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
     j = JSON3.read(read(ART, String))
@@ -236,5 +240,22 @@ end
                  "VarRef", "ForbidZone", "ForbidAgent", "SwapBattery")
         @test !(gone in ns)
     end
+end
+
+# 🔴 S5 (2026-09-05). 화물 금지 동사는 S4 의 함정을 **안 밟는다** — 위치인자가 무타입 `env`
+#    하나뿐이고 kwarg 에 전부 기본값이 있어 `_arg_obtainable(Any) == true` 로 바로 열린다.
+#    그래서 `_CURATED_SEEDS` 를 늘리지 않았고, 이 testset 이 그 사실(씨앗을 안 늘렸다 +
+#    그럼에도 첫째 표제 아래다)을 함께 잰다.
+@testset "(10) 🔴 S5: 화물 금지 동사는 씨앗 없이 호출 가능하다" begin
+    j = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    fhc = only(filter(m -> String(m.name) == "forbid_heavy_cargo!", ms))
+    @test fhc.callable === true
+    @test isempty(fhc.missing)                    # 🔴 S4 와 다른 점이 정확히 이것이다
+    @test isempty(fhc.argpaths)                   # `env` 는 하네스가 준다 — 경로가 필요 없다
+    @test occursin("agent", String(fhc.signature)) && occursin("n", String(fhc.signature))
+    # 음성 대조: `ForbidHeavyCargo` **타입**은 여전히 폐포 밖이다(동사만 열었다).
+    ns = Set(String[String(t.name) for t in j.types])
+    @test !("ForbidHeavyCargo" in ns)
 end
 end # module

@@ -865,6 +865,15 @@
             "callable": true
         },
         {
+            "name": "forbid_heavy_cargo!",
+            "missing": [
+            ],
+            "signature": "(env; agent, n)",
+            "argpaths": [
+            ],
+            "callable": true
+        },
+        {
             "name": "free_space_status",
             "missing": [
             ],

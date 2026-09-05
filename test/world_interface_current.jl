@@ -48,25 +48,27 @@ end
           Set(String.(collect(fieldnames(CB.PlannerEnv))))
 end
 
-@testset "(4) 🔴 비공개 impl 은 실리지 않는다 — 감춘 것은 이제 **넷**이다 (설계 D6 · S4)" begin
+@testset "(4) 🔴 비공개 impl 은 실리지 않는다 — 감춘 것은 이제 **셋**이다 (설계 D6 · S4 · S5)" begin
     # 사용자 결정: 표면은 `names(CB)` 그대로. 감춘 능력을 모델이 처음부터 다시 써야 하는
     # 것이 이 설계의 첫 측정 대상이다.
-    # 🔴 S4 (2026-09-04): `release_pending_assignments!` 는 **감춘 다섯에서 빠졌다**.
-    #    측정한 것은 "모델이 재배정 동사 없이 세계를 못 바꾼다" 였고(세계 delta 5축 전부 0),
-    #    모델은 재배정 로직을 **주석으로** 썼다. 그 동사를 광고 목록에 넣는 것이 이 태스크다.
-    #    남은 넷은 그대로 감춘다.
+    # 🔴 S4 (2026-09-04): `release_pending_assignments!` 가 다섯에서 빠졌다 — 세계 delta 5축이
+    #    전부 0 이었고 모델이 재배정 로직을 **주석으로** 썼기 때문이다.
+    # 🔴 S5 (2026-09-05): `forbid_heavy_cargo!` 가 넷에서 빠졌다. 그 재배정 동사의 오라클
+    #    측정이 끝났고 답은 **release 가 빌드를 교착시킨다** 였다(진행 중 운반을 뜯는다).
+    #    다음 가설은 "미래 배정을 **제약**하면 아무것도 안 뜯고 같은 목적을 이룬다" 이고,
+    #    그 동사를 광고하는 것이 이 태스크다. 남은 셋은 그대로 감춘다.
     j = JSON3.read(read(ART, String))
     ms = Set(String.([m.name for m in j.methods]))
     # 컨트롤러 판정(Task 3 범위 추가): export 목록을 편집하는 것이 D6 이 새는 정확한 경로이므로,
-    # 감춘 넷 전부를 여기서 단언한다 — 하나만 지키면 나머지 셋의 회귀를 못 잡는다.
+    # 감춘 셋 전부를 여기서 단언한다 — 하나만 지키면 나머지 둘의 회귀를 못 잡는다.
     @test !("recover_stalled_teams!" in ms)
     @test !("resolve_schedule_wedge!" in ms)
     @test !("force_advance_stuck_carrier!" in ms)
-    @test !("forbid_heavy_cargo!" in ms)
     @test "reform_stuck_teams!" in ms          # 빈-통과 방지: export 된 것은 실린다
-    # 🔴 S4 의 양성 단언. 위 감춤 게이트만 남기면 "다섯을 넷으로 줄였다" 가 **빈 통과**가
+    # 🔴 S4·S5 의 양성 단언. 위 감춤 게이트만 남기면 "넷을 셋으로 줄였다" 가 **빈 통과**가
     #    된다 — 광고가 실제로 산출물에 도착했는지는 아무도 안 본다.
     @test "release_pending_assignments!" in ms
+    @test "forbid_heavy_cargo!" in ms
 end
 
 @testset "(5) 🔴 D10: 무타입 Dict 두 개가 값 타입을 말한다" begin

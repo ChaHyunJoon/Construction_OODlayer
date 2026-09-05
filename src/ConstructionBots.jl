@@ -102,6 +102,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        RespecProposal, ForbidWindow, ForbidAgent, ForbidZone, ReplaceAgent, ReformTeam,  # 재명세 제안·금지조건 타입들
        ForbidHeavyCargo,                                          # 좁힌 금지: 1대당 부담 상위 N 화물만 그 로봇에게서 뗀다
        STANDING_CARGO_BANS, set_cargo_ban!, clear_cargo_ban!, clear_all_cargo_bans!,  # 지속 화물 금지 보관소 — 모든 formulate_milp 이 읽는다
+       forbid_heavy_cargo!,                                       # S5(2026-09-05): 화물 금지 동사를 주조 tool 레인에 광고한다 — 미래 배정만 제약하고 진행 중 운반은 안 뜯는다. 감춘 것은 넷 → 셋
        SwapBattery, swap_battery!, verify_swap_battery,          # 배터리 현장교체(창고 본체 안 씀; ReplaceAgent 와 자원이 다름)
        set_battery_courier!, battery_courier_enabled,            # SwapBattery 물리 배송: 창고 예비가 배터리를 들고 왕복
        battery_deliveries, is_battery_courier, awaiting_battery_swap,

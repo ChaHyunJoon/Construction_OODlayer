@@ -29,12 +29,29 @@ def test_the_block_hides_the_non_exported_impls():
 
     🔴 S4 (2026-09-04): `release_pending_assignments!` 는 이 목록에서 **빠졌다** — 첫 측정이
     끝났고(세계 delta 5축 전부 0, 모델이 재배정을 주석으로 썼다) 그 동사를 광고하는 것이
-    다음 측정이다. 남은 넷은 그대로 감춘다.
+    다음 측정이다.
+    🔴 S5 (2026-09-05): `forbid_heavy_cargo!` 도 빠졌다 — 재배정 동사의 오라클 측정이
+    "release 는 진행 중 운반을 뜯어 빌드를 교착시킨다" 를 냈고, 다음 가설이 "미래 배정을
+    제약한다" 이기 때문이다. 남은 **셋**은 그대로 감춘다.
     """
     s = WI.build_world_interface_block()
     for hidden in ("recover_stalled_teams!", "resolve_schedule_wedge!",
-                   "force_advance_stuck_carrier!", "forbid_heavy_cargo!"):
+                   "force_advance_stuck_carrier!"):
         assert hidden not in s, hidden
+
+
+def test_the_block_advertises_the_cargo_ban_verb():
+    """🔴 S5 의 양성 단언 — 감춤 게이트만 남기면 광고가 도착했는지 아무도 안 본다.
+
+    🔴 그리고 **어느 표제 아래인지**가 이 태스크의 성패다(S4 와 같은 논거). 이 동사는
+    `env` 를 무타입으로 받고 kwarg 에 전부 기본값이 있으므로 `_CURATED_SEEDS` 없이도
+    첫째 표제 아래 실린다 — 그 사실을 여기서 못박는다(실측: `callable=true`,
+    `missing=[]`).
+    """
+    s = WI.build_world_interface_block()
+    head, _, tail = s.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    assert "forbid_heavy_cargo!" in head
+    assert "forbid_heavy_cargo!" not in tail
 
 
 def test_the_block_advertises_the_reassignment_verb():

@@ -336,6 +336,14 @@ end
         "function release_pending_assignments!(env; k = 1)\n    return :ok\nend\n"), "")
     @test startswith(rel, "reject:impl_name_exists_shown:")
     @test !occursin("withheld", rel)
+    # 🔴 S5 (2026-09-05) 의 같은 재판정. 화물 금지 동사도 광고로 넘어갔으므로 `shown` 이다 —
+    #    갈래가 하드코딩 목록이었다면 이 두 줄이 빨갛다(둘째 export 가 그 사실을 재확인한다).
+    @test :forbid_heavy_cargo! in names(CB)
+    fhc = something(CB.check_impl_conventions(
+        "forbid_heavy_cargo!",
+        "function forbid_heavy_cargo!(env; k = 1)\n    return :ok\nend\n"), "")
+    @test startswith(fhc, "reject:impl_name_exists_shown:")
+    @test !occursin("withheld", fhc)
 end
 
 # 🔴 I1 (2026-09-03 최종 리뷰). "런 스코프" 는 **표**에 대해서만 참이다. `Core.eval` 은
@@ -1126,7 +1134,7 @@ _l3_probe_body(n) =
     local unadv = sort(String[String(n) for n in names(CB)
                               if !(String(n) in adv) && occursin(ident, String(n))])
     @test !isempty(unadv)
-    @test length(unadv) == 21                     # 실측 2026-09-04 (187 - 148 = 39, 그중 21)
+    @test length(unadv) == 21                     # 실측 2026-09-05 (아래 ③ 의 검산식 참조)
     #    🔴 카나리아: D-9 이 행동공간에서 뺀 행동 타입들이 바로 그 안에 있다.
     for n in ["SwapBattery", "ForbidZone", "TranslateBuild", "ReplaceAgent", "RelocateBuild"]
         @test n in unadv
@@ -1140,9 +1148,23 @@ _l3_probe_body(n) =
     local missed = String[n for n in advc if CB.impl_interface_calls(_l3_probe_body(n)) != [n]]
     @test missed == String[]
 
-    # ③ 광고된 **타입** 이름도 인터페이스다(모델은 그것을 WORLD TYPES 표제에서 봤다).
-    local advtype = sort(String[String(n) for n in names(CB) if String(n) in adv])
-    @test length(advtype) == 167                  # 실측 2026-09-04: S4 가 `release_pending_assignments!` 를 광고해 166 → 167
+    # ③ `names(CB)` 중 산출물이 실제로 광고하는 이름 — 모델이 본 **export 표면**이다.
+    #    🔴 이 지역변수는 `advtype` 이었고 주석은 "광고된 **타입** 이름" 이라 적었다. 둘 다
+    #       틀렸다 [실측]: 이 집합은 메서드 이름을 함께 담는다(`forbid_heavy_cargo!` ·
+    #       `release_pending_assignments!` 가 여기 들어온다). 세는 것에 이름을 맞춘다.
+    local advexp = sort(String[String(n) for n in names(CB) if String(n) in adv])
+    # 🔴 **이 숫자는 export 를 하나 더할 때마다 낡는다 — 그리고 실제로 낡은 채 커밋됐다.**
+    #    `09204a2c`(S3)가 `ood_event_target` 을 export 하고 이 줄을 안 고쳐서 HEAD 가
+    #    `168 == 167` 로 빨갰다. 그러므로 이 값을 **인용하지 말고 재유도할 것**.
+    #    검산식(2026-09-05 S5 직후 실측, 셋이 서로를 검산한다):
+    #      length(names(CB)) 190 = advexp 169 + unadv 21     (ident 밖 이름은 오늘 0)
+    #    빨개졌을 때 "몇 개" 만으로는 **어느 이름이 움직였는지** 알 수 없으므로 목록을 남긴다.
+    if length(advexp) != 169
+        @info("광고된 export 표면이 움직였다 — 목록을 대조하고 이 줄과 위 unadv 를 함께 고쳐라",
+              n_advexp = length(advexp), n_unadv = length(unadv),
+              n_names = length(names(CB)), advexp)
+    end
+    @test length(advexp) == 169
 end
 
 @testset "(35) 🔴 F-2: 못 읽은 산출물은 `nothing` 이지 `[]` 가 아니다" begin

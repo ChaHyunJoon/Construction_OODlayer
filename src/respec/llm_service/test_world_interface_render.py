@@ -28,13 +28,30 @@ def test_a_callable_method_carries_its_argument_paths():
 def test_the_withheld_capabilities_are_in_neither_heading():
     """🔴 D6. 가르는 것은 렌더이지 모집단이 아니다.
 
-    🔴 S4 (2026-09-04): 감춘 것은 다섯이 아니라 **넷**이다 —
+    🔴 S4 (2026-09-04): 감춘 것은 다섯이 아니라 넷이었다 —
     `release_pending_assignments!` 는 광고로 넘어갔다.
+    🔴 S5 (2026-09-05): 넷이 아니라 **셋**이다 — `forbid_heavy_cargo!` 도 광고로 넘어갔다.
     """
     b = _block()
     for hidden in ("recover_stalled_teams!", "resolve_schedule_wedge!",
-                   "force_advance_stuck_carrier!", "forbid_heavy_cargo!"):
+                   "force_advance_stuck_carrier!"):
         assert hidden not in b, "%s 가 샜다" % hidden
+
+
+def test_the_cargo_ban_verb_is_under_the_callable_heading():
+    """🔴 S5. 이 태스크의 성패가 정확히 이 단언이다(S4 의 짝).
+
+    S4 는 `export` 만으로 둘째 표제 아래 실렸다(`InvariantSpec` 이 폐포 밖). 이 동사는
+    위치인자가 `env` 하나뿐이고 무타입이라 그 함정이 **없다** — `missing` 이 비어 있는
+    것이 그 사실의 기계 증거다. 비어 있지 않게 되면 여기가 빨개진다.
+    """
+    b = _block()
+    head, _, tail = b.partition("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    line = [l for l in head.splitlines() if l.startswith("- forbid_heavy_cargo!")]
+    assert len(line) == 1, line
+    assert "missing:" not in line[0], line[0]
+    assert "agent" in line[0] and "n" in line[0]     # kwarg 둘이 프롬프트에 실린다
+    assert "forbid_heavy_cargo!" not in tail
 
 
 def test_the_reassignment_verb_is_under_the_callable_heading():
@@ -174,7 +191,7 @@ def test_the_types_heading_no_longer_grants_field_writes_outright():
 
 def test_field_writes_are_not_forbidden():
     """🔴 선을 지킨다: **선호**이지 규칙이 아니다. 하드 금지는 거짓 거절 표면을 만들고,
-    D6 이 감춘 다섯 능력 때문에 어떤 사건은 필드 경로 말고 길이 없다.
+    D6 이 감춘 셋(S4 · S5 뒤) 때문에 어떤 사건은 필드 경로 말고 길이 없다.
     """
     import world_interface as WI
     r = WI._RULES

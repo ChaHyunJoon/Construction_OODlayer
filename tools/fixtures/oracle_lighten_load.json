@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleLightenLoad",
+  "mechanism": "oracle fixture (task-oracle2, 2026-09-05): constrain the OOD target robot's FUTURE assignments instead of tearing its in-flight ones. `forbid_heavy_cargo!` writes one standing ban {robot -> n} that every subsequent formulate_milp reads; nothing in the world is edited, so no transport work is torn apart. surface=milp so the harness re-solve (RESOLVE_SURFACES) actually formulates against the ban.",
+  "impl_name": "OracleLightenLoad!",
+  "impl_code": "function OracleLightenLoad!(env)\n    BATTERY_FLEET[] === nothing && return (; status = :no_battery_info)\n    rid = ood_event_target()\n    rid === nothing && return (; status = :no_target)\n    return forbid_heavy_cargo!(env; agent = string(rid), n = 3)\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleLightenLoad!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleLightenLoad!"
+  ],
+  "surface": "milp",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

@@ -24,10 +24,12 @@
       두 파일이 같은 사실에 대해 서로 다른 말을 하고 있었고, `synthesize.py` 가 옳다.
 
       🔴 **그러나 이 실험이 실제로 의존하는 성질은 남아 있고, 그것은 가림이 아니라
-      원천 차단이다**: 숨긴 능력 넷(`recover_stalled_teams!` · `resolve_schedule_wedge!` ·
-      `force_advance_stuck_carrier!` · `forbid_heavy_cargo!`)은 `world_interface.json` 에
-      **아예 없다**(🔴 S4, 2026-09-04: 다섯째였던 `release_pending_assignments!` 는 광고로
-      넘어갔다 — 첫 측정이 끝났고 그 동사 없이는 세계가 안 바뀌는 것이 실측됐다).
+      원천 차단이다**: 숨긴 능력 셋(`recover_stalled_teams!` · `resolve_schedule_wedge!` ·
+      `force_advance_stuck_carrier!`)은 `world_interface.json` 에
+      **아예 없다**(🔴 S4, 2026-09-04: `release_pending_assignments!` 가 광고로 넘어갔다 —
+      그 동사 없이는 세계가 안 바뀌는 것이 실측됐다. 🔴 S5, 2026-09-05:
+      `forbid_heavy_cargo!` 도 넘어갔다 — release 의 오라클 측정이 "진행 중 운반을 뜯어
+      빌드를 교착시킨다" 를 냈고 다음 가설이 "미래 배정을 제약한다" 이기 때문이다).
       agent-3 은 그것들을
       본 적이 없으므로 `reasoning` 으로 agent-2 에게 흘릴 수도 없다 — 가림이 없어도 성립하는
       이유가 이것이다. `test_the_withheld_capabilities_are_absent_from_the_rendered_interface`
@@ -588,17 +590,18 @@ def test_the_feedback_reaches_agent_2_raw_because_there_is_nothing_left_to_scrub
         "가림 함수가 되살아났다 — 계약 (B) 는 폐지됐고(R13) 되살리는 것은 이 결정의 번복이다")
 
 
-#: 🔴 D6 신호로 세는 넷. 정본은
+#: 🔴 D6 신호로 세는 셋. 정본은
 #: `docs/superpowers/reports/2026-09-03-task11-measurement-preregistration.md` 의 결정 2 이고,
 #: 그 문서가 "`withheld` 버킷은 532 이름 폭이다 — D6 로 세는 것은 이것들뿐" 이라고 적는다.
 #: 여기 리터럴로 두는 이유: 이 시험이 재는 것은 그 버킷의 크기가 아니라 **이것들이 렌더된
 #: 인터페이스에 없다**는 사실이고, 그것은 이름들에 대한 주장이다.
-#: 🔴 S4 (2026-09-04): 다섯이 **넷**이 됐다 — `release_pending_assignments!` 를 광고했다.
-#: 그 이름으로 D6 신호가 나오면 이제 그것은 "감춘 능력을 재유도했다" 가 아니라 "본 이름을
+#: 🔴 S4 (2026-09-04): 다섯이 넷이 됐다 — `release_pending_assignments!` 를 광고했다.
+#: 🔴 S5 (2026-09-05): 넷이 **셋**이 됐다 — `forbid_heavy_cargo!` 를 광고했다.
+#: 광고된 이름으로 D6 신호가 나오면 이제 그것은 "감춘 능력을 재유도했다" 가 아니라 "본 이름을
 #: 덮으려 했다"(`impl_name_exists_shown`)이고, `check_impl_conventions` 가 `names(CB)` 를
 #: **런타임에** 읽으므로 그 재분류는 자동으로 따라온다(하드코딩 목록이 아니다 — 실측).
-_WITHHELD_FOUR = ("recover_stalled_teams!", "resolve_schedule_wedge!",
-                  "force_advance_stuck_carrier!", "forbid_heavy_cargo!")
+_WITHHELD_THREE = ("recover_stalled_teams!", "resolve_schedule_wedge!",
+                   "force_advance_stuck_carrier!")
 
 
 def test_the_withheld_capabilities_are_absent_from_the_rendered_interface():
@@ -606,7 +609,7 @@ def test_the_withheld_capabilities_are_absent_from_the_rendered_interface():
 
     계약 (B) 자체는 폐지됐다: agent-2 에게 알파벳을 감추는 기전(인벤토리·가림)이 둘 다
     없어졌고 `synthesize.py` 가 그 폐지를 명시한다. 그런데 이 실험이 실제로 의존하는 성질은
-    가림이 아니라 **원천 차단**이다 — 위 넷은 세계 인터페이스 산출물에 **아예 없으므로**
+    가림이 아니라 **원천 차단**이다 — 위 셋은 세계 인터페이스 산출물에 **아예 없으므로**
     agent-3 이 그것들을 본 적이 없고, 따라서 `reasoning` 을 통해 agent-2 에게 흘릴 수도 없다.
     가림이 없어도 그 성질이 성립하는 이유가 이것이고, 이 시험이 그것을 못박는다.
 
@@ -615,8 +618,8 @@ def test_the_withheld_capabilities_are_absent_from_the_rendered_interface():
     """
     blob = WI.build_world_interface_block()
     assert len(blob) > 1000, "인터페이스 블록이 비었다 — 아래 루프가 공허하게 통과한다"
-    for n in _WITHHELD_FOUR:
-        # 🔴 2026-09-03 fix round 2 (F13). **bang 없는 형태 하나만 본다.** 넷은 전부 `!` 로
+    for n in _WITHHELD_THREE:
+        # 🔴 2026-09-03 fix round 2 (F13). **bang 없는 형태 하나만 본다.** 셋은 전부 `!` 로
         #    끝나므로 `n[:-1] not in blob` 이 `n not in blob` 을 **함의한다**(`n` 이 있으면
         #    그 접두사도 있다) — 둘을 나란히 두면 앞 줄이 결코 단독으로 빨개질 수 없는
         #    잉여 단언이 된다. 더 강한 쪽만 남긴다: 렌더가 bang 을 벗겨도 잡힌다.
@@ -630,8 +633,8 @@ def test_the_withheld_detector_actually_fires():
     blob = WI.build_world_interface_block()
     present = [m["name"] for m in WI.load_world_interface()["methods"] if m["name"] in blob]
     assert present, "인터페이스에 실린 이름을 하나도 못 찾았다 — 검출기가 죽었다"
-    # 그리고 넷은 그 목록에 없다(위 시험과 같은 사실을 반대편에서 본다).
-    assert not (set(_WITHHELD_FOUR) & set(present))
+    # 그리고 셋은 그 목록에 없다(위 시험과 같은 사실을 반대편에서 본다).
+    assert not (set(_WITHHELD_THREE) & set(present))
 
 
 def test_a_composed_body_does_not_trigger_the_loop(monkeypatch):
