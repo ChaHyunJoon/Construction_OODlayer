@@ -160,7 +160,7 @@ def build_world_interface_block(blob=None) -> str:
                 parts.append("    valid %s" % a["precondition"])
     # 🔴 D11. 평평한 한 목록은 "선택자가 없다" 로 읽혔다(설계 §1.2) — 모델이 placeholder 를
     #    썼다. 가르는 것은 **렌더**이지 모집단이 아니다: 두 표제 다 같은 `b["methods"]` 에서
-    #    나오고, D6 이 감춘 다섯은 애초에 산출물에 없다.
+    #    나오고, D6 이 감춘 셋은 애초에 산출물에 없다.
     now = [m for m in b["methods"] if m.get("callable")]
     later = [m for m in b["methods"] if not m.get("callable")]
     parts += ["", "%s (every argument is obtainable from env):" % _CALLABLE_HEADING]
