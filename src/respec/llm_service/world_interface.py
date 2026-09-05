@@ -102,13 +102,18 @@ _RULES = (
     #    산문 없이 스스로 진실을 광고했다:
     #    `soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}`.
     #    그러니 규약 6 은 이제 `soc` 를 **갚는 것이 아니라** 남은 id-키 사전들
-    #    (`Dict{AbstractID, ...}` 필드들)을 덮는다. 아래 규약 문구의 `Dict{Any, ...}` 예시는
-    #    그 사건의 역사적 이름이지 오늘 렌더에 있는 모양이 아니다.
+    #    (`Dict{AbstractID, ...}` 필드들)을 덮는다.
+    # 🔴 라운드 5 (2026-09-04). 여기 `A `Dict{Any, ...}` handed back by an accessor is
+    #    keyed by those same id objects` 한 문장이 더 있었다. **걷어냈다** — 타입이 좁혀진
+    #    뒤로 렌더 본문의 `Dict{Any` 는 **0건**이라 그 문장은 지시대상이 없는 인용이 됐다.
+    #    (I2 와 같은 결함 부류다: 규약이 이름으로 가리킨 것이 사라졌는데 아무도 안 본다.)
+    #    ⟹ 규약부는 **구체 타입을 인용하지 않는다.** 기계가 광고하는 것은 기계에 맡기고,
+    #    시그니처가 못 나르는 것만 산문으로 남긴다: "id 는 객체다 · env 에서 얻어라",
+    #    그리고 지어낸 이름의 결과(`KeyError`) — 그 둘은 어떤 타입에도 안 적힌다.
     "  6. Identifiers in this world are OBJECTS, never strings. There is no `\"R1\"`-style\n"
-    "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`)\n"
-    "     and pass that object. A `Dict{Any, ...}` handed back by an accessor is keyed\n"
-    "     by those same id objects, so indexing it with a name you invented throws\n"
-    "     `KeyError`. A keyword that carries an id defaults to `nothing` -- see rule 1.\n"
+    "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`) and\n"
+    "     pass that object -- a name you invented throws `KeyError`. A keyword that carries\n"
+    "     an id defaults to `nothing` -- see rule 1.\n"
 )
 
 

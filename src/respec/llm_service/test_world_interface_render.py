@@ -254,8 +254,16 @@ def test_the_rules_explain_the_opaque_dict_any_key_type():
         "앰비언트 접근자가 id 객체 키를 광고하지 않는다 — 규약 6 의 대상이 렌더에 없다")
     # WORLD TYPES 쪽의 같은 모양(빈-통과 방지: 두 자리 중 하나만 살아도 통과하면 안 된다).
     assert "Dict{ConstructionBots.AbstractID, " in b, b[:400]
+    # 🔴 라운드 5. 규약 6 에서 `Dict{Any, ...}` 인용을 **걷어냈다** — 타입이 좁혀진 뒤
+    #    렌더 본문의 `Dict{Any` 는 0건이라 그 인용은 지시대상이 없었다(I2 와 같은 부류).
+    #    그래서 이 자리가 지키는 명제가 뒤집힌다: 규약부는 **구체 타입을 인용하지 않는다.**
+    #    기계가 광고하는 것은 기계에 맡기고, 시그니처가 못 나르는 것만 산문에 남긴다.
     r = b.partition("\n\nWORLD TYPES")[0]
-    assert "`Dict{Any, ...}`" in r, r
+    assert "Dict{Any" not in r, (
+        "규약부가 구체 타입을 인용한다 — 그 타입이 좁혀지는 날 규약이 없는 것을 가리킨다")
+    # 시그니처가 못 나르는 두 가지는 그대로 산문에 있어야 한다.
+    assert "OBJECTS, never strings" in r, r
+    assert "KeyError" in r, r
 
 
 # =====================================================================================
