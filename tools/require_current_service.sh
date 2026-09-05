@@ -46,3 +46,26 @@ require_current_service() {
   [ -n "${REQUIRE_TOOL_SYNTHESIS:-}" ] && extra+=(--require-tool-synthesis)
   "$py" "$repo/src/respec/llm_service/generation.py" --url "$url" "${extra[@]}" "$@"
 }
+
+# ---- 직접 실행 방어 (2026-09-05) -----------------------------------------------------------
+# 🔴 이 파일은 함수를 **정의만** 한다. 그래서 `bash tools/require_current_service.sh` 로
+#    부르면 아무것도 재지 않고 **항상 EXIT=0** 이었다. 2026-09-05 에 내가 그 형태로 두 번
+#    "게이트 초록" 을 확인하고 유료 런을 띄웠고, 그 확인은 무효였다 — 같은 순간
+#    `generation.py` 를 직접 부르면 `FAIL stale`(served≠tree) 였다.
+#    게이트가 **열리는 쪽으로** 조용히 틀리는 것은 이 레포가 이미 밟은 사고다
+#    (위 주석의 "200 이면 통과라 다섯 전부를 통과시켰을 것").
+#
+# 그래서 직접 실행되면 함수를 실제로 부르고 **종료코드를 전파한다.**
+#
+# ⚠️ 탐지는 **보수적으로** 한다. 이 파일은 `render_demo.jl:739` 가
+#    `bash -c "source '<이 파일>' && require_current_service '<url>'"` 로 source 하는
+#    생산 경로 위에 있다. 그 자리에서 잘못 발화하면 **유료 런이 죽는다.**
+#    · bash 로 source: `$0`="bash" ≠ `${BASH_SOURCE[0]}`=이 파일 ⟹ 발화 안 함 (생산 경로)
+#    · bash 로 직접 실행: 둘이 같다 ⟹ 발화 (고치려는 그 자리)
+#    · zsh·dash 등: `BASH_SOURCE` 가 비어 있다 ⟹ **오늘 동작 그대로 무동작**.
+#      즉 이 방어는 기능을 **더하기만** 하고 어떤 셸에서도 빼지 않는다.
+#      (zsh 의 `$0` 은 source 해도 파일명이라 같은 관용구를 쓰면 생산 경로가 죽는다.)
+if [ -n "${BASH_SOURCE:-}" ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  require_current_service "$@"
+  exit $?
+fi
