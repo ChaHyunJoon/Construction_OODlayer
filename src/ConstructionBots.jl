@@ -115,6 +115,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        ood_event_target,                                          # S3(2026-09-04): 현재 OOD 사건이 때린 로봇의 **id 객체**(없으면 nothing) — 주조 tool 이 대상을 지어내지 않게 한다
        fault_robot_and_reassign!,                                 # 로봇 고장 후 재배정 (2026-08-29: respec_service_ready 는 Anthropic 레인과 함께 삭제)
        release_pending_assignments!,                              # S4(2026-09-04): 재배정 동사를 주조 tool 레인에 광고한다 — 미래(안 얼린) 배정 엣지만 푼다
+       global_transform, project_to_2d, get_center,               # 🔴 (나-1)(2026-09-05): **좌표를 꺼내는 길**을 광고한다. 유료 런 19·20 이 여기서 죽었다 — 셋 다 defined 인데 `export` 가 없어 `names(CB)` 를 도는 생성기에 안 보였고, 모델은 `Vector{Float64}(::TransformNode)`·`Vector{Float64}(::AffineMap)`·`get_center(::Pair)` 를 **지어냈다**. 레포 자신의 관용구가 `global_transform(goal_config(n)).translation` · `project_to_2d(t.translation)` · `get_center(ball)` 다
        replace_robot!, reform_stuck_teams!, hot_swap_robot!,      # OOD 1-1: 예비 로봇 1:1 인계 + 막힌 운반팀 재정립 + 정체성보존 hot-swap
        identity_violations, identity_summary, check_identity!,    # STEP A-1: 로봇 정체성 4-레지스트리 정합성 검사(읽기 전용)
        report_identity_delta,                                     # 변경 전/후 짝 보고(개수를 항상 남김)

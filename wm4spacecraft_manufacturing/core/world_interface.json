@@ -995,6 +995,39 @@
             "returns": "Symbol"
         },
         {
+            "name": "get_center",
+            "missing": [
+                "HyperSphere"
+            ],
+            "signature": "(s::GeometryBasics.HyperSphere)",
+            "argpaths": [
+            ],
+            "callable": false,
+            "returns": "GeometryBasics.Point"
+        },
+        {
+            "name": "get_center",
+            "missing": [
+                "Ball2"
+            ],
+            "signature": "(s::LazySets.Ball2Module.Ball2)",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "AbstractVector{N} where N<:AbstractFloat"
+        },
+        {
+            "name": "get_center",
+            "missing": [
+                "Hyperrectangle"
+            ],
+            "signature": "(s::LazySets.HyperrectangleModule.Hyperrectangle)",
+            "argpaths": [
+            ],
+            "callable": false,
+            "returns": "AbstractVector"
+        },
+        {
             "name": "get_cmd",
             "missing": [
                 "Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}"
@@ -1067,6 +1100,72 @@
             ],
             "callable": true,
             "returns": "Any"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+                "GeomNode"
+            ],
+            "signature": "(g::ConstructionBots.GeomNode, args::Vararg{Any})",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "CoordinateTransformations.Transformation"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+                "CustomNode"
+            ],
+            "signature": "(n::ConstructionBots.CustomNode)",
+            "argpaths": [
+            ],
+            "callable": false,
+            "returns": "Any"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+            ],
+            "signature": "(n::ConstructionBots.SceneNode)",
+            "argpaths": [
+                "n <- env.scene_tree.nodes[i]"
+            ],
+            "callable": true,
+            "returns": "Any"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+                "TransformNode"
+            ],
+            "signature": "(n::ConstructionBots.TransformNode)",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "CoordinateTransformations.Transformation"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+                "TransformNode",
+                "Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}"
+            ],
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, n::ConstructionBots.TransformNode)",
+            "argpaths": [
+            ],
+            "callable": false,
+            "returns": "CoordinateTransformations.Transformation"
+        },
+        {
+            "name": "global_transform",
+            "missing": [
+                "Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}"
+            ],
+            "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, v)",
+            "argpaths": [
+            ],
+            "callable": false
         },
         {
             "name": "goal_config",
@@ -1449,6 +1548,26 @@
             ],
             "callable": true,
             "returns": "Bool"
+        },
+        {
+            "name": "project_to_2d",
+            "missing": [
+            ],
+            "signature": "(geom)",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "Any"
+        },
+        {
+            "name": "project_to_2d",
+            "missing": [
+            ],
+            "signature": "(geom, t)",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "push_ood!",

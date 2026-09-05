@@ -509,6 +509,35 @@ end
 const _SCALARISH = (Real, AbstractString, Symbol, Bool, Char)
 
 """
+    _OBTAINABLE_FOREIGN
+
+폐포 **밖**(= CB 가 정의하지 않은)인데 **광고된 접근자가 이미 손에 쥐여 주는** 타입 이름들.
+
+🔴 왜 이 목록이 따로 있나 (나-1, 2026-09-05, 유료 런 19·20 실측). `get_center` 를 export 만
+   하면 S4 와 바이트 동일한 무동작이 된다: 재생성물에서 `callable == false` 라 렌더가 그것을
+   `FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET` 아래 실었고, 그 자리는 모델이
+   "지금은 못 부른다" 로 읽는다. 그런데 런 19 의 body 는 **정확히 그 함수를 부르려다** 죽었다
+   (`get_center(::Pair{Symbol, Ball2})`).
+
+🔴 그리고 그 `callable == false` 는 **거짓 진술**이었다. `restriction_zones()` 는
+   `Dict{Symbol, Ball2}` 를 돌려주고 그 자신이 광고돼 있으며, 2026-09-05 의 `element_type`
+   이후로는 `yields: Pair{Symbol, Ball2}` 까지 적혀 있다 — 즉 그 값은 손에 들어온다.
+   폐포에만 없었을 뿐이다.
+
+🔴 **타입 폐포를 넓히지 않는다.** `world_type_closure` 의 `_defined_in_cb` 게이트는 그대로다
+   — 넓히면 `WORLD TYPES` 절에 LazySets 내부가 통째로 들어와 모델이 보는 표면이 이 레인이
+   재려는 것과 달라진다(S4 가 프록시 넓히기를 재고 버린 것과 같은 근거). 여기서 바꾸는 것은
+   **한 술어의 참값**뿐이다: "이 인자를 손에 넣을 수 있는가".
+
+⚠️ `AMBIENT_ROOTS`·`_CURATED_SEEDS` 와 같은 패턴이다 — 손으로 유지되는 목록 + 게이트.
+   이름을 더하는 것은 모델이 보는 표면을 넓히는 것이므로 그 게이트를 다시 판정해야 한다.
+⚠️ 이름은 `_tname` 의 철자다 — 즉 `nameof` 의 **맨 이름**(`"Ball2"`)이지 정규화된
+   `"LazySets.Ball2Module.Ball2"` 가 아니다. `reach` 도 같은 철자를 쓰므로 두 판정이 한
+   어휘를 공유한다(실측: 정규화 이름으로 적으면 이 목록이 조용한 무동작이 된다).
+"""
+const _OBTAINABLE_FOREIGN = Set{String}(["Ball2"])
+
+"""
 이 인자 타입이 **폐포 멤버십(또는 스칼라/Any)** 기준을 통과하는가 (설계 §6.2 의 판정).
 
 🔴 리뷰 I2: `Vararg{Any}` 는 `isa DataType` 가 **false** 라 아래 `S isa DataType ||
@@ -526,6 +555,7 @@ function _arg_obtainable(T, reach)
     S isa DataType || return false
     S === Nothing && return true
     any(P -> S <: P, _SCALARISH) && return true
+    _tname(S) in _OBTAINABLE_FOREIGN && return true      # 🔴 (나-1): 폐포 밖이지만 손에 들어온다
     return _tname(S) in reach
 end
 

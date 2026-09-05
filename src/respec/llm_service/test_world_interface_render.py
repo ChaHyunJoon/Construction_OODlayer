@@ -457,3 +457,56 @@ def test_rule_3_says_success_is_your_contract_not_the_callees():
     assert "status seen in source:" in r3, r3                # 렌더와 같은 철자를 가리킨다
     assert "status seen in source:" in _block()
 
+
+# =====================================================================================
+# (나-1) 2026-09-05 — 좌표를 꺼내는 길. 유료 런 19·20 이 여기서 죽었다.
+#
+#   run19 1차 `MethodError: Vector{Float64}(::TransformNode)`
+#   run19 2차 `MethodError: get_center(::Pair{Symbol, Ball2})`
+#   run20 2차 `MethodError: Vector{Float64}(::AffineMap)`
+#
+# 셋 다 **CB 에 정의돼 있는데 `export` 가 없어서** 생성기(`names(CB)` 순회)에 안 보였다.
+# 모델은 길이 없으니 없는 생성자를 지어냈다 — (b) 와 완전히 같은 부류이고 한 층 위다.
+# =====================================================================================
+def test_the_coordinate_accessors_are_advertised_at_all():
+    import world_interface as WI
+    names = {m["name"] for m in WI.load_world_interface()["methods"]}
+    for n in ("global_transform", "project_to_2d", "get_center"):
+        assert n in names, n
+
+
+def test_they_are_under_the_callable_heading_not_the_other_one():
+    """🔴 S4 의 함정. `export` 한 줄로는 무동작이다 — `callable=false` 면 렌더가 그것을
+    `FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET` 아래로 보내고, 그 자리는 모델이
+    "지금은 못 부른다" 로 읽는다. 실측으로 `get_center` 가 정확히 거기 앉아 있었다."""
+    import world_interface as WI
+    block = _block()
+    head = block.index(WI._CALLABLE_HEADING)
+    tail = block.index("FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET")
+    callable_part = block[head:tail]
+    for n in ("global_transform", "project_to_2d", "get_center"):
+        assert ("- %s " % n) in callable_part, n
+
+
+def test_the_ball2_seam_is_present_on_both_ends():
+    """모델이 이어야 할 이음매다: `restriction_zones()` 가 `Ball2` 를 주고 `get_center` 가
+    그것을 받는다. 한쪽만 있으면 광고가 이음매가 아니라 막다른 길이 된다."""
+    import world_interface as WI
+    ms = WI.load_world_interface()["methods"]
+    gc = [m for m in ms if m["name"] == "get_center" and "Ball2" in m["signature"]]
+    assert gc and gc[0].get("callable") is True, gc
+    rz = [m for m in ms if m["name"] == "restriction_zones"]
+    assert rz and rz[0].get("callable") is True
+    # (b) 가 그 이음매의 원소 타입을 이미 적어 뒀다 — 둘이 같은 사실을 가리킨다.
+    assert "Pair{Symbol," in (rz[0].get("element_type") or ""), rz[0].get("element_type")
+
+
+def test_the_closure_did_not_widen():
+    """🔴 음성 대조. `_OBTAINABLE_FOREIGN` 은 `_arg_obtainable` **한 술어**만 고친다.
+    폐포를 넓혔다면 `WORLD TYPES` 절에 LazySets/GeometryBasics 내부가 들어와 모델이 보는
+    표면이 이 레인이 재려는 것과 달라진다(S4 가 프록시 넓히기를 재고 버린 것과 같은 근거)."""
+    import world_interface as WI
+    tnames = {t["name"] for t in WI.load_world_interface()["types"]}
+    for foreign in ("Ball2", "Hyperrectangle", "HyperSphere", "AffineMap"):
+        assert foreign not in tnames, foreign
+

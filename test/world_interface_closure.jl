@@ -90,10 +90,22 @@ end
         @test m.callable === true
     end
     # 🔴 재유도해서 적을 것 — 이 숫자는 export 를 더할 때마다 낡는다(testset (34) 의 짝이
-    #    실제로 낡은 채 커밋돼 HEAD 를 빨갛게 했다). 실측 2026-09-05 (S5) = **189**.
+    #    실제로 낡은 채 커밋돼 HEAD 를 빨갛게 했다). 실측 2026-09-05 (나-1) = **195**.
     #    직전 이력: Vararg 고침 전 181 · S4 의 `InvariantSpec` 씨앗 전 186 ·
-    #    S3 의 `ood_event_target()` 전 187 · S5 의 `forbid_heavy_cargo!` 전 188.
-    @test count(m -> m.callable === true, ms) == 189
+    #    S3 의 `ood_event_target()` 전 187 · S5 의 `forbid_heavy_cargo!` 전 188 ·
+    #    (나-1) 의 좌표 접근자 전 **189**.
+    # 🔴 189 → 195 의 내역(실측, 전수): `global_transform` 3 · `project_to_2d` 2 ·
+    #    `get_center` 1 = **6**. 이 트립와이어는 **의도대로 울렸다** — (나-1) 이 광고
+    #    표면을 넓혔고, 그 넓힘이 이 줄 하나로 기록에 남는다.
+    #    ⚠️ `get_center` 의 셋 중 `Ball2` 판 하나만 열린다: 나머지 둘(`Hyperrectangle` ·
+    #    `HyperSphere`)은 `_OBTAINABLE_FOREIGN` 에 없다 — 세계가 그 둘을 손에 쥐여 주는
+    #    광고된 접근자가 없기 때문이고, 그래서 `callable=false` 가 그 둘에 대해서는 **참**이다.
+    @test count(m -> m.callable === true, ms) == 195
+    # 🔴 그 넓힘의 내역을 숫자로만 두지 않는다 — 어느 이름이 몇 개 열렸는지를 직접 잰다.
+    #    숫자만 고치는 습관이 들면 다음 번에 **다른 것이 열려도** 이 줄은 초록으로 남는다.
+    local opened = Dict(nm => count(m -> String(m.name) == nm && m.callable === true, ms)
+                        for nm in ("global_transform", "project_to_2d", "get_center"))
+    @test opened == Dict("global_transform" => 3, "project_to_2d" => 2, "get_center" => 1)
 end
 @testset "(7) 🔴 R11·R33 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
     j = JSON3.read(read(ART, String))
@@ -121,7 +133,21 @@ end
                           occursin("DepositCargo", String(m.signature)), ms))
     @test ap.callable === true
     @test Set(String.(collect(ap.missing))) == Set(["DepositCargo", "Twist"])
-    @test count(m -> m.callable === true && !isempty(m.missing), ms) == 33   # 실측 (S4 전에는 32)
+    # 🔴 실측 2026-09-05 (나-1) = **36**. 직전 이력: S4 전 32 · (나-1) 전 33.
+    #    33 → 36 의 내역(전수): `get_center(::Ball2)` missing=[Ball2] ·
+    #    `global_transform(::TransformNode)` missing=[TransformNode] ·
+    #    `global_transform(::GeomNode, args...)` missing=[GeomNode] = **셋**.
+    #    이 셋에 `missing` 이 남는 것은 **설계다**(S4 의 `missing: InvariantSpec` 과 같다):
+    #    그 타입들은 env 의 필드가 아니라 다른 광고된 함수가 만들어 준다
+    #    (`Ball2` ← `restriction_zones()` · `TransformNode` ← `goal_config`). 그 이음매를
+    #    모델이 스스로 잇는지가 실험이므로 메우지 않는다.
+    @test count(m -> m.callable === true && !isempty(m.missing), ms) == 36
+    # 🔴 숫자만 고치지 않는다 — 어느 셋이 늘었는지를 직접 잰다(위 (6) 과 같은 규율).
+    local added = Set(String[String(m.name) * "|" * join(String.(collect(m.missing)), ",")
+                             for m in ms if m.callable === true && !isempty(m.missing) &&
+                                 String(m.name) in ("get_center", "global_transform")])
+    @test added == Set(["get_center|Ball2", "global_transform|TransformNode",
+                        "global_transform|GeomNode"])
     # 빈-통과 방지: 경로가 다 있는 항목은 missing 이 비어야 한다
     cn = only(filter(m -> String(m.name) == "close_node!" &&
                           occursin("ScheduleNode", String(m.signature)), ms))
@@ -238,6 +264,61 @@ end
     #    모델이 보는 표면이 통째로 달라진다(실측: 67 → 82).
     for gone in ("RespecProposal", "ConstraintSpec", "LinearConstraint", "Disjunction",
                  "VarRef", "ForbidZone", "ForbidAgent", "SwapBattery")
+        @test !(gone in ns)
+    end
+end
+
+# 🔴 (나-1) (2026-09-05). 좌표를 꺼내는 길을 광고한다 — 유료 런 19·20 이 여기서 죽었다.
+#    run19 1차 `Vector{Float64}(::TransformNode)` · run19 2차 `get_center(::Pair{Symbol,Ball2})`
+#    · run20 2차 `Vector{Float64}(::AffineMap)`. 셋 다 **defined 인데 export 가 없어서**
+#    `names(CB)` 를 도는 생성기에 안 보였고, 모델은 없는 생성자를 지어냈다.
+#    레포 자신의 관용구는 `global_transform(goal_config(n)).translation` ·
+#    `project_to_2d(t.translation)` · `get_center(ball)` 다.
+@testset "(9b) 🔴 (나-1): 좌표 접근자가 실제로 호출 가능하게 렌더된다" begin
+    j = JSON3.read(read(ART, String))
+    ns = Set(String[String(t.name) for t in j.types])
+    ms = collect(j.methods)
+
+    # ---- 셋 다 산출물에 있고, 부를 수 있는 메서드가 하나 이상 있다 ----------------------
+    for nm in ("global_transform", "project_to_2d", "get_center")
+        got = filter(m -> String(m.name) == nm, ms)
+        @test !isempty(got)                       # export 가 먹었다
+        # 🔴 이것이 이 태스크의 성패다. `false` 뿐이면 렌더가 전부
+        #    `FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET` 아래로 보내고,
+        #    그 자리는 모델이 "지금은 못 부른다" 로 읽는다 = S4 와 같은 무동작.
+        @test any(m -> m.callable === true, got)
+    end
+
+    # ---- run19 가 정확히 부르려던 그 메서드 --------------------------------------------
+    gc = only(filter(m -> String(m.name) == "get_center" &&
+                          occursin("Ball2", String(m.signature)), ms))
+    @test gc.callable === true
+    # 설계상 `missing` 은 남는다(S4 의 `InvariantSpec` 과 같다) — `Ball2` 는 env 의 필드가
+    # 아니라 `restriction_zones()` 가 준다. 그 이음매를 모델이 스스로 잇는지가 실험이다.
+    @test Set(String.(collect(gc.missing))) == Set(["Ball2"])
+    # 그 이음매가 성립하려면 공급자가 같은 산출물에 호출 가능해야 한다.
+    rz = only(filter(m -> String(m.name) == "restriction_zones", ms))
+    @test rz.callable === true
+
+    # ---- TransformNode → 변환 -----------------------------------------------------------
+    # 🔴 부분 문자열로 물리면 둘이 잡힌다 — `(tree::…, n::ConstructionBots.TransformNode)`
+    #    도 같은 조각을 담는다(실측: `only` 가 ArgumentError 로 죽었다). 정확히 문다.
+    gt = only(filter(m -> String(m.name) == "global_transform" &&
+                          String(m.signature) == "(n::ConstructionBots.TransformNode)", ms))
+    @test gt.callable === true
+    # 공급자: `goal_config` 가 TransformNode 를 돌려준다.
+    @test any(m -> String(m.name) == "goal_config", ms)
+
+    # ---- 🔴 음성 대조: 타입 폐포를 **안 넓혔다** ----------------------------------------
+    #    `_OBTAINABLE_FOREIGN` 은 `_arg_obtainable` **한 술어**만 고친다. 폐포를 넓혔다면
+    #    `WORLD TYPES` 절에 LazySets/GeometryBasics 내부가 통째로 들어와 모델이 보는 표면이
+    #    이 레인이 재려는 것과 달라진다(S4 가 프록시 넓히기를 재고 버린 것과 같은 근거).
+    @test !("Ball2" in ns)
+    @test !("Hyperrectangle" in ns)
+    @test !("HyperSphere" in ns)
+    @test !("AffineMap" in ns)
+    # S4 의 음성 대조도 그대로 살아 있다 — respec 문법은 여전히 폐포 밖이다.
+    for gone in ("RespecProposal", "ConstraintSpec", "LinearConstraint", "SwapBattery")
         @test !(gone in ns)
     end
 end
