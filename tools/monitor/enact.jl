@@ -1461,6 +1461,25 @@ _sl_is_rewritable(sl) =
 `HTTP.RequestError` 의 `showerror` 가 **진짜 원인 앞에** 찍는 리터럴 표식. 진실원은 여기
 하나다(`HTTP/src/Exceptions.jl` 의 `Base.showerror(io, e::RequestError)`).
 """
+# ---- `/rewrite` 읽기 시한 (2026-09-05) ------------------------------------------------------
+# 🔴 여기 있던 값은 **하드코딩 120 이었다.** 그 자체로 실패한 적은 아직 없지만, 같은 날
+#    `policy.jl` 의 `/decide` 가 **하드코딩 60 때문에 유료 런 13 을 통째로 날렸다** — 서버는
+#    정상 결정을 완성했는데 클라이언트가 먼저 손을 뗐고, 증상은 "서비스가 빈 결정을 냈다"
+#    처럼 보였다. 이 자리는 **같은 모양의 잠복 버그**다: 시한을 넘기면 `catch` 가
+#    `nothing` 을 내는데, 그 `nothing` 은 되먹임 경로에서 "서비스가 고쳐 쓰기를 거부했다"
+#    와 구분되지 않는다.
+#
+# 근거 (실측, 2026-09-05, 라이브 `gpt-5.6-sol`): `/decide` 한 왕복 74.33초 / LM 4콜
+# ≈ 호출당 18.6초. `/rewrite` 는 LM **한 콜**이라 120 이면 6.5배 여유이고 지금은 안 터진다.
+# 그러나 그 여유는 **모델 속도에 매달려 있다** — 추론 모델은 같은 프롬프트에서도 지연이
+# 몇 배로 흔들린다. `/decide` 와 **같은 손잡이·같은 기본값**으로 맞춰 둔다.
+#
+# ⚠️ 재시도 대가는 위 `retry_non_idempotent` 주석이 이미 진다. 시한 초과는 재시도되지
+#    않으므로(실측: 런 13 이 `retries = 3` 인데 `calls` 가 1) 올려도 과금이 곱해지지 않는다.
+# ⚠️ `policy.jl` 의 `DSPY_TIMEOUT_S` 와 **이름을 공유하지 않는다**(그쪽 const 에 기대면
+#    `enact.jl` 만 include 하는 시험 프로세스에서 UndefVarError 다). 환경변수는 같다.
+const REWRITE_TIMEOUT_S = something(tryparse(Int, strip(get(ENV, "DSPY_TIMEOUT_S", ""))), 300)
+
 const _UNDERLYING_MARK = "Underlying error:"
 
 """
@@ -1578,7 +1597,8 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
         #    `retryable(status)` 가 참이어도 `retryable(::Request)` 가 이 판을 막는다.
         resp = HTTP.post(DSPY_URL * "/rewrite",
                          ["Content-Type" => "application/json"], body;
-                         readtimeout = 120, retries = 2, retry_non_idempotent = true)
+                         readtimeout = REWRITE_TIMEOUT_S, retries = 2,
+                         retry_non_idempotent = true)
         f = JSON3.read(String(resp.body))
         (get(f, :wrote, nothing) === true) || return nothing
         (get(f, :impl_code, nothing) isa AbstractString) || return nothing
