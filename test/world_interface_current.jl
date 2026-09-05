@@ -160,4 +160,35 @@ end
     undefd = Symbol[n for n in names(CB) if !isdefined(CB, n)]
     @test issubset(Set(undefd), Set([:battery_report]))
 end
+@testset "(10) 🔴 키워드 인자에 타입이 실린다 — 유료 런 여섯이 죽은 자리다" begin
+    # 🔴 왜 이 게이트가 (2) 와 별개인가. (2) 는 "산출물이 생성기와 일치한다" 만 잰다 —
+    #    `_kwarg_types` 를 통째로 지워도 산출물을 같이 재생성하면 **초록으로 남는다**.
+    #    그러면 프롬프트에서 키워드 타입이 조용히 사라지고, 그 부재가 정확히 여섯 런을
+    #    죽인 조건이다(환각이 전부 키워드 자리에서 났다: `agent` 에 bare `Int64`,
+    #    `zone_keys` 에 좌표 튜플, dict 키에 `"R1"`). 그래서 **부재를 직접** 잰다.
+    #    (7) 이 앰비언트의 `returns` 문자열에 대해 하는 것과 같은 모양이다.
+    j = JSON3.read(read(ART, String))
+    sigs = Dict(String(m.name) => String(m.signature) for m in j.methods)
+    # 🔴 양성 단언 1 — id 를 나르는 키워드. run4/run5 는 `AbstractID` 자리에 각각
+    #    bare `Int64` 와 `"R1"` 을 넣어 죽었다. 이 한 줄이 그 자리를 광고한다.
+    @test occursin("target::Union{Nothing, ConstructionBots.BotID", sigs["fault_robot!"])
+    # 🔴 양성 단언 2 — 삼상 키워드. `Nothing` 이 유효값과 안 섞인다는 것이 타입에 있다.
+    @test occursin("agent::Union{Nothing, AbstractString}",
+                   sigs["release_pending_assignments!"])
+    # 🔴 양성 단언 3 — 평범한 스칼라 키워드도 실린다(빈-통과 방지: 위 둘만 특별대우한
+    #    하드코딩이 아니라 유도가 돌고 있다).
+    @test occursin("resume::Bool", sigs["restage_all_blocked!"])
+    @test occursin("resume::Bool", sigs["translate_whole_build!"])
+    # 🔴 삼상 규율의 양성 대조. 유도가 안 되는 키워드(선언 타입이 없다 = `Any`)는
+    #    **오늘과 같이 이름만** 실려야 한다 — `Any` 를 싣는 것은 위치인자와 같은 이유로
+    #    정보 0이고, 지어낸 타입은 이 파일이 없애려는 실패 그 자체다. 이 단언이 없으면
+    #    "유도가 전부에 붙었다"(= 어딘가에서 `Any` 를 싣고 있다)를 아무도 못 본다.
+    #    ⚠️ 함수를 이름으로 고정하지 않는다 — 어느 시그니처를 좁히는 것은 이 게이트가
+    #    막을 결정이 아니다(그것은 그 함수 쪽의 판정이고, (2) 가 산출물 갱신을 지킨다).
+    bare = [n for (n, s) in sigs if occursin(";", s) &&
+            any(t -> !occursin("::", t),
+                split(strip(last(split(s, ";")), [' ', ')']), ","))]
+    @test !isempty(bare)
+    @test !any(s -> occursin("::Any", s), values(sigs))
+end
 end # module

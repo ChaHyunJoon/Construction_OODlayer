@@ -255,6 +255,59 @@ function type_entry(T)
 end
 
 """
+    _kwarg_types(m::Method) -> Dict{String,String}
+
+키워드 인자의 **선언 타입**을 기계로 유도한다. 위치인자는 `m.sig` 가 들고 있지만 키워드는
+안 들고 있다 — `Base.kwarg_decl(m)` 이 주는 것은 **이름뿐**이고, 타입은 컴파일러가 만든
+**body 함수**(`Base.bodyfunction(m)`)의 시그니처에 산다. 그 시그니처의 모양은
+`Tuple{bodyself, kw1, kw2, …, typeof(f), pos1, …}` 이고 `Base.method_argnames` 가
+같은 자리에 이름을 준다 — 키워드 블록과 위치인자 블록을 가르는 것은 `typeof(f)` 자리의
+**빈 이름**(`Symbol("")`)이다(실측: `f7(::Foo; margin::Float64)` 에서 nms 가
+`[#f7#5, :margin, Symbol(""), Symbol("")]`).
+
+🔴 **이 함수가 왜 있나** (2026-09-05). 유료 런 여섯이 죽은 자리가 전부 **키워드**였는데
+(`agent` 에 bare `Int64`, `zone_keys` 에 좌표 튜플, dict 키에 `"R1"`), 광고된 시그니처는
+위치인자에만 타입을 싣고 키워드는 이름만 실었다. 즉 모델이 지어내야 했던 바로 그 자리가
+프롬프트에서 유일하게 타입이 없는 자리였다. 산문 규칙은 세 번 재어 실패를 **옮기기만**
+했으므로, `returns` 때와 같은 기계적 처방을 쓴다 — 선언에 있는 진실을 그대로 광고한다.
+
+🔴 **삼상 규율은 생성기에도 적용된다.** 유도가 안 되는 자리(body 함수가 없다 · body
+메서드가 하나가 아니다 · 이름이 kwarg 목록과 안 맞는다 · 선언 타입이 `Any` 다 ·
+`kwargs...` 슬러프다)는 **오늘과 같이 이름만** 렌더한다. 지어낸 타입을 싣느니 없는 채로
+두는 쪽이 낫다 — `Any` 를 싣는 것은 위치인자 쪽(`_sig_string`)과 같은 이유로 정보 0에
+줄만 늘리는 짓이고, 지어낸 타입은 그 자체가 이 파일이 없애려는 실패다.
+
+⚠️ `Base.bodyfunction` 은 Base 내부 API 다(Documenter 가 같은 용도로 쓴다). 던지면
+빈 사전으로 물러난다 — 조용한 **거짓**이 아니라 조용한 **부재**이고, 부재는 오늘의 렌더다.
+⚠️ 결정성: body 함수의 시그니처도 argnames 도 선언 순서이고 집합 순회가 끼지 않는다.
+흔들리면 `test/world_interface_current.jl` 의 testset (2) 바이트 비교가 빨개진다.
+"""
+function _kwarg_types(m::Method)
+    out = Dict{String,String}()
+    kws = try Set(String.(Base.kwarg_decl(m))) catch; return out end
+    isempty(kws) && return out
+    bf = try Base.bodyfunction(m) catch; nothing end
+    bf === nothing && return out
+    bms = collect(methods(bf))
+    length(bms) == 1 || return out          # 하나가 아니면 어느 것이 이 메서드의 body 인지 모른다
+    bm = only(bms)
+    bsig = Base.unwrap_unionall(bm.sig)
+    bsig isa DataType || return out
+    Ts  = collect(bsig.parameters)
+    nms = Base.method_argnames(bm)
+    n = min(length(Ts), length(nms))
+    for i in 2:n                            # 1 = body 자신
+        nm = String(nms[i])
+        isempty(nm) && break                # `typeof(f)` 자리 = 키워드 블록의 끝
+        nm in kws || continue               # `kwargs...` 슬러프(body 이름은 `kwargs`)는 여기서 빠진다
+        ts = string(Ts[i])
+        ts == "Any" && continue             # 위치인자와 같은 규칙 — `x::Any` 는 정보가 0이다
+        out[nm] = ts
+    end
+    return out
+end
+
+"""
     _sig_string(m) -> String
 
 메서드 하나를 **모델이 호출을 쓸 수 있는 모양**으로 렌더한다: `(env::PlannerEnv; min_ready, snap_all)`.
@@ -285,7 +338,16 @@ function _sig_string(m::Method)
         push!(parts, ts == "Any" ? nm : string(nm, "::", ts))
     end
     kws = Base.kwarg_decl(m)
-    return "(" * join(parts, ", ") * (isempty(kws) ? "" : "; " * join(String.(kws), ", ")) * ")"
+    # 🔴 키워드에도 타입을 싣는다 (2026-09-05). 유도 못 한 이름은 **오늘과 같이 이름만** —
+    #    `_kwarg_types` 의 삼상 규율이 그 판정의 유일한 자리다.
+    kwt = isempty(kws) ? Dict{String,String}() : _kwarg_types(m)
+    kwparts = String[]
+    for k in kws
+        s = String(k)
+        push!(kwparts, haskey(kwt, s) ? string(s, "::", kwt[s]) : s)
+    end
+    return "(" * join(parts, ", ") *
+           (isempty(kwparts) ? "" : "; " * join(kwparts, ", ")) * ")"
 end
 
 # ── 🔴 여기 있던 **정밀도 등급**(N2, `_PATH_SINGULAR`/`_PATH_ROLE_KEYS`/`_PATH_POPULATION`/

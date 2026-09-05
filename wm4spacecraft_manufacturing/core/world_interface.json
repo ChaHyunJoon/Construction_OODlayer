@@ -22,7 +22,7 @@
             "name": "add_directional_spare_pools!",
             "missing": [
             ],
-            "signature": "(scene_tree; n_spare, distance, bbox, margin, geom, spacing)",
+            "signature": "(scene_tree; n_spare::Int64, distance::Real, bbox, margin::Real, geom, spacing::Real)",
             "argpaths": [
             ],
             "callable": true
@@ -621,7 +621,7 @@
             "missing": [
                 "RespecProposal"
             ],
-            "signature": "(env, milp, proposal::RespecProposal; resume)",
+            "signature": "(env, milp, proposal::RespecProposal; resume::Bool)",
             "argpaths": [
             ],
             "callable": false
@@ -658,7 +658,7 @@
             "name": "core_zone_for_severity",
             "missing": [
             ],
-            "signature": "(env, frac::Real; pad, root)",
+            "signature": "(env, frac::Real; pad::Float64, root)",
             "argpaths": [
             ],
             "callable": true
@@ -796,7 +796,7 @@
             "name": "escalation_verdict",
             "missing": [
             ],
-            "signature": "(; descriptors, values, member_values, eps, margin_thresh, disagree_thresh)",
+            "signature": "(; descriptors::Union{Nothing, AbstractVector{<:Real}}, values::Union{Nothing, AbstractVector{<:Real}}, member_values::Union{Nothing, AbstractVector}, eps::Union{Nothing, Real}, margin_thresh::Real, disagree_thresh::Real)",
             "argpaths": [
             ],
             "callable": true
@@ -805,7 +805,7 @@
             "name": "event_descriptors",
             "missing": [
             ],
-            "signature": "(; soc, agent_pending, zone_overlap, severity, n_active, spare_count, closed_at_fire, total_nodes, progress, nav_blocked, nav_downstream)",
+            "signature": "(; soc::Real, agent_pending::Real, zone_overlap::Real, severity::Real, n_active::Real, spare_count::Real, closed_at_fire::Real, total_nodes::Real, progress::Real, nav_blocked::Real, nav_downstream::Real)",
             "argpaths": [
             ],
             "callable": true
@@ -814,7 +814,7 @@
             "name": "fault_robot!",
             "missing": [
             ],
-            "signature": "(env; target, obstacle, clear, safe)",
+            "signature": "(env; target::Union{Nothing, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}, obstacle::Bool, clear::Bool, safe::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -823,7 +823,7 @@
             "name": "fault_robot_and_reassign!",
             "missing": [
             ],
-            "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose, resume)",
+            "signature": "(env, agent::ConstructionBots.AbstractID; optimizer, verbose::Bool, resume::Bool)",
             "argpaths": [
                 "agent <- env.scene_tree.vtx_ids[i]",
                 "agent <- env.sched.vtx_ids[i]",
@@ -850,7 +850,7 @@
             "name": "find_clear_staging_center",
             "missing": [
             ],
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin, zone_margin_frac, ring_step, n_angles, max_rings)",
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin::Float64, zone_margin_frac::Float64, ring_step::Float64, n_angles::Int64, max_rings::Int64)",
             "argpaths": [
                 "assembly_id <- env.scene_tree.vtx_ids[i]",
                 "assembly_id <- env.sched.vtx_ids[i]",
@@ -868,7 +868,7 @@
             "name": "forbid_heavy_cargo!",
             "missing": [
             ],
-            "signature": "(env; agent, n)",
+            "signature": "(env; agent::AbstractString, n::Real)",
             "argpaths": [
             ],
             "callable": true
@@ -877,7 +877,7 @@
             "name": "free_space_status",
             "missing": [
             ],
-            "signature": "(start, goal, zones, agent_radius::Real; cell, margin)",
+            "signature": "(start, goal, zones, agent_radius::Real; cell::Float64, margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -1002,7 +1002,7 @@
             "name": "goal_engulfed",
             "missing": [
             ],
-            "signature": "(goal, agent_radius::Real, zones; ttol, margin)",
+            "signature": "(goal, agent_radius::Real, zones; ttol::Float64, margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -1020,7 +1020,7 @@
             "name": "hot_swap_robot!",
             "missing": [
             ],
-            "signature": "(env, faulted::ConstructionBots.AbstractID; mode, verbose)",
+            "signature": "(env, faulted::ConstructionBots.AbstractID; mode::Symbol, verbose::Bool)",
             "argpaths": [
                 "faulted <- env.scene_tree.vtx_ids[i]",
                 "faulted <- env.sched.vtx_ids[i]",
@@ -1047,7 +1047,7 @@
             "name": "identity_violations",
             "missing": [
             ],
-            "signature": "(env; tol)",
+            "signature": "(env; tol::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -1148,7 +1148,7 @@
             "name": "nearest_pool",
             "missing": [
             ],
-            "signature": "(pos; nonempty)",
+            "signature": "(pos; nonempty::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1178,7 +1178,7 @@
             "missing": [
                 "AbstractArray"
             ],
-            "signature": "(x::AbstractVector{<:Real}; eps)",
+            "signature": "(x::AbstractVector{<:Real}; eps::Union{Nothing, Real})",
             "argpaths": [
             ],
             "callable": false
@@ -1259,7 +1259,7 @@
             "name": "pool_centers",
             "missing": [
             ],
-            "signature": "(_; margin)",
+            "signature": "(_; margin::Real)",
             "argpaths": [
             ],
             "callable": true
@@ -1304,7 +1304,7 @@
             "name": "random_restriction_zone!",
             "missing": [
             ],
-            "signature": "(env; key, seed, placement, radius, max_radius, attempts)",
+            "signature": "(env; key::Symbol, seed::Union{Nothing, Int64}, placement::Symbol, radius::Union{Nothing, Real}, max_radius::Real, attempts::Int64)",
             "argpaths": [
             ],
             "callable": true
@@ -1313,7 +1313,7 @@
             "name": "record_asset_swap!",
             "missing": [
             ],
-            "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event, cause, step, soc, position)",
+            "signature": "(role::ConstructionBots.AbstractID, new_asset::ConstructionBots.AbstractID; event::Symbol, cause::Symbol, step::Int64, soc::Union{Nothing, Real}, position)",
             "argpaths": [
                 "role <- env.scene_tree.vtx_ids[i]",
                 "role <- env.sched.vtx_ids[i]",
@@ -1430,7 +1430,7 @@
             "name": "reform_stuck_teams!",
             "missing": [
             ],
-            "signature": "(env; min_ready, snap_all)",
+            "signature": "(env; min_ready::Int64, snap_all::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1459,7 +1459,7 @@
             "missing": [
                 "InvariantSpec"
             ],
-            "signature": "(env, invariant::ConstructionBots.InvariantSpec; faulted, agent)",
+            "signature": "(env, invariant::ConstructionBots.InvariantSpec; faulted, agent::Union{Nothing, AbstractString})",
             "argpaths": [
             ],
             "callable": true
@@ -1507,7 +1507,7 @@
             "name": "replace_robot!",
             "missing": [
             ],
-            "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume, verbose, park_rests)",
+            "signature": "(env, faulted::ConstructionBots.AbstractID, spare::ConstructionBots.AbstractID; resume::Bool, verbose::Bool, park_rests::Bool)",
             "argpaths": [
                 "faulted <- env.scene_tree.vtx_ids[i]",
                 "faulted <- env.sched.vtx_ids[i]",
@@ -1563,7 +1563,7 @@
             "name": "restage_all_blocked!",
             "missing": [
             ],
-            "signature": "(env; zone_keys, resume, verbose)",
+            "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1572,7 +1572,7 @@
             "name": "restage_assembly!",
             "missing": [
             ],
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume, verbose)",
+            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume::Bool, verbose::Bool)",
             "argpaths": [
                 "assembly_id <- env.scene_tree.vtx_ids[i]",
                 "assembly_id <- env.sched.vtx_ids[i]",
@@ -1608,7 +1608,7 @@
             "name": "root_goal_coverage",
             "missing": [
             ],
-            "signature": "(center, r, env; margin)",
+            "signature": "(center, r, env; margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -1645,7 +1645,7 @@
             "name": "set_battery_courier!",
             "missing": [
             ],
-            "signature": "(; enabled, speed, arrive_r, halt_build)",
+            "signature": "(; enabled::Bool, speed::Real, arrive_r::Real, halt_build::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1743,7 +1743,7 @@
             "name": "set_hot_swap!",
             "missing": [
             ],
-            "signature": "(; enabled, mode)",
+            "signature": "(; enabled::Bool, mode::Symbol)",
             "argpaths": [
             ],
             "callable": true
@@ -1752,7 +1752,7 @@
             "name": "set_identity_check!",
             "missing": [
             ],
-            "signature": "(; enabled, every, strict)",
+            "signature": "(; enabled::Bool, every::Integer, strict::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1936,7 +1936,7 @@
             "name": "swap_battery!",
             "missing": [
             ],
-            "signature": "(env, role::ConstructionBots.AbstractID; verbose)",
+            "signature": "(env, role::ConstructionBots.AbstractID; verbose::Bool)",
             "argpaths": [
                 "role <- env.scene_tree.vtx_ids[i]",
                 "role <- env.sched.vtx_ids[i]",
@@ -1954,7 +1954,7 @@
             "name": "swap_event_kind",
             "missing": [
             ],
-            "signature": "(; cause, captured)",
+            "signature": "(; cause::Symbol, captured::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -1963,7 +1963,7 @@
             "name": "translate_whole_build!",
             "missing": [
             ],
-            "signature": "(env; zone_keys, resume, verbose)",
+            "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -2070,7 +2070,7 @@
             "name": "zone_blockage",
             "missing": [
             ],
-            "signature": "(env; zone_keys, cell, check_paths, margin)",
+            "signature": "(env; zone_keys, cell::Union{Nothing, Float64}, check_paths::Bool, margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -2079,7 +2079,7 @@
             "name": "zone_blocked_assemblies",
             "missing": [
             ],
-            "signature": "(env; zone_keys, margin)",
+            "signature": "(env; zone_keys, margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -2097,7 +2097,7 @@
             "name": "zone_clears_root_goals",
             "missing": [
             ],
-            "signature": "(center, r, env; margin)",
+            "signature": "(center, r, env; margin::Float64)",
             "argpaths": [
             ],
             "callable": true
@@ -2106,7 +2106,7 @@
             "name": "zone_diagnoses",
             "missing": [
             ],
-            "signature": "(env; check_restage, check_teams)",
+            "signature": "(env; check_restage::Bool, check_teams::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -2115,7 +2115,7 @@
             "name": "zone_diagnosis",
             "missing": [
             ],
-            "signature": "(env, zone::Symbol; margin, check_restage, check_teams, check_blockage, check_paths)",
+            "signature": "(env, zone::Symbol; margin::Float64, check_restage::Bool, check_teams::Bool, check_blockage::Bool, check_paths::Bool)",
             "argpaths": [
             ],
             "callable": true
@@ -2124,7 +2124,7 @@
             "name": "zone_relocatable",
             "missing": [
             ],
-            "signature": "(center, r, env; margin, n_angles)",
+            "signature": "(center, r, env; margin::Float64, n_angles::Int64)",
             "argpaths": [
             ],
             "callable": true
@@ -2142,7 +2142,7 @@
             "name": "zone_team_coverage",
             "missing": [
             ],
-            "signature": "(env, center, radius::Real; margin)",
+            "signature": "(env, center, radius::Real; margin::Float64)",
             "argpaths": [
             ],
             "callable": true
