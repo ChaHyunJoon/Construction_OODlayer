@@ -798,13 +798,14 @@ _dict_key(::Type{Symbol}, k) = Symbol(k)
 _dict_key(::Type{K}, k) where {K} = convert(K, k)
 
 # =============================================================================
-# S5 (2026-09-04) :: 지어낸 로봇 이름은 인자 채널을 못 탄다
+# S5 (2026-09-04) → S6 (2026-09-05) :: 지어낸 자리표시자는 인자 채널을 못 탄다
 # =============================================================================
 """
-    _is_display_name_id(x) -> Bool
+    _is_placeholder_token(x) -> Bool
 
-`x` 가 **세계의 자연어 렌더링이 로봇에게 붙이는 표시 이름**인가(`"R1"` · `"Robot R7"` ·
-`"robot 3"`). 참이면 그 값은 id 가 아니라 **사람이 읽으라고 만든 문자열**이다.
+`x` 가 **불투명한 자리표시자 토큰**인가 — 알파벳 낱말 하나에 분리자 하나(선택)를 끼워 숫자를
+붙인 것, 그리고 **그것뿐**(`"goal1"` · `"task1"` · `"node_3"` · `"item 2"` · `"R1"` ·
+`"Robot R7"` · `"robot 3"`). 참이면 그 값은 세계의 id 가 아니라 **모델이 지어낸 이름표**다.
 
 🔴 왜 이 술어가 존재하는가 (다섯째 유료 런, 실측). 합성 기록의 `calls` 가
 `{"affected_robot": "R1", "available_robots": ["R2","R3","R4"]}` 로 도착했다. body 자신은
@@ -814,12 +815,40 @@ _dict_key(::Type{K}, k) where {K} = convert(K, k)
 `BotID` **객체**인 Dict)가 `KeyError: key "R2" not found` 로 죽었다. 즉 실패는 body 가
 아니라 **채널**이 만들었다. 그래서 채널이 그 값을 아예 못 나르게 한다.
 
+🔴 **S6 (2026-09-05, 일곱째 유료 런) — 같은 채널이 로봇이 아닌 것으로 또 죽었다.**
+S5 를 만든 구현자가 **일부러 안 닫은** 계열이 그대로 다음 런을 죽였다
+(`task_list=["task1","task2"]` — "총칭 자리표시자, 정체가 아니다"). 런 7 의 `calls.args` 는
+`{"bypass_method":"lift","affected_goals":["goal1","goal2","goal3"]}` 였고, body 는
+`env.sched.vtx_map[goal_id]` 에서 `KeyError: key "goal1" not found` 로 죽었다.
+일곱 런의 실패 값은 전부 **kwarg 안의 지어낸 값**이었다:
+`"R1"` · 맨 `::Int64` · `"R1"`/`["R2","R3"]` · `[(cx,cy,r)]` · `["goal1","goal2","goal3"]`.
+⟹ 술어를 **로봇 표시 이름**에서 **불투명 자리표시자 토큰**으로 넓힌다. 이름도 바꾼다
+(`_is_display_name_id` → `_is_placeholder_token`): `"goal1"` 은 표시 이름이 아니고, 틀린 이름은
+이 레포가 반복해 밟은 실패 모드다.
+🔴 **`_is_placeholder_token` 이지 `_is_placeholder_id` 가 아니다** — 후자는 **이미 있다**
+(`identity.jl`, "아직 배정 안 된 음수 id 슬롯", 소비처 셋). 같은 1-인자 무타입 시그니처라
+여기서 그 이름을 쓰면 모듈 안에서 **조용히 덮어쓴다**(실측: `WARNING: Method definition
+_is_placeholder_id(Any) … overwritten` — 그리고 그 덮어쓰기를 빨갛게 만드는 시험이 하나도
+없었다). 이름 충돌은 이 레포에서 에러가 아니라 무증상 오작동으로 샌다.
+
+**모양(전부-매칭, 대소문자 무시)**: *알파벳 낱말* + (분리자 **하나**는 선택) + *숫자*.
+`goal1` · `task1` · `node_3` · `item 2` · `R1` · `Robot 7`. 숫자는 **필수**다 —
+빼면 `"lift"` 같은 **모드 선택자**가 다 걸리고(런 7 의 `bypass_method`), 그것은 정체가 아니라
+body 자신의 `if` 가 소비하는 값이라 세계를 조회하지 않는다(아래 판정 참조).
+분리자는 **하나**뿐이다 — 그래서 `zone_blk_1`(둘)이 안 걸린다.
+
 🔴 **판정은 양성 매칭이다 — "id 가 아니면 버린다" 의 여집합이 아니다.** 여집합으로 하면
-`zone_keys` 의 `"zone_blk_1"` 처럼 id 가 아닌 **정당한** 문자열 인자가 전부 같이 죽는다.
-여기서 거르는 것은 이 세계가 로봇 이름을 렌더하는 **두 자리**가 실제로 내는 모양뿐이다:
-`ood_injection.jl` 의 `"Robot R\$(faulted.id) has broken down…"` 과 `llm_bridge.jl` 의
-`"label" => "Robot R\$(rid.id) / robot \$(rid.id)"`. 모델이 프롬프트에서 볼 수 있는 로봇
-표기는 그 둘뿐이고, 둘 다 이 술어에 걸린다.
+`zone_keys` 의 `"zone_blk_1"` 처럼 id 가 아닌 **정당한** 문자열 인자가 전부 같이 죽는다
+(S5 의 변이 m1 이 실제로 그렇게 빨개졌다). 넓힌 뒤에도 성질은 그대로다: 이 세계가 실제로
+**발행하는** 문자열은 이 모양을 안 낸다.
+  · 로봇: `ood_injection.jl` 의 `"Robot R\$(faulted.id) has broken down…"` · `llm_bridge.jl` 의
+    `"label" => "Robot R\$(rid.id) / robot \$(rid.id)"` — 둘 다 (의도대로) 걸린다.
+  · 노드/조립체: `llm_bridge.jl` 이 `string(get_vtx_id(sched, v))` · `string(node_id(ac))` 로
+    발행한다 = `"AssemblyID(3)"` 꼴 — 괄호가 있어 구조적으로 못 걸린다.
+  · 구역: `dspy_service.py::_zones_block` 이 `zone "zone_blk_1"` 을 그대로 렌더한다 —
+    분리자 둘이라 못 걸린다. ⚠️ **예외 하나**: `Symbol("fault_\$(faulted.id)")`
+    (`ood_injection.jl`)는 `fault_4` 라 이 모양에 **걸린다**. 그래서 `zone_keys` 는
+    아래 `bind_primitive_args` 에서 통째로 면제한다(근거는 그 자리에 적는다).
 
 🔴 **진짜 id 문자열은 절대 안 걸린다** — 그것이 이 술어의 하중이다. 두 철자 모두
 전부-매칭 앵커(`^…\$`) 밖으로 나간다:
@@ -827,31 +856,33 @@ _dict_key(::Type{K}, k) where {K} = convert(K, k)
   · 모듈 무한정: `"BotID{DeliveryBot}(4)"` — 🔴 `c444666d` 가 일부러 **받아들이기로** 한
     형태다(`reassign.jl::_normalize_agent_str`). 이 술어가 그것을 버리면 그 커밋이 연
     채널을 같은 날 도로 닫는 셈이 된다.
-둘 다 `{`·`(` 를 갖고 숫자로 안 끝나거나 `R\\d+` 전체 매칭이 아니므로 구조적으로 못 걸린다.
+둘 다 `{`·`(`·`.` 를 갖고 **숫자로 끝나지 않으므로**(끝이 `)`) 구조적으로 못 걸린다.
 """
-_is_display_name_id(x) =
+_is_placeholder_token(x) =
     x isa AbstractString &&
-    (occursin(r"^(?:robot[ _\-]*)?R\d+$"i, strip(String(x))) ||   # "R1" · "Robot R7" · "robotR7"
-     occursin(r"^robot[ _\-]*\d+$"i,       strip(String(x))))     # "robot 3" (label 의 뒷절반)
+    (occursin(r"^[A-Za-z]+[ _\-]?\d+$"i,   strip(String(x))) ||   # goal1 · task1 · node_3 · item 2 · R1
+     occursin(r"^(?:robot[ _\-]*)?R\d+$"i, strip(String(x))) ||   # "Robot R7" · "robotR7" (S5)
+     occursin(r"^robot[ _\-]*\d+$"i,       strip(String(x))))     # "robot__3" (분리자 여럿, S5)
 
 """
-    _display_name_drop(v) -> Union{Nothing,String}
+    _placeholder_drop(v) -> Union{Nothing,String}
 
-이 **인자 값**이 지어낸 로봇 정체를 나르는가. `nothing` 이면 그대로 묶고, 문자열이면
+이 **인자 값**이 지어낸 자리표시자를 나르는가. `nothing` 이면 그대로 묶고, 문자열이면
 그것이 **버린 이유**다(기록에 그대로 실린다).
 
-🔴 **벡터는 전부-아니면-전무다**(판정). 원소 하나라도 표시 이름이면 **인자 전체**를 버린다 —
-살아남은 원소만 모아 좁힌 벡터를 넘기지 않는다. 그 좁힘이야말로 이 레포가 적어 둔 최악의
-실패 모양이다: "정상으로 보이는데 아무 뜻도 없는 값". `["R2","R3", <진짜 id>]` 를
-`[<진짜 id>]` 로 줄여 넘기면 body 는 **모델이 뜻한 적 없는 팀**을 상대로 성공을 보고하고,
-그 좁힘은 아무 데도 안 남는다. 전체를 버리면 kwarg 는 선언된 기본값(`[]`)으로 떨어지고,
-body 의 세계 유도 폴백이 그 자리를 채운다 — 그리고 그 사실은 아래에서 시끄럽게 적힌다.
+🔴 **벡터는 전부-아니면-전무다**(판정, S5 에서 안 바뀐다). 원소 하나라도 자리표시자면
+**인자 전체**를 버린다 — 살아남은 원소만 모아 좁힌 벡터를 넘기지 않는다. 그 좁힘이야말로 이
+레포가 적어 둔 최악의 실패 모양이다: "정상으로 보이는데 아무 뜻도 없는 값".
+`["goal1","goal2", <진짜 id>]` 를 `[<진짜 id>]` 로 줄여 넘기면 body 는 **모델이 뜻한 적 없는
+집합**을 상대로 성공을 보고하고, 그 좁힘은 아무 데도 안 남는다. 전체를 버리면 kwarg 는
+선언된 기본값(`nothing`/`[]`)으로 떨어지고, body 의 세계 유도 폴백이 그 자리를 채운다 —
+그리고 그 사실은 아래에서 시끄럽게 적힌다.
 """
-function _display_name_drop(v)
-    _is_display_name_id(v) && return "display_name_string"
+function _placeholder_drop(v)
+    _is_placeholder_token(v) && return "placeholder_string"
     if v isa AbstractVector
         for e in v
-            _is_display_name_id(e) && return "display_name_in_vector:$(String(e))"
+            _is_placeholder_token(e) && return "placeholder_in_vector:$(String(e))"
         end
     end
     return nothing
@@ -923,8 +954,8 @@ dict 하나**를 낸다 — body 가 원시 둘 이상이면 그 키들은 원�
       둘 다 `zone_keys` 를 `collect(keys(RESTRICTION_ZONES[]))` 로 기본한다. 안 주면
       **키워드를 아예 빼서** 그 기본값(= 살아 있는 존 전부)이 그대로 쓰이게 한다.
 
-🔴 **`drops` — 지어낸 로봇 정체는 묶지 않는다**(S5, 2026-09-04, 다섯째 유료 런).
-**주조 원시**(`_is_generated`)의 값이 `_display_name_drop` 에 걸리면(표시 이름 `"R1"`,
+🔴 **`drops` — 지어낸 자리표시자는 묶지 않는다**(S5 2026-09-04 → S6 2026-09-05, 다섯째·일곱째
+유료 런). **주조 원시**(`_is_generated`)의 값이 `_placeholder_drop` 에 걸리면(`"R1"` · `"goal1"`,
 혹은 그런 원소를 품은 벡터) 그 kwarg 는
 **바인딩되지 않고** 선언된 기본값으로 떨어진다 — body 가 스스로 들고 있는 세계 유도 폴백
 (`ood_event_target()`)이 그제야 돈다. `drops` 는 그 사건을 담을 벡터(없으면 `nothing`)이고,
@@ -996,8 +1027,23 @@ function bind_primitive_args(prim, ctx; drops = nothing)
         #    보장하는 그 기본값(`nothing`/`[]`)은 body 의 **세계 유도** 폴백을 켜므로
         #    좁아지는 방향이다. 즉 판정 기준은 "기본값이 세계를 넓히지 않는가" 이고,
         #    그것을 아는 사실이 `generated` 하나다.
+        # 🔴 **S6 (2026-09-05): `zone_keys` 는 이 규칙에서 면제다** (일곱째 유료 런에서 넓힐 때
+        #    같이 판정한 것). 두 근거가 각각 혼자서도 충분하다:
+        #    (1) **버리면 세계 편집이 넓어진다** — 손으로 쓴 여덟을 면제한 것과 **같은** 논거다
+        #        (m5). `zone_keys` 를 안 묶으면 kwarg 가 callee 기본값
+        #        `collect(keys(RESTRICTION_ZONES[]))` = **살아 있는 존 전부**로 떨어진다.
+        #        버리기는 좁히는 방향일 때만 옳다.
+        #    (2) **이미 자기 정체 게이트가 있다** — 바로 아래 zone 블록이 `Symbol` 로 옮긴 뒤
+        #        `haskey(RESTRICTION_ZONES[], k)` 로 **살아 있는 세계**에 대고 검사하고,
+        #        지어낸 키는 `reject:unknown_zone_key:<k>:live=…` 로 **더 시끄럽게** 죽는다.
+        #        (이 규칙의 미바인딩보다 강한 처리다 — 무엇이 틀렸는지까지 적는다.)
+        #    ⚠️ 그리고 이 면제가 없으면 **정당한 값이 죽는다**: `ood_injection.jl` 이
+        #    `Symbol("fault_$(faulted.id)")` = `fault_4` 로 존을 만들고 `_zones_block` 이
+        #    그것을 프롬프트에 그대로 렌더한다 — 즉 모델이 **읽어서** 준 값인데 새 모양에 걸린다.
+        #    (세계가 발행하는 문자열 중 이 모양을 내는 것은 이것 하나다 — 술어 docstring 참조.)
         # 🔴 조용하지 않다 — `_note_dropped_arg!` 가 로그와 `drops` 양쪽에 적는다.
-        local drop_why = _is_generated(prim.name) ? _display_name_drop(v) : nothing
+        local drop_why = (_is_generated(prim.name) && String(k) != "zone_keys") ?
+                         _placeholder_drop(v) : nothing
         if drop_why !== nothing
             _note_dropped_arg!(drops, prim.name, String(k), v, drop_why)
             continue

@@ -1802,12 +1802,12 @@ end # (21)
 #        `dropped_args` 가 삼상(`nothing` 미도달 · `[]` 버릴 것 없음 · 비지 않음)을 나른다.
 #
 # 변이시험(전부 실제로 빨갛게 만든 뒤 되돌렸다, `src/respec/minted_tool.jl`):
-#   ·(22-m1): `_is_display_name_id` 의 첫 정규식 `^(?:robot[ _\-]*)?R\d+$`i 에서 `$` 앵커를
+#   ·(22-m1): `_is_placeholder_token` 의 첫 정규식 `^(?:robot[ _\-]*)?R\d+$`i 에서 `$` 앵커를
 #             지운다 → 무한정 id `"BotID{DeliveryBot}(4)"` 가 `R\d+` 부분 매칭에 걸려
 #             (22a)(22b) 의 음성 대조가 빨개진다(= 진짜 id 를 버리는 규칙이 하중을 진다).
 #   ·(22-m2): `bind_primitive_args` 의 `drop_why !== nothing` 블록을 지운다 → `"R1"` 이
 #             다시 묶여 (22b)(22c)(22d) 가 빨개진다(= 런 5 의 상태).
-#   ·(22-m3): `_display_name_drop` 의 벡터 루프를 지운다 → (22c) 가 빨개진다.
+#   ·(22-m3): `_placeholder_drop` 의 벡터 루프를 지운다 → (22c) 가 빨개진다.
 #   ·(22-m4): `_note_dropped_arg!` 의 `println` 을 지운다 → (22d) 의 로그 단언이 빨개진다
 #             (= 조용한 드롭 = 이 레포가 적어 둔 최악의 실패 모양).
 # =============================================================================
@@ -1816,35 +1816,38 @@ end # (21)
 const _QUALIFIED_ID = string(CB.BotID{CB.DeliveryBot}(4))
 const _SHORT_ID     = "BotID{DeliveryBot}(4)"
 
-@testset "(22) 🔴 S5: 지어낸 로봇 정체는 인자 채널을 못 탄다" begin
+@testset "(22) 🔴 S5→S6: 지어낸 자리표시자는 인자 채널을 못 탄다" begin
 
 @testset "(22a) 판정식은 양성 매칭이다 — 진짜 id 는 통과한다" begin
     # 세계의 NL 렌더러 두 자리가 내는 모양(`ood_injection.jl` · `llm_bridge.jl`).
     for s in ["R1", "R2", "r12", "Robot R7", "robot 3", "Robot_R7", " R1 "]
-        @test CB._is_display_name_id(s)
+        @test CB._is_placeholder_token(s)
     end
     # 🔴 진짜 id 는 **둘 다** 통과한다. 무한정 형태는 `c444666d` 가 받아들이기로 한 것이다.
-    @test !CB._is_display_name_id(_QUALIFIED_ID)
-    @test !CB._is_display_name_id(_SHORT_ID)
+    @test !CB._is_placeholder_token(_QUALIFIED_ID)
+    @test !CB._is_placeholder_token(_SHORT_ID)
     @test occursin("BotID", _QUALIFIED_ID) && occursin("(4)", _QUALIFIED_ID)  # 픽스처 자체 검사
     # 🔴 여집합 규칙("id 가 아니면 버린다")이 아니라는 것 — id 아닌 정당한 문자열도 통과한다.
-    for s in ["zone_blk_1", "", "R", "RR1", "R1x", "1", "Robot", "task1", "assembly_7"]
-        @test !CB._is_display_name_id(s)
+    # 🔴 S6 정정: `"task1"`·`"assembly_7"`·`"RR1"` 은 이 목록에서 **나갔다** — 넓힌 모양이 일부러
+    #    잡는 계열이다(런 7). 아래 (22e) 가 그 둘을 양성으로 다시 못 박는다.
+    # ("RR1" 도 나갔다 — 알파벳 낱말+숫자라 새 모양의 한복판이다.)
+    for s in ["zone_blk_1", "", "R", "R1x", "1", "Robot"]
+        @test !CB._is_placeholder_token(s)
     end
     # 문자열이 아닌 값은 이 술어의 대상이 아니다(타입 게이트의 몫이다).
-    @test !CB._is_display_name_id(3)
-    @test !CB._is_display_name_id(nothing)
+    @test !CB._is_placeholder_token(3)
+    @test !CB._is_placeholder_token(nothing)
 
     # ---- 값 판정: 스칼라 · 벡터 -------------------------------------------------------
-    @test CB._display_name_drop("R1") == "display_name_string"
-    @test CB._display_name_drop(_QUALIFIED_ID) === nothing
-    @test CB._display_name_drop(_SHORT_ID) === nothing
-    @test CB._display_name_drop(["R2", "R3"]) == "display_name_in_vector:R2"
+    @test CB._placeholder_drop("R1") == "placeholder_string"
+    @test CB._placeholder_drop(_QUALIFIED_ID) === nothing
+    @test CB._placeholder_drop(_SHORT_ID) === nothing
+    @test CB._placeholder_drop(["R2", "R3"]) == "placeholder_in_vector:R2"
     # 🔴 (22c) 의 규칙: **섞이면 전체를 버린다.** 좁힌 벡터를 만들지 않는다.
-    @test CB._display_name_drop([_QUALIFIED_ID, "R2"]) == "display_name_in_vector:R2"
-    @test CB._display_name_drop([_SHORT_ID, _QUALIFIED_ID]) === nothing
-    @test CB._display_name_drop(String[]) === nothing
-    @test CB._display_name_drop([1, 2]) === nothing
+    @test CB._placeholder_drop([_QUALIFIED_ID, "R2"]) == "placeholder_in_vector:R2"
+    @test CB._placeholder_drop([_SHORT_ID, _QUALIFIED_ID]) === nothing
+    @test CB._placeholder_drop(String[]) === nothing
+    @test CB._placeholder_drop([1, 2]) === nothing
 end
 
 @testset "(22b) 바인더는 거절이 아니라 **미바인딩**이다 — 그리고 주조 원시에만 건다" begin
@@ -1869,7 +1872,7 @@ end
         @test b[2].factor == 2.0                # 음성 대조: 같은 호출의 다른 인자는 그대로다
         @test length(sink) == 1
         @test sink[1].arg == "agent" && sink[1].primitive == nm
-        @test occursin("R1", sink[1].value) && sink[1].why == "display_name_string"
+        @test occursin("R1", sink[1].value) && sink[1].why == "placeholder_string"
 
         # 🔴 음성 대조 둘 — 진짜 id 문자열은 **묶인다**(두 철자 모두).
         for idstr in (_QUALIFIED_ID, _SHORT_ID)
@@ -1948,7 +1951,7 @@ end
                        params = Dict{String,Any}("available_robots" => [_QUALIFIED_ID, "R2"]));
                        drops = sink2)
         @test b2 isa Tuple && !haskey(b2[2], :available_robots)
-        @test length(sink2) == 1 && occursin("display_name_in_vector", sink2[1].why)
+        @test length(sink2) == 1 && occursin("placeholder_in_vector", sink2[1].why)
 
         # 음성 대조: 진짜 id 만 든 벡터는 **그대로** 묶인다(원소가 안 없어진다).
         local sink3 = NamedTuple[]
@@ -2026,6 +2029,161 @@ end
     # 🔴 삼상의 첫째 — 바인더에 **도달 못 한** 판은 `[]` 가 아니라 `nothing` 이다.
     @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).dropped_args === nothing
     @test CB.enact_minted!(nothing, nothing, nothing).dropped_args === nothing
+end
+
+# =============================================================================
+# (22e) 🔴 S6 — 자리표시자 계열 (2026-09-05, 일곱째 유료 런).
+#
+# S5 의 구현자가 **일부러 안 닫은** 계열(`task_list=["task1","task2"]`, "총칭 자리표시자,
+# 정체가 아니다")이 다음 런을 죽였다. 런 7 의 `calls.args` 는
+# `{"bypass_method":"lift","affected_goals":["goal1","goal2","goal3"]}` 였고 body 는
+# `env.sched.vtx_map[goal_id]` 에서 `KeyError: key "goal1" not found` 로 죽었다.
+#
+# 재는 명제 다섯:
+#  (i)   `"goal1"`/`"task1"`/`"node_3"`/`"item 2"` 가 걸린다(= 넓힌 모양).
+#  (ii)  벡터는 여전히 전부-아니면-전무 — `["goal1","goal2","goal3"]` 이 통째로 빠진다.
+#  (iii) `"zone_blk_1"`(분리자 둘)은 **안** 걸린다 = 여집합 규칙이 아니다(m1 의 교훈).
+#  (iv)  진짜 id 두 철자는 **안** 걸린다 — 넓혀도 `c444666d` 의 채널이 안 닫힌다.
+#  (v)   **모드 선택자 판정**: `bypass_method="lift"` 는 **안 걸리고, 그게 맞다.**
+#        숫자가 없어 모양 밖이다. 근거는 모양이 아니라 **소비 방식**이다: 모드 선택자는
+#        body 자신의 `if` 가 소비하는 값이라 세계를 **조회하지 않는다** — 지어내도
+#        `KeyError` 를 못 만들고 최악이 else-갈래다. 일곱 런의 실패 값은 **전부** 세계를
+#        조회하는 정체였다. 반대로 "생성 원시의 모든 String 을 버린다" 는 강한 규칙은
+#        (a) 모양이 아니라 **타입**으로 버리므로 m1 이 죽인 여집합 규칙과 같은 것이고,
+#        (b) `mode=nothing` + `mode===nothing && return :failure` 인 body 를 **영구히
+#            실행 불가**로 만든다(= 가끔 틀림 → 항상 죽음), 그리고
+#        (c) "모델이 env 에서 유도하는 body 를 쓸 수 있는가" 라는 측정 자체를 지운다.
+#        그래서 안 한다. ⚠️ 대가는 §보고서에 적었다: `"goal_alpha"` 처럼 숫자가 없는
+#        지어낸 정체는 여전히 통과한다.
+#  (vi)  🔴 **`zone_keys` 는 면제다.** `fault_4`(= `Symbol("fault_$(id)")`, 프롬프트에
+#        그대로 렌더된다)가 새 모양에 걸리는 유일한 세계-발행 문자열이다. 게다가 버리면
+#        callee 기본값 = **살아 있는 존 전부**라 편집이 넓어진다(m5 와 같은 성질).
+#
+# 변이시험(전부 실제로 빨갛게 만든 뒤 되돌렸다, `src/respec/minted_tool.jl`):
+#   ·(22-m5): 첫 정규식의 `\d+` 를 `\d*` 로 — 숫자를 선택으로 만든다 → `"lift"` 가 걸려
+#             (22e) 의 모드 선택자 절이 빨개진다(= 판정 (v) 가 하중을 진다).
+#   ·(22-m6): 첫 정규식의 `[ _\-]?` 를 `[ _\-]*` 로 — 분리자 여러 개를 허용 → `"zone_blk_1"`
+#             이 걸려 (22a)(22e) 가 빨개진다(= 여집합으로 미끄러진다).
+#   ·(22-m7): `zone_keys` 면제(`String(k) != "zone_keys"`)를 지운다 → (22e-zone) 이 빨개진다.
+# =============================================================================
+@testset "(22e) 🔴 S6: 자리표시자 토큰 — 넓힌 모양, 같은 성질" begin
+    # ---- (i) 넓힌 양성 -----------------------------------------------------------------
+    for s in ["goal1", "goal2", "task1", "task2", "node_3", "item 2", "Goal1", "STEP-4",
+              "assembly_7", "RR1", "R1", "Robot 7", "robot 3"]
+        @test CB._is_placeholder_token(s)
+    end
+    # ---- (iii) 여집합이 아니다: 정당한 문자열은 통과한다 --------------------------------
+    for s in ["zone_blk_1", "zone_rand_1", "zone_hz_2", "block", "pz", "goal", "a1b2",
+              "goal_1_2", "x1y", "12", "_1", "goal 1 2"]
+        @test !CB._is_placeholder_token(s)
+    end
+    # ---- (iv) 진짜 id 두 철자는 넓힌 뒤에도 통과한다 ------------------------------------
+    @test !CB._is_placeholder_token(_QUALIFIED_ID)
+    @test !CB._is_placeholder_token(_SHORT_ID)
+    # 🔴 노드/조립체 id 도 같은 이유로 면역이다(`llm_bridge.jl` 이 `string(node_id(ac))` 로 발행).
+    for s in ["AssemblyID(3)", "ActionID(12)", "RobotID(4)", "ObjectID(9)"]
+        @test !CB._is_placeholder_token(s)
+    end
+    # ---- (v) 모드 선택자는 안 걸린다 — 판정 (v) --------------------------------------
+    for s in ["lift", "bypass", "reroute", "strict", "all", "none", "auto"]
+        @test !CB._is_placeholder_token(s)
+    end
+
+    # ---- (ii) 런 7 의 `calls` 를 그대로 태운다 -----------------------------------------
+    local made = String[]
+    try
+        local nm = "t22e_bypass!"; push!(made, nm)
+        @test CB.register_minted_primitive!(name = nm,
+                  code = "function $(nm)(env; bypass_method=\"lift\", affected_goals=nothing)\n" *
+                         "    affected_goals === nothing && return (status = :fell_back,)\n" *
+                         "    return (status = :used_arg, m = bypass_method)\nend\n",
+                  params = Dict{String,Any}(
+                      "bypass_method"  => Dict{String,Any}("type" => "string"),
+                      "affected_goals" => Dict{String,Any}("type" => ["array", "null"])),
+                  surface = "sched", reversible = false) === nothing
+
+        local calls = [Dict{String,Any}("primitive" => nm,
+                           "args" => Dict{String,Any}(
+                               "bypass_method"  => "lift",
+                               "affected_goals" => ["goal1", "goal2", "goal3"]))]
+        local r, logged
+        mktemp() do path, io
+            redirect_stdout(io) do
+                r = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm], calls = calls))
+            end
+            flush(io); logged = read(path, String)
+        end
+        @test r.verdict === :admit
+        # 🔴 이 태스크의 전부: 런 7 의 `KeyError: key "goal1" not found` 가 안 일어난다.
+        #    body 는 굴렀고(거절이 아니다), 자기 폴백 갈래로 갔다.
+        @test length(r.steps) == 1 && r.steps[1].status === :fell_back
+        # 🔴 모드 선택자는 **그대로 묶였다**(판정 (v) 의 음성 대조). 벡터만 빠졌다.
+        @test r.dropped_args !== nothing && length(r.dropped_args) == 1
+        @test r.dropped_args[1].arg == "affected_goals"
+        @test occursin("placeholder_in_vector:goal1", r.dropped_args[1].why)
+        # ---- (vi-b) 버림이 시끄럽다(같은 규약) ----
+        @test occursin("dropped fabricated identifier", logged)
+        @test occursin("affected_goals", logged) && occursin("goal1", logged)
+
+        # 음성 대조: 모드 선택자만 주면 **아무것도 안 버린다** — body 가 인자를 쓴다.
+        local ok = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm],
+                       calls = [Dict{String,Any}("primitive" => nm,
+                                    "args" => Dict{String,Any}("bypass_method" => "reroute",
+                                                               "affected_goals" => [_SHORT_ID]))]))
+        @test ok.steps[1].status === :used_arg
+        @test ok.dropped_args !== nothing && isempty(ok.dropped_args)   # `[]` = 버릴 것 없음
+
+        # 🔴 벡터는 전부-아니면-전무 — 진짜 id 가 섞여도 **전체**를 버린다(좁힌 벡터 금지).
+        local prim = CB.resolve_primitive(nm)
+        local sink = NamedTuple[]
+        local b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                      params = Dict{String,Any}("affected_goals" => [_SHORT_ID, "goal2"]));
+                      drops = sink)
+        @test b isa Tuple && !haskey(b[2], :affected_goals)
+        @test length(sink) == 1 && sink[1].why == "placeholder_in_vector:goal2"
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+
+    # ---- (vi) `zone_keys` 면제 --------------------------------------------------------
+    # 🔴 `Symbol("fault_$(id)")`(= `fault_4`)는 세계가 **발행하는** 존 키이고 프롬프트에
+    #    그대로 렌더된다 — 즉 모델이 읽어서 준 값인데 새 모양에 걸린다. 게다가 버리면
+    #    callee 기본값이 **살아 있는 존 전부**라 편집이 넓어진다(m5 와 같은 성질).
+    @test CB._is_placeholder_token("fault_4")            # 술어는 걸린다 …
+    local made2 = String[]
+    try
+        local nm2 = "t22e_zone!"; push!(made2, nm2)
+        @test CB.register_minted_primitive!(name = nm2,
+                  code = "function $(nm2)(env; zone_keys=Symbol[])\n" *
+                         "    return (status = :ok, n = length(zone_keys))\nend\n",
+                  params = Dict{String,Any}(
+                      "zone_keys" => Dict{String,Any}("type" => "array")),
+                  surface = "sched", reversible = false) === nothing
+        local prim2 = CB.resolve_primitive(nm2)
+        local live0 = copy(CB.RESTRICTION_ZONES[])
+        try
+            CB.add_restriction_zone!(Symbol("fault_4"), [0.0, 0.0], 1.0)
+            local sink = NamedTuple[]
+            local b = CB.bind_primitive_args(prim2, (env = :DUMMY, truth = nothing,
+                          params = Dict{String,Any}("zone_keys" => ["fault_4"])); drops = sink)
+            # … 그런데 `zone_keys` 는 **면제**라 안 버려진다.
+            @test b isa Tuple && haskey(b[2], :zone_keys)
+            @test b[2].zone_keys == Symbol[Symbol("fault_4")]
+            @test isempty(sink)
+            # 🔴 그리고 지어낸 존 키는 미바인딩이 아니라 **더 시끄러운 거절**로 죽는다
+            #    (= 이 면제가 구멍을 안 연다).
+            local sink2 = NamedTuple[]
+            local bad = CB.bind_primitive_args(prim2, (env = :DUMMY, truth = nothing,
+                            params = Dict{String,Any}("zone_keys" => ["zone9"])); drops = sink2)
+            @test bad isa String && occursin("reject:unknown_zone_key:zone9", bad)
+            @test isempty(sink2)
+        finally
+            CB.clear_restriction_zones!()
+            for (k, v) in live0; CB.RESTRICTION_ZONES[][k] = v; end
+        end
+    finally
+        for n in made2; delete!(CB.minted_table(), n); end
+    end
 end
 
 end # (22)

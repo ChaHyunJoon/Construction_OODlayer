@@ -621,8 +621,12 @@ end
                                         reversible = false) === nothing
     prim = CB.resolve_primitive("d16_array_tool!")
     @test prim !== nothing
+    # 🔴 S6 (2026-09-05): 원소가 `"t1","t2","t3"` 이었는데, 그것은 `_is_placeholder_token`
+    #    가 **일부러 잡는** 모양이라(알파벳 낱말+숫자) 인자가 통째로 안 묶여 이 시험이
+    #    `saw_0_7_2` 로 빨개졌다. 이 절이 재는 것은 정체가 아니라 **D16 변환**이므로,
+    #    픽스처를 세계가 실제로 발행하는 id 철자로 바꾼다(길이 3 은 그대로다).
     calls = CB.normalize_calls(JSON3.read(
-        """[{"primitive":"d16_array_tool!","args":{"task_ids":["t1","t2","t3"],"k":7,""" *
+        """[{"primitive":"d16_array_tool!","args":{"task_ids":["AssemblyID(1)","AssemblyID(2)","AssemblyID(3)"],"k":7,""" *
         """"meta":{"a":1,"b":2}}}]"""))
     @test !(calls isa String)
     b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing, params = calls[1][2]))
