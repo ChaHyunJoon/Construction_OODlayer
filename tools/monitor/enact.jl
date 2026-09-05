@@ -1626,10 +1626,134 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
 end
 
 """
-    _install_rewrite!(sl, fx; allow_redefine = false) -> Union{Nothing,String}
+    _merge_rewrite_params(orig, new) -> NamedTuple(params, note)
 
-`_rewrite_once` 가 돌려준 고친 body 를 **검사·설치·등록**한다. 성공이면 `nothing`,
-아니면 거절 사유 문자열.
+되먹임이 낸 `params` 와 **원래** `params` 를 합쳐 등록에 먹일 스키마를 만든다. `params` 가
+`nothing` 이면 "건드리지 마라"(원래 것이 그대로 산다), `note` 는 그 출처 한 조각이다.
+
+🔴 **왜 (2026-09-05, 유료 런 10).** `/rewrite` 가 처음으로 왕복에 성공한 그 런에서, 고친
+   body 가 `reject:param_type:zone_radius:no_declared_type` 으로 죽었다. 원래 스키마에는
+   `zone_radius: {"type": "number"}` 가 **있었고**(그 런의 `synth_lane_records.jsonl` 이
+   그것을 그대로 들고 있다), 첫 시도는 그 선언으로 정상 바인딩됐다. 두 시도 사이에 바뀐 것은
+   `sl["params"]` 하나뿐이다 — 옛 `_install_rewrite!` 은 되먹임이 낸 `params` 를 **통째로**
+   덮어썼고, `RewriteToolImpl` 에는 compose 쪽의 `ungrounded_params`·재설계 루프가 없어
+   그 필드가 선언 없는 모양(파이썬 `_params_view` 의 "values" 갈래 — 스키마가 아니라 값 맵)
+   으로 와도 아무도 안 막았다. 즉 이것은 **모델의 실패가 아니라 우리 설치기의 회귀**다.
+
+🔴 **판정: 이름이 같은 kwarg 의 `type` **하나만** 옮긴다.** 규칙 셋, 각각의 근거:
+
+  1. **키를 절대 더하지 않는다.** 원래에만 있고 되먹임이 안 낸 kwarg 는 **안 넣는다.**
+     `register_minted_primitive!` 의 `_enactability` 연언지 (iii) 이 "레지스트리 `params` 의
+     키가 전부 그 메서드의 키워드여야 한다" 를 요구하므로, 고친 body 가 버린 이름을 우리가
+     되살리면 원시가 `reject:unenactable:<name>:kwargs` 로 **등록은 되고 영영 호출 불가**가
+     된다. 브리프가 걱정한 "없는 이름을 묶는다" 는 그래서 **구조적으로 불가능**하다 —
+     우리가 채우는 것은 되먹임이 **스스로 이름 붙인** 키뿐이다.
+  2. **쓸 만한 선언을 덮지 않는다.** 되먹임의 항목이 이미 읽히는 타입을 선언하면 그것을
+     그대로 쓴다(타입을 바꾼 것도 그 모델의 권리다). 우리가 손대는 것은 `CB._param_type_undeclared`
+     가 **못 쓴다고 답한** 항목뿐이다.
+  3. **타입을 지어내지 않는다.** 되먹임의 항목이 못 쓸 선언이고 **원래에도 그 이름이 없거나
+     원래 선언도 못 쓸 것**이면 그대로 둔다 — 그 kwarg 로 값이 오면
+     `_param_type_reject` 가 오늘과 **바이트 동일하게** 거절한다. 이것이 이 함수가 게이트를
+     한 글자도 안 넓힌다는 증명이다: 새 타입은 어디서도 만들어지지 않고, 옮겨지는 값은
+     **같은 이름에 대해 원래 스키마가 이미 선언했던 그 문자열**뿐이다.
+
+🔴 **삼상+ (`note`).** 읽는 사람이 무엇이 일어났는지 **추측하지 않아야 한다**
+   (`enact_retry=`·`dropped_args=` 의 선례):
+   · `absent`      — 되먹임이 `params` 를 아예 안 냈다. 원래 스키마가 통째로 산다.
+   · `supplied`    — 되먹임이 이름 붙인 kwarg 가 **전부** 쓸 만한 타입을 스스로 선언했다.
+                     하네스는 한 글자도 안 옮겼다.
+   · `carried:<a,b>`    — 그 kwarg 들의 선언을 **하네스가 원래 스키마에서 옮겼다.**
+   · `undeclared:<c>`   — 그 kwarg 는 선언이 없고 옮길 것도 없다 = **거절된다.**
+   · `carried:…|undeclared:…` — 둘 다 일어났다.
+   · `merge_failed`     — 병합 자체가 던졌다(아래 catch). 그 판은 옛 동작과 같다.
+
+🔴 **던지지 않는다** — 이 파일 전체의 규약이다. 되먹임이 낸 `params` 는 모델이 쓴 임의의
+   JSON 이라 키가 문자열이 아닐 수도 있고, 그 자리에서 던지면 집행부가 기록 대신 예외로 끝난다.
+
+⚠️ 값 하나하나에 대한 `println` 이 따로 나간다(`_note_dropped_arg!` 의 선례) — 기록 줄은
+   공백 없는 `key=value` 라 옮긴 **값**을 실을 수 없기 때문이다.
+"""
+function _merge_rewrite_params(orig, new)
+    new === nothing && return (params = nothing, note = "absent")
+    local out = Dict{String,Any}()
+    local carried = String[]
+    local undecl  = String[]
+    try
+        for (k, v) in new
+            local ks = String(k)
+            # (2) 되먹임이 스스로 쓸 만한 타입을 선언했다 — 손대지 않는다.
+            if CB._param_type_undeclared(v) === nothing
+                out[ks] = v
+                continue
+            end
+            # 🔴 원래 항목은 `_synth_lane_field` 로 읽는다(String·Symbol 두 모양을 다 본다).
+            #    이 dict 은 `JSON3.Object`(Symbol 키)로도 도착하고, 그 함수가 이 파일에서 그
+            #    두 모양을 다루는 **유일한** 자리다 — 두 벌을 만들지 않는다.
+            local ov = _synth_lane_field(orig, ks)
+            if ov !== nothing && CB._param_type_undeclared(ov) === nothing
+                local ot = get(ov, "type", nothing)
+                out[ks] = _with_declared_type(v, ot)
+                push!(carried, ks)
+                println("[minted] ⚠️ rewrite params: kwarg `", ks, "` 에 선언 타입이 없어 ",
+                        "**같은 이름에 대한 원래 선언**을 옮겼다: type=", string(ot),
+                        " (되먹임이 낸 항목=",
+                        _cap_detail(_one_line_rec(string(v))), ", 사유=",
+                        string(CB._param_type_undeclared(v)), "). ",
+                        "🔴 타입을 지어낸 것이 아니다 — 옮긴 것이고, 키는 하나도 안 더했다.")
+            else
+                out[ks] = v
+                push!(undecl, ks)
+                println("[minted] ⚠️ rewrite params: kwarg `", ks, "` 는 선언 타입이 없고 ",
+                        "원래 스키마에도 옮길 선언이 없다 — **지어내지 않는다.** ",
+                        "이 kwarg 로 값이 오면 `reject:param_type:", ks,
+                        "` 로 거절된다(되먹임이 낸 항목=",
+                        _cap_detail(_one_line_rec(string(v))), ").")
+            end
+        end
+    catch e
+        # 🔴 옛 동작으로 떨어진다(되먹임이 낸 것을 그대로 설치) — 그러나 **조용하지 않다**.
+        println("[minted] ⚠️ rewrite params: 병합이 던졌다 — 되먹임이 낸 스키마를 그대로 ",
+                "쓴다(옛 동작): ", _cap_detail(_one_line_rec(_showerror_cause(e))))
+        return (params = new, note = "merge_failed")
+    end
+    isempty(carried) && isempty(undecl) && return (params = out, note = "supplied")
+    local parts = String[]
+    isempty(carried) || push!(parts, "carried:" * join(sort(carried), ","))
+    isempty(undecl)  || push!(parts, "undeclared:" * join(sort(undecl), ","))
+    return (params = out, note = join(parts, "|"))
+end
+
+"""
+    _with_declared_type(v, t) -> Dict{String,Any}
+
+되먹임이 낸 항목 `v` 에 선언 타입 `t` **하나만** 더한 사본.
+
+🔴 `v` 가 dict 이면 그 키를 전부 살리고 `"type"` 만 덮는다 — 되먹임이 쓴 `description`·`items`
+   같은 것을 우리가 지울 이유가 없다. dict 이 아니면(파이썬 `_params_view` 의 "values" 갈래:
+   항목이 **값**이지 선언이 아니다) 살릴 선언이 애초에 없으므로 `type` 만 든 항목을 만든다.
+"""
+function _with_declared_type(v, t)
+    local d = Dict{String,Any}()
+    if v isa AbstractDict
+        for (k2, v2) in v
+            d[String(k2)] = v2
+        end
+    end
+    d["type"] = t
+    return d
+end
+
+"""
+    _install_rewrite!(sl, fx; allow_redefine = false) -> NamedTuple
+
+`_rewrite_once` 가 돌려준 고친 body 를 **검사·설치·등록**한다. 반환은 두 필드다:
+`why`(성공이면 `nothing`, 아니면 거절 사유 문자열)와 `params_from`(스키마의 **출처** 한 조각,
+정본은 `_merge_rewrite_params`).
+
+🔴 `why` 하나가 아니라 튜플인 이유(2026-09-05, 유료 런 10). 거절이든 통과든 **스키마가 어디서
+   왔는가**는 이 판의 사실이고, 거절된 판에서 특히 그렇다 — 그 판의 기록 줄이
+   `_reject_malformed` 로 가는데 거기서 이 사실이 없으면 "되먹임이 스키마를 냈다" 와
+   "하네스가 원래 것을 옮겼다" 가 로그에서 구별 불가가 된다.
 
 🔴 **한 벌이다.** 되먹임 자리가 둘이 됐다(D17 = 등록 거절, D17b = 집행 예외). 이 열두 줄을
    두 번 적으면 두 자리가 갈리고, 이 레포는 그 갈림을 이미 여러 번 겪었다(`_world_delta_str`
@@ -1653,24 +1777,28 @@ end
 function _install_rewrite!(sl, fx; allow_redefine::Bool = false)
     local surf2 = fx.surface
     (surf2 === nothing || surf2 isa AbstractString) ||
-        return "reject:surface_not_a_string:$(typeof(surf2))"
+        return (why = "reject:surface_not_a_string:$(typeof(surf2))", params_from = nothing)
     local praw2 = fx.params
     (praw2 === nothing || praw2 isa AbstractDict) ||
-        return "reject:params_not_an_object:$(typeof(praw2))"
+        return (why = "reject:params_not_an_object:$(typeof(praw2))", params_from = nothing)
+    # 🔴 **원래 스키마를 먼저 읽는다** — 바로 아래에서 덮어쓰기 때문이다. 순서가 뒤집히면
+    #    `_merge_rewrite_params` 가 자기 자신을 원본이라고 읽는다(무동작 병합).
+    local pmerge = _merge_rewrite_params(_synth_lane_field(sl, "params"), praw2)
     sl["impl_name"]  = fx.impl_name
     sl["body_names"] = [fx.impl_name]
     sl["impl_code"]  = fx.impl_code
-    fx.params  !== nothing && (sl["params"]  = fx.params)
+    pmerge.params !== nothing && (sl["params"] = pmerge.params)
     fx.calls   !== nothing && (sl["calls"]   = fx.calls)
     fx.surface !== nothing && (sl["surface"] = fx.surface)
-    return CB.register_minted_primitive!(
-        name = fx.impl_name, code = fx.impl_code,
-        params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
-        # 🔴 위에서 이미 타입을 확정한 `surf2` 를 쓴다 — `fx.surface` 를 다시 읽으면
-        #    검사한 값과 먹이는 값이 두 자리에서 나온다(진실원 하나).
-        surface = String(something(surf2, "unknown")),
-        reversible = fx.reversible === true,
-        allow_redefine = allow_redefine)
+    return (why = CB.register_minted_primitive!(
+                name = fx.impl_name, code = fx.impl_code,
+                params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
+                # 🔴 위에서 이미 타입을 확정한 `surf2` 를 쓴다 — `fx.surface` 를 다시 읽으면
+                #    검사한 값과 먹이는 값이 두 자리에서 나온다(진실원 하나).
+                surface = String(something(surf2, "unknown")),
+                reversible = fx.reversible === true,
+                allow_redefine = allow_redefine),
+            params_from = pmerge.note)
 end
 
 """
@@ -1892,8 +2020,13 @@ const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
     _rewrite_retry!(env, truth, sl, r, _pre, why, nm, syms) -> NamedTuple
 
 되먹임 **한 벌**: 사유를 `/rewrite` 로 보내고 · 고친 body 를 검사·설치·재등록하고 ·
-성공이면 **두 번째로 집행**한다. 반환은 일곱 필드로 고정이다
-(`retry`·`reenacted`·`r`·`world_delta`·`world_delta_body`·`interface_calls`·`impl_rejected_why`).
+성공이면 **두 번째로 집행**한다. 반환은 여덟 필드로 고정이다
+(`retry`·`reenacted`·`r`·`world_delta`·`world_delta_body`·`interface_calls`·
+`impl_rejected_why`·`params_from`).
+
+🔴 `params_from` 은 **왕복이 실패한 갈래에서 `nothing`** 이다 — 설치기를 아예 안 불렀으므로
+   "스키마에 대해 아무 말도 못 한다" 가 참이다. 나머지 두 갈래(`rejected`·`retried`)는
+   `_install_rewrite!` 이 낸 값을 그대로 나른다(정본은 `_merge_rewrite_params`).
 
 🔴 **두 트리거가 이 한 벌을 공유한다**(D17b = 집행 예외, D17c = 잰 무동작). 두 벌을 두면
    검사 순서·사유 이름·`allow_redefine` 의 좁힘이 갈리고, 이 파일은 그 갈림을 이미
@@ -1926,14 +2059,16 @@ function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
     if fx === nothing
         return (retry = syms.roundtrip, reenacted = false, r = r,
                 world_delta = nothing, world_delta_body = nothing,
-                interface_calls = nothing, impl_rejected_why = nothing)
+                interface_calls = nothing, impl_rejected_why = nothing,
+                params_from = nothing)
     end
-    local why2 = _install_rewrite!(sl, fx; allow_redefine = (fx.impl_name == _prev_nm))
-    if why2 !== nothing
+    local ins = _install_rewrite!(sl, fx; allow_redefine = (fx.impl_name == _prev_nm))
+    if ins.why !== nothing
         # ⚠️ 사유는 **두 번째 시도의 것**이다(D17 과 같은 규약).
         return (retry = syms.rejected, reenacted = false, r = r,
                 world_delta = nothing, world_delta_body = nothing,
-                interface_calls = nothing, impl_rejected_why = why2)
+                interface_calls = nothing, impl_rejected_why = ins.why,
+                params_from = ins.params_from)
     end
     # 🔴 첫 시도의 걸음은 아래 기록 줄에서 **사라진다**(그 줄은 두 번째 시도를 적는다).
     #    그래서 여기서 따로 찍는다 — 접두가 `[minted] enact_retry:` 라
@@ -1951,7 +2086,8 @@ function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
             # 🔴 L3 은 **등록된 이름**에서 다시 읽는다(D5 와 같은 근거).
             interface_calls = _interface_calls_of(
                 something(_synth_lane_field(sl, "impl_name"), nm)),
-            impl_rejected_why = nothing)
+            impl_rejected_why = nothing,
+            params_from = ins.params_from)
 end
 
 """
@@ -1983,6 +2119,18 @@ end
    `(\\S+)` 한 번의 판독으로 나른다. 이름표의 정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP` 다.
 """
 _retry_str(x) = x === nothing ? "n/a" : String(x)
+
+"""
+    _rwp_str(x) -> String
+
+`rewrite_params` 삼상+ 를 로그 한 조각으로. **공백이 없다**(`_retry_str` 과 같은 규약 —
+`[minted]` 줄은 공백으로 갈리는 `key=value` 로 읽힌다).
+
+🔴 `nothing` = **되먹임 설치기가 안 돌았다**(왕복이 없었거나 실패했다)이고, 그것은
+`absent`(돌았는데 `params` 를 안 냈다)와 **다른 사건**이다. 나머지 글자의 뜻은
+`_merge_rewrite_params` 가 소유한다 — 여기 두 벌을 안 적는다.
+"""
+_rwp_str(x) = x === nothing ? "n/a" : String(x)
 
 """
     enact_minted_decision!(env, truth, decision) -> NamedTuple
@@ -2190,6 +2338,10 @@ function enact_minted_decision!(env, truth, decision)
     #    안 했다")로 기록되면, 사다리가 두 번째 시도를 첫 시도로 채점한다.
     #    상태의 뜻은 `_retry_str` 의 docstring 이 소유한다(리터럴을 두 벌 안 적는다).
     local enact_retry::Union{Nothing,Symbol} = nothing
+    # 🔴 2026-09-05 (유료 런 10). 되먹임이 낸 `params` 의 **출처** 한 조각. 삼상+ 의 뜻은
+    #    `_merge_rewrite_params` 가 소유한다(리터럴을 두 벌 안 적는다). `enact_retry` 와
+    #    **같은 자리에 선언한다** — `_reject_malformed` 클로저가 둘 다 읽기 때문이다.
+    local rewrite_params::Union{Nothing,String} = nothing
     try
         local sl = try decision.synth_lane catch; nothing end
         # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
@@ -2219,6 +2371,9 @@ function enact_minted_decision!(env, truth, decision)
                     " world_maybe_dirty=false handled=false undo=none resume=none",
                     " args_from=n/a n_calls=n/a dropped_args=n/a",
                     " enact_retry=", _retry_str(enact_retry),
+                    # 🔴 m3: 값을 **읽는다**. 이 갈래는 오늘 언제나 `n/a` 지만 그것은 이 자리의
+                    #    사실이지 손으로 적을 상수가 아니다.
+                    " rewrite_params=", _rwp_str(rewrite_params),
                     " steps=[]",
                     " ran_milp=n/a(not armed)",
                     " synthesis_event=", _synth_lane_field(sl, "synthesis_event"),
@@ -2289,6 +2444,10 @@ function enact_minted_decision!(env, truth, decision)
             impl_rejected_why = why
             _rec_line("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                     " verdict=reject registered=false impl_rejected_why=", why,
+                    # 🔴 2026-09-05 (유료 런 10). 이 자리는 **되먹임이 거절된 판**이 지나가는
+                    #    곳이고(`_install_rewrite!` 이 사유를 냈다), 그 판이야말로 "스키마가
+                    #    어디서 왔나" 를 읽는 사람이 알아야 하는 자리다.
+                    " rewrite_params=", _rwp_str(rewrite_params),
                     # 🔴 D17b. 값을 **읽는다**(리터럴 `n/a` 를 손으로 안 적는다, m3 와
                     #    같은 근거). 이 클로저는 등록 자리에서만 불리므로 오늘은 언제나
                     #    `n/a` 지만, 그것은 이 자리의 사실이지 손으로 적을 상수가 아니다.
@@ -2393,8 +2552,11 @@ function enact_minted_decision!(env, truth, decision)
                 # ⚠️ `allow_redefine` 은 **여기서 안 넘긴다.** 이 갈래는 첫 등록이 **실패한**
                 #    판이라 이름이 `_MINTED_EVER` 에 아예 안 들어갔다 — 재정의를 허용할
                 #    이유가 없고, 허용하면 그만큼 D6 신호를 덮을 여지가 생긴다.
-                local why2 = _install_rewrite!(sl, fx)
-                why2 !== nothing && return _reject_malformed(why2)
+                # 🔴 2026-09-05 (유료 런 10). 설치기는 이제 **스키마의 출처**도 낸다 —
+                #    거절된 판에서 특히 필요하다(`_reject_malformed` 의 줄이 그것을 찍는다).
+                local ins = _install_rewrite!(sl, fx)
+                rewrite_params = ins.params_from
+                ins.why !== nothing && return _reject_malformed(ins.why)
             end
             registered = true
             # 🔴 **D5 (Wave D). L3 을 여기서 읽는다 — 등록이 실제로 성공한 직후.**
@@ -2478,6 +2640,7 @@ function enact_minted_decision!(env, truth, decision)
                 local rr = _rewrite_retry!(env, truth, sl, r, _pre, _throw_why, nm,
                                            _RETRY_SYMS_THREW)
                 enact_retry = rr.retry
+                rewrite_params = rr.params_from
                 rr.impl_rejected_why !== nothing && (impl_rejected_why = rr.impl_rejected_why)
                 if rr.reenacted
                     r = rr.r; world_delta = rr.world_delta
@@ -2502,6 +2665,7 @@ function enact_minted_decision!(env, truth, decision)
                 local rn = _rewrite_retry!(env, truth, sl, r, _pre, _noop_why, nm,
                                            _RETRY_SYMS_NOOP)
                 enact_retry = rn.retry
+                rewrite_params = rn.params_from
                 rn.impl_rejected_why !== nothing && (impl_rejected_why = rn.impl_rejected_why)
                 if rn.reenacted
                     r = rn.r; world_delta = rn.world_delta
@@ -2572,6 +2736,11 @@ function enact_minted_decision!(env, truth, decision)
                 #    **두 번째 시도**를 적는다 — 이 한 칸이 없으면 사다리는 그것을 깨끗한
                 #    첫 시도로 채점한다. 상태의 뜻은 `_retry_str` 이 소유한다.
                 " enact_retry=", _retry_str(enact_retry),
+                # 🔴 2026-09-05 (유료 런 10). **스키마가 어디서 왔나.** 유료 런 10 은 고친
+                #    body 가 `no_declared_type` 으로 죽었고, 그 줄만 보고는 "되먹임이 선언
+                #    없는 스키마를 냈다" 와 "우리가 원래 것을 못 옮겼다" 를 못 갈랐다.
+                #    삼상+ 의 뜻은 `_merge_rewrite_params` 가 소유한다.
+                " rewrite_params=", _rwp_str(rewrite_params),
                 " n_body_names=", length(something(_synth_lane_field(sl, "body_names"), [])),
                 # 🔴 Task 9(설계 §8). 등록 결과 — "모델이 코드를 안 냈다" 와 "냈는데 규약
                 #    위반으로 거절됐다" 를 가른다. 여기까지 왔다는 것은 등록을 시도했다면

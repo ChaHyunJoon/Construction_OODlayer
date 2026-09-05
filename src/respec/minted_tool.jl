@@ -730,6 +730,36 @@ const PARAM_JSON_TYPES = Dict{String,Type}(
 ⚠️ JSON-Schema 의 `["string", "null"]` 같은 **합집합** 선언을 받는다 — 하나라도 변환되면 통과.
 """
 function _param_type_reject(spec, v)
+    local ts = _param_type_names(spec)
+    # 🔴 **선언에 대한 판정이 먼저다.** 그 절반은 값을 한 번도 안 보므로 따로 부를 수 있어야
+    #    한다(`_param_type_undeclared`) — 그러나 **두 벌이 되면 안 된다.** 이 줄이 그 규약이다:
+    #    선언 판정의 진실원은 `_param_type_names` 하나이고 이 함수는 그것을 부른다.
+    ts isa String && return ts
+    for one in ts
+        try
+            convert(PARAM_JSON_TYPES[one], v)
+            return nothing
+        catch
+        end
+    end
+    return "$(join(ts, "|")):got ::$(typeof(v))"
+end
+
+"""
+    _param_type_names(spec) -> Union{String,Vector{String}}
+
+이 param 의 **선언**만 읽는다. 읽히면 JSON 타입 이름들, 못 읽으면 거절 사유의 꼬리.
+
+🔴 **값을 한 글자도 안 본다.** 그래서 값이 도착하기 **전에** "이 선언이 쓸 만한가" 를 물을 수
+있다 — `tools/monitor/enact.jl` 의 `_merge_rewrite_params` 가 되먹임이 낸 스키마를 원래
+스키마와 견줄 때 그것이 필요하다.
+
+🔴 이것은 `_param_type_reject` 의 **앞 절반을 그대로 들어낸 것**이고 판정은 한 글자도 안
+바뀐다(`no_declared_type` · `unreadable_declared_type` · `empty_declared_type` ·
+`unknown_declared_type:<t>` 넷, 같은 순서). 두 벌을 만들지 않으려고 함수로 뽑은 것이지
+게이트를 넓히거나 좁힌 것이 아니다.
+"""
+function _param_type_names(spec)
     t = try get(spec, "type", nothing) catch; nothing end
     t === nothing && return "no_declared_type"
     ts = String[]
@@ -742,15 +772,20 @@ function _param_type_reject(spec, v)
     for one in ts
         haskey(PARAM_JSON_TYPES, one) || return "unknown_declared_type:$(one)"
     end
-    for one in ts
-        try
-            convert(PARAM_JSON_TYPES[one], v)
-            return nothing
-        catch
-        end
-    end
-    return "$(join(ts, "|")):got ::$(typeof(v))"
+    return ts
 end
+
+"""
+    _param_type_undeclared(spec) -> Union{Nothing,String}
+
+이 param 의 선언이 **쓸 만한가**. `nothing` 이면 쓸 만하다, 문자열이면 못 쓰는 이유다.
+
+🔴 이것은 게이트가 **아니다** — 게이트는 `_param_type_reject` 하나이고 이 함수는 그 게이트가
+값 없이도 답할 수 있는 부분만 노출한다. 그러므로 이 함수가 `nothing` 을 낸다고 해서 어떤 값이
+통과한다는 뜻이 아니다(변환은 여전히 값마다 판정된다).
+"""
+_param_type_undeclared(spec) = (local r = _param_type_names(spec);
+                                r isa String ? r : nothing)
 
 """
     _convert_arg(T, v) -> Any    (던질 수 있다 — 호출자가 거절로 바꾼다)

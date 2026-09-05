@@ -3699,6 +3699,371 @@ end
 
 end
 
+
+# =============================================================================
+# (44) 🔴 2026-09-05 (유료 런 10) — **고친 body 가 등록 가능해진다.**
+#
+# 사건. `730951cd` 로 `/rewrite` 왕복이 처음으로 성공했다. agent-3 이 고친 body 를 돌려줬고,
+# 재등록도 통과했고(`registered=true`), 그리고 **집행의 인자 바인딩에서** 죽었다:
+#     reason=reject:param_type:zone_radius:no_declared_type (원시 ZoneBypassTool!)
+#
+# 실측 진단(추론이 아니라 소거법). 그 런의 `results/synth_lane_records.jsonl` 은 원래 스키마를
+# 그대로 들고 있고 거기엔 `zone_radius: {"type": "number"}` 가 **있다**. 첫 시도는 그 선언으로
+# 정상 바인딩됐다(같은 런의 `dropped fabricated identifier arg: affected_goals=…` 줄이 그
+# 증거다 — 그 필터는 타입 검사 **뒤**에 있다). 두 시도 사이에 바뀐 것은 `sl["params"]` 하나뿐이고,
+# 되먹임이 `params` 를 **안** 냈다면 옛 코드는 그것을 안 건드렸다(`fx.params !== nothing &&`).
+# 그러므로 되먹임은 `params` 를 **냈고**, 그 안의 `zone_radius` 에 읽히는 선언이 없었다.
+# (파이썬 `_params_view` 의 "values" 갈래가 정확히 그 모양을 통과시킨다 — `RewriteToolImpl`
+#  에는 compose 쪽의 `ungrounded_params`·재설계 루프가 없다.)
+#
+# 🔴 그러므로 이것은 **모델의 실패가 아니라 우리 설치기의 회귀**다: 옛 `_install_rewrite!` 은
+#    되먹임이 낸 `params` 로 **쓸 만한 스키마를 통째로 덮어썼다**.
+#
+# 처방(정본은 `_merge_rewrite_params` 의 docstring): 되먹임이 **스스로 이름 붙인** kwarg 중
+# 선언이 못 쓸 것만, **같은 이름에 대한 원래 선언**을 옮긴다. 키는 하나도 안 더하고, 타입은
+# 하나도 안 지어내고, 쓸 만한 선언은 하나도 안 덮는다. 🔴 `_param_type_reject` 는 한 글자도
+# 안 넓어진다 — (44a) 가 그 동치를 못박고 (44c) 가 음성 대조를 세운다.
+#
+# 🔴 유료 호출 0건이다 — 위 `_RW_SERVER`(루프백) 하나만 쓴다. (0) 이 그 사실을 못박는다.
+# =============================================================================
+
+"되먹임 응답 한 벌. `params`·`code`·`args` 를 전부 열어 둔다 — (44) 가 그 셋을 겨눈다."
+_rwp_fix(nm, params; code = nothing, args = Dict{String,Any}("goal" => "carried")) =
+    Dict{String,Any}(
+        "wrote" => true, "impl_name" => nm,
+        "impl_code" => code === nothing ?
+            "function $(nm)(env; goal = \"g\")\n    return (status = :rwp_ok, goal = goal)\nend\n" :
+            code,
+        "surface" => "env_param", "reversible" => false,
+        "params" => params,
+        "calls" => [Dict{String,Any}("primitive" => nm, "args" => args)],
+        "error" => nothing, "rewrite_of_why" => "n/a")
+
+"""
+`M`(생산 또는 변이 사본) 을 태워 D17c 되먹임 한 판을 돌린다. `(m, stdout전문, 기록줄)`.
+
+🔴 이름은 호출마다 달라야 한다 — `_MINTED_EVER` 는 `reset_minted_table!` 로 안 지워지는
+   프로세스 수명 표라(testset (37) 이 그 계약을 소유한다) 같은 이름을 두 번 쓰면 두 번째 판이
+   `impl_name_already_minted` 로 죽어 이 게이트가 **측정하려던 것과 다른 것**을 잰다.
+"""
+function _rwp_drive(M, mode, nm; params, args, code)
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_MODE[] = mode
+    local m = nothing
+    local out = _d17b_cap(() -> (m = Base.invokelatest(
+        getfield(M, :enact_minted_decision!), retry_env(), nothing,
+        _dec(_d17b_lane(nm, code; params = params, args = args)))))
+    _RW_MODE[] = :off
+    return (m, out, _d17b_rec(out))
+end
+
+# ---- 유료 런 10 의 모양 그대로 -------------------------------------------------------
+# 원래 body 는 kwarg 둘(`goal`·`extra`)을 갖고 **잰 무동작**이다(D17c 의 트리거).
+_rwp_orig_params() = Dict{String,Any}("goal"  => Dict{String,Any}("type" => "string"),
+                                      "extra" => Dict{String,Any}("type" => "integer"))
+_rwp_orig_code(nm) = "function $(nm)(env; goal = \"g\", extra = 0)\n" *
+                     "    return (status = :failure, goal = goal, extra = extra)\nend\n"
+_rwp_orig_args()   = Dict{String,Any}("goal" => "g0", "extra" => 1)
+# 🔴 고친 body 는 kwarg 를 **하나 버렸고**(`extra` 없음) `params` 를 **값 맵**으로 냈다 —
+#    파이썬 `_params_view` 의 "values" 갈래. 이것이 런 10 을 죽인 그 모양이다.
+_rwp_values_params() = Dict{String,Any}("goal" => "g")
+
+@testset "(44) 🔴 유료 런 10: 고친 body 의 kwarg 가 선언 없이 도착해도 등록·집행된다" begin
+
+@testset "(44a) 단위: 선언 판정이 값 판정에서 **갈라져 나왔을 뿐**이다" begin
+    # ---- 선언 넷은 이름이 그대로다 ------------------------------------------------------
+    local no_t  = Dict{String,Any}("description" => "r")
+    local unk   = Dict{String,Any}("type" => "widget")
+    local empty = Dict{String,Any}("type" => String[])
+    local ok    = Dict{String,Any}("type" => "number")
+    @test CB._param_type_undeclared(no_t)  == "no_declared_type"
+    @test CB._param_type_undeclared(unk)   == "unknown_declared_type:widget"
+    @test CB._param_type_undeclared(empty) == "empty_declared_type"
+    @test CB._param_type_undeclared(ok)    === nothing
+    # 스키마가 아니라 **값**이 온 자리(파이썬 "values" 갈래)도 같은 이름으로 답한다.
+    @test CB._param_type_undeclared(0.07)  == "no_declared_type"
+    @test CB._param_type_undeclared("g")   == "no_declared_type"
+    # ---- 🔴 동치: 선언이 못 쓸 것이면 `_param_type_reject` 는 **값과 무관하게** 같은 글자다 --
+    for spec in (no_t, unk, empty, 0.07, "g"), v in (1, "x", 2.0, nothing, [1], true)
+        @test CB._param_type_reject(spec, v) == CB._param_type_undeclared(spec)
+    end
+    # ---- 🔴 그리고 게이트는 **안 넓어졌다**: 선언이 쓸 만해도 값은 여전히 판정된다 ----------
+    @test CB._param_type_undeclared(ok) === nothing
+    @test CB._param_type_reject(ok, "0.07") !== nothing     # 문자열 → number 불가
+    @test CB._param_type_reject(ok, 0.07)   === nothing
+    # 표가 공허하지 않다는 대조(합집합 선언도 산다).
+    @test CB._param_type_undeclared(Dict{String,Any}("type" => ["string", "null"])) === nothing
+end
+
+@testset "(44b) 단위: 병합의 규칙 셋" begin
+    local orig = JSON3.read(JSON3.write(_rwp_orig_params()))
+    # (1) 키를 **안 더한다** — 되먹임이 버린 `extra` 는 안 살아난다.
+    local a = _merge_rewrite_params(orig, JSON3.read(JSON3.write(_rwp_values_params())))
+    @test a.note == "carried:goal"
+    @test Set(keys(a.params)) == Set(["goal"])              # 🔴 `extra` 가 없다
+    @test a.params["goal"]["type"] == "string"
+    @test CB._param_type_reject(a.params["goal"], "carried") === nothing
+    # (2) 쓸 만한 선언은 **안 덮는다** — 되먹임이 타입을 바꾼 것도 그 모델의 권리다.
+    local b = _merge_rewrite_params(orig, JSON3.read(JSON3.write(
+                  Dict{String,Any}("goal" => Dict{String,Any}("type" => "integer")))))
+    @test b.note == "supplied"
+    @test b.params["goal"]["type"] == "integer"
+    @test CB._param_type_reject(b.params["goal"], 7) === nothing
+    # (3) 타입을 **안 지어낸다** — 원래에 없는 이름은 선언 없이 남고 거절된다.
+    local c = _merge_rewrite_params(orig, JSON3.read(JSON3.write(
+                  Dict{String,Any}("radius" => 0.07))))
+    @test c.note == "undeclared:radius"
+    @test CB._param_type_reject(c.params["radius"], 0.07) == "no_declared_type"
+    # (3') 원래 선언도 못 쓸 것이면 옮기지 않는다.
+    local d = _merge_rewrite_params(
+        JSON3.read(JSON3.write(Dict{String,Any}("w" => Dict{String,Any}("type" => "widget")))),
+        JSON3.read(JSON3.write(Dict{String,Any}("w" => 3))))
+    @test d.note == "undeclared:w"
+    @test CB._param_type_reject(d.params["w"], 3) == "no_declared_type"
+    # 삼상: `nothing` 은 "건드리지 마라" 다 — `{}` 로 붕괴하지 않는다.
+    @test _merge_rewrite_params(orig, nothing) == (params = nothing, note = "absent")
+    # 되먹임의 나머지 바이트는 산다(우리가 더하는 것은 `type` 하나다).
+    local e = _merge_rewrite_params(orig, JSON3.read(JSON3.write(
+                  Dict{String,Any}("goal" => Dict{String,Any}("description" => "the goal")))))
+    @test e.note == "carried:goal"
+    @test e.params["goal"]["description"] == "the goal"
+    @test e.params["goal"]["type"] == "string"
+    # 섞인 판은 **둘 다** 적는다 — 읽는 사람이 추측하지 않는다.
+    local f = _merge_rewrite_params(orig, JSON3.read(JSON3.write(
+                  Dict{String,Any}("goal" => "g", "radius" => 0.07))))
+    @test f.note == "carried:goal|undeclared:radius"
+end
+
+@testset "(44c) 🔴 라이브 경로: 런 10 의 판이 이제 **집행된다**" begin
+    _RW_RESPONSES[:rwp_values] = () -> _rwp_fix("rwp_live_a!", _rwp_values_params())
+    local m, out, rec = _rwp_drive(@__MODULE__, :rwp_values, "rwp_live_a!";
+        params = _rwp_orig_params(), args = _rwp_orig_args(),
+        code = _rwp_orig_code("rwp_live_a!"))
+    # 전제: 되먹임이 실제로 나갔고(잰 무동작), 재등록이 통과했다.
+    @test _RW_HITS[] == 1
+    @test m.enact_retry === :noop_retried
+    @test m.registered === true
+    # 🔴 재는 것: 고친 body 가 **굴렀다**. 런 10 은 여기서 죽었다.
+    @test m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :rwp_ok
+    @test !occursin("no_declared_type", m.reason)
+    # 🔴 그리고 그 사실이 기록 줄에 **자기 이름으로** 남는다.
+    @test occursin("rewrite_params=carried:goal", rec)
+    @test !occursin("rewrite_params=supplied", rec)
+    # 옮긴 **값**은 별도 진단 줄이 나른다(기록 줄은 공백 없는 key=value 다).
+    @test occursin("rewrite params: kwarg `goal`", out)
+    @test occursin("type=string", out)
+    @test !occursin("rewrite params: kwarg `extra`", out)   # 🔴 버린 키는 안 살아난다
+end
+
+@testset "(44d) 🔴 음성 대조: 선언 없는 kwarg 는 **여전히 거절된다**" begin
+    # 되먹임이 원래에 **없던** 이름을 선언 없이 낸다 — 옮길 것이 없다.
+    _RW_RESPONSES[:rwp_undecl] = () -> _rwp_fix("rwp_live_b!",
+        Dict{String,Any}("radius" => 0.07);
+        code = "function rwp_live_b!(env; radius = 0.0)\n" *
+               "    return (status = :rwp_ok, radius = radius)\nend\n",
+        args = Dict{String,Any}("radius" => 0.07))
+    local m, out, rec = _rwp_drive(@__MODULE__, :rwp_undecl, "rwp_live_b!";
+        params = _rwp_orig_params(), args = _rwp_orig_args(),
+        code = _rwp_orig_code("rwp_live_b!"))
+    @test _RW_HITS[] == 1
+    @test m.registered === true                 # 등록은 통과한다(이름은 정상이다)
+    # 🔴 **이 게이트는 빨간 채로 남아야 한다.** 선언 없는 kwarg 는 안 묶인다.
+    @test m.verdict === :reject
+    @test occursin("reject:param_type:radius:no_declared_type", m.reason)
+    @test occursin("rewrite_params=undeclared:radius", rec)
+    @test occursin("지어내지 않는다", out)
+end
+
+@testset "(44e) 🔴 삼상+: 넷이 기록 줄에서 서로 다르다" begin
+    # ---- `supplied` — 되먹임이 스스로 쓸 만한 스키마를 냈다 -------------------------------
+    _RW_RESPONSES[:rwp_sup] = () -> _rwp_fix("rwp_sup!",
+        Dict{String,Any}("goal" => Dict{String,Any}("type" => "string")))
+    local ms, _, rs = _rwp_drive(@__MODULE__, :rwp_sup, "rwp_sup!";
+        params = _rwp_orig_params(), args = _rwp_orig_args(),
+        code = _rwp_orig_code("rwp_sup!"))
+    @test ms.verdict === :admit && ms.steps[1].status === :rwp_ok
+    @test occursin("rewrite_params=supplied", rs)
+
+    # ---- `absent` — 되먹임이 `params` 를 아예 안 냈다. 원래 스키마가 **통째로** 산다 -------
+    # 🔴 이 갈래는 이 태스크가 **안 건드린** 옛 동작이다(`fx.params === nothing` 이면
+    #    `sl["params"]` 를 안 만진다). 여기서 옮길 것도 버릴 것도 없다: 되먹임이 kwarg 에
+    #    대해 **아무 말도 안 했으므로** 우리가 그 이름들을 유추할 근거가 없다.
+    _RW_RESPONSES[:rwp_abs] = () -> _rwp_fix("rwp_abs!", nothing;
+        code = "function rwp_abs!(env; goal = \"g\", extra = 0)\n" *
+               "    return (status = :rwp_ok, goal = goal)\nend\n")
+    local ma, _, ra = _rwp_drive(@__MODULE__, :rwp_abs, "rwp_abs!";
+        params = _rwp_orig_params(), args = _rwp_orig_args(),
+        code = _rwp_orig_code("rwp_abs!"))
+    @test occursin("rewrite_params=absent", ra)
+    # 🔴 원래 스키마가 살아 있다는 **비-0 대조**: `goal` 이 실제로 묶여 body 가 굴렀다.
+    @test ma.verdict === :admit && ma.steps[1].status === :rwp_ok
+
+    # ---- 🔴 그 갈래의 **한계를 정직하게 잰다** (2026-09-05 실측) ---------------------------
+    # 되먹임이 `params` 를 안 내면서 kwarg 를 **바꾸면** 원래 스키마가 새 시그니처와 안 맞는다.
+    # 그 판은 조용히 틀리지 않는다 — `_enactability` 연언지 (iii) 이 **시끄럽게 거절**한다.
+    # (이것이 브리프의 옵션 1 — "원래 것을 통째로 옮긴다" — 을 안 고른 이유의 실측이다.)
+    _RW_RESPONSES[:rwp_abs2] = () -> _rwp_fix("rwp_abs2!", nothing)   # 기본 code = `goal` 만
+    local ma2, _, ra2 = _rwp_drive(@__MODULE__, :rwp_abs2, "rwp_abs2!";
+        params = _rwp_orig_params(), args = _rwp_orig_args(),
+        code = _rwp_orig_code("rwp_abs2!"))
+    @test occursin("rewrite_params=absent", ra2)
+    @test ma2.verdict === :reject
+    @test occursin("unenactable", ma2.reason)      # 🔴 조용한 오바인딩이 아니라 거절이다
+
+    # ---- `n/a` — 되먹임 설치기가 아예 안 돌았다(첫 시도가 세계를 움직였다) ------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_MODE[] = :off
+    local mn = nothing
+    local outn = _d17b_cap(() -> (mn = enact_minted_decision!(retry_env(), nothing,
+        _dec(_d17b_lane("rwp_na!", _d17c_moves("rwp_na!"))))))
+    local rn = _d17b_rec(outn)
+    @test mn.enact_retry === nothing
+    @test _RW_HITS[] == 0
+    @test occursin("rewrite_params=n/a", rn)
+
+    # ---- 🔴 넷이 서로 다르다 — 하나로 뭉개면 "무엇이 일어났나" 가 로그에서 사라진다 ---------
+    local vals = String[]
+    for l in (rs, ra, rn)
+        local mm = match(r"rewrite_params=(\S+)", l)
+        @test mm !== nothing
+        push!(vals, mm.captures[1])
+    end
+    @test vals == ["supplied", "absent", "n/a"]
+    @test length(Set(vals)) == 3
+    # 다섯째(`carried:…`)·여섯째(`undeclared:…`)는 (44c)(44d) 가 각각 못박았다.
+end
+
+end
+
+
+# =============================================================================
+# (45) 🔴 변이 대조 열 — (44) 의 게이트가 **정말로 빨개질 수 있는가**.
+#
+# 생산 소스는 한 바이트도 안 건드린다: `_enact_at` 이 `mktempdir()` 사본을 별도 모듈에
+# include 한다((43) 가족의 관용구와 같다). 🔴 각 변이는 **자기 원시 이름**을 쓴다 —
+# `_MINTED_EVER` 는 프로세스 수명 표라 이름을 재사용하면 다른 것을 재게 된다.
+# =============================================================================
+@testset "(45) 🔴 변이 대조 열 — 열 가지 변이가 전부 다른 곳을 빨갛게 만든다" begin
+
+local URL = DSPY_URL
+_RW_RESPONSES[:rwp_values]  = () -> _rwp_fix("__mut__", _rwp_values_params())   # 이름은 아래서 덮는다
+
+"변이 사본을 태워 런 10 의 판을 돌린다."
+function _mut_run(nm, mut; resp = nothing, params = _rwp_orig_params(),
+                  args = _rwp_orig_args(), code = nothing)
+    _RW_RESPONSES[Symbol(nm)] = resp === nothing ?
+        (() -> _rwp_fix(nm, _rwp_values_params())) : resp
+    local M = _enact_at(URL; mutate = mut)
+    return _rwp_drive(M, Symbol(nm), nm; params = params, args = args,
+                      code = code === nothing ? _rwp_orig_code(nm) : code)
+end
+
+# ---- M1: 병합을 통째로 지운다(= 런 10 의 코드) ----------------------------------------
+local A1 = "local pmerge = _merge_rewrite_params(_synth_lane_field(sl, \"params\"), praw2)"
+@test occursin(A1, read(ENACT_PATH, String))
+local m1, _, r1 = _mut_run("rwp_m1!",
+    s -> replace(s, A1 => "local pmerge = (params = praw2, note = \"mut\")", count = 1))
+@test m1.verdict === :reject
+@test occursin("reject:param_type:goal:no_declared_type", m1.reason)   # 🔴 런 10 그 줄
+
+# ---- M2: 되먹임이 **버린** 키를 되살린다 ------------------------------------------------
+local A2 = "    return (params = out, note = join(parts, \"|\"))"
+@test occursin(A2, read(ENACT_PATH, String))
+local m2, _, r2 = _mut_run("rwp_m2!",
+    s -> replace(s, A2 => "    for (ko, vo) in orig; haskey(out, String(ko)) || " *
+                          "(out[String(ko)] = vo); end\n" * A2, count = 1))
+@test m2.verdict === :reject
+@test occursin("unenactable", m2.reason)      # 🔴 등록은 되고 **영영 호출 불가**가 된다
+
+# ---- M3: 옮길 것이 없을 때 타입을 **지어낸다** ------------------------------------------
+local A3 = "                out[ks] = v\n                push!(undecl, ks)"
+@test occursin(A3, read(ENACT_PATH, String))
+local m3, _, r3 = _mut_run("rwp_m3!",
+    s -> replace(s, A3 => "                out[ks] = Dict{String,Any}(\"type\" => \"number\")\n" *
+                          "                push!(undecl, ks)", count = 1),
+    resp = () -> _rwp_fix("rwp_m3!", Dict{String,Any}("radius" => 0.07);
+        code = "function rwp_m3!(env; radius = 0.0)\n    return (status = :rwp_ok,)\nend\n",
+        args = Dict{String,Any}("radius" => 0.07)))
+# 🔴 (44d) 가 지키는 그 거절이 **사라진다** — 지어낸 타입으로 값이 묶인다.
+@test m3.verdict === :admit
+@test !occursin("no_declared_type", m3.reason)
+
+# ---- M4: 되먹임이 스스로 낸 **쓸 만한** 선언을 덮는다 ------------------------------------
+local A4 = "            if CB._param_type_undeclared(v) === nothing"
+@test occursin(A4, read(ENACT_PATH, String))
+local m4, _, r4 = _mut_run("rwp_m4!", s -> replace(s, A4 => "            if false", count = 1),
+    resp = () -> _rwp_fix("rwp_m4!", Dict{String,Any}("goal" => Dict{String,Any}("type" => "integer"));
+        code = "function rwp_m4!(env; goal = 0)\n    return (status = :rwp_ok, goal = goal)\nend\n",
+        args = Dict{String,Any}("goal" => 7)))
+@test m4.verdict === :reject
+@test occursin("reject:param_type:goal:string:got", m4.reason)   # 낡은 선언이 새 값을 막는다
+
+# ---- M5: 기록 줄에서 그 칸을 지운다 ------------------------------------------------------
+local A5 = "                \" rewrite_params=\", _rwp_str(rewrite_params),\n" *
+           "                \" n_body_names=\""
+@test occursin(A5, read(ENACT_PATH, String))
+local m5, _, r5 = _mut_run("rwp_m5!", s -> replace(s, A5 => "                \" n_body_names=\"", count = 1))
+@test m5.verdict === :admit                       # 세계는 오늘과 같다
+@test !occursin("rewrite_params=", r5)            # 🔴 그런데 로그가 못 말한다
+
+# ---- M6: 출처를 기록까지 안 나른다 -------------------------------------------------------
+local A6 = "                rewrite_params = rn.params_from\n"
+@test occursin(A6, read(ENACT_PATH, String))
+local m6, _, r6 = _mut_run("rwp_m6!", s -> replace(s, A6 => "", count = 1))
+@test m6.verdict === :admit
+@test occursin("rewrite_params=n/a", r6)          # 🔴 옮겼는데 "안 돌았다" 고 적는다
+
+# ---- M7: `absent` 와 `supplied` 를 한 글자로 뭉갠다 ---------------------------------------
+local A7 = "new === nothing && return (params = nothing, note = \"absent\")"
+@test occursin(A7, read(ENACT_PATH, String))
+local m7, _, r7 = _mut_run("rwp_m7!",
+    s -> replace(s, A7 => "new === nothing && return (params = nothing, note = \"supplied\")",
+                 count = 1),
+    resp = () -> _rwp_fix("rwp_m7!", nothing))
+@test occursin("rewrite_params=supplied", r7)     # 🔴 하네스가 옮긴 판과 구별 불가가 된다
+@test !occursin("rewrite_params=absent", r7)
+
+# ---- M8: 병합을 덮어쓰기 **뒤로** 옮긴다(자기 자신을 원본이라고 읽는다) --------------------
+local m8, _, r8 = _mut_run("rwp_m8!",
+    s -> replace(s, A1 => "sl[\"params\"] = praw2\n    " * A1, count = 1))
+@test m8.verdict === :reject
+@test occursin("reject:param_type:goal:no_declared_type", m8.reason)
+
+# ---- M9: 되먹임의 선언을 **무조건** 믿는다 ------------------------------------------------
+local m9, _, r9 = _mut_run("rwp_m9!",
+    s -> replace(s, "CB._param_type_undeclared(v) === nothing" => "true", count = 1))
+@test m9.verdict === :reject
+@test occursin("reject:param_type:goal:no_declared_type", m9.reason)
+
+# ---- M10: **원래**의 선언을 무조건 믿는다(못 쓸 선언도 옮긴다) -----------------------------
+local A10 = "if ov !== nothing && CB._param_type_undeclared(ov) === nothing"
+@test occursin(A10, read(ENACT_PATH, String))
+local w_params = Dict{String,Any}("goal" => Dict{String,Any}("type" => "string"),
+                                  "w"    => Dict{String,Any}("type" => "widget"))
+local w_code(nm) = "function $(nm)(env; goal = \"g\", w = 0)\n" *
+                   "    return (status = :failure, goal = goal)\nend\n"
+local w_resp(nm) = () -> _rwp_fix(nm, Dict{String,Any}("w" => 3);
+    code = "function $(nm)(env; w = 0)\n    return (status = :rwp_ok, w = w)\nend\n",
+    args = Dict{String,Any}("w" => 3))
+# 생산: 못 쓸 원래 선언은 **안 옮긴다** — 사유는 `no_declared_type` 이다.
+local p10, _, rp10 = _mut_run("rwp_m10a!", identity; resp = w_resp("rwp_m10a!"),
+    params = w_params, args = Dict{String,Any}("goal" => "g0"), code = w_code("rwp_m10a!"))
+@test p10.verdict === :reject
+@test occursin("reject:param_type:w:no_declared_type", p10.reason)
+@test occursin("rewrite_params=undeclared:w", rp10)
+# 변이: 무조건 믿으면 `widget` 이 옮겨져 **사유도 기록도 갈린다**.
+local m10, _, r10 = _mut_run("rwp_m10b!",
+    s -> replace(s, A10 => "if ov !== nothing", count = 1);
+    resp = w_resp("rwp_m10b!"), params = w_params,
+    args = Dict{String,Any}("goal" => "g0"), code = w_code("rwp_m10b!"))
+@test m10.verdict === :reject
+@test occursin("reject:param_type:w:unknown_declared_type:widget", m10.reason)
+@test occursin("rewrite_params=carried:w", r10)
+
+# 🔴 열 변이가 **서로 다른 곳**을 빨갛게 만들었다(뭉치면 하나가 다른 하나를 가린다).
+@test length(Set([m1.reason, m2.reason, m3.verdict, m4.reason, r5, r6, r7,
+                  m8.reason, m9.reason, m10.reason])) == 10
+end
+
 close(_RW_SERVER)
 
 end # module
