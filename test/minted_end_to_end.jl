@@ -128,6 +128,12 @@ const _RW_SERVER = HTTP.serve!(HTTP.Sockets.localhost, 0;
     if req.target == "/rewrite"
         _RW_HITS[] += 1
         _RW_LAST[] = try JSON3.read(String(req.body)) catch; nothing end
+        # 🔴 (30) Task 1 — 일부러 **깨진 JSON** 을 200으로 돌려준다. `_rewrite_once` 의
+        #    `JSON3.read(String(resp.body))` 가 다줄 `ArgumentError` 를 던지게 만드는
+        #    실제 트리거다(손으로 예외를 짓지 않는다). `_RW_RESPONSES` 의 값들은 전부
+        #    `JSON3.write(::Dict)` 를 지나가므로 늘 유효한 JSON 만 낸다 — 그래서 이 모드는
+        #    그 표를 우회하는 별도 분기다.
+        _RW_MODE[] === :bad_json && return HTTP.Response(200, "{SENTINEL_CAUSE")
         haskey(_RW_RESPONSES, _RW_MODE[]) || return HTTP.Response(404, "")
         return HTTP.Response(200, JSON3.write(_RW_RESPONSES[_RW_MODE[]]()))
     end
@@ -2632,6 +2638,86 @@ end
         @test _step_render((name = "p!", status = Symbol("moved [east"))) == "p!:moved <east"
     finally
         CB.MONITOR_RESPEC[] = saved
+    end
+end
+
+end
+
+@testset "(30) 🔴 Task 1 (2026-09-04, P2): `_rewrite_once` 의 catch 가 예외 원인을 로그에 싣는다" begin
+    # 🔴 왜. `/rewrite` 왕복 실패는 라이브 유료 런에서 **사유 없이** 죽었다(브리프). 원인:
+    #    옛 catch 절이 `first(split(sprint(showerror, e), "\n"))` 를 썼는데,
+    #    `HTTP.RequestError` 의 `showerror` 는 1번째 줄이 리터럴 `"HTTP.RequestError:"`
+    #    이고 진짜 원인은 **마지막 줄**(`"Underlying error:"` 다음)에 있다 — 그래서 로그에
+    #    남는 것은 언제나 `"HTTP.RequestError:"` 뿐이었다. 고침은 이 파일이
+    #    `steps[i].detail` 에 이미 쓰는 접합(`_step_detail_render` 의
+    #    `_cap_detail∘_one_line_rec`)을 그대로 재사용한다 — 새 접는 자리를 만들지 않는다.
+
+@testset "(30a) 브리프의 재현 — `HTTP.RequestError` 는 원인이 마지막 줄에 있다" begin
+    local e = HTTP.RequestError(HTTP.Request("POST", "/rewrite"),
+                                 ErrorException("SENTINEL_CAUSE"))
+    local raw = sprint(showerror, e)
+    @test occursin("SENTINEL_CAUSE", raw)                    # 원인은 전문에 있다
+    local firstline = first(split(raw, "\n"))
+    @test firstline == "HTTP.RequestError:"                  # 그런데 1번째 줄은 이것뿐이다
+    @test !occursin("SENTINEL_CAUSE", firstline)              # 옛 코드가 보던 값
+    # `_rewrite_once` 의 catch 가 실제로 쓰는 접합 — 원인이 살아남는다.
+    @test occursin("SENTINEL_CAUSE", _cap_detail(_one_line_rec(raw)))
+end
+
+@testset "(30b) 라이브 경로 — `_rewrite_once` 를 실제로 태워 다줄 원인을 건진다" begin
+    # 진짜 network round-trip: 루프백 서버가 **깨진 JSON** 을 200으로 돌려주면
+    # `JSON3.read(String(resp.body))` 가 다줄 `ArgumentError` 를 던진다(원인 스니펫이
+    # 2번째 줄에 있다) — `HTTP.RequestError` 를 손으로 안 지어도 `_rewrite_once` 의 catch
+    # 가 실제 운영에서 겪는 것과 같은 모양(사유가 첫 줄에 없다)이다.
+    _RW_MODE[] = :bad_json
+    local sl = Dict{String,Any}("mechanism" => "m", "tool_name" => "t")
+    local out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            local r = _rewrite_once(sl, "impl_fn!", "function impl_fn!(env) end", "reject:x")
+            @test r === nothing   # 절대 안 던진다(docstring 의 규약) — 그리고 못 고쳤다
+        end
+        flush(io); out = read(path, String)
+    end
+    _RW_MODE[] = :off
+    local recs = [l for l in split(out, "\n") if startswith(l, "[minted] rewrite: 왕복 실패")]
+    @test length(recs) == 1
+    @test occursin("SENTINEL_CAUSE", recs[1])
+    @test occursin("ArgumentError", recs[1])
+end
+
+@testset "(30c) 🔴 음성 대조: catch 를 옛 `first(split(...))` 로 되돌리면 (30b) 가 빨개진다" begin
+    local src = read(ENACT_PATH, String)
+    @test occursin("_cap_detail(_one_line_rec(sprint(showerror, e)))", src)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_rewrite_no_cap.jl")
+        write(q, replace(src,
+            "_cap_detail(_one_line_rec(sprint(showerror, e)))" =>
+            "first(split(sprint(showerror, e), \"\\n\"))", count = 1))
+        local M = Module(:EnactRewriteNoCap)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        _RW_MODE[] = :bad_json
+        local sl2 = Dict{String,Any}("mechanism" => "m", "tool_name" => "t")
+        local out2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                Base.invokelatest(getfield(M, :_rewrite_once),
+                                  sl2, "impl_fn2!", "function impl_fn2!(env) end", "reject:x")
+            end
+            flush(io); out2 = read(path, String)
+        end
+        _RW_MODE[] = :off
+        local recs2 = [l for l in split(out2, "\n") if startswith(l, "[minted] rewrite: 왕복 실패")]
+        @test length(recs2) == 1
+        # 🔴 이 assertion 은 (30b)와 정반대다 — 옛 접합으로 되돌리면 원인이 다시 안
+        #    보이는 것이 **관측된 사실**이라 초록으로 남는다(이 파일의 (24)와 같은 관용구:
+        #    변이 아래에서 참인 것을 적어야 회귀 게이트가 영구히 초록이다). 검증 방법론은
+        #    별개다 — 이 assertion 을 그대로 (30b) 자리에 옮겨 심으면(즉 `occursin` 그대로)
+        #    빨개지는 것을 개발 중 수동으로 확인했다(태스크 보고서의 변이 기록).
+        @test !occursin("SENTINEL_CAUSE", recs2[1])
     end
 end
 

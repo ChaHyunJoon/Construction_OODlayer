@@ -1369,8 +1369,36 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
                 params = get(f, :params, nothing), calls = get(f, :calls, nothing),
                 surface = get(f, :surface, nothing), reversible = get(f, :reversible, nothing))
     catch e
+        # 🔴 2026-09-04 Task 1 (P2). 옛 `first(split(sprint(showerror, e), "\n"))` 는
+        #    `HTTP.RequestError` 에서 정확히 `"HTTP.RequestError:"` 한 줄만 남긴다 — 진짜
+        #    원인은 `showerror` 출력의 **마지막** 줄("Underlying error:" 다음)에 있다
+        #    (`HTTP/src/Exceptions.jl` 의 `Base.showerror(io, e::RequestError)` 가
+        #    `"HTTP.RequestError:\n"` 로 시작해 `e.error` 를 맨 끝에 찍는다). 라이브 유료
+        #    런에서 실제로 이 한 줄만 남아 사유가 통째로 죽었다. 이 파일이 `steps[i].detail`
+        #    에 이미 쓰는 경로(`_cap_detail`/`_one_line_rec`, 위 `_step_detail_render`)와
+        #    같은 것을 써서 전문을 한 줄로 접어 상한 안에서 찍는다 — 잘라도 마지막 줄이
+        #    통째로 사라지는 옛 결함은 재현되지 않는다(자르는 지점이 문자 수 상한이지 개행
+        #    이 아니다).
+        # 🔴 `_neutralize_brackets` 는 **안 쓴다.** 이 줄의 접두는 `"[minted] rewrite: "`
+        #    이고 `ladder_report.py` 의 `MINTED_RE`(`r'\[minted\] lane=present[^\n\r]*'`)는
+        #    리터럴 `"[minted] lane=present"` 로 시작하는 줄만 골라 그 줄 안의 `steps=[...]`
+        #    를 괄호 깊이로 판독한다 — 이 줄은 그 접두가 아니므로 그 정규식에 애초에
+        #    안 걸린다(실측). 기록 줄이 아니라 진단용 println 이라 중화 대상이 아니다.
+        # 🔴 `"Stacktrace:"` 이후를 미리 버리지 **않는다.** 이 호출은 `sprint(showerror, e)`
+        #    (2-인자)라 Base 가 자동으로 붙이는 백트레이스 절이 없다 — 리터럴
+        #    `"Stacktrace:"` 문구는 `e.error` 자체가 `CapturedException` 일 때만 그 값의
+        #    `showerror` 가 스스로 적는다. `HTTP.ConnectionRequest` 는 그 필드를
+        #    `ExceptionUnwrapping.unwrap_exception_to_root` 로 이미 벗겨서 넣으므로 실전에서
+        #    거의 안 나온다. 실측(둘 다 CapturedException 을 인위로 주입):
+        #    `ConnectError` 는 원인이 **1줄째**(스택 앞)라 200자 상한에 항상 든다(측정
+        #    LEN=284, 원인 위치 ~55). `RequestError` 는 원인이 **요청 덤프 뒤**라 상한을
+        #    갉아먹는 것은 스택이 아니라 **헤더·바디 덤프**다(측정: 53바이트짜리 JSON
+        #    바디 하나만으로도 원인이 200자 밖으로 밀려났다 — 스택트레이스는 아직 시작도
+        #    안 한 자리다). 즉 `"Stacktrace:"` 를 잘라내도 이 상한-침식의 실제 원인(요청
+        #    덤프)은 그대로 남는다 — 죽은 코드를 더할 근거가 없다. 상한 침식 자체를 고치는
+        #    것은 이 태스크 범위 밖이다(사유를 보이게 만드는 것까지가 Task 1이다).
         println("[minted] rewrite: 왕복 실패 (원래 거절이 그대로 남는다): ",
-                first(split(sprint(showerror, e), "\n")))
+                _cap_detail(_one_line_rec(sprint(showerror, e))))
         return nothing
     end
 end
