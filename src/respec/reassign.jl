@@ -133,6 +133,24 @@ function _schedule_agent_ids(sched)
 end
 
 """
+    _normalize_agent_str(s) -> String
+
+Strip Julia's module-qualification (`Module.` prefixes on a type or constructor name)
+from a `string(::BotID)` form, so the fully-qualified
+`"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"` and the unqualified
+`"BotID{DeliveryBot}(4)"` normalize to the SAME string, and can be compared for
+EXACT equality after normalization.
+
+🔴 This is deliberately an exact-match normalization, NOT a prefix/substring match.
+It only deletes `identifier.` qualifier tokens; it does not touch the type parameter
+or the id number inside the parens. Two different robots therefore still normalize to
+two different strings (`BotID{DeliveryBot}(4)` vs `BotID{DeliveryBot}(14)`, or
+`BotID{DeliveryBot}(4)` vs `BotID{TransportBot}(4)`) — a short form cannot collide with
+another robot's short form the way a prefix/substring match could.
+"""
+_normalize_agent_str(s::AbstractString) = replace(String(s), r"[A-Za-z_]\w*\." => "")
+
+"""
     release_pending_assignments!(env, invariant; faulted, agent)
         -> Vector{Tuple{Int,Int}}  |  NamedTuple (unknown `agent` only)
 
@@ -147,22 +165,26 @@ re-stamps it with the robot the solver actually assigns. Release policy:
 
 `agent::Union{Nothing,AbstractString}` SCOPES the release. With `agent === nothing`
 (the default) the behaviour is byte-for-byte what it has always been: every future
-assignment edge is released. Given a module-qualified robot id string (the form
-`string(_edge_owner_id(sched, v))` produces, e.g.
-`"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`), ONLY the future
-assignment edges that robot OWNS are released; everything else is kept.
+assignment edge is released. Given a robot id string, ONLY the future assignment edges
+that robot OWNS are released; everything else is kept. Both the module-qualified form
+`string(_edge_owner_id(sched, v))` produces (e.g.
+`"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`) AND the module-unqualified
+form an LLM-authored tool body would plausibly write instead (`"BotID{DeliveryBot}(4)"`)
+resolve to the same robot — the match is done via `_normalize_agent_str` (above), which
+strips `Module.` qualifiers from BOTH sides before comparing, so this is never a
+prefix/substring match (two different robots' short forms cannot collide).
 
-🔴 An `agent` string that names NO robot in the schedule is REJECTED before any edit:
-the call returns the NamedTuple `(status = :unknown_agent, agent = <the string>,
-released = 0)` instead of an edge list, and the graph is untouched. `_step_status` reads
-the `status` field first, so the enactment lane sees `:unknown_agent`, which IS in this
-primitive's `WORLD_UNCHANGED_STATUSES` row — so `world_maybe_dirty` stays false and the
-caller falls back to the default recovery chain instead of consuming the OOD event on a
-release that released nothing. The short (module-unqualified) form `"BotID{DeliveryBot}(4)"`
-lands here. 🔴 A REAL robot that simply has no releasable future edges right now is a
-DIFFERENT event: it keeps the normal empty-`Vector` return and reads `:released_none`,
-which is deliberately NOT in that row (see `minted_tool.jl`, the `faulted` reason).
-The authority for "known" is `_schedule_agent_ids(env.sched)`, above.
+🔴 An `agent` string that names NO robot in the schedule (in either form) is REJECTED
+before any edit: the call returns the NamedTuple `(status = :unknown_agent, agent = <the
+string>, released = 0)` instead of an edge list, and the graph is untouched. `_step_status`
+reads the `status` field first, so the enactment lane sees `:unknown_agent`, which IS in
+this primitive's `WORLD_UNCHANGED_STATUSES` row — so `world_maybe_dirty` stays false and
+the caller falls back to the default recovery chain instead of consuming the OOD event on
+a release that released nothing. 🔴 A REAL robot that simply has no releasable future
+edges right now is a DIFFERENT event: it keeps the normal empty-`Vector` return and reads
+`:released_none`, which is deliberately NOT in that row (see `minted_tool.jl`, the
+`faulted` reason). The authority for "known" is `_schedule_agent_ids(env.sched)`, above,
+compared under `_normalize_agent_str`.
 
 Why the scope exists — ONE-BOARD PROBE MEASUREMENT, not a property of this function: on
 `colored_8x8.ldr` with 6 robots a full release burned the whole 60s limit without proving
@@ -214,10 +236,13 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
     #    내지 않으면 `_step_status` 가 그것을 `:released_none` 으로 읽고, 이 원시의
     #    `WORLD_UNCHANGED_STATUSES` 행이 (faulted 때문에) 비어 있어 `world_maybe_dirty=true`
     #    → `enact.jl` 의 `handled=true` 가 된다 = **아무것도 안 풀린 채 복구 사슬을 건너뛴다**.
+    # 🔴 정규화 후 비교 — module-qualified 형태와 unqualified 형태를 같은 로봇으로 본다
+    #    (`_normalize_agent_str`). 정확 일치 비교라 prefix/substring 충돌은 없다.
+    agent_norm = agent === nothing ? nothing : _normalize_agent_str(String(agent))
     if agent !== nothing
         known = _schedule_agent_ids(sched)
-        String(agent) in known || return (status = :unknown_agent,
-                                          agent = String(agent), released = 0)
+        (String(agent) in known || any(k -> _normalize_agent_str(k) == agent_norm, known)) ||
+            return (status = :unknown_agent, agent = String(agent), released = 0)
     end
     G = get_graph(sched)                         # 스케줄의 실제 그래프 구조
     closed = invariant.closed_nodes              # 이미 완료된(닫힌) 노드 ID 집합 = "얼린 과거"
@@ -245,7 +270,7 @@ function release_pending_assignments!(env, invariant::InvariantSpec; faulted = n
         # 좁히는 인자가 알 수 없는 엣지를 뜯는 것이 더 나쁘다.
         if !keep && agent !== nothing
             own = _edge_owner_id(sched, v)
-            keep = own === nothing || string(own) != agent
+            keep = own === nothing || _normalize_agent_str(string(own)) != agent_norm
         end
         keep && continue                         # 유지 대상이면 제거하지 않고 다음으로
         Graphs.rem_edge!(G, v, v2)               # 그 외(미래 배정)는 엣지 제거 — 재최적화가 다시 결정하게 함

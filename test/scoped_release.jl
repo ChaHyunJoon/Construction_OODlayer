@@ -207,7 +207,9 @@ end
 #    · 실재하는 로봇인데 지금 풀 간선이 없다 → `:released_none` (정당하게 비었다 → 폴백 없음)
 # ---------------------------------------------------------------------------
 
-"짧은(모듈 비한정) 형태 — 레지스트리가 '아무것도 안 맞는다'고 경고한 바로 그 오용."
+"짧은(모듈 비한정) 형태. ✅ 2026-09-04 부터는 더 이상 오용이 아니다 — `_normalize_agent_str`
+가 양쪽을 정규화해 같은 로봇으로 맞춘다(아래 '짧은 형태도 같은 로봇으로 풀린다' testset).
+모르는 이름(로봇을 하나도 안 가리키는 문자열)은 여전히 `:unknown_agent` 다."
 short_form(a) = replace(a, "ConstructionBots." => "")
 
 # 🔴 넷을 **하나의 부모 testset 안에** 둔다. 최상위 testset 은 실패하면 그 자리에서 던져
@@ -221,7 +223,11 @@ short_form(a) = replace(a, "ConstructionBots." => "")
     before = releasable_edges(env)            # 🔴 호출 전에 잰다
     @test !isempty(before)                    # 빈-통과 방지
 
-    for bad in (short_form(a), "ConstructionBots.BotID{ConstructionBots.DeliveryBot}(99999)",
+    # 🔴 S4b (2026-09-04): `short_form(a)` 는 이 목록에서 빠졌다 — 이제는 **아는 이름**이다
+    #    (아래 '짧은 형태도 같은 로봇으로 풀린다' testset). 여기 남는 둘은 진짜 음성이다:
+    #    존재하지 않는 id 번호(정규화해도 어떤 known 과도 안 맞음), 그리고 로봇 형태가 아예 아닌 문자열.
+    for bad in ("ConstructionBots.BotID{ConstructionBots.DeliveryBot}(99999)",
+                "BotID{DeliveryBot}(99999)",     # 짧은 형태의 미지 id 도 여전히 unknown
                 "not-a-robot-at-all")
         @test bad != a                        # 🔴 음성 대조가 진짜 음성인지 먼저 못 박는다
         out = CB.release_pending_assignments!(env, CB.build_invariant(env); agent = bad)
@@ -229,6 +235,68 @@ short_form(a) = replace(a, "ConstructionBots." => "")
         @test hasproperty(out, :released) && out.released == 0
         @test releasable_edges(env) == before # 세계를 한 간선도 안 건드렸다
     end
+end
+
+# ---------------------------------------------------------------------------
+#  S4b (2026-09-04): 모듈 비한정("짧은") agent 형태 지원.
+#
+#  왜 있는가 — 이 원시의 `agent` 는 LLM 이 주조(mint)하는 tool body 로 넘어갈 계약이다.
+#  `_schedule_agent_ids` 가 강제하는 정본 문자열은 `string(::BotID)` 의 모듈 한정 형태
+#  (`"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`)인데, 모델이 짧은 형태
+#  (`"BotID{DeliveryBot}(4)"`)를 쓰는 것은 있음직하다 — 그리고 그 실수는 `:unknown_agent`
+#  가 이 원시의 `WORLD_UNCHANGED_STATUSES` 행에 있어 **조용한 무동작**으로 샌다("R1" 이
+#  `KeyError` 로 요란하게 샌 것과 달리, 이건 아무 신호도 없이 산다).
+#
+#  고치는 방향은 `_normalize_agent_str` 로 **양쪽을 정규화한 뒤 정확 일치**를 보는 것이다 —
+#  substring/prefix 로 느슨하게 하지 않는다(그러면 서로 다른 로봇이 충돌할 수 있다).
+# ---------------------------------------------------------------------------
+
+@testset "짧은 형태도 같은 로봇으로 풀린다(회귀 + 신규 + 충돌 안 함)" begin
+    # [회귀] 모듈 한정 형태는 여전히 그대로 풀린다 — 위 '그 로봇 것을 전부' testset이 이미
+    # `agent = a`(qualified) 로 이것을 못 박지만, 여기서 독립적으로 다시 확인한다.
+    e_full = fork(ENV0)
+    a_full = busiest_pending_agent_string(e_full)
+    want_full = releasable_edges(e_full; agent = a_full)
+    @test !isempty(want_full)
+    r_full = CB.release_pending_assignments!(e_full, CB.build_invariant(e_full); agent = a_full)
+    @test Set(r_full) == want_full
+
+    # [신규] 짧은(모듈 비한정) 형태가 같은 로봇으로 풀린다 — 정답은 QUALIFIED 이름으로
+    # 독립 오라클(`releasable_edges`)에서 유도하고, 생산 코드는 SHORT 이름으로 부른다.
+    e_short = fork(ENV0)
+    a = busiest_pending_agent_string(e_short)
+    short = short_form(a)
+    @test short != a                          # 🔴 정말 다른 문자열을 시험하는지 확인
+    want_a = releasable_edges(e_short; agent = a)   # 오라클은 정본(qualified) 이름으로
+    @test !isempty(want_a)                          # 빈-통과 방지
+    scoped_short = CB.release_pending_assignments!(e_short, CB.build_invariant(e_short); agent = short)
+    @test CB._step_status("release_pending_assignments", scoped_short) !== :unknown_agent
+    @test Set(scoped_short) == want_a         # 건전성 + 완전성 — QUALIFIED 오라클과 동일 집합
+    @test length(scoped_short) == length(want_a)
+
+    # [충돌 안 함] 서로 다른 두 로봇의 짧은 형태가 서로를 침범하지 않는다.
+    e2 = fork(ENV0)
+    counts = Dict{String,Int}()
+    for (u, _) in releasable_edges(e2)
+        o = CB._edge_owner_id(e2.sched, u); o === nothing && continue
+        counts[string(o)] = get(counts, string(o), 0) + 1
+    end
+    ranked = sort(collect(counts), by = kv -> -kv[2])
+    @test length(ranked) >= 2                 # 🔴 서로 다른 로봇이 최소 둘 없으면 이 시험은 공허하다
+    a1, a2 = ranked[1][1], ranked[2][1]
+    @test a1 != a2
+    short1, short2 = short_form(a1), short_form(a2)
+    @test short1 != short2                    # 짧은 형태끼리도 서로 다르다(선결 조건)
+
+    want1 = releasable_edges(e2; agent = a1)  # release 전, QUALIFIED 오라클
+    want2_before = releasable_edges(e2; agent = a2)  # release 전 — a2 몫의 스냅샷(같은 e2)
+    @test !isempty(want1)
+    scoped1 = CB.release_pending_assignments!(e2, CB.build_invariant(e2); agent = short1)
+    # a1 의 간선과 정확히 일치 — a2 의 간선이 하나라도 섞여 들어왔다면 이 집합 동일성이 깨진다.
+    @test Set(scoped1) == want1
+    # a2 소유 간선은 release 전후로 그대로다(안 떼졌다) — short1 이 a2 를 침범하지 않았다는
+    # 같은-인스턴스(e2) 직접 증거(서로 다른 env 인스턴스 비교로 정점번호 위험을 지지 않는다).
+    @test releasable_edges(e2; agent = a2) == want2_before
 end
 
 @testset "🔴 해저드가 닫혔다 — 두 status 가 _step_touched_world 에서 갈린다" begin
