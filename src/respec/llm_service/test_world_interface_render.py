@@ -200,3 +200,43 @@ def test_rule_5_names_a_heading_the_render_actually_emits():
     entries = [l for l in body.splitlines() if l.startswith("- ")]
     assert len(entries) > 50, len(entries)
     assert any(l.startswith("- swap_battery!") for l in entries), entries[:5]
+
+
+# =====================================================================================
+# 2026-09-04, 유료 런 2 의 사인 — 규약 6. identifier 는 **객체**다.
+#
+# 런 2 의 body 는 Task 3 가 가르친 것을 다 지켰다: `return (; status = :success)` 를 썼고
+# (런 1 의 사인이 재발하지 않았다), 광고된 `battery_report()` 를 **불렀고**(L3 최초 TRUE),
+# 렌더된 전제조건까지 지켰다(`BATTERY_FLEET[] === nothing` 를 먼저 검사). 그러고 나서 여기서
+# 죽었다:
+#
+#     total_energy_J, ..., soc = battery_report()
+#     if soc[robot_id] >= mean_soc      # robot_id = "R1"  ->  KeyError: key "R1" not found
+#
+# `soc` 는 `Dict{Any, Float64}` 인데 키가 `BotID` **객체**다. `Any` 는 모델에게 아무것도
+# 안 알려 주므로 모델이 표시용 이름 `"R1"` 을 지어냈다.
+#
+# 🔴 이것이 **두 런 연속 identifier 환각**이다(런 1 은 필드 이름, 런 2 는 키 타입). 그래서
+#    국소 주석이 아니라 **일반 규약**으로 적었다 — `Dict{AbstractID, ...}` 필드가 WORLD TYPES
+#    에만 일곱 개이고 같은 착각이 그 전부에서 가능하다.
+# =====================================================================================
+def test_the_rules_say_identifiers_are_objects_not_strings():
+    b = _block()
+    r = b.partition("\n\nWORLD TYPES")[0]        # 규약부만 본다
+    assert "Identifiers in this world are OBJECTS, never strings" in r, r
+    # 어디서 얻는지 — 없으면 "쓰지 마라" 만 있고 대안이 없다.
+    assert "keys(env.agent_policies)" in r, r
+    # 지어낸 이름이 실제로 무엇을 하는지 이름으로 부정한다.
+    assert '`"R1"`-style' in r, r
+    assert "KeyError" in r, r
+
+
+def test_the_rules_explain_the_opaque_dict_any_key_type():
+    """🔴 빈-통과 방지 + 실제 사인의 자리. `Dict{Any, ...}` 는 렌더에 **실재한다**
+    (`battery_report()` 의 `soc`), 그리고 생성기의 `returns` 는 `Base.return_types` 에서
+    기계로 유도되므로 산출물 쪽에서 `Any` 를 좁힐 길이 없다 — 규약이 그 자리를 갚는다.
+    """
+    b = _block()
+    assert "Dict{Any, Float64}" in b, "사인의 전제가 사라졌다 — 규약 6 의 대상이 렌더에 없다"
+    r = b.partition("\n\nWORLD TYPES")[0]
+    assert "`Dict{Any, ...}`" in r, r

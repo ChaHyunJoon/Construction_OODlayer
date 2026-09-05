@@ -69,6 +69,19 @@ _RULES = (
     "     writing struct fields by hand. A function call carries the module's own\n"
     "     invariants; a raw field write does not. Write a field directly only when no\n"
     "     listed function produces the required effect, and say why in a comment.\n"
+    # 🔴 2026-09-04, 유료 런 2 의 사인. 이것이 **두 런 연속 identifier 환각**이다
+    #    (런 1 은 필드 이름을, 런 2 는 키 타입을 지어냈다). 그래서 `battery_report` 아래에
+    #    붙이는 국소 주석이 아니라 **일반 규약**으로 적는다 — `Dict{AbstractID, ...}` 필드가
+    #    WORLD TYPES 에만 일곱 개고, 같은 착각이 그 전부에서 가능하다.
+    #    실제 사인: 모델이 `soc[robot_id]` 를 `robot_id="R1"` 로 쳤고 `soc` 는
+    #    `Dict{Any,Float64}` 인데 키가 `BotID` **객체**였다 → `KeyError: key "R1" not found`.
+    #    `returns` 문자열은 `Base.return_types` 에서 **기계로** 유도되므로(생성기의
+    #    `_returns_string`) `Any` 를 더 좁게 적을 길이 산출물 쪽에 없다 — 그 자리를 규약이 갚는다.
+    "  6. Identifiers in this world are OBJECTS, never strings. There is no `\"R1\"`-style\n"
+    "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`)\n"
+    "     and pass that object. A `Dict{Any, ...}` handed back by an accessor is keyed\n"
+    "     by those same id objects, so indexing it with a name you invented throws\n"
+    "     `KeyError`.\n"
 )
 
 
