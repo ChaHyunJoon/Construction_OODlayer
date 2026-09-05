@@ -454,4 +454,49 @@ end
     @test count(m -> m.callable === true, ms) == 195
 end
 
+
+# 🔴 (마) (2026-09-05). 유료 런 27·28·29. (라)가 `zone_blockage(...).blocked` 를 광고하자
+#    **세 판 다 그것을 찾아 썼다** — 개입은 도달했다. 그런데 세 판 다 그것을 *id 의 목록*으로
+#    읽어(`env.sched.vtx_map[blocked_id]` · `node.id in blocked_ids`) 매칭이 전부 빗나갔고
+#    셋 다 빈손으로 끝났다. 원소는 `(vtx, id, kind, status)` 다.
+#    ⟹ 필드 **이름**만 대고 안의 **모양**을 안 대면 모델은 손을 뻗은 그 자리에서 넘어진다.
+@testset "(9e) 🔴 (마): NamedTuple 벡터 필드의 원소 모양이 광고된다" begin
+    j  = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    _fe(m) = haskey(m, :field_element_fields) ?
+             String[String(x) for x in m.field_element_fields] : nothing
+
+    zb = only(filter(m -> String(m.name) == "zone_blockage", ms))
+    @test _fe(zb) == ["blocked[] :: (id, kind, status, vtx)"]
+
+    # 🔴 특례가 아니라 일반 규칙이라는 증거 — 같은 수확이 이 레인이 실제로 부르는 다른
+    #    동사도 덮는다.
+    rb = only(filter(m -> String(m.name) == "restage_all_blocked!", ms))
+    @test _fe(rb) == ["failed[] :: (id, status)", "moved[] :: (from, id, to)"]
+
+    # ---- 🔴 음성 대조 1: 모집단은 정확히 둘이고 삼상이다 ---------------------------------
+    got = String[String(m.name) for m in ms if _fe(m) !== nothing]
+    @test sort(got) == ["restage_all_blocked!", "zone_blockage"]
+    @test !any(m -> _fe(m) == String[], ms)
+    @test any(m -> _fe(m) === nothing, ms)
+
+    # ---- 🔴 음성 대조 2: 둘째 진실원이 되는 날을 알리는 초병 -------------------------------
+    #    이 사실은 타입이 **침묵하는** 자리를 메운다. 누군가 원소 타입을 좁히면 타입과 이 줄이
+    #    같은 것을 두 번 말하게 되고, 그날 게이트를 걸어야 한다.
+    #    🔴 이름으로 훑지 않는다 — `status` 는 원소 필드이자 바깥 필드이기도 하다(실측: 첫
+    #    판이 그 오탐으로 빨개졌다). 정확히 "그 필드의 원소 타입" 하나만 문다.
+    for m in (zb, rb)
+        ret = String(m.returns)
+        for entry in _fe(m)
+            fld = first(split(entry, "[]"))
+            occursin(string(fld, "::"), ret) || continue
+            @test occursin(string(fld, "::Vector{NamedTuple}"), ret)
+        end
+    end
+
+    # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 안 움직였다 ---------------------------------
+    @test length(ms) == 224
+    @test count(m -> m.callable === true, ms) == 195
+end
+
 end # module

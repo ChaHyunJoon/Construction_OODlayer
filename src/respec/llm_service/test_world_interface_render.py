@@ -666,3 +666,67 @@ def test_the_field_wording_does_not_claim_one_call_returns_them_all():
 def WI_methods():
     import world_interface as WI
     return WI.load_world_interface()["methods"]
+
+
+# =================================================================================================
+# NamedTuple 벡터 필드의 **원소 모양** — 유료 런 27·28·29 (2026-09-05)
+# =================================================================================================
+def test_the_element_shape_three_runs_guessed_wrong_is_advertised():
+    """🔴 (라)가 `zone_blockage(...).blocked` 를 광고하자 **세 판 다 그것을 찾아 썼다** —
+    개입은 도달했다. 그리고 세 판 다 그것을 *id 의 목록*으로 읽었다
+    (`env.sched.vtx_map[blocked_id]` · `node.id in blocked_ids`). 원소는
+    `(vtx, id, kind, status)` 라 매칭이 전부 빗나갔고 셋 다 빈손으로 끝났다."""
+    import world_interface as WI
+    m = _named("zone_blockage")
+    fe = m.get("field_element_fields")
+    assert fe == ["blocked[] :: (id, kind, status, vtx)"], fe
+    line = WI._method_line(m)
+    assert "elements seen in source:" in line
+    for f in ("vtx", "id", "kind", "status"):
+        assert f in line
+
+
+def test_the_same_rule_covers_the_other_verb_the_lane_actually_calls():
+    """🔴 특례가 아니라 일반 규칙이라는 증거. 같은 수확이 `restage_all_blocked!` 의
+    `moved`/`failed` 도 덮는다 — 이 레인이 실제로 부르는 동사이고 같은 불투명함을 가진다."""
+    fe = _named("restage_all_blocked!")["field_element_fields"]
+    assert fe == ["failed[] :: (id, status)", "moved[] :: (from, id, to)"], fe
+
+
+def test_the_population_is_exactly_the_two_and_is_tri_state():
+    import world_interface as WI
+    ms = WI_methods()
+    have = [m for m in ms if "field_element_fields" in m]
+    assert [m["name"] for m in have] == ["restage_all_blocked!", "zone_blockage"], \
+        [m["name"] for m in have]
+    assert not any(m.get("field_element_fields") == [] for m in ms)
+    bare = next(m for m in ms if "field_element_fields" not in m)
+    assert "elements seen in source:" not in WI._method_line(bare)
+
+
+def test_it_is_not_a_second_source_of_truth_today_and_a_tripwire_says_when_it_becomes_one():
+    """🔴 이 사실은 타입이 **침묵하는** 자리를 메운다: 오늘 두 필드의 원소 타입은 광고에서
+    맨 `Vector{NamedTuple}` 이다. 누군가 그 타입을 좁히면 타입과 이 줄이 같은 것을 두 번
+    말하게 되고, 둘이 갈리는 날 아무도 못 잡는다(규약 6 이 `soc` 에서 걷어낸 결함 부류).
+    그날 이 시험이 먼저 빨개져서 **게이트를 걸라고** 알린다."""
+    # 🔴 이름으로 훑지 않는다. `status` 는 원소 필드이자 **바깥** 필드이기도 해서 문자열
+    #    검색은 둘을 못 가른다(첫 판이 그 오탐으로 빨개졌다). 물어야 하는 것은 정확히
+    #    "그 필드의 **원소 타입**이 아직 맨 `NamedTuple` 인가" 하나다.
+    for name in ("zone_blockage", "restage_all_blocked!"):
+        m = _named(name)
+        ret = m.get("returns") or ""
+        for entry in m["field_element_fields"]:
+            field = entry.split("[]", 1)[0]
+            if ("%s::" % field) not in ret:
+                continue                      # 타입이 그 필드를 아예 안 댄다 (zone_blockage)
+            assert ("%s::Vector{NamedTuple}" % field) in ret, (name, field, ret)
+
+
+def test_the_element_wording_does_not_claim_a_closed_shape():
+    """⚠️ 갈래의 합집합이다 — `zone_blockage` 은 `:engulfed`·`:disconnected` 두 자리에서
+    push 한다. 문구가 폐집합을 주장하면 모델이 나머지를 오류로 처리하기 시작한다."""
+    import world_interface as WI
+    line = WI._method_line(_named("zone_blockage"))
+    assert "elements seen in source:" in line
+    for overclaim in ("elements are", "each element has exactly", "always"):
+        assert overclaim not in line, overclaim

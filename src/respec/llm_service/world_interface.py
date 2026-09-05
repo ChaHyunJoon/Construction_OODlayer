@@ -197,6 +197,14 @@ def _method_line(m) -> str:
     rf = m.get("returned_fields") or []
     if rf:
         line += "      fields seen in source: %s" % " | ".join(rf)
+    # 🔴 2026-09-05, 유료 런 27·28·29. 바로 위 개입이 `zone_blockage(...).blocked` 를
+    #    광고하자 **세 판 다 그것을 찾아 썼다** — 그리고 세 판 다 그것을 *id 의 목록*으로
+    #    읽어 매칭이 전부 빗나갔다(원소는 `(vtx, id, kind, status)` 다). 필드 이름만 대고
+    #    안의 모양을 안 대면, 모델은 손을 뻗은 바로 그 자리에서 넘어진다.
+    # ⚠️ `fields seen in source:` 와 같은 규약 — 갈래의 합집합이지 폐집합이 아니다.
+    fe = m.get("field_element_fields") or []
+    if fe:
+        line += "      elements seen in source: %s" % " ; ".join(fe)
     miss = m.get("missing") or []
     if miss:
         line += "      missing: %s" % ", ".join(miss)

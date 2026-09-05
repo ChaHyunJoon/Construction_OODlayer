@@ -1898,6 +1898,10 @@
             "argpaths": [
             ],
             "callable": true,
+            "field_element_fields": [
+                "failed[] :: (id, status)",
+                "moved[] :: (from, id, to)"
+            ],
             "status_symbols": [
                 "infeasible",
                 "none",
@@ -2525,6 +2529,9 @@
             "status_symbols": [
                 "disconnected",
                 "engulfed"
+            ],
+            "field_element_fields": [
+                "blocked[] :: (id, kind, status, vtx)"
             ],
             "returns": "NamedTuple"
         },

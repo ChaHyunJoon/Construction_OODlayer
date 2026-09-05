@@ -899,6 +899,91 @@ function _returned_fields(m::Method)
 end
 
 """
+    _field_element_fields(m::Method) -> Union{Nothing,Vector{String}}
+
+반환 NamedTuple 의 어떤 필드가 **NamedTuple 의 벡터**일 때, 그 **원소**의 필드 이름.
+못 유도하면 `nothing`. 모양: `"blocked[] :: (id, kind, status, vtx)"`.
+
+🔴 왜 존재하나 (2026-09-05, 유료 런 27·28·29). (라)가 `zone_blockage(...).blocked` 를
+   광고하자 **세 판 다 그것을 찾아 썼다** — 개입은 도달했다. 그리고 **세 판 다 똑같이**
+   그것을 *id 의 목록*으로 읽었다(`env.sched.vtx_map[blocked_id]` · `node.id in blocked_ids`).
+   실제 원소는 `(vtx, id, kind, status)` 라 매칭이 전부 빗나갔고, 셋 다 빈손으로 끝났다
+   (`"a reported blocked goal is absent from the schedule"` · `"found 0"` · 잰 무동작).
+   ⟹ 필드 **이름**만 광고하고 그 안의 **모양**을 안 광고하면, 모델은 그 필드에 손을 뻗은
+   다음 바로 거기서 넘어진다. 광고는 손이 닿는 데까지 이어져야 한다.
+
+규칙 하나: return 자리의 NamedTuple 에서 `field = <지역변수>` 짝을 모으고, 그 지역변수에
+`push!(var, (a = …, b = …))` 하는 자리에서 원소의 필드 이름을 수확한다. 두 조각이 **같은
+메서드 안**에 있어야 하므로 남의 튜플이 섞이지 않는다.
+
+⚠️ **구문적 상계다** — 갈래마다 원소 모양이 다를 수 있고 이것은 합집합이다(`zone_blockage`
+   은 `:engulfed`·`:disconnected` 두 자리에서 같은 모양을 push 한다). 그래서 렌더 문구가
+   `elements seen in source` 다.
+
+🔴 삼상: 짝을 못 찾거나 `push!` 가 없으면 **키를 안 만든다**.
+⚠️ 오늘 이 둘의 원소 타입은 광고에서 맨 `Vector{NamedTuple}` 이라 **둘째 진실원이 아니다**
+   (타입이 침묵하는 자리를 메운다). 누군가 그 타입을 좁히는 날 시험 (9e)가 그것을 알린다.
+"""
+function _field_element_fields(m::Method)
+    ex = _defining_expr(m)
+    ex === nothing && return nothing
+    names_in(x) = begin
+        (x isa Expr && x.head === :tuple) || return nothing
+        got = Symbol[]
+        for a in x.args
+            kws = (a isa Expr && a.head === :parameters) ? a.args : Any[a]
+            for kw in kws
+                (kw isa Expr && (kw.head === :kw || kw.head === :(=)) &&
+                 kw.args[1] isa Symbol) && push!(got, kw.args[1])
+            end
+        end
+        isempty(got) ? nothing : got
+    end
+    # return 자리의 `field = <지역변수>` 짝. 값이 Symbol 인 것만 — 리터럴이나 식은 벡터가 아니다.
+    f2v = Pair{Symbol,Symbol}[]
+    collect_pairs(x) = begin
+        (x isa Expr && x.head === :tuple) || return
+        for a in x.args
+            kws = (a isa Expr && a.head === :parameters) ? a.args : Any[a]
+            for kw in kws
+                (kw isa Expr && (kw.head === :kw || kw.head === :(=)) &&
+                 kw.args[1] isa Symbol && kw.args[2] isa Symbol) &&
+                    push!(f2v, kw.args[1] => kw.args[2])
+            end
+        end
+    end
+    wr(x) = begin
+        x isa Expr || return
+        x.head === :return && length(x.args) == 1 && collect_pairs(x.args[1])
+        foreach(wr, x.args)
+    end
+    wr(ex)
+    isempty(f2v) && return nothing
+    vars = Set{Symbol}(last(p) for p in f2v)
+    acc = Dict{Symbol,Set{Symbol}}()
+    wp(x) = begin
+        x isa Expr || return
+        if x.head === :call && length(x.args) == 3 && x.args[1] === :push! &&
+           x.args[2] isa Symbol && x.args[2] in vars
+            ns = names_in(x.args[3])
+            ns === nothing || union!(get!(acc, x.args[2], Set{Symbol}()), ns)
+        end
+        foreach(wp, x.args)
+    end
+    wp(ex)
+    isempty(acc) && return nothing
+    out = String[]
+    seen = Set{Symbol}()
+    for (fld, var) in sort!(f2v; by = p -> string(first(p)))
+        (fld in seen || !haskey(acc, var)) && continue
+        push!(seen, fld)
+        push!(out, string(fld, "[] :: (",
+                          join(sort!(String[string(s) for s in acc[var]]), ", "), ")"))
+    end
+    isempty(out) ? nothing : out
+end
+
+"""
     _element_type(rt) -> Union{Nothing,String}
 
 이 반환을 **순회하면 무엇이 나오는가**. 못 말하면 `nothing`.
@@ -1000,6 +1085,11 @@ function method_entries(reach, acc)
                 rf = _returned_fields(m)
                 rf === nothing || (e["returned_fields"] = rf)
             end
+            # 🔴 게이트를 안 건다. 오늘 이 자리의 원소 타입은 광고에서 맨
+            #    `Vector{NamedTuple}` 이라 타입이 **침묵**하고, 그래서 둘째 진실원이 아니다
+            #    (`returned_fields` 와 다른 점이다 — 그쪽은 타입이 말할 수 있는 자리였다).
+            fe = _field_element_fields(m)
+            fe === nothing || (e["field_element_fields"] = fe)
             rt = _infer_return(f, tt_of(m))
             if rt !== nothing
                 et = _element_type(rt)
