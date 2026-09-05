@@ -648,6 +648,19 @@ class MacroRequest(BaseModel):
     zone_nav_disconnected: Optional[int] = None    #   (감사용 분해) 길이 끊김 — 통로검사 ON 일 때만 잼
     zone_agent_trapped: Optional[int] = None       # 구역 안에 주차된 이동체 수
     zone_nav_downstream: Optional[int] = None      # 막힌 노드 뒤에 걸려 함께 얼어붙는 미완 작업 수
+    # ---- 2026-09-05: 종단성(terminality) 술어. **비율이 아니다** ----------------------
+    # 위 `zone_nav_downstream` 은 "얼마나 얼어붙나"(비율로 읽힌다)이고, 아래는 "완주가 아직
+    # 가능한가"(술어)다. 둘은 다른 물음이고, 실측이 그 차이를 잡았다: 2026-09-05 의 두 라이브
+    # zone 판에서 downstream 은 32/251(=13%)이었고 모델은 그것을 보고 *"minimally impacts the
+    # build"* 라며 NOOP 을 골랐다 — 비율로서는 틀리지 않은 독해다. 그런데 그 판의 정답은
+    # **완주 실패**였다(tool-off 대조: PROJECT INCOMPLETE, 270/305). 세계가 결정 시점에 이미
+    # 알고 있던 사실은 비율이 아니라 그래프 술어였다: `project_complete(env)` 가 요구하는
+    # ProjectComplete 정점이 막힌 노드의 후방 폐포 안에 있다.
+    # ★ 삼상. `None` = **안 쟀다**. `False` = 재 봤더니 완주는 안 막혔다. 호출자
+    #   (`policy.jl:ood_features`)는 못 쟀을 때 키 자체를 안 싣는다.
+    zone_project_blocked: Optional[bool] = None    # 완주 정점이 막힘의 후방 폐포 안에 있는가
+    zone_project_nodes_blocked: Optional[int] = None  # 그런 미완 ProjectComplete 정점 수
+    zone_project_nodes_open: Optional[int] = None     # 아직 안 닫힌 ProjectComplete 정점 수(분모)
     zone_unfinished_total: Optional[int] = None    # 그 비교 분모(전체 미완 노드 수)
 
     # ---- battery 적재/함대 상태 (2026-08-31, S1/T2) ------------------------------------
@@ -1056,6 +1069,26 @@ _GEOM_BLOCKAGE = [
      "movers standing inside the zone right now (they were parked when it appeared)"),
 ]
 
+# 🔴 2026-09-05. 종단성은 **별도 줄**이다 — `_GEOM_BLOCKAGE` 의 숫자 목록에 섞어 넣으면 또 하나의
+# 카운트로 읽히고, 이 결함이 바로 "카운트를 비율로 읽는 것"이었다. 이 줄이 말하는 것은 개수가
+# 아니라 **완주 판정이 아직 가능한가**이고, 그 판정의 정의(`project_complete` = 모든
+# ProjectComplete 정점이 닫힘)를 같이 적는다. 무엇을 하라는 말은 한 글자도 없다 — 동사도,
+# 어휘도, 개입 여부도 언급하지 않는다(위 `_GEOM_COVERAGE` 의 STEP 4 규약 그대로).
+def _terminality_line(r: "MacroRequest") -> list:
+    if r.zone_project_blocked is None:
+        return []                       # 삼상: 안 쟀으면 아무 말도 안 한다(0/no 로 접지 않는다)
+    nb, no = r.zone_project_nodes_blocked, r.zone_project_nodes_open
+    frac = ("" if (nb is None or no is None) else " (%s of %s)" % (nb, no))
+    if r.zone_project_blocked:
+        return ["  build_can_still_finish  = NO%s   (the schedule is declared finished only when "
+                "every ProjectComplete node closes; those nodes sit behind the blocked nodes "
+                "above, so while this zone stands the build cannot reach that state at all -- "
+                "this is a reachability fact about the precedence graph, not a fraction of the "
+                "work)" % frac]
+    return ["  build_can_still_finish  = yes%s  (no ProjectComplete node sits behind a blocked "
+            "node, so the blockage above delays work without making the finished state "
+            "unreachable)" % frac]
+
 
 def _rows(r: MacroRequest, spec) -> list:
     return [(lbl, getattr(r, f), doc) for f, lbl, doc in spec if getattr(r, f, None) is not None]
@@ -1080,6 +1113,7 @@ def _geometry_block(r: MacroRequest) -> str:
             out.append("  %-22s = %-6s (%s)" % (lbl, v, doc))
         if r.zone_unfinished_total is not None:
             out.append("  (the build has %s unfinished nodes in total)" % r.zone_unfinished_total)
+        out += _terminality_line(r)
     return "\n".join(out)
 
 

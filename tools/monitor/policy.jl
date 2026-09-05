@@ -413,6 +413,25 @@ function ood_features(env, truth)
                 # "minimal impact, only one navigation goal" 이라며 NOOP 을 골랐다.
                 d["zone_nav_downstream"]   = zdg.n_nav_downstream
                 d["zone_unfinished_total"] = total - closed          # 위 값을 견줄 분모
+                # ---- 종단성(terminality). 비율이 아니라 술어다 (2026-09-05) ----------------
+                # 🔴 왜 이 칸이 필요한가(실측). 2026-09-05 의 두 라이브 zone 판에서 모델은
+                #    NOOP 을 고르며 *"the exclusion zone minimally impacts the build"* 라고
+                #    적었다. 그 판의 정답은 **완주 실패**다(tool-off 대조: PROJECT INCOMPLETE,
+                #    270/305, t=5776). 프롬프트가 준 가장 강한 막힘 신호는
+                #    `work frozen by those = 32` / `unfinished total = 251` 이었고, 그것은
+                #    비율로 13% 라 "대부분 멀쩡하다"로 읽힌다 — 그리고 그 읽기는 **비율로서는
+                #    틀리지 않았다**. 세계가 실제로 가진 사실은 비율이 아니라 술어였다:
+                #    `project_complete(env)` 가 요구하는 ProjectComplete 정점이 막힌 노드의
+                #    후방 폐포 안에 있다 = 구역이 사는 한 완주 판정은 원리적으로 불가능하다.
+                # 🔴 삼상: `zone_diagnosis` 가 `nothing` 을 내면(막힘을 안 쟀다) **키를 안 싣는다**.
+                #    false 로 접으면 "재 봤더니 완주는 안 막혔다"로 읽혀 정확히 반대의 거짓이 된다.
+                # 🔴 판정(verdict)이 아니다 — 이건 선후행 그래프 사실이고, 무엇을 하라는 말은
+                #    한 글자도 붙이지 않는다(zone_diagnosis.jl 의 note 와 같은 규약).
+                if zdg.project_blocked !== nothing
+                    d["zone_project_blocked"]         = zdg.project_blocked
+                    d["zone_project_nodes_blocked"]   = zdg.n_completion_blocked
+                    d["zone_project_nodes_open"]      = zdg.n_completion_open
+                end
             end
         end
     else
@@ -1969,7 +1988,12 @@ function decide_all(env, truth; nl::AbstractString = "")
                 "n_nav_engulfed" => zdg.n_nav_engulfed,
                 "n_nav_disconnected" => zdg.n_nav_disconnected,
                 "n_agent_trapped" => zdg.n_agent_trapped,
-                "n_nav_downstream" => zdg.n_nav_downstream)
+                "n_nav_downstream" => zdg.n_nav_downstream,
+                # 종단성 술어(2026-09-05). 삼상이라 `nothing` 이면 JSON 에 `null` 로 남는다 —
+                # 감사 증거에서 "안 쟀다"와 "안 막혔다"가 구별돼야 한다.
+                "n_completion_blocked" => zdg.n_completion_blocked,
+                "n_completion_open" => zdg.n_completion_open,
+                "project_blocked" => zdg.project_blocked)
             # Symbol 은 JSON 에 안 실리므로 String 으로.
             rt["zone_verdict"] = String(zdg.verdict)
         end
@@ -2076,6 +2100,9 @@ function decide_all(env, truth; nl::AbstractString = "")
         narrate_event(Dict{String,Any}(
             "kind"          => get(_f, "kind", string(typeof(truth).name.name)),
             "severity"      => get(_f, "severity", nothing),
+            # 종단성 술어(2026-09-05, task B2). zone 의 severity 는 겹침 면적비라 이 사건의
+            # 해로움을 못 나른다 — narrate.jl 이 그 사실을 따로 적는다. 없으면 nothing(삼상).
+            "zone_project_blocked" => get(_f, "zone_project_blocked", nothing),
             "soc"           => get(_f, "soc", nothing),
             "spare_count"   => get(_f, "spare_count", nothing),
             "agent_pending" => get(_f, "agent_pending", nothing),

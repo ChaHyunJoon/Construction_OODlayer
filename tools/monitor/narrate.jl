@@ -36,6 +36,16 @@ function narrate_event(ev::AbstractDict)
     kind = _has(ev, "kind") ? String(ev["kind"]) : "unknown"
     ctx = String[]
     _has(ev, "severity")      && push!(ctx, "severity " * _num(ev["severity"]))
+    # 🔴 2026-09-05 (task B2). **종단성은 severity 로 실려 오지 않는다.** zone 의 severity 는
+    #    staging 원 겹침 면적비라 2026-09-05 라이브 판에서 0.00236 → 반올림 "0.0" 으로 적혔고,
+    #    그 판의 정답은 완주 실패였다(tool-off 대조 270/305, PROJECT INCOMPLETE). 그러니 요약을
+    #    읽는 사람이 "severity 0.0" 만 보고 무해로 읽지 않도록 술어를 따로 적는다.
+    #    삼상: 키가 없으면(= 못 쟀으면) 한 글자도 안 적는다. false 로 접지 않는다.
+    if _has(ev, "zone_project_blocked")
+        push!(ctx, ev["zone_project_blocked"] === true ?
+                   "the build cannot reach a finished state while this zone stands" :
+                   "the build can still reach a finished state")
+    end
     _has(ev, "soc")           && push!(ctx, "SoC " * _num(ev["soc"]))
     _has(ev, "spare_count")   && push!(ctx, string(ev["spare_count"]) * " spares left")
     _has(ev, "agent_pending") && push!(ctx, string(ev["agent_pending"]) * " pending jobs")

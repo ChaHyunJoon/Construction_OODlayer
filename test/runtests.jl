@@ -340,6 +340,14 @@ end
         include("zone_harm_is_blockage.jl")
     end
 
+    # 2026-09-05 (task B2): 종단성은 비율이 아니라 **완주 정점의 도달가능성**이다. 라이브 판이
+    # "minimally impacts the build" 로 NOOP 을 골랐는데 정답은 완주 실패였다(270/305) —
+    # 그때 세계가 이미 알고 있었지만 한 번도 보고하지 않은 사실을 이 게이트가 잰다.
+    # env 하나(colored_8x8, 4 robots)를 세우고 시뮬레이션은 한 스텝도 안 돈다.
+    @testset "zone terminality is a graph fact" begin
+        include("zone_terminality_is_a_graph_fact.jl")
+    end
+
     # 2026-08-31 (S1/T2): battery 사건이 payload/함대 사실을 싣는가. 🔴 이 게이트는 함대 절만
     # 잰다 — 운반 작업 순회는 진짜 env 가 필요하므로 여기 없다(파일 머리말이 그 경계를 적는다).
     @testset "battery load features" begin

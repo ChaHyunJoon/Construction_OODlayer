@@ -140,6 +140,8 @@ Returned fields — PRIMITIVES first, VERDICT last:
 | `n_nav_engulfed` / `n_nav_disconnected` | of those, goals whose capture ball is inside the exclusion disc / goals still free but with no surviving route | 〃 |
 | `n_nav_blocked` | their sum: **nodes that cannot close while this zone lives**. Every other count above is COVERAGE; this one is BLOCKAGE | 〃 |
 | `n_nav_downstream` | unfinished nodes that are blocked or transitively wait on one — how much work the blockage freezes (a precedence-graph fact, not a judgement) | 〃 |
+| `n_completion_blocked` / `n_completion_open` | still-open `ProjectComplete` vertices inside that closure / in the whole schedule. `project_complete(env)` is exactly "every one of these is closed", so the first being `>= 1` is TERMINALITY, not slowdown | 〃 |
+| `project_blocked` | `n_completion_blocked >= 1`, or **`nothing` when it could not be computed** (three-state; never `false` for "not measured") | 〃 |
 | `n_agent_trapped` | movers standing inside the zone right now (parked when it appeared) | 〃 |
 | `relocate_delta` / `relocate_norm` | the minimum rigid whole-build shift that clears the zone (`nothing` if none exists) | `_find_min_translation` |
 | `relocate_feasible` | a clearing shift exists | — |
@@ -203,6 +205,9 @@ function zone_diagnosis(env, zone::Symbol;
                 teams = NamedTuple[], n_teams_forming = 0, n_teams_covered = 0,
                 n_nav_goals = 0, n_nav_blocked = 0, n_nav_engulfed = 0,
                 n_nav_disconnected = 0, n_agent_trapped = 0, n_nav_downstream = 0,
+                # 🔴 삼상: 진단할 구역이 없으므로 **안 쟀다**. 0/false 가 아니라 nothing 이다.
+                n_completion_blocked = nothing, n_completion_open = nothing,
+                project_blocked = nothing,
                 relocate_delta = nothing, relocate_norm = Inf, relocate_feasible = false,
                 verdict = :no_such_zone)
     end
@@ -278,6 +283,12 @@ function zone_diagnosis(env, zone::Symbol;
     n_nav_eng     = blk === nothing ? -1 : blk.n_engulfed
     n_nav_disc    = blk === nothing ? -1 : blk.n_disconnected
     n_nav_blocked = blk === nothing ? -1 : blk.n_blocked
+    # 🔴 삼상 규약. `check_blockage=false` 이거나 `zone_blockage` 가 던졌으면 `blk === nothing`
+    #    이고 그때 이 셋은 **없음(nothing)** 이다 — 0/false 로 접으면 "완주는 막히지 않았다"는,
+    #    재지도 않은 주장이 된다.
+    n_comp_blocked = blk === nothing ? nothing : blk.n_completion_blocked
+    n_comp_open    = blk === nothing ? nothing : blk.n_completion_open
+    proj_blocked   = blk === nothing ? nothing : blk.project_blocked
     n_trapped     = blk === nothing ? -1 : blk.n_agent_trapped
     n_nav_down    = blk === nothing ? -1 : blk.n_downstream
 
@@ -341,6 +352,8 @@ function zone_diagnosis(env, zone::Symbol;
             n_nav_goals = n_nav_goals, n_nav_blocked = n_nav_blocked,
             n_nav_engulfed = n_nav_eng, n_nav_disconnected = n_nav_disc,
             n_agent_trapped = n_trapped, n_nav_downstream = n_nav_down,
+            n_completion_blocked = n_comp_blocked, n_completion_open = n_comp_open,
+            project_blocked = proj_blocked,
             relocate_delta = Δ, relocate_norm = Δnorm, relocate_feasible = relocatable,
             verdict = verdict)
 end

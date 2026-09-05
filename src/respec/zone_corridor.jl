@@ -278,6 +278,69 @@ function free_space_status(start, goal, zones, agent_radius::Real;
 end
 
 """
+    _project_completion_vtxs(env) -> Vector{Int}
+
+The schedule vertices that `project_complete(env)` reads — every `ProjectComplete` node.
+
+This is the DEFINITION of "the build finishes": `project_complete` returns true iff every one of
+these is in `closed_set`. So asking whether one of them sits behind a blocked node is asking
+whether the project can still finish at all, not how much of it is slowed.
+"""
+# `project_complete(env)` 가 읽는 바로 그 노드들(ProjectComplete). 이 집합이 전부 닫혀야 완주다.
+function _project_completion_vtxs(env)
+    sched = env.sched
+    out = Int[]
+    for n in get_nodes(sched)
+        matches_template(ProjectComplete, n) || continue
+        push!(out, get_vtx(sched, n))
+    end
+    return out
+end
+
+"""
+    _downstream_closure(env, vtxs) -> (seen, n_unfinished, n_completion_blocked, n_completion_open)
+
+One forward traversal of the precedence DAG from `vtxs`, reported three ways:
+
+  * `n_unfinished` — unfinished nodes in the closure (what `_downstream_unfinished` returns),
+  * `n_completion_blocked` — `ProjectComplete` vertices INSIDE the closure that are still open,
+  * `n_completion_open` — `ProjectComplete` vertices still open anywhere in the schedule.
+
+The middle number is the one a ratio cannot express. `n_unfinished / pending` says how much of the
+build freezes; `n_completion_blocked >= 1` says the build cannot be declared finished at all while
+those nodes stay blocked, because `project_complete` requires exactly those vertices to close.
+"""
+# 선후행 DAG 를 vtxs 에서 한 번 전방 순회하고 셋으로 보고한다.
+#   n_unfinished        = 폐포 안의 미완 노드 수(= 옛 `_downstream_unfinished`)
+#   n_completion_blocked= 폐포 안에 있는 **아직 안 닫힌 ProjectComplete 정점** 수
+#   n_completion_open   = 스케줄 전체에서 아직 안 닫힌 ProjectComplete 정점 수(분모)
+# 가운데 값이 비율로는 표현이 안 되는 것이다: 앞의 값은 "얼마나 얼어붙나"이고,
+# 가운데 값 >= 1 은 "그 노드들이 막힌 한 완주 판정 자체가 불가능하다"이다.
+function _downstream_closure(env, vtxs)
+    g = get_graph(env.sched)
+    seen = Set{Int}()
+    stack = Int[]
+    for v in vtxs
+        v in seen && continue
+        push!(seen, v); push!(stack, v)
+    end
+    while !isempty(stack)
+        v = pop!(stack)
+        for w in Graphs.outneighbors(g, v)
+            w in seen && continue
+            push!(seen, w); push!(stack, w)
+        end
+    end
+    closed = env.cache.closed_set
+    n_unfinished = count(v -> !(v in closed), seen)
+    pcs = _project_completion_vtxs(env)
+    open_pcs = [v for v in pcs if !(v in closed)]
+    return (seen = seen, n_unfinished = n_unfinished,
+            n_completion_blocked = count(v -> v in seen, open_pcs),
+            n_completion_open = length(open_pcs))
+end
+
+"""
     _downstream_unfinished(env, vtxs) -> Int
 
 How many UNFINISHED schedule nodes are `vtxs` themselves or wait on them, transitively.
@@ -293,23 +356,7 @@ not what to do about it.
 # 막힌 노드 자신 + 그 노드를 (이행적으로) 기다리는 미완 노드의 수.
 #   스케줄은 선후행 DAG 라 절대 못 닫는 노드 하나는 그 뒤의 모든 노드를 영영 못 열게 한다.
 #   그래서 "120개 중 1개 막힘"은 1/120 의 피해가 아니다 — 그 하나 뒤에 걸린 일 전부가 피해다.
-function _downstream_unfinished(env, vtxs)
-    g = get_graph(env.sched)
-    seen = Set{Int}()
-    stack = Int[]
-    for v in vtxs
-        v in seen && continue
-        push!(seen, v); push!(stack, v)
-    end
-    while !isempty(stack)
-        v = pop!(stack)
-        for w in Graphs.outneighbors(g, v)
-            w in seen && continue
-            push!(seen, w); push!(stack, w)
-        end
-    end
-    return count(v -> !(v in env.cache.closed_set), seen)
-end
+_downstream_unfinished(env, vtxs) = _downstream_closure(env, vtxs).n_unfinished
 
 """
     zone_blockage(env; zone_keys, cell, check_paths=true) -> NamedTuple
@@ -324,6 +371,9 @@ What the active zones actually BLOCK — the causal counterpart of `zone_diagnos
 | `n_agent_trapped` | movers standing inside a zone right now (parked when it appeared) |
 | `n_blocked` | `n_engulfed + n_disconnected` — **nodes that cannot close while the zone lives** |
 | `n_downstream` | unfinished nodes that are blocked or wait on one — how much work freezes |
+| `n_completion_blocked` | of the schedule's still-open `ProjectComplete` vertices, how many sit in that closure — `project_complete(env)` cannot become true while they do |
+| `n_completion_open` | still-open `ProjectComplete` vertices in the whole schedule (the denominator) |
+| `project_blocked` | `n_completion_blocked >= 1`, or `nothing` when the closure could not be computed. **Never `0`/`false` for "not measured"** |
 | `blocked` | per-goal detail `(vtx, id, kind, status)` for the blocked ones |
 | `n_kinematic_goals` / `n_kinematic_covered` | cargo-kinematic goals, and how many the zone COVERS — the population coverage metrics were counting, which no zone can block |
 | `cell` | the flood-fill resolution the answer was measured at |
@@ -352,8 +402,17 @@ function zone_blockage(env;
     used_cell = cell === nothing ? max(0.5 * default_robot_radius(), 1e-3) : cell
 
     if isempty(zones)
+        # 구역이 없으면 막힌 노드도 없다 = **쟀고 0 이다**(못 쟀다가 아니다). 완주 정점 개수는
+        # 그래도 센다 — 분모가 있어야 아래 blocked 판이 견줄 대상을 갖는다.
+        local _pc0 = try count(v -> !(v in env.cache.closed_set), _project_completion_vtxs(env))
+                     catch e
+                        @warn "[ZONE-BLK] completion vertices failed" exception = e; nothing
+                     end
         return (n_nav_goals = length(navs), n_engulfed = 0, n_disconnected = 0,
                 n_agent_trapped = 0, n_blocked = 0, n_downstream = 0, blocked = NamedTuple[],
+                n_completion_blocked = _pc0 === nothing ? nothing : 0,
+                n_completion_open = _pc0,
+                project_blocked = _pc0 === nothing ? nothing : false,
                 n_kinematic_goals = length(kin), n_kinematic_covered = 0,
                 cell = used_cell, checked_paths = false)
     end
@@ -387,13 +446,30 @@ function zone_blockage(env;
     end
 
     # 막힌 노드 뒤에 걸려 함께 얼어붙는 미완 작업의 양(선후행 DAG 사실). 막힌 게 없으면 0.
-    n_down = isempty(blocked) ? 0 :
-             (try _downstream_unfinished(env, (b.vtx for b in blocked)) catch e
-                @warn "[ZONE-BLK] downstream count failed" exception = e; -1
-              end)
+    # 🔴 **종단성(terminality)은 비율이 아니다.** `n_downstream / pending` 은 "얼마나 얼어붙나"
+    #    를 말하고, 그 비율은 작아 보일 수 있다(실측 2026-09-05: 32/251 = 13% 인데 그 판은
+    #    끝내 완주하지 못했다 — 270/305 에서 정지). 완주 판정은 `project_complete(env)` 이고
+    #    그것은 **ProjectComplete 정점이 전부 닫혔는가**만 본다. 그래서 그 정점이 막힌 노드의
+    #    후방 폐포 안에 있으면, 구역이 사는 한 완주는 원리적으로 불가능하다 — 이것이 세계가
+    #    결정 시점에 정직하게 말할 수 있는 사실이고, 겹침 비율이 절대 못 나르는 사실이다.
+    # 🔴 삼상: 폐포를 못 구했으면 `nothing` 이다. 0/false 로 접지 않는다.
+    local _cl = isempty(blocked) ? :none :
+                (try _downstream_closure(env, (b.vtx for b in blocked)) catch e
+                    @warn "[ZONE-BLK] downstream closure failed" exception = e; nothing
+                 end)
+    local _pc_open = try count(v -> !(v in env.cache.closed_set), _project_completion_vtxs(env))
+                     catch e
+                        @warn "[ZONE-BLK] completion vertices failed" exception = e; nothing
+                     end
+    n_down = _cl === :none ? 0 : (_cl === nothing ? -1 : _cl.n_unfinished)
+    n_pc_blocked = _cl === :none ? (_pc_open === nothing ? nothing : 0) :
+                   (_cl === nothing ? nothing : _cl.n_completion_blocked)
+    proj_blocked = n_pc_blocked === nothing ? nothing : n_pc_blocked >= 1
 
     return (n_nav_goals = length(navs), n_engulfed = n_eng, n_disconnected = n_dis,
             n_agent_trapped = n_trap, n_blocked = n_eng + n_dis, n_downstream = n_down,
+            n_completion_blocked = n_pc_blocked, n_completion_open = _pc_open,
+            project_blocked = proj_blocked,
             blocked = blocked,
             n_kinematic_goals = length(kin), n_kinematic_covered = n_kin_cov,
             cell = used_cell, checked_paths = check_paths)
