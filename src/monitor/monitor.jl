@@ -516,10 +516,13 @@ function monitor_emit!(env, iter::Integer; dt=nothing)
     fleet = _mon_fleet()
     if fleet !== nothing && !isempty(fleet.soc)
         socs = collect(values(fleet.soc))
+        rep  = battery_report(fleet)  # reuse: total_energy_J / soc_spread already computed here
         frame["battery"] = Dict{String,Any}(
-            "min_soc"    => _mon_finite(minimum(socs)),
-            "mean_soc"   => _mon_finite(sum(socs) / length(socs)),
-            "n_depleted" => length(fleet.depleted),
+            "min_soc"        => _mon_finite(minimum(socs)),
+            "mean_soc"       => _mon_finite(sum(socs) / length(socs)),
+            "n_depleted"     => length(fleet.depleted),
+            "total_energy_J" => _mon_finite(rep.total_energy_J),
+            "energy_J"       => Dict{String,Any}(string(k) => _mon_finite(v) for (k, v) in fleet.energy_J),
         )
     end
     println(io, JSON3.write(frame))
