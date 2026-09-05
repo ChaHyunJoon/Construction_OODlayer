@@ -100,14 +100,29 @@ def extract_steps_raw(minted_line):
     return minted_line[open_idx:close_idx + 1]
 
 
-def split_top_level(text, sep=','):
-    """Split text on sep, but only where bracket/paren depth is 0 — so a
-    comma inside a step's exception detail (every multi-argument
-    MethodError has one) does not fracture that entry into two.
+def split_top_level(text):
+    """Split text into step entries at depth 0, on EITHER a comma OR any
+    whitespace.
+
+    N1 fix: enact.jl:1826 joins multi-step entries with a space, not a
+    comma (35edb4f2/fd27a777 only changed what goes *inside* an entry's
+    parens, not the joiner). A comma-only splitter turns 'a!:success
+    b!:success' into one fused entry with a bogus status string ->
+    L2b silently mis-scores TRUE work as FALSE. Splitting on both is safe:
+    inside brackets/parens (depth > 0) neither comma nor whitespace ends an
+    entry, so a comma or a space inside an exception detail still doesn't
+    fracture it. Runs of separators collapse; empty entries are dropped.
     """
     parts = []
     depth = 0
     current = []
+
+    def flush():
+        s = ''.join(current)
+        if s:
+            parts.append(s)
+        current.clear()
+
     for c in text:
         if c in '([':
             depth += 1
@@ -115,12 +130,11 @@ def split_top_level(text, sep=','):
         elif c in ')]':
             depth -= 1
             current.append(c)
-        elif c == sep and depth <= 0:
-            parts.append(''.join(current))
-            current = []
+        elif depth <= 0 and (c == ',' or c.isspace()):
+            flush()
         else:
             current.append(c)
-    parts.append(''.join(current))
+    flush()
     return parts
 
 
@@ -488,7 +502,7 @@ def build_report(log_path, stream_path, record_path):
                 }
             else:
                 inner = steps_raw[1:-1]  # strip outer [ ]
-                entries = split_top_level(inner, sep=',')
+                entries = split_top_level(inner)
                 first_entry = entries[0].strip() if entries else ""
                 parsed = parse_step_entry(first_entry)
                 if parsed is None:
