@@ -162,3 +162,83 @@ TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=1 DSPY_CACHE=0 \
 - `translate_whole_build!` 의 반환이 `NamedTuple` 로만 광고돼 tier-2 상태 어휘가 안 보인다.
 - `world_delta_body` 여섯 축은 배터리 스왑·`SPARE_POOLS`·fault 플래그·배송을 **안 본다**.
 - 되먹임 두 번째 시도가 또 무동작이면 상한 1 이라 끝이다. 두 시도의 `impl_code` 동일 여부를 안 찍는다.
+
+---
+
+## 부록 A — 런 13·14 (`gpt-5.6-sol`) 와 **진짜 병목**
+
+### A.1 런 13 은 모델이 죽인 게 아니다
+
+`(no error field)` 는 빈 결정이 아니라 **무응답**이었다. `service_decide` 의 하드코딩
+`readtimeout = 60` 이 원인이고 라이브 왕복은 **74.33초**다. 서비스는 그 뒤에 결정을
+**완주했고** 그 기록이 디스크에 남았다. 고침 `f2339edf`(`DSPY_TIMEOUT_S`, 기본 300) ·
+`fb657a67`(`/rewrite` 도 같은 손잡이). 정본: `client-timeouts-masquerade-as-empty-answers`.
+
+### A.2 sol 의 능력은 **무료로** 관측됐다
+
+런 13 의 완주된 기록(`synth_lane_records.jsonl.run13` 0행)에서:
+
+| 항목 | 값 |
+|---|---|
+| `expressible` | `False` (A1 발화) |
+| `tool_minted` / `impl_name` | `True` / `translate_build_scene!` |
+| `stages` | `["observe","design","compose"]` |
+| **등록 게이트** | **통과** — `check_impl_conventions` → `nothing` |
+
+음성 대조 5/5 가 거절됨(bang 없음 · 위치인자 · 기본값 없는 kwarg · `impl_unknown_call` ·
+`impl_unknown_field`)이므로 그 "통과" 는 체커의 조용한 무동작이 아니다.
+**sol 은 오라클과 같은 기전(빌드 전체 이동)에 스스로 도달했다.**
+
+### A.3 런 14 (라이브, `DSPY_TIMEOUT_S` 고침 후) — 완주했고, 실패했다
+
+```
+[minted] tool=relocate_scene_subtrees_for_goal_reachability verdict=reject
+         registered=true n_calls=0 args_from=calls
+[minted] world_delta=... n_staging_moved=0 world_delta_body=n/a(not measured)
+PROJECT INCOMPLETE!
+```
+`registered=true` 지만 `calls == []` — 도구는 등록됐는데 **부를 것이 없다.**
+
+### A.4 🔴 13판을 관통하는 상수: **`params` 가 한 번도 비지 않았다**
+
+| run | impl_name | #params | #calls | match |
+|---|---|---|---|---|
+| 6 | ZoneBypassTool! | 3 | 1 | True |
+| 7 | ExclusionZoneBypass! | 2 | 1 | True |
+| 8 | ZoneBypassTool! | 3 | 1 | True |
+| 9 | ExclusionZoneBypassTool! | 3 | 1 | True |
+| 10 | ZoneBypassTool! | 3 | 1 | True |
+| 11 | NavigationGoalBypass! | 3 | 1 | True |
+| 13 | translate_build_scene! | 2 | 1 | True |
+| 13 | relocate_unreachable_navigation_goals! | 1 | 0 | False |
+| 14 | relocate_scene_subtrees_for_goal_reachability! | 1 | 0 | False |
+
+**매개변수 0개인 도구는 한 번도 안 나왔다.** 그런데 이 사건을 실제로 복구시키는
+오라클은 `params == {}` 이고 서명이 `(env)` 뿐이며, 정체를 인자로 받지 않고
+광고된 질의 verb 로 **스스로 읽는다**.
+
+두 실패 갈래는 **같은 뿌리**다: `params` 가 스칼라 2~3개면 작곡이 값을 **지어내고**,
+중첩 정체 구조면 작곡이 **아무것도 못 낸다**.
+
+### A.5 어휘는 구멍이 아니다 — 서술이 구멍이다
+
+- 이 사건을 푸는 verb 는 블록에 **`callable: True`** 로 실려 있다(213 메서드 중). 모델은
+  **보고도 안 불렀다.**
+- `WriteToolImpl` 에는 이미 *"Prefer CALLING the functions the world interface lists as
+  callable…"* 이 있고, 런 13 의 body 는 **그것을 어기지 않았다** — 목록에 있는 함수를
+  불렀다(`set_desired_global_transform!`), 다만 **층위가 너무 낮았다.**
+- 작곡 단계는 자유롭지 않았다. **설계 단계가 이미 "이동량을 매개변수로 받는 도구" 를
+  명세해 버렸다.** 지어낸 상수 `(0, 0.25, 0)` 은 그 명세의 직접적 귀결이다.
+
+⟹ 인과의 자리는 `synthesize.py` 의 `DesignToolSpec` 이다. docstring 이 *"name the
+parameters the tool must take"* 라고 **요구**하는데, **매개변수가 정당할 조건**을 말하는
+자리가 없다. 접지 개념은 `ungrounded_feedback` 에만 있고 그것은 (a) 재설계에서만 채워지고
+(b) *"selects among behaviours"* 즉 거동 스위치만 겨냥한다 — 런 6~14 를 죽인
+**세계 정체를 지어내는 축**을 안 겨냥한다.
+
+### A.6 A4 에 대한 정정
+
+완주 게이트(`render_demo.jl:1248`)는 **`DEMO_ANIM` 과 무관하게 무조건** 걸린다 —
+그 **거절 절반은 이미 여러 번 태워졌다**(런 14 도 그렇게 죽었다). 다만 `DEMO_ANIM=0` 이면
+애니메이션 자체가 저장되지 않아 `publish_anim!()` 이 즉시 `false` 다. 그러므로
+**최종 판정 런은 여전히 `DEMO_ANIM=1` + 완주 둘 다 필요하다.**
