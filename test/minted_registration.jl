@@ -751,15 +751,44 @@ end
     # 음성 대조 — 술어가 항진이 아니다.
     @test !CB._d15_name_is_visible(:find_suitable_robot)
     @test !CB._d15_name_is_visible(:zzz_definitely_not_a_name)
-    # 그리고 그 이름을 실제로 부르는 body 는 **이 프로세스 상태에서** 통과한다
-    # (navigator 를 include 하지 않은 채로 — 그것이 이 게이트의 요점이다).
-    @test !isdefined(CB, :battery_report)      # 🔴 여기서 정의는 아직 없다
-    @test CB.check_impl_conventions("d15_amb!", """
-    function d15_amb!(env; x::Int=1)
-        r = battery_report()
-        return (status = Symbol(x),)
-    end
-    """) === nothing
+
+    # -------------------------------------------------------------------------
+    # 🔴 2026-09-04 스위트 회귀 수정 — 이 게이트가 재는 명제는
+    #    **"`names` 갈래가 `isdefined` 삼중이 못 보는 이름을 들여보낸다"** 하나다.
+    #    그 명제는 `isdefined(CB, :battery_report) == false` 인 상태에서만 관측되는데,
+    #    앞 판은 그 전제를 **이 프로세스**에 대해 단언했다. 단독 실행에서는 참이지만
+    #    `Pkg.test()` 안에서는 `runtests.jl` 이 :182·:294 에서 navigator 를 이미
+    #    include 한 뒤라(둘 다 이 파일이 도는 :394 보다 앞) 전제가 거짓이 되고 그
+    #    한 줄만 빨개졌다 — CLAUDE.md 가 이름 댄 "스위트 안에서만 빨개지는 시험" 이다.
+    #
+    # ⚠️ 이 프로세스 안에서는 그 상태를 **복원할 수 없다**: Julia 에 undefine 이 없고,
+    #    `Core.eval(CB, :(export …))` 로 팬텀 이름을 심는 길은 `names(CB)` 를 영구히
+    #    바꿔 바로 앞에서 도는 "world interface is current" 의 산출물 핀을 오염시킨다.
+    # ⟹ **깨끗한 자식 프로세스**에서 잰다. 전제가 순서와 무관하게 성립하고, 부모가
+    #    무엇을 include 했든 판정이 같다. (`runtests.jl` 이 이미 쓰는 패턴이고,
+    #    "world interface is current" 의 testset (2) 도 같은 이유로 서브프로세스다.)
+    # -------------------------------------------------------------------------
+    local amb_body = "function d15_amb!(env; x::Int=1)\n    r = battery_report()\n" *
+                     "    return (status = Symbol(x),)\nend\n"
+    local child = """
+    using ConstructionBots
+    const CB = ConstructionBots
+    isdefined(CB, :battery_report) && error("PREMISE_BROKEN: 새 프로세스인데 이미 정의돼 있다")
+    CB._d15_name_is_visible(:zzz_definitely_not_a_name) && error("CONTROL_BROKEN: 술어가 항진이다")
+    CB._d15_name_is_visible(:battery_report) || error("NAMES_BRANCH_MISSING: 광고한 이름이 안 보인다")
+    CB.check_impl_conventions("d15_amb!", $(repr(amb_body))) === nothing ||
+        error("REJECTED: " * string(CB.check_impl_conventions("d15_amb!", $(repr(amb_body)))))
+    println("D15_NAMES_BRANCH_OK")
+    """
+    local out = Pipe()
+    local proc = run(pipeline(`$(Base.julia_cmd()) --project=$(pkgdir(CB)) -e $child`,
+                              stdout = out, stderr = out), wait = false)
+    close(out.in)
+    local txt = read(out, String)
+    wait(proc)
+    proc.exitcode == 0 || @error "(26) 자식 프로세스 로그" txt
+    @test proc.exitcode == 0
+    @test occursin("D15_NAMES_BRANCH_OK", txt)
 end
 
 @testset "(27) 🔴 C4: `:ref` 걸음은 인덱스가 리터럴 정수일 때만 나아간다" begin

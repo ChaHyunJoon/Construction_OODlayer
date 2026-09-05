@@ -140,6 +140,14 @@ module _RenderSandbox
     #  `synth_lane` 필드가 아예 없으므로 그 조기 반환(=`handled=false`, 폴백이 조용하지
     #  않다)이 여기서 실제로 굴러야 (B) 가 옛 경로를 계속 잰다는 것이 참이 된다.)
     import ..enact_target, ..macro_to_proposal, ..log_enact, ..enact_minted_decision!
+    # 🔴 (2026-09-04, Wave A W2 뒤처리) `record_world_delta!` 는 여기서 **스텁**이다.
+    #    그 함수의 **내용**(직렬화 모양·삼상·안 던짐)은 `enact.jl::record_world_delta!` 의
+    #    docstring 이 소유하고 `test/minted_end_to_end.jl` (14)(15) 와 W2 의 변이 M-C·M-C2
+    #    가 잰다 — 여기 두 번째 판정을 적지 않는다. 이 파일이 재는 것은 오직
+    #    **호출부가 그것을 부르는가** 하나이고, 그래서 스텁은 조용하지 않다: 받은 인자를
+    #    그대로 쌓아 두고 (B-1) 이 그 자리를 값으로 단언한다. 호출이 사라지면 빨개진다.
+    const WORLD_DELTA_CALLS = Any[]
+    record_world_delta!(m) = (push!(WORLD_DELTA_CALLS, m); nothing)
     const NEXT = Ref{Any}(nothing)                 # 이 결정 하나를 흘려보낸다
     is_reform_alarm(::Any) = false
     truth_for_event(::Any) = (truth = NEXT[].truth, nl = NEXT[].nl)
@@ -151,6 +159,27 @@ module _RenderSandbox
 end
 
 Core.eval(_RenderSandbox, Meta.parse(PRODUCER_SRC))
+
+# -----------------------------------------------------------------------------------------
+# 🔴 추출한 원문이 부르는 **평이한 이름 전부**가 이 샌드박스에서 풀리는가.
+# 생산 코드에 이름이 하나 새로 들어오면 (B) 는 `UndefVarError` 로 **에러**가 나는데, 그
+# 스택트레이스는 "이 시험이 생산 코드를 못 따라갔다" 인지 "생산 코드가 깨졌다" 인지 말해
+# 주지 않는다 — 2026-09-04 에 W2 의 `record_world_delta!` 하나가 정확히 그렇게 났고
+# (28 passed / 1 errored), 스위트 회귀 기준을 그 한 줄이 깨뜨렸다. 이 목록이 비어 있지
+# 않으면 **어떤 이름인지**를 먼저 말한다. 스텁으로 덮을지 진짜를 import 할지는 그때의
+# 결정이고, 여기서 자동으로 삼키지 않는다(그러면 이 파일의 요점이 사라진다).
+# ⚠️ `:call` 의 평이한 심볼만 센다 — `CB.foo` 같은 한정 이름은 모듈이 이미 해결하고,
+#    지역 이름은 이 블록에서 호출 위치에 안 나온다(실측: 아래 목록이 비었다).
+# -----------------------------------------------------------------------------------------
+function _called_names!(out::Set{Symbol}, ex)
+    ex isa Expr || return out
+    ex.head === :call && ex.args[1] isa Symbol && push!(out, ex.args[1])
+    for a in ex.args; _called_names!(out, a); end
+    return out
+end
+const UNRESOLVED_IN_SANDBOX =
+    sort!(String[String(s) for s in _called_names!(Set{Symbol}(), Meta.parse(PRODUCER_SRC))
+                 if !(isdefined(_RenderSandbox, s) || isdefined(Base, s) || isdefined(Core, s))])
 
 """
 render_demo 의 **진짜** `policy_producer` 를 한 번 굴린다. `CB.battery_report()` 는 이 판에
@@ -268,12 +297,25 @@ end
         @test occursin("macro_to_proposal", PRODUCER_SRC)   # 뽑은 블록이 진짜 그 호출부다
         @test occursin("enact_target", PRODUCER_SRC)
 
+        # 🔴 (B-0) 샌드박스가 원문을 **전부** 태울 수 있다. 비어 있지 않으면 못 푼 이름을
+        # 그대로 보여 준다 — 다음 세션이 스택트레이스를 역추적하지 않아도 된다.
+        @test UNRESOLVED_IN_SANDBOX == String[]
+
         local truth = CB.FaultTruth(A, [0.0, 0.0, 0.0])
 
         # (B-1) 🔴 이 태스크의 핵심. tool 레인이 **B** 를 지목하고 `truth.robot` 은 **A** 다.
         # 호출부에서 `agent = _tgt.agent` 를 지우면 여기가 빨개진다(제안이 A 를 가리킨다).
+        local n0 = length(_RenderSandbox.WORLD_DELTA_CALLS)
         local prop = run_producer(truth, "Replace", _lane(string(B), "Replace"), Dict{String,Any}())
         @test prop !== nothing
+        # 🔴 W2 의 한 줄이 **실제로 불렸다**. `render_demo.jl` 에서 `record_world_delta!(_m)`
+        # 를 지우면 여기가 빨개진다(스텁이 조용하지 않은 이유). 인자가 `enact_minted_decision!`
+        # 이 낸 그 값인지도 함께 잰다 — 아무거나 넘기는 변이를 통과시키지 않는다.
+        # ⚠️ **순서**(조기반환 앞/뒤)는 여기서 안 잰다 — 이 샌드박스는 항상 `handled=false`
+        #    다. 그 축은 `test/minted_end_to_end.jl` (16) 이 잰다(W2 변이 M-C2).
+        @test length(_RenderSandbox.WORLD_DELTA_CALLS) == n0 + 1
+        @test hasproperty(_RenderSandbox.WORLD_DELTA_CALLS[end], :handled)
+        @test _RenderSandbox.WORLD_DELTA_CALLS[end].handled === false
         @test length(prop.constraints) == 1
         @test prop.constraints[1] isa CB.ReplaceAgent
         @test prop.constraints[1].agent == B
