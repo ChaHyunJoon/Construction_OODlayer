@@ -242,3 +242,84 @@ parameters the tool must take"* 라고 **요구**하는데, **매개변수가 �
 그 **거절 절반은 이미 여러 번 태워졌다**(런 14 도 그렇게 죽었다). 다만 `DEMO_ANIM=0` 이면
 애니메이션 자체가 저장되지 않아 `publish_anim!()` 이 즉시 `false` 다. 그러므로
 **최종 판정 런은 여전히 `DEMO_ANIM=1` + 완주 둘 다 필요하다.**
+
+---
+
+## 부록 B — 🔴 부록 A 의 정정 (독립 반증 검증, 2026-09-05)
+
+부록 A 를 반증하라고 붙인 검증 에이전트가 **네 군데를 뒤집었다.** 부록 A 의 표를 인용하기 전에
+이 절을 읽을 것.
+
+### B.1 분모가 틀렸다 — "13판" 이 아니라 **9개 합성**이다
+
+`results/synth_lane_records.jsonl` 는 `.run14` 와 **md5 동일**이고, `.run13` 은 `.run14` 의
+**바이트 접두**다(`head -c 20692 …run14` 의 md5 = `.run13`). 즉 부록 A 의 표는 같은 행을
+세 번 셌다. 실제로는 **9개 서로 다른 zone 합성**이고 `n_params ∈ {1,1,2,2,3,3,3,3,3}`.
+
+- 런 2~5 는 **battery 사건**이다(`OOD armed: zone×0 + battery×1`) — C1 범위 밖.
+- 런 12 는 **합성 0건**이다(`LMInvalidRequestError … reasoning_effort … /v1/chat/completions`).
+- 🔴 **런 13 은 세계에 닿지 않았다**: `grep -c minted run13-sol.log` = **0**, 두 행 다
+  `registered` 가 `null`. 부록 A 의 "등록 게이트 통과" 는 **런 13 의 사실이 아니라
+  검증자가 나중에 그 body 로 직접 잰 결과**다. 그 구분을 흐리지 말 것.
+
+**결론(C1)은 그래도 산다**: 레포 전체 **178개 json/jsonl 에 `params == {}` 인 기록이 0건**이다.
+
+### B.2 `"R1"` 은 zone 기록에 없다
+
+battery 런의 값인데 내가 인계문서에서 그대로 물려받아 zone 표에 실었다. 실제로 지어낸 값은
+`build_root_id = "root"` 와 `translation = {"x":0,"y":0.25,"z":0}` 다.
+그리고 **9개 전부 `params_flat=False`** 다 — "스칼라 2~3개" 라는 서술도 틀렸다.
+
+### B.3 "중첩 정체 구조면 작곡이 아무것도 못 낸다" 는 **반증됐다**
+
+런 6(`navigation_goals: array-of-{goal_id,position}`) · 런 9(`affected_goals`) ·
+런 11(`blocked_goals` + `alternative_routes` + `resource_allocation`)은 **중첩 정체 배열인데도
+calls 를 1개씩 냈다.** n=9 에서 두 갈래를 실제로 가르는 것은 중첩성이 아니라
+**`minItems:1` 이 붙은 단일 배열 매개변수**다(2/2 가 빈다).
+
+### B.4 접지 규칙은 이미 어딘가에 있었다 — **작곡 단계에**
+
+`world_interface.py::_RULES` 의 규칙 1·6 이 접지를 **명시한다**. 다만 그것은 agent-3(작곡)의
+프롬프트다. 참인 서술은 "아무 데도 없다" 가 아니라 **"설계 단계(agent-2)에는 없다"** 이고,
+그것이 접지 패치가 메우는 자리다.
+
+### B.5 🔴 그래서 **지어낸 값이 태어난 자리는 설계가 아니라 `calls` 필드다**
+
+런 14 의 `calls==[]` 는 작곡이 실패한 게 아니라 **규칙을 지킨** 것이다. agent-3 자신의 기록:
+
+> *"The event account does not provide the three goal IDs, their ancestor scene-object IDs, or
+> valid collision-free target poses, so a concrete invocation cannot be safely fabricated and
+> `calls` is empty."*
+
+그런데 그 정직함이 **거절된다**: `calls_match_body` 는
+`[c["primitive"] for c in calls] == body_names` 라서 `[]` 는 `False` → `reject:calls_disagree_with_body`.
+반면 `[{"primitive": <impl_name>, "args": {}}]` 는 **`True`** 이고 **그것이 오라클 fixture 의
+모양**이다. 그런데 `calls` 필드 desc 는 *"the arguments to use for THIS event"* 뿐 —
+**빈 `args` 가 정당하다는 말이 없다.** 모델에게 남은 선택지가 "지어내 채운다" 아니면
+"통째로 비운다(=거절)" 둘뿐이었다.
+
+⟹ 접지 규칙은 **필요조건이지 충분조건이 아니다.**
+
+### B.6 🔴 접지 규칙만으로는 런 13 의 body 도 안 산다
+
+그 body 는 매개변수 **필수**다(`build_root_id === nothing && throw(...)`). `args: {}` 로 부르면
+**던진다.** `_RULES` 규칙 1 의 처방("기본값 `nothing`, body 가 env 에서 먼저 해소")을 정면으로
+어긴다. `params` 를 비우는 것과 **body 가 인자 없이 동작하는 것**은 다른 요구다.
+
+### B.7 "오라클과 같은 기전" 은 **verb 수준의 말**이다
+
+`translate_whole_build!` 는 Δ 를 **스스로 푼다**(`_find_min_translation` →
+`_find_clear_translation` → `_build_footprint`) 그리고 `_apply_uniform_translation!` 로
+**모든 조립체의 `start_config` + 모든 `staging_circles` 를 옮기고** `_resync_scene_drift!` 까지
+부른다. 런 13 의 body 는 Δ 를 **받아서** 노드 **하나**에 `set_desired_global_transform!` 한다.
+**등록 가능 ≠ 옳다.**
+
+### B.8 곁가지 결함 셋
+
+- 🔴 `tractor__zone_mild.jsonl.run12` 와 `.run13` 이 **바이트 동일**하다. 런 13 의 스트림
+  아카이브는 런 12 의 복사본이다 — 런 13 스트림으로 뭘 재면 런 12 를 재는 것이다.
+- 🔴 `_is_placeholder_token` 은 **끝자리 숫자를 요구**한다(`^[A-Za-z]+[ _\-]?\d+$`).
+  `"goal1"` 은 잡히는데 **`"root"` 는 안 잡힌다** — 그대로 body 로 흘러갔다.
+- ⚠️ **모델 전환(4o → sol)이 산출물에서 유도되지 않는다.** 런 6~11 로그에 `4o` 문자열이
+  0건이다. 프롬프트는 전 구간 동일하므로(`synthesize.py` 최종 변경 09-04 18:51) 풀링은
+  안전하지만, **실패 양상을 6→14 로 이어 말하는 주장은 근거가 약하다.**
