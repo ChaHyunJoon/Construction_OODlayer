@@ -323,3 +323,59 @@ calls 를 1개씩 냈다.** n=9 에서 두 갈래를 실제로 가르는 것은 
 - ⚠️ **모델 전환(4o → sol)이 산출물에서 유도되지 않는다.** 런 6~11 로그에 `4o` 문자열이
   0건이다. 프롬프트는 전 구간 동일하므로(`synthesize.py` 최종 변경 09-04 18:51) 풀링은
   안전하지만, **실패 양상을 6→14 로 이어 말하는 주장은 근거가 약하다.**
+
+---
+
+## 부록 C — 런 15, 그리고 부록 B.8 의 정정
+
+### C.1 🔴 부록 B.8 의 "스트림 아카이브 버그" 는 **틀렸다** — 그것은 양성 대조다
+
+`tractor__zone_mild.jsonl.run12 == .run13`(md5 `9c1a17cf…`)은 사실이지만 **보존 순서 버그가
+아니다.** 실측:
+
+| 파일 | md5 |
+|---|---|
+| `.run12` / `.run13` | `9c1a17cf…` (동일) |
+| `.run14` | `6a139f6b…` |
+| `.run15` | `e899c37e…` |
+
+런 12(전송오류)와 런 13(시한초과)은 **둘 다 tool 이 세계에 닿기 전에 죽어 같은 폴백 사슬**로
+갔다. 시드가 고정돼 있으므로 바이트 동일이 **나와야 맞다** — 이것은 결함이 아니라
+**결정론의 양성 대조**다([[sim-runs-must-be-seed-reproducible]]). 런 14·15 는 `[minted]` 거절
+행이 스트림에 들어가서 서로도, 앞 둘과도 다르다.
+⟹ 검증자의 "곁가지 결함 1" 을 철회한다. 동료 세션 `chahj578-51` 의 mtime 대조가 옳았다.
+
+### C.2 런 15 — 세 번째 빈 `calls`, 그리고 **모델의 자기 진술 2건**
+
+| K | impl_name | params_top / chars | calls | match | expressible |
+|---|---|---|---|---|---|
+| 1 (런13) | `translate_build_scene!` | 2 / 401 | **1** | **True** | False |
+| 2 (프로브) | `relocate_unreachable_navigation_goals!` | 1 / 1048 | 0 | False | False |
+| 3 (런14) | `relocate_scene_subtrees_for_goal_reachability!` | 1 / 560 | 0 | False | False |
+| 4 (런15) | `lift_deliver_blocked_goal_cargo!` | 1 / 332 | 0 | False | False |
+
+🔴 **`needs` 는 `''` 다 — 어휘 부족으로 신고하지 않았다.** "어휘는 구멍이 아니다" 와 일치한다.
+
+**판별식이 3/3 으로 유지된다**: `minItems:1` 이 붙은 **단일 배열 매개변수** → `calls` 빔.
+런 15 는 `deliveries` 하나였다.
+
+**그리고 추론이 아니라 모델의 자기 진술이다:**
+- 런 14: *"...cannot be safely fabricated and `calls` is empty."*
+- 런 15: *"No event-specific calls can be populated because **the account gives counts but
+  omits the three goal-node and cargo identifiers**."*
+
+동료 세션의 채널 분석이 그 원인을 이미 짚었다: 페이로드가 **기수만** 싣고,
+`build_design_context` 는 `state` 를 안 받으며(*"that is the bottleneck"* 이라고 스스로 적혀
+있다), `build_compose_context` 로 건너가는 것은 agent-1 의 산문뿐이다.
+
+### C.3 🔴 `args=={}` 만으로도 안 끝난다 — 게이트가 하나 더 있다
+
+`calls_match_body` 를 통과해도 `bind_primitive_args` 가 body 의 **필수 kwarg** 를 못 채우면
+거절이고, 안 걸러지면 런타임에 `… === nothing && throw` 로 던진다.
+⟹ **`params=={}`(agent-2)와 `args=={}`(agent-3)는 서로 다른 요구이고 둘 다 필요하다.**
+그래서 접지 패치와 `calls` 패치가 **함께** 가야 한다.
+
+### C.4 세대 경계선
+
+**런 15 까지가 옛 설계 지시문 세대**(`7fa3065c21e1aa47`)다. 접지/`calls` 패치가 랜딩된 뒤의
+런은 **다른 시스템**이므로 런 6~15 와 같은 표에 섞지 말 것.
