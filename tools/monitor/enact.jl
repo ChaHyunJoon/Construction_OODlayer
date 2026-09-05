@@ -874,6 +874,26 @@ _cap_detail(t::AbstractString) =
     length(t) > _STEP_DETAIL_CAP ? first(t, _STEP_DETAIL_CAP) * "…" : t
 
 """
+    _neutralize_brackets(t) -> String
+
+`(` `[` → `<` · `)` `]` → `>`. **기록 줄의 괄호 중화의 진실원은 여기 하나다.**
+
+🔴 왜 하나여야 하나 (2026-09-04 fix round 2, N2). 초판은 이 치환을 `_step_detail_line` 안에
+   인라인으로 적었고, 그래서 **detail 만** 안전해졌다. 그런데 `steps=[...]` 항목은
+   `name:status(detail)` 이고 `status` 도 **모델이 쓴 텍스트**다
+   (`_step_status` 가 `Symbol(getproperty(out, :status))` 로 만든다 —
+   `src/respec/minted_tool.jl`). `status = "moved 3 robots [east"` 를 내는 body 하나가
+   F2 가 닫은 그 실패를 그대로 재현한다: 채점기가 `']' never balances` 로 죽는다.
+   치환이 두 자리에 있으면 세 번째 자리를 더하는 사람이 또 빠뜨린다.
+
+⚠️ ASCII 만 쓴다. 넷을 두 글자로 접는 것은 의도이고(남는 괄호 가족이 없어야 어떤 깊이
+   추적도 못 속인다), **1:1 문자 대응**이라는 성질이 `_step_detail_line` 의 상한 계산을
+   `_step_detail_render` 와 바이트 동일하게 유지한다 — 폭이 다른 글자로 바꾸면 그것이 깨진다.
+"""
+_neutralize_brackets(t::AbstractString) =
+    replace(t, '(' => '<', ')' => '>', '[' => '<', ']' => '>')
+
+"""
     _step_detail_line(d) -> String
 
 **기록 줄**에 실릴 detail. `_step_detail_render` 와 같은 접기·같은 상한이되, 그 사이에
@@ -894,7 +914,10 @@ _cap_detail(t::AbstractString) =
 고치는 자리가 **여기**, 렌더러다.
 
 🔴 **중화를 자르기 앞에 한다.** 그래야 자르는 자리가 어디든 — 원문에서 괄호 한복판이었든 —
-남은 문자열에 추적되는 괄호가 **하나도 없다**. 순서가 뒤바뀌면 이 함수는 다시 깨진다.
+**이 함수가 낸 문자열**에 추적되는 괄호가 하나도 없다. 순서가 뒤바뀌면 이 함수는 다시 깨진다.
+⚠️ 🔴 **그 보장은 `detail` 에 한정된다 — 항목 전체가 아니다**(2026-09-04 fix round 2, N2 가
+잡았다: 이 문단의 초판이 자기 보장을 과장해 적고 있었다). 항목은 `name:status(detail)` 이고
+`status` 도 모델이 쓴 텍스트다. 항목 수준의 보장은 `_step_render` 가 소유한다.
 ⚠️ 치환은 1:1 문자 대응이라 상한 자리가 `_step_detail_render` 와 **바이트 단위로 같다**.
 
 ⚠️ ASCII 만 쓴다. 넷을 두 글자(`<` `>`)로 접는 것은 의도다: 남는 괄호 가족이 하나도 없어야
@@ -906,9 +929,7 @@ _cap_detail(t::AbstractString) =
 (`_cap_detail`·`_one_line_rec`)이고, 갈리는 것은 이 네 글자뿐이다.
 """
 _step_detail_line(d) =
-    d === nothing ? "" :
-    _cap_detail(replace(_one_line_rec(string(d)),
-                        '(' => '<', ')' => '>', '[' => '<', ']' => '>'))
+    d === nothing ? "" : _cap_detail(_neutralize_brackets(_one_line_rec(string(d))))
 
 """
     _step_render(s) -> String
@@ -923,12 +944,24 @@ _step_detail_line(d) =
 ⚠️ `detail` 이 없는 스텝 모양(`hasproperty` 거짓)은 구세대 집행부의 것이다 — 그 판은
    오늘과 바이트 동일하게 찍힌다. 그래서 로그 문구를 못박는 기존 게이트가 안 움직인다.
 
-🔴 **괄호류는 `_step_detail_line` 이 중화한다**(2026-09-04 fix round 1, F2). 이 줄의
-   `steps=[...]` 는 채점기가 깊이로 읽는 **구조**이고, 잘린 예외 메시지의 짝 없는 괄호
-   하나가 그 구조를 원리적으로 파싱 불가로 만든다. 근거 전문은 그 함수가 소유한다.
+🔴 **항목 전체의 괄호 안전은 이 함수가 소유한다**(2026-09-04, F2 + fix round 2 N2).
+   이 줄의 `steps=[...]` 는 채점기(`tools/monitor/ladder_report.py`)가 깊이로 읽는
+   **구조**이고, 짝 없는 괄호 하나가 그것을 원리적으로 파싱 불가로 만든다. 항목의 세 조각 중
+   **둘이 모델의 텍스트**다: `detail`(잘리기까지 한다)과 `status`
+   (`_step_status` 가 `Symbol(getproperty(out, :status))` 로 만든다). 그래서
+   `_neutralize_brackets` 가 `name:status` 에 한 번, `_step_detail_line` 안에서 detail 에
+   한 번 걸린다 — 이 함수를 지나는 한 항목이 바깥 `[` 를 못 닫는다.
+   ⚠️ F2 하나만 했을 때 이 보장은 **detail 에만** 있었고, `status = "moved 3 robots [east"`
+   를 내는 body 하나가 L2b 를 UNMEASURED 로 되돌렸다(N2 실측).
 """
 function _step_render(s)
-    local base = string(s.name, ":", s.status)
+    # 🔴 `status` 도 중화한다 (2026-09-04 fix round 2, N2). 그것은 상수 어휘가 아니라
+    #    **모델이 쓴 텍스트**다 — `_step_status` 가 `Symbol(getproperty(out, :status))` 로
+    #    만든다. `name` 은 식별자 규약을 통과한 것이라 오늘은 괄호를 못 담지만, 같은 함수를
+    #    통과시켜 "어느 조각이 안전한가" 를 여기서 따지지 않게 한다.
+    # ⚠️ `name`·`status` 는 **안 자른다** — 그래서 F2 가 세운 상한·바이트 동일성 논증은
+    #    이 변경에 영향받지 않는다.
+    local base = _neutralize_brackets(string(s.name, ":", s.status))
     local t = _step_detail_line(hasproperty(s, :detail) ? s.detail : nothing)
     return isempty(t) ? base : string(base, "(", t, ")")
 end

@@ -2375,6 +2375,12 @@ end
 #    🔴 이것은 **계측 장치이지 `PlannerEnv` 에 대한 주장이 아니다** — 생산 타입에서 그 둘은
 #    다른 필드다(`route_planning.jl`). 여기서 필요한 것은 "봉투가 더 이상 반영하지 않는
 #    순간에 probe 가 찍혔다" 를 다섯 축 **안에서** 관측 가능하게 만드는 것뿐이다.
+#    🔴 **그 장치의 대가를 여기 적는다**(2026-09-04 fix round 2, 재리뷰가 잡은 사각지대):
+#    두 필드가 별칭이므로 `_world_digest` 의 `active` 축을 `env.active_build_steps` 에서
+#    `env.cache.active_set` 으로 **바꿔도 이 절은 전부 초록이다.** 즉 (28) 이 지키는 것은
+#    `world_delta_body` 의 **출처와 시점**(probe 에서 왔는가, 하네스 앞에서 찍혔는가)이고,
+#    `active` 축이 **어느 필드를 읽는가** 는 지키지 않는다. 그 정체성을 지키는 것은
+#    (10)(11)(15)(22) 의 `active_build_steps` 픽스처들이다(그쪽은 별칭이 아니다).
 # =============================================================================
 """
     aliased_active_env() -> NamedTuple
@@ -2496,6 +2502,136 @@ end
         # 🔴 (28b) 의 `== 0` 이 여기서 빨갛다 — body 차분이 봉투와 **같아졌다**.
         @test m2.world_delta_body.active == -1
         @test m2.world_delta == m2.world_delta_body
+    end
+end
+
+end
+
+# =============================================================================
+# (29) 🔴 N2 (2026-09-04 fix round 2) — `status` 도 모델의 텍스트다.
+#
+# F2 는 `detail` 만 중화했다. 그런데 항목은 `name:status(detail)` 이고 `status` 는
+# `_step_status` 가 `Symbol(getproperty(out, :status))` 로 만든다 — 즉 **body 가 반환한
+# 문자열 그대로**다. `status = "moved 3 robots [east"` 를 내는 body 하나면 F2 가 닫은 그
+# 실패가 그대로 돌아온다: 채점기가 `']' never balances` 로 죽고 L2b 가 UNMEASURED 가 된다.
+# ⚠️ `name`·`status` 는 **안 잘린다** — 그래서 F2 의 상한·바이트 동일성 논증은 그대로다.
+# =============================================================================
+@testset "(29) 🔴 N2: 괄호를 담은 `status` 도 `steps=[...]` 를 못 깬다" begin
+
+@testset "(29a) 순수 렌더 — 중화는 항목 전체에 걸린다" begin
+    @test _step_render((name = "p!", status = Symbol("moved 3 robots [east"))) ==
+          "p!:moved 3 robots <east"
+    @test _step_render((name = "p!", status = Symbol("done] extra"))) == "p!:done> extra"
+    @test _step_render((name = "p!", status = Symbol("a[b]c(d)e"))) == "p!:a<b>c<d>e"
+    # detail 이 함께 있어도 둘 다 중화된다.
+    @test _step_render((name = "p!", status = Symbol("st[1]"), detail = "at index [4]")) ==
+          "p!:st<1>(at index <4>)"
+    # 🔴 중화의 진실원이 하나다 — 두 소비자가 같은 함수를 부른다.
+    @test _neutralize_brackets("a(b)c[d]e") == "a<b>c<d>e"
+    @test occursin("_neutralize_brackets(string(s.name", read(ENACT_PATH, String))
+    # 🔴 괄호가 없는 status 는 **오늘과 바이트 동일**이다(기존 게이트가 안 움직이는 이유).
+    @test _step_render((name = "a", status = :ok)) == "a:ok"
+end
+
+@testset "(29b) 라이브 경로 — 괄호를 담은 status 셋이 파싱되는 줄을 낸다" begin
+    local cases = [
+        ("n2_open!",  "moved 3 robots [east"),
+        ("n2_close!", "done] N2_TAIL_MUST_SURVIVE_QZ"),
+        ("n2_both!",  "a[b]c(d)e N2BOTHQ"),
+    ]
+    for (nm, st) in cases
+        CB.reset_minted_table!()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => nm,
+            # 🔴 body 가 **문자열 status** 를 낸다 — `_step_status` 가 그것을 Symbol 로 만든다.
+            "impl_code" => "function $(nm)(env; v::Int = 1)\n" *
+                           "    return (status = $(repr(st)),)\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => [nm], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => nm,
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m, out
+        mktemp() do path, io
+            redirect_stdout(io) do
+                m = enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+            end
+            flush(io); out = read(path, String)
+        end
+        # 전제 — 모델의 텍스트가 정말 status 자리에 도착했다.
+        @test length(m.steps) == 1
+        @test string(m.steps[1].status) == st
+        local recs = [l for l in split(out, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs) == 1
+        # 🔴 재는 것: 채점기의 규칙이 이 줄에서 성립한다.
+        local raw = _extract_steps_raw(recs[1])
+        @test raw !== nothing
+        @test startswith(raw, "[") && endswith(raw, "]")
+        @test occursin(nm * ":", raw)
+        # 🔴 꼬리가 살아 있다(짝 없는 `]` 판의 조용한 절단을 이 줄이 잡는다).
+        nm == "n2_close!" && @test occursin("N2_TAIL_MUST_SURVIVE_QZ", raw)
+        nm == "n2_both!"  && @test occursin("N2BOTHQ", raw)
+    end
+end
+
+@testset "(29c) 🔴 음성 대조: status 중화를 빼면 (29b) 가 빨개진다" begin
+    local src = read(ENACT_PATH, String)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_status_raw.jl")
+        local mutated = replace(src,
+            "_neutralize_brackets(string(s.name, \":\", s.status))" =>
+            "string(s.name, \":\", s.status)", count = 1)
+        @test mutated != src
+        write(q, mutated)
+        local M = Module(:EnactStatusRaw)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local nm = "n2_mut_open!"
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => nm,
+            "impl_code" => "function $(nm)(env; v::Int = 1)\n" *
+                           "    return (status = \"moved 3 robots [east\",)\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => [nm], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => nm,
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m2, out2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                m2 = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                       live_cache_env(), nothing, _dec(e))
+            end
+            flush(io); out2 = read(path, String)
+        end
+        local recs2 = [l for l in split(out2, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs2) == 1
+        @test occursin("moved 3 robots [east", recs2[1])   # 값은 거기 있다
+        # 🔴 (29b) 의 단언이 여기서 빨갛다 = 채점기의 ValueError.
+        @test _extract_steps_raw(recs2[1]) === nothing
+    end
+end
+
+@testset "(29d) 결정 행은 원문 status 를 지킨다" begin
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        local row = Dict{String,Any}()
+        CB.MONITOR_RESPEC[] = row
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             world_delta_body = nothing,
+                             steps = [(name = "p!", status = Symbol("moved [east"),
+                                       detail = "")]))
+        @test row["steps"][1]["status"] == "moved [east"    # 🔴 행은 원문이다
+        @test occursin("[", row["steps"][1]["status"])
+        # 줄 쪽은 중화한다 — 둘이 **의도적으로** 다르다(detail 과 같은 규약).
+        @test _step_render((name = "p!", status = Symbol("moved [east"))) == "p!:moved <east"
+    finally
+        CB.MONITOR_RESPEC[] = saved
     end
 end
 
