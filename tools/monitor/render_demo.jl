@@ -44,6 +44,14 @@ const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # 
 # ---------------------------------------------------------------------------------------------
 const DEMO_SEED = try max(0, parse(Int, get(ENV, "DEMO_SEED", "1"))) catch; 1 end
 const DEMO_BSEVERE = try clamp(parse(Float64, get(ENV, "DEMO_BSEVERE_FRAC", "0.0")), 0.0, 1.0) catch; 0.0 end
+# ---------------------------------------------------------------------------------------------
+# DEMO_ZONE_SEED — **금지구역의 위치와 크기**를 시드로 뽑는다. 0(기본) 이면 예전 결정적 배치와
+# 바이트 동일하다. 🔴 `DEMO_SEED` 와 **다른 축이다**: `DEMO_SEED` 는 세계/로봇 배치와 사건 시점을
+# 뽑고, 이쪽은 그 세계 위에 구역을 어디에 얼마나 크게 놓느냐만 뽑는다. 둘을 한 이름으로 묶으면
+# "존만 바꾼 대조" 를 만들 수 없다(이 레인이 재려는 것이 정확히 그것이다).
+const DEMO_ZONE_SEED = try max(0, parse(Int, get(ENV, "DEMO_ZONE_SEED", "0"))) catch; 0 end
+const DEMO_ZONE_R_MIN = try parse(Float64, get(ENV, "DEMO_ZONE_R_MIN", "0.35")) catch; 0.35 end
+const DEMO_ZONE_R_MAX = try parse(Float64, get(ENV, "DEMO_ZONE_R_MAX", "1.10")) catch; 1.10 end
 # safe=true 는 "단독 운반체만 고장낸다"(팀 운반 중인 로봇을 고장내면 교체가 has_edge 에서 터질 수
 # 있다는 옛 우려). 그런데 측정해 보니 tractor 에서 그 조건이 성립하는 구간은 **step 2~20 뿐**이고
 # 이후 빌드 전체에서 한 번도 성립하지 않는다(DEMO_PROBE=1, 40 프로브 중 1 회). 그 창에 묶이면
@@ -55,7 +63,8 @@ const DEMO_BSEVERE = try clamp(parse(Float64, get(ENV, "DEMO_BSEVERE_FRAC", "0.0
 # 문제가 생기는 조합이 있으면 그 셀만 DEMO_FAULT_SAFE=1 로 되돌리면 된다.
 const FAULT_SAFE = get(ENV, "DEMO_FAULT_SAFE", "0") != "0"
 const SSUF   = DEMO_SEED == 1 ? "" : "_s$(DEMO_SEED)"
-const NSUF   = (DEMO_N > 0 ? "_n$(DEMO_N)" : "") * SSUF   # stream/anim name suffix so each (count, seed) caches separately
+const ZSUF   = DEMO_ZONE_SEED == 0 ? "" : "_z$(DEMO_ZONE_SEED)"
+const NSUF   = (DEMO_N > 0 ? "_n$(DEMO_N)" : "") * SSUF * ZSUF   # stream/anim name suffix so each (count, seed, zone-seed) caches separately
 const COMMAND_FILE = get(ENV, "MONITOR_COMMAND_FILE", "")
 const INTERACTIVE = get(ENV, "MONITOR_INTERACTIVE", "0") == "1"
 const RUN_ID = get(ENV, "MONITOR_RUN_ID", "")
@@ -387,7 +396,6 @@ const DEMO_ZONE_PRESIM = get(ENV, "DEMO_ZONE_PRESIM", "1") != "0"
 """
 function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     isempty(env.staging_circles) && return nothing
-    r = frac * Float64(CB.default_robot_radius())
     navs = try CB._nav_goal_targets(env) catch e
         @warn "[zone] _nav_goal_targets 실패" exception = e; return nothing
     end
@@ -396,16 +404,38 @@ function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), ks)
     c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
     cand = [t for t in navs if !(t.vtx in env.cache.active_set)]
+    # 🔴 정준 정렬을 **먼저** 한다. 난수를 쓰든 안 쓰든 뒤이은 순회 순서가 재현되게 하려면
+    #    셔플의 입력 자체가 결정적이어야 한다(`Dict` 순회 순서에 물린 옛 재현성 사고와 같은 논거).
     sort!(cand; by = t -> (t.kind === :transport ? 0 : 1, hypot(t.goal[1] - c0[1], t.goal[2] - c0[2])))
+    # ---- 존 배치 난수화 (DEMO_ZONE_SEED) -------------------------------------------------
+    # 0 이면 아무것도 안 뽑는다 -- `rng` 를 만들지도, `frac` 을 건드리지도, 셔플하지도 않으므로
+    # 예전 배치와 **바이트 동일**하다(음성 대조가 이 성질을 잰다).
+    rng = DEMO_ZONE_SEED == 0 ? nothing : Random.MersenneTwister(DEMO_ZONE_SEED)
+    if rng !== nothing
+        lo, hi = minmax(DEMO_ZONE_R_MIN, DEMO_ZONE_R_MAX)
+        frac = lo + (hi - lo) * rand(rng)          # 크기를 뽑는다
+        Random.shuffle!(rng, cand)                 # 위치(어느 목표 위에 놓을지)를 뽑는다
+    end
+    r = frac * Float64(CB.default_robot_radius())
     _ZONE_CT[] += 1; key = Symbol("zone_blk_$(_ZONE_CT[])")
     for t in cand
-        CB.zone_relocatable(t.goal, r, env) || continue          # 복구 가능한 것만
-        z = CB.add_restriction_zone!(key, t.goal, r)
+        # 중심을 목표점에서 살짝 흔든다 -- 안 흔들면 원의 중심이 늘 어떤 목표의 정확한 좌표라
+        # "위치가 다양하다" 가 목표 격자 위에서만 성립한다. 반지름의 절반까지만 흔들어
+        # 그 목표가 여전히 원 안에 남게 한다(안 그러면 아무것도 안 막고 후보만 태운다).
+        goal = if rng === nothing
+            t.goal
+        else
+            θ = 2π * rand(rng); ρ = 0.5 * r * sqrt(rand(rng))
+            g = Vector{Float64}(t.goal)
+            g[1] += ρ * cos(θ); g[2] += ρ * sin(θ); g
+        end
+        CB.zone_relocatable(goal, r, env) || continue          # 복구 가능한 것만
+        z = CB.add_restriction_zone!(key, goal, r)
         b = try CB.zone_blockage(env; zone_keys = [key], check_paths = false) catch e
             @warn "[zone] zone_blockage 실패" exception = e; nothing
         end
         if b !== nothing && b.n_blocked >= 1
-            c = Vector{Float64}(t.goal)
+            c = Vector{Float64}(goal)
             println("[zone] blocking zone on $(t.kind) vtx=$(t.vtx) @$(round.(c; digits = 3)) " *
                     "r=$(round(r; digits = 3)) -> nav_blocked=$(b.n_blocked)/$(b.n_nav_goals)")
             # ---- 구역 진단 계측 (2026-08-30, T4) -----------------------------------------
