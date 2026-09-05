@@ -1456,6 +1456,60 @@ _sl_is_rewritable(sl) =
     catch; false end
 
 """
+    _UNDERLYING_MARK
+
+`HTTP.RequestError` 의 `showerror` 가 **진짜 원인 앞에** 찍는 리터럴 표식. 진실원은 여기
+하나다(`HTTP/src/Exceptions.jl` 의 `Base.showerror(io, e::RequestError)`).
+"""
+const _UNDERLYING_MARK = "Underlying error:"
+
+"""
+    _showerror_cause(e) -> String
+
+예외 하나의 `showerror` 전문에서 **원인만** 남긴 문자열. `_UNDERLYING_MARK` 가 있으면
+`첫 줄 * " " * 표식 뒤 전부`, 없으면 전문 그대로.
+
+🔴 왜 (2026-09-05, P2 Task 1의 남은 구멍). `HTTP.RequestError` 의 `showerror` 는
+   **요청 덤프를 먼저** 찍고 원인을 **맨 뒤**에 찍는다:
+
+       HTTP.RequestError:\\nHTTP.Request:\\n<헤더·바디 덤프>\\nUnderlying error:\\n<원인>
+
+   1821바이트짜리 `impl_code` 를 실은 유료 런 9 에서 이 덤프가 1200자를 넘었고,
+   `_cap_detail` 의 200자 상한이 원인보다 **1000자 앞에서** 잘렸다. 로그에 남은 것은
+   요청 헤더뿐이고 사유는 통째로 죽었다(실측 재현: 원인이 1301자 중 1261번째 자리).
+   `bca635f1` 이 옛 `first(split(…, "\\n"))` 을 고쳐 원인이 **문자열 안에는** 살아남게
+   했지만, 상한 침식은 그 커밋이 명시적으로 범위 밖으로 남긴 구멍이다.
+
+🔴 **왜 상한(`_STEP_DETAIL_CAP`)을 안 건드리는가.** 그 상수는 `steps[i].detail` 과
+   **공유**되고, 그 값은 기록 줄(`[minted] lane=…`)에 실려 `ladder_report.py` 가 읽는
+   구조의 일부다. 상한을 키우면 이 파일이 찍는 **모든** 기록 줄의 폭이 바뀐다 — 고쳐야
+   할 것이 상한이 아니라 **내용**인데(1000자는 우리가 이미 아는 우리 요청의 사본이다)
+   공유 상수를 흔드는 것은 대가가 크고 표적이 아니다. 그래서 **표적 경로**를 더한다:
+   덤프를 버리고 원인을 상한 안으로 끌어온다. `_cap_detail` 은 그대로 지난다 — 원인
+   자체가 길 수도 있으므로 상한은 여전히 필요하다.
+
+🔴 **첫 줄을 남기는 이유.** 원인만 찍으면 로그에서 `HTTP.RequestError` 라는 사실 자체가
+   사라진다(그것이 연결 **이후** 단계의 실패라는 판정 근거다 — `ConnectError` 와 다르다).
+   `HTTP.RequestError: EOFError: read end of file` 처럼 둘 다 남는다.
+
+⚠️ ASCII 만 쓴다. 표식은 리터럴 ASCII 이고, 이어붙이는 것은 공백 하나뿐이다 — 치환이
+   없으므로 `_cap_detail` 의 상한 자리가 바이트 단위로 계산 가능한 성질이 유지된다
+   (`_neutralize_brackets` 문단이 지키는 것과 같은 성질).
+⚠️ `findlast` 다. 표식이 여럿이면 **가장 깊은** 원인을 고른다. 원인 메시지 자체가 이
+   표식을 담으면 그 뒤만 남지만, 그 판은 여전히 사유의 끝부분이라 오늘(사유 0자)보다
+   엄격히 낫다.
+🔴 **표식이 없으면 전문을 그대로 돌려준다** — `ConnectError`·`ArgumentError` 처럼 원인이
+   1번째 줄에 있는 가족은 오늘과 **바이트 동일하게** 찍힌다. 그 가족을 재는 게이트가
+   안 움직인다.
+"""
+function _showerror_cause(e)::String
+    s = sprint(showerror, e)
+    i = findlast(_UNDERLYING_MARK, s)
+    i === nothing && return s
+    return string(first(split(s, '\n')), " ", lstrip(SubString(s, nextind(s, last(i)))))
+end
+
+"""
     _rewrite_once(sl, nm, cd, why) -> Union{Nothing,NamedTuple}
 
 거절 사유를 agent-3 에게 **한 번** 되먹여 고친 body 를 받는다. 못 받으면 `nothing`.
@@ -1497,9 +1551,34 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
             "tool_name" => something(_synth_lane_field(sl, "tool_name"), ""),
             "spec"      => spec,
             "impl_name" => nm, "impl_code" => cd, "impl_rejected_why" => why))
+        # 🔴 2026-09-05 (P2 의 진짜 원인). 초판은 `retries = 0` 이었고, **그 한 글자가
+        #    이 채널이 한 번도 성공하지 못한 이유다.** 근거 셋:
+        #    (1) 던진 것은 `HTTP.RequestError` 다. HTTP.jl 은 그 예외를 `newconnection` 이
+        #        **성공한 뒤**에만 낸다(`ConnectionRequest.jl`: 연결 실패는 `ConnectError`).
+        #        즉 주소·DNS·`DSPY_URL` 모양은 용의자가 아니다 — 소켓은 잡혔고 그 위의
+        #        쓰기/읽기가 깨졌다. 그리고 서비스 로그에 줄이 없다 = 서버가 요청줄을
+        #        한 번도 파싱하지 않았다 = **그 소켓은 이미 죽어 있었다**(keep-alive 만료).
+        #    (2) `policy.jl` 의 `/decide` 는 **같은 프로세스에서 성공한다**. 그쪽이 다른
+        #        점은 하나뿐이고, 그 파일의 주석이 이유를 이미 적어 뒀다:
+        #        "이벤트 간격이 길어 keep-alive 연결이 죽어 있으면 첫 시도가
+        #         'stream is closed or unusable' 로 실패한다(실제로 두 번째 OOD 에서
+        #         그렇게 폴백됐다)". 이 레포는 이 대가를 이미 한 번 치렀다.
+        #    (3) 실측(루프백 스텁, 유료 0건 — testset (32)): 클라이언트가 **쓴 뒤** 피어가
+        #        연결을 끊는 판에서
+        #          `retries = 0`                      → RequestError (서버 처리 0건)
+        #          `retries = 2`                      → RequestError (서버 처리 0건)
+        #          `retries = 2, rni = true`          → 200 (서버 처리 1건)
+        #        가운데 줄이 중요하다: 바이트가 나간 뒤라 `nothing_written` 이 거짓이고
+        #        POST 는 멱등이 아니라, **`retry_non_idempotent` 없이는 재시도가 안 걸린다**
+        #        (`HTTP/src/Messages.jl` 의 `retryable(::Request)`).
+        # ⚠️ 대가는 명시한다: `retry_non_idempotent = true` 는 바이트가 서버에 닿은 요청도
+        #    다시 보낼 수 있어 **유료 호출이 한 번 더** 나갈 수 있다. 그래서 `/decide` 의
+        #    3 이 아니라 2 다 — 죽은 keep-alive 는 반복되는 조건이 아니라 한 번 뚫으면
+        #    끝난다(위 실측에서 재시도 1회로 200 이 났다). 그리고 500 은 재시도되지 않는다:
+        #    `retryable(status)` 가 참이어도 `retryable(::Request)` 가 이 판을 막는다.
         resp = HTTP.post(DSPY_URL * "/rewrite",
                          ["Content-Type" => "application/json"], body;
-                         readtimeout = 120, retries = 0)
+                         readtimeout = 120, retries = 2, retry_non_idempotent = true)
         f = JSON3.read(String(resp.body))
         (get(f, :wrote, nothing) === true) || return nothing
         (get(f, :impl_code, nothing) isa AbstractString) || return nothing
@@ -1534,10 +1613,14 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
         #    갉아먹는 것은 스택이 아니라 **헤더·바디 덤프**다(측정: 53바이트짜리 JSON
         #    바디 하나만으로도 원인이 200자 밖으로 밀려났다 — 스택트레이스는 아직 시작도
         #    안 한 자리다). 즉 `"Stacktrace:"` 를 잘라내도 이 상한-침식의 실제 원인(요청
-        #    덤프)은 그대로 남는다 — 죽은 코드를 더할 근거가 없다. 상한 침식 자체를 고치는
-        #    것은 이 태스크 범위 밖이다(사유를 보이게 만드는 것까지가 Task 1이다).
+        #    덤프)은 그대로 남는다 — 죽은 코드를 더할 근거가 없다.
+        # ✅ 2026-09-05: 그 상한 침식이 **여기서 막혔다.** `_showerror_cause` 가 요청 덤프를
+        #    버리고 `"Underlying error:"` 뒤만 남긴다(그 docstring 이 근거의 진실원이다).
+        #    유료 런 9 의 실측 재현: 원인이 전문 1301자 중 **1261번째** 자리에 있어 200자
+        #    상한이 1000자 앞에서 잘렸다. 표식이 없는 예외(`ConnectError` 등)는 전문을
+        #    그대로 지나가므로 그 가족의 줄은 오늘과 바이트 동일하다.
         println("[minted] rewrite: 왕복 실패 (원래 거절이 그대로 남는다): ",
-                _cap_detail(_one_line_rec(sprint(showerror, e))))
+                _cap_detail(_one_line_rec(_showerror_cause(e))))
         return nothing
     end
 end

@@ -2705,11 +2705,11 @@ end
 
 @testset "(30c) 🔴 음성 대조: catch 를 옛 `first(split(...))` 로 되돌리면 (30b) 가 빨개진다" begin
     local src = read(ENACT_PATH, String)
-    @test occursin("_cap_detail(_one_line_rec(sprint(showerror, e)))", src)
+    @test occursin("_cap_detail(_one_line_rec(_showerror_cause(e)))", src)
     mktempdir() do dir
         local q = joinpath(dir, "enact_rewrite_no_cap.jl")
         write(q, replace(src,
-            "_cap_detail(_one_line_rec(sprint(showerror, e)))" =>
+            "_cap_detail(_one_line_rec(_showerror_cause(e)))" =>
             "first(split(sprint(showerror, e), \"\\n\"))", count = 1))
         local M = Module(:EnactRewriteNoCap)
         Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
@@ -2736,6 +2736,52 @@ end
         #    빨개지는 것을 개발 중 수동으로 확인했다(태스크 보고서의 변이 기록).
         @test !occursin("SENTINEL_CAUSE", recs2[1])
     end
+end
+
+@testset "(30d) 🔴 2026-09-05 (P2, 남은 구멍): 1800바이트 요청 덤프 뒤의 원인이 상한 안으로 들어온다" begin
+    # 🔴 재현. 유료 런 9 의 로그 줄은 정확히 여기서 죽었다:
+    #      `HTTP.RequestError: HTTP.Request: HTTP.Messages.Request: """ POST /rewrite …
+    #       Content-Length: 1821 Acce…`
+    #    `showerror(::RequestError)` 는 **요청 덤프를 먼저**, `Underlying error:` 를 **맨
+    #    뒤**에 찍는다. `bca635f1` 이 첫-줄-만-보던 결함을 고쳐 원인이 문자열 안에는
+    #    살아남게 됐지만, 200자 상한이 원인보다 1000자 앞에서 잘렸다.
+    local payload = JSON3.write(Dict(
+        "tool_name" => "t", "spec" => "s"^400, "impl_name" => "impl_fn!",
+        "impl_code" => "function impl_fn!(env)\n" * ("    # pad\n"^120) * "end\n",
+        "impl_rejected_why" => "reject:x"))
+    @test ncodeunits(payload) > 1800                     # 브리프가 요구한 크기다
+    local req = HTTP.Request("POST", "/rewrite",
+        ["Content-Type" => "application/json", "Host" => "127.0.0.1:8077",
+         "Accept" => "*/*", "User-Agent" => "HTTP.jl/1.10.11",
+         "Content-Length" => string(ncodeunits(payload))], payload)
+    local e = HTTP.RequestError(req, ErrorException("SENTINEL_DUMP_CAUSE"))
+
+    # (a) 옛 접합 — 원인이 상한 밖이다. **이것이 브리프의 결함 그 자체다.**
+    local old_line = _cap_detail(_one_line_rec(sprint(showerror, e)))
+    @test !occursin("SENTINEL_DUMP_CAUSE", old_line)
+    @test occursin("Content-Length", old_line)           # 남는 것은 우리 요청의 사본뿐
+    # 비-0 대조: 원인은 **전문에는** 있다(즉 잃은 것은 상한이지 `showerror` 가 아니다).
+    @test occursin("SENTINEL_DUMP_CAUSE", sprint(showerror, e))
+
+    # (b) 새 접합 — 원인이 산다.
+    local new_line = _cap_detail(_one_line_rec(_showerror_cause(e)))
+    @test occursin("SENTINEL_DUMP_CAUSE", new_line)
+    @test occursin("HTTP.RequestError", new_line)        # 어떤 단계의 실패인지도 남는다
+    @test !occursin("Content-Length", new_line)          # 요청 덤프는 버렸다
+
+    # (c) 계약: 한 줄이다(기록 파서가 이 줄을 읽는다).
+    @test !occursin("\n", new_line) && !occursin("\r", new_line)
+    # (d) 계약: 공유 상한을 안 건드렸다 — `steps[i].detail` 과 같은 200 그대로다.
+    @test _STEP_DETAIL_CAP == 200
+    @test length(new_line) <= _STEP_DETAIL_CAP + 1       # +1 = 말미의 `…`
+    # (e) 계약: ASCII 표식만 쓴다(치환이 없으므로 상한 자리가 바이트로 계산 가능하다).
+    @test all(isascii, _UNDERLYING_MARK)
+    @test _UNDERLYING_MARK == "Underlying error:"
+
+    # (f) 🔴 표식이 없는 예외 가족은 **오늘과 바이트 동일하다**. 그 가족을 재는 게이트가
+    #     안 움직인다는 것을 여기서 못박는다(이 파일의 (30b) 가 바로 그 가족이다).
+    local plain = ArgumentError("SENTINEL_PLAIN")
+    @test _showerror_cause(plain) == sprint(showerror, plain)
 end
 
 end
@@ -3481,6 +3527,178 @@ end
 
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
 #    여기 못 오지만, 그때는 프로세스가 곧 끝난다 — 포트는 프로세스와 함께 반납된다.)
+
+# =============================================================================
+# (43) 🔴 2026-09-05 (P2 의 진짜 원인) — **`/rewrite` 왕복이 완주한다.**
+#
+# 사건. `bca635f1`·`94bd8132`·`fbf6d17c` 가 되먹임 채널을 끝에서 끝까지 배선했는데
+# **한 번도 성공하지 못했다**. 유료 런 9 의 기록은 `enact_retry=noop_roundtrip_failed`
+# 였고(방아쇠는 설계대로 열렸다), 서비스 로그의 `/rewrite` 는 **0건**이었다 — 요청이
+# 서버에 닿지 않았다. 그런데 **빨간 것이 하나도 없었다**: 이 파일의 (20) 가족은 왕복이
+# 되는 판만 재고, 왕복이 **깨지는** 판을 재는 게이트가 없었다.
+#
+# 원인(실측). `_rewrite_once` 는 `retries = 0` 으로 POST 했다. keep-alive 로 풀에 남은
+# 소켓을 서버가 닫은 뒤(uvicorn 기본 5초) 그 소켓으로 쓰면 `HTTP.RequestError` 가 나고,
+# `retries = 0` 은 HTTP.jl 이 바로 그 판을 위해 가진 복구를 **꺼 버린다**. 같은 프로세스의
+# `/decide` 가 멀쩡한 이유가 여기 있다 — `policy.jl` 이 이미 `retries = 3,
+# retry_non_idempotent = true` 로 이 대가를 치렀고 그 주석이 사건까지 적어 뒀다.
+#
+# 🔴 이 게이트가 재는 것은 **왕복의 완주**이지 응답의 모양이 아니다. 그래서 스텁은
+#    클라이언트가 **쓴 뒤** 연결을 끊는다 — 유료 런의 실패 모양 그대로다(유료 0건).
+# 🔴 `DSPY_URL` 은 `const` 라 이 파일의 `_RW_PORT` 에 묶여 있다. 그래서 (30c) 와 같은
+#    관용구를 쓴다: `enact.jl` 을 **새 모듈**에 실으면서 `DSPY_URL` 만 이 스텁으로 준다.
+# =============================================================================
+
+"""
+    _flaky_rewrite_stub(; kill_first = true) -> (srv, port, killed, served)
+
+`/rewrite` 스텁 한 벌. 첫 연결은 요청을 **다 읽은 뒤 응답 없이 끊는다**(죽은 keep-alive
+소켓의 모양). 그 뒤의 연결은 정상적으로 고친 body 를 돌려준다. `served` 는 **비-0 대조**다 —
+0 이면 "왕복이 됐다" 는 주장이 "아무 데도 안 갔다" 와 구별되지 않는다.
+"""
+function _flaky_rewrite_stub(; kill_first = true)
+    srv = HTTP.Sockets.listen(HTTP.Sockets.localhost, 0)
+    port = HTTP.Sockets.getsockname(srv)[2]
+    killed = Ref(false); served = Ref(0); kill = Ref(kill_first)
+    @async while true
+        sock = try HTTP.Sockets.accept(srv) catch; break end
+        @async begin
+            try
+                local clen = 0
+                while true
+                    local l = readline(sock)
+                    isempty(l) && break
+                    startswith(lowercase(l), "content-length:") &&
+                        (clen = parse(Int, strip(split(l, ":")[2])))
+                end
+                clen > 0 && read(sock, clen)
+                if kill[]
+                    kill[] = false; killed[] = true      # 쓴 뒤 끊는다 — 응답 없음
+                else
+                    served[] += 1
+                    local p = JSON3.write(_rw_fix("rw_roundtrip!"))
+                    write(sock, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" *
+                                "Content-Length: $(ncodeunits(p))\r\n\r\n" * p)
+                    sleep(0.05)
+                end
+            catch
+            finally
+                close(sock)
+            end
+        end
+    end
+    return (srv, port, killed, served)
+end
+
+"""
+    _enact_at(url; mutate = identity) -> Module
+
+`enact.jl` 을 **새 모듈**에 싣고 `DSPY_URL` 을 `url` 로 준다. `mutate` 는 원본 소스에
+가하는 변이(회귀 증명용). (30c) 가 쓰는 관용구와 같은 것이고, 진실원은 파일 하나다.
+"""
+function _enact_at(url; mutate = identity)
+    local src = mutate(read(ENACT_PATH, String))
+    local dir = mktempdir()
+    local q = joinpath(dir, "enact_at.jl")
+    write(q, src)
+    local M = Module(gensym(:EnactAt))
+    Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+    Core.eval(M, :(const CB = ConstructionBots))
+    Core.eval(M, :(const DSPY_URL = $(url)))
+    Base.include(M, q)
+    return M
+end
+
+"`_rewrite_once` 를 태우고 (반환값, 찍힌 `[minted] rewrite:` 줄들) 을 준다."
+function _drive_rewrite(M, url)
+    local sl = Dict{String,Any}("mechanism" => "m", "tool_name" => "t")
+    local r, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            r = try
+                Base.invokelatest(getfield(M, :_rewrite_once), sl, "impl_rt!",
+                                  "function impl_rt!(env) end", "reject:x")
+            catch e
+                e                                   # 규약 위반도 값으로 돌려 단언한다
+            end
+        end
+        flush(io); out = read(path, String)
+    end
+    return (r, [l for l in split(out, "\n") if startswith(l, "[minted] rewrite:")])
+end
+
+@testset "(43) 🔴 P2: `/rewrite` 왕복이 죽은 keep-alive 소켓을 넘어 완주한다" begin
+
+@testset "(43a) 본 경로 — 첫 소켓이 끊겨도 왕복이 끝난다" begin
+    local srv, port, killed, served = _flaky_rewrite_stub()
+    try
+        local M = _enact_at("http://127.0.0.1:$port")
+        local r, lines = _drive_rewrite(M, "http://127.0.0.1:$port")
+        @test killed[]                       # 실패 판을 실제로 만들었다(대조)
+        @test served[] == 1                  # 🔴 비-0 대조: 서버가 **한 번** 처리했다
+        @test r isa NamedTuple               # 왕복이 완주해 고친 body 가 왔다
+        @test r.impl_name == "rw_roundtrip!"
+        @test isempty(lines)                 # 실패 줄이 안 찍혔다
+    finally
+        close(srv)
+    end
+end
+
+@testset "(43b) 🔴 음성 대조: 스텁이 안 끊으면 서버 처리는 그대로 1건이다" begin
+    # (43a) 의 `served[] == 1` 이 "재시도 덕에 1" 인지 "원래 1" 인지 가른다.
+    local srv, port, killed, served = _flaky_rewrite_stub(kill_first = false)
+    try
+        local M = _enact_at("http://127.0.0.1:$port")
+        local r, _ = _drive_rewrite(M, "http://127.0.0.1:$port")
+        @test !killed[]
+        @test served[] == 1
+        @test r isa NamedTuple
+    finally
+        close(srv)
+    end
+end
+
+@testset "(43c) 🔴 회귀 변이: `retries = 0` 으로 되돌리면 왕복이 못 끝난다" begin
+    # 이것이 유료 런 9 의 코드다. 여기서 빨개져야 이 채널이 다시 조용히 새지 않는다.
+    local srv, port, killed, served = _flaky_rewrite_stub()
+    try
+        local M = _enact_at("http://127.0.0.1:$port";
+            mutate = s -> replace(s, "retries = 2, retry_non_idempotent = true" =>
+                                     "retries = 0", count = 1))
+        local r, lines = _drive_rewrite(M, "http://127.0.0.1:$port")
+        @test killed[]
+        @test served[] == 0                  # 🔴 요청이 서버에 **한 번도 안 닿았다**
+        @test r === nothing                  # 규약은 지킨다(안 던진다) — 그러나 못 고쳤다
+        @test length(lines) == 1
+        @test occursin("왕복 실패", lines[1])
+        # 🔴 그리고 **이제는 사유가 보인다**(Task 1 의 성과가 여기서 측정된다).
+        @test occursin("HTTP.RequestError", lines[1])
+        @test occursin("EOFError", lines[1]) || occursin("IOError", lines[1])
+    finally
+        close(srv)
+    end
+end
+
+@testset "(43d) 🔴 `retry_non_idempotent` 가 load-bearing 이다 — `retries` 만으로는 못 산다" begin
+    # 바이트가 나간 뒤의 실패라 `nothing_written` 이 거짓이고 POST 는 멱등이 아니다
+    # (`HTTP/src/Messages.jl` 의 `retryable(::Request)`). 그래서 `retries` 만 켜면
+    # **재시도가 안 걸린다** — 이 변이가 그것을 못박는다.
+    local srv, port, killed, served = _flaky_rewrite_stub()
+    try
+        local M = _enact_at("http://127.0.0.1:$port";
+            mutate = s -> replace(s, "retries = 2, retry_non_idempotent = true" =>
+                                     "retries = 2", count = 1))
+        local r, lines = _drive_rewrite(M, "http://127.0.0.1:$port")
+        @test killed[] && served[] == 0
+        @test r === nothing
+        @test length(lines) == 1
+    finally
+        close(srv)
+    end
+end
+
+end
+
 close(_RW_SERVER)
 
 end # module
