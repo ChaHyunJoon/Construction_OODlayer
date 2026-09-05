@@ -231,15 +231,22 @@ PHYSICAL PRINCIPLES OF THIS BUILD
      (b) PotentialFieldController -- dispersion under congestion (mutual repulsion)
      (c) RVO / VelocityController -- collision avoidance that produces the final velocity
    CONSEQUENCE THAT MATTERS FOR TOOL DESIGN: exclusion zones are enforced only on RVO-driven
-   navigating agents. A goal whose cargo is moved by a lift transform, not by a navigating
-   agent, is not stopped by a zone at all. "Covered by a zone" and "blocked by a zone" are
-   different facts.
+   navigating agents, so "covered by a zone" and "blocked by a zone" are different facts.
+   That enforcement gap is NOT a delivery route. The schedule fixes the order
+   FormTransportUnit -> TransportUnitGo -> DepositCargo -> LiftIntoPlace (see
+   required_predecessors in ConstructionBots construction_schedule.jl): a lift cannot become
+   active until a deposit has closed, and a deposit cannot until the transport unit has
+   driven there. The lift seats cargo at a destination something already navigated to, at
+   loading speed, over a capture distance -- it does not carry cargo across ground. EVERY
+   cargo delivery passes through a navigating agent, so a zone that stops the drive stops
+   the goal. There is no non-navigating conveyance to design toward.
 
 4. THREE EDIT SURFACES, NOT ONE. Recovery is not "graph editing" with one abstraction:
      sched      -- the schedule graph and its assignment edges
      scene_tree -- staging poses and build placement
      env_param  -- solver-visible parameters (cost biases, thresholds)
-     physical   -- side channels that move real robots (couriers, teleports)
+     physical   -- side channels that move real robots (the battery courier; there is
+                   no teleport, and nothing moves cargo without navigating)
      milp       -- constraint compilation and commit
    Each primitive below declares which surface it edits.
 
