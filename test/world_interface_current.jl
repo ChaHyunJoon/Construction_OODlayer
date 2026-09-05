@@ -191,4 +191,65 @@ end
     @test !isempty(bare)
     @test !any(s -> occursin("::Any", s), values(sigs))
 end
+
+@testset "(11) 🔴 메서드에 반환 모양이 실린다 — 유료 런 6 이 자기신고로 초록이 된 자리다" begin
+    # 🔴 왜 이 게이트가 (2) 와 별개인가. (2) 는 "산출물이 생성기와 일치한다" 만 잰다 —
+    #    `_method_returns` 를 통째로 지우고 산출물을 같이 재생성하면 **초록으로 남는다**.
+    #    (10) 을 만들 때 실측한 그 결함이다. 그래서 여기서 **부재를 직접** 잰다.
+    #    실패의 모양: 런 6 에서 모델이 tier-1 동사를 부르고 **그 반환을 안 보고** 무조건
+    #    `:success` 를 냈다. 하네스는 모델의 심볼을 읽으므로 L2b 가 자기신고로 초록이 됐고
+    #    `world_delta_body` 는 6축 전부 0, 빌드는 PROJECT INCOMPLETE 로 끝났다.
+    j = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    rets = Dict{String,String}()
+    for m in ms
+        haskey(m, :returns) && (rets[String(m.name)] = String(m.returns))
+    end
+
+    # 🔴 양성 단언 1 — tier-1 동사의 **상태 반환**이 보인다. 이것이 없으면 "반환을 확인한다"
+    #    가 유도 불가능하다(프롬프트 어디에도 그런 것이 있다는 사실이 없다).
+    # 🔴 리뷰 m2 의 모양: 첨자 대신 `get`. 키가 사라지면 KeyError 가 Fail 이 아니라
+    #    **Error** 로 세어져 스위트의 바이트 고정 기준 "1 errored (Gurobi)" 를 흔든다 —
+    #    즉 회귀가 환경 문제로 오독된다.
+    _ret(k) = get(rets, k, "")
+    @test occursin("status::Symbol", _ret("restage_all_blocked!"))
+    # 🔴 양성 단언 2 — 간선 목록 반환. 재배정 동사가 무엇을 돌려주는지가 타입에 있다.
+    @test _ret("release_pending_assignments!") == "Vector{Tuple{Int64, Int64}}"
+    # 🔴 양성 단언 3 — `zone_keys` 의 키 타입을 나르는 두 접근자. 좌표 튜플(런 6)이 아니라
+    #    `Symbol` 이라는 사실이 이 두 줄에만 실린다. `restriction_zones` 쪽이 직접적이다.
+    @test occursin("Dict{Symbol,", _ret("restriction_zones"))
+    @test occursin("Symbol", _ret("active_restriction_zones"))
+    # 🔴 빈-통과 방지: 위 넷만 특별대우한 하드코딩이 아니라 유도가 213 전체에 돌고 있다.
+    #    실측 197/213 메서드. 하한은 그보다 낮게 잡아 무해한 시그니처 변화로는 안 흔들리게
+    #    한다. ⚠️ `rets` 는 **이름**으로 색인되므로 개수 단언은 `ms` 에서 직접 센다
+    #    (이름이 같은 메서드가 여럿이라 148 로 접힌다 — 실측).
+    @test count(m -> haskey(m, :returns), ms) >= 150
+
+    # ── 삼상 규율 (판정 R-RET1/R-RET2/R-RET3). 세 상태를 **서로 다른 단언**으로 고정한다.
+    # R-RET1: 유도됐는데 `Any` 인 것은 **정직하게 `"Any"` 로 실린다**(실측 38건). 이것을
+    #   빼면 그 순간 "유도했더니 Any" 와 "유도 못 했다" 가 산출물에서 구별 불가가 되고,
+    #   필드의 부재가 아무 정보도 안 나르게 된다.
+    @test any(v -> v == "Any", values(rets))
+    # R-RET2: 유도 불가는 **키 자체가 없다**(실측 16건 = 다중 매치 13 + `Union{}` 3).
+    #   그리고 빈 문자열·`"unknown"` 같은 자리표시자는 어디에도 없다 — 모델은 그것을
+    #   타입으로 읽는다.
+    @test any(m -> !haskey(m, :returns), ms)
+    @test !any(isempty, values(rets))
+    @test !any(v -> occursin("unknown", lowercase(v)), values(rets))
+    # R-RET3: **절단이 없다.** 넓은 것을 잘라 적으면 요약이 아니라 진실보다 좁게 읽히는
+    #   거짓이다. 생략 표식이 하나도 없어야 하고, 가장 긴 것(실측 `zone_diagnosis`, 708자)이
+    #   통째로 실려 있어야 한다.
+    @test !any(v -> occursin("…", v) || occursin("...", v), values(rets))
+    @test maximum(length, values(rets); init = 0) > 600
+
+    # 🔴 실험적 타당성의 게이트. 이 태스크가 프롬프트에 더한 것은 **기계가 유도한 타입뿐**
+    #    이어야 한다 — 어떤 동사 이름도, 어떤 산문도, "무엇을 부르라" 도 실리면 안 된다.
+    #    광고가 답을 흘리면 그 뒤의 측정은 모델에 대한 사실이 아니게 된다.
+    #    실측: 새 텍스트에 `!` 가 0건이고, export 된 Function 이름 150개 중 어느 것도
+    #    반환 문자열 197개 안에 부분문자열로조차 안 나타난다.
+    @test !any(v -> occursin("!", v), values(rets))
+    verbs = String[String(n) for n in names(CB) if isdefined(CB, n) && getfield(CB, n) isa Function]
+    @test !isempty(verbs)                       # 빈-통과 방지
+    @test !any(v -> any(w -> occursin(w, v), verbs), values(rets))
+end
 end # module

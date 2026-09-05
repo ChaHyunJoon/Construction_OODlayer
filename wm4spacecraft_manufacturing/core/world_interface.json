@@ -7,7 +7,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Base.Generator{Dict{Symbol, LazySets.Ball2Module.Ball2}, ConstructionBots.var\"#817#818\"}"
         },
         {
             "name": "active_spares",
@@ -16,7 +17,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
         },
         {
             "name": "add_directional_spare_pools!",
@@ -25,7 +27,8 @@
             "signature": "(scene_tree; n_spare::Int64, distance::Real, bbox, margin::Real, geom, spacing::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}"
         },
         {
             "name": "add_restriction_zone!",
@@ -35,7 +38,8 @@
             "signature": "(key::Symbol, center::AbstractVector, radius::Real)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}"
         },
         {
             "name": "agent_disc_radius",
@@ -44,7 +48,8 @@
             "signature": "(agent)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "apply_cmd!",
@@ -64,7 +69,8 @@
             "signature": "(node::CloseBuildStep, cmd::Nothing, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "apply_cmd!",
@@ -75,7 +81,8 @@
             "signature": "(node::DepositCargo, twist::Twist, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "apply_cmd!",
@@ -86,7 +93,8 @@
             "signature": "(node::FormTransportUnit, twist::Twist, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "apply_cmd!",
@@ -97,7 +105,8 @@
             "signature": "(node::LiftIntoPlace, twist::Twist, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "apply_cmd!",
@@ -107,7 +116,8 @@
             "signature": "(node::OpenBuildStep, cmd::Nothing, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
             "name": "apply_cmd!",
@@ -118,7 +128,8 @@
             "signature": "(node::Union{TransportUnitGo, RobotGo}, twist::Twist, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "assert_respec_verdict",
@@ -127,7 +138,8 @@
             "signature": "(verdict::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Symbol"
         },
         {
             "name": "assert_respec_verdict",
@@ -136,7 +148,8 @@
             "signature": "(verdict::Symbol, where::AbstractString)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Symbol"
         },
         {
             "name": "asset_generation",
@@ -154,7 +167,8 @@
                 "role <- keys(env.staging_buffers)",
                 "role <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "asset_history",
@@ -172,7 +186,8 @@
                 "role <- keys(env.staging_buffers)",
                 "role <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector"
         },
         {
             "name": "asset_ledger",
@@ -181,7 +196,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{AssetAssignment}"
         },
         {
             "name": "asset_ledger_summary",
@@ -190,7 +206,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "asset_of",
@@ -208,7 +225,8 @@
                 "role <- keys(env.staging_buffers)",
                 "role <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.AbstractID"
         },
         {
             "name": "avoid_staging_areas",
@@ -217,7 +235,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "awaiting_battery_swap",
@@ -226,7 +245,8 @@
             "signature": "(rid)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Missing, Bool}"
         },
         {
             "name": "battery_courier_enabled",
@@ -235,7 +255,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "battery_courier_step!",
@@ -244,7 +265,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "battery_deliveries",
@@ -253,7 +275,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{ConstructionBots.AbstractID, ConstructionBots.BatteryDelivery}"
         },
         {
             "name": "battery_report",
@@ -262,7 +285,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int64, soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64})"
         },
         {
             "name": "battery_report",
@@ -272,7 +296,8 @@
             "signature": "(fleet::ConstructionBots.BatteryFleet)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int64, soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64})"
         },
         {
             "name": "battery_swap_halt_active",
@@ -281,7 +306,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "battery_swap_pending",
@@ -290,7 +316,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "build_invariant",
@@ -299,7 +326,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.InvariantSpec"
         },
         {
             "name": "cargo_deployed_config",
@@ -309,7 +337,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "cargo_deployed_config",
@@ -319,7 +348,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "cargo_deployed_config",
@@ -329,7 +359,8 @@
             "signature": "(n::DepositCargo)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_deployed_config",
@@ -339,7 +370,8 @@
             "signature": "(n::FormTransportUnit)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_goal_config",
@@ -349,7 +381,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_goal_config",
@@ -359,7 +392,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_goal_config",
@@ -369,7 +403,8 @@
             "signature": "(n::Union{DepositCargo, FormTransportUnit})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_loaded_config",
@@ -379,7 +414,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "cargo_loaded_config",
@@ -389,7 +425,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "cargo_loaded_config",
@@ -399,7 +436,8 @@
             "signature": "(n::DepositCargo)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_loaded_config",
@@ -409,7 +447,8 @@
             "signature": "(n::FormTransportUnit)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_start_config",
@@ -419,7 +458,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_start_config",
@@ -429,7 +469,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "cargo_start_config",
@@ -439,7 +480,8 @@
             "signature": "(n::Union{DepositCargo, FormTransportUnit})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "check_identity!",
@@ -448,7 +490,8 @@
             "signature": "(env, tag::AbstractString; step)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Int64"
         },
         {
             "name": "checked_out_spares",
@@ -457,7 +500,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
             "name": "clear_all_cargo_bans!",
@@ -466,7 +510,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_battery_deliveries!",
@@ -475,7 +520,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_cargo_ban!",
@@ -493,7 +539,8 @@
                 "agent <- keys(env.staging_buffers)",
                 "agent <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "clear_decommissioned_markers!",
@@ -502,7 +549,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_depot_markers!",
@@ -511,7 +559,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_faulted_robots!",
@@ -520,7 +569,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_identity_seen!",
@@ -529,7 +579,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_novelty_detector!",
@@ -538,7 +589,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_ood_schedule!",
@@ -547,7 +599,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_restriction_zones!",
@@ -556,7 +609,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_spare_pools!",
@@ -565,7 +619,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "clear_zone_markers!",
@@ -574,7 +629,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "close_node!",
@@ -594,7 +650,8 @@
             "signature": "(n::OpenBuildStep, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
             "name": "close_node!",
@@ -604,7 +661,8 @@
             "signature": "(node::CloseBuildStep, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "close_node!",
@@ -614,7 +672,8 @@
             "argpaths": [
                 "node <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "commit_respec!",
@@ -624,7 +683,8 @@
             "signature": "(env, milp, proposal::RespecProposal; resume::Bool)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Bool"
         },
         {
             "name": "conformal_pvalue",
@@ -634,7 +694,8 @@
             "signature": "(det::NoveltyDetector, score::Real)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Float64"
         },
         {
             "name": "construct_partial_construction_schedule",
@@ -643,7 +704,8 @@
             "signature": "(mpd_model, model_spec, scene_tree)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.CustomNGraph{Graphs.SimpleGraphs.SimpleDiGraph, ConstructionBots.CustomNode{ConstructionPredicate, ConstructionBots.AbstractID}, ConstructionBots.AbstractID}"
         },
         {
             "name": "construct_partial_construction_schedule",
@@ -652,7 +714,8 @@
             "signature": "(mpd_model, model_spec, scene_tree, id_map)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.CustomNGraph{Graphs.SimpleGraphs.SimpleDiGraph, ConstructionBots.CustomNode{ConstructionPredicate, ConstructionBots.AbstractID}, ConstructionBots.AbstractID}"
         },
         {
             "name": "core_zone_for_severity",
@@ -661,7 +724,8 @@
             "signature": "(env, frac::Real; pad::Float64, root)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple{(:center, :radius, :covered, :total, :frac, :relocatable), <:Tuple{Vector{Float64}, Any, Any, Int64, Any, Bool}}"
         },
         {
             "name": "decision_margin",
@@ -671,7 +735,8 @@
             "signature": "(values::AbstractVector{<:Real})",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "decommissioned_bodies",
@@ -680,7 +745,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{ConstructionBots.AbstractID, Vector{Float64}}"
         },
         {
             "name": "depot_available",
@@ -689,7 +755,8 @@
             "signature": "(key::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Int64"
         },
         {
             "name": "depot_centers_fixed",
@@ -698,7 +765,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, Vector{Float64}}"
         },
         {
             "name": "depot_centers_fixed",
@@ -707,7 +775,8 @@
             "signature": "(d::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict"
         },
         {
             "name": "depot_info",
@@ -716,7 +785,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, NamedTuple}"
         },
         {
             "name": "dispatch_battery_courier!",
@@ -734,7 +804,8 @@
                 "target <- keys(env.staging_buffers)",
                 "target <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, ConstructionBots.BatteryDelivery}"
         },
         {
             "name": "draw_decommissioned_robots!",
@@ -743,7 +814,8 @@
             "signature": "(vis)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "draw_restriction_zones!",
@@ -752,7 +824,8 @@
             "signature": "(vis)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "draw_spare_depots!",
@@ -761,7 +834,8 @@
             "signature": "(vis)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "entity",
@@ -780,7 +854,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "entity",
@@ -790,7 +865,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "escalation_verdict",
@@ -799,7 +875,8 @@
             "signature": "(; descriptors::Union{Nothing, AbstractVector{<:Real}}, values::Union{Nothing, AbstractVector{<:Real}}, member_values::Union{Nothing, AbstractVector}, eps::Union{Nothing, Real}, margin_thresh::Real, disagree_thresh::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "(escalate::Bool, reason::Symbol, p::Float64, margin::Float64, disagreement::Float64)"
         },
         {
             "name": "event_descriptors",
@@ -808,7 +885,8 @@
             "signature": "(; soc::Real, agent_pending::Real, zone_overlap::Real, severity::Real, n_active::Real, spare_count::Real, closed_at_fire::Real, total_nodes::Real, progress::Real, nav_blocked::Real, nav_downstream::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{Float64}"
         },
         {
             "name": "fault_robot!",
@@ -817,7 +895,8 @@
             "signature": "(env; target::Union{Nothing, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}, obstacle::Bool, clear::Bool, safe::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, String}"
         },
         {
             "name": "fault_robot_and_reassign!",
@@ -835,7 +914,8 @@
                 "agent <- keys(env.staging_buffers)",
                 "agent <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple"
         },
         {
             "name": "faulted_robots",
@@ -844,7 +924,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Vector{Float64}}"
         },
         {
             "name": "find_clear_staging_center",
@@ -862,7 +943,8 @@
                 "assembly_id <- keys(env.staging_buffers)",
                 "assembly_id <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "forbid_heavy_cargo!",
@@ -871,7 +953,8 @@
             "signature": "(env; agent::AbstractString, n::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{@NamedTuple{status::Symbol, agent::String, n::Float64}, @NamedTuple{status::Symbol, agent::String, n::Int64}}"
         },
         {
             "name": "free_space_status",
@@ -880,7 +963,8 @@
             "signature": "(start, goal, zones, agent_radius::Real; cell::Float64, margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Symbol"
         },
         {
             "name": "get_cmd",
@@ -890,7 +974,8 @@
             "signature": "(_::Union{BuildPhasePredicate, ProjectComplete, EntityConfigPredicate}, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "get_cmd",
@@ -900,7 +985,8 @@
             "signature": "(node::LiftIntoPlace, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "get_cmd",
@@ -910,7 +996,8 @@
             "signature": "(node::Union{DepositCargo, FormTransportUnit}, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "get_cmd",
@@ -920,7 +1007,8 @@
             "signature": "(node::Union{TransportUnitGo, RobotGo}, env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "get_project_params",
@@ -929,7 +1017,8 @@
             "signature": "(file_name::AbstractString)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "get_project_params",
@@ -938,7 +1027,8 @@
             "signature": "(project::Int64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "get_project_params",
@@ -947,7 +1037,8 @@
             "signature": "(project::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "goal_config",
@@ -966,7 +1057,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "goal_config",
@@ -976,7 +1068,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "goal_config",
@@ -986,7 +1079,8 @@
             "signature": "(n::EntityConfigPredicate)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "goal_config",
@@ -996,7 +1090,8 @@
             "signature": "(n::Union{DepositCargo, FormTransportUnit})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "goal_engulfed",
@@ -1005,7 +1100,8 @@
             "signature": "(goal, agent_radius::Real, zones; ttol::Float64, margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "hot_swap_enabled",
@@ -1014,7 +1110,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "hot_swap_robot!",
@@ -1032,7 +1129,8 @@
                 "faulted <- keys(env.staging_buffers)",
                 "faulted <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :faulted, :depot, :spare, :mode, :captured), <:Tuple{Symbol, ConstructionBots.AbstractID, Symbol, ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Symbol, Bool}}}"
         },
         {
             "name": "identity_summary",
@@ -1041,7 +1139,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, Int64}"
         },
         {
             "name": "identity_violations",
@@ -1050,7 +1149,8 @@
             "signature": "(env; tol::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{NamedTuple}"
         },
         {
             "name": "integrate_twist",
@@ -1059,7 +1159,8 @@
             "signature": "(twist, dt)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "CoordinateTransformations.AffineMap"
         },
         {
             "name": "is_battery_courier",
@@ -1068,7 +1169,8 @@
             "signature": "(rid)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "is_within_capture_distance",
@@ -1079,7 +1181,8 @@
                 "parent <- env.scene_tree.nodes[i]",
                 "child <- env.scene_tree.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "is_within_capture_distance",
@@ -1115,7 +1218,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "load_novelty_detector",
@@ -1124,7 +1228,8 @@
             "signature": "(path::AbstractString)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NoveltyDetector"
         },
         {
             "name": "maybe_respecify!",
@@ -1133,7 +1238,8 @@
             "signature": "(env, ood_queue; id_resolver, optimizer, producer)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Symbol"
         },
         {
             "name": "maybe_unwedge_nominal!",
@@ -1142,7 +1248,8 @@
             "signature": "(env, no_progress::Integer)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "nearest_pool",
@@ -1151,7 +1258,8 @@
             "signature": "(pos; nonempty::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, Symbol}"
         },
         {
             "name": "novelty_report",
@@ -1160,7 +1268,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "String"
         },
         {
             "name": "novelty_score",
@@ -1171,7 +1280,8 @@
             "signature": "(det::NoveltyDetector, x::AbstractVector{<:Real})",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "novelty_verdict",
@@ -1181,7 +1291,8 @@
             "signature": "(x::AbstractVector{<:Real}; eps::Union{Nothing, Real})",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "NamedTuple{(:decision, :p, :score, :novel), <:Tuple{Symbol, Float64, Any, Bool}}"
         },
         {
             "name": "ood_event_target",
@@ -1190,7 +1301,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
         },
         {
             "name": "ood_inject_step!",
@@ -1199,7 +1311,8 @@
             "signature": "(env, k::Int64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "optimal_twist",
@@ -1208,7 +1321,8 @@
             "signature": "(tf_error, v_max, ω_max, dt)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "optimal_twist",
@@ -1217,7 +1331,8 @@
             "signature": "(tf_error, v_max, ω_max, dt, ϵ_x)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "optimal_twist",
@@ -1226,7 +1341,8 @@
             "signature": "(tf_error, v_max, ω_max, dt, ϵ_x, ϵ_θ)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Twist"
         },
         {
             "name": "parent_build_step_is_active",
@@ -1244,7 +1360,8 @@
                 "id <- keys(env.staging_buffers)",
                 "id <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "parent_build_step_is_active",
@@ -1271,7 +1388,8 @@
             "signature": "(key::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
         },
         {
             "name": "preprocess_env!",
@@ -1280,7 +1398,8 @@
             "signature": "(env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "project_complete",
@@ -1289,7 +1408,8 @@
             "signature": "(env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "push_ood!",
@@ -1298,7 +1418,8 @@
             "signature": "(event::AbstractString)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "AbstractString"
         },
         {
             "name": "random_restriction_zone!",
@@ -1307,7 +1428,8 @@
             "signature": "(env; key::Symbol, seed::Union{Nothing, Int64}, placement::Symbol, radius::Union{Nothing, Real}, max_radius::Real, attempts::Int64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Tuple{LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}, String}"
         },
         {
             "name": "record_asset_swap!",
@@ -1344,7 +1466,8 @@
             "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Union{Nothing, Base.Iterators.Flatten{Vector{Any}}}"
         },
         {
             "name": "recurse_child_geometry",
@@ -1354,7 +1477,8 @@
             "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Union{Nothing, Base.Iterators.Flatten{Vector{Any}}}"
         },
         {
             "name": "recurse_child_geometry",
@@ -1364,7 +1488,8 @@
             "signature": "(dict::Dict{T, CoordinateTransformations.Transformation} where T, tree, key, depth)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Union{Nothing, Base.Iterators.Flatten{Vector{Any}}}"
         },
         {
             "name": "recurse_child_geometry",
@@ -1404,7 +1529,8 @@
             "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "recurse_child_geometry",
@@ -1414,7 +1540,8 @@
             "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "recurse_child_geometry",
@@ -1424,7 +1551,8 @@
             "signature": "(node::Union{ConstructionBots.AssemblyNode, ConstructionBots.TransportUnitNode}, tree, key, depth)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "reform_stuck_teams!",
@@ -1433,7 +1561,8 @@
             "signature": "(env; min_ready::Int64, snap_all::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Int64"
         },
         {
             "name": "register_spare!",
@@ -1443,7 +1572,8 @@
             "signature": "(key::Symbol, rid::ConstructionBots.BotID{ConstructionBots.DeliveryBot})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.BotID{ConstructionBots.DeliveryBot}"
         },
         {
             "name": "release_fallback!",
@@ -1452,7 +1582,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "release_pending_assignments!",
@@ -1462,7 +1593,8 @@
             "signature": "(env, invariant::ConstructionBots.InvariantSpec; faulted, agent::Union{Nothing, AbstractString})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{Tuple{Int64, Int64}}"
         },
         {
             "name": "remove_geometry!",
@@ -1472,7 +1604,8 @@
             "signature": "(n::ConstructionBots.GeometryHierarchy, key)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.GeometryHierarchy"
         },
         {
             "name": "remove_geometry!",
@@ -1482,7 +1615,8 @@
             "argpaths": [
                 "n <- env.scene_tree.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.AbstractCustomNGraph"
         },
         {
             "name": "remove_geometry!",
@@ -1492,7 +1626,8 @@
             "argpaths": [
                 "scene_tree <- env.scene_tree"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "remove_restriction_zone!",
@@ -1501,7 +1636,8 @@
             "signature": "(key::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "replace_robot!",
@@ -1528,7 +1664,8 @@
                 "spare <- keys(env.staging_buffers)",
                 "spare <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :faulted, :spare, :slots, :deduped, :serialized, :rests, :fg, :slot1), <:Tuple{Symbol, ConstructionBots.AbstractID, ConstructionBots.AbstractID, Vararg{Int64, 6}}}}"
         },
         {
             "name": "report_identity_delta",
@@ -1537,7 +1674,8 @@
             "signature": "(env, before::Int64, tag::AbstractString)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Int64"
         },
         {
             "name": "reset_asset_ledger!",
@@ -1546,7 +1684,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "reset_cache_resume!",
@@ -1557,7 +1696,8 @@
                 "cache <- env.cache",
                 "sched <- env.sched"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.PlanningCache"
         },
         {
             "name": "restage_all_blocked!",
@@ -1566,7 +1706,8 @@
             "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{@NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}}, @NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}, residual::Int64}}"
         },
         {
             "name": "restage_assembly!",
@@ -1584,7 +1725,8 @@
                 "assembly_id <- keys(env.staging_buffers)",
                 "assembly_id <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :from, :to, :delta), <:Tuple{Symbol, Any, Any, Any}}}"
         },
         {
             "name": "restriction_zones",
@@ -1593,7 +1735,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, LazySets.Ball2Module.Ball2}"
         },
         {
             "name": "root_deposit_goals",
@@ -1602,7 +1745,8 @@
             "signature": "(env; root)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{Vector{Float64}}"
         },
         {
             "name": "root_goal_coverage",
@@ -1611,7 +1755,8 @@
             "signature": "(center, r, env; margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple{(:covered, :total, :frac), <:Tuple{Any, Int64, Any}}"
         },
         {
             "name": "run_lego_demo",
@@ -1620,7 +1765,8 @@
             "signature": "(; kwargs...)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{PlannerEnv, Tuple{PlannerEnv, Dict{Any, Any}}, Tuple{Nothing, Dict{Any, Any}}}"
         },
         {
             "name": "schedule_ood!",
@@ -1630,7 +1776,8 @@
             "signature": "(step::Int64, action!::Function)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "ConstructionBots.OODTrigger"
         },
         {
             "name": "set_avoid_staging_areas!",
@@ -1639,7 +1786,8 @@
             "signature": "(val)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "set_battery_courier!",
@@ -1648,7 +1796,8 @@
             "signature": "(; enabled::Bool, speed::Real, arrive_r::Real, halt_build::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_cargo_ban!",
@@ -1666,7 +1815,8 @@
                 "agent <- keys(env.staging_buffers)",
                 "agent <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1676,7 +1826,8 @@
             "signature": "(g::ConstructionBots.GeomNode, args::Vararg{Any})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "CoordinateTransformations.Transformation"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1686,7 +1837,8 @@
             "signature": "(n::ConstructionBots.CustomNode, args::Vararg{Any})",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1696,7 +1848,8 @@
             "argpaths": [
                 "n <- env.scene_tree.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1706,7 +1859,8 @@
             "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "CoordinateTransformations.Transformation"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1717,7 +1871,8 @@
             "signature": "(tree::Union{ConstructionBots.AbstractCustomNETree, ConstructionBots.AbstractCustomNTree}, n::ConstructionBots.TransformNode, args::Vararg{Any})",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "CoordinateTransformations.Transformation"
         },
         {
             "name": "set_desired_global_transform!",
@@ -1737,7 +1892,8 @@
             "signature": "(n::ConstructionBots.TransformNode, t, args::Vararg{Any})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "CoordinateTransformations.Transformation"
         },
         {
             "name": "set_hot_swap!",
@@ -1746,7 +1902,8 @@
             "signature": "(; enabled::Bool, mode::Symbol)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_identity_check!",
@@ -1755,7 +1912,8 @@
             "signature": "(; enabled::Bool, every::Integer, strict::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_novelty_detector!",
@@ -1764,7 +1922,8 @@
             "signature": "(d)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_scene_tree_to_initial_condition!",
@@ -1773,7 +1932,8 @@
             "signature": "(scene_tree, sched; remove_all_edges)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "set_sim_step!",
@@ -1782,7 +1942,8 @@
             "signature": "(k::Integer)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_spare_depot_distance!",
@@ -1791,7 +1952,8 @@
             "signature": "(d::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_spare_pool_margin!",
@@ -1800,7 +1962,8 @@
             "signature": "(factor::Real)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_unwedge_interval!",
@@ -1809,7 +1972,8 @@
             "signature": "(n::Integer)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Nothing"
         },
         {
             "name": "set_use_rvo!",
@@ -1818,7 +1982,8 @@
             "signature": "(val)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "spare_depot_distance",
@@ -1827,7 +1992,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Float64"
         },
         {
             "name": "spare_pool_centers",
@@ -1836,7 +2002,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, Vector{Float64}}"
         },
         {
             "name": "spare_pools",
@@ -1845,7 +2012,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}"
         },
         {
             "name": "spare_slots",
@@ -1854,7 +2022,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Dict{ConstructionBots.AbstractID, Vector{Float64}}"
         },
         {
             "name": "start_config",
@@ -1873,7 +2042,8 @@
             "signature": "(n::ConstructionBots.CustomNode)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Any"
         },
         {
             "name": "start_config",
@@ -1883,7 +2053,8 @@
             "argpaths": [
                 "n <- env.sched.nodes[i]"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "start_config",
@@ -1893,7 +2064,8 @@
             "signature": "(n::EntityConfigPredicate)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "start_config",
@@ -1903,7 +2075,8 @@
             "signature": "(n::Union{DepositCargo, FormTransportUnit})",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.TransformNode"
         },
         {
             "name": "station_keeping_goal",
@@ -1912,7 +2085,8 @@
             "signature": "(rid)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Nothing, Vector{Float64}}"
         },
         {
             "name": "step_environment!",
@@ -1921,7 +2095,8 @@
             "signature": "(env::PlannerEnv)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "PlannerEnv"
         },
         {
             "name": "step_environment!",
@@ -1930,7 +2105,8 @@
             "signature": "(env::PlannerEnv, sim)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "PlannerEnv"
         },
         {
             "name": "swap_battery!",
@@ -1948,7 +2124,8 @@
                 "role <- keys(env.staging_buffers)",
                 "role <- keys(env.staging_circles)"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple"
         },
         {
             "name": "swap_event_kind",
@@ -1966,7 +2143,8 @@
             "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple"
         },
         {
             "name": "update_parent_build_status!",
@@ -1975,7 +2153,8 @@
             "signature": "(env::PlannerEnv, node)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "update_planning_cache!",
@@ -1984,7 +2163,8 @@
             "signature": "(env::PlannerEnv, time_stamp::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Set{Int64}"
         },
         {
             "name": "update_planning_cache!",
@@ -1995,7 +2175,8 @@
                 "sched <- env.sched",
                 "cache <- env.cache"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.PlanningCache"
         },
         {
             "name": "update_planning_cache!",
@@ -2006,7 +2187,8 @@
                 "sched <- env.sched",
                 "cache <- env.cache"
             ],
-            "callable": true
+            "callable": true,
+            "returns": "ConstructionBots.PlanningCache"
         },
         {
             "name": "use_rvo",
@@ -2015,7 +2197,8 @@
             "signature": "()",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "validate_schedule_transform_tree",
@@ -2024,7 +2207,8 @@
             "signature": "(sched; post_staging)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "verify",
@@ -2035,7 +2219,8 @@
             "signature": "(proposal::RespecProposal, env, invariant::ConstructionBots.InvariantSpec; optimizer, warm_start)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Union{ConstructionBots.Admit, ConstructionBots.Reject}"
         },
         {
             "name": "verify_swap_battery",
@@ -2045,7 +2230,8 @@
             "signature": "(proposal::RespecProposal, env)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Union{ConstructionBots.Admit, ConstructionBots.Reject}"
         },
         {
             "name": "vote_disagreement",
@@ -2055,7 +2241,8 @@
             "signature": "(member_values::AbstractVector)",
             "argpaths": [
             ],
-            "callable": false
+            "callable": false,
+            "returns": "Float64"
         },
         {
             "name": "warn_depot_clearance",
@@ -2064,7 +2251,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Any"
         },
         {
             "name": "zone_blockage",
@@ -2073,7 +2261,8 @@
             "signature": "(env; zone_keys, cell::Union{Nothing, Float64}, check_paths::Bool, margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple"
         },
         {
             "name": "zone_blocked_assemblies",
@@ -2082,7 +2271,8 @@
             "signature": "(env; zone_keys, margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{ConstructionBots.AbstractID}"
         },
         {
             "name": "zone_clearance",
@@ -2091,7 +2281,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple{(:min_clearance, :n_violations, :n_agents, :n_zones), <:Tuple{Any, Int64, Int64, Int64}}"
         },
         {
             "name": "zone_clears_root_goals",
@@ -2100,7 +2291,8 @@
             "signature": "(center, r, env; margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Union{Missing, Bool}"
         },
         {
             "name": "zone_diagnoses",
@@ -2109,7 +2301,8 @@
             "signature": "(env; check_restage::Bool, check_teams::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector"
         },
         {
             "name": "zone_diagnosis",
@@ -2118,7 +2311,8 @@
             "signature": "(env, zone::Symbol; margin::Float64, check_restage::Bool, check_teams::Bool, check_blockage::Bool, check_paths::Bool)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "NamedTuple{(:zone, :exists, :center, :radius, :blocked, :n_blocked, :feasible, :n_restage_feasible, :root_covered, :root_total, :root_frac, :n_work_overlap, :teams, :n_teams_forming, :n_teams_covered, :n_nav_goals, :n_nav_blocked, :n_nav_engulfed, :n_nav_disconnected, :n_agent_trapped, :n_nav_downstream, :n_completion_blocked, :n_completion_open, :project_blocked, :relocate_delta, :relocate_norm, :relocate_feasible, :verdict), <:Tuple{Symbol, Bool, Any, Any, Vector{ConstructionBots.AbstractID}, Int64, Vector{ConstructionBots.AbstractID}, Int64, Any, Int64, Any, Any, Vector{NamedTuple}, Int64, Int64, Any, Any, Any, Any, Any, Any, Any, Any, Any, Union{Nothing, Vector{Float64}}, Float64, Bool, Symbol}}"
         },
         {
             "name": "zone_relocatable",
@@ -2127,7 +2321,8 @@
             "signature": "(center, r, env; margin::Float64, n_angles::Int64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Bool"
         },
         {
             "name": "zone_safety_report",
@@ -2136,7 +2331,8 @@
             "signature": "(env)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "String"
         },
         {
             "name": "zone_team_coverage",
@@ -2145,7 +2341,8 @@
             "signature": "(env, center, radius::Real; margin::Float64)",
             "argpaths": [
             ],
-            "callable": true
+            "callable": true,
+            "returns": "Vector{NamedTuple}"
         }
     ],
     "types": [

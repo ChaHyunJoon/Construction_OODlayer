@@ -16,32 +16,74 @@ const CB = ConstructionBots
 CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 
 """
+    _infer_return(f, tt) -> Union{Nothing,Type}
+
+반환 타입 유도의 **단 하나의 자리**. `nothing` 은 "말할 수 없다" 이고, 그것은
+`Any`("세계가 아무것도 약속하지 않는다") 와 **다른 상태다** — `_method_returns` 의 삼상
+판정이 그 구분 위에 서 있고, 두 상태를 한 철자로 접으면 산출물이 거짓을 말한다.
+
+`nothing` 이 되는 세 경우(전부 213 메서드에서 실측):
+* `Base.return_types` 가 던진다 — 시그니처를 튜플 타입으로 못 만든다;
+* 결과가 **하나가 아니다**(13건). 우리가 준 시그니처가 그 함수의 메서드 여럿에 맞았다는
+  뜻이라, 어느 것이 **이 메서드**의 반환인지 귀속할 수 없다. 하나를 고르거나 합치는 것은
+  기계가 안 본 것을 지어내는 짓이다;
+* 결과가 `Union{}`(3건). "이 호출은 반환하지 않는다" 인데, 기본값 없는 키워드를 가진
+  메서드를 **위치인자만으로** 재면 여기 걸린다 — 즉 프로브의 인공물일 수 있어 진실로
+  광고할 수 없다.
+"""
+function _infer_return(f, tt)
+    rts = try
+        Base.return_types(f, tt)
+    catch
+        return nothing
+    end
+    length(rts) == 1 || return nothing
+    rt = only(rts)
+    rt === Union{} && return nothing
+    return rt
+end
+
+"""
+    _render_return(rt) -> String
+
+유도된 타입 하나를 문자열로 **자르지 않고** 적는다. NamedTuple 이면 필드째 편다
+(`battery_report()`), 아니면 타입 자체가 곧 계약이다
+(`ood_event_target()` → `Union{Nothing, BotID{DeliveryBot}}`).
+
+🔴 **절단이 없다는 것이 규칙이다**(판정 R-RET3). 넓은 `Union` 을 잘라 `Union{A, B}` 로
+적으면 그것은 요약이 아니라 **거짓**이다 — 진실보다 좁게 읽힌다. 실측하면 오늘 자를 것도
+없다: 213 메서드의 유도된 반환 중 `Union` 의 최대 항수는 **3** 이고 가장 긴 문자열은
+`zone_diagnosis` 의 25필드 NamedTuple(708자) 하나다. 상한을 두면 지금 아무 이득도 없이
+나중에 조용히 거짓말하는 장치만 남는다.
+"""
+function _render_return(rt)
+    (rt isa DataType && rt <: NamedTuple) || return string(rt)
+    return "(" * join([string(n, "::", t)
+                       for (n, t) in zip(fieldnames(rt), fieldtypes(rt))], ", ") * ")"
+end
+
+"""
     _returns_string(f, sig) -> String
 
-접근자의 반환 모양을 **시그니처에서 유도한다**. 🔴 리뷰 m5: 옛 판은 `battery.jl` 의
-반환 NamedTuple 을 손으로 베껴 `AMBIENT_ROOTS` 에 문자열로 들고 있었다 — 기계가 아무것도
-안 보므로 드리프트가 조용히 모델의 프롬프트에 실린다. 이제 진실원이 함수 하나다.
+**앰비언트 접근자**의 반환 모양. 🔴 리뷰 m5: 옛 판은 `battery.jl` 의 반환 NamedTuple 을
+손으로 베껴 `AMBIENT_ROOTS` 에 문자열로 들고 있었다 — 기계가 아무것도 안 보므로 드리프트가
+조용히 모델의 프롬프트에 실린다. 이제 진실원이 `_infer_return`/`_render_return` 둘이고
+메서드 쪽(`_method_returns`)도 **같은 둘**을 쓴다 — 같은 사실의 두 번째 철자는 이 레포가
+반복해 밟은 드리프트의 자리다.
 
-🔴 **조용한 폴백을 두지 않는다.** 추론이 NamedTuple 을 안 주면 큰 소리로 죽는다 —
-빈 문자열을 실으면 모델이 "반환이 없다" 로 읽는다.
+🔴 **조용한 폴백을 두지 않는다.** 앰비언트 목록은 손으로 유지되는 **둘**이라 좁은 반환
+타입을 선언하는 것이 접근자 쪽의 책임이고, 이 함수가 그 책임의 게이트다 — 유도가 안 되거나
+`Any` 면 큰 소리로 죽는다(run1~run4 를 죽인 실패: run4 는 `AbstractID` 자리에 bare `Int64`).
+⚠️ 메서드 213개에는 같은 엄격함을 쓸 수 없다(38개가 실제로 `Any` 로 유도된다) — 거기 규칙은
+`_method_returns` 가 따로 적는다.
 ⚠️ 결정성: 같은 코드·같은 줄리아에서 재현된다(세 프로세스 실측, 바이트 동일). 흔들리면
 게이트 (2) 의 바이트 비교가 **빨개진다** — 조용히 새지 않는다.
 """
 function _returns_string(f, sig)
-    rts = Base.return_types(f, sig)
-    length(rts) == 1 || error("앰비언트 접근자의 반환 타입이 하나로 추론되지 않는다: ", rts)
-    rt = only(rts)
-    # 🔴 S3 (2026-09-04). `Any` 는 **거절한다**. 광고된 반환 타입이 이 문자열이고, 그것이
-    #    `Any` 면 모델은 "이 값이 무엇인지 세계가 말해주지 않는다" 로 읽고 자기가 지어낸다 —
-    #    run1~run4 를 죽인 바로 그 실패다(run4: `AbstractID` 자리에 bare `Int64`).
-    #    좁은 반환 타입을 선언하는 것은 접근자 쪽의 책임이고, 이 줄이 그 책임의 게이트다.
+    rt = _infer_return(f, sig)
+    rt === nothing && error("앰비언트 접근자의 반환 타입이 하나로 유도되지 않는다: ", f)
     rt === Any && error("앰비언트 접근자의 반환 타입이 Any 다 — 반환 주석을 좁혀라: ", f)
-    # NamedTuple 이면 필드째 편다(`battery_report()`). 아니면 타입 자체가 곧 계약이다
-    # (`ood_event_target()` → `Union{Nothing, BotID{DeliveryBot}}`). 조용한 폴백이 아니라
-    # 두 갈래 모두 기계가 유도한 진실이다 — 손으로 베낀 문자열은 여전히 없다.
-    (rt isa DataType && rt <: NamedTuple) || return string(rt)
-    return "(" * join([string(n, "::", t)
-                       for (n, t) in zip(fieldnames(rt), fieldtypes(rt))], ", ") * ")"
+    return _render_return(rt)
 end
 
 """
@@ -555,6 +597,49 @@ function _missing_types(Ts, acc)
 end
 
 """
+    _method_returns(f, m::Method) -> Union{Nothing,String}
+
+메서드 하나의 반환 모양. 🔴 이 필드는 2026-09-05 이전에 **메서드 항목에 아예 없었다** —
+`returns` 는 `ambient` 두 항목에만 있었고, 그래서 광고된 213 메서드 전부에 대해 모델은
+반환 모양을 한 글자도 못 봤다. 유료 런 6 이 그 구멍에서 죽었다: 모델이 tier-1 동사를 부르고
+**그 반환을 안 보고** `:success` 를 무조건 냈다(세계 delta 는 6축 전부 0이었다). 반환에
+상태가 실려 있다는 것이 보이면 그것을 확인하는 것이 유도 가능해진다.
+
+🔴 **삼상 판정 (판정 R-RET1/R-RET2/R-RET3).** `_returns_string`(앰비언트)은 유도가 안 되면
+던지지만 여기서는 던질 수 없다 — 그러면 생성기가 아예 안 돈다. 대신 **세 상태를 안 섞는다**:
+
+| 상태 | 산출물 | 렌더 | 뜻 |
+|---|---|---|---|
+| 유도됨, `Any` 아님 | `"returns" => "…"` | `->  …` | 세계가 이 모양을 약속한다 |
+| 유도됨, `Any` (38건) | `"returns" => "Any"` | `->  Any` | 세계가 **아무것도 약속하지 않는다** |
+| 유도 불가 (16건) | **필드 없음** | 화살표 없음 | 기계가 **말할 수 없었다** |
+
+R-RET1: `Any` 를 **정직하게 싣는다**. 앰비언트가 `Any` 를 거절하는 이유(손으로 유지되는
+두 항목이니 좁히는 것이 접근자 저자의 책임이다)는 213 메서드에 안 통한다. 그리고 여기서
+`Any` 를 빼면 그것이 곧 **부재와의 융합**이다 — "유도했더니 Any" 와 "유도 못 했다" 가 산출물
+에서 구별 불가가 되고, 그 순간 이 필드의 부재는 아무 정보도 안 나른다.
+R-RET2: 유도 불가는 **필드 자체를 뺀다**. 빈 문자열이나 `"unknown"` 을 실으면 모델이 그것을
+타입으로 읽는다(이 레포는 이미 그 모양으로 데었다 — 지어낸 이름은 `KeyError` 로 죽는다).
+R-RET3: **절단하지 않는다** — `_render_return` 의 docstring 이 근거를 적는다.
+
+⚠️ 비용은 생성시각뿐이다: `Base.return_types` 를 213 메서드에 도는 데 실측 +42초
+(41초 → 83초). 산출물은 두 언어가 읽는 정적 파일이므로 런타임 비용은 0이다.
+⚠️ 결정성: 세 프로세스에서 바이트 동일(실측). 흔들리면 게이트 (2) 가 빨개진다.
+"""
+function _method_returns(f, m::Method)
+    tt = try
+        sig = Base.unwrap_unionall(m.sig)
+        sig isa DataType || return nothing
+        Tuple{collect(sig.parameters)[2:end]...}
+    catch
+        return nothing
+    end
+    rt = _infer_return(f, tt)
+    rt === nothing && return nothing
+    return _render_return(rt)                # `Any` 도 여기서 정직하게 "Any" 가 된다
+end
+
+"""
     method_entries(reach, acc) -> Vector{Dict}
 
 각 메서드에 **호출 가능성**(`callable`)과 **인자마다의 도달 경로**(`argpaths`)를 붙인다.
@@ -601,9 +686,13 @@ function method_entries(reach, acc)
                     end
                 end
             end
-            push!(out, Dict("name" => string(n), "signature" => _sig_string(m),
-                            "callable" => callable, "argpaths" => paths,
-                            "missing" => _missing_types(Ts, acc)))
+            e = Dict{String,Any}("name" => string(n), "signature" => _sig_string(m),
+                                 "callable" => callable, "argpaths" => paths,
+                                 "missing" => _missing_types(Ts, acc))
+            # 🔴 삼상: 유도 못 한 반환은 **키를 안 만든다**(`_method_returns` 의 표 참조).
+            r = _method_returns(f, m)
+            r === nothing || (e["returns"] = r)
+            push!(out, e)
         end
     end
     # 결정적 정렬 (Ruling R-SORT): Julia 의 method-table 순회 순서는 보장된 계약이
