@@ -128,7 +128,20 @@ TEMPERATURE = _resolve_temperature()
 #    앞의 셋은 오늘 500 안에서 끝난다(첫 유료 런에서 셋 다 통과했다) — 상한을 올려도 그것들이
 #    더 쓰게 되는 것은 모델이 스스로 길게 쓸 때뿐이다. 잃는 것은 병적으로 긴 생성 하나가
 #    500 이 아니라 2000 토큰까지 갈 수 있다는 것이고, 그것이 이 상한의 유일한 비용이다.
-MAX_TOKENS = 2000
+# 🔴 [2026-09-05] `DSPY_MAX_TOKENS` — 상수였던 것을 knob 으로 낸다. 기본 2000 이라 chat 경로는
+#    **바이트 불변**이다. 왜 필요한가: /v1/responses 에서 이 상한은 **추론 토큰까지 포함**하고
+#    `LM._check_truncation` 은 `model_type != "responses"` 일 때만 경고하므로(dspy 3.3.0),
+#    추론 모델이 상한에 닿으면 **경고 없이** 잘린다. `WriteToolImpl` 은 Julia 함수 **본문 전체**를
+#    내야 하고, 옛 값 500 은 실제로 첫 유료 런의 3단계를 통째로 죽인 전적이 있다(위 B1 문단).
+#    ⚠️ 상한이지 지출이 아니다 — 과금은 실제로 낸 토큰에 붙는다.
+#    🔴 모델 이름으로 분기하지 않는다(이 레포가 낡은 표로 여러 번 당했다). 환경변수만 읽는다.
+def _resolve_max_tokens(env=None):
+    """`DSPY_MAX_TOKENS` -> `dspy.LM(max_tokens=...)`. 기본 2000."""
+    raw = (os.environ if env is None else env).get("DSPY_MAX_TOKENS", "2000").strip()
+    return 2000 if raw == "" else int(raw)
+
+
+MAX_TOKENS = _resolve_max_tokens()
 
 # 데이터셋 경로는 wm4 쪽 core/wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
 # 경로에 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이
