@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneClear",
+  "mechanism": "oracle fixture (task-zone-oracle, 2026-09-05): the two-tier SPATIAL recovery the zone code itself documents, built only from ADVERTISED verbs. Read the live zone keys with `active_restriction_zones()`, then (a) `restage_all_blocked!` relocates every assembly whose staging circle / future goals the zone covers; if that cannot fully clear it (`:residual_blocked` = the ROOT's own un-relocatable deposit goals are inside the zone, or `:none` = no assembly goal is in the zone at all) escalate to (b) `translate_whole_build!`, which rigidly shifts the ENTIRE build by the minimum Delta that clears every unfinished goal disc. Both primitives call `reset_cache_resume!` themselves (PRIMITIVE_RESUMES_CACHE=true), so the schedule frontier is rebuilt inside the body. surface=sched because a whole-build translation changes EVERY transport edge's weight, which is exactly the scope RESOLVE_SURFACES' docstring names ('assignment edges or edge weights'); the harness re-solve then re-optimises the assignment against the moved geometry, so a failure here cannot be blamed on a missing re-solve. The three withheld unwedging verbs (`recover_stalled_teams!`, `resolve_schedule_wedge!`, `force_advance_stuck_carrier!`) are deliberately NOT used - measuring whether the advertised vocabulary alone suffices is the whole point.",
+  "impl_name": "OracleZoneClear!",
+  "impl_code": "function OracleZoneClear!(env)\n    zk = [k for (k, _) in active_restriction_zones()]\n    isempty(zk) && return (; status = :no_zone)\n    st = restage_all_blocked!(env; zone_keys = zk, resume = true, verbose = true)\n    st.status === :restaged_all && return (; status = :restaged_all, stage = :restage, n_moved = length(st.moved), n_zones = length(zk))\n    tw = translate_whole_build!(env; zone_keys = zk, resume = true, verbose = true)\n    return (; status = tw.status, stage = :translate, restage_status = st.status, n_moved = length(st.moved), n_zones = length(zk))\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneClear!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneClear!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}
