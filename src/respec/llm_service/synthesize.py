@@ -418,7 +418,13 @@ class WriteToolImpl(dspy.Signature):
         "a capability your body required that you could not find in the world interface; "
         "empty string if none")
     impl_code: str = dspy.OutputField(desc=
-        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
+        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing "
+        "else. Prefer CALLING the functions the world interface lists as callable over "
+        "writing struct fields by hand; write a field directly only when no listed "
+        "function produces the required effect. End the body with the semicolon form of "
+        "the NamedTuple -- literally `return (; status = :success)`. "
+        "`NamedTuple{(:status,)}(:success)` is NOT valid Julia and throws "
+        "`MethodError: no method matching length(::Symbol)`.")
     params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
     calls: List[Dict[str, Any]] = dspy.OutputField(desc=
         'the arguments to use for THIS event: [{"primitive": "<impl_name>", '

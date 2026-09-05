@@ -109,3 +109,57 @@ def test_the_ambient_accessor_states_its_precondition():
     amb = amb.partition("FUNCTIONS YOU CAN CALL NOW")[0]
     assert "battery_report()" in amb
     assert "BATTERY_FLEET" in amb, amb
+
+
+# =====================================================================================
+# 2026-09-04 Task 3 — L3(`interface_calls ≠ []`)이 유료 런 1 에서 빈 리스트였다. 유료 0건.
+#
+# 🔴 두 원인이 함께 있었다:
+#   (1) 반환 규약. body 는 일을 **다 끝내고** 자기 반환문에서 죽었다 —
+#       `return NamedTuple{(:status,)}(:success)` 는 유효한 Julia 가 아니고
+#       `MethodError: no method matching length(::Symbol)` 을 던진다.
+#   (2) 호출이 아니라 필드 쓰기. L3 의 계측기(`impl_interface_calls`,
+#       `src/respec/minted_registration.jl`)는 `Expr(:call)` 머리만 센다 — `env.sched.weights[k] *= f`
+#       같은 필드 접근은 `fields` 로 라우팅돼 **구성상** 0 을 기여한다. 광고된 bang 함수가
+#       77개이므로 이것은 어휘의 구멍이 아니라 **지시의 부재**였다.
+#
+# ⚠️ 필드 쓰기는 **금지하지 않는다**(D6 이 다섯 능력을 일부러 감췄다 — 어떤 사건은 필드
+#    경로 말고 길이 없다). 이것은 **선호**이지 규칙이 아니고, 아래 셋째 시험이 그 선을 지킨다.
+# =====================================================================================
+def test_the_rules_show_the_literal_return_form():
+    """🔴 (1). 복붙 가능한 한 줄이 렌더에 있어야 한다."""
+    b = _block()
+    assert "return (; status = :success)" in b
+    # 죽인 그 모양을 이름으로 부정한다 — 모델이 그것을 후보로 들고 있으면 못 고른다.
+    assert "NamedTuple{(:status,)}(:success)" in b
+    assert "length(::Symbol)" in b
+
+
+def test_the_rules_prefer_calling_over_writing_fields():
+    """🔴 (2). 렌더 전문에 "부르는 쪽을 택하라" 는 문장이 있어야 한다."""
+    b = _block()
+    assert "Prefer CALLING" in b
+    assert "FUNCTIONS YOU CAN CALL NOW" in b.partition("Prefer CALLING")[2].partition("\n\n")[0], \
+        "선호 문장이 무엇을 부르라는 것인지 표제로 가리키지 않는다"
+
+
+def test_the_types_heading_no_longer_grants_field_writes_outright():
+    """🔴 (2) 의 짝. 옛 표제 `WORLD TYPES (fields you may read and write):` 는 필드 쓰기를
+    **무조건 허락**했다 — 모델이 실제로 그 허락을 받아 갔다. 되돌아오면 여기서 빨개진다.
+    """
+    b = _block()
+    assert "WORLD TYPES (fields you may read and write):" not in b
+    head = [l for l in b.splitlines() if l.startswith("WORLD TYPES")]
+    assert len(head) == 1, head
+    assert "last resort" in head[0], head
+
+
+def test_field_writes_are_not_forbidden():
+    """🔴 선을 지킨다: **선호**이지 규칙이 아니다. 하드 금지는 거짓 거절 표면을 만들고,
+    D6 이 감춘 다섯 능력 때문에 어떤 사건은 필드 경로 말고 길이 없다.
+    """
+    import world_interface as WI
+    r = WI._RULES
+    assert "only when no" in r, r          # 조건부 허용이 살아 있다
+    for banned in ("never write", "do not write a field", "must not write"):
+        assert banned not in r.lower(), banned

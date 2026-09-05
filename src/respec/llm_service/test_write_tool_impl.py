@@ -278,3 +278,18 @@ def test_a_non_string_impl_code_does_not_throw():
     말한다 — 여기서 던지면 그 사유가 영영 기록되지 않는다."""
     assert SY.strip_code_fence(None) is None
     assert SY.strip_code_fence(["```julia"]) == ["```julia"]
+
+
+# =====================================================================================
+# 2026-09-04 Task 3 — 출력 슬롯 **옆**이 모델이 실제로 읽는 자리다(설계 §1.3). 유료 0건.
+# 세계 인터페이스 블록에만 적으면 29k 자 앞머리에 묻힌다 — `impl_code` 를 쓰는 그 순간에
+# 보이는 자리에 같은 두 문장을 겹쳐 둔다.
+# =====================================================================================
+def test_the_impl_code_slot_carries_the_return_contract_and_the_call_preference():
+    d = SY.WriteToolImpl.output_fields["impl_code"].json_schema_extra["desc"]
+    assert "return (; status = :success)" in d, d
+    assert "NamedTuple{(:status,)}(:success)" in d, d
+    assert "length(::Symbol)" in d, d
+    assert "Prefer CALLING" in d, d
+    # 오늘의 규약을 **지우지 않았다** — 시그니처 모양이 그대로 있다.
+    assert "function <impl_name>(env; k=<default>, ...) ... end" in d, d

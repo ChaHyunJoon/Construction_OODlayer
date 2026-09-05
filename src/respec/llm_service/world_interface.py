@@ -49,8 +49,17 @@ _RULES = (
     "  2. The name must end with `!` and must NOT already exist in the module.\n"
     "  3. Return a value the harness can read a status from: either a Symbol, or a NamedTuple\n"
     "     with a `status::Symbol` field. That status is how the record says what happened.\n"
+    "     Write that NamedTuple with the semicolon form. The last line of your body should\n"
+    "     read literally `return (; status = :success)`. Do NOT write\n"
+    "     `NamedTuple{(:status,)}(:success)` -- that is not valid Julia and throws\n"
+    "     `MethodError: no method matching length(::Symbol)`, which kills a body that had\n"
+    "     already done all of its work correctly.\n"
     "  4. Exactly one TOP-LEVEL definition -- no other top-level `const`, macros, or\n"
     "     helper functions. Helper closures defined INSIDE your function body are fine.\n"
+    "  5. Prefer CALLING the functions listed under \"FUNCTIONS YOU CAN CALL NOW\" over\n"
+    "     writing struct fields by hand. A function call carries the module's own\n"
+    "     invariants; a raw field write does not. Write a field directly only when no\n"
+    "     listed function produces the required effect, and say why in a comment.\n"
 )
 
 
@@ -74,7 +83,9 @@ def _method_line(m) -> str:
 
 def build_world_interface_block(blob=None) -> str:
     b = blob if blob is not None else load_world_interface()
-    parts = [_RULES, "", "WORLD TYPES (fields you may read and write):"]
+    parts = [_RULES, "",
+             "WORLD TYPES (what the world is made of; you may read these, and write"
+             " them only as a last resort -- see rule 5):"]
     for t in b["types"]:
         parts.append("- %s" % t["name"])
         for f in t.get("fields") or []:
