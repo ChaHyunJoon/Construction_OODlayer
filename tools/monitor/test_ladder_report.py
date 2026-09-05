@@ -265,3 +265,66 @@ def test_all_numeric_zero_ignores_nulls_as_leaves():
     is_zero, components = lr.all_numeric_zero({"a": 0, "b": None})
     assert is_zero is True                     # every NUMERIC leaf is zero
     assert ("b", None) in components           # but the null is still printed
+
+
+# =============================================================================
+# D17b (2026-09-05) — `[minted]` 줄에 `enact_retry=` 한 칸이 늘었다.
+#
+# 재는 명제: 그 칸이 늘어도 (a) 기존 추출이 하나도 안 깨지고, (b) 새 칸 자신이
+# 같은 `(\S+)` 관용구로 읽히며, (c) `steps=[...]` 의 구조적 괄호 파싱이 그대로 산다.
+# 🔴 아래 두 리터럴은 **손으로 지은 것이 아니라** 2026-09-05 실측 런의 stdout 에서
+#    그대로 복사한 줄이다(`test/minted_end_to_end.jl` (33)(35a)).
+# =============================================================================
+D17B_RETRIED = (
+    "[minted] lane=present tool=T verdict=admit applied=nothing partial=false "
+    "world_maybe_dirty=true handled=true undo=none resume=issued "
+    "resolve=not_needed_surface args_from=calls n_calls=1 dropped_args=none "
+    "enact_retry=retried n_body_names=1 registered=true impl_rejected_why=n/a "
+    "steps=[d17b_boom_a!:rw_ok] reason=body of 1 primitives")
+
+D17B_REFUSED = (
+    "[minted] lane=present tool=T verdict=admit applied=nothing partial=true "
+    "world_maybe_dirty=true handled=true undo=none resume=issued "
+    "resolve=not_needed_surface args_from=calls n_calls=2 "
+    "dropped_args=d17b_second_boom!.goal enact_retry=refused_not_first_step "
+    "n_body_names=2 registered=true impl_rejected_why=n/a "
+    "steps=[d17b_first_ok!:rw_ok d17b_second_boom!:threw(KeyError: key \"g\" "
+    "not found)] reason=body threw at d17b_second_boom!")
+
+
+def test_d17b_the_new_field_does_not_break_any_existing_extraction():
+    for line in (D17B_RETRIED, D17B_REFUSED):
+        assert lr.MINTED_RE.findall(line) == [line]
+        got = {k: (rx.search(line).group(1) if rx.search(line) else None)
+               for k, rx in lr.MINTED_FIELD_RES.items()}
+        assert got["registered"] == "true"
+        assert got["impl_rejected_why"] == "n/a"
+        assert got["args_from"] == "calls"
+        assert got["n_calls"] in ("1", "2")
+
+
+def test_d17b_enact_retry_reads_with_the_same_idiom():
+    """공백이 없으므로 `(\\S+)` 하나로 읽힌다 — 이 파일의 다른 칸과 같은 관용구."""
+    import re
+    rx = re.compile(r'enact_retry=(\S+)')
+    assert rx.search(D17B_RETRIED).group(1) == "retried"
+    assert rx.search(D17B_REFUSED).group(1) == "refused_not_first_step"
+
+
+def test_d17b_steps_bracket_parser_survives_the_new_field():
+    """새 칸은 `steps=` **앞**에 있고 대괄호를 안 담는다 — 깊이 추적이 그대로 산다."""
+    assert lr.extract_steps_raw(D17B_RETRIED) == "[d17b_boom_a!:rw_ok]"
+    raw = lr.extract_steps_raw(D17B_REFUSED)
+    entries = lr.split_top_level(raw[1:-1])
+    assert len(entries) == 2
+    assert lr.parse_step_entry(entries[0])[1] == "rw_ok"
+    assert lr.parse_step_entry(entries[1])[1] == "threw"
+
+
+def test_d17b_a_retried_line_is_not_confusable_with_a_first_try_success():
+    """🔴 이 태스크의 요점. `enact_retry=` 를 빼면 두 줄이 **글자로 구별 불가**가 된다."""
+    first_try = D17B_RETRIED.replace(" enact_retry=retried", "")
+    retried_without_field = D17B_RETRIED.replace(" enact_retry=retried", "")
+    assert first_try == retried_without_field          # 칸이 없으면 같은 줄이다
+    assert "enact_retry=retried" in D17B_RETRIED       # 있으면 다르다
+    assert "enact_retry=retried" not in first_try

@@ -1403,6 +1403,18 @@ function record_world_delta!(m)
         #    바꿨다" 다. 그 둘을 뭉개면 이 칸이 재려는 귀속이 통째로 사라진다.
         local wdb = try m.world_delta_body catch; nothing end
         rs["world_delta_body"] = wdb === nothing ? nothing : _wd_row(wdb)
+        # ---- 다섯째 칸: `enact_retry` (2026-09-05, D17b) --------------------------------
+        # 🔴 왜 행에도 싣는가. 위 `steps` 와 **같은 논거**다(이 함수 docstring 의 "패턴은
+        #    하나다"): 이 값은 오늘 `[minted]` 줄 하나로만 나가는데, 스윕 규모로 "되먹임이
+        #    몇 번 갔고 · 몇 번 세계가 더러워 거절됐고 · 몇 번 왕복이 실패했나" 를 세려면
+        #    구조화된 행이 있어야 한다. 두 번째 기록 경로는 안 만든다.
+        # 🔴 삼상+이 행에서도 산다. 키의 **부재** = 이 코드 이전 세대의 산출물 ·
+        #    `null` = 시도 안 했다 · 문자열 = `_retry_str` 의 나머지 다섯 상태.
+        #    그래서 `hasproperty` 로 가른다 — `catch; nothing` 으로 접으면 구세대와
+        #    "시도 안 했다" 가 같은 값이 된다.
+        if (try hasproperty(m, :enact_retry) catch; false end)
+            rs["enact_retry"] = m.enact_retry === nothing ? nothing : String(m.enact_retry)
+        end
     catch e
         # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
         println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",
@@ -1523,6 +1535,164 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
 end
 
 """
+    _install_rewrite!(sl, fx; allow_redefine = false) -> Union{Nothing,String}
+
+`_rewrite_once` 가 돌려준 고친 body 를 **검사·설치·등록**한다. 성공이면 `nothing`,
+아니면 거절 사유 문자열.
+
+🔴 **한 벌이다.** 되먹임 자리가 둘이 됐다(D17 = 등록 거절, D17b = 집행 예외). 이 열두 줄을
+   두 번 적으면 두 자리가 갈리고, 이 레포는 그 갈림을 이미 여러 번 겪었다(`_world_delta_str`
+   의 m3/m4 문단이 같은 사고를 적는다). 그러므로 **검사 순서·사유 이름·대입 순서가 여기
+   한 곳에서만 정의된다.**
+
+🔴 검사가 **대입보다 먼저다**(D4, Task 9 리뷰 I3·I4). 못 쓸 값을 `sl` 에 남기면 이 판을
+   나중에 읽는 소비자에게 거짓말을 한다. 그리고 같은 결함이 시도 1 과 시도 2 에서 **같은
+   사유 이름**을 가져야 한다 — 되먹임이 재는 것이 "무엇을 고쳤나" 의 사유 히스토그램이므로.
+
+🔴 `sl["body_names"]` 는 **반드시** 갱신한다(D1, Task 9 리뷰 C1). `enact_minted!` 이 실행할
+   원시를 고르는 자리는 다섯 키가 아니라 `body_names` 다 — 안 맞추면 고친 body 가 등록되고
+   `Core.eval` 까지 된 뒤 **영영 안 불리고**, 기록에는 "모델이 어휘 밖 이름을 냈다" 로 남는다.
+
+🔴 `params` 는 **갱신된 `sl` 에서 다시 읽는다**(`fx.params` 를 직접 안 쓴다). 등록에 먹이는
+   값과 집행부가 읽는 값이 같은 자리에서 나와야 둘이 갈릴 수 없다.
+
+⚠️ `allow_redefine` 은 **집행-예외 되먹임 전용**이다. 근거와 좁힘의 술어는 호출자가 소유한다
+   (`minted_registration.jl` 의 D17b 갈래 주석이 그 대가를 적는다).
+"""
+function _install_rewrite!(sl, fx; allow_redefine::Bool = false)
+    local surf2 = fx.surface
+    (surf2 === nothing || surf2 isa AbstractString) ||
+        return "reject:surface_not_a_string:$(typeof(surf2))"
+    local praw2 = fx.params
+    (praw2 === nothing || praw2 isa AbstractDict) ||
+        return "reject:params_not_an_object:$(typeof(praw2))"
+    sl["impl_name"]  = fx.impl_name
+    sl["body_names"] = [fx.impl_name]
+    sl["impl_code"]  = fx.impl_code
+    fx.params  !== nothing && (sl["params"]  = fx.params)
+    fx.calls   !== nothing && (sl["calls"]   = fx.calls)
+    fx.surface !== nothing && (sl["surface"] = fx.surface)
+    return CB.register_minted_primitive!(
+        name = fx.impl_name, code = fx.impl_code,
+        params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
+        # 🔴 위에서 이미 타입을 확정한 `surf2` 를 쓴다 — `fx.surface` 를 다시 읽으면
+        #    검사한 값과 먹이는 값이 두 자리에서 나온다(진실원 하나).
+        surface = String(something(surf2, "unknown")),
+        reversible = fx.reversible === true,
+        allow_redefine = allow_redefine)
+end
+
+"""
+    _enact_throw_reason(r) -> Union{Nothing,String}
+
+`CB.enact_minted!` 의 반환이 **집행 중 예외**로 끝난 판이면 그 사유 한 줄, 아니면 `nothing`.
+
+🔴 이것이 D17b 가 여는 문이다. D17 은 **등록 거절**에서만 발화하는데, 유료 런 2·4·5·7 은
+   등록을 통과한 body 가 **집행에서 던져** 죽었다 — 그 판에는 되먹임이 한 번도 안 갔다.
+   예외 메시지(`KeyError: key "goal1" not found`)는 무엇이 틀렸는지를 **정확히** 이름으로
+   말하고, 모델이 달리 얻을 길이 없는 정보이며, 지어낸 값이 **어떤 모양이었든**(dict 키 ·
+   위치 인자 · 좌표 튜플 · body 안의 리터럴 벡터) 같은 자리에서 나온다.
+
+🔴 판정은 `r.partial` **하나로 안 한다.** `partial=true` 는 던진 판의 필요조건이지만
+   `verdict` 만으로는 어떤 단계가 던졌는지가 안 나온다 — 마지막 단계의 `status === :threw`
+   가 그 판의 유일한 정본이다(`minted_tool.jl` 의 집행 루프는 던진 자리에서 **곧바로**
+   돌아오므로 `:threw` 는 언제나 마지막이고 많아야 하나다).
+
+🔴 안 던진다. 이 함수가 던지면 집행부가 기록 대신 예외로 끝난다 — 이 파일의 규약이다.
+
+⚠️ 접두 `enact_threw:` 는 **전선에 실린다**. `/rewrite` 의 `impl_rejected_why` 는 자유
+   문자열이므로 파이썬을 안 고친다(그래서 서비스 재기동이 필요 없다) — 대신 agent-3 이
+   "등록 거절" 과 "집행 예외" 를 접두로 가를 수 있어야 한다.
+"""
+_enact_throw_reason(r) =
+    try
+        (r.partial === true && !isempty(r.steps) && r.steps[end].status === :threw) ?
+            string("enact_threw:", r.steps[end].name, ": ",
+                   _cap_detail(_one_line_rec(string(r.steps[end].detail)))) : nothing
+    catch; nothing end
+
+"""
+    _wd_is_zero(wd) -> Bool
+
+`_world_delta` 의 여섯 축이 **전부 잰 0** 인가. `nothing`(못 쟀다)은 `false` 다.
+
+🔴 이 술어는 **한 방향으로만 쓴다.** `_world_digest` 의 docstring 이 소유하는 사실:
+   `n_binding_changed > 0` 은 바뀐 것을 **증명**하지만 `== 0` 은 안 바뀐 것을 증명하지
+   **못한다**(하한이다). 그러므로 아래 `_retry_gate` 는 이것을 "세계가 깨끗하다는 증거"로
+   쓰지 않고 **"더러움의 반증이 없다"** 로만 쓴다 — 비-0 이면 확실히 거절, 0 이면 남은 세
+   조건과 함께여야 통과.
+🔴 `n_staging_moved` 은 축 자신이 삼상이라(`_world_delta` 의 B1 문단) `nothing` 이면
+   **못 쟀다**이고, 여기서는 0 으로 안 친다.
+"""
+_wd_is_zero(wd) =
+    try
+        wd !== nothing && wd.closed == 0 && wd.active == 0 && wd.n_edges == 0 &&
+        wd.n_binding_changed == 0 && wd.n_weights_changed == 0 &&
+        wd.n_staging_moved isa Integer && wd.n_staging_moved == 0
+    catch; false end
+
+"""
+    _retry_gate(r, world_delta_body) -> Symbol
+
+집행이 던진 판에서 **되먹임을 시도해도 되는가**. `:ok` 아니면 거절 사유 심볼.
+
+🔴 **판정(2026-09-05, D17b).** body 가 던지면 `partial=true`·`undo=:none` 이고 되돌릴
+   방법이 없다 — 반쯤 편집된 세계 위에 두 번째 body 를 굴리는 것은 **안 굴리는 것보다 나쁠
+   수 있다**(두 번째 body 는 첫 번째가 무엇을 했는지 모른 채 같은 편집을 다시 하거나, 이미
+   사라진 것을 지운다). 그러므로 게이트는 **좁게** 연다. 세 연언지 전부여야 `:ok` 다:
+
+   1. `length(r.steps) == 1` — 던진 단계가 **첫 단계**다. 두 번째 이후에서 던졌다면 앞선
+      원시들이 status 를 내고 **끝까지 돌았다**는 것을 우리가 안다(`applied`/`touched` 가
+      그 status 에서 병합됐다) — 즉 세계는 확실히 편집됐다. `:refused_not_first_step`.
+   2. `world_delta_body !== nothing` — probe 를 **실제로 찍었다**. `nothing` 은 "못 쟀다"
+      이고, 못 잰 것을 깨끗하다고 읽는 것이 이 레포가 반복해 밟은 실패 모드다.
+      `:refused_world_unmeasured`.
+   3. `_wd_is_zero(world_delta_body)` — 그 probe 가 **아무 변화도 못 봤다**. 비-0 은 편집을
+      **증명**하므로 확실한 거절이다. `:refused_world_changed`.
+
+🔴 **이 게이트는 "세계가 깨끗하다" 를 주장하지 않는다.** 남는 구멍은 정확히 하나이고 여기
+   적어 둔다: **첫(=던진) 단계가 지문의 여섯 축에 안 보이는 편집을 하고 던진 판.** 지문은
+   `closed`·`active`·`n_edges`·`assignment_binding`·`root_node_weights`·`staging_circles`
+   만 본다. 그 구멍은 이 게이트로 못 닫으며, 닫으려면 undo 나 스냅샷이 있어야 한다(이
+   태스크의 범위 밖이다). 이 게이트가 주장하는 것은 **"더러움의 반증이 하나도 없는 가장 좁은
+   창"** 뿐이다.
+
+🔴 `world_delta`(집행 봉투 전체)가 아니라 `world_delta_body` 를 본다. 봉투에는
+   `_issue_resume!`/`_resolve_if_needed!` 가 던진 판에서도 **반드시** 돌린 편집이 섞여
+   있으므로(`minted_tool.jl` 의 catch 절), 그것으로 판정하면 게이트가 **영영 안 열린다** —
+   그리고 그 편집은 body 가 한 것이 아니다.
+"""
+_retry_gate(r, wdb) =
+    (try length(r.steps) catch; -1 end) != 1 ? :refused_not_first_step :
+    wdb === nothing                          ? :refused_world_unmeasured :
+    # 🔴 축 하나만 못 잰 판도 **못 잰 판**이다. `n_staging_moved` 은 축 자신이 삼상이라
+    #    (`_world_delta` 의 B1 문단) 나머지 다섯이 0 인 채 이것만 `nothing` 일 수 있는데,
+    #    그것을 `:refused_world_changed` 로 적으면 **거짓 진술**이다 — 세계가 바뀌었다는
+    #    관측은 없었고, 우리가 기하 축을 못 읽었을 뿐이다. 사유가 갈려야 유료 런의
+    #    "왜 되먹임이 안 갔나" 히스토그램이 참이 된다.
+    !(try wdb.n_staging_moved isa Integer catch; false end) ? :refused_world_unmeasured :
+    !_wd_is_zero(wdb)                        ? :refused_world_changed :
+    :ok
+
+"""
+    _retry_str(x) -> String
+
+`enact_retry` 삼상+를 로그 한 조각으로. **공백이 없다** — `[minted]` 줄은 공백으로 갈리는
+`key=value` 로 읽힌다(`ladder_report.py` 의 `MINTED_FIELD_RES` 는 `(\\S+)` 다).
+
+🔴 상태가 나르는 구별(`dropped_args` 가 이 파일의 선례다):
+  · `n/a`                        — **한 번도 시도 안 했다**(집행이 안 던졌거나 그 자리에 못 닿았다)
+  · `refused_not_first_step` 외 둘 — 던졌는데 **세계가 더러워서 거절했다**(위 `_retry_gate`)
+  · `roundtrip_failed`           — 시도했고 **왕복이 실패했다**(서비스가 없거나 `wrote != true`)
+  · `rejected`                   — 고친 body 가 **왔는데 재등록이 거절했다**(사유는 `impl_rejected_why`)
+  · `retried`                    — 고친 body 가 왔고 **두 번째로 집행했다**
+
+🔴 `retried` 가 이 줄에 없으면 사다리는 **두 번째 시도를 첫 시도의 깨끗한 성공으로 채점한다.**
+   그 구별이 이 필드의 존재 이유다.
+"""
+_retry_str(x) = x === nothing ? "n/a" : String(x)
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
@@ -1542,6 +1712,20 @@ end
 지문과의 차분이라 **body 단독**이다. 유료 런 1 이 `delta_scope=body+harness_resolve` 라
 0 이든 아니든 귀속이 불가능했던 자리가 정확히 이것이다. 삼상은 같다: `nothing` = probe 를
 못 찍었다, 0 의 튜플 = 찍었는데 body 가 세계를 안 바꿨다.
+
+🔴 **`enact_retry` 는 여섯이다**(2026-09-05, D17b). D17 의 되먹임은 **등록 거절**에서만
+발화했다 — 등록을 통과한 body 가 **집행에서 던져** 죽은 판(유료 런 2·4·5·7)에는 되먹임이
+한 번도 안 갔다. 이 필드가 그 판의 기록이다: `nothing`(= 로그의 `n/a`, 시도 안 했다) ·
+`:refused_not_first_step`/`:refused_world_changed`/`:refused_world_unmeasured`(던졌는데
+세계가 더러울 수 있어 **거절**했다 — 판정의 정본은 `_retry_gate` 다) · `:roundtrip_failed`
+(시도했고 왕복이 실패했다) · `:rejected`(고친 body 가 왔는데 재등록이 거절했다 — 사유는
+`impl_rejected_why`) · `:retried`(고친 body 가 왔고 **두 번째로 집행했다**).
+🔴 **`:retried` 판에서는 이 반환의 나머지가 두 번째 시도를 말한다** — `verdict`·`applied`·
+`partial`·`steps`·`world_delta*` 전부. 첫 시도의 걸음은 `[minted] enact_retry:` 진단 줄
+하나에만 남는다. 이 필드가 없으면 사다리가 두 번째 시도를 **첫 시도의 깨끗한 성공**으로
+채점한다 — 그 구별이 이 필드의 존재 이유다.
+🔴 상한은 **1** 이고 루프가 아니라 **구조**다(D17 과 같은 규약): 두 번째 집행 결과는 그대로
+기록되고 다시 되먹이지 않는다.
 
 🔴 **`registered` 는 셋이다**(2026-09-03 최종 리뷰 F2, 컨트롤러 판정 R7 — R2 를 대체한다).
 `nothing` = 등록이 실제로 됐는지 이 함수가 판정하지 못했다(catch 로 떨어졌는데 그 지점까지
@@ -1686,6 +1870,13 @@ function enact_minted_decision!(env, truth, decision)
     #    삼상: `nothing`(못 쟀다 — 등록 자체가 없었거나 행을 못 읽었다) · `String[]`(재서
     #    없다) · 비지 않은 정렬된 목록(L3 참). 정의는 `_interface_calls_of` 가 소유한다.
     local interface_calls::Union{Nothing,Vector{String}} = nothing
+    # 🔴 D17b (2026-09-05). **집행-예외 되먹임의 삼상+.** `world_delta` 와 **같은 이유로**
+    #    `try` 밖이다(위 F2/R7 문단): try 의 결속은 catch 에 안 보이므로, 안에서 선언하면
+    #    catch 가 값을 손으로 다시 적을 수밖에 없고 그 복사본이 거짓말을 한다 — 여기서는
+    #    특히 나쁘다: 되먹임이 **성공해 두 번째 body 를 집행한 뒤** 던진 판이 `n/a`("시도
+    #    안 했다")로 기록되면, 사다리가 두 번째 시도를 첫 시도로 채점한다.
+    #    상태의 뜻은 `_retry_str` 의 docstring 이 소유한다(리터럴을 두 벌 안 적는다).
+    local enact_retry::Union{Nothing,Symbol} = nothing
     try
         local sl = try decision.synth_lane catch; nothing end
         # 🔴 2026-09-03 (Task 9, R1). 예전엔 `reach` 가 "이 판이 상세를 실었는가" 의 미끼였다.
@@ -1713,7 +1904,9 @@ function enact_minted_decision!(env, truth, decision)
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
                     " verdict=deferred applied=n/a partial=false",
                     " world_maybe_dirty=false handled=false undo=none resume=none",
-                    " args_from=n/a n_calls=n/a dropped_args=n/a steps=[]",
+                    " args_from=n/a n_calls=n/a dropped_args=n/a",
+                    " enact_retry=", _retry_str(enact_retry),
+                    " steps=[]",
                     " ran_milp=n/a(not armed)",
                     " synthesis_event=", _synth_lane_field(sl, "synthesis_event"),
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
@@ -1750,6 +1943,7 @@ function enact_minted_decision!(env, truth, decision)
                     steps = NamedTuple[], undo = :none, resume = :none,
                     resolve = :none, args_from = nothing, n_calls = nothing, dropped_args = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
+                    enact_retry = enact_retry,
                     world_delta = world_delta,
                     world_delta_body = world_delta_body,
                     interface_calls = interface_calls)
@@ -1782,6 +1976,10 @@ function enact_minted_decision!(env, truth, decision)
             impl_rejected_why = why
             _rec_line("[minted] lane=present tool=", something(_synth_lane_field(sl, "tool_name"), "?"),
                     " verdict=reject registered=false impl_rejected_why=", why,
+                    # 🔴 D17b. 값을 **읽는다**(리터럴 `n/a` 를 손으로 안 적는다, m3 와
+                    #    같은 근거). 이 클로저는 등록 자리에서만 불리므로 오늘은 언제나
+                    #    `n/a` 지만, 그것은 이 자리의 사실이지 손으로 적을 상수가 아니다.
+                    " enact_retry=", _retry_str(enact_retry),
                     # 🔴 D18: 집행 전에 돌아섰다 — 세계를 안 읽었다. 🔴 m3: 그래도 값을
                     #    **읽는다**(리터럴을 손으로 적지 않는다) — Task 9 가 이 클로저
                     #    주변을 실제로 건드렸고, 거절 자리가 지문 뒤로 옮겨지는 날 손으로
@@ -1802,6 +2000,7 @@ function enact_minted_decision!(env, truth, decision)
                     steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                     args_from = nothing, n_calls = nothing, dropped_args = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
+                    enact_retry = enact_retry,
                     world_delta = world_delta,
                     world_delta_body = world_delta_body,
                     interface_calls = interface_calls)
@@ -1869,50 +2068,16 @@ function enact_minted_decision!(env, truth, decision)
                 # ⚠️ 오늘 이 둘이 도달 불가한 이유는 파이썬 한 겹뿐이다
                 #    (`RewriteToolImpl.surface: str` · `params_object` 정규화). 본 경로가 같은
                 #    자리를 굳이 막고 있는데 이쪽만 안 막는 것은 비대칭이다.
-                local surf2 = fx.surface
-                (surf2 === nothing || surf2 isa AbstractString) ||
-                    return _reject_malformed("reject:surface_not_a_string:$(typeof(surf2))")
-                local praw2 = fx.params
-                (praw2 === nothing || praw2 isa AbstractDict) ||
-                    return _reject_malformed("reject:params_not_an_object:$(typeof(praw2))")
-                sl["impl_name"] = fx.impl_name
-                # 🔴 **D1 (Wave D, Task 9 리뷰 C1 — Critical).** 이 한 줄이 없으면 고친
-                #    body 가 등록되고 `Core.eval` 까지 된 뒤 **영영 안 불린다**: `enact_minted!`
-                #    이 실행할 원시를 고르는 자리는 위의 다섯 키가 아니라 `body_names` 다
-                #    (`src/respec/minted_tool.jl` 의 `names = ... _synth_get(synth,"body_names",...)`).
-                #    그러면 기록은 `verdict=reject registered=true impl_rejected_why=nothing
-                #    reason="unknown primitive: <옛 이름> — 알파벳 밖이다"` 로 남는다 — 즉
-                #    **우리 배선의 실패가 "모델이 어휘 밖 이름을 냈다" 로 적힌다.**
-                # 🔴 그리고 그 오귀속이 하필 D6 을 정통으로 때린다: 이름을 **반드시** 바꿔야만
-                #    고쳐지는 거절 가족이 `impl_name_must_end_with_bang` · `_not_an_identifier` ·
-                #    `_not_utf8` · `_already_minted` · `_exists_shown` ·
-                #    `_exists_withheld`(= 감춘 능력을 스스로 다시 유도했다는 D6 의 유일한
-                #    자기신고) · `_exists_imported` 이고, 그 전부에서 되먹임 성공이 실패로 기록됐다.
-                # 🔴 값이 `[fx.impl_name]` 인 근거: 본 경로에서 `body_names` 는 agent-3 자신의
-                #    `impl_name` 에서 나온다(`synthesize.py` 의 D8 주석이 진실원) — 갱신 뒤에도
-                #    `body_names == [impl_name]` 이 유지돼야 한다. 진실원 하나: 아래 집행부가
-                #    이름을 고르는 자리와 등록에 먹인 이름이 같은 값에서 나온다.
-                #    ⚠️ `calls` 의 primitive 이름도 이것과 같아야 한다 — 어긋나면
-                #    `enact_minted!` 이 `reject:calls_disagree_with_body` 로 **거절**한다(예외가
-                #    아니다). 그 어긋남은 agent-3 의 응답에 대한 사실이므로 여기서 안 고친다.
-                sl["body_names"] = [fx.impl_name]
-                sl["impl_code"] = fx.impl_code
-                fx.params  !== nothing && (sl["params"]  = fx.params)
-                fx.calls   !== nothing && (sl["calls"]   = fx.calls)
-                fx.surface !== nothing && (sl["surface"] = fx.surface)
-                # 🔴 `params` 는 **갱신된 `sl` 에서 다시 읽는다**(`fx.params` 를 직접 쓰지
-                #    않는다). 등록에 먹이는 값과 아래 집행부가 읽는 값이 같은 자리에서
-                #    나와야 둘이 갈릴 수 없다 — 진실원 하나.
-                local why2 = CB.register_minted_primitive!(
-                    name = fx.impl_name, code = fx.impl_code,
-                    params = something(_synth_lane_field(sl, "params"), Dict{String,Any}()),
-                    # 🔴 D4: 위에서 이미 타입을 확정한 `surf2` 를 쓴다 — `fx.surface` 를
-                    #    다시 읽으면 검사한 값과 먹이는 값이 두 자리에서 나온다(진실원 하나).
-                    surface = String(something(surf2, "unknown")),
-                    reversible = fx.reversible === true)
-                # 🔴 두 번째 거절은 **그 사유**를 나른다 — 첫 사유로 덮으면 되먹임이
-                #    무엇을 못 고쳤는지가 기록에서 사라진다. 이 채널을 측정 가능하게
-                #    만드는 것이 정확히 그 차이다.
+                # 🔴 D17b (2026-09-05). 검사·설치·등록 열두 줄은 `_install_rewrite!` **한
+                #    벌**로 옮겼다 — 되먹임 자리가 둘이 됐고(등록 거절 · 집행 예외), 두 벌을
+                #    두면 검사 순서와 사유 이름이 갈린다. 근거·D1·D4 의 정본은 그 함수의
+                #    docstring 이 소유한다. 동작은 바이트 동일하다: 같은 순서로 검사하고,
+                #    같은 사유 문자열을 내며, 두 번째 거절은 **그 사유**를 나른다(첫 사유로
+                #    덮으면 되먹임이 무엇을 못 고쳤는지가 기록에서 사라진다).
+                # ⚠️ `allow_redefine` 은 **여기서 안 넘긴다.** 이 갈래는 첫 등록이 **실패한**
+                #    판이라 이름이 `_MINTED_EVER` 에 아예 안 들어갔다 — 재정의를 허용할
+                #    이유가 없고, 허용하면 그만큼 D6 신호를 덮을 여지가 생긴다.
+                local why2 = _install_rewrite!(sl, fx)
                 why2 !== nothing && return _reject_malformed(why2)
             end
             registered = true
@@ -1957,6 +2122,75 @@ function enact_minted_decision!(env, truth, decision)
         # 🔴 **기존 `world_delta` 는 그대로 둔다 — 지우지 않는다.** 두 값은 서로의 대조군이다:
         #    봉투가 0 이 아닌데 body 가 0 이면 그 편집은 하네스의 재풀이가 한 것이다.
         world_delta_body = _world_delta(_pre, r.body_probe)
+
+        # ---- D17b: 집행이 **던진** 판도 되먹인다 (2026-09-05) -----------------------------
+        # 🔴 **자리의 근거.** 재시도는 `enact_minted!`(`src/respec/minted_tool.jl`)의 단계
+        #    루프가 아니라 **여기**, 하네스 봉투에 있다. 넷:
+        #    (1) 고친 body 는 집행 전에 **재등록**돼야 하는데(`Core.eval` 로 정의가 생긴다)
+        #        등록은 하네스의 일이다 — `enact_minted!` 은 이름으로 표를 조회할 뿐 등록을
+        #        모른다. 루프 안에서 재시도하려면 그 함수가 등록을 배워야 한다.
+        #    (2) `_rewrite_once` 의 재료(`DSPY_URL`·`HTTP`·`JSON3`)는 `tools/monitor/policy.jl`
+        #        의 것이다. 패키지 라이브러리가 하네스의 HTTP 계층에 의존하게 만드는 것은
+        #        의존 방향을 뒤집는 일이다.
+        #    (3) 더러운-세계 판정의 재료(`world_delta_body`·`r.steps`)는 `enact_minted!` 이
+        #        **돌아온 뒤에만** 손에 들어온다.
+        #    (4) 루프 안에서 재시도하면 두 body 의 걸음이 **한 `steps` 목록으로 융합돼**,
+        #        사다리가 재시도판과 첫-시도 성공판을 구별할 수 없게 된다 — 이 태스크의 요점이
+        #        정확히 그 구별이다.
+        # 🔴 **상한은 1 이고, 루프가 아니라 구조다**(D17 과 같은 규약). 이 블록에는 반복이
+        #    없다: 두 번째 집행 결과는 그대로 기록되고 다시 되먹이지 않는다. 유료 호출이
+        #    무한히 새는 자리를 만들지 않는다.
+        local _throw_why = _enact_throw_reason(r)
+        if _throw_why !== nothing
+            enact_retry = _retry_gate(r, world_delta_body)
+            if enact_retry === :ok
+                # 🔴 이름·코드는 **`sl` 에서 다시 읽는다.** D17 의 되먹임이 이미 성공한 판
+                #    에서는 `nm`/`cd` 가 **등록된 적 없는 옛 값**이다(D5 문단과 같은 근거).
+                local _prev_nm = String(something(_synth_lane_field(sl, "impl_name"), nm))
+                local _prev_cd = String(something(_synth_lane_field(sl, "impl_code"), ""))
+                local fx2 = _rewrite_once(sl, _prev_nm, _prev_cd, _throw_why)
+                if fx2 === nothing
+                    enact_retry = :roundtrip_failed
+                else
+                    # 🔴 `allow_redefine` 을 **여기서만** 넘긴다. 술어는 "agent-3 이 방금 우리가
+                    #    주조한 그 이름을 그대로 돌려줬는가" 다. 첫 등록이 **성공한** 뒤에 던진
+                    #    판이므로 그 이름은 이미 `_MINTED_EVER` 에 있고, 그것을 안 풀면 고친
+                    #    body 는 언제나 `already_minted` 로 거절돼 이 채널이 **구조적으로 죽는다**
+                    #    (2026-09-05 실측). 다른 이름을 냈다면 이 값은 `false` 이고 충돌 셋의
+                    #    판정(D6 신호 포함)은 그대로 산다.
+                    local why3 = _install_rewrite!(sl, fx2;
+                                     allow_redefine = (fx2.impl_name == _prev_nm))
+                    if why3 !== nothing
+                        enact_retry = :rejected
+                        # ⚠️ 사유는 **두 번째 시도의 것**이다(D17 과 같은 규약).
+                        impl_rejected_why = why3
+                    else
+                        enact_retry = :retried
+                        # 🔴 L3 은 **등록된 이름**에서 다시 읽는다(D5 와 같은 근거).
+                        interface_calls = _interface_calls_of(
+                            something(_synth_lane_field(sl, "impl_name"), nm))
+                        # 🔴 첫 시도의 걸음은 아래 기록 줄에서 **사라진다**(그 줄은 두 번째
+                        #    시도를 적는다). 그래서 여기서 따로 찍는다 — 접두가
+                        #    `[minted] enact_retry:` 라 `ladder_report.py` 의
+                        #    `MINTED_RE`(`\[minted\] lane=present…`)에 안 걸린다(그 정규식은
+                        #    리터럴 `lane=present` 로 시작하는 줄만 고른다).
+                        println("[minted] enact_retry: 되먹임 1회 — 첫 시도 steps=[",
+                                join([_step_render(st) for st in r.steps], " "), "]",
+                                " 사유=", _throw_why)
+                        # 🔴 `_pre` 는 **안 다시 찍는다.** `world_delta` 는 이 판에서도 "집행
+                        #    봉투 전체"의 뜻을 유지해야 한다 — 두 시도를 합친 누적 차분이다.
+                        #    (게이트가 첫 시도의 body 차분이 잰 0 인 판에서만 열리므로, 이
+                        #    누적값은 실질적으로 두 번째 body 의 것이다.)
+                        r = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
+                        world_delta = _world_delta(_pre, _world_digest(env))
+                        world_delta_body = _world_delta(_pre, r.body_probe)
+                    end
+                end
+            else
+                println("[minted] enact_retry: 거부 — ", enact_retry,
+                        " (세계가 더러울 수 있다: 되돌릴 방법이 없다) 사유=", _throw_why)
+            end
+        end
         # 🔴 **네** 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
         #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그
         #    조용한 미복구가 된다(2026-08-30 최종 리뷰).
@@ -2005,6 +2239,11 @@ function enact_minted_decision!(env, truth, decision)
                 #    거절된 판에서 agent-3 이 무엇을 없다고 했는지가 **어디에도 안 남았다** —
                 #    스트림 jsonl 에 합성 필드가 없고 서비스도 기록을 파일로 안 쓴다. 값은
                 #    이미 `SYNTH_LANE_KEYS` 로 도착해 있었고 관측면만 없었다.
+                # 🔴 D17b (2026-09-05). **재시도판을 첫-시도 성공판과 가른다.** 이 줄의
+                #    나머지 필드(`verdict`·`applied`·`steps`…)는 되먹임이 성공한 판에서
+                #    **두 번째 시도**를 적는다 — 이 한 칸이 없으면 사다리는 그것을 깨끗한
+                #    첫 시도로 채점한다. 상태의 뜻은 `_retry_str` 이 소유한다.
+                " enact_retry=", _retry_str(enact_retry),
                 " n_body_names=", length(something(_synth_lane_field(sl, "body_names"), [])),
                 # 🔴 Task 9(설계 §8). 등록 결과 — "모델이 코드를 안 냈다" 와 "냈는데 규약
                 #    위반으로 거절됐다" 를 가른다. 여기까지 왔다는 것은 등록을 시도했다면
@@ -2058,6 +2297,7 @@ function enact_minted_decision!(env, truth, decision)
                 args_from = r.args_from, n_calls = r.n_calls,
                 dropped_args = r.dropped_args,
                 registered = registered, impl_rejected_why = impl_rejected_why,
+                enact_retry = enact_retry,
                 world_delta = world_delta,
                 world_delta_body = world_delta_body,
                 interface_calls = interface_calls)
@@ -2075,7 +2315,11 @@ function enact_minted_decision!(env, truth, decision)
                 # 🔴 B4: `n/a` 가 아니다. 이 경로의 `world_maybe_dirty` 는 확정된 `true` 이고
                 #    (아래 반환 참조), 로그가 반환과 다른 말을 하면 라이브 판독이 갈린다.
                 " partial=false world_maybe_dirty=true handled=false undo=none resume=none",
-                " args_from=n/a n_calls=n/a dropped_args=n/a steps=[]",
+                " args_from=n/a n_calls=n/a dropped_args=n/a",
+                # 🔴 D17b: 예외가 **두 번째 집행 도중**에 났으면 이 값이 `retried` 다.
+                #    리터럴 `n/a` 를 적으면 그 판이 "시도 안 했다" 로 기록된다.
+                " enact_retry=", _retry_str(enact_retry),
+                " steps=[]",
                 " registered=", something(registered, "n/a"),
                 " impl_rejected_why=", something(impl_rejected_why, "n/a"),
                 # 🔴 D18(B4 와 같은 이유 — 로그와 반환이 다른 말을 하면 라이브 판독이
@@ -2117,6 +2361,7 @@ function enact_minted_decision!(env, truth, decision)
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
                 args_from = nothing, n_calls = nothing, dropped_args = nothing,
                 registered = registered, impl_rejected_why = impl_rejected_why,
+                enact_retry = enact_retry,
                 world_delta = world_delta,
                 world_delta_body = world_delta_body,
                 interface_calls = interface_calls)

@@ -366,7 +366,8 @@ end
    ⚠️ 이 함수는 이제 프로세스 상태(`_MINTED_EVER`·모듈 심볼 표)를 **읽는다**. 여전히
    세계도 `eval` 도 안 건드린다 — 순수함의 뜻은 그것이었다.
 """
-function check_impl_conventions(name::AbstractString, code::AbstractString)
+function check_impl_conventions(name::AbstractString, code::AbstractString;
+                                allow_redefine::Bool = false)
     # 🔴 F14(2026-09-03 최종 리뷰, 컨트롤러 판정). `Base.isidentifier(chop(name))` 는
     #    `name` 을 문자 단위로 훑는다 — 유효하지 않은 UTF-8(예: 외톨이 연속 바이트
     #    `0xff`)이 섞여 있으면 `Base.InvalidCharError` 를 **던진다**(실측). `endswith`·
@@ -379,7 +380,23 @@ function check_impl_conventions(name::AbstractString, code::AbstractString)
     # 규약 5 — 충돌 셋을 가른다(위 표). 순서가 뜻을 정한다: 이 프로세스가 스스로 심은
     # 이름이 먼저다(그것은 모델에 대한 사실이 아니다), 그다음이 모델이 본/못 본 표면이다.
     local sym = Symbol(name)
-    if String(name) in _MINTED_EVER
+    # 🔴 D17b (2026-09-05). **집행-예외 되먹임의 재등록만** 이 갈래로 온다. 규약 5 의 충돌
+    #    셋을 **통째로** 건너뛴다 — `_MINTED_EVER` 갈래만 빼고 `elseif` 로 흘려보내면 안 된다:
+    #    이 이름은 방금 `Core.eval` 로 심겨 모듈에 **정의돼 있고** export 는 안 됐으므로
+    #    다음 갈래가 `impl_name_exists_withheld` 를 낸다. 그것은 "모델이 감춰진 능력을 스스로
+    #    다시 유도했다"는 D6 의 **유일한 자기신고**이므로, 우리 재시도 배선이 그 히스토그램에
+    #    가짜 한 건을 심게 된다.
+    # 🔴 **좁다.** `allow_redefine` 은 호출자가 "방금 자기가 주조한 바로 그 이름" 일 때만 참으로
+    #    넘긴다(술어의 진실원은 `tools/monitor/enact.jl` 의 집행-예외 되먹임 자리다). 기본값이
+    #    `false` 라 다른 모든 호출자·시험은 바이트 동일하다.
+    # 🔴 이 갈래가 없으면 집행-예외 되먹임은 **구조적으로 죽는다**(2026-09-05 실측): 첫 등록이
+    #    성공한 뒤에 던진 판이므로 이름은 이미 `_MINTED_EVER` 에 있고, agent-3 은
+    #    `RewriteToolImpl`("Change nothing else")에 따라 같은 이름을 되돌려준다 — 즉 고친 body
+    #    가 언제나 `already_minted` 로 거절된다.
+    if allow_redefine && String(name) in _MINTED_EVER
+        # 통과. 재정의는 `Core.eval` 이 메서드를 덮고 `minted_table()` 행이 갱신되며,
+        # 호출부가 `Base.invokelatest` 를 쓰므로 새 정의가 곧바로 보인다.
+    elseif String(name) in _MINTED_EVER
         return "reject:impl_name_already_minted:$(name) — 이 프로세스가 앞서 주조해 " *
                "`Core.eval` 한 이름이다. 표는 리셋돼도 정의는 안 지워진다(파일 머리말 I1)"
     elseif isdefined(@__MODULE__, sym)
@@ -879,8 +896,9 @@ _MINTED_EVER, …)` 가 던지는 지점보다 앞이므로, 이 반쪽 상태�
 """
 function register_minted_primitive!(; name::AbstractString, code::AbstractString,
                                      params, surface::AbstractString = "unknown",
-                                     reversible::Bool = false)
-    why = check_impl_conventions(name, code)
+                                     reversible::Bool = false,
+                                     allow_redefine::Bool = false)
+    why = check_impl_conventions(name, code; allow_redefine = allow_redefine)
     why === nothing || return why
     # 🔴 F7. `Core.eval` **전에** 검증한다 — 이 검증이 eval 뒤에 있었던 것이 결함의
     #    전부였다. `pairs(params)` 자체가 못 도는 모양(비-순회형)도 예외가 아니라 거절이다.

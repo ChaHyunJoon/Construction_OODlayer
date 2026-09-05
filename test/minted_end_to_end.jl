@@ -3006,6 +3006,238 @@ end
     @test occursin("status 어휘가 선언돼 있지 않다", m.reason)
 end
 
+
+# =============================================================================
+# D17b (2026-09-05) — 되먹임 채널을 **등록 거절**에서 **집행 예외**로 넓힌다.
+#
+# 재는 명제: `CB.enact_minted!` 이 돌려준 판의 마지막 걸음이 `:threw` 이면, 그 예외
+# 메시지가 `/rewrite` 로 나가고(같은 전선 계약 — 다섯 키), 고친 body 가 재등록·재집행되며,
+# 그 사실이 `[minted] lane=present` 줄의 **`enact_retry=`** 한 칸으로 첫-시도 성공판과
+# 구별된다. 그리고 세계가 더러울 수 있는 판에서는 **거절**되고 그 거절이 사유별로 남는다.
+#
+# 🔴 유료 호출 0건이다 — 위 `_RW_SERVER`(루프백) 하나만 쓴다. (0) 이 그 사실을 못박는다.
+# =============================================================================
+
+"`live_cache_env()` + `staging_circles`. 여섯째 축까지 **재는** env — 게이트가 그것을 요구한다."
+function retry_env()
+    local e = live_cache_env()
+    return (cache = e.cache, sched = e.sched,
+            active_build_steps = e.active_build_steps,
+            staging_circles = Dict{Symbol,Any}())
+end
+
+"stdout 전문을 잡는다(이 파일의 다른 게이트와 같은 관용구)."
+function _d17b_cap(f)
+    local out
+    mktemp() do path, io
+        redirect_stdout(io) do; f(); end
+        flush(io); out = read(path, String)
+    end
+    return out
+end
+
+"`MINTED_RE` 가 고르는 그 줄 — 리터럴 `[minted] lane=present` 로 **시작**하는 줄."
+_d17b_rec(out) = (local r = [l for l in split(out, "\n")
+                             if startswith(l, "[minted] lane=present")];
+                  length(r) == 1 ? r[1] : "")
+
+"한 원시짜리 합성 레인. `code` 는 `nm` 을 정의해야 한다."
+_d17b_lane(nm, code; params = Dict{String,Any}("goal" => Dict{String,Any}("type" => "string")),
+           args = Dict{String,Any}("goal" => "goal1")) = _lane(Dict{String,Any}(
+    "synthesis_event" => true, "ran" => true, "error" => nothing,
+    "tool_name" => "T", "impl_name" => nm, "impl_code" => code,
+    "surface" => "env_param", "reversible" => false,
+    "params" => params, "body_names" => [nm], "wrote" => true,
+    "calls" => [Dict{String,Any}("primitive" => nm, "args" => args)]))
+
+# 던지지만 세계는 **안 건드리는** body. 유료 런 2·4·5·7 이 죽은 모양 그대로:
+# 지어낸 식별자를 조회하다 죽는다.
+_d17b_boom(nm) = "function $(nm)(env; goal = \"g\")\n" *
+                 "    error(\"KeyError: key \\\"\$(goal)\\\" not found\")\n" *
+                 "end\n"
+
+@testset "(33) 🔴 D17b: 집행 예외가 되먹임으로 나가고 고친 body 가 다시 집행된다" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_LAST[] = nothing
+    # 🔴 고친 body 는 **같은 이름**으로 돌아온다 — `RewriteToolImpl` 의 "Change nothing
+    #    else" 가 그 모양이고, 그것이 `allow_redefine` 이 없으면 채널을 죽이는 자리다.
+    _RW_RESPONSES[:d17b_same] = () -> _rw_fix("d17b_boom_a!")
+    _RW_MODE[] = :d17b_same
+    local m = enact_minted_decision!(retry_env(), nothing,
+                  _dec(_d17b_lane("d17b_boom_a!", _d17b_boom("d17b_boom_a!"))))
+    # ---- 되먹임이 실제로 나갔다 ------------------------------------------------------
+    @test _RW_HITS[] == 1
+    @test m.enact_retry === :retried
+    # ---- 전선 계약: **두 번째 철자를 만들지 않았다** — D17 과 같은 다섯 키다 ------------
+    local body = _RW_LAST[]
+    @test body !== nothing
+    @test Set(String.(keys(body))) ==
+          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why"])
+    # ---- 사유는 **예외 메시지 자신**이다 (모양-맞추기가 못 닫는 가족을 닫는 자리) --------
+    @test startswith(String(body.impl_rejected_why), "enact_threw:d17b_boom_a!: ")
+    @test occursin("KeyError", String(body.impl_rejected_why))
+    # ⚠️ **실측된 상호작용(2026-09-05)** — 여기 원래 `occursin("goal1", …)` 를 적었고
+    #    빨개졌다. 지어낸 `goal="goal1"` 은 인자 채널 필터(`86b5be25`)가 **이미 버렸고**
+    #    body 는 선언된 기본값 `"g"` 로 떨어진다(같은 런의 `dropped fabricated identifier`
+    #    줄이 그 사실을 찍는다). 그래서 예외가 이름 붙이는 것은 모델이 쓴 값이 아니라
+    #    **body 가 실제로 본 값**이다 — 그리고 그것이 옳다: agent-3 이 고쳐야 하는 자리는
+    #    실행된 코드가 실패한 자리다.
+    @test occursin("key \"g\" not found", String(body.impl_rejected_why))
+    # ---- 두 번째 시도가 실제로 굴렀다 --------------------------------------------------
+    @test m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :rw_ok
+    @test m.partial === false                 # 두 번째 body 는 안 던졌다
+    @test m.registered === true
+    @test m.impl_rejected_why === nothing
+    _RW_MODE[] = :off
+end
+
+@testset "(34) 🔴 D17b: 재시도판은 기록 줄에서 첫-시도 성공판과 **구별된다**" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    _RW_RESPONSES[:d17b_same_b] = () -> _rw_fix("d17b_boom_b!")
+    _RW_MODE[] = :d17b_same_b
+    local retried = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                        _dec(_d17b_lane("d17b_boom_b!", _d17b_boom("d17b_boom_b!")))))
+    _RW_MODE[] = :off
+    # 첫 시도에 성공하는 판(되먹임을 안 탄다).
+    CB.reset_minted_table!()
+    local clean = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                      _dec(_d17b_lane("d17b_clean_b!",
+                          "function d17b_clean_b!(env; goal = \"g\")\n" *
+                          "    return (status = :rw_ok, goal = goal)\nend\n"))))
+    # 🔴 두 줄의 **나머지가 같다**: 같은 verdict, 같은 status, 같은 registered.
+    local rl = _d17b_rec(retried); local cl = _d17b_rec(clean)
+    @test !isempty(rl) && !isempty(cl)
+    @test occursin("verdict=admit", rl) && occursin("verdict=admit", cl)
+    @test occursin("steps=[d17b_boom_b!:rw_ok]", rl)
+    @test occursin("steps=[d17b_clean_b!:rw_ok]", cl)
+    # 🔴 **가르는 것은 이 한 칸뿐이다.** 없으면 사다리가 둘을 같은 판으로 센다.
+    @test occursin("enact_retry=retried", rl)
+    @test occursin("enact_retry=n/a", cl)
+    @test !occursin("enact_retry=retried", cl)
+    # 🔴 첫 시도의 걸음은 **어디에도 안 사라진다** — 별도 진단 줄이 나른다.
+    @test occursin("[minted] enact_retry: 되먹임 1회 — 첫 시도 steps=[", retried)
+    @test occursin("d17b_boom_b!:threw", retried)
+    # 🔴 그런데 그 줄은 `MINTED_RE`(`lane=present` 로 **시작**) 에 안 걸린다.
+    @test !occursin("[minted] enact_retry:", rl)
+    # 🔴 그리고 `lane=present` 줄은 **정확히 하나**다 — 재시도가 기록 줄을 둘로 만들지 않는다.
+    @test count(l -> startswith(l, "[minted] lane=present"), split(retried, "\n")) == 1
+end
+
+@testset "(35) 🔴 D17b 판정: 더러울 수 있는 세계에서는 **거절**하고, 거절을 사유별로 남긴다" begin
+    # ---- (a) 던진 단계가 첫 단계가 아니다 = 앞선 원시가 확실히 끝까지 돌았다 -------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    @test CB.register_minted_primitive!(
+        name = "d17b_first_ok!", code = "function d17b_first_ok!(env; goal = \"g\")\n" *
+            "    return (status = :rw_ok, goal = goal)\nend\n",
+        params = Dict{String,Any}("goal" => Dict{String,Any}("type" => "string")),
+        surface = "env_param", reversible = false) === nothing
+    local two = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d17b_second_boom!",
+        "impl_code" => _d17b_boom("d17b_second_boom!"),
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("goal" => Dict{String,Any}("type" => "string")),
+        "body_names" => ["d17b_first_ok!", "d17b_second_boom!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d17b_first_ok!",
+                                     "args" => Dict{String,Any}("goal" => "g")),
+                    Dict{String,Any}("primitive" => "d17b_second_boom!",
+                                     "args" => Dict{String,Any}("goal" => "goal2"))]))
+    local ma = enact_minted_decision!(retry_env(), nothing, _dec(two))
+    @test length(ma.steps) == 2 && ma.steps[2].status === :threw
+    @test ma.enact_retry === :refused_not_first_step
+    @test _RW_HITS[] == 0        # 🔴 유료 호출이 **안 나갔다** — 거절은 왕복 앞이다
+
+    # ---- (b) 던진 body 가 세계를 **실제로 바꿨다** ---------------------------------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    local dirty = _d17b_lane("d17b_dirty_boom!",
+        "function d17b_dirty_boom!(env; goal = \"g\")\n" *
+        "    push!(env.active_build_steps, ConstructionBots.RobotID(7))\n" *
+        "    error(\"KeyError: key \\\"\$(goal)\\\" not found\")\nend\n")
+    local mb = enact_minted_decision!(retry_env(), nothing, _dec(dirty))
+    @test length(mb.steps) == 1 && mb.steps[1].status === :threw
+    @test mb.world_delta_body !== nothing && mb.world_delta_body.active == 1
+    @test mb.enact_retry === :refused_world_changed
+    @test _RW_HITS[] == 0
+
+    # ---- (c) 지문을 못 찍었다 = **못 쟀다**. 못 잰 것을 깨끗하다고 안 읽는다 --------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    # `live_cache_env()` 에는 `staging_circles` 가 없다 → 여섯째 축이 `nothing` 이다.
+    local mc = enact_minted_decision!(live_cache_env(), nothing,
+                   _dec(_d17b_lane("d17b_unmeas_boom!", _d17b_boom("d17b_unmeas_boom!"))))
+    @test mc.world_delta_body !== nothing
+    @test mc.world_delta_body.n_staging_moved === nothing
+    @test mc.enact_retry === :refused_world_unmeasured
+    @test _RW_HITS[] == 0
+
+    # 🔴 셋은 **서로 다른 심볼**이다 — 하나로 뭉개면 "왜 안 갔나" 가 로그에서 사라진다.
+    @test length(Set([ma.enact_retry, mb.enact_retry, mc.enact_retry])) == 3
+end
+
+@testset "(36) 🔴 D17b 삼상: 시도 안 했다 / 왕복이 실패했다 / 고친 body 가 왔다" begin
+    # ---- 시도 안 했다: 집행이 안 던졌다 -------------------------------------------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_MODE[] = :off
+    local ok = enact_minted_decision!(retry_env(), nothing,
+                   _dec(_d17b_lane("d17b_tri_ok!",
+                       "function d17b_tri_ok!(env; goal = \"g\")\n" *
+                       "    return (status = :rw_ok, goal = goal)\nend\n")))
+    @test ok.enact_retry === nothing            # 삼상의 첫째 — `n/a`
+    @test _RW_HITS[] == 0
+
+    # ---- 왕복이 실패했다: 서버가 404 를 낸다(모드 `:off`) --------------------------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    local rt = enact_minted_decision!(retry_env(), nothing,
+                   _dec(_d17b_lane("d17b_tri_rt!", _d17b_boom("d17b_tri_rt!"))))
+    @test _RW_HITS[] == 1                       # 🔴 실제로 나갔다(비-0 대조)
+    @test rt.enact_retry === :roundtrip_failed  # 삼상의 둘째
+    @test rt.verdict === :admit                 # 원래 판이 그대로 남는다
+    @test rt.partial === true
+    @test length(rt.steps) == 1 && rt.steps[1].status === :threw
+
+    # ---- 고친 body 가 왔는데 **재등록이 거절했다** ---------------------------------------
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_MODE[] = :bad_surface   # `surface: 7` — 본 경로와 같은 사유 이름
+    local rj = enact_minted_decision!(retry_env(), nothing,
+                   _dec(_d17b_lane("d17b_tri_rj!", _d17b_boom("d17b_tri_rj!"))))
+    @test _RW_HITS[] == 1
+    @test rj.enact_retry === :rejected
+    @test rj.impl_rejected_why == "reject:surface_not_a_string:Int64"
+    _RW_MODE[] = :off
+
+    # ---- 그리고 셋 + `retried` 는 서로 다르다 -------------------------------------------
+    @test length(Set([ok.enact_retry, rt.enact_retry, rj.enact_retry, :retried])) == 4
+end
+
+@testset "(37) 🔴 D17b: `allow_redefine` 은 **좁다** — 이 채널 밖에서는 아무것도 안 바뀐다" begin
+    CB.reset_minted_table!()
+    local code = "function d17b_narrow!(env; goal = \"g\")\n    return (status = :rw_ok)\nend\n"
+    local p = Dict{String,Any}("goal" => Dict{String,Any}("type" => "string"))
+    @test CB.register_minted_primitive!(name = "d17b_narrow!", code = code,
+              params = p, surface = "env_param") === nothing
+    # 🔴 기본값(`false`)에서는 오늘과 **바이트 동일**하다.
+    local w = CB.register_minted_primitive!(name = "d17b_narrow!", code = code,
+                  params = p, surface = "env_param")
+    @test w !== nothing && startswith(w, "reject:impl_name_already_minted:")
+    # 🔴 켜면 통과하고, 그때도 **다른 충돌 갈래는 안 열린다**(D6 신호가 안 샌다).
+    @test CB.register_minted_primitive!(name = "d17b_narrow!", code = code,
+              params = p, surface = "env_param", allow_redefine = true) === nothing
+    # D6: 감춰진 능력 이름은 `allow_redefine` 을 켜도 그대로 거절이다 —
+    # `_MINTED_EVER` 멤버가 아니므로 첫 갈래가 안 걸리고 충돌 셋이 그대로 판정한다.
+    local hid = CB.register_minted_primitive!(
+        name = "release_pending_assignments!",
+        code = "function release_pending_assignments!(env; x = 1)\n    return (status = :ok,)\nend\n",
+        params = Dict{String,Any}(), surface = "sched", allow_redefine = true)
+    @test hid !== nothing
+    @test occursin("impl_name_exists", hid)
+    @test !occursin("already_minted", hid)
+end
+
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
 #    여기 못 오지만, 그때는 프로세스가 곧 끝난다 — 포트는 프로세스와 함께 반납된다.)
 close(_RW_SERVER)
