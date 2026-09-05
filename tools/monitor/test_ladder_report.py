@@ -191,3 +191,77 @@ def test_l4_world_delta_body_non_zero_is_true(tmp_path):
                         {"n_binding_changed": 1, "active": 0, "n_edges": 0, "closed": 0}})
     assert r["verdict"] == lr.TRUE
     assert r["verdict"] != lr.MEASURED_ZERO
+
+
+# ---------------------------------------------------------------------------
+# L4 sixth axis: n_staging_moved (geometry) — B1, 2026-09-05
+#
+# The defect this closes: a hand-written zone oracle took a build from
+# n_closed=270/305 (PROJECT INCOMPLETE) to 287/305 (PROJECT COMPLETE) and
+# world_delta_body reported 0 on all five schedule axes — the repair edits
+# GEOMETRY (start_config transforms + staging circles), which no schedule axis
+# can see. The sixth axis is tri-state PER AXIS: null = geometry not readable
+# in this env, 0 = read and nothing moved.
+# ---------------------------------------------------------------------------
+
+FIVE_ZERO = {"closed": 0, "active": 0, "n_edges": 0,
+             "n_binding_changed": 0, "n_weights_changed": 0}
+
+
+def test_l4_geometry_only_move_reads_TRUE_not_measured_zero(tmp_path):
+    """THE defect case: five schedule axes at zero, geometry axis positive."""
+    row = dict(FIVE_ZERO); row["n_staging_moved"] = 8
+    r = _l4(tmp_path, {"interface_calls": [], "world_delta_body": row})
+    assert r["verdict"] == lr.TRUE
+    assert r["verdict"] != lr.MEASURED_ZERO
+
+
+def test_l4_all_six_zero_is_measured_zero(tmp_path):
+    row = dict(FIVE_ZERO); row["n_staging_moved"] = 0
+    r = _l4(tmp_path, {"interface_calls": [], "world_delta_body": row})
+    assert r["verdict"] == lr.MEASURED_ZERO
+    assert r["reason"] is None
+
+
+def test_l4_null_geometry_axis_with_zeros_is_unmeasured_not_measured_zero(tmp_path):
+    """null != 0. Five zeros plus an unreadable geometry axis does NOT license
+    'the world did not change' — the null axis is the one that would have
+    carried a zone repair."""
+    row = dict(FIVE_ZERO); row["n_staging_moved"] = None
+    r = _l4(tmp_path, {"interface_calls": [], "world_delta_body": row})
+    assert r["verdict"] == lr.UNMEASURED
+    assert r["verdict"] != lr.MEASURED_ZERO
+    assert "n_staging_moved" in r["reason"]
+
+
+def test_l4_null_geometry_axis_does_not_downgrade_a_measured_positive(tmp_path):
+    """A readable non-zero axis is a measured positive; a null elsewhere is
+    noted but must not take the positive away."""
+    row = dict(FIVE_ZERO); row["n_binding_changed"] = 3; row["n_staging_moved"] = None
+    r = _l4(tmp_path, {"interface_calls": [], "world_delta_body": row})
+    assert r["verdict"] == lr.TRUE
+    assert "n_staging_moved" in r["reason"]
+
+
+def test_l4_previous_generation_five_axis_row_still_scores(tmp_path):
+    """Rows written before the sixth axis existed have five keys and no null —
+    they must keep scoring exactly as they did (no key, no claim)."""
+    row = dict(FIVE_ZERO); row["closed"] = 2
+    r = _l4(tmp_path, {"interface_calls": [], "world_delta_body": row})
+    assert r["verdict"] == lr.TRUE
+    assert r["reason"] is None
+
+
+def test_unmeasured_leaf_names_unit():
+    assert lr.unmeasured_leaf_names({"a": 0, "b": None}) == ["b"]
+    assert lr.unmeasured_leaf_names({"a": 0}) == []
+    assert lr.unmeasured_leaf_names([1, None]) == ["[1]"]
+    assert lr.unmeasured_leaf_names("not a container") == []
+
+
+def test_all_numeric_zero_ignores_nulls_as_leaves():
+    """The null must not be counted as a zero leaf — the caller, not this
+    helper, decides what a null does to the verdict."""
+    is_zero, components = lr.all_numeric_zero({"a": 0, "b": None})
+    assert is_zero is True                     # every NUMERIC leaf is zero
+    assert ("b", None) in components           # but the null is still printed

@@ -979,6 +979,42 @@ end
 _is_countable_world_set(x) = x isa AbstractSet
 
 """
+    _staging_snapshot(x) -> Union{Nothing,Dict{Any,NTuple{3,Float64}}}
+
+`env.staging_circles` 를 **스칼라로** 뜬 기하 지문. 못 읽으면 `nothing`(= 그 **축 하나만**
+"못 쟀다"). 진실원은 `PlannerEnv.staging_circles::Dict{AbstractID,LazySets.Ball2}`
+(`src/route_planning.jl`)이다.
+
+🔴 **왜 객체가 아니라 스칼라 세 개인가**(2026-09-05, B1). `weights` 가 `copy` 로 산 그 위험의
+   한 겹 아래다: `Dict` 만 얕게 뜨면 값은 `Ball2` **객체**이고, 누군가 `b.center .+= Δ` 로
+   제자리 편집하는 순간(그 필드는 `Vector{Float64}` 다 — 가변이다) 사전 지문이 사후와 같은
+   객체를 가리켜 차분이 **언제나 0** 이 된다. `(cx, cy, r)` 를 그 자리에서 읽어 두면 오늘의
+   두 mutator(둘 다 새 `Ball2` 를 **대입**한다)에도, 제자리 편집하는 미래의 셋째에도 산다.
+
+🔴 **`r` 까지 담는 이유**: 적치원의 반지름도 기하다. 오늘의 두 mutator 는 `R` 을 보존하지만
+   (`restage_assembly!` 의 `Ball2(c1, R)`), 반지름이 변하는 편집을 "안 움직였다" 로 읽을
+   이유가 없다.
+
+⚠️ 2차원만 본다(`c[1:2]`). `translate_whole_build!` 의 Δ 가 `(dx, dy, 0)` 이고
+   `env.staging_circles` 의 원이 평면 원이기 때문이다(`_apply_uniform_translation!`).
+   좌표가 둘 미만이면 **모양을 모르는 것**이라 `nothing` 이다.
+"""
+function _staging_snapshot(x)
+    x isa AbstractDict || return nothing
+    try
+        local out = Dict{Any,NTuple{3,Float64}}()
+        for (k, b) in x
+            local c = CB.get_center(b)
+            length(c) >= 2 || return nothing
+            out[k] = (Float64(c[1]), Float64(c[2]), Float64(CB.get_radius(b)))
+        end
+        return out
+    catch
+        return nothing
+    end
+end
+
+"""
     _world_digest(env) -> Union{Nothing,NamedTuple}
 
 값싼 세계 지문. 집행 **전후**로 찍어 차분을 낸다. 못 찍으면 `nothing`("못 쟀다").
@@ -997,6 +1033,26 @@ _is_countable_world_set(x) = x isa AbstractSet
 🔴 **다섯을 전부 읽어야 지문이다**(2026-09-04 Task 2 가 `weights` 를 더해 넷 → 다섯이
    됐다). 하나라도 못 읽으면 `nothing` 을 낸다 — 반쯤 잰 지문의 차분은 무엇을 뜻하는지
    아무도 적을 수 없고, 그 모호함이 정확히 이 필드가 없애려는 것이다.
+
+🔴 **여섯째 축 `staging` 은 그 전부-아니면-무 밖에 있다 — 일부러다**(2026-09-05, B1).
+   앞 다섯은 전부 배정/스케줄 그래프 위에 있어서, **기하 수리**(`translate_whole_build!` ·
+   `restage_all_blocked!` 가 `start_config` 변환과 `env.staging_circles` 를 옮긴다)를 한
+   축도 못 본다. 2026-09-05 실측: 손으로 쓴 zone 오라클이 빌드를
+   `n_closed=270/305`(INCOMPLETE) → `287/305`(COMPLETE) 로 끌어올렸는데
+   `world_delta_body` 의 다섯 축이 **전부 0** 이었다 — 계측기가 측정된 양성을 측정된 0 으로
+   읽었다(이 레포가 기록한 최악의 실패 모드).
+   🔴 **그런데 여섯째를 앞 다섯과 같은 전부-아니면-무로 두면 계측기가 넓어지는 게 아니라
+   좁아진다.** 오늘 그 다섯을 못박는 픽스처들(`live_cache_env()` · `aliased_active_env()`
+   — `test/minted_end_to_end.jl` (10)(11)(15)(26e)(28))에는 `staging_circles` 가 **없다**.
+   전부-아니면-무였다면 그 판들의 지문이 통째로 `nothing` 이 되어 **기하 축을 더한 대가로
+   기존 다섯이 눈을 감는다.** 그래서 이 축은 **축 자신이 삼상**이다:
+   `nothing`(이 env 에서 기하를 못 읽었다) ≠ `Dict`(읽었다 — 비었어도 읽은 것이다).
+   ⚠️ 규약은 안 깨진다. "못 쟀다 ≠ 쟀는데 0" 이 지문 **전체**가 아니라 **축마다** 살아
+   있을 뿐이고, `_world_delta` 가 그것을 `n_staging_moved::Union{Nothing,Int}` 로 그대로
+   내보내며 로그·결정 행·채점기가 셋을 셋으로 나른다.
+   🔴 `hasproperty` 로 읽는다 — `env.staging_circles` 를 맨 필드 접근으로 읽으면 그 필드가
+   없는 env 에서 **던지고**, 아래 `catch` 가 그것을 통째 `nothing` 으로 삼켜 정확히 위에서
+   피하려던 그 실명이 된다.
 
 🔴 **`weights` 는 스냅샷이다(`copy`).** 접근자가 살아 있는 `Dict` 를 참조로 돌려주므로,
    안 뜨면 사전 지문이 body 가 편집하는 그 dict 을 가리켜 차분이 **언제나 0** 이 된다.
@@ -1060,11 +1116,19 @@ function _world_digest(env)
         #    아래 `catch` 가 이미 `nothing` 을 낸다.
         local w = CB.get_root_node_weights(env.sched)
         w isa AbstractDict || return nothing
+        # 🔴 **여섯째 축 (2026-09-05, B1). 기하.** 위 문단이 근거를 소유한다. 두 mutator 가
+        #    쓰는 자리가 이 필드다(`src/respec/restage_zone.jl`):
+        #      · `_apply_uniform_translation!` — `env.staging_circles[aid] = LazySets.Ball2(...)`
+        #      · `restage_assembly!`           — `env.staging_circles[assembly_id] = LazySets.Ball2(c1, R)`
+        #    ⚠️ 이 축은 **가드 자리에 안 온다** — 위 셋과 달리 못 읽어도 지문은 산다.
+        local staging = _staging_snapshot(hasproperty(env, :staging_circles) ?
+                                          env.staging_circles : nothing)
         return (closed   = length(env.cache.closed_set),
                 active   = length(env.active_build_steps),
                 n_edges  = CB.Graphs.ne(env.sched.graph),
                 binding  = CB.assignment_binding(env.sched),
-                weights  = copy(w))
+                weights  = copy(w),
+                staging  = staging)
     catch
         return nothing
     end
@@ -1074,6 +1138,9 @@ end
     _world_delta(a, b) -> Union{Nothing,NamedTuple}
 
 두 지문의 차분. 한쪽이라도 `nothing` 이면 `nothing`("못 쟀다").
+
+🔴 **`n_staging_moved` 은 축 자신이 삼상이다**(2026-09-05, B1) — 나머지 다섯이 수인 채로
+   이 축만 `nothing` 일 수 있다. 근거는 `_world_digest` 의 docstring 이 소유한다.
 
 🔴 **삼상**: `nothing`(못 쟀다) ≠ 0 의 튜플(쟀는데 안 바뀌었다). 무동작 body 가 오늘의
    지배적인 판이므로(위 R11 문단) 그 둘을 뭉개면 이 필드는 **모든** 판에서 `nothing` 으로
@@ -1117,11 +1184,32 @@ function _world_delta(a, b)
             isequal(get(a.weights, k, nothing), v) || (w_changed += 1)
         end
         for k in keys(a.weights); haskey(b.weights, k) || (w_changed += 1); end
+        # 🔴 **여섯째 축 (2026-09-05, B1). `n_staging_moved` — 이 축만 삼상이다.**
+        #    `nothing` = 이 판에서 기하를 못 읽었다(둘 중 하나라도 `staging` 이 없거나
+        #    `nothing`) · `0` = 읽었는데 안 움직였다 · `> 0` = 움직인 적치원의 개수.
+        #    앞 다섯처럼 통째 `nothing` 으로 접지 **않는** 이유는 `_world_digest` 의
+        #    docstring 이 소유한다(그렇게 접으면 기하 축을 더한 대가로 기존 다섯이 눈을 감는다).
+        # ⚠️ `hasproperty` 를 먼저 본다 — 여섯째 축 이전 세대의 다섯-필드 지문이 오면
+        #    `a.staging` 이 **던지고** 그 예외는 이 `try` 안이라 차분 **전체**가 `nothing` 이
+        #    된다(= 계측이 다섯 축까지 끈다). 그 판은 이 축만 "못 쟀다" 다.
+        # 🔴 `!=` 가 아니라 `!isequal` 인 이유는 `weights` 와 같다: 좌표가 `Float64` 라
+        #    `NaN != NaN` 이 참이고, 그러면 아무도 안 건드린 NaN 좌표가 매 판 "움직였다" 다.
+        local n_staging = nothing
+        if hasproperty(a, :staging) && hasproperty(b, :staging) &&
+           a.staging isa AbstractDict && b.staging isa AbstractDict
+            local s_changed = 0
+            for (k, v) in b.staging
+                isequal(get(a.staging, k, nothing), v) || (s_changed += 1)
+            end
+            for k in keys(a.staging); haskey(b.staging, k) || (s_changed += 1); end
+            n_staging = s_changed
+        end
         return (closed = b.closed - a.closed,
                 active = b.active - a.active,
                 n_edges = b.n_edges - a.n_edges,
                 n_binding_changed = changed,
-                n_weights_changed = w_changed)
+                n_weights_changed = w_changed,
+                n_staging_moved = n_staging)
     catch
         return nothing
     end
@@ -1146,10 +1234,23 @@ end
    `_world_digest` 의 docstring — `> 0` 은 바뀐 것을 증명하고 `== 0` 은 안 바뀐 것을 증명하지
    못한다).
 """
-_world_delta_str(wd) = wd === nothing ? "n/a(not measured)" :
+# 🔴 **`NOT_MEASURED_STR` 이 그 리터럴의 진실원이다** (2026-09-05, B1). 여섯째 축이 삼상이라
+#    이 문구를 쓰는 자리가 **둘**이 됐다(지문 전체를 못 쟀다 / 이 축만 못 쟀다) — 손으로 두 번
+#    적으면 m3 이 고친 그 사고가 그대로 돌아온다. `test/minted_end_to_end.jl` (17) 이 소스에서
+#    이 리터럴을 **한 벌**로 세는 것이 그 못박음이고, 그 게이트를 무르게 하지 않는 유일한 길이
+#    이름을 하나 두는 것이다.
+# 🔴 여섯째 축은 **다섯 뒤**에 붙인다 (2026-09-05, B1). 앞 다섯의 순서·문구를 한 글자도 안
+#    건드리므로 이 줄을 부분문자열로 못박는 기존 게이트들이 그대로 산다(실측: (26e)(28b)).
+#    ⚠️ 이 축만 삼상이라 `n/a(not measured)` 를 **축 값 자리에** 찍는다 — 0 과 다른 글자다.
+const NOT_MEASURED_STR = "n/a(not measured)"
+
+_world_delta_str(wd) = wd === nothing ? NOT_MEASURED_STR :
     string("closed=", wd.closed, " active=", wd.active,
            " n_edges=", wd.n_edges, " n_binding_changed=", wd.n_binding_changed,
            " n_weights_changed=", wd.n_weights_changed,
+           " n_staging_moved=", (hasproperty(wd, :n_staging_moved) &&
+                                 wd.n_staging_moved !== nothing) ?
+                                string(wd.n_staging_moved) : NOT_MEASURED_STR,
            " (n_binding_changed 는 하한이다)")
 
 """
@@ -1215,6 +1316,30 @@ function _steps_row(m)
 end
 
 """
+    _wd_row(wd) -> Dict{String,Any}
+
+`world_delta`/`world_delta_body` 를 **결정 행의 dict 으로**. 두 자리가 같은 모양이어야 하므로
+직렬화 모양의 진실원을 여기 하나로 둔다(2026-09-05, B1 — 그 전에는 같은 리터럴이 두 벌이었고,
+여섯째 축을 더할 때 그 둘이 갈릴 자리였다. 이 파일의 `_world_delta_str` 이 m3/m4 에서 이미
+밟은 실패 모드다).
+
+🔴 **여섯 키다.** `n_staging_moved` 은 **`null` 일 수 있다** — 그 축만 삼상이기 때문이고
+(`_world_digest` 의 docstring 이 근거를 소유한다), `null`("이 판에서 기하를 못 읽었다")과
+`0`("읽었는데 안 움직였다")은 다른 사건이다. 채점기(`tools/monitor/ladder_report.py`)가 그
+구별을 읽는다: 나머지가 전부 0 인데 이 축이 `null` 이면 **MEASURED_ZERO 가 아니라
+UNMEASURED** 다("안 바뀌었다" 를 주장할 수 없다).
+
+⚠️ `hasproperty` 로 읽는다 — 여섯째 축 이전 세대의 다섯-필드 튜플이 오면 맨 접근이 던지고,
+   `record_world_delta!` 의 `catch` 가 그것을 삼켜 **행에서 `world_delta` 가 통째로
+   사라진다**(계측이 기록을 죽인다). 그 판의 정직한 값은 이 축만 `nothing` 이다.
+"""
+_wd_row(wd) = Dict{String,Any}(
+    "closed" => wd.closed, "active" => wd.active, "n_edges" => wd.n_edges,
+    "n_binding_changed" => wd.n_binding_changed,
+    "n_weights_changed" => wd.n_weights_changed,
+    "n_staging_moved" => hasproperty(wd, :n_staging_moved) ? wd.n_staging_moved : nothing)
+
+"""
     record_world_delta!(m) -> Nothing
 
 집행 결과 `m` 의 `world_delta` 를 **살아 있는 결정 행**에 제자리로 싣는다. F1(2026-09-03 리뷰).
@@ -1230,8 +1355,10 @@ end
    Dict 다. 두 번째 기록 경로를 만들지 않는다.
 
 🔴 **삼상이 행에서도 산다.** 행이 있으면 키는 **언제나** 쓰인다: `nothing`(못 쟀다)은
-   `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 다섯 키를 가진 dict 이다
-   (2026-09-04 Task 2 가 `n_weights_changed` 를 더해 넷 → 다섯이 됐다).
+   `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 여섯 키를 가진 dict 이다
+   (2026-09-04 Task 2 가 `n_weights_changed` 를 더해 넷 → 다섯이, 2026-09-05 B1 이
+   `n_staging_moved` 를 더해 다섯 → 여섯이 됐다). 🔴 그 여섯째 **값**은 `null` 일 수 있다 —
+   축 자신이 삼상이라서다(`_wd_row` 의 docstring). 그것은 "이 코드 이전 세대" 가 **아니다**.
    키의 **부재**는 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
 
 🔴 **네 칸을 싣는다** — `world_delta` · `interface_calls`(L3) · `steps`(2026-09-04 Task 1) ·
@@ -1248,11 +1375,7 @@ function record_world_delta!(m)
         local rs = CB.MONITOR_RESPEC[]
         rs isa AbstractDict || return nothing
         local wd = m.world_delta
-        rs["world_delta"] = wd === nothing ? nothing :
-            Dict{String,Any}("closed" => wd.closed, "active" => wd.active,
-                             "n_edges" => wd.n_edges,
-                             "n_binding_changed" => wd.n_binding_changed,
-                             "n_weights_changed" => wd.n_weights_changed)
+        rs["world_delta"] = wd === nothing ? nothing : _wd_row(wd)
         # 🔴 **D5 (Wave D). 같은 호출이 L3 도 싣는다.** 사다리(spec §0)의 두 칸이
         #    같은 결정 행에서 같은 방식으로 읽혀야 유료 런이 둘을 짝지어 채점할 수 있다.
         #    호출 자리를 하나 더 만들지 않는 이유: 이 함수의 유일한 호출자는
@@ -1279,11 +1402,7 @@ function record_world_delta!(m)
         #    도달 못 했거나 지문이 안 나왔다)이고, 0 의 dict 은 "찍었는데 body 가 세계를 안
         #    바꿨다" 다. 그 둘을 뭉개면 이 칸이 재려는 귀속이 통째로 사라진다.
         local wdb = try m.world_delta_body catch; nothing end
-        rs["world_delta_body"] = wdb === nothing ? nothing :
-            Dict{String,Any}("closed" => wdb.closed, "active" => wdb.active,
-                             "n_edges" => wdb.n_edges,
-                             "n_binding_changed" => wdb.n_binding_changed,
-                             "n_weights_changed" => wdb.n_weights_changed)
+        rs["world_delta_body"] = wdb === nothing ? nothing : _wd_row(wdb)
     catch e
         # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
         println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",

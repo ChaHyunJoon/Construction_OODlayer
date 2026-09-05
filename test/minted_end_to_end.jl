@@ -1004,9 +1004,16 @@ end
         @test row["world_delta"] isa AbstractDict   # 🔴 "쟀는데 0" 은 **다른 관측**이다
         @test row["world_delta"]["closed"] == 0
         # ⚠️ 2026-09-04 (Task 2): 넷 → **다섯**. `n_weights_changed` 가 다섯째 축이다.
+        #    2026-09-05 (B1): 다섯 → **여섯**. `n_staging_moved` 가 여섯째(기하) 축이다.
         #    단언을 지우지 않고 **옮긴다** — 키 수를 안 세면 축이 조용히 빠져도 안 보인다.
-        @test length(row["world_delta"]) == 5
+        @test length(row["world_delta"]) == 6
         @test row["world_delta"]["n_weights_changed"] == 0
+        # 🔴 위 튜플은 **다섯 필드**다(여섯째 축 이전 세대의 모양). 그 판의 정직한 값은
+        #    키가 있고 값이 `null` 이다 — 행이 통째로 죽지도(계측이 기록을 죽인다), 0 을
+        #    참칭하지도 않는다.
+        @test haskey(row["world_delta"], "n_staging_moved")
+        @test row["world_delta"]["n_staging_moved"] === nothing
+        @test occursin("\"n_staging_moved\":null", JSON3.write(row))
         record_world_delta!((world_delta = (closed = 1, active = 2, n_edges = 3,
                                             n_binding_changed = 4, n_weights_changed = 5),))
         @test row["world_delta"]["active"] == 2
@@ -1116,8 +1123,12 @@ end
     # 🔴 비-0 대조: 이 함수가 여전히 **잰다**(항진적으로 nothing 을 내는 것이 아니다).
     local moved = (closed = 1, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 2),
                    weights = Dict{Int,Float64}(1 => 1.0))
+    # ⚠️ 2026-09-05 (B1): 여섯째 자리 `n_staging_moved`. 위 두 지문은 **다섯 필드**라
+    #    (여섯째 축 이전 세대의 모양) 이 축은 `nothing`("못 쟀다")이고, 나머지 다섯은
+    #    **수인 채로 산다** — 그것이 이 축을 전부-아니면-무 밖에 둔 이유 그 자체다.
     @test _world_delta(ok, moved) == (closed = 1, active = 0, n_edges = 0,
-                                      n_binding_changed = 1, n_weights_changed = 0)
+                                      n_binding_changed = 1, n_weights_changed = 0,
+                                      n_staging_moved = nothing)
 end
 
 @testset "(19) 🔴 W5: /rewrite 의 spec 이 더 이상 **구조적으로** 비지 않는다" begin
@@ -1932,10 +1943,12 @@ end
     #    사전 지문이 body 가 편집할 바로 그 dict 을 가리켜 차분이 **언제나 0** 이 된다.
     #    레포 안의 것은 안 건드린다 — 사본을 임시 디렉토리에 만든다.
     local src = read(ENACT_PATH, String)
-    @test occursin("weights  = copy(w))", src)     # 변이 지점이 실제로 있다
+    # ⚠️ 2026-09-05 (B1): 여섯째 축이 붙어 이 줄의 꼬리가 `))` 에서 `,` 로 바뀌었다.
+    #    단언은 **이동**이다 — 변이 지점은 여전히 `copy(w)` 하나다.
+    @test occursin("weights  = copy(w),", src)     # 변이 지점이 실제로 있다
     mktempdir() do dir
         local q = joinpath(dir, "enact_aliased_weights.jl")
-        local mutated = replace(src, "weights  = copy(w))" => "weights  = w)", count = 1)
+        local mutated = replace(src, "weights  = copy(w)," => "weights  = w,", count = 1)
         @test mutated != src
         write(q, mutated)
         local M = Module(:EnactAliasedWeights)
@@ -2156,7 +2169,7 @@ end
                                                  n_binding_changed = 4,
                                                  n_weights_changed = 5)))
         @test row["world_delta_body"] isa AbstractDict
-        @test length(row["world_delta_body"]) == 5      # 다섯 축이 전부 실린다
+        @test length(row["world_delta_body"]) == 6      # 여섯 축이 전부 실린다
         @test row["world_delta_body"]["n_weights_changed"] == 5
         # 🔴 안 던진다: 필드가 아예 없는 구세대 집행부는 `nothing` 이다.
         record_world_delta!((world_delta = nothing, interface_calls = nothing,
@@ -2721,6 +2734,272 @@ end
     end
 end
 
+end
+
+# =============================================================================
+# (31) 🔴 B1 (2026-09-05) — 여섯째 축 `n_staging_moved`(기하).
+#
+# 사건: 손으로 쓴 zone 오라클이 zone 에 막힌 빌드를 `n_closed=270/305`(PROJECT INCOMPLETE)
+# → `287/305`(PROJECT COMPLETE) 로 끌어올렸는데 `world_delta_body` 의 **다섯 축이 전부 0**
+# 이었다(`docs/superpowers/reports/2026-09-05-zone-oracle-an-advertised-verb-rescues-the-build.md`).
+# 원인은 구조적이다: 다섯 축은 전부 배정/스케줄 그래프 위에 있고, zone 수리는 **기하**를
+# 편집한다 — `translate_whole_build!`/`_apply_uniform_translation!`/`restage_assembly!`
+# (`src/respec/restage_zone.jl`)가 `start_config` 변환과 `env.staging_circles` 를 옮긴다.
+# 계측기가 **측정된 양성을 측정된 0 으로** 읽었다(이 레포가 기록한 최악의 실패 모드).
+#
+# 🔴 이 절이 재는 것은 셋이다:
+#   (a) 양성 — 적치원을 옮기는 body 에서 이 축이 **혼자** 움직인다(다섯은 0 이다: 그 다섯 0 이
+#       바로 사건의 재현이다).
+#   (b) 음성 — 스케줄만 고치는 body 에서 이 축은 `0`("쟀는데 안 움직였다")이다.
+#   (c) 삼상 — `staging_circles` 가 없는 env 에서 이 축만 `nothing` 이고 **다섯은 수로 산다**.
+#       그것이 "여섯째를 전부-아니면-무 밖에 둔다" 는 결정 그 자체다.
+# =============================================================================
+@testset "(31) 🔴 B1: 여섯째 축 — 기하 수리가 보인다" begin
+
+@testset "(31a) 양성 — 적치원을 옮기면 그 축만 움직인다 (다섯은 0)" begin
+    CB.reset_minted_table!()
+    # `live_cache_env()` + 적치원 하나. 생산 타입의 진실원은
+    # `PlannerEnv.staging_circles::Dict{AbstractID,LazySets.Ball2}`(`src/route_planning.jl`).
+    local staged_env = function ()
+        local sched = CB.OperatingSchedule()
+        local cache = CB.initialize_planning_cache(sched)
+        push!(cache.active_set, 999)
+        return (cache = cache, sched = sched,
+                active_build_steps = Set{CB.AbstractID}(),
+                staging_circles = Dict{CB.AbstractID,Any}(
+                    CB.AssemblyID(1) => CB.LazySets.Ball2([0.0, 0.0], 1.0)))
+    end
+    local env = staged_env()
+    # body 의 편집은 `_apply_uniform_translation!` 이 쓰는 자리와 **같은 자리**다
+    # (`env.staging_circles[aid] = LazySets.Ball2(...)`) — 아래 (31e) 가 그 문장을 소스에서
+    # 못박아 이 픽스처가 실제 수리와 같은 필드를 건드린다는 것을 증거로 만든다.
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "b1_move_staging!",
+        "impl_code" => "function b1_move_staging!(env; dx::Float64 = 5.0)\n" *
+                       "    for k in collect(keys(env.staging_circles))\n" *
+                       "        env.staging_circles[k] = LazySets.Ball2([dx, 0.0], 1.0)\n" *
+                       "    end\n" *
+                       "    return (status = :b1_moved,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("dx" => Dict{String,Any}("type" => "number")),
+        "body_names" => ["b1_move_staging!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "b1_move_staging!",
+                                     "args" => Dict{String,Any}("dx" => 5.0))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    # 전제 — 생성 경로로 실제로 갔고 body 가 돌았다(음성 대조 없이 0 도 1 도 안 읽는다).
+    @test m.registered === true && m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :b1_moved
+    @test Float64(CB.get_center(env.staging_circles[CB.AssemblyID(1)])[1]) == 5.0
+    # 🔴 **재는 것.** 사건의 재현: 다섯 축이 전부 0 이다.
+    @test m.world_delta !== nothing && m.world_delta_body !== nothing
+    @test m.world_delta_body.closed == 0
+    @test m.world_delta_body.active == 0
+    @test m.world_delta_body.n_edges == 0
+    @test m.world_delta_body.n_binding_changed == 0
+    @test m.world_delta_body.n_weights_changed == 0
+    # 🔴 그런데 여섯째는 움직인다 — 오늘의 계측기가 못 보던 그 편집이다.
+    @test m.world_delta_body.n_staging_moved == 1
+    @test m.world_delta.n_staging_moved == 1
+    # 로그도 그 수를 찍는다(둘 다).
+    local wl = [l for l in split(out, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl) == 1
+    @test occursin("world_delta=closed=0 active=0 n_edges=0 n_binding_changed=0 " *
+                   "n_weights_changed=0 n_staging_moved=1", wl[1])
+    @test occursin("world_delta_body=closed=0 active=0 n_edges=0 n_binding_changed=0 " *
+                   "n_weights_changed=0 n_staging_moved=1", wl[1])
+end
+
+@testset "(31b) 음성 — 스케줄만 고치는 body 에서는 `0` 이다 (`nothing` 이 아니다)" begin
+    CB.reset_minted_table!()
+    local sched = CB.OperatingSchedule()
+    local cache = CB.initialize_planning_cache(sched)
+    push!(cache.active_set, 999)
+    local env = (cache = cache, sched = sched,
+                 active_build_steps = Set{CB.AbstractID}(),
+                 staging_circles = Dict{CB.AbstractID,Any}(
+                     CB.AssemblyID(1) => CB.LazySets.Ball2([0.0, 0.0], 1.0)))
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "b1_only_weights!",
+        "impl_code" => "function b1_only_weights!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 9.25\n" *
+                       "    return (status = :b1_w,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["b1_only_weights!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "b1_only_weights!",
+                                     "args" => Dict{String,Any}("v" => 3))]))
+    local m = enact_minted_decision!(env, nothing, _dec(e))
+    @test m.verdict === :admit
+    # 🔴 짝지은 비-0 대조: 같은 판에서 **다른 축은 움직인다**. 이 줄이 없으면 아래 0 은
+    #    "축이 죽었다" 와 구별되지 않는다.
+    @test m.world_delta_body.n_weights_changed == 1
+    @test m.world_delta_body.n_staging_moved == 0        # 쟀는데 안 움직였다
+    @test m.world_delta_body.n_staging_moved !== nothing # 🔴 0 은 `nothing` 이 아니다
+end
+
+@testset "(31c) 🔴 삼상 — `staging_circles` 가 없으면 이 축만 `nothing` 이고 다섯은 산다" begin
+    # 🔴 **이 절이 설계 결정 그 자체다.** 여섯째를 앞 다섯과 같은 전부-아니면-무로 뒀다면
+    #    `live_cache_env()`(= (10)(11)(15)(26e) 의 픽스처, `staging_circles` 없음)의 지문이
+    #    통째로 `nothing` 이 되어 **기하 축을 더한 대가로 기존 다섯이 눈을 감는다.**
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    @test !hasproperty(env, :staging_circles)          # 전제
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "b1_nostage!",
+        "impl_code" => "function b1_nostage!(env; v::Int = 1)\n" *
+                       "    push!(env.cache.closed_set, v)\n" *
+                       "    return (status = :b1_ns,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["b1_nostage!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "b1_nostage!",
+                                     "args" => Dict{String,Any}("v" => 777))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    @test m.verdict === :admit
+    @test m.world_delta !== nothing                    # 🔴 지문이 살아 있다
+    @test m.world_delta.closed == 1                    # 🔴 다섯 축이 **수로** 산다
+    @test m.world_delta.n_staging_moved === nothing    # 🔴 이 축만 "못 쟀다"
+    # 로그가 셋을 셋으로 나른다 — `0` 이 아니라 "못 쟀다" 라고 찍는다.
+    local wl = [l for l in split(out, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl) == 1
+    @test occursin("n_staging_moved=n/a(not measured)", wl[1])
+    @test !occursin("n_staging_moved=0", wl[1])
+end
+
+@testset "(31d) `_staging_snapshot`/`_world_delta` 단위 — 못 읽는 기하는 축 하나만 끈다" begin
+    # 축 자체가 못 읽는 모양들.
+    @test _staging_snapshot(nothing) === nothing
+    @test _staging_snapshot("not a dict") === nothing          # `length` 가 조용히 성공하는 모양
+    @test _staging_snapshot(Dict(1 => "not a ball")) === nothing
+    @test _staging_snapshot(Dict{Symbol,Any}()) == Dict{Any,NTuple{3,Float64}}()  # 비었어도 **쟀다**
+    # 🔴 그 모양이 와도 **지문은 산다** — 축 하나만 `nothing` 이다.
+    local sched = CB.OperatingSchedule()
+    local cache = CB.initialize_planning_cache(sched)
+    local bad_geom = (cache = cache, sched = sched,
+                      active_build_steps = Set{CB.AbstractID}(),
+                      staging_circles = Dict(1 => "not a ball"))
+    local d = _world_digest(bad_geom)
+    @test d !== nothing                                        # 🔴 다섯 축은 그대로 잰다
+    @test d.staging === nothing
+    @test d.closed == 0
+    # 차분 쪽 삼상·계수.
+    local base = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(),
+                  staging = Dict{Any,NTuple{3,Float64}}(1 => (0.0, 0.0, 1.0)))
+    local moved = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                   weights = Dict{Int,Float64}(),
+                   staging = Dict{Any,NTuple{3,Float64}}(1 => (5.0, 0.0, 1.0),
+                                                         2 => (0.0, 0.0, 1.0)))
+    @test _world_delta(base, base).n_staging_moved == 0
+    @test _world_delta(base, moved).n_staging_moved == 2   # 값 변경 1 + 새 키 1
+    @test _world_delta(moved, base).n_staging_moved == 2   # 값 변경 1 + 사라진 키 1
+    # 반지름만 바뀐 판도 기하 변화다.
+    local grown = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                   weights = Dict{Int,Float64}(),
+                   staging = Dict{Any,NTuple{3,Float64}}(1 => (0.0, 0.0, 2.0)))
+    @test _world_delta(base, grown).n_staging_moved == 1
+    # 🔴 `!=` 가 아니라 `!isequal` — NaN 좌표가 매 판 "움직였다" 로 세면 안 된다.
+    local nan1 = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(),
+                  staging = Dict{Any,NTuple{3,Float64}}(1 => (NaN, 0.0, 1.0)))
+    local nan2 = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(),
+                  staging = Dict{Any,NTuple{3,Float64}}(1 => (NaN, 0.0, 1.0)))
+    @test _world_delta(nan1, nan2).n_staging_moved == 0
+    # 한쪽만 기하를 못 쟀으면 이 축은 `nothing` 이고 나머지 다섯은 수다.
+    local blind = (closed = 1, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                   weights = Dict{Int,Float64}(), staging = nothing)
+    @test _world_delta(base, blind).n_staging_moved === nothing
+    @test _world_delta(base, blind).closed == 1
+    # 로그 렌더도 셋을 셋으로 나른다(리터럴의 진실원은 `_world_delta_str` 하나다 — m3/m4).
+    @test occursin("n_staging_moved=2", _world_delta_str(_world_delta(base, moved)))
+    @test occursin("n_staging_moved=n/a(not measured)",
+                   _world_delta_str(_world_delta(base, blind)))
+end
+
+@testset "(31e) 🔴 이 축이 **실제 zone 수리가 쓰는 필드**를 읽는다 (소스 결속)" begin
+    # 🔴 픽스처가 진짜 수리와 같은 자리를 건드린다는 것을 증거로 만든다. 데모를 돌리지 않고
+    #    할 수 있는 가장 강한 결속이고, 이 파일이 이미 쓰는 관용구다((26d) 의 소스 단언).
+    local rz = read(normpath(joinpath(@__DIR__, "..", "src", "respec", "restage_zone.jl")), String)
+    # 통째 이동(Phase B) — `translate_whole_build!` 이 부르는 유일한 편집 함수.
+    @test occursin("function _apply_uniform_translation!", rz)
+    @test occursin("env.staging_circles[aid] =", rz)
+    # 조립체별 이동 — `restage_all_blocked!` 이 반복해서 부르는 함수.
+    @test occursin("function restage_assembly!", rz)
+    @test occursin("env.staging_circles[assembly_id] = LazySets.Ball2(c1, R)", rz)
+    # 🔴 그리고 다섯 축 중 어느 것도 그 함수들 안에 없다: zone 수리는 `closed_set` 도
+    #    `active_build_steps` 도 `sched.graph` 의 간선도 `weights` 도 안 건드린다.
+    local body = rz[findfirst("function _apply_uniform_translation!", rz)[1]:end]
+    body = body[1:findfirst("\nend", body)[1]]
+    @test !occursin("closed_set", body)
+    @test !occursin("active_build_steps", body)
+    @test !occursin("weights", body)
+end
+
+end
+
+# =============================================================================
+# (32) 🔴 B1 판정 (2026-09-05) — 오라클 런의 `applied` 가 `nothing` 이었던 이유, 그리고
+#      그것을 **그대로 둔다**는 판정을 못박는다.
+#
+# 사실: zone 오라클이 `:translated` 를 냈는데 `applied === nothing` 이었다. 원인은
+# `_step_applied`(`src/respec/minted_tool.jl`)의 판정 1 — **생성 원시면 `nothing`** 이다.
+#
+# 🔴 판정: 그대로 둔다. `:translated`/`:restaged_all` 을 어떤 표에 넣어 값으로 올리는 길은
+#   둘 다 틀렸다.
+#   (a) 생성 이름을 `SILENT_SUCCESS_STATUSES` 에 못 넣는다 — 이름이 런타임에 주조되므로
+#       키가 존재할 수 없다(그 상수의 docstring 이 그 정적성을 소유한다).
+#   (b) "status 를 등록 행에 **선언**하게 한다" 는 길은 `applied` 를 **모델의 자기신고**로
+#       만든다. body 는 `translate_whole_build!` 를 부르지 않고도 `(status = :translated,)`
+#       를 리터럴로 낼 수 있다 — 그러면 유료 런의 성공률이 모델이 고른 심볼의 함수가 된다.
+#       그것이 이 태스크가 금지한 **거짓 양성 제조**다.
+#   ✅ 대신 같은 사실을 **세계에서** 재는 자리를 이 커밋이 열었다: `n_staging_moved`(31).
+#      `applied` 는 "못 쟀다" 로 정직하게 남고, "세계가 바뀌었나" 는 자기신고가 아닌 축이
+#      대답한다. `nothing` 을 성공값으로 접지 않는 것이 이 판정의 전부다.
+# =============================================================================
+@testset "(32) 🔴 B1 판정: 생성 원시의 `:translated` 는 `applied=nothing` 으로 남는다" begin
+    CB.reset_minted_table!()
+    # ---- 대조군: 손으로 적은 어휘에서는 같은 status 가 **참**이다(표가 공허하지 않다) ----
+    @test haskey(CB.SILENT_SUCCESS_STATUSES, "translate_whole_build")
+    @test !(:translated in CB.SILENT_SUCCESS_STATUSES["translate_whole_build"])
+    @test CB._step_applied("translate_whole_build", :translated) === true
+    @test CB._step_applied("translate_whole_build", :already_clear) === false
+    # ---- 재는 것: **생성** 원시가 같은 status 를 내면 `nothing` 이다 ----------------------
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "b1_zone_like!",
+        "impl_code" => "function b1_zone_like!(env; v::Int = 1)\n" *
+                       "    return (status = :translated,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["b1_zone_like!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "b1_zone_like!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m = enact_minted_decision!(env, nothing, _dec(e))
+    @test m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :translated   # 전제: 그 status 다
+    # 🔴 삼상. `true` 도 `false` 도 아니다 — "못 쟀다" 다.
+    @test m.applied === nothing
+    @test m.applied !== true
+    @test m.applied !== false
+    # 🔴 그리고 그 이유가 기록 줄에 **글자로** 남는다(조용한 `nothing` 이 아니다).
+    @test occursin("status 어휘가 선언돼 있지 않다", m.reason)
 end
 
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져

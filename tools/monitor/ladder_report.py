@@ -270,6 +270,24 @@ def rung_from_present(present, value, true_pred, absent_reason, null_reason=None
     return {"verdict": verdict, "reason": None, "value": value}
 
 
+def unmeasured_leaf_names(value):
+    """Names of leaves that are explicitly null (= "not measured").
+
+    B1 (2026-09-05): the world digest's sixth axis, 'n_staging_moved'
+    (geometry), is tri-state PER AXIS -- null means "this run could not read
+    the geometry", which is a DIFFERENT observation from 0 ("read it, nothing
+    moved"). Every other axis stays all-or-nothing on the digest as a whole.
+    A null leaf must therefore never be silently skipped: if the readable axes
+    are all zero and some axis is null, the row does NOT license "the world did
+    not change" -- it licenses "we cannot tell".
+    """
+    if isinstance(value, dict):
+        return [k for k, v in value.items() if v is None]
+    if isinstance(value, list):
+        return ["[%d]" % i for i, v in enumerate(value) if v is None]
+    return []
+
+
 def all_numeric_zero(value):
     """Return (is_all_zero, components) for a delta-like structure.
 
@@ -277,6 +295,11 @@ def all_numeric_zero(value):
     True only if every numeric leaf is exactly zero. Returns None for
     is_all_zero if the shape carries no numeric leaves to judge (caller then
     falls back to treating any presence as non-zero/TRUE with a note).
+
+    NOTE: explicitly-null leaves are NOT numeric leaves and do not make the
+    row zero on their own; the caller pairs this with unmeasured_leaf_names()
+    so that "all readable axes are zero, but one axis is null" reads as
+    UNMEASURED rather than MEASURED_ZERO.
     """
     if isinstance(value, dict):
         items = list(value.items())
@@ -605,6 +628,7 @@ def build_report(log_path, stream_path, record_path):
                     components = None
                 else:
                     is_zero, components = all_numeric_zero(value)
+                    unmeasured_axes = unmeasured_leaf_names(value)
                     if is_zero is None:
                         # Shape carries no numeric leaves to compare against zero.
                         # Default-to-unmeasured is the only safe default for an
@@ -613,12 +637,31 @@ def build_report(log_path, stream_path, record_path):
                         verdict = UNMEASURED
                         reason = ("cannot judge zero-ness of '%s': value=%r (type=%s) carries no "
                                   "numeric leaves to compare against zero" % (used_field, value, type(value).__name__))
+                    elif is_zero and unmeasured_axes:
+                        # B1: every axis we could read is zero, but at least one
+                        # axis is explicitly null. "The world did not change" is
+                        # NOT what this row says -- the null axis may have moved
+                        # (that is exactly the zone-geometry case: five schedule
+                        # axes at 0 while the geometry axis is the one that
+                        # carries the repair). Never conflate null with 0.
+                        verdict = UNMEASURED
+                        reason = ("every readable axis of '%s' is zero, but %d axis/axes are "
+                                  "explicitly null (not measured): %s -- 'unchanged' cannot be "
+                                  "asserted" % (used_field, len(unmeasured_axes),
+                                                ", ".join(sorted(unmeasured_axes))))
                     elif is_zero:
                         verdict = MEASURED_ZERO
                         reason = None
                     else:
+                        # A non-zero readable axis is a measured positive; a null
+                        # elsewhere cannot take that away. Say so, but do not
+                        # downgrade the verdict.
                         verdict = TRUE
                         reason = None
+                        if unmeasured_axes:
+                            reason = ("measured positive; note %d axis/axes are explicitly null "
+                                      "(not measured): %s" % (len(unmeasured_axes),
+                                                              ", ".join(sorted(unmeasured_axes))))
                 if fallback:
                     fallback_note = ("FALLBACK: 'world_delta_body' was not present on the decision row; "
                                       "this is 'world_delta' (schedule/graph level), which is NOT "
