@@ -19,6 +19,39 @@ using Graphs
 const POLICY   = lowercase(get(ENV, "DEMO_POLICY", "canonical"))
 const DSPY_URL = rstrip(get(ENV, "DSPY_URL", "http://127.0.0.1:8077"), '/')
 
+# ---- `/decide` 읽기 시한 (2026-09-05) -------------------------------------------------------
+# 🔴 여기 있던 값은 **하드코딩 60 이었고, 그것이 유료 런 13 을 죽였다.** 증상은 서비스가
+#    빈 결정을 냈다는 것처럼 보였지만(라우터가 "returned no decision: (no error field)"),
+#    실제로는 클라이언트가 60초에 손을 뗀 것이다 — 서버는 그 뒤에 **정상 결정을 완성했다**
+#    (그 런 직후 `/health` 의 `calls: 1, billed: 1` 이 그 완성된 호출 하나다).
+#
+# 왜 60 이 모자라는가 (실측, 2026-09-05, 라이브 `gpt-5.6-sol` · `/decide` 직접 프로브):
+#   · 같은 zone 사건 한 건의 왕복 = **74.33초**. 응답은 온전했다
+#     (`chosen=NOOP` · `tool_calls_n=1` · `error=nothing` · `tool_lane_error=nothing` ·
+#      합성 레인까지 완주해 `tool_minted=true`).
+#   · 그 왕복이 태운 LM 호출은 **넷**이다: macro + observe + design + compose
+#     (`synthesis["stages"] == ["observe","design","compose"]`, 되먹임/재조합 없음)
+#     ⟹ 호출당 약 18.6초.
+#   · 한 `/decide` 의 **구조적 최대 경로는 일곱**이다(`synthesize.py` 의 `stages.append`
+#     자리 여섯 + macro): observe · design · redesign · compose · 되먹임 design ·
+#     재조합 compose. 같은 속도로 ≈ 130초.
+#   · 300 = 그 최대 경로의 약 2.3배. 프로바이더 변동에 여유를 주되, 서비스가 진짜로 죽었을
+#     때 런이 영원히 매달리지는 않는 값이다.
+#
+# ⚠️ 이 값을 다시 내리려면 **재야 한다.** 위 74.33 은 합성이 가장 짧은 경로로 끝난 판이라
+#    이 사건 종류의 **하한**이지 상한이 아니다.
+# ⚠️ 시한 초과는 재시도되지 않는다(실측: 런 13 이 `retries = 3` 인데도 `calls` 가 1 이었다).
+#    그러므로 이 값을 올리는 것이 과금을 곱하지 않는다.
+const DSPY_TIMEOUT_S = something(tryparse(Int, strip(get(ENV, "DSPY_TIMEOUT_S", ""))), 300)
+
+# 🔴 마지막 `/decide` 전송이 **왜** 실패했는가. `service_decide` 는 실패를 `nothing` 으로
+#    접는데(그 반환 계약은 호출자 여럿이 의존한다), 그러면 `policy_entry(nothing, …)` 의
+#    `error` 가 빈 문자열이 되고 라우터는 "(no error field)" 만 찍는다 — 런 13 에서 실제로
+#    진짜 사유(`TimeoutError: Connection closed after 60 seconds`)가 그렇게 사라졌다.
+#    그 사유는 `@warn` 으로는 남았지만 **라우터의 죽는 메시지와 연결되지 않았다.**
+#    ⟹ 반환 모양을 안 바꾸고 사유만 옆으로 나른다. `decide_all` 이 그것을 읽어 메시지에 싣는다.
+const LAST_DECIDE_TRANSPORT_ERROR = Ref{String}("")
+
 # ---- 순수 함수로 분리한 조각들 (2026-08-14) -------------------------------------------------
 # 이 파일은 67KB 에 ENV·ConstructionBots 의존이라 **통째로는 단위검사가 안 된다.** 그래서
 # 단위검사가 가능한 판단만 의존성 0 인 파일로 뺐다:
@@ -864,18 +897,34 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
     isempty(vm) || (payload["valid"] = vm)
+    # 🔴 이 전송의 사유칸을 **먼저 비운다.** 안 비우면 지난 사건의 실패 사유가 이번 사건의
+    #    성공/실패에 눌러붙어, 라우터가 엉뚱한 사유를 찍는다.
+    LAST_DECIDE_TRANSPORT_ERROR[] = ""
     try
         # retry_non_idempotent=true 가 꼭 필요하다: HTTP.jl 은 POST 를 기본적으로 재시도하지 않는데,
         # 이벤트 간격이 길어 keep-alive 연결이 죽어 있으면 첫 시도가 "stream is closed or unusable"로
         # 실패한다(실제로 두 번째 OOD 에서 그렇게 폴백됐다). 이 호출은 부작용이 없으므로 재시도해도 안전.
+        # 🔴 `readtimeout` 은 상수가 아니라 `DSPY_TIMEOUT_S` 다 — 그 상수 위의 실측이 근거다.
         resp = HTTP.post(DSPY_URL * "/decide", ["Content-Type" => "application/json"],
                          JSON3.write(payload);
-                         readtimeout = 60, retries = 3, retry_non_idempotent = true)
-        resp.status == 200 || return nothing
+                         readtimeout = DSPY_TIMEOUT_S, retries = 3, retry_non_idempotent = true)
+        if resp.status != 200
+            # 🔴 비-200 도 사유다. 예전에는 이 자리가 조용한 `nothing` 이라 라우터가
+            #    "(no error field)" 로 죽었다 — 상태코드는 이미 손에 있었는데도.
+            LAST_DECIDE_TRANSPORT_ERROR[] = "HTTP $(resp.status) from /decide"
+            return nothing
+        end
         j = JSON3.read(String(resp.body))
         return j
     catch e
-        @warn "DSPy call failed" exception = e
+        # 🔴 사유를 **한 줄로** 남긴다. `showerror` 의 첫 줄만 남기면 `HTTP.RequestError` 에서
+        #    진짜 원인이 통째로 죽는다(`enact.jl` 의 `_rewrite_once` 가 같은 자리에서 이미
+        #    한 번 데였다) — 그래서 마지막 비지 않은 줄까지 본다.
+        local _lines = filter(!isempty, strip.(split(sprint(showerror, e), "\n")))
+        LAST_DECIDE_TRANSPORT_ERROR[] =
+            isempty(_lines) ? string(typeof(e)) :
+            (length(_lines) == 1 ? _lines[1] : _lines[1] * " | " * _lines[end])
+        @warn "DSPy call failed" exception = e timeout_s = DSPY_TIMEOUT_S
         return nothing
     end
 end
@@ -1802,6 +1851,62 @@ end
 
 
 """
+    blank_decision_diagnosis(e, body, transport_why) -> String
+
+레인이 `available=false` 로 떨어진 사건의 **사유 한 줄**. `e` 는 `pol[lane]` 항목(또는
+`nothing`), `body` 는 그 레인의 **날것 서비스 응답 본체**(`j[Symbol(lane)]`, 없으면 `nothing`),
+`transport_why` 는 `LAST_DECIDE_TRANSPORT_ERROR[]`.
+
+🔴 왜 진단값을 `e` 가 아니라 `body` 에서 읽는가. `policy_entry` 의 **폴백 분기는 tool 레인 키를
+   일부러 전부 `nothing` 으로 낸다**(`tool_lane_fields(nothing)`) — 그 계약은
+   `test/tool_lane_keys_survive.jl` 이 못박고 있고 뜻이 있다("레인이 안 돌았다"를 `available`
+   하나로 가른다). 그런데 결정을 못 낸 사건은 `chosen == ""` 이라 **언제나** 그 분기로 가므로,
+   서비스가 애써 계산한 판별키가 정확히 필요한 순간에 기록에서 사라져 있다. 여기서 `body` 를
+   직접 읽으면 그 계약을 **건드리지 않고** 죽는 메시지에만 진짜 값을 실을 수 있다.
+
+🔴 왜 이 함수가 있는가 (2026-09-05, 유료 런 13). 라우터가 죽으면서 찍은 것은
+*"returned no decision: (no error field)"* 한 줄이었고, 그것으로는 **아무것도 가를 수 없었다.**
+그런데 가를 재료는 그때 이미 전부 손에 있었다:
+
+  · `LAST_DECIDE_TRANSPORT_ERROR[]` — 요청이 서비스에 **닿기는 했는가**. 런 13 의 진짜 사유
+    (`TimeoutError: Connection closed after 60 seconds`)가 정확히 여기 있었는데 `@warn` 한 줄로만
+    남고 죽는 메시지와 연결되지 않아, 다음 사람이 프로브를 돌려서야 알아냈다.
+  · `decision_source` · `tool_lane_error` · `tool_calls_n` · `tools_offered` · `native_fc`
+    · `tool_choice` — 서비스가 **답은 했는데 결정을 못 낸** 사건의 세 갈래를 가르는 키들이고,
+    `tool_lane_fields` 가 이미 `e` 에 실어 뒀다(`dspy_service._blank_decision` 의 ⓐⓑⓒ 주석이
+    그 규약의 진실원이다):
+       ⓐ `error` 가 있다              = 프로바이더 장애
+       ⓑ `tool_lane_error` 가 있다    = 빈/파싱 불가 응답 (계약 위반)
+       ⓒ 둘 다 없고 `tool_calls_n==0` = 응답은 왔는데 tool 호출이 없다 (계약 위반)
+    그리고 셋 중 **어느 것도 아닌** 네 번째가 런 13 이었다: 응답이 아예 안 왔다
+    (전부 `nothing`) — 그 판을 이 함수는 transport 사유로 이름 붙인다.
+
+⚠️ 값을 **접지 않는다.** `nothing`("못 쟀다")은 `n/a` 로 찍고 `false`("재서 어긋났다")는 `false`
+   로 찍는다. 둘을 같은 글자로 찍으면 이 함수가 없애려는 그 모호함이 되돌아온다(spec §9-2).
+"""
+function blank_decision_diagnosis(e, body, transport_why)
+    e === nothing && return "(lane absent from the service response)"
+    local err = String(something(get(e, "error", ""), ""))
+    local show1 = k -> begin
+        local v = body === nothing ? nothing : get(body, Symbol(k), nothing)
+        v === nothing ? "n/a" : string(v)
+    end
+    local parts = String["decision_source=" * show1("decision_source"),
+                         "tool_lane_error=" * show1("tool_lane_error"),
+                         "tool_calls_n=" * show1("tool_calls_n"),
+                         "tools_offered=" * show1("tools_offered"),
+                         "native_fc=" * show1("native_fc"),
+                         "tool_choice=" * show1("tool_choice")]
+    # 🔴 응답이 아예 안 온 판(런 13)은 위 여섯이 **전부 nothing** 이다. 그때 사유는 전송에 있고,
+    #    그것을 앞세우지 않으면 여섯 개의 `n/a` 만 남아 예전과 똑같이 아무 말도 못 한다.
+    local head = !isempty(err) ? err :
+                 !isempty(transport_why) ? "no response from the service — " * transport_why :
+                 "(no error field; the service answered but produced no decision)"
+    return head * " [" * join(parts, " ") * "]"
+end
+
+
+"""
     decide_all(env, truth; nl="") -> (policies, enacted, router, ...)
 
 **세 정책을 모두 계산**해 기록용 구조를 만든다. UI 가 "규칙이라면 / surrogate 라면 / LLM 이라면
@@ -1939,16 +2044,24 @@ function decide_all(env, truth; nl::AbstractString = "")
     if enacted in ("dspy", "surrogate")
         local e = get(pol, enacted, nothing)
         if e === nothing || e["available"] !== true
-            local why = e === nothing ? "(lane absent from the service response)" :
-                        String(something(get(e, "error", ""), ""))
+            # 🔴 `UNSUPPORTED:` 판정은 **날것의 `error` 로 가른다.** 아래 진단 문자열은 사유 앞에
+            #    다른 것을 붙일 수 있으므로 그것으로 `startswith` 를 하면 이 분기가 조용히 죽는다.
+            local raw = e === nothing ? "" : String(something(get(e, "error", ""), ""))
             # 🔴 `UNSUPPORTED:` 는 장애가 아니라 **도장과 어휘가 갈린 것**이라 메시지를 가른다.
             #    (kind 도장은 이 kind 를 배웠다고 말하는데 그 팔들이 매크로 지원집합에 없다.)
-            startswith(why, "UNSUPPORTED:") && error(
+            startswith(raw, "UNSUPPORTED:") && error(
                 "[router] '$(rkind)' is in the surrogate's train_kinds stamp, but its arms " *
-                "are not in the macro support set ($(why)). The stamp and the vocabulary " *
+                "are not in the macro support set ($(raw)). The stamp and the vocabulary " *
                 "have diverged — regenerate the dataset or fix the vocab.")
+            # 🔴 2026-09-05 (유료 런 13). 여기 있던 것은 `(no error field)` 한 줄이었고 그것으로는
+            #    "서비스가 답을 못 냈다" 와 "답이 아예 안 왔다" 가 안 갈렸다. 가를 재료는 이미
+            #    전부 있었다 — `blank_decision_diagnosis` 가 그것을 한 줄로 편다.
+            # 🔴 날것의 응답 본체를 넘긴다 — `pol[enacted]` 이 아니다. 그 이유는
+            #    `blank_decision_diagnosis` 의 docstring 이 진다(폴백 분기가 판별키를 지운다).
+            local body = (j !== nothing && haskey(j, Symbol(enacted))) ? j[Symbol(enacted)] : nothing
             error("[router] lane '$(enacted)' was chosen for a '$(rkind)' event but " *
-                  "returned no decision: $(isempty(why) ? "(no error field)" : why)")
+                  "returned no decision: " *
+                  blank_decision_diagnosis(e, body, LAST_DECIDE_TRANSPORT_ERROR[]))
         end
     elseif !haskey(pol, enacted)
         # 고정 정책(라우터 OFF)이 존재하지 않는 레인을 가리키면 그것도 오설정이다.
