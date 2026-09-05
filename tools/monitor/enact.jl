@@ -1594,7 +1594,7 @@ function enact_minted_decision!(env, truth, decision)
                     " tool=", something(_synth_lane_field(sl, "tool_name"), "n/a"),
                     " verdict=deferred applied=n/a partial=false",
                     " world_maybe_dirty=false handled=false undo=none resume=none",
-                    " args_from=n/a n_calls=n/a steps=[]",
+                    " args_from=n/a n_calls=n/a dropped_args=n/a steps=[]",
                     " ran_milp=n/a(not armed)",
                     " synthesis_event=", _synth_lane_field(sl, "synthesis_event"),
                     " synthesis_ran=", _synth_lane_field(sl, "synthesis_ran"),
@@ -1629,7 +1629,7 @@ function enact_minted_decision!(env, truth, decision)
             return (handled = false, verdict = :deferred, reason = why,
                     applied = nothing, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none,
-                    resolve = :none, args_from = nothing, n_calls = nothing,
+                    resolve = :none, args_from = nothing, n_calls = nothing, dropped_args = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
                     world_delta = world_delta,
                     world_delta_body = world_delta_body,
@@ -1681,7 +1681,7 @@ function enact_minted_decision!(env, truth, decision)
             return (handled = false, verdict = :reject, reason = why,
                     applied = nothing, partial = false, world_maybe_dirty = false,
                     steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
-                    args_from = nothing, n_calls = nothing,
+                    args_from = nothing, n_calls = nothing, dropped_args = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
                     world_delta = world_delta,
                     world_delta_body = world_delta_body,
@@ -1872,6 +1872,16 @@ function enact_minted_decision!(env, truth, decision)
                 #    🔴 `nothing` 은 `n/a` 로 찍는다 — "0" 도 "params" 도 아니고 **도달 못 했다**.
                 " args_from=", something(r.args_from, "n/a"),
                 " n_calls=", something(r.n_calls, "n/a"),
+                # 🔴 S5(2026-09-04). 인자 채널이 **지어낸 로봇 정체**를 막았는가. 다섯째 유료
+                #    런은 `affected_robot="R1"` 이 body 의 세계 유도 폴백을 눌러 죽였다.
+                #    막았다는 사실이 이 줄에 없으면 다음 런의 채점은 "모델이 인자를 안 줬다"
+                #    와 "모델이 지어냈고 채널이 막았다" 를 **같은 관측**으로 본다.
+                #    🔴 삼상 그대로 찍는다: `n/a`(바인더 미도달) · `none`(묶었는데 버릴 것
+                #    없음) · 이름 목록. 값 자체는 `[minted] ⚠️ dropped fabricated identifier`
+                #    줄이 따로 낸다(이 줄은 공백 없는 key=value 로 파싱되므로).
+                " dropped_args=", r.dropped_args === nothing ? "n/a" :
+                    isempty(r.dropped_args) ? "none" :
+                    join([string(d.primitive, ".", d.arg) for d in r.dropped_args], ","),
                 # 🔴 2026-09-03 라이브 실측이 계기. 합성이 **발화했는데** `empty body` 로
                 #    거절된 판에서 agent-3 이 무엇을 없다고 했는지가 **어디에도 안 남았다** —
                 #    스트림 jsonl 에 합성 필드가 없고 서비스도 기록을 파일로 안 쓴다. 값은
@@ -1920,6 +1930,7 @@ function enact_minted_decision!(env, truth, decision)
                 world_maybe_dirty = r.world_maybe_dirty, steps = r.steps, undo = r.undo,
                 resume = r.resume, resolve = r.resolve,
                 args_from = r.args_from, n_calls = r.n_calls,
+                dropped_args = r.dropped_args,
                 registered = registered, impl_rejected_why = impl_rejected_why,
                 world_delta = world_delta,
                 world_delta_body = world_delta_body,
@@ -1938,7 +1949,7 @@ function enact_minted_decision!(env, truth, decision)
                 # 🔴 B4: `n/a` 가 아니다. 이 경로의 `world_maybe_dirty` 는 확정된 `true` 이고
                 #    (아래 반환 참조), 로그가 반환과 다른 말을 하면 라이브 판독이 갈린다.
                 " partial=false world_maybe_dirty=true handled=false undo=none resume=none",
-                " args_from=n/a n_calls=n/a steps=[]",
+                " args_from=n/a n_calls=n/a dropped_args=n/a steps=[]",
                 " registered=", something(registered, "n/a"),
                 " impl_rejected_why=", something(impl_rejected_why, "n/a"),
                 # 🔴 D18(B4 와 같은 이유 — 로그와 반환이 다른 말을 하면 라이브 판독이
@@ -1978,7 +1989,7 @@ function enact_minted_decision!(env, truth, decision)
                 reason = "enact_minted_decision! threw: " * msg,
                 applied = nothing, partial = false, world_maybe_dirty = true,
                 steps = NamedTuple[], undo = :none, resume = :none, resolve = :none,
-                args_from = nothing, n_calls = nothing,
+                args_from = nothing, n_calls = nothing, dropped_args = nothing,
                 registered = registered, impl_rejected_why = impl_rejected_why,
                 world_delta = world_delta,
                 world_delta_body = world_delta_body,

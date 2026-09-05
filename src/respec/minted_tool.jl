@@ -797,6 +797,87 @@ _dict_key(::Type{String}, k) = String(k)
 _dict_key(::Type{Symbol}, k) = Symbol(k)
 _dict_key(::Type{K}, k) where {K} = convert(K, k)
 
+# =============================================================================
+# S5 (2026-09-04) :: 지어낸 로봇 이름은 인자 채널을 못 탄다
+# =============================================================================
+"""
+    _is_display_name_id(x) -> Bool
+
+`x` 가 **세계의 자연어 렌더링이 로봇에게 붙이는 표시 이름**인가(`"R1"` · `"Robot R7"` ·
+`"robot 3"`). 참이면 그 값은 id 가 아니라 **사람이 읽으라고 만든 문자열**이다.
+
+🔴 왜 이 술어가 존재하는가 (다섯째 유료 런, 실측). 합성 기록의 `calls` 가
+`{"affected_robot": "R1", "available_robots": ["R2","R3","R4"]}` 로 도착했다. body 자신은
+**옳았다** — `affected_robot === nothing && (affected_robot = ood_event_target())` 라는
+세계 유도 폴백을 스스로 들고 있었다. 그런데 인자 채널이 `"R1"` 을 실어다 준 탓에
+`=== nothing` 이 거짓이 되어 **그 폴백이 한 번도 안 돌았고**, 뒤이어 `soc["R2"]`(키가
+`BotID` **객체**인 Dict)가 `KeyError: key "R2" not found` 로 죽었다. 즉 실패는 body 가
+아니라 **채널**이 만들었다. 그래서 채널이 그 값을 아예 못 나르게 한다.
+
+🔴 **판정은 양성 매칭이다 — "id 가 아니면 버린다" 의 여집합이 아니다.** 여집합으로 하면
+`zone_keys` 의 `"zone_blk_1"` 처럼 id 가 아닌 **정당한** 문자열 인자가 전부 같이 죽는다.
+여기서 거르는 것은 이 세계가 로봇 이름을 렌더하는 **두 자리**가 실제로 내는 모양뿐이다:
+`ood_injection.jl` 의 `"Robot R\$(faulted.id) has broken down…"` 과 `llm_bridge.jl` 의
+`"label" => "Robot R\$(rid.id) / robot \$(rid.id)"`. 모델이 프롬프트에서 볼 수 있는 로봇
+표기는 그 둘뿐이고, 둘 다 이 술어에 걸린다.
+
+🔴 **진짜 id 문자열은 절대 안 걸린다** — 그것이 이 술어의 하중이다. 두 철자 모두
+전부-매칭 앵커(`^…\$`) 밖으로 나간다:
+  · 모듈 한정: `"ConstructionBots.BotID{ConstructionBots.DeliveryBot}(4)"`
+  · 모듈 무한정: `"BotID{DeliveryBot}(4)"` — 🔴 `c444666d` 가 일부러 **받아들이기로** 한
+    형태다(`reassign.jl::_normalize_agent_str`). 이 술어가 그것을 버리면 그 커밋이 연
+    채널을 같은 날 도로 닫는 셈이 된다.
+둘 다 `{`·`(` 를 갖고 숫자로 안 끝나거나 `R\\d+` 전체 매칭이 아니므로 구조적으로 못 걸린다.
+"""
+_is_display_name_id(x) =
+    x isa AbstractString &&
+    (occursin(r"^(?:robot[ _\-]*)?R\d+$"i, strip(String(x))) ||   # "R1" · "Robot R7" · "robotR7"
+     occursin(r"^robot[ _\-]*\d+$"i,       strip(String(x))))     # "robot 3" (label 의 뒷절반)
+
+"""
+    _display_name_drop(v) -> Union{Nothing,String}
+
+이 **인자 값**이 지어낸 로봇 정체를 나르는가. `nothing` 이면 그대로 묶고, 문자열이면
+그것이 **버린 이유**다(기록에 그대로 실린다).
+
+🔴 **벡터는 전부-아니면-전무다**(판정). 원소 하나라도 표시 이름이면 **인자 전체**를 버린다 —
+살아남은 원소만 모아 좁힌 벡터를 넘기지 않는다. 그 좁힘이야말로 이 레포가 적어 둔 최악의
+실패 모양이다: "정상으로 보이는데 아무 뜻도 없는 값". `["R2","R3", <진짜 id>]` 를
+`[<진짜 id>]` 로 줄여 넘기면 body 는 **모델이 뜻한 적 없는 팀**을 상대로 성공을 보고하고,
+그 좁힘은 아무 데도 안 남는다. 전체를 버리면 kwarg 는 선언된 기본값(`[]`)으로 떨어지고,
+body 의 세계 유도 폴백이 그 자리를 채운다 — 그리고 그 사실은 아래에서 시끄럽게 적힌다.
+"""
+function _display_name_drop(v)
+    _is_display_name_id(v) && return "display_name_string"
+    if v isa AbstractVector
+        for e in v
+            _is_display_name_id(e) && return "display_name_in_vector:$(String(e))"
+        end
+    end
+    return nothing
+end
+
+"""
+    _note_dropped_arg!(sink, prim_name, arg, value, why) -> nothing
+
+버림을 **시끄럽게** 만든다. 🔴 조용한 드롭은 이 수선을 무의미하게 만든다 — "인자가
+없었다"(모델이 안 줬다)와 "인자를 버렸다"(모델이 지어냈다)는 **다른 사건**이고, 다음 런의
+채점이 그 둘을 구별할 창이 없으면 지어내기가 고쳐졌는지 아닌지를 못 잰다.
+두 겹으로 적는다: (a) 즉시 `[minted]` 로그 한 줄(인자 이름 **과** 버린 값), (b) `sink`
+(집행 기록의 `dropped_args`). `sink === nothing` 이면 (a) 만 나간다 — 바인더를 직접 부르는
+호출자(시험·프로브)가 기록 채널 없이도 사건을 볼 수 있어야 한다.
+"""
+function _note_dropped_arg!(sink, prim_name, arg, value, why)
+    println("[minted] ⚠️ dropped fabricated identifier arg: ", arg, "=", repr(value),
+            " (원시 ", prim_name, ", 사유 ", why, ") — 이 kwarg 는 **바인딩되지 않았고** ",
+            "선언된 기본값으로 떨어진다. 🔴 '인자가 없었다' 와 혼동하지 말 것: 모델이 세계에 ",
+            "없는 표시 이름을 지어냈고 채널이 그것을 막았다.")
+    sink === nothing && return nothing
+    push!(sink, (primitive = String(prim_name), arg = String(arg),
+                 value = repr(value), why = why))
+    return nothing
+end
+
 """
     bind_primitive_args(prim, ctx) -> Union{String, Tuple{Tuple,NamedTuple}}
 
@@ -841,8 +922,19 @@ dict 하나**를 낸다 — body 가 원시 둘 이상이면 그 키들은 원�
   (c) 유도값은 callee 기본값보다 **좁다** — `restage_all_blocked!`·`translate_whole_build!`
       둘 다 `zone_keys` 를 `collect(keys(RESTRICTION_ZONES[]))` 로 기본한다. 안 주면
       **키워드를 아예 빼서** 그 기본값(= 살아 있는 존 전부)이 그대로 쓰이게 한다.
+
+🔴 **`drops` — 지어낸 로봇 정체는 묶지 않는다**(S5, 2026-09-04, 다섯째 유료 런).
+**주조 원시**(`_is_generated`)의 값이 `_display_name_drop` 에 걸리면(표시 이름 `"R1"`,
+혹은 그런 원소를 품은 벡터) 그 kwarg 는
+**바인딩되지 않고** 선언된 기본값으로 떨어진다 — body 가 스스로 들고 있는 세계 유도 폴백
+(`ood_event_target()`)이 그제야 돈다. `drops` 는 그 사건을 담을 벡터(없으면 `nothing`)이고,
+채워지든 안 채워지든 `_note_dropped_arg!` 가 로그 한 줄을 **반드시** 낸다.
+⚠️ 이것은 거절이 아니다 — 거절은 옳은 body 를 통째로 못 굴리게 만든다. 그리고 **조용한
+버리기도 아니다**: 위 "조용히 버리지 않는다" 규약과 어긋나 보이지만 어긋나지 않는다.
+그 규약이 막은 것은 *기록에는 남았는데 세계에는 안 간* 인자였고, 여기서는 **버렸다는 사실
+자체가 기록에 새 필드로 남는다**(`enact_minted!` 의 `dropped_args`).
 """
-function bind_primitive_args(prim, ctx)
+function bind_primitive_args(prim, ctx; drops = nothing)
     pos = Any[]
     for a in prim.harness_args
         if a == "env"
@@ -878,6 +970,38 @@ function bind_primitive_args(prim, ctx)
         #    `partial = true` 로 적히고, 손도 안 댄 세계가 `handled=true` 로 폴백을 삼킨다.
         local bad = _param_type_reject(prim.params[String(k)], v)
         bad === nothing || return "reject:param_type:$(k):$(bad) (원시 $(prim.name))"
+        # 🔴 **S5 (2026-09-04): 지어낸 로봇 정체는 여기서 죽는다** (다섯째 유료 런).
+        #    `"R1"` 은 `{"type": ["string","null"]}` 으로 **완벽히 변환된다** — 타입 게이트를
+        #    그냥 통과하고, 통과하는 순간 body 의 `affected_robot === nothing` 폴백이 영영
+        #    안 돈다. 즉 이것은 "타입이 틀린 값" 이 아니라 **인자가 아닌 값**이고, 그래서
+        #    거절이 아니라 **미바인딩**이다.
+        # 🔴 자리는 타입 검사 **뒤**다(의도). 앞에 두면 오늘 `reject:param_type` 으로 떨어지는
+        #    판(`{"min_ready": "R1"}`)이 조용히 **집행되는 판**으로 바뀐다 — 이 수선은
+        #    거절 하나도 실행으로 바꾸지 않는다. 여기서 버리는 것은 **오늘이라면 실제로
+        #    묶였을 값**뿐이다.
+        # 🔴 거절(`return`)이 아니라 `continue` 인 이유: body 는 옳았고 세계 유도 폴백을
+        #    스스로 들고 있었다. 거절하면 그 옳은 body 가 한 발도 못 나가고 폴백 사슬로
+        #    떨어진다 — 채널이 값 하나를 못 나른다는 이유로 집행 전체를 버리는 셈이다.
+        #    안 묶으면 kwarg 는 선언된 기본값(규약이 보장하고 모델이 `nothing`/`[]` 로 쓴다)
+        #    이 되고, body 자신의 `ood_event_target()` 이 그 자리를 채운다.
+        # 🔴 **주조된 원시에만 건다**(`_is_generated`). 실측이 이 조건을 강제했다:
+        #    손으로 쓴 여덟에는 **이미 자기 정체 게이트가 있고**, 거기서 버리면 세계 편집이
+        #    좁아지는 게 아니라 **넓어진다**. `release_pending_assignments!(env, inv;
+        #    faulted="R1", agent="R2")` 는 오늘 `:both_scopes` 를 내고 그 status 는
+        #    `WORLD_UNCHANGED_STATUSES` 행에 있어 세계를 한 바이트도 안 건드린다 — 그런데
+        #    둘을 버리면 kwarg 기본값이 `nothing`/`nothing` 이 되고, 그 기본값은
+        #    "**모든** 미래 배정 간선을 푼다" 는 이 원시의 **가장 큰** 편집이다.
+        #    (`test/minted_tool_enacts.jl` testset (17) 이 그 회귀를 실제로 빨갛게 만들었다.)
+        #    주조 원시에는 그런 게이트가 없다 — 런 5 가 죽은 자리가 정확히 거기이고, 규약이
+        #    보장하는 그 기본값(`nothing`/`[]`)은 body 의 **세계 유도** 폴백을 켜므로
+        #    좁아지는 방향이다. 즉 판정 기준은 "기본값이 세계를 넓히지 않는가" 이고,
+        #    그것을 아는 사실이 `generated` 하나다.
+        # 🔴 조용하지 않다 — `_note_dropped_arg!` 가 로그와 `drops` 양쪽에 적는다.
+        local drop_why = _is_generated(prim.name) ? _display_name_drop(v) : nothing
+        if drop_why !== nothing
+            _note_dropped_arg!(drops, prim.name, String(k), v, drop_why)
+            continue
+        end
         # 🔴 D16 (프로브 P1). Julia 의 **키워드 인자는 `convert` 가 아니라 타입 단언**이다 —
         #    위치인자와 달리 자동 변환이 없다. 그리고 `/decide` 를 거쳐 온 값은 네이티브
         #    컨테이너가 아니라 `JSON3.Array`/`JSON3.Object` 의 **지연 뷰**다. 둘이 겹쳐,
@@ -1130,7 +1254,13 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 합성된 tool 의 body 를 집행한다. 반환:
 `(verdict, reason, applied, partial, world_maybe_dirty, steps, undo, resume, resolve,
-args_from, n_calls, body_probe)`. T4 가 읽는다.
+args_from, n_calls, body_probe, dropped_args)`. T4 가 읽는다.
+
+🔴 **`dropped_args` (S5, 2026-09-04) — 지어낸 로봇 정체를 막은 사건.** `bind_primitive_args`
+가 표시 이름(`"R1"`)을 나르는 kwarg 를 **안 묶고** 기본값으로 떨어뜨렸을 때 그 사실이
+여기 실린다(원시·인자 이름·버린 값·사유). 🔴 삼상이다: `nothing` = 바인더에 도달 못 했다 ·
+`[]` = 묶었는데 버릴 것이 없었다 · 비지 않음 = 이만큼 버렸다. **"인자가 없었다" 와 "인자를
+버렸다" 는 다른 사건이고**, 다음 런의 채점이 그 둘을 이 필드로 가른다.
 
 🔴 **`probe`/`body_probe` (2026-09-04, Task 2) — 계측 하나다. 집행은 안 바꾼다.**
 `probe !== nothing` 이면 body 루프가 끝난 **직후**(캐시 재개 **앞**)와 **던진 경로**
@@ -1202,6 +1332,12 @@ function enact_minted!(env, truth, synth; probe = nothing)
     #    한 자리를 빠뜨리는 순간 그 판만 조용히 `nothing` 이 된다).
     local args_from = nothing
     local n_calls   = nothing
+    # 🔴 S5(2026-09-04). **삼상이다, `args_from` 과 같은 규약으로.** `nothing` 은 "바인더에
+    #    도달 못 했다"(조기 deferred·거절)이고, `NamedTuple[]` 은 "묶었는데 버릴 것이 없었다"
+    #    이며, 비지 않은 벡터는 "지어낸 정체를 이만큼 막았다" 이다. 셋을 접으면 다음 런의
+    #    채점이 "인자가 없었다" 와 "인자를 버렸다" 를 구별할 창을 잃는다 — 이 필드가 존재하는
+    #    이유가 정확히 그 구별이다.
+    local dropped_args = nothing
     # 🔴 F6(4)(2026-09-03 최종 리뷰). `applied` 의 기본값은 `nothing` 이지 `false` 가 아니다.
     #    이 함수 안의 조기 반환(`:deferred`·`:reject`, 예: 바로 위 (1)(2))은 `applied=` 를
     #    명시적으로 안 넘기므로 이 기본값을 그대로 받는데, `false` 는 "불렀는데 적응이
@@ -1227,7 +1363,8 @@ function enact_minted!(env, truth, synth; probe = nothing)
         (verdict = v, reason = _one_line(why), applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
          resume = resume, resolve = resolve,
-         args_from = args_from, n_calls = n_calls, body_probe = body_probe)
+         args_from = args_from, n_calls = n_calls, body_probe = body_probe,
+         dropped_args = dropped_args)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -1324,8 +1461,11 @@ function enact_minted!(env, truth, synth; probe = nothing)
     #    옛 동작과 바이트 동일이다 — 바인더 자체는 한 벌 그대로다(타입 검사·zone_keys 강제가
     #    두 경로에서 같은 코드를 지난다).
     resolved = Any[]
+    # 🔴 S5. 여기서 `nothing` → `[]` 로 바뀐다 = "바인더에 도달했다". 이 대입이 위 삼상의
+    #    둘째 상태를 만들고, 아래 `bind_primitive_args` 가 셋째를 채운다.
+    dropped_args = NamedTuple[]
     for (i, p) in enumerate(prims)
-        b = bind_primitive_args(p, ctxs[i])
+        b = bind_primitive_args(p, ctxs[i]; drops = dropped_args)
         b isa String && return _r(:reject, "$(b) (원시 $(p.name))")
         push!(resolved, (prim = p, args = b))
     end

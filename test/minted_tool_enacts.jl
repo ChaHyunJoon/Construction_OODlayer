@@ -1777,4 +1777,257 @@ end
 
 end # (21)
 
+# =============================================================================
+# (22) 🔴 S5 — 지어낸 로봇 정체는 인자 채널을 못 탄다 (2026-09-04, 다섯째 유료 런).
+#
+# 🔴 무엇이 실제로 일어났나(측정, 런 5). 합성된 body 는 **옳았다** — 자기 안에
+#    `affected_robot === nothing && (affected_robot = ood_event_target())` 라는 세계 유도
+#    폴백을 들고 있었다. 그런데 `calls` 가
+#    `{"affected_robot":"R1","battery_level":0.2,"task_list":["task1","task2"],
+#      "available_robots":["R2","R3","R4"]}` 로 도착했다. `"R1"` 이 묶이는 순간
+#    `=== nothing` 이 거짓이 되어 **그 폴백이 한 번도 안 돌았고**, 뒤이어 `soc["R2"]`
+#    (키가 `BotID` **객체**인 Dict)가 `KeyError: key "R2" not found` 로 죽었다.
+#    즉 결함은 body 가 아니라 **채널**이다. 프롬프트 규칙을 더하는 길은 이 레포가 세 번
+#    측정했다(실패가 없어지는 대신 옮겨간다) — 그래서 기전으로 닫는다.
+#
+# 재는 명제 넷:
+#  (22a) 판정식은 **양성 매칭**이다. 세계의 NL 렌더러가 내는 표시 이름만 걸리고,
+#        `string(::BotID)` 의 두 철자(모듈 한정 · 무한정)는 **둘 다 안 걸린다**.
+#        🔴 무한정 형태를 버리면 `c444666d` 가 일부러 연 채널을 도로 닫는 셈이다.
+#  (22b) 바인더가 그 값을 **안 묶는다**(거절이 아니라 미바인딩) — kwarg 는 선언된
+#        기본값으로 떨어지고, 같은 호출의 다른 인자는 **그대로 묶인다**(음성 대조).
+#  (22c) 벡터는 **전부-아니면-전무**다. 원소 하나라도 표시 이름이면 인자 전체를 버린다 —
+#        살아남은 원소만 모은 좁힌 벡터는 "정상으로 보이는데 뜻이 없는 값" 이다.
+#  (22d) 버림은 **시끄럽다**. 로그 한 줄이 인자 이름과 값을 적고, 집행 기록의
+#        `dropped_args` 가 삼상(`nothing` 미도달 · `[]` 버릴 것 없음 · 비지 않음)을 나른다.
+#
+# 변이시험(전부 실제로 빨갛게 만든 뒤 되돌렸다, `src/respec/minted_tool.jl`):
+#   ·(22-m1): `_is_display_name_id` 의 첫 정규식 `^(?:robot[ _\-]*)?R\d+$`i 에서 `$` 앵커를
+#             지운다 → 무한정 id `"BotID{DeliveryBot}(4)"` 가 `R\d+` 부분 매칭에 걸려
+#             (22a)(22b) 의 음성 대조가 빨개진다(= 진짜 id 를 버리는 규칙이 하중을 진다).
+#   ·(22-m2): `bind_primitive_args` 의 `drop_why !== nothing` 블록을 지운다 → `"R1"` 이
+#             다시 묶여 (22b)(22c)(22d) 가 빨개진다(= 런 5 의 상태).
+#   ·(22-m3): `_display_name_drop` 의 벡터 루프를 지운다 → (22c) 가 빨개진다.
+#   ·(22-m4): `_note_dropped_arg!` 의 `println` 을 지운다 → (22d) 의 로그 단언이 빨개진다
+#             (= 조용한 드롭 = 이 레포가 적어 둔 최악의 실패 모양).
+# =============================================================================
+# 진짜 id 문자열의 두 철자. 🔴 한정 형태는 손으로 짓지 않는다 — `string(::BotID)` 가 실제로
+# 내는 것을 그대로 쓴다(손으로 베끼면 이 시험이 세계가 아니라 자기 리터럴을 재게 된다).
+const _QUALIFIED_ID = string(CB.BotID{CB.DeliveryBot}(4))
+const _SHORT_ID     = "BotID{DeliveryBot}(4)"
+
+@testset "(22) 🔴 S5: 지어낸 로봇 정체는 인자 채널을 못 탄다" begin
+
+@testset "(22a) 판정식은 양성 매칭이다 — 진짜 id 는 통과한다" begin
+    # 세계의 NL 렌더러 두 자리가 내는 모양(`ood_injection.jl` · `llm_bridge.jl`).
+    for s in ["R1", "R2", "r12", "Robot R7", "robot 3", "Robot_R7", " R1 "]
+        @test CB._is_display_name_id(s)
+    end
+    # 🔴 진짜 id 는 **둘 다** 통과한다. 무한정 형태는 `c444666d` 가 받아들이기로 한 것이다.
+    @test !CB._is_display_name_id(_QUALIFIED_ID)
+    @test !CB._is_display_name_id(_SHORT_ID)
+    @test occursin("BotID", _QUALIFIED_ID) && occursin("(4)", _QUALIFIED_ID)  # 픽스처 자체 검사
+    # 🔴 여집합 규칙("id 가 아니면 버린다")이 아니라는 것 — id 아닌 정당한 문자열도 통과한다.
+    for s in ["zone_blk_1", "", "R", "RR1", "R1x", "1", "Robot", "task1", "assembly_7"]
+        @test !CB._is_display_name_id(s)
+    end
+    # 문자열이 아닌 값은 이 술어의 대상이 아니다(타입 게이트의 몫이다).
+    @test !CB._is_display_name_id(3)
+    @test !CB._is_display_name_id(nothing)
+
+    # ---- 값 판정: 스칼라 · 벡터 -------------------------------------------------------
+    @test CB._display_name_drop("R1") == "display_name_string"
+    @test CB._display_name_drop(_QUALIFIED_ID) === nothing
+    @test CB._display_name_drop(_SHORT_ID) === nothing
+    @test CB._display_name_drop(["R2", "R3"]) == "display_name_in_vector:R2"
+    # 🔴 (22c) 의 규칙: **섞이면 전체를 버린다.** 좁힌 벡터를 만들지 않는다.
+    @test CB._display_name_drop([_QUALIFIED_ID, "R2"]) == "display_name_in_vector:R2"
+    @test CB._display_name_drop([_SHORT_ID, _QUALIFIED_ID]) === nothing
+    @test CB._display_name_drop(String[]) === nothing
+    @test CB._display_name_drop([1, 2]) === nothing
+end
+
+@testset "(22b) 바인더는 거절이 아니라 **미바인딩**이다 — 그리고 주조 원시에만 건다" begin
+    local made = String[]
+    try
+        # 주조 원시 하나. 🔴 규약대로 kwarg 에 기본값이 있다 — 안 묶으면 그 기본값이 산다.
+        local nm = "t22b_pick!"; push!(made, nm)
+        @test CB.register_minted_primitive!(name = nm,
+                  code = "function $(nm)(env; agent=nothing, factor=1.0)\n" *
+                         "    return (status = :ok,)\nend\n",
+                  params = Dict{String,Any}(
+                      "agent"  => Dict{String,Any}("type" => ["string", "null"]),
+                      "factor" => Dict{String,Any}("type" => "number")),
+                  surface = "sched", reversible = false) === nothing
+        local prim = CB.resolve_primitive(nm)
+
+        local sink = NamedTuple[]
+        local b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                      params = Dict{String,Any}("agent" => "R1", "factor" => 2.0)); drops = sink)
+        @test b isa Tuple                       # 🔴 거절이 **아니다** — 옳은 body 는 굴러야 한다
+        @test !haskey(b[2], :agent)             # 안 묶였다 ⟹ callee 기본값(`nothing`)이 산다
+        @test b[2].factor == 2.0                # 음성 대조: 같은 호출의 다른 인자는 그대로다
+        @test length(sink) == 1
+        @test sink[1].arg == "agent" && sink[1].primitive == nm
+        @test occursin("R1", sink[1].value) && sink[1].why == "display_name_string"
+
+        # 🔴 음성 대조 둘 — 진짜 id 문자열은 **묶인다**(두 철자 모두).
+        for idstr in (_QUALIFIED_ID, _SHORT_ID)
+            local sink2 = NamedTuple[]
+            local ok = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                           params = Dict{String,Any}("agent" => idstr)); drops = sink2)
+            @test ok isa Tuple
+            @test ok[2].agent == idstr
+            @test isempty(sink2)
+        end
+
+        # `drops` 를 안 주는 옛 호출 모양도 그대로 돈다(기본값 `nothing`).
+        local b3 = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                       params = Dict{String,Any}("agent" => "R1")))
+        @test b3 isa Tuple && !haskey(b3[2], :agent)
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+
+    # 🔴 **손으로 쓴 원시에는 안 건다** — 이 조건은 실측이 강제했다. `release_pending_
+    #    assignments` 의 `agent` 를 버리면 kwarg 기본값 `nothing` 이 사는데, 그 기본값은
+    #    "**모든** 미래 배정 간선을 푼다" 는 이 원시의 가장 큰 편집이다. 즉 버리기가 세계
+    #    편집을 좁히는 게 아니라 **넓힌다**. 그 여덟은 이미 자기 정체 게이트를 갖고 있고
+    #    (`:unknown_agent`·`:both_scopes`, 둘 다 `WORLD_UNCHANGED_STATUSES`), 그것이 옳은
+    #    처리다. 계약을 여기서 못 박는다 — testset (17) 이 같은 사실을 status 로 잰다.
+    local rp = CB.resolve_primitive("release_pending_assignments")
+    @test !CB._is_generated("release_pending_assignments")
+    local sink4 = NamedTuple[]
+    local b4 = CB.bind_primitive_args(rp,
+                   (env = (cache = CB.PlanningCache(), sched = CB.OperatingSchedule()),
+                    truth = nothing, params = Dict{String,Any}("agent" => "R2")); drops = sink4)
+    @test b4 isa Tuple && b4[2].agent == "R2"    # 🔴 안 버렸다 — 원시 자신의 게이트로 간다
+    @test isempty(sink4)
+
+    # 🔴 이 수선은 **거절 하나도 실행으로 바꾸지 않는다**: 타입 검사가 버리기보다 먼저다.
+    local rf = CB.resolve_primitive("reform_stuck_teams")
+    local bad = CB.bind_primitive_args(rf, (env = Ref(:e), truth = nothing,
+                    params = Dict{String,Any}("min_ready" => "R1")))
+    @test bad isa String && occursin("reject:param_type:min_ready", bad)
+end
+
+@testset "(22c) 런 5 의 호출을 그대로 태운다 — 벡터는 전부-아니면-전무" begin
+    local made = String[]
+    try
+        local nm = "t22_redistribute!"; push!(made, nm)
+        local code =
+            "function $(nm)(env; affected_robot=nothing, battery_level=0.0, " *
+            "available_robots=[])\n" *
+            "    return (status = :ok,)\nend\n"
+        local params = Dict{String,Any}(
+            "affected_robot"   => Dict{String,Any}("type" => ["string", "null"]),
+            "battery_level"    => Dict{String,Any}("type" => "number"),
+            "available_robots" => Dict{String,Any}("type" => "array"))
+        @test CB.register_minted_primitive!(name = nm, code = code, params = params,
+                                            surface = "sched", reversible = false) === nothing
+        local prim = CB.resolve_primitive(nm)
+
+        # 런 5 의 `calls[1]["args"]` 를 **그대로**(JSON 왕복까지 똑같이) 태운다.
+        local calls = CB.normalize_calls(JSON3.read(
+            """[{"primitive":"$(nm)","args":{"affected_robot":"R1","battery_level":0.2,""" *
+            """"available_robots":["R2","R3","R4"]}}]"""))
+        @test calls isa Vector
+        local sink = NamedTuple[]
+        local b = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                      params = calls[1][2]); drops = sink)
+        @test b isa Tuple
+        # 🔴 지어낸 것 둘은 없고, 진짜 값 하나는 있다.
+        @test !haskey(b[2], :affected_robot)      # ⟹ body 의 ood_event_target() 폴백이 돈다
+        @test !haskey(b[2], :available_robots)    # ⟹ `[]` 기본값 ⟹ soc["R2"] 가 안 일어난다
+        @test b[2].battery_level == 0.2
+        @test Set([d.arg for d in sink]) == Set(["affected_robot", "available_robots"])
+
+        # 🔴 섞인 벡터: 진짜 id 하나가 있어도 **전체**를 버린다(좁힌 벡터를 안 만든다).
+        local sink2 = NamedTuple[]
+        local b2 = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                       params = Dict{String,Any}("available_robots" => [_QUALIFIED_ID, "R2"]));
+                       drops = sink2)
+        @test b2 isa Tuple && !haskey(b2[2], :available_robots)
+        @test length(sink2) == 1 && occursin("display_name_in_vector", sink2[1].why)
+
+        # 음성 대조: 진짜 id 만 든 벡터는 **그대로** 묶인다(원소가 안 없어진다).
+        local sink3 = NamedTuple[]
+        local b3 = CB.bind_primitive_args(prim, (env = :DUMMY, truth = nothing,
+                       params = Dict{String,Any}("available_robots" => [_QUALIFIED_ID, _SHORT_ID]));
+                       drops = sink3)
+        @test b3 isa Tuple && length(b3[2].available_robots) == 2
+        @test isempty(sink3)
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+end
+
+@testset "(22d) 버림은 시끄럽다 — 로그 한 줄, 기록의 삼상, 그리고 폴백이 실제로 돈다" begin
+    local made = String[]
+    try
+        # 🔴 body 가 **자기 status 로** 폴백 여부를 말한다 — 런 5 의 body 와 같은 모양이다
+        #    (`affected_robot === nothing` 이면 세계에서 유도한다). 그래서 이 절은 "인자가
+        #    안 묶였다" 를 kwarg 사전이 아니라 **집행 결과**로 잰다.
+        local nm = "t22d_target!"; push!(made, nm)
+        @test CB.register_minted_primitive!(name = nm,
+                  code = "function $(nm)(env; affected_robot=nothing, available_robots=[])\n" *
+                         "    if affected_robot === nothing\n" *
+                         "        return isempty(available_robots) ? (status = :fell_back,) :\n" *
+                         "               (status = :fell_back_with_list,)\n" *
+                         "    end\n" *
+                         "    return (status = :used_arg,)\nend\n",
+                  params = Dict{String,Any}(
+                      "affected_robot"   => Dict{String,Any}("type" => ["string", "null"]),
+                      "available_robots" => Dict{String,Any}("type" => "array")),
+                  surface = "sched", reversible = false) === nothing
+
+        local calls = [Dict{String,Any}("primitive" => nm,
+                           "args" => Dict{String,Any}("affected_robot" => "R1",
+                                                      "available_robots" => ["R2", "R3", "R4"]))]
+        local r, logged
+        mktemp() do path, io
+            redirect_stdout(io) do
+                r = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm], calls = calls))
+            end
+            flush(io); logged = read(path, String)
+        end
+        # 집행은 **막히지 않았다** — 지어낸 인자만 빠졌다.
+        @test r.verdict === :admit
+        @test length(r.steps) == 1
+        # 🔴 이것이 이 태스크의 전부다: body 의 세계 유도 폴백이 **실제로 돌았다**.
+        #    🔴 `:fell_back` 은 **두 사실**을 한 번에 말한다: 스칼라가 안 묶였고
+        #    (⟹ 폴백 갈래) 벡터도 안 묶였다(⟹ `isempty` 참 ⟹ `soc["R2"]` 가 안 일어난다).
+        #    `:fell_back_with_list` 였다면 벡터가 샌 것이다 — 그래서 갈래를 둘로 갈랐다.
+        @test r.steps[1].status === :fell_back
+        # 🔴 기록이 사건을 나른다. "인자가 없었다" 와 "인자를 버렸다" 가 여기서 갈린다.
+        @test r.dropped_args !== nothing && length(r.dropped_args) == 2
+        @test Set([d.arg for d in r.dropped_args]) ==
+              Set(["affected_robot", "available_robots"])
+        @test any(d -> occursin("R1", d.value), r.dropped_args)
+        # 🔴 로그가 인자 이름 **과** 값을 적는다(조용한 드롭 금지).
+        @test occursin("dropped fabricated identifier", logged)
+        @test occursin("affected_robot", logged) && occursin("R1", logged)
+
+        # 🔴 음성 대조 — 진짜 id 문자열은 안 버려지고, body 는 폴백 대신 **인자를 쓴다**.
+        local calls_id = [Dict{String,Any}("primitive" => nm,
+                              "args" => Dict{String,Any}("affected_robot" => _QUALIFIED_ID))]
+        local r2 = CB.enact_minted!(Ref(:e), nothing, _synth(names = [nm], calls = calls_id))
+        @test r2.steps[1].status === :used_arg
+        @test r2.dropped_args !== nothing && isempty(r2.dropped_args)  # 🔴 `[]` = 버릴 것 없음
+        # 무한정 철자도 같다(`c444666d` 가 연 채널을 이 규칙이 안 닫는다).
+        local calls_sh = [Dict{String,Any}("primitive" => nm,
+                              "args" => Dict{String,Any}("affected_robot" => _SHORT_ID))]
+        @test CB.enact_minted!(Ref(:e), nothing,
+                  _synth(names = [nm], calls = calls_sh)).steps[1].status === :used_arg
+    finally
+        for n in made; delete!(CB.minted_table(), n); end
+    end
+
+    # 🔴 삼상의 첫째 — 바인더에 **도달 못 한** 판은 `[]` 가 아니라 `nothing` 이다.
+    @test CB.enact_minted!(nothing, nothing, _synth(names = ["nope"])).dropped_args === nothing
+    @test CB.enact_minted!(nothing, nothing, nothing).dropped_args === nothing
+end
+
+end # (22)
+
 end # module
