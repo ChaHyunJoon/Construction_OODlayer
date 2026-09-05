@@ -163,3 +163,40 @@ def test_field_writes_are_not_forbidden():
     assert "only when no" in r, r          # 조건부 허용이 살아 있다
     for banned in ("never write", "do not write a field", "must not write"):
         assert banned not in r.lower(), banned
+
+
+# =====================================================================================
+# 2026-09-04 fix round 2 — I2 (독립 검증자). 규약 5 는 표제를 **이름으로** 가리킨다.
+#
+# 🔴 검증자의 음성 대조: 빌더의 표제를 `CALLABLE FUNCTIONS` 로 개명했더니 **32 시험이 전부
+#    초록**이었다. 즉 프롬프트가 "저기 적힌 목록에서 골라라" 라고 하면서 **없는 표제**를
+#    가리키는 상태가 아무 소리 없이 성립했다. 위 `test_the_rules_prefer_calling_over_writing_fields`
+#    는 규약 5 의 **자기 텍스트**만 봤지 렌더가 그 표제를 실제로 내는지는 안 봤다.
+#
+# 방어는 두 겹이다:
+#   (1) 구조 — `_CALLABLE_HEADING` 하나를 규약 5 와 빌더가 **같이 읽는다**(진실원 하나).
+#   (2) 시험 — 아래. 상수를 우회해 빌더에 다른 문자열을 하드코딩하는 편집까지 잡는다.
+#       리터럴을 두 번 적지 않는다: 규약 5 의 텍스트에서 표제 이름을 **뽑아내** 렌더와 맞춘다.
+# =====================================================================================
+def test_rule_5_names_a_heading_the_render_actually_emits():
+    import re
+    import world_interface as WI
+    b = _block()
+    m = re.search(r'Prefer CALLING the functions listed under "([^"]+)"', WI._RULES)
+    assert m, WI._RULES
+    named = m.group(1)
+
+    # (1) 규약 5 가 상수를 읽는다 — 리터럴을 두 번 적는 모양으로 되돌아가지 않았다.
+    assert named == WI._CALLABLE_HEADING, (named, WI._CALLABLE_HEADING)
+
+    # (2) 🔴 렌더가 **그 이름의 표제를 실제로 낸다.** 검증자의 개명이 여기서 빨개진다.
+    heads = [l for l in b.splitlines() if l.startswith(named)]
+    assert heads, (
+        "규약 5 가 가리키는 표제 %r 가 렌더에 없다 — 프롬프트가 없는 곳을 가리킨다" % named)
+    assert len(heads) == 1, heads
+
+    # (3) 빈-통과 방지: 그 표제 아래가 비어 있으면 가리켜도 소용이 없다.
+    body = b.partition(heads[0])[2].partition("\nFUNCTIONS THAT NEED SOMETHING")[0]
+    entries = [l for l in body.splitlines() if l.startswith("- ")]
+    assert len(entries) > 50, len(entries)
+    assert any(l.startswith("- swap_battery!") for l in entries), entries[:5]

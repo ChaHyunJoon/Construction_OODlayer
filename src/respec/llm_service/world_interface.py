@@ -40,6 +40,15 @@ def load_world_interface(path: Optional[str] = None) -> Dict[str, Any]:
     return hit[1]
 
 
+#: 🔴 I2 (2026-09-04, 독립 검증자). 표제 이름은 **한 곳**이다. 규약 5 가 이 표제를 **이름으로**
+#: 가리키므로, 표제만 바꾸고 규약 5 를 안 바꾸면 프롬프트가 **없는 표제**를 가리키게 된다 —
+#: 모델에게는 "저기 적힌 목록에서 골라라" 가 가리키는 곳이 사라진 것이다. 검증자의 음성 대조가
+#: 정확히 그것을 했고(표제를 `CALLABLE FUNCTIONS` 로 개명) **32 시험이 전부 초록이었다.**
+#: 그래서 시험이 아니라 **구조로** 막는다: 렌더와 규약 5 가 같은 상수를 읽는다. 시험은 그
+#: 위에 하나 더 얹어(`test_rule_5_names_a_heading_the_render_actually_emits`) 상수를 우회한
+#: 하드코딩까지 잡는다.
+_CALLABLE_HEADING = "FUNCTIONS YOU CAN CALL NOW"
+
 _RULES = (
     "HOW YOUR CODE IS CALLED -- these are hard requirements, not style:\n"
     "  1. Exactly one top-level definition: `function NAME!(env; k1=<default>, ...) ... end`.\n"
@@ -56,7 +65,7 @@ _RULES = (
     "     already done all of its work correctly.\n"
     "  4. Exactly one TOP-LEVEL definition -- no other top-level `const`, macros, or\n"
     "     helper functions. Helper closures defined INSIDE your function body are fine.\n"
-    "  5. Prefer CALLING the functions listed under \"FUNCTIONS YOU CAN CALL NOW\" over\n"
+    '  5. Prefer CALLING the functions listed under "' + _CALLABLE_HEADING + '" over\n'
     "     writing struct fields by hand. A function call carries the module's own\n"
     "     invariants; a raw field write does not. Write a field directly only when no\n"
     "     listed function produces the required effect, and say why in a comment.\n"
@@ -109,7 +118,7 @@ def build_world_interface_block(blob=None) -> str:
     #    나오고, D6 이 감춘 다섯은 애초에 산출물에 없다.
     now = [m for m in b["methods"] if m.get("callable")]
     later = [m for m in b["methods"] if not m.get("callable")]
-    parts += ["", "FUNCTIONS YOU CAN CALL NOW (every argument is obtainable from env):"]
+    parts += ["", "%s (every argument is obtainable from env):" % _CALLABLE_HEADING]
     for m in now:
         parts.append(_method_line(m))
         for p in m.get("argpaths") or []:
