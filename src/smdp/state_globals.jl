@@ -133,6 +133,7 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :SNAP_COUNT             => :state,   # Age: 3회 임계 escalation — C1 위반 (spec §5.4-b)
     :SIM_STEP               => :state,   # Clock: 시계 단일 진실원 (태스크 8)
     :LAST_EDGE_COSTS        => :state,   # G6 센티넬이 읽는다 (spec §3.6)
+    :LAST_CARGO_BAN_ROWS    => :state,   # 측정용. 직전 formulate 이 화물 금지로 더한 행 수
     :RESPEC_HOLD            => :state,   # ⚠️ 에피소드 중 변한다. G1 이 최종 판정한다
 
     # ---- fix round 1: 오분류 정정 (재확인 완료, 아래 각 줄에 근거) -------------------------

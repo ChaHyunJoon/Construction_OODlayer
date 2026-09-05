@@ -1900,6 +1900,13 @@ function enact_minted_decision!(env, truth, decision)
         local ran_milp = !(CB.LAST_EDGE_COSTS[] === _sent)   # 센티넬이 그대로면 재풀이 없음
         println("[minted] ran_milp=", ran_milp, " n_candidate_edges=",
                 ran_milp ? string(length(CB.LAST_EDGE_COSTS[])) : "n/a(no re-solve)",
+                # 🔴 task-oracle3(2026-09-05). `forbid_heavy_cargo!` 의 `:banned` 는 **집행
+                #    증거가 아니다** — 실제로 눌린 행 수는 formulate 안에서만 알 수 있고, 그
+                #    값이 없으면 "금지가 0 행이었다" 와 "금지가 걸렸는데 argmin 이 안 움직였다"
+                #    가 같은 관측이 된다(task-oracle2 는 그것을 간접 추론해야 했다).
+                #    재풀이가 없었으면 이 숫자는 이 결정의 것이 아니므로 안 찍는다.
+                " cargo_ban_rows=",
+                ran_milp ? string(CB.LAST_CARGO_BAN_ROWS[]) : "n/a(no re-solve)",
                 " closed=", (try string(length(env.cache.closed_set)) catch; "n/a" end))
         # 🔴 `@info` 가 아니라 `println` 이다 — `run_demo.jl` 이 `global_logger(…, Logging.Warn)`
         #    를 심어 `@info` 는 프로세스 전역에서 버려진다(이 파일의 다른 `[minted]` 줄과 같은

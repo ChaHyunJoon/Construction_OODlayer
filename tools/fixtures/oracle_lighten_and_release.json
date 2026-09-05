@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleLightenAndRelease",
+  "mechanism": "oracle fixture (task-oracle3, 2026-09-05): compose the two primitives the first two oracle runs tested in isolation. `forbid_heavy_cargo!` writes the standing ban FIRST (it only needs the schedule to resolve the robot name, and a preceding release can invalidate the very slots that name resolution walks), then `release_pending_assignments!` creates the candidate assignment edges the ban can bind to. surface=sched because the body edits the schedule graph; the harness re-solve (_resolve_if_needed!) then formulates the MILP with BOTH the freed edges and the standing ban.",
+  "impl_name": "OracleLightenAndRelease!",
+  "impl_code": "function OracleLightenAndRelease!(env)\n    BATTERY_FLEET[] === nothing && return (; status = :no_battery_info)\n    rid = ood_event_target()\n    rid === nothing && return (; status = :no_target)\n    ban = forbid_heavy_cargo!(env; agent = string(rid), n = 3)\n    ban.status === :banned || return ban\n    inv = build_invariant(env)\n    edges = release_pending_assignments!(env, inv; agent = string(rid))\n    edges isa AbstractVector || return edges\n    return (; status = :released, removed = length(edges))\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleLightenAndRelease!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleLightenAndRelease!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

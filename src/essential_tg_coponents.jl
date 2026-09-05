@@ -1237,7 +1237,11 @@ function formulate_milp(
         #    ⚠️ `rebalance_for_battery!` 는 `extra_constraints` 를 안 준다 — 그래서 이 호출이
         #    위 `if` 안에 들어가면 그 경로가 **조용히** 샌다(`test/cargo_ban_store.jl` 의 G-5 가
         #    정확히 `extra_constraints = nothing` 으로 그 자리를 겨눈다).
-        _compile_standing_cargo_bans!(model, t0, tF, Xa, sched)
+        # 🔴 MEASUREMENT (task-oracle3, 2026-09-05): 훅의 반환값(**모델에 실제로 더한 행 수**)을
+        #    버리지 않고 상자에 둔다. `:banned` 는 "금지를 보관소에 썼다" 일 뿐이고 그것이
+        #    **집행됐는가**(= 행이 컴파일됐는가)는 여기 말고 관측면이 없었다 — task-oracle2 는
+        #    그 구별을 `n_candidate_edges=0` 에서 간접 추론해야 했다. 0 과 비-0 은 다른 사건이다.
+        LAST_CARGO_BAN_ROWS[] = _compile_standing_cargo_bans!(model, t0, tF, Xa, sched)
     finally
         RESPEC_SCENE_TREE[] = prev_scene
     end
@@ -1257,6 +1261,21 @@ end
 #   덕분에 풀이가 끝난 뒤 "실제로 선택된 배정의 총 에너지"를 formulate_milp 반환형을 안 바꾸고도 읽을 수 있음.
 # `Ref(...)` : 값 하나를 담는 가변 상자(내용을 나중에 바꿀 수 있음). 전역 가변 → 순차 실행에서만 안전(스레드 X).
 const LAST_EDGE_COSTS = Ref(Dict{Tuple{Int,Int},Float64}())
+
+"""
+    LAST_CARGO_BAN_ROWS
+
+가장 최근 `formulate_milp(::SparseAdjacencyMILP, …)` 이 **지속 화물 금지**
+(`STANDING_CARGO_BANS[]`)로부터 모델에 실제로 더한 **행 수**.
+
+🔴 `LAST_EDGE_COSTS` 와 같은 성격의 측정용 전역이다(순차 실행 전용, 스레드 안전 아님). 있는
+이유는 하나다: `forbid_heavy_cargo!` 의 `:banned` 는 **보관소에 썼다**는 뜻일 뿐 그 금지가
+**집행됐다**는 뜻이 아니고(그 함수의 docstring 이 두 번 경고한다), 집행 여부 = 이 행 수다.
+0 은 정상적인 관측이다 — 후보 간선이 없거나(release 전) 부담 계층이 없으면 0 행이다.
+⚠️ 매 formulate 가 덮어쓴다. `verify` 의 시험 풀이도 formulate 이므로, 읽는 쪽은 **어느
+formulate 뒤인지**를 스스로 알아야 한다(`LAST_EDGE_COSTS` 와 같은 계약).
+"""
+const LAST_CARGO_BAN_ROWS = Ref(0)
 
 """
     handling_energy(milp; edge_costs=LAST_EDGE_COSTS[]) -> Float64
