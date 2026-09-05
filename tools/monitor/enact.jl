@@ -1244,14 +1244,22 @@ end
 #    ⚠️ 이 축만 삼상이라 `n/a(not measured)` 를 **축 값 자리에** 찍는다 — 0 과 다른 글자다.
 const NOT_MEASURED_STR = "n/a(not measured)"
 
-_world_delta_str(wd) = wd === nothing ? NOT_MEASURED_STR :
+# 🔴 **D17c (2026-09-05).** 여섯 축의 `key=value` 렌더가 **한 벌**로 떨어져 나왔다 —
+#    되먹임 메시지(`_noop_feedback_reason`)가 모델에게 "이 축들이 안 움직였다" 를 말할 때
+#    기록 줄과 **같은 글자**를 써야 하기 때문이다. 두 벌을 두면 로그가 말하는 축 이름과
+#    전선이 말하는 축 이름이 갈릴 수 있고, 이 파일은 그 종류의 갈림을 m3·m4 에서 이미 겪었다.
+#    ⚠️ 출력은 **바이트 동일**하다: 각주는 `_world_delta_str` 이 그대로 붙인다. 전선 메시지는
+#    각주를 한국어로 나르지 않고 같은 사실을 영어로 자기 문장에 적는다(그 함수가 소유한다).
+_wd_axes_str(wd) =
     string("closed=", wd.closed, " active=", wd.active,
            " n_edges=", wd.n_edges, " n_binding_changed=", wd.n_binding_changed,
            " n_weights_changed=", wd.n_weights_changed,
            " n_staging_moved=", (hasproperty(wd, :n_staging_moved) &&
                                  wd.n_staging_moved !== nothing) ?
-                                string(wd.n_staging_moved) : NOT_MEASURED_STR,
-           " (n_binding_changed 는 하한이다)")
+                                string(wd.n_staging_moved) : NOT_MEASURED_STR)
+
+_world_delta_str(wd) = wd === nothing ? NOT_MEASURED_STR :
+    string(_wd_axes_str(wd), " (n_binding_changed 는 하한이다)")
 
 """
     _delta_scope(resolve) -> String
@@ -1675,20 +1683,221 @@ _retry_gate(r, wdb) =
     :ok
 
 """
+    _noop_gate(r, world_delta_body) -> Symbol
+
+집행이 **안 던진** 판에서 그 body 가 **잰 무동작**인가. `:ok` · `:noop_refused_unmeasured` ·
+`:none`(트리거 자체가 없다) 셋 중 하나.
+
+🔴 **왜 이 게이트가 따로 있나 (2026-09-05, D17c).** D17b 는 body 가 **던진** 판만 되먹였다.
+   유료 런 8 은 정확히 그 채널이 못 보는 자리에서 죽었다: body 가 zone 키를 좌표에서 **지어
+   만들어** 놓고 원시의 반환 status 를 **올바르게** 검사한 뒤 `:failure` 를 돌려줬다 —
+   예외가 없으므로 `_enact_throw_reason` 은 `nothing` 이고 되먹임이 한 번도 안 갔다.
+   그 판의 기록은 `verdict=admit partial=false enact_retry=n/a` 에 여섯 축 전부 0 이었다.
+   그러므로 필요한 것은 **예외에 대한 되먹임이 아니라 잰 0 에 대한 되먹임**이다.
+
+**연언지 넷. 전부여야 `:ok` 다.**
+
+  1. `!isempty(r.steps)` — body 가 **실제로 한 발이라도 굴렀다**. 걸음이 없으면(거절·조기
+     반환) "아무것도 안 움직였다" 는 body 에 대한 사실이 아니라 **body 를 안 불렀다**는
+     사실이다. 그 판은 `:none`(= 로그의 `n/a`)이다.
+  2. 어느 걸음도 `:threw` 가 아니다 — 던진 판의 정본은 `_retry_gate` 이고, 두 트리거가 한
+     판에서 겹치면 왕복이 둘이 된다. `:none` 으로 비켜선다(상한 1은 구조로 지킨다).
+  3. `world_delta_body` 가 **잰 값**이다 — `nothing` 도, 여섯째 축만 `nothing` 인 것도
+     **못 쟀다**이다. 🔴 못 잰 판에서 "너는 아무것도 안 바꿨다" 고 말하는 것은 **거짓말**이다:
+     우리는 보지 않았다. 그 판은 `:noop_refused_unmeasured` 로 **세어지고 되먹임은 안 간다**.
+  4. `_wd_is_zero(world_delta_body)` — 그 지문의 여섯 축이 전부 잰 0 이다. 하나라도 비-0 이면
+     body 는 세계를 **움직였다**(증명이다) — 그 판은 이 채널의 사건이 아니다: `:none`.
+
+🔴 **`applied` 로 게이트하지 않는다** — 그것이 이 판정의 가장 위험한 유혹이고, 두 근거로
+   거절한다. (a) **정보가 없다**: 생성 원시의 status 는 선언된 어휘에 없으므로
+   `_step_applied` 가 `nothing` 을 낸다(testset (32) 가 그것을 잰다) — 즉 주조 body 에서
+   `applied` 는 거의 언제나 "못 쟀다"이고, 그것으로 게이트하면 이 채널이 **구조적으로 죽는다**.
+   (b) **판정이 아니라 자기신고다**: 유료 런 6 은 `applied` 가 성공을 말하는데 세계가 안
+   움직인 **거짓 성공**이었다. 자기신고를 문지기로 쓰면 정확히 그 판이 빠져나간다.
+
+🔴 **이 게이트는 "세계가 안 바뀌었다" 를 주장하지 않는다.** 여섯 축은 배터리 교체 ·
+   `SPARE_POOLS` · fault 플래그 · 배송을 **안 본다**(정본은 `_world_digest` 의 docstring).
+   주장하는 것은 **"우리가 본 여섯 축이 안 움직였다"** 뿐이고, 그래서 전선에 실리는 문장도
+   정확히 그것만 말한다(`_noop_feedback_reason` 이 그 문장을 소유한다).
+
+⚠️ **대가를 정직하게 적는다:** 설계상 무동작인 body(예: 이미 치워진 존을 다시 치우는 판)도
+   되먹임 왕복을 **한 번** 탄다. 그것을 막으려면 "어떤 status 가 정당한 무동작인가" 를 여기서
+   판정해야 하는데, 그 어휘는 주조 원시에 대해 **존재하지 않는다**(위 (a)). 관측만 보내므로
+   그 판에서 모델이 "고칠 것이 없다" 고 답하는 것은 **허용된 답**이다.
+"""
+_noop_gate(r, wdb) =
+    (try isempty(r.steps) catch; true end)                          ? :none :
+    (try any(s -> s.status === :threw, r.steps) catch; true end)    ? :none :
+    wdb === nothing                                                 ? :noop_refused_unmeasured :
+    !(try wdb.n_staging_moved isa Integer catch; false end)          ? :noop_refused_unmeasured :
+    _wd_is_zero(wdb)                                                ? :ok :
+    :none
+
+"""
+    _noop_feedback_reason(r, world_delta_body) -> String
+
+**잰 무동작**을 agent-3 에게 되먹일 자유 문자열. 전선 필드는 `impl_rejected_why` 그대로다
+(두 번째 철자를 만들지 않는다 = `src/respec/llm_service/` 를 안 건드린다 = 지문이 안 뒤집힌다).
+
+🔴 **이 문장은 관측만 말한다. 처방을 말하지 않는다** — 그것이 이 실험을 유효하게 만드는
+   선이다. 모델이 **무엇을 해야 하는지 스스로 알아내야** 측정이 뜻을 갖는다. 그러므로 금지:
+   동사 이름 · 광고된 접근자 이름 · "열거하라" 류의 지시 · 두 갈래 상승 힌트 · `expressible`.
+   `test/minted_end_to_end.jl` (38) 이 그것을 **어휘적으로** 못박는다(내보낸 이름 183개 중
+   하나라도 이 문자열에 나오면 빨개진다).
+
+**문장을 한 조각씩 변호한다 — 전부 잰 것이다:**
+
+ · `the body ran to completion and raised no error`
+   — 잰 것이다: 게이트 연언지 1·2(걸음이 있고 `:threw` 가 없다).
+ · `its own returned status was <name>=<status>…`
+   — 잰 것이다. **모델 자신의 반환값**을 그대로 되돌려준다. 이것이 없으면 이 문장이
+     **부정직해진다**: 유료 런 8 의 body 는 `:failure` 를 돌려줬고, 그 판에 "오류 없이
+     끝났다" 만 보내는 것은 사실의 절반을 감춘다. 그리고 유료 런 6 처럼 status 가 성공을
+     말하는 판에서는 그 병치 자체가 **모델이 달리 얻을 수 없는 사실**이다("네 자기신고와
+     측정이 어긋난다"). 🔴 진단이 아니다 — 우리는 그 불일치를 **해석하지 않고** 두 값을
+     나란히 놓을 뿐이다.
+ · `The world was measured immediately before the body ran and again immediately after`
+   — 잰 것이다: `_pre` 는 `CB.enact_minted!` 직전(등록·타입검사는 세계를 안 건드린다),
+     `r.body_probe` 는 body 루프 직후·하네스의 재개/재풀이 **앞**이다(Task 2).
+ · `every measured axis was identical: <여섯 축>`
+   — 잰 것이다: 게이트 연언지 3·4. 글자는 기록 줄과 **같은 렌더러**(`_wd_axes_str`)가 낸다.
+ · `n_binding_changed is a lower bound.`
+   — `_world_digest` 의 docstring 이 소유하는 사실. 기록 줄의 한국어 각주와 같은 사실이다.
+ · `These six axes are the only part of the world that was measured, so this is an
+   observation about them and not a claim that nothing at all happened.`
+   — 🔴 **필수 헤지.** 여섯 축은 배터리 교체·`SPARE_POOLS`·fault 플래그·배송을 안 본다.
+     이 문장이 없으면 우리가 재지 않은 것을 잰 것처럼 말하게 된다.
+     ⚠️ **무엇이 안 재졌는지는 이름 붙이지 않는다** — "배터리" 나 "배송" 을 적는 순간
+     그것은 관측이 아니라 어디를 보라는 **처방**이 된다.
+
+⚠️ `status` 는 **모델이 쓴 텍스트**다(`_step_status` 가 `Symbol(getproperty(out, :status))`
+   로 만든다). 그래서 `_one_line_rec`/`_cap_detail` 을 지난다 — 개행 하나가 이 사유를 나르는
+   진단 `println` 을 두 줄로 쪼개면 로그를 읽는 사람이 사유를 잃는다.
+"""
+function _noop_feedback_reason(r, wdb)
+    local sts = try
+        _cap_detail(_one_line_rec(join([string(s.name, "=", s.status) for s in r.steps], ", ")))
+    catch; "unavailable" end
+    return string(
+        "enact_noop: the body ran to completion and raised no error; ",
+        "its own returned status was ", sts, ". ",
+        "The world was measured immediately before the body ran and again immediately ",
+        "after, and every measured axis was identical: ", _wd_axes_str(wdb), ". ",
+        "n_binding_changed is a lower bound. ",
+        "These six axes are the only part of the world that was measured, so this is an ",
+        "observation about them and not a claim that nothing at all happened.")
+end
+
+"""
+    _RETRY_SYMS_THREW · _RETRY_SYMS_NOOP
+
+`_rewrite_retry!` 가 낼 세 상태의 이름표. **두 트리거를 한 심볼로 뭉개지 않는다** — 로그를
+읽는 사람은 "던져서 되먹였다" 와 "안 움직여서 되먹였다" 를 반드시 갈라야 한다(처방이 다르다).
+
+⚠️ 던진 쪽의 세 이름은 **D17b 와 바이트 동일**하다. 접두를 붙여 통일하고 싶은 유혹이 있지만
+   그러면 `tools/monitor/test_ladder_report.py` 의 실측 리터럴과 결정 행의 옛 값이 한꺼번에
+   갈린다 — 이 파일의 규약대로 **넓히기만** 한다.
+"""
+const _RETRY_SYMS_THREW = (roundtrip = :roundtrip_failed,
+                           rejected  = :rejected,
+                           retried   = :retried)
+const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
+                           rejected  = :noop_rejected,
+                           retried   = :noop_retried)
+
+"""
+    _rewrite_retry!(env, truth, sl, r, _pre, why, nm, syms) -> NamedTuple
+
+되먹임 **한 벌**: 사유를 `/rewrite` 로 보내고 · 고친 body 를 검사·설치·재등록하고 ·
+성공이면 **두 번째로 집행**한다. 반환은 일곱 필드로 고정이다
+(`retry`·`reenacted`·`r`·`world_delta`·`world_delta_body`·`interface_calls`·`impl_rejected_why`).
+
+🔴 **두 트리거가 이 한 벌을 공유한다**(D17b = 집행 예외, D17c = 잰 무동작). 두 벌을 두면
+   검사 순서·사유 이름·`allow_redefine` 의 좁힘이 갈리고, 이 파일은 그 갈림을 이미
+   `_install_rewrite!` 를 만들며 한 번 겪었다. **다른 것은 게이트와 사유 문자열과 상태
+   이름 셋뿐이고, 그 셋은 전부 인자로 들어온다.**
+
+🔴 **상한은 1 이고 루프가 아니라 구조다.** 이 함수에는 반복이 없고, 호출자는 두 트리거를
+   `if`/`elseif` 로 배타로 묶는다 — 그래서 한 판에서 왕복은 많아야 **하나**다. 두 번째
+   집행 결과는 그대로 기록되고 **다시 되먹이지 않는다**(무동작이어도 그렇다).
+
+🔴 `reenacted == false` 인 두 자리(`roundtrip`·`rejected`)에서는 `world_delta*` 와
+   `interface_calls` 가 `nothing` 이다 — **그 값들을 호출자가 덮으면 안 된다**는 뜻이다.
+   호출자가 `reenacted` 로 그것을 지킨다. 여기서 첫 시도의 값을 되돌려주는 모양은 일부러
+   피한다: 반환에 "첫 시도 값" 과 "두 번째 시도 값" 이 같은 이름으로 섞이면 호출자가 어느
+   쪽을 기록하는지 읽는 사람이 못 가른다.
+
+🔴 이름·코드는 **`sl` 에서 다시 읽는다** — D17 의 되먹임이 이미 성공한 판에서는 인자 `nm`
+   이 **등록된 적 없는 옛 값**이다(D5 문단과 같은 근거).
+
+🔴 `allow_redefine` 은 "agent-3 이 **방금 우리가 주조한 그 이름**을 그대로 돌려줬는가" 일
+   때만 참이다. 두 트리거 다 첫 등록이 **성공한** 뒤의 판이므로 그 이름은 이미
+   `_MINTED_EVER` 에 있고, 안 풀면 고친 body 가 **언제나** `already_minted` 로 거절돼
+   채널이 구조적으로 죽는다(D17b §6 실측). 다른 이름이면 `false` 이고 충돌 셋의 판정
+   (D6 신호 포함)은 그대로 산다.
+"""
+function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
+    local _prev_nm = String(something(_synth_lane_field(sl, "impl_name"), nm))
+    local _prev_cd = String(something(_synth_lane_field(sl, "impl_code"), ""))
+    local fx = _rewrite_once(sl, _prev_nm, _prev_cd, why)
+    if fx === nothing
+        return (retry = syms.roundtrip, reenacted = false, r = r,
+                world_delta = nothing, world_delta_body = nothing,
+                interface_calls = nothing, impl_rejected_why = nothing)
+    end
+    local why2 = _install_rewrite!(sl, fx; allow_redefine = (fx.impl_name == _prev_nm))
+    if why2 !== nothing
+        # ⚠️ 사유는 **두 번째 시도의 것**이다(D17 과 같은 규약).
+        return (retry = syms.rejected, reenacted = false, r = r,
+                world_delta = nothing, world_delta_body = nothing,
+                interface_calls = nothing, impl_rejected_why = why2)
+    end
+    # 🔴 첫 시도의 걸음은 아래 기록 줄에서 **사라진다**(그 줄은 두 번째 시도를 적는다).
+    #    그래서 여기서 따로 찍는다 — 접두가 `[minted] enact_retry:` 라
+    #    `ladder_report.py` 의 `MINTED_RE`(`\\[minted\\] lane=present…`)에 안 걸린다.
+    println("[minted] enact_retry: 되먹임 1회 — 첫 시도 steps=[",
+            join([_step_render(st) for st in r.steps], " "), "]",
+            " 사유=", why)
+    # 🔴 `_pre` 는 **안 다시 찍는다.** `world_delta` 는 이 판에서도 "집행 봉투 전체" 의 뜻을
+    #    유지해야 한다 — 두 시도를 합친 누적 차분이다. (두 게이트 다 첫 시도의 body 차분이
+    #    잰 0 인 판에서만 열리므로, 이 누적값은 실질적으로 두 번째 body 의 것이다.)
+    local r2 = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
+    return (retry = syms.retried, reenacted = true, r = r2,
+            world_delta = _world_delta(_pre, _world_digest(env)),
+            world_delta_body = _world_delta(_pre, r2.body_probe),
+            # 🔴 L3 은 **등록된 이름**에서 다시 읽는다(D5 와 같은 근거).
+            interface_calls = _interface_calls_of(
+                something(_synth_lane_field(sl, "impl_name"), nm)),
+            impl_rejected_why = nothing)
+end
+
+"""
     _retry_str(x) -> String
 
 `enact_retry` 삼상+를 로그 한 조각으로. **공백이 없다** — `[minted]` 줄은 공백으로 갈리는
 `key=value` 로 읽힌다(`ladder_report.py` 의 `MINTED_FIELD_RES` 는 `(\\S+)` 다).
 
 🔴 상태가 나르는 구별(`dropped_args` 가 이 파일의 선례다):
-  · `n/a`                        — **한 번도 시도 안 했다**(집행이 안 던졌거나 그 자리에 못 닿았다)
-  · `refused_not_first_step` 외 둘 — 던졌는데 **세계가 더러워서 거절했다**(위 `_retry_gate`)
+  · `n/a`                        — **한 번도 시도 안 했다**(트리거가 아예 없었다: 집행이 안
+                                   던졌고 body 가 잰 무동작도 아니었거나, 그 자리에 못 닿았다)
+
+  **던져서 되먹인 갈래** (D17b, 판정은 `_retry_gate`):
+  · `refused_not_first_step` 외 둘 — 던졌는데 **세계가 더러워서 거절했다**
   · `roundtrip_failed`           — 시도했고 **왕복이 실패했다**(서비스가 없거나 `wrote != true`)
   · `rejected`                   — 고친 body 가 **왔는데 재등록이 거절했다**(사유는 `impl_rejected_why`)
   · `retried`                    — 고친 body 가 왔고 **두 번째로 집행했다**
 
+  **잰 무동작으로 되먹인 갈래** (D17c, 판정은 `_noop_gate`):
+  · `noop_refused_unmeasured`    — 안 던졌는데 **body 차분을 못 쟀다** — 못 잰 것을 두고
+                                   "너는 아무것도 안 바꿨다" 고 말하지 않는다
+  · `noop_roundtrip_failed` · `noop_rejected` · `noop_retried` — 위 셋과 같은 뜻, 다른 트리거
+
 🔴 `retried` 가 이 줄에 없으면 사다리는 **두 번째 시도를 첫 시도의 깨끗한 성공으로 채점한다.**
    그 구별이 이 필드의 존재 이유다.
+🔴 **두 트리거를 한 이름으로 뭉개지 않는다**(2026-09-05, D17c). `retried` 와 `noop_retried`
+   는 **다른 사건**이다 — 앞은 "예외 메시지를 되먹였다", 뒤는 "잰 0 을 되먹였다" 이고
+   유료 런의 사후 판독에서 그 둘은 서로 다른 처방을 부른다. 접두 `noop_` 하나가 그 구별을
+   `(\\S+)` 한 번의 판독으로 나른다. 이름표의 정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP` 다.
 """
 _retry_str(x) = x === nothing ? "n/a" : String(x)
 
@@ -1713,7 +1922,19 @@ _retry_str(x) = x === nothing ? "n/a" : String(x)
 0 이든 아니든 귀속이 불가능했던 자리가 정확히 이것이다. 삼상은 같다: `nothing` = probe 를
 못 찍었다, 0 의 튜플 = 찍었는데 body 가 세계를 안 바꿨다.
 
-🔴 **`enact_retry` 는 여섯이다**(2026-09-05, D17b). D17 의 되먹임은 **등록 거절**에서만
+🔴 **`enact_retry` 는 열이다**(2026-09-05, D17b + D17c). 상태 목록의 정본은 `_retry_str`
+의 표이고 이름표의 정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP` 다 — 여기 다시 세지 않는다.
+🔴 **트리거가 둘이고 로그가 그 둘을 가른다**: 접두 없는 넷은 **집행이 던진** 판(D17b),
+접두 `noop_` 인 넷은 **body 가 잰 무동작**인 판(D17c — 유료 런 8 이 죽은 자리: 예외가
+없었으므로 D17b 의 채널이 한 번도 안 발화했다). 한 판에서 왕복은 **많아야 하나**다
+(집행부의 `if`/`elseif` 가 그 배타를 구조로 지킨다).
+
+🔴 **`noop_refused_unmeasured` 를 `n/a` 로 뭉개지 말 것.** `n/a` 는 "트리거가 없었다"
+(= 안 던졌고, 잰 여섯 축 중 하나라도 움직였다)이고, 이 값은 "안 던졌는데 **차분을 못 쟀다**"
+이다. 못 잰 판에서 모델에게 "너는 아무것도 안 바꿨다" 고 말하는 것은 거짓말이므로 되먹임은
+안 가지만, 그 사실은 **세어져야** 한다.
+
+D17 의 되먹임은 **등록 거절**에서만
 발화했다 — 등록을 통과한 body 가 **집행에서 던져** 죽은 판(유료 런 2·4·5·7)에는 되먹임이
 한 번도 안 갔다. 이 필드가 그 판의 기록이다: `nothing`(= 로그의 `n/a`, 시도 안 했다) ·
 `:refused_not_first_step`/`:refused_world_changed`/`:refused_world_unmeasured`(던졌는데
@@ -1852,6 +2073,15 @@ function enact_minted_decision!(env, truth, decision)
     #    `nothing`("몰라서 못 쟀다")으로 남는다.
     local registered::Union{Nothing,Bool} = nothing
     local impl_rejected_why::Union{Nothing,String} = nothing
+    # 🔴 D17c (2026-09-05). **한 런의 왕복 예산은 1이다** — 되먹임 자리가 이제 셋이라
+    #    (D17 등록 거절 · D17b 집행 예외 · D17c 잰 무동작) 예산을 안 세면 한 판이
+    #    유료 왕복을 **둘** 낼 수 있다: 등록이 거절돼 고쳐진 body 가 집행에서 죽거나
+    #    무동작이면 두 번째 왕복이 나간다. 그 판이 실재하고(D17 은 `live_cache_env`
+    #    에서 실제로 발화한다) 아무 게이트도 그것을 안 막고 있었다.
+    # 🔴 `registered` 와 **같은 이유로** `try` 밖이다(F2/R7 문단): try 의 결속은 catch
+    #    에 안 보이므로, 안에서 선언하면 catch 가 값을 손으로 다시 적어야 하고 그
+    #    사본이 거짓말을 한다.
+    local rewrote::Bool = false
     # 🔴 D18. `registered` 와 **같은 이유로** `try` 밖이다(F2/R7 문단): try 의 결속은 catch 에
     #    안 보이므로, 안에서 선언하면 catch 는 값을 손으로 다시 적을 수밖에 없고 그 복사본이
     #    거짓말을 한다. 밖에서 선언하면 catch 는 "예외 직전까지 실제로 관측된 값"을 그대로
@@ -2040,6 +2270,9 @@ function enact_minted_decision!(env, truth, decision)
             #    (`@goto` 는 여기서 못 쓴다: Julia 의 `@goto` 는 `try` 블록 안팎으로 못 뛴다.)
             if why !== nothing
                 local fx = _rewrite_once(sl, String(nm), String(cd), why)
+                # 🔴 D17c. **왕복이 나간 순간** 예산이 소진된다 — 성공했든 실패했든.
+                #    "실패했으니 한 번 더" 는 상한을 2로 만드는 것과 같다.
+                rewrote = true
                 fx === nothing && return _reject_malformed(why)
                 println("[minted] rewrite: 되먹임 1회 — 원래 사유=", why)
                 # 🔴 `sl` 을 갱신한다: 아래 집행부가 `calls`/`params` 를 여기서 읽는다.
@@ -2140,56 +2373,68 @@ function enact_minted_decision!(env, truth, decision)
         # 🔴 **상한은 1 이고, 루프가 아니라 구조다**(D17 과 같은 규약). 이 블록에는 반복이
         #    없다: 두 번째 집행 결과는 그대로 기록되고 다시 되먹이지 않는다. 유료 호출이
         #    무한히 새는 자리를 만들지 않는다.
+        # 🔴 **트리거는 둘이고 배타다** (2026-09-05, D17c). `if`/`elseif` 인 것이 상한 1 을
+        #    지키는 **구조**다: 한 판에서 왕복은 많아야 하나이고, 두 번째 집행의 결과는
+        #    (그것이 또 무동작이어도) 그대로 기록되고 다시 되먹여지지 않는다.
+        #    · 던졌다 → `_retry_gate` (D17b). 사유는 예외 메시지 자신.
+        #    · 안 던졌는데 **잰 무동작**이다 → `_noop_gate` (D17c). 사유는 관측 문장.
+        #      유료 런 8 이 정확히 여기서 죽었다: 지어낸 zone 키를 좌표로 **만들어** 놓고
+        #      원시의 반환 status 를 올바르게 검사한 뒤 `:failure` 를 돌려줬다 — 예외가
+        #      없으니 D17b 의 채널은 한 번도 안 발화했다.
         local _throw_why = _enact_throw_reason(r)
+        local _noop_why::Union{Nothing,String} = nothing
         if _throw_why !== nothing
             enact_retry = _retry_gate(r, world_delta_body)
-            if enact_retry === :ok
-                # 🔴 이름·코드는 **`sl` 에서 다시 읽는다.** D17 의 되먹임이 이미 성공한 판
-                #    에서는 `nm`/`cd` 가 **등록된 적 없는 옛 값**이다(D5 문단과 같은 근거).
-                local _prev_nm = String(something(_synth_lane_field(sl, "impl_name"), nm))
-                local _prev_cd = String(something(_synth_lane_field(sl, "impl_code"), ""))
-                local fx2 = _rewrite_once(sl, _prev_nm, _prev_cd, _throw_why)
-                if fx2 === nothing
-                    enact_retry = :roundtrip_failed
-                else
-                    # 🔴 `allow_redefine` 을 **여기서만** 넘긴다. 술어는 "agent-3 이 방금 우리가
-                    #    주조한 그 이름을 그대로 돌려줬는가" 다. 첫 등록이 **성공한** 뒤에 던진
-                    #    판이므로 그 이름은 이미 `_MINTED_EVER` 에 있고, 그것을 안 풀면 고친
-                    #    body 는 언제나 `already_minted` 로 거절돼 이 채널이 **구조적으로 죽는다**
-                    #    (2026-09-05 실측). 다른 이름을 냈다면 이 값은 `false` 이고 충돌 셋의
-                    #    판정(D6 신호 포함)은 그대로 산다.
-                    local why3 = _install_rewrite!(sl, fx2;
-                                     allow_redefine = (fx2.impl_name == _prev_nm))
-                    if why3 !== nothing
-                        enact_retry = :rejected
-                        # ⚠️ 사유는 **두 번째 시도의 것**이다(D17 과 같은 규약).
-                        impl_rejected_why = why3
-                    else
-                        enact_retry = :retried
-                        # 🔴 L3 은 **등록된 이름**에서 다시 읽는다(D5 와 같은 근거).
-                        interface_calls = _interface_calls_of(
-                            something(_synth_lane_field(sl, "impl_name"), nm))
-                        # 🔴 첫 시도의 걸음은 아래 기록 줄에서 **사라진다**(그 줄은 두 번째
-                        #    시도를 적는다). 그래서 여기서 따로 찍는다 — 접두가
-                        #    `[minted] enact_retry:` 라 `ladder_report.py` 의
-                        #    `MINTED_RE`(`\[minted\] lane=present…`)에 안 걸린다(그 정규식은
-                        #    리터럴 `lane=present` 로 시작하는 줄만 고른다).
-                        println("[minted] enact_retry: 되먹임 1회 — 첫 시도 steps=[",
-                                join([_step_render(st) for st in r.steps], " "), "]",
-                                " 사유=", _throw_why)
-                        # 🔴 `_pre` 는 **안 다시 찍는다.** `world_delta` 는 이 판에서도 "집행
-                        #    봉투 전체"의 뜻을 유지해야 한다 — 두 시도를 합친 누적 차분이다.
-                        #    (게이트가 첫 시도의 body 차분이 잰 0 인 판에서만 열리므로, 이
-                        #    누적값은 실질적으로 두 번째 body 의 것이다.)
-                        r = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
-                        world_delta = _world_delta(_pre, _world_digest(env))
-                        world_delta_body = _world_delta(_pre, r.body_probe)
-                    end
+            if enact_retry === :ok && rewrote
+                # 🔴 게이트는 열렸는데 **예산이 없다**. `n/a`(사건이 없었다)로도,
+                #    `refused_world_*`(세계가 더러울 수 있다)로도 적으면 거짓이다.
+                enact_retry = :refused_budget_spent
+                println("[minted] enact_retry: 거부 — refused_budget_spent ",
+                        "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다) 사유=", _throw_why)
+            elseif enact_retry === :ok
+                local rr = _rewrite_retry!(env, truth, sl, r, _pre, _throw_why, nm,
+                                           _RETRY_SYMS_THREW)
+                enact_retry = rr.retry
+                rr.impl_rejected_why !== nothing && (impl_rejected_why = rr.impl_rejected_why)
+                if rr.reenacted
+                    r = rr.r; world_delta = rr.world_delta
+                    world_delta_body = rr.world_delta_body
+                    interface_calls  = rr.interface_calls
                 end
             else
                 println("[minted] enact_retry: 거부 — ", enact_retry,
                         " (세계가 더러울 수 있다: 되돌릴 방법이 없다) 사유=", _throw_why)
             end
+        else
+            local _ng = _noop_gate(r, world_delta_body)
+            if _ng === :ok && rewrote
+                # 🔴 위와 **같은 예산**이다 — 두 트리거가 각각 하나씩 쓰는 것이 아니다.
+                enact_retry = :refused_budget_spent
+                println("[minted] enact_retry: 거부 — refused_budget_spent ",
+                        "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다)")
+            elseif _ng === :ok
+                # 🔴 사유 문자열은 **여기서 짓지 않는다** — `_noop_feedback_reason` 이 그
+                #    문장과 그 문장이 무엇을 주장하는지를 통째로 소유한다(관측만, 처방 없음).
+                _noop_why = _noop_feedback_reason(r, world_delta_body)
+                local rn = _rewrite_retry!(env, truth, sl, r, _pre, _noop_why, nm,
+                                           _RETRY_SYMS_NOOP)
+                enact_retry = rn.retry
+                rn.impl_rejected_why !== nothing && (impl_rejected_why = rn.impl_rejected_why)
+                if rn.reenacted
+                    r = rn.r; world_delta = rn.world_delta
+                    world_delta_body = rn.world_delta_body
+                    interface_calls  = rn.interface_calls
+                end
+            elseif _ng === :noop_refused_unmeasured
+                # 🔴 **못 잰 것을 안 움직였다고 말하지 않는다.** 이 판은 세어지기만 한다.
+                #    `n/a`(트리거가 없었다)와 **다른 값**이어야 유료 런의 "왜 되먹임이 안
+                #    갔나" 히스토그램이 참이 된다.
+                enact_retry = _ng
+                println("[minted] enact_retry: 거부 — ", _ng,
+                        " (body 차분을 못 쟀다: 안 움직였다고 말할 근거가 없다)")
+            end
+            # `:none` 은 트리거 자체가 없다 = `enact_retry` 를 안 건드린다(= `n/a`).
+            # 🔴 세계를 **움직인** body 가 정확히 여기로 온다 — 음성 대조의 자리다.
         end
         # 🔴 **네** 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
         #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그

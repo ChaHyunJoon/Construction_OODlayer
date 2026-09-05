@@ -328,3 +328,79 @@ def test_d17b_a_retried_line_is_not_confusable_with_a_first_try_success():
     assert first_try == retried_without_field          # 칸이 없으면 같은 줄이다
     assert "enact_retry=retried" in D17B_RETRIED       # 있으면 다르다
     assert "enact_retry=retried" not in first_try
+
+
+# =============================================================================
+# D17c (2026-09-05) — `enact_retry=` 가 **두 트리거**를 나른다.
+#
+# 재는 명제: 접두 `noop_` 가 붙어도 (a) 기존 추출이 하나도 안 깨지고, (b) 같은 `(\S+)`
+# 관용구로 읽히며, (c) `noop_retried` 판이 `retried` 판과도, 첫-시도 성공판(`n/a`)과도
+# **글자로 구별된다**. 🔴 아래 두 리터럴은 손으로 지은 것이 아니라 2026-09-05 실측 런의
+# stdout 에서 그대로 복사한 줄이다(`test/minted_end_to_end.jl` (41)(38)).
+# =============================================================================
+D17C_NOOP_RETRIED = (
+    "[minted] lane=present tool=T verdict=admit applied=nothing partial=false "
+    "world_maybe_dirty=true handled=true undo=none resume=issued "
+    "resolve=not_needed_surface args_from=calls n_calls=1 dropped_args=none "
+    "enact_retry=noop_retried n_body_names=1 registered=true impl_rejected_why=n/a "
+    "steps=[d17c_noop_a!:rw_ok] reason=body of 1 primitives")
+
+D17C_NOOP_UNMEASURED = (
+    "[minted] lane=present tool=T verdict=admit applied=nothing partial=false "
+    "world_maybe_dirty=true handled=true undo=none resume=issued "
+    "resolve=not_needed_surface args_from=calls n_calls=1 dropped_args=none "
+    "enact_retry=noop_refused_unmeasured n_body_names=1 registered=true "
+    "impl_rejected_why=n/a steps=[d18_noop_tool!:d18_did_nothing] "
+    "reason=body of 1 primitives")
+
+
+def test_d17c_the_prefixed_value_does_not_break_any_existing_extraction():
+    for line in (D17C_NOOP_RETRIED, D17C_NOOP_UNMEASURED):
+        assert lr.MINTED_RE.findall(line) == [line]
+        got = {k: (rx.search(line).group(1) if rx.search(line) else None)
+               for k, rx in lr.MINTED_FIELD_RES.items()}
+        assert got["registered"] == "true"
+        assert got["impl_rejected_why"] == "n/a"
+        assert got["args_from"] == "calls"
+
+
+def test_d17c_enact_retry_reads_with_the_same_idiom():
+    """접두가 붙어도 공백이 없다 — `(\\S+)` 하나로 읽힌다."""
+    import re
+    rx = re.compile(r'enact_retry=(\S+)')
+    assert rx.search(D17C_NOOP_RETRIED).group(1) == "noop_retried"
+    assert rx.search(D17C_NOOP_UNMEASURED).group(1) == "noop_refused_unmeasured"
+
+
+def test_d17c_steps_bracket_parser_survives_the_prefixed_value():
+    assert lr.extract_steps_raw(D17C_NOOP_RETRIED) == "[d17c_noop_a!:rw_ok]"
+    raw = lr.extract_steps_raw(D17C_NOOP_UNMEASURED)
+    assert lr.parse_step_entry(lr.split_top_level(raw[1:-1])[0])[1] == "d18_did_nothing"
+
+
+def test_d17c_the_two_triggers_are_not_collapsible():
+    """🔴 이 태스크의 요점. 두 되먹임 트리거가 **한 판독으로** 갈린다."""
+    import re
+    rx = re.compile(r'enact_retry=(\S+)')
+    noop = rx.search(D17C_NOOP_RETRIED).group(1)
+    threw = rx.search(D17B_RETRIED).group(1)
+    assert noop != threw                       # 두 사건이 다른 값이다
+    assert noop.startswith("noop_") and not threw.startswith("noop_")
+    # 🔴 부분문자열로 읽으면 틀린다 — `retried` 는 `noop_retried` 안에 들어 있다.
+    #    `enact_retry=` 를 **앞에 붙여** 읽어야 두 판이 갈린다(이 파일의 관용구).
+    assert "retried" in "noop_retried"                       # 함정 자체를 못박는다
+    assert "enact_retry=retried" not in D17C_NOOP_RETRIED    # 그러나 이 판독은 안 속는다
+    assert "enact_retry=noop_retried" not in D17B_RETRIED
+
+
+def test_d17c_a_noop_retried_line_is_not_confusable_with_a_first_try_success():
+    """첫-시도 성공판은 `enact_retry=n/a` 다 — 그 한 칸이 세 판을 가른다."""
+    clean = D17C_NOOP_RETRIED.replace("enact_retry=noop_retried", "enact_retry=n/a")
+    assert clean != D17C_NOOP_RETRIED
+    for line, want in ((D17C_NOOP_RETRIED, "noop_retried"),
+                       (D17B_RETRIED, "retried"), (clean, "n/a")):
+        import re
+        assert re.compile(r'enact_retry=(\S+)').search(line).group(1) == want
+    # 🔴 그리고 그 칸을 빼면 세 판 중 둘이 **글자로 구별 불가**가 된다.
+    assert (D17C_NOOP_RETRIED.replace(" enact_retry=noop_retried", "") ==
+            clean.replace(" enact_retry=n/a", ""))

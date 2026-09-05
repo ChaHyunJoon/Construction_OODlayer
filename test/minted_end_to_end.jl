@@ -3102,9 +3102,15 @@ end
     _RW_MODE[] = :off
     # 첫 시도에 성공하는 판(되먹임을 안 탄다).
     CB.reset_minted_table!()
+    # 🔴 **2026-09-05 (D17c) 로 이 대조군이 바뀌었다 — 그리고 그 변경이 이 파일의 측정이다.**
+    #    옛 body 는 status 만 돌려주고 세계를 안 건드렸다 = **잰 무동작**이다. D17c 가 그것을
+    #    되먹임 사건으로 만들었으므로(정본은 `_noop_gate`), 그 body 는 더 이상 "첫 시도에
+    #    깨끗하게 성공한 판" 이 아니다 — 실측하면 `enact_retry=noop_roundtrip_failed` 가 된다.
+    #    "첫 시도 성공" 의 대조군은 이제 **잰 축 하나를 실제로 움직이는** body 여야 한다.
     local clean = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
                       _dec(_d17b_lane("d17b_clean_b!",
                           "function d17b_clean_b!(env; goal = \"g\")\n" *
+                          "    push!(env.active_build_steps, ConstructionBots.RobotID(7))\n" *
                           "    return (status = :rw_ok, goal = goal)\nend\n"))))
     # 🔴 두 줄의 **나머지가 같다**: 같은 verdict, 같은 status, 같은 registered.
     local rl = _d17b_rec(retried); local cl = _d17b_rec(clean)
@@ -3182,9 +3188,13 @@ end
     # ---- 시도 안 했다: 집행이 안 던졌다 -------------------------------------------------
     CB.reset_minted_table!()
     _RW_HITS[] = 0; _RW_MODE[] = :off
+    # 🔴 이 body 는 **세계를 움직인다**(D17c 로 대조군이 바뀌었다 — (34) 의 같은 문단이
+    #    근거를 소유한다). 안 움직이면 그것은 "시도 안 했다" 가 아니라 **잰 무동작**이고,
+    #    D17c 의 채널이 정당하게 발화한다.
     local ok = enact_minted_decision!(retry_env(), nothing,
                    _dec(_d17b_lane("d17b_tri_ok!",
                        "function d17b_tri_ok!(env; goal = \"g\")\n" *
+                       "    push!(env.active_build_steps, ConstructionBots.RobotID(7))\n" *
                        "    return (status = :rw_ok, goal = goal)\nend\n")))
     @test ok.enact_retry === nothing            # 삼상의 첫째 — `n/a`
     @test _RW_HITS[] == 0
@@ -3236,6 +3246,237 @@ end
     @test hid !== nothing
     @test occursin("impl_name_exists", hid)
     @test !occursin("already_minted", hid)
+end
+
+
+# =============================================================================
+# D17c (2026-09-05) — 되먹임 채널을 **잰 무동작**까지 넓힌다.
+#
+# 재는 명제: body 가 **안 던지고** 끝났는데 `world_delta_body` 의 여섯 축이 **전부 잰 0**
+# 이면, 그 관측이 같은 전선 계약(다섯 키)으로 `/rewrite` 에 실려 나가고 고친 body 가
+# 재등록·재집행되며, 그 사실이 `enact_retry=noop_*` 로 **던져서 되먹인 판과 구별된다**.
+# 그리고 (a) 못 잰 판은 되먹이지 않고 (b) 세계를 **움직인** body 는 되먹이지 않는다.
+#
+# 🔴 유료 호출 0건 — `_RW_SERVER`(루프백) 하나만 쓴다.
+# 🔴 유료 런 8 (2026-09-05)이 죽은 자리다: body 가 zone 키를 좌표에서 **지어 만들고**
+#    원시의 반환 status 를 **올바르게** 검사한 뒤 `:failure` 를 돌려줬다 — 예외가 없으니
+#    D17b 의 채널이 한 번도 안 발화했고 기록은 `verdict=admit partial=false
+#    enact_retry=n/a` 에 여섯 축 전부 0 이었다.
+# =============================================================================
+
+"세계를 **안 건드리고** status 만 돌려주는 body = 유료 런 8 의 모양."
+_d17c_noop(nm; status = ":failure") =
+    "function $(nm)(env; goal = \"g\")\n" *
+    "    return (status = $(status), goal = goal)\nend\n"
+
+"🔴 음성 대조용. 잰 축 하나(`active`)를 **실제로** 움직인다."
+_d17c_moves(nm) =
+    "function $(nm)(env; goal = \"g\")\n" *
+    "    push!(env.active_build_steps, ConstructionBots.RobotID(7))\n" *
+    "    return (status = :moved, goal = goal)\nend\n"
+
+@testset "(38) 🔴 D17c: 잰 무동작이 되먹임으로 나가고 고친 body 가 다시 집행된다" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_LAST[] = nothing
+    _RW_RESPONSES[:d17c_same] = () -> _rw_fix("d17c_noop_a!")
+    _RW_MODE[] = :d17c_same
+    local m = enact_minted_decision!(retry_env(), nothing,
+                  _dec(_d17b_lane("d17c_noop_a!", _d17c_noop("d17c_noop_a!"))))
+    # ---- 되먹임이 실제로 나갔다 — 예외가 **하나도 없는** 판에서 -------------------------
+    @test _RW_HITS[] == 1
+    @test m.enact_retry === :noop_retried
+    # 🔴 두 트리거가 안 뭉개진다.
+    @test m.enact_retry !== :retried
+    # ---- 전선 계약: **두 번째 철자를 만들지 않았다** — D17/D17b 와 같은 다섯 키다 --------
+    local body = _RW_LAST[]
+    @test body !== nothing
+    @test Set(String.(keys(body))) ==
+          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why"])
+    @test startswith(String(body.impl_rejected_why), "enact_noop:")
+    # 🔴 `enact_threw:` 접두가 **아니다** — agent-3 이 두 사건을 접두로 가른다.
+    @test !startswith(String(body.impl_rejected_why), "enact_threw:")
+    # ---- 두 번째 시도가 실제로 굴렀다 --------------------------------------------------
+    @test m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :rw_ok
+    # 🔴 **상한 1 이 구조로 지켜진다.** 고친 body(`_rw_fix`)도 세계를 안 건드리는
+    #    **무동작**이다 — 그런데도 왕복은 여전히 하나다(두 번째 결과는 되먹이지 않는다).
+    @test m.world_delta_body !== nothing
+    @test _wd_is_zero(m.world_delta_body)      # 두 번째도 잰 0 이다(전제)
+    @test _RW_HITS[] == 1                      # 🔴 그래도 왕복은 **하나**다
+    _RW_MODE[] = :off
+end
+
+@testset "(39) 🔴 D17c: 되먹임 문장은 **관측만** 말한다 — 처방을 한 글자도 안 말한다" begin
+    # 🔴 이 게이트가 이 태스크의 실험적 유효성을 지킨다. 모델은 **무엇을 해야 하는지 스스로
+    #    알아내야** 한다 — 우리가 동사를 이름 붙이면 측정하는 것이 모델이 아니라 우리다.
+    local fake_r = (steps = [(name = "ZoneBypassTool!", status = :failure,
+                              detail = nothing)],)
+    local wdb = (closed = 0, active = 0, n_edges = 0, n_binding_changed = 0,
+                 n_weights_changed = 0, n_staging_moved = 0)
+    local msg = _noop_feedback_reason(fake_r, wdb)
+    # ---- 관측 넷이 전부 있다 (그리고 전부 **잰 것**이다) --------------------------------
+    @test startswith(msg, "enact_noop: ")
+    @test occursin("ran to completion and raised no error", msg)
+    @test occursin("ZoneBypassTool!=failure", msg)       # 모델 자신의 반환 status
+    # 🔴 축의 글자는 기록 줄과 **같은 렌더러**가 낸다 — 두 벌이 갈릴 수 없다.
+    @test occursin(_wd_axes_str(wdb), msg)
+    @test occursin("closed=0 active=0 n_edges=0 n_binding_changed=0 " *
+                   "n_weights_changed=0 n_staging_moved=0", msg)
+    # ---- 헤지 둘: 하한이라는 것, 그리고 **여섯 축이 세계의 전부가 아니라는 것** ----------
+    @test occursin("n_binding_changed is a lower bound", msg)
+    @test occursin("only part of the world that was measured", msg)
+    @test occursin("not a claim that nothing at all happened", msg)
+    # ---- 🔴 금지: 처방·힌트·`expressible` --------------------------------------------
+    for w in ("restriction_zones", "expressible", "enumerate", "should", "must",
+              "instead", "escalat", "try ", "you can", "available")
+        @test !occursin(w, msg)
+    end
+    # ---- 🔴 어휘 게이트: **내보낸 이름을 하나도 안 부른다** ------------------------------
+    local exported = Set{String}()
+    for n in names(CB)
+        isdefined(CB, n) || continue
+        local v = getfield(CB, n)
+        (v isa Function || v isa Type) && push!(exported, string(n))
+    end
+    # 대조: 표가 공허하지 않고, 이 사건이 실제로 쓰고 싶어했을 이름이 그 안에 있다.
+    @test length(exported) > 100
+    @test "restriction_zones" in exported
+    local toks = Set(String[mm.match for mm in
+                            eachmatch(r"[A-Za-z_][A-Za-z0-9_!]*", msg)])
+    @test isempty(intersect(toks, exported))
+    # 🔴 음성 대조: 그 교집합 검사가 **공허하지 않다** — 이름을 하나 심으면 잡힌다.
+    @test !isempty(intersect(
+        Set(String[mm.match for mm in eachmatch(r"[A-Za-z_][A-Za-z0-9_!]*",
+                                                msg * " restriction_zones")]), exported))
+end
+
+@testset "(40) 🔴 D17c 판정: 못 잰 판은 안 되먹이고, **세계를 움직인 body 는 안 되먹인다**" begin
+    # ---- (a) 못 쟀다. 🔴 못 잰 것을 두고 "너는 아무것도 안 바꿨다" 고 말하지 않는다 -------
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_MODE[] = :off
+    # `live_cache_env()` 에는 `staging_circles` 가 없다 → 여섯째 축이 `nothing` 이다.
+    local mu = enact_minted_decision!(live_cache_env(), nothing,
+                   _dec(_d17b_lane("d17c_unmeas!", _d17c_noop("d17c_unmeas!"))))
+    @test mu.world_delta_body !== nothing
+    @test mu.world_delta_body.n_staging_moved === nothing
+    @test mu.enact_retry === :noop_refused_unmeasured
+    @test _RW_HITS[] == 0                    # 🔴 왕복이 **안 나갔다**
+    # 🔴 그리고 그 값은 `n/a`(트리거 없음)와 **다른 값**이다 — 히스토그램이 참이 되려면.
+    @test mu.enact_retry !== nothing
+
+    # ---- (b) 🔴 **음성 대조**: 세계를 움직인 body 는 재시도되지 않는다 --------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    # 서버는 **살아 있다**(응답을 등록해 둔다) — 그래도 부르지 않는다는 것이 이 대조의 요점.
+    _RW_RESPONSES[:d17c_never] = () -> _rw_fix("d17c_never!")
+    _RW_MODE[] = :d17c_never
+    local mv = enact_minted_decision!(retry_env(), nothing,
+                   _dec(_d17b_lane("d17c_moves!", _d17c_moves("d17c_moves!"))))
+    @test mv.world_delta_body !== nothing && mv.world_delta_body.active == 1
+    @test !_wd_is_zero(mv.world_delta_body)          # 전제: 정말로 움직였다
+    @test mv.enact_retry === nothing                 # `n/a` — 트리거가 아예 없다
+    @test _RW_HITS[] == 0                            # 🔴 유료 왕복이 **안 나갔다**
+    _RW_MODE[] = :off
+
+    # ---- (c) 게이트 단위: 걸음이 없으면 "무동작" 이 아니라 **안 불렀다** ------------------
+    local zero6 = (closed = 0, active = 0, n_edges = 0, n_binding_changed = 0,
+                   n_weights_changed = 0, n_staging_moved = 0)
+    @test _noop_gate((steps = NamedTuple[],), zero6) === :none
+    @test _noop_gate((steps = [(name = "x!", status = :ok)],), zero6) === :ok
+    # 던진 걸음이 하나라도 있으면 이 채널이 **비켜선다**(왕복이 둘이 되지 않는다).
+    @test _noop_gate((steps = [(name = "x!", status = :threw)],), zero6) === :none
+    @test _noop_gate((steps = [(name = "x!", status = :ok)],), nothing) ===
+          :noop_refused_unmeasured
+    @test _noop_gate((steps = [(name = "x!", status = :ok)],),
+                     (closed = 0, active = 0, n_edges = 0, n_binding_changed = 0,
+                      n_weights_changed = 0, n_staging_moved = nothing)) ===
+          :noop_refused_unmeasured
+    @test _noop_gate((steps = [(name = "x!", status = :ok)],),
+                     (closed = 1, active = 0, n_edges = 0, n_binding_changed = 0,
+                      n_weights_changed = 0, n_staging_moved = 0)) === :none
+
+    # 🔴 셋은 서로 다른 값이다 — 하나로 뭉개면 "왜 안 갔나" 가 로그에서 사라진다.
+    @test length(Set([mu.enact_retry, mv.enact_retry, :noop_retried])) == 3
+end
+
+@testset "(41) 🔴 D17c 사상: 기록 줄이 **두 트리거**를 가른다" begin
+    # ---- 잰 무동작으로 되먹인 판 --------------------------------------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d17c_rec] = () -> _rw_fix("d17c_rec!")
+    _RW_MODE[] = :d17c_rec
+    local noop_out = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                         _dec(_d17b_lane("d17c_rec!", _d17c_noop("d17c_rec!")))))
+    # ---- 던져서 되먹인 판 ----------------------------------------------------------------
+    CB.reset_minted_table!()
+    _RW_RESPONSES[:d17c_thr] = () -> _rw_fix("d17c_thr!")
+    _RW_MODE[] = :d17c_thr
+    local threw_out = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                          _dec(_d17b_lane("d17c_thr!", _d17b_boom("d17c_thr!")))))
+    _RW_MODE[] = :off
+    # ---- 첫 시도에 **세계를 움직여** 성공한 판 -------------------------------------------
+    CB.reset_minted_table!()
+    local clean_out = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                          _dec(_d17b_lane("d17c_clean!", _d17c_moves("d17c_clean!")))))
+
+    local nl = _d17b_rec(noop_out); local tl = _d17b_rec(threw_out)
+    local cl = _d17b_rec(clean_out)
+    @test !isempty(nl) && !isempty(tl) && !isempty(cl)
+    # 🔴 세 판이 **한 칸으로** 갈린다.
+    @test occursin("enact_retry=noop_retried", nl)
+    @test occursin("enact_retry=retried", tl)
+    @test occursin("enact_retry=n/a", cl)
+    # 🔴 그리고 두 되먹임판이 서로 **섞이지 않는다** — `noop_` 접두가 그 구별을 나른다.
+    @test !occursin("enact_retry=retried", nl)      # `noop_retried` 는 이것과 다른 글자다
+    @test !occursin("noop_", tl)
+    @test !occursin("noop_", cl) && !occursin("=retried", cl)
+    # 🔴 세 판 다 `verdict=admit` 이고 `partial=false` 다 — 가르는 것은 이 칸 하나뿐이다.
+    for l in (nl, tl, cl); @test occursin("verdict=admit", l); end
+    # ---- 첫 시도의 걸음은 진단 줄이 나른다(무동작 판에서도) --------------------------------
+    @test occursin("[minted] enact_retry: 되먹임 1회 — 첫 시도 steps=[", noop_out)
+    @test occursin("d17c_rec!:failure", noop_out)
+    @test occursin("사유=enact_noop:", noop_out)
+    # 🔴 그런데 그 줄은 `MINTED_RE`(`lane=present` 로 **시작**) 에 안 걸린다.
+    @test !occursin("[minted] enact_retry:", nl)
+    @test count(l -> startswith(l, "[minted] lane=present"), split(noop_out, "\n")) == 1
+    # ---- 결정 행에도 실린다(부재 = 구세대 · `null` = 시도 안 함 · 문자열 = 나머지) --------
+    @test occursin(" enact_retry=noop_retried ", string(" ", nl, " "))
+end
+
+
+@testset "(42) 🔴 D17c: 한 런의 왕복 예산은 **1** — 되먹임 자리가 셋이어도" begin
+    # 🔴 재는 명제: 등록이 거절돼 D17 이 왕복을 한 번 쓴 판에서, 고쳐진 body 가 집행에서
+    #    무동작이거나 던져도 **두 번째 왕복이 안 나간다**. 그 판은 실재하고(아래가 그것을
+    #    실제로 만든다) D17b 시점에는 아무 게이트도 그것을 안 막고 있었다.
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0
+    # 고친 body 는 **무동작**이다(status 만 낸다) → 예산이 없으면 D17c 가 발화한다.
+    _RW_RESPONSES[:d17c_budget] = () -> _rw_fix("d17c_budget_fixed!";
+        code = "function d17c_budget_fixed!(env; note = \"x\")\n" *
+               "    return (status = :rw_ok, note = note)\nend\n")
+    _RW_MODE[] = :d17c_budget
+    # 첫 등록을 **거절**시킨다: `!` 없는 이름 = `impl_name_must_end_with_bang`.
+    local sl = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "d17c_budget_bad",
+        "impl_code" => "function d17c_budget_bad(env; note = \"x\")\n" *
+                       "    return (status = :bad, note = note)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
+        "body_names" => ["d17c_budget_bad"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "d17c_budget_bad",
+                                     "args" => Dict{String,Any}("note" => "x"))]))
+    local m = enact_minted_decision!(retry_env(), nothing, _dec(sl))
+    _RW_MODE[] = :off
+    # ---- 전제: D17 이 실제로 발화했고 고친 body 가 집행됐다 ------------------------------
+    @test m.registered === true
+    @test length(m.steps) == 1 && m.steps[1].status === :rw_ok
+    # ---- 전제: 그 고친 body 는 **잰 무동작**이다(= 예산이 없으면 D17c 가 열린다) ---------
+    @test m.world_delta_body !== nothing && _wd_is_zero(m.world_delta_body)
+    # ---- 🔴 재는 것: 왕복은 **하나**다 ---------------------------------------------------
+    @test _RW_HITS[] == 1
+    # ---- 그리고 그 사실이 기록에 **자기 이름으로** 남는다 --------------------------------
+    @test m.enact_retry === :refused_budget_spent
+    # 🔴 `n/a`(사건이 없었다)로도, `noop_*`(시도했다)로도 안 적는다 — 셋이 다른 값이다.
+    @test m.enact_retry !== nothing
+    @test length(Set([m.enact_retry, :noop_retried, :noop_refused_unmeasured])) == 3
 end
 
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
