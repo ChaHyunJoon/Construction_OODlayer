@@ -866,9 +866,49 @@ const _STEP_DETAIL_CAP = 200
 """
 function _step_detail_render(d)
     d === nothing && return ""
-    local t = _one_line_rec(string(d))
-    return length(t) > _STEP_DETAIL_CAP ? first(t, _STEP_DETAIL_CAP) * "…" : t
+    return _cap_detail(_one_line_rec(string(d)))
 end
+
+"단 하나의 자르는 자리. 자르면 말미에 `…` 를 붙인다 — 자른 것과 원래 짧은 것을 구별한다."
+_cap_detail(t::AbstractString) =
+    length(t) > _STEP_DETAIL_CAP ? first(t, _STEP_DETAIL_CAP) * "…" : t
+
+"""
+    _step_detail_line(d) -> String
+
+**기록 줄**에 실릴 detail. `_step_detail_render` 와 같은 접기·같은 상한이되, 그 사이에
+**괄호류를 중화**한다: `(` `[` → `<`, `)` `]` → `>`.
+
+🔴 왜 (2026-09-04 fix round 1, F2). 기록 줄의 `steps=[...]` 는 **구조**다. 채점기
+(`tools/monitor/ladder_report.py`)가 `steps=[` 에서 깊이를 세어 닫는 `]` 를 찾고, 각 항목의
+`name:status(detail)` 도 괄호 깊이로 detail 을 되찾는다. 그런데 `detail` 은 예외 메시지라
+`BoundsError: … at index [4]` · `no method matching f(::Vector{Int64}, ::Int64)` 처럼
+괄호류를 **일상적으로** 담는다. 그 자체는 균형이 맞아 괜찮은데 — 🔴 **200자에서 자르는 순간
+균형이 깨진다.** `steps=[f!:threw(… at index [4…)]` 는 원리적으로 파싱 불가이고
+(`ValueError: ']' never balances`), 그러면 L2b 가 **UNMEASURED** 로 떨어진다. 짝 없는 `]`
+하나는 더 나쁘다 — 채점기가 거기서 `steps=` 를 **조용히 일찍 닫는다**(에러가 아니다).
+이 결함은 옛 `name:status` 포맷에서는 **구조적으로 불가능**했다. Task 1 의 포맷 변경이
+들여온 것이고, 하필 L2b 는 이번 유료 런이 움직이려는 바로 그 칸이다.
+
+🔴 **파서로는 못 고친다.** 균형이 깨진 채 잘린 문자열은 원리적으로 파싱 불가다. 그래서
+고치는 자리가 **여기**, 렌더러다.
+
+🔴 **중화를 자르기 앞에 한다.** 그래야 자르는 자리가 어디든 — 원문에서 괄호 한복판이었든 —
+남은 문자열에 추적되는 괄호가 **하나도 없다**. 순서가 뒤바뀌면 이 함수는 다시 깨진다.
+⚠️ 치환은 1:1 문자 대응이라 상한 자리가 `_step_detail_render` 와 **바이트 단위로 같다**.
+
+⚠️ ASCII 만 쓴다. 넷을 두 글자(`<` `>`)로 접는 것은 의도다: 남는 괄호 가족이 하나도 없어야
+어떤 소비자의 깊이 추적도 못 속인다. 판독성은 산다 —
+`no method matching length<::Symbol>` 은 여전히 읽힌다. 🔴 **깨진 L2b 는 아무것도 안 살린다.**
+
+🔴 **결정 행(`_steps_row`)은 중화하지 않는다.** 그쪽은 JSON 문자열이라 괄호가 어떤 구조도
+못 닫는다 — 원문 그대로가 더 높은 충실도다. 접기·상한이라는 **위험한 부분은 여전히 한 자리**
+(`_cap_detail`·`_one_line_rec`)이고, 갈리는 것은 이 네 글자뿐이다.
+"""
+_step_detail_line(d) =
+    d === nothing ? "" :
+    _cap_detail(replace(_one_line_rec(string(d)),
+                        '(' => '<', ')' => '>', '[' => '<', ']' => '>'))
 
 """
     _step_render(s) -> String
@@ -882,10 +922,14 @@ end
    버려지던 자리가 여기 하나였다. **새 채널을 만드는 것이 아니라 있는 값을 안 버린다.**
 ⚠️ `detail` 이 없는 스텝 모양(`hasproperty` 거짓)은 구세대 집행부의 것이다 — 그 판은
    오늘과 바이트 동일하게 찍힌다. 그래서 로그 문구를 못박는 기존 게이트가 안 움직인다.
+
+🔴 **괄호류는 `_step_detail_line` 이 중화한다**(2026-09-04 fix round 1, F2). 이 줄의
+   `steps=[...]` 는 채점기가 깊이로 읽는 **구조**이고, 잘린 예외 메시지의 짝 없는 괄호
+   하나가 그 구조를 원리적으로 파싱 불가로 만든다. 근거 전문은 그 함수가 소유한다.
 """
 function _step_render(s)
     local base = string(s.name, ":", s.status)
-    local t = _step_detail_render(hasproperty(s, :detail) ? s.detail : nothing)
+    local t = _step_detail_line(hasproperty(s, :detail) ? s.detail : nothing)
     return isempty(t) ? base : string(base, "(", t, ")")
 end
 

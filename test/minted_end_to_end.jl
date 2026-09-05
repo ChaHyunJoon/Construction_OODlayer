@@ -2163,6 +2163,344 @@ end
 
 end
 
+# =============================================================================
+# (27) 🔴 F2 (2026-09-04 fix round 1) — 잘린 detail 이 `steps=[...]` 를 못 깬다.
+#
+# 기록 줄의 `steps=[...]` 는 **구조**다. 채점기 `tools/monitor/ladder_report.py` 가
+# `steps=[` 에서 괄호 깊이를 세어 닫는 `]` 를 찾고(`find_bracket_close`), 항목마다
+# `name:status(detail)` 의 detail 도 깊이로 되찾는다(`parse_step_entry`). 예외 메시지는
+# 괄호류를 일상적으로 담는데(`at index [4]` · `f(::Vector{Int64}, ::Int64)`), 200자에서
+# 자르는 순간 그 균형이 깨진다 — 그러면 채점기가 `ValueError: ']' never balances` 로 죽고
+# **L2b 가 UNMEASURED** 가 된다. 짝 없는 `]` 하나는 더 나쁘다: 조용히 일찍 닫힌다.
+# 🔴 이 결함은 옛 `name:status` 포맷에서 **구조적으로 불가능**했다 — Task 1 의 포맷 변경이
+#    들여왔고, 하필 L2b 는 유료 런이 움직이려는 바로 그 칸이다.
+#
+# ⚠️ 아래 `_balances`/`_first_entry_parses` 는 `ladder_report.py` 의 두 규칙을 **줄리아로
+#    옮겨 적은 거울**이다(진실원은 그 파이썬 파일이다). 실제 채점기 왕복은 스위트 밖에서
+#    돌려 보고서에 붙인다 — 여기서 파이썬 서브프로세스를 띄우면 이 파일이 (19) 와 같은
+#    간헐 실패를 얻는다.
+# =============================================================================
+"`text` 의 `open_idx` 위치 여는 괄호가 균형을 이루며 닫히는 자리. `ladder_report.py` 의 거울."
+function _balance_close(text::AbstractString, open_idx::Int)
+    # ⚠️ 바이트 인덱스로 순회하지 않는다 — 이 줄에는 `…`(멀티바이트) 가 들어 있고
+    #    `text[i]` 가 `StringIndexError` 를 낸다(2026-09-04 실측).
+    local depth = 0
+    local i = open_idx
+    while i <= ncodeunits(text)
+        local c = text[i]
+        if c == '(' || c == '['
+            depth += 1
+        elseif c == ')' || c == ']'
+            depth -= 1
+            depth == 0 && return i
+        end
+        i = nextind(text, i)
+    end
+    return nothing
+end
+
+"기록 줄에서 `steps=[...]` 를 구조적으로 떼어낸다. 못 떼면 `nothing`(= 채점기의 UNMEASURED)."
+function _extract_steps_raw(line::AbstractString)
+    local r = findfirst("steps=", line)
+    r === nothing && return nothing
+    local open_idx = last(r) + 1
+    open_idx > lastindex(line) && return nothing
+    line[open_idx] == '[' || return nothing
+    local close_idx = _balance_close(line, open_idx)
+    close_idx === nothing && return nothing
+    return line[open_idx:close_idx]
+end
+
+@testset "(27) 🔴 F2: 잘린 예외 메시지가 `steps=[...]` 를 못 깬다" begin
+
+@testset "(27a) 중화 — 추적되는 괄호가 하나도 안 남는다" begin
+    # 브리핑이 지목한 적대적 detail 넷.
+    local adversarial = [
+        "BoundsError: attempt to access 3-element Vector{Int64} at index [4]",
+        "no method matching f(::Vector{Int64}, ::Int64)",
+        # 🔴 200자 자르기가 **정확히 대괄호 한복판**에 떨어지도록 길이를 계산했다(추측 아님):
+        #    1..199 = 'A', 200 = '[', 201 = '4', 202 = ']'.
+        repeat("A", 199) * "[4]" * repeat("B", 50),
+        repeat("[](){}", 60),                      # 전부 괄호
+    ]
+    for d in adversarial
+        local out = _step_detail_line(d)
+        @test !occursin('(', out)
+        @test !occursin(')', out)
+        @test !occursin('[', out)
+        @test !occursin(']', out)
+        @test length(out) <= _STEP_DETAIL_CAP + 1   # 상한은 그대로다(`…` 한 글자)
+    end
+    # 🔴 치환이 **1:1 문자 대응**이라 상한 자리가 행 렌더러와 바이트 단위로 같다.
+    for d in adversarial
+        @test length(_step_detail_line(d)) == length(_step_detail_render(d))
+    end
+    # 🔴 자르는 자리가 대괄호 한복판이라는 것을 **실측으로** 못박는다(위 셋째 픽스처).
+    local mid = adversarial[3]
+    @test collect(mid)[200] == '['            # 원문의 200번째 글자가 여는 대괄호다
+    @test endswith(_step_detail_line(mid), "<…")
+    @test endswith(_step_detail_render(mid), "[…")   # 중화 없는 쪽은 **짝 없는 `[`** 로 끝난다
+    # 판독성은 산다.
+    @test _step_detail_line("no method matching length(::Symbol)") ==
+          "no method matching length<::Symbol>"
+end
+
+@testset "(27b) 라이브 경로 — 네 적대적 예외가 전부 파싱되는 줄을 낸다" begin
+    local cases = [
+        ("f2_bounds!",  "BoundsError_LIKE: at index [4]"),
+        ("f2_method!",  "no method matching f(::Vector{Int64}, ::Int64)"),
+        ("f2_midcut!",  repeat("A", 199) * "[4]" * repeat("B", 50)),
+        ("f2_allbr!",   repeat("[](){}", 60)),
+        # 🔴 짝 없는 `]` 하나 — 이쪽은 **에러가 안 난다**. 채점기가 거기서 `steps=` 를
+        #    조용히 일찍 닫아 뒤가 통째로 사라진다(중화 없는 사본에서 실측:
+        #    `steps='[…:threw(MethodError]'` — 꼬리가 없다). 조용한 쪽이 더 나쁘다.
+        ("f2_stray!",   "MethodError] TAIL_MUST_SURVIVE_QZ trailing part"),
+    ]
+    for (nm, msg) in cases
+        CB.reset_minted_table!()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => nm,
+            "impl_code" => "function $(nm)(env; v::Int = 1)\n" *
+                           "    error($(repr(msg)))\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => [nm], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => nm,
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m, out
+        mktemp() do path, io
+            redirect_stdout(io) do
+                m = enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+            end
+            flush(io); out = read(path, String)
+        end
+        # 전제 — 정말 던졌고 detail 에 그 메시지가 있다.
+        @test length(m.steps) == 1 && m.steps[1].status === :threw
+        local recs = [l for l in split(out, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs) == 1
+        # 🔴 재는 것: 채점기의 두 규칙이 이 줄에서 성립한다.
+        local raw = _extract_steps_raw(recs[1])
+        @test raw !== nothing                       # `]` 가 균형을 이루며 닫힌다
+        @test startswith(raw, "[") && endswith(raw, "]")
+        @test occursin(nm * ":threw(", raw)
+        # 🔴 그리고 항목 하나를 통째로 담았다 — 조용히 일찍 닫히지 않았다.
+        @test endswith(raw, ")]")
+        # 🔴 꼬리가 살아 있다(짝 없는 `]` 판의 조용한 절단을 이 줄이 잡는다).
+        nm == "f2_stray!" && @test occursin("TAIL_MUST_SURVIVE_QZ", raw)
+    end
+end
+
+@testset "(27c) 🔴 음성 대조: 중화를 빼면 (27b) 가 빨개진다" begin
+    # 레포 안의 것은 안 건드린다 — `/tmp` 사본에서만 `_step_detail_line` 을 행 렌더러로 되돌린다.
+    local src = read(ENACT_PATH, String)
+    @test occursin("_step_detail_line(hasproperty(s, :detail)", src)   # 변이 지점이 있다
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_no_neutralize.jl")
+        local mutated = replace(src,
+            "_step_detail_line(hasproperty(s, :detail) ? s.detail : nothing)" =>
+            "_step_detail_render(hasproperty(s, :detail) ? s.detail : nothing)", count = 1)
+        @test mutated != src
+        write(q, mutated)
+        local M = Module(:EnactNoNeutralize)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local nm = "f2_mut_midcut!"
+        local msg = repeat("A", 199) * "[4]" * repeat("B", 50)
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => nm,
+            "impl_code" => "function $(nm)(env; v::Int = 1)\n    error($(repr(msg)))\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => [nm], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => nm,
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m2, out2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                m2 = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                       live_cache_env(), nothing, _dec(e))
+            end
+            flush(io); out2 = read(path, String)
+        end
+        local recs2 = [l for l in split(out2, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs2) == 1
+        # 🔴 값은 거기 있다 — 깨진 것은 **구조**다.
+        @test occursin("AAA", recs2[1])
+        # 🔴 (27b) 의 단언이 여기서 빨갛다: `]` 가 균형을 못 이룬다 = 채점기의 ValueError.
+        @test _extract_steps_raw(recs2[1]) === nothing
+    end
+end
+
+@testset "(27d) 결정 행은 원문을 지킨다 — 중화는 **줄 전용**이다" begin
+    # 🔴 행은 JSON 문자열이라 괄호가 어떤 구조도 못 닫는다. 거기서까지 접으면 충실도만 잃는다.
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        local row = Dict{String,Any}()
+        CB.MONITOR_RESPEC[] = row
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             world_delta_body = nothing,
+                             steps = [(name = "p!", status = :threw,
+                                       detail = "at index [4] f(::Int64)")]))
+        @test row["steps"][1]["detail"] == "at index [4] f(::Int64)"
+        @test occursin("[4]", row["steps"][1]["detail"])
+        # 그리고 줄 쪽은 같은 detail 을 중화한다 — 둘이 **의도적으로** 다르다.
+        @test _step_render((name = "p!", status = :threw,
+                            detail = "at index [4] f(::Int64)")) ==
+              "p!:threw(at index <4> f<::Int64>)"
+    finally
+        CB.MONITOR_RESPEC[] = saved
+    end
+end
+
+end
+
+# =============================================================================
+# (28) 🔴 F1 (2026-09-04 fix round 1) — `world_delta_body` 의 게이트가 비어 있었다.
+#
+# `enact.jl` 의 `world_delta_body = _world_delta(_pre, r.body_probe)` 를
+# `_world_delta(_pre, _world_digest(env))`(= 봉투 차분과 동일)로 바꿔도 452/452 가 초록이었다.
+# 원인은 실측이다: 하네스가 두 지문 사이에서 움직이는 유일한 것이 `cache.active_set` 인데
+# (`reset_cache_resume!` 가 그것을 비우고 다시 짓는다), **그 필드는 다이제스트의 축이 아니다**
+# (`closed_set`·`active_build_steps`·`ne(graph)`·`binding`·`weights` 다섯).
+# 2026-09-04 실측: 노드 둘·간선 하나·weights 하나를 심고 `reset_cache_resume!` 를 부르면
+# `active_set` 은 `Set([999])` → `Set([1])` 로 바뀌는데 다섯 축의 차분은 **전부 0** 이다.
+#
+# ⚠️ 그래서 이 절의 픽스처는 `active_build_steps` 를 `cache.active_set` **그 객체로** 준다.
+#    그러면 하네스의 재개가 다이제스트의 `active` 축을 실제로 움직여 두 지문이 갈린다.
+#    🔴 이것은 **계측 장치이지 `PlannerEnv` 에 대한 주장이 아니다** — 생산 타입에서 그 둘은
+#    다른 필드다(`route_planning.jl`). 여기서 필요한 것은 "봉투가 더 이상 반영하지 않는
+#    순간에 probe 가 찍혔다" 를 다섯 축 **안에서** 관측 가능하게 만드는 것뿐이다.
+# =============================================================================
+"""
+    aliased_active_env() -> NamedTuple
+
+`active_build_steps` 가 `cache.active_set` **그 객체**인 env. (28) 의 계측 장치다 —
+근거는 위 블록 주석이 소유한다.
+"""
+function aliased_active_env()
+    local sched = CB.OperatingSchedule()
+    local cache = CB.initialize_planning_cache(sched)
+    push!(cache.active_set, 999)          # 낡은 정점 하나 — 재개가 이것을 지운다
+    return (cache = cache, sched = sched, active_build_steps = cache.active_set)
+end
+
+@testset "(28) 🔴 F1: body 차분이 **봉투 뒤** 지문에서 오면 빨개진다" begin
+
+@testset "(28a) probe 는 재개 **앞**에서 찍힌다 (`enact_minted!` 직접)" begin
+    CB.reset_minted_table!()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "f1_pre_resume!",
+        "impl_code" => "function f1_pre_resume!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 3.5\n" *
+                       "    return (status = :f1,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["f1_pre_resume!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "f1_pre_resume!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    enact_minted_decision!(aliased_active_env(), nothing, _dec(e))   # 등록만 시킨다
+    @test haskey(CB.minted_table(), "f1_pre_resume!")
+    local synth = Dict{String,Any}(
+        "reach" => "composed", "body_names" => ["f1_pre_resume!"],
+        "impl_name" => "f1_pre_resume!", "tool_name" => "t",
+        "params" => Dict{String,Any}(), "missing_primitive" => nothing,
+        "calls" => [Dict{String,Any}("primitive" => "f1_pre_resume!",
+                                     "args" => Dict{String,Any}("v" => 1))])
+    local env = aliased_active_env()
+    local r = CB.enact_minted!(env, nothing, synth;
+                               probe = () -> copy(env.cache.active_set))
+    @test r.verdict === :admit
+    @test r.resume === :issued                    # 전제: 재개가 실제로 돌았다
+    # 🔴 probe 는 재개가 지우기 **전**의 집합을 봤다.
+    @test r.body_probe == Set([999])
+    # 🔴 그리고 반환 시점에는 그것이 없다 — 즉 봉투는 그 순간을 더 이상 반영하지 않는다.
+    @test isempty(env.cache.active_set)
+    @test r.body_probe != env.cache.active_set    # 비-0 대조: 둘이 실제로 다르다
+end
+
+@testset "(28b) 🔴 `world_delta_body` 가 봉투와 **다른 수**를 낸다" begin
+    CB.reset_minted_table!()
+    local env = aliased_active_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "f1_split!",
+        "impl_code" => "function f1_split!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 3.5\n" *
+                       "    return (status = :f1,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["f1_split!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "f1_split!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    @test m.verdict === :admit
+    @test m.resume === :issued                   # 전제: 하네스가 실제로 한 걸음 더 갔다
+    @test m.world_delta !== nothing && m.world_delta_body !== nothing
+    # 🔴 **이 두 줄이 F1 이 요구한 게이트다.** 봉투는 재개가 지운 정점을 보고, body 는 못 본다.
+    @test m.world_delta.active == -1
+    @test m.world_delta_body.active == 0
+    @test m.world_delta != m.world_delta_body    # 항진적으로 같지 않다
+    # body 가 실제로 한 편집은 **양쪽 다** 본다(대조군: 갈린 것이 `active` 축 하나다).
+    @test m.world_delta.n_weights_changed == 1
+    @test m.world_delta_body.n_weights_changed == 1
+    # 로그도 두 수를 다르게 찍는다.
+    local wl = [l for l in split(out, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl) == 1
+    @test occursin("world_delta=closed=0 active=-1", wl[1])
+    @test occursin("world_delta_body=closed=0 active=0", wl[1])
+end
+
+@testset "(28c) 🔴 음성 대조: 봉투 뒤 지문으로 바꾸면 (28b) 가 빨개진다" begin
+    local src = read(ENACT_PATH, String)
+    @test occursin("world_delta_body = _world_delta(_pre, r.body_probe)", src)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_body_is_envelope.jl")
+        local mutated = replace(src,
+            "world_delta_body = _world_delta(_pre, r.body_probe)" =>
+            "world_delta_body = _world_delta(_pre, _world_digest(env))", count = 1)
+        @test mutated != src
+        write(q, mutated)
+        local M = Module(:EnactBodyIsEnvelope)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => "f1_mut_split!",
+            "impl_code" => "function f1_mut_split!(env; v::Int = 1)\n" *
+                           "    env.sched.weights[v] = 3.5\n" *
+                           "    return (status = :f1,)\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => ["f1_mut_split!"], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => "f1_mut_split!",
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m2 = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                     aliased_active_env(), nothing, _dec(e))
+        @test m2.verdict === :admit                  # 전제: 사본도 끝까지 굴렀다
+        @test m2.world_delta.active == -1
+        # 🔴 (28b) 의 `== 0` 이 여기서 빨갛다 — body 차분이 봉투와 **같아졌다**.
+        @test m2.world_delta_body.active == -1
+        @test m2.world_delta == m2.world_delta_body
+    end
+end
+
+end
+
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
 #    여기 못 오지만, 그때는 프로세스가 곧 끝난다 — 포트는 프로세스와 함께 반납된다.)
 close(_RW_SERVER)
