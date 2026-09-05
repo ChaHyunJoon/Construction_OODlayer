@@ -101,7 +101,25 @@ k_move(p::BatteryParams) = (p.walk_W - p.idle_W) / (p.m_robot * p.v_ref)
 # 함대(fleet) 상태 = 물리 로봇들의 배터리 장부. RobotNode 는 불변이라 SoC 를 여기 id 키로 따로 보관. mutable = 갱신 가능.
 mutable struct BatteryFleet
     params::BatteryParams
-    soc::Dict{Any,Float64}            # RobotID -> state of charge in [0,1]   # 로봇별 잔량
+    # 🔴 2026-09-04. `soc` 의 키 타입은 `Any` 가 **아니다** — `RobotID`(= `BotID{DeliveryBot}`) 다.
+    #    `Any` 로 적어 두면 `tools/gen_world_interface.jl` 의 `_returns_string` 이
+    #    `Base.return_types` 에서 유도하는 `battery_report()` 광고가 `soc::Dict{Any, Float64}` 가
+    #    되고, 그 `Any` 는 모델에게 아무것도 안 알려 준다: 유료 런 2 에서 모델이 표시용 이름
+    #    `"R1"` 을 지어내 `soc[robot_id]` 를 치고 `KeyError: key "R1" not found` 로 죽었다.
+    #    좁히면 광고가 저절로 `Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}`
+    #    가 된다(산문 없이, 기계가 진실을 말한다).
+    #    실측 근거(2026-09-04, `run_lego_demo` 4로봇+8스페어 = 12칸):
+    #      · `init_battery_fleet!` 는 `node_id(n::RobotNode{R})::BotID{R}` 만 넣는다 —
+    #        이 레포의 `AbstractRobotType` 하위 타입은 `DeliveryBot` **하나**뿐이다.
+    #      · 그 밖의 모든 쓰기(`_debit!` · `inject_battery_fault!` · `_reset_robot_health!` ·
+    #        `_recharge_docked_courier!` · enact/demo 의 hot-swap 줄)는 전부 `haskey` 뒤에 있어
+    #        **새 키를 못 넣는다**. 즉 삽입점은 생성자뿐이다.
+    #      · `init` 직후 · `hot_swap_robot!` 뒤 · `inject_battery_fault!` 뒤 세 시점에서
+    #        `unique(typeof.(keys(soc))) == [BotID{DeliveryBot}]` 로 실측.
+    #    ⚠️ 좁은 키 타입은 조회를 **안 깬다**: `haskey`/`get`/`delete!` 는 타입이 다른 키에
+    #    변환을 안 걸고 그냥 `false`/기본값을 낸다(실측). 그래서 `get(fleet.soc, role, nothing)`
+    #    같은 `AbstractID` 인자 자리도 그대로 산다.
+    soc::Dict{RobotID,Float64}        # RobotID -> state of charge in [0,1]   # 로봇별 잔량
     energy_J::Dict{Any,Float64}       # RobotID -> cumulative energy drawn [J] (for metrics)  # 누적 소비 에너지
     active_steps::Dict{Any,Int}       # RobotID -> # steps spent non-idle (utilization proxy)  # 일한 스텝 수(가동률)
     depleted::Set{Any}                # robots that hit floor_soc (line-stop candidates)  # 바닥까지 방전된 로봇
@@ -122,7 +140,7 @@ accounting. Returns the fleet.
 function init_battery_fleet!(env; params::BatteryParams=BatteryParams(), soc0::Float64=1.0)
     ids = [node_id(n) for n in get_nodes(env.scene_tree) if matches_template(RobotNode, n)]  # 로봇 노드들의 id 만 수집
     fleet = BatteryFleet(params,
-        Dict{Any,Float64}(id => soc0 for id in ids),
+        Dict{RobotID,Float64}(id => soc0 for id in ids),
         Dict{Any,Float64}(id => 0.0 for id in ids),
         Dict{Any,Int}(id => 0 for id in ids),
         Set{Any}())

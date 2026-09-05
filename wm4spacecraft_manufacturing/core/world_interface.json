@@ -3073,7 +3073,7 @@
         {
             "name": "battery fleet",
             "precondition": "only when ConstructionBots.BATTERY_FLEET[] !== nothing. Battery accounting is opt-in and OFF by default; calling the accessor with no fleet throws MethodError. Check it first and report `nothing` for the unmeasured case instead of letting the call throw.",
-            "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int64, soc::Dict{Any, Float64})",
+            "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int64, soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64})",
             "accessor": "battery_report()"
         }
     ]

@@ -232,12 +232,28 @@ def test_the_rules_say_identifiers_are_objects_not_strings():
 
 
 def test_the_rules_explain_the_opaque_dict_any_key_type():
-    """🔴 빈-통과 방지 + 실제 사인의 자리. `Dict{Any, ...}` 는 렌더에 **실재한다**
-    (`battery_report()` 의 `soc`), 그리고 생성기의 `returns` 는 `Base.return_types` 에서
-    기계로 유도되므로 산출물 쪽에서 `Any` 를 좁힐 길이 없다 — 규약이 그 자리를 갚는다.
+    """🔴 빈-통과 방지 + 실제 사인의 자리 — id 로 **키가 걸린 Dict** 가 렌더에 실재한다.
+
+    🔴 2026-09-04 갱신. 이 시험은 원래 `"Dict{Any, Float64}" in b` 를 단언했고 독스트링에
+    "생성기의 `returns` 는 `Base.return_types` 에서 기계로 유도되므로 산출물 쪽에서 `Any` 를
+    좁힐 길이 없다" 고 적혀 있었다. **그 전제가 틀렸다**: `Any` 는 `battery.jl` 의
+    `BatteryFleet.soc` 선언에서 왔고, 그것을 실측한 참값(`RobotID` = `BotID{DeliveryBot}`)
+    으로 좁히자 `_returns_string` 이 스스로 진실을 광고했다 —
+    `soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}`.
+    그래서 `Dict{Any, Float64}` 는 이제 렌더에 **없다**(있으면 그것이 회귀다).
+
+    지금 이 게이트가 지키는 명제는 그대로다: 규약 6 이 말하는 대상(= id **객체**로 키가
+    걸린 사전)이 렌더에 실재해야 규약이 공허하지 않다. 두 자리에서 못박는다 —
+    앰비언트 접근자가 돌려주는 `soc`, 그리고 WORLD TYPES 의 `AbstractID` 키 필드들.
     """
     b = _block()
-    assert "Dict{Any, Float64}" in b, "사인의 전제가 사라졌다 — 규약 6 의 대상이 렌더에 없다"
+    # 🔴 회귀 방지: `Any` 로 되돌아가면(= battery.jl 의 선언이 되돌려지면) 여기서 빨개진다.
+    assert "Dict{Any, Float64}" not in b, (
+        "`soc` 의 키 타입이 `Any` 로 되돌아갔다 — 유료 런 2 의 `KeyError: \"R1\"` 이 다시 열린다")
+    assert "soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}" in b, (
+        "앰비언트 접근자가 id 객체 키를 광고하지 않는다 — 규약 6 의 대상이 렌더에 없다")
+    # WORLD TYPES 쪽의 같은 모양(빈-통과 방지: 두 자리 중 하나만 살아도 통과하면 안 된다).
+    assert "Dict{ConstructionBots.AbstractID, " in b, b[:400]
     r = b.partition("\n\nWORLD TYPES")[0]
     assert "`Dict{Any, ...}`" in r, r
 

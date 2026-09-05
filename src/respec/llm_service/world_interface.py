@@ -94,8 +94,16 @@ _RULES = (
     #    WORLD TYPES 에만 일곱 개고, 같은 착각이 그 전부에서 가능하다.
     #    실제 사인: 모델이 `soc[robot_id]` 를 `robot_id="R1"` 로 쳤고 `soc` 는
     #    `Dict{Any,Float64}` 인데 키가 `BotID` **객체**였다 → `KeyError: key "R1" not found`.
-    #    `returns` 문자열은 `Base.return_types` 에서 **기계로** 유도되므로(생성기의
-    #    `_returns_string`) `Any` 를 더 좁게 적을 길이 산출물 쪽에 없다 — 그 자리를 규약이 갚는다.
+    #    🔴 2026-09-04 정정. 이 자리에 "`returns` 는 `Base.return_types` 에서 기계로
+    #    유도되므로 `Any` 를 더 좁게 적을 길이 **산출물 쪽에 없다**" 고 적혀 있었다. 틀렸다 —
+    #    길은 산출물이 아니라 **선언**에 있었다. `Any` 의 출처는 `src/navigator/battery.jl` 의
+    #    `BatteryFleet.soc::Dict{Any,Float64}` 한 줄이었고(주석은 이미 "RobotID" 라고 적고
+    #    있었다), 실측한 참값 `RobotID`(= `BotID{DeliveryBot}`)로 좁히자 `_returns_string` 이
+    #    산문 없이 스스로 진실을 광고했다:
+    #    `soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}`.
+    #    그러니 규약 6 은 이제 `soc` 를 **갚는 것이 아니라** 남은 id-키 사전들
+    #    (`Dict{AbstractID, ...}` 필드들)을 덮는다. 아래 규약 문구의 `Dict{Any, ...}` 예시는
+    #    그 사건의 역사적 이름이지 오늘 렌더에 있는 모양이 아니다.
     "  6. Identifiers in this world are OBJECTS, never strings. There is no `\"R1\"`-style\n"
     "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`)\n"
     "     and pass that object. A `Dict{Any, ...}` handed back by an accessor is keyed\n"
