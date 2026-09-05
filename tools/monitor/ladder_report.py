@@ -50,10 +50,117 @@ MINTED_FIELD_RES = {
     "impl_rejected_why": re.compile(r'impl_rejected_why=(\S+)'),
     "args_from": re.compile(r'args_from=(\S+)'),
     "n_calls": re.compile(r'n_calls=(\S+)'),
-    "steps": re.compile(r'steps=(\[[^\]]*\])'),
+    # NOTE: 'steps=' is deliberately NOT here. It cannot be extracted with a
+    # flat regex: the detail text inside steps=[name:status(detail)] is an
+    # arbitrary Julia exception message, which very commonly contains ']',
+    # ',', '(' and ')' (MethodError argument lists, BoundsError indices,
+    # Vector{T} renderings, ...). See extract_steps_raw() / parse_step_entry()
+    # below for the structural (depth-tracking) parser instead.
 }
 
-STEP_ENTRY_RE = re.compile(r'^([^:()]+):([^:()]+?)(?:\((.*)\))?$')
+
+def find_bracket_close(text, open_idx):
+    """text[open_idx] must be '['. Return the index of the matching ']' by
+    tracking '[' / ']' depth from there. Any other character (including
+    '(' ')' and ',') is ignored, so a detail string containing brackets
+    (e.g. 'index [4]', 'Vector{Int64}') is handled correctly as long as its
+    own brackets are internally balanced. Returns None if depth never
+    returns to zero before the end of the string.
+    """
+    depth = 0
+    for i in range(open_idx, len(text)):
+        c = text[i]
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def extract_steps_raw(minted_line):
+    """Structurally extract the bracketed 'steps=[...]' text from a
+    [minted] line. Returns the full '[...]' substring (brackets included),
+    or None if 'steps=' is not present at all. Raises ValueError (caught by
+    the caller, rendered as UNMEASURED) if 'steps=' is present but the
+    bracket is missing or never balances — that is a genuinely unparsable
+    line, not an absent field.
+    """
+    marker = 'steps='
+    idx = minted_line.find(marker)
+    if idx == -1:
+        return None
+    open_idx = idx + len(marker)
+    if open_idx >= len(minted_line) or minted_line[open_idx] != '[':
+        raise ValueError("'steps=' found but not immediately followed by '['")
+    close_idx = find_bracket_close(minted_line, open_idx)
+    if close_idx is None:
+        raise ValueError("'steps=[' found but its ']' never balances before end of line")
+    return minted_line[open_idx:close_idx + 1]
+
+
+def split_top_level(text, sep=','):
+    """Split text on sep, but only where bracket/paren depth is 0 — so a
+    comma inside a step's exception detail (every multi-argument
+    MethodError has one) does not fracture that entry into two.
+    """
+    parts = []
+    depth = 0
+    current = []
+    for c in text:
+        if c in '([':
+            depth += 1
+            current.append(c)
+        elif c in ')]':
+            depth -= 1
+            current.append(c)
+        elif c == sep and depth <= 0:
+            parts.append(''.join(current))
+            current = []
+        else:
+            current.append(c)
+    parts.append(''.join(current))
+    return parts
+
+
+def parse_step_entry(entry):
+    """Parse one step entry: 'name:status' (old form) or
+    'name:status(detail)' (new form), where detail is arbitrary text that
+    may itself contain any punctuation, including nested parens. Returns
+    (name, status, detail_or_None), or None if there is no ':' to split on.
+
+    detail is recovered by tracking paren depth from the first '(' after
+    the status token, so 'threw(MethodError: no method matching
+    length(::Symbol))' yields detail = 'MethodError: no method matching
+    length(::Symbol)' in full, not truncated at the first ')'.
+    """
+    entry = entry.strip()
+    if ':' not in entry:
+        return None
+    name, rest = entry.split(':', 1)
+    name = name.strip()
+    paren_idx = rest.find('(')
+    if paren_idx == -1:
+        return name, rest.strip(), None
+    status = rest[:paren_idx].strip()
+    depth = 0
+    close_idx = None
+    for i in range(paren_idx, len(rest)):
+        c = rest[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                close_idx = i
+                break
+    if close_idx is None:
+        # Unbalanced — never invent a boundary; take the verbatim remainder.
+        detail = rest[paren_idx + 1:]
+    else:
+        detail = rest[paren_idx + 1:close_idx]
+    return name, status, detail
 
 
 def eprint(*a, **kw):
@@ -349,8 +456,21 @@ def build_report(log_path, stream_path, record_path):
                 "detail_format": None,
             }
         else:
-            steps_raw = minted_fields.get("steps")
-            if steps_raw is None:
+            try:
+                steps_raw = extract_steps_raw(minted_line)
+            except ValueError as ve:
+                report["rungs"]["L2b_no_exception"] = {
+                    "verdict": UNMEASURED,
+                    "reason": "could not structurally parse steps= on the matched [minted] line: %s" % (ve,),
+                    "evidence_file": log_abs, "evidence_key": "[minted] lane=present ... steps=",
+                    "steps_raw": None, "first_step_name": None, "first_step_status": None,
+                    "first_step_detail": None, "detail_format": None, "raw_line": minted_line,
+                }
+                steps_raw = _ABSENT  # sentinel: skip the branches below, already reported
+
+            if steps_raw is _ABSENT:
+                pass
+            elif steps_raw is None:
                 report["rungs"]["L2b_no_exception"] = {
                     "verdict": UNMEASURED,
                     "reason": "'steps=' key not present on the matched [minted] line",
@@ -367,10 +487,11 @@ def build_report(log_path, stream_path, record_path):
                     "first_step_detail": None, "detail_format": None, "raw_line": minted_line,
                 }
             else:
-                inner = steps_raw[1:-1]  # strip [ ]
-                first_entry = inner.split(",")[0].strip()
-                m = STEP_ENTRY_RE.match(first_entry)
-                if not m:
+                inner = steps_raw[1:-1]  # strip outer [ ]
+                entries = split_top_level(inner, sep=',')
+                first_entry = entries[0].strip() if entries else ""
+                parsed = parse_step_entry(first_entry)
+                if parsed is None:
                     report["rungs"]["L2b_no_exception"] = {
                         "verdict": UNMEASURED,
                         "reason": "could not parse first step entry %r out of steps=%s" % (first_entry, steps_raw),
@@ -379,7 +500,7 @@ def build_report(log_path, stream_path, record_path):
                         "first_step_detail": None, "detail_format": None, "raw_line": minted_line,
                     }
                 else:
-                    name, status, detail = m.group(1), m.group(2), m.group(3)
+                    name, status, detail = parsed
                     detail_format = "new (name:status(detail))" if detail is not None else "old (name:status)"
                     verdict = TRUE if status == "success" else FALSE
                     report["rungs"]["L2b_no_exception"] = {
@@ -387,6 +508,7 @@ def build_report(log_path, stream_path, record_path):
                         "evidence_file": log_abs, "evidence_key": "[minted] lane=present ... steps=",
                         "steps_raw": steps_raw, "first_step_name": name, "first_step_status": status,
                         "first_step_detail": detail, "detail_format": detail_format, "raw_line": minted_line,
+                        "n_steps_entries": len(entries),
                     }
     except Exception as e:
         report["rungs"]["L2b_no_exception"] = {"verdict": UNMEASURED, "reason": "exception: %r" % (e,),
