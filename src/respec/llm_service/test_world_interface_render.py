@@ -355,3 +355,105 @@ def test_rule_6_points_back_at_rule_1_for_defaults():
     """양방향이다 — 규약 6 만 읽고 코드를 쓰는 경로에서도 해법이 보여야 한다."""
     import world_interface as WI
     assert "see rule 1" in _rules_by_number(WI._RULES)[6]
+
+
+# =====================================================================================
+# 2026-09-05 — 유료 런 16·19 가 죽은 두 자리. 둘 다 "반환 모양이 안 보인다" 하나다.
+#
+# 런 16: body 가 `translate_whole_build!(...).status == :success || error(...)` 를 썼다.
+#        그 함수엔 `:success` 경로가 **없다** — 빌드를 실제로 옮겨 놓고
+#        (`n_staging_moved=8`, `PROJECT COMPLETE`) 무조건 던졌다. 유도가 맨 `NamedTuple`
+#        로 넓어져 상태 어휘가 한 글자도 안 보였다.
+# 런 19: body 가 `get_center(::Pair{Symbol, Ball2})` 로 죽었다. `active_restriction_zones()`
+#        를 순회하면 `Pair` 가 나오는데 광고된 `Base.Generator{…}` 는 그것을 안 말했다.
+#
+# 🔴 이 시험들은 **커밋된 산출물**을 읽는다 — 생성기 쪽 짝은 `test/world_interface_current.jl`
+#    이 새 서브프로세스 재생성물과 바이트 비교한다.
+# =====================================================================================
+def _named(name):
+    import world_interface as WI
+    for m in WI.load_world_interface()["methods"]:
+        if m["name"] == name:
+            return m
+    raise AssertionError("광고 목록에 %s 가 없다 — 이 시험이 낡았다" % name)
+
+
+def test_the_status_vocabulary_of_the_verb_that_killed_run16_is_advertised():
+    import world_interface as WI
+    m = _named("translate_whole_build!")
+    got = m.get("status_symbols")
+    assert got == ["already_clear", "infeasible", "no_staging", "residual_blocked",
+                   "translated"], got
+    line = WI._method_line(m)
+    assert "status seen in source:" in line, line
+    for sym in (":translated", ":already_clear", ":residual_blocked"):
+        assert sym in line, (sym, line)
+
+
+def test_success_is_not_among_them_which_is_the_whole_point():
+    """🔴 이 시험이 재는 것이 이 개입의 전부다. 모델이 지어낸 `:success` 는 그 함수의
+    어휘에 **없고**, 이제 모델은 그것을 눈으로 확인할 수 있다."""
+    import world_interface as WI
+    m = _named("translate_whole_build!")
+    assert "success" not in m["status_symbols"], m["status_symbols"]
+    assert ":success" not in WI._method_line(m)
+
+
+def test_the_field_access_false_positive_is_not_reintroduced():
+    """🔴 2026-09-05 실측. 첫 추출 규칙은 `status = res.status` 한 줄에서 필드 **이름**을
+    심볼 리터럴로 오인해 `:status` 를 어휘에 넣었다. `Expr(:., obj, QuoteNode(name))` 의
+    둘째 인자로 안 내려가는 것이 그 수선이고, 이 시험이 그것을 지킨다."""
+    m = _named("restage_all_blocked!")
+    assert m.get("status_symbols") == ["infeasible", "none", "partial",
+                                       "residual_blocked", "restaged_all"], m.get("status_symbols")
+
+
+def test_what_you_get_when_you_iterate_is_advertised():
+    import world_interface as WI
+    for name in ("restriction_zones", "active_restriction_zones"):
+        m = _named(name)
+        el = m.get("element_type")
+        assert el and el.startswith("Pair{Symbol,"), (name, el)
+        assert "yields: Pair{Symbol," in WI._method_line(m), name
+
+
+def test_both_new_fields_are_tri_state_and_the_population_is_not_empty():
+    """🔴 삼상: 못 유도한 항목은 **키가 없다**(`[]`/`""` 가 아니다) — 빈 값을 실으면
+    "어휘가 없다" 는 주장이 되는데 우리는 그것을 안 쟀다.
+    🔴 음성 대조: 모집단이 비면 위 시험들이 아니라 **이 시험**이 빨개진다."""
+    import world_interface as WI
+    ms = WI.load_world_interface()["methods"]
+    ss = [m for m in ms if "status_symbols" in m]
+    el = [m for m in ms if "element_type" in m]
+    assert len(ss) >= 5, len(ss)
+    assert len(el) >= 10, len(el)
+    assert not any(m.get("status_symbols") == [] for m in ms)
+    assert not any(m.get("element_type") == "" for m in ms)
+    # 붙지 않은 항목은 그 줄에 두 문구가 **아예 없다**.
+    bare = next(m for m in ms if "status_symbols" not in m and "element_type" not in m)
+    line = WI._method_line(bare)
+    assert "status seen in source:" not in line and "yields:" not in line, line
+
+
+def test_the_wording_does_not_claim_a_closed_set():
+    """🔴 판정은 소스에 대한 **구문적 상계**다 — 도달 불가 갈래를 포함할 수 있고, 다른
+    함수가 만든 상태는 못 본다. 문구가 "one of" 로 바뀌면 우리가 안 잰 것을 잰 것처럼
+    말하게 되고, 모델은 나머지를 오류로 처리하기 시작한다."""
+    import world_interface as WI
+    line = WI._method_line(_named("translate_whole_build!"))
+    assert "status seen in source:" in line
+    for overclaim in ("one of:", "status is one of", "always returns", "exactly one of"):
+        assert overclaim not in line, overclaim
+
+
+def test_rule_3_says_success_is_your_contract_not_the_callees():
+    """🔴 런 16 의 인과. 규약 3 이 `:success` 를 가르쳤고 모델이 그것을 **부른 함수의**
+    어휘로 옮겨 썼다. 규약은 옳으므로 약화시키지 않고, 누구의 status 냐만 못박는다."""
+    import world_interface as WI
+    r3 = _rules_by_number(WI._RULES)[3]
+    assert "return (; status = :success)" in r3, r3          # 의무는 그대로다
+    assert "YOUR return contract" in r3, r3
+    assert "Never assume a callee returns `:success`" in r3, r3
+    assert "status seen in source:" in r3, r3                # 렌더와 같은 철자를 가리킨다
+    assert "status seen in source:" in _block()
+

@@ -82,6 +82,15 @@ _RULES = (
     "     `NamedTuple{(:status,)}(:success)` -- that is not valid Julia and throws\n"
     "     `MethodError: no method matching length(::Symbol)`, which kills a body that had\n"
     "     already done all of its work correctly.\n"
+    # 🔴 2026-09-05, 유료 런 16. 이 규약이 가르친 `:success` 를 모델이 **부른 함수의**
+    #    상태 어휘로 옮겨 썼다: `translate_whole_build!(...).status == :success || error(...)`.
+    #    그 함수엔 `:success` 경로가 없어서 빌드를 실제로 옮겨 놓고도 무조건 던졌다.
+    #    규약 자체는 옳다 — 갈린 것은 **누구의 status 냐**이고, 그것을 여기서 못박는다.
+    "     `:success` is YOUR return contract, not a vocabulary the functions you call share.\n"
+    "     A function you call reports its own symbols; where they are known they are printed\n"
+    "     on its line as `status seen in source:`. Never assume a callee returns `:success`,\n"
+    "     and where its symbols are not printed, branch on what the call gives back rather\n"
+    "     than on a symbol you guessed.\n"
     "  4. Exactly one TOP-LEVEL definition -- no other top-level `const`, macros, or\n"
     "     helper functions. Helper closures defined INSIDE your function body are fine.\n"
     '  5. Prefer CALLING the functions listed under "' + _CALLABLE_HEADING + '" over\n'
@@ -141,6 +150,22 @@ def _method_line(m) -> str:
     ret = m.get("returns")
     if ret:
         line += "  ->  %s" % ret
+    # 🔴 2026-09-05, 유료 런 19. `active_restriction_zones()` 를 `collect` 하면 `Pair` 가
+    #    나오는데 광고된 타입(`Base.Generator{…}`)은 그것을 한 글자도 안 말했고, body 가
+    #    `get_center(::Pair{Symbol, Ball2})` 로 죽었다. 순회 결과는 **타입과 다른 사실**이다.
+    el = m.get("element_type")
+    if el:
+        line += "      yields: %s" % el
+    # 🔴 2026-09-05, 유료 런 16. 그 body 는 `translate_whole_build!` 의 반환을
+    #    `.status == :success` 로 검사했는데 그 함수엔 `:success` 경로가 **없다** — 빌드를
+    #    실제로 옮겨 놓고도 무조건 던졌다. 유도가 맨 `NamedTuple` 로 넓어져 어휘가 안 보였다.
+    # ⚠️ 문구가 "one of" 가 **아니다.** 생성기의 판정은 소스에 대한 **구문적 상계**라
+    #    도달 불가한 갈래를 포함할 수 있고 다른 함수가 만든 상태는 못 본다
+    #    (근거 정본은 `_status_symbols` 의 docstring). 모델이 이것을 폐집합으로 읽고
+    #    나머지를 오류로 처리하면 우리가 안 잰 것을 잰 것처럼 말하게 된다.
+    ss = m.get("status_symbols") or []
+    if ss:
+        line += "      status seen in source: %s" % " | ".join(":" + x for x in ss)
     miss = m.get("missing") or []
     if miss:
         line += "      missing: %s" % ", ".join(miss)

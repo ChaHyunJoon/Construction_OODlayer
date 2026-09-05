@@ -597,6 +597,23 @@ function _missing_types(Ts, acc)
 end
 
 """
+    tt_of(m::Method) -> Union{Nothing,Type}
+
+메서드의 인자 튜플 타입. 🔴 **진실원 하나** — `_method_returns` 와 `method_entries` 가
+같은 계산을 두 벌 들면 그 둘이 갈리는 날 `returns` 와 `element_type` 이 **서로 다른
+시그니처**에 대한 사실이 된다.
+"""
+function tt_of(m::Method)
+    try
+        sig = Base.unwrap_unionall(m.sig)
+        sig isa DataType || return nothing
+        return Tuple{collect(sig.parameters)[2:end]...}
+    catch
+        return nothing
+    end
+end
+
+"""
     _method_returns(f, m::Method) -> Union{Nothing,String}
 
 메서드 하나의 반환 모양. 🔴 이 필드는 2026-09-05 이전에 **메서드 항목에 아예 없었다** —
@@ -627,16 +644,133 @@ R-RET3: **절단하지 않는다** — `_render_return` 의 docstring 이 근거
 ⚠️ 결정성: 세 프로세스에서 바이트 동일(실측). 흔들리면 게이트 (2) 가 빨개진다.
 """
 function _method_returns(f, m::Method)
-    tt = try
-        sig = Base.unwrap_unionall(m.sig)
-        sig isa DataType || return nothing
-        Tuple{collect(sig.parameters)[2:end]...}
-    catch
-        return nothing
-    end
+    tt = tt_of(m)
+    tt === nothing && return nothing
     rt = _infer_return(f, tt)
     rt === nothing && return nothing
     return _render_return(rt)                # `Any` 도 여기서 정직하게 "Any" 가 된다
+end
+
+"""
+    _defining_expr(m::Method) -> Union{Nothing,Expr}
+
+`m` 을 정의한 **소스의 top-level 식**. 못 찾으면 `nothing`.
+
+🔴 왜 소스를 읽나 (2026-09-05, 유료 런 16·19). 타입 유도는 `translate_whole_build!` 의 반환을
+   맨 `NamedTuple` 로 **넓혀 버린다** — 필드도 상태 어휘도 한 글자도 안 남는다. 런 16 의 body 는
+   그 자리에서 `fallback.status == :success` 라고 **지어냈고**, 그 함수는 `:success` 를 내는
+   경로가 아예 없어서 **빌드를 실제로 옮겨 놓고도 무조건 던졌다**(`n_staging_moved=8`,
+   그리고 `error(...)`). 반대로 `restage_all_blocked!` 은 필드가 광고돼 있었고 모델은
+   `outcome.failed`·`outcome.residual` 을 **맞게** 썼다. ⟹ 모델은 우리가 광고한 것은 맞게
+   쓰고 광고 안 한 것만 지어낸다. 그러므로 유도가 넓어지는 자리를 **소스에서** 메운다.
+
+⚠️ `Base.find_source_file` 이 `nothing`/부재를 낼 수 있고 `Meta.parseall` 은 던질 수 있다.
+   둘 다 `nothing` 으로 접는다 — 생성기가 한 메서드 때문에 안 도는 일은 없어야 한다.
+"""
+function _defining_expr(m::Method)
+    p = Base.find_source_file(String(m.file))
+    (p === nothing || !isfile(p)) && return nothing
+    top = try Meta.parseall(read(p, String); filename = p) catch; return nothing end
+    top isa Expr || return nothing
+    # 🔴 `module`/`begin` 안쪽까지 내려간다. 평평한 파일만 가정하면 패키지 소스의 다수를
+    #    조용히 놓치고, 그 침묵은 "이 메서드엔 상태가 없다" 로 **거짓 판독**된다.
+    pick(ex) = begin
+        best = nothing; bestline = -1; ln = 0
+        for a in ex.args
+            if a isa LineNumberNode; ln = a.line; continue; end
+            (a isa Expr && ln <= m.line && ln > bestline) || continue
+            best = a; bestline = ln
+        end
+        best === nothing && return nothing
+        if best.head === :module
+            inner = findfirst(a -> a isa Expr && a.head === :block, best.args)
+            inner === nothing || return something(pick(best.args[inner]), best)
+        elseif best.head === :toplevel || best.head === :block
+            return something(pick(best), best)
+        end
+        return best
+    end
+    return pick(top)
+end
+
+"""
+    _status_symbols(m::Method) -> Union{Nothing,Vector{String}}
+
+이 메서드가 `status` 자리에 실을 수 있는 **심볼 리터럴 전부**. 못 유도하면 `nothing`.
+
+규칙 하나: 소스의 `status = <rhs>` 를 전부 찾고(직접 대입도, NamedTuple 안의
+`(status = …, )` 도 같은 `Expr(:(=), :status, rhs)` 다), 그 `rhs` **안쪽 어디든** 나타나는
+심볼 리터럴을 모은다. 삼항 연쇄가 그 안에 있으므로 갈래가 전부 잡힌다.
+
+🔴 **`Expr(:., obj, QuoteNode(name))` 의 둘째 인자로는 안 내려간다.** 필드 접근의 *이름*은
+   반환값이 아니다 — 안 막으면 `status = res.status` 한 줄이 `:status` 를 어휘에 넣는다
+   (2026-09-05 실측: `restage_all_blocked!` 에서 정확히 그 오탐이 났다).
+
+⚠️ **이것은 구문적 상계다.** 도달 불가한 갈래를 포함할 수 있고, **다른 함수가 만들어 준
+   상태는 못 본다**(`status = res.status` 가 그 모양이다 — 그 판에서 이 표는 그 함수의
+   어휘를 안 싣는다). 그래서 렌더 문구가 "one of" 가 아니라 **`observed in source`** 다:
+   모델이 이것을 폐집합으로 읽고 `else` 를 오류로 처리하면 안 된다.
+
+🔴 삼상: 비면 **필드를 안 만든다**(`_method_returns` 의 R-RET2 와 같은 규약). `[]` 를 실으면
+   "상태 어휘가 없다" 는 **주장**이 되는데 우리는 그것을 안 쟀다 — 소스를 못 읽었을 뿐이다.
+"""
+function _status_symbols(m::Method)
+    ex = _defining_expr(m)
+    ex === nothing && return nothing
+    acc = Set{Symbol}()
+    harvest(x) = begin
+        if x isa QuoteNode
+            x.value isa Symbol && push!(acc, x.value)
+        elseif x isa Expr
+            # 필드 이름은 값이 아니다 — `a.b` 의 `b` 로는 안 내려간다.
+            x.head === :. ? harvest(first(x.args)) : foreach(harvest, x.args)
+        end
+    end
+    walk(x) = begin
+        x isa Expr || return
+        x.head === :(=) && length(x.args) == 2 && x.args[1] === :status && harvest(x.args[2])
+        foreach(walk, x.args)
+    end
+    walk(ex)
+    isempty(acc) && return nothing
+    return sort!(String[string(s) for s in acc])
+end
+
+"""
+    _element_type(rt) -> Union{Nothing,String}
+
+이 반환을 **순회하면 무엇이 나오는가**. 못 말하면 `nothing`.
+
+🔴 왜 (2026-09-05, 유료 런 19). 그 판의 둘째 body 가
+   `MethodError: no method matching get_center(::Pair{Symbol, Ball2})` 로 죽었다 —
+   `active_restriction_zones()` 를 `collect` 하면 **`Pair` 가 나오는데**, 우리가 광고한
+   타입은 `Base.Generator{Dict{Symbol,Ball2}, var"#817#818"}` 이라 원소가 무엇인지 한 글자도
+   안 알려줬다. 반환 **타입**은 있었고 반환 **원소**가 없었다.
+
+두 경로다. 둘 다 기계다:
+  · `Base.Generator{I,F}` — 안쪽 함수를 `eltype(I)` 위에서 유도한다(실측: `Pair{Symbol, Ball2}`).
+  · 그 밖 — `eltype(rt)`.
+
+🔴 `eltype(rt) === rt` 인 판은 **안 싣는다.** 줄리아는 순회 불가 타입에 대해 `eltype(T) = T`
+   를 주므로(`eltype(Int64) === Int64`), 그것을 실으면 스칼라마다 "순회하면 자기 자신이
+   나온다" 는 무의미한 줄이 213개 붙는다. `Any` 도 안 싣는다 — 약속이 없다.
+"""
+function _element_type(rt)
+    et = try
+        if rt isa DataType && rt <: Base.Generator && length(rt.parameters) >= 2
+            I, F = rt.parameters[1], rt.parameters[2]
+            isdefined(F, :instance) || return nothing
+            r = try Base.return_types(F.instance, Tuple{eltype(I)}) catch; return nothing end
+            length(r) == 1 || return nothing
+            only(r)
+        else
+            eltype(rt)
+        end
+    catch
+        return nothing
+    end
+    (et === Any || et === rt || et === Union{}) && return nothing
+    return _render_return(et)
 end
 
 """
@@ -692,6 +826,15 @@ function method_entries(reach, acc)
             # 🔴 삼상: 유도 못 한 반환은 **키를 안 만든다**(`_method_returns` 의 표 참조).
             r = _method_returns(f, m)
             r === nothing || (e["returns"] = r)
+            # 🔴 2026-09-05. 유도가 **넓어지는 자리**를 두 기계 사실로 메운다(런 16·19 가
+            #    각각 그 자리에서 죽었다). 같은 삼상 규약: 못 유도하면 키를 안 만든다.
+            ss = _status_symbols(m)
+            ss === nothing || (e["status_symbols"] = ss)
+            rt = _infer_return(f, tt_of(m))
+            if rt !== nothing
+                et = _element_type(rt)
+                et === nothing || (e["element_type"] = et)
+            end
             push!(out, e)
         end
     end

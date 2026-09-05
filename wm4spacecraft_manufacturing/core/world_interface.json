@@ -8,6 +8,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, LazySets.Ball2Module.Ball2{N, VN}} where {N<:AbstractFloat, VN<:AbstractVector{N}}",
             "returns": "Base.Generator{Dict{Symbol, LazySets.Ball2Module.Ball2}, ConstructionBots.var\"#817#818\"}"
         },
         {
@@ -18,6 +19,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "ConstructionBots.BotID{ConstructionBots.DeliveryBot}",
             "returns": "Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}"
         },
         {
@@ -28,6 +30,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}",
             "returns": "Dict{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}"
         },
         {
@@ -39,6 +42,7 @@
             "argpaths": [
             ],
             "callable": false,
+            "element_type": "Float64",
             "returns": "LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}"
         },
         {
@@ -117,6 +121,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "ConstructionBots.AbstractID",
             "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
@@ -197,6 +202,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "AssetAssignment",
             "returns": "Vector{AssetAssignment}"
         },
         {
@@ -276,6 +282,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{ConstructionBots.AbstractID, ConstructionBots.BatteryDelivery}",
             "returns": "Dict{ConstructionBots.AbstractID, ConstructionBots.BatteryDelivery}"
         },
         {
@@ -501,6 +508,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "ConstructionBots.AbstractID",
             "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
@@ -651,6 +659,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "ConstructionBots.AbstractID",
             "returns": "Set{ConstructionBots.AbstractID}"
         },
         {
@@ -705,6 +714,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Int64",
             "returns": "ConstructionBots.CustomNGraph{Graphs.SimpleGraphs.SimpleDiGraph, ConstructionBots.CustomNode{ConstructionPredicate, ConstructionBots.AbstractID}, ConstructionBots.AbstractID}"
         },
         {
@@ -715,6 +725,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Int64",
             "returns": "ConstructionBots.CustomNGraph{Graphs.SimpleGraphs.SimpleDiGraph, ConstructionBots.CustomNode{ConstructionPredicate, ConstructionBots.AbstractID}, ConstructionBots.AbstractID}"
         },
         {
@@ -746,6 +757,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{ConstructionBots.AbstractID, Vector{Float64}}",
             "returns": "Dict{ConstructionBots.AbstractID, Vector{Float64}}"
         },
         {
@@ -766,6 +778,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, Vector{Float64}}",
             "returns": "Dict{Symbol, Vector{Float64}}"
         },
         {
@@ -786,6 +799,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, NamedTuple}",
             "returns": "Dict{Symbol, NamedTuple}"
         },
         {
@@ -886,6 +900,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Float64",
             "returns": "Vector{Float64}"
         },
         {
@@ -915,6 +930,11 @@
                 "agent <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "status_symbols": [
+                "admitted",
+                "fallback",
+                "rejected"
+            ],
             "returns": "NamedTuple"
         },
         {
@@ -925,6 +945,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Vector{Float64}}",
             "returns": "Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Vector{Float64}}"
         },
         {
@@ -954,6 +975,13 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "banned",
+                "invalid_n",
+                "missing_agent",
+                "no_schedule",
+                "unknown_agent"
+            ],
             "returns": "Union{@NamedTuple{status::Symbol, agent::String, n::Float64}, @NamedTuple{status::Symbol, agent::String, n::Int64}}"
         },
         {
@@ -1130,6 +1158,11 @@
                 "faulted <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "status_symbols": [
+                "no_robot",
+                "no_spare",
+                "swapped"
+            ],
             "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :faulted, :depot, :spare, :mode, :captured), <:Tuple{Symbol, ConstructionBots.AbstractID, Symbol, ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Symbol, Bool}}}"
         },
         {
@@ -1140,6 +1173,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, Int64}",
             "returns": "Dict{Symbol, Int64}"
         },
         {
@@ -1150,6 +1184,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "NamedTuple",
             "returns": "Vector{NamedTuple}"
         },
         {
@@ -1239,6 +1274,9 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "skipped_line_stop"
+            ],
             "returns": "Symbol"
         },
         {
@@ -1269,6 +1307,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Char",
             "returns": "String"
         },
         {
@@ -1419,6 +1458,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Char",
             "returns": "AbstractString"
         },
         {
@@ -1594,6 +1634,11 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "both_scopes",
+                "unknown_agent"
+            ],
+            "element_type": "Tuple{Int64, Int64}",
             "returns": "Vector{Tuple{Int64, Int64}}"
         },
         {
@@ -1605,6 +1650,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Int64",
             "returns": "ConstructionBots.GeometryHierarchy"
         },
         {
@@ -1616,6 +1662,7 @@
                 "n <- env.scene_tree.nodes[i]"
             ],
             "callable": true,
+            "element_type": "Int64",
             "returns": "ConstructionBots.AbstractCustomNGraph"
         },
         {
@@ -1665,6 +1712,12 @@
                 "spare <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "status_symbols": [
+                "already_done",
+                "no_frontier",
+                "no_spare",
+                "replaced"
+            ],
             "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :faulted, :spare, :slots, :deduped, :serialized, :rests, :fg, :slot1), <:Tuple{Symbol, ConstructionBots.AbstractID, ConstructionBots.AbstractID, Vararg{Int64, 6}}}}"
         },
         {
@@ -1707,6 +1760,13 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "infeasible",
+                "none",
+                "partial",
+                "residual_blocked",
+                "restaged_all"
+            ],
             "returns": "Union{@NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}}, @NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}, residual::Int64}}"
         },
         {
@@ -1726,6 +1786,14 @@
                 "assembly_id <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "status_symbols": [
+                "already_built",
+                "already_started",
+                "infeasible",
+                "no_node",
+                "no_staging",
+                "restaged"
+            ],
             "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :from, :to, :delta), <:Tuple{Symbol, Any, Any, Any}}}"
         },
         {
@@ -1736,6 +1804,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, LazySets.Ball2Module.Ball2}",
             "returns": "Dict{Symbol, LazySets.Ball2Module.Ball2}"
         },
         {
@@ -1746,6 +1815,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Vector{Float64}",
             "returns": "Vector{Vector{Float64}}"
         },
         {
@@ -2003,6 +2073,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, Vector{Float64}}",
             "returns": "Dict{Symbol, Vector{Float64}}"
         },
         {
@@ -2013,6 +2084,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}",
             "returns": "Dict{Symbol, Vector{ConstructionBots.BotID{ConstructionBots.DeliveryBot}}}"
         },
         {
@@ -2023,6 +2095,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Pair{ConstructionBots.AbstractID, Vector{Float64}}",
             "returns": "Dict{ConstructionBots.AbstractID, Vector{Float64}}"
         },
         {
@@ -2125,6 +2198,10 @@
                 "role <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "status_symbols": [
+                "battery_courier_dispatched",
+                "no_robot"
+            ],
             "returns": "NamedTuple"
         },
         {
@@ -2144,6 +2221,13 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "already_clear",
+                "infeasible",
+                "no_staging",
+                "residual_blocked",
+                "translated"
+            ],
             "returns": "NamedTuple"
         },
         {
@@ -2164,6 +2248,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Int64",
             "returns": "Set{Int64}"
         },
         {
@@ -2262,6 +2347,10 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_symbols": [
+                "disconnected",
+                "engulfed"
+            ],
             "returns": "NamedTuple"
         },
         {
@@ -2272,6 +2361,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "ConstructionBots.AbstractID",
             "returns": "Vector{ConstructionBots.AbstractID}"
         },
         {
@@ -2332,6 +2422,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "Char",
             "returns": "String"
         },
         {
@@ -2342,6 +2433,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "element_type": "NamedTuple",
             "returns": "Vector{NamedTuple}"
         }
     ],
