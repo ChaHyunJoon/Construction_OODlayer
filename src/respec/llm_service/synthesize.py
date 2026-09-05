@@ -371,6 +371,25 @@ class DesignToolSpec(dspy.Signature):
 
 
 # ==========================================================================================
+# 🔴 2026-09-04 fix round 1. 반환 규약 문단은 **두 시그니처가 공유한다.**
+# ==========================================================================================
+# `/rewrite` 는 이 시스템의 **유일한 자기수정 채널**이고(재시도 상한 1), body 가 거절된 바로
+# 그 순간에만 돈다. 그 프롬프트에 예시가 없으면 유료 런 1 을 죽인 그 반환문
+# (`NamedTuple{(:status,)}(:success)` → `MethodError: length(::Symbol)`)을 **고치라고 부른
+# 채널이 그대로 재생산**할 수 있다 — 가장 나쁜 자리다. 문자열을 두 번 적으면 드리프트하므로
+# 상수 하나로 묶고, `test_write_tool_impl.py` 가 둘 다에 그것이 있는지 지킨다.
+#
+# ⚠️ 맨 `Symbol` 반환은 **합법이다**(2026-09-03 최종 리뷰 C2 가 하네스를 그쪽으로 넓혔다 —
+#    `src/respec/minted_tool.jl` 의 `_step_status`). 예시가 NamedTuple 하나뿐이면 프롬프트가
+#    그 갈래를 조용히 낙담시킨다. 그래서 둘 다 적는다.
+_RETURN_CONTRACT_DESC = (
+    "End the body with the semicolon form of the NamedTuple -- literally "
+    "`return (; status = :success)`. A bare `return :success` is equally legal; the "
+    "harness reads a plain Symbol as the status. "
+    "`NamedTuple{(:status,)}(:success)` is NOT valid Julia and throws "
+    "`MethodError: no method matching length(::Symbol)`.")
+
+# ==========================================================================================
 # 🔴 Task 8 (2026-09-03). agent-3 이 조합기에서 **Julia 구현 작성자**로 바뀐다.
 # ==========================================================================================
 # 이 자리에는 "DO NOT RUN A PAID SYNTHESIS BEFORE TASK 8" 경고와 `ComposeToolBody` 가 있었다 --
@@ -421,10 +440,7 @@ class WriteToolImpl(dspy.Signature):
         "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing "
         "else. Prefer CALLING the functions the world interface lists as callable over "
         "writing struct fields by hand; write a field directly only when no listed "
-        "function produces the required effect. End the body with the semicolon form of "
-        "the NamedTuple -- literally `return (; status = :success)`. "
-        "`NamedTuple{(:status,)}(:success)` is NOT valid Julia and throws "
-        "`MethodError: no method matching length(::Symbol)`.")
+        "function produces the required effect. " + _RETURN_CONTRACT_DESC)
     params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
     calls: List[Dict[str, Any]] = dspy.OutputField(desc=
         'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
@@ -471,7 +487,8 @@ class RewriteToolImpl(dspy.Signature):
     surface: str = dspy.OutputField(desc="which world surface this edits")
     reversible: bool = dspy.OutputField(desc="can this be undone")
     impl_code: str = dspy.OutputField(desc=
-        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing else")
+        "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing "
+        "else. " + _RETURN_CONTRACT_DESC)
     params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
     calls: List[Dict[str, Any]] = dspy.OutputField(desc=
         'the arguments to use for THIS event: [{"primitive": "<impl_name>", '

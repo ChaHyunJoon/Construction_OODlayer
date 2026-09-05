@@ -293,3 +293,38 @@ def test_the_impl_code_slot_carries_the_return_contract_and_the_call_preference(
     assert "Prefer CALLING" in d, d
     # 오늘의 규약을 **지우지 않았다** — 시그니처 모양이 그대로 있다.
     assert "function <impl_name>(env; k=<default>, ...) ... end" in d, d
+
+
+# =====================================================================================
+# 2026-09-04 fix round 1 — `/rewrite` 는 **유일한 자기수정 채널**이다(재시도 상한 1).
+# 거절된 body 를 고치라고 부른 그 채널이, 유료 런 1 을 죽인 반환문을 그대로 재생산할 수
+# 있으면 안 된다. 유료 0건 — 시그니처의 `desc` 만 읽는다.
+# =====================================================================================
+def _impl_desc(sig):
+    return sig.output_fields["impl_code"].json_schema_extra["desc"]
+
+
+def test_the_rewrite_slot_carries_the_same_return_contract():
+    r = _impl_desc(SY.RewriteToolImpl)
+    assert "return (; status = :success)" in r, r
+    assert "NamedTuple{(:status,)}(:success)" in r, r
+    assert "length(::Symbol)" in r, r
+    # 되먹임 채널의 다른 계약은 그대로다 — 시그니처 모양 문장이 살아 있다.
+    assert "function <impl_name>(env; k=<default>, ...) ... end" in r, r
+
+
+def test_both_impl_slots_share_the_return_contract_verbatim():
+    """🔴 드리프트 금지. 같은 문단을 두 번 적으면 한쪽만 고쳐지는 날이 온다."""
+    w, r = _impl_desc(SY.WriteToolImpl), _impl_desc(SY.RewriteToolImpl)
+    assert SY._RETURN_CONTRACT_DESC in w, w
+    assert SY._RETURN_CONTRACT_DESC in r, r
+
+
+def test_both_impl_slots_admit_the_bare_symbol_return():
+    """🔴 C2(2026-09-03 최종 리뷰)가 하네스를 맨 `Symbol` 쪽으로 **넓혔다**
+    (`src/respec/minted_tool.jl` 의 `_step_status`). 예시가 NamedTuple 하나뿐이면 프롬프트가
+    합법인 그 갈래를 조용히 낙담시킨다 — 하네스가 지원하는 것을 프롬프트가 부정하는 모양이다.
+    """
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        d = _impl_desc(sig)
+        assert "return :success" in d, (sig.__name__, d)
