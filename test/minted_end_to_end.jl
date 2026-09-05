@@ -3663,7 +3663,7 @@ end
     local srv, port, killed, served = _flaky_rewrite_stub()
     try
         local M = _enact_at("http://127.0.0.1:$port";
-            mutate = s -> replace(s, "retries = 2, retry_non_idempotent = true" =>
+            mutate = s -> replace(s, r"retries = 2,\s*retry_non_idempotent = true" =>
                                      "retries = 0", count = 1))
         local r, lines = _drive_rewrite(M, "http://127.0.0.1:$port")
         @test killed[]
@@ -3686,7 +3686,7 @@ end
     local srv, port, killed, served = _flaky_rewrite_stub()
     try
         local M = _enact_at("http://127.0.0.1:$port";
-            mutate = s -> replace(s, "retries = 2, retry_non_idempotent = true" =>
+            mutate = s -> replace(s, r"retries = 2,\s*retry_non_idempotent = true" =>
                                      "retries = 2", count = 1))
         local r, lines = _drive_rewrite(M, "http://127.0.0.1:$port")
         @test killed[] && served[] == 0
@@ -4062,6 +4062,91 @@ local m10, _, r10 = _mut_run("rwp_m10b!",
 # 🔴 열 변이가 **서로 다른 곳**을 빨갛게 만들었다(뭉치면 하나가 다른 하나를 가린다).
 @test length(Set([m1.reason, m2.reason, m3.verdict, m4.reason, r5, r6, r7,
                   m8.reason, m9.reason, m10.reason])) == 10
+end
+
+# =============================================================================
+# (46) 🔴 D17d — **집행 전 거절**도 되먹임을 받는다 (2026-09-05)
+#
+# 유료 런 14·15 는 `reject:calls_disagree_with_body` 로 죽었다(모델이 `calls = []` 를 냈고
+# `body_names` 는 한 칸이었다). 그 판은 되먹임 트리거 어디에도 안 걸렸다:
+#   · D17  = **등록** 거절 — 등록은 성공했다.
+#   · D17b = 집행 **예외** — body 가 안 굴렀으니 던진 것이 없다.
+#   · D17c = **잰 무동작** — body 가 안 굴렀으니 잴 무동작도 없다.
+# 그래서 기록이 `enact_retry=n/a rewrite_params=n/a` 였고 **모델은 자기가 왜 거절됐는지
+# 들은 적이 없다.** 이 테스트셋이 그 구멍이 메워졌는지를 잰다. 유료 0건(루프백 서버).
+# =============================================================================
+"`calls` 가 body 와 어긋나는 레인. 유료 런 14·15 의 모양 그대로 — 빈 목록이다."
+_d17d_lane(nm) = _lane(Dict{String,Any}(
+    "synthesis_event" => true, "ran" => true, "error" => nothing,
+    "tool_name" => "T", "impl_name" => nm,
+    "impl_code" => "function $(nm)(env; note = \"x\")\n    return (status = :never,)\nend\n",
+    "surface" => "env_param", "reversible" => false,
+    "params" => Dict{String,Any}("note" => Dict{String,Any}("type" => "string")),
+    "body_names" => [nm], "wrote" => true,
+    "calls" => Any[]))
+
+@testset "(46) 🔴 D17d: 집행 전 거절이 되먹임으로 나가고 고친 body 가 집행된다" begin
+    # ---- (a) 라이브 경로: 런 14·15 의 판이 이제 **두 번째로 집행된다** -------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_LAST[] = nothing
+    # 🔴 고친 body 는 **같은 이름**으로 돌아온다 — 첫 등록이 성공한 판이므로
+    #    `allow_redefine` 이 없으면 채널이 `already_minted` 로 죽는다(D17b 와 같은 자리).
+    _RW_RESPONSES[:d17d_ok] = () -> _rw_fix("d17d_a!")
+    _RW_MODE[] = :d17d_ok
+    local ra = enact_minted_decision!(retry_env(), nothing, _dec(_d17d_lane("d17d_a!")))
+    @test _RW_HITS[] == 1                        # 🔴 왕복이 **나갔다**(옛 코드에서는 0)
+    @test ra.enact_retry === :prerun_retried
+    @test ra.verdict === :admit                  # 두 번째 집행의 결과가 기록된다
+    @test length(ra.steps) == 1 && ra.steps[1].name == "d17d_a!"
+    # 🔴 전선에 실린 사유: 접두가 셋을 가르고, 사유 자신은 **그대로** 실린다.
+    local why_sent = String(_RW_LAST[].impl_rejected_why)
+    @test startswith(why_sent, "enact_rejected:")
+    @test occursin("calls_disagree_with_body", why_sent)
+    @test occursin("body=[d17d_a!]", why_sent)   # 모델이 고칠 것을 이름으로 듣는다
+    _RW_MODE[] = :off
+
+    # ---- (b) 🔴 음성 대조: 왕복이 실패하면 **원래 거절이 그대로 남는다** ------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    local rb = enact_minted_decision!(retry_env(), nothing, _dec(_d17d_lane("d17d_b!")))
+    @test _RW_HITS[] == 1                        # 시도는 했다(404 가 돌아왔다)
+    @test rb.enact_retry === :prerun_roundtrip_failed
+    @test rb.verdict === :reject
+    @test occursin("calls_disagree_with_body", rb.reason)
+
+    # ---- (c) 판독기 단위: 연언지 넷 ------------------------------------------------------
+    local ok = (verdict = :reject, steps = NamedTuple[], world_maybe_dirty = false,
+                reason = "reject:calls_disagree_with_body: calls=[] body=[x!]")
+    @test _prerun_reject_reason(ok) ==
+          "enact_rejected:reject:calls_disagree_with_body: calls=[] body=[x!]"
+    # 🔴 `:deferred` 는 트리거가 아니다 — agent-3 에게 되먹일 것이 없는 판이다.
+    @test _prerun_reject_reason(merge(ok, (verdict = :deferred,))) === nothing
+    @test _prerun_reject_reason(merge(ok, (verdict = :admit,))) === nothing
+    # 걸음이 있으면 body 가 굴렀다 = 이 갈래의 안전 논거가 성립하지 않는다.
+    @test _prerun_reject_reason(merge(ok, (steps = [(name = "x!", status = :ok)],))) === nothing
+    # 하네스가 "손댔을 수 있다" 고 말하면 물러선다(음성 대조로만 쓴다).
+    @test _prerun_reject_reason(merge(ok, (world_maybe_dirty = true,))) === nothing
+    # 빈 사유를 되먹이면 `/rewrite` 는 고칠 것을 못 듣는다.
+    @test _prerun_reject_reason(merge(ok, (reason = "",))) === nothing
+    # 🔴 안 던진다 — 필드가 없는 모양도 `nothing` 이다.
+    @test _prerun_reject_reason((verdict = :reject,)) === nothing
+    @test _prerun_reject_reason(nothing) === nothing
+
+    # ---- (d) 🔴 세 트리거가 로그에서 갈린다 ----------------------------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d17d_rec] = () -> _rw_fix("d17d_c!")
+    _RW_MODE[] = :d17d_rec
+    local out = _d17b_cap(() -> enact_minted_decision!(retry_env(), nothing,
+                              _dec(_d17d_lane("d17d_c!"))))
+    local rec = _d17b_rec(out)
+    local rx = match(r"enact_retry=(\S+)", rec)
+    @test rx !== nothing && rx.captures[1] == "prerun_retried"
+    # 접두 없는 판독은 이 판을 D17b 로 **오독하지 않는다**(이 파일의 관용구).
+    @test !occursin("enact_retry=retried", rec)
+    @test !occursin("enact_retry=noop_retried", rec)
+    _RW_MODE[] = :off
+
+    # 🔴 셋 다 서로 다른 이름이다 — 뭉개면 "왜 되먹였나" 가 로그에서 사라진다.
+    @test length(Set([_RETRY_SYMS_THREW.retried, _RETRY_SYMS_NOOP.retried,
+                      _RETRY_SYMS_PRERUN.retried])) == 3
 end
 
 close(_RW_SERVER)

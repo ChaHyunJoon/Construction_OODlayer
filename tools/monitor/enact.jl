@@ -1851,6 +1851,55 @@ _enact_throw_reason(r) =
     catch; nothing end
 
 """
+    _prerun_reject_reason(r) -> Union{Nothing,String}
+
+`CB.enact_minted!` 이 **body 를 한 번도 안 굴린 채 거절**한 판이면 그 사유 한 줄, 아니면
+`nothing`. 되먹임 트리거 **셋째**다 (D17d).
+
+🔴 **왜 이 트리거가 필요한가 (2026-09-05, 유료 런 14·15).** 두 런은
+   `reject:calls_disagree_with_body`(모델이 `calls = []` 를 냈다 — `body_names` 는 한 칸)로
+   죽었는데, 그 판은 D17b(집행 예외)도 D17c(잰 무동작)도 **아니다**: body 가 아예 안 굴렀으니
+   던진 것도 없고 잴 무동작도 없다. 그래서 기록이 `enact_retry=n/a rewrite_params=n/a` 였고,
+   **모델은 자기가 왜 거절됐는지 들은 적이 없다.** D17(등록 거절)도 이 자리를 못 본다 —
+   등록은 **성공**했고 거절은 그 뒤 집행부의 사전 검사에서 났다. 두 되먹임 자리 사이에 난
+   구멍이 정확히 이만큼이었다.
+
+🔴 **그리고 이 판이 셋 중 가장 안전하다.** 세계는 확실히 안 건드려졌다 — 구조로 그렇다:
+   `minted_tool.jl` 의 `:reject` 반환 **여덟 자리가 전부** 단계 루프(7) **앞**이고, 루프에
+   들어간 뒤로는 `admit_verdict` 만 나온다(2026-09-05 전수). 그래서 D17b 가 지고 있는
+   "반쯤 편집된 세계 위에 두 번째 body 를 굴린다" 는 위험이 여기엔 아예 없다.
+
+**연언지 넷. 전부여야 사유가 나간다:**
+
+ 1. `r.verdict === :reject` — 거절이다. `:deferred`(합성 기록이 없다 · `impl_name` 이 없다)는
+    **agent-3 에게 되먹일 것이 없는** 판이므로 트리거가 아니다.
+ 2. `isempty(r.steps)` — 한 발도 안 굴렀다. 오늘 (1) 이면 구조적으로 참이지만, 판정을 위
+    문단의 전수조사에 의존시키지 않는다 — 거절 자리가 루프 뒤로 옮겨지는 날 이 절이
+    **조용히** 그 판을 막는다.
+ 3. `r.world_maybe_dirty !== true` — 하네스 자신이 "세계에 손댔을 수 있다" 고 말하지 않았다.
+    ⚠️ 이 필드는 "편집됐다" 가 아니라 `touched || partial` 이다(정본은 `minted_tool.jl` 의
+    `_r`). 그래서 여기서는 **양성 신호로 안 쓰고** 음성 대조로만 쓴다 — 참이면 물러선다.
+ 4. 사유가 읽히는 비지 않은 문자열이다. 빈 사유를 되먹이면 `/rewrite` 는 "이것만 고쳐라" 를
+    받고 고칠 것을 못 듣는다.
+
+🔴 접두 `enact_rejected:` 는 **전선에 실린다**(`enact_threw:`·`enact_noop:` 와 같은 규약).
+   `impl_rejected_why` 는 자유 문자열이므로 파이썬을 안 고친다 — 대신 agent-3 이 "등록
+   거절"·"집행 예외"·"집행 전 거절" 셋을 접두로 가를 수 있어야 한다.
+
+🔴 사유는 **그대로 나른다**(D17 이 등록 거절 사유를 그대로 보내는 것과 같은 규약). 여기서
+   처방을 지어 붙이지 않는다: 이 문자열은 하네스의 계약 위반 판정이지 세계에 대한 관측이
+   아니고, 계약은 그 자신이 이미 정확한 문장이다(`calls=[…] body=[…]`).
+
+🔴 안 던진다 — 이 파일의 규약이다.
+"""
+_prerun_reject_reason(r) =
+    try
+        (r.verdict === :reject && isempty(r.steps) && r.world_maybe_dirty !== true &&
+         r.reason isa AbstractString && !isempty(r.reason)) ?
+            string("enact_rejected:", r.reason) : nothing
+    catch; nothing end
+
+"""
     _wd_is_zero(wd) -> Bool
 
 `_world_delta` 의 여섯 축이 **전부 잰 0** 인가. `nothing`(못 쟀다)은 `false` 다.
@@ -2020,10 +2069,11 @@ function _noop_feedback_reason(r, wdb)
 end
 
 """
-    _RETRY_SYMS_THREW · _RETRY_SYMS_NOOP
+    _RETRY_SYMS_THREW · _RETRY_SYMS_NOOP · _RETRY_SYMS_PRERUN
 
-`_rewrite_retry!` 가 낼 세 상태의 이름표. **두 트리거를 한 심볼로 뭉개지 않는다** — 로그를
-읽는 사람은 "던져서 되먹였다" 와 "안 움직여서 되먹였다" 를 반드시 갈라야 한다(처방이 다르다).
+`_rewrite_retry!` 가 낼 세 상태의 이름표. **트리거를 한 심볼로 뭉개지 않는다** — 로그를
+읽는 사람은 "던져서 되먹였다"·"안 움직여서 되먹였다"·"집행 전에 거절돼서 되먹였다" 를 반드시
+갈라야 한다(처방이 다르다).
 
 ⚠️ 던진 쪽의 세 이름은 **D17b 와 바이트 동일**하다. 접두를 붙여 통일하고 싶은 유혹이 있지만
    그러면 `tools/monitor/test_ladder_report.py` 의 실측 리터럴과 결정 행의 옛 값이 한꺼번에
@@ -2035,6 +2085,14 @@ const _RETRY_SYMS_THREW = (roundtrip = :roundtrip_failed,
 const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
                            rejected  = :noop_rejected,
                            retried   = :noop_retried)
+# 🔴 D17d (2026-09-05). 셋째 트리거도 **자기 접두를 갖는다** — `prerun_retried` 는
+#    "집행 전 거절을 되먹여 두 번째로 집행했다" 이고, `noop_retried`/`retried` 와 처방이
+#    다르다(이쪽은 세계를 한 번도 안 건드린 판이다). `rejected` 가 두 번 나오는 것처럼
+#    보이는 자리는 뜻이 다르다: 접두가 **첫 거절**(집행 전), 어간이 **두 번째 거절**
+#    (고친 body 의 재등록)이다.
+const _RETRY_SYMS_PRERUN = (roundtrip = :prerun_roundtrip_failed,
+                            rejected  = :prerun_rejected,
+                            retried   = :prerun_retried)
 
 """
     _rewrite_retry!(env, truth, sl, r, _pre, why, nm, syms) -> NamedTuple
@@ -2048,12 +2106,13 @@ const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
    "스키마에 대해 아무 말도 못 한다" 가 참이다. 나머지 두 갈래(`rejected`·`retried`)는
    `_install_rewrite!` 이 낸 값을 그대로 나른다(정본은 `_merge_rewrite_params`).
 
-🔴 **두 트리거가 이 한 벌을 공유한다**(D17b = 집행 예외, D17c = 잰 무동작). 두 벌을 두면
+🔴 **세 트리거가 이 한 벌을 공유한다**(D17b = 집행 예외, D17c = 잰 무동작,
+   D17d = 집행 전 거절). 두 벌을 두면
    검사 순서·사유 이름·`allow_redefine` 의 좁힘이 갈리고, 이 파일은 그 갈림을 이미
    `_install_rewrite!` 를 만들며 한 번 겪었다. **다른 것은 게이트와 사유 문자열과 상태
    이름 셋뿐이고, 그 셋은 전부 인자로 들어온다.**
 
-🔴 **상한은 1 이고 루프가 아니라 구조다.** 이 함수에는 반복이 없고, 호출자는 두 트리거를
+🔴 **상한은 1 이고 루프가 아니라 구조다.** 이 함수에는 반복이 없고, 호출자는 세 트리거를
    `if`/`elseif` 로 배타로 묶는다 — 그래서 한 판에서 왕복은 많아야 **하나**다. 두 번째
    집행 결과는 그대로 기록되고 **다시 되먹이지 않는다**(무동작이어도 그렇다).
 
@@ -2067,7 +2126,7 @@ const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
    이 **등록된 적 없는 옛 값**이다(D5 문단과 같은 근거).
 
 🔴 `allow_redefine` 은 "agent-3 이 **방금 우리가 주조한 그 이름**을 그대로 돌려줬는가" 일
-   때만 참이다. 두 트리거 다 첫 등록이 **성공한** 뒤의 판이므로 그 이름은 이미
+   때만 참이다. 세 트리거 다 첫 등록이 **성공한** 뒤의 판이므로 그 이름은 이미
    `_MINTED_EVER` 에 있고, 안 풀면 고친 body 가 **언제나** `already_minted` 로 거절돼
    채널이 구조적으로 죽는다(D17b §6 실측). 다른 이름이면 `false` 이고 충돌 셋의 판정
    (D6 신호 포함)은 그대로 산다.
@@ -2131,12 +2190,21 @@ end
                                    "너는 아무것도 안 바꿨다" 고 말하지 않는다
   · `noop_roundtrip_failed` · `noop_rejected` · `noop_retried` — 위 셋과 같은 뜻, 다른 트리거
 
+  **집행 전 거절을 되먹인 갈래** (D17d, 판정은 `_prerun_reject_reason` 자신):
+  · `prerun_roundtrip_failed` · `prerun_rejected` · `prerun_retried` — 같은 뜻, 다른 트리거.
+    🔴 이 갈래에는 `refused_*` 가 **없다**: body 가 한 번도 안 불렸으므로 "세계가 더러울 수
+    있다" 를 잴 것이 아예 없다. 유료 런 14·15 가 옛 코드에서 `n/a` 로 남던 자리다.
+
+  🔴 셋 다 공통으로 `refused_budget_spent` — 게이트는 열렸는데 이 런의 왕복을 **등록 거절
+  에서 이미 썼다**(D17). 예산은 트리거마다가 아니라 **런당 하나**다.
+
 🔴 `retried` 가 이 줄에 없으면 사다리는 **두 번째 시도를 첫 시도의 깨끗한 성공으로 채점한다.**
    그 구별이 이 필드의 존재 이유다.
-🔴 **두 트리거를 한 이름으로 뭉개지 않는다**(2026-09-05, D17c). `retried` 와 `noop_retried`
-   는 **다른 사건**이다 — 앞은 "예외 메시지를 되먹였다", 뒤는 "잰 0 을 되먹였다" 이고
-   유료 런의 사후 판독에서 그 둘은 서로 다른 처방을 부른다. 접두 `noop_` 하나가 그 구별을
-   `(\\S+)` 한 번의 판독으로 나른다. 이름표의 정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP` 다.
+🔴 **트리거를 한 이름으로 뭉개지 않는다**(2026-09-05, D17c + D17d). `retried` ·
+   `noop_retried` · `prerun_retried` 는 **다른 사건**이다 — 차례로 "예외 메시지를 되먹였다" ·
+   "잰 0 을 되먹였다" · "집행 전 거절을 되먹였다" 이고, 유료 런의 사후 판독에서 셋은 서로
+   다른 처방을 부른다. 접두 하나가 그 구별을 `(\\S+)` 한 번의 판독으로 나른다. 이름표의
+   정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP`/`_RETRY_SYMS_PRERUN` 이다.
 """
 _retry_str(x) = x === nothing ? "n/a" : String(x)
 
@@ -2173,12 +2241,15 @@ _rwp_str(x) = x === nothing ? "n/a" : String(x)
 0 이든 아니든 귀속이 불가능했던 자리가 정확히 이것이다. 삼상은 같다: `nothing` = probe 를
 못 찍었다, 0 의 튜플 = 찍었는데 body 가 세계를 안 바꿨다.
 
-🔴 **`enact_retry` 는 열이다**(2026-09-05, D17b + D17c). 상태 목록의 정본은 `_retry_str`
-의 표이고 이름표의 정본은 `_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP` 다 — 여기 다시 세지 않는다.
-🔴 **트리거가 둘이고 로그가 그 둘을 가른다**: 접두 없는 넷은 **집행이 던진** 판(D17b),
+🔴 **`enact_retry` 는 열이다**(2026-09-05, D17b + D17c + D17d). 상태 목록의 정본은
+`_retry_str` 의 표이고 이름표의 정본은
+`_RETRY_SYMS_THREW`/`_RETRY_SYMS_NOOP`/`_RETRY_SYMS_PRERUN` 이다 — 여기 다시 세지 않는다.
+🔴 **트리거가 셋이고 로그가 그 셋을 가른다**: 접두 없는 넷은 **집행이 던진** 판(D17b),
 접두 `noop_` 인 넷은 **body 가 잰 무동작**인 판(D17c — 유료 런 8 이 죽은 자리: 예외가
-없었으므로 D17b 의 채널이 한 번도 안 발화했다). 한 판에서 왕복은 **많아야 하나**다
-(집행부의 `if`/`elseif` 가 그 배타를 구조로 지킨다).
+없었으므로 D17b 의 채널이 한 번도 안 발화했다), 접두 `prerun_` 인 셋은 **body 를 굴리기도
+전에 거절된** 판(D17d — 유료 런 14·15 가 죽은 자리: `reject:calls_disagree_with_body` 는
+예외도 잰 무동작도 아니라 두 채널 사이의 구멍으로 빠졌다). 한 판에서 왕복은 **많아야
+하나**다 (집행부의 `if`/`elseif` 가 그 배타를 구조로 지킨다).
 
 🔴 **`noop_refused_unmeasured` 를 `n/a` 로 뭉개지 말 것.** `n/a` 는 "트리거가 없었다"
 (= 안 던졌고, 잰 여섯 축 중 하나라도 움직였다)이고, 이 값은 "안 던졌는데 **차분을 못 쟀다**"
@@ -2638,15 +2709,23 @@ function enact_minted_decision!(env, truth, decision)
         # 🔴 **상한은 1 이고, 루프가 아니라 구조다**(D17 과 같은 규약). 이 블록에는 반복이
         #    없다: 두 번째 집행 결과는 그대로 기록되고 다시 되먹이지 않는다. 유료 호출이
         #    무한히 새는 자리를 만들지 않는다.
-        # 🔴 **트리거는 둘이고 배타다** (2026-09-05, D17c). `if`/`elseif` 인 것이 상한 1 을
-        #    지키는 **구조**다: 한 판에서 왕복은 많아야 하나이고, 두 번째 집행의 결과는
-        #    (그것이 또 무동작이어도) 그대로 기록되고 다시 되먹여지지 않는다.
+        # 🔴 **트리거는 셋이고 배타다** (2026-09-05, D17c + D17d). `if`/`elseif` 인 것이
+        #    상한 1 을 지키는 **구조**다: 한 판에서 왕복은 많아야 하나이고, 두 번째 집행의
+        #    결과는 (그것이 또 무동작이어도) 그대로 기록되고 다시 되먹여지지 않는다.
         #    · 던졌다 → `_retry_gate` (D17b). 사유는 예외 메시지 자신.
+        #    · **body 를 안 굴린 채 거절됐다** → `_prerun_reject_reason` (D17d). 사유는 그
+        #      거절 문장 자신. 유료 런 14·15 가 여기서 죽었다: `calls = []` 가
+        #      `reject:calls_disagree_with_body` 로 막혔는데 그 판은 던진 것도 잰 무동작도
+        #      아니어서 **되먹임이 한 번도 안 갔다**(`enact_retry=n/a`).
         #    · 안 던졌는데 **잰 무동작**이다 → `_noop_gate` (D17c). 사유는 관측 문장.
         #      유료 런 8 이 정확히 여기서 죽었다: 지어낸 zone 키를 좌표로 **만들어** 놓고
         #      원시의 반환 status 를 올바르게 검사한 뒤 `:failure` 를 돌려줬다 — 예외가
         #      없으니 D17b 의 채널은 한 번도 안 발화했다.
+        # 🔴 **순서가 뜻을 갖는다.** 거절 판은 걸음이 없으므로 `_noop_gate` 가 `:none` 을
+        #    내고(연언지 1), 던진 판은 `verdict` 가 `:reject` 가 아니다 — 즉 셋은 실제로
+        #    겹치지 않는다. 그래도 `elseif` 로 묶는 이유는 **예산이 하나**이기 때문이다.
         local _throw_why = _enact_throw_reason(r)
+        local _prerun_why = _prerun_reject_reason(r)
         local _noop_why::Union{Nothing,String} = nothing
         if _throw_why !== nothing
             enact_retry = _retry_gate(r, world_delta_body)
@@ -2670,6 +2749,28 @@ function enact_minted_decision!(env, truth, decision)
             else
                 println("[minted] enact_retry: 거부 — ", enact_retry,
                         " (세계가 더러울 수 있다: 되돌릴 방법이 없다) 사유=", _throw_why)
+            end
+        elseif _prerun_why !== nothing
+            # 🔴 D17d. **게이트가 따로 없다** — 판독기 자신이 게이트다(연언지 넷이 그 안에
+            #    있다). D17b 처럼 "세계가 더러울 수 있다" 를 재는 절이 필요 없기 때문이다:
+            #    이 갈래의 body 는 **한 번도 안 불렸다**(`_prerun_reject_reason` 의 근거).
+            #    그래서 `refused_world_*` 에 대응하는 상태가 이 갈래에는 존재하지 않는다.
+            if rewrote
+                # 🔴 **같은 예산**이다 — 트리거가 셋이어도 왕복은 런당 하나다.
+                enact_retry = :refused_budget_spent
+                println("[minted] enact_retry: 거부 — refused_budget_spent ",
+                        "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다) 사유=", _prerun_why)
+            else
+                local rp = _rewrite_retry!(env, truth, sl, r, _pre, _prerun_why, nm,
+                                           _RETRY_SYMS_PRERUN)
+                enact_retry = rp.retry
+                rewrite_params = rp.params_from
+                rp.impl_rejected_why !== nothing && (impl_rejected_why = rp.impl_rejected_why)
+                if rp.reenacted
+                    r = rp.r; world_delta = rp.world_delta
+                    world_delta_body = rp.world_delta_body
+                    interface_calls  = rp.interface_calls
+                end
             end
         else
             local _ng = _noop_gate(r, world_delta_body)
