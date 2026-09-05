@@ -1,10 +1,12 @@
 """agent-3 은 조합기가 아니라 **작성자**다. 유료 0건 — 프로그램을 가짜로 물린다."""
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import synthesize as SY  # noqa: E402
+import world_interface as WI  # noqa: E402
 
 
 class _Pred:
@@ -328,3 +330,87 @@ def test_both_impl_slots_admit_the_bare_symbol_return():
     for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
         d = _impl_desc(sig)
         assert "return :success" in d, (sig.__name__, d)
+
+
+# =====================================================================================
+# 2026-09-05 — 유료 런 13·14·15 가 죽은 두 자리. 유료 0건, 시그니처의 `desc` 만 읽는다.
+#
+# 런 13: agent-3 이 인자를 **지어냈다** (`translation = {0, 0.25, 0}`).
+# 런 14·15: agent-3 이 `calls` 를 **통째로 비웠다** → 집행부의
+#           `reject:calls_disagree_with_body`, 그리고 그 거절에는 되먹임 경로가 없었다.
+# 두 실패의 공통 원인은 하나다: **정답 모양이 표현 가능하다는 말을 어디서도 안 했다.**
+# =====================================================================================
+def _calls_desc(sig):
+    return sig.output_fields["calls"].json_schema_extra["desc"]
+
+
+def test_the_calls_slot_says_an_empty_args_map_is_a_valid_answer():
+    """🔴 런 14·15. 빈 `args` 가 정당하다는 말이 없으면 남는 선택지는 둘뿐이다 —
+    지어내서 채우거나, 리스트를 비우거나. 지어낸 값은 **출력 필드 설명에서 태어난다.**"""
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        d = _calls_desc(sig)
+        assert "`{}` when the function takes none" in d, (sig.__name__, d)
+        assert "complete and correct answer" in d, (sig.__name__, d)
+        assert "never invent a value to fill it" in d, (sig.__name__, d)
+
+
+def test_the_calls_slot_states_the_agreement_contract_the_harness_enforces():
+    """🔴 D2 의 규약(`calls` 의 이름·순서 == `body_names`)은 지금까지 **줄리아에만** 있었다.
+    집행부는 그것으로 거절하는데 모델은 그것을 들은 적이 없다."""
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        d = _calls_desc(sig)
+        assert "same names in the same order" in d, (sig.__name__, d)
+        assert "The list itself is never empty" in d, (sig.__name__, d)
+
+
+def test_both_calls_slots_share_the_contract_verbatim():
+    """🔴 드리프트 금지 — `_RETURN_CONTRACT_DESC` 와 같은 규율."""
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        assert _calls_desc(sig) == SY._CALLS_DESC, sig.__name__
+
+
+def test_both_impl_slots_say_the_body_resolves_the_world_itself():
+    """🔴 규칙을 하나만 넣으면 실패가 옮겨간다: `params == {}` 인데 body 가 여전히
+    인자를 기다리면 런타임에 던진다. 세 문장이 그것을 막는다 — 세계에서 읽어라 ·
+    반환값을 읽어라 · "못 했다" 는 넘길 status 가 아니다."""
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        d = _impl_desc(sig)
+        assert SY._RESOLVE_IN_BODY_DESC in d, sig.__name__
+    c = SY._RESOLVE_IN_BODY_DESC
+    assert "reads out of the world itself" in c, c
+    assert "do not write a literal in its place" in c, c
+    assert "Read what a call gives back before you act on it" in c, c
+
+
+def test_the_two_params_slots_state_the_caller_holds_condition():
+    """🔴 A 와 같은 축. agent-3 의 `params` 도 "호출자가 쥔 값" 이 아니면 안 된다 —
+    한쪽만 고치면 두 필드가 서로를 지운다(`params` 는 `calls` 의 키를 정한다)."""
+    for sig in (SY.WriteToolImpl, SY.RewriteToolImpl):
+        d = sig.output_fields["params"].json_schema_extra["desc"]
+        assert "the caller can hold at call time" in d, (sig.__name__, d)
+        assert "`{}` is correct" in d, (sig.__name__, d)
+
+
+def test_the_new_prompt_text_names_no_world_verb():
+    """🔴 **이 문단들은 어휘를 나르지 않는다.** 광고된 함수 이름을 여기 적으면 이 레인이
+    재는 것이 모델이 아니라 우리 프롬프트가 된다 — `enact.jl` 의 `_noop_feedback_reason`
+    이 지키는 것과 같은 선이고, 그쪽도 시험이 어휘적으로 못박는다.
+
+    모집단은 리터럴이 아니라 `world_interface.json` 에서 읽는다(인터페이스가 자라면 이
+    가드도 자란다)."""
+    names = {m["name"] for m in WI.load_world_interface()["methods"]}
+    assert len(names) > 100, "모집단이 %d 개다 — 가드가 공허하게 통과한다" % len(names)
+
+    # 🔴 판정은 **토큰**이지 부분 문자열이 아니다 — `test/minted_end_to_end.jl` (38) 과 같은
+    #    관용구다. 부분 문자열로 재면 `identity` 안의 `entity`(실재하는 광고된 이름)가 걸려
+    #    가드가 자기 문장을 못 쓰게 만든다. 누수의 정의는 "모델이 **부를 수 있는 이름**을
+    #    읽었다" 이므로 토큰 경계가 그 정의의 정확한 형태다.
+    def _tokens(t):
+        return set(re.findall(r"[A-Za-z_][A-Za-z0-9_!]*", t))
+
+    text = SY._RESOLVE_IN_BODY_DESC + SY._CALLS_DESC + SY._PARAMS_ARE_CALLER_VALUES
+    leaked = sorted(_tokens(text) & names)
+    assert leaked == [], "프롬프트가 광고된 이름을 흘린다: %r" % leaked
+    # 🔴 음성 대조: 검출기가 실제로 잡는다.
+    one = sorted(names)[0]
+    assert _tokens("you may call %s here" % one) & names == {one}

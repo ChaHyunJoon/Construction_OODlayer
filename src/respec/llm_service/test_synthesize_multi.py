@@ -925,3 +925,46 @@ def test_the_effect_clause_carries_both_halves():
     assert "REQUIRED EFFECT" in clause, "(a) 효과를 요구하는 반쪽이 없다"
     assert "the way is open" in clause, "(b) 기전을 놓아주는 반쪽이 없다"
     assert len(clause.split()) >= 50, "절이 잘렸다 — 위 두 못박기가 문구만 남긴다"
+
+
+# =====================================================================================
+# 2026-09-05 — agent-2 의 `params` 에는 **정당성 조건이 하나도 없었다** (유료 런 13·14·15).
+#
+# 옛 docstring 은 오히려 반대로 밀었다("기전이 잘 정의되도록 인자를 이름 지어라"), 그리고
+# `params` 필드 설명은 `"JSON schema of the parameters the tool must take"` 한 줄이었다.
+# 그 아래에서 나온 스키마가 `scene_object_id` · `affected_goal_ids` · `cargo_ids` 다 —
+# 호출자가 갖고 있지 않은 값. agent-3 은 지어내거나(런 13) `calls` 를 비웠다(런 14·15).
+# 유료 0건 — 시그니처의 문자열만 읽는다.
+# =====================================================================================
+def test_the_params_slot_carries_the_caller_holds_condition():
+    d = syn.DesignToolSpec.output_fields["params"].json_schema_extra["desc"]
+    assert syn._PARAMS_ARE_CALLER_VALUES in d, d
+
+
+def test_the_condition_is_not_written_as_a_ban_on_identifiers():
+    """🔴 런 13 이 그 규칙의 **반례**다: `translation = {0, 0.25, 0}` 은 정체성이 아니라
+    통과했고, 그래도 지어낸 값이었고 세계를 못 고쳤다. 조건의 축은 "식별자냐" 가 아니라
+    **"호출 시점에 호출자가 쥐고 있느냐"** 여야 한다."""
+    c = syn._PARAMS_ARE_CALLER_VALUES
+    assert "the caller already holds that value at the moment" in c, c
+    assert "not a ban on identifiers" in c, c
+    assert "fabricated number is the same failure as a fabricated" in c, c
+    # (b) 가장 강한 형태를 **말해 준다** — 그것이 오라클 픽스처의 모양이다.
+    assert "The strongest form of this schema is the empty one" in c, c
+    assert len(c.split()) >= 60, "절이 잘렸다 — 위 못박기가 문구만 남긴다"
+
+
+def test_the_design_docstring_no_longer_asks_for_parameters_for_their_own_sake():
+    """🔴 미는 문장을 남겨 두면 조건과 서로를 지운다 — F8 이 `_EFFECT_NOT_MECHANISM` 으로
+    이미 한 번 겪은 실패 모양이다."""
+    doc = syn.DesignToolSpec.__doc__
+    assert "name the parameters the tool must take" not in doc, doc
+    assert "Specify the EFFECT freely" in doc, doc
+
+
+def test_the_ungrounded_input_slot_does_not_re_add_a_fourth_pushing_sentence():
+    """🔴 되먹임 **입력 슬롯의 설명**이 `_UNGROUNDED_FEEDBACK`(실제로 보내지는 문장)과
+    어긋나 있었다: 그쪽은 F8 에서 "기전에 커밋하라" 를 이미 버렸는데 이쪽만 그대로였다."""
+    d = syn.DesignToolSpec.input_fields["ungrounded_feedback"].json_schema_extra["desc"]
+    assert "committing to one mechanism" not in d, d
+    assert "the effect it stood in for" in d, d

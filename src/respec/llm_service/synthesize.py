@@ -337,12 +337,44 @@ _EFFECT_NOT_MECHANISM = (
     "would do, state the effect and say that the way is open.")
 
 
+# 🔴 2026-09-05 (유료 런 13·14·15), 실측이 계기. 이 시그니처의 `params` 에는 **정당성 조건이
+#    하나도 없었다** — 옛 docstring 은 오히려 "기전이 잘 정의되도록 인자를 이름 지어라" 라고
+#    **반대 방향으로 밀었다.** 그래서 나온 스키마가 `scene_object_id` · `affected_goal_ids` ·
+#    `cargo_ids` 다: 호출자가 **갖고 있지 않은** 값이다. 그 아래로 갈래가 둘뿐이고 둘 다 막힌다 —
+#      · agent-3 이 값을 **지어낸다**(런 13 의 `translation = {0, 0.25, 0}`), 또는
+#      · agent-3 이 `calls` 를 **통째로 비운다**(런 14·15) → 집행부의
+#        `reject:calls_disagree_with_body`.
+#
+# 🔴 **"정체성 금지" 로 쓰면 안 된다.** 런 13 의 `translation` 은 정체성이 아니라 통과했고,
+#    그래도 지어낸 값이었고 세계를 못 고쳤다 — 그 형태가 그 규칙의 반례다. 조건은
+#    **"호출 시점에 호출자가 실제로 쥔 값만 인자다"** 이고, 세계에서 읽어야 하는 것은
+#    식별자든 수치 상수든 인자가 아니라 **도구가 스스로 푸는 것**이다. 가장 강한 형태가
+#    `{}` 이고, 그것이 오라클 픽스처의 모양이다.
+#
+# ⚠️ **이 조건은 프롬프트이지 게이트가 아니다.** `ungrounded_params` 는 기전 선택
+#    (`*_strategy` 류)만 잡고 `scene_object_id` 를 통과시킨다 — 그 표를 넓히는 것은 별개의
+#    결정이고, 넓히기 전에 읽어야 할 값이 있다: `needs`. 새 세대에서 `needs` 가 채워지기
+#    시작하면 이 문단은 모델을 "인자로 못 받겠으니 동사를 달라" 쪽으로 민 것이고, 그것은
+#    고친 것이 아니라 **실패를 옮긴 것**이다(사전등록된 판별식).
+_PARAMS_ARE_CALLER_VALUES = (
+    "A parameter is legitimate ONLY if the caller already holds that value at the moment "
+    "of the call. The caller is an automated harness that knows nothing about this event: "
+    "it cannot tell you which objects the event touched, where they are, or how far "
+    "anything must move. Anything that has to be read off the world at call time -- an "
+    "identity, a count, a distance, an offset -- is therefore NOT a parameter: the tool "
+    "resolves it itself, when it runs, through the world it is given. This is not a ban on "
+    "identifiers in particular; a fabricated number is the same failure as a fabricated "
+    "id. The strongest form of this schema is the empty one, `{}`, and that form is "
+    "correct whenever the effect can be found in the world rather than handed to it.")
+
+
 class DesignToolSpec(dspy.Signature):
     """You are given an account of what a disruption broke. Decide whether the existing
     recovery vocabulary can express a response, and specify the tool that IS needed.
-    Specify it freely: name the parameters the tool must take for its mechanism to be
-    well-defined, even if you do not know what implements it. You are not shown an
-    inventory on purpose -- do not restrict the design to operations you can name."""
+    Specify the EFFECT freely, even if you do not know what implements it: you are not
+    shown an inventory on purpose -- do not restrict the design to operations you can
+    name. The parameters are not free in the same way -- the parameter field below states
+    the one condition each of them must meet."""
     context: str = dspy.InputField(desc=
         "physical principles of this build, the final goal, what is known about the event's "
         "novelty, and what must change")
@@ -352,7 +384,8 @@ class DesignToolSpec(dspy.Signature):
     ungrounded_feedback: str = dspy.InputField(desc=
         "empty on the first attempt. On a redesign it names the parameters of your previous "
         "specification that the world cannot supply -- each of them selects among behaviours "
-        "instead of carrying a value. Replace them by committing to one mechanism.")
+        "instead of carrying a value. Replace each one with the effect it stood in for, or "
+        "with a value the caller can hold; the message itself carries the exact wording.")
     composer_feedback: str = dspy.InputField(desc=
         "empty on the first attempt. On a redesign it reports that the stage which builds "
         "your tool out of primitive operations could not realise the mechanism you "
@@ -364,7 +397,7 @@ class DesignToolSpec(dspy.Signature):
         "false if a new tool is required")
     tool_name: str = dspy.OutputField()
     params: str = dspy.OutputField(desc=
-        "JSON schema of the parameters the tool must take")
+        "JSON schema of the parameters the tool must take. " + _PARAMS_ARE_CALLER_VALUES)
     mechanism: str = dspy.OutputField(desc=
         "what this tool changes; what it consumes; preconditions; whether it can be undone. "
         + _EFFECT_NOT_MECHANISM)
@@ -388,6 +421,44 @@ _RETURN_CONTRACT_DESC = (
     "harness reads a plain Symbol as the status. "
     "`NamedTuple{(:status,)}(:success)` is NOT valid Julia and throws "
     "`MethodError: no method matching length(::Symbol)`.")
+
+# ==========================================================================================
+# 🔴 2026-09-05 (유료 런 13·14·15). `calls` 와 `impl_code` 의 설명 두 곳이 같은 결함을 나눠
+#    갖고 있었다. 둘 다 **두 시그니처가 공유한다**(`/rewrite` 도 같은 두 필드를 낸다 —
+#    두 벌을 두면 갈리고, 이 파일은 그 갈림을 `_RETURN_CONTRACT_DESC` 를 만들며 이미 겪었다).
+# ==========================================================================================
+# (a) `calls`. 옛 문구는 `"the arguments to use for THIS event"` 뿐이라 **빈 `args` 가
+#     정당하다는 말이 어디에도 없었다.** 그래서 모델에게 남은 선택지가 둘뿐이었다:
+#       · 지어내서 채운다 (런 13: `translation = {0, 0.25, 0}`), 또는
+#       · 리스트를 통째로 비운다 (런 14·15) → 집행부의 `reject:calls_disagree_with_body`.
+#     정답 모양 `[{"primitive": <impl_name>, "args": {}}]` 이 **표현 가능하다는 것**을 이
+#     자리에서 말해야 한다 — 지어낸 값은 출력 필드 설명에서 태어난다.
+# 🔴 `calls` 는 `body_names`(= `[impl_name]`)와 **이름·순서가 같아야** 한다. 그 규약은
+#    지금까지 줄리아(`minted_tool.jl` 의 D2)에만 있었고 모델은 그것을 들은 적이 없다.
+_CALLS_DESC = (
+    'the call to make for THIS event. One entry per function in the body, with the same '
+    'names in the same order -- the body is one function, so this list has exactly one '
+    'entry: [{"primitive": "<impl_name>", "args": {<keyword>: <value>}}]. `args` carries '
+    'the keyword arguments for this event and is `{}` when the function takes none. '
+    '**An empty `args` map is a complete and correct answer** -- never invent a value to '
+    'fill it. The list itself is never empty: a function that needs no arguments is still '
+    'one call, and an empty list is rejected before the body ever runs.')
+
+# (b) `impl_code`. A 로 매개변수가 사라진 만큼 **body 가 세계를 스스로 읽어야** 한다. 규칙을
+#     하나만 넣으면 실패가 옮겨갈 뿐이다: `params == {}` 인데 body 가 여전히
+#     `x === nothing && throw(...)` 를 들고 있으면 런타임에 던진다.
+# ⚠️ **동사 이름도, 광고된 접근자 이름도 적지 않는다.** 여기에 특정 함수를 적으면 이 레인이
+#    재는 것이 모델이 아니라 우리 프롬프트가 된다(`enact.jl` 의 `_noop_feedback_reason` 이
+#    같은 선을 지키고, 그쪽은 시험이 어휘적으로 못박는다). 이 문단은 **모양**만 말하고
+#    어휘는 `world_interface` 가 나른다.
+_RESOLVE_IN_BODY_DESC = (
+    "The body receives `env` and its own keyword arguments and nothing else: whatever the "
+    "effect needs to know about this event -- which objects it touched, where they are, "
+    "how much must change -- the body reads out of the world itself when it runs, using "
+    "the functions the world interface lists. Do not expect that knowledge to arrive as an "
+    "argument, and do not write a literal in its place. Read what a call gives back before "
+    "you act on it: a call reporting that it did not produce the effect is a fact to act "
+    "on with what the interface still offers, not a status to hand straight back. ")
 
 # ==========================================================================================
 # 🔴 Task 8 (2026-09-03). agent-3 이 조합기에서 **Julia 구현 작성자**로 바뀐다.
@@ -440,11 +511,13 @@ class WriteToolImpl(dspy.Signature):
         "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing "
         "else. Prefer CALLING the functions the world interface lists as callable over "
         "writing struct fields by hand; write a field directly only when no listed "
-        "function produces the required effect. " + _RETURN_CONTRACT_DESC)
-    params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
-    calls: List[Dict[str, Any]] = dspy.OutputField(desc=
-        'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
-        '"args": {<keyword>: <value>}}]')
+        "function produces the required effect. " + _RESOLVE_IN_BODY_DESC
+        + _RETURN_CONTRACT_DESC)
+    params: str = dspy.OutputField(desc=
+        "JSON schema of the keyword arguments. Declare a keyword only for a value the "
+        "caller can hold at call time; `{}` is correct for a function that reads "
+        "everything it needs from the world itself.")
+    calls: List[Dict[str, Any]] = dspy.OutputField(desc=_CALLS_DESC)
 
 
 # ==========================================================================================
@@ -488,11 +561,12 @@ class RewriteToolImpl(dspy.Signature):
     reversible: bool = dspy.OutputField(desc="can this be undone")
     impl_code: str = dspy.OutputField(desc=
         "exactly one `function <impl_name>(env; k=<default>, ...) ... end` and nothing "
-        "else. " + _RETURN_CONTRACT_DESC)
-    params: str = dspy.OutputField(desc="JSON schema of the keyword arguments")
-    calls: List[Dict[str, Any]] = dspy.OutputField(desc=
-        'the arguments to use for THIS event: [{"primitive": "<impl_name>", '
-        '"args": {<keyword>: <value>}}]')
+        "else. " + _RESOLVE_IN_BODY_DESC + _RETURN_CONTRACT_DESC)
+    params: str = dspy.OutputField(desc=
+        "JSON schema of the keyword arguments. Declare a keyword only for a value the "
+        "caller can hold at call time; `{}` is correct for a function that reads "
+        "everything it needs from the world itself.")
+    calls: List[Dict[str, Any]] = dspy.OutputField(desc=_CALLS_DESC)
 
 
 def rewrite_impl(*, tool_name, spec, impl_name, impl_code, impl_rejected_why,
