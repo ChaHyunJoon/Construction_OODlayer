@@ -100,6 +100,15 @@ end
         @test !isempty(j.ambient)
         accs = Set(String[String(a.accessor) for a in j.ambient])
         @test "battery_report()" in accs
+        # 🔴 S3 (2026-09-04). 네 런 연속 식별자 환각(run4: `AbstractID` 자리에 bare `Int64`)의
+        #    처방이 이 항목이다. 그리고 **반환 타입 문자열이 처방의 전부다** — 그것이 `Any` 로
+        #    넓어지면 광고는 남고 효과만 조용히 사라진다. 그래서 이름과 타입을 둘 다 단언한다.
+        @test "ood_event_target()" in accs
+        ot = only(filter(a -> String(a.accessor) == "ood_event_target()", collect(j.ambient)))
+        rs = String(get(ot, :returns, ""))
+        @test occursin("BotID", rs)      # 진짜 id 타입이 프롬프트에 실린다
+        @test occursin("Nothing", rs)    # 3-상태: "기록 없음" 이 유효한 id 와 안 섞인다
+        @test rs != "Any"
         # 🔴 산출물이 **부를 수 없는 이름을 광고하면 안 된다**. 접근자의 이름이 실제로
         #    export 표면에 있어야 한다 — 없으면 모델이 그것을 부르고 UndefVarError 로 죽는다.
         ms = Set(String[String(m.name) for m in j.methods])

@@ -368,9 +368,17 @@ the soft-bias path and any NL parsers are unchanged above the threshold.
 # 반환값은 자연어(NL) 문자열(함대/대상 없으면 ""). 심각도에 따라 문구가 갈린다(깊은 방전=고장 취급 / 가벼운 열화=먼거리 피하기).
 function inject_battery_fault!(env; target=nothing, soc_drop::Float64=0.6,
                                soc_target::Union{Nothing,Float64}=nothing, enqueue::Bool=true)
-    fleet = BATTERY_FLEET[]; fleet === nothing && return ""
+    fleet = BATTERY_FLEET[]; fleet === nothing && (set_ood_event_target!(nothing); return "")
     id = target === nothing ? _pick_battery_target(env, fleet) : target  # 대상 미지정 시 알아서 고름
-    (id === nothing || !haskey(fleet.soc, id)) && return ""
+    (id === nothing || !haskey(fleet.soc, id)) && (set_ood_event_target!(nothing); return "")
+    # S3 (2026-09-04): 세계가 "이 사건이 누구를 때렸나" 를 id 객체로 스스로 답한다
+    # (`ood_event_target()`, ood_injection.jl). NL 은 "Robot R7" 이라는 **렌더**만 주므로
+    # 모델이 id 를 지어내다 죽었다(run4: bare Int64). 낡은 대상은 없는 것보다 나쁘므로
+    # 위의 두 조기반환은 반드시 `nothing` 을 쓴다.
+    # ⚠️ `fleet.soc::Dict{RobotID,Float64}` 의 `haskey` 를 통과했다는 것이 곧 `id isa RobotID`
+    #    다(다른 타입 키는 변환 없이 false 를 낸다 — 이 파일 머리말의 실측). 아니면 좁은
+    #    세터가 조용히 넓어지는 대신 여기서 큰 소리로 죽는다.
+    set_ood_event_target!(id)
     # soc_target 이 주어지면 **결과 SoC 를 그 값으로 확정**한다(뺄셈이 아니라 대입).
     # [2026-08-05] 심각도 사다리(0.02 / 0.3 / 0.5)는 "떨어뜨릴 양"이 아니라 "떨어진 뒤의 잔량"으로
     # 정의된다 — 감속/정지 구간의 경계가 결과 SoC 로 정해지기 때문이다. 뺄셈이면 사건 시점까지

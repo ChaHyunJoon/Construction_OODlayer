@@ -1175,6 +1175,15 @@
             "callable": false
         },
         {
+            "name": "ood_event_target",
+            "missing": [
+            ],
+            "signature": "()",
+            "argpaths": [
+            ],
+            "callable": true
+        },
+        {
             "name": "ood_inject_step!",
             "missing": [
             ],
@@ -3102,6 +3111,12 @@
             "precondition": "only when ConstructionBots.BATTERY_FLEET[] !== nothing. Battery accounting is opt-in and OFF by default; calling the accessor with no fleet throws MethodError. Check it first and report `nothing` for the unmeasured case instead of letting the call throw.",
             "returns": "(total_energy_J::Float64, min_soc::Float64, mean_soc::Float64, soc_spread::Float64, n_depleted::Int64, soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64})",
             "accessor": "battery_report()"
+        },
+        {
+            "name": "current OOD event target",
+            "precondition": "always callable (no fleet, no accounting flag, no argument). It returns `nothing` when no OOD event has been injected yet, or when the injection found no eligible robot -- `nothing` means NOT RECORDED and is never a valid robot. Check for `nothing` first; otherwise the value IS the robot id object the current event hit, ready to pass straight to verbs that want an AbstractID (e.g. fault_robot_and_reassign!(env, ood_event_target())). Never construct a robot id from the event text -- \"Robot R7\" is a rendering, not an id.",
+            "returns": "Union{Nothing, ConstructionBots.BotID{ConstructionBots.DeliveryBot}}",
+            "accessor": "ood_event_target()"
         }
     ]
 }

@@ -31,8 +31,15 @@ function _returns_string(f, sig)
     rts = Base.return_types(f, sig)
     length(rts) == 1 || error("앰비언트 접근자의 반환 타입이 하나로 추론되지 않는다: ", rts)
     rt = only(rts)
-    (rt isa DataType && rt <: NamedTuple) ||
-        error("앰비언트 접근자가 NamedTuple 을 안 준다: ", rt)
+    # 🔴 S3 (2026-09-04). `Any` 는 **거절한다**. 광고된 반환 타입이 이 문자열이고, 그것이
+    #    `Any` 면 모델은 "이 값이 무엇인지 세계가 말해주지 않는다" 로 읽고 자기가 지어낸다 —
+    #    run1~run4 를 죽인 바로 그 실패다(run4: `AbstractID` 자리에 bare `Int64`).
+    #    좁은 반환 타입을 선언하는 것은 접근자 쪽의 책임이고, 이 줄이 그 책임의 게이트다.
+    rt === Any && error("앰비언트 접근자의 반환 타입이 Any 다 — 반환 주석을 좁혀라: ", f)
+    # NamedTuple 이면 필드째 편다(`battery_report()`). 아니면 타입 자체가 곧 계약이다
+    # (`ood_event_target()` → `Union{Nothing, BotID{DeliveryBot}}`). 조용한 폴백이 아니라
+    # 두 갈래 모두 기계가 유도한 진실이다 — 손으로 베낀 문자열은 여전히 없다.
+    (rt isa DataType && rt <: NamedTuple) || return string(rt)
     return "(" * join([string(n, "::", t)
                        for (n, t) in zip(fieldnames(rt), fieldtypes(rt))], ", ") * ")"
 end
@@ -57,6 +64,24 @@ const AMBIENT_ROOTS = [
                     "accounting is opt-in and OFF by default; calling the accessor with " *
                     "no fleet throws MethodError. Check it first and report `nothing` " *
                     "for the unmeasured case instead of letting the call throw."),
+    # 🔴 S3 (2026-09-04, 사용자 결정 = option B). 네 런 연속으로 주조 body 가 **식별자 환각**
+    #    으로 죽었다(run4: `fault_robot_and_reassign!(env, 1)` — `AbstractID` 자리에 bare
+    #    `Int64`). 원인은 모델의 부주의가 아니라 우리 프롬프트의 구멍이다: OOD 사건의 자연어는
+    #    "Robot R7" 이라는 **렌더**만 주고, 세계 어디에도 "그 사건이 때린 로봇의 id" 를 묻는
+    #    길이 없었다. 그래서 세계가 스스로 답하게 한다.
+    #    반환 타입이 이 항목의 존재 이유다 — `Union{Nothing, BotID{DeliveryBot}}` 가
+    #    프롬프트에 실려야 모델이 "이것은 id 객체이지 Int 가 아니다" 를 읽는다.
+    (name = "current OOD event target", accessor = "ood_event_target()",
+     returns = _returns_string(CB.ood_event_target, Tuple{}),
+     precondition = "always callable (no fleet, no accounting flag, no argument). It " *
+                    "returns `nothing` when no OOD event has been injected yet, or when " *
+                    "the injection found no eligible robot -- `nothing` means NOT " *
+                    "RECORDED and is never a valid robot. Check for `nothing` first; " *
+                    "otherwise the value IS the robot id object the current event hit, " *
+                    "ready to pass straight to verbs that want an AbstractID (e.g. " *
+                    "fault_robot_and_reassign!(env, ood_event_target())). Never " *
+                    "construct a robot id from the event text -- \"Robot R7\" is a " *
+                    "rendering, not an id."),
 ]
 
 _unwrap(T) = T isa UnionAll ? Base.unwrap_unionall(T) : T

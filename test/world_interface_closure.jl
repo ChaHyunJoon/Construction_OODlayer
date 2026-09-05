@@ -89,7 +89,7 @@ end
         m = only(filter(x -> String(x.name) == nm && String(x.signature) == sig, ms))
         @test m.callable === true
     end
-    @test count(m -> m.callable === true, ms) == 187   # 실측. Vararg 고침 전 181, S4 의 `InvariantSpec` 씨앗 전 186
+    @test count(m -> m.callable === true, ms) == 188   # 실측. Vararg 고침 전 181, S4 의 `InvariantSpec` 씨앗 전 186, S3 의 `ood_event_target()`(무인자라 자명하게 callable) 전 187
 end
 @testset "(7) 🔴 R11·R33 + 설계 §6.2: 경로는 접지 않고, 없는 것은 `missing` 으로 이름을 댄다" begin
     j = JSON3.read(read(ART, String))

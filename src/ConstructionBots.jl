@@ -111,6 +111,7 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        RelocateBuild,                                             # 2번째 공간형 spec: 빌드 전체를 구역 밖으로 평행이동
        TranslateBuild,                                            # L2-b 원시연산(Task C3): 빌드 전체를 **주어진** Δ 만큼 평행이동
        verify, build_invariant, commit_respec!, reset_cache_resume!,  # 검증·불변식·커밋·재개
+       ood_event_target,                                          # S3(2026-09-04): 현재 OOD 사건이 때린 로봇의 **id 객체**(없으면 nothing) — 주조 tool 이 대상을 지어내지 않게 한다
        fault_robot_and_reassign!,                                 # 로봇 고장 후 재배정 (2026-08-29: respec_service_ready 는 Anthropic 레인과 함께 삭제)
        release_pending_assignments!,                              # S4(2026-09-04): 재배정 동사를 주조 tool 레인에 광고한다 — 미래(안 얼린) 배정 엣지만 푼다
        replace_robot!, reform_stuck_teams!, hot_swap_robot!,      # OOD 1-1: 예비 로봇 1:1 인계 + 막힌 운반팀 재정립 + 정체성보존 hot-swap

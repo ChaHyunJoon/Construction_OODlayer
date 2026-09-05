@@ -826,6 +826,52 @@ end
 #   스케줄에서 고장 로봇을 실제로 빼는 일은 replace_robot! 이 함(이 front-end 는 물리 고장 + NL 만 주입).
 
 # 현재 "고장난" 로봇들을 기록(로봇 id → 고장 당시 2D 위치). 다른 곳에서 조회/시각화에 쓸 수 있게 module-level.
+# -----------------------------------------------------------------------------
+# S3 (2026-09-04) :: WHO DID THE CURRENT OOD EVENT HIT?
+# -----------------------------------------------------------------------------
+# The minted-tool lane died four runs in a row on identifier hallucination; run 4
+# (`results/run4-treatment.log`) called `fault_robot_and_reassign!(env, 1)` with a bare
+# `Int64` because the model had **no way to name the robot the event actually hit**, and
+# the NL event only ever says "Robot R7" — a rendering, not an id object.
+#
+# So the world now answers that question itself. This is the `RESTRICTION_ZONES` /
+# `FAULTED_ROBOTS` / `BATTERY_FLEET` shape: a module-level `Ref` plus a zero-arg accessor.
+# 🔴 It is deliberately NOT a `PlannerEnv` field — `PlannerEnv` is the definition of STATE
+#    and an event-specific slot does not belong in it (user ruling S3 = option B; the Ref
+#    is the honest fit, and it costs no struct change and no `world_type_closure` churn).
+#
+# 🔴 THREE STATES, NOT TWO. `nothing` means "no event / not recorded" and is NEVER a valid
+#    id. Conflating "not measured" with "measured empty" is a defect in this repo.
+#
+# 🔴 THE RETURN TYPE IS THE POINT. The advertised `returns` string is machine-derived via
+#    `Base.return_types` (`tools/gen_world_interface.jl`), so the box AND the accessor are
+#    declared `Union{Nothing,RobotID}`. A widened return (`Any`) silently reproduces the
+#    exact hallucination this exists to stop: the model would see no id type and invent one.
+#
+# 🔴 STALENESS RULING: **overwrite on every injection, and write `nothing` when no victim
+#    was picked.** A stale target is worse than none — it names a robot from a PREVIOUS
+#    event, which reads as authoritative and is wrong. There is no "event over" hook to
+#    clear on, so the writers (`fault_robot!`, `inject_battery_fault!`) each set the box
+#    unconditionally on entry-of-outcome: a successful pick writes the id, every early
+#    return writes `nothing`. The box therefore always describes the MOST RECENT injection
+#    attempt, never a older one.
+const OOD_EVENT_TARGET = Ref{Union{Nothing,RobotID}}(nothing)
+
+"""
+    ood_event_target() -> Union{Nothing,RobotID}
+
+The robot the most recent OOD event hit, **as the id object** (not a name, not an index),
+or `nothing` when no event has been injected (or the injection found no eligible robot).
+
+Pass the result straight to the world verbs — `fault_robot_and_reassign!(env, rid)`,
+`replace_robot!`, `swap_battery!` — which all want an `AbstractID`.
+"""
+ood_event_target()::Union{Nothing,RobotID} = OOD_EVENT_TARGET[]
+
+# 주입기들이 쓰는 세터. 타입이 좁은 것이 요점이다 — 엉뚱한 것이 들어오면 조용히 넓어지지 않고
+# 그 자리에서 MethodError 로 죽는다.
+set_ood_event_target!(id::Union{Nothing,RobotID}) = (OOD_EVENT_TARGET[] = id; nothing)
+
 const FAULTED_ROBOTS = Ref(Dict{RobotID,Vector{Float64}}())
 faulted_robots() = FAULTED_ROBOTS[]
 clear_faulted_robots!() = (empty!(FAULTED_ROBOTS[]); nothing)
@@ -1151,7 +1197,8 @@ function fault_robot!(env; target::Union{Nothing,RobotID} = nothing,
                           t
                       end) :
               _pick_active_robot(env)
-    faulted === nothing && return nothing
+    faulted === nothing && (set_ood_event_target!(nothing); return nothing)
+    set_ood_event_target!(faulted)                         # S3: 세계가 "누가 맞았나" 를 스스로 답한다
     pos = _ood_robot_pos2d(env, faulted)
     FAULTED_ROBOTS[][faulted] = pos                        # 고장 기록(nearest_pool 이 이 위치를 씀)
     # 고장 로봇 본체를 정적 장애물로 등록(다른 로봇이 우회) — zone 메커니즘 재사용.
