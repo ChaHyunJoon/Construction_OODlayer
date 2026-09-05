@@ -188,6 +188,15 @@ def _method_line(m) -> str:
     ac = m.get("arg_coercions") or []
     if ac:
         line += "      coerced in source: %s" % " ; ".join(ac)
+    # 🔴 2026-09-05, 유료 런 23·26. run23 의 body 가 자기 주석에 원인을 적었다:
+    #    "No query returns the blocked schedule-node objects directly" — 그래서 탐지를 손수
+    #    짰고 빈손으로 끝났다. 그 질의는 **있었다**(`zone_blockage(...).blocked`). 없던 것은
+    #    질의가 아니라 광고다: 유도가 맨 `NamedTuple` 로 넓어져 필드가 한 글자도 안 실렸다.
+    # ⚠️ `status seen in source:` 와 같은 규약 — **갈래의 합집합**이지 한 호출이 전부를
+    #    돌려준다는 뜻이 아니다. 그래서 "fields are" 가 아니라 `fields seen in source` 다.
+    rf = m.get("returned_fields") or []
+    if rf:
+        line += "      fields seen in source: %s" % " | ".join(rf)
     miss = m.get("missing") or []
     if miss:
         line += "      missing: %s" % ", ".join(miss)

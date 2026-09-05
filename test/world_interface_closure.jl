@@ -397,4 +397,61 @@ end
     @test !("Ball2" in ns)
 end
 
+
+# 🔴 (라) (2026-09-05). 유도가 맨 `NamedTuple` 로 넓어진 자리에 **필드 이름**을 싣는다 —
+#    유료 런 23·26 이 여기서 죽었다. run23 의 body 가 자기 주석에 원인을 적었다:
+#    "No query returns the blocked schedule-node objects directly, so inspect the active
+#    unfinished frontier and test each cargo-navigation path." 그래서 탐지를 손수 짰고
+#    `env.cache.active_set` 으로 걸렀는데 존 주입기는 **일부러 active 가 아닌 목표**를 고른다
+#    ⟹ 빈손 ⟹ 던졌다. 그 질의는 있었다: `zone_blockage(...).blocked`.
+@testset "(9d) 🔴 (라): 넓어진 NamedTuple 반환의 필드 이름이 광고된다" begin
+    j  = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    _rf(m) = haskey(m, :returned_fields) ? String[String(x) for x in m.returned_fields] : nothing
+
+    # ---- run23 이 "없다" 고 적은 그 질의 -------------------------------------------------
+    zb = only(filter(m -> String(m.name) == "zone_blockage", ms))
+    rf = _rf(zb)
+    @test rf !== nothing
+    @test "blocked" in rf
+    @test "n_blocked" in rf
+    @test "project_blocked" in rf
+
+    # ---- 🔴 음성 대조 1: **return 위치만** 센다 -----------------------------------------
+    #    body 중간의 `push!(blocked, (vtx=…, id=…, kind=…, status=…))` 는 **원소**를 짓는다.
+    #    그 넷을 최상위 필드로 광고하면 거짓말이다.
+    for leaked in ("vtx", "id", "kind")
+        @test !(leaked in rf)
+    end
+
+    # ---- 🔴 회귀: 갈래 전부의 합집합이어야 한다 -------------------------------------------
+    #    첫 구현의 안쪽 클로저가 누산기와 같은 이름(`acc`)을 써서 **마지막 return 의 필드만**
+    #    남았다(줄리아의 클로저 포획). `detail`·`reason` 은 마지막이 아닌 갈래에만 있으므로
+    #    그 침묵을 잡는 초병이다.
+    tw = only(filter(m -> String(m.name) == "translate_whole_build!", ms))
+    @test "detail" in _rf(tw)
+    fr = only(filter(m -> String(m.name) == "fault_robot_and_reassign!", ms))
+    @test "detail" in _rf(fr)
+    @test "reason" in _rf(fr)
+
+    # ---- 🔴 음성 대조 2: 유도가 말한 자리엔 **안 묻는다** ---------------------------------
+    #    타입이 이미 필드를 말하면 이것은 둘째 진실원이다.
+    n_rf = 0
+    for m in ms
+        _rf(m) === nothing && continue
+        n_rf += 1
+        @test String(m.returns) == "NamedTuple"
+    end
+    @test n_rf == 4
+    zd = only(filter(m -> String(m.name) == "zone_diagnosis", ms))
+    @test startswith(String(zd.returns), "NamedTuple{(")
+    @test _rf(zd) === nothing
+
+    # ---- 🔴 음성 대조 3: 삼상 · 폐포도 호출 가능성도 안 움직였다 --------------------------
+    @test !any(m -> _rf(m) == String[], ms)
+    @test any(m -> _rf(m) === nothing, ms)
+    @test length(ms) == 224
+    @test count(m -> m.callable === true, ms) == 195
+end
+
 end # module

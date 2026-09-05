@@ -833,6 +833,72 @@ function _arg_coercions(m::Method)
 end
 
 """
+    _returned_fields(m::Method) -> Union{Nothing,Vector{String}}
+
+이 메서드가 **return 자리에서** 짓는 NamedTuple 의 필드 이름 전부. 못 유도하면 `nothing`.
+
+🔴 왜 존재하나 (2026-09-05, 유료 런 23·26). run23 의 body 가 자기 주석에 원인을 적었다:
+   *"No query returns the blocked schedule-node objects directly, so inspect the active
+   unfinished frontier and test each cargo-navigation path."* — 그래서 탐지를 손수 짰고,
+   `env.cache.active_set` 으로 걸렀는데 존 주입기는 **일부러 active 가 아닌 목표**를 고른다
+   ⟹ 빈손 ⟹ 던졌다. 그런데 그 질의는 **있다**: `zone_blockage(...).blocked` 가 막힌 노드마다
+   `(vtx, id, kind, status)` 를 돌려준다. 없었던 것은 질의가 아니라 **광고**다 —
+   `Base.return_types` 가 맨 `NamedTuple` 로 넓어져 필드가 한 글자도 안 실렸다.
+   같은 넓어짐이 런 16 을 죽인 `translate_whole_build!` 에도 있었다(`_status_symbols` 가
+   그 절반을 갚았고, 이것이 나머지 절반이다).
+
+🔴 **return 위치의 리터럴만** 센다. 안 그러면 body 중간에서 짓는 남의 튜플이 섞인다 —
+   `zone_blockage` 는 `push!(blocked, (vtx = …, id = …, kind = …, status = …))` 로 **원소**를
+   짓는데, 그 넷을 최상위 필드로 광고하면 거짓말이 된다(실측으로 확인: return 위치로 좁히니
+   그 넷이 안 섞였다).
+
+⚠️ **구문적 상계다.** 갈래마다 필드 집합이 다를 수 있고 이것은 그 **합집합**이다 — 한 번의
+   호출이 전부를 돌려준다는 뜻이 아니다. 그래서 문구가 `fields seen in source` 다.
+
+🔴 삼상: 못 유도하면 **키를 안 만든다**. 그리고 호출부가 **유도가 맨 `NamedTuple` 일 때만**
+   묻는다 — 타입이 이미 필드를 말하고 있으면 이것은 둘째 진실원이고, 둘이 갈리는 날 아무도
+   못 잡는다(규약 6 이 `soc` 에서 걷어낸 것과 같은 결함 부류).
+"""
+function _returned_fields(m::Method)
+    ex = _defining_expr(m)
+    ex === nothing && return nothing
+    # NamedTuple 리터럴이면 필드 이름, 아니면 `nothing`. 두 표기를 다 받는다:
+    # `(; a = 1, b = 2)` 는 `Expr(:parameters, …)`, `(a = 1, b = 2)` 는 `Expr(:(=), …)`.
+    # 🔴 누산기와 **다른 이름**이어야 한다. 안쪽 이름이 `acc` 면 그것은 새 지역변수가 아니라
+    #    바깥 함수의 `acc` 를 가리키고(줄리아의 클로저 포획), 호출마다 누산기가 초기화돼
+    #    **마지막 return 의 필드만** 남는다. 실측 2026-09-05: `translate_whole_build!` 의
+    #    세 갈래 중 `detail` 이 조용히 사라졌고, 최상위 함수로 쓴 프로토타입과 견주지
+    #    않았으면 그 침묵을 "그 필드가 없다"로 읽었을 것이다.
+    names_of(x) = begin
+        (x isa Expr && x.head === :tuple) || return nothing
+        got = Symbol[]
+        for a in x.args
+            if a isa Expr && a.head === :parameters
+                for kw in a.args
+                    (kw isa Expr && kw.head === :kw && kw.args[1] isa Symbol) &&
+                        push!(got, kw.args[1])
+                end
+            elseif a isa Expr && a.head === :(=) && a.args[1] isa Symbol
+                push!(got, a.args[1])
+            end
+        end
+        isempty(got) ? nothing : got
+    end
+    acc = Set{Symbol}()
+    walk(x) = begin
+        x isa Expr || return
+        if x.head === :return && length(x.args) == 1
+            ns = names_of(x.args[1])
+            ns === nothing || union!(acc, ns)
+        end
+        foreach(walk, x.args)
+    end
+    walk(ex)
+    isempty(acc) && return nothing
+    return sort!(String[string(s) for s in acc])
+end
+
+"""
     _element_type(rt) -> Union{Nothing,String}
 
 이 반환을 **순회하면 무엇이 나오는가**. 못 말하면 `nothing`.
@@ -928,6 +994,12 @@ function method_entries(reach, acc)
             ss === nothing || (e["status_symbols"] = ss)
             ac = _arg_coercions(m)
             ac === nothing || (e["arg_coercions"] = ac)
+            # 🔴 **유도가 아무 말도 못 했을 때만** 소스로 내려간다. 타입이 이미 필드를
+            #    말하고 있으면 이것은 둘째 진실원이다(`_returned_fields` 의 docstring).
+            if r == "NamedTuple"
+                rf = _returned_fields(m)
+                rf === nothing || (e["returned_fields"] = rf)
+            end
             rt = _infer_return(f, tt_of(m))
             if rt !== nothing
                 et = _element_type(rt)

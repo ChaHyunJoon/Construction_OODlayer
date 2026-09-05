@@ -590,3 +590,79 @@ def test_rule_7_says_an_untyped_argument_promises_nothing():
     assert "coerced in source:" in _block()
     for t in ("Vector{Float64}", "AffineMap", "free_space_status"):
         assert t not in r7, ("규약부는 구체 타입·동사를 인용하지 않는다", t)
+
+
+# =================================================================================================
+# 맨 `NamedTuple` 로 넓어진 반환의 필드 이름 — 유료 런 23·26 (2026-09-05)
+# =================================================================================================
+def test_the_query_run23_said_did_not_exist_now_advertises_its_blocked_list():
+    """🔴 run23 의 body 가 자기 주석에 이렇게 적었다: *"No query returns the blocked
+    schedule-node objects directly, so inspect the active unfinished frontier…"* — 그래서
+    탐지를 손수 짜고 빈손으로 끝났다. 그 질의는 **있었다**: `zone_blockage(...).blocked`.
+    없던 것은 질의가 아니라 **광고**다."""
+    import world_interface as WI
+    m = _named("zone_blockage")
+    rf = m.get("returned_fields")
+    assert rf is not None, "zone_blockage 에 필드가 안 실렸다"
+    assert "blocked" in rf, rf
+    assert "n_blocked" in rf and "project_blocked" in rf, rf
+    assert "fields seen in source: " in WI._method_line(m)
+    assert "blocked" in WI._method_line(m)
+
+
+def test_only_return_position_counts_so_the_element_tuple_does_not_leak_in():
+    """🔴 `zone_blockage` 는 body 중간에서 `push!(blocked, (vtx=…, id=…, kind=…, status=…))`
+    로 **원소**를 짓는다. 그 넷을 최상위 필드로 광고하면 거짓말이다 — return 위치로 좁힌
+    것이 그 수선이고, 이 시험이 그것을 지킨다."""
+    rf = _named("zone_blockage")["returned_fields"]
+    for leaked in ("vtx", "id", "kind"):
+        assert leaked not in rf, (leaked, rf)
+
+
+def test_fields_from_every_branch_survive_not_just_the_last_one():
+    """🔴 회귀 시험. 첫 구현의 안쪽 클로저가 누산기와 **같은 이름**(`acc`)을 썼다 — 줄리아는
+    그것을 새 지역변수가 아니라 바깥 변수의 포획으로 읽으므로 호출마다 누산기가 초기화됐고
+    **마지막 return 의 필드만** 남았다. `detail`·`reason` 은 마지막이 아닌 갈래에만 있으므로
+    바로 그 침묵을 잡는 초병이다(실측으로 발견: 프로토타입과 견주지 않았으면 "그 필드가
+    없다"로 읽었을 것이다)."""
+    assert "detail" in _named("translate_whole_build!")["returned_fields"]
+    assert "detail" in _named("swap_battery!")["returned_fields"]
+    fr = _named("fault_robot_and_reassign!")["returned_fields"]
+    assert "detail" in fr and "reason" in fr, fr
+
+
+def test_it_is_asked_only_where_inference_said_nothing():
+    """🔴 타입이 이미 필드를 말하고 있으면 이것은 **둘째 진실원**이고, 둘이 갈리는 날 아무도
+    못 잡는다(규약 6 이 `soc` 에서 걷어낸 것과 같은 결함 부류)."""
+    ms = WI_methods()
+    for m in ms:
+        if "returned_fields" in m:
+            assert m.get("returns") == "NamedTuple", (m["name"], m.get("returns"))
+    # 양성 대조: 필드가 **타입에** 실린 메서드는 이 키를 안 가진다.
+    zd = _named("zone_diagnosis")
+    assert zd["returns"].startswith("NamedTuple{("), zd["returns"]
+    assert "returned_fields" not in zd
+
+
+def test_returned_fields_is_tri_state_and_the_population_is_not_empty():
+    import world_interface as WI
+    ms = WI_methods()
+    have = [m for m in ms if "returned_fields" in m]
+    assert len(have) >= 4, len(have)
+    assert not any(m.get("returned_fields") == [] for m in ms)
+    bare = next(m for m in ms if "returned_fields" not in m)
+    assert "fields seen in source:" not in WI._method_line(bare)
+
+
+def test_the_field_wording_does_not_claim_one_call_returns_them_all():
+    """🔴 갈래의 **합집합**이다 — 한 호출이 전부를 돌려준다는 뜻이 아니다."""
+    import world_interface as WI
+    line = WI._method_line(_named("translate_whole_build!"))
+    assert "fields seen in source:" in line
+    for overclaim in ("fields are", "always returns", "the return has", "exactly"):
+        assert overclaim not in line, overclaim
+
+
+def WI_methods():
+    import world_interface as WI
+    return WI.load_world_interface()["methods"]

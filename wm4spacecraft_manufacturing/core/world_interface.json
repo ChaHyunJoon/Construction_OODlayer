@@ -930,6 +930,18 @@
                 "agent <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "returned_fields": [
+                "detail",
+                "makespan_after",
+                "makespan_before",
+                "n_constraints",
+                "reason",
+                "removed",
+                "status",
+                "teams_after",
+                "teams_before",
+                "valid"
+            ],
             "status_symbols": [
                 "admitted",
                 "fallback",
@@ -2327,6 +2339,14 @@
                 "role <- keys(env.staging_circles)"
             ],
             "callable": true,
+            "returned_fields": [
+                "courier",
+                "depot",
+                "detail",
+                "role",
+                "soc_before",
+                "status"
+            ],
             "status_symbols": [
                 "battery_courier_dispatched",
                 "no_robot"
@@ -2350,6 +2370,16 @@
             "argpaths": [
             ],
             "callable": true,
+            "returned_fields": [
+                "delta",
+                "detail",
+                "footprint_radius",
+                "n_goal_discs",
+                "n_work_discs",
+                "residual",
+                "solver",
+                "status"
+            ],
             "status_symbols": [
                 "already_clear",
                 "infeasible",
@@ -2476,6 +2506,22 @@
             "argpaths": [
             ],
             "callable": true,
+            "returned_fields": [
+                "blocked",
+                "cell",
+                "checked_paths",
+                "n_agent_trapped",
+                "n_blocked",
+                "n_completion_blocked",
+                "n_completion_open",
+                "n_disconnected",
+                "n_downstream",
+                "n_engulfed",
+                "n_kinematic_covered",
+                "n_kinematic_goals",
+                "n_nav_goals",
+                "project_blocked"
+            ],
             "status_symbols": [
                 "disconnected",
                 "engulfed"
