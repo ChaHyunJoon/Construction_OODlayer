@@ -838,6 +838,58 @@ _rec_line(parts...) = println(_one_line_rec(string(parts...)))
 _one_line_rec(x::AbstractString) = String(strip(replace(x, r"\s+" => " ")))
 
 """
+    _STEP_DETAIL_CAP
+
+기록 줄·결정 행에 실리는 스텝 `detail` 하나의 **문자 수 상한**. 진실원은 여기 하나다.
+
+🔴 왜 상한이 필요한가 (2026-09-04, Task 1). `detail` 은 **모델과 예외에서 오는 임의
+   문자열**이다. 던진 스텝의 것은 `first(split(sprint(showerror, e), "\n"))`
+   (`src/respec/minted_tool.jl` 의 catch 절)이라 한 줄이긴 한데, `MethodError` 의 **첫
+   줄**은 후보 메서드를 이어 붙여 수 KB 가 될 수 있다. 기록 줄은 grep 대상이므로
+   (`[minted] lane=` 한 줄 = 한 판) 한 판이 로그를 통째로 삼키면 안 된다.
+⚠️ 200 은 "충분히 크다" 가 아니라 **판독 가능한 상한**이다. 잘린 것은 말미의 `…` 가
+   말한다 — 자르지 않은 것과 구별이 된다.
+"""
+const _STEP_DETAIL_CAP = 200
+
+"""
+    _step_detail_render(d) -> String
+
+스텝 `detail` 하나를 **한 줄로 접고 `_STEP_DETAIL_CAP` 자로 자른** 문자열. 자르면 말미에
+`…` 를 붙인다(자른 것과 원래 짧은 것을 구별하기 위해서다).
+
+🔴 **기록 줄과 결정 행이 이 함수 하나를 쓴다.** 두 자리에 따로 적으면 상한이 갈리고,
+   그 갈림은 "행의 detail 과 줄의 detail 이 다르다" 로만 드러난다(에러가 아니다) —
+   이 파일이 `_world_delta_str`(m3/m4)에서 이미 한 번 밟은 실패 모드다.
+⚠️ 줄 접기는 `_rec_line` 이 줄 **전체**에 대해 한 번 더 한다(D8). 여기서 또 접는 이유는
+   **결정 행**은 그 자리를 안 지나가기 때문이다 — 행의 값은 `_rec_line` 을 안 탄다.
+"""
+function _step_detail_render(d)
+    d === nothing && return ""
+    local t = _one_line_rec(string(d))
+    return length(t) > _STEP_DETAIL_CAP ? first(t, _STEP_DETAIL_CAP) * "…" : t
+end
+
+"""
+    _step_render(s) -> String
+
+기록 줄의 `steps=[...]` 조각 하나. `detail` 이 있고 비어 있지 않으면
+`name:status(detail)`, 아니면 **오늘과 바이트 동일한** `name:status`.
+
+🔴 왜 (2026-09-04, Task 1). 유료 런 1 이 `:threw` 로 죽었는데 **어떤 예외인지 어디에도
+   없었다** — 실행자가 격리 프로브로 사후에 재유도해야 했다. 그런데 메시지는 이미
+   `steps` 에 실려 있었다(`minted_tool.jl` 의 catch 절이 `showerror` 의 첫 줄을 담는다).
+   버려지던 자리가 여기 하나였다. **새 채널을 만드는 것이 아니라 있는 값을 안 버린다.**
+⚠️ `detail` 이 없는 스텝 모양(`hasproperty` 거짓)은 구세대 집행부의 것이다 — 그 판은
+   오늘과 바이트 동일하게 찍힌다. 그래서 로그 문구를 못박는 기존 게이트가 안 움직인다.
+"""
+function _step_render(s)
+    local base = string(s.name, ":", s.status)
+    local t = _step_detail_render(hasproperty(s, :detail) ? s.detail : nothing)
+    return isempty(t) ? base : string(base, "(", t, ")")
+end
+
+"""
     _is_countable_world_set(x) -> Bool
 
 `length(x)` 가 **세계의 크기**를 뜻하는 모양인가. D7 의 술어이고 진실원은 여기 하나다
@@ -1010,6 +1062,30 @@ _delta_scope(resolve) = resolve === :not_needed_surface ? "body_only" :
                         resolve === :resolved           ? "body+harness_resolve" : "unknown"
 
 """
+    _steps_row(m) -> Union{Nothing,Vector{Dict{String,Any}}}
+
+집행 결과 `m` 의 `steps` 를 결정 행에 실을 모양으로. 키 셋(`"name"`·`"status"`·`"detail"`,
+전부 `String`)은 여기가 진실원이다. `detail` 의 접기·상한은 `_step_detail_render` 가
+소유한다(기록 줄과 **같은 함수** — 두 자리가 갈리지 않는다).
+
+🔴 **안 던진다.** `m` 에 `steps` 가 없을 수도(구세대 집행부), 스텝 모양이 다를 수도 있다 —
+그 판은 `nothing`("못 쟀다")이다. 읽었는데 비었으면 `[]`("쟀는데 없다")이고, 그 둘은
+**다른 관측**이다.
+"""
+function _steps_row(m)
+    try
+        return Dict{String,Any}[
+            Dict{String,Any}("name"   => string(s.name),
+                             "status" => string(s.status),
+                             "detail" => _step_detail_render(
+                                 hasproperty(s, :detail) ? s.detail : nothing))
+            for s in m.steps]
+    catch
+        return nothing
+    end
+end
+
+"""
     record_world_delta!(m) -> Nothing
 
 집행 결과 `m` 의 `world_delta` 를 **살아 있는 결정 행**에 제자리로 싣는다. F1(2026-09-03 리뷰).
@@ -1027,6 +1103,10 @@ _delta_scope(resolve) = resolve === :not_needed_surface ? "body_only" :
 🔴 **삼상이 행에서도 산다.** 행이 있으면 키는 **언제나** 쓰인다: `nothing`(못 쟀다)은
    `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 네 키를 가진 dict 이다.
    키의 **부재**는 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
+
+🔴 **세 칸을 싣는다** — `world_delta` · `interface_calls`(L3) · `steps`(2026-09-04 Task 1).
+   이름은 `record_world_delta!` 그대로다: 호출자가 `tools/monitor/render_demo.jl` 한
+   곳뿐이고 이름 변경은 그 파일까지 건드리므로 이 태스크의 범위 밖이다.
 
 🔴 **절대 안 던진다.** 이 호출은 `enact_minted_decision!` 의 `try` **밖**이다(호출부는
    `policy_producer` 안이고, 거기서 새는 예외는 `engage_fallback!` = 라인 정지로 간다).
@@ -1047,11 +1127,21 @@ function record_world_delta!(m)
         #    `tools/monitor/render_demo.jl` 인데 그 파일은 이 파동의 경로 밖이다 —
         #    두 번째 기록 경로를 만들면 그 둘이 갈릴 자리가 생긴다(이 함수 docstring 의
         #    "패턴은 하나다" 와 같은 논거).
-        #    ⚠️ 그래서 **이름이 `record_world_delta!` 인 채로 두 칸을 싣는다.** 이름이
-        #    좁은 것은 사실이고, 여기 적어 둔다(이름을 바꾸려면 호출자를 같이 옮겨야 한다).
+        #    ⚠️ 그래서 **이름이 `record_world_delta!` 인 채로 세 칸을 싣는다**(2026-09-04
+        #    Task 1 이 `steps` 를 더해 둘 → 셋이 됐다). 이름이 좁은 것은 사실이고, 여기
+        #    적어 둔다. **이름을 안 바꾸는 이유**: 호출자가 `tools/monitor/render_demo.jl`
+        #    한 곳뿐이고 그 파일은 이 태스크의 경로 밖이다 — 이름 변경은 범위 밖이다.
         # 🔴 삼상이 행에서도 산다: `nothing` 은 `null` 로 직렬화되고 `[]` 가 되지 않는다.
         #    키의 **부재**만이 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
         rs["interface_calls"] = m.interface_calls
+        # ---- 셋째 칸: `steps` (2026-09-04, Task 1) --------------------------------------
+        # 🔴 왜 행에도 싣는가. `:threw` 판의 예외 메시지는 오늘 **stdout 한 줄로만** 나간다.
+        #    스윕 규모로 "무엇이 죽였나" 를 세려면 구조화된 행이 있어야 한다(이 함수
+        #    docstring 의 "패턴은 하나다" 와 같은 논거 — 두 번째 기록 경로를 안 만든다).
+        # 🔴 삼상: `m.steps` 를 못 읽으면 `nothing`("못 쟀다"), 읽었는데 비었으면 `[]`
+        #    ("쟀는데 없다"). 그 둘을 뭉개면 body 가 한 걸음도 안 돈 판과 필드가 아예 없는
+        #    구세대 산출물이 같은 값이 된다.
+        rs["steps"] = _steps_row(m)
     catch e
         # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
         println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",
@@ -1598,7 +1688,10 @@ function enact_minted_decision!(env, truth, decision)
                 #    위반으로 거절됐다" 를 가른다. 여기까지 왔다는 것은 등록을 시도했다면
                 #    통과했다는 뜻이므로 `impl_rejected_why` 는 언제나 nothing 이다.
                 " registered=", registered, " impl_rejected_why=", something(impl_rejected_why, "n/a"),
-                " steps=[", join([string(s.name, ":", s.status) for s in r.steps], " "), "]",
+                # 🔴 2026-09-04 (Task 1). `detail` 을 **안 버린다** — `:threw` 판의 예외
+                #    메시지가 여기 말고는 어디에도 안 남는다. 접기·자르기의 진실원은
+                #    `_step_render` 하나다.
+                " steps=[", join([_step_render(s) for s in r.steps], " "), "]",
                 " reason=", r.reason)
 
         local ran_milp = !(CB.LAST_EDGE_COSTS[] === _sent)   # 센티넬이 그대로면 재풀이 없음

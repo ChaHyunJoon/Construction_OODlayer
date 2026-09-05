@@ -1627,6 +1627,220 @@ end
     end
 end
 
+@testset "(25) 🔴 T1: `:threw` 의 예외 메시지가 기록 줄과 결정 행까지 간다" begin
+    # 🔴 왜. 유료 런 1 이 `:threw` 로 죽었는데 **어떤 예외인지 어디에도 없었다** — 실행자가
+    #    격리 프로브로 사후에 재유도해야 했다(`NamedTuple{(:status,)}(:success)` →
+    #    `MethodError: no method matching length(::Symbol)`). 그런데 메시지는 이미
+    #    `steps[i].detail` 에 실려 있었다(`src/respec/minted_tool.jl` 의 catch 절이
+    #    `first(split(sprint(showerror, e), "\n"))` 를 담는다). 버려지던 자리는 **기록 줄의
+    #    렌더 하나**였다. 새 채널을 만드는 것이 아니라 있는 값을 안 버린다.
+
+@testset "(25a) 순수 렌더 — `_step_render` 의 네 갈래" begin
+    # 🔴 detail 이 없거나 비면 **오늘과 바이트 동일**이어야 한다. 이 줄이 없으면 로그 문구를
+    #    못박는 다른 게이트들이 왜 안 움직이는지가 우연이 된다.
+    @test _step_render((name = "a", status = :ok)) == "a:ok"
+    @test _step_render((name = "a", status = :ok, detail = "")) == "a:ok"
+    @test _step_render((name = "a", status = :ok, detail = nothing)) == "a:ok"
+    # 있으면 괄호로 싣는다.
+    @test _step_render((name = "a", status = :threw, detail = "boom")) == "a:threw(boom)"
+    # 🔴 개행 대조: 접혀서 **한 줄**로 남는다(D8 — 기록 줄 하나 = 판 하나).
+    local nl = _step_render((name = "a", status = :threw, detail = "up\ndown"))
+    @test nl == "a:threw(up down)"
+    @test !occursin("\n", nl)
+    # 🔴 절단 대조: 250자는 200자 + `…` 다. 199·200 자는 **안 잘린다**(경계 대조가 없으면
+    #    "언제나 자른다" 는 구현도 위 단언을 통과한다).
+    local long = _step_render((name = "a", status = :threw, detail = repeat("Z", 250)))
+    @test occursin(repeat("Z", 200) * "…", long)
+    @test !occursin(repeat("Z", 201), long)
+    @test length(long) == length("a:threw(") + 200 + 1 + 1
+    @test _step_render((name = "a", status = :threw, detail = repeat("Z", 200))) ==
+          "a:threw(" * repeat("Z", 200) * ")"
+    @test _step_render((name = "a", status = :threw, detail = repeat("Z", 199))) ==
+          "a:threw(" * repeat("Z", 199) * ")"
+    # 상한의 진실원이 하나다(두 소비자가 같은 상수를 읽는다).
+    @test _STEP_DETAIL_CAP == 200
+end
+
+@testset "(25b) 던지는 body — 메시지가 `steps` 에 있고, 기록 줄에 나타난다" begin
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t1_boom!",
+        "impl_code" => "function t1_boom!(env; v::Int = 1)\n" *
+                       "    error(\"T1BOOMZQ 유료런이 못 본 그 메시지\")\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t1_boom!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t1_boom!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    # 전제 — 정말 생성 경로였고 body 가 실제로 던졌는가(음성 대조 없이 읽지 않는다).
+    @test m.registered === true
+    @test length(m.steps) == 1
+    @test m.steps[1].status === :threw
+    # 🔴 필드는 **이미 있었다**. 이 단언이 그 사실을 못박는다.
+    @test m.steps[1].detail isa AbstractString
+    @test !isempty(m.steps[1].detail)
+    @test occursin("T1BOOMZQ", m.steps[1].detail)
+    # 🔴 재는 것: 그 메시지가 **기록 줄에** 나타난다.
+    local recs = [l for l in split(out, "\n") if startswith(l, "[minted] lane=")]
+    @test length(recs) == 1
+    @test occursin("t1_boom!:threw(", recs[1])
+    @test occursin("T1BOOMZQ", recs[1])
+end
+
+@testset "(25c) 절단은 라이브 경로에서도 돈다 — 250자 예외" begin
+    CB.reset_minted_table!()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t1_longboom!",
+        "impl_code" => "function t1_longboom!(env; v::Int = 1)\n" *
+                       "    error(\"T1LONGQ\" * repeat(\"Z\", 250))\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t1_longboom!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t1_longboom!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    @test m.steps[1].status === :threw
+    @test length(m.steps[1].detail) > _STEP_DETAIL_CAP      # 원본은 길다(전제)
+    local recs = [l for l in split(out, "\n") if startswith(l, "[minted] lane=")]
+    @test length(recs) == 1
+    @test occursin("T1LONGQ", recs[1])
+    @test occursin("…", recs[1])
+    # 🔴 줄에 실린 것은 200자다 — 원본 250자가 통째로 새지 않았다.
+    @test !occursin("T1LONGQ" * repeat("Z", 200), recs[1])
+    @test occursin("T1LONGQ" * repeat("Z", 193) * "…", recs[1])
+end
+
+@testset "(25d) 결정 행의 셋째 칸 `steps` — 세 키, 그리고 삼상" begin
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        local row = Dict{String,Any}()
+        CB.MONITOR_RESPEC[] = row
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             steps = [(name = "p!", status = :threw,
+                                       detail = "up\ndown " * repeat("Z", 250))]))
+        @test haskey(row, "steps")
+        @test row["steps"] isa AbstractVector && length(row["steps"]) == 1
+        local st = row["steps"][1]
+        @test st isa AbstractDict
+        @test sort(collect(keys(st))) == ["detail", "name", "status"]
+        @test st["name"] == "p!" && st["name"] isa String
+        @test st["status"] == "threw" && st["status"] isa String
+        @test st["detail"] isa String
+        # 🔴 줄과 **같은** 접기·상한을 쓴다(진실원 하나 — `_step_detail_render`).
+        @test !occursin("\n", st["detail"])
+        @test startswith(st["detail"], "up down ")
+        @test endswith(st["detail"], "…")
+        @test length(st["detail"]) == _STEP_DETAIL_CAP + 1
+        # 직렬화까지 산다.
+        @test occursin("\"status\":\"threw\"", JSON3.write(row))
+        # 🔴 "쟀는데 없다" 는 `[]` 다 — `nothing` 이 아니다.
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             steps = NamedTuple[]))
+        @test row["steps"] == []
+        @test row["steps"] !== nothing
+        @test occursin("\"steps\":[]", JSON3.write(row))
+        # 🔴 "못 쟀다" 는 `nothing` 이다 — 필드가 아예 없는 구세대 집행부.
+        record_world_delta!((world_delta = nothing, interface_calls = nothing))
+        @test row["steps"] === nothing
+        @test occursin("\"steps\":null", JSON3.write(row))
+    finally
+        CB.MONITOR_RESPEC[] = saved
+    end
+end
+
+@testset "(25e) 생산 경로의 `m` 이 그대로 행에 실린다" begin
+    CB.reset_minted_table!()
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        CB.MONITOR_RESPEC[] = Dict{String,Any}()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => "t1_rowboom!",
+            "impl_code" => "function t1_rowboom!(env; v::Int = 1)\n" *
+                           "    error(\"T1ROWQ boom\")\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => ["t1_rowboom!"], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => "t1_rowboom!",
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m = enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+        record_world_delta!(m)
+        local rs = CB.MONITOR_RESPEC[]
+        @test haskey(rs, "world_delta")          # 앞 두 칸은 그대로다
+        @test haskey(rs, "interface_calls")
+        @test rs["steps"] isa AbstractVector && length(rs["steps"]) == 1
+        @test rs["steps"][1]["name"] == "t1_rowboom!"
+        @test rs["steps"][1]["status"] == "threw"
+        @test occursin("T1ROWQ", rs["steps"][1]["detail"])
+    finally
+        CB.MONITOR_RESPEC[] = saved
+    end
+end
+
+@testset "(25f) 🔴 음성 대조: 렌더를 되돌리면 이 게이트가 빨개진다" begin
+    # 🔴 **레포 안의 것은 안 건드린다** — 사본을 임시 디렉토리에 만들어 그 위에서만 되돌린다
+    #    (testset (24) 의 변이 대조와 **같은 관용구**다).
+    local src = read(ENACT_PATH, String)
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_no_step_detail.jl")
+        local reverted = replace(src,
+            "join([_step_render(s) for s in r.steps], \" \")" =>
+            "join([string(s.name, \":\", s.status) for s in r.steps], \" \")", count = 1)
+        @test reverted != src           # 변이가 실제로 적용됐다(무동작 변이가 아니다)
+        write(q, reverted)
+        local M = Module(:EnactNoStepDetail)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => "t1_mut_boom!",
+            "impl_code" => "function t1_mut_boom!(env; v::Int = 1)\n" *
+                           "    error(\"T1MUTQ 되돌린 판에서는 이 문자열이 안 보여야 한다\")\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => ["t1_mut_boom!"], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => "t1_mut_boom!",
+                                         "args" => Dict{String,Any}("v" => 1))]))
+        local m2, out2
+        mktemp() do path, io
+            redirect_stdout(io) do
+                m2 = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                       live_cache_env(), nothing, _dec(e))
+            end
+            flush(io); out2 = read(path, String)
+        end
+        local recs2 = [l for l in split(out2, "\n") if startswith(l, "[minted] lane=")]
+        @test length(recs2) == 1
+        # 🔴 값은 **거기 있었다** — 버려진 것은 렌더뿐이다.
+        @test occursin("T1MUTQ", m2.steps[1].detail)
+        # 🔴 그런데 기록 줄에는 없다 = (25b) 의 단언이 이 사본에서 빨갛다.
+        @test !occursin("T1MUTQ", recs2[1])
+        @test occursin("t1_mut_boom!:threw", recs2[1])
+        @test !occursin("t1_mut_boom!:threw(", recs2[1])
+    end
+end
+
+end
+
 # 🔴 나가는 모든 길에서 서버를 닫는다. (테스트셋이 빨개지면 그 testset 이 스스로 던져
 #    여기 못 오지만, 그때는 프로세스가 곧 끝난다 — 포트는 프로세스와 함께 반납된다.)
 close(_RW_SERVER)
