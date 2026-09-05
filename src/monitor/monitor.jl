@@ -522,6 +522,7 @@ function monitor_emit!(env, iter::Integer; dt=nothing)
             "mean_soc"       => _mon_finite(sum(socs) / length(socs)),
             "n_depleted"     => length(fleet.depleted),
             "total_energy_J" => _mon_finite(rep.total_energy_J),
+            "soc_spread"     => _mon_finite(rep.soc_spread),
             "energy_J"       => Dict{String,Any}(string(k) => _mon_finite(v) for (k, v) in fleet.energy_J),
         )
     end
