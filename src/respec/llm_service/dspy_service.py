@@ -58,6 +58,55 @@ MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 # **재시작**해 끈다. 장수 프로세스라 환경변수만 바꾸면 옛 레짐이 계속 돌기 때문에,
 # 레짐(`cache`)은 `/health` 와 매 응답에 실어 보낸다 -- 산출물이 자기 레짐을 말해야 한다.
 CACHE = os.environ.get("DSPY_CACHE", "1") != "0"
+# 🔴 [2026-09-04] **트랜스포트 손잡이.** `gpt-4o` 는 /v1/chat/completions 로 돌지만 5.x 추론
+#    계열은 function tools 와 reasoning 을 같이 쓰면 그 엔드포인트를 **거부한다**(실측:
+#    `Function tools with reasoning_effort are not supported for gpt-5.6-sol in
+#    /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort
+#    to 'none'`). 이 레인은 native FC 가 존재 이유라 `reasoning_effort='none'` 으로 물러서는
+#    것은 답이 아니다 — 답은 /v1/responses 이고, dspy 3.3.0 에서 그 갈림길은
+#    `dspy.LM(model_type=...)` 하나다(`clients/lm.py::LM.forward` 가 이 값으로
+#    `litellm_completion` 과 `litellm_responses_completion` 중 하나를 고른다).
+#
+#    ⚠️ **모델 이름표를 코드에 박지 않는다**(`if model.startswith("gpt-5")` 류). 그런 표는
+#    반드시 낡고 이 레포는 이미 그 부류에 물렸다. 어느 트랜스포트로 가는지는 서비스를 띄우는
+#    쪽이 환경변수로 말하고, 산출물은 `/health` 로 자기 레짐을 다시 말한다(`cache` 와 같은
+#    이유다 — 장수 프로세스는 자기가 어느 세계에서 도는지 스스로 신고해야 한다).
+#    기본값이 "chat" 이라 오늘의 `gpt-4o` 요청은 **바이트 동일**하다.
+#    🔴 함수인 이유: 상수는 import 시각에 한 번 정해지므로 **해석 규칙**을 시험하려면 모듈을
+#    `importlib.reload` 해야 하는데, 그러면 `from dspy_service import X` 로 먼저 이름을 묶어 둔
+#    다른 시험 파일들이 **낡은 객체를 계속 붙들어** 조용히 빨개진다(실측 2026-09-04:
+#    reload 하는 시험 파일을 같은 프로세스에 넣자 `test_scorable_gap_prefix.py` 4건 +
+#    `test_support_is_data.py` 1건이 무너졌고, 그 파일만 빼면 8 passed 로 돌아왔다).
+#    규칙을 함수로 내놓으면 시험이 모듈을 다시 읽지 않고 규칙만 부를 수 있다.
+def _resolve_model_type(env=None):
+    """`DSPY_MODEL_TYPE` -> dspy 의 `model_type`. 기본 "chat"."""
+    return (os.environ if env is None else env).get("DSPY_MODEL_TYPE", "chat")
+
+
+MODEL_TYPE = _resolve_model_type()
+
+
+# 🔴 [2026-09-04] temperature 도 같은 이유로 손잡이가 된다 — 이름표가 아니라 환경변수다.
+#    실측(`gpt-5.6-sol` + /v1/responses + tools, 라이브 유료 호출 2026-09-04):
+#      · temperature=0.2  -> BadRequest: "Unsupported parameter: 'temperature' is not
+#        supported with this model." (프로바이더가 거절한다. chat 경로에서도 litellm 이
+#        `UnsupportedParamsError` 로 먼저 막는다.)
+#      · temperature 를 **아예 안 실으면** 같은 요청이 통과하고 tool_call 이 돌아온다.
+#    그래서 이 값은 빈 문자열이나 "none" 을 주면 요청에서 **키째로 빠진다** — 1.0 이나 0 으로
+#    바꿔치기하지 **않는다**. 그건 "온도를 안 정했다" 가 아니라 다른 요청이고, 조용히 그렇게
+#    하면 산출물이 어느 온도에서 나왔는지 아무도 모른다.
+#    (`dspy.LM(temperature=None)` 은 `self.kwargs` 에 None 으로 남지만 프로바이더 경계의
+#     `openai_format.py::responses_config_kwargs` / `common_config_kwargs` 가 `is not None`
+#     으로 거르므로 **전선에 안 나간다**. 실측: sent == {'model':..., 'max_output_tokens':2000}.)
+#    안 주면 0.2 그대로다 — chat 경로는 안 변한다.
+def _resolve_temperature(env=None):
+    """`DSPY_TEMPERATURE` -> `dspy.LM(temperature=...)`. 기본 0.2. 빈 문자열/"none" 은
+    **`None`** 이고, 그것은 "요청에서 키째로 뺀다"는 뜻이다 — 1.0 이나 0 이 아니다."""
+    raw = (os.environ if env is None else env).get("DSPY_TEMPERATURE", "0.2").strip()
+    return None if raw.lower() in ("", "none") else float(raw)
+
+
+TEMPERATURE = _resolve_temperature()
 # 🔴 [2026-09-03 B1] 이 값은 **한 줄로 첫 유료 런의 3단계를 통째로 죽였다.** 옛 값은 500 이고,
 #    `WriteToolImpl` 은 여덟 필드(`reasoning` + 일곱)를 내야 하는데 그중 하나가 Julia 함수
 #    **본문 전체**다. 라이브 응답은 `params` 한가운데서 잘렸고 JSONAdapter 는
@@ -570,8 +619,16 @@ def _configure_dspy():
 
     LM **객체 생성**은 connect 0건이고, 이 함수는 provider 호출을 내지 않는다 — 과금 0건이다.
     (여기서 `supports_function_calling` 을 읽지는 않는다. 그 속성의 성질은 `native_fc_active`
-    아래 주석 참조: 읽으면 원격 cost map fetch 를 시도한다.)"""
-    lm = dspy.LM("openai/%s" % MODEL, temperature=0.2, max_tokens=MAX_TOKENS, cache=CACHE)
+    아래 주석 참조: 읽으면 원격 cost map fetch 를 시도한다.)
+    🔴 [2026-09-04] `MAX_TOKENS` 는 트랜스포트를 건너도 **이름만 바뀌어 그대로 간다** — dspy 가
+    `openai_format.py::responses_config_kwargs` 에서 `max_output_tokens` 로 옮긴다(실측: 보낸
+    요청이 `{'model': ..., 'max_output_tokens': 2000}`). 그래서 여기서 손으로 개명하지 않는다.
+    ⚠️ 다만 /v1/responses 에서 그 상한은 **추론 토큰까지 포함**하고, `LM._check_truncation` 은
+      `model_type != "responses"` 일 때만 경고하므로(dspy 3.3.0) 추론 모델에서 상한에 닿으면
+      **경고 없이** 잘린다. 2000 의 근거(위 `MAX_TOKENS` 주석)는 chat 경로에서 잰 것이다.
+    """
+    lm = dspy.LM("openai/%s" % MODEL, model_type=MODEL_TYPE,
+                 temperature=TEMPERATURE, max_tokens=MAX_TOKENS, cache=CACHE)
     dspy.configure(lm=lm, adapter=build_adapter())
     return lm
 
@@ -1305,6 +1362,11 @@ def health():
             # calls 는 요청 수(캐시 히트 포함), billed 가 실제 과금 호출 수다. 둘을 한
             # 이름으로 뭉치면 캐시 재생이 라이브 유료 측정처럼 보인다.
             "cache": CACHE, "billed": _state["billed"],
+            # 🔴 [2026-09-04] 트랜스포트 레짐. `cache` 와 같은 이유로 싣는다 — 이 프로세스는
+            #    오래 살고 환경변수는 재시작 때만 읽히므로, 어느 엔드포인트로 나가는지는
+            #    **산출물이 스스로 말해야** 한다. `model_type == "chat"` 인데 모델이 5.x 추론
+            #    계열이면 native FC 요청이 전부 BadRequest 로 죽는다는 뜻이다.
+            "model_type": MODEL_TYPE, "temperature": TEMPERATURE,
             "surrogate": _state["surro_data"] or ("ERROR: " + str(_state["surro_error"])),
             # 축 1(어휘 미달)의 입력. 산문(`surrogate` 필드)이 아니라 **기계가 읽는 목록**이다.
             # None 은 "못 쟀다"(모델 미적재)이고 [] 는 "아무 팔도 지원 안 한다" — 다른 사건이다.
