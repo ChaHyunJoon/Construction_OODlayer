@@ -1126,10 +1126,23 @@ const ENACTED_VERDICTS = (:admit,)
 minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 """
-    enact_minted!(env, truth, synth) -> NamedTuple
+    enact_minted!(env, truth, synth; probe = nothing) -> NamedTuple
 
 합성된 tool 의 body 를 집행한다. 반환:
-`(verdict, reason, applied, partial, world_maybe_dirty, steps, undo, resume)`. T4 가 읽는다.
+`(verdict, reason, applied, partial, world_maybe_dirty, steps, undo, resume, resolve,
+args_from, n_calls, body_probe)`. T4 가 읽는다.
+
+🔴 **`probe`/`body_probe` (2026-09-04, Task 2) — 계측 하나다. 집행은 안 바꾼다.**
+`probe !== nothing` 이면 body 루프가 끝난 **직후**(캐시 재개 **앞**)와 **던진 경로**
+(재개·재풀이 **앞**) 두 곳에서 `probe()` 를 **한 번** 부르고 그 값을 `body_probe` 로
+나른다. 왜: `_issue_resume!` 와 `_resolve_if_needed!` 가 이 함수 **안**에서 돌아
+하네스의 사후 지문이 **집행 봉투 전체**를 재고, 그래서 유료 런 1 의 `world_delta` 는
+0 이든 아니든 body 에 **귀속 불가**였다. 이 값이 그 봉투를 가른다.
+· `probe === nothing` 이면 `body_probe = nothing` 이고 **다른 모든 동작이 오늘과 동일**하다.
+· `probe` 가 던지면 삼키고 `body_probe = nothing` — 🔴 **계측이 집행을 못 죽인다.**
+  이 함수는 그 시점에 세계를 이미 편집했을 수 있고, 새는 예외 하나가 그 편집의 기록을
+  통째로 없앤다.
+· 기본값은 `_r` 이 소유한다 — 조기 반환 열한 자리가 전부 이 필드를 갖는다.
 
 | `verdict` | 뜻 |
 |---|---|
@@ -1168,7 +1181,7 @@ minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 (브리핑 게이트 (2)·(8) 이 실제로 그것 때문에 통과 불가였다). 세계를 안 건드리는 판정을
 세계를 요구하는 판정보다 앞세우는 것이 옳기도 하다 — env 없이도 body 를 심사할 수 있다.
 """
-function enact_minted!(env, truth, synth)
+function enact_minted!(env, truth, synth; probe = nothing)
     # 🔴 `world_maybe_dirty` 는 파생 필드다(`touched || partial`). 왜 따로 싣는가:
     #    `applied` 는 "노린 적응이 일어났나"만 재고 `partial` 은 "던져서 절반일 수 있나"만
     #    잰다 — 둘 중 하나만 읽은 호출자가 다른 쪽의 답을 얻어 가면 안 된다. 다음 태스크는
@@ -1206,12 +1219,15 @@ function enact_minted!(env, truth, synth)
     #    ⚠️ 홑 공백은 `r"\s+" => " "` 로 바뀌지 않으므로 기존 사유들은 **바이트 동일**하다.
     #    진실원: `test/minted_tool_enacts.jl` testset (20c).
     _one_line(x) = x isa AbstractString ? String(strip(replace(x, r"\s+" => " "))) : x
+    # 🔴 `body_probe` 의 기본값은 **여기** 있다(2026-09-04, Task 2). 이 헬퍼가 결과 튜플의
+    #    모양을 소유하므로 조기 반환 열한 자리가 전부 이 필드를 갖는다 — 한 자리만 빠져도
+    #    하네스의 `getproperty` 가 던진다(그리고 그 자리는 `try` 밖이라 렌더가 선다).
     _r(v, why; steps = NamedTuple[], applied = nothing, partial = false,
-       touched = false, resume = :none, resolve = :none) =
+       touched = false, resume = :none, resolve = :none, body_probe = nothing) =
         (verdict = v, reason = _one_line(why), applied = applied, partial = partial,
          world_maybe_dirty = touched || partial, steps = steps, undo = :none,
          resume = resume, resolve = resolve,
-         args_from = args_from, n_calls = n_calls)
+         args_from = args_from, n_calls = n_calls, body_probe = body_probe)
 
     # ---- (1)(2) 집행할 사건인가 ------------------------------------------------------------
     synth === nothing && return _r(:deferred, "no synthesis record")
@@ -1346,6 +1362,12 @@ function enact_minted!(env, truth, synth)
             #    보수적으로 재개가 필요하다고 본다 — 반쯤 편집된 그래프 위에 옛 프론티어를
             #    남겨 두는 것이 이 자리의 최악이다(`ood_injection.jl`: "그래프는 바뀌었는데
             #    캐시가 옛 프론티어를 들고 있어 복구가 아무 효과가 없다, 예외는 안 난다").
+            # 🔴 **body 만의 지문 (2026-09-04, Task 2).** 던진 판도 세계를 절반 편집했을 수
+            #    있으므로 여기서 한 번 찍는다. 자리는 `_issue_resume!`/`_resolve_if_needed!`
+            #    **앞**이다 — 정상 경로의 probe 가 캐시 재개 앞이므로, 두 경로에서
+            #    `body_probe` 가 **같은 것**(하네스가 손대기 전의 세계)을 뜻해야 한다.
+            #    🔴 계측이 집행을 못 죽인다: probe 가 던지면 삼키고 `nothing` 이다.
+            local bp_t = probe === nothing ? nothing : (try probe() catch; nothing end)
             local rs_t, rs_d = _issue_resume!(env)
             # 🔴 던진 판에서도 재풀이는 **돈다**. 앞선 원시가 이미 배정 간선을 뗐을 수 있고,
             #    그 세계를 다시 안 풀면 정확히 판정 1 이 막으려는 사고(아무도 재배정하지 않은
@@ -1357,7 +1379,8 @@ function enact_minted!(env, truth, synth)
             return _r(admit_verdict, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
                               _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d);
                       steps = steps, applied = applied, partial = true,
-                      touched = touched, resume = rs_t, resolve = rv_t)
+                      touched = touched, resume = rs_t, resolve = rv_t,
+                      body_probe = bp_t)
         end
         # 🔴 `|=` 가 아니라 Kleene 선언이다 — `nothing` 이 오면 `|=` 는 MethodError 다.
         applied = _merge_applied(applied, _step_applied(r.prim.name, st))
@@ -1365,6 +1388,16 @@ function enact_minted!(env, truth, synth)
         need_resume |= _needs_cache_resume(r.prim.name, st)
         push!(steps, (name = r.prim.name, status = st, detail = dt))
     end
+
+    # ---- (7b) body 만의 세계 지문 (2026-09-04, Task 2) ------------------------------------
+    # 🔴 왜 여기인가. 유료 런 1 의 `delta_scope` 는 `body+harness_resolve` 였고, 그래서
+    #    `world_delta` 가 0 이든 아니든 **귀속이 불가능**했다 — 하네스의 재개·재풀이가
+    #    `CB.enact_minted!` **안**에서 돌기 때문이다. 이 한 줄이 그 봉투를 가른다:
+    #    body 루프가 끝난 **직후**, 캐시 재개 **앞**.
+    # 🔴 `probe === nothing` 이면 아무 일도 안 일어난다 — 오늘과 **바이트 동일한** 동작이다.
+    # 🔴 probe 가 던지면 삼킨다. **계측이 집행을 죽이면 안 된다** — 이 함수는 세계를 이미
+    #    편집한 뒤이고, 여기서 새는 예외 하나가 그 편집의 기록을 통째로 없앤다.
+    local body_probe = probe === nothing ? nothing : (try probe() catch; nothing end)
 
     # ---- (8) 스케줄 캐시 재개 — 조용한 미복구를 막는 한 걸음 --------------------------------
     # 🔴 여덟 중 다섯(`reform_stuck_teams!` · `recover_stalled_teams!` ·
@@ -1393,5 +1426,6 @@ function enact_minted!(env, truth, synth)
                       _resume_note(resume_tag, resume_detail) *
                       _resolve_note(resolve_tag, resolve_detail);
               steps = steps, applied = applied, touched = touched,
-              resume = resume_tag, resolve = resolve_tag)
+              resume = resume_tag, resolve = resolve_tag,
+              body_probe = body_probe)
 end

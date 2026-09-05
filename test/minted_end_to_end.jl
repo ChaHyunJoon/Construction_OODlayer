@@ -211,7 +211,8 @@ const BARE_ENV = (staging_circles = Dict{Symbol,Any}(),)
 `nothing` 으로 삼킨다). 즉 **"쟀는데 0" 과 "못 쟀다" 를 가르는 testset (10)(11) 이 이 env
 에서는 후자만 볼 수 있었다.** 필드 이름·타입의 진실원은 `PlannerEnv`(`src/route_planning.jl`
 의 `active_build_steps::Set{AbstractID}`)이고 여기는 그 모양을 빈 채로 흉내낼 뿐이다.
-⚠️ 다이제스트는 넷을 **전부** 읽어야 지문을 낸다 — 하나라도 없으면 `nothing` 이다. 그것이
+⚠️ 다이제스트는 **다섯을 전부**(2026-09-04 Task 2 가 `sched.weights` 를 더했다) 읽어야
+지문을 낸다 — 하나라도 없으면 `nothing` 이다. 그것이
 설계다(반쯤 잰 지문의 차분은 무엇을 뜻하는지 아무도 못 적는다).
 """
 function live_cache_env()
@@ -992,15 +993,19 @@ end
         @test haskey(row, "world_delta")            # 키는 언제나 있다(부재 = 이 코드 이전 세대)
         @test row["world_delta"] === nothing        # 🔴 "못 쟀다" 는 0 도 {} 도 아니다
         @test occursin("\"world_delta\":null", JSON3.write(row))   # 직렬화까지 살아남는다
-        record_world_delta!((world_delta = (closed = 0, active = 0,
-                                            n_edges = 0, n_binding_changed = 0),))
+        record_world_delta!((world_delta = (closed = 0, active = 0, n_edges = 0,
+                                            n_binding_changed = 0, n_weights_changed = 0),))
         @test row["world_delta"] isa AbstractDict   # 🔴 "쟀는데 0" 은 **다른 관측**이다
         @test row["world_delta"]["closed"] == 0
-        @test length(row["world_delta"]) == 4
-        record_world_delta!((world_delta = (closed = 1, active = 2,
-                                            n_edges = 3, n_binding_changed = 4),))
+        # ⚠️ 2026-09-04 (Task 2): 넷 → **다섯**. `n_weights_changed` 가 다섯째 축이다.
+        #    단언을 지우지 않고 **옮긴다** — 키 수를 안 세면 축이 조용히 빠져도 안 보인다.
+        @test length(row["world_delta"]) == 5
+        @test row["world_delta"]["n_weights_changed"] == 0
+        record_world_delta!((world_delta = (closed = 1, active = 2, n_edges = 3,
+                                            n_binding_changed = 4, n_weights_changed = 5),))
         @test row["world_delta"]["active"] == 2
         @test row["world_delta"]["n_binding_changed"] == 4
+        @test row["world_delta"]["n_weights_changed"] == 5
         # ---- 🔴 안 던진다. 이 호출은 `enact_minted_decision!` 의 `try` **밖**이다 ----------
         record_world_delta!((;))                    # 필드가 아예 없는 반환(구세대 집행부)
         @test row["world_delta"]["active"] == 2     # 직전 값이 그대로 — 덮어쓰지도 죽지도 않았다
@@ -1050,8 +1055,11 @@ end
     @test length(collect(eachmatch(r"(?<!`)n/a\(not measured\)", src))) == 1
     @test length(collect(eachmatch(r"n_binding_changed 는 하한이다", src))) == 1
     @test _world_delta_str(nothing) == "n/a(not measured)"
-    local s = _world_delta_str((closed = 1, active = 2, n_edges = 3, n_binding_changed = 4))
-    @test occursin("closed=1 active=2 n_edges=3 n_binding_changed=4", s)
+    # ⚠️ 2026-09-04 (Task 2): 다섯째 항 `n_weights_changed` 가 붙었다. 단언은 **이동**이다 —
+    #    네 항을 지우지 않고 다섯 항을 그대로 못박는다.
+    local s = _world_delta_str((closed = 1, active = 2, n_edges = 3,
+                                n_binding_changed = 4, n_weights_changed = 5))
+    @test occursin("closed=1 active=2 n_edges=3 n_binding_changed=4 n_weights_changed=5", s)
     @test occursin("하한", s)     # 🔴 하한 각주가 **네 자리 전부**에 붙는다(m4)
 end
 
@@ -1091,14 +1099,19 @@ end
     #        `try`/`catch` 로는 절대 못 잡는다 — 그리고 이쪽이 더 나쁘다: 예외는 "못 쟀다"
     #        가 되는데 이 거짓 숫자는 **"쟀다"를 참칭한다**(삼상 규약이 막으려는 것 그 자체).
     #    그래서 모양 가드가 `try` **앞**에 있다.
-    local ok  = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 1))
-    local bad = (closed = 0, active = 0, n_edges = 0, binding = "not a dict")
+    # ⚠️ 2026-09-04 (Task 2): 지문에 다섯째 축 `weights` 가 생겼다. 픽스처를 **옮긴다** —
+    #    같은 명제를 다섯 필드 모양으로 다시 적는다(약화가 아니다).
+    local ok  = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 1),
+                 weights = Dict{Int,Float64}(1 => 1.0))
+    local bad = (closed = 0, active = 0, n_edges = 0, binding = "not a dict",
+                 weights = Dict{Int,Float64}(1 => 1.0))
     @test _world_delta(ok, bad) === nothing
     @test _world_delta(bad, ok) === nothing
     # 🔴 비-0 대조: 이 함수가 여전히 **잰다**(항진적으로 nothing 을 내는 것이 아니다).
-    local moved = (closed = 1, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 2))
-    @test _world_delta(ok, moved) == (closed = 1, active = 0,
-                                      n_edges = 0, n_binding_changed = 1)
+    local moved = (closed = 1, active = 0, n_edges = 0, binding = Dict{Int,Int}(1 => 2),
+                   weights = Dict{Int,Float64}(1 => 1.0))
+    @test _world_delta(ok, moved) == (closed = 1, active = 0, n_edges = 0,
+                                      n_binding_changed = 1, n_weights_changed = 0)
 end
 
 @testset "(19) 🔴 W5: /rewrite 의 spec 이 더 이상 **구조적으로** 비지 않는다" begin
@@ -1836,6 +1849,315 @@ end
         @test !occursin("T1MUTQ", recs2[1])
         @test occursin("t1_mut_boom!:threw", recs2[1])
         @test !occursin("t1_mut_boom!:threw(", recs2[1])
+    end
+end
+
+end
+
+# =============================================================================
+# (26) 🔴 T2 — L4 의 두 구멍. **둘은 독립이다.**
+#   (1) `sched.weights` 축이 없었다. 유료 런 1 의 body 는 정확히 그것을 편집했는데
+#       `world_delta` 의 네 축이 전부 0 이었다 — 로그가 "안 바뀌었다" 와 "그 축을 안 잰다" 를
+#       같은 관측으로 만들었다.
+#   (2) `delta_scope` 가 `body+harness_resolve` 라 0 이든 아니든 **귀속 불가**였다.
+#       `_issue_resume!`/`_resolve_if_needed!` 가 `CB.enact_minted!` **안**에서 돌기 때문이다.
+# =============================================================================
+@testset "(26) 🔴 T2: 다섯째 축 `weights` 와 body 만의 다이제스트" begin
+
+@testset "(26a) 양성 대조 — weights 를 바꾸는 body 가 `n_weights_changed > 0` 을 낸다" begin
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local before = length(env.sched.weights)
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t2_weights!",
+        "impl_code" => "function t2_weights!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 3.5\n" *
+                       "    return (status = :t2_w,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t2_weights!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t2_weights!",
+                                     "args" => Dict{String,Any}("v" => 7))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    # 전제 — 생성 경로였고 body 가 실제로 그 dict 을 편집했다.
+    @test m.registered === true && m.verdict === :admit
+    @test length(m.steps) == 1 && m.steps[1].status === :t2_w
+    @test haskey(env.sched.weights, 7) && env.sched.weights[7] == 3.5
+    @test length(env.sched.weights) == before + 1
+    # 🔴 재는 것.
+    @test m.world_delta !== nothing
+    @test m.world_delta.n_weights_changed == 1
+    # 🔴 음성 대조: 다섯이 뭉뚱그려 움직이는 것이 아니다 — 나머지 넷은 0 이다.
+    @test m.world_delta.closed == 0 && m.world_delta.active == 0
+    @test m.world_delta.n_edges == 0 && m.world_delta.n_binding_changed == 0
+    # 🔴 그리고 그 수가 **로그 줄**에 있다(스윕이 grep 하는 채널).
+    local wl = [l for l in split(out, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl) == 1
+    @test occursin("n_weights_changed=1", wl[1])
+end
+
+@testset "(26b) 음성 대조 — 아무것도 안 바꾸는 body 는 0 이다, `nothing` 이 아니다" begin
+    CB.reset_minted_table!()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t2_noweights!",
+        "impl_code" => "function t2_noweights!(env; v::Int = 1)\n" *
+                       "    return (status = :t2_nw,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t2_noweights!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t2_noweights!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+    @test m.verdict === :admit
+    @test m.world_delta !== nothing            # 🔴 "쟀는데 0" 이지 "못 쟀다" 가 아니다
+    @test m.world_delta.n_weights_changed == 0
+end
+
+@testset "(26c) 🔴 얕은 참조 대조 — `copy` 를 빼면 (26a) 가 빨개진다" begin
+    # 🔴 `get_root_node_weights` 는 살아 있는 `Dict` 를 **참조로** 돌려준다. `copy` 가 없으면
+    #    사전 지문이 body 가 편집할 바로 그 dict 을 가리켜 차분이 **언제나 0** 이 된다.
+    #    레포 안의 것은 안 건드린다 — 사본을 임시 디렉토리에 만든다.
+    local src = read(ENACT_PATH, String)
+    @test occursin("weights  = copy(w))", src)     # 변이 지점이 실제로 있다
+    mktempdir() do dir
+        local q = joinpath(dir, "enact_aliased_weights.jl")
+        local mutated = replace(src, "weights  = copy(w))" => "weights  = w)", count = 1)
+        @test mutated != src
+        write(q, mutated)
+        local M = Module(:EnactAliasedWeights)
+        Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+        Core.eval(M, :(const CB = ConstructionBots))
+        Core.eval(M, :(const DSPY_URL = $(DSPY_URL)))
+        Base.include(M, q)
+        CB.reset_minted_table!()
+        local env = live_cache_env()
+        local e = _lane(Dict{String,Any}(
+            "synthesis_event" => true, "ran" => true, "error" => nothing,
+            "tool_name" => "T", "impl_name" => "t2_alias_w!",
+            "impl_code" => "function t2_alias_w!(env; v::Int = 1)\n" *
+                           "    env.sched.weights[v] = 3.5\n" *
+                           "    return (status = :t2_w,)\nend\n",
+            "surface" => "env_param", "reversible" => false,
+            "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+            "body_names" => ["t2_alias_w!"], "wrote" => true,
+            "calls" => [Dict{String,Any}("primitive" => "t2_alias_w!",
+                                         "args" => Dict{String,Any}("v" => 7))]))
+        local m2 = Base.invokelatest(getfield(M, :enact_minted_decision!),
+                                     env, nothing, _dec(e))
+        # 🔴 편집은 **실제로 일어났다** — 잃은 것은 측정뿐이다.
+        @test env.sched.weights[7] == 3.5
+        @test m2.world_delta !== nothing
+        @test m2.world_delta.n_weights_changed == 0     # 🔴 (26a) 의 `== 1` 이 여기서 빨갛다
+    end
+end
+
+@testset "(26d) 모양 가드 — 문자열 weights 는 수가 아니라 `nothing` 이다" begin
+    local ok = live_cache_env()
+    local d_ok = _world_digest(ok)
+    @test d_ok !== nothing
+    @test d_ok.weights isa AbstractDict          # 다섯째 축이 지문에 실제로 있다
+    # ---- `_world_delta` 쪽 가드(여기가 **거짓 측정값**이 나던 자리다) --------------------
+    local base = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(1 => 1.0))
+    local bad  = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = "not a dict")
+    @test _world_delta(base, bad) === nothing
+    @test _world_delta(bad, base) === nothing    # 🔴 이쪽이 `try` 로는 **못 막는** 방향이다
+    # 다섯째 축 이전 세대의 네-필드 지문이 오면 던지지 않고 `nothing` 이다.
+    local old_shape = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}())
+    @test _world_delta(base, old_shape) === nothing
+    @test _world_delta(old_shape, base) === nothing
+    # 🔴 비-0 대조: 이 함수가 여전히 **잰다**(항진적 `nothing` 이 아니다).
+    local moved = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                   weights = Dict{Int,Float64}(1 => 2.0, 5 => 0.5))
+    @test _world_delta(base, moved).n_weights_changed == 2   # 값 변경 1 + 새 키 1
+    @test _world_delta(moved, base).n_weights_changed == 2   # 값 변경 1 + 사라진 키 1
+    # 🔴 `!=` 가 아니라 `!isequal` — NaN 이 매 판 "바뀌었다" 로 세면 안 된다.
+    local nan1 = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(1 => NaN))
+    local nan2 = (closed = 0, active = 0, n_edges = 0, binding = Dict{Int,Int}(),
+                  weights = Dict{Int,Float64}(1 => NaN))
+    @test _world_delta(nan1, nan2).n_weights_changed == 0
+    # ---- `_world_digest` 쪽 가드 ---------------------------------------------------------
+    # ⚠️ **이 대조는 가드에 안 닿는다 — 그리고 그것이 실측이다.**
+    #    `get_root_node_weights` 는 `OperatingSchedule` 로 한정된 메서드라, 가짜 sched 는
+    #    모양과 **무관하게** `MethodError` → `catch` → `nothing` 이다. 아래 짝지은 두 줄이
+    #    그 사실을 못박는다(하나만 적으면 "가드가 잡았다" 로 잘못 읽힌다).
+    @test _world_digest((cache = ok.cache, active_build_steps = ok.active_build_steps,
+                         sched = (graph = ok.sched.graph, weights = "문자열"))) === nothing
+    @test _world_digest((cache = ok.cache, active_build_steps = ok.active_build_steps,
+                         sched = (graph = ok.sched.graph,
+                                  weights = Dict{Int,Float64}()))) === nothing
+    # 🔴 그래서 다이제스트 쪽 가드는 `binding` 가드와 **같은 지위**다: 도달 불가에 기대지
+    #    않으려고 둔 방어선이고, 이 파일이 그 원칙을 이미 세 번 적용했다.
+    @test occursin("w isa AbstractDict || return nothing", read(ENACT_PATH, String))
+end
+
+@testset "(26e) 🔴 `world_delta_body` — 봉투가 귀속 불가여도 body 는 재진다" begin
+    # 🔴 이것이 이 Step 의 존재 이유다. `surface="sched"` 는 `RESOLVE_SURFACES` 안이라
+    #    `_resolve_if_needed!` 가 **실제로** 하네스 재풀이를 시도한다 — 그 순간 봉투 차분
+    #    (`world_delta`)은 body 에 귀속할 수 없게 되고 `_delta_scope` 가 그것을 말한다.
+    #    그런데 `world_delta_body` 는 그 걸음들 **앞**에서 찍은 지문이라 여전히 잰다.
+    # ⚠️ 🔴 **브리핑 정정.** 브리핑은 `delta_scope=="body+harness_resolve"`(= `resolve ===
+    #    :resolved`)를 요구했는데, 이 파일의 픽스처로는 **도달 불가**다: `resolve_assignments!`
+    #    는 `env.scene_tree` 로 MILP 를 정식화해 푸는데(`common_resolve.jl`), 빈 스케줄에서는
+    #    `get_objective_expr` 가 `map(f, ::Set{Int})` 로 던진다(2026-09-04 실측). 그래서
+    #    여기서 나오는 것은 `:threw` 이고 `_delta_scope` 는 `unknown` 이다 — **둘 다 "귀속
+    #    불가"** 라는 같은 사실이고, 이 절이 재려는 명제는 그대로다. `:resolved` 자체의
+    #    판독은 (17) 이 단위로 못박는다.
+    CB.reset_minted_table!()
+    local env = live_cache_env()
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t2_sched_w!",
+        "impl_code" => "function t2_sched_w!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 9.25\n" *
+                       "    return (status = :t2_sw,)\nend\n",
+        "surface" => "sched", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t2_sched_w!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t2_sched_w!",
+                                     "args" => Dict{String,Any}("v" => 3))]))
+    local m, out
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m = enact_minted_decision!(env, nothing, _dec(e))
+        end
+        flush(io); out = read(path, String)
+    end
+    @test m.verdict === :admit
+    # 전제 — 하네스 재풀이 자리에 **실제로 갔다**(`:not_needed_surface` 가 아니다).
+    @test m.resolve !== :not_needed_surface
+    # 🔴 봉투의 판독은 body 단독이 **아니다** — 귀속 불가다.
+    @test _delta_scope(m.resolve) != "body_only"
+    # 🔴 그런데 body 는 재졌다. 이 두 줄이 짝일 때만 이 Step 이 무언가를 한 것이다.
+    @test m.world_delta_body !== nothing
+    @test m.world_delta_body.n_weights_changed == 1
+    # 로그가 **두 쌍**을 찍는다.
+    local wl = [l for l in split(out, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl) == 1
+    @test occursin("delta_scope=", wl[1])
+    @test occursin("world_delta_body=closed=0 active=0 n_edges=0 " *
+                   "n_binding_changed=0 n_weights_changed=1", wl[1])
+    @test occursin("body_scope=" * BODY_ONLY_PROBED, wl[1])
+    @test BODY_ONLY_PROBED == "body_only(probed)"
+    # 🔴 `body_scope` 는 `_delta_scope` 의 값이 아니다 — 다른 근거의 이름이다.
+    @test BODY_ONLY_PROBED != _delta_scope(:not_needed_surface)
+
+    # ---- 🔴 못 잰 판에는 범위 이름을 안 붙인다 (m3 과 같은 논거) --------------------------
+    #      `BARE_ENV` 에는 `cache`/`sched` 가 없어 사전 지문이 `nothing` 이고, 그러면
+    #      `world_delta_body` 도 `nothing` 이다 — 그 줄에 `body_only(probed)` 를 찍으면
+    #      "재지도 않은 것의 범위" 라는 형용모순이 된다.
+    CB.reset_minted_table!()
+    local e0 = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t2_bare_w!",
+        "impl_code" => "function t2_bare_w!(env; v::Int = 1)\n" *
+                       "    return (status = :t2_bw,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t2_bare_w!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t2_bare_w!",
+                                     "args" => Dict{String,Any}("v" => 1))]))
+    local m0, out0
+    mktemp() do path, io
+        redirect_stdout(io) do
+            m0 = enact_minted_decision!(BARE_ENV, nothing, _dec(e0))
+        end
+        flush(io); out0 = read(path, String)
+    end
+    @test m0.verdict === :admit                 # 전제: 집행 자리까지 실제로 갔다
+    @test m0.world_delta_body === nothing
+    local wl0 = [l for l in split(out0, "\n") if startswith(l, "[minted] world_delta=")]
+    @test length(wl0) == 1
+    @test occursin("world_delta_body=n/a(not measured)", wl0[1])
+    @test occursin("body_scope=unknown", wl0[1])
+    @test !occursin("body_scope=" * BODY_ONLY_PROBED, wl0[1])
+end
+
+@testset "(26f) 🔴 `probe = nothing` 이면 오늘과 같다 (회귀 대조)" begin
+    CB.reset_minted_table!()
+    # 등록만 시키고(집행 결과는 안 본다) 같은 `synth` 로 직접 두 번 부른다.
+    local e = _lane(Dict{String,Any}(
+        "synthesis_event" => true, "ran" => true, "error" => nothing,
+        "tool_name" => "T", "impl_name" => "t2_reg!",
+        "impl_code" => "function t2_reg!(env; v::Int = 1)\n" *
+                       "    env.sched.weights[v] = 1.5\n" *
+                       "    return (status = :t2_r,)\nend\n",
+        "surface" => "env_param", "reversible" => false,
+        "params" => Dict{String,Any}("v" => Dict{String,Any}("type" => "integer")),
+        "body_names" => ["t2_reg!"], "wrote" => true,
+        "calls" => [Dict{String,Any}("primitive" => "t2_reg!",
+                                     "args" => Dict{String,Any}("v" => 4))]))
+    enact_minted_decision!(live_cache_env(), nothing, _dec(e))
+    @test haskey(CB.minted_table(), "t2_reg!")
+    local synth = Dict{String,Any}(
+        "reach" => "composed", "body_names" => ["t2_reg!"], "impl_name" => "t2_reg!",
+        "tool_name" => "t", "params" => Dict{String,Any}(), "missing_primitive" => nothing,
+        "calls" => [Dict{String,Any}("primitive" => "t2_reg!",
+                                     "args" => Dict{String,Any}("v" => 4))])
+    local ra = CB.enact_minted!(live_cache_env(), nothing, synth)                       # 오늘
+    local rb = CB.enact_minted!(live_cache_env(), nothing, synth; probe = () -> :SENTINEL)
+    @test ra.verdict === :admit                       # 전제: 두 판 다 실제로 굴렀다
+    @test rb.verdict === :admit
+    # 🔴 `probe` 를 안 주면 필드는 있고 값은 `nothing` 이다.
+    @test hasproperty(ra, :body_probe)
+    @test ra.body_probe === nothing
+    @test rb.body_probe === :SENTINEL                 # 비-0 대조: 채널이 살아 있다
+    # 🔴 **다른 모든 필드가 같다.** 이 루프가 없으면 "probe 가 무해하다" 가 주장으로만 남는다.
+    for k in keys(ra)
+        k === :body_probe && continue
+        @test getproperty(ra, k) == getproperty(rb, k)
+    end
+    # 🔴 계측이 집행을 못 죽인다 — probe 가 던지면 삼키고 `nothing` 이다.
+    local rc = CB.enact_minted!(live_cache_env(), nothing, synth;
+                                probe = () -> error("probe boom"))
+    @test rc.verdict === :admit
+    @test rc.body_probe === nothing
+    for k in keys(ra)
+        k === :body_probe && continue
+        @test getproperty(ra, k) == getproperty(rc, k)
+    end
+    # 🔴 조기 반환도 필드를 갖는다(`_r` 이 모양을 소유한다 — 열한 자리가 한 기본값을 쓴다).
+    local rd = CB.enact_minted!(BARE_ENV, nothing, nothing)
+    @test rd.verdict === :deferred
+    @test hasproperty(rd, :body_probe) && rd.body_probe === nothing
+    local re_ = CB.enact_minted!(BARE_ENV, nothing, synth; probe = () -> :NEVER)
+    @test hasproperty(re_, :body_probe)
+end
+
+@testset "(26g) 결정 행의 넷째 칸 `world_delta_body`" begin
+    local saved = CB.MONITOR_RESPEC[]
+    try
+        local row = Dict{String,Any}()
+        CB.MONITOR_RESPEC[] = row
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             steps = NamedTuple[], world_delta_body = nothing))
+        @test haskey(row, "world_delta_body")           # 키는 언제나 있다
+        @test row["world_delta_body"] === nothing       # 🔴 "못 쟀다"
+        @test occursin("\"world_delta_body\":null", JSON3.write(row))
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             steps = NamedTuple[],
+                             world_delta_body = (closed = 1, active = 2, n_edges = 3,
+                                                 n_binding_changed = 4,
+                                                 n_weights_changed = 5)))
+        @test row["world_delta_body"] isa AbstractDict
+        @test length(row["world_delta_body"]) == 5      # 다섯 축이 전부 실린다
+        @test row["world_delta_body"]["n_weights_changed"] == 5
+        # 🔴 안 던진다: 필드가 아예 없는 구세대 집행부는 `nothing` 이다.
+        record_world_delta!((world_delta = nothing, interface_calls = nothing,
+                             steps = NamedTuple[]))
+        @test row["world_delta_body"] === nothing
+    finally
+        CB.MONITOR_RESPEC[] = saved
     end
 end
 

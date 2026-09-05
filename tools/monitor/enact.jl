@@ -917,8 +917,13 @@ _is_countable_world_set(x) = x isa AbstractSet
    대신 예외로 끝나고 호출자는 세계 상태를 통째로 잃는다. `env` 는 이 함수의 계약을 모르는
    임의의 모양으로 온다(시험 픽스처 · 부분 env) — 필드가 없으면 그냥 못 잰 것이다.
 
-🔴 **넷을 전부 읽어야 지문이다.** 하나라도 못 읽으면 `nothing` 을 낸다 — 반쯤 잰 지문의
-   차분은 무엇을 뜻하는지 아무도 적을 수 없고, 그 모호함이 정확히 이 필드가 없애려는 것이다.
+🔴 **다섯을 전부 읽어야 지문이다**(2026-09-04 Task 2 가 `weights` 를 더해 넷 → 다섯이
+   됐다). 하나라도 못 읽으면 `nothing` 을 낸다 — 반쯤 잰 지문의 차분은 무엇을 뜻하는지
+   아무도 적을 수 없고, 그 모호함이 정확히 이 필드가 없애려는 것이다.
+
+🔴 **`weights` 는 스냅샷이다(`copy`).** 접근자가 살아 있는 `Dict` 를 참조로 돌려주므로,
+   안 뜨면 사전 지문이 body 가 편집하는 그 dict 을 가리켜 차분이 **언제나 0** 이 된다.
+   `binding` 에는 같은 위험이 없다(`assignment_binding` 이 호출마다 새 Dict 을 짓는다).
 
 ⚠️ `binding` 은 **하한**이다(정본 근거는 `assignment_binding`(`src/respec/common_resolve.jl`)
    의 docstring — 팀이 맡은 정점은 정렬 첫째만 담는다). 그래서 아래 `n_binding_changed` 가
@@ -962,10 +967,27 @@ function _world_digest(env)
         #    **`length` 가 조용히 성공하는 두 축**뿐이다.
         _is_countable_world_set(env.cache.closed_set) || return nothing
         _is_countable_world_set(env.active_build_steps) || return nothing
+        # 🔴 **다섯째 축 (2026-09-04, Task 2). `sched.weights`.** 유료 런 1 의 body 는 정확히
+        #    이것을 편집했는데 네 축이 전부 0 이었다 — 그러면 로그가 "안 바뀌었다" 와 "그
+        #    축을 안 잰다" 를 같은 관측으로 만든다. 진실원은 `OperatingSchedule.weights`
+        #    (`src/essential_tg_coponents.jl`)이고 읽는 자리는 접근자 하나다.
+        #    ⚠️ **동명이인 주의**: `MultiDeadlineCost.weights::Vector{Float64}` 는 무관하다.
+        # 🔴 **스냅샷을 뜬다 — `copy` 가 하중을 진다.** `get_root_node_weights` 는 살아 있는
+        #    `Dict` 를 **참조로** 돌려준다(`sched.weights` 그 자체). 안 뜨면 `_pre` 의
+        #    weights 가 body 가 편집하는 바로 그 dict 을 가리켜 차분이 **언제나 0** 이 된다 —
+        #    "안 바꿨다" 를 참칭하는, 이 파일이 도처에서 막는 그 사고다.
+        #    ⚠️ `binding` 에는 같은 위험이 **없다**: `assignment_binding`
+        #    (`src/respec/common_resolve.jl`)이 호출마다 새 `Dict{Int,Int}` 를 짓는다(실측).
+        # 🔴 모양 가드는 전부-아니면-무 규약이다(위 두 축과 같은 이유): `AbstractDict` 가
+        #    아니면 지문 자체가 `nothing` 이다. `env.sched` 가 아예 없거나 접근자가 던지면
+        #    아래 `catch` 가 이미 `nothing` 을 낸다.
+        local w = CB.get_root_node_weights(env.sched)
+        w isa AbstractDict || return nothing
         return (closed   = length(env.cache.closed_set),
                 active   = length(env.active_build_steps),
                 n_edges  = CB.Graphs.ne(env.sched.graph),
-                binding  = CB.assignment_binding(env.sched))
+                binding  = CB.assignment_binding(env.sched),
+                weights  = copy(w))
     catch
         return nothing
     end
@@ -997,16 +1019,32 @@ function _world_delta(a, b)
     #    실측). 예외라면 아래 `catch` 가 `nothing`("못 쟀다")으로 바꿔 주는데, 이 모양은
     #    "쟀다" 를 참칭한다 — 삼상 규약이 막으려는 것 그 자체다. 그래서 모양을 먼저 본다.
     (a.binding isa AbstractDict && b.binding isa AbstractDict) || return nothing
+    # 🔴 다섯째 축(2026-09-04, Task 2)의 가드. **`binding` 가드와 같은 이유·같은 모양**이다:
+    #    문자열이 오면 `get`·`keys` 가 둘 다 성공해 아래 루프가 조용히 돌고 길이가 측정값을
+    #    참칭한다(그 결함이 `binding` 에서 실제로 났다).
+    # ⚠️ `hasproperty` 를 **먼저** 본다. 다섯째 축 이전 세대의 네-필드 지문이 오면
+    #    `a.weights` 가 **던지고** 그 예외는 `try` 밖이라 아무도 안 삼킨다 — 그러면 계측이
+    #    집행을 죽인다. 그 판은 `nothing`("못 쟀다")이다.
+    (hasproperty(a, :weights) && hasproperty(b, :weights)) || return nothing
+    (a.weights isa AbstractDict && b.weights isa AbstractDict) || return nothing
     try
         changed = 0
         for (v, r) in b.binding
             get(a.binding, v, nothing) === r || (changed += 1)
         end
         for v in keys(a.binding); haskey(b.binding, v) || (changed += 1); end
+        # 🔴 `!=` 가 아니라 `!isequal` 이다. 값이 `Float64` 라 `NaN != NaN` 이 참이고,
+        #    그러면 **아무도 안 건드린** NaN 가중치가 매 판 "바뀌었다" 로 센다.
+        w_changed = 0
+        for (k, v) in b.weights
+            isequal(get(a.weights, k, nothing), v) || (w_changed += 1)
+        end
+        for k in keys(a.weights); haskey(b.weights, k) || (w_changed += 1); end
         return (closed = b.closed - a.closed,
                 active = b.active - a.active,
                 n_edges = b.n_edges - a.n_edges,
-                n_binding_changed = changed)
+                n_binding_changed = changed,
+                n_weights_changed = w_changed)
     catch
         return nothing
     end
@@ -1034,6 +1072,7 @@ end
 _world_delta_str(wd) = wd === nothing ? "n/a(not measured)" :
     string("closed=", wd.closed, " active=", wd.active,
            " n_edges=", wd.n_edges, " n_binding_changed=", wd.n_binding_changed,
+           " n_weights_changed=", wd.n_weights_changed,
            " (n_binding_changed 는 하한이다)")
 
 """
@@ -1060,6 +1099,19 @@ _world_delta_str(wd) = wd === nothing ? "n/a(not measured)" :
 """
 _delta_scope(resolve) = resolve === :not_needed_surface ? "body_only" :
                         resolve === :resolved           ? "body+harness_resolve" : "unknown"
+
+"""
+    BODY_ONLY_PROBED
+
+`world_delta_body` 의 범위 이름. **상수다 — 리터럴로 베끼지 말 것.**
+
+🔴 왜 `_delta_scope` 의 값이 아닌가 (2026-09-04, Task 2). `_delta_scope` 는 `r.resolve` 에서
+   **유도**하는 판독이고, 그 판독의 `body_only` 는 "하네스가 재풀이할 이유가 없었다" 는
+   뜻이다 — 재풀이가 **돈 판**에서는 영영 안 나온다. `world_delta_body` 는 그것과 다른
+   근거로 body 단독이다: 재풀이가 돌았든 말든 **재풀이 앞에서 직접 찍은 지문**이다.
+   두 사실에 같은 이름을 붙이면 로그를 읽는 사람이 그 둘을 못 가른다.
+"""
+const BODY_ONLY_PROBED = "body_only(probed)"
 
 """
     _steps_row(m) -> Union{Nothing,Vector{Dict{String,Any}}}
@@ -1101,12 +1153,14 @@ end
    Dict 다. 두 번째 기록 경로를 만들지 않는다.
 
 🔴 **삼상이 행에서도 산다.** 행이 있으면 키는 **언제나** 쓰인다: `nothing`(못 쟀다)은
-   `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 네 키를 가진 dict 이다.
+   `null` 로 직렬화되고 `0` 도 `{}` 도 되지 않으며, "쟀는데 0" 은 다섯 키를 가진 dict 이다
+   (2026-09-04 Task 2 가 `n_weights_changed` 를 더해 넷 → 다섯이 됐다).
    키의 **부재**는 셋째 사건("이 코드 이전 세대의 산출물")을 뜻한다.
 
-🔴 **세 칸을 싣는다** — `world_delta` · `interface_calls`(L3) · `steps`(2026-09-04 Task 1).
-   이름은 `record_world_delta!` 그대로다: 호출자가 `tools/monitor/render_demo.jl` 한
-   곳뿐이고 이름 변경은 그 파일까지 건드리므로 이 태스크의 범위 밖이다.
+🔴 **네 칸을 싣는다** — `world_delta` · `interface_calls`(L3) · `steps`(2026-09-04 Task 1) ·
+   `world_delta_body`(Task 2). 이름은 `record_world_delta!` 그대로다: 호출자가
+   `tools/monitor/render_demo.jl` 한 곳뿐이고 이름 변경은 그 파일까지 건드리므로 이
+   태스크의 범위 밖이다.
 
 🔴 **절대 안 던진다.** 이 호출은 `enact_minted_decision!` 의 `try` **밖**이다(호출부는
    `policy_producer` 안이고, 거기서 새는 예외는 `engage_fallback!` = 라인 정지로 간다).
@@ -1120,7 +1174,8 @@ function record_world_delta!(m)
         rs["world_delta"] = wd === nothing ? nothing :
             Dict{String,Any}("closed" => wd.closed, "active" => wd.active,
                              "n_edges" => wd.n_edges,
-                             "n_binding_changed" => wd.n_binding_changed)
+                             "n_binding_changed" => wd.n_binding_changed,
+                             "n_weights_changed" => wd.n_weights_changed)
         # 🔴 **D5 (Wave D). 같은 호출이 L3 도 싣는다.** 사다리(spec §0)의 두 칸이
         #    같은 결정 행에서 같은 방식으로 읽혀야 유료 런이 둘을 짝지어 채점할 수 있다.
         #    호출 자리를 하나 더 만들지 않는 이유: 이 함수의 유일한 호출자는
@@ -1142,6 +1197,16 @@ function record_world_delta!(m)
         #    ("쟀는데 없다"). 그 둘을 뭉개면 body 가 한 걸음도 안 돈 판과 필드가 아예 없는
         #    구세대 산출물이 같은 값이 된다.
         rs["steps"] = _steps_row(m)
+        # ---- 넷째 칸: `world_delta_body` (2026-09-04, Task 2) ---------------------------
+        # 🔴 같은 모양·같은 삼상이다. `nothing` 은 "probe 를 못 찍었다"(= 집행이 그 자리에
+        #    도달 못 했거나 지문이 안 나왔다)이고, 0 의 dict 은 "찍었는데 body 가 세계를 안
+        #    바꿨다" 다. 그 둘을 뭉개면 이 칸이 재려는 귀속이 통째로 사라진다.
+        local wdb = try m.world_delta_body catch; nothing end
+        rs["world_delta_body"] = wdb === nothing ? nothing :
+            Dict{String,Any}("closed" => wdb.closed, "active" => wdb.active,
+                             "n_edges" => wdb.n_edges,
+                             "n_binding_changed" => wdb.n_binding_changed,
+                             "n_weights_changed" => wdb.n_weights_changed)
     catch e
         # 🔴 `@info` 가 아니라 `println` 이다(이 파일의 다른 `[minted]` 줄과 같은 이유).
         println("[minted] world_delta 행 기록 실패 (렌더는 계속한다): ",
@@ -1240,11 +1305,19 @@ end
 **보다 먼저** 부르고(Task 9 — 생성 원시는 그 순간까지 존재하지 않는다), 등록·집행 여부를
 로그와 반환값 양쪽에 남긴다. 반환은 `enact_minted!` 의 일곱 필드에 `handled::Bool`·
 `registered::Union{Nothing,Bool}`·`impl_rejected_why::Union{Nothing,String}`·
-`world_delta::Union{Nothing,NamedTuple}` 를 더한 것이다.
+`world_delta::Union{Nothing,NamedTuple}`·`world_delta_body::Union{Nothing,NamedTuple}`
+를 더한 것이다.
 
 🔴 **`world_delta` 는 D18 이 더한 유일한 "세계가 실제로 바뀌었나" 관측이다** — 정의도 근거도
 위 `_world_digest`/`_world_delta` 가 소유한다(여기 다시 적지 않는다). 삼상이다: `nothing` =
 지문을 못 찍었다, 0 의 튜플 = 찍었는데 안 바뀌었다.
+
+🔴 **`world_delta_body` 는 그것과 다른 것을 잰다**(2026-09-04, Task 2). `world_delta` 는
+**집행 봉투 전체**다 — `_issue_resume!`/`_resolve_if_needed!` 가 `CB.enact_minted!` 안에서
+돌기 때문이다(F4). `world_delta_body` 는 그 하네스 걸음들 **앞**에서 `probe` 로 직접 찍은
+지문과의 차분이라 **body 단독**이다. 유료 런 1 이 `delta_scope=body+harness_resolve` 라
+0 이든 아니든 귀속이 불가능했던 자리가 정확히 이것이다. 삼상은 같다: `nothing` = probe 를
+못 찍었다, 0 의 튜플 = 찍었는데 body 가 세계를 안 바꿨다.
 
 🔴 **`registered` 는 셋이다**(2026-09-03 최종 리뷰 F2, 컨트롤러 판정 R7 — R2 를 대체한다).
 `nothing` = 등록이 실제로 됐는지 이 함수가 판정하지 못했다(catch 로 떨어졌는데 그 지점까지
@@ -1378,6 +1451,11 @@ function enact_minted_decision!(env, truth, decision)
     #    ("못 쟀다")을. 지문을 아예 안 찍는 반환 자리(조기 deferred · `_reject_malformed`)는
     #    초기값 그대로 `nothing` 이다: **0 의 튜플이 아니다** — 그 자리들은 세계를 안 읽었다.
     local world_delta::Union{Nothing,NamedTuple} = nothing
+    # 🔴 Task 2 (2026-09-04). **body 단독**의 차분. `world_delta` 와 **같은 이유로** `try`
+    #    밖이다(위 문단): try 의 결속은 catch 에 안 보인다. 삼상은 그대로 — `nothing` 은
+    #    "probe 를 못 찍었다"(집행이 거기 도달 못 했거나 지문이 안 나왔다)이고 0 의 튜플은
+    #    "찍었는데 body 가 세계를 안 바꿨다" 다.
+    local world_delta_body::Union{Nothing,NamedTuple} = nothing
     # 🔴 D5 (Wave D). **L3 이 L4 와 같은 자리에서 읽힌다.** `world_delta` 와 **같은
     #    이유로** `try` 밖이다(위 F2/R7 문단): try 의 결속은 catch 에 안 보이므로, 안에서
     #    선언하면 catch 가 값을 손으로 다시 적을 수밖에 없고 그 복사본이 거짓말을 한다.
@@ -1449,6 +1527,7 @@ function enact_minted_decision!(env, truth, decision)
                     resolve = :none, args_from = nothing, n_calls = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
                     world_delta = world_delta,
+                    world_delta_body = world_delta_body,
                     interface_calls = interface_calls)
         end
 
@@ -1500,6 +1579,7 @@ function enact_minted_decision!(env, truth, decision)
                     args_from = nothing, n_calls = nothing,
                     registered = registered, impl_rejected_why = impl_rejected_why,
                     world_delta = world_delta,
+                    world_delta_body = world_delta_body,
                     interface_calls = interface_calls)
         end
         nm isa AbstractString ||
@@ -1643,8 +1723,16 @@ function enact_minted_decision!(env, truth, decision)
         #    안에 있다 — `r.resolve` — 그래서 아래 로그가 `_delta_scope` 로 그 판독을 명시한다.
         #    집행은 **안 바꾼다**(재구조화는 이 판독을 얻는 데 필요하지 않다).
         local _pre = _world_digest(env)
-        local r = CB.enact_minted!(env, truth, sl)
+        # 🔴 Task 2 (2026-09-04). `probe` 는 **계측 하나**다 — 집행 경로는 안 바뀐다.
+        #    `CB.enact_minted!` 가 body 루프 직후(캐시 재개 **앞**)와 던진 경로(재개·재풀이
+        #    **앞**)에서 이것을 한 번 부르고, 그 값이 `r.body_probe` 로 돌아온다. 그래서
+        #    아래 두 차분이 **다른 것**을 잰다: `world_delta` 는 집행 봉투 전체(F4 가 적은
+        #    그대로), `world_delta_body` 는 하네스가 손대기 전의 body 단독이다.
+        local r = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
         world_delta = _world_delta(_pre, _world_digest(env))
+        # 🔴 **기존 `world_delta` 는 그대로 둔다 — 지우지 않는다.** 두 값은 서로의 대조군이다:
+        #    봉투가 0 이 아닌데 body 가 0 이면 그 편집은 하네스의 재풀이가 한 것이다.
+        world_delta_body = _world_delta(_pre, r.body_probe)
         # 🔴 **네** 연언지다. `resume === :failed` 를 빼면 "세계는 고쳤는데 프론티어가 낡았다" 가
         #    `handled=true` 로 폴백을 삼켜, 이 파일의 docstring 이 막겠다고 적은 바로 그
         #    조용한 미복구가 된다(2026-08-30 최종 리뷰).
@@ -1704,8 +1792,17 @@ function enact_minted_decision!(env, truth, decision)
         # 🔴 `delta_scope` 는 F4 의 판독이다: `body_only` 인 판의 차분만 **body 단독**이고,
         #    `body+harness_resolve` 인 판은 하네스의 공통 MILP 재풀이까지 포함한 봉투 전체의
         #    차분이다. 이 값을 안 적으면 유료 런의 로그를 읽는 사람이 그 둘을 못 가른다.
+        # 🔴 Task 2: 줄이 **두 쌍**을 찍는다. `delta_scope` 는 `r.resolve` 에서 유도한
+        #    봉투의 판독이고, `body_scope` 는 probe 자리에서 온 **다른 근거**의 이름이다
+        #    (`BODY_ONLY_PROBED` 가 그 구별을 소유한다). `r.body_probe` 가 없으면
+        #    `_world_delta_str` 이 "못 쟀다" 를 찍는다 — 리터럴을 손으로 안 적는다(m3).
         println("[minted] world_delta=", _world_delta_str(world_delta),
-                " delta_scope=", _delta_scope(r.resolve))
+                " delta_scope=", _delta_scope(r.resolve),
+                " world_delta_body=", _world_delta_str(world_delta_body),
+                # 🔴 못 잰 판에 범위 이름을 붙이지 않는다 — `n/a` 옆의 `body_only(probed)` 는
+                #    "재지도 않은 것의 범위" 라는 형용모순이고, m3 이 고친 것과 같은 거짓말이다.
+                #    `unknown` 은 `_delta_scope` 가 이미 쓰는 "모른다" 다.
+                " body_scope=", world_delta_body === nothing ? "unknown" : BODY_ONLY_PROBED)
 
         handled || println("[minted] NOT handled → 기본 복구 사슬로 폴백한다 ",
                            "(이 폴백은 조용하지 않다 — verdict=", r.verdict,
@@ -1720,6 +1817,7 @@ function enact_minted_decision!(env, truth, decision)
                 args_from = r.args_from, n_calls = r.n_calls,
                 registered = registered, impl_rejected_why = impl_rejected_why,
                 world_delta = world_delta,
+                world_delta_body = world_delta_body,
                 interface_calls = interface_calls)
     catch e
         # 🔴 여기서 새면 렌더가 선다(위 docstring). 크게 찍고 정상 반환한다.
@@ -1778,6 +1876,7 @@ function enact_minted_decision!(env, truth, decision)
                 args_from = nothing, n_calls = nothing,
                 registered = registered, impl_rejected_why = impl_rejected_why,
                 world_delta = world_delta,
+                world_delta_body = world_delta_body,
                 interface_calls = interface_calls)
     end
 end
