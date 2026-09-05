@@ -767,6 +767,72 @@ function _status_symbols(m::Method)
 end
 
 """
+    _arg_coercions(m::Method) -> Union{Nothing,Vector{String}}
+
+**타입이 안 붙은 위치 인자**를 이 메서드의 소스가 무엇으로 바꿔 쓰는지. 못 유도하면 `nothing`.
+
+🔴 왜 존재하나 (2026-09-05, 유료 런 19·20·22). 세 판이 같은 문장으로 죽었다 —
+   `Vector{Float64}(::TransformNode)` · `Vector{Float64}(::AffineMap)` ×2. 런 22 의 body 는
+   (나-1)이 광고한 `global_transform(goal_config(node))` 를 **맞게** 쓴 다음 그 결과를
+   `free_space_status(start, goal, …)` 에 넘겼다. 그 시그니처의 `start`·`goal` 은 **무타입**이라
+   광고가 "좌표를 꺼내는 길"은 알려 주고 "받는 쪽이 원하는 모양"은 한 글자도 안 알려 줬다.
+   그 사이의 변환은 **callee 의 body 에 이미 적혀 있다**: `Vector{Float64}(goal)[1:2]`.
+   ⟹ 유도가 (여기서는 `Any` 로) 넓어지는 자리를 소스에서 메우는, `_status_symbols` 와 같은 수선이다.
+
+규칙 하나: 선언 타입이 `Any` 인 위치 인자 이름을 모으고, 소스에서 **그 이름 하나만**을 받는 호출
+`C(name)` 중 `C` 가 타입처럼 생긴 것(대문자로 시작하는 심볼, 또는 `T{…}`)을 모은다. 그 호출 바로
+바깥이 첨자면(`C(name)[1:2]`) 첨자까지 적는다 — **길이 요구가 거기 있다**(평면 점이라는 사실).
+
+🔴 `Any` 인 인자가 하나도 없으면 소스를 **읽지도 않는다**. 파일 파싱은 메서드마다 도는 비용이고,
+   이 판정은 타입만으로 먼저 배제된다.
+
+⚠️ **구문적 상계다.** 다른 함수가 대신 변환해 주는 경우(`h(g(x))`)는 못 본다. 그래서 렌더 문구가
+   "must be" 가 아니라 `coerced in source` 다 — 모델이 이것을 폐집합으로 읽으면 안 된다.
+
+🔴 삼상: 무타입 인자가 없거나 변환을 못 찾으면 **키를 안 만든다**(`[]` 를 실으면 "변환이 없다" 는
+   주장이 되는데 우리는 그것을 안 쟀다).
+"""
+function _arg_coercions(m::Method)
+    Ts  = collect(Base.unwrap_unionall(m.sig).parameters)[2:end]
+    nms = Base.method_argnames(m)
+    untyped = Set{Symbol}()
+    for (i, T) in enumerate(Ts)
+        T === Any || continue
+        length(nms) >= i + 1 || continue
+        nm = nms[i + 1]
+        startswith(String(nm), "#") && continue      # 이름 없는 인자의 젠심은 이름이 아니다
+        push!(untyped, nm)
+    end
+    isempty(untyped) && return nothing
+    ex = _defining_expr(m)
+    ex === nothing && return nothing
+    acc = Set{String}()
+    typeish(C) = (C isa Symbol && isuppercase(first(String(C)))) ||
+                 (C isa Expr && C.head === :curly)
+    # `C(name)` 이면 그 인자 이름을, 아니면 `nothing`.
+    conv(x) = (x isa Expr && x.head === :call && length(x.args) == 2 &&
+               x.args[2] isa Symbol && x.args[2] in untyped && typeish(x.args[1])) ?
+              x.args[2] : nothing
+    walk(x) = begin
+        x isa Expr || return
+        if x.head === :ref && length(x.args) >= 2
+            a = conv(x.args[1])
+            if a !== nothing
+                push!(acc, string(a, " <- ", x))     # 첨자까지 붙은 원문 그대로
+                foreach(walk, x.args[2:end])         # 변환 자체는 이미 실었다 — 두 번 안 싣는다
+                return
+            end
+        end
+        a = conv(x)
+        a === nothing || push!(acc, string(a, " <- ", x))
+        foreach(walk, x.args)
+    end
+    walk(ex)
+    isempty(acc) && return nothing
+    return sort!(collect(acc))
+end
+
+"""
     _element_type(rt) -> Union{Nothing,String}
 
 이 반환을 **순회하면 무엇이 나오는가**. 못 말하면 `nothing`.
@@ -860,6 +926,8 @@ function method_entries(reach, acc)
             #    각각 그 자리에서 죽었다). 같은 삼상 규약: 못 유도하면 키를 안 만든다.
             ss = _status_symbols(m)
             ss === nothing || (e["status_symbols"] = ss)
+            ac = _arg_coercions(m)
+            ac === nothing || (e["arg_coercions"] = ac)
             rt = _infer_return(f, tt_of(m))
             if rt !== nothing
                 et = _element_type(rt)

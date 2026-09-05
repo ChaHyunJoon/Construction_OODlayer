@@ -339,4 +339,62 @@ end
     ns = Set(String[String(t.name) for t in j.types])
     @test !("ForbidHeavyCargo" in ns)
 end
+
+# 🔴 (다) (2026-09-05). 무타입 위치 인자의 **변환**을 광고한다 — 유료 런 19·20·22 가
+#    전부 이 자리에서 죽었다: `Vector{Float64}(::TransformNode)`(19) ·
+#    `Vector{Float64}(::AffineMap)`(20·22). (나-1)이 좌표를 **꺼내는** 길을 열자 런 22 의
+#    body 는 그 길을 맞게 골랐고(`global_transform(goal_config(node))`), 그 AffineMap 을
+#    `free_space_status` 의 무타입 `goal` 에 넘겼다. 요구는 callee 의 body 에 이미 적혀
+#    있었다(`Vector{Float64}(goal)[1:2]`) — 광고만 그것을 안 옮겼다.
+@testset "(9c) 🔴 (다): 무타입 인자가 소스에서 무엇으로 바뀌는지 광고된다" begin
+    j  = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    _ac(m) = haskey(m, :arg_coercions) ? String[String(x) for x in m.arg_coercions] : nothing
+
+    # ---- 런 22 를 죽인 바로 그 메서드 ---------------------------------------------------
+    fs = only(filter(m -> String(m.name) == "free_space_status", ms))
+    ac = _ac(fs)
+    @test ac !== nothing
+    @test length(ac) == 2
+    @test any(c -> startswith(c, "start <- "), ac)
+    @test any(c -> startswith(c, "goal <- "),  ac)
+    # 🔴 첨자를 지키는 것이 이 개입의 절반이다: `[1:2]` 가 빠지면 "벡터여야 한다" 까지만
+    #    남고 **평면 점**이라는 사실이 사라진다.
+    @test all(c -> occursin("Vector{Float64}", c) && occursin("[1:2]", c), ac)
+
+    ge = only(filter(m -> String(m.name) == "goal_engulfed", ms))
+    @test _ac(ge) !== nothing
+    @test all(c -> occursin("[1:2]", c), _ac(ge))
+
+    # ---- 🔴 음성 대조 1: **타입이 붙은** 인자에는 절대 안 붙는다 -------------------------
+    #    붙으면 시그니처가 이미 말하는 것에 둘째 진실원이 생긴다(규약 6 이 `soc` 에서
+    #    걷어낸 것과 같은 결함 부류).
+    n_ac = 0
+    for m in ms
+        a = _ac(m); a === nothing && continue
+        pos = first(split(lstrip(String(m.signature), '('), ';'))
+        for c in a
+            n_ac += 1
+            arg = first(split(c, " <- "))
+            @test !occursin(string(arg, "::"), pos)
+            @test occursin(arg, pos)
+        end
+    end
+    @test n_ac >= 5                      # 모집단이 비면 위 시험들이 아니라 여기가 빨개진다
+
+    # ---- 🔴 음성 대조 2: 삼상 — 못 유도하면 **키가 없다** --------------------------------
+    #    `[]` 를 실으면 "변환이 없다" 는 주장이 되는데 우리는 그것을 안 쟀다.
+    @test !any(m -> _ac(m) == String[], ms)
+    @test any(m -> _ac(m) === nothing, ms)
+
+    # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 **안 움직였다** ----------------------------
+    #    이 개입은 `method_entries` 의 필드 하나만 더한다. 수가 움직였다면 그것은
+    #    이 태스크가 의도하지 않은 부작용이고, 조용히 지나가면 안 된다.
+    @test length(ms) == 224
+    @test count(m -> m.callable === true, ms) == 195
+    ns = Set(String[String(t.name) for t in j.types])
+    @test !("AffineMap" in ns)
+    @test !("Ball2" in ns)
+end
+
 end # module

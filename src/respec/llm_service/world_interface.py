@@ -123,6 +123,18 @@ _RULES = (
     "     display name anywhere: get an id out of env (e.g. `keys(env.agent_policies)`) and\n"
     "     pass that object -- a name you invented throws `KeyError`. A keyword that carries\n"
     "     an id defaults to `nothing` -- see rule 1.\n"
+    # 🔴 2026-09-05, 유료 런 19·20·22. 세 판이 같은 문장으로 죽었다:
+    #    `Vector{Float64}(::TransformNode)` · `Vector{Float64}(::AffineMap)` ×2. 런 22 는
+    #    좌표를 꺼내는 길을 **맞게** 골라 놓고(그 길은 (나-1)에 광고돼 있다) 그 결과를
+    #    무타입 인자에 넘겼다 — 그 자리엔 지킬 계약이 광고돼 있지 않았다.
+    #    규약 6 과 같은 부류다: 시그니처가 못 나르는 것만 산문으로 남기고, 구체 타입은
+    #    인용하지 않는다(기계가 `coerced in source:` 로 스스로 광고한다).
+    "  7. An argument written WITHOUT a type in a signature promises you nothing: nothing\n"
+    "     checks your value on the way in, so it reaches the callee's own arithmetic as it\n"
+    "     is. Where that callee's source converts the argument itself, the conversion is\n"
+    "     printed on its line as `coerced in source:` -- pass a value that conversion\n"
+    "     accepts. Where no conversion is printed the required shape is not advertised at\n"
+    "     all; prefer a listed function whose argument carries a type.\n"
 )
 
 
@@ -166,6 +178,16 @@ def _method_line(m) -> str:
     ss = m.get("status_symbols") or []
     if ss:
         line += "      status seen in source: %s" % " | ".join(":" + x for x in ss)
+    # 🔴 2026-09-05, 유료 런 19·20·22. 세 판이 같은 문장으로 죽었다 —
+    #    `Vector{Float64}(::TransformNode)` · `Vector{Float64}(::AffineMap)` ×2. 런 22 의 body 는
+    #    광고된 `global_transform(goal_config(node))` 를 **맞게** 부른 뒤 그 AffineMap 을 무타입
+    #    인자 `goal` 에 넘겼다: 시그니처가 그 자리에서 아무 모양도 약속하지 않기 때문이다.
+    #    변환은 callee 의 소스에 이미 적혀 있고, 생성기가 그것을 그대로 옮긴다.
+    # ⚠️ 문구가 "must be" 가 **아니다.** 생성기의 판정은 구문적 상계라 다른 함수가 대신
+    #    변환해 주는 경우를 못 본다(근거 정본은 `_arg_coercions` 의 docstring).
+    ac = m.get("arg_coercions") or []
+    if ac:
+        line += "      coerced in source: %s" % " ; ".join(ac)
     miss = m.get("missing") or []
     if miss:
         line += "      missing: %s" % ", ".join(miss)

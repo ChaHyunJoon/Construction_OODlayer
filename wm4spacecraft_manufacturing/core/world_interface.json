@@ -985,6 +985,10 @@
             "returns": "Union{@NamedTuple{status::Symbol, agent::String, n::Float64}, @NamedTuple{status::Symbol, agent::String, n::Int64}}"
         },
         {
+            "arg_coercions": [
+                "goal <- (Vector{Float64}(goal))[1:2]",
+                "start <- (Vector{Float64}(start))[1:2]"
+            ],
             "name": "free_space_status",
             "missing": [
             ],
@@ -1221,6 +1225,9 @@
             "returns": "ConstructionBots.TransformNode"
         },
         {
+            "arg_coercions": [
+                "goal <- (Vector{Float64}(goal))[1:2]"
+            ],
             "name": "goal_engulfed",
             "missing": [
             ],
@@ -1938,6 +1945,9 @@
             "returns": "Vector{Vector{Float64}}"
         },
         {
+            "arg_coercions": [
+                "center <- (Vector{Float64}(center))[1:2]"
+            ],
             "name": "root_goal_coverage",
             "missing": [
             ],
@@ -2494,6 +2504,9 @@
             "returns": "NamedTuple{(:min_clearance, :n_violations, :n_agents, :n_zones), <:Tuple{Any, Int64, Int64, Int64}}"
         },
         {
+            "arg_coercions": [
+                "center <- (Vector{Float64}(center))[1:2]"
+            ],
             "name": "zone_clears_root_goals",
             "missing": [
             ],
@@ -2524,6 +2537,10 @@
             "returns": "NamedTuple{(:zone, :exists, :center, :radius, :blocked, :n_blocked, :feasible, :n_restage_feasible, :root_covered, :root_total, :root_frac, :n_work_overlap, :teams, :n_teams_forming, :n_teams_covered, :n_nav_goals, :n_nav_blocked, :n_nav_engulfed, :n_nav_disconnected, :n_agent_trapped, :n_nav_downstream, :n_completion_blocked, :n_completion_open, :project_blocked, :relocate_delta, :relocate_norm, :relocate_feasible, :verdict), <:Tuple{Symbol, Bool, Any, Any, Vector{ConstructionBots.AbstractID}, Int64, Vector{ConstructionBots.AbstractID}, Int64, Any, Int64, Any, Any, Vector{NamedTuple}, Int64, Int64, Any, Any, Any, Any, Any, Any, Any, Any, Any, Union{Nothing, Vector{Float64}}, Float64, Bool, Symbol}}"
         },
         {
+            "arg_coercions": [
+                "center <- (Vector{Float64}(center))[1:2]",
+                "r <- Float64(r)"
+            ],
             "name": "zone_relocatable",
             "missing": [
             ],

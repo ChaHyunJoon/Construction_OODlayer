@@ -510,3 +510,83 @@ def test_the_closure_did_not_widen():
     for foreign in ("Ball2", "Hyperrectangle", "HyperSphere", "AffineMap"):
         assert foreign not in tnames, foreign
 
+
+
+# =================================================================================================
+# 무타입 위치 인자의 변환 — 유료 런 19·20·22 (2026-09-05)
+# =================================================================================================
+def test_the_untyped_coordinate_args_that_killed_three_runs_are_advertised():
+    """🔴 세 판이 같은 문장으로 죽었다: `Vector{Float64}(::TransformNode)`(19) ·
+    `Vector{Float64}(::AffineMap)`(20·22). 런 22 의 body 는 좌표를 꺼내는 길을 **맞게**
+    골라 놓고(`global_transform(goal_config(node))`) 그 AffineMap 을 `free_space_status`
+    의 무타입 인자에 넘겼다 — 그 자리의 요구가 광고에 한 글자도 없었다."""
+    import world_interface as WI
+    m = _named("free_space_status")
+    got = m.get("arg_coercions")
+    assert got is not None, "free_space_status 에 변환이 안 실렸다"
+    assert len(got) == 2, got
+    assert all(c.startswith(("goal <- ", "start <- ")) for c in got), got
+    assert all("Vector{Float64}" in c and "[1:2]" in c for c in got), got
+    line = WI._method_line(m)
+    assert "coerced in source:" in line, line
+    assert "Vector{Float64}" in line and "[1:2]" in line, line
+
+
+def test_the_length_requirement_rides_along_because_the_index_is_kept():
+    """🔴 첨자(`[1:2]`)를 버리면 "벡터여야 한다" 까지만 남고 **평면 점이라는 사실**이
+    사라진다. 그것이 이 두 함수가 실제로 요구하는 것이다."""
+    import world_interface as WI
+    for name in ("goal_engulfed", "zone_clears_root_goals", "root_goal_coverage"):
+        m = _named(name)
+        ac = m.get("arg_coercions")
+        assert ac and any("[1:2]" in c for c in ac), (name, ac)
+        assert "[1:2]" in WI._method_line(m), name
+
+
+def test_every_advertised_coercion_names_an_argument_that_is_really_untyped():
+    """🔴 음성 대조. 타입이 붙은 인자에 이 사실을 실으면 거짓 광고다 — 시그니처가 이미
+    말하고 있는 것을 두 번째 진실원으로 다시 말하게 되고, 둘이 갈리는 날 아무도 못 잡는다."""
+    import world_interface as WI
+    ms = WI.load_world_interface()["methods"]
+    seen = 0
+    for m in ms:
+        for c in m.get("arg_coercions") or []:
+            seen += 1
+            arg = c.split(" <- ", 1)[0]
+            pos = m["signature"].lstrip("(").split(";", 1)[0]
+            assert ("%s::" % arg) not in pos, (m["name"], c, m["signature"])
+            assert arg in pos, (m["name"], c, m["signature"])
+    assert seen >= 5, seen
+
+
+def test_arg_coercions_is_tri_state_and_absent_where_nothing_was_derived():
+    """🔴 삼상: 못 유도하면 **키가 없다**. `[]` 를 실으면 "변환이 없다" 는 주장이 되는데
+    우리는 그것을 안 쟀다 — 소스를 못 읽었거나 무타입 인자가 없었을 뿐이다."""
+    import world_interface as WI
+    ms = WI.load_world_interface()["methods"]
+    have = [m for m in ms if "arg_coercions" in m]
+    assert len(have) >= 5, len(have)
+    assert not any(m.get("arg_coercions") == [] for m in ms)
+    bare = next(m for m in ms if "arg_coercions" not in m)
+    assert "coerced in source:" not in WI._method_line(bare)
+
+
+def test_the_coercion_wording_does_not_claim_a_closed_contract():
+    """🔴 판정은 구문적 상계다 — 다른 함수가 대신 변환해 주는 경우(`h(g(x))`)는 못 본다.
+    문구가 "must be" 로 바뀌면 우리가 안 잰 것을 잰 것처럼 말하게 된다."""
+    import world_interface as WI
+    line = WI._method_line(_named("free_space_status"))
+    for overclaim in ("must be", "always", "the only", "required type"):
+        assert overclaim not in line, overclaim
+
+
+def test_rule_7_says_an_untyped_argument_promises_nothing():
+    """🔴 규약 6 과 같은 부류로 적는다: 시그니처가 못 나르는 것만 산문으로 남기고 구체
+    타입은 인용하지 않는다 — 기계가 `coerced in source:` 로 스스로 광고한다."""
+    import world_interface as WI
+    r7 = _rules_by_number(WI._RULES)[7]
+    assert "WITHOUT a type" in r7, r7
+    assert "coerced in source:" in r7, r7                    # 렌더와 같은 철자를 가리킨다
+    assert "coerced in source:" in _block()
+    for t in ("Vector{Float64}", "AffineMap", "free_space_status"):
+        assert t not in r7, ("규약부는 구체 타입·동사를 인용하지 않는다", t)
