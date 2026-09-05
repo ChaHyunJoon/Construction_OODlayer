@@ -260,14 +260,18 @@ def build_report(log_path, stream_path, record_path):
     minted_line = None
     minted_fields = {}
     minted_err = None
+    n_minted_lines = 0
+    minted_index_used = None
     try:
         if log_text is None:
             minted_err = log_err or "log not read"
         else:
             matches = MINTED_RE.findall(log_text)
+            n_minted_lines = len(matches)
             if not matches:
                 minted_err = "no '[minted] lane=present' line found in %s" % log_abs
             else:
+                minted_index_used = n_minted_lines - 1  # last one, 0-based
                 minted_line = matches[-1]
                 for key, rx in MINTED_FIELD_RES.items():
                     m = rx.search(minted_line)
@@ -346,12 +350,18 @@ def build_report(log_path, stream_path, record_path):
             }
         else:
             steps_raw = minted_fields.get("steps")
-            if not steps_raw or steps_raw in ("[]",):
-                verdict = UNMEASURED
-                reason = ("'steps=' absent from the matched [minted] line" if not steps_raw
-                          else "steps=[] — empty list, no step recorded")
+            if steps_raw is None:
                 report["rungs"]["L2b_no_exception"] = {
-                    "verdict": verdict, "reason": reason,
+                    "verdict": UNMEASURED,
+                    "reason": "'steps=' key not present on the matched [minted] line",
+                    "evidence_file": log_abs, "evidence_key": "[minted] lane=present ... steps=",
+                    "steps_raw": None, "first_step_name": None, "first_step_status": None,
+                    "first_step_detail": None, "detail_format": None, "raw_line": minted_line,
+                }
+            elif steps_raw == "[]":
+                report["rungs"]["L2b_no_exception"] = {
+                    "verdict": MEASURED_EMPTY,
+                    "reason": "steps=[] — key present, empty list: no step was recorded",
                     "evidence_file": log_abs, "evidence_key": "[minted] lane=present ... steps=",
                     "steps_raw": steps_raw, "first_step_name": None, "first_step_status": None,
                     "first_step_detail": None, "detail_format": None, "raw_line": minted_line,
@@ -384,6 +394,13 @@ def build_report(log_path, stream_path, record_path):
                                                 "steps_raw": None, "first_step_name": None,
                                                 "first_step_status": None, "first_step_detail": None,
                                                 "detail_format": None}
+
+    # m2: be symmetric with L3 (which reports its decision-row count) — every
+    # rung derived from the [minted] line reports how many such lines were in
+    # the log and which one (by index) was used.
+    for _rung_key in ("L1_registered", "L2a_args_channel", "L2b_no_exception"):
+        report["rungs"][_rung_key]["n_minted_lines_seen"] = n_minted_lines
+        report["rungs"][_rung_key]["minted_index_used"] = minted_index_used
 
     # ================= L3 interface calls =================
     try:
@@ -453,8 +470,13 @@ def build_report(log_path, stream_path, record_path):
                 else:
                     is_zero, components = all_numeric_zero(value)
                     if is_zero is None:
-                        verdict = TRUE
-                        reason = "value has no numeric leaves to judge zero-ness; treated as present/non-zero"
+                        # Shape carries no numeric leaves to compare against zero.
+                        # Default-to-unmeasured is the only safe default for an
+                        # instrument: a measured negative (e.g. false, {}, a
+                        # string) must never render as the strongest positive.
+                        verdict = UNMEASURED
+                        reason = ("cannot judge zero-ness of '%s': value=%r (type=%s) carries no "
+                                  "numeric leaves to compare against zero" % (used_field, value, type(value).__name__))
                     elif is_zero:
                         verdict = MEASURED_ZERO
                         reason = None
@@ -600,14 +622,20 @@ def render_text(report):
     r = rg["L0_wrote"]
     fmt_rung("L0  wrote", r, ["value=%r" % r.get("value")])
 
+    def _minted_count_line(r):
+        return "'[minted] lane=present' lines seen in log: %d (using index %s, i.e. the last)" % (
+            r.get("n_minted_lines_seen", 0), r.get("minted_index_used"))
+
     r = rg["L1_registered"]
     fmt_rung("L1  registered", r, [
         "registered=%r  impl_rejected_why=%r" % (r.get("registered"), r.get("impl_rejected_why")),
+        _minted_count_line(r),
     ])
 
     r = rg["L2a_args_channel"]
     fmt_rung("L2a args channel", r, [
         "args_from=%r  n_calls=%r" % (r.get("args_from"), r.get("n_calls")),
+        _minted_count_line(r),
     ])
 
     r = rg["L2b_no_exception"]
@@ -616,6 +644,7 @@ def render_text(report):
         extra.append("first_step: name=%r status=%r detail=%r (format: %s)" % (
             r.get("first_step_name"), r.get("first_step_status"),
             r.get("first_step_detail"), r.get("detail_format")))
+    extra.append(_minted_count_line(r))
     fmt_rung("L2b no exception (first step)", r, extra)
 
     r = rg["L3_interface_calls"]
