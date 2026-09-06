@@ -606,7 +606,11 @@ def test_the_query_run23_said_did_not_exist_now_advertises_its_blocked_list():
     assert rf is not None, "zone_blockage 에 필드가 안 실렸다"
     assert "blocked" in rf, rf
     assert "n_blocked" in rf and "project_blocked" in rf, rf
-    assert "fields seen in source: " in WI._method_line(m)
+    # 🔴 2026-09-05 문구 변경: `zone_blockage` 는 반환 경로가 둘뿐이고 둘 다 NamedTuple
+    #    리터럴이라 수확이 **완전하다**. 그래서 `seen` 이 아니라 `(complete …)` 로 나간다
+    #    (난수 존 시드 1 이 없는 필드를 읽고 죽은 뒤의 수선). 지키려는 것은 그대로다 —
+    #    이 질의가 광고된다는 것.
+    assert "fields (complete" in WI._method_line(m)
     assert "blocked" in WI._method_line(m)
 
 
@@ -657,10 +661,14 @@ def test_returned_fields_is_tri_state_and_the_population_is_not_empty():
 def test_the_field_wording_does_not_claim_one_call_returns_them_all():
     """🔴 갈래의 **합집합**이다 — 한 호출이 전부를 돌려준다는 뜻이 아니다."""
     import world_interface as WI
-    line = WI._method_line(_named("translate_whole_build!"))
-    assert "fields seen in source:" in line
-    for overclaim in ("fields are", "always returns", "the return has", "exactly"):
-        assert overclaim not in line, overclaim
+    # 🔴 이 자리도 이제 `(complete …)` 다. **완전하다** 는 "모든 반환 경로를 읽었다" 는
+    #    뜻이지 "한 호출이 이것을 다 돌려준다" 는 뜻이 아니다 — 여전히 갈래의 합집합이고,
+    #    금지 문구는 두 표기 모두에 걸려야 한다.
+    for name in ("translate_whole_build!", "swap_battery!"):
+        line = WI._method_line(_named(name))
+        assert ("fields (complete" in line) or ("fields seen in source:" in line), name
+        for overclaim in ("fields are", "always returns", "the return has", "exactly"):
+            assert overclaim not in line, (name, overclaim)
 
 
 def WI_methods():
@@ -730,3 +738,52 @@ def test_the_element_wording_does_not_claim_a_closed_shape():
     assert "elements seen in source:" in line
     for overclaim in ("elements are", "each element has exactly", "always"):
         assert overclaim not in line, overclaim
+
+
+# ==========================================================================================
+# 🔴 2026-09-05, 난수 존 시드 1. `fields seen in source:` 는 삼상 규율상 **"본 것"** 이라
+#    목록에 없는 이름이 "없다" 가 아니라 "모른다" 로 읽힌다. 그래서 주조 body 가
+#    `zone_blockage(...).n_nav_blocked` 를 읽고 던졌다 — 그 필드는 `zone_diagnosis` 것이다.
+#    수확이 모든 반환 경로를 덮은 자리에서는 그렇게 말해야 **부재가 판단 근거**가 된다.
+# ==========================================================================================
+def test_a_complete_harvest_says_so_and_a_partial_one_does_not():
+    ms = WI_methods()
+    zb = _named("zone_blockage")
+    assert zb.get("returned_fields_complete") is True, zb.get("returned_fields_complete")
+    sb = _named("swap_battery!")
+    assert "returned_fields_complete" not in sb, "짧게 판정하면 안 되는 자리다"
+
+    s = _block()
+    zl = [ln for ln in s.splitlines() if ln.lstrip().startswith("- zone_blockage ")]
+    assert zl, "zone_blockage 줄이 렌더에 없다"
+    assert "fields (complete" in "\n".join(zl), zl[:1]
+    sl = [ln for ln in s.splitlines() if ln.lstrip().startswith("- swap_battery! ")]
+    assert sl, "swap_battery! 줄이 렌더에 없다"
+    assert "fields seen in source:" in "\n".join(sl), sl[:1]
+    # 음성 대조 — 이 두 문구가 같은 줄에 동시에 오면 안 된다.
+    for ln in s.splitlines():
+        assert not ("fields (complete" in ln and "fields seen in source:" in ln), ln[:120]
+
+
+def test_the_complete_list_is_the_one_the_paid_run_needed():
+    """🔴 시드 1 이 죽은 바로 그 이름이 목록에 **없다**는 것이 이 개입의 전부다.
+
+    `n_nav_blocked` 는 `zone_diagnosis` 의 필드고 `zone_blockage` 의 것이 아니다. 그리고
+    `zone_diagnosis` 는 유도된 `returns` 가 이미 그것을 말하므로 이 수확을 안 탄다.
+    """
+    zb = _named("zone_blockage")
+    assert "n_nav_blocked" not in zb["returned_fields"], zb["returned_fields"]
+    assert "n_blocked" in zb["returned_fields"]
+    zd = _named("zone_diagnosis")
+    assert "n_nav_blocked" in (zd.get("returns") or ""), zd.get("returns")
+    assert "returned_fields" not in zd, "타입이 말하는 자리에 둘째 진실원을 두면 안 된다"
+
+
+def test_completeness_is_a_tri_state_key_not_a_boolean_column():
+    """참일 때만 키가 생긴다 — 키가 없는 것은 '불완전' 이 아니라 '못 말한다' 다."""
+    ms = WI_methods()
+    vals = {m["name"]: m["returned_fields_complete"]
+            for m in ms if "returned_fields_complete" in m}
+    assert vals, "아무 데도 안 실렸다 — 수확기가 조용히 죽었을 수 있다"
+    assert all(v is True for v in vals.values()), vals
+    assert set(vals) == {"zone_blockage", "translate_whole_build!"}, sorted(vals)

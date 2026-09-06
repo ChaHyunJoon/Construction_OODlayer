@@ -499,4 +499,50 @@ end
     @test count(m -> m.callable === true, ms) == 195
 end
 
+# =================================================================================================
+# (9f) 🔴 수확이 **모든 반환 경로를 덮었는가** — 난수 존 시드 1 (2026-09-05)
+# =================================================================================================
+# 주조 body 가 `zone_blockage(...).n_nav_blocked` 를 읽고 던졌다. 그 필드는 `zone_diagnosis`
+# 것이지 `zone_blockage` 것이 아니다. 그런데 렌더 문구가 `fields seen in source:` 라
+# **삼상 규율상 목록에 없는 이름은 "없다" 가 아니라 "모른다"** 다 — 모델의 읽기가 옳았고
+# 우리 광고가 덜 말한 것이다. 수확이 실제로 완전한 자리에서 그렇게 말해야 부재가 근거가 된다.
+@testset "(9f) 🔴 완전한 수확만 완전하다고 말한다" begin
+    j  = JSON3.read(read(ART, String))
+    ms = collect(j.methods)
+    _rf(m) = haskey(m, :returned_fields) ? String[String(x) for x in m.returned_fields] : nothing
+    _cp(m) = haskey(m, :returned_fields_complete) ? m.returned_fields_complete : nothing
+
+    zb = only(filter(m -> String(m.name) == "zone_blockage", ms))
+    tw = only(filter(m -> String(m.name) == "translate_whole_build!", ms))
+    @test _cp(zb) === true
+    @test _cp(tw) === true
+
+    # ---- 🔴 이 개입이 산 이유: 시드 1 이 죽은 그 이름이 목록에 **없다** -------------------
+    @test !("n_nav_blocked" in _rf(zb))
+    @test "n_blocked" in _rf(zb)
+    # 그리고 그 이름의 진짜 주인은 유도된 타입이 이미 말한다 — 둘째 진실원이 아니다.
+    zd = only(filter(m -> String(m.name) == "zone_diagnosis", ms))
+    @test occursin("n_nav_blocked", String(zd.returns))
+    @test _rf(zd) === nothing
+
+    # ---- 🔴 음성 대조 1: 전부 참이라고 말하지 않는다 --------------------------------------
+    #    `swap_battery!` 는 `return _apply_battery_swap!(…)` 로 나가고(호출이라 필드를 못 봤다),
+    #    `fault_robot_and_reassign!` 은 본문 꼬리가 `try/finally` 다(암묵 경로를 못 봤다).
+    #    이 둘이 참이 되는 날은 판정기가 고장난 날이다.
+    for nm in ("swap_battery!", "fault_robot_and_reassign!")
+        m = only(filter(x -> String(x.name) == nm, ms))
+        @test _rf(m) !== nothing          # 필드는 실렸는데
+        @test _cp(m) === nothing          # 완전하다고는 안 한다
+    end
+
+    # ---- 🔴 음성 대조 2: 삼상이다 — 거짓을 싣지 않는다 ------------------------------------
+    @test !any(m -> _cp(m) === false, ms)
+    @test sort(String[String(m.name) for m in ms if _cp(m) !== nothing]) ==
+          ["translate_whole_build!", "zone_blockage"]
+
+    # ---- 🔴 음성 대조 3: 모집단이 안 무너졌다 ---------------------------------------------
+    @test length(ms) == 224
+    @test count(m -> m.callable, ms) == 195
+end
+
 end # module

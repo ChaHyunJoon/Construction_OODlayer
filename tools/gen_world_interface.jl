@@ -833,6 +833,32 @@ function _arg_coercions(m::Method)
 end
 
 """
+    _nt_names(x) -> Union{Nothing,Vector{Symbol}}
+
+`x` 가 NamedTuple 리터럴이면 그 필드 이름, 아니면 `nothing`. 두 표기를 다 받는다:
+`(; a = 1, b = 2)` 는 `Expr(:parameters, …)`, `(a = 1, b = 2)` 는 `Expr(:(=), …)`.
+
+🔴 `_returned_fields` 의 안쪽 클로저였다. `_returns_are_exhaustive` 가 **같은 판정**을 써야
+   하므로 최상위로 올렸다 — 두 벌을 두면 갈리고, 갈리면 "완전하다" 는 주장이 조용히 거짓이 된다.
+   (같은 이유로 `_RETURN_CONTRACT_DESC` 가 파이썬 쪽에서 상수 하나로 묶여 있다.)
+"""
+function _nt_names(x)
+    (x isa Expr && x.head === :tuple) || return nothing
+    got = Symbol[]
+    for a in x.args
+        if a isa Expr && a.head === :parameters
+            for kw in a.args
+                (kw isa Expr && kw.head === :kw && kw.args[1] isa Symbol) &&
+                    push!(got, kw.args[1])
+            end
+        elseif a isa Expr && a.head === :(=) && a.args[1] isa Symbol
+            push!(got, a.args[1])
+        end
+    end
+    isempty(got) ? nothing : got
+end
+
+"""
     _returned_fields(m::Method) -> Union{Nothing,Vector{String}}
 
 이 메서드가 **return 자리에서** 짓는 NamedTuple 의 필드 이름 전부. 못 유도하면 `nothing`.
@@ -869,21 +895,7 @@ function _returned_fields(m::Method)
     #    **마지막 return 의 필드만** 남는다. 실측 2026-09-05: `translate_whole_build!` 의
     #    세 갈래 중 `detail` 이 조용히 사라졌고, 최상위 함수로 쓴 프로토타입과 견주지
     #    않았으면 그 침묵을 "그 필드가 없다"로 읽었을 것이다.
-    names_of(x) = begin
-        (x isa Expr && x.head === :tuple) || return nothing
-        got = Symbol[]
-        for a in x.args
-            if a isa Expr && a.head === :parameters
-                for kw in a.args
-                    (kw isa Expr && kw.head === :kw && kw.args[1] isa Symbol) &&
-                        push!(got, kw.args[1])
-                end
-            elseif a isa Expr && a.head === :(=) && a.args[1] isa Symbol
-                push!(got, a.args[1])
-            end
-        end
-        isempty(got) ? nothing : got
-    end
+    names_of = _nt_names
     acc = Set{Symbol}()
     walk(x) = begin
         x isa Expr || return
@@ -896,6 +908,58 @@ function _returned_fields(m::Method)
     walk(ex)
     isempty(acc) && return nothing
     return sort!(String[string(s) for s in acc])
+end
+
+"""
+    _returns_are_exhaustive(m::Method) -> Bool
+
+`_returned_fields` 가 거둔 목록이 이 메서드의 **모든** 반환 경로를 덮는가.
+
+🔴 왜 존재하나 (2026-09-05, 난수 존 시드 1). 주조 body 가 `zone_blockage(...).n_nav_blocked`
+   를 읽고 던졌다 — 그 필드는 `zone_diagnosis` 것이지 `zone_blockage` 것이 아니다. 그런데
+   렌더 문구가 `fields seen in source:` 라, **삼상 규율상 목록에 없는 이름은 "없다" 가 아니라
+   "모른다"** 다. 모델의 읽기가 옳았고 우리 광고가 덜 말한 것이다. 수확이 실제로 모든 반환
+   경로를 덮는 자리에서는 그렇게 말해 줘야 **부재가 판단 근거**가 된다.
+
+보수적으로 판정한다 — 확신할 수 없으면 **거짓**이다. 과소주장은 삼상을 지키지만, 과대주장은
+모델을 없는 사실 위에 세운다(이 레인이 갚고 있는 바로 그 부채다):
+  · 중첩 함수·클로저·`do` 블록 안의 `return` 은 **이 메서드의 반환이 아니다** — 안 내려간다.
+  · 남은 `return` 이 하나라도 NamedTuple 리터럴이 아니면 거짓(인자 없는 `return` 포함).
+  · 본문의 **마지막 문장이 `return` 이 아니면 거짓.** 줄리아는 마지막 식을 암묵 반환하는데
+    `_returned_fields` 는 `Expr(:return, …)` 만 거두므로, 꼬리가 return 이 아니면 그 경로는
+    애초에 수확되지 않았다 — 그 상태로 "완전하다" 고 말하면 거짓말이다.
+  · 짧은 형(`f(x) = …`)은 본문이 블록이 아니라 거짓이다. 그 경우 `_returned_fields` 도
+    `nothing` 을 내므로 이 값이 실릴 자리 자체가 없다.
+"""
+function _returns_are_exhaustive(m::Method)
+    ex = _defining_expr(m)
+    ex === nothing && return false
+    isfn(x) = x isa Expr && (x.head === :function || x.head === :-> || x.head === :do ||
+                             (x.head === :(=) && !isempty(x.args) && x.args[1] isa Expr &&
+                              x.args[1].head === :call))
+    (ex isa Expr && ex.head === :function && length(ex.args) >= 2) || return false
+    body = ex.args[2]
+    (body isa Expr && body.head === :block) || return false
+    ok = Ref(true); n = Ref(0)
+    walk(x) = begin
+        x isa Expr || return
+        isfn(x) && return                                  # 남의 반환이다
+        if x.head === :return
+            n[] += 1
+            (length(x.args) == 1 && _nt_names(x.args[1]) !== nothing) || (ok[] = false)
+            return
+        end
+        foreach(walk, x.args)
+    end
+    foreach(walk, body.args)
+    ok[] || return false
+    n[] >= 1 || return false
+    tail = nothing
+    for a in body.args
+        a isa LineNumberNode && continue
+        tail = a
+    end
+    return tail isa Expr && tail.head === :return
 end
 
 """
@@ -1083,7 +1147,12 @@ function method_entries(reach, acc)
             #    말하고 있으면 이것은 둘째 진실원이다(`_returned_fields` 의 docstring).
             if r == "NamedTuple"
                 rf = _returned_fields(m)
-                rf === nothing || (e["returned_fields"] = rf)
+                if rf !== nothing
+                    e["returned_fields"] = rf
+                    # 🔴 삼상: **참일 때만** 키를 만든다. 키가 없는 것은 "불완전하다" 가
+                    #    아니라 "완전한지 못 말한다" 이고, 렌더가 그 둘을 같은 문구로 낸다.
+                    _returns_are_exhaustive(m) && (e["returned_fields_complete"] = true)
+                end
             end
             # 🔴 게이트를 안 건다. 오늘 이 자리의 원소 타입은 광고에서 맨
             #    `Vector{NamedTuple}` 이라 타입이 **침묵**하고, 그래서 둘째 진실원이 아니다

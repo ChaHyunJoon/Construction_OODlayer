@@ -2374,6 +2374,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "returned_fields_complete": true,
             "returned_fields": [
                 "delta",
                 "detail",
@@ -2510,6 +2511,7 @@
             "argpaths": [
             ],
             "callable": true,
+            "returned_fields_complete": true,
             "returned_fields": [
                 "blocked",
                 "cell",

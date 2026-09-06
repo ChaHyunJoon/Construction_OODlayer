@@ -194,9 +194,19 @@ def _method_line(m) -> str:
     #    질의가 아니라 광고다: 유도가 맨 `NamedTuple` 로 넓어져 필드가 한 글자도 안 실렸다.
     # ⚠️ `status seen in source:` 와 같은 규약 — **갈래의 합집합**이지 한 호출이 전부를
     #    돌려준다는 뜻이 아니다. 그래서 "fields are" 가 아니라 `fields seen in source` 다.
+    # 🔴 2026-09-05, 난수 존 시드 1. body 가 `zone_blockage(...).n_nav_blocked` 를 읽고
+    #    던졌다 — 그 필드는 `zone_diagnosis` 것이다. 그런데 `seen` 은 삼상 규율상 "본 것"이라
+    #    **목록에 없는 이름은 "없다" 가 아니라 "모른다"** 로 읽힌다. 모델의 읽기가 옳았다.
+    #    수확이 모든 반환 경로를 덮은 자리(`returned_fields_complete`)에서는 그렇게 말해야
+    #    부재가 판단 근거가 된다. 그 키는 **참일 때만** 생기므로 else 는 옛 문구 그대로다
+    #    ("불완전하다" 가 아니라 "완전한지 못 말한다" 이고, 둘은 같은 문구를 쓴다).
     rf = m.get("returned_fields") or []
     if rf:
-        line += "      fields seen in source: %s" % " | ".join(rf)
+        if m.get("returned_fields_complete"):
+            line += ("      fields (complete -- every return path was read; a name not "
+                     "listed here is not a field of this call): %s" % " | ".join(rf))
+        else:
+            line += "      fields seen in source: %s" % " | ".join(rf)
     # 🔴 2026-09-05, 유료 런 27·28·29. 바로 위 개입이 `zone_blockage(...).blocked` 를
     #    광고하자 **세 판 다 그것을 찾아 썼다** — 그리고 세 판 다 그것을 *id 의 목록*으로
     #    읽어 매칭이 전부 빗나갔다(원소는 `(vtx, id, kind, status)` 다). 필드 이름만 대고
