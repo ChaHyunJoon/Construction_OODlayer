@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneDelete",
+  "mechanism": "oracle fixture v3 (task-zone-delete, 2026-09-05): a NEGATIVE CONTROL, not a repair. It deletes the exclusion zone outright with the advertised clear_restriction_zones! and does NO spatial repair at all. Purpose: z1/z3 freeze with n_closed frozen and zone_blockage reporting n_blocked=0 / project_blocked=false at every recovery attempt - i.e. the zone is already fully cleared by translate_whole_build! and the build STILL deadlocks, with three FormTransportUnit nodes all waiting on one over-subscribed DeliveryBot(6). This control separates the two remaining causes: if z1 completes here, the deadlock is produced by the REPAIR (whole-build translation + assignment re-solve); if z1 still freezes, the zone's mere presence during the early phase already poisoned the assignment and the target is the injector. This fixture is a measuring instrument - it is NOT a candidate repair and must never be scored as one, because deleting the OOD event is exactly what the lane is forbidden to do.",
+  "impl_name": "OracleZoneDelete!",
+  "impl_code": "function OracleZoneDelete!(env)\n    zk = [k for (k, _) in active_restriction_zones()]\n    isempty(zk) && return (; status = :no_zone)\n    clear_restriction_zones!()\n    return (; status = :cleared, n_zones = length(zk))\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneDelete!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneDelete!"
+  ],
+  "surface": "none",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

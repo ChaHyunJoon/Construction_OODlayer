@@ -687,11 +687,27 @@ RESPEC 게이트를 걸지 않는다: 이제 respec 층의 기능이 아니라 �
 function maybe_unwedge_nominal!(env, no_progress::Integer)
     iv = UNWEDGE_INTERVAL[]
     (iv > 0 && no_progress > 0 && no_progress % iv == 0) || return false
+    # 관측 전용 손잡이. `UNWEDGE_VERBOSE=1` 이 아니면 아래 두 줄은 오늘과 **바이트 동일**하다
+    # (기본 verbose=false, 배너 없음). 사다리가 무엇을 했는지 남기지 않으면 실패한 판에서
+    # "훅이 안 불렸다" 와 "불렸는데 못 풀었다" 가 로그로 구별이 안 된다.
+    vb = get(ENV, "UNWEDGE_VERBOSE", "0") == "1"
     rec = try
-        recover_stalled_teams!(env; verbose = false)
+        recover_stalled_teams!(env; verbose = vb)
     catch e
         @warn "[NOMINAL] unwedge 실패" exception = e
         return false
+    end
+    vb && println(">>> [UNWEDGE] no_progress=", no_progress, " status=", rec.status,
+                  " moved=", get(rec, :moved, -1), " snap_count=", SNAP_COUNT[])
+    # 쐐기가 "아직도 zone 때문인가" 를 매 발화마다 세계에 물어본다(광고된 zone_blockage 그대로).
+    vb && try
+        zb = zone_blockage(env)
+        println(">>> [UNWEDGE-ZB] n_blocked=", zb.n_blocked, " n_nav_goals=", zb.n_nav_goals,
+                " n_engulfed=", zb.n_engulfed, " n_agent_trapped=", zb.n_agent_trapped,
+                " n_downstream=", zb.n_downstream, " project_blocked=", zb.project_blocked,
+                " blocked=", [(b.vtx, b.kind, b.status) for b in zb.blocked])
+    catch e
+        println(">>> [UNWEDGE-ZB] failed: ", first(split(sprint(showerror, e), "\n")))
     end
     ok = rec.status in (:snapped, :unwedged, :restaged, :force_snapped,
                         :carrier_closed, :carrier_advanced)

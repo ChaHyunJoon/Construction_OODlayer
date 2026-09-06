@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneClearUnwedge",
+  "mechanism": "oracle fixture v2 (task-zone-unwedge, 2026-09-05): identical spatial repair to oracle_zone_clear.json, plus an ADVERTISED-ONLY wedge lane. Measured cause it targets: z1/z3 freeze at n_closed=185/305 AFTER the spatial repair succeeds (:translated), and the nominal loop's unwedge hook (demo_utils.jl:273 -> maybe_unwedge_nominal!) can only fire ONCE, because UNWEDGE_INTERVAL defaults to 2000 while the no-progress watchdog terminates at 3000. One firing enters recover_stalled_teams! with SNAP_COUNT=0, so the escalation rungs gated on SNAP_ESCALATE_AT=3 are unreachable. This body lowers the interval with the ADVERTISED set_unwedge_interval! so the existing nominal machinery gets ~7 tries instead of 1, and calls the ADVERTISED reform_stuck_teams! once itself. The three withheld verbs (recover_stalled_teams!, resolve_schedule_wedge!, force_advance_stuck_carrier!) are still NOT named here - they are reached, if at all, only through the nominal hook that every run already has. This is a control for 'does the ADVERTISED vocabulary suffice', not a design change.",
+  "impl_name": "OracleZoneClearU!",
+  "impl_code": "function OracleZoneClearU!(env)\n    zk = [k for (k, _) in active_restriction_zones()]\n    isempty(zk) && return (; status = :no_zone)\n    st = restage_all_blocked!(env; zone_keys = zk, resume = true, verbose = true)\n    stage = :restage\n    fin = st.status\n    if st.status !== :restaged_all\n        tw = translate_whole_build!(env; zone_keys = zk, resume = true, verbose = true)\n        stage = :translate\n        fin = tw.status\n    end\n    set_unwedge_interval!(400)\n    n = reform_stuck_teams!(env; min_ready = 1)\n    return (; status = fin, stage = stage, restage_status = st.status,\n             n_moved = length(st.moved), n_zones = length(zk),\n             n_reformed = n, unwedge_interval = 400)\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneClearU!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneClearU!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

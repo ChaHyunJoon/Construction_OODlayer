@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneDelResolve",
+  "mechanism": "CONTROL C2 (task-zone-split, 2026-09-05): identical body to oracle_zone_delete.json (delete the zone, no spatial repair) but surface=sched so the harness DOES run the assignment re-solve that the surface=none control skipped. Isolates the re-solve: z1 completed with surface=none. Freezes here => the re-solve alone produces the over-subscribed DeliveryBot(6). Completes here => the re-solve is innocent. MEASURING INSTRUMENT, NOT A REPAIR.",
+  "impl_name": "OracleZoneDelResolve!",
+  "impl_code": "function OracleZoneDelResolve!(env)\n    zk = [k for (k, _) in active_restriction_zones()]\n    isempty(zk) && return (; status = :no_zone)\n    clear_restriction_zones!()\n    return (; status = :cleared, n_zones = length(zk))\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneDelResolve!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneDelResolve!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

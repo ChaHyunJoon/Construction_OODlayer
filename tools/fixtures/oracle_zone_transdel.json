@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneTransDel",
+  "mechanism": "CONTROL C1 (task-zone-split, 2026-09-05): the FULL spatial repair of oracle_zone_unwedge.json AND THEN clear_restriction_zones!. Isolates the zone-as-RVO-obstacle from the repair itself: z1/z3 freeze after the repair even though zone_blockage reports n_blocked=0, but that measures GOALS, not deflected paths. Completes here => the surviving zone deflects navigation into the DeliveryBot(6) livelock. Freezes here => the translation and/or the sched re-solve is what wedges it. MEASURING INSTRUMENT, NOT A REPAIR - it deletes the OOD event.",
+  "impl_name": "OracleZoneTransDel!",
+  "impl_code": "function OracleZoneTransDel!(env)\n    zk = [k for (k, _) in active_restriction_zones()]\n    isempty(zk) && return (; status = :no_zone)\n    st = restage_all_blocked!(env; zone_keys = zk, resume = true, verbose = true)\n    fin = st.status; stage = :restage\n    if st.status !== :restaged_all\n        tw = translate_whole_build!(env; zone_keys = zk, resume = true, verbose = true)\n        fin = tw.status; stage = :translate\n    end\n    clear_restriction_zones!()\n    return (; status = fin, stage = stage, n_zones = length(zk), cleared = true)\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneTransDel!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneTransDel!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}

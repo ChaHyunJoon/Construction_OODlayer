@@ -1268,6 +1268,23 @@ end
 # 2026-08-05: 예전에는 여기서 애니메이션 없이 그냥 나갔다("no anim artifact"). 이제 라이브
 # 세션도 기록을 남기므로 같이 퍼블리시한다. **이번 런이 만든** 파일이라 왼쪽 패널의 스트림과
 # 같은 런이며, 대시보드가 경고하던 "옛 런의 애니가 지금 런인 척하는" 상황이 되지 않는다.
+# 🔴 zone 레인의 채점은 **두 축**이다(2026-09-05 실측). "존이 치워졌나" 와 "빌드가 끝났나" 는
+# 다른 사실이다: z1·z3 는 수리가 성공해 `n_blocked=0 project_blocked=false` 가 된 **뒤에** 얼었다
+# (운반유닛 셋이 로봇 한 대에 겹쳐 걸린 교착). 완주율 하나로 채점하면 세계의 교착이 합성 레인의
+# 실패로 집계된다 — 앞서 "존 랜덤화 6/8" 이 그렇게 잘못 읽힌 자리다. 그래서 완주·미완주 양쪽에서,
+# 미완주가 error 로 죽기 **전에**, 기계가 읽을 수 있는 한 줄로 남긴다.
+let e = render_env
+    zb = try CB.zone_blockage(e) catch; nothing end
+    nz = try length(collect(CB.active_restriction_zones())) catch; -1 end
+    println("[score] complete=", CB.project_complete(e),
+            " closed=", length(e.cache.closed_set),
+            " n_zones=", nz,
+            zb === nothing ? " zone_blockage=unavailable" :
+              string(" n_blocked=", zb.n_blocked, " n_nav_goals=", zb.n_nav_goals,
+                     " n_engulfed=", zb.n_engulfed, " n_agent_trapped=", zb.n_agent_trapped,
+                     " project_blocked=", zb.project_blocked))
+end
+
 if INTERACTIVE
     ok = publish_anim!()
     n_live = isfile(stream_path) ? countlines(stream_path) : 0
