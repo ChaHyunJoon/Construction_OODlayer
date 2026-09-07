@@ -135,6 +135,28 @@ _RULES = (
     "     printed on its line as `coerced in source:` -- pass a value that conversion\n"
     "     accepts. Where no conversion is printed the required shape is not advertised at\n"
     "     all; prefer a listed function whose argument carries a type.\n"
+    # 🔴 2026-09-06, 라이브 집행 실패. body 가 `restage_all_blocked!(env; zone_keys=nothing,
+    #    resume=true, verbose=false)` 를 불러 `MethodError: iterate(::Nothing)` 로 죽었다.
+    #    그 함수의 진짜 기본값은 `collect(keys(RESTRICTION_ZONES[]))` 인데, Julia 는
+    #    키워드 기본값을 노출하지 않으므로(`gen_world_interface.jl` 이 스스로 적는다)
+    #    렌더된 `(env; zone_keys, resume::Bool, verbose::Bool)` 는 "필수" 와 구별이 안 된다.
+    #    ⟹ 모델의 실수가 아니라 **광고 구멍**이다: 키워드를 가진 메서드가 44 개고 같은
+    #    착각이 그 전부에서 가능하다. 규약 6·7 과 같은 부류라 같은 자리에서 갚는다 —
+    #    시그니처가 못 나르는 것만 산문으로 남긴다.
+    #    🔴 규약 1 과 충돌하지 않는다: 규약 1·6 은 **너의** 시그니처가 받는 키워드를,
+    #    이것은 **네가 부르는** 함수에 넘기는 키워드를 말한다. 그 구분을 문장에 못박는다.
+    #    의무는 `check_impl_conventions` (`minted_registration.jl`, D19) 가 집행한다.
+    "  8. A keyword in the signatures below is printed by NAME ONLY -- this world cannot\n"
+    "     read out keyword defaults, so a keyword that already has a good default looks\n"
+    "     exactly like one you must supply. Therefore: OMIT every keyword whose value you\n"
+    "     do not actually have, and the call uses the default the world chose for it.\n"
+    "     Do NOT pass a literal `nothing` to a keyword to mean \"use the default\" -- it does\n"
+    "     not mean that. It REPLACES the default with `nothing`, and the callee then runs\n"
+    "     its own arithmetic on it and throws (e.g. `MethodError: iterate(::Nothing)`),\n"
+    "     after your body may already have edited the world. A body that passes a literal\n"
+    "     `nothing` in a call is rejected before it runs. This is about the calls YOUR body\n"
+    "     MAKES; the `nothing` default in rules 1 and 6 is about the keywords your own\n"
+    "     signature RECEIVES, and that one stays exactly as written there.\n"
 )
 
 

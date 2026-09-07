@@ -690,6 +690,16 @@ class MacroRequest(BaseModel):
     #      종류 이름 없이 계산되므로 **처음 보는 종류에도 존재한다** -- 이게 nl+state arm 의 핵심.
     nl: Optional[str] = None
     descriptors: Optional[List[float]] = None
+    # ---- SMDP 상태 (2026-09-06) --------------------------------------------------------
+    # 사용자 정의 6축 `{p, b, v, w, c, k}` 중 **페이로드에 없던 둘**. 나머지 넷은 이미 위에
+    # 선언돼 있다: `p`=progress · `v`=spare_count · `w`=n_active · `k`=kind.
+    # 🔴 `smdp_` 접두사는 장식이 아니다 — 라벨셋의 `min_soc`/`hz_break` 은 rollout 완주 후
+    #    측정한 **사후** 필드라 피처로 쓰면 leakage 다. 이름을 갈라 두면 나중에 라벨 행과
+    #    합칠 때 그 둘이 섞이지 않는다.
+    # ★ Pydantic 은 선언 안 된 키를 조용히 버린다 — 이 두 줄이 없으면 policy.jl 이 실어
+    #   보내도 무효이고, 프롬프트는 그 부재를 표시하지 않는다.
+    smdp_n_broken: Optional[int] = None
+    smdp_fleet_soc_min: Optional[float] = None
     # nl_mode : "observation" 이면 관찰문 뒤의 **지시절**을 떼고 준다(raw = 옛 동작).
     #   서비스는 별도 프로세스라 호출자의 LLM_NL_MODE 가 여기 닿지 않는다 -> 요청에 실어 보낸다.
     nl_mode: Optional[str] = None
@@ -1051,6 +1061,60 @@ def _nl_for_producer(text: str, mode: Optional[str] = None) -> str:
     return _observation_only(text) if m.startswith("obs") else text
 
 
+# ---- SMDP 상태 6축 (2026-09-06) ---------------------------------------------------------------
+# 사용자 정의 `{p, b, v, w, c, k}`. `d`(time to done)는 이 세대에서 **빼고** 여섯으로 간다 —
+# 결정 시점 완료시간 추정량이 세계에 없다(`tplan.jl` 의 `T_plan_next` 는 λ 의 구간상수 경계이지
+# 완료시간이 아니고, `metrics.jl` 의 makespan 은 런이 끝난 뒤 계산하는 사후 지표다).
+#
+# 🔴 여기서 6개 **kind-agnostic 서술자**(harm·work_at_risk·…)를 **대체한다.** 그 여섯은
+#    `descriptors_from_row` 가 별도로 다시 계산해 surrogate 레인이 쓰므로(`_surro_row` 는
+#    `req.descriptors` 를 안 읽는다) 이 교체는 surrogate 의 입력 행을 한 비트도 안 바꾼다.
+#
+# 🔴 설명문은 **사실만** 적는다. "그러니 무엇을 하라" 를 적지 말 것 — 프롬프트가 세계에 없는
+#    결과를 주장했을 때 완주가 0/8 이었고, 그 문장을 지우자 3/3 이 됐다(2026-09-05 실측).
+#
+# 🔴 `k` 는 `r.kind` 에서 뽑는다 — `routing_kind` 가 아니다. 후자를 쓰면
+#    `test_routing_kind_reaches_the_prompt.py` 의 음성 대조(알려진 kind 는 프롬프트를 바이트
+#    동일하게 둔다)가 깨진다. 그 시험이 재는 것은 `_unfamiliar_block` 이고, 그 자리는 그대로다.
+_SMDP_AXES = [
+    ("p", "progress", "progress",
+     "fraction of the build's schedule nodes that are already closed"),
+    ("b", "smdp_n_broken", "broken_robots",
+     "robots currently recorded as broken and not yet replaced"),
+    ("v", "spare_count", "spare_robots",
+     "spare robots available to be checked out from the depots"),
+    ("w", "n_active", "active_nodes",
+     "schedule nodes activated right now -- the build's parallel width at this moment"),
+    ("c", "smdp_fleet_soc_min", "min_fleet_soc",
+     "lowest remaining charge among the active, non-spare robots"),
+    ("k", "kind", "event_kind",
+     "the monitor's category for this disruption"),
+]
+
+
+def _smdp_state_rows(r: "MacroRequest"):
+    """`(라벨, 값문자열, 설명)` 목록. **못 쟀으면 그 축을 뺀다.**
+
+    삼상 규약: 값이 `None` 인 축은 행이 아예 생기지 않는다. 0 으로 접으면 "재 봤더니 0"
+    (고장 로봇 없음)과 "안 쟀다"가 한 값으로 뭉개지고, 프롬프트가 모델에게 거짓말을 한다.
+    `n_active`/`spare_count` 의 `-1` 도 policy.jl 의 "못 쟀다" 센티널이므로 같이 뺀다.
+    """
+    out = []
+    for _sym, field, label, doc in _SMDP_AXES:
+        v = getattr(r, field, None)
+        if v is None:
+            continue
+        if isinstance(v, str):
+            out.append((label, v, doc))
+            continue
+        if isinstance(v, float) and v != v:          # NaN = 못 쟀다
+            continue
+        if isinstance(v, (int, float)) and float(v) < 0.0:
+            continue                                  # -1 센티널
+        out.append((label, ("%.2f" % v) if isinstance(v, float) else str(v), doc))
+    return out
+
+
 def _llm_input(r: MacroRequest) -> str:
     """**LLM 이 실제로 읽는 것.** surrogate 가 읽는 것과 의도적으로 다르다.
 
@@ -1070,12 +1134,17 @@ def _llm_input(r: MacroRequest) -> str:
         return (_state_line(r) + _geometry_block(r) + _zones_block(r)
                 + _battery_block(r) + _unfamiliar_block(r))
     lines = ["OBSERVATION: " + _nl_for_producer(r.nl.strip(), getattr(r, "nl_mode", None))]
-    if r.descriptors and len(r.descriptors) == len(DESCRIPTOR_NAMES):
+    smdp = _smdp_state_rows(r)
+    if smdp:
+        # 🔴 머리말의 첫 토큰 "MEASURED STATE" 를 **바꾸지 말 것.**
+        #    `test_synthesize_multi.py` 의 누수 감시 둘이 `"MEASURED STATE" not in ctx` 로
+        #    agent-2/agent-3 컨텍스트를 지킨다. 이름을 갈면 그 감시가 항진명제가 되어
+        #    조용히 죽는다(이 레포가 이미 밟은 "닻이 어긋난 대조 시험" 실패 모드).
         lines += ["",
-                  "MEASURED STATE (computed by the monitor without classifying the event;",
-                  "each is in [0,1] and means the same thing for any kind of disruption):"]
-        for name, v in zip(DESCRIPTOR_NAMES, r.descriptors):
-            lines.append("  %-18s = %.2f   (%s)" % (name, float(v), DESCRIPTOR_DOC[name]))
+                  "MEASURED STATE (the decision-time state of the world, as measured by the",
+                  "monitor; these are raw quantities in their own units, not scores):"]
+        for name, val, doc in smdp:
+            lines.append("  %-16s = %-8s (%s)" % (name, val, doc))
     return ("\n".join(lines) + _geometry_block(r) + _zones_block(r)
             + _battery_block(r) + _unfamiliar_block(r))
 

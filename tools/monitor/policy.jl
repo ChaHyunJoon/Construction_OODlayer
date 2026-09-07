@@ -161,13 +161,14 @@ function _agent_pending(env, agent)
     return n
 end
 
-# 함대 SoC 통계만. 세계를 안 보므로 단위검사가 된다(`test/battery_load_features.jl`).
-# 🔴 배터리 레이어가 꺼져 있으면 **빈 Dict** 다 — 0 으로 접지 않는다. "재 봤더니 0" 과
-#    "안 쟀다" 는 다른 사건이고, 0 을 실으면 프롬프트가 모델에게 거짓말을 한다.
-function _battery_fleet_features(agent)
-    d = Dict{String,Any}()
+# 활성 로봇의 SoC 사전. 예비·반출예비·고장 로봇을 뺀다.
+# 🔴 **소비처가 둘이고 같은 집합 위에서 읽어야 한다** — `_battery_fleet_features`(median·
+#    higher_soc)와 `_smdp_state_features`(SMDP 상태의 `c` = 최소 SoC). 판정을 재구현하면
+#    median 과 min 이 서로 다른 함대를 말하게 되고, 그 어긋남은 에러 없이 프롬프트로만 샌다.
+#    (아래 두 🔴 블록이 이 제외 집합의 근거다 — 함수를 옮겼을 뿐 판정은 한 글자도 안 바뀌었다.)
+function _active_nonspare_socs()
     local fleet = try CB.BATTERY_FLEET[] catch; nothing end
-    (fleet === nothing || isempty(fleet.soc)) && return d
+    (fleet === nothing || isempty(fleet.soc)) && return Dict{Any,Float64}()
     # 🔴 [Fix round 1, I-1] 창고 예비(spare)를 뺀다 — `init_battery_fleet!` 는 예비까지
     #    `fleet.soc` 에 soc0=1.0(안 닳음)으로 넣으므로, 안 빼면 "함대의 나머지가 더 낫다"는
     #    median·higher_soc_robots 둘 다 위로 새는 방향으로 거짓말을 한다. 같은 판정을
@@ -189,16 +190,53 @@ function _battery_fleet_features(agent)
     catch
         Set{Any}()
     end
-    local nonspare = Dict{Any,Float64}(
+    return Dict{Any,Float64}(
         id => s for (id, s) in fleet.soc
         if !(try CB.is_spare(id) || CB.is_recovery_spare(id) catch; false end) &&
            !(id in excluded_ids))
+end
+
+# 함대 SoC 통계만. 세계를 안 보므로 단위검사가 된다(`test/battery_load_features.jl`).
+# 🔴 배터리 레이어가 꺼져 있으면 **빈 Dict** 다 — 0 으로 접지 않는다. "재 봤더니 0" 과
+#    "안 쟀다" 는 다른 사건이고, 0 을 실으면 프롬프트가 모델에게 거짓말을 한다.
+function _battery_fleet_features(agent)
+    d = Dict{String,Any}()
+    local nonspare = _active_nonspare_socs()
     isempty(nonspare) && return d
     local socs = collect(Float64, values(nonspare))
     local s = sort(socs); local n = length(s)
     d["battery_fleet_soc_median"] = isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2
     local mine = get(nonspare, agent, nothing)
     mine === nothing || (d["battery_higher_soc_robots"] = count(>(Float64(mine)), socs))
+    return d
+end
+
+"""
+    _smdp_state_features() -> Dict
+
+SMDP 상태(사용자 정의 `{p, b, v, w, c, k}`)의 **두 축**만 만든다 — `b`(고장 로봇 수)와
+`c`(활성 함대 최소 SoC). 나머지 넷은 `ood_features` 가 이미 싣는다:
+`p` = `progress` · `v` = `spare_count` · `w` = `n_active` · `k` = `kind`.
+(`d` = time-to-done 은 이 세대에서 **일부러 뺐다** — 결정 시점 추정량이 세계에 없다.
+ `tplan.jl` 의 `T_plan_next` 는 λ 의 구간상수 경계이지 완료시간이 아니다.)
+
+🔴 **결정 시점 값이다. 이름을 `smdp_*` 로 일부러 다르게 쓴다.** 라벨셋의 `min_soc` ·
+`hz_break` 은 rollout 을 **완주한 뒤** 측정한 사후 필드다(`gen_oracle_dataset.jl` 의
+"efficiency-axis labels" 블록 — 같은 결정 상태에서 `min_soc` 이 0.016 과 0.999 로 갈리는
+것이 실측 증거다). 같은 이름을 재사용하면 그 leakage 가 조용히 피처로 들어온다.
+
+🔴 `c` 를 `CB.battery_report().min_soc` 으로 만들지 말 것. 그 함수는 `fleet.soc` 전체를
+보므로 **은퇴한 고충전 예비(soc=1.0, 안 닳는다)** 까지 센다. `_active_nonspare_socs()` 가
+그 셋을 이미 빼 놓았고, median 과 같은 함대를 말해야 한다.
+
+못 쟀으면 **키를 안 싣는다**(0 으로 접지 않는다 — 이 파일의 삼상 규약).
+"""
+function _smdp_state_features()
+    d = Dict{String,Any}()
+    local nb = try length(CB.faulted_robots()) catch; nothing end
+    nb === nothing || (d["smdp_n_broken"] = nb)
+    local nonspare = _active_nonspare_socs()
+    isempty(nonspare) || (d["smdp_fleet_soc_min"] = minimum(values(nonspare)))
     return d
 end
 
@@ -403,6 +441,11 @@ function ood_features(env, truth)
     # 🔴 `nothing`("못 쟀다")을 0("창이 닫혔다")으로 접지 않는다. 못 쟀으면 키를 안 싣는다.
     local _win = release_then_candidates(env)
     _win === nothing || (d["s2_after_release_candidates"] = _win.after)
+    # ---- SMDP 상태의 b·c (2026-09-06) -------------------------------------------------
+    # 🔴 **kind 분기 밖이다.** `{p,b,v,w,c,k}` 는 사건 종류와 무관하게 매 결정 epoch 에
+    #    정의돼야 하는 상태다. battery 분기 안에 두면 zone·fault 판에서 두 축이 조용히
+    #    사라지고, 프롬프트는 그 부재를 표시하지 않는다(= 상태가 아니라 배터리 부록이 된다).
+    merge!(d, _smdp_state_features())
     if truth isa CB.BatteryTruth
         d["soc"] = Float64(truth.soc_after); d["severity"] = Float64(truth.soc_after)
         # 2026-08-31 (S1/T2): 적재/함대 사실. 값이 없으면 키가 아예 안 생긴다.

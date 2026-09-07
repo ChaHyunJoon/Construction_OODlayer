@@ -1203,4 +1203,139 @@ end
     @test st(CB.impl_interface_calls("1 + 1")) === :unmeasured
 end
 
+@testset "(36) 🔴 자기-가림 대입은 eval 전에 거절된다 (2026-09-06 라이브 실측)" begin
+    # 유료 런의 `/rewrite` 가 실제로 낸 코드다. `Core.eval` 을 통과하고 **집행 중에**
+    # `UndefVarError: restriction_zones not defined` 로 죽었다 — 그때 세계는 이미 반쯤
+    # 편집됐을 수 있고(그 판의 기록: `applied=false partial=true world_maybe_dirty=true`),
+    # agent-3 에게 돌아갈 문장도 raw 예외였다. 그것이 D15 를 만든 이유인데, 이 모양은
+    # 그 게이트가 **구조적으로** 못 덮었다.
+    #
+    # 🔴 왜 D15 가 못 잡았나. `_walk_body!` 는 `:(=)` 의 좌변 Symbol 을 `locals` 에 넣고,
+    #    거절 루프의 `(c in ls) && continue` 가 같은 이름의 **호출**을 건너뛴다. 그런데
+    #    "본문 어딘가에서 대입됐다" 는 것이 바로 Julia 에서 그 이름을 **본문 전체에서
+    #    지역**으로 만드는 조건이다 — 대입 **전** 사용은 UndefVarError 다. 즉 억제가
+    #    버그의 원인을 안전의 근거로 삼고 있었다. `restriction_zones` 는 실제로 CB 에
+    #    정의돼 있고 export 도 되므로 `_d15_name_is_visible` 은 참이다 — 가시성은 이
+    #    실패와 무관하다.
+    local live = """
+    function reroute_navigation!(env)
+        restriction_zones = restriction_zones()
+        zone_key = nothing
+        for (key, zone) in restriction_zones
+            zone_key = key
+        end
+        return (; status = :ok, k = zone_key)
+    end
+    """
+    local why = CB.check_impl_conventions("reroute_navigation!", live)
+    @test why !== nothing
+    @test startswith(something(why, ""), "reject:impl_self_shadowed_name:restriction_zones")
+
+    # ---- 음성 대조 다섯. 한 톨도 넓히거나 좁히지 않는다 -------------------------------
+    # (a) 오라클 픽스처의 **작동하는** body 모양 — 이름을 가리지 않고 호출한다. 통과해야 한다.
+    @test CB.check_impl_conventions("OracleZoneClear!", """
+    function OracleZoneClear!(env)
+        zk = [k for (k, _) in active_restriction_zones()]
+        isempty(zk) && return (; status = :no_zone)
+        return restage_all_blocked!(env; zone_keys = zk, resume = true, verbose = true)
+    end
+    """) === nothing
+
+    # (b) 매개변수 재대입은 합법이다 — `env`·키워드는 이미 바인딩돼 있다.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env; n::Int = 1)
+        n = n + 1
+        return (; status = :ok, n = n)
+    end
+    """) === nothing
+
+    # (c) 이름이 겹치지 않는 평범한 대입.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env)
+        zs = active_restriction_zones()
+        return (; status = :ok, n = length(collect(zs)))
+    end
+    """) === nothing
+
+    # (d) 자기 이름을 **호출로 안 쓰고** 값으로만 가리는 대입도 같은 런타임 오류다.
+    local why_d = CB.check_impl_conventions("f!", """
+    function f!(env)
+        zs = zs
+        return (; status = :ok, z = zs)
+    end
+    """)
+    @test why_d !== nothing
+    @test startswith(something(why_d, ""), "reject:impl_self_shadowed_name:zs")
+
+    # (e) 🔴 항진명제 방지 — 이 검사가 꺼져 있으면 (a)~(c) 가 통과하는 것만으로는
+    #     아무것도 증명되지 않는다. 위 (live)·(d) 가 그 음성 대조다.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env)
+        return (; status = :ok)
+    end
+    """) === nothing
+end
+
+@testset "(37) 🔴 인터페이스 호출에 리터럴 `nothing` 키워드는 거절된다 (2026-09-06 라이브 실측)" begin
+    # 유료 런의 **첫** 시도가 이 모양으로 죽었다:
+    #   `restage_all_blocked!(env; zone_keys=nothing, resume=true, verbose=false)`
+    #   -> MethodError: no method matching iterate(::Nothing)
+    # 🔴 모델을 탓할 자리가 아니다. 광고된 시그니처는 `(env; zone_keys, resume::Bool,
+    #    verbose::Bool)` 이고 그것은 Julia 문법으로 **필수 키워드** 모양이다. 기본값은
+    #    렌더되지 않는다 — `tools/gen_world_interface.jl` 이 "Julia 가 기본값을 노출하지
+    #    않는다" 고 스스로 적는다. 즉 값을 모르는 키워드를 **생략**하는 것이 옳다는 사실이
+    #    agent-3 에게 광고된 적이 없었다. 이 검사는 그 무지의 대가를 **세계가 반쯤 편집되기
+    #    전에** 문장으로 되돌린다(`impl_rejected_why` -> `/rewrite`).
+    local live = """
+    function reroute_navigation!(env)
+        result = restage_all_blocked!(env; zone_keys=nothing, resume=true, verbose=false)
+        return (; status = result.status)
+    end
+    """
+    local why = CB.check_impl_conventions("reroute_navigation!", live)
+    @test why !== nothing
+    @test startswith(something(why, ""),
+                     "reject:impl_keyword_literal_nothing:restage_all_blocked!.zone_keys")
+
+    # ---- 음성 대조 — 한 톨도 안 넓힌다 ------------------------------------------------
+    # (a) 키워드를 **생략**한 같은 호출은 통과한다(그것이 처방이다).
+    @test CB.check_impl_conventions("f!", """
+    function f!(env)
+        return restage_all_blocked!(env; resume = true, verbose = false)
+    end
+    """) === nothing
+
+    # (b) 오라클의 작동하는 모양 — 실제 목록을 넘긴다.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env)
+        zk = [k for (k, _) in active_restriction_zones()]
+        return restage_all_blocked!(env; zone_keys = zk, resume = true, verbose = true)
+    end
+    """) === nothing
+
+    # (c) 🔴 **변수**가 `nothing` 일 수 있는 것은 거절하지 않는다. 규약 6 이 "id 를 나르는
+    #     키워드는 `nothing` 으로 기본값을 준다" 고 가르치므로, 그 값을 그대로 흘리는 것은
+    #     정상 관용구다. 이 검사가 보는 것은 **리터럴** 하나다.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env; target = nothing)
+        return restage_all_blocked!(env; zone_keys = target)
+    end
+    """) === nothing
+
+    # (d) body **안쪽**에 정의한 도우미에는 안 걸린다(인터페이스 호출이 아니다).
+    @test CB.check_impl_conventions("f!", """
+    function f!(env)
+        helper(x; k = 1) = (; status = :ok, k = k)
+        return helper(env; k = nothing)
+    end
+    """) === nothing
+
+    # (e) 주조 함수 **자신의** 키워드 기본값 `nothing` 은 규약 1·6 이 요구하는 모양이다.
+    @test CB.check_impl_conventions("f!", """
+    function f!(env; agent = nothing)
+        return (; status = :ok, a = agent)
+    end
+    """) === nothing
+end
+
 end # module

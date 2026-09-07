@@ -136,6 +136,138 @@ function _walk_body!(calls, fields, locals, ex)
 end
 
 """
+    _references_symbol(ex, s::Symbol) -> Bool
+
+`ex` 안에 이름 `s` 가 **어떤 자리로든** 나오는가(호출 머리 · 값 · 인자). 필드 이름은
+`QuoteNode` 라 Symbol 과 같지 않으므로 `a.s` 의 `s` 는 저절로 안 걸린다.
+"""
+_references_symbol(ex, s::Symbol) =
+    ex === s || (ex isa Expr && any(a -> _references_symbol(a, s), ex.args))
+
+"""
+    _first_assign_self_reference(body, params) -> Union{Nothing,Symbol}
+
+본문을 **소스 순서로** 걸어, 어떤 이름의 **첫 대입**의 우변이 그 이름 자신을 읽으면 그
+이름을 낸다. 없으면 `nothing`.
+
+🔴 **왜 이 검사가 필요한가** (2026-09-06, 유료 런 실측). `/rewrite` 가 낸 body 의 첫 줄이
+   `restriction_zones = restriction_zones()` 였다. Julia 에서 함수 본문 어딘가에 `x = …` 가
+   있으면 `x` 는 그 본문 **전체에서 지역**이다 — 그래서 그 대입의 우변은 모듈의 함수가
+   아니라 **아직 대입 안 된 지역**을 읽고 `UndefVarError: x not defined` 로 죽는다.
+   `restriction_zones` 는 CB 에 정의돼 있고 export 도 되므로 `_d15_name_is_visible` 은
+   참이었다 — **가시성은 이 실패와 무관하다.**
+
+🔴 **D15 가 왜 못 잡았나.** `_walk_body!` 가 `:(=)` 좌변 Symbol 을 `locals` 에 넣고 D15
+   거절 루프의 `(c in ls) && continue` 가 같은 이름의 호출을 건너뛴다. 그런데 "본문에서
+   대입됐다" 는 것이 바로 그 이름을 지역으로 만드는 조건이다 — 억제가 버그의 원인을
+   안전의 근거로 삼고 있었다. 그래서 이 검사는 D15 의 **뒤**에 별도로 온다.
+
+🔴 **판정이 "첫 대입" 인 이유.** 누산자(`acc = 0` 뒤의 `acc = acc + v`)는 **합법**이다:
+   첫 대입이 자기를 안 읽었고 그 뒤로는 바인딩이 있다. 순서를 무시하고 "자기를 읽는
+   대입" 을 전부 거절하면 그 흔한 관용구가 거짓 거절된다. `params`(= `env` · 함수 이름 ·
+   선언된 키워드)는 이미 바인딩돼 있으므로 처음부터 `seen` 에 넣는다.
+
+⚠️ **안 덮는 것을 적어 둔다**: `n = length(zs); zs = f()` 처럼 대입보다 **앞 줄**에서 읽는
+   모양은 못 잡는다(그것도 같은 UndefVarError 다). 잡으려면 흐름 분석이 필요하고 그것은
+   이 검사의 범위가 아니다. 여기서 잡는 것은 라이브에서 실제로 나온 `x = x(…)` 하나다.
+"""
+function _first_assign_self_reference(body, params)
+    seen = Set{Symbol}(params)
+    hit = Ref{Union{Nothing,Symbol}}(nothing)
+    function walk(ex)
+        hit[] === nothing || return
+        ex isa Expr || return
+        if ex.head === :(=) && !isempty(ex.args) && ex.args[1] isa Symbol
+            local lhs = ex.args[1]
+            local rhs = length(ex.args) >= 2 ? ex.args[2] : nothing
+            # 우변을 먼저 걷는다 — 우변 **안**의 중첩 대입이 순서상 앞이다.
+            rhs === nothing || walk(rhs)
+            hit[] === nothing || return
+            if !(lhs in seen) && rhs !== nothing && _references_symbol(rhs, lhs)
+                hit[] = lhs
+                return
+            end
+            push!(seen, lhs)
+            return
+        end
+        for a in ex.args
+            walk(a)
+            hit[] === nothing || return
+        end
+    end
+    walk(body)
+    return hit[]
+end
+
+"""
+    _literal_nothing_keyword(body, locals) -> Union{Nothing,Tuple{Symbol,Symbol}}
+
+본문의 호출 중 **리터럴 `nothing`** 을 키워드 값으로 넘기는 첫 자리를 `(피호출자, 키워드)`
+로 낸다. 없으면 `nothing`. 순회는 `ex.args` 순서(= 소스 순서)라 결정적이다.
+
+🔴 **왜** (2026-09-06, 유료 런 실측). 첫 시도가
+   `restage_all_blocked!(env; zone_keys=nothing, …)` 로 죽었다
+   (`MethodError: no method matching iterate(::Nothing)`). 그 함수의 기본값은
+   `collect(keys(RESTRICTION_ZONES[]))` 인데, 광고된 시그니처는
+   `(env; zone_keys, resume::Bool, verbose::Bool)` — Julia 문법으로 **필수 키워드** 모양이고
+   기본값은 렌더되지 않는다(`tools/gen_world_interface.jl` 이 "Julia 가 기본값을 노출하지
+   않는다" 고 스스로 적는다). ⟹ **모델의 무지가 아니라 광고의 구멍이다.** 그래서 처방은
+   "그 키워드를 **생략**하라" 이고, 이 검사가 그 문장을 세계가 반쯤 편집되기 **전에**
+   `impl_rejected_why` 로 되돌린다.
+
+🔴 **리터럴만 본다.** 규약 6 이 "id 를 나르는 키워드는 `nothing` 으로 기본값을 준다" 고
+   가르치므로 그 **변수**를 그대로 흘리는 것은 정상 관용구다. 변수까지 막으면 규약 6 이
+   가르친 모양이 거절돼 채널이 서로를 부정한다.
+
+🔴 `locals` 를 받는 이유: body **안쪽**에 정의한 도우미는 인터페이스 함수가 아니므로
+   그 호출은 이 검사의 대상이 아니다. 점 연산자(`.+` 류)도 D15 와 같은 근거로 뺀다.
+
+⚠️ 대가를 적는다: `nothing` 을 진짜로 받는 인터페이스 함수가 있다면 그 호출도 거절된다.
+   그 계약은 **어디에도 광고돼 있지 않으므로**(기본값이 안 렌더된다) 오늘 그것은 모델이
+   알 수 없는 사실이고, 닫히는 쪽으로 틀리는 것을 택했다 — 대가는 되먹임 한 판이고,
+   반대쪽 대가는 undo 없는 절반 편집된 세계다.
+"""
+function _literal_nothing_keyword(body, locals)
+    hit = Ref{Union{Nothing,Tuple{Symbol,Symbol}}}(nothing)
+    function _scan_kw(callee, a)
+        hit[] === nothing || return
+        a isa Expr || return
+        if a.head === :parameters
+            for k in a.args
+                hit[] === nothing || return
+                if k isa Expr && k.head === :kw && length(k.args) >= 2 &&
+                   k.args[1] isa Symbol && k.args[2] === :nothing
+                    hit[] = (callee, k.args[1])
+                    return
+                end
+            end
+        elseif a.head === :kw && length(a.args) >= 2 &&
+               a.args[1] isa Symbol && a.args[2] === :nothing
+            hit[] = (callee, a.args[1])
+        end
+    end
+    function walk(ex)
+        hit[] === nothing || return
+        ex isa Expr || return
+        if ex.head === :call && !isempty(ex.args) && ex.args[1] isa Symbol
+            local callee = ex.args[1]
+            if !(callee in locals) && !startswith(String(callee), ".")
+                for i in 2:length(ex.args)
+                    _scan_kw(callee, ex.args[i])
+                    hit[] === nothing || return
+                end
+            end
+        end
+        for a in ex.args
+            walk(a)
+            hit[] === nothing || return
+        end
+    end
+    walk(body)
+    return hit[]
+end
+
+"""
     _d15_name_is_visible(s::Symbol) -> Bool
 
 D15 가 "이 이름은 이 세계에 있다" 고 판정하는 **단일 술어**. 거절 루프도, 그 판정을 전수로
@@ -551,6 +683,41 @@ function check_impl_conventions(name::AbstractString, code::AbstractString;
             fld in fieldnames(S) && continue
             return "reject:impl_unknown_field:$(nameof(S)).$(fld) — fields are " *
                    "($(join(String.(collect(fieldnames(S))), ", ")))"
+        end
+
+        # 🔴 D18 (2026-09-06). 자기-가림 대입 — `x = x(…)`.
+        # 🔴 **자리가 계약이다**: D15·필드 검사 **뒤**다. 그래서 이 검사는 기존 거절 사유를
+        #    하나도 못 바꾼다(둘 다 가진 body 는 여전히 앞 사유로 거절된다 — 시험
+        #    (18)·(20) 이 바이트로 고정한 사유가 그대로 산다). 순수 추가다.
+        # 근거·안 덮는 것은 `_first_assign_self_reference` 의 독스트링에 있다.
+        local prms = Symbol[:env, Symbol(name)]
+        for k in kws
+            k isa Expr && !isempty(k.args) || continue
+            local a1 = k.args[1]
+            a1 isa Symbol && push!(prms, a1)
+            a1 isa Expr && a1.head === :(::) && !isempty(a1.args) &&
+                a1.args[1] isa Symbol && push!(prms, a1.args[1])
+        end
+        local shadowed = _first_assign_self_reference(body, prms)
+        shadowed === nothing ||
+            return "reject:impl_self_shadowed_name:$(shadowed) — 이 이름에 대입하면 Julia 는 " *
+                   "그것을 body 전체에서 지역변수로 만든다. 그래서 그 첫 대입의 우변이 같은 " *
+                   "이름을 읽으면 아직 대입되지 않은 지역을 읽어 집행 중 " *
+                   "`UndefVarError: $(shadowed) not defined` 로 죽는다 — 이 모듈에 같은 이름의 " *
+                   "함수가 있어도 그렇다. 왼쪽에 **다른** 지역 이름을 쓰라 " *
+                   "(예: `zs = $(shadowed)()`)."
+
+        # 🔴 D19 (2026-09-06). 인터페이스 호출의 리터럴 `nothing` 키워드.
+        # 자리는 D18 뒤 = 규약 전부의 뒤다(같은 근거: 기존 사유를 하나도 안 바꾼다).
+        local litnothing = _literal_nothing_keyword(body, ls)
+        litnothing === nothing || begin
+            local (fnm, kwn) = litnothing
+            return "reject:impl_keyword_literal_nothing:$(fnm).$(kwn) — 이 목록의 시그니처는 " *
+                   "키워드를 **이름만** 싣는다. 기본값은 렌더되지 않으므로(Julia 가 노출하지 " *
+                   "않는다) 값을 모르는 키워드는 넘기는 것이 아니라 **생략하는** 것이다 — " *
+                   "그러면 피호출자 자신의 기본값이 적용된다. `nothing` 을 넘기면 그 기본값을 " *
+                   "피호출자가 계획한 적 없는 값으로 덮어쓰고, 규약 7 대로 그 값이 그대로 " *
+                   "피호출자의 계산에 닿는다. `$(kwn)` 를 지우거나 실제 값을 넘기라."
         end
     end
     return nothing
