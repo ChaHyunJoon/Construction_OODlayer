@@ -413,7 +413,7 @@ function ood_features(env, truth)
     elseif truth isa CB.ZoneTruth
         ("zone", nothing)
     else
-        ("fault", nothing)
+        ("unknown", nothing)
     end
     d = Dict{String,Any}(
         "kind"          => kind,
@@ -851,11 +851,11 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 서비스는 별도 프로세스라 환경변수로는 못 미치므로 요청에 실어 보낸다. LLM_NL_MODE=raw 로 옛 동작.
     payload["nl_mode"] = lowercase(get(ENV, "LLM_NL_MODE", "observation"))
     # 라우터가 **판정에 쓴** kind (2026-08-29, §A-1). 위 `payload["kind"]` 와 **다른 함수**에서
-    # 온다: `ood_features` 의 `else` 분기는 모르는 타입을 `"fault"` 로 접고(그건 surrogate
-    # 피처로는 옳다 — 모델이 그 열을 그렇게 배웠다), `routing_kind` 는 같은 타입을
-    # `"unknown:<타입이름>"` 으로 본다. **두 값이 갈리는 사건이 곧 OOD 사건이다.**
+    # 온다: `ood_features` 는 사건 타입을 자기 이름(`fault`/`battery`/`zone`)으로, 모르는 타입은
+    # `"unknown"` 으로 부르고, `routing_kind` 는 LLM 레인으로 갈 것 전부에 `"unknown:"` 접두사를
+    # 단다. **두 값이 갈리는 사건이 곧 OOD 사건이다.**
     # 이 줄이 없으면 라우터가 "처음 보는 사건이라 LLM 으로 보낸다" 고 판정해 놓고 그 판정을
-    # 프롬프트에 한 글자도 안 싣게 되어, 모델은 자기가 fault 사건을 받았다고 읽는다.
+    # 프롬프트에 한 글자도 안 싣게 되어, 모델은 자기가 아는 종류의 사건을 받았다고 읽는다.
     #
     # 🔴 왜 `agents`/`zones`/`lanes` 처럼 키워드로 안 받는가 (Ruling R1). 저 셋은 호출자만
     #    아는 값이라 키워드가 옳다. `routing_kind_of` 는 **`truth` 하나의 전총 순수 함수**이고
@@ -863,7 +863,19 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     #    `decide_all` 의 라우터가 이미 같은 함수로 같은 값을 만든다. 여기서 유도하면 라우터와
     #    페이로드가 **구조적으로** 갈릴 수 없다 — 키워드로 받으면 호출자가 다른 값을 실을
     #    여지가 되살아나고, 그 갈림이 §A-1 이 지목한 결함 그 자체다.
-    # 🔴 `payload["kind"]` 는 한 글자도 안 건드린다 — surrogate 피처가 그 열을 그렇게 배웠다.
+    # 🔴 2026-09-07 정정. 여기 있던 *"`payload["kind"]` 는 한 글자도 안 건드린다 — surrogate
+    #    피처가 그 열을 그렇게 배웠다"* 는 **거짓이다.** surrogate 는 `kind` 를 안 읽는다:
+    #    `dspy_service._surro_row` 가 *"kind 는 **일부러 넣지 않는다** — 새 표현은 종류 이름을
+    #    한 번도 읽지 않는다"* 고 적고 실제로 안 싣는다(`build_features` 는 `psi(macro)` 와
+    #    `descriptors_from_row` 만 부르고, 후자는 계약상 `row['kind']` 를 절대 안 읽는다).
+    #    `event_descriptors_of`(이 파일 :639)도 아홉 값을 뽑으며 `kind` 를 안 본다.
+    #    ⟹ "surrogate 때문에 `kind` 를 못 건드린다" 는 제약은 **없다.** 같은 날 `else` 분기가
+    #    `("fault", nothing)` → `("unknown", nothing)` 으로 바뀐 근거가 이것이다 — 그 리터럴의
+    #    유일한 변명이 "surrogate 피처로는 옳다" 였는데 그 전제가 사라졌다.
+    #    남은 `kind` 소비자는 셋뿐이고 전부 사소하다: `_valid_for(req.kind, MACROS)`(폴백일 뿐 —
+    #    이 파일이 `valid` 를 항상 실으므로 실전 미도달) · `_state_line`(`nl` 없는 폴백 경로의
+    #    `"OOD kind=%s"` 와 `soc`/`zone_overlap` 렌더 게이트) · `run_synthesis(kind=...)`(기록
+    #    라벨. 발화 조건은 `expressible` 하나다).
     # 게이트: `test/service_decide_ships_routing_kind.jl`(본문) ·
     #        `src/respec/llm_service/test_routing_kind_reaches_the_prompt.py`(프롬프트).
     payload["routing_kind"] = routing_kind_of(truth)
@@ -2013,13 +2025,22 @@ function decide_all(env, truth; nl::AbstractString = "")
     # ---- kind 색인 라우터 (2026-08-29, T11 / §0-C 사용자 결정 1) -----------------------------
     # 🔴 판정 입력이 **kind 하나**다. 아는 kind → surrogate, 처음 보는 kind → LLM.
     #    `routing_kind` 는 `lane_select.jl` 의 전총 함수이고, `ood_features` 의 `"kind"` 와
-    #    **일부러 다른 함수**다: 저쪽의 `else` 분기가 모르는 타입에 `"fault"` 를 주는데(그건
-    #    surrogate **피처**로는 옳다) 라우팅에 쓰면 가장 OOD 한 사건이 가장 확신에 찬 레인으로
-    #    간다(§0-C 충돌 ①). 두 유도가 **severe battery·fault 에서** 같은 값임은
+    #    **일부러 다른 함수**다. 🔴 2026-09-07 정정: 여기 있던 근거 *"저쪽의 `else` 분기가
+    #    모르는 타입에 `"fault"` 를 주는데 그건 surrogate 피처로는 옳다"* 는 두 번 낡았다 —
+    #    그 분기는 이제 `"unknown"` 이고, surrogate 는 애초에 `kind` 를 안 읽는다(:866 참조).
+    #    두 함수를 가르는 **살아 있는** 이유는 이것이다: `ood_features` 는 사건을 **자기 이름**
+    #    으로 부르고(`zone` 은 `zone` 이다), `routing_kind` 는 **레인 표식**을 단다. 라우팅에
+    #    앞의 것을 쓰면 표식이 사라져 갈림 자체가 관측 불가가 된다(§0-C 충돌 ①).
+    #    ⚠️ 단 `select_lane` 의 판정은 접두사가 아니라 `kind in known_kinds` **집합 소속**
+    #    하나뿐이다(그 함수 전문). 접두사는 판정의 원인이 아니라 표식의 통일이다 — 실측
+    #    2026-09-07: 라벨셋 33행의 kind 는 `battery` 27 · `fault` 6 뿐이라 `"zone"` 은
+    #    접두사가 없어도 집합에 없다.
+    #    두 유도가 **severe battery·fault 에서** 같은 값임은
     #    `test/tool_choice_gate.jl` 의 교차 게이트가 못박는다 — 그게 없으면 `FaultTruth` 개명
     #    한 번에 전 사건이 dspy 로 간다.
     # ⚠️ 2026-08-30 부터 **일치하지 않는 kind 가 셋이다**: mild battery(`kind="battery"` vs
-    #    `"unknown:battery_mild"`) · zone(`"zone"` vs `"unknown:zone"`) · 미지 타입. 앞의 둘은
+    #    `"unknown:battery_mild"`) · zone(`"zone"` vs `"unknown:zone"`) · 미지 타입
+    #    (`"unknown"` vs `"unknown:<타입이름>"` — 2026-09-07 이전에는 `"fault"` 였다). 앞의 둘은
     #    이 날 **일부러 갈라 놓은 것**이고(사용자 결정: LLM 레인 표식을 `"unknown:"` 하나로 통일),
     #    그 게이트가 재는 일치 대상에서 빠져 있다. 갈림 자체는 §A-1 이 이미 배선한 사건이다.
     local rkind = routing_kind_of(truth)

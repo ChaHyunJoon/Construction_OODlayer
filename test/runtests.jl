@@ -157,10 +157,11 @@ end
     # 2026-08-29 (§A-1): kind 색인 라우터는 처음 보는 `OODTruth` 타입을
     # `routing_kind="unknown:<타입이름>"` 으로 알아보고 LLM 으로 보내는데, **그 판정이
     # 페이로드에 한 글자도 안 실렸다** — 본문의 `kind` 는 `ood_features` 의 `else` 분기라
-    # `"fault"` 이고, 모델은 자기가 처음 보는 사건을 받았다는 것을 모른 채 답했다. 이 게이트는
+    # `"fault"` 였고, 모델은 자기가 처음 보는 사건을 받았다는 것을 모른 채 답했다. 이 게이트는
     # 위 두 게이트와 **같은 루프백 서버 방식**으로 나간 요청 본문을 붙잡아, 모르는 타입 하나의
-    # **같은 본문 안에서** `routing_kind="unknown:MeteorTruth"` 와 `kind="fault"` 가 함께
-    # 서 있는지 잰다(그 비대칭이 §A-1 의 측정 대상이고, `kind` 는 surrogate 피처라 안 고친다).
+    # **같은 본문 안에서** `routing_kind="unknown:MeteorTruth"` 와 `kind` 가 갈려 서 있는지 잰다.
+    # 🔴 2026-09-07: 여기 있던 *"`kind` 는 surrogate 피처라 안 고친다"* 는 거짓이다 — surrogate
+    # 는 `kind` 를 안 읽는다. 그래서 `else` 는 `"unknown"` 이 됐고 게이트도 그 값을 단언한다.
     # 단독 `19 pass`. 변이 실측(`/tmp` 오버레이 사본, 레포는 안 건드렸다): `service_decide` 의
     # payload 조립 줄 하나를 지우면 `12 pass / 3 fail / 4 error` — (1)(2) 두 절이
     # `haskey(body,"routing_kind")` 와 `KeyError: :routing_kind` 로 빨개진다.

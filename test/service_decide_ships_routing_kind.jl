@@ -6,7 +6,8 @@
 # ----------------------
 # kind 색인 라우터(T11)는 처음 보는 `OODTruth` 타입을 `routing_kind = "unknown:<타입이름>"`
 # 으로 알아보고 그 사건을 **LLM 으로 보낸다**. 그런데 §A-1 이전에는 **그 판정이 페이로드에
-# 한 글자도 안 실렸다**: 본문의 `kind` 는 `ood_features` 의 `else` 분기라 `"fault"` 이고,
+# 한 글자도 안 실렸다**: 본문의 `kind` 는 `ood_features` 의 `else` 분기라 `"unknown"` 이고
+# (2026-09-07 이전에는 `"fault"` 였다 — 그 리터럴은 자기모순이라 지웠다),
 # 서비스의 `_valid_for` 는 fault 메뉴를 준다. 즉 모델은 자기가 **처음 보는 사건**을 받았다는
 # 사실을 모른 채, 가장 가까운 알려진 스키마로의 **투영**을 사실로 읽고 답했다.
 #
@@ -39,7 +40,7 @@
 #   (1) **알려진 kind**(`FaultTruth` · `BatteryTruth`): 본문의 `routing_kind` 가 `kind` 와 같다.
 #       두 유도가 알려진 셋에서 갈리면 그 자체가 회귀다.
 #   (2) 🔴 **모르는 타입**(`MeteorTruth`, 이 모듈이 정의): **같은 본문 하나 안에서**
-#       `routing_kind == "unknown:MeteorTruth"` 이면서 `kind == "fault"` 다.
+#       `routing_kind == "unknown:MeteorTruth"` 이면서 `kind == "unknown"` 이다.
 #       둘을 함께 단언하는 것이 §A-1 의 비대칭이 페이로드까지 살아서 도착했다는 유일한 증거다
 #       (`kind` 는 surrogate 피처라 **일부러 안 고친다** — Global Constraint 3).
 #   (3) 그 사건이 실제로 **LLM 레인으로 라우팅됐다** — 즉 (2)의 본문은 라우터가 "처음 보는
@@ -68,7 +69,7 @@ const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :ZoneTruth) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 
 # 🔴 **이 시험의 핵심 픽스처.** 레포의 어떤 코드도 모르는 `OODTruth` 구상 타입이다 —
-#    `ood_features` 는 이것을 `else` 분기로 접어 `kind="fault"` 를 주고, `routing_kind` 는
+#    `ood_features` 는 이것을 `else` 분기로 접어 `kind="unknown"` 을 주고, `routing_kind` 는
 #    이름을 그대로 살려 `"unknown:MeteorTruth"` 를 준다. 그 **두 값이 갈리는 것**이 곧
 #    §A-1 이 말하는 OOD 사건이고, 이 파일이 재는 대상이다.
 #    (필드가 없는 struct 인 것이 의도적이다: 알려진 kind 의 필드를 하나도 안 가진 사건에서도
@@ -233,7 +234,18 @@ try
         # 🔴 **둘을 같은 본문에서 함께 단언한다.** 이것이 §A-1 의 비대칭이 페이로드까지
         #    살아서 도착했다는 유일한 증거다.
         @test String(cap.body["routing_kind"]) == "unknown:MeteorTruth"
-        @test String(cap.body["kind"]) == "fault"      # Global Constraint 3 — 이 값은 안 고친다
+        # 🔴 2026-09-07. 여기는 `"fault"` 였고 그 옆에 *"Global Constraint 3 — 이 값은 안
+        #    고친다"* 가 붙어 있었다. 그 제약의 **유일한 근거**가 "모르는 타입을 `"fault"` 로
+        #    접는 것은 surrogate 피처로는 옳다" 였는데, 그 전제가 거짓이다: surrogate 는
+        #    `kind` 를 안 읽는다(`dspy_service._surro_row` 가 일부러 안 싣고,
+        #    `descriptors_from_row` 는 계약상 `row['kind']` 를 절대 안 읽는다).
+        #    근거가 사라졌으므로 제약도 사라진다 — `ood_features` 의 `else` 는 이제
+        #    `("unknown", nothing)` 이다(사용자 결정).
+        #    왜 고쳐야 했나: 옛 값은 **같은 프롬프트 안에서 자기모순**이었다. 폴백 경로가
+        #    `"OOD kind=fault"` 를 찍는 바로 아래에서 `_unfamiliar_block` 이 "어떤 학습된
+        #    범주에도 못 놓았다" 고 말했다.
+        @test String(cap.body["kind"]) == "unknown"
+        # 갈림 자체는 그대로다 — 이것이 §A-1 의 비대칭이 페이로드까지 도착했다는 증거다.
         @test String(cap.body["routing_kind"]) != String(cap.body["kind"])
     end
 

@@ -62,16 +62,25 @@ LLM 에 갔다. 두 결과가 같아 보였지만 같지 않았다: `dspy_servic
   · 🔴 **`nothing` 에서 `"battery"` 로 떨어지지 않는다.** 못 쟀는데 아는 kind 라고 주장하면
     그 사건은 근거 없이 surrogate 로 간다.
 
-🔴 왜 `ood_features` 의 `"kind"` 를 안 쓰나. 그 함수의 `else` 분기는 모르는 타입에 `"fault"` 를
-준다. 그 값은 surrogate 행의 열로는 옳다. 그러나 **라우팅에 쓰면 정반대로
-틀린다**: 처음 보는 사건이 `fault ∈ train_kinds` 를 타고 surrogate 로 간다. 피처용 유도와
-라우팅용 유도는 **다른 것을 주장하므로 따로 둔다.**
-⚠️ 두 유도가 갈리는 것은 결함이 아니라 **설계**이고, 이미 배선돼 있다 —
+🔴 왜 `ood_features` 의 `"kind"` 를 안 쓰나. 🔴 2026-09-07 정정: 여기 있던 근거 *"그 함수의
+`else` 분기는 모르는 타입에 `"fault"` 를 주는데 그 값은 surrogate 행의 열로는 옳다 — 라우팅에
+쓰면 처음 보는 사건이 `fault ∈ train_kinds` 를 타고 surrogate 로 간다"* 는 **두 번 낡았다.**
+① 그 분기는 이제 `("unknown", nothing)` 이다(사용자 결정). ② surrogate 는 애초에 `kind` 를
+안 읽는다 — `dspy_service._surro_row` 가 일부러 안 싣고 `descriptors_from_row` 는 계약상
+`row['kind']` 를 절대 안 읽는다. 즉 "피처로는 옳다" 는 전제가 거짓이었다.
+
+살아 있는 이유는 이것이다: `ood_features` 는 사건을 **자기 이름**으로 부르고(`zone` 은
+`zone` 이다), 이 함수는 **레인 표식**을 단다. 두 유도는 다른 것을 주장하므로 따로 둔다.
+⚠️ 갈리는 것은 결함이 아니라 **설계**이고 이미 배선돼 있다 —
 `test/service_decide_ships_routing_kind.jl` (2)절이 같은 요청 본문 안에서
-`kind="fault"` · `routing_kind="unknown:MeteorTruth"` 가 함께 실리는 것을 못박는다.
+`kind="unknown"` · `routing_kind="unknown:MeteorTruth"` 가 함께 실리는 것을 못박는다.
 2026-08-30 이후 battery_mild 와 zone 이 **그 이미 지원되는 사건의 두 번째·세 번째 사례**다:
-`kind` 는 `"battery"`/`"zone"` 그대로이고 `routing_kind` 만 갈린다. `ood_features` 는 한 글자도
-바뀌지 않았다.
+`kind` 는 `"battery"`/`"zone"` 그대로이고 `routing_kind` 만 갈린다.
+
+🔴 그리고 접두사를 판정의 원인으로 읽지 말 것. `select_lane`(아래)의 판정은
+`kind in known_kinds` **집합 소속 하나뿐**이고 `"unknown:"` 을 보는 분기가 없다. 접두사는
+표식의 통일이지 판정 기전이 아니다 — 실측 2026-09-07: 라벨셋(`oracle/out/oracle_dataset.jsonl`)
+33행의 kind 는 `battery` 27 · `fault` 6 뿐이라 `"zone"` 은 접두사가 없어도 집합 밖이다.
 
 🔴 왜 타입 객체가 아니라 이름 문자열인가. 이 파일은 **의존성 0** 계약 위에 있다(그래서 전수
 단위검사가 된다). `CB.FaultTruth` 를 import 하면 그 계약이 깨진다. 대신 호출부가
