@@ -1061,10 +1061,32 @@ def _nl_for_producer(text: str, mode: Optional[str] = None) -> str:
     return _observation_only(text) if m.startswith("obs") else text
 
 
-# ---- SMDP 상태 6축 (2026-09-06) ---------------------------------------------------------------
-# 사용자 정의 `{p, b, v, w, c, k}`. `d`(time to done)는 이 세대에서 **빼고** 여섯으로 간다 —
-# 결정 시점 완료시간 추정량이 세계에 없다(`tplan.jl` 의 `T_plan_next` 는 λ 의 구간상수 경계이지
-# 완료시간이 아니고, `metrics.jl` 의 makespan 은 런이 끝난 뒤 계산하는 사후 지표다).
+# ---- SMDP 상태 5축 (2026-09-06, `k` 는 2026-09-07 에 뺐다) -------------------------------------
+# 사용자 정의 `{p, b, v, w, c}`. 두 축을 **일부러** 뺐고, 근거가 서로 다르다.
+#
+# `d`(time to done): 결정 시점 완료시간 추정량이 **세계에 없다**(`tplan.jl` 의 `T_plan_next` 는
+#   λ 의 구간상수 경계이지 완료시간이 아니고, `metrics.jl` 의 makespan 은 런이 끝난 뒤 계산하는
+#   사후 지표다). 즉 못 재는 축이다.
+#
+# 🔴 `k`(event_kind, 2026-09-07 사용자 결정): **잴 수는 있는데 정보가 0 이고, 유일하게 정보를
+#    나를 순간에는 틀린다.** 논문의 상태 정의도 다섯으로 고친다. 근거 넷:
+#      ① "처음 보는 사건인가" 는 `_unfamiliar_block` 이 별도 문단으로 이미 싣는다.
+#      ② "어떤 종류인가" 는 `_geometry_block`/`_zones_block`/`_battery_block` 이 이미 말한다 —
+#         셋 다 자기 kind 일 때만 비어 있지 않으므로 **블록의 존재 자체가 kind 다.** 게다가
+#         그 블록들은 `k` 가 못 하는 일(얼마나 막혔는가)까지 한다.
+#      ③ 이 레인은 `routing_kind` 가 `"unknown:"` 일 때만 도달하므로 모델이 `k` 를 보는 모든
+#         순간 P(OOD)=1 이다. 유료 원장 497행에서 `k` 는 2값뿐이었다(zone 455 · battery 42).
+#      ④ 🔴 그리고 `k` 가 일할 유일한 자리 — 어휘 밖의 새 타입 — 에서 정확히 틀린다.
+#         `policy.jl:ood_features` 의 `else` 분기가 리터럴 `("fault", nothing)` 이라
+#         `event_kind = fault` 가 찍히고, 바로 아래 `_unfamiliar_block` 이 "어떤 학습된
+#         범주에도 못 놓았다" 고 말한다. **한 프롬프트 안의 자기모순이었다.**
+#    같은 레포의 surrogate 22차원이 정확히 같은 이유로 kind one-hot 을 거부한다
+#    (`surrogate_features.py` 헤더). 두 레인의 원칙이 이제 일치한다.
+#    게이트: `test_smdp_state_axes.py` (축 이름을 **리터럴로** 들고 있다 — 여기서 유도하면 항진).
+#
+# ⚠️ 남은 구멍(범위 밖, 별도 결정): `nl` 없는 **폴백 경로**의 `_state_line` 은 여전히
+#    `"OOD kind=%s" % r.kind` 를 찍는다. 같은 자기모순이 그 경로에는 남아 있다. 이 삭제는
+#    SMDP 블록만 건드렸다 — 폴백은 pre-SMDP 렌더링이고 옛 호출자의 프롬프트를 바꾸는 일이다.
 #
 # 🔴 여기서 6개 **kind-agnostic 서술자**(harm·work_at_risk·…)를 **대체한다.** 그 여섯은
 #    `descriptors_from_row` 가 별도로 다시 계산해 surrogate 레인이 쓰므로(`_surro_row` 는
@@ -1072,10 +1094,6 @@ def _nl_for_producer(text: str, mode: Optional[str] = None) -> str:
 #
 # 🔴 설명문은 **사실만** 적는다. "그러니 무엇을 하라" 를 적지 말 것 — 프롬프트가 세계에 없는
 #    결과를 주장했을 때 완주가 0/8 이었고, 그 문장을 지우자 3/3 이 됐다(2026-09-05 실측).
-#
-# 🔴 `k` 는 `r.kind` 에서 뽑는다 — `routing_kind` 가 아니다. 후자를 쓰면
-#    `test_routing_kind_reaches_the_prompt.py` 의 음성 대조(알려진 kind 는 프롬프트를 바이트
-#    동일하게 둔다)가 깨진다. 그 시험이 재는 것은 `_unfamiliar_block` 이고, 그 자리는 그대로다.
 _SMDP_AXES = [
     ("p", "progress", "progress",
      "fraction of the build's schedule nodes that are already closed"),
@@ -1087,8 +1105,6 @@ _SMDP_AXES = [
      "schedule nodes activated right now -- the build's parallel width at this moment"),
     ("c", "smdp_fleet_soc_min", "min_fleet_soc",
      "lowest remaining charge among the active, non-spare robots"),
-    ("k", "kind", "event_kind",
-     "the monitor's category for this disruption"),
 ]
 
 
