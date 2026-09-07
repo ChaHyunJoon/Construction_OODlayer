@@ -817,9 +817,15 @@ class MacroRequest(BaseModel):
     #     게이트: test_decide_lanes.py::test_lanes_survives_the_pydantic_boundary
     lanes: Optional[List[str]] = None
     # routing_kind : 라우터가 **판정에 쓴** kind (2026-08-29, §A-1). 위 `kind` 와 **다른
-    #   함수**에서 온다: 저쪽(`ood_features`)은 모르는 타입을 surrogate 피처로 쓰려고 "fault"
-    #   로 접지만, 라우팅은 `"unknown:<타입이름>"` 으로 본다. 두 값이 갈리는 사건이 곧 OOD
-    #   사건이고, 그 사실을 `_unfamiliar_block`(아래)이 프롬프트에 싣는다.
+    #   함수**에서 온다: 저쪽(`ood_features`)은 사건을 **자기 이름**으로 부르고(모르는 타입은
+    #   `"unknown"`), 라우팅은 LLM 레인으로 갈 것 전부에 `"unknown:"` 접두사를 단다. 두 값이
+    #   갈리는 사건이 곧 OOD 사건이고, 그 사실을 `_unfamiliar_block`(아래)이 프롬프트에 싣는다.
+    #   🔴 2026-09-07 정정. 여기 있던 *"저쪽은 모르는 타입을 surrogate 피처로 쓰려고 "fault"
+    #     로 접는다"* 는 **거짓이었다.** surrogate 는 `kind` 를 안 읽는다 — `_surro_row`(아래)
+    #     가 일부러 안 싣고, `descriptors_from_row` 는 계약상 `row['kind']` 를 절대 안 읽는다.
+    #     그 거짓 전제가 `else` 분기의 `"fault"` 리터럴을 지키고 있었고, 그 리터럴은 폴백
+    #     경로에서 `_unfamiliar_block` 과 **같은 프롬프트 안에서 모순**이었다. 지금은
+    #     `("unknown", nothing)` 이다(`policy.jl`, 사용자 결정).
     #   ★ pydantic 은 선언 안 된 키를 조용히 버린다 — 이 선언이 없으면 호출자
     #     (`policy.jl:service_decide`)가 실어 보내도 무효이고, 증상은 **호출자 쪽 결함처럼**
     #     보인다. 이 레포가 `total_nodes`·`zones`·`lanes` 에서 이미 세 번 밟은 함정이다.
@@ -1077,9 +1083,11 @@ def _nl_for_producer(text: str, mode: Optional[str] = None) -> str:
 #      ③ 이 레인은 `routing_kind` 가 `"unknown:"` 일 때만 도달하므로 모델이 `k` 를 보는 모든
 #         순간 P(OOD)=1 이다. 유료 원장 497행에서 `k` 는 2값뿐이었다(zone 455 · battery 42).
 #      ④ 🔴 그리고 `k` 가 일할 유일한 자리 — 어휘 밖의 새 타입 — 에서 정확히 틀린다.
-#         `policy.jl:ood_features` 의 `else` 분기가 리터럴 `("fault", nothing)` 이라
+#         `policy.jl:ood_features` 의 `else` 분기가 리터럴 `("fault", nothing)` 이던 탓에
 #         `event_kind = fault` 가 찍히고, 바로 아래 `_unfamiliar_block` 이 "어떤 학습된
-#         범주에도 못 놓았다" 고 말한다. **한 프롬프트 안의 자기모순이었다.**
+#         범주에도 못 놓았다" 고 말했다. **한 프롬프트 안의 자기모순이었다.**
+#         (그 `else` 는 같은 날 `("unknown", nothing)` 이 됐다 — 하지만 `k` 를 되살릴 이유는
+#          안 된다. ①~③ 이 그대로 서 있고, 저 수리는 모순만 없앨 뿐 정보를 안 만든다.)
 #    같은 레포의 surrogate 22차원이 정확히 같은 이유로 kind one-hot 을 거부한다
 #    (`surrogate_features.py` 헤더). 두 레인의 원칙이 이제 일치한다.
 #    게이트: `test_smdp_state_axes.py` (축 이름을 **리터럴로** 들고 있다 — 여기서 유도하면 항진).
@@ -1405,8 +1413,10 @@ def _unfamiliar_block(r: MacroRequest) -> str:
 
     ② 가 왜 거짓인가. 유사도 계산이 **어디에도 없다.** 접히는 것은 feature row 가 아니라
       `kind` **문자열**이고, 그것도 `policy.jl:ood_features` 의 `if/elseif` 사슬 마지막
-      `else` 가 리터럴 `("fault", nothing)` 을 쓰는 것뿐이다 — "가장 가까워서" 가 아니라
-      "사슬 끝이라서" 다. 그리고 숫자 서술자는 애초에 투영되지 않는다:
+      `else` 가 리터럴 `("fault", nothing)` 을 쓰던 것뿐이다 — "가장 가까워서" 가 아니라
+      "사슬 끝이라서" 였다. 🔴 2026-09-07: 그 `else` 는 이제 `("unknown", nothing)` 이라
+      **접히지도 않는다.** 미지 타입은 자기가 미지라고 말한다. 그리고 숫자 서술자는 애초에
+      투영되지 않는다:
       `features_agnostic.descriptors_from_row` 가 **`row['kind']` 를 절대 읽지 않고**
       (그 함수의 계약 문구 그대로) 어떤 필드가 유한한지로만 갈린다. 미지 타입에서 일어나는
       일은 투영이 아니라 **종류별 측정값이 없는 것**이고, 그때 `severity` 는 재는 대신

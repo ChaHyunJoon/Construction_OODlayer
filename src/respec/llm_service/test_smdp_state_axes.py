@@ -14,10 +14,12 @@
        자기 kind 일 때만 비어 있지 않다. **블록의 존재 자체가 kind 를 말한다.**
   ② LLM 레인은 `routing_kind` 가 `"unknown:"` 일 때만 도달하므로, 모델이 `k` 를 보는
      모든 순간 P(OOD)=1 이다. 유료 원장 497행에서 `k` 는 2값뿐이었다(zone 455/battery 42).
-  ③ 🔴 그리고 `k` 가 유일하게 일할 자리 — 어휘 밖의 새 타입 — 에서 정확히 틀린다.
-     `policy.jl:ood_features` 의 `else` 분기가 리터럴 `("fault", nothing)` 이라
+  ③ 🔴 그리고 `k` 가 유일하게 일할 자리 — 어휘 밖의 새 타입 — 에서 정확히 틀렸다.
+     `policy.jl:ood_features` 의 `else` 분기가 리터럴 `("fault", nothing)` 이던 탓에
      `event_kind = fault` 가 찍히고, 바로 아래 `_unfamiliar_block` 이 "어떤 학습된
-     범주에도 못 놓았다" 고 말한다. **한 프롬프트 안의 자기모순이다.**
+     범주에도 못 놓았다" 고 말했다. **한 프롬프트 안의 자기모순이었다.**
+     ⚠️ 그 `else` 는 같은 날 `("unknown", nothing)` 으로 고쳐졌다 — 하지만 `k` 를 되살릴
+     이유는 안 된다. ①②④ 가 그대로 서 있고, 그 수리는 모순만 없앨 뿐 정보를 안 만든다.
   ④ 같은 레포의 surrogate 22차원은 정확히 이 이유로 kind one-hot 을 거부한다
      (`surrogate_features.py` 헤더: "처음 보는 OOD kind 에서 미지원 영역이 되어 무너진다").
 
@@ -38,8 +40,11 @@ import dspy_service as svc  # noqa: E402
 EXPECTED_LABELS = ["progress", "broken_robots", "spare_robots",
                    "active_nodes", "min_fleet_soc"]
 
+# 🔴 `kind` 는 `policy.jl:ood_features` 의 `else` 분기가 미지 타입에 실제로 내는 값이다
+#    (2026-09-07 부터 `"unknown"`, 그 전에는 `"fault"`). 픽스처가 세계와 갈리면 이 파일은
+#    통과하면서 허구를 재게 된다.
 BASE = dict(
-    kind="fault", severity=0.0, progress=0.31, n_active=6,
+    kind="unknown", severity=0.0, progress=0.31, n_active=6,
     spare_count=2, agent_pending=1, closed_at_fire=79, total_nodes=255,
     smdp_n_broken=1, smdp_fleet_soc_min=0.42,
     nl="A structural beam collapsed across the north staging lane.",
@@ -103,22 +108,28 @@ def test_the_nl_none_fallback_renders_no_smdp_block_at_all():
     assert "MEASURED STATE" not in text, text
     assert "event_kind" not in text, text
     # 남은 구멍의 특성화 — 고쳐지면 여기가 빨개지고, 그때 이 문단을 지우면 된다.
-    assert "OOD kind=fault" in text, text
+    # 2026-09-07 이후 그 라벨은 `"OOD kind=unknown"` 이다: **거짓말은 아니게 됐지만**
+    # SMDP 블록이 뺀 축을 폴백은 여전히 찍는다는 사실은 남는다.
+    assert "OOD kind=unknown" in text, text
 
 
 # ---------------------------------------------------------------------------------------------
 # (3) 🔴 자기모순 회귀: 어휘 밖 타입에서 상태가 `fault` 라고 주장하지 않는다
 # ---------------------------------------------------------------------------------------------
 def test_unknown_type_state_block_does_not_claim_a_trained_category():
-    """`ood_features` 의 `else` 분기가 내는 페이로드 그대로: kind="fault" + unknown routing.
+    """`ood_features` 의 `else` 분기가 내는 페이로드 그대로: kind="unknown" + unknown routing.
 
     이 판에서 옛 코드는 `event_kind = fault` 를 찍었고, 바로 아래 `_unfamiliar_block` 은
     "어떤 학습된 범주에도 못 놓았다" 고 말했다. 두 문장이 같은 프롬프트에 있었다.
+
+    🔴 재는 것은 "`fault` 가 없다" 가 아니라 **어떤 kind 라벨도 없다** 이다. 전자로 쓰면
+    `else` 가 `"unknown"` 으로 바뀐 지금 `k` 를 도로 넣어도 통과한다(= 항진명제).
     """
-    text = svc._llm_input(_req(kind="fault", routing_kind="unknown:MeteorTruth"))
+    text = svc._llm_input(_req(routing_kind="unknown:MeteorTruth"))
     block = _state_block(text)
     assert block, text                      # 블록이 사라진 것이 아니라 축 하나만 빠졌다
-    assert "fault" not in block, block
+    for label in ("fault", "battery", "zone", "unknown"):
+        assert label not in block, (label, block)
     # 낯섦 판정은 그대로 실린다 — 이 삭제가 그 채널을 건드리지 않았다는 음성 대조.
     assert "MeteorTruth" in text, text
 

@@ -34,10 +34,15 @@ if HERE not in sys.path:
 import dspy_service as svc  # noqa: E402
 
 # `policy.jl:ood_features` 가 모르는 타입에 대해 실제로 내는 페이로드 모양 그대로:
-# `kind` 는 `else` 분기라 "fault" 이고, `soc`/`zone_overlap` 같은 kind 전용 열은 없다.
+# `kind` 는 `else` 분기라 `"unknown"` 이고, `soc`/`zone_overlap` 같은 kind 전용 열은 없다.
+# 🔴 2026-09-07. 여기는 `"fault"` 였다. 그 리터럴을 지키던 이유가 "모르는 타입을 fault 로
+#    접는 것은 surrogate 피처로는 옳다" 였는데 **surrogate 는 `kind` 를 안 읽는다**
+#    (`_surro_row` 가 일부러 안 싣는다). 근거가 거짓이었고, 그 값은 폴백 경로에서
+#    `"OOD kind=fault"` 를 찍어 바로 아래 `_unfamiliar_block` 과 모순됐다.
+#    ⚠️ 픽스처가 세계와 갈리면 이 파일은 **허구를 재는 시험**이 된다 — 통과하면서.
 # 🔴 `routing_kind` 는 **일부러 안 넣는다** — 각 시험이 자기가 재는 값만 얹는다.
 BASE = dict(
-    kind="fault", severity=0.0, progress=0.31, n_active=6,
+    kind="unknown", severity=0.0, progress=0.31, n_active=6,
     spare_count=2, agent_pending=1, closed_at_fire=79, total_nodes=255,
     nl="A structural beam collapsed across the north staging lane.",
     descriptors=[0.41, 0.22, 0.0, 0.5, 0.31, 0.7])
@@ -147,8 +152,11 @@ def test_the_placeholder_sentence_only_fires_when_no_measurement_exists():
     `ood_features` 의 자기 분기를 타서 `soc`/`zone_overlap` 이 실제 측정값으로 실린다.
     접히는(=측정값이 없는) 것은 미지 타입뿐이고, 그 행에서만 `severity` 가 상수 1.0 이다.
 
-    ⚠️ 조건은 **`soc` 와 `zone_overlap` 이 둘 다 없는 것**이다. `kind` 문자열을 보지 않는다 —
-    미지 타입의 `kind` 는 `"fault"` 로 접혀 오므로 그 값으로는 두 사건을 못 가른다.
+    ⚠️ 조건은 **`soc` 와 `zone_overlap` 이 둘 다 없는 것**이다. `kind` 문자열을 보지 않는다.
+    2026-09-07 이전에는 그 이유가 "미지 타입의 `kind` 는 `"fault"` 로 접혀 오므로 그 값으로는
+    두 사건을 못 가른다" 였다. 지금은 `"unknown"` 이라 **가를 수는 있지만 그래도 안 본다** —
+    판정 기준은 "종류별 측정값이 실렸나" 라는 사실이지 라벨이 아니고, 라벨을 보기 시작하면
+    새 kind 가 하나 늘 때마다 이 함수가 갈린다.
     """
     # 미지 타입: 종류별 측정값이 없다 → 붙는다.
     assert "placeholder" in svc._unfamiliar_block(_req(routing_kind=UNKNOWN))
@@ -174,7 +182,8 @@ def test_the_block_no_longer_claims_a_projection_or_a_derived_menu():
     """지운 두 주장이 되살아나지 않는지 본다 (2026-08-30).
 
     🔴 둘 다 실측으로 거짓이었다. ② 유사도 계산은 어디에도 없다 — `ood_features` 의
-    `else` 가 리터럴 `"fault"` 를 쓰는 것뿐이고, 숫자 서술자는
+    `else` 가 리터럴을 쓰는 것뿐이고(2026-09-07 부터 `"unknown"`, 그 전에는 `"fault"`),
+    숫자 서술자는
     `features_agnostic.descriptors_from_row` 가 `row['kind']` 를 **안 읽으므로** 애초에
     투영되지 않는다. ③ 메뉴는 줄리아의 `valid_macros(env, truth)` 가 세계에서 계산해
     `payload["valid"]` 로 싣고 `_valid_for` 가 그것을 우선한다.
