@@ -328,6 +328,23 @@ function _count_future_goals_in_zone(env; zone_keys = collect(keys(RESTRICTION_Z
 end
 
 """
+    _residual_blocked_goals(env; zone_keys) -> Int
+
+수리 사후검사의 판정 — 채점(`[score]`·`zone_blockage`)과 **같은 함수**를 부른다(2026-09-21).
+대상(RVO 가 도달해야 하는 RobotGo·TransportUnitGo) · 반지름(`_agent_radius`) · 판정(`goal_engulfed`:
+C-space + 포획 허용오차) · 경로 단절까지 한 벌이다.
+
+왜: 예전 사후검사 `_count_future_goals_in_zone` 은 **목표 중심점**이 맨 반지름 안인지만 보고
+LiftIntoPlace 까지 세었다 — 채점보다 느슨해서, 실측(X-wing z6)에서 `:translated` 를 보고한 뒤에도
+`n_engulfed=2` 로 막힌 판이 성공으로 넘어갔다. 그 함수는 지우지 않는다(다른 계측이 쓴다).
+"""
+# `::Int` 로 못박는다 — `restage_all_blocked!` 의 반환 타입이 광고 산출물(world_interface.json)에
+# 실리는데, `zone_blockage` 의 추론이 흐려서 안 박으면 `residual::Int64` 가 `Any` 로 샌다.
+function _residual_blocked_goals(env; zone_keys = collect(keys(RESTRICTION_ZONES[])))::Int
+    return Int(zone_blockage(env; zone_keys = zone_keys).n_blocked)
+end
+
+"""
     root_deposit_goals(env; root) -> Vector{Vector{Float64}}
 
 World-frame (x,y) of every place the ROOT assembly's direct components get deposited
@@ -534,7 +551,7 @@ function restage_all_blocked!(env;
     # there goals STILL in the zone? If so they're un-relocatable (root/fixed) -> the
     # build cannot complete -> report honestly so the caller falls back (don't pretend
     # :restaged_all when a root-overlapping zone dooms the build).
-    residual = _count_future_goals_in_zone(env; zone_keys = zone_keys)  # 다 옮기고도 구역 안에 남은 목표 수
+    residual = _residual_blocked_goals(env; zone_keys = zone_keys)  # 다 옮기고도 막힌 목표 수(채점과 같은 판정)
     # 연쇄 삼항식(a ? x : b ? y : ...) : 위에서부터 처음 참인 조건의 값을 status 로. 최종 결과 상태 판정.
     status = (isempty(moved) && !isempty(failed)) ? :infeasible :      # nothing could be placed  # 하나도 못 옮김
              residual > 0                        ? :residual_blocked : # zone still covers un-relocatable goals  # 못 옮기는 목표가 남음
@@ -605,8 +622,9 @@ end
 """
     _apply_uniform_translation!(env, Δ) -> env
 
-Rigidly shift the WHOLE build by Δ (x,y): translate every assembly's `start_config`
-(root included) — each subtree carries its staging + components' deposit goals — update
+Rigidly shift the WHOLE build by Δ (x,y): translate every TOP-MOST assembly
+`start_config` (one with no ancestor in the moved set — nested ones ride along; applying T to
+them too compounded Δ by depth) — each subtree carries its staging + components' deposit goals — update
 the staging-circle records, then `_resync_scene_drift!` snaps drifted scene bodies/TUs.
 Translations COMPOSE: calling this twice with Δ₁ then Δ₂ leaves a net shift of Δ₁+Δ₂,
 which the two-tier `translate_whole_build!` relies on to top a minimal move up to the
@@ -615,11 +633,25 @@ conservative one without any undo.
 # 빌드 전체를 Δ 만큼 강체이동한다: 모든 조립체의 start_config 를 옮기고 적치원 기록도 갱신한 뒤, 안 따라온 씬 노드를 스냅. 이동은 누적됨(compose).
 function _apply_uniform_translation!(env, Δ)
     T = CoordinateTransformations.Translation(Δ[1], Δ[2], 0.0)  # Δ 만큼의 평행이동 변환(z=0, 평면 이동)
-    for aid in collect(keys(env.staging_circles))        # 모든 조립체에 대해
-        ac = _assembly_complete_node(env, aid)           # 그 조립체의 "조립완료" 노드
-        ac === nothing && continue                       # 없으면 건너뜀
-        tnode = start_config(ac)                          # 시작배치 노드(변환트리 루트)
+    # 🔴 T 는 **최상위** start_config 에만 곱한다(2026-09-21). 하위 조립체의 start_config 는
+    #    상위 것의 자식이라 부모를 옮기면 이미 따라온다 — 거기에 T 를 또 곱하면 깊이만큼 Δ 가
+    #    누적된다(실측: tractor 미완 목표가 1Δ·2Δ·3Δ 로 갈라졌다, test/translate_is_rigid.jl).
+    #    "옮길 집합 안에 조상이 없는 노드" 만 고르면 처리 순서와 무관하게 강체 이동이 된다.
+    tnodes = Any[]
+    for aid in collect(keys(env.staging_circles))
+        ac = _assembly_complete_node(env, aid)
+        ac === nothing || push!(tnodes, start_config(ac))
+    end
+    inset = IdDict{Any,Bool}(t => true for t in tnodes)
+    has_moved_ancestor(t) = (cur = t; while !has_parent(cur, cur)
+                                 cur = get_parent(cur); haskey(inset, cur) && return true
+                             end; false)
+    for tnode in tnodes
+        has_moved_ancestor(tnode) && continue            # 조상이 옮겨지면 따라온다
         set_desired_global_transform!(tnode, T ∘ global_transform(tnode))  # 기존 변환 앞에 T 를 합성해 Δ 이동(∘ = 합성)
+    end
+    for aid in collect(keys(env.staging_circles))        # 적치원 기록은 조립체마다 한 번씩 Δ 만큼
+        _assembly_complete_node(env, aid) === nothing && continue
         b = env.staging_circles[aid]                      # 이 조립체의 적치원
         env.staging_circles[aid] =                        # 기록상의 적치원 중심도 Δ 만큼 옮김
             LazySets.Ball2(Vector{Float64}(get_center(b)[1:2]) .+ Δ, Float64(get_radius(b)))
@@ -747,6 +779,26 @@ function _find_min_translation(env;
 end
 
 """
+    _count_goals_in_nav_band(env; zone_keys, buffer) -> Int
+
+**진단 전용**(로그에만 쓴다). 채점은 안 막혔다고 보지만 주행 계획기가 부푼 원 안이라고 보는
+미완 이동 목표의 수 — `r_zone + r_agent <= d < r_zone + r_agent + buffer`. 이것이 0 이 아니면
+`translated` 뒤에도 로봇이 원 가장자리에서 기다릴 수 있다(2026-09-21 실측 기전).
+"""
+function _count_goals_in_nav_band(env; zone_keys = collect(keys(RESTRICTION_ZONES[])),
+        buffer::Float64 = Float64(staging_buffer_radius()))
+    zones = [RESTRICTION_ZONES[][k] for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]
+    isempty(zones) && return 0
+    return count(_nav_goal_targets(env)) do t
+        any(zones) do z
+            d = norm(t.goal .- Vector{Float64}(get_center(z)[1:2]))
+            R = Float64(get_radius(z)) + t.radius
+            R <= d < R + buffer
+        end
+    end
+end
+
+"""
     translate_whole_build!(env; zone_keys, resume=true, verbose=true) -> NamedTuple
 
 WHOLE-BUILD relocation (Phase B): when a zone covers the root's OWN (un-relocatable)
@@ -778,7 +830,14 @@ function translate_whole_build!(env;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),
         resume::Bool = true, verbose::Bool = true)
     isempty(env.staging_circles) && return (status = :no_staging,)        # 적치원 없으면 옮길 게 없음
-    Δ = _find_min_translation(env; zone_keys = zone_keys)                  # physical goals + local staging 기준 최소 이동
+    # 🔴 여유에 주행 계획기의 버퍼를 더한다(2026-09-21, 사용자 결정 1번). TangentBug 는 구역을
+    #    `r_zone + r_agent + staging_buffer_radius()` 로 부풀려 피하므로(tangent_bug.jl · full_demo.jl 이
+    #    버퍼를 로봇 반지름으로 둔다), 최소 Δ 가 목표를 `r_zone + r_agent` 경계에 붙여 놓으면 채점은
+    #    "안 막힘" 인데 로봇은 부푼 원 가장자리에서 **영원히 기다린다**(실측 z1·z3·z6·z26).
+    #    이 호출에서만 넘긴다 — `_find_min_translation` 의 기본값은 LLM 관측(`relocate_delta`)과
+    #    검증기가 공유하므로 안 바꾼다. 채점(`zone_blockage`)도 안 바꾼다.
+    nav_buffer = Float64(staging_buffer_radius())
+    Δ = _find_min_translation(env; zone_keys = zone_keys, margin = 1e-4 + nav_buffer)  # physical goals + local staging 기준 최소 이동
     fc, fR = _build_footprint(env)                                        # 빌드 전체를 감싸는 원(폴백용)
     if Δ === nothing                                                      # 폴백: 보수적 bounding-disc
         Δ = _find_clear_translation(fc, fR, env; zone_keys = zone_keys)
@@ -787,7 +846,7 @@ function translate_whole_build!(env;
         return (status = :infeasible, detail = "no clear destination for footprint R=$(round(fR; digits=2))")
     _apply_uniform_translation!(env, Δ)                                   # 실제로 빌드 전체를 Δ 만큼 옮김
     resume && reset_cache_resume!(env.cache, env.sched)                   # 요청 시 캐시 재빌드 후 재개
-    residual = _count_future_goals_in_zone(env; zone_keys = zone_keys)    # 옮기고도 구역 안에 남은 목표 수
+    residual = _residual_blocked_goals(env; zone_keys = zone_keys)    # 옮기고도 막힌 목표 수(채점과 같은 판정)
     # Δ=0 은 "옮겼다"가 아니라 "옮길 필요가 없었다"(이미 모든 미완 목표가 구역 밖). 예전에는 이 경우도
     # :translated 로 보고해서 모니터 패널이 distance=0.0 인 이동을 "ADMITTED · whole-build translated"
     # 초록 체크로 보여줬다 — 아무 일도 안 했는데 적응한 것처럼 읽힌다. 실측(2026-08-05): 존이 두 번
@@ -796,7 +855,8 @@ function translate_whole_build!(env;
     status = residual > 0 ? :residual_blocked :
              norm(Δ) <= 1e-9 ? :already_clear : :translated
     verbose && @info "[WHOLE-BUILD] translated Δ=$(round.(Δ; digits=3)) |Δ|=$(round(norm(Δ); digits=2)) " *
-                     "footprint(R=$(round(fR; digits=2))); residual=$residual -> $status"
+                     "footprint(R=$(round(fR; digits=2))); residual=$residual -> $status" *
+                     " nav_buffer=$(round(nav_buffer; digits=3)) in_nav_band=$(_count_goals_in_nav_band(env; zone_keys = zone_keys, buffer = nav_buffer))"
     return (status = status, delta = Δ, footprint_radius = fR,
             solver = :physical_goal_and_local_staging_discs,
             n_goal_discs = length(_future_goal_discs(env)),
