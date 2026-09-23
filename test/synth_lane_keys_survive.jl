@@ -56,10 +56,15 @@ include(joinpath(@__DIR__, "..", "tools", "monitor", "policy.jl"))
     #    원인이 모델이 아니라 우리 배선이 되는데, D17 이 재려는 수치가 정확히 그 성공률이다.
     #    파이썬 쪽에는 이 키가 **이미 있었다**(`synthesize.py` 의 `_SPEC_FIELDS`, 그리고
     #    아래 교차언어 절이 AST 로 그것을 재확인한다) — 못 건넌 것은 줄리아 목록뿐이었다.
+    #    🔴 2026-09-22: `record_id`·`response_id` 가 열여섯·열일곱째로 들어왔다 — 원장↔스트림
+    #    조인 키(`record_id` 는 줄리아가 발급한 논리 요청 id, `response_id` 는 서버가 처리마다
+    #    발급한다 — 재전송된 같은 `record_id` 의 응답들을 그 쌍이 가른다). 파이썬 쪽은 `_blank`
+    #    가 선언한다.
     @test Set(SYNTH_LANE_KEYS) == Set(["tool_minted", "synthesis_event", "synthesis_ran",
                                        "synthesis_error", "refused", "tool_name", "body_names",
                                        "params", "calls", "impl_name", "impl_code",
-                                       "surface", "reversible", "wrote", "mechanism"])
+                                       "surface", "reversible", "wrote", "mechanism",
+                                       "record_id", "response_id"])
 end
 
 @testset "성공 분기가 열을 전부 나른다" begin

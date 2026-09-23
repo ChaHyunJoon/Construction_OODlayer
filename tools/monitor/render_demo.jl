@@ -785,6 +785,27 @@ end
 # 두 엔진이 각자 규칙을 들고 있으면 갈릴 수 있고, 이 레포는 그 사고를 이미 여러 번 밟았다
 # (`has_zone` 술어, `record_decision!` 쌍둥이). `enact.jl` 은 최상위 부작용이 없다.
 include(joinpath(@__DIR__, "enact.jl"))
+# ---- 원장 신원 (2026-09-22, retry-body 보존 Phase 1 / Task 4) ---------------------------------
+# 🔴 서비스는 seed·레인·판을 모른다(요청에 없었다). 여기서 한 번 채우면 `/decide` 가 매 요청에
+#    싣는다(`policy.jl::_stamp_identity!`). 기동 때 **한 번** 계산한다 — 도중에 코드·설정이
+#    바뀌어도 이 판의 신원은 기동 시점의 것이다.
+# 🔴 `run_id` 는 **유일 키가 아니다**: 비면 스트림 이름이고, `router__zone__s3` 같은 값은 모델·
+#    campaign 사이에 겹친다. 조인은 이 dict 전체(campaign·모델·두 시드·코드/설정 지문)로 한다.
+#  · `lane`  — 규칙을 다시 적지 않는다. `router_drives()` 가 라우터 손잡이의 유일한 술어다.
+#  · `case`/`event` — `case` 는 표시 이름(`DEMO_CASE_TAG`), `event` 는 실제로 돈 사건
+#    (`DEMO_OOD`). 둘이 갈리는 판이 있다(위 `CASE_TAG` 주석). zone 은 `DEMO_OOD` 가 아니라
+#    `zone_requested()` 게이트로 심으므로 `zone` 으로 따로 싣는다.
+#  · `policy`/`router` 는 **env 원문**이다(빈 문자열 = 기본값으로 돌았다).
+set_run_ctx!(; run_id = isempty(RUN_ID) ? basename(stream_path) : RUN_ID,
+             campaign_id = get(ENV, "DEMO_CAMPAIGN_ID", ""),
+             stream = basename(stream_path), case = CASE_TAG, event = OODC,
+             zone = zone_requested(), model = model_base,
+             lane = router_drives() ? "router" : POLICY,
+             policy = get(ENV, "DEMO_POLICY", ""), router = get(ENV, "DEMO_ROUTER", ""),
+             seed = DEMO_SEED, zone_seed = DEMO_ZONE_SEED,
+             synth_fixture = get(ENV, "DEMO_SYNTH_FIXTURE", ""),
+             run_fingerprint()...)
+println("[run-ctx] ", JSON3.write(RUN_CTX[]))
 # ⚠️ `run_demo.jl:248` 과 달리 여기서는 `_reset_decision_counter!()` 를 부르지 않는다. 그래도
 # 안전한 이유는 **하나뿐이다**: 이 스크립트의 유일한 호출자인 `server.jl:117` 이 실행마다
 # `julia … render_demo.jl` **새 프로세스**를 띄우므로 `policy.jl:711` 의 `_DECISION_N[]` 이

@@ -837,6 +837,91 @@ function dspy_ready()
     return ok
 end
 
+# =============================================================================
+# 🔴 원장 신원 (2026-09-22, retry-body 보존 Phase 1 / Task 4)
+# =============================================================================
+"""
+    RUN_CTX
+
+이 프로세스가 도는 **판의 신원**. `render_demo.jl` 이 스트림 경로를 정한 뒤 `set_run_ctx!` 로
+한 번 채운다(키 목록의 정본은 그 호출이다: run_id·campaign_id·stream·case·event·zone·model·
+lane·policy·router·seed·zone_seed·synth_fixture + `run_fingerprint` 의 세 키).
+비어 있으면(시험·헤드리스) 원장 행의 `run_ctx` 가 `{}` 이고, 그것은 "모른다" 이다.
+
+🔴 서비스는 seed·레인·판을 **모른다** — `MacroRequest` 에 필드가 없었고 페이로드도 안 실었다.
+그래서 여기서 싣는다. 단순 `run_id`(예: `router__zone__s3`)는 모델 간에 겹치므로 **유일한
+키가 아니다** — 조인은 이 dict 전체(campaign·모델·시드 둘·코드/설정 지문)로 한다.
+"""
+const RUN_CTX = Ref{Dict{String,Any}}(Dict{String,Any}())
+
+"`RUN_CTX` 를 **통째로** 바꾼다(문자열 키). 인자가 없으면 비운다."
+set_run_ctx!(; kw...) = (RUN_CTX[] = Dict{String,Any}(String(k) => v for (k, v) in kw); nothing)
+
+const _RID_CTR = Threads.Atomic{Int}(0)
+
+"""
+    new_record_id() -> String
+
+원장 행 id(24 hex). 🔴 **전역 RNG 를 안 쓴다** — `rand()` 한 번이 시뮬레이션의 추첨열을
+밀어 같은 시드가 다른 세계가 된다. 시각·pid·프로세스 카운터의 SHA-256 이다.
+🔴 **줄리아가 발급하는 이유:** `/decide` 는 `retries=3` 로 재전송된다. 서버가 만들면 한
+결정이 다른 id 두 줄이 되고, 여기서 만들면 같은 id 두 줄이라 중복임이 보인다. 그 두 줄이
+서로 다른 body 를 가질 수 있으므로 실제로 받은 응답은 서버가 처리마다 발급하는
+`response_id` 와의 **쌍**으로 특정한다(`SYNTH_LANE_KEYS` 참조).
+"""
+new_record_id() = bytes2hex(SHA.sha256(string(time_ns(), "|", getpid(), "|",
+                                              Threads.atomic_add!(_RID_CTR, 1))))[1:24]
+
+"""
+    _stamp_identity!(payload) -> payload
+
+`/decide` 페이로드에 행 id 와 판 신원을 싣는다. 서비스는 그 둘을 원장 행에 찍는다.
+🔴 `run_ctx` 는 `RUN_CTX[]` 의 **사본**이다 — 공유 dict 을 그대로 넣으면 페이로드 쪽 변경이
+판 신원을 고치고, 뒤에 `set_run_ctx!` 가 돌면 이미 나간 페이로드의 기록이 흔들린다.
+"""
+function _stamp_identity!(payload::AbstractDict)
+    payload["record_id"] = new_record_id()
+    payload["run_ctx"]   = copy(RUN_CTX[])
+    return payload
+end
+
+# 설정 지문이 보는 환경변수 접두사. 결과를 바꾸는 손잡이가 사는 이름공간 전부다.
+const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_")
+
+"""
+    run_fingerprint(repo = <이 저장소>; env = ENV) -> NamedTuple
+
+판을 만든 **코드와 설정**의 지문. 기동 때 한 번 계산해 `RUN_CTX` 에 합친다.
+  · `code_rev`          — `git rev-parse HEAD`. 실패하면 `"unknown"`.
+  · `code_dirty_digest` — `git diff HEAD -- src tools test` 의 SHA-256 앞 16 hex. 깨끗하면 `""`,
+                          git 이 실패하면 `"unknown"`(깨끗함과 **다른 값**이다).
+                          🔴 HEAD 만 적고 미커밋 편집을 무시하면 같은 sha 가 다른 엔진이 된다
+                          (이 트리는 여러 세션이 공유한다 — memory `concurrent-sessions-share-one-tree`).
+  · `config_digest`     — `_CONFIG_ENV_PREFIXES` 로 시작하는 환경변수의 `KEY=VALUE` 줄을
+                          정렬해 이은 것의 SHA-256 앞 16 hex. 값을 싣지 않고 해시만 싣는다
+                          (그 이름공간에 키가 섞일 수 있다).
+🔴 **전역 RNG 를 안 쓴다**, git 이 없거나 실패해도 **던지지 않는다**(런을 죽이지 않는다).
+"""
+function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, "..", ".."));
+                         env = ENV)
+    local rev = try
+        readchomp(pipeline(`git -C $repo rev-parse HEAD`; stderr = devnull))
+    catch
+        "unknown"
+    end
+    local dirty = try
+        local d = read(pipeline(`git -C $repo diff --no-color --no-ext-diff HEAD -- src tools test`;
+                                stderr = devnull))
+        isempty(d) ? "" : bytes2hex(SHA.sha256(d))[1:16]
+    catch
+        "unknown"
+    end
+    local lines = sort!([string(k, "=", v) for (k, v) in env
+                         if any(p -> startswith(String(k), p), _CONFIG_ENV_PREFIXES)])
+    local cfg = bytes2hex(SHA.sha256(join(lines, "\n")))[1:16]
+    return (code_rev = rev, code_dirty_digest = dirty, config_digest = cfg)
+end
+
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
 function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
                         agents = nothing, zones = nothing, lanes = nothing)
@@ -879,6 +964,9 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 게이트: `test/service_decide_ships_routing_kind.jl`(본문) ·
     #        `src/respec/llm_service/test_routing_kind_reaches_the_prompt.py`(프롬프트).
     payload["routing_kind"] = routing_kind_of(truth)
+    # 🔴 2026-09-22: 원장 행 id 와 판 신원. 재전송(`retries=3`)은 같은 페이로드를 다시 보내므로
+    #    같은 `record_id` 로 도착한다 — 그것이 이 id 를 여기서 발급하는 이유다.
+    _stamp_identity!(payload)
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
     # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 = 모델에게 **보여주는** id 가 이것뿐이다.
     # 🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 못 만든다"* 는 **거짓이다.**
@@ -1599,11 +1687,20 @@ DSPy 서비스가 `# ---- 합성 레인 (T2, Plan B / T6b)` 표식 **위**에 �
 `_synth_view` 는 최상위만 읽고(`k == "tool_minted" && continue`) 안쪽 사본은 안 읽으므로
 줄리아 쪽에서 둘이 갈릴 자리는 없다. 사본이 사는 이유는 `TOOL_LANE_KEYS` 와의 경계
 문단이 적는 그대로다(`out["dspy"]` 의 표식 위에 있어야 한다).
+
+🔴 **2026-09-22 `record_id`·`response_id`** — 서비스가 원장 `/decide` 행에 찍은 두 id 이고
+`synthesis` dict 안에 실려 온다. `record_id` 는 줄리아가 발급한 논리 요청 id(`new_record_id`)의
+되돌림이고, `response_id` 는 서버가 **처리마다** 새로 발급한다 — HTTP 재전송은 같은
+`record_id` 로 서로 다른 body 를 만들 수 있으므로 실제로 받은 응답은 그 **쌍**으로 특정한다.
+집행부는 둘을 판정에 쓰지 않는다 — `record_id` 는 `/rewrite` 의 `parent_record_id` 로 나른다
+(재시도 사슬의 조인 키; 그 배선은 Task 5 다).
+파이썬 쪽은 `synthesize.py::_blank` 가 둘을 `None` 으로 선언한다(교차언어 게이트가 거기를 읽는다).
 """
 const SYNTH_LANE_KEYS = ("tool_minted", "synthesis_event", "synthesis_ran", "synthesis_error",
                          "refused",
                          "tool_name", "mechanism", "body_names", "params", "calls",
-                         "impl_name", "impl_code", "surface", "reversible", "wrote")
+                         "impl_name", "impl_code", "surface", "reversible", "wrote",
+                         "record_id", "response_id")
 
 # `synthesis` dict 안의 키 이름 → 결정 행의 키 이름. 이름이 다른 둘만 적는다
 # (`ran`→`synthesis_ran`, `error`→`synthesis_error`). 나머지는 같은 이름이다(`params` 포함).
