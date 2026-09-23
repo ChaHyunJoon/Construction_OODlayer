@@ -1200,10 +1200,10 @@ def _llm_input(r: MacroRequest) -> str:
 _GEOM_COVERAGE = [
     ("zone_blocked", "zone_blocked",
      "sub-assemblies whose staging area the zone covers AND that have not started building"),
-    ("zone_restage_feasible", "  of which movable",
-     "of those, how many have a zone-clear spot to be restaged into"),
+    # 🔴 2026-09-23 (존 복구 base ablation 명세 §5, 세 팔 공통): "of which movable" 행을 지웠다 —
+    #    그 값은 find_clear_staging_center 가 **푼 답**(해법 정보)이다. 필드는 MacroRequest 에 남는다.
     ("zone_root_covered", "root_goals_trapped",
-     "delivery goals of the ROOT assembly inside the zone; the root cannot be restaged. These "
+     "delivery goals of the ROOT assembly inside the zone. These "
      "are placed by a lift that moves the cargo directly, not by a navigating agent"),
     ("zone_work_overlap", "work_discs_overlapped",
      "unfinished work areas the zone intersects"),

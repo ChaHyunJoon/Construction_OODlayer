@@ -225,7 +225,7 @@ PHYSICAL PRINCIPLES OF THIS BUILD
 
 2. SCENE TREE (geometry). A separate tree holds the nested assembly geometry: where each
    sub-assembly is staged, where cargo is deposited, and the transforms that relate them.
-   Moving staging areas or translating the whole build edits THIS tree, not the schedule.
+   Geometric edits (staging poses, deposit goals, build placement) edit THIS tree, not the schedule.
    No existing recovery macro edits the scene tree.
 
 3. THREE-LAYER ROBOT POLICY (motion). Every mover runs three stacked layers:
