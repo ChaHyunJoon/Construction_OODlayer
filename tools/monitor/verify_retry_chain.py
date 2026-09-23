@@ -42,8 +42,12 @@ render_demo 스트림의 결정·되먹임 칸을 합성 원장 행과 `(record_
     litellm 의 라이브 응답에는 그 속성이 **없다** → `lm_raw` 가 `None` 을 싣고 라이브 호출은
     `cache_unknown` 에 떨어진다. 그래서 따로 `raw_lm_live` = "`cache_hit` 가 True 가 아니고
     `usage` 가 비지 않은 항목" 을 센다 — **라이브였을 공산이 큰 항목**이지 과금 수가 아니다.
-  · 원시 LM 항목이 **있어야 하는** 조인 행에 항목이 없으면(0개, 또는 `{"error"}` 항목뿐)
-    `raw_lm_missing` 문제다 — 원시 응답 포착이 깨져도 게이트가 통과하는 구멍을 막는다.
+  · 원시 LM 항목이 **있어야 하는** 조인 행은 **완료된 단계마다** 유효 항목(dict · `error` 없음 ·
+    `outputs` 가 비지 않은 list)을 그 단계가 `stages` 에 나온 횟수 이상 가져야 한다(Task 6a,
+    2026-09-23 R-A). 모자라면 `raw_lm_missing:<record_id>:<stage>:need=N:got=M` 문제다 —
+    한 단계만 빠지거나 항목이 `{}` 로 비어도 게이트가 통과하던 구멍을 막는다. 요구 밖 단계
+    (실패한 단계)의 항목은 `raw_lm_unrequired` 경고로 보고만 한다. `stages` 가 없는 행은 출구가
+    함의하는 최소 단계를 요구한다. 요약: `raw_stage_checked` · `raw_stage_short`.
     요구 조건은 **서비스 코드가 LM 을 부른 것이 확실한** 경우로만 좁힌다:
       - rewrite 행: `wrote ∈ (True, False)` — `rewrite_impl` 은 프로그램 호출이 **돌아온 뒤에만**
         `wrote` 를 bool 로 채운다(예외면 `None`).
@@ -227,22 +231,49 @@ def _count_cache(row, acc):
                 acc["raw_lm_live"] += 1
 
 
-def _raw_entries_ok(row):
-    """`raw_lm` 에 `{"error"}` 가 아닌 항목이 하나라도 있나."""
+def _valid_raw(e):
+    """유효한 원시 LM 항목: dict · `error` 키 없음 · `outputs` 가 비지 않은 list (Task 6a, R-A).
+
+    `{}` · `{"outputs": []}` · `{"error": ...}` 는 LM 응답을 담지 않았으므로 증거가 아니다.
+    """
+    return (isinstance(e, dict) and "error" not in e
+            and isinstance(e.get("outputs"), list) and bool(e["outputs"]))
+
+
+def _raw_valid_count(row, stage):
     raw = row.get("raw_lm")
-    if not isinstance(raw, dict):
-        return 0
-    return sum(1 for entries in raw.values() if isinstance(entries, list)
-               for e in entries if isinstance(e, dict) and "error" not in e)
+    entries = raw.get(stage) if isinstance(raw, dict) else None
+    return sum(1 for e in entries if _valid_raw(e)) if isinstance(entries, list) else 0
+
+
+# `stages` 가 없는(옛·손상) 행이 LM 을 부른 것이 확실할 때 출구가 함의하는 최소 단계.
+_OUTCOME_MIN_STAGES = {"synthesis_ran": ["observe", "design", "compose"],
+                       "synthesis_not_fired": ["observe", "design"]}
 
 
 def _raw_required(row):
-    """이 조인 행에 원시 LM 항목이 있어야 하나(서비스가 LM 을 부른 것이 확실한가)."""
+    """{단계: 필요한 유효 항목 수}. 빈 dict 면 요구하지 않는다(서비스가 LM 을 부른 것이
+    확실한 경우만 요구한다 — 모듈 docstring "raw_lm_missing").
+
+    decide 행: `stages` 의 단계 s 마다 **등장 횟수**만큼 — redesign 은 "design" 을, recompose
+    는 "compose" 를 한 번 더 남기고(`synthesize_multi`) 같은 프로그램 객체를 다시 불러 history
+    가 쌓이므로(`run_synthesis` 의 `raw_out`) 반복 호출도 이 규칙으로 센다. 실패한 단계는
+    `stages` 에 append 되기 전에 돌아오므로 요구하지 않는다.
+    rewrite 행: `wrote ∈ {True, False}` 이면 `rewrite` 에 1개.
+    """
     if row.get("row_type") == "rewrite":
-        return row.get("wrote") in (True, False)
+        return {"rewrite": 1} if row.get("wrote") in (True, False) else {}
     out = row.get("decide_outcome")
-    return (out in RAW_REQUIRED_OUTCOMES
-            or (out == "synthesis_failed" and bool(row.get("stages"))))
+    if not (out in RAW_REQUIRED_OUTCOMES
+            or (out == "synthesis_failed" and bool(row.get("stages")))):
+        return {}
+    stages = row.get("stages")
+    if not isinstance(stages, list) or not stages:
+        stages = _OUTCOME_MIN_STAGES.get(out, [])
+    need = {}
+    for st in stages:
+        need[st] = need.get(st, 0) + 1
+    return need
 
 
 def _ctx_str(v):
@@ -264,6 +295,7 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
          "parent_ok": 0, "parent_fixture_allowed": 0, "code_equal": 0, "duplicates": 0,
          "cache_hits": 0, "cache_misses": 0, "cache_unknown": 0, "raw_lm_live": 0,
          "steps_ref_ok": 0, "steps_ref_prerun_rejected": 0,
+         "raw_stage_checked": 0, "raw_stage_short": 0,
          "expect_ctx": dict(expect_ctx or {}),
          "legacy_rows": 0, "v2_rows_without_id": 0, "transport_failed": []}
     if truncated:
@@ -315,13 +347,21 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
                 problems.append("run_ctx_mismatch: %s row %s/%s run_ctx[%r]=%r != %r"
                                 % (what, r.get("record_id"), r.get("response_id"), k,
                                    ctx[k], want))
-        if _raw_required(r) and not _raw_entries_ok(r):
-            problems.append("raw_lm_missing: %s row %s/%s (decide_outcome=%r, wrote=%r, "
-                            "stages=%r) must carry raw LM entries but has none (or only "
-                            "{\"error\"} entries): raw_lm=%r"
-                            % (what, r.get("record_id"), r.get("response_id"),
-                               r.get("decide_outcome"), r.get("wrote"), r.get("stages"),
-                               r.get("raw_lm")))
+        need = _raw_required(r)
+        for st, n in need.items():
+            S["raw_stage_checked"] += 1
+            got = _raw_valid_count(r, st)
+            if got < n:
+                S["raw_stage_short"] += 1
+                problems.append("raw_lm_missing:%s:%s:need=%d:got=%d"
+                                % (r.get("record_id"), st, n, got))
+        raw = r.get("raw_lm")
+        for st, entries in (raw.items() if isinstance(raw, dict) else ()):
+            if st not in need and isinstance(entries, list) and entries:
+                # 실패한(또는 요구 밖) 단계의 항목 — 요구하지 않고 보고만 한다.
+                warnings.append("raw_lm_unrequired:%s:%s:entries=%d (%s row, stages=%r)"
+                                % (r.get("record_id"), st, len(entries), what,
+                                   r.get("stages")))
 
     # ---- 결정 이력 -------------------------------------------------------------------------
     hist = frame.get("respec_history")

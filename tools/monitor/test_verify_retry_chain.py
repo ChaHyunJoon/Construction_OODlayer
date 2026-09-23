@@ -73,6 +73,8 @@ def _decide_row(rid=DID, resp=DRESP, *, body=BODY1, params=PARAMS1, calls=CALLS1
            "record_id": rid, "response_id": resp}
     raw_lm = raw if raw is not None else {"observe": [_lm(False)], "design": [_lm(False)],
                                           "compose": [_lm(False)]}
+    # synthesize_multi 는 단계 호출이 돌아올 때마다 `stages` 에 이름을 더한다(정상 경로 셋).
+    syn["stages"] = ["observe", "design", "compose"]
     row = SY.stamp_record(dict(syn, raw_lm=raw_lm, decide_outcome=outcome, decide_error=None),
                           row_type="decide", record_id=rid, response_id=resp,
                           attempt=1, trigger="first", run_ctx=run_ctx,
@@ -615,7 +617,7 @@ _ERR_ONLY = [{"error": "lm_raw: KeyError: x"}]
 def test_rewrite_row_that_called_the_lm_without_raw_entries_fails(tmp_path, raw, wrote):
     frames = [_frame([_decision(attempts=[_attempt(wrote=wrote)])])]
     code, s = _run(tmp_path, frames, [_decide_row(), _rewrite_row(raw=raw, wrote=wrote)])
-    assert code == 1 and _has(s, "raw_lm_missing: rewrite"), s["problems"]
+    assert code == 1 and _has(s, "raw_lm_missing:%s:rewrite:" % RID), s["problems"]
 
 
 def test_rewrite_row_whose_call_threw_may_have_no_raw_entries(tmp_path):
@@ -635,7 +637,7 @@ _EMPTY3 = {"observe": [], "design": [], "compose": []}
 def test_decide_row_that_called_the_lm_without_raw_entries_fails(tmp_path, outcome, raw):
     frames, rows = _chain()
     code, s = _run(tmp_path, frames, [_decide_row(raw=raw, outcome=outcome), rows[1]])
-    assert code == 1 and _has(s, "raw_lm_missing: decide"), s["problems"]
+    assert code == 1 and _has(s, "raw_lm_missing:%s:" % DID), s["problems"]
 
 
 def test_synthesis_failed_needs_raw_entries_only_after_a_stage_returned(tmp_path):
@@ -647,7 +649,7 @@ def test_synthesis_failed_needs_raw_entries_only_after_a_stage_returned(tmp_path
     # observe 는 돌아왔고 design 이 던졌다: stages == ["observe"] — 항목이 있어야 한다.
     later = _decide_row(raw=_EMPTY3, outcome="synthesis_failed", stages=["observe"])
     code, s = _run(tmp_path, frames, [later, rows[1]])
-    assert code == 1 and _has(s, "raw_lm_missing: decide"), s["problems"]
+    assert code == 1 and _has(s, "raw_lm_missing:%s:" % DID), s["problems"]
 
 
 @pytest.mark.parametrize("outcome", ["no_tools", "no_call_lm_error", "no_call_parse_error",
@@ -675,6 +677,107 @@ def test_raw_lm_live_counts_uncached_entries_with_usage(tmp_path):
     assert code == 0, s["problems"]
     assert s["raw_lm_live"] == 2                        # live + cache_hit=False(usage 있음)
     assert (s["cache_hits"], s["cache_misses"], s["cache_unknown"]) == (1, 1, 2)
+
+
+# =============================================================================================
+# Task 6a (R-A, 2026-09-23) — 완료된 단계마다 유효한 원시 응답을 요구한다
+#   유효 항목 = dict · `error` 키 없음 · `outputs` 가 비지 않은 list.
+#   decide 행: stages 안의 단계 s 마다 유효 항목 수(raw_lm[s]) ≥ stages 안의 s 등장 횟수.
+# =============================================================================================
+def _stage_run(tmp_path, raw, stages, outcome="synthesis_ran"):
+    frames, rows = _chain()
+    return _run(tmp_path, frames, [_decide_row(raw=raw, outcome=outcome, stages=stages), rows[1]])
+
+
+_S3 = ["observe", "design", "compose"]
+
+
+def test_6a_every_stage_with_one_valid_entry_passes(tmp_path):                          # (a)
+    code, s = _stage_run(tmp_path, {k: [_lm(None)] for k in _S3}, _S3)
+    assert code == 0, s["problems"]
+    assert s["raw_stage_checked"] == 4 and s["raw_stage_short"] == 0   # decide 3 단계 + rewrite 1
+
+
+@pytest.mark.parametrize("raw", [{"observe": [_lm(None)], "design": [_lm(None)]},
+                                 {"observe": [_lm(None)], "design": [_lm(None)], "compose": []}])
+def test_6a_a_completed_stage_without_entries_fails(tmp_path, raw):                     # (b)
+    code, s = _stage_run(tmp_path, raw, _S3)
+    assert code == 1 and "raw_lm_missing:%s:compose:need=1:got=0" % DID in s["problems"], \
+        s["problems"]
+    assert s["raw_stage_short"] == 1
+
+
+def test_6a_empty_dict_entries_are_not_valid(tmp_path):                                  # (c)
+    code, s = _stage_run(tmp_path, {k: [{}] for k in _S3}, _S3)
+    assert code == 1
+    for k in _S3:
+        assert "raw_lm_missing:%s:%s:need=1:got=0" % (DID, k) in s["problems"], s["problems"]
+
+
+@pytest.mark.parametrize("bad", [dict(_lm(None), outputs=[]), dict(_lm(None), outputs=None),
+                                 dict(_lm(None), outputs="text")])
+def test_6a_entries_without_outputs_are_not_valid(tmp_path, bad):                        # (d)
+    code, s = _stage_run(tmp_path, {"observe": [_lm(None)], "design": [_lm(None)],
+                                    "compose": [bad]}, _S3)
+    assert code == 1 and "raw_lm_missing:%s:compose:need=1:got=0" % DID in s["problems"]
+
+
+@pytest.mark.parametrize("n,ok", [(1, False), (2, True)])
+def test_6a_redesign_needs_one_entry_per_design_call(tmp_path, n, ok):                   # (e)
+    stages = ["observe", "design", "design", "compose"]
+    code, s = _stage_run(tmp_path, {"observe": [_lm(None)], "design": [_lm(None)] * n,
+                                    "compose": [_lm(None)]}, stages)
+    assert (code == 0) == ok, s["problems"]
+    if not ok:
+        assert "raw_lm_missing:%s:design:need=2:got=1" % DID in s["problems"]
+
+
+@pytest.mark.parametrize("n,ok", [(1, False), (2, True)])
+def test_6a_recompose_needs_one_entry_per_compose_call(tmp_path, n, ok):                 # (f)
+    stages = ["observe", "design", "compose", "design", "compose"]
+    code, s = _stage_run(tmp_path, {"observe": [_lm(None)], "design": [_lm(None)] * 2,
+                                    "compose": [_lm(None)] * n}, stages)
+    assert (code == 0) == ok, s["problems"]
+    if not ok:
+        assert "raw_lm_missing:%s:compose:need=2:got=1" % DID in s["problems"]
+
+
+def test_6a_a_failed_stage_is_not_required_but_its_entries_are_reported(tmp_path):      # (g)
+    # observe 는 돌아왔고 design 호출이 던졌다: stages == ["observe"]. design 에 항목이 있어도
+    # (adapter 가 응답을 받은 뒤 파싱에서 던진 경우) 요구하지 않고 보고만 한다.
+    code, s = _stage_run(tmp_path, {"observe": [_lm(None)], "design": [_lm(None)],
+                                    "compose": []}, ["observe"], outcome="synthesis_failed")
+    assert code == 0, s["problems"]
+    assert any(w.startswith("raw_lm_unrequired:%s:design:" % DID) for w in s["warnings"]), \
+        s["warnings"]
+
+
+def test_6a_rewrite_wrote_false_with_empty_raw_fails(tmp_path):                          # (h)
+    frames = [_frame([_decision(attempts=[_attempt(wrote=False)])])]
+    code, s = _run(tmp_path, frames, [_decide_row(), _rewrite_row(raw={}, wrote=False)])
+    assert code == 1 and "raw_lm_missing:%s:rewrite:need=1:got=0" % RID in s["problems"], \
+        s["problems"]
+
+
+def test_6a_a_stage_with_only_error_entries_fails(tmp_path):                            # (i)
+    code, s = _stage_run(tmp_path, {"observe": [_lm(None)], "design": _ERR_ONLY * 2,
+                                    "compose": [_lm(None)]}, _S3)
+    assert code == 1 and "raw_lm_missing:%s:design:need=1:got=0" % DID in s["problems"]
+
+
+def test_6a_required_row_without_a_stages_list_uses_the_outcome_minimum(tmp_path):
+    # 옛 행·손상 행에 `stages` 가 없으면 출구가 함의하는 최소 단계를 요구한다
+    # (ran → observe·design·compose, not_fired → observe·design).
+    frames, rows = _chain()
+    d = _decide_row(raw={"observe": [_lm(None)], "design": [_lm(None)]})
+    del d["stages"]
+    code, s = _run(tmp_path, frames, [d, rows[1]])
+    assert code == 1 and "raw_lm_missing:%s:compose:need=1:got=0" % DID in s["problems"]
+    d2 = _decide_row(raw={"observe": [_lm(None)], "design": [_lm(None)]},
+                     outcome="synthesis_not_fired")
+    del d2["stages"]
+    code, s = _run(tmp_path, frames, [d2, rows[1]])
+    assert code == 0, s["problems"]
 
 
 # =============================================================================================
