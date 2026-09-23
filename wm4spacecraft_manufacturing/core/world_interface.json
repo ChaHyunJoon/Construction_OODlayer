@@ -2453,11 +2453,21 @@
             "name": "validate_schedule_transform_tree",
             "missing": [
             ],
-            "signature": "(sched; post_staging)",
+            "signature": "(sched::ConstructionBots.OperatingSchedule; post_staging)",
             "argpaths": [
+                "sched <- env.sched"
             ],
             "callable": true,
             "returns": "Bool"
+        },
+        {
+            "name": "validate_schedule_transform_tree",
+            "missing": [
+            ],
+            "signature": "(sched; post_staging)",
+            "argpaths": [
+            ],
+            "callable": true
         },
         {
             "name": "verify",

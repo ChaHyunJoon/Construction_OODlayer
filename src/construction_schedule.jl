@@ -674,6 +674,26 @@ function validate_schedule_transform_tree(sched; post_staging=false)
     return true   # 모든 검사를 통과하면 true 반환
 end
 
+"""
+    validate_schedule_transform_tree(sched::OperatingSchedule; post_staging=false)
+
+실행 중 스케줄(`env.sched`, 노드가 `ScheduleNode`)을 받으면 빌드 때 검증하는 그래프 형태
+(`NGraph{DiGraph,ConstructionPredicate,AbstractID}`, 노드가 `CustomNode`)로 **먼저 변환한 뒤**
+위와 같은 검증을 한다 — 엔진 자신이 `full_demo.jl` 의 배정 후 검증에서 쓰는 경로다.
+
+🔴 왜 (2026-09-22, results/2026-09-22-r3-parallel-probes): 위 메서드는 `CustomNode` 그래프만
+   다룰 수 있어서 실행 중 그래프에서는 **검사를 하기도 전에** `MethodError(eligible_successors)`
+   로 던졌다(사건 직전에도, body 와 무관하게). 그 예외를 `false` 로 바꾸면 "검사를 못 했다" 와
+   "장부가 틀렸다" 가 섞이므로 그러지 않고, 검사가 실제로 돌게 한다.
+⚠️ 이 검증은 **변환 트리 장부의 일관성**만 본다. 존과의 여유·주행 가능성은 보지 않는다
+   (실측: 옛 비강체 평행이동 직후에도 `true`).
+"""
+function validate_schedule_transform_tree(sched::OperatingSchedule; post_staging=false)::Bool
+    return validate_schedule_transform_tree(
+        convert_from_operating_schedule(NGraph{DiGraph,ConstructionPredicate,AbstractID}, sched);
+        post_staging = post_staging)
+end
+
 
 """
     generate_staging_plan(scene_tree,params)
