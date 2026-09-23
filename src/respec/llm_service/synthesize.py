@@ -578,7 +578,7 @@ class RewriteToolImpl(dspy.Signature):
 
 
 def rewrite_impl(*, tool_name, spec, impl_name, impl_code, impl_rejected_why,
-                 blob=None, program=None):
+                 blob=None, program=None, raw_out=None):
     """agent-3 을 **한 번** 더 돌려 거절을 고치게 한다.
 
     🔴 **절대 안 던진다.** 이 경로에서 새는 예외는 Julia 쪽 집행부가 기록 대신 예외로
@@ -592,21 +592,34 @@ def rewrite_impl(*, tool_name, spec, impl_name, impl_code, impl_rejected_why,
     ⚠️ `tool_name` 은 받아만 두고 프롬프트에 안 싣는다. 이름은 `impl_code` 의 시그니처와
        `spec` 안에 이미 두 번 들어 있고, 세 번째 사본을 만들면 셋이 갈릴 자리가 생긴다.
        그래도 인자로 받는 이유는 전선 계약(`RewriteRequest`)이 그것을 나르기 때문이다.
+
+    ✅ 2026-09-22: `raw_out` 가 dict 면 `raw_out["rewrite"] = lm_raw(prog)` 를 채운다 — 성공
+       경로와 예외 경로 **둘 다**(R4, F1: `/rewrite` 는 오늘 원장에 아무것도 안 쓴다). 반환
+       dict 의 모양은 안 바뀐다(`raw_lm` 키 없음). controller R2: `program` 이 호출자에게서
+       주입(재사용)된 것일 수 있으므로 호출 **전** `len(prog.history)` 를 찍어 두고, 이번
+       호출로 늘어난 부분만 `lm_raw(prog, start=n0)` 로 골라낸다.
     """
     out = {"wrote": None, "impl_name": None, "impl_code": None, "params": None,
            "calls": None, "surface": None, "reversible": None, "error": None,
            "rewrite_of_why": impl_rejected_why}
+    prog = None
+    n0 = 0
     try:
         # 🔴 브리프는 `prog = program or dspy.ChainOfThought(...)` 를 `try` **밖**에 뒀다.
         #    그 한 줄이 이 함수에서 유일하게 보호되지 않는 실제 호출이었다(시그니처 해석·
         #    어댑터 구성이 거기서 돈다). "절대 안 던진다" 가 구조로 참이어야 하므로 안으로
         #    옮긴다 — 측정되는 경로는 하나도 안 바뀐다(가짜 program 은 이 줄을 건너뛴다).
         prog = program or dspy.ChainOfThought(RewriteToolImpl)
+        n0 = len(getattr(prog, "history", None) or [])
         p = prog(spec=spec, world_interface=compose_interface(blob),
                  rejected_impl_code=impl_code, impl_rejected_why=impl_rejected_why)
     except Exception as e:                      # noqa: BLE001 -- 위 규약
         out["error"] = "rewrite: %s: %s" % (type(e).__name__, e)
+        if raw_out is not None and prog is not None:
+            raw_out["rewrite"] = lm_raw(prog, start=n0)
         return out
+    if raw_out is not None:
+        raw_out["rewrite"] = lm_raw(prog, start=n0)
     try:
         w = getattr(p, "wrote", None)
         out["wrote"] = w if isinstance(w, bool) else None
@@ -1703,7 +1716,7 @@ def stamp_record(rec, *, row_type, record_id, response_id=None, parent_record_id
 
 
 def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
-                  programs=None, blob=None) -> Dict[str, Any]:
+                  programs=None, blob=None, raw_out=None) -> Dict[str, Any]:
     """The single door the service calls. **There is no branch** -- one lane, always.
 
     🔴 The caller's `expressible` is accepted and **not used**. agent-2 emits that verdict as its
@@ -1719,9 +1732,28 @@ def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
     on-disk `world_interface.json` when a caller (a test) supplies one -- the same reason a test
     can drive `synthesize_multi` without touching disk. `build_compose_context` / `_finish_record`
     still do not read it.
+
+    ✅ 2026-09-22: `raw_out` 가 dict 면 세 단계 프로그램의 원시 응답(`lm_raw`)을 거기 채운다.
+    반환 기록에 넣지 않는 이유: 그 기록은 `/decide` 응답으로 줄리아까지 가고, 원시 응답은
+    원장에만 필요하다. 프로그램을 **여기서** 만드는 이유: 호출마다 새것이어야 history 가
+    요청 국소다(`lm_raw` docstring) -- `synthesize_multi` 도 `programs` 가 비면 스스로 기본
+    프로그램을 만들지만 그 인스턴스를 호출자에게 돌려주지 않으므로, `raw_out` 을 채우려면
+    여기서 먼저 만들어 **같은 객체**를 아래로 넘겨야 한다.
+    controller R2(global-constraints.md, Task 1·2): `start` 스냅숏은 주입된(재사용된) 프로그램이
+    호출 전 이미 들고 있던 history 를 raw_out 에 새지 않게 한다 -- 이번 호출로 **늘어난 부분만**
+    담는다.
     """
-    return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
-                            programs=programs, blob=blob)
+    progs = dict(programs or {})
+    progs.setdefault("observe", dspy.ChainOfThought(ObserveEvent))
+    progs.setdefault("design", dspy.ChainOfThought(DesignToolSpec))
+    progs.setdefault("compose", dspy.ChainOfThought(WriteToolImpl))
+    starts = {k: len(getattr(p, "history", None) or []) for k, p in progs.items()}
+    try:
+        return synthesize_multi(state=state, tools=tools, kind=kind, ledger=ledger,
+                                programs=progs, blob=blob)
+    finally:
+        if raw_out is not None:
+            raw_out.update({k: lm_raw(p, start=starts[k]) for k, p in progs.items()})
 
 
 def synthesize_multi(state: str,
