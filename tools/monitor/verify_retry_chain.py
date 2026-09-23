@@ -37,6 +37,36 @@ render_demo 스트림의 결정·되먹임 칸을 합성 원장 행과 `(record_
   · 캐시는 조인된 행의 **원시 LM 항목 하나하나**의 `cache_hit` 로 센다(True/False/그 밖=unknown).
     🔴 이것은 과금 호출 수가 **아니다** — macro(SelectTool)·adapter·provider 재시도는 원시
     응답에 없고, 캐시 재생도 항목 하나로 보인다.
+    ⚠️ `cache_misses` 는 라이브에서 사실상 늘 0 이다: dspy 3.3 은 캐시 히트에만 응답 객체에
+    `cache_hit=True` 를 붙이고(`dspy/clients/cache.py` — 같은 자리에서 `usage = {}` 로 비운다),
+    litellm 의 라이브 응답에는 그 속성이 **없다** → `lm_raw` 가 `None` 을 싣고 라이브 호출은
+    `cache_unknown` 에 떨어진다. 그래서 따로 `raw_lm_live` = "`cache_hit` 가 True 가 아니고
+    `usage` 가 비지 않은 항목" 을 센다 — **라이브였을 공산이 큰 항목**이지 과금 수가 아니다.
+  · 원시 LM 항목이 **있어야 하는** 조인 행에 항목이 없으면(0개, 또는 `{"error"}` 항목뿐)
+    `raw_lm_missing` 문제다 — 원시 응답 포착이 깨져도 게이트가 통과하는 구멍을 막는다.
+    요구 조건은 **서비스 코드가 LM 을 부른 것이 확실한** 경우로만 좁힌다:
+      - rewrite 행: `wrote ∈ (True, False)` — `rewrite_impl` 은 프로그램 호출이 **돌아온 뒤에만**
+        `wrote` 를 bool 로 채운다(예외면 `None`).
+      - decide 행: `decide_outcome ∈ RAW_REQUIRED_OUTCOMES`(= synthesis_ran · synthesis_not_fired),
+        또는 synthesis_failed 이면서 `stages` 가 비지 않은 행. `synthesize_multi` 는 단계 호출이
+        **성공한 뒤에만** `stages` 에 이름을 더한다 — not_fired 는 observe·design 이 돌아왔고
+        (agent-2 가 expressible≠False 라 답했다), ran 은 셋 다 돌아왔다. synthesis_failed 는
+        첫 단계(observe)에서 LM 호출 자체가 던질 수 있어 빈 항목이 정당하다(`stages == []`).
+        no_tools · no_call_* · synthesis_disabled · synthesis_refused · raised 는 합성 단계를
+        안 탔으므로(`raw_lm` 은 합성 단계 것뿐 — `dspy_service.macro` docstring) 요구하지 않는다.
+  · `--expect-ctx KEY=VALUE`(반복 가능): 조인된 모든 행의 `run_ctx[KEY]` 가 VALUE 와 같아야
+    한다(`run_ctx_mismatch`). 비교는 문자열로 한다 — 문자열 값은 그대로, 그 밖(수·bool·null)은
+    `json.dumps` 로(예: `seed=1`, `zone=true`, `synth_fixture=`). 키가 없어도 문제다.
+  · `steps_ref == "respec.steps"` 인 되먹임 칸은 그 결정 행의 `steps` 가 비지 않은 리스트여야
+    한다(`steps_ref_dangling`, R12) — 포인터가 가리키는 걸음이 없으면 재집행 증거가 없다.
+    예외 하나: `steps == []` 이고 **뒤 칸**이 `trigger == "prerun"` 이면 설치된 body 가 집행
+    전에 거절된 판이라(`refused_budget_spent`) 빈 걸음이 참이다 → `steps_ref_prerun_rejected`.
+  · 🔴 **dspy 레인 스트림은 같은 시드로도 바이트 재현되지 않는다.** 결정의 `policies.dspy` 와
+    `attempts` 칸에 판마다 새로 발급되는 `record_id` · `response_id` · `parent_record_id` ·
+    `parent_response_id` 가 실리기 때문이다(줄리아 `new_record_id` 는 시각·pid 해시, 서버
+    `response_id` 는 uuid4). 두 스트림의 md5/바이트 동일성으로 "같은 판" 을 진단하려면 먼저 그
+    네 키(와 그 밖의 attempt id)를 지운 사본을 비교할 것 — memory `tractor-battery-fault-cells-
+    are-one-run-copied` 류의 진단이 이 키 때문에 거짓 "다르다" 를 낸다.
   · 결정도 되먹임도 없는 판은 `verdict = "not_applicable"`(exit 0) — 라이브 게이트는
     `--require-decisions` / `--require-attempts` 로 무검증 통과를 막는다(조인된 수로 잰다).
 
@@ -45,7 +75,7 @@ Exit: 0 성공 · 1 증거/계약 위반 · 2 입력 부재·파싱 불가.
 사용법:
     python3 tools/monitor/verify_retry_chain.py <stream.jsonl> [<ledger.jsonl>]
         [--require-decisions N] [--require-attempts N] [--allow-fixture-parent]
-        [--health-json /health.json]
+        [--health-json /health.json] [--expect-ctx KEY=VALUE ...]
     <ledger> 생략 시: $SYNTH_RECORD_LOG (비었거나 "0" 이 아니면) → results/synth_lane_records.jsonl
     🔴 스트림은 render_demo 가 쓴 **원래 이름**으로 둘 것 — `run_ctx.stream` 과 대조한다.
 """
@@ -68,6 +98,9 @@ DECIDE_FIELDS = (("impl_name", "impl_name"), ("impl_code", "impl_code"), ("param
                  ("body_names", "body_names"), ("surface", "surface"),
                  ("reversible", "reversible"), ("refused", "refused"),
                  ("synthesis_ran", "ran"), ("synthesis_event", "synthesis_event"))
+# 원시 LM 항목이 **반드시** 있어야 하는 decide 출구(모듈 docstring "raw_lm_missing").
+# synthesis_failed 는 `stages` 가 비지 않을 때만 요구한다(첫 단계 호출이 던지면 빈 것이 정당).
+RAW_REQUIRED_OUTCOMES = ("synthesis_ran", "synthesis_not_fired")
 # 되먹임 칸의 키 → rewrite 행의 키. `why` 는 전선의 `impl_rejected_why` 그대로다(`_rewrite_once`).
 REWRITE_FIELDS = (("impl_name", "impl_name"), ("impl_code", "impl_code"), ("params", "params"),
                   ("calls", "calls"), ("wrote", "wrote"), ("service_error", "error"),
@@ -189,10 +222,35 @@ def _count_cache(row, acc):
             h = e.get("cache_hit") if isinstance(e, dict) else None
             acc["cache_hits" if h is True else "cache_misses" if h is False
                 else "cache_unknown"] += 1
+            # 라이브였을 공산: 캐시 히트가 아니고 usage 가 비지 않았다(히트는 usage={}).
+            if isinstance(e, dict) and h is not True and e.get("usage"):
+                acc["raw_lm_live"] += 1
+
+
+def _raw_entries_ok(row):
+    """`raw_lm` 에 `{"error"}` 가 아닌 항목이 하나라도 있나."""
+    raw = row.get("raw_lm")
+    if not isinstance(raw, dict):
+        return 0
+    return sum(1 for entries in raw.values() if isinstance(entries, list)
+               for e in entries if isinstance(e, dict) and "error" not in e)
+
+
+def _raw_required(row):
+    """이 조인 행에 원시 LM 항목이 있어야 하나(서비스가 LM 을 부른 것이 확실한가)."""
+    if row.get("row_type") == "rewrite":
+        return row.get("wrote") in (True, False)
+    out = row.get("decide_outcome")
+    return (out in RAW_REQUIRED_OUTCOMES
+            or (out == "synthesis_failed" and bool(row.get("stages"))))
+
+
+def _ctx_str(v):
+    return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
 
 
 def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
-           allow_fixture_parent=False, health=None):
+           allow_fixture_parent=False, health=None, expect_ctx=None):
     """요약 dict 을 돌려준다(`problems` 가 비면 합격). 입력 오류는 InputError."""
     frame, n_frames, truncated = read_final_frame(stream)
     ledger = load_ledger(ledger_path)
@@ -204,7 +262,9 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
          "decide_joined": 0, "attempts": 0, "roundtrip_ok": 0, "roundtrip_failed": 0,
          "not_requested": 0, "skipped_not_rewritable": 0, "attempt_joined": 0,
          "parent_ok": 0, "parent_fixture_allowed": 0, "code_equal": 0, "duplicates": 0,
-         "cache_hits": 0, "cache_misses": 0, "cache_unknown": 0,
+         "cache_hits": 0, "cache_misses": 0, "cache_unknown": 0, "raw_lm_live": 0,
+         "steps_ref_ok": 0, "steps_ref_prerun_rejected": 0,
+         "expect_ctx": dict(expect_ctx or {}),
          "legacy_rows": 0, "v2_rows_without_id": 0, "transport_failed": []}
     if truncated:
         problems.append("stream_truncated: the last line is not JSON; diagnosed from the "
@@ -246,6 +306,22 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
         elif ctx.get("stream") != stream_name:
             problems.append("run_ctx_bad: %s row run_ctx.stream=%r != stream %r"
                             % (what, ctx.get("stream"), stream_name))
+        for k, want in (expect_ctx or {}).items():
+            if not isinstance(ctx, dict) or k not in ctx:
+                problems.append("run_ctx_mismatch: %s row %s/%s run_ctx has no key %r "
+                                "(--expect-ctx %s=%s)" % (what, r.get("record_id"),
+                                                         r.get("response_id"), k, k, want))
+            elif _ctx_str(ctx[k]) != want:
+                problems.append("run_ctx_mismatch: %s row %s/%s run_ctx[%r]=%r != %r"
+                                % (what, r.get("record_id"), r.get("response_id"), k,
+                                   ctx[k], want))
+        if _raw_required(r) and not _raw_entries_ok(r):
+            problems.append("raw_lm_missing: %s row %s/%s (decide_outcome=%r, wrote=%r, "
+                            "stages=%r) must carry raw LM entries but has none (or only "
+                            "{\"error\"} entries): raw_lm=%r"
+                            % (what, r.get("record_id"), r.get("response_id"),
+                               r.get("decide_outcome"), r.get("wrote"), r.get("stages"),
+                               r.get("raw_lm")))
 
     # ---- 결정 이력 -------------------------------------------------------------------------
     hist = frame.get("respec_history")
@@ -313,6 +389,23 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
                 continue
             rt, rid, resp = a.get("roundtrip"), a.get("record_id"), a.get("response_id")
             row = None
+            # R12: `steps_ref` 가 가리키는 걸음이 결정 행에 실제로 있나(enact.jl R8a — 설치된
+            #   재작성만 이 포인터를 단다; 그 뒤 재집행이 `respec["steps"]` 를 쓴다).
+            if a.get("steps_ref") == "respec.steps":
+                st = dec.get("steps")
+                if isinstance(st, list) and st:
+                    S["steps_ref_ok"] += 1
+                elif st == [] and any(isinstance(b, dict) and b.get("trigger") == "prerun"
+                                      for b in atts[ai + 1:]):
+                    # 설치된 재작성이 **집행 전** 거절됐다(뒤 칸이 prerun 거절을 적는다 —
+                    # `refused_budget_spent`, minted_end_to_end (34h)(d)): 걸음이 없는 것이 참이다.
+                    S["steps_ref_prerun_rejected"] += 1
+                else:
+                    problems.append("steps_ref_dangling: %s steps_ref='respec.steps' but the "
+                                    "decision's steps is %r" % (where, st))
+            elif a.get("steps_ref") is not None:
+                problems.append("steps_ref_dangling: %s unknown steps_ref %r"
+                                % (where, a.get("steps_ref")))
             if rt is None:
                 problems.append("attempt_open: %s roundtrip is null (opened, never filled)"
                                 % where)
@@ -490,7 +583,17 @@ def run(argv=None):
                          "(ledger run_ctx.synth_fixture or stream input.router.synth_fixture)")
     ap.add_argument("--health-json", default=None, metavar="PATH",
                     help="saved /health JSON; ledger_append_failures > 0 fails the run")
+    ap.add_argument("--expect-ctx", action="append", default=[], metavar="KEY=VALUE",
+                    help="repeatable; every joined row's run_ctx[KEY] must equal VALUE "
+                         "(strings as-is, other JSON values via json.dumps, e.g. seed=1, "
+                         "zone=true); a missing key fails too")
     a = ap.parse_args(argv)
+    expect = {}
+    for kv in a.expect_ctx:
+        k, sep, v = kv.partition("=")
+        if not sep or not k:
+            ap.error("--expect-ctx wants KEY=VALUE, got %r" % kv)
+        expect[k] = v
     ledger_path, source = resolve_ledger_path(a.ledger)
     head = {"ledger_path": ledger_path, "ledger_source": source}
     try:
@@ -505,7 +608,8 @@ def run(argv=None):
                 raise InputError("health json is not an object: %s" % a.health_json)
         s = verify(a.stream, ledger_path, require_decisions=a.require_decisions,
                    require_attempts=a.require_attempts,
-                   allow_fixture_parent=a.allow_fixture_parent, health=health)
+                   allow_fixture_parent=a.allow_fixture_parent, health=health,
+                   expect_ctx=expect)
     except InputError as e:
         return EXIT_INPUT, dict(head, verdict="input_error", error=str(e))
     s = dict(head, **s)

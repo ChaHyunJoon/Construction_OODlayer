@@ -595,11 +595,175 @@ def test_cache_is_counted_per_raw_lm_entry(tmp_path):
     assert (s["cache_hits"], s["cache_misses"], s["cache_unknown"]) == (2, 1, 3)
 
 
-def test_early_exit_decide_row_with_empty_raw_lm_counts_nothing(tmp_path):
+def test_early_exit_decide_row_with_empty_raw_lm_adds_no_cache_counts(tmp_path):
+    # 조기 출구(합성 단계를 안 탔다)의 빈 raw_lm 은 정당하다 — 캐시 수는 rewrite 행의 1 뿐.
     frames, _ = _chain()
-    code, s = _run(tmp_path, frames, [_decide_row(raw={}), _rewrite_row()])
-    assert code == 0
+    code, s = _run(tmp_path, frames,
+                   [_decide_row(raw={}, outcome="no_call_no_tool_call"), _rewrite_row()])
+    assert code == 0, s["problems"]
     assert (s["cache_hits"], s["cache_misses"], s["cache_unknown"]) == (0, 1, 0)
+
+
+# =============================================================================================
+# final fix (R12 · 최종 리뷰 Important 1) — raw_lm_missing · raw_lm_live
+# =============================================================================================
+_ERR_ONLY = [{"error": "lm_raw: KeyError: x"}]
+
+
+@pytest.mark.parametrize("raw", [{"rewrite": []}, {}, {"rewrite": _ERR_ONLY}])
+@pytest.mark.parametrize("wrote", [True, False])
+def test_rewrite_row_that_called_the_lm_without_raw_entries_fails(tmp_path, raw, wrote):
+    frames = [_frame([_decision(attempts=[_attempt(wrote=wrote)])])]
+    code, s = _run(tmp_path, frames, [_decide_row(), _rewrite_row(raw=raw, wrote=wrote)])
+    assert code == 1 and _has(s, "raw_lm_missing: rewrite"), s["problems"]
+
+
+def test_rewrite_row_whose_call_threw_may_have_no_raw_entries(tmp_path):
+    # rewrite_impl: 프로그램 호출이 던지면 wrote=None · error 가 채워진다 — LM 이 안 돌았을 수 있다.
+    frames = [_frame([_decision(attempts=[_attempt(wrote=None, service_error="rewrite: X: y")])])]
+    rows = [_decide_row(), _rewrite_row(raw={"rewrite": []}, wrote=None, error="rewrite: X: y")]
+    code, s = _run(tmp_path, frames, rows)
+    assert code == 0, s["problems"]
+
+
+_EMPTY3 = {"observe": [], "design": [], "compose": []}
+
+
+@pytest.mark.parametrize("outcome", ["synthesis_ran", "synthesis_not_fired"])
+@pytest.mark.parametrize("raw", [_EMPTY3, {}, {"observe": _ERR_ONLY, "design": [],
+                                                "compose": []}])
+def test_decide_row_that_called_the_lm_without_raw_entries_fails(tmp_path, outcome, raw):
+    frames, rows = _chain()
+    code, s = _run(tmp_path, frames, [_decide_row(raw=raw, outcome=outcome), rows[1]])
+    assert code == 1 and _has(s, "raw_lm_missing: decide"), s["problems"]
+
+
+def test_synthesis_failed_needs_raw_entries_only_after_a_stage_returned(tmp_path):
+    frames, rows = _chain()
+    # 첫 단계(observe)의 LM 호출이 던졌다: stages == [] — 빈 raw_lm 이 정당하다.
+    first = _decide_row(raw=_EMPTY3, outcome="synthesis_failed", stages=[])
+    code, s = _run(tmp_path, frames, [first, rows[1]])
+    assert not _has(s, "raw_lm_missing"), s["problems"]
+    # observe 는 돌아왔고 design 이 던졌다: stages == ["observe"] — 항목이 있어야 한다.
+    later = _decide_row(raw=_EMPTY3, outcome="synthesis_failed", stages=["observe"])
+    code, s = _run(tmp_path, frames, [later, rows[1]])
+    assert code == 1 and _has(s, "raw_lm_missing: decide"), s["problems"]
+
+
+@pytest.mark.parametrize("outcome", ["no_tools", "no_call_lm_error", "no_call_parse_error",
+                                     "no_call_no_tool_call", "synthesis_disabled",
+                                     "synthesis_refused"])
+def test_early_exits_need_no_raw_entries(tmp_path, outcome):
+    frames, rows = _chain()
+    code, s = _run(tmp_path, frames, [_decide_row(raw={}, outcome=outcome), rows[1]])
+    assert not _has(s, "raw_lm_missing"), s["problems"]
+
+
+def test_the_required_outcomes_are_real_service_outcomes():
+    import dspy_service as DS  # noqa: E402 -- 출구 어휘의 정본
+    assert set(vrc.RAW_REQUIRED_OUTCOMES) | {"synthesis_failed"} <= set(DS.DECIDE_OUTCOMES)
+
+
+def test_raw_lm_live_counts_uncached_entries_with_usage(tmp_path):
+    frames, _ = _chain()
+    live = _lm(None)                                    # litellm 라이브: cache_hit 속성 없음
+    hit = dict(_lm(True), usage={})                     # dspy 캐시 히트: usage={} 로 비운다
+    no_usage = dict(_lm(None), usage=None)              # 가짜 프로그램 · 못 읽은 usage
+    d = _decide_row(raw={"observe": [live], "design": [hit], "compose": [no_usage]})
+    r = _rewrite_row(raw={"rewrite": [dict(_lm(False))]})
+    code, s = _run(tmp_path, frames, [d, r])
+    assert code == 0, s["problems"]
+    assert s["raw_lm_live"] == 2                        # live + cache_hit=False(usage 있음)
+    assert (s["cache_hits"], s["cache_misses"], s["cache_unknown"]) == (1, 1, 2)
+
+
+# =============================================================================================
+# final fix (R12) — steps_ref 를 따라간다
+# =============================================================================================
+def _steps_ref_chain(steps):
+    att = _attempt(trigger="register_reject", why="register: bad")
+    att["steps"], att["steps_ref"] = None, "respec.steps"          # enact.jl R8a 모양
+    dec = _decision(attempts=[att])
+    if steps is not ...:
+        dec["steps"] = steps
+    rows = [_decide_row(), _rewrite_row(trigger="register_reject", why="register: bad")]
+    return [_frame([dec])], rows
+
+
+def test_steps_ref_with_steps_on_the_decision_passes(tmp_path):
+    steps = [{"name": "ZoneFix!", "status": "success", "detail": None}]
+    code, s = _run(tmp_path, *_steps_ref_chain(steps))
+    assert code == 0, s["problems"]
+    assert s["steps_ref_ok"] == 1
+
+
+@pytest.mark.parametrize("steps", [..., None, []])
+def test_steps_ref_without_steps_on_the_decision_is_dangling(tmp_path, steps):
+    code, s = _run(tmp_path, *_steps_ref_chain(steps))
+    assert code == 1 and _has(s, "steps_ref_dangling"), s["problems"]
+
+
+def test_empty_steps_after_a_prerun_refusal_is_not_dangling(tmp_path):
+    # minted_end_to_end (34h)(d): 등록 거절 되먹임이 설치됐고(steps_ref), 고친 body 가 집행
+    # 전에 거절돼 예산 소진으로 둘째 칸(prerun, not_requested)이 열렸다 — steps 는 [] 가 참이다.
+    frames, rows = _steps_ref_chain([])
+    dec = frames[0]["respec_history"][0]
+    pre = _attempt(rid=None, roundtrip="not_requested", trigger="prerun",
+                   why="refused_budget_spent: enact_rejected:reject:calls_disagree_with_body")
+    dec["attempts"].append(pre)
+    code, s = _run(tmp_path, frames, rows)
+    assert code == 0, s["problems"]
+    assert s["steps_ref_prerun_rejected"] == 1 and s["steps_ref_ok"] == 0
+    # 대조: prerun 칸이 없으면 같은 [] 가 dangling 이다(위 parametrize 의 [] 판).
+
+
+def test_unknown_steps_ref_is_dangling(tmp_path):
+    frames, rows = _chain()
+    frames[0]["respec_history"][0]["attempts"][0]["steps_ref"] = "respec.nowhere"
+    code, s = _run(tmp_path, frames, rows)
+    assert code == 1 and _has(s, "steps_ref_dangling")
+
+
+# =============================================================================================
+# final fix (R12) — --expect-ctx KEY=VALUE (게이트 B 의 손 `tail` 대체)
+# =============================================================================================
+def test_expect_ctx_matching_values_pass(tmp_path):
+    code, s = _run(tmp_path, *_chain(), "--expect-ctx", "run_id=retrygate_B",
+                   "--expect-ctx", "seed=1", "--expect-ctx", "zone=true",
+                   "--expect-ctx", "synth_fixture=")
+    assert code == 0, s["problems"]
+    assert s["expect_ctx"] == {"run_id": "retrygate_B", "seed": "1", "zone": "true",
+                               "synth_fixture": ""}
+
+
+@pytest.mark.parametrize("kv", ["seed=2", "run_id=retrygate_A", "zone=True"])
+def test_expect_ctx_mismatch_fails(tmp_path, kv):
+    code, s = _run(tmp_path, *_chain(), "--expect-ctx", kv)
+    assert code == 1 and _has(s, "run_ctx_mismatch")
+    # 조인된 두 행(decide·rewrite) 각각이 보고된다.
+    assert sum(p.startswith("run_ctx_mismatch") for p in s["problems"]) == 2
+
+
+def test_expect_ctx_missing_key_fails(tmp_path):
+    code, s = _run(tmp_path, *_chain(), "--expect-ctx", "campaign_id_typo=x")
+    assert code == 1 and _has(s, "run_ctx_mismatch")
+    assert "no key" in s["problems"][0]
+
+
+def test_expect_ctx_checks_every_joined_row(tmp_path):
+    frames, _ = _chain()
+    other = dict(RUN_CTX, seed=9)
+    code, s = _run(tmp_path, frames, [_decide_row(), _rewrite_row(run_ctx=other)],
+                   "--expect-ctx", "seed=1")
+    assert code == 1 and _has(s, "run_ctx_mismatch: rewrite")
+    assert not _has(s, "run_ctx_mismatch: decide")
+
+
+def test_expect_ctx_without_equals_is_a_usage_error(tmp_path):
+    frames, rows = _chain()
+    with pytest.raises(SystemExit) as e:
+        _run(tmp_path, frames, rows, "--expect-ctx", "seed")
+    assert e.value.code == 2
 
 
 # =============================================================================================
