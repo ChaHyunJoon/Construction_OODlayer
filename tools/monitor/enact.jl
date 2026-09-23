@@ -1573,7 +1573,10 @@ end
 **`steps` 와 `steps_ref`:** 던짐·무동작·집행 전 거절 갈래는 두 번째 집행의 걸음을 `steps`
 에 싣는다(`steps_ref = nothing`). 🔴 **등록 거절 갈래는 `steps` 를 `nothing` 으로 둔다** —
 그 뒤의 (유일한) 집행은 정상 흐름이 결정 행의 `respec["steps"]` 에 쓰고(`record_world_delta!`),
-그 자리를 `steps_ref = "respec.steps"` 가 가리킨다. `prev_steps` 는 첫 시도의 걸음이다
+그 자리를 `steps_ref = "respec.steps"` 가 가리킨다. 🔴 (R8a) 그 값은 고친 body 가 **실제로
+설치돼 다시 집행으로 간 판**(`install_why === nothing`)에만 달린다 — 왕복 실패·설치 거절 판은
+`_reject_malformed` 로 끝나 재집행이 없으므로 `steps_ref = nothing` 이다(`respec.steps` 를
+가리키면 그 자리의 빈 걸음을 재시도의 걸음으로 오독한다). `prev_steps` 는 첫 시도의 걸음이다
 (등록 거절 갈래는 집행 전이라 `nothing`, 집행 전 거절 갈래는 빈 목록).
 """
 function _open_attempt!(; trigger::AbstractString, why::AbstractString,
@@ -2764,10 +2767,10 @@ function enact_minted_decision!(env, truth, decision)
             #    (`@goto` 는 여기서 못 쓴다: Julia 의 `@goto` 는 `try` 블록 안팎으로 못 뛴다.)
             if why !== nothing
                 # 🔴 2026-09-22 (R2). 이 갈래의 재집행 걸음은 정상 흐름이 `respec["steps"]` 에
-                #    쓴다 — 칸의 `steps` 는 비우고 그 자리를 `steps_ref` 로 가리킨다.
+                #    쓴다 — 칸의 `steps` 는 비우고, 설치가 성공한 뒤에만 그 자리를
+                #    `steps_ref` 로 가리킨다(R8a, 아래 `_install_rewrite!` 뒤).
                 local att = _open_attempt!(trigger = "register_reject", why = why,
-                                           prev_name = String(nm), sl = sl,
-                                           steps_ref = "respec.steps")
+                                           prev_name = String(nm), sl = sl)
                 local fx = _rewrite_once(sl, String(nm), String(cd), why; attempt = att)
                 # 🔴 D17c. **왕복이 나간 순간** 예산이 소진된다 — 성공했든 실패했든.
                 #    "실패했으니 한 번 더" 는 상한을 2로 만드는 것과 같다.
@@ -2815,6 +2818,7 @@ function enact_minted_decision!(env, truth, decision)
                 att["install_why"] = ins.why
                 rewrite_params = ins.params_from
                 ins.why !== nothing && return _reject_malformed(ins.why)
+                att["steps_ref"] = "respec.steps"     # R8a: 설치됐다 = 재집행이 이어진다
             end
             registered = true
             # 🔴 **D5 (Wave D). L3 을 여기서 읽는다 — 등록이 실제로 성공한 직후.**

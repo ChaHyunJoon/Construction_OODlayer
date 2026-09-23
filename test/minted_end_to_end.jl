@@ -4291,8 +4291,24 @@ end
     @test a["prev_steps"] === nothing                 # 첫 시도는 집행 전에 거절됐다
     # 🔴 재집행 steps 는 정상 흐름이 `respec["steps"]` 에 쓴다 — 검증기가 따라갈 자리를 적는다.
     @test a["steps"] === nothing
-    @test a["steps_ref"] == "respec.steps"
+    @test a["steps_ref"] == "respec.steps"            # R8a: 설치됐고 재집행이 이어졌다
     @test String(_RW_LAST[][:trigger]) == "register_reject"
+
+    # ---- 🔴 R8a 음성 대조: 되먹임이 **실패한** 등록 거절에는 재집행이 없다 → `steps_ref` 없음 ----
+    CB.reset_minted_table!()
+    _RW_MODE[] = :off                                  # 404 = 왕복 실패
+    _RW_HITS[] = 0
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local mf = enact_minted_decision!(live_cache_env(), nothing,
+        _dec(_rw_lane("rw_bad34f",
+            "function rw_bad34f(env; note = \"x\")\n    return (status = :nope,)\nend\n")))
+    @test _RW_HITS[] == 1
+    @test mf.registered === false                      # 원래 거절이 그대로 남았다
+    local af = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test af["trigger"] == "register_reject"
+    @test startswith(String(af["roundtrip"]), "failed:")
+    @test af["steps_ref"] === nothing
+    @test af["steps"] === nothing
 end
 
 @testset "(34e) 🔴 첫 시도의 진실원(decision.policies)은 바이트 동일하고, 고친 body 는 attempts 에만 산다 — 직렬화된 프레임에서 잰다" begin
@@ -4472,6 +4488,38 @@ end
     @test att["record_id"] === nothing
     @test _RW_HITS[] == 0
     @test only(CB.MONITOR_RESPEC[]["attempts"]) === att
+    CB.MONITOR_RESPEC[] = nothing
+end
+
+@testset "(34j) 🔴 전송 실패 — 요청이 서버에 **안 닿은** 판: failed:, id 는 있고 응답 id 는 없다" begin
+    # 🔴 (34b) 의 `:bad_json` 은 서버가 **받은** 판이다(200 + 깨진 본문). 여기는 연결 자체가
+    #    실패한다 — Review Focus 4 의 판("원장 행이 없는 것이 정상이다"). `DSPY_URL` 은 `const`
+    #    라 (43) 가족의 관용구로 enact.jl 을 **사본 모듈**에 싣고 닫힌 포트를 준다. 생산 코드는
+    #    안 바뀐다. 사본 모듈에는 policy.jl 이 없으므로 `new_record_id`·`RUN_CTX` 를 **이
+    #    모듈의 것 그대로** 묶는다(그래야 칸의 `record_id` 가 생산과 같은 발급기에서 나온다).
+    local lsn = HTTP.Sockets.listen(HTTP.Sockets.localhost, 0)
+    local port = HTTP.Sockets.getsockname(lsn)[2]
+    close(lsn)                                         # 이제 아무도 이 포트를 안 듣는다
+    local M = Module(gensym(:EnactClosedPort))
+    Core.eval(M, :(using Test; using ConstructionBots; import JSON3; import HTTP))
+    Core.eval(M, :(const CB = ConstructionBots))
+    Core.eval(M, :(const DSPY_URL = $("http://127.0.0.1:$port")))
+    Core.eval(M, :(const new_record_id = $(new_record_id)))
+    Core.eval(M, :(const RUN_CTX = $(RUN_CTX)))
+    Base.include(M, ENACT_PATH)
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_LAST[] = nothing
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local m = Base.invokelatest(getfield(M, :enact_minted_decision!), retry_env(), nothing,
+                                _dec(_d17b_lane("d34_tx!", _d17b_boom("d34_tx!"))))
+    @test m.enact_retry === :roundtrip_failed          # 판정은 오늘과 같다
+    @test _RW_HITS[] == 0                              # 🔴 루프백 서버도 안 받았다
+    local a = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test a["trigger"] == "threw"
+    @test startswith(String(a["roundtrip"]), "failed:")
+    @test occursin("Connect", String(a["roundtrip"]))  # 연결 단계의 실패다(ConnectError)
+    @test a["record_id"] isa String && occursin(r"^[0-9a-f]{24}$", a["record_id"])
+    @test a["response_id"] === nothing
+    @test a["wrote"] === nothing && a["impl_code"] === nothing
     CB.MONITOR_RESPEC[] = nothing
 end
 
