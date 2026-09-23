@@ -137,6 +137,26 @@ end
         end
         write(joinpath(repo, "notes.txt"), "outside\n")                     # src/tools/test 밖
         @test run_fingerprint(repo).code_dirty_digest == ""
+        # 🔴 R5b: untracked **데이터**(스트림·스윕 JSON·애니)는 안 본다 — 셀마다 흔들리지 않는다.
+        mkpath(joinpath(repo, "tools", "monitor", "streams_x"))
+        write(joinpath(repo, "tools", "monitor", "streams_x", "a.jsonl"), "{}\n")
+        write(joinpath(repo, "tools", "monitor", "sweeps.json"), "[]")
+        write(joinpath(repo, "tools", "monitor", "anim.html"), "<html/>")
+        @test run_fingerprint(repo).code_dirty_digest == ""
+        write(joinpath(repo, "tools", "monitor", "streams_x", "a.jsonl"), "{\"x\":1}\n")  # 다시 쓴다
+        @test run_fingerprint(repo).code_dirty_digest == ""
+        # 같은 자리의 untracked **소스**는 본다(.jl · .py · .sh · .toml).
+        local dsrc = String[]
+        for (i, f) in enumerate(("probe.jl", "drive.py", "run.sh", "cfg.toml"))
+            write(joinpath(repo, "tools", "monitor", f), "# $(i)\n")
+            push!(dsrc, run_fingerprint(repo).code_dirty_digest)
+            @test occursin(r"^[0-9a-f]{16}$", dsrc[end])
+        end
+        @test allunique(dsrc)
+        for f in ("probe.jl", "drive.py", "run.sh", "cfg.toml")
+            rm(joinpath(repo, "tools", "monitor", f))
+        end
+        @test run_fingerprint(repo).code_dirty_digest == ""
         write(joinpath(repo, "src", "a.jl"), "x = 2\n")                     # 추적 파일 편집
         @test occursin(r"^[0-9a-f]{16}$", run_fingerprint(repo).code_dirty_digest)
     end

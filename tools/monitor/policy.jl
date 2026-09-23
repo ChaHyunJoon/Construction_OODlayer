@@ -901,11 +901,21 @@ const _CONFIG_ENV_EXCLUDED = Set(["DEMO_SEED", "DEMO_ZONE_SEED", "DEMO_CASE_TAG"
 # 코드 지문이 보는 경로(저장소 뿌리 기준).
 const _CODE_FINGERPRINT_PATHS = ("src", "tools", "test")
 
+# 코드 지문이 보는 **untracked** 파일의 확장자 (2026-09-22, controller R5b). 추적 파일의 diff 는
+# 확장자와 무관하게 전부 본다 — 이 거름은 untracked 에만 걸린다.
+# 🔴 왜 거르나: `tools/` 아래 untracked 는 대부분 **데이터**다(2026-09-22 실측 239개·287 MB 중
+#    213개가 `tools/monitor/streams_stale_*/*.jsonl`, 그 밖에 그림·애니·`sweeps.json` 류). 스윕
+#    드라이버·분석 스크립트가 캠페인 도중 그런 파일을 다시 쓰거나, `DEMO_OUT_DIR` 가 `tools/`
+#    안을 가리키면 코드는 그대로인데 digest 가 **셀마다 흔들린다**. (기본 `DEMO_OUT_DIR=""` 의
+#    `tools/monitor/streams/`·`anim/` 은 `.gitignore` 에 있어 애초에 안 잡힌다.) 소스만 본다.
+const _CODE_FINGERPRINT_EXTS = (".jl", ".py", ".sh", ".toml")
+
 """
     _code_dirty_digest(repo) -> String
 
-추적 파일의 미커밋 편집(`git diff HEAD`)과 **추적 안 된 파일**(`git ls-files --others
---exclude-standard`) 둘 다를 한 SHA-256 에 넣고 앞 16 hex 를 낸다. 둘 다 비면 `""`.
+추적 파일의 미커밋 편집(`git diff HEAD`)과 **추적 안 된 소스 파일**(`git ls-files --others
+--exclude-standard` 중 확장자가 `_CODE_FINGERPRINT_EXTS` 인 것) 둘 다를 한 SHA-256 에 넣고
+앞 16 hex 를 낸다. 둘 다 비면 `""`.
 🔴 untracked 를 안 보면 새로 만든 소스(예: `stall_probe.jl`)가 달라도 지문이 같다 — 2026-09-22
    리뷰가 이 트리에서 실제로 짚은 구멍이다. 경로는 정렬하고, 파일마다 경로와 내용을 싣는다.
    못 읽는 파일은 경로 + `unreadable` 표식으로 싣는다(던지지 않는다).
@@ -917,6 +927,7 @@ function _code_dirty_digest(repo::AbstractString)
     local untracked = sort!(filter!(!isempty, split(String(read(pipeline(
         `git -C $repo ls-files --others --exclude-standard -z -- $(_CODE_FINGERPRINT_PATHS)`;
         stderr = devnull))), '\0')))
+    filter!(p -> any(e -> endswith(p, e), _CODE_FINGERPRINT_EXTS), untracked)
     (isempty(tracked) && isempty(untracked)) && return ""
     local ctx = SHA.SHA256_CTX()
     SHA.update!(ctx, tracked)                    # untracked 가 없으면 옛 지문(diff 의 해시)과 같다
@@ -938,7 +949,7 @@ end
 판을 만든 **코드와 설정**의 지문. 기동 때 한 번 계산해 `RUN_CTX` 에 합친다.
   · `code_rev`          — `git rev-parse HEAD`. 실패하면 `"unknown"`.
   · `code_dirty_digest` — `_code_dirty_digest`: `src tools test` 아래 추적 파일의 미커밋 편집 +
-                          추적 안 된 파일(경로·내용). 깨끗하면 `""`, git 이 실패하면 `"unknown"`
+                          추적 안 된 소스 파일(경로·내용). 깨끗하면 `""`, git 이 실패하면 `"unknown"`
                           (깨끗함과 **다른 값**이다).
                           🔴 HEAD 만 적고 미커밋 편집을 무시하면 같은 sha 가 다른 엔진이 된다
                           (이 트리는 여러 세션이 공유한다 — memory `concurrent-sessions-share-one-tree`).
