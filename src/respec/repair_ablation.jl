@@ -83,6 +83,25 @@ function ablation_exempt(f, site::Symbol)
     end
 end
 
+"`ex` 안에서 `denied` 에 든 이름 — Symbol, QuoteNode 값(`CB.x`·`getfield(_, :x)`), 문자열 리터럴(`Symbol(\"x\")`)."
+function ablated_symbols_in(ex, denied::Vector{Symbol})
+    hits = Symbol[]
+    _collect_ablated!(hits, ex, denied)
+    return unique!(hits)
+end
+function _collect_ablated!(hits, x, denied)
+    if x isa Symbol
+        x in denied && push!(hits, x)
+    elseif x isa QuoteNode
+        _collect_ablated!(hits, x.value, denied)
+    elseif x isa AbstractString
+        s = Symbol(x); s in denied && push!(hits, s)
+    elseif x isa Expr
+        for a in x.args; _collect_ablated!(hits, a, denied); end
+    end
+    return hits
+end
+
 "판 끝의 한 줄. 0 이어도 항상 같은 키를 찍는다(조용한 0 방지)."
 function ablation_summary_line()
     d = _ABLATION_COUNTS[]

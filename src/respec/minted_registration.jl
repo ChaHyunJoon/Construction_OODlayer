@@ -309,6 +309,7 @@ function _near_miss_names(c::Symbol; limit::Int = 5)
     isempty(toks) && return String[]
     scored = Tuple{Int,String}[]
     for n in names(@__MODULE__)
+        n in ablated_names(REPAIR_ABLATION[]) && continue   # 존 복구 base ablation: 차단 이름을 제안하지 않는다
         str = String(n)
         (isempty(str) || str == target || startswith(str, "#")) && continue
         k = count(t -> t in toks, split(str, '_'))
@@ -718,6 +719,18 @@ function check_impl_conventions(name::AbstractString, code::AbstractString;
                    "그러면 피호출자 자신의 기본값이 적용된다. `nothing` 을 넘기면 그 기본값을 " *
                    "피호출자가 계획한 적 없는 값으로 덮어쓰고, 규약 7 대로 그 값이 그대로 " *
                    "피호출자의 계산에 닿는다. `$(kwn)` 를 지우거나 실제 값을 넘기라."
+        end
+    end
+
+    # 🔴 존 복구 base ablation (2026-09-23, 명세 §6 층 2). 자리는 규약 **전부의 뒤**다 — 기존 사유를
+    #    하나도 안 바꾼다(D18·D19 와 같은 근거). `none` 이면 목록이 비어 무동작(바이트 동일).
+    #    D15 는 `isdefined` 만 보므로 미광고 내부 함수도 통과시킨다 — 그래서 이름 스캔이 따로 필요하다.
+    #    사유는 대안을 적지 않는다: 무엇을 대신 쓰라는 문장이 곧 해법 힌트다.
+    let denied = ablated_names(REPAIR_ABLATION[])
+        if !isempty(denied)
+            hits = ablated_symbols_in(f, denied)
+            isempty(hits) ||
+                return "reject:ablated_primitive:$(first(hits)) — this function is not available in this world"
         end
     end
     return nothing
