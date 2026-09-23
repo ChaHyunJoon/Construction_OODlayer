@@ -196,6 +196,7 @@ function zone_diagnosis(env, zone::Symbol;
         check_teams::Bool = true,
         check_blockage::Bool = true,
         check_paths::Bool = get(ENV, "ZONE_CHECK_PATHS", "0") == "1")
+    _ablation_gate(:zone_diagnosis)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
 
     # ---- 0. 구역이 살아 있는가 -------------------------------------------------
     if !haskey(RESTRICTION_ZONES[], zone)

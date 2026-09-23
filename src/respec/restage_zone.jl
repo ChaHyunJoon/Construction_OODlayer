@@ -70,6 +70,7 @@ function find_clear_staging_center(env, assembly_id::AbstractID, R::Float64;
             (try parse(Float64, get(ENV, "RESTAGE_RING_STEP_FRAC", "0.34")) catch; 0.34 end),
         n_angles::Int = 24,                                # 각 고리에서 검사할 각도 분할 수(24등분)
         max_rings::Int = 180)                              # 바깥으로 최대 몇 개의 고리까지 탐색할지(step 축소분 보상)
+    _ablation_gate(:find_clear_staging_center)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     # RESTRICTION_ZONES[] : `[]` 는 Ref(참조상자) 역참조 — 상자 안에 든 실제 딕셔너리를 꺼냄(파이썬엔 없는 개념).
     # env.staging_circles[assembly_id] : env 의 필드 staging_circles(딕셔너리)에서 이 조립체의 적치원(공)을 꺼냄.
     # [1:2] : 1~2번째 원소(x, y). 줄리아 인덱스는 1부터 시작(파이썬은 0부터). Vector{Float64}(...) = Float64 벡터로 변환.
@@ -203,6 +204,7 @@ function restage_assembly!(env, assembly_id::AbstractID;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),  # 검사할 제한구역 키 목록
         resume::Bool = true,                              # 끝나고 실행 캐시를 다시 만들어 진행을 재개할지
         verbose::Bool = true)                             # 로그 출력 여부
+    _ablation_gate(:restage_assembly!)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     sched = env.sched                                     # 스케줄 객체를 짧은 이름으로
     # `cond || 실행문` : cond 가 거짓일 때만 오른쪽 실행(&& 의 반대). 적치원 기록이 없으면 즉시 반환.
     # (key=value, ...) : 괄호 안 이름붙은 값들 → NamedTuple. :no_staging 처럼 `:` 로 시작하면 Symbol(가벼운 상수 이름표).
@@ -454,6 +456,7 @@ Uses the same solver the enactment will use (`_minimum_clear_translation` over
 # core zone 생성 가드: root 목표를 얼마나 덮든 허용하되, 어떤 강체이동으로도 못 벗어나는 것만 막는다.
 function zone_relocatable(center, r, env;
         margin::Float64 = 1e-4, n_angles::Int = 96)
+    _ablation_gate(:zone_relocatable)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     ball = LazySets.Ball2(Vector{Float64}(center)[1:2], Float64(r))
     Δ = _minimum_clear_translation(_future_work_discs(env), [ball];
                                    margin = margin, n_angles = n_angles)
@@ -495,6 +498,7 @@ function core_zone_for_severity(env, frac::Real;
         pad::Float64 = 1e-3,
         root = isempty(env.staging_circles) ? nothing :
                argmax(k -> Float64(get_radius(env.staging_circles[k])), collect(keys(env.staging_circles))))
+    _ablation_gate(:core_zone_for_severity)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     gs = root_deposit_goals(env; root = root)
     isempty(gs) && return (center = Float64[0.0, 0.0], radius = 0.0, covered = 0,
                            total = 0, frac = 0.0, relocatable = false)
@@ -543,6 +547,7 @@ outside every relocatable staging circle (measured in results/2026-09-22-r3-para
 function restage_all_blocked!(env;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),
         resume::Bool = true, verbose::Bool = true)
+    _ablation_gate(:restage_all_blocked!)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     blocked = zone_blocked_assemblies(env; zone_keys = zone_keys)  # 막힌 조립체 목록
     # 막힌 적치원이 없어도 적치원은 **안 옮기고** 잔여 막힘만 잰다 — 아래 Phase 3 과 같은 사후 판정을
     # 두 경로에 똑같이 적용한다. 존이 주행 목표만 막으면 이 원시로는 못 치운다 = :residual_blocked.
@@ -619,6 +624,7 @@ function _find_clear_translation(fc, fR, env;
         margin::Float64 = default_robot_radius(),
         ring_step::Float64 = default_robot_radius(),
         n_angles::Int = 24, max_rings::Int = 200)
+    _ablation_gate(:_find_clear_translation)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     zones = [RESTRICTION_ZONES[][k] for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]  # 활성 제한구역들
     isempty(zones) && return [0.0, 0.0]                  # 구역 없으면 이동 불필요
     # 중심 c 가 모든 구역과 (구역반지름+감싸는반지름+여유) 이상 떨어져 있으면 true(깨끗).
@@ -649,6 +655,7 @@ conservative one without any undo.
 """
 # 빌드 전체를 Δ 만큼 강체이동한다: 모든 조립체의 start_config 를 옮기고 적치원 기록도 갱신한 뒤, 안 따라온 씬 노드를 스냅. 이동은 누적됨(compose).
 function _apply_uniform_translation!(env, Δ)
+    _ablation_gate(:_apply_uniform_translation!)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     T = CoordinateTransformations.Translation(Δ[1], Δ[2], 0.0)  # Δ 만큼의 평행이동 변환(z=0, 평면 이동)
     # 🔴 T 는 **최상위** start_config 에만 곱한다(2026-09-21). 하위 조립체의 start_config 는
     #    상위 것의 자식이라 부모를 옮기면 이미 따라온다 — 거기에 T 를 또 곱하면 깊이만큼 Δ 가
@@ -743,6 +750,7 @@ with either a small or a large forbid-zone radius, without fixed ring steps.
 """
 function _minimum_clear_translation(elems, zones;
         margin::Float64 = 1e-4, n_angles::Int = 96)
+    _ablation_gate(:_minimum_clear_translation)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     (isempty(zones) || isempty(elems)) && return [0.0, 0.0]
     zc(z) = Vector{Float64}(get_center(z)[1:2])
     clear(Δ) = all(norm((c .+ Δ) .- zc(z)) + 1e-9 >=
@@ -790,6 +798,7 @@ end
 function _find_min_translation(env;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),
         margin::Float64 = 1e-4, n_angles::Int = 96)
+    _ablation_gate(:_find_min_translation)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     zones = [RESTRICTION_ZONES[][k] for k in zone_keys if haskey(RESTRICTION_ZONES[], k)]
     return _minimum_clear_translation(_future_work_discs(env), zones;
                                       margin=margin, n_angles=n_angles)
@@ -851,6 +860,7 @@ Status (advertised to the tool lane):
 function translate_whole_build!(env;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),
         resume::Bool = true, verbose::Bool = true)
+    _ablation_gate(:translate_whole_build!)   # 존 복구 base ablation(명세 §6 층 3) — 무장·차단 레벨에서만 던진다
     isempty(env.staging_circles) && return (status = :no_staging,)        # 적치원 없으면 옮길 게 없음
     # 🔴 여유에 주행 계획기의 버퍼를 더한다(2026-09-21, 사용자 결정 1번). TangentBug 는 구역을
     #    `r_zone + r_agent + staging_buffer_radius()` 로 부풀려 피하므로(tangent_bug.jl · full_demo.jl 이

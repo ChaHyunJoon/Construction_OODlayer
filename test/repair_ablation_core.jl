@@ -66,3 +66,73 @@ end
     @test occursin("translate_whole_build!", msg)
     @test !occursin("restage", msg) && !occursin("instead", msg)
 end
+
+@testset "차단 함수 11개는 본문 첫 문장이 자기 이름의 가드다(소스 고정)" begin
+    gated = Dict(
+        "restage_zone.jl" => [:translate_whole_build!, :_apply_uniform_translation!, :_find_min_translation,
+            :_find_clear_translation, :_minimum_clear_translation, :zone_relocatable, :core_zone_for_severity,
+            :find_clear_staging_center, :restage_assembly!, :restage_all_blocked!],
+        "zone_diagnosis.jl" => [:zone_diagnosis])
+    for (file, fns) in gated
+        top = Meta.parseall(read(joinpath(pkgdir(CB), "src", "respec", file), String))
+        found = Dict{Symbol,Bool}()
+        # 최상위 표현식을 훑되, `@doc "..." function f(...) ... end` 형태의 Core.@doc 매크로콜과
+        # begin/toplevel 블록도 펼쳐서 그 안의 :function 정의까지 본다.
+        function visit!(a)
+            a isa Expr || return
+            if a.head === :macrocall && length(a.args) >= 1 &&
+               (a.args[1] === Symbol("@doc") || (a.args[1] isa GlobalRef && a.args[1].name === Symbol("@doc")))
+                for arg in a.args
+                    arg isa Expr && visit!(arg)
+                end
+                return
+            end
+            if a.head in (:block, :toplevel)
+                for arg in a.args
+                    visit!(arg)
+                end
+                return
+            end
+            a.head === :function || return
+            sig = a.args[1]
+            sig isa Expr && sig.head === :where && (sig = sig.args[1])
+            sig isa Expr && sig.head === :(::) && (sig = sig.args[1])   # 반환 타입 표기 `f(...)::T`
+            sig isa Expr && sig.head === :call || return
+            nm = sig.args[1]
+            nm in fns || return
+            first_stmt = first(x for x in a.args[2].args if !(x isa LineNumberNode))
+            found[nm] = first_stmt == :(_ablation_gate($(QuoteNode(nm))))
+        end
+        for a in top.args
+            visit!(a)
+        end
+        for fn in fns
+            @test get(found, fn, false)
+        end
+    end
+end
+
+@testset "무장된 :all 에서 차단 함수는 인자를 보기 전에 던진다" begin
+    saved = copy(CB.RESTRICTION_ZONES[])
+    try
+        CB.set_repair_ablation!(:all); CB.arm_repair_ablation!()
+        @test_throws CB.AblatedPrimitiveError CB.translate_whole_build!(nothing)
+        @test_throws CB.AblatedPrimitiveError CB.restage_all_blocked!(nothing)
+        @test_throws CB.AblatedPrimitiveError CB.zone_diagnosis(nothing, :z)
+        @test_throws CB.AblatedPrimitiveError CB._find_min_translation(nothing)
+        # zone_diagnoses 는 존마다 zone_diagnosis 를 부른다 — 존이 하나도 없으면 빈 목록이라 안 던진다.
+        # 그래서 존 하나를 심고 잰다(도메인이 퇴화하면 항진명제다).
+        CB.add_restriction_zone!(:abl_t, [1.0e4, 1.0e4], 1.0)
+        @test_throws CB.AblatedPrimitiveError CB.zone_diagnoses(nothing)
+        CB.disarm_repair_ablation!()
+        # 무장 해제면 가드가 무동작 → 원래 함수가 nothing 을 받아 **다른** 예외를 낸다
+        err = try CB.translate_whole_build!(nothing); nothing catch e; e end
+        @test !(err isa CB.AblatedPrimitiveError)
+    finally
+        CB.set_repair_ablation!(:none); CB.disarm_repair_ablation!()
+        CB.clear_restriction_zones!()
+        for (k, z) in saved
+            CB.add_restriction_zone!(k, Vector{Float64}(CB.get_center(z)[1:2]), Float64(CB.get_radius(z)))
+        end
+    end
+end
