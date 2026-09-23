@@ -100,7 +100,9 @@ end
     #    ⚠️ `get_center` 의 셋 중 `Ball2` 판 하나만 열린다: 나머지 둘(`Hyperrectangle` ·
     #    `HyperSphere`)은 `_OBTAINABLE_FOREIGN` 에 없다 — 세계가 그 둘을 손에 쥐여 주는
     #    광고된 접근자가 없기 때문이고, 그래서 `callable=false` 가 그 둘에 대해서는 **참**이다.
-    @test count(m -> m.callable === true, ms) == 195
+    # 🔴 195 → **196** (2026-09-22, `47f6711a` b′): `validate_schedule_transform_tree(::OperatingSchedule)`
+    #    메서드 하나가 더해졌다(`sched <- env.sched` 로 callable). 메서드 수도 224 → **225**.
+    @test count(m -> m.callable === true, ms) == 196
     # 🔴 그 넓힘의 내역을 숫자로만 두지 않는다 — 어느 이름이 몇 개 열렸는지를 직접 잰다.
     #    숫자만 고치는 습관이 들면 다음 번에 **다른 것이 열려도** 이 줄은 초록으로 남는다.
     local opened = Dict(nm => count(m -> String(m.name) == nm && m.callable === true, ms)
@@ -390,8 +392,8 @@ end
     # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 **안 움직였다** ----------------------------
     #    이 개입은 `method_entries` 의 필드 하나만 더한다. 수가 움직였다면 그것은
     #    이 태스크가 의도하지 않은 부작용이고, 조용히 지나가면 안 된다.
-    @test length(ms) == 224
-    @test count(m -> m.callable === true, ms) == 195
+    @test length(ms) == 225
+    @test count(m -> m.callable === true, ms) == 196
     ns = Set(String[String(t.name) for t in j.types])
     @test !("AffineMap" in ns)
     @test !("Ball2" in ns)
@@ -450,8 +452,8 @@ end
     # ---- 🔴 음성 대조 3: 삼상 · 폐포도 호출 가능성도 안 움직였다 --------------------------
     @test !any(m -> _rf(m) == String[], ms)
     @test any(m -> _rf(m) === nothing, ms)
-    @test length(ms) == 224
-    @test count(m -> m.callable === true, ms) == 195
+    @test length(ms) == 225
+    @test count(m -> m.callable === true, ms) == 196
 end
 
 
@@ -495,8 +497,8 @@ end
     end
 
     # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 안 움직였다 ---------------------------------
-    @test length(ms) == 224
-    @test count(m -> m.callable === true, ms) == 195
+    @test length(ms) == 225
+    @test count(m -> m.callable === true, ms) == 196
 end
 
 # =================================================================================================
@@ -541,8 +543,8 @@ end
           ["translate_whole_build!", "zone_blockage"]
 
     # ---- 🔴 음성 대조 3: 모집단이 안 무너졌다 ---------------------------------------------
-    @test length(ms) == 224
-    @test count(m -> m.callable, ms) == 195
+    @test length(ms) == 225
+    @test count(m -> m.callable, ms) == 196
 end
 
 end # module
