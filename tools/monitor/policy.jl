@@ -885,18 +885,98 @@ function _stamp_identity!(payload::AbstractDict)
     return payload
 end
 
-# 설정 지문이 보는 환경변수 접두사. 결과를 바꾸는 손잡이가 사는 이름공간 전부다.
+# =============================================================================
+# 설정 지문의 ENV 분류 (2026-09-23, Task 6b · 외부 리뷰 R-B)
+# =============================================================================
+# render 경로(`src/**/*.jl`·`tools/monitor/*.jl`)가 읽는 **모든** ENV 이름은 아래 셋 중 하나에
+# 명시돼 있어야 한다 — `test/config_digest_inventory.jl` 이 소스를 훑어 분류 안 된 이름이 나오면
+# 빨개진다. 🔴 옛 규칙(접두사 안의 **설정된** env 만 해시)은 `RESTAGE_ZONE_MARGIN_FRAC` 을
+# 0.5 → 1.5 로 바꿔도 지문이 같았다 — 엔진이 읽는 복구 손잡이가 접두사 밖에 있었다.
+#   · result        결과를 바꾸는 이름. `name=<값 | "<unset>">` 으로 지문에 든다(`config_env`).
+#                   판정이 애매하면 여기 둔다 — 잘못 넣은 대가는 지문이 조금 더 예민해지는 것뿐이다.
+#   · cell_axis     셀 축·판 신원. `set_run_ctx!` 가 이미 따로 싣는다 → 지문에서 뺀다(셀 불변).
+#   · observational 결과를 안 바꾸는 이름: 로그·디버그·출력 위치·포트·render 경로 밖 스크립트 전용.
+# 새 손잡이는 만들 때 여기 등록한다. Phase 3 의 두 손잡이는 미리 result 로 넣었다.
+const CONFIG_ENV_RESULT = [
+    # 복구·재지정 손잡이 (접두사 밖 — R-B 가 짚은 구멍)
+    "CARRIER_RESCUE", "ZONE_RESCUE", "RELOCATE_GATE", "ZONE_CAUSAL_RULE", "ZONE_DOMAIN_GATE",
+    "ZONE_CHECK_PATHS", "RESTAGE_ZONE_MARGIN_FRAC", "RESTAGE_RING_STEP_FRAC",
+    "RESPEC_DEPRIO_KAPPA", "ENERGY_OBJECTIVE", "SPARE_PRIORITY", "SPARE_DEPOT_DIST",
+    "TEAM_PRIORITY", "USE_RESET", "LEGACY_RESTAMP", "OOD_NL_LEGACY", "LLM_NL_MODE", "CORE_FRAC",
+    # Phase 3 (Task 10·11) 예약 — 읽는 코드가 생기기 전부터 result 다
+    "RESTAGE_NAV_BUFFER", "RESPEC_TRANSLATE_ON_INFEASIBLE",
+    # 데모 동역학·사건 손잡이
+    "DEMO_ANIM",               # save_animation 을 켠다 — 동역학 무관을 잰 적이 없으므로 result
+    "DEMO_BATTERY_COURIER", "DEMO_BATTERY_STEPS", "DEMO_BSEVERE_FRAC", "DEMO_BSOC",
+    "DEMO_COURIER_SPEED", "DEMO_DERATE", "DEMO_FAULT_SAFE", "DEMO_FAULT_STEPS",
+    "DEMO_FORCE_MACRO", "DEMO_HAZARD", "DEMO_HAZARD_SEED", "DEMO_N", "DEMO_OOD_HI",
+    "DEMO_OOD_LO", "DEMO_OOD_SEVFRAC", "DEMO_OOD_STREAM3",
+    "DEMO_PROBE", "DEMO_PROBE_EVERY",   # 측정 fork 는 전역 RVO 를 오염시킨다(memory) — result
+    "DEMO_REFORM", "DEMO_REFORM_MAX", "DEMO_ROBOTS", "DEMO_SPARES", "DEMO_STALL",
+    "DEMO_STALL_SOC", "DEMO_SWAP_HALT", "DEMO_SYNTH_FIXTURE_KINDS", "DEMO_ZONE_AT",
+    "DEMO_ZONE_CLOSED", "DEMO_ZONE_MODE", "DEMO_ZONE_PRESIM", "DEMO_ZONE_R", "DEMO_ZONE_R_MAX",
+    "DEMO_ZONE_R_MIN", "DEMO_ZONE_SCALE",
+    "MONITOR_INTERACTIVE", "MONITOR_REQUIRE_ZONE",   # 대화형 명령·존 요구는 판을 바꾼다
+    # 정책·서비스
+    "DP_GRID", "DP_VALUE", "DS_DEVIATE_ARM", "DS_DEVIATE_AT", "DSPY_TIMEOUT_S", "DSPY_URL",
+]
+const CONFIG_ENV_CELL_AXIS = [
+    "DEMO_SEED", "DEMO_ZONE_SEED", "DEMO_OOD_SEED", "DEMO_OOD", "DEMO_ZONE", "DEMO_POLICY",
+    "DEMO_ROUTER", "DEMO_MODEL", "DEMO_SYNTH_FIXTURE", "DEMO_CASE_TAG", "DEMO_CAMPAIGN_ID",
+    "MONITOR_RUN_ID",
+]
+const CONFIG_ENV_OBSERVATIONAL = [
+    # 출력 위치·로그·디버그
+    "DEMO_OUT_DIR", "DEMO_SUMMARY", "DEMO_VERBOSE", "MONITOR_STREAM", "MONITOR_PORT",
+    "MONITOR_WAIT", "MONITOR_COMMAND_FILE", "ANIM_FPS", "BATTERY_TINT_HOLD_FRAMES",
+    "CB_VAR_DUMP", "NAV_DEBUG", "WEDGE_DEBUG", "REPLACE_DEBUG", "CARRIER_DIAG",
+    "ORACLE_TRANSIT_DEBUG", "UNWEDGE_VERBOSE", "STALL_PROBE", "STALL_PROBE_OUT",
+    # render 경로 밖 스크립트 전용(fit_rho · gen_ng1_pairs · check_grammar_roundtrip)
+    "FIT_FILE", "FIT_MAXSTEP", "FIT_OUT", "FIT_ROBOTS", "FIT_SEED", "FIT_STALL",
+    "NG1_N", "NG1_NGRID", "NG1_NMULT", "NG1_STEPS",
+    "NG8_FORBIDAGENT_PROBE", "NG8_MAX_STEP", "NG8_OUT", "NG8_STEP_GRID",
+]
+
+# 보조 규칙: 이 접두사로 시작하는 **설정된** env 중 위 세 목록에 없는 것도 지문에 든다
+# (예: `DS_HOTSWAP` — 줄리아 render 경로는 안 읽지만 같은 이름공간의 손잡이다).
 const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_")
 
-# 설정 지문에서 **빼는** 키 (2026-09-22, controller R5a). `config_digest` 는 한 campaign 안에서
-# **셀 불변**이어야 한다 — "같은 설정으로 돌았나" 를 셀끼리 견주는 값이다. 셀마다 달라지는 값
-# 중 `render_demo.jl` 의 `set_run_ctx!` 가 **이미 따로 싣는** 것(시드 둘·사건·레인·모델·픽스처·
-# campaign)은 여기 넣으면 두 번 적는 셈이고, 넣는 순간 모든 셀의 지문이 달라져 값이 무의미해진다.
-# `DEMO_OUT_DIR` 은 설정이 아니라 산출물 위치다. 🔴 여기 없는 `DEMO_*` 는 전부 해시에 든다 —
-# 셀 축을 새로 만들면 run_ctx 에 싣고 **여기에도** 더할 것.
-const _CONFIG_ENV_EXCLUDED = Set(["DEMO_SEED", "DEMO_ZONE_SEED", "DEMO_CASE_TAG", "DEMO_CAMPAIGN_ID",
-                                  "DEMO_OOD", "DEMO_ZONE", "DEMO_POLICY", "DEMO_ROUTER",
-                                  "DEMO_MODEL", "DEMO_SYNTH_FIXTURE", "DEMO_OUT_DIR"])
+# 설정 지문에서 **빼는** 키 = cell_axis ∪ observational (2026-09-22 R5a 의 셀 불변 규약을 잇는다).
+const _CONFIG_ENV_EXCLUDED = Set([CONFIG_ENV_CELL_AXIS; CONFIG_ENV_OBSERVATIONAL])
+
+# 드라이버가 campaign 마다 **명시** export 하는 복구 손잡이의 기본값. 값은 소스의 리터럴
+# 기본값과 같아야 한다(`test/config_digest_inventory.jl` (6) 이 대조한다). 명시 export 하는 이유:
+# 기본값이 코드에서 조용히 바뀌어도 격자는 campaign 이 적은 값으로 돈다 — 그 판은 코드 지문이
+# 가르고, 설정 지문은 "무엇으로 돌았나" 를 평문으로 남긴다.
+# 🔴 `RELOCATE_GATE` 는 **일부러 뺐다**: 기본값이 두 곳에서 다르다(`verifier.jl` 의 로드 시점
+#    `Ref` 는 "0", `render_demo.jl` 의 `set_relocate_gate!` 는 "1") — 어느 값을 export 해도 한쪽의
+#    현행 동작이 바뀐다. 설정 안 함(`<unset>`)으로 두고 지문에는 그대로 실린다.
+const CONFIG_ENV_PINNED_DEFAULTS = Dict(
+    "RESTAGE_ZONE_MARGIN_FRAC" => "0.5", "RESTAGE_RING_STEP_FRAC" => "0.34",
+    "CARRIER_RESCUE" => "0", "ZONE_RESCUE" => "1",
+    "ZONE_CAUSAL_RULE" => "0", "ZONE_DOMAIN_GATE" => "0", "ZONE_CHECK_PATHS" => "0",
+    "ENERGY_OBJECTIVE" => "1", "SPARE_PRIORITY" => "1", "TEAM_PRIORITY" => "1",
+    "RESPEC_DEPRIO_KAPPA" => "0.25",
+    "RESTAGE_NAV_BUFFER" => "0", "RESPEC_TRANSLATE_ON_INFEASIBLE" => "0",
+)
+
+"""
+    config_env(env = ENV) -> Dict{String,String}
+
+설정 지문의 평문. `CONFIG_ENV_RESULT` 의 이름 **전부** → 설정값 또는 `"<unset>"`, 그리고 접두사
+보조 규칙에 걸린 설정된 이름 → 값. `run_fingerprint` 가 `run_ctx.config_env` 로 싣고, 해시는
+이 dict 의 정렬된 `name=value` 줄에서 나온다 — 두 판이 **어디서** 갈렸는지 복원할 수 있다.
+"""
+function config_env(env = ENV)
+    local out = Dict{String,String}(k => (haskey(env, k) ? String(env[k]) : "<unset>")
+                                    for k in CONFIG_ENV_RESULT)
+    for (k, v) in env
+        local ks = String(k)
+        (haskey(out, ks) || ks in _CONFIG_ENV_EXCLUDED) && continue
+        any(p -> startswith(ks, p), _CONFIG_ENV_PREFIXES) && (out[ks] = String(v))
+    end
+    return out
+end
 
 # 코드 지문이 보는 경로(저장소 뿌리 기준). 뿌리의 `Project.toml`·`Manifest.toml`(2026-09-22,
 # R12)도 본다 — 의존성 판 고정이 바뀌면 같은 소스도 다른 엔진이다(추적 파일이라 diff 로 잡힌다).
@@ -956,10 +1036,10 @@ end
                           (깨끗함과 **다른 값**이다).
                           🔴 HEAD 만 적고 미커밋 편집을 무시하면 같은 sha 가 다른 엔진이 된다
                           (이 트리는 여러 세션이 공유한다 — memory `concurrent-sessions-share-one-tree`).
-  · `config_digest`     — `_CONFIG_ENV_PREFIXES` 로 시작하되 `_CONFIG_ENV_EXCLUDED` 에 없는
-                          환경변수의 `KEY=VALUE` 줄을 정렬해 이은 것의 SHA-256 앞 16 hex.
-                          **셀 불변**이다(한 campaign 의 셀끼리 같다). 값을 싣지 않고 해시만
-                          싣는다(그 이름공간에 키가 섞일 수 있다).
+  · `config_digest`     — `config_env(env)` 의 `KEY=VALUE` 줄을 정렬해 이은 것의 SHA-256 앞 16
+                          hex. `CONFIG_ENV_RESULT` 전부(설정 안 됐으면 `<unset>`) + 접두사 보조.
+                          **셀 불변**이다(cell_axis·observational 은 빠진다).
+  · `config_env`        — 그 평문 dict(Task 6b) — 두 판이 어디서 갈렸는지 복원한다.
 🔴 **전역 RNG 를 안 쓴다**, git 이 없거나 실패해도 **던지지 않는다**(런을 죽이지 않는다).
 """
 function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, "..", ".."));
@@ -974,11 +1054,9 @@ function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, ".."
     catch
         "unknown"
     end
-    local lines = sort!([string(k, "=", v) for (k, v) in env
-                         if any(p -> startswith(String(k), p), _CONFIG_ENV_PREFIXES) &&
-                            !(String(k) in _CONFIG_ENV_EXCLUDED)])
-    local cfg = bytes2hex(SHA.sha256(join(lines, "\n")))[1:16]
-    return (code_rev = rev, code_dirty_digest = dirty, config_digest = cfg)
+    local ce = config_env(env)
+    local cfg = bytes2hex(SHA.sha256(join(sort!([string(k, "=", v) for (k, v) in ce]), "\n")))[1:16]
+    return (code_rev = rev, code_dirty_digest = dirty, config_digest = cfg, config_env = ce)
 end
 
 "상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."

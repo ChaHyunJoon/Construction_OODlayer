@@ -72,7 +72,7 @@ end
     Random.seed!(11); local a = rand()
     Random.seed!(11); local fp = run_fingerprint(); local b = rand()
     @test a == b
-    @test Set(keys(fp)) == Set([:code_rev, :code_dirty_digest, :config_digest])
+    @test Set(keys(fp)) == Set([:code_rev, :code_dirty_digest, :config_digest, :config_env])
     @test occursin(r"^[0-9a-f]{40}$", fp.code_rev)                  # 이 트리는 git 저장소다
     @test fp.code_dirty_digest == "" || occursin(r"^[0-9a-f]{16}$", fp.code_dirty_digest)
     @test occursin(r"^[0-9a-f]{16}$", fp.config_digest)

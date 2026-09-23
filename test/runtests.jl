@@ -203,6 +203,13 @@ end
         include("run_ctx_and_record_id.jl")
     end
 
+    # 2026-09-23 (Task 6b, 외부 리뷰 R-B): render 경로가 읽는 모든 ENV 이름이 policy.jl 의 세 분류
+    # (result·cell_axis·observational) 중 하나에 있어야 하고, 복구 손잡이가 설정 지문을 가른다.
+    # 변이 실측: policy.jl 끝에 `get(ENV, "ZZ_NEW", "0")` 한 줄을 심으면 (1) 이 빨개진다.
+    @testset "config digest inventory" begin
+        include("config_digest_inventory.jl")
+    end
+
     # 🔴 2026-08-29 (Plan B / T-C): `tool_choice="required"` 는 공짜가 아니다 — 컨트롤러가 같은
     # 요청·같은 빌드로 그 손잡이만 갈라 유료 2콜을 냈고, 강제 판에서 프로바이더가 message
     # content 를 **비웠다**(`reasoning=""` · `expressible=null` · `chosen=""` → coerced NOOP,
