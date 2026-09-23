@@ -177,10 +177,13 @@ def _frame(history, t=1000, *, with_history=True, with_respec=True):
 
 
 def _write_jsonl(path, objs, *, tail=""):
-    with open(path, "w", encoding="utf-8") as fh:
+    # 🔴 바이트로 쓴다: 두 생산자 모두 한글을 날 UTF-8 로 쓰고(원장 `ensure_ascii=False`,
+    #    스트림 JSON3), 쓰기 중인 파일은 **문자 중간**에서 끝날 수 있다 — `tail` 이 bytes 면
+    #    그 모양을 그대로 재현한다.
+    with open(path, "wb") as fh:
         for o in objs:
-            fh.write(json.dumps(o, ensure_ascii=False) + "\n")
-        fh.write(tail)
+            fh.write((json.dumps(o, ensure_ascii=False) + "\n").encode("utf-8"))
+        fh.write(tail if isinstance(tail, bytes) else tail.encode("utf-8"))
     return str(path)
 
 
@@ -431,13 +434,12 @@ FIX_CTX = dict(RUN_CTX, synth_fixture="tools/fixtures/probe_retry_boom.json", la
                router="0", run_id="retrygate_A")
 
 
-def _fixture_run(ctx):
+def _fixture_run(ctx, marker=True):
     # 게이트 A 모양: DEMO_ROUTER=0 DEMO_POLICY=canonical → policies 에 dspy 가 없고
     # synth_lane 은 픽스처(부모 id 없음). /decide 를 안 탔으므로 decide 행도 없다.
     att = _attempt(parent=(None, None))
-    frames = [_frame([_decision(dspy=False, attempts=[att],
-                                fixture={"path": "tools/fixtures/probe_retry_boom.json",
-                                         "sha256_16": "0" * 16})])]
+    fx = {"path": "tools/fixtures/probe_retry_boom.json", "sha256_16": "0" * 16}
+    frames = [_frame([_decision(dspy=False, attempts=[att], fixture=fx if marker else None)])]
     return frames, [_rewrite_row(parent=None, run_ctx=ctx)]
 
 
@@ -454,8 +456,9 @@ def test_fixture_parent_missing_without_flag_fails(tmp_path):
     assert code == 1 and _has(s, "parent_missing")
 
 
-def test_fixture_flag_without_run_ctx_marker_fails(tmp_path):
-    code, s = _run(tmp_path, *_fixture_run(RUN_CTX), "--allow-fixture-parent")
+def test_fixture_flag_without_any_marker_fails(tmp_path):
+    # R11 뒤: 표식이 원장 run_ctx 에도 스트림 input.router 에도 없어야 거절이다.
+    code, s = _run(tmp_path, *_fixture_run(RUN_CTX, marker=False), "--allow-fixture-parent")
     assert code == 1 and _has(s, "parent_missing")
 
 
@@ -710,3 +713,70 @@ def test_dspy_entry_builder_carries_every_synth_lane_key():
     keys = set(re.findall(r'"(\w+)"', m.group(1)))
     assert "record_id" in keys and "response_id" in keys
     assert keys <= set(_dspy_entry()), keys - set(_dspy_entry())
+
+
+# =============================================================================================
+# fix round 1 — 문자 중간에서 잘린 입력 · 깨진 UTF-8 (리뷰 Important 1)
+# =============================================================================================
+_HALF_HANGUL = "되".encode("utf-8")[:2]          # 3바이트 문자의 앞 2바이트
+
+
+def test_ledger_cut_inside_a_multibyte_char_is_exit_2(tmp_path):
+    frames, rows = _chain()
+    code, s = _run(tmp_path, frames, rows,
+                   ledger_tail=b'{"row_type": "rewrite", "why": "' + _HALF_HANGUL)
+    assert code == 2 and "not UTF-8" in s["error"] and "being written" in s["error"]
+
+
+def test_stream_cut_inside_a_multibyte_char_is_diagnosed_as_truncated(tmp_path):
+    frames, rows = _chain()
+    code, s = _run(tmp_path, frames, rows, stream_tail=b'{"t": 1001, "why": "' + _HALF_HANGUL)
+    assert code == 1
+    assert s["stream_truncated_last_line"] is True and _has(s, "stream_truncated")
+    assert s["decide_joined"] == 1 and s["attempt_joined"] == 1
+
+
+@pytest.mark.parametrize("which", ["stream", "ledger"])
+def test_invalid_utf8_in_a_middle_line_is_exit_2(tmp_path, which):
+    frames, rows = _chain()
+    bad = b'{"why": "' + _HALF_HANGUL + b'"}\n'
+    if which == "stream":
+        tail = bad + (json.dumps(frames[0]) + "\n").encode("utf-8")
+        code, s = _run(tmp_path, frames, rows, stream_tail=tail)
+    else:
+        tail = bad + (json.dumps(rows[1]) + "\n").encode("utf-8")
+        code, s = _run(tmp_path, frames, rows[:1], ledger_tail=tail)
+    assert code == 2 and "not UTF-8" in s["error"], s
+
+
+# =============================================================================================
+# fix round 1 — R11: 픽스처 표식을 스트림(`input.router.synth_fixture`)에서도 읽는다
+# =============================================================================================
+def _fixture_transport_failure(marker):
+    att = _attempt(parent=(None, None), roundtrip="failed:HTTP.TimeoutError: 60s")
+    return [_frame([_decision(dspy=False, attempts=[att], fixture=marker)])]
+
+
+FIX_MARKER = {"path": "tools/fixtures/probe_retry_boom.json", "sha256_16": "0" * 16,
+              "keys_overridden": ["impl_name"], "keys_ignored": [],
+              "impl_name": "ProbeRetryBoom!"}              # policy.jl synth_fixture_lane
+
+
+def test_fixture_transport_failure_without_rows_uses_the_stream_marker(tmp_path):
+    code, s = _run(tmp_path, _fixture_transport_failure(FIX_MARKER), [],
+                   "--allow-fixture-parent")
+    assert code == 0, s["problems"]
+    assert s["parent_fixture_allowed"] == 1 and s["roundtrip_failed"] == 1
+
+
+def test_stream_fixture_marker_still_needs_the_flag(tmp_path):
+    code, s = _run(tmp_path, _fixture_transport_failure(FIX_MARKER), [])
+    assert code == 1 and _has(s, "parent_missing")
+
+
+def test_gated_off_fixture_marker_is_not_a_fixture(tmp_path):
+    # synth_fixture_lane 의 게이트 분기: {"gated_off": true, "routing_kind": ...} — 픽스처가
+    # 이 결정에 꽂히지 **않았다**는 표식이다.
+    gated = {"gated_off": True, "routing_kind": "unknown:battery_mild"}
+    code, s = _run(tmp_path, _fixture_transport_failure(gated), [], "--allow-fixture-parent")
+    assert code == 1 and _has(s, "parent_missing")

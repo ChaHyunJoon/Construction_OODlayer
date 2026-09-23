@@ -29,8 +29,11 @@ render_demo 스트림의 결정·되먹임 칸을 합성 원장 행과 `(record_
   · 스트림의 잘린 마지막 줄은 앞 프레임으로 진단하되 **합격시키지 않는다**(문제로 센다).
   · `roundtrip == "ok"` 인 칸만 원장 행을 요구한다(`attempt_joined == roundtrip_ok`).
     `failed:*` 는 서버 도달 여부를 모르므로 행이 없어도 문제가 아니다 — 있으면 보고한다.
-  · 부모 없음(`parent_record_id == null`)은 `run_ctx.synth_fixture` 가 비어 있지 않고
-    `--allow-fixture-parent` 가 **둘 다** 있을 때만 허용한다.
+  · 부모 없음(`parent_record_id == null`)은 픽스처 표식(원장 행의 `run_ctx.synth_fixture`,
+    또는 스트림 결정 행의 `input.router.synth_fixture.path` — R11)과 `--allow-fixture-parent`
+    가 **둘 다** 있을 때만 허용한다.
+  · 두 입력은 바이너리로 읽어 줄마다 UTF-8 로 디코드한다: 문자 중간에서 끊긴 끝줄은 스트림이면
+    잘린 줄 진단(exit 1), 원장이면 exit 2 이고, 가운데 줄의 깨진 UTF-8 은 어느 쪽이든 exit 2 다.
   · 캐시는 조인된 행의 **원시 LM 항목 하나하나**의 `cache_hit` 로 센다(True/False/그 밖=unknown).
     🔴 이것은 과금 호출 수가 **아니다** — macro(SelectTool)·adapter·provider 재시도는 원시
     응답에 없고, 캐시 재생도 항목 하나로 보인다.
@@ -91,20 +94,51 @@ def resolve_ledger_path(arg, env=None):
     return DEFAULT_LEDGER, "default"
 
 
+_WRITING = (" — the LAST line has no newline: a file still being written? "
+            "verify a copy taken after the writer stopped")
+
+
+def _decode(raw, what, i, last):
+    """바이트 한 줄 → str. 깨진 UTF-8 은 InputError 다(쓰기 중이면 문자 중간에서 끊긴다).
+
+    🔴 파일을 **바이너리로** 읽고 여기서 디코드한다 — 텍스트 모드로 순회하면
+    `UnicodeDecodeError` 가 순회 도중(= 어느 `try` 밖)에서 나서 traceback·JSON 없음으로 죽는다.
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise InputError("%s line %d is not UTF-8 (%s)%s"
+                         % (what, i, e, _WRITING if last else ""))
+
+
 def read_final_frame(path):
-    """(frame, n_frames, truncated). 잘린 끝줄이면 앞 프레임을 돌려주고 truncated=True."""
+    """(frame, n_frames, truncated). 잘린 끝줄이면 앞 프레임을 돌려주고 truncated=True.
+
+    모든 줄을 UTF-8 로 디코드한다(가운데 줄이 깨졌으면 exit 2). JSON 은 끝 두 줄만 읽는다 —
+    정본은 마지막 프레임이고 큰 스트림 전체를 파싱할 이유가 없다.
+    """
     if not os.path.isfile(path):
         raise InputError("stream not found: %s" % path)
     n, prev, last = 0, None, None
-    with open(path, encoding="utf-8") as fh:
-        for i, line in enumerate(fh, 1):
-            if line.strip():
-                n += 1
-                prev, last = last, (i, line)
+    pending = None                    # 디코드 실패한 줄 — 뒤에 줄이 더 오면 가운데 줄이다
+    with open(path, "rb") as fh:
+        for i, raw in enumerate(fh, 1):
+            if not raw.strip():
+                continue
+            if pending is not None:
+                _decode(pending[1], "stream", pending[0], last=False)   # 반드시 던진다
+            n += 1
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                pending, text = (i, raw), None
+            prev, last = last, (i, text)
     if last is None:
         raise InputError("stream is empty (no frames): %s" % path)
     truncated = False
     try:
+        if last[1] is None:
+            raise ValueError("line cut inside a multibyte UTF-8 character")
         frame = json.loads(last[1])
     except ValueError as e:
         truncated = True
@@ -121,21 +155,21 @@ def read_final_frame(path):
 
 
 def load_ledger(path):
-    """[(line_no, row)]. 파싱 오류는 **어느 줄이든** InputError 다(조용히 안 건너뛴다)."""
+    """[(line_no, row)]. 디코드·파싱 오류는 **어느 줄이든** InputError 다(조용히 안 건너뛴다)."""
     if not os.path.isfile(path):
         raise InputError("ledger not found: %s" % path)
     rows = []
-    with open(path, encoding="utf-8") as fh:
-        for i, line in enumerate(fh, 1):
-            if not line.strip():
+    with open(path, "rb") as fh:
+        for i, raw in enumerate(fh, 1):
+            if not raw.strip():
                 continue
+            last = not raw.endswith(b"\n")
+            line = _decode(raw, "ledger", i, last)
             try:
                 obj = json.loads(line)
             except ValueError as e:
-                tail = ("" if line.endswith("\n") else
-                        " — the LAST line has no newline: a ledger still being written? "
-                        "verify a copy taken after the service stopped")
-                raise InputError("ledger line %d is not JSON (%s)%s" % (i, e, tail))
+                raise InputError("ledger line %d is not JSON (%s)%s"
+                                 % (i, e, _WRITING if last else ""))
             if not isinstance(obj, dict):
                 raise InputError("ledger line %d is not a JSON object" % i)
             rows.append((i, obj))
@@ -348,13 +382,21 @@ def verify(stream, ledger_path, *, require_decisions=0, require_attempts=0,
             if pkey[0] is None:
                 ctxs = [row.get("run_ctx")] if row is not None else \
                        [x.get("run_ctx") for _, x in by_rid.get(rid, [])]
-                fixture = any(isinstance(c, dict) and c.get("synth_fixture") for c in ctxs)
+                # R11: 표식은 원장 run_ctx 에도, 스트림의 결정 행에도 있다 — 둘 중 하나면 된다.
+                #    전송 실패 판에는 원장 행이 없으므로 스트림 표식이 유일한 증거다.
+                #    스트림: `policy.jl` `synth_fixture_lane` 이 `rt["synth_fixture"]` 를 쓰고
+                #    `record_decision!` 이 `input.router = decision.router` 로 싣는다.
+                #    표식 = 비지 않은 `path`. 게이트 분기의 `{"gated_off", "routing_kind"}` 는
+                #    `path` 가 없으므로("이 결정엔 안 꽂혔다") 표식이 아니다.
+                sfx = ((dec.get("input") or {}).get("router") or {}).get("synth_fixture")
+                fixture = (any(isinstance(c, dict) and c.get("synth_fixture") for c in ctxs)
+                           or (isinstance(sfx, dict) and bool(sfx.get("path"))))
                 if dkey is None and dspy is None and fixture and allow_fixture_parent:
                     S["parent_fixture_allowed"] += 1
                 else:
                     problems.append(
                         "parent_missing: %s has no parent_record_id (dspy decision=%s, "
-                        "run_ctx.synth_fixture=%s, --allow-fixture-parent=%s)"
+                        "fixture marker (run_ctx or input.router)=%s, --allow-fixture-parent=%s)"
                         % (where, dspy is not None, fixture, allow_fixture_parent))
             elif pkey != dkey:
                 problems.append("parent_mismatch: %s parent %s/%s is not this decision's "
@@ -444,8 +486,8 @@ def run(argv=None):
     ap.add_argument("--require-attempts", type=int, default=0, metavar="N",
                     help="fail unless at least N roundtrip-ok attempts joined their rewrite row")
     ap.add_argument("--allow-fixture-parent", action="store_true",
-                    help="accept a null parent_record_id when the row's run_ctx.synth_fixture "
-                         "is non-empty (DEMO_SYNTH_FIXTURE run)")
+                    help="accept a null parent_record_id when a fixture marker is present "
+                         "(ledger run_ctx.synth_fixture or stream input.router.synth_fixture)")
     ap.add_argument("--health-json", default=None, metavar="PATH",
                     help="saved /health JSON; ledger_append_failures > 0 fails the run")
     a = ap.parse_args(argv)
