@@ -193,6 +193,16 @@ end
         include("synth_lane_keys_survive.jl")
     end
 
+    # 2026-09-22 (retry-body 보존 Phase 1 / Task 4): 줄리아가 원장 행 id(`new_record_id`)와 판
+    # 신원(`RUN_CTX` · `run_fingerprint`)을 발급해 매 `/decide` 본문에 싣는다. 🔴 첫 명제는
+    # **id·지문 생성이 전역 RNG 를 안 민다**이다 — 한 칸이라도 밀면 같은 시드가 다른 세계가 된다.
+    # 마지막 절(7)은 위 service_decide 게이트들과 같은 루프백 방식으로 나간 본문을 잰다(자기 env 를
+    # 짓는다 — 스위트 시간이 그만큼 는다). 변이 실측: `service_decide` 의 `_stamp_identity!` 줄을
+    # 지우면 (7) 이 `2 fail / 4 error`.
+    @testset "run_ctx and record_id" begin
+        include("run_ctx_and_record_id.jl")
+    end
+
     # 🔴 2026-08-29 (Plan B / T-C): `tool_choice="required"` 는 공짜가 아니다 — 컨트롤러가 같은
     # 요청·같은 빌드로 그 손잡이만 갈라 유료 2콜을 냈고, 강제 판에서 프로바이더가 message
     # content 를 **비웠다**(`reasoning=""` · `expressible=null` · `chosen=""` → coerced NOOP,

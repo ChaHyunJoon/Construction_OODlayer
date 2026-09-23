@@ -888,18 +888,64 @@ end
 # 설정 지문이 보는 환경변수 접두사. 결과를 바꾸는 손잡이가 사는 이름공간 전부다.
 const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_")
 
+# 설정 지문에서 **빼는** 키 (2026-09-22, controller R5a). `config_digest` 는 한 campaign 안에서
+# **셀 불변**이어야 한다 — "같은 설정으로 돌았나" 를 셀끼리 견주는 값이다. 셀마다 달라지는 값
+# 중 `render_demo.jl` 의 `set_run_ctx!` 가 **이미 따로 싣는** 것(시드 둘·사건·레인·모델·픽스처·
+# campaign)은 여기 넣으면 두 번 적는 셈이고, 넣는 순간 모든 셀의 지문이 달라져 값이 무의미해진다.
+# `DEMO_OUT_DIR` 은 설정이 아니라 산출물 위치다. 🔴 여기 없는 `DEMO_*` 는 전부 해시에 든다 —
+# 셀 축을 새로 만들면 run_ctx 에 싣고 **여기에도** 더할 것.
+const _CONFIG_ENV_EXCLUDED = Set(["DEMO_SEED", "DEMO_ZONE_SEED", "DEMO_CASE_TAG", "DEMO_CAMPAIGN_ID",
+                                  "DEMO_OOD", "DEMO_ZONE", "DEMO_POLICY", "DEMO_ROUTER",
+                                  "DEMO_MODEL", "DEMO_SYNTH_FIXTURE", "DEMO_OUT_DIR"])
+
+# 코드 지문이 보는 경로(저장소 뿌리 기준).
+const _CODE_FINGERPRINT_PATHS = ("src", "tools", "test")
+
+"""
+    _code_dirty_digest(repo) -> String
+
+추적 파일의 미커밋 편집(`git diff HEAD`)과 **추적 안 된 파일**(`git ls-files --others
+--exclude-standard`) 둘 다를 한 SHA-256 에 넣고 앞 16 hex 를 낸다. 둘 다 비면 `""`.
+🔴 untracked 를 안 보면 새로 만든 소스(예: `stall_probe.jl`)가 달라도 지문이 같다 — 2026-09-22
+   리뷰가 이 트리에서 실제로 짚은 구멍이다. 경로는 정렬하고, 파일마다 경로와 내용을 싣는다.
+   못 읽는 파일은 경로 + `unreadable` 표식으로 싣는다(던지지 않는다).
+git 자체가 실패하면 예외 — 호출자(`run_fingerprint`)가 `"unknown"` 으로 접는다.
+"""
+function _code_dirty_digest(repo::AbstractString)
+    local tracked = read(pipeline(`git -C $repo diff --no-color --no-ext-diff HEAD -- $(_CODE_FINGERPRINT_PATHS)`;
+                                  stderr = devnull))
+    local untracked = sort!(filter!(!isempty, split(String(read(pipeline(
+        `git -C $repo ls-files --others --exclude-standard -z -- $(_CODE_FINGERPRINT_PATHS)`;
+        stderr = devnull))), '\0')))
+    (isempty(tracked) && isempty(untracked)) && return ""
+    local ctx = SHA.SHA256_CTX()
+    SHA.update!(ctx, tracked)                    # untracked 가 없으면 옛 지문(diff 의 해시)과 같다
+    for p in untracked
+        SHA.update!(ctx, codeunits(string("\0untracked\0", p, "\0")))
+        local body = try
+            read(joinpath(repo, p))
+        catch
+            Vector{UInt8}(codeunits("\0unreadable\0"))
+        end
+        SHA.update!(ctx, body)
+    end
+    return bytes2hex(SHA.digest!(ctx))[1:16]
+end
+
 """
     run_fingerprint(repo = <이 저장소>; env = ENV) -> NamedTuple
 
 판을 만든 **코드와 설정**의 지문. 기동 때 한 번 계산해 `RUN_CTX` 에 합친다.
   · `code_rev`          — `git rev-parse HEAD`. 실패하면 `"unknown"`.
-  · `code_dirty_digest` — `git diff HEAD -- src tools test` 의 SHA-256 앞 16 hex. 깨끗하면 `""`,
-                          git 이 실패하면 `"unknown"`(깨끗함과 **다른 값**이다).
+  · `code_dirty_digest` — `_code_dirty_digest`: `src tools test` 아래 추적 파일의 미커밋 편집 +
+                          추적 안 된 파일(경로·내용). 깨끗하면 `""`, git 이 실패하면 `"unknown"`
+                          (깨끗함과 **다른 값**이다).
                           🔴 HEAD 만 적고 미커밋 편집을 무시하면 같은 sha 가 다른 엔진이 된다
                           (이 트리는 여러 세션이 공유한다 — memory `concurrent-sessions-share-one-tree`).
-  · `config_digest`     — `_CONFIG_ENV_PREFIXES` 로 시작하는 환경변수의 `KEY=VALUE` 줄을
-                          정렬해 이은 것의 SHA-256 앞 16 hex. 값을 싣지 않고 해시만 싣는다
-                          (그 이름공간에 키가 섞일 수 있다).
+  · `config_digest`     — `_CONFIG_ENV_PREFIXES` 로 시작하되 `_CONFIG_ENV_EXCLUDED` 에 없는
+                          환경변수의 `KEY=VALUE` 줄을 정렬해 이은 것의 SHA-256 앞 16 hex.
+                          **셀 불변**이다(한 campaign 의 셀끼리 같다). 값을 싣지 않고 해시만
+                          싣는다(그 이름공간에 키가 섞일 수 있다).
 🔴 **전역 RNG 를 안 쓴다**, git 이 없거나 실패해도 **던지지 않는다**(런을 죽이지 않는다).
 """
 function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, "..", ".."));
@@ -910,14 +956,13 @@ function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, ".."
         "unknown"
     end
     local dirty = try
-        local d = read(pipeline(`git -C $repo diff --no-color --no-ext-diff HEAD -- src tools test`;
-                                stderr = devnull))
-        isempty(d) ? "" : bytes2hex(SHA.sha256(d))[1:16]
+        _code_dirty_digest(repo)
     catch
         "unknown"
     end
     local lines = sort!([string(k, "=", v) for (k, v) in env
-                         if any(p -> startswith(String(k), p), _CONFIG_ENV_PREFIXES)])
+                         if any(p -> startswith(String(k), p), _CONFIG_ENV_PREFIXES) &&
+                            !(String(k) in _CONFIG_ENV_EXCLUDED)])
     local cfg = bytes2hex(SHA.sha256(join(lines, "\n")))[1:16]
     return (code_rev = rev, code_dirty_digest = dirty, config_digest = cfg)
 end

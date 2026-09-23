@@ -77,15 +77,68 @@ end
     @test fp.code_dirty_digest == "" || occursin(r"^[0-9a-f]{16}$", fp.code_dirty_digest)
     @test occursin(r"^[0-9a-f]{16}$", fp.config_digest)
 
+    # 설정 지문만 보는 호출은 저장소가 아닌 디렉터리로 부른다 — 이 트리의 untracked 는 수백 MB 라
+    # 매번 코드 지문까지 재면 절이 수십 초가 된다(config_digest 는 repo 와 무관하다).
+    local nonrepo = mktempdir()
+    local cfg(e) = run_fingerprint(nonrepo; env = e).config_digest
     # 설정 지문: 접두사 키만 보고, 순서에 무관하고, 값 하나가 바뀌면 바뀐다.
     local e1 = Dict("DEMO_SEED" => "3", "DS_HOTSWAP" => "1", "HOME" => "/x", "PATH" => "/y")
     local e2 = Dict("DS_HOTSWAP" => "1", "DEMO_SEED" => "3", "HOME" => "/other")
-    local e3 = Dict("DEMO_SEED" => "4", "DS_HOTSWAP" => "1")
-    @test run_fingerprint(; env = e1).config_digest == run_fingerprint(; env = e2).config_digest
-    @test run_fingerprint(; env = e1).config_digest != run_fingerprint(; env = e3).config_digest
+    local e3 = Dict("DEMO_SEED" => "3", "DS_HOTSWAP" => "0")          # 셀 축이 아닌 값 하나가 다르다
+    @test cfg(e1) == cfg(e2)
+    @test cfg(e1) != cfg(e3)
     for k in ("DSPY_URL", "TOOL_SYNTHESIS", "SYNTH_RECORD_LOG")
-        @test run_fingerprint(; env = merge(e1, Dict(k => "v"))).config_digest !=
-              run_fingerprint(; env = e1).config_digest
+        @test cfg(merge(e1, Dict(k => "v"))) != cfg(e1)
+    end
+
+    # 🔴 R5a: 셀 불변 — run_ctx 가 따로 싣는 셀 축(과 산출물 위치)은 설정 지문에서 빠진다.
+    local cell_a = merge(e1, Dict("DEMO_SEED" => "3", "DEMO_ZONE_SEED" => "1", "DEMO_CASE_TAG" => "zone",
+                                  "DEMO_CAMPAIGN_ID" => "c1", "DEMO_OOD" => "none", "DEMO_ZONE" => "1",
+                                  "DEMO_POLICY" => "dspy", "DEMO_ROUTER" => "1",
+                                  "DEMO_MODEL" => "tractor.mpd", "DEMO_SYNTH_FIXTURE" => "",
+                                  "DEMO_OUT_DIR" => "/a"))
+    local cell_b = merge(e1, Dict("DEMO_SEED" => "9", "DEMO_ZONE_SEED" => "7", "DEMO_CASE_TAG" => "all3",
+                                  "DEMO_CAMPAIGN_ID" => "c2", "DEMO_OOD" => "all", "DEMO_ZONE" => "0",
+                                  "DEMO_POLICY" => "surrogate", "DEMO_ROUTER" => "0",
+                                  "DEMO_MODEL" => "X-wing.mpd", "DEMO_SYNTH_FIXTURE" => "/f.json",
+                                  "DEMO_OUT_DIR" => "/b"))
+    @test cfg(cell_a) == cfg(cell_b)
+    @test cfg(cell_a) == cfg(filter(kv -> !(kv.first in _CONFIG_ENV_EXCLUDED), cell_a))
+    for (k, v) in ("DEMO_BSOC" => "0.45", "DS_HOTSWAP" => "0", "DSPY_PROGRAM" => "x")
+        @test cfg(merge(cell_a, Dict(k => v))) != cfg(cell_a)
+    end
+
+    # 🔴 R5a: 코드 지문은 **추적 안 된 소스**도 본다. 임시 git 저장소에서 잰다.
+    mktempdir() do repo
+        local g(args...) = run(pipeline(`git -C $repo -c user.name=t -c user.email=t@t
+                                         -c commit.gpgsign=false $(collect(args))`;
+                                        stdout = devnull, stderr = devnull))
+        g("init", "-q")
+        mkpath(joinpath(repo, "src")); write(joinpath(repo, "src", "a.jl"), "x = 1\n")
+        g("add", "src/a.jl"); g("commit", "-q", "--no-verify", "-m", "init")
+        @test run_fingerprint(repo).code_dirty_digest == ""               # 깨끗 → ""
+        write(joinpath(repo, "src", "new.jl"), "y = 1\n")                   # untracked 소스
+        local d1 = run_fingerprint(repo).code_dirty_digest
+        @test occursin(r"^[0-9a-f]{16}$", d1)
+        write(joinpath(repo, "src", "new.jl"), "y = 2\n")                   # 내용만 바꾼다
+        local d2 = run_fingerprint(repo).code_dirty_digest
+        @test occursin(r"^[0-9a-f]{16}$", d2) && d2 != d1
+        mv(joinpath(repo, "src", "new.jl"), joinpath(repo, "src", "renamed.jl"))  # 경로만 바꾼다
+        @test run_fingerprint(repo).code_dirty_digest ∉ ("", d1, d2)
+        rm(joinpath(repo, "src", "renamed.jl"))
+        # 못 읽는 untracked 파일 — 던지지 않고 경로 + `unreadable` 표식으로 싣는다.
+        local locked = joinpath(repo, "src", "locked.jl")
+        write(locked, "z = 1\n"); chmod(locked, 0o000)
+        try
+            local dl = run_fingerprint(repo).code_dirty_digest
+            @test occursin(r"^[0-9a-f]{16}$", dl)
+        finally
+            chmod(locked, 0o644); rm(locked)
+        end
+        write(joinpath(repo, "notes.txt"), "outside\n")                     # src/tools/test 밖
+        @test run_fingerprint(repo).code_dirty_digest == ""
+        write(joinpath(repo, "src", "a.jl"), "x = 2\n")                     # 추적 파일 편집
+        @test occursin(r"^[0-9a-f]{16}$", run_fingerprint(repo).code_dirty_digest)
     end
 
     # git 이 실패하는 자리(저장소가 아닌 디렉터리) — 던지지 않고 "unknown" 으로 적는다.
