@@ -40,3 +40,4 @@ include("replace_robot.jl")  # ReplaceAgent enactment: spare 1:1 chain hand-off 
 include("battery_courier.jl") # SwapBattery enactment: 창고 예비가 배터리를 들고 왕복 배송(시간이 드는 물리적 사건)
 include("zone_diagnosis.jl") # zone VIOLATION PREDICATES (thin composition over restage_zone.jl) — 구역이 씬트리의 무엇을 무효화하는지 계산(오라클 라벨·게이트 근거)
 include("zone_corridor.jl")  # zone BLOCKAGE predicates: 덮였다(coverage)가 아니라 **막혔다**를 잰다(RVO 구동 목표 + 통로 연결성)
+include("zone_facts.jl")     # zone 센서 전용(해법기 없음) — 세 ablation 팔 전부에 광고(명세 §4)

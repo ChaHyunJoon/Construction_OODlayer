@@ -129,7 +129,8 @@ export maybe_respecify!, push_ood!, OODQueue, maybe_unwedge_nominal!,  # 재명�
        root_goal_coverage, zone_relocatable, core_zone_for_severity,  # 심각도 연속 core zone 생성 가드(harm 축)
        translate_whole_build!,                                    # Phase B: root까지 덮였을 때 빌드 전체 평행이동
        zone_diagnosis, zone_diagnoses, zone_team_coverage,        # 구역 위반 술어(원시값) + 최소수복 판정 — 오라클 라벨/게이트 근거 한 곳
-       zone_blockage, goal_engulfed, free_space_status            # 구역 **막힘** 술어(coverage 가 아니라 blockage): RVO 구동 목표 + 통로 연결성
+       zone_blockage, goal_engulfed, free_space_status,            # 구역 **막힘** 술어(coverage 가 아니라 blockage): RVO 구동 목표 + 통로 연결성
+       zone_facts                                                  # 존 센서(해법기 없음) — 세 ablation 팔 전부에 광고(명세 §4)
 
 # OOD generation front-end (physical OOD events; src/respec/ood_injection.jl).
 export zone_clearance, agent_disc_radius, zone_safety_report, release_fallback!  # SAFETY: 금지구역 여유거리 감사 + 라인스톱 해제
