@@ -102,6 +102,7 @@ const DEMO_REFORM = try max(0, parse(Int, get(ENV, "DEMO_REFORM", "400"))) catch
 # force snap 은 팀 구성을 강제로 바꾸므로 반복하면 함대를 휘저을 뿐 진전을 만들지 못한다.
 const DEMO_REFORM_MAX = try max(1, parse(Int, get(ENV, "DEMO_REFORM_MAX", "3"))) catch; 3 end
 const _REFORM_CT = Ref(0)
+const _REFORM_EXHAUSTED_SAID = Ref(false)   # 소진 표지를 판마다 한 번만 찍는다(관측 전용)
 # ---------------------------------------------------------------------------------------------
 # 로그 레벨. run_lego_demo 의 기본값은 Logging.Warn 이라 시뮬레이션 안의 **모든 @info 가 버려진다**.
 # 2026-08-05 규명: 그래서 WEDGE_DEBUG=1 / NAV_DEBUG=1 을 켜도 이 경로에서는 아무것도 안 찍혔다 —
@@ -160,8 +161,13 @@ end
 # 애매한 SoC 로 돌린 것)는 **실행 케이스와 표시 이름이 다르다**. 그때 서버가 DEMO_CASE_TAG 로 표시
 # 이름을 넘겨 주지 않으면 ⑦ 의 녹화가 ① battery 파일을 덮어썼다.
 const CASE_TAG = get(ENV, "DEMO_CASE_TAG", OODC)
-stream_dir  = joinpath(HERE, "streams"); mkpath(stream_dir)
-anim_dir    = joinpath(HERE, "anim");    mkpath(anim_dir)
+# 산출물 뿌리. 비어 있으면(기본) tools/monitor/ 그대로 — 공유 streams/·anim/ 에 쓴다.
+# 값을 주면 그 아래 streams/·anim/ 을 만든다: 탐침 판이 대시보드가 읽는 공유 폴더를 덮지 않게 한다.
+# 켜져 있을 때만 미완주 판의 애니도 `__INCOMPLETE` 를 붙여 남긴다(아래 거절 분기).
+const DEMO_OUT_DIR = get(ENV, "DEMO_OUT_DIR", "")
+out_root    = isempty(DEMO_OUT_DIR) ? HERE : abspath(DEMO_OUT_DIR)
+stream_dir  = joinpath(out_root, "streams"); mkpath(stream_dir)
+anim_dir    = joinpath(out_root, "anim");    mkpath(anim_dir)
 stream_path = joinpath(stream_dir, "$(model_base)__$(CASE_TAG)$(NSUF).jsonl")
 
 _rl(rid) = try "R" * string(getfield(rid, :id)) catch; replace(string(rid), r"\s+" => " ") end
@@ -824,7 +830,17 @@ function policy_producer(env, event)
     #   · NL 이 고정 템플릿이고 ReformTruth 에 팀 식별자가 없어 LLM 이 읽을 것도 없다.
     # → 여기서 직접 복구하고 recovery 타임라인에만 기록한다(LLM 호출 0).
     if is_reform_alarm(String(event))
-        _REFORM_CT[] < DEMO_REFORM_MAX && enact_reform!(env)
+        if _REFORM_CT[] < DEMO_REFORM_MAX
+            enact_reform!(env)
+        elseif !_REFORM_EXHAUSTED_SAID[]
+            # 관측 전용(2026-09-23, 복구 계획서 Task 7): 예산 소진 뒤의 알람은 여기서 **조용히**
+            # 버려졌다 — `[reform] attempt N/N` 은 마지막 시도에 도달했다는 뜻일 뿐이라(그 시도가
+            # 성공할 수 있다) 실제 소진을 로그로 가를 수 없었다. 판마다 한 번만 찍는다
+            # (소진 뒤에는 `enact_reform!` 이 안 불려 예산이 다시 안 차므로 소진은 영구다).
+            _REFORM_EXHAUSTED_SAID[] = true
+            println("[reform] budget exhausted $(_REFORM_CT[])/$(DEMO_REFORM_MAX) at closed=" *
+                    "$(length(env.cache.closed_set)) — further alarms ignored")
+        end
         return nothing
     end
     rec = truth_for_event(event)
@@ -1277,13 +1293,14 @@ render_result[] === nothing && error("render did not return a simulation environ
 render_env, _render_stats = render_result[]
 
 # 이번 런이 만든 visualization.html 을 anim/ 로 퍼블리시한다. DEMO_ANIM=0 이면 아무것도 안 한다.
-function publish_anim!()
+function publish_anim!(; suffix = "")
     DEMO_ANIM || return false
     viz = joinpath(dirname(pathof(CB)), "..", "results", "$(model_base)_render",
                    "greedy_RVO_Dispersion_TangentBug", "visualization.html")
     if isfile(viz)
-        cp(viz, joinpath(anim_dir, "$(model_base)__$(CASE_TAG)$(NSUF).html"); force = true)
-        println("[render] anim → anim/$(model_base)__$(CASE_TAG)$(NSUF).html")
+        dst = joinpath(anim_dir, "$(model_base)__$(CASE_TAG)$(NSUF)$(suffix).html")
+        cp(viz, dst; force = true)
+        println("[render] anim → ", dst)
         return true
     end
     println("[render] visualization.html not found at ", viz)
@@ -1321,6 +1338,8 @@ if INTERACTIVE
     exit(0)
 end
 
+(!CB.project_complete(render_env) && !isempty(DEMO_OUT_DIR)) &&
+    publish_anim!(; suffix = "__INCOMPLETE")      # 탐침 폴더에서만 — 공유 anim/ 은 여전히 거절한다
 CB.project_complete(render_env) ||
     error("refusing to publish incomplete animation for model=$MODEL case=$OODC")
 
