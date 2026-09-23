@@ -215,3 +215,8 @@ def test_prior_failed_attempt_is_moved_aside_not_truncated(tmp_path):
     assert os.path.basename(moved2[0]) == "canonical__zone__s3.attempt2.log"
     assert open(moved[0] if moved[0].endswith(".log") else moved[1]).read() == "first failure\n"
     assert C.preserve_prior_attempt(j) == []               # 옮길 것이 없으면 아무것도 안 한다
+
+
+def test_service_keys_include_repair_ablation():
+    import campaign
+    assert "repair_ablation" in campaign.SERVICE_KEYS

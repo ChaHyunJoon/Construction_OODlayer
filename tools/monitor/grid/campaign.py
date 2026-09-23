@@ -168,7 +168,8 @@ def log_status(txt, job, rc, timed_out):
 
 # 서비스 **신원** 키(최종 리뷰 I1). calls·billed 같은 카운터는 판마다 바뀌므로 대조하지 않는다.
 SERVICE_KEYS = ("code_fingerprint", "policy", "synth_tool_synthesis", "synth_multi_agent",
-                "model_type", "temperature", "program", "surrogate", "source_dir")
+                "model_type", "temperature", "program", "surrogate", "source_dir",
+                "repair_ablation")
 
 
 def service_check(camp, fetch):

@@ -51,6 +51,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WM = os.environ.get("DECISION_DIR") or os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
     "src", "decision")
+import repair_ablation as RA
+#: 🔴 존 복구 base ablation(2026-09-23): 기동 때 한 번 정해진다. 레벨이 틀리면 import 에서
+#:    죽는다(§ world_interface.py 의 ARTIFACT 와 같은 규약).
+REPAIR_ABLATION = RA.level()
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 # [2026-09-01] 캐시는 **기본 on** 이다: temperature 를 낮게 두어도 API 레벨 결정성은
 # 보장되지 않으므로, 시드 고정 스윕의 재현성이 사실상 여기에 기대고 있다. 라이브 호출이
@@ -1526,6 +1530,10 @@ def health():
             #    원장 행 수. append 는 결정을 지키려고 **안 던지므로**, 이 값이 0 이 아닌 판의
             #    원장은 불완전하다 — 측정 게이트는 이 값을 읽고 실패해야 한다.
             "ledger_append_failures": _ledger_append_failures(),
+            # 🔴 존 복구 base ablation(2026-09-23): 이 서비스가 실제로 기동한 레벨. Julia 는
+            #    기동 때 /health 로 먼저 막는다(policy.jl assert_service_repair_ablation);
+            #    campaign.py 의 SERVICE_KEYS 도 이 키로 재기동 드리프트를 잡는다.
+            "repair_ablation": REPAIR_ABLATION,
             "policies": ["dspy", "surrogate"]}
 
 
@@ -2146,6 +2154,11 @@ def rewrite(req: RewriteRequest):
     처리에 발급한 `response_id` 를 최상위에 싣는다(`macro()` docstring 과 같은 규약).
     프로그램은 주입하지 않는다 — `rewrite_impl` 이 요청마다 새로 만들어야 history 가 요청 국소다.
     """
+    _why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    if _why:
+        # 🔴 존 복구 base ablation: 레벨이 다른 판이 이 서비스로 오면 **결정을 내지 않는다**.
+        #    Julia 는 기동 때 /health 로 먼저 막는다(policy.jl assert_service_repair_ablation) — 이것은 둘째 층이다.
+        raise ValueError(_why)
     import synthesize as SY
     response_id = uuid.uuid4().hex
     raw: Dict[str, Any] = {}
@@ -2173,6 +2186,11 @@ def decide(req: MacroRequest):
     """한 번의 호출로 **모든 비-규칙 정책**의 결정을 돌려준다.
     줄리아는 canonical(규칙)을 자기가 계산해 합치므로, 이 응답 + canonical = 세 정책 전부.
     UI 는 이 셋 중 무엇을 볼지 고르고, 실제로 실행된 것은 enacted 로 따로 표시한다."""
+    _why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    if _why:
+        # 🔴 존 복구 base ablation: 레벨이 다른 판이 이 서비스로 오면 **결정을 내지 않는다**.
+        #    Julia 는 기동 때 /health 로 먼저 막는다(policy.jl assert_service_repair_ablation) — 이것은 둘째 층이다.
+        raise ValueError(_why)
     valid = _valid_for(req)
     # 두 producer 가 **서로 다른 것을 본다**. UI 가 그 차이를 나란히 보여줄 수 있도록 둘 다 돌려준다.
     #   llm_input       : 자연어 관찰 (+ 종류-무관 서술자 6개)

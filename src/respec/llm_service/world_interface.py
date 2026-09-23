@@ -7,10 +7,14 @@ import json
 import os
 from typing import Any, Dict, Optional
 
+import repair_ablation as RA
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 WM = os.environ.get("DECISION_DIR") or os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))), "src", "decision")
-ARTIFACT = os.path.join(WM, "core", "world_interface.json")
+#: 🔴 존 복구 base ablation(2026-09-23): 서비스 기동 레벨의 산출물. 기동 때 한 번 정해진다 — 레벨이
+#:    틀리면 import 에서 죽는다(조용히 기본 산출물로 돌지 않는다).
+ARTIFACT = os.path.join(WM, "core", RA.artifact_name(RA.level()))
 
 #: 경로 -> (파일 도장, blob). 🔴 **키가 경로만이면 안 된다.** DSPy 서비스는 오래 살고,
 #: 산출물의 최신성을 지키는 것은 줄리아 시험(`test/world_interface_current.jl`) 하나인데
