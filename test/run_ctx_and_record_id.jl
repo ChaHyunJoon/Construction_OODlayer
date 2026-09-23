@@ -115,7 +115,8 @@ end
                                         stdout = devnull, stderr = devnull))
         g("init", "-q")
         mkpath(joinpath(repo, "src")); write(joinpath(repo, "src", "a.jl"), "x = 1\n")
-        g("add", "src/a.jl"); g("commit", "-q", "--no-verify", "-m", "init")
+        write(joinpath(repo, "Project.toml"), "name = \"X\"\n")
+        g("add", "src/a.jl", "Project.toml"); g("commit", "-q", "--no-verify", "-m", "init")
         @test run_fingerprint(repo).code_dirty_digest == ""               # 깨끗 → ""
         write(joinpath(repo, "src", "new.jl"), "y = 1\n")                   # untracked 소스
         local d1 = run_fingerprint(repo).code_dirty_digest
@@ -156,6 +157,11 @@ end
         for f in ("probe.jl", "drive.py", "run.sh", "cfg.toml")
             rm(joinpath(repo, "tools", "monitor", f))
         end
+        @test run_fingerprint(repo).code_dirty_digest == ""
+        # R12: 뿌리의 추적 `Project.toml` 편집도 지문을 바꾼다(의존성 판 고정 = 엔진).
+        write(joinpath(repo, "Project.toml"), "name = \"X\"\n[deps]\nY = \"0\"\n")
+        @test occursin(r"^[0-9a-f]{16}$", run_fingerprint(repo).code_dirty_digest)
+        write(joinpath(repo, "Project.toml"), "name = \"X\"\n")                  # 되돌린다
         @test run_fingerprint(repo).code_dirty_digest == ""
         write(joinpath(repo, "src", "a.jl"), "x = 2\n")                     # 추적 파일 편집
         @test occursin(r"^[0-9a-f]{16}$", run_fingerprint(repo).code_dirty_digest)

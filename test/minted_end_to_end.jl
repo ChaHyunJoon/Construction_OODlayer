@@ -4476,6 +4476,30 @@ end
     @test startswith(ag[2]["why"], "refused_budget_spent")
     @test ag[2]["prev_impl_name"] == "d34_budget_fixed!"  # 그 순간의 body 는 **고친** 것이다
     @test ag[2]["record_id"] === nothing
+
+    # ---- (d) refused_budget_spent (prerun, R12): 등록 거절이 예산을 쓰고, 고친 body 가
+    #      **집행 전** 거절된 판(`calls=[]` — 런 14·15 모양) → 두 칸, 둘째는 prerun ---------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d34_budget_pre] = () -> merge(_rw_fix("d34_bpre_fixed!"),
+                                                 Dict{String,Any}("calls" => Any[]))
+    _RW_MODE[] = :d34_budget_pre
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local sp = _rw_lane("d34_bpre_bad",
+        "function d34_bpre_bad(env; note = \"x\")\n    return (status = :bad, note = note)\nend\n")
+    local mpb = enact_minted_decision!(retry_env(), nothing, _dec(sp))
+    _RW_MODE[] = :off
+    @test mpb.enact_retry === :refused_budget_spent
+    @test _RW_HITS[] == 1                                 # 왕복은 등록 거절의 하나뿐이다
+    local apb = CB.MONITOR_RESPEC[]["attempts"]
+    @test length(apb) == 2
+    @test apb[1]["trigger"] == "register_reject" && apb[1]["roundtrip"] == "ok"
+    @test apb[1]["steps_ref"] == "respec.steps"          # R8a: 설치됐다(재집행은 집행 전 거절)
+    @test apb[2]["trigger"] == "prerun" && apb[2]["roundtrip"] == "not_requested"
+    @test startswith(apb[2]["why"], "refused_budget_spent")
+    @test occursin("calls_disagree_with_body", apb[2]["why"])  # 원래 사유도 같이 남는다
+    @test apb[2]["prev_impl_name"] == "d34_bpre_fixed!"  # 그 순간의 body 는 **고친** 것이다
+    @test apb[2]["prev_steps"] isa Vector && isempty(apb[2]["prev_steps"])  # body 가 안 굴렀다
+    @test apb[2]["record_id"] === nothing                 # 전선에 안 나갔다
 end
 
 @testset "(34i) _sl_is_rewritable 거절 — roundtrip=skipped_not_rewritable, 전선에 안 나간다" begin

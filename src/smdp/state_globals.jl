@@ -254,6 +254,18 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
                                           # 벡터에서 다시 시작한다. 다시 읽어 분기하는 소비처가
                                           # 없다(테스트 단언 + `@info` 뿐) — `ENACT_ORDER_LOG` 와
                                           # 같은 이유로 :log.
+    # ---- policy.jl 판 신원 (2026-09-22, 재시도 body 보존 Phase 1 · R12) -------------------
+    :RUN_CTX                => :setup,   # policy.jl — 판의 신원 dict(`Ref{Dict}`). render_demo.jl 이
+                                          # 스트림 경로를 정한 뒤 `set_run_ctx!` 로 **한 번** 채우고
+                                          # (시뮬 루프 전), `_stamp_identity!`·`_run_ctx_copy`
+                                          # (enact.jl)는 사본을 **읽기만** 한다. 원장 행에 찍히는
+                                          # 라벨이지 동역학·정책 분기에 안 닿는다.
+    :_CONFIG_ENV_EXCLUDED   => :setup,   # policy.jl — `config_digest` 에서 빼는 ENV 키의 정적
+                                          # `Set`. 모듈 로드 후 안 바뀐다.
+    :_RID_CTR               => :log,     # policy.jl — `new_record_id` 의 프로세스 카운터
+                                          # (`Threads.Atomic{Int}`). 원장 행 id 재료일 뿐 다시 읽어
+                                          # 분기하는 소비처가 없다. 🔴 복원하면 **안 된다** — 되감으면
+                                          # 같은 시각·pid 에서 id 가 겹칠 수 있다(유일성이 목적).
 
     # ---- 분할 --------------------------------------------------------------------------
     # 비율 인자·broken·eff·usage_s·expired → s
@@ -557,7 +569,10 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
 # ---- 정규식 ----------------------------------------------------------------------------
 # 넷 다 앵커(`^`)로 최상위(들여쓰기 없는) 선언만 잡는다.
 const _PAT_REF     = r"^const\s+(_?[A-Z][A-Z_0-9]*)\s*=\s*Ref\b"
-const _CONTAINER_CTORS = ("Dict", "Set", "Vector", "OrderedDict", "IdDict", "Array", "OODQueue")
+const _CONTAINER_CTORS = ("Dict", "Set", "Vector", "OrderedDict", "IdDict", "Array", "OODQueue",
+                          # 2026-09-22(R12): `Threads.Atomic` 은 `atomic_add!` 로 제자리 변이되는
+                          # 가변 칸이다 — `Ref` 와 같은 부류(policy.jl `_RID_CTR`).
+                          "Threads.Atomic")
 # round 3, [Important]#2: 이름 문자클래스가 대문자만 받았다("_?[A-Z]...") — 그래서
 # `projects = Dict(...)`/`project_parameters = Dict(...)`(project_params.jl:19,40, 소문자
 # 최상위 비-const 대입)를 놓쳤고, round 2 는 "소문자 전역 0건"이라고 잘못 적었다(실측: 2건).
@@ -566,7 +581,8 @@ const _CONTAINER_CTORS = ("Dict", "Set", "Vector", "OrderedDict", "IdDict", "Arr
 # 대소문자 모두 받게 넓혔다 — 실측으로 노이즈 없이 딱 이 두 개만 추가로 잡힌다(다른 패턴을
 # 똑같이 넓히면 46개까지 쏟아진다: 흔한 소문자 지역 바인딩이 너무 많다).
 const _PAT_CTOR     = Regex("^(?:const\\s+)?(_?[A-Za-z][A-Za-z_0-9]*)\\s*=\\s*(?:" *
-                             join(_CONTAINER_CTORS, "|") * ")\\b.*\\(")
+                             join((replace(c, "." => "\\.") for c in _CONTAINER_CTORS), "|") *
+                             ")\\b.*\\(")
 const _PAT_BRACKET = r"^const\s+(_?[A-Z][A-Z_0-9]*)\s*=\s*[A-Za-z_][A-Za-z0-9_]*\["
 # 넷째: `const` 없는 최상위 가변 전역(`global NAME = ...` 또는 맨 `NAME = ...`) — fix round 2,
 # [Blocker] #1. `(?!=)` 로 `==` 를 걸러낸다(비교식이 대입으로 오매칭되지 않게).
@@ -687,6 +703,10 @@ const KNOWN_RHS_HEADS = Set([
     #     넣지 않는다. `OBJECTIVE_JSON` 자체도 재대입되지 않는 경로 문자열이라 상태가 아니다.
     #     ⚠️ 그래서 이 항목 뒤 실측은 관측 31 · 등록 35 다(위 (b) 의 30 · 34 에서 각 +1).
     "normpath",
+    # (e) 2026-09-22(R12). 재시도 body 보존 Phase 1 이 policy.jl 에 들인 `const _RID_CTR =
+    #     Threads.Atomic{Int}(0)`. 판정 (b): **가변** 칸이다 — `_CONTAINER_CTORS` 에도 넣어
+    #     스캐너가 보게 했고 `_RID_CTR` 은 위 표에 :log 로 분류했다.
+    "Threads.Atomic",
 ])
 # ---- round 4, [Important]#3: census 의 이름 그룹을 **소문자까지** 넓혔다 ---------------------
 # round 3 의 이름 그룹은 `(_?[A-Z][A-Z_0-9]*)` — **전-대문자 전용**이었다. 그런데 바로 그

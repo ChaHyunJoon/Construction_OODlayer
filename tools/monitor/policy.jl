@@ -898,8 +898,10 @@ const _CONFIG_ENV_EXCLUDED = Set(["DEMO_SEED", "DEMO_ZONE_SEED", "DEMO_CASE_TAG"
                                   "DEMO_OOD", "DEMO_ZONE", "DEMO_POLICY", "DEMO_ROUTER",
                                   "DEMO_MODEL", "DEMO_SYNTH_FIXTURE", "DEMO_OUT_DIR"])
 
-# 코드 지문이 보는 경로(저장소 뿌리 기준).
-const _CODE_FINGERPRINT_PATHS = ("src", "tools", "test")
+# 코드 지문이 보는 경로(저장소 뿌리 기준). 뿌리의 `Project.toml`·`Manifest.toml`(2026-09-22,
+# R12)도 본다 — 의존성 판 고정이 바뀌면 같은 소스도 다른 엔진이다(추적 파일이라 diff 로 잡힌다).
+# ⚠️ `wm4spacecraft_manufacturing/`(run_demo.jl 이 `objective.jl` 등을 include)는 아직 안 본다(보류).
+const _CODE_FINGERPRINT_PATHS = ("src", "tools", "test", "Project.toml", "Manifest.toml")
 
 # 코드 지문이 보는 **untracked** 파일의 확장자 (2026-09-22, controller R5b). 추적 파일의 diff 는
 # 확장자와 무관하게 전부 본다 — 이 거름은 untracked 에만 걸린다.
@@ -948,7 +950,8 @@ end
 
 판을 만든 **코드와 설정**의 지문. 기동 때 한 번 계산해 `RUN_CTX` 에 합친다.
   · `code_rev`          — `git rev-parse HEAD`. 실패하면 `"unknown"`.
-  · `code_dirty_digest` — `_code_dirty_digest`: `src tools test` 아래 추적 파일의 미커밋 편집 +
+  · `code_dirty_digest` — `_code_dirty_digest`: `_CODE_FINGERPRINT_PATHS`(`src tools test` + 뿌리의
+                          `Project.toml`·`Manifest.toml`) 아래 추적 파일의 미커밋 편집 +
                           추적 안 된 소스 파일(경로·내용). 깨끗하면 `""`, git 이 실패하면 `"unknown"`
                           (깨끗함과 **다른 값**이다).
                           🔴 HEAD 만 적고 미커밋 편집을 무시하면 같은 sha 가 다른 엔진이 된다

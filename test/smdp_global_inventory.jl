@@ -52,7 +52,8 @@ end
 
 @testset "스캐너가 run_demo.jl/policy.jl 의 전역도 찾는다 (범위 확장, I12 + fix round 1)" begin
     found = CB.scan_globals(SRC; extra_files=EXTRA_FILES)
-    for name in (:_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS)
+    for name in (:_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS,
+                 :RUN_CTX, :_RID_CTR)     # 2026-09-22(R12): `_RID_CTR` 은 `Threads.Atomic` 모양
         @test name in found
     end
     # `_REFORM_CT` 는 2026-08-24 축 C(Task 6)가 run_demo.jl 에서 지웠다 — `ReformTruth` 발화
@@ -65,7 +66,8 @@ end
     # extra_files 없이 SRC 만 훑으면 이 여섯은 안 보여야 한다 — 확장이 실제로 그 파일들을 보는지,
     # 이미 src/ 안에 있는 이름과 우연히 겹친 게 아닌지 구분하는 음성 대조.
     without_extra = CB.scan_globals(SRC)
-    for name in (:_REFORM_CT, :_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS)
+    for name in (:_REFORM_CT, :_ZONE_CT, :ZONE_DECIDE_DEFERRED, :_DECISION_N, :DSPY_HEALTHY, :_DECISIONS,
+                 :RUN_CTX, :_RID_CTR)
         @test !(name in without_extra)
     end
 end
