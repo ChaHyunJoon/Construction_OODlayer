@@ -43,6 +43,13 @@ const DEMO_N = try max(0, parse(Int, get(ENV, "DEMO_N", "0"))) catch; 0 end   # 
 # 무작위 심각도에 씻겨나가면 안 되기 때문. 심각도까지 추첨하려면 DEMO_BSEVERE_FRAC>0 을 준다.
 # ---------------------------------------------------------------------------------------------
 const DEMO_SEED = try max(0, parse(Int, get(ENV, "DEMO_SEED", "1"))) catch; 1 end
+# 🔴 2026-09-22: `DEMO_OOD_SEED` 는 헤드리스 엔진(`run_demo.jl`)의 이름이고 **이 엔진은 안 읽는다**.
+#    09-06 SMDP 120판 드라이버가 그 이름을 넘겨 router all3 60판(두 모델)이 전부 seed=1 로 돌았다 —
+#    조용히. 넘겼는데 DEMO_SEED 와 다르면 기동 시 멈춘다(같으면 무해하므로 통과).
+let s = strip(get(ENV, "DEMO_OOD_SEED", ""))
+    isempty(s) || s == string(DEMO_SEED) || error(
+        "[render_demo] DEMO_OOD_SEED=$s 는 이 엔진이 읽지 않는다 — DEMO_SEED 를 쓸 것 (지금 DEMO_SEED=$(DEMO_SEED))")
+end
 const DEMO_BSEVERE = try clamp(parse(Float64, get(ENV, "DEMO_BSEVERE_FRAC", "0.0")), 0.0, 1.0) catch; 0.0 end
 # ---------------------------------------------------------------------------------------------
 # DEMO_ZONE_SEED — **금지구역의 위치와 크기**를 시드로 뽑는다. 0(기본) 이면 예전 결정적 배치와
