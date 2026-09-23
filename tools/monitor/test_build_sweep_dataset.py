@@ -218,7 +218,8 @@ def test_attempts_are_split_by_roundtrip_wrote_install_and_enactment():
                  "rewrite_not_requested": 1, "rewrite_skipped_not_rewritable": 1,
                  "rewrite_wrote": 3, "rewrite_wrote_false": 1, "rewrite_wrote_null": 0,
                  "rewrite_installed": 2, "rewrite_install_rejected": 1,
-                 "rewrite_enacted": 2}
+                 "rewrite_enacted": 2, "rewrite_roundtrip_null": 0,
+                 "rewrite_wrote_not_installed": 0}
 
 
 # ---- OOD 실제 발생 · 초기 상태 지문 · restage 상태 -----------------------------------------
@@ -252,3 +253,17 @@ def test_restage_statuses_are_read_from_warn_and_info_lines():
            "[ Info: [RESPEC] restage_all residual_blocked (residual 1) -> whole-build translate\n")
     assert B.restage_statuses(txt) == ["infeasible", "residual_blocked"]
     assert B.restage_statuses("") == []
+
+
+def test_installed_requires_a_reenactment_and_null_roundtrip_has_a_bucket():
+    # 최종 리뷰 M3(→ Important 재등급): `install_why` 는 처음부터 nothing 이라, 설치 없이 돌아온 칸
+    # (impl_code 가 문자열이 아닌 판 — enact.jl `_rewrite_once`)도 "설치됨" 으로 셌다.
+    hist = [{"attempts": [
+        {"roundtrip": "ok", "wrote": True, "install_why": None, "steps": None, "steps_ref": None},
+        {"roundtrip": None, "wrote": None, "install_why": None, "steps": None, "steps_ref": None}]}]
+    a = B.attempt_counts(hist)
+    assert a["rewrite_wrote"] == 1 and a["rewrite_installed"] == 0
+    assert a["rewrite_wrote_not_installed"] == 1
+    assert a["rewrite_roundtrip_null"] == 1
+    assert (a["rewrite_roundtrip_ok"] + a["rewrite_roundtrip_failed"] + a["rewrite_not_requested"]
+            + a["rewrite_skipped_not_rewritable"] + a["rewrite_roundtrip_null"]) == a["attempts_total"]

@@ -173,3 +173,45 @@ def test_manifest_to_verify_args_lines(tmp_path):
     assert z[3] == "--require-decisions 1"
     b = [l for l in lines if l.startswith("router__battery__s3\t")][0].split("\t")
     assert b[3] == ""
+
+
+# ---- 최종 리뷰 I1: 서비스 표류는 판마다 잰다 --------------------------------------------------
+HEALTH = {"status": "ok", "policy": "dspy:gpt-4o", "code_fingerprint": "72b8b5af417e6b2c",
+          "synth_tool_synthesis": True, "synth_multi_agent": True, "model_type": "chat",
+          "temperature": 0.2, "calls": 0, "billed": 0}
+
+
+def test_service_check_passes_when_identity_matches_and_ignores_counters():
+    camp = dict(CAMP, service={"url": "http://x", "health": HEALTH})
+    assert C.service_check(camp, lambda url: dict(HEALTH, calls=9, billed=3)) == []
+
+
+@pytest.mark.parametrize("key,val", [("code_fingerprint", "0" * 16), ("policy", "dspy:gpt-5"),
+                                     ("synth_multi_agent", False), ("temperature", 0.7)])
+def test_service_check_reports_identity_drift(key, val):
+    camp = dict(CAMP, service={"url": "http://x", "health": HEALTH})
+    bad = C.service_check(camp, lambda url: dict(HEALTH, **{key: val}))
+    assert bad and bad[0].startswith(key)
+
+
+def test_service_check_unreachable_is_drift_and_no_service_is_fine():
+    camp = dict(CAMP, service={"url": "http://x", "health": HEALTH})
+    assert C.service_check(camp, lambda url: {"unreachable": "boom"}) == ["unreachable: boom"]
+    assert C.service_check(dict(CAMP, service=None), lambda url: {}) == []
+
+
+# ---- 최종 리뷰 I2: 다시 돌리기 전에 실패한 판의 원래 증거를 보존한다 -----------------------------
+def test_prior_failed_attempt_is_moved_aside_not_truncated(tmp_path):
+    j = _job("zone", 3, grid=str(tmp_path))
+    os.makedirs(os.path.dirname(j["log"])); os.makedirs(os.path.dirname(j["stream"]))
+    open(j["log"], "w").write("first failure\n")
+    open(j["stream"], "w").write("{}\n")
+    moved = C.preserve_prior_attempt(j)
+    assert not os.path.exists(j["log"]) and not os.path.exists(j["stream"])
+    assert sorted(os.path.basename(m) for m in moved) == [
+        "canonical__zone__s3.attempt1.log", "tractor__canonical_zone_s3_z3.attempt1.jsonl"]
+    open(j["log"], "w").write("second failure\n")
+    moved2 = C.preserve_prior_attempt(j)
+    assert os.path.basename(moved2[0]) == "canonical__zone__s3.attempt2.log"
+    assert open(moved[0] if moved[0].endswith(".log") else moved[1]).read() == "first failure\n"
+    assert C.preserve_prior_attempt(j) == []               # 옮길 것이 없으면 아무것도 안 한다

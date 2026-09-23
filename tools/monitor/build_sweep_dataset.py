@@ -215,23 +215,30 @@ def attempt_counts(hist):
     것은 roundtrip=="ok" 뿐이고 그것도 provider 재시도는 모른다."""
     c = dict.fromkeys(("attempts_total", "rewrite_roundtrip_ok", "rewrite_roundtrip_failed",
                        "rewrite_not_requested", "rewrite_skipped_not_rewritable",
+                       "rewrite_roundtrip_null",
                        "rewrite_wrote", "rewrite_wrote_false", "rewrite_wrote_null",
-                       "rewrite_installed", "rewrite_install_rejected", "rewrite_enacted"), 0)
+                       "rewrite_installed", "rewrite_install_rejected",
+                       "rewrite_wrote_not_installed", "rewrite_enacted"), 0)
     for h in hist or []:
         for a in (h.get("attempts") or []) if isinstance(h, dict) else []:
             if not isinstance(a, dict):
                 continue
             c["attempts_total"] += 1
             rt = a.get("roundtrip")
+            reenacted = isinstance(a.get("steps"), list) or a.get("steps_ref") is not None
             if rt == "ok":
                 c["rewrite_roundtrip_ok"] += 1
                 w = a.get("wrote")
                 if w is True:
                     c["rewrite_wrote"] += 1
-                    if a.get("install_why") is None:
+                    # `install_why` 는 처음부터 nothing 이다(enact.jl `_open_attempt!`) — 설치 없이
+                    # 돌아온 칸(impl 이 문자열이 아닌 판)과 가르려면 재집행 흔적이 있어야 한다.
+                    if a.get("install_why") is not None:
+                        c["rewrite_install_rejected"] += 1
+                    elif reenacted:
                         c["rewrite_installed"] += 1
                     else:
-                        c["rewrite_install_rejected"] += 1
+                        c["rewrite_wrote_not_installed"] += 1
                 elif w is False:
                     c["rewrite_wrote_false"] += 1
                 else:
@@ -242,7 +249,9 @@ def attempt_counts(hist):
                 c["rewrite_not_requested"] += 1
             elif rt == "skipped_not_rewritable":
                 c["rewrite_skipped_not_rewritable"] += 1
-            if isinstance(a.get("steps"), list) or a.get("steps_ref") is not None:
+            elif rt is None:
+                c["rewrite_roundtrip_null"] += 1      # 열렸는데 안 채워졌다(검증기 attempt_open)
+            if reenacted:
                 c["rewrite_enacted"] += 1
     return c
 

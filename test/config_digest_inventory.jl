@@ -58,6 +58,17 @@ function literal_defaults(files, name)
     return vals
 end
 
+"`ENV[\"NAME\"] = \"lit\"` 쓰기의 리터럴(주석 줄 제외) — `haskey(ENV,…) || (ENV[…] = …)` 모양의 기본값."
+function write_defaults(files, name)
+    rx = Regex("ENV\\[\\s*\"$(name)\"\\s*\\]\\s*=\\s*\"([^\"]*)\"")
+    vals = Set{String}()
+    for f in files, line in eachline(f)
+        startswith(lstrip(line), "#") && continue
+        for m in eachmatch(rx, line); push!(vals, m.captures[1]); end
+    end
+    return vals
+end
+
 const NONREPO = mktempdir()           # 설정 지문만 볼 때 코드 지문(git) 비용을 피한다
 cfg(e)  = run_fingerprint(NONREPO; env = e).config_digest
 cenv(e) = run_fingerprint(NONREPO; env = e).config_env
@@ -135,10 +146,22 @@ end
     end
 end
 
-@testset "(6) 드라이버가 명시 export 하는 기본값 = 소스의 리터럴 기본값" begin
+@testset "(6) 드라이버가 명시 export 하는 기본값 = render 경로의 **실효** 기본값" begin
+    # 🔴 2026-09-23 최종 리뷰 C1: `render_demo.jl` 은 `haskey(ENV,"CARRIER_RESCUE") ||
+    #    (ENV["CARRIER_RESCUE"] = "1")` 로 기본값을 **쓴다** — `get` 리터럴("0")만 보던 이 절이
+    #    그것을 못 봐서 "0" 고정이 통과했고, 격자 전부가 복구 단 하나를 끈 채 돌았다.
+    #    엔진 진입점(render_demo.jl)의 쓰기 기본값이 있으면 그것이 실효값이다.
     files = render_path_files()
+    entry = [f for f in files if endswith(f, joinpath("tools", "monitor", "render_demo.jl"))]
+    @test length(entry) == 1
     for (k, v) in CONFIG_ENV_PINNED_DEFAULTS
         @test k in CONFIG_ENV_RESULT
+        w = write_defaults(entry, k)
+        if !isempty(w)
+            w == Set([v]) || @info "기본값 불일치(쓰기)" k v w
+            @test w == Set([v])
+            continue
+        end
         lits = literal_defaults(files, k)
         # 아직 읽는 코드가 없는 손잡이(Phase 3 예약)는 리터럴이 없다 — 그때는 비교할 것이 없다.
         isempty(lits) && continue

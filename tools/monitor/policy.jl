@@ -944,8 +944,9 @@ const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_")
 # 설정 지문에서 **빼는** 키 = cell_axis ∪ observational (2026-09-22 R5a 의 셀 불변 규약을 잇는다).
 const _CONFIG_ENV_EXCLUDED = Set([CONFIG_ENV_CELL_AXIS; CONFIG_ENV_OBSERVATIONAL])
 
-# 드라이버가 campaign 마다 **명시** export 하는 복구 손잡이의 기본값. 값은 소스의 리터럴
-# 기본값과 같아야 한다(`test/config_digest_inventory.jl` (6) 이 대조한다). 명시 export 하는 이유:
+# 드라이버가 campaign 마다 **명시** export 하는 복구 손잡이의 기본값. 값은 render 경로의 **실효**
+# 기본값과 같아야 한다 — render_demo.jl 이 `ENV[…] = …` 로 쓰는 기본값이 있으면 그것, 없으면
+# `get` 리터럴(`test/config_digest_inventory.jl` (6) 이 대조한다). 명시 export 하는 이유:
 # 기본값이 코드에서 조용히 바뀌어도 격자는 campaign 이 적은 값으로 돈다 — 그 판은 코드 지문이
 # 가르고, 설정 지문은 "무엇으로 돌았나" 를 평문으로 남긴다.
 # 🔴 `RELOCATE_GATE` 는 **일부러 뺐다**: 기본값이 두 곳에서 다르다(`verifier.jl` 의 로드 시점
@@ -953,7 +954,8 @@ const _CONFIG_ENV_EXCLUDED = Set([CONFIG_ENV_CELL_AXIS; CONFIG_ENV_OBSERVATIONAL
 #    현행 동작이 바뀐다. 설정 안 함(`<unset>`)으로 두고 지문에는 그대로 실린다.
 const CONFIG_ENV_PINNED_DEFAULTS = Dict(
     "RESTAGE_ZONE_MARGIN_FRAC" => "0.5", "RESTAGE_RING_STEP_FRAC" => "0.34",
-    "CARRIER_RESCUE" => "0", "ZONE_RESCUE" => "1",
+    "CARRIER_RESCUE" => "1",   # render_demo 가 없으면 "1" 을 **쓴다**(get 리터럴 "0" 이 아니다 — 최종 리뷰 C1)
+    "ZONE_RESCUE" => "1",
     "ZONE_CAUSAL_RULE" => "0", "ZONE_DOMAIN_GATE" => "0", "ZONE_CHECK_PATHS" => "0",
     "ENERGY_OBJECTIVE" => "1", "SPARE_PRIORITY" => "1", "TEAM_PRIORITY" => "1",
     "RESPEC_DEPRIO_KAPPA" => "0.25",

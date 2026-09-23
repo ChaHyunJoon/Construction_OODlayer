@@ -18,7 +18,9 @@ rc·timeout·elapsed·실제 스트림 경로·지문을 한 줄 JSON 으로 남
         `code_dirty_digest` 와 같은지 init 때 대조한다(판마다의 표류 검사가 그 값을 쓴다).
   run-one <grid> <lane> <case> <seed>
         판 하나. 이미 채점됐고 지문·스트림이 맞으면 건너뛴다. 코드가 campaign 과 다르면
-        **돌리지 않고** `error:fingerprint_drift` 를 남기고 exit 255(xargs 가 격자를 멈춘다).
+        **돌리지 않고** `error:fingerprint_drift`, 서비스 신원이 다르면 `error:service_drift` 를
+        남기고 exit 255(xargs 가 격자를 멈춘다). 채점 안 된 이전 시도의 로그·스트림은
+        `.attempt<N>` 으로 옮겨 보존한 뒤 다시 돈다.
   snapshot <grid>   복원 가능한 스냅샷(patch · 미추적 소스 tar · sha256 · HEAD)을 쓰고, 임시
                     clone 에 적용해 같은 code_dirty_digest 가 나오는지 확인한다(Task 6c Step 2).
   summarize <grid>  계획 판별 상태 표. 채점 안 된 판이 있으면 exit 1.
@@ -162,6 +164,50 @@ def log_status(txt, job, rc, timed_out):
     if not _stream_ok(job["stream"]):
         return "error:stream_missing", "manifest stream %s" % job["stream"]
     return "scored", ""
+
+
+# 서비스 **신원** 키(최종 리뷰 I1). calls·billed 같은 카운터는 판마다 바뀌므로 대조하지 않는다.
+SERVICE_KEYS = ("code_fingerprint", "policy", "synth_tool_synthesis", "synth_multi_agent",
+                "model_type", "temperature", "program", "surrogate", "source_dir")
+
+
+def service_check(camp, fetch):
+    """campaign 을 연 서비스와 지금 서비스가 같은가. 다르면 문제 목록(빈 목록 = 같다).
+
+    surrogate·router 레인의 결정은 서비스가 내므로, 도중 재기동(다른 코드·플래그·모델)이면 판이
+    조용히 섞인다 — julia 의 config_digest 는 서비스 쪽 env 를 못 본다.
+    """
+    svc = camp.get("service")
+    if not svc or not svc.get("url"):
+        return []
+    now = fetch(svc["url"])
+    if "unreachable" in now:
+        return ["unreachable: %s" % now["unreachable"]]
+    want = svc.get("health") or {}
+    return ["%s=%r!=%r" % (k, now.get(k), want.get(k)) for k in SERVICE_KEYS
+            if k in want and now.get(k) != want.get(k)]
+
+
+def preserve_prior_attempt(job):
+    """채점 안 된 이전 시도의 로그·스트림을 `.attempt<N>` 으로 옮긴다(최종 리뷰 I2).
+
+    다시 돌리면 로그는 "wb" 로, 스트림은 monitor 가 잘라 원래 오류가 사라졌다 — 계획서 Task 8
+    "원래 오류를 보존한다". 옮긴 경로 목록을 돌려준다.
+    """
+    moved = []
+    log, stream = job["log"], job["stream"]
+    if not os.path.exists(log) and not os.path.exists(stream):
+        return moved
+    n = 1
+    while os.path.exists("%s.attempt%d.log" % (log[:-4], n)) or \
+            os.path.exists("%s.attempt%d.jsonl" % (stream[:-6], n)):
+        n += 1
+    for src, dst in ((log, "%s.attempt%d.log" % (log[:-4], n)),
+                     (stream, "%s.attempt%d.jsonl" % (stream[:-6], n))):
+        if os.path.exists(src):
+            os.replace(src, dst)
+            moved.append(dst)
+    return moved
 
 
 def _git_bytes(repo, *args):
@@ -347,6 +393,14 @@ def cmd_run_one(grid, lane, case, seed, timeout_s=None):
         _append(runs, rec)
         print("[DRIFT] %s — %s" % (key, rec["detail"]))
         return DRIFT_EXIT
+    bad = service_check(camp, _health)
+    if bad:
+        rec.update(status="error:service_drift", rc=None, timeout=False, elapsed=0,
+                   detail="; ".join(bad), at=datetime.datetime.now().astimezone().isoformat())
+        _append(runs, rec)
+        print("[DRIFT] %s — service %s" % (key, rec["detail"]))
+        return DRIFT_EXIT
+    rec["prior_attempts_moved"] = preserve_prior_attempt(job)
     env = run_env(camp, job, os.environ, grid)
     timeout_s = timeout_s or int(os.environ.get("RUN_TIMEOUT", "3600"))
     os.makedirs(os.path.dirname(job["log"]), exist_ok=True)
