@@ -152,6 +152,7 @@ the brief offered: constrain `params` to flat scalars and catch that constraint 
 (`params_flatness`). ⚠️ Output that violates the constraint is **not discarded** -- it is merely
 recorded with `params_flat=False`, and the definition is kept in full (spec §5-1).
 """
+import datetime
 import json
 import os
 import sys
@@ -1156,7 +1157,16 @@ def _blank(rec_kind, expressible, ledger) -> Dict[str, Any]:
             # 예외로 명시하는 이유: "못 쟀다" (`None`)와 "쟀는데 없다" (`""`)를 가르는 삼상 값이
             # 정의역에 없는 채로 있으면 안 되고, blank 기록은 정의상 agent-3 를 아직 안 불렀으므로
             # 참값은 `None` 하나뿐이다.
-            "needs": None}
+            "needs": None,
+            # 🔴 원장 행 신원(2026-09-22). 줄리아가 발급한 `/decide` 의 id 이고 서비스가
+            #    `macro()` 에서 채운다. blank 에서는 **못 쟀다** 이므로 `None` 이다.
+            #    `SYNTH_LANE_KEYS`(policy.jl)에 이 이름이 있어 교차언어 게이트가 여기를 읽는다.
+            "record_id": None,
+            # 🔴 controller R2(global-constraints.md, Task 1·3): HTTP 재전송은 같은 `record_id`
+            #    로 서로 다른 body 를 만들 수 있다. `response_id` 는 **서버 처리마다**(Task 3)
+            #    새로 발급돼 `(record_id, response_id)` 로 실제 수신 응답을 조인한다. 여기서는
+            #    자리만 준다 — blank 는 어느 처리에도 대응하지 않으므로 `None` 이다.
+            "response_id": None}
 
 
 def _finish_record(rec, kind, led, blob):
@@ -1633,6 +1643,63 @@ def append_synthesis_record(rec, path=None) -> Optional[str]:
         return path
     except Exception:
         return None
+
+
+# ==========================================================================================
+# (5-c) 원장 행의 신원과 원시 응답 — 재시도 body 보존 (2026-09-22)
+# ==========================================================================================
+# 🔴 왜: R2(2026-09-22)가 재시도 6판의 **최종** body 를 복구하지 못했다 — `/rewrite` 가 아무
+#    것도 append 하지 않고, 행에 seed·lane·run_id 가 없어 스윕과 조인할 수 없었다.
+LEDGER_ROW_VERSION = 2
+
+
+def lm_raw(prog, start: int = 0) -> List[Dict[str, Any]]:
+    """`prog` 가 부른 LM 호출들의 원시 응답. **절대 안 던진다.**
+
+    🔴 `dspy.settings.lm.history[-1]` 을 쓰지 않는다 — 전역 history 는 스레드풀의 다른 요청과
+       공유된다. dspy 3.3 의 `update_history` 는 호출 스택의 모듈마다 `module.history` 에도
+       적으므로, 호출마다 새로 만든 프로그램의 history 는 그 요청 것뿐이다.
+    🔴 `cache_hit` 를 싣는다 — 캐시 재생은 옛 날짜 응답을 돌려주고 `/health` 의 `calls` 도 센다.
+    🔴 `start`(controller R2, global-constraints.md Task 1·2): 프로그램은 요청마다 새로 만드는
+       것이 원칙이지만, 호출자가 프로그램을 **주입**해 재사용하면 `prog.history` 에는 이전
+       요청의 항목도 남아 있을 수 있다. 호출자가 호출 전 `len(prog.history)` 를 찍어 `start=`
+       로 넘기면 이번 호출로 **늘어난 부분만** 돌려준다. 생략(기본 0)이면 전체 history 다 —
+       매번 새 프로그램을 만드는 정상 경로(빈 history 로 시작)에서는 결과가 같다.
+    """
+    out: List[Dict[str, Any]] = []
+    try:
+        for e in list(getattr(prog, "history", None) or [])[start:]:
+            try:
+                resp = e.get("response")
+                out.append({"outputs": e.get("outputs"),
+                            "model": e.get("response_model") or e.get("model"),
+                            "usage": e.get("usage"), "cost": e.get("cost"),
+                            "cache_hit": getattr(resp, "cache_hit", None),
+                            "timestamp": e.get("timestamp"), "uuid": e.get("uuid")})
+            except Exception as ex:  # noqa: BLE001 -- 항목 하나가 전체를 죽이지 않는다
+                out.append({"error": "lm_raw: %s: %s" % (type(ex).__name__, ex)})
+    except Exception as ex:  # noqa: BLE001
+        out.append({"error": "lm_raw: %s: %s" % (type(ex).__name__, ex)})
+    return out
+
+
+def stamp_record(rec, *, row_type, record_id, response_id=None, parent_record_id=None,
+                 attempt=1, trigger="first", run_ctx=None, code_fingerprint=None) -> Dict[str, Any]:
+    """원장 한 줄 = `rec` 의 **사본** + 신원. 원본은 전선으로 나가므로 건드리지 않는다.
+
+    `row_type`: `"decide"`(첫 시도, attempt=1) | `"rewrite"`(되먹임, attempt=2).
+    `record_id` 는 **줄리아가 발급**한다 — 서버가 만들면 HTTP 재전송이 다른 id 두 줄이 된다.
+    `response_id` 는 **서버가** 처리마다 새로 발급한다(Task 3) — 여기서는 실어 주는 자리일
+    뿐이다. `None` 이 기본인 이유는 이 함수 단독으로는 그 값을 모르기 때문이다(controller R2).
+    """
+    row = dict(rec)
+    row.update({"ledger_version": LEDGER_ROW_VERSION, "row_type": row_type,
+                "record_id": record_id, "response_id": response_id,
+                "parent_record_id": parent_record_id,
+                "attempt": attempt, "trigger": trigger, "run_ctx": dict(run_ctx or {}),
+                "code_fingerprint": code_fingerprint,
+                "logged_at": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+    return row
 
 
 def run_synthesis(expressible, kind=None, state="", tools=None, ledger=None,
