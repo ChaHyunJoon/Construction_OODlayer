@@ -1,0 +1,17 @@
+{
+  "tool_name": "ProbeRetryBoom",
+  "mechanism": "probe fixture (2026-09-22, retry-body gate): throws on its first step before touching the world, so the D17b gate opens exactly one /rewrite round trip. Not a repair.",
+  "impl_name": "ProbeRetryBoom!",
+  "impl_code": "function ProbeRetryBoom!(env)\n    error(\"probe: deliberate first-step throw before any edit\")\nend\n",
+  "params": {},
+  "calls": [{"primitive": "ProbeRetryBoom!", "args": {}}],
+  "body_names": ["ProbeRetryBoom!"],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}
