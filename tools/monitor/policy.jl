@@ -1664,6 +1664,25 @@ end
 const SYNTH_FIXTURE_PATH = get(ENV, "DEMO_SYNTH_FIXTURE", "")
 
 """
+    SYNTH_FIXTURE_KINDS
+
+`DEMO_SYNTH_FIXTURE_KINDS`(쉼표 구분, 예: `zone`). 비어 있으면(기본) `nothing` 이고 픽스처는
+오늘처럼 **모든 결정**에 꽂힌다 — 게이트 이전의 적용 범위와 실행 경로를 그대로 유지한다
+(`synth_fixture_lane` 의 새 분기는 `SYNTH_FIXTURE_KINDS === nothing` 이면 안 탄다).
+
+값이 있으면 픽스처는 `routing_kind`(앞의 `unknown:` 을 뗀 것)가 이 집합에 드는 결정에만 꽂힌다.
+왜 (2026-09-22, R2b): 혼합 케이스(`all3` = fault+battery+zone)에서 합성은 zone 에서만 일어났다
+(스윕 60판: BATTERY·FAULT 는 surrogate 매크로, ZONE 만 dspy+합성). 게이트가 없으면 zone 수리
+body 가 battery·fault 결정에도 등록·집행되고, `handled` 가 그 결정의 SwapBattery/Replace 를
+건너뛴다 — 스윕에 없던 개입이 생긴다.
+"""
+const SYNTH_FIXTURE_KINDS = let s = strip(get(ENV, "DEMO_SYNTH_FIXTURE_KINDS", ""))
+    isempty(s) ? nothing : Set(String.(strip.(split(s, ","; keepempty = false))))
+end
+(SYNTH_FIXTURE_KINDS !== nothing && isempty(SYNTH_FIXTURE_PATH)) &&
+    error("[synth-fixture] DEMO_SYNTH_FIXTURE_KINDS 가 켜졌는데 DEMO_SYNTH_FIXTURE 가 비었다")
+
+"""
     synth_fixture_lane(sl, rt) -> Union{Nothing,Dict{String,Any}}
 
 `sl`(생산 경로가 만든 합성 레인) 위에 픽스처 파일의 값을 덮어 돌려준다. 손잡이가
@@ -1675,6 +1694,16 @@ const SYNTH_FIXTURE_PATH = get(ENV, "DEMO_SYNTH_FIXTURE", "")
 """
 function synth_fixture_lane(sl, rt = nothing)
     isempty(SYNTH_FIXTURE_PATH) && return sl
+    if SYNTH_FIXTURE_KINDS !== nothing
+        # 🔴 조용히 못 가르면 죽는다 — 게이트를 요구한 런이 게이트 없이 돌면 all3 재생이 무효다.
+        rt === nothing && error("[synth-fixture] DEMO_SYNTH_FIXTURE_KINDS 게이트에는 rt(routing_kind)가 필요하다")
+        local rk = String(get(rt, "routing_kind", ""))
+        if !(replace(rk, r"^unknown:" => "") in SYNTH_FIXTURE_KINDS)
+            println("[synth-fixture] gated OFF — routing_kind=", rk, " ∉ ", sort(collect(SYNTH_FIXTURE_KINDS)))
+            rt["synth_fixture"] = Dict{String,Any}("gated_off" => true, "routing_kind" => rk)
+            return sl
+        end
+    end
     local raw
     try
         raw = read(SYNTH_FIXTURE_PATH, String)
