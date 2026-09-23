@@ -1898,6 +1898,13 @@
             "argpaths": [
             ],
             "callable": true,
+            "status_meanings": [
+                ":infeasible = none of the blocked staging circles could be placed; nothing moved.",
+                ":none = nothing to do: no staging circle is blocked and no goal is blocked; nothing moved.",
+                ":partial = some blocked staging circles were relocated and some could not be (see `failed`); no goal is left blocked.",
+                ":residual_blocked = `residual` goals are still blocked. This call only moves the staging circles of assemblies that have not started and are not the root, so it cannot clear these goals; `translate_whole_build!` moves the whole build. Also returned when no staging circle was blocked at all (then nothing moved).",
+                ":restaged_all = every blocked staging circle was relocated, and no goal is left blocked."
+            ],
             "field_element_fields": [
                 "failed[] :: (id, status)",
                 "moved[] :: (from, id, to)"
@@ -1909,7 +1916,7 @@
                 "residual_blocked",
                 "restaged_all"
             ],
-            "returns": "Union{@NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}}, @NamedTuple{status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}, residual::Int64}}"
+            "returns": "(status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}, residual::Int64)"
         },
         {
             "name": "restage_assembly!",
@@ -2374,7 +2381,13 @@
             "argpaths": [
             ],
             "callable": true,
-            "returned_fields_complete": true,
+            "status_meanings": [
+                ":already_clear = no shift was needed (`delta` is zero), and no goal is blocked.",
+                ":infeasible = no shift that clears the zone was found; nothing moved.",
+                ":no_staging = there are no staging circles on record; nothing moved.",
+                ":residual_blocked = the build was shifted by `delta` (possibly zero), but `residual` goals are still blocked.",
+                ":translated = the whole build was shifted by `delta`, and no goal is left blocked."
+            ],
             "returned_fields": [
                 "delta",
                 "detail",
@@ -2392,6 +2405,7 @@
                 "residual_blocked",
                 "translated"
             ],
+            "returned_fields_complete": true,
             "returns": "NamedTuple"
         },
         {

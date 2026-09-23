@@ -787,3 +787,25 @@ def test_completeness_is_a_tri_state_key_not_a_boolean_column():
     assert vals, "아무 데도 안 실렸다 — 수확기가 조용히 죽었을 수 있다"
     assert all(v is True for v in vals.values()), vals
     assert set(vals) == {"zone_blockage", "translate_whole_build!"}, sorted(vals)
+
+
+def test_status_meanings_are_advertised_only_where_a_human_marked_them():
+    """🔴 2026-09-22 (results/2026-09-22-r2-body-replay ③ · r3). `status seen in source:` 는 기호만
+    실었고, body 가 `restage_all_blocked!` 의 `:none` 을 "존이 다 치워졌다" 로 읽어 translate 로 안
+    올라갔다(엔진 docstring 도 그렇게 틀리게 적었다). 뜻은 docstring 의 **표시된 문단**에서만
+    수확된다 — 표시가 없는 함수에 산문이 새어 나가면 검증 안 된 주장이 광고된다."""
+    import world_interface as WI
+    ms = WI_methods()
+    assert sorted(m["name"] for m in ms if "status_meanings" in m) == \
+        ["restage_all_blocked!", "translate_whole_build!"]
+    for m in ms:
+        for x in m.get("status_meanings") or []:
+            assert x.split(" =")[0].lstrip(":") in m["status_symbols"], (m["name"], x)
+    m = _named("restage_all_blocked!")
+    sm = {x.split(" =")[0]: x for x in m["status_meanings"]}
+    assert "no goal is blocked" in sm[":none"]
+    assert "no staging circle was blocked at all" in sm[":residual_blocked"]
+    assert "translate_whole_build!" in sm[":residual_blocked"]
+    assert "status meanings:" in WI._method_line(m)
+    bare = next(x for x in ms if "status_meanings" not in x and x.get("status_symbols"))
+    assert "status meanings:" not in WI._method_line(bare)

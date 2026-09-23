@@ -1189,7 +1189,7 @@ function _enact_one!(env, proposal::RespecProposal;
                            "residual"=>get(res,:residual,0)),
             verdict=res.status == :none ? "ADMITTED · verified · navigation detour" :
                                           "ADMITTED · verified · assemblies restaged")
-        return res.status == :none ? :noop : :admitted   # :none = zone covers no goal (detour-only)  # :none=목표 안 덮음(우회만) → noop
+        return res.status == :none ? :noop : :admitted   # :none = zone blocks no goal (detour-only)  # :none=막힌 목표 없음(우회만) → noop
     end
 
     # --- battery depletion: swap the pack in the field -------------------------

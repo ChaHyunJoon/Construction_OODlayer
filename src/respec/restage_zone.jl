@@ -524,18 +524,35 @@ already-relocated ones, and whose drift-based scene re-sync is idempotent (re-ru
 it only snaps whatever still drifted). The per-call cache rebuild is suppressed
 (`resume=false`) and done ONCE at the end.
 
-Returns `(status, moved, failed)`:
-- `:restaged_all` — every blocked assembly relocated.
-- `:partial`      — some moved, some `:infeasible` (no zone-clear, non-overlapping spot).
-- `:infeasible`   — none could be placed → caller engages the safe fallback.
-- `:none`         — no blocked assemblies (zone clears all goals already).
+Returns `(status, moved, failed, residual)`. `residual` is the number of goals robots must
+drive to that are still blocked after the call — the same count as `zone_blockage(...).n_blocked`
+(engulfed by the zone, or cut off from every path). It is computed on every path.
+
+Status (advertised to the tool lane):
+- `:restaged_all` — every blocked staging circle was relocated, and no goal is left blocked.
+- `:partial` — some blocked staging circles were relocated and some could not be (see `failed`); no goal is left blocked.
+- `:infeasible` — none of the blocked staging circles could be placed; nothing moved.
+- `:residual_blocked` — `residual` goals are still blocked. This call only moves the staging circles of assemblies that have not started and are not the root, so it cannot clear these goals; `translate_whole_build!` moves the whole build. Also returned when no staging circle was blocked at all (then nothing moved).
+- `:none` — nothing to do: no staging circle is blocked and no goal is blocked; nothing moved.
+
+⚠️ Until 2026-09-22 the no-blocked-circle path returned `:none` without computing the residual,
+and this docstring said "zone clears all goals already" — false whenever the zone blocked goals
+outside every relocatable staging circle (measured in results/2026-09-22-r3-parallel-probes.)
 """
 # 구역에 막힌 조립체를 하나가 아니라 전부 옮기는 다중 복구. 큰 것부터 그리디로 restage_assembly! 반복, 캐시 재빌드는 끝에 1회.
 function restage_all_blocked!(env;
         zone_keys = collect(keys(RESTRICTION_ZONES[])),
         resume::Bool = true, verbose::Bool = true)
     blocked = zone_blocked_assemblies(env; zone_keys = zone_keys)  # 막힌 조립체 목록
-    isempty(blocked) && return (status = :none, moved = NamedTuple[], failed = NamedTuple[])  # 없으면 :none
+    # 막힌 적치원이 없어도 적치원은 **안 옮기고** 잔여 막힘만 잰다 — 아래 Phase 3 과 같은 사후 판정을
+    # 두 경로에 똑같이 적용한다. 존이 주행 목표만 막으면 이 원시로는 못 치운다 = :residual_blocked.
+    # 정말 아무것도 안 막을 때만 :none (2026-09-22 전에는 여기서 잔여를 안 재고 :none 을 냈다).
+    if isempty(blocked)
+        residual0 = _residual_blocked_goals(env; zone_keys = zone_keys)
+        return residual0 > 0 ?
+            (status = :residual_blocked, moved = NamedTuple[], failed = NamedTuple[], residual = residual0) :
+            (status = :none, moved = NamedTuple[], failed = NamedTuple[], residual = 0)
+    end
     # 큰 적치원부터 배치(작은 것이 그 둘레에 끼워지도록 = bin-packing 휴리스틱)
     order = sort(blocked; by = a -> -Float64(get_radius(env.staging_circles[a])))  # 반지름 내림차순 정렬(큰 것 먼저). 앞의 `-` 로 내림차순
     moved = NamedTuple[]; failed = NamedTuple[]           # 옮긴 것 / 실패한 것 기록용 배열
@@ -819,11 +836,16 @@ therefore cause local-size moves, while large zones expand the analytic exclusio
 intervals and produce proportionally larger moves. The conservative whole-footprint
 disc remains only as a last-resort fallback if no analytic candidate exists.
 
-Returns `(status, delta, footprint_radius, residual)`:
-- `:translated`       — moved; zone clear of all future goals (residual 0).
-- `:residual_blocked` — moved but goals STILL in zone → caller falls back.
-- `:infeasible`       — no zone-clear destination at all.
-- `:no_staging`       — no staging circles on record.
+Returns `(status, delta, footprint_radius, residual, …)`; `:infeasible` and `:no_staging`
+return early without `delta`/`residual`. `residual` is the same count as
+`zone_blockage(...).n_blocked`.
+
+Status (advertised to the tool lane):
+- `:translated` — the whole build was shifted by `delta`, and no goal is left blocked.
+- `:already_clear` — no shift was needed (`delta` is zero), and no goal is blocked.
+- `:residual_blocked` — the build was shifted by `delta` (possibly zero), but `residual` goals are still blocked.
+- `:infeasible` — no shift that clears the zone was found; nothing moved.
+- `:no_staging` — there are no staging circles on record; nothing moved.
 """
 # 빌드 전체를 하나의 Δ 로 통째 옮겨 구역을 벗어나게 하는 Phase B 복구(root 자신의 목표까지 구역에 걸린 조밀한 중앙 코어용). MILP 재계산 없음.
 function translate_whole_build!(env;

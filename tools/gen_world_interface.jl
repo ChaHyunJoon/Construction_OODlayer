@@ -5,6 +5,7 @@
 using ConstructionBots
 using InteractiveUtils     # subtypes
 import JSON3
+import Markdown            # _status_meanings — docstring 의 표시된 목록을 AST 로 읽는다
 import DataStructures      # OrderedDict — access 색인의 키 순서를 구조로 고정한다
 const CB = ConstructionBots
 
@@ -766,6 +767,75 @@ function _status_symbols(m::Method)
     return sort!(String[string(s) for s in acc])
 end
 
+const _STATUS_MEANINGS_MARK = "Status (advertised to the tool lane):"
+
+_md_blocks(x) = x isa Markdown.MD ? reduce(vcat, (_md_blocks(c) for c in x.content); init = Any[]) : Any[x]
+
+"""
+    _docstring_of(m::Method) -> Union{Nothing,String}
+
+정의 바로 앞의 docstring. 런타임 문서 조회(`Base.Docs.doc`)를 쓰지 않는 이유(실측, 2026-09-22):
+이 레포는 docstring 과 `function` 사이에 한국어 주석 줄을 끼우는 관례가 있고, 그러면 파서가
+docstring 을 정의에 **안 붙인다** — `restage_all_blocked!` 는 `No documentation found` 였다. 그래서
+소스를 직접 읽는다: 정의 직전의 최상위 항목이 문자열이면 그것이고, 붙어 있으면(`@doc` 매크로 호출)
+그 셋째 인자다. 평평한 파일만 본다(모자라면 `nothing` — 삼상 규약상 키를 안 만든다).
+"""
+function _docstring_of(m::Method)
+    p = Base.find_source_file(String(m.file))
+    (p === nothing || !isfile(p)) && return nothing
+    top = try Meta.parseall(read(p, String); filename = p) catch; return nothing end
+    top isa Expr || return nothing
+    best = nothing; bestprev = nothing; bestln = -1; prev = nothing; ln = 0
+    for a in top.args
+        a isa LineNumberNode && (ln = a.line; continue)
+        (ln <= m.line && ln > bestln) && (best = a; bestprev = prev; bestln = ln)
+        prev = a
+    end
+    if best isa Expr && best.head === :macrocall && length(best.args) >= 4 &&
+       best.args[1] == GlobalRef(Core, Symbol("@doc")) && best.args[3] isa AbstractString
+        return String(best.args[3])
+    end
+    return bestprev isa AbstractString ? String(bestprev) : nothing
+end
+
+"""
+    _status_meanings(m::Method) -> Union{Nothing,Vector{String}}
+
+각 status 기호의 **뜻**. docstring 에 `$(_STATUS_MEANINGS_MARK)` 문단을 **명시적으로 둔**
+함수에서만, 바로 뒤의 목록(`- `:sym` — 뜻`)을 수확한다. 표시가 없으면 `nothing`(키를 안 만든다).
+
+🔴 왜 (2026-09-22, results/2026-09-22-r2-body-replay ③ · r3): `status seen in source:` 는 기호만
+   실었다. `restage_all_blocked!` 의 `:none` 을 모델은 "존이 다 치워졌다" 로 읽었고(엔진 docstring
+   도 그렇게 **틀리게** 적고 있었다), 재시도 6판의 첫 시도 body 가 그 자리에서 translate 로 안
+   올라갔다.
+🔴 docstring 을 통째로 싣지 않는다 — 광고되는 문장은 모델에 대한 **주장**이고, 검증 안 된 산문이
+   주장이 되면 세계에 없는 결과를 약속한다. 표시한 문단만, 사람이 참인지 보고 쓴 것만 나간다.
+🔴 수확한 기호가 `_status_symbols` 에 없으면 **에러**다: 소스에서 사라진 상태의 뜻이 광고에 남는
+   것(낡은 주장)을 생성 시점에 막는다. 반대로 소스의 기호 일부에 뜻이 없는 것은 허용한다 — 렌더가
+   "seen in source" 기호를 따로 싣는다.
+"""
+function _status_meanings(m::Method)
+    ss = _status_symbols(m)
+    ss === nothing && return nothing
+    doc = _docstring_of(m)
+    doc === nothing && return nothing
+    blocks = _md_blocks(Markdown.parse(doc))
+    k = findfirst(b -> b isa Markdown.Paragraph && occursin(_STATUS_MEANINGS_MARK, Markdown.plain(b)), blocks)
+    k === nothing && return nothing
+    (k < length(blocks) && blocks[k + 1] isa Markdown.List) ||
+        error("[status_meanings] $(m.name): '$(_STATUS_MEANINGS_MARK)' 다음에 목록이 없다")
+    out = String[]
+    for item in blocks[k + 1].items
+        t = replace(strip(Markdown.plain(Markdown.MD(item))), r"\s+" => " ")
+        mm = match(r"^`:(\w+)`\s*—\s*(.+)$", t)
+        mm === nothing && error("[status_meanings] $(m.name): 목록 항목 모양이 `- `:sym` — 뜻` 이 아니다: $t")
+        String(mm[1]) in ss ||
+            error("[status_meanings] $(m.name): :$(mm[1]) 는 소스의 status 기호($(ss))에 없다 — 낡은 뜻")
+        push!(out, string(":", mm[1], " = ", mm[2]))
+    end
+    return isempty(out) ? nothing : sort!(out)
+end
+
 """
     _arg_coercions(m::Method) -> Union{Nothing,Vector{String}}
 
@@ -1141,6 +1211,8 @@ function method_entries(reach, acc)
             #    각각 그 자리에서 죽었다). 같은 삼상 규약: 못 유도하면 키를 안 만든다.
             ss = _status_symbols(m)
             ss === nothing || (e["status_symbols"] = ss)
+            sm = _status_meanings(m)
+            sm === nothing || (e["status_meanings"] = sm)
             ac = _arg_coercions(m)
             ac === nothing || (e["arg_coercions"] = ac)
             # 🔴 **유도가 아무 말도 못 했을 때만** 소스로 내려간다. 타입이 이미 필드를

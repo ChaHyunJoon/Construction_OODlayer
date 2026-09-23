@@ -617,7 +617,10 @@ function recover_stalled_teams!(env; verbose::Bool = true)
         any(t -> t.ready == 0 && _point_in_any_zone(t.gather; margin = default_robot_radius()), teams)
     if zone_blocked
         res = restage_all_blocked!(env)           # 막힌 팀들의 집결지를 zone 밖으로 재배치
-        if res.status in (:none, :infeasible)
+        # :residual_blocked = 적치원을 옮겨도(또는 옮길 것이 없어도) 막힘이 남음 → 통째 이동.
+        # 2026-09-22 전에는 "옮길 적치원 없음" 이 :none 으로 와서 이 목록의 :none 이 그 경우를 받았다;
+        # 이제 그 경우는 :residual_blocked 로 온다(restage_all_blocked! docstring).
+        if res.status in (:none, :infeasible, :residual_blocked)
             res = translate_whole_build!(env)     # fallback: shift the whole build clear (빌드 전체를 평행이동)
         end
         verbose && @info "[RESPEC] recover: gather point in no-go zone -> restaged/translated ($(res.status))."

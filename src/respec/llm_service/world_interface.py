@@ -200,6 +200,12 @@ def _method_line(m) -> str:
     ss = m.get("status_symbols") or []
     if ss:
         line += "      status seen in source: %s" % " | ".join(":" + x for x in ss)
+    # 🔴 2026-09-22 (results/2026-09-22-r2-body-replay ③ · r3). 기호만 싣자 `restage_all_blocked!`
+    #    의 `:none` 을 body 가 "존이 다 치워졌다" 로 읽었다(엔진 docstring 도 그렇게 틀리게 적었다).
+    #    뜻은 docstring 의 **표시된 문단**에서만 온다(`_status_meanings`) — 사람이 참인지 보고 쓴 것만.
+    sm = m.get("status_meanings") or []
+    if sm:
+        line += "      status meanings: %s" % " ; ".join(sm)
     # 🔴 2026-09-05, 유료 런 19·20·22. 세 판이 같은 문장으로 죽었다 —
     #    `Vector{Float64}(::TransformNode)` · `Vector{Float64}(::AffineMap)` ×2. 런 22 의 body 는
     #    광고된 `global_transform(goal_config(node))` 를 **맞게** 부른 뒤 그 AffineMap 을 무타입

@@ -157,9 +157,11 @@ Returned fields — PRIMITIVES first, VERDICT last:
     forfeits the global one.
   * `:relocate_build` — no assembly can be restaged, but the zone swallows something no local
     restage can rescue — root deposit goals, or the gather point / carrying slots of a team
-    that is trying to form — and a clearing shift exists. The escalation above is UNREACHABLE
-    here: `restage_all_blocked!` early-returns `:none` on an empty domain and never computes
-    the residual, so the whole-build move must be chosen DIRECTLY.
+    that is trying to form — and a clearing shift exists. The whole-build move is chosen
+    DIRECTLY here. (Until 2026-09-22 the escalation above was unreachable on an empty domain,
+    because `restage_all_blocked!` early-returned `:none` without computing the residual. It
+    now reports `:residual_blocked` there when a goal is blocked, so `maybe_respecify!` also
+    escalates; the label rule is unchanged.)
   * `:line_stop`      — root goals (or a forming team) are trapped and no rigid shift clears
     the zone. Genuinely unrecoverable; the caller must engage the safe fallback.
   * `:noop`           — the zone blocks no goal the schedule still needs (or only blocks
@@ -183,8 +185,8 @@ non-trivial cost here); `n_restage_feasible` is then reported as `n_blocked`.
 # 반환은 NamedTuple: 앞쪽은 원시값(primitive), 마지막 `verdict` 만 판정이다.
 #   :forbid_zone    = 국소 재적치 가능(root 도 덮였더라도 이쪽이 우선 — 부족하면 실행부가 자동 격상함)
 #   :relocate_build = 국소로 옮길 게 하나도 없는데 **국소로는 못 구하는 것**(root 하역목표 또는 형성 중인
-#                     팀의 집결지/운반슬롯)이 갇힘 → **자동 격상이 도달 불가**하므로
-#                     (restage_all_blocked! 이 :none 으로 조기 반환해 residual 을 계산조차 안 함) 직접 전역 이동
+#                     팀의 집결지/운반슬롯)이 갇힘 → 직접 전역 이동. (2026-09-22 전에는 restage_all_blocked! 이
+#                     :none 으로 조기 반환해 자동 격상이 도달 불가였다; 이제 막힘이 있으면 :residual_blocked 를 낸다)
 #   :line_stop      = 갇혔는데 어떤 강체이동으로도 못 벗어남 → 안전 폴백
 #   :noop           = 스케줄이 아직 필요로 하는 목표를 아무것도 안 막음 → 항법이 우회. 개입은 해롭다(231 vs 136 실측)
 # 주의: verdict 는 **정답(라벨)**이지 모델 입력이 아니다. 정책에 주면 추론이 아니라 답을 읽는 것이 된다.
@@ -333,7 +335,8 @@ function zone_diagnosis(env, zone::Symbol;
         # :residual_blocked 를 돌려주고 maybe_respecify! 가 알아서 전역 이동으로 격상한다.
         :forbid_zone
     elseif rc.covered > 0 || n_teams_covered > 0
-        # 도메인이 비었으니 위 자동 격상은 도달 불가(:none 조기 반환) → 전역 이동을 직접 골라야 한다.
+        # 도메인이 비었다 → 전역 이동을 직접 고른다. (2026-09-22 전에는 :none 조기 반환 탓에 자동 격상이
+        # 도달 불가였다; 지금은 막힘이 있으면 restage_all_blocked! 이 :residual_blocked 를 내 격상도 된다.)
         # 팀이 덮인 경우도 같은 팔이다: recover_stalled_teams! 2단계가 "집결지가 금지구역이면
         # snap 금지 → restage/translate" 로 이미 그렇게 정해 두었다(ReformTeam 이 아니다).
         relocatable ? :relocate_build : :line_stop
