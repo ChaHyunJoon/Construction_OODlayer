@@ -404,3 +404,87 @@ def test_d17c_a_noop_retried_line_is_not_confusable_with_a_first_try_success():
     # 🔴 그리고 그 칸을 빼면 세 판 중 둘이 **글자로 구별 불가**가 된다.
     assert (D17C_NOOP_RETRIED.replace(" enact_retry=noop_retried", "") ==
             clean.replace(" enact_retry=n/a", ""))
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-22 (재시도 body 보존 Task 3 리뷰 fix round 1): 원장 v2 는 행 종류가 섞인다.
+# `/rewrite` 행(row_type="rewrite")과 조기 반환 decide 행(no_tools / no_call_* / raised)이
+# 파일 끝에 올 수 있다. L0 는 "마지막 줄" 이 아니라 **마지막 합성 decide 행**(또는 v1 행)을
+# 읽어야 한다 — 안 그러면 rewrite 의 `wrote` 를 첫 시도로 읽거나, blank 행에서 UNMEASURED 로
+# 뒤집힌다(리뷰가 짚은 실패).
+# ---------------------------------------------------------------------------
+
+def _run_ledger(tmp_path, rows):
+    log_path = tmp_path / "run.log"
+    record_path = tmp_path / "record.jsonl"
+    stream_path = tmp_path / "stream.jsonl"
+    _write(str(log_path), _minted_line("steps=[Foo:success]") + "\n")
+    _write(str(record_path), "".join(json.dumps(r) + "\n" for r in rows))
+    _write(str(stream_path), json.dumps({"now": 1, "respec_history": [{"interface_calls": []}]}) + "\n")
+    return lr.build_report(str(log_path), str(stream_path), str(record_path))
+
+
+_SYN = {"ledger_version": 2, "row_type": "decide", "decide_outcome": "synthesis_ran",
+        "wrote": False, "stages": ["observe", "design", "compose"], "tool_name": "first"}
+
+
+def test_v2_a_trailing_rewrite_row_does_not_hide_the_first_attempt(tmp_path):
+    rw = {"ledger_version": 2, "row_type": "rewrite", "wrote": True, "tool_name": "rewritten"}
+    rep = _run_ledger(tmp_path, [_SYN, rw])
+    assert rep["rungs"]["L0_wrote"]["verdict"] == lr.FALSE, "rewrite 의 wrote 를 첫 시도로 읽었다"
+    assert rep["context"]["tool_name"] == "first"
+
+
+def test_v2_a_trailing_early_exit_decide_row_does_not_flip_L0_to_unmeasured(tmp_path):
+    for outcome in ("no_call_no_tool_call", "no_call_lm_error", "no_call_parse_error",
+                    "no_tools", "raised"):
+        blank = {"ledger_version": 2, "row_type": "decide", "decide_outcome": outcome,
+                 "tool_minted": None, "ran": False}
+        rep = _run_ledger(tmp_path, [_SYN, blank])
+        assert rep["rungs"]["L0_wrote"]["verdict"] == lr.FALSE, outcome
+        assert rep["context"]["stages"] == ["observe", "design", "compose"], outcome
+
+
+def test_v2_the_scenario_from_the_review(tmp_path):
+    """합성 발화 → /rewrite → 뒤 사건이 no_call. L0 는 여전히 첫 합성 행을 읽는다."""
+    ok = dict(_SYN, wrote=True)
+    rw = {"ledger_version": 2, "row_type": "rewrite", "wrote": False}
+    nc = {"ledger_version": 2, "row_type": "decide", "decide_outcome": "no_call_no_tool_call"}
+    rep = _run_ledger(tmp_path, [ok, rw, nc])
+    assert rep["rungs"]["L0_wrote"]["verdict"] == lr.TRUE
+
+
+def test_v2_a_ledger_with_no_synthesis_row_is_unmeasured_and_says_why(tmp_path):
+    nc = {"ledger_version": 2, "row_type": "decide", "decide_outcome": "no_tools"}
+    rw = {"ledger_version": 2, "row_type": "rewrite", "wrote": True}
+    rep = _run_ledger(tmp_path, [nc, rw])
+    r = rep["rungs"]["L0_wrote"]
+    assert r["verdict"] == lr.UNMEASURED
+    assert "no synthesis row" in r["reason"]
+
+
+def test_v2_the_last_synthesis_row_wins_over_an_earlier_v1_row(tmp_path):
+    rep = _run_ledger(tmp_path, [{"wrote": False}, dict(_SYN, wrote=True),
+                                 {"ledger_version": 2, "row_type": "rewrite", "wrote": False}])
+    assert rep["rungs"]["L0_wrote"]["verdict"] == lr.TRUE
+
+
+def test_v1_only_ledger_reads_the_last_line_exactly_as_before(tmp_path):
+    """v1 전용 원장은 바이트 동일: 마지막 줄을 읽고, 사유 문구도 옛 그대로다."""
+    rep = _run_ledger(tmp_path, [{"wrote": True}, {"wrote": False}])
+    assert rep["rungs"]["L0_wrote"]["verdict"] == lr.FALSE
+    rep = _run_ledger(tmp_path, [{"wrote": True}, {"stages": ["observe"]}])
+    r = rep["rungs"]["L0_wrote"]
+    rec = str(tmp_path / "record.jsonl")
+    assert r["verdict"] == lr.UNMEASURED
+    assert r["reason"] == "key 'wrote' absent from last line of %s" % os.path.abspath(rec)
+    assert rep["context"]["tool_name_status"] == \
+        "UNMEASURED: key 'tool_name' absent from last line of %s" % os.path.abspath(rec)
+
+
+def test_v1_a_corrupt_last_line_keeps_the_old_error(tmp_path):
+    record_path = tmp_path / "record.jsonl"
+    _write(str(record_path), json.dumps({"wrote": True}) + "\n{not json\n")
+    old = lr.read_last_jsonl_line(str(record_path))
+    new = lr.read_last_synthesis_record(str(record_path))
+    assert new[0] is None and old[0] is None and new[1] == old[1]

@@ -221,6 +221,62 @@ def read_last_jsonl_line(path):
         return None, "failed to json.loads the last non-blank line: %r" % (e,)
 
 
+# 2026-09-22 (재시도 body 보존, Task 3 리뷰 fix round 1). 원장 v2(`ledger_version: 2`)는 행
+# 종류가 섞인다: `row_type="decide"` 는 `/decide` 처리마다 **어느 출구로 나가든** 한 줄이고
+# (`decide_outcome` 이 출구 이름), `row_type="rewrite"` 는 `/rewrite` 되먹임 한 줄이다. v1 에서는
+# 정상 경로(합성 단계까지 간 요청)만 한 줄을 썼으므로 "마지막 줄" = "마지막 합성 기록" 이었다.
+# v2 에서 그 등식이 깨진다 — 끝줄이 rewrite 면 L0 가 재시도의 `wrote` 를 첫 시도로 읽고, 끝줄이
+# 조기 반환(no_tools / no_call_* / raised)이면 blank 행이라 UNMEASURED 로 뒤집힌다.
+# ⟹ v1 이 쓰던 행과 **같은 집합**만 고른다: `row_type` 이 없는 v1 행, 또는 `decide_outcome` 이
+#    `synthesis_` 로 시작하는 decide 행(= `_macro_decision` 이 합성 단계까지 간 요청. 옛 writer 가
+#    쓰던 바로 그 행들이다 — disabled 포함, v1 도 그것을 썼다). 값의 정의역은 dspy_service.py 의
+#    `DECIDE_OUTCOMES`.
+SYNTHESIS_OUTCOME_PREFIX = "synthesis_"
+
+
+def is_synthesis_record(obj):
+    """이 원장 행이 L0/context 가 읽을 "합성 기록" 인가 (v1 행 또는 v2 합성 decide 행)."""
+    if not isinstance(obj, dict):
+        return True                                    # 옛 동작 그대로(행 종류를 말할 수 없다)
+    if "row_type" not in obj:
+        return True                                    # v1 — 옛 writer 는 이 행만 썼다
+    return (obj.get("row_type") == "decide"
+            and str(obj.get("decide_outcome") or "").startswith(SYNTHESIS_OUTCOME_PREFIX))
+
+
+def read_last_synthesis_record(path):
+    """마지막 **합성 기록** 행을 돌려준다. Returns (obj_or_None, error_or_None, where).
+
+    `where` 는 사유 문구에 들어갈 위치 서술이다: 고른 행이 파일의 마지막 줄이면 `"last line"` —
+    v1 전용 원장에서는 언제나 그렇고, 그래서 옛 `read_last_jsonl_line` 과 결과·사유 문구가
+    바이트 동일하다. 마지막 줄이 JSON 이 아니면 옛 오류를 그대로 낸다(끝줄 손상은 숨길 일이
+    아니다). 그 앞 줄의 손상은 건너뛰지 않고 오류로 낸다 — 조용히 더 옛 행을 읽지 않는다.
+    """
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        lines = [l.strip() for l in f.readlines()]
+    idx = [i for i, l in enumerate(lines) if l]
+    if not idx:
+        return None, "file has no non-blank lines", "last line"
+    skipped = 0
+    for k, i in enumerate(reversed(idx)):
+        try:
+            obj = json.loads(lines[i])
+        except Exception as e:
+            if k == 0:
+                return None, "failed to json.loads the last non-blank line: %r" % (e,), "last line"
+            return None, ("failed to json.loads non-blank line %d (while skipping %d non-synthesis "
+                          "row(s) after it): %r" % (i + 1, skipped, e)), "line %d" % (i + 1)
+        if is_synthesis_record(obj):
+            where = "last line" if k == 0 else (
+                "last synthesis row (line %d; %d later rewrite/early-exit row(s) skipped)"
+                % (i + 1, skipped))
+            return obj, None, where
+        skipped += 1
+    return None, ("no synthesis row among %d non-blank line(s): every row is a v2 rewrite or "
+                  "early-exit decide row (decide_outcome not %s*)"
+                  % (len(idx), SYNTHESIS_OUTCOME_PREFIX)), "last line"
+
+
 def find_last_frame_with_respec(path):
     """Scan a monitor-stream JSONL and return the last frame (dict) whose
     'respec_history' list is present and non-empty. Malformed lines are
@@ -342,9 +398,10 @@ def build_report(log_path, stream_path, record_path):
     report["files"]["record"] = {"path": record_abs, "exists": record_exists, "mtime_utc": record_mtime}
     record_obj = None
     record_err = None
+    record_where = "last line"
     if record_exists:
         try:
-            record_obj, record_err = read_last_jsonl_line(record_abs)
+            record_obj, record_err, record_where = read_last_synthesis_record(record_abs)
             if record_obj is not None:
                 files_read["record"] = (record_abs, record_mtime)
         except Exception as e:
@@ -391,7 +448,7 @@ def build_report(log_path, stream_path, record_path):
             present, value = tri_get(record_obj, "wrote")
             r = rung_from_present(
                 present, value, lambda v: v is True,
-                absent_reason="key 'wrote' absent from last line of %s" % record_abs,
+                absent_reason="key 'wrote' absent from %s of %s" % (record_where, record_abs),
             )
             r["evidence_file"] = record_abs
             r["evidence_key"] = "wrote"
@@ -755,7 +812,7 @@ def build_report(log_path, stream_path, record_path):
                 present, value = tri_get(record_obj, field)
                 if not present:
                     ctx[field] = None
-                    ctx[field + "_status"] = "UNMEASURED: key %r absent from last line of %s" % (field, record_abs)
+                    ctx[field + "_status"] = "UNMEASURED: key %r absent from %s of %s" % (field, record_where, record_abs)
                 elif value is None:
                     ctx[field] = None
                     ctx[field + "_status"] = "UNMEASURED: key %r is explicitly null" % (field,)
