@@ -8,7 +8,7 @@
 # **커밋되지 않은 작업트리 마이그레이션**에서만 참이었다 — 깨끗한 체크아웃에서는 커밋된
 # 레지스트리가 `v2-6arms`(2=Deprioritize · 3=ForbidZone) 라 이 파일이 그대로 빨개진다.
 # 어휘 자체는 이 브랜치의 소유가 아니므로 여기서 게이트하지 않는다(어휘 도장 검사는
-# `wm4spacecraft_manufacturing/smdp/test_stamps.py` 의 몫이다). 여기서 못박는 것은 태스크 1 이
+# `tools/smdp/test_stamps.py` 의 몫이다). 여기서 못박는 것은 태스크 1 이
 # 실제로 바꾼 것, 즉 **파생**이다 — 그 성질은 어느 레지스트리에서도 참이다.
 #
 # 그리고 초판의 "리터럴이 없다" 검사는 소스 텍스트 `occursin` 이었다. 그것은 (a) `MACRO_COST`
@@ -16,11 +16,10 @@
 # 레지스트리와 같은지 본다. `gen_oracle_dataset.jl` 을 통째로 include 하면 씬을 만들기
 # 시작하므로, 파일을 **파싱만** 해서 문제의 두 `const` 정의만 뽑아 eval 한다(파싱은 실행이 아니다).
 using Test
-include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+include(joinpath(@__DIR__, "..", "src", "decision", "core", "action_registry.jl"))
 const AR = ActionRegistry
 
-const GEN_SRC = read(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing",
-                              "oracle", "gen_oracle_dataset.jl"), String)
+const GEN_SRC = read(joinpath(@__DIR__, "..", "tools", "oracle", "gen_oracle_dataset.jl"), String)
 
 "파일 전체를 파싱해 `const <name> = ...` 토플레벨 정의 하나를 Expr 로 돌려준다(없으면 nothing)."
 function const_def(src::AbstractString, name::Symbol)

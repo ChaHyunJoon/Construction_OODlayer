@@ -4,7 +4,7 @@
 #
 # 왜 이 파일이 필요한가
 # ---------------------
-# oracle lane 은 `wm4spacecraft_manufacturing/core/reference_policy.py` 의 기준 행동 a* 를 **결정
+# oracle lane 은 `src/decision/core/reference_policy.py` 의 기준 행동 a* 를 **결정
 # 시점에** 다시 계산해 집행한다. 두 구현이 갈려도 **에러가 나지 않는다** — 표의 `oracle` 행이
 # "a* 를 집행했다"는 이름을 달고 다른 것을 집행할 뿐이다. 실제로 2026-08-12 진단 전까지 이 lane 은
 # 아예 없어서 `policy.jl` 의 `enacted = "canonical"` 폴백으로 조용히 떨어졌고, 그 판의 결정
@@ -61,7 +61,7 @@ end
 println("\n== 0. 상수 계약 -- ORACLE_BATTERY_DEEP_SOC == reference_policy.BATTERY_DEEP_SOC ==")
 # 이 검사만 env 없이 즉시 돈다. 두 값이 갈리면 SoC 가 그 사이에 든 사건에서 Julia 와 Python 이
 # 다른 팔을 내고, 그것이 곧 "oracle 인데 적중률이 1.0 이 아니다" 로 나타난다.
-let refpy = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core", "reference_policy.py")
+let refpy = joinpath(@__DIR__, "..", "src", "decision", "core", "reference_policy.py")
     if !isfile(refpy)
         check("reference_policy.py 를 찾을 수 있다", false, "path=$(refpy)")
     else

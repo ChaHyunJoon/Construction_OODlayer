@@ -192,12 +192,20 @@ const DEMO_ZONE_R = try max(0.05, parse(Float64, get(ENV, "DEMO_ZONE_R", "0.5"))
 # 손잡이를 읽어야 같은 세계를 만든다). blocking = 실제로 막는다(개입이 정답) / harmless = 옛 주입기,
 # 적치원 가장자리를 스치기만 한다(NOOP 이 정답).
 const DEMO_ZONE_MODE = lowercase(get(ENV, "DEMO_ZONE_MODE", "blocking"))
+# ---- 존 배치 난수화 (DEMO_ZONE_SEED) — render_demo.jl:48-54 와 **같은 이름·같은 기본값** ----
+# 🔴 2026-09-06: 638e2ad4 가 render_demo.jl 에만 이 손잡이를 넣었고 그 커밋 자신이 "두 곳을 같이
+#    고쳐야 한다"고 적어 뒀다. 안 고친 대가는 조용하다 — 헤드리스 격자에서 `DEMO_ZONE_SEED=1..4`
+#    가 **전부 같은 판**을 돌았다(sim_seconds 131.925 × 4, 실측). 시드가 안 먹는 것은 에러를
+#    내지 않고 "분산이 0 인 결과표"로만 보인다.
+# 0(기본)이면 rng 를 만들지도 frac 을 건드리지도 셔플하지도 않으므로 예전 배치와 바이트 동일하다.
+const DEMO_ZONE_SEED  = try max(0, parse(Int, get(ENV, "DEMO_ZONE_SEED", "0"))) catch; 0 end
+const DEMO_ZONE_R_MIN = try parse(Float64, get(ENV, "DEMO_ZONE_R_MIN", "0.35")) catch; 0.35 end
+const DEMO_ZONE_R_MAX = try parse(Float64, get(ENV, "DEMO_ZONE_R_MAX", "1.10")) catch; 1.10 end
 # pre-sim 에 심은 blocking 존의 **결정을 첫 배치 뒤로 미뤘는가**. simulate_case! 가 소비한다.
 const ZONE_DECIDE_DEFERRED = Ref(false)
 
 function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     isempty(env.staging_circles) && return nothing
-    r = frac * Float64(CB.default_robot_radius())
     navs = try CB._nav_goal_targets(env) catch e
         @warn "[zone] _nav_goal_targets 실패" exception = e; return nothing
     end
@@ -206,16 +214,33 @@ function inject_blocking_zone!(env; frac = DEMO_ZONE_R)
     root = argmax(k -> Float64(CB.get_radius(env.staging_circles[k])), ks)
     c0 = Vector{Float64}(CB.get_center(env.staging_circles[root])[1:2])
     cand = [t for t in navs if !(t.vtx in env.cache.active_set)]
+    # 🔴 정준 정렬을 **먼저** 한다 — 셔플의 입력이 결정적이어야 시드가 재현된다.
     sort!(cand; by = t -> (t.kind === :transport ? 0 : 1, hypot(t.goal[1] - c0[1], t.goal[2] - c0[2])))
+    rng = DEMO_ZONE_SEED == 0 ? nothing : Random.MersenneTwister(DEMO_ZONE_SEED)
+    if rng !== nothing
+        lo, hi = minmax(DEMO_ZONE_R_MIN, DEMO_ZONE_R_MAX)
+        frac = lo + (hi - lo) * rand(rng)          # 크기를 뽑는다
+        Random.shuffle!(rng, cand)                 # 위치(어느 목표 위에 놓을지)를 뽑는다
+    end
+    r = frac * Float64(CB.default_robot_radius())
     _ZONE_CT[] += 1; key = Symbol("zone_blk_$(_ZONE_CT[])")
     for t in cand
-        CB.zone_relocatable(t.goal, r, env) || continue          # 복구 가능한 것만 심는다
-        z = CB.add_restriction_zone!(key, t.goal, r)
+        # 중심을 목표점에서 반지름의 절반까지만 흔든다 — 안 흔들면 "위치가 다양하다" 가 목표
+        # 격자 위에서만 성립하고, 더 흔들면 그 목표가 원 밖으로 나가 아무것도 안 막는다.
+        goal = if rng === nothing
+            t.goal
+        else
+            θ = 2π * rand(rng); ρ = 0.5 * r * sqrt(rand(rng))
+            g = Vector{Float64}(t.goal)
+            g[1] += ρ * cos(θ); g[2] += ρ * sin(θ); g
+        end
+        CB.zone_relocatable(goal, r, env) || continue            # 복구 가능한 것만 심는다
+        z = CB.add_restriction_zone!(key, goal, r)
         b = try CB.zone_blockage(env; zone_keys = [key], check_paths = false) catch e
             @warn "[zone] zone_blockage 실패" exception = e; nothing
         end
         if b !== nothing && b.n_blocked >= 1
-            c = Vector{Float64}(t.goal)
+            c = Vector{Float64}(goal)
             println("[zone] blocking zone on $(t.kind) vtx=$(t.vtx) @$(round.(c; digits = 3)) " *
                     "r=$(round(r; digits = 3)) -> nav_blocked=$(b.n_blocked)/$(b.n_nav_goals)")
             # 관찰만 남기고 "그러니 무엇을 하라"는 붙이지 않는다 — 뒷절이 곧 정답이라,
@@ -500,7 +525,7 @@ end
 # "배선 전 구세대" 로 판정하고 measure_objective_scales.py 는 구·신세대를 한 중앙값으로
 # 섞는다 — 그 중앙값이 다시 objective.json 의 M_ref/E_ref 가 되므로 조용한 세대 혼입이
 # 상수 자체를 오염시킨다(2026-08-13 최종 리뷰 I-1).
-include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "core", "objective.jl"))
+include(joinpath(HERE, "..", "..", "src", "decision", "core", "objective.jl"))
 using .Objective
 const OBJ_HASH = Objective.objective_hash()
 println(">>> objective_hash: $(OBJ_HASH)")
@@ -511,7 +536,7 @@ println(">>> objective_hash: $(OBJ_HASH)")
 # 없으면 여기서 `WARNING: replacing module ActionRegistry.` 가 나고 같은 JSON 을 두 번 읽는다.
 # 로더는 멱등이어야 한다 — 두 번째 모듈 인스턴스가 생기는 것 자체가 "두 진실원" 의 씨앗이다.
 isdefined(@__MODULE__, :ActionRegistry) ||
-    include(joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+    include(joinpath(HERE, "..", "..", "src", "decision", "core", "action_registry.jl"))
 
 # ⚠️ 신세대 가지도 **지금은 GreedyFinalTimeCost 를 고른다.** GreedyEnergyAwareCost 로 바꿔도
 #   프로덕션에서는 얻는 것이 없기 때문이다(2026-08-13 리뷰, 소스로 확인): greedy 는 초기 계획에서

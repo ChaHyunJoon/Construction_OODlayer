@@ -132,7 +132,7 @@ end
 
 @testset "(5) 파이썬 twin 과 소수점까지 같다 (zone_terminal 경계까지)" begin
     py = joinpath(REPO_ROOT, ".venv", "bin", "python")
-    core = joinpath(REPO_ROOT, "wm4spacecraft_manufacturing", "core")
+    core = joinpath(REPO_ROOT, "src", "decision", "core")
     if !isfile(py)
         @test_skip "venv 가 없다 — twin 대조를 건너뛴다 (초록으로 세지 말 것)"
     else
@@ -183,7 +183,7 @@ end
     # 태운다 -- (5)처럼 raw dict 에 리터럴 -1 을 박는 것과는 다른, 더 정직한 "못 쟀다".
     py = joinpath(REPO_ROOT, ".venv", "bin", "python")
     llm_service = joinpath(REPO_ROOT, "src", "respec", "llm_service")
-    core = joinpath(REPO_ROOT, "wm4spacecraft_manufacturing", "core")
+    core = joinpath(REPO_ROOT, "src", "decision", "core")
     if !isfile(py)
         @test_skip "venv 가 없다 — twin 대조를 건너뛴다 (초록으로 세지 말 것)"
     else

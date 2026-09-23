@@ -3,7 +3,7 @@ using Test
 using ConstructionBots
 import JSON3
 const CB = ConstructionBots
-const ART = normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",
+const ART = normpath(joinpath(@__DIR__, "..", "src", "decision", "core",
                               "world_interface.json"))
 
 @testset "(1) 폐포가 run 3 이 지어낸 타입들에 실제로 도달한다" begin

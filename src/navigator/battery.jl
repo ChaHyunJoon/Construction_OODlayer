@@ -462,8 +462,12 @@ function _pick_battery_target(env, fleet::BatteryFleet)
     rid = try pick_hotswap_fault_target(env; prefer_inprogress = true) catch; nothing end
     rid !== nothing && haskey(fleet.soc, rid) && return rid
     # (3) 폴백: 방전 안 됐고 **예비가 아닌** 로봇 중 SoC 최고. 예비를 절대 고르지 않는 것이 요점.
+    # 🔴 (1)(2) 는 fault 와 **같은 피커**를 쓴다 — 그쪽은 `ood_targeted_robots()` 로 이미 맞은
+    #    로봇을 거르므로(2026-09-06), 이 폴백도 같은 제외를 걸어야 세 단이 다시 갈리지 않는다.
+    _hit = try ood_targeted_robots() catch; Set{Any}() end
     nonspare = [id for (id, s) in fleet.soc
                 if s > fleet.params.floor_soc &&
+                   !(id in _hit) &&
                    !(try is_spare(id) || is_recovery_spare(id) catch; false end)]
     isempty(nonspare) || return argmax(id -> fleet.soc[id], nonspare)
     return _pick_low_margin_robot(fleet)                              # 다 실패하면 옛 방식 폴백

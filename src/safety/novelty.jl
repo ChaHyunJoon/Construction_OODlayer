@@ -5,7 +5,7 @@
 #
 # THE GAP THIS CLOSES
 # -------------------
-# `wm4spacecraft_manufacturing/novelty/drift_detectors.py` already contains a validated covariate-shift
+# `src/decision/novelty/drift_detectors.py` already contains a validated covariate-shift
 # novelty detector, and `compare_detectors.py` already established the non-obvious result that
 # the SIGNAL matters more than the detector (value-residual is NOT a drift signal; covariate
 # novelty is). But every bit of that runs in an offline replay of a finished .jsonl.
@@ -153,8 +153,8 @@ function load_novelty_detector(path::AbstractString)
     if !haskey(blob, :format_version)
         throw(CalibrationError(
             "'$path' has no `format_version` (pre-2026-07-30 file). Regenerate it:\n" *
-            "    python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py\n" *
-            "  (core/wm_datasets.py defines which dataset that is.)"))
+            "    python src/decision/novelty/export_novelty_calibration.py\n" *
+            "  (core/oracle_datasets.py defines which dataset that is.)"))
     end
     fv = Int(blob.format_version)
     if fv != NOVELTY_FORMAT_VERSION

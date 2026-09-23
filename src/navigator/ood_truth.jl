@@ -117,6 +117,39 @@ end
 "All recorded ground-truth labels (the canonical OOD that actually happened)."
 ground_truth_labels() = OODTruth[e.truth for e in OOD_TRUTH_LOG[]]
 
+"""
+    ood_targeted_robots() -> Set
+
+이번 런에서 **이미 OOD 사건의 대상이 된** 로봇들.
+
+왜 필요한가 (2026-09-06 실측). 혼합 케이스(`all3` = fault+battery+zone)에서 두 사건이 **같은
+로봇**을 때리고 있었다: tractor all3 32판 중 **16판(50%)**, 거의 전부 `DeliveryBot(1)`.
+기전은 두 겹이다 — ① battery 가 대상을 `pick_solo_fault_target`/`pick_hotswap_fault_target`
+으로 고르는데(battery.jl `_pick_battery_target`) 그것은 fault 가 쓰는 바로 그 피커다,
+② 그 피커들이 `sort(...)[1]` = **id 최소**를 돌려주므로 두 사건이 같은 후보를 본다.
+fault 쪽 제외 목록에는 `FAULTED_ROBOTS`·예비만 있고 **"이미 방전된 로봇"이 없었다.**
+그러면 all3 의 교란이 사실상 둘이 아니라 하나가 된다 — 2026-09-06 의 종류 비복원추출 수정이
+같은 종류의 중복을 없앤 것과 같은 결함이고, 그때 대상 축이 남아 있었다.
+
+🔴 **SoC 나 `FAULTED_ROBOTS` 가 아니라 이 로그를 보는 이유**: 그 둘은 **정책이 바꾼다.**
+`SwapBattery` 가 성공해 SoC 가 복구되거나 `Replace` 가 고장 기록을 지우면, 뒤이은 사건의
+대상이 **레인마다 달라진다** — canonical/surrogate/router 가 서로 다른 로봇을 고장내는
+비교 불가능한 판이 된다. 이 로그는 **주입된 사건**을 적으므로 회복 여부와 무관하고,
+`clear_ood_truth_log!()` 로 런마다 초기화된다.
+
+단일 종류 케이스(battery 단독 / fault 단독)에서는 첫 사건이 뽑힐 때 로그가 비어 있어
+동작이 **바이트 동일**하다 — 바뀌는 것은 혼합 케이스뿐이다(음성 대조가 이 성질을 잰다).
+"""
+function ood_targeted_robots()
+    hit = Set{Any}()
+    for e in OOD_TRUTH_LOG[]
+        t = e.truth
+        r = try hasproperty(t, :robot) ? t.robot : nothing catch; nothing end
+        r === nothing || push!(hit, r)          # ZoneTruth 는 .robot 이 없다 -> 건너뛴다
+    end
+    return hit
+end
+
 # ---- comparable keys: truth side and emitted-DSL side ------------------------------
 # Entity-level grounding: did the LLM name the RIGHT faulted robot / RIGHT zone?
 # Strategy choice (ReplaceAgent vs ForbidAgent) is a separate axis, not entity-grounding.

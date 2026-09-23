@@ -271,12 +271,16 @@ function simulate!(
         # `ReformTeam` 을 고르게 했고 그 선택이 라벨에서 "결정" 으로 세어졌다. 이제는 명목
         # 레인이 교착 해소를 **직접** 부르고 결정 epoch 를 만들지 않는다(D1-(b)).
         ConstructionBots.maybe_unwedge_nominal!(env, sim_process_data.num_iters_no_progress)
+        # 관측 전용(STALL_PROBE_HOOK 이 비어 있으면 무동작): 정지가 시작된 직후 한 장.
+        sim_process_data.num_iters_no_progress == 200 &&
+            ConstructionBots._stall_probe(env, :stall_onset; no_progress = 200)
 
         project_stop_bool = ConstructionBots.project_complete(env)         # 프로젝트가 완성됐는지(참/거짓)
         # `>=` 크거나 같음. 무진전이 한계치 이상이면 더 못 나아가는 것으로 보고 종료 플래그를 켬
         if sim_process_data.num_iters_no_progress >= max_num_iters_no_progress
             # `@warn` 경고 로그 매크로. "$(...)" 는 문자열 보간(파이썬 f-string 의 {} 와 같은 역할)
             @warn "No progress for $(sim_process_data.num_iters_no_progress) iterations. Terminating."
+            ConstructionBots._stall_probe(env, :terminate; no_progress = sim_process_data.num_iters_no_progress)
             project_stop_bool = true                                       # 강제 종료로 표시
         end
 

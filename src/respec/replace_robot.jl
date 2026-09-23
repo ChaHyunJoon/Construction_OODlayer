@@ -1607,6 +1607,18 @@ function hot_swap_robot!(env, faulted::AbstractID;
         # give it recovery RVO priority (V5) so other robots yield and it reaches its task, else
         # its unfinished task wedges the downstream build.
         mark_recovery_spare!(faulted)               # 먼 depot 서 혼잡한 빌드까지 복귀하도록 RVO 우선순위↑
+    else
+        # 🔴 :in_place (운반 중 고장 — 팀을 해체하지 않고 그 자리에서 치유). 예전에는 이 팔이
+        #    **아무 표식도 남기지 않아** 고장이 화면에서 통째로 사라졌다(2026-09-07 실측:
+        #    all3 애니 3판 전부 `decommissioned=0`, fault 단독 3판은 3). 창고 본체는 위에서
+        #    이미 `pop_spare!` 로 소모됐고 `HOT_SWAP_ASSETS` 에도 기록됐다 — 즉 자산 은퇴는
+        #    **실제로 일어났는데** 3D 뷰만 그것을 숨기고 있었다.
+        #    🔴 `DECOMMISSIONED_BODIES` 에 넣지 않는 이유: 그 장부는 `policy.jl` 의
+        #    `_recovery_in_transit` 이 ":via_depot 였는가" 를 가르는 판별자다(그 파일 :1089).
+        #    렌더 전용 장부를 따로 둬서 그 게이트의 뜻을 건드리지 않는다.
+        #    RVO 우선순위(`mark_recovery_spare!`)도 여기서는 **주지 않는다** — 창고에서 걸어
+        #    돌아오는 구간이 없으므로 근거가 없고, 주면 동역학이 바뀐다.
+        INPLACE_BREAKDOWN_MARKS[][faulted] = Vector{Float64}(pos)
     end
     # 🔴 `_reset_robot_health!` 이 SoC 를 1.0 으로 되돌리면서 **그 로봇의 화물 금지도 푼다**
     #    (그 함수의 SoC guard 안). RobotID 는 보존되므로 보관소 키가 살아남는다 — 여기서 안 풀면

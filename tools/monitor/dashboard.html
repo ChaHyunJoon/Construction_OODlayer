@@ -45,7 +45,7 @@
 
   .shell{max-width:1560px;margin:0 auto;display:grid;gap:12px;
     grid-template-columns:290px minmax(0,1fr) 330px;
-    grid-template-areas:"head head head" "ctl ctl ctl" "fleet stage assembly" "gantt gantt gantt" "respec respec respec";}
+    grid-template-areas:"head head head" "sweep sweep sweep" "ctl ctl ctl" "fleet stage assembly" "gantt gantt gantt" "respec respec respec";}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);min-width:0;}
   .phead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);}
   .phead h2{margin:0;font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;color:var(--text-dim);}
@@ -283,18 +283,169 @@
   .macro .k{color:var(--accent);}
   .term-help{font-size:9px;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;}
   .verify-list{display:grid;gap:5px;margin-top:7px;font-family:var(--font-mono);font-size:10px;}
-  .verify-step{display:grid;grid-template-columns:18px 145px 1fr;gap:7px;align-items:start;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--inset);}
+  .verify-step{display:grid;grid-template-columns:18px 245px minmax(0,1fr);gap:7px;align-items:start;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--inset);}
   .verify-step .pass{color:var(--good);font-weight:700}.verify-step .fail{color:var(--crit);font-weight:700}
-  .verify-step .vname{color:var(--text);font-weight:600}.verify-step .vdetail{color:var(--text-dim)}
+  .verify-step .vname{color:var(--text);font-weight:600;min-width:0;overflow-wrap:anywhere}.verify-step .vdetail{color:var(--text-dim);min-width:0;overflow-wrap:anywhere}
+
+
+  /* ======================================================================================
+     뷰 전환 — 이 화면은 두 가지 질문에 답한다.
+       SWEEP  : "30 시드 × 4 사건에서 라우터가 통제에 성공했는가" (집계된 사실)
+       REPLAY : "그 판 하나에서 무엇이 일어났는가"                (한 판의 결정 이력)
+     두 질문을 한 화면에 세로로 쌓으면 어느 쪽도 안 읽힌다. 탭으로 가르되, SWEEP 의 칸을
+     누르면 그 판의 REPLAY 로 넘어가게 해서 집계 -> 개별 판의 경로를 끊지 않는다.
+     ====================================================================================== */
+  .vtabs{display:inline-flex;border:1px solid var(--border-strong);border-radius:7px;overflow:hidden;}
+  .vtabs button{font-family:var(--font-mono);font-size:11px;padding:5px 12px;border:0;cursor:pointer;
+    background:var(--panel-2);color:var(--text-dim);}
+  .vtabs button+button{border-left:1px solid var(--border-strong);}
+  .vtabs button.on{background:var(--accent);color:var(--panel);font-weight:700;}
+  .vtabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  body[data-view="sweep"] .ctl,body[data-view="sweep"] .fleet,body[data-view="sweep"] .stage,
+  body[data-view="sweep"] .assembly,body[data-view="sweep"] .gantt,body[data-view="sweep"] .respec,
+  body[data-view="sweep"] .statusbar .stat,body[data-view="sweep"] .statusbar .divider{display:none;}
+  body[data-view="replay"] .sweep{display:none;}
+
+  /* ---- sweep 패널 ---- */
+  .sweep{grid-area:sweep;}
+  .swwrap{padding:12px 14px 16px;display:flex;flex-direction:column;gap:14px;}
+  .swnote{font-size:11.5px;line-height:1.65;color:var(--text-dim);max-width:104ch;}
+  .swnote b{color:var(--text);}
+  .swcards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}
+  .swcard{border:1px solid var(--border);border-radius:9px;padding:11px 12px;background:var(--panel-2);
+    display:flex;flex-direction:column;gap:8px;}
+  .swcard.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+  .swcard .ck{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);}
+  .swcard .cv{font-family:var(--font-mono);font-size:22px;font-variant-numeric:tabular-nums;line-height:1;color:var(--accent);}
+  .swcard .cv small{font-size:11px;color:var(--text-dim);margin-left:5px;}
+  .swcard .cbase{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint);font-variant-numeric:tabular-nums;}
+  .swcard .cbase b{color:var(--text-dim);}
+  /* 두 겹 막대: 바닥선(회색) 위에 라우터(강조). 같은 축이라 길이 차이가 곧 개선폭이다. */
+  .swbars{display:flex;flex-direction:column;gap:3px;}
+  .swbar{display:grid;grid-template-columns:62px 1fr 44px;align-items:center;gap:7px;
+    font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);}
+  .swbar .tr{height:8px;border-radius:4px;background:var(--inset);overflow:hidden;}
+  .swbar .tr>i{display:block;height:100%;border-radius:4px;background:var(--blocked);}
+  .swbar.acc .tr>i{background:var(--accent);}
+  .swbar .vv{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums;}
+
+  .swbar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .swbar2 .lab{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--text-faint);}
+  .mbtn{font-family:var(--font-mono);font-size:10.5px;padding:4px 9px;border-radius:6px;cursor:pointer;
+    background:var(--panel-2);color:var(--text-dim);border:1px solid var(--border-strong);}
+  .mbtn:hover{color:var(--text);border-color:var(--accent-dim);}
+  .mbtn.on{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent);color:var(--text);font-weight:600;}
+  .mbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .swmodels{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .swmodels .lab{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--text-faint);}
+  .swscale{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);}
+  .swscale i{width:13px;height:11px;border-radius:3px;display:inline-block;}
+
+  /* ---- 시드 행렬: 한 칸 = 한 판. 이 화면의 원자다. ---- */
+  .swmatrix{display:flex;flex-direction:column;gap:13px;overflow-x:auto;}
+  .swmcase{min-width:660px;}
+  .swmhead{display:flex;align-items:baseline;gap:9px;margin-bottom:5px;}
+  .swmhead h4{margin:0;font-size:11.5px;font-weight:650;}
+  .swmhead .sub{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);}
+  .swmrow{display:grid;grid-template-columns:76px minmax(0,1fr) 62px;align-items:center;gap:8px;margin-bottom:3px;}
+  .swmrow .rl{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:right;}
+  .swmrow .rv{font-family:var(--font-mono);font-size:10px;color:var(--text);font-variant-numeric:tabular-nums;}
+  .swcells{display:grid;grid-template-columns:repeat(30,1fr);gap:2px;}
+  .swcell{height:19px;border-radius:3px;border:0;padding:0;cursor:pointer;position:relative;
+    font-family:var(--font-mono);font-size:8px;color:#0b0f14;}
+  .swcell:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2;}
+  .swcell.sel{box-shadow:0 0 0 2px var(--text) inset;}
+  .swaxis{display:grid;grid-template-columns:76px minmax(0,1fr) 62px;gap:8px;margin-top:2px;}
+  .swticks{display:grid;grid-template-columns:repeat(30,1fr);font-family:var(--font-mono);font-size:8px;color:var(--text-faint);text-align:center;}
+
+  /* ---- 멀티에이전트 회계 ---- */
+  .swagent{display:grid;gap:11px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));}
+  .abox{border:1px solid var(--border);border-radius:9px;padding:11px 12px;background:var(--panel-2);}
+  .abox h4{margin:0 0 8px;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);}
+  .arow{display:grid;grid-template-columns:1fr auto;gap:8px;padding:4px 0;font-size:11px;
+    border-bottom:1px dashed var(--border);font-variant-numeric:tabular-nums;}
+  .arow:last-child{border-bottom:0;}
+  .arow b{font-family:var(--font-mono);color:var(--text);}
+  .arow .k{color:var(--text-dim);}
+  .arow .k code{font-family:var(--font-mono);font-size:10px;color:var(--accent);white-space:nowrap;}
+  .atools{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;}
+  .atool{font-family:var(--font-mono);font-size:9.5px;padding:2px 6px;border-radius:5px;
+    background:var(--inset);border:1px solid var(--border);color:var(--text-dim);}
+  .acaveat{margin-top:7px;font-size:10.5px;line-height:1.55;color:var(--text-dim);
+    border-left:2px solid var(--warn);padding-left:8px;}
+
+  /* ======================================================================================
+     멀티에이전트 레인 — 결정 패널.
+     이 레인은 "LLM 하나가 메뉴에서 매크로를 고른다" 가 아니다. 세 개의 agent 가 줄지어 있고
+     **발화 조건은 agent-2 의 `expressible == False` 하나다**(`None`/`True` 는 발화가 아니다).
+     예전 화면은 이 축이 아예 없어서, 도구를 주조해 존을 치운 판을 "NOOP · all agree" 로 그렸다.
+     ====================================================================================== */
+  .agentflow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:8px 0 2px;
+    border:1px solid var(--border-strong);border-radius:8px;background:var(--panel-2);overflow:hidden;}
+  .agstep{flex:1 1 190px;min-width:180px;padding:9px 12px;position:relative;}
+  .agstep+.agstep{border-left:1px solid var(--border);}
+  .agstep .an{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.1em;color:var(--text-faint);}
+  .agstep .av{font-family:var(--font-mono);font-size:12px;font-weight:700;margin-top:2px;}
+  .agstep .ad{font-size:10.5px;color:var(--text-dim);margin-top:3px;line-height:1.45;}
+  .agstep.fire .av{color:var(--warn);}
+  .agstep.ok .av{color:var(--good);}
+  .agstep.bad .av{color:var(--crit);}
+  .agstep.idle{opacity:.55;}
+  .agstep.idle .av{color:var(--text-faint);}
+  /* 세 agent 가 실제로 낸 자연어. 위의 4칸은 파생 플래그(expressible/tool_name)만 보여줘서
+     "무슨 말을 했는지" 가 화면에 한 번도 안 나왔다. 녹화에 있는 문장만 그대로 싣는다. */
+  /* 어휘가 사건을 나타낼 수 없을 때의 후보표 축소판. 표를 통째로 그리는 대신 한 줄만 남긴다. */
+  .candvoid{font-family:var(--font-mono);font-size:11px;line-height:1.6;color:var(--text-dim);
+    border:1px dashed var(--warn);border-left-width:3px;border-left-style:solid;
+    border-radius:7px;padding:7px 10px;margin:2px 0 4px;}
+  .candvoid b{color:var(--text);}
+  .candvoid .floor{color:var(--text-faint);}
+  .agentnl{margin:0 0 2px;border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;}
+  .agentnl>summary{cursor:pointer;list-style:none;padding:6px 12px;font-family:var(--font-mono);
+    font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);background:var(--panel-2);}
+  .agentnl>summary::-webkit-details-marker{display:none;}
+  .agentnl>summary:hover{color:var(--text);}
+  .nlrow{display:grid;grid-template-columns:132px 1fr;gap:10px;padding:8px 12px;border-top:1px solid var(--border);}
+  .nlrow .nk{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--text-faint);
+    text-transform:uppercase;line-height:1.5;}
+  .nlrow .nv{font-size:11.5px;line-height:1.65;color:var(--text);white-space:pre-wrap;word-break:break-word;}
+  .nlrow .nv .sub{display:block;margin-top:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);}
+  .nlrow .none{color:var(--text-faint);font-style:italic;}
+
+  .toolcard{margin:0;border-top:1px solid var(--border);padding:12px 14px;
+    display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+  .toolcard h3{margin:0 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);}
+  .tmeta{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px;margin-bottom:9px;}
+  .tmeta .tk{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);white-space:nowrap;}
+  .tmeta .tv{font-family:var(--font-mono);font-size:11px;color:var(--text);word-break:break-word;}
+  .tmech{font-size:11.5px;line-height:1.6;color:var(--text-dim);border-left:2px solid var(--accent-dim);padding-left:9px;}
+  .tcalls{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+  .tcall{font-family:var(--font-mono);font-size:9.5px;padding:2px 6px;border-radius:5px;
+    background:var(--inset);border:1px solid var(--border);color:var(--accent);}
+  .tstep{display:grid;grid-template-columns:16px 1fr;gap:7px;align-items:start;padding:6px 8px;
+    border:1px solid var(--border);border-radius:6px;background:var(--inset);margin-bottom:5px;
+    font-family:var(--font-mono);font-size:10.5px;}
+  .tstep .ss{font-weight:700;} .tstep .ok{color:var(--good);} .tstep .no{color:var(--crit);}
+  .tstep .sd{color:var(--text-dim);font-size:10px;margin-top:2px;word-break:break-word;}
+  .tretry{margin-top:5px;font-size:10.5px;line-height:1.5;color:var(--warn);
+    border-left:2px solid var(--warn);padding-left:8px;}
+  .tdelta{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+  .tdelta span{font-family:var(--font-mono);font-size:9.5px;padding:2px 7px;border-radius:5px;
+    background:var(--inset);border:1px solid var(--border);color:var(--text-dim);}
+  .tdelta span.nz{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent);}
+  details.tcode summary{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);cursor:pointer;margin-top:8px;}
+  @media (max-width:900px){ .toolcard{grid-template-columns:1fr;} }
 
   @media (max-width:1120px){
-    .shell{grid-template-columns:1fr;grid-template-areas:"head" "ctl" "stage" "fleet" "assembly" "respec";}
+    /* gantt 가 여기 빠져 있어 좁은 화면에서 암묵 배치로 떠 있었다 — 명시한다. */
+    .shell{grid-template-columns:1fr;grid-template-areas:"head" "sweep" "ctl" "stage" "fleet" "assembly" "gantt" "respec";}
+    .swmrow,.swaxis{grid-template-columns:60px minmax(0,1fr) 54px;}
     .rgrid{grid-template-columns:1fr;} .rcol+.rcol{border-left:none;border-top:1px solid var(--border);}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;}}
 </style>
 </head>
-<body>
+<body data-view="sweep">
 <div class="shell">
 
   <header class="panel head">
@@ -307,9 +458,36 @@
       <div class="stat" title="Number of robots. The value in parentheses is the number of unavailable robots."><span class="k">Fleet</span><span class="v num" id="fleetN">—</span></div>
       <div class="stat oodstat" title="OOD events that have actually fired in this replay so far (see the OOD Event Feed). This is the live count — the casebar “OOD events” box sets how many to inject when generating."><span class="k">OOD fired</span><span class="v num" id="oodN">—</span></div>
       <div class="divider"></div>
+      <div class="vtabs" role="tablist" aria-label="view">
+        <button id="tabSweep" type="button" role="tab">SWEEP · 360 runs</button>
+        <button id="tabReplay" type="button" role="tab">REPLAY · one run</button>
+      </div>
       <button class="ghost-btn" id="themeBtn" type="button">◐ Theme</button>
     </div>
   </header>
+
+  <!-- ======================================================================================
+       SWEEP — 실행된 격자 그대로. 이 패널의 모든 수는 sweep360.json 에서 읽는다:
+       그 파일은 360 판의 **로그와 스트림에서 재추출**한 것이고, 화면은 상수를 안 갖는다
+       (objBar 와 같은 규약 — 화면이 숫자를 복붙하면 격자가 바뀌는 순간 화면만 옛 값을 주장한다).
+       ====================================================================================== -->
+  <section class="panel sweep" id="sweepPanel">
+    <div class="phead"><h2>Failure-event sweep · 4 events × 30 seeds × 3 lanes</h2>
+      <span class="count mono" id="sweepMeta">loading…</span></div>
+    <div class="swwrap">
+      <!-- 모델(빌드 대상) 전환. 격자가 하나뿐이면 아예 안 그린다 -- 고를 것이 없는 선택기는
+           화면에 "다른 것도 있다" 는 거짓 신호를 준다. -->
+      <div class="swmodels" id="swModels" hidden></div>
+      <div class="swnote" id="swIntro"></div>
+      <div class="swcards" id="swCards"></div>
+      <div class="swbar2">
+        <span class="lab">METRIC</span><div id="swMetrics" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <span class="swscale" id="swScale"></span>
+      </div>
+      <div class="swmatrix" id="swMatrix"></div>
+      <div class="swagent" id="swAgent"></div>
+    </div>
+  </section>
 
   <section class="panel ctl">
     <div class="ctlbar">
@@ -329,34 +507,23 @@
            'auto' = 정책별 녹화가 없던 시절의 기존 파일(tractor__<case>.jsonl). -->
       <label title="Which recording to view: the one where THIS policy was actually enacted. What each policy WOULD have chosen is switched in the Re-Specification panel below (policy is orthogonal to case).">Enacted policy
         <select id="enactSel">
-          <!-- 2026-08-13: 기본 선택을 'auto' 에서 'dspy' 로 옮긴다. 'auto' 는 정책 접미사가 없는
-               옛 파일(tractor__<case>.jsonl)을 찾는데, 30시드 스윕 녹화는 전부
-               tractor__<case>__<policy>.jsonl 이라 기본 상태로 열면 "stream not found" 가 떴다.
-               정책 선택기를 바꾸면 같은 케이스의 noop / surrogate / dspy 녹화로 즉시 전환된다. -->
-          <option value="">auto (legacy / router run)</option>
-          <option value="noop">noop (fixed · no-adapt baseline)</option>
-          <option value="canonical">canonical (fixed)</option>
-          <option value="surrogate">surrogate (fixed)</option>
-          <option value="dspy" selected>DSPy (fixed)</option>
-          <!-- 2026-08-16: dp 레인 재생을 연다. **이것은 천장이 아니다** — 오프라인 value table
-               (dp_oracle/value.json)을 칸마다 조회해 a* 를 집행한 판이고, 표를 못 읽은 결정은
-               canonical 로 떨어진다(그 사실은 verdict 에 남는다). 실측 §8.7 gap 89.3% =
-               실행 정책이 V 보다 좋은 (칸,정책) 쌍의 비율이므로, 이 열을 '상한' 으로 읽으면 안 된다.
-               그럼에도 재생을 여는 이유: 이 판의 **실현 결과 자체는 유효한 실행 결과**이고
-               (칸마다 팔을 갈아 쓴다), 네 레인을 같은 케이스에서 나란히 보는 것이 목적이기 때문.
-               근거: md/RESULTS_ACTION_SET_CLOSURE_2026-08-16.md §4.
-               ⚠️ 아래 Re-Specification 패널의 "picked by" 에는 dp 가 **안 뜬다** — policy.jl 이
-               `pol["dp"]` 를 DEMO_POLICY=dp 인 런에서만 만들기 때문이고, 그건 의도된 설계다
-               (라이브 판에서 dp 를 동료 결정원처럼 보여주지 않는다). -->
-          <option value="dp">dp (fixed · offline value-table lookup — NOT a ceiling)</option>
-          <option value="router">router (per-event: LLM if novel, surrogate if familiar)</option>
+          <!-- 2026-09-06: 축을 세 레인으로 좁힌다 — canonical(규칙) / surrogate(학습된 kind) /
+               router(사건별로 둘 중 하나를 고르고, 처음 보는 kind 는 멀티에이전트 레인으로 보낸다).
+               지운 것들과 그 이유:
+                 · auto/noop/dp  … 이 화면의 비교축이 아니다(noop 은 늘 NOOP 이라 "정책이 갈렸다"를
+                                    가짜로 만들고, dp 는 오프라인 value-table 재생이라 천장이 아니다).
+                 · dspy(고정)     … tractor 스윕은 router/canonical/surrogate 셋만 돌았다.
+                                    멀티에이전트 레인에 실제로 사건이 가는 녹화는 router 뿐이다. -->
+          <option value="canonical">canonical (fixed · rule policy)</option>
+          <option value="surrogate">surrogate (fixed · V2)</option>
+          <option value="router" selected>multi-agent router lane (per-event: unknown kind &rarr; multi-agent, familiar &rarr; surrogate)</option>
         </select>
       </label>
       <label title="How many OOD events to inject when you Start a live session (0 = case default: one per kind). Robot faults/battery events are spread across the build; a zone always fires once up front.">OOD events <input type="number" id="oodCount" value="0" min="0" max="20" step="1" style="width:52px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
       <!-- OOD 추첨 seed: 로봇 OOD(고장/배터리)가 **언제** 터질지는 이 값으로 뽑는다. 같은 케이스라도
            seed 가 다르면 발화 시점·종류 순서가 달라져 다른 세계가 된다. zone 은 seed 와 무관하게
            sim 시작 전 1회 고정(공간 restage 는 빌드가 시작되기 전에만 안전하므로). -->
-      <label title="Random seed for WHEN the robot OOD events fire (and, in mixed cases, in which order). Same case + different seed = a different world. Seed 0 replays the old fixed-slot schedule. A forbid zone is always pre-sim and is not affected by the seed.">OOD seed <input type="number" id="oodSeed" value="1" min="0" max="9999" step="1" style="width:56px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
+      <label title="Random seed. Live: decides WHEN the robot OOD events fire (and in which order). Replay: also picks WHICH saved sweep run you are watching — for a forbid zone that means which randomly placed zone (the sweeps recorded seeds 1-30, one random zone each). Same case + different seed = a different world.">OOD seed <input type="number" id="oodSeed" value="1" min="0" max="9999" step="1" style="width:56px;font-family:var(--font-mono);font-size:12px;padding:5px 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;" /></label>
       <span class="genhint" id="genHint">Load an existing replay, or start a live session to generate one.</span>
     </div>
   </section>
@@ -375,10 +542,6 @@
            "no zone" 으로 시작해도 런 도중 아래 inject 바로 zone 을 쏘는 것은 그대로 된다. -->
       <button class="ghost-btn" id="startLiveBtn" type="button" style="margin-left:auto">Start live session</button>
       <button class="ghost-btn" id="startLiveNoZoneBtn" type="button" title="Start immediately without waiting for a forbid-zone command">Start live (no zone)</button>
-      <!-- zone 케이스에서만 뜬다. ③⑤⑥ 의 기존 녹화는 **자동 주입기**가 만든 것이라 조작자가 정의한
-           구역이 아니다 — 자동으로 틀지 않고, 보겠다고 누를 때만 그 사실을 배지로 달아 보여 준다. -->
-      <button class="ghost-btn" id="loadRecBtn" type="button" style="display:none"
-              title="Play the saved recording for this case. Its zone was placed by the automatic injector, not by an operator.">Load previous recording</button>
       <span class="count mono">MeshCat</span>
     </div>
     <div class="injectbar" id="injectBar">
@@ -483,6 +646,10 @@
     <!-- ROUTER: 이 사건을 누구에게 보낼지 **시스템이** 판정한 결과. 사람이 정책 버튼을 누른 것이
          아니라는 점이 핵심이라, 결정 패널 맨 위에 따로 둔다. -->
     <div class="routerbar" id="routerBar" hidden></div>
+    <!-- 멀티에이전트 레인의 파이프라인. **agent-2 의 expressible 이 이 데모의 발화 조건이다** —
+         화면에 이 축이 없던 동안, 도구를 주조해 존을 치운 판이 "NOOP · all agree" 로 그려졌다. -->
+    <div class="agentflow" id="agentFlow" hidden></div>
+    <details class="agentnl" id="agentNL" hidden><summary>What each agent actually said (verbatim from the recording)</summary><div id="agentNLBody"></div></details>
     <!-- 자연어 해석(spec §4.1). 문장은 **녹화 시점의 코드가 스트림에 찍은 것**이고 화면은 그대로
          표시만 한다. 옛 녹화에는 이 필드가 없다 -> 자리를 비운다(화면이 문장을 지어내면 그건
          측정이 아니라 창작이다). -->
@@ -495,24 +662,27 @@
       <div class="rcol">
         <h3>What each producer actually saw <span class="term-help">they are given different inputs</span></h3>
         <div class="inbox" id="inLLMBox">
-          <div class="inlabel">LLM <b id="inLLMMode">— </b><span class="inhint">natural-language observation (+ kind-agnostic descriptors)</span></div>
+          <div class="inlabel">AGENT 1 · INPUT <b id="inLLMMode">— </b><span class="inhint">natural-language observation (+ 6 kind-agnostic descriptors) — never a parsed event schema</span></div>
           <pre class="code mono" id="inLLM">—</pre>
         </div>
         <div class="inbox">
-          <div class="inlabel">SURROGATE <span class="inhint">the same schema features it was trained on</span></div>
+          <div class="inlabel">SURROGATE <span class="inhint" id="inSurroHint">schema features</span></div>
           <pre class="code mono" id="inSurro">—</pre>
         </div>
         <details class="inraw"><summary>raw record</summary><pre class="code mono" id="inCode">—</pre></details>
       </div>
-      <div class="rcol"><h3>Candidate actions <span class="term-help">macro = high-level recovery action</span></h3>
-        <table class="cand mono"><thead><tr>
+      <div class="rcol"><h3 id="candHead">Candidate actions <span class="term-help">macro = high-level recovery action</span></h3>
+        <table class="cand mono" id="candTable"><thead><tr>
           <th>#</th><th title="A high-level recovery action template for the OOD event.">action macro</th><th title="canonical = rule policy; margin = DSPy producer's confidence gap between its 1st and 2nd choice.">decision source / score</th><th title="Which decision policies picked this macro for this same event (RULE / SURROGATE / DSPy).">picked by</th><th title="Indicates whether this candidate was sent to the verifier.">selected</th>
         </tr></thead><tbody id="candBody"><tr><td colspan="5" class="empty">—</td></tr></tbody></table>
         <h3 style="margin-top:13px">Verifier process <span class="term-help">selected ≠ admitted</span></h3>
         <div class="verify-list" id="verifyBody"><div class="empty">no verification trace</div></div>
       </div>
-      <div class="rcol"><h3 title="enacted_by = the single policy that actually executed this proposal (and how it was selected: per-event router, or DEMO_POLICY fixed for the run). agreed_by = every policy that happened to pick the same macro.">Selected RespecProposal</h3><pre class="code mono" id="outCode">—</pre></div>
+      <div class="rcol"><h3 title="enacted_by = the single policy that actually executed this proposal, and how it was selected: per-event router, or DEMO_POLICY fixed for the run.">Selected RespecProposal</h3><pre class="code mono" id="outCode">—</pre></div>
     </div>
+    <!-- 주조된 tool: 명세(agent-2) -> 본체(agent-3) -> 집행(Julia). 메뉴에 없던 행동이
+         **어디까지 실제로 세계를 건드렸는지**가 여기서 끝난다. -->
+    <div class="toolcard" id="toolCard" hidden></div>
   </section>
 </div>
 
@@ -557,6 +727,11 @@
   (function initView(){
     var f = $("meshcat"), fb = $("viewFallback");
     if(!CONFIG.MESHCAT_URL){ f.style.display="none"; fb.style.display="flex"; return; }
+    // 🔴 SWEEP 으로 부팅할 때 여기서 8700 을 걸면, 그 연결 실패 페이지가 **뒤늦게 도착해**
+    //    openRun() 이 넣어 둔 srcdoc 을 덮어쓴다(실측: 주조 판을 열었는데 "Unable to connect"
+    //    가 떴다). REPLAY 로 실제로 들어갈 때 loadSavedArtifacts()/showLivePreparing() 이
+    //    어차피 이 iframe 을 자기 손으로 채우므로, 여기서는 안 건다.
+    if(document.body.getAttribute("data-view") === "sweep") return;
     f.src = CONFIG.MESHCAT_URL;
   })();
   function showLivePreparing(){
@@ -650,30 +825,6 @@
     zoneLayout = null; zonePick = null; zoneDrag = false;
   }
   function shortId(s){ return String(s).replace(/^.*\./, ""); }
-
-  // 케이스만 골랐을 때의 화면: 아무것도 재생하지 않고, 무엇을 해야 하는지만 말한다.
-  function showZoneCaseIdle(){
-    closeZonePicker();
-    clearPanels();
-    setBadge("err", "zone not defined");
-    $("srcName").textContent = "—";
-    $("genHint").textContent = "This case needs an operator-defined zone — press “Start live session”, draw it on the floor plan, and planning starts from what you drew.";
-    var mc = $("meshcat");
-    if(mc){
-      mc.removeAttribute("src");
-      mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.7}b{color:#334155}</style>'
-        + '<b>This case is defined by YOU, not by the injector.</b>'
-        + '<p>Press <i>Start live session</i>. The environment is built, then the simulation <b>stops and waits</b>'
-        + ' while you draw the no-go zone on the floor plan that appears here. Planning runs on the zone you drew.</p>'
-        + '<p>The saved recording for this case was produced by the <i>automatic</i> zone injector — press'
-        + ' <i>Load previous recording</i> if you want to watch that instead.</p>';
-    }
-  }
-  $("loadRecBtn").addEventListener("click", function(){
-    loadSavedArtifacts();
-    $("genHint").textContent = "Saved recording — its zone was placed by the automatic injector, not by an operator.";
-    toast("Saved recording: this zone came from the automatic injector, not from you.", "warn");
-  });
 
   function startLayoutPolling(){
     var p = $("zonePicker"); if(!p) return;
@@ -841,27 +992,22 @@
     { key: "battery",       label: "① Battery",         cls: "battery" },
     { key: "fault",         label: "② Breakdown",       cls: "fault" },
     { key: "zone",          label: "③ Forbid Zone",     cls: "zone" },
-    { key: "fault_battery", label: "④ Break+Battery",   cls: "fault" },
-    { key: "fault_zone",    label: "⑤ Break+Zone",      cls: "fault" },
-    { key: "battery_zone",  label: "⑥ Battery+Zone",    cls: "battery" },
-    // 애매한 구간(SoC≈0.55)의 배터리 사건 — 세 정책의 답이 갈리는 대표 케이스.
-    // 정책 선택은 케이스가 아니라 아래 RE-SPEC 패널의 정책 선택기에서 한다(정책 ⟂ 케이스).
-    { key: "battery_mild", label: "⑦ Battery (mild)", cls: "battery" },
     // 세 종류(고장·배터리·구역)가 **한 스트림 안에서** 섞이는 케이스(run_demo.jl:99).
-    // 조합 케이스(④⑤⑥)는 각 종류가 한 번씩 정해진 순서로 오는 대본이지만, 여기서는
     // 무엇이 언제 몇 번 오는지가 전부 추첨이다. 30시드 스윕(results_4pol)의 7 케이스 중 하나라
     // 재생할 녹화는 있지만, server.jl 의 VALID_CASES 에는 없어 라이브 시작은 안 된다(재생 전용).
-    { key: "all",          label: "⑧ All mixed",      cls: "fault" }
+    { key: "all",          label: "④ All mixed",      cls: "fault" }
   ];
   // 결정 패널에서 전환해 볼 정책들. 스트림의 각 결정 레코드는 이들의 선택을 모두 담고 있고,
   // 실제로 실행된 것은 `enacted` 로 표시된다.
   var POLICIES = [
-    // no-adapt 바닥선. 스윕(results_4pol)의 기준 레인이고 스트림의 정책 블록에도 늘 들어 있는데
-    // (input.policies.noop), 여기 없으면 화면에서는 **비교 대상 자체가 안 보인다**.
-    { key: "noop",      label: "No-adapt (noop)" },
+    // 2026-09-06: 상단 Enacted policy 와 같은 세 레인만 둔다.
+    // 지운 것: noop(늘 NOOP -> "N DIFFERENT actions" 를 가짜로 부풀린다), oracle(사후 대조군),
+    //          dp(런 전체가 dp 일 때만 기록된다). 어느 것도 이 화면이 대는 주장의 축이 아니다.
     { key: "canonical", label: "Rule (canonical)" },
-    { key: "surrogate", label: "Surrogate (RF)" },
-    { key: "dspy",      label: "DSPy · gpt-4o" }
+    { key: "surrogate", label: "Surrogate (V2)" },
+    // 🔴 policies 블록에서 멀티에이전트 레인의 키는 `dspy` 다(파일 이름의 `router` 와 다르다).
+    // 표시할 이름은 녹화가 나르는 label 을 우선한다(예: dspy:gpt-5.6-sol) -- 화면이 이름을 짓지 않는다.
+    { key: "dspy",      label: "Multi-agent lane" }
   ];
   var selectedPolicy = null;      // null = 실행된 정책을 따라감
   function modelBase(file){ return file.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9]+/g, "_"); }
@@ -922,7 +1068,38 @@
     return out;
   }
 
-  function loadStream(){
+  // direct=true 면 이름 폴백을 끈다. sweep 녹화는 DEMO_CASE_TAG 로 찍혀
+  // (tractor__<lane>_<case>_z<seed>.jsonl) 케이스/정책 접미사 규칙과 형식이 다르다 --
+  // 폴백이 돌면 존재하지도 않는 이름을 훑다가 엉뚱한 파일을 열 수 있다.
+  // 스윕 녹화 이름을 만든다. seed 는 casebar 의 "OOD seed" 를 그대로 zone-seed 로 쓴다
+  // (스윕은 두 seed 를 같은 값으로 돌렸다: _s25_z25). 정책을 안 고른 'auto' 면 실제로
+  // 존재하는 세 정책을 순서대로 시도한다 -- router 가 먼저다. 멀티에이전트 레인에 사건을
+  // 보내는 것은 router 뿐이기 때문(실측: fault/battery 는 전부 surrogate, zone 은 전부 dspy).
+  function sweepCandidates(){
+    var base = modelBase(curModel);
+    var cs   = (curCase === "all") ? "all3" : curCase;
+    var sd   = seedVal();
+    // 고른 정책을 먼저 시도하고, 그 정책의 스윕 녹화가 없으면 남은 정책으로 넘어간다.
+    // 실측: tractor 의 스윕은 router/canonical/surrogate 세 정책만 돌았다 -- 'dspy' 를 고른
+    // 채 zone 을 누르면(그게 이 화면의 기본값이다) 후보가 하나도 없어 빈 화면이 됐다.
+    // 레인 정체는 감추지 않는다: 다른 정책의 녹화로 넘어가면 srcName 이 그 사실을 적고,
+    // 아래 정책 버튼의 ENACTED 배지는 어차피 스트림의 `enacted` 를 읽어 그린다.
+    var order = ["router","canonical","surrogate"];
+    var pols  = curEnacted ? [curEnacted].concat(order.filter(function(p){ return p !== curEnacted; }))
+                           : order;
+    var out   = [];
+    pols.forEach(function(p){
+      out.push("streams/" + base + "__" + p + "_" + cs + "_z" + sd + ".jsonl");
+      out.push("streams/" + base + "__" + p + "_" + cs + "_s" + sd + "_z" + sd + ".jsonl");
+    });
+    return out;
+  }
+  // 스윕 파일 이름에서 정책을 되읽는다(base__<pol>_<case>[_sN]_zN.jsonl).
+  function sweepPolicyOf(name){
+    var m = /__(router|canonical|surrogate|dspy)_[a-z0-9]+(?:_s\d+)?_z\d+\.jsonl$/.exec(name);
+    return m ? m[1] : null;
+  }
+  function loadStream(direct){
     $("srcName").textContent = streamUrl.replace(/^.*\//, "");
     // 정책별 녹화(…__dspy.jsonl)가 아직 없는 조합이면 조용히 기존 파일로 폴백한다.
     // 24 조합을 다 돌리기 전에도 대시보드가 쓸 수 있어야 하기 때문.
@@ -932,7 +1109,8 @@
     // 폴백이 일어나면 상단 stream 표시에 그 사실을 적어, 지금 보는 것이 무엇인지 감추지 않는다.
     function fetchWithFallback(url){
       var cands = [url];
-      if(curEnacted){ cands.push(url.replace("__" + curEnacted, "")); }
+      if(direct){ /* 후보를 늘리지 않는다 */ }
+      else if(curEnacted){ cands.push(url.replace("__" + curEnacted, "")); }
       else {
         // 접미사(_nN, _sS)를 떼고 정책 이름을 끼워 넣은 뒤 접미사를 다시 붙인다.
         // 순서는 render_demo.jl 이 쓰는 규칙과 같아야 한다: base__case[__policy][_nN][_sS].jsonl
@@ -943,6 +1121,12 @@
           cands.push(stem + "__" + p + suf + ".jsonl");
         });
       }
+      // 스윕 녹화의 이름 규칙은 위와 **순서가 다르고 zone-seed 가 하나 더 붙는다**:
+      //   base__<policy>_<case>[_s<N>]_z<N>.jsonl   (case 'all' 은 파일에서 'all3')
+      // 실측(2026-09-06): tractor 의 zone 판 120개가 전부 이 이름이고, 대시보드가 만들던
+      // 이름으로는 그중 하나도 안 잡혔다 -- 유일하게 잡히던 tractor__zone.jsonl 은 결정이
+      // 0건인 옛 녹화라 OOD DECISION 패널이 통째로 비어 있었다. 그래서 후보에 더한다.
+      if(!direct) Array.prototype.push.apply(cands, sweepCandidates());
       function tryAt(i){
         if(i >= cands.length) return Promise.reject(new Error("no stream"));
         return fetch(cands[i], {cache:"no-store"}).then(function(r){
@@ -952,8 +1136,12 @@
             // 그것도 '없음'으로 취급해 다음 후보로 넘어가야 화면이 빈 채로 멈추지 않는다.
             if(!t || !t.trim()) return tryAt(i+1);
             if(i > 0){
-              $("srcName").textContent = cands[i].replace(/^.*\//, "") +
-                (curEnacted ? " (no per-policy recording -> legacy file)" : " (no legacy file -> per-policy recording)");
+              var nm = cands[i].replace(/^.*\//, "");
+              var sp = sweepPolicyOf(nm);
+              $("srcName").textContent = nm + (
+                (sp && curEnacted && sp !== curEnacted)
+                  ? (" (no “" + curEnacted + "” recording for this case — showing the “" + sp + "” run)")
+                  : " (resolved by fallback)");
             }
             return t;
           });
@@ -1241,8 +1429,13 @@
       if($("inLLM")) $("inLLM").textContent = "—";
       if($("inSurro")) $("inSurro").textContent = "—";
       inC.textContent = "—"; outC.textContent = "—";
-      cb.innerHTML = '<tr><td colspan="7" class="empty">—</td></tr>';
+      cb.innerHTML = '<tr><td colspan="5" class="empty">—</td></tr>';
       vb.innerHTML = '<div class="empty">no verification trace</div>';
+      var af0=$("agentFlow"); if(af0){ af0.hidden=true; af0.innerHTML=""; }
+      var an0=$("agentNL"); if(an0){ an0.hidden=true; $("agentNLBody").innerHTML=""; }
+      var tc0=$("toolCard");  if(tc0){ tc0.hidden=true;  tc0.innerHTML=""; }
+      var cv0=$("candVoid");  if(cv0) cv0.remove();
+      var ct0=$("candTable"); if(ct0) ct0.hidden = false;
       return;
     }
     var ok = /feasible|admit/i.test(String(selectedDecision.verdict||""));
@@ -1251,6 +1444,10 @@
     // 둘이 갈리는 순간이 데모의 핵심이라 한눈에 보이게 색으로 구분한다.
     var din = selectedDecision.input || {};
     var pols = din.policies || null;               // {canonical:{...}, surrogate:{...}, dspy:{...}}
+    // 🔴 이 선언은 아래 ROUTER 줄에 있었다. `var` 호이스팅 때문에 그 위의 narrative 블록에서
+    // `rt` 는 **항상 undefined** 였고, 그래서 "결정 시점의 누적 energy + 그 가격 κ" 줄이
+    // 한 번도 그려진 적이 없다(기능이 죽은 채로 있었다). 쓰기 전에 선언한다.
+    var rt = din.router || null;
     var enacted = din.enacted || "canonical";
     var viewKey = (selectedPolicy && pols && pols[selectedPolicy] && pols[selectedPolicy].available)
                   ? selectedPolicy : enacted;
@@ -1267,8 +1464,12 @@
       var distinct = {};
       POLICIES.forEach(function(p){ if(pols[p.key] && pols[p.key].available && pols[p.key].chosen) distinct[pols[p.key].chosen]=1; });
       var nd = Object.keys(distinct).length;
-      summary = '<span class="verdict '+(nd>1?"no":"ok")+'" title="what each decision policy chose for this same event">'
-              + summary + ' · ' + (nd>1 ? (nd+" DIFFERENT actions") : "all agree") + '</span>';
+      // 🔴 메뉴가 이 사건을 나타낼 수 없었던 판(expressible=false)에서 "all agree" 만 띄우면,
+      //    화면이 **어휘 밖에서 일어난 결정을 없는 일로 만든다**. 동의 여부보다 그 사실이 먼저다.
+      var inexpr = !!(pols.dspy && pols.dspy.expressible === false);
+      summary = '<span class="verdict '+((nd>1||inexpr)?"no":"ok")+'" title="what each decision policy chose for this same event">'
+              + summary + ' · ' + (nd>1 ? (nd+" DIFFERENT actions") : "all agree")
+              + (inexpr ? ' · menu cannot express this event' : '') + '</span>';
     }
     var shownMacro = view && view.chosen ? view.chosen : chosenTxt;
     rhead.innerHTML = '<span class="trigger mono">RE-SPEC @ t='+esc(selectedDecision.at)+' &nbsp; <b>'
@@ -1296,9 +1497,22 @@
       psel.innerHTML = POLICIES.map(function(p){
         var avail = !pols || (pols[p.key] && pols[p.key].available);
         var mac = pols && pols[p.key] ? (pols[p.key].chosen || "—") : "—";
+        // 녹화가 자기 이름을 나르면 그것을 쓴다(예: dspy:gpt-5.6-sol). 화면 상수는 폴백이다.
+        var plab = (pols && pols[p.key] && pols[p.key].label) ? pols[p.key].label : p.label;
+        // 🔴 레인이 꺼진 이유를 말한다. 예전에는 회색 버튼만 남아서 "화면이 고장났다" 로
+        // 읽혔는데, 실측하면 대부분 **데이터가 맞다**: router 는 학습된 kind(fault/battery)를
+        // surrogate 로 보내고 dspy 블록을 아예 안 남긴다(그 사건에서 멀티에이전트 레인은
+        // 돌지 않았다). zone 처럼 처음 보는 kind 에서만 dspy 블록이 생긴다.
+        var why = avail ? ("View what " + plab + " chose for this event.")
+                : (pols && pols[p.key] && pols[p.key].available === false)
+                  ? (plab + " was unavailable in this run — no decision was recorded.")
+                  : (plab + " did not run for this event: the recording has no block for it"
+                     + (rt && rt.routing_kind ? (" (router sent this " + rt.routing_kind + " event to “"
+                        + (din.enacted || "?") + "”).") : "."));
         return '<button type="button" class="polb'+(p.key===viewKey?' on':'')+(avail?'':' off')+'"'
+             + ' title="'+esc(why)+'"'
              + ' data-policy="'+p.key+'"'+(avail?'':' disabled')+'>'
-             + esc(p.label)+'<span class="pm">'+esc(mac)+'</span>'
+             + esc(plab)+'<span class="pm">'+esc(mac)+'</span>'
              + (p.key===enacted?'<span class="en">ENACTED</span>':'')+'</button>';
       }).join("");
       Array.prototype.forEach.call(psel.querySelectorAll(".polb"), function(b){
@@ -1356,7 +1570,6 @@
     // 이 데모의 핵심 주장: 정책을 **사람이 버튼으로 고르는 게 아니라** 시스템이 사건마다 고른다.
     // 라우터가 꺼진 스트림(예전 녹화본)도 그대로 열려야 하므로 없으면 "off" 로 표시만 한다.
     var rb = $("routerBar");
-    var rt = din.router || null;
     // p 는 novelty "점수"가 아니라 conformal p-value 다. 방향이 직관과 반대(작을수록 낯설다)라서
     // 화면에서 반드시 한 줄로 풀어 준다 -- 숫자만 보면 "novelty 가 0.012 밖에 안 된다"로 읽힌다.
     function pHint(p, eps, nv){
@@ -1440,6 +1653,9 @@
       }
     }
 
+    // ---- 멀티에이전트 레인 (관측 -> 표현가능성 -> 작곡 -> 집행) ---------------------------
+    renderAgentLane(pols ? pols.dspy : null, selectedDecision, din, rt);
+
     // ---- 두 producer 가 본 입력 ----------------------------------------------------------
     // LLM 은 문장을, surrogate 는 스키마 피처를 본다. 같은 사건에 대해 서로 다른 것을 본다는 사실이
     // "왜 새 종류에 LLM 인가"의 근거이므로 나란히 보여준다.
@@ -1452,13 +1668,31 @@
         llmMode.textContent = (mode === "nl") ? "natural language" : (mode === "parsed-fields" ? "parsed fields" : mode);
         llmMode.style.color = (mode === "nl") ? "" : "var(--warn, #f59e0b)";
         llmMode.title = (mode === "nl")
-          ? "The LLM read the natural-language observation emitted at injection time."
-          : "The LLM read parsed schema fields \u2014 an input that would not exist for a genuinely new kind of event.";
+          ? "Agent 1 read the natural-language observation emitted at injection time."
+          : "Agent 1 read parsed schema fields \u2014 an input that would not exist for a genuinely new kind of event.";
       }
     }
     if (surBox) {
       surBox.textContent = (rt && rt.surrogate_input) ? rt.surrogate_input
         : ("kind=" + (din.event||"?") + " · " + (din.target||""));
+      // 🔴 2026-09-06: 이 칸의 설명은 "the same schema features it was trained on" 으로 **고정**이었다.
+      // zone 에서는 거짓이다 -- 실측: tractor__router_zone_z1 의 69 결정 전부가
+      // routing_kind='unknown:zone' 이다. 피처가 계산되기는 하지만(surrogate_input 은 69/69 있다)
+      // surrogate 가 그 kind 로 학습된 적은 없고, 바로 그래서 라우터가 멀티에이전트 레인으로 넘긴다.
+      // 학습된 kind(battery/fault)와 처음 보는 kind 를 화면이 같은 문장으로 덮으면 안 된다.
+      var sh = $("inSurroHint");
+      if (sh) {
+        var rk = String((rt && rt.routing_kind) || "");
+        var unknown = /^unknown\b/.test(rk);
+        sh.textContent = unknown
+          ? ("schema features computed for “" + (rk.replace(/^unknown:?/, "") || din.event || "?")
+             + "” — a kind the surrogate was never trained on")
+          : "the same schema features it was trained on";
+        sh.style.color = unknown ? "var(--warn)" : "";
+        sh.title = unknown
+          ? "The feature vector is still computed, but this event kind is outside the surrogate's training set — that is exactly why the router escalates it to the multi-agent lane."
+          : "This event kind is in the surrogate's training set, so it sees the same features it was fitted on.";
+      }
     }
     inC.textContent = JSON.stringify(selectedDecision.input, null, 2);
 
@@ -1480,6 +1714,34 @@
     // 실행되지 않았으므로 검증기에 들어간 적도 없다. 예전에는 그 칸에도 "SENT TO VERIFIER" 를 찍어서
     // 보내지지 않은 후보를 보낸 것처럼 보여 줬다.
     var isEnactedView = !pols || (viewKey === enacted);
+    // 🔴 이 화면의 가장 큰 거짓말이 여기 있었다. 도구를 주조해 존을 치운 판에서도 후보표에는
+    // "NOOP · all agree" 만 떴다 — 메뉴가 그 사건을 **나타낼 수 없었다**는 사실(agent-2 의
+    // expressible=false)과 그래서 어휘 밖의 도구가 만들어졌다는 사실이 화면에 아예 없었기 때문.
+    // 🔴 2026-09-06 (5): 어휘가 이 사건을 나타낼 수 없는 판에서는 후보표가 아무 일도 안 한다.
+    // 실측(tractor__router_zone_z1): 69 결정 전부 후보가 **NOOP 하나뿐**이고, 그 NOOP 은 고를
+    // 수 있는 행동이 아니라 "합법적인 바닥" 이다 -- 실제로 집행된 것은 멀티에이전트 레인이
+    // 주조한 도구다. 다섯 칸짜리 순위표를 그리면 화면이 "행동을 골랐다" 고 말하게 된다.
+    // 그래서 표를 접고 한 줄로 줄인다. (battery/fault 처럼 후보가 여럿인 판은 그대로 표를 쓴다.)
+    var voidMenu = !!(pols && pols.dspy && pols.dspy.expressible === false);
+    var candTbl = $("candTable"), candHd = $("candHead"), oldVoid = $("candVoid");
+    if(oldVoid) oldVoid.remove();
+    if(candTbl) candTbl.hidden = voidMenu;
+    if(candHd){
+      candHd.innerHTML = voidMenu
+        ? 'Candidate actions <span class="term-help">the vocabulary had nothing to offer here</span>'
+        : 'Candidate actions <span class="term-help">macro = high-level recovery action</span>';
+    }
+    if(voidMenu && candTbl){
+      var floorMac = (cands[0] && cands[0].macro) || String(selectedDecision.chosen || "NOOP");
+      var dv = document.createElement("div");
+      dv.className = "candvoid"; dv.id = "candVoid";
+      dv.innerHTML = '<b>No action macro was selectable.</b> Agent&nbsp;2 reported '
+        + '<code>expressible = false</code>, so the only ranked entry is the legal floor '
+        + '<span class="floor">' + esc(floorMac) + '</span> — it was never a candidate fix. '
+        + 'The action that ran was <b>synthesised below</b>'
+        + (pols.dspy.tool_name ? (' — <code>' + esc(pols.dspy.tool_name) + '</code>') : '') + '.';
+      candTbl.parentNode.insertBefore(dv, candTbl);
+    }
     if(!cands.length){ cb.innerHTML = '<tr><td colspan="5" class="empty">no candidates recorded</td></tr>'; }
     else{
       cb.innerHTML = cands.map(function(c, i){
@@ -1492,7 +1754,7 @@
           + '<td class="macro"><span class="k">'+esc(c.macro||"?")+'</span> '+esc(c.args||"")+'</td>'
           + '<td>'+esc(source)+'</td>'
           + '<td>'+(c.by ? c.by.split("+").map(function(k){
-                var n = {canonical:"RULE", surrogate:"SURROGATE", dspy:"DSPy"}[k] || k;
+                var n = {canonical:"RULE", surrogate:"SURROGATE", dspy:"MULTI-AGENT"}[k] || k;
                 return '<span class="pill'+(k===viewKey?' on':'')+'">'+n+'</span>'; }).join("")
               : (c.rule ? '<span class="pill">RULE</span>' : '—'))+'</td>'
           + '<td>'+(!chosen ? '—' :
@@ -1526,7 +1788,10 @@
         enacted_by: isEnactedView
           ? (polLabel(enacted) + " · selected by " + how)
           : (polLabel(viewKey) + " · NOT enacted (counterfactual; this run enacted " + polLabel(enacted) + ")"),
-        agreed_by: chosenCand.by || null,
+        // 🔴 2026-09-06: `agreed_by` 를 뺀다. 어휘가 NOOP 하나뿐인 사건(zone)에서는 모든 레인이
+        // 같은 것을 고를 수밖에 없어 "noop+canonical+dspy+oracle" 이 늘 떴다 -- 합의처럼 보이지만
+        // 선택지가 하나였다는 사실만 다시 말하는 칸이다. 어느 레인이 무엇을 골랐는지는 왼쪽
+        // 후보표의 "picked by" 열이 이미 그 사건의 실제 순위와 함께 보여 준다.
         verified: !!chosenCand.verified
       }, null, 2);
     } else {
@@ -1534,7 +1799,10 @@
     }
 
     var verification = selectedDecision.verification || null;
-    if(!verification){ vb.innerHTML = '<div class="empty">legacy stream: verifier trace was not recorded</div>'; }
+    // 🔴 `verification` 은 어느 녹화에도 없다 -> 이 칸은 항상 "legacy stream" 한 줄만 띄우는
+    // 죽은 패널이었다. 오늘 집행이 남기는 증거는 verdict / steps / enact_retry / world_delta 다.
+    // 옛 경로는 그대로 두고(있으면 그것을 쓴다), 없을 때 **실제로 있는 것**을 그린다.
+    if(!verification){ vb.innerHTML = enactTraceHTML(selectedDecision); }
     else{
       var checks = verification.checks || [];
       var vh = checks.map(function(ch){
@@ -1547,6 +1815,210 @@
       }
       vb.innerHTML = vh || '<div class="empty">no verifier checks recorded</div>';
     }
+  }
+
+
+  /* =========================================================================================
+     멀티에이전트 레인 — 결정 패널의 새 축.
+     -----------------------------------------------------------------------------------------
+     예전 화면은 이 레인을 "LLM 하나가 메뉴에서 매크로를 고른다" 로 그렸다. 그래서 도구를 주조해
+     존을 치운 판이 화면에서는 `NOOP · all agree` 였다 -- 화면이 결과를 부정한 것이다.
+     오늘의 레인은 셋이고, **발화 조건은 agent-2 의 `expressible == False` 하나다**
+     (`None` = 이 레인이 안 돌았다, `True` = 메뉴로 충분했다. 둘 다 발화가 아니다).
+     이 함수는 녹화에 있는 것만 그린다 -- 없으면 칸을 비운다.
+     ========================================================================================= */
+  function stepsThrew(steps){
+    return (steps||[]).some(function(st){ return /threw|error|fail/i.test(String(st.status||"")); });
+  }
+  function renderAgentLane(dsp, dec, din, rt){
+    var af = $("agentFlow"), tc = $("toolCard"), an = $("agentNL"), anb = $("agentNLBody");
+    if(!af || !tc) return;
+    if(!dsp){
+      // 이 사건은 멀티에이전트 레인에 안 갔다(라우터가 surrogate 로 보냈거나 정책이 고정이었다).
+      af.hidden = true; af.innerHTML = ""; tc.hidden = true; tc.innerHTML = "";
+      if(an){ an.hidden = true; anb.innerHTML = ""; }
+      return;
+    }
+    var steps = dec.steps || [];
+    var threw = stepsThrew(steps);
+    var fired = (dsp.expressible === false);
+    var minted = !!(dsp.tool_name || dsp.impl_name);
+
+    function cell(cls, name, val, det){
+      return '<div class="agstep '+cls+'"><div class="an">'+name+'</div>'
+           + '<div class="av">'+val+'</div><div class="ad">'+det+'</div></div>';
+    }
+    var a2 = (dsp.expressible === false) ? "expressible = false"
+           : (dsp.expressible === true)  ? "expressible = true"
+           : "expressible = —";
+    var a2cls = (dsp.expressible === false) ? "fire" : (dsp.expressible === true ? "ok" : "idle");
+    var a2det = (dsp.expressible === false)
+      ? "The action vocabulary cannot express a fix for this event. <b>This is the only firing condition</b> for tool synthesis."
+      : (dsp.expressible === true)
+        ? "A macro already in the vocabulary can express the fix — no synthesis."
+        : "Not reported by this recording.";
+
+    var a3cls = minted ? "ok" : (fired ? "bad" : "idle");
+    var a3val = minted ? esc(dsp.tool_name || dsp.impl_name)
+              : (dsp.synthesis_error ? "synthesis failed" : (fired ? "nothing composed" : "—"));
+    var a3det = minted
+      ? ("surface <b>" + esc(dsp.surface || "?") + "</b> · "
+         + ((dec.interface_calls||[]).length) + " advertised calls used · "
+         + ((dsp.body_names||[]).length) + " primitive" + (((dsp.body_names||[]).length===1)?"":"s") + " in the body")
+      : (dsp.synthesis_error ? esc(String(dsp.synthesis_error)).slice(0,160)
+         : (dsp.synthesis_ran ? "Synthesis ran but produced no registered implementation."
+                              : "Synthesis did not run."));
+
+    var ecls = !steps.length ? "idle" : (threw ? "bad" : "ok");
+    var eval_ = !steps.length ? "not enacted" : (threw ? "body threw" : "body ran");
+    var edet = !steps.length
+      ? "No primitive was executed for this decision."
+      : (steps.length + " step" + (steps.length===1?"":"s")
+         + (dec.enact_retry ? " · retried once with the failure fed back" : "")
+         + (threw ? " — the failure is caught, not swallowed." : ""));
+
+    af.hidden = false;
+    af.innerHTML =
+        cell("ok",   "AGENT 1 · OBSERVE", "natural language",
+             "Reads the observation sentence and six kind-agnostic descriptors. It is never given a parsed event schema — a genuinely new kind of event would not have one.")
+      + cell(a2cls, "AGENT 2 · EXPRESSIBLE?", esc(a2), a2det)
+      + cell(a3cls, "AGENT 3 · COMPOSE", a3val, a3det)
+      + cell(ecls,  "ENACT (Julia)", esc(eval_), edet);
+
+    // ---- 세 agent 의 자연어 전사 ----------------------------------------------------
+    // 위의 4칸은 파생 플래그다. 여기서는 **녹화가 실제로 나르는 문장**만 그대로 싣는다.
+    // 없는 칸은 비운다 -- 화면이 문장을 지어내면 그건 측정이 아니라 창작이다.
+    if(an && anb){
+      function nlrow(k, sub, txt, extra){
+        var body = txt ? esc(String(txt))
+                       : '<span class="none">not recorded in this stream</span>';
+        return '<div class="nlrow"><span class="nk">'+k+'<span style="display:block;opacity:.75;'
+             + 'text-transform:none;letter-spacing:0">'+sub+'</span></span>'
+             + '<span class="nv">'+body+(extra?('<span class="sub">'+extra+'</span>'):'')+'</span></div>';
+      }
+      // agent 1 이 읽은 것 = 주입 시점에 찍힌 관측 문장. router 가 실제로 넘긴 문자열이
+      // 있으면 그것을 우선한다(llm_input) -- 화면이 입력을 재구성하지 않는다.
+      var obs = (rt && rt.llm_input) ? rt.llm_input : (din && (din.nl || din.detail));
+      var mode = (rt && rt.llm_input_mode) || (din && din.nl ? "nl" : null);
+      var desc = (rt && rt.descriptors && rt.descriptors.length)
+               ? (rt.descriptors.length + " kind-agnostic descriptors: ["
+                  + rt.descriptors.map(function(d){ return Number(d).toFixed(3); }).join(", ") + "]")
+               : "";
+      var obsExtra = [mode ? ("input mode: " + esc(mode)) : "", desc ? esc(desc) : ""]
+                     .filter(Boolean).join(" · ");
+      // agent 2 의 자연어 산출물은 mechanism 이다(어떻게 고칠지의 명세). 예전에는 이 문장이
+      // toolCard 안에만 있었고, toolCard 는 도구가 주조된 판에서만 열려서 -- 합성이 실패한
+      // 판에서는 agent 2 가 무슨 말을 했는지 화면에서 사라졌다.
+      var a2extra = [
+        (dsp.menu_expressible != null ? ("menu_expressible: " + esc(String(dsp.menu_expressible))) : ""),
+        (dsp.refused != null ? ("refused: " + esc(String(dsp.refused))) : "")
+      ].filter(Boolean).join(" · ");
+      // agent 3: 무엇을 왜 골랐는지 + 실제로 조립한 것.
+      var a3extra = [
+        (dsp.tool_name ? ("tool: " + esc(dsp.tool_name)) : ""),
+        (dsp.surface ? ("surface: " + esc(dsp.surface)) : ""),
+        ((dsp.body_names && dsp.body_names.length) ? ("body: " + esc(dsp.body_names.join(", "))) : ""),
+        ((dsp.calls && dsp.calls.length) ? (dsp.calls.length + " call" + (dsp.calls.length===1?"":"s") + " emitted") : ""),
+        (dsp.synthesis_error ? ("synthesis error: " + esc(String(dsp.synthesis_error))) : "")
+      ].filter(Boolean).join(" · ");
+
+      anb.innerHTML =
+          nlrow("AGENT 1", "observe", obs, obsExtra)
+        + nlrow("AGENT 2", "expressible? / mechanism", dsp.mechanism, a2extra)
+        + nlrow("AGENT 3", "compose · stated reason", dsp.rationale, a3extra);
+      an.hidden = false;
+      // 자연어가 요점인 화면이므로 기본으로 펼쳐 둔다.
+      an.open = true;
+    }
+
+    if(!minted){ tc.hidden = true; tc.innerHTML = ""; return; }
+
+    function meta(k, v){ return '<span class="tk">'+k+'</span><span class="tv">'+v+'</span>'; }
+    function chips(arr, cls){
+      arr = arr || [];
+      if(!arr.length) return '<span class="tv" style="color:var(--text-faint)">none recorded</span>';
+      return '<span class="tcalls">' + arr.map(function(x){
+        return '<span class="'+(cls||"tcall")+'">'+esc(x)+'</span>'; }).join("") + '</span>';
+    }
+    var callRows = (dsp.calls||[]).map(function(c){
+      var a = c.args && Object.keys(c.args).length ? JSON.stringify(c.args) : "(no arguments)";
+      return '<div class="tstep"><span class="ss ok">▸</span><div><b>'+esc(c.primitive||"?")+'</b>'
+           + '<div class="sd">'+esc(a)+'</div></div></div>';
+    }).join("");
+    var stepRows = steps.map(function(st){
+      var bad = /threw|error|fail/i.test(String(st.status||""));
+      return '<div class="tstep"><span class="ss '+(bad?"no":"ok")+'">'+(bad?"✗":"✓")+'</span><div>'
+           + '<b>'+esc(st.name||"?")+'</b> <span style="opacity:.7">'+esc(st.status||"")+'</span>'
+           + (st.detail?('<div class="sd">'+esc(st.detail)+'</div>'):'')+'</div></div>';
+    }).join("") || '<div class="empty">no steps recorded</div>';
+    var wd = dec.world_delta_body || dec.world_delta || null;
+    var wdHTML = wd ? ('<div class="tdelta">' + Object.keys(wd).map(function(k){
+        var v = wd[k];
+        return '<span class="'+(v?"nz":"")+'">'+esc(k)+' '+esc(String(v))+'</span>'; }).join("") + '</div>')
+      : '';
+
+    tc.hidden = false;
+    tc.innerHTML =
+      '<div><h3>Synthesised tool · not in the action vocabulary</h3>'
+      + '<div class="tmeta">'
+        + meta("tool", esc(dsp.tool_name || "—"))
+        + meta("impl", esc(dsp.impl_name || "—"))
+        + meta("surface", esc(dsp.surface || "—"))
+        + meta("reversible", dsp.reversible === true ? "yes" : dsp.reversible === false ? "no" : "—")
+        + meta("offered → called", (dsp.tools_offered!=null?dsp.tools_offered:"—") + " → " + (dsp.tool_calls_n!=null?dsp.tool_calls_n:"—"))
+        + meta("native function calling", dsp.native_fc === true ? "yes" : dsp.native_fc === false ? "no" : "—")
+        + meta("declared unsupported", (dsp.unsupported && dsp.unsupported.length) ? esc(dsp.unsupported.join(", ")) : "none")
+      + '</div>'
+      + (dsp.mechanism ? ('<div class="tmech"><b>Mechanism agent&nbsp;2 specified.</b> '+esc(dsp.mechanism)+'</div>') : '')
+      + '<h3 style="margin-top:12px">Advertised interface it actually called</h3>' + chips(dec.interface_calls)
+      + '<h3 style="margin-top:10px">Primitives composed into the body</h3>' + chips(dsp.body_names)
+      + (dsp.impl_code ? ('<details class="tcode"><summary>generated implementation ('
+          + String(dsp.impl_code).split("\n").length + ' lines)</summary>'
+          + '<pre class="code mono">'+esc(dsp.impl_code)+'</pre></details>') : '')
+      + '</div>'
+      + '<div><h3>Enactment</h3>'
+      + '<div class="tmeta">' + meta("verdict", esc(dec.verdict || "—")) + '</div>'
+      + (callRows ? ('<h3 style="margin-top:10px">Calls the composer emitted</h3>'+callRows) : '')
+      + '<h3 style="margin-top:10px">Steps the engine ran</h3>' + stepRows
+      + (dec.enact_retry ? ('<div class="tretry"><b>Retry.</b> '+esc(String(dec.enact_retry))+'</div>') : '')
+      + '<h3 style="margin-top:10px">World delta attributable to the body</h3>' + (wdHTML || '<div class="empty">not recorded</div>')
+      + '<div class="acaveat" style="margin-top:8px">A non-zero delta means the body <b>edited the world</b>; '
+      + 'it does not by itself mean the build finished. Completion is reported separately in the sweep view.</div>'
+      + '</div>';
+  }
+
+  /* ---- 집행 흔적: 오늘의 검증 증거 ------------------------------------------------------
+     옛 스키마의 `verification.checks` 는 어느 녹화에도 없다. 있는 것은 verdict / steps /
+     enact_retry / world_delta 다. 지어내지 않고 그것만 그린다. */
+  function enactTraceHTML(dec){
+    if(!dec) return '<div class="empty">no verification trace</div>';
+    var rows = [];
+    // 주조된 본체의 이름은 평균 35 자, 최대 46 자다(streams 실측) — 고정폭 칸을 넘으면 예전에는
+    // detail 위에 **겹쳐** 그려졌다. 이제 칸 안에서 접히는데, 그냥 접으면 낱말 한가운데가
+    // 잘린다("relocate_blocked_work_desti / nation!"). `<wbr>` 로 밑줄마다 끊을 자리를 알려
+    // 토막이 식별자 경계에서 나뉘게 한다. `<wbr>` 는 복사할 때 글자를 남기지 않으므로
+    // 대시보드에서 이름을 그대로 집어 갈 수 있다.
+    function vname(name){ return esc(name).replace(/_/g, "_<wbr>"); }
+    function r(pass, name, detail){
+      return '<div class="verify-step"><span class="'+(pass?'pass':'fail')+'">'+(pass?'✓':'✗')+'</span>'
+           + '<span class="vname">'+vname(name)+'</span><span class="vdetail">'+esc(detail)+'</span></div>';
+    }
+    var v = String(dec.verdict||"");
+    if(v) rows.push(r(/admit/i.test(v), "verifier verdict", v));
+    var steps = dec.steps || [];
+    steps.forEach(function(st){
+      var bad = /threw|error|fail/i.test(String(st.status||""));
+      rows.push(r(!bad, st.name || "step", (st.status||"") + (st.detail?(" — "+st.detail):"")));
+    });
+    if(dec.enact_retry) rows.push(r(true, "enact_retry", String(dec.enact_retry)));
+    var wd = dec.world_delta_body || dec.world_delta;
+    if(wd){
+      var moved = Object.keys(wd).filter(function(k){ return wd[k]; })
+                        .map(function(k){ return k+"="+wd[k]; }).join(" ");
+      rows.push(r(!!moved, "world delta (body)", moved || "every axis zero — the body changed nothing measurable"));
+    }
+    if(!rows.length) return '<div class="empty">this decision left no enactment trace (nothing was executed)</div>';
+    return rows.join("");
   }
 
   /* ---- playback controls ---- */
@@ -1617,11 +2089,9 @@
     renderGantt([], null);
     renderRespec(null, []);
   }
-  // zone 이 들어간 케이스(③⑤⑥)는 **구역이 사람이 정의하는 사건**이다. 그래서 케이스를 고르는 것만으로는
-  // 아무 시뮬레이션도 틀지 않는다. 예전에는 여기서 옛 녹화를 자동 재생했는데, 그 녹화의 구역은
-  // 자동 주입기(render_demo.jl inject_blocking_zone!)가 심은 것이라 조작자가 정의한 적이 없다 —
-  // 화면상으로는 "내가 정의하지도 않은 구역의 시뮬레이션이 그냥 돌아가는" 것으로 보였고, 그게 이 화면의
-  // 원래 문제였다. 이제 zone 케이스는 정의 단계로 들어가고, 옛 녹화는 눌러야만(그리고 배지를 달고) 뜬다.
+  // zone 케이스의 구역은 **자동 주입기가 무작위로** 고른다(render_demo.jl inject_blocking_zone!).
+  // 저장된 녹화가 바로 그 세계이므로 재생은 다른 케이스와 다를 것이 없다 — isZoneCase 는 이제
+  // 라이브 세션에서만(조작자가 직접 그리는 평면도로 들어갈지) 쓰인다.
   function isZoneCase(c){ return /zone/.test(String(c)); }
   function applySelection(){
     if(genPoll){ clearInterval(genPoll); genPoll = null; }
@@ -1629,11 +2099,39 @@
     curEnacted = enactedVal();
     streamUrl = streamFile(modelBase(curModel), curCase, oodCountVal(), curEnacted, seedVal());
     var zc = isZoneCase(curCase);
-    var lrb = $("loadRecBtn");  if(lrb) lrb.style.display = zc ? "" : "none";
     // "Start live (no zone)" 는 zone 케이스에서 뜻이 없다(구역이 곧 그 케이스의 사건이다).
     var nzb = $("startLiveNoZoneBtn"); if(nzb) nzb.style.display = zc ? "none" : "";
-    if(zc && !CONFIG.LIVE){ showZoneCaseIdle(); return; }
+    // 2026-09-06: zone 케이스도 다른 케이스와 **똑같이** 저장된 녹화를 바로 재생한다.
+    // 예전에는 여기서 재생을 막고 "조작자가 구역을 정의해야 한다" 는 빈 화면을 띄웠는데,
+    // 실제로 돌린 시뮬레이션의 구역은 자동 주입기가 **무작위로** 고른 것이고 사용자가 찍은 적이
+    // 없다. 그래서 그 대기 화면은 존재하지 않는 입력을 요구하며 자기 녹화를 가리고 있었다.
+    // 라이브 세션(Start live session)에서만 구역 정의 평면도로 들어간다.
+    if(!CONFIG.LIVE) closeZonePicker();
     loadSavedArtifacts();
+  }
+  // 3D 애니 후보. 스트림과 마찬가지로 스윕 녹화는 base__<case>_z<N>.html / base__<pol>_<case>_z<N>.html
+  // 이름을 쓴다(실측: anim/tractor__none_z10.html). 대시보드가 만들던 base__case__pol_sN.html
+  // 하나만으로는 그 51개 중 어느 것도 안 잡혔다.
+  function animCandidates(){
+    var base = modelBase(curModel), cs = (curCase === "all") ? "all3" : curCase;
+    var n = oodCountVal(), sd = seedVal();
+    var sfx = (n>0?"_n"+n:"") + seedSuffix(sd);
+    var out = [];
+    if(curEnacted) out.push("anim/" + base + "__" + curCase + "__" + curEnacted + sfx + ".html");
+    out.push("anim/" + base + "__" + curCase + sfx + ".html");
+    ["router","canonical","surrogate"].forEach(function(q){
+      out.push("anim/" + base + "__" + q + "_" + cs + "_z" + sd + ".html");
+    });
+    out.push("anim/" + base + "__" + cs + "_z" + sd + ".html");
+    return out;
+  }
+  function firstExisting(urls){
+    function at(i){
+      if(i >= urls.length) return Promise.reject(new Error("none"));
+      return fetch(urls[i], {method:"HEAD", cache:"no-store"})
+        .then(function(r){ return r.ok ? urls[i] : at(i+1); }, function(){ return at(i+1); });
+    }
+    return at(0);
   }
   function loadSavedArtifacts(){
     var base = modelBase(curModel);
@@ -1651,12 +2149,12 @@
         // 컨트롤 서버가 안 떠 있으면 예전처럼 직접 이름으로 폴백한다.
         // 어느 쪽이든 **있는지 먼저 확인**한다: 빌드가 미완주면 렌더가 애니 발행을 거부하므로
         // (의도된 안전장치) 그 조합에는 파일이 없고, 그냥 src 를 걸면 브라우저 404 가 뜬다.
-        var directUrl = "anim/" + base + "__" + curCase + "__" + curEnacted + sfx + ".html";
         fetch(CONFIG.CONTROL_URL + "/artifact", {method:"POST", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({model:curModel, "case":curCase, n:n, seed:seed, policy:curEnacted})})
           .then(function(r){ return r.json(); })
           .then(function(a){ if(!a.anim_exists) throw new Error("no anim"); return a.anim; },
-                function(){ return directUrl; })
+                function(){ throw new Error("no control server"); })
+          .catch(function(){ return firstExisting(animCandidates()); })
           .then(function(animUrl){
             return fetch(animUrl, {method:"HEAD", cache:"no-store"}).then(function(r){
               if(!r.ok) throw new Error(r.status);
@@ -1667,9 +2165,12 @@
           mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.6}'
             + 'b{color:#334155}</style><b>No 3D animation for this combination.</b>'
             + '<p>The replay data (stream) is fine &mdash; every panel on the left still works.</p>'
-            + '<p>Most common reason: <b>the build did not finish in this run</b>. The renderer refuses to'
-            + ' publish an incomplete animation (<code>refusing to publish incomplete animation</code>)'
-            + ' &mdash; a deliberate guard, so a half-built scene is never shown as if it were finished.</p>'
+            + '<p>Two reasons this happens, and they are different:</p>'
+            + '<p>1. <b>The run was recorded headless</b> (<code>DEMO_ANIM=0</code>). The seed sweeps were'
+            + ' run this way, so their cases have replay data and decisions but no 3D file on disk.</p>'
+            + '<p>2. <b>The build did not finish</b>. The renderer refuses to publish an incomplete'
+            + ' animation (<code>refusing to publish incomplete animation</code>) &mdash; a deliberate'
+            + ' guard, so a half-built scene is never shown as if it were finished.</p>'
             + '<p>Check: <code>tools/monitor/regen_case_logs/' + curCase + '__' + curEnacted + '.log</code></p>';
         });
       } else {
@@ -1690,7 +2191,16 @@
               +' (unless it was started with <code>DEMO_ANIM=0</code>).</p>'; }
           else { mc.removeAttribute("src"); mc.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px}</style>'+
             '<b>3D animation has not been generated yet.</b><p>Replay data is available. Press <i>Start live session</i> to watch MeshCat while generating the missing animation.</p>'; }
-        }).catch(function(){ mc.src="anim/"+base+"__"+curCase+sfx+".html"; });
+        }).catch(function(){
+          firstExisting(animCandidates()).then(function(u){
+            mc.removeAttribute("srcdoc"); mc.src = u + "?v=" + Date.now();
+          }).catch(function(){
+            mc.removeAttribute("src");
+            mc.srcdoc = '<style>body{font:14px system-ui;color:#64748b;padding:24px}</style>'
+              + '<b>No 3D animation on disk for this selection.</b>'
+              + '<p>Replay data and decisions on the left are unaffected.</p>';
+          });
+        });
       }
     }
     idx = 0; setPlaying(false);
@@ -1799,8 +2309,424 @@
       });
   }
 
+
+  /* =========================================================================================
+     SWEEP 뷰 — 실행된 격자(360 판)를 그대로 읽는다.
+     -----------------------------------------------------------------------------------------
+     원자료: tools/monitor/sweep360.json. 그 파일은 gR/gP/gV 의 **로그와 스트림에서 재추출**한
+     것이고(build_dataset.py), 이 화면은 상수를 하나도 안 갖는다 -- objBar 와 같은 규약이다.
+     칸 하나 = 한 판이고, 누르면 그 판의 스트림이 REPLAY 로 열린다(집계 -> 개별 판).
+     ========================================================================================= */
+  var SWEEP = null, swMetric = "complete", swSel = null;
+  // 모델마다 격자가 하나씩이다(sweeps.json 이 목록, 없으면 tractor 하나로 폴백).
+  var SWEEPS = [], swIdx = 0;
+
+  var SW_CASES = [
+    {key:"battery", label:"① Battery depletion", kind:"familiar"},
+    {key:"fault",   label:"② Robot fault",       kind:"familiar"},
+    {key:"zone",    label:"③ Forbid zone",       kind:"unknown"},
+    {key:"all3",    label:"④ All three",         kind:"mixed"}
+  ];
+  var SW_LANES = [
+    {key:"canonical", label:"canonical", note:"rule lookup"},
+    {key:"surrogate", label:"surrogate", note:"fitted 2-head model"},
+    {key:"router",    label:"router",    note:"per-event lane choice"}
+  ];
+  // dir=+1 이면 클수록 좋다, -1 이면 작을수록 좋다. bin=true 는 연속 색조가 아니라 상태색이다.
+  var SW_METRICS = [
+    {key:"complete", label:"Completion",  bin:true,  unit:"",       t:"Did the build reach all 305 schedule nodes?"},
+    {key:"progress", label:"Progress",    dir:1,     unit:"% of 305", t:"Closed schedule nodes / 305."},
+    {key:"makespan", label:"Makespan",    dir:-1,    unit:"sim s",  t:"Simulated seconds to the end of the run."},
+    {key:"energy",   label:"Energy",      dir:-1,    unit:"J/node", t:"Fleet energy drawn per closed schedule node."},
+    {key:"cleared",  label:"Zone cleared",bin:true,  unit:"",       t:"n_blocked=0 and the project is not blocked — a different fact from completion."},
+    {key:"minted",   label:"Tool minted", bin:true,  unit:"",       t:"A new tool was synthesised and registered ([minted] lane=present)."}
+  ];
+
+  function cssVar(n, d){ var v=(getComputedStyle(document.documentElement).getPropertyValue(n)||"").trim(); return v||d; }
+  function hex2rgb(h){
+    h=String(h).trim();
+    if(h.charAt(0)==="#") h=h.slice(1);
+    if(h.length===3) h=h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);
+    var n=parseInt(h,16);
+    return isNaN(n) ? [128,128,128] : [(n>>16)&255,(n>>8)&255,n&255];
+  }
+  function mixHex(a,b,t){
+    var A=hex2rgb(a), B=hex2rgb(b);
+    t=Math.max(0,Math.min(1,t));
+    return "rgb("+Math.round(A[0]+(B[0]-A[0])*t)+","+Math.round(A[1]+(B[1]-A[1])*t)+","+Math.round(A[2]+(B[2]-A[2])*t)+")";
+  }
+  function swRun(lane, cs, seed){
+    if(!SWEEP) return null;
+    for(var i=0;i<SWEEP.runs.length;i++){
+      var r=SWEEP.runs[i];
+      if(r.lane===lane && r["case"]===cs && r.seed===seed) return r;
+    }
+    return null;
+  }
+  function swSum(lane, cs){ return SWEEP && SWEEP.summary[lane+"|"+cs] || null; }
+  // 지표 하나를 한 판에서 읽는다. null = 이 지표가 이 판에 **뜻이 없다**(예: 배터리 판의 zone-cleared).
+  function metricVal(r, m){
+    if(!r) return null;
+    if(m==="complete") return r.complete ? 1 : 0;
+    if(m==="progress") return r.closed / SWEEP.total_nodes * 100;
+    if(m==="makespan") return r.sim_seconds;
+    if(m==="energy")   return r.energy_per_closed;
+    if(m==="cleared")  return (r["case"]==="zone"||r["case"]==="all3") ? ((r.n_blocked===0 && !r.project_blocked)?1:0) : null;
+    if(m==="minted")   return r.minted ? 1 : 0;
+    return null;
+  }
+  function fmtMetric(v, m){
+    if(v==null) return "n/a";
+    if(m==="complete") return v ? "complete" : "incomplete";
+    if(m==="cleared")  return v ? "cleared" : "still blocked";
+    if(m==="minted")   return v ? "minted" : "no tool";
+    if(m==="progress") return v.toFixed(1)+"%";
+    if(m==="makespan") return v.toFixed(1)+" s";
+    if(m==="energy")   return Math.round(v)+" J/node";
+    return String(v);
+  }
+  // 연속 지표의 색 범위는 **그 사건 안의 전체 레인**에서 잡는다. 레인마다 따로 정규화하면
+  // 같은 색이 레인마다 다른 값을 뜻하게 되어 나란히 비교하는 의미가 사라진다.
+  function swDomain(cs, m){
+    var lo=Infinity, hi=-Infinity;
+    SW_LANES.forEach(function(L){
+      for(var sd=1; sd<=30; sd++){
+        var v=metricVal(swRun(L.key,cs,sd), m);
+        if(v==null) continue;
+        if(v<lo) lo=v; if(v>hi) hi=v;
+      }
+    });
+    return (lo===Infinity) ? null : {lo:lo, hi:hi};
+  }
+  function swCellFace(r, m, dom){
+    var good=cssVar("--good","#4cb96b"), crit=cssVar("--crit","#ef5b57"),
+        warn=cssVar("--warn","#e0a53a"), blocked=cssVar("--blocked","#59667b"),
+        inset=cssVar("--inset","#080c12");
+    var v=metricVal(r,m);
+    if(v==null) return {bg:inset, mark:"", fg:"var(--text-faint)"};
+    if(m==="complete"){
+      if(v) return {bg:good, mark:"", fg:"#0b0f14"};
+      // 🔴 미완주를 한 색으로 칠하면 **완주율이 곧 합성 성적**이라는 오독이 화면에 박힌다.
+      //    존이 치워졌는데도 안 끝난 판은 세계가 언 것이지 이 레인이 진 것이 아니다.
+      return (r.fail_mode==="world_deadlock")
+        ? {bg:blocked, mark:"≡", fg:"#e8edf4", title:"world deadlock"}
+        : {bg:crit,    mark:"✕", fg:"#fff",    title:"unresolved"};
+    }
+    if(m==="cleared"||m==="minted") return v ? {bg:good,mark:"",fg:"#0b0f14"} : {bg:inset,mark:"",fg:""};
+    if(!dom || dom.hi===dom.lo) return {bg:good, mark:"", fg:""};
+    var t=(v-dom.lo)/(dom.hi-dom.lo);                  // 0 = 최소값
+    var mm=SW_METRICS.filter(function(x){return x.key===m;})[0];
+    var q=(mm && mm.dir===-1) ? t : (1-t);             // q: 0 = 좋음, 1 = 나쁨
+    return {bg: q<0.5 ? mixHex(good,warn,q*2) : mixHex(warn,crit,(q-0.5)*2), mark:"", fg:"#0b0f14"};
+  }
+  function swTitle(r){
+    if(!r) return "no run";
+    var L=[r.lane+" · "+r["case"]+" · seed "+r.seed,
+           (r.complete?"COMPLETE":"INCOMPLETE"+(r.fail_mode?" ("+r.fail_mode.replace("_"," ")+")":"")),
+           "closed "+r.closed+"/"+SWEEP.total_nodes,
+           r.sim_seconds!=null?("makespan "+r.sim_seconds.toFixed(1)+" s"):null,
+           r.energy_per_closed?("energy "+Math.round(r.energy_per_closed)+" J/node"):null];
+    if(r["case"]==="zone"||r["case"]==="all3")
+      L.push("zone "+((r.n_blocked===0&&!r.project_blocked)?"cleared":"still blocking")+" (n_blocked="+r.n_blocked+")");
+    if(r.minted) L.push("minted "+r.tool+" · "+(r.threw?"body threw":"body ran clean")+(r.retry&&r.retry!=="n/a"?(" · enact_retry="+r.retry):""));
+    L.push(r.stream?"click to replay this run":"stream missing");
+    return L.filter(Boolean).join("\n");
+  }
+
+  function renderSweep(){
+    var meta=$("sweepMeta");
+    // 모델 전환 (둘 이상일 때만)
+    var mb=$("swModels");
+    if(mb){
+      if(SWEEPS.length>1){
+        mb.hidden=false;
+        mb.innerHTML='<span class="lab">BUILD TARGET</span>' + SWEEPS.map(function(x,i){
+          return '<button type="button" class="mbtn'+(i===swIdx?" on":"")+'" data-i="'+i+'">'+esc(x.label)+'</button>';
+        }).join("");
+        Array.prototype.forEach.call(mb.querySelectorAll(".mbtn"), function(b){
+          b.addEventListener("click", function(){ loadSweep(parseInt(b.getAttribute("data-i"),10)); });
+        });
+      } else { mb.hidden=true; mb.innerHTML=""; }
+    }
+    if(!SWEEP){
+      if(meta) meta.textContent="sweep360.json not loaded";
+      $("swIntro").innerHTML='<b>The sweep dataset is not available.</b> '
+        + 'This panel reads <code>tools/monitor/sweep360.json</code> through the monitor server '
+        + '(<code>julia --project=. tools/monitor/server.jl</code>). Opening the dashboard from '
+        + '<code>file://</code> blocks that fetch, exactly as it blocks the replay streams.';
+      return;
+    }
+    meta.textContent = SWEEP.n_runs+" runs · "+SWEEP.engine.replace(/^.*\//,"")+" · "+SWEEP.model
+                     + " · "+SWEEP.total_nodes+" schedule nodes · "+SWEEP.generated;
+    $("swIntro").innerHTML =
+      'Four failure events, thirty seeds each, three decision lanes — <b>'+SWEEP.n_runs+' runs, '
+      + SWEEP.n_missing+' missing</b>. The two baselines are fixed for the whole run; <b>router</b> picks a lane '
+      + 'per event: a <b>kind it was trained on</b> (battery, fault) goes to the free surrogate, an '
+      + '<b>unknown kind</b> (zone) is escalated to the multi-agent lane, which may mint a tool that is not in the '
+      + 'action vocabulary at all. Every number here is re-derived from the run logs and streams — '
+      + 'click any cell to replay that exact run. ' + baselineAgreementHTML();
+
+    // ---- 사건별 카드 ----
+    $("swCards").innerHTML = SW_CASES.map(function(C){
+      var rt=swSum("router",C.key), bs=swSum("canonical",C.key);
+      if(!rt) return "";
+      var bars=SW_LANES.map(function(L){
+        var S=swSum(L.key,C.key); if(!S) return "";
+        var pc=S.complete/S.n*100;
+        return '<div class="swbar'+(L.key==="router"?" acc":"")+'"><span>'+esc(L.label)+'</span>'
+             + '<span class="tr"><i style="width:'+pc.toFixed(1)+'%"></i></span>'
+             + '<span class="vv">'+S.complete+'/'+S.n+'</span></div>';
+      }).join("");
+      var gain=rt.complete-bs.complete;
+      return '<div class="swcard'+(swSel&&swSel.cs===C.key?" sel":"")+'">'
+        + '<div class="ck">'+esc(C.label)+'</div>'
+        + '<div class="cv">'+Math.round(rt.complete/rt.n*100)+'%<small>router completion</small></div>'
+        + '<div class="cbase">baseline <b>'+Math.round(bs.complete/bs.n*100)+'%</b>'
+        + (gain>0?(' · <b style="color:var(--good)">+'+gain+' runs</b>'):' · no difference')+'</div>'
+        + '<div class="swbars">'+bars+'</div></div>';
+    }).join("");
+
+    // ---- 지표 선택기 ----
+    $("swMetrics").innerHTML = SW_METRICS.map(function(m){
+      return '<button type="button" class="mbtn'+(m.key===swMetric?" on":"")+'" data-m="'+m.key+'" title="'+esc(m.t)+'">'+esc(m.label)+'</button>';
+    }).join("");
+    Array.prototype.forEach.call($("swMetrics").querySelectorAll(".mbtn"), function(b){
+      b.addEventListener("click", function(){ swMetric=b.getAttribute("data-m"); renderSweep(); });
+    });
+    var mm=SW_METRICS.filter(function(x){return x.key===swMetric;})[0];
+    $("swScale").innerHTML = mm.bin
+      ? (swMetric==="complete"
+          ? '<i style="background:var(--good)"></i>complete <i style="background:var(--blocked)"></i>≡ world deadlock (zone cleared, build froze) <i style="background:var(--crit)"></i>✕ unresolved'
+          : '<i style="background:var(--good)"></i>yes <i style="background:var(--inset);border:1px solid var(--border)"></i>no')
+      : '<i style="background:var(--good)"></i>best <i style="background:var(--warn)"></i> <i style="background:var(--crit)"></i>worst · scaled within each event ('+esc(mm.unit)+')';
+
+    // ---- 시드 행렬 ----
+    $("swMatrix").innerHTML = SW_CASES.map(function(C){
+      var dom=swDomain(C.key, swMetric);
+      var rows=SW_LANES.map(function(L){
+        var cells="";
+        for(var sd=1; sd<=30; sd++){
+          var r=swRun(L.key,C.key,sd), f=swCellFace(r,swMetric,dom);
+          var sel=(swSel && swSel.lane===L.key && swSel.cs===C.key && swSel.seed===sd);
+          cells+='<button type="button" class="swcell'+(sel?" sel":"")+'" data-lane="'+L.key+'" data-case="'+C.key+'" data-seed="'+sd+'"'
+               + ' style="background:'+f.bg+';color:'+(f.fg||"transparent")+'" title="'+esc(swTitle(r))+'">'+(f.mark||"")+'</button>';
+        }
+        var S=swSum(L.key,C.key);
+        var right = S ? (swMetric==="complete" ? (S.complete+"/"+S.n)
+                    : swMetric==="progress" ? (S.progress_mean*100).toFixed(1)+"%"
+                    : swMetric==="makespan" ? (S.makespan_mean==null?"—":S.makespan_mean.toFixed(1)+" s")
+                    : swMetric==="energy"   ? (S.energy_mean==null?"—":Math.round(S.energy_mean)+" J")
+                    : swMetric==="cleared"  ? (S.zone_cleared==null?"n/a":S.zone_cleared+"/"+S.n)
+                    : (S.minted+"/"+S.n)) : "";
+        return '<div class="swmrow"><span class="rl" title="'+esc(L.note)+'">'+esc(L.label)+'</span>'
+             + '<span class="swcells">'+cells+'</span><span class="rv">'+esc(right)+'</span></div>';
+      }).join("");
+      var ticks=""; for(var t=1;t<=30;t++) ticks+='<span>'+(t%5===0||t===1?t:"")+'</span>';
+      var S=swSum("router",C.key);
+      return '<div class="swmcase"><div class="swmhead"><h4>'+esc(C.label)+'</h4>'
+        + '<span class="sub">'+(C.kind==="unknown"?"kind the surrogate was never trained on → router escalates":
+                                C.kind==="mixed"?"battery + fault + zone in one run":
+                                "kind inside the surrogate’s training kinds")
+        + (S&&S.minted?(" · "+S.minted+"/"+S.n+" runs minted a tool"):"")+'</span></div>'
+        + rows
+        + '<div class="swaxis"><span></span><span class="swticks">'+ticks+'</span><span></span></div></div>';
+    }).join("");
+    Array.prototype.forEach.call($("swMatrix").querySelectorAll(".swcell"), function(b){
+      b.addEventListener("click", function(){
+        openRun(b.getAttribute("data-lane"), b.getAttribute("data-case"), parseInt(b.getAttribute("data-seed"),10));
+      });
+    });
+
+    renderSweepAgent();
+  }
+
+  /* ---- 멀티에이전트 회계 -------------------------------------------------------------
+     이 네 상자가 답하는 것: 라우터가 무엇을 어디로 보냈나 / 무엇이 합성을 터뜨렸나 /
+     주조된 것이 실제로 세계를 건드렸나 / 못 끝낸 판의 사유가 무엇인가. 마지막이 중요하다 --
+     완주율을 곧바로 합성 성적으로 읽으면 틀린다. */
+  // 🔴 "canonical 과 surrogate 가 같다" 는 **tractor 격자에서 잰 사실**이지 이 화면의 성질이 아니다.
+  //    다른 빌드 대상을 띄우면 화면이 재지도 않은 것을 주장하게 된다. 그래서 세어서 말한다.
+  function baselineAgreementHTML(){
+    var n=0, diff=0;
+    SW_CASES.forEach(function(C){
+      for(var sd=1; sd<=30; sd++){
+        var a=swRun("canonical",C.key,sd), b=swRun("surrogate",C.key,sd);
+        if(!a || !b) continue;
+        n++;
+        if(a.complete!==b.complete || a.closed!==b.closed
+           || String(a.sim_seconds)!==String(b.sim_seconds)
+           || String(a.energy_per_closed)!==String(b.energy_per_closed)) diff++;
+      }
+    });
+    if(!n) return '';
+    return diff===0
+      ? ('<b>canonical and surrogate agree on all '+n+' paired runs here</b> — the fitted model reproduces '
+         + 'the rule lookup on these events, so the two baselines are one baseline.')
+      : ('<b>canonical and surrogate differ on '+diff+' of '+n+' paired runs here</b> — the fitted model does '
+         + 'not simply reproduce the rule lookup on this build.');
+  }
+
+  function renderSweepAgent(){
+    var axis={}, expr={f:0,t:0,n:0}, synth=0, minted=0, clean=0, retried=0, refused=0, tools={}, decs=0;
+    SWEEP.runs.forEach(function(r){
+      if(r.lane!=="router") return;
+      (r.decisions||[]).forEach(function(d){
+        decs++;
+        var k=(d.axis||"?")+" → "+(d.lane_target||"?");
+        axis[k]=(axis[k]||0)+1;
+        if(d.expressible===false){ expr.f++; } else if(d.expressible===true){ expr.t++; } else { expr.n++; }
+        if(d.synthesis_ran===true) synth++;
+      });
+      if(r.minted){ minted++; if(!r.threw) clean++; if(r.tool) tools[r.tool]=(tools[r.tool]||0)+1; }
+      // 🔴 `refused_world_changed` 는 재시도가 **원천 차단된** 판이다(본체가 이미 세계를
+      //    건드린 뒤에 실패했으므로 되돌릴 수 없다). 실제로 한 재시도와 한 칸에 담으면
+      //    "되먹임이 24번 돌았다" 는 없는 사실이 화면에 생긴다.
+      if(r.retry==="retried") retried++;
+      else if(r.retry==="refused_world_changed") refused++;
+    });
+    var toolNames=Object.keys(tools).sort(function(a,b){return tools[b]-tools[a];});
+    function box(title, rows, caveat){
+      return '<div class="abox"><h4>'+title+'</h4>'+rows
+           + (caveat?('<div class="acaveat">'+caveat+'</div>'):'')+'</div>';
+    }
+    function row(k,v){ return '<div class="arow"><span class="k">'+k+'</span><b>'+v+'</b></div>'; }
+
+    var axRows=Object.keys(axis).sort(function(a,b){return axis[b]-axis[a];})
+      .map(function(k){ return row('<code>'+esc(k)+'</code>', axis[k]+" decisions"); }).join("");
+
+    // 미완주 사유 — 레인별로 나눈다.
+    var fm={};
+    SWEEP.runs.forEach(function(r){
+      if(!r.fail_mode) return;
+      var k=r.lane+"|"+r["case"];
+      fm[k]=fm[k]||{world_deadlock:0,unresolved:0};
+      fm[k][r.fail_mode]++;
+    });
+    var fmRows=["router|zone","router|all3","canonical|zone","canonical|all3"].map(function(k){
+      var f=fm[k]; if(!f) return "";
+      return row(esc(k.replace("|"," · ")),
+        (f.world_deadlock?('<span style="color:var(--blocked)">'+f.world_deadlock+' world deadlock</span>'):'')
+        + (f.world_deadlock&&f.unresolved?' + ':'')
+        + (f.unresolved?('<span style="color:var(--crit)">'+f.unresolved+' unresolved</span>'):'')
+        || '—');
+    }).join("");
+
+    if(!fmRows) fmRows = row("incomplete runs", "none — every run in this dataset finished");
+    $("swAgent").innerHTML =
+      box("Router · which lane got the event",
+          axRows + row("total routed decisions", decs),
+          "The axis is <b>the kind of the event</b>, not a novelty score — the conformal p-value axis was removed. "
+        + "<code>known_kind</code> runs on the free fitted surrogate; only <code>ood_kind</code> spends an LLM call.")
+    + box("Agent 2 · the firing condition",
+          row("<code>expressible = false</code>", expr.f+" → synthesis fires")
+        + row("<code>expressible = true</code>", expr.t+" → menu sufficed")
+        + row("<code>expressible = null</code>", expr.n+" → lane never ran (surrogate)")
+        + row("synthesis actually ran", synth),
+          "Tool synthesis fires on <b>one</b> condition: agent&nbsp;2 reporting that the action vocabulary "
+        + "cannot express a fix. <code>null</code> is not a firing.")
+    + box("Agent 3 · what was composed, and did it run",
+          row("runs that minted a tool", minted+" / 60 escalated")
+        + row("body ran without throwing", clean)
+        + row("retried once, failure fed back", retried)
+        + row("retry refused (world already edited)", refused)
+        + row("distinct tool names", toolNames.length)
+        + '<div class="atools">'+toolNames.slice(0,14).map(function(t){
+              return '<span class="atool">'+esc(t)+(tools[t]>1?"×"+tools[t]:"")+'</span>'; }).join("")
+        + (toolNames.length>14?('<span class="atool">+'+(toolNames.length-14)+' more</span>'):'')+'</div>',
+          "The names are the model’s own — nothing in the vocabulary is called <i>relocate</i> anything. "
+        + "A body that throws is caught and retried once with the failure fed back.")
+    + box("Why the remaining runs did not finish",
+          fmRows,
+          "<b>This is the honest denominator.</b> A run where the zone was cleared "
+        + "(<code>n_blocked=0</code>, project not blocked) but the build still froze is a <b>world deadlock</b>, "
+        + "not a failure of the lane that made the decision. Completion rate is therefore not a synthesis score.");
+  }
+
+  /* ---- 한 판 열기: SWEEP 칸 -> REPLAY -------------------------------------------------- */
+  function openRun(lane, cs, seed){
+    var r=swRun(lane, cs, seed);
+    if(!r){ toast("No run recorded for "+lane+" / "+cs+" / seed "+seed, "warn"); return; }
+    if(!r.stream){ toast("The stream for this run is missing on disk.", "warn"); return; }
+    swSel={lane:lane, cs:cs, seed:seed};
+    // 🔴 이 줄이 먼저 와야 한다. setView("replay") 는 첫 진입에서 applySelection() 을 부르는데,
+    //    그것이 케이스/정책 선택기로부터 streamUrl 을 다시 만들고 Factory View 를 갈아치워
+    //    **방금 고른 판을 덮어쓴다**. 여기서는 부팅을 이미 끝난 것으로 표시하고 넘어간다.
+    replayBooted=true;
+    CONFIG.LIVE=false;
+    if(genPoll){ clearInterval(genPoll); genPoll=null; }
+    closeZonePicker();
+    setView("replay");
+    curModel=(SWEEP && SWEEP.model) || "tractor.mpd"; curCase=cs; curEnacted=lane;
+    streamUrl=r.stream;
+    selectedDecisionIdx=null; selectedPolicy=null;
+    $("srcName").textContent=r.stream.replace(/^.*\//,"");
+    $("genHint").textContent="Sweep run · "+lane+" · "+cs+" · seed "+seed+" · "
+      + (r.complete?"completed":"did not complete ("+String(r.fail_mode).replace("_"," ")+")")
+      + (r.minted?(" · minted "+r.tool):"");
+    // 이 격자는 DEMO_ANIM=0 으로 돌렸다(병렬 실행을 위해 MeshCat 포트를 안 씀) -> 3D 애니가 없다.
+    // 없는 이유를 적는다. 화면이 "생성 안 됨" 으로만 말하면 실패로 읽힌다.
+    var mc=$("meshcat");
+    if(mc && mc.parentNode){
+      // src 를 지우는 것만으로는 **진행 중인 항해가 취소되지 않는다** -- 그 결과 페이지가
+      // 나중에 도착해 srcdoc 을 덮는다. 노드를 새로 끼워 그 항해를 통째로 버린다.
+      var fresh = mc.cloneNode(false);
+      fresh.removeAttribute("src");
+      fresh.srcdoc='<style>body{font:14px system-ui;color:#64748b;padding:24px;line-height:1.65}b{color:#334155}'
+        +'code{font:12px ui-monospace,monospace;color:#0e968b}</style>'
+        +'<b>No 3D animation for sweep runs — by design.</b>'
+        +'<p>The 360-run grid was driven with <code>DEMO_ANIM=0</code> so the runs could go in parallel '
+        +'(the MeshCat viewer binds a single port, 8700). The replay data is complete: every panel on '
+        +'this page is driven by the run’s own stream.</p>'
+        +'<p>Re-run this one case without that flag if you want the animation.</p>';
+      mc.parentNode.replaceChild(fresh, mc);
+    }
+    idx=0; setPlaying(false);
+    loadStream(true).then(function(){ render(); }).catch(function(){
+      clearPanels(); setBadge("err","no stream");
+    });
+    renderSweep();
+  }
+
+  /* ---- 뷰 전환 ---- */
+  // openRun() 에서도 세운다 -- 그쪽은 이미 스스로 스트림을 걸었으므로 replay 부팅이 필요 없다.
+  var replayBooted=false;
+  function setView(v){
+    document.body.setAttribute("data-view", v);
+    $("tabSweep").classList.toggle("on", v==="sweep");
+    $("tabReplay").classList.toggle("on", v==="replay");
+    if(v==="replay" && !replayBooted){ replayBooted=true; applySelection(); }
+  }
+  $("tabSweep").addEventListener("click", function(){ setView("sweep"); });
+  $("tabReplay").addEventListener("click", function(){ setView("replay"); });
+
+  // sweeps.json = [{label, file}, ...] -- 빌드 대상마다 격자 하나. 없으면 tractor 하나로 폴백해
+  // 이 기능 이전과 똑같이 동작한다(옛 배포본이 안 깨진다).
+  function loadSweepIndex(){
+    return fetch("sweeps.json", {cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(list){
+        SWEEPS = (list && list.length) ? list : [{label:"tractor", file:"sweep360.json"}];
+      })
+      .catch(function(){ SWEEPS = [{label:"tractor", file:"sweep360.json"}]; });
+  }
+  function loadSweep(i){
+    swIdx = (i == null) ? swIdx : i;
+    if(!SWEEPS.length) SWEEPS = [{label:"tractor", file:"sweep360.json"}];
+    var f = SWEEPS[swIdx] && SWEEPS[swIdx].file || "sweep360.json";
+    swSel = null;                                   // 모델이 바뀌면 고른 판도 뜻을 잃는다
+    return fetch(f, {cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d){ SWEEP=d; renderSweep(); })
+      .catch(function(){ SWEEP=null; renderSweep(); });
+  }
+
   /* ---- boot ---- */
-  refreshModels().then(function(){ populateSelectors(); applySelection(); });
+  // 이 화면이 답해야 할 첫 질문은 "격자에서 통제가 됐는가" 다 -> SWEEP 으로 연다.
+  // REPLAY 쪽 부팅(applySelection: 스트림/애니 조회)은 그 탭을 실제로 열 때까지 미룬다 --
+  // 안 그러면 보이지도 않는 패널 때문에 부팅 때마다 "no replay" 조회가 돈다.
+  document.body.setAttribute("data-view", "sweep");
+  refreshModels().then(function(){ populateSelectors();
+    loadSweepIndex().then(function(){ loadSweep(0); }); setView("sweep"); });
   // 라이브 폴러 — **영구 설치**하고 매 틱마다 CONFIG.LIVE 를 확인한다.
   //
   // 예전에는 이 인터벌을 부팅 시점의 CONFIG.LIVE 로 한 번만 검사해서 설치했다. 부팅 때는 언제나

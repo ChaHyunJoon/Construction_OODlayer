@@ -26,9 +26,9 @@
 import JSON3
 
 const DP_GRID_PATH = get(ENV, "DP_GRID",
-    joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "dp_oracle", "grid_spec.json"))
+    joinpath(@__DIR__, "..", "..", "data", "dp_oracle", "grid_spec.json"))
 const DP_VALUE_PATH = get(ENV, "DP_VALUE",
-    joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "dp_oracle", "value.json"))
+    joinpath(@__DIR__, "..", "..", "data", "dp_oracle", "value.json"))
 
 # 축 순서는 **고정**이다. derive_grid.AXES 와 같아야 하고, dp_solve._bucket() 이 첫 성분
 # (prog_b)을 잘라 backward induction 의 버킷으로 쓴다. 바꾸면 조용히 갈린다.
@@ -187,7 +187,7 @@ end
 const _DP_REG = Ref{Any}(nothing)
 function _dp_registry()
     _DP_REG[] === nothing || return _DP_REG[]
-    p = joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "core", "action_registry.json")
+    p = joinpath(@__DIR__, "..", "..", "src", "decision", "core", "action_registry.json")
     _DP_REG[] = JSON3.read(read(p, String))
     return _DP_REG[]
 end

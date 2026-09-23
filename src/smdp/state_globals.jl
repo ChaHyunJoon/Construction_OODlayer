@@ -27,7 +27,7 @@
 #
 # `extra_files` 로 세 파일을 명시적으로 얹는다. 반대로 **의도적으로 범위 밖에 남긴 것**:
 # `tools/` 의 나머지 파일(`server.jl` 등, `run_demo.jl` 이 include 하지 않는다) ·
-# `wm4spacecraft_manufacturing/*.jl`(run_demo.jl 이 `objective.jl`/`action_registry.jl` 을
+# `src/decision/core/{objective,action_registry}.jl`(run_demo.jl 이 `objective.jl`/`action_registry.jl` 을
 # include 하지만, 둘 다 실측 결과 순수 설정/캐시 전역뿐이고 그 디렉터리는 다른 에이전트가
 # 리뷰 중이다) · `test/*.jl`(테스트 스캐폴딩용 상수, 예: `test/greedy_cost_dispatch_equivalence.jl`).
 # 이 경계 밖에서 새 진짜 상태가 나오면 이 파일이 그 사실을 놓친다 — 그 한계를 여기 명시한다.
@@ -127,6 +127,7 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :RECOVERY_SPARES        => :state,   # Fleet.role_r
     :CHECKED_OUT_SPARES     => :state,
     :DECOMMISSIONED_BODIES  => :state,
+    :INPLACE_BREAKDOWN_MARKS => :render,   # 시각화 전용 — 동역학·정책에 안 닿는다
     :HOT_SWAP_ASSETS        => :state,
     :WEDGE_EDGES            => :state,   # G: ReformTeam 이 남기는 **영구 편집** (spec §5.4-b)
     :DISSOLVED_GATES        => :state,   # G: 같은 이유
@@ -347,6 +348,8 @@ const STATE_GLOBALS = Dict{Symbol,Symbol}(
     :_DRAWN_ZONE_MARKERS    => :log,
     :_DRAWN_DEPOT_MARKERS   => :log,
     :_DRAWN_DECOMMISSIONED  => :log,
+    :_DRAWN_INPLACE_MARKS   => :log,
+    :STALL_PROBE_HOOK       => :log,     # 관측 전용 콜백(2026-09-21 정지 탐침) — 동역학에 안 닿는다
     :ZONE_SNAP_STATS        => :log,
     :LAST_AUTO_EFFICIENCY_W => :log,     # 진단용 — 결정에 안 쓰인다
     :MONITOR_IO             => :log,
@@ -621,6 +624,11 @@ function scan_globals(root::AbstractString; extra_files::AbstractVector{<:Abstra
     out = Symbol[]
     for (dir, _, fs) in walkdir(root), f in fs
         endswith(f, ".jl") || continue
+        # These independent modules are loaded by harnesses, not simulator state.
+        # Their move under src/decision must not change the snapshot inventory.
+        relpath(joinpath(dir, f), root) in (
+            joinpath("decision", "core", "objective.jl"),
+            joinpath("decision", "core", "action_registry.jl")) && continue
         _scan_file!(out, joinpath(dir, f))
     end
     for path in extra_files
@@ -777,6 +785,11 @@ function rhs_heads(root::AbstractString; extra_files::AbstractVector{<:AbstractS
     out = Set{String}()
     for (dir, _, fs) in walkdir(root), f in fs
         endswith(f, ".jl") || continue
+        # These independent modules are loaded by harnesses, not simulator state.
+        # Their move under src/decision must not change the snapshot inventory.
+        relpath(joinpath(dir, f), root) in (
+            joinpath("decision", "core", "objective.jl"),
+            joinpath("decision", "core", "action_registry.jl")) && continue
         _rhs_head!(out, joinpath(dir, f))
     end
     for path in extra_files

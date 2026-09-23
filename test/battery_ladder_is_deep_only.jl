@@ -34,9 +34,9 @@ const CB = ConstructionBots
 const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :BatteryFleet) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 isdefined(@__MODULE__, :ActionRegistry) ||
-    include(joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+    include(joinpath(REPO, "src", "decision", "core", "action_registry.jl"))
 
-const GEN = joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "gen_oracle_dataset.jl")
+const GEN = joinpath(REPO, "tools", "oracle", "gen_oracle_dataset.jl")
 # navigator.jl 은 위에서 이미 로드를 보장했다(:35) — 심볼이 없으면 이제 UndefVarError 로
 # 죽는다(2026-08-31 폴백 제거).
 const THR = Float64(CB.REPLACE_SOC_THRESHOLD[])

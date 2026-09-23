@@ -148,7 +148,7 @@ else
 end
 # 세대 딱지. 이 렌더가 어느 목적함수로 만들어졌는지 로그에 남긴다(spec §7) — 산출물이
 # 스트림/애니 뿐이라 행에 박을 자리가 없으므로 로그가 유일한 provenance 다.
-let _objjl = joinpath(HERE, "..", "..", "wm4spacecraft_manufacturing", "core", "objective.jl")
+let _objjl = joinpath(HERE, "..", "..", "src", "decision", "core", "objective.jl")
     try
         Base.include(Main, _objjl)
         println(">>> objective_hash: $(Main.Objective.objective_hash())  energy_objective=$(ENERGY_ON ? 1 : 0)")
@@ -169,6 +169,14 @@ out_root    = isempty(DEMO_OUT_DIR) ? HERE : abspath(DEMO_OUT_DIR)
 stream_dir  = joinpath(out_root, "streams"); mkpath(stream_dir)
 anim_dir    = joinpath(out_root, "anim");    mkpath(anim_dir)
 stream_path = joinpath(stream_dir, "$(model_base)__$(CASE_TAG)$(NSUF).jsonl")
+# 정지 탐침(관측 전용). 꺼져 있으면 파일을 읽지도 않는다 — 훅이 `nothing` 으로 남는다.
+if get(ENV, "STALL_PROBE", "0") == "1"
+    include(joinpath(@__DIR__, "stall_probe.jl"))
+    STALL_PROBE_OUT[] = get(ENV, "STALL_PROBE_OUT", replace(stream_path, r"\.jsonl$" => ".stall.jsonl"))
+    isfile(STALL_PROBE_OUT[]) && rm(STALL_PROBE_OUT[])
+    CB.STALL_PROBE_HOOK[] = stall_snapshot
+    println("[stall-probe] ON → ", STALL_PROBE_OUT[])
+end
 
 _rl(rid) = try "R" * string(getfield(rid, :id)) catch; replace(string(rid), r"\s+" => " ") end
 
@@ -1158,8 +1166,22 @@ pre = function (env)
             batt_win  = (max(batt_win[1], 60), batt_win[2])
         end
         rng = Random.MersenneTwister(DEMO_SEED)
+        # ---- 종류 추첨은 **비복원**이다 (2026-09-06) ------------------------------------------
+        # 예전에는 사건마다 `robot_kinds` 전체에서 복원추출했다. 그래서 `fault_battery` 같은 혼합
+        # 케이스에서 같은 종류가 두 번 뽑혔고(실측: X-wing all3 30판 중 7판), 이미 `DEPLETED` 인
+        # 로봇을 또 방전시키는 **무해한 재타격**이 생겼다 — 그 판의 all3 는 교란이 사실상 둘이다.
+        # 아래 옛 고정 슬롯 분기(:1134)는 `((j-1) % length)+1` 로 종류를 번갈아 써서 "한 종류씩"이
+        # 보장돼 있었는데, 확률 분기로 오면서 그 성질만 사라졌다. 그것을 되돌린다.
+        #
+        # 🔴 **RNG 소비를 바꾸지 않는다.** 종류가 하나뿐인 케이스(battery 단독 / fault 단독)에서는
+        #    pool 이 늘 1 원소라 호출이 `rand(rng, 1:1)` 로 예전과 같고, 따라서 그 두 열의 녹화는
+        #    **바이트 동일**하다(음성 대조가 이 성질을 잰다). zone 은 robot_kinds 가 비어 이 분기를
+        #    아예 안 탄다. 바뀌는 것은 혼합 케이스뿐이다.
+        kind_pool = copy(robot_kinds)
         for j in 1:n_robot
-            kind = robot_kinds[rand(rng, 1:length(robot_kinds))]     # 종류도 추첨(mixed 케이스는 순서까지 달라짐)
+            isempty(kind_pool) && (kind_pool = copy(robot_kinds))   # 사건 수 > 종류 수면 다시 채운다
+            ki   = rand(rng, 1:length(kind_pool))
+            kind = kind_pool[ki]; deleteat!(kind_pool, ki)
             win  = kind === :fault ? fault_win : batt_win
             at   = rand(rng, win[1]:win[2])
             inner = kind === :fault ?

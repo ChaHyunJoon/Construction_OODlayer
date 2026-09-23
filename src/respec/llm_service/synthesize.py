@@ -164,9 +164,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # HERE = <repo>/src/respec/llm_service -> three levels up is the repo root. Same rule as
 # `dspy_service.py:47-51`; it exists independently here because this module can be imported
 # **before** that file (pytest collection order · a direct import from another file).
-WM = os.environ.get("WM_DIR") or os.path.join(
+WM = os.environ.get("DECISION_DIR") or os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
-    "wm4spacecraft_manufacturing")
+    "src", "decision")
 for _d in (os.path.join(WM, "core"),):
     if _d not in sys.path:
         sys.path.append(_d)

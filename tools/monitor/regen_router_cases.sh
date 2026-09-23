@@ -90,7 +90,7 @@ DSPY_URL="${DSPY_URL:-http://127.0.0.1:8090}"
 # 🔴 2026-08-29 (§B-1): NOVELTY_CALIB 은 **이 렌더에 아무 영향이 없다.** 줄리아 생산 코드에서
 # 이 변수를 읽는 곳이 0곳이다(novelty 축 삭제 — 남은 독자는 손으로 돌리는 라이브러리 게이트
 # tools/test_router.jl 뿐). 기본값과 export 는 옛 호출 습관과의 호환으로만 남긴다.
-NOVELTY_CALIB="${NOVELTY_CALIB:-$REPO_ROOT/wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json}"
+NOVELTY_CALIB="${NOVELTY_CALIB:-$REPO_ROOT/src/decision/novelty/novelty_calibration_no_zoneblk.json}"
 export DSPY_URL NOVELTY_CALIB
 export DEMO_ROUTER=auto
 export DEMO_POLICY=router

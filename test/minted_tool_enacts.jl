@@ -1243,7 +1243,7 @@ const SYNDIR = joinpath(REPO, "src", "respec", "llm_service")
 # 🔴 `synthesize.py` 는 형제 모듈(`features_agnostic`)의 자리를 `__file__` 에서 유도한다 —
 #    사본을 /tmp 에 두면 그 유도가 틀려 import 에서 죽는다(실측). 그 파일이 그러라고 둔
 #    탈출구가 `WM_DIR` 이다. 두 판 모두 같은 값을 주므로 양성·음성의 차이는 사본 하나뿐이다.
-const WMDIR  = joinpath(REPO, "wm4spacecraft_manufacturing")
+const WMDIR  = joinpath(REPO, "src", "decision")
 
 # 🔴 `sys.path` 를 **여러 개** 받는다(`:` 구분). 음성 대조는 `synthesize.py` 한 장만 사본으로
 #    두고 형제 모듈(`features_agnostic` 등)은 진짜 디렉터리에서 찾게 해야 한다 — 첫 판은

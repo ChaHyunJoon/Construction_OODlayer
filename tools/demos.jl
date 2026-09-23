@@ -85,7 +85,7 @@ CB.include(joinpath(pkgdir(CB), "src", "navigator", "navigator.jl"))
 CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 
 # ---- shared helpers (defined ONCE) ------------------------------------------
-# 행동 어휘의 단일 진실원은 `wm4spacecraft_manufacturing/core/action_registry.json` 이다(CLAUDE.md).
+# 행동 어휘의 단일 진실원은 `src/decision/core/action_registry.json` 이다(CLAUDE.md).
 # 여기 있던 `MACROS = [0,1,2,3,4]` 리터럴이 실제로 사고를 냈다: 2026-08-06 에 매크로 7(RelocateBuild)·
 # 8(SwapBattery) 가 registry 에 들어왔는데 이 파일만 5개짜리로 남아, 두 surrogate 데모가 **잘린
 # 행동집합** 위에서 결정하면서도 아무 에러를 내지 않았다. `audit_action_vocab.py` 는 이 파일을
@@ -97,7 +97,7 @@ CB.include(joinpath(pkgdir(CB), "src", "smdp", "mdp.jl"))
 # 이제 정경 모듈(`oracle/action_registry.jl`)을 그대로 include 해서 경로·도장·은퇴 판정을
 # **한 곳에서만** 받는다. include 를 미루던 이유(대형 world-age 민감 파일)는 실측으로 기각:
 # 이 모듈은 177줄짜리 순수 로더이고, `src/smdp/mdp.jl` 과 같은 **모듈 로드 시점** 한 번뿐이다.
-include(joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+include(joinpath(pkgdir(CB), "src", "decision", "core", "action_registry.jl"))
 const _ACTION_REGISTRY = ActionRegistry.PATH
 
 # load_action_vocab : registry 를 읽어 (매크로 id 오름차순 벡터, id=>이름 Dict) 를 돌려준다.
@@ -389,7 +389,7 @@ SAVE_ANIM  = get(ENV, "SAVE_ANIM", "1") == "1"
 SEED       = parse(Int, get(ENV, "SEED", "1"))
 SEVERITY   = parse(Float64, get(ENV, "SEVERITY", "1.0"))   # zone: overlap frac; fault: 1.0  # 사건 심각도(구역=겹침비율)
 SURRO_PATH = get(ENV, "SURROGATE",                          # 학습된 surrogate JSON 파일 경로
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+    joinpath(pkgdir(CB), "src", "decision", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 # 행동 어휘는 registry 에서 읽는다(리터럴 복붙 금지 — load_action_vocab 주석 참조).
 #   ★ SURRO_PATH 의 export 와 어휘가 맞아야 한다: features() 가 만드는 one-hot 이 `macro_<id>` 라서,
 #     registry 가 7·8 을 포함하면 export 도 그 어휘로 학습된 것이어야 점수가 의미를 갖는다.
@@ -412,7 +412,7 @@ require_surrogate_vocab(SURRO, SURRO_PATH)              # 은퇴한 macro 가 �
 if get(SURRO, "kind", "linear") == "forest" || any(occursin("__x__", String(f)) for f in SURRO["feature_names"])
     error("""demo_surrogate is SUPERSEDED and cannot read this surrogate ($(SURRO["meta"]["model"])).
              Use the surrogate_stream demo, or export a linear one:
-               python wm4spacecraft_manufacturing/surrogate/export_surrogate.py <dataset>.jsonl --cost-aware --linear""")
+               python src/decision/surrogate/export_surrogate.py <dataset>.jsonl --cost-aware --linear""")
 end
 FEATNAMES = String.(SURRO["feature_names"])            # 특징(feature) 이름들 — 학습 때의 열 순서와 정확히 맞춰야 함
 println(">>> surrogate loaded: $(length(FEATNAMES)) features, trained on $(SURRO["meta"]["n_instances"]) " *
@@ -1386,7 +1386,7 @@ GRID_SCALE = parse(Float64, get(ENV, "GRID_SCALE", "4.0"))
 # 이 주석을 "일치시켜야 한다" 로 되돌리지 말 것 — 그 말을 따르면 라벨러를 200 으로 되돌리게 된다.
 # (같은 상태의 자매 자리 — 전부 그대로 둔 것이다:
 #  `grep -n 'ENV, "SHRINK"' tools/demos.jl` 의 나머지 두 곳, 그리고
-#  `wm4spacecraft_manufacturing/oracle/probe_fire_points.jl` 의 `DS_SHRINK` 기본값 200.0.)
+#  `tools/oracle/probe_fire_points.jl` 의 `DS_SHRINK` 기본값 200.0.)
 # 🔴 2026-08-31 (S1/T3 fix round 1): STALL_SOC 기본값 0.15 -> 0.05. deep 경계가 0.2 -> 0.1 로
 # 내려가면서 stall(0.15) > deep(0.1) 로 역전돼 있었다 — `test/soc_ladder_is_coherent.jl` (2)
 # 가 막는 바로 그 역전이다. 이제 라벨러의 `DS_STALL` 기본값(0.05)과 다시 같다.
@@ -1404,7 +1404,7 @@ RESCUE     = get(ENV, "CARRIER_RESCUE", "0") == "1"   # see force_advance_stuck_
 PROJECT    = "tractor"
 HTMLPATH   = joinpath("results", PROJECT, "greedy_RVO_Dispersion_TangentBug", "visualization.html")
 SURRO_PATH = get(ENV, "SURROGATE",
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
+    joinpath(pkgdir(CB), "src", "decision", "surrogate", "surrogate_linear.json"))   # wm4 는 2026-07-31 부터 repo 내부
 MACROS, MACRO_NAME = load_action_vocab()   # 행동 어휘 = action_registry.json (위 demo_surrogate 주석 참조)
 
 # NOTE: surrogate demos use a DIFFERENT MILP config than _setup_milp! (kept verbatim).

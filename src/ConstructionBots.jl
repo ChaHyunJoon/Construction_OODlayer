@@ -149,7 +149,7 @@ export add_restriction_zone!, random_restriction_zone!, restriction_zones,      
        fault_robot!, faulted_robots, clear_faulted_robots!,              # OOD 1-1: 로봇 고장 주입/조회/초기화
        set_hot_swap!, hot_swap_enabled, set_spare_pool_margin!, set_unwedge_interval!,  # OOD 1-1: hot-swap 토글 + 창고 거리 + 명목 unwedge 주기
        depot_available, depot_info,                                      # 창고(repository) 재고/메타
-       decommissioned_bodies, checked_out_spares,                        # 은퇴(고장) 본체·반출 예비 조회
+       decommissioned_bodies, inplace_breakdown_marks, checked_out_spares,                        # 은퇴(고장) 본체·반출 예비 조회
        draw_spare_depots!, draw_decommissioned_robots!,                  # 창고 스테이션·은퇴 로봇 시각화
        clear_depot_markers!, clear_decommissioned_markers!              # 시각화 마커 초기화
 

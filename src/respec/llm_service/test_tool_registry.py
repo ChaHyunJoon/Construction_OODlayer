@@ -11,11 +11,11 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 # fix round 1 (H7): MACRO_TO_TOOL 이 레지스트리의 활성 어휘와 대조되는지 재려면
-# wm4spacecraft_manufacturing/core 의 action_registry 가 필요하다. dspy_service.py:65-66 과
+# src/decision/core 의 action_registry 가 필요하다. dspy_service.py:65-66 과
 # 같은 이유로 insert(0,...) 이 아니라 append 다 -- 이 프로세스에도 결국 dspy 가 올라오므로
 # wm4 경로를 최우선에 두면 동명 모듈을 가릴 위험이 있다.
 _WM_CORE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
-                         "wm4spacecraft_manufacturing", "core")
+                         "src", "decision", "core")
 if _WM_CORE not in sys.path:
     sys.path.append(_WM_CORE)
 
@@ -105,7 +105,7 @@ def test_no_intervention_description_carries_its_own_mechanism():
 
 def _leak_windows(text, window=20):
     """`text` 에서 길이 `window` 인 모든 연속 부분문자열. `text` 가 window 보다 짧으면
-    `text` 전체 하나만. wm4spacecraft_manufacturing/core/test_registry_doc_split.py 의
+    `text` 전체 하나만. src/decision/core/test_registry_doc_split.py 의
     `_leak_windows` 와 같은 모양(fix round 2, K2) -- 그 파일이 이번 주 자기 round 3(S1)에서
     같은 버그를 겪고 이 방식으로 고쳤다."""
     text = text.strip()
@@ -140,7 +140,7 @@ def test_no_applicability_verdict_leaks_via_a_sliding_window_over_the_live_regis
     테스트가 전부 green 이었다. SwapBattery 는 이 tool lane 전체가 존재하는 이유인
     바로 그 팔이다(canonical 이 1533 번 중 0 번 고른다).
 
-    wm4spacecraft_manufacturing/core/test_registry_doc_split.py 가 이 레포에서 이미 같은
+    src/decision/core/test_registry_doc_split.py 가 이 레포에서 이미 같은
     모양의 버그를 이번 주 자기 round 3(S1)/round 5(V1)에서 겪었다 -- 블록리스트와 접두
     검사 둘 다 부분적으로만 잡았고, 최종 해법은 `when_to_use` 전체를 20자 슬라이딩
     윈도우로 쪼개 그 어떤 연속 20자 구간도 모델이 읽는 텍스트에 있으면 안 된다는 것이었다.

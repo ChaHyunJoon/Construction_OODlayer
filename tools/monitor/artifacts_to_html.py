@@ -16,9 +16,9 @@ MeshCat 3D 애니는 여기서 만들 수 없다 - 프레임에는 지오메트�
 사용법
 ------
     python tools/monitor/artifacts_to_html.py \
-        --results wm4spacecraft_manufacturing/artifacts_llm7h/final.json \
-        --stream  wm4spacecraft_manufacturing/artifacts_llm7h/p0_baseline_stream.jsonl \
-        --out     wm4spacecraft_manufacturing/artifacts_llh7h/report.html
+        --results results/artifacts_llm7h/final.json \
+        --stream  results/artifacts_llm7h/p0_baseline_stream.jsonl \
+        --out     results/artifacts_llm7h/report.html
 
 둘 다 선택이다(--results 만 주면 표+결정로그, --stream 만 주면 재생기만).
 """

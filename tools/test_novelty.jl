@@ -34,14 +34,14 @@ end
 banner(t) = println("\n" * "="^74 * "\n" * t * "\n" * "="^74)
 
 const CAL_PATH = isempty(ARGS) ?
-    joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "novelty", "novelty_calibration.json") :   # wm4 = repo 내부
+    joinpath(pkgdir(CB), "src", "decision", "novelty", "novelty_calibration.json") :   # wm4 = repo 내부
     ARGS[1]
 
 banner("SETUP")
 if !isfile(CAL_PATH)
     println("  calibration not found: $CAL_PATH")
-    println("  produce it with:  python wm4spacecraft_manufacturing/novelty/export_novelty_calibration.py")
-    println("  (the dataset it uses is defined in wm4spacecraft_manufacturing/core/wm_datasets.py)")
+    println("  produce it with:  python src/decision/novelty/export_novelty_calibration.py")
+    println("  (the dataset it uses is defined in src/decision/core/oracle_datasets.py)")
     exit(1)
 end
 

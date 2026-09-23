@@ -2,7 +2,7 @@
 # tools/monitor/check_grammar_roundtrip.jl — 게이트 N-G8 의 측정 스크립트 (Task C6)
 #
 #   julia +lts --project=. tools/monitor/check_grammar_roundtrip.jl
-#   python3 wm4spacecraft_manufacturing/smdp/gate_ng8.py results/smdp/ng8_roundtrip.json
+#   python3 tools/smdp/gate_ng8.py results/smdp/ng8_roundtrip.json
 #
 # -----------------------------------------------------------------------------
 # 무엇을 재는가

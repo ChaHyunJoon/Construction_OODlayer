@@ -982,7 +982,7 @@ end
 
 # 코드 지문이 보는 경로(저장소 뿌리 기준). 뿌리의 `Project.toml`·`Manifest.toml`(2026-09-22,
 # R12)도 본다 — 의존성 판 고정이 바뀌면 같은 소스도 다른 엔진이다(추적 파일이라 diff 로 잡힌다).
-# ⚠️ `wm4spacecraft_manufacturing/`(run_demo.jl 이 `objective.jl` 등을 include)는 아직 안 본다(보류).
+# Shared decision code is under src/decision/ and is included in this inventory.
 const _CODE_FINGERPRINT_PATHS = ("src", "tools", "test", "Project.toml", "Manifest.toml")
 
 # 코드 지문이 보는 **untracked** 파일의 확장자 (2026-09-22, controller R5b). 추적 파일의 diff 는
@@ -1246,7 +1246,7 @@ function canonical_macro(env, truth)
 end
 
 # ---- oracle lane: 기준 행동 a* 의 실행판 (2026-08-12) -----------------------------------
-# `wm4spacecraft_manufacturing/core/reference_policy.py` 의 a* 규칙을 **결정 시점에** 계산한 것.
+# `src/decision/core/reference_policy.py` 의 a* 규칙을 **결정 시점에** 계산한 것.
 # 저쪽은 판이 끝난 뒤 decisions[] 를 읽는 사후 채점기라 실행 lane 이 될 수 없다.
 #
 # 왜 신설했는가(2026-08-12 진단): 이 함수가 없던 동안 `DEMO_POLICY=oracle` 은 아래 decide_all 의
@@ -1489,7 +1489,7 @@ const FORCE_MACRO = strip(get(ENV, "DEMO_FORCE_MACRO", ""))
 # 가 false 로 남는데, 그 판의 결정 기록에는 `forced_macro=<그 이름>` 과 `chosen=<그 이름>` 이
 # 그대로 찍힌다 — 즉 **고르지 않은(집행되지 않은) 팔을 골랐다고 적힌 판**이 만들어진다.
 # 축 C 로 어휘가 3팔이 되면서 `Deprioritize`(Task 5) · `ForbidZone`·`RelocateBuild`(Task 4)
-# 세 이름이 전부 이 상태가 됐고, `wm4spacecraft_manufacturing/smdp/gate_g6.py` 의 머리말이
+# 세 이름이 전부 이 상태가 됐고, `tools/smdp/gate_g6.py` 의 머리말이
 # `DEMO_FORCE_MACRO=Deprioritize DEMO_OOD=battery` 를 재현 레시피로 적어 두고 있다 — 가상의
 # 조합이 아니라 도달 가능한 설정이다. 그래서 **읽는 자리에서 바로, 시끄럽게** 죽인다.
 #
@@ -1514,8 +1514,7 @@ const FORCE_MACRO = strip(get(ENV, "DEMO_FORCE_MACRO", ""))
 #        최상위 바인딩을 새로 만들지 않으므로 그 census 의 대상이 아니다(실측: 아래 두
 #        게이트 모두 초록).
 isdefined(@__MODULE__, :ActionRegistry) ||
-    include(joinpath(@__DIR__, "..", "..", "wm4spacecraft_manufacturing", "oracle",
-                     "action_registry.jl"))
+    include(joinpath(@__DIR__, "..", "..", "src", "decision", "core", "action_registry.jl"))
 enactable_macros() = Tuple(ActionRegistry.NAME[i] for i in ActionRegistry.active_ids())
 if !isempty(FORCE_MACRO) && !(FORCE_MACRO in enactable_macros())
     error("DEMO_FORCE_MACRO=\"$(FORCE_MACRO)\" 는 집행 가능한 매크로가 아니다 — 현행 메뉴는 " *

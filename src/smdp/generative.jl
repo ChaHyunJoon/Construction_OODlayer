@@ -30,15 +30,14 @@
 #    `oracle/ood_mdp_shim.jl` 에 있고, 그 파일이 자기 형제인 `action_registry.jl` 을 이미
 #    include 한다). shim 을 include 하면 **한 번의 include 로 둘 다** 들어오고,
 #    `ActionRegistry` 가 두 벌 생기는 일도 없다. 경로는
-#    `wm4spacecraft_manufacturing/oracle/action_registry.jl` — `core/` 가 아니라 `oracle/`
+#    `src/decision/core/action_registry.jl` — `core/` 가 아니라 `oracle/`
 #    이다(JSON 만 `core/` 에 있다).
 #
 # shim 은 본문 전체에서 `CB.` 접두사로 심볼을 부른다(원래 Main 스코프에 로드되던 파일이다).
 # 이 모듈 안에서 그 이름을 자기 자신에 묶어 주면 파일을 한 글자도 안 고치고 그대로 쓸 수 있다.
 isdefined(@__MODULE__, :CB) || Core.eval(@__MODULE__, :(const CB = $(@__MODULE__)))
 isdefined(@__MODULE__, :action_to_proposal) ||
-    include(joinpath(pkgdir(@__MODULE__), "wm4spacecraft_manufacturing",
-                     "oracle", "ood_mdp_shim.jl"))
+    include(joinpath(pkgdir(@__MODULE__), "tools", "oracle", "ood_mdp_shim.jl"))
 
 # --- 목적함수 가중치의 단일 진실원 --------------------------------------------------------
 #
@@ -50,8 +49,7 @@ isdefined(@__MODULE__, :action_to_proposal) ||
 #    파일 자체**를 읽는다(모듈이 아니라 파일이 진실원이라는 것이 그 Global Constraint 의
 #    문장 그대로다). `Objective.load()` 의 ENV 덮어쓰기는 `C_fail`/`C_unclosed` 둘뿐이라
 #    `w_E = κ·M_ref/E_ref` 에 닿지 않는다 — 두 경로가 같은 값을 낸다.
-const OBJECTIVE_JSON = normpath(joinpath(pkgdir(@__MODULE__), "wm4spacecraft_manufacturing",
-                                         "core", "objective.json"))
+const OBJECTIVE_JSON = normpath(joinpath(pkgdir(@__MODULE__), "src", "decision", "core", "objective.json"))
 
 """
     objective_w_E() -> Float64

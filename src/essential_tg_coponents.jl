@@ -1342,7 +1342,7 @@ end
 # => the objective is byte-for-byte what it was.
 #
 # WHO SETS IT (2026-08-13). `init_objective_weights!` (this file, below) reads κ from
-# `wm4spacecraft_manufacturing/core/objective.json` and sets this Ref **globally, for the whole
+# `src/decision/core/objective.json` and sets this Ref **globally, for the whole
 # process**. It is an explicit opt-in: nothing calls it automatically, so a lane that never
 # calls it runs with κ = `nothing` and the AUTO path never fires — that is the failure mode to
 # check FIRST when the energy term looks dead in a lane. Call sites: `tools/monitor/run_demo.jl`,
@@ -1580,7 +1580,7 @@ w_g = κ · T_scale / Eg_scale 이며, objective.json 이 출처다(단일 진�
      `AGENT_COST_BIAS[]` 는 비어 있다 — 편향은 `deprioritize_agent!` 가 OOD 처리 **도중에**
      등록하는데, greedy 는 그보다 한참 전에 이미 끝나 있다.
      `EDGE_COST_MULTIPLIER[]` 는 `nothing` 이다 — `enable_battery!` 는 두 레인
-     (`tools/monitor/run_demo.jl`, `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl`)에서
+     (`tools/monitor/run_demo.jl`, `tools/oracle/gen_oracle_mc.jl`)에서
      모두 `run_lego_demo` **뒤에** 실행된다.
   2. `edge_energy(dt)` == **`dt`**. `ENERGY_MODEL` 이 두 레인 모두 기본값
      `(pickup_overhead=0, idle_power=1, load_power=0)` 이라 에너지 = 이동시간 그대로다.
@@ -1642,7 +1642,7 @@ function greedy_edge_cost(::GreedyEnergyAwareCost, sched, v, v2, dt::Float64)
 end
 
 """
-    init_objective_weights!(; path = <repo>/wm4spacecraft_manufacturing/core/objective.json)
+    init_objective_weights!(; path = <repo>/src/decision/core/objective.json)
 
 목적함수 상수를 **한 파일에서** 읽어 두 자리에 심는다 (spec §4, §5):
 
@@ -1655,10 +1655,10 @@ end
 스케일이 null 이면 던진다. 조용히 0/1 로 폴백하면 "energy 도 최소화한다"가 명목상 주장이 된다.
 
 **모듈 `__init__` 에서 자동 호출하지 않는다**(계획자 ruling). 명시적 opt-in 이며, 호출 지점은
-`tools/monitor/run_demo.jl` 과 `wm4spacecraft_manufacturing/oracle/gen_oracle_mc.jl` 두 레인이다.
+`tools/monitor/run_demo.jl` 과 `tools/oracle/gen_oracle_mc.jl` 두 레인이다.
 """
 function init_objective_weights!(; path::AbstractString = joinpath(@__DIR__, "..",
-        "wm4spacecraft_manufacturing", "core", "objective.json"))
+        "src", "decision", "core", "objective.json"))
     isfile(path) || error("objective.json 이 없다: $path")
     cfg = JSON3.read(read(path, String), Dict{String,Any})
     kappa = get(cfg, "kappa", nothing)

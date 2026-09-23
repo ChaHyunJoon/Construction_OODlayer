@@ -29,7 +29,7 @@ import synthesize as SY  # noqa: E402
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
 _SCHED_JL = os.path.join(_ROOT, "src", "construction_schedule.jl")
-_ARTIFACT = os.path.join(_ROOT, "wm4spacecraft_manufacturing", "core",
+_ARTIFACT = os.path.join(_ROOT, "src", "decision", "core",
                          "world_interface.json")
 
 

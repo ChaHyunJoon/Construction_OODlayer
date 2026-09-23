@@ -39,13 +39,13 @@ dspy 는 함수 안에서 늦게 import 한다(환경에 따라 없을 수 있�
 import os as _os                                                            # noqa: E402
 import sys as _sys                                                          # noqa: E402
 
-_WM = _os.environ.get("WM_DIR") or _os.path.join(
+_WM = _os.environ.get("DECISION_DIR") or _os.environ.get("WM_DIR") or _os.path.join(
     _os.path.dirname(_os.path.dirname(_os.path.dirname(
         _os.path.dirname(_os.path.abspath(__file__))))),
-    "wm4spacecraft_manufacturing")
+    "src", "decision")
 # 2026-08-18 wm4 폴더 재편 이후: action_registry.py 는 wm4 루트가 아니라 core/ 에 산다
 # (재리뷰 라운드 2 [Important] — 이전엔 _WM 을 그대로 sys.path 에 올려서 ModuleNotFoundError
-# 였다. core/wmpath.py 의 관례와 같은 방식으로 core/ 하위 폴더를 올린다).
+# 였다. core/simulator_paths.py 의 관례와 같은 방식으로 core/ 하위 폴더를 올린다).
 _WM_CORE = _os.path.join(_WM, "core")
 if _WM_CORE not in _sys.path:
     _sys.path.append(_WM_CORE)

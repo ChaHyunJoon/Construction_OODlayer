@@ -2321,7 +2321,9 @@ function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
     # 🔴 `_pre` 는 **안 다시 찍는다.** `world_delta` 는 이 판에서도 "집행 봉투 전체" 의 뜻을
     #    유지해야 한다 — 두 시도를 합친 누적 차분이다. (두 게이트 다 첫 시도의 body 차분이
     #    잰 0 인 판에서만 열리므로, 이 누적값은 실질적으로 두 번째 body 의 것이다.)
-    local r2 = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
+    local r2 = CB.enact_minted!(env, truth, sl;
+                                probe = () -> (CB._stall_probe(env, :post_body_retry); _world_digest(env)))
+    CB._stall_probe(env, :post_enact_retry; resume = r2.resume, resolve = r2.resolve)
     att["steps"] = [_step_render(st) for st in r2.steps]
     return (retry = syms.retried, reenacted = true, r = r2,
             world_delta = _world_delta(_pre, _world_digest(env)),
@@ -2851,13 +2853,16 @@ function enact_minted_decision!(env, truth, decision)
         #    `assignment_binding`** 에서 나오는 두 수다. 그 둘을 가르는 값은 이미 같은 튜플
         #    안에 있다 — `r.resolve` — 그래서 아래 로그가 `_delta_scope` 로 그 판독을 명시한다.
         #    집행은 **안 바꾼다**(재구조화는 이 판독을 얻는 데 필요하지 않다).
+        CB._stall_probe(env, :pre_enact)          # 관측 전용(STALL_PROBE_HOOK 이 비면 무동작)
         local _pre = _world_digest(env)
         # 🔴 Task 2 (2026-09-04). `probe` 는 **계측 하나**다 — 집행 경로는 안 바뀐다.
         #    `CB.enact_minted!` 가 body 루프 직후(캐시 재개 **앞**)와 던진 경로(재개·재풀이
         #    **앞**)에서 이것을 한 번 부르고, 그 값이 `r.body_probe` 로 돌아온다. 그래서
         #    아래 두 차분이 **다른 것**을 잰다: `world_delta` 는 집행 봉투 전체(F4 가 적은
         #    그대로), `world_delta_body` 는 하네스가 손대기 전의 body 단독이다.
-        local r = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
+        local r = CB.enact_minted!(env, truth, sl;
+                                   probe = () -> (CB._stall_probe(env, :post_body); _world_digest(env)))
+        CB._stall_probe(env, :post_enact; resume = r.resume, resolve = r.resolve)
         world_delta = _world_delta(_pre, _world_digest(env))
         # 🔴 **기존 `world_delta` 는 그대로 둔다 — 지우지 않는다.** 두 값은 서로의 대조군이다:
         #    봉투가 0 이 아닌데 body 가 0 이면 그 편집은 하네스의 재풀이가 한 것이다.

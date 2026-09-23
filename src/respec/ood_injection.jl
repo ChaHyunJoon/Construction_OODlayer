@@ -346,6 +346,7 @@ spare_pool_centers() = SPARE_POOL_CENTERS[]
 # (여기에 추가하지 말 것 — 추가하는 순간 캠페인의 시간축이 매 판 리셋된다.)
 clear_spare_pools!() = (empty!(SPARE_POOLS[]); empty!(SPARE_POOL_CENTERS[]); empty!(SPARE_SLOTS[]);
                         empty!(DEPOT_INFO[]); empty!(DECOMMISSIONED_BODIES[]);
+                        empty!(INPLACE_BREAKDOWN_MARKS[]);
                         empty!(CHECKED_OUT_SPARES[]); empty!(HOT_SWAP_ASSETS[]);
                         clear_battery_deliveries!(); nothing)
 
@@ -525,12 +526,19 @@ const DEPOT_INFO = Ref(Dict{Symbol,NamedTuple}())
 # 교체로 은퇴(고장)한 로봇 id -> 그 회색 마커를 둘 2D 위치.
 const DECOMMISSIONED_BODIES = Ref(Dict{AbstractID,Vector{Float64}}())
 # 창고에서 반출(dispatch)된 예비 로봇 본체 id 들(본체는 화면 밖으로 치워 재고가 준 것처럼 보이게).
+# 🔴 제자리 수리(:in_place)로 고장이 처리된 역할 id -> 그 고장 지점 2D 위치. **렌더 전용이다.**
+#   왜 DECOMMISSIONED_BODIES 에 같이 안 넣는가: 그 장부는 마커 그리기용이 아니라
+#   `tools/monitor/policy.jl` 의 `_recovery_in_transit` 이 "이 역할이 :via_depot 로 갔는가" 를
+#   가르는 **판별자**로 읽는다(RECOVERY_SPARES ∩ keys(decommissioned_bodies())). 거기에
+#   제자리 수리를 섞으면 그 게이트가 조용히 뜻을 바꾼다. 그래서 장부를 나눈다.
+const INPLACE_BREAKDOWN_MARKS = Ref(Dict{AbstractID,Vector{Float64}}())
 const CHECKED_OUT_SPARES = Ref(Set{AbstractID}())
 const HOT_SWAP_ASSETS = Ref(Dict{AbstractID,Any}())
 
 # 세 장부(창고 메타/은퇴 본체/반출 예비)를 그대로 돌려주는 한 줄 접근자들.
 depot_info() = DEPOT_INFO[]
 decommissioned_bodies() = DECOMMISSIONED_BODIES[]
+inplace_breakdown_marks() = INPLACE_BREAKDOWN_MARKS[]
 checked_out_spares() = CHECKED_OUT_SPARES[]
 hot_swap_assets() = HOT_SWAP_ASSETS[]
 # 방위 key 창고에 남은 예비 재고 수(= 풀 벡터 길이).
@@ -670,6 +678,18 @@ end
 const UNWEDGE_INTERVAL = Ref(2000)
 set_unwedge_interval!(n::Integer) = (UNWEDGE_INTERVAL[] = max(0, Int(n)); nothing)
 
+# 관측 전용 콜백 자리(2026-09-21 정지 탐침). 기본 `nothing` 이면 아무것도 안 한다 —
+# `tools/monitor/stall_probe.jl` 이 `STALL_PROBE=1` 일 때만 채운다. 탐침이 던져도 런은 계속된다.
+const STALL_PROBE_HOOK = Ref{Any}(nothing)
+function _stall_probe(env, tag::Symbol; kw...)
+    h = STALL_PROBE_HOOK[]
+    h === nothing && return nothing
+    try h(env, tag; kw...) catch e
+        @warn "[stall-probe] $tag 실패" exception = e
+    end
+    return nothing
+end
+
 """
     maybe_unwedge_nominal!(env, no_progress::Integer) -> Bool
 
@@ -691,6 +711,7 @@ function maybe_unwedge_nominal!(env, no_progress::Integer)
     # (기본 verbose=false, 배너 없음). 사다리가 무엇을 했는지 남기지 않으면 실패한 판에서
     # "훅이 안 불렸다" 와 "불렸는데 못 풀었다" 가 로그로 구별이 안 된다.
     vb = get(ENV, "UNWEDGE_VERBOSE", "0") == "1"
+    _stall_probe(env, :unwedge_pre; no_progress = no_progress)
     rec = try
         recover_stalled_teams!(env; verbose = vb)
     catch e
@@ -719,6 +740,8 @@ function maybe_unwedge_nominal!(env, no_progress::Integer)
     catch e
         @warn "[NOMINAL] reset_cache_resume! 실패" exception = e
     end
+    _stall_probe(env, :unwedge_post; no_progress = no_progress, status = rec.status,
+                 moved = get(rec, :moved, -1))
     return ok
 end
 """
@@ -785,8 +808,10 @@ end
 
 # 이미 그린 "은퇴(고장) 로봇" 마커 id 집합(중복 방지). AbstractID = id 종류 아무거나.
 const _DRAWN_DECOMMISSIONED = Ref(Set{AbstractID}())
+const _DRAWN_INPLACE_MARKS = Ref(Set{AbstractID}())
 # 은퇴 로봇 마커 기록 비우기.
-clear_decommissioned_markers!() = (empty!(_DRAWN_DECOMMISSIONED[]); nothing)
+clear_decommissioned_markers!() = (empty!(_DRAWN_DECOMMISSIONED[]);
+                                  empty!(_DRAWN_INPLACE_MARKS[]); nothing)
 
 """
     draw_decommissioned_robots!(vis)
@@ -799,7 +824,8 @@ when `vis === nothing`. Called every step beside `draw_spare_depots!`.
 # hot-swap 으로 은퇴한(고장난) 각 로봇이 무너진 자리에 빨간 "여기서 고장" 원반+핀을 그린다.
 function draw_decommissioned_robots!(vis)
     vis === nothing && return nothing                  # 시각화기 없으면 종료
-    isempty(DECOMMISSIONED_BODIES[]) && return nothing # 은퇴 기록이 없으면 종료
+    (isempty(DECOMMISSIONED_BODIES[]) && isempty(INPLACE_BREAKDOWN_MARKS[])) &&
+        return nothing                                 # 그릴 고장 표식이 하나도 없으면 종료
     drawn = _DRAWN_DECOMMISSIONED[]                    # 이미 그린 id 집합
     dv = vis["decommissioned"]                         # 시각화 트리의 "decommissioned" 하위 경로
     rr = default_robot_radius()
@@ -822,6 +848,22 @@ function draw_decommissioned_robots!(vis)
             Cylinder(Point(p[1], p[2], 0.03), Point(p[1], p[2], default_robot_height()), rr),
             MeshLambertMaterial(color = RGBA{Float32}(1.0, 0.05, 0.05, 0.9)))
         push!(drawn, id)                               # 그렸다고 기록
+    end
+    # 🔴 제자리 수리(:in_place)로 처리된 고장: **원반 + 핀만** 그리고 빨간 본체는 안 그린다.
+    #   그 경우 로봇은 재배치(_rehome_robot!) 없이 그 자리에서 치유되어 계속 일하므로, 같은
+    #   좌표에 로봇 크기 빨간 원기둥을 얹으면 살아 있는 본체와 겹쳐 z-fighting 이 난다.
+    #   "여기서 고장났다" 는 사건은 원반과 긴 핀으로 충분히 보인다(사용자 결정 2026-09-07).
+    drawn_ip = _DRAWN_INPLACE_MARKS[]
+    for (id, p) in INPLACE_BREAKDOWN_MARKS[]
+        id in drawn_ip && continue
+        g = dv[string(id)]
+        setobject!(g["disc"],
+            Cylinder(Point(p[1], p[2], 0.02), Point(p[1], p[2], 0.06), 1.4 * rr),
+            MeshLambertMaterial(color = disc_col))
+        setobject!(g["pin"],
+            Cylinder(Point(p[1], p[2], 0.0), Point(p[1], p[2], 8 * rr), 0.25 * rr),
+            MeshLambertMaterial(color = post_col))
+        push!(drawn_ip, id)
     end
     return nothing
 end
@@ -946,6 +988,9 @@ end
 function _faultable(rid)
     rid isa RobotID || return false
     haskey(FAULTED_ROBOTS[], rid) && return false
+    # 이번 런에서 이미 다른 OOD 사건(예: battery)의 대상이 된 로봇은 제외한다 —
+    # 근거와 "왜 SoC 가 아니라 로그인가" 는 `ood_targeted_robots()` 의 docstring 에.
+    (try rid in ood_targeted_robots() catch; false end) && return false
     try
         (is_spare(rid) || is_recovery_spare(rid)) && return false
         (rid in CHECKED_OUT_SPARES[]) && return false
@@ -1031,6 +1076,7 @@ function pick_solo_fault_target(env)
            get_node_from_id(sched, get_vtx_id(sched, v)) isa FormTransportUnit &&  # 운반팀 형성 노드이고
            (try haskey(robot_team(entity(get_node_from_id(sched, get_vtx_id(sched, v)))), rid) catch; false end)]  # 그 팀에 rid 가 속함
     cands = RobotID[]                                # 후보 로봇들
+    _hit = try ood_targeted_robots() catch; Set{Any}() end   # 이번 런에서 이미 맞은 로봇들
     for v in env.cache.active_set                    # 활성 노드 순회
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue                 # RobotGo 만 대상
@@ -1039,6 +1085,7 @@ function pick_solo_fault_target(env)
         # never fault a robot already doing recovery work (a spare handed a Replace) — faulting it
         # mid-hand-off re-tangles the schedule and can trip has_edge on a later multi-fault.
         (try is_recovery_spare(rid) catch; false end) && continue   # 복구 중 예비는 절대 고장내지 않음
+        (rid in _hit) && continue                                   # 이미 다른 OOD 사건의 대상 -> 제외
         (try _first_pending_assignment(env, rid) !== nothing catch; false end) || continue  # 남은 할 일 없으면 제외
         s = team_sizes(rid)                          # 이 로봇이 낀 팀 크기들
         (!isempty(s) && all(==(1), s)) && push!(cands, rid)  # 팀이 있고 모두 크기 1(단독)이면 후보에 추가
@@ -1082,12 +1129,14 @@ function pick_solo_frontier_target(env)
         return 0
     end
     cands = RobotID[]
+    _hit = try ood_targeted_robots() catch; Set{Any}() end     # 이번 런에서 이미 맞은 로봇들
     for v in env.cache.active_set                              # 활성 RobotGo 로봇 순회
         node = get_node_from_id(sched, get_vtx_id(sched, v))
         node isa RobotGo || continue
         rid = try entity(node).id catch; nothing end
         rid isa RobotID || continue
         (try is_recovery_spare(rid) catch; false end) && continue    # never fault a recovery spare  # 복구 중 예비 제외
+        (rid in _hit) && continue                                    # 이미 다른 OOD 사건의 대상 -> 제외
         frontier_team_size(rid) == 1 && push!(cands, rid)            # solo frontier carry -> safe target  # 단독 frontier 운반이면 안전 후보
     end
     isempty(cands) && return nothing
@@ -1131,6 +1180,7 @@ has no pending carry work left. Caller must ensure `hot_swap_enabled()`; without
 function pick_hotswap_fault_target(env; prefer_inprogress::Bool = true)
     sched = env.sched
     cands = RobotID[]; inprog = RobotID[]
+    _hit = try ood_targeted_robots() catch; Set{Any}() end     # 이번 런에서 이미 맞은 로봇들
     for v in Graphs.vertices(sched)
         v in env.cache.closed_set && continue                  # 이미 끝난 운반은 "남은 일"이 아님
         node = get_node_from_id(sched, get_vtx_id(sched, v))
@@ -1141,6 +1191,7 @@ function pick_hotswap_fault_target(env; prefer_inprogress::Bool = true)
             rid isa RobotID || continue
             (try is_spare(rid) || is_recovery_spare(rid) catch; false end) && continue  # 예비/복구예비 제외
             (try haskey(FAULTED_ROBOTS[], rid) catch; false end) && continue             # 이미 고장난 로봇 제외
+            (rid in _hit) && continue                                                    # 이미 다른 OOD 사건의 대상 -> 제외
             push!(cands, rid)
             (v in env.cache.active_set) && push!(inprog, rid)   # 지금 진행 중인 팀의 멤버
         end

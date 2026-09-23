@@ -758,7 +758,7 @@ end
     #    안 보였다 — 정의가 런타임 include 되는 `src/navigator/battery.jl` 에 있어서
     #    **프로세스 상태에 따라 판정이 갈렸다**(include 전 거절 / 후 통과). 이 레포가
     #    `DS_HOTSWAP` 으로 이미 밟은 자리다. 리터럴 복붙 금지 — 산출물에서 읽는다.
-    local art = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core",
+    local art = joinpath(pkgdir(CB), "src", "decision", "core",
                          "world_interface.json")
     @test isfile(art)
     local j = JSON3.read(read(art, String))
@@ -1107,7 +1107,7 @@ end
 
 "산출물이 **이름으로** 광고하는 것 전부. 🔴 리터럴 복붙 금지 — 산출물에서 읽는다."
 function _advertised_names_from_artifact()
-    local art = joinpath(pkgdir(CB), "wm4spacecraft_manufacturing", "core",
+    local art = joinpath(pkgdir(CB), "src", "decision", "core",
                          "world_interface.json")
     local j = JSON3.read(read(art, String))
     local out = Set{String}()

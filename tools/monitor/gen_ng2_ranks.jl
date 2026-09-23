@@ -147,7 +147,7 @@ out = Dict(
     "why" => "N-G2 requires per-arm scores in two lanes; that requires (s,a) -> s⁺, which is " *
              "Task T13's generative simulator and does not exist on this branch. This probe " *
              "measures why fabricating it would not help either.",
-    "meta" => Dict("vocab" => "see wm4spacecraft_manufacturing/core/action_registry.json",
+    "meta" => Dict("vocab" => "see src/decision/core/action_registry.json",
                    "probe_step" => PROBE, "rho" => CB.RHO[],
                    "n_fleet" => length(S0.fleet), "n_active" => length(CB.active_of(S0))),
     "measurement_1_T_plan_read_set" => Dict(

@@ -2,7 +2,7 @@
 # 손으로 씨 뿌리는 원시 표 — **시험 픽스처**. (2026-09-03, Task 10)
 #
 # 🔴 이것은 되살린 레지스트리가 **아니다.** 삭제된 것은
-#    `wm4spacecraft_manufacturing/core/primitive_registry.json`(파일에서 읽던 고정 19-원시
+#    `src/decision/core/primitive_registry.json`(파일에서 읽던 고정 19-원시
 #    알파벳)과 그것을 읽던 `PRIMITIVE_TABLE`/`_reset_primitive_table!`/
 #    `_primitive_registry_path` 다(설계 §7, Task 2). 오늘 원시는 **런에서 생성되고**
 #    `register_minted_primitive!` 가 런-스코프 표(`minted_table()`)에 심는다.
@@ -24,7 +24,7 @@
 #    행에는 그 표시가 없고, 그것이 `test/minted_registration.jl` (10) 의 음성 대조다.
 #
 # 🔴 행의 내용은 은퇴한 레지스트리에서 **그대로** 가져왔다(`git show 16faa75c^:
-#    wm4spacecraft_manufacturing/core/primitive_registry.json`). 지어낸 값이 아니다 —
+#    src/decision/core/primitive_registry.json`). 지어낸 값이 아니다 —
 #    `harness_args`·`params` 가 `bind_primitive_args` 의 갈래를 정하므로, 여기서 값을
 #    손보면 시험이 프로덕션이 아니라 픽스처를 재게 된다.
 #

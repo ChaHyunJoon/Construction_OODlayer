@@ -29,7 +29,7 @@ const CB = ConstructionBots
 import Statistics
 
 const CALIB = get(ENV, "NOVELTY_CALIB",
-                  joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing",   # tools/ -> repo 루트 (wm4 는 repo 내부)
+                  joinpath(@__DIR__, "..", "src", "decision",   # tools/ -> repo 루트 (wm4 는 repo 내부)
                            "novelty", "novelty_calibration.json"))
 
 npass = 0; nfail = 0

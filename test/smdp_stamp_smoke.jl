@@ -9,7 +9,7 @@ const CB = ConstructionBots
 
 CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
 CB.include(joinpath(@__DIR__, "..", "src", "smdp", "mdp.jl"))
-include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+include(joinpath(@__DIR__, "..", "src", "decision", "core", "action_registry.jl"))
 
 @testset "어휘 도장" begin
     # 도장은 "오늘 참인 것"을 선언한다. 2026-08-24 3팔 축소로 오늘은 "v4-3arms" 다.
@@ -68,7 +68,7 @@ function _write_scratch_registry(vocab; retired_ids::Vector{Int}=Int[])
 end
 
 function _load_in_subprocess(json_path)
-    ar_path = normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+    ar_path = normpath(joinpath(@__DIR__, "..", "src", "decision", "core", "action_registry.jl"))
     proj_dir = normpath(joinpath(@__DIR__, ".."))
     script_path = tempname() * ".jl"
     write(script_path, "include(raw\"$(ar_path)\")\n")
@@ -176,7 +176,7 @@ end
 # 만들 수 있었다(`_zone_arms_for` 에서 고친 것과 같은 모양의 구멍, 같은 파일). 수정 전에는 이
 # 테스트가 macro 5 에서 `nothing` 이 아닌 RespecProposal 을 받아 **빨간불**이었다(실측,
 # 2026-08-19 리뷰 라운드 2). `ActionRegistry.is_active(a)` 가드를 그 분기 조건에 추가해 닫았다.
-include(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "ood_mdp_shim.jl"))
+include(joinpath(@__DIR__, "..", "tools", "oracle", "ood_mdp_shim.jl"))
 
 @testset "은퇴는 combo-arm 경로도 이긴다 (리뷰 F1)" begin
     ENV["DS_COMBO_ARMS"] = "1"
@@ -203,7 +203,7 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
 
 @testset "surrogate 아티팩트 어휘 도장 (리뷰 라운드 2/3 Critical)" begin
     # 리뷰 라운드 3 Important 수정: 예전엔 여기서 실제
-    # `wm4spacecraft_manufacturing/surrogate/surrogate_linear.json` 을 읽었다 — 그런데 그 파일은
+    # `src/decision/surrogate/surrogate_linear.json` 을 읽었다 — 그런데 그 파일은
     # **커밋돼 있지 않다**(작업 트리에만 있는 산출물). 깨끗한 체크아웃에는 그 파일이 아예 없으므로
     # `read()` 가 `SystemError` 로 죽어 이 테스트 파일 전체가 빨간불이 된다(리뷰가 잡은 "NEW-0"
     # 모양 — 검사 **자신**이 커밋 안 된 아티팩트에 기대는 새 결함). 그래서 실제 파일을 읽지 않고
@@ -275,7 +275,7 @@ include(joinpath(@__DIR__, "..", "tools", "demos.jl"))
     #   (b) 같은 열에 은퇴 macro 열을 하나 되돌린 사양은 **죽어야 한다**(오염은 거부한다).
     # 둘 다 오늘 실물이 오염돼 있든 깨끗하든 **언제나** 참이다. 오늘의 실물이 어느 쪽인지는
     # 게이트와 독립적인 열 스캔으로 재서 **단언이 아니라 일치성**으로만 확인한다.
-    real_path = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "surrogate", "surrogate_linear.json")
+    real_path = joinpath(@__DIR__, "..", "src", "decision", "surrogate", "surrogate_linear.json")
     if isfile(real_path)
         real_spec = JSON3.read(read(real_path, String))
         real_cols = String[String(f) for f in real_spec["feature_names"]]

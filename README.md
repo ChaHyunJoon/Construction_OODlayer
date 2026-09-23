@@ -1,5 +1,7 @@
 # ConstructionBots.jl
 
+현재 OOD 시뮬레이터의 코드·도구·데이터 배치는 [폴더 구조 안내](docs/simulation_layout.md)를 참고하세요.
+
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://sisl.github.io/ConstructionBots.jl/stable)
 [![Build Status](https://github.com/sisl/ConstructionBots.jl/workflows/CI/badge.svg)](https://github.com/sisl/ConstructionBots.jl/actions)
 

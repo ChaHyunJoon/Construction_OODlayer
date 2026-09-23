@@ -1257,7 +1257,7 @@ acc     = access_index(closure)
 reach   = Set(String[_tname(S) for S in closure])
 
 dst = length(ARGS) >= 1 ? ARGS[1] :
-      normpath(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "core",
+      normpath(joinpath(@__DIR__, "..", "src", "decision", "core",
                         "world_interface.json"))
 open(dst, "w") do io
     JSON3.pretty(io, Dict("types" => types,

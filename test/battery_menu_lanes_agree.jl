@@ -45,7 +45,7 @@ include(joinpath(REPO, "tools", "monitor", "policy.jl"))          # 실행 레�
 # 안 빨개졌다). `action_registry.jl` 은 위 `include` 가 이미 로드했으므로(`policy.jl` 이
 # 자신의 위에서 로드) 이 include 는 그 위에 `event_context`/`valid_actions`/`canonical_action`/
 # `action_to_proposal` 만 얹는다 -- `test/smdp_stamp_smoke.jl` 이 이미 쓰는 것과 같은 순서.
-include(joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "ood_mdp_shim.jl"))
+include(joinpath(REPO, "tools", "oracle", "ood_mdp_shim.jl"))
 
 # navigator.jl 은 위에서 이미 로드를 보장했다(:27) — 심볼이 없으면 이제 UndefVarError 로
 # 죽는다(2026-08-31 폴백 제거).

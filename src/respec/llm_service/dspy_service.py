@@ -48,9 +48,9 @@ import dspy
 HERE = os.path.dirname(os.path.abspath(__file__))
 # HERE = <repo>/src/respec/llm_service -> 세 단계 위가 repo 루트, 그 안에 wm4...
 # (2026-07-31: wm4 가 repo 옆의 형제 폴더에서 repo 내부로 이동해 단계가 넷 -> 셋으로 줄었다.)
-WM = os.environ.get("WM_DIR") or os.path.join(
+WM = os.environ.get("DECISION_DIR") or os.environ.get("WM_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
-    "wm4spacecraft_manufacturing")
+    "src", "decision")
 MODEL = os.environ.get("DSPY_MODEL", "gpt-4o")
 # [2026-09-01] 캐시는 **기본 on** 이다: temperature 를 낮게 두어도 API 레벨 결정성은
 # 보장되지 않으므로, 시드 고정 스윕의 재현성이 사실상 여기에 기대고 있다. 라이브 호출이
@@ -143,18 +143,18 @@ def _resolve_max_tokens(env=None):
 
 MAX_TOKENS = _resolve_max_tokens()
 
-# 데이터셋 경로는 wm4 쪽 core/wm_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
+# 데이터셋 경로는 wm4 쪽 core/oracle_datasets.py 한 곳에서만 정의된다. 그걸 쓰려면 그 폴더를 import
 # 경로에 넣어야 한다. insert(0,...) 이 아니라 append 인 이유: 이 프로세스에는 dspy/litellm 이
 # 올라오므로 wm4 경로를 최우선으로 두면 동명 모듈을 가릴 위험이 있다(맨 뒤면 표준 패키지가
-# 항상 먼저 이긴다). 그래서 wm4 자신의 부트스트랩(core/wmpath.py, insert(0,...))은 여기서
+# 항상 먼저 이긴다). 그래서 wm4 자신의 부트스트랩(core/simulator_paths.py, insert(0,...))은 여기서
 # 쓰지 않고 필요한 폴더만 직접 append 한다.
 # 2026-08-18 폴더 분류: wm4 의 py 가 역할별 폴더로 나뉘었다 — 이 프로세스가 쓰는 것은
-# core/(wm_datasets) 과 surrogate/(eval_surrogate_v2 · surrogate_features · surrogate_v2) 둘이다.
+# core/(oracle_datasets) 과 surrogate/(eval_surrogate_v2 · surrogate_features · surrogate_v2) 둘이다.
 WM_CODE_DIRS = [os.path.join(WM, "core"), os.path.join(WM, "surrogate")]
 for _d in WM_CODE_DIRS:
     if _d not in sys.path:
         sys.path.append(_d)
-import wm_datasets                                            # noqa: E402
+import oracle_datasets                                            # noqa: E402
 
 # ---- tool 레인 (Plan A, Task 6) --------------------------------------------------------------
 # 🔴 C9: 이 두 줄은 **`import dspy`(위) 아래**에 있어야 한다. 계획서 본문은 "상단에" 라고 적지만
@@ -467,7 +467,7 @@ def native_fc_active(signature=None):
 #  · 모델   : RandomForest(`closed − λ·MACRO_COST` 회귀) -> `SurrogateV2`(2-헤드 조립 Ĵ).
 #             옛 모델은 861/861 결정을 "menu 안 최대 MACRO_COST 팔"로 냈다 = 상태를 한 비트도
 #             안 봤다. λ 는 함께 사라진다(타깃이 J 자신이라 식별할 λ 가 없다).
-#  · 학습셋 : n44_plus78 -> RELABEL_20260814. **`wm_datasets.resolve()` 를 쓰지 않는다** —
+#  · 학습셋 : n44_plus78 -> RELABEL_20260814. **`oracle_datasets.resolve()` 를 쓰지 않는다** —
 #             그 함수는 $WM_DATASET/EVAL_DATA 를 읽으므로 환경변수 하나로 조용히 옛 라벨
 #             (= 이 계획이 제거하려는 결함을 가르치는 파일)이 다시 들어온다. Task 6 의
 #             `eval_surrogate_v2.py` 와 같은 결정이고, 그래야 배포 모델과 평가 모델이 같다.
@@ -491,7 +491,7 @@ def native_fc_active(signature=None):
 # `core/action_registry.json` 파생이라 kind 마다 legal 한 팔을 전부 굴렸고, `reform` kind 가
 # 격자에 들어왔다. 그래서 3·4 가 support 에 있다(조합 팔 5·6 도 — DS_COMBO_ARMS=1 로 생성).
 #
-# ⚠️ `wm_datasets.resolve()` 를 **쓰지 않는다** — 그 함수는 $WM_DATASET/$EVAL_DATA 를 읽으므로
+# ⚠️ `oracle_datasets.resolve()` 를 **쓰지 않는다** — 그 함수는 $WM_DATASET/$EVAL_DATA 를 읽으므로
 # 환경변수 하나로 옛 라벨이 조용히 들어온다. 상수를 직접 가리킨다.
 #
 # 🔴 2026-08-25 (최종 브랜치 리뷰 C4): `RELABEL_20260816` 은 **구세대(v3-4arms 이전) 라벨**이고
@@ -502,7 +502,7 @@ def native_fc_active(signature=None):
 # 보고 경로에 도달조차 못 했다. 파일을 되살려도 결과는 같다 — 그 세대에는 `vocab` 열이 없어
 # `require_vocab_stamps` 가 거부한다. v4-3arms 라벨셋을 가리킨다.
 # ---------------------------------------------------------------------------------------------
-SURRO_DATA = wm_datasets.abspath(wm_datasets.ORACLE_DATASET)
+SURRO_DATA = oracle_datasets.abspath(oracle_datasets.ORACLE_DATASET)
 # 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
 # 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
 # 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.
@@ -1217,8 +1217,8 @@ _GEOM_COVERAGE = [
     # 문장을 따라간 결정. T2(합성 레인)가 기하 축에서 변위를 유도하기 시작하면 이 누수는 더
     # 세진다(정답 이동량을 그대로 보여주는 셈이라 §5-3 의 P-예측이 무의미해진다).
     # 🔴 **필드 자체는 남긴다** — 위 `MacroRequest.zone_relocate_norm` 은 대리모델 피처이고
-    #    `wm4spacecraft_manufacturing/core/features_agnostic.py:595` 와
-    #    `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl:893` 이 읽는다. 필드를 지우면
+    #    `src/decision/core/features_agnostic.py:595` 와
+    #    `tools/oracle/gen_oracle_dataset.jl:893` 이 읽는다. 필드를 지우면
     #    무관한 레인이 깨진다. 지운 것은 **프롬프트 렌더 행 하나**뿐이다.
     #    게이트: `test_zone_channel.py::test_the_field_survives_even_though_the_row_is_gone`.
 ]

@@ -1,180 +1,0 @@
-The latest version of Julia in the `lts` channel is 1.10.12+0.x64.linux.gnu. You currently have `1.10.11+0.x64.linux.gnu` installed. Run:
-
-  juliaup update
-
-in your terminal shell to install Julia 1.10.12+0.x64.linux.gnu and update the `lts` channel to that version.
-[ Info: [policy] deviation OFF (DS_DEVIATE_AT unset)
-[ Info: Listening on: 127.0.0.1:8700, thread id: 1
-┌ Info: MeshCat server started. You can open the visualizer by visiting the following URL in your browser:
-└ http://127.0.0.1:8700
-Processing file...   3%|█▋                                                |  ETA: 0:00:13 ( 0.22  s/it)[KProcessing file... 100%|██████████████████████████████████████████████████| Time: 0:00:01 (17.51 ms/it)[K
->>> objective weights: κ=0.01 w_g=0.000745904473072587
->>> objective_hash: 489268e6659e5ae9  energy_objective=1
-Constructing model spec...done!
-Constructing scene tree...done!
-Computing approximate geometry...done!
-Configuring transport units...done!
-Validating scene tree...done!
-Constructing partial schedule...done!
-Generating staging plan...[DIAG] staging_plan: build step #1 (ConstructionBots.TemplatedID{OpenBuildStep}(19))
-[DIAG] staging_plan: build step #2 (ConstructionBots.TemplatedID{OpenBuildStep}(15))
-[DIAG] staging_plan: build step #3 (ConstructionBots.TemplatedID{OpenBuildStep}(14))
-[DIAG] staging_plan: build step #4 (ConstructionBots.TemplatedID{OpenBuildStep}(13))
-[DIAG] staging_plan: build step #5 (ConstructionBots.TemplatedID{OpenBuildStep}(12))
-[DIAG] staging_plan: build step #6 (ConstructionBots.TemplatedID{OpenBuildStep}(11))
-[DIAG] staging_plan: build step #7 (ConstructionBots.TemplatedID{OpenBuildStep}(10))
-[DIAG] staging_plan: build step #8 (ConstructionBots.TemplatedID{OpenBuildStep}(9))
-[DIAG] staging_plan: build step #9 (ConstructionBots.TemplatedID{OpenBuildStep}(18))
-[DIAG] staging_plan: build step #10 (ConstructionBots.TemplatedID{OpenBuildStep}(8))
-[DIAG] staging_plan: build step #11 (ConstructionBots.TemplatedID{OpenBuildStep}(7))
-[DIAG] staging_plan: build step #12 (ConstructionBots.TemplatedID{OpenBuildStep}(6))
-[DIAG] staging_plan: build step #13 (ConstructionBots.TemplatedID{OpenBuildStep}(5))
-[DIAG] staging_plan: build step #14 (ConstructionBots.TemplatedID{OpenBuildStep}(4))
-[DIAG] staging_plan: build step #15 (ConstructionBots.TemplatedID{OpenBuildStep}(3))
-[DIAG] staging_plan: build step #16 (ConstructionBots.TemplatedID{OpenBuildStep}(2))
-[DIAG] staging_plan: build step #17 (ConstructionBots.TemplatedID{OpenBuildStep}(1))
-[DIAG] staging_plan: build step #18 (ConstructionBots.TemplatedID{OpenBuildStep}(17))
-[DIAG] staging_plan: build step #19 (ConstructionBots.TemplatedID{OpenBuildStep}(16))
-[DIAG] staging_plan: finished 19 build steps; selecting assembly start configs...
-[DIAG] assembly_start: ConstructionBots.AssemblyID(3) outer iter=1, parts_left=2
-[DIAG] assembly_start: ConstructionBots.AssemblyID(2) outer iter=1, parts_left=2
-[DIAG] assembly_start: ConstructionBots.AssemblyID(1) outer iter=1, parts_left=3
-[DIAG] staging_plan: select_assembly_start_configs done
-done!
-Placing objects at starting locations ...[DIAG] get_object_vtx: grid search start. num_objects=20, num_layers=1, init_width=2.2978250586152114, dx=1.2, dy=0.8799999999999999, n_obstacles=8
-[DIAG] get_object_vtx: grid search done after cnt=1 expansions
-[DIAG] place_objects: get_object_vtx returned 20 vtxs; calling select_initial_object_grid_locations!
-[DIAG] place_objects: select_initial_object_grid_locations! done; raising assemblies
-[DIAG] place_objects: raising assembly #1 (ConstructionBots.AssemblyID(1)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #1 done
-[DIAG] place_objects: raising assembly #2 (ConstructionBots.AssemblyID(2)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #2 done
-[DIAG] place_objects: raising assembly #3 (ConstructionBots.AssemblyID(3)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #3 done
-[DIAG] place_objects: raising assembly #4 (ConstructionBots.AssemblyID(4)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #4 done
-[DIAG] place_objects: raising assembly #5 (ConstructionBots.AssemblyID(5)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #5 done
-[DIAG] place_objects: raising assembly #6 (ConstructionBots.AssemblyID(6)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #6 done
-[DIAG] place_objects: raising assembly #7 (ConstructionBots.AssemblyID(7)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #7 done
-[DIAG] place_objects: raising assembly #8 (ConstructionBots.AssemblyID(8)) - get_node
-[DIAG] place_objects:   -> global_transform(start_config)
-[DIAG] place_objects:   -> get_base_geom / compute dh
-[DIAG] place_objects:   -> set_desired_global_transform_without_affecting_children!
-[DIAG] place_objects:   -> assembly #8 done
-[DIAG] place_objects: raised 8 assemblies; calibrate_transport_tasks!
-[DIAG] place_objects: calibrate_transport_tasks! done; validate_schedule_transform_tree
-[DIAG] place_objects: validate done
-Simulating...   0%|                                                  |  ETA: N/A (  N/A  s/it)[K
-   step_num: 2[K
-   n_closed: 54[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   1%|▍                                                 |  ETA: 0:21:04 ( 5.08  s/it)[K
-   step_num: 8[K
-   n_closed: 56[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   3%|█▍                                                |  ETA: 0:06:29 ( 1.59  s/it)[K
-   step_num: 17[K
-   n_closed: 61[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...   9%|████▋                                             |  ETA: 0:02:09 ( 0.56  s/it)[K
-   step_num: 52[K
-   n_closed: 77[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  14%|██████▊                                           |  ETA: 0:01:29 ( 0.41  s/it)[K
-   step_num: 96[K
-   n_closed: 88[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  23%|███████████▌                                      |  ETA: 0:00:50 ( 0.26  s/it)[K
-   step_num: 136[K
-   n_closed: 112[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  39%|███████████████████▌                              |  ETA: 0:00:25 ( 0.17  s/it)[K
-   step_num: 202[K
-   n_closed: 152[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  53%|██████████████████████████▊                       |  ETA: 0:00:15 ( 0.13  s/it)[K
-   step_num: 304[K
-   n_closed: 188[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  65%|████████████████████████████████▋                 |  ETA: 0:00:10 ( 0.11  s/it)[K
-   step_num: 422[K
-   n_closed: 218[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  72%|████████████████████████████████████              |  ETA: 0:00:07 ( 0.11  s/it)[K
-   step_num: 550[K
-   n_closed: 235[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  76%|██████████████████████████████████████            |  ETA: 0:00:09 ( 0.16  s/it)[K
-   step_num: 601[K
-   n_closed: 245[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating...  86%|███████████████████████████████████████████▎      |  ETA: 0:00:05 ( 0.14  s/it)[K
-   step_num: 755[K
-   n_closed: 271[K
-    n_total: 305[K[A[A[A
-
-
-[K[A[K[A[K[ASimulating... 100%|██████████████████████████████████████████████████| Time: 0:00:31 ( 0.12  s/it)[K
-done!
-Assigning robots...done!
-Animating preprocessing step...done
->>> battery: capacity=8.279999999999999e6 J (spec, no shrink)  stall=true@0.15  derate=true  courier=true halt=true
-    · battery drawn at step=601  (window 40–700, safe_fault=false)
->>> OOD armed: zone×0 + battery×1 [stochastic seed=1, step-window draw]  model=tractor.mpd scale=0.008 robots=10
-[ood] battery fired at step≈601 closed=245
-[router] 'unknown:battery_mild' is outside the surrogate's training kinds → escalate to LLM (kind=unknown:battery_mild, axis=ood_kind)
-[policy] BatteryTruth → NOOP (enacted=dspy; rule=NOOP)
-[enact] target=ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1) source=truth tool_agent=- verify=deferred:no_groundable_param reject=no_tool_agent
-PROJECT COMPLETE!
-[DIAG] animation: 367 clips, max 221 keyframes per track
-Saving animation to /home/chahj578/Construction_OODlayer/src/../results/tractor_render/greedy_RVO_Dispersion_TangentBug/visualization.html
-[render] anim → anim/tractor__battery_mild_before.html
-[render] DONE — case=battery  17 frames + anim
-[render] anim frames=1  battery tint hold=0 frames (적용값)
-[render] battery tint frames: red=0 green(courier)=0  courier=true

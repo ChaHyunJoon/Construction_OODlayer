@@ -20,8 +20,8 @@ DSPY="${DSPY_URL:-http://127.0.0.1:8077}"
 
 case "$MODE" in
   oracle)
-    cd wm4spacecraft_manufacturing/oracle || exit 2
-    OUT="${2:-out/n44_plus78_d20.jsonl}"
+    cd tools/oracle || exit 2
+    OUT="${2:-$_REPO/data/oracle/n44_plus78_d20.jsonl}"
     echo "=== oracle grid start $(date +%H:%M:%S) -> $OUT ==="
     # DS_HOTSWAP / CARRIER_RESCUE 는 라벨러의 기본값이 OFF 인데(gen_oracle_dataset.jl:1352,
     # replace_robot.jl:804) 평가 데모는 둘 다 ON 이다(run_demo.jl:404,408). 그대로 두면 오라클과
@@ -38,7 +38,7 @@ case "$MODE" in
   matrix)
     SEED="${2:?usage: regen_d20.sh matrix <seed>}"
     OUT="${3:-results/matrix_d20.jsonl}"
-    cd wm4spacecraft_manufacturing || exit 2
+    cd "$_REPO" || exit 2
     # 🔴 2026-09-03: 이 자리는 원래도 중단했지만 **200 만** 봤다 — 낡은 서비스는 200 을 낸다.
     #    이제 세대까지 본다. 사유는 CLI 가 코드로 찍는다(unstamped/blind/stale/flag_off).
     source "$_REPO/tools/require_current_service.sh"
@@ -52,7 +52,7 @@ case "$MODE" in
     for CASE in ${REGEN_CASES:-battery fault zone fault_battery fault_zone battery_zone all}; do
       start=$SECONDS
       echo "=== seed=$SEED case=$CASE $(date +%H:%M:%S) ==="
-      python sweep/llm_ood_eval.py run --case "$CASE" --seeds "$SEED" \
+      python tools/sweep/llm_ood_eval.py run --case "$CASE" --seeds "$SEED" \
           --policies canonical,surrogate,dspy --dspy-url "$DSPY" --out "$OUT"
       echo "--- seed=$SEED case=$CASE rc=$? in $((SECONDS-start))s ; rows now: $(wc -l < "$OUT" 2>/dev/null || echo 0)"
     done

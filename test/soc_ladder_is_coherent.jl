@@ -47,12 +47,12 @@
 #     (리뷰 nit)에서 고쳤다).
 #   · 🔴 2026-09-01 (S1 final wave / F-1). 이 리뷰가 실측으로 뚫었던 다섯 자리를 오늘 실제로
 #     다시 돌려서 확인했다(전부 (6c)/(6) 대상):
-#       - `wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl::valid_actions` 의
+#       - `tools/oracle/ood_mdp_shim.jl::valid_actions` 의
 #         `thr = Float64(CB.REPLACE_SOC_THRESHOLD[])` 를
 #         `thr = max(0.2, Float64(CB.REPLACE_SOC_THRESHOLD[]))` 로 심으면(라벨 레인이 옛
 #         0.2 경계로 조용히 돌아가는 그 자리) -- 이전엔 전체 Julia 스위트가 2192/0/1 로
 #         byte-identical 이었는데, 지금은 (6c) 가 즉시 잡는다: 실측 `2 passed, 1 failed`
-#         (`wm4spacecraft_manufacturing/oracle/ood_mdp_shim.jl=0.2` 로 진단 출력에 찍힌다).
+#         (`tools/oracle/ood_mdp_shim.jl=0.2` 로 진단 출력에 찍힌다).
 #         복구 확인: 원본 복사본을 되돌리면 다시 2/2 전부 초록. 🔴 2026-09-01 (correction
 #         pass, C-4) 정정: 바로 이 문장이 예전엔 "3/3" 이라고 적었는데 틀렸다 -- 베이스라인
 #         (6c) 는 히트 1곳(정의 자리 `ood_truth.jl=0.1`)뿐이라 `@test length(prox_hits) > 0`
@@ -82,7 +82,7 @@ const CB = ConstructionBots
 const REPO = normpath(joinpath(@__DIR__, ".."))
 isdefined(CB, :BatteryTruth) || CB.include(joinpath(REPO, "src", "navigator", "navigator.jl"))
 isdefined(@__MODULE__, :ActionRegistry) ||
-    include(joinpath(REPO, "wm4spacecraft_manufacturing", "oracle", "action_registry.jl"))
+    include(joinpath(REPO, "src", "decision", "core", "action_registry.jl"))
 include(joinpath(REPO, "tools", "monitor", "lane_select.jl"))
 const AR = ActionRegistry
 
@@ -139,7 +139,7 @@ end
 end
 
 @testset "(5) 라벨 레인의 정지 임계가 실행 레인과 같다" begin
-    local gen = "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl"
+    local gen = "tools/oracle/gen_oracle_dataset.jl"
     @test parse(Float64, envdefault(gen, "DS_STALL")) === STALL
     # 학습 사다리의 모든 칸이 새 경계에서도 비교 가능해야 한다(battery_ladder_is_deep_only
     # 단언 1 과 같은 명제를 새 경계에서 다시 확인한다 — 그 파일과 겹치는 것이 의도다).
@@ -156,7 +156,7 @@ end
     # DS_EP_BSOC 는 (5)의 DS_BSOC 와 달리 사건 뒤 SoC(절대값) 하나뿐인 스칼라다(comma 사다리
     # 아님) -- gen_oracle_dataset.jl EP_SEV[:battery] 참고. `DS_BSOC_MODE=abs` 규약과 같으므로
     # (5)와 같은 함수(`AR.battery_arms(soc, DEEP, true)`)로 바로 잰다.
-    local gen = "wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl"
+    local gen = "tools/oracle/gen_oracle_dataset.jl"
     local s = parse(Float64, envdefault(gen, "DS_EP_BSOC"))
     @test length(AR.battery_arms(s, DEEP, true)) > 1
 end
@@ -444,9 +444,9 @@ end
     # 지웠으므로 "폴백이 **아예 없다**" 를 잰다 — 더 단순하고, 더 강하고, 누가 하나라도
     # 다시 심으면 즉시 빨개진다. (여전히 파일 목록은 하드코딩하지 않는다 — 2026-08-31
     # fix round 1, I-2 의 규약을 그대로 지킨다.)
-    local hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), FALLBACK_RE)
-    local ternary_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), TERNARY_RE)
-    local catch_hits   = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), CATCH_RE)
+    local hits = scan_fallback_sites(("src", "tools", "test"), FALLBACK_RE)
+    local ternary_hits = scan_fallback_sites(("src", "tools", "test"), TERNARY_RE)
+    local catch_hits   = scan_fallback_sites(("src", "tools", "test"), CATCH_RE)
     # 🔴 "스캐너가 하나도 못 찾는" 상태가 이제 통과 조건 자체다 — 그래서 이 스캔만으로는
     # "패턴이 죽어서 텅 비었다" 와 "정말로 깨끗해서 텅 비었다" 를 못 가른다(I-2 의 원래
     # 경고). 그 구분은 (6b)의 심은-자리 자기증명이 진다: 거기서 합성 폴백을 심고 이
@@ -467,7 +467,7 @@ end
     # 잡는 패턴"을 만들려던 의도가 깨진다.
     local nothing_marker = "THIS_PATTERN" * "_MATCHES_NOTHING_" * "2026_08_31_FIX_ROUND_1"
     local nothing_re = Regex(nothing_marker)
-    local empty_hits = scan_fallback_sites(("src", "tools", "test", "wm4spacecraft_manufacturing"), nothing_re)
+    local empty_hits = scan_fallback_sites(("src", "tools", "test"), nothing_re)
     @test isempty(empty_hits)
     # 방향 2: 새 자리를 실제로 심으면 스캐너가 잡아야 한다.
     # 🔴 2026-08-31 fix round 2 (N-3): 예전 버전은 이 파일을 test/ 안에 썼다. `Pkg.test()` 가
@@ -513,7 +513,7 @@ end
     # max/min/clamp 결합이 아닌 채로 항상 하나 잡히므로, 대상 디렉터리가 잘못돼 텅 비는
     # 사고(위 `length(prox_hits) > 0` 어서션의 원래 취지)는 폴백 유무와 무관하게 계속 걸린다.
     local prox_hits = scan_proximity_literals(
-        ("src", "tools", "test", "wm4spacecraft_manufacturing"), "REPLACE_SOC_THRESHOLD", PROXIMITY_N)
+        ("src", "tools", "test"), "REPLACE_SOC_THRESHOLD", PROXIMITY_N)
     @test length(prox_hits) > 0   # 이 자체가 텅 비면 grep 대상 디렉터리가 잘못됐다는 신호다
     for (path, lit, ctx) in prox_hits
         @test _parse_soc_literal(lit) == DEEP

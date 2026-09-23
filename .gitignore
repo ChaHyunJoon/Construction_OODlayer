@@ -41,61 +41,11 @@ LDraw_files/_render_workers/
 # Python virtualenv (2026-08-12 부터 `.venv/` 가 표준 인터프리터 자리다 -- 커밋 대상 아님)
 .venv/
 
-# ---- 스윕 산출물 (2026-08-13) ---------------------------------------------------------
-# 주의: `results_4pol/*.jsonl` 은 **이미 추적·커밋된 그날 밤의 산출물**이다. 디렉토리를 통째로
-# (`results_4pol/`) 무시하면 부모가 배제돼 `!` 로 되살릴 수 없으므로(git: "It is not possible to
-# re-include a file if a parent directory of that file is excluded"), 디렉토리가 아니라 **그 안의
-# 항목**(`/*`)을 배제하고 병합 결과 `.jsonl` 만 되살린다. 무시되는 건 수백 MB 짜리 `shards/`·
-# `logs/` 트리뿐이고, 표를 만드는 병합본은 그대로 추적된다.
-wm4spacecraft_manufacturing/results_4pol/*
-!wm4spacecraft_manufacturing/results_4pol/*.jsonl
-wm4spacecraft_manufacturing/results_oracle/*
-!wm4spacecraft_manufacturing/results_oracle/*.jsonl
-# 게이트 실측은 통째로 재생성 가능(loaded/ · solo/ 하위에 샤드 로그만 있다).
-wm4spacecraft_manufacturing/results_gate/
-# D=40 구세대 격리 스냅샷 -- 보관용이지 커밋 대상이 아니다.
-wm4spacecraft_manufacturing/_quarantine_D40_2026-08-12/
-
-# 오케스트레이터의 런타임 상태(락 · 작업 목록). `_night/status_*.jsonl` 과
-# `_night/provenance_4pol.json` 은 산출물이므로 여기서 무시하지 않는다.
-wm4spacecraft_manufacturing/_night/.status.lock
-wm4spacecraft_manufacturing/_night/joblist.txt
-wm4spacecraft_manufacturing/_night/oracle_joblist.txt
-wm4spacecraft_manufacturing/_night/.render.lock*
-wm4spacecraft_manufacturing/_night/.render_cursor
-wm4spacecraft_manufacturing/_night/render_joblist.txt
-wm4spacecraft_manufacturing/_night/render_logs/
-# Task 4 재라벨 캠페인의 샤드 산출물(2026-08-14). 병합본 `oracle/out/relabel_2026-08-14.jsonl`
-# 이 커밋돼 있고 샤드는 그것과 정확히 중복이다 — 재현에 필요한 것은 커밋된 병합본과
-# 리포트에 적힌 DS_* 설정이지 샤드 파일이 아니다.
-wm4spacecraft_manufacturing/oracle/out/shards_relabel_2026-08-14/
-
-# dp_oracle 표집 작업 디렉토리 (--keep-work). 판당 rows.jsonl + board.log 로 588판이면 ~2.4GB.
-# 표본 자체는 samples.jsonl 에 있고 이건 재현·사후진단용 원자료라 레포에 넣지 않는다.
-wm4spacecraft_manufacturing/dp_oracle/_sample_work/
-
-# 보존된 구세대 스윕/아티팩트 트리 (2026-08-15 배송 세대). `results_4pol_gen_swapfree_2026-08-15/`
-# 같은 트리는 세대 비교용 원자료라 지우지 않지만 커밋 대상도 아니다(둘이 합쳐 ~2.2GB).
-# 지금까지 **추적도 무시도 되지 않은 상태**여서 `git add -A` 한 번이면 통째로 딸려 들어갔다.
-wm4spacecraft_manufacturing/results_4pol_gen_*/
-wm4spacecraft_manufacturing/artifacts_4pol_gen_*/
-
-# ---- 위 규칙이 못 덮은 나머지 스윕 트리 (2026-08-16) ------------------------------------
-# 위 두 줄은 `*_gen_*` 이름만 잡는다. 그 규약을 안 따르는 옛 실험 트리들이 **추적도 무시도
-# 되지 않은 채** 남아 있었다(실측 2026-08-16: 합계 **6671 MB**). 정확히 그 상태가
-# `git add -A` 한 번으로 통째로 딸려 들어가는 사고이고, 위 규칙이 처음 추가된 이유다.
-#
-# 두 부류를 다르게 다룬다:
-#  (a) 병합본 `.jsonl` 이 **이미 커밋된** 트리 -> `shards/` 하위만 배제한다. 디렉토리를 통째로
-#      무시하면 부모가 배제돼 커밋된 병합본이 인덱스에서 갈릴 수 있다(위 results_4pol 주석의
-#      "re-include" 제약과 같은 이유).
-wm4spacecraft_manufacturing/results_4pol_v2/shards/
-wm4spacecraft_manufacturing/results_oracle_v2/shards/
-wm4spacecraft_manufacturing/results_oracle_v3/shards/
-wm4spacecraft_manufacturing/results_4pol_reformfix/shards/
-#  (b) 커밋된 파일이 **하나도 없는** 트리 -> 통째로 배제한다.
-wm4spacecraft_manufacturing/results_4pol_repro/
-wm4spacecraft_manufacturing/results_4pol_oldgen_2026-08-13/
+# Offline evaluation output (source lives under tools/).
+results_*/
+artifacts_*/
+_night/
+.pytest_cache/
 
 # 2026-08-30 정리: 재생성 가능한 산출물 파킹 (outdated/README.md 참조)
 outdated/

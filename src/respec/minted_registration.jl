@@ -859,7 +859,7 @@ agent-3 에게 렌더되는 세계 인터페이스 산출물의 경로. 패키�
 _world_interface_path() =
     (d = pkgdir(@__MODULE__);
      d === nothing ? nothing :
-     joinpath(d, "wm4spacecraft_manufacturing", "core", "world_interface.json"))
+     joinpath(d, "src", "decision", "core", "world_interface.json"))
 
 """
     _artifact_interface_names(path = _world_interface_path()) -> Union{Nothing,Set{Symbol}}

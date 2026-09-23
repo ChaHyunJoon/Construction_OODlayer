@@ -234,7 +234,7 @@ python novelty/export_novelty_calibration.py oracle/out/openworld_merged.jsonl \
 
 ```bash
 cd ConstructionBots.jl
-export NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json
+export NOVELTY_CALIB=../src/decision/novelty/novelty_calibration_no_zoneblk.json
 julia +lts --project=. tools/test_router.jl        # 8/8, zone→dspy / battery,fault→surrogate 확인
 julia +lts --project=. tools/monitor/run_demo.jl   # zone 사건에서만 [router] ... → dspy 가 찍힌다
 ```
@@ -245,7 +245,7 @@ julia +lts --project=. tools/monitor/run_demo.jl   # zone 사건에서만 [route
 |---|---|---|
 | `DEMO_ROUTER` | `auto` | 🔴 **레인 선택 손잡이**(`router_drives()`). `auto`/`1` = 라우터가 사건마다 레인을 고른다(**교정 파일과 무관하다**) / `0` = 끔(예전처럼 `DEMO_POLICY` 고정) |
 | `ROUTER_EPS` | 교정의 `alpha`(0.05) | 낯섦 p-value 임계. 키우면 더 많이 LLM 으로 간다 |
-| `NOVELTY_CALIB` | `../wm4spacecraft_manufacturing/novelty_calibration.json` | 교정 파일 경로 |
+| `NOVELTY_CALIB` | `../src/decision/novelty_calibration.json` | 교정 파일 경로 |
 
 🔴 **2026-08-27 정정 — 이 표의 `auto` 뜻이 바뀌었다.** 예전에는 `auto` = "교정이 설치돼 있으면 켬"
 이었다. 설계서(`2026-08-27-vocabulary-indexed-router-design.md` §3)가 요구하는 대로 **격상·레인 선택**을
@@ -305,7 +305,7 @@ cd src/respec/llm_service && LLM_NL_MODE=raw TOOL_SYNTHESIS=1 SYNTH_MULTI_AGENT=
 
 cd ConstructionBots.jl
 DSPY_URL=http://127.0.0.1:8078 \
-NOVELTY_CALIB=../wm4spacecraft_manufacturing/novelty/novelty_calibration_no_zoneblk.json \
+NOVELTY_CALIB=../src/decision/novelty/novelty_calibration_no_zoneblk.json \
 bash tools/monitor/regen_case_policy_matrix.sh            # 24 런, 약 2~2.5시간
 
 bash tools/monitor/regen_case_policy_matrix.sh fault zone  # 일부만 (× 3 정책)

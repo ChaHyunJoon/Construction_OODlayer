@@ -1,6 +1,6 @@
 # =============================================================================
 # `tools/monitor/policy.jl` 의 `enactable_macros()` 가 행동 어휘의 단일 진실원
-# (`wm4spacecraft_manufacturing/core/action_registry.json`)에 **묶여 있는지** 못박는다.
+# (`src/decision/core/action_registry.json`)에 **묶여 있는지** 못박는다.
 #
 # 왜 이 파일이 필요한가 (2026-08-24, Task 6 수정 라운드 1 · 판정 R-46)
 # ------------------------------------------------------------------

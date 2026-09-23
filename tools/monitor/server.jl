@@ -270,7 +270,7 @@ function router(req)
         # 복붙하면 objective.json 이 바뀌는 순간 화면만 옛 값을 주장한다. audit_objective.py
         # 항목 1 이 잡는 바로 그 결함이다. 파일을 그대로 서빙해 화면이 **읽기만** 하게 한다.
         if req.method == "GET" && path == "/objective"
-            local op = joinpath(ROOT, "..", "..", "wm4spacecraft_manufacturing", "core", "objective.json")
+            local op = joinpath(ROOT, "..", "..", "src", "decision", "core", "objective.json")
             isfile(op) || return HTTP.Response(404, cors(), "objective.json not found")
             return HTTP.Response(200, [cors(); "Content-Type" => "application/json"], read(op))
         end

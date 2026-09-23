@@ -8,7 +8,7 @@
 # 범위(controller-addendum.md 태스크 7, I12 + fix round 1): `scan_globals` 는 `src/` 를 재귀로
 # 훑고, 거기에 `tools/monitor/run_demo.jl` · `policy.jl` · `zone_inject.jl` 을 `extra_files` 로
 # **의도적으로** 얹는다 — run_demo.jl 이 policy.jl 을 직접 include 하므로(`:240`) 셋 다 같은
-# 실행 레인이다. `tools/` 의 나머지·`wm4spacecraft_manufacturing/*.jl`·`test/*.jl` 은
+# 실행 레인이다. `tools/` 의 나머지·`src/decision/core/{objective,action_registry}.jl`·`test/*.jl` 은
 # **의도적으로 범위 밖**이다(state_globals.jl 헤더에 근거를 적어 뒀다).
 #
 # ✅ 2026-08-20 해소: 예전에는 이 테스트를 작업 트리에서 돌리면 `유령 전역이 없다` 가 유령 9개로

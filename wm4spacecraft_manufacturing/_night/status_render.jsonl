@@ -1,7 +1,0 @@
-{"case":"battery","policy":"dspy","seed":1,"status":"ok","wall_seconds":137,"anim_bytes":4944966}
-{"case":"fault","policy":"noop","seed":1,"status":"ok","wall_seconds":142,"anim_bytes":4929786}
-{"case":"fault","policy":"dspy","seed":1,"status":"ok","wall_seconds":142,"anim_bytes":4944698}
-{"case":"battery","policy":"noop","seed":1,"status":"ok","wall_seconds":144,"anim_bytes":4944966}
-{"case":"zone","policy":"dspy","seed":1,"status":"ok","wall_seconds":150,"anim_bytes":4981356}
-{"case":"zone","policy":"noop","seed":1,"status":"ok","wall_seconds":154,"anim_bytes":4932856}
-{"case":"battery","policy":"surrogate","seed":1,"status":"ok","wall_seconds":144,"anim_bytes":4932392}

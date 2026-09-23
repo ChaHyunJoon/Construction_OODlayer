@@ -56,7 +56,7 @@ end
 end
 
 @testset "🔴 라벨 레인이 실행 레인과 같은 세계다" begin
-    src = read(joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle",
+    src = read(joinpath(@__DIR__, "..", "tools", "oracle",
                         "gen_oracle_dataset.jl"), String)
     # 브리프 원문은 여기 needle 에 공백을 남겨 뒀는데(`", "`) haystack 은
     # `replace(src, " " => "")` 로 공백을 **전부** 지운다 — needle 도 공백을 지워야
@@ -123,8 +123,8 @@ function _extract_var_line(src::String, varname::String)
     return m.match
 end
 
-# ---- (1) wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl — 라벨 레인 -----------------
-const _ORACLE_PATH = joinpath(@__DIR__, "..", "wm4spacecraft_manufacturing", "oracle", "gen_oracle_dataset.jl")
+# ---- (1) tools/oracle/gen_oracle_dataset.jl — 라벨 레인 -----------------
+const _ORACLE_PATH = joinpath(@__DIR__, "..", "tools", "oracle", "gen_oracle_dataset.jl")
 const _ORACLE_SRC  = read(_ORACLE_PATH, String)
 const _ORACLE_CALL = _extract_hz_call(_ORACLE_SRC, "const HZ_PARAMS",
     "HZ_PARAMS 상수를 못 찾았다 — gen_oracle_dataset.jl 구조가 바뀌었다",
@@ -133,7 +133,7 @@ const _ORACLE_CALL = _extract_hz_call(_ORACLE_SRC, "const HZ_PARAMS",
 # Important 2 (T6 라운드 3, 컨트롤러 지시): 라운드 2 는 이 env 전부를 **지운 채** 딱 한 번만
 # 평가했다 — 그런데 실제 호출 지점은 전부 `DS_HOTSWAP=1` 을 준다(`tools/regen_d20.sh:31`,
 # `tools/mdp_cfgprobe.sh:22`, `wm4spacecraft_manufacturing/dp_oracle/sample_grid.py:373`,
-# `wm4spacecraft_manufacturing/oracle/run_relabel_20260816.sh:86`, `.claude/CLAUDE.md:246` 가
+# `tools/oracle/run_relabel_20260816.sh:86`, `.claude/CLAUDE.md:246` 가
 # 필수라고 못박는다). "아무도 안 쓰는 설정에서 초록"은 게이트가 아니다 — **두 지점 모두** 평가해
 # 아래에서 각각 대조한다.
 #
@@ -369,8 +369,8 @@ end
 #
 #  영향받는 라벨 레인 진입점(둘 다 `hz_seed` 가 주어지면 `enable_hazard!(env; params=HZ_PARAMS,
 #  seed=hz_seed)` 를 부른다 — `HZ_PARAMS.mtbf_zone_s` 가 이제 유한하므로 무조건 zone 시계가 돎):
-#    · `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl:1019` (`studied_prod`, K-rollout)
-#    · `wm4spacecraft_manufacturing/oracle/gen_oracle_dataset.jl:1347` (`episode_prod`, 에피소드 모드)
+#    · `tools/oracle/gen_oracle_dataset.jl:1019` (`studied_prod`, K-rollout)
+#    · `tools/oracle/gen_oracle_dataset.jl:1347` (`episode_prod`, 에피소드 모드)
 #  두 곳 모두 `kind` 인자로 fault/battery/zone 중 무엇을 연구하는지 알지만, `enable_hazard!` 호출은
 #  그 `kind` 를 몰라서 zone 시계를 선택적으로 끌 방법이 없다.
 #

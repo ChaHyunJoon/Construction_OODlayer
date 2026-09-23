@@ -25,7 +25,7 @@ def sc(r):
 
 
 def main():
-    files = sorted(glob.glob(os.path.join("oracle", "out", "probe_*.jsonl")))
+    files = sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "oracle", "probe_*.jsonl")))
     files = [f for f in files if ".probes." not in f]
     by_cfg = collections.defaultdict(list)
     for f in files:

@@ -67,7 +67,7 @@ what else is fixed downstream.
    an unrelated edit, nothing keeps it true, and it tells you nothing about `synthesize.py`.
 2. ~~**Nothing enforces any of this.**~~ **Closed 2026-09-03.** `/health` now carries a
    generation stamp and there is a gate that reads it — see the next section. What is still
-   *not* covered: the `wm4spacecraft_manufacturing/sweep/` path (`run_4pol_parallel.sh` /
+   *not* covered: the `tools/sweep/` path (`run_4pol_parallel.sh` /
    `run_shard.sh` / `llm_ood_eval.py`) contains **no `/health` check of any kind** (measured),
    so a sweep started that way is still unguarded.
 3. **`LEDGER` is process-global** (`synthesize.py`, `LEDGER = SynthesisLedger()`). Probes pass

@@ -206,7 +206,7 @@ const _LANE_DECLINED = Dict{String,Any}(
 # 🔴 매크로 이름 리터럴을 쓰지 않는다 (2026-08-29 수정 라운드, F6). 이 레포의 규칙은
 #    `test/policy_macro_binding.jl:134` 에 적혀 있다 — 어휘 이름을 테스트에 적으면 그 파일이
 #    **어휘의 또 다른 사본**이 되고, 레지스트리에서 이름을 바꾸면 여기가 죽은 이름을 계속
-#    단언한다. 아래 둘은 `wm4spacecraft_manufacturing/core/action_registry.json` 에서
+#    단언한다. 아래 둘은 `src/decision/core/action_registry.json` 에서
 #    유도된다(`_ARM_NAME`/`_NOOP_NAME`, policy.jl include 뒤에 정의). 두 함수 모두 **호출
 #    시점에** 그 전역을 읽으므로 정의 순서는 문제되지 않는다.
 _dspy_body(lane) = merge(Dict{String,Any}(
