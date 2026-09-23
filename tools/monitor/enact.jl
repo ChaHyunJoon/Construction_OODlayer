@@ -1529,9 +1529,125 @@ function _showerror_cause(e)::String
 end
 
 """
-    _rewrite_once(sl, nm, cd, why) -> Union{Nothing,NamedTuple}
+    _open_attempt!(; trigger, why, prev_name, prev_steps = nothing, sl = nothing,
+                     requested = true, steps_ref = nothing) -> Dict{String,Any}
+
+되먹임 **한 번**의 기록 칸을 열어 스트림의 `respec["attempts"]` 에 붙이고 그 dict 을
+돌려준다. `_rewrite_once` 와 호출자가 **같은 dict** 을 채운다 — 스트림은 매 프레임
+`MONITOR_RESPEC[]` 를 직렬화하므로(`monitor_emit!` 의 `"respec"`·`"respec_history"` 두 칸)
+나중에 채운 값도 다음 프레임부터 실린다.
+
+🔴 왜 (2026-09-22, R2): 재시도 body 가 스트림·원장·로그 어디에도 없었다. `_install_rewrite!`
+   은 `policy.jl` 이 만든 **사본** `synth_lane` 만 고치고, 스트림은 원본 `decision.policies`
+   를 싣는다. 그 원본(첫 시도의 진실원)은 **안 고친다** — R2 의 `extract_fixtures.py` 가 읽는다.
+🔴 안 던진다. `MONITOR_RESPEC[]` 가 없으면(시험·헤드리스) 붙이지 않고 dict 만 돌려준다.
+
+**칸의 키(고정, 전부 언제나 있다 — 값이 없으면 `nothing`):**
+`attempt`(언제나 2 — 예산이 1 이라 되먹임 자리는 두 번째 시도 하나뿐이다) · `trigger` ·
+`why` · `prev_impl_name` · `prev_steps` · `record_id` · `parent_record_id` ·
+`parent_response_id` · `response_id` · `roundtrip` · `wrote` · `service_error` ·
+`impl_name` · `impl_code` · `params` · `calls` · `install_why` · `steps` · `steps_ref`.
+
+**`trigger`:** `"register_reject"` · `"threw"` · `"noop"` · `"prerun"`
+(뒤의 셋은 `_RETRY_SYMS_*.trigger` 가 소유한다).
+
+**`roundtrip` 의 값 집합** — `nothing | "ok" | "skipped_not_rewritable" | "not_requested" |
+"failed:<cause>"`:
+  · `nothing` — 칸은 열렸는데 아직 왕복 전이다(끝난 판에서 이 값이 남으면 결함이다).
+  · `"ok"` — 서비스가 **답했다**(HTTP 200 + JSON). `wrote` 가 `false` 여도 `"ok"` 다 —
+    그때 서비스의 사유는 `service_error` 에 산다(F3: 예전엔 버려졌다).
+  · `"skipped_not_rewritable"` — `_sl_is_rewritable` 가 거절해 **전선에 안 나갔다**.
+  · `"not_requested"` — 게이트가 거절해 `/rewrite` 를 **부르지 않았다**
+    (`refused_world_changed`·`refused_not_first_step`·`refused_world_unmeasured`·
+    `refused_budget_spent`·`noop_refused_unmeasured`). `why` 가 그 거절 심볼로 **시작**하고,
+    원래 사유가 있으면 `": "` 뒤에 붙는다.
+  · `"failed:<cause>"` — 요청을 보냈는데 답을 못 읽었다(전송 실패·비-200·깨진 JSON).
+    서버에 닿았는지는 모른다 — 원장 행이 없는 것이 정상일 수 있다.
+
+**`record_id`** 는 **전선에 실린** 논리 요청 id 다(`new_record_id`, 전역 RNG 를 안 민다).
+전선에 안 나간 두 값(`skipped_not_rewritable`·`not_requested`)에서는 `nothing` 이다 —
+원장에 짝이 없는 id 를 만들지 않는다. `response_id` 는 서비스가 처리마다 발급한 값이고
+`roundtrip == "ok"` 일 때만 채워진다. 검증기는 `(record_id, response_id)` 로 원장 행과 조인한다.
+`parent_record_id`/`parent_response_id` 는 이 레인의 `/decide` 행(첫 시도)의 신원이다.
+
+**`steps` 와 `steps_ref`:** 던짐·무동작·집행 전 거절 갈래는 두 번째 집행의 걸음을 `steps`
+에 싣는다(`steps_ref = nothing`). 🔴 **등록 거절 갈래는 `steps` 를 `nothing` 으로 둔다** —
+그 뒤의 (유일한) 집행은 정상 흐름이 결정 행의 `respec["steps"]` 에 쓰고(`record_world_delta!`),
+그 자리를 `steps_ref = "respec.steps"` 가 가리킨다. `prev_steps` 는 첫 시도의 걸음이다
+(등록 거절 갈래는 집행 전이라 `nothing`, 집행 전 거절 갈래는 빈 목록).
+"""
+function _open_attempt!(; trigger::AbstractString, why::AbstractString,
+                         prev_name, prev_steps = nothing, sl = nothing,
+                         requested::Bool = true, steps_ref = nothing)
+    local att = Dict{String,Any}(
+        "attempt" => 2, "trigger" => String(trigger), "why" => String(why),
+        "prev_impl_name" => prev_name, "prev_steps" => prev_steps,
+        "record_id" => (requested ? _new_attempt_record_id() : nothing),
+        "parent_record_id" => _synth_lane_field(sl, "record_id"),
+        "parent_response_id" => _synth_lane_field(sl, "response_id"),
+        "response_id" => nothing,
+        "roundtrip" => (requested ? nothing : "not_requested"),
+        "wrote" => nothing, "service_error" => nothing,
+        "impl_name" => nothing, "impl_code" => nothing, "params" => nothing,
+        "calls" => nothing, "install_why" => nothing, "steps" => nothing,
+        "steps_ref" => steps_ref)
+    try
+        local rs = CB.MONITOR_RESPEC[]
+        rs isa AbstractDict && push!(get!(() -> Any[], rs, "attempts"), att)
+    catch e
+        println("[minted] attempts 기록 실패 (집행은 계속한다): ",
+                first(split(sprint(showerror, e), "\n")))
+    end
+    return att
+end
+
+# 🔴 `new_record_id`·`RUN_CTX` 의 진실원은 `tools/monitor/policy.jl` 이다(두 번째 벌을 안
+#    만든다). 이 파일만 태우는 자리(`tools/monitor/test_minted_wiring.jl`, 시험의 `_enact_at`
+#    사본 모듈)에는 그 이름이 없다 — 거기서 `UndefVarError` 로 되먹임 전체가 `catch` 로
+#    떨어지면 오늘의 판정이 바뀐다. 그래서 **이름이 있을 때만** 쓰고, 없으면 `nothing` 을
+#    싣는다(생산 경로 `render_demo.jl` 은 policy.jl 을 언제나 싣는다).
+_new_attempt_record_id() =
+    isdefined(@__MODULE__, :new_record_id) ? new_record_id() : nothing
+_run_ctx_copy() =
+    isdefined(@__MODULE__, :RUN_CTX) ? copy(RUN_CTX[]) : nothing
+
+"""
+    _note_unrequested!(sl, r, nm; trigger, refusal, why = nothing) -> Union{Nothing,Dict}
+
+게이트가 **`/rewrite` 를 부르지 않고** 거절한 판을 `attempts` 칸 하나로 남긴다
+(`roundtrip = "not_requested"`, `record_id = nothing`). `why` 는 거절 심볼로 시작하고,
+원래 사유가 있으면 `": "` 뒤에 붙는다.
+
+🔴 왜 (2026-09-22, 수락 조건 "요청하지 않은 거절도 이유가 남아야 한다"): F4 의
+   `refused_world_changed` 20판은 기록 줄의 `enact_retry=` 한 칸만 남겼고, 무엇을 되먹이려다
+   막혔는지(사유·첫 시도 걸음)는 stdout 에만 있었다.
+🔴 안 던진다 — 이 파일의 규약.
+"""
+function _note_unrequested!(sl, r, nm; trigger::AbstractString, refusal::Symbol,
+                            why = nothing)
+    try
+        return _open_attempt!(; trigger = trigger,
+            why = why === nothing ? String(refusal) : string(refusal, ": ", why),
+            prev_name = something(_synth_lane_field(sl, "impl_name"), nm),
+            prev_steps = [_step_render(st) for st in r.steps],
+            sl = sl, requested = false)
+    catch e
+        println("[minted] attempts 기록 실패 (집행은 계속한다): ",
+                first(split(sprint(showerror, e), "\n")))
+        return nothing
+    end
+end
+
+"""
+    _rewrite_once(sl, nm, cd, why; attempt = nothing) -> Union{Nothing,NamedTuple}
 
 거절 사유를 agent-3 에게 **한 번** 되먹여 고친 body 를 받는다. 못 받으면 `nothing`.
+
+🔴 2026-09-22 (R2). `attempt` 는 `_open_attempt!` 이 연 칸이다. 여기서 `roundtrip`·
+   `parent_*`·서비스 응답 필드를 **제자리에** 채운다 — 반환값은 오늘과 같다(호출자의 판정이
+   안 바뀐다). `attempt === nothing` 이면(옛 호출자·시험) 전선의 신원 칸은 `nothing`/`""` 이다.
+   전선에는 옛 다섯 키 + `record_id`·`parent_record_id`·`attempt`·`trigger`·`run_ctx`
+   (`RUN_CTX[]` 의 **사본**)가 실린다.
 
 🔴 **절대 안 던진다.** 여기서 새면 집행부가 기록 대신 예외로 끝나고 호출자는 세계 상태를
    잃는다 — 이 파일 전체가 지키는 규약이다. 서비스가 안 떠 있는 것도 정상 경로다.
@@ -1543,12 +1659,16 @@ end
    그것도 `catch` 로 떨어져 **원래 거절이 그대로 남는다**. 되먹임은 있으면 좋은 것이지
    반드시 도는 것이 아니므로 그 자리에 로드 순서를 강제하지 않는다.
 """
-function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::AbstractString)
+function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::AbstractString;
+                       attempt::Union{Nothing,AbstractDict} = nothing)
     # 🔴 왕복 **전에** 판정한다. 고친 body 를 받아 놓고 `sl` 을 못 갱신하면, 새 body 를
     #    등록해 놓고 **낡은 인자**로 부르게 된다(아래 호출부의 근거) — 그 판이 제일 나쁘다.
     if !_sl_is_rewritable(sl)
         println("[minted] rewrite: 건너뜀 — synth_lane 이 갱신 가능한 모양이 아니다 ",
                 "(", typeof(sl), "). 원래 거절이 그대로 남는다.")
+        # 🔴 전선에 안 나갔다 — 원장에 짝이 없는 id 를 남기지 않는다(`_open_attempt!` 문단).
+        attempt === nothing ||
+            (attempt["roundtrip"] = "skipped_not_rewritable"; attempt["record_id"] = nothing)
         return nothing
     end
     try
@@ -1566,10 +1686,22 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
         isempty(spec) && println("[minted] rewrite: ⚠️ spec 이 비었다 — agent-3 이 명세 ",
                                  "없이 고쳐야 한다 (배선은 됐다: 이 판의 synth_lane 에 ",
                                  "mechanism 이 없거나 빈 문자열이다)")
+        local prid = _synth_lane_field(sl, "record_id")
+        if attempt !== nothing
+            attempt["parent_record_id"]   = prid
+            attempt["parent_response_id"] = _synth_lane_field(sl, "response_id")
+        end
         body = JSON3.write(Dict(
             "tool_name" => something(_synth_lane_field(sl, "tool_name"), ""),
             "spec"      => spec,
-            "impl_name" => nm, "impl_code" => cd, "impl_rejected_why" => why))
+            "impl_name" => nm, "impl_code" => cd, "impl_rejected_why" => why,
+            # ---- 원장 신원 (2026-09-22) — 서비스가 `/rewrite` 행에 찍는다 ----------
+            "record_id" => (attempt === nothing ? nothing : attempt["record_id"]),
+            "parent_record_id" => prid,
+            "attempt" => 2,
+            "trigger" => (attempt === nothing ? "" : attempt["trigger"]),
+            # 🔴 사본이다 — 공유 dict 을 그대로 싣지 않는다(`_stamp_identity!` 와 같은 규약).
+            "run_ctx" => _run_ctx_copy()))
         # 🔴 2026-09-05 (P2 의 진짜 원인). 초판은 `retries = 0` 이었고, **그 한 글자가
         #    이 채널이 한 번도 성공하지 못한 이유다.** 근거 셋:
         #    (1) 던진 것은 `HTTP.RequestError` 다. HTTP.jl 은 그 예외를 `newconnection` 이
@@ -1600,6 +1732,18 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
                          readtimeout = REWRITE_TIMEOUT_S, retries = 2,
                          retry_non_idempotent = true)
         f = JSON3.read(String(resp.body))
+        # 🔴 2026-09-22 (F3). `wrote` 검사 **앞**에서 채운다 — `wrote≠true` 판의 서비스
+        #    `error` 가 예전엔 여기서 버려졌다. 판정(`nothing` 반환)은 오늘과 같다.
+        if attempt !== nothing
+            attempt["roundtrip"]     = "ok"
+            attempt["response_id"]   = get(f, :response_id, nothing)
+            attempt["wrote"]         = get(f, :wrote, nothing)
+            attempt["service_error"] = get(f, :error, nothing)
+            attempt["impl_name"]     = get(f, :impl_name, nothing)
+            attempt["impl_code"]     = get(f, :impl_code, nothing)
+            attempt["params"]        = get(f, :params, nothing)
+            attempt["calls"]         = get(f, :calls, nothing)
+        end
         (get(f, :wrote, nothing) === true) || return nothing
         (get(f, :impl_code, nothing) isa AbstractString) || return nothing
         (get(f, :impl_name, nothing) isa AbstractString) || return nothing
@@ -1639,6 +1783,10 @@ function _rewrite_once(sl, nm::AbstractString, cd::AbstractString, why::Abstract
         #    유료 런 9 의 실측 재현: 원인이 전문 1301자 중 **1261번째** 자리에 있어 200자
         #    상한이 1000자 앞에서 잘렸다. 표식이 없는 예외(`ConnectError` 등)는 전문을
         #    그대로 지나가므로 그 가족의 줄은 오늘과 바이트 동일하다.
+        # 🔴 2026-09-22 (R2). 칸에는 **자르지 않은** 원인을 싣는다. ⚠️ 아래 println 의 상한
+        #    접합식을 여기(또는 이 주석에) **글자 그대로 베끼지 말 것** — 시험 (30c) 의 변이가
+        #    그 문자열의 **첫** 출현을 바꾼다(`count = 1`).
+        attempt === nothing || (attempt["roundtrip"] = "failed:" * _showerror_cause(e))
         println("[minted] rewrite: 왕복 실패 (원래 거절이 그대로 남는다): ",
                 _cap_detail(_one_line_rec(_showerror_cause(e))))
         return nothing
@@ -2078,11 +2226,17 @@ end
 ⚠️ 던진 쪽의 세 이름은 **D17b 와 바이트 동일**하다. 접두를 붙여 통일하고 싶은 유혹이 있지만
    그러면 `tools/monitor/test_ladder_report.py` 의 실측 리터럴과 결정 행의 옛 값이 한꺼번에
    갈린다 — 이 파일의 규약대로 **넓히기만** 한다.
+
+🔴 2026-09-22 (R2): 넷째 필드 `trigger` 는 **문자열**이다 — 심볼 셋(로그·결정 행의 이름)은
+   바이트 동일하게 두고, 스트림 `attempts` 칸과 `/rewrite` 전선의 `trigger` 가 이 값을 싣는다
+   (정본 값 집합은 `_open_attempt!` 의 docstring).
 """
-const _RETRY_SYMS_THREW = (roundtrip = :roundtrip_failed,
+const _RETRY_SYMS_THREW = (trigger   = "threw",
+                           roundtrip = :roundtrip_failed,
                            rejected  = :rejected,
                            retried   = :retried)
-const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
+const _RETRY_SYMS_NOOP  = (trigger   = "noop",
+                           roundtrip = :noop_roundtrip_failed,
                            rejected  = :noop_rejected,
                            retried   = :noop_retried)
 # 🔴 D17d (2026-09-05). 셋째 트리거도 **자기 접두를 갖는다** — `prerun_retried` 는
@@ -2090,7 +2244,8 @@ const _RETRY_SYMS_NOOP  = (roundtrip = :noop_roundtrip_failed,
 #    다르다(이쪽은 세계를 한 번도 안 건드린 판이다). `rejected` 가 두 번 나오는 것처럼
 #    보이는 자리는 뜻이 다르다: 접두가 **첫 거절**(집행 전), 어간이 **두 번째 거절**
 #    (고친 body 의 재등록)이다.
-const _RETRY_SYMS_PRERUN = (roundtrip = :prerun_roundtrip_failed,
+const _RETRY_SYMS_PRERUN = (trigger   = "prerun",
+                            roundtrip = :prerun_roundtrip_failed,
                             rejected  = :prerun_rejected,
                             retried   = :prerun_retried)
 
@@ -2134,7 +2289,11 @@ const _RETRY_SYMS_PRERUN = (roundtrip = :prerun_roundtrip_failed,
 function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
     local _prev_nm = String(something(_synth_lane_field(sl, "impl_name"), nm))
     local _prev_cd = String(something(_synth_lane_field(sl, "impl_code"), ""))
-    local fx = _rewrite_once(sl, _prev_nm, _prev_cd, why)
+    # 🔴 2026-09-22 (R2). 되먹임 한 번의 기록 칸 — 첫 시도의 걸음은 여기서 **값으로** 잡는다
+    #    (아래 진단 println 은 stdout 에만 남는다: F3).
+    local att = _open_attempt!(trigger = syms.trigger, why = why, prev_name = _prev_nm,
+                               prev_steps = [_step_render(st) for st in r.steps], sl = sl)
+    local fx = _rewrite_once(sl, _prev_nm, _prev_cd, why; attempt = att)
     if fx === nothing
         return (retry = syms.roundtrip, reenacted = false, r = r,
                 world_delta = nothing, world_delta_body = nothing,
@@ -2142,6 +2301,7 @@ function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
                 params_from = nothing)
     end
     local ins = _install_rewrite!(sl, fx; allow_redefine = (fx.impl_name == _prev_nm))
+    att["install_why"] = ins.why
     if ins.why !== nothing
         # ⚠️ 사유는 **두 번째 시도의 것**이다(D17 과 같은 규약).
         return (retry = syms.rejected, reenacted = false, r = r,
@@ -2159,6 +2319,7 @@ function _rewrite_retry!(env, truth, sl, r, _pre, why::AbstractString, nm, syms)
     #    유지해야 한다 — 두 시도를 합친 누적 차분이다. (두 게이트 다 첫 시도의 body 차분이
     #    잰 0 인 판에서만 열리므로, 이 누적값은 실질적으로 두 번째 body 의 것이다.)
     local r2 = CB.enact_minted!(env, truth, sl; probe = () -> _world_digest(env))
+    att["steps"] = [_step_render(st) for st in r2.steps]
     return (retry = syms.retried, reenacted = true, r = r2,
             world_delta = _world_delta(_pre, _world_digest(env)),
             world_delta_body = _world_delta(_pre, r2.body_probe),
@@ -2602,7 +2763,12 @@ function enact_minted_decision!(env, truth, decision)
             #    루프가 아니라 **구조**다 — 두 번째 거절은 곧장 `_reject_malformed` 로 간다.
             #    (`@goto` 는 여기서 못 쓴다: Julia 의 `@goto` 는 `try` 블록 안팎으로 못 뛴다.)
             if why !== nothing
-                local fx = _rewrite_once(sl, String(nm), String(cd), why)
+                # 🔴 2026-09-22 (R2). 이 갈래의 재집행 걸음은 정상 흐름이 `respec["steps"]` 에
+                #    쓴다 — 칸의 `steps` 는 비우고 그 자리를 `steps_ref` 로 가리킨다.
+                local att = _open_attempt!(trigger = "register_reject", why = why,
+                                           prev_name = String(nm), sl = sl,
+                                           steps_ref = "respec.steps")
+                local fx = _rewrite_once(sl, String(nm), String(cd), why; attempt = att)
                 # 🔴 D17c. **왕복이 나간 순간** 예산이 소진된다 — 성공했든 실패했든.
                 #    "실패했으니 한 번 더" 는 상한을 2로 만드는 것과 같다.
                 rewrote = true
@@ -2646,6 +2812,7 @@ function enact_minted_decision!(env, truth, decision)
                 # 🔴 2026-09-05 (유료 런 10). 설치기는 이제 **스키마의 출처**도 낸다 —
                 #    거절된 판에서 특히 필요하다(`_reject_malformed` 의 줄이 그것을 찍는다).
                 local ins = _install_rewrite!(sl, fx)
+                att["install_why"] = ins.why
                 rewrite_params = ins.params_from
                 ins.why !== nothing && return _reject_malformed(ins.why)
             end
@@ -2735,6 +2902,9 @@ function enact_minted_decision!(env, truth, decision)
                 enact_retry = :refused_budget_spent
                 println("[minted] enact_retry: 거부 — refused_budget_spent ",
                         "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다) 사유=", _throw_why)
+                # 🔴 2026-09-22 (R8). 부르지 않은 거절도 `attempts` 에 사유가 남는다.
+                _note_unrequested!(sl, r, nm; trigger = _RETRY_SYMS_THREW.trigger,
+                                   refusal = enact_retry, why = _throw_why)
             elseif enact_retry === :ok
                 local rr = _rewrite_retry!(env, truth, sl, r, _pre, _throw_why, nm,
                                            _RETRY_SYMS_THREW)
@@ -2749,6 +2919,8 @@ function enact_minted_decision!(env, truth, decision)
             else
                 println("[minted] enact_retry: 거부 — ", enact_retry,
                         " (세계가 더러울 수 있다: 되돌릴 방법이 없다) 사유=", _throw_why)
+                _note_unrequested!(sl, r, nm; trigger = _RETRY_SYMS_THREW.trigger,
+                                   refusal = enact_retry, why = _throw_why)
             end
         elseif _prerun_why !== nothing
             # 🔴 D17d. **게이트가 따로 없다** — 판독기 자신이 게이트다(연언지 넷이 그 안에
@@ -2760,6 +2932,8 @@ function enact_minted_decision!(env, truth, decision)
                 enact_retry = :refused_budget_spent
                 println("[minted] enact_retry: 거부 — refused_budget_spent ",
                         "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다) 사유=", _prerun_why)
+                _note_unrequested!(sl, r, nm; trigger = _RETRY_SYMS_PRERUN.trigger,
+                                   refusal = enact_retry, why = _prerun_why)
             else
                 local rp = _rewrite_retry!(env, truth, sl, r, _pre, _prerun_why, nm,
                                            _RETRY_SYMS_PRERUN)
@@ -2779,6 +2953,10 @@ function enact_minted_decision!(env, truth, decision)
                 enact_retry = :refused_budget_spent
                 println("[minted] enact_retry: 거부 — refused_budget_spent ",
                         "(이 런의 되먹임 왕복은 등록 거절에서 이미 썼다)")
+                # 🔴 사유 문장은 게이트가 열린(잰 0) 판이라 **참**이다 — 보냈을 그 문장을 싣는다.
+                _note_unrequested!(sl, r, nm; trigger = _RETRY_SYMS_NOOP.trigger,
+                                   refusal = enact_retry,
+                                   why = _noop_feedback_reason(r, world_delta_body))
             elseif _ng === :ok
                 # 🔴 사유 문자열은 **여기서 짓지 않는다** — `_noop_feedback_reason` 이 그
                 #    문장과 그 문장이 무엇을 주장하는지를 통째로 소유한다(관측만, 처방 없음).
@@ -2800,6 +2978,9 @@ function enact_minted_decision!(env, truth, decision)
                 enact_retry = _ng
                 println("[minted] enact_retry: 거부 — ", _ng,
                         " (body 차분을 못 쟀다: 안 움직였다고 말할 근거가 없다)")
+                # 🔴 사유 문장은 **안 싣는다** — 못 잰 판에서 "모든 축이 같았다" 는 거짓이다.
+                _note_unrequested!(sl, r, nm; trigger = _RETRY_SYMS_NOOP.trigger,
+                                   refusal = _ng)
             end
             # `:none` 은 트리거 자체가 없다 = `enact_retry` 를 안 건드린다(= `n/a`).
             # 🔴 세계를 **움직인** body 가 정확히 여기로 온다 — 음성 대조의 자리다.

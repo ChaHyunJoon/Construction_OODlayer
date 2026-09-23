@@ -3117,8 +3117,13 @@ _d17b_boom(nm) = "function $(nm)(env; goal = \"g\")\n" *
     # ---- 전선 계약: **두 번째 철자를 만들지 않았다** — D17 과 같은 다섯 키다 ------------
     local body = _RW_LAST[]
     @test body !== nothing
+    # 🔴 2026-09-22: 원장 신원 다섯이 더해졌다(record_id·parent_record_id·attempt·trigger·
+    #    run_ctx). 옛 다섯의 **철자는 그대로**다 — 두 번째 철자를 만들지 않는다는 명제는 유지.
     @test Set(String.(keys(body))) ==
-          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why"])
+          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why",
+               "record_id", "parent_record_id", "attempt", "trigger", "run_ctx"])
+    @test body.attempt == 2
+    @test String(body.trigger) == "threw"
     # ---- 사유는 **예외 메시지 자신**이다 (모양-맞추기가 못 닫는 가족을 닫는 자리) --------
     @test startswith(String(body.impl_rejected_why), "enact_threw:d17b_boom_a!: ")
     @test occursin("KeyError", String(body.impl_rejected_why))
@@ -3336,8 +3341,11 @@ _d17c_moves(nm) =
     # ---- 전선 계약: **두 번째 철자를 만들지 않았다** — D17/D17b 와 같은 다섯 키다 --------
     local body = _RW_LAST[]
     @test body !== nothing
+    # 🔴 2026-09-22: (33) 과 같은 열 키 — 옛 다섯의 철자는 그대로, 원장 신원 다섯이 더해졌다.
     @test Set(String.(keys(body))) ==
-          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why"])
+          Set(["tool_name", "spec", "impl_name", "impl_code", "impl_rejected_why",
+               "record_id", "parent_record_id", "attempt", "trigger", "run_ctx"])
+    @test String(body.trigger) == "noop"
     @test startswith(String(body.impl_rejected_why), "enact_noop:")
     # 🔴 `enact_threw:` 접두가 **아니다** — agent-3 이 두 사건을 접두로 가른다.
     @test !startswith(String(body.impl_rejected_why), "enact_threw:")
@@ -4148,6 +4156,326 @@ _d17d_lane(nm) = _lane(Dict{String,Any}(
     @test length(Set([_RETRY_SYMS_THREW.retried, _RETRY_SYMS_NOOP.retried,
                       _RETRY_SYMS_PRERUN.retried])) == 3
 end
+
+# =============================================================================
+# (34a)~(34i) 🔴 2026-09-22 (Task 5, 재시도 보존) — 되먹임 한 번이 스트림의
+# `respec["attempts"]` 에 남는다.
+#
+# 사건(F2·F3·F4). 스트림은 첫 시도 body 만 싣는다: `synth_lane` 은 `policy.jl` 이 만든
+# **사본**이고 `_install_rewrite!` 은 그 사본만 고친다. 첫 시도의 `steps` 는 stdout 에만
+# 찍히고, `_rewrite_once` 는 `wrote≠true` 면 서비스의 `error` 를 버렸다. 그래서 현재 스트림의
+# `retried`·`noop_retried` 28판은 최종 body 를 복구할 수 없다.
+#
+# 🔴 이름: 이 파일에는 이미 `(34)`(D17b 기록 줄) 이 있다. 브리프의 번호 `(34a)~(34d)` 를
+#    그대로 쓰고(전역 제약·리뷰 포커스가 그 번호로 가리킨다), 수락 조건이 더한 판은
+#    `(34e)~(34i)` 로 잇는다.
+# 🔴 유료 0건 — `_RW_SERVER`(루프백) 하나만 쓴다.
+# =============================================================================
+# (34e) 는 생산의 `record_decision!`(policy.jl)을 그대로 부른다 — 그 함수는 `CB.FaultTruth` 등
+# 런타임 include 되는 사건 타입을 본다. `render_demo.jl`·`test/ood_truth_keys.jl` 과 같은 관용구로
+# **testset 밖에서** 싣는다(같은 최상위 식 안에서 싣고 부르면 world age 가 끼어든다).
+isdefined(CB, :FaultTruth) ||
+    CB.include(joinpath(@__DIR__, "..", "src", "navigator", "navigator.jl"))
+
+@testset "(34*) 🔴 2026-09-22: 재시도 한 번이 스트림의 respec.attempts 에 남는다" begin
+
+@testset "(34a) 던진 판 — 고친 body·첫 시도 steps·원장 id 사슬" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_LAST[] = nothing
+    # 가짜 서비스도 진짜처럼 **처리마다** `response_id` 를 싣는다(서비스 94aef446 의 계약).
+    _RW_RESPONSES[:d34_same] = () -> merge(_rw_fix("d34_boom!"), Dict{String,Any}(
+        "record_id" => get(_RW_LAST[], :record_id, nothing),
+        "response_id" => "srv-resp-34a"))
+    _RW_MODE[] = :d34_same
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    set_run_ctx!(campaign_id = "c34a")
+    local sl = _d17b_lane("d34_boom!", _d17b_boom("d34_boom!"))
+    sl["record_id"] = "parent-rid-34a"
+    sl["response_id"] = "parent-resp-34a"
+    local m = enact_minted_decision!(retry_env(), nothing, _dec(sl))
+    set_run_ctx!()
+    _RW_MODE[] = :off
+    @test m.enact_retry === :retried
+    local atts = CB.MONITOR_RESPEC[]["attempts"]
+    @test length(atts) == 1
+    local a = atts[1]
+    @test a["attempt"] == 2
+    @test a["trigger"] == "threw"
+    @test startswith(a["why"], "enact_threw:d34_boom!")
+    @test a["roundtrip"] == "ok"
+    @test a["wrote"] === true
+    @test a["service_error"] === nothing
+    @test a["parent_record_id"] == "parent-rid-34a"
+    @test a["parent_response_id"] == "parent-resp-34a"
+    @test a["response_id"] == "srv-resp-34a"
+    @test occursin(r"^[0-9a-f]{24}$", a["record_id"])
+    @test a["prev_impl_name"] == "d34_boom!"
+    @test occursin("function d34_boom!", String(a["impl_code"]))
+    @test a["impl_name"] == "d34_boom!"
+    @test a["install_why"] === nothing
+    @test a["prev_steps"] isa Vector && length(a["prev_steps"]) == 1
+    @test occursin(":threw", a["prev_steps"][1])
+    @test a["steps"] isa Vector && !isempty(a["steps"])
+    @test occursin("d34_boom!:rw_ok", a["steps"][1])
+    @test a["steps_ref"] === nothing                  # 이 갈래는 steps 를 자기 칸에 싣는다
+    # 전선: 같은 id 가 서비스로 갔다 — 원장 행과 조인되는 키다.
+    @test String(_RW_LAST[][:record_id]) == a["record_id"]
+    @test String(_RW_LAST[][:parent_record_id]) == "parent-rid-34a"
+    @test _RW_LAST[][:attempt] == 2
+    @test String(_RW_LAST[][:trigger]) == "threw"
+    # 🔴 `run_ctx` 는 `RUN_CTX[]` 의 값을 싣는다(사본이다 — 정본은 policy.jl 의 `_stamp_identity!`).
+    @test String(_RW_LAST[][:run_ctx][:campaign_id]) == "c34a"
+    # 사본(sl)은 고쳐졌다 — 원본 불변의 증명은 이것이 **아니다**((34e) 가 잰다).
+    @test String(sl["impl_code"]) == String(a["impl_code"])
+end
+
+@testset "(34b) 왕복 실패 — 원인이 남고 판정은 오늘과 같다" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_LAST[] = nothing
+    _RW_MODE[] = :bad_json
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local m = enact_minted_decision!(retry_env(), nothing,
+                  _dec(_d17b_lane("d34_rt!", _d17b_boom("d34_rt!"))))
+    _RW_MODE[] = :off
+    @test m.enact_retry === :roundtrip_failed
+    local a = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test startswith(String(a["roundtrip"]), "failed:")
+    @test occursin("SENTINEL_CAUSE", String(a["roundtrip"]))   # 원인이 칸에 산다
+    @test a["impl_code"] === nothing
+    @test a["response_id"] === nothing
+    @test a["parent_record_id"] === nothing          # 합성 레인에 id 가 없던 판
+    # 🔴 요청은 나갔다(서버가 받았다) — id 가 있어야 원장 쪽에서 행을 찾을 수 있다.
+    @test occursin(r"^[0-9a-f]{24}$", a["record_id"])
+    @test _RW_HITS[] == 1
+end
+
+@testset "(34c) MONITOR_RESPEC 이 없어도 던지지 않는다" begin
+    CB.reset_minted_table!()
+    _RW_RESPONSES[:d34_nomon] = () -> _rw_fix("d34_nomon!")
+    _RW_MODE[] = :d34_nomon
+    CB.MONITOR_RESPEC[] = nothing
+    local m = enact_minted_decision!(retry_env(), nothing,
+                  _dec(_d17b_lane("d34_nomon!", _d17b_boom("d34_nomon!"))))
+    _RW_MODE[] = :off
+    @test m.enact_retry === :retried
+    @test CB.MONITOR_RESPEC[] === nothing
+end
+
+@testset "(34d) 등록 거절 되먹임도 같은 칸에 남는다 — trigger=register_reject" begin
+    CB.reset_minted_table!()
+    # 🔴 새 이름을 쓴다 — (20a) 가 `rw_fixed!` 를 CB 에 이미 심었고, 재등록은
+    #    `allow_redefine` 없이 이 갈래에서 거절될 수 있다(이 시험이 재려는 것과 다른 사건).
+    _RW_RESPONSES[:d34_rename] = () -> _rw_fix("rw_fixed34!")
+    _RW_MODE[] = :d34_rename
+    _RW_HITS[] = 0
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local sl = _rw_lane("rw_bad34",
+        "function rw_bad34(env; note = \"x\")\n    return (status = :nope,)\nend\n")
+    local m = enact_minted_decision!(live_cache_env(), nothing, _dec(sl))
+    _RW_MODE[] = :off
+    @test m.registered === true
+    # ⚠️ 브리프는 `only(...)` 였다. 실측: 칸이 **둘**이다 — 고친 body 는 무동작이고
+    #    `live_cache_env()` 에는 `staging_circles` 가 없어 여섯째 축을 못 잰다 ⟹ 두 번째
+    #    트리거(`noop`)가 `noop_refused_unmeasured` 로 **부르지 않고 거절**했고, 그 거절도
+    #    (R8 대로) 칸을 남긴다. 순서가 일어난 순서다.
+    @test m.enact_retry === :noop_refused_unmeasured
+    local atts = CB.MONITOR_RESPEC[]["attempts"]
+    @test length(atts) == 2
+    @test atts[2]["trigger"] == "noop" && atts[2]["roundtrip"] == "not_requested"
+    @test atts[2]["why"] == "noop_refused_unmeasured"
+    local a = atts[1]
+    @test a["trigger"] == "register_reject"
+    @test a["impl_name"] == "rw_fixed34!"
+    @test a["install_why"] === nothing
+    @test a["prev_impl_name"] == "rw_bad34"
+    @test a["prev_steps"] === nothing                 # 첫 시도는 집행 전에 거절됐다
+    # 🔴 재집행 steps 는 정상 흐름이 `respec["steps"]` 에 쓴다 — 검증기가 따라갈 자리를 적는다.
+    @test a["steps"] === nothing
+    @test a["steps_ref"] == "respec.steps"
+    @test String(_RW_LAST[][:trigger]) == "register_reject"
+end
+
+@testset "(34e) 🔴 첫 시도의 진실원(decision.policies)은 바이트 동일하고, 고친 body 는 attempts 에만 산다 — 직렬화된 프레임에서 잰다" begin
+    CB.reset_minted_table!()
+    _RW_HITS[] = 0; _RW_LAST[] = nothing
+    _RW_RESPONSES[:d34_pol] = () -> _rw_fix("d34_pol!")
+    _RW_MODE[] = :d34_pol
+    local orig_code = _d17b_boom("d34_pol!")
+    local pol = Dict{String,Any}("dspy" => _d17b_lane("d34_pol!", orig_code))
+    pol["dspy"]["record_id"] = "parent-rid-34e"
+    # 🔴 생산의 사본 한 줄 그대로다(`policy.jl` 의 `local synth_lane = let e = get(pol, enacted,
+    #    nothing) … Dict{String,Any}(k => get(e, k, nothing) for k in SYNTH_LANE_KEYS)`).
+    local sl = Dict{String,Any}(k => get(pol["dspy"], k, nothing) for k in SYNTH_LANE_KEYS)
+    local before = JSON3.write(pol)
+    local env = retry_env()
+    local decision = (macro_name = "NOOP", candidates = Any[], policies = pol,
+                      enacted = "dspy", policy = "dspy", rule_macro = "NOOP",
+                      llm_macro = "NOOP", verdict = "ADMITTED", router = nothing,
+                      narrative = nothing, detail = "r", agree = nothing, synth_lane = sl)
+    CB.MONITOR_RESPEC[] = nothing; empty!(CB.MONITOR_RESPEC_HISTORY)
+    # 생산 순서 그대로: 결정 행을 먼저 연다(render_demo 의 `record_decision!` → 집행).
+    record_decision!(env, nothing, decision, "event nl")
+    @test CB.MONITOR_RESPEC[] isa AbstractDict        # 전제: 결정 행이 열렸다
+    local m = enact_minted_decision!(env, nothing, decision)
+    _RW_MODE[] = :off
+    @test m.enact_retry === :retried
+    # ---- 원본 dict 은 한 바이트도 안 바뀌었다 -----------------------------------------------
+    @test JSON3.write(pol) == before
+    @test String(pol["dspy"]["impl_code"]) == orig_code
+    @test String(sl["impl_code"]) != orig_code         # 대조: 사본은 **고쳐졌다**
+    # ---- 스트림 프레임: `monitor_emit!` 이 싣는 두 칸 그대로 직렬화해 되읽는다 -------------
+    #      (`monitor_emit!` 자체는 scene_tree·로봇이 있는 env 가 있어야 돈다 — 아래 소스 결속이
+    #       그 두 칸이 이 모양이라는 것을 못박는다.)
+    local frame = JSON3.read(JSON3.write(Dict{String,Any}(
+        "respec" => CB.MONITOR_RESPEC[],
+        "respec_history" => copy(CB.MONITOR_RESPEC_HISTORY))))
+    local fr = frame.respec
+    @test String(fr.input.policies.dspy.impl_code) == orig_code
+    @test length(fr.attempts) == 1
+    local fa = fr.attempts[1]
+    @test occursin("(status = :rw_ok", String(fa.impl_code))
+    @test String(fa.impl_code) != orig_code
+    @test String(fa.parent_record_id) == "parent-rid-34e"
+    @test fa.roundtrip == "ok"
+    @test length(frame.respec_history) == 1
+    @test String(frame.respec_history[1].attempts[1].record_id) == String(fa.record_id)
+    # 🔴 고친 body 는 결정 행의 input 어디에도 없다 — attempts 에만 산다.
+    @test !occursin("rw_ok", JSON3.write(fr.input))
+    # 소스 결속: 스트림 작성기가 이 두 칸을 이 모양으로 싣는다.
+    local msrc = read(joinpath(@__DIR__, "..", "src", "monitor", "monitor.jl"), String)
+    @test occursin("\"respec\"     => MONITOR_RESPEC[],", msrc)
+    @test occursin("\"respec_history\" => copy(MONITOR_RESPEC_HISTORY),", msrc)
+    CB.MONITOR_RESPEC[] = nothing; empty!(CB.MONITOR_RESPEC_HISTORY)
+end
+
+@testset "(34f) 무동작·집행 전 거절 트리거도 같은 칸에 남는다 — trigger 가 갈린다" begin
+    # ---- noop -------------------------------------------------------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_LAST[] = nothing
+    _RW_RESPONSES[:d34_noop] = () -> _rw_fix("d34_noop!")
+    _RW_MODE[] = :d34_noop
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local mn = enact_minted_decision!(retry_env(), nothing,
+                   _dec(_d17b_lane("d34_noop!", _d17c_noop("d34_noop!"))))
+    @test mn.enact_retry === :noop_retried
+    local an = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test an["trigger"] == "noop"
+    @test an["roundtrip"] == "ok"
+    @test startswith(an["why"], "enact_noop:")
+    @test String(_RW_LAST[][:record_id]) == an["record_id"]
+    @test String(_RW_LAST[][:trigger]) == "noop"
+    @test length(an["prev_steps"]) == 1 && occursin("d34_noop!:failure", an["prev_steps"][1])
+    @test an["steps"] isa Vector && !isempty(an["steps"])
+    @test an["steps_ref"] === nothing
+    # ---- prerun -----------------------------------------------------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0; _RW_LAST[] = nothing
+    _RW_RESPONSES[:d34_pre] = () -> _rw_fix("d34_pre!")
+    _RW_MODE[] = :d34_pre
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local mp = enact_minted_decision!(retry_env(), nothing, _dec(_d17d_lane("d34_pre!")))
+    _RW_MODE[] = :off
+    @test mp.enact_retry === :prerun_retried
+    local ap = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test ap["trigger"] == "prerun"
+    @test ap["roundtrip"] == "ok"
+    @test startswith(ap["why"], "enact_rejected:")
+    @test ap["prev_steps"] isa Vector && isempty(ap["prev_steps"])   # body 가 안 굴렀다
+    @test ap["steps"] isa Vector && !isempty(ap["steps"])
+    @test String(_RW_LAST[][:trigger]) == "prerun"
+end
+
+@testset "(34g) 🔴 F3: wrote=false — 왕복은 ok, 서비스의 error 가 칸에 남고 판정은 오늘과 같다" begin
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d34_nowrite] = () -> Dict{String,Any}(
+        "wrote" => false, "impl_name" => nothing, "impl_code" => nothing,
+        "params" => nothing, "calls" => nothing,
+        "error" => "rewrite_declined: SENTINEL_SVC_ERR", "response_id" => "srv-resp-34g")
+    _RW_MODE[] = :d34_nowrite
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local m = enact_minted_decision!(retry_env(), nothing,
+                  _dec(_d17b_lane("d34_nw!", _d17b_boom("d34_nw!"))))
+    _RW_MODE[] = :off
+    @test _RW_HITS[] == 1
+    @test m.enact_retry === :roundtrip_failed          # 🔴 판정 심볼은 오늘과 같다
+    local a = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test a["roundtrip"] == "ok"                        # 서비스는 **답했다**
+    @test a["wrote"] === false
+    @test a["service_error"] == "rewrite_declined: SENTINEL_SVC_ERR"
+    @test a["response_id"] == "srv-resp-34g"
+    @test a["impl_code"] === nothing
+    @test a["install_why"] === nothing && a["steps"] === nothing
+end
+
+@testset "(34h) 🔴 요청하지 않은 거절도 사유가 남는다 — roundtrip=not_requested" begin
+    # ---- (a) refused_world_changed: 서버는 살아 있는데 **안 부른다** ------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d34_never] = () -> _rw_fix("d34_never!")
+    _RW_MODE[] = :d34_never
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local dirty = _d17b_lane("d34_dirty!",
+        "function d34_dirty!(env; goal = \"g\")\n" *
+        "    push!(env.active_build_steps, ConstructionBots.RobotID(7))\n" *
+        "    error(\"KeyError: key \\\"\$(goal)\\\" not found\")\nend\n")
+    dirty["record_id"] = "parent-rid-34h"
+    local mb = enact_minted_decision!(retry_env(), nothing, _dec(dirty))
+    @test mb.enact_retry === :refused_world_changed
+    @test _RW_HITS[] == 0
+    local a = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test a["trigger"] == "threw"
+    @test a["roundtrip"] == "not_requested"
+    @test startswith(a["why"], "refused_world_changed")
+    @test occursin("enact_threw:d34_dirty!", a["why"])  # 원래 사유도 같이 남는다
+    @test a["record_id"] === nothing                     # 전선에 안 나갔다 = 원장 행이 없다
+    @test a["parent_record_id"] == "parent-rid-34h"
+    @test a["prev_steps"] isa Vector && occursin(":threw", a["prev_steps"][1])
+    @test a["wrote"] === nothing && a["impl_code"] === nothing
+
+    # ---- (b) noop_refused_unmeasured: 못 잰 판 --------------------------------------------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local mu = enact_minted_decision!(live_cache_env(), nothing,
+                   _dec(_d17b_lane("d34_unmeas!", _d17c_noop("d34_unmeas!"))))
+    @test mu.enact_retry === :noop_refused_unmeasured
+    @test _RW_HITS[] == 0
+    local au = only(CB.MONITOR_RESPEC[]["attempts"])
+    @test au["trigger"] == "noop"
+    @test au["roundtrip"] == "not_requested"
+    @test au["why"] == "noop_refused_unmeasured"
+    @test au["record_id"] === nothing
+
+    # ---- (c) refused_budget_spent: 등록 거절이 예산을 쓴 판 → 두 칸, 일어난 순서대로 --------
+    CB.reset_minted_table!(); _RW_HITS[] = 0
+    _RW_RESPONSES[:d34_budget] = () -> _rw_fix("d34_budget_fixed!")   # 고친 body 는 무동작
+    _RW_MODE[] = :d34_budget
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local sg = _rw_lane("d34_budget_bad",
+        "function d34_budget_bad(env; note = \"x\")\n    return (status = :bad, note = note)\nend\n")
+    local mg = enact_minted_decision!(retry_env(), nothing, _dec(sg))
+    _RW_MODE[] = :off
+    @test mg.enact_retry === :refused_budget_spent
+    @test _RW_HITS[] == 1
+    local ag = CB.MONITOR_RESPEC[]["attempts"]
+    @test length(ag) == 2
+    @test ag[1]["trigger"] == "register_reject" && ag[1]["roundtrip"] == "ok"
+    @test ag[2]["trigger"] == "noop" && ag[2]["roundtrip"] == "not_requested"
+    @test startswith(ag[2]["why"], "refused_budget_spent")
+    @test ag[2]["prev_impl_name"] == "d34_budget_fixed!"  # 그 순간의 body 는 **고친** 것이다
+    @test ag[2]["record_id"] === nothing
+end
+
+@testset "(34i) _sl_is_rewritable 거절 — roundtrip=skipped_not_rewritable, 전선에 안 나간다" begin
+    _RW_HITS[] = 0
+    CB.MONITOR_RESPEC[] = Dict{String,Any}()
+    local att = _open_attempt!(trigger = "register_reject", why = "reject:x", prev_name = "nr!")
+    local slS = Dict{Symbol,Any}(:impl_name => "nr!", :mechanism => "m")
+    @test _rewrite_once(slS, "nr!", "function nr!(env) end", "reject:x"; attempt = att) === nothing
+    @test att["roundtrip"] == "skipped_not_rewritable"
+    @test att["record_id"] === nothing
+    @test _RW_HITS[] == 0
+    @test only(CB.MONITOR_RESPEC[]["attempts"]) === att
+    CB.MONITOR_RESPEC[] = nothing
+end
+
+end # (34*)
 
 close(_RW_SERVER)
 
