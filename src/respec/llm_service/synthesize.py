@@ -156,6 +156,7 @@ import datetime
 import json
 import os
 import sys
+import threading
 from collections import namedtuple
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -1635,12 +1636,56 @@ def default_record_path() -> str:
     return os.path.join(repo, "results", "synth_lane_records.jsonl")
 
 
+# ---- 원장 신뢰성 (2026-09-22, global-constraints.md "Task 3, 원장 신뢰성") ------------------
+# 🔴 서비스는 FastAPI 동기 핸들러라 요청이 스레드풀에서 **동시에** append 한다(스윕 W=12).
+#    `fh.write` 한 번이 큰 줄(원시 응답을 실은 행은 수십~수백 KB)을 여러 write(2) 로 쪼갤 수
+#    있으므로, 잠금 없이는 두 줄이 섞여 JSONL 이 깨질 수 있다. 프로세스 안의 잠금 하나로 막는다.
+_APPEND_LOCK = threading.Lock()
+# 🔴 "절대 안 던진다" 는 "조용히 잃는다" 가 **아니다.** 실패는 카운터와 stderr 한 줄로 남고,
+#    `/health` 의 `ledger_append_failures` 로 나가 측정 게이트가 그것을 보고 실패한다.
+LEDGER_APPEND_FAILURES = 0
+_FAILURE_LOCK = threading.Lock()
+
+
+def ledger_append_failures() -> int:
+    """이 프로세스가 기동 후 잃은 원장 행 수(append 실패 + 행 조립 실패)."""
+    return LEDGER_APPEND_FAILURES
+
+
+def note_ledger_append_failure(exc, path=None, where="append_synthesis_record") -> None:
+    """원장 행 하나를 잃었다는 사실을 센다. **절대 안 던진다.**
+
+    구조화 경고(JSON 한 줄)를 stderr 에 쓴다 — 서비스 로그를 grep 하는 사람이 경로·원인을
+    기계적으로 읽을 수 있게. 서비스가 행을 **조립하다** 실패한 경우에도(`where` 로 구별) 같은
+    카운터를 쓴다: 소비자에게는 둘 다 "행이 없다" 이다.
+    """
+    global LEDGER_APPEND_FAILURES
+    try:
+        with _FAILURE_LOCK:
+            LEDGER_APPEND_FAILURES += 1
+            n = LEDGER_APPEND_FAILURES
+        print(json.dumps({"event": "ledger_append_failed", "where": where,
+                          "path": None if path is None else str(path),
+                          "error": "%s: %s" % (type(exc).__name__, exc),
+                          "failures": n}, ensure_ascii=False, default=str),
+              file=sys.stderr, flush=True)
+    except Exception:  # noqa: BLE001 -- 경고가 결정을 죽이면 안 된다
+        pass
+
+
 def append_synthesis_record(rec, path=None) -> Optional[str]:
     """기록 한 줄을 append 한다. 쓴 경로, 또는 `None`(안 썼다).
 
     🔴 **절대 던지지 않는다.** 진단이 결정을 죽이면 진단을 켠 것이 사고의 원인이 된다 —
     줄리아 집행부가 같은 이유로 예외 대신 거절을 내는 것과 같은 규약이다.
     🔴 인코딩 못 하는 값은 `default=str` 로 접는다. 값 하나 때문에 줄 전체를 잃지 않는다.
+    ✅ 2026-09-22: 쓰기는 모듈 잠금 `_APPEND_LOCK` 아래서 한다(스레드 동시 append 에서 줄이
+       안 섞인다). 실패하면 `None` 을 내는 것은 그대로지만 **조용하지 않다** —
+       `note_ledger_append_failure` 가 카운터를 올리고 stderr 에 JSON 한 줄을 쓴다.
+       sink 가 꺼진 것(`SYNTH_RECORD_LOG=0`)은 실패가 아니다(안 쓰기로 한 것이다).
+    ⚠️ 잠금은 **한 프로세스 안**만 지킨다. 서비스는 worker 1개(`uvicorn` 기본값, `--workers`
+       를 안 준다)로 띄운다는 전제다. 여러 프로세스가 한 원장에 쓰려면 파일 잠금(`fcntl.flock`)
+       이나 단일 writer 가 필요하다 — 이 함수의 범위 밖이다.
     """
     if path is None:
         env = os.environ.get(SYNTH_RECORD_ENV)
@@ -1648,13 +1693,16 @@ def append_synthesis_record(rec, path=None) -> Optional[str]:
             return None
         path = env or default_record_path()
     try:
+        line = json.dumps(rec, ensure_ascii=False, default=str) + "\n"   # 직렬화는 잠금 밖
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+        with _APPEND_LOCK:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(line)
         return path
-    except Exception:
+    except Exception as e:  # noqa: BLE001 -- 위 규약
+        note_ledger_append_failure(e, path)
         return None
 
 

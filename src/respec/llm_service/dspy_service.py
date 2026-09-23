@@ -24,7 +24,7 @@ Run (hjcrl venv, from this directory):
   OPENAI_API_KEY must be set in the environment.
   python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 """
-import os, sys, json, glob, math, re
+import os, sys, json, glob, math, re, uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI
@@ -181,6 +181,9 @@ from tool_registry import (MACRO_TO_TOOL, TOOL_TO_MACRO, build_tools,   # noqa: 
 #    함께 참일 때뿐이다(`run_synthesis` 가 부르는 `synthesize_multi` 의 docstring, 판정 R13).
 from synthesize import (append_synthesis_record as _append_synthesis_record,  # noqa: E402
                         blank_synthesis_record, run_synthesis,    # noqa: E402
+                        stamp_record as _stamp_record,            # noqa: E402
+                        ledger_append_failures as _ledger_append_failures,          # noqa: E402
+                        note_ledger_append_failure as _note_ledger_append_failure,  # noqa: E402
                         synthesis_enabled)
 # ---- 세대 도장 (2026-09-03) ----------------------------------------------------------------
 # 🔴 `generation` 은 stdlib 만 쓰므로 numpy/sklearn-before-dspy 계약과 무관하다.
@@ -833,6 +836,13 @@ class MacroRequest(BaseModel):
     #     죽으면 안 된다(하위호환).
     #   게이트: test_routing_kind_reaches_the_prompt.py
     routing_kind: Optional[str] = None
+    # ---- 원장 신원 (2026-09-22, 재시도 body 보존) --------------------------------------
+    # 🔴 줄리아가 **발급**한다. 서버가 만들면 `/decide` 의 HTTP 재전송(`retries=3`)이 같은
+    #    결정을 다른 id 두 줄로 남긴다 — 같은 id 두 줄이면 소비자가 중복임을 안다.
+    #    서버는 따로 처리마다 `response_id` 를 발급한다(`macro()`) — 둘의 쌍이 실제로 받은 응답이다.
+    # ★ Pydantic 은 선언 안 된 키를 조용히 버린다 — 이 두 줄이 없으면 실어 보내도 무효다.
+    record_id: Optional[str] = None
+    run_ctx: Optional[Dict[str, Any]] = None
 
 
 _SURRO_INSTANCE = "live"        # 요청 하나 = instance 하나. `choose`/`predict_delta_J` 의 그룹 키.
@@ -1512,6 +1522,10 @@ def health():
             #    호출 시점에 잰다 — 앞엣것은 레인도 호출 시점에 읽기 때문이다.
             "synth_tool_synthesis": synthesis_enabled(),
             "synth_multi_agent": _synth_multi_agent_stamp(),
+            # 🔴 2026-09-22 (global-constraints.md "Task 3, 원장 신뢰성"). 이 프로세스가 잃은
+            #    원장 행 수. append 는 결정을 지키려고 **안 던지므로**, 이 값이 0 이 아닌 판의
+            #    원장은 불완전하다 — 측정 게이트는 이 값을 읽고 실패해야 한다.
+            "ledger_append_failures": _ledger_append_failures(),
             "policies": ["dspy", "surrogate"]}
 
 
@@ -1755,9 +1769,12 @@ def _blank_decision(valid, line, source, tools_offered):
             "tool_minted": _blank["tool_minted"], "synthesis": _blank}
 
 
-@app.post("/macro")
-def macro(req: MacroRequest):
+def _macro_decision(req: MacroRequest, raw: Dict[str, Any]):
     """한 번의 tool 호출에서 결정의 **모든 성분**을 꺼낸다 (2026-08-29, 단일 채널).
+
+    ✅ 2026-09-22: 엔드포인트는 아래 `macro()` 이고 이 함수는 그 본체다. 원장 행은 여기서
+       안 쓴다 — `macro()` 가 **모든** 출구(조기 반환·예외 포함)에서 한 줄을 쓴다. `raw` 는
+       합성 단계가 채우는 요청 국소 원시 응답이다(조기 반환에서는 빈 채로 남는다).
 
     🔴 이 함수가 T3 이전과 갈리는 지점 셋:
       ① 텍스트 `OutputField` 가 없다. `reasoning`·`expressible`·`macro`·`ranking` 은 전부
@@ -1923,14 +1940,15 @@ def macro(req: MacroRequest):
     #    판정을 agent-2 가 자기 출력 필드로 내기 때문이다(출처가 하나가 되어 "모델이 인자를
     #    생략해서 못 쟀다" 가 사라진다).
     synthesis = run_synthesis(expressible=expressible, kind=req.kind, state=line,
-                              tools=tools)
+                              tools=tools, raw_out=raw)
     # 🔴 2026-09-03. 라이브 판의 합성 기록을 파일로 남긴다. 그 전에는 `body` 산문도
     #    `missing_primitive` 도 `stages` 도 **어디에도 안 남아서**, 유료 런에서 합성이
     #    발화하고 `empty body` 로 거절된 판을 놓고 "왜 비었나" 를 답할 수 없었다.
     #    (옛 주석은 `body_parse` 를 들었는데 그 필드는 Task 1 이 `parse_body` 와 함께
     #     지웠다 — 기록에 없는 필드를 근거로 들면 다음 독자가 그것을 찾다 못 찾는다.)
     #    던지지 않는다 — 진단이 결정을 죽이면 진단을 켠 것이 사고의 원인이 된다.
-    _append_synthesis_record(synthesis)
+    # ✅ 2026-09-22: 그 append 는 `macro()` 로 옮겼다 — 여기서만 쓰면 위 조기 반환 셋과
+    #    예외가 행을 못 남긴다(global-constraints.md "Task 3, 조기 반환").
     return {"policy": "dspy:%s" % MODEL, "chosen": chosen, "ranking": ranking,
             # 🔴 `margin` 은 이 설계가 없앴다(spec §3-3). **키는 남기고 값은 안 채운다** —
             #    키가 사라지면 소비자가 "레인이 안 돌았다" 와 "값이 없다" 를 못 가른다.
@@ -1993,12 +2011,121 @@ def macro(req: MacroRequest):
             "synthesis": synthesis}
 
 
+# ---- `/decide` 원장 행 (2026-09-22, 재시도 body 보존 Task 3) -------------------------------
+# 🔴 `macro()` 에 들어온 요청은 **어느 출구로 나가든** `row_type="decide"` 행을 정확히 하나
+#    남긴다. 전에는 정상 경로(합성 단계까지 간 요청)만 append 했고, 아래 앞의 넷과 마지막 하나는
+#    원장에 흔적이 없었다 — 소비자는 "행이 없다" 를 "요청이 안 왔다" 와 못 갈랐다.
+# 🔴 `decide_outcome` 은 그 출구의 이름이다. `_decide_outcome` 이 응답에서 **유도**한다 — 출구마다
+#    손으로 적으면 새 출구가 생길 때 조용히 빠진다. 이 튜플이 정의역이고, 시험
+#    (`test_ledger_rows.py::test_the_outcome_vocabulary_is_exactly_the_paths_exercised_here`)이
+#    값 하나하나를 실제 경로로 태운다 — 죽은 값도, 시험이 모르는 경로도 없다.
+# ⚠️ 원장 전용이다. 전선(`synthesis`)에는 안 싣는다 — 줄리아는 `decision_source`·`synthesis` 로
+#    같은 사실을 이미 읽고, 전선 키를 늘리면 `SYNTH_LANE_KEYS` 교차 게이트가 움직인다.
+DECIDE_OUTCOMES = (
+    # -- 결정이 없다 (`chosen == ""`, 줄리아는 canonical 로 폴백) ---------------------------
+    "no_tools",              # 메뉴가 비어 LM 을 안 불렀다 (`decision_source == "no_tools"`)
+    "no_call_lm_error",      # ⓐ 프로바이더 장애 — `error` (F16)
+    "no_call_parse_error",   # ⓑ 빈/파싱 불가 응답 — `tool_lane_error` (F14)
+    "no_call_no_tool_call",  # ⓒ 응답은 왔는데 tool 호출이 없다 (F15)
+    # -- 결정이 났다 (`decision_source == "tool"`) — 합성 단계의 결말로 가른다 ----------------
+    "synthesis_disabled",    # 합성 미실행: `TOOL_SYNTHESIS != "1"`
+    "synthesis_refused",     # 합성 미실행: G1 — 과금 전 거절(`refused` 가 사유 문자열)
+    "synthesis_failed",      # 합성 실패: 단계 하나가 던졌다(`error`)
+    "synthesis_not_fired",   # 합성 미발화: agent-2 가 expressible≠False — agent-3 안 불렀다
+    "synthesis_ran",         # 합성 성공: agent-3 까지 돌았다(쓴 것은 `wrote` 가 따로 말한다)
+    # -- 응답이 없다 ------------------------------------------------------------------------
+    "raised",                # 예외가 `macro()` 밖으로 샜다(HTTP 500) — `decide_error` 가 이유
+)
+
+
+def _decide_outcome(d) -> str:
+    """`_macro_decision` 의 응답이 어느 출구였나. `DECIDE_OUTCOMES` 의 한 값."""
+    src = d.get("decision_source")
+    if src == "no_tools":
+        return "no_tools"
+    if src == "no_call":
+        # 🔴 순서가 아니라 배타다 — `error` 와 `tool_lane_error` 는 서로 다른 except 에서 온다.
+        if d.get("error") is not None:
+            return "no_call_lm_error"
+        if d.get("tool_lane_error") is not None:
+            return "no_call_parse_error"
+        return "no_call_no_tool_call"
+    syn = d.get("synthesis") or {}
+    if syn.get("tool_minted") == "disabled":
+        return "synthesis_disabled"
+    if isinstance(syn.get("refused"), str):
+        return "synthesis_refused"
+    if syn.get("error") is not None:
+        return "synthesis_failed"
+    if syn.get("ran") is not True:
+        return "synthesis_not_fired"
+    return "synthesis_ran"
+
+
+def _append_decide_row(req, d, raw, response_id, exc=None):
+    """`/decide` 행 하나를 조립해 append 한다. **절대 안 던진다.**
+
+    행 = 합성 기록(조기 반환이면 blank 기록)의 사본 + 신원(`stamp_record`) + `raw_lm` +
+    `decide_outcome` + `decide_error`. `d is None` 이면 `macro()` 가 던진 판이다.
+    """
+    try:
+        if d is not None:
+            syn, outcome = d["synthesis"], _decide_outcome(d)
+            why = d.get("error") or d.get("tool_lane_error")
+        else:
+            syn, outcome = blank_synthesis_record(kind=req.kind, expressible=None), "raised"
+            syn["reason"] = "macro() raised before a decision existed; see decide_error"
+            why = "%s: %s" % (type(exc).__name__, exc)
+        row = _stamp_record(
+            dict(syn, raw_lm=dict(raw), decide_outcome=outcome, decide_error=why),
+            row_type="decide", record_id=req.record_id, response_id=response_id,
+            attempt=1, trigger="first", run_ctx=req.run_ctx,
+            code_fingerprint=CODE_FINGERPRINT)
+    except Exception as e:  # noqa: BLE001 -- 원장이 결정을 죽이면 안 된다
+        _note_ledger_append_failure(e, where="dspy_service._append_decide_row")
+        return None
+    return _append_synthesis_record(row)
+
+
+@app.post("/macro")
+def macro(req: MacroRequest):
+    """결정 본체(`_macro_decision`)를 돌리고 **어느 출구로 나가든** 원장에 `decide` 행을 하나 남긴다.
+
+    🔴 `response_id` 는 서버가 **처리마다** 새로 발급한다(`uuid4`, controller R2). `record_id` 는
+       줄리아의 논리 요청 id 라 HTTP 재전송은 같은 `record_id` 로 서로 다른 응답을 만들 수 있고,
+       원장 append 순서는 클라이언트가 받은 순서가 아니다 — `(record_id, response_id)` 쌍이
+       줄리아가 **실제로 받은** 응답을 특정한다. 중복 행은 전부 남긴다(dedup·멱등 아님).
+    🔴 두 id 는 전선의 `synthesis` 안에 싣는다(`/decide` → `dspy.synthesis.record_id` /
+       `.response_id`). 예외로 끝난 요청은 응답이 없으므로 원장 행에만 남는다(`raised`).
+    ⚠️ 원시 응답(`raw_lm`)은 합성 단계(observe/design/compose)의 것뿐이다. 결정 프로그램
+       (`_state["program"]`)은 모듈 수준에서 요청 간 공유되므로 그 history 는 요청 국소가 아니고,
+       여기 안 싣는다(global-constraints.md "Task 1·2, 원시 응답"의 범위).
+    """
+    response_id = uuid.uuid4().hex
+    raw: Dict[str, Any] = {}
+    try:
+        d = _macro_decision(req, raw)
+    except Exception as e:
+        _append_decide_row(req, None, raw, response_id, exc=e)
+        raise
+    d["synthesis"]["record_id"] = req.record_id
+    d["synthesis"]["response_id"] = response_id
+    _append_decide_row(req, d, raw, response_id)
+    return d
+
+
 class RewriteRequest(BaseModel):
     tool_name: str = ""
     spec: str = ""
     impl_name: str = ""
     impl_code: str = ""
     impl_rejected_why: str = ""
+    # ---- 원장 신원 (2026-09-22) — 뜻은 `MacroRequest` 의 같은 이름 필드 주석 -------------
+    record_id: Optional[str] = None
+    parent_record_id: Optional[str] = None     # 이 되먹임이 고치는 `/decide` 행의 id
+    attempt: int = 2                           # 재시도 상한이 1 이라 언제나 2 다(구조)
+    trigger: str = ""                          # register_reject | threw | noop | prerun
+    run_ctx: Optional[Dict[str, Any]] = None
 
 
 @app.post("/rewrite")
@@ -2012,11 +2139,33 @@ def rewrite(req: RewriteRequest):
     🔴 이 함수는 던지지 않는다 — `rewrite_impl` 이 자기 규약으로 그것을 보장하고
        (그 docstring 이 근거의 진실원이다), 여기서 다시 감싸면 두 벌이 된다. 500 이
        올라가면 줄리아는 원래 거절을 그대로 들고 돌아선다(그것도 정상 경로다).
+
+    2026-09-22: 원장 행을 남긴다 — `append_synthesis_record` 는 던지지 않으므로 이 함수의
+    '안 던진다' 규약은 그대로다. 행은 `row_type="rewrite"`, 원시 응답은 `raw_lm={"rewrite": [...]}`,
+    고치기 전 body 는 `rejected_impl_code` 로 남는다. 응답에는 `record_id`(되돌림)와 서버가 이
+    처리에 발급한 `response_id` 를 최상위에 싣는다(`macro()` docstring 과 같은 규약).
+    프로그램은 주입하지 않는다 — `rewrite_impl` 이 요청마다 새로 만들어야 history 가 요청 국소다.
     """
     import synthesize as SY
-    return SY.rewrite_impl(tool_name=req.tool_name, spec=req.spec,
-                           impl_name=req.impl_name, impl_code=req.impl_code,
-                           impl_rejected_why=req.impl_rejected_why)
+    response_id = uuid.uuid4().hex
+    raw: Dict[str, Any] = {}
+    out = SY.rewrite_impl(tool_name=req.tool_name, spec=req.spec,
+                          impl_name=req.impl_name, impl_code=req.impl_code,
+                          impl_rejected_why=req.impl_rejected_why, raw_out=raw)
+    out["record_id"] = req.record_id
+    out["response_id"] = response_id
+    try:
+        row = _stamp_record(
+            dict(out, raw_lm=dict(raw), tool_name=req.tool_name,
+                 rejected_impl_code=req.impl_code, impl_rejected_why=req.impl_rejected_why),
+            row_type="rewrite", record_id=req.record_id, response_id=response_id,
+            parent_record_id=req.parent_record_id, attempt=req.attempt,
+            trigger=req.trigger, run_ctx=req.run_ctx, code_fingerprint=CODE_FINGERPRINT)
+    except Exception as e:  # noqa: BLE001 -- 원장이 되먹임을 죽이면 안 된다
+        _note_ledger_append_failure(e, where="dspy_service.rewrite")
+    else:
+        _append_synthesis_record(row)
+    return out
 
 
 @app.post("/decide")
