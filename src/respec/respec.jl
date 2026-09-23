@@ -30,6 +30,7 @@ include("llm_bridge.jl")     # 별도 파이썬 LLM 서비스와 통신(LLM 이 
 include("replan.jl")         # 동결된 상태에서 다시 풀고(re-solve) 이어서 진행(replan)
 include("reassign.jl")       # 로봇 고장 시 작업을 다른 로봇에게 재배정
 include("ood_injection.jl")  # physical OOD event GENERATION (front-end; uses push_ood!)  # 물리 OOD 이벤트 "생성"(앞단; push_ood! 사용)
+include("repair_ablation.jl") # 존 복구 base ablation: 레벨·차단 목록·실행 가드(명세 2026-09-23). restage_zone.jl 이 첫 줄에서 부른다
 include("restage_zone.jl")   # ForbidZone enactment: relocate a staging-blocked assembly  # ForbidZone 실행: 적치공간이 막힌 조립체를 옮김
 include("cargo_ban_primitive.jl") # 알파벳 원시 forbid_heavy_cargo!: 지속 화물 금지 보관소에 항목 하나를 쓴다(세계는 안 바꾼다)
 include("common_resolve.jl") # 공통 MILP 재풀이 한 벌 (판정 1) — SMDP 의 apply_action! 과 주조 body 집행이 **같은 함수**를 부른다
