@@ -1159,12 +1159,20 @@ _l3_probe_body(n) =
     #    검산식(2026-09-05 S5 직후 실측, 셋이 서로를 검산한다):
     #      length(names(CB)) 190 = advexp 169 + unadv 21     (ident 밖 이름은 오늘 0)
     #    빨개졌을 때 "몇 개" 만으로는 **어느 이름이 움직였는지** 알 수 없으므로 목록을 남긴다.
-    if length(advexp) != 169
+    # 🔴 169 → **174** (2026-09-23, 재유도·전수 확인). 둘로 갈린다:
+    #    (a) **9da7caca**(나-1, 2026-09-05, 이 파일의 5a2ede9d 직후 커밋인데 이 줄을 안 고쳤다)가
+    #        `global_transform`·`project_to_2d`·`get_center` 를 export 했다 — **+3**, 존 복구
+    #        base ablation 과 무관한 선행 미수정 staleness다(이 이름 셋은 옛 `world_interface.json`
+    #        에도 이미 광고돼 있었다 — 실측: 재생성 전 산출물에서도 advexp=172 였다).
+    #    (b) 이 태스크(zone_facts 추가 + 레포 정리 100a7735 의 inplace_breakdown_marks)가 그 위에
+    #        **+2** 더한다(172 → 174). 이 둘만 재생성으로 새로 광고된다(diff 로 확인).
+    #    169 + 3 + 2 = 174.
+    if length(advexp) != 174
         @info("광고된 export 표면이 움직였다 — 목록을 대조하고 이 줄과 위 unadv 를 함께 고쳐라",
               n_advexp = length(advexp), n_unadv = length(unadv),
               n_names = length(names(CB)), advexp)
     end
-    @test length(advexp) == 169
+    @test length(advexp) == 174
 end
 
 @testset "(35) 🔴 F-2: 못 읽은 산출물은 `nothing` 이지 `[]` 가 아니다" begin

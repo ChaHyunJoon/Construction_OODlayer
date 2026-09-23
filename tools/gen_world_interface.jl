@@ -1259,13 +1259,24 @@ reach   = Set(String[_tname(S) for S in closure])
 dst = length(ARGS) >= 1 ? ARGS[1] :
       normpath(joinpath(@__DIR__, "..", "src", "decision", "core",
                         "world_interface.json"))
+blob = Dict("types" => types,
+            "access" => acc,
+            "methods" => method_entries(reach, acc),
+            "ambient" => [Dict("name" => a.name, "accessor" => a.accessor,
+                               "returns" => a.returns,
+                               "precondition" => a.precondition)
+                          for a in AMBIENT_ROOTS])
 open(dst, "w") do io
-    JSON3.pretty(io, Dict("types" => types,
-                          "access" => acc,
-                          "methods" => method_entries(reach, acc),
-                          "ambient" => [Dict("name" => a.name, "accessor" => a.accessor,
-                                             "returns" => a.returns,
-                                             "precondition" => a.precondition)
-                                        for a in AMBIENT_ROOTS]))
+    JSON3.pretty(io, blob)
 end
 println("wrote ", dst)
+# 존 복구 base ablation(2026-09-23, 명세 §6 층 1): 같은 폴더에 팔별 산출물. 이름 규칙은
+# llm_service/repair_ablation.py::artifact_name 과 같다.
+for lvl in (:translate, :all)
+    p = replace(dst, r"\.json$" => ".ablate_$(lvl).json")
+    ab = JSON3.read(JSON3.write(blob), Dict{String,Any})     # 문자열 키로 정규화한 뒤 거른다
+    open(p, "w") do io
+        JSON3.pretty(io, CB.ablate_interface_blob(ab, lvl))
+    end
+    println("wrote ", p)
+end

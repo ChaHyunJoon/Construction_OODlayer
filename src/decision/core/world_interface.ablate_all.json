@@ -729,16 +729,6 @@
             "returns": "ConstructionBots.CustomNGraph{Graphs.SimpleGraphs.SimpleDiGraph, ConstructionBots.CustomNode{ConstructionPredicate, ConstructionBots.AbstractID}, ConstructionBots.AbstractID}"
         },
         {
-            "name": "core_zone_for_severity",
-            "missing": [
-            ],
-            "signature": "(env, frac::Real; pad::Float64, root)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "returns": "NamedTuple{(:center, :radius, :covered, :total, :frac, :relocatable), <:Tuple{Vector{Float64}, Any, Any, Int64, Any, Bool}}"
-        },
-        {
             "name": "decision_margin",
             "missing": [
                 "AbstractArray"
@@ -959,25 +949,6 @@
             "callable": true,
             "element_type": "Pair{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Vector{Float64}}",
             "returns": "Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Vector{Float64}}"
-        },
-        {
-            "name": "find_clear_staging_center",
-            "missing": [
-            ],
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID, R::Float64; zone_keys, margin::Float64, zone_margin_frac::Float64, ring_step::Float64, n_angles::Int64, max_rings::Int64)",
-            "argpaths": [
-                "assembly_id <- env.scene_tree.vtx_ids[i]",
-                "assembly_id <- env.sched.vtx_ids[i]",
-                "assembly_id <- for x in env.active_build_steps",
-                "assembly_id <- keys(env.agent_parent_build_step_active)",
-                "assembly_id <- keys(env.agent_policies)",
-                "assembly_id <- keys(env.scene_tree.vtx_map)",
-                "assembly_id <- keys(env.sched.vtx_map)",
-                "assembly_id <- keys(env.staging_buffers)",
-                "assembly_id <- keys(env.staging_circles)"
-            ],
-            "callable": true,
-            "returns": "Any"
         },
         {
             "name": "forbid_heavy_cargo!",
@@ -1902,61 +1873,6 @@
             "returns": "ConstructionBots.PlanningCache"
         },
         {
-            "name": "restage_all_blocked!",
-            "missing": [
-            ],
-            "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "status_meanings": [
-                ":infeasible = none of the blocked staging circles could be placed; nothing moved.",
-                ":none = nothing to do: no staging circle is blocked and no goal is blocked; nothing moved.",
-                ":partial = some blocked staging circles were relocated and some could not be (see `failed`); no goal is left blocked.",
-                ":residual_blocked = `residual` goals are still blocked. This call only moves the staging circles of assemblies that have not started and are not the root, so it cannot clear these goals; `translate_whole_build!` moves the whole build. Also returned when no staging circle was blocked at all (then nothing moved).",
-                ":restaged_all = every blocked staging circle was relocated, and no goal is left blocked."
-            ],
-            "field_element_fields": [
-                "failed[] :: (id, status)",
-                "moved[] :: (from, id, to)"
-            ],
-            "status_symbols": [
-                "infeasible",
-                "none",
-                "partial",
-                "residual_blocked",
-                "restaged_all"
-            ],
-            "returns": "(status::Symbol, moved::Vector{NamedTuple}, failed::Vector{NamedTuple}, residual::Int64)"
-        },
-        {
-            "name": "restage_assembly!",
-            "missing": [
-            ],
-            "signature": "(env, assembly_id::ConstructionBots.AbstractID; zone_keys, resume::Bool, verbose::Bool)",
-            "argpaths": [
-                "assembly_id <- env.scene_tree.vtx_ids[i]",
-                "assembly_id <- env.sched.vtx_ids[i]",
-                "assembly_id <- for x in env.active_build_steps",
-                "assembly_id <- keys(env.agent_parent_build_step_active)",
-                "assembly_id <- keys(env.agent_policies)",
-                "assembly_id <- keys(env.scene_tree.vtx_map)",
-                "assembly_id <- keys(env.sched.vtx_map)",
-                "assembly_id <- keys(env.staging_buffers)",
-                "assembly_id <- keys(env.staging_circles)"
-            ],
-            "callable": true,
-            "status_symbols": [
-                "already_built",
-                "already_started",
-                "infeasible",
-                "no_node",
-                "no_staging",
-                "restaged"
-            ],
-            "returns": "Union{@NamedTuple{status::Symbol, detail::String}, NamedTuple{(:status, :from, :to, :delta), <:Tuple{Symbol, Any, Any, Any}}}"
-        },
-        {
             "name": "restriction_zones",
             "missing": [
             ],
@@ -2385,41 +2301,6 @@
             "callable": true
         },
         {
-            "name": "translate_whole_build!",
-            "missing": [
-            ],
-            "signature": "(env; zone_keys, resume::Bool, verbose::Bool)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "status_meanings": [
-                ":already_clear = no shift was needed (`delta` is zero), and no goal is blocked.",
-                ":infeasible = no shift that clears the zone was found; nothing moved.",
-                ":no_staging = there are no staging circles on record; nothing moved.",
-                ":residual_blocked = the build was shifted by `delta` (possibly zero), but `residual` goals are still blocked.",
-                ":translated = the whole build was shifted by `delta`, and no goal is left blocked."
-            ],
-            "returned_fields": [
-                "delta",
-                "detail",
-                "footprint_radius",
-                "n_goal_discs",
-                "n_work_discs",
-                "residual",
-                "solver",
-                "status"
-            ],
-            "status_symbols": [
-                "already_clear",
-                "infeasible",
-                "no_staging",
-                "residual_blocked",
-                "translated"
-            ],
-            "returned_fields_complete": true,
-            "returns": "NamedTuple"
-        },
-        {
             "name": "update_parent_build_status!",
             "missing": [
             ],
@@ -2607,26 +2488,6 @@
             "returns": "Union{Missing, Bool}"
         },
         {
-            "name": "zone_diagnoses",
-            "missing": [
-            ],
-            "signature": "(env; check_restage::Bool, check_teams::Bool)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "returns": "Vector"
-        },
-        {
-            "name": "zone_diagnosis",
-            "missing": [
-            ],
-            "signature": "(env, zone::Symbol; margin::Float64, check_restage::Bool, check_teams::Bool, check_blockage::Bool, check_paths::Bool)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "returns": "NamedTuple{(:zone, :exists, :center, :radius, :blocked, :n_blocked, :feasible, :n_restage_feasible, :root_covered, :root_total, :root_frac, :n_work_overlap, :teams, :n_teams_forming, :n_teams_covered, :n_nav_goals, :n_nav_blocked, :n_nav_engulfed, :n_nav_disconnected, :n_agent_trapped, :n_nav_downstream, :n_completion_blocked, :n_completion_open, :project_blocked, :relocate_delta, :relocate_norm, :relocate_feasible, :verdict), <:Tuple{Symbol, Bool, Any, Any, Vector{ConstructionBots.AbstractID}, Int64, Vector{ConstructionBots.AbstractID}, Int64, Any, Int64, Any, Any, Vector{NamedTuple}, Int64, Int64, Any, Any, Any, Any, Any, Any, Any, Any, Any, Union{Nothing, Vector{Float64}}, Float64, Bool, Symbol}}"
-        },
-        {
             "name": "zone_facts",
             "missing": [
             ],
@@ -2635,20 +2496,6 @@
             ],
             "callable": true,
             "returns": "NamedTuple{(:zone, :exists, :center, :radius, :blocked, :n_blocked, :root_covered, :root_total, :root_frac, :n_work_overlap, :teams, :n_teams_forming, :n_teams_covered, :n_nav_goals, :n_nav_blocked, :n_nav_engulfed, :n_nav_disconnected, :n_agent_trapped, :n_nav_downstream, :n_completion_blocked, :n_completion_open, :project_blocked), <:Tuple{Symbol, Bool, Any, Any, Vector{ConstructionBots.AbstractID}, Int64, Any, Int64, Any, Any, Vector{NamedTuple}, Int64, Int64, Vararg{Any, 9}}}"
-        },
-        {
-            "arg_coercions": [
-                "center <- (Vector{Float64}(center))[1:2]",
-                "r <- Float64(r)"
-            ],
-            "name": "zone_relocatable",
-            "missing": [
-            ],
-            "signature": "(center, r, env; margin::Float64, n_angles::Int64)",
-            "argpaths": [
-            ],
-            "callable": true,
-            "returns": "Bool"
         },
         {
             "name": "zone_safety_report",
@@ -3602,6 +3449,28 @@
         }
     ],
     "access": {
+        "SceneTree": [
+            "env.scene_tree"
+        ],
+        "PathSpec": [
+            "env.sched.nodes[i].spec"
+        ],
+        "OperatingSchedule": [
+            "env.sched"
+        ],
+        "PlanningCache": [
+            "env.cache"
+        ],
+        "SceneNode": [
+            "env.scene_tree.nodes[i]"
+        ],
+        "SceneTreeEdge": [
+            "values(env.scene_tree.inedges[i])",
+            "values(env.scene_tree.outedges[i])"
+        ],
+        "ScheduleNode": [
+            "env.sched.nodes[i]"
+        ],
         "AbstractID": [
             "env.scene_tree.vtx_ids[i]",
             "env.sched.vtx_ids[i]",
@@ -3612,28 +3481,6 @@
             "keys(env.sched.vtx_map)",
             "keys(env.staging_buffers)",
             "keys(env.staging_circles)"
-        ],
-        "OperatingSchedule": [
-            "env.sched"
-        ],
-        "PathSpec": [
-            "env.sched.nodes[i].spec"
-        ],
-        "PlanningCache": [
-            "env.cache"
-        ],
-        "SceneNode": [
-            "env.scene_tree.nodes[i]"
-        ],
-        "SceneTree": [
-            "env.scene_tree"
-        ],
-        "SceneTreeEdge": [
-            "values(env.scene_tree.inedges[i])",
-            "values(env.scene_tree.outedges[i])"
-        ],
-        "ScheduleNode": [
-            "env.sched.nodes[i]"
         ],
         "VelocityController": [
             "values(env.agent_policies)"

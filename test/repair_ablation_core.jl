@@ -112,6 +112,31 @@ end
     end
 end
 
+import JSON3
+@testset "팔별 산출물: 차단 이름 0회, 센서·setter 는 남는다" begin
+    base = JSON3.read(read(joinpath(pkgdir(CB), "src", "decision", "core", "world_interface.json"), String), Dict{String,Any})
+    for lvl in (:translate, :all)
+        b = CB.ablate_interface_blob(base, lvl)
+        s = JSON3.write(b)
+        for n in CB.ablated_names(lvl)
+            @test !occursin(String(n), s)
+        end
+        names = Set(m["name"] for m in b["methods"])
+        for keep in ("zone_facts", "zone_blockage", "active_restriction_zones", "set_desired_global_transform!",
+                     "global_transform", "reset_cache_resume!")
+            @test keep in names
+        end
+        @test length(b["methods"]) < length(base["methods"])
+    end
+    b1 = CB.ablate_interface_blob(base, :translate)
+    @test "restage_all_blocked!" in Set(m["name"] for m in b1["methods"])      # A1 에는 남는다
+    rs = only(m for m in b1["methods"] if m["name"] == "restage_all_blocked!")
+    @test !any(occursin("translate_whole_build!", x) for x in get(rs, "status_meanings", String[]))
+    @test CB.ablate_interface_blob(base, :none) === base
+    # (커밋된 팔별 산출물이 현행 코드와 같은지는 test/world_interface_current.jl 의 재생성 바이트 비교가
+    #  지킨다 — Step 5. 여기서 Dict 동등으로 또 재면 진실원이 둘이 된다.)
+end
+
 @testset "무장된 :all 에서 차단 함수는 인자를 보기 전에 던진다" begin
     saved = copy(CB.RESTRICTION_ZONES[])
     try

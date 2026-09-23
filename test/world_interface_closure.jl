@@ -102,7 +102,9 @@ end
     #    광고된 접근자가 없기 때문이고, 그래서 `callable=false` 가 그 둘에 대해서는 **참**이다.
     # 🔴 195 → **196** (2026-09-22, `47f6711a` b′): `validate_schedule_transform_tree(::OperatingSchedule)`
     #    메서드 하나가 더해졌다(`sched <- env.sched` 로 callable). 메서드 수도 224 → **225**.
-    @test count(m -> m.callable === true, ms) == 196
+    # 🔴 196 → **198** (2026-09-23 zone_facts 추가(존 복구 base ablation) + inplace_breakdown_marks
+    #    (레포 정리 100a7735)) — 둘 다 인자 없거나 무타입/스칼라라 즉시 callable=true.
+    @test count(m -> m.callable === true, ms) == 198
     # 🔴 그 넓힘의 내역을 숫자로만 두지 않는다 — 어느 이름이 몇 개 열렸는지를 직접 잰다.
     #    숫자만 고치는 습관이 들면 다음 번에 **다른 것이 열려도** 이 줄은 초록으로 남는다.
     local opened = Dict(nm => count(m -> String(m.name) == nm && m.callable === true, ms)
@@ -392,8 +394,10 @@ end
     # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 **안 움직였다** ----------------------------
     #    이 개입은 `method_entries` 의 필드 하나만 더한다. 수가 움직였다면 그것은
     #    이 태스크가 의도하지 않은 부작용이고, 조용히 지나가면 안 된다.
-    @test length(ms) == 225
-    @test count(m -> m.callable === true, ms) == 196
+    # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
+    #    inplace_breakdown_marks(레포 정리 100a7735)).
+    @test length(ms) == 227
+    @test count(m -> m.callable === true, ms) == 198
     ns = Set(String[String(t.name) for t in j.types])
     @test !("AffineMap" in ns)
     @test !("Ball2" in ns)
@@ -452,8 +456,10 @@ end
     # ---- 🔴 음성 대조 3: 삼상 · 폐포도 호출 가능성도 안 움직였다 --------------------------
     @test !any(m -> _rf(m) == String[], ms)
     @test any(m -> _rf(m) === nothing, ms)
-    @test length(ms) == 225
-    @test count(m -> m.callable === true, ms) == 196
+    # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
+    #    inplace_breakdown_marks(레포 정리 100a7735)).
+    @test length(ms) == 227
+    @test count(m -> m.callable === true, ms) == 198
 end
 
 
@@ -497,8 +503,10 @@ end
     end
 
     # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 안 움직였다 ---------------------------------
-    @test length(ms) == 225
-    @test count(m -> m.callable === true, ms) == 196
+    # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
+    #    inplace_breakdown_marks(레포 정리 100a7735)).
+    @test length(ms) == 227
+    @test count(m -> m.callable === true, ms) == 198
 end
 
 # =================================================================================================
@@ -543,8 +551,10 @@ end
           ["translate_whole_build!", "zone_blockage"]
 
     # ---- 🔴 음성 대조 3: 모집단이 안 무너졌다 ---------------------------------------------
-    @test length(ms) == 225
-    @test count(m -> m.callable, ms) == 196
+    # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
+    #    inplace_breakdown_marks(레포 정리 100a7735)).
+    @test length(ms) == 227
+    @test count(m -> m.callable, ms) == 198
 end
 
 end # module

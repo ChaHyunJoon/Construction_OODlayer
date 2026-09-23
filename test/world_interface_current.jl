@@ -38,6 +38,11 @@ end
         delete!(env, "JULIA_LOAD_PATH")
         run(setenv(cmd, env))
         @test read(out, String) == read(ART, String)
+        # 존 복구 base ablation(2026-09-23, 명세 §6 층 1): 팔별 산출물도 같은 재생성 비교로 지킨다.
+        for lvl in ("translate", "all")
+            @test read(replace(out, r"\.json$" => ".ablate_$(lvl).json"), String) ==
+                  read(replace(ART, r"\.json$" => ".ablate_$(lvl).json"), String)
+        end
     end
 end
 

@@ -868,11 +868,18 @@ _is_type_shape(e) =
 
 agent-3 에게 렌더되는 세계 인터페이스 산출물의 경로. 패키지 뿌리를 못 찾으면 `nothing`
 이다(그 경우 L3 은 "못 쟀다" 가 된다 — 지어낸 경로로 조용히 넘어가지 않는다).
+
+레벨별 파일을 읽는다(존 복구 base ablation, 2026-09-23, 명세 §6 층 1) — `interface_calls`
+기록이 실행 중인 팔의 광고와 맞아야 하므로, `REPAIR_ABLATION[] !== :none` 이면 그 팔의
+차단 이름이 빠진 산출물을 읽는다.
 """
+_world_interface_basename() = REPAIR_ABLATION[] === :none ? "world_interface.json" :
+                              "world_interface.ablate_$(REPAIR_ABLATION[]).json"
+
 _world_interface_path() =
     (d = pkgdir(@__MODULE__);
      d === nothing ? nothing :
-     joinpath(d, "src", "decision", "core", "world_interface.json"))
+     joinpath(d, "src", "decision", "core", _world_interface_basename()))
 
 """
     _artifact_interface_names(path = _world_interface_path()) -> Union{Nothing,Set{Symbol}}

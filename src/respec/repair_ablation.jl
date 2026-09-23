@@ -102,6 +102,37 @@ function _collect_ablated!(hits, x, denied)
     return hits
 end
 
+"""
+    ablate_interface_blob(blob, level) -> Dict{String,Any}
+
+팔별 광고. `methods` 에서 차단 이름을 빼고, 남은 항목의 `status_meanings` 중 차단 이름을 언급하는 문장을
+뺀다(없는 함수를 가리키는 문장이다). 결과에 차단 이름이 한 글자라도 남으면 **에러** — 새 누수 경로가
+생긴 것이므로 조용히 내보내지 않는다.
+"""
+function ablate_interface_blob(blob::AbstractDict, level::Symbol)
+    denied = ablated_names(level)
+    isempty(denied) && return blob
+    dn = Set(String.(denied))
+    mentions(s) = any(n -> occursin(n, s), dn)
+    out = Dict{String,Any}(String(k) => v for (k, v) in blob)
+    ms = Any[]
+    for m in blob["methods"]
+        String(m["name"]) in dn && continue
+        m2 = Dict{String,Any}(String(k) => v for (k, v) in m)
+        if haskey(m2, "status_meanings")
+            kept = [x for x in m2["status_meanings"] if !mentions(String(x))]
+            isempty(kept) ? delete!(m2, "status_meanings") : (m2["status_meanings"] = kept)
+        end
+        push!(ms, m2)
+    end
+    out["methods"] = ms
+    s = sprint(show, out)
+    for n in dn
+        occursin(n, s) && error("ablate_interface_blob($(level)): `$(n)` still appears in the artifact — new leak path")
+    end
+    return out
+end
+
 "판 끝의 한 줄. 0 이어도 항상 같은 키를 찍는다(조용한 0 방지)."
 function ablation_summary_line()
     d = _ABLATION_COUNTS[]
