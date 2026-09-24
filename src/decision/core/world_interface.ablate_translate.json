@@ -1957,6 +1957,16 @@
             "returns": "Dict{Symbol, LazySets.Ball2Module.Ball2}"
         },
         {
+            "name": "resync_scene_to_schedule!",
+            "missing": [
+            ],
+            "signature": "(env)",
+            "argpaths": [
+            ],
+            "callable": true,
+            "returns": "Any"
+        },
+        {
             "name": "root_deposit_goals",
             "missing": [
             ],

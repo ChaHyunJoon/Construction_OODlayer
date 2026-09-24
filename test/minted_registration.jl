@@ -1167,12 +1167,13 @@ _l3_probe_body(n) =
     #    (b) 이 태스크(zone_facts 추가 + 레포 정리 100a7735 의 inplace_breakdown_marks)가 그 위에
     #        **+2** 더한다(172 → 174). 이 둘만 재생성으로 새로 광고된다(diff 로 확인).
     #    169 + 3 + 2 = 174.
-    if length(advexp) != 174
+    # 🔴 174 → **175** (2026-09-23 G3 D1): `resync_scene_to_schedule!` export(`_resync_scene_drift!` 공개 래퍼).
+    if length(advexp) != 175
         @info("광고된 export 표면이 움직였다 — 목록을 대조하고 이 줄과 위 unadv 를 함께 고쳐라",
               n_advexp = length(advexp), n_unadv = length(unadv),
               n_names = length(names(CB)), advexp)
     end
-    @test length(advexp) == 174
+    @test length(advexp) == 175
 end
 
 @testset "(35) 🔴 F-2: 못 읽은 산출물은 `nothing` 이지 `[]` 가 아니다" begin

@@ -80,3 +80,15 @@ function zone_facts(env, zone::Symbol;
             n_completion_open = blk === nothing ? nothing : blk.n_completion_open,
             project_blocked = blk === nothing ? nothing : blk.project_blocked)
 end
+
+"""
+    resync_scene_to_schedule!(env) -> env
+
+Snap drifted physical bodies back onto the schedule. The simulator starts the scene from the
+schedule once and then moves it independently, so after schedule `start_config`s change, the
+physical parts, sub-assembly bodies and their transport-unit rendezvous points stay where they were.
+This moves every FREE body (not yet picked up or placed) that sits more than one robot radius from
+its schedule start position onto that position. Robots and bodies already picked up or placed are
+not touched. Idempotent.
+"""
+resync_scene_to_schedule!(env) = _resync_scene_drift!(env)

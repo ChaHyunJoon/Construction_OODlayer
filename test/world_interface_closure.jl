@@ -104,7 +104,8 @@ end
     #    메서드 하나가 더해졌다(`sched <- env.sched` 로 callable). 메서드 수도 224 → **225**.
     # 🔴 196 → **198** (2026-09-23 zone_facts 추가(존 복구 base ablation) + inplace_breakdown_marks
     #    (레포 정리 100a7735)) — 둘 다 인자 없거나 무타입/스칼라라 즉시 callable=true.
-    @test count(m -> m.callable === true, ms) == 198
+    # 🔴 198 → **199** (2026-09-23 G3 D1: `resync_scene_to_schedule!(env)` export — 무타입 env 라 callable=true).
+    @test count(m -> m.callable === true, ms) == 199
     # 🔴 그 넓힘의 내역을 숫자로만 두지 않는다 — 어느 이름이 몇 개 열렸는지를 직접 잰다.
     #    숫자만 고치는 습관이 들면 다음 번에 **다른 것이 열려도** 이 줄은 초록으로 남는다.
     local opened = Dict(nm => count(m -> String(m.name) == nm && m.callable === true, ms)
@@ -396,8 +397,9 @@ end
     #    이 태스크가 의도하지 않은 부작용이고, 조용히 지나가면 안 된다.
     # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
     #    inplace_breakdown_marks(레포 정리 100a7735)).
-    @test length(ms) == 227
-    @test count(m -> m.callable === true, ms) == 198
+    # 🔴 227 → 228, 198 → 199 (2026-09-23 G3 D1: `resync_scene_to_schedule!` export).
+    @test length(ms) == 228
+    @test count(m -> m.callable === true, ms) == 199
     ns = Set(String[String(t.name) for t in j.types])
     @test !("AffineMap" in ns)
     @test !("Ball2" in ns)
@@ -458,8 +460,9 @@ end
     @test any(m -> _rf(m) === nothing, ms)
     # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
     #    inplace_breakdown_marks(레포 정리 100a7735)).
-    @test length(ms) == 227
-    @test count(m -> m.callable === true, ms) == 198
+    # 🔴 227 → 228, 198 → 199 (2026-09-23 G3 D1: `resync_scene_to_schedule!` export).
+    @test length(ms) == 228
+    @test count(m -> m.callable === true, ms) == 199
 end
 
 
@@ -505,8 +508,9 @@ end
     # ---- 🔴 음성 대조 3: 폐포도 호출 가능성도 안 움직였다 ---------------------------------
     # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
     #    inplace_breakdown_marks(레포 정리 100a7735)).
-    @test length(ms) == 227
-    @test count(m -> m.callable === true, ms) == 198
+    # 🔴 227 → 228, 198 → 199 (2026-09-23 G3 D1: `resync_scene_to_schedule!` export).
+    @test length(ms) == 228
+    @test count(m -> m.callable === true, ms) == 199
 end
 
 # =================================================================================================
@@ -553,8 +557,9 @@ end
     # ---- 🔴 음성 대조 3: 모집단이 안 무너졌다 ---------------------------------------------
     # 🔴 225 → 227, 196 → 198 (2026-09-23 zone_facts 추가(존 복구 base ablation) +
     #    inplace_breakdown_marks(레포 정리 100a7735)).
-    @test length(ms) == 227
-    @test count(m -> m.callable, ms) == 198
+    # 🔴 227 → 228, 198 → 199 (2026-09-23 G3 D1: `resync_scene_to_schedule!` export).
+    @test length(ms) == 228
+    @test count(m -> m.callable, ms) == 199
 end
 
 end # module
