@@ -1,0 +1,60 @@
+{
+  "manifest_version": "repair-verification-manifest/1",
+  "campaign_id": null,
+  "arms": ["B0", "L0", "L1", "U1", "U4", "V4", "G4"],
+  "cohort": {
+    "path": "test/fixtures/repair_verification/cohort.json",
+    "sha256": "79264908cd099eb76beccfa0c1aeae7c8ea2e15462b56d3298812aff3b70dfbb",
+    "planned_episodes": 120
+  },
+  "budget": {
+    "episode": {
+      "counted_from": "episode_start",
+      "max_sim_steps": {"value": 100000, "source": "historical",
+        "ref": "src/full_demo.jl run_lego_demo `max_steps::Int=100000` at code_rev e326b43d (baseline-free) and 13d18a19 (A2); tools/monitor/render_demo.jl does not override it -> SimParameters.max_time_steps, loop guard src/demo_utils.jl simulate!"},
+      "max_num_iters_no_progress": {"value": 3000, "source": "historical",
+        "ref": "tools/monitor/render_demo.jl run_lego_demo(...; max_num_iters_no_progress = 3000) at e326b43d and 13d18a19; terminal watchdog in src/demo_utils.jl simulate!"},
+      "wall_timeout_s": {"value": 3600, "source": "historical",
+        "ref": "tools/monitor/grid/campaign.py cmd_run_one RUN_TIMEOUT default 3600 at e326b43d and 13d18a19; results/2026-09-23-repair-ablation/README.md: the 6 timeouts all hit RUN_TIMEOUT = 3600 s (rc=124)"}
+    },
+    "worker": {
+      "wall_timeout_s": {"value": null, "source": "new_choice", "ref": "GAP: no per-branch worker existed historically; T4/T11 must set"},
+      "cpu_s": {"value": null, "source": "new_choice", "ref": "GAP: no CPU limit existed historically; T4/T11 must set"},
+      "memory_mb": {"value": null, "source": "new_choice", "ref": "GAP: no memory limit existed historically (~2.5GB/process observed per CLAUDE.md); T4/T11 must set"}
+    },
+    "model": {
+      "max_candidates": {"value": 4, "source": "design_spec", "ref": "design 2026-09-24 section 7.2 K=4"},
+      "max_model_calls": {"value": 4, "source": "design_spec", "ref": "design 2026-09-24 section 7.2 (retries included)"},
+      "call_allocation": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1},
+      "max_total_tokens": {"value": null, "source": "new_choice", "ref": "GAP: design 7.2 requires it; no historical token cap found"},
+      "max_cost_usd_episode": {"value": null, "source": "new_choice", "ref": "GAP: no historical per-episode cost cap found"},
+      "max_cost_usd_campaign": {"value": 150, "source": "historical",
+        "ref": "results/2026-09-23-repair-ablation/cost_watchdog.sh CAP=150 (A2 G5 grid, all three arms together, estimated raw_lm usd); T11 must reconfirm for the new campaign"}
+    }
+  },
+  "continuation": {
+    "id": "pi0",
+    "zone_policy": "noop",
+    "repair_ablation": "all",
+    "zone_auto_ladder": "blocked",
+    "terminal_rule": "project_complete | no_progress_limit | max_sim_steps",
+    "fault_battery_lane": null,
+    "general_recovery": "enabled_and_counted",
+    "pinned_env": {
+      "CARRIER_RESCUE": "1", "ENERGY_OBJECTIVE": "1", "RESPEC_DEPRIO_KAPPA": "0.25",
+      "RESPEC_TRANSLATE_ON_INFEASIBLE": "0", "RESTAGE_NAV_BUFFER": "0", "RESTAGE_RING_STEP_FRAC": "0.34",
+      "RESTAGE_ZONE_MARGIN_FRAC": "0.5", "SPARE_PRIORITY": "1", "TEAM_PRIORITY": "1",
+      "ZONE_CAUSAL_RULE": "0", "ZONE_CHECK_PATHS": "0", "ZONE_DOMAIN_GATE": "0", "ZONE_RESCUE": "1",
+      "REPAIR_ABLATION": "all", "DEMO_ANIM": "0"
+    }
+  },
+  "exogenous_rng": {"key": ["episode", "event_kind", "entity", "occurrence"],
+                    "replay_version": null, "exposed_to_model": false},
+  "cost_ledger": {"record_actual_cost": true, "real_ledger": null, "shadow_namespace": null,
+                  "shadow_writes_real_ledger": false},
+  "build": {"code_rev": null, "code_dirty_digest": null, "dirty_snapshot_digest": null,
+            "config_digest": null, "julia_version": null, "manifest_digest": null, "build_id": null,
+            "julia_threads": null, "solver": {"name": null, "version": null, "seed": null, "threads": null}},
+  "model_side": {"model": null, "service_code_fingerprint": null, "prompt_digest": null, "schema_digest": null},
+  "trusted": {"validator_version": null, "scorer_version": null, "capability_contract_version": "capability-contract/1"}
+}

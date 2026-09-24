@@ -1,0 +1,163 @@
+{
+  "_comment": "Shared contract corpus for repair_types.jl (Julia, test/repair_contracts.jl) and jsonschema (Python, src/respec/llm_service/test_repair_contract_schemas.py). Each case = base doc + ops. schema_ok is what BOTH validators must say about the schema alone; julia is the full Julia verdict: 'accept' or the reject-code prefix. Values marked TEST FIXTURE are not campaign choices.",
+  "bases": {
+    "proposal": {
+      "schema_version": "tool-proposal/1",
+      "checkpoint_id": "cp-1",
+      "proposal_id": "p1",
+      "submission_index": 1,
+      "tool_name": "reassign_stuck_carry",
+      "specification": {"mechanism": "hand the stuck carry task to an available robot"},
+      "impl_name": "reassign_stuck_carry!",
+      "impl_code": "function reassign_stuck_carry!(env)\n    return :no_op\nend",
+      "params": {},
+      "calls": [{"primitive": "reassign_stuck_carry!", "args": {}}]
+    },
+    "manifest": {
+      "manifest_version": "repair-verification-manifest/1",
+      "campaign_id": "TEST-FIXTURE",
+      "arms": ["B0", "U1", "U4", "V4"],
+      "cohort": {"path": "test/fixtures/repair_verification/cohort.json",
+                 "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                 "planned_episodes": 120},
+      "budget": {
+        "episode": {
+          "counted_from": "episode_start",
+          "max_sim_steps": {"value": 100000, "source": "historical", "ref": "src/full_demo.jl run_lego_demo max_steps default"},
+          "max_num_iters_no_progress": {"value": 3000, "source": "historical", "ref": "tools/monitor/render_demo.jl run_lego_demo call"},
+          "wall_timeout_s": {"value": 3600, "source": "historical", "ref": "tools/monitor/grid/campaign.py RUN_TIMEOUT"}
+        },
+        "worker": {
+          "wall_timeout_s": {"value": 3600, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "cpu_s": {"value": 3600, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "memory_mb": {"value": 8192, "source": "new_choice", "ref": "TEST FIXTURE"}
+        },
+        "model": {
+          "max_candidates": {"value": 4, "source": "design_spec", "ref": "design 7.2"},
+          "max_model_calls": {"value": 4, "source": "design_spec", "ref": "design 7.2"},
+          "call_allocation": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1},
+          "max_total_tokens": {"value": 200000, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "max_cost_usd_episode": {"value": 1.5, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "max_cost_usd_campaign": {"value": 150, "source": "historical", "ref": "results/2026-09-23-repair-ablation/cost_watchdog.sh CAP"}
+        }
+      },
+      "continuation": {
+        "id": "pi0", "zone_policy": "noop", "repair_ablation": "all", "zone_auto_ladder": "blocked",
+        "terminal_rule": "project_complete | no_progress_limit | max_sim_steps",
+        "fault_battery_lane": "TEST FIXTURE", "general_recovery": "enabled_and_counted",
+        "pinned_env": {"ZONE_RESCUE": "1"}
+      },
+      "exogenous_rng": {"key": ["episode", "event_kind", "entity", "occurrence"],
+                        "replay_version": "TEST FIXTURE", "exposed_to_model": false},
+      "cost_ledger": {"record_actual_cost": true, "real_ledger": "TEST FIXTURE",
+                      "shadow_namespace": "TEST FIXTURE", "shadow_writes_real_ledger": false},
+      "build": {"code_rev": "x", "code_dirty_digest": "x", "dirty_snapshot_digest": "x",
+                "config_digest": "x", "julia_version": "1.10.11", "manifest_digest": "x",
+                "build_id": "x", "julia_threads": 1,
+                "solver": {"name": "HiGHS", "version": "x", "seed": 0, "threads": 1}},
+      "model_side": {"model": "x", "service_code_fingerprint": "x", "prompt_digest": "x", "schema_digest": "x"},
+      "trusted": {"validator_version": "x", "scorer_version": "x", "capability_contract_version": "capability-contract/1"}
+    }
+  },
+  "cases": [
+    {"name": "ok_empty_params_runtime_lookup", "base": "proposal", "ops": [], "schema_ok": true, "julia": "accept"},
+    {"name": "ok_graph_edit_is_not_forbidden", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    g = env.sched\n    for e in collect(edges(g))\n        rem_edge!(g, e)\n        add_edge!(g, e)\n    end\n    return :rewired\nend"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "ok_step_goes_to_adapter", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    step_environment!(env)\n    return :stepped\nend"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "ok_rewrite_with_parent_and_claims", "base": "proposal", "ops": [
+      {"op": "set", "path": ["proposal_id"], "value": "p2"},
+      {"op": "set", "path": ["parent_proposal_id"], "value": "p1"},
+      {"op": "set", "path": ["submission_index"], "value": 2},
+      {"op": "set", "path": ["claimed_effects"], "value": ["validator_override"]},
+      {"op": "set", "path": ["specification", "params"], "value": {"agent": {"type": "string"}}},
+      {"op": "set", "path": ["calls", 0, "args"], "value": {"k": 2}},
+      {"op": "set", "path": ["surface"], "value": "assignment"},
+      {"op": "set", "path": ["reversible"], "value": false},
+      {"op": "set", "path": ["provenance"], "value": {"record_id": "r1"}}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "malformed_missing_impl_code", "base": "proposal", "ops": [{"op": "del", "path": ["impl_code"]}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_calls_not_a_list", "base": "proposal", "ops": [{"op": "set", "path": ["calls"], "value": "reassign_stuck_carry!"}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_empty_calls", "base": "proposal", "ops": [{"op": "set", "path": ["calls"], "value": []}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_geometry_patch_field", "base": "proposal", "ops": [{"op": "set", "path": ["geometry_patch"], "value": {"dx": 1.0}}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_impl_name_without_bang", "base": "proposal", "ops": [{"op": "set", "path": ["impl_name"], "value": "reassign"}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_params_as_schema_text", "base": "proposal", "ops": [{"op": "set", "path": ["params"], "value": "{\"agent\": {\"type\": \"string\"}}"}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_wrong_schema_version", "base": "proposal", "ops": [{"op": "set", "path": ["schema_version"], "value": "tool-proposal/0"}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_submission_index_zero", "base": "proposal", "ops": [{"op": "set", "path": ["submission_index"], "value": 0}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "malformed_reversible_not_bool", "base": "proposal", "ops": [{"op": "set", "path": ["reversible"], "value": 1}],
+      "schema_ok": false, "julia": "reject:malformed_envelope"},
+    {"name": "stale_checkpoint", "base": "proposal", "ops": [{"op": "set", "path": ["checkpoint_id"], "value": "cp-0"}],
+      "schema_ok": true, "julia": "reject:stale_checkpoint"},
+    {"name": "self_parent", "base": "proposal", "ops": [{"op": "set", "path": ["parent_proposal_id"], "value": "p1"}],
+      "schema_ok": true, "julia": "reject:self_parent"},
+    {"name": "calls_disagree_with_body", "base": "proposal", "ops": [{"op": "set", "path": ["calls", 0, "primitive"], "value": "translate_whole_build!"}],
+      "schema_ok": true, "julia": "reject:calls_disagree_with_body"},
+    {"name": "forbidden_core_eval", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    Core.eval(parentmodule(reassign_stuck_carry!), :(project_complete(e) = true))\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_host_command", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    run(`touch /tmp/x`)\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_credential_read", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    k = get(ENV, \"OPENAI_API_KEY\", \"\")\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_persistent_callback", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    Timer(_ -> nothing, 1.0)\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_via_getfield_string", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    f = getfield(Base, Symbol(\"run\"))\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_despite_benign_claims", "base": "proposal", "ops": [
+      {"op": "set", "path": ["claimed_effects"], "value": ["geometry"]},
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    open(\"/tmp/x\", \"w\") do io; write(io, \"x\"); end\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+
+    {"name": "manifest_ok", "base": "manifest", "ops": [], "schema_ok": true, "julia": "accept"},
+    {"name": "manifest_ok_g4_auxiliary_arm", "base": "manifest", "ops": [{"op": "set", "path": ["arms"], "value": ["B0", "U4", "V4", "G4"]}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "budget_missing", "base": "manifest", "ops": [{"op": "del", "path": ["budget"]}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_empty", "base": "manifest", "ops": [{"op": "set", "path": ["budget"], "value": {}}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_null_value", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "max_total_tokens", "value"], "value": null}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_zero_sim_steps", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "episode", "max_sim_steps", "value"], "value": 0}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_zero_cost", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "max_cost_usd_episode", "value"], "value": 0}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_bool_as_int", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "worker", "memory_mb", "value"], "value": true}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_value_without_source", "base": "manifest", "ops": [{"op": "del", "path": ["budget", "worker", "cpu_s", "source"]}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_five_candidates", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "max_candidates", "value"], "value": 5}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_call_allocation_changed", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "call_allocation", "compose"], "value": 3}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "continuation_zone_policy_not_noop", "base": "manifest", "ops": [{"op": "set", "path": ["continuation", "zone_policy"], "value": "none"}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "continuation_ladder_open", "base": "manifest", "ops": [{"op": "set", "path": ["continuation", "zone_auto_ladder"], "value": "enabled"}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "rng_exposed_to_model", "base": "manifest", "ops": [{"op": "set", "path": ["exogenous_rng", "exposed_to_model"], "value": true}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "shadow_writes_real_ledger", "base": "manifest", "ops": [{"op": "set", "path": ["cost_ledger", "shadow_writes_real_ledger"], "value": true}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "unknown_arm", "base": "manifest", "ops": [{"op": "set", "path": ["arms"], "value": ["B0", "G5"]}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "duplicate_arm", "base": "manifest", "ops": [{"op": "set", "path": ["arms"], "value": ["U4", "U4"]}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "trusted_validator_version_missing", "base": "manifest", "ops": [{"op": "del", "path": ["trusted", "validator_version"]}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "fingerprint_empty_string", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "prompt_digest"], "value": ""}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"}
+  ]
+}

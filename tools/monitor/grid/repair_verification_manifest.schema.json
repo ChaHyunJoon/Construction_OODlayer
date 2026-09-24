@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair_verification_manifest.schema.json",
+  "title": "RepairVerificationManifest",
+  "description": "Frozen campaign manifest for zone-repair verification (design 2026-09-24 sections 7.1, 7.2, 9.2). Every budget number is required, positive, and carries its source: historical (confirmed from a 2026-09-23 campaign; ref names where), design_spec (fixed by the design), or new_choice (decided for this campaign). Nothing here has a default -- a missing or null value rejects the run. Validated in Julia by src/verification/repair_types.jl against this same file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "campaign_id", "arms", "cohort", "budget", "continuation",
+               "exogenous_rng", "cost_ledger", "build", "model_side", "trusted"],
+  "$defs": {
+    "posint": {
+      "type": "object", "additionalProperties": false, "required": ["value", "source", "ref"],
+      "properties": {
+        "value": {"type": "integer", "minimum": 1},
+        "source": {"enum": ["historical", "design_spec", "new_choice"]},
+        "ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "posnum": {
+      "type": "object", "additionalProperties": false, "required": ["value", "source", "ref"],
+      "properties": {
+        "value": {"type": "number", "exclusiveMinimum": 0},
+        "source": {"enum": ["historical", "design_spec", "new_choice"]},
+        "ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "cap4": {
+      "type": "object", "additionalProperties": false, "required": ["value", "source", "ref"],
+      "properties": {
+        "value": {"type": "integer", "minimum": 1, "maximum": 4},
+        "source": {"enum": ["historical", "design_spec", "new_choice"]},
+        "ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "text": {"type": "string", "minLength": 1}
+  },
+  "properties": {
+    "manifest_version": {"const": "repair-verification-manifest/1"},
+    "campaign_id": {"$ref": "#/$defs/text"},
+    "arms": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"enum": ["B0", "L0", "L1", "U1", "U4", "V4", "G4"]}
+    },
+    "cohort": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "planned_episodes"],
+      "properties": {
+        "path": {"$ref": "#/$defs/text"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "planned_episodes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["episode", "worker", "model"],
+      "properties": {
+        "episode": {
+          "type": "object", "additionalProperties": false,
+          "required": ["counted_from", "max_sim_steps", "max_num_iters_no_progress", "wall_timeout_s"],
+          "properties": {
+            "counted_from": {"const": "episode_start"},
+            "max_sim_steps": {"$ref": "#/$defs/posint"},
+            "max_num_iters_no_progress": {"$ref": "#/$defs/posint"},
+            "wall_timeout_s": {"$ref": "#/$defs/posnum"}
+          }
+        },
+        "worker": {
+          "type": "object", "additionalProperties": false,
+          "required": ["wall_timeout_s", "cpu_s", "memory_mb"],
+          "properties": {
+            "wall_timeout_s": {"$ref": "#/$defs/posnum"},
+            "cpu_s": {"$ref": "#/$defs/posnum"},
+            "memory_mb": {"$ref": "#/$defs/posint"}
+          }
+        },
+        "model": {
+          "type": "object", "additionalProperties": false,
+          "required": ["max_candidates", "max_model_calls", "call_allocation", "max_total_tokens",
+                       "max_cost_usd_episode", "max_cost_usd_campaign"],
+          "properties": {
+            "max_candidates": {"$ref": "#/$defs/cap4"},
+            "max_model_calls": {"$ref": "#/$defs/cap4"},
+            "call_allocation": {"const": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1}},
+            "max_total_tokens": {"$ref": "#/$defs/posint"},
+            "max_cost_usd_episode": {"$ref": "#/$defs/posnum"},
+            "max_cost_usd_campaign": {"$ref": "#/$defs/posnum"}
+          }
+        }
+      }
+    },
+    "continuation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "zone_policy", "repair_ablation", "zone_auto_ladder", "terminal_rule",
+                   "fault_battery_lane", "general_recovery", "pinned_env"],
+      "properties": {
+        "id": {"const": "pi0"},
+        "zone_policy": {"const": "noop"},
+        "repair_ablation": {"const": "all"},
+        "zone_auto_ladder": {"const": "blocked"},
+        "terminal_rule": {"const": "project_complete | no_progress_limit | max_sim_steps"},
+        "fault_battery_lane": {"$ref": "#/$defs/text"},
+        "general_recovery": {"const": "enabled_and_counted"},
+        "pinned_env": {"type": "object", "minProperties": 1}
+      }
+    },
+    "exogenous_rng": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key", "replay_version", "exposed_to_model"],
+      "properties": {
+        "key": {"const": ["episode", "event_kind", "entity", "occurrence"]},
+        "replay_version": {"$ref": "#/$defs/text"},
+        "exposed_to_model": {"const": false}
+      }
+    },
+    "cost_ledger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_actual_cost", "real_ledger", "shadow_namespace", "shadow_writes_real_ledger"],
+      "properties": {
+        "record_actual_cost": {"const": true},
+        "real_ledger": {"$ref": "#/$defs/text"},
+        "shadow_namespace": {"$ref": "#/$defs/text"},
+        "shadow_writes_real_ledger": {"const": false}
+      }
+    },
+    "build": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code_rev", "code_dirty_digest", "dirty_snapshot_digest", "config_digest",
+                   "julia_version", "manifest_digest", "build_id", "julia_threads", "solver"],
+      "properties": {
+        "code_rev": {"$ref": "#/$defs/text"},
+        "code_dirty_digest": {"$ref": "#/$defs/text"},
+        "dirty_snapshot_digest": {"$ref": "#/$defs/text"},
+        "config_digest": {"$ref": "#/$defs/text"},
+        "julia_version": {"$ref": "#/$defs/text"},
+        "manifest_digest": {"$ref": "#/$defs/text"},
+        "build_id": {"$ref": "#/$defs/text"},
+        "julia_threads": {"type": "integer", "minimum": 1},
+        "solver": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "version", "seed", "threads"],
+          "properties": {
+            "name": {"$ref": "#/$defs/text"},
+            "version": {"$ref": "#/$defs/text"},
+            "seed": {"type": "integer"},
+            "threads": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "model_side": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "service_code_fingerprint", "prompt_digest", "schema_digest"],
+      "properties": {
+        "model": {"$ref": "#/$defs/text"},
+        "service_code_fingerprint": {"$ref": "#/$defs/text"},
+        "prompt_digest": {"$ref": "#/$defs/text"},
+        "schema_digest": {"$ref": "#/$defs/text"}
+      }
+    },
+    "trusted": {
+      "type": "object", "additionalProperties": false,
+      "required": ["validator_version", "scorer_version", "capability_contract_version"],
+      "properties": {
+        "validator_version": {"$ref": "#/$defs/text"},
+        "scorer_version": {"$ref": "#/$defs/text"},
+        "capability_contract_version": {"$ref": "#/$defs/text"}
+      }
+    }
+  }
+}
