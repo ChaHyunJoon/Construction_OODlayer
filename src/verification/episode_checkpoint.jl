@@ -21,11 +21,15 @@
 #      정준 행 digest(= 이 세계가 그 세계인가)다. 둘은 다른 주장이다.
 #
 # ⚠️ 이 파일이 **못 하는 것**(→ `certification_gaps` 에 사유로 남는다, 조용히 덮지 않는다):
-#   - RVO native 상태(PyCall rvo2): T3 adapter 전까지 `:native` 블록은 pending 이다.
+#   - RVO native 상태(PyCall rvo2): T3 adapter(`NATIVE_ADAPTERS` → `CB.rvo_export_state`/
+#     `rvo_import_state!`)가 옮긴다. 옮길 수 없는 둘(`globalTime_`, `KdTree` 순열)은 rvo_interface.jl
+#     머리말이 근거를 적고, 순열은 **분기 의무**(`native_obligations`, RVOTieWatch)로 넘어간다.
 #   - 실행 루프의 지역 변수(step k, no-progress 계수기, dispatch cursor): 전역이 아니라 스택에 산다.
-#     t0 hook(T3)이 `loop_state` 로 넘겨야 하고, 안 넘기면 인증 불가다.
-#   - 원본 task contract(T5), 존 주입 전/후 digest(T3).
-#   - 대상 모듈 밖(의존 패키지)의 전역은 훑지 않는다.
+#     t0 hook(T3 `episode_replay.jl`)이 `loop_state` 로 넘겨야 하고, 안 넘기면 인증 불가다.
+#   - 원본 task contract(T5). 존 주입 전/후 digest 는 호출자가 넘긴다(T3 hook 이 넘긴다).
+#   - 대상 모듈 밖(의존 패키지)의 전역은 훑지 않는다 — 대신 **로드된 모든 의존 모듈을 분류해 적는다**:
+#     `DEPENDENCY_ALLOWLIST`(사유 있는 이름 목록)·`_jll`·stdlib 이 아닌 모듈은 gap 이다(T2 minor, T3).
+#     `Base.ENV` 는 예외적으로 잡는다(런타임에 `get(ENV, …)` 로 읽는 손잡이가 있다 — `ENV_ADAPTER`).
 # =============================================================================
 isdefined(@__MODULE__, :RepairTypes) || include(joinpath(@__DIR__, "repair_types.jl"))
 
@@ -34,7 +38,7 @@ module EpisodeCheckpointIO
 using Serialization, Random, SHA, JSON3
 import ..RepairTypes: EpisodeCheckpoint, Fingerprints, CHECKPOINT_BLOCKS, certification_gaps
 
-const CHECKPOINT_FORMAT = "episode-checkpoint/1"
+const CHECKPOINT_FORMAT = "episode-checkpoint/2"   # /2 (T3): native adapter·ENV·의존 모듈 분류
 
 """
 복원 수치 허용오차. **0.0 이다** — 직렬화는 무손실이고 부동소수는 비트 그대로 돌아와야 한다.
@@ -55,10 +59,77 @@ const GLOBAL_BLOCK = Dict{Symbol,Symbol}(
     :RESPEC_QUEUE => :events_rng, :OOD_SCHEDULE => :events_rng, :HAZARD_STATE => :events_rng,
     :OOD_EVENT_TARGET => :events_rng, :OOD_TRUTH_LOG => :events_rng, :SIM_STEP => :execution,
     :RVO_ID_GLOBAL_MAP => :native, :RVO_SIM_WRAPPER => :native, :RVO_PYTHON_MODULE => :native,
-    :MONITOR_IO => :ledger_boundary, :RUN_CTX => :ledger_boundary, :_RID_CTR => :ledger_boundary)
+    :MONITOR_IO => :ledger_boundary, :RUN_CTX => :ledger_boundary, :_RID_CTR => :ledger_boundary,
+    # 모니터 기록부(대시보드 원장): sink 가 붙어 있을 때만 쌓인다 — 떼어낸 분기에서는 안 자란다(설계).
+    :MONITOR_NODE_T => :ledger_boundary, :MONITOR_HANDOFF_T => :ledger_boundary,
+    :MONITOR_RESPEC => :ledger_boundary, :MONITOR_RESPEC_HISTORY => :ledger_boundary,
+    :MONITOR_RECOVERY_LOG => :ledger_boundary, :MONITOR_FAULTED => :ledger_boundary)
 
-"RVO native 핸들. T3 가 export/import adapter 를 만들기 전까지 checkpoint 는 인증 불가다."
-const NATIVE_PENDING = Set([:RVO_SIM_WRAPPER, :RVO_PYTHON_MODULE])
+"adapter 가 없는 native 핸들(직렬화하지 않고 항상 gap). T3 이후 비어 있다 — 새 핸들이 생기면 여기 넣는다."
+const NATIVE_PENDING = Set{Symbol}()
+
+"""
+native adapter: 전역 이름 → (export, import) 함수 이름. 함수는 그 전역을 정의한 모듈(`e.mod`)에서 찾는다
+(이 모듈은 CB 를 import 하지 않는다). export 는 `(; state, residual, gaps)` 를 돌려주는 **읽기 전용**
+함수이고 `state` 가 정준 행이 된다. import 는 `state` 로 핸들을 다시 만들고 분기 의무 객체를 돌려준다.
+"""
+const NATIVE_ADAPTERS = Dict{Symbol,Tuple{Symbol,Symbol}}(
+    :RVO_SIM_WRAPPER => (:rvo_export_state, :rvo_import_state!))
+"다른 adapter 가 함께 옮기는 native 핸들 → 그 adapter 의 전역 이름."
+const NATIVE_COVERED = Dict{Symbol,Symbol}(:RVO_PYTHON_MODULE => :RVO_SIM_WRAPPER)
+
+"""
+하니스 계측(세계 상태가 아님): 프로세스마다 **자기 것**을 설치하므로 잡지도 복원하지도 않는다.
+잡으면 capture 프로세스의 훅이 resume 프로세스에 되살아난다. 모듈 이름은 자식 모듈 보행에서 뺀다.
+"""
+const HARNESS_GLOBALS = Set([:HARNESS_HOOK, :RVO_RECORD_BUILDS])
+const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay])
+
+"""
+대상 모듈 밖의 로드된 의존 모듈 분류(T2 minor). 전역을 훑지 **않는** 대신, 이름과 사유를 fields.json 에
+남기고 목록 밖 모듈은 gap 으로 올린다 — 새 의존성이 조용히 들어오지 못한다. 사유는 "이 모듈의 전역이
+에피소드 동역학을 나르지 않는다" 는 주장이고, 그 주장의 **증거는 T3 전 구간 재생 게이트**다(목록이 틀리면
+복원 분기의 궤적이 원본과 갈린다). `_jll`(바이너리 경로 래퍼)과 stdlib 은 규칙으로 분류한다 —
+stdlib 중 상태를 나르는 둘은 따로 잡는다: `Random` 기본 RNG(`rng.default`), `Base.ENV`(`ENV_ADAPTER`).
+"""
+const DEPENDENCY_ALLOWLIST = Dict{String,Vector{String}}(
+    "solver binding: optimizer objects are created per solve inside the target modules; module globals are option tables/caches" =>
+        ["JuMP", "MathOptInterface", "MathOptIIS", "MutableArithmetics", "HiGHS", "GLPK", "Gurobi", "ECOS"],
+    "python bridge: interpreter handle; the only Python object the runtime reads is the rvo2 simulator (native adapter)" =>
+        ["PyCall", "Conda", "VersionParsing"],
+    "io/serialization/network: connection pools and codecs; the pi0 continuation makes no network call" =>
+        ["HTTP", "HTTPExt", "MbedTLS", "OpenSSL", "URIs", "BitFlags", "ConcurrentUtilities",
+         "ExceptionUnwrapping", "SimpleBufferStream", "LoggingExtras", "CodecBzip2", "CodecZlib",
+         "TranscodingStreams", "JLD2", "FileIO", "MsgPack", "JSON", "JSON3", "StructTypes", "Parsers",
+         "FFMPEG", "Inflate"],
+    "visualization/progress output only (headless runs have no visualizer)" =>
+        ["MeshCat", "Colors", "ColorTypes", "Compose", "Measures", "RecipesBase",
+         "RotationsRecipesBaseExt", "ProgressMeter", "FixedPointNumbers"],
+    "pure data structures/math: no mutable module state read by the simulation" =>
+        ["AliasTables", "ArnoldiMethod", "CEnum", "CommonSubexpressions", "Compat",
+         "CompatLinearAlgebraExt", "CoordinateTransformations", "CRlibm", "DataAPI", "DataStructures",
+         "DiffResults", "DiffRules", "DocStringExtensions", "EnumX", "ErrorfreeArithmetic", "ExprTools",
+         "FastRounding", "ForwardDiff", "ForwardDiffStaticArraysExt", "GeometryBasics", "Graphs",
+         "HashArrayMappedTries", "IntervalArithmetic", "IrrationalConstants", "IterTools", "JLLWrappers",
+         "LazySets", "LDrawParser", "LogExpFunctions", "MacroTools", "MetaGraphs", "Missings", "NaNMath",
+         "OrderedCollections", "Parameters", "PrecompileTools", "Preferences", "PtrArrays", "Quaternions",
+         "ReachabilityBase", "RealDot", "Reexport", "Requires", "Rotations", "RoundingEmulator",
+         "ScopedValues", "SetRounding", "SimpleTraits", "SortingAlgorithms", "SpatialIndexing",
+         "SpecialFunctions", "StaticArrays", "StaticArraysCore", "StaticArraysStatisticsExt", "StatsAPI",
+         "StatsBase", "UnPack", "UnPackExt"])
+
+"""
+`Base.ENV` adapter. 값은 비밀이 아닌 키만 artifact 에 싣고(복원 때 맞춘다), 비밀 모양 키는 **값의
+sha256 만** 싣는다(값을 쓰지 않는다 — 복원하지 않고 대조만). 하니스·출력 경로·세션 잡음 키는 뺀다:
+분기마다 다른 것이 설계다(출력 디렉터리, 모드 스위치).
+"""
+const ENV_IGNORE_PREFIX = ("ZRV_", "TMUX", "TERM", "SSH_", "XDG_", "DBUS_", "LC_", "GPG_", "VSCODE", "CLAUDE")
+const ENV_IGNORE = Set(["_", "PWD", "OLDPWD", "SHLVL", "DISPLAY", "WINDOWID", "COLUMNS", "LINES",
+    "DEMO_OUT_DIR", "DEMO_SUMMARY", "MONITOR_STREAM", "MONITOR_RUN_ID", "STALL_PROBE_OUT"])
+_env_ignored(k) = k in ENV_IGNORE || any(p -> startswith(k, p), ENV_IGNORE_PREFIX)
+_env_secret(k) = occursin(r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL"i, k)
+env_snapshot() = sort!([(k, _env_secret(k) ? "sha256:" * bytes2hex(sha256(v)) : v)
+                        for (k, v) in ENV if !_env_ignored(k)]; by = first)
 
 """
 원장 sink: 실제 스트림 파일 핸들. 분기(shadow) 출력이 실제 원장에 쓰면 안 되므로 **복원 시 떼어낸다**
@@ -67,10 +138,15 @@ const NATIVE_PENDING = Set([:RVO_SIM_WRAPPER, :RVO_PYTHON_MODULE])
 """
 const LEDGER_SINKS = Set([:MONITOR_IO])
 
-"대상 모듈과 그 자식 모듈(자신 제외)."
+"""
+대상 모듈과 그 자식 모듈(하니스 모듈 제외). 🔴 `Base`·`Core` 는 **자식으로 보행하지 않는다**:
+`parentmodule(Base) === Main` 이라 `modules` 에 Main 을 넣으면 Base 의 모든 전역(메서드 표·컴파일러
+캐시)이 딸려 들어온다 — T3 첫 tractor capture 가 이것으로 110 GB 를 먹었다(`Base._NAMEDTUPLE_NAME.mt…`).
+Base 전역 중 에피소드 상태는 기본 RNG(`rng.default`)와 `ENV`(`ENV_ADAPTER`)뿐이고 둘은 따로 잡는다.
+"""
 function _module_tree(mods)
     out = Module[]
-    walk(m) = (m in out || m === @__MODULE__) ? nothing : begin
+    walk(m) = (m in out || m === Base || m === Core || nameof(m) in HARNESS_MODULES) ? nothing : begin
         push!(out, m)
         for n in names(m; all = true)
             isdefined(m, n) || continue
@@ -91,6 +167,7 @@ _holds_mutable(@nospecialize v) =
 function _skip_binding(m::Module, n::Symbol)
     s = String(n)
     startswith(s, "#") && return "compiler/docs internal"
+    n in HARNESS_GLOBALS && return "harness hook (each process installs its own)"
     isdefined(m, n) || return "undefined"
     v = getfield(m, n)
     v isa Module && return "module"
@@ -105,7 +182,36 @@ struct GlobalEntry
     name::Symbol
     isconst::Bool
     block::Symbol
-    handling::Symbol     # :graph | :native_pending | :ledger_sink
+    handling::Symbol     # :graph | :native_adapter | :native_covered | :native_pending | :ledger_sink
+end
+
+_handling(n) = n in NATIVE_PENDING ? :native_pending : haskey(NATIVE_ADAPTERS, n) ? :native_adapter :
+               haskey(NATIVE_COVERED, n) ? :native_covered : n in LEDGER_SINKS ? :ledger_sink : :graph
+
+"native adapter 의 export 결과(`(; state, residual, gaps)`). 함수는 그 전역의 모듈에서 찾는다."
+_native_export(e) = Base.invokelatest(getfield(e.mod, NATIVE_ADAPTERS[e.name][1]))
+_native_import!(e, d) = Base.invokelatest(getfield(e.mod, NATIVE_ADAPTERS[e.name][2]), d.state, d.residual)
+
+"""
+    dependency_modules(modules) -> Vector{NamedTuple{(:name, :class, :reason)}}
+
+로드된 최상위 모듈 중 대상(과 Core/Base/Main)이 아닌 것의 분류. `class = :unlisted` 가 gap 이다.
+"""
+function dependency_modules(modules)
+    roots = Set(Base.moduleroot(m) for m in modules)
+    reason = Dict(n => r for (r, ns) in DEPENDENCY_ALLOWLIST for n in ns)
+    out = NamedTuple{(:name, :class, :reason),Tuple{String,Symbol,String}}[]
+    for m in Base.loaded_modules_array()
+        (parentmodule(m) === m && !(m in roots) && !(m in (Core, Base, Main))) || continue
+        n = String(nameof(m)); p = pathof(m)
+        push!(out, endswith(n, "_jll") ? (name = n, class = :jll, reason = "binary artifact wrapper: library paths set at __init__") :
+            (p === nothing || startswith(p, Sys.STDLIB)) ?
+                (name = n, class = :stdlib, reason = n == "Random" ? "default RNG captured as rng.default" :
+                                                   "stdlib: no episode state read by the simulation") :
+            haskey(reason, n) ? (name = n, class = :allowlisted, reason = reason[n]) :
+                                (name = n, class = :unlisted, reason = "not scanned and not allowlisted"))
+    end
+    sort!(out; by = x -> x.name)
 end
 
 """
@@ -117,8 +223,7 @@ function global_inventory(modules)
     out = GlobalEntry[]
     for m in _module_tree(modules), n in sort!(collect(names(m; all = true)); by = String)
         _skip_binding(m, n) === nothing || continue
-        h = n in NATIVE_PENDING ? :native_pending : n in LEDGER_SINKS ? :ledger_sink : :graph
-        push!(out, GlobalEntry(m, n, isconst(m, n), get(GLOBAL_BLOCK, n, :globals), h))
+        push!(out, GlobalEntry(m, n, isconst(m, n), get(GLOBAL_BLOCK, n, :globals), _handling(n)))
     end
     sort!(out; by = e -> (join(fullname(e.mod), "."), String(e.name)))
 end
@@ -140,9 +245,16 @@ _env_blocks(env) = (
 const _TNAME = IdDict{Any,String}()
 _tname(@nospecialize T) = get!(() -> sprint(show, T; context = :module => @__MODULE__), _TNAME, T)
 
+# 🔴 값으로 적는 두 가지(T3 교차 프로세스 재생이 드러냈다):
+#   · `SubString` — 부모 문자열의 **보이지 않는 꼬리**(예: `readchomp` 가 자른 "\n")가 직렬화로 보존되지
+#     않는다(역직렬화 사본은 잘린 부분만 갖는다). 관측 가능한 값은 부분 문자열뿐이다.
+#   · JSON3 객체/배열 — tape 배열의 **미사용 꼬리가 초기화되지 않은 메모리**라 프로세스마다 다르다
+#     (`ActionRegistry.REGISTRY[..].tape.parent[153]` = 0xffffffff vs 0x0). 의미는 JSON 값이다.
 _leaf_token(@nospecialize x) =
     x isa AbstractFloat ? "F:$(_tname(typeof(x))):$(repr(x))" :
-    x isa Union{Integer,Char,Nothing,Missing,Symbol,String} ? "V:$(_tname(typeof(x))):$(repr(x))" : nothing
+    x isa Union{Integer,Char,Nothing,Missing,Symbol,String} ? "V:$(_tname(typeof(x))):$(repr(x))" :
+    x isa SubString{String} ? "V:SubString{String}:$(repr(x))" :
+    x isa Union{JSON3.Object,JSON3.Array} ? "J:$(JSON3.write(x))" : nothing
 
 _key_seg(@nospecialize k) = k isa Union{Symbol,String,Integer} ? "[$(repr(k))]" : nothing
 
@@ -152,7 +264,19 @@ mutable struct _Walk
     opaque::Vector{String}      # 직렬화로 옮길 수 없는 값의 경로
 end
 
+"""
+정준 행 상한. 넘으면 **경로를 적고 에러**다 — 세계가 폭주하는 그래프(불변 구조의 반복 전개 등)를 조용히
+메모리로 받아내지 않는다(T3 첫 tractor capture 가 상한 없이 110 GB 를 먹었다).
+"""
+const MAX_WORLD_LINES = Ref(20_000_000)
+"경로 길이 상한(바이트). 경로는 첫 방문 깊이만큼 자라므로 깊은 사슬은 행 수보다 먼저 메모리를 먹는다."
+const MAX_PATH_BYTES = Ref(4096)
+
 function _walk!(w::_Walk, path::String, @nospecialize x)
+    length(w.lines) > MAX_WORLD_LINES[] &&
+        error("world_lines: more than $(MAX_WORLD_LINES[]) canonical lines — runaway at $(first(path, 400))")
+    ncodeunits(path) > MAX_PATH_BYTES[] &&
+        error("world_lines: path longer than $(MAX_PATH_BYTES[]) bytes (object graph nested too deep) at $(first(path, 400)) … $(last(path, 300))")
     t = _leaf_token(x)
     t === nothing || return push!(w.lines, path * "\t" * t)
     x isa Module && return push!(w.lines, path * "\tM:" * join(fullname(x), "."))
@@ -222,8 +346,11 @@ function world_lines(env; modules, loop_state = nothing, task_contract = nothing
         e.block === b || continue
         k = "globals." * _gkey(e)
         e.handling === :graph ? field!(b, k, getfield(e.mod, e.name)) :
+        e.handling === :native_adapter ? field!(b, k, _native_export(e).state) :
             (push!(fields, (b, k, length(w.lines) + 1));
-             push!(w.lines, k * "\t" * (e.handling === :native_pending ? "ADAPTER_PENDING:T3" : "LEDGER_SINK")))
+             push!(w.lines, k * "\t" * (e.handling === :native_pending ? "ADAPTER_PENDING" :
+                                        e.handling === :native_covered ? "NATIVE_COVERED_BY:$(NATIVE_COVERED[e.name])" :
+                                        "LEDGER_SINK")))
     end
     field!(:model_code, "fingerprints", fingerprints)
     for f in eb.task_world; field!(:task_world, "env.$(f)", getfield(env, f)); end
@@ -231,6 +358,7 @@ function world_lines(env; modules, loop_state = nothing, task_contract = nothing
     for f in eb.execution; field!(:execution, "env.$(f)", getfield(env, f)); end
     field!(:execution, "loop_state", loop_state); gwalk(:execution)
     gwalk(:globals)
+    field!(:globals, "globals.Base.ENV", env_snapshot())
     field!(:events_rng, "rng.default", rng); gwalk(:events_rng)
     gwalk(:native)
     gwalk(:ledger_boundary)
@@ -496,7 +624,21 @@ struct CheckpointCapture
     fields::Vector{Tuple{Symbol,String,Int}}
     gaps::Vector{String}
     inventory::Vector{GlobalEntry}
+    dependencies::Vector{NamedTuple{(:name, :class, :reason),Tuple{String,Symbol,String}}}
+    native_residual::Dict{String,Any}     # 옮기지 못했고 동역학 비관여이거나 분기 의무로 넘긴 값
 end
+
+"JSON 용 요약: 큰 재연 이력(`builds`)은 빼고 나머지 residual 필드만(이력은 .jls payload 에 있다)."
+residual_summary(r) = Dict(k => (v isa NamedTuple ? Base.structdiff(v, NamedTuple{(:builds,)}) : v) for (k, v) in r)
+
+"""
+분기 의무: checkpoint 만으로는 보장할 수 없고 **복원된 분기가 끝날 때** 확인해야 하는 조건. import 결과의
+`native_handles` 로 확인한다. 하나라도 어기면 그 분기는 원본 궤적 재현을 주장할 수 없다.
+"""
+const NATIVE_OBLIGATIONS = [
+    "RVO KdTree permutation: restored exactly when native_residual.kd_known (build-history replay, " *
+    "handle.kd_restored == true); otherwise the branch is certifiable only if the RVOSimHarness handle " *
+    "reports ties == [] (tie watch from import until the next RVO rebuild)"]
 
 """
     capture_checkpoint(env; modules, loop_state=nothing, task_contract=nothing,
@@ -514,10 +656,19 @@ function capture_checkpoint(env; modules, loop_state = nothing, task_contract = 
     W = world_lines(env; modules, loop_state, task_contract, fingerprints, rng)
     lines, opaque, fields = W.lines, W.opaque, W.fields
     gaps = String[]
-    append!(gaps, ["native: $(_gkey(e)) — RVO adapter pending (T3)"
+    append!(gaps, ["native: $(_gkey(e)) — no native adapter"
                    for e in inv if e.handling === :native_pending])
+    native = Dict{String,Any}()
+    for e in inv
+        e.handling === :native_adapter || continue
+        x = _native_export(e)
+        native[_gkey(e)] = (state = x.state, residual = x.residual)
+        append!(gaps, x.gaps)
+    end
+    deps = dependency_modules(modules)
+    append!(gaps, ["globals: dependency module $(d.name) — $(d.reason)" for d in deps if d.class === :unlisted])
     append!(gaps, ["unserializable: $(p)" for p in opaque])
-    loop_state === nothing && push!(gaps, "execution: runtime loop cursor not supplied (t0 hook, T3)")
+    loop_state === nothing && push!(gaps, "execution: runtime loop cursor not supplied (t0 hook)")
     task_contract === nothing && push!(gaps, "task_world: original task contract not supplied (T5)")
     fingerprints === nothing && push!(gaps, "model_code: fingerprints not supplied")
     sinks = Dict{String,Any}()
@@ -534,11 +685,13 @@ function capture_checkpoint(env; modules, loop_state = nothing, task_contract = 
     ord = _anchor_order(aobjs)
     payload = (format = CHECKPOINT_FORMAT, anchors = _Anchors(akeys[ord], aobjs[ord]), vars = vars,
                env = env, loop_state = loop_state, task_contract = task_contract,
-               fingerprints = fingerprints, rng = rng, ledger_sinks = sinks)
+               fingerprints = fingerprints, rng = rng, ledger_sinks = sinks, native = native,
+               process_env = [(k, v) for (k, v) in env_snapshot() if !_env_secret(k)])
     bytes = _serialize_bytes(payload)
     copy(Random.default_rng()) == rng || error("capture advanced the RNG")   # 자기 검사
     return CheckpointCapture(bytes, bytes2hex(sha256(bytes)), block_digests(lines, fields),
-                             field_digests(lines, fields), lines, fields, gaps, inv)
+                             field_digests(lines, fields), lines, fields, gaps, inv, deps,
+                             Dict(k => v.residual for (k, v) in native))
 end
 
 _resolve(modules, fname) = begin
@@ -565,14 +718,28 @@ function restore_checkpoint!(bytes::Vector{UInt8}; modules)
         isconst(m, n) && error("restore: $(n) became const")
         setglobal!(m, n, v)
     end
-    for e in global_inventory(modules)
+    inv = global_inventory(modules)
+    for e in inv
         e.handling === :ledger_sink || continue
         r = getfield(e.mod, e.name)
         r isa Base.RefValue ? (r[] = nothing) : error("restore: ledger sink $(e.name) is not a Ref")
     end
+    # 🔴 전역(특히 RVO_ID_GLOBAL_MAP·RVO 기본값 전역)이 먼저 복원된 **뒤에** native 를 다시 만든다.
+    handles = Dict{String,Any}()
+    for e in inv
+        e.handling === :native_adapter || continue
+        haskey(p.native, _gkey(e)) || error("restore: native state for $(_gkey(e)) missing in the artifact")
+        handles[_gkey(e)] = _native_import!(e, p.native[_gkey(e)])
+    end
+    # ENV: 비밀이 아닌 키를 capture 때 값으로 맞춘다(없던 키는 지운다). 비밀 키는 대조만(verify_world).
+    want = Dict(p.process_env)
+    for (k, _) in collect(ENV)
+        _env_ignored(k) || _env_secret(k) || haskey(want, k) || delete!(ENV, k)
+    end
+    for (k, v) in want; ENV[k] = v; end
     copy!(Random.default_rng(), p.rng)
     return (; env = p.env, loop_state = p.loop_state, task_contract = p.task_contract,
-            fingerprints = p.fingerprints, n_dicts_rehashed = nfix)
+            fingerprints = p.fingerprints, n_dicts_rehashed = nfix, native_handles = handles)
 end
 
 """
@@ -599,6 +766,9 @@ function export_checkpoint(dir, checkpoint_id, env; modules, t0_hook, zone_dispa
             "artifact_sha256" => c.artifact_sha256,
             "block_sha256" => Dict(String(k) => v for (k, v) in c.block_sha256),
             "field_sha256" => c.field_sha256, "gaps" => c.gaps,
+            "native_residual" => residual_summary(c.native_residual), "native_obligations" => NATIVE_OBLIGATIONS,
+            "dependency_modules" => [Dict("name" => d.name, "class" => String(d.class),
+                                          "reason" => d.reason) for d in c.dependencies],
             "globals" => [Dict("name" => _gkey(e), "block" => String(e.block),
                                "const" => e.isconst, "handling" => String(e.handling))
                           for e in c.inventory]))
@@ -616,6 +786,7 @@ end
 파일 digest 가 `cp.artifact_sha256` 과 다르면 **에러**(다른 파일이다). 복원 뒤 세계를 다시 정준 행으로
 펴서 블록 digest 를 기록값과 대조한다 — 원본이 없는 다른 프로세스에서도 되는 검사다.
 `mismatched_blocks` 가 비어 있지 않으면 복원이 불완전하다 → 인증 불가로 다룰 것.
+`native_handles` 는 분기 의무(`NATIVE_OBLIGATIONS`)를 확인할 객체들이다(RVO: `RVOTieWatch`).
 """
 function import_checkpoint(cp::EpisodeCheckpoint; modules)
     bytes = read(cp.artifact_path)

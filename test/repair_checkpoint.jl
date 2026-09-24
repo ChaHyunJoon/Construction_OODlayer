@@ -112,7 +112,9 @@ const RID = CB.node_id(first(robots(W0.env)))
         @test Set(keys(cp.block_sha256)) == Set(R.CHECKPOINT_BLOCKS)
         @test isfile(joinpath(OUT, "cp-test.fields.json"))
         gaps = R.certification_gaps(cp)
-        @test any(g -> occursin("RVO adapter pending (T3)", g), gaps)       # native 는 아직 없다
+        # T3: RVO 는 native adapter 가 옮긴다 — native gap 이 없어야 하고, 정준 행에 에이전트 필드가 있어야 한다.
+        @test !any(g -> startswith(g, "native:"), gaps)
+        @test any(l -> occursin("RVO_SIM_WRAPPER.element.agents[1].Velocity", l), cap.lines)
         @test any(g -> occursin("pre-injection", g), gaps)
         @test !any(g -> occursin("loop cursor", g), gaps)                   # 넘겼으므로 없어야 한다
         bare = E.capture_checkpoint(W0.env; modules = MODS)

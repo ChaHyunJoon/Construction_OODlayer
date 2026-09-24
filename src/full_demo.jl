@@ -864,9 +864,12 @@ function _run_lego_demo_impl(;
 
     # WM/RESPEC: fire the pre-sim hook (enable_battery! / schedule OODs / capture pre-sim state) on the
     # fully-built env, right before the sim loop — inside the production run_one path (default inert).
+    # 검증 하니스(T3): 존 주입 전/후 상태 경계. 기본 nothing = 무동작(demo_utils.jl HARNESS_HOOK).
+    HARNESS_HOOK[] === nothing || HARNESS_HOOK[](:pre_sim_begin, env, (;))
     if pre_sim_hook !== nothing
         pre_sim_hook(env)
     end
+    HARNESS_HOOK[] === nothing || HARNESS_HOOK[](:pre_sim_end, env, (;))
 
     # ── 14단계: 시뮬레이션 루프 실행(로봇들이 실제로 움직여 조립) ──
     execution_start_time = time()                    # 실행 시간 측정 시작

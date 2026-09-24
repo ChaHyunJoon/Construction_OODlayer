@@ -968,6 +968,9 @@ const CONFIG_ENV_OBSERVATIONAL = [
     "FIT_FILE", "FIT_MAXSTEP", "FIT_OUT", "FIT_ROBOTS", "FIT_SEED", "FIT_STALL",
     "NG1_N", "NG1_NGRID", "NG1_NMULT", "NG1_STEPS",
     "NG8_FORBIDAGENT_PROBE", "NG8_MAX_STEP", "NG8_OUT", "NG8_STEP_GRID",
+    # 검증 하니스(zone-repair-verification T3, `src/verification/episode_replay.jl`) — 모드·출력·진단.
+    # 동역학을 안 바꾼다(재생 게이트가 잰다) → 지문 제외.
+    "ZRV_REPLAY_MODE", "ZRV_REPLAY_DIR", "ZRV_CHECKPOINT", "ZRV_TRACE_DETAIL", "ZRV_DIAG_INVENTORY",
 ]
 
 # 보조 규칙: 이 접두사로 시작하는 **설정된** env 중 위 세 목록에 없는 것도 지문에 든다

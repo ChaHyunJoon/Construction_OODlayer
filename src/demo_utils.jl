@@ -21,6 +21,15 @@
 # 렌더/저장 경로의 동작·산출물은 예전과 완전히 동일하다. (simulate! 의 LIVE VIEW 블록 참조)
 const LIVE_PUSH = Ref(false)
 
+# 검증 하니스 훅(2026-09-24, zone-repair-verification T3). `nothing`(기본)이면 **무동작**이라 모든
+# 기존 런은 바이트 동일하다(STALL_PROBE_HOOK·BATTERY_STEP_HOOK 과 같은 Ref 패턴). 값이 있으면
+# `HARNESS_HOOK[](phase, env, ctx)` 로 불린다:
+#   · `:pre_sim_begin` / `:pre_sim_end` — `run_lego_demo` 의 `pre_sim_hook(env)` 직전/직후(존 주입 전/후)
+#   · `:step` — `simulate!` 의 매 스텝 **시작**(`iter += 1` 앞). ctx 에 루프 지역 상태가 실린다.
+# 설치하는 쪽은 `src/verification/episode_replay.jl`(`ZRV_REPLAY_MODE` 가 켤 때만). 훅은 세계를 바꾸면
+# 안 된다 — 그 성질은 T3 재생 게이트가 전 구간 궤적 digest 로 잰다.
+const HARNESS_HOOK = Ref{Any}(nothing)
+
 struct SimParameters
     sim_batch_size::Int               # 한 번에 돌릴 시뮬 스텝 묶음 크기. `::Int` = 이 필드 타입은 정수
     max_time_steps::Int               # 최대 시간 스텝 수(이만큼 지나면 강제 종료)
@@ -102,14 +111,33 @@ function run_simulation!(
         false, 1, starting_frame, prog, step_1_closed, step_1_closed, 0, 0, generate_showvalues
     )
 
-    up_steps = []                                              # 빈 배열(파이썬 리스트). 업데이트 단계들을 모을 그릇
+    return continue_simulation!(env, factory_vis, anim, sim_params, sim_process_data)
+end
+
+"""
+    continue_simulation!(env, factory_vis, anim, sim_params, sim_process_data;
+                         first_batch = sim_params.sim_batch_size, up_steps = [])
+
+`run_simulation!` 의 배치 루프(원래 그 함수 본문 그대로). 재생 continuation(T3/T4)이 **같은** 루프를
+부르려고 떼어냈다 — 별도 간이 simulator 를 만들지 않는다. `first_batch` 는 배치 도중(batch 위치 b)에서
+재개할 때 첫 배치의 남은 스텝 수(`sim_batch_size - b + 1`); 배치 경계는 `monitor_emit!` 시점과
+`max_time_steps` 검사 시점을 정하므로 원본과 맞춰야 한다.
+"""
+function continue_simulation!(env::PlannerEnv, factory_vis, anim, sim_params::SimParameters,
+                              sim_process_data::SimProcessingData;
+                              first_batch::Int = sim_params.sim_batch_size, up_steps = [])
+    sp = first_batch == sim_params.sim_batch_size ? sim_params :
+         SimParameters(first_batch, (getfield(sim_params, i) for i in 2:fieldcount(SimParameters))...)
     # while 조건 : 멈춤 신호가 없고(`!`) AND(`&&`) 최대 스텝에 도달하지 않은 동안 반복
     while !sim_process_data.stop_simulating && sim_process_data.iter < sim_params.max_time_steps
-        up_steps = simulate!(env, factory_vis, anim, sim_params, sim_process_data, up_steps)  # 실제 시뮬 한 묶음 실행
+        up_steps = simulate!(env, factory_vis, anim, sp, sim_process_data, up_steps)  # 실제 시뮬 한 묶음 실행
+        sp = sim_params
         # MONITOR seam: 배치마다 env 상태를 JSONL 한 줄로 방출. monitor_enable! 를 안 했으면 즉시 반환(no-op).
         monitor_emit!(env, sim_process_data.iter)
     end
 
+    # 검증 하니스(T3): 시뮬 루프 종료 경계(스크립트 후처리 전). 기본 nothing = 무동작.
+    HARNESS_HOOK[] === nothing || HARNESS_HOOK[](:sim_end, env, (; sim_params, sim_process_data))
     # return : 두 값을 동시에 반환(튜플). (프로젝트 완료 여부, 총 반복 횟수)
     return ConstructionBots.project_complete(env), sim_process_data.iter
 end
@@ -134,7 +162,10 @@ function simulate!(
     @unpack save_animation_along_the_way, save_anim_prog_path = sim_params  # 도중저장 여부·저장경로
 
     # for _ in 1:N : N번 반복. `_` 는 "쓰지 않는 변수"라는 관례 이름. `1:N` 은 1부터 N까지의 범위.
-    for _ in 1:sim_batch_size
+    for b in 1:sim_batch_size
+        # 검증 하니스 경계(T3 t0 후보). 기본 nothing = 무동작. `iter` 는 아직 이 스텝 전 값이다.
+        HARNESS_HOOK[] === nothing || HARNESS_HOOK[](:step, env,
+            (; factory_vis, anim, sim_params, sim_process_data, update_steps, batch_pos = b))
         sim_process_data.iter += 1                                          # 반복 횟수 1 증가(필드 직접 수정)
 
         # Interactive commands must enter at simulation-step granularity. Reading

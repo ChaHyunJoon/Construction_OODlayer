@@ -9,7 +9,7 @@
             ],
             "callable": true,
             "element_type": "Pair{Symbol, LazySets.Ball2Module.Ball2{N, VN}} where {N<:AbstractFloat, VN<:AbstractVector{N}}",
-            "returns": "Base.Generator{Dict{Symbol, LazySets.Ball2Module.Ball2}, ConstructionBots.var\"#818#819\"}"
+            "returns": "Base.Generator{Dict{Symbol, LazySets.Ball2Module.Ball2}, ConstructionBots.var\"#841#842\"}"
         },
         {
             "name": "active_spares",
