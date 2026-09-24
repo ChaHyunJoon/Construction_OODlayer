@@ -458,7 +458,9 @@ function ood_features(env, truth)
         # 정책이 사실상 종류 이름만 보고 답할 수밖에 없었다. 진단기가 이미 계산한 술어를 그대로 준다.
         # ★ 최소수복 판정(verdict)은 **주지 않는다** — 그건 정답이라 오라클·게이트의 것이고,
         #   주는 순간 정책은 추론이 아니라 답을 읽게 된다(zone_diagnosis.jl 의 note).
-        local zdg = try CB.zone_diagnosis(env, truth.zone) catch e
+        local zdg = try CB.ablation_exempt(:policy_payload) do
+                CB.zone_diagnosis(env, truth.zone)
+            end catch e
             @warn "[policy] zone_diagnosis failed -> 원시값 없이 진행" exception = e; nothing
         end
         if zdg !== nothing && zdg.exists
@@ -788,6 +790,18 @@ const DSPY_HEALTHY = Ref{Union{Nothing,Bool}}(nothing)
 #    앞의 것은 죽고, 뒤의 것은 전부 dspy 로 간다.
 const SURRO_KINDS = Ref{Union{Nothing,Set{String}}}(nothing)
 
+"서비스 `/health` 의 `repair_ablation`(존 복구 base ablation). `nothing` = 못 읽었다."
+const SERVICE_REPAIR_ABLATION = Ref{Union{Nothing,String}}(nothing)
+
+"🔴 기동 단언: 서비스 레벨이 이 판의 레벨과 다르거나 못 읽으면 **첫 결정 전에** 죽는다."
+function assert_service_repair_ablation()
+    dspy_ready() || error("[ablation] DSPy service not ready at $(DSPY_URL) — cannot verify repair_ablation")
+    got = SERVICE_REPAIR_ABLATION[]
+    want = String(CB.REPAIR_ABLATION[])
+    got == want || error("[ablation] service repair_ablation=$(repr(got)) != julia $(repr(want)) at $(DSPY_URL)")
+    return nothing
+end
+
 """
     surro_kinds() -> Union{Nothing,Set{String}}
 
@@ -818,6 +832,10 @@ function dspy_ready()
                 @warn "[router] /health surro_kinds unreadable -> kind support unknown" exception = e
                 nothing
             end
+            SERVICE_REPAIR_ABLATION[] = try
+                local ra = get(JSON3.read(String(r.body)), :repair_ablation, nothing)
+                ra === nothing ? nothing : String(ra)
+            catch; nothing end
         end
         r.status == 200
     catch; false end
@@ -903,6 +921,7 @@ const CONFIG_ENV_RESULT = [
     "ZONE_CHECK_PATHS", "RESTAGE_ZONE_MARGIN_FRAC", "RESTAGE_RING_STEP_FRAC",
     "RESPEC_DEPRIO_KAPPA", "ENERGY_OBJECTIVE", "SPARE_PRIORITY", "SPARE_DEPOT_DIST",
     "TEAM_PRIORITY", "USE_RESET", "LEGACY_RESTAMP", "OOD_NL_LEGACY", "LLM_NL_MODE", "CORE_FRAC",
+    "REPAIR_ABLATION",         # 존 복구 base ablation 레벨(2026-09-23, 명세 §6) — none/translate/all
     # Phase 3 (Task 10·11) 예약 — 읽는 코드가 생기기 전부터 result 다
     "RESTAGE_NAV_BUFFER", "RESPEC_TRANSLATE_ON_INFEASIBLE",
     # 데모 동역학·사건 손잡이
@@ -960,6 +979,7 @@ const CONFIG_ENV_PINNED_DEFAULTS = Dict(
     "ENERGY_OBJECTIVE" => "1", "SPARE_PRIORITY" => "1", "TEAM_PRIORITY" => "1",
     "RESPEC_DEPRIO_KAPPA" => "0.25",
     "RESTAGE_NAV_BUFFER" => "0", "RESPEC_TRANSLATE_ON_INFEASIBLE" => "0",
+    "REPAIR_ABLATION" => "none",   # 존 복구 base ablation(2026-09-23) — repair_ablation_from_env 의 기본값
 )
 
 """
@@ -1387,7 +1407,9 @@ function oracle_macro(env, truth)
         # 있었는가** 가 가른다.
         return pend > 0 ? "Replace" : "NOOP"
     elseif truth isa CB.ZoneTruth
-        local zdg = try CB.zone_diagnosis(env, truth.zone) catch; nothing end
+        local zdg = try CB.ablation_exempt(:reference_label) do
+                CB.zone_diagnosis(env, truth.zone)
+            end catch; nothing end
         # 진단이 없거나 구역이 죽었으면 run_demo 요약의 zone_primitives 도 비고(아래 zone 블록이
         # 같은 조건으로 기록한다) reference_policy.py:199 가 그 사건을 unscored 로 뺀다.
         (zdg === nothing || !zdg.exists) && return canonical_macro(env, truth)
@@ -2412,7 +2434,9 @@ function decide_all(env, truth; nl::AbstractString = "")
     #    `:line_stop` 이 될 길이 사라지고, 아래 기록이 **에러 없이** 영원히 다른 값만 낸다.
     if truth isa CB.ZoneTruth
         local zdg = try
-            CB.zone_diagnosis(env, truth.zone; check_restage = true)
+            CB.ablation_exempt(:monitor_record) do
+                CB.zone_diagnosis(env, truth.zone; check_restage = true)
+            end
         catch e
             @warn "[router] zone_diagnosis failed -> zone audit record skipped" exception = e
             nothing

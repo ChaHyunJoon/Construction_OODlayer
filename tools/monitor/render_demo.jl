@@ -810,6 +810,10 @@ include(joinpath(@__DIR__, "enact.jl"))
 #    (`DEMO_OOD`). 둘이 갈리는 판이 있다(위 `CASE_TAG` 주석). zone 은 `DEMO_OOD` 가 아니라
 #    `zone_requested()` 게이트로 심으므로 `zone` 으로 따로 싣는다.
 #  · `policy`/`router` 는 **env 원문**이다(빈 문자열 = 기본값으로 돌았다).
+# 존 복구 base ablation(2026-09-23, 명세 §6). 레벨이 틀리면 여기서 죽는다.
+# 🔴 `set_run_ctx!` **앞**이어야 한다: 계획은 `pre` 훅(CARRIER_RESCUE 기본값 줄 아래)에 두라 했지만
+#    그 훅은 시뮬 직전에 돌아 run_ctx 와 아래 서비스 단언이 언제나 기본값 `none` 을 읽게 된다.
+CB.set_repair_ablation!(CB.repair_ablation_from_env())
 set_run_ctx!(; run_id = isempty(RUN_ID) ? basename(stream_path) : RUN_ID,
              campaign_id = get(ENV, "DEMO_CAMPAIGN_ID", ""),
              stream = basename(stream_path), case = CASE_TAG, event = OODC,
@@ -818,8 +822,10 @@ set_run_ctx!(; run_id = isempty(RUN_ID) ? basename(stream_path) : RUN_ID,
              policy = get(ENV, "DEMO_POLICY", ""), router = get(ENV, "DEMO_ROUTER", ""),
              seed = DEMO_SEED, zone_seed = DEMO_ZONE_SEED,
              synth_fixture = get(ENV, "DEMO_SYNTH_FIXTURE", ""),
+             repair_ablation = String(CB.REPAIR_ABLATION[]),
              run_fingerprint()...)
 println("[run-ctx] ", JSON3.write(RUN_CTX[]))
+router_drives() && assert_service_repair_ablation()   # 🔴 레벨 불일치면 첫 결정 전에 죽는다(Review Focus 1)
 # ⚠️ `run_demo.jl:248` 과 달리 여기서는 `_reset_decision_counter!()` 를 부르지 않는다. 그래도
 # 안전한 이유는 **하나뿐이다**: 이 스크립트의 유일한 호출자인 `server.jl:117` 이 실행마다
 # `julia … render_demo.jl` **새 프로세스**를 띄우므로 `policy.jl:711` 의 `_DECISION_N[]` 이
@@ -1075,6 +1081,7 @@ pre = function (env)
             nl === nothing && (nl = inject_staging_zone!(env))
             nl === nothing || CB.push_ood!(nl)
             println("    · zone($(DEMO_ZONE_MODE)) injected pre-sim")
+            CB.arm_repair_ablation!()   # presim: 주입이 끝난 뒤에 무장한다(주입은 zone_relocatable 로 존을 고른다)
         elseif DEMO_ZONE_MODE == "blocking"
             # 옛 동작(DEMO_ZONE_PRESIM=0): 발화 시점에 심는다. 최소 몇 스텝은 굴린 뒤에
             # 골라야 `_nav_goal_targets` 의 "활성/비활성" 구분과 실제 위치가 뜻을 갖는다.
@@ -1084,9 +1091,10 @@ pre = function (env)
             # 무해 가족으로 폴백해 사건 자체는 반드시 존재하게 하고, 그 사실을 로그에 남긴다.
             CB.schedule_ood_at_closed!(zone_at, function (e)
                 nl = inject_blocking_zone!(e)
-                nl === nothing || return nl
-                println("[zone] blocking placement failed → falling back to the harmless injector")
-                return inject_staging_zone!(e)
+                nl === nothing && (println("[zone] blocking placement failed → falling back to the harmless injector");
+                                   nl = inject_staging_zone!(e))
+                CB.arm_repair_ablation!()   # deferred: 주입 직후 무장
+                return nl
             end)
             println("    · zone(blocking) armed at closed=$(zone_at) " *
                     "(r=$(DEMO_ZONE_R)×robot radius)")
@@ -1098,6 +1106,8 @@ pre = function (env)
             println("    · zone(harmless) injected pre-sim")
         end
     end
+    (has_zone && !DEMO_ZONE_PRESIM && DEMO_ZONE_MODE == "blocking") || CB.repair_ablation_armed() ||
+        CB.arm_repair_ablation!()   # 존이 없거나 harmless 판: 시뮬 시작 전에 무장
     n_robot = demo_n > 0 ? demo_n : length(robot_kinds)   # DEMO_N overrides the robot-OOD count
     # 로봇 OOD 가 들어갈 수 있는 진척 구간 [lo, hi] (닫힌 노드 수 단위).
     #   lo : 너무 이르면 아직 아무 일도 안 벌어진 빈 현장에서 터진다.
@@ -1351,6 +1361,7 @@ let e = render_env
                      " n_engulfed=", zb.n_engulfed, " n_agent_trapped=", zb.n_agent_trapped,
                      " project_blocked=", zb.project_blocked))
 end
+println("[ablation] ", CB.ablation_summary_line())
 
 if INTERACTIVE
     ok = publish_anim!()

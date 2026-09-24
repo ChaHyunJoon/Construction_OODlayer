@@ -615,7 +615,16 @@ function recover_stalled_teams!(env; verbose::Bool = true)
     #    대신 staging(집결지) 자체를 zone 밖으로 옮김.
     zone_blocked = !isempty(RESTRICTION_ZONES[]) &&
         any(t -> t.ready == 0 && _point_in_any_zone(t.gather; margin = default_robot_radius()), teams)
+    # 🔴 존 복구 base ablation (2026-09-23, 명세 §6 층 4). 이 분기는 LLM 없이 사람이 쓴 restage→translate 를
+    #    부른다. ablation 팔에서는 건너뛰고 센다; none 에서는 그대로 돌되 **발동을 센다**(전에는 잴 수단이 없었다).
+    #    반환 상태는 호출자 셋(ood_injection·replan·render_demo)이 전부 "성공 목록 밖 = 실패" 로 읽는다.
+    if zone_blocked && ablation_blocks_zone_ladder()
+        _ablation_bump!("ladder_zone_skipped")
+        verbose && @info "[RESPEC] recover: gather point in no-go zone -> zone repair ladder skipped (repair_ablation=$(REPAIR_ABLATION[]))"
+        return (status = :zone_repair_ablated, moved = 0)
+    end
     if zone_blocked
+        _ablation_bump!("ladder_zone_fired")
         res = restage_all_blocked!(env)           # 막힌 팀들의 집결지를 zone 밖으로 재배치
         # :residual_blocked = 적치원을 옮겨도(또는 옮길 것이 없어도) 막힘이 남음 → 통째 이동.
         # 2026-09-22 전에는 "옮길 적치원 없음" 이 :none 으로 와서 이 목록의 :none 이 그 경우를 받았다;

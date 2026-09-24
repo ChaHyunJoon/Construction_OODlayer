@@ -99,7 +99,9 @@ function dp_state(env, truth)
 
     zone_s = "none"
     if truth isa CB.ZoneTruth
-        zdg = try CB.zone_diagnosis(env, truth.zone) catch; nothing end
+        zdg = try CB.ablation_exempt(:dp_lane) do
+                CB.zone_diagnosis(env, truth.zone)
+            end catch; nothing end
         if zdg !== nothing && zdg.exists
             zone_s = zdg.root_covered > 0 ? "cov" : (zdg.n_nav_blocked > 0 ? "blk" : "none")
         end
