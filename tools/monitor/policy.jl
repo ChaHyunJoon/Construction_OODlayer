@@ -922,6 +922,9 @@ const CONFIG_ENV_RESULT = [
     "RESPEC_DEPRIO_KAPPA", "ENERGY_OBJECTIVE", "SPARE_PRIORITY", "SPARE_DEPOT_DIST",
     "TEAM_PRIORITY", "USE_RESET", "LEGACY_RESTAMP", "OOD_NL_LEGACY", "LLM_NL_MODE", "CORE_FRAC",
     "REPAIR_ABLATION",         # 존 복구 base ablation 레벨(2026-09-23, 명세 §6) — none/translate/all
+    # 2026-09-23 레포 정리(100a7735)로 action_registry.jl 이 src/ 아래로 와서 스캐너 범위에 들어옴.
+    # 둘 다 행동 어휘·메뉴를 바꾼다(레지스트리 경로 = 매크로 집합, SoC 분할 = battery 메뉴) → result.
+    "ACTION_REGISTRY", "DS_BATTERY_SOC_SPLIT",
     # Phase 3 (Task 10·11) 예약 — 읽는 코드가 생기기 전부터 result 다
     "RESTAGE_NAV_BUFFER", "RESPEC_TRANSLATE_ON_INFEASIBLE",
     # 데모 동역학·사건 손잡이

@@ -46,3 +46,18 @@ end
     @test all(!isnothing, (i_skip, i_fire, i_call))
     @test first(i_skip) < first(i_fire) < first(i_call)
 end
+
+@testset "render_demo enact_reform!: ZONE_RESCUE 존 사다리도 ablation 에서 건너뛰고 센다 (2026-09-23 컨트롤러 판정)" begin
+    s = src("tools/monitor/render_demo.jl")
+    i_fn = findfirst("function enact_reform!(env)", s)
+    @test i_fn !== nothing
+    body = s[first(i_fn):end]
+    body = body[1:first(findfirst(r"\nend\n", body))]          # enact_reform! 본문만
+    i_skip = findfirst("CB.ablation_blocks_zone_ladder()", body)
+    i_sk   = findfirst("CB._ablation_bump!(\"zone_rescue_skipped\")", body)
+    i_fire = findfirst("CB._ablation_bump!(\"ladder_zone_fired\")", body)
+    i_call = findfirst("CB.translate_whole_build!(env", body)
+    @test all(!isnothing, (i_skip, i_sk, i_fire, i_call))
+    @test first(i_skip) < first(i_sk) < first(i_fire) < first(i_call)
+    @test occursin("CB._ablation_bump!(\"zone_rescue_fired\")", body)
+end

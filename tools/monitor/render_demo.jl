@@ -645,7 +645,17 @@ function enact_reform!(env)
         local blk = try CB.zone_blockage(env; check_paths = false) catch e
             @warn "[reform] zone_blockage 실패" exception = e; nothing
         end
-        if blk !== nothing && blk.n_blocked > 0
+        # 🔴 존 복구 base ablation (2026-09-23, 컨트롤러 판정 — 명세 §6 층 4 를 이 두 번째 자동 사다리에도).
+        #    이 단은 LLM 없이 사람이 쓴 translate 를 부른다. ablation 팔에서는 부르지 않고 센다 —
+        #    `denied` 는 LLM 이 낸 호출에만 남긴다. none 에서는 그대로 돌되 발동을 센다.
+        if blk !== nothing && blk.n_blocked > 0 && CB.ablation_blocks_zone_ladder()
+            CB._ablation_bump!("ladder_zone_skipped")
+            CB._ablation_bump!("zone_rescue_skipped")
+            zone_status = "blocked $(blk.n_blocked)/$(blk.n_nav_goals) → skipped (repair_ablation=$(CB.REPAIR_ABLATION[]))"
+            println("[reform] zone-rescue: $(zone_status)")
+        elseif blk !== nothing && blk.n_blocked > 0
+            CB._ablation_bump!("ladder_zone_fired")
+            CB._ablation_bump!("zone_rescue_fired")
             local wb = try CB.translate_whole_build!(env; resume = true, verbose = false) catch e
                 @warn "translate_whole_build! 실패" exception = e; (status = :error,)
             end
