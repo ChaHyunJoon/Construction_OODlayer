@@ -1,14 +1,16 @@
-# 존 기하 복구와 완주 보존 검증기 설계
+# 일반 도구 생성과 완주 보존 검증기 설계
 
 작성: 2026-09-24. 상태: **구현 전 설계**. 이번 변경은 이 문서뿐이며 런타임 변경·실험 실행 결과를 뜻하지 않는다.
 
-목표는 (1) 모델이 직접 계산한 기하 변경의 실제 해결률을 높이고, (2) NOOP로 완주하는 세계를 모델 개입으로 실패시키지 않는 것이다. 두 목표는 별도 지표로 평가한다.
+목표는 (1) 모델이 원인에 맞는 복구 기전과 도구 코드를 직접 생성하는 능력을 유지·개선하고, (2) NOOP로 완주하는 세계를 모델 개입으로 실패시키지 않는 것이다. 성공한 기하 이동 4판은 회귀 사례이며 주 생성 공간의 제한이 아니다. 두 목표는 별도 지표로 평가한다.
+
+개정: 사용자의 일반 tool generation 유지 결정에 따라 GeometryPatch 중심 주 경로를 폐기했다. 기하 전용 방식은 비교 실험으로만 남긴다. 파일명은 기존 링크를 보존하기 위해 유지한다.
 
 ## 1. 결정과 보장 범위
 
 **V1은 사건 단위의 runtime assurance supervisor로 구현한다.** 모델의 후보를 격리된 세계에서 실행하고, 동일한 사건 직전 상태에서 존 NOOP 정책과 끝까지 비교한다. 이 설계의 완주 판정은 유한한 실험 종료 예산에 대한 것이다.
 
-**사용자 결정(2026-09-24): CBF는 도입하지 않는다.** 설계 범위는 전체 상태 보존, 원자적 기하 변경과 resync, 동일 상태에서의 NOOP 대비 완주 검증이다. 씬과 스케줄 정합성은 실행 계약으로, 완주는 전체 후속 실행으로 검사한다.
+**사용자 결정(2026-09-24): CBF는 도입하지 않는다.** 설계 범위는 일반 도구 코드 생성, 전체 상태 보존, 격리 집행과 실제 변경별 정합성 검사, 동일 상태에서의 NOOP 대비 완주 검증이다. 씬과 스케줄 정합성은 실행 계약으로, 완주는 전체 후속 실행으로 검사한다.
 
 V1의 보장:
 
@@ -24,7 +26,8 @@ V1의 보장:
 
 | 위치 | 확인한 사실 | 설계상 조치 |
 |---|---|---|
-| `src/respec/minted_tool.jl`, `enact_minted!` | body가 중간에 throw하면 앞선 변경에 undo가 없고 partial로 남을 수 있음 | 주 세계에서 임의 body 실행 금지. 과거 body는 격리 worker에서만 재생 |
+| `src/respec/minted_tool.jl`, `enact_minted!` | body가 중간에 throw하면 앞선 변경에 undo가 없고 partial로 남을 수 있음 | 새 도구와 과거 body 모두 격리 worker에서 집행. 주 supervisor에서 코드를 eval하지 않음 |
+| `src/respec/minted_registration.jl` | `Core.eval`로 등록된 함수는 table reset 뒤에도 프로세스에 남음 | 후보/재작성/커밋마다 새 프로세스. 원본 정의나 validator override 금지 |
 | `src/respec/zone_facts.jl`, `resync_scene_to_schedule!` | `_resync_scene_drift!` 공개 래퍼 | 호출 성공과 실제 정합성 검사를 분리 |
 | `src/respec/restage_zone.jl`, `_resync_scene_drift!` | FREE ObjectStart/AssemblyComplete 본체와 대응 TU의 XY drift를 기준으로 snap. 기본 tol은 로봇 반지름. 로봇은 직접 이동하지 않음 | 모든 씬 노드의 transform을 목표와 같게 만들었다고 가정하지 않음 |
 | `src/smdp/simstate.jl` | 축약 `SimState`이며 전체 snapshot/restore/fork는 구현하지 않았다고 명시 | 이 타입과 `state_hash`를 완전 checkpoint로 사용 금지 |
@@ -44,7 +47,7 @@ V1의 보장:
 
 V1은 한 checkpoint에서 최대 한 repair transaction을 채택한다. 그 뒤 존 사건에는 NOOP를 사용하고 후속 LLM 호출은 하지 않는다. 반복 개입 정책은 V2의 별도 정책 실험이다. 여러 모델 제안을 연속 적용해야 하는 해법은 하나의 원자적 batch로 표현한다.
 
-`all3`의 나머지 사건은 공통 정책을 계속 사용한다. 모델 팔마다 다른 fault/battery 처리를 쓰면 존 기하 개입의 효과로 해석할 수 없다.
+`all3`의 나머지 사건은 공통 정책을 계속 사용한다. 모델 팔마다 다른 fault/battery 처리를 쓰면 생성 도구의 효과로 해석할 수 없다. 생성된 도구가 자원·배정에 개입하는 것은 후보 효과로 허용하되, 도구 밖의 후속 정책은 공통으로 유지한다.
 
 ### 3.2 역사적 결과와 새 실험 구분
 
@@ -60,48 +63,64 @@ V1은 한 checkpoint에서 최대 한 repair transaction을 채택한다. 그 �
 
 이 난수 adapter가 역사적 주입 동작을 바꾸면 새 세계 버전으로 표시하고 원본 재생과 구분한다. 미래 난수나 NOOP의 결과는 모델 입력으로 노출하지 않는다.
 
-## 4. 새 인터페이스: 모델은 GeometryPatch를 제출
+## 4. 생성 인터페이스: 실행 가능한 ToolProposal
 
-아래 이름은 **제안 API**이며 현재 존재한다고 가정하지 않는다.
+주 출력은 일반 Julia 도구 함수다. 고정 기하 patch, 복구 템플릿 선택, 사전에 정한 기전 목록 중 하나로 제한하지 않는다. 모델은 센서 읽기, 계산, 조건 분기, 반복, 지역 helper, 허용된 세계 API 조합으로 새로운 절차를 작성한다. 여기서 일반성이란 기존 시뮬레이터가 표현하는 세계에 대한 도구 생성이며, 원본 과제나 시뮬레이터의 물리 법칙을 임의로 바꿀 권한을 뜻하지 않는다.
+
+제안 API(아직 미구현):
 
 ```julia
 capture_episode_checkpoint(ctx)::EpisodeCheckpoint
-start_branch(cp, branch_spec)::BranchHandle
-validate_patch(cp, patch)::ValidationReport
-apply_geometry_transaction!(ctx, patch)::TransactionReport
+validate_tool_proposal(proposal, capability_contract)::ValidationReport
+execute_tool_isolated(cp, proposal)::EnactmentReport
+validate_effects(cp, enactment, task_contract)::ValidationReport
 rollout_to_terminal!(branch, continuation, budget)::RolloutReport
-select_verified_patch(baseline, candidates)::SelectionReport
-commit_verified_patch!(ctx, cp, patch, certificate)::CommitReport
+select_verified_tool(baseline, candidates)::SelectionReport
+commit_verified_tool!(supervisor, cp, proposal, certificate)::CommitReport
 ```
 
-`GeometryPatch`는 다음 필드를 가진다.
+`ToolProposal`의 envelope는 다음 필드를 가진다. source code와 호출 인자가 실행의 실체이며, 설명과 self-reported success는 증거가 아니다.
 
-```json
-{
-  "schema_version": 1,
-  "checkpoint_id": "immutable artifact ID",
-  "proposal_id": "model proposal ID",
-  "intent": "restore blocked work reachability",
-  "blocked_goal_refs": ["stable semantic reference"],
-  "writes": [{
-    "config_ref": "stable reference to a schedule transform",
-    "expected_before": {"translation": [0, 0, 0], "rotation": "identity"},
-    "desired_global": {"translation": [1, 0, 0], "rotation": "identity"}
-  }],
-  "preserve_relative": [["config reference A", "config reference B"]],
-  "rationale": "model explanation; never trusted as validation"
-}
-```
+| 필드 | 내용 |
+|---|---|
+| schema_version, checkpoint_id, proposal_id | 버전·입력 상태·후보 식별 |
+| tool_name, specification | 필요한 효과, 사전조건, 유지할 조건 |
+| impl_name, impl_code | 생성된 함수 이름과 Julia source |
+| params, calls | 현행 호출 계약에 맞는 인자 schema·실제 값·호출 연결 |
+| claimed_effects | 모델이 예상한 변경. 검사 범위를 제한하지 않는 참고 정보 |
+| parent_proposal_id | 재작성이라면 원본 후보 연결 |
 
-좌표는 형식 예시이며 해법 값이 아니다. 실제 schema는 수치 SE(3) 표현·단위·차원을 고정한다. V1은 기존 성공 기전과 맞추어 XY 평행이동만 허용하고 회전·Z는 보존한다. 판당 이동 가능한 위치 범위는 모델별 기존 workspace 설정에서 읽어 manifest에 고정한다. 임의의 작은 이동량 상한으로 전체 이동 해법을 막지 않는다.
+대상 ID·좌표·자원은 body가 실행 시 env의 센서로 읽고 계산할 수 있다. 호출자가 갖지 않은 값을 params로 지어내게 하지 않는다. 기본 `{}` 인자와 runtime 조회 방식을 유지한다.
 
-안정적인 참조는 checkpoint 내부의 semantic entity/task/config identity로 해석한다. 다른 빌드에서 얻은 정점 번호를 그대로 재사용하지 않는다. 같은 객체를 가리키는 alias와 transform-tree 상속을 해석해 **최종 global transform**이 서로 충돌하는지 검사한다.
+### 4.1 멀티 에이전트 입력 계약
 
-모델은 센서 사실, 기하 및 작업 관계를 읽을 수 있다. 후보 목적지, 이동량, 어떤 작업 기하를 함께 바꿀지는 모델이 결정한다. 실행기는 별도의 staging/translation solver로 목적지를 만들어 주지 않는다. 보호 대상 관계는 모델의 `preserve_relative` 선언과 무관하게 원본 task contract에서도 유도한다.
+[정보 흐름과 그림](2026-09-24-zone-repair-information-flow.md)을 함께 갱신한다.
 
-금지: task/edge 삭제·추가, closed/active 상태 직접 쓰기, zone 변경·삭제, 물리 로봇 pose 쓰기, sensor/scorer 변경, solver/사다리 설정 변경, `step_environment!` 호출, 파일·서비스 부작용. 임의 코드의 AST 검사에만 의존하지 않고 declarative patch만 주 세계에 적용한다.
+| 단계 | 입력 | 출력 |
+|---|---|---|
+| Observe | 현재 기하·항법·작업 의존성·로봇 상태·자원·진행 관측, 물리 원칙, 원본 목표 | 근거 필드가 있는 BreakageReport |
+| Design | 검증된 보고서, 과제 목표, 기존 상위 대응 어휘와 일반 실행 계약 | ToolSpec: 필요한 효과·제약·사전조건. 기전은 필요한 경우 모델이 선택 |
+| Compose | ToolSpec, 관측 보고서, world types/sensors/state APIs 및 실행 계약 | 실제 env를 조사하고 변경하는 ToolProposal의 source code |
 
-`nav_blocked`와 로봇/TU 분류는 층화 분석과 후보 우선순위에 쓴다. `nav_blocked >= 2` 또는 robot target이라는 이유만으로 개입을 거절하지 않는다.
+현행 Design이 원본 전체 관측과 구현 primitive inventory를 직접 받지 않는 분해를 주 팔에서 유지한다. Compose에는 현행 world interface를 유지하고, 기하 전용 GeometryContext나 정답 목적지 입력을 의무화하지 않는다. 사용 가능한 관측·센서가 자원·배정·스케줄 관계도 포괄하는지 감사한다. 새 센서를 추가하면 모든 동시대 비교 팔에 공통 적용하고 지문을 남긴다.
+
+Observe 보고서는 작업상 필요한 관측 설명이며 비공개 내부 사고 과정의 전송 계약이 아니다. 없는 관측은 unknown이다. 보고서의 근거 ID와 측정값을 확인하고 미확인 추론을 사실로 승격하지 않는다.
+
+주 프롬프트는 "목표를 옮겨라", "XY만 바꿔라"를 강제하지 않는다. 기하 이동·재배정·자원 작업·임시 스케줄 복구·그 조합은 가능한 예이며 폐쇄된 선택 메뉴가 아니다. 성공 좌표나 사람이 쓴 존 복구 해법을 프롬프트에 넣지 않는다. 기존 A2의 존 base 차단은 유지한다.
+
+### 4.2 보호할 의미와 변경 가능한 실행 상태
+
+| 보호 대상 | 허용 가능한 변경의 예 | 금지 또는 검증 불가 |
+|---|---|---|
+| 필수 제품·작업·물리 선행조건 | 수행 로봇·팀 배정, 실행용 보조 노드, 적법한 임시 순서 조정 | 필수 작업 삭제/생략, 원본 조립 관계 손상 |
+| 자원·동작 의미 | 실제 가용 자원 예약/해제, 허용된 교체·배송·충전 작업 요청 | 로봇/부품 생성 위조, 소모·비용 없는 배터리/재고 복구 |
+| 원본 존·사건·완료 판정 | 존을 유지한 채 경로·작업 위치·수행 방식을 변경 | 존 삭제/완화, scorer/terminal/status 위조 |
+| 물리 상태와 시간 | 시뮬레이터가 제공하는 적법한 작업의 효과 | 근거 없는 로봇 teleport, 시계·진행 budget 재설정 |
+| 코드와 실행기 | worker 내부의 새 도구·지역 helper | 기존 런타임/센서/validator 재정의, 금지 base 우회, host 부작용 |
+
+**그래프 수정 전체를 금지하지 않는다.** 원본 과제의 의미적 선행조건과 runtime의 배정·임시 의존성을 분리한다. 임시 edge 제거도 필수 작업의 수행 조건을 보존하면 후보로 평가한다. 분해/통합된 작업을 도입하면 원본 작업과의 추적 가능한 대응이 필요하며, 검증기가 지원하지 못하면 unsupported로 분류한다.
+
+`nav_blocked`와 robot/TU는 관측·층화 변수다. 특정 값이나 기전이라는 이유만으로 생성 또는 검증을 생략하지 않는다.
 
 ## 5. 전체 checkpoint와 분기 격리
 
@@ -125,28 +144,49 @@ V1 구현 선택은 명시적 checkpoint export/import다. native 상태 복원�
 
 `SimState.state_hash`와 9자리 반올림 해시는 equality certificate가 아니다. 정확한 직렬화 digest와 필드별 비교를 별도로 만든다. ID·graph·queue·RNG는 정확히 같아야 하고, 수치 오차는 planner의 분기 임계값과 연계한 명시적 tolerance로 검사한다. 허용 오차 내 상태라도 종료 결과가 갈리면 인증 실패다.
 
-## 6. 기하 transaction의 검사와 실행
+## 6. 일반 도구의 격리 집행과 변경별 검사
 
-순서는 아래로 고정한다. 중간 단계에서 실패하면 worker를 버리고 주 세계는 그대로 유지한다.
+### 6.1 코드 실행 경계
 
-1. `checkpoint_id`, expected-before, 대상 ID, 수치 유한성, 범위, 중복/alias 충돌 확인.
-2. 원본 task contract와 보호된 graph/status/zone fingerprint 저장.
-3. 선언된 global transform을 의존 순서에 맞춰 `set_desired_global_transform!`로 적용. 최종 값이 선언과 같은지 확인. 하나라도 불일치면 전체 기각.
-4. 전체 transform diff와 실제 영향을 받은 dependency footprint 계산. 완료된 구조의 상대 기하, attachment, pickup/deposit/lift 대응 관계를 검사.
-5. 필요한 scene resync 수행. 현재 공개 래퍼가 바꾼 객체를 전후 diff로 기록. 선언된 기하의 dependency footprint 밖 객체가 움직이면 V1은 기각한다.
-6. 원래 runtime과 같은 cache resume/preprocess/필요한 assignment resolve를 한 번의 공통 경로로 수행. 현재 `enact_minted!` 안의 후처리와 이중 호출하지 않도록 내부 helper를 분리한다. 재배정이 정당하게 바꾸는 binding과 모델이 금지된 구조를 바꾸는 행위를 별도 기록한다.
-7. RVO와 route 파생 상태를 갱신한 후 transaction postcondition 검사. 이 재구축이 원래 동적 상태를 바꾸지 않는지 선행 게이트에서 확인한다.
-8. 같은 주입 조건/스케줄러로 전체 후속 실행.
+생성·등록·컴파일·집행은 모두 후보 전용 disposable worker에서 한다. 생성 코드에 network, host 쓰기, 서비스 자격 증명, 실제 비용 원장 접근 권한을 주지 않는다. CPU·메모리·wall 한도를 둔다. 별도 프로세스라는 사실만으로 파일/네트워크 부작용이나 같은 프로세스의 scorer 변조가 막힌다고 가정하지 않는다.
 
-`resync` postcondition은 **이동된 자유 본체와 대응 TU의 기준 기하**에 적용한다. 로봇 현재 위치를 목적지와 같게 강제하지 않는다. 잡힌 cargo나 이미 배치된 부품을 free object처럼 teleport하지 않는다.
+현행 등록/AST/ablation gate를 재사용하되 그것만으로 일반 Julia 코드의 효과를 증명했다고 하지 않는다. 기존 메서드 override, native/host escape, 보호된 전역 접근을 차단하는 실행 권한 경계가 필요하다. 권한 경계를 강제할 수 없거나 변경을 관측할 수 없으면 enforce 모드는 활성화하지 않는다.
 
-현재 helper는 XY 거리 tol만 보므로 단순히 호출됐다는 로그로 통과시키지 않는다. 위치 오차 tolerance는 pickup/capture 판정에 쓰는 실제 허용치보다 엄격하게 정하고 manifest에 넣는다. 작은 drift를 helper가 남기면 기각하고 원인을 보고한다. 필요하면 별도 후속 변경에서 helper에 선택 대상·tol·이동 보고 기능을 추가하되 기존 호출의 기본 의미는 유지한다.
+원본 task contract와 채점기는 생성 코드가 수정할 수 없는 supervisor/별도 trusted validator에 둔다. worker의 `status=:success`와 score는 신뢰하지 않는다. code-free의 고정 상태/효과 export schema로 독립 검사하고 custom deserialize/callback을 실행하지 않는다. 전후 diff만으로 "존을 잠깐 제거한 뒤 복원" 같은 효과를 검출했다고 하지 않는다. 보호된 세계 변경과 engine action은 신뢰되는 감사 경로로 기록·제한해야 한다.
 
-**최종 task 의미 검사:** 원래 필수 작업·부품 수·선후 관계를 유지하고, 원래 설계의 조립 상대 변환/attachment를 만족해야 한다. 허용된 세계 평행이동만 원본 contract에 반영한다. 수정된 목표를 자기 자신의 성공 기준으로 사용하지 않는다. nav goal을 start로 바꿔 이동을 없앴더라도 실제 deposit/assembly 조건을 충족해야 성공이다.
+도구는 현재 상태 변경, 지원된 작업 예약, 예산 안의 정상 simulation 진행을 조합할 수 있다. `step_environment!` 같은 시간 진행 호출은 trusted engine adapter를 통해 사건·원본 task 조건·시간/에너지/전체 예산을 함께 처리한다. 시계만 직접 바꾸거나 보호된 검사·scheduler를 우회하는 진행은 금지한다. 무한 loop는 자원 한도로 종료한다. opaque 지속 callback 등 재현·효과 관측을 지원하지 못한 형태는 unsupported로 별도 보고한다.
 
-`zone_blockage(check_paths=true)` 및 `free_space_status`는 존과 항법 관련 센서로 사용한다. 이것만으로 full-scene collision-free 또는 전체 build feasibility를 인증하지 않는다. 신규 collision validator가 없으면 그 항목은 `unverified`로 남기고, 완주 보장과 물리 안전 보장을 혼용하지 않는다.
+모델 재작성용 preflight는 t0에서 검사하되 첫 simulation 진행 요청 직전에 멈추고 `requires_runtime`으로 표시한다(거절 아님). 그 뒤의 source는 후보 동결 후 처음부터 재생해 평가한다. 도구 내부 진행으로 미래를 본 결과나 실행 후 오류를 V1의 재작성 피드백으로 보내지 않는다.
 
-실제 diff가 없는 patch는 `noop_equivalent`. partial/throw/NaN/목표 setter 불일치/미지원 물리 이동은 기각한다. 아직 남아 있는 다른 blocked goal이 있다는 이유만으로 전체 복구 가능성을 부정하지는 않으며 최종 완주 실행이 결정한다.
+### 6.2 집행 순서
+
+1. source/calls/schema/checkpoint/API 권한·ablation 검사.
+2. 새 worker에 전체 checkpoint를 복원하고 보호된 원본 작업 계약과 비교 기준을 묶는다.
+3. 도구를 등록·실행한다. body의 sensor read, 허용된 상태 변경과 engine action, 예외·자원 사용을 기록한다. arbitrary code를 geometry patch로 재작성하지 않는다.
+4. 실제 전체 상태 diff·감사 trace에서 변경 유형을 판별한다. 모델의 claimed_effects만으로 검사 항목을 선택하지 않는다.
+5. 변경별 정합성 검사와 필요한 일반 후처리를 수행한다. 목적지 계산·해결 전략·자동 존 복구는 추가하지 않는다.
+6. 원본 task contract, 자원 보존·비용, 지원된 효과 범위를 검사하고 post-enactment 상태를 보존한다.
+7. 후보가 동결된 뒤 동일 checkpoint에서 전체 source를 실행하고, 반환 후 공통 continuation으로 원래 종료 예산까지 진행한다. 도구 내부 engine 진행도 동일한 episode 예산·사건 규칙을 적용한다. 각 물리 step 전 정합성 검사를 수행하며 끝난 뒤의 diff만으로 중간 위반을 놓치지 않는다.
+
+throw/partial/관측 불가 효과는 worker 전체를 폐기한다. 원본 세계는 손대지 않는다. no-op도 코드의 반환이 아니라 실제 상태·예약 작업·효과 trace가 없는지로 판정한다.
+
+### 6.3 실제 변경별 후처리
+
+| 검출된 변경 | 검사와 공통 후처리 |
+|---|---|
+| 스케줄 목표/scene geometry | transform-tree·attachment·작업 상대 기하 검사, 필요한 scene resync, 실제 잔차 검사 |
+| 배정·팀 구성 | 가용성·자격·중복 배정·화물 연결, 해당 cache/assignment 갱신 |
+| 실행 스케줄/임시 graph | 원본 선행조건·필수 작업 대응·deadlock/cycle 제약, frontier/cache 갱신 |
+| 자원 예약·해제/작업 요청 | 자원 보존, 정당한 상태 전이, 시간·에너지·재고 비용의 정상 집행 |
+| 여러 종류의 조합 | 관련 검사를 모두 수행하고 순서·중간 불일치·복합 효과 검사 |
+
+표는 검사 adapter의 초기 inventory이며 모델의 기전 선택 메뉴가 아니다. 새 종류의 효과가 나오면 `unsupported_effect`로 남기고 필요한 일반 validator를 보강한다. 검증기가 그 효과를 이해하지 못한 결과와 모델이 해법을 못 만든 결과를 구분한다.
+
+기하 변경이 없는 도구에 resync를 강제하지 않는다. 기하를 바꾼 도구는 body가 resync를 호출했는지와 무관하게 실제 정합성을 확인하고 필요할 때 실행기가 보충한다. 변화가 없는 씬 전체를 무조건 snap하지 않는다. 현재 helper의 FREE 본체/TU 범위와 XY tolerance 한계를 유지해 측정하며 로봇/잡힌 cargo의 부당한 이동을 막는다.
+
+cache/preprocess/assignment resolve의 기존 집행 봉투를 공통 helper로 분리해 중복 집행하지 않는다. body와 harness가 각각 만든 변경을 별도 기록한다. 일반 동기화가 실패한 해법을 대신 찾아 준 것으로 보고되지 않도록 한다.
+
+`zone_blockage`/`free_space_status`만으로 full-scene collision이나 모든 물리적 실현 가능성을 인증하지 않는다. 없는 validator는 unverified이고 완주 보장과 물리 안전 보장을 혼용하지 않는다.
 
 ## 7. 전체 실행, 채택, 커밋
 
@@ -163,7 +203,7 @@ worker wall timeout은 simulation failure와 다른 `UNKNOWN`이다. provider/so
 ```text
 CAPTURED -> IDENTITY_VERIFIED -> PROPOSALS_FROZEN
          -> BASELINE_AND_CANDIDATE_ROLLOUTS
-         -> SELECTED_NOOP | SELECTED_PATCH
+         -> SELECTED_NOOP | SELECTED_TOOL
          -> PRECOMMIT_VERIFIED -> COMMITTED -> REPLAY_CHECKED
 
 각 검증 오류 -> REJECT_CANDIDATE 또는 CERTIFICATION_UNAVAILABLE
@@ -171,36 +211,40 @@ CAPTURED -> IDENTITY_VERIFIED -> PROPOSALS_FROZEN
 
 모델 성능을 재는 주 실험은 후보를 기준 분기 결과를 보기 전에 생성·동결한다. 최대 후보 수 K=4, 모델 호출 최대 4회(최초 포함)를 기본 설계값으로 고정한다. 후보 간 모든 model/token/rollout 비용을 합산한다. 총 token 한도와 wall 예산은 실행 manifest에 추가로 필수 지정한다.
 
+호출은 Observe 1회, Design 1회, Compose 1회, 선택적 Compose 수정 1회로 배분한다. Compose 한 응답에 여러 후보를 담을 수 있다. 거절·수정본을 포함해 실제 제출된 후보는 총 4개 이하다. 최초 응답이 4개를 제출하면 재작성 후보 예산은 없고, 3개를 제출했다면 네 번째 호출에서 남은 1개를 제출할 수 있다. 모델 호출 예산과 후보 수는 별도 원장으로 관리하며 숨은 schema/provider 재시도도 호출 예산에 포함한다.
+
 V1의 후속 모델 호출에는 **정적/transaction 검사 실패**만 제공하고 전체 rollout의 완주·미완주나 미래 사건은 제공하지 않는다. rollout 피드백을 통한 재탐색은 별도 `search_feedback` 팔이다. K=1과 K=4를 나눠 모델 자체 개선과 샘플 수 효과를 분리한다.
 
 | 기준 분기 | 후보 분기 | 선택 및 분류 |
 |---|---|---|
 | COMPLETE | 무엇이든 | NOOP. 후보가 실패면 raw regression으로 기록 |
-| FAIL_WITHIN_BUDGET | COMPLETE + task/transaction 검사 통과 | PATCH. rescued로 기록 |
+| FAIL_WITHIN_BUDGET | COMPLETE + task/transaction 검사 통과 | TOOL. rescued로 기록 |
 | FAIL_WITHIN_BUDGET | 실패·거절·UNKNOWN | NOOP. 해결 실패 |
 | UNKNOWN / identity mismatch | 무엇이든 | NOOP. 인증 불가. rescue 분모에서 조용히 제외하지 않음 |
 
-여러 후보가 통과하면 수정된 unique config 수, 전체 XY 이동 norm 합, proposal 순서의 사전 고정 lexicographic 순서로 선택한다. 기본 목적은 완주 보존이며 makespan/energy 최적화는 보조 보고다.
+여러 후보가 통과하면 최초 제출 순서로 선택한다. 기하 이동량이나 config 개수로 다른 종류의 도구를 편향되게 비교하지 않는다. 기본 목적은 완주 보존이며 makespan/energy 최적화는 보조 보고다.
 
 배포형 운용은 baseline이 COMPLETE이면 후보 생성을 생략할 수 있다. 다만 모델 평가에서는 쉬운 시드에도 후보를 생성·재생하여 raw regression이 숨지 않게 한다.
 
 ### 7.3 커밋 계약
 
-완료된 shadow의 terminal state를 `t0`에 덮어쓰지 않는다. 원래 `t0`에 선택한 **동일 patch transaction**만 적용하고 검증 때 사용한 continuation을 실행한다. 시뮬레이션 미래 시간을 건너뛰어서는 안 된다.
+완료된 shadow의 terminal state를 복사하지 않는다. supervisor는 원래 `t0`의 활성 simulation worker를 보존한 채, 새 **commit worker**에 같은 checkpoint를 복원해 선택된 동일 source/params/calls를 다시 등록·집행한다. 후보 실행에서 등록한 함수가 남은 프로세스를 재사용하거나 supervisor 자체에 코드를 eval하지 않는다.
 
-certificate는 checkpoint/config/task-contract digest, proposal/실제 diff digest, continuation digest, 외생 난수 식별자, budget, validator 버전, baseline/candidate 결과를 포함한다. precommit에서 현재 세계의 상태가 `t0`와 같고 cert가 유효한지 확인한다. 달라졌으면 기각하고 새 상태에서 다시 검증해야 한다.
+certificate에는 checkpoint/config/task/source/params/calls/실제 효과 trace/post-state/continuation/외생 난수/budget/validator 지문과 두 분기 결과를 포함한다. 원본이 `t0`에서 바뀌었거나 지문이 다르면 인증을 폐기한다. 조건부·반복·상태 조회를 하는 도구도 같은 상태에서 같은 효과를 재현해야 한다.
 
-주 세계에서 transaction을 실행하는 동안은 tick을 진행하지 않는다. 예외가 나면 검증된 full checkpoint 복원 후 NOOP로 재개한다. transaction 후 상태를 shadow의 post-transaction 상태와 비교한다. 이후 trajectory/terminal replay가 다르면 **보장 위반**으로 보고하고 해당 campaign 인증을 중단한다. 사후 검출은 이미 발생한 실패를 없애는 장치가 아니다.
+commit worker의 post-enactment 상태와 효과가 검증 분기와 같고 trusted validator를 통과한 뒤에만 그 worker를 활성 simulation 세계로 전환한다. 이는 t0에서 동일 도구를 실제로 다시 집행한 결과를 활성화하는 것이다. 도구가 engine을 진행했다면 t0→t1의 모든 step·사건·비용·로그를 실제 집행으로 인계하며, t1을 t0로 표기하지 않는다. 도구 반환 뒤의 미래 continuation 결과를 복사하지 않는다. 기존 render/monitor는 supervisor의 활성 worker를 읽도록 연결한다. 물리적 외부 actuator로의 배포는 이 시뮬레이터 설계 범위 밖이다.
 
-V1의 기본 증명은 간단하다. baseline이 완주하면 동일한 상태에서 같은 pi0를 실행한다. baseline이 실패할 때는 완주가 확인된 후보만 같은 조건으로 실행한다. 이 증명에 정확한 상태 복원/고정 continuation/일치하는 미래 실현 중 하나라도 빠지면 보장은 성립하지 않는다.
+등록/집행/검사 실패나 불일치면 commit worker를 버리고 손대지 않은 원래 worker에서 NOOP로 재개한다. table reset이나 env rollback으로 Julia 메서드 정의를 되돌렸다고 주장하지 않는다. 채택 후 같은 continuation을 실제로 실행하고 trajectory·terminal replay가 갈리면 보장 위반으로 기록하고 campaign 인증을 중단한다. 사후 검출은 발생한 실패를 없애지 못한다.
 
-## 8. 검증기의 역할과 한계
+NOOP 완주 시에는 원래 세계의 동일 pi0를 재개한다. NOOP 실패 시에는 검증된 도구만 같은 상태/정책/미래 실현에서 집행한다. 정확한 복원·효과 관측·채점 독립성·동일 continuation이 보장의 전제다.
 
-기하 patch는 모델이 계산한 목표 위치 변경이다. 실행기는 변경 후 기하·작업 정합성을 검사하고, 동일 checkpoint에서 존 NOOP와 수정안을 각각 끝까지 실행해 채택 여부를 결정한다. 목적지나 이동량을 대신 계산하는 최적화기를 추가하지 않는다.
+## 8. 생성 자유도와 검증의 경계
 
-수정 대상 목표의 존 여유와 도달 가능성을 검사하되, 완주에 불필요한 원래 blocked goal까지 모두 이동하도록 강제하지 않는다. `closed` 증가, `nav_blocked` 감소, 존 해소만으로 완주를 인정하지 않는다.
+생성기는 문제 원인에 맞는 도구 코드를 제안한다. 검증기는 그 코드의 실제 효과와 원본 작업 조건을 검사하고, 같은 상태의 NOOP 대비 전체 실행 결과로 채택한다. 모델이 쓰는 해결 방법과 실행기가 강제하는 과제 조건을 구분한다.
 
-전체 후속 실행을 짧은 horizon으로 대체하면 이후 stall을 놓칠 수 있다. 이 설계는 명시된 종료 예산까지 실행하고, 검증을 끝내지 못한 분기는 `UNKNOWN`으로 처리한다. 완주 보장 범위는 §1과 §7의 재현 조건으로 한정한다.
+graph 수정이라는 이유로 모두 금지하거나, 기하 이동이라는 이유로 자동 승인하지 않는다. 반대로 생성 자유도를 유지한다는 이유로 필수 작업 삭제·존 완화·상태 위조를 허용하지 않는다. 검사 범위 밖 효과는 unsupported로 보고하며, 새 해법을 하나씩 whitelist에 추가하는 방식으로 도구 생성 공간을 고정하지 않는다.
+
+전체 후속 실행을 짧은 horizon으로 대체하지 않는다. 종료까지 검증하지 못하면 UNKNOWN이다. 생성 코드가 임의의 host/런타임을 수정할 수 있는 상태에서는 회귀 방지 보장이 성립하지 않는다. 이에 대한 구현 조건과 시험을 §6과 완료 게이트에 둔다.
 
 ## 9. 검증 실험과 채점
 
@@ -210,24 +254,25 @@ V1의 기본 증명은 간단하다. baseline이 완주하면 동일한 상태�
 
 역사적 코호트 manifest에는 다음 membership을 저장한다: easy 27, hard 93, A2 easy-success 14, A2 regression 13, A2 rescue 4. 사용자 분석의 4개 anchor는 tractor all3 s2, tractor zone s5, tractor zone s16, X-wing zone s4다. 나머지 membership은 기존 결과 join으로 추출하고 수가 어긋나면 원인부터 보고한다.
 
-4개 anchor의 실제 body와 최종 task 의미를 먼저 감사한다. 강화된 task contract가 기존 성공을 거절하면 `historical_complete_but_contract_invalid`로 기록한다. 기존 성공을 유지하려고 invariant를 완화하지 않는다. 유효한 body는 trace→declarative patch의 수동 변환 fixture로 보관하여 이동 기전이 새 인터페이스에서도 표현되는지 검사한다. fixture나 성공 좌표는 모델 프롬프트에 넣지 않는다.
+4개 anchor의 실제 body와 최종 task 의미를 먼저 감사한다. 강화된 task contract가 기존 성공을 거절하면 `historical_complete_but_contract_invalid`로 기록한다. 기존 성공을 유지하려고 invariant를 완화하지 않는다. 유효한 body는 원본 코드와 호출 chain 그대로 fixture로 보관하고 일반 ToolProposal 경로에서 재생한다. 기하 patch로 수동 번역하지 않는다. 원본 body의 step 호출도 trusted engine adapter로 재생할 수 있어야 한다. 실제 API 우회 등 지원 불가 부분은 원본 L0와 일반 경로의 unsupported 결과를 구분한다. 비기하 도구 fixture도 추가하되 어느 fixture도 모델 프롬프트에 넣지 않는다.
 
 ### 9.2 팔
 
-| 팔 | 제안 방식 | 실행 | 용도 |
+| 팔 | 제안 방식 | 실행/채점 | 목적 |
 |---|---|---|---|
-| B0 | zone NOOP | pi0 | 동시대 기준 |
-| L0 | 역사적 A2 body trace | 원본 동작을 worker에서 재생 | 역사적 재현 |
-| L1 | L0와 동일 body/params | resync만 추가한 통제 재생 | resync 인과 효과. 다른 개선을 섞지 않음 |
-| G1 | 기하 전용 안내, K=1 | transaction; 후보 worker 결과 | guided 모델의 첫 후보 해결률/회귀율 |
-| G4 | 같은 안내, K=4 | 같은 transaction; 후보 worker 결과 | 샘플 수 효과 |
-| V4 | G4의 **동일 후보** | 전체 NOOP 비교 후 채택 | 검증기의 순수 선택 효과 |
+| B0 | 존 NOOP | pi0 | 동시대 기준 |
+| L0 | 역사적 A2 body chain | 원본 통제 재생 | 역사적 재현 |
+| L1 | L0와 동일 body/params | resync만 추가한 통제 재생 | resync 인과 효과 |
+| U1 | 일반 tool generation, 첫 source 후보 | 격리 집행·공통 후처리·raw outcome | 주 모델의 첫 시도 능력 |
+| U4 | 같은 일반 생성, 최대 4 source 후보 | 같은 검증 봉투·후보별 raw outcome | 후보 수 효과 |
+| V4 | U4의 **동일 코드 후보** | NOOP 비교 후 선택 | 검증기의 순수 선택 효과 |
+| G4 | 기하 전용 안내·GeometryPatch, 최대 4후보 | 동일 원본 contract·예산·전체 실행 | 제한된 생성 방식과의 보조 비교 |
 
-G1/G4는 보호 없이 주 세계를 훼손시키는 팔이 아니라 candidate worker의 raw outcome을 채점한다. L1은 원본 body가 직접 step을 호출한 위치까지 고려해 resync 삽입 위치를 명시하고 기록한다. 이후 새 transaction의 효과와 합쳐 인과 해석하지 않는다.
+주 경로는 U1/U4/V4다. G4는 생성 방식 비교이므로 프롬프트·출력 형식·직접 기하 입력이 다름을 명시한다. G4와 U4 차이를 특정 한 요인의 효과로 해석하지 않는다. 양쪽에 동일한 선택기를 적용한 결과도 보고하되 원시 결과와 구분한다.
 
-선택적으로 같은 declarative 인터페이스에 절차 안내를 제거한 G0를 추가하면 출력 형식 효과와 풀이 안내 효과를 분리할 수 있다. 안내에 성공 기전(기하 변경)을 명시하므로 G1/G4는 **guided A2**이며 기존의 무유도 기전 발견 능력을 재는 실험과 다르다.
+U1/U4는 주 세계를 무검증으로 변경하는 팔이 아니라 worker의 raw 결과를 채점한다. 모델이 다른 효과를 만든 경우에도 동일한 일반 validator를 사용한다. L1은 body 내부 step과 resync 삽입 위치까지 고정하고 다른 개선을 섞지 않는다.
 
-새 seed 집합은 코호트·프롬프트·budget·validator를 동결한 뒤 사용한다. 원래 120개는 개발/회귀 세트로 표시한다. 지도 4판의 seed/좌표로 조건 분기하지 않는다.
+모든 팔의 source/입력/budget/validator를 동결하고 새 seed로 별도 평가한다. 원래 120개는 개발·회귀 세트다. 기하 이동 4판의 성공을 일반 도구 생성의 유일한 학습 목표로 삼지 않는다.
 
 ### 9.3 지표
 
@@ -235,6 +280,7 @@ G1/G4는 보호 없이 주 세계를 훼손시키는 팔이 아니라 candidate 
 - `raw_regression_rate = candidate_failed / B0_complete`; 첫 후보와 best-of-K를 구분.
 - `selected_regression_rate = selected_failed / B0_complete`; 인증 불가와 replay mismatch도 숨기지 않음.
 - `easy_preserved`, `valid_anchor_retained`, `rejected_harmful`, `noop_equivalent`, partial/throw/desync/contract reject 수.
+- 기하/배정/스케줄/자원/혼합/기타의 실제 효과 분류, raw code 등록·집행 성공률, unsupported 효과와 금지 효과의 기각률. 분류는 사후 분석용이며 생성 whitelist가 아니다.
 - 목표별 nav block 수, target kind, zone 해소 여부, resync 실제 이동 대상/거리, scene residual, 필수 task 만족 여부.
 - model calls/tokens/cost, 모든 branch CPU·wall·sim steps, 검증 지연 p50/p95/max, makespan/energy.
 - 사람이 쓴 존 solver 호출·자동 존 ladder 발동 수. 숨은 기여가 있으면 별도 분류.
@@ -245,27 +291,26 @@ L1이 8판을 복구하는지는 측정할 가설이다. resync 미호출이라�
 
 | 파일(제안) | 책임 |
 |---|---|
-| `src/verification/episode_checkpoint.jl` | 전체 checkpoint adapter, 복원·동등성·alias 검사 |
-| `src/respec/geometry_patch.jl` | patch schema, stable ref, dependency footprint, contract validation |
-| `src/respec/geometry_transaction.jl` | setters/resync/후처리의 원자적 실행과 diff |
-| `src/verification/repair_supervisor.jl` | certificate, selection, precommit, replay 검사 |
-| `tools/monitor/repair_branch_worker.jl` | 프로세스별 실제 runtime continuation, shadow logs |
-| `tools/monitor/render_demo.jl`, `tools/monitor/enact.jl` | t0 capture와 존 전용 dispatch, 기존 후처리 중복 제거 |
-| `src/respec/llm_service/`의 실제 출력 schema·prompt 위치 | declarative proposal와 guided 조건. 위치는 구현 때 호출 경로 확인 |
-| `tools/monitor/grid/` | pairing manifest, 고정 budgets, planned denominator, 지문 |
-| `test/repair_*.jl` | 아래 acceptance tests |
-| `results/2026-09-24-zone-repair-verification/` | 추후 manifest, checkpoints, branch/candidate/selection/replay 원장 |
+| `src/verification/episode_checkpoint.jl` | 전체 checkpoint와 복원·alias 검사 |
+| `src/verification/tool_proposal.jl` | source/params/calls envelope와 등록 계약 |
+| `src/verification/tool_execution.jl` | 격리 집행·effect audit·공통 후처리 |
+| `src/verification/effect_validation.jl` | 실제 효과별 validator, unsupported 분류 |
+| `src/verification/task_contract.jl` | 원본 작업 의미와 독립 채점 |
+| `src/verification/repair_supervisor.jl` | 선택·certificate·commit worker 전환 |
+| `tools/monitor/repair_branch_worker.jl` | candidate/NOOP/commit 실행과 shadow 원장 |
+| `tools/monitor/render_demo.jl`, `tools/monitor/enact.jl` | t0 capture, supervisor와 활성 runtime 연결 |
+| `src/respec/minted_registration.jl`, `src/respec/minted_tool.jl` | 기존 코드 등록·집행 재사용, trusted 후처리 분리 |
+| `src/respec/llm_service/synthesize.py` 및 서비스 | 일반 Observe/Design/Compose 유지, 후보·호출 예산 |
+| `tools/monitor/grid/`, `test/repair_*.jl` | paired campaign·아래 게이트 |
 
-순서와 통과 조건:
-
-1. **데이터 게이트:** 역사적 4/13/27 membership과 실제 실행 body chain을 확인. source snapshot 복원 실패·prefix 차이를 명시.
-2. **checkpoint 게이트:** mutation 없는 live continuation과 export/import NOOP continuation을 전체 종료까지 비교. NOOP 두 분기만 서로 같은 것으로 대체하지 않음. easy/hard, robot/TU, zone/all3 경계를 포함. actor/global/RNG/queue를 바꿨다가 복원하는 fault injection 및 alias 검사.
-3. **격리 게이트:** branch A가 zone/cache/RVO/spare/ID/RNG를 바꾸어도 parent와 B의 후속 궤적은 불변. 실행 순서 N→A와 A→N이 같아야 함. worker crash/timeout도 parent를 바꾸지 않음.
-4. **transaction 게이트:** 첫 setter 후 throw, 두 번째 setter 실패, alias 중복, NaN, stale checkpoint, 금지 graph 변경을 주입. 모두 기각되고 parent와 NOOP 궤적 동일. no-op에서 불필요한 resync가 세계를 바꾸지 않는지 검사.
-5. **정합성 게이트:** 이동된 free body/TU, 이동하지 않은 robot, grasped cargo, 작은 drift, unrelated drift를 포함. resync가 돌아도 contract를 깨면 거절. goal=start 및 task 삭제를 이용한 허위 complete를 검출.
-6. **전체 실행 게이트:** 초반 progress 후 장기 stall 후보, nav_blocked=0 후 stall 후보를 거절. horizon/UNKNOWN 처리와 candidate별 예산 재설정 금지 시험.
-7. **코호트 게이트:** 유효한 4개 성공 기전은 표현·재생 가능해야 함. 역사적 13판의 해당 raw harm을 재현했다면 선택기는 모두 기각해야 함. 역사적 easy 27 중 새 B0도 완주하는 판은 전부 보존. B0에서 달라진 판은 baseline drift로 별도 조사.
-8. **커밋 게이트:** 선택 patch의 실제 commit+continuation이 shadow의 post-state 및 terminal outcome을 재현. state mismatch면 인증 중단. shadow terminal state를 복사하는 구현은 금지.
-9. **모델 실험:** 위 게이트 후 G1/G4/V4 수행. hard rescue 증가는 실험 목표이며 설계만으로 성공을 약속하지 않음.
+1. **데이터:** 역사적 4/13/27, 실제 body chain, source/prefix 차이를 확인한다.
+2. **checkpoint:** 원본 NOOP와 복원 NOOP의 전체 종료 결과·상태 재현을 검증한다.
+3. **격리:** 전역/RVO/RNG/등록 메서드/파일·서비스 부작용이 parent나 다른 branch로 새지 않는다. 같은 도구 이름의 후보도 새 프로세스에서 독립 실행된다.
+4. **효과:** 기하 이외의 합법적 배정·임시 edge·자원 작업과 혼합 코드도 수용한다. 필수 task 삭제, 완료 위조, 일시적 zone 완화, runtime/scorer override, 설명에 없는 변경은 검출한다.
+5. **후처리:** 기하 변경에 필요한 resync, 배정/graph/cache 및 자원 검사를 실제 효과에서 유도한다. partial/throw/미관측 효과는 폐기한다.
+6. **전체 실행:** 초반 progress 또는 존 해소 후 stall 후보를 기각하고 UNKNOWN/예산 계약을 지킨다.
+7. **코호트:** 유효한 4개 기전을 원본 source로 확인한다. 역사적 13판의 재현된 harm을 기각하고 새 B0도 완주하는 easy 판을 보존한다. 과거 body의 검증 계약 불일치는 숨기지 않는다.
+8. **커밋:** 선택된 동일 코드의 새 worker 집행과 post-state·후속 실행을 재현한다. 실패 worker의 메서드 정의를 rollback했다고 하지 않는다.
+9. **모델 실험:** U1/U4/V4를 주 실험, G4를 보조 비교로 수행한다. 일반 생성 공간이 유지되는지 비기하 fixture와 프롬프트 검사를 포함한다.
 
 이 문서 작성 단계에서는 구현 시험·유료 모델 호출·전체 sweep을 실행하지 않았다.
