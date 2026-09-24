@@ -256,6 +256,20 @@ def attempt_counts(hist):
     return c
 
 
+_ABLATION_RE = re.compile(
+    r"^\[ablation\] level=(\w+) armed=(true|false) denied=(\d+) exempt=(\d+) "
+    r"ladder_zone_skipped=(\d+) ladder_zone_fired=(\d+) detail=(\S*)", re.M)
+
+
+def ablation_of(txt):
+    """`[ablation]` 줄 → dict. 줄이 없으면 None(0 으로 접지 않는다 — 옛 판은 이 줄을 안 찍었다)."""
+    m = _ABLATION_RE.search(txt)
+    if not m:
+        return None
+    return {"level": m[1], "armed": m[2] == "true", "denied": int(m[3]), "exempt": int(m[4]),
+            "ladder_zone_skipped": int(m[5]), "ladder_zone_fired": int(m[6]), "detail": m[7]}
+
+
 def parse_log(txt, lane, case, seed):
     """로그 한 판 → 판 레코드(채점 줄이 없으면 None). 스트림 칸은 호출자가 붙인다."""
     closed = grab(txt, r"\[score\] complete=\w+ closed=(\d+)", int)
@@ -287,6 +301,7 @@ def parse_log(txt, lane, case, seed):
         run_ctx={k: ctx.get(k) for k in ("campaign_id", "model", "seed", "zone_seed", "event",
                                          "code_rev", "code_dirty_digest", "config_digest")}
         if isinstance(ctx, dict) else None,
+        ablation=ablation_of(txt),
     )
 
 

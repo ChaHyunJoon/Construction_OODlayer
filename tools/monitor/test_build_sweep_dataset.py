@@ -255,6 +255,25 @@ def test_restage_statuses_are_read_from_warn_and_info_lines():
     assert B.restage_statuses("") == []
 
 
+# ---- [ablation] 줄 → 판 레코드 ablation (Task 9) --------------------------------------------
+def test_parse_log_reads_ablation_line():
+    import build_sweep_dataset as B
+    txt = ("[score] complete=true closed=287 n_zones=1 n_blocked=0 n_nav_goals=40 n_engulfed=0 "
+           "n_agent_trapped=0 project_blocked=false\n"
+           "[ablation] level=all armed=true denied=2 exempt=5 ladder_zone_skipped=1 ladder_zone_fired=0 "
+           "detail=denied:translate_whole_build!=2,exempt:policy_payload=5,ladder_zone_skipped=1\n")
+    r = B.parse_log(txt, "router", "zone", 1)
+    assert r["ablation"] == {"level": "all", "armed": True, "denied": 2, "exempt": 5,
+                             "ladder_zone_skipped": 1, "ladder_zone_fired": 0,
+                             "detail": "denied:translate_whole_build!=2,exempt:policy_payload=5,ladder_zone_skipped=1"}
+
+
+def test_parse_log_without_ablation_line_is_none_not_zero():
+    import build_sweep_dataset as B
+    r = B.parse_log("[score] complete=false closed=10 n_zones=1 zone_blockage=unavailable\n", "router", "zone", 1)
+    assert r["ablation"] is None
+
+
 def test_installed_requires_a_reenactment_and_null_roundtrip_has_a_bucket():
     # 최종 리뷰 M3(→ Important 재등급): `install_why` 는 처음부터 nothing 이라, 설치 없이 돌아온 칸
     # (impl_code 가 문자열이 아닌 판 — enact.jl `_rewrite_once`)도 "설치됨" 으로 셌다.
