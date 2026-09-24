@@ -220,3 +220,68 @@ def test_prior_failed_attempt_is_moved_aside_not_truncated(tmp_path):
 def test_service_keys_include_repair_ablation():
     import campaign
     assert "repair_ablation" in campaign.SERVICE_KEYS
+
+
+# ---- init 빠른 실패: 레벨 문자열·서비스 레벨 (최종 리뷰 m5) -----------------------------------
+def _h(level):
+    return lambda url: {"repair_ablation": level, "code_fingerprint": "x"}
+
+
+@pytest.mark.parametrize("bad", ["", "None", "NONE", "Translate", "full", " all", None])
+def test_init_rejects_a_level_that_is_not_exactly_one_of_three(bad):
+    env = {"DSPY_URL": "http://127.0.0.1:8095"}
+    if bad is not None:
+        env["REPAIR_ABLATION"] = bad
+    p = C.ablation_init_problems(env, ["canonical"], _h("none"))
+    assert len(p) == 1 and "allowed exactly: none, translate, all" in p[0]
+
+
+@pytest.mark.parametrize("lvl", ["none", "translate", "all"])
+def test_init_accepts_matching_service_level(lvl):
+    env = {"REPAIR_ABLATION": lvl, "DSPY_URL": "http://127.0.0.1:8095"}
+    assert C.ablation_init_problems(env, ["router"], _h(lvl)) == []
+    assert C.ablation_init_problems(env, ["surrogate", "canonical"], _h(lvl)) == []
+
+
+def test_init_rejects_service_level_mismatch_and_unreachable():
+    env = {"REPAIR_ABLATION": "all", "DSPY_URL": "http://127.0.0.1:8095"}
+    p = C.ablation_init_problems(env, ["router"], _h("none"))
+    assert len(p) == 1 and "'none' != campaign REPAIR_ABLATION='all'" in p[0]
+    p = C.ablation_init_problems(env, ["router"], lambda u: {"unreachable": "URLError: refused"})
+    assert len(p) == 1 and "unreachable" in p[0]
+    # 서비스에 repair_ablation 키가 없으면(옛 서비스) 불일치다
+    p = C.ablation_init_problems(env, ["router"], lambda u: {"code_fingerprint": "x"})
+    assert len(p) == 1 and "None" in p[0]
+
+
+def test_init_service_check_uses_julia_default_port_when_url_unset():
+    seen = []
+    def fetch(u):
+        seen.append(u)
+        return {"repair_ablation": "none"}
+    p = C.ablation_init_problems({"REPAIR_ABLATION": "translate"}, ["router"], fetch)
+    assert seen == [C.DSPY_URL_DEFAULT] and len(p) == 1
+
+
+def test_init_service_check_skipped_when_no_lane_uses_the_service():
+    def fetch(u):
+        raise AssertionError("must not fetch /health for canonical-only grids")
+    assert C.ablation_init_problems({"REPAIR_ABLATION": "all", "DSPY_URL": "http://x"},
+                                    ["canonical"], fetch) == []
+
+
+def test_cmd_init_fails_fast_before_writing_campaign(tmp_path, monkeypatch):
+    j = {"set_env": {"REPAIR_ABLATION": "translate", "DSPY_URL": "http://127.0.0.1:8095"},
+         "classes": CLASSES, "pinned": {}, "code_rev": "r" * 40, "code_dirty_digest": "d" * 16,
+         "config_digest": "f" * 16, "config_env": {}, "julia": "1.10"}
+    monkeypatch.setattr(C, "_julia_campaign", lambda raw: j)
+    monkeypatch.setattr(C, "tree_digest", lambda root: "d" * 16)
+    monkeypatch.setattr(C, "_health", _h("none"))
+    with pytest.raises(SystemExit) as ei:
+        C.cmd_init(str(tmp_path / "g"), "tractor.mpd", ["router"], ["zone"], [1])
+    assert "repair_ablation='none' != campaign REPAIR_ABLATION='translate'" in str(ei.value)
+    assert not (tmp_path / "g" / "campaign.json").exists()
+    # 같은 조건에서 서비스 레벨이 맞으면 campaign 을 쓴다(대조)
+    monkeypatch.setattr(C, "_health", _h("translate"))
+    assert C.cmd_init(str(tmp_path / "g"), "tractor.mpd", ["router"], ["zone"], [1]) == 0
+    assert json.load(open(tmp_path / "g" / "campaign.json"))["service"]["health"]["repair_ablation"] == "translate"

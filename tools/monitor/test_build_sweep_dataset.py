@@ -286,3 +286,11 @@ def test_installed_requires_a_reenactment_and_null_roundtrip_has_a_bucket():
     assert a["rewrite_roundtrip_null"] == 1
     assert (a["rewrite_roundtrip_ok"] + a["rewrite_roundtrip_failed"] + a["rewrite_not_requested"]
             + a["rewrite_skipped_not_rewritable"] + a["rewrite_roundtrip_null"]) == a["attempts_total"]
+
+
+def test_parse_log_lifts_repair_ablation_into_run_ctx():
+    """최종 리뷰 I2: 판 레코드의 run_ctx 가 팔 신원을 싣는다(없던 옛 판은 None — none 으로 접지 않는다)."""
+    import build_sweep_dataset as B
+    txt = _ctx_line(repair_ablation="translate") + SCORE
+    assert B.parse_log(txt, "router", "zone", 3)["run_ctx"]["repair_ablation"] == "translate"
+    assert B.parse_log(_ctx_line() + SCORE, "router", "zone", 3)["run_ctx"]["repair_ablation"] is None

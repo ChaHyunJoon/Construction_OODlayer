@@ -298,8 +298,10 @@ def parse_log(txt, lane, case, seed):
         restage_observed=restage_observed(txt),
         reform_exhausted=reform_exhausted(txt, ctx),
         ood_intended=exp,
+        # repair_ablation: 팔 신원(최종 리뷰 I2) — 옛 판은 키가 없어 None 이다(`none` 으로 접지 않는다)
         run_ctx={k: ctx.get(k) for k in ("campaign_id", "model", "seed", "zone_seed", "event",
-                                         "code_rev", "code_dirty_digest", "config_digest")}
+                                         "code_rev", "code_dirty_digest", "config_digest",
+                                         "repair_ablation")}
         if isinstance(ctx, dict) else None,
         ablation=ablation_of(txt),
     )

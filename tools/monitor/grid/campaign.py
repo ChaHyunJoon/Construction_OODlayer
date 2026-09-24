@@ -189,6 +189,37 @@ def service_check(camp, fetch):
             if k in want and now.get(k) != want.get(k)]
 
 
+REPAIR_ABLATION_LEVELS = ("none", "translate", "all")
+SERVICE_LANES = ("router", "surrogate")            # 결정을 DSPy 서비스가 내는 레인
+DSPY_URL_DEFAULT = "http://127.0.0.1:8077"         # policy.jl `const DSPY_URL` 의 기본값과 같아야 한다
+
+
+def ablation_init_problems(set_env, lanes, fetch):
+    """init 의 빠른 실패(최종 리뷰 m5). 빈 목록 = 통과.
+
+    - `set_env` 에 얼린 REPAIR_ABLATION 이 정확히 none/translate/all 인가(오타면 판마다 하나씩
+      죽는다 — 크지만 느리다).
+    - 서비스가 결정하는 레인(router·surrogate)이 있으면, 판이 쓸 서비스(얼린 DSPY_URL, 없으면 julia
+      기본 포트)의 `/health.repair_ablation` 이 같은 레벨인가(다른 팔의 포트를 가리키면 첫 판 전에
+      멈춘다). 닿지 않아도 멈춘다 — 레벨을 확인할 수 없다.
+    """
+    lvl = set_env.get("REPAIR_ABLATION")
+    if lvl not in REPAIR_ABLATION_LEVELS:
+        return ["REPAIR_ABLATION=%r — allowed exactly: none, translate, all" % (lvl,)]
+    if not any(l in SERVICE_LANES for l in lanes):
+        return []
+    # 비어 있으면 julia 가 쓰는 기본 포트(policy.jl `DSPY_URL`) — 변수를 안 준 잘못된 포트 기동도 잡는다
+    url = set_env.get("DSPY_URL") or DSPY_URL_DEFAULT
+    h = fetch(url)
+    if "unreachable" in h:
+        return ["service %s unreachable (%s) — cannot confirm repair_ablation=%s"
+                % (url, h["unreachable"], lvl)]
+    if h.get("repair_ablation") != lvl:
+        return ["service %s repair_ablation=%r != campaign REPAIR_ABLATION=%r"
+                % (url, h.get("repair_ablation"), lvl)]
+    return []
+
+
 def preserve_prior_attempt(job):
     """채점 안 된 이전 시도의 로그·스트림을 `.attempt<N>` 으로 옮긴다(최종 리뷰 I2).
 
@@ -300,6 +331,9 @@ def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None):
     for k, v in GRID_DEFAULTS.items():
         raw.setdefault(k, v)
     j = _julia_campaign(raw)
+    bad = ablation_init_problems(j["set_env"], lanes, _health)
+    if bad:
+        raise SystemExit("[campaign] init refused: " + "; ".join(bad))
     py = tree_digest(ROOT)
     if py != j["code_dirty_digest"]:
         raise SystemExit("tree_digest (python %r) != julia code_dirty_digest (%r) — the "
