@@ -314,8 +314,12 @@ function _resume!(h::Harness, env0, ctx)
     h.rng_at_t0 = copy(Random.default_rng())
     h.t0_iter = ls.iter
     h.last_env = r.env; h.last_spd = spd; h.last_sim_params = sp
-    status = CB.continue_simulation!(r.env, ctx.factory_vis, ctx.anim, sp, spd;
-                                     first_batch = sp.sim_batch_size - ls.batch_pos + 1)
+    # 🔴 `invokelatest` 필수: import 가 역직렬화한 closure(예: `retrying_action` 의 `act`)는 **지금** 새 타입·
+    #    메서드로 정의된다. 이 훅은 `run_lego_demo` 가 시작될 때 고정된 world age 안에서 돌므로 그대로
+    #    부르면 그 메서드가 안 보인다 — T3 행렬 첫 all3 판이 218 스텝에서 `MethodError(::var"#act#59")` 로
+    #    죽었다(fault 재시도 사건이 처음 발화한 스텝). T4 worker 도 같은 규칙을 따라야 한다.
+    status = Base.invokelatest(CB.continue_simulation!, r.env, ctx.factory_vis, ctx.anim, sp, spd;
+                               first_batch = sp.sim_batch_size - ls.batch_pos + 1)
     watches = [(k, v) for (k, v) in r.native_handles if v !== nothing]
     res_native = JSON3.read(read(replace(cp.artifact_path, r"\.jls$" => ".fields.json"), String)).native_residual
     _write_terminal!(h, r.env, spd, sp; extra = Dict{String,Any}(
