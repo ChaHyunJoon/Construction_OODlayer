@@ -121,6 +121,24 @@
       {"op": "set", "path": ["claimed_effects"], "value": ["geometry"]},
       {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    open(\"/tmp/x\", \"w\") do io; write(io, \"x\"); end\n    return :ok\nend"}],
       "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "ok_field_named_schedule", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    m = env.cache\n    s = m.schedule\n    t = getproperty(m, :schedule)\n    return :read_only\nend"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "ok_log_message_word_read", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    @warn \"read\"\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "ok_field_named_Task", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    robot = env\n    k = robot.Task\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "forbidden_qualified_base_run", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    Base.run(Base.Cmd([\"true\"]))\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_nested_module_rm", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    Base.Filesystem.rm(\"/tmp/x\")\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
+    {"name": "forbidden_getfield_module_quote", "base": "proposal", "ops": [
+      {"op": "set", "path": ["impl_code"], "value": "function reassign_stuck_carry!(env)\n    f = getfield(Base, :run)\n    return :ok\nend"}],
+      "schema_ok": true, "julia": "reject:forbidden_api"},
 
     {"name": "manifest_ok", "base": "manifest", "ops": [], "schema_ok": true, "julia": "accept"},
     {"name": "manifest_ok_g4_auxiliary_arm", "base": "manifest", "ops": [{"op": "set", "path": ["arms"], "value": ["B0", "U4", "V4", "G4"]}],

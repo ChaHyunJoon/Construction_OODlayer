@@ -153,9 +153,9 @@ fingerprint_mismatches(a::Fingerprints, b::Fingerprints) =
 원본 의미(보호)와 변경 가능한 runtime 구조를 가른 계약(설계 §4.2). **graph 수정 전체를 금지하지
 않는다** — 임시 edge·배정·보조 노드는 `mutable_runtime` 이고 T5 의 효과 검사가 의미로 판정한다.
 
-`forbidden_api` 는 host/런타임 탈출 이름의 **어휘적** 목록이다(Symbol·`Mod.name`·문자열 리터럴
-전부 본다 — `repair_ablation.jl` 의 `ablated_symbols_in` 과 같은 규칙). 경계가 아니다: 문자열
-조립(`Symbol("r"*"un")`)은 못 잡는다. 실제 경계는 T4 의 OS 권한 제거다.
+`forbidden_api` 는 host/런타임 탈출 이름의 **어휘적** 목록이다. 판정 규칙은 `api_hits` 에 있다
+(맨 이름·모듈 한정 이름·동적 이름 구성만 — 필드 접근 `m.schedule`·로그 문자열은 안 본다).
+경계가 아니다: 문자열 조립(`Symbol("r"*"un")`)은 못 잡는다. 실제 경계는 T4 의 OS 권한 제거다.
 `adapter_mediated` 는 거절이 아니다 — 시간 진행은 trusted engine adapter 로 중재된다(설계 §6.1).
 """
 struct CapabilityContract
@@ -193,14 +193,40 @@ const DEFAULT_CAPABILITY_CONTRACT = CapabilityContract(
         :Threads, :atexit, :finalizer],
     Symbol[:step_environment!, :simulate!])
 
-"`code` 안의 `names` — Symbol, `QuoteNode`(`Base.run`·`getfield(_, :run)`), 문자열 리터럴."
+# 한정 이름의 왼쪽이 이것이면 모듈 접근으로 본다(`Base.run`·`Base.Filesystem.rm`).
+const _MODULE_NAMES = Set([:Base, :Core, :Main, :Libc, :Libdl, :Sys, :Meta, :Filesystem, :Threads,
+    :Sockets, :Distributed, :Pkg, :InteractiveUtils, :ConstructionBots, :CB])
+
+"""
+`code` 안의 `names`. 잡는 것은 셋뿐이다:
+ 1. 맨 이름 `run(…)`·`ENV`·`@eval`;
+ 2. 모듈 한정 이름 `Base.run`·`Base.Filesystem.rm`(왼쪽이 `_MODULE_NAMES` 에서 시작);
+ 3. 동적 이름 구성 — `Symbol("run")` 의 문자열 인자, `getfield/getproperty(<모듈>, :run|"run")`.
+필드 접근(`m.schedule`·`robot.Task`), 로그 문자열(`@warn "read"`), 일반 `:sym` 리터럴은 안 잡는다 —
+그것까지 잡으면 `mutable_runtime`(배정의 `schedule` 필드 등)을 만지는 합법 도구가 거절돼 K 를 태운다.
+"""
 function api_hits(code::AbstractString, names::Vector{Symbol})
     hits = Symbol[]
     strs = Dict(string(n) => n for n in names)   # `Symbol(x)` 는 NUL 든 문자열에서 던진다
-    walk(x) = x isa Symbol ? (x in names && push!(hits, x)) :
-              x isa QuoteNode ? walk(x.value) :
-              x isa AbstractString ? (haskey(strs, x) && push!(hits, strs[x])) :
-              x isa Expr ? foreach(walk, x.args) : nothing
+    lit(x) = x isa QuoteNode ? lit(x.value) : x isa Symbol ? (x in names && push!(hits, x)) :
+             x isa AbstractString ? (haskey(strs, x) && push!(hits, strs[x])) : nothing
+    ismod(x) = x isa Symbol ? x in _MODULE_NAMES :
+               x isa Expr && x.head === :. && length(x.args) == 2 && ismod(x.args[1])
+    callee(f) = f isa Symbol ? f :
+                f isa Expr && f.head === :. && length(f.args) == 2 && f.args[2] isa QuoteNode ? f.args[2].value : nothing
+    function walk(x)
+        x isa Symbol && return (x in names && push!(hits, x); nothing)
+        x isa Expr || return nothing
+        foreach(walk, x.args)          # QuoteNode·문자열은 여기서 안 잡힌다
+        if x.head === :. && length(x.args) == 2 && x.args[2] isa QuoteNode
+            ismod(x.args[1]) && lit(x.args[2])
+        elseif x.head === :call && !isempty(x.args)
+            f = callee(x.args[1])
+            f === :Symbol && foreach(lit, x.args[2:end])
+            f in (:getfield, :getproperty) && length(x.args) >= 3 && ismod(x.args[2]) && lit(x.args[3])
+        end
+        return nothing
+    end
     walk(Meta.parseall(code))
     return unique!(hits)
 end
