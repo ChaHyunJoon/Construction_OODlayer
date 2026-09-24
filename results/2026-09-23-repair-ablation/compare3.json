@@ -1,0 +1,587 @@
+{
+ "grids": {
+  "none-tractor": {
+   "campaign_id": "abl-none-tractor-20260923",
+   "config_digest": "78d684a66eefbb3a",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "none",
+   "planned": 60,
+   "scored": 60,
+   "unscored": 0
+  },
+  "none-xwing": {
+   "campaign_id": "abl-none-xwing-20260923",
+   "config_digest": "78d684a66eefbb3a",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "none",
+   "planned": 60,
+   "scored": 60,
+   "unscored": 0
+  },
+  "translate-tractor": {
+   "campaign_id": "abl-translate-tractor-20260923",
+   "config_digest": "da5094f5d8e98f6c",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "translate",
+   "planned": 60,
+   "scored": 60,
+   "unscored": 0
+  },
+  "translate-xwing": {
+   "campaign_id": "abl-translate-xwing-20260923",
+   "config_digest": "da5094f5d8e98f6c",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "translate",
+   "planned": 60,
+   "scored": 58,
+   "unscored": 2
+  },
+  "all-tractor": {
+   "campaign_id": "abl-all-tractor-20260923",
+   "config_digest": "1222b1ee8525025a",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "all",
+   "planned": 60,
+   "scored": 58,
+   "unscored": 2
+  },
+  "all-xwing": {
+   "campaign_id": "abl-all-xwing-20260923",
+   "config_digest": "1222b1ee8525025a",
+   "code_rev": "13d18a19",
+   "set_env.REPAIR_ABLATION": "all",
+   "planned": 60,
+   "scored": 58,
+   "unscored": 2
+  }
+ },
+ "health_pre_ok": {
+  "none": true,
+  "translate": true,
+  "all": true
+ },
+ "tractor|zone": {
+  "n_seen": 30,
+  "none": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 28,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 0,
+   "replace_ladder_fired": 0,
+   "minted": 29,
+   "threw": 1
+  },
+  "translate": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 3,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 30,
+   "threw": 29
+  },
+  "all": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 5,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 30,
+   "threw": 11
+  },
+  "none_vs_translate": {
+   "pairs": 30,
+   "none_only": 25,
+   "translate_only": 0,
+   "p_mcnemar": 5.960464477539063e-08
+  },
+  "zone_place_mismatch_translate": 0,
+  "none_vs_all": {
+   "pairs": 30,
+   "none_only": 23,
+   "all_only": 0,
+   "p_mcnemar": 2.384185791015625e-07
+  },
+  "zone_place_mismatch_all": 0,
+  "translate_vs_all": {
+   "pairs": 30,
+   "translate_only": 0,
+   "all_only": 2,
+   "p_mcnemar": 0.5
+  },
+  "oracle_feasible_seeds": 27,
+  "none_complete_on_feasible": 25,
+  "none_valid_on_feasible": 27,
+  "translate_complete_on_feasible": 3,
+  "translate_valid_on_feasible": 27,
+  "all_complete_on_feasible": 5,
+  "all_valid_on_feasible": 27,
+  "none_vs_0923_sol": {
+   "sol_complete": 30,
+   "none_complete": 28,
+   "pairs": 30,
+   "none_only": 0,
+   "sol_only": 2
+  }
+ },
+ "tractor|all3": {
+  "n_seen": 30,
+  "none": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 30,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 0,
+   "replace_ladder_fired": 0,
+   "minted": 30,
+   "threw": 2
+  },
+  "translate": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 3,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 29,
+   "threw": 25
+  },
+  "all": {
+   "scored": 28,
+   "valid": 28,
+   "complete": 4,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 28,
+   "threw": 10
+  },
+  "none_vs_translate": {
+   "pairs": 30,
+   "none_only": 27,
+   "translate_only": 0,
+   "p_mcnemar": 1.4901161193847656e-08
+  },
+  "zone_place_mismatch_translate": 0,
+  "none_vs_all": {
+   "pairs": 28,
+   "none_only": 24,
+   "all_only": 0,
+   "p_mcnemar": 1.1920928955078125e-07
+  },
+  "zone_place_mismatch_all": 0,
+  "translate_vs_all": {
+   "pairs": 28,
+   "translate_only": 0,
+   "all_only": 1,
+   "p_mcnemar": 1.0
+  },
+  "oracle_feasible_seeds": 27,
+  "none_complete_on_feasible": 27,
+  "none_valid_on_feasible": 27,
+  "translate_complete_on_feasible": 3,
+  "translate_valid_on_feasible": 27,
+  "all_complete_on_feasible": 3,
+  "all_valid_on_feasible": 25,
+  "none_vs_0923_sol": {
+   "sol_complete": 29,
+   "none_complete": 30,
+   "pairs": 30,
+   "none_only": 1,
+   "sol_only": 0
+  }
+ },
+ "xwing|zone": {
+  "n_seen": 30,
+  "none": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 29,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 0,
+   "replace_ladder_fired": 0,
+   "minted": 29,
+   "threw": 1
+  },
+  "translate": {
+   "scored": 29,
+   "valid": 29,
+   "complete": 4,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 27,
+   "threw": 25
+  },
+  "all": {
+   "scored": 29,
+   "valid": 29,
+   "complete": 5,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 4,
+   "replace_ladder_fired": 0,
+   "minted": 29,
+   "threw": 12
+  },
+  "none_vs_translate": {
+   "pairs": 29,
+   "none_only": 24,
+   "translate_only": 0,
+   "p_mcnemar": 1.1920928955078125e-07
+  },
+  "zone_place_mismatch_translate": 0,
+  "none_vs_all": {
+   "pairs": 29,
+   "none_only": 23,
+   "all_only": 0,
+   "p_mcnemar": 2.384185791015625e-07
+  },
+  "zone_place_mismatch_all": 0,
+  "translate_vs_all": {
+   "pairs": 28,
+   "translate_only": 0,
+   "all_only": 1,
+   "p_mcnemar": 1.0
+  },
+  "oracle_feasible_seeds": 26,
+  "none_complete_on_feasible": 25,
+  "none_valid_on_feasible": 26,
+  "translate_complete_on_feasible": 4,
+  "translate_valid_on_feasible": 26,
+  "all_complete_on_feasible": 5,
+  "all_valid_on_feasible": 25,
+  "none_vs_0923_sol": {
+   "sol_complete": 29,
+   "none_complete": 29,
+   "pairs": 30,
+   "none_only": 0,
+   "sol_only": 0
+  }
+ },
+ "xwing|all3": {
+  "n_seen": 30,
+  "none": {
+   "scored": 30,
+   "valid": 30,
+   "complete": 28,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 0,
+   "replace_ladder_fired": 0,
+   "minted": 28,
+   "threw": 4
+  },
+  "translate": {
+   "scored": 29,
+   "valid": 29,
+   "complete": 4,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 4,
+   "replace_ladder_fired": 0,
+   "minted": 27,
+   "threw": 23
+  },
+  "all": {
+   "scored": 29,
+   "valid": 29,
+   "complete": 4,
+   "identity_fail": 0,
+   "denied_runs": 0,
+   "zone_rescue_skipped": 0,
+   "zone_rescue_fired": 0,
+   "replace_ladder_skipped": 3,
+   "replace_ladder_fired": 0,
+   "minted": 26,
+   "threw": 8
+  },
+  "none_vs_translate": {
+   "pairs": 29,
+   "none_only": 23,
+   "translate_only": 0,
+   "p_mcnemar": 2.384185791015625e-07
+  },
+  "zone_place_mismatch_translate": 0,
+  "none_vs_all": {
+   "pairs": 29,
+   "none_only": 23,
+   "all_only": 0,
+   "p_mcnemar": 2.384185791015625e-07
+  },
+  "zone_place_mismatch_all": 0,
+  "translate_vs_all": {
+   "pairs": 28,
+   "translate_only": 0,
+   "all_only": 0,
+   "p_mcnemar": 1.0
+  },
+  "oracle_feasible_seeds": 26,
+  "none_complete_on_feasible": 25,
+  "none_valid_on_feasible": 26,
+  "translate_complete_on_feasible": 4,
+  "translate_valid_on_feasible": 26,
+  "all_complete_on_feasible": 4,
+  "all_valid_on_feasible": 25,
+  "none_vs_0923_sol": {
+   "sol_complete": 29,
+   "none_complete": 28,
+   "pairs": 30,
+   "none_only": 0,
+   "sol_only": 1
+  }
+ },
+ "total": {
+  "none": {
+   "valid": 120,
+   "complete": 115
+  },
+  "translate": {
+   "valid": 118,
+   "complete": 14
+  },
+  "all": {
+   "valid": 116,
+   "complete": 18
+  },
+  "none_vs_translate": {
+   "none_only": 99,
+   "translate_only": 0,
+   "p_mcnemar": 3.1554436208840472e-30
+  },
+  "none_vs_all": {
+   "none_only": 93,
+   "all_only": 0,
+   "p_mcnemar": 2.0194839173657902e-28
+  },
+  "oracle_feasible_seeds": 106,
+  "none_complete_on_feasible": 102,
+  "none_valid_on_feasible": 106,
+  "translate_complete_on_feasible": 14,
+  "translate_valid_on_feasible": 106,
+  "all_complete_on_feasible": 17,
+  "all_valid_on_feasible": 102,
+  "translate_vs_all": {
+   "translate_only": 0,
+   "all_only": 4,
+   "p_mcnemar": 0.125
+  }
+ },
+ "mechanism_first_attempt_rows": {
+  "none": {
+   "calls_base:translate": 108,
+   "calls_base:restage_only": 4,
+   "empty": 4,
+   "hand_geometry": 1,
+   "graph_surgery": 2,
+   "other": 1
+  },
+  "translate": {
+   "calls_base:restage_only": 109,
+   "graph_surgery": 6,
+   "empty": 5
+  },
+  "all": {
+   "hand_geometry": 73,
+   "other": 31,
+   "empty": 9,
+   "graph_surgery": 6,
+   "hand_translate": 1
+  }
+ },
+ "mechanism_rewrite_rows": {
+  "none": {
+   "calls_base:translate": 12,
+   "calls_base:restage_only": 2,
+   "graph_surgery": 2
+  },
+  "translate": {
+   "calls_base:restage_only": 109,
+   "graph_surgery": 3
+  },
+  "all": {
+   "hand_geometry": 77,
+   "other": 26,
+   "hand_translate": 7,
+   "graph_surgery": 5
+  }
+ },
+ "mechanism_last_body_x_outcome": {
+  "none": {
+   "calls_base:restage_only|incomplete": 2,
+   "calls_base:translate|complete": 108,
+   "calls_base:translate|incomplete": 3,
+   "graph_surgery|complete": 2,
+   "no_body|complete": 4,
+   "other|complete": 1
+  },
+  "translate": {
+   "calls_base:restage_only|complete": 3,
+   "calls_base:restage_only|incomplete": 104,
+   "graph_surgery|complete": 6,
+   "no_body|complete": 5
+  },
+  "all": {
+   "graph_surgery|complete": 7,
+   "hand_geometry|complete": 10,
+   "hand_geometry|incomplete": 63,
+   "hand_translate|incomplete": 7,
+   "no_body|incomplete": 3,
+   "other|complete": 1,
+   "other|incomplete": 25
+  }
+ },
+ "resync_scene_to_schedule": {
+  "none": {
+   "rows_calling_resync": 4,
+   "rows_with_body": 132,
+   "last_body_x_outcome": {
+    "no_resync|complete": 109,
+    "no_resync|incomplete": 5,
+    "resync|complete": 2
+   }
+  },
+  "translate": {
+   "rows_calling_resync": 12,
+   "rows_with_body": 227,
+   "last_body_x_outcome": {
+    "no_resync|complete": 9,
+    "no_resync|incomplete": 93,
+    "resync|incomplete": 11
+   }
+  },
+  "all": {
+   "rows_calling_resync": 22,
+   "rows_with_body": 226,
+   "last_body_x_outcome": {
+    "no_resync|complete": 16,
+    "no_resync|incomplete": 81,
+    "resync|complete": 2,
+    "resync|incomplete": 14
+   }
+  }
+ },
+ "held_arms": {},
+ "pilot_only_held_arms": {},
+ "identity_failures": [],
+ "denied_runs": [],
+ "unscored": [
+  {
+   "run_key": "router__all3__s10",
+   "lane": "router",
+   "case": "all3",
+   "seed": 10,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.7,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/translate-xwing/log/router__all3__s10.log",
+   "arm": "translate",
+   "model": "xwing"
+  },
+  {
+   "run_key": "router__zone__s24",
+   "lane": "router",
+   "case": "zone",
+   "seed": 24,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.7,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/translate-xwing/log/router__zone__s24.log",
+   "arm": "translate",
+   "model": "xwing"
+  },
+  {
+   "run_key": "router__all3__s22",
+   "lane": "router",
+   "case": "all3",
+   "seed": 22,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.7,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/all-tractor/log/router__all3__s22.log",
+   "arm": "all",
+   "model": "tractor"
+  },
+  {
+   "run_key": "router__all3__s25",
+   "lane": "router",
+   "case": "all3",
+   "seed": 25,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.9,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/all-tractor/log/router__all3__s25.log",
+   "arm": "all",
+   "model": "tractor"
+  },
+  {
+   "run_key": "router__all3__s3",
+   "lane": "router",
+   "case": "all3",
+   "seed": 3,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.8,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/all-xwing/log/router__all3__s3.log",
+   "arm": "all",
+   "model": "xwing"
+  },
+  {
+   "run_key": "router__zone__s15",
+   "lane": "router",
+   "case": "zone",
+   "seed": 15,
+   "status": "timeout",
+   "detail": "rc=124, no [score] line",
+   "rc": 124,
+   "timeout": true,
+   "elapsed": 3600.8,
+   "log": "/home/chahj578/Construction_OODlayer/results/2026-09-23-repair-ablation/all-xwing/log/router__zone__s15.log",
+   "arm": "all",
+   "model": "xwing"
+  }
+ ]
+}
