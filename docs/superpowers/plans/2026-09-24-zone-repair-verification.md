@@ -256,6 +256,7 @@ Observe–Design–Compose의 일반적인 tool generation을 유지하면서, �
 - [ ] source/schema/provider 재시도와 원장을 모두 예산에 포함한다. token/cost 부족으로 잘린 코드를 정상 후보로 취급하지 않는다.
 - [ ] 현재 집행 경계의 compile/권한/effect/contract 오류만 피드백한다. full rollout이나 미래 교란 정보를 재작성에 사용하지 않는다.
 - [ ] 기하 전용 GeometryPatch 인터페이스는 G4 비교 모드에만 둔다. 주 코드 경로에 geometry schema를 강제하지 않는다.
+- [ ] G4 전용 geometry schema와 `tools/monitor/repair_geometry_control.jl` adapter를 구현한다. 모델이 제출한 수치 변경만 engine API로 적용하고 일반 효과 validator·동일 task contract·전체 rollout을 공유한다. 추천 좌표를 계산하지 않는다.
 
 통과 조건: 비기하 fixture 요청이 일반 source 후보로 끝까지 통과하고, MAS가 geometry-only mode로 조용히 폴백하지 않는다. 무료 서비스 시험은 live model 0회이며 repo 루트에서 기존 Python 시험 진입점을 사용한다.
 

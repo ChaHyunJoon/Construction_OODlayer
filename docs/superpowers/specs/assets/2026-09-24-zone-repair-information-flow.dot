@@ -1,0 +1,50 @@
+digraph RepairFlow {
+  graph [rankdir=TB, bgcolor="#FFFFFF", pad="0.3", nodesep="0.35", ranksep="0.45", fontname="Noto Sans CJK KR", fontsize=22, labelloc=t, label="일반 도구 생성: 관측 → 도구 코드 → 실행 검증\n구현 예정 구조 · CBF 제외"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans CJK KR", fontsize=15, color="#A4AFBD", fillcolor="#F5F7FA", margin="0.20,0.14"];
+  edge [fontname="Noto Sans CJK KR", fontsize=12, color="#66758A", arrowsize=0.8];
+
+  world [label="존 주입 직후 t0\n모델 호출 전 전체 상태 보존", fillcolor="#FFF1CC", color="#DBA62D"];
+  cp [label="전체 checkpoint\n씬·스케줄·RVO·캐시·사건 큐·RNG\n시뮬레이터 재현 전용", fillcolor="#E7F2E9", color="#54916B"];
+  obs [label="현재 관측 + 원본 작업 계약\n기하·항법·의존성·배정\n로봇·자원·진행 상태", fillcolor="#E8F0FC", color="#5689C5"];
+  iface [label="World interface\n타입·센서·세계 조작 API\n존 해법 base는 차단", fillcolor="#E8F0FC", color="#5689C5"];
+
+  subgraph cluster_agents {
+    label="LLM 에이전트 3개 · 순차 처리"; color="#7AA1D4"; style="rounded"; fontname="Noto Sans CJK KR"; fontsize=17;
+    a1 [label="1. Observe — 무엇이 깨졌나\n출력: 근거가 있는 BreakageReport", fillcolor="#DBEAFE", color="#5689C5"];
+    a2 [label="2. Design — 무엇을 회복해야 하나\n출력: ToolSpec + 보존 조건", fillcolor="#DBEAFE", color="#5689C5"];
+    a3 [label="3. Compose — 도구 코드를 작성\n출력: ToolProposal 후보 ≤ 4\nJulia source·params·calls", fillcolor="#DBEAFE", color="#5689C5"];
+    a1 -> a2 [label="관측 보고서"];
+    a2 -> a3 [label="필요한 효과·변경 범위"];
+  }
+
+  check [label="격리 source 등록·실행 전환 검사\n실제 효과 → 효과별 검사·후처리\n기하 변경 때만 필요한 resync\npreflight는 첫 step 직전에 중단", fillcolor="#FFF0DE", color="#CC914E"];
+  freeze [label="후보 동결\n이후 rollout 결과는 LLM에 보내지 않음", fillcolor="#FFF0DE", color="#CC914E"];
+
+  subgraph cluster_sim {
+    label="일반 프로그램 · 별도 프로세스의 시뮬레이션 분기"; color="#70A180"; style="rounded"; fontname="Noto Sans CJK KR"; fontsize=17;
+    baseline [label="NOOP 분기\n존 개입 없이 정상 실행\n종료 예산까지 실행", fillcolor="#E7F2E9", color="#54916B"];
+    candidate [label="각 코드 후보 분기\n도구 실행 + 공통 continuation\n작업 조건·실제 효과를 독립 검사\n같은 예산으로 끝까지 실행", fillcolor="#E7F2E9", color="#54916B"];
+    {rank=same; baseline; candidate;}
+  }
+  select [label="규칙 기반 선택기\nNOOP 완주 → NOOP 유지\nNOOP 실패 + 후보 완주·조건 충족 → 후보 채택\n검증 불가 → NOOP + 사유 기록", fillcolor="#FFF0DE", color="#CC914E"];
+  commit [label="새 commit worker에 t0 복원\n선택한 동일 코드를 실제로 재생\n효과·상태 일치 후 활성 세계로 전환\n미래 terminal state 복사 금지", fillcolor="#FFF1CC", color="#DBA62D"];
+  log [label="결과 원장\n모델의 해결률·원시 회귀율\n검증기의 기각·보존·재현 결과", fillcolor="#F1EAF8", color="#A17ABD"];
+
+  world -> cp;
+  world -> obs;
+  obs -> a1;
+  iface -> a3 [label="body가 실행 시 env를 조회"];
+  a3 -> check;
+  check -> a3 [style=dashed, color="#B66E30", label="현재 상태 검사 오류만\n예산이 남으면 1회 수정", constraint=false];
+  check -> freeze [label="유효 후보와 모든 거절 기록"];
+  cp -> check [style=dashed, constraint=false, label="검사용 복원"];
+  cp -> baseline [label="동일 t0 복원"];
+  cp -> candidate [label="동일 t0 복원", style=dashed];
+  freeze -> baseline [label="동결 후 비교 시작"];
+  freeze -> candidate;
+  baseline -> select [label="실제 종료 결과"];
+  candidate -> select [label="실제 종료 결과"];
+  select -> commit;
+  commit -> log;
+  check -> log [style=dashed, constraint=false, label="거절도 기록"];
+}
