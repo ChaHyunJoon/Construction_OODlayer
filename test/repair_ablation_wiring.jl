@@ -11,11 +11,40 @@ src(p) = read(joinpath(ROOT, p), String)
     i_inj   = findfirst("injected pre-sim\")", s)
     i_arm   = findfirst("CB.arm_repair_ablation!()   # presim", s)
     i_score = findfirst("println(\"[score] complete=\"", s)
-    i_abl   = findfirst("println(\"[ablation] \", CB.ablation_summary_line())", s)
+    i_abl   = findfirst("finally\n    print_ablation_line!()      # `[score]` 뒤", s)
     @test all(!isnothing, (i_set, i_ctx, i_inj, i_arm, i_score, i_abl))
     @test first(i_set) < first(i_ctx)
     @test first(i_inj) < first(i_arm)          # 🔴 주입이 끝난 뒤에 무장한다(Review Focus 5)
     @test first(i_score) < first(i_abl)
+end
+
+@testset "render_demo: [ablation] 줄은 정확히 한 번 — 시뮬이 던져도(Task 8 M1)" begin
+    s = src("tools/monitor/render_demo.jl")
+    # 찍는 자리는 가드된 함수 하나뿐이다
+    @test length(collect(eachmatch(r"println\(\"\[ablation\] \"", s))) == 1
+    i_def  = findfirst("function print_ablation_line!()\n    _ABLATION_LINE_PRINTED[] && return nothing", s)
+    i_sim  = findfirst("render_result[] = CB.run_lego_demo(;", s)
+    i_fin  = findfirst("render_result[] === nothing && print_ablation_line!()", s)
+    i_err  = findfirst("render_result[] === nothing && error(\"render did not return", s)
+    i_score = findfirst("println(\"[score] complete=\"", s)
+    i_abl  = findfirst("finally\n    print_ablation_line!()      # `[score]` 뒤", s)
+    @test all(!isnothing, (i_def, i_sim, i_fin, i_err, i_score, i_abl))
+    @test first(i_def) < first(i_sim) < first(i_fin) < first(i_err) < first(i_score) < first(i_abl)
+    # 시뮬의 finally 안이다(다음 `end` 전에 있고, `finally` 뒤에 있다)
+    blk = s[first(i_sim):first(i_err)]
+    @test occursin(r"\nfinally\n[\s\S]*render_result\[\] === nothing && print_ablation_line!\(\)[^\n]*\nend\n", blk)
+end
+
+@testset "render_demo: 서비스 레벨 단언은 [run-ctx] 뒤·시뮬 전(m2)" begin
+    s = src("tools/monitor/render_demo.jl")
+    i_ctx  = findfirst("println(\"[run-ctx] \", JSON3.write(RUN_CTX[]))", s)
+    i_asrt = findfirst("router_drives() && assert_service_repair_ablation()", s)
+    i_pre  = findfirst("\npre = function (env)", s)
+    i_sim  = findfirst("render_result[] = CB.run_lego_demo(;", s)
+    @test all(!isnothing, (i_ctx, i_asrt, i_pre, i_sim))
+    @test first(i_ctx) < first(i_asrt) < first(i_pre) < first(i_sim)
+    # 조건부 없이 최상위 문장이다(줄 머리에서 시작)
+    @test occursin("\nrouter_drives() && assert_service_repair_ablation()", s)
     # 지연 주입 경로도 콜백 안에서 주입 뒤에 무장한다
     @test occursin(r"nl = inject_blocking_zone!\(e\)[\s\S]{0,400}CB\.arm_repair_ablation!\(\)   # deferred", s)
 end

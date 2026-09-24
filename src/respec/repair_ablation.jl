@@ -48,9 +48,10 @@ struct AblatedPrimitiveError <: Exception
     name::Symbol
     level::Symbol
 end
+# 🔴 문구에 레벨·`repair_ablation`·타입 이름을 싣지 않는다(최종 리뷰 I1) — 이 첫 줄이 `/rewrite` 로
+#    agent-3 에게 그대로 간다. 기계장치의 존재를 알리는 단어가 곧 우회로의 이름표다. 레벨은 필드에만 남긴다.
 Base.showerror(io::IO, e::AblatedPrimitiveError) =
-    print(io, "AblatedPrimitiveError: `", e.name, "` is not available in this world (repair_ablation=",
-          e.level, ")")
+    print(io, "`", e.name, "` is not available in this world")
 
 "차단 함수의 **첫 줄**. 무장 전·목록 밖·면제 안이면 무동작이다."
 function _ablation_gate(name::Symbol)
@@ -67,7 +68,9 @@ function _ablation_caller()
     for fr in stacktrace()
         f = basename(String(fr.file))
         f in ("repair_ablation.jl", "restage_zone.jl", "zone_diagnosis.jl") && continue
-        return string(fr.func, "@", f, ":", fr.line)
+        # 공백 없이(최종 리뷰 m6) — 프레임 이름엔 "top-level scope" 같은 공백이 있고, 집계기의
+        # `detail=(\S*)` 가 거기서 잘린다.
+        return replace(string(fr.func, "@", f, ":", fr.line), r"\s+" => "_")
     end
     return "unknown"
 end
@@ -143,3 +146,21 @@ function ablation_summary_line()
                   " exempt=", ne, " ladder_zone_skipped=", get(d, "ladder_zone_skipped", 0),
                   " ladder_zone_fired=", get(d, "ladder_zone_fired", 0), " detail=", detail)
 end
+
+# 🔴 가드 기계장치 이름(최종 리뷰 I1). 이 파일이 정의하는 이름 **전부**다 — body 가 이 이름을 부르면
+#    레벨을 `:none` 으로 되돌리거나(`REPAIR_ABLATION[] = :none`) 가드를 끄거나(`disarm_repair_ablation!()`)
+#    면제 안에서 차단 함수를 부를 수 있다(`ablation_exempt(:x) do … end` — 층 2·3 을 한꺼번에 우회).
+#    그래서 ablation 팔의 등록 게이트는 차단 목록과 **함께** 이 목록을 거절한다(`ablation_reserved_names`).
+#    고정 목록이다 — 시험(`test/repair_ablation_registration.jl`)이 이 파일의 최상위 정의 집합과 같음을 잰다.
+const _ABLATION_MACHINERY = Symbol[
+    :REPAIR_ABLATION_LEVELS, :_ABLATE_TRANSLATE, :_ABLATE_ALL, :ablated_names,
+    :parse_repair_ablation, :repair_ablation_from_env, :REPAIR_ABLATION, :_ABLATION_ARMED,
+    :_ABLATION_EXEMPT_DEPTH, :_ABLATION_COUNTS, :set_repair_ablation!, :arm_repair_ablation!,
+    :disarm_repair_ablation!, :repair_ablation_armed, :_ablation_bump!, :ablation_counts,
+    :ablation_blocks_zone_ladder, :AblatedPrimitiveError, :_ablation_gate, :_ablation_caller,
+    :ablation_exempt, :ablated_symbols_in, :_collect_ablated!, :ablate_interface_blob,
+    :ablation_summary_line, :_ABLATION_MACHINERY, :ablation_reserved_names]
+
+"등록 게이트가 ablation 팔에서 거절하는 이름: 차단 목록 + 가드 기계장치. `none` 이면 빈 목록(바이트 동일)."
+ablation_reserved_names(level::Symbol) =
+    level === :none ? Symbol[] : vcat(ablated_names(level), _ABLATION_MACHINERY)

@@ -1300,6 +1300,15 @@ pre = function (env)
 end
 
 render_result = Ref{Any}(nothing)
+# `[ablation]` 줄은 판마다 **정확히 한 번**(Task 8 M1). 정상 경로에서는 `[score]` 뒤에 찍고, 시뮬이
+# 던지면(render_result 가 비어 있으면) 아래 `finally` 에서 찍는다 — 던진 판도 카운터를 남긴다.
+const _ABLATION_LINE_PRINTED = Ref(false)
+function print_ablation_line!()
+    _ABLATION_LINE_PRINTED[] && return nothing
+    _ABLATION_LINE_PRINTED[] = true
+    println("[ablation] ", CB.ablation_summary_line())
+    return nothing
+end
 try
     # -----------------------------------------------------------------------------------------
     # save_animation 과 라이브 시청은 **더 이상 상호배타가 아니다** (2026-08-05).
@@ -1329,6 +1338,7 @@ finally
     try CB.monitor_clear_control_hook!() catch end
     try CB.clear_respec_producer!() catch end
     CB.RESPEC_ENABLED[] = false
+    render_result[] === nothing && print_ablation_line!()   # 시뮬이 던졌다 — 그래도 한 줄
 end
 
 render_result[] === nothing && error("render did not return a simulation environment")
@@ -1360,7 +1370,7 @@ end
 # (운반유닛 셋이 로봇 한 대에 겹쳐 걸린 교착). 완주율 하나로 채점하면 세계의 교착이 합성 레인의
 # 실패로 집계된다 — 앞서 "존 랜덤화 6/8" 이 그렇게 잘못 읽힌 자리다. 그래서 완주·미완주 양쪽에서,
 # 미완주가 error 로 죽기 **전에**, 기계가 읽을 수 있는 한 줄로 남긴다.
-let e = render_env
+try let e = render_env
     zb = try CB.zone_blockage(e) catch; nothing end
     nz = try length(collect(CB.active_restriction_zones())) catch; -1 end
     println("[score] complete=", CB.project_complete(e),
@@ -1371,7 +1381,9 @@ let e = render_env
                      " n_engulfed=", zb.n_engulfed, " n_agent_trapped=", zb.n_agent_trapped,
                      " project_blocked=", zb.project_blocked))
 end
-println("[ablation] ", CB.ablation_summary_line())
+finally
+    print_ablation_line!()      # `[score]` 뒤 — `[score]` 가 던져도 한 줄
+end
 
 if INTERACTIVE
     ok = publish_anim!()

@@ -65,6 +65,27 @@ end
     msg = sprint(showerror, CB.AblatedPrimitiveError(:translate_whole_build!, :all))
     @test occursin("translate_whole_build!", msg)
     @test !occursin("restage", msg) && !occursin("instead", msg)
+    # 🔴 최종 리뷰 I1·m3: 레벨·기계장치 이름을 싣지 않는다(이 첫 줄이 /rewrite 로 agent-3 에게 간다)
+    @test msg == "`translate_whole_build!` is not available in this world"
+    @test !occursin("repair_ablation", msg) && !occursin("Ablat", msg) && !occursin("all", msg)
+    @test !occursin("translate)", sprint(showerror, CB.AblatedPrimitiveError(:zone_diagnosis, :translate)))
+end
+
+@testset "_ablation_caller 는 공백을 안 낸다(m6 — 집계기 detail=(\\S*) 가 안 잘린다)" begin
+    c = CB._ablation_caller()                  # 최상위 스코프에서 부르면 프레임 이름이 "top-level scope"
+    @test !occursin(r"\s", c)
+    try
+        CB.set_repair_ablation!(:all); CB.arm_repair_ablation!()
+        try CB._ablation_gate(:translate_whole_build!) catch end
+        d = CB.ablation_counts()
+        @test any(startswith("denied_by:"), keys(d))
+        @test all(k -> !occursin(r"\s", k), keys(d))
+        line = CB.ablation_summary_line()
+        m = match(r"detail=(\S*)", line)
+        @test m !== nothing && m[1] == split(line, "detail=")[2]   # detail 전체가 잡힌다
+    finally
+        CB.set_repair_ablation!(:none); CB.disarm_repair_ablation!()
+    end
 end
 
 @testset "차단 함수 11개는 본문 첫 문장이 자기 이름의 가드다(소스 고정)" begin
