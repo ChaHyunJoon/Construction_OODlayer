@@ -1,0 +1,24 @@
+{
+  "tool_name": "OracleZoneClearNoBase",
+  "mechanism": "feasibility oracle for the zone-repair base ablation (spec 2026-09-23 §8). Uses ONLY names advertised in world_interface.ablate_all.json: read the live zone from active_restriction_zones(), measure with zone_blockage, and rigidly shift the whole build away from the zone centre (direction = mean staging-circle centre minus zone centre) by hand -- set_desired_global_transform! on every AssemblyComplete start_config to its pre-edit global transform plus the shift, repeated until every node sits at its target (a parent set after its child moves the child again), plus the staging-circle records, then resync_scene_to_schedule! (D1, G3 2026-09-23: without it the free scene bodies stay behind and the run stalls) -- in steps of the zone radius until zone_blockage reports n_blocked == 0, then three more steps as navigation margin (one step left 2 goals inside the TangentBug inflation band). No restage/translate primitive, no solver. NEVER shown to any agent.",
+  "impl_name": "OracleZoneClearNoBase!",
+  "impl_code": "function OracleZoneClearNoBase!(env)\n    zs = collect(active_restriction_zones())\n    isempty(zs) && return (; status = :no_zone)\n    zk = [first(p) for p in zs]\n    blk = zone_blockage(env; zone_keys = zk, check_paths = true)\n    blk.n_blocked == 0 && return (; status = :already_clear, moved = 0.0)\n    z = last(first(zs))\n    zc = Vector{Float64}(z.center[1:2]); zr = Float64(z.radius)\n    cs = [Vector{Float64}(b.center[1:2]) for b in values(env.staging_circles)]\n    bc = sum(cs) ./ length(cs)\n    d = bc .- zc; nd = sqrt(sum(abs2, d))\n    u = nd < 1e-9 ? [1.0, 0.0] : d ./ nd\n    tnodes = Any[start_config(sn.node) for sn in env.sched.nodes if sn.node isa AssemblyComplete]\n    function shift!(delta)\n        dv = [delta[1], delta[2], 0.0]\n        targets = [(t, (g0 = global_transform(t); typeof(g0)(g0.linear, g0.translation .+ dv))) for t in tnodes]\n        for _ in 1:16\n            moved_any = false\n            for (t, g) in targets\n                if maximum(abs.(global_transform(t).translation .- g.translation)) > 1e-9\n                    set_desired_global_transform!(t, g)\n                    moved_any = true\n                end\n            end\n            moved_any || break\n        end\n        for aid in collect(keys(env.staging_circles))\n            b = env.staging_circles[aid]\n            env.staging_circles[aid] = Ball2(Vector{Float64}(b.center[1:2]) .+ delta[1:2], Float64(b.radius))\n        end\n        resync_scene_to_schedule!(env)\n        return nothing\n    end\n    total = 0.0\n    for k in 1:12\n        shift!(u .* zr)\n        total += zr\n        reset_cache_resume!(env.cache, env.sched)\n        blk = zone_blockage(env; zone_keys = zk, check_paths = true)\n        if blk.n_blocked == 0\n            shift!(u .* (3 * zr))\n            total += 3 * zr\n            reset_cache_resume!(env.cache, env.sched)\n            return (; status = :translated, moved = total, steps = k + 3)\n        end\n    end\n    return (; status = :residual_blocked, moved = total, residual = blk.n_blocked)\nend\n",
+  "params": {},
+  "calls": [
+    {
+      "primitive": "OracleZoneClearNoBase!",
+      "args": {}
+    }
+  ],
+  "body_names": [
+    "OracleZoneClearNoBase!"
+  ],
+  "surface": "sched",
+  "reversible": false,
+  "wrote": true,
+  "refused": false,
+  "synthesis_event": true,
+  "synthesis_ran": true,
+  "synthesis_error": null,
+  "tool_minted": true
+}
