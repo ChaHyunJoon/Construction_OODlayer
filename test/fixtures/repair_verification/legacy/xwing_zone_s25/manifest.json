@@ -1,0 +1,151 @@
+{
+ "a2": {
+  "closed": 609,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": "unresolved",
+  "n_blocked": 2,
+  "project_blocked": true,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "incomplete"
+ },
+ "a2_class": "a2_regression",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "5ca29d5865601f392cc0f52b09a85db73ee1f30b575aaa8e3efe4bc9609a7111",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_exclusion_blocked_work_goals!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "95aee457023f40dd65eda4f8",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 1,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "365e381c495768c25cf2afda4ed37d0160f369932d0078f17720705c2ccee377",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_exclusion_blocked_work_goals!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "95aee457023f40dd65eda4f8",
+   "record_id": "3b5ef42fd090611ef6eaedb1",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 1,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:relocate_exclusion_blocked_work_goals!: MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}})"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}})",
+    "name": "relocate_exclusion_blocked_work_goals!",
+    "status": "threw"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "agent_disc_radius",
+   "cargo_goal_config",
+   "entity",
+   "free_space_status",
+   "get_center",
+   "get_cmd",
+   "global_transform",
+   "goal_config",
+   "goal_engulfed",
+   "integrate_twist",
+   "set_desired_global_transform!",
+   "start_config",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [],
+ "key": "xwing|zone|s25|z25",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

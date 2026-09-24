@@ -1,0 +1,112 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "7af3fd29a2bf1ad4fc958ab7c76bfabafafee51b320a1dfbd00ce49f9bf16b0e",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts=[] ∧ steps",
+   "file": "01_decide.jl",
+   "impl_name": "prune_blocked_nonessential_work!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "65eea5c88406cd05eb4d6ad9",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 1,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    {
+     "detail": "",
+     "name": "prune_blocked_nonessential_work!",
+     "status": "success"
+    }
+   ]
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": null,
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "prune_blocked_nonessential_work!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "reset_cache_resume!",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 1,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 2,
+   "n_edges": -1,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl"
+ ],
+ "flags": [],
+ "key": "xwing|zone|s14|z14",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

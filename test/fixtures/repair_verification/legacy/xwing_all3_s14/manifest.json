@@ -1,0 +1,177 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 217,
+    "chosen": "Replace R3",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   },
+   {
+    "at": 229,
+    "chosen": "SwapBattery R1",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "c83127d0a2b965befcd25ab3c2c38a2f180527bde1a182f10a130473f94963b7",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "restore_zone_blocked_arrival!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "621c8d53cc947aa022db94a0",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 2,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 2,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "restore_zone_blocked_arrival!:threw(could not associate the blocked node with an active zone)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "822b14ba6c85a283c9c331a67d0ff62f99f64a8f5cababb082d944240e2845f7",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "restore_zone_blocked_arrival!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "621c8d53cc947aa022db94a0",
+   "record_id": "29165aced6d3c24bdae2eda7",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 2,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 2,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "restore_zone_blocked_arrival!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:restore_zone_blocked_arrival!: could not associate the blocked node with an active zone"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 217,
+    "chosen": "Replace R3",
+    "enacted": "canonical",
+    "event": "FAULT"
+   },
+   {
+    "at": 229,
+    "chosen": "SwapBattery R1",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "restore_zone_blocked_arrival!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "agent_disc_radius",
+   "entity",
+   "free_space_status",
+   "get_cmd",
+   "global_transform",
+   "goal_config",
+   "integrate_twist",
+   "ood_event_target",
+   "set_desired_global_transform!",
+   "start_config",
+   "validate_schedule_transform_tree",
+   "zone_blockage",
+   "zone_facts"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "xwing|all3|s14|z14",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

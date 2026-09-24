@@ -1,0 +1,170 @@
+{
+ "a2": {
+  "closed": 221,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 98,
+    "chosen": "SwapBattery R1",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   },
+   {
+    "at": 102,
+    "chosen": "Replace R3",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   }
+  ],
+  "fail_mode": "unresolved",
+  "n_blocked": 5,
+  "project_blocked": true,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "incomplete"
+ },
+ "a2_class": "a2_regression",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "9cd7370555e88f03768d5d0fef28a9f8902722effb94d0e61b809f2a78e887a6",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=noop",
+   "file": "01_decide.jl",
+   "impl_name": "restore_required_goal_reachability!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "492cc6b1e27f3334545c49aa",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "restore_required_goal_reachability!:failure"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "aba453d182e3269c7aee74c5715293c1dc145172015e1d85cb11fb825cd2a17b",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "restore_required_goal_reachability!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "492cc6b1e27f3334545c49aa",
+   "record_id": "93e401a43f8cb7797928b8e8",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "restore_required_goal_reachability!:failure"
+   ],
+   "trigger": "noop",
+   "why": "enact_noop: the body ran to completion and raised no error; its own returned status was restore_required_goal_reachability!=failure. The world was measured immediately before the body ran and again immediately after, and every measured axis was identical: closed=0 active=0 n_edges=0 n_binding_changed=0 n_weights_changed=0 n_staging_moved=0. n_binding_changed is a lower bound. These six axes are the only part of the world that was measured, so this is an observation about them and not a claim that nothing at all happened."
+  }
+ ],
+ "canonical": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 98,
+    "chosen": "SwapBattery R1",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   },
+   {
+    "at": 102,
+    "chosen": "Replace R3",
+    "enacted": "canonical",
+    "event": "FAULT"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "noop_retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "restore_required_goal_reachability!",
+    "status": "failure"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "global_transform",
+   "goal_config",
+   "set_desired_global_transform!",
+   "start_config",
+   "validate_schedule_transform_tree",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "tractor|all3|s9|z9",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

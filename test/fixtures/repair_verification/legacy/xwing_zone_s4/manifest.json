@@ -1,0 +1,158 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_rescue",
+ "anchor": true,
+ "audit": {
+  "assembly_semantics": "🔴 의심: goal=start 패턴(허위 complete 후보). 또 이 판은 canonical 과 init_fp 가 다르다(첫 프레임 로봇 위치가 다름) — 같은 세계라고 할 수 없다.",
+  "cache": "reset_cache_resume!(env.cache, env.sched) · preprocess_env!(env) 호출",
+  "contract_status": "unverified_suspect",
+  "effective_body": "02_rewrite: 첫째는 본문 첫 줄에서 error — 세계 변경 없음. 둘째가 :success.",
+  "resync": "resync_scene_to_schedule!(env) 호출(setter 뒤)",
+  "setter_targets": "zone_blockage(check_paths=true) 의 status==:engulfed 인 막힌 노드마다 goal_config.",
+  "step_calls": "🔴 step_environment!(env) 1회 — body 가 시뮬레이션을 직접 한 걸음 민다(spec §6 금지 항목; L1 resync 삽입 위치 명시 대상)",
+  "transform": "goal := start_config 전역 자세(goal=start 패턴)."
+ },
+ "bodies": [
+  {
+   "code_sha256": "d083be9bf110463c88299844494aced07c4e7fef95ad0dd88f7fea93ab5e3146",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "restore_zone_blocked_goal_reachability!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "a15539ce6b8f70d8072a1d9d",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "restore_zone_blocked_goal_reachability!:threw(Required coherent scene-tree goal relocation capability is not exposed)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "34979740163c541676f12c44e6e73d26003a75748ecea0c98efc1e518c113f62",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "restore_zone_blocked_goal_reachability!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "a15539ce6b8f70d8072a1d9d",
+   "record_id": "692a80a63a323dce1d2c7f14",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 1,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 1,
+    "set_desired_global_transform!": 1,
+    "step_call": 1,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "restore_zone_blocked_goal_reachability!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:restore_zone_blocked_goal_reachability!: Required coherent scene-tree goal relocation capability is not exposed"
+  }
+ ],
+ "canonical": {
+  "closed": 670,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "incomplete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "restore_zone_blocked_goal_reachability!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "global_transform",
+   "goal_config",
+   "preprocess_env!",
+   "reset_cache_resume!",
+   "resync_scene_to_schedule!",
+   "set_desired_global_transform!",
+   "start_config",
+   "step_environment!",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "hard",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "prefix_differs:init_fp"
+ ],
+ "key": "xwing|zone|s4|z4",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

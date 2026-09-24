@@ -1,0 +1,178 @@
+{
+ "a2": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 191,
+    "chosen": "SwapBattery R1",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   },
+   {
+    "at": 193,
+    "chosen": "Replace R5",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_rescue",
+ "anchor": true,
+ "audit": {
+  "assembly_semantics": "🔴 의심: TransportUnitGo.goal_config 는 DepositCargo.start_config 의 자식이다(construction_schedule.jl populate_schedule_build_step!). goal=start 면 운반 이동이 사라지고 하역 자세와 불일치할 수 있다 — spec §10 게이트 5 의 'goal=start 허위 complete' 후보. 스트림에 부품 최종 자세가 없어 여기서 판정 불가.",
+  "cache": "body 안 없음(하네스가 resume=issued 로 reset_cache_resume! 1회)",
+  "contract_status": "unverified_suspect",
+  "effective_body": "01_decide (가설): 두 body 가 거의 같고(첫째 active_restriction_zones · 둘째 restriction_zones), 첫째가 이미 막힌 goal 을 옮겼다면 둘째는 report.blocked 가 비어 곧장 :success. `enact_noop` 판정은 6축(closed/active/edges/binding/weights/staging)만 잰 것이라 transform 변경을 못 본다.",
+  "resync": "호출 없음",
+  "setter_targets": "blocked nav 노드의 goal_config (블록 목록 = zone_blockage(check_paths=true) — 로그: transport vtx=88, nav_blocked=2). 후보 순서: 그 노드의 start_config 전역 자세 → agent_policies 의 각 로봇 씬 노드 자세. 첫 후보가 막힘을 풀면 채택.",
+  "step_calls": "없음",
+  "transform": "goal := start (첫 후보) 또는 goal := 어떤 로봇의 현재 자세. 평행이동이 아니라 자세 통째 대입."
+ },
+ "bodies": [
+  {
+   "code_sha256": "5e881e54d227d26e6785962e9630c6f166e8d93799f911abd273f042d431c467",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=noop",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_zone_blocked_work_geometry!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "972715e8e84aa0c1833a1b11",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "relocate_zone_blocked_work_geometry!:success"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "6a3170895534c8b1d2cf3e558ba315522e9b900db5085ab4c1779e3ec6b1bcc7",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_zone_blocked_work_geometry!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "972715e8e84aa0c1833a1b11",
+   "record_id": "206938126dfe571189a3a392",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "relocate_zone_blocked_work_geometry!:success"
+   ],
+   "trigger": "noop",
+   "why": "enact_noop: the body ran to completion and raised no error; its own returned status was relocate_zone_blocked_work_geometry!=success. The world was measured immediately before the body ran and again immediately after, and every measured axis was identical: closed=0 active=0 n_edges=0 n_binding_changed=0 n_weights_changed=0 n_staging_moved=0. n_binding_changed is a lower bound. These six axes are the only part of the world that was measured, so this is an observation about them and not a claim that nothing at all happened."
+  }
+ ],
+ "canonical": {
+  "closed": 170,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 164,
+    "chosen": "SwapBattery R1",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   },
+   {
+    "at": 164,
+    "chosen": "Replace R5",
+    "enacted": "canonical",
+    "event": "FAULT"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "incomplete"
+ },
+ "chain": {
+  "enact_retry": "noop_retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "relocate_zone_blocked_work_geometry!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "global_transform",
+   "goal_config",
+   "restriction_zones",
+   "set_desired_global_transform!",
+   "start_config",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "hard",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "tractor|all3|s2|z2",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

@@ -1,0 +1,166 @@
+{
+ "a2": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 179,
+    "chosen": "Replace R5",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   },
+   {
+    "at": 201,
+    "chosen": "SwapBattery R1",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 1,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "c7e02e0d0172e4cdd597a85a71efce38a69b4f8346f1d1195b326f3b8a7c064d",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "retire_nonessential_blocked_navigation!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "239c6cda357f54ab3d2ca084",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 3,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "retire_nonessential_blocked_navigation!:threw(blockage report does not match the schedule)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "25d08957d50274369b94ef99a173e63ac6cd177898d0c278d3e55a84bc58f676",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "retire_nonessential_blocked_navigation!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "239c6cda357f54ab3d2ca084",
+   "record_id": "33a6aee4ac2e73b30c618d62",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 3,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "retire_nonessential_blocked_navigation!:threw(blocked vertex is not in the schedule)"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:retire_nonessential_blocked_navigation!: blockage report does not match the schedule"
+  }
+ ],
+ "canonical": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 179,
+    "chosen": "Replace R5",
+    "enacted": "canonical",
+    "event": "FAULT"
+   },
+   {
+    "at": 201,
+    "chosen": "SwapBattery R1",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "blocked vertex is not in the schedule",
+    "name": "retire_nonessential_blocked_navigation!",
+    "status": "threw"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "reset_cache_resume!",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "tractor|all3|s14|z14",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

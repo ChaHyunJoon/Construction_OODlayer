@@ -1,0 +1,149 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "911d5c10716c9aeb825d9c6008ed1813b6a28cccc568c0b08791a882d2c07903",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_blocked_navigation_goal!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "a227bc3cea62e84c2299b093",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 4,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_blocked_navigation_goal!:threw(UndefVarError: `IdSet` not defined)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "8c55cf4c73efff546d3c085728e02a80df1cb3315bc262bd7cdf9910b0902f03",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_blocked_navigation_goal!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "a227bc3cea62e84c2299b093",
+   "record_id": "ecf1444ff5d5bec5be13db0c",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 4,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_blocked_navigation_goal!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:relocate_blocked_navigation_goal!: UndefVarError: `IdSet` not defined"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "relocate_blocked_navigation_goal!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "agent_disc_radius",
+   "cargo_goal_config",
+   "entity",
+   "get_center",
+   "get_cmd",
+   "global_transform",
+   "goal_config",
+   "integrate_twist",
+   "restriction_zones",
+   "set_desired_global_transform!",
+   "validate_schedule_transform_tree",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [],
+ "key": "xwing|zone|s9|z9",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

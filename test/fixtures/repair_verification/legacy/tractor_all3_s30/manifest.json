@@ -1,0 +1,137 @@
+{
+ "a2": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 98,
+    "chosen": "Replace R1",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   },
+   {
+    "at": 213,
+    "chosen": "SwapBattery R2",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "68260081bbd5b91675e3004994719875719ee050f4c8070d1e68730aaeecef45",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts=[] ∧ steps",
+   "file": "01_decide.jl",
+   "impl_name": "prune_isolated_unreachable_goal!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "1ac3f943bfb62b3e7f71f553",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 5,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    {
+     "detail": "",
+     "name": "prune_isolated_unreachable_goal!",
+     "status": "success"
+    }
+   ]
+  }
+ ],
+ "canonical": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 98,
+    "chosen": "Replace R1",
+    "enacted": "canonical",
+    "event": "FAULT"
+   },
+   {
+    "at": 213,
+    "chosen": "SwapBattery R2",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": null,
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "prune_isolated_unreachable_goal!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "reset_cache_resume!",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 1,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 2,
+   "n_edges": -1,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "tractor|all3|s30|z30",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

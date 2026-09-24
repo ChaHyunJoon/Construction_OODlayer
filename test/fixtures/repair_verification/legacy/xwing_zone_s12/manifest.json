@@ -1,0 +1,139 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 1,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "4b150d69449cf341fed3b88e4aed9014d0d0d770b39a984d34f619ede05f95e7",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "prune_blocked_noncompletion_branch!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "08e3b40db733a81299a3afad",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 7,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "prune_blocked_noncompletion_branch!:threw(setfield!: immutable struct of type OperatingSchedule cannot be changed)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "56bb9c58cbc955e9df36b99b75b82a9b0d13df2fdfc9ef442bdb9b754a10279c",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "prune_blocked_noncompletion_branch!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "08e3b40db733a81299a3afad",
+   "record_id": "42aa8698f8de51b711616c1c",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 7,
+    "graph_edit": 1,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 1,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "prune_blocked_noncompletion_branch!:threw(setfield!: immutable struct of type PlannerEnv cannot be changed)"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:prune_blocked_noncompletion_branch!: setfield!: immutable struct of type OperatingSchedule cannot be changed"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "setfield!: immutable struct of type PlannerEnv cannot be changed",
+    "name": "prune_blocked_noncompletion_branch!",
+    "status": "threw"
+   }
+  ],
+  "interface_calls": [
+   "reset_cache_resume!",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [],
+ "key": "xwing|zone|s12|z12",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

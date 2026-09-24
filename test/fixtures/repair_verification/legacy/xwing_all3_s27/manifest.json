@@ -1,0 +1,175 @@
+{
+ "a2": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 195,
+    "chosen": "Replace R16",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   },
+   {
+    "at": 337,
+    "chosen": "SwapBattery R1",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   }
+  ],
+  "fail_mode": null,
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "complete"
+ },
+ "a2_class": "a2_easy_success",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "2b2f3f7321813d555a745fe724e7686d157a29b52569f3a542017ad66e242c21",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_blocked_navigation_goal!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "1c56ae25f2971c13fd4f0827",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 3,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_blocked_navigation_goal!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "bafb7ec063449adbaf9d4dcd85dd1bbdd683ea636c4bb955977708e53308cdb4",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_blocked_navigation_goal!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "1c56ae25f2971c13fd4f0827",
+   "record_id": "03c36038af824503e9bf7e23",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 3,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_blocked_navigation_goal!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:relocate_blocked_navigation_goal!: MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}})"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 195,
+    "chosen": "Replace R16",
+    "enacted": "canonical",
+    "event": "FAULT"
+   },
+   {
+    "at": 337,
+    "chosen": "SwapBattery R1",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "relocate_blocked_navigation_goal!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "agent_disc_radius",
+   "entity",
+   "free_space_status",
+   "global_transform",
+   "goal_config",
+   "goal_engulfed",
+   "set_desired_global_transform!",
+   "start_config",
+   "validate_schedule_transform_tree",
+   "zone_blockage",
+   "zone_facts"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "xwing|all3|s27|z27",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

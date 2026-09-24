@@ -1,0 +1,162 @@
+{
+ "a2": {
+  "closed": 446,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   },
+   {
+    "at": 249,
+    "chosen": "Replace R1",
+    "enacted": "surrogate",
+    "event": "FAULT"
+   },
+   {
+    "at": 267,
+    "chosen": "SwapBattery R12",
+    "enacted": "surrogate",
+    "event": "BATTERY"
+   }
+  ],
+  "fail_mode": "unresolved",
+  "n_blocked": 3,
+  "project_blocked": true,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "incomplete"
+ },
+ "a2_class": "a2_regression",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "20e05760e9005f3ea5baa3af6a283a92e4fcb66b691b7fba52c06c76cb40c0b5",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "restore_blocked_goal_reachability!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "1670cd6af5dbc7f201a51a0a",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "restore_blocked_goal_reachability!:threw(No scene-layout replanning and collision-validation capability is available in the world interface)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "06a8cd96a23c4f58a35b6b4c036dbeeb9eed03edd36839b5a42b5234ff16febc",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "restore_blocked_goal_reachability!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "1670cd6af5dbc7f201a51a0a",
+   "record_id": "76940e2599648ff0a8c6cfb4",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 0,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 0
+   },
+   "steps": [
+    "restore_blocked_goal_reachability!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:restore_blocked_goal_reachability!: No scene-layout replanning and collision-validation capability is available in the world interface"
+  }
+ ],
+ "canonical": {
+  "closed": 684,
+  "decisions": [
+   {
+    "at": 113,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   },
+   {
+    "at": 249,
+    "chosen": "Replace R1",
+    "enacted": "canonical",
+    "event": "FAULT"
+   },
+   {
+    "at": 267,
+    "chosen": "SwapBattery R12",
+    "enacted": "canonical",
+    "event": "BATTERY"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "restore_blocked_goal_reachability!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 113
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "all3_nonzone_policy_differs:canonical_vs_surrogate"
+ ],
+ "key": "xwing|all3|s8|z8",
+ "provenance": {
+  "a2_campaign": "abl-all-xwing-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

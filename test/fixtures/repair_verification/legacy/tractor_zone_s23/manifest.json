@@ -1,0 +1,145 @@
+{
+ "a2": {
+  "closed": 279,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": "world_deadlock",
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "incomplete"
+ },
+ "a2_class": "a2_regression",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "988e4172a94aaf77e0307c9dca6e43c0aa82a2d7da1b27505b5e5140eed62c1e",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=threw",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_exclusion_blocked_goal_geometry!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "4bb8ece6f00c026b08d35209",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 1,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 1,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_exclusion_blocked_goal_geometry!:threw(scene-tree destination relocation did not take effect)"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "611e8a9524bef19b51d7e43652b809600f3a5bb03ba73c8e95b3cfd33c3e960f",
+   "executed": true,
+   "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_exclusion_blocked_goal_geometry!",
+   "install_why": null,
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "4bb8ece6f00c026b08d35209",
+   "record_id": "f4e3569bee0380de4b5196f0",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 1,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 1,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_exclusion_blocked_goal_geometry!:success"
+   ],
+   "trigger": "threw",
+   "why": "enact_threw:relocate_exclusion_blocked_goal_geometry!: scene-tree destination relocation did not take effect"
+  }
+ ],
+ "canonical": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "retried",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "relocate_exclusion_blocked_goal_geometry!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "global_transform",
+   "goal_config",
+   "is_within_capture_distance",
+   "set_desired_global_transform!",
+   "start_config",
+   "validate_schedule_transform_tree",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 2,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [],
+ "key": "tractor|zone|s23|z23",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}

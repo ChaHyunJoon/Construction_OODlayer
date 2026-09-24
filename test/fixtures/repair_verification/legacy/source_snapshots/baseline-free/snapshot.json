@@ -1,0 +1,16 @@
+{
+ "head": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+ "sha256": {
+  "tree.patch": "d21f82ea3596afe6b4c7b501b5c60ab005bee359fa67899040dc0e71aa172168",
+  "untracked_sources.tar": "4304400975c4d9cce688646a1aabceebf702ae07bd233ecf2327dc2b409c7d13"
+ },
+ "untracked": [
+  "tools/monitor/grid/drive.sh",
+  "tools/monitor/grid/run_one.sh",
+  "tools/monitor/stall_probe.jl"
+ ],
+ "restored_code_dirty_digest": "39fd20a7caa02c9c",
+ "campaign_code_dirty_digest": "39fd20a7caa02c9c",
+ "restore_verified": true,
+ "restore": "git checkout e326b43d63acb8373e40f1c7dd2cec48d523b9bc && git apply --binary tree.patch && tar -xf untracked_sources.tar"
+}

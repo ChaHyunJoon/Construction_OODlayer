@@ -1,0 +1,150 @@
+{
+ "a2": {
+  "closed": 221,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "dspy",
+    "event": "ZONE"
+   }
+  ],
+  "fail_mode": "world_deadlock",
+  "n_blocked": 0,
+  "project_blocked": false,
+  "run_fp": {
+   "code_dirty_digest": "1e5442d8117b721b",
+   "code_rev": "13d18a198e5d5dbb4ab1bca409e8103078e9dcb5",
+   "config_digest": "1222b1ee8525025a"
+  },
+  "status": "incomplete"
+ },
+ "a2_class": "a2_regression",
+ "anchor": false,
+ "audit": null,
+ "bodies": [
+  {
+   "code_sha256": "243872d4df61d3952b7db23d00c1fc0e398c6902afa7b42e483880850032f93b",
+   "decide_error": null,
+   "executed": true,
+   "executed_basis": "attempts[0].trigger=noop",
+   "file": "01_decide.jl",
+   "impl_name": "relocate_zone_blocked_goals!",
+   "ledger_row_type": "decide",
+   "n": 1,
+   "parent_record_id": null,
+   "record_id": "188f009900284ce36ddd32f8",
+   "role": "decide",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": [
+    "relocate_zone_blocked_goals!:success"
+   ]
+  },
+  {
+   "attempt": 2,
+   "code_sha256": "e5b17afc1cde0ba26c3434f110a0c477e0f331315d877ac4012419a08afc4837",
+   "executed": false,
+   "executed_basis": "roundtrip=ok install_why=set steps_ref=None",
+   "file": "02_rewrite.jl",
+   "impl_name": "relocate_zone_blocked_goals!",
+   "install_why": "reject:impl_self_shadowed_name:vtx — 이 이름에 대입하면 Julia 는 그것을 body 전체에서 지역변수로 만든다. 그래서 그 첫 대입의 우변이 같은 이름을 읽으면 아직 대입되지 않은 지역을 읽어 집행 중 `UndefVarError: vtx not defined` 로 죽는다 — 이 모듈에 같은 이름의 함수가 있어도 그렇다. 왼쪽에 **다른** 지역 이름을 쓰라 (예: `zs = vtx()`).",
+   "ledger_row_type": "rewrite",
+   "n": 2,
+   "parent_record_id": "188f009900284ce36ddd32f8",
+   "record_id": "65b15642513705f96d95b5ec",
+   "role": "rewrite",
+   "roundtrip": "ok",
+   "static_calls": {
+    "closed_active_write": 0,
+    "graph_edit": 0,
+    "preprocess_env!": 0,
+    "reset_cache_resume!": 0,
+    "resync_scene_to_schedule!": 0,
+    "set_desired_global_transform!": 3,
+    "step_call": 0,
+    "update_planning_cache!": 0,
+    "validate_schedule_transform_tree": 1
+   },
+   "steps": null,
+   "trigger": "noop",
+   "why": "enact_noop: the body ran to completion and raised no error; its own returned status was relocate_zone_blocked_goals!=success. The world was measured immediately before the body ran and again immediately after, and every measured axis was identical: closed=0 active=0 n_edges=0 n_binding_changed=0 n_weights_changed=0 n_staging_moved=0. n_binding_changed is a lower bound. These six axes are the only part of the world that was measured, so this is an observation about them and not a claim that nothing at all happened."
+  }
+ ],
+ "canonical": {
+  "closed": 287,
+  "decisions": [
+   {
+    "at": 54,
+    "chosen": "NOOP nothing",
+    "enacted": "canonical",
+    "event": "ZONE"
+   }
+  ],
+  "run_fp": {
+   "code_dirty_digest": "39fd20a7caa02c9c",
+   "code_rev": "e326b43d63acb8373e40f1c7dd2cec48d523b9bc",
+   "config_digest": "d6a2c2df14e495a1"
+  },
+  "status": "complete"
+ },
+ "chain": {
+  "enact_retry": "noop_rejected",
+  "final_steps": [
+   {
+    "detail": "",
+    "name": "relocate_zone_blocked_goals!",
+    "status": "success"
+   }
+  ],
+  "interface_calls": [
+   "active_restriction_zones",
+   "agent_disc_radius",
+   "entity",
+   "free_space_status",
+   "get_center",
+   "global_transform",
+   "goal_config",
+   "goal_engulfed",
+   "is_within_capture_distance",
+   "set_desired_global_transform!",
+   "start_config",
+   "validate_schedule_transform_tree",
+   "zone_blockage"
+  ],
+  "link_problems": [],
+  "n_executed_bodies": 1,
+  "world_delta": {
+   "active": 0,
+   "closed": 0,
+   "n_binding_changed": 0,
+   "n_edges": 0,
+   "n_staging_moved": 0,
+   "n_weights_changed": 0
+  },
+  "zone_at": 54
+ },
+ "class": "easy",
+ "files": [
+  "01_decide.jl",
+  "02_rewrite.jl"
+ ],
+ "flags": [
+  "prefix_differs:init_fp"
+ ],
+ "key": "tractor|zone|s29|z29",
+ "provenance": {
+  "a2_campaign": "abl-all-tractor-20260923",
+  "a2_code": "git 13d18a19 + untracked (see legacy/source_snapshots)",
+  "source": "stream respec_history[].attempts ⋈ results/2026-09-23-repair-ablation/ledger_all.final.jsonl by record_id"
+ }
+}
