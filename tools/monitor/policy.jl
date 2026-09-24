@@ -825,15 +825,26 @@ function dspy_ready()
         if r.status == 200
             # 🔴 본문을 **여기서** 읽는다. 별도 호출을 만들면 이벤트당 HTTP 가 는다.
             #    파싱 실패는 "못 쟀다"(nothing)이지 서비스 장애가 아니다 — 두 값을 따로 둔다.
+            # 🔴 2026-09-23 (Task 12 버그 수정): 본문은 **한 번만** 파싱한다 — `String(::Vector{UInt8})`
+            #    는 바이트 벡터의 소유권을 가져가 비운다(Base 계약). 두 번째 `String(r.body)` 로
+            #    다시 읽으면 빈 문자열을 파싱하게 되어 항상 던지고, `SERVICE_REPAIR_ABLATION[]` 가
+            #    조용히 `nothing` 으로 떨어져 `assert_service_repair_ablation()` 이 매 라우터 런에서
+            #    거짓으로 죽었다. `JSON3.read` 는 바이트 벡터를 직접 받으므로 `String(...)` 변환
+            #    자체가 불필요하다.
+            local h = try
+                JSON3.read(r.body)
+            catch
+                nothing
+            end
             SURRO_KINDS[] = try
-                local ks = get(JSON3.read(String(r.body)), :surro_kinds, nothing)
+                local ks = h === nothing ? nothing : get(h, :surro_kinds, nothing)
                 ks === nothing ? nothing : Set(String.(ks))
             catch e
                 @warn "[router] /health surro_kinds unreadable -> kind support unknown" exception = e
                 nothing
             end
             SERVICE_REPAIR_ABLATION[] = try
-                local ra = get(JSON3.read(String(r.body)), :repair_ablation, nothing)
+                local ra = h === nothing ? nothing : get(h, :repair_ablation, nothing)
                 ra === nothing ? nothing : String(ra)
             catch; nothing end
         end
