@@ -321,9 +321,10 @@ end
 
 want("13") && @testset "[13] judge_candidate: 계약을 어긴 COMPLETE 는 선택 불가(T4 validator 는 계약을 안 본다)" begin
     dir = mktempdir(); par = joinpath(dir, "parent"); br = joinpath(dir, "b1"); mkpath(par); mkpath(br)
+    p13 = fresh("swap")
     r = at_step(; at = 10) do env, ctx
         C = contract(env)
-        en = enact(env, ctx, fresh("swap"); C)
+        en = enact(env, ctx, p13; C)
         CB.continue_simulation!(env, ctx.factory_vis, ctx.anim, ctx.sim_params, ctx.sim_process_data;
                                 first_batch = ctx.sim_params.sim_batch_size - en.adapter.batch_pos + 1)
         (; en, C, term = rt(TC.task_state(env, CB)), complete = CB.project_complete(env))
@@ -333,11 +334,24 @@ want("13") && @testset "[13] judge_candidate: 계약을 어긴 COMPLETE 는 선�
     open(io -> JSON3.write(io, Dict("checkpoint_id" => "t0", "task_contract" => Dict("sha256" =>
          bytes2hex(sha256(read(joinpath(par, "task_contract.json"))))))), joinpath(par, "contract.json"), "w")
     TX.write_enactment(br, r.en)
+    open(io -> JSON3.write(io, p13), br * ".proposal.json", "w")          # supervisor 가 쓴 제안 파일(T7 교차검사 대상)
     rollout(t) = (open(io -> JSON3.write(io, Dict("branch" => Dict("task_state" => t))), joinpath(br, "terminal.json"), "w");
                   (report = R.RolloutReport("p", "t0", :COMPLETE, nothing, :project_complete, 100, 1.0, 1.0, 0, Dict{String,Int}()),
                    violations = String[], supervisor = (wall_s = 1.0, cpu_s = 1.0, timed_out = false)))
     j = TX.judge_candidate(par, br; rollout = rollout(r.term))
-    @test j.eligible && j.enactment.status === :enacted && j.contract_terminal.verdict === :accept && !j.feedback_allowed
+    @test j.eligible && j.precommit_ok && j.enactment.status === :enacted && j.contract_terminal.verdict === :accept && !j.feedback_allowed
+    # terminal 에서 선행 검사는 공허하다 — 관측 경계로 남는다(T7)
+    @test any(u -> startswith(u, "terminal_precedence_vacuous") || startswith(u, "precedence_vacuous"), j.unobserved)
+    # 교차검사(T7): 제출한 제안과 다른 파일 · post_state digest 위조 → 선택 불가
+    open(io -> JSON3.write(io, merge(p13, Dict("impl_code" => replace(p13["impl_code"], "verbose = false" => "verbose = false ")))), br * ".proposal.json", "w")
+    j = TX.judge_candidate(par, br; rollout = rollout(r.term))
+    @test !j.eligible && !j.precommit_ok && has(j.reasons, "cross_check: proposal_sha256")
+    open(io -> JSON3.write(io, p13), br * ".proposal.json", "w")
+    X = rt(r.en.record); X["post_state"]["closed"] = Any[]
+    open(io -> JSON3.write(io, X), joinpath(br, "enactment.json"), "w")
+    j = TX.judge_candidate(par, br; rollout = rollout(r.term))
+    @test !j.eligible && has(j.reasons, "cross_check: post_state_sha256")
+    TX.write_enactment(br, r.en)
     bad = deepcopy(r.term)
     pc = [id for (id, t) in bad["nodes"] if t == "ProjectComplete"]
     filter!(id -> !(id in pc), bad["closed"])

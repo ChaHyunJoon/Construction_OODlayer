@@ -249,6 +249,9 @@ const ENACTMENT_STATUSES  = (:enacted, :threw, :partial, :timeout, :unobservable
                              :registration_rejected, :requires_runtime)
 const SELECTIONS          = (:noop, :tool)
 const SELECTION_CLASSES   = (:baseline_complete, :rescued, :unsolved, :certification_unavailable)
+# 후보 하나의 선택용 결과(T7). `:COMPLETE` = rollout COMPLETE **이고** 효과·원본 계약까지 통과(`judge_candidate(...).eligible`).
+# `:REJECTED` = 끝까지 못 갔거나(제안 문 거절·폐기) COMPLETE 인데 검사에서 떨어짐. rollout COMPLETE 만으로는 `:COMPLETE` 가 아니다.
+const CANDIDATE_OUTCOMES  = (:COMPLETE, :FAIL_WITHIN_BUDGET, :UNKNOWN, :REJECTED)
 const COMMIT_STATUSES     = (:committed, :aborted_resumed_noop, :replay_mismatch)
 # 설계 §5 의 checkpoint 블록. 빠진 블록이 있으면 인증 불가다.
 const CHECKPOINT_BLOCKS   = (:model_code, :task_world, :execution, :globals, :native,
@@ -413,6 +416,11 @@ struct SelectionReport
               ":certification_unavailable needs baseline UNKNOWN")
         _need(cls !== :unsolved && cls !== :rescued || base === :FAIL_WITHIN_BUDGET,
               ":rescued/:unsolved need baseline FAIL_WITHIN_BUDGET")
+        foreach(v -> _in(v, CANDIDATE_OUTCOMES, "candidate outcome"), values(cands))
+        # T7: rescued ⟹ 선택된 후보가 (검사까지 통과한) COMPLETE. raw regression ⟹ 기준 COMPLETE 이고 그 후보는 COMPLETE 아님.
+        _need(cls !== :rescued || get(cands, spid, nothing) === :COMPLETE, ":rescued needs the selected candidate :COMPLETE")
+        _need(isempty(regs) || base === :COMPLETE, "raw_regressions need baseline COMPLETE")
+        _need(all(r -> get(cands, r, :COMPLETE) !== :COMPLETE, regs), "a raw regression must be a non-COMPLETE candidate")
         new(cid, base, sel, spid, cls, regs, cands, reasons)
     end
 end

@@ -187,14 +187,15 @@ function (a::EngineAdapter)(env)
         CB.ENGINE_STEP_ADAPTER[] = a
     end
     a.steps = n
-    a_post = a.audit(env, a.spd)
-    union!(a.engine_fields, _changed(a_now.fields, a_post.fields))
-    a.seg_audit = a_post
     a.batch_pos += 1
     if a.batch_pos > sp.sim_batch_size                # continue_simulation! 의 배치 끝과 같은 자리
         Base.invokelatest(CB.monitor_emit!, env, spd.iter)
         a.batch_pos = 1
     end
+    # engine 구간 audit 은 배치 끝 `monitor_emit!` **뒤**에 닫는다(T7) — 앞에 닫으면 그 방출이 다음 코드 구간(도구 탓)에 적힌다.
+    a_post = a.audit(env, a.spd)
+    union!(a.engine_fields, _changed(a_now.fields, a_post.fields))
+    a.seg_audit = a_post
     push!(a.trace, a.snap("post_step"))
     return env
 end
@@ -543,15 +544,45 @@ function anchor_unobserved(C::AbstractDict)
 end
 
 """
-    judge_candidate(parent_dir, branch_dir; rollout = nothing) -> NamedTuple
+    cross_check(X, contract, proposal_file) -> Vector{String}
+
+worker 가 쓴 enactment 의 신원 필드를 신뢰 쪽 사실과 대조한다(T7): `proposal_sha256` ↔ supervisor 가 쓴 제안 파일의 digest,
+`proposal_id` ↔ 그 파일, `checkpoint_id` ↔ 부모 contract, `post_state_sha256` ↔ `digest(post_state)`. 어긋남마다
+`"cross_check:…"` 사유(비면 일치). 제안 파일이 없으면 대조 불가도 사유다.
+"""
+function cross_check(X::AbstractDict, contract::AbstractDict, proposal_file::AbstractString)
+    out = String[]
+    P = try isfile(proposal_file) ? _json(proposal_file) : nothing catch; nothing end
+    if P === nothing
+        push!(out, "cross_check: submitted proposal file missing/unreadable ($(basename(proposal_file))) — proposal_sha256 cannot be checked")
+    else
+        get(X, "proposal_sha256", nothing) == TC.digest(P) ||
+            push!(out, "cross_check: proposal_sha256 $(get(X, "proposal_sha256", nothing)) != digest of the submitted proposal")
+        get(X, "proposal_id", nothing) == get(P, "proposal_id", missing) ||
+            push!(out, "cross_check: proposal_id $(get(X, "proposal_id", nothing)) != submitted $(get(P, "proposal_id", nothing))")
+    end
+    get(X, "checkpoint_id", nothing) == contract["checkpoint_id"] ||
+        push!(out, "cross_check: checkpoint_id $(get(X, "checkpoint_id", nothing)) != contract $(contract["checkpoint_id"])")
+    if haskey(X, "post_state") || get(X, "post_state_sha256", nothing) !== nothing
+        ps = get(X, "post_state", nothing)
+        (ps isa AbstractDict && get(X, "post_state_sha256", nothing) == TC.digest(ps)) ||
+            push!(out, "cross_check: post_state_sha256 does not match digest(post_state)")
+    end
+    return out
+end
+
+"""
+    judge_candidate(parent_dir, branch_dir; rollout = nothing, proposal_file = branch_dir * ".proposal.json") -> NamedTuple
 
 한 후보의 판정. 입력은 전부 파일(부모 t0 의 `task_contract.json`, worker 의 `enactment.json`·`effect_trace.json`·
 `terminal.json`)과 `rollout`(= `BranchRunner.run_branch` 의 결과, full 모드). 생성 코드를 싣지 않는다.
 `eligible` ⟺ 집행 `:enacted` ∧ 효과 판정 accept/noop ∧ 후처리 실패·unsupported 없음 ∧ post-enactment 계약 통과 ∧
 rollout `COMPLETE`·위반 없음 ∧ **terminal 계약 통과**(T4 validator 는 계약을 안 본다 — 여기서 묶는다).
+`precommit_ok` = 위에서 rollout·terminal 을 뺀 것(T7 commit worker 의 t1 판정). 둘 다 `cross_check` 통과를 요구한다.
 `feedback_allowed` 는 preflight 에서만 참이다(t0 에서 첫 engine 진행 직전까지의 결과 — 설계 §6.1).
 """
-function judge_candidate(parent_dir::AbstractString, branch_dir::AbstractString; rollout = nothing)
+function judge_candidate(parent_dir::AbstractString, branch_dir::AbstractString; rollout = nothing,
+                         proposal_file::AbstractString = branch_dir * ".proposal.json")
     contract = _json(joinpath(parent_dir, "contract.json"))
     tcp = joinpath(parent_dir, "task_contract.json")
     tcm = get(contract, "task_contract", Dict{String,Any}())
@@ -593,6 +624,7 @@ function judge_candidate(parent_dir::AbstractString, branch_dir::AbstractString;
                                   Int(get(X, "engine_steps", 0)), wall, cpu, _s(post))
         haskey(X, "postprocess") && (pp = X["postprocess"])
         exc === nothing || push!(reasons, "enactment $(st): $(exc)")
+        append!(reasons, cross_check(X, contract, proposal_file))
         if C !== nothing && trace !== nothing && haskey(X, "after_body_state") && haskey(X, "audit")
             effects = EV.validate_effects(C, X["before_state"], X["after_body_state"]; audit = X["audit"], trace = trace,
                                           proposal_id = String(X["proposal_id"])).report
@@ -600,7 +632,9 @@ function judge_candidate(parent_dir::AbstractString, branch_dir::AbstractString;
         end
         C !== nothing && haskey(X, "post_state") &&
             (contract_post = TC.task_contract_report(C, X["post_state"]; terminal = false, proposal_id = String(X["proposal_id"])))
+        contract_post === nothing || append!(unobserved, contract_post.unobserved)
     end
+    xcheck_ok = !any(r -> startswith(r, "cross_check:"), reasons)
     append!(reasons, ["postprocess_failed: $(f)" for f in pp["failures"]])
     append!(reasons, ["unsupported: $(u)" for u in pp["unsupported"]])
     effects === nothing || effects.verdict in (:accept, :noop_equivalent) || append!(reasons, ["effects $(effects.verdict): $(x)" for x in effects.reasons])
@@ -614,16 +648,19 @@ function judge_candidate(parent_dir::AbstractString, branch_dir::AbstractString;
         else
             contract_terminal = TC.task_contract_report(C, ts; terminal = true, proposal_id = String(enact.proposal_id))
             contract_terminal.verdict === :accept || append!(reasons, ["terminal contract: $(x)" for x in contract_terminal.reasons])
+            append!(unobserved, contract_terminal.unobserved)     # terminal 에서 선행 검사는 공허하다(T7)
         end
         isempty(rollout.violations) || append!(reasons, ["rollout: $(x)" for x in rollout.violations])
     end
-    eligible = enact.status === :enacted && effects !== nothing && effects.verdict in (:accept, :noop_equivalent) &&
-               isempty(pp["failures"]) && isempty(pp["unsupported"]) &&
-               contract_post !== nothing && contract_post.verdict === :accept &&
+    # t1(도구 반환·후처리 직후)까지의 판정 — T7 commit worker 는 이것이 참이고 검증 분기와 같을 때만 활성화된다.
+    precommit_ok = xcheck_ok && enact.status === :enacted && effects !== nothing && effects.verdict in (:accept, :noop_equivalent) &&
+                   isempty(pp["failures"]) && isempty(pp["unsupported"]) &&
+                   contract_post !== nothing && contract_post.verdict === :accept
+    eligible = precommit_ok &&
                rep !== nothing && rep.outcome === :COMPLETE && isempty(rollout.violations) &&
                contract_terminal !== nothing && contract_terminal.verdict === :accept
     feedback_allowed = mode == "preflight"
-    return (; enactment = enact, effects, contract_post, contract_terminal, rollout = rep, eligible, reasons,
+    return (; enactment = enact, effects, contract_post, contract_terminal, rollout = rep, eligible, precommit_ok, reasons,
             unobserved = unique(unobserved), mode, feedback_allowed,
             feedback = feedback_allowed ? copy(reasons) : String[],
             checks_run = String.(pp["checks_run"]), validator_adapters = String.(get(pp, "validator_adapters", String[])),
@@ -639,11 +676,13 @@ end
 (부모가 t0 에서 tick 없이 기다린다). 1) 제안 문(생성 코드 실행 없음) — 거절이면 worker 없이 돌려준다.
 2) 새 worker(`BranchRunner.run_branch(…; proposal_file, mode)`). 3) `judge_candidate`.
 반환: `(; gate, judged, eligible, reasons, feedback_allowed, feedback, run)`.
+`mode = "commit"`(T7): full 과 같은 등록·body·후처리 뒤 worker 가 t1 에서 **멈춰** `held_t1.json` 을 쓰고 `activate`/`exit`
+명령을 기다린다. 명령은 `on_tick(p)`(supervisor 폴링 루프에서 불린다)가 보낸다 — `RepairSupervisor.commit_tool!` 가 쓴다.
 """
 function execute_tool_isolated(; parent_dir::AbstractString, raw::AbstractDict, outroot::AbstractString,
                                branch_id::AbstractString, launch_env::AbstractDict, limits::BR.Limits,
                                mode::AbstractString = "full", sandbox::Bool = true,
-                               extra_env::AbstractDict = Dict{String,String}())
+                               extra_env::AbstractDict = Dict{String,String}(), on_tick = nothing)
     contract = _json(joinpath(parent_dir, "contract.json"))
     g = PG.gate_proposal(raw; checkpoint_id = String(contract["checkpoint_id"]),
                          ablation_level = Symbol(contract["pi0"]["REPAIR_ABLATION"]))
@@ -656,8 +695,8 @@ function execute_tool_isolated(; parent_dir::AbstractString, raw::AbstractDict, 
     ispath(pf) && error("proposal file exists: $(pf) — each candidate gets a fresh namespace")
     open(io -> JSON3.write(io, raw), pf, "w")
     v = BR.run_branch(; parent_dir, branch_id, outroot, launch_env, limits, sandbox, extra_env,
-                      proposal_file = pf, mode)
-    j = judge_candidate(parent_dir, v.dir; rollout = mode == "full" ? v : nothing)
+                      proposal_file = pf, mode, on_tick)
+    j = judge_candidate(parent_dir, v.dir; rollout = mode in ("full", "commit") ? v : nothing, proposal_file = pf)
     return (; gate = g.report, judged = j, eligible = j.eligible, reasons = j.reasons,
             feedback_allowed = j.feedback_allowed, feedback = j.feedback, run = v)
 end

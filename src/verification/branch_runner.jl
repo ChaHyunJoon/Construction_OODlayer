@@ -173,21 +173,28 @@ end
 
 env 를 **통째로 교체**해서 띄우고(상속 없음) wall 을 감시한다. 정상 종료여도 토큰 스윕을 한다(떠돌이 자손 정리).
 """
-function supervise(cmd::Cmd, env::AbstractDict, log::AbstractString; wall_s::Real, token::AbstractString)
+function supervise(cmd::Cmd, env::AbstractDict, log::AbstractString; wall_s::Real, token::AbstractString,
+                   on_tick = nothing)
     cpu0 = children_cpu_s()
     io = open(log, "w")
     p = run(pipeline(setenv(cmd, env); stdout = io, stderr = io); wait = false)
     pid = getpid(p)                               # 샌드박스가 setsid → 이 pid 가 프로세스 그룹 id
     t0 = time(); timed_out = false; peak = Dict("VmPeak" => 0, "VmHWM" => 0)
-    while process_running(p)
-        if time() - t0 > wall_s; timed_out = true; break; end
-        _sample_mem!(peak, pid)
-        sleep(0.5)
+    at_kill = leftover = 0
+    # 🔴 T7: `on_tick`(commit 명령)이나 폴링이 던져도 worker 트리를 남기지 않는다 — 정리는 finally 에서.
+    try
+        while process_running(p)
+            if time() - t0 > wall_s; timed_out = true; break; end
+            _sample_mem!(peak, pid)
+            on_tick === nothing || on_tick(p)
+            sleep(0.5)
+        end
+    finally
+        at_kill = length(token_pids(token))       # 정리 전 살아 있던 토큰 프로세스 수(정리 시험이 항진이 아님을 보인다)
+        leftover = kill_tree!(p, token; pg = pid)
+        wait(p)
+        close(io)
     end
-    at_kill = length(token_pids(token))           # 정리 전 살아 있던 토큰 프로세스 수(정리 시험이 항진이 아님을 보인다)
-    leftover = kill_tree!(p, token; pg = pid)
-    wait(p)
-    close(io)
     return (exitcode = p.exitcode, termsignal = p.termsignal, timed_out = timed_out, leftover = leftover,
             token_procs_at_kill = at_kill, wall_s = time() - t0, cpu_s = children_cpu_s() - cpu0,
             vm_peak_kb = peak["VmPeak"], rss_peak_kb = peak["VmHWM"])
@@ -277,12 +284,13 @@ end
 function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, outroot::AbstractString,
                     launch_env::AbstractDict, limits::Limits, action_file::AbstractString = "",
                     sandbox::Bool = true, extra_env::AbstractDict = Dict{String,String}(),
-                    proposal_file::AbstractString = "", mode::AbstractString = "full")
+                    proposal_file::AbstractString = "", mode::AbstractString = "full", on_tick = nothing)
     occursin(r"^[A-Za-z0-9_.-]+$", branch_id) || error("branch_id must be a plain name: $(branch_id)")
     all(k -> startswith(String(k), "ZRV_PROBE_"), keys(extra_env)) || error("extra_env may only carry ZRV_PROBE_* test keys")
     # T6: 생성 도구(ToolProposal JSON)는 `proposal_file` 로 — worker 가 등록·body·후처리·(full 이면) continuation.
     isempty(action_file) || isempty(proposal_file) || error("give action_file or proposal_file, not both")
-    mode in ("full", "preflight") || error("mode must be full|preflight")
+    mode in ("full", "preflight", "commit") || error("mode must be full|preflight|commit")
+    mode == "commit" && isempty(proposal_file) && error("commit mode replays a proposal — give proposal_file")
     dir = joinpath(outroot, branch_id)
     ispath(dir) && error("branch dir exists: $(dir) — each branch gets a fresh namespace")
     mkpath(joinpath(dir, "tmp"))
@@ -307,7 +315,7 @@ function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, out
         "action_file" => action_file, "proposal_file" => proposal_file, "mode" => mode, "env_names" => sort!(collect(keys(env))), "removed_env" => removed,
         "limits" => Dict("wall_s" => limits.wall_s, "cpu_s" => limits.cpu_s, "mem_bytes" => limits.mem_bytes),
         "cmd" => collect(cmd.exec)))
-    sup = supervise(cmd, env, joinpath(dir, "run.log"); wall_s = limits.wall_s, token)
+    sup = supervise(cmd, env, joinpath(dir, "run.log"); wall_s = limits.wall_s, token, on_tick)
     _write(joinpath(dir, "supervisor.json"), Dict(String(k) => v for (k, v) in pairs(sup)))
     return validate_branch(dir, contract; branch_id, sup)
 end

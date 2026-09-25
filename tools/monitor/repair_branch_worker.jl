@@ -11,6 +11,8 @@
 #           `ZRV_BRANCH_ACTION` 파일의 `branch_action!(env)` 를 **새 익명 모듈**에서 실행(감사 기록) →
 #           `EpisodeReplay.continue_from!`(production `continue_simulation!`, invokelatest) → `terminal.json`
 #           (고정 export, schema `branch-export/1`) → exit. 어느 단계든 던지면 `error.json` + exit 3.
+#           T7 `ZRV_BRANCH_MODE=commit`: 제안 집행(검증 분기와 같은 경로) 뒤 **t1 에서 멈춰** `held_t1.json` 을 쓰고
+#           supervisor 의 `activate`(→ continuation, 활성 세계) / `exit`(버림)를 기다린다(`hold_commit!`).
 # 판정은 여기서 하지 않는다 — supervisor 프로세스의 `BranchRunner.validate_branch` 가 JSON 만 읽고 한다.
 #
 # 감사 경계(설계 §6.1 — 무엇을 보고 무엇을 못 보나):
@@ -150,6 +152,7 @@ function branch!(h, env0, ctx)
                                    "engine_steps" => en.record["engine_steps"], "returned" => nothing)
             audit = Dict{String,Any}(en.record["audit"])
             batch_pos, up_steps = en.adapter.batch_pos, en.adapter.up_steps
+            hold_commit!(dir, st, en)          # T7 commit 모드: t1 에서 supervisor 의 activate/exit 를 기다린다
         end
         audit["unobservable"] = ["mutations reverted before the action returned",
                                  "intra-step changes (only step boundaries are traced)",
@@ -183,7 +186,9 @@ function run_proposal!(st, ctx, dir, prop)
     proposal = JSON3.read(read(prop, String), Dict{String,Any})
     tcp = get(ENV, "ZRV_TASK_CONTRACT", "")
     C = isfile(tcp) ? JSON3.read(read(tcp, String), Dict{String,Any}) : nothing
-    en = TX.enact_proposal!(st.r.env, ctx.factory_vis, ctx.anim, st.sp, st.spd; proposal, mode, CB, contract = C,
+    # T7 commit 은 검증 분기(full)와 **같은** 집행 경로를 탄다 — 기록(`mode`)까지 같아야 비교가 된다.
+    en = TX.enact_proposal!(st.r.env, ctx.factory_vis, ctx.anim, st.sp, st.spd; proposal,
+                            mode = mode === :commit ? :full : mode, CB, contract = C,
                             audit = audit_snapshot, engine = engine_counters, batch_pos = st.ls.batch_pos,
                             fail_probe = get(ENV, "ZRV_PROBE_POSTPROCESS_FAIL", "0") == "1")
     TX.write_enactment(dir, en)
@@ -201,6 +206,46 @@ function run_proposal!(st, ctx, dir, prop)
     end
     mode === :preflight && exit(0)
     return en
+end
+
+# ---- T7 commit worker: t1 에서 대기 --------------------------------------------------------------
+"""
+commit 모드(`ZRV_BRANCH_MODE=commit`)에서만: 도구 집행·후처리가 끝난 **t1** 에서 `held_t1.json`(t1 iter·배치 위치·
+engine step 수·post-state digest·shadow 원장 크기)을 쓰고 tick 없이 `control/<n>.cmd` 를 기다린다.
+`activate` → 돌아가 정상 continuation(활성 세계). `exit` → continuation 없이 끝(supervisor 가 이 worker 를 버렸다).
+판정은 여기서 안 한다 — supervisor 가 enactment.json 을 검증 분기와 대조하고 trusted 검사 뒤에 명령을 보낸다.
+"""
+function hold_commit!(dir, st, en)
+    get(ENV, "ZRV_BRANCH_MODE", "") == "commit" || return nothing
+    ledger = joinpath(dir, "shadow_MONITOR_IO.jsonl")
+    c0 = hold_counters(st.spd)
+    ctl = joinpath(dir, "control"); mkpath(ctl)
+    _write(joinpath(dir, "held_t1.json"), Dict("pid" => getpid(), "t1_iter" => st.spd.iter,
+        "batch_pos" => en.adapter.batch_pos, "engine_steps" => en.record["engine_steps"],
+        "post_state_sha256" => en.record["post_state_sha256"], "counters" => c0,
+        "ledger_bytes_at_t1" => isfile(ledger) ? filesize(ledger) : 0))
+    println("[zrv-commit] holding at t1 iter=$(st.spd.iter) (no ticks) — waiting for activate/exit"); flush(stdout)
+    deadline = time() + parse(Float64, get(ENV, "ZRV_HOLD_MAX_S", "21600"))
+    n = 0
+    while true
+        f = joinpath(ctl, "$(n + 1).cmd")
+        if isfile(f)
+            n += 1
+            cmd = strip(read(f, String))
+            out = joinpath(ctl, "$(n).out.json")
+            if cmd == "activate"
+                _write(out, Dict("cmd" => "activate", "counters_equal" => hold_counters(st.spd) == c0))
+                println("[zrv-commit] activated: continuing as the active world"); flush(stdout)
+                return nothing
+            elseif cmd == "exit"
+                _write(out, Dict("cmd" => "exit")); flush(stdout); exit(0)
+            else
+                _write(out, Dict("cmd" => cmd, "error" => "unknown command"))
+            end
+        end
+        time() > deadline && (println("[zrv-commit] hold deadline passed — exiting"); flush(stdout); exit(3))
+        sleep(0.2)
+    end
 end
 
 # ---- 부모: t0 에서 대기 ------------------------------------------------------------------------

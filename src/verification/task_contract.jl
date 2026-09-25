@@ -380,7 +380,23 @@ function task_contract_report(contract::AbstractDict, state::AbstractDict; termi
     r = evaluate_task_contract(contract, state; terminal)
     v = !isempty(r.violations) ? :reject : !isempty(r.unsupported) ? :unsupported : :accept
     reasons = v === :accept ? String[] : vcat(r.violations, r.unsupported)
-    return R.ValidationReport(:task_contract, v, proposal_id, reasons, TASK_CONTRACT_VALIDATOR_VERSION)
+    return R.ValidationReport(:task_contract, v, proposal_id, reasons, TASK_CONTRACT_VALIDATOR_VERSION,
+                              Symbol[], Symbol[], precedence_unobserved(contract, state; terminal))
+end
+
+"""
+의미 선행 `(u, v)` 는 u 가 이미 닫혔으면 **공허하게** 성립한다(`evaluate_task_contract`). 그 수를 관측 경계로 싣는다(T7) —
+terminal(전부 closed)에서는 순서 검사가 통째로 공허하므로, terminal 계약 accept 를 "선행이 지켜졌다" 로 읽지 말 것.
+순서는 action 경계 스냅샷(post-enactment·trace)에서만 판정된다.
+"""
+function precedence_unobserved(contract::AbstractDict, state::AbstractDict; terminal::Bool = false)
+    closed = _strset(state["closed"])
+    es = contract["semantic_edges"]
+    k = count(e -> String(e[1]) in closed, es)
+    k == 0 && return String[]
+    tag = (terminal && k == length(es)) ? "terminal_precedence_vacuous" : "precedence_vacuous"
+    return ["$(tag): $(k)/$(length(es)) semantic edges have a closed predecessor in this state — their ordering is " *
+            "not checked here (only action-boundary snapshots judge it)"]
 end
 
 end # module TaskContract

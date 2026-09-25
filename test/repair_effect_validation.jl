@@ -6,7 +6,7 @@
 # 실제 씬(colored_8x8)에서 **현행 레포의 실제 primitive** 로 도구를 흉내 낸다(Replace·WEDGE 해제·배터리 배송 파견·
 # 제자리 배터리 교체·hot swap·빌드 강체 이동). 음성 사례는 전부 실제 세계에 심은 위반이다.
 #
-# 감사 입력은 T4 와 같은 방법으로 만든다: 필드 diff = `EpisodeCheckpointIO.world_lines` 의 필드 digest 차이(T4
+# 감사 입력은 T4 와 같은 방법으로 만든다(T7: T6 adapter 처럼 **코드 구간마다**): 필드 diff = `EpisodeCheckpointIO.world_lines` 의 필드 digest 차이(T4
 # `audit_snapshot` 과 같은 함수; 대상 모듈만 [CB] — Main 을 넣으면 이 시험의 지역 변수가 필드로 잡힌다),
 # 메서드 diff = T4 의 `RepairBranchWorker.method_digests` 그대로.
 # `adapter_step!` 은 T6 trusted engine adapter 의 **시험 대역**이다: 런타임 루프와 같은 호출(step_environment! →
@@ -31,21 +31,27 @@ snap(env) = rt(TC.task_state(env, CB))
 fields(env) = (w = E.world_lines(env; modules = [CB]); E.field_digests(w.lines, w.fields))
 chg(a, b) = sort!([String(k) for k in union(keys(a), keys(b)) if get(a, k, nothing) != get(b, k, nothing)])
 contract(env) = rt(TC.derive_task_contract(env, CB; checkpoint_id = "t0"))
+# 필드 audit 은 T6 adapter 와 같이 **코드 구간마다**(T7: 검증기가 그 계약에 기댄다 — engine 구간 변경은 도구 탓이 아니다).
+const SEG = Ref{Any}(nothing)            # (start = 현재 코드 구간 시작의 필드 digest, code = 코드 구간에서 바뀐 필드)
 function run_tool(env, f)
-    m0, f0 = W.method_digests((CB,)), fields(env)
+    m0 = W.method_digests((CB,))
+    SEG[] = (start = fields(env), code = Set{String}())
     s0 = snap(env)
     tr = Any[Dict{String,Any}("kind" => "action_start", "state" => s0)]
     f(env, tr)
     s1 = snap(env)
     tr[end]["kind"] == "preflight_stop" || push!(tr, Dict{String,Any}("kind" => "action_end", "state" => s1))
-    audit = Dict{String,Any}("fields_changed_by_action" => chg(f0, fields(env)),
+    union!(SEG[].code, chg(SEG[].start, fields(env)))
+    audit = Dict{String,Any}("fields_changed_by_action" => sort!(collect(SEG[].code)),
                              "methods_changed_by_action" => chg(m0, W.method_digests((CB,))))
     return (; s0, s1, audit, tr)
 end
 function adapter_step!(env, tr; clock_skew = 0)
     push!(tr, Dict{String,Any}("kind" => "pre_step", "state" => snap(env)))
+    union!(SEG[].code, chg(SEG[].start, fields(env)))           # 코드 구간 끝
     k = CB.SIM_STEP[] + 1 + clock_skew
     CB.step_environment!(env); CB.update_planning_cache!(env, 0.0); CB.set_sim_step!(k)
+    SEG[] = (start = fields(env), code = SEG[].code)              # engine 구간은 감사 대상이 아니다 — 다음 코드 구간 시작
     push!(tr, Dict{String,Any}("kind" => "post_step", "state" => snap(env)))
 end
 check(C, r; trace = true) = EV.validate_effects(C, r.s0, r.s1; audit = r.audit, trace = trace ? r.tr : nothing, proposal_id = "p")
@@ -112,7 +118,8 @@ vtx(env, n) = CB.get_vtx(env.sched, CB.node_id(n))
         v = check(C, r)
         @test v.report.verdict === :accept && v.report.adapter_calls == [:step_environment!]
         @test v.findings["engine_steps"] == 3
-        @test "derived_plan_after_last_engine_step:env.agent_policies" in v.report.unobserved
+        # 코드 구간 감사: engine 이 바꾼 주행 정책·배터리는 도구 탓이 아니다(T7 — 전 구간 diff 시절의 면제·표시 대신)
+        @test !("env.agent_policies" in r.audit["fields_changed_by_action"])
         v0 = check(C, r; trace = false)
         @test v0.report.verdict === :reject && has(v0.report.reasons, "clock_manipulation")
     end
@@ -275,11 +282,28 @@ vtx(env, n) = CB.get_vtx(env.sched, CB.node_id(n))
             @test r.s0["zones"] == r.s1["zones"] && "env.agent_policies" in r.audit["fields_changed_by_action"]
             v = check(C, r)
             @test v.report.verdict === :unsupported
-            @test "unverifiable:derived_plan_changed_without_engine:env.agent_policies" in v.report.reasons
+            @test "unverifiable:derived_plan_changed_by_code:env.agent_policies" in v.report.reasons
             @test any(u -> startswith(u, "intra_segment_change_and_undo"), v.report.unobserved)
         finally
             empty!(CB.RESTRICTION_ZONES[])
         end
+    end
+
+    @testset "[N19] 코드 구간의 export 밖 의미 변경 + engine step 한 번 → accept 로 접지 않는다(T7: n_engine 면제 제거)" begin
+        env = mkenv(); C = contract(env); w = workers(env)[1]
+        r = run_tool(env, function (e, tr)
+            push!(CB.BATTERY_FLEET[].depleted, w)                    # 정지 후보 표시 — task_state 의 어느 절에도 안 실린다
+            adapter_step!(e, tr)                                      # engine 구간은 resources(soc·energy)를 바꾼다
+        end)
+        @test "globals.ConstructionBots.BATTERY_FLEET" in r.audit["fields_changed_by_action"]
+        @test r.s0["resources"] != r.s1["resources"]                  # 전 구간 diff 로는 resources 절이 "설명" 해 버린다(항진 아님)
+        v = check(C, r)
+        @test v.report.verdict !== :accept
+        @test "unsupported_effect:unexported_change:globals.ConstructionBots.BATTERY_FLEET" in v.report.reasons
+        delete!(CB.BATTERY_FLEET[].depleted, w)
+        # 같은 변경을 engine 구간이 했다면(코드 구간 감사에 안 잡힘) 도구 탓이 아니다 — 음성 대조
+        r = run_tool(env, (e, tr) -> adapter_step!(e, tr))
+        @test !("globals.ConstructionBots.BATTERY_FLEET" in r.audit["fields_changed_by_action"]) && check(C, r).report.verdict === :accept
     end
 
     # 🔴 마지막: 메서드 재정의는 프로세스를 오염시킨다(되돌릴 수 없다 — 설계 §7.3).

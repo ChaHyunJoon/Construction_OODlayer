@@ -24,10 +24,10 @@ module EffectValidation
 import ..RepairTypes as R
 import ..TaskContract as TC
 
-const EFFECT_VALIDATOR_VERSION = "effect-validator/1"
+const EFFECT_VALIDATOR_VERSION = "effect-validator/2"   # /2 (T7): 의미 필드 설명을 코드 구간 절 변화로만 — `n_engine > 0` 면제 제거
 """
 모든 효과 판정에 붙는 관측 경계(기계 판독). accept 여도 이 항목은 **보장하지 않는다** — T7 은 이 목록을 보고 완전 검사된
-accept 와 구분한다. 판정마다 조건부 항목이 더해진다(`cache_only_fields:` · `derived_plan_after_last_engine_step:`).
+accept 와 구분한다. 판정마다 조건부 항목이 더해진다(`cache_only_fields:`). 🔴 `audit.fields_changed_by_action` 은 **코드 구간마다** 잰 값이어야 한다(T6 adapter) — 전 구간 한 번 diff 를 넣으면 engine 이 바꾼 필드가 도구 탓이 된다.
 """
 const UNOBSERVED_ALWAYS = [
     "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
@@ -309,6 +309,10 @@ function _validate(contract, before, after, audit, tr, pid)
     classes = Set{Symbol}()
     n_engine = 0
     preflight = false
+    # 코드 구간에서 바뀐 export 절. 감사 필드(`fields_changed_by_action`)는 **코드 구간마다** 잰 값이다(T6 adapter) — 그래서
+    # 의미 필드의 설명도 코드 구간의 절 변화로만 한다. 전 구간(before→after) 절 변화에는 engine 구간(주행·배터리 소모)이 섞여
+    # 코드가 만든 export 밖 변경을 "설명된 것" 으로 덮는다(T7 이 걷어낸 `n_engine > 0` 면제와 같은 구멍).
+    code_sections = Set{String}()
     for i in 1:length(tr)-1
         a, b = tr[i], tr[i+1]
         ka, kb = String(a["kind"]), String(b["kind"])
@@ -319,6 +323,7 @@ function _validate(contract, before, after, audit, tr, pid)
             engine_segment!(V, a["state"], b["state"], tag); n_engine += 1
         elseif ka in ("action_start", "post_step") && kb in ("pre_step", "action_end", "preflight_stop")
             code_segment!(V, classes, a["state"], b["state"], tag)
+            union!(code_sections, (String(k) for k in keys(a["state"]) if get(a["state"], k, nothing) != get(b["state"], k, nothing)))
             kb == "preflight_stop" && (preflight = true)
         else
             push!(V, "trace_order_invalid:$(tag)")
@@ -340,22 +345,21 @@ function _validate(contract, before, after, audit, tr, pid)
     methods = String.(get(audit, "methods_changed_by_action", String[]))
     isempty(methods) || push!(V, "runtime_override:" * join(methods, ","))
     for o in String.(get(audit, "opaque_added", String[])); push!(U, "unsupported_effect:persistent_callback:$(o)"); end
-    changed_sections = Set{String}(k for k in keys(before) if get(before, k, nothing) != get(after, k, nothing))
     other = false
     unexported = String[]
     unobserved = copy(UNOBSERVED_ALWAYS)
     for f in fields
         if f in HARNESS_FIELDS || f in OBSERVATION_FIELDS
         elseif f in DERIVED_PLAN_FIELDS
-            # engine step 이 없었으면 이 계획은 도구 코드가 계산했다 — 무슨 세계에서였는지 볼 수 없다.
-            n_engine == 0 ? push!(U, "unverifiable:derived_plan_changed_without_engine:$(f)") :
-                            push!(unobserved, "derived_plan_after_last_engine_step:$(f)")
+            # 감사가 코드 구간만 재므로 이 필드가 여기 있으면 도구 코드가 계획을 계산했다(engine step 이 있었어도) —
+            # 무슨 세계에서였는지 볼 수 없다. (T7: 옛 `n_engine > 0` 분기는 전 구간 감사 시절의 것이라 걷어냈다.)
+            push!(U, "unverifiable:derived_plan_changed_by_code:$(f)")
         elseif f in PROTECTED_FIELDS
             push!(V, "protected_global_changed:$(f)")
         elseif f in HOOK_FIELDS
             push!(U, "unsupported_effect:persistent_callback:$(f)")
         elseif haskey(SEMANTIC_FIELDS, f)
-            (any(s -> s in changed_sections, SEMANTIC_FIELDS[f]) || n_engine > 0) ||
+            any(s -> s in code_sections, SEMANTIC_FIELDS[f]) ||
                 (f in LAZY_CACHE_FIELDS ? push!(unexported, f) : push!(U, "unsupported_effect:unexported_change:$(f)"))
         elseif f in BOOKKEEPING_FIELDS
             other = true
