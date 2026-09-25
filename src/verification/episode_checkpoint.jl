@@ -83,7 +83,8 @@ const NATIVE_COVERED = Dict{Symbol,Symbol}(:RVO_PYTHON_MODULE => :RVO_SIM_WRAPPE
 잡으면 capture 프로세스의 훅이 resume 프로세스에 되살아난다. 모듈 이름은 자식 모듈 보행에서 뺀다.
 """
 const HARNESS_GLOBALS = Set([:HARNESS_HOOK, :RVO_RECORD_BUILDS])
-const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay, :BranchRunner, :RepairBranchWorker])   # T4: supervisor·worker 하니스
+const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay, :BranchRunner, :RepairBranchWorker,   # T4: supervisor·worker 하니스
+                             :TaskContract, :EffectValidation, :ToolProposalGate])                      # T5: 신뢰 판정(세계 상태 없음)
 
 """
 대상 모듈 밖의 로드된 의존 모듈 분류(T2 minor). 전역을 훑지 **않는** 대신, 이름과 사유를 fields.json 에

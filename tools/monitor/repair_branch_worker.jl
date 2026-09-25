@@ -22,6 +22,7 @@
 # =============================================================================
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "episode_replay.jl"))   # 훅은 ZRV_REPLAY_MODE 가 설치
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "branch_runner.jl"))
+include(joinpath(@__DIR__, "..", "..", "src", "verification", "task_contract.jl"))       # T5 원본 작업 계약
 
 module RepairBranchWorker
 
@@ -29,6 +30,7 @@ using ConstructionBots, JSON3, SHA, Random
 import ..EpisodeReplay as ER
 import ..EpisodeCheckpointIO as E
 import ..BranchRunner as BR
+import ..TaskContract as TC
 const CB = ConstructionBots
 
 "pi0 의 정의(설계 §7.1): 존 NOOP 레인 고정 · 존 전용 solver/사다리 차단. 분기 t0·끝에서 같아야 한다."
@@ -146,6 +148,7 @@ function branch!(h, env0, ctx)
             "action" => act, "audit" => audit, "env_scrubbed_after_import" => scrubbed,
             "pi0_t0" => pi0_t0, "pi0_end" => pi0_snapshot(), "ablation_counts" => CB.ablation_counts(),
             "sim_params" => _sp(st.sp), "closed_node_ids" => _ids(st.r.env, st.r.env.cache.closed_set),
+            "task_state" => TC.task_state(st.r.env, CB),      # T5: 신뢰 쪽이 원본 계약으로 terminal 을 재판정할 입력
             "project_complete_ids" => project_complete_ids(st.r.env), "pid" => getpid())))
     catch e
         _fail(dir, stage, e, catch_backtrace())
@@ -171,6 +174,16 @@ function hold!(h, env, ctx)
         "node_ids" => _ids(env, CB.Graphs.vertices(env.sched)), "zone_keys" => ls.dispatch.zone_keys,
         "pi0" => Dict{String,Any}(k => v for (k, v) in pi0_snapshot() if k != "respec_hold"),
         "real_ledger" => stream, "parent_pid" => getpid(), "gaps" => cp.uncertifiable)
+    # T5: 원본 작업 계약 — 생성 코드가 한 번도 돌지 않은 이 부모 프로세스가 t0 세계에서 유도해 **파일로** 둔다(신뢰 사본).
+    #     유도가 실패해도 부모를 죽이지 않는다 — 계약 없음은 인증 불가 사유로 남는다.
+    tcp = joinpath(h.dir, "task_contract.json")
+    contract["task_contract"] = try
+        _write(tcp, TC.derive_task_contract(env, CB; checkpoint_id = cp.checkpoint_id))
+        Dict{String,Any}("path" => tcp, "sha256" => bytes2hex(sha256(read(tcp))),
+                         "validator_version" => TC.TASK_CONTRACT_VALIDATOR_VERSION)
+    catch e
+        Dict{String,Any}("error" => first(sprint(showerror, e), 300))
+    end
     _write(joinpath(h.dir, "contract.json"), contract)
     c0 = hold_counters(spd)
     _write(joinpath(h.dir, "held.json"), Dict("counters" => c0, "pid" => getpid(), "t0_iter" => spd.iter))
