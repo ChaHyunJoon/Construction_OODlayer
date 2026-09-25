@@ -114,6 +114,33 @@ scratch = mktempdir()
         @test viol(case(t = term(methods = ["ConstructionBots.project_complete"])))[1]
         tb = term(); tb["branch"]["id"] = "other"
         @test viol(case(t = tb))[1]
+        # malformed export (worker 가 쓴 파일은 적대적 입력): 던지지 않고 UNKNOWN contract_violation
+        function raw_case(text; sup = ok_sup, row = ledger_row(), ledger_text = nothing)
+            d = joinpath(scratch, "v$(n[] += 1)"); mkpath(d)
+            write(joinpath(d, "terminal.json"), text)
+            ledger_text === nothing ? write(joinpath(d, "shadow_MONITOR_IO.jsonl"), JSON3.write(row) * "\n") :
+                                      write(joinpath(d, "shadow_MONITOR_IO.jsonl"), ledger_text)
+            return BR.validate_branch(d, contract; branch_id = "b", sup)
+        end
+        malformed(v) = v.report.outcome === :UNKNOWN && v.report.unknown_cause === :contract_violation &&
+                       any(startswith("malformed export"), v.violations)
+        @test malformed(raw_case("{not json"))                                  # invalid JSON
+        @test malformed(raw_case("[1, 2, 3]"))                                  # non-object JSON
+        @test malformed(raw_case(JSON3.write(Dict("iter" => "x"))))             # mistyped field
+        t_bad = term(); t_bad["resume"] = "oops"
+        @test malformed(raw_case(JSON3.write(t_bad)))                           # mistyped nested block
+        t_bad = term(); t_bad["branch"]["sim_params"] = [1]
+        @test malformed(raw_case(JSON3.write(t_bad)))
+        t_bad = term(); t_bad["resume"] = Dict{String,Any}(t_bad["resume"]..., "mismatched_blocks" => "")  # "" passes isempty() untyped
+        @test malformed(raw_case(JSON3.write(t_bad)))
+        @test malformed(raw_case(JSON3.write(term()); ledger_text = "[]\n"))    # ledger row not an object
+        @test malformed(raw_case(JSON3.write(term()); row = Dict("respec_history" => 5, "recovery" => [])))
+        # supervisor-observed cause wins over a malformed export
+        v = raw_case("{not json"; sup = merge(ok_sup, (timed_out = true, termsignal = 9)))
+        @test v.report.unknown_cause === :wall_timeout
+        # malformed error.json alone (crash) is still UNKNOWN, never a throw
+        d = joinpath(scratch, "v$(n[] += 1)"); mkpath(d); write(joinpath(d, "error.json"), "nope")
+        @test BR.validate_branch(d, contract; branch_id = "b", sup = merge(ok_sup, (exitcode = 3,))).report.outcome === :UNKNOWN
         # RolloutReport invariant: UNKNOWN ⟺ cause
         @test_throws ArgumentError R.RolloutReport("b", "t0", :UNKNOWN, nothing, :none, 0, 0.0, 0.0, 0, Dict{String,Int}())
     end

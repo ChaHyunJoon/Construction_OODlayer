@@ -324,7 +324,7 @@ function _last_ledger_row(dir)
     for l in eachline(p)
         isempty(strip(l)) || (last = l)
     end
-    return last === nothing ? nothing : JSON3.read(last, Dict{String,Any})
+    return last === nothing ? nothing : JSON3.read(last, Dict{String,Any})   # 객체가 아니면 던진다(호출자가 거둔다)
 end
 
 """
@@ -338,82 +338,112 @@ end
   pi0/예산 계약 위반 → `:contract_violation`(사유는 `violations`).
 """
 function validate_branch(dir::AbstractString, contract::AbstractDict; branch_id::AbstractString, sup)
-    cid = String(contract["checkpoint_id"])
-    tp, ep = joinpath(dir, "terminal.json"), joinpath(dir, "error.json")
-    term = isfile(tp) ? _json(tp) : nothing
-    err = isfile(ep) ? _json(ep) : nothing
+    cid = String(contract["checkpoint_id"])      # contract 는 부모(생성 코드 0)가 쓴 신뢰 입력
     violations = String[]
     checks = Dict{String,Any}("leftover_processes" => sup.leftover)
-    cause = if sup.timed_out
-        :wall_timeout
-    elseif sup.termsignal == SIGXCPU || (sup.termsignal == SIGKILL && !sup.timed_out)
-        :resource_limit
-    elseif err !== nothing
-        _error_cause(err)
-    elseif sup.exitcode != 0 || term === nothing
-        :worker_crash
-    else
-        nothing
+    # supervisor 가 직접 본 사실(파일 불필요)이 먼저다.
+    sup_cause = sup.timed_out ? :wall_timeout :
+                (sup.termsignal == SIGXCPU || (sup.termsignal == SIGKILL && !sup.timed_out)) ? :resource_limit : nothing
+    reason, steps, ladder, recov = :none, 0, 0, Dict{String,Int}()
+    cause = sup_cause
+    # 🔴 worker 가 쓴 파일은 **적대적 입력**이다(생성 코드가 terminal.json 을 깨진 JSON·배열·틀린 타입으로 덮어쓰고
+    #    exit 0 할 수 있다). 해석은 전부 이 try 안에서 하고, 어떤 형태로 깨져도 던지지 않고 UNKNOWN 으로 끝낸다 —
+    #    validator 가 던지면 T6 후보 루프가 멈추고 t0 에서 기다리는 부모에게 exit 가 안 간다.
+    try
+        cause, reason, steps, ladder, recov = _judge_export!(violations, checks, dir, contract, cid, branch_id, sup, sup_cause)
+    catch e
+        e isa InterruptException && rethrow()
+        empty!(violations); empty!(recov)
+        push!(violations, "malformed export: " * first(sprint(showerror, e), 300))
+        reason, steps, ladder = :none, 0, 0
+        cause = sup_cause === nothing ? :contract_violation : sup_cause
+        checks["malformed_export"] = true
     end
-    err === nothing || (checks["error"] = Dict(k => get(err, k, nothing) for k in ("stage", "kind", "exception_type", "message")))
+    outcome = cause !== nothing ? :UNKNOWN : reason === :project_complete ? :COMPLETE : :FAIL_WITHIN_BUDGET
+    report = R.RolloutReport(String(branch_id), cid, outcome, cause, reason, steps, Float64(sup.wall_s),
+                             Float64(sup.cpu_s), ladder, recov)
+    return (; report, violations, checks, supervisor = sup, dir = String(dir))
+end
+
+"export 의 한 값을 기대 타입으로. 아니면 던진다(→ `validate_branch` 가 malformed export 로 거둔다)."
+_typed(x, T, what) = x isa T ? x : throw(ArgumentError("$(what) is $(typeof(x)), expected $(T)"))
+_strs(x, what) = String[_typed(v, AbstractString, "$(what)[]") for v in _typed(x, AbstractVector, what)]
+
+"export 해석·판정 본체. 형태가 틀리면 던진다 — 호출자가 거둔다."
+function _judge_export!(violations, checks, dir, contract, cid, branch_id, sup, sup_cause)
+    tp, ep = joinpath(dir, "terminal.json"), joinpath(dir, "error.json")
+    term = isfile(tp) ? _json(tp) : nothing        # 객체가 아니면(배열·숫자·깨진 JSON) 여기서 던진다
+    err = isfile(ep) ? _json(ep) : nothing
+    cause = sup_cause !== nothing ? sup_cause :
+            err !== nothing ? _error_cause(err) :
+            (sup.exitcode != 0 || term === nothing) ? :worker_crash : nothing
+    err === nothing || (checks["error"] = Dict(k => (v = get(err, k, nothing); v isa AbstractString ? String(v) : v)
+                                              for k in ("stage", "kind", "exception_type", "message")))
     reason, steps, ladder, recov = :none, 0, 0, Dict{String,Int}()
     if term !== nothing
-        steps = Int(term["iter"]) - Int(contract["t0_iter"])
+        iter = _typed(term["iter"], Integer, "terminal.iter")
+        steps = iter - Int(contract["t0_iter"])
         b = get(term, "branch", nothing)
-        if b === nothing || get(b, "schema", "") != EXPORT_SCHEMA
+        if !(b isa AbstractDict) || get(b, "schema", "") != EXPORT_SCHEMA
             push!(violations, "export schema missing/other than $(EXPORT_SCHEMA)")
         else
             b["id"] == branch_id || push!(violations, "export branch id $(b["id"]) != $(branch_id)")
             b["checkpoint_id"] == cid || push!(violations, "export checkpoint $(b["checkpoint_id"]) != $(cid)")
-            res = term["resume"]
-            idok = isempty(res["mismatched_blocks"]) && isempty(res["dispatch_guard"]) && isempty(res["fingerprint_mismatches"])
-            checks["identity"] = Dict("mismatched_blocks" => res["mismatched_blocks"], "dispatch_guard" => res["dispatch_guard"],
-                                      "fingerprint_mismatches" => res["fingerprint_mismatches"],
-                                      "rvo_ties" => [w["ties"] for w in res["rvo_tie_watch"]])
+            res = _typed(term["resume"], AbstractDict, "terminal.resume")
+            mb, dg, fm = (_typed(res[k], AbstractVector, "resume.$(k)")
+                          for k in ("mismatched_blocks", "dispatch_guard", "fingerprint_mismatches"))
+            idok = isempty(mb) && isempty(dg) && isempty(fm)
+            checks["identity"] = Dict("mismatched_blocks" => mb, "dispatch_guard" => dg, "fingerprint_mismatches" => fm,
+                                      "rvo_ties" => [_typed(w, AbstractDict, "rvo_tie_watch[]")["ties"]
+                                                     for w in _typed(res["rvo_tie_watch"], AbstractVector, "resume.rvo_tie_watch")])
             idok || (cause === nothing && (cause = :identity_mismatch))
             # import 가 되살린 자격 증명 모양 키를 worker 가 지웠다면 분기 ENV 가 capture 와 그 키만큼 다르다(이름만).
-            checks["env_scrubbed_after_import"] = get(b, "env_scrubbed_after_import", String[])
+            checks["env_scrubbed_after_import"] = _strs(get(b, "env_scrubbed_after_import", String[]), "env_scrubbed_after_import")
             # 예산: 원래 episode 의 절대 예산 그대로여야 한다(분기가 늘릴 수 없다).
-            sp = b["sim_params"]
+            sp = _typed(b["sim_params"], AbstractDict, "branch.sim_params")
             for k in ("max_time_steps", "max_num_iters_no_progress", "sim_batch_size")
-                sp[k] == contract["sim_params"][k] ||
-                    push!(violations, "budget $(k) = $(sp[k]) != original $(contract["sim_params"][k])")
+                get(sp, k, nothing) == contract["sim_params"][k] ||
+                    push!(violations, "budget $(k) = $(get(sp, k, nothing)) != original $(contract["sim_params"][k])")
             end
-            term["iter"] <= contract["sim_params"]["max_time_steps"] ||
-                push!(violations, "horizon $(term["iter"]) exceeds max_time_steps")
+            iter <= contract["sim_params"]["max_time_steps"] ||
+                push!(violations, "horizon $(iter) exceeds max_time_steps")
             # pi0: 존 NOOP · 존 전용 solver/사다리 차단 · 레인 고정. 분기 시작(t0 import 뒤)과 끝 두 번 본다.
-            for (when, s) in (("t0", b["pi0_t0"]), ("end", b["pi0_end"]))
+            for (when, key) in (("t0", "pi0_t0"), ("end", "pi0_end"))
+                s = _typed(b[key], AbstractDict, "branch.$(key)")
                 for (k, v) in contract["pi0"]
                     get(s, k, nothing) == v || push!(violations, "pi0 $(k) at $(when) = $(get(s, k, nothing)) != $(v)")
                 end
             end
             # 감사 경계가 **관측한** runtime override 는 계약 위반이다(못 관측한 것은 능력표가 enforce 를 막는다).
-            mc = get(get(b, "audit", Dict()), "methods_changed_by_action", String[])
+            mc = _strs(get(_typed(get(b, "audit", Dict()), AbstractDict, "branch.audit"), "methods_changed_by_action", String[]),
+                       "methods_changed_by_action")
             isempty(mc) || push!(violations, "runtime methods changed by the action: $(join(mc, ", "))")
-            ladder = get(b["ablation_counts"], "ladder_zone_fired", 0)
+            ladder = _typed(get(_typed(b["ablation_counts"], AbstractDict, "branch.ablation_counts"), "ladder_zone_fired", 0),
+                            Integer, "ladder_zone_fired")
             ladder == 0 || push!(violations, "zone ladder fired $(ladder) times")
             row = _last_ledger_row(dir)
             if row === nothing
                 push!(violations, "shadow ledger missing (cannot check zone decisions)")
             else
-                for d in row["respec_history"]
+                for d in _typed(row["respec_history"], AbstractVector, "ledger.respec_history")
                     ev = String(d["input"]["event"]); ch = String(d["chosen"])
                     k = "decision:$(ev):$(first(split(ch)))"; recov[k] = get(recov, k, 0) + 1
                     ev == "ZONE" && !startswith(ch, "NOOP") && push!(violations, "zone decision $(ch) (pi0 requires NOOP)")
                 end
-                for r in row["recovery"]
+                for r in _typed(row["recovery"], AbstractVector, "ledger.recovery")
                     k = "recovery:$(r["action"]):$(r["status"])"; recov[k] = get(recov, k, 0) + 1
                 end
             end
-            closed = Set(String.(b["closed_node_ids"]))
+            closed = Set(_strs(b["closed_node_ids"], "branch.closed_node_ids"))
             req = String.(contract["required_ids"])
             complete = !isempty(req) && all(in(closed), req)
-            np, mx = Int(term["no_progress"]), Int(contract["sim_params"]["max_time_steps"])
+            np, mx = _typed(term["no_progress"], Integer, "terminal.no_progress"), Int(contract["sim_params"]["max_time_steps"])
             reason = complete ? :project_complete :
                      np >= contract["sim_params"]["max_num_iters_no_progress"] ? :no_progress_limit :
-                     term["iter"] >= mx ? :max_sim_steps : :none
-            checks["worker_claimed"] = Dict("complete" => term["complete"], "terminal_reason" => term["terminal_reason"])
-            checks["claim_agrees"] = term["complete"] == complete && String(term["terminal_reason"]) == String(reason)
+                     iter >= mx ? :max_sim_steps : :none
+            claimed = get(term, "complete", nothing); creason = get(term, "terminal_reason", nothing)
+            checks["worker_claimed"] = Dict("complete" => claimed, "terminal_reason" => creason)
+            checks["claim_agrees"] = claimed === complete && creason isa AbstractString && String(creason) == String(reason)
             reason === :none && push!(violations, "ended without a budget terminal")
         end
         # 계약 위반이 있으면 그 판은 정의된 실험(pi0·원래 예산)의 결과가 아니다. 위반 없이 종료 사유만 없으면 crash.
@@ -421,10 +451,7 @@ function validate_branch(dir::AbstractString, contract::AbstractDict; branch_id:
             cause = violations == ["ended without a budget terminal"] ? :worker_crash : :contract_violation
         end
     end
-    outcome = cause !== nothing ? :UNKNOWN : reason === :project_complete ? :COMPLETE : :FAIL_WITHIN_BUDGET
-    report = R.RolloutReport(String(branch_id), cid, outcome, cause, reason, steps, Float64(sup.wall_s),
-                             Float64(sup.cpu_s), ladder, recov)
-    return (; report, violations, checks, supervisor = sup, dir = String(dir))
+    return cause, reason, steps, ladder, recov
 end
 
 "보고서 한 장을 JSON 으로(기록용)."
