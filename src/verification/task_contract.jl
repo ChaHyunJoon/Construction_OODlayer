@@ -53,6 +53,8 @@ _t(p) = Float64[p[1], p[2], p[3]]
 _pose(t, R) = vcat(t, vec(permutedims(R)))
 "a ∘ b (b 를 a 의 좌표계에서 적은 것)."
 compose(a, b) = _pose(_R(a) * _t(b) .+ _t(a), _R(a) * _R(b))
+"inv(a) ∘ b — b 를 a 의 좌표계에서 본 상대 자세."
+relpose(a, b) = (Rt = permutedims(_R(a)); _pose(Rt * (_t(b) .- _t(a)), Rt * _R(b)))
 posediff(a, b) = maximum(abs.(Float64.(collect(a)) .- Float64.(collect(b))))
 close_pose(a, b, atol) = a !== nothing && b !== nothing && length(a) == 12 && length(b) == 12 && posediff(a, b) <= atol
 
@@ -191,11 +193,24 @@ function derive_task_contract(env, CB::Module; checkpoint_id::AbstractString, at
         tugo = _s(CB.node_id(n))
         cargo = _s(CB.cargo_id(CB.entity(n)))
         ftu = only_of(get(pred, tugo, String[]), "FormTransportUnit")
+        # 화물의 출처 노드(부품 = ObjectStart, 하위 조립체 = 그 AssemblyComplete) — FTU 의 건설 선행
+        src = ftu === nothing ? nothing :
+              (m = [x for x in get(pred, ftu, String[]) if get(nodes, x, "") in ("ObjectStart", "AssemblyComplete")];
+               length(m) == 1 ? m[1] : nothing)
         dep = only_of(get(succ, tugo, String[]), "DepositCargo")
         lift = dep === nothing ? nothing : only_of(get(succ, dep, String[]), "LiftIntoPlace")
         asm = get(parent_of, cargo, nothing)
-        push!(chains, Dict{String,Any}("cargo" => cargo, "ftu" => ftu, "tugo" => tugo, "deposit" => dep,
-            "lift" => lift, "assembly" => asm, "assembly_complete" => asm === nothing ? nothing : get(ac_of, asm, nothing)))
+        ac = asm === nothing ? nothing : get(ac_of, asm, nothing)
+        P = s["poses"]
+        pz(id, f) = (id === nothing || !haskey(P, id)) ? nothing : get(P[id], f, nothing)
+        rel(a, b) = (a === nothing || b === nothing) ? nothing : relpose(a, b)
+        # 운반의 **양 끝 닻**(t0 상대 자세): 하역 자리는 받는 조립체의 staging 자세 기준(장부가 이미 그렇게 묶는다 —
+        # `validate_schedule_transform_tree` 의 `assert_transform_tree_ancestor(goal_config(deposit), start_config(assembly_complete))`),
+        # 팀 형성 자리는 화물 출처 자세 기준. 사슬 연속성만으로는 하역 노드째 옮기는 것을 못 본다(TUGo.goal 이 자식이라 따라온다).
+        push!(chains, Dict{String,Any}("cargo" => cargo, "source" => src, "ftu" => ftu, "tugo" => tugo, "deposit" => dep,
+            "lift" => lift, "assembly" => asm, "assembly_complete" => ac,
+            "deposit_rel_assembly" => rel(pz(ac, "config"), pz(dep, "config")),
+            "ftu_rel_source" => rel(pz(src, "config"), pz(ftu, "config"))))
     end
     sort!(chains; by = c -> c["tugo"])
     return Dict{String,Any}("schema" => TASK_CONTRACT_SCHEMA, "checkpoint_id" => String(checkpoint_id),
@@ -212,7 +227,8 @@ function derive_task_contract(env, CB::Module; checkpoint_id::AbstractString, at
             "semantic_edges" => "construction↔construction edges at t0 minus WEDGE_EDGES (runtime serialization)",
             "closed_at_t0" => "past inviolability (respec/verifier.jl build_invariant)",
             "components" => "scene-tree assembly_components (child relative transforms)",
-            "transport_chains" => "FTU→TUGo→Deposit→Lift per transport unit; pose continuity",
+            "transport_chains" => "FTU→TUGo→Deposit→Lift per transport unit; pose continuity + end anchors " *
+                                  "(Deposit.config rel receiving AssemblyComplete.config, FTU.config rel cargo source config) at t0",
             "specs" => "PathSpec of required nodes (min_duration + plan flags) — unchanged by legit translation and by a full run (measured)",
             "robot_team_slots" => "structural, on the evaluated state: every RobotGo→FormTransportUnit edge ends at one of the team's slots",
             "zones" => "RESTRICTION_ZONES at t0"))
@@ -224,14 +240,23 @@ end
 _strset(x) = Set{String}(String(v) for v in x)
 _pairset(x) = Set{Tuple{String,String}}((String(e[1]), String(e[2])) for e in x)
 
-"u 에서 v 로 가는 경로가 있는가(간선 방향)."
-function _reachable(adj, u, v)
+"""
+u 에서 v 로 **아직 닫히지 않은 중간 노드만** 지나는 경로가 있는가.
+
+근거(엔진의 활성화 규칙): 노드는 **직접** 선행이 전부 closed 면 활성이 된다(`essential_tg_coponents.jl` 의 active_set
+규칙 — 순수 DAG frontier). 그래서 `u → x → v` 에서 x 가 이미 closed 면 x 는 v 를 u 에 묶지 않는다 — v 는 u 와 무관하게
+열린다. 반대로 경로의 모든 중간 노드가 열려 있으면, 귀납으로 각 중간 노드는 자기 앞(결국 u)이 닫히기 전에 활성이 될 수
+없으므로 v 도 u 보다 먼저 닫힐 수 없다 — 이후 그래프를 바꾸는 것이 공통 continuation 뿐이라는 전제 아래(도구의 그래프
+편집은 action 경계의 스냅샷에서 이 함수로 판정된다).
+"""
+function _reachable_open(adj, u, v, closed)
     seen = Set{String}([u]); stack = [u]
     while !isempty(stack)
         x = pop!(stack)
         for y in get(adj, x, String[])
             y == v && return true
-            y in seen || (push!(seen, y); push!(stack, y))
+            (y in seen || y in closed) && continue
+            push!(seen, y); push!(stack, y)
         end
     end
     return false
@@ -267,7 +292,10 @@ function evaluate_task_contract(contract::AbstractDict, state::AbstractDict; ter
     for e in contract["semantic_edges"]
         u, v = String(e[1]), String(e[2])
         (haskey(nodes, u) && haskey(nodes, v)) || continue        # 삭제는 위에서 이미 잡았다
-        (u, v) in E || _reachable(adj, u, v) || push!(V, "semantic_precedence_broken:$(u)->$(v)")
+        # u 가 이미 닫혔으면 이 선행은 충족됐다. 열려 있으면 v 는 **열린 경로**로만 u 에 묶여야 한다(`_reachable_open`).
+        # ⚠️ terminal(전부 closed)에서는 이 검사가 공허하다 — 순서는 action 경계 스냅샷에서 판정한다(보고서 fix 절).
+        u in closed || (u, v) in E || _reachable_open(adj, u, v, closed) ||
+            push!(V, "semantic_precedence_broken:$(u)->$(v)")
         v in closed && !(u in closed) && push!(V, "closed_before_predecessor:$(v)<-$(u)")
     end
     for id in contract["closed_at_t0"]
@@ -288,6 +316,16 @@ function evaluate_task_contract(contract::AbstractDict, state::AbstractDict; ter
             push!(V, "transport_discontinuous:tugo_start!=ftu_config:$(cg)")
         close_pose(pose(c["deposit"], "cargo_goal_config"), pose(c["lift"], "start_config"), atol) ||
             push!(V, "deposit_discontinuous:deposit_cargo_goal!=lift_start:$(cg)")
+        # 양 끝 닻: 하역 자리가 받는 조립체 기준으로, 팀 형성 자리가 화물 출처 기준으로 t0 과 같아야 한다.
+        # 빌드 전체 이동·staging 이동은 조립체와 그 하역 자리를 **같이** 옮기므로 이 관계를 지킨다(시험 [4]).
+        for (k, a_, af, b_, tag) in (("deposit_rel_assembly", c["assembly_complete"], "config", c["deposit"], "deposit"),
+                                     ("ftu_rel_source", get(c, "source", nothing), "config", c["ftu"], "ftu"))
+            want = get(c, k, nothing)
+            want === nothing && continue
+            pa, pb = pose(a_, af), pose(b_, "config")
+            (pa !== nothing && pb !== nothing && close_pose(relpose(pa, pb), want, atol)) ||
+                push!(V, "transport_anchor_moved:$(tag):$(cg)")
+        end
         a = c["assembly"]
         if a !== nothing
             rel = get(get(contract["components"], a, Dict()), cg, nothing)

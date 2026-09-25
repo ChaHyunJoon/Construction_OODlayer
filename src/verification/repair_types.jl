@@ -300,13 +300,16 @@ struct ValidationReport
     validator_version::String
     effect_classes::Vector{Symbol}   # 실제 diff/trace 에서 유도(T5). 모델 선언이 아니다
     adapter_calls::Vector{Symbol}    # trusted engine adapter 로 중재할 호출
+    # 이 판정이 **보지 못한** 것(T5 fix): 검사 경계 밖이라 accept 여도 보장하지 않는 항목. 비어 있으면 "주장 없음" 이
+    # 아니라 그 단계가 관측 경계를 선언하지 않았다는 뜻이다(봉투 단계 등).
+    unobserved::Vector{String}
     function ValidationReport(stage, verdict, proposal_id, reasons, validator_version,
-                              effect_classes = Symbol[], adapter_calls = Symbol[])
+                              effect_classes = Symbol[], adapter_calls = Symbol[], unobserved = String[])
         _in(stage, VALIDATION_STAGES, "stage")
         _in(verdict, VALIDATION_VERDICTS, "verdict")
         _need(verdict === :accept || !isempty(reasons), "non-accept verdict needs a reason")
         foreach(c -> _in(c, EFFECT_CLASSES, "effect_class"), effect_classes)
-        new(stage, verdict, proposal_id, reasons, validator_version, effect_classes, adapter_calls)
+        new(stage, verdict, proposal_id, reasons, validator_version, effect_classes, adapter_calls, unobserved)
     end
 end
 

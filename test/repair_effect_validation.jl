@@ -64,6 +64,8 @@ vtx(env, n) = CB.get_vtx(env.sched, CB.node_id(n))
         @test v.report.verdict === :accept
         @test :assignment in v.classes && :resource in v.classes && !(:geometry in v.classes)
         @test v.report.stage === :effects && isempty(v.report.adapter_calls)
+        # accept 여도 관측 경계가 기계 판독으로 붙는다(T5 fix 3)
+        @test any(u -> startswith(u, "intra_segment_change_and_undo"), v.report.unobserved)
     end
 
     @testset "[A2] 원본 선행을 보존하는 임시 간선 제거(WEDGE 해제) — 수용" begin
@@ -110,6 +112,7 @@ vtx(env, n) = CB.get_vtx(env.sched, CB.node_id(n))
         v = check(C, r)
         @test v.report.verdict === :accept && v.report.adapter_calls == [:step_environment!]
         @test v.findings["engine_steps"] == 3
+        @test "derived_plan_after_last_engine_step:env.agent_policies" in v.report.unobserved
         v0 = check(C, r; trace = false)
         @test v0.report.verdict === :reject && has(v0.report.reasons, "clock_manipulation")
     end
@@ -253,6 +256,30 @@ vtx(env, n) = CB.get_vtx(env.sched, CB.node_id(n))
         rid = first(r0)
         r = run_tool(env, (e, tr) -> (CB.BATTERY_FLEET[].energy_J[rid] = 0.0))
         @test has(check(C, r).report.reasons, "cost_evasion:energy_J")
+    end
+
+    @testset "[N18] 존 제거 → 주행 정책 재계산 → 복원: 끝 상태는 같지만 accept 로 접지 않는다" begin
+        env = mkenv()
+        for k in 1:40; CB.step_environment!(env); CB.update_planning_cache!(env, 0.0); CB.set_sim_step!(k); end
+        CB.add_restriction_zone!(:t5_zone, [0.5, 0.5], 0.3)
+        try
+            C = contract(env)
+            navs = [CB.get_node(env.sched, v).node for v in env.cache.active_set
+                    if CB.get_node(env.sched, v).node isa Union{CB.RobotGo,CB.TransportUnitGo}]
+            @test !isempty(navs)
+            r = run_tool(env, function (e, tr)
+                z = pop!(CB.RESTRICTION_ZONES[], :t5_zone)
+                foreach(n -> CB.get_twist_cmd(n, e), navs)             # 존 없는 세계에서 정책 갱신
+                CB.RESTRICTION_ZONES[][:t5_zone] = z
+            end)
+            @test r.s0["zones"] == r.s1["zones"] && "env.agent_policies" in r.audit["fields_changed_by_action"]
+            v = check(C, r)
+            @test v.report.verdict === :unsupported
+            @test "unverifiable:derived_plan_changed_without_engine:env.agent_policies" in v.report.reasons
+            @test any(u -> startswith(u, "intra_segment_change_and_undo"), v.report.unobserved)
+        finally
+            empty!(CB.RESTRICTION_ZONES[])
+        end
     end
 
     # 🔴 마지막: 메서드 재정의는 프로세스를 오염시킨다(되돌릴 수 없다 — 설계 §7.3).

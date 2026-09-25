@@ -25,6 +25,15 @@ import ..RepairTypes as R
 import ..TaskContract as TC
 
 const EFFECT_VALIDATOR_VERSION = "effect-validator/1"
+"""
+모든 효과 판정에 붙는 관측 경계(기계 판독). accept 여도 이 항목은 **보장하지 않는다** — T7 은 이 목록을 보고 완전 검사된
+accept 와 구분한다. 판정마다 조건부 항목이 더해진다(`cache_only_fields:` · `derived_plan_after_last_engine_step:`).
+"""
+const UNOBSERVED_ALWAYS = [
+    "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+    "intra_engine_step_changes: only step boundaries are snapshotted",
+    "worker_export_forgery: task_state/audit are written inside the worker process",
+    "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"]
 const TRACE_KINDS = ("action_start", "pre_step", "post_step", "action_end", "preflight_stop")
 "본체 교체 사건(스페어 본체를 소모한다). `:battery_swap` 은 같은 본체다(asset_ledger.jl)."
 const BODY_EVENTS = ("asset_replacement", "tow_replacement")
@@ -43,9 +52,15 @@ const SEMANTIC_FIELDS = Dict(
     _g("BATTERY_DELIVERIES") => ("resources",), _g("BATTERY_FLEET") => ("resources",), _g("ASSET_LEDGER") => ("resources",),
     _g("FAULTED_ROBOTS") => ("resources",), _g("STALLED_ROBOTS") => ("resources",), _g("STANDING_CARGO_BANS") => ("resources",),
     _g("WEDGE_EDGES") => ("wedge_edges",), _g("SIM_STEP") => ("clock",))
+"""
+파생 **계획**(주행 정책·staging 완충). 현재 세계에서 계산되는 값이라, engine step 없이 코드가 바꿨다면 그것이 **어떤 세계에서**
+계산됐는지 diff 로 알 수 없다 — 존을 잠깐 지우고 정책을 다시 계산한 뒤 복원하면 끝 상태는 같고 정책만 남는다(설계 §6.1:
+diff 만으로 일시적 존 제거를 잡았다고 하지 않는다). 그래서 `:accept` 로 접지 않고 `:unsupported`(검증 불가) 로 표시한다.
+"""
+const DERIVED_PLAN_FIELDS = Set(["env.agent_policies", "env.staging_buffers"])
 "다른 효과의 부수 장부·파생 캐시. 이것만 바뀌었으면 효과 `:other`."
-const BOOKKEEPING_FIELDS = Set(vcat(["env.cache", "env.agent_policies", "env.agent_parent_build_step_active",
-    "env.active_build_steps", "env.staging_buffers", "env.max_cargo_id", "env.max_robot_go_id"],
+const BOOKKEEPING_FIELDS = Set(vcat(["env.cache", "env.agent_parent_build_step_active",
+    "env.active_build_steps", "env.max_cargo_id", "env.max_robot_go_id"],
     _g.(["VALID_ID_COUNTERS", "INVALID_ID_COUNTERS", "_CACHE_TIMESTAMP_COUNTER", "RECOVERY_SPARES", "CHECKED_OUT_SPARES",
          "HOT_SWAP_ASSETS", "DECOMMISSIONED_BODIES", "INPLACE_BREAKDOWN_MARKS", "DISSOLVED_GATES", "LAST_AUTO_EFFICIENCY_W",
          "LAST_CARGO_BAN_ROWS", "LAST_EDGE_COSTS", "LAST_ENACT_REPORT", "ENACT_ORDER_LOG", "RESOLVE_CALLS",
@@ -258,7 +273,8 @@ function validate_effects(contract::AbstractDict, before, after; audit, trace = 
               "trace does not end at `after`")
     catch e
         e isa MalformedExport || rethrow()
-        return _result(:certification_unavailable, ["malformed_export: " * e.msg], proposal_id, Symbol[], Dict{String,Any}())
+        return _result(:certification_unavailable, ["malformed_export: " * e.msg], proposal_id, Symbol[],
+                       Dict{String,Any}("unobserved" => copy(UNOBSERVED_ALWAYS)))
     end
     try
         return _validate(contract, before, after, audit, trace === nothing ?
@@ -267,13 +283,13 @@ function validate_effects(contract::AbstractDict, before, after; audit, trace = 
     catch e
         e isa InterruptException && rethrow()
         return _result(:certification_unavailable, ["validator_error: " * first(sprint(showerror, e), 300)], proposal_id,
-                       Symbol[], Dict{String,Any}())
+                       Symbol[], Dict{String,Any}("unobserved" => copy(UNOBSERVED_ALWAYS)))
     end
 end
 
 function _result(verdict, reasons, pid, classes, findings; adapter = Symbol[])
     rep = R.ValidationReport(:effects, verdict, pid, verdict === :accept ? String[] : reasons, EFFECT_VALIDATOR_VERSION,
-                             classes, adapter)
+                             classes, adapter, String.(get(findings, "unobserved", UNOBSERVED_ALWAYS)))
     return (; report = rep, classes, findings)
 end
 
@@ -316,8 +332,13 @@ function _validate(contract, before, after, audit, tr, pid)
     changed_sections = Set{String}(k for k in keys(before) if get(before, k, nothing) != get(after, k, nothing))
     other = false
     unexported = String[]
+    unobserved = copy(UNOBSERVED_ALWAYS)
     for f in fields
         if f in HARNESS_FIELDS || f in OBSERVATION_FIELDS
+        elseif f in DERIVED_PLAN_FIELDS
+            # engine step 이 없었으면 이 계획은 도구 코드가 계산했다 — 무슨 세계에서였는지 볼 수 없다.
+            n_engine == 0 ? push!(U, "unverifiable:derived_plan_changed_without_engine:$(f)") :
+                            push!(unobserved, "derived_plan_after_last_engine_step:$(f)")
         elseif f in PROTECTED_FIELDS
             push!(V, "protected_global_changed:$(f)")
         elseif f in HOOK_FIELDS
@@ -332,10 +353,12 @@ function _validate(contract, before, after, audit, tr, pid)
         end
     end
     other && isempty(classes) && push!(classes, :other)
+    isempty(unexported) || push!(unobserved, "cache_only_fields: " * join(unexported, ","))
     cls = [c for c in R.EFFECT_CLASSES if c in classes]
     adapter = n_engine > 0 ? [:step_environment!] : Symbol[]
     findings = Dict{String,Any}("engine_steps" => n_engine, "violations" => V, "unsupported" => U,
-                                "notes" => rc.notes, "fields" => fields, "cache_only_changes" => unexported)
+                                "notes" => rc.notes, "fields" => fields, "cache_only_changes" => unexported,
+                                "unobserved" => unobserved)
     !isempty(V) && return _result(:reject, vcat(V, U), pid, cls, findings; adapter)
     !isempty(U) && return _result(:unsupported, U, pid, cls, findings; adapter)
     preflight && return _result(:requires_runtime, ["requires_runtime: engine progress requested (preflight stopped before it)"],

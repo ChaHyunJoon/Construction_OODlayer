@@ -98,6 +98,48 @@ const OUT = mktempdir()
         open(io -> JSON3.write(io, s), joinpath(OUT, "goal_start_terminal.json"), "w")
     end
 
+    @testset "[3b] 하역 노드째 TU 출발점으로 옮김: 사슬 연속성은 성립 — 양 끝 닻이 잡는다" begin
+        env = mkenv(); C = contract(env)
+        tug = first(nodes_of(env, CB.TransportUnitGo)); dep = CB.get_node(env.sched, CB.DepositCargo(CB.entity(tug)))
+        CB.set_desired_global_transform!(CB.start_config(dep), CB.global_transform(CB.start_config(tug)))
+        r = ev(C, env)
+        @test !has(r.violations, "transport_skipped") && !has(r.violations, "deposit_discontinuous")   # 옛 규칙은 통과시킨다
+        @test has(r.violations, "transport_anchor_moved:deposit:")
+        runall!(env)
+        @test CB.project_complete(env)                         # 완주한다(실측)
+        @test has(ev(C, env; terminal = true).violations, "transport_anchor_moved:deposit:")
+    end
+
+    @testset "[3c] 팀 형성 자리를 하역 자리로 옮김(TUGo.start 도 같이): 닻이 잡는다" begin
+        env = mkenv(); C = contract(env)
+        tug = first(nodes_of(env, CB.TransportUnitGo)); tu = CB.entity(tug)
+        dep = CB.get_node(env.sched, CB.DepositCargo(tu)); ftu = CB.get_node(env.sched, CB.FormTransportUnit(tu))
+        g = CB.global_transform(CB.start_config(dep))
+        CB.set_desired_global_transform!(CB.start_config(ftu), g); CB.set_desired_global_transform!(CB.start_config(tug), g)
+        r = ev(C, env)
+        @test !has(r.violations, "transport_discontinuous")
+        @test has(r.violations, "transport_anchor_moved:ftu:")
+    end
+
+    @testset "[5b] 닫힌 중간 노드를 거친 우회는 선행을 지키지 않는다 · 열린 중간 노드는 지킨다" begin
+        env = mkenv(); runall!(env; kmax = 300); C = contract(env)                    # t0 = 300 스텝 뒤
+        cl = env.cache.closed_set
+        tug = first(n for n in nodes_of(env, CB.TransportUnitGo)
+                    if !(vtx(env, n) in cl) && !(vtx(env, CB.get_node(env.sched, CB.DepositCargo(CB.entity(n)))) in cl))
+        dep = CB.get_node(env.sched, CB.DepositCargo(CB.entity(tug)))
+        tv, dv = vtx(env, tug), vtx(env, dep)
+        rgs = [v for v in CB.Graphs.vertices(env.sched) if CB.get_node(env.sched, v).node isa CB.RobotGo]
+        x_closed = first(v for v in rgs if v in cl)
+        x_open = first(v for v in rgs if !(v in cl))
+        CB.Graphs.rem_edge!(env.sched, tv, dv)
+        CB.Graphs.add_edge!(env.sched, tv, x_closed); CB.Graphs.add_edge!(env.sched, x_closed, dv)
+        vs = ev(C, env).violations
+        @test "semantic_precedence_broken:$(string(CB.node_id(tug)))->$(string(CB.node_id(dep)))" in vs
+        CB.Graphs.rem_edge!(env.sched, tv, x_closed); CB.Graphs.rem_edge!(env.sched, x_closed, dv)
+        CB.Graphs.add_edge!(env.sched, tv, x_open); CB.Graphs.add_edge!(env.sched, x_open, dv)
+        @test !has(ev(C, env).violations, "semantic_precedence_broken")               # 열린 경로는 여전히 묶는다
+    end
+
     @testset "[4] 합법 기하: 빌드 전체 강체 이동은 통과(기하를 금지하지 않는다)" begin
         env = mkenv(); C = contract(env)
         CB._apply_uniform_translation!(env, [0.3, -0.2])
