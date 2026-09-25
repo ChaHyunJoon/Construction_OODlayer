@@ -83,7 +83,7 @@ const NATIVE_COVERED = Dict{Symbol,Symbol}(:RVO_PYTHON_MODULE => :RVO_SIM_WRAPPE
 잡으면 capture 프로세스의 훅이 resume 프로세스에 되살아난다. 모듈 이름은 자식 모듈 보행에서 뺀다.
 """
 const HARNESS_GLOBALS = Set([:HARNESS_HOOK, :RVO_RECORD_BUILDS])
-const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay])
+const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay, :BranchRunner, :RepairBranchWorker])   # T4: supervisor·worker 하니스
 
 """
 대상 모듈 밖의 로드된 의존 모듈 분류(T2 minor). 전역을 훑지 **않는** 대신, 이름과 사유를 fields.json 에
@@ -125,7 +125,8 @@ sha256 만** 싣는다(값을 쓰지 않는다 — 복원하지 않고 대조만
 """
 const ENV_IGNORE_PREFIX = ("ZRV_", "TMUX", "TERM", "SSH_", "XDG_", "DBUS_", "LC_", "GPG_", "VSCODE", "CLAUDE")
 const ENV_IGNORE = Set(["_", "PWD", "OLDPWD", "SHLVL", "DISPLAY", "WINDOWID", "COLUMNS", "LINES",
-    "DEMO_OUT_DIR", "DEMO_SUMMARY", "MONITOR_STREAM", "MONITOR_RUN_ID", "STALL_PROBE_OUT"])
+    "DEMO_OUT_DIR", "DEMO_SUMMARY", "MONITOR_STREAM", "MONITOR_RUN_ID", "STALL_PROBE_OUT",
+    "TMPDIR"])   # TMPDIR (T4): 분기마다 자기 디렉터리 — 출력 위치와 같은 뜻
 _env_ignored(k) = k in ENV_IGNORE || any(p -> startswith(k, p), ENV_IGNORE_PREFIX)
 _env_secret(k) = occursin(r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL"i, k)
 env_snapshot() = sort!([(k, _env_secret(k) ? "sha256:" * bytes2hex(sha256(v)) : v)

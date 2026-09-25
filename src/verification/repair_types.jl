@@ -240,8 +240,10 @@ const VALIDATION_VERDICTS = (:accept, :reject, :unsupported, :noop_equivalent,
 const VALIDATION_STAGES   = (:envelope, :capability, :source, :effects, :task_contract)
 const EFFECT_CLASSES      = (:geometry, :assignment, :schedule_graph, :resource, :other)
 const ROLLOUT_OUTCOMES    = (:COMPLETE, :FAIL_WITHIN_BUDGET, :UNKNOWN)
+# `:contract_violation`(T4) = 분기가 끝까지 돌았지만 pi0/예산 계약 밖에서 돌았다(ablation 해제·존 비-NOOP·
+# 예산 변경·지평 초과) — 정의된 실험의 결과가 아니므로 모른다(`BranchRunner.validate_branch` 가 사유를 싣는다).
 const UNKNOWN_CAUSES      = (:wall_timeout, :worker_crash, :solver_error, :provider_error,
-                             :identity_mismatch, :resource_limit)
+                             :identity_mismatch, :resource_limit, :contract_violation)
 const TERMINAL_REASONS    = (:project_complete, :no_progress_limit, :max_sim_steps, :none)
 const ENACTMENT_STATUSES  = (:enacted, :threw, :partial, :timeout, :unobservable,
                              :registration_rejected, :requires_runtime)

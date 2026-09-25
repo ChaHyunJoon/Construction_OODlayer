@@ -971,6 +971,13 @@ const CONFIG_ENV_OBSERVATIONAL = [
     # 검증 하니스(zone-repair-verification T3, `src/verification/episode_replay.jl`) — 모드·출력·진단.
     # 동역학을 안 바꾼다(재생 게이트가 잰다) → 지문 제외.
     "ZRV_REPLAY_MODE", "ZRV_REPLAY_DIR", "ZRV_CHECKPOINT", "ZRV_TRACE_DETAIL", "ZRV_DIAG_INVENTORY",
+    # T4 branch worker(`tools/monitor/repair_branch_worker.jl`) — 역할·분기 id·namespace 토큰·대기 한도·결과 위치·
+    # 시험 탐침. `ZRV_BRANCH_ACTION` 은 분기 동작 파일이라 동역학을 바꾸지만 **같은 checkpoint 의 분기끼리 달라야**
+    # 하는 값이다 — 지문에 넣으면 재개가 거절된다. 그 정체는 export 의 `action.file_sha256` 이 싣는다.
+    "ZRV_BRANCH_ROLE", "ZRV_BRANCH_ID", "ZRV_BRANCH_TOKEN", "ZRV_BRANCH_ACTION", "ZRV_HOLD_MAX_S",
+    "ZRV_RESULTS_DIR", "ZRV_PROBE_PORT", "ZRV_PROBE_PID", "ZRV_T4_HANG_WALL",
+    # 프로세스 기본값 — `BranchRunner.base_env` 가 worker 의 **새** env 에 그대로 옮긴다(설정 손잡이 아님).
+    "HOME", "PATH", "USER",
 ]
 
 # 보조 규칙: 이 접두사로 시작하는 **설정된** env 중 위 세 목록에 없는 것도 지문에 든다

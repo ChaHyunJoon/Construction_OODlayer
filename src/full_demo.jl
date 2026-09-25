@@ -172,7 +172,9 @@ function _run_lego_demo_impl(;
     max_steps::Int=100000,                           # 시뮬레이션 최대 스텝 수(무한루프 방지)
     staging_buffer_factor::Float64=1.2,              # 적치(staging) 영역 여유 반경 배수
     build_step_buffer_factor::Float64=0.5,           # 조립 단계 영역 여유 반경 배수
-    base_results_path::String=joinpath(dirname(pathof(ConstructionBots)), "..", "results"),  # 결과 저장 최상위 폴더
+    # 결과 저장 최상위 폴더. `ZRV_RESULTS_DIR`(T4 branch worker 만 설정)는 분기마다 자기 디렉터리로 돌린다 —
+    # 기본 위치는 모든 런이 공유하는 `results/<project>/stats.toml` 이라 분기가 거기 쓰면 host 쓰기다(샌드박스가 거절).
+    base_results_path::String=get(ENV, "ZRV_RESULTS_DIR", joinpath(dirname(pathof(ConstructionBots)), "..", "results")),
     results_path::String=joinpath(base_results_path, project_name),  # 이 프로젝트 결과 저장 폴더
     assignment_mode::Symbol=:greedy,                 # 작업 배정 방식(:greedy=탐욕, :milp=정수계획)  ※ :이름 은 Symbol(가벼운 상수 문자열)
     greedy_cost::GreedyCost=GreedyFinalTimeCost(),   # greedy 배정의 엣지 비용 기준(spec §6.2). 기본값은 종전 하드코딩 값 그대로 = 동작 불변.

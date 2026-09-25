@@ -101,6 +101,7 @@ mutable struct Harness
     rng_at_t0::Any
     t0_iter::Int
     terminal_written::Bool
+    t0::Any                      # (cp, loop_state) of the t0 capture (T4 parent verify)
 end
 const H = Ref{Union{Nothing,Harness}}(nothing)
 
@@ -253,6 +254,9 @@ function _export(h::Harness, id, env; loop_state = nothing, pre = "", post = "",
 end
 
 function _capture_t0!(h::Harness, env, ctx)
+    # 🔴 재개된 프로세스의 첫 배치는 `sim_batch_size` 가 줄어든 `sp` 와 1 부터 다시 센 `batch_pos` 를 훅에
+    #    넘긴다 — 거기서 다시 capture 하면 batch_pos/sim_params 가 원본과 어긋난 checkpoint 가 된다(T3 우려).
+    h.resumed && error("[zrv] nested capture inside a resumed process is unsupported (batch_pos/sim_params misalign)")
     spd, sp = ctx.sim_process_data, ctx.sim_params
     disp = dispatch_cursor()
     loop_state = (iter = spd.iter, batch_pos = ctx.batch_pos, stop_simulating = spd.stop_simulating,
@@ -272,13 +276,21 @@ function _capture_t0!(h::Harness, env, ctx)
                          "capture_seconds" => t))
     h.rng_at_t0 = copy(Random.default_rng())
     h.t0_iter = spd.iter
+    h.t0 = (cp = cp, loop_state = loop_state)
     println("[zrv] t0 captured iter=$(spd.iter) batch_pos=$(ctx.batch_pos) zone_event_index=$(disp.zone_event_index) " *
             "pending=$(length(disp.pending)) gaps=$(length(c.gaps)) ($(round(t; digits = 1)) s)")
     foreach(g -> println("[zrv]   gap: ", g), c.gaps)
 end
 
 # ---- resume -----------------------------------------------------------------------------------
-function _resume!(h::Harness, env0, ctx)
+"""
+    restore_at_t0!(h, ctx) -> NamedTuple
+
+재개의 앞 절반(T4 가 분리): 지문 대조 → import → 필드 digest 대조 → 중복 주입/dispatch 가드 → shadow sink
+재부착 → `SimProcessingData` 재구성. 세계를 **진행시키지 않는다**. 지문이 다르면 에러(재개 거절).
+반환: `(; cp, r, ls, spd, sp, import_seconds, field_mismatch, dup, shadow, mm)`.
+"""
+function restore_at_t0!(h::Harness, ctx)
     cp, env_d = load_envelope(ENV["ZRV_CHECKPOINT"])
     mine = fingerprints()
     mm = R.fingerprint_mismatches(cp.fingerprints, mine)
@@ -301,7 +313,9 @@ function _resume!(h::Harness, env0, ctx)
     now.zone_keys == ls.dispatch.zone_keys || push!(dup, "zone keys differ: $(now.zone_keys) vs $(ls.dispatch.zone_keys)")
     now.n_ood_truth == ls.dispatch.n_ood_truth || push!(dup, "ood truth log length differs")
     sp = ctx.sim_params
-    Tuple(getfield(sp, i) for i in 1:fieldcount(typeof(sp))) == ls.sim_params ||
+    # 출력 위치(`save_anim_prog_path` — results 디렉터리에서 유도, T4 분기는 자기 디렉터리)는 예산·동역학이 아니다.
+    _cmp_sp(t) = Tuple(v for (f, v) in zip(fieldnames(typeof(sp)), t) if f !== :save_anim_prog_path)
+    _cmp_sp(Tuple(getfield(sp, i) for i in 1:fieldcount(typeof(sp)))) == _cmp_sp(ls.sim_params) ||
         push!(dup, "sim_params differ from capture")
     ls.n_update_steps == 0 || push!(dup, "capture had $(ls.n_update_steps) pending animation update steps (not carried)")
     shadow = E.attach_shadow_sinks!(r, h.dir; modules = MODULES())   # 원본과 같은 관측 호출(원장은 분기 파일)
@@ -315,19 +329,32 @@ function _resume!(h::Harness, env0, ctx)
     h.rng_at_t0 = copy(Random.default_rng())
     h.t0_iter = ls.iter
     h.last_env = r.env; h.last_spd = spd; h.last_sim_params = sp
+    return (; cp, r, ls, spd, sp, import_seconds = t, field_mismatch, dup, shadow, mm)
+end
+
+"""
+    continue_from!(h, st, ctx; extra) -> Dict  (종료 기록; `extra` 는 Dict 또는 종료 뒤 부를 0-인자 함수)
+
+재개의 뒤 절반: **production `CB.continue_simulation!`** 으로 끝까지 굴리고 `terminal.json` 을 쓴다.
+배치 위치는 capture 의 `batch_pos` 에서 잇는다 — 그 사이 누가 engine 을 진행시켰다면 배치 경계가 어긋나므로
+호출자(T4 worker)가 먼저 막아야 한다(`repair_branch_worker.jl` 의 engine-advance 가드).
+"""
+function continue_from!(h::Harness, st, ctx; extra = Dict{String,Any}())
+    r, ls, sp, spd, cp = st.r, st.ls, st.sp, st.spd, st.cp
     # 🔴 `invokelatest` 필수: import 가 역직렬화한 closure(예: `retrying_action` 의 `act`)는 **지금** 새 타입·
     #    메서드로 정의된다. 이 훅은 `run_lego_demo` 가 시작될 때 고정된 world age 안에서 돌므로 그대로
     #    부르면 그 메서드가 안 보인다 — T3 행렬 첫 all3 판이 218 스텝에서 `MethodError(::var"#act#59")` 로
     #    죽었다(fault 재시도 사건이 처음 발화한 스텝). T4 worker 도 같은 규칙을 따라야 한다.
     status = Base.invokelatest(CB.continue_simulation!, r.env, ctx.factory_vis, ctx.anim, sp, spd;
                                first_batch = sp.sim_batch_size - ls.batch_pos + 1)
+    extra isa Function && (extra = extra())   # 종료 **뒤** 세계에서 계산해야 하는 값(T4 export)은 함수로 넘긴다
     watches = [(k, v) for (k, v) in r.native_handles if v !== nothing]
     res_native = JSON3.read(read(replace(cp.artifact_path, r"\.jls$" => ".fields.json"), String)).native_residual
-    _write_terminal!(h, r.env, spd, sp; extra = Dict{String,Any}(
-        "resume" => Dict("import_seconds" => t, "mismatched_blocks" => String.(r.mismatched_blocks),
-                         "mismatched_fields" => field_mismatch, "shadow_sinks" => shadow,
-                         "n_dicts_rehashed" => r.n_dicts_rehashed, "dispatch_guard" => dup,
-                         "fingerprint_mismatches" => String.(mm), "gaps" => cp.uncertifiable,
+    return _write_terminal!(h, r.env, spd, sp; extra = merge(Dict{String,Any}(
+        "resume" => Dict("import_seconds" => st.import_seconds, "mismatched_blocks" => String.(r.mismatched_blocks),
+                         "mismatched_fields" => st.field_mismatch, "shadow_sinks" => st.shadow,
+                         "n_dicts_rehashed" => r.n_dicts_rehashed, "dispatch_guard" => st.dup,
+                         "fingerprint_mismatches" => String.(st.mm), "gaps" => cp.uncertifiable,
                          "rvo_tie_watch" => [Dict("global" => k, "doSteps_watched" => v.n_steps,
                                                   "ties" => v.ties, "resolved" => v.resolved,
                                                   "kd_restored" => v.kd_restored, "watch_mode" => v.watch,
@@ -335,7 +362,22 @@ function _resume!(h::Harness, env0, ctx)
                                              for (k, v) in watches]),
         "continue_simulation_status" => string(status),
         "rvo_residual_at_t0" => Dict(String(k) => Dict("global_time" => v.global_time, "n_builds" => v.n_builds,
-                                                       "kd_known" => v.kd_known) for (k, v) in pairs(res_native))))
+                                                       "kd_known" => v.kd_known) for (k, v) in pairs(res_native))),
+        extra))
+end
+
+"""
+재개 처리기. `nothing` 이면 T3 기본(`restore_at_t0!` → `continue_from!` → `exit(0)`). T4 branch worker 가
+자기 처리기(`(h, env0, ctx) -> …`)를 꽂는다 — 복원과 continuation 사이에 분기 동작·감사를 넣으려고.
+"""
+const RESUME_HANDLER = Ref{Any}(nothing)
+"t0 capture 직후 처리기(`(h, env, ctx) -> …`). T4 parent 가 t0 에서 tick 없이 대기하려고 꽂는다."
+const T0_HANDLER = Ref{Any}(nothing)
+
+function _resume!(h::Harness, env0, ctx)
+    RESUME_HANDLER[] === nothing || return RESUME_HANDLER[](h, env0, ctx)
+    st = restore_at_t0!(h, ctx)
+    continue_from!(h, st, ctx)
     flush(stdout); flush(stderr)
     exit(0)
 end
@@ -395,6 +437,7 @@ function hook(phase::Symbol, env, ctx)
     if h.mode === :capture && !h.captured && zone_event_index() !== nothing
         h.captured = true
         _capture_t0!(h, env, ctx)
+        T0_HANDLER[] === nothing || T0_HANDLER[](h, env, ctx)
     end
     _trace!(h, env, spd, ctx.batch_pos)
     return nothing
@@ -412,7 +455,7 @@ function install!(mode::Symbol; dir::AbstractString, detail = nothing)
     println(io, "# iter\t", join(ReplayCompare.TRACE_COLUMNS, '\t'), "\t(mode=$(mode); boundary before the step)")
     CB.RVO_RECORD_BUILDS[] = true     # KdTree 순열 재연용 doStep 직전 위치 기록(읽기 전용)
     H[] = Harness(mode, String(dir), io, detail, nothing, nothing, nothing, false, false, ("", ""), ("", ""),
-                  nothing, -1, false)
+                  nothing, -1, false, nothing)
     CB.HARNESS_HOOK[] = hook
     mode === :resume || atexit() do
         h = H[]
