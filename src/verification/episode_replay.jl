@@ -304,6 +304,7 @@ function _resume!(h::Harness, env0, ctx)
     Tuple(getfield(sp, i) for i in 1:fieldcount(typeof(sp))) == ls.sim_params ||
         push!(dup, "sim_params differ from capture")
     ls.n_update_steps == 0 || push!(dup, "capture had $(ls.n_update_steps) pending animation update steps (not carried)")
+    shadow = E.attach_shadow_sinks!(r, h.dir; modules = MODULES())   # 원본과 같은 관측 호출(원장은 분기 파일)
     spd0 = ctx.sim_process_data
     spd = CB.SimProcessingData(ls.stop_simulating, ls.iter, ls.starting_frame, spd0.prog,
         ls.num_closed_step_1, ls.last_iter_num_closed, ls.num_iters_no_progress,
@@ -324,7 +325,7 @@ function _resume!(h::Harness, env0, ctx)
     res_native = JSON3.read(read(replace(cp.artifact_path, r"\.jls$" => ".fields.json"), String)).native_residual
     _write_terminal!(h, r.env, spd, sp; extra = Dict{String,Any}(
         "resume" => Dict("import_seconds" => t, "mismatched_blocks" => String.(r.mismatched_blocks),
-                         "mismatched_fields" => field_mismatch,
+                         "mismatched_fields" => field_mismatch, "shadow_sinks" => shadow,
                          "n_dicts_rehashed" => r.n_dicts_rehashed, "dispatch_guard" => dup,
                          "fingerprint_mismatches" => String.(mm), "gaps" => cp.uncertifiable,
                          "rvo_tie_watch" => [Dict("global" => k, "doSteps_watched" => v.n_steps,

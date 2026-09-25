@@ -739,7 +739,28 @@ function restore_checkpoint!(bytes::Vector{UInt8}; modules)
     for (k, v) in want; ENV[k] = v; end
     copy!(Random.default_rng(), p.rng)
     return (; env = p.env, loop_state = p.loop_state, task_contract = p.task_contract,
-            fingerprints = p.fingerprints, n_dicts_rehashed = nfix, native_handles = handles)
+            fingerprints = p.fingerprints, n_dicts_rehashed = nfix, native_handles = handles,
+            ledger_sinks = p.ledger_sinks)
+end
+
+"""
+    attach_shadow_sinks!(r, dir; modules) -> Vector{String}
+
+import 가 떼어낸 원장 sink 중 **capture 때 붙어 있던 것**에 분기 전용 파일(`<dir>/shadow_<이름>.jsonl`)을
+다시 꽂는다. 🔴 떼어낸 채로 두면 재생이 원본과 갈린다: 모니터의 관측 코드가 캐시 논리 시계
+(`_CACHE_TIMESTAMP_COUNTER`)를 전진시키므로, sink 가 없는 분기는 그 호출을 건너뛰어 시계가 2~3 뒤처졌다
+(T3 행렬: tractor zone s27·all3 s29·xwing zone s27, 궤적·결과는 같았다). 원본 원장에는 쓰지 않는다.
+"""
+function attach_shadow_sinks!(r, dir; modules)
+    out = String[]
+    for e in global_inventory(modules)
+        e.handling === :ledger_sink || continue
+        get(r.ledger_sinks, _gkey(e), nothing) === nothing && continue
+        path = joinpath(dir, "shadow_" * String(e.name) * ".jsonl")
+        getfield(e.mod, e.name)[] = open(path, "w")
+        push!(out, path)
+    end
+    return out
 end
 
 """
