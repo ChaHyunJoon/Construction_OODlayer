@@ -667,14 +667,39 @@ _resolve_note(tag::Symbol, detail::AbstractString) =
 `(:not_needed_surface, ...)` 를 기록한다.
 """
 function _resolve_if_needed!(env, ran)
+    hit, why = _resolve_decision(ran)
+    return hit ? _issue_resolve!(env) : (:not_needed_surface, why)
+end
+
+"`ran` 이 재풀이를 부르는가(`RESOLVE_SURFACES` 표면을 건드린 원시가 있나)와, 안 부른다면 그 사유 문자열."
+function _resolve_decision(ran)
     hit = String[]
     for r in ran
         r.prim.surface in RESOLVE_SURFACES && push!(hit, r.prim.name)
     end
-    isempty(hit) && return (:not_needed_surface,
-                            "배정 문제를 건드린 원시가 없다(표면: " *
-                            join(unique([r.prim.surface for r in ran]), ",") * ")")
-    return _issue_resolve!(env)
+    isempty(hit) && return (false, "배정 문제를 건드린 원시가 없다(표면: " *
+                                   join(unique([r.prim.surface for r in ran]), ",") * ")")
+    return (true, "")
+end
+
+"""
+    post_body_envelope!(env; resume, touched, resolve, resolve_skip_why = "")
+        -> (; resume, resume_detail, resolve, resolve_detail)
+
+**공통 집행 봉투**(2026-09-25, zone-repair-verification T6): body 뒤 스케줄 캐시 재개(`_issue_resume!`) →
+공통 MILP 재풀이(`_issue_resolve!`), 이 순서로 **한 번**. `enact_minted!`(production)과 검증 집행
+(`src/verification/tool_execution.jl`)이 이 한 함수를 부른다 — **부를지의 판정만** 호출자가 정한다:
+production 은 원시의 선언 표면(`_needs_cache_resume`·`_resolve_decision`), 검증 집행은 실제 diff 로 분류한
+효과(설계 §6.2: 모델 선언만으로 검사·후처리를 고르지 않는다). 두 경로가 같은 body 를 두 번 굴리거나 봉투를
+두 번 씌우지 않는다 — 검증 집행은 `enact_minted!(…; envelope = false)` 로 body 만 굴리고 이 함수를 부른다.
+태그 어휘는 `_resume_note`·`_resolve_note` 그대로다. 던지지 않는다(두 `_issue_*` 가 던지지 않는다).
+"""
+function post_body_envelope!(env; resume::Bool, touched::Bool, resolve::Bool,
+                             resolve_skip_why::AbstractString = "")
+    rs_t, rs_d = resume ? _issue_resume!(env) :
+        (touched ? (:not_needed_self, "") : (:not_needed_untouched, ""))
+    rv_t, rv_d = resolve ? _issue_resolve!(env) : (:not_needed_surface, String(resolve_skip_why))
+    return (resume = rs_t, resume_detail = rs_d, resolve = rv_t, resolve_detail = rv_d)
 end
 
 """
@@ -1331,9 +1356,11 @@ const ENACTED_VERDICTS = (:admit,)
 minted_handled_verdict_ok(v::Symbol) = v in ENACTED_VERDICTS
 
 """
-    enact_minted!(env, truth, synth; probe = nothing) -> NamedTuple
+    enact_minted!(env, truth, synth; probe = nothing, envelope = true) -> NamedTuple
 
-합성된 tool 의 body 를 집행한다. 반환:
+합성된 tool 의 body 를 집행한다. `envelope = false`(검증 집행 전용, T6)면 body 뒤 공통 봉투
+(`post_body_envelope!` — 캐시 재개·공통 재풀이)를 씌우지 않고 `resume = resolve = :deferred` 로 돌려준다;
+기본값 `true` 의 동작은 봉투를 떼어내기 전과 같다. 반환:
 `(verdict, reason, applied, partial, world_maybe_dirty, steps, undo, resume, resolve,
 args_from, n_calls, body_probe, dropped_args)`. T4 가 읽는다.
 
@@ -1392,7 +1419,7 @@ args_from, n_calls, body_probe, dropped_args)`. T4 가 읽는다.
 (브리핑 게이트 (2)·(8) 이 실제로 그것 때문에 통과 불가였다). 세계를 안 건드리는 판정을
 세계를 요구하는 판정보다 앞세우는 것이 옳기도 하다 — env 없이도 body 를 심사할 수 있다.
 """
-function enact_minted!(env, truth, synth; probe = nothing)
+function enact_minted!(env, truth, synth; probe = nothing, envelope::Bool = true)
     # 🔴 `world_maybe_dirty` 는 파생 필드다(`touched || partial`). 왜 따로 싣는가:
     #    `applied` 는 "노린 적응이 일어났나"만 재고 `partial` 은 "던져서 절반일 수 있나"만
     #    잰다 — 둘 중 하나만 읽은 호출자가 다른 쪽의 답을 얻어 가면 안 된다. 다음 태스크는
@@ -1589,14 +1616,20 @@ function enact_minted!(env, truth, synth; probe = nothing)
             #    `body_probe` 가 **같은 것**(하네스가 손대기 전의 세계)을 뜻해야 한다.
             #    🔴 계측이 집행을 못 죽인다: probe 가 던지면 삼키고 `nothing` 이다.
             local bp_t = probe === nothing ? nothing : (try probe() catch; nothing end)
-            local rs_t, rs_d = _issue_resume!(env)
             # 🔴 던진 판에서도 재풀이는 **돈다**. 앞선 원시가 이미 배정 간선을 뗐을 수 있고,
             #    그 세계를 다시 안 풀면 정확히 판정 1 이 막으려는 사고(아무도 재배정하지 않은
             #    채 handled=true)가 절반쯤 편집된 세계 위에서 일어난다. 실패하면 그 사실이
             #    `resolve` 로 나가고 `handled` 가 false 가 되어 폴백이 돈다.
             #    ⚠️ 표면 판정은 **던지기 전까지 실제로 굴린 것들** 기준이다 — 던진 단계가
-            #    무엇을 했는지는 모르므로 그 단계 자신도 포함한다(보수적).
-            local rv_t, rv_d = _resolve_if_needed!(env, resolved[1:ri])
+            #    무엇을 했는지는 모르므로 그 단계 자신도 포함한다(보수적). 재개는 무조건(위 문단).
+            # 🔴 `envelope = false`(검증 집행, T6): 봉투를 씌우지 않는다 — 던진 worker 는 통째로 버려진다.
+            local rs_t, rs_d, rv_t, rv_d = :deferred, "", :deferred, ""
+            if envelope
+                local hit_t, why_t = _resolve_decision(resolved[1:ri])
+                local ev_t = post_body_envelope!(env; resume = true, touched = touched,
+                                                 resolve = hit_t, resolve_skip_why = why_t)
+                rs_t, rs_d, rv_t, rv_d = ev_t.resume, ev_t.resume_detail, ev_t.resolve, ev_t.resolve_detail
+            end
             return _r(admit_verdict, "body threw at $(r.prim.name) — 세계는 절반만 고쳐졌을 수 있다(undo 없음)" *
                               _resume_note(rs_t, rs_d) * _resolve_note(rv_t, rv_d);
                       steps = steps, applied = applied, partial = true,
@@ -1628,8 +1661,13 @@ function enact_minted!(env, truth, synth; probe = nothing)
     #    그 사실을 모르고 `handled=true` 로 기본 복구 사슬을 건너뛰면, 세계는 고쳤는데
     #    프론티어가 낡은 채 남고 사건은 **이미 소비돼** 다시 오지 않는다 = 성공과 구별되지
     #    않는 미복구. 자세한 근거는 `PRIMITIVE_RESUMES_CACHE` 의 docstring 에 있다.
-    resume_tag, resume_detail = need_resume ? _issue_resume!(env) :
-        (touched ? (:not_needed_self, "") : (:not_needed_untouched, ""))
+    # 🔴 (8)·(9) 는 공통 봉투 한 번이다(`post_body_envelope!`, T6 가 떼어냈다 — 순서·판정·태그는 그대로).
+    #    `envelope = false` 면 씌우지 않고 `:deferred` 로 돌려준다(검증 집행이 실제 효과로 판정해 따로 부른다).
+    local hit, why_nr = _resolve_decision(resolved)
+    local ev = envelope ?
+        post_body_envelope!(env; resume = need_resume, touched = touched, resolve = hit, resolve_skip_why = why_nr) :
+        (resume = :deferred, resume_detail = "", resolve = :deferred, resolve_detail = "")
+    resume_tag, resume_detail = ev.resume, ev.resume_detail
     # 🔴 삼상을 삼상으로 찍는다(2026-09-03 C1). "적응 안 했다" 와 "적응했는지 못 쟀다" 를
     #    한 문장으로 접으면, 생성 어휘 전체가 전자로 보이거나 후자로 보인다.
     local status_list = join(String.(string.([s.status for s in steps])), ",")
@@ -1642,7 +1680,7 @@ function enact_minted!(env, truth, synth; probe = nothing)
     # 🔴 재개 **뒤에** 부른다. 재개의 다섯 상태는 이미 게이트가 걸린 계약이고, 그 판정을
     #    재풀이가 밀어내면 안 된다. 재풀이 자신의 `commit_respec!(…; resume=true)` 는 그 위에서
     #    멱등이다(`_issue_resume!` 의 멱등성 문단).
-    resolve_tag, resolve_detail = _resolve_if_needed!(env, resolved)
+    resolve_tag, resolve_detail = ev.resolve, ev.resolve_detail
     return _r(admit_verdict, "body of $(length(names)) primitives$(quiet)" *
                       _resume_note(resume_tag, resume_detail) *
                       _resolve_note(resolve_tag, resolve_detail);

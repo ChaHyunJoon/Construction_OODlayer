@@ -276,9 +276,13 @@ end
 """
 function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, outroot::AbstractString,
                     launch_env::AbstractDict, limits::Limits, action_file::AbstractString = "",
-                    sandbox::Bool = true, extra_env::AbstractDict = Dict{String,String}())
+                    sandbox::Bool = true, extra_env::AbstractDict = Dict{String,String}(),
+                    proposal_file::AbstractString = "", mode::AbstractString = "full")
     occursin(r"^[A-Za-z0-9_.-]+$", branch_id) || error("branch_id must be a plain name: $(branch_id)")
     all(k -> startswith(String(k), "ZRV_PROBE_"), keys(extra_env)) || error("extra_env may only carry ZRV_PROBE_* test keys")
+    # T6: 생성 도구(ToolProposal JSON)는 `proposal_file` 로 — worker 가 등록·body·후처리·(full 이면) continuation.
+    isempty(action_file) || isempty(proposal_file) || error("give action_file or proposal_file, not both")
+    mode in ("full", "preflight") || error("mode must be full|preflight")
     dir = joinpath(outroot, branch_id)
     ispath(dir) && error("branch dir exists: $(dir) — each branch gets a fresh namespace")
     mkpath(joinpath(dir, "tmp"))
@@ -288,15 +292,19 @@ function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, out
         "ZRV_CHECKPOINT" => String(contract["envelope"]), "ZRV_BRANCH_ROLE" => "branch",
         "ZRV_BRANCH_ID" => branch_id, "ZRV_BRANCH_TOKEN" => token, "ZRV_BRANCH_ACTION" => action_file,
         "DEMO_OUT_DIR" => joinpath(dir, "out"), "TMPDIR" => joinpath(dir, "tmp"),
-        "ZRV_RESULTS_DIR" => joinpath(dir, "results"), extra_env...))
+        "ZRV_RESULTS_DIR" => joinpath(dir, "results"),
+        "ZRV_BRANCH_PROPOSAL" => proposal_file, "ZRV_BRANCH_MODE" => mode,
+        "ZRV_TASK_CONTRACT" => joinpath(parent_dir, "task_contract.json"), extra_env...))
     cmd = `$JULIA --project=$ROOT -L $WORKER $RENDER`
     if sandbox
-        rd = vcat(read_paths(), [joinpath(parent_dir, "ckpt"), String(contract["envelope"])])
+        rd = vcat(read_paths(), [joinpath(parent_dir, "ckpt"), String(contract["envelope"]),
+                                 joinpath(parent_dir, "task_contract.json")])
         isempty(action_file) || push!(rd, action_file)
+        isempty(proposal_file) || push!(rd, proposal_file)
         cmd = sandboxed(cmd; write = [String(dir), "/dev/null"], read = rd, limits)
     end
     _write(joinpath(dir, "launch.json"), Dict("branch_id" => branch_id, "token" => token, "sandbox" => sandbox,
-        "action_file" => action_file, "env_names" => sort!(collect(keys(env))), "removed_env" => removed,
+        "action_file" => action_file, "proposal_file" => proposal_file, "mode" => mode, "env_names" => sort!(collect(keys(env))), "removed_env" => removed,
         "limits" => Dict("wall_s" => limits.wall_s, "cpu_s" => limits.cpu_s, "mem_bytes" => limits.mem_bytes),
         "cmd" => collect(cmd.exec)))
     sup = supervise(cmd, env, joinpath(dir, "run.log"); wall_s = limits.wall_s, token)

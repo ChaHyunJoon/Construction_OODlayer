@@ -82,9 +82,11 @@ const NATIVE_COVERED = Dict{Symbol,Symbol}(:RVO_PYTHON_MODULE => :RVO_SIM_WRAPPE
 하니스 계측(세계 상태가 아님): 프로세스마다 **자기 것**을 설치하므로 잡지도 복원하지도 않는다.
 잡으면 capture 프로세스의 훅이 resume 프로세스에 되살아난다. 모듈 이름은 자식 모듈 보행에서 뺀다.
 """
-const HARNESS_GLOBALS = Set([:HARNESS_HOOK, :RVO_RECORD_BUILDS])
+const HARNESS_GLOBALS = Set([:HARNESS_HOOK, :RVO_RECORD_BUILDS,
+                            :ENGINE_STEP_ADAPTER])                                                       # T6: 도구 body 의 step → trusted adapter
 const HARNESS_MODULES = Set([:EpisodeCheckpointIO, :EpisodeReplay, :BranchRunner, :RepairBranchWorker,   # T4: supervisor·worker 하니스
-                             :TaskContract, :EffectValidation, :ToolProposalGate])                      # T5: 신뢰 판정(세계 상태 없음)
+                             :TaskContract, :EffectValidation, :ToolProposalGate,                       # T5: 신뢰 판정(세계 상태 없음)
+                             :ToolExecution])                                                           # T6: 격리 집행 하니스
 
 """
 대상 모듈 밖의 로드된 의존 모듈 분류(T2 minor). 전역을 훑지 **않는** 대신, 이름과 사유를 fields.json 에

@@ -167,20 +167,55 @@ function _resync_scene_drift!(env; tol::Float64 = default_robot_radius())
         set_desired_global_transform!(scene_node, g)
         return true
     end
-    # 그 개체의 운반유닛(랑데부 지점) 씬 노드도 함께 — 단 존재할 때만(최종 target 조립체는 운반 안 됨).
-    function _resync_tu!(ent)
-        tid = node_id(TransportUnitNode(ent))
-        has_vertex(env.scene_tree, tid) || return
-        _resync_if_drifted!(get_node(env.scene_tree, tid))
-    end
-    for n in get_nodes(sched)
-        if matches_template(ObjectStart, n) || matches_template(AssemblyComplete, n)
-            ent = entity(n)
-            _resync_if_drifted!(get_node(env.scene_tree, node_id(ent)))  # 부품 object / 하위 조립체 본체(capture 기준)
-            _resync_tu!(ent)                                             # 그 화물을 나르는 운반유닛(랑데부 지점)
-        end
+    for (scene_node, _) in _drift_candidates(env)   # 후보 목록·순서는 `scene_drift` 측정과 같은 한 벌(T6)
+        _resync_if_drifted!(scene_node)
     end
     return env
+end
+
+"""
+    _drift_candidates(env) -> Vector{Tuple{node, Symbol}}
+
+`_resync_scene_drift!` 이 보는 씬 노드와 종류(`:body`/`:tu`), 방문 순서 그대로: 스케줄의 ObjectStart/
+AssemblyComplete 마다 그 화물 본체(부품 object / 하위 조립체 본체), 그리고 그 화물을 나르는 운반유닛
+(랑데부 지점) 씬 노드가 **있을 때만**(최종 target 조립체는 운반 안 됨). resync 와 측정(`scene_drift`)이
+같은 목록을 쓴다 — 두 벌이면 "측정은 했는데 resync 는 다른 노드를 본다" 가 조용히 생긴다.
+"""
+function _drift_candidates(env)
+    out = Tuple{Any,Symbol}[]
+    for n in get_nodes(env.sched)
+        if matches_template(ObjectStart, n) || matches_template(AssemblyComplete, n)
+            ent = entity(n)
+            push!(out, (get_node(env.scene_tree, node_id(ent)), :body))
+            tid = node_id(TransportUnitNode(ent))
+            has_vertex(env.scene_tree, tid) && push!(out, (get_node(env.scene_tree, tid), :tu))
+        end
+    end
+    return out
+end
+
+"""
+    scene_drift(env; tol = default_robot_radius()) -> Vector{NamedTuple}
+
+`_resync_scene_drift!` 의 후보 노드마다 `(id, kind, free, dist, start_id, would_snap)` — **측정만** 한다(세계의
+의미 상태를 안 바꾼다; 단 `global_transform` 은 변환 캐시를 갱신한다). `free` = 루트(아직 집히거나 놓이지
+않음), `dist` = 스케줄 start 자세와의 XY 거리, `would_snap = free && dist > tol` — resync 가 옮기는 것은
+이것뿐이다. 그래서 이 표가 resync helper 의 **범위 밖**을 드러낸다: `!free`(잡힌 cargo·놓인 부품)는 거리와
+무관하게 안 옮기고, `0 < dist ≤ tol` 은 허용 오차 안이라 안 옮긴다. 로봇은 후보가 아니다(T6 검증 집행이
+기하 효과의 실제 잔차 검사에 쓴다).
+"""
+function scene_drift(env; tol::Float64 = default_robot_radius())
+    out = NamedTuple[]
+    for (sn, kind) in _drift_candidates(env)
+        has_vertex(env.sched, get_start_node(sn)) || continue
+        st = get_start_node(sn, env.sched)
+        g = global_transform(start_config(st))
+        d = norm(Vector{Float64}(g.translation[1:2]) .- Vector{Float64}(global_transform(sn).translation[1:2]))
+        free = has_parent(sn, sn)
+        push!(out, (id = string(node_id(sn)), kind = kind, free = free, dist = d,
+                    start_id = string(node_id(st)), would_snap = free && d > tol))
+    end
+    return out
 end
 
 """

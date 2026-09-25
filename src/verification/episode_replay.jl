@@ -337,16 +337,19 @@ end
 
 재개의 뒤 절반: **production `CB.continue_simulation!`** 으로 끝까지 굴리고 `terminal.json` 을 쓴다.
 배치 위치는 capture 의 `batch_pos` 에서 잇는다 — 그 사이 누가 engine 을 진행시켰다면 배치 경계가 어긋나므로
-호출자(T4 worker)가 먼저 막아야 한다(`repair_branch_worker.jl` 의 engine-advance 가드).
+호출자(T4 worker)가 먼저 막아야 한다(`repair_branch_worker.jl` 의 engine-advance 가드). 예외는 T6 trusted engine
+adapter 하나다: 도구 안에서 정상 반복을 돌린 뒤 **다음 스텝의 배치 위치**(`batch_pos`)와 아직 처리 안 된 애니
+갱신(`up_steps`)을 넘긴다 — 첫 배치는 원본처럼 그 위치부터 배치 끝까지 간다(`continue_simulation!`).
 """
-function continue_from!(h::Harness, st, ctx; extra = Dict{String,Any}())
+function continue_from!(h::Harness, st, ctx; extra = Dict{String,Any}(), batch_pos::Int = st.ls.batch_pos,
+                        up_steps = [])
     r, ls, sp, spd, cp = st.r, st.ls, st.sp, st.spd, st.cp
     # 🔴 `invokelatest` 필수: import 가 역직렬화한 closure(예: `retrying_action` 의 `act`)는 **지금** 새 타입·
     #    메서드로 정의된다. 이 훅은 `run_lego_demo` 가 시작될 때 고정된 world age 안에서 돌므로 그대로
     #    부르면 그 메서드가 안 보인다 — T3 행렬 첫 all3 판이 218 스텝에서 `MethodError(::var"#act#59")` 로
     #    죽었다(fault 재시도 사건이 처음 발화한 스텝). T4 worker 도 같은 규칙을 따라야 한다.
     status = Base.invokelatest(CB.continue_simulation!, r.env, ctx.factory_vis, ctx.anim, sp, spd;
-                               first_batch = sp.sim_batch_size - ls.batch_pos + 1)
+                               first_batch = sp.sim_batch_size - batch_pos + 1, up_steps = up_steps)
     extra isa Function && (extra = extra())   # 종료 **뒤** 세계에서 계산해야 하는 값(T4 export)은 함수로 넘긴다
     watches = [(k, v) for (k, v) in r.native_handles if v !== nothing]
     res_native = JSON3.read(read(replace(cp.artifact_path, r"\.jls$" => ".fields.json"), String)).native_residual

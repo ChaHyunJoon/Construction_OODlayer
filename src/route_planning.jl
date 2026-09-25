@@ -389,6 +389,12 @@ const BATTERY_STEP_HOOK = Ref{Any}(nothing)
 # SoC→속도 제한 훅: battery.jl 가 꽂으면, 움직이는 에이전트의 max_speed 에 [0,1] 배율을 곱한다(방전된 로봇이면 0.0 → 그 자리에 물리적으로 멈춤). 기본 nothing = 제한 없음(일반 실행은 완전히 동일). BATTERY_STEP_HOOK 과 같은 "기본은 비활성" 패턴.
 const SOC_SPEED_HOOK = Ref{Any}(nothing)
 
+# 검증 하니스(zone-repair-verification T6): 생성 도구가 **자기 body 안에서** 부른 `step_environment!` 를
+# trusted engine adapter 로 돌린다(정상 루프 한 반복 = 사건·작업·비용·예산을 같이). 기본 nothing = 무동작 —
+# 모든 기존 런은 바이트 동일하다(BATTERY_STEP_HOOK 과 같은 Ref 패턴). 설치하는 쪽은
+# `src/verification/tool_execution.jl` 뿐이고, 어댑터는 자기 정상 반복을 도는 동안 이 값을 비운다.
+const ENGINE_STEP_ADAPTER = Ref{Any}(nothing)
+
 """
     step_environment!(env::PlannerEnv, sim=rvo_global_sim())
 
@@ -396,6 +402,8 @@ Step forward one time step.
 """
 # 환경을 한 시간스텝 전진. sim 기본값 = 전역 RVO 시뮬레이터(안 넘기면 자동 사용).
 function step_environment!(env::PlannerEnv, sim=rvo_global_sim())
+    adapter = ENGINE_STEP_ADAPTER[]
+    adapter === nothing || return adapter(env)::PlannerEnv   # T6: 도구 body 의 진행 요청 → trusted adapter(반환 타입 불변 — world_interface 가 싣는다)
 
     prev_active_pos_dict = get_active_pos(env)  # 이번 스텝 시작 시점의 위치들을 저장(나중에 "안 움직였나" 판단용)
     for v in env.cache.active_set           # 활성 노드마다

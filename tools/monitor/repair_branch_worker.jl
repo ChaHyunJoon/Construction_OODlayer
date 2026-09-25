@@ -23,6 +23,7 @@
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "episode_replay.jl"))   # 훅은 ZRV_REPLAY_MODE 가 설치
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "branch_runner.jl"))
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "task_contract.jl"))       # T5 원본 작업 계약
+include(joinpath(@__DIR__, "..", "..", "src", "verification", "tool_execution.jl"))      # T6 격리 도구 집행
 
 module RepairBranchWorker
 
@@ -31,6 +32,7 @@ import ..EpisodeReplay as ER
 import ..EpisodeCheckpointIO as E
 import ..BranchRunner as BR
 import ..TaskContract as TC
+import ..ToolExecution as TX
 const CB = ConstructionBots
 
 "pi0 의 정의(설계 §7.1): 존 NOOP 레인 고정 · 존 전용 solver/사다리 차단. 분기 t0·끝에서 같아야 한다."
@@ -127,23 +129,35 @@ function branch!(h, env0, ctx)
         scrubbed = scrub_env!()
         pi0_t0 = pi0_snapshot()
         stage = "action"
-        a0 = audit_snapshot(st.r.env, st.spd)
-        act = run_action!(st.r.env, get(ENV, "ZRV_BRANCH_ACTION", ""))
-        a1 = audit_snapshot(st.r.env, st.spd)
-        adv = engine_advanced(a0, a1)
-        isempty(adv) || error("engine advanced inside the branch action without the trusted adapter " *
-                              "($(adv)) — continuation batch alignment would be wrong; unsupported in T4")
-        audit = Dict{String,Any}("fields_changed_by_action" => _changed(a0.fields, a1.fields),
-            "methods_changed_by_action" => _changed(a0.methods, a1.methods),
-            "world_counter_delta" => Int(a1.world - a0.world),
-            "engine_before" => a0.engine, "engine_after" => a1.engine,
-            "unobservable" => ["mutations reverted before the action returned",
-                               "intra-step changes (only step boundaries are traced)",
-                               "methods added to modules outside the audited set",
-                               "redefinition of this audit code by the action (same process)"])
+        prop = get(ENV, "ZRV_BRANCH_PROPOSAL", "")
+        batch_pos, up_steps = st.ls.batch_pos, Any[]
+        if isempty(prop)
+            a0 = audit_snapshot(st.r.env, st.spd)
+            act = run_action!(st.r.env, get(ENV, "ZRV_BRANCH_ACTION", ""))
+            a1 = audit_snapshot(st.r.env, st.spd)
+            adv = engine_advanced(a0, a1)
+            isempty(adv) || error("engine advanced inside the branch action without the trusted adapter " *
+                                  "($(adv)) — continuation batch alignment would be wrong; unsupported in T4")
+            audit = Dict{String,Any}("fields_changed_by_action" => _changed(a0.fields, a1.fields),
+                "methods_changed_by_action" => _changed(a0.methods, a1.methods),
+                "world_counter_delta" => Int(a1.world - a0.world),
+                "engine_before" => a0.engine, "engine_after" => a1.engine)
+        else
+            # T6: 생성 도구 — 등록 → body(trusted adapter) → 효과별 후처리. 폐기면 여기서 끝난다(exit).
+            en = run_proposal!(st, ctx, dir, prop)
+            act = Dict{String,Any}("kind" => "proposal", "file" => prop, "file_sha256" => bytes2hex(sha256(read(prop))),
+                                   "proposal_id" => en.record["proposal_id"], "enactment_status" => en.record["status"],
+                                   "engine_steps" => en.record["engine_steps"], "returned" => nothing)
+            audit = Dict{String,Any}(en.record["audit"])
+            batch_pos, up_steps = en.adapter.batch_pos, en.adapter.up_steps
+        end
+        audit["unobservable"] = ["mutations reverted before the action returned",
+                                 "intra-step changes (only step boundaries are traced)",
+                                 "methods added to modules outside the audited set",
+                                 "redefinition of this audit code by the action (same process)"]
         stage = "continuation"
         # extra 는 **함수** — closed id·pi0_end·ablation 수는 continuation 이 끝난 세계에서 읽어야 한다.
-        ER.continue_from!(h, st, ctx; extra = () -> Dict{String,Any}("branch" => Dict{String,Any}(
+        ER.continue_from!(h, st, ctx; batch_pos, up_steps, extra = () -> Dict{String,Any}("branch" => Dict{String,Any}(
             "schema" => BR.EXPORT_SCHEMA, "id" => bid, "checkpoint_id" => st.cp.checkpoint_id,
             "action" => act, "audit" => audit, "env_scrubbed_after_import" => scrubbed,
             "pi0_t0" => pi0_t0, "pi0_end" => pi0_snapshot(), "ablation_counts" => CB.ablation_counts(),
@@ -155,6 +169,38 @@ function branch!(h, env0, ctx)
     end
     flush(stdout); flush(stderr)
     exit(0)
+end
+
+# ---- T6: 생성 도구 집행 ---------------------------------------------------------------------------
+"""
+제안 파일(`ZRV_BRANCH_PROPOSAL`)을 `ToolExecution.enact_proposal!` 로 집행하고 `enactment.json`·`effect_trace.json`
+을 쓴다. `:enacted` 가 아니면 **worker 를 버린다**: preflight(`requires_runtime`·t0 끝)는 exit 0, 폐기(throw·partial·
+후처리 실패·등록 부작용·미관측)는 `error.json`(stage=action) + exit 3 — continuation 없음, 되돌리기 없음.
+preflight 는 `:enacted` 여도 continuation 을 하지 않는다(t0 에서 첫 engine 진행 직전까지가 전부다).
+"""
+function run_proposal!(st, ctx, dir, prop)
+    mode = Symbol(get(ENV, "ZRV_BRANCH_MODE", "full"))
+    proposal = JSON3.read(read(prop, String), Dict{String,Any})
+    tcp = get(ENV, "ZRV_TASK_CONTRACT", "")
+    C = isfile(tcp) ? JSON3.read(read(tcp, String), Dict{String,Any}) : nothing
+    en = TX.enact_proposal!(st.r.env, ctx.factory_vis, ctx.anim, st.sp, st.spd; proposal, mode, CB, contract = C,
+                            audit = audit_snapshot, engine = engine_counters, batch_pos = st.ls.batch_pos,
+                            fail_probe = get(ENV, "ZRV_PROBE_POSTPROCESS_FAIL", "0") == "1")
+    TX.write_enactment(dir, en)
+    status = en.record["status"]
+    println("[zrv-branch] enactment status=$(status) mode=$(mode) engine_steps=$(en.record["engine_steps"]) " *
+            "classes=$(get(en.record, "effect_classes", String[])) exception=$(en.record["exception"])")
+    flush(stdout); flush(stderr)
+    if status != "enacted"
+        status == "requires_runtime" && exit(0)
+        _write(joinpath(dir, "error.json"), Dict("schema" => BR.EXPORT_SCHEMA, "stage" => "action", "kind" => "exception",
+            "exception_type" => "ToolExecution.discarded", "message" => "discarded ($(status)): $(en.record["exception"])",
+            "frames" => String[]))
+        flush(stdout); flush(stderr)
+        exit(3)
+    end
+    mode === :preflight && exit(0)
+    return en
 end
 
 # ---- 부모: t0 에서 대기 ------------------------------------------------------------------------

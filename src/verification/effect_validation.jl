@@ -241,10 +241,21 @@ function code_segment!(V, classes, a, b, tag)
     return nothing
 end
 
-"engine 구간(adapter 가 한 스텝 굴렸다): 시계가 정확히 한 칸 전진해야 한다. 나머지는 engine 이 한 일이라 신뢰한다."
+"""
+engine 구간(adapter 가 한 스텝 굴렸다): 시계가 정확히 한 칸 전진해야 한다. 나머지는 engine 이 한 일이라 신뢰한다.
+T6 adapter 의 trace 는 루프 반복 수 `iter` 를 `clock` 에 싣는다 — 그러면 규칙은 "`iter` 가 +1, 그 반복이 `SIM_STEP = iter` 로
+맞췄다" 이다(`ood_inject_step!` 가 매 반복 `set_sim_step!(iter)`). 🔴 `SIM_STEP` +1 만 보면 에피소드 첫 반복에서 production
+자신이 걸린다: t0 = iter 1 에서 `SIM_STEP` 은 아직 0 이고 첫 반복이 2 로 맞춘다(T6 tractor worker 실측 `0->2`).
+"""
 function engine_segment!(V, a, b, tag)
-    b["clock"]["sim_step"] == a["clock"]["sim_step"] + 1 ||
-        push!(V, "engine_step_clock_mismatch:$(a["clock"]["sim_step"])->$(b["clock"]["sim_step"])@$(tag)")
+    ca, cb = a["clock"], b["clock"]
+    if haskey(ca, "iter") && haskey(cb, "iter")
+        (cb["iter"] == ca["iter"] + 1 && cb["sim_step"] == cb["iter"]) ||
+            push!(V, "engine_step_clock_mismatch:iter $(ca["iter"])->$(cb["iter"]) sim_step $(ca["sim_step"])->$(cb["sim_step"])@$(tag)")
+    else
+        cb["sim_step"] == ca["sim_step"] + 1 ||
+            push!(V, "engine_step_clock_mismatch:$(ca["sim_step"])->$(cb["sim_step"])@$(tag)")
+    end
     return nothing
 end
 

@@ -121,17 +121,21 @@ end
 `run_simulation!` 의 배치 루프(원래 그 함수 본문 그대로). 재생 continuation(T3/T4)이 **같은** 루프를
 부르려고 떼어냈다 — 별도 간이 simulator 를 만들지 않는다. `first_batch` 는 배치 도중(batch 위치 b)에서
 재개할 때 첫 배치의 남은 스텝 수(`sim_batch_size - b + 1`); 배치 경계는 `monitor_emit!` 시점과
-`max_time_steps` 검사 시점을 정하므로 원본과 맞춰야 한다.
+`max_time_steps` 검사 시점을 정하므로 원본과 맞춰야 한다. (T6) 배치 도중 재개면 첫 배치는 원본처럼
+`max_time_steps` 검사 **없이** 배치 끝까지 가고, 훅의 `batch_pos` 도 원본 위치(b 부터)로 센다.
+`first_batch == sim_batch_size`(기본)이면 이 두 줄은 무동작이다.
 """
 function continue_simulation!(env::PlannerEnv, factory_vis, anim, sim_params::SimParameters,
                               sim_process_data::SimProcessingData;
                               first_batch::Int = sim_params.sim_batch_size, up_steps = [])
     sp = first_batch == sim_params.sim_batch_size ? sim_params :
          SimParameters(first_batch, (getfield(sim_params, i) for i in 2:fieldcount(SimParameters))...)
+    off = sim_params.sim_batch_size - first_batch   # 첫 배치가 배치 중간에서 시작하면 > 0 (기본 0)
     # while 조건 : 멈춤 신호가 없고(`!`) AND(`&&`) 최대 스텝에 도달하지 않은 동안 반복
-    while !sim_process_data.stop_simulating && sim_process_data.iter < sim_params.max_time_steps
-        up_steps = simulate!(env, factory_vis, anim, sp, sim_process_data, up_steps)  # 실제 시뮬 한 묶음 실행
+    while !sim_process_data.stop_simulating && (off > 0 || sim_process_data.iter < sim_params.max_time_steps)
+        up_steps = simulate!(env, factory_vis, anim, sp, sim_process_data, up_steps, off)  # 실제 시뮬 한 묶음 실행
         sp = sim_params
+        off = 0
         # MONITOR seam: 배치마다 env 상태를 JSONL 한 줄로 방출. monitor_enable! 를 안 했으면 즉시 반환(no-op).
         monitor_emit!(env, sim_process_data.iter)
     end
@@ -149,7 +153,9 @@ function simulate!(
     anim::Union{ConstructionBots.AnimationWrapper,Nothing},    # 애니메이션 기록기(없으면 Nothing)
     sim_params::SimParameters,                                 # 시뮬 설정값
     sim_process_data::SimProcessingData,                       # 진행상태(매 스텝 갱신됨)
-    update_steps::Vector                                       # 모아둔 시각화 업데이트 단계 배열
+    update_steps::Vector,                                      # 모아둔 시각화 업데이트 단계 배열
+    batch_offset::Int = 0                                      # (T6) 훅에 넘기는 배치 위치 = b + batch_offset. 기본 0 = 기존 그대로.
+                                                               #  위치 인자다(키워드면 lowering 이 gensym 본체를 만들어 world_interface 산출물의 closure 번호가 밀린다 — 실측)
 )
 
     # @unpack : Parameters 패키지 매크로. 구조체의 필드들을 같은 이름의 지역변수로 한꺼번에 꺼냄.
@@ -165,7 +171,7 @@ function simulate!(
     for b in 1:sim_batch_size
         # 검증 하니스 경계(T3 t0 후보). 기본 nothing = 무동작. `iter` 는 아직 이 스텝 전 값이다.
         HARNESS_HOOK[] === nothing || HARNESS_HOOK[](:step, env,
-            (; factory_vis, anim, sim_params, sim_process_data, update_steps, batch_pos = b))
+            (; factory_vis, anim, sim_params, sim_process_data, update_steps, batch_pos = b + batch_offset))
         sim_process_data.iter += 1                                          # 반복 횟수 1 증가(필드 직접 수정)
 
         # Interactive commands must enter at simulation-step granularity. Reading

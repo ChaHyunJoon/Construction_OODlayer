@@ -976,6 +976,9 @@ const CONFIG_ENV_OBSERVATIONAL = [
     # 하는 값이다 — 지문에 넣으면 재개가 거절된다. 그 정체는 export 의 `action.file_sha256` 이 싣는다.
     "ZRV_BRANCH_ROLE", "ZRV_BRANCH_ID", "ZRV_BRANCH_TOKEN", "ZRV_BRANCH_ACTION", "ZRV_HOLD_MAX_S",
     "ZRV_RESULTS_DIR", "ZRV_PROBE_PORT", "ZRV_PROBE_PID", "ZRV_T4_HANG_WALL",
+    # T6 격리 도구 집행 — 제안 파일(정체는 export 의 `enactment.proposal_sha256`)·모드·t0 계약 위치·후처리 실패 탐침.
+    # ZRV_BRANCH_ACTION 과 같은 이유로 지문 밖이다.
+    "ZRV_BRANCH_PROPOSAL", "ZRV_BRANCH_MODE", "ZRV_TASK_CONTRACT", "ZRV_PROBE_POSTPROCESS_FAIL",
     # 프로세스 기본값 — `BranchRunner.base_env` 가 worker 의 **새** env 에 그대로 옮긴다(설정 손잡이 아님).
     "HOME", "PATH", "USER",
 ]
