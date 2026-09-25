@@ -322,4 +322,36 @@ end
     @test !process_running(par.process)
 end
 
+
+@testset "[13] 기준 NOOP 이 UNKNOWN(wall_timeout) → 인증 불가 NOOP 재개, 위반 아님, campaign 정지 없음(T7 fix)" begin
+    root = mktempdir()
+    par, seen = fake_live_parent(joinpath(root, "parent"))
+    sv = S.Supervision(par; outroot = joinpath(root, "out"), launch_env = Dict("DEMO_SEED" => "1"), limits = lim0,
+                       campaign_dir = joinpath(root, "campaign"))
+    try
+        S.verify_identity!(sv); @test sv.state === :IDENTITY_VERIFIED
+        S.freeze!(sv, Any[])
+        # rollouts! 대역: 기준 분기가 wall timeout 으로 UNKNOWN(terminal 없음)
+        sv.baseline = (report = rollout("noop", :UNKNOWN; steps = 0), violations = String[], checks = Dict{String,Any}(),
+                       dir = mkpath(joinpath(sv.outroot, "noop")), supervisor = (wall_s = 30.0, cpu_s = 1.0, timed_out = true))
+        S.advance!(sv, :BASELINE_AND_CANDIDATE_ROLLOUTS; why = "stub")
+        S.select!(sv)
+        S.commit!(sv)
+    finally
+        S.retire!(sv)
+    end
+    @test sv.selection.classification === :certification_unavailable && sv.selection.selected === :noop
+    @test any(g -> startswith(g, "baseline UNKNOWN: wall_timeout"), sv.gaps)
+    @test [t["to"] for t in sv.transitions][end-3:end] == ["CERTIFICATION_UNAVAILABLE", "SELECTED_NOOP", "COMMITTED", "REPLAY_CHECKED"]
+    @test sv.certificate["certification_available"] === false                    # certificate 와 선택이 같은 말을 한다
+    @test sv.certificate["selection"]["classification"] == "certification_unavailable"
+    @test sv.replay.certified === false && sv.replay.violation === false && sv.replay.match === false
+    @test !S.certification_stopped(sv.campaign_dir) && !isfile(joinpath(sv.campaign_dir, S.STOP_FILE))
+    @test seen == ["verify", "verify", "resume"] && !process_running(par.process)
+    # 같은 사실을 build_certificate 에 직접: gap 이 비어 있어도 인증 불가 분류면 인증 불가
+    c = S.build_certificate(; parent_dir = par.dir, verify = okverify, selection = S.select_repair("t0", :UNKNOWN, []),
+                            baseline = rollout("noop", :UNKNOWN), gaps = String[], launch_env = Dict{String,String}(), limits = lim0)
+    @test c["certification_available"] === false
+end
+
 end

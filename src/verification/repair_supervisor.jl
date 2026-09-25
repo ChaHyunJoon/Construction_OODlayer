@@ -290,7 +290,9 @@ function build_certificate(; parent_dir::AbstractString, verify::AbstractDict, s
             "envelope" => R.ENVELOPE_VALIDATOR_VERSION),
         "outcomes" => Dict{String,Any}("baseline" => baseline === nothing ? nothing : _rollout_dict(baseline),
                                        "candidate" => nothing),
-        "selection" => selection_dict(selection), "certification_available" => isempty(gaps),
+        "selection" => selection_dict(selection),
+        # 인증 가능 = gap 없음 ∧ 선택이 인증 불가로 분류되지 않음(기준 UNKNOWN 은 gap 이 아니어도 인증 불가 — T7 fix)
+        "certification_available" => isempty(gaps) && selection.classification !== :certification_unavailable,
         "proposal" => nothing, "source" => nothing, "params_sha256" => nothing, "calls_sha256" => nothing,
         "effect" => nothing, "post_state_sha256" => nothing,
         "continuation" => Dict{String,Any}("policy" => "pi0", "pi0" => contract["pi0"], "t1_iter" => contract["t0_iter"]),
@@ -653,6 +655,9 @@ function select!(sv::Supervision)
     base = ran ? sv.baseline.report.outcome : :UNKNOWN
     note = ran ? (sv.baseline.report.unknown_cause === nothing ? "" : "UNKNOWN cause $(sv.baseline.report.unknown_cause)") :
                  "not run (certification unavailable before rollouts)"
+    # 기준 NOOP 이 UNKNOWN(wall_timeout·resource_limit·solver_error…)이면 그 사건은 인증 불가다 — gap 으로 올려 certificate·
+    # NOOP 재개가 같은 사실을 보게 한다(T7 fix: 안 올리면 재개가 "인증됨" 으로 잘린 기준과 대조돼 campaign 을 멈췄다).
+    ran && base === :UNKNOWN && push!(sv.gaps, "baseline UNKNOWN: $(something(sv.baseline.report.unknown_cause, "?"))")
     sv.selection = select_repair(cid, base, cands; gaps = unique(sv.gaps), baseline_note = note)
     cand = nothing
     if sv.selection.selected === :tool
@@ -681,7 +686,8 @@ NOOP 재개: 부모 verify(인증 가능하면 PRECOMMIT_VERIFIED) → `resume` 
 """
 function resume_noop!(sv::Supervision)
     v = _verify(sv)
-    certified = isempty(sv.gaps) && isempty(identity_gaps(v))
+    certified = isempty(sv.gaps) && isempty(identity_gaps(v)) &&
+                (sv.selection === nothing || sv.selection.classification !== :certification_unavailable)
     certified && advance!(sv, :PRECOMMIT_VERIFIED; why = "parent unchanged at t0")
     BR.parent_command(sv.parent, "resume"); sv.resumed = true
     fin = _await(sv.parent.process, sv.limits.wall_s)
