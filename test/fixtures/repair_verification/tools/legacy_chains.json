@@ -1,0 +1,1720 @@
+{
+ "episodes": {
+  "tractor_all3_s14": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 1031,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "retire_nonessential_blocked_navigation!"
+      }
+     ],
+     "code_sha256": "c7e02e0d0172e4cdd597a85a71efce38a69b4f8346f1d1195b326f3b8a7c064d",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_all3_s14/01_decide.jl",
+     "historical_steps": [
+      "retire_nonessential_blocked_navigation!:threw(blockage report does not match the schedule)"
+     ],
+     "impl_name": "retire_nonessential_blocked_navigation!",
+     "n": 1,
+     "params": {},
+     "record_id": "239c6cda357f54ab3d2ca084",
+     "reversible": false,
+     "role": "decide",
+     "surface": "sched"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "retire_nonessential_blocked_navigation!"
+      }
+     ],
+     "code_sha256": "25d08957d50274369b94ef99a173e63ac6cd177898d0c278d3e55a84bc58f676",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s14/02_rewrite.jl",
+     "historical_steps": [
+      "retire_nonessential_blocked_navigation!:threw(blocked vertex is not in the schedule)"
+     ],
+     "impl_name": "retire_nonessential_blocked_navigation!",
+     "n": 2,
+     "params": {},
+     "record_id": "33a6aee4ac2e73b30c618d62",
+     "reversible": false,
+     "role": "rewrite",
+     "surface": "schedule DAG and planning cache"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 14
+  },
+  "tractor_all3_s2": {
+   "a2_class": "a2_rescue",
+   "b0_closed": 170,
+   "b0_iter": 5484,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_zone_blocked_work_geometry!"
+      }
+     ],
+     "code_sha256": "5e881e54d227d26e6785962e9630c6f166e8d93799f911abd273f042d431c467",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_all3_s2/01_decide.jl",
+     "historical_steps": [
+      "relocate_zone_blocked_work_geometry!:success"
+     ],
+     "impl_name": "relocate_zone_blocked_work_geometry!",
+     "n": 1,
+     "params": {},
+     "record_id": "972715e8e84aa0c1833a1b11",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_zone_blocked_work_geometry!"
+      }
+     ],
+     "code_sha256": "6a3170895534c8b1d2cf3e558ba315522e9b900db5085ab4c1779e3ec6b1bcc7",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s2/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_zone_blocked_work_geometry!:success"
+     ],
+     "impl_name": "relocate_zone_blocked_work_geometry!",
+     "n": 2,
+     "params": {},
+     "record_id": "206938126dfe571189a3a392",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene_tree"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "anchor",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 2
+  },
+  "tractor_all3_s23": {
+   "a2_class": "a2_regression",
+   "b0_closed": 278,
+   "b0_iter": 3955,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_navigation_goal_reachability!"
+      }
+     ],
+     "code_sha256": "bc3b2238694969e08a285471c71da3f2d388e7a8da53619fc88a13c61e91fed6",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_all3_s23/01_decide.jl",
+     "historical_steps": [
+      "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+     ],
+     "impl_name": "restore_navigation_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "78a1bf46873a4bca9e500e7c",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_navigation_goal_reachability!"
+      }
+     ],
+     "code_sha256": "78269e08aad6f2202b6f979dc058192dd9a274f849612a583700749e7764d3f9",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s23/02_rewrite.jl",
+     "historical_steps": [
+      "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+     ],
+     "impl_name": "restore_navigation_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "452ff337a49d45ffe5d8f73f",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree geometry"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 278,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 23
+  },
+  "tractor_all3_s26": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 1064,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_navigation_goal!"
+      }
+     ],
+     "code_sha256": "02040d835707c8708500d8b5d0006853dc740e6132c289f1cb526875b739d502",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_all3_s26/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_navigation_goal!:success"
+     ],
+     "impl_name": "relocate_unreachable_navigation_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "260305aa3309a42151db32b1",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_navigation_goal!"
+      }
+     ],
+     "code_sha256": "af283971a9280a8b352a158a16fa79cfa2cd2057415fbad274bf3922e0176e2a",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s26/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_navigation_goal!:threw(no unfinished blocked navigation goal)"
+     ],
+     "impl_name": "relocate_unreachable_navigation_goal!",
+     "n": 2,
+     "params": {},
+     "record_id": "68c152a0da828995644244cf",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree geometry and operating-schedule weights"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 26
+  },
+  "tractor_all3_s29": {
+   "a2_class": "a2_regression",
+   "b0_closed": 221,
+   "b0_iter": 3768,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_unfinished_goals!"
+      }
+     ],
+     "code_sha256": "a74087b2436a38091ed06105d5c3310e848a6914e5b400e2104005ff6c233cac",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_all3_s29/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_unfinished_goals!:success"
+     ],
+     "impl_name": "relocate_unreachable_unfinished_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "5f51ccb35274b5dea1522dac",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_unfinished_goals!"
+      }
+     ],
+     "code_sha256": "70957fc99e1af2abd84d0a44018de913538c72dfeace76cb83702d7ad3fe18c0",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s29/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_unfinished_goals!:success"
+     ],
+     "impl_name": "relocate_unreachable_unfinished_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "16160ce2d11dbe895cdb9992",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 238,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 29
+  },
+  "tractor_all3_s30": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 3028,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_isolated_unreachable_goal!"
+      }
+     ],
+     "code_sha256": "68260081bbd5b91675e3004994719875719ee050f4c8070d1e68730aaeecef45",
+     "executed_basis": "attempts=[] \u2227 steps",
+     "file": "legacy/tractor_all3_s30/01_decide.jl",
+     "historical_steps": [
+      {
+       "detail": "",
+       "name": "prune_isolated_unreachable_goal!",
+       "status": "success"
+      }
+     ],
+     "impl_name": "prune_isolated_unreachable_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "1ac3f943bfb62b3e7f71f553",
+     "reversible": true,
+     "role": "decide",
+     "surface": "sched"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": null,
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 30
+  },
+  "tractor_all3_s9": {
+   "a2_class": "a2_regression",
+   "b0_closed": 221,
+   "b0_iter": 5905,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_required_goal_reachability!"
+      }
+     ],
+     "code_sha256": "9cd7370555e88f03768d5d0fef28a9f8902722effb94d0e61b809f2a78e887a6",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_all3_s9/01_decide.jl",
+     "historical_steps": [
+      "restore_required_goal_reachability!:failure"
+     ],
+     "impl_name": "restore_required_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "492cc6b1e27f3334545c49aa",
+     "reversible": false,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_required_goal_reachability!"
+      }
+     ],
+     "code_sha256": "aba453d182e3269c7aee74c5715293c1dc145172015e1d85cb11fb825cd2a17b",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_all3_s9/02_rewrite.jl",
+     "historical_steps": [
+      "restore_required_goal_reachability!:failure"
+     ],
+     "impl_name": "restore_required_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "93e401a43f8cb7797928b8e8",
+     "reversible": false,
+     "role": "rewrite",
+     "surface": "schedule goal transform geometry"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 221,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 9
+  },
+  "tractor_zone_s14": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 884,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_navigation_reachability!"
+      }
+     ],
+     "code_sha256": "3885d92247134163ebe03e9791a161f3ed00e95a000884d0e86e60272559d5d2",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_zone_s14/01_decide.jl",
+     "historical_steps": [
+      "restore_blocked_navigation_reachability!:threw(No callable primitive can perform the required semantics-preserving schedule and scene-tree respecification)"
+     ],
+     "impl_name": "restore_blocked_navigation_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "ddd1d3adc57052532bfeb51a",
+     "reversible": false,
+     "role": "decide",
+     "surface": "sched, scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_navigation_reachability!"
+      }
+     ],
+     "code_sha256": "d4e2fbef53990967032d82726e079068474c6fa8457ae958d84dc072dc93294c",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s14/02_rewrite.jl",
+     "historical_steps": [
+      "restore_blocked_navigation_reachability!:success"
+     ],
+     "impl_name": "restore_blocked_navigation_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "9f17c60a728325a99e277b7e",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "none"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 14
+  },
+  "tractor_zone_s16": {
+   "a2_class": "a2_rescue",
+   "b0_closed": 232,
+   "b0_iter": 5586,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_work_goal!"
+      }
+     ],
+     "code_sha256": "dca75a8f7ac028a71d3db8159ce6f6a6f4abb228593575bcf4351adc1bba0b60",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_zone_s16/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_work_goal!:threw(relocation violated schedule-transform consistency)"
+     ],
+     "impl_name": "relocate_unreachable_work_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "31f5bc96455ed1496aa67f9e",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_work_goal!"
+      }
+     ],
+     "code_sha256": "3ca2e8cba17be03b4eaa81d19881153fd7588bb30dc4a05ea36058e426c463ed",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s16/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_work_goal!:threw(no unfinished blocked transport navigation goal found)"
+     ],
+     "impl_name": "relocate_unreachable_work_goal!",
+     "n": 2,
+     "params": {},
+     "record_id": "abf5453924e472b84d3329c3",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree transform hierarchy"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "anchor",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 16
+  },
+  "tractor_zone_s23": {
+   "a2_class": "a2_regression",
+   "b0_closed": 278,
+   "b0_iter": 3861,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_exclusion_blocked_goal_geometry!"
+      }
+     ],
+     "code_sha256": "988e4172a94aaf77e0307c9dca6e43c0aa82a2d7da1b27505b5e5140eed62c1e",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_zone_s23/01_decide.jl",
+     "historical_steps": [
+      "relocate_exclusion_blocked_goal_geometry!:threw(scene-tree destination relocation did not take effect)"
+     ],
+     "impl_name": "relocate_exclusion_blocked_goal_geometry!",
+     "n": 1,
+     "params": {},
+     "record_id": "4bb8ece6f00c026b08d35209",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_exclusion_blocked_goal_geometry!"
+      }
+     ],
+     "code_sha256": "611e8a9524bef19b51d7e43652b809600f3a5bb03ba73c8e95b3cfd33c3e960f",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s23/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_exclusion_blocked_goal_geometry!:success"
+     ],
+     "impl_name": "relocate_exclusion_blocked_goal_geometry!",
+     "n": 2,
+     "params": {},
+     "record_id": "f4e3569bee0380de4b5196f0",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree destination geometry"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 279,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 23
+  },
+  "tractor_zone_s26": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 884,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_nongating_branch!"
+      }
+     ],
+     "code_sha256": "8aacaf98eec129de92bd19272f0afb9e1b2ce282c4e32197964dddeadfea1073",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_zone_s26/01_decide.jl",
+     "historical_steps": [
+      "prune_blocked_nongating_branch!:threw(setfield!: immutable struct of type OperatingSchedule cannot be changed)"
+     ],
+     "impl_name": "prune_blocked_nongating_branch!",
+     "n": 1,
+     "params": {},
+     "record_id": "38f1e33445bb3b39b3cd96da",
+     "reversible": true,
+     "role": "decide",
+     "surface": "sched"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_nongating_branch!"
+      }
+     ],
+     "code_sha256": "1a57b18cafd79421f35186c04d583d8fd944e852a52c0a863d9b68a7ecca3a54",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s26/02_rewrite.jl",
+     "historical_steps": [
+      "prune_blocked_nongating_branch!:success"
+     ],
+     "impl_name": "prune_blocked_nongating_branch!",
+     "n": 2,
+     "params": {},
+     "record_id": "8abdecf4a3d0df5d94e5288b",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "Operating schedule graph and its index-aligned schedule/cache state"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 26
+  },
+  "tractor_zone_s29": {
+   "a2_class": "a2_regression",
+   "b0_closed": 221,
+   "b0_iter": 3573,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_zone_blocked_goals!"
+      }
+     ],
+     "code_sha256": "243872d4df61d3952b7db23d00c1fc0e398c6902afa7b42e483880850032f93b",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_zone_s29/01_decide.jl",
+     "historical_steps": [
+      "relocate_zone_blocked_goals!:success"
+     ],
+     "impl_name": "relocate_zone_blocked_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "188f009900284ce36ddd32f8",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "noop_rejected",
+   "group": "drift",
+   "historical_a2_closed": 221,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 29
+  },
+  "tractor_zone_s30": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 287,
+   "b0_iter": 884,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_navigation_goal_reachability!"
+      }
+     ],
+     "code_sha256": "5ade7d2b8ad4a021a93cff40aa29680f0adf17666279ecd49c980968d8e043b7",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_zone_s30/01_decide.jl",
+     "historical_steps": [
+      "restore_blocked_navigation_goal_reachability!:success"
+     ],
+     "impl_name": "restore_blocked_navigation_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "5171cf2d93e92b83d36630c8",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_navigation_goal_reachability!"
+      }
+     ],
+     "code_sha256": "af977288ba1fd843f7aba55efed98510636ed85e45dfc495f8a2794cd57cceaa",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s30/02_rewrite.jl",
+     "historical_steps": [
+      "restore_blocked_navigation_goal_reachability!:threw(expected exactly one blocked navigation goal)"
+     ],
+     "impl_name": "restore_blocked_navigation_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "5d2e129028ef2e42e3a5c1e4",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "schedule transform tree and operating-schedule weights"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "noop_retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 30
+  },
+  "tractor_zone_s5": {
+   "a2_class": "a2_rescue",
+   "b0_closed": 180,
+   "b0_iter": 3602,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_work_geometry!"
+      }
+     ],
+     "code_sha256": "5b28c200e2ba0f40b01f8ca774f73665ba2295325e3d079a6c7ffb582c3743e0",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/tractor_zone_s5/01_decide.jl",
+     "historical_steps": [
+      "relocate_blocked_work_geometry!:success"
+     ],
+     "impl_name": "relocate_blocked_work_geometry!",
+     "n": 1,
+     "params": {},
+     "record_id": "d17d57f0a203e29faf060784",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_work_geometry!"
+      }
+     ],
+     "code_sha256": "85edc90b4ce8ff889edd1d4da033051f04d67395a82868bd0eb3584a3a7bb42f",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s5/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_blocked_work_geometry!:threw(no unfinished blocked navigation node was found)"
+     ],
+     "impl_name": "relocate_blocked_work_geometry!",
+     "n": 2,
+     "params": {},
+     "record_id": "bc2758fc1045fbf016ef5d25",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree and planning cache"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "noop_retried",
+   "group": "anchor",
+   "historical_a2_closed": 287,
+   "historical_a2_status": "complete",
+   "model": "tractor",
+   "seed": 5
+  },
+  "tractor_zone_s9": {
+   "a2_class": "a2_regression",
+   "b0_closed": 221,
+   "b0_iter": 3573,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "d9a6d42ea1d40e46ecbea5bfefc9fbe96c0c78e615c31b8c00394252dc6e6388",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/tractor_zone_s9/01_decide.jl",
+     "historical_steps": [
+      "restore_blocked_goal_reachability!:threw(one or more affected navigation goals remain blocked)"
+     ],
+     "impl_name": "restore_blocked_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "6576441ce2309170c7497ea9",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "311b672f0dcc67eeaf6896bf338d9d4584fe0944c8ee19b44ed3acd73e478c70",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/tractor_zone_s9/02_rewrite.jl",
+     "historical_steps": [
+      "restore_blocked_goal_reachability!:success"
+     ],
+     "impl_name": "restore_blocked_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "08e58f3978eb6785ab32c14c",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "schedule and scene-tree goal transforms"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 239,
+   "historical_a2_status": "incomplete",
+   "model": "tractor",
+   "seed": 9
+  },
+  "xwing_all3_s12": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1866,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_zone_blocked_goal!"
+      }
+     ],
+     "code_sha256": "029e6a350643a8abfd76b1a98456012240ef57862d10e2b8786e8425516e4b28",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/xwing_all3_s12/01_decide.jl",
+     "historical_steps": [
+      "relocate_zone_blocked_goal!:success"
+     ],
+     "impl_name": "relocate_zone_blocked_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "51f8757569ea3be844deb946",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_zone_blocked_goal!"
+      }
+     ],
+     "code_sha256": "b08686d153ce1e30c5ddb529e535a4837203ab188e633000321640e8d5fb02ec",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s12/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_zone_blocked_goal!:threw(no unfinished zone-blocked schedule node was measured)"
+     ],
+     "impl_name": "relocate_zone_blocked_goal!",
+     "n": 2,
+     "params": {},
+     "record_id": "08f25791cce6fe6bd953b7c9",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 12
+  },
+  "xwing_all3_s14": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1831,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_zone_blocked_arrival!"
+      }
+     ],
+     "code_sha256": "c83127d0a2b965befcd25ab3c2c38a2f180527bde1a182f10a130473f94963b7",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_all3_s14/01_decide.jl",
+     "historical_steps": [
+      "restore_zone_blocked_arrival!:threw(could not associate the blocked node with an active zone)"
+     ],
+     "impl_name": "restore_zone_blocked_arrival!",
+     "n": 1,
+     "params": {},
+     "record_id": "621c8d53cc947aa022db94a0",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_zone_blocked_arrival!"
+      }
+     ],
+     "code_sha256": "822b14ba6c85a283c9c331a67d0ff62f99f64a8f5cababb082d944240e2845f7",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s14/02_rewrite.jl",
+     "historical_steps": [
+      "restore_zone_blocked_arrival!:success"
+     ],
+     "impl_name": "restore_zone_blocked_arrival!",
+     "n": 2,
+     "params": {},
+     "record_id": "29165aced6d3c24bdae2eda7",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "schedule transform-tree goal geometry"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 14
+  },
+  "xwing_all3_s17": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4600,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_unfinished_goals!"
+      }
+     ],
+     "code_sha256": "4bbeab9217481dae97188047e3ec1b6cfefa13c97da0ad858fa40331e35c45d2",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/xwing_all3_s17/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_unfinished_goals!:success"
+     ],
+     "impl_name": "relocate_unreachable_unfinished_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "41b776df0b02cf84a26dbdae",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_unfinished_goals!"
+      }
+     ],
+     "code_sha256": "30bf2a17ed178f436398c010a36c3ccf919af489853f1822ffd47821657c6c99",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s17/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_unfinished_goals!:threw(no unfinished zone-blocked navigation goals were found)"
+     ],
+     "impl_name": "relocate_unreachable_unfinished_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "464b65ef6edbe2ab6702d12b",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree transforms and unfinished schedule weights"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 610,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 17
+  },
+  "xwing_all3_s25": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4601,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_navigation_goals!"
+      }
+     ],
+     "code_sha256": "c5f8e4b565cebc30bc7bc1e6b532ba93da3dda18061383bf0f033bb28f6a4f6d",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/xwing_all3_s25/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_navigation_goals!:success"
+     ],
+     "impl_name": "relocate_unreachable_navigation_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "bfbdddb8924c0df13adf6de0",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_navigation_goals!"
+      }
+     ],
+     "code_sha256": "afbe771d307386ed1764a7f6046da92768ead512d23787c699fa013f3fcf265a",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s25/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_navigation_goals!:threw(no blocked unfinished navigation goal was found)"
+     ],
+     "impl_name": "relocate_unreachable_navigation_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "edf83a74c83f9b64732ddf7f",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree and schedule-associated staging/deposit/build transform tree"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 610,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 25
+  },
+  "xwing_all3_s27": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 2482,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goal!"
+      }
+     ],
+     "code_sha256": "2b2f3f7321813d555a745fe724e7686d157a29b52569f3a542017ad66e242c21",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_all3_s27/01_decide.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goal!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+     ],
+     "impl_name": "relocate_blocked_navigation_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "1c56ae25f2971c13fd4f0827",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goal!"
+      }
+     ],
+     "code_sha256": "bafb7ec063449adbaf9d4dcd85dd1bbdd683ea636c4bb955977708e53308cdb4",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s27/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goal!:success"
+     ],
+     "impl_name": "relocate_blocked_navigation_goal!",
+     "n": 2,
+     "params": {},
+     "record_id": "03c36038af824503e9bf7e23",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene_tree"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 27
+  },
+  "xwing_all3_s7": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4627,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goals!"
+      }
+     ],
+     "code_sha256": "54e7bd8b2665442fdac98078dfc303710695012e7966f905f7119ff47a9a59a8",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/xwing_all3_s7/01_decide.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goals!:success"
+     ],
+     "impl_name": "relocate_blocked_navigation_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "4c0d53b91d09853deb5fb0e7",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goals!"
+      }
+     ],
+     "code_sha256": "f0a0b30784c039c486f75c8e5e8f2239eb2d3b28ae9a19a90ee150bdc68b5a7c",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s7/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goals!:threw(no blocked unfinished navigation goals found)"
+     ],
+     "impl_name": "relocate_blocked_navigation_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "4fe48fd537a164bd43716b72",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree geometry and dependent staging/work-area transforms"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 311,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 7
+  },
+  "xwing_all3_s8": {
+   "a2_class": "a2_regression",
+   "b0_closed": 446,
+   "b0_iter": 4349,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "20e05760e9005f3ea5baa3af6a283a92e4fcb66b691b7fba52c06c76cb40c0b5",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_all3_s8/01_decide.jl",
+     "historical_steps": [
+      "restore_blocked_goal_reachability!:threw(No scene-layout replanning and collision-validation capability is available in the world interface)"
+     ],
+     "impl_name": "restore_blocked_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "1670cd6af5dbc7f201a51a0a",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "06a8cd96a23c4f58a35b6b4c036dbeeb9eed03edd36839b5a42b5234ff16febc",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s8/02_rewrite.jl",
+     "historical_steps": [
+      "restore_blocked_goal_reachability!:success"
+     ],
+     "impl_name": "restore_blocked_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "76940e2599648ff0a8c6cfb4",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene-tree geometry"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 446,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 8
+  },
+  "xwing_all3_s9": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1969,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_noncritical_branch!"
+      }
+     ],
+     "code_sha256": "e3d34f2de4d602a46f3ce1323fd5095b84375213d726b134a85f4bc54bff5af3",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_all3_s9/01_decide.jl",
+     "historical_steps": [
+      "prune_blocked_noncritical_branch!:threw(setfield!: immutable struct of type OperatingSchedule cannot be changed)"
+     ],
+     "impl_name": "prune_blocked_noncritical_branch!",
+     "n": 1,
+     "params": {},
+     "record_id": "2b6409856cb18253a176fae6",
+     "reversible": false,
+     "role": "decide",
+     "surface": "sched"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_noncritical_branch!"
+      }
+     ],
+     "code_sha256": "20239ff16330fa00c6c9e475e7daed9cc7243653476c4c3c6435d4b80b958124",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_all3_s9/02_rewrite.jl",
+     "historical_steps": [
+      "prune_blocked_noncritical_branch!:success"
+     ],
+     "impl_name": "prune_blocked_noncritical_branch!",
+     "n": 2,
+     "params": {},
+     "record_id": "0764540a88b8ad32899a818a",
+     "reversible": false,
+     "role": "rewrite",
+     "surface": "operating schedule DAG and planning cache"
+    }
+   ],
+   "case": "all3",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 9
+  },
+  "xwing_zone_s12": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1770,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_noncompletion_branch!"
+      }
+     ],
+     "code_sha256": "4b150d69449cf341fed3b88e4aed9014d0d0d770b39a984d34f619ede05f95e7",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s12/01_decide.jl",
+     "historical_steps": [
+      "prune_blocked_noncompletion_branch!:threw(setfield!: immutable struct of type OperatingSchedule cannot be changed)"
+     ],
+     "impl_name": "prune_blocked_noncompletion_branch!",
+     "n": 1,
+     "params": {},
+     "record_id": "08e3b40db733a81299a3afad",
+     "reversible": true,
+     "role": "decide",
+     "surface": "sched"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_noncompletion_branch!"
+      }
+     ],
+     "code_sha256": "56bb9c58cbc955e9df36b99b75b82a9b0d13df2fdfc9ef442bdb9b754a10279c",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s12/02_rewrite.jl",
+     "historical_steps": [
+      "prune_blocked_noncompletion_branch!:threw(setfield!: immutable struct of type PlannerEnv cannot be changed)"
+     ],
+     "impl_name": "prune_blocked_noncompletion_branch!",
+     "n": 2,
+     "params": {},
+     "record_id": "42aa8698f8de51b711616c1c",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "schedule"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 12
+  },
+  "xwing_zone_s14": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1770,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "prune_blocked_nonessential_work!"
+      }
+     ],
+     "code_sha256": "7af3fd29a2bf1ad4fc958ab7c76bfabafafee51b320a1dfbd00ce49f9bf16b0e",
+     "executed_basis": "attempts=[] \u2227 steps",
+     "file": "legacy/xwing_zone_s14/01_decide.jl",
+     "historical_steps": [
+      {
+       "detail": "",
+       "name": "prune_blocked_nonessential_work!",
+       "status": "success"
+      }
+     ],
+     "impl_name": "prune_blocked_nonessential_work!",
+     "n": 1,
+     "params": {},
+     "record_id": "65eea5c88406cd05eb4d6ad9",
+     "reversible": true,
+     "role": "decide",
+     "surface": "sched"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": null,
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 14
+  },
+  "xwing_zone_s17": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4484,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_inaccessible_work_areas!"
+      }
+     ],
+     "code_sha256": "1226eedfe7c3049cdb790de47491995951c80ffe8dfe433ad93ded802321c16c",
+     "executed_basis": "attempts[0].trigger=noop",
+     "file": "legacy/xwing_zone_s17/01_decide.jl",
+     "historical_steps": [
+      "relocate_inaccessible_work_areas!:success"
+     ],
+     "impl_name": "relocate_inaccessible_work_areas!",
+     "n": 1,
+     "params": {},
+     "record_id": "e8d97df30c4e799b6059a9ed",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_inaccessible_work_areas!"
+      }
+     ],
+     "code_sha256": "24ecc6b87a486cbe5dc43e594c7a75dcc72f70a2b98d5b81cc8631932dd40633",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s17/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_inaccessible_work_areas!:threw(no unreachable unfinished navigation goal was found)"
+     ],
+     "impl_name": "relocate_inaccessible_work_areas!",
+     "n": 2,
+     "params": {},
+     "record_id": "57cec6c4234cafb36ed29f18",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene_tree"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "noop_retried",
+   "group": "drift",
+   "historical_a2_closed": 610,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 17
+  },
+  "xwing_zone_s25": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4481,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_exclusion_blocked_work_goals!"
+      }
+     ],
+     "code_sha256": "5ca29d5865601f392cc0f52b09a85db73ee1f30b575aaa8e3efe4bc9609a7111",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s25/01_decide.jl",
+     "historical_steps": [
+      "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+     ],
+     "impl_name": "relocate_exclusion_blocked_work_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "95aee457023f40dd65eda4f8",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_exclusion_blocked_work_goals!"
+      }
+     ],
+     "code_sha256": "365e381c495768c25cf2afda4ed37d0160f369932d0078f17720705c2ccee377",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s25/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}>)"
+     ],
+     "impl_name": "relocate_exclusion_blocked_work_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "3b5ef42fd090611ef6eaedb1",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree work-area and dependent goal geometry"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 609,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 25
+  },
+  "xwing_zone_s27": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1770,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "abandon_unreachable_noncompletion_branch!"
+      }
+     ],
+     "code_sha256": "11faccc2c03c671805abc3f9eda905f6d91ed24e10cb6cad11b20bdd2e0d3731",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s27/01_decide.jl",
+     "historical_steps": [
+      "abandon_unreachable_noncompletion_branch!:threw(expected exactly one unfinished zone-blocked navigating node)"
+     ],
+     "impl_name": "abandon_unreachable_noncompletion_branch!",
+     "n": 1,
+     "params": {},
+     "record_id": "5de52e1ece4b7b06a6254d65",
+     "reversible": false,
+     "role": "decide",
+     "surface": "sched"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "abandon_unreachable_noncompletion_branch!"
+      }
+     ],
+     "code_sha256": "73b261794bbaee2b8085cae5dd35c470b9324edc64452b4ba275522076087ed2",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s27/02_rewrite.jl",
+     "historical_steps": [
+      "abandon_unreachable_noncompletion_branch!:threw(expected exactly one frozen unfinished zone-blocked navigating node without downstream ProjectComplete)"
+     ],
+     "impl_name": "abandon_unreachable_noncompletion_branch!",
+     "n": 2,
+     "params": {},
+     "record_id": "8383fcaf7db922dd9bd89582",
+     "reversible": false,
+     "role": "rewrite",
+     "surface": "operating schedule"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 27
+  },
+  "xwing_zone_s4": {
+   "a2_class": "a2_rescue",
+   "b0_closed": 670,
+   "b0_iter": 6689,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_zone_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "d083be9bf110463c88299844494aced07c4e7fef95ad0dd88f7fea93ab5e3146",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s4/01_decide.jl",
+     "historical_steps": [
+      "restore_zone_blocked_goal_reachability!:threw(Required coherent scene-tree goal relocation capability is not exposed)"
+     ],
+     "impl_name": "restore_zone_blocked_goal_reachability!",
+     "n": 1,
+     "params": {},
+     "record_id": "a15539ce6b8f70d8072a1d9d",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "restore_zone_blocked_goal_reachability!"
+      }
+     ],
+     "code_sha256": "34979740163c541676f12c44e6e73d26003a75748ecea0c98efc1e518c113f62",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s4/02_rewrite.jl",
+     "historical_steps": [
+      "restore_zone_blocked_goal_reachability!:success"
+     ],
+     "impl_name": "restore_zone_blocked_goal_reachability!",
+     "n": 2,
+     "params": {},
+     "record_id": "692a80a63a323dce1d2c7f14",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "schedule transform tree and build goal configurations"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "anchor",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 4
+  },
+  "xwing_zone_s7": {
+   "a2_class": "a2_regression",
+   "b0_closed": 609,
+   "b0_iter": 4574,
+   "b0_outcome": "FAIL_WITHIN_BUDGET",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_required_goals!"
+      }
+     ],
+     "code_sha256": "0f7fe1ceda3bd4f9dd2dc5fcb64ab50fc2690e061553c1aeb09af49af2d11251",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s7/01_decide.jl",
+     "historical_steps": [
+      "relocate_unreachable_required_goals!:threw(MethodError: no method matching get_center<::Pair{Symbol, LazySets.Ball2Module.Ball2}>)"
+     ],
+     "impl_name": "relocate_unreachable_required_goals!",
+     "n": 1,
+     "params": {},
+     "record_id": "9bba2b22031c4be60c3a346f",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_unreachable_required_goals!"
+      }
+     ],
+     "code_sha256": "990b039a9ff07521bbb24bd0fff77b103f050cbf767a9d97a0fc6d5aecde53dc",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s7/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_unreachable_required_goals!:success"
+     ],
+     "impl_name": "relocate_unreachable_required_goals!",
+     "n": 2,
+     "params": {},
+     "record_id": "e58fc27c0ad7c2859bdbb90a",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene_tree"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "drift",
+   "historical_a2_closed": 610,
+   "historical_a2_status": "incomplete",
+   "model": "xwing",
+   "seed": 7
+  },
+  "xwing_zone_s9": {
+   "a2_class": "a2_easy_success",
+   "b0_closed": 684,
+   "b0_iter": 1770,
+   "b0_outcome": "COMPLETE",
+   "bodies": [
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goal!"
+      }
+     ],
+     "code_sha256": "911d5c10716c9aeb825d9c6008ed1813b6a28cccc568c0b08791a882d2c07903",
+     "executed_basis": "attempts[0].trigger=threw",
+     "file": "legacy/xwing_zone_s9/01_decide.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goal!:threw(UndefVarError: `IdSet` not defined)"
+     ],
+     "impl_name": "relocate_blocked_navigation_goal!",
+     "n": 1,
+     "params": {},
+     "record_id": "a227bc3cea62e84c2299b093",
+     "reversible": true,
+     "role": "decide",
+     "surface": "scene_tree"
+    },
+    {
+     "calls": [
+      {
+       "args": {},
+       "primitive": "relocate_blocked_navigation_goal!"
+      }
+     ],
+     "code_sha256": "8c55cf4c73efff546d3c085728e02a80df1cb3315bc262bd7cdf9910b0902f03",
+     "executed_basis": "roundtrip=ok install_why=None steps_ref=None",
+     "file": "legacy/xwing_zone_s9/02_rewrite.jl",
+     "historical_steps": [
+      "relocate_blocked_navigation_goal!:success"
+     ],
+     "impl_name": "relocate_blocked_navigation_goal!",
+     "n": 2,
+     "params": {},
+     "record_id": "ecf1444ff5d5bec5be13db0c",
+     "reversible": true,
+     "role": "rewrite",
+     "surface": "scene tree transforms"
+    }
+   ],
+   "case": "zone",
+   "enact_retry": "retried",
+   "group": "easy_kept",
+   "historical_a2_closed": 684,
+   "historical_a2_status": "complete",
+   "model": "xwing",
+   "seed": 9
+  }
+ },
+ "generator": "tools/monitor/grid/t10b/extract_legacy_chains.py",
+ "ledger": "results/2026-09-23-repair-ablation/ledger_all.final.jsonl",
+ "ledger_sha256": "6f3d753bfefe48b405242189f772bc293366f753be3c35dbf1a14238c033ca77",
+ "schema": "zrv-legacy-chains/1"
+}
