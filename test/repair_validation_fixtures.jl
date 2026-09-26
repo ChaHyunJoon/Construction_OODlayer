@@ -154,7 +154,8 @@ insist(id) = (e = R[id]; vcat(e["gate_reasons"], something(e["exception"], ""), 
         @test st("f_residue_a") == "unobservable" && has(insist("f_residue_a"), "zrv_t10b_residue_marker")
         @test st("f_residue_b1") == "enacted" && R["f_residue_b1"]["effects"] == "noop_equivalent"
         body = BR._json(joinpath(root, "f_residue_b1", "enactment.json"))["body"]
-        @test any(s -> occursin("no zrv_t10b_residue_marker", String(s["detail"])), body["steps"])
+        # b1 는 표식이 보이면 던지고, 안 보일 때만 `:clean` 을 돌려준다(생성 원시의 detail 은 실리지 않는다 — status 로 본다)
+        @test any(s -> String(s["status"]) == "clean", body["steps"]) && !body["partial"]
         @test st("f_residue_b2") == "registration_rejected"
     end
     @testset "legitimate tool $(id) is accepted by the general path" for id in LEGIT
