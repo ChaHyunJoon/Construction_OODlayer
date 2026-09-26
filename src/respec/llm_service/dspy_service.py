@@ -2334,3 +2334,118 @@ def decide(req: MacroRequest):
                                             else str(err).split(":", 1)[1].split(",")),
                             "policy": "surrogate:SurrogateV2", "error": err}
     return out
+
+
+# ==========================================================================================
+# 존 복구 제안 레인 (T9, 설계 2026-09-24 §4.1·§7.2·§9.2) — `/zone_repair/propose` · `/zone_repair/revise`
+# ==========================================================================================
+# 🔴 호출자는 `src/verification/repair_runtime.jl` 의 CB 없는 에피소드 driver 하나다. 관측(`request`)은 driver 가
+#    t0 checkpoint 에서 복원한 **일회용 observe worker** 가 `policy.jl` 의 `service_payload` 로 만든 바로 그
+#    `/decide` 페이로드다 — 그래서 모델이 읽는 문장은 `_llm_input` 한 벌이고, 결정 레인과 갈리지 않는다.
+# 🔴 두 엔드포인트는 **던지지 않고 기록으로 거절한다**(ablation 레벨 불일치 포함) — driver 가 사유를 에피소드
+#    기록에 싣는다. 팔 이름은 pydantic `Literal` 이 경계에서 막는다(오타가 주 팔로 접히지 않는다).
+# 🔴 원장: 요청마다 한 줄(`row_type = zone_repair_propose | zone_repair_revise`), 원시 LM 응답 포함.
+from typing import Literal  # noqa: E402
+import synthesize as _SY  # noqa: E402  (이미 위에서 임포트된 모듈 — numpy/sklearn-before-dspy 계약 무관)
+
+
+class ZoneRepairBudget(BaseModel):
+    max_model_calls: int
+    max_candidates: int
+    max_total_tokens: int
+    max_cost_usd: Optional[float] = None
+
+
+class ZoneRepairProposeRequest(BaseModel):
+    request: MacroRequest
+    arm: Literal["general", "geometry"]
+    checkpoint_id: str
+    budget: ZoneRepairBudget
+    capability_contract_version: str
+    geometry_context: Optional[Dict[str, Any]] = None
+    record_id: str
+    run_ctx: Optional[Dict[str, Any]] = None
+
+
+class ZoneRepairReviseRequest(BaseModel):
+    arm: Literal["general", "geometry"]
+    checkpoint_id: str
+    budget: ZoneRepairBudget
+    capability_contract_version: str
+    ledger: Dict[str, Any]
+    compose_input: Dict[str, Any]
+    rejected: List[Dict[str, Any]]
+    geometry_context: Optional[Dict[str, Any]] = None
+    record_id: str
+    parent_record_id: Optional[str] = None
+    run_ctx: Optional[Dict[str, Any]] = None
+
+
+def _repair_lm():
+    """이 레인이 부를 LM. 시험은 이 함수를 가짜로 바꾼다(요청 스레드와 무관하게)."""
+    return dspy.settings.lm
+
+
+def _repair_provenance(req, response_id):
+    """후보마다 싣는 도장 — Julia `RepairRuntime.decision_gaps` 가 셋을 요구한다(schema digest · 권한 계약 ·
+    서비스 source 지문). ⚠️ `capability_contract_version` 은 **요청의 값을 되돌려 싣는다**: 권한 계약은 Julia 가
+    집행하고 이 서비스는 그 계약을 모른다 — 이 도장은 "그 계약을 선언한 요청에 대해 생성됐다" 까지만 말한다."""
+    return {"source": "service", "arm": req.arm, "record_id": req.record_id, "response_id": response_id,
+            "tool_proposal_schema_sha256": _SY.TOOL_PROPOSAL_SCHEMA_SHA256,
+            "geometry_patch_schema_sha256": _SY.GEOMETRY_PATCH_SCHEMA_SHA256,
+            "capability_contract_version": req.capability_contract_version,
+            "service_code_fingerprint": CODE_FINGERPRINT, "repair_ablation": REPAIR_ABLATION,
+            "model": MODEL, "cache": CACHE}
+
+
+def _repair_row(req, out, raw, response_id, row_type, parent=None):
+    try:
+        row = _stamp_record(dict(out, raw_lm=dict(raw)), row_type=row_type, record_id=req.record_id,
+                            response_id=response_id, parent_record_id=parent,
+                            attempt=2 if row_type == "zone_repair_revise" else 1, trigger=req.arm,
+                            run_ctx=req.run_ctx, code_fingerprint=CODE_FINGERPRINT)
+    except Exception as e:  # noqa: BLE001 -- 원장이 제안을 죽이면 안 된다
+        _note_ledger_append_failure(e, where="dspy_service." + row_type)
+    else:
+        _append_synthesis_record(row)
+
+
+def _repair_refusal(req, why):
+    out = _SY._repair_blank(req.arm, req.checkpoint_id)
+    out["error"] = "refused: %s -- no model call was made" % why
+    return out
+
+
+@app.post("/zone_repair/propose")
+def zone_repair_propose(req: ZoneRepairProposeRequest):
+    response_id = uuid.uuid4().hex
+    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    raw: Dict[str, Any] = {}
+    if why:
+        out = _repair_refusal(req, why)
+    else:
+        r = req.request
+        out = _SY.propose_repair(
+            _llm_input(r), arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(),
+            lm=_repair_lm(), id_prefix=req.record_id, tools=build_tools(getattr(r, "agents", None), _valid_for(r)),
+            geometry_context=req.geometry_context, provenance=_repair_provenance(req, response_id), raw_out=raw)
+    out.update(record_id=req.record_id, response_id=response_id)
+    _repair_row(req, out, raw, response_id, "zone_repair_propose")
+    return out
+
+
+@app.post("/zone_repair/revise")
+def zone_repair_revise(req: ZoneRepairReviseRequest):
+    response_id = uuid.uuid4().hex
+    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    raw: Dict[str, Any] = {}
+    if why:
+        out = _repair_refusal(req, why)
+    else:
+        out = _SY.revise_repair(
+            arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(), ledger_state=req.ledger,
+            compose_input=req.compose_input, rejected=req.rejected, lm=_repair_lm(), id_prefix=req.record_id,
+            geometry_context=req.geometry_context, provenance=_repair_provenance(req, response_id), raw_out=raw)
+    out.update(record_id=req.record_id, response_id=response_id)
+    _repair_row(req, out, raw, response_id, "zone_repair_revise", parent=req.parent_record_id)
+    return out

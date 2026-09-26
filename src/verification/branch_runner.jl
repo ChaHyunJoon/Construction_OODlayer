@@ -292,7 +292,9 @@ function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, out
     all(k -> startswith(String(k), "ZRV_PROBE_"), keys(extra_env)) || error("extra_env may only carry ZRV_PROBE_* test keys")
     # T6: 생성 도구(ToolProposal JSON)는 `proposal_file` 로 — worker 가 등록·body·후처리·(full 이면) continuation.
     isempty(action_file) || isempty(proposal_file) || error("give action_file or proposal_file, not both")
-    mode in ("full", "preflight", "commit") || error("mode must be full|preflight|commit")
+    # T9 `observe`: 일회용 worker 가 t0 를 복원해 관측 파일(`observation.json`)만 쓰고 끝난다 — 동작·continuation 없음.
+    mode in ("full", "preflight", "commit", "observe") || error("mode must be full|preflight|commit|observe")
+    mode == "observe" && !(isempty(proposal_file) && isempty(action_file)) && error("observe mode runs no action or proposal")
     mode == "commit" && isempty(proposal_file) && error("commit mode replays a proposal — give proposal_file")
     dir = joinpath(outroot, branch_id)
     ispath(dir) && error("branch dir exists: $(dir) — each branch gets a fresh namespace")

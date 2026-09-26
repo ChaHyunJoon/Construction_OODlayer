@@ -2086,3 +2086,538 @@ def synthesize_multi(state: str,
                     rec["recomposed"] = True
 
     return _finish_record(rec, kind, led, blob)
+
+
+# ==========================================================================================
+# (6) 존 복구 제안 레인 (T9, 설계 2026-09-24 §4·§4.1·§6.1·§7.2·§9.2)
+# ==========================================================================================
+# 🔴 위 `synthesize_multi` 와 **같은 세 역할**(ObserveEvent → DesignToolSpec → 코드 작성)을 같은 context
+#    빌더로 돈다 — Design 은 원본 관측도 세계 인터페이스도 못 받는다(`build_design_context` 의 계약이 그대로
+#    적용된다). 다른 것은 셋뿐이다:
+#      (a) **호출 예산**: 모델 호출은 최대 4회(observe 1 · design 1 · compose 1 · compose_revision 1). 숨은
+#          재시도(ChatAdapter→JSONAdapter 폴백, 프로바이더 오류 재시도)도 **같은 원장에서** 호출로 센다 —
+#          `_BudgetedLM` 이 LM 경계에서 모든 호출을 세고, 남은 필수 단계 몫을 남기지 못하는 호출은 부르기
+#          **전에** 거절한다. dspy/litellm 의 `num_retries` 는 0 으로 내린다(안 보이는 재시도를 없앤다).
+#          groundability redesign·F2 recompose 는 이 레인에 **없다**(예산 밖 호출이다).
+#      (b) **후보 예산**: 한 compose 응답이 완전한 후보 여러 개를 낼 수 있고, 거절·수정본 포함 제출 총수 ≤ K.
+#          처음 4개면 수정 후보 몫이 없고, 3개면 수정 호출이 1개를 낼 수 있다(`room = K - submitted`).
+#          token 한도 때문에 잘린 응답의 후보는 **정상 후보가 아니다**(`truncated` — 제출 수에는 센다).
+#      (c) **출력 봉투**: 주 팔은 `tool_proposal.schema.json` 의 ToolProposal, 보조 G4 팔만
+#          `geometry_patch.schema.json` 의 GeometryPatch. 팔은 요청이 정하고 **폴백하지 않는다** — 주 팔 요청은
+#          어떤 경우에도 GeometryPatch 를 내지 않고, G4 요청은 기하 문맥이 없으면 호출 0회로 거절한다.
+# 🔴 수정 호출(compose_revision)의 되먹임은 **호출자(Julia)** 가 t0 preflight 에서 거른 것뿐이다(설계 §6.1 —
+#    compile/권한/effect/contract 오류만; requires_runtime·전체 rollout·미래 사건은 절대 아님). 이 파일은 그
+#    문자열을 받아 싣기만 한다.
+import hashlib  # noqa: E402
+
+REPAIR_ARMS = ("general", "geometry")
+REPAIR_STAGES = ("observe", "design", "compose", "compose_revision")
+_REPAIR_MANDATORY = ("observe", "design", "compose")
+TOOL_PROPOSAL_SCHEMA_VERSION = "tool-proposal/1"
+GEOMETRY_PATCH_SCHEMA_VERSION = "geometry-patch/1"
+TOOL_PROPOSAL_SCHEMA_PATH = os.path.join(HERE, "tool_proposal.schema.json")
+GEOMETRY_PATCH_SCHEMA_PATH = os.path.join(HERE, "geometry_patch.schema.json")
+
+
+def _file_sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+# 🔴 **임포트 시점에 얼린다** — `CODE_FINGERPRINT`(dspy_service) 와 같은 이유: 디스크를 요청마다 다시 읽으면
+#    낡은 서비스가 "현행 schema" 로 보고한다. Julia(`RepairRuntime.decision_gaps`)가 이 값을 트리의 파일 digest 와
+#    대조한다. `generation.code_fingerprint` 는 `.py` 만 보므로 schema(.json)는 이 도장이 따로 나른다.
+TOOL_PROPOSAL_SCHEMA_SHA256 = _file_sha256(TOOL_PROPOSAL_SCHEMA_PATH)
+GEOMETRY_PATCH_SCHEMA_SHA256 = _file_sha256(GEOMETRY_PATCH_SCHEMA_PATH)
+
+
+class BudgetExhausted(Exception):
+    """호출·token·cost 예산이 이 호출을 허락하지 않는다. **부르기 전에** 난다(과금 0)."""
+
+
+class RepairLedger:
+    """호출 원장과 후보 원장 — **따로 센다**(설계 §7.2). 두 HTTP 요청(propose → revise)을 건너 이어지므로
+    `to_dict`/`from_state` 로 호출자에게 돌려주고 다시 받는다(서비스는 상태를 안 쥔다).
+
+    `admit(stage)`: 이 호출 뒤에도 아직 안 끝난 필수 단계(observe/design/compose) 몫이 남아야 허락한다. 그래서
+    observe 의 숨은 재시도는 compose_revision 몫을 먹고, 필수 단계의 몫은 절대 못 먹는다.
+    """
+
+    def __init__(self, *, max_model_calls, max_candidates, max_total_tokens, max_cost_usd=None):
+        for k, v, hi in (("max_model_calls", max_model_calls, 4), ("max_candidates", max_candidates, 4)):
+            if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= hi):
+                raise ValueError("%s=%r must be an int in 1..%d (design 7.2)" % (k, v, hi))
+        if isinstance(max_total_tokens, bool) or not isinstance(max_total_tokens, int) or max_total_tokens < 1:
+            raise ValueError("max_total_tokens=%r must be a positive int -- it has no default" % (max_total_tokens,))
+        if max_cost_usd is not None and not (isinstance(max_cost_usd, (int, float)) and max_cost_usd > 0):
+            raise ValueError("max_cost_usd=%r must be positive or absent" % (max_cost_usd,))
+        self.max_model_calls, self.max_candidates = max_model_calls, max_candidates
+        self.max_total_tokens, self.max_cost_usd = max_total_tokens, max_cost_usd
+        self.calls: List[Dict[str, Any]] = []      # 부른 호출(성공·실패 모두)
+        self.refused: List[Dict[str, Any]] = []    # 예산이 부르기 전에 막은 시도
+        self.done: List[str] = []                  # 응답을 받은 필수 단계
+        self.submitted = 0                         # 후보 원장: 제출된 후보 수(거절·잘림·수정본 포함)
+
+    @classmethod
+    def from_state(cls, budget, state=None):
+        led = cls(**budget)
+        for k in ("calls", "refused", "done"):
+            setattr(led, k, list((state or {}).get(k, [])))
+        led.submitted = int((state or {}).get("submitted", 0))
+        return led
+
+    @property
+    def tokens_used(self):
+        return sum(int(c.get("total_tokens") or 0) for c in self.calls)
+
+    @property
+    def cost_used(self):
+        return sum(float(c["cost"]) for c in self.calls if isinstance(c.get("cost"), (int, float)))
+
+    def remaining_tokens(self):
+        return max(self.max_total_tokens - self.tokens_used, 0)
+
+    def admit(self, stage):
+        if stage not in REPAIR_STAGES:
+            raise ValueError("unknown stage %r" % (stage,))
+        pending = [s for s in _REPAIR_MANDATORY if s != stage and s not in self.done]
+        why = None
+        if len(self.calls) + 1 + len(pending) > self.max_model_calls:
+            why = ("call budget: %d of %d model calls used and %d mandatory stage(s) still need one"
+                   % (len(self.calls), self.max_model_calls, len(pending)))
+        elif self.tokens_used >= self.max_total_tokens:
+            why = "token budget: %d of %d tokens used" % (self.tokens_used, self.max_total_tokens)
+        elif self.max_cost_usd is not None and self.cost_used >= self.max_cost_usd:
+            why = "cost budget: %.4f of %.4f USD used" % (self.cost_used, self.max_cost_usd)
+        if why:
+            self.refused.append({"stage": stage, "why": why})
+            raise BudgetExhausted(why)
+
+    def record(self, stage, entry=None, error=None):
+        usage = dict((entry or {}).get("usage") or {})
+        tot = usage.get("total_tokens")
+        if tot is None and ("prompt_tokens" in usage or "completion_tokens" in usage):
+            tot = int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0)
+        resp = (entry or {}).get("response")
+        c = {"stage": stage, "attempt": 1 + sum(1 for x in self.calls if x["stage"] == stage),
+             "ok": error is None, "error": None if error is None else "%s: %s" % (type(error).__name__, error),
+             "total_tokens": tot, "usage_measured": entry is not None,
+             "cost": (entry or {}).get("cost"), "cache_hit": getattr(resp, "cache_hit", None),
+             "truncated": _response_truncated(resp)}
+        self.calls.append(c)
+        return c
+
+    def to_dict(self):
+        return {"max_model_calls": self.max_model_calls, "max_candidates": self.max_candidates,
+                "max_total_tokens": self.max_total_tokens, "max_cost_usd": self.max_cost_usd,
+                "calls": self.calls, "refused": self.refused, "done": self.done,
+                "calls_used": len(self.calls), "submitted": self.submitted,
+                "tokens_used": self.tokens_used, "cost_used": self.cost_used,
+                "cost_unmeasured_calls": sum(1 for c in self.calls if not isinstance(c.get("cost"), (int, float)))}
+
+
+def _response_truncated(resp):
+    """프로바이더가 길이 한도로 응답을 끊었는가. `None` = 못 쟀다(응답 객체 없음)."""
+    if resp is None:
+        return None
+    if getattr(resp, "status", None) == "incomplete":            # /v1/responses
+        return True
+    chs = getattr(resp, "choices", None) or []
+    return any(getattr(ch, "finish_reason", None) == "length" for ch in chs)
+
+
+class _BudgetedLM(dspy.BaseLM):
+    """모든 LM 호출이 지나가는 문. 부르기 전에 `ledger.admit`, 부른 뒤 `ledger.record`.
+    프로바이더 오류는 **여기서** 재시도한다 — 재시도마다 admit 을 다시 거치므로 예산 밖으로 못 간다."""
+
+    def __init__(self, inner, ledger, stage):
+        super().__init__(model=getattr(inner, "model", "?"), model_type=getattr(inner, "model_type", "chat"),
+                         cache=getattr(inner, "cache", True), num_retries=0)
+        self.kwargs = dict(getattr(inner, "kwargs", {}) or {})
+        self._inner, self._ledger, self._stage = inner, ledger, stage
+
+    def __call__(self, *items, **kwargs):
+        while True:
+            self._ledger.admit(self._stage)
+            kw = dict(kwargs)
+            cap = self._ledger.remaining_tokens()
+            base = kw.get("max_tokens", self._inner.kwargs.get("max_tokens"))
+            if base is None or cap < int(base):
+                kw["max_tokens"] = cap           # token 한도가 곧 응답 상한 — 넘치면 잘리고, 잘린 후보는 무효
+            hist = self._inner.history
+            n0 = len(hist)
+            try:
+                out = self._inner(*items, **kw)
+            except BudgetExhausted:
+                raise
+            except Exception as e:  # noqa: BLE001 -- 프로바이더 오류: 기록하고 예산이 허락하면 다시
+                self._ledger.record(self._stage, error=e)
+                continue
+            self._ledger.record(self._stage, entry=hist[n0] if len(hist) > n0 else None)
+            return out
+
+
+def _repair_stage(ledger, lm, stage, prog, **inputs):
+    """한 단계. 반환 `(prediction, truncated)` — `truncated` 는 이 단계의 **마지막** 호출(= 출력을 낸 호출)."""
+    n0 = len(ledger.calls)
+    with dspy.context(lm=_BudgetedLM(lm, ledger, stage)):
+        pred = prog(**inputs)
+    if stage in _REPAIR_MANDATORY and stage not in ledger.done:
+        ledger.done.append(stage)
+    mine = ledger.calls[n0:]
+    return pred, bool(mine and mine[-1].get("truncated"))
+
+
+_CANDIDATE_OBJECT_DESC = (
+    'a JSON list, one object per implementation, in the order you would try them: '
+    '{"impl_name": "<name ending with !>", "surface": "<which world surface it edits>", '
+    '"reversible": true|false, "claimed_effects": ["<what you expect it to change>"], '
+    '"impl_code": "function <impl_name>(env; k=<default>, ...) ... end", '
+    '"params": {<JSON schema of the keyword arguments, {} if none>}, '
+    '"calls": [{"primitive": "<impl_name>", "args": {<keyword>: <value>}}]}. '
+    'Every object must be complete -- an object cut off in the middle is not a candidate. '
+    'Each impl_code is exactly one function and nothing else. ' + _RESOLVE_IN_BODY_DESC
+    + _RETURN_CONTRACT_DESC + " calls: " + _CALLS_DESC)
+
+
+class WriteRepairTools(dspy.Signature):
+    """You are given a tool specification and the schema and function signatures of a
+    running multi-robot construction simulator. WRITE JULIA IMPLEMENTATIONS of the
+    specified tool -- up to `max_candidates` alternatives, each a single complete function.
+    You are not given a catalogue of ready-made operations -- there is none. Read the
+    world's types and the functions the module already has, and write the code that
+    produces the specified effect. Alternatives are tried in the order you list them."""
+    spec: str = dspy.InputField(desc=
+        "physical principles of this build, the final goal, what the event broke, and the "
+        "tool to build: name, parameter schema, mechanism")
+    world_interface: str = dspy.InputField(desc=
+        "the world's types and fields, the functions the module already has, and the hard "
+        "requirements your function must satisfy to be callable")
+    max_candidates: int = dspy.InputField(desc=
+        "the most implementations this response may contain; fewer is fine")
+    wrote: bool = dspy.OutputField(desc="false if you could not write any implementation")
+    needs: str = dspy.OutputField(desc=
+        "a capability your bodies required that you could not find in the world interface; "
+        "empty string if none")
+    candidates: List[Dict[str, Any]] = dspy.OutputField(desc=_CANDIDATE_OBJECT_DESC)
+
+
+class RewriteRepairTools(dspy.Signature):
+    """Some of your Julia implementations were REJECTED at the current state of the world,
+    before the simulation advanced. For each you are given the exact rejection reasons.
+    Write corrected implementations -- at most `max_candidates` in total. Fix what the
+    reasons name; the same hard requirements still apply."""
+    spec: str = dspy.InputField(desc="the tool specification you were given")
+    world_interface: str = dspy.InputField(desc=
+        "the world's types and fields, the functions the module already has, and the hard "
+        "requirements your function must satisfy to be callable")
+    rejected: str = dspy.InputField(desc=
+        "JSON list of the rejected implementations: {proposal_id, impl_code, reasons}")
+    max_candidates: int = dspy.InputField(desc=
+        "the most corrected implementations this response may contain; fewer is fine")
+    wrote: bool = dspy.OutputField(desc="false if you cannot fix any of them")
+    candidates: List[Dict[str, Any]] = dspy.OutputField(desc=
+        _CANDIDATE_OBJECT_DESC + ' Add "rewrite_of": "<proposal_id of the rejected '
+        'implementation this one corrects>" to every object.')
+
+
+# ---- 보조 G4 팔: 기하 전용 안내·GeometryPatch (설계 §9.2 — 주 팔에는 이 문자열이 절대 안 간다) ----------------
+# 🔴 이 두 블록과 아래 두 시그니처는 `arm == "geometry"` 에서만 렌더된다. 주 팔 프롬프트에 섞이면
+#    `test_zone_repair_lane.py` 의 프롬프트 감사가 빨개진다(양성 대조: G4 프롬프트에는 있어야 한다).
+GEOMETRY_ONLY_GUIDANCE = """\
+GEOMETRY-ONLY COMPARISON ARM
+In this arm the only repair that can be submitted is a new global XY position for staging
+configurations listed in the geometry context. Rotation and height are preserved. No code is
+written: the harness applies exactly the positions submitted and nothing else, so specify the
+repair as which listed configurations move and where."""
+
+
+def render_geometry_context(ctx) -> str:
+    """G4 의 직접 기하 입력. 현재 위치만 싣는다 — 추천 좌표·필요 이동량은 **없다**(계산하지 않는다)."""
+    ctx = ctx or {}
+    out = ["GEOMETRY CONTEXT (measured at the decision time; global positions in metres)"]
+    for c in (ctx.get("configs") or []):
+        out.append('  config_ref "%s": x=%s y=%s staging_radius=%s closed=%s'
+                   % (c.get("config_ref"), c.get("x"), c.get("y"), c.get("staging_radius"),
+                      "yes" if c.get("closed") else "no"))
+    for z in (ctx.get("zones") or []):
+        out.append('  no-go zone "%s": center=%s radius=%s' % (z.get("key"), z.get("center"), z.get("radius")))
+    return "\n".join(out)
+
+
+_PATCH_OBJECT_DESC = (
+    'a JSON list, one object per patch, in the order you would try them: '
+    '{"writes": [{"config_ref": "<a config_ref from the geometry context>", "x": <new global x>, '
+    '"y": <new global y>}], "claimed_effects": ["<what you expect it to change>"], '
+    '"rationale": "<why>"}. Every object must be complete.')
+
+
+class WriteGeometryPatches(dspy.Signature):
+    """GEOMETRY-ONLY COMPARISON ARM. You are given a repair specification and the geometry
+    context of a running multi-robot construction build. Submit up to `max_candidates`
+    alternative geometry patches; each moves one or more listed staging configurations to
+    new global XY positions you choose. Rotation and height are preserved."""
+    spec: str = dspy.InputField(desc="physical principles, the final goal, what broke, the repair specification")
+    geometry_context: str = dspy.InputField(desc="the listed configurations with their current positions, and the zones")
+    max_candidates: int = dspy.InputField(desc="the most patches this response may contain; fewer is fine")
+    candidates: List[Dict[str, Any]] = dspy.OutputField(desc=_PATCH_OBJECT_DESC)
+
+
+class RewriteGeometryPatches(dspy.Signature):
+    """GEOMETRY-ONLY COMPARISON ARM. Some of your geometry patches were REJECTED at the
+    current state of the world, before the simulation advanced. Given the exact reasons,
+    submit corrected patches -- at most `max_candidates` in total."""
+    spec: str = dspy.InputField(desc="the repair specification you were given")
+    geometry_context: str = dspy.InputField(desc="the listed configurations with their current positions, and the zones")
+    rejected: str = dspy.InputField(desc="JSON list of the rejected patches: {proposal_id, patch, reasons}")
+    max_candidates: int = dspy.InputField(desc="the most corrected patches this response may contain; fewer is fine")
+    candidates: List[Dict[str, Any]] = dspy.OutputField(desc=
+        _PATCH_OBJECT_DESC + ' Add "rewrite_of": "<proposal_id of the rejected patch this one corrects>".')
+
+
+def _schema_errors(doc, path):
+    import jsonschema
+    with open(path, encoding="utf-8") as f:
+        v = jsonschema.Draft202012Validator(json.load(f))
+    return sorted("%s: %s" % ("/".join(str(p) for p in e.absolute_path) or "/", e.message)
+                  for e in v.iter_errors(doc))
+
+
+def _str_list(x):
+    return list(x) if isinstance(x, list) and all(isinstance(s, str) for s in x) else None
+
+
+def _tool_proposal_of(c, *, checkpoint_id, proposal_id, submission_index, spec, parent, provenance):
+    """한 후보 객체 → ToolProposal. 값을 **지어내지 않는다**: 못 읽은 필드는 그대로 두고 schema 가 거절하게 한다
+    (그 후보도 제출 수에 센다). 예외 하나: `params` 가 **없으면** `{}` — 키워드 없는 함수의 참인 관측이고
+    현행 등록 경로(`enact.jl` 의 `praw === nothing`)와 같은 뜻이다(`params_missing` 로 기록)."""
+    c = c if isinstance(c, dict) else {}
+    code = c.get("impl_code")
+    code = strip_code_fence(code) if isinstance(code, str) else code
+    pr = c.get("params")
+    po = None if pr is None else params_object(pr)
+    params = {} if pr is None else (po if po is not None else pr)
+    calls = normalize_calls(c.get("calls"))
+    specification = {"mechanism": (spec.get("mechanism") or "").strip() or "(the design stage gave no mechanism)"}
+    sp = params_object(spec.get("params")) if spec.get("params") else None
+    if isinstance(sp, dict):
+        specification["params"] = sp
+    p = {"schema_version": TOOL_PROPOSAL_SCHEMA_VERSION, "checkpoint_id": checkpoint_id,
+         "proposal_id": proposal_id, "submission_index": submission_index,
+         "tool_name": (spec.get("tool_name") or "").strip() or c.get("impl_name") or "",
+         "specification": specification, "impl_name": c.get("impl_name"), "impl_code": code,
+         "params": params, "calls": calls if calls is not None else c.get("calls"),
+         "provenance": dict(provenance or {}, params_missing=pr is None)}
+    if parent:
+        p["parent_proposal_id"] = parent
+    ce = _str_list(c.get("claimed_effects"))
+    if ce is not None:
+        p["claimed_effects"] = ce
+    if isinstance(c.get("surface"), str):
+        p["surface"] = c["surface"]
+    if isinstance(c.get("reversible"), bool):
+        p["reversible"] = c["reversible"]
+    return p
+
+
+def _geometry_patch_of(c, *, checkpoint_id, proposal_id, submission_index, spec, parent, provenance):
+    c = c if isinstance(c, dict) else {}
+    ws = c.get("writes")
+    writes = ([{"config_ref": w.get("config_ref"), "xy": {"x": w.get("x"), "y": w.get("y")}}
+               if isinstance(w, dict) else w for w in ws] if isinstance(ws, list) else ws)
+    p = {"schema_version": GEOMETRY_PATCH_SCHEMA_VERSION, "checkpoint_id": checkpoint_id,
+         "proposal_id": proposal_id, "submission_index": submission_index, "writes": writes,
+         "provenance": dict(provenance or {})}
+    if parent:
+        p["parent_proposal_id"] = parent
+    ce = _str_list(c.get("claimed_effects"))
+    if ce is not None:
+        p["claimed_effects"] = ce
+    if isinstance(c.get("rationale"), str):
+        p["rationale"] = c["rationale"]
+    return p
+
+
+def _submit(out, ledger, raw, *, arm, stage, truncated, checkpoint_id, id_prefix, spec, provenance,
+            parents=()):
+    """compose 응답 하나의 후보들을 후보 원장에 올린다. `room` 을 넘는 객체는 제출이 아니다(`dropped`)."""
+    if not isinstance(raw, list):
+        out["submissions"].append({"stage": stage, "status": "unreadable_candidate_list",
+                                   "detail": type(raw).__name__})
+        return
+    room = ledger.max_candidates - ledger.submitted
+    build = _tool_proposal_of if arm == "general" else _geometry_patch_of
+    schema = TOOL_PROPOSAL_SCHEMA_PATH if arm == "general" else GEOMETRY_PATCH_SCHEMA_PATH
+    for k, c in enumerate(raw):
+        if k >= room:
+            out["submissions"].append({"stage": stage, "status": "dropped_over_candidate_budget",
+                                       "response_index": k})
+            continue
+        ledger.submitted += 1
+        idx = ledger.submitted
+        pid = "%s-s%d" % (id_prefix, idx)
+        par = c.get("rewrite_of") if isinstance(c, dict) else None
+        par = par if (isinstance(par, str) and par in parents) else None
+        prov = dict(provenance or {}, stage=stage, response_index=k)
+        doc = build(c, checkpoint_id=checkpoint_id, proposal_id=pid, submission_index=idx, spec=spec,
+                    parent=par, provenance=prov)
+        sub = {"stage": stage, "submission_index": idx, "proposal_id": pid, "parent_proposal_id": par,
+               "response_index": k}
+        if truncated:
+            # 🔴 token/cost 한도로 잘린 응답의 코드는 정상 후보가 아니다 — 제출 수에는 세고 동결에는 안 넣는다.
+            sub.update(status="invalid_truncated_response")
+        else:
+            errs = _schema_errors(doc, schema)
+            sub.update(status="submitted", envelope_errors=errs)
+            out["candidates"].append(doc)
+        out["submissions"].append(sub)
+
+
+def _repair_programs(arm, programs):
+    progs = dict(programs or {})
+    progs.setdefault("observe", dspy.ChainOfThought(ObserveEvent))
+    progs.setdefault("design", dspy.ChainOfThought(DesignToolSpec))
+    progs.setdefault("compose", dspy.ChainOfThought(WriteRepairTools if arm == "general" else WriteGeometryPatches))
+    progs.setdefault("compose_revision",
+                     dspy.ChainOfThought(RewriteRepairTools if arm == "general" else RewriteGeometryPatches))
+    return progs
+
+
+def _repair_blank(arm, checkpoint_id):
+    return {"arm": arm, "checkpoint_id": checkpoint_id, "enabled": synthesis_enabled(), "stages": [],
+            "expressible": None, "reasoning_log": None, "compose_input": None, "wrote": None,
+            "needs": None, "submissions": [], "candidates": [], "error": None, "reason": None,
+            "ledger": None}
+
+
+def propose_repair(state, *, arm, checkpoint_id, budget, lm, id_prefix, tools=None, geometry_context=None,
+                   blob=None, provenance=None, programs=None, raw_out=None) -> Dict[str, Any]:
+    """observe 1 → design 1 → compose 1(후보 batch). 반환 = 원장·제출 기록·후보(봉투) — 절대 안 던진다(인자
+    오류만 `ValueError`). `lm` 은 요청 국소 사본으로 떠서 쓴다(history 가 요청 국소, `num_retries=0`)."""
+    if arm not in REPAIR_ARMS:
+        raise ValueError("arm=%r -- allowed exactly: %s (no fallback)" % (arm, ", ".join(REPAIR_ARMS)))
+    ledger = RepairLedger.from_state(budget)
+    out = _repair_blank(arm, checkpoint_id)
+    inner = None
+    stage = "setup"
+    try:
+        if not synthesis_enabled():
+            out["error"] = "disabled: %s != '1' -- no model call was made (R13)" % SYNTHESIS_ENV
+            return out
+        if lm is None:
+            out["error"] = "no LM configured -- no model call was made"
+            return out
+        if arm == "geometry" and not (geometry_context or {}).get("configs"):
+            out["error"] = ("refused: the geometry arm needs a geometry context with at least one config; "
+                            "it does not fall back to the general arm -- no model call was made")
+            return out
+        iface = compose_interface(blob) if arm == "general" else render_geometry_context(geometry_context)
+        if not (iface or "").strip():
+            out["error"] = "refused: the compose stage would be handed an empty interface -- no model call was made"
+            return out
+        inner = lm.copy(num_retries=0) if hasattr(lm, "copy") else lm
+        progs = _repair_programs(arm, programs)
+        stage = "observe"
+        p1, _ = _repair_stage(ledger, inner, "observe", progs["observe"],
+                              context=build_observe_context(state), observation=state or "")
+        out["stages"].append("observe")
+        out["reasoning_log"] = getattr(p1, "reasoning_log", "") or ""
+        stage = "design"
+        dctx = build_design_context(out["reasoning_log"])
+        if arm == "geometry":
+            dctx = dctx + "\n\n" + GEOMETRY_ONLY_GUIDANCE
+        p2, _ = _repair_stage(ledger, inner, "design", progs["design"], context=dctx,
+                              reasoning_log=out["reasoning_log"],
+                              existing_vocabulary="\n".join(_tool_lines(tools)),
+                              ungrounded_feedback="", composer_feedback="")
+        out["stages"].append("design")
+        ex = getattr(p2, "expressible", None)
+        out["expressible"] = ex if isinstance(ex, bool) else None
+        spec = {f: (getattr(p2, f, "") or "") for f in ("tool_name", "params", "mechanism")}
+        if out["expressible"] is not False:
+            out["reason"] = ("no candidates: the design stage reported expressible=%r; this lane writes "
+                             "code only on False" % (out["expressible"],))
+            return out
+        stage = "compose"
+        spec_text = build_compose_context(spec, out["reasoning_log"], blob)
+        if arm == "geometry":
+            spec_text = spec_text + "\n\n" + GEOMETRY_ONLY_GUIDANCE
+        out["compose_input"] = {"spec": spec, "spec_text": spec_text}
+        room = ledger.max_candidates - ledger.submitted
+        if arm == "general":
+            p3, trunc = _repair_stage(ledger, inner, "compose", progs["compose"], spec=spec_text,
+                                      world_interface=iface, max_candidates=room)
+            w = getattr(p3, "wrote", None)
+            out["wrote"] = w if isinstance(w, bool) else None
+            out["needs"] = getattr(p3, "needs", None)
+        else:
+            p3, trunc = _repair_stage(ledger, inner, "compose", progs["compose"], spec=spec_text,
+                                      geometry_context=iface, max_candidates=room)
+        out["stages"].append("compose")
+        _submit(out, ledger, getattr(p3, "candidates", None), arm=arm, stage="compose", truncated=trunc,
+                checkpoint_id=checkpoint_id, id_prefix=id_prefix, spec=spec, provenance=provenance)
+    except BudgetExhausted as e:
+        out["error"] = "%s: budget: %s" % (stage, e)
+    except Exception as e:  # noqa: BLE001 -- 기록으로 돌려준다(호출자는 후보 0개로 본다)
+        out["error"] = "%s: %s: %s" % (stage, type(e).__name__, e)
+    finally:
+        out["ledger"] = ledger.to_dict()
+        if raw_out is not None and inner is not None:
+            raw_out["lm"] = lm_raw(inner)
+    return out
+
+
+def revise_repair(*, arm, checkpoint_id, budget, ledger_state, compose_input, rejected, lm, id_prefix,
+                  geometry_context=None, blob=None, provenance=None, programs=None,
+                  raw_out=None) -> Dict[str, Any]:
+    """선택적 네 번째 호출: t0 preflight 에서 거절된 후보의 **사유**만 받아 남은 후보 몫(`K - submitted`) 안에서
+    수정본을 낸다. 전제가 하나라도 없으면 호출 0회로 거절한다."""
+    if arm not in REPAIR_ARMS:
+        raise ValueError("arm=%r -- allowed exactly: %s (no fallback)" % (arm, ", ".join(REPAIR_ARMS)))
+    ledger = RepairLedger.from_state(budget, ledger_state)
+    out = _repair_blank(arm, checkpoint_id)
+    inner = None
+    try:
+        room = ledger.max_candidates - ledger.submitted
+        rej = [r for r in (rejected or []) if isinstance(r, dict) and r.get("proposal_id") and r.get("reasons")]
+        why = (None if synthesis_enabled() else "disabled: %s != '1'" % SYNTHESIS_ENV) or \
+              (None if lm is not None else "no LM configured") or \
+              (None if "compose" in ledger.done else "no first compose response to revise") or \
+              (None if room > 0 else "candidate budget: %d of %d submitted -- no revision"
+               % (ledger.submitted, ledger.max_candidates)) or \
+              (None if rej else "no t0-boundary rejection reasons were supplied") or \
+              (None if (compose_input or {}).get("spec_text") else "no compose input to revise against")
+        if why:
+            out["error"] = "refused: %s -- no model call was made" % why
+            return out
+        if arm == "geometry" and not (geometry_context or {}).get("configs"):
+            out["error"] = "refused: the geometry arm needs its geometry context -- no model call was made"
+            return out
+        iface = compose_interface(blob) if arm == "general" else render_geometry_context(geometry_context)
+        inner = lm.copy(num_retries=0) if hasattr(lm, "copy") else lm
+        progs = _repair_programs(arm, programs)
+        spec_text = compose_input["spec_text"]
+        payload = json.dumps(rej, ensure_ascii=False, default=str)
+        if arm == "general":
+            p, trunc = _repair_stage(ledger, inner, "compose_revision", progs["compose_revision"],
+                                     spec=spec_text, world_interface=iface, rejected=payload, max_candidates=room)
+            w = getattr(p, "wrote", None)
+            out["wrote"] = w if isinstance(w, bool) else None
+        else:
+            p, trunc = _repair_stage(ledger, inner, "compose_revision", progs["compose_revision"],
+                                     spec=spec_text, geometry_context=iface, rejected=payload,
+                                     max_candidates=room)
+        out["stages"].append("compose_revision")
+        _submit(out, ledger, getattr(p, "candidates", None), arm=arm, stage="compose_revision",
+                truncated=trunc, checkpoint_id=checkpoint_id, id_prefix=id_prefix,
+                spec=(compose_input or {}).get("spec") or {}, provenance=provenance,
+                parents=tuple(r["proposal_id"] for r in rej))
+    except BudgetExhausted as e:
+        out["error"] = "compose_revision: budget: %s" % e
+    except Exception as e:  # noqa: BLE001
+        out["error"] = "compose_revision: %s: %s" % (type(e).__name__, e)
+    finally:
+        out["ledger"] = ledger.to_dict()
+        if raw_out is not None and inner is not None:
+            raw_out["lm"] = lm_raw(inner)
+    return out

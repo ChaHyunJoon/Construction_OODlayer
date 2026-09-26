@@ -936,6 +936,8 @@ const CONFIG_ENV_RESULT = [
     # zone-repair-verification T8: off|shadow|enforce. shadow 는 원래 세계를 안 바꾸지만(시험이 잰다) enforce 는 활성
     # 세계를 commit worker 로 바꾼다 — 판의 의미가 갈리므로 result.
     "ZONE_REPAIR_VERIFICATION",
+    # T9: 서비스 제안 source 의 팔(general|geometry)과 모델 예산(기본값 없음) — 결과를 바꾼다.
+    "ZONE_REPAIR_ARM", "ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD",
     # 2026-09-23 레포 정리(100a7735)로 action_registry.jl 이 src/ 아래로 와서 스캐너 범위에 들어옴.
     # 둘 다 행동 어휘·메뉴를 바꾼다(레지스트리 경로 = 매크로 집합, SoC 분할 = battery 메뉴) → result.
     "ACTION_REGISTRY", "DS_BATTERY_SOC_SPLIT",
@@ -1114,10 +1116,16 @@ function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, ".."
     return (code_rev = rev, code_dirty_digest = dirty, config_digest = cfg, config_env = ce)
 end
 
-"상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
-function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
-                        agents = nothing, zones = nothing, lanes = nothing)
-    dspy_ready() || return nothing
+"""
+    service_payload(env, truth; nl, descriptors, agents, zones, lanes) -> Dict
+
+`/decide` 가 받는 관측 페이로드 **그 자체**(행 신원 도장 없음). `service_decide` 가 이것에 `_stamp_identity!` 를
+얹어 보낸다. T9: 존 복구 검증 driver 의 일회용 observe worker(`RepairBranchWorker.observe_t0!`)가 t0 에서 같은 함수로
+관측을 만든다 — 모델이 읽는 문장이 결정 레인과 한 벌이다. 세계를 바꾸지 않는다(부르는 것들이 전부 읽기이고,
+`release_then_candidates` 는 사본에서 돈다).
+"""
+function service_payload(env, truth; nl::AbstractString = "", descriptors = nothing,
+                         agents = nothing, zones = nothing, lanes = nothing)
     # payload = 예전 스키마 피처(surrogate 용) + nl/descriptors(LLM 용). 서비스는 nl 이 있으면
     # LLM 에게 **문장**을 주고, 없으면 예전처럼 파싱된 필드를 준다(하위호환).
     payload = ood_features(env, truth)
@@ -1156,9 +1164,6 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 게이트: `test/service_decide_ships_routing_kind.jl`(본문) ·
     #        `src/respec/llm_service/test_routing_kind_reaches_the_prompt.py`(프롬프트).
     payload["routing_kind"] = routing_kind_of(truth)
-    # 🔴 2026-09-22: 원장 행 id 와 판 신원. 재전송(`retries=3`)은 같은 페이로드를 다시 보내므로
-    #    같은 `record_id` 로 도착한다 — 그것이 이 id 를 여기서 발급하는 이유다.
-    _stamp_identity!(payload)
     descriptors === nothing || (payload["descriptors"] = collect(Float64, descriptors))
     # 실재 로봇 목록. 서비스의 tool enum 이 이것만 쓴다 = 모델에게 **보여주는** id 가 이것뿐이다.
     # 🔴 2026-08-29 정정. 여기 있던 *"여기 없는 id 는 모델이 못 만든다"* 는 **거짓이다.**
@@ -1232,6 +1237,17 @@ function service_decide(env, truth; nl::AbstractString = "", descriptors = nothi
     # 비어 있으면 서비스가 예전처럼 kind 별 기본표를 쓴다 = 기존 호출자 동작 그대로.
     local vm = valid_macros(env, truth)
     isempty(vm) || (payload["valid"] = vm)
+    return payload
+end
+
+"상태를 서비스에 POST 하고 **학습형 정책 전부**(dspy + surrogate)의 결정을 한 번에 받는다. 실패하면 nothing."
+function service_decide(env, truth; nl::AbstractString = "", descriptors = nothing,
+                        agents = nothing, zones = nothing, lanes = nothing)
+    dspy_ready() || return nothing
+    payload = service_payload(env, truth; nl, descriptors, agents, zones, lanes)
+    # 🔴 2026-09-22: 원장 행 id 와 판 신원. 재전송(`retries=3`)은 같은 페이로드를 다시 보내므로
+    #    같은 `record_id` 로 도착한다 — 그것이 이 id 를 여기서 발급하는 이유다.
+    _stamp_identity!(payload)
     # 🔴 이 전송의 사유칸을 **먼저 비운다.** 안 비우면 지난 사건의 실패 사유가 이번 사건의
     #    성공/실패에 눌러붙어, 라우터가 엉뚱한 사유를 찍는다.
     LAST_DECIDE_TRANSPORT_ERROR[] = ""

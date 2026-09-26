@@ -85,6 +85,8 @@ get(ENV, "T8_SKIP_RENDER", "") == "1" || @testset "[2] render_demo.jl — 오타
     @test !isdir(joinpath(d, "b", "parent"))
     # (c) 서비스 후보 source + 닿지 않는 서비스 → 세대 게이트(check_health CLI)가 거절
     r = render(merge(PI0CELL, Dict("ZONE_REPAIR_VERIFICATION" => "shadow", "DSPY_URL" => closed_port_url(),
+                                   # T9: 서비스 source 는 모델 예산이 필수다(기본값 없음) — 게이트까지 가려면 싣는다
+                                   "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "20000", "ZONE_REPAIR_MAX_COST_USD" => "1.0",
                                    "ZONE_REPAIR_DIR" => joinpath(d, "c"))))
     @test r.code != 0
     @test occursin("generation gate", r.out) && occursin("FAIL unreachable", r.out)

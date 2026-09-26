@@ -53,6 +53,21 @@ measured `False` on both (2026-09-02, `results/2026-09-02-f7-synth-multi.json`).
 started without this flag **cannot** produce a synthesis event on these two events, no matter
 what else is fixed downstream.
 
+### Zone-repair proposal lane (T9, 2026-09-25) — `/zone_repair/propose` · `/zone_repair/revise`
+
+The CB-less episode driver (`src/verification/repair_runtime.jl`, `ZONE_REPAIR_VERIFICATION=shadow|enforce`
+with `DSPY_URL`) is the only caller. Same three roles as `synthesize_multi`, **different budget**:
+observe 1 · design 1 · compose 1 (one response may carry several complete candidates) · optional
+compose_revision 1, fed only t0-preflight rejection reasons. Every LM invocation — including the
+ChatAdapter→JSONAdapter hidden retry and provider-error retries — goes through `_BudgetedLM` and is
+counted in the returned ledger; `num_retries` is forced to 0. At most K=4 submitted candidates
+(rejected, truncated and revised ones included). No groundability redesign / F2 recompose here.
+`arm` is exactly `general` (ToolProposal) or `geometry` (auxiliary G4, GeometryPatch) — no fallback.
+Still gated by `TOOL_SYNTHESIS=1` (zero calls otherwise) and by the `REPAIR_ABLATION` handshake.
+Driver-side knobs (no defaults): `ZONE_REPAIR_MAX_TOTAL_TOKENS`, `ZONE_REPAIR_MAX_COST_USD`;
+`ZONE_REPAIR_ARM=general|geometry`. Free tests: `test_zone_repair_lane.py` (ScriptedLM, provider
+entry points patched to raise).
+
 ### 🔴 Traps this recipe exists to close
 
 1. **A stale process answers `/health` with 200.** On 2026-09-03 five uvicorns were found

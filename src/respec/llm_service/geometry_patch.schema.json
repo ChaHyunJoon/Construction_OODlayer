@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "geometry_patch.schema.json",
+  "title": "GeometryPatch",
+  "description": "AUXILIARY G4 ARM ONLY (design 2026-09-24 section 9.2). A geometry-only repair: new global XY positions for staging configurations named in the geometry context the arm was shown. Rotation and height are preserved; nothing else can be expressed. The main arms (U1/U4/V4) never use this schema -- their output is tool_proposal.schema.json. tools/monitor/repair_geometry_control.jl validates it with the same RepairTypes subset validator and turns each write into an engine call on that exact configuration; it computes no coordinates of its own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "checkpoint_id", "proposal_id", "submission_index", "writes"],
+  "properties": {
+    "schema_version": {"const": "geometry-patch/1"},
+    "checkpoint_id": {"type": "string", "minLength": 1},
+    "proposal_id": {"type": "string", "minLength": 1},
+    "parent_proposal_id": {"type": ["string", "null"], "minLength": 1},
+    "submission_index": {"type": "integer", "minimum": 1},
+    "writes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["config_ref", "xy"],
+        "properties": {
+          "config_ref": {"type": "string", "minLength": 1},
+          "xy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y"],
+            "properties": {"x": {"type": "number"}, "y": {"type": "number"}}
+          }
+        }
+      }
+    },
+    "claimed_effects": {"type": "array", "items": {"type": "string"}},
+    "rationale": {"type": "string"},
+    "provenance": {"type": "object"}
+  }
+}

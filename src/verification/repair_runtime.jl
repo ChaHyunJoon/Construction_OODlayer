@@ -22,13 +22,17 @@
 #   `certification_unavailable` 로 **명시** 기록된다.
 # =============================================================================
 isdefined(Main, :RepairSupervisor) || include(joinpath(@__DIR__, "repair_supervisor.jl"))
+isdefined(Main, :RepairGeometryControl) || include(joinpath(@__DIR__, "..", "..", "tools", "monitor", "repair_geometry_control.jl"))
 
 module RepairRuntime
 
 using JSON3, SHA
+import HTTP
 import ..RepairTypes as R
 import ..BranchRunner as BR
 import ..RepairSupervisor as RS
+import ..ToolExecution as TX
+import ..RepairGeometryControl as GCTL
 
 const RUNTIME_VERSION = "repair-runtime/1"
 const EPISODE_SCHEMA = "zone-repair-episode/1"
@@ -266,22 +270,258 @@ score_line(t::AbstractDict) = "[score] complete=$(get(t, "complete", nothing)) c
     "n_zones=$(get(t, "n_zones", nothing)) n_blocked=$(get(t, "n_blocked", nothing)) " *
     "project_blocked=$(get(t, "project_blocked", nothing)) iter=$(get(t, "iter", nothing)) active_world=commit_worker"
 
+# ---- T9: 서비스 제안 source (일반 MAS → 코드 후보, 호출·후보 예산) ------------------------------------
+const ARMS = ("general", "geometry")
+"설계 §7.2 의 고정값: 후보 K=4, 모델 호출 4회(observe 1 · design 1 · compose 1 · compose_revision 1)."
+const MODEL_K = 4
+const MODEL_CALLS = 4
+
+"`ZONE_REPAIR_ARM` — 정확히 `general|geometry`. 그 밖은 오류다(오타가 주 팔↔G4 로 조용히 접히지 않는다)."
+parse_arm(s::AbstractString) = s in ARMS ? String(s) :
+    error("ZONE_REPAIR_ARM=$(repr(s)) is not one of general|geometry (no fallback)")
+
+"""
+    service_budget(env) -> Dict
+
+모델 예산. token·cost 한도는 **기본값이 없다**(설계 §7.2·manifest 가 필수로 요구) — 없거나 양수가 아니면 오류.
+"""
+function service_budget(env::AbstractDict)
+    t = tryparse(Int, strip(get(env, "ZONE_REPAIR_MAX_TOTAL_TOKENS", "")))
+    c = tryparse(Float64, strip(get(env, "ZONE_REPAIR_MAX_COST_USD", "")))
+    (t === nothing || t < 1) && error("[zrv] the service source needs ZONE_REPAIR_MAX_TOTAL_TOKENS (a positive integer, no default)")
+    (c === nothing || !(c > 0)) && error("[zrv] the service source needs ZONE_REPAIR_MAX_COST_USD (a positive number, no default)")
+    return Dict{String,Any}("max_model_calls" => MODEL_CALLS, "max_candidates" => MODEL_K,
+                            "max_total_tokens" => t, "max_cost_usd" => c)
+end
+
+"""
+    proposal_source(env; mode) -> (; source, fixture, url, arm, budget)
+
+후보 source 는 **정확히 하나**: fixture(`ZONE_REPAIR_PROPOSALS`) 또는 서비스(`DSPY_URL`). 🔴 둘 다 있으면 오류다(T8 까지는
+fixture 가 조용히 이겼다). enforce 는 fixture 를 거절한다. `ZONE_REPAIR_ARM`·예산 손잡이는 서비스에서만 뜻이 있어 fixture 와
+함께 오면 오류다(무시되는 손잡이를 남기지 않는다).
+"""
+function proposal_source(env::AbstractDict; mode::Symbol)
+    pf, url = strip(get(env, "ZONE_REPAIR_PROPOSALS", "")), strip(get(env, "DSPY_URL", ""))
+    !isempty(pf) && !isempty(url) &&
+        error("[zrv] both ZONE_REPAIR_PROPOSALS (fixture) and DSPY_URL (service) are set — choose exactly one proposal source")
+    if !isempty(pf)
+        mode === :enforce && error("[zrv] ZONE_REPAIR_VERIFICATION=enforce refuses a fixture proposal source (ZONE_REPAIR_PROPOSALS)")
+        for k in ("ZONE_REPAIR_ARM", "ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD")
+            isempty(strip(get(env, k, ""))) || error("[zrv] $(k) only applies to the service source, not to a fixture file")
+        end
+        return (; source = :fixture, fixture = String(pf), url = "", arm = "fixture", budget = nothing)
+    end
+    isempty(url) && error("[zrv] no proposal source: set ZONE_REPAIR_PROPOSALS (fixture file) or DSPY_URL (service)")
+    return (; source = :service, fixture = "", url = String(url), arm = parse_arm(get(env, "ZONE_REPAIR_ARM", "general")),
+            budget = service_budget(env))
+end
+
+"""
+t0 경계 오류만 모델에 되먹인다(설계 §6.1): 문/등록 거절, t0 throw·partial, 효과·post-enactment 계약·후처리·unsupported,
+G4 변환 거절. 🔴 `requires_runtime` 은 거절이 아니고, 판정 기반의 부재(계약 없음·export 없음·cross_check·timeout)는 모델 오류가
+아니므로 빠진다. full rollout 결과는 이 함수에 올 일이 없다(preflight 만 부른다).
+"""
+const T0_FEEDBACK_PREFIXES = ("reject:", "enactment threw", "enactment registration_rejected", "enactment partial",
+                              "effects ", "post-enactment contract:", "postprocess_failed:", "unsupported:")
+t0_feedback(reasons) = String[String(r) for r in reasons if any(p -> startswith(String(r), p), T0_FEEDBACK_PREFIXES)]
+
+"U1 = 동결 목록의 첫 후보, U4 = V4 = 같은 목록 전체(설계 §9.2). G4 는 자기 목록."
+function arm_views(frozen; arm::AbstractString)
+    ids = [String(p["proposal_id"]) for p in sort(collect(frozen); by = p -> Int(p["submission_index"]))]
+    arm == "general" && return Dict{String,Any}("U1" => first(ids, 1), "U4" => ids, "V4" => ids)
+    arm == "geometry" && return Dict{String,Any}("G4" => ids)
+    return Dict{String,Any}("fixture" => ids)
+end
+
+"서비스 POST. 🔴 `retries = 0` — HTTP 재전송은 유료 파이프라인을 원장 밖에서 다시 돌린다."
+function service_post(url::AbstractString, path::AbstractString, body::AbstractDict)
+    t = something(tryparse(Int, strip(get(ENV, "DSPY_TIMEOUT_S", ""))), 300) * MODEL_CALLS
+    r = HTTP.post(rstrip(url, '/') * path, ["Content-Type" => "application/json"], JSON3.write(body);
+                  readtimeout = t, retries = 0, status_exception = false)
+    r.status == 200 || error("HTTP $(r.status) from $(path): $(first(String(r.body), 300))")
+    return JSON3.read(String(r.body), Dict{String,Any})
+end
+
+"t0 관측: 일회용 observe worker(부모 checkpoint 복원 — 부모는 관측 코드를 안 돈다). 못 만들면 nothing."
+function observe_via_worker(parent_dir, dir, launch_env, limits)
+    BR.run_branch(; parent_dir, branch_id = "observe", outroot = dir, launch_env, limits, mode = "observe")
+    f = joinpath(dir, "observe", "observation.json")
+    return isfile(f) ? _json(f) : nothing
+end
+
+"t0 preflight(T6): 새 샌드박스 worker 가 첫 engine 진행 요청 직전까지. 반환 = `execute_tool_isolated` 결과."
+preflight_via_worker(parent_dir, dir, raw, i, launch_env, limits) =
+    TX.execute_tool_isolated(; parent_dir, raw, outroot = joinpath(dir, "preflight"), branch_id = "pre-$(i)",
+                             launch_env, limits, mode = "preflight")
+
+"응답 계약: 팔 일치 · 후보 종류가 팔과 같다 · id 유일 · 원장이 예산 안. 어긋나면 gap(→ 인증 불가, 조용히 얼리지 않는다)."
+function response_gaps(resp::AbstractDict; arm::AbstractString, stage::AbstractString)
+    g = String[]
+    get(resp, "arm", nothing) == arm || push!(g, "$(stage): service answered arm $(repr(get(resp, "arm", nothing))) for a $(arm) request")
+    want = arm == "general" ? R.TOOL_PROPOSAL_SCHEMA_VERSION : GCTL.GEOMETRY_PATCH_SCHEMA_VERSION
+    for c in get(resp, "candidates", Any[])
+        c isa AbstractDict && get(c, "schema_version", nothing) == want ||
+            push!(g, "$(stage): a candidate is not a $(want) (arm $(arm)) — no fallback between arms")
+    end
+    led = get(resp, "ledger", nothing)
+    if led isa AbstractDict
+        get(led, "calls_used", 0) <= MODEL_CALLS || push!(g, "$(stage): ledger reports $(led["calls_used"]) model calls > $(MODEL_CALLS)")
+        get(led, "submitted", 0) <= MODEL_K || push!(g, "$(stage): ledger reports $(led["submitted"]) candidates > K=$(MODEL_K)")
+    else
+        push!(g, "$(stage): service response carries no call/candidate ledger")
+    end
+    return g
+end
+
+_new_record_id() = bytes2hex(sha256(string(time_ns(), "|", getpid(), "|zrv-t9")))[1:24]
+
+"""
+    service_proposals!(; parent_dir, root, url, arm, budget, launch_env, run_ctx, limits = LIMITS,
+                       post = service_post, observe = observe_via_worker, preflight = preflight_via_worker)
+        -> (; proposals::Vector{Dict}, record::Dict, gaps::Vector{String})
+
+T8 이 남긴 서비스 source 슬롯. t0 에서:
+  1. 관측 — 일회용 observe worker 가 `observation.json`(결정 레인과 같은 `/decide` 페이로드 + G4 기하 문맥).
+  2. `/zone_repair/propose` — observe 1 · design 1 · compose 1(후보 batch). 서비스 원장이 호출·후보를 센다.
+  3. G4 면 patch → ToolProposal(`RepairGeometryControl.patch_to_proposal`; 변환 거절은 t0 정적 사유).
+  4. 후보마다 t0 preflight(T6, 병렬) → t0 경계 사유(`t0_feedback`)만 모은다.
+  5. 사유가 있고 호출·후보가 남으면 `/zone_repair/revise` 한 번(남은 후보 몫 안). 수정본은 preflight 하지 않는다(더 되먹일 호출이 없다).
+  6. 동결 목록 = 제출 순서, 거절 기록·preflight 기록·원장과 함께 `<root>/proposal_source/frozen_list.json`.
+서비스 오류·관측 실패는 **후보 0개**(기록에 사유) — B0 는 그대로 잰다. 응답 계약 위반은 gap.
+`post`·`observe`·`preflight` 는 시험이 바꿔 끼운다.
+"""
+function service_proposals!(; parent_dir::AbstractString, root::AbstractString, url::AbstractString, arm::AbstractString,
+                            budget::AbstractDict, launch_env::AbstractDict, run_ctx::AbstractDict, limits = LIMITS,
+                            post = service_post, observe = observe_via_worker, preflight = preflight_via_worker)
+    parse_arm(arm)
+    dir = joinpath(root, "proposal_source"); mkpath(dir)
+    cid = String(_json(joinpath(parent_dir, "contract.json"))["checkpoint_id"])
+    rec = Dict{String,Any}("arm" => arm, "budget" => budget, "status" => "ok", "submissions" => Dict{String,Any}[],
+                           "responses" => Dict{String,Any}[], "gaps" => String[])
+    gaps = rec["gaps"]
+    frozen = Dict{String,Any}[]
+    finish() = (rec["frozen_proposal_ids"] = [p["proposal_id"] for p in frozen];
+                _write(joinpath(dir, "frozen_list.json"), merge(rec, Dict("frozen" => frozen)));
+                (; proposals = frozen, record = rec, gaps))
+    obs = try observe(parent_dir, dir, launch_env, limits) catch e
+        rec["observe_error"] = first(sprint(showerror, e), 500); nothing
+    end
+    if obs === nothing
+        rec["status"] = "observation_failed"
+        return finish()
+    end
+    gctx = get(obs, "geometry_context", Dict{String,Any}())
+    base = Dict{String,Any}("arm" => arm, "checkpoint_id" => cid, "budget" => budget, "run_ctx" => run_ctx,
+                            "capability_contract_version" => R.DEFAULT_CAPABILITY_CONTRACT.version)
+    arm == "geometry" && (base["geometry_context"] = gctx)
+    rid = _new_record_id()
+    r1 = try post(url, "/zone_repair/propose", merge(base, Dict("request" => obs["request"], "record_id" => rid))) catch e
+        rec["status"] = "service_error: " * first(sprint(showerror, e), 300)
+        return finish()
+    end
+    push!(rec["responses"], Dict{String,Any}(k => v for (k, v) in r1 if k != "candidates"))
+    append!(gaps, response_gaps(r1; arm, stage = "propose"))
+    isempty(gaps) || return finish()
+    # ---- 3·4. 변환(G4)과 t0 preflight ------------------------------------------------------------
+    subs = rec["submissions"]
+    first_cands = Dict{String,Any}[]
+    for c in get(r1, "candidates", Any[])
+        s = Dict{String,Any}("proposal_id" => c["proposal_id"], "submission_index" => c["submission_index"],
+                             "stage" => "compose", "parent_proposal_id" => get(c, "parent_proposal_id", nothing))
+        if arm == "geometry"
+            cv = GCTL.patch_to_proposal(c, gctx; checkpoint_id = cid)
+            if cv.proposal === nothing
+                s["frozen"] = false; s["rejected_before_freeze"] = cv.reasons; s["t0_feedback"] = cv.reasons
+                s["revisable_source"] = c
+                push!(subs, s); continue
+            end
+            c = cv.proposal
+        end
+        s["frozen"] = true
+        push!(subs, s); push!(first_cands, c)
+    end
+    pre = asyncmap(i -> (try preflight(parent_dir, dir, first_cands[i], i, launch_env, limits) catch e
+                             (; gate = nothing, eligible = false, feedback_allowed = false, reasons = [first(sprint(showerror, e), 300)],
+                              feedback = String[], judged = nothing, run = nothing) end), eachindex(first_cands); ntasks = 4)
+    for (c, x) in zip(first_cands, pre)
+        s = only(filter(s -> s["proposal_id"] == c["proposal_id"], subs))
+        fb = x.feedback_allowed ? t0_feedback(x.feedback) : String[]
+        s["preflight"] = Dict{String,Any}("reasons" => x.reasons, "feedback_allowed" => x.feedback_allowed,
+            "enactment_status" => (x.judged === nothing ? nothing : String(x.judged.enactment.status)))
+        s["t0_feedback"] = fb
+        s["revisable_source"] = arm == "geometry" ? c["provenance"]["geometry_patch"] : c
+    end
+    append!(frozen, first_cands)
+    # ---- 5. 선택적 수정 호출 --------------------------------------------------------------------------
+    led = r1["ledger"]
+    rejected = Dict{String,Any}[]
+    for s in subs
+        isempty(get(s, "t0_feedback", String[])) && continue
+        r = Dict{String,Any}("proposal_id" => s["proposal_id"], "reasons" => s["t0_feedback"])
+        arm == "general" ? (r["impl_code"] = get(s["revisable_source"], "impl_code", nothing)) :
+                           (r["patch"] = s["revisable_source"])
+        push!(rejected, r)
+    end
+    foreach(s -> delete!(s, "revisable_source"), subs)
+    can = led["calls_used"] < MODEL_CALLS && led["submitted"] < MODEL_K && !isempty(rejected) &&
+          get(r1, "compose_input", nothing) isa AbstractDict
+    rec["revision"] = Dict{String,Any}("attempted" => can, "n_rejected_at_t0" => length(rejected),
+        "calls_used_before" => led["calls_used"], "submitted_before" => led["submitted"])
+    if can
+        r2 = try post(url, "/zone_repair/revise", merge(base, Dict("ledger" => led, "compose_input" => r1["compose_input"],
+                      "rejected" => rejected,
+                      "record_id" => _new_record_id(), "parent_record_id" => rid))) catch e
+            rec["revision"]["error"] = "service_error: " * first(sprint(showerror, e), 300); nothing
+        end
+        if r2 !== nothing
+            push!(rec["responses"], Dict{String,Any}(k => v for (k, v) in r2 if k != "candidates"))
+            append!(gaps, response_gaps(r2; arm, stage = "revise"))
+            isempty(gaps) || return finish()
+            for c in get(r2, "candidates", Any[])
+                s = Dict{String,Any}("proposal_id" => c["proposal_id"], "submission_index" => c["submission_index"],
+                                     "stage" => "compose_revision", "parent_proposal_id" => get(c, "parent_proposal_id", nothing))
+                if arm == "geometry"
+                    cv = GCTL.patch_to_proposal(c, gctx; checkpoint_id = cid)
+                    cv.proposal === nothing && (s["frozen"] = false; s["rejected_before_freeze"] = cv.reasons; push!(subs, s); continue)
+                    c = cv.proposal
+                end
+                s["frozen"] = true; push!(subs, s); push!(frozen, c)
+            end
+        end
+    end
+    # ---- 6. 동결 ------------------------------------------------------------------------------------
+    sort!(frozen; by = p -> Int(p["submission_index"]))
+    ids = [p["proposal_id"] for p in frozen]
+    allunique(ids) || push!(gaps, "proposal ids are not unique across the propose/revise responses: $(ids)")
+    length(frozen) <= MODEL_K || push!(gaps, "$(length(frozen)) frozen candidates > K=$(MODEL_K)")
+    return finish()
+end
+
 """
     run_episode!(; mode, launch_env, root, proposals, source, url = "", capabilities = nothing, out_dir,
-                 noise_floor = :measure, baseline_override = nothing, log_io = stdout, campaign_dir = root) -> Dict
+                 noise_floor = :measure, baseline_override = nothing, log_io = stdout, campaign_dir = root,
+                 commit_id = "commit", arm = "general", budget = nothing) -> Dict
 
 한 에피소드(설계 §3.1: 첫 존 사건에서 최대 한 repair transaction). 반환 = `<root>/episode.json` 의 내용(`exit_code` 포함).
 `capabilities`·`baseline_override` 를 손으로 넘기는 것은 시험뿐이다(`main` 은 실측값만 넘기고 override 를 안 넘긴다).
+T9: `source = :service` 면 `arm`(general|geometry)·`budget`(`service_budget`)이 필수이고, t0 에서 `service_proposals!` 가 후보를
+만들어 동결한다(`proposals` 인자는 무시된다). 기록에 `proposal_source`(원장·제출·preflight·거절)와 `arm_views`(U1/U4/V4 또는 G4)가 붙는다.
 """
 function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractString, proposals::AbstractVector,
                       source::Symbol, url::AbstractString = "", capabilities = nothing, out_dir::AbstractString,
                       noise_floor::Union{Bool,Symbol} = :measure, baseline_override::Union{Nothing,Symbol} = nothing,
-                      log_io::IO = stdout, campaign_dir::AbstractString = root, commit_id::AbstractString = "commit")
+                      log_io::IO = stdout, campaign_dir::AbstractString = root, commit_id::AbstractString = "commit",
+                      arm::AbstractString = "general", budget = nothing)
     mode in (:shadow, :enforce) || error("run_episode! needs mode shadow|enforce, got $(mode)")
     if mode === :enforce
         p = enforce_problems(capabilities)
         isempty(p) || error("[zrv] ZONE_REPAIR_VERIFICATION=enforce refused: " * join(p, "; "))
+        # T9: 사람 fixture 는 모델 후보가 아니다 — 실제 enforce 에서 세계를 바꾸는 source 가 될 수 없다(시험 전용 문만 예외).
+        source === :fixture && get(capabilities, "test_forced", false) !== true &&
+            error("[zrv] ZONE_REPAIR_VERIFICATION=enforce refuses a fixture proposal source (ZONE_REPAIR_PROPOSALS)")
     end
+    source === :service && (parse_arm(arm); budget isa AbstractDict || error("service source needs a model budget"))
     mkpath(root)
     rec = Dict{String,Any}("schema" => EPISODE_SCHEMA, "runtime_version" => RUNTIME_VERSION, "mode" => String(mode),
         "root" => root, "source" => String(source), "n_proposals" => length(proposals),
@@ -306,12 +546,21 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
         end
         contract = _json(joinpath(par.dir, "contract.json"))
         rec["t0_iter"] = contract["t0_iter"]
+        # T9: 서비스 source — t0 관측(일회용 observe worker) → 제안 → t0 preflight → (선택) 수정 호출 → 후보 동결.
+        extra = String[]
+        if source === :service
+            sp = service_proposals!(; parent_dir = par.dir, root, url, arm, budget, launch_env,
+                                    run_ctx = Dict{String,Any}("repair_ablation" => get(launch_env, "REPAIR_ABLATION", "none")))
+            proposals = sp.proposals
+            rec["proposal_source"] = sp.record
+            rec["n_proposals"] = length(proposals)
+            append!(extra, sp.gaps)
+        end
+        rec["arm_views"] = arm_views(proposals; arm = source === :service ? arm : "fixture")
         # 🔴 결정 **전**: 서비스·source·API·schema·권한 지문.
-        pre = decision_gaps(proposals; source, url)
-        source === :service && isempty(pre) &&
-            push!(pre, "service proposal source is not wired yet (T9) — no candidates frozen")
+        pre = vcat(decision_gaps(proposals; source, url), extra)
         rec["decision_gaps"] = pre
-        props = source === :fixture ? proposals : Dict{String,Any}[]
+        props = proposals
         outroot = joinpath(root, "supervision")
         sv = RS.Supervision(par; outroot, launch_env, limits = LIMITS, campaign_dir)
         if mode === :enforce
@@ -391,19 +640,16 @@ function main()
                             "boundary): $(join(p, "; ")). Capability report: $(joinpath(root, "capabilities", "capabilities.json")). " *
                             "Use ZONE_REPAIR_VERIFICATION=shadow to evaluate candidates without changing the world.")
     end
-    pf = strip(get(ENV, "ZONE_REPAIR_PROPOSALS", ""))
-    url = strip(get(ENV, "DSPY_URL", ""))
-    if !isempty(pf)
-        source, proposals = :fixture, load_proposals(pf)
-    else
-        isempty(url) && error("[zrv] no proposal source: set ZONE_REPAIR_PROPOSALS (fixture file) or DSPY_URL (service)")
+    src = proposal_source(ENV; mode)                     # T9: 둘 다/둘 다 없음/enforce+fixture/팔·예산 — 부모를 띄우기 전에 죽는다
+    source, url, arm, budget = src.source, src.url, src.arm, src.budget
+    proposals = source === :fixture ? load_proposals(src.fixture) : Dict{String,Any}[]
+    if source === :service
         ok, line = service_gate(url)
         ok || error("[zrv] the proposal service does not serve this tree (generation gate): $(line)")
-        source, proposals = :service, Dict{String,Any}[]
     end
     launch = launch_env_from(ENV)
     rec = run_episode!(; mode, launch_env = launch, root, proposals, source, url, capabilities = caps, out_dir = out,
-                       campaign_dir = abspath(get(ENV, "ZONE_REPAIR_CAMPAIGN_DIR", root)))
+                       campaign_dir = abspath(get(ENV, "ZONE_REPAIR_CAMPAIGN_DIR", root)), arm, budget)
     return something(rec["exit_code"], 1)
 end
 

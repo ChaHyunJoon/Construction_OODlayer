@@ -26,6 +26,7 @@ include(joinpath(@__DIR__, "..", "..", "src", "verification", "episode_replay.jl
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "branch_runner.jl"))
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "task_contract.jl"))       # T5 원본 작업 계약
 include(joinpath(@__DIR__, "..", "..", "src", "verification", "tool_execution.jl"))      # T6 격리 도구 집행
+include(joinpath(@__DIR__, "repair_geometry_control.jl"))                                  # T9 G4 기하 문맥(관측 worker)
 
 module RepairBranchWorker
 
@@ -35,6 +36,7 @@ import ..EpisodeCheckpointIO as E
 import ..BranchRunner as BR
 import ..TaskContract as TC
 import ..ToolExecution as TX
+import ..RepairGeometryControl as GCTL
 const CB = ConstructionBots
 
 "pi0 의 정의(설계 §7.1): 존 NOOP 레인 고정 · 존 전용 solver/사다리 차단. 분기 t0·끝에서 같아야 한다."
@@ -130,6 +132,12 @@ function branch!(h, env0, ctx)
             error("identity mismatch after import: blocks=$(st.r.mismatched_blocks) guard=$(st.dup)")
         scrubbed = scrub_env!()
         pi0_t0 = pi0_snapshot()
+        if get(ENV, "ZRV_BRANCH_MODE", "") == "observe"
+            stage = "observe"
+            observe_t0!(dir, st.r.env, st.cp.checkpoint_id)      # T9: 관측만 쓰고 끝(동작·continuation 없음)
+            flush(stdout); flush(stderr)
+            exit(0)
+        end
         stage = "action"
         prop = get(ENV, "ZRV_BRANCH_PROPOSAL", "")
         batch_pos, up_steps = st.ls.batch_pos, Any[]
@@ -172,6 +180,34 @@ function branch!(h, env0, ctx)
     end
     flush(stdout); flush(stderr)
     exit(0)
+end
+
+# ---- T9: t0 관측 (일회용 observe worker) ---------------------------------------------------------
+"""
+    observe_t0!(dir, env, checkpoint_id)
+
+`ZRV_BRANCH_MODE=observe` 의 worker 에서만: t0 를 복원한 세계에서 존 사건의 `/decide` 관측 페이로드를 **결정 레인과 같은
+함수**(`policy.jl` 의 `service_payload`, 서술자 `event_descriptors_of`, 실재 로봇·존 설명)로 만들고, G4 용 기하 문맥
+(`RepairGeometryControl.geometry_context` — 현재 위치만)을 붙여 `observation.json` 에 쓴다. 보존된 부모는 이 코드를 한 줄도
+돌리지 않는다(관측 계산이 부모의 전역을 건드리면 NOOP 재개 대조가 흔들린다). 세계는 이 worker 와 함께 버려진다.
+"""
+function observe_t0!(dir, env, checkpoint_id)
+    ev = t0_zone_event()
+    ev === nothing && error("observe: no zone event is pending at t0")
+    M = Main
+    rec = Base.invokelatest(getfield(M, :truth_for_event), ev)
+    rec === nothing && error("observe: the t0 zone event has no truth record")
+    desc = try Base.invokelatest(getfield(M, :event_descriptors_of), env, rec.truth) catch; nothing end
+    req = Base.invokelatest(getfield(M, :service_payload), env, rec.truth; nl = rec.nl, descriptors = desc,
+                            agents = CB.open_agent_descriptors(env), zones = CB.open_zone_descriptors(env))
+    g = try GCTL.geometry_context(env, CB) catch e
+        Dict{String,Any}("error" => first(sprint(showerror, e), 500))
+    end
+    _write(joinpath(dir, "observation.json"), Dict{String,Any}("schema" => "zone-repair-observation/1",
+        "checkpoint_id" => checkpoint_id, "event" => ev, "request" => req, "geometry_context" => g))
+    println("[zrv-observe] wrote observation.json (request keys $(length(req)), geometry configs ",
+            length(get(g, "configs", Any[])), ")")
+    return nothing
 end
 
 # ---- T6: 생성 도구 집행 ---------------------------------------------------------------------------
