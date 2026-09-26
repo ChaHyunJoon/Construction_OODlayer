@@ -1,0 +1,41 @@
+{
+ "postfix_tractor_zone_s26": "B0 on f99876e6 == grid run on 286403a2: trace 883 boundaries all columns, stream bytes, final_digest ex rng \u2014 the atomic-write fix does not change the world",
+ "reruns_final_code": {
+  "code_rev": "286403a2 (no edits during the runs)",
+  "logs": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/",
+  "t8_E1": "T8_EPISODES=E1 test/repair_runtime_wiring.jl episodes -> 35/35 pass, 17m35s, EXIT=0",
+  "t9_general": "test/repair_service_episode.jl general -> 29/29 pass, EXIT=0 (render ~29 min)",
+  "t9_geometry": "test/repair_service_episode.jl geometry -> 28/28 pass, EXIT=0 (render ~27 min)"
+ },
+ "schema": "zrv-b0-extra/1",
+ "unknown_diagnosis": {
+  "b0": "UNKNOWN(wall_timeout) rc=124 at 3600 s",
+  "cause": "driver read the parent's verify answer control/1.out.json while it was still 0 bytes (created 23:49:35; first JSON3.pretty compile in hold!/_write), threw, SIGTERMed the parent (parent run.log last write 23:49:39 = its signal-15 backtrace, inside type inference under JSON3.pretty), the parent never exited, the driver blocked in wait(process) until the campaign wall timeout; fixed by atomic _write in d4b10b92",
+  "cell": "xwing all3 s11",
+  "note": "informational only \u2014 the 120 denominator keeps this episode as UNKNOWN(wall_timeout)",
+  "plain_off_control": {
+   "score": "[score] complete=false closed=455 n_zones=1 n_blocked=2 n_nav_goals=138 n_engulfed=2 n_agent_trapped=1 project_blocked=true",
+   "status": "scored"
+  },
+  "postfix_rerun": {
+   "certification_gaps": [],
+   "closed": 455,
+   "code_rev": "f99876e6 (atomic worker _write, d4b10b92)",
+   "elapsed_s": 1531,
+   "iter": 4282,
+   "note": "different code from the 120 grid \u2014 reported separately, not merged into the denominator",
+   "outcome": "FAIL_WITHIN_BUDGET",
+   "stream_bytes_equal_plain_off": true,
+   "total": 712
+  }
+ },
+ "xwing_semantic_edges": {
+  "cells": [
+   "xwing zone s4",
+   "xwing all3 s2"
+  ],
+  "check": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/edge_probe_check.py",
+  "probe": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/edge_probe.jl",
+  "result": "t0 semantic_edges (484) == construction<->construction edges at pre_injection (484); edges pre->t0 added 0 removed 0 (818 total); WEDGE_EDGES at t0 = 0; runtime_edges_at_t0 (334) are all robot-node edges (RobotGo->RobotGo 102, RobotGo->FormTransportUnit 102, DepositCargo->RobotGo 102, RobotStart->RobotGo 28); probe t0_state_sha256 == B0 parent task_contract t0_state_sha256 for both cells"
+ }
+}

@@ -1,0 +1,12 @@
+command	exit_code	result	code_rev	log
+.venv/bin/python -m pytest tools/monitor/grid/test_campaign.py -q	0	36 passed	286403a2	-
+.venv/bin/python -m pytest src/respec/llm_service/test_repair_contract_schemas.py -q	0	51 passed	286403a2	-
+julia +lts --project=. test/repair_contracts.jl	0	corpus 98/98 + all testsets green	286403a2	-
+.venv/bin/python -m pytest tools/monitor/grid/test_analyze_b0.py -q	0	2 passed	f99876e6	-
+julia +lts --project=. test/repair_rollout.jl	0	T4 rollout/sandbox/validator 60/60	d4b10b92(worktree)	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/fix-repair_rollout.log
+julia +lts --project=. tools/monitor/grid/b0_episode.jl <template manifest> --check	2	refused reject:budget_invalid (null max_cost_usd_episode) — negative control	286403a2	-
+campaign.py init --runner b0 --manifest <template>	1	init refused, no grid dir written — negative control	286403a2	-
+B0 grid (tools/monitor/grid/campaign.py run-one x120, W=8)	0/1/124	119 scored (rc 0 complete / 1 incomplete) + 1 timeout rc=124	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/chain.log
+julia +lts --project=. test/repair_service_episode.jl <root> logs/t8-off general	0	29/29	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t9-ep-general.log
+julia +lts --project=. test/repair_service_episode.jl <root> logs/t8-off geometry	0	28/28	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t9-ep-geometry.log
+T8_EPISODES=E1 julia +lts --project=. test/repair_runtime_wiring.jl episodes <root> logs/t8-off	0	35/35	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t8E1.log

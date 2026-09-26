@@ -1,0 +1,154 @@
+{
+ "arms": [
+  "B0"
+ ],
+ "budget": {
+  "episode": {
+   "counted_from": "episode_start",
+   "max_num_iters_no_progress": {
+    "ref": "tools/monitor/render_demo.jl run_lego_demo(...; max_num_iters_no_progress = 3000) at e326b43d and 13d18a19; terminal watchdog in src/demo_utils.jl simulate!",
+    "source": "historical",
+    "value": 3000
+   },
+   "max_sim_steps": {
+    "ref": "src/full_demo.jl run_lego_demo `max_steps::Int=100000` at code_rev e326b43d (baseline-free) and 13d18a19 (A2); tools/monitor/render_demo.jl does not override it -> SimParameters.max_time_steps, loop guard src/demo_utils.jl simulate!",
+    "source": "historical",
+    "value": 100000
+   },
+   "wall_timeout_s": {
+    "ref": "tools/monitor/grid/campaign.py cmd_run_one RUN_TIMEOUT default 3600 at e326b43d and 13d18a19; results/2026-09-23-repair-ablation/README.md: the 6 timeouts all hit RUN_TIMEOUT = 3600 s (rc=124)",
+    "source": "historical",
+    "value": 3600
+   }
+  },
+  "model": {
+   "call_allocation": {
+    "compose": 1,
+    "compose_revision": 1,
+    "design": 1,
+    "observe": 1
+   },
+   "max_candidates": {
+    "ref": "design 2026-09-24 section 7.2 K=4",
+    "source": "design_spec",
+    "value": 4
+   },
+   "max_cost_usd_campaign": {
+    "ref": "N/A for B0 (zero model calls); replaces the historical A2 watchdog CAP=150 for this campaign only; observed cost = 0.",
+    "source": "new_choice",
+    "value": 0.01
+   },
+   "max_cost_usd_episode": {
+    "ref": "N/A for B0 (zero model calls); nominal cap, observed cost = 0.",
+    "source": "new_choice",
+    "value": 0.01
+   },
+   "max_model_calls": {
+    "ref": "design 2026-09-24 section 7.2 (retries included)",
+    "source": "design_spec",
+    "value": 4
+   },
+   "max_total_tokens": {
+    "ref": "N/A for B0: arm B0 makes zero model calls (pi0, canonical lane, no service). Set at the schema minimum so that any model usage is a manifest violation; observed usage = 0 (no DSPY_URL in any launch env).",
+    "source": "new_choice",
+    "value": 1
+   }
+  },
+  "worker": {
+   "cpu_s": {
+    "ref": "T10a new choice = RepairRuntime.LIMITS.cpu_s (RLIMIT_CPU of a sandboxed branch worker). Not applied to the B0 parent; B0 records its measured cpu_s per episode (b0.json cpu_s).",
+    "source": "new_choice",
+    "value": 7200
+   },
+   "memory_mb": {
+    "ref": "T10a new choice = RepairRuntime.LIMITS.mem_bytes 24 GiB (RLIMIT_AS of a sandboxed branch worker; ~2.5 GB RSS/process observed, CLAUDE.md). Not applied to the B0 parent.",
+    "source": "new_choice",
+    "value": 24576
+   },
+   "wall_timeout_s": {
+    "ref": "T10a new choice = src/verification/repair_runtime.jl RepairRuntime.LIMITS.wall_s (T7/T8 production branch limit). B0 launches NO branch worker (the parent is the trusted original world, unsandboxed); the value binds T10b/T11 branch workers. The B0 episode wall is budget.episode.wall_timeout_s (campaign.py RUN_TIMEOUT).",
+    "source": "new_choice",
+    "value": 3600
+   }
+  }
+ },
+ "build": {
+  "build_id": "9a53d859d1be76ae",
+  "code_dirty_digest": "1e5442d8117b721b",
+  "code_rev": "286403a2465ce65c49d72b8cc82a22496413f525",
+  "config_digest": "3caa37264ef2df46",
+  "dirty_snapshot_digest": "1e5442d8117b721b (campaign.py snapshot <grid>/snapshot restores this code_dirty_digest; restore_verified in snapshot.json)",
+  "julia_threads": 1,
+  "julia_version": "1.10.11",
+  "manifest_digest": "7fc013eba0f5afba",
+  "solver": {
+   "name": "HiGHS",
+   "seed": 0,
+   "threads": 0,
+   "version": "1.23.0"
+  }
+ },
+ "campaign_id": "zrv-t10a-b0-20260925",
+ "cohort": {
+  "path": "test/fixtures/repair_verification/cohort.json",
+  "planned_episodes": 120,
+  "sha256": "79264908cd099eb76beccfa0c1aeae7c8ea2e15462b56d3298812aff3b70dfbb"
+ },
+ "continuation": {
+  "fault_battery_lane": "canonical (DEMO_POLICY=canonical DEMO_ROUTER=0 \u2014 campaign lane 'canonical'; the same lane decides fault/battery in every arm)",
+  "general_recovery": "enabled_and_counted",
+  "id": "pi0",
+  "pinned_env": {
+   "CARRIER_RESCUE": "1",
+   "DEMO_ANIM": "0",
+   "DEMO_POLICY": "canonical",
+   "DEMO_ROUTER": "0",
+   "ENERGY_OBJECTIVE": "1",
+   "REPAIR_ABLATION": "all",
+   "RESPEC_DEPRIO_KAPPA": "0.25",
+   "RESPEC_TRANSLATE_ON_INFEASIBLE": "0",
+   "RESTAGE_NAV_BUFFER": "0",
+   "RESTAGE_RING_STEP_FRAC": "0.34",
+   "RESTAGE_ZONE_MARGIN_FRAC": "0.5",
+   "SPARE_PRIORITY": "1",
+   "TEAM_PRIORITY": "1",
+   "ZONE_CAUSAL_RULE": "0",
+   "ZONE_CHECK_PATHS": "0",
+   "ZONE_DOMAIN_GATE": "0",
+   "ZONE_REPAIR_VERIFICATION": "shadow",
+   "ZONE_RESCUE": "1"
+  },
+  "repair_ablation": "all",
+  "terminal_rule": "project_complete | no_progress_limit | max_sim_steps",
+  "zone_auto_ladder": "blocked",
+  "zone_policy": "noop"
+ },
+ "cost_ledger": {
+  "real_ledger": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0/<model>/streams/<model_base>__canonical_<case>_s<seed>_z<seed>.jsonl (the parent = original world writes the real monitor stream)",
+  "record_actual_cost": true,
+  "shadow_namespace": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0/<model>/zr/<run_key>/ (B0: parent only, no branch writes)",
+  "shadow_writes_real_ledger": false
+ },
+ "exogenous_rng": {
+  "exposed_to_model": false,
+  "key": [
+   "episode",
+   "event_kind",
+   "entity",
+   "occurrence"
+  ],
+  "replay_version": "zrv-replay/1 (exogenous draws pre-t0, historical-compatible)"
+ },
+ "manifest_version": "repair-verification-manifest/1",
+ "model_side": {
+  "model": "none: B0 (pi0) makes no model call",
+  "prompt_digest": "none: no prompt (B0)",
+  "schema_digest": "none: no proposals (B0)",
+  "service_code_fingerprint": "none: no service (B0)"
+ },
+ "trusted": {
+  "capability_contract_version": "capability-contract/1",
+  "scorer_version": "zrv-b0-episode/1 (outcome from parent terminal.json terminal_reason; UNKNOWN from campaign runs.jsonl)",
+  "validator_version": "task-contract-validator/1 + repair-supervisor/1 checkpoint_gaps/identity_gaps"
+ }
+}

@@ -1,0 +1,109 @@
+{
+ "budget_violations": 0,
+ "cells": {
+  "tractor|all3": {
+   "COMPLETE": 3,
+   "FAIL_WITHIN_BUDGET": 27,
+   "certification_available": 30,
+   "missing": 0,
+   "planned": 30,
+   "scored": 30,
+   "t0_captured": 30
+  },
+  "tractor|zone": {
+   "COMPLETE": 3,
+   "FAIL_WITHIN_BUDGET": 27,
+   "certification_available": 30,
+   "missing": 0,
+   "planned": 30,
+   "scored": 30,
+   "t0_captured": 30
+  },
+  "xwing|all3": {
+   "COMPLETE": 4,
+   "FAIL_WITHIN_BUDGET": 25,
+   "UNKNOWN": 1,
+   "UNKNOWN:wall_timeout": 1,
+   "certification_available": 29,
+   "missing": 0,
+   "planned": 30,
+   "scored": 29,
+   "t0_captured": 30
+  },
+  "xwing|zone": {
+   "COMPLETE": 4,
+   "FAIL_WITHIN_BUDGET": 26,
+   "certification_available": 30,
+   "missing": 0,
+   "planned": 30,
+   "scored": 30,
+   "t0_captured": 30
+  }
+ },
+ "certification_available": 119,
+ "certification_gap_reasons": {},
+ "drift_2x2": {
+  "easy|new_COMPLETE": 14,
+  "easy|new_not_complete": 13,
+  "hard|new_not_complete": 93
+ },
+ "easy_lost": [
+  "tractor__all3__s23",
+  "tractor__all3__s29",
+  "tractor__all3__s9",
+  "tractor__zone__s23",
+  "tractor__zone__s29",
+  "tractor__zone__s9",
+  "xwing__all3__s17",
+  "xwing__all3__s25",
+  "xwing__all3__s7",
+  "xwing__all3__s8",
+  "xwing__zone__s17",
+  "xwing__zone__s25",
+  "xwing__zone__s7"
+ ],
+ "episodes_without_ablation_line": [
+  "canonical__all3__s11@xwing"
+ ],
+ "hard_now_complete": [],
+ "manifest_build_mismatches": {
+  "": 119,
+  "not_checked": 1
+ },
+ "n_planned": 120,
+ "prefix_vs_hist": {
+  "init_fp": {
+   "None": 1,
+   "True": 119
+  },
+  "ood_fp": {
+   "None": 1,
+   "True": 119
+  },
+  "zone_place": {
+   "None": 1,
+   "True": 119
+  }
+ },
+ "recovery_totals": {
+  "decision:BATTERY:SwapBattery": 59,
+  "decision:FAULT:Replace": 59,
+  "decision:ZONE:NOOP": 119
+ },
+ "rng_advanced_after_t0": 0,
+ "schema": "zrv-b0-summary/1",
+ "score_disagrees": [],
+ "t0_captured": 120,
+ "totals": {
+  "COMPLETE": 14,
+  "FAIL_WITHIN_BUDGET": 105,
+  "UNKNOWN": 1
+ },
+ "unknown_causes": {
+  "wall_timeout": 1
+ },
+ "zone_decisions_non_noop_total": 0,
+ "zone_ladder_fired_total": 0,
+ "zone_solver_denied_total": 0,
+ "zone_solver_exempt_total": 476
+}
