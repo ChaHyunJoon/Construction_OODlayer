@@ -198,6 +198,14 @@ end
     @test s2["frozen"] === false && occursin("unknown_config_ref", only(s2["rejected_before_freeze"]))
 end
 
+@testset "[10] 서비스 후보의 도장은 null 이어도 부재다(gap)" begin
+    p = tp(1); p["provenance"]["tool_proposal_schema_sha256"] = nothing
+    g = RT.decision_gaps([p]; source = :service, url = "x", service_gate = _ -> (true, "OK"), tree_fingerprint = () -> "feedfacefeedface")
+    @test any(x -> occursin("lacks provenance.tool_proposal_schema_sha256", x), g)
+    @test RT.decision_gaps([tp(1)]; source = :service, url = "x", service_gate = _ -> (true, "OK"),
+                           tree_fingerprint = () -> "feedfacefeedface") == String[]      # 양성 대조
+end
+
 @testset "[9] 동결 기록 파일 — 제출 순서·거절·preflight·원장" begin
     post, _ = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(2), tp(1)])]))
     root = mktempdir()

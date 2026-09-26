@@ -2120,8 +2120,13 @@ GEOMETRY_PATCH_SCHEMA_PATH = os.path.join(HERE, "geometry_patch.schema.json")
 
 
 def _file_sha256(path):
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+    """파일 digest. 🔴 파일이 없으면 `None`(못 쟀다) — 이 모듈은 `*.py` 만 복사된 디렉터리에서도 임포트된다
+    (`test/minted_tool_enacts.jl` (19)). 없는 도장은 provenance 에서 **키째 빠지고**, Julia 가 그 부재를 gap 으로 본다."""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
 
 
 # 🔴 **임포트 시점에 얼린다** — `CODE_FINGERPRINT`(dspy_service) 와 같은 이유: 디스크를 요청마다 다시 읽으면

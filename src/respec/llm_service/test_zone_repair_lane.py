@@ -335,3 +335,12 @@ def test_the_revise_endpoint_round_trips_the_ledger(monkeypatch):
     out = svc.zone_repair_revise(svc.ZoneRepairReviseRequest(**body))
     assert out["error"] is None and out["ledger"]["calls_used"] == 4 and out["ledger"]["submitted"] == 4
     assert out["candidates"][0]["proposal_id"] == "rid-r-s4" and out["candidates"][0]["parent_proposal_id"] == "rid-s2"
+
+
+def test_a_missing_schema_file_drops_the_stamp_instead_of_crashing(monkeypatch, tmp_path):
+    """`*.py` 만 복사된 디렉터리에서도 임포트된다 — 도장은 None, provenance 에서는 키째 빠진다."""
+    assert SY._file_sha256(str(tmp_path / "absent.json")) is None
+    monkeypatch.setattr(SY, "TOOL_PROPOSAL_SCHEMA_SHA256", None)
+    req = _preq()
+    pv = svc._repair_provenance(req, "resp")
+    assert "tool_proposal_schema_sha256" not in pv and pv["service_code_fingerprint"] == svc.CODE_FINGERPRINT

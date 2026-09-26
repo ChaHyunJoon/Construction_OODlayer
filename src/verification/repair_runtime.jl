@@ -156,7 +156,8 @@ function decision_gaps(proposals::AbstractVector; source::Symbol, url::AbstractS
         prov = get(p, "provenance", Dict{String,Any}())
         prov isa AbstractDict || (prov = Dict{String,Any}())
         for k in ("tool_proposal_schema_sha256", "capability_contract_version", "service_code_fingerprint")
-            source === :service && !haskey(prov, k) && push!(g, "proposal $(id): service proposal lacks provenance.$(k)")
+            # T9: null 도 부재다(값 없는 도장이 아래 대조를 조용히 건너뛰지 않게)
+            source === :service && get(prov, k, nothing) === nothing && push!(g, "proposal $(id): service proposal lacks provenance.$(k)")
         end
         v = get(prov, "tool_proposal_schema_sha256", nothing)
         v === nothing || v == schema_sha || push!(g, "proposal $(id): schema digest $(v) != tree $(schema_sha)")

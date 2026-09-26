@@ -2390,12 +2390,14 @@ def _repair_provenance(req, response_id):
     """후보마다 싣는 도장 — Julia `RepairRuntime.decision_gaps` 가 셋을 요구한다(schema digest · 권한 계약 ·
     서비스 source 지문). ⚠️ `capability_contract_version` 은 **요청의 값을 되돌려 싣는다**: 권한 계약은 Julia 가
     집행하고 이 서비스는 그 계약을 모른다 — 이 도장은 "그 계약을 선언한 요청에 대해 생성됐다" 까지만 말한다."""
-    return {"source": "service", "arm": req.arm, "record_id": req.record_id, "response_id": response_id,
-            "tool_proposal_schema_sha256": _SY.TOOL_PROPOSAL_SCHEMA_SHA256,
-            "geometry_patch_schema_sha256": _SY.GEOMETRY_PATCH_SCHEMA_SHA256,
-            "capability_contract_version": req.capability_contract_version,
-            "service_code_fingerprint": CODE_FINGERPRINT, "repair_ablation": REPAIR_ABLATION,
-            "model": MODEL, "cache": CACHE}
+    p = {"source": "service", "arm": req.arm, "record_id": req.record_id, "response_id": response_id,
+         "tool_proposal_schema_sha256": _SY.TOOL_PROPOSAL_SCHEMA_SHA256,
+         "geometry_patch_schema_sha256": _SY.GEOMETRY_PATCH_SCHEMA_SHA256,
+         "capability_contract_version": req.capability_contract_version,
+         "service_code_fingerprint": CODE_FINGERPRINT, "repair_ablation": REPAIR_ABLATION,
+         "model": MODEL, "cache": CACHE}
+    # 🔴 못 잰 도장(None)은 **키째 뺀다** — null 로 실으면 "있다" 로 읽힐 자리가 생긴다(Julia 는 부재를 gap 으로 본다).
+    return {k: v for k, v in p.items() if v is not None}
 
 
 def _repair_row(req, out, raw, response_id, row_type, parent=None):
