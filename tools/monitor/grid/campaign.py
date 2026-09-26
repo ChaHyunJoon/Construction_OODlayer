@@ -12,6 +12,9 @@ rc·timeout·elapsed·실제 스트림 경로·지문을 한 줄 JSON 으로 남
   init <grid> --model M --lanes "…" --cases "…" --seeds "…" [--campaign-id ID]
         campaign.json 과 jobs.jsonl(계획된 판 전부)을 쓴다. 이미 있으면 **지문이 같을 때만**
         계획을 합친다(파일럿 → 전체 확대). 다르면 exit 3 — 새 campaign 으로 분리할 것.
+        `--runner b0 --manifest <m.json>`(T10a): 판을 `b0_episode.jl` 로 돈다(production shadow 의
+        원래 세계 + verify→resume, 판 namespace `zr/<run_key>`). manifest 가 schema 검증을 통과하지
+        못하면 init 거절, init 뒤 manifest 가 바뀌면 판마다 `error:manifest_drift`.
         설정: 현재 셸 env + 격자 기본(DEMO_ANIM=0) + 복구 손잡이 명시 기본값
         (`policy.jl` `CONFIG_ENV_PINNED_DEFAULTS`) → `set_env`. 지문은 julia `run_fingerprint`
         가 계산한다(판정식을 여기 다시 적지 않는다). 파이썬 `tree_digest` 가 julia 의
@@ -39,6 +42,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 RENDER = os.path.join(ROOT, "tools", "monitor", "render_demo.jl")
+B0 = os.path.join(HERE, "b0_episode.jl")   # runner=b0: production shadow 의 원래 세계 + verify→resume (T10a)
 POLICY = os.path.join(ROOT, "tools", "monitor", "policy.jl")
 
 # policy.jl `_CODE_FINGERPRINT_PATHS` · `_CODE_FINGERPRINT_EXTS` 와 같아야 한다.
@@ -102,12 +106,18 @@ def plan_jobs(camp, grid, lanes, cases, seeds):
     return jobs
 
 
+PROCESS_ENV = ("HOME", "PATH", "USER", "LANG")
+
+
 def run_env(camp, job, parent, grid):
     """판 하나의 env. 분류된 이름·접두사 이름은 **전부 지우고** manifest 값만 다시 넣는다."""
     cl = camp["classes"]
     named = set(cl["result"]) | set(cl["cell_axis"]) | set(cl["observational"])
     pre = tuple(cl["prefixes"])
-    env = {k: v for k, v in parent.items() if k not in named and not k.startswith(pre)}
+    # 프로세스 기본값(HOME·PATH·USER·LANG)은 손잡이가 아니다 — T4 가 policy.jl observational 에 넣은 뒤로 여기서
+    # 지워져 julia 를 못 찾았다(T10a 실측). 분류와 무관하게 부모 값을 유지한다.
+    env = {k: v for k, v in parent.items()
+           if k in PROCESS_ENV or (k not in named and not k.startswith(pre))}
     env.update(camp["set_env"])
     event, zone = CASES[job["case"]]
     env.update(LANES[job["lane"]])
@@ -118,6 +128,16 @@ def run_env(camp, job, parent, grid):
                 "MONITOR_RUN_ID": job["run_key"], "DEMO_CAMPAIGN_ID": camp["campaign_id"],
                 "DEMO_OUT_DIR": grid})
     return env
+
+
+def runner_cmd(camp, job, grid):
+    """(argv, 판별 추가 env). 기본은 render_demo 직접. runner=b0 이면 b0_episode.jl(manifest 인자)과 판 namespace."""
+    if camp.get("runner", "render") == "render":
+        return ["julia", "+lts", "--project=%s" % ROOT, RENDER], {}
+    if camp["runner"] != "b0":
+        raise SystemExit("unknown runner %r" % camp["runner"])
+    return (["julia", "+lts", "--project=%s" % ROOT, B0, camp["manifest"]],
+            {"ZONE_REPAIR_DIR": os.path.join(grid, "zr", job["run_key"])})
 
 
 def run_ctx_of(txt):
@@ -324,8 +344,22 @@ def _words(v):
     return v.replace(",", " ").split()
 
 
-def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None):
+def _sha256(p):
+    with open(p, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None, runner="render", manifest=None):
     grid = os.path.abspath(grid)
+    if runner == "b0":
+        # manifest 가 schema 검증(julia RepairTypes)을 통과하지 못하면 campaign 을 열지 않는다.
+        manifest = os.path.abspath(manifest or "")
+        chk = subprocess.run(["julia", "+lts", "--project=%s" % ROOT, B0, manifest, "--check"],
+                             capture_output=True, text=True, cwd=ROOT)
+        if chk.returncode != 0:
+            raise SystemExit("[campaign] init refused: " + (chk.stderr.strip() or chk.stdout.strip())[-2000:])
+    elif runner != "render":
+        raise SystemExit("unknown runner %r" % runner)
     os.makedirs(os.path.join(grid, "log"), exist_ok=True)
     raw = dict(os.environ)
     for k, v in GRID_DEFAULTS.items():
@@ -346,11 +380,13 @@ def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None):
         "set_env": j["set_env"], "classes": j["classes"], "pinned": j["pinned"],
         "versions": {"julia": j["julia"], "python": sys.version.split()[0]},
     }
+    if runner == "b0":
+        fresh.update(runner="b0", manifest=manifest, manifest_sha256=_sha256(manifest))
     if os.path.isfile(cpath):
         with open(cpath) as f:
             camp = json.load(f)
-        diff = [k for k in ("model", "code_rev", "code_dirty_digest", "config_digest")
-                if camp[k] != fresh[k]]
+        diff = [k for k in ("model", "code_rev", "code_dirty_digest", "config_digest",
+                            "runner", "manifest_sha256") if camp.get(k) != fresh.get(k)]
         if diff:
             print("campaign %s: fingerprint differs in %s — start a NEW campaign (new grid "
                   "dir); runs are never mixed across fingerprints" % (camp["campaign_id"], diff),
@@ -435,14 +471,30 @@ def cmd_run_one(grid, lane, case, seed, timeout_s=None):
         _append(runs, rec)
         print("[DRIFT] %s — service %s" % (key, rec["detail"]))
         return DRIFT_EXIT
+    if camp.get("runner") == "b0" and _sha256(camp["manifest"]) != camp["manifest_sha256"]:
+        rec.update(status="error:manifest_drift", rc=None, timeout=False, elapsed=0,
+                   detail="manifest %s changed since init" % camp["manifest"],
+                   at=datetime.datetime.now().astimezone().isoformat())
+        _append(runs, rec)
+        print("[DRIFT] %s — %s" % (key, rec["detail"]))
+        return DRIFT_EXIT
     rec["prior_attempts_moved"] = preserve_prior_attempt(job)
     env = run_env(camp, job, os.environ, grid)
+    argv, extra = runner_cmd(camp, job, grid)
+    env.update(extra)
+    zr = extra.get("ZONE_REPAIR_DIR")
+    if zr and os.path.exists(zr):                  # 채점 안 된 이전 시도의 namespace 도 보존
+        n = 1
+        while os.path.exists("%s.attempt%d" % (zr, n)):
+            n += 1
+        os.replace(zr, "%s.attempt%d" % (zr, n))
+        rec["prior_attempts_moved"].append("%s.attempt%d" % (zr, n))
     timeout_s = timeout_s or int(os.environ.get("RUN_TIMEOUT", "3600"))
     os.makedirs(os.path.dirname(job["log"]), exist_ok=True)
     st = time.time()
     timed_out = False
     with open(job["log"], "wb") as lf:
-        p = subprocess.Popen(["julia", "+lts", "--project=%s" % ROOT, RENDER], env=env,
+        p = subprocess.Popen(argv, env=env,
                              stdout=lf, stderr=subprocess.STDOUT, cwd=ROOT,
                              start_new_session=True)
         try:
@@ -559,9 +611,11 @@ def main(argv):
         ap.add_argument("grid"); ap.add_argument("--model", required=True)
         ap.add_argument("--lanes", required=True); ap.add_argument("--cases", required=True)
         ap.add_argument("--seeds", required=True); ap.add_argument("--campaign-id")
+        ap.add_argument("--runner", default="render", choices=("render", "b0"))
+        ap.add_argument("--manifest")
         a = ap.parse_args(rest)
         return cmd_init(a.grid, a.model, _words(a.lanes), _words(a.cases),
-                        [int(s) for s in _words(a.seeds)], a.campaign_id)
+                        [int(s) for s in _words(a.seeds)], a.campaign_id, a.runner, a.manifest)
     if cmd == "run-one":
         return cmd_run_one(*rest)
     if cmd == "snapshot":

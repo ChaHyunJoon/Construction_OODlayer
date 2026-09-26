@@ -285,3 +285,23 @@ def test_cmd_init_fails_fast_before_writing_campaign(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "_health", _h("translate"))
     assert C.cmd_init(str(tmp_path / "g"), "tractor.mpd", ["router"], ["zone"], [1]) == 0
     assert json.load(open(tmp_path / "g" / "campaign.json"))["service"]["health"]["repair_ablation"] == "translate"
+
+
+# ---- T10a: runner=b0 -------------------------------------------------------------------------
+def test_runner_cmd_default_is_render_and_b0_gets_manifest_and_namespace():
+    job = _job("zone", 3)
+    argv, extra = C.runner_cmd(CAMP, job, "/g")
+    assert argv[-1] == C.RENDER and extra == {}
+    b0 = dict(CAMP, runner="b0", manifest="/m.json")
+    argv, extra = C.runner_cmd(b0, job, "/g")
+    assert argv[-2:] == [C.B0, "/m.json"]
+    assert extra == {"ZONE_REPAIR_DIR": "/g/zr/canonical__zone__s3"}
+    with pytest.raises(SystemExit):
+        C.runner_cmd(dict(CAMP, runner="nope"), job, "/g")
+
+
+def test_run_env_keeps_process_basics_even_when_classified_observational():
+    camp = dict(CAMP, classes=dict(CLASSES, observational=CLASSES["observational"] + ["HOME", "PATH", "USER"]))
+    env = C.run_env(camp, _job("zone", 2), {"PATH": "/bin", "HOME": "/h", "USER": "u", "LANG": "C", "NAV_DEBUG": "1"}, "/g")
+    assert (env["PATH"], env["HOME"], env["USER"], env["LANG"]) == ("/bin", "/h", "u", "C")
+    assert "NAV_DEBUG" not in env

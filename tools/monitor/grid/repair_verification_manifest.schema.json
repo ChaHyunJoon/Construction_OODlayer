@@ -142,7 +142,7 @@
             "name": {"$ref": "#/$defs/text"},
             "version": {"$ref": "#/$defs/text"},
             "seed": {"type": "integer"},
-            "threads": {"type": "integer", "minimum": 1}
+            "threads": {"type": "integer", "minimum": 0, "description": "solver thread option as configured; 0 = the solver's own default (HiGHS `threads=0`: automatic) -- CB never sets it (src/verification/episode_replay.jl fingerprints)"}
           }
         }
       }
