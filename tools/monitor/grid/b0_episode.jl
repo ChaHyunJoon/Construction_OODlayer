@@ -12,7 +12,8 @@
 # 필요한 env: pi0 셋(`RepairRuntime.startup_problems`) · `ZONE_REPAIR_VERIFICATION=shadow` · `DEMO_OUT_DIR` ·
 # `ZONE_REPAIR_DIR`(판 namespace, 없어야 함). campaign.py(runner=b0)가 판마다 짓는다.
 # manifest(`repair_verification_manifest.schema.json`)가 검증을 통과하지 못하면 부모를 띄우기 **전에** exit 2.
-# 기록: `<ZONE_REPAIR_DIR>/b0.json`(schema `zrv-b0-episode/1`). stdout 끝줄 `[b0] …`. 종료코드 = 부모 종료코드.
+# 기록: `<ZONE_REPAIR_DIR>/b0.json`(schema `zrv-b0-episode/1`). stdout 끝줄 `[b0] …`. 종료코드 = 부모 종료코드,
+# driver 자신이 실패하면 `driver_error` 를 싣고 3.
 # =============================================================================
 include(joinpath(@__DIR__, "..", "..", "..", "src", "verification", "repair_runtime.jl"))
 
@@ -92,8 +93,17 @@ function main(args)
             rec["resume"] = BR.parent_command(par, "resume")
         end
         wait(par.process)
+    catch e
+        # driver/하니스 실패 — 세계의 결과가 아니다. 기록하고 부모를 확실히 끝낸 뒤 b0.json 을 쓴다(분석기가 UNKNOWN harness 로 센다).
+        rec["driver_error"] = first(sprint(showerror, e), 500)
     finally
-        process_running(par.process) && (kill(par.process); wait(par.process))
+        # SIGTERM 만으로는 부족하다(T10a 실측: inference 도중의 부모가 TERM 뒤 끝나지 않아 campaign 시한까지 막혔다 →
+        # wall_timeout 으로 오표기). TERM → grace 뒤 토큰 스윕 KILL.
+        if process_running(par.process)
+            kill(par.process)
+            rec["parent_kill_survivors"] = BR.kill_tree!(par.process, par.token)
+            wait(par.process)
+        end
         stop[] = true
         try wait(follower) catch end
         try close(par.log) catch end
@@ -109,6 +119,7 @@ function main(args)
     println("[b0] t0_captured=$(rec["t0_captured"]) gaps=$(length(get(rec, "certification_gaps", []))) ",
             "complete=$(get(t, "complete", nothing)) reason=$(get(t, "terminal_reason", nothing)) ",
             "exit_code=$(rec["exit_code"]) record=$(joinpath(root, "b0.json"))")
+    haskey(rec, "driver_error") && (println(stderr, "[b0] DRIVER ERROR (harness, not a world outcome): ", rec["driver_error"]); return 3)
     return something(rec["exit_code"], 1)
 end
 

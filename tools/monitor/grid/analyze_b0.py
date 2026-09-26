@@ -53,20 +53,29 @@ def recovery_counts(stream):
     return dict(sorted(rec.items())), zone_non_noop
 
 
-def classify(dr, t):
-    """(outcome, unknown_cause). dr = campaign runs.jsonl 의 마지막 기록(없으면 {}), t = 부모 terminal.json(없으면 {})."""
-    reason = t.get("terminal_reason")
-    if dr.get("timeout"):
-        return "UNKNOWN", "wall_timeout"
+def classify(dr, t, driver_error=None):
+    """(outcome, unknown_cause). dr = campaign runs.jsonl 의 마지막 기록(없으면 {}), t = 부모 terminal.json(없으면 {}),
+    driver_error = b0.json 의 driver_error(하니스 실패). 🔴 채점되지 않은 판(`status != scored`: error:ctx_mismatch ·
+    error:stream_missing · error · …)은 terminal 이 있어도 UNKNOWN 이다 — 지문이 다른 세계의 결과를 세지 않는다(설계 §9.1)."""
+    if driver_error:
+        return "UNKNOWN", "harness_failure"
     if not dr:
         return "UNKNOWN", "missing"
-    if str(dr.get("status", "")).startswith("error:") and dr["status"] != "error:ctx_mismatch" and not t:
-        return "UNKNOWN", "driver:" + dr["status"]
+    if dr.get("timeout"):
+        return "UNKNOWN", "wall_timeout"
+    if dr.get("status") != "scored":
+        return "UNKNOWN", "driver:" + str(dr.get("status"))
+    reason = t.get("terminal_reason")
     if reason == "project_complete":
         return "COMPLETE", None
     if reason in ("no_progress_limit", "max_sim_steps"):
         return "FAIL_WITHIN_BUDGET", None
     return "UNKNOWN", "worker_crash"
+
+
+def general_recovery(ab):
+    """판 카운터(`[ablation] detail=`)의 `recovery:<kind>:<status>` 항목 — 원장 밖 명목 레인 복구(maybe_unwedge_nominal!)."""
+    return {k: v for k, v in ((ab or {}).get("detail") or {}).items() if k.startswith("recovery:")}
 
 
 def manifest_build_mismatches(build, fp):
@@ -97,7 +106,7 @@ def episode(grid, model, job, drv, bsd_run, bsd_uns):
     if b0 is None and os.path.isfile(os.path.join(zr, "parent", "terminal.json")):
         t = jload(os.path.join(zr, "parent", "terminal.json"))
     reason = t.get("terminal_reason")
-    out, cause = classify(dr, t)
+    out, cause = classify(dr, t, (b0 or {}).get("driver_error"))
     e.update(outcome=out, unknown_cause=cause, terminal_reason=reason, complete=t.get("complete"),
              closed=t.get("closed"), total=t.get("total"), iter=t.get("iter"), no_progress=t.get("no_progress"),
              n_blocked=t.get("n_blocked"), project_blocked=t.get("project_blocked"),
@@ -120,7 +129,8 @@ def episode(grid, model, job, drv, bsd_run, bsd_uns):
              verify_rng_equal=(b.get("verify") or {}).get("rng_equal"),
              task_contract_sha256=((b.get("task_contract") or {}).get("sha256")),
              cpu_s=b.get("cpu_s"), exit_code=b.get("exit_code"))
-    e["general_recovery_unledgered"] = "maybe_unwedge_nominal! (every UNWEDGE_INTERVAL no-progress iters) is not ledgered; only its zone-ladder branch is counted (zone_ladder_*)"
+    e["general_recovery_counts"] = general_recovery(ab) if ab and "detail" in ab else None
+    e["driver_error"] = (b0 or {}).get("driver_error")
     env = jload(os.path.join(zr, "parent", "t0.envelope.json"))
     man = jload(b["manifest"]) if b.get("manifest") else None
     e["manifest_build_mismatches"] = None if man is None else manifest_build_mismatches(man["build"], (env or {}).get("fingerprints"))
@@ -211,10 +221,34 @@ def main(b0root, out):
             "rng_advanced_after_t0": sum(bool(e["rng_advanced_after_t0"]) for e in eps),
             "score_disagrees": sorted(e["run_key"] + "@" + e["model"] for e in eps if e["score_agrees"] is False),
             "recovery_totals": dict(sum((Counter(e["recovery_counts"] or {}) for e in eps), Counter())),
+            "general_recovery_totals": dict(sum((Counter(e["general_recovery_counts"] or {}) for e in eps), Counter())),
+            "episodes_with_unwedge": sum(bool(e["general_recovery_counts"]) for e in eps),
             "prefix_vs_hist": {k: dict(Counter(str((e["prefix_vs_hist"] or {}).get(k)) for e in eps)) for k in ("init_fp", "ood_fp", "zone_place")}}
     json.dump(summ, open(os.path.join(out, "b0_summary.json"), "w"), indent=1, sort_keys=True)
+    decomp(b0root, out, eps)
     print(json.dumps({k: summ[k] for k in ("n_planned", "totals", "unknown_causes", "drift_2x2", "t0_captured",
                                            "zone_ladder_fired_total", "zone_solver_denied_total")}, indent=1))
+
+
+def decomp(b0root, out, eps):
+    """<b0_root>/decomp_none/{model}(REPAIR_ABLATION=none 격자)에서 채점된 판 → out/decomp_none.json(B0 판과 나란히)."""
+    b0 = {(e["model"], e["case"], e["seed"]): e for e in eps}
+    runs = []
+    for m in ("tractor", "xwing"):
+        g = os.path.join(b0root, "decomp_none", m)
+        if not os.path.isfile(os.path.join(g, "jobs.jsonl")):
+            continue
+        for r in BSD.collect_jobs(g)[0]:
+            e = b0[(m, r["case"], r["seed"])]
+            runs.append({"model": m, "case": r["case"], "seed": r["seed"], "none_complete": r["complete"], "none_closed": r["closed"],
+                         "none_ablation": r["ablation"], "none_elapsed_s": r["elapsed"],
+                         "none_init_fp_eq_b0": r.get("init_fp") == e.get("init_fp"), "none_ood_fp_eq_b0": r.get("ood_fp") == e.get("ood_fp"),
+                         "b0_outcome": e["outcome"], "b0_closed": e["closed"], "b0_ladder_skipped": e.get("zone_ladder_skipped"),
+                         "hist_class": e["hist_class"], "hist_closed": e["hist_closed"], "stream": rel(os.path.join(g, r["stream"]))})
+    if runs:
+        json.dump({"schema": "zrv-b0-decomp-none/1", "note": "same code, REPAIR_ABLATION=none (historical canonical setting), plain render_demo off",
+                   "runs": sorted(runs, key=lambda x: (x["model"], x["case"], x["seed"]))},
+                  open(os.path.join(out, "decomp_none.json"), "w"), indent=1, sort_keys=True)
 
 
 if __name__ == "__main__":

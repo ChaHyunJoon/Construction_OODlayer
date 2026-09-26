@@ -712,12 +712,16 @@ function maybe_unwedge_nominal!(env, no_progress::Integer)
     # "훅이 안 불렸다" 와 "불렸는데 못 풀었다" 가 로그로 구별이 안 된다.
     vb = get(ENV, "UNWEDGE_VERBOSE", "0") == "1"
     _stall_probe(env, :unwedge_pre; no_progress = no_progress)
+    # 발동 계수(설계 §7.1 "일반 복구도 종류별 실제 발동 횟수") — 존 사다리와 같은 판 카운터(`_ablation_bump!`,
+    # 판 끝 `[ablation] … detail=` 줄·`ablation_counts()`)에 싣는다. 세계를 안 건드린다(동역학 무관, T10a 가 스트림으로 확인).
     rec = try
         recover_stalled_teams!(env; verbose = vb)
     catch e
+        _ablation_bump!("recovery:unwedge_nominal:error")
         @warn "[NOMINAL] unwedge 실패" exception = e
         return false
     end
+    _ablation_bump!("recovery:unwedge_nominal:$(rec.status)")
     vb && println(">>> [UNWEDGE] no_progress=", no_progress, " status=", rec.status,
                   " moved=", get(rec, :moved, -1), " snap_count=", SNAP_COUNT[])
     # 쐐기가 "아직도 zone 때문인가" 를 매 발화마다 세계에 물어본다(광고된 zone_blockage 그대로).

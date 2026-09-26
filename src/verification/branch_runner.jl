@@ -442,6 +442,10 @@ function _judge_export!(violations, checks, dir, contract, cid, branch_id, sup, 
             ladder = _typed(get(_typed(b["ablation_counts"], AbstractDict, "branch.ablation_counts"), "ladder_zone_fired", 0),
                             Integer, "ladder_zone_fired")
             ladder == 0 || push!(violations, "zone ladder fired $(ladder) times")
+            # 원장에 안 남는 명목 레인 복구(`maybe_unwedge_nominal!`)는 판 카운터에서 센다(T10a).
+            for (k, v) in b["ablation_counts"]
+                startswith(String(k), "recovery:") && (recov[String(k)] = get(recov, String(k), 0) + Int(v))
+            end
             row = _last_ledger_row(dir)
             if row === nothing
                 push!(violations, "shadow ledger missing (cannot check zone decisions)")

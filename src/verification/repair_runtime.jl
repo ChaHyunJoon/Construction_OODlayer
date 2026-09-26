@@ -647,11 +647,21 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
             rec["exit_code"] = par.process.exitcode
         end
         return rec
+    catch e
+        # driver/하니스 실패 — 세계의 결과(FAIL)도 시한초과(UNKNOWN wall_timeout)도 아니다. 기록에 사유를 남기고 다시 던진다.
+        rec["harness_failure"] = first(sprint(showerror, e), 500)
+        rethrow()
     finally
         stop_parent_log[] = true; stop_active[] = true
         # 정상 경로에서는 여기서 부모가 이미 끝났다(NOOP 재개를 기다렸거나, 활성화로 은퇴했거나, t0 없이 끝났다).
         # 예외로 왔으면 t0 에서 기다리는 부모를 고아로 두지 않는다(`supervise_episode!` 의 finally 와 겹쳐도 무해).
-        process_running(par.process) && (kill(par.process); wait(par.process))
+        # SIGTERM 만으로는 부족하다(T10a 실측: type inference 도중의 부모가 TERM 뒤 끝나지 않아 바깥 시한까지 막혔다) →
+        # TERM, grace 뒤 토큰 스윕 KILL(`BranchRunner.kill_tree!`).
+        if process_running(par.process)
+            kill(par.process)
+            rec["parent_kill_survivors"] = BR.kill_tree!(par.process, par.token)
+            wait(par.process)
+        end
         foreach(t -> (try wait(t) catch end), tasks)
         try close(par.log) catch end
         rec["finished_at"] = time()
