@@ -2387,6 +2387,25 @@ _retry_str(x) = x === nothing ? "n/a" : String(x)
 _rwp_str(x) = x === nothing ? "n/a" : String(x)
 
 """
+    zrv_refuses_raw_body(decision) -> Union{Nothing,String}
+
+🔴 zone-repair-verification T8. `ZONE_REPAIR_VERIFICATION=shadow|enforce` 에서는 생성 body 가 **세계 프로세스**(원래 세계·
+분기/commit worker 의 continuation)에 등록·집행되지 않는다 — 생성 코드는 `ToolExecution` 이 후보마다 새 샌드박스 worker 에서만
+돌린다(설계 §6.1·§7.3). 이 함수가 그 세계 프로세스 쪽 유일한 production 입구(`enact_minted_decision!` →
+`register_minted_primitive!`/`_install_rewrite!`/`enact_minted!`) 앞의 문이다. 결정에 등록할 코드(`impl_name`)가 실려 오면 거절 사유를,
+아니면 `nothing`. 검증 모드 기동이 pi0(canonical 레인)와 `DEMO_SYNTH_FIXTURE` 금지를 이미 강제하므로 정상 판에서는 안 걸린다 —
+걸리면 우회이고, 크게 찍고 pi0 기본 복구로 간다.
+"""
+function zrv_refuses_raw_body(decision)
+    get(ENV, "ZONE_REPAIR_VERIFICATION", "off") == "off" && return nothing
+    sl = try decision.synth_lane catch; nothing end
+    nm = _synth_lane_field(sl, "impl_name")
+    nm === nothing && return nothing
+    return "ZONE_REPAIR_VERIFICATION=$(get(ENV, "ZONE_REPAIR_VERIFICATION", "")) refuses to register/run generated body " *
+           "'$(nm)' in the world process — candidates run only in disposable branch workers under the supervisor"
+end
+
+"""
     enact_minted_decision!(env, truth, decision) -> NamedTuple
 
 결정 행이 나른 합성 tool 을 등록·집행한다. `CB.register_minted_primitive!` 를 `CB.enact_minted!`
@@ -2734,6 +2753,10 @@ function enact_minted_decision!(env, truth, decision)
                     world_delta_body = world_delta_body,
                     interface_calls = interface_calls)
         end
+        # 🔴 zone-repair-verification T8: 검증 모드의 세계 프로세스에서는 등록·rewrite·집행 **전에** 거절(`zrv_refuses_raw_body`).
+        #    반환 자리를 새로 만들지 않고 `_reject_malformed`(등록 전 거절) 를 탄다 — W1 게이트가 반환 자리 넷을 지킨다.
+        local _zrv_why = zrv_refuses_raw_body(decision)
+        _zrv_why === nothing || return _reject_malformed(_zrv_why)
         nm isa AbstractString ||
             return _reject_malformed("reject:impl_name_not_a_string:$(typeof(nm))")
         # 🔴 F6(3)(2026-09-03 최종 리뷰). `impl_name` 이 **빈 문자열**(`nothing` 이 아니다)로

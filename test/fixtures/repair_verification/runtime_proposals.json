@@ -1,0 +1,25 @@
+[
+  {
+    "schema_version": "tool-proposal/1",
+    "checkpoint_id": "t0",
+    "proposal_id": "t8-fixture-shift-step",
+    "submission_index": 1,
+    "tool_name": "t8_shift_and_step!",
+    "specification": {
+      "mechanism": "hand-written T8 wiring fixture (not model output): rigid build shift + 3 engine steps via the trusted adapter"
+    },
+    "impl_name": "t8_shift_and_step!",
+    "impl_code": "function t8_shift_and_step!(env; dx::Float64 = 0.3, dy::Float64 = -0.2)\n    T = CoordinateTransformations.Translation(dx, dy, 0.0)\n    ts = Any[]\n    for aid in sort!(collect(keys(env.staging_circles)); by = string)\n        push!(ts, start_config(get_node(env.sched, AssemblyComplete(get_node(env.scene_tree, aid)))))\n    end\n    top(t) = (c = t; while !has_parent(c, c); c = get_parent(c); any(x -> x === c, ts) && return false; end; true)\n    for t in ts\n        top(t) && set_desired_global_transform!(t, T ∘ global_transform(t))\n    end\n    for aid in collect(keys(env.staging_circles))\n        b = env.staging_circles[aid]\n        env.staging_circles[aid] = LazySets.Ball2(Vector{Float64}(get_center(b)[1:2]) .+ [dx, dy], Float64(get_radius(b)))\n    end\n    for _ in 1:3\n        step_environment!(env)\n    end\n    return :shifted_and_stepped\nend",
+    "params": {},
+    "calls": [
+      {
+        "primitive": "t8_shift_and_step!",
+        "args": {}
+      }
+    ],
+    "provenance": {
+      "source": "fixture",
+      "note": "T8 production wiring test fixture; checkpoint_id 't0' is the constant id every parent writes (T7 report 9-2)"
+    }
+  }
+]

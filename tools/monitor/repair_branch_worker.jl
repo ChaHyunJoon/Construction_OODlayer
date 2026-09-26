@@ -310,6 +310,49 @@ function hold!(h, env, ctx)
     end
 end
 
+# ---- T8: production 존 사건 dispatch 기록 ----------------------------------------------------------
+"t0 capture 가 잡은 존 사건 NL(부모: 이 프로세스의 capture, 분기/commit: 복원한 envelope). 없으면 nothing."
+function t0_zone_event()
+    h = ER.H[]
+    d = if h !== nothing && h.t0 !== nothing
+        h.t0.loop_state.dispatch
+    elseif isfile(get(ENV, "ZRV_CHECKPOINT", ""))
+        get(JSON3.read(read(ENV["ZRV_CHECKPOINT"], String)), :dispatch, nothing)
+    else
+        nothing
+    end
+    (d === nothing || d.zone_event_index === nothing) && return nothing
+    return String(d.pending[d.zone_event_index])
+end
+
+"""
+    zone_dispatch_note(event)
+
+`policy_producer` 가 존 사건을 받을 때(검증 모드 worker 에서만) 부른다 — **세계를 안 건드리고** 크게 적는다:
+  * 부모인데 t0 capture 가 없다 → `certification_unavailable`(지연/라이브 존: 한 스텝 안에서 주입·dispatch 돼 스텝 경계에
+    대기 사건으로 보이지 않는다 — T3). `<ZRV_REPLAY_DIR>/certification_unavailable.jsonl` 에 한 줄, 에피소드 기록이 읽는다.
+  * t0 의 그 사건 → 이 세계에서는 pi0 NOOP, 그 사건의 유일한 repair transaction 은 supervisor 몫.
+  * 그 뒤의 존 사건 → pi0 NOOP(V1: 에피소드당 transaction 하나, 모델 호출 없음).
+"""
+function zone_dispatch_note(event::AbstractString)
+    get(ENV, "ZONE_REPAIR_VERIFICATION", "off") == "off" && return nothing
+    h = ER.H[]
+    role = get(ENV, "ZRV_BRANCH_ROLE", "")
+    if role == "parent" && (h === nothing || !h.captured)
+        rec = Dict{String,Any}("kind" => "certification_unavailable", "event" => String(event),
+            "iter" => (h === nothing || h.last_spd === nothing) ? nothing : h.last_spd.iter,
+            "reason" => "zone event dispatched without a t0 capture — the t0 hook only sees events pending at a step " *
+                        "boundary; deferred/live zones are injected and dispatched inside one step")
+        h === nothing || open(io -> println(io, JSON3.write(rec)), joinpath(h.dir, "certification_unavailable.jsonl"), "a")
+        println("[zrv] CERTIFICATION UNAVAILABLE at iter=$(rec["iter"]): $(rec["reason"])"); flush(stdout)
+    elseif event == t0_zone_event()
+        println("[zrv] zone event at t0 → pi0 NOOP in this world (role=$(role)); its single repair transaction belongs to the supervisor")
+    else
+        println("[zrv] later zone event → pi0 NOOP (V1: one repair transaction per episode, no model call) role=$(role)")
+    end
+    return nothing
+end
+
 function install!()
     role = get(ENV, "ZRV_BRANCH_ROLE", "")
     role == "parent" && (get(ENV, "ZRV_REPLAY_MODE", "") == "capture" || error("parent role needs ZRV_REPLAY_MODE=capture"))

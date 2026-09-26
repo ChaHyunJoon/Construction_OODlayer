@@ -933,6 +933,9 @@ const CONFIG_ENV_RESULT = [
     "RESPEC_DEPRIO_KAPPA", "ENERGY_OBJECTIVE", "SPARE_PRIORITY", "SPARE_DEPOT_DIST",
     "TEAM_PRIORITY", "USE_RESET", "LEGACY_RESTAMP", "OOD_NL_LEGACY", "LLM_NL_MODE", "CORE_FRAC",
     "REPAIR_ABLATION",         # 존 복구 base ablation 레벨(2026-09-23, 명세 §6) — none/translate/all
+    # zone-repair-verification T8: off|shadow|enforce. shadow 는 원래 세계를 안 바꾸지만(시험이 잰다) enforce 는 활성
+    # 세계를 commit worker 로 바꾼다 — 판의 의미가 갈리므로 result.
+    "ZONE_REPAIR_VERIFICATION",
     # 2026-09-23 레포 정리(100a7735)로 action_registry.jl 이 src/ 아래로 와서 스캐너 범위에 들어옴.
     # 둘 다 행동 어휘·메뉴를 바꾼다(레지스트리 경로 = 매크로 집합, SoC 분할 = battery 메뉴) → result.
     "ACTION_REGISTRY", "DS_BATTERY_SOC_SPLIT",
@@ -979,6 +982,9 @@ const CONFIG_ENV_OBSERVATIONAL = [
     # T6 격리 도구 집행 — 제안 파일(정체는 export 의 `enactment.proposal_sha256`)·모드·t0 계약 위치·후처리 실패 탐침.
     # ZRV_BRANCH_ACTION 과 같은 이유로 지문 밖이다.
     "ZRV_BRANCH_PROPOSAL", "ZRV_BRANCH_MODE", "ZRV_TASK_CONTRACT", "ZRV_PROBE_POSTPROCESS_FAIL",
+    # T8 production 배선(`src/verification/repair_runtime.jl`) — fixture 후보 파일(정체는 certificate 의 제안 digest)·
+    # 에피소드 출력 위치·campaign 인증 정지 파일 위치. ZRV_BRANCH_PROPOSAL 과 같은 이유로 지문 밖이다.
+    "ZONE_REPAIR_PROPOSALS", "ZONE_REPAIR_DIR", "ZONE_REPAIR_CAMPAIGN_DIR",
     # 프로세스 기본값 — `BranchRunner.base_env` 가 worker 의 **새** env 에 그대로 옮긴다(설정 손잡이 아님).
     "HOME", "PATH", "USER",
 ]

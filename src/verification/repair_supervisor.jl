@@ -58,10 +58,12 @@ _rt_digest(x) = TC.digest(JSON3.read(JSON3.write(x), Dict{String,Any}))
 # =============================================================================
 const STATES = (:CAPTURED, :IDENTITY_VERIFIED, :PROPOSALS_FROZEN, :BASELINE_AND_CANDIDATE_ROLLOUTS,
                 :SELECTED_NOOP, :SELECTED_TOOL, :PRECOMMIT_VERIFIED, :COMMITTED, :REPLAY_CHECKED,
-                :REJECT_CANDIDATE, :CERTIFICATION_UNAVAILABLE)
+                :REJECT_CANDIDATE, :CERTIFICATION_UNAVAILABLE, :SHADOW_NOT_COMMITTED)
 """
 허용 전이. NOOP 도 PRECOMMIT_VERIFIED(부모 t0 재확인) → COMMITTED(부모 재개) → REPLAY_CHECKED 를 탄다.
 `SELECTED_NOOP → COMMITTED` 직행은 인증 불가일 때뿐(확인할 보장이 없다 — 그래도 원래 세계는 재개한다).
+T8 `SHADOW_NOT_COMMITTED`: `ZONE_REPAIR_VERIFICATION=shadow` 에서 도구가 선택돼도 원래 세계는 NOOP 로 간다(관측 전용).
+`REJECT_CANDIDATE`(commit 실패)와 다른 사건이므로 다른 상태다 — 선택·certificate 는 그대로 남는다.
 """
 const TRANSITIONS = Dict{Symbol,Tuple}(
     :CAPTURED => (:IDENTITY_VERIFIED, :CERTIFICATION_UNAVAILABLE),
@@ -70,7 +72,8 @@ const TRANSITIONS = Dict{Symbol,Tuple}(
     :BASELINE_AND_CANDIDATE_ROLLOUTS => (:SELECTED_NOOP, :SELECTED_TOOL, :CERTIFICATION_UNAVAILABLE),
     :CERTIFICATION_UNAVAILABLE => (:SELECTED_NOOP,),
     :SELECTED_NOOP => (:PRECOMMIT_VERIFIED, :COMMITTED),
-    :SELECTED_TOOL => (:PRECOMMIT_VERIFIED, :REJECT_CANDIDATE),
+    :SELECTED_TOOL => (:PRECOMMIT_VERIFIED, :REJECT_CANDIDATE, :SHADOW_NOT_COMMITTED),
+    :SHADOW_NOT_COMMITTED => (:SELECTED_NOOP,),
     :PRECOMMIT_VERIFIED => (:COMMITTED, :REJECT_CANDIDATE),
     :REJECT_CANDIDATE => (:SELECTED_NOOP,),
     :COMMITTED => (:REPLAY_CHECKED,),
@@ -455,6 +458,23 @@ function handover_record(; contract, commit_dir, commit_id, held, cert_sha, pare
         "parent" => merge(Dict{String,Any}("pid" => contract["parent_pid"]), parent_retire))
 end
 
+"commit worker 가 `activate` 를 **받아 답했나**(worker 가 쓴 `control/<n>.out.json`) — supervisor 쪽 ack 가 없어도 세계는 넘어갔을 수 있다."
+worker_acked_activate(cdir::AbstractString) = (d = joinpath(cdir, "control"); isdir(d) &&
+    any(f -> endswith(f, ".out.json") && get(try _json(joinpath(d, f)) catch; Dict() end, "cmd", "") == "activate", readdir(d)))
+
+"""
+    activation_state(; acked, handover, ctl_err) -> (; activated, reasons)
+
+🔴 T8(T7 minor): 활성화는 `activate` ack 가 **정한다**(옛 코드는 전환 기록 `hand[] !== nothing` 으로 추론했다 — ack 뒤
+부모 은퇴·기록 쓰기에서 던지면 activated=false 가 되어 supervisor 가 이미 은퇴한 부모를 NOOP 로 재개하려 했다).
+ack 됐는데 기록이 없으면 활성화는 참이고 그 실패는 사유(→ 활성 뒤 불일치 = 보장 위반 쪽으로 닫힌다).
+"""
+function activation_state(; acked::Bool, handover, ctl_err)
+    acked || return (; activated = false, reasons = String[])
+    handover === nothing || return (; activated = true, reasons = String[])
+    return (; activated = true, reasons = ["handover record failed after the commit worker was activated: $(something(ctl_err, "unknown"))"])
+end
+
 """
     commit_tool!(; parent, cert, cert_sha, raw, verif_dir, outroot, commit_id, launch_env, limits, campaign_dir,
                  extra_env = Dict()) -> NamedTuple
@@ -481,16 +501,17 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
     isempty(stale) || return abort(["stale_certificate: " * s for s in stale]; precommit = nothing, handover = nothing,
                                    exec = nothing, replay = nothing)
     cdir = joinpath(outroot, commit_id)
-    pre = Ref{Any}(nothing); hand = Ref{Any}(nothing); ctl_err = Ref{Any}(nothing)
+    pre = Ref{Any}(nothing); hand = Ref{Any}(nothing); ctl_err = Ref{Any}(nothing); acked = Ref(false)
     tick = function (p)
         (pre[] === nothing && ctl_err[] === nothing && isfile(joinpath(cdir, "held_t1.json"))) || return nothing
+        w = (dir = cdir, process = p)
         try
             sleep(0.3)                                     # worker 가 held 파일을 다 쓰고 닫을 시간
             d = precommit_check(parent.dir, verif_dir, cdir, cert)
             pre[] = d
-            w = (dir = cdir, process = p)
             if d.ok
                 BR.parent_command(w, "activate"; timeout_s = 120)
+                acked[] = true                             # 🔴 이 순간부터 commit worker 가 세계다(아래가 던져도)
                 pr = retire_parent!(parent; why = "commit worker $(commit_id) activated")
                 hand[] = handover_record(; contract, commit_dir = cdir, commit_id, held = d.held, cert_sha, parent_retire = pr)
                 _write(cdir * ".active_world.json", hand[])
@@ -500,13 +521,20 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
         catch e
             e isa InterruptException && rethrow()
             ctl_err[] = first(sprint(showerror, e), 400)
+            # T7 minor: 활성화 전 제어 오류면 t1 에서 기다리는 worker 를 wall 까지 두지 않고 버린다.
+            (acked[] || worker_acked_activate(cdir)) ||
+                (try BR.parent_command(w, "exit"; timeout_s = 30) catch; process_running(p) && kill(p) end)
         end
         return nothing
     end
     x = TX.execute_tool_isolated(; parent_dir = parent.dir, raw, outroot, branch_id = commit_id, launch_env, limits,
                                  mode = "commit", extra_env, on_tick = tick)
     d = pre[]
-    if hand[] === nothing
+    act = activation_state(; acked = acked[] || worker_acked_activate(cdir), handover = hand[], ctl_err = ctl_err[])
+    if act.activated && process_running(parent.process)      # 세계가 둘이 되지 않게 — ack 뒤 은퇴가 실패했던 경우
+        retire_parent!(parent; why = "commit worker $(commit_id) acknowledged activate; parent still alive")
+    end
+    if !act.activated
         reasons = String[]
         ctl_err[] === nothing || push!(reasons, "commit control error: $(ctl_err[])")
         if d === nothing
@@ -520,7 +548,7 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
     end
     # ---- 활성화된 뒤: 같은 continuation 을 실제로 굴린 결과를 검증 분기와 대조 ------------------------------
     rp = replay_compare(verif_dir, cdir; t0 = contract["t0_iter"])
-    reasons = copy(rp.reasons)
+    reasons = vcat(act.reasons, rp.reasons)
     rep = x.run.report
     co = cert["outcomes"]["candidate"]
     (String(rep.outcome) == co["outcome"] && rep.sim_steps == co["sim_steps"] && String(rep.terminal_reason) == co["terminal_reason"]) ||
@@ -645,8 +673,13 @@ function rollouts!(sv::Supervision; noise_floor::Union{Bool,Symbol} = :measure)
     advance!(sv, :BASELINE_AND_CANDIDATE_ROLLOUTS; why = "baseline $(sv.baseline.report.outcome); $(length(sv.candidates)) candidates")
 end
 
-"선택 + certificate. → SELECTED_TOOL | SELECTED_NOOP | CERTIFICATION_UNAVAILABLE."
-function select!(sv::Supervision)
+"""
+선택 + certificate. → SELECTED_TOOL | SELECTED_NOOP | CERTIFICATION_UNAVAILABLE.
+`baseline_override`(🔴 **시험 전용**, Julia 키워드로만 — 어떤 환경변수도 이 값을 만들지 않는다): 선택 함수에 넣는 기준 결과만
+바꾼다. 사유 첫 줄에 `FORCED (test)` 가 남고 certificate 의 `outcomes.baseline` 은 **실제** rollout 을 싣는다. NOOP 이 완주하는
+fixture 에서 production commit/활성화 경로를 재려는 용도다(T7 의 강제 선택과 같은 뜻, T8 은 상태 기계를 그대로 탄다).
+"""
+function select!(sv::Supervision; baseline_override::Union{Nothing,Symbol} = nothing)
     cid = String(sv.contract["checkpoint_id"])
     ran = sv.baseline !== nothing
     cands = [(; proposal_id = f["proposal_id"], submission_index = f["submission_index"],
@@ -658,6 +691,11 @@ function select!(sv::Supervision)
     # 기준 NOOP 이 UNKNOWN(wall_timeout·resource_limit·solver_error…)이면 그 사건은 인증 불가다 — gap 으로 올려 certificate·
     # NOOP 재개가 같은 사실을 보게 한다(T7 fix: 안 올리면 재개가 "인증됨" 으로 잘린 기준과 대조돼 campaign 을 멈췄다).
     ran && base === :UNKNOWN && push!(sv.gaps, "baseline UNKNOWN: $(something(sv.baseline.report.unknown_cause, "?"))")
+    if baseline_override !== nothing
+        ran || error("baseline_override needs a baseline rollout")
+        note = "FORCED (test): baseline outcome $(base) overridden to $(baseline_override) for the selection; " * note
+        base = baseline_override
+    end
     sv.selection = select_repair(cid, base, cands; gaps = unique(sv.gaps), baseline_note = note)
     cand = nothing
     if sv.selection.selected === :tool
@@ -756,18 +794,37 @@ function summary(sv::Supervision)
 end
 
 """
+    shadow_fork!(sv) -> Supervision
+
+T8 `ZONE_REPAIR_VERIFICATION=shadow`: 도구가 선택됐으면(SELECTED_TOOL) commit 하지 않고 SHADOW_NOT_COMMITTED → SELECTED_NOOP —
+선택·certificate 는 남고 원래 세계는 NOOP 로 계속된다(관측 전용). 그 밖의 상태면 아무것도 안 한다.
+"""
+function shadow_fork!(sv::Supervision)
+    sv.state === :SELECTED_TOOL || return sv
+    advance!(sv, :SHADOW_NOT_COMMITTED; why = "shadow mode: observation only — the verified tool " *
+             "$(sv.selection.selected_proposal_id) is recorded (selection + certificate), not enacted")
+    return advance!(sv, :SELECTED_NOOP; why = "shadow → the untouched original world continues with NOOP")
+end
+
+"""
     supervise_episode!(sv; proposals, noise_floor = :measure, max_candidates = 4, commit_id = "commit") -> Supervision
 
-한 사건 전체(§7.2). 🔴 어떤 경로로 끝나든(예외 포함) `finally` 가 부모를 은퇴/kill 한다 — t0 에서 기다리는 부모를 고아로
+한 사건 전체(§7.2). `shadow = true`(T8 `ZONE_REPAIR_VERIFICATION=shadow`)면 도구가 선택돼도 commit 하지 않고 원래 세계를
+NOOP 로 재개한다. 🔴 어떤 경로로 끝나든(예외 포함) `finally` 가 부모를 은퇴/kill 한다 — t0 에서 기다리는 부모를 고아로
 남기지 않는다(T4 우려). 인증 불가면 rollout 없이 NOOP 으로 재개한다(분모에는 `:certification_unavailable` 로 남는다).
 """
 function supervise_episode!(sv::Supervision; proposals::AbstractVector, noise_floor::Union{Bool,Symbol} = :measure,
-                            max_candidates::Int = 4, commit_id::AbstractString = "commit")
+                            max_candidates::Int = 4, commit_id::AbstractString = "commit", shadow::Bool = false,
+                            pre_gaps::AbstractVector = String[], baseline_override::Union{Nothing,Symbol} = nothing)
     try
+        # T8: 결정 **전**에 잰 신원 gap(서비스·source·API·schema·권한 지문 — `RepairRuntime.decision_gaps`)은 신원 확인
+        #     앞에 넣는다 → CERTIFICATION_UNAVAILABLE(rollout 없음, NOOP).
+        append!(sv.gaps, pre_gaps)
         verify_identity!(sv; noise_floor)
         freeze!(sv, proposals; max_candidates)
         sv.state === :PROPOSALS_FROZEN && rollouts!(sv; noise_floor)
-        select!(sv)
+        select!(sv; baseline_override)
+        shadow && shadow_fork!(sv)
         commit!(sv; commit_id)
         _write(joinpath(sv.outroot, "supervision.json"), summary(sv))
     finally

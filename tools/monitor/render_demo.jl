@@ -9,6 +9,17 @@
 # ENV: DEMO_MODEL(파일명) / DEMO_OOD(none|battery|fault|zone|fault_battery|fault_zone|battery_zone)
 # 출력: streams/<base>__<case>.jsonl , anim/<base>__<case>.html
 # =============================================================================
+# ---- ZONE_REPAIR_VERIFICATION=off|shadow|enforce (zone-repair-verification T8) ------------------
+# `off`(기본)는 여기서 아무것도 싣지 않는다 — 아래 스크립트가 오늘과 같이 돈다. 그 밖의 값은 이 프로세스를
+# 에피소드 driver 로 바꾼다(`src/verification/repair_runtime.jl` — 원래 세계를 부모 worker 로 띄워 t0 에서 세우고
+# supervisor 를 돌린다). 값 검사(오타 = 오류)도 그 쪽 `parse_mode` 한 곳이다. `ZRV_BRANCH_ROLE` 이 있으면 이 프로세스가
+# 바로 그 worker(부모·분기·commit)이므로 스크립트를 그대로 돈다. 🔴 `let` 이라 Main 전역을 만들지 않는다(checkpoint 대상).
+let m = get(ENV, "ZONE_REPAIR_VERIFICATION", "off")
+    if m != "off" && !haskey(ENV, "ZRV_BRANCH_ROLE")
+        include(joinpath(@__DIR__, "..", "..", "src", "verification", "repair_runtime.jl"))
+        exit(Base.invokelatest(getfield(Main, :RepairRuntime).main))
+    end
+end
 using ConstructionBots
 using Random
 using JSON3
@@ -870,6 +881,10 @@ function policy_producer(env, event)
     rec = truth_for_event(event)
     rec === nothing && return nothing
     truth = rec.truth
+    # T8: 검증 모드(`ZONE_REPAIR_VERIFICATION != off`)의 worker 에서만 — 존 사건 dispatch 를 크게 적는다. 부모가 t0 capture 없이
+    #     존 사건을 받으면(지연/라이브 존) `certification_unavailable` 기록. 세계는 안 건드린다(결정은 아래 pi0 그대로).
+    truth isa CB.ZoneTruth && isdefined(Main, :RepairBranchWorker) &&
+        Base.invokelatest(getfield(Main, :RepairBranchWorker).zone_dispatch_note, String(event))
     decision = decide_all(env, truth; nl = rec.nl)   # nl = LLM 이 읽을 자연어 관찰
     # ---- 결정 시점의 **에너지 상태와 그 가격**을 레코드에 싣는다 (2026-08-14) ----------------
     # 요구: "UI 에서 목적함수에 energy 가 고려된 제어를 본다". 화면의 OBJECTIVE 스트립이

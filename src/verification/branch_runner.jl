@@ -207,13 +207,16 @@ end
 원래 에피소드를 render_demo 로 띄우고 t0 에서 checkpoint·`contract.json` 을 쓴 뒤 **tick 없이** 명령을 기다리게
 한다. 부모는 생성 코드를 돌리지 않는 신뢰 세계라 샌드박스를 걸지 않는다(env 는 똑같이 새로 만든다).
 """
-function start_parent(dir::AbstractString, launch_env::AbstractDict; hold_max_s = 6 * 3600)
+function start_parent(dir::AbstractString, launch_env::AbstractDict; hold_max_s = 6 * 3600,
+                      out_dir::AbstractString = joinpath(dir, "out"))
     ispath(dir) && error("parent dir exists: $(dir) — each run gets a fresh namespace")
     mkpath(joinpath(dir, "control"))
     token = "parent-" * string(time_ns())
+    # T8: production 에서는 `out_dir` = 그 판의 **실제** 산출물 뿌리(`DEMO_OUT_DIR`) — 부모가 원래 세계이므로 실제 스트림을
+    #     원래 자리에 쓴다. 분기는 여전히 자기 디렉터리(`run_branch`)라 shadow 원장과 섞이지 않는다.
     env, removed = worker_env(launch_env, Dict("ZRV_REPLAY_MODE" => "capture", "ZRV_REPLAY_DIR" => dir,
         "ZRV_BRANCH_ROLE" => "parent", "ZRV_BRANCH_TOKEN" => token, "ZRV_HOLD_MAX_S" => string(hold_max_s),
-        "DEMO_OUT_DIR" => joinpath(dir, "out")))
+        "DEMO_OUT_DIR" => String(out_dir)))
     _write(joinpath(dir, "launch.json"), Dict("env_names" => sort!(collect(keys(env))), "removed_env" => removed))
     io = open(joinpath(dir, "run.log"), "w")
     p = run(pipeline(setenv(`$JULIA --project=$ROOT -L $WORKER $RENDER`, env); stdout = io, stderr = io); wait = false)
