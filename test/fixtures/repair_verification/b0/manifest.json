@@ -75,7 +75,7 @@
  "build": {
   "build_id": "9a53d859d1be76ae",
   "code_dirty_digest": "1e5442d8117b721b",
-  "code_rev": "286403a2465ce65c49d72b8cc82a22496413f525",
+  "code_rev": "26f20ab71554f8ed4b3912ebbfb1c2ed9ec6ac3e",
   "config_digest": "3caa37264ef2df46",
   "dirty_snapshot_digest": "1e5442d8117b721b (campaign.py snapshot <grid>/snapshot restores this code_dirty_digest; restore_verified in snapshot.json)",
   "julia_threads": 1,
@@ -124,9 +124,9 @@
   "zone_policy": "noop"
  },
  "cost_ledger": {
-  "real_ledger": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0/<model>/streams/<model_base>__canonical_<case>_s<seed>_z<seed>.jsonl (the parent = original world writes the real monitor stream)",
+  "real_ledger": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0_v2/<model>/streams/<model_base>__canonical_<case>_s<seed>_z<seed>.jsonl (the parent = original world writes the real monitor stream)",
   "record_actual_cost": true,
-  "shadow_namespace": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0/<model>/zr/<run_key>/ (B0: parent only, no branch writes)",
+  "shadow_namespace": "/home/chahj578/Construction_OODlayer/results/2026-09-24-zone-repair-verification/validation/b0_v2/<model>/zr/<run_key>/ (B0: parent only, no branch writes)",
   "shadow_writes_real_ledger": false
  },
  "exogenous_rng": {

@@ -1,0 +1,1809 @@
+{
+ "n": 120,
+ "globals_diff_only_where_unwedge_fired": false,
+ "min_first_globals_diff_iter": 1,
+ "n_all_equal_except_globals_counter": 0,
+ "trace_diff_cols_total": {
+  "rvo": 493512,
+  "globals": 493512
+ },
+ "not_equal": [
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s1",
+   "stream_equal": true,
+   "trace_common": 4002,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4002,
+    "globals": 4002
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s2",
+   "stream_equal": true,
+   "trace_common": 5483,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5483,
+    "globals": 5483
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s3",
+   "stream_equal": true,
+   "trace_common": 3709,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3709,
+    "globals": 3709
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s4",
+   "stream_equal": true,
+   "trace_common": 3897,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3897,
+    "globals": 3897
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s5",
+   "stream_equal": true,
+   "trace_common": 3776,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3776,
+    "globals": 3776
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s6",
+   "stream_equal": true,
+   "trace_common": 3546,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3546,
+    "globals": 3546
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s7",
+   "stream_equal": true,
+   "trace_common": 3926,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3926,
+    "globals": 3926
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s8",
+   "stream_equal": true,
+   "trace_common": 3548,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3548,
+    "globals": 3548
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s9",
+   "stream_equal": true,
+   "trace_common": 5904,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5904,
+    "globals": 5904
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s10",
+   "stream_equal": true,
+   "trace_common": 5795,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5795,
+    "globals": 5795
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s11",
+   "stream_equal": true,
+   "trace_common": 3665,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3665,
+    "globals": 3665
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s12",
+   "stream_equal": true,
+   "trace_common": 3563,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3563,
+    "globals": 3563
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s13",
+   "stream_equal": true,
+   "trace_common": 5549,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5549,
+    "globals": 5549
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s14",
+   "stream_equal": true,
+   "trace_common": 1030,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1030,
+    "globals": 1030
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s15",
+   "stream_equal": true,
+   "trace_common": 5430,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5430,
+    "globals": 5430
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s16",
+   "stream_equal": true,
+   "trace_common": 5756,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5756,
+    "globals": 5756
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s17",
+   "stream_equal": true,
+   "trace_common": 3578,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3578,
+    "globals": 3578
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s18",
+   "stream_equal": true,
+   "trace_common": 5733,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5733,
+    "globals": 5733
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s19",
+   "stream_equal": true,
+   "trace_common": 5537,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5537,
+    "globals": 5537
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s20",
+   "stream_equal": true,
+   "trace_common": 5888,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5888,
+    "globals": 5888
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s21",
+   "stream_equal": true,
+   "trace_common": 3916,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3916,
+    "globals": 3916
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s22",
+   "stream_equal": true,
+   "trace_common": 5547,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5547,
+    "globals": 5547
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s23",
+   "stream_equal": true,
+   "trace_common": 3954,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3954,
+    "globals": 3954
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s24",
+   "stream_equal": true,
+   "trace_common": 3737,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3737,
+    "globals": 3737
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s25",
+   "stream_equal": true,
+   "trace_common": 3550,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3550,
+    "globals": 3550
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s26",
+   "stream_equal": true,
+   "trace_common": 1063,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1063,
+    "globals": 1063
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s27",
+   "stream_equal": true,
+   "trace_common": 3741,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3741,
+    "globals": 3741
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s28",
+   "stream_equal": true,
+   "trace_common": 3765,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3765,
+    "globals": 3765
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s29",
+   "stream_equal": true,
+   "trace_common": 3767,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3767,
+    "globals": 3767
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__all3__s30",
+   "stream_equal": true,
+   "trace_common": 3027,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3027,
+    "globals": 3027
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s1",
+   "stream_equal": true,
+   "trace_common": 3324,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3324,
+    "globals": 3324
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s2",
+   "stream_equal": true,
+   "trace_common": 5309,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5309,
+    "globals": 5309
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s3",
+   "stream_equal": true,
+   "trace_common": 3640,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3640,
+    "globals": 3640
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s4",
+   "stream_equal": true,
+   "trace_common": 3597,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3597,
+    "globals": 3597
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s5",
+   "stream_equal": true,
+   "trace_common": 3601,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3601,
+    "globals": 3601
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s6",
+   "stream_equal": true,
+   "trace_common": 3402,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3402,
+    "globals": 3402
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s7",
+   "stream_equal": true,
+   "trace_common": 3606,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3606,
+    "globals": 3606
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s8",
+   "stream_equal": true,
+   "trace_common": 3404,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3404,
+    "globals": 3404
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s9",
+   "stream_equal": true,
+   "trace_common": 3572,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3572,
+    "globals": 3572
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s10",
+   "stream_equal": true,
+   "trace_common": 5585,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5585,
+    "globals": 5585
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s11",
+   "stream_equal": true,
+   "trace_common": 3565,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3565,
+    "globals": 3565
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s12",
+   "stream_equal": true,
+   "trace_common": 3405,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3405,
+    "globals": 3405
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s13",
+   "stream_equal": true,
+   "trace_common": 5401,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5401,
+    "globals": 5401
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s14",
+   "stream_equal": true,
+   "trace_common": 883,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 883,
+    "globals": 883
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s15",
+   "stream_equal": true,
+   "trace_common": 5257,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5257,
+    "globals": 5257
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s16",
+   "stream_equal": true,
+   "trace_common": 5585,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5585,
+    "globals": 5585
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s17",
+   "stream_equal": true,
+   "trace_common": 3402,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3402,
+    "globals": 3402
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s18",
+   "stream_equal": true,
+   "trace_common": 5573,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5573,
+    "globals": 5573
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s19",
+   "stream_equal": true,
+   "trace_common": 5404,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5404,
+    "globals": 5404
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s20",
+   "stream_equal": true,
+   "trace_common": 3697,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3697,
+    "globals": 3697
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s21",
+   "stream_equal": true,
+   "trace_common": 3342,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3342,
+    "globals": 3342
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s22",
+   "stream_equal": true,
+   "trace_common": 5403,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5403,
+    "globals": 5403
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s23",
+   "stream_equal": true,
+   "trace_common": 3860,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3860,
+    "globals": 3860
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s24",
+   "stream_equal": true,
+   "trace_common": 3574,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3574,
+    "globals": 3574
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s25",
+   "stream_equal": true,
+   "trace_common": 3407,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3407,
+    "globals": 3407
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s26",
+   "stream_equal": true,
+   "trace_common": 883,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 883,
+    "globals": 883
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s27",
+   "stream_equal": true,
+   "trace_common": 3604,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3604,
+    "globals": 3604
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s28",
+   "stream_equal": true,
+   "trace_common": 3591,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3591,
+    "globals": 3591
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s29",
+   "stream_equal": true,
+   "trace_common": 3572,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3572,
+    "globals": 3572
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "tractor",
+   "run_key": "canonical__zone__s30",
+   "stream_equal": true,
+   "trace_common": 883,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 883,
+    "globals": 883
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s1",
+   "stream_equal": true,
+   "trace_common": 4535,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4535,
+    "globals": 4535
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s2",
+   "stream_equal": true,
+   "trace_common": 6331,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6331,
+    "globals": 6331
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s3",
+   "stream_equal": true,
+   "trace_common": 4197,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4197,
+    "globals": 4197
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s4",
+   "stream_equal": true,
+   "trace_common": 6751,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6751,
+    "globals": 6751
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s5",
+   "stream_equal": true,
+   "trace_common": 4000,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4000,
+    "globals": 4000
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s6",
+   "stream_equal": true,
+   "trace_common": 4260,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4260,
+    "globals": 4260
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s7",
+   "stream_equal": true,
+   "trace_common": 4626,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4626,
+    "globals": 4626
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s8",
+   "stream_equal": true,
+   "trace_common": 4348,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4348,
+    "globals": 4348
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s9",
+   "stream_equal": true,
+   "trace_common": 1968,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1968,
+    "globals": 1968
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s10",
+   "stream_equal": true,
+   "trace_common": 4426,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4426,
+    "globals": 4426
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s11",
+   "stream_equal": false,
+   "trace_common": 0,
+   "trace_only_one_side": 4281,
+   "trace_diff_cols": {},
+   "first_globals_diff_iter": null,
+   "terminal_equal": false,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s12",
+   "stream_equal": true,
+   "trace_common": 1865,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1865,
+    "globals": 1865
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s13",
+   "stream_equal": true,
+   "trace_common": 4095,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4095,
+    "globals": 4095
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s14",
+   "stream_equal": true,
+   "trace_common": 1830,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1830,
+    "globals": 1830
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s15",
+   "stream_equal": true,
+   "trace_common": 4456,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4456,
+    "globals": 4456
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s16",
+   "stream_equal": true,
+   "trace_common": 6066,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6066,
+    "globals": 6066
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s17",
+   "stream_equal": true,
+   "trace_common": 4599,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4599,
+    "globals": 4599
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s18",
+   "stream_equal": true,
+   "trace_common": 6077,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6077,
+    "globals": 6077
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s19",
+   "stream_equal": true,
+   "trace_common": 4202,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4202,
+    "globals": 4202
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s20",
+   "stream_equal": true,
+   "trace_common": 6078,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6078,
+    "globals": 6078
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s21",
+   "stream_equal": true,
+   "trace_common": 4455,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4455,
+    "globals": 4455
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s22",
+   "stream_equal": true,
+   "trace_common": 6209,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6209,
+    "globals": 6209
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s23",
+   "stream_equal": true,
+   "trace_common": 4447,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4447,
+    "globals": 4447
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s24",
+   "stream_equal": true,
+   "trace_common": 3999,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3999,
+    "globals": 3999
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s25",
+   "stream_equal": true,
+   "trace_common": 4600,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4600,
+    "globals": 4600
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s26",
+   "stream_equal": true,
+   "trace_common": 4157,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4157,
+    "globals": 4157
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s27",
+   "stream_equal": true,
+   "trace_common": 2481,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 2481,
+    "globals": 2481
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s28",
+   "stream_equal": true,
+   "trace_common": 4011,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4011,
+    "globals": 4011
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s29",
+   "stream_equal": true,
+   "trace_common": 4384,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4384,
+    "globals": 4384
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__all3__s30",
+   "stream_equal": true,
+   "trace_common": 4300,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4300,
+    "globals": 4300
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s1",
+   "stream_equal": true,
+   "trace_common": 4273,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4273,
+    "globals": 4273
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s2",
+   "stream_equal": true,
+   "trace_common": 6248,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6248,
+    "globals": 6248
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s3",
+   "stream_equal": true,
+   "trace_common": 4089,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4089,
+    "globals": 4089
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s4",
+   "stream_equal": true,
+   "trace_common": 6688,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6688,
+    "globals": 6688
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s5",
+   "stream_equal": true,
+   "trace_common": 3882,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3882,
+    "globals": 3882
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s6",
+   "stream_equal": true,
+   "trace_common": 4098,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4098,
+    "globals": 4098
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s7",
+   "stream_equal": true,
+   "trace_common": 4573,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4573,
+    "globals": 4573
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s8",
+   "stream_equal": true,
+   "trace_common": 3869,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3869,
+    "globals": 3869
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s9",
+   "stream_equal": true,
+   "trace_common": 1769,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1769,
+    "globals": 1769
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s10",
+   "stream_equal": true,
+   "trace_common": 4328,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4328,
+    "globals": 4328
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s11",
+   "stream_equal": true,
+   "trace_common": 4096,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4096,
+    "globals": 4096
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s12",
+   "stream_equal": true,
+   "trace_common": 1769,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1769,
+    "globals": 1769
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s13",
+   "stream_equal": true,
+   "trace_common": 4097,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4097,
+    "globals": 4097
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s14",
+   "stream_equal": true,
+   "trace_common": 1769,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1769,
+    "globals": 1769
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s15",
+   "stream_equal": true,
+   "trace_common": 4303,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4303,
+    "globals": 4303
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s16",
+   "stream_equal": true,
+   "trace_common": 5929,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5929,
+    "globals": 5929
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s17",
+   "stream_equal": true,
+   "trace_common": 4483,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4483,
+    "globals": 4483
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s18",
+   "stream_equal": true,
+   "trace_common": 5950,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5950,
+    "globals": 5950
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s19",
+   "stream_equal": true,
+   "trace_common": 4055,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4055,
+    "globals": 4055
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s20",
+   "stream_equal": true,
+   "trace_common": 5931,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 5931,
+    "globals": 5931
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s21",
+   "stream_equal": true,
+   "trace_common": 3700,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3700,
+    "globals": 3700
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s22",
+   "stream_equal": true,
+   "trace_common": 6067,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 6067,
+    "globals": 6067
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 2
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s23",
+   "stream_equal": true,
+   "trace_common": 4361,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4361,
+    "globals": 4361
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s24",
+   "stream_equal": true,
+   "trace_common": 4301,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4301,
+    "globals": 4301
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s25",
+   "stream_equal": true,
+   "trace_common": 4480,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4480,
+    "globals": 4480
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s26",
+   "stream_equal": true,
+   "trace_common": 4018,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4018,
+    "globals": 4018
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s27",
+   "stream_equal": true,
+   "trace_common": 1769,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 1769,
+    "globals": 1769
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 0
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s28",
+   "stream_equal": true,
+   "trace_common": 3850,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 3850,
+    "globals": 3850
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s29",
+   "stream_equal": true,
+   "trace_common": 4133,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4133,
+    "globals": 4133
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  },
+  {
+   "model": "xwing",
+   "run_key": "canonical__zone__s30",
+   "stream_equal": true,
+   "trace_common": 4168,
+   "trace_only_one_side": 0,
+   "trace_diff_cols": {
+    "rvo": 4168,
+    "globals": 4168
+   },
+   "first_globals_diff_iter": 1,
+   "terminal_equal": true,
+   "final_digest_equal_ex_rng_globals": false,
+   "v2_unwedge_fired": 1
+  }
+ ]
+}

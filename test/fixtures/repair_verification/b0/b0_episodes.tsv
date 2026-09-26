@@ -1,121 +1,121 @@
 model	case	seed	zone_seed	outcome	unknown_cause	terminal_reason	closed	total	iter	elapsed_s	cpu_s	rc	t0_captured	t0_iter	certification	zone_solver_denied	zone_solver_exempt	zone_ladder_fired	zone_ladder_skipped	zone_decisions_non_noop	hist_class	hist_a2_class	drift	prefix_init_fp_eq	prefix_ood_fp_eq	prefix_zone_place_eq	hist_flags
-tractor	all3	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	4003	568.0	562.341925	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	170	305	5484	692.5	686.7566820000001	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	218	305	3710	544.7	539.8934499999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3898	556.9	552.016516	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3777	545.1	540.3694380000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	193	305	3547	548.1	542.77606	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-tractor	all3	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3927	562.2	557.527422	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-tractor	all3	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3549	539.5	534.757552	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	9	9	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	5905	763.1	757.566735	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	230	305	5796	729.7	724.849532	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
-tractor	all3	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3666	537.1	531.87184	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
-tractor	all3	12	12	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3564	546.9	541.5130140000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5550	701.0	696.216911	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:ood_fp
-tractor	all3	14	14	COMPLETE	None	project_complete	287	305	1031	305.3	300.250812	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	153	305	5431	684.2	679.1495379999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5757	726.5	721.7424199999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-tractor	all3	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	185	305	3579	552.8	547.519351	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-tractor	all3	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	225	305	5734	728.3	722.798778	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5538	700.5	695.1367150000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	266	305	5889	751.6	746.689619	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3917	562.9	557.5694030000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	5548	717.4	711.749129	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	278	305	3955	588.3	583.020954	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	3738	548.0	542.309849	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3551	546.5	541.256986	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	26	26	COMPLETE	None	project_complete	287	305	1064	307.6	302.40798499999994	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	27	27	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3742	543.1	537.718217	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	206	305	3766	549.4	544.037707	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	all3	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3768	562.4	557.0993739999999	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-tractor	all3	30	30	COMPLETE	None	project_complete	287	305	3028	489.0	483.862836	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-tractor	zone	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3325	489.9	485.226157	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	170	305	5310	665.7	660.5837919999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	218	305	3641	523.4	517.5983180000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3598	505.4	500.03180199999997	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3602	510.4	505.603791	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	
-tractor	zone	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	193	305	3403	512.9	507.267724	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3607	508.6	503.678403	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3405	509.1	504.43458799999996	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	9	9	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3573	526.0	521.236325	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	prefix_differs:init_fp
-tractor	zone	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5586	683.6	678.2125930000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3566	514.8	510.15919700000006	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	12	12	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3406	510.3	504.813653	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5402	668.7	664.2751140000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	14	14	COMPLETE	None	project_complete	287	305	884	270.6	265.34064299999994	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-tractor	zone	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	153	305	5258	647.6	642.360699	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5586	681.2	676.2486600000001	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	
-tractor	zone	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	185	305	3403	510.1	505.49551299999996	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	225	305	5574	678.2	673.1936880000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-tractor	zone	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5405	671.1	666.066645	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	266	305	3698	532.4	527.691022	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3343	488.6	483.828213	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	5404	679.3	674.460743	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	278	305	3861	556.9	551.121288	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
-tractor	zone	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	3575	514.1	508.57073399999996	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-tractor	zone	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3408	507.3	502.483217	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-tractor	zone	26	26	COMPLETE	None	project_complete	287	305	884	268.3	262.728541	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-tractor	zone	27	27	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3605	495.4	489.790419	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-tractor	zone	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	206	305	3592	498.8	494.058827	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-tractor	zone	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3573	509.5	503.907284	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	prefix_differs:init_fp
-tractor	zone	30	30	COMPLETE	None	project_complete	287	305	884	253.4	248.40593	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-xwing	all3	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	516	712	4536	1765.6	1759.52261	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	511	712	6332	2313.7	2307.4772139999995	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4198	1663.5	1657.3780049999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	670	712	6752	2469.5	2463.175975	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	4001	1555.7	1549.276568	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
-xwing	all3	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4261	1662.6	1657.47769	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4627	1841.3	1836.27546	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
-xwing	all3	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	446	712	4349	1697.0	1691.409125	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	9	9	COMPLETE	None	project_complete	684	712	1969	893.5	888.615633	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	526	712	4427	1710.6	1705.4592670000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	11	11	UNKNOWN	wall_timeout	None	None	None	None	3600.2	None	124	True	1	None	None	None	None	None	None	hard	a2_hard_fail	hard_kept	None	None	None	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	12	12	COMPLETE	None	project_complete	684	712	1866	859.5	853.887924	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	348	712	4096	1546.7	1541.818857	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	14	14	COMPLETE	None	project_complete	684	712	1831	825.5	820.857329	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	524	712	4457	1736.1	1730.917896	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	475	712	6067	2192.7	2187.134832	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4600	1837.4	1831.678838	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	6078	2192.1	2187.155937	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4203	1603.7	1599.1448670000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	420	712	6079	2213.5	2208.536301	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	287	712	4456	1673.7	1668.478409	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
-xwing	all3	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	514	712	6210	2256.4	2250.891902	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	528	712	4448	1717.6	1711.763057	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	352	712	4000	1542.8	1537.9468040000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4601	1836.1	1830.8478300000002	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	26	26	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4158	1608.2	1603.481093	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	27	27	COMPLETE	None	project_complete	684	712	2482	1072.7	1067.9184759999998	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	4012	1562.7	1558.0303129999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4385	1715.5	1710.822861	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	all3	30	30	FAIL_WITHIN_BUDGET	None	no_progress_limit	521	712	4301	1682.4	1677.6216960000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
-xwing	zone	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	516	712	4274	1654.1	1648.714663	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-xwing	zone	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	511	712	6249	2249.6	2244.05087	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4090	1586.3	1581.141466	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	670	712	6689	2412.5	2407.179868	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	prefix_differs:init_fp
-xwing	zone	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	3883	1481.1	1475.643511	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4099	1572.1	1567.054624	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4574	1807.9	1803.321642	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
-xwing	zone	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	270	712	3870	1494.8	1489.172581	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	9	9	COMPLETE	None	project_complete	684	712	1770	801.9	796.651399	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-xwing	zone	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	526	712	4329	1674.5	1669.124079	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4097	1570.9	1565.161417	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	12	12	COMPLETE	None	project_complete	684	712	1770	804.3	799.533104	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-xwing	zone	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	348	712	4098	1560.7	1555.5698499999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	14	14	COMPLETE	None	project_complete	684	712	1770	794.4	789.771328	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-xwing	zone	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	524	712	4304	1644.5	1639.133149	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout
-xwing	zone	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	5930	2123.4	2118.503796	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4484	1791.6	1786.4926249999999	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
-xwing	zone	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	5951	2142.4	2136.937382	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-xwing	zone	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4056	1550.6	1545.8229999999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	420	712	5932	2119.0	2113.888666	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	287	712	3701	1416.1	1410.713395	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
-xwing	zone	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	514	712	6068	2198.5	2193.2582859999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	528	712	4362	1671.5	1666.3570439999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	352	712	4302	1611.7	1606.600239	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4481	1773.9	1768.6731790000001	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
-xwing	zone	26	26	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4019	1544.5	1539.362351	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	27	27	COMPLETE	None	project_complete	684	712	1770	812.6	807.3630109999999	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
-xwing	zone	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	3851	1477.7	1472.365848	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4134	1594.4	1589.2830840000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
-xwing	zone	30	30	FAIL_WITHIN_BUDGET	None	no_progress_limit	521	712	4169	1615.0	1610.1588399999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	all3	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	4003	568.2	562.6706849999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	170	305	5484	694.2	689.1754450000001	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	218	305	3710	545.5	540.3185980000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3898	553.0	547.8853630000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3777	556.1	550.687105	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	193	305	3547	548.5	543.058107	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+tractor	all3	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3927	561.8	556.459862	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+tractor	all3	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3549	537.4	532.0208009999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	9	9	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	5905	756.5	750.727833	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	230	305	5796	725.9	720.328817	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
+tractor	all3	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3666	539.6	534.067165	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
+tractor	all3	12	12	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3564	553.0	547.1854139999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5550	705.0	699.919817	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:ood_fp
+tractor	all3	14	14	COMPLETE	None	project_complete	287	305	1031	301.5	296.554745	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	153	305	5431	681.6	676.5138370000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5757	729.4	723.897523	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+tractor	all3	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	185	305	3579	549.8	544.370073	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+tractor	all3	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	225	305	5734	724.6	718.988567	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5538	707.2	702.1737889999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	266	305	5889	752.9	747.206935	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3917	571.6	566.1171210000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	5548	712.6	707.390988	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	278	305	3955	584.0	579.0112300000001	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	3738	548.1	543.050116	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3551	547.4	541.6569440000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	26	26	COMPLETE	None	project_complete	287	305	1064	312.4	307.194027	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	27	27	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3742	542.8	537.610802	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	206	305	3766	557.4	551.722872	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	all3	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3768	565.1	559.807375	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+tractor	all3	30	30	COMPLETE	None	project_complete	287	305	3028	487.8	482.35901700000005	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+tractor	zone	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3325	495.2	489.469623	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	170	305	5310	656.0	650.299934	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	218	305	3641	521.4	515.7202839999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3598	503.1	497.938579	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3602	510.8	505.4872	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	
+tractor	zone	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	193	305	3403	513.9	508.8812520000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3607	508.6	503.622179	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3405	507.5	502.264633	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	9	9	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3573	530.2	525.062387	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	prefix_differs:init_fp
+tractor	zone	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5586	680.6	674.7353860000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	180	305	3566	505.0	499.30500700000005	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	12	12	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3406	507.9	502.98891900000007	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5402	668.0	663.230805	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	14	14	COMPLETE	None	project_complete	287	305	884	270.3	264.77073900000005	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+tractor	zone	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	153	305	5258	646.1	640.9759819999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	232	305	5586	680.1	674.4921449999999	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	
+tractor	zone	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	185	305	3403	518.5	513.2926990000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	225	305	5574	681.2	676.2368290000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+tractor	zone	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	201	305	5405	669.1	664.303999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	266	305	3698	531.3	525.381629	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	147	305	3343	486.2	481.310444	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	5404	670.1	664.6727259999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	278	305	3861	559.3	553.905792	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
+tractor	zone	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	176	305	3575	511.3	506.01707899999997	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+tractor	zone	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	191	305	3408	515.2	509.567158	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+tractor	zone	26	26	COMPLETE	None	project_complete	287	305	884	266.5	261.39035699999994	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+tractor	zone	27	27	FAIL_WITHIN_BUDGET	None	no_progress_limit	184	305	3605	499.6	494.526356	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+tractor	zone	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	206	305	3592	501.3	495.694942	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+tractor	zone	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	221	305	3573	503.4	498.405791	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	prefix_differs:init_fp
+tractor	zone	30	30	COMPLETE	None	project_complete	287	305	884	261.6	256.340169	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+xwing	all3	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	516	712	4536	1766.4	1759.478634	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	511	712	6332	2300.9	2293.665528	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4198	1646.7	1639.9601549999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout,all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	670	712	6752	2458.7	2451.7122940000004	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	4001	1544.2	1538.038343	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp
+xwing	all3	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4261	1656.3	1649.7596	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4627	1853.3	1848.2420240000001	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
+xwing	all3	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	446	712	4349	1705.7	1699.502901	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	9	9	COMPLETE	None	project_complete	684	712	1969	904.7	899.289401	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	526	712	4427	1721.8	1716.362053	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4282	1674.7	1669.6143200000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	12	12	COMPLETE	None	project_complete	684	712	1866	862.3	857.3060929999999	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	348	712	4096	1585.7	1580.472636	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	14	14	COMPLETE	None	project_complete	684	712	1831	848.5	843.810797	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	524	712	4457	1729.2	1724.1127849999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	475	712	6067	2206.6	2201.016702	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4600	1833.4	1828.231186	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	6078	2210.5	2205.5898030000003	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4203	1627.8	1622.7041940000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	420	712	6079	2209.2	2202.996772	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	287	712	4456	1709.6	1703.5634590000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate,prefix_differs:init_fp,prefix_differs:ood_fp
+xwing	all3	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	514	712	6210	2275.5	2269.821785	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	a2_provider_overload,all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	528	712	4448	1723.7	1718.254962	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	352	712	4000	1535.5	1529.8229540000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4601	1840.9	1835.8915200000001	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	26	26	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4158	1608.8	1603.740836	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	27	27	COMPLETE	None	project_complete	684	712	2482	1076.4	1071.7836080000002	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	4012	1558.0	1552.532321	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4385	1706.4	1701.373475	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	all3	30	30	FAIL_WITHIN_BUDGET	None	no_progress_limit	521	712	4301	1674.8	1668.8697940000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	all3_nonzone_policy_differs:canonical_vs_surrogate
+xwing	zone	1	1	FAIL_WITHIN_BUDGET	None	no_progress_limit	516	712	4274	1644.6	1639.4084810000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+xwing	zone	2	2	FAIL_WITHIN_BUDGET	None	no_progress_limit	511	712	6249	2266.3	2261.1220040000003	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	3	3	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4090	1584.7	1579.699472	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	4	4	FAIL_WITHIN_BUDGET	None	no_progress_limit	670	712	6689	2417.1	2411.606697	1	True	1	available	0	4	0	0	0	hard	a2_rescue	hard_kept	True	True	True	prefix_differs:init_fp
+xwing	zone	5	5	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	3883	1482.7	1477.217406	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	6	6	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4099	1578.1	1572.861245	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	7	7	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4574	1798.9	1793.3885050000001	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
+xwing	zone	8	8	FAIL_WITHIN_BUDGET	None	no_progress_limit	270	712	3870	1471.7	1466.651643	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	9	9	COMPLETE	None	project_complete	684	712	1770	801.7	796.6418580000001	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+xwing	zone	10	10	FAIL_WITHIN_BUDGET	None	no_progress_limit	526	712	4329	1667.9	1662.186231	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	11	11	FAIL_WITHIN_BUDGET	None	no_progress_limit	455	712	4097	1576.0	1570.725396	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	12	12	COMPLETE	None	project_complete	684	712	1770	802.2	797.281882	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+xwing	zone	13	13	FAIL_WITHIN_BUDGET	None	no_progress_limit	348	712	4098	1555.9	1549.787091	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	14	14	COMPLETE	None	project_complete	684	712	1770	800.5	795.495623	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+xwing	zone	15	15	FAIL_WITHIN_BUDGET	None	no_progress_limit	524	712	4304	1650.3	1644.3584589999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_unobserved	hard_kept	True	True	True	a2_timeout
+xwing	zone	16	16	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	5930	2124.2	2118.819755	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	17	17	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4484	1772.9	1767.240091	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
+xwing	zone	18	18	FAIL_WITHIN_BUDGET	None	no_progress_limit	476	712	5951	2136.1	2130.1333720000002	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+xwing	zone	19	19	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4056	1554.3	1549.1055499999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	20	20	FAIL_WITHIN_BUDGET	None	no_progress_limit	420	712	5932	2143.5	2138.150761	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	21	21	FAIL_WITHIN_BUDGET	None	no_progress_limit	287	712	3701	1414.8	1409.2772699999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	prefix_differs:init_fp
+xwing	zone	22	22	FAIL_WITHIN_BUDGET	None	no_progress_limit	514	712	6068	2198.1	2193.036007	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	23	23	FAIL_WITHIN_BUDGET	None	no_progress_limit	528	712	4362	1667.7	1662.4366389999998	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	24	24	FAIL_WITHIN_BUDGET	None	no_progress_limit	352	712	4302	1611.1	1605.6480530000001	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	25	25	FAIL_WITHIN_BUDGET	None	no_progress_limit	609	712	4481	1790.1	1784.74854	1	True	1	available	0	4	0	1	0	easy	a2_regression	easy_lost	True	True	True	
+xwing	zone	26	26	FAIL_WITHIN_BUDGET	None	no_progress_limit	398	712	4019	1540.3	1534.9846949999999	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	27	27	COMPLETE	None	project_complete	684	712	1770	801.9	796.3476690000001	0	True	1	available	0	4	0	0	0	easy	a2_easy_success	easy_kept	True	True	True	
+xwing	zone	28	28	FAIL_WITHIN_BUDGET	None	no_progress_limit	310	712	3851	1470.0	1464.636291	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	29	29	FAIL_WITHIN_BUDGET	None	no_progress_limit	473	712	4134	1592.7	1587.866764	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	
+xwing	zone	30	30	FAIL_WITHIN_BUDGET	None	no_progress_limit	521	712	4169	1608.6	1603.446304	1	True	1	available	0	4	0	0	0	hard	a2_hard_fail	hard_kept	True	True	True	

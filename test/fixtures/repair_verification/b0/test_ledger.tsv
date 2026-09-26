@@ -6,7 +6,16 @@ julia +lts --project=. test/repair_contracts.jl	0	corpus 98/98 + all testsets gr
 julia +lts --project=. test/repair_rollout.jl	0	T4 rollout/sandbox/validator 60/60	d4b10b92(worktree)	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/fix-repair_rollout.log
 julia +lts --project=. tools/monitor/grid/b0_episode.jl <template manifest> --check	2	refused reject:budget_invalid (null max_cost_usd_episode) — negative control	286403a2	-
 campaign.py init --runner b0 --manifest <template>	1	init refused, no grid dir written — negative control	286403a2	-
-B0 grid (tools/monitor/grid/campaign.py run-one x120, W=8)	0/1/124	119 scored (rc 0 complete / 1 incomplete) + 1 timeout rc=124	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/chain.log
+B0 grid v1 (campaign.py run-one x120, W=8)	0/1/124	119 scored (rc 0 complete / 1 incomplete) + 1 timeout rc=124	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/chain.log
 julia +lts --project=. test/repair_service_episode.jl <root> logs/t8-off general	0	29/29	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t9-ep-general.log
 julia +lts --project=. test/repair_service_episode.jl <root> logs/t8-off geometry	0	28/28	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t9-ep-geometry.log
 T8_EPISODES=E1 julia +lts --project=. test/repair_runtime_wiring.jl episodes <root> logs/t8-off	0	35/35	286403a2	.superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/t8E1.log
+.venv/bin/python -m pytest tools/monitor/grid/test_analyze_b0.py -q	0	3 passed (fix round: ctx_mismatch/stream_missing/error/harness cases)	26f20ab7	-
+julia +lts --project=. test/repair_rollout.jl	0	60/60	26f20ab7(worktree)	logs/t10a/fix2-repair_rollout.log
+julia +lts --project=. test/repair_runtime_wiring.jl	0	110/110	26f20ab7(worktree)	logs/t10a/fix2-repair_runtime_wiring.log
+julia +lts --project=. test/repair_selection.jl	0	149/149	26f20ab7(worktree)	logs/t10a/fix2-repair_selection.log
+julia +lts --project=. test/repair_ablation_core.jl	0	all testsets green	26f20ab7(worktree)	logs/t10a/fix2-repair_ablation_core.log
+julia +lts --project=. test/config_digest_inventory.jl	0	(1)-(6) green	26f20ab7(worktree)	logs/t10a/fix2-config_digest_inventory.log
+julia +lts --project=. tools/monitor/grid/t10a/killdemo.jl	0	OLD kill+wait hangs >10 s; NEW kill_tree! returns 5.6 s survivors=0 SIGKILL	26f20ab7(worktree)	logs/t10a/fix2-killdemo.log
+julia +lts --project=. -e 'using Pkg; Pkg.test()'	1	4211 pass / 0 fail / 1 error (Demo Gurobi 10009 license — baseline)	26f20ab7	logs/t10a/fix2-pkgtest.log
+B0 grid v2 (tools/monitor/grid/t10a/chain.sh, W=8)	0	120/120 scored (+ seq 2, control_off 3, decomp 13 all scored)	26f20ab7	logs/t10a/grid2-chain.log

@@ -21,13 +21,11 @@
   },
   "xwing|all3": {
    "COMPLETE": 4,
-   "FAIL_WITHIN_BUDGET": 25,
-   "UNKNOWN": 1,
-   "UNKNOWN:wall_timeout": 1,
-   "certification_available": 29,
+   "FAIL_WITHIN_BUDGET": 26,
+   "certification_available": 30,
    "missing": 0,
    "planned": 30,
-   "scored": 29,
+   "scored": 30,
    "t0_captured": 30
   },
   "xwing|zone": {
@@ -40,7 +38,7 @@
    "t0_captured": 30
   }
  },
- "certification_available": 119,
+ "certification_available": 120,
  "certification_gap_reasons": {},
  "drift_2x2": {
   "easy|new_COMPLETE": 14,
@@ -62,33 +60,35 @@
   "xwing__zone__s25",
   "xwing__zone__s7"
  ],
- "episodes_without_ablation_line": [
-  "canonical__all3__s11@xwing"
- ],
+ "episodes_with_unwedge": 107,
+ "episodes_without_ablation_line": [],
+ "general_recovery_totals": {
+  "recovery:unwedge_nominal:carrier_closed": 2,
+  "recovery:unwedge_nominal:force_snapped": 53,
+  "recovery:unwedge_nominal:no_team": 2,
+  "recovery:unwedge_nominal:snapped": 67,
+  "recovery:unwedge_nominal:zone_repair_ablated": 13
+ },
  "hard_now_complete": [],
  "manifest_build_mismatches": {
-  "": 119,
-  "not_checked": 1
+  "": 120
  },
  "n_planned": 120,
  "prefix_vs_hist": {
   "init_fp": {
-   "None": 1,
-   "True": 119
+   "True": 120
   },
   "ood_fp": {
-   "None": 1,
-   "True": 119
+   "True": 120
   },
   "zone_place": {
-   "None": 1,
-   "True": 119
+   "True": 120
   }
  },
  "recovery_totals": {
-  "decision:BATTERY:SwapBattery": 59,
-  "decision:FAULT:Replace": 59,
-  "decision:ZONE:NOOP": 119
+  "decision:BATTERY:SwapBattery": 60,
+  "decision:FAULT:Replace": 60,
+  "decision:ZONE:NOOP": 120
  },
  "rng_advanced_after_t0": 0,
  "schema": "zrv-b0-summary/1",
@@ -96,14 +96,11 @@
  "t0_captured": 120,
  "totals": {
   "COMPLETE": 14,
-  "FAIL_WITHIN_BUDGET": 105,
-  "UNKNOWN": 1
+  "FAIL_WITHIN_BUDGET": 106
  },
- "unknown_causes": {
-  "wall_timeout": 1
- },
+ "unknown_causes": {},
  "zone_decisions_non_noop_total": 0,
  "zone_ladder_fired_total": 0,
  "zone_solver_denied_total": 0,
- "zone_solver_exempt_total": 476
+ "zone_solver_exempt_total": 480
 }

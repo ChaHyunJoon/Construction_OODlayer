@@ -1,5 +1,5 @@
 {
- "note": "current code 286403a2, REPAIR_ABLATION=none (historical canonical setting), plain render_demo off, same pi0 knobs otherwise",
+ "note": "same code, REPAIR_ABLATION=none (historical canonical setting), plain render_demo off",
  "runs": [
   {
    "b0_closed": 221,
@@ -12,7 +12,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1,recovery:unwedge_nominal:snapped=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -20,11 +20,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 253.6,
+   "none_elapsed_s": 231.4,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 9,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_all3_s9_z9.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_all3_s9_z9.jsonl"
   },
   {
    "b0_closed": 278,
@@ -37,7 +37,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -45,11 +45,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 212.6,
+   "none_elapsed_s": 203.9,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 23,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_all3_s23_z23.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_all3_s23_z23.jsonl"
   },
   {
    "b0_closed": 221,
@@ -62,7 +62,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -70,11 +70,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 217.8,
+   "none_elapsed_s": 207.2,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 29,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_all3_s29_z29.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_all3_s29_z29.jsonl"
   },
   {
    "b0_closed": 221,
@@ -87,7 +87,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -95,11 +95,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 176.6,
+   "none_elapsed_s": 168.1,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 9,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_zone_s9_z9.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_zone_s9_z9.jsonl"
   },
   {
    "b0_closed": 278,
@@ -112,7 +112,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -120,11 +120,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 174.0,
+   "none_elapsed_s": 167.9,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 23,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_zone_s23_z23.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_zone_s23_z23.jsonl"
   },
   {
    "b0_closed": 221,
@@ -137,7 +137,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -145,11 +145,11 @@
    },
    "none_closed": 287,
    "none_complete": true,
-   "none_elapsed_s": 175.9,
+   "none_elapsed_s": 163.5,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 29,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/tractor/streams/tractor__canonical_zone_s29_z29.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/tractor/streams/tractor__canonical_zone_s29_z29.jsonl"
   },
   {
    "b0_closed": 609,
@@ -162,7 +162,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -170,11 +170,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 282.0,
+   "none_elapsed_s": 261.4,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 7,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s7_z7.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s7_z7.jsonl"
   },
   {
    "b0_closed": 446,
@@ -187,7 +187,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -195,11 +195,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 296.7,
+   "none_elapsed_s": 285.6,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 8,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s8_z8.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s8_z8.jsonl"
   },
   {
    "b0_closed": 609,
@@ -212,7 +212,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -220,11 +220,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 282.8,
+   "none_elapsed_s": 259.2,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 17,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s17_z17.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s17_z17.jsonl"
   },
   {
    "b0_closed": 609,
@@ -237,7 +237,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -245,11 +245,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 279.8,
+   "none_elapsed_s": 263.3,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 25,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s25_z25.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_all3_s25_z25.jsonl"
   },
   {
    "b0_closed": 609,
@@ -262,7 +262,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -270,11 +270,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 227.8,
+   "none_elapsed_s": 215.6,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 7,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s7_z7.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s7_z7.jsonl"
   },
   {
    "b0_closed": 609,
@@ -287,7 +287,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -295,11 +295,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 230.5,
+   "none_elapsed_s": 215.8,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 17,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s17_z17.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s17_z17.jsonl"
   },
   {
    "b0_closed": 609,
@@ -312,7 +312,7 @@
    "none_ablation": {
     "armed": true,
     "denied": 0,
-    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1",
+    "detail": "exempt:monitor_record=1,exempt:policy_payload=2,exempt:reference_label=1,ladder_zone_fired=1,recovery:unwedge_nominal:restaged=1",
     "exempt": 4,
     "ladder_zone_fired": 1,
     "ladder_zone_skipped": 0,
@@ -320,11 +320,11 @@
    },
    "none_closed": 684,
    "none_complete": true,
-   "none_elapsed_s": 233.9,
+   "none_elapsed_s": 222.3,
    "none_init_fp_eq_b0": true,
    "none_ood_fp_eq_b0": true,
    "seed": 25,
-   "stream": "results/2026-09-24-zone-repair-verification/validation/b0/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s25_z25.jsonl"
+   "stream": "results/2026-09-24-zone-repair-verification/validation/b0_v2/decomp_none/xwing/streams/30051_1_X_wing_Fighter_Mini__canonical_zone_s25_z25.jsonl"
   }
  ],
  "schema": "zrv-b0-decomp-none/1"

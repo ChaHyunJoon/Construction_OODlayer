@@ -38,21 +38,6 @@
     "stream_sha_par": "7a7bc776a8326807",
     "stream_sha_seq": "7a7bc776a8326807",
     "terminal_equal": true
-   },
-   "t3_hist_seq_vs_par": {
-    "common_boundaries": 3604,
-    "final_digest_equal_ex_rng": false,
-    "first_divergent_iter": 1,
-    "note": "T3 capture @da1d8d0d \u2014 older code; a divergence here is not a parallelism finding",
-    "t3_terminal": {
-     "closed": 184,
-     "complete": false,
-     "iter": 3605,
-     "no_progress": 3000,
-     "terminal_reason": "no_progress_limit",
-     "total": 305
-    },
-    "terminal_equal": true
    }
   },
   {
@@ -93,24 +78,10 @@
     "stream_sha_par": "45b2d349beaca91b",
     "stream_sha_seq": "45b2d349beaca91b",
     "terminal_equal": true
-   },
-   "t3_hist_seq_vs_par": {
-    "common_boundaries": 1769,
-    "final_digest_equal_ex_rng": false,
-    "first_divergent_iter": 1,
-    "note": "T3 capture @da1d8d0d \u2014 older code; a divergence here is not a parallelism finding",
-    "t3_terminal": {
-     "closed": 684,
-     "complete": true,
-     "iter": 1770,
-     "no_progress": 0,
-     "terminal_reason": "project_complete",
-     "total": 712
-    },
-    "terminal_equal": true
    }
   }
  ],
- "note": "seq = B0 runner alone on an unloaded host (22:59-23:19); par = the same cell inside the 8-way grid; control_off = plain render_demo off (no -L preload, no trace hook, no RVOSimHarness) inside the grid. T3 = logs/t3-replay-final capture @da1d8d0d (older code).",
- "schema": "zrv-b0-equivalence/1"
+ "note": "seq = B0 runner alone before the grid (chain.sh); par = the same cell inside the W=8 grid; control_off = plain render_demo off (no -L preload, no trace hook, no RVOSimHarness) inside the grid",
+ "schema": "zrv-b0-equivalence/1",
+ "script": "tools/monitor/grid/t10a/equiv_check.py"
 }

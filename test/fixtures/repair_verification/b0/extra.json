@@ -1,8 +1,20 @@
 {
+ "grid_version": {
+  "current": "v2 \u2014 code 26f20ab7, results/2026-09-24-zone-repair-verification/validation/b0_v2 (this fixture)",
+  "previous": "v1 \u2014 code 286403a2, results/.../validation/b0 (UNKNOWN 1 = harness race, fixed in d4b10b92)",
+  "v1_vs_v2": "compare_v1_v2.json (tools/monitor/grid/t10a/compare_v1_v2.py): 119/119 real streams byte-identical and terminals equal; trace loop/cache/sched/scene equal at every boundary; rvo+globals trace columns differ at every boundary in all 119 incl. the 13 episodes where unwedge never fired -> rebuild representation (Dict iteration order over type keys after src recompile: e.g. geom_hierarchy.vtx_map, VALID_ID_COUNTERS order; RVO_SIM_WRAPPER.timestamp), not the counter; xwing all3 s11 (v1 timeout) v2 stream == plain-off control == post-fix supplementary run"
+ },
  "postfix_tractor_zone_s26": "B0 on f99876e6 == grid run on 286403a2: trace 883 boundaries all columns, stream bytes, final_digest ex rng \u2014 the atomic-write fix does not change the world",
+ "provenance": {
+  "env": "tools/monitor/grid/t10a/b0env.sh (env -i + pi0 + ZONE_REPAIR_VERIFICATION=shadow); per-run tools/monitor/grid/t10a/run1.sh",
+  "grid_and_decomp_and_seq_pair": "tools/monitor/grid/t10a/init.sh <b0_root> <manifest> then tools/monitor/grid/t10a/chain.sh <b0_root> <logdir> 8",
+  "kill_demo": "tools/monitor/grid/t10a/killdemo.jl",
+  "manifest": "tools/monitor/grid/t10a/make_manifest.py <out> <code_rev> <code_dirty_digest> <config_digest> <grid_root>",
+  "summaries": "tools/monitor/grid/analyze_b0.py <b0_root> <b0_root>/out (b0_episodes/b0_summary/decomp_none), tools/monitor/grid/t10a/make_fixtures.py <b0_root> <fixture_dir> (+ equivalence.json via equiv_check.py)"
+ },
  "reruns_final_code": {
   "code_rev": "286403a2 (no edits during the runs)",
-  "logs": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/",
+  "logs": "workspace .superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/reruns/ (gitignored); launcher tools/monitor/grid/t10a/reruns.sh <logdir> <t8_off_dir>",
   "t8_E1": "T8_EPISODES=E1 test/repair_runtime_wiring.jl episodes -> 35/35 pass, 17m35s, EXIT=0",
   "t9_general": "test/repair_service_episode.jl general -> 29/29 pass, EXIT=0 (render ~29 min)",
   "t9_geometry": "test/repair_service_episode.jl geometry -> 28/28 pass, EXIT=0 (render ~27 min)"
@@ -27,15 +39,17 @@
    "outcome": "FAIL_WITHIN_BUDGET",
    "stream_bytes_equal_plain_off": true,
    "total": 712
-  }
+  },
+  "status_in_v2": "gone: v2 xwing all3 s11 = FAIL_WITHIN_BUDGET 455/712 iter 4282 (atomic write + kill_tree!)"
  },
  "xwing_semantic_edges": {
   "cells": [
    "xwing zone s4",
    "xwing all3 s2"
   ],
-  "check": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/edge_probe_check.py",
-  "probe": ".superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10a/edge_probe.jl",
-  "result": "t0 semantic_edges (484) == construction<->construction edges at pre_injection (484); edges pre->t0 added 0 removed 0 (818 total); WEDGE_EDGES at t0 = 0; runtime_edges_at_t0 (334) are all robot-node edges (RobotGo->RobotGo 102, RobotGo->FormTransportUnit 102, DepositCargo->RobotGo 102, RobotStart->RobotGo 28); probe t0_state_sha256 == B0 parent task_contract t0_state_sha256 for both cells"
+  "check": "tools/monitor/grid/t10a/edge_probe_check.py <out>...",
+  "probe": "tools/monitor/grid/t10a/edge_probe.jl (driver tools/monitor/grid/t10a/edge_probe.sh <case> <seed> <out>)",
+  "result": "t0 semantic_edges (484) == construction<->construction edges at pre_injection (484); edges pre->t0 added 0 removed 0 (818 total); WEDGE_EDGES at t0 = 0; runtime_edges_at_t0 (334) are all robot-node edges (RobotGo->RobotGo 102, RobotGo->FormTransportUnit 102, DepositCargo->RobotGo 102, RobotStart->RobotGo 28); probe t0_state_sha256 == B0 parent task_contract t0_state_sha256 for both cells",
+  "run_on": "286403a2 (the fix round only added a counter and harness cleanup; edges/contract derivation unchanged). Raw outputs: workspace logs/t10a/edge_probe/ (gitignored)"
  }
 }
