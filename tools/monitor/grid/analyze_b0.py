@@ -111,7 +111,9 @@ def episode(grid, model, job, drv, bsd_run, bsd_uns):
         e["zone_ladder_fired"] = ab["ladder_zone_fired"]
         e["zone_ladder_skipped"] = ab["ladder_zone_skipped"]
     b = b0 or {}
-    e.update(t0_captured=b.get("t0_captured"), t0_iter=b.get("t0_iter"),
+    held = jload(os.path.join(zr, "parent", "held.json"))       # b0.json 이 없어도(드라이버가 죽은 판) t0 capture 사실은 남는다
+    e.update(t0_captured=b.get("t0_captured", held is not None if os.path.isdir(os.path.join(zr, "parent")) else None),
+             t0_iter=b.get("t0_iter", (held or {}).get("t0_iter")),
              certification_gaps=b.get("certification_gaps"), budget_violations=b.get("budget_violations"),
              verify_mismatched_blocks=(b.get("verify") or {}).get("mismatched_blocks"),
              verify_counters_equal=(b.get("verify") or {}).get("counters_equal"),
