@@ -206,6 +206,50 @@ end
                            tree_fingerprint = () -> "feedfacefeedface") == String[]      # 양성 대조
 end
 
+@testset "[11] HTTP 200 의 서비스 거절·오류는 모델 실패가 아니다 — status 로 가르고, ablation 불일치는 gap" begin
+    err(e; calls = 0) = merge(resp("general", Any[]; calls, submitted = 0), Dict{String,Any}("error" => e, "compose_input" => nothing))
+    for (e, want, isgap) in (("refused: repair_ablation mismatch: julia='all' service='none' -- no model call was made", "service_refused(propose)", true),
+                             ("disabled: TOOL_SYNTHESIS != '1' -- no model call was made (R13)", "service_refused(propose)", false),
+                             ("no LM configured -- no model call was made", "service_refused(propose)", false),
+                             ("refused: the geometry arm needs a geometry context", "service_refused(propose)", false),
+                             ("observe: budget: call budget: 2 of 4 model calls used and 2 mandatory stage(s) still need one", "budget_exhausted(propose)", false),
+                             ("compose: AdapterParseError: bad", "service_error(propose)", false))
+        post, _ = stub_post(Dict("/zone_repair/propose" => [err(e; calls = 2)]))
+        out = run_slot(post; preflight = (a...) -> error("no preflight on a refusal"))
+        @test startswith(out.record["status"], want) && isempty(out.proposals)
+        @test out.record["model_outcome"] === nothing
+        @test isgap == any(g -> occursin("repair_ablation", g), out.gaps)
+    end
+    # 모델 쪽 0 결과(오류 없음, expressible=True)는 status ok 이고 model_outcome 이 사유를 싣는다
+    z = merge(resp("general", Any[]; calls = 2, submitted = 0), Dict{String,Any}("reason" => "no candidates: the design stage reported expressible=true"))
+    post, _ = stub_post(Dict("/zone_repair/propose" => [z]))
+    out = run_slot(post)
+    @test out.record["status"] == "ok" && startswith(out.record["model_outcome"], "no_candidates: no candidates: the design")
+    # 수정 호출의 거절: 첫 응답 후보는 동결된 채, status 는 그 거절을 싣는다
+    post, _ = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(1), tp(2)])],
+                             "/zone_repair/revise" => [merge(resp("general", Any[]; calls = 3, submitted = 2),
+                                                             Dict{String,Any}("error" => "refused: no LM configured -- no model call was made"))]))
+    out = run_slot(post; preflight = (p, d, raw, i, e, l) -> pf_rej("enactment threw: x"))
+    @test length(out.proposals) == 2 && startswith(out.record["status"], "service_refused(revise)")
+    @test startswith(out.record["revision"]["status"], "service_refused(revise)")
+    # G4: 관측 worker 가 기하 문맥을 못 만들었으면 서비스에 가지 않는다
+    called = Ref(0)
+    out = run_slot((u, p, b) -> (called[] += 1; error("must not be called")); arm = "geometry",
+                   observe = (a...) -> merge(OBS, Dict("geometry_context" => Dict("error" => "MethodError: boom"))))
+    @test called[] == 0 && startswith(out.record["status"], "observation_failed: geometry context: MethodError")
+end
+
+@testset "[12] 배정 센서는 요청 본문으로 가고 기록에 지문·읽기 전용 증거가 남는다" begin
+    rb = [Dict{String,Any}("robot" => "BotID(1)", "available" => true, "open_goto_tasks" => 2)]
+    ro = Dict{String,Any}("fields_compared" => 10, "rng_equal" => true, "fields_changed" => String[])
+    post, calls = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(1)])]))
+    out = run_slot(post; observe = (a...) -> merge(OBS, Dict("robot_bindings" => rb, "robot_bindings_sensor" => "robot-bindings/1",
+                                                             "sensor_readonly" => ro)))
+    @test calls[1][2]["robot_bindings"] == rb
+    @test out.record["observation"]["robot_bindings_sensor"] == "robot-bindings/1" && out.record["observation"]["sensor_readonly"] == ro
+    @test out.record["observation"]["robot_bindings_sha256"] == bytes2hex(sha256(JSON3.write(rb)))
+end
+
 @testset "[9] 동결 기록 파일 — 제출 순서·거절·preflight·원장" begin
     post, _ = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(2), tp(1)])]))
     root = mktempdir()

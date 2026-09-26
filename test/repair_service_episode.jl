@@ -80,9 +80,18 @@ log("render done code=", r.code)
     @test st0["provider_calls"] == 0 && st1["provider_calls"] == 0 && st1["credential_env_left"] == []
     @test st1["stages"] == ["observe", "design", "compose", "compose_revision"] && st1["remaining_script"] == 0
     @test ps["status"] == "ok" && ps["gaps"] == String[] && ep["decision_gaps"] == String[]
+    @test ps["model_outcome"] == "candidates: 2"                                   # 모델 쪽 결과(서비스 오류 아님)
+    # T9 fix: 존 복구 전용 배정 센서 — 관측에 있고, 읽기 전용(실측), 지문이 기록·provenance 에 있고, observe 프롬프트에 닿았다
+    @test st1["observe_has_bindings"] === true && st1["max_retries_seen"] == ["0"]
+    ro = ps["observation"]["sensor_readonly"]
+    @test ro["fields_changed"] == String[] && ro["rng_equal"] === true && ro["fields_compared"] > 100
+    @test ps["observation"]["robot_bindings_sensor"] == "robot-bindings/1" && ps["observation"]["robot_bindings_error"] === nothing
+    @test ps["responses"][1]["observation_stamps"]["observation_sensors"]["robot_bindings"]["version"] == "robot-bindings/1"
     # t0 관측은 일회용 observe worker 가 만들었다(부모가 아니다)
     ob = BR._json(joinpath(zr, "proposal_source", "observe", "observation.json"))
     @test ob["request"]["kind"] == "zone" && !isempty(ob["request"]["nl"]) && !isempty(ob["geometry_context"]["configs"])
+    @test !isempty(ob["robot_bindings"]) && all(r -> !haskey(r, "error"), ob["robot_bindings"])
+    @test !haskey(ob["request"], "robot_bindings")          # 결정 레인 페이로드(`service_payload`)는 그대로
     @test ob["checkpoint_id"] == BR._json(joinpath(zr, "parent", "contract.json"))["checkpoint_id"]
     # 두 원장: 서비스 원장 둘째 응답에서 호출 4 / 후보 3
     resp = ps["responses"]

@@ -24,7 +24,7 @@ Run (hjcrl venv, from this directory):
   OPENAI_API_KEY must be set in the environment.
   python -m uvicorn dspy_service:app --host 127.0.0.1 --port 8077
 """
-import os, sys, json, glob, math, re, uuid
+import os, sys, json, glob, math, re, uuid, hashlib
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI
@@ -2363,6 +2363,8 @@ class ZoneRepairProposeRequest(BaseModel):
     budget: ZoneRepairBudget
     capability_contract_version: str
     geometry_context: Optional[Dict[str, Any]] = None
+    # 🔴 존 복구 관측 전용 센서(로봇·팀·배정). `MacroRequest` 에 두지 않는다 — 결정 레인 프롬프트를 안 바꾸려고.
+    robot_bindings: Optional[List[Dict[str, Any]]] = None
     record_id: str
     run_ctx: Optional[Dict[str, Any]] = None
 
@@ -2400,6 +2402,20 @@ def _repair_provenance(req, response_id):
     return {k: v for k, v in p.items() if v is not None}
 
 
+def _zone_repair_observation(req):
+    """존 복구 팔의 Observe 입력 = 결정 레인과 같은 `_llm_input` + 존 복구 전용 센서(로봇·팀·배정)."""
+    return _llm_input(req.request) + _SY.render_robot_bindings(req.robot_bindings)
+
+
+def _observation_stamps(req, state):
+    """관측 지문: Observe 가 실제로 받은 문장의 digest 와 센서별 판·digest(설계 §4.1 — 새 센서는 지문을 남긴다)."""
+    sensors = {}
+    if req.robot_bindings is not None:
+        sensors["robot_bindings"] = {"version": _SY.ROBOT_BINDINGS_SENSOR,
+                                     "sha256": _SY.canonical_sha256(req.robot_bindings)}
+    return {"observation_sha256": hashlib.sha256(state.encode("utf-8")).hexdigest(), "observation_sensors": sensors}
+
+
 def _repair_row(req, out, raw, response_id, row_type, parent=None):
     try:
         row = _stamp_record(dict(out, raw_lm=dict(raw)), row_type=row_type, record_id=req.record_id,
@@ -2427,10 +2443,13 @@ def zone_repair_propose(req: ZoneRepairProposeRequest):
         out = _repair_refusal(req, why)
     else:
         r = req.request
+        state = _zone_repair_observation(req)
         out = _SY.propose_repair(
-            _llm_input(r), arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(),
+            state, arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(),
             lm=_repair_lm(), id_prefix=req.record_id, tools=build_tools(getattr(r, "agents", None), _valid_for(r)),
-            geometry_context=req.geometry_context, provenance=_repair_provenance(req, response_id), raw_out=raw)
+            geometry_context=req.geometry_context,
+            provenance=dict(_repair_provenance(req, response_id), **_observation_stamps(req, state)), raw_out=raw)
+        out["observation_stamps"] = _observation_stamps(req, state)
     out.update(record_id=req.record_id, response_id=response_id)
     _repair_row(req, out, raw, response_id, "zone_repair_propose")
     return out

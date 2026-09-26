@@ -184,6 +184,69 @@ end
 
 # ---- T9: t0 관측 (일회용 observe worker) ---------------------------------------------------------
 """
+    robot_bindings(env) -> Vector{Dict}
+
+존 복구 관측 전용 센서(정보 흐름 명세 §1 "로봇·팀·배정"): 로봇마다 가용성(고장·예비), 미완 go-to 작업 수, 지금 가는 작업
+(`RobotGo` 활성 노드와 그 뒤 `FormTransportUnit` 의 운반 팀·팀원), 지금 속한 팀(마지막으로 닫힌 go-to 의 팀 — 모이는 중/운반 중),
+다음 작업. 🔴 **읽기만 한다**(스케줄 그래프·캐시 집합·노드 spec 조회) — `observe_t0!` 가 world digest·RNG 전후 대조를 실측해
+`sensor_readonly` 로 남긴다. 🔴 재배정 대상·목적지·기전을 **계산하지 않는다**(현재 계획의 사실만).
+"""
+function robot_bindings(env)
+    sched = env.sched
+    G = CB.Graphs
+    nodeat(v) = CB.get_node_from_id(sched, CB.get_vtx_id(sched, v))
+    ids(xs) = Set(string(x) for x in xs)
+    faulted = try ids(CB.faulted_robots()) catch; Set{String}() end
+    spares = try ids(vcat(values(CB.SPARE_POOLS[])...)) catch; Set{String}() end
+    closed, active = env.cache.closed_set, env.cache.active_set
+    gotos = Dict{String,Vector{Tuple{Float64,Int}}}()
+    ftu_of = Dict{Int,Int}()
+    for v in G.vertices(sched)
+        n = nodeat(v)
+        n isa CB.RobotGo || continue
+        rid = try CB.entity(n).id catch; nothing end
+        rid === nothing && continue
+        push!(get!(gotos, string(rid), Tuple{Float64,Int}[]), (Float64(CB.get_node(sched, v).spec.t0), v))
+        for o in G.outneighbors(sched, v)
+            nodeat(o) isa CB.FormTransportUnit && (ftu_of[v] = o)
+        end
+    end
+    members = Dict{Int,Vector{String}}()
+    for (r, vs) in gotos, (_, v) in vs
+        haskey(ftu_of, v) && push!(get!(members, ftu_of[v], String[]), r)
+    end
+    unit(f) = try string(CB.node_id(CB.entity(nodeat(f)))) catch; string(CB.get_vtx_id(sched, f)) end
+    team(f) = Dict{String,Any}("unit" => unit(f), "members" => sort!(unique(members[f])))
+    task(v) = Dict{String,Any}("node" => string(CB.get_vtx_id(sched, v)), "kind" => string(nameof(typeof(nodeat(v)))),
+                               "team" => haskey(ftu_of, v) ? team(ftu_of[v]) : nothing)
+    out = Dict{String,Any}[]
+    for r in sort!(collect(keys(gotos)))
+        row = Dict{String,Any}("robot" => r, "faulted" => r in faulted, "spare" => r in spares, "available" => !(r in faulted))
+        try
+            vs = [v for (_, v) in sort(gotos[r])]
+            open = [v for v in vs if !(v in closed)]
+            row["open_goto_tasks"] = length(open)
+            cur = [v for v in open if v in active]
+            nxt = [v for v in open if !(v in active)]
+            row["going_to"] = isempty(cur) ? nothing : task(first(cur))
+            row["next"] = isempty(nxt) ? nothing : task(first(nxt))
+            done = [v for v in vs if v in closed]
+            row["team_now"] = nothing
+            if !isempty(done) && haskey(ftu_of, last(done))
+                f = ftu_of[last(done)]
+                st = !(f in closed) ? "forming" :
+                     any(o -> nodeat(o) isa CB.TransportUnitGo && !(o in closed), G.outneighbors(sched, f)) ? "transporting" : nothing
+                st === nothing || (row["team_now"] = merge(team(f), Dict{String,Any}("state" => st)))
+            end
+        catch e
+            row["error"] = first(sprint(showerror, e), 200)
+        end
+        push!(out, row)
+    end
+    return out
+end
+
+"""
     observe_t0!(dir, env, checkpoint_id)
 
 `ZRV_BRANCH_MODE=observe` 의 worker 에서만: t0 를 복원한 세계에서 존 사건의 `/decide` 관측 페이로드를 **결정 레인과 같은
@@ -192,6 +255,14 @@ end
 돌리지 않는다(관측 계산이 부모의 전역을 건드리면 NOOP 재개 대조가 흔들린다). 세계는 이 worker 와 함께 버려진다.
 """
 function observe_t0!(dir, env, checkpoint_id)
+    # 🔴 배정 센서를 **먼저**, world digest·RNG 전후 대조로 감싸서 — 읽기 전용을 실측한다(아래 service_payload 는
+    #    `LAST_EDGE_COSTS` 등을 쓰므로 그 뒤에 재면 센서의 증거가 오염된다).
+    W0 = E.world_lines(env; modules = ER.MODULES()); d0 = E.field_digests(W0.lines, W0.fields)
+    rng0 = copy(Random.default_rng())
+    bindings, berr = try robot_bindings(env), nothing catch e; nothing, first(sprint(showerror, e), 500) end
+    W1 = E.world_lines(env; modules = ER.MODULES()); d1 = E.field_digests(W1.lines, W1.fields)
+    readonly = Dict{String,Any}("fields_compared" => length(d0), "rng_equal" => copy(Random.default_rng()) == rng0,
+        "fields_changed" => sort!([String(k) for k in union(keys(d0), keys(d1)) if get(d0, k, nothing) != get(d1, k, nothing)]))
     ev = t0_zone_event()
     ev === nothing && error("observe: no zone event is pending at t0")
     M = Main
@@ -204,7 +275,9 @@ function observe_t0!(dir, env, checkpoint_id)
         Dict{String,Any}("error" => first(sprint(showerror, e), 500))
     end
     _write(joinpath(dir, "observation.json"), Dict{String,Any}("schema" => "zone-repair-observation/1",
-        "checkpoint_id" => checkpoint_id, "event" => ev, "request" => req, "geometry_context" => g))
+        "checkpoint_id" => checkpoint_id, "event" => ev, "request" => req, "geometry_context" => g,
+        "robot_bindings" => bindings, "robot_bindings_error" => berr, "robot_bindings_sensor" => "robot-bindings/1",
+        "sensor_readonly" => readonly))
     println("[zrv-observe] wrote observation.json (request keys $(length(req)), geometry configs ",
             length(get(g, "configs", Any[])), ")")
     return nothing

@@ -10,7 +10,8 @@ entered. Each call pops the next scripted step and asserts the stage it was aske
      "raise": "..."             # a provider error raised from forward()
      "fields_fn": f(messages)   # fields computed from the prompt (the fake plays the model; the harness computes nothing)
      "finish_reason": "stop",   # "length" = the provider cut the answer at the token cap
-     "usage": {"prompt_tokens": .., "completion_tokens": .., "total_tokens": ..}}
+     "usage": {"prompt_tokens": .., "completion_tokens": .., "total_tokens": ..} | None,
+     "cost": 0.0001 | None}                                         # None = unmeasured
 
 `seen` keeps every call's stage, messages and kwargs -- the prompt audit reads what was actually sent.
 Used by `src/respec/llm_service/test_zone_repair_lane.py` (in-process) and `fake_lm_service.py` (a local service
@@ -43,7 +44,8 @@ class ScriptedLM(DummyLM):
     def forward(self, prompt=None, messages=None, **kwargs):
         messages = messages or [{"role": "user", "content": prompt}]
         st = stage_of(messages)
-        self.seen.append({"stage": st, "messages": messages, "kwargs": dict(kwargs)})
+        # kwargs = what a real LM would send: its own defaults (e.g. max_retries=0 from the copy) + this call's
+        self.seen.append({"stage": st, "messages": messages, "kwargs": {**self.kwargs, **kwargs}})
         if not self.script:
             raise AssertionError("fake LM: unscripted call at stage %s" % st)
         step = self.script.pop(0)
@@ -60,9 +62,15 @@ class ScriptedLM(DummyLM):
         else:
             text = self._format_answer_fields(dict({"reasoning": "scripted"}, **step["fields"]))
         usage = step.get("usage", {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30})
-        return dotdict(choices=[dotdict(message=dotdict(content=text, tool_calls=None),
+        resp = dotdict(choices=[dotdict(message=dotdict(content=text, tool_calls=None),
                                         finish_reason=step.get("finish_reason", "stop"))],
-                       usage=dotdict(**usage), model="fake-repair-lm")
+                       model="fake-repair-lm")
+        if usage is not None:                       # "usage": None = the provider reported no usage
+            resp["usage"] = dotdict(**usage)
+        cost = step.get("cost", 0.0001)             # "cost": None = no priced cost (dspy reads _hidden_params)
+        if cost is not None:
+            resp["_hidden_params"] = {"response_cost": cost}
+        return resp
 
 
 # ---- canned steps ------------------------------------------------------------------------------------------

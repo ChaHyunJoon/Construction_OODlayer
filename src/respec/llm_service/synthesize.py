@@ -2186,10 +2186,17 @@ class RepairLedger:
         if stage not in REPAIR_STAGES:
             raise ValueError("unknown stage %r" % (stage,))
         pending = [s for s in _REPAIR_MANDATORY if s != stage and s not in self.done]
+        # 🔴 fail-closed: 응답을 받은(`ok`) 비-캐시 호출 중 사용량/비용을 못 잰 것이 있으면 그 한도는 더 이상 지킬 수
+        #    없다 — 0 으로 세지 않고 거절한다. 실패한 호출(응답 없음)은 과금 응답이 없어 제외한다.
+        billed = [c for c in self.calls if c.get("ok") and c.get("cache_hit") is not True]
         why = None
         if len(self.calls) + 1 + len(pending) > self.max_model_calls:
             why = ("call budget: %d of %d model calls used and %d mandatory stage(s) still need one"
                    % (len(self.calls), self.max_model_calls, len(pending)))
+        elif any(c.get("total_tokens") is None for c in billed):
+            why = "token budget: unmeasurable -- a previous call reported no token usage"
+        elif self.max_cost_usd is not None and any(not isinstance(c.get("cost"), (int, float)) for c in billed):
+            why = "cost budget: unmeasurable -- a previous call reported no cost"
         elif self.tokens_used >= self.max_total_tokens:
             why = "token budget: %d of %d tokens used" % (self.tokens_used, self.max_total_tokens)
         elif self.max_cost_usd is not None and self.cost_used >= self.max_cost_usd:
@@ -2260,6 +2267,14 @@ class _BudgetedLM(dspy.BaseLM):
                 continue
             self._ledger.record(self._stage, entry=hist[n0] if len(hist) > n0 else None)
             return out
+
+
+def _request_local_lm(lm):
+    """요청 국소 LM 사본(history 가 요청 국소). 🔴 **재시도를 두 층 다 끈다**: `num_retries=0` 은 litellm 의 재시도,
+    `max_retries=0` 은 litellm 이 만드는 OpenAI 클라이언트의 전송 재시도(`litellm/constants.py` `DEFAULT_MAX_RETRIES=2`;
+    `max_retries` kwarg 는 `litellm.completion` → `optional_params` → `llms/openai/openai.py` 의
+    `inference_params.pop("max_retries", 2)` 로 클라이언트까지 간다). 남는 재시도는 `_BudgetedLM` 의 것뿐 — 원장에 선다."""
+    return lm.copy(num_retries=0, max_retries=0) if hasattr(lm, "copy") else lm
 
 
 def _repair_stage(ledger, lm, stage, prog, **inputs):
@@ -2348,6 +2363,53 @@ def render_geometry_context(ctx) -> str:
     for z in (ctx.get("zones") or []):
         out.append('  no-go zone "%s": center=%s radius=%s' % (z.get("key"), z.get("center"), z.get("radius")))
     return "\n".join(out)
+
+
+# ---- 존 복구 관측 전용 센서: 로봇·팀·배정(task binding) (T9 fix — 정보 흐름 명세 §1) -------------------------
+# 🔴 **존 복구 팔(U1/U4/V4/G4)의 관측에만** 붙는다 — 결정 레인 `_llm_input` 은 안 바뀐다. 값은 CB 쪽
+#    `RepairBranchWorker.robot_bindings`(t0 복원 세계, 읽기 전용 — 실측 증거는 observation.json 의 `sensor_readonly`)가
+#    잰 **현재 계획의 사실**이고, 무엇을 하라는 말(재배정 대상·목적지)은 한 글자도 없다.
+ROBOT_BINDINGS_SENSOR = "robot-bindings/1"
+
+
+def _task_text(t):
+    if not t:
+        return None
+    team = t.get("team")
+    s = "%s (%s)" % (t.get("node"), t.get("kind"))
+    if team:
+        s += " -> joins team %s with %s" % (team.get("unit"), ", ".join(team.get("members") or []) or "no one else")
+    return s
+
+
+def render_robot_bindings(rows) -> str:
+    """센서 값 → 관측 문단. 값이 없으면 빈 문자열(안 쟀다 ≠ 로봇이 없다: 호출자는 None 을 넘긴다)."""
+    if rows is None:
+        return ""
+    out = ["", "", "ROBOTS AND THEIR COMMITTED WORK (measured from the current plan):"]
+    for r in rows:
+        st = "faulted" if r.get("faulted") else ("available" if r.get("available") else "unavailable")
+        if r.get("spare"):
+            st += ", spare"
+        parts = ["%s: %s" % (r.get("robot"), st), "open go-to tasks %s" % r.get("open_goto_tasks")]
+        if r.get("going_to"):
+            parts.append("now going to " + _task_text(r["going_to"]))
+        tn = r.get("team_now")
+        if tn:
+            parts.append("in team %s (%s) with %s" % (tn.get("unit"), tn.get("state"),
+                                                      ", ".join(tn.get("members") or []) or "no one else"))
+        if r.get("next"):
+            parts.append("next " + _task_text(r["next"]))
+        if r.get("error"):
+            parts.append("not measured (%s)" % r["error"])
+        out.append("  " + "; ".join(parts))
+    if not rows:
+        out.append("  (no robot has a go-to task in the schedule)")
+    return "\n".join(out)
+
+
+def canonical_sha256(x) -> str:
+    return hashlib.sha256(json.dumps(x, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
 
 _PATCH_OBJECT_DESC = (
@@ -2520,7 +2582,7 @@ def propose_repair(state, *, arm, checkpoint_id, budget, lm, id_prefix, tools=No
         if not (iface or "").strip():
             out["error"] = "refused: the compose stage would be handed an empty interface -- no model call was made"
             return out
-        inner = lm.copy(num_retries=0) if hasattr(lm, "copy") else lm
+        inner = _request_local_lm(lm)
         progs = _repair_programs(arm, programs)
         stage = "observe"
         p1, _ = _repair_stage(ledger, inner, "observe", progs["observe"],
@@ -2599,7 +2661,7 @@ def revise_repair(*, arm, checkpoint_id, budget, ledger_state, compose_input, re
             out["error"] = "refused: the geometry arm needs its geometry context -- no model call was made"
             return out
         iface = compose_interface(blob) if arm == "general" else render_geometry_context(geometry_context)
-        inner = lm.copy(num_retries=0) if hasattr(lm, "copy") else lm
+        inner = _request_local_lm(lm)
         progs = _repair_programs(arm, programs)
         spec_text = compose_input["spec_text"]
         payload = json.dumps(rej, ensure_ascii=False, default=str)

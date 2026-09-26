@@ -378,6 +378,31 @@ end
 _new_record_id() = bytes2hex(sha256(string(time_ns(), "|", getpid(), "|zrv-t9")))[1:24]
 
 """
+    service_status(resp; stage) -> Union{Nothing,String}
+
+서비스가 **HTTP 200 으로** 돌려준 거절·오류를 모델의 0 결과와 가른다(`error` 가 null 이면 nothing — 그때 후보 0 은 모델
+결과다: `reason`·`expressible`·`wrote`). `service_refused` = 호출 0 으로 거절(플래그 꺼짐·LM 없음·핸드셰이크·G4 문맥 없음),
+`budget_exhausted` = 원장이 막았다(프로바이더 재시도가 예산을 먹은 경우 포함), `service_error` = 단계 예외.
+"""
+function service_status(resp::AbstractDict; stage::AbstractString)
+    e = get(resp, "error", nothing)
+    e === nothing && return nothing
+    e = String(e)
+    kind = (startswith(e, "refused:") || startswith(e, "disabled") || startswith(e, "no LM")) ? "service_refused" :
+           occursin(": budget:", e) ? "budget_exhausted" : "service_error"
+    return "$(kind)($(stage)): " * first(e, 300)
+end
+
+"ablation 레벨 불일치 거절은 판의 세계와 서비스의 세계가 다르다는 뜻이다 — gap(인증 불가)."
+ablation_mismatch(resp) = (e = get(resp, "error", nothing); e isa AbstractString &&
+                           (occursin("repair_ablation mismatch", e) || occursin("has no repair_ablation", e)))
+
+model_outcome(resp) = get(resp, "error", nothing) !== nothing ? nothing :
+    isempty(get(resp, "candidates", Any[])) ? "no_candidates: " * string(something(get(resp, "reason", nothing),
+        "expressible=$(get(resp, "expressible", nothing)) wrote=$(get(resp, "wrote", nothing))")) :
+    "candidates: $(length(resp["candidates"]))"
+
+"""
     service_proposals!(; parent_dir, root, url, arm, budget, launch_env, run_ctx, limits = LIMITS,
                        post = service_post, observe = observe_via_worker, preflight = preflight_via_worker)
         -> (; proposals::Vector{Dict}, record::Dict, gaps::Vector{String})
@@ -413,15 +438,31 @@ function service_proposals!(; parent_dir::AbstractString, root::AbstractString, 
         return finish()
     end
     gctx = get(obs, "geometry_context", Dict{String,Any}())
+    rec["observation"] = Dict{String,Any}("robot_bindings_sensor" => get(obs, "robot_bindings_sensor", nothing),
+        "robot_bindings_sha256" => get(obs, "robot_bindings", nothing) === nothing ? nothing :
+                                   bytes2hex(sha256(JSON3.write(obs["robot_bindings"]))),
+        "robot_bindings_error" => get(obs, "robot_bindings_error", nothing),
+        "sensor_readonly" => get(obs, "sensor_readonly", nothing))
+    if arm == "geometry" && (haskey(gctx, "error") || isempty(get(gctx, "configs", Any[])))
+        # G4 는 기하 문맥 없이는 부를 수 없다 — 서비스에 가지 않는다(호출 0), 모델 실패가 아니다.
+        rec["status"] = "observation_failed: geometry context: " * string(get(gctx, "error", "no configs"))
+        return finish()
+    end
     base = Dict{String,Any}("arm" => arm, "checkpoint_id" => cid, "budget" => budget, "run_ctx" => run_ctx,
                             "capability_contract_version" => R.DEFAULT_CAPABILITY_CONTRACT.version)
     arm == "geometry" && (base["geometry_context"] = gctx)
     rid = _new_record_id()
-    r1 = try post(url, "/zone_repair/propose", merge(base, Dict("request" => obs["request"], "record_id" => rid))) catch e
+    body1 = merge(base, Dict("request" => obs["request"], "record_id" => rid))
+    get(obs, "robot_bindings", nothing) === nothing || (body1["robot_bindings"] = obs["robot_bindings"])
+    r1 = try post(url, "/zone_repair/propose", body1) catch e
         rec["status"] = "service_error: " * first(sprint(showerror, e), 300)
         return finish()
     end
     push!(rec["responses"], Dict{String,Any}(k => v for (k, v) in r1 if k != "candidates"))
+    ablation_mismatch(r1) && push!(gaps, "propose: service refused the run's repair_ablation level: $(r1["error"])")
+    s1 = service_status(r1; stage = "propose")
+    s1 === nothing || (rec["status"] = s1)
+    rec["model_outcome"] = model_outcome(r1)
     append!(gaps, response_gaps(r1; arm, stage = "propose"))
     isempty(gaps) || return finish()
     # ---- 3·4. 변환(G4)과 t0 preflight ------------------------------------------------------------
@@ -477,6 +518,10 @@ function service_proposals!(; parent_dir::AbstractString, root::AbstractString, 
         end
         if r2 !== nothing
             push!(rec["responses"], Dict{String,Any}(k => v for (k, v) in r2 if k != "candidates"))
+            ablation_mismatch(r2) && push!(gaps, "revise: service refused the run's repair_ablation level: $(r2["error"])")
+            s2 = service_status(r2; stage = "revise")
+            # 첫 응답의 후보는 동결된 채 남는다; status 는 가장 나쁜 서비스 결과를 싣는다(`frozen_proposal_ids` 가 무엇이 얼었는지)
+            s2 === nothing || (rec["status"] = s2; rec["revision"]["status"] = s2)
             append!(gaps, response_gaps(r2; arm, stage = "revise"))
             isempty(gaps) || return finish()
             for c in get(r2, "candidates", Any[])

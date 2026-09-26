@@ -274,21 +274,33 @@ def test_design_stays_blind_to_the_raw_observation_and_the_world_interface():
 
 
 # ---- sensor coverage audit ---------------------------------------------------------------------------------
+BINDINGS = [
+    {"robot": "BotID(1)", "available": True, "faulted": False, "spare": False, "open_goto_tasks": 3,
+     "going_to": {"node": "ActionID(7)", "kind": "RobotGo", "team": {"unit": "TransportUnitID(4)", "members": ["BotID(1)", "BotID(2)"]}},
+     "team_now": None, "next": {"node": "ActionID(9)", "kind": "RobotGo", "team": None}},
+    {"robot": "BotID(2)", "available": False, "faulted": True, "spare": False, "open_goto_tasks": 1, "going_to": None,
+     "team_now": {"unit": "TransportUnitID(4)", "state": "forming", "members": ["BotID(1)", "BotID(2)"]}, "next": None}]
+
+
 def test_the_observation_and_the_world_interface_cover_more_than_geometry():
     r = svc.MacroRequest(kind="zone", nl="A no-go zone appeared.", progress=0.4, spare_count=2, n_active=7,
                          smdp_n_broken=1, smdp_fleet_soc_min=0.55, zone_overlap=0.3, zone_teams_forming=2,
                          zone_teams_covered=1, zone_nav_goals=5, zone_nav_blocked=1, zone_nav_downstream=12,
                          zone_unfinished_total=160, zone_project_blocked=True, zone_project_nodes_blocked=1,
                          zone_project_nodes_open=1, zones=[{"key": "Z1", "center": [0.0, 0.0], "radius": 1.0}])
-    obs = svc._llm_input(r)
-    need = {"progress": "progress", "resource: spares": "spare_robots", "robot state": "broken_robots",
+    obs = svc._zone_repair_observation(_preq(request=r.model_dump(exclude_none=True), robot_bindings=BINDINGS))
+    need = {"assignment / task binding": "ROBOTS AND THEIR COMMITTED WORK", "team membership": "in team TransportUnitID(4)",
+            "availability": "BotID(2): faulted", "next task": "next ActionID(9)",
+            "progress": "progress", "resource: spares": "spare_robots", "robot state": "broken_robots",
             "resource: charge": "min_fleet_soc", "parallel width": "active_nodes", "team": "teams_forming",
             "dependency": "work frozen by those", "completion reachability": "build_can_still_finish",
             "geometry": "ACTIVE NO-GO ZONES"}
     missing = [k for k, v in need.items() if v not in obs]
     assert not missing, missing
     iface = SY.compose_interface()
-    readers = {"assignment": "release_pending_assignments!", "team": "reform_stuck_teams!",
+    # 🔴 fix: `release_pending_assignments!` 는 **변경자**다 — 읽기 표면으로 세지 않는다.
+    readers = {"assignment (schedule go-to nodes)": "RobotGo", "robot state": "faulted_robots",
+               "team (transport units)": "TransportUnitNode",
                "resource": "active_spares", "charge": "battery_report", "progress": "project_complete",
                "dependency (schedule graph)": "OperatingSchedule", "frontier": "PlanningCache"}
     missing = [k for k, v in readers.items() if v not in iface]
@@ -344,3 +356,51 @@ def test_a_missing_schema_file_drops_the_stamp_instead_of_crashing(monkeypatch, 
     req = _preq()
     pv = svc._repair_provenance(req, "resp")
     assert "tool_proposal_schema_sha256" not in pv and pv["service_code_fingerprint"] == svc.CODE_FINGERPRINT
+
+
+# ---- T9 fix: 재시도 두 층 · fail-closed 한도 · 존 복구 전용 배정 센서 ------------------------------------
+def test_the_request_local_lm_disables_both_retry_layers_and_it_reaches_litellm(monkeypatch):
+    import litellm
+    lm = dspy.LM("openai/gpt-4o", cache=False)
+    c = SY._request_local_lm(lm)
+    assert c.num_retries == 0 and c.kwargs["max_retries"] == 0 and "max_retries" not in lm.kwargs
+    seen = {}
+
+    def capture(**kw):
+        seen.update(kw)
+        raise RuntimeError("captured -- no network")
+    monkeypatch.setattr(litellm, "completion", capture)
+    with pytest.raises(Exception, match="captured"):
+        c(messages=[{"role": "user", "content": "x"}])
+    assert seen["num_retries"] == 0 and seen["max_retries"] == 0, "the OpenAI client would retry off-ledger"
+
+
+def test_the_cost_cap_fails_closed_on_an_unmeasured_cost():
+    b = dict(BUDGET, max_cost_usd=1.0)
+    out, lm = run([dict(OBSERVE, cost=None)], budget=b)
+    assert out["error"].startswith("design: budget: cost budget: unmeasurable") and len(lm.seen) == 1
+    out, _ = run([OBSERVE, DESIGN_FIRES, compose(FIXED)], budget=b)          # positive control: priced calls go on
+    assert out["error"] is None and out["ledger"]["cost_used"] > 0
+
+
+def test_the_token_cap_fails_closed_on_missing_usage():
+    out, lm = run([dict(OBSERVE, usage=None)])
+    assert out["error"].startswith("design: budget: token budget: unmeasurable") and len(lm.seen) == 1
+
+
+def test_the_binding_sensor_reaches_only_the_zone_repair_observation_and_is_fingerprinted(monkeypatch):
+    lm = ScriptedLM([OBSERVE, DESIGN_FIRES, compose(FIXED)])
+    monkeypatch.setattr(svc, "_repair_lm", lambda: lm)
+    req = _preq(robot_bindings=BINDINGS)
+    out = svc.zone_repair_propose(req)
+    obs_prompt = _prompt_text(lm, "observe")
+    assert "ROBOTS AND THEIR COMMITTED WORK" in obs_prompt and "joins team TransportUnitID(4)" in obs_prompt
+    assert "ROBOTS AND THEIR COMMITTED WORK" not in svc._llm_input(req.request), "decision-lane prompt unchanged"
+    st = out["observation_stamps"]
+    assert st["observation_sensors"]["robot_bindings"] == {"version": "robot-bindings/1",
+                                                           "sha256": SY.canonical_sha256(BINDINGS)}
+    assert st["observation_sha256"] == SY.hashlib.sha256(svc._zone_repair_observation(req).encode()).hexdigest()
+    assert out["candidates"][0]["provenance"]["observation_sensors"] == st["observation_sensors"]
+    block = SY.render_robot_bindings(BINDINGS)
+    assert _hits(block, set()) == [] and not re.search(r"should|recommend|reassign|move to|best", block, re.I)
+    assert SY.render_robot_bindings(None) == ""                                 # not measured -> no paragraph

@@ -89,6 +89,10 @@ svc._repair_lm = lambda: LM
 def _fake_lm_stats():
     return {"provider_calls": PROVIDER["calls"], "fake_calls": len(LM.seen),
             "stages": [s["stage"] for s in LM.seen], "remaining_script": len(LM.script),
+            # the zone-repair binding sensor must reach the observe prompt (and only the zone-repair lane renders it)
+            "observe_has_bindings": any("ROBOTS AND THEIR COMMITTED WORK" in (m.get("content") or "")
+                                        for s in LM.seen if s["stage"] == "observe" for m in s["messages"]),
+            "max_retries_seen": sorted({str(s["kwargs"].get("max_retries")) for s in LM.seen}),
             "credential_env_left": sorted(k for k in os.environ if re.search(r"(API_KEY|_TOKEN|SECRET|PASSWORD)", k))}
 
 
