@@ -45,7 +45,9 @@ pi0_snapshot() = merge(Dict{String,Any}(k => get(ENV, k, nothing) for k in PI0_E
     Dict{String,Any}("ablation_level" => String(CB.REPAIR_ABLATION[]), "ablation_armed" => CB._ABLATION_ARMED[],
                      "respec_hold" => CB.RESPEC_HOLD[]))
 
-_write(path, d) = open(io -> JSON3.pretty(io, JSON3.write(d)), path, "w")
+# 원자적(임시 파일 → rename): supervisor 는 `isfile` 을 보자마자 읽는다(`BranchRunner.parent_command`·`wait_held`).
+# T10a 실측: 첫 `JSON3.pretty` 컴파일이 부하 아래 0.2 s 를 넘겨 빈 `1.out.json` 을 읽고 던졌다(xwing all3 s11).
+_write(path, d) = (tmp = path * ".tmp"; open(io -> JSON3.pretty(io, JSON3.write(d)), tmp, "w"); mv(tmp, path; force = true))
 _ids(env, vs) = sort!([string(CB.node_id(CB.get_node(env.sched, v))) for v in vs])
 project_complete_ids(env) = sort!([string(CB.node_id(n)) for n in CB.get_nodes(env.sched)
                                    if CB.matches_template(CB.ProjectComplete, n)])
