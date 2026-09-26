@@ -168,6 +168,51 @@ function decision_gaps(proposals::AbstractVector; source::Symbol, url::AbstractS
     return g
 end
 
+# ---- 부모·분기에 넘기는 env: 허용 목록 ------------------------------------------------------------
+const POLICY_JL = joinpath(ROOT, "tools", "monitor", "policy.jl")
+"런타임이 읽는 비설정 이름(설정 인벤토리 밖): julia 패키지/스레드 손잡이와 PyCall 인터프리터."
+const RUNTIME_ENV_NAMES = ("PYTHON", "CB_PYTHON")
+const RUNTIME_ENV_PREFIXES = ("JULIA_",)
+
+"""
+    config_env_inventory() -> (; names::Set{String}, prefixes::Vector{String})
+
+설정 지문의 ENV 분류(`tools/monitor/policy.jl` 의 `CONFIG_ENV_RESULT`·`CONFIG_ENV_CELL_AXIS`·`CONFIG_ENV_OBSERVATIONAL`·
+`_CONFIG_ENV_PREFIXES`)를 **그 파일에서** 읽는다 — 목록을 다시 적지 않는다. policy.jl 을 실행하지 않고 구문만 읽는다(driver 는 CB·HTTP
+를 싣지 않는다). 네 값이 문자열 리터럴 배열/튜플이 아니면 오류(조용히 빈 허용 목록이 되지 않는다).
+"""
+function config_env_inventory()
+    want = Dict("CONFIG_ENV_RESULT" => :n, "CONFIG_ENV_CELL_AXIS" => :n, "CONFIG_ENV_OBSERVATIONAL" => :n, "_CONFIG_ENV_PREFIXES" => :p)
+    names = Set{String}(); prefixes = String[]; seen = Set{String}()
+    for x in Meta.parseall(read(POLICY_JL, String)).args
+        (x isa Expr && x.head === :const && x.args[1] isa Expr && x.args[1].head === :(=)) || continue
+        k = string(x.args[1].args[1]); haskey(want, k) || continue
+        v = x.args[1].args[2]
+        (v isa Expr && v.head in (:vect, :tuple) && all(a -> a isa String, v.args)) ||
+            error("$(POLICY_JL): $(k) is not a literal list of strings — cannot build the env allowlist")
+        want[k] === :n ? union!(names, v.args) : append!(prefixes, v.args)
+        push!(seen, k)
+    end
+    seen == Set(keys(want)) || error("$(POLICY_JL): missing $(setdiff(Set(keys(want)), seen)) — cannot build the env allowlist")
+    return (; names, prefixes)
+end
+
+"""
+    launch_env_from(env) -> Dict{String,String}
+
+부모·분기 worker 에 넘기는 셀 env. 🔴 **허용 목록**이다(T8 리뷰): 운영자 셸의 나머지(이름이 비밀 패턴에 안 걸리는 토큰·DSN·
+KUBECONFIG …)는 넘어가지 않는다 — 분기는 생성 코드를 돌리고 능력표상 UDP·unix socket 유출을 못 막는다. 허용 = 설정 인벤토리
+(render 경로가 읽는 모든 이름, `config_env_inventory`) ∪ 그 접두사 ∪ `RUNTIME_ENV_*`, `ZRV_*` 는 뺀다(하니스가 새로 단다).
+두 번째 층으로 `BranchRunner.worker_env` 가 `DENY_ENV` 이름 패턴(자격 증명·`_URL`)을 또 지운다. 부모와 분기가 **같은** 목록을 받으므로
+신원 digest 는 그대로 맞는다.
+"""
+function launch_env_from(env::AbstractDict)
+    inv = config_env_inventory()
+    ok(k) = !startswith(k, "ZRV_") && (k in inv.names || k in RUNTIME_ENV_NAMES ||
+                                        any(p -> startswith(k, p), inv.prefixes) || any(p -> startswith(k, p), RUNTIME_ENV_PREFIXES))
+    return Dict{String,String}(String(k) => String(v) for (k, v) in env if ok(String(k)))
+end
+
 # ---- 활성 세계의 기록을 따라가기 ------------------------------------------------------------------
 """
     follow!(src, sink, stop; from = 0) -> Task
@@ -356,7 +401,7 @@ function main()
         ok || error("[zrv] the proposal service does not serve this tree (generation gate): $(line)")
         source, proposals = :service, Dict{String,Any}[]
     end
-    launch = Dict{String,String}(String(k) => String(v) for (k, v) in ENV if !startswith(String(k), "ZRV_"))
+    launch = launch_env_from(ENV)
     rec = run_episode!(; mode, launch_env = launch, root, proposals, source, url, capabilities = caps, out_dir = out,
                        campaign_dir = abspath(get(ENV, "ZONE_REPAIR_CAMPAIGN_DIR", root)))
     return something(rec["exit_code"], 1)

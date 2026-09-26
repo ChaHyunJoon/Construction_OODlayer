@@ -337,6 +337,27 @@ end
     @test S.shadow_fork!(sv) === sv                                                 # REPLAY_CHECKED — no-op
 end
 
+@testset "[13] 부모·분기 env 는 허용 목록 — 이름이 비밀 패턴을 피하는 운영자 변수는 넘어가지 않는다(T8 리뷰)" begin
+    inv = RT.config_env_inventory()
+    @test all(k -> k in inv.names, ("DEMO_SEED", "REPAIR_ABLATION", "ZONE_REPAIR_VERIFICATION", "ZONE_REPAIR_PROPOSALS", "HOME", "PATH"))
+    @test "DEMO_" in inv.prefixes
+    fake = "zrv-fake-not-a-secret"                                  # 가짜 값 — 실제 자격 증명 아님
+    leaky = ("ZZ_GITHUB_PAT_TEST", "PGPASSFILE", "KUBECONFIG", "DATABASE_DSN", "GITHUB_PAT")
+    op = merge(PI0CELL, Dict(k => fake for k in leaky), Dict("ZONE_REPAIR_VERIFICATION" => "shadow", "JULIA_NUM_THREADS" => "1",
+               "ZRV_BRANCH_ROLE" => "x", "DSPY_URL" => "http://127.0.0.1:1", "HOME" => ENV["HOME"], "SHELL" => "/bin/zsh"))
+    # 음성 대조: 이름 패턴 거부 목록만으로는 이 이름들이 **새어 나간다**(그래서 허용 목록이 필요하다)
+    @test all(k -> !BR.denied_env(k), leaky)
+    l = RT.launch_env_from(op)
+    @test all(k -> !haskey(l, k), leaky) && !haskey(l, "SHELL") && !haskey(l, "ZRV_BRANCH_ROLE")
+    @test all(k -> l[k] == PI0CELL[k], keys(PI0CELL)) && l["JULIA_NUM_THREADS"] == "1" && l["ZONE_REPAIR_VERIFICATION"] == "shadow"
+    # 두 번째 층: worker env(부모·분기 공통)에서 서비스 주소도 빠진다, 값은 어디에도 없다
+    for extra in (Dict("ZRV_BRANCH_ROLE" => "parent"), Dict("ZRV_BRANCH_ROLE" => "branch"))
+        we, removed = BR.worker_env(l, extra)
+        @test all(k -> !haskey(we, k), leaky) && !haskey(we, "DSPY_URL") && removed == ["DSPY_URL"]
+        @test !any(==(fake), values(we))
+    end
+end
+
 end # testset
 end # fast
 
@@ -361,7 +382,9 @@ want(e) = (w = strip(get(ENV, "T8_EPISODES", "")); isempty(w) || e in split(w, '
 want("E1") && @testset "E1 shadow via render_demo.jl — 후보는 worker 에서 평가, 원래 세계는 off 와 같은 궤적" begin
     d = joinpath(root, "E1"); zr = joinpath(d, "zr")
     log("E1 start")
+    # T8 리뷰: 운영자 셸의 비밀 모양 변수(이름이 거부 패턴을 피한다, 값은 가짜)가 부모·분기 env 에 없어야 한다
     r = render(merge(PI0CELL, Dict("ZONE_REPAIR_VERIFICATION" => "shadow", "ZONE_REPAIR_PROPOSALS" => FIXTURE,
+                                   "ZZ_GITHUB_PAT_TEST" => "zrv-fake-not-a-secret",
                                    "DEMO_OUT_DIR" => joinpath(d, "out"), "ZONE_REPAIR_DIR" => zr)); logfile = joinpath(root, "E1.log"))
     log("E1 done code=", r.code)
     ep = BR._json(joinpath(zr, "episode.json")); R_["E1"] = ep
@@ -406,6 +429,13 @@ want("E1") && @testset "E1 shadow via render_demo.jl — 후보는 worker 에서
     @test env0["gaps"] == ["task_world: original task contract not supplied (T5)"]
     @test env0["dispatch"]["zone_event_index"] == 1 && length(env0["dispatch"]["pending"]) == 1
     R_["E1_main_globals"] = mains
+    # 허용 목록: 부모와 모든 분기의 실행 env 이름에 운영자 변수가 없다(값은 애초에 기록되지 않는다), checkpoint ENV 에도 없다
+    for ld in [joinpath(zr, "parent"); [joinpath(zr, "supervision", b) for b in ("noop", "noop-b", "cand-1")]]
+        names = BR._json(joinpath(ld, "launch.json"))["env_names"]
+        @test !("ZZ_GITHUB_PAT_TEST" in names) && "DEMO_SEED" in names
+    end
+    @test !occursin("ZZ_GITHUB_PAT_TEST", read(joinpath(zr, "parent", "ckpt", "t0.small_fields.tsv"), String))
+    @test !occursin("zrv-fake-not-a-secret", read(joinpath(zr, "parent", "ckpt", "t0.small_fields.tsv"), String))
 end
 
 want("E1b") && @testset "E1b shadow + 도구 선택(기준 결과 강제 — 시험 전용) — 선택돼도 원래 세계는 off 와 같은 궤적" begin
