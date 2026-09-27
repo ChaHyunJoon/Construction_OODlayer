@@ -497,7 +497,17 @@ end
 """
 function validate_repair_manifest(m::AbstractDict; schema = read_json(MANIFEST_SCHEMA_PATH))
     e = schema_error(m, schema)
-    e === nothing && return nothing
+    if e === nothing
+        # 최종 리뷰 C1: 총 token 한도는 호출 계획(호출 수 × 호출당 출력 상한)을 담아야 한다 — schema 로는 못 적는 관계라 여기서.
+        #   `synthesize.plan_token_floor` · `RepairRuntime.service_budget` 와 같은 규칙(서비스는 관측된 프롬프트 추정을 더 얹는다).
+        mo = get(get(m, "budget", Dict()), "model", Dict())
+        if all(k -> haskey(mo, k), ("max_total_tokens", "max_model_calls", "max_output_tokens_per_call"))
+            need = mo["max_model_calls"]["value"] * mo["max_output_tokens_per_call"]["value"]
+            mo["max_total_tokens"]["value"] < need &&
+                return "reject:budget_invalid:/budget/model/max_total_tokens:call_plan:$(mo["max_total_tokens"]["value"]) < $(need)"
+        end
+        return nothing
+    end
     return (startswith(e, "/budget") || e == "/:required:budget") ?
         "reject:budget_invalid:$(e)" : "reject:manifest_invalid:$(e)"
 end

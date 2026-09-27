@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "repair_verification_manifest.schema.json",
   "title": "RepairVerificationManifest",
-  "description": "Frozen campaign manifest for zone-repair verification (design 2026-09-24 sections 7.1, 7.2, 9.2). Every budget number is required, positive, and carries its source: historical (confirmed from a 2026-09-23 campaign; ref names where), design_spec (fixed by the design), or new_choice (decided for this campaign). Nothing here has a default -- a missing or null value rejects the run. Validated in Julia by src/verification/repair_types.jl against this same file.",
+  "description": "Frozen campaign manifest for zone-repair verification (design 2026-09-24 sections 7.1, 7.2, 9.2). Every budget number is required, positive, and carries its source: historical (confirmed from a 2026-09-23 campaign; ref names where), design_spec (fixed by the design), or new_choice (decided for this campaign). Nothing here has a default -- a missing or null value rejects the run. Final review (C1/I2/I3): budget.model.max_output_tokens_per_call is the per-call output cap applied to every zone-repair model call (max_total_tokens must be >= max_model_calls x it -- a semantic check in RepairTypes.validate_repair_manifest, not expressible here); budget.model.call_timeout_s and budget.worker.preflight_wall_timeout_s feed the derived episode budget (RepairRuntime.manifest_episode_budget). Validated in Julia by src/verification/repair_types.jl against this same file.",
   "type": "object",
   "additionalProperties": false,
   "required": ["manifest_version", "campaign_id", "arms", "cohort", "budget", "continuation",
@@ -66,22 +66,25 @@
         },
         "worker": {
           "type": "object", "additionalProperties": false,
-          "required": ["wall_timeout_s", "cpu_s", "memory_mb"],
+          "required": ["wall_timeout_s", "cpu_s", "memory_mb", "preflight_wall_timeout_s"],
           "properties": {
             "wall_timeout_s": {"$ref": "#/$defs/posnum"},
             "cpu_s": {"$ref": "#/$defs/posnum"},
-            "memory_mb": {"$ref": "#/$defs/posint"}
+            "memory_mb": {"$ref": "#/$defs/posint"},
+            "preflight_wall_timeout_s": {"$ref": "#/$defs/posnum"}
           }
         },
         "model": {
           "type": "object", "additionalProperties": false,
           "required": ["max_candidates", "max_model_calls", "call_allocation", "max_total_tokens",
-                       "max_cost_usd_episode", "max_cost_usd_campaign"],
+                       "max_output_tokens_per_call", "call_timeout_s", "max_cost_usd_episode", "max_cost_usd_campaign"],
           "properties": {
             "max_candidates": {"$ref": "#/$defs/cap4"},
             "max_model_calls": {"$ref": "#/$defs/cap4"},
             "call_allocation": {"const": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1}},
             "max_total_tokens": {"$ref": "#/$defs/posint"},
+            "max_output_tokens_per_call": {"$ref": "#/$defs/posint"},
+            "call_timeout_s": {"$ref": "#/$defs/posnum"},
             "max_cost_usd_episode": {"$ref": "#/$defs/posnum"},
             "max_cost_usd_campaign": {"$ref": "#/$defs/posnum"}
           }
@@ -149,12 +152,21 @@
     },
     "model_side": {
       "type": "object", "additionalProperties": false,
-      "required": ["model", "service_code_fingerprint", "prompt_digest", "schema_digest"],
+      "required": ["model", "service_code_fingerprint", "prompt_digest", "schema_digest",
+                   "model_type", "temperature", "cache", "transport_retries", "world_interface_sha256"],
       "properties": {
         "model": {"$ref": "#/$defs/text"},
         "service_code_fingerprint": {"$ref": "#/$defs/text"},
         "prompt_digest": {"$ref": "#/$defs/text"},
-        "schema_digest": {"$ref": "#/$defs/text"}
+        "schema_digest": {"$ref": "#/$defs/text"},
+        "model_type": {"const": "chat", "description": "the zone-repair lane is pinned to the chat transport; the service refuses others with zero calls"},
+        "temperature": {"type": ["number", "string"], "minimum": 0, "pattern": "^omitted$",
+                        "description": "DSPY_TEMPERATURE as sent; the word 'omitted' when the key is dropped from the request"},
+        "cache": {"const": false, "description": "service LM cache off (a cached answer replays an old sample); RepairRuntime.decision_gaps enforces it per proposal"},
+        "transport_retries": {"const": {"num_retries": 0, "max_retries": 0},
+                              "description": "litellm num_retries / OpenAI-client max_retries of the request-local LM; the only retries are the call ledger's own"},
+        "world_interface_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                                   "description": "sha256 of the world_interface*.json artifact the compose stage reads (outside the service code fingerprint)"}
       }
     },
     "trusted": {

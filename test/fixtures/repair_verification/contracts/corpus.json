@@ -30,13 +30,16 @@
         "worker": {
           "wall_timeout_s": {"value": 3600, "source": "new_choice", "ref": "TEST FIXTURE"},
           "cpu_s": {"value": 3600, "source": "new_choice", "ref": "TEST FIXTURE"},
-          "memory_mb": {"value": 8192, "source": "new_choice", "ref": "TEST FIXTURE"}
+          "memory_mb": {"value": 8192, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "preflight_wall_timeout_s": {"value": 1200, "source": "new_choice", "ref": "TEST FIXTURE"}
         },
         "model": {
           "max_candidates": {"value": 4, "source": "design_spec", "ref": "design 7.2"},
           "max_model_calls": {"value": 4, "source": "design_spec", "ref": "design 7.2"},
           "call_allocation": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1},
           "max_total_tokens": {"value": 200000, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "max_output_tokens_per_call": {"value": 16000, "source": "new_choice", "ref": "TEST FIXTURE"},
+          "call_timeout_s": {"value": 300, "source": "historical", "ref": "repair_runtime.jl service_timeout_s"},
           "max_cost_usd_episode": {"value": 1.5, "source": "new_choice", "ref": "TEST FIXTURE"},
           "max_cost_usd_campaign": {"value": 150, "source": "historical", "ref": "results/2026-09-23-repair-ablation/cost_watchdog.sh CAP"}
         }
@@ -55,7 +58,10 @@
                 "config_digest": "x", "julia_version": "1.10.11", "manifest_digest": "x",
                 "build_id": "x", "julia_threads": 1,
                 "solver": {"name": "HiGHS", "version": "x", "seed": 0, "threads": 1}},
-      "model_side": {"model": "x", "service_code_fingerprint": "x", "prompt_digest": "x", "schema_digest": "x"},
+      "model_side": {"model": "x", "service_code_fingerprint": "x", "prompt_digest": "x", "schema_digest": "x",
+                     "model_type": "chat", "temperature": 0.2, "cache": false,
+                     "transport_retries": {"num_retries": 0, "max_retries": 0},
+                     "world_interface_sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
       "trusted": {"validator_version": "x", "scorer_version": "x", "capability_contract_version": "capability-contract/1"}
     }
   },
@@ -180,6 +186,26 @@
     {"name": "trusted_validator_version_missing", "base": "manifest", "ops": [{"op": "del", "path": ["trusted", "validator_version"]}],
       "schema_ok": false, "julia": "reject:manifest_invalid"},
     {"name": "fingerprint_empty_string", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "prompt_digest"], "value": ""}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "manifest_ok_temperature_omitted", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "temperature"], "value": "omitted"}],
+      "schema_ok": true, "julia": "accept"},
+    {"name": "budget_output_cap_missing", "base": "manifest", "ops": [{"op": "del", "path": ["budget", "model", "max_output_tokens_per_call"]}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_output_cap_zero", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "max_output_tokens_per_call", "value"], "value": 0}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_preflight_wall_missing", "base": "manifest", "ops": [{"op": "del", "path": ["budget", "worker", "preflight_wall_timeout_s"]}],
+      "schema_ok": false, "julia": "reject:budget_invalid"},
+    {"name": "budget_total_below_call_plan", "base": "manifest", "ops": [{"op": "set", "path": ["budget", "model", "max_total_tokens", "value"], "value": 63999}],
+      "schema_ok": true, "julia": "reject:budget_invalid"},
+    {"name": "model_side_cache_on", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "cache"], "value": true}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "model_side_responses_transport", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "model_type"], "value": "responses"}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "model_side_retries_on", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "transport_retries", "max_retries"], "value": 2}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "model_side_temperature_word", "base": "manifest", "ops": [{"op": "set", "path": ["model_side", "temperature"], "value": "default"}],
+      "schema_ok": false, "julia": "reject:manifest_invalid"},
+    {"name": "model_side_world_interface_missing", "base": "manifest", "ops": [{"op": "del", "path": ["model_side", "world_interface_sha256"]}],
       "schema_ok": false, "julia": "reject:manifest_invalid"}
   ]
 }

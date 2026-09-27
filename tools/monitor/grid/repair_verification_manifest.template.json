@@ -20,13 +20,16 @@
     "worker": {
       "wall_timeout_s": {"value": null, "source": "new_choice", "ref": "GAP: no per-branch worker existed historically; T4/T11 must set"},
       "cpu_s": {"value": null, "source": "new_choice", "ref": "GAP: no CPU limit existed historically; T4/T11 must set"},
-      "memory_mb": {"value": null, "source": "new_choice", "ref": "GAP: no memory limit existed historically (~2.5GB/process observed per CLAUDE.md); T4/T11 must set"}
+      "memory_mb": {"value": null, "source": "new_choice", "ref": "GAP: no memory limit existed historically (~2.5GB/process observed per CLAUDE.md); T4/T11 must set"},
+      "preflight_wall_timeout_s": {"value": null, "source": "new_choice", "ref": "GAP: observe/preflight worker wall (ZONE_REPAIR_PREFLIGHT_WALL_S); final-fix report recommends 1200 s"}
     },
     "model": {
       "max_candidates": {"value": 4, "source": "design_spec", "ref": "design 2026-09-24 section 7.2 K=4"},
       "max_model_calls": {"value": 4, "source": "design_spec", "ref": "design 2026-09-24 section 7.2 (retries included)"},
       "call_allocation": {"observe": 1, "design": 1, "compose": 1, "compose_revision": 1},
-      "max_total_tokens": {"value": null, "source": "new_choice", "ref": "GAP: design 7.2 requires it; no historical token cap found"},
+      "max_total_tokens": {"value": null, "source": "new_choice", "ref": "GAP: design 7.2 requires it; no historical token cap found; must be >= max_model_calls x max_output_tokens_per_call"},
+      "max_output_tokens_per_call": {"value": null, "source": "new_choice", "ref": "GAP: per-call output cap for the model chosen at T11 (ZONE_REPAIR_MAX_OUTPUT_TOKENS); final-fix report recommends 16000, never above the model's output limit"},
+      "call_timeout_s": {"value": 300, "source": "historical", "ref": "src/verification/repair_runtime.jl service_timeout_s: DSPY_TIMEOUT_S default 300 (x MODEL_CALLS per request)"},
       "max_cost_usd_episode": {"value": null, "source": "new_choice", "ref": "GAP: no historical per-episode cost cap found"},
       "max_cost_usd_campaign": {"value": 150, "source": "historical",
         "ref": "results/2026-09-23-repair-ablation/cost_watchdog.sh CAP=150 (A2 G5 grid, all three arms together, estimated raw_lm usd); T11 must reconfirm for the new campaign"}
@@ -55,6 +58,8 @@
   "build": {"code_rev": null, "code_dirty_digest": null, "dirty_snapshot_digest": null,
             "config_digest": null, "julia_version": null, "manifest_digest": null, "build_id": null,
             "julia_threads": null, "solver": {"name": null, "version": null, "seed": null, "threads": null}},
-  "model_side": {"model": null, "service_code_fingerprint": null, "prompt_digest": null, "schema_digest": null},
+  "model_side": {"model": null, "service_code_fingerprint": null, "prompt_digest": null, "schema_digest": null,
+                 "model_type": "chat", "temperature": null, "cache": false,
+                 "transport_retries": {"num_retries": 0, "max_retries": 0}, "world_interface_sha256": null},
   "trusted": {"validator_version": null, "scorer_version": null, "capability_contract_version": "capability-contract/1"}
 }
