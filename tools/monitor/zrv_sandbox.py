@@ -9,7 +9,8 @@
   * RLIMIT_CPU(초) · RLIMIT_AS(바이트) — 무한 loop·폭주 할당을 커널이 끊는다.
   * no_new_privs + Landlock(커널 LSM, 무권한 사용 가능 — `/sys/kernel/security/lsm` 에 `landlock`):
       - 파일 쓰기/생성/삭제: `--write` 디렉터리 아래만.
-      - 디렉터리 **목록**(이름만, 내용 아님): `--list` 아래(레포 뿌리 — git 이 untracked 를 찾으려고 `.` 을 연다).
+      - 디렉터리 **목록**(이름만, 내용 아님): `--list` 아래(선택 — 최종 리뷰 I5 뒤 branch runner 는 쓰지 않는다:
+        git 지문은 부모가 계산해 넘기고 분기는 `.git` 을 못 읽는다).
       - 파일 읽기/실행: `--read` 디렉터리 아래 + `/proc/<자기 pid>` + `--proc-file` 뿐. 그래서 같은 uid 의
         다른 프로세스 `/proc/<pid>/environ`(API 키가 들어 있다)·`~/.ssh`·`~/.dspy_cache` 를 못 읽는다.
       - TCP connect: 전부 거절(ABI ≥ 4). bind 는 다루지 않는다(로컬 listen 은 유출 경로가 아니다).

@@ -938,6 +938,8 @@ const CONFIG_ENV_RESULT = [
     "ZONE_REPAIR_VERIFICATION",
     # T9: 서비스 제안 source 의 팔(general|geometry)과 모델 예산(기본값 없음) — 결과를 바꾼다.
     "ZONE_REPAIR_ARM", "ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD",
+    # 최종 리뷰 C1·I3: 호출당 출력 상한과 observe/preflight worker wall(둘 다 기본값 없음) — 결과를 바꾼다.
+    "ZONE_REPAIR_MAX_OUTPUT_TOKENS", "ZONE_REPAIR_PREFLIGHT_WALL_S",
     # 2026-09-23 레포 정리(100a7735)로 action_registry.jl 이 src/ 아래로 와서 스캐너 범위에 들어옴.
     # 둘 다 행동 어휘·메뉴를 바꾼다(레지스트리 경로 = 매크로 집합, SoC 분할 = battery 메뉴) → result.
     "ACTION_REGISTRY", "DS_BATTERY_SOC_SPLIT",
@@ -984,6 +986,8 @@ const CONFIG_ENV_OBSERVATIONAL = [
     # T6 격리 도구 집행 — 제안 파일(정체는 export 의 `enactment.proposal_sha256`)·모드·t0 계약 위치·후처리 실패 탐침.
     # ZRV_BRANCH_ACTION 과 같은 이유로 지문 밖이다.
     "ZRV_BRANCH_PROPOSAL", "ZRV_BRANCH_MODE", "ZRV_TASK_CONTRACT", "ZRV_PROBE_POSTPROCESS_FAIL",
+    # 최종 리뷰 I5: 부모가 계산한 코드 신원 파일(분기는 git 을 못 읽는다 — 파일 digest 로 검증, `run_fingerprint`).
+    "ZRV_CODE_IDENTITY",
     # T8 production 배선(`src/verification/repair_runtime.jl`) — fixture 후보 파일(정체는 certificate 의 제안 digest)·
     # 에피소드 출력 위치·campaign 인증 정지 파일 위치. ZRV_BRANCH_PROPOSAL 과 같은 이유로 지문 밖이다.
     "ZONE_REPAIR_PROPOSALS", "ZONE_REPAIR_DIR", "ZONE_REPAIR_CAMPAIGN_DIR",
@@ -1083,6 +1087,50 @@ function _code_dirty_digest(repo::AbstractString)
 end
 
 """
+    code_identity(repo) -> Dict
+
+I5(최종 리뷰): 코드 지문과 **그 지문이 덮는 파일들의 digest**. 부모(원래 세계 — git 을 읽을 수 있는 신뢰 프로세스)가 t0 에서
+쓰고(`<parent>/code_identity.json`), 분기는 `.git`·git 설정을 못 읽으므로 git 대신 이 파일의 digest 를 **자기가 실제로 읽는
+파일**과 대조해 같은 지문을 얻는다(`run_fingerprint` 의 `ZRV_CODE_IDENTITY`). 파일 집합 = `_CODE_FINGERPRINT_PATHS` 아래 추적 파일
+전부 + 추적 안 된 소스(`_CODE_FINGERPRINT_EXTS`) — `_code_dirty_digest` 가 보는 것과 같은 범위.
+"""
+function code_identity(repo::AbstractString = normpath(joinpath(@__DIR__, "..", "..")))
+    local fp = run_fingerprint(repo; env = Dict{String,String}())
+    local tracked = split(String(read(pipeline(`git -C $repo ls-files -z -- $(_CODE_FINGERPRINT_PATHS)`; stderr = devnull))), '\0')
+    local untracked = split(String(read(pipeline(
+        `git -C $repo ls-files --others --exclude-standard -z -- $(_CODE_FINGERPRINT_PATHS)`; stderr = devnull))), '\0')
+    filter!(p -> any(e -> endswith(p, e), _CODE_FINGERPRINT_EXTS), untracked)
+    local files = Dict{String,String}()
+    for p in Iterators.flatten((tracked, untracked))
+        isempty(p) && continue
+        local f = joinpath(repo, p)
+        isfile(f) && (files[String(p)] = bytes2hex(SHA.sha256(read(f))))       # 추적되지만 지워진 파일은 diff 가 이미 싣는다
+    end
+    return Dict{String,Any}("schema" => "zrv-code-identity/1", "code_rev" => fp.code_rev,
+                            "code_dirty_digest" => fp.code_dirty_digest, "files" => files)
+end
+
+"""
+`ZRV_CODE_IDENTITY` 파일로 얻는 (code_rev, code_dirty_digest). 파일의 digest 가 **지금 디스크의 파일**과 하나라도 다르면(없음 포함)
+`code_dirty_digest` 가 `identity-file-mismatch:…` 가 되어 신원 대조가 실패한다 — 넘겨받은 값을 검증 없이 믿지 않는다.
+"""
+function _verified_code_identity(repo::AbstractString, path::AbstractString)
+    local d = try
+        JSON3.read(read(path, String))
+    catch e
+        return ("unknown", "identity-file-unreadable:" * first(sprint(showerror, e), 120))
+    end
+    local bad = String[]
+    for (p, want) in d.files
+        local f = joinpath(repo, String(p))
+        local got = isfile(f) ? bytes2hex(SHA.sha256(read(f))) : "missing"
+        got == want || push!(bad, String(p))
+    end
+    isempty(bad) || return (String(d.code_rev), "identity-file-mismatch:$(length(bad)):" * first(sort!(bad)))
+    return (String(d.code_rev), String(d.code_dirty_digest))
+end
+
+"""
     run_fingerprint(repo = <이 저장소>; env = ENV) -> NamedTuple
 
 판을 만든 **코드와 설정**의 지문. 기동 때 한 번 계산해 `RUN_CTX` 에 합친다.
@@ -1101,15 +1149,22 @@ end
 """
 function run_fingerprint(repo::AbstractString = normpath(joinpath(@__DIR__, "..", ".."));
                          env = ENV)
-    local rev = try
-        readchomp(pipeline(`git -C $repo rev-parse HEAD`; stderr = devnull))
-    catch
-        "unknown"
-    end
-    local dirty = try
-        _code_dirty_digest(repo)
-    catch
-        "unknown"
+    local idf = get(env, "ZRV_CODE_IDENTITY", "")
+    local rev, dirty
+    if !isempty(idf)
+        # I5: 분기(샌드박스, `.git` 못 읽음) — 부모가 계산해 넘긴 지문을 파일 digest 로 검증해서 쓴다.
+        rev, dirty = _verified_code_identity(repo, idf)
+    else
+        rev = try
+            readchomp(pipeline(`git -C $repo rev-parse HEAD`; stderr = devnull))
+        catch
+            "unknown"
+        end
+        dirty = try
+            _code_dirty_digest(repo)
+        catch
+            "unknown"
+        end
     end
     local ce = config_env(env)
     local cfg = bytes2hex(SHA.sha256(join(sort!([string(k, "=", v) for (k, v) in ce]), "\n")))[1:16]

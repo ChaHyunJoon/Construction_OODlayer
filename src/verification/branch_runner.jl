@@ -91,16 +91,24 @@ function pi0_launch_env(model::AbstractString, case::AbstractString, seed::Integ
 end
 
 # ---- OS 경계 -----------------------------------------------------------------------------------
-"worker 가 읽을 수 있는 곳. 레포는 **하위 경로만**(코드·지문 git diff 대상·모델 파일·python) — `.superpowers`·
-`results` 같은 역사적 결과·다른 분기 출력은 목록에 없어 못 읽는다."
-read_paths() = vcat(["/usr", "/etc", "/lib", "/lib64", "/bin", "/sbin", "/dev", "/sys", "/opt",
-                     joinpath(homedir(), ".julia"),
-                     # git 전역 설정(코드 지문 `git diff` 가 읽는다 — 못 읽으면 git 이 죽고 지문이 "unknown" 이 된다)
-                     joinpath(homedir(), ".config", "git"), joinpath(homedir(), ".gitconfig"),
-                     # LDraw 부품 라이브러리(LDrawParser 기본 위치; LDConfig.ldr 색표 등)
-                     joinpath(homedir(), "Documents", "ldraw")],
-                    [joinpath(ROOT, p) for p in (".git", ".gitignore", "src", "tools", "test", "Project.toml", "Manifest.toml",
+"""
+worker 가 읽을 수 있는 곳. 레포는 **하위 경로만**(코드·모델 파일·python) — `.superpowers`·`results` 같은 역사적 결과·다른 분기
+출력은 목록에 없어 못 읽는다.
+🔴 I5(최종 리뷰): `.git`·`~/.gitconfig`·`~/.config/git` 는 **없다**(분기의 생성 코드가 UDP·unix socket 으로 내보낼 수 있는 자리 —
+원격 URL·자격 증명 도우미·객체 전체). 코드 지문은 부모가 계산해 넘기고(`code_identity.json`, `ZRV_CODE_IDENTITY`) 분기는 git 대신
+그 파일 digest 를 자기가 읽는 파일과 대조한다(`policy.jl` `run_fingerprint`). `~/.julia` 는 Julia 가 패키지를 싣는 데 필요한
+곳만(`JULIA_DEPOT_READ`) — `config/`(startup·자격 증명)·`servers/`(Pkg 서버 `auth.toml`)·`registries`·`logs`·`scratchspaces`·`prefs`·`conda`
+는 못 읽는다.
+"""
+read_paths() = vcat(["/usr", "/etc", "/lib", "/lib64", "/bin", "/sbin", "/dev", "/sys", "/opt"],
+                    JULIA_DEPOT_READ(),
+                    # LDraw 부품 라이브러리(LDrawParser 기본 위치; LDConfig.ldr 색표 등)
+                    [joinpath(homedir(), "Documents", "ldraw")],
+                    [joinpath(ROOT, p) for p in (".gitignore", "src", "tools", "test", "Project.toml", "Manifest.toml",
                                                  "LDraw_files", ".venv")])
+"Julia 가 패키지를 싣는 데 필요한 depot 하위 경로: 설치된 패키지 소스·artifact·컴파일 캐시와 이 julia 바이너리의 설치 디렉터리."
+JULIA_DEPOT_READ() = vcat([joinpath(homedir(), ".julia", d) for d in ("packages", "artifacts", "compiled")],
+                          [normpath(joinpath(Sys.BINDIR, ".."))])
 const PROC_FILES = ["/proc/cpuinfo", "/proc/meminfo", "/proc/stat", "/proc/loadavg", "/proc/filesystems",
                     "/proc/sys/kernel/osrelease"]
 
@@ -108,13 +116,13 @@ const PROC_FILES = ["/proc/cpuinfo", "/proc/meminfo", "/proc/stat", "/proc/loada
 python3() = isfile("/usr/bin/python3") ? "/usr/bin/python3" :
             something(Sys.which("python3"), "python3 not found — the sandbox wrapper cannot run")
 
-"`cmd` 를 `zrv_sandbox.py` 로 감싼다. `write` 아래만 쓰기, `read` 아래만 읽기, TCP connect 금지, rlimit, setsid."
+"`cmd` 를 `zrv_sandbox.py` 로 감싼다. `write` 아래만 쓰기, `read` 아래만 읽기, TCP connect 금지, rlimit, setsid.
+(I5: 레포 뿌리 이름 목록 `--list` 는 git 지문 계산만 쓰던 권한이라 뺐다 — `.superpowers/…` 파일 **이름**도 이제 안 보인다.)"
 function sandboxed(cmd::Cmd; write::Vector{String}, read::Vector{String} = read_paths(), limits::Limits)
     py = python3()
     args = String[SANDBOX_PY]
     for w in write; append!(args, ["--write", w]); end
     for r in read; append!(args, ["--read", r]); end
-    append!(args, ["--list", ROOT])     # 이름 목록만(git ls-files 가 `.` 을 연다). 파일 **내용**은 read 목록 밖이면 못 읽는다
     for f in PROC_FILES; append!(args, ["--proc-file", f]); end
     append!(args, ["--cpu", string(limits.cpu_s), "--mem", string(limits.mem_bytes), "--"])
     return Cmd(vcat([py], args, cmd.exec))
@@ -307,11 +315,13 @@ function run_branch(; parent_dir::AbstractString, branch_id::AbstractString, out
         "DEMO_OUT_DIR" => joinpath(dir, "out"), "TMPDIR" => joinpath(dir, "tmp"),
         "ZRV_RESULTS_DIR" => joinpath(dir, "results"),
         "ZRV_BRANCH_PROPOSAL" => proposal_file, "ZRV_BRANCH_MODE" => mode,
-        "ZRV_TASK_CONTRACT" => joinpath(parent_dir, "task_contract.json"), extra_env...))
+        "ZRV_TASK_CONTRACT" => joinpath(parent_dir, "task_contract.json"),
+        # I5: 부모가 계산한 코드 신원(분기는 git 을 못 읽는다 — 파일 digest 로 검증)
+        "ZRV_CODE_IDENTITY" => joinpath(parent_dir, "code_identity.json"), extra_env...))
     cmd = `$JULIA --project=$ROOT -L $WORKER $RENDER`
     if sandbox
         rd = vcat(read_paths(), [joinpath(parent_dir, "ckpt"), String(contract["envelope"]),
-                                 joinpath(parent_dir, "task_contract.json")])
+                                 joinpath(parent_dir, "task_contract.json"), joinpath(parent_dir, "code_identity.json")])
         isempty(action_file) || push!(rd, action_file)
         isempty(proposal_file) || push!(rd, proposal_file)
         cmd = sandboxed(cmd; write = [String(dir), "/dev/null"], read = rd, limits)
@@ -532,6 +542,24 @@ function sandbox_capabilities(dir::AbstractString)
     if isfile(hf)
         neg = run_py("open('$(hf)','rb').read(1)"); pos = run_py("open('$(hf)','rb').read(1)"; sb = false)
         rec!("read_home_dotfiles", neg.code != 0 && pos.code == 0, neg.out[max(1, end - 200):end], pos.code)
+    end
+    # I5: git 메타데이터(원격 URL·객체)·git 전역 설정·Julia depot 의 비패키지 부분(config·자격 증명 자리)은 못 읽는다.
+    #     양성 대조: 같은 depot 의 패키지 소스는 읽힌다(Julia 가 실제로 뜨는 것은 `test/repair_rollout.jl` 이 잰다).
+    rd_probe(f) = "open('$(f)','rb').read(1)"
+    for (name, f) in (("read_repo_git_metadata", joinpath(ROOT, ".git", "HEAD")),
+                      ("read_git_global_config", joinpath(homedir(), ".gitconfig")),
+                      ("read_julia_depot_outside_packages", joinpath(homedir(), ".julia", "registries")))
+        isfile(f) || isdir(f) || continue
+        g = isdir(f) ? "import os;os.listdir('$(f)')" : rd_probe(f)
+        neg = run_py(g); pos = run_py(g; sb = false)
+        rec!(name, neg.code != 0 && pos.code == 0, neg.out[max(1, end - 200):end], pos.code;
+             note = "I5: not on the branch read allowlist (code identity is passed in by the parent; depot narrowed to packages/artifacts/compiled)")
+    end
+    pk = joinpath(homedir(), ".julia", "packages")
+    if isdir(pk)
+        neg = run_py("import os;os.listdir('$(pk)')")
+        rec!("read_julia_packages_allowed", neg.code == 0, neg.out[max(1, end - 200):end], nothing;
+             note = "positive control: the package depot stays readable (branches must still start)")
     end
     # 3. env 세척: 거부 이름을 가진 launch env 를 넘겨도 worker env 에 없다
     fake = Dict("OPENAI_API_KEY" => "zrv-dummy-not-a-key", "DSPY_URL" => "http://127.0.0.1:1", "DEMO_SEED" => "1")

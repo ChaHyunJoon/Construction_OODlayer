@@ -277,7 +277,10 @@ function observe_t0!(dir, env, checkpoint_id)
     M = Main
     rec = Base.invokelatest(getfield(M, :truth_for_event), ev)
     rec === nothing && error("observe: the t0 zone event has no truth record")
-    desc = try Base.invokelatest(getfield(M, :event_descriptors_of), env, rec.truth) catch; nothing end
+    # 최종 리뷰(must-fix minor): 서술자 실패를 삼키지 않는다 — 관측에 `descriptors_error` 로 남고 에피소드 기록에 실린다.
+    desc, derr = try Base.invokelatest(getfield(M, :event_descriptors_of), env, rec.truth), nothing catch e
+        nothing, first(sprint(showerror, e), 500)
+    end
     req = Base.invokelatest(getfield(M, :service_payload), env, rec.truth; nl = rec.nl, descriptors = desc,
                             agents = CB.open_agent_descriptors(env), zones = CB.open_zone_descriptors(env))
     g = try GCTL.geometry_context(env, CB) catch e
@@ -286,7 +289,7 @@ function observe_t0!(dir, env, checkpoint_id)
     _write(joinpath(dir, "observation.json"), Dict{String,Any}("schema" => "zone-repair-observation/1",
         "checkpoint_id" => checkpoint_id, "event" => ev, "request" => req, "geometry_context" => g,
         "robot_bindings" => bindings, "robot_bindings_error" => berr, "robot_bindings_sensor" => "robot-bindings/1",
-        "sensor_readonly" => readonly))
+        "descriptors_error" => derr, "sensor_readonly" => readonly))
     println("[zrv-observe] wrote observation.json (request keys $(length(req)), geometry configs ",
             length(get(g, "configs", Any[])), ")")
     return nothing
@@ -393,6 +396,15 @@ function hold!(h, env, ctx)
     catch e
         Dict{String,Any}("error" => first(sprint(showerror, e), 300))
     end
+    # I5: 코드 신원(지문 + 그 지문이 덮는 파일 digest). 분기는 `.git` 을 못 읽는다 — 이 파일로 검증한다(`ZRV_CODE_IDENTITY`).
+    #     git 서브프로세스·task 가 기본 RNG 를 전진시키므로(T3) 앞뒤로 저장/복원한다 — verify 의 `rng_equal` 이 흔들리지 않게.
+    rng = copy(Random.default_rng())
+    ci = try Base.invokelatest(getfield(Main, :code_identity)) catch e
+        Dict{String,Any}("schema" => "zrv-code-identity/1", "error" => first(sprint(showerror, e), 300))
+    end
+    copy!(Random.default_rng(), rng)
+    _write(joinpath(h.dir, "code_identity.json"), ci)
+    contract["code_identity_sha256"] = bytes2hex(sha256(read(joinpath(h.dir, "code_identity.json"))))
     _write(joinpath(h.dir, "contract.json"), contract)
     c0 = hold_counters(spd)
     _write(joinpath(h.dir, "held.json"), Dict("counters" => c0, "pid" => getpid(), "t0_iter" => spd.iter))
