@@ -2,11 +2,11 @@
     "parent_dir": {
         "after": {
             "n_files": 17,
-            "sha256": "090a76ac5ee45ceabb6bb5a2e4a566c2e4808d0fe9c27e1a3e1d1d4d4e6f58b2"
+            "sha256": "0684798b23d573e3827a68d3decb7688048f6e3a49b1bfb3d577c8560ef8217c"
         },
         "before": {
             "n_files": 17,
-            "sha256": "090a76ac5ee45ceabb6bb5a2e4a566c2e4808d0fe9c27e1a3e1d1d4d4e6f58b2"
+            "sha256": "0684798b23d573e3827a68d3decb7688048f6e3a49b1bfb3d577c8560ef8217c"
         }
     },
     "host_write_probe_exists": false,
@@ -118,7 +118,7 @@
             ],
             "branch": "N1",
             "sim_steps": 1030,
-            "wall_s": 277.66355991363525,
+            "wall_s": 272.62922716140747,
             "checkpoint_id": "t0",
             "zone_ladder_fired": 0,
             "outcome": "COMPLETE",
@@ -127,10 +127,10 @@
                 "decision:FAULT:Replace": 1,
                 "decision:BATTERY:SwapBattery": 1
             },
-            "cpu_s": 279.6618170000006,
+            "cpu_s": 274.89957000000004,
             "unknown_cause": null,
             "terminal_reason": "project_complete",
-            "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/N1"
+            "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/fixtures_fix/N1"
         },
         "f_task_delete": {
             "contract_post": "reject",
@@ -148,8 +148,7 @@
             "effect_reasons": [
                 "required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
                 "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
-                "install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)",
-                "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+                "install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)"
             ],
             "outcome": "UNKNOWN",
             "engine_steps": 0,
@@ -171,7 +170,6 @@
                 "intra_engine_step_changes: only step boundaries are snapshotted",
                 "worker_export_forgery: task_state/audit are written inside the worker process",
                 "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
-                "cache_only_fields: env.scene_tree",
                 "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
             ],
             "gate_reasons": [
@@ -190,7 +188,6 @@
                 "effects reject: required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
                 "effects reject: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
                 "effects reject: install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)",
-                "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
                 "post-enactment contract: required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
                 "post-enactment contract: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
                 "post-enactment contract: install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)"
@@ -466,7 +463,7 @@
             "effects": "noop_equivalent",
             "contract_post_reasons": [
             ],
-            "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied",
+            "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures_fix/HOST_WRITE_PROBE.txt\": Permission denied",
             "status": "threw",
             "gate": "accept",
             "contract_terminal_reasons": [
@@ -484,7 +481,7 @@
             "harness_log": [
             ],
             "reasons": [
-                "enactment threw: body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied"
+                "enactment threw: body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures_fix/HOST_WRITE_PROBE.txt\": Permission denied"
             ]
         },
         "f_residue_a": {
@@ -756,7 +753,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -773,7 +770,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -790,7 +787,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -807,7 +804,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -824,7 +821,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -841,7 +838,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -858,7 +855,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -875,7 +872,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -892,7 +889,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -909,7 +906,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -926,7 +923,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -943,7 +940,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -960,7 +957,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -977,7 +974,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -998,7 +995,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -1015,7 +1012,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842
@@ -1032,7 +1029,7 @@
                 "stop": false,
                 "respec_hold": false,
                 "iter": 1,
-                "rvo_wrapper": "9963669653569508558",
+                "rvo_wrapper": "15358263809473413319",
                 "sim_step": 0,
                 "rvo_doSteps": 1,
                 "cache_clock": 13842

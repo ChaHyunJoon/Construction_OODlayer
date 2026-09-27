@@ -6,6 +6,7 @@
  },
  "easy_preserved": 14,
  "easy_raw_regressions": [
+  "tractor_zone_s26",
   "xwing_all3_s14",
   "xwing_zone_s9"
  ],
@@ -546,7 +547,7 @@
      "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
      "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
      "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "reject",
     "eligible": false,
@@ -562,7 +563,7 @@
      "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
-     "effects reject: unsupported_effect:controller_state_mutated_by_code:env.agent_policies",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
      "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
@@ -1406,7 +1407,7 @@
   },
   "tractor_zone_s26": {
    "GP": {
-    "candidate_outcome": "COMPLETE",
+    "candidate_outcome": "REJECTED",
     "checks_run": [
      "graph_acyclic",
      "assignment_completeness",
@@ -1422,9 +1423,11 @@
      "assignment",
      "schedule_graph"
     ],
-    "effect_reasons": [],
-    "effects": "accept",
-    "eligible": true,
+    "effect_reasons": [
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "unsupported",
+    "eligible": false,
     "engine_steps": 0,
     "exception": null,
     "gate": "accept",
@@ -1433,7 +1436,9 @@
     "impl": "zrv_legacy_chain!",
     "iter": 937,
     "outcome": "COMPLETE",
-    "reasons": [],
+    "reasons": [
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
     "status": "enacted",
     "terminal_reason": "project_complete"
    },
@@ -1464,14 +1469,16 @@
     "outcome": "COMPLETE"
    },
    "noop_matches_b0": true,
-   "raw_regression": false,
+   "raw_regression": true,
    "selection": {
     "baseline_outcome": "COMPLETE",
     "candidate_outcomes": {
-     "legacy-tractor_zone_s26": "COMPLETE"
+     "legacy-tractor_zone_s26": "REJECTED"
     },
     "classification": "baseline_complete",
-    "raw_regressions": [],
+    "raw_regressions": [
+     "legacy-tractor_zone_s26"
+    ],
     "selected": "noop",
     "selected_proposal_id": null
    },
@@ -2208,7 +2215,7 @@
      "assignment"
     ],
     "effect_reasons": [
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "unsupported",
     "eligible": false,
@@ -2221,7 +2228,7 @@
     "iter": 1838,
     "outcome": "COMPLETE",
     "reasons": [
-     "effects unsupported: unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "status": "enacted",
     "terminal_reason": "project_complete"
@@ -2479,7 +2486,7 @@
     ],
     "effect_reasons": [
      "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "reject",
     "eligible": false,
@@ -2493,7 +2500,7 @@
     "outcome": "FAIL_WITHIN_BUDGET",
     "reasons": [
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
-     "effects reject: unsupported_effect:controller_state_mutated_by_code:env.agent_policies",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
      "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
      "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
@@ -2755,7 +2762,7 @@
      "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
      "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
      "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "reject",
     "eligible": false,
@@ -2774,7 +2781,7 @@
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
-     "effects reject: unsupported_effect:controller_state_mutated_by_code:env.agent_policies",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
@@ -3364,7 +3371,7 @@
     ],
     "effect_reasons": [
      "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "reject",
     "eligible": false,
@@ -3378,7 +3385,7 @@
     "outcome": "FAIL_WITHIN_BUDGET",
     "reasons": [
      "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
-     "effects reject: unsupported_effect:controller_state_mutated_by_code:env.agent_policies",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
      "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
      "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
      "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
@@ -3767,7 +3774,7 @@
   },
   "xwing_zone_s4": {
    "GP": {
-    "candidate_outcome": "REJECTED",
+    "candidate_outcome": "UNKNOWN",
     "checks_run": [],
     "closed": null,
     "contract_post": null,
@@ -3794,7 +3801,8 @@
      "enactment partial: pre_step_violation@1: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)",
      "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2)",
      "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5)",
-     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)"
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)",
+     "native: no terminal.json in cand-1 \u2014 obligation not checkable"
     ],
     "status": "partial",
     "terminal_reason": "none"
@@ -3921,7 +3929,7 @@
    "selection": {
     "baseline_outcome": "FAIL_WITHIN_BUDGET",
     "candidate_outcomes": {
-     "legacy-xwing_zone_s4": "REJECTED"
+     "legacy-xwing_zone_s4": "UNKNOWN"
     },
     "classification": "unsolved",
     "raw_regressions": [],
@@ -4135,7 +4143,7 @@
      "assignment"
     ],
     "effect_reasons": [
-     "unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "unsupported",
     "eligible": false,
@@ -4148,7 +4156,7 @@
     "iter": 1770,
     "outcome": "COMPLETE",
     "reasons": [
-     "effects unsupported: unsupported_effect:controller_state_mutated_by_code:env.agent_policies"
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "status": "enacted",
     "terminal_reason": "project_complete"
@@ -4258,7 +4266,7 @@
     ],
     "effects": "noop_equivalent",
     "eligible": false,
-    "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures_fix/HOST_WRITE_PROBE.txt\": Permission denied",
+    "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied",
     "gate": "accept",
     "gate_reasons": [],
     "outcome": "UNKNOWN",
@@ -4424,7 +4432,8 @@
     "effect_reasons": [
      "required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
      "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
-     "install_pose_changed:lift_goal!=assembly\u2218relative:ConstructionBots.ObjectID(9)"
+     "install_pose_changed:lift_goal!=assembly\u2218relative:ConstructionBots.ObjectID(9)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
     ],
     "effects": "reject",
     "eligible": false,

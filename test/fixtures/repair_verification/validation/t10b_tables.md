@@ -33,7 +33,7 @@
 | tractor_all3_s26 | COMPLETE 287 | COMPLETE 287 | enacted/accept/accept | COMPLETE 287 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
 | tractor_all3_s30 | COMPLETE 287 | COMPLETE 287 | enacted/accept/accept | COMPLETE 287 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
 | tractor_zone_s14 | COMPLETE 287 | COMPLETE 287 | enacted/noop_equivalent/accept | COMPLETE 287 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
-| tractor_zone_s26 | COMPLETE 287 | COMPLETE 287 | enacted/unsupported/accept | COMPLETE 287 | accept 0 | REJECTED | noop/baseline_complete | True | -  | -  |
+| tractor_zone_s26 | COMPLETE 287 | COMPLETE 287 | enacted/accept/accept | COMPLETE 287 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
 | tractor_zone_s30 | COMPLETE 287 | COMPLETE 287 | enacted/accept/accept | COMPLETE 287 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
 | xwing_all3_s12 | COMPLETE 684 | COMPLETE 684 | enacted/accept/accept | COMPLETE 684 | accept 0 | COMPLETE | noop/baseline_complete | False | -  | -  |
 | xwing_all3_s14 | COMPLETE 684 | COMPLETE 684 | enacted/unsupported/accept | COMPLETE 684 | accept 0 | REJECTED | noop/baseline_complete | True | -  | -  |
