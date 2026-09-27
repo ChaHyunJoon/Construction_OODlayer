@@ -311,6 +311,11 @@ end
     sv = S.Supervision(par; outroot = joinpath(root, "out"), launch_env = Dict{String,String}(), limits = lim0)
     @test_throws KeyError S.supervise_episode!(sv; proposals = [Dict{String,Any}("no_proposal_id" => 1)])
     @test seen == ["verify", "exit"] && !process_running(par.process)
+    # I3(최종 리뷰): 예외 경로에서도 도달한 상태까지의 supervision.json 이 남는다(옛 코드는 성공 경로에서만 썼다)
+    sj = joinpath(sv.outroot, "supervision.json")
+    @test isfile(sj)
+    j = BR._json(sj)
+    @test j["state"] == "IDENTITY_VERIFIED" && j["complete"] === false && occursin("KeyError", j["harness_error"])
 end
 
 @testset "[12] campaign 인증 정지 뒤의 사건은 인증 불가로 돈다" begin
@@ -328,6 +333,75 @@ end
     @test !process_running(par.process)
 end
 
+
+@testset "[14] select! 배선: 폐기된 후보(throw)는 REJECTED — select_repair/candidate_outcome 만이 아니라 supervisor 경로로(최종 리뷰)" begin
+    root = mktempdir()
+    par, seen = fake_live_parent(joinpath(root, "parent"))
+    sv = S.Supervision(par; outroot = joinpath(root, "out"), launch_env = Dict("DEMO_SEED" => "1"), limits = lim0)
+    thrown = prop("t7_thrown!", "function t7_thrown!(env)\n    error(\"x\")\nend"; id = "p-thrown", k = 1)
+    slow = prop("t7_slow!", "function t7_slow!(env)\n    return :a\nend"; id = "p-slow", k = 2)
+    try
+        S.verify_identity!(sv); S.freeze!(sv, [thrown, slow])
+        sv.baseline = (report = rollout("noop", :COMPLETE), violations = String[], checks = Dict{String,Any}(),
+                       dir = mkpath(joinpath(sv.outroot, "noop")), supervisor = (wall_s = 30.0, cpu_s = 1.0, timed_out = false))
+        # rollouts! 대역: 둘 다 continuation 없이 끝나 rollout 은 UNKNOWN — 하나는 worker 가 집행을 **폐기**(throw),
+        # 하나는 wall 에 죽음(:timeout — 폐기가 아니라 인증 공백)
+        c(status) = (; exec = (judged = (enactment = (status = status,),),), dir = nothing, native = String[], file_ok = true,
+                     eligible = false, outcome = :UNKNOWN, reasons = ["stub"])
+        sv.candidates["p-thrown"] = c(:threw); sv.candidates["p-slow"] = c(:timeout)
+        S.advance!(sv, :BASELINE_AND_CANDIDATE_ROLLOUTS; why = "stub")
+        S.select!(sv)
+    finally
+        S.retire!(sv)
+    end
+    @test sv.selection.classification === :baseline_complete
+    @test sv.selection.candidate_outcomes == Dict("p-thrown" => :REJECTED, "p-slow" => :UNKNOWN)
+    @test sv.selection.raw_regressions == ["p-thrown"]                              # 폐기 = raw regression 에 든다
+    @test any(==("candidate_unknown: p-slow"), sv.selection.reasons)
+end
+
+@testset "[15] shadow dry commit(I4) — t1 명령은 exit, 기록은 match/mismatch, 원래 세계는 NOOP 재개" begin
+    @test S.precommit_command(true; dry = false) == "activate"
+    @test S.precommit_command(true; dry = true) == "exit"                          # 통과해도 dry 는 활성화하지 않는다
+    @test S.precommit_command(false; dry = false) == "exit" && S.precommit_command(false; dry = true) == "exit"
+    cert = Dict{String,Any}("post_state_sha256" => "ps")
+    held = Dict{String,Any}("post_state_sha256" => "ps", "t1_iter" => 4)
+    ok = (; dry = true, stale = String[], precommit = (; ok = true, reasons = String[], mismatches = String[], held),
+          exec = nothing, ctl_err = nothing, exit_sent = true, activated = false)
+    r = S.dry_commit_record(ok, cert; commit_id = "commit-dry", dir = "/x")
+    @test r["status"] == "match" && r["match"] === true && r["post_state_match"] === true && r["t1_iter"] == 4 && r["exit_sent"] === true
+    bad = merge(ok, (; precommit = (; ok = false, reasons = ["commit enactment differs from the verification branch: trace_digest"],
+                                    mismatches = ["trace_digest"], held)))
+    r = S.dry_commit_record(bad, cert; commit_id = "commit-dry", dir = "/x")
+    @test r["status"] == "mismatch" && r["match"] === false && r["mismatches"] == ["trace_digest"] && !isempty(r["reasons"])
+    @test S.dry_commit_record(merge(ok, (; stale = ["campaign certification stopped"], precommit = nothing)), cert;
+                              commit_id = "c", dir = "/x")["status"] == "stale_certificate"
+    @test S.dry_commit_record(merge(ok, (; activated = true)), cert; commit_id = "c", dir = "/x")["status"] == "VIOLATION_activated"
+    # shadow_fork! 경로: dry 를 부르고 기록을 싣고, 전이는 그대로(SHADOW_NOT_COMMITTED → SELECTED_NOOP), 부모 명령은 없다
+    root = mktempdir()
+    par, seen = fake_live_parent(joinpath(root, "parent"))
+    sv = S.Supervision(par; outroot = joinpath(root, "out"), launch_env = Dict{String,String}(), limits = lim0)
+    called = Ref(0)
+    try
+        sv.selection = R.SelectionReport("t0", :FAIL_WITHIN_BUDGET, :tool, "p1", :rescued, String[], Dict("p1" => :COMPLETE), ["stub"])
+        sv.state = :SELECTED_TOOL
+        S.shadow_fork!(sv; dry = sv -> (called[] += 1; Dict{String,Any}("status" => "match", "match" => true)))
+    finally
+        S.retire!(sv)
+    end
+    @test called[] == 1 && sv.dry_commit["status"] == "match" && S.summary(sv)["dry_commit"]["match"] === true
+    @test [t["to"] for t in sv.transitions][2:end] == ["SHADOW_NOT_COMMITTED", "SELECTED_NOOP"]
+    @test occursin("dry commit replay: match", sv.transitions[2]["why"])
+    # dry 가 던지면 기록(harness_error)으로 남고 shadow 는 계속된다
+    sv2 = S.Supervision(fake_live_parent(joinpath(root, "p2"))[1]; outroot = joinpath(root, "out2"), launch_env = Dict{String,String}(), limits = lim0)
+    try
+        sv2.selection = sv.selection; sv2.state = :SELECTED_TOOL
+        S.shadow_fork!(sv2; dry = _ -> error("boom"))
+    finally
+        S.retire!(sv2)
+    end
+    @test sv2.dry_commit["status"] == "harness_error" && sv2.state === :SELECTED_NOOP
+end
 
 @testset "[13] 기준 NOOP 이 UNKNOWN(wall_timeout) → 인증 불가 NOOP 재개, 위반 아님, campaign 정지 없음(T7 fix)" begin
     root = mktempdir()

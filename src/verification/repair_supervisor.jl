@@ -485,8 +485,16 @@ function activation_state(; acked::Bool, handover, ctl_err)
 end
 
 """
+    precommit_command(ok; dry) -> "activate" | "exit"
+
+t1 에서 commit worker 에 보낼 명령(순수). `activate` 는 precommit 통과 **이고** dry 가 아닐 때뿐이다 — shadow 의 dry commit(I4)은
+통과해도 `exit` 를 보낸다(원래 세계는 그대로, worker 는 버린다).
+"""
+precommit_command(ok::Bool; dry::Bool) = (ok && !dry) ? "activate" : "exit"
+
+"""
     commit_tool!(; parent, cert, cert_sha, raw, verif_dir, outroot, commit_id, launch_env, limits, campaign_dir,
-                 extra_env = Dict()) -> NamedTuple
+                 extra_env = Dict(), dry = false) -> NamedTuple
 
 §7.3 의 commit. 부모는 t0 에서 기다리는 채로 두고:
 1. stale 검사(`stale_reasons` — 부모 verify 포함). stale 이면 worker 를 띄우지 않는다.
@@ -496,10 +504,12 @@ end
 4. 활성 worker 가 끝나면 `replay_compare(verif_dir, commit_dir)` + 결과 대조. 어긋나면 `:replay_mismatch` + campaign 정지.
 반환 `(; report::CommitReport, activated, precommit, handover, exec, replay)`. **부모 재개는 하지 않는다** — 활성화가 안 됐으면
 호출자(`commit!`)가 NOOP 로 재개한다(`activated == false` ⟹ 부모는 t0 에서 그대로다).
+I4 `dry = true`(shadow 의 dry commit): 같은 1–2 와 3 의 `precommit_check` 까지 하고 결과와 무관하게 `exit` 를 보낸다(활성화·부모 은퇴
+없음). 반환 `(; dry = true, stale, precommit, exec, ctl_err, exit_sent, activated)` — `dry_commit_record` 가 기록으로 만든다.
 """
 function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, raw::AbstractDict, verif_dir::AbstractString,
                       outroot::AbstractString, commit_id::AbstractString, launch_env::AbstractDict, limits::BR.Limits,
-                      campaign_dir::AbstractString, extra_env::AbstractDict = Dict{String,String}())
+                      campaign_dir::AbstractString, extra_env::AbstractDict = Dict{String,String}(), dry::Bool = false)
     contract = _json(joinpath(parent.dir, "contract.json"))
     cid = String(contract["checkpoint_id"])
     pid = String(get(raw, "proposal_id", "?"))
@@ -507,10 +517,12 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
         (; report = R.CommitReport(cid, pid, cert_sha, commit_id, :aborted_resumed_noop, post, nothing, reasons),
            activated = false, extra...)
     stale = stale_reasons(cert, current_facts(parent.dir, BR.parent_command(parent, "verify"); campaign_dir); raw)
+    dry && !isempty(stale) && return (; dry = true, stale, precommit = nothing, exec = nothing, ctl_err = nothing,
+                                       exit_sent = false, activated = false)
     isempty(stale) || return abort(["stale_certificate: " * s for s in stale]; precommit = nothing, handover = nothing,
                                    exec = nothing, replay = nothing)
     cdir = joinpath(outroot, commit_id)
-    pre = Ref{Any}(nothing); hand = Ref{Any}(nothing); ctl_err = Ref{Any}(nothing); acked = Ref(false)
+    pre = Ref{Any}(nothing); hand = Ref{Any}(nothing); ctl_err = Ref{Any}(nothing); acked = Ref(false); exited = Ref(false)
     tick = function (p)
         (pre[] === nothing && ctl_err[] === nothing && isfile(joinpath(cdir, "held_t1.json"))) || return nothing
         w = (dir = cdir, process = p)
@@ -518,14 +530,14 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
             sleep(0.3)                                     # worker 가 held 파일을 다 쓰고 닫을 시간
             d = precommit_check(parent.dir, verif_dir, cdir, cert)
             pre[] = d
-            if d.ok
+            if precommit_command(d.ok; dry) == "activate"
                 BR.parent_command(w, "activate"; timeout_s = 120)
                 acked[] = true                             # 🔴 이 순간부터 commit worker 가 세계다(아래가 던져도)
                 pr = retire_parent!(parent; why = "commit worker $(commit_id) activated")
                 hand[] = handover_record(; contract, commit_dir = cdir, commit_id, held = d.held, cert_sha, parent_retire = pr)
                 _write(cdir * ".active_world.json", hand[])
             else
-                BR.parent_command(w, "exit"; timeout_s = 120)
+                BR.parent_command(w, "exit"; timeout_s = 120); exited[] = true
             end
         catch e
             e isa InterruptException && rethrow()
@@ -539,6 +551,8 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
     x = TX.execute_tool_isolated(; parent_dir = parent.dir, raw, outroot, branch_id = commit_id, launch_env, limits,
                                  mode = "commit", extra_env, on_tick = tick)
     d = pre[]
+    dry && return (; dry = true, stale, precommit = d, exec = x, ctl_err = ctl_err[], exit_sent = exited[],
+                   activated = acked[] || worker_acked_activate(cdir))
     act = activation_state(; acked = acked[] || worker_acked_activate(cdir), handover = hand[], ctl_err = ctl_err[])
     if act.activated && process_running(parent.process)      # 세계가 둘이 되지 않게 — ack 뒤 은퇴가 실패했던 경우
         retire_parent!(parent; why = "commit worker $(commit_id) acknowledged activate; parent still alive")
@@ -574,6 +588,38 @@ function commit_tool!(; parent, cert::AbstractDict, cert_sha::AbstractString, ra
             activated = true, precommit = d, handover = hand[], exec = x, replay = rp)
 end
 
+"""
+    dry_commit_record(r, cert; commit_id, dir) -> Dict
+
+I4 dry commit 결과의 기록(supervision·episode 기록에 실린다). `status`:
+`match`(t1 에서 trusted 판정·검증 분기 대조·certificate 대조 전부 통과) · `mismatch`(사유 목록) · `not_reached_t1`(등록·집행 폐기 등) ·
+`stale_certificate`(worker 를 띄우지 않았다) · `control_error` · `VIOLATION_activated`(dry 인데 활성화 ack — 있어서는 안 된다).
+"""
+function dry_commit_record(r, cert::AbstractDict; commit_id::AbstractString, dir::AbstractString)
+    d = r.precommit
+    reasons = String[]
+    status = if r.activated
+        push!(reasons, "the dry commit worker acknowledged activate — must never happen in shadow"); "VIOLATION_activated"
+    elseif !isempty(r.stale)
+        append!(reasons, ["stale_certificate: " * x for x in r.stale]); "stale_certificate"
+    elseif r.ctl_err !== nothing
+        push!(reasons, "commit control error: $(r.ctl_err)"); "control_error"
+    elseif d === nothing
+        push!(reasons, "commit worker never reached t1 (registration/enactment failed or discarded)")
+        r.exec === nothing || (r.exec.judged === nothing ? append!(reasons, ["gate: $(x)" for x in r.exec.reasons]) :
+                                                            append!(reasons, ["commit: $(x)" for x in r.exec.judged.reasons]))
+        "not_reached_t1"
+    else
+        append!(reasons, d.reasons); d.ok ? "match" : "mismatch"
+    end
+    held = d === nothing ? Dict{String,Any}() : d.held
+    return Dict{String,Any}("status" => status, "match" => status == "match", "reasons" => reasons,
+        "commit_worker" => commit_id, "dir" => dir, "exit_sent" => r.exit_sent,
+        "precommit_ok" => d === nothing ? nothing : d.ok, "mismatches" => d === nothing ? String[] : d.mismatches,
+        "t1_iter" => get(held, "t1_iter", nothing),
+        "post_state_match" => d === nothing ? nothing : get(held, "post_state_sha256", nothing) == cert["post_state_sha256"])
+end
+
 # =============================================================================
 # 한 사건의 supervisor (상태 기계를 실제로 도는 쪽)
 # =============================================================================
@@ -597,6 +643,7 @@ mutable struct Supervision
     commit::Any
     replay::Any
     resumed::Bool
+    dry_commit::Any                              # I4: shadow dry commit 기록(dry_commit_record) 또는 nothing
 end
 
 """
@@ -610,7 +657,7 @@ function Supervision(parent; outroot::AbstractString, launch_env::AbstractDict, 
     mkpath(outroot)
     sv = Supervision(parent, String(outroot), String(campaign_dir), Dict{String,String}(String(k) => String(v) for (k, v) in launch_env),
                      limits, :CAPTURED, Dict{String,Any}[], _json(joinpath(parent.dir, "contract.json")), Dict{String,Any}(),
-                     String[], Dict{String,Any}[], nothing, Dict{String,Any}(), nothing, nothing, "", nothing, nothing, false)
+                     String[], Dict{String,Any}[], nothing, Dict{String,Any}(), nothing, nothing, "", nothing, nothing, false, nothing)
     push!(sv.transitions, Dict{String,Any}("to" => "CAPTURED", "why" => "parent holding at t0 iter=$(sv.contract["t0_iter"])", "at" => time()))
     return sv
 end
@@ -800,19 +847,44 @@ function summary(sv::Supervision)
             "reasons" => c.report.reasons, "activated" => c.activated, "commit_worker" => c.report.commit_worker_id),
         "replay" => sv.replay === nothing ? nothing : Dict{String,Any}("kind" => String(sv.replay.kind),
             "match" => sv.replay.match, "reasons" => sv.replay.reasons, "certified" => sv.replay.certified,
-            "violation" => sv.replay.violation))
+            "violation" => sv.replay.violation),
+        "dry_commit" => sv.dry_commit)
 end
 
 """
-    shadow_fork!(sv) -> Supervision
+    dry_commit!(sv; commit_id = "commit-dry") -> Dict
 
-T8 `ZONE_REPAIR_VERIFICATION=shadow`: 도구가 선택됐으면(SELECTED_TOOL) commit 하지 않고 SHADOW_NOT_COMMITTED → SELECTED_NOOP —
-선택·certificate 는 남고 원래 세계는 NOOP 로 계속된다(관측 전용). 그 밖의 상태면 아무것도 안 한다.
+I4(최종 리뷰): shadow 에서 선택된 도구의 commit **재생**을 확인한다 — 새 commit worker 가 같은 checkpoint 에서 certificate 가 묶은 같은
+source·params·calls 를 검증 경로로 다시 집행하고 t1 에서 멈추면, `precommit_check`(trusted 판정 + 검증 분기 enactment 대조 +
+certificate 대조)를 돌리고 `activate` 대신 **`exit`** 를 보낸다(`commit_tool!(; dry = true)`). 원래 세계는 t0 에서 그대로 기다린다.
 """
-function shadow_fork!(sv::Supervision)
+function dry_commit!(sv::Supervision; commit_id::AbstractString = "commit-dry")
+    pid = sv.selection.selected_proposal_id
+    f = only(filter(f -> f["proposal_id"] == pid, sv.frozen))
+    r = commit_tool!(; parent = sv.parent, cert = sv.certificate, cert_sha = sv.certificate_sha256, raw = f["raw"],
+                     verif_dir = sv.candidates[pid].dir, outroot = sv.outroot, commit_id, launch_env = sv.launch_env,
+                     limits = sv.limits, campaign_dir = sv.campaign_dir, dry = true)
+    return dry_commit_record(r, sv.certificate; commit_id, dir = joinpath(sv.outroot, commit_id))
+end
+
+"""
+    shadow_fork!(sv; dry = dry_commit!) -> Supervision
+
+T8 `ZONE_REPAIR_VERIFICATION=shadow`: 도구가 선택됐으면(SELECTED_TOOL) 활성화하지 않고 SHADOW_NOT_COMMITTED → SELECTED_NOOP —
+선택·certificate 는 남고 원래 세계는 NOOP 로 계속된다(관측 전용). I4: 그 전에 dry commit(`dry`, 시험은 대역을 넘긴다)으로 commit
+재생을 확인해 `sv.dry_commit` 에 싣는다 — 결과(match/mismatch)가 세계를 바꾸지 않는다. 그 밖의 상태면 아무것도 안 한다.
+"""
+function shadow_fork!(sv::Supervision; dry = dry_commit!)
     sv.state === :SELECTED_TOOL || return sv
+    sv.dry_commit = try
+        dry(sv)
+    catch e
+        e isa InterruptException && rethrow()
+        Dict{String,Any}("status" => "harness_error", "match" => false, "reasons" => [first(sprint(showerror, e), 400)])
+    end
     advance!(sv, :SHADOW_NOT_COMMITTED; why = "shadow mode: observation only — the verified tool " *
-             "$(sv.selection.selected_proposal_id) is recorded (selection + certificate), not enacted")
+             "$(sv.selection.selected_proposal_id) is recorded (selection + certificate), not enacted; " *
+             "dry commit replay: $(get(sv.dry_commit, "status", "?"))")
     return advance!(sv, :SELECTED_NOOP; why = "shadow → the untouched original world continues with NOOP")
 end
 
@@ -826,6 +898,7 @@ NOOP 로 재개한다. 🔴 어떤 경로로 끝나든(예외 포함) `finally` 
 function supervise_episode!(sv::Supervision; proposals::AbstractVector, noise_floor::Union{Bool,Symbol} = :measure,
                             max_candidates::Int = 4, commit_id::AbstractString = "commit", shadow::Bool = false,
                             pre_gaps::AbstractVector = String[], baseline_override::Union{Nothing,Symbol} = nothing)
+    err = Ref{Any}(nothing)
     try
         # T8: 결정 **전**에 잰 신원 gap(서비스·source·API·schema·권한 지문 — `RepairRuntime.decision_gaps`)은 신원 확인
         #     앞에 넣는다 → CERTIFICATION_UNAVAILABLE(rollout 없음, NOOP).
@@ -836,8 +909,17 @@ function supervise_episode!(sv::Supervision; proposals::AbstractVector, noise_fl
         select!(sv; baseline_override)
         shadow && shadow_fork!(sv)
         commit!(sv; commit_id)
-        _write(joinpath(sv.outroot, "supervision.json"), summary(sv))
+    catch e
+        err[] = first(sprint(showerror, e), 500)
+        rethrow()
     finally
+        # I3(최종 리뷰): 어떤 경로로 끝나든 도달한 상태까지의 기록을 남긴다(옛 코드는 성공 경로에서만 썼다).
+        try
+            _write(joinpath(sv.outroot, "supervision.json"),
+                   merge(summary(sv), Dict{String,Any}("harness_error" => err[], "complete" => err[] === nothing)))
+        catch we
+            println("[zrv-supervisor] could not write supervision.json: ", first(sprint(showerror, we), 200))
+        end
         retire!(sv)
     end
     return sv
