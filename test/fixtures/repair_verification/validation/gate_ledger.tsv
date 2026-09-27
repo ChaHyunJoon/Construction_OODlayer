@@ -43,3 +43,22 @@ T9	julia +lts --project=. test/repair_service_episode.jl results/2026-09-24-zone
 T6	julia +lts --project=. test/repair_tool_execution_branch.jl tractor zone 26 results/2026-09-24-zone-repair-verification/validation/gates/ep/t6-branch	0	Test Summary:                                          | Pass  Total  Time T6 tool execution on branch workers (tractor zone s26) |   38     38  0.1s 	20:07:39	2718	a2475e22
 T7	julia +lts --project=. test/repair_commit_replay.jl tractor zone 26 results/2026-09-24-zone-repair-verification/validation/gates/ep/t7-commit	0	Test Summary:                                             | Pass  Total  Time T7 commit worker / activation / replay (tractor zone s26) |   31     31  0.1s 	20:07:39	2990	a2475e22
 T8	julia +lts --project=. test/repair_runtime_wiring.jl episodes results/2026-09-24-zone-repair-verification/validation/gates/ep/t8-ep .superpowers/sdd/2026-09-24-zone-repair-verification/logs/t10b/off-final	0	Test Summary:                                   | Pass  Total      Time T8 runtime wiring — episodes (tractor zone s26) |   72     72  58m39.5s 	20:07:39	3523	a2475e22
+[final-fix] T1	julia +lts --project=. test/repair_contracts.jl	0	manifest: 보완 없음, 템플릿의 빈 값은 거절, 역사값 표기 |    7      7  0.1s 변이: schema 에서 budget 필수를 빼면 빈 budget 게이트가 빨개진다 |    3      3  0.0s 	22:02:41	5	9022c22a
+[final-fix] T1	.venv/bin/python -m pytest -q -p no:cacheprovider src/respec/llm_service/test_repair_contract_schemas.py	0	61 passed in 0.20s 	22:02:46	0	9022c22a
+[final-fix] T9	.venv/bin/python -m pytest -q -p no:cacheprovider src/respec/llm_service	0	602 passed, 5 skipped, 2 warnings in 18.90s 	22:02:46	21	9022c22a
+[final-fix] T4	julia +lts --project=. test/repair_rollout.jl	0	T4 rollout / sandbox / validator |   74     74  48.4s 	22:03:07	52	9022c22a
+[final-fix] T7	julia +lts --project=. test/repair_selection.jl	0	T7 selection / certificate / commit decisions (pure) |  183    183  24.3s 	22:03:59	28	9022c22a
+[final-fix] T8	julia +lts --project=. test/repair_runtime_wiring.jl	0	T8 runtime wiring (fast, no CB) |  140    140  1m32.4s 	22:04:27	96	9022c22a
+[final-fix] T9	julia +lts --project=. test/repair_service_slot.jl	0	T9 service slot (fast, no CB, no service) |  102    102  18.1s 	22:06:03	21	9022c22a
+[final-fix] T4	julia +lts --project=. test/config_digest_inventory.jl	0	(5) Phase 3 의 새 손잡이는 result 로 등록돼 있다 |    4      4  0.0s (6) 드라이버가 명시 export 하는 기본값 = render 경로의 **실효** 기본값 |   26     26  0.4s 	22:06:24	6	9022c22a
+[final-fix] T10a	.venv/bin/python -m pytest -q -p no:cacheprovider tools/monitor/grid/test_campaign.py	0	38 passed in 0.13s 	22:06:30	0	9022c22a
+[final-fix] T10a	.venv/bin/python -m pytest -q -p no:cacheprovider tools/monitor/grid/test_analyze_b0.py	0	3 passed in 0.03s 	22:06:30	1	9022c22a
+[final-fix] T2	julia +lts --project=. test/repair_checkpoint.jl	0	T2 전체 checkpoint |   83     83  1m28.8s 	22:06:31	187	9022c22a
+[final-fix] T3	julia +lts --project=. test/repair_checkpoint_replay.jl	0	T3 RVO·재생 게이트 |   23     23  4m17.5s 	22:09:38	353	9022c22a
+[final-fix] T6	julia +lts --project=. test/repair_tool_execution.jl	0	T6 tool execution (in-process, colored_8x8) |   96     96  7m37.1s 	22:15:31	470	9022c22a
+[final-fix] T6	julia +lts --project=. test/repair_resync.jl	0	T6 resync measurement / scope |   17     17  1m44.5s 	22:23:21	114	9022c22a
+final-fix	julia +lts --project=. -e 'using Pkg; Pkg.test()'	1	4212 pass / 0 fail / 1 error (Demo Gurobi 10009 license - baseline)	22:02	761	9022c22a
+final-fix	T8_EPISODES=E1,E1b julia +lts --project=. test/repair_runtime_wiring.jl episodes logs/final-fix/t8-ep logs/t10b/off-final	0	55/55 (stream = off byte-identical; E1b dry commit status=match)	22:02	1941	9022c22a
+final-fix	julia +lts --project=. test/repair_service_episode.jl logs/final-fix/t9-general logs/t10b/off-final general	0	42/42 (fake LM, provider calls 0, max_tokens_seen=[16000], decision_gaps=[])	22:15	1700	9022c22a
+final-fix	T8_EPISODES=E1 julia +lts --project=. test/repair_runtime_wiring.jl episodes logs/final-fix/t8-e1-final logs/t10b/off-final	0	42/42 (parent launch.json hold_max_s == derived budget)	22:51	977	9be7dfd7
+final-fix	T8_SKIP_RENDER=1 julia +lts --project=. test/repair_runtime_wiring.jl	0	127/127	22:50	18	9be7dfd7

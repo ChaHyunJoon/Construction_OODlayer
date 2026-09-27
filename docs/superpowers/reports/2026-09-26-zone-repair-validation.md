@@ -54,3 +54,19 @@
 - fixture/고장: `results/…/validation/t10b/fixtures/` → git `validation/t10b_fixtures.json`
 - 자연 선택: `results/…/validation/t10b/natural/<key>/zr/` → git `validation/natural_<key>.json`
 - B0: `results/…/validation/b0_v2/` → git `test/fixtures/repair_verification/b0/`
+
+## 5. 최종 리뷰 수정 파 (2026-09-26, 커밋 `44734343`..`9be7dfd7`) — T11 전 무엇이 바뀌었나
+
+전부 무료(가짜 LM·fixture), 실제 서비스 기동 0. 상세·명령·변이는 `.superpowers/sdd/2026-09-24-zone-repair-verification/final-fix-report.md`.
+
+| 항목 | 바뀐 것 | 확인 |
+|---|---|---|
+| C1 출력 상한 | 존 복구 레인의 호출당 출력 상한이 **필수** 예산 값(`ZONE_REPAIR_MAX_OUTPUT_TOKENS` / manifest `budget.model.max_output_tokens_per_call`) — 서비스 전역 `DSPY_MAX_TOKENS`(2000) 기본값을 쓰지 않는다. 모든 호출이 그 값을 싣고, 상한을 다 못 싣는 호출은 줄이지 않고 **거절**. 총 token 한도 < 호출 4 × 상한(+ 알려진 프롬프트 추정)이면 호출 0 으로 거절 | lane pytest 4 신규 · 가짜 LM 에피소드 `max_tokens_seen == ["16000"]` |
+| I2 도장 | 후보 provenance(와 응답)에 model·model_type·temperature·cache·num_retries·max_retries(실제 부른 LM 사본에서)·max_output_tokens·prompt_digest(단계별)·world_interface_sha256. 레인은 chat 전송 고정(아니면 호출 0 거절). `decision_gaps` 가 cache off·chat·재시도 0·상한=예산·세계 인터페이스 digest=트리 파일을 요구 | wiring [15] · lane pytest · 에피소드 `decision_gaps == []` |
+| I3 예산 | 부모 hold 한도·바깥 시한을 한 예산에서 유도(`RepairRuntime.episode_budget`; 기본 값으로 hold 31800 s·에피소드 39000 s — 옛 고정 6 h 보다 길다). observe·preflight worker 는 짧은 wall(`ZONE_REPAIR_PREFLIGHT_WALL_S`, 필수). `supervision.json` 은 예외 경로에서도 쓴다. campaign 은 러너 `--check` 의 `[budget]` 줄을 쓰고 `RUN_TIMEOUT` 이 그 값을 못 깎는다 | wiring [14][16] · selection [11] · campaign pytest · E1/T9 기록 |
+| I4 dry commit | shadow 에서 도구가 선택되면 새 commit worker 가 같은 checkpoint·같은 source/params/calls 를 t1 까지 재집행 → `precommit_check` → `activate` 대신 `exit`. 결과는 `supervision.dry_commit` | E1b(강제 선택) `status=match`·명령 `["exit"]`·원래 세계 스트림 = off 바이트 동일 · selection [15] |
+| I5 경계 | 분기 읽기 목록에서 `.git`·`~/.gitconfig`·`~/.config/git`·`~/.julia` 전체 제거(패키지·artifact·컴파일 캐시·julia 설치만). 코드 지문은 부모가 쓴 `code_identity.json` 을 분기가 **파일 digest 로 검증**해 얻는다(변조 = 신원 불일치) | rollout [1][5](샌드박스 julia: git 지문 unknown · 신원 파일 일치 · 변조 거절) · 에피소드 분기 복원 |
+| 서술자 실패 | `observe_t0!` 가 삼키던 서술자 예외를 `descriptors_error` 로 기록·에피소드 기록에 | slot [12] |
+| select! 배선 | 폐기(throw) 후보가 supervisor `select!` 경로에서 REJECTED(raw regression) | selection [14](변이로 빨강) |
+
+**아직 아닌 것**: UDP·pathname unix socket·같은 프로세스 override 는 여전히 못 막는다(enforce 닫힘 그대로 — 읽을 수 있는 비밀이 줄었을 뿐). 프롬프트 token 추정은 3 문자/토큰 보수 근사다. dry commit 은 fixture 강제 선택 1판(E1b)에서만 쟀다 — mid-episode t0 에서는 미측정.
