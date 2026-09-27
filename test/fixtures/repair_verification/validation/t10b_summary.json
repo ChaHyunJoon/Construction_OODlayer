@@ -1,0 +1,4777 @@
+{
+ "counts": {
+  "anchor": 4,
+  "drift": 13,
+  "easy_kept": 14
+ },
+ "easy_preserved": 14,
+ "easy_raw_regressions": [
+  "tractor_zone_s26",
+  "xwing_all3_s14",
+  "xwing_zone_s9"
+ ],
+ "episodes": {
+  "tractor_all3_s14": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1031,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 1031,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_all3_s14",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 1031,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 1031,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s14": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s2": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "cache_resume"
+    ],
+    "closed": 287,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "effect_classes": [
+     "geometry"
+    ],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 995,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "error": null,
+    "iter": 995,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_zone_blocked_work_geometry!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(7)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(8)"
+    ],
+    "error": null,
+    "iter": 995,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_zone_blocked_work_geometry!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "anchor_classification": "historical_complete_but_contract_invalid",
+   "b0_t10a": {
+    "closed": 170,
+    "iter": 5484,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "gaps": [],
+   "group": "anchor",
+   "key": "tractor_all3_s2",
+   "legacy": {
+    "a2_class": "a2_rescue",
+    "b0_closed": 170,
+    "b0_iter": 5484,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 170,
+    "contract_violations": [
+     "required_tasks_not_closed:80:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(14),ConstructionBots.TemplatedID{CloseBuildStep}(15),ConstructionBots.TemplatedID{CloseBuildStep}(16)"
+    ],
+    "iter": 5484,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s2": "REJECTED"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s23": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [],
+    "closed": 278,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 3955,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 278,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "error": null,
+    "iter": 3955,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_navigation_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_navigation_goal_reachability!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 278,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "error": null,
+    "iter": 3955,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_navigation_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 278,
+    "iter": 3955,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_all3_s23",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 278,
+    "b0_iter": 3955,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 278,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 278,
+    "contract_violations": [
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "iter": 3955,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s23": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s26": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1064,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 1064,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_all3_s26",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 1064,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 1064,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s26": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s29": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 238,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "effect_classes": [
+     "geometry",
+     "assignment"
+    ],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 3887,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 238,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "error": null,
+    "iter": 3887,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_unfinished_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 238,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "error": null,
+    "iter": 3887,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_unfinished_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 221,
+    "iter": 3768,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_all3_s29",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 221,
+    "b0_iter": 3768,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 238,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 221,
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "iter": 3768,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s29": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s30": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment",
+     "schedule_graph"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "prune_isolated_unreachable_goal!",
+    "iter": 5041,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 3028,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_all3_s30",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 3028,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": null,
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 3028,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s30": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_all3_s9": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [],
+    "closed": 221,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "effect_classes": [],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 5905,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_required_goal_reachability!:failure"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_required_goal_reachability!:failure"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 221,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "error": null,
+    "iter": 5905,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_required_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_required_goal_reachability!:failure"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_required_goal_reachability!:failure"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 221,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "error": null,
+    "iter": 5905,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_required_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 221,
+    "iter": 5905,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_all3_s9",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 221,
+    "b0_iter": 5905,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 221,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 221,
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "iter": 5905,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_all3_s9": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s14": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 884,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_zone_s14",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 884,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s14": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s16": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 287,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "effect_classes": [
+     "geometry",
+     "assignment"
+    ],
+    "effect_reasons": [
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 936,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects reject: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "effects reject: transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)",
+     "post-enactment contract: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "post-enactment contract: transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)",
+     "terminal contract: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "terminal contract: transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_work_goal!:threw(relocation violated schedule-transform consistency)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_work_goal!:threw(no unfinished blocked transport navigation goal found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "error": null,
+    "iter": 936,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_work_goal!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_work_goal!:threw(relocation violated schedule-transform consistency)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_work_goal!:threw(no unfinished blocked transport navigation goal found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(14)",
+     "transport_anchor_moved:deposit:ConstructionBots.ObjectID(14)"
+    ],
+    "error": null,
+    "iter": 936,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_work_goal!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "anchor_classification": "historical_complete_but_contract_invalid",
+   "b0_t10a": {
+    "closed": 232,
+    "iter": 5586,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "gaps": [],
+   "group": "anchor",
+   "key": "tractor_zone_s16",
+   "legacy": {
+    "a2_class": "a2_rescue",
+    "b0_closed": 232,
+    "b0_iter": 5586,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 232,
+    "contract_violations": [
+     "required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "iter": 5586,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s16": "REJECTED"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s23": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 279,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 3867,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "terminal contract: required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_goal_geometry!:threw(scene-tree destination relocation did not take effect)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_goal_geometry!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 279,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "error": null,
+    "iter": 3867,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_exclusion_blocked_goal_geometry!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_goal_geometry!:threw(scene-tree destination relocation did not take effect)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_goal_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 279,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)",
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "error": null,
+    "iter": 3867,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_exclusion_blocked_goal_geometry!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 278,
+    "iter": 3861,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_zone_s23",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 278,
+    "b0_iter": 3861,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 279,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 278,
+    "contract_violations": [
+     "required_tasks_not_closed:7:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1),ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2),ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(2)"
+    ],
+    "iter": 3861,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s23": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s26": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment",
+     "schedule_graph"
+    ],
+    "effect_reasons": [
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "unsupported",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 937,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_zone_s26",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 884,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": true,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s26": "REJECTED"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [
+     "legacy-tractor_zone_s26"
+    ],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s29": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 221,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "effect_classes": [
+     "geometry",
+     "assignment"
+    ],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "relocate_zone_blocked_goals!",
+    "iter": 3578,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_goals!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 221,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "error": null,
+    "iter": 3578,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_zone_blocked_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_zone_blocked_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 221,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "error": null,
+    "iter": 3578,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_zone_blocked_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 221,
+    "iter": 3573,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_zone_s29",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 221,
+    "b0_iter": 3573,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_rejected",
+    "historical_a2_closed": 221,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 221,
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "iter": 3573,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s29": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s30": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 287,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 880,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 287,
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "tractor_zone_s30",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 287,
+    "b0_iter": 884,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 287,
+    "contract_violations": [],
+    "iter": 884,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s30": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s5": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "cache_resume"
+    ],
+    "closed": 287,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "effect_classes": [
+     "geometry"
+    ],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 804,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_work_geometry!:threw(no unfinished blocked navigation node was found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "error": null,
+    "iter": 804,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_blocked_work_geometry!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_work_geometry!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_work_geometry!:threw(no unfinished blocked navigation node was found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 287,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(12)"
+    ],
+    "error": null,
+    "iter": 804,
+    "other_violations": [],
+    "outcome": "COMPLETE",
+    "registration_footprint": [
+     "ConstructionBots.relocate_blocked_work_geometry!"
+    ],
+    "terminal_reason": "project_complete",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "anchor_classification": "historical_complete_but_contract_invalid",
+   "b0_t10a": {
+    "closed": 180,
+    "iter": 3602,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "gaps": [],
+   "group": "anchor",
+   "key": "tractor_zone_s5",
+   "legacy": {
+    "a2_class": "a2_rescue",
+    "b0_closed": 180,
+    "b0_iter": 3602,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 287,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 180,
+    "contract_violations": [
+     "required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+    ],
+    "iter": 3602,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s5": "REJECTED"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "tractor_zone_s9": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 239,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "effect_classes": [
+     "geometry",
+     "assignment"
+    ],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 3592,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "post-enactment contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "terminal contract: required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:threw(one or more affected navigation goals remain blocked)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 239,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "error": null,
+    "iter": 3592,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_blocked_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:threw(one or more affected navigation goals remain blocked)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 239,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.ObjectID(15)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(82)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(81)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(5)",
+     "required_tasks_not_closed:34:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{OpenBuildStep}(16)"
+    ],
+    "error": null,
+    "iter": 3592,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_blocked_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 305,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 221,
+    "iter": 3573,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "tractor_zone_s9",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 221,
+    "b0_iter": 3573,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 239,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 221,
+    "contract_violations": [
+     "required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ],
+    "iter": 3573,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-tractor_zone_s9": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s12": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1866,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1866,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_all3_s12",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1866,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1866,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s12": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s14": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "unsupported",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1838,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1831,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_all3_s14",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1831,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1831,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": true,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s14": "REJECTED"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [
+     "legacy-xwing_all3_s14"
+    ],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s17": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 610,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4798,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:threw(no unfinished zone-blocked navigation goals were found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4798,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_unfinished_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_unfinished_goals!:threw(no unfinished zone-blocked navigation goals were found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4798,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_unfinished_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4600,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_all3_s17",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4600,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 610,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4600,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s17": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s25": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 610,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4603,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_navigation_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_navigation_goals!:threw(no blocked unfinished navigation goal was found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4603,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_navigation_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_navigation_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_navigation_goals!:threw(no blocked unfinished navigation goal was found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4603,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_navigation_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4601,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_all3_s25",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4601,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 610,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4601,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s25": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s27": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 2482,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 2482,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_all3_s27",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 2482,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 2482,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s27": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s7": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 311,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "required_tasks_not_closed:255:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4002,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "terminal contract: required_tasks_not_closed:255:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_navigation_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_navigation_goals!:threw(no blocked unfinished navigation goals found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 311,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "required_tasks_not_closed:255:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17)"
+    ],
+    "error": null,
+    "iter": 4002,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_blocked_navigation_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_navigation_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_blocked_navigation_goals!:threw(no blocked unfinished navigation goals found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 311,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(180)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(150)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(11)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(100)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(43)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(248)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(16)",
+     "robot_not_at_team_slot:ConstructionBots.ActionID(79)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(32)",
+     "required_tasks_not_closed:255:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17)"
+    ],
+    "error": null,
+    "iter": 4002,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_blocked_navigation_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4627,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_all3_s7",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4627,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 311,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4627,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s7": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s8": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [],
+    "closed": 446,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:162:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(20),ConstructionBots.TemplatedID{CloseBuildStep}(27)"
+    ],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4349,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:162:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(20),ConstructionBots.TemplatedID{CloseBuildStep}(27)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:threw(No scene-layout replanning and collision-validation capability is available in the world interface)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 446,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:162:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(20),ConstructionBots.TemplatedID{CloseBuildStep}(27)"
+    ],
+    "error": null,
+    "iter": 4349,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_blocked_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:threw(No scene-layout replanning and collision-validation capability is available in the world interface)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 446,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:162:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(20),ConstructionBots.TemplatedID{CloseBuildStep}(27)"
+    ],
+    "error": null,
+    "iter": 4349,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.restore_blocked_goal_reachability!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 446,
+    "iter": 4349,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_all3_s8",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 446,
+    "b0_iter": 4349,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 446,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 446,
+    "contract_violations": [
+     "required_tasks_not_closed:162:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(11),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(20),ConstructionBots.TemplatedID{CloseBuildStep}(27)"
+    ],
+    "iter": 4349,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s8": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_all3_s9": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment",
+     "schedule_graph"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1913,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1969,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_all3_s9",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1969,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1969,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_all3_s9": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s12": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1770,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_zone_s12",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1770,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s12": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s14": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment",
+     "schedule_graph"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "prune_blocked_nonessential_work!",
+    "iter": 1784,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_zone_s14",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1770,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": null,
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s14": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s17": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 610,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4497,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_inaccessible_work_areas!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_inaccessible_work_areas!:threw(no unreachable unfinished navigation goal was found)"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4497,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_inaccessible_work_areas!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_inaccessible_work_areas!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_inaccessible_work_areas!:threw(no unreachable unfinished navigation goal was found)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(212)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(3)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4497,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_inaccessible_work_areas!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4484,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_zone_s17",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4484,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "noop_retried",
+    "historical_a2_closed": 610,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4484,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s17": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s25": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [],
+    "closed": 609,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4481,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 609,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4481,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_exclusion_blocked_work_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_exclusion_blocked_work_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2{Float64, Vector{Float64}}}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 609,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4481,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_exclusion_blocked_work_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4481,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_zone_s25",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4481,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 609,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4481,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s25": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s27": {
+   "GP": {
+    "candidate_outcome": "COMPLETE",
+    "checks_run": [],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": true,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1770,
+    "outcome": "COMPLETE",
+    "reasons": [],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_zone_s27",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1770,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": false,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s27": "COMPLETE"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s4": {
+   "GP": {
+    "candidate_outcome": "UNKNOWN",
+    "checks_run": [],
+    "closed": null,
+    "contract_post": null,
+    "contract_post_reasons": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": null,
+    "effect_classes": [],
+    "effect_reasons": [
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5)",
+     "transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": "pre_step_violation@1: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)",
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": null,
+    "outcome": "UNKNOWN",
+    "reasons": [
+     "enactment partial: pre_step_violation@1: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5); transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)",
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(2)",
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(5)",
+     "effects reject: transport_skipped:tugo_goal!=deposit_config:ConstructionBots.AssemblyID(8)",
+     "native: no terminal.json in cand-1 \u2014 obligation not checkable"
+    ],
+    "status": "partial",
+    "terminal_reason": "none"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_zone_blocked_goal_reachability!:threw(Required coherent scene-tree goal relocation capability is not exposed)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_zone_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": null,
+    "contract_unsupported": null,
+    "contract_violations": null,
+    "error": {
+     "exception_type": "ErrorException",
+     "kind": "exception",
+     "message": "engine advanced inside the branch action without the trusted adapter ([\"rvo_doSteps\"]) \u2014 continuation batch alignment would be wrong; unsupported in T4",
+     "stage": "action"
+    },
+    "iter": null,
+    "other_violations": [],
+    "outcome": "UNKNOWN",
+    "registration_footprint": [],
+    "terminal_reason": "none",
+    "total": null,
+    "unknown_cause": "worker_crash"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_zone_blocked_goal_reachability!:threw(Required coherent scene-tree goal relocation capability is not exposed)"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "restore_zone_blocked_goal_reachability!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": null,
+    "contract_unsupported": null,
+    "contract_violations": null,
+    "error": {
+     "exception_type": "ErrorException",
+     "kind": "exception",
+     "message": "engine advanced inside the branch action without the trusted adapter ([\"rvo_doSteps\"]) \u2014 continuation batch alignment would be wrong; unsupported in T4",
+     "stage": "action"
+    },
+    "iter": null,
+    "other_violations": [],
+    "outcome": "UNKNOWN",
+    "registration_footprint": [],
+    "terminal_reason": "none",
+    "total": null,
+    "unknown_cause": "worker_crash"
+   },
+   "anchor_classification": "L0_not_replayable (worker_crash: engine advanced inside the branch action without the trusted adapter ([\"rvo_doSteps\"]) \u2014 continuation batch alignment would be wrong; unsupported in T4)",
+   "b0_t10a": {
+    "closed": 670,
+    "iter": 6689,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "gaps": [],
+   "group": "anchor",
+   "key": "xwing_zone_s4",
+   "legacy": {
+    "a2_class": "a2_rescue",
+    "b0_closed": 670,
+    "b0_iter": 6689,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 670,
+    "contract_violations": [
+     "required_tasks_not_closed:14:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{OpenBuildStep}(27),ConstructionBots.TemplatedID{ProjectComplete}(1),ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}(1)"
+    ],
+    "iter": 6689,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s4": "UNKNOWN"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s7": {
+   "GP": {
+    "candidate_outcome": "FAIL_WITHIN_BUDGET",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 610,
+    "contract_post": "reject",
+    "contract_post_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)"
+    ],
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 4571,
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "effects reject: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "post-enactment contract: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "terminal contract: robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "terminal contract: required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "L0": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_required_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_required_goals!:success"
+      ],
+      "verdict": "admit"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4571,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_required_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "L1": {
+    "action": [
+     {
+      "body": 1,
+      "n": 1,
+      "partial": true,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_required_goals!:threw(MethodError: no method matching get_center(::Pair{Symbol, LazySets.Ball2Module.Ball2}))"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 1,
+      "inserted": "resync_scene_to_schedule!"
+     },
+     {
+      "body": 2,
+      "n": 2,
+      "partial": false,
+      "resolve": "not_needed_surface",
+      "resume": "issued",
+      "steps": [
+       "relocate_unreachable_required_goals!:success"
+      ],
+      "verdict": "admit"
+     },
+     {
+      "body": 2,
+      "inserted": "resync_scene_to_schedule!"
+     }
+    ],
+    "closed": 610,
+    "contract_unsupported": [],
+    "contract_violations": [
+     "robot_not_at_team_slot:ConstructionBots.ActionID(214)->ConstructionBots.TemplatedID{Tuple{FormTransportUnit, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}}}(5)",
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "error": null,
+    "iter": 4571,
+    "other_violations": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "registration_footprint": [
+     "ConstructionBots.relocate_unreachable_required_goals!"
+    ],
+    "terminal_reason": "no_progress_limit",
+    "total": 712,
+    "unknown_cause": "contract_violation"
+   },
+   "b0_t10a": {
+    "closed": 609,
+    "iter": 4574,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "classification": "historical harm not reproducible under pi0 (drift): B0 FAIL",
+   "gaps": [],
+   "group": "drift",
+   "key": "xwing_zone_s7",
+   "legacy": {
+    "a2_class": "a2_regression",
+    "b0_closed": 609,
+    "b0_iter": 4574,
+    "b0_outcome": "FAIL_WITHIN_BUDGET",
+    "enact_retry": "retried",
+    "historical_a2_closed": 610,
+    "historical_a2_status": "incomplete"
+   },
+   "noop": {
+    "closed": 609,
+    "contract_violations": [
+     "required_tasks_not_closed:49:ConstructionBots.TemplatedID{CloseBuildStep}(27),ConstructionBots.TemplatedID{CloseBuildStep}(28),ConstructionBots.TemplatedID{CloseBuildStep}(29),ConstructionBots.TemplatedID{CloseBuildStep}(30),ConstructionBots.TemplatedID{CloseBuildStep}(31)"
+    ],
+    "iter": 4574,
+    "outcome": "FAIL_WITHIN_BUDGET"
+   },
+   "noop_matches_b0": true,
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s7": "FAIL_WITHIN_BUDGET"
+    },
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  },
+  "xwing_zone_s9": {
+   "GP": {
+    "candidate_outcome": "REJECTED",
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "closed": 684,
+    "contract_post": "accept",
+    "contract_post_reasons": [],
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "unsupported",
+    "eligible": false,
+    "engine_steps": 0,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "harness_resync": [],
+    "impl": "zrv_legacy_chain!",
+    "iter": 1770,
+    "outcome": "COMPLETE",
+    "reasons": [
+     "effects unsupported: unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "L0": null,
+   "L1": null,
+   "b0_t10a": {
+    "closed": 684,
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "easy_preserved": true,
+   "gaps": [],
+   "group": "easy_kept",
+   "key": "xwing_zone_s9",
+   "legacy": {
+    "a2_class": "a2_easy_success",
+    "b0_closed": 684,
+    "b0_iter": 1770,
+    "b0_outcome": "COMPLETE",
+    "enact_retry": "retried",
+    "historical_a2_closed": 684,
+    "historical_a2_status": "complete"
+   },
+   "noop": {
+    "closed": 684,
+    "contract_violations": [],
+    "iter": 1770,
+    "outcome": "COMPLETE"
+   },
+   "noop_matches_b0": true,
+   "raw_regression": true,
+   "selection": {
+    "baseline_outcome": "COMPLETE",
+    "candidate_outcomes": {
+     "legacy-xwing_zone_s9": "REJECTED"
+    },
+    "classification": "baseline_complete",
+    "raw_regressions": [
+     "legacy-xwing_zone_s9"
+    ],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP"
+   ],
+   "t0_iter": 1
+  }
+ },
+ "fixtures": {
+  "N1": {
+   "outcome": "COMPLETE",
+   "sim_steps": 1030,
+   "terminal_reason": "project_complete"
+  },
+  "N1_vs_parent": {
+   "divergent_columns": [],
+   "first_divergent_iter": null,
+   "last_common_iter": 1030,
+   "n_common": 1030,
+   "only_a": 0,
+   "only_b": 0
+  },
+  "episode": "tractor__all3__s14",
+  "host_write_probe_exists": false,
+  "parent_dir_unchanged": true,
+  "parent_terminal": {
+   "closed": 287,
+   "complete": true,
+   "iter": 1031,
+   "terminal_reason": "project_complete"
+  },
+  "parent_verifies_ok": true,
+  "results": {
+   "f_complete_forge": {
+    "checks_run": [],
+    "contract_post": "reject",
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "status_forgery:closed:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)@seg1:action_start->action_end",
+     "closed_before_predecessor:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)<-ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "COMPLETE",
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "f_host_write_dynamic": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": false,
+    "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "threw",
+    "terminal_reason": "none"
+   },
+   "f_host_write_static": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": null,
+    "effect_classes": [],
+    "effect_reasons": null,
+    "effects": null,
+    "eligible": false,
+    "exception": null,
+    "gate": "reject",
+    "gate_reasons": [
+     "reject:forbidden_api:open,write"
+    ],
+    "outcome": null,
+    "status": "gate_rejected",
+    "terminal_reason": null
+   },
+   "f_override_dynamic": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "runtime_override:ConstructionBots.project_complete"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": "runtime_override:ConstructionBots.project_complete",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "unobservable",
+    "terminal_reason": "none"
+   },
+   "f_override_static": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": null,
+    "effect_classes": [],
+    "effect_reasons": null,
+    "effects": null,
+    "eligible": false,
+    "exception": null,
+    "gate": "reject",
+    "gate_reasons": [
+     "reject:forbidden_api:Core,eval"
+    ],
+    "outcome": null,
+    "status": "gate_rejected",
+    "terminal_reason": null
+   },
+   "f_partial": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": false,
+    "exception": "body threw: t10b boom after moving the build",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "partial",
+    "terminal_reason": "none"
+   },
+   "f_residue_a": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "runtime_override:ConstructionBots.zrv_t10b_residue_marker"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": "runtime_override:ConstructionBots.zrv_t10b_residue_marker",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "unobservable",
+    "terminal_reason": "none"
+   },
+   "f_residue_b1": {
+    "checks_run": [],
+    "contract_post": "accept",
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "noop_equivalent: no state diff, no scheduled work, no engine progress"
+    ],
+    "effects": "noop_equivalent",
+    "eligible": true,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "COMPLETE",
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "f_residue_b2": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [],
+    "effects": null,
+    "eligible": false,
+    "exception": "reject:impl_unknown_call:zrv_t10b_residue_marker \u2014 \uc774 \uc774\ub984\uc758 \ud568\uc218\ub294 \uc774 \ubaa8\ub4c8\uc5d0\ub3c4 Base \uc5d0\ub3c4 \uc5c6\ub2e4. \uc138\uacc4 \uc778\ud130\ud398\uc774\uc2a4\uac00 \uc2e4\uc81c\ub85c \uac00\uc9c4 \ud568\uc218\ub9cc \ubd80\ub974\uac70\ub098, \ub3c4\uc6b0\ubbf8\ub97c body **\uc548\ucabd**\uc5d0 \uc815\uc758\ud558\ub77c",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "registration_rejected",
+    "terminal_reason": "none"
+   },
+   "f_resource_forge": {
+    "checks_run": [],
+    "contract_post": "accept",
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "resource"
+    ],
+    "effect_reasons": [
+     "resource_forgery:spare_created:ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)@seg1:action_start->action_end"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "COMPLETE",
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "f_task_delete": {
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "graph_acyclic",
+     "cache_resume"
+    ],
+    "contract_post": "reject",
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "geometry",
+     "schedule_graph"
+    ],
+    "effect_reasons": [
+     "required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
+     "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
+     "install_pose_changed:lift_goal!=assembly\u2218relative:ConstructionBots.ObjectID(9)",
+     "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "enacted",
+    "terminal_reason": "none"
+   },
+   "f_zone_blink": {
+    "checks_run": [],
+    "contract_post": null,
+    "contract_terminal": null,
+    "contract_terminal_reasons": [],
+    "effect_classes": [],
+    "effect_reasons": [
+     "zone_removed:zone_blk_1"
+    ],
+    "effects": "reject",
+    "eligible": false,
+    "exception": "pre_step_violation@1: zone_removed:zone_blk_1",
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "UNKNOWN",
+    "status": "partial",
+    "terminal_reason": "none"
+   },
+   "mixed": {
+    "checks_run": [
+     "scene_resync",
+     "geometry_residual",
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "contract_post": "accept",
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+    ],
+    "effect_classes": [
+     "geometry",
+     "assignment",
+     "schedule_graph",
+     "resource"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": false,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "reassign": {
+    "checks_run": [
+     "graph_acyclic",
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_availability"
+    ],
+    "contract_post": "accept",
+    "contract_terminal": "reject",
+    "contract_terminal_reasons": [
+     "required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+    ],
+    "effect_classes": [
+     "assignment",
+     "schedule_graph",
+     "resource"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": false,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "status": "enacted",
+    "terminal_reason": "no_progress_limit"
+   },
+   "resource_job": {
+    "checks_run": [],
+    "contract_post": "accept",
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "resource"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "COMPLETE",
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   },
+   "temp_edge": {
+    "checks_run": [
+     "assignment_completeness",
+     "cache_resume",
+     "assignment_resolve",
+     "assignment_availability"
+    ],
+    "contract_post": "accept",
+    "contract_terminal": "accept",
+    "contract_terminal_reasons": [],
+    "effect_classes": [
+     "assignment"
+    ],
+    "effect_reasons": [],
+    "effects": "accept",
+    "eligible": true,
+    "exception": null,
+    "gate": "accept",
+    "gate_reasons": [],
+    "outcome": "COMPLETE",
+    "status": "enacted",
+    "terminal_reason": "project_complete"
+   }
+  }
+ },
+ "natural": {
+  "tractor_zone_s16": {
+   "active_world": "original_world",
+   "baseline": "FAIL_WITHIN_BUDGET",
+   "candidates": {
+    "t10b-shift-1": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+     ]
+    },
+    "t10b-shift-2": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+     ]
+    },
+    "t10b-shift-3": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+     ]
+    },
+    "t10b-shift-4": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:46:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+     ]
+    }
+   },
+   "certification": "available",
+   "exit_code": 1,
+   "gaps": [],
+   "replay": {
+    "certified": true,
+    "kind": "noop",
+    "match": true,
+    "reasons": [],
+    "violation": false
+   },
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "t10b-shift-1": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-2": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-3": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-4": "FAIL_WITHIN_BUDGET"
+    },
+    "checkpoint_id": "t0",
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "reasons": [
+     "no candidate COMPLETE with task/transaction checks passed"
+    ],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP",
+    "PRECOMMIT_VERIFIED",
+    "COMMITTED",
+    "REPLAY_CHECKED"
+   ]
+  },
+  "tractor_zone_s5": {
+   "active_world": "original_world",
+   "baseline": "FAIL_WITHIN_BUDGET",
+   "candidates": {
+    "t10b-shift-1": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+     ]
+    },
+    "t10b-shift-2": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+     ]
+    },
+    "t10b-shift-3": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+     ]
+    },
+    "t10b-shift-4": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:75:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+     ]
+    }
+   },
+   "certification": "available",
+   "exit_code": 1,
+   "gaps": [],
+   "replay": {
+    "certified": true,
+    "kind": "noop",
+    "match": true,
+    "reasons": [],
+    "violation": false
+   },
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "t10b-shift-1": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-2": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-3": "FAIL_WITHIN_BUDGET",
+     "t10b-shift-4": "FAIL_WITHIN_BUDGET"
+    },
+    "checkpoint_id": "t0",
+    "classification": "unsolved",
+    "raw_regressions": [],
+    "reasons": [
+     "no candidate COMPLETE with task/transaction checks passed"
+    ],
+    "selected": "noop",
+    "selected_proposal_id": null
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_NOOP",
+    "PRECOMMIT_VERIFIED",
+    "COMMITTED",
+    "REPLAY_CHECKED"
+   ]
+  },
+  "tractor_zone_s9": {
+   "active_world": "original_world",
+   "baseline": "FAIL_WITHIN_BUDGET",
+   "candidates": {
+    "t10b-shift1m-1": {
+     "eligible": true,
+     "outcome": "COMPLETE",
+     "reasons": []
+    },
+    "t10b-shift1m-2": {
+     "eligible": false,
+     "outcome": "FAIL_WITHIN_BUDGET",
+     "reasons": [
+      "terminal contract: required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+     ]
+    },
+    "t10b-shift1m-3": {
+     "eligible": true,
+     "outcome": "COMPLETE",
+     "reasons": []
+    },
+    "t10b-shift1m-4": {
+     "eligible": true,
+     "outcome": "COMPLETE",
+     "reasons": []
+    }
+   },
+   "certification": "available",
+   "exit_code": 1,
+   "gaps": [],
+   "replay": {
+    "certified": true,
+    "kind": "noop",
+    "match": true,
+    "reasons": [],
+    "violation": false
+   },
+   "selection": {
+    "baseline_outcome": "FAIL_WITHIN_BUDGET",
+    "candidate_outcomes": {
+     "t10b-shift1m-1": "COMPLETE",
+     "t10b-shift1m-2": "FAIL_WITHIN_BUDGET",
+     "t10b-shift1m-3": "COMPLETE",
+     "t10b-shift1m-4": "COMPLETE"
+    },
+    "checkpoint_id": "t0",
+    "classification": "rescued",
+    "raw_regressions": [],
+    "reasons": [],
+    "selected": "tool",
+    "selected_proposal_id": "t10b-shift1m-1"
+   },
+   "states": [
+    "CAPTURED",
+    "IDENTITY_VERIFIED",
+    "PROPOSALS_FROZEN",
+    "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "SELECTED_TOOL",
+    "SHADOW_NOT_COMMITTED",
+    "SELECTED_NOOP",
+    "PRECOMMIT_VERIFIED",
+    "COMMITTED",
+    "REPLAY_CHECKED"
+   ]
+  }
+ },
+ "noop_matches_b0": 31,
+ "problems": [],
+ "schema": "zrv-t10b-summary/1"
+}

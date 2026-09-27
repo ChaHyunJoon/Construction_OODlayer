@@ -1,0 +1,1056 @@
+{
+    "parent_dir": {
+        "after": {
+            "n_files": 17,
+            "sha256": "090a76ac5ee45ceabb6bb5a2e4a566c2e4808d0fe9c27e1a3e1d1d4d4e6f58b2"
+        },
+        "before": {
+            "n_files": 17,
+            "sha256": "090a76ac5ee45ceabb6bb5a2e4a566c2e4808d0fe9c27e1a3e1d1d4d4e6f58b2"
+        }
+    },
+    "host_write_probe_exists": false,
+    "parent_terminal": {
+        "terminal_reason": "project_complete",
+        "complete": true,
+        "closed": 287,
+        "iter": 1031
+    },
+    "results": {
+        "f_override_dynamic": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+                "runtime_override:ConstructionBots.project_complete"
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+            ],
+            "exception": "runtime_override:ConstructionBots.project_complete",
+            "status": "unobservable",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment unobservable: runtime_override:ConstructionBots.project_complete",
+                "effects reject: runtime_override:ConstructionBots.project_complete"
+            ]
+        },
+        "f_zone_blink": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+                "zone_removed:zone_blk_1"
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+            ],
+            "exception": "pre_step_violation@1: zone_removed:zone_blk_1",
+            "status": "partial",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment partial: pre_step_violation@1: zone_removed:zone_blk_1",
+                "effects reject: zone_removed:zone_blk_1"
+            ]
+        },
+        "N1": {
+            "checks": {
+                "worker_claimed": {
+                    "terminal_reason": "project_complete",
+                    "complete": true
+                },
+                "env_scrubbed_after_import": [
+                ],
+                "identity": {
+                    "mismatched_blocks": [
+                    ],
+                    "dispatch_guard": [
+                    ],
+                    "rvo_ties": [
+                        [
+                        ]
+                    ],
+                    "fingerprint_mismatches": [
+                    ]
+                },
+                "claim_agrees": true,
+                "leftover_processes": 0
+            },
+            "violations": [
+            ],
+            "branch": "N1",
+            "sim_steps": 1030,
+            "wall_s": 277.66355991363525,
+            "checkpoint_id": "t0",
+            "zone_ladder_fired": 0,
+            "outcome": "COMPLETE",
+            "general_recovery": {
+                "decision:ZONE:NOOP": 1,
+                "decision:FAULT:Replace": 1,
+                "decision:BATTERY:SwapBattery": 1
+            },
+            "cpu_s": 279.6618170000006,
+            "unknown_cause": null,
+            "terminal_reason": "project_complete",
+            "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/N1"
+        },
+        "f_task_delete": {
+            "contract_post": "reject",
+            "checks_run": [
+                "scene_resync",
+                "geometry_residual",
+                "graph_acyclic",
+                "cache_resume"
+            ],
+            "effect_classes": [
+                "geometry",
+                "schedule_graph"
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+                "required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
+                "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
+                "install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)",
+                "unverifiable:derived_plan_changed_by_code:env.agent_policies"
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+                "required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
+                "deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
+                "install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)"
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "cache_only_fields: env.scene_tree",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+                {
+                    "by": "harness",
+                    "resolve_detail": "no newly unassigned task in the real diff",
+                    "resume_detail": "",
+                    "action": "post_body_envelope!",
+                    "resolve": "not_needed_surface",
+                    "resume": "issued"
+                }
+            ],
+            "reasons": [
+                "effects reject: required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
+                "effects reject: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
+                "effects reject: install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)",
+                "effects reject: unverifiable:derived_plan_changed_by_code:env.agent_policies",
+                "post-enactment contract: required_task_deleted:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.ObjectID}}(9)",
+                "post-enactment contract: deposit_discontinuous:deposit_cargo_goal!=lift_start:ConstructionBots.ObjectID(9)",
+                "post-enactment contract: install_pose_changed:lift_goal!=assembly∘relative:ConstructionBots.ObjectID(9)"
+            ]
+        },
+        "mixed": {
+            "contract_post": "accept",
+            "checks_run": [
+                "scene_resync",
+                "geometry_residual",
+                "graph_acyclic",
+                "assignment_completeness",
+                "cache_resume",
+                "assignment_availability"
+            ],
+            "effect_classes": [
+                "geometry",
+                "assignment",
+                "schedule_graph",
+                "resource"
+            ],
+            "contract_terminal": "reject",
+            "effect_reasons": [
+            ],
+            "outcome": "FAIL_WITHIN_BUDGET",
+            "engine_steps": 0,
+            "effects": "accept",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+                "required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+            ],
+            "eligible": false,
+            "terminal_reason": "no_progress_limit",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "precedence_vacuous: 142/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+                {
+                    "by": "harness",
+                    "action": "resync_scene_to_schedule!",
+                    "when": "after_body",
+                    "snapped": [
+                        "ConstructionBots.AssemblyID(8)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(8)",
+                        "ConstructionBots.ObjectID(17)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(17)",
+                        "ConstructionBots.ObjectID(18)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(18)",
+                        "ConstructionBots.AssemblyID(7)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(7)",
+                        "ConstructionBots.ObjectID(19)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(19)",
+                        "ConstructionBots.ObjectID(20)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(20)",
+                        "ConstructionBots.AssemblyID(6)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(6)",
+                        "ConstructionBots.ObjectID(12)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(12)",
+                        "ConstructionBots.ObjectID(13)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(13)",
+                        "ConstructionBots.AssemblyID(5)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(5)",
+                        "ConstructionBots.ObjectID(14)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(14)",
+                        "ConstructionBots.ObjectID(15)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(15)",
+                        "ConstructionBots.AssemblyID(4)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(4)",
+                        "ConstructionBots.ObjectID(6)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(6)",
+                        "ConstructionBots.ObjectID(7)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(7)",
+                        "ConstructionBots.ObjectID(9)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(9)",
+                        "ConstructionBots.ObjectID(8)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(8)",
+                        "ConstructionBots.ObjectID(10)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(10)",
+                        "ConstructionBots.AssemblyID(3)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(3)",
+                        "ConstructionBots.ObjectID(11)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(11)",
+                        "ConstructionBots.AssemblyID(2)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}(2)",
+                        "ConstructionBots.ObjectID(16)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(16)",
+                        "ConstructionBots.AssemblyID(1)",
+                        "ConstructionBots.ObjectID(3)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(3)",
+                        "ConstructionBots.ObjectID(1)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(1)",
+                        "ConstructionBots.ObjectID(2)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(2)",
+                        "ConstructionBots.ObjectID(5)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(5)",
+                        "ConstructionBots.ObjectID(4)",
+                        "ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.ObjectID}}(4)"
+                    ]
+                },
+                {
+                    "by": "harness",
+                    "resolve_detail": "no newly unassigned task in the real diff",
+                    "resume_detail": "",
+                    "action": "post_body_envelope!",
+                    "resolve": "not_needed_surface",
+                    "resume": "issued"
+                }
+            ],
+            "reasons": [
+                "terminal contract: required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+            ]
+        },
+        "f_residue_b2": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": null,
+            "contract_post_reasons": [
+            ],
+            "exception": "reject:impl_unknown_call:zrv_t10b_residue_marker — 이 이름의 함수는 이 모듈에도 Base 에도 없다. 세계 인터페이스가 실제로 가진 함수만 부르거나, 도우미를 body **안쪽**에 정의하라",
+            "status": "registration_rejected",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment registration_rejected: reject:impl_unknown_call:zrv_t10b_residue_marker — 이 이름의 함수는 이 모듈에도 Base 에도 없다. 세계 인터페이스가 실제로 가진 함수만 부르거나, 도우미를 body **안쪽**에 정의하라"
+            ]
+        },
+        "temp_edge": {
+            "contract_post": "accept",
+            "checks_run": [
+                "assignment_completeness",
+                "cache_resume",
+                "assignment_resolve",
+                "assignment_availability"
+            ],
+            "effect_classes": [
+                "assignment"
+            ],
+            "contract_terminal": "accept",
+            "effect_reasons": [
+            ],
+            "outcome": "COMPLETE",
+            "engine_steps": 0,
+            "effects": "accept",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": true,
+            "terminal_reason": "project_complete",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "terminal_precedence_vacuous: 190/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+                {
+                    "by": "harness",
+                    "resolve_detail": "n_reassigned=12",
+                    "resume_detail": "",
+                    "action": "post_body_envelope!",
+                    "resolve": "resolved",
+                    "resume": "issued"
+                }
+            ],
+            "reasons": [
+            ]
+        },
+        "f_host_write_static": {
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "exception": null,
+            "status": "gate_rejected",
+            "gate": "reject",
+            "outcome": null,
+            "eligible": false,
+            "gate_reasons": [
+                "reject:forbidden_api:open,write"
+            ],
+            "effects": null,
+            "reasons": [
+                "reject:forbidden_api:open,write"
+            ]
+        },
+        "f_resource_forge": {
+            "contract_post": "accept",
+            "checks_run": [
+            ],
+            "effect_classes": [
+                "resource"
+            ],
+            "contract_terminal": "accept",
+            "effect_reasons": [
+                "resource_forgery:spare_created:ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)@seg1:action_start->action_end"
+            ],
+            "outcome": "COMPLETE",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "project_complete",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "terminal_precedence_vacuous: 190/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "effects reject: resource_forgery:spare_created:ConstructionBots.BotID{ConstructionBots.DeliveryBot}(1)@seg1:action_start->action_end"
+            ]
+        },
+        "f_host_write_dynamic": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+                "noop_equivalent: no state diff, no scheduled work, no engine progress"
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "noop_equivalent",
+            "contract_post_reasons": [
+            ],
+            "exception": "body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied",
+            "status": "threw",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment threw: body threw: SystemError: opening file \"results/2026-09-24-zone-repair-verification/validation/t10b/fixtures/HOST_WRITE_PROBE.txt\": Permission denied"
+            ]
+        },
+        "f_residue_a": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+                "runtime_override:ConstructionBots.zrv_t10b_residue_marker"
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+            ],
+            "exception": "runtime_override:ConstructionBots.zrv_t10b_residue_marker",
+            "status": "unobservable",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment unobservable: runtime_override:ConstructionBots.zrv_t10b_residue_marker",
+                "effects reject: runtime_override:ConstructionBots.zrv_t10b_residue_marker"
+            ]
+        },
+        "f_override_static": {
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "exception": null,
+            "status": "gate_rejected",
+            "gate": "reject",
+            "outcome": null,
+            "eligible": false,
+            "gate_reasons": [
+                "reject:forbidden_api:Core,eval"
+            ],
+            "effects": null,
+            "reasons": [
+                "reject:forbidden_api:Core,eval"
+            ]
+        },
+        "reassign": {
+            "contract_post": "accept",
+            "checks_run": [
+                "graph_acyclic",
+                "assignment_completeness",
+                "cache_resume",
+                "assignment_availability"
+            ],
+            "effect_classes": [
+                "assignment",
+                "schedule_graph",
+                "resource"
+            ],
+            "contract_terminal": "reject",
+            "effect_reasons": [
+            ],
+            "outcome": "FAIL_WITHIN_BUDGET",
+            "engine_steps": 0,
+            "effects": "accept",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+                "required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+            ],
+            "eligible": false,
+            "terminal_reason": "no_progress_limit",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "precedence_vacuous: 142/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+                {
+                    "by": "harness",
+                    "resolve_detail": "no newly unassigned task in the real diff",
+                    "resume_detail": "",
+                    "action": "post_body_envelope!",
+                    "resolve": "not_needed_surface",
+                    "resume": "issued"
+                }
+            ],
+            "reasons": [
+                "terminal contract: required_tasks_not_closed:45:ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(19),ConstructionBots.TemplatedID{CloseBuildStep}(9)"
+            ]
+        },
+        "f_partial": {
+            "contract_post": null,
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": null,
+            "effect_reasons": [
+            ],
+            "outcome": "UNKNOWN",
+            "engine_steps": 0,
+            "effects": "accept",
+            "contract_post_reasons": [
+            ],
+            "exception": "body threw: t10b boom after moving the build",
+            "status": "partial",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "none",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "enactment partial: body threw: t10b boom after moving the build"
+            ]
+        },
+        "f_complete_forge": {
+            "contract_post": "reject",
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": "accept",
+            "effect_reasons": [
+                "status_forgery:closed:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)@seg1:action_start->action_end",
+                "closed_before_predecessor:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)<-ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)"
+            ],
+            "outcome": "COMPLETE",
+            "engine_steps": 0,
+            "effects": "reject",
+            "contract_post_reasons": [
+                "closed_before_predecessor:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)<-ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)"
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": false,
+            "terminal_reason": "project_complete",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 37/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "terminal_precedence_vacuous: 190/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+                "effects reject: status_forgery:closed:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)@seg1:action_start->action_end",
+                "effects reject: closed_before_predecessor:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)<-ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)",
+                "post-enactment contract: closed_before_predecessor:ConstructionBots.TemplatedID{Tuple{LiftIntoPlace, ConstructionBots.AssemblyID}}(2)<-ConstructionBots.TemplatedID{Tuple{DepositCargo, ConstructionBots.TemplatedID{Tuple{ConstructionBots.TransportUnitNode, ConstructionBots.AssemblyID}}}}(2)"
+            ]
+        },
+        "resource_job": {
+            "contract_post": "accept",
+            "checks_run": [
+            ],
+            "effect_classes": [
+                "resource"
+            ],
+            "contract_terminal": "accept",
+            "effect_reasons": [
+            ],
+            "outcome": "COMPLETE",
+            "engine_steps": 0,
+            "effects": "accept",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": true,
+            "terminal_reason": "project_complete",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "terminal_precedence_vacuous: 190/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+            ]
+        },
+        "f_residue_b1": {
+            "contract_post": "accept",
+            "checks_run": [
+            ],
+            "effect_classes": [
+            ],
+            "contract_terminal": "accept",
+            "effect_reasons": [
+                "noop_equivalent: no state diff, no scheduled work, no engine progress"
+            ],
+            "outcome": "COMPLETE",
+            "engine_steps": 0,
+            "effects": "noop_equivalent",
+            "contract_post_reasons": [
+            ],
+            "exception": null,
+            "status": "enacted",
+            "gate": "accept",
+            "contract_terminal_reasons": [
+            ],
+            "eligible": true,
+            "terminal_reason": "project_complete",
+            "unobserved": [
+                "intra_segment_change_and_undo: a change reverted between two consecutive trace snapshots leaves no trace",
+                "intra_engine_step_changes: only step boundaries are snapshotted",
+                "worker_export_forgery: task_state/audit are written inside the worker process",
+                "methods_outside_audited_modules: overrides in Base or unaudited modules are not in methods_changed_by_action",
+                "precedence_vacuous: 36/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)",
+                "terminal_precedence_vacuous: 190/190 semantic edges have a closed predecessor in this state — their ordering is not checked here (only action-boundary snapshots judge it)"
+            ],
+            "gate_reasons": [
+            ],
+            "harness_log": [
+            ],
+            "reasons": [
+            ]
+        }
+    },
+    "episode": "tractor__all3__s14",
+    "t0_iter": 1,
+    "parent_verifies": {
+        "f_override_dynamic": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_zone_blink": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "N1": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_task_delete": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "mixed": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_residue_b2": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "temp_edge": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_host_write_static": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_resource_forge": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_host_write_dynamic": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_residue_a": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_override_static": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "reassign": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_partial": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "resume": {
+            "counters_equal": true,
+            "cmd": "resume"
+        },
+        "f_complete_forge": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "resource_job": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        },
+        "f_residue_b1": {
+            "counters": {
+                "no_progress": 0,
+                "stop": false,
+                "respec_hold": false,
+                "iter": 1,
+                "rvo_wrapper": "9963669653569508558",
+                "sim_step": 0,
+                "rvo_doSteps": 1,
+                "cache_clock": 13842
+            },
+            "counters_equal": true,
+            "mismatched_blocks": [
+            ],
+            "cmd": "verify",
+            "rng_equal": true
+        }
+    },
+    "N1_vs_parent": {
+        "first_divergent_iter": null,
+        "divergent_columns": [
+        ],
+        "last_common_iter": 1030,
+        "only_a": 0,
+        "n_common": 1030,
+        "only_b": 0
+    }
+}

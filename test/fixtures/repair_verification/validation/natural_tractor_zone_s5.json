@@ -1,0 +1,164 @@
+{
+ "active_world": {
+  "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/parent",
+  "kind": "original_world"
+ },
+ "baseline_override": null,
+ "certification": "available",
+ "decision_gaps": [],
+ "enforce_gate": null,
+ "exit_code": 1,
+ "mode": "shadow",
+ "n_proposals": 4,
+ "source": "fixture",
+ "supervision": {
+  "baseline": {
+   "branch": "noop",
+   "checkpoint_id": "t0",
+   "checks": {
+    "claim_agrees": true,
+    "env_scrubbed_after_import": [],
+    "identity": {
+     "dispatch_guard": [],
+     "fingerprint_mismatches": [],
+     "mismatched_blocks": [],
+     "rvo_ties": [
+      []
+     ]
+    },
+    "leftover_processes": 0,
+    "worker_claimed": {
+     "complete": false,
+     "terminal_reason": "no_progress_limit"
+    }
+   },
+   "cpu_s": 497.06263399999995,
+   "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/supervision/noop",
+   "general_recovery": {
+    "decision:ZONE:NOOP": 1,
+    "recovery:unwedge_nominal:snapped": 1
+   },
+   "outcome": "FAIL_WITHIN_BUDGET",
+   "sim_steps": 3601,
+   "terminal_reason": "no_progress_limit",
+   "unknown_cause": null,
+   "violations": [],
+   "wall_s": 495.01116585731506,
+   "zone_ladder_fired": 0
+  },
+  "candidates": {
+   "t10b-shift-1": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/supervision/cand-1",
+    "eligible": false,
+    "file_ok": true,
+    "native": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+    ]
+   },
+   "t10b-shift-2": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/supervision/cand-2",
+    "eligible": false,
+    "file_ok": true,
+    "native": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+    ]
+   },
+   "t10b-shift-3": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/supervision/cand-3",
+    "eligible": false,
+    "file_ok": true,
+    "native": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:70:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+    ]
+   },
+   "t10b-shift-4": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s5/zr/supervision/cand-4",
+    "eligible": false,
+    "file_ok": true,
+    "native": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:75:ConstructionBots.TemplatedID{CloseBuildStep}(10),ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18)"
+    ]
+   }
+  },
+  "certificate_sha256": "a5d4804907ae723af366cf3a4789eb74f00bc37a64ed6a8b2d6782292b226b25",
+  "commit": null,
+  "gaps": [],
+  "replay": {
+   "certified": true,
+   "kind": "noop",
+   "match": true,
+   "reasons": [],
+   "violation": false
+  },
+  "selection": {
+   "baseline_outcome": "FAIL_WITHIN_BUDGET",
+   "candidate_outcomes": {
+    "t10b-shift-1": "FAIL_WITHIN_BUDGET",
+    "t10b-shift-2": "FAIL_WITHIN_BUDGET",
+    "t10b-shift-3": "FAIL_WITHIN_BUDGET",
+    "t10b-shift-4": "FAIL_WITHIN_BUDGET"
+   },
+   "checkpoint_id": "t0",
+   "classification": "unsolved",
+   "raw_regressions": [],
+   "reasons": [
+    "no candidate COMPLETE with task/transaction checks passed"
+   ],
+   "selected": "noop",
+   "selected_proposal_id": null
+  },
+  "state": "REPLAY_CHECKED",
+  "supervisor_version": "repair-supervisor/1",
+  "transitions": [
+   {
+    "at": 1790448674.659899,
+    "to": "CAPTURED",
+    "why": "parent holding at t0 iter=1"
+   },
+   {
+    "at": 1790448676.240122,
+    "to": "IDENTITY_VERIFIED",
+    "why": ""
+   },
+   {
+    "at": 1790448676.595048,
+    "to": "PROPOSALS_FROZEN",
+    "why": "4 proposals, K=4"
+   },
+   {
+    "at": 1790451653.550535,
+    "to": "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "why": "baseline FAIL_WITHIN_BUDGET; 4 candidates"
+   },
+   {
+    "at": 1790451654.493375,
+    "to": "SELECTED_NOOP",
+    "why": "unsolved"
+   },
+   {
+    "at": 1790451655.900347,
+    "to": "PRECOMMIT_VERIFIED",
+    "why": "parent unchanged at t0"
+   },
+   {
+    "at": 1790452010.833142,
+    "to": "COMMITTED",
+    "why": "original world resumed under pi0"
+   },
+   {
+    "at": 1790452010.872618,
+    "to": "REPLAY_CHECKED",
+    "why": "NOOP resume replays the baseline branch"
+   }
+  ]
+ },
+ "t0_iter": 1
+}

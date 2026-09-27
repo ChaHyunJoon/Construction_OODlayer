@@ -1,0 +1,166 @@
+{
+ "active_world": {
+  "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/parent",
+  "kind": "original_world"
+ },
+ "baseline_override": null,
+ "certification": "available",
+ "decision_gaps": [],
+ "enforce_gate": null,
+ "exit_code": 1,
+ "mode": "shadow",
+ "n_proposals": 4,
+ "source": "fixture",
+ "supervision": {
+  "baseline": {
+   "branch": "noop",
+   "checkpoint_id": "t0",
+   "checks": {
+    "claim_agrees": true,
+    "env_scrubbed_after_import": [],
+    "identity": {
+     "dispatch_guard": [],
+     "fingerprint_mismatches": [],
+     "mismatched_blocks": [],
+     "rvo_ties": [
+      []
+     ]
+    },
+    "leftover_processes": 0,
+    "worker_claimed": {
+     "complete": false,
+     "terminal_reason": "no_progress_limit"
+    }
+   },
+   "cpu_s": 505.75568999999996,
+   "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/supervision/noop",
+   "general_recovery": {
+    "decision:ZONE:NOOP": 1,
+    "recovery:unwedge_nominal:zone_repair_ablated": 1
+   },
+   "outcome": "FAIL_WITHIN_BUDGET",
+   "sim_steps": 3572,
+   "terminal_reason": "no_progress_limit",
+   "unknown_cause": null,
+   "violations": [],
+   "wall_s": 503.58576798439026,
+   "zone_ladder_fired": 0
+  },
+  "candidates": {
+   "t10b-shift1m-1": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/supervision/cand-1",
+    "eligible": true,
+    "file_ok": true,
+    "native": [],
+    "outcome": "COMPLETE",
+    "reasons": []
+   },
+   "t10b-shift1m-2": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/supervision/cand-2",
+    "eligible": false,
+    "file_ok": true,
+    "native": [],
+    "outcome": "FAIL_WITHIN_BUDGET",
+    "reasons": [
+     "terminal contract: required_tasks_not_closed:41:ConstructionBots.TemplatedID{CloseBuildStep}(12),ConstructionBots.TemplatedID{CloseBuildStep}(16),ConstructionBots.TemplatedID{CloseBuildStep}(17),ConstructionBots.TemplatedID{CloseBuildStep}(18),ConstructionBots.TemplatedID{CloseBuildStep}(7)"
+    ]
+   },
+   "t10b-shift1m-3": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/supervision/cand-3",
+    "eligible": true,
+    "file_ok": true,
+    "native": [],
+    "outcome": "COMPLETE",
+    "reasons": []
+   },
+   "t10b-shift1m-4": {
+    "dir": "results/2026-09-24-zone-repair-verification/validation/t10b/natural/tractor_zone_s9/zr/supervision/cand-4",
+    "eligible": true,
+    "file_ok": true,
+    "native": [],
+    "outcome": "COMPLETE",
+    "reasons": []
+   }
+  },
+  "certificate_sha256": "109d5bdc58c070554ee3115194b6992daa0abc3395b0d75e3248bc4d3cba7030",
+  "commit": null,
+  "gaps": [],
+  "replay": {
+   "certified": true,
+   "kind": "noop",
+   "match": true,
+   "reasons": [],
+   "violation": false
+  },
+  "selection": {
+   "baseline_outcome": "FAIL_WITHIN_BUDGET",
+   "candidate_outcomes": {
+    "t10b-shift1m-1": "COMPLETE",
+    "t10b-shift1m-2": "FAIL_WITHIN_BUDGET",
+    "t10b-shift1m-3": "COMPLETE",
+    "t10b-shift1m-4": "COMPLETE"
+   },
+   "checkpoint_id": "t0",
+   "classification": "rescued",
+   "raw_regressions": [],
+   "reasons": [],
+   "selected": "tool",
+   "selected_proposal_id": "t10b-shift1m-1"
+  },
+  "state": "REPLAY_CHECKED",
+  "supervisor_version": "repair-supervisor/1",
+  "transitions": [
+   {
+    "at": 1790456754.785189,
+    "to": "CAPTURED",
+    "why": "parent holding at t0 iter=1"
+   },
+   {
+    "at": 1790456756.35868,
+    "to": "IDENTITY_VERIFIED",
+    "why": ""
+   },
+   {
+    "at": 1790456756.701329,
+    "to": "PROPOSALS_FROZEN",
+    "why": "4 proposals, K=4"
+   },
+   {
+    "at": 1790459236.028938,
+    "to": "BASELINE_AND_CANDIDATE_ROLLOUTS",
+    "why": "baseline FAIL_WITHIN_BUDGET; 4 candidates"
+   },
+   {
+    "at": 1790459237.26051,
+    "to": "SELECTED_TOOL",
+    "why": "rescued"
+   },
+   {
+    "at": 1790459237.260518,
+    "to": "SHADOW_NOT_COMMITTED",
+    "why": "shadow mode: observation only \u2014 the verified tool t10b-shift1m-1 is recorded (selection + certificate), not enacted"
+   },
+   {
+    "at": 1790459237.26052,
+    "to": "SELECTED_NOOP",
+    "why": "shadow \u2192 the untouched original world continues with NOOP"
+   },
+   {
+    "at": 1790459238.667546,
+    "to": "PRECOMMIT_VERIFIED",
+    "why": "parent unchanged at t0"
+   },
+   {
+    "at": 1790459606.630004,
+    "to": "COMMITTED",
+    "why": "original world resumed under pi0"
+   },
+   {
+    "at": 1790459606.666567,
+    "to": "REPLAY_CHECKED",
+    "why": "NOOP resume replays the baseline branch"
+   }
+  ]
+ },
+ "t0_iter": 1
+}
