@@ -93,6 +93,8 @@ def _fake_lm_stats():
             "observe_has_bindings": any("ROBOTS AND THEIR COMMITTED WORK" in (m.get("content") or "")
                                         for s in LM.seen if s["stage"] == "observe" for m in s["messages"]),
             "max_retries_seen": sorted({str(s["kwargs"].get("max_retries")) for s in LM.seen}),
+            # C1: the per-call output cap every call actually carried (the lane's budget value, not DSPY_MAX_TOKENS)
+            "max_tokens_seen": sorted({str(s["kwargs"].get("max_tokens")) for s in LM.seen}),
             "credential_env_left": sorted(k for k in os.environ if re.search(r"(API_KEY|_TOKEN|SECRET|PASSWORD)", k))}
 
 

@@ -24,7 +24,7 @@ import dspy  # noqa: E402
 import pytest  # noqa: E402
 from fake_repair_lm import (BROKEN, DESIGN_FIRES, FIXED, OBSERVE, RELEASE, ScriptedLM, tool)  # noqa: E402
 
-BUDGET = {"max_model_calls": 4, "max_candidates": 4, "max_total_tokens": 100000}
+BUDGET = {"max_model_calls": 4, "max_candidates": 4, "max_total_tokens": 100000, "max_output_tokens": 16000}
 PROVIDER_CALLS = {"n": 0}
 
 
@@ -134,12 +134,37 @@ def test_truncated_code_is_not_a_valid_candidate():
     assert out["ledger"]["submitted"] == 2 and out["ledger"]["calls"][-1]["truncated"] is True
 
 
-def test_the_token_budget_caps_each_call_and_then_refuses():
-    budget = dict(BUDGET, max_total_tokens=100)
-    big = {"prompt_tokens": 60, "completion_tokens": 50, "total_tokens": 110}
-    out, lm = run([dict(OBSERVE, usage=big)], budget=budget)
-    assert lm.seen[0]["kwargs"]["max_tokens"] == 100, "the remaining token budget must cap the call"
-    assert out["error"].startswith("design: budget: token budget") and out["candidates"] == []
+def test_every_call_carries_the_lane_output_cap_not_the_service_default():
+    """C1: the per-call cap is the budget's explicit `max_output_tokens`, never `DSPY_MAX_TOKENS` (2000) and never a
+    cap shrunk to what is left of the total."""
+    out, lm = run([OBSERVE, DESIGN_FIRES, compose(RELEASE, BROKEN, FIXED)])
+    assert out["error"] is None and len(lm.seen) == 3
+    assert [s["kwargs"]["max_tokens"] for s in lm.seen] == [BUDGET["max_output_tokens"]] * 3
+    assert svc.MAX_TOKENS != BUDGET["max_output_tokens"], "the test must be able to tell the two caps apart"
+    assert out["ledger"]["max_output_tokens"] == BUDGET["max_output_tokens"]
+
+
+def test_a_total_below_the_call_plan_is_refused_before_any_model_call(monkeypatch):
+    """C1: (a) below calls x output cap -> ValueError (and a zero-call refusal record at the endpoint); (b) above that
+    but below the plan with the known prompts of observe/design/compose -> zero-call refusal."""
+    small = dict(BUDGET, max_total_tokens=4 * BUDGET["max_output_tokens"] - 1)
+    with pytest.raises(ValueError, match="call plan cannot fit"):
+        run([OBSERVE], budget=small)
+    lm = ScriptedLM([OBSERVE])
+    monkeypatch.setattr(svc, "_repair_lm", lambda: lm)
+    out = svc.zone_repair_propose(_preq(budget=small))
+    assert out["error"].startswith("refused: budget:") and lm.seen == [] and out["candidates"] == []
+    tight = dict(BUDGET, max_total_tokens=4 * BUDGET["max_output_tokens"])     # outputs fit, the prompts do not
+    out, lm = run([OBSERVE], budget=tight)
+    assert out["error"].startswith("refused: token budget: the call plan needs") and lm.seen == []
+
+
+def test_a_call_that_cannot_carry_its_full_cap_is_refused_not_truncated():
+    b = dict(BUDGET, max_output_tokens=1000, max_total_tokens=40000)
+    heavy = {"prompt_tokens": 38000, "completion_tokens": 500, "total_tokens": 38500}
+    out, lm = run([dict(OBSERVE, usage=heavy)], budget=b)
+    assert len(lm.seen) == 1 and lm.seen[0]["kwargs"]["max_tokens"] == 1000
+    assert out["error"].startswith("design: budget: token budget: this call needs") and out["candidates"] == []
 
 
 def test_disabled_flag_and_missing_lm_make_zero_calls(monkeypatch):
@@ -159,7 +184,9 @@ def test_expressible_true_ends_with_zero_candidates_after_two_calls():
 
 
 def test_the_budget_has_no_default_and_no_value_above_four():
-    for bad in (dict(BUDGET, max_total_tokens=None), dict(BUDGET, max_model_calls=5), dict(BUDGET, max_candidates=0)):
+    no_cap = {k: v for k, v in BUDGET.items() if k != "max_output_tokens"}
+    for bad in (dict(BUDGET, max_total_tokens=None), dict(BUDGET, max_model_calls=5), dict(BUDGET, max_candidates=0),
+                no_cap, dict(BUDGET, max_output_tokens=0)):
         with pytest.raises((ValueError, TypeError)):
             SY.RepairLedger(**bad)
 
@@ -326,6 +353,29 @@ def test_the_endpoint_stamps_the_three_provenance_fields(monkeypatch):
     assert pv["capability_contract_version"] == "capability-contract/1"
     assert pv["service_code_fingerprint"] == svc.CODE_FINGERPRINT and pv["record_id"] == "rid"
     assert out["response_id"] and out["ledger"]["calls_used"] == 3
+    # I2: sampling/transport/cap/prompt/interface stamps, read from the LM the lane actually called
+    assert pv["model_type"] == "chat" and pv["cache"] is False and pv["num_retries"] == 0 and pv["max_retries"] == 0
+    assert pv["max_output_tokens"] == BUDGET["max_output_tokens"] and "temperature" in pv
+    assert pv["prompt_digest"] == SY.repair_prompt_digest("general", dspy.settings.adapter)["prompt_digest"]
+    assert pv["world_interface_sha256"] == SY._file_sha256(SY.WI.ARTIFACT)
+    assert out["provenance"]["prompt_digest"] == pv["prompt_digest"], "stamps travel with the response, not only candidates"
+
+
+def test_the_lane_is_pinned_to_the_chat_transport(monkeypatch):
+    lm = ScriptedLM([OBSERVE])
+    lm.model_type = "responses"
+    monkeypatch.setattr(svc, "_repair_lm", lambda: lm)
+    out = svc.zone_repair_propose(_preq())
+    assert out["error"].startswith("refused: the zone-repair lane is pinned to model_type='chat'") and lm.seen == []
+    assert out["provenance"]["model_type"] == "responses"
+
+
+def test_the_prompt_digest_moves_with_the_prompt_text(monkeypatch):
+    a = SY.repair_prompt_digest("general")
+    assert a == SY.repair_prompt_digest("general") and a != SY.repair_prompt_digest("geometry")
+    monkeypatch.setattr(SY, "FINAL_GOAL", SY.FINAL_GOAL + " (planted)")
+    b = SY.repair_prompt_digest("general")
+    assert b["prompt_digest"] != a["prompt_digest"] and b["prompt_digests"]["compose"] == a["prompt_digests"]["compose"]
 
 
 def test_the_endpoint_refuses_an_ablation_mismatch_without_a_call(monkeypatch):

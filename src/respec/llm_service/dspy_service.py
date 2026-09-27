@@ -2353,6 +2353,8 @@ class ZoneRepairBudget(BaseModel):
     max_model_calls: int
     max_candidates: int
     max_total_tokens: int
+    # 🔴 C1: required, no default -- the lane's per-call output cap (manifest `budget.model.max_output_tokens_per_call`).
+    max_output_tokens: int
     max_cost_usd: Optional[float] = None
 
 
@@ -2388,16 +2390,47 @@ def _repair_lm():
     return dspy.settings.lm
 
 
+def _repair_lm_config(lm):
+    """I2: the sampling/transport configuration of the LM this lane will actually call -- read from the request-local
+    copy (`synthesize._request_local_lm`), not from the service globals, so the stamp says what was sent."""
+    if lm is None:
+        return {}
+    c = _SY._request_local_lm(lm)
+    kw = dict(getattr(c, "kwargs", {}) or {})
+    temp = kw.get("temperature", getattr(c, "temperature", None))
+    return {"model": getattr(c, "model", None), "model_type": getattr(c, "model_type", MODEL_TYPE),
+            # None = the key is dropped from the request (`_resolve_temperature`) -- stamped as a word, not absent
+            "temperature": "omitted" if temp is None else temp,
+            "cache": getattr(c, "cache", None),
+            "num_retries": getattr(c, "num_retries", kw.get("num_retries")), "max_retries": kw.get("max_retries")}
+
+
+#: 🔴 I2: the zone-repair lane is pinned to the chat transport. On /v1/responses the output cap includes reasoning
+#:    tokens, `LM._check_truncation` is silent (dspy 3.3.0) and the OpenAI-client retry path was never traced.
+REPAIR_MODEL_TYPE = "chat"
+
+
+def _repair_transport_refusal(lm):
+    mt = _repair_lm_config(lm).get("model_type")
+    return (None if lm is None or mt == REPAIR_MODEL_TYPE else
+            "the zone-repair lane is pinned to model_type=%r; this service's LM runs model_type=%r" % (REPAIR_MODEL_TYPE, mt))
+
+
 def _repair_provenance(req, response_id):
-    """후보마다 싣는 도장 — Julia `RepairRuntime.decision_gaps` 가 셋을 요구한다(schema digest · 권한 계약 ·
-    서비스 source 지문). ⚠️ `capability_contract_version` 은 **요청의 값을 되돌려 싣는다**: 권한 계약은 Julia 가
-    집행하고 이 서비스는 그 계약을 모른다 — 이 도장은 "그 계약을 선언한 요청에 대해 생성됐다" 까지만 말한다."""
+    """후보마다 싣는 도장 — Julia `RepairRuntime.decision_gaps` 가 요구한다(schema digest · 권한 계약 · 서비스 source 지문 ·
+    I2 의 샘플링/전송 설정 · 출력 상한 · prompt digest · 세계 인터페이스 digest). ⚠️ `capability_contract_version` 은 **요청의
+    값을 되돌려 싣는다**: 권한 계약은 Julia 가 집행하고 이 서비스는 그 계약을 모른다 — 이 도장은 "그 계약을 선언한 요청에 대해
+    생성됐다" 까지만 말한다."""
     p = {"source": "service", "arm": req.arm, "record_id": req.record_id, "response_id": response_id,
          "tool_proposal_schema_sha256": _SY.TOOL_PROPOSAL_SCHEMA_SHA256,
          "geometry_patch_schema_sha256": _SY.GEOMETRY_PATCH_SCHEMA_SHA256,
          "capability_contract_version": req.capability_contract_version,
          "service_code_fingerprint": CODE_FINGERPRINT, "repair_ablation": REPAIR_ABLATION,
-         "model": MODEL, "cache": CACHE}
+         "max_output_tokens": req.budget.max_output_tokens}
+    p.update(_repair_lm_config(_repair_lm()))
+    p.update(_SY.repair_prompt_digest(req.arm, dspy.settings.adapter))
+    if req.arm == "general":                       # only the general compose stage reads the world interface
+        p.update(_SY.world_interface_stamp())
     # 🔴 못 잰 도장(None)은 **키째 뺀다** — null 로 실으면 "있다" 로 읽힐 자리가 생긴다(Julia 는 부재를 gap 으로 본다).
     return {k: v for k, v in p.items() if v is not None}
 
@@ -2437,19 +2470,23 @@ def _repair_refusal(req, why):
 @app.post("/zone_repair/propose")
 def zone_repair_propose(req: ZoneRepairProposeRequest):
     response_id = uuid.uuid4().hex
-    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION) or _repair_transport_refusal(_repair_lm())
     raw: Dict[str, Any] = {}
+    prov = _repair_provenance(req, response_id)
     if why:
         out = _repair_refusal(req, why)
     else:
         r = req.request
         state = _zone_repair_observation(req)
-        out = _SY.propose_repair(
-            state, arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(),
-            lm=_repair_lm(), id_prefix=req.record_id, tools=build_tools(getattr(r, "agents", None), _valid_for(r)),
-            geometry_context=req.geometry_context,
-            provenance=dict(_repair_provenance(req, response_id), **_observation_stamps(req, state)), raw_out=raw)
+        try:
+            out = _SY.propose_repair(
+                state, arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(),
+                lm=_repair_lm(), id_prefix=req.record_id, tools=build_tools(getattr(r, "agents", None), _valid_for(r)),
+                geometry_context=req.geometry_context, provenance=dict(prov, **_observation_stamps(req, state)), raw_out=raw)
+        except ValueError as e:                    # budget that cannot hold its call plan -- refused, zero calls
+            out = _repair_refusal(req, "budget: %s" % e)
         out["observation_stamps"] = _observation_stamps(req, state)
+    out["provenance"] = prov                       # I2: the stamps travel even when no candidate does
     out.update(record_id=req.record_id, response_id=response_id)
     _repair_row(req, out, raw, response_id, "zone_repair_propose")
     return out
@@ -2458,15 +2495,20 @@ def zone_repair_propose(req: ZoneRepairProposeRequest):
 @app.post("/zone_repair/revise")
 def zone_repair_revise(req: ZoneRepairReviseRequest):
     response_id = uuid.uuid4().hex
-    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION)
+    why = RA.check_handshake(req.run_ctx, REPAIR_ABLATION) or _repair_transport_refusal(_repair_lm())
     raw: Dict[str, Any] = {}
+    prov = _repair_provenance(req, response_id)
     if why:
         out = _repair_refusal(req, why)
     else:
-        out = _SY.revise_repair(
-            arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(), ledger_state=req.ledger,
-            compose_input=req.compose_input, rejected=req.rejected, lm=_repair_lm(), id_prefix=req.record_id,
-            geometry_context=req.geometry_context, provenance=_repair_provenance(req, response_id), raw_out=raw)
+        try:
+            out = _SY.revise_repair(
+                arm=req.arm, checkpoint_id=req.checkpoint_id, budget=req.budget.model_dump(), ledger_state=req.ledger,
+                compose_input=req.compose_input, rejected=req.rejected, lm=_repair_lm(), id_prefix=req.record_id,
+                geometry_context=req.geometry_context, provenance=prov, raw_out=raw)
+        except ValueError as e:
+            out = _repair_refusal(req, "budget: %s" % e)
+    out["provenance"] = prov
     out.update(record_id=req.record_id, response_id=response_id)
     _repair_row(req, out, raw, response_id, "zone_repair_revise", parent=req.parent_record_id)
     return out

@@ -2136,6 +2136,27 @@ TOOL_PROPOSAL_SCHEMA_SHA256 = _file_sha256(TOOL_PROPOSAL_SCHEMA_PATH)
 GEOMETRY_PATCH_SCHEMA_SHA256 = _file_sha256(GEOMETRY_PATCH_SCHEMA_PATH)
 
 
+_BUDGET_KEYS = ("max_model_calls", "max_candidates", "max_total_tokens", "max_output_tokens", "max_cost_usd")
+#: 🔴 C1: chars per token used to ESTIMATE prompt size before a call (the provider counts after). 3 over-counts English
+#:    prose (~4 chars/token) and is about even for code/JSON (~3) -- a conservative floor, not a tokenizer. The estimate
+#:    only decides whether a call may start; the ledger books the provider's measured usage.
+CHARS_PER_TOKEN_ESTIMATE = 3
+
+
+def plan_token_floor(max_model_calls, max_output_tokens, prompt_tokens=0):
+    """Tokens the call plan needs at least: every allowed call can emit its full output cap, plus the estimated
+    prompt tokens of the calls whose prompts are known. Julia (`RepairRuntime.service_budget`) applies the same rule
+    with `prompt_tokens = 0` before the episode starts; `propose_repair` adds the mandatory stages' prompts."""
+    return int(max_model_calls) * int(max_output_tokens) + int(prompt_tokens)
+
+
+def estimate_prompt_tokens(items=(), kwargs=None):
+    """Conservative prompt-size estimate of one LM call (messages + prompt + tool schemas), before the call."""
+    kw = kwargs or {}
+    blob = json.dumps([list(items), kw.get("messages"), kw.get("prompt"), kw.get("tools")], default=str)
+    return -(-len(blob) // CHARS_PER_TOKEN_ESTIMATE)
+
+
 class BudgetExhausted(Exception):
     """호출·token·cost 예산이 이 호출을 허락하지 않는다. **부르기 전에** 난다(과금 0)."""
 
@@ -2148,16 +2169,27 @@ class RepairLedger:
     observe 의 숨은 재시도는 compose_revision 몫을 먹고, 필수 단계의 몫은 절대 못 먹는다.
     """
 
-    def __init__(self, *, max_model_calls, max_candidates, max_total_tokens, max_cost_usd=None):
+    def __init__(self, *, max_model_calls, max_candidates, max_total_tokens, max_output_tokens=None, max_cost_usd=None):
         for k, v, hi in (("max_model_calls", max_model_calls, 4), ("max_candidates", max_candidates, 4)):
             if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= hi):
                 raise ValueError("%s=%r must be an int in 1..%d (design 7.2)" % (k, v, hi))
         if isinstance(max_total_tokens, bool) or not isinstance(max_total_tokens, int) or max_total_tokens < 1:
             raise ValueError("max_total_tokens=%r must be a positive int -- it has no default" % (max_total_tokens,))
+        # 🔴 C1 (final review): the per-call output cap is an explicit, REQUIRED budget value of this lane. The
+        #    service-global `DSPY_MAX_TOKENS` (default 2000) truncated a K=4 compose response (4 Julia bodies of
+        #    ~1.1-1.9k tokens each + reasoning) -> AdapterParseError -> hidden JSONAdapter retry -> service_error.
+        if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or max_output_tokens < 1:
+            raise ValueError("max_output_tokens=%r must be a positive int -- the zone-repair lane has no default "
+                             "per-call output cap" % (max_output_tokens,))
+        floor = plan_token_floor(max_model_calls, max_output_tokens)
+        if max_total_tokens < floor:
+            raise ValueError("max_total_tokens=%d < %d = max_model_calls(%d) x max_output_tokens(%d) -- the call plan "
+                             "cannot fit its own output caps" % (max_total_tokens, floor, max_model_calls, max_output_tokens))
         if max_cost_usd is not None and not (isinstance(max_cost_usd, (int, float)) and max_cost_usd > 0):
             raise ValueError("max_cost_usd=%r must be positive or absent" % (max_cost_usd,))
         self.max_model_calls, self.max_candidates = max_model_calls, max_candidates
         self.max_total_tokens, self.max_cost_usd = max_total_tokens, max_cost_usd
+        self.max_output_tokens = max_output_tokens
         self.calls: List[Dict[str, Any]] = []      # 부른 호출(성공·실패 모두)
         self.refused: List[Dict[str, Any]] = []    # 예산이 부르기 전에 막은 시도
         self.done: List[str] = []                  # 응답을 받은 필수 단계
@@ -2165,7 +2197,7 @@ class RepairLedger:
 
     @classmethod
     def from_state(cls, budget, state=None):
-        led = cls(**budget)
+        led = cls(**{k: v for k, v in budget.items() if k in _BUDGET_KEYS})
         for k in ("calls", "refused", "done"):
             setattr(led, k, list((state or {}).get(k, [])))
         led.submitted = int((state or {}).get("submitted", 0))
@@ -2182,7 +2214,7 @@ class RepairLedger:
     def remaining_tokens(self):
         return max(self.max_total_tokens - self.tokens_used, 0)
 
-    def admit(self, stage):
+    def admit(self, stage, prompt_tokens=0):
         if stage not in REPAIR_STAGES:
             raise ValueError("unknown stage %r" % (stage,))
         pending = [s for s in _REPAIR_MANDATORY if s != stage and s not in self.done]
@@ -2199,6 +2231,11 @@ class RepairLedger:
             why = "cost budget: unmeasurable -- a previous call reported no cost"
         elif self.tokens_used >= self.max_total_tokens:
             why = "token budget: %d of %d tokens used" % (self.tokens_used, self.max_total_tokens)
+        elif self.remaining_tokens() < prompt_tokens + self.max_output_tokens:
+            # 🔴 C1: a call that cannot carry its full output cap is refused, not shrunk -- a response cut at a
+            #    shrunken cap is an invalid (truncated) candidate that would be scored as a model failure.
+            why = ("token budget: this call needs ~%d prompt + %d output tokens but %d of %d remain"
+                   % (prompt_tokens, self.max_output_tokens, self.remaining_tokens(), self.max_total_tokens))
         elif self.max_cost_usd is not None and self.cost_used >= self.max_cost_usd:
             why = "cost budget: %.4f of %.4f USD used" % (self.cost_used, self.max_cost_usd)
         if why:
@@ -2221,7 +2258,8 @@ class RepairLedger:
 
     def to_dict(self):
         return {"max_model_calls": self.max_model_calls, "max_candidates": self.max_candidates,
-                "max_total_tokens": self.max_total_tokens, "max_cost_usd": self.max_cost_usd,
+                "max_total_tokens": self.max_total_tokens, "max_output_tokens": self.max_output_tokens,
+                "max_cost_usd": self.max_cost_usd,
                 "calls": self.calls, "refused": self.refused, "done": self.done,
                 "calls_used": len(self.calls), "submitted": self.submitted,
                 "tokens_used": self.tokens_used, "cost_used": self.cost_used,
@@ -2249,13 +2287,13 @@ class _BudgetedLM(dspy.BaseLM):
         self._inner, self._ledger, self._stage = inner, ledger, stage
 
     def __call__(self, *items, **kwargs):
+        need = estimate_prompt_tokens(items, kwargs)
         while True:
-            self._ledger.admit(self._stage)
+            self._ledger.admit(self._stage, prompt_tokens=need)
             kw = dict(kwargs)
-            cap = self._ledger.remaining_tokens()
-            base = kw.get("max_tokens", self._inner.kwargs.get("max_tokens"))
-            if base is None or cap < int(base):
-                kw["max_tokens"] = cap           # token 한도가 곧 응답 상한 — 넘치면 잘리고, 잘린 후보는 무효
+            # 🔴 C1: every call carries the lane's explicit output cap (manifest value) -- never the service-global
+            #    `DSPY_MAX_TOKENS`, and never a cap shrunk to the remaining total (admit refuses that call instead).
+            kw["max_tokens"] = self._ledger.max_output_tokens
             hist = self._inner.history
             n0 = len(hist)
             try:
@@ -2550,6 +2588,39 @@ def _repair_programs(arm, programs):
     return progs
 
 
+def plan_prompt_chars(state, iface, tools=None, arm="general") -> int:
+    """Characters of the prompt texts the three mandatory calls are known to carry before any call: the observe
+    context (with the observation), the design context and existing vocabulary, the compose context and interface.
+    Signature instructions and the stage outputs echoed into later prompts are not counted (bounded by the output cap)."""
+    g = len(GEOMETRY_ONLY_GUIDANCE) if arm == "geometry" else 0
+    return (len(build_observe_context(state or "")) + len(build_design_context("")) + g
+            + len("\n".join(_tool_lines(tools))) + len(build_compose_context({}, "")) + g + len(iface or ""))
+
+
+def repair_prompt_digest(arm, adapter=None) -> Dict[str, Any]:
+    """I2: digest of what the arm's prompts are made of, per stage -- the signature (instructions, field names,
+    descriptions, prefixes, types) and the static context builders (+ G4 guidance, adapter class). Inputs that vary
+    per episode (observation, interface file) have their own stamps (`observation_sha256`, `world_interface_sha256`)."""
+    progs = _repair_programs(arm, None)
+    per = {}
+    for st in REPAIR_STAGES:
+        sig = progs[st].predict.signature
+        per[st] = canonical_sha256({"instructions": sig.instructions, "fields": [
+            [n, (f.json_schema_extra or {}).get("__dspy_field_type"), (f.json_schema_extra or {}).get("desc"),
+             (f.json_schema_extra or {}).get("prefix"), str(f.annotation)] for n, f in sig.fields.items()]})
+    per["static_context"] = canonical_sha256({
+        "observe": build_observe_context(""), "design": build_design_context(""), "compose": build_compose_context({}, ""),
+        "geometry_guidance": GEOMETRY_ONLY_GUIDANCE if arm == "geometry" else None,
+        "adapter": None if adapter is None else type(adapter).__name__})
+    return {"prompt_digest": canonical_sha256(per), "prompt_digests": per}
+
+
+def world_interface_stamp() -> Dict[str, Any]:
+    """I2: the interface the compose stage reads is a data file (`world_interface*.json`, re-read per call) outside
+    the service code fingerprint -- stamp the file digest as read now. Julia compares it with the tree's file."""
+    return {"world_interface_artifact": os.path.basename(WI.ARTIFACT), "world_interface_sha256": _file_sha256(WI.ARTIFACT)}
+
+
 def _repair_blank(arm, checkpoint_id):
     return {"arm": arm, "checkpoint_id": checkpoint_id, "enabled": synthesis_enabled(), "stages": [],
             "expressible": None, "reasoning_log": None, "compose_input": None, "wrote": None,
@@ -2581,6 +2652,15 @@ def propose_repair(state, *, arm, checkpoint_id, budget, lm, id_prefix, tools=No
         iface = compose_interface(blob) if arm == "general" else render_geometry_context(geometry_context)
         if not (iface or "").strip():
             out["error"] = "refused: the compose stage would be handed an empty interface -- no model call was made"
+            return out
+        # 🔴 C1: refuse before any model call when the call plan cannot fit the total token cap (every call's full
+        #    output cap + the estimated prompts of observe/design/compose, which are known here).
+        ptok = -(-plan_prompt_chars(state, iface, tools, arm) // CHARS_PER_TOKEN_ESTIMATE)
+        need = plan_token_floor(ledger.max_model_calls, ledger.max_output_tokens, ptok)
+        if ledger.max_total_tokens < need:
+            out["error"] = ("refused: token budget: the call plan needs >= %d tokens (%d calls x %d output cap + ~%d prompt "
+                            "tokens for observe/design/compose) but max_total_tokens=%d -- no model call was made"
+                            % (need, ledger.max_model_calls, ledger.max_output_tokens, ptok, ledger.max_total_tokens))
             return out
         inner = _request_local_lm(lm)
         progs = _repair_programs(arm, programs)
