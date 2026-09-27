@@ -225,7 +225,8 @@ function start_parent(dir::AbstractString, launch_env::AbstractDict; hold_max_s 
     env, removed = worker_env(launch_env, Dict("ZRV_REPLAY_MODE" => "capture", "ZRV_REPLAY_DIR" => dir,
         "ZRV_BRANCH_ROLE" => "parent", "ZRV_BRANCH_TOKEN" => token, "ZRV_HOLD_MAX_S" => string(hold_max_s),
         "DEMO_OUT_DIR" => String(out_dir)))
-    _write(joinpath(dir, "launch.json"), Dict("env_names" => sort!(collect(keys(env))), "removed_env" => removed))
+    _write(joinpath(dir, "launch.json"), Dict("env_names" => sort!(collect(keys(env))), "removed_env" => removed,
+                                              "hold_max_s" => hold_max_s))     # I3: 기록 — 부모가 받은 hold 한도(비밀 아님)
     io = open(joinpath(dir, "run.log"), "w")
     p = run(pipeline(setenv(`$JULIA --project=$ROOT -L $WORKER $RENDER`, env); stdout = io, stderr = io); wait = false)
     return (process = p, dir = String(dir), token = token, log = io)

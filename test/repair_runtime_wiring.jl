@@ -480,7 +480,7 @@ want("E1") && @testset "E1 shadow via render_demo.jl — 후보는 worker 에서
     @test sup["dry_commit"] === nothing                                              # 도구가 선택되지 않았다 → dry commit 없음
     # I3: 부모 hold 한도가 예산에서 유도됐고(fixture: 분기만) 부모가 그 값을 받았다
     @test ep["episode_budget"]["hold_deadline_s"] == RT.episode_budget(; worker_wall_s = RT.LIMITS.wall_s, service = false).hold_deadline_s
-    @test occursin("ZRV_HOLD_MAX_S", join(BR._json(joinpath(zr, "parent", "launch.json"))["env_names"], " "))
+    @test BR._json(joinpath(zr, "parent", "launch.json"))["hold_max_s"] == ep["episode_budget"]["hold_deadline_s"]
     # I5: 분기는 부모가 쓴 코드 신원 파일로 떴다(.git 을 못 읽는다) — 신원이 맞아 세 분기가 복원됐다(gaps == [] 위)
     @test isfile(joinpath(zr, "parent", "code_identity.json"))
     for b in ("noop", "noop-b", "cand-1")
