@@ -226,7 +226,7 @@ const RID = CB.node_id(first(robots(W0.env)))
         d0 = fi(r)
         FakeScript.HOLDER[] = deepcopy(FakeScript.HOLDER[])
         d1 = fi(r)
-        @test [k for k in keys(d0) if d0[k] != d1[k]] == ["globals.FakeScript.HOLDER"]
+        @test [k for k in keys(d0) if d0[k] != d1[k]] == ["globals.Main.FakeScript.HOLDER"]
         FakeScript.HOLDER[] = CB.get_node(r.env.scene_tree, RID)
         @test fi(r) == d0 && isempty(E.verify_world(cp, r; modules = MODS))
         @test_throws ErrorException E.world_lines(r.env; modules = MODS, refs = :nope)

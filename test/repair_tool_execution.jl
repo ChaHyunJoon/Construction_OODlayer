@@ -25,7 +25,8 @@ CB.RVO_RECORD_BUILDS[] = true          # worker(T3 install!)와 같은 RVO 래�
 
 struct _Stop <: Exception end
 rt(x) = JSON3.read(JSON3.write(x), x isa AbstractVector ? Vector{Any} : Dict{String,Any})
-fields(env) = (w = E.world_lines(env; modules = [CB], refs = :identity); E.field_digests(w.lines, w.fields))   # 감사와 같은 @ref 신원 표기(T10b fix)
+# 교차 런 비교([2]: NOOP 런 대 도구 런 — 다른 객체)라 첫 방문 경로 표기(:path)다. 같은 런 안의 감사는 worker `audit_snapshot`(:identity).
+fields(env) = (w = E.world_lines(env; modules = [CB]); E.field_digests(w.lines, w.fields))
 
 """
 colored_8x8 을 production `run_lego_demo` 루프로 굴리다 `iter >= at` 인 첫 스텝 경계에서 `f(env, ctx)` 를 부르고

@@ -1,7 +1,8 @@
 # =============================================================================
 # replay_repair_cohort.jl — T10b 역사적 body 사슬 재생(한 판). CB 를 싣지 않는다 — 생성/역사 코드는 worker 에서만 돈다.
 #
-#   julia +lts --project=. tools/monitor/replay_repair_cohort.jl <key> <outroot> [arms=GP,L0,L1] [campaign_dir]
+#   julia +lts --project=. tools/monitor/replay_repair_cohort.jl <key> <outroot> [arms=GP,L0,L1] [campaign_dir] [prev_episode.json]
+#     arms 에 GPR(후보만 재실행) 이 있으면 5 번째 인자 = 앞선 런의 episode.json(NOOP 기준을 거기서 읽는다)
 #     <key> = legacy fixture 이름(예: tractor_zone_s5) — `test/fixtures/repair_verification/tools/legacy_chains.json`
 #
 # 한 판 = 원래 세계(부모, pi0)를 t0 에 세우고 같은 checkpoint 에서 분기들을 **순차로**:
@@ -176,6 +177,7 @@ function main(args)
     key, outroot = args[1], abspath(args[2])
     arms = length(args) >= 3 ? String.(split(args[3], ",")) : ["GP", "L0", "L1"]
     campaign = length(args) >= 4 ? abspath(args[4]) : outroot
+    prev_path = length(args) >= 5 ? abspath(args[5]) : ""
     E = _json(joinpath(FX, "tools", "legacy_chains.json"))["episodes"][key]
     env = BR.pi0_launch_env(E["model"], E["case"], E["seed"])
     ispath(outroot) && error("outroot exists: $(outroot)")
@@ -217,7 +219,7 @@ function main(args)
             # GP 재판정(T10b fix): 검증기(감사·효과 규칙)가 바뀐 뒤 **후보 worker 만** 다시 돈다. NOOP 기준은 같은 세계·같은 CB 빌드의
             # 앞선 런(`<campaign>/../cohort/<key>/episode.json` 의 noop — T10a B0 와 31/31 전 열 동일)을 쓴다; 선택은 supervisor 의
             # 순수 함수 `select_repair`(폐기 표시 포함)다. 부모 verify 로 t0 불변을 앞뒤로 확인한다.
-            prev = _json(get(ENV, "T10B_PREV_EPISODE", ""))
+            prev = _json(prev_path)
             base = Symbol(prev["noop"]["report"]["outcome"])
             gp = gp_proposal(key, E, cid)
             R["GP_proposal"] = Dict("impl_name" => gp["impl_name"], "proposal_sha256" => TC.digest(gp), "wrapper" => gp["provenance"]["wrapper"])
@@ -231,7 +233,7 @@ function main(args)
                  outcome = x.run === nothing ? nothing : x.run.report.outcome, eligible = x.eligible, discarded = disc)
             sel = S.select_repair(cid, base, [c]; gaps, baseline_note = "baseline = previous run's NOOP branch (same world, same CB build)")
             R["supervision"] = Dict{String,Any}("selection" => S.selection_dict(sel), "gaps" => gaps, "transitions" => Any[],
-                "baseline_from" => get(ENV, "T10B_PREV_EPISODE", ""))
+                "baseline_from" => prev_path)
             R["GP"] = Dict{String,Any}("judged" => jd(x.judged), "gate" => String(x.gate.verdict), "gate_reasons" => x.gate.reasons,
                 "candidate_outcome" => String(sel.candidate_outcomes[gp["proposal_id"]]),
                 "terminal" => x.run === nothing ? nothing : term_facts(x.run.dir), "reasons" => x.reasons)
