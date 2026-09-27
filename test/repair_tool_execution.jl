@@ -20,11 +20,12 @@ const EV = EffectValidation
 const R = RepairTypes
 const E = EpisodeCheckpointIO
 const W = RepairBranchWorker
+const ER = EpisodeReplay
 CB.RVO_RECORD_BUILDS[] = true          # worker(T3 install!)와 같은 RVO 래퍼 — engine 카운터 `rvo_doSteps` 가 산다
 
 struct _Stop <: Exception end
 rt(x) = JSON3.read(JSON3.write(x), x isa AbstractVector ? Vector{Any} : Dict{String,Any})
-fields(env) = (w = E.world_lines(env; modules = [CB]); E.field_digests(w.lines, w.fields))
+fields(env) = (w = E.world_lines(env; modules = [CB], refs = :identity); E.field_digests(w.lines, w.fields))   # 감사와 같은 @ref 신원 표기(T10b fix)
 
 """
 colored_8x8 을 production `run_lego_demo` 루프로 굴리다 `iter >= at` 인 첫 스텝 경계에서 `f(env, ctx)` 를 부르고
@@ -361,6 +362,46 @@ want("13") && @testset "[13] judge_candidate: 계약을 어긴 COMPLETE 는 선�
     C2 = deepcopy(r.C); isempty(C2["transport_chains"]) || (C2["transport_chains"][1]["source"] = nothing)
     @test isempty(C2["transport_chains"]) || has(TX.anchor_unobserved(C2), "transport_anchor_unchecked: 1/")
     @test TX.anchor_unobserved(r.C) == String[] || has(TX.anchor_unobserved(r.C), "transport_anchor_unchecked")
+end
+
+want("14") && @testset "[14] 감사 @ref 는 객체 신원 — 정점 제거(색인 재번호)는 정책·씬 트리 변경이 아니다; 제어기 상태 사유는 따로 (T10b 리뷰)" begin
+    r = at_step(; at = 40) do env, ctx
+        # 같은 편집을 옛 방식(첫 방문 경로 @ref)으로 먼저 재 본다 — 회귀의 증거(오인이 실제로 났었다)
+        pd(e) = (w = E.world_lines(e; modules = ER.MODULES(), refs = :path); E.field_digests(w.lines, w.fields))
+        C = contract(env)
+        p0 = pd(env)
+        en = enact(env, ctx, fresh("prune_vertex"); C)
+        p1 = pd(env)
+        (; en, C, path_changed = sort!([k for k in keys(p0) if get(p1, k, nothing) != p0[k]]))
+    end
+    a = r.en.record["audit"]["fields_changed_by_action"]
+    @test "env.agent_policies" in r.path_changed && "env.scene_tree" in r.path_changed      # 옛 감사라면 오인했을 것
+    @test "env.sched" in a && !("env.agent_policies" in a) && !("env.scene_tree" in a)        # 신원 감사는 오인하지 않는다
+    v = effects(r.C, r.en).report
+    @test !any(x -> occursin("agent_policies", x), v.reasons) && has(v.reasons, "required_task_deleted")
+    # 대조 1: 진짜 정책 변경(파라미터)은 여전히 잡히고 generic 파생 계획 사유다
+    r2 = at_step(; at = 40) do env, ctx
+        C = contract(env); (; en = enact(env, ctx, fresh("policy_param"); C), C)
+    end
+    @test "env.agent_policies" in r2.en.record["audit"]["fields_changed_by_action"]
+    dp = r2.en.record["audit"]["derived_paths_changed_by_action"]["env.agent_policies"]
+    @test length(dp) == 1 && endswith(dp[1], ".dispersion_policy.vmax")
+    v2 = effects(r2.C, r2.en).report
+    @test v2.verdict === :unsupported && has(v2.reasons, "unverifiable:derived_plan_changed_by_code:env.agent_policies")
+    # 대조 2: 인터페이스 `get_cmd` 조회는 제어기 런타임 상태를 쓴다 → 판정은 같은 unsupported, 사유는 제어기 상태
+    r3 = at_step(; at = 40) do env, ctx
+        C = contract(env); (; en = enact(env, ctx, fresh("get_cmd"); C), C)
+    end
+    dp3 = get(r3.en.record["audit"]["derived_paths_changed_by_action"], "env.agent_policies", String[])
+    @test !isempty(dp3) && all(EV.controller_state_path, dp3)
+    v3 = effects(r3.C, r3.en).report
+    @test v3.verdict === :unsupported && has(v3.reasons, "unsupported_effect:controller_state_mutated_by_code:env.agent_policies")
+    @test !has(v3.reasons, "derived_plan_changed_by_code")
+    # 경로 규칙 자체: 제어기 칸만 참, 파라미터·키·정책 추가는 거짓
+    @test EV.controller_state_path("env.agent_policies{3}.nominal_policy.config.translation[1]")
+    @test EV.controller_state_path("env.agent_policies{3}.dispersion_policy.node")
+    @test !EV.controller_state_path("env.agent_policies{3}.dispersion_policy.vmax")
+    @test !EV.controller_state_path("env.agent_policies{3}.key") && !EV.controller_state_path("env.agent_policies")
 end
 
 end

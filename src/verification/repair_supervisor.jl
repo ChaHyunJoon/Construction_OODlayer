@@ -88,18 +88,27 @@ end
 # =============================================================================
 # 선택 (순수)
 # =============================================================================
+"worker 가 집행을 폐기한 상태(continuation 없음). `:timeout`(wall 에 죽음)은 폐기가 아니라 인증 공백이다."
+const DISCARDED_ENACTMENTS = (:partial, :threw, :unobservable, :registration_rejected)
+"supervisor 의 후보 기록(`sv.candidates[id]`)에서 폐기 여부 — 판정 쪽 enactment 상태로."
+_discarded(c) = c.exec !== nothing && c.exec.judged !== nothing && c.exec.judged.enactment.status in DISCARDED_ENACTMENTS
+
 """
     candidate_outcome(c) -> Symbol ∈ RepairTypes.CANDIDATE_OUTCOMES
 
-`c` = `(; proposal_id, submission_index, outcome, eligible)` — `outcome` 은 rollout 결과(`nothing` = rollout 없음:
-제안 문 거절·폐기), `eligible` = `judge_candidate(...).eligible`(+ supervisor 의 native·제안 파일 확인).
-eligible 인데 rollout 이 COMPLETE 가 아니면 입력이 모순이다(던진다).
+`c` = `(; proposal_id, submission_index, outcome, eligible[, discarded])` — `outcome` 은 rollout 결과(`nothing` = rollout 없음:
+제안 문 거절), `eligible` = `judge_candidate(...).eligible`(+ supervisor 의 native·제안 파일 확인), `discarded`(선택) = worker 가
+집행을 **폐기**했다(`DISCARDED_ENACTMENTS` — throw·부분 적용·관측 불가 효과·등록 거절). 폐기된 worker 는 continuation 없이 끝나
+rollout 이 UNKNOWN 으로 보이지만 그것은 인증 공백이 아니라 **후보의 거절**이다 → `:REJECTED`(T10b 판정: UNKNOWN 이면 기준
+COMPLETE 판의 raw regression 에서 빠져 설계 §9.3 을 과소 계산한다). 진짜 인증 공백(wall·자원 한도·solver·신원 불일치로
+UNKNOWN 인데 폐기 아님)은 UNKNOWN 그대로다. eligible 인데 rollout 이 COMPLETE 가 아니면 입력이 모순이다(던진다).
 """
 function candidate_outcome(c)
     if c.eligible
         c.outcome === :COMPLETE || throw(ArgumentError("candidate $(c.proposal_id) eligible without a COMPLETE rollout"))
         return :COMPLETE
     end
+    hasproperty(c, :discarded) && c.discarded === true && return :REJECTED
     c.outcome in (:FAIL_WITHIN_BUDGET, :UNKNOWN) && return c.outcome
     return :REJECTED            # rollout 없음, 또는 COMPLETE 인데 효과/계약/신원 검사에서 떨어짐
 end
@@ -684,7 +693,8 @@ function select!(sv::Supervision; baseline_override::Union{Nothing,Symbol} = not
     ran = sv.baseline !== nothing
     cands = [(; proposal_id = f["proposal_id"], submission_index = f["submission_index"],
               outcome = ran ? sv.candidates[f["proposal_id"]].outcome : :UNKNOWN,
-              eligible = ran && sv.candidates[f["proposal_id"]].eligible) for f in sv.frozen]
+              eligible = ran && sv.candidates[f["proposal_id"]].eligible,
+              discarded = ran && _discarded(sv.candidates[f["proposal_id"]])) for f in sv.frozen]
     base = ran ? sv.baseline.report.outcome : :UNKNOWN
     note = ran ? (sv.baseline.report.unknown_cause === nothing ? "" : "UNKNOWN cause $(sv.baseline.report.unknown_cause)") :
                  "not run (certification unavailable before rollouts)"

@@ -116,6 +116,18 @@ mutable struct EngineAdapter
     seg_audit::Any               # 현재 코드 구간 시작의 audit
     code_fields::Set{String}     # 코드 구간(도구가 세계를 직접 만진 구간)에서 바뀐 필드
     engine_fields::Set{String}   # engine 구간(정상 루프 반복)에서 바뀐 필드 — 판정 대상 아님, 기록
+    derived_paths::Dict{String,Set{String}}   # 코드 구간에서 바뀐 파생 계획 필드의 하위 경로(효과 판정이 쓴 쪽을 가른다)
+end
+
+"두 감사 사이 파생 계획 필드의 바뀐 하위 경로를 `acc` 에 더한다(감사에 `paths` 가 없으면 무동작)."
+function _path_changes!(acc, a, b)
+    (hasproperty(a, :paths) && hasproperty(b, :paths)) || return acc
+    for f in union(keys(a.paths), keys(b.paths))
+        pa, pb = get(a.paths, f, Dict{String,String}()), get(b.paths, f, Dict{String,String}())
+        ch = [p for p in union(keys(pa), keys(pb)) if get(pa, p, nothing) != get(pb, p, nothing)]
+        isempty(ch) || union!(get!(acc, f, Set{String}()), ch)
+    end
+    return acc
 end
 
 _halt!(a::EngineAdapter, kind, why) = (a.stop = HarnessStop(kind, why); throw(a.stop))
@@ -153,6 +165,7 @@ function (a::EngineAdapter)(env)
     a_now = a.audit(env, a.spd)
     seg = _changed(a.seg_audit.fields, a_now.fields)
     union!(a.code_fields, seg)
+    _path_changes!(a.derived_paths, a.seg_audit, a_now)
     append!(V, ["protected_global_changed:$(f)" for f in seg if f in EV.PROTECTED_FIELDS])
     mseg = _changed(a.seg_audit.methods, a_now.methods)
     isempty(mseg) || push!(V, "runtime_override:" * join(mseg, ","))
@@ -449,7 +462,8 @@ function enact_proposal!(env, fv, anim, sp, spd; proposal::AbstractDict, mode::S
     asg0, short0 = assignment_table(env, CB), unassigned_work(env, CB)
     push!(trace, s_reg)
     adapter = EngineAdapter(env, CB, fv, anim, sp, spd, mode, batch_pos, Any[], 0, nothing, trace, snap,
-                            contract, Any[], tol, audit, a_reg, Set{String}(), Set{String}())
+                            contract, Any[], tol, audit, a_reg, Set{String}(), Set{String}(),
+                            Dict{String,Set{String}}())
     synth = Dict{String,Any}("impl_name" => impl, "body_names" => [impl], "calls" => proposal["calls"],
                              "params" => proposal["params"])
     CB.ENGINE_STEP_ADAPTER[] = adapter
@@ -472,7 +486,9 @@ function enact_proposal!(env, fv, anim, sp, spd; proposal::AbstractDict, mode::S
     after_body = trace[end]["state"]
     X["after_body_state"] = after_body
     union!(adapter.code_fields, _changed(adapter.seg_audit.fields, a_body.fields))   # 마지막 코드 구간(마지막 step 뒤 → 반환)
+    _path_changes!(adapter.derived_paths, adapter.seg_audit, a_body)
     X["audit"] = Dict{String,Any}("fields_changed_by_action" => sort!(collect(adapter.code_fields)),
+        "derived_paths_changed_by_action" => Dict{String,Any}(f => sort!(collect(ps)) for (f, ps) in adapter.derived_paths),
         "fields_changed_by_engine" => sort!(collect(adapter.engine_fields)),
         "methods_changed_by_action" => _changed(a_reg.methods, a_body.methods),
         "world_counter_delta" => Int(a_body.world - a_reg.world), "engine_before" => a_reg.engine,

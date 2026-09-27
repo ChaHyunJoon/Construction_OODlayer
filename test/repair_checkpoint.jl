@@ -209,6 +209,29 @@ const RID = CB.node_id(first(robots(W0.env)))
         @test isempty(E.verify_world(cp, r; modules = MODS))
     end
 
+    @testset "[5b] 감사용 `refs = :identity` 는 checkpoint 정준 행을 바꾸지 않는다 — @ref 표기만 신원으로 (T10b 리뷰)" begin
+        # checkpoint·복원 비교의 기본값은 첫 방문 경로(:path) 그대로다(교차 프로세스 — 신원은 프로세스마다 다르다)
+        @test any(l -> occursin("\t@ref env.", l), L0.lines) && !any(l -> occursin("\t@ref ~", l), L0.lines)
+        Lp = lines_of(r)
+        Li = E.world_lines(r.env; modules = MODS, loop_state = r.loop_state, task_contract = r.task_contract,
+                           fingerprints = r.fingerprints, refs = :identity)
+        # 같은 행 수·같은 경로·같은 필드 구간; 다른 것은 @ref 행의 대상 표기뿐
+        @test length(Li.lines) == length(Lp.lines) && Li.fields == Lp.fields
+        diffl = [(a, b) for (a, b) in zip(Lp.lines, Li.lines) if a != b]
+        @test !isempty(diffl) && all(((a, b),) -> occursin("\t@ref env.", a) || occursin("\t@ref globals.", a) || occursin("\t@ref ", a), diffl)
+        @test all(((a, b),) -> split(a, '\t')[1] == split(b, '\t')[1] && startswith(split(b, '\t')[2], "@ref ~"), diffl)
+        # 신원 모드도 alias 끊기(같은 값의 다른 객체)를 잡는다 — 감사가 약해지지 않았다(음성 대조)
+        fi(w) = (x = E.world_lines(w.env; modules = MODS, loop_state = w.loop_state, task_contract = w.task_contract,
+                                   fingerprints = w.fingerprints, refs = :identity); E.field_digests(x.lines, x.fields))
+        d0 = fi(r)
+        FakeScript.HOLDER[] = deepcopy(FakeScript.HOLDER[])
+        d1 = fi(r)
+        @test [k for k in keys(d0) if d0[k] != d1[k]] == ["globals.FakeScript.HOLDER"]
+        FakeScript.HOLDER[] = CB.get_node(r.env.scene_tree, RID)
+        @test fi(r) == d0 && isempty(E.verify_world(cp, r; modules = MODS))
+        @test_throws ErrorException E.world_lines(r.env; modules = MODS, refs = :nope)
+    end
+
     @testset "[6] 다른 파일은 import 를 거절한다" begin
         bad = joinpath(OUT, "tampered.jls")
         b = read(cp.artifact_path); b[end÷2] ⊻= 0x01; write(bad, b)

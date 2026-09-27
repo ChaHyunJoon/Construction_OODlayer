@@ -24,7 +24,7 @@ module EffectValidation
 import ..RepairTypes as R
 import ..TaskContract as TC
 
-const EFFECT_VALIDATOR_VERSION = "effect-validator/2"   # /2 (T7): 의미 필드 설명을 코드 구간 절 변화로만 — `n_engine > 0` 면제 제거
+const EFFECT_VALIDATOR_VERSION = "effect-validator/3"   # /2 (T7): 의미 필드 설명을 코드 구간 절 변화로만 — `n_engine > 0` 면제 제거 · /3 (T10b fix): 감사 `@ref` 신원화 + 제어기 상태 사유 분리
 """
 모든 효과 판정에 붙는 관측 경계(기계 판독). accept 여도 이 항목은 **보장하지 않는다** — T7 은 이 목록을 보고 완전 검사된
 accept 와 구분한다. 판정마다 조건부 항목이 더해진다(`cache_only_fields:`). 🔴 `audit.fields_changed_by_action` 은 **코드 구간마다** 잰 값이어야 한다(T6 adapter) — 전 구간 한 번 diff 를 넣으면 engine 이 바꾼 필드가 도구 탓이 된다.
@@ -58,6 +58,13 @@ const SEMANTIC_FIELDS = Dict(
 diff 만으로 일시적 존 제거를 잡았다고 하지 않는다). 그래서 `:accept` 로 접지 않고 `:unsupported`(검증 불가) 로 표시한다.
 """
 const DERIVED_PLAN_FIELDS = Set(["env.agent_policies", "env.staging_buffers"])
+"""
+주행 제어기 **런타임 상태** 칸 — `get_twist_cmd`(`route_planning.jl`)가 매 호출 쓴다: TangentBug 의 `config`(현재 자세)·
+`mode`(set_policy_mode!)·`cmd`, 분산 포텐셜장의 `node`·`dist_to_nearest_active_agent`·`buffer_radius`. 정책 객체의 추가·삭제,
+이득·반경 같은 파라미터, 키 변경은 여기 들지 않는다(그런 변경은 generic 사유로 남는다).
+"""
+const CONTROLLER_STATE_PATH = r"^env\.agent_policies(\{\d+\}|\[[^\]]*\])\.(nominal_policy\.(config|mode|cmd)|dispersion_policy\.(node|dist_to_nearest_active_agent|buffer_radius))(\.|\[|$)"
+controller_state_path(p::AbstractString) = occursin(CONTROLLER_STATE_PATH, p)
 "다른 효과의 부수 장부·파생 캐시. 이것만 바뀌었으면 효과 `:other`."
 const BOOKKEEPING_FIELDS = Set(vcat(["env.cache", "env.agent_parent_build_step_active",
     "env.active_build_steps", "env.max_cargo_id", "env.max_robot_go_id"],
@@ -353,7 +360,13 @@ function _validate(contract, before, after, audit, tr, pid)
         elseif f in DERIVED_PLAN_FIELDS
             # 감사가 코드 구간만 재므로 이 필드가 여기 있으면 도구 코드가 계획을 계산했다(engine step 이 있었어도) —
             # 무슨 세계에서였는지 볼 수 없다. (T7: 옛 `n_engine > 0` 분기는 전 구간 감사 시절의 것이라 걷어냈다.)
-            push!(U, "unverifiable:derived_plan_changed_by_code:$(f)")
+            # T10b 리뷰: 바뀐 하위 경로가 **전부** 주행 제어기의 런타임 상태(`get_twist_cmd` 가 쓰는 칸 — 인터페이스의
+            # `get_cmd` 가 부른다)면 따로 이름 붙인다. 판정은 같다(unsupported: 지속 제어기 상태, 설계 §6.1) — 사유만 갈라
+            # 채점이 "도구가 제어기 명령을 조회하며 상태를 남겼다" 와 "파생 계획 coverage 공백" 을 섞지 않게 한다.
+            ps = String.(get(get(audit, "derived_paths_changed_by_action", Dict{String,Any}()), f, String[]))
+            push!(U, !isempty(ps) && all(controller_state_path, ps) ?
+                     "unsupported_effect:controller_state_mutated_by_code:$(f)" :
+                     "unverifiable:derived_plan_changed_by_code:$(f)")
         elseif f in PROTECTED_FIELDS
             push!(V, "protected_global_changed:$(f)")
         elseif f in HOOK_FIELDS

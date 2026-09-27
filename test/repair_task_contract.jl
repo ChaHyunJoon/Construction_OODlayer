@@ -14,7 +14,7 @@ include(joinpath(@__DIR__, "..", "src", "verification", "task_contract.jl"))
 include(joinpath(@__DIR__, "..", "src", "verification", "episode_checkpoint.jl"))
 const TC = TaskContract
 const E = EpisodeCheckpointIO
-fields(env) = (w = E.world_lines(env; modules = [CB]); E.field_digests(w.lines, w.fields))
+fields(env) = (w = E.world_lines(env; modules = [CB], refs = :identity); E.field_digests(w.lines, w.fields))   # 감사와 같은 @ref 신원 표기(T10b fix)
 
 mkenv() = (e = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "t5contract",
         num_robots = 6, assignment_mode = :greedy, n_spare_per_pool = 2,

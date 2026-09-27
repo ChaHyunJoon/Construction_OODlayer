@@ -266,7 +266,19 @@ mutable struct _Walk
     lines::Vector{String}
     seen::IdDict{Any,String}
     opaque::Vector{String}      # 직렬화로 옮길 수 없는 값의 경로
+    refs::Symbol                # `@ref` 표기: :path(첫 방문 경로 — checkpoint·복원 비교) | :identity(프로세스 안 객체 신원 — 감사)
 end
+_Walk(lines, seen, opaque) = _Walk(lines, seen, opaque, :path)
+
+"""
+감사(`refs = :identity`) 전용 객체 신원표. 같은 프로세스 안에서 두 번 찍은 감사를 비교할 때 `@ref` 를 **첫 방문 경로**가 아니라
+객체 신원(`~n`)으로 적는다 — 스케줄 정점 제거처럼 첫 방문 경로의 **색인만** 바뀌면(`env.sched.nodes[v]` 재번호) 그 객체를
+가리키는 다른 필드(`env.agent_policies`·`env.scene_tree`)의 digest 가 객체 변화 없이 바뀌던 것(T10b 리뷰 실측)을 막는다.
+🔴 강한 참조를 **쥔다**(주소 재사용으로 다른 객체가 같은 신원을 얻지 않게) — 일회용 worker 안에서만 쓴다. 교차 프로세스
+비교(checkpoint 동일성·복원 검증)는 신원이 프로세스마다 다르므로 **반드시** `:path`(기본값)다.
+"""
+const _AUDIT_IDENT = IdDict{Any,Int}()
+_ident(x) = "~" * string(get!(() -> length(_AUDIT_IDENT) + 1, _AUDIT_IDENT, x))
 
 """
 정준 행 상한. 넘으면 **경로를 적고 에러**다 — 세계가 폭주하는 그래프(불변 구조의 반복 전개 등)를 조용히
@@ -288,7 +300,7 @@ function _walk!(w::_Walk, path::String, @nospecialize x)
     T = typeof(x)
     if ismutable(x)
         r = get(w.seen, x, nothing)
-        r === nothing || return push!(w.lines, path * "\t@ref " * r)
+        r === nothing || return push!(w.lines, path * "\t@ref " * (w.refs === :identity ? _ident(x) : r))
         w.seen[x] = path
     end
     if x isa Ptr || (T <: Base.IO && !(x isa IOBuffer)) || x isa Task
@@ -340,8 +352,9 @@ end
 무부작용 시험이 이 성질을 잰다).
 """
 function world_lines(env; modules, loop_state = nothing, task_contract = nothing,
-                     fingerprints = nothing, rng = copy(Random.default_rng()))
-    w = _Walk(String[], IdDict{Any,String}(), String[])
+                     fingerprints = nothing, rng = copy(Random.default_rng()), refs::Symbol = :path)
+    refs in (:path, :identity) || error("world_lines: refs must be :path or :identity")
+    w = _Walk(String[], IdDict{Any,String}(), String[], refs)
     fields = Tuple{Symbol,String,Int}[]
     field!(b, name, x) = (push!(fields, (b, name, length(w.lines) + 1)); _walk!(w, name, x))
     eb = _env_blocks(env)
@@ -389,6 +402,21 @@ end
 
 "필드별 정준 digest(`env.sched`, `globals.ConstructionBots.RESTRICTION_ZONES`, `rng.default` …)."
 field_digests(lines, fields) = Dict(f => _sha(@view lines[s:e]) for (_, f, s, e) in _spans(lines, fields))
+
+"필드별 행 경로 → 값 토큰(감사가 `names` 필드 안에서 **어느 하위 경로**가 바뀌었는지 가르는 데 쓴다 — 쓴 쪽을 필드로 판별)."
+function field_paths(lines, fields, names)
+    out = Dict{String,Dict{String,String}}()
+    for (_, f, s, e) in _spans(lines, fields)
+        f in names || continue
+        d = Dict{String,String}()
+        for l in @view lines[s:e]
+            p, t = split(l, '\t'; limit = 2)
+            d[p] = t
+        end
+        out[f] = d
+    end
+    return out
+end
 
 # ---- 필드별 차이 --------------------------------------------------------------------------
 function _float_close(ta, tb, atol)

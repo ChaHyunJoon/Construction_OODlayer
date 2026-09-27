@@ -111,6 +111,31 @@ function t6_shift_throw!(env; dx::Float64 = 0.3, dy::Float64 = -0.2)
     end
     error("t6 boom after moving the build")
 end""",
+    # T10b 리뷰: 스케줄 정점 제거(색인 재번호) — 공유 객체의 첫 방문 경로 색인만 바뀐다. 감사가 이것을 정책·씬 트리 변경으로
+    # 오인하면 안 된다(원본 필수 작업을 지우므로 판정 자체는 계약이 거절한다 — 여기서 보는 것은 **감사 필드**다).
+    "prune_vertex" => """
+function t6_prune_vertex!(env)
+    lifts = sort!([n for n in get_nodes(env.sched) if matches_template(LiftIntoPlace, n) &&
+                   !(get_vtx(env.sched, node_id(n)) in env.cache.closed_set)]; by = n -> get_vtx(env.sched, node_id(n)))
+    rem_node!(env.sched, node_id(first(lifts)))
+    return :pruned
+end""",
+    # 정책 파라미터 변경(제어기 런타임 상태가 아니다) — generic 파생 계획 사유로 남아야 한다.
+    "policy_param" => """
+function t6_policy_param!(env)
+    ks = sort!([k for k in keys(env.agent_policies) if env.agent_policies[k].dispersion_policy !== nothing]; by = string)
+    p = env.agent_policies[first(ks)].dispersion_policy
+    p.vmax = 2.0 * p.vmax
+    return :retuned
+end""",
+    # 인터페이스의 `get_cmd` 로 제어 명령을 조회 — `get_twist_cmd` 가 제어기 런타임 상태(자세·모드·버퍼…)를 쓴다.
+    "get_cmd" => """
+function t6_get_cmd!(env)
+    vs = sort!([v for v in env.cache.active_set if env.sched.nodes[v].node isa Union{RobotGo,TransportUnitGo}])
+    isempty(vs) && error("no active navigating node")
+    cmd = get_cmd(env.sched.nodes[first(vs)].node, env)
+    return (status = :queried, detail = string(cmd.vel))
+end""",
     # 혼합: 빌드 강체 이동(resync 없음) + 스페어 인계(배정·자원).
     "mixed" => """
 function t6_mixed!(env; dx::Float64 = 0.3, dy::Float64 = -0.2)

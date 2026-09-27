@@ -75,10 +75,17 @@ function engine_counters(spd)
         "cache_clock" => CB._CACHE_TIMESTAMP_COUNTER[])
 end
 
+"""
+감사 스냅샷(같은 worker 안에서 전후를 비교한다). `@ref` 는 객체 **신원**으로 적는다(`refs = :identity`) — 공유 객체의 첫 방문
+경로 색인이 바뀐 것(스케줄 정점 제거로 `env.sched.nodes[v]` 재번호)을 그 객체를 가리키는 다른 필드의 변경으로 오인하지 않는다
+(T10b 리뷰). 파생 계획 필드(`TX.EV.DERIVED_PLAN_FIELDS`)는 하위 경로별 값도 싣는다 — 효과 판정이 **어느 하위 필드**가 바뀌었는지로
+쓴 쪽(주행 제어기 상태 vs 그 밖)을 가른다.
+"""
 function audit_snapshot(env, spd)
-    W = E.world_lines(env; modules = ER.MODULES())
+    W = E.world_lines(env; modules = ER.MODULES(), refs = :identity)
     return (fields = E.field_digests(W.lines, W.fields), methods = method_digests(),
-            world = Base.get_world_counter(), engine = engine_counters(spd))
+            world = Base.get_world_counter(), engine = engine_counters(spd),
+            paths = E.field_paths(W.lines, W.fields, TX.EV.DERIVED_PLAN_FIELDS))
 end
 
 _changed(a::AbstractDict, b::AbstractDict) =

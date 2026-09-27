@@ -28,7 +28,7 @@ mkenv() = (e = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name =
         return_env_before_sim = true, rng = Random.MersenneTwister(1)); CB.enable_battery!(e); CB.set_sim_step!(0); e)
 rt(x) = JSON3.read(JSON3.write(x), Dict{String,Any})
 snap(env) = rt(TC.task_state(env, CB))
-fields(env) = (w = E.world_lines(env; modules = [CB]); E.field_digests(w.lines, w.fields))
+fields(env) = (w = E.world_lines(env; modules = [CB], refs = :identity); E.field_digests(w.lines, w.fields))   # 감사와 같은 @ref 신원 표기(T10b fix)
 chg(a, b) = sort!([String(k) for k in union(keys(a), keys(b)) if get(a, k, nothing) != get(b, k, nothing)])
 contract(env) = rt(TC.derive_task_contract(env, CB; checkpoint_id = "t0"))
 # 필드 audit 은 T6 adapter 와 같이 **코드 구간마다**(T7: 검증기가 그 계약에 기댄다 — engine 구간 변경은 도구 탓이 아니다).

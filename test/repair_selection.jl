@@ -57,12 +57,15 @@ rollout(branch, outcome = :COMPLETE; steps = 800) = R.RolloutReport(branch, "t0"
 @testset "[1] 선택 표(§7.2) — 모든 조합" begin
     kinds = Dict("elig" => cand("c", :COMPLETE, true), "complete_but_rejected" => cand("c", :COMPLETE, false),
                  "fail" => cand("c", :FAIL_WITHIN_BUDGET, false), "unknown" => cand("c", :UNKNOWN, false),
-                 "no_rollout" => cand("c", nothing, false))
+                 "no_rollout" => cand("c", nothing, false),
+                 # T10b 판정: worker 가 집행을 폐기(partial·throw·관측 불가·등록 거절)해 rollout 이 UNKNOWN 으로 보여도 후보의 거절이다
+                 "discarded" => cand("c", :UNKNOWN, false; discarded = true))
     for (k, c) in kinds
         # 기준 COMPLETE → 무엇이든 NOOP. 실패·거절은 raw regression, UNKNOWN 은 regression 아님(사유로 남음).
         s = S.select_repair("t0", :COMPLETE, [c])
         @test s.selected === :noop && s.classification === :baseline_complete && s.selected_proposal_id === nothing
-        @test s.raw_regressions == (k in ("fail", "complete_but_rejected", "no_rollout") ? ["c"] : String[])
+        @test s.raw_regressions == (k in ("fail", "complete_but_rejected", "no_rollout", "discarded") ? ["c"] : String[])
+        @test s.candidate_outcomes["c"] === (k == "elig" ? :COMPLETE : k == "fail" ? :FAIL_WITHIN_BUDGET : k == "unknown" ? :UNKNOWN : :REJECTED)
         k == "unknown" && @test any(r -> startswith(r, "candidate_unknown: c"), s.reasons)
         # 기준 FAIL → eligible COMPLETE 만 TOOL
         s = S.select_repair("t0", :FAIL_WITHIN_BUDGET, [c])
@@ -81,6 +84,9 @@ rollout(branch, outcome = :COMPLETE; steps = 800) = R.RolloutReport(branch, "t0"
     # 후보 결과 기록: COMPLETE 인데 검사에서 떨어진 후보는 COMPLETE 로 적히지 않는다
     @test S.select_repair("t0", :FAIL_WITHIN_BUDGET, [kinds["complete_but_rejected"]]).candidate_outcomes["c"] === :REJECTED
     @test_throws ArgumentError S.candidate_outcome(cand("x", :FAIL_WITHIN_BUDGET, true))      # eligible ⟹ COMPLETE
+    # 폐기 표시가 없으면(인증 공백 — wall·자원 한도) UNKNOWN 은 UNKNOWN 이다; discarded=false 도 같다
+    @test S.candidate_outcome(cand("u", :UNKNOWN, false; discarded = false)) === :UNKNOWN
+    @test S.DISCARDED_ENACTMENTS == (:partial, :threw, :unobservable, :registration_rejected) && !(:timeout in S.DISCARDED_ENACTMENTS)
     @test_throws ArgumentError S.select_repair("t0", :COMPLETE, [cand("a", nothing, false), cand("a", nothing, false)])
 end
 

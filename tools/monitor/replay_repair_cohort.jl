@@ -213,6 +213,31 @@ function main(args)
             tf = something(term_facts(v.dir), Dict{String,Any}())
             logln(key, " ", arm, " → ", lo.outcome, " closed=", get(tf, "closed", "-"), " other=", lo.other)
         end
+        if "GPR" in arms
+            # GP 재판정(T10b fix): 검증기(감사·효과 규칙)가 바뀐 뒤 **후보 worker 만** 다시 돈다. NOOP 기준은 같은 세계·같은 CB 빌드의
+            # 앞선 런(`<campaign>/../cohort/<key>/episode.json` 의 noop — T10a B0 와 31/31 전 열 동일)을 쓴다; 선택은 supervisor 의
+            # 순수 함수 `select_repair`(폐기 표시 포함)다. 부모 verify 로 t0 불변을 앞뒤로 확인한다.
+            prev = _json(get(ENV, "T10B_PREV_EPISODE", ""))
+            base = Symbol(prev["noop"]["report"]["outcome"])
+            gp = gp_proposal(key, E, cid)
+            R["GP_proposal"] = Dict("impl_name" => gp["impl_name"], "proposal_sha256" => TC.digest(gp), "wrapper" => gp["provenance"]["wrapper"])
+            v0 = BR.parent_command(par, "verify")
+            x = TX.execute_tool_isolated(; parent_dir = par.dir, raw = gp, outroot = joinpath(outroot, "supervision"),
+                                         branch_id = "cand-1", launch_env = env, limits = LIMITS, mode = "full")
+            v1 = BR.parent_command(par, "verify")
+            gaps = vcat(S.checkpoint_gaps(contract, par.dir), S.identity_gaps(v0), S.identity_gaps(v1))
+            disc = x.judged !== nothing && x.judged.enactment.status in S.DISCARDED_ENACTMENTS
+            c = (; proposal_id = gp["proposal_id"], submission_index = 1,
+                 outcome = x.run === nothing ? nothing : x.run.report.outcome, eligible = x.eligible, discarded = disc)
+            sel = S.select_repair(cid, base, [c]; gaps, baseline_note = "baseline = previous run's NOOP branch (same world, same CB build)")
+            R["supervision"] = Dict{String,Any}("selection" => S.selection_dict(sel), "gaps" => gaps, "transitions" => Any[],
+                "baseline_from" => get(ENV, "T10B_PREV_EPISODE", ""))
+            R["GP"] = Dict{String,Any}("judged" => jd(x.judged), "gate" => String(x.gate.verdict), "gate_reasons" => x.gate.reasons,
+                "candidate_outcome" => String(sel.candidate_outcomes[gp["proposal_id"]]),
+                "terminal" => x.run === nothing ? nothing : term_facts(x.run.dir), "reasons" => x.reasons)
+            R["noop"] = prev["noop"]
+            logln(key, " GPR → ", R["GP"]["candidate_outcome"], " selection=", sel.classification, " selected=", sel.selected, " base=", base)
+        end
         if "GP" in arms
             gp = gp_proposal(key, E, cid)
             R["GP_proposal"] = Dict("impl_name" => gp["impl_name"], "proposal_sha256" => TC.digest(gp), "wrapper" => gp["provenance"]["wrapper"])
