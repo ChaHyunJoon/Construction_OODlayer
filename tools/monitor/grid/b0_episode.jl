@@ -56,7 +56,17 @@ function main(args)
     if p !== nothing
         println(stderr, "[b0] manifest refused: ", p); return 2
     end
-    "--check" in args && (println("[b0] manifest ok ", mpath); return 0)
+    if "--check" in args
+        println("[b0] manifest ok ", mpath)
+        # I3(최종 리뷰): 바깥(campaign) 시한은 manifest 예산에서 — campaign.py 가 이 줄을 읽어 판의 timeout 으로 쓴다(RUN_TIMEOUT 이 못 깎는다).
+        #   B0 는 분기가 없다: 원래 세계 한 판 = manifest 의 에피소드 wall. 존 복구 에피소드(분기·모델) 예산은 참고로 같이 싣는다 —
+        #   T11 러너는 `RepairRuntime.manifest_episode_budget(m).episode_timeout_s` 를 자기 `episode_timeout_s` 로 싣는다.
+        m = R.read_json(mpath); zr = RT.manifest_episode_budget(m)
+        println("[budget] ", JSON3.write(Dict("episode_timeout_s" => m["budget"]["episode"]["wall_timeout_s"]["value"],
+            "runner" => "b0", "zone_repair_hold_deadline_s" => zr.hold_deadline_s,
+            "zone_repair_episode_timeout_s" => zr.episode_timeout_s, "zone_repair_components" => zr.components)))
+        return 0
+    end
     m = R.read_json(mpath)
     probs = RT.startup_problems(ENV)
     get(ENV, "ZONE_REPAIR_VERIFICATION", "") == "shadow" ||

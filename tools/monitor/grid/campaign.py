@@ -349,6 +349,25 @@ def _sha256(p):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def budget_of_check(stdout):
+    """The `[budget] {json}` line a manifest runner prints on `--check` (its episode budget derived from the manifest by
+    `RepairRuntime` -- the single source of the formula). None if absent."""
+    for line in (stdout or "").splitlines():
+        if line.startswith("[budget] "):
+            return json.loads(line[len("[budget] "):])
+    return None
+
+
+def run_timeout(camp, timeout_s=None, env=None):
+    """Outer timeout of one run. render runner: `RUN_TIMEOUT` (default 3600). Manifest runner: the episode budget the
+    runner derived from the manifest at init (`episode_timeout_s`) -- a smaller explicit value cannot undercut it
+    (final review I3: a reused 3600 s default would kill a zone-repair episode whose worst case is ~10 h)."""
+    env = os.environ if env is None else env
+    t = int(timeout_s or env.get("RUN_TIMEOUT", "3600"))
+    derived = camp.get("episode_timeout_s")
+    return t if derived is None else max(t, int(-(-float(derived) // 1)))
+
+
 def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None, runner="render", manifest=None):
     grid = os.path.abspath(grid)
     if runner == "b0":
@@ -358,6 +377,9 @@ def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None, runner="render"
                              capture_output=True, text=True, cwd=ROOT)
         if chk.returncode != 0:
             raise SystemExit("[campaign] init refused: " + (chk.stderr.strip() or chk.stdout.strip())[-2000:])
+        budget = budget_of_check(chk.stdout)
+        if not budget or not budget.get("episode_timeout_s"):
+            raise SystemExit("[campaign] init refused: the runner's --check printed no [budget] line (episode budget)")
     elif runner != "render":
         raise SystemExit("unknown runner %r" % runner)
     os.makedirs(os.path.join(grid, "log"), exist_ok=True)
@@ -381,7 +403,8 @@ def cmd_init(grid, model, lanes, cases, seeds, campaign_id=None, runner="render"
         "versions": {"julia": j["julia"], "python": sys.version.split()[0]},
     }
     if runner == "b0":
-        fresh.update(runner="b0", manifest=manifest, manifest_sha256=_sha256(manifest))
+        fresh.update(runner="b0", manifest=manifest, manifest_sha256=_sha256(manifest),
+                     episode_timeout_s=budget["episode_timeout_s"], episode_budget=budget)
     if os.path.isfile(cpath):
         with open(cpath) as f:
             camp = json.load(f)
@@ -489,7 +512,8 @@ def cmd_run_one(grid, lane, case, seed, timeout_s=None):
             n += 1
         os.replace(zr, "%s.attempt%d" % (zr, n))
         rec["prior_attempts_moved"].append("%s.attempt%d" % (zr, n))
-    timeout_s = timeout_s or int(os.environ.get("RUN_TIMEOUT", "3600"))
+    timeout_s = run_timeout(camp, timeout_s)
+    rec["timeout_s"] = timeout_s
     os.makedirs(os.path.dirname(job["log"]), exist_ok=True)
     st = time.time()
     timed_out = False

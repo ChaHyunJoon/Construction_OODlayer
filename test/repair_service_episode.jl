@@ -62,7 +62,9 @@ zr = joinpath(root, "zr")
 st0 = stats()
 r = try
     render(merge(PI0CELL, Dict("ZONE_REPAIR_VERIFICATION" => "shadow", "DSPY_URL" => url, "ZONE_REPAIR_ARM" => arm,
-                               "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "20000", "ZONE_REPAIR_MAX_COST_USD" => "1.0",
+                               # 최종 리뷰 C1·I3: 호출당 출력 상한·preflight wall 은 필수(권장 T11 값과 같은 크기)
+                               "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "120000", "ZONE_REPAIR_MAX_COST_USD" => "1.0",
+                               "ZONE_REPAIR_MAX_OUTPUT_TOKENS" => "16000", "ZONE_REPAIR_PREFLIGHT_WALL_S" => "1200",
                                "DEMO_OUT_DIR" => joinpath(root, "out"), "ZONE_REPAIR_DIR" => zr)); logfile = joinpath(root, "render.log"))
 finally
     global st1 = try stats() catch e; Dict{String,Any}("error" => sprint(showerror, e)) end
@@ -81,6 +83,21 @@ log("render done code=", r.code)
     @test st1["stages"] == ["observe", "design", "compose", "compose_revision"] && st1["remaining_script"] == 0
     @test ps["status"] == "ok" && ps["gaps"] == String[] && ep["decision_gaps"] == String[]
     @test ps["model_outcome"] == "candidates: 2"                                   # 모델 쪽 결과(서비스 오류 아님)
+    # 최종 리뷰: C1 호출당 출력 상한이 모든 호출에 · I2 도장(샘플링·전송·재시도·상한·프롬프트·세계 인터페이스) · I3 예산 유도 ·
+    #   observe/preflight 짧은 wall · 서술자 실패 필드
+    @test st1["max_tokens_seen"] == ["16000"]
+    pv = ps["responses"][1]["provenance"]
+    @test pv["model_type"] == "chat" && pv["cache"] === false && pv["num_retries"] == 0 && pv["max_retries"] == 0
+    @test pv["max_output_tokens"] == 16000 && haskey(pv, "temperature") && haskey(pv, "prompt_digest")
+    arm == "general" && @test pv["world_interface_sha256"] == RT.tree_world_interface_sha(pv["world_interface_artifact"])
+    @test all(p -> p["provenance"]["prompt_digest"] == pv["prompt_digest"], fl["frozen"])
+    eb = ep["episode_budget"]
+    @test eb["hold_deadline_s"] == RT.episode_budget(; worker_wall_s = RT.LIMITS.wall_s, preflight_wall_s = 1200, k = 4,
+                                                     request_timeout_s = RT.service_timeout_s(Dict{String,String}())).hold_deadline_s
+    @test eb["hold_deadline_s"] > 6 * 3600
+    @test ps["worker_limits"]["wall_s"] == 1200.0
+    @test BR._json(joinpath(zr, "proposal_source", "observe", "launch.json"))["limits"]["wall_s"] == 1200.0
+    @test haskey(ps["observation"], "descriptors_error") && ps["observation"]["descriptors_error"] === nothing
     # T9 fix: 존 복구 전용 배정 센서 — 관측에 있고, 읽기 전용(실측), 지문이 기록·provenance 에 있고, observe 프롬프트에 닿았다
     @test st1["observe_has_bindings"] === true && st1["max_retries_seen"] == ["0"]
     ro = ps["observation"]["sensor_readonly"]
@@ -90,6 +107,10 @@ log("render done code=", r.code)
     # t0 관측은 일회용 observe worker 가 만들었다(부모가 아니다)
     ob = BR._json(joinpath(zr, "proposal_source", "observe", "observation.json"))
     @test ob["request"]["kind"] == "zone" && !isempty(ob["request"]["nl"]) && !isempty(ob["geometry_context"]["configs"])
+    @test haskey(ob, "descriptors_error") && ob["descriptors_error"] === nothing
+    # I5: 분기(observe·preflight·후보)는 부모가 준 코드 신원으로 떴다 — .git 없이도 신원이 맞아 복원됐다
+    @test isfile(joinpath(zr, "parent", "code_identity.json"))
+    @test "ZRV_CODE_IDENTITY" in BR._json(joinpath(zr, "proposal_source", "observe", "launch.json"))["env_names"]
     @test !isempty(ob["robot_bindings"]) && all(r -> !haskey(r, "error"), ob["robot_bindings"])
     @test !haskey(ob["request"], "robot_bindings")          # 결정 레인 페이로드(`service_payload`)는 그대로
     @test ob["checkpoint_id"] == BR._json(joinpath(zr, "parent", "contract.json"))["checkpoint_id"]

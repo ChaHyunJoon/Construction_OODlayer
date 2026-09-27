@@ -16,7 +16,8 @@ const G = RepairGeometryControl
 
 const SCHEMA_SHA = RT._sha(RT.SCHEMA_FILE)
 const PI0CELL = merge(BR.PI0, Dict("DEMO_OOD" => "none", "DEMO_ZONE" => "1", "DEMO_MODEL" => "tractor.mpd", "DEMO_SEED" => "26"))
-const BUDGET = Dict{String,Any}("max_model_calls" => 4, "max_candidates" => 4, "max_total_tokens" => 20000, "max_cost_usd" => 1.0)
+const BUDGET = Dict{String,Any}("max_model_calls" => 4, "max_candidates" => 4, "max_total_tokens" => 20000,
+                                "max_output_tokens" => 4000, "max_cost_usd" => 1.0)
 
 function parent_dir()
     d = mktempdir()
@@ -25,7 +26,10 @@ function parent_dir()
 end
 prov() = Dict{String,Any}("source" => "service", "tool_proposal_schema_sha256" => SCHEMA_SHA,
                           "capability_contract_version" => R.DEFAULT_CAPABILITY_CONTRACT.version,
-                          "service_code_fingerprint" => "feedfacefeedface")
+                          "service_code_fingerprint" => "feedfacefeedface",
+                          # 최종 리뷰 I2: 샘플링·전송·출력 상한·프롬프트 도장(서비스 후보 필수)
+                          "model" => "fake", "model_type" => "chat", "temperature" => 0.2, "cache" => false,
+                          "num_retries" => 0, "max_retries" => 0, "max_output_tokens" => 4000, "prompt_digest" => "pd")
 tp(i; parent = nothing, name = "t9_c$(i)!") = merge(Dict{String,Any}("schema_version" => R.TOOL_PROPOSAL_SCHEMA_VERSION,
     "checkpoint_id" => "t0", "proposal_id" => "rid-s$(i)", "submission_index" => i, "tool_name" => "x",
     "specification" => Dict("mechanism" => "m"), "impl_name" => name, "impl_code" => "function $(name)(env)\n    return :ok\nend",
@@ -61,7 +65,8 @@ run_slot(post; arm = "general", preflight = (p, d, raw, i, e, l) -> pf_ok(), obs
 
 @testset "[1] 후보 source 는 정확히 하나 — 둘 다면 오류, enforce 는 fixture 거절, 예산은 기본값 없음" begin
     fx = Dict("ZONE_REPAIR_PROPOSALS" => "/x.json")
-    sv = Dict("DSPY_URL" => "http://127.0.0.1:1", "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "20000", "ZONE_REPAIR_MAX_COST_USD" => "2.5")
+    sv = Dict("DSPY_URL" => "http://127.0.0.1:1", "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "20000", "ZONE_REPAIR_MAX_COST_USD" => "2.5",
+              "ZONE_REPAIR_MAX_OUTPUT_TOKENS" => "4000", "ZONE_REPAIR_PREFLIGHT_WALL_S" => "1200")
     @test_throws ErrorException RT.proposal_source(merge(fx, sv); mode = :shadow)
     e = try RT.proposal_source(merge(fx, sv); mode = :shadow) catch x; sprint(showerror, x) end
     @test occursin("choose exactly one proposal source", e)
@@ -75,7 +80,7 @@ run_slot(post; arm = "general", preflight = (p, d, raw, i, e, l) -> pf_ok(), obs
     for bad in ("Geometry", "g4", "", " general")
         @test_throws ErrorException RT.proposal_source(merge(sv, Dict("ZONE_REPAIR_ARM" => bad)); mode = :shadow)
     end
-    for k in ("ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD")
+    for k in ("ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD", "ZONE_REPAIR_MAX_OUTPUT_TOKENS", "ZONE_REPAIR_PREFLIGHT_WALL_S")
         e2 = copy(sv); delete!(e2, k)
         @test occursin(k, try RT.proposal_source(e2; mode = :shadow) catch x; sprint(showerror, x) end)
         @test_throws ErrorException RT.proposal_source(merge(sv, Dict(k => "0")); mode = :shadow)
@@ -196,6 +201,15 @@ end
     @test RT.arm_views(out.proposals; arm = "geometry") == Dict("G4" => ["rid-s1", "rid-s3"])
     s2 = only(filter(s -> s["proposal_id"] == "rid-s2", out.record["submissions"]))
     @test s2["frozen"] === false && occursin("unknown_config_ref", only(s2["rejected_before_freeze"]))
+end
+
+@testset "[12] 관측 서술자 실패는 삼키지 않는다 — descriptors_error 가 에피소드 기록에(최종 리뷰)" begin
+    post, _ = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(1)])]))
+    out = run_slot(post; observe = (p, d, e, l) -> merge(OBS, Dict{String,Any}("descriptors_error" => "KeyError: :nav_blocked")))
+    @test out.record["observation"]["descriptors_error"] == "KeyError: :nav_blocked"
+    post, _ = stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(1)])]))
+    @test run_slot(post).record["observation"]["descriptors_error"] === nothing   # 성공이면 null(키는 있다)
+    @test haskey(run_slot(stub_post(Dict("/zone_repair/propose" => [resp("general", [tp(1)])]))[1]).record["observation"], "descriptors_error")
 end
 
 @testset "[10] 서비스 후보의 도장은 null 이어도 부재다(gap)" begin

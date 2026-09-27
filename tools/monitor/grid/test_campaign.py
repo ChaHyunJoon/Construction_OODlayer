@@ -305,3 +305,19 @@ def test_run_env_keeps_process_basics_even_when_classified_observational():
     env = C.run_env(camp, _job("zone", 2), {"PATH": "/bin", "HOME": "/h", "USER": "u", "LANG": "C", "NAV_DEBUG": "1"}, "/g")
     assert (env["PATH"], env["HOME"], env["USER"], env["LANG"]) == ("/bin", "/h", "u", "C")
     assert "NAV_DEBUG" not in env
+
+
+# ---- final review I3: the outer timeout of a manifest runner comes from its derived episode budget -----------------
+def test_run_timeout_manifest_runner_cannot_be_undercut_by_run_timeout():
+    camp = dict(CAMP, runner="b0", episode_timeout_s=39000.0)
+    assert C.run_timeout(camp, env={"RUN_TIMEOUT": "3600"}) == 39000        # the reused 3600 default cannot kill it
+    assert C.run_timeout(camp, env={}) == 39000
+    assert C.run_timeout(camp, timeout_s=50000, env={}) == 50000             # a larger explicit value is honoured
+    assert C.run_timeout(dict(CAMP), env={"RUN_TIMEOUT": "1234"}) == 1234    # render runner: unchanged
+    assert C.run_timeout(dict(CAMP), env={}) == 3600
+
+
+def test_budget_line_is_parsed_and_its_absence_is_detected():
+    out = '[b0] manifest ok /m.json\n[budget] {"episode_timeout_s": 3600, "zone_repair_episode_timeout_s": 39000.0}\n'
+    assert C.budget_of_check(out)["zone_repair_episode_timeout_s"] == 39000.0
+    assert C.budget_of_check("[b0] manifest ok /m.json\n") is None

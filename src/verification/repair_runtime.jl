@@ -127,6 +127,52 @@ function tree_service_fingerprint()
     return (isempty(s) || s == "None") ? nothing : String(s)
 end
 
+"트리의 세계 인터페이스 산출물(`src/decision/core/<name>`) digest. 이름은 `world_interface*.json` 만(경로 탈출 없음). 없으면 nothing."
+function tree_world_interface_sha(name::AbstractString)
+    occursin(r"^world_interface[A-Za-z0-9_.]*\.json$", name) || return nothing
+    f = joinpath(ROOT, "src", "decision", "core", name)
+    return isfile(f) ? _sha(f) : nothing
+end
+
+"""
+    sampling_gaps(proposal; budget = nothing, tree_file_sha = tree_world_interface_sha) -> Vector{String}
+
+I2(최종 리뷰): 서비스 후보의 샘플링·전송·출력 상한·프롬프트·세계 인터페이스 도장. 없거나 틀리면 gap(→ 인증 불가, rollout 없음).
+  * `cache === false` — 캐시가 켜진 서비스는 같은 프롬프트에 옛 답을 **재생**한다(파일럿 seed 가 격자에 다시 나오면 새 표본이 아니다).
+  * `model_type == "chat"` — 이 레인은 chat 전송에 고정(서비스도 다른 전송을 호출 0 으로 거절한다).
+  * `num_retries == 0 ∧ max_retries == 0` — 원장 밖 재시도 없음.
+  * `max_output_tokens` == 이 판의 예산(`budget["max_output_tokens"]`, 있으면) — 호출당 출력 상한(C1).
+  * `temperature`·`model`·`prompt_digest` 존재, 주 팔(`arm == "general"`)은 `world_interface_sha256` == 트리 파일 digest.
+"""
+function sampling_gaps(p::AbstractDict; budget = nothing, tree_file_sha = tree_world_interface_sha)
+    g = String[]
+    id = string(get(p, "proposal_id", "?"))
+    prov = get(p, "provenance", nothing)
+    prov isa AbstractDict || return ["proposal $(id): service proposal has no provenance"]
+    need = ["model", "model_type", "temperature", "cache", "num_retries", "max_retries", "max_output_tokens", "prompt_digest"]
+    get(prov, "arm", nothing) == "general" && append!(need, ["world_interface_artifact", "world_interface_sha256"])
+    for k in need
+        get(prov, k, nothing) === nothing && push!(g, "proposal $(id): service proposal lacks provenance.$(k)")
+    end
+    haskey(prov, "cache") && prov["cache"] !== false &&
+        push!(g, "proposal $(id): generated with the service LM cache on (cache=$(repr(prov["cache"]))) — a cached answer is a replay, not a fresh sample")
+    haskey(prov, "model_type") && prov["model_type"] != "chat" &&
+        push!(g, "proposal $(id): transport model_type=$(repr(prov["model_type"])) — the zone-repair lane is pinned to chat")
+    for k in ("num_retries", "max_retries")
+        haskey(prov, k) && prov[k] != 0 && push!(g, "proposal $(id): $(k)=$(repr(prov[k])) — retries outside the call ledger")
+    end
+    if budget isa AbstractDict && haskey(prov, "max_output_tokens")
+        prov["max_output_tokens"] == get(budget, "max_output_tokens", missing) ||
+            push!(g, "proposal $(id): generated with output cap $(prov["max_output_tokens"]) != this run's $(get(budget, "max_output_tokens", nothing))")
+    end
+    if haskey(prov, "world_interface_sha256") && haskey(prov, "world_interface_artifact")
+        t = tree_file_sha(String(prov["world_interface_artifact"]))
+        prov["world_interface_sha256"] == t ||
+            push!(g, "proposal $(id): compose read world interface $(prov["world_interface_artifact"]) $(prov["world_interface_sha256"]) != this tree $(something(t, "missing"))")
+    end
+    return g
+end
+
 """
     decision_gaps(proposals; source, url = "", service_gate = service_gate, tree_fingerprint = tree_service_fingerprint)
         -> Vector{String}
@@ -138,13 +184,18 @@ end
   * 권한: `provenance.capability_contract_version`(있으면) == `DEFAULT_CAPABILITY_CONTRACT.version`.
   * source: `provenance.service_code_fingerprint`(있으면) == 이 트리의 서비스 코드 지문.
   서비스 후보는 세 도장이 **필수**다(없으면 gap) — fixture 는 `provenance.source = "fixture"` 이고 도장이 선택이다.
+  서비스 후보는 `sampling_gaps`(I2: cache off · chat 전송 · 재시도 0 · 출력 상한 = `budget` · prompt/세계 인터페이스 digest)도 본다.
 """
 function decision_gaps(proposals::AbstractVector; source::Symbol, url::AbstractString = "",
-                       service_gate = service_gate, tree_fingerprint = tree_service_fingerprint)
+                       service_gate = service_gate, tree_fingerprint = tree_service_fingerprint,
+                       budget = nothing, tree_file_sha = tree_world_interface_sha)
     g = String[]
     if source === :service
         ok, line = service_gate(url)
         ok || push!(g, "service generation gate failed before the decision ($(url)): $(line)")
+    end
+    source === :service && for p in proposals
+        append!(g, sampling_gaps(p; budget, tree_file_sha))
     end
     schema_sha = _sha(SCHEMA_FILE)
     tfp = Ref{Any}(:unmeasured)
@@ -289,10 +340,68 @@ parse_arm(s::AbstractString) = s in ARMS ? String(s) :
 function service_budget(env::AbstractDict)
     t = tryparse(Int, strip(get(env, "ZONE_REPAIR_MAX_TOTAL_TOKENS", "")))
     c = tryparse(Float64, strip(get(env, "ZONE_REPAIR_MAX_COST_USD", "")))
+    o = tryparse(Int, strip(get(env, "ZONE_REPAIR_MAX_OUTPUT_TOKENS", "")))
     (t === nothing || t < 1) && error("[zrv] the service source needs ZONE_REPAIR_MAX_TOTAL_TOKENS (a positive integer, no default)")
     (c === nothing || !(c > 0)) && error("[zrv] the service source needs ZONE_REPAIR_MAX_COST_USD (a positive number, no default)")
+    # 🔴 C1(최종 리뷰): 호출당 출력 상한은 이 레인의 **필수** 예산 값이다 — 서비스 전역 `DSPY_MAX_TOKENS`(기본 2000)가 K=4 compose 응답을 잘랐다.
+    (o === nothing || o < 1) && error("[zrv] the service source needs ZONE_REPAIR_MAX_OUTPUT_TOKENS (the per-call output cap; a positive integer, no default)")
+    # 총 token 한도는 호출 계획(호출 4 × 출력 상한)을 담아야 한다 — 못 담으면 부모를 띄우기 전에 거절(서비스는 여기에 관측된
+    # 프롬프트 추정까지 더해 호출 0 으로 다시 거절한다 — `synthesize.plan_token_floor`).
+    t < MODEL_CALLS * o && error("[zrv] ZONE_REPAIR_MAX_TOTAL_TOKENS=$(t) < $(MODEL_CALLS) calls × ZONE_REPAIR_MAX_OUTPUT_TOKENS=$(o) " *
+                                 "= $(MODEL_CALLS * o) — the call plan cannot fit its own output caps")
     return Dict{String,Any}("max_model_calls" => MODEL_CALLS, "max_candidates" => MODEL_K,
-                            "max_total_tokens" => t, "max_cost_usd" => c)
+                            "max_total_tokens" => t, "max_output_tokens" => o, "max_cost_usd" => c)
+end
+
+"""
+`ZONE_REPAIR_PREFLIGHT_WALL_S` — observe·preflight worker 의 wall 한도(초, 필수, 기본값 없음). 두 worker 는 t0 를 복원하고 engine 을
+한 스텝도 진행하지 않는다(preflight 는 첫 진행 요청 직전에 멈춘다) — 전체 분기 wall(`LIMITS`)을 줄 이유가 없다(I3).
+"""
+function preflight_wall_s(env::AbstractDict)
+    p = tryparse(Float64, strip(get(env, "ZONE_REPAIR_PREFLIGHT_WALL_S", "")))
+    (p === nothing || !(p > 0)) && error("[zrv] the service source needs ZONE_REPAIR_PREFLIGHT_WALL_S (observe/preflight worker wall, seconds, no default)")
+    return p
+end
+"observe·preflight worker 한도: wall = `p`, CPU = 2p(asyncmap 4 병렬이 한 코어씩), 메모리 = 분기와 같다."
+preflight_limits(p::Real) = BR.Limits(wall_s = Float64(p), cpu_s = ceil(Int, 2p), mem_bytes = LIMITS.mem_bytes)
+
+"서비스 요청 하나의 read timeout(초) — `DSPY_TIMEOUT_S`(기본 300) × 호출 수. `service_post` 와 에피소드 예산이 같은 값을 쓴다."
+service_timeout_s(env::AbstractDict = ENV) = something(tryparse(Int, strip(get(env, "DSPY_TIMEOUT_S", ""))), 300) * MODEL_CALLS
+
+"예산 유도의 여유(초): 부모 verify 들·판정·certificate·파일 쓰기."
+const HOLD_SLACK_S = 1800
+
+"""
+    episode_budget(; worker_wall_s, preflight_wall_s = 0, k = MODEL_K, request_timeout_s = 0, service = true,
+                   slack_s = HOLD_SLACK_S) -> (; hold_deadline_s, episode_timeout_s, components)
+
+I3(최종 리뷰): 부모 hold 한도와 바깥(campaign) 시한을 **같은 예산에서** 유도한다 — 옛 고정 6 h 는 최악 에피소드보다 짧아 부모가
+먼저 끝나고 `resume` 이 던졌다. 최악(순차) 경로:
+  hold = [서비스면] observe(p) + propose·revise 요청(2 × request timeout) + preflight 한 물결(p, 4 병렬) +
+         (2 + K + 1) × 분기 wall(NOOP · 잡음 바닥 NOOP · 후보 K · commit — shadow 의 dry commit 도 한 worker) + 여유
+  episode = 부모가 t0 까지(≤ 분기 wall) + hold + 재개된 원래 세계의 continuation(≤ 분기 wall)
+"""
+function episode_budget(; worker_wall_s::Real, preflight_wall_s::Real = 0, k::Integer = MODEL_K, request_timeout_s::Real = 0,
+                        service::Bool = true, slack_s::Real = HOLD_SLACK_S)
+    c = Dict{String,Any}("observe_s" => service ? preflight_wall_s : 0, "model_requests_s" => service ? 2 * request_timeout_s : 0,
+                         "preflight_s" => service ? preflight_wall_s * cld(k, 4) : 0,
+                         "branches_s" => (2 + k + 1) * worker_wall_s, "slack_s" => slack_s,
+                         "worker_wall_s" => worker_wall_s, "k" => k)
+    hold = c["observe_s"] + c["model_requests_s"] + c["preflight_s"] + c["branches_s"] + slack_s
+    return (; hold_deadline_s = Float64(hold), episode_timeout_s = Float64(worker_wall_s + hold + worker_wall_s), components = c)
+end
+
+"""
+    manifest_episode_budget(m) -> NamedTuple
+
+같은 유도를 **manifest**(`repair_verification_manifest.schema.json`)의 값으로: 분기 wall(`budget.worker.wall_timeout_s`) ·
+preflight wall(`budget.worker.preflight_wall_timeout_s`) · K(`budget.model.max_candidates`) · 요청 시한(`budget.model.call_timeout_s`
+× `max_model_calls`). campaign(`tools/monitor/grid/campaign.py`)이 manifest 판 러너의 바깥 시한을 이 값으로 잡는다.
+"""
+function manifest_episode_budget(m::AbstractDict)
+    w, mo = m["budget"]["worker"], m["budget"]["model"]
+    return episode_budget(; worker_wall_s = w["wall_timeout_s"]["value"], preflight_wall_s = w["preflight_wall_timeout_s"]["value"],
+                          k = mo["max_candidates"]["value"], request_timeout_s = mo["call_timeout_s"]["value"] * mo["max_model_calls"]["value"])
 end
 
 """
@@ -308,14 +417,15 @@ function proposal_source(env::AbstractDict; mode::Symbol)
         error("[zrv] both ZONE_REPAIR_PROPOSALS (fixture) and DSPY_URL (service) are set — choose exactly one proposal source")
     if !isempty(pf)
         mode === :enforce && error("[zrv] ZONE_REPAIR_VERIFICATION=enforce refuses a fixture proposal source (ZONE_REPAIR_PROPOSALS)")
-        for k in ("ZONE_REPAIR_ARM", "ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD")
+        for k in ("ZONE_REPAIR_ARM", "ZONE_REPAIR_MAX_TOTAL_TOKENS", "ZONE_REPAIR_MAX_COST_USD", "ZONE_REPAIR_MAX_OUTPUT_TOKENS",
+                  "ZONE_REPAIR_PREFLIGHT_WALL_S")
             isempty(strip(get(env, k, ""))) || error("[zrv] $(k) only applies to the service source, not to a fixture file")
         end
-        return (; source = :fixture, fixture = String(pf), url = "", arm = "fixture", budget = nothing)
+        return (; source = :fixture, fixture = String(pf), url = "", arm = "fixture", budget = nothing, preflight_wall_s = nothing)
     end
     isempty(url) && error("[zrv] no proposal source: set ZONE_REPAIR_PROPOSALS (fixture file) or DSPY_URL (service)")
     return (; source = :service, fixture = "", url = String(url), arm = parse_arm(get(env, "ZONE_REPAIR_ARM", "general")),
-            budget = service_budget(env))
+            budget = service_budget(env), preflight_wall_s = preflight_wall_s(env))
 end
 
 """
@@ -337,7 +447,7 @@ end
 
 "서비스 POST. 🔴 `retries = 0` — HTTP 재전송은 유료 파이프라인을 원장 밖에서 다시 돌린다."
 function service_post(url::AbstractString, path::AbstractString, body::AbstractDict)
-    t = something(tryparse(Int, strip(get(ENV, "DSPY_TIMEOUT_S", ""))), 300) * MODEL_CALLS
+    t = service_timeout_s(ENV)
     r = HTTP.post(rstrip(url, '/') * path, ["Content-Type" => "application/json"], JSON3.write(body);
                   readtimeout = t, retries = 0, status_exception = false)
     r.status == 200 || error("HTTP $(r.status) from $(path): $(first(String(r.body), 300))")
@@ -420,11 +530,13 @@ T8 이 남긴 서비스 source 슬롯. t0 에서:
 function service_proposals!(; parent_dir::AbstractString, root::AbstractString, url::AbstractString, arm::AbstractString,
                             budget::AbstractDict, launch_env::AbstractDict, run_ctx::AbstractDict, limits = LIMITS,
                             post = service_post, observe = observe_via_worker, preflight = preflight_via_worker)
+    # I3: `limits` 는 observe·preflight worker 의 한도다(엔진을 진행하지 않는 worker — `preflight_limits`). full rollout 이 아니다.
     parse_arm(arm)
     dir = joinpath(root, "proposal_source"); mkpath(dir)
     cid = String(_json(joinpath(parent_dir, "contract.json"))["checkpoint_id"])
     rec = Dict{String,Any}("arm" => arm, "budget" => budget, "status" => "ok", "submissions" => Dict{String,Any}[],
-                           "responses" => Dict{String,Any}[], "gaps" => String[])
+                           "responses" => Dict{String,Any}[], "gaps" => String[],
+                           "worker_limits" => Dict{String,Any}("wall_s" => limits.wall_s, "cpu_s" => limits.cpu_s))
     gaps = rec["gaps"]
     frozen = Dict{String,Any}[]
     finish() = (rec["frozen_proposal_ids"] = [p["proposal_id"] for p in frozen];
@@ -442,6 +554,8 @@ function service_proposals!(; parent_dir::AbstractString, root::AbstractString, 
         "robot_bindings_sha256" => get(obs, "robot_bindings", nothing) === nothing ? nothing :
                                    bytes2hex(sha256(JSON3.write(obs["robot_bindings"]))),
         "robot_bindings_error" => get(obs, "robot_bindings_error", nothing),
+        # 최종 리뷰: 사건 서술자를 못 만들었으면 관측이 서술자 없이 갔다는 사실(사유)을 기록에 싣는다(옛 코드는 삼켰다)
+        "descriptors_error" => get(obs, "descriptors_error", nothing),
         "sensor_readonly" => get(obs, "sensor_readonly", nothing))
     if arm == "geometry" && (haskey(gctx, "error") || isempty(get(gctx, "configs", Any[])))
         # G4 는 기하 문맥 없이는 부를 수 없다 — 서비스에 가지 않는다(호출 0), 모델 실패가 아니다.
@@ -558,7 +672,7 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
                       source::Symbol, url::AbstractString = "", capabilities = nothing, out_dir::AbstractString,
                       noise_floor::Union{Bool,Symbol} = :measure, baseline_override::Union{Nothing,Symbol} = nothing,
                       log_io::IO = stdout, campaign_dir::AbstractString = root, commit_id::AbstractString = "commit",
-                      arm::AbstractString = "general", budget = nothing)
+                      arm::AbstractString = "general", budget = nothing, preflight_wall_s = nothing)
     mode in (:shadow, :enforce) || error("run_episode! needs mode shadow|enforce, got $(mode)")
     if mode === :enforce
         p = enforce_problems(capabilities)
@@ -567,14 +681,19 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
         source === :fixture && get(capabilities, "test_forced", false) !== true &&
             error("[zrv] ZONE_REPAIR_VERIFICATION=enforce refuses a fixture proposal source (ZONE_REPAIR_PROPOSALS)")
     end
-    source === :service && (parse_arm(arm); budget isa AbstractDict || error("service source needs a model budget"))
+    source === :service && (parse_arm(arm); budget isa AbstractDict || error("service source needs a model budget");
+                            preflight_wall_s isa Real && preflight_wall_s > 0 || error("service source needs a preflight wall (ZONE_REPAIR_PREFLIGHT_WALL_S)"))
+    # I3: 부모 hold 한도를 이 판의 예산에서 유도한다(고정 6 h 아님) — 최악 에피소드가 부모보다 오래 살아 `resume` 이 던지지 않게.
+    eb = episode_budget(; worker_wall_s = LIMITS.wall_s, preflight_wall_s = something(preflight_wall_s, 0), k = MODEL_K,
+                        request_timeout_s = source === :service ? service_timeout_s(ENV) : 0, service = source === :service)
     mkpath(root)
     rec = Dict{String,Any}("schema" => EPISODE_SCHEMA, "runtime_version" => RUNTIME_VERSION, "mode" => String(mode),
         "root" => root, "source" => String(source), "n_proposals" => length(proposals),
         "enforce_gate" => mode === :enforce ? (get(capabilities, "test_forced", false) === true ? "FORCED (test)" : "measured: enforce_allowed") : nothing,
         "baseline_override" => baseline_override === nothing ? nothing : "FORCED (test): $(baseline_override)",
-        "started_at" => time())
-    par = BR.start_parent(joinpath(root, "parent"), launch_env; out_dir)
+        "started_at" => time(), "episode_budget" => merge(Dict{String,Any}("hold_deadline_s" => eb.hold_deadline_s,
+                                                                             "episode_timeout_s" => eb.episode_timeout_s), eb.components))
+    par = BR.start_parent(joinpath(root, "parent"), launch_env; out_dir, hold_max_s = eb.hold_deadline_s)
     stop_parent_log = Ref(false); stop_active = Ref(false)
     tasks = Task[follow!(joinpath(par.dir, "run.log"), log_sink(log_io), stop_parent_log)]
     sv = nothing
@@ -595,7 +714,7 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
         # T9: 서비스 source — t0 관측(일회용 observe worker) → 제안 → t0 preflight → (선택) 수정 호출 → 후보 동결.
         extra = String[]
         if source === :service
-            sp = service_proposals!(; parent_dir = par.dir, root, url, arm, budget, launch_env,
+            sp = service_proposals!(; parent_dir = par.dir, root, url, arm, budget, launch_env, limits = preflight_limits(preflight_wall_s),
                                     run_ctx = Dict{String,Any}("repair_ablation" => get(launch_env, "REPAIR_ABLATION", "none")))
             proposals = sp.proposals
             rec["proposal_source"] = sp.record
@@ -604,7 +723,7 @@ function run_episode!(; mode::Symbol, launch_env::AbstractDict, root::AbstractSt
         end
         rec["arm_views"] = arm_views(proposals; arm = source === :service ? arm : "fixture")
         # 🔴 결정 **전**: 서비스·source·API·schema·권한 지문.
-        pre = vcat(decision_gaps(proposals; source, url), extra)
+        pre = vcat(decision_gaps(proposals; source, url, budget), extra)
         rec["decision_gaps"] = pre
         props = proposals
         outroot = joinpath(root, "supervision")
@@ -697,7 +816,7 @@ function main()
                             "Use ZONE_REPAIR_VERIFICATION=shadow to evaluate candidates without changing the world.")
     end
     src = proposal_source(ENV; mode)                     # T9: 둘 다/둘 다 없음/enforce+fixture/팔·예산 — 부모를 띄우기 전에 죽는다
-    source, url, arm, budget = src.source, src.url, src.arm, src.budget
+    source, url, arm, budget, pwall = src.source, src.url, src.arm, src.budget, src.preflight_wall_s
     proposals = source === :fixture ? load_proposals(src.fixture) : Dict{String,Any}[]
     if source === :service
         ok, line = service_gate(url)
@@ -705,7 +824,7 @@ function main()
     end
     launch = launch_env_from(ENV)
     rec = run_episode!(; mode, launch_env = launch, root, proposals, source, url, capabilities = caps, out_dir = out,
-                       campaign_dir = abspath(get(ENV, "ZONE_REPAIR_CAMPAIGN_DIR", root)), arm, budget)
+                       campaign_dir = abspath(get(ENV, "ZONE_REPAIR_CAMPAIGN_DIR", root)), arm, budget, preflight_wall_s = pwall)
     return something(rec["exit_code"], 1)
 end
 

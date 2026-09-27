@@ -86,7 +86,8 @@ get(ENV, "T8_SKIP_RENDER", "") == "1" || @testset "[2] render_demo.jl — 오타
     # (c) 서비스 후보 source + 닿지 않는 서비스 → 세대 게이트(check_health CLI)가 거절
     r = render(merge(PI0CELL, Dict("ZONE_REPAIR_VERIFICATION" => "shadow", "DSPY_URL" => closed_port_url(),
                                    # T9: 서비스 source 는 모델 예산이 필수다(기본값 없음) — 게이트까지 가려면 싣는다
-                                   "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "20000", "ZONE_REPAIR_MAX_COST_USD" => "1.0",
+                                   "ZONE_REPAIR_MAX_TOTAL_TOKENS" => "120000", "ZONE_REPAIR_MAX_COST_USD" => "1.0",
+                                   "ZONE_REPAIR_MAX_OUTPUT_TOKENS" => "16000", "ZONE_REPAIR_PREFLIGHT_WALL_S" => "1200",
                                    "ZONE_REPAIR_DIR" => joinpath(d, "c"))))
     @test r.code != 0
     @test occursin("generation gate", r.out) && occursin("FAIL unreachable", r.out)
@@ -150,7 +151,10 @@ end
     g = RT.decision_gaps(Dict{String,Any}[]; source = :service, url = "x", service_gate = _ -> (false, "[generation] FAIL stale — x"))
     @test occursin("FAIL stale", only(g))
     g = RT.decision_gaps(ok; source = :service, url = "x", service_gate = _ -> (true, "OK"), tree_fingerprint = () -> "f")
-    @test count(x -> occursin("service proposal lacks provenance", x), g) == 3
+    # 도장 셋 + I2 의 샘플링/전송/출력 상한/프롬프트 도장 여덟(fixture 는 주 팔이 아니라 세계 인터페이스 도장은 요구 안 함)
+    lacks = sort!([split(x, "provenance.")[end] for x in g if occursin("service proposal lacks provenance", x)])
+    @test lacks == sort!(["tool_proposal_schema_sha256", "capability_contract_version", "service_code_fingerprint", "model",
+                          "model_type", "temperature", "cache", "num_retries", "max_retries", "max_output_tokens", "prompt_digest"])
 end
 
 @testset "[6] 세대 게이트를 실제로 부른다 — 닫힌 포트·가짜 /health(stale·unstamped·flag_off·ok)" begin
@@ -314,6 +318,7 @@ end
     par = (process = p, dir = dir, token = "fake", log = devnull)
     sv = S.Supervision(par; outroot = joinpath(root, "out"), launch_env = Dict{String,String}(),
                        limits = BR.Limits(wall_s = 30, cpu_s = 10, mem_bytes = 10))
+    dry_called = Ref(0)
     try
         # 같은 trace/terminal 을 기준 분기와 부모에 → replay 일치(이 시험이 보는 것은 전이·명령이다)
         bd = mkpath(joinpath(sv.outroot, "noop"))
@@ -326,7 +331,8 @@ end
         sv.verify0 = Dict{String,Any}("mismatched_blocks" => String[], "counters_equal" => true, "rng_equal" => true)
         sv.selection = R.SelectionReport("t0", :FAIL_WITHIN_BUDGET, :tool, "p1", :rescued, String[], Dict("p1" => :COMPLETE), ["stub"])
         sv.state = :SELECTED_TOOL
-        S.shadow_fork!(sv)
+        # I4: dry commit 은 대역(실제 worker 는 E1b 에피소드가 잰다) — 부르고 기록만 싣는다, 부모 명령·활성화 없음
+        S.shadow_fork!(sv; dry = _ -> (dry_called[] += 1; Dict{String,Any}("status" => "match", "match" => true)))
         S.commit!(sv)
     finally
         S.retire!(sv)
@@ -335,6 +341,7 @@ end
     @test sv.commit === nothing && !isdir(joinpath(sv.outroot, "commit"))            # commit worker 를 띄우지 않았다
     @test seen == ["verify", "resume"] && sv.replay.kind === :noop && sv.replay.match
     @test sv.selection.selected === :tool                                           # 선택 기록은 그대로 남는다
+    @test dry_called[] == 1 && sv.dry_commit["status"] == "match"
     # 다른 상태에서는 아무것도 안 한다
     @test S.shadow_fork!(sv) === sv                                                 # REPLAY_CHECKED — no-op
 end
@@ -358,6 +365,73 @@ end
         @test all(k -> !haskey(we, k), leaky) && !haskey(we, "DSPY_URL") && removed == ["DSPY_URL"]
         @test !any(==(fake), values(we))
     end
+end
+
+
+@testset "[14] 모델 예산(C1·I3) — 호출당 출력 상한·preflight wall 은 필수, 총 한도는 호출 계획을 담아야 한다" begin
+    base = Dict("ZONE_REPAIR_MAX_TOTAL_TOKENS" => "120000", "ZONE_REPAIR_MAX_COST_USD" => "2.0",
+                "ZONE_REPAIR_MAX_OUTPUT_TOKENS" => "16000", "ZONE_REPAIR_PREFLIGHT_WALL_S" => "1200")
+    b = RT.service_budget(base)
+    @test b["max_output_tokens"] == 16000 && b["max_total_tokens"] == 120000 && b["max_model_calls"] == 4 && b["max_candidates"] == 4
+    e = copy(base); delete!(e, "ZONE_REPAIR_MAX_OUTPUT_TOKENS")
+    err = try RT.service_budget(e); "" catch x; sprint(showerror, x) end
+    @test occursin("needs ZONE_REPAIR_MAX_OUTPUT_TOKENS", err)                    # 조용한 기본값(2000) 없음
+    err = try RT.service_budget(merge(base, Dict("ZONE_REPAIR_MAX_TOTAL_TOKENS" => "63999"))); "" catch x; sprint(showerror, x) end
+    @test occursin("call plan cannot fit", err)                                   # 4 × 16000 = 64000 > 63999
+    @test RT.service_budget(merge(base, Dict("ZONE_REPAIR_MAX_TOTAL_TOKENS" => "64000")))["max_total_tokens"] == 64000
+    @test RT.preflight_wall_s(base) == 1200.0
+    err = try RT.preflight_wall_s(Dict{String,String}()); "" catch x; sprint(showerror, x) end
+    @test occursin("needs ZONE_REPAIR_PREFLIGHT_WALL_S", err)
+    l = RT.preflight_limits(1200)
+    @test l.wall_s == 1200 && l.cpu_s == 2400 && l.mem_bytes == RT.LIMITS.mem_bytes
+    src = RT.proposal_source(merge(base, Dict("DSPY_URL" => "http://127.0.0.1:1")); mode = :shadow)
+    @test src.budget["max_output_tokens"] == 16000 && src.preflight_wall_s == 1200.0
+    for k in ("ZONE_REPAIR_MAX_OUTPUT_TOKENS", "ZONE_REPAIR_PREFLIGHT_WALL_S")          # 서비스 손잡이는 fixture 와 함께면 오류
+        @test_throws ErrorException RT.proposal_source(Dict("ZONE_REPAIR_PROPOSALS" => FIXTURE, k => "1"); mode = :shadow)
+    end
+end
+
+@testset "[15] 샘플링·전송·출력 상한·프롬프트·세계 인터페이스 도장(I2) — 없거나 틀리면 결정 전 gap" begin
+    wi = "world_interface.ablate_all.json"
+    good = Dict{String,Any}("proposal_id" => "p", "provenance" => Dict{String,Any}("arm" => "general", "model" => "m",
+        "model_type" => "chat", "temperature" => 0.2, "cache" => false, "num_retries" => 0, "max_retries" => 0,
+        "max_output_tokens" => 16000, "prompt_digest" => "pd", "world_interface_artifact" => wi,
+        "world_interface_sha256" => RT.tree_world_interface_sha(wi)))
+    bud = Dict{String,Any}("max_output_tokens" => 16000)
+    @test RT.tree_world_interface_sha(wi) isa String
+    @test RT.sampling_gaps(good; budget = bud) == String[]                             # 양성 대조
+    tw(k, v) = (p = deepcopy(good); v === nothing ? delete!(p["provenance"], k) : (p["provenance"][k] = v); p)
+    @test occursin("cache on", only(RT.sampling_gaps(tw("cache", true); budget = bud)))
+    @test occursin("pinned to chat", only(RT.sampling_gaps(tw("model_type", "responses"); budget = bud)))
+    @test occursin("retries outside the call ledger", only(RT.sampling_gaps(tw("max_retries", 2); budget = bud)))
+    @test occursin("output cap 2000 != this run's 16000", only(RT.sampling_gaps(tw("max_output_tokens", 2000); budget = bud)))
+    @test occursin("world interface", only(RT.sampling_gaps(tw("world_interface_sha256", "0"^64); budget = bud)))
+    @test occursin("lacks provenance.prompt_digest", only(RT.sampling_gaps(tw("prompt_digest", nothing); budget = bud)))
+    @test occursin("lacks provenance.world_interface_sha256", only(RT.sampling_gaps(tw("world_interface_sha256", nothing); budget = bud)))
+    @test RT.tree_world_interface_sha("../../../etc/passwd") === nothing              # 이름만, 경로 탈출 없음
+    # decision_gaps 가 서비스 후보에 대해 실제로 부른다(fixture 는 안 부른다)
+    g = RT.decision_gaps([tw("cache", true)]; source = :service, url = "x", service_gate = _ -> (true, "OK"),
+                         tree_fingerprint = () -> "f", budget = bud)
+    @test any(x -> occursin("cache on", x), g)
+    @test !any(x -> occursin("cache on", x), RT.decision_gaps([tw("cache", true)]; source = :fixture))
+end
+
+@testset "[16] 에피소드 예산 유도(I3) — 부모 hold 한도·바깥 시한이 같은 예산에서, 옛 6 h 보다 길다" begin
+    eb = RT.episode_budget(; worker_wall_s = 3600, preflight_wall_s = 1200, k = 4, request_timeout_s = 1200)
+    # observe 1200 + 요청 2×1200 + preflight 1200 + (2+4+1)×3600 + 여유 1800
+    @test eb.hold_deadline_s == 1200 + 2400 + 1200 + 7 * 3600 + 1800
+    @test eb.hold_deadline_s > 6 * 3600                                           # 옛 고정값으로는 최악 에피소드가 부모보다 오래 산다
+    @test eb.episode_timeout_s == 3600 + eb.hold_deadline_s + 3600
+    fx = RT.episode_budget(; worker_wall_s = 3600, service = false)
+    @test fx.hold_deadline_s == 7 * 3600 + 1800 && fx.components["observe_s"] == 0
+    @test RT.service_timeout_s(Dict("DSPY_TIMEOUT_S" => "300")) == 1200 && RT.service_timeout_s(Dict{String,String}()) == 1200
+    m = R.read_json(joinpath(ROOT, "test", "fixtures", "repair_verification", "contracts", "corpus.json"))["bases"]["manifest"]
+    @test R.validate_repair_manifest(m) === nothing
+    mb = RT.manifest_episode_budget(m)
+    w, mo = m["budget"]["worker"], m["budget"]["model"]
+    @test mb.hold_deadline_s == RT.episode_budget(; worker_wall_s = w["wall_timeout_s"]["value"],
+        preflight_wall_s = w["preflight_wall_timeout_s"]["value"], k = mo["max_candidates"]["value"],
+        request_timeout_s = mo["call_timeout_s"]["value"] * mo["max_model_calls"]["value"]).hold_deadline_s
 end
 
 end # testset
@@ -403,6 +477,16 @@ want("E1") && @testset "E1 shadow via render_demo.jl — 후보는 worker 에서
     @test isfile(joinpath(c["dir"], "enactment.json")) && BR._json(joinpath(c["dir"], "enactment.json"))["status"] == "enacted"
     @test sup["selection"]["classification"] == "baseline_complete"
     @test sup["replay"]["kind"] == "noop" && sup["replay"]["match"] === true && sup["replay"]["certified"] === true
+    @test sup["dry_commit"] === nothing                                              # 도구가 선택되지 않았다 → dry commit 없음
+    # I3: 부모 hold 한도가 예산에서 유도됐고(fixture: 분기만) 부모가 그 값을 받았다
+    @test ep["episode_budget"]["hold_deadline_s"] == RT.episode_budget(; worker_wall_s = RT.LIMITS.wall_s, service = false).hold_deadline_s
+    @test occursin("ZRV_HOLD_MAX_S", join(BR._json(joinpath(zr, "parent", "launch.json"))["env_names"], " "))
+    # I5: 분기는 부모가 쓴 코드 신원 파일로 떴다(.git 을 못 읽는다) — 신원이 맞아 세 분기가 복원됐다(gaps == [] 위)
+    @test isfile(joinpath(zr, "parent", "code_identity.json"))
+    for b in ("noop", "noop-b", "cand-1")
+        lj = BR._json(joinpath(zr, "supervision", b, "launch.json"))
+        @test "ZRV_CODE_IDENTITY" in lj["env_names"] && !any(a -> endswith(a, "/.git") || a == "--list", lj["cmd"])
+    end
     # 🔴 shadow = 관측 전용: 원래 세계의 실제 스트림이 off(변경 전 커밋, 무하네스)와 바이트 동일, 전 스텝 trace 가 off(trace 하니스)와 같다
     real = joinpath(d, "out", "streams", stream_name)
     @test isfile(real) && read(real) == read(off_stream)
@@ -457,6 +541,17 @@ want("E1b") && @testset "E1b shadow + 도구 선택(기준 결과 강제 — 시
                      "SHADOW_NOT_COMMITTED", "SELECTED_NOOP", "PRECOMMIT_VERIFIED", "COMMITTED", "REPLAY_CHECKED"]
     @test sup["selection"]["selected"] == "tool" && sup["commit"] === nothing
     @test !isdir(joinpath(d, "zr", "supervision", "commit"))
+    # I4(최종 리뷰): shadow dry commit — 새 commit worker 가 같은 source·params·calls 를 t1 까지 재집행, precommit_check 통과,
+    #   activate 대신 exit(활성화 없음). 원래 세계는 아래 단언대로 off 와 같은 궤적·바이트 동일 스트림.
+    dc = sup["dry_commit"]
+    @test dc["status"] == "match" && dc["match"] === true && dc["precommit_ok"] === true && dc["post_state_match"] === true
+    @test dc["exit_sent"] === true && dc["mismatches"] == String[] && dc["t1_iter"] == ep["t0_iter"] + 3
+    cdir = joinpath(d, "zr", "supervision", "commit-dry")
+    cmds = [strip(read(joinpath(cdir, "control", f), String)) for f in readdir(joinpath(cdir, "control")) if endswith(f, ".cmd")]
+    @test cmds == ["exit"] && isfile(joinpath(cdir, "held_t1.json"))
+    @test occursin("dry commit replay: match", only(filter(t -> t["to"] == "SHADOW_NOT_COMMITTED", sup["transitions"]))["why"])
+    pc = [strip(read(joinpath(d, "zr", "parent", "control", f), String)) for f in sort(readdir(joinpath(d, "zr", "parent", "control")); by = f -> something(tryparse(Int, split(f, '.')[1]), 0)) if endswith(f, ".cmd")]
+    @test last(pc) == "resume" && !("exit" in pc)                                   # 부모는 은퇴하지 않고 재개됐다
     @test ep["active_world"]["kind"] == "original_world" && ep["exit_code"] == 0
     @test sup["replay"]["match"] === true
     @test score_of(out) == [off_score]
