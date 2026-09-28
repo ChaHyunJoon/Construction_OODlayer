@@ -285,10 +285,10 @@ def test_the_rules_explain_the_opaque_dict_any_key_type():
     # 🔴 회귀 방지: `Any` 로 되돌아가면(= battery.jl 의 선언이 되돌려지면) 여기서 빨개진다.
     assert "Dict{Any, Float64}" not in b, (
         "`soc` 의 키 타입이 `Any` 로 되돌아갔다 — 유료 런 2 의 `KeyError: \"R1\"` 이 다시 열린다")
-    assert "soc::Dict{ConstructionBots.BotID{ConstructionBots.DeliveryBot}, Float64}" in b, (
+    assert "soc::Dict{BotID{DeliveryBot}, Float64}" in b, (
         "앰비언트 접근자가 id 객체 키를 광고하지 않는다 — 규약 6 의 대상이 렌더에 없다")
     # WORLD TYPES 쪽의 같은 모양(빈-통과 방지: 두 자리 중 하나만 살아도 통과하면 안 된다).
-    assert "Dict{ConstructionBots.AbstractID, " in b, b[:400]
+    assert "Dict{AbstractID, " in b, b[:400]
     # 🔴 라운드 5. 규약 6 에서 `Dict{Any, ...}` 인용을 **걷어냈다** — 타입이 좁혀진 뒤
     #    렌더 본문의 `Dict{Any` 는 0건이라 그 인용은 지시대상이 없었다(I2 와 같은 부류).
     #    그래서 이 자리가 지키는 명제가 뒤집힌다: 규약부는 **구체 타입을 인용하지 않는다.**
@@ -809,3 +809,15 @@ def test_status_meanings_are_advertised_only_where_a_human_marked_them():
     assert "status meanings:" in WI._method_line(m)
     bare = next(x for x in ms if "status_meanings" not in x and x.get("status_symbols"))
     assert "status meanings:" not in WI._method_line(bare)
+
+
+def test_the_generated_listing_is_compacted_but_the_rules_are_not():
+    """🔴 2026-09-28, 비용. 목록만 압축한다 — `ConstructionBots.` 는 body 의 eval 스코프라 떼고,
+    다른 모듈 접두사는 그 스코프 밖이라 남긴다. 규칙 문단은 D19 대로 바이트 그대로."""
+    import world_interface as WI
+    b = _block()
+    rest = b[len(WI._RULES):]
+    assert b.startswith(WI._RULES) and "  " in WI._RULES
+    assert "ConstructionBots." not in rest
+    assert "  " not in rest
+    assert "CoordinateTransformations." in rest

@@ -5,6 +5,7 @@
 """
 import json
 import os
+import re
 from typing import Any, Dict, Optional
 
 import repair_ablation as RA
@@ -289,4 +290,19 @@ def build_world_interface_block(blob=None) -> str:
     parts += ["", "FUNCTIONS THAT NEED SOMETHING YOU CANNOT OBTAIN YET:"]
     for m in later:
         parts.append(_method_line(m))
-    return "\n".join(parts)
+    # `_RULES` 는 바이트 그대로(D19) — 압축은 생성된 목록에만.
+    return "\n".join([_RULES, _compact("\n".join(parts[1:]))])
+
+
+# 🔴 2026-09-28, 비용. 이 블록이 compose 입력의 86%(12.7k/14.7k 토큰)였고, 이 모델은 **완전히
+#    같은 프롬프트만** 캐시한다(유료 프로브: 순서 재배치·메시지 분리 둘 다 cached 0) — 그래서
+#    바이트를 줄이는 것 말고는 길이 없다. 뜻은 안 바꾼다:
+#      · `ConstructionBots.` 만 뗀다 — body 는 그 모듈 안에서 `Core.eval` 되므로(minted_registration.jl)
+#        맨 이름이 같은 것을 가리킨다. 다른 모듈 접두사는 거기서 스코프가 달라 **남긴다.**
+#      · 연속 공백을 하나로. 줄바꿈과 한 칸 들여쓰기는 남아 위계가 보인다.
+_CB_PREFIX = re.compile(r"\bConstructionBots\.")
+_SPACES = re.compile(r" {2,}")
+
+
+def _compact(text: str) -> str:
+    return _SPACES.sub(" ", _CB_PREFIX.sub("", text))
