@@ -294,10 +294,15 @@ try
         local diverge = (
             # mild battery: 같은 타입, 심각도만 다르다. 피처는 여전히 진짜 battery 행이다.
             (CB.BatteryTruth(CB.RobotID(1), 0.5), "battery", "unknown:battery_mild"),
-            # zone: 2026-08-30 이전에는 `"zone"` 이라 접두사가 없었고, 그래서 zone 사건은
-            #       `_unfamiliar_block` 을 한 번도 못 받았다(간접 경로로만 dspy 에 갔다).
-            (CB.ZoneTruth(:kind_gate_zone, [0.0, 0.0, 0.0], 1.0), "zone", "unknown:zone"),
+            # zone: 2026-09-29 (selfimprove U1) 부터 다시 갈리지 않는다 — 아래 별도 단언.
         )
+        # 🔴 zone 은 피처 kind 와 routing_kind 가 같은 `"zone"` 이다. 학습되면 `"zone" ∈ known_kinds`
+        #    로 surrogate 에 가야 하므로 접두사를 뗐다. 낯섦 문단은 `_unfamiliar_block` 이
+        #    `surro_kinds` 소속으로 따로 판정한다.
+        let t = CB.ZoneTruth(:kind_gate_zone, [0.0, 0.0, 0.0], 1.0)
+            @test ood_features(TENV, t)["kind"] == "zone"
+            @test routing_kind_of(t) == "zone"
+        end
         for (t, feat_kind, route_kind) in diverge
             @test ood_features(TENV, t)["kind"] == feat_kind      # 피처는 그대로
             @test routing_kind_of(t) == route_kind               # 라우팅만 갈린다

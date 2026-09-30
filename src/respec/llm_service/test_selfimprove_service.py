@@ -91,3 +91,24 @@ def test_manifest_identity_mismatch_raises(svc, monkeypatch, tmp_path):
         svc._check_selfimprove_manifest(ProbeModel({0: 0.5}), rows, {"objective_hash": "o"})
     with pytest.raises(RuntimeError, match="model_probe"):
         svc._check_selfimprove_manifest(ProbeModel({0: 0.9}), rows, {"objective_hash": "o"})
+
+
+# ---- U1 의 프롬프트 쪽 (2026-09-29 사용자 결정): 낯섦 문단은 접두사가 아니라 surro_kinds 로 ----
+def _zreq(svc, rk):
+    return svc.MacroRequest(kind="zone", zone_overlap=0.4, routing_kind=rk)
+
+def test_bare_zone_untrained_gets_the_same_block_as_unknown_zone(svc, monkeypatch):
+    monkeypatch.setitem(svc._state, "surro_kinds", {"battery", "fault"})
+    got = svc._unfamiliar_block(_zreq(svc, "zone"))
+    assert "UNFAMILIAR EVENT" in got
+    assert got == svc._unfamiliar_block(_zreq(svc, "unknown:zone"))   # v0 프롬프트 바이트 동일
+
+def test_bare_zone_trained_gets_no_block(svc, monkeypatch):
+    monkeypatch.setitem(svc._state, "surro_kinds", {"battery", "fault", "zone"})
+    assert svc._unfamiliar_block(_zreq(svc, "zone")) == ""
+
+def test_known_kind_and_unmeasured_support_get_no_block(svc, monkeypatch):
+    monkeypatch.setitem(svc._state, "surro_kinds", {"battery", "fault"})
+    assert svc._unfamiliar_block(svc.MacroRequest(kind="fault", routing_kind="fault")) == ""
+    monkeypatch.setitem(svc._state, "surro_kinds", None)             # 못 쟀으면 주장하지 않는다
+    assert svc._unfamiliar_block(_zreq(svc, "zone")) == ""

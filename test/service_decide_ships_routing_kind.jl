@@ -216,14 +216,17 @@ try
         @test String.(collect(cap.body["lanes"])) == ["dspy"]
     end
 
-    @testset "(1-c) zone — 접두사가 붙고 LLM 레인으로 간다" begin
+    @testset "(1-c) zone — (학습 전) LLM 레인으로 간다" begin
+        # 🔴 2026-09-29 (selfimprove U1): routing_kind 는 다시 접두사 없는 `"zone"` 이다. 낯섦 문단은
+        #    이제 접두사가 아니라 서비스의 `surro_kinds` 소속으로 붙는다(`_unfamiliar_block`) —
+        #    아래 옛 주석의 구멍은 그쪽에서 막는다(`test_selfimprove_service.py`).
         # 🔴 2026-08-30 이전 zone 은 `routing_kind` 가 `"zone"` 을 냈다. dspy 로 가긴 갔지만
         #    (`"zone" ∉ known_kinds`) 접두사가 없어서 `_unfamiliar_block` 이 **한 번도 안 붙었다.**
         #    이 절은 그 조용한 구멍이 다시 열리는 것을 막는다.
         local cap = _capture_decide(CB.ZoneTruth(:rk_gate_zone, [0.0, 0.0, 0.0], 1.0))
         @test cap.body !== nothing
         @test String(cap.body["kind"]) == "zone"                  # 피처 열은 그대로
-        @test String(cap.body["routing_kind"]) == "unknown:zone"  # 라우팅만 갈린다
+        @test String(cap.body["routing_kind"]) == "zone"          # U1: 접두사 없음
         @test cap.decision.enacted == "dspy"
     end
 

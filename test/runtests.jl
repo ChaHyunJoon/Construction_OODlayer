@@ -685,4 +685,12 @@ end
     @testset "abstractid content hash" begin
         include("abstractid_content_hash.jl")
     end
+
+    # 2026-09-29 (selfimprove, plan Task 5): zone routing_kind = "zone"(U1) · `DEFER:` 만 dspy 로 격상.
+    @testset "selfimprove router" begin
+        include("selfimprove_router.jl")
+    end
+    @testset "selfimprove DEFER escalation" begin
+        include("selfimprove_defer_escalation.jl")
+    end
 end

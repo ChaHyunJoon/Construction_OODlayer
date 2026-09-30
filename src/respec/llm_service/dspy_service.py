@@ -1514,11 +1514,18 @@ def _unfamiliar_block(r: MacroRequest) -> str:
     알려진 kind 사건(과 이 필드를 안 싣는 옛 호출자)의 프롬프트는 바이트 단위로 예전과 같다.
     """
     rk = getattr(r, "routing_kind", None)
-    if not (rk and rk.startswith("unknown:")):
+    # 🔴 2026-09-29 (selfimprove U1): zone 의 routing_kind 가 접두사 없는 `"zone"` 이 됐다. 접두사
+    #    만 보면 v0 zone 프롬프트에서 이 문단이 빠진다. 그래서 "접두사 **또는** 서비스가 실제로 그
+    #    kind 를 학습하지 않았다" 로 판정한다 — 학습 전 zone 은 예전과 바이트 동일, 학습 뒤(DEFER
+    #    로 LLM 에 온 zone)에는 이 문단이 거짓이 되므로 빠진다. 지원집합을 못 쟀으면(None)
+    #    낯섦을 주장하지 않는다.
+    kinds = _state.get("surro_kinds")
+    if not (rk and (rk.startswith("unknown:") or (kinds is not None and rk not in kinds))):
         return ""
+    label = rk[len("unknown:"):] if rk.startswith("unknown:") else rk
     block = ("\n\nUNFAMILIAR EVENT: the router could not place this disruption in any event "
              "category the surrogate was trained on (its routing label is %r)."
-             % rk[len("unknown:"):])
+             % label)
     # 종류별 측정값이 하나도 없는 행 = `ood_features` 의 `else` 분기를 탄 행. 그 행의
     # severity 는 잰 값이 아니라 상수다 — 모델이 그것을 측정으로 읽으면 안 된다.
     if getattr(r, "soc", None) is None and getattr(r, "zone_overlap", None) is None:

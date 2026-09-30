@@ -943,6 +943,10 @@ const CONFIG_ENV_RESULT = [
     # 2026-09-23 레포 정리(100a7735)로 action_registry.jl 이 src/ 아래로 와서 스캐너 범위에 들어옴.
     # 둘 다 행동 어휘·메뉴를 바꾼다(레지스트리 경로 = 매크로 집합, SoC 분할 = battery 메뉴) → result.
     "ACTION_REGISTRY", "DS_BATTERY_SOC_SPLIT",
+    # selfimprove (2026-09-29, spec §5.4·§9.1): 판이 고정된 에이전트 버전·강제 라이브러리 팔.
+    # 판의 정책·집행을 바꾼다 → result (campaign `set_env` 가 전달·도장한다).
+    "SELFIMPROVE_VERSION", "SELFIMPROVE_MANIFEST_SHA", "SELFIMPROVE_ARM",
+    "SELFIMPROVE_VERSION_DIR", "SELFIMPROVE_ARM_SHA",
     # Phase 3 (Task 10·11) 예약 — 읽는 코드가 생기기 전부터 result 다
     "RESTAGE_NAV_BUFFER", "RESPEC_TRANSLATE_ON_INFEASIBLE",
     # 데모 동역학·사건 손잡이
@@ -997,7 +1001,8 @@ const CONFIG_ENV_OBSERVATIONAL = [
 
 # 보조 규칙: 이 접두사로 시작하는 **설정된** env 중 위 세 목록에 없는 것도 지문에 든다
 # (예: `DS_HOTSWAP` — 줄리아 render 경로는 안 읽지만 같은 이름공간의 손잡이다).
-const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_")
+# `SELFIMPROVE_` (2026-09-29, selfimprove spec §5.2): 판이 고정된 에이전트 버전·강제 팔 — RESULT 클래스.
+const _CONFIG_ENV_PREFIXES = ("DEMO_", "DS_", "DSPY_", "TOOL_SYNTH", "SYNTH_", "SELFIMPROVE_")
 
 # 설정 지문에서 **빼는** 키 = cell_axis ∪ observational (2026-09-22 R5a 의 셀 불변 규약을 잇는다).
 const _CONFIG_ENV_EXCLUDED = Set([CONFIG_ENV_CELL_AXIS; CONFIG_ENV_OBSERVATIONAL])
@@ -2501,21 +2506,43 @@ function decide_all(env, truth; nl::AbstractString = "")
             # 🔴 `UNSUPPORTED:` 판정은 **날것의 `error` 로 가른다.** 아래 진단 문자열은 사유 앞에
             #    다른 것을 붙일 수 있으므로 그것으로 `startswith` 를 하면 이 분기가 조용히 죽는다.
             local raw = e === nothing ? "" : String(something(get(e, "error", ""), ""))
-            # 🔴 `UNSUPPORTED:` 는 장애가 아니라 **도장과 어휘가 갈린 것**이라 메시지를 가른다.
-            #    (kind 도장은 이 kind 를 배웠다고 말하는데 그 팔들이 매크로 지원집합에 없다.)
-            startswith(raw, "UNSUPPORTED:") && error(
-                "[router] '$(rkind)' is in the surrogate's train_kinds stamp, but its arms " *
-                "are not in the macro support set ($(raw)). The stamp and the vocabulary " *
-                "have diverged — regenerate the dataset or fix the vocab.")
-            # 🔴 2026-09-05 (유료 런 13). 여기 있던 것은 `(no error field)` 한 줄이었고 그것으로는
-            #    "서비스가 답을 못 냈다" 와 "답이 아예 안 왔다" 가 안 갈렸다. 가를 재료는 이미
-            #    전부 있었다 — `blank_decision_diagnosis` 가 그것을 한 줄로 편다.
-            # 🔴 날것의 응답 본체를 넘긴다 — `pol[enacted]` 이 아니다. 그 이유는
-            #    `blank_decision_diagnosis` 의 docstring 이 진다(폴백 분기가 판별키를 지운다).
-            local body = (j !== nothing && haskey(j, Symbol(enacted))) ? j[Symbol(enacted)] : nothing
-            error("[router] lane '$(enacted)' was chosen for a '$(rkind)' event but " *
-                  "returned no decision: " *
-                  blank_decision_diagnosis(e, body, LAST_DECIDE_TRANSPORT_ERROR[]))
+            local _ax = defer_axis(raw)
+            if enacted == "surrogate" && _ax !== nothing
+                # selfimprove (spec §5.3, §0.0 R2): `DEFER:` 만 LLM 으로 격상한다 — surrogate 가
+                # 개입 팔이 없거나(no_arm) P̂ ≥ τ 인 팔이 없다고(low_confidence) **답한** 것이다.
+                # `UNSUPPORTED:` 는 아래 else 에서 계속 죽는다(§0-C 결정 3).
+                rt["escalated_from"] = "surrogate"
+                rt["defer_reason"]   = raw
+                rt["router_axis"]    = _ax
+                j = service_decide(env, truth; nl = nl, descriptors = desc,
+                                   agents = CB.open_agent_descriptors(env),
+                                   zones  = CB.open_zone_descriptors(env), lanes = ["dspy"])
+                pol["dspy"] = policy_entry((j !== nothing && haskey(j, :dspy)) ? j[:dspy] : nothing,
+                                           "dspy:LLM")
+                enacted = "dspy"
+                rt["target"] = enacted
+                pol["dspy"]["available"] === true ||
+                    error("[router] escalated after $(raw) but the dspy lane returned no decision: " *
+                          blank_decision_diagnosis(pol["dspy"],
+                                                   (j !== nothing && haskey(j, :dspy)) ? j[:dspy] : nothing,
+                                                   LAST_DECIDE_TRANSPORT_ERROR[]))
+            else
+                # 🔴 `UNSUPPORTED:` 는 장애가 아니라 **도장과 어휘가 갈린 것**이라 메시지를 가른다.
+                #    (kind 도장은 이 kind 를 배웠다고 말하는데 그 팔들이 매크로 지원집합에 없다.)
+                startswith(raw, "UNSUPPORTED:") && error(
+                    "[router] '$(rkind)' is in the surrogate's train_kinds stamp, but its arms " *
+                    "are not in the macro support set ($(raw)). The stamp and the vocabulary " *
+                    "have diverged — regenerate the dataset or fix the vocab.")
+                # 🔴 2026-09-05 (유료 런 13). 여기 있던 것은 `(no error field)` 한 줄이었고 그것으로는
+                #    "서비스가 답을 못 냈다" 와 "답이 아예 안 왔다" 가 안 갈렸다. 가를 재료는 이미
+                #    전부 있었다 — `blank_decision_diagnosis` 가 그것을 한 줄로 편다.
+                # 🔴 날것의 응답 본체를 넘긴다 — `pol[enacted]` 이 아니다. 그 이유는
+                #    `blank_decision_diagnosis` 의 docstring 이 진다(폴백 분기가 판별키를 지운다).
+                local body = (j !== nothing && haskey(j, Symbol(enacted))) ? j[Symbol(enacted)] : nothing
+                error("[router] lane '$(enacted)' was chosen for a '$(rkind)' event but " *
+                      "returned no decision: " *
+                      blank_decision_diagnosis(e, body, LAST_DECIDE_TRANSPORT_ERROR[]))
+            end
         end
     elseif !haskey(pol, enacted)
         # 고정 정책(라우터 OFF)이 존재하지 않는 레인을 가리키면 그것도 오설정이다.
@@ -2665,6 +2692,7 @@ function decide_all(env, truth; nl::AbstractString = "")
     # 재생하므로, 화면(JS)에서 문장을 조립하면 단위검사 대상이 되지 않는다. 키 이름은 narrate.jl
     # 이 읽는 것과 정확히 같아야 한다.
     local _f = try ood_features(env, truth) catch; Dict{String,Any}() end
+    rt["ood_features"] = _f      # selfimprove 학습 행의 원천 (spec §11.4)
     local narrative = try
         narrate_event(Dict{String,Any}(
             "kind"          => get(_f, "kind", string(typeof(truth).name.name)),

@@ -18,17 +18,19 @@ const KNOWN = Set(["battery", "fault"])
 @testset "kind 색인 분기표 (전수)" begin
     @test select_lane(kind="battery", known_kinds=KNOWN, policy="router").lane == "surrogate"
     @test select_lane(kind="fault",   known_kinds=KNOWN, policy="router").lane == "surrogate"
+    # 🔴 2026-09-29 (selfimprove U1): zone 의 kind 는 다시 `"zone"` 이다(2026-08-30 의 `"unknown:zone"` 을
+    #    zone 에 한해 되돌렸다 — 학습되면 surrogate 로 가야 하므로). 2026-08-30 판의 주석:
     # 🔴 2026-08-30: zone 의 kind 는 이제 `"unknown:zone"` 이다(접두사 통일). 옛 `"zone"` 도
     #    같은 레인으로 가지만, 이 줄은 **오늘 라우터가 실제로 보는 값**으로 잰다 — 그러지
     #    않으면 `routing_kind` 가 바뀌어도 이 분기표가 초록인 채로 남는다.
-    @test select_lane(kind="unknown:zone", known_kinds=KNOWN, policy="router").lane == "dspy"
+    @test select_lane(kind="zone", known_kinds=KNOWN, policy="router").lane == "dspy"
     @test select_lane(kind="unknown:battery_mild", known_kinds=KNOWN, policy="router").lane == "dspy"
     # 🔴 §0-C 충돌 ① — 처음 보는 타입은 LLM 으로 간다. `routing_kind` 가 `"fault"` 로 접었다면
     #    이 줄이 `"surrogate"` 를 내고, 가장 OOD 한 사건이 가장 확신에 찬 레인으로 간다.
     @test select_lane(kind="unknown:MeteorTruth", known_kinds=KNOWN, policy="router").lane == "dspy"
 
     # 축이 데이터로 남는다 — 산문에서 역파싱하지 않는다.
-    @test select_lane(kind="unknown:zone", known_kinds=KNOWN, policy="router").axis == "ood_kind"
+    @test select_lane(kind="zone", known_kinds=KNOWN, policy="router").axis == "ood_kind"
     @test select_lane(kind="battery", known_kinds=KNOWN, policy="router").axis == "known_kind"
 
     # noop 은 통제 바닥선 — 라우팅 대상이 아니다(옛 분기표에서 그대로 살아남는 유일한 규칙).
@@ -57,7 +59,7 @@ end
 @testset "routing_kind 는 전총이고, 모르는 타입을 fault 로 접지 않는다" begin
     @test routing_kind("BatteryTruth", 0.05) == "battery"
     @test routing_kind("FaultTruth")   == "fault"
-    @test routing_kind("ZoneTruth")    == "unknown:zone"
+    @test routing_kind("ZoneTruth")    == "zone"
     # 🔴 이 단언 하나가 §0-C 충돌 ①의 전부를 진다. `"fault"` 가 나오면 빨갛다.
     @test routing_kind("MeteorTruth")  == "unknown:MeteorTruth"
     @test startswith(routing_kind("MeteorTruth"), "unknown:")
@@ -73,8 +75,12 @@ end
     # 🔴 이것이 그 결정의 전부다. 접두사가 곧 라우팅 표식이고, `dspy_service._unfamiliar_block`
     #    도 같은 접두사만 본다 — 그래서 이 단언이 깨지면 그 사건은 LLM 으로는 가면서
     #    프롬프트에는 "처음 보는 사건" 이라는 사실이 한 글자도 안 실린다(2026-08-30 이전의 zone).
-    for k in (routing_kind("ZoneTruth"),
-              routing_kind("BatteryTruth", 0.55),
+    # 🔴 2026-09-29 (selfimprove U1): zone 은 이 목록에서 빠졌다 — 접두사 없이 `"zone"` 이고,
+    #    학습 전에는 집합 소속으로 dspy 에 간다(아래 줄). 낯섦 문단은 `_unfamiliar_block` 이
+    #    `surro_kinds` 소속으로 따로 판정한다(`test_selfimprove_service.py`).
+    @test routing_kind("ZoneTruth") == "zone"
+    @test select_lane(kind="zone", known_kinds=KNOWN, policy="router").lane == "dspy"
+    for k in (routing_kind("BatteryTruth", 0.55),
               routing_kind("BatteryTruth", nothing),
               routing_kind("MeteorTruth"))
         @test startswith(k, "unknown:")
@@ -133,5 +139,5 @@ end
 
     # 심각도는 battery 에만 걸린다 — 다른 타입은 그 인자를 무시한다.
     @test routing_kind("FaultTruth", 0.9)  == "fault"
-    @test routing_kind("ZoneTruth",  0.02) == "unknown:zone"
+    @test routing_kind("ZoneTruth",  0.02) == "zone"
 end

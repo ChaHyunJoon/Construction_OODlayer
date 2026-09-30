@@ -91,7 +91,17 @@ LLM 에 갔다. 두 결과가 같아 보였지만 같지 않았다: `dspy_servic
 routing_kind(type_name::AbstractString, severity = nothing) =
     type_name == "BatteryTruth" ? _battery_kind(severity) :
     type_name == "FaultTruth"   ? "fault"                 :
-    type_name == "ZoneTruth"    ? "unknown:zone"          : "unknown:" * String(type_name)
+    type_name == "ZoneTruth"    ? "zone"                  : "unknown:" * String(type_name)
+# 🔴 2026-09-29 (selfimprove U1, 사용자 결정): zone 은 다시 접두사 없는 `"zone"` 이다 — 위
+#    docstring 의 "LLM 으로 가는 모든 kind 가 접두사를 진다" 를 **zone 에 한해** 뒤집는다.
+#    `"unknown:zone"` 은 `known_kinds` 에 원리상 없으므로 zone 을 학습해도 surrogate 로 못 간다.
+#    학습 전에는 `"zone" ∉ known_kinds` 로 여전히 dspy 다(v0 레인 불변). 프롬프트의 낯섦 문단은
+#    같은 날 `dspy_service._unfamiliar_block` 이 접두사 대신 `surro_kinds` 소속으로 판정하도록
+#    바꿨다 — 그래서 v0 zone 프롬프트는 바이트 동일하다.
+
+"""`DEFER:<axis>[:…]` → axis, 그 밖은 `nothing` (selfimprove spec §5.3).
+`UNSUPPORTED:` 는 격상 대상이 아니다 — 도장·어휘 불일치라 §0-C 결정 3 대로 계속 죽는다."""
+defer_axis(raw::AbstractString) = startswith(raw, "DEFER:") ? String(split(raw, ":")[2]) : nothing
 
 # battery 한 종류만의 심각도 분할. 위 삼항식 안에 인라인하면 세 갈래가 한 줄에 겹쳐 읽히지
 # 않으므로 뺐다. 🔴 `isfinite` 를 먼저 본다 — `NaN <= x` 는 조용히 `false` 라서, 이 검사가

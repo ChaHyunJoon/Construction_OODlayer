@@ -844,6 +844,10 @@ set_run_ctx!(; run_id = isempty(RUN_ID) ? basename(stream_path) : RUN_ID,
              seed = DEMO_SEED, zone_seed = DEMO_ZONE_SEED,
              synth_fixture = get(ENV, "DEMO_SYNTH_FIXTURE", ""),
              repair_ablation = String(CB.REPAIR_ABLATION[]),
+             # selfimprove (spec §5.4 규칙 5): 이 판이 고정된 에이전트 버전과 강제 팔
+             agent_version = get(ENV, "SELFIMPROVE_VERSION", ""),
+             manifest_sha256 = get(ENV, "SELFIMPROVE_MANIFEST_SHA", ""),
+             selfimprove_arm = get(ENV, "SELFIMPROVE_ARM", ""),
              run_fingerprint()...)
 println("[run-ctx] ", JSON3.write(RUN_CTX[]))
 router_drives() && assert_service_repair_ablation()   # 🔴 레벨 불일치면 첫 결정 전에 죽는다(Review Focus 1)
