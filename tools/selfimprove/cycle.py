@@ -158,35 +158,70 @@ def _part_a(exp, c, st, ops, start):
         _set(exp, c, st, nxt)
 
 
+B_STATES = ("AWAITING_REVIEW", "APPROVED", "ARTIFACT_RECORDED", "VERSION_BUILT", "D_PASS")
+
+
+def _check_decision_evidence(exp, c, dec):
+    """승인은 그것이 본 증거(S3 요약·검토 묶음)에 묶인다. 결정 뒤 증거가 바뀌었으면 승인을 쓰지 않는다."""
+    for k, f in (("s3_summary_sha256", "s3_summary.json"), ("packet_sha256", os.path.join("review", "packet.md"))):
+        now = versions.sha256_file(_d(exp, c, f)) if os.path.exists(_d(exp, c, f)) else None
+        if dec.get(k) != now:
+            raise RuntimeError("--from APPROVED refused: %s changed after the decision" % f)
+
+
 def _part_b(exp, c, st, ops):
-    dec = _load(_d(exp, c, "review", "decision.json"))
-    if dec["decision"] != "approve":
-        return _reject(exp, c, st, "S4", dec["reason"])
-    _set(exp, c, st, "APPROVED")
-    row = ops.record(c)
-    _set(exp, c, st, "ARTIFACT_RECORDED", arm_id=row["arm_id"])
-    v = ops.build_version(c, None)
-    _set(exp, c, st, "VERSION_BUILT", version_built=v)
-    g = ops.gate(v)
-    if not g.get("all_pass"):
-        return _reject(exp, c, st, "D", {k: g.get(k) for k in ("D1", "D2", "D3", "missing")})
-    _set(exp, c, st, "D_PASS")
+    """중단된 곳에서 이어 간다: 빌드된 버전은 다시 빌드하지 않고, D_PASS 면 배포만 한다."""
+    i = B_STATES.index(st["state"])
+    if i <= 0:
+        dec = _load(_d(exp, c, "review", "decision.json"))
+        if dec["decision"] != "approve":
+            return _reject(exp, c, st, "S4", dec["reason"])
+        _set(exp, c, st, "APPROVED")
+    if i <= 1:
+        row = ops.record(c)
+        _set(exp, c, st, "ARTIFACT_RECORDED", arm_id=row["arm_id"])
+    if i <= 2:
+        v = ops.build_version(c, None)
+        _set(exp, c, st, "VERSION_BUILT", version_built=v)
+    v = st["version_built"]
+    if not ops.version_ok(v):
+        raise RuntimeError("built version %s fails verify — refusing to gate/deploy it" % v)
+    if i <= 3:
+        g = ops.gate(v)
+        if not g.get("all_pass"):
+            return _reject(exp, c, st, "D", {k: g.get(k) for k in ("D1", "D2", "D3", "missing")})
+        _set(exp, c, st, "D_PASS")
     ops.deploy(v)
     _set(exp, c, st, "DEPLOYED")
 
 
-def run(exp, c, from_stage=None, ops=None):
+A_PASS = {"S0": "TRIGGERED", "S1": "S0_PASS", "S3_T": "S1_PASS", "S3_CTRL": "S3_T_PASS", "REVIEW": "S3_CTRL_PASS"}
+
+
+def run(exp, c, from_stage=None, ops=None, reopen=False):
+    """`from_stage` 없이 부르면 현재 상태에서 이어 간다. 거부된 회전을 다시 돌리려면 `reopen=True` 를
+    명시해야 하고, 그 사실(이전 거부)이 history 에 남는다. 결정이 기록된 뒤에는 part A 를 다시 못 돈다."""
     with lock(exp):
         st = _load(_d(exp, c, "cycle.json"))
         ops = ops or RealOps(exp, c)
         if from_stage == "APPROVED":
-            if st["state"] not in ("AWAITING_REVIEW", "APPROVED", "ARTIFACT_RECORDED", "VERSION_BUILT"):
+            if st["state"] not in B_STATES:
                 raise RuntimeError("cycle %s is %s — not awaiting a decision" % (c, st["state"]))
             _check_from(exp, c, st, A_STAGES)
+            _check_decision_evidence(exp, c, _load(_d(exp, c, "review", "decision.json")))
             return _part_b(exp, c, st, ops)
-        start = from_stage or "S0"
+        if os.path.exists(_d(exp, c, "review", "decision.json")):
+            raise RuntimeError("cycle %s already has a review decision — part A is closed" % c)
+        start = from_stage or next((s for s, pre in A_PASS.items() if pre == st["state"]), None)
         if start not in A_STAGES:
-            raise ValueError("unknown stage %s" % start)
+            raise RuntimeError("cycle %s is %s — nothing to run in part A" % (c, st["state"]))
+        if st["state"] == "REJECTED":
+            if not reopen:
+                raise RuntimeError("cycle %s was rejected at %s — pass reopen=True (--reopen) to re-run it"
+                                   % (c, st["reject"]["stage"]))
+            st["history"].append({"state": "REOPENED", "at": _now(), "reopened_from": st.pop("reject")})
+        elif st["state"] != A_PASS[start]:
+            raise RuntimeError("cycle %s is %s — cannot start part A at %s" % (c, st["state"], start))
         _check_from(exp, c, st, A_STAGES[:A_STAGES.index(start)])
         return _part_a(exp, c, st, ops, start)
 
@@ -241,6 +276,9 @@ class RealOps:
                 prior = next(r for r in library.read(self.exp) if r["arm_id"] == a["arm_id"])
                 panels[a["arm_id"]] = self._collect(panel.arm_dir(self.exp, prior["cycle"], "candidate"))
         return refit.build_version(self.exp, c, panels, code_rev=self.rev, dirty=self.dirty)
+
+    def version_ok(self, v):
+        return versions.verify_version(self.exp, v) == []
 
     def gate(self, v):
         from . import policy_gate

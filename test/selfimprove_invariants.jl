@@ -20,12 +20,18 @@ import CoordinateTransformations
 
 include(joinpath(@__DIR__, "..", "tools", "monitor", "invariants.jl"))
 
+# 🔴 제한 구역은 프로세스 전역이다. `Pkg.test()` 에서 앞선 시험이 남긴 구역이 이 판을 교착시켜 8건이
+#    스위트에서만 빨갛던 것을 실측했다(2026-09-29 최종 리뷰). 이 시험이 구역을 소유하고 끝에 되돌린다.
+const _PREV_ZONES = copy(CB.restriction_zones())
+CB.clear_restriction_zones!()
+
 const ENV_, _ = CB.run_lego_demo(; ldraw_file = "colored_8x8.ldr", project_name = "selfimprove_inv",
     num_robots = 4, assignment_mode = :greedy, open_animation_at_end = false, save_animation = false,
     write_results = false, rng = Random.MersenneTwister(1), pre_sim_hook = snapshot_t0!)
 
 inv() = JSON3.read(invariant_line(ENV_)[length("[invariant] ")+1:end], Dict{String,Any})
 
+try
 @testset "selfimprove invariants" begin
     @test CB.project_complete(ENV_)
     @testset "baseline: 완주 판은 전부 ok" begin
@@ -93,6 +99,11 @@ inv() = JSON3.read(invariant_line(ENV_)[length("[invariant] ")+1:end], Dict{Stri
         @test startswith(inv()["I1"], "fail")
     end
 end
+finally
 CB.clear_restriction_zones!()
+for (k, z) in _PREV_ZONES
+    CB.add_restriction_zone!(k, z.center, z.radius)
+end
+end
 
 end # module

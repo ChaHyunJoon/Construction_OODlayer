@@ -46,8 +46,13 @@ def _git(*a):
 def build_version(exp, c, panels, code_rev=None, dirty=None):
     """artifact 기록(멱등) → 활성 집합 → G3 → 레지스트리·데이터셋 → F1·F2·F5 → 불변 버전. 새 버전 이름."""
     cfg = promote._config(exp)
-    cy = json.load(open(os.path.join(promote._cdir(exp, c), "cycle.json")))
-    parent = cy.get("parent_version") or versions.read_current(exp)[0]
+    # 🔴 부모는 **빌드 시점의 현재 포인터**다(트리거 시점 값이 아니다) — 그 사이 다른 회전이 배포했으면
+    #    그 팔을 이어받아야 한다. 배포 쪽은 manifest.parent == 현재 포인터를 다시 확인한다.
+    parent = versions.read_current(exp)[0]
+    cyp = os.path.join(promote._cdir(exp, c), "cycle.json")
+    cy = json.load(open(cyp))
+    cy["parent_version"] = parent
+    json.dump(cy, open(cyp, "w"), indent=1, ensure_ascii=False)
     row = promote.record_artifact(exp, c)
     active = promote.next_active_set(exp, parent, c)
     if not promote.g3_psi_distinct(active):

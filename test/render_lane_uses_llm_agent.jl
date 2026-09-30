@@ -74,6 +74,10 @@ finally
     _PREV_DSPY_URL === nothing ? delete!(ENV, "DSPY_URL") : (ENV["DSPY_URL"] = _PREV_DSPY_URL)
 end
 include(joinpath(REPO, "tools", "monitor", "enact.jl"))
+# selfimprove (2026-09-29): `policy_producer` 가 부르는 라이브러리 팔·불변식 함수. 진짜를 쓴다 —
+# 버전·강제 팔 env 가 없으면 `libarm_for` 는 nothing, `snapshot_zones!` 는 zone 사건에서만 불린다.
+include(joinpath(REPO, "tools", "monitor", "libarm.jl"))
+include(joinpath(REPO, "tools", "monitor", "invariants.jl"))
 
 # -----------------------------------------------------------------------------------------
 # 원문 추출기 — 스크립트라 include 할 수 없는 파일의 **한 블록**을 텍스트로 뽑는다.
@@ -140,6 +144,8 @@ module _RenderSandbox
     #  `synth_lane` 필드가 아예 없으므로 그 조기 반환(=`handled=false`, 폴백이 조용하지
     #  않다)이 여기서 실제로 굴러야 (B) 가 옛 경로를 계속 잰다는 것이 참이 된다.)
     import ..enact_target, ..macro_to_proposal, ..log_enact, ..enact_minted_decision!
+    # (2026-09-29 selfimprove: 라이브러리 팔 디스패치와 I1b 구역 스냅샷 — 이것도 **진짜**다.)
+    import ..libarm_for, ..enact_libarm!, ..snapshot_zones!
     # 🔴 (2026-09-04, Wave A W2 뒤처리) `record_world_delta!` 는 여기서 **스텁**이다.
     #    그 함수의 **내용**(직렬화 모양·삼상·안 던짐)은 `enact.jl::record_world_delta!` 의
     #    docstring 이 소유하고 `test/minted_end_to_end.jl` (14)(15) 와 W2 의 변이 M-C·M-C2

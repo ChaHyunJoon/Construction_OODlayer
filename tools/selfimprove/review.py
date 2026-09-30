@@ -78,8 +78,11 @@ def record_decision(exp, c, decision, reviewer, reason, R1, R2, R3, psi_rows_add
         if missing or claimed_absent:
             raise ValueError("approve refused: ψ rows missing from the table for %s" % (missing or claimed_absent))
     os.makedirs(os.path.dirname(p), exist_ok=True)
+    ev = {k: (hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
+              if os.path.exists(os.path.join(d, f)) else None)
+          for k, f in (("s3_summary_sha256", "s3_summary.json"), ("packet_sha256", os.path.join("review", "packet.md")))}
     rec = {"decision": decision, "reviewer": reviewer, "reason": reason, "R1": R1, "R2": R2, "R3": R3,
-           "psi_rows_added": list(psi_rows_added),
+           "psi_rows_added": list(psi_rows_added), **ev,
            "decided_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     with open(p, "x", encoding="utf-8") as f:
         json.dump(rec, f, indent=1, ensure_ascii=False)

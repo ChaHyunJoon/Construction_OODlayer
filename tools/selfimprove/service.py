@@ -59,7 +59,8 @@ def identity_problems(exp, v, h):
     return bad + ([] if ok else ["generation:%s" % code])
 
 
-def start(exp, v, port=None, cmd=None, wait_s=300):
+def start(exp, v, port=None, cmd=None, wait_s=300, register=True):
+    """register=False: 일시 기동(D 게이트) — services.json 의 살아 있는 항목을 덮지 않는다."""
     probs = versions.verify_version(exp, v)
     if probs:
         raise RuntimeError("version %s fails verify: %s" % (v, probs))
@@ -82,6 +83,8 @@ def start(exp, v, port=None, cmd=None, wait_s=300):
     if bad:
         stop(p.pid)
         raise RuntimeError("[selfimprove] service %s on :%d refused: %s" % (v, port, bad))
+    if not register:
+        return {"port": port, "pid": p.pid}
     sp = os.path.join(paths.state_dir(exp), "services.json")
     reg = json.load(open(sp)) if os.path.exists(sp) else {}
     reg[v] = {"port": port, "pid": p.pid, "manifest_sha256": _msha(exp, v),
@@ -114,6 +117,10 @@ def deploy(exp, v, port=None, cmd=None):
     rec = json.load(open(g)) if os.path.exists(g) else None
     if not rec or not rec.get("all_pass") or rec.get("manifest_sha256") != _msha(exp, v):
         raise RuntimeError("deploy %s refused: no passing D-gate record for this manifest" % v)
+    cur_v = versions.read_current(exp)[0]
+    parent = versions.load_manifest(exp, v)["parent"]
+    if parent != cur_v:                     # 낡은 부모에서 빌드된 버전은 현재 버전의 팔을 잃는다
+        raise RuntimeError("deploy %s refused: its parent %s is not the current version %s" % (v, parent, cur_v))
     h = start(exp, v, port=port, cmd=cmd)
     cur, csha = versions.read_current(exp)
     versions.activate(exp, v)

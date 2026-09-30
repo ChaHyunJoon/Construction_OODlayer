@@ -63,19 +63,23 @@ def cmd_status(exp):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="selfimprove")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("init", "watch", "status", "verify", "verify-chain", "deploy", "rollback", "online", "cycle", "review"):
+    for name in ("init", "watch", "status", "verify", "verify-chain", "deploy", "rollback", "online", "cycle", "review",
+                 "serve", "drain"):
         p = sub.add_parser(name)
         p.add_argument("--exp", required=True)
         if name == "watch":
             p.add_argument("--poll-s", type=int, default=60); p.add_argument("--once", action="store_true")
         if name == "online":
             p.add_argument("--n", type=int, default=None)
-        if name in ("verify", "deploy"):
-            p.add_argument("--version", required=(name == "deploy"))
+        if name in ("verify", "deploy", "serve", "drain"):
+            p.add_argument("--version", required=(name != "verify"))
+        if name == "serve":
+            p.add_argument("--port", type=int, default=None)
         if name == "rollback":
             p.add_argument("--to", required=True)
         if name == "cycle":
             p.add_argument("c"); p.add_argument("--from", dest="from_stage")
+            p.add_argument("--reopen", action="store_true", help="re-run a REJECTED cycle (recorded in history)")
         if name == "review":
             p.add_argument("c"); g = p.add_mutually_exclusive_group(required=True)
             g.add_argument("--approve", action="store_true"); g.add_argument("--reject", action="store_true")
@@ -108,7 +112,14 @@ def main(argv=None):
         watch.run(a.exp, a.poll_s, a.once)
     elif a.cmd == "cycle":
         from . import cycle
-        cycle.run(a.exp, a.c, a.from_stage)
+        cycle.run(a.exp, a.c, a.from_stage, reopen=a.reopen)
+    elif a.cmd == "serve":
+        from . import service
+        print(json.dumps(service.start(a.exp, a.version, port=a.port)))
+    elif a.cmd == "drain":
+        from . import service
+        ok = service.drain_and_stop(a.exp, a.version)
+        print("[selfimprove] drain %s: %s" % (a.version, "stopped" if ok else "runs in flight — not stopped"))
     elif a.cmd == "review":
         from . import review
         print(review.record_decision(a.exp, a.c, "approve" if a.approve else "reject", a.reviewer, a.reason,

@@ -25,6 +25,9 @@ def tick(exp, run_cycle=True):
         if q.get("artifact_sha256") and os.path.exists(b):
             q["impl_code"] = json.load(open(b))["impl_code"]
     queue = [q for q in queue if not q.get("artifact_sha256") or "impl_code" in q]
+    cycles = _cycles(exp)
+    if any(not trigger._done(c) for c in cycles):      # 한 번에 하나: 열린 회전이 끝나야 다음 부모가 정해진다
+        return None
     v, _ = versions.read_current(exp)
     due = trigger.due(queue, _cycles(exp), library.read(exp), _active_arms(exp, v), m=_cfg(exp)["m"])
     if not due:

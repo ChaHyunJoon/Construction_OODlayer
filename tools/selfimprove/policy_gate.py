@@ -57,7 +57,7 @@ def dev_runs(exp, v, cfg, workers, port):
     cache = os.path.join(d, "runs.json")
     if os.path.exists(cache):
         return json.load(open(cache))
-    h = service.start(exp, v, port=port)
+    h = service.start(exp, v, port=port, register=False)
     grids = []
     try:
         for model in cfg["models"]:

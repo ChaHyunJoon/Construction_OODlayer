@@ -27,6 +27,8 @@ class FakeOps:
         self.calls.append("record"); return {"arm_id": 100}
     def build_version(self, c, panels):
         self.calls.append("build"); return "v1"
+    def version_ok(self, v):
+        return True
     def gate(self, v):
         self.calls.append("gate"); return {"all_pass": self.gate_ok}
     def deploy(self, v):
