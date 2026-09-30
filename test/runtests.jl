@@ -693,4 +693,8 @@ end
     @testset "selfimprove DEFER escalation" begin
         include("selfimprove_defer_escalation.jl")
     end
+    # plan Task 6: 라이브러리 팔 — 검증 먼저 등록, execution_ok ≠ handled, LLM 경로 없음.
+    @testset "selfimprove libarm" begin
+        include("selfimprove_libarm.jl")
+    end
 end

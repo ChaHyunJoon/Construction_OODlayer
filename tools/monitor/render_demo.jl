@@ -820,6 +820,7 @@ end
 # 두 엔진이 각자 규칙을 들고 있으면 갈릴 수 있고, 이 레포는 그 사고를 이미 여러 번 밟았다
 # (`has_zone` 술어, `record_decision!` 쌍둥이). `enact.jl` 은 최상위 부작용이 없다.
 include(joinpath(@__DIR__, "enact.jl"))
+include(joinpath(@__DIR__, "libarm.jl"))   # selfimprove 라이브러리 팔 (spec §9.1) — enact.jl 의 minted_handled 를 쓴다
 # ---- 원장 신원 (2026-09-22, retry-body 보존 Phase 1 / Task 4) ---------------------------------
 # 🔴 서비스는 seed·레인·판을 모른다(요청에 없었다). 여기서 한 번 채우면 `/decide` 가 매 요청에
 #    싣는다(`policy.jl::_stamp_identity!`). 기동 때 **한 번** 계산한다 — 도중에 코드·설정이
@@ -851,6 +852,10 @@ set_run_ctx!(; run_id = isempty(RUN_ID) ? basename(stream_path) : RUN_ID,
              run_fingerprint()...)
 println("[run-ctx] ", JSON3.write(RUN_CTX[]))
 router_drives() && assert_service_repair_ablation()   # 🔴 레벨 불일치면 첫 결정 전에 죽는다(Review Focus 1)
+# selfimprove (spec §5.4 규칙 5, §0.0 R8): 고정 버전이 디스크·서비스와 같은지 확인한 **뒤에** 팔을 등록한다.
+#    버전 환경변수가 없으면 둘 다 아무것도 안 한다(기본 판 불변).
+assert_selfimprove_version()
+load_library_arms!()
 # ⚠️ `run_demo.jl:248` 과 달리 여기서는 `_reset_decision_counter!()` 를 부르지 않는다. 그래도
 # 안전한 이유는 **하나뿐이다**: 이 스크립트의 유일한 호출자인 `server.jl:117` 이 실행마다
 # `julia … render_demo.jl` **새 프로세스**를 띄우므로 `policy.jl:711` 의 `_DECISION_N[]` 이
@@ -962,6 +967,13 @@ function policy_producer(env, event)
     #    근거를 그 docstring 이 소유한다). 여기 다시 적지 않는다.
     record_world_delta!(_m)
     _m.handled && return nothing
+    # ---- selfimprove 라이브러리 팔 (spec §9.1) ------------------------------------------------
+    # 결정된 팔이 id ≥ 100 인 버전 팔이거나(온라인), `SELFIMPROVE_ARM` 이 걸린 zone 사건이면(S1·S3)
+    # 등록된 body 를 LLM 없이 집행한다. 처리 못 했으면(`handled=false`) 아래 기본 사슬로 간다.
+    local _la = libarm_for(truth, decision.macro_name)
+    if _la !== nothing
+        enact_libarm!(env, truth, _la).handled && return nothing
+    end
     # ReformTeam 은 프레임워크 dispatcher 의 기본 reform 만으로는 **루트 엔드게임 교착**을 못 푼다.
     # run_demo.jl 이 완주를 얻어낸 단계적 사다리(팀 재정립 → 안 되면 직렬화 관문 해소)를 그대로 쓴다.
     # 직접 집행하므로 dispatch 는 생략(nothing) — canonical_producer 와 같은 패턴.
