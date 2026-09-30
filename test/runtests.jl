@@ -701,4 +701,8 @@ end
     @testset "selfimprove invariants" begin
         include("selfimprove_invariants.jl")
     end
+    # plan Task 12: Python 이 만든 T_null 이 Julia 등록·바인딩·집행을 통과한다(키워드 보존, R3).
+    @testset "selfimprove null arm" begin
+        include("selfimprove_null_arm.jl")
+    end
 end
