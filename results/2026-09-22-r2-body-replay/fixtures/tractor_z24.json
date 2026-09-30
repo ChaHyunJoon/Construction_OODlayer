@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_build_geometry",
+ "mechanism": "Inspect the current schedule, scene tree, navigation geometry, and standing zone to identify the two required goals whose navigation reachability is broken and the forming team whose gathering location is unreachable. Edit the scene tree by relocating the affected staging, rendezvous, or build-placement geometry as necessary so that:\n\n- navigating agents can reach both required goals without entering the zone;\n- all members required for the affected forming team can reach a common valid gathering location without entering the zone; and\n- the assembly relationships and required cargo-deposit/lift sequence remain valid.\n\nAfter the edit, the 109 nodes frozen by these three reachability failures must no longer be blocked by the zone, and their required predecessor chains must remain executable. The zone itself is unchanged. The tool does not close nodes, bypass transport or deposit steps, assign robots, or invoke the MILP; the automatic post-tool re-solve handles assignment.\n\nThe particular relocations and transforms are open: the tool may move affected staging geometry, change the build placement, or combine those changes, provided the stated reachability and assembly effects hold. It consumes no scarce replacement body. Any physical restaging required by the selected realization consumes simulated time and robot energy. A valid alternative placement reachable by the available navigating agents is a precondition. The scene-tree edit can be undone before work uses the new geometry by restoring the prior transforms; after cargo has been deposited or assembly has proceeded at the new placement, reversal may require physical restaging or rework and is not intrinsically lossless.",
+ "body_names": [
+  "relocate_zone_blocked_build_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_build_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_build_geometry!",
+ "impl_code": "function relocate_zone_blocked_build_geometry!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    obstructed = d -> d.exists && (\n        (d.n_nav_blocked isa Number && d.n_nav_blocked > 0) ||\n        (d.n_teams_covered isa Number && d.n_teams_covered > 0) ||\n        d.project_blocked === true\n    )\n\n    before = zone_diagnoses(env; check_restage = true, check_teams = true)\n    any(obstructed, before) || return (; status = :success)\n\n    restage = restage_all_blocked!(env; zone_keys = zone_keys)\n    restage_status = restage.status\n    restage_status in (:restaged_all, :none, :partial, :residual_blocked, :infeasible) ||\n        error(\"Unexpected restaging result: $(restage_status)\")\n\n    after_restage = zone_diagnoses(env; check_restage = true, check_teams = true)\n    if any(obstructed, after_restage)\n        translation = translate_whole_build!(env; zone_keys = zone_keys)\n        translation_status = translation.status\n        translation_status in (:translated, :already_clear) ||\n            error(\"No valid zone-clear build placement: $(translation_status)\")\n\n        after_translation = zone_diagnoses(env; check_restage = true, check_teams = true)\n        any(obstructed, after_translation) &&\n            error(\"Scene-tree relocation left required navigation or gathering blocked\")\n    end\n\n    validate_schedule_transform_tree(env.sched; post_staging = true) ||\n        error(\"Relocation violated schedule/scene-tree transform consistency\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_zone_z24.jsonl",
+  "stream_sha256_16": "2cb58f50753acb71",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

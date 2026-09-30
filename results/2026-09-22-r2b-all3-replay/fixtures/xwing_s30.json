@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_exclusion_blocked_goals",
+ "mechanism": "Inspect the unfinished schedule and scene tree to find the two required navigation goals whose arrival regions are entirely inside the standing exclusion zone. Edit scene-tree transforms so those goals’ arrival regions become reachable by RVO-driven navigating movers outside the zone. Apply corresponding transforms to any dependent geometry that must move with each destination so the nested assembly remains coherent.\n\nAfter the edit, both formerly blocked nodes must be able to close through their normal transport and deposit sequence, and the relocation must not place any other remaining required navigation goal in the zone or otherwise make it unreachable. The exclusion zone, schedule precedence edges, and physical restriction are unchanged. Whether this is achieved by moving the smallest suitable scene subtrees, their staging areas, or a larger enclosing build placement is open, provided the required effect holds.\n\nThe tool determines identities and safe offsets from the current world; it consumes intervention time and energy but no spare body. The scene-tree edit is reversible before work executes at the relocated destinations. Once physical work has been completed there, reversal is not generally safe without additional recovery.",
+ "body_names": [
+  "relocate_exclusion_blocked_goals!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_exclusion_blocked_goals!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_exclusion_blocked_goals!",
+ "impl_code": "function relocate_exclusion_blocked_goals!(env;)\n    zone_keys = Symbol[]\n    for (key, _) in active_restriction_zones()\n        push!(zone_keys, key)\n    end\n\n    before = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    if before.n_engulfed == 0 && before.n_disconnected == 0 && before.n_blocked == 0\n        return (; status = :success)\n    end\n\n    moved = translate_whole_build!(env; zone_keys=zone_keys, resume=true, verbose=false)\n    moved.status in (:translated, :already_clear, :residual_blocked, :infeasible, :no_staging) ||\n        error(\"unexpected whole-build relocation result: $(moved.status)\")\n\n    after = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    if after.n_engulfed != 0 || after.n_disconnected != 0 || after.n_blocked != 0\n        fallback = restage_all_blocked!(env; zone_keys=zone_keys, resume=true, verbose=false)\n        fallback.status in (:restaged_all, :none, :partial, :residual_blocked, :infeasible) ||\n            error(\"unexpected blocked-goal restaging result: $(fallback.status)\")\n        after = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    end\n\n    if after.n_engulfed != 0 || after.n_disconnected != 0 || after.n_blocked != 0 || after.project_blocked\n        error(\"scene-tree relocation left required navigation work unreachable\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z30.jsonl",
+  "stream_sha256_16": "0b14cf0fecfc3cc5",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

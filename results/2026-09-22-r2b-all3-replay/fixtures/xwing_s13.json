@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "restore_zone_safe_navigation_reachability",
+ "mechanism": "Inspect the current scene tree, unfinished schedule, robot locations, and persistent exclusion zone. Edit scene-tree placements so that the two blocked required navigation goals and the trapped forming transport team’s gathering location are reachable by navigating agents without entering the zone. Also verify the navigation goals required by all other unfinished nodes and relocate the relevant staging subtree or overall build placement if necessary so every remaining required navigation leg has a zone-compliant path. The exact choice of scene-tree transforms is open; the required effect is restored reachability while preserving coherent nested assembly transforms and leaving the exclusion zone unchanged.\n\nThe tool does not assign robots, edit the disruption, transport cargo through the zone, or invoke MILP formulation, commit, or re-solving; the harness performs reassignment afterward. It consumes intervention time and movement energy but no body replacement or other scarce spare. Its precondition is that a collision-free, zone-compliant placement exists for the remaining work. Scene-tree edits are reversible before work uses the new placements; after cargo has been deposited or assembly has proceeded there, reversal requires another coordinated relocation and is not intrinsically safe.",
+ "body_names": [
+  "restore_zone_safe_navigation_reachability!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "restore_zone_safe_navigation_reachability!",
+   "args": {}
+  }
+ ],
+ "impl_name": "restore_zone_safe_navigation_reachability!",
+ "impl_code": "function restore_zone_safe_navigation_reachability!(env;)\n    zone_keys = [first(zone) for zone in active_restriction_zones()]\n    clear_of_zone = report -> !report.project_blocked &&\n                              report.n_blocked == 0 &&\n                              report.n_agent_trapped == 0 &&\n                              report.n_completion_blocked == 0\n\n    report = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    restage_status = :not_needed\n    translation_status = :not_needed\n\n    if !clear_of_zone(report)\n        restaged = restage_all_blocked!(env; zone_keys = zone_keys)\n        restage_status = restaged.status\n        report = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    end\n\n    if !clear_of_zone(report)\n        translated = translate_whole_build!(env; zone_keys = zone_keys)\n        translation_status = translated.status\n        report = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    end\n\n    if !clear_of_zone(report)\n        restaged = restage_all_blocked!(env; zone_keys = zone_keys)\n        restage_status = restaged.status\n        report = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    end\n\n    if !clear_of_zone(report)\n        error(\"Zone-safe placement was not achieved (restage=$(restage_status), translation=$(translation_status), blocked=$(report.n_blocked), trapped=$(report.n_agent_trapped), completion_blocked=$(report.n_completion_blocked))\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z13.jsonl",
+  "stream_sha256_16": "6a7f75b19fb8b6c2",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

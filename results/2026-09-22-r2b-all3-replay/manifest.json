@@ -1,0 +1,546 @@
+[
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 1,
+  "fixture": "fixtures/tractor_s1.json",
+  "impl_name": "relocate_unreachable_work_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 185,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=256 @[1.507, -3.015] r=0.074 -> nav_blocked=2/131",
+   "zone_enact_retry": null,
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     82,
+     "Replace R1"
+    ],
+    [
+     "BATTERY",
+     185,
+     "SwapBattery R2"
+    ]
+   ],
+   "first_steps_log": "relocate_unreachable_work_geometry!:success",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s1.log"
+  }
+ },
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 3,
+  "fixture": "fixtures/tractor_s3.json",
+  "impl_name": "relocate_exclusion_blocked_goals!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 185,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=242 @[1.563, -2.167] r=0.134 -> nav_blocked=2/131",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     88,
+     "Replace R3"
+    ],
+    [
+     "BATTERY",
+     94,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_exclusion_blocked_goals!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s3.log"
+  }
+ },
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 11,
+  "fixture": "fixtures/tractor_s11.json",
+  "impl_name": "relocate_zone_blocked_work_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 193,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=268 @[0.37, -3.121] r=0.092 -> nav_blocked=2/131",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     145,
+     "Replace R6"
+    ],
+    [
+     "BATTERY",
+     184,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_work_geometry!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s11.log"
+  }
+ },
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 20,
+  "fixture": "fixtures/tractor_s20.json",
+  "impl_name": "relocate_build_geometry_for_reachability!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 266,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=288 @[-0.905, 3.073] r=0.092 -> nav_blocked=2/131",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     99,
+     "Replace R6"
+    ],
+    [
+     "BATTERY",
+     102,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_build_geometry_for_reachability!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s20.log"
+  }
+ },
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 23,
+  "fixture": "fixtures/tractor_s23.json",
+  "impl_name": "relocate_blocked_navigation_goals!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 278,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=235 @[2.502, 2.991] r=0.074 -> nav_blocked=2/131",
+   "zone_enact_retry": null,
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "BATTERY",
+     194,
+     "SwapBattery R1"
+    ],
+    [
+     "FAULT",
+     213,
+     "Replace R5"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_navigation_goals!:success",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s23.log"
+  }
+ },
+ {
+  "model_tag": "tractor",
+  "model": "tractor.mpd",
+  "seed": 24,
+  "fixture": "fixtures/tractor_s24.json",
+  "impl_name": "relocate_zone_blocked_build_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 175,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=197 @[2.255, 1.128] r=0.142 -> nav_blocked=2/131",
+   "zone_enact_retry": null,
+   "zone_at": 54,
+   "decisions": [
+    [
+     "ZONE",
+     54,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     88,
+     "Replace R7"
+    ],
+    [
+     "BATTERY",
+     97,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_build_geometry!:success",
+   "log": "results/2026-09-07-tractor-seedfix/log/router__all3__s24.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 2,
+  "fixture": "fixtures/xwing_s2.json",
+  "impl_name": "relocate_blocked_navigation_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 557,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on transport vtx=419 @[-0.053, 0.968] r=0.088 -> nav_blocked=7/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     130,
+     "Replace R2"
+    ],
+    [
+     "BATTERY",
+     369,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_navigation_geometry!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s2.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 3,
+  "fixture": "fixtures/xwing_s3.json",
+  "impl_name": "relocate_blocked_build_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 472,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=707 @[-5.388, -7.344] r=0.134 -> nav_blocked=2/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     132,
+     "Replace R2"
+    ],
+    [
+     "BATTERY",
+     380,
+     "SwapBattery R4"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_build_geometry!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s3.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 4,
+  "fixture": "fixtures/xwing_s4.json",
+  "impl_name": "restore_blocked_goal_reachability!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 254,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on transport vtx=305 @[1.484, 0.555] r=0.12 -> nav_blocked=3/304",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     122,
+     "Replace R1"
+    ],
+    [
+     "BATTERY",
+     226,
+     "SwapBattery R2"
+    ]
+   ],
+   "first_steps_log": "restore_blocked_goal_reachability!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s4.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 5,
+  "fixture": "fixtures/xwing_s5.json",
+  "impl_name": "relocate_navigation_blocked_geometry!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 370,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=482 @[4.286, -1.954] r=0.105 -> nav_blocked=2/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     129,
+     "Replace R1"
+    ],
+    [
+     "BATTERY",
+     321,
+     "SwapBattery R2"
+    ]
+   ],
+   "first_steps_log": "relocate_navigation_blocked_geometry!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s5.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 6,
+  "fixture": "fixtures/xwing_s6.json",
+  "impl_name": "relocate_blocked_work_geometry!",
+  "calls_translate": 2,
+  "sweep": {
+   "closed": 455,
+   "fail_mode": "unresolved",
+   "zone_place": "blocking zone on robot vtx=614 @[1.477, -7.272] r=0.103 -> nav_blocked=2/304",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     137,
+     "Replace R3"
+    ],
+    [
+     "BATTERY",
+     363,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_work_geometry!:threw(scene-tree relocation left required navigating goals unreachable)",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s6.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 7,
+  "fixture": "fixtures/xwing_s7.json",
+  "impl_name": "relocate_blocked_navigation_destinations!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 632,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=666 @[-5.247, -2.076] r=0.134 -> nav_blocked=2/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     136,
+     "Replace R3"
+    ],
+    [
+     "BATTERY",
+     372,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_navigation_destinations!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s7.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 13,
+  "fixture": "fixtures/xwing_s13.json",
+  "impl_name": "restore_zone_safe_navigation_reachability!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 366,
+   "fail_mode": "unresolved",
+   "zone_place": "blocking zone on robot vtx=522 @[3.539, -0.773] r=0.147 -> nav_blocked=2/304",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     143,
+     "Replace R2"
+    ],
+    [
+     "BATTERY",
+     320,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "restore_zone_safe_navigation_reachability!:threw(Zone-safe placement was not achieved <restage=none, translation=residual_blocked, blocked=2, trapped=1, completion_blocked=1>)",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s13.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 23,
+  "fixture": "fixtures/xwing_s23.json",
+  "impl_name": "relocate_geometry_for_required_reachability!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 525,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=637 @[-4.437, 0.252] r=0.074 -> nav_blocked=2/304",
+   "zone_enact_retry": "refused_world_changed",
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     132,
+     "Replace R2"
+    ],
+    [
+     "BATTERY",
+     380,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_geometry_for_required_reachability!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s23.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 26,
+  "fixture": "fixtures/xwing_s26.json",
+  "impl_name": "relocate_exclusion_blocked_goals!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 398,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on transport vtx=156 @[-3.631, 3.347] r=0.149 -> nav_blocked=2/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     135,
+     "Replace R2"
+    ],
+    [
+     "BATTERY",
+     328,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_exclusion_blocked_goals!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s26.log"
+  }
+ },
+ {
+  "model_tag": "xwing",
+  "model": "30051-1 - X-wing Fighter - Mini.mpd",
+  "seed": 30,
+  "fixture": "fixtures/xwing_s30.json",
+  "impl_name": "relocate_exclusion_blocked_goals!",
+  "calls_translate": 1,
+  "sweep": {
+   "closed": 521,
+   "fail_mode": "world_deadlock",
+   "zone_place": "blocking zone on robot vtx=709 @[0.326, -7.098] r=0.055 -> nav_blocked=2/304",
+   "zone_enact_retry": null,
+   "zone_at": 113,
+   "decisions": [
+    [
+     "ZONE",
+     113,
+     "NOOP nothing"
+    ],
+    [
+     "FAULT",
+     131,
+     "Replace R3"
+    ],
+    [
+     "BATTERY",
+     371,
+     "SwapBattery R1"
+    ]
+   ],
+   "first_steps_log": "relocate_exclusion_blocked_goals!:success",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__all3__s30.log"
+  }
+ }
+]

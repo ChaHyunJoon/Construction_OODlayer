@@ -1,0 +1,31 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_scene_targets",
+ "mechanism": "Inspect the current no-go zone, scene tree, unfinished schedule goals, and transport-team formation locations. Identify the two required unfinished goals whose destinations are inaccessible to navigating agents and the forming transport team whose required gathering location is inaccessible.\n\nEdit the scene tree so that, after the tool runs:\n\n- each of those two unfinished goals has a legal destination that a navigating transport agent can reach without entering the no-go zone;\n- the affected transport team has a legal, navigably reachable gathering location;\n- the relevant staging, deposit, and lift transforms remain mutually consistent, so the existing FormTransportUnit -> TransportUnitGo -> DepositCargo -> LiftIntoPlace sequence can execute and close the same required nodes;\n- already completed work and unaffected work areas remain unchanged unless a coherent ancestor or whole-build translation is necessary to produce the required accessibility;\n- the no-go zone remains in force, no schedule node is deleted or falsely closed, and no assignment is committed by the tool.\n\nThe implementation may relocate individual staging/work poses, translate a containing subassembly, or translate the build coherently; the method is open so long as it produces the stated accessible geometry and preserves assembly relationships. It must verify route reachability rather than merely placing a target outside the zone. The three geometrically overlapped work areas are not moved solely because of overlap unless moving them is required for the stated effect.\n\nThe tool consumes intervention time and any ordinary energy needed to enact restaging, but it does not consume a scarce replacement body. Its scene-tree edits can be undone before work is performed at the new poses. After cargo has been deposited or assembly has proceeded there, undoing the change may require physical rework and is not guaranteed to be cost-free.",
+ "body_names": [
+  "relocate_blocked_scene_targets!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_scene_targets!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_scene_targets!",
+ "impl_code": "function relocate_blocked_scene_targets!(env;)\n    zone_keys = Symbol[first(entry) for entry in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone was found\")\n\n    restage = restage_all_blocked!(env; zone_keys = zone_keys)\n    if restage.status === :none  # [cf] 반사실 삽입\n        _cf_tw = translate_whole_build!(env; zone_keys = zone_keys)\n        restage = _cf_tw.status in (:translated, :already_clear) ? merge(restage, (status = :restaged_all,)) : restage\n    end\n    if restage.status in (:partial, :residual_blocked, :infeasible)\n        translated = translate_whole_build!(env; zone_keys = zone_keys)\n        translated.status in (:translated, :already_clear) ||\n            error(\"unable to produce accessible scene geometry\")\n    elseif !(restage.status in (:restaged_all, :none))\n        error(\"unexpected restaging result\")\n    end\n\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    blockage.checked_paths || error(\"route reachability was not checked\")\n    blockage.n_blocked == 0 || error(\"navigating goals remain blocked\")\n    blockage.n_disconnected == 0 || error(\"a required route remains disconnected\")\n    blockage.n_engulfed == 0 || error(\"a required goal remains engulfed\")\n    blockage.project_blocked == false || error(\"ProjectComplete remains unreachable\")\n\n    for zone_key in zone_keys\n        diagnosis = zone_diagnosis(\n            env,\n            zone_key;\n            check_restage = true,\n            check_teams = true,\n            check_blockage = true,\n            check_paths = true,\n        )\n        diagnosis.exists || error(\"active restriction zone disappeared\")\n        diagnosis.n_nav_blocked == 0 ||\n            error(\"a navigating goal remains inaccessible\")\n        diagnosis.n_teams_covered == 0 ||\n            error(\"a forming transport team still has an inaccessible gathering location\")\n    end\n\n    validate_schedule_transform_tree(env.sched) ||\n        error(\"staging, deposit, and lift transforms are inconsistent\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_zone_z1.jsonl",
+  "stream_sha256_16": "ebd4d99240678b5e",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body",
+  "counterfactual": "insert: on :none call translate_whole_build!"
+ }
+}

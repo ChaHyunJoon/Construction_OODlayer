@@ -1,0 +1,467 @@
+{
+    "xwing_all3_s14": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1830,
+            "only_a": 0,
+            "n_common": 1830,
+            "only_b": 0
+        },
+        "noop_iter": 1831,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1831
+    },
+    "tractor_all3_s30": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3027,
+            "only_a": 0,
+            "n_common": 3027,
+            "only_b": 0
+        },
+        "noop_iter": 3028,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 3028
+    },
+    "tractor_zone_s5": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3601,
+            "only_a": 0,
+            "n_common": 3601,
+            "only_b": 0
+        },
+        "noop_iter": 3602,
+        "noop_closed": 180,
+        "b0_closed": 180,
+        "b0_iter": 3602
+    },
+    "xwing_all3_s17": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4599,
+            "only_a": 0,
+            "n_common": 4599,
+            "only_b": 0
+        },
+        "noop_iter": 4600,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4600
+    },
+    "xwing_zone_s12": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1769,
+            "only_a": 0,
+            "n_common": 1769,
+            "only_b": 0
+        },
+        "noop_iter": 1770,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1770
+    },
+    "xwing_zone_s4": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 6688,
+            "only_a": 0,
+            "n_common": 6688,
+            "only_b": 0
+        },
+        "noop_iter": 6689,
+        "noop_closed": 670,
+        "b0_closed": 670,
+        "b0_iter": 6689
+    },
+    "tractor_all3_s14": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1030,
+            "only_a": 0,
+            "n_common": 1030,
+            "only_b": 0
+        },
+        "noop_iter": 1031,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 1031
+    },
+    "tractor_zone_s30": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 883,
+            "only_a": 0,
+            "n_common": 883,
+            "only_b": 0
+        },
+        "noop_iter": 884,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 884
+    },
+    "xwing_all3_s25": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4600,
+            "only_a": 0,
+            "n_common": 4600,
+            "only_b": 0
+        },
+        "noop_iter": 4601,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4601
+    },
+    "tractor_zone_s14": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 883,
+            "only_a": 0,
+            "n_common": 883,
+            "only_b": 0
+        },
+        "noop_iter": 884,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 884
+    },
+    "tractor_zone_s23": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3860,
+            "only_a": 0,
+            "n_common": 3860,
+            "only_b": 0
+        },
+        "noop_iter": 3861,
+        "noop_closed": 278,
+        "b0_closed": 278,
+        "b0_iter": 3861
+    },
+    "xwing_zone_s25": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4480,
+            "only_a": 0,
+            "n_common": 4480,
+            "only_b": 0
+        },
+        "noop_iter": 4481,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4481
+    },
+    "tractor_zone_s16": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 5585,
+            "only_a": 0,
+            "n_common": 5585,
+            "only_b": 0
+        },
+        "noop_iter": 5586,
+        "noop_closed": 232,
+        "b0_closed": 232,
+        "b0_iter": 5586
+    },
+    "xwing_zone_s17": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4483,
+            "only_a": 0,
+            "n_common": 4483,
+            "only_b": 0
+        },
+        "noop_iter": 4484,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4484
+    },
+    "tractor_zone_s26": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 883,
+            "only_a": 0,
+            "n_common": 883,
+            "only_b": 0
+        },
+        "noop_iter": 884,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 884
+    },
+    "tractor_zone_s9": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3572,
+            "only_a": 0,
+            "n_common": 3572,
+            "only_b": 0
+        },
+        "noop_iter": 3573,
+        "noop_closed": 221,
+        "b0_closed": 221,
+        "b0_iter": 3573
+    },
+    "xwing_zone_s14": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1769,
+            "only_a": 0,
+            "n_common": 1769,
+            "only_b": 0
+        },
+        "noop_iter": 1770,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1770
+    },
+    "tractor_zone_s29": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3572,
+            "only_a": 0,
+            "n_common": 3572,
+            "only_b": 0
+        },
+        "noop_iter": 3573,
+        "noop_closed": 221,
+        "b0_closed": 221,
+        "b0_iter": 3573
+    },
+    "tractor_all3_s26": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1063,
+            "only_a": 0,
+            "n_common": 1063,
+            "only_b": 0
+        },
+        "noop_iter": 1064,
+        "noop_closed": 287,
+        "b0_closed": 287,
+        "b0_iter": 1064
+    },
+    "xwing_all3_s7": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4626,
+            "only_a": 0,
+            "n_common": 4626,
+            "only_b": 0
+        },
+        "noop_iter": 4627,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4627
+    },
+    "xwing_all3_s12": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1865,
+            "only_a": 0,
+            "n_common": 1865,
+            "only_b": 0
+        },
+        "noop_iter": 1866,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1866
+    },
+    "xwing_all3_s8": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4348,
+            "only_a": 0,
+            "n_common": 4348,
+            "only_b": 0
+        },
+        "noop_iter": 4349,
+        "noop_closed": 446,
+        "b0_closed": 446,
+        "b0_iter": 4349
+    },
+    "xwing_zone_s9": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1769,
+            "only_a": 0,
+            "n_common": 1769,
+            "only_b": 0
+        },
+        "noop_iter": 1770,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1770
+    },
+    "xwing_all3_s9": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1968,
+            "only_a": 0,
+            "n_common": 1968,
+            "only_b": 0
+        },
+        "noop_iter": 1969,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1969
+    },
+    "tractor_all3_s9": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 5904,
+            "only_a": 0,
+            "n_common": 5904,
+            "only_b": 0
+        },
+        "noop_iter": 5905,
+        "noop_closed": 221,
+        "b0_closed": 221,
+        "b0_iter": 5905
+    },
+    "tractor_all3_s23": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3954,
+            "only_a": 0,
+            "n_common": 3954,
+            "only_b": 0
+        },
+        "noop_iter": 3955,
+        "noop_closed": 278,
+        "b0_closed": 278,
+        "b0_iter": 3955
+    },
+    "tractor_all3_s29": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 3767,
+            "only_a": 0,
+            "n_common": 3767,
+            "only_b": 0
+        },
+        "noop_iter": 3768,
+        "noop_closed": 221,
+        "b0_closed": 221,
+        "b0_iter": 3768
+    },
+    "xwing_zone_s27": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 1769,
+            "only_a": 0,
+            "n_common": 1769,
+            "only_b": 0
+        },
+        "noop_iter": 1770,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 1770
+    },
+    "xwing_zone_s7": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 4573,
+            "only_a": 0,
+            "n_common": 4573,
+            "only_b": 0
+        },
+        "noop_iter": 4574,
+        "noop_closed": 609,
+        "b0_closed": 609,
+        "b0_iter": 4574
+    },
+    "xwing_all3_s27": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 2481,
+            "only_a": 0,
+            "n_common": 2481,
+            "only_b": 0
+        },
+        "noop_iter": 2482,
+        "noop_closed": 684,
+        "b0_closed": 684,
+        "b0_iter": 2482
+    },
+    "tractor_all3_s2": {
+        "trace": {
+            "first_divergent_iter": null,
+            "divergent_columns": [
+            ],
+            "last_common_iter": 5483,
+            "only_a": 0,
+            "n_common": 5483,
+            "only_b": 0
+        },
+        "noop_iter": 5484,
+        "noop_closed": 170,
+        "b0_closed": 170,
+        "b0_iter": 5484
+    }
+}

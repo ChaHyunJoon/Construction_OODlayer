@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_work_discs",
+ "mechanism": "While the zone remains unchanged, inspect the current scene tree, unfinished schedule goals, and navigable free space. Identify the two unfinished work discs whose required navigation goals are unreachable because of the zone, then change their scene-tree placements—and the dependent unfinished deposit, lift, and work target transforms that move with them—so those goals become reachable by RVO-driven navigating agents.\n\nThe required postcondition is that every unfinished navigation goal, including the previously blocked two, has a legal reachable destination outside the zone, without making any previously reachable unfinished goal unreachable. Internal geometry needed to perform the associated work must remain consistent, and schedule precedence must not be altered. The specific translations or choice of legal poses are resolved from the world at execution time; the physical method of achieving the relocation is open.\n\nThe tool does not edit or relax the zone, assign robots, invoke the MILP, bypass deposit-before-lift ordering, or consume a spare robot or battery. It incurs the intervention time and energy required to relocate the affected unfinished work geometry. Preconditions are that legal reachable placements exist and the affected work has not yet been irreversibly seated at its old placement. The scene-tree edit can be undone before dependent physical work occurs; after cargo is deposited or assembly proceeds at the new placement, undoing it requires a separate physical relocation and is not guaranteed.",
+ "body_names": [
+  "relocate_zone_blocked_work_discs!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_work_discs!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_work_discs!",
+ "impl_code": "function relocate_zone_blocked_work_discs!(env;)\n    zone_keys = Symbol[first(zone) for zone in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone is available for relocation\")\n\n    result = restage_all_blocked!(env; zone_keys = zone_keys, resume = false, verbose = false)\n\n    if result.status != :restaged_all && result.status != :none\n        for assembly_id in zone_blocked_assemblies(env; zone_keys = zone_keys)\n            retry = restage_assembly!(env, assembly_id; zone_keys = zone_keys, resume = false, verbose = false)\n            retry.status == :restaged || retry.status == :already_built ||\n                error(\"unable to relocate a zone-blocked unfinished work disc\")\n        end\n    end\n\n    validate_schedule_transform_tree(env.sched; post_staging = true) ||\n        error(\"relocation left inconsistent dependent transforms\")\n\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    blockage.n_blocked == 0 &&\n        blockage.n_disconnected == 0 &&\n        blockage.n_engulfed == 0 &&\n        blockage.n_agent_trapped == 0 &&\n        blockage.n_completion_blocked == 0 &&\n        !blockage.project_blocked ||\n        error(\"unfinished navigation goals remain unreachable after relocation\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z26.jsonl",
+  "stream_sha256_16": "cdf49acdc5849cea",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

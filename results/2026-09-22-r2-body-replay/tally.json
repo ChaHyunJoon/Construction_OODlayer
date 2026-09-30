@@ -1,0 +1,1157 @@
+[
+ {
+  "model": "tractor",
+  "seed": 1,
+  "retried": true,
+  "sweep": {
+   "closed": 185,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": "retried",
+   "at": 54,
+   "zone_place": "blocking zone on robot vtx=256 @[1.507, -3.015] r=0.074 -> nav_blocked=2/131",
+   "final_steps": [
+    [
+     "relocate_blocked_scene_targets!",
+     "threw",
+     "MethodError: no method matching eligible_successors(::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete})"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_scene_targets!:threw(navigating goals remain blocked)",
+   "score_line": "[score] complete=false closed=185 n_zones=1 n_blocked=0 n_nav_goals=67 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/tractor__router__zone__s1.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 147,
+   "n_blocked": "2",
+   "trapped": "0",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_scene_targets!:threw(navigating goals remain blocked)",
+   "zone_place": "blocking zone on robot vtx=256 @[1.507, -3.015] r=0.074 -> nav_blocked=2/131",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 147,
+   "n_blocked": "2",
+   "trapped": "0",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_scene_targets!:threw(navigating goals remain blocked)",
+   "zone_place": "blocking zone on robot vtx=256 @[1.507, -3.015] r=0.074 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=256 @[1.507, -3.015] r=0.074 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "tractor",
+  "seed": 3,
+  "retried": false,
+  "sweep": {
+   "closed": 185,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 54,
+   "zone_place": "blocking zone on robot vtx=242 @[1.563, -2.167] r=0.134 -> nav_blocked=2/131",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_goal_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_goal_geometry!:success",
+   "score_line": "[score] complete=false closed=185 n_zones=1 n_blocked=0 n_nav_goals=67 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/tractor__router__zone__s3.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 185,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_goal_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=242 @[1.563, -2.167] r=0.134 -> nav_blocked=2/131",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_goal_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=242 @[1.563, -2.167] r=0.134 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=242 @[1.563, -2.167] r=0.134 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "tractor",
+  "seed": 11,
+  "retried": true,
+  "sweep": {
+   "closed": 193,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": "retried",
+   "at": 54,
+   "zone_place": "blocking zone on robot vtx=268 @[0.37, -3.121] r=0.092 -> nav_blocked=2/131",
+   "final_steps": [
+    [
+     "relocate_exclusion_blocked_targets!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_exclusion_blocked_targets!:threw(relocation left exclusion-zone blockage for zone zone_blk_1; restaging status was none)",
+   "score_line": "[score] complete=false closed=193 n_zones=1 n_blocked=0 n_nav_goals=59 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/tractor__router__zone__s11.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 180,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_exclusion_blocked_targets!:threw(relocation left exclusion-zone blockage for zone zone_blk_1; restaging status was none)",
+   "zone_place": "blocking zone on robot vtx=268 @[0.37, -3.121] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 180,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_exclusion_blocked_targets!:threw(relocation left exclusion-zone blockage for zone zone_blk_1; restaging status was none)",
+   "zone_place": "blocking zone on robot vtx=268 @[0.37, -3.121] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=268 @[0.37, -3.121] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 0
+ },
+ {
+  "model": "tractor",
+  "seed": 20,
+  "retried": true,
+  "sweep": {
+   "closed": 266,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": "retried",
+   "at": 54,
+   "zone_place": "blocking zone on robot vtx=288 @[-0.905, 3.073] r=0.092 -> nav_blocked=2/131",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_destinations!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_destinations!:threw(Unable to relocate every zone-blocked unfinished destination: none)",
+   "score_line": "[score] complete=false closed=266 n_zones=1 n_blocked=0 n_nav_goals=25 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/tractor__router__zone__s20.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 266,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_destinations!:threw(Unable to relocate every zone-blocked unfinished destination: none)",
+   "zone_place": "blocking zone on robot vtx=288 @[-0.905, 3.073] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 266,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_destinations!:threw(Unable to relocate every zone-blocked unfinished destination: none)",
+   "zone_place": "blocking zone on robot vtx=288 @[-0.905, 3.073] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=288 @[-0.905, 3.073] r=0.092 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 0
+ },
+ {
+  "model": "tractor",
+  "seed": 24,
+  "retried": false,
+  "sweep": {
+   "closed": 175,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": "refused_world_changed",
+   "at": 54,
+   "zone_place": "blocking zone on robot vtx=197 @[2.255, 1.128] r=0.142 -> nav_blocked=2/131",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_build_geometry!",
+     "threw",
+     "MethodError: no method matching eligible_successors(::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete})"
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_build_geometry!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "score_line": "[score] complete=false closed=175 n_zones=1 n_blocked=0 n_nav_goals=73 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/tractor__router__zone__s24.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 175,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "refused_world_changed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_build_geometry!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "zone_place": "blocking zone on robot vtx=197 @[2.255, 1.128] r=0.142 -> nav_blocked=2/131",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "refused_world_changed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_build_geometry!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "zone_place": "blocking zone on robot vtx=197 @[2.255, 1.128] r=0.142 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 287,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=197 @[2.255, 1.128] r=0.142 -> nav_blocked=2/131",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 2,
+  "retried": true,
+  "sweep": {
+   "closed": 557,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": "retried",
+   "at": 113,
+   "zone_place": "blocking zone on transport vtx=419 @[-0.053, 0.968] r=0.088 -> nav_blocked=7/304",
+   "final_steps": [
+    [
+     "relocate_unreachable_goal_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_unreachable_goal_geometry!:threw(scene-tree relocation left 8 required navigation goals blocked; restaging status was none)",
+   "score_line": "[score] complete=false closed=557 n_zones=1 n_blocked=0 n_nav_goals=81 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s2.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 511,
+   "n_blocked": "8",
+   "trapped": "5",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_goal_geometry!:threw(scene-tree relocation left 8 required navigation goals blocked; restaging status was none)",
+   "zone_place": "blocking zone on transport vtx=419 @[-0.053, 0.968] r=0.088 -> nav_blocked=7/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 511,
+   "n_blocked": "8",
+   "trapped": "5",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_goal_geometry!:threw(scene-tree relocation left 8 required navigation goals blocked; restaging status was none)",
+   "zone_place": "blocking zone on transport vtx=419 @[-0.053, 0.968] r=0.088 -> nav_blocked=7/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on transport vtx=419 @[-0.053, 0.968] r=0.088 -> nav_blocked=7/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 0
+ },
+ {
+  "model": "xwing",
+  "seed": 3,
+  "retried": false,
+  "sweep": {
+   "closed": 472,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=707 @[-5.388, -7.344] r=0.134 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_blocked_goal_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_goal_geometry!:success",
+   "score_line": "[score] complete=false closed=472 n_zones=1 n_blocked=0 n_nav_goals=132 n_engulfed=0 n_agent_trapped=1 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s3.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 472,
+   "n_blocked": "0",
+   "trapped": "1",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_goal_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=707 @[-5.388, -7.344] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_goal_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=707 @[-5.388, -7.344] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=707 @[-5.388, -7.344] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 4,
+  "retried": false,
+  "sweep": {
+   "closed": 251,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on transport vtx=305 @[1.484, 0.555] r=0.12 -> nav_blocked=3/304",
+   "final_steps": [
+    [
+     "relocate_build_geometry_for_reachability!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_build_geometry_for_reachability!:success",
+   "score_line": "[score] complete=false closed=251 n_zones=1 n_blocked=0 n_nav_goals=231 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s4.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 251,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_build_geometry_for_reachability!:success",
+   "zone_place": "blocking zone on transport vtx=305 @[1.484, 0.555] r=0.12 -> nav_blocked=3/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_build_geometry_for_reachability!:success",
+   "zone_place": "blocking zone on transport vtx=305 @[1.484, 0.555] r=0.12 -> nav_blocked=3/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on transport vtx=305 @[1.484, 0.555] r=0.12 -> nav_blocked=3/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 6,
+  "retried": false,
+  "sweep": {
+   "closed": 455,
+   "complete": false,
+   "fail_mode": "unresolved",
+   "enact_retry": "refused_world_changed",
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=614 @[1.477, -7.272] r=0.103 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_blocked_work_geometry!",
+     "threw",
+     "restriction zone still blocks unfinished schedule goals"
+    ]
+   ],
+   "first_steps_log": "relocate_blocked_work_geometry!:threw(restriction zone still blocks unfinished schedule goals)",
+   "score_line": "[score] complete=false closed=455 n_zones=1 n_blocked=2 n_nav_goals=138 n_engulfed=2 n_agent_trapped=0 project_blocked=true",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s6.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 455,
+   "n_blocked": "2",
+   "trapped": "0",
+   "enact_retry": "refused_world_changed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_work_geometry!:threw(restriction zone still blocks unfinished schedule goals)",
+   "zone_place": "blocking zone on robot vtx=614 @[1.477, -7.272] r=0.103 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_blocked_work_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=614 @[1.477, -7.272] r=0.103 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=614 @[1.477, -7.272] r=0.103 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 7,
+  "retried": false,
+  "sweep": {
+   "closed": 632,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=666 @[-5.247, -2.076] r=0.134 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_work_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_work_geometry!:success",
+   "score_line": "[score] complete=false closed=632 n_zones=1 n_blocked=0 n_nav_goals=45 n_engulfed=0 n_agent_trapped=1 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s7.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 632,
+   "n_blocked": "0",
+   "trapped": "1",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=666 @[-5.247, -2.076] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=666 @[-5.247, -2.076] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=666 @[-5.247, -2.076] r=0.134 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 13,
+  "retried": true,
+  "sweep": {
+   "closed": 366,
+   "complete": false,
+   "fail_mode": "unresolved",
+   "enact_retry": "retried",
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=522 @[3.539, -0.773] r=0.147 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_work!",
+     "threw",
+     "scene-tree relocation left zone-blocked navigation or team gathering"
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_work!:threw(scene-tree relocation left zone-blocked navigation or team gathering)",
+   "score_line": "[score] complete=false closed=366 n_zones=1 n_blocked=2 n_nav_goals=178 n_engulfed=2 n_agent_trapped=1 project_blocked=true",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s13.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 348,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work!:threw(scene-tree relocation left zone-blocked navigation or team gathering)",
+   "zone_place": "blocking zone on robot vtx=522 @[3.539, -0.773] r=0.147 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 348,
+   "n_blocked": "2",
+   "trapped": "1",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work!:threw(scene-tree relocation left zone-blocked navigation or team gathering)",
+   "zone_place": "blocking zone on robot vtx=522 @[3.539, -0.773] r=0.147 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=522 @[3.539, -0.773] r=0.147 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 0
+ },
+ {
+  "model": "xwing",
+  "seed": 22,
+  "retried": false,
+  "sweep": {
+   "closed": 661,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on transport vtx=389 @[-0.053, -1.261] r=0.101 -> nav_blocked=3/304",
+   "final_steps": [
+    [
+     "relocate_unreachable_goal_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_unreachable_goal_geometry!:success",
+   "score_line": "[score] complete=false closed=661 n_zones=1 n_blocked=0 n_nav_goals=35 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s22.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 661,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_goal_geometry!:success",
+   "zone_place": "blocking zone on transport vtx=389 @[-0.053, -1.261] r=0.101 -> nav_blocked=3/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_goal_geometry!:success",
+   "zone_place": "blocking zone on transport vtx=389 @[-0.053, -1.261] r=0.101 -> nav_blocked=3/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on transport vtx=389 @[-0.053, -1.261] r=0.101 -> nav_blocked=3/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 23,
+  "retried": false,
+  "sweep": {
+   "closed": 525,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=637 @[-4.437, 0.252] r=0.074 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_unreachable_delivery_geometry!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_unreachable_delivery_geometry!:success",
+   "score_line": "[score] complete=false closed=525 n_zones=1 n_blocked=0 n_nav_goals=103 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s23.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 525,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_delivery_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=637 @[-4.437, 0.252] r=0.074 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_unreachable_delivery_geometry!:success",
+   "zone_place": "blocking zone on robot vtx=637 @[-4.437, 0.252] r=0.074 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=637 @[-4.437, 0.252] r=0.074 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ },
+ {
+  "model": "xwing",
+  "seed": 26,
+  "retried": true,
+  "sweep": {
+   "closed": 398,
+   "complete": false,
+   "fail_mode": "unresolved",
+   "enact_retry": "retried",
+   "at": 113,
+   "zone_place": "blocking zone on transport vtx=156 @[-3.631, 3.347] r=0.149 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_zone_blocked_work_discs!",
+     "threw",
+     "unfinished navigation goals remain unreachable after relocation"
+    ]
+   ],
+   "first_steps_log": "relocate_zone_blocked_work_discs!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "score_line": "[score] complete=false closed=398 n_zones=1 n_blocked=2 n_nav_goals=160 n_engulfed=2 n_agent_trapped=3 project_blocked=true",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s26.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 398,
+   "n_blocked": "2",
+   "trapped": "3",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work_discs!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "zone_place": "blocking zone on transport vtx=156 @[-3.631, 3.347] r=0.149 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "false",
+   "closed": 398,
+   "n_blocked": "2",
+   "trapped": "3",
+   "enact_retry": "roundtrip_failed",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_zone_blocked_work_discs!:threw(MethodError: no method matching eligible_successors<::ConstructionBots.ScheduleNode{ConstructionBots.TemplatedID{Tuple{AssemblyComplete, ConstructionBots.AssemblyID}}, AssemblyComplete}>)",
+   "zone_place": "blocking zone on transport vtx=156 @[-3.631, 3.347] r=0.149 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on transport vtx=156 @[-3.631, 3.347] r=0.149 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": null
+  },
+  "calls_translate": 0
+ },
+ {
+  "model": "xwing",
+  "seed": 30,
+  "retried": false,
+  "sweep": {
+   "closed": 521,
+   "complete": false,
+   "fail_mode": "world_deadlock",
+   "enact_retry": null,
+   "at": 113,
+   "zone_place": "blocking zone on robot vtx=709 @[0.326, -7.098] r=0.055 -> nav_blocked=2/304",
+   "final_steps": [
+    [
+     "relocate_build_geometry_around_exclusion!",
+     "success",
+     ""
+    ]
+   ],
+   "first_steps_log": "relocate_build_geometry_around_exclusion!:success",
+   "score_line": "[score] complete=false closed=521 n_zones=1 n_blocked=0 n_nav_goals=106 n_engulfed=0 n_agent_trapped=0 project_blocked=false",
+   "log": "results/2026-09-06-smdp-state-120run/log/xwing__router__zone__s30.log"
+  },
+  "A": {
+   "complete": "false",
+   "closed": 521,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_build_geometry_around_exclusion!:success",
+   "zone_place": "blocking zone on robot vtx=709 @[0.326, -7.098] r=0.055 -> nav_blocked=2/304",
+   "engine": [
+    "pre-fix"
+   ],
+   "fixture_banner": true
+  },
+  "B": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "not_needed_surface",
+   "handled": "true",
+   "steps": "relocate_build_geometry_around_exclusion!:success",
+   "zone_place": "blocking zone on robot vtx=709 @[0.326, -7.098] r=0.055 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "C": {
+   "complete": "true",
+   "closed": 684,
+   "n_blocked": "0",
+   "trapped": "0",
+   "enact_retry": "n/a",
+   "resume": "issued",
+   "resolve": "resolved",
+   "handled": "true",
+   "steps": "OracleZoneClear!:translated",
+   "zone_place": "blocking zone on robot vtx=709 @[0.326, -7.098] r=0.055 -> nav_blocked=2/304",
+   "engine": [
+    "fixed"
+   ],
+   "fixture_banner": true
+  },
+  "A_reproduces": {
+   "zone": true,
+   "first_steps": true,
+   "closed": true
+  },
+  "calls_translate": 1
+ }
+]

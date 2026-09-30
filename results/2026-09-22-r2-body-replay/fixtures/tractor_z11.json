@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_exclusion_blocked_targets",
+ "mechanism": "Inspect the unfinished schedule and its referenced scene geometry, identify every unfinished navigation or transport-team gathering target whose required arrival region is unreachable because of the standing exclusion zone, including the two known blocked goals and the blocked forming-team location, and relocate the corresponding not-yet-realized scene-tree targets to collision-free poses reachable by the required navigating movers.\n\nAfter execution, each affected target’s full arrival tolerance must lie in navigable space outside the exclusion zone, required approach paths must exist, and the relocation must not make any other remaining node unclosable. Preserve the schedule DAG, precedence relations, completed geometry, cargo state, and relevant nested transforms; propagate each relocation through its unfinished dependent scene subtree where necessary to keep later deposit, lift, and assembly targets geometrically consistent. The exact poses, offsets, and whether targets are moved individually or by translating an appropriate unfinished parent subtree are open implementation choices.\n\nThe tool does not alter, relax, or delete the exclusion zone and does not assign robots or invoke the MILP. It consumes intervention time and energy but no body spare. It is reversible before work is performed at the relocated targets; once cargo has been deposited or assembly work completed at the new poses, reversal is not generally safe without a separate physical recovery.",
+ "body_names": [
+  "relocate_exclusion_blocked_targets!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_exclusion_blocked_targets!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_exclusion_blocked_targets!",
+ "impl_code": "function relocate_exclusion_blocked_targets!(env)\n    zone_keys = Symbol[]\n    for (key, _) in active_restriction_zones()\n        push!(zone_keys, key)\n    end\n    isempty(zone_keys) && error(\"no active exclusion zone was found\")\n\n    outcome = restage_all_blocked!(env; zone_keys = zone_keys)\n    valid_statuses = (:restaged_all, :none, :partial, :residual_blocked, :infeasible)\n    outcome.status in valid_statuses || error(\"unrecognized restaging result: $(outcome.status)\")\n\n    for key in zone_keys\n        diagnosis = zone_diagnosis(\n            env,\n            key;\n            check_restage = true,\n            check_teams = true,\n            check_blockage = true,\n            check_paths = true,\n        )\n        if diagnosis.n_nav_blocked > 0 ||\n           diagnosis.n_teams_covered > 0 ||\n           diagnosis.n_agent_trapped > 0 ||\n           diagnosis.n_completion_blocked > 0 ||\n           diagnosis.project_blocked === true\n            error(\"relocation left exclusion-zone blockage for zone $(key); restaging status was $(outcome.status)\")\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_zone_z11.jsonl",
+  "stream_sha256_16": "e7b333853d9c7549",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

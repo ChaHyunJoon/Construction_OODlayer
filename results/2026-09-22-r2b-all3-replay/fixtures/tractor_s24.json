@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_build_geometry",
+ "mechanism": "Inspect the current no-go zone, scene tree, and unfinished schedule requirements. Edit the scene tree so that the two unfinished goals whose required arrival regions are inside the zone, and the required gathering location of the currently forming transport team, are placed at navigably reachable locations outside the zone. Preserve the assembly relationships and required relative transforms represented by the scene tree, and do not move the no-go zone or treat its enforcement gap as a route. The resulting geometry must not place any still-required arrival or gathering region inside the zone or create a new permanently unreachable required goal.\n\nThe implementation may translate the affected enclosing sub-assembly, relocate its staging geometry, or translate a larger consistent portion of the build, including the whole build if necessary; the particular method is open so long as the stated postcondition holds and already completed geometry remains physically consistent. The automatic post-tool MILP re-solve handles robot assignments.\n\nPreconditions are that the measured zone and scene geometry are available and that a collision-free, zone-compliant placement preserving assembly consistency exists. The tool consumes intervention time and the physical energy required for any necessary restaging, but no replacement body or other scarce spare. It is reversible only while doing so would not invalidate work completed at the relocated poses; otherwise restoration would require a further consistency-preserving relocation.",
+ "body_names": [
+  "relocate_zone_blocked_build_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_build_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_build_geometry!",
+ "impl_code": "function relocate_zone_blocked_build_geometry!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone is available for geometry relocation\")\n\n    result = translate_whole_build!(env; zone_keys = zone_keys)\n    if !(result.status in (:translated, :already_clear))\n        error(\"zone-compliant geometry relocation failed with status $(result.status)\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_all3_s24_z24.jsonl",
+  "stream_sha256_16": "e3d9894fb87d2677",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

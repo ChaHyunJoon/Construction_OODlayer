@@ -1,0 +1,31 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_unreachable_goal_geometry",
+ "mechanism": "Inspect the current world for unfinished required navigation goals that are unreachable because of the standing no-go zone, including the seven measured goals. Edit the scene tree so each such goal has a reachable destination outside the prohibited region and a valid collision-free approach for an RVO-driven navigating agent. Preserve the relevant local assembly relationships by relocating an appropriate unfinished sub-assembly ancestor, staging pose, or build placement; which geometric relocation is used is open.\n\nAfter the edit, the no-go zone and its enforcement are unchanged, every identified blocked required navigation goal is reachable without entering it, and the seven frozen nodes—and therefore their 169 downstream dependents—are no longer prevented from closing by this access loss. The schedule DAG and its precedence rules are not bypassed, and assignment is left to the automatic post-tool MILP re-solve.\n\nThe tool consumes intervention time and energy but no scarce replacement body. It must not teleport cargo or already placed physical components; any necessary physical relocation must use legal navigation outside the zone. Preconditions are that the affected unfinished geometry has a feasible reachable placement consistent with completing its remaining assembly work. The scene-tree edit can be undone before work begins at the replacement poses; after deposits or assembly occur there, undoing it requires a separate physically valid relocation and is not intrinsically reversible.",
+ "body_names": [
+  "relocate_unreachable_goal_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_unreachable_goal_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_unreachable_goal_geometry!",
+ "impl_code": "function relocate_unreachable_goal_geometry!(env;)\n    zone_keys = Symbol[key for (key, _) in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone was found\")\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    if before.n_blocked != 0\n        outcome = restage_all_blocked!(env; zone_keys = zone_keys, resume = true, verbose = false)\n        if outcome.status === :none  # [cf] 반사실 삽입\n            _cf_tw = translate_whole_build!(env; zone_keys = zone_keys)\n            outcome = _cf_tw.status in (:translated, :already_clear) ? merge(outcome, (status = :restaged_all,)) : outcome\n        end\n        after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        after.n_blocked != 0 && error(\"scene-tree relocation left $(after.n_blocked) required navigation goals blocked; restaging status was $(outcome.status)\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": false,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z2.jsonl",
+  "stream_sha256_16": "b30dd89587d25854",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body",
+  "counterfactual": "insert: on :none call translate_whole_build!"
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_goal_geometry",
+ "mechanism": "Inspect the current exclusion zones, unfinished schedule, navigation goals, and scene tree. Find every still-required navigating-agent goal whose complete arrival-tolerance region is inside an enforced exclusion zone and whose blockage prevents schedule completion.\n\nEdit the scene tree so the build geometry that determines each such destination is relocated to a collision-free, navigably reachable placement outside the exclusion zone. Preserve the required relative geometry within any moved assembly or staging subtree and update all dependent unfinished destinations consistently. The resulting world must have no completion-critical unfinished navigation goal whose arrival region remains wholly blocked, and the relocation must not create another permanently unreachable required goal. Whether this is achieved by moving the smallest affected scene subtree or by translating a larger build subtree is open.\n\nThe exclusion zone itself is not changed. The tool does not add a non-navigating delivery shortcut, edit assignments, or invoke the MILP; automatic reassignment occurs afterward. Preconditions are that a valid reachable placement exists and that the affected unfinished geometry can still be relocated consistently with already-closed work. No scarce spare or replacement body is consumed, though subsequent execution incurs ordinary motion time and energy. The scene-tree edit can be reversed before work relies on the new placement; after deposition or assembly at that placement, reversal is not generally safe without relocating the resulting physical work as well.",
+ "body_names": [
+  "relocate_blocked_goal_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_goal_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_goal_geometry!",
+ "impl_code": "function relocate_blocked_goal_geometry!(env;)\n    zone_keys = [pair.first for pair in active_restriction_zones()]\n    if !isempty(zone_keys)\n        initial = zone_blockage(env; zone_keys = zone_keys)\n        if initial.project_blocked || initial.n_completion_blocked > 0\n            restaged = restage_all_blocked!(env; zone_keys = zone_keys)\n            restaged.status\n            remaining = zone_blockage(env; zone_keys = zone_keys)\n            if remaining.project_blocked || remaining.n_completion_blocked > 0\n                translated = translate_whole_build!(env; zone_keys = zone_keys)\n                translated.status\n            end\n            final = zone_blockage(env; zone_keys = zone_keys)\n            if final.project_blocked || final.n_completion_blocked > 0\n                error(\"scene-tree relocation left completion-critical navigation goals unreachable\")\n            end\n        end\n    end\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z3.jsonl",
+  "stream_sha256_16": "596e372a12bb5850",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

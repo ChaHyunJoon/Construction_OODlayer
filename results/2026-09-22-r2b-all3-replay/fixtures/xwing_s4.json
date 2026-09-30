@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "restore_blocked_goal_reachability",
+ "mechanism": "Inspect the current schedule, scene tree, navigation geometry, and persistent exclusion zone to find the 3 unfinished goals whose navigable reachability is broken. Edit the scene tree so each affected goal has a valid destination reachable by an RVO-driven navigating agent without entering the exclusion zone. Update all dependent scene-tree transforms coherently, preserving the intended assembly relationships, and do not make any other unfinished required goal unreachable. The implementation may relocate the affected unfinished work geometry, move an appropriate containing subassembly or staging placement, or translate the build if necessary; the particular geometric method is open.\n\nThe exclusion zone and its enforcement remain unchanged. The schedule DAG and completed-node state remain unchanged; after the body returns, the harness performs its normal MILP reassignment. The required postcondition is that the 3 blocked nodes are again capable of closing and therefore no longer prevent their 30 downstream dependents and ProjectComplete from becoming reachable.\n\nPreconditions: a collision-free, zone-compliant placement exists that preserves required assembly geometry and makes the affected destinations navigably reachable. The tool consumes intervention time and any simulated energy required by the chosen restaging operation, but no robot body spare. The scene-tree edit is reversible until subsequent physical construction commits work to the new placement; after that, reversal may require an additional physical relocation and is not guaranteed.",
+ "body_names": [
+  "restore_blocked_goal_reachability!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "restore_blocked_goal_reachability!",
+   "args": {}
+  }
+ ],
+ "impl_name": "restore_blocked_goal_reachability!",
+ "impl_code": "function restore_blocked_goal_reachability!(env;)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    edited = false\n\n    if !isempty(zone_keys)\n        before = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n\n        if before.n_completion_blocked > 0 || before.project_blocked\n            restage_result = restage_all_blocked!(\n                env;\n                zone_keys=zone_keys,\n                resume=false,\n                verbose=false,\n            )\n            restage_status = restage_result.status\n            edited = !isempty(restage_result.moved)\n\n            after_restage = zone_blockage(\n                env;\n                zone_keys=zone_keys,\n                check_paths=true,\n            )\n\n            if after_restage.n_completion_blocked > 0 || after_restage.project_blocked\n                translation_result = translate_whole_build!(\n                    env;\n                    zone_keys=zone_keys,\n                    resume=false,\n                    verbose=false,\n                )\n                translation_status = translation_result.status\n                edited = edited || translation_status == :translated\n\n                after_translation = zone_blockage(\n                    env;\n                    zone_keys=zone_keys,\n                    check_paths=true,\n                )\n\n                if after_translation.n_completion_blocked > 0 ||\n                   after_translation.project_blocked\n                    error(\n                        \"Unable to restore required goal reachability; \" *\n                        \"restaging status=$(restage_status), \" *\n                        \"translation status=$(translation_status), \" *\n                        \"residual blocked=$(after_translation.n_completion_blocked)\",\n                    )\n                end\n            end\n\n            if edited && !validate_schedule_transform_tree(\n                env.sched;\n                post_staging=true,\n            )\n                error(\"Restaging left an inconsistent schedule transform tree\")\n            end\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z4.jsonl",
+  "stream_sha256_16": "121baddecf507ff9",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

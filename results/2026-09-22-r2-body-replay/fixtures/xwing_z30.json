@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_build_geometry_around_exclusion",
+ "mechanism": "Inspect the active exclusion zone, scene tree, current physical assembly state, and all unfinished navigation goals. Edit the scene tree by relocating the affected not-yet-completed assembly geometry, staging poses, or—where required to preserve assembly relationships—the coherent build placement.\n\nRequired effect: after the edit, every unfinished goal that requires navigation has a valid collision-free navigating-agent route and an arrival region outside the enforced exclusion zone, including goals whose routes rather than arrival regions were cut off. The relocated destinations must remain geometrically valid for their deposits and lifts, so the formerly frozen nodes and their downstream dependents can close and ProjectComplete is reachable.\n\nThe exclusion zone itself remains unchanged. The schedule DAG and its precedence rules remain unchanged, and the tool does not select assignments or invoke the MILP; the automatic post-tool re-solve handles assignments. The exact relocation method is open: rigid translation of the build, relocation of still-unbuilt subtrees, or restaging may be used as long as completed geometry and required assembly relationships are respected.\n\nPrecondition: a collision-free reachable placement consistent with already completed work exists. The operation consumes intervention time and movement energy but no body spare. Scene-tree edits are reversible before physical work relies on the new placement; after cargo is deposited or lifted there, reversal requires a separate physically valid relocation and is not intrinsically undoable.",
+ "body_names": [
+  "relocate_build_geometry_around_exclusion!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_build_geometry_around_exclusion!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_build_geometry_around_exclusion!",
+ "impl_code": "function relocate_build_geometry_around_exclusion!(env;)\n    zone_keys = Symbol[first(zone_pair) for zone_pair in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active exclusion zone was found\")\n\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    if blockage.n_blocked > 0 || blockage.project_blocked\n        restage_result = restage_all_blocked!(env; zone_keys = zone_keys)\n        blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n        if restage_result.status in (:infeasible, :partial, :residual_blocked) ||\n           blockage.n_blocked > 0 || blockage.project_blocked\n            translation_result = translate_whole_build!(env; zone_keys = zone_keys)\n            blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n            if translation_result.status in (:infeasible, :no_staging, :residual_blocked) ||\n               blockage.n_blocked > 0 || blockage.project_blocked\n                error(\"scene-tree relocation left unfinished navigation goals blocked\")\n            end\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z30.jsonl",
+  "stream_sha256_16": "0022a5e62167aad3",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

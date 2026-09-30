@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_exclusion_blocked_goals",
+ "mechanism": "Inspect the current scene tree, exclusion zone, unfinished schedule goals, and navigation geometry at run time. Identify the two unfinished goals whose required navigation destinations are unreachable because of the zone. Edit the scene tree so those destinations and their associated unfinished work-disc/build geometry are placed at reachable poses outside the zone’s blocking effect. Update dependent scene-tree transforms consistently so the same unfinished assembly relationships are preserved.\n\nThe required postcondition is that, while the exclusion zone remains unchanged, each of the two previously frozen goals has a valid approach reachable by its required navigating agent; consequently, those goals and their 245 downstream dependents are no longer frozen by this reachability failure. Whether this is achieved by moving the affected branches, moving staging geometry, or translating a larger unfinished build subtree is open.\n\nThe tool does not edit or relax the exclusion zone, move cargo through it, alter precedence edges, select robots, or invoke the MILP. The harness may re-solve assignments afterward. It consumes intervention time and energy but no spare robot or replacement body. It requires the affected destinations to belong to scene-tree geometry that can still be relocated consistently because their goals are unfinished. The scene-tree edit can be rolled back before work proceeds at the new poses; after physical work occurs there, reversal is not generally available without a separate physical relocation.",
+ "body_names": [
+  "relocate_exclusion_blocked_goals!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_exclusion_blocked_goals!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_exclusion_blocked_goals!",
+ "impl_code": "function relocate_exclusion_blocked_goals!(env;)\n    zone_keys = Symbol[z.first for z in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active exclusion zone was found\")\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    affected = Set(b.id for b in before.blocked)\n    isempty(affected) && return (; status = :success)\n\n    restaged = restage_all_blocked!(env; zone_keys = zone_keys, resume = false, verbose = false)\n    after_restage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    needs_fallback = restaged.status != :restaged_all ||\n                     any(b.id in affected for b in after_restage.blocked)\n\n    if needs_fallback\n        translated = translate_whole_build!(env; zone_keys = zone_keys, resume = false, verbose = false)\n        translated.status in (:translated, :already_clear) ||\n            error(\"unable to relocate exclusion-blocked build geometry: $(translated.status)\")\n    end\n\n    final_blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    any(b.id in affected for b in final_blockage.blocked) &&\n        error(\"relocation left a previously blocked navigation goal unreachable\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z26.jsonl",
+  "stream_sha256_16": "bc6a67a962dbdf78",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

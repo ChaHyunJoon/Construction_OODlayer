@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_build_geometry_for_reachability",
+ "mechanism": "Inspect the current schedule, scene tree, robot-accessible free space, and standing exclusion zone. Identify the unfinished navigation goals that cannot be reached by any eligible navigating agent. Edit the scene tree so those goals become reachable without violating the exclusion zone, while preserving the assembly’s required relative transforms and leaving every other unfinished navigation goal reachable. The acceptable realization is open: it may relocate affected staging geometry, relocate a coherent sub-assembly, or translate the whole remaining build placement, according to what is geometrically feasible.\n\nRequired postcondition: the two previously unreachable navigation nodes have zone-compliant navigation paths and can close; consequently their 22-node downstream dependency region is no longer permanently frozen. The exclusion zone and schedule precedence edges remain unchanged. The body does not assign robots, formulate or commit a MILP, or perform a re-solve; the harness performs reassignment afterward.\n\nPreconditions are that a scene-tree relocation preserving assembly consistency and reachability for all remaining goals exists. The tool consumes intervention time and any physical motion energy required by the chosen realization, but no body spare. The scene-tree edit is reversible until work is executed against the relocated geometry; after deposits, lifts, or other placement-dependent work closes, reversal may require additional physical recovery and is not guaranteed.",
+ "body_names": [
+  "relocate_build_geometry_for_reachability!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_build_geometry_for_reachability!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_build_geometry_for_reachability!",
+ "impl_code": "function relocate_build_geometry_for_reachability!(env;)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if blockage.n_blocked != 0\n        restage_result = restage_all_blocked!(env; zone_keys = zone_keys, resume = false, verbose = false)\n        restage_status = restage_result.status\n        blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n        if blockage.n_blocked != 0\n            translation_result = translate_whole_build!(env; zone_keys = zone_keys, resume = false, verbose = false)\n            translation_status = translation_result.status\n            blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n            if blockage.n_blocked != 0 || blockage.n_downstream != 0 || blockage.project_blocked\n                error(\"scene-tree relocation failed: restage=$(restage_status), translation=$(translation_status), residual=$(blockage.n_blocked)\")\n            end\n        end\n    end\n\n    validate_schedule_transform_tree(env.sched; post_staging = true) ||\n        error(\"relocation violated schedule/scene transform consistency\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_all3_s20_z20.jsonl",
+  "stream_sha256_16": "ea3b204704860704",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

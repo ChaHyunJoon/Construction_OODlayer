@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_work",
+ "mechanism": "Inspect the current scene tree, schedule, navigation state, and persistent exclusion zone to find the unfinished navigating goals and transport-team gathering locations whose reachability is broken by that zone. Edit the scene-tree transforms of the affected unfinished work area or the smallest coherent enclosing unfinished assembly geometry so that all such required locations are outside the zone and reachable by RVO-driven navigating agents. Preserve the internal relative transforms and assembly relationships of anything moved, and leave already completed construction undisturbed.\n\nRequired effect: after the edit, the exclusion zone still exists and is unchanged, but the two previously unreachable unfinished navigating goals and the blocked team-gathering location have legal reachable counterparts consistent with the relocated geometry. Consequently, those nodes can close and no remaining schedule node is permanently frozen by this zone. The exact relocation method and poses are open, provided they are collision-free and preserve build semantics.\n\nThe tool consumes intervention time and robot energy but no body spare. It does not assign robots, edit or revoke the exclusion zone, or invoke the MILP; reassignment occurs automatically afterward. The scene-tree edit can be undone before work proceeds at the relocated poses, but should be treated as non-reversible once dependent cargo has been deposited or assembly work has closed there.",
+ "body_names": [
+  "relocate_zone_blocked_work!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_work!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_work!",
+ "impl_code": "function relocate_zone_blocked_work!(env)\n    zone_keys = [first(zone) for zone in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active exclusion zone was found\")\n\n    outcome = restage_all_blocked!(env; zone_keys = zone_keys)\n    if outcome.status != :restaged_all && outcome.status != :none\n        for assembly_id in zone_blocked_assemblies(env; zone_keys = zone_keys)\n            retry = restage_assembly!(env, assembly_id; zone_keys = zone_keys)\n            retry.status\n        end\n    end\n\n    diagnoses = zone_diagnoses(env; check_restage = true, check_teams = true)\n    unresolved = any(d -> d.exists &&\n        (d.n_nav_blocked != 0 ||\n         d.n_teams_covered != 0 ||\n         d.project_blocked === true), diagnoses)\n    unresolved && error(\"scene-tree relocation left zone-blocked navigation or team gathering\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z13.jsonl",
+  "stream_sha256_16": "5fb80f91fdc2e769",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

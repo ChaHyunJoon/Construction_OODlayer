@@ -1,0 +1,31 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_destinations",
+ "mechanism": "Inspect the current exclusion zones, scene tree, and unfinished schedule goals. Find every unfinished navigation goal whose entire arrival tolerance is excluded and therefore cannot close.\n\nEdit the scene tree so each such goal has an admissible, collision-free arrival region outside the enforced exclusion zone. Move the corresponding unfinished destination geometry and any dependent deposit, lift, or assembly targets coherently, preserving the relative transforms required for downstream construction. The resulting placement must not create another unreachable unfinished navigation goal or invalidate already closed work. The particular translations, grouping of scene-tree objects, and placement-selection method are open.\n\nThe exclusion zone is not edited, relaxed, or moved. The schedule DAG and assignment edges need not be changed; the automatic post-tool MILP re-solve handles assignments. No spare body or other scarce fleet resource is consumed, though subsequent travel to the relocated destinations consumes ordinary time and energy.\n\nPreconditions are that the affected work remains unfinished and its destination geometry can still be repositioned consistently with already completed construction. The scene-tree edit can be reversed before physical work relies on the new placement. Once cargo has been deposited or assembly performed at the relocated poses, reversal is not generally safe without additional compensating work.",
+ "body_names": [
+  "relocate_zone_blocked_destinations!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_destinations!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_destinations!",
+ "impl_code": "function relocate_zone_blocked_destinations!(env)\n    zone_keys = [p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    before.n_blocked == 0 && return (; status = :success)\n\n    outcome = restage_all_blocked!(env; zone_keys = zone_keys, resume = true, verbose = false)\n    if outcome.status === :none  # [cf] 반사실 삽입\n        _cf_tw = translate_whole_build!(env; zone_keys = zone_keys)\n        outcome = _cf_tw.status in (:translated, :already_clear) ? merge(outcome, (status = :restaged_all,)) : outcome\n    end\n    if outcome.status === :infeasible ||\n       outcome.status === :partial ||\n       outcome.status === :residual_blocked ||\n       (outcome.status === :none && before.n_blocked > 0)\n        error(\"Unable to relocate every zone-blocked unfinished destination: $(outcome.status)\")\n    end\n\n    after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    if after.n_blocked != 0 || after.n_completion_blocked != 0 || after.project_blocked\n        error(\"Relocation left $(after.n_blocked) navigation goals blocked\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_zone_z20.jsonl",
+  "stream_sha256_16": "f643d41204a2174e",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body",
+  "counterfactual": "insert: on :none call translate_whole_build!"
+ }
+}

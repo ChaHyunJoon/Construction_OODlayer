@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_navigation_destinations",
+ "mechanism": "Inspect the unfinished schedule and scene tree to find the 2 navigation goals whose destinations are unreachable because of the standing zone. Edit the scene tree so those destinations lie in a reachable component outside the zone, while preserving the coherent transforms needed by their DepositCargo, LiftIntoPlace, and downstream assembly work. All other unfinished navigation destinations must remain reachable.\n\nThe required effect is that the 2 formerly blocked navigation nodes can activate and close under normal navigating-agent policies, thereby allowing their 57 downstream dependents to proceed. The zone itself, schedule precedence, and robot assignments are not edited. The implementation may relocate the smallest coherent affected scene-tree placement or translate a larger enclosing placement, including the whole build, if necessary; the particular geometric method is open.\n\nPreconditions are that a collision-valid reachable placement exists and that the relevant not-yet-completed geometry can be relocated coherently. The tool consumes intervention time and energy but no spare robot or replacement body. The harness performs the assignment re-solve afterward. The scene-tree edit is reversible before work commits to the new placement; after deposits, lifts, or downstream assembly close there, reversal is not generally safe.",
+ "body_names": [
+  "relocate_blocked_navigation_destinations!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_navigation_destinations!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_navigation_destinations!",
+ "impl_code": "function relocate_blocked_navigation_destinations!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    initial = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    initial.n_blocked == 0 && return (; status = :success)\n\n    restaged = restage_all_blocked!(env; zone_keys = zone_keys)\n    remaining = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if remaining.n_blocked != 0\n        translated = translate_whole_build!(env; zone_keys = zone_keys)\n        final_state = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        final_state.n_blocked == 0 || error(\"scene-tree relocation left blocked navigation goals after restaging status $(restaged.status) and translation status $(translated.status)\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z7.jsonl",
+  "stream_sha256_16": "c39230a250608625",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_work_geometry",
+ "mechanism": "Inspect the current scene tree, schedule, navigation geometry, and enforced no-go zone. Find every unfinished navigation goal whose required arrival region or all feasible approaches are made unreachable by that zone, including at least the two measured blocked goals.\n\nEdit only the scene tree to relocate the affected staging poses, destination poses, or the smallest suitable enclosing build subtrees so that:\n\n- each affected unfinished navigation goal has a legal arrival region outside the enforced disc and a feasible route for an RVO-driven navigating agent;\n- associated deposit and lift targets remain geometrically consistent with their relocated destination;\n- scene-tree parent/child transforms and required assembly relationships remain valid;\n- already closed work is not invalidated; and\n- no cargo or robot is teleported and the no-go zone itself is unchanged.\n\nWhether this is achieved through separate staging relocations, relocation of enclosing sub-assemblies, or translation of the build placement is open; the required effect is that the zone no longer prevents any still-required navigation node from closing. The schedule DAG and assignment edges need not be edited. The automatic post-tool MILP re-solve assigns robots to the resulting work.\n\nPreconditions are that at least one legal, collision-free placement exists that preserves the assembly relationships and is reachable while the zone remains. The tool consumes no depot spare, though executing the newly routed work consumes normal simulated time and energy. Scene-tree edits can be undone before any work uses the new poses; after cargo has been deposited or lifted at relocated poses, reversal requires a separate physical recovery and is not automatically undoable.",
+ "body_names": [
+  "relocate_zone_blocked_work_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_work_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_work_geometry!",
+ "impl_code": "function relocate_zone_blocked_work_geometry!(env)\n    zone_keys = [first(zone) for zone in active_restriction_zones()]\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if blockage.n_blocked != 0\n        restaged = restage_all_blocked!(env; zone_keys = zone_keys, resume = false, verbose = false)\n        blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n        if !(restaged.status in (:restaged_all, :none)) || blockage.n_blocked != 0\n            if blockage.n_blocked != 0\n                translated = translate_whole_build!(env; zone_keys = zone_keys, resume = false, verbose = false)\n                blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n                if !(translated.status in (:translated, :already_clear)) && blockage.n_blocked != 0\n                    error(\"scene-tree relocation failed to clear all required navigation goals\")\n                end\n            end\n        end\n    end\n\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    blockage.n_blocked == 0 || error(\"scene-tree relocation left blocked unfinished navigation goals\")\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z7.jsonl",
+  "stream_sha256_16": "13ff3a271dadd5dd",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_build_geometry",
+ "mechanism": "Inspect the current schedule and scene tree to identify the two unfinished navigation goals made unreachable by the no-go zone and the scene-tree geometry that determines their destinations. Edit the scene tree so those goals, their required arrival-tolerance regions, and any associated unfinished work discs lie outside the enforced zone and are reachable by navigating movers. Preserve the required relative transforms and assembly relationships of the affected geometry; translating an affected enclosing sub-assembly or the whole build are both acceptable if they produce this effect. The exact translation and scope are resolved from the world at run time.\n\nThe no-go zone itself is not changed. The tool does not assign robots, edit assignment edges, or invoke the MILP; the harness re-solves assignments afterward. It consumes intervention time and energy but no body spare. Preconditions are that a collision-free, zone-compliant placement exists and that the affected unfinished geometry can be relocated consistently. The scene-tree edit is reversible before dependent physical work is completed at the new placement; after such work, reversal may require an additional physical recovery rather than merely restoring the old transform.",
+ "body_names": [
+  "relocate_blocked_build_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_build_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_build_geometry!",
+ "impl_code": "function relocate_blocked_build_geometry!(env;)\n    zone_keys = Symbol[key for (key, _) in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone was found\")\n\n    result = translate_whole_build!(env; zone_keys = zone_keys)\n\n    if result.status === :translated\n        if hasproperty(result, :residual) && result.residual != 0\n            error(\"build translation left $(result.residual) blocked goals\")\n        end\n    elseif result.status !== :already_clear\n        error(\"build geometry relocation failed with status $(result.status)\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z3.jsonl",
+  "stream_sha256_16": "223e897e47f386f4",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

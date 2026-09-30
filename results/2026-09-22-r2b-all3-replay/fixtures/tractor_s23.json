@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_navigation_goals",
+ "mechanism": "Inspect the current schedule, scene tree, no-go zone, and navigation geometry to find the two unfinished navigation goals whose required arrival regions lie inside the zone. Edit the scene tree so each blocked goal, together with the corresponding deposit, lift, and downstream assembly geometry that must remain spatially aligned with it, has a reachable replacement pose outside the no-go zone with sufficient robot clearance and a navigable approach path. Preserve relevant relative transforms and schedule precedence; do not alter, relax, move, or delete the no-go zone, and do not perform assignment, MILP formulation, commit, or re-solving.\n\nRequired effect: before the tool runs, the two navigation nodes cannot close because legal navigation cannot reach their arrival regions; afterward, both nodes have legal reachable arrival regions and their eight downstream dependents retain coherent geometric targets, so no one of these ten nodes remains frozen by this zone. The exact choice of replacement poses and whether affected geometry is moved individually or through a common ancestor transform are open, provided this effect holds and unrelated work is not moved unnecessarily.\n\nThe operation consumes intervention time and any ordinary movement energy required by the selected realization, but no scarce replacement body is inherently required. It requires enough collision-free, unrestricted space for valid replacement poses. Scene-tree edits can be rolled back using the prior transforms before work proceeds; after cargo is deposited or lifted at the new poses, reversal is not generally safe without further recovery.",
+ "body_names": [
+  "relocate_blocked_navigation_goals!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_navigation_goals!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_navigation_goals!",
+ "impl_code": "function relocate_blocked_navigation_goals!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    before.n_blocked == 0 && return (; status = :success)\n\n    relocation = translate_whole_build!(env; zone_keys = zone_keys)\n    if relocation.status != :translated && relocation.status != :already_clear\n        error(\"No feasible scene-tree relocation was produced: $(relocation.status)\")\n    end\n\n    after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    after.n_blocked == 0 || error(\"Scene-tree relocation left $(after.n_blocked) navigation goals blocked\")\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_all3_s23_z23.jsonl",
+  "stream_sha256_16": "e4a095513468ae12",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

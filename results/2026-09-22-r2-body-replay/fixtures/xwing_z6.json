@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_work_geometry",
+ "mechanism": "Inspect the current zone, unfinished schedule goals, and scene tree to find the two unfinished work areas whose navigation arrival tolerances are wholly blocked. Edit the relevant scene-tree transforms—individually or through a suitable common ancestor—so that each blocked destination has a collision-free, navigably reachable arrival tolerance outside the enforced disc. Preserve the internal transforms and associations among each destination, its cargo deposit pose, lift placement pose, and downstream assembly geometry, so downstream nodes use the relocated geometry rather than the old blocked positions.\n\nThe no-go zone remains unchanged. The required effect is that the two previously unreachable navigation goals can close under the normal navigation and deposit/lift sequence, and their 201 downstream dependents are no longer frozen by this zone. The particular feasible poses and whether relocation is implemented by moving separate work areas or a larger containing scene-tree subtree are open implementation choices.\n\nPreconditions are that suitable collision-free scene-tree placements exist and that the affected unfinished geometry is still relocatable. The operation consumes intervention time and ordinary relocation/planning energy but no body replacement or other scarce spare. It performs no MILP formulation, commit, or re-solve; the harness may re-solve assignments afterward as usual. The transform edit is reversible before work is physically deposited or assembled at the new poses. After such work closes, reversing it would require separate physical rework and is not guaranteed by this tool.",
+ "body_names": [
+  "relocate_blocked_work_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_work_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_work_geometry!",
+ "impl_code": "function relocate_blocked_work_geometry!(env;)\n    zone_keys = [p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && throw(ErrorException(\"no active restriction zone was found\"))\n\n    before = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    restaged = restage_all_blocked!(env; zone_keys=zone_keys, resume=false, verbose=false)\n    restage_status = restaged.status\n    restage_status in (:restaged_all, :none, :partial, :residual_blocked, :infeasible) ||\n        throw(ErrorException(\"unrecognized restaging status: $(restage_status)\"))\n\n    after = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    if !isempty(after.blocked)\n        translated = translate_whole_build!(env; zone_keys=zone_keys, resume=false, verbose=false)\n        translation_status = translated.status\n        translation_status in (:translated, :already_clear) ||\n            throw(ErrorException(\"geometry relocation failed: $(translation_status)\"))\n        after = zone_blockage(env; zone_keys=zone_keys, check_paths=true)\n    end\n\n    before_ids = Set(x.id for x in before.blocked)\n    after_ids = Set(x.id for x in after.blocked)\n    isempty(intersect(before_ids, after_ids)) ||\n        throw(ErrorException(\"previously blocked navigation goals remain unreachable\"))\n    isempty(after.blocked) ||\n        throw(ErrorException(\"restriction zone still blocks unfinished schedule goals\"))\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z6.jsonl",
+  "stream_sha256_16": "4f13651f984bc34e",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

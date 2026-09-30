@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_build_geometry_for_reachability",
+ "mechanism": "Inspect the current schedule, scene tree, exclusion zone, and navigable free space at run time. Identify the three reported unreachable unfinished goals and any other unfinished navigation-dependent goals that presently have no surviving route; their identities and required displacement are resolved by the tool rather than supplied by the caller.\n\nEdit the scene tree by relocating the smallest coherent goal-bearing subassembly or, where necessary, translating the whole build placement. Preserve the applicable nested transforms and assembly relationships. The required postcondition is that every unfinished goal requiring cargo delivery has at least one valid route for an eligible RVO-driven navigating agent while the exclusion zone remains unchanged. The particular collision-free placement and whether this is achieved through subassembly relocation or whole-build translation are open.\n\nThe tool does not alter or relax the exclusion zone, bypass the required transport/deposit/lift ordering, edit assignment edges, or invoke the MILP. The harness may re-solve assignments afterward. Preconditions are the existence of a permissible scene-tree placement that provides the required reachability without invalidating already completed assembly relationships. The intervention consumes simulated time and associated planning/motion energy but no body spare. It is reversible before physical work uses the relocated destinations; after cargo is deposited or lifted there, reversal requires a separate coherent relocation of the resulting assembly rather than merely restoring metadata.",
+ "body_names": [
+  "relocate_build_geometry_for_reachability!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_build_geometry_for_reachability!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_build_geometry_for_reachability!",
+ "impl_code": "function relocate_build_geometry_for_reachability!(env)\n    zone_keys = [first(zone) for zone in active_restriction_zones()]\n    blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if blockage.n_blocked != 0\n        restage_result = restage_all_blocked!(env; zone_keys = zone_keys)\n        blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n        if blockage.n_blocked != 0\n            translation_result = translate_whole_build!(env; zone_keys = zone_keys)\n            blockage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n            blockage.n_blocked == 0 || error(\"No permissible scene-tree relocation restored all unfinished navigation routes; restaging status=$(restage_result.status), translation status=$(translation_result.status)\")\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_zone_z4.jsonl",
+  "stream_sha256_16": "dec16982e4a9391e",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}

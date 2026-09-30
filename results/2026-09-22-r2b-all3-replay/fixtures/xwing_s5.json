@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_navigation_blocked_geometry",
+ "mechanism": "Inspect the current scene tree, schedule frontier, navigation geometry, and persistent no-go zone to identify the two unfinished goals whose navigation reachability is broken, the transport-team gathering location that cannot be reached, and any planned descendant poses whose placement depends on the moved geometry.\n\nEdit only the scene tree so that:\n- each identified unfinished goal has a legal destination reachable by the required navigating transport agent without entering the no-go zone;\n- the affected transport team has a legally reachable gathering pose;\n- staging, deposit, and lift poses associated with relocated work remain mutually consistent;\n- required relative transforms within each affected sub-assembly are preserved; and\n- every remaining navigation-dependent node has a reachable required pose, allowing the previously frozen downstream nodes eventually to close.\n\nThe implementation may relocate the smallest suitable affected scene-tree subtree, relocate staging poses, translate the larger build placement, or combine these methods. The particular displacement and subtree choice are open, provided the stated reachability and transform-preservation effects hold. The tool discovers all identities, poses, offsets, and distances from the world when it runs.\n\nThe no-go zone remains unchanged. The schedule DAG and assignment edges are not directly edited, and the tool does not formulate, commit, or re-solve the MILP. It consumes intervention time and the ordinary energy required to enact any necessary physical repositioning, but consumes no body replacement or other scarce spare. Preconditions are that a legal alternative placement exists and that already fixed geometry does not make the required scene-tree relocation physically impossible. The scene-tree edits are reversible by restoring the prior transforms before incompatible downstream placement occurs; physical repositioning already performed still costs time and energy and may not be freely reversible after later assembly work closes.",
+ "body_names": [
+  "relocate_navigation_blocked_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_navigation_blocked_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_navigation_blocked_geometry!",
+ "impl_code": "function relocate_navigation_blocked_geometry!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    zone_diagnoses(env; check_restage = true, check_teams = true)\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if before.n_blocked > 0 || before.n_agent_trapped > 0 || before.project_blocked\n        moved = translate_whole_build!(env; zone_keys = zone_keys)\n        if moved.status === :infeasible || moved.status === :no_staging\n            error(\"No legal scene-tree relocation was found\")\n        end\n\n        after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        if after.n_blocked > 0 || after.n_agent_trapped > 0 || after.project_blocked\n            error(\"Scene-tree relocation left navigation-dependent schedule nodes blocked\")\n        end\n\n        zone_diagnoses(env; check_restage = true, check_teams = true)\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z5.jsonl",
+  "stream_sha256_16": "f99dc66c039e3612",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

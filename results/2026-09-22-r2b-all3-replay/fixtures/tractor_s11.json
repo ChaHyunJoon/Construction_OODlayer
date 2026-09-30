@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_work_geometry",
+ "mechanism": "Inspect the current schedule, scene tree, navigation geometry, arrival tolerances, and live exclusion zone. Identify the scene-tree placements that generate the two unreachable unfinished navigating-agent goals and the transport team’s unreachable gathering location. Relocate the corresponding staging, deposit, assembly, or build anchors as necessary to collision-free poses outside the zone such that:\n\n- both required navigating-agent goals become reachable within their required arrival tolerances;\n- the forming transport team can reach a valid gathering configuration;\n- the scene-tree transforms and cargo-to-destination relationships needed by the affected work remain internally consistent; and\n- no still-required navigation goal is made unreachable by the relocation.\n\nThe particular placements, displacement, and whether local anchors or a larger containing assembly are translated are resolved from the world at run time; the implementation method is otherwise open. The exclusion zone itself is not edited, relaxed, moved, or deleted. Schedule precedence is unchanged, and robot assignments are left for the automatic post-tool MILP re-solve.\n\nThe tool consumes intervention time and the energy required to enact any physical repositioning, but consumes no body spare. It requires the world to contain at least one feasible alternative placement preserving the required assembly relationships. It can be undone before irreversible work is performed at the relocated poses by restoring the prior scene-tree transforms; after dependent deposits or assembly operations close, reversal is not generally safe or guaranteed.",
+ "body_names": [
+  "relocate_zone_blocked_work_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_work_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_work_geometry!",
+ "impl_code": "function relocate_zone_blocked_work_geometry!(env;)\n    zone_keys = Symbol[first(entry) for entry in active_restriction_zones()]\n    isempty(zone_keys) && return (; status = :success)\n\n    blocked_diagnosis = d -> begin\n        nav_blocked = d.n_nav_blocked isa Number && d.n_nav_blocked > 0\n        teams_blocked = d.n_teams_covered isa Number && d.n_teams_covered > 0\n        completion_blocked = isequal(d.project_blocked, true)\n        return d.exists && (nav_blocked || teams_blocked || completion_blocked)\n    end\n\n    initial = [\n        zone_diagnosis(\n            env,\n            key;\n            check_restage = true,\n            check_teams = true,\n            check_blockage = true,\n            check_paths = true,\n        ) for key in zone_keys\n    ]\n\n    if any(blocked_diagnosis, initial)\n        local_result = restage_all_blocked!(\n            env;\n            zone_keys = zone_keys,\n            resume = true,\n            verbose = false,\n        )\n\n        after_local = [\n            zone_diagnosis(\n                env,\n                key;\n                check_restage = true,\n                check_teams = true,\n                check_blockage = true,\n                check_paths = true,\n            ) for key in zone_keys\n        ]\n\n        if any(blocked_diagnosis, after_local)\n            whole_result = translate_whole_build!(\n                env;\n                zone_keys = zone_keys,\n                resume = true,\n                verbose = false,\n            )\n\n            if whole_result.status == :infeasible ||\n               whole_result.status == :no_staging ||\n               whole_result.status == :residual_blocked\n                error(\"No feasible scene-tree relocation cleared all required work\")\n            end\n        end\n    end\n\n    final_diagnoses = [\n        zone_diagnosis(\n            env,\n            key;\n            check_restage = true,\n            check_teams = true,\n            check_blockage = true,\n            check_paths = true,\n        ) for key in zone_keys\n    ]\n    any(blocked_diagnosis, final_diagnoses) &&\n        error(\"Relocation left a required navigation goal or transport gathering configuration blocked\")\n\n    final_blockage = zone_blockage(\n        env;\n        zone_keys = zone_keys,\n        check_paths = true,\n    )\n    (final_blockage.n_blocked > 0 || final_blockage.n_agent_trapped > 0 ||\n     isequal(final_blockage.project_blocked, true)) &&\n        error(\"Relocation introduced or retained unreachable required navigation work\")\n\n    validate_schedule_transform_tree(env.sched; post_staging = true) ||\n        error(\"Relocated scene-tree transforms are inconsistent with the schedule\")\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_all3_s11_z11.jsonl",
+  "stream_sha256_16": "faf599604c5fd969",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

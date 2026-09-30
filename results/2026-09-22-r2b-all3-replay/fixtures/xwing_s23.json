@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_geometry_for_required_reachability",
+ "mechanism": "Inspect the live schedule, scene tree, navigation geometry, and exclusion zone to identify the two required navigating-agent arrivals that are currently impossible and the scene-tree placements governing their goals. Change the relevant staging poses, destination-subassembly placement, or whole-build placement so that, while the exclusion zone remains fully in force, every unfinished required navigating-agent arrival has a valid RVO-driven navigation route and no previously reachable required arrival becomes unreachable.\n\nPreserve the schedule’s required construction operations and precedence relationships, and keep deposit and lift destinations geometrically consistent with any moved assembly geometry. Do not delete required nodes, revoke or modify the exclusion zone, exploit non-navigating motion, assign robots, or invoke the MILP; assignment is re-solved automatically after the tool body.\n\nThe particular geometric transformation is open: local staging relocation, destination relocation with its dependent scene-tree subtree, or translation of the build are all acceptable if they produce the required reachability effect and preserve assembly relationships. Preconditions are that such a feasible placement exists and that any already-fixed physical geometry can legally be moved or consistently replanned. The intervention consumes simulated time and energy but no spare robot body. The scene-tree edit can be undone before dependent transport, deposit, or placement actions execute; after physical work uses the new placement, reversal requires corresponding physical relocation and is not a simple rollback.",
+ "body_names": [
+  "relocate_geometry_for_required_reachability!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_geometry_for_required_reachability!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_geometry_for_required_reachability!",
+ "impl_code": "function relocate_geometry_for_required_reachability!(env;)\n    zone_keys = [entry.first for entry in active_restriction_zones()]\n    before = zone_blockage(env; zone_keys=zone_keys, check_paths=true, margin=0.0)\n    before.n_blocked == 0 && return (; status = :success)\n\n    restaged = restage_all_blocked!(env; zone_keys=zone_keys, resume=true, verbose=false)\n    after_restage = zone_blockage(env; zone_keys=zone_keys, check_paths=true, margin=0.0)\n\n    if restaged.status != :restaged_all || after_restage.n_blocked != 0\n        translated = translate_whole_build!(env; zone_keys=zone_keys, resume=true, verbose=false)\n        after_translate = zone_blockage(env; zone_keys=zone_keys, check_paths=true, margin=0.0)\n        if after_translate.n_blocked != 0 || after_translate.project_blocked\n            error(\"required navigation remains blocked after geometry relocation ($(translated.status))\")\n        end\n    end\n\n    validate_schedule_transform_tree(env.sched; post_staging=true) ||\n        error(\"relocated scene geometry is inconsistent with schedule transforms\")\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z23.jsonl",
+  "stream_sha256_16": "850ad674ec2d73ef",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

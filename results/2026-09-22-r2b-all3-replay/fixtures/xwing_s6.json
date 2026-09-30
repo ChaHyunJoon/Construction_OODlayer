@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_blocked_work_geometry",
+ "mechanism": "Edit the scene tree, not the schedule or the no-go zone. At run time, identify the two unfinished navigating-agent goals whose arrival tolerances lie entirely inside the persistent zone, then relocate their associated movable assembly geometry—or a containing scene-tree subtree, including the whole build if necessary—so each required goal has a collision-free, navigably reachable arrival region outside the zone.\n\nPreserve the scene-tree relationships needed by the affected work and do not create any new unreachable required goal. The exact relocation method and displacement are open; only the resulting reachability is required. The schedule DAG and assignment edges remain unchanged, and the harness performs its normal MILP reassignment afterward.\n\nPreconditions: the blocked goals correspond to geometry represented on a movable scene-tree branch, and a valid reachable placement exists. The edit consumes intervention time and movement energy but no body spare. The scene-tree transform is reversible before subsequent physical work depends on the new placement; after such work proceeds, reversal may require moving that work as well.",
+ "body_names": [
+  "relocate_blocked_work_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_blocked_work_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_blocked_work_geometry!",
+ "impl_code": "function relocate_blocked_work_geometry!(env)\n    zone_keys = [first(zone) for zone in active_restriction_zones()]\n    isempty(zone_keys) && error(\"no active restriction zone is available for relocation\")\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    if before.n_blocked != 0\n        relocation = translate_whole_build!(env; zone_keys = zone_keys)\n        if !(relocation.status in (:translated, :already_clear))\n            restaging = restage_all_blocked!(env; zone_keys = zone_keys)\n            if restaging.status in (:restaged_all, :partial)\n                relocation = translate_whole_build!(env; zone_keys = zone_keys)\n            end\n        end\n\n        after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        if after.n_blocked != 0 || after.project_blocked\n            error(\"scene-tree relocation left required navigating goals unreachable\")\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/30051_1_X_wing_Fighter_Mini__router_all3_z6.jsonl",
+  "stream_sha256_16": "e1658b7efdb5659c",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

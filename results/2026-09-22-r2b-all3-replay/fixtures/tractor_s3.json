@@ -1,0 +1,30 @@
+{
+ "tool_minted": false,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_exclusion_blocked_goals",
+ "mechanism": "Inspect the current unfinished schedule, scene tree, navigation geometry, and live exclusion disc to identify the two required goals whose navigating access is broken. Change scene-tree transforms—of the affected destination geometry, a suitable enclosing sub-assembly, or the whole build as necessary—so that:\n\n1. both required goals are outside the live exclusion disc and reachable by RVO-driven navigating agents;\n2. their required transport, deposit, and lift sequence can close;\n3. scene-tree nesting and required relative assembly geometry remain valid; and\n4. no other still-required goal is made unreachable.\n\nThe exclusion disc is not edited, relaxed, moved, or deleted. The method of selecting feasible replacement poses is open; the required effect is restored navigating access while the restriction persists. The tool does not assign robots, formulate constraints, or invoke the MILP re-solve. It consumes intervention time and energy but no body spare. Preconditions are that the blocked goals and movable scene-tree transforms remain observable. The transform edit can be reversed before dependent physical work occurs; after cargo has been deposited or installed at the relocated geometry, reversal is not generally safe without an additional physical relocation.",
+ "body_names": [
+  "relocate_exclusion_blocked_goals!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_exclusion_blocked_goals!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_exclusion_blocked_goals!",
+ "impl_code": "function relocate_exclusion_blocked_goals!(env;)\n    before = zone_blockage(env)\n    if before.project_blocked === true || before.n_completion_blocked > 0\n        moved = translate_whole_build!(env)\n        if !(moved.status in (:translated, :already_clear))\n            error(\"Unable to relocate exclusion-blocked goals: $(moved.status)\")\n        end\n    end\n\n    validate_schedule_transform_tree(env.sched) ||\n        error(\"Relocation violated schedule/scene-tree transform consistency\")\n\n    after = zone_blockage(env)\n    if after.project_blocked === true ||\n       after.n_completion_blocked > 0 ||\n       after.n_nav_blocked > 0\n        error(\"Relocation left required navigation goals blocked\")\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_all3_s3_z3.jsonl",
+  "stream_sha256_16": "c6db45ffdfd4b1ec",
+  "attempt": "first",
+  "event": "ZONE"
+ }
+}

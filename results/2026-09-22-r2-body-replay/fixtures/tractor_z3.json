@@ -1,0 +1,30 @@
+{
+ "tool_minted": true,
+ "synthesis_event": true,
+ "synthesis_ran": true,
+ "synthesis_error": null,
+ "refused": false,
+ "tool_name": "relocate_zone_blocked_goal_geometry",
+ "mechanism": "Inspect the current scene tree, unfinished schedule, navigation geometry, and live no-go disc. Identify the unfinished goal geometry whose arrival regions are unreachable because they are wholly inside the disc, including the two measured goals. Relocate the corresponding not-yet-fixed scene-tree geometry to valid, collision-free poses whose arrival regions lie outside the disc and are reachable by navigating movers.\n\nThe required postcondition is that transports can navigate to and deposit at those relocated destinations, allowing their schedule nodes and the 61 precedence-frozen nodes to become closable while the no-go disc remains unchanged. Any associated unfinished geometry must move consistently so required assembly transforms remain valid, and the relocation must not make other remaining required goals unreachable. Whether this is achieved by translating the smallest suitable sub-assemblies, a larger unfinished ancestor, or the overall build placement is open.\n\nThe tool edits the scene tree, not the no-go zone or schedule precedence. It does not assign robots or invoke the MILP; the automatic post-tool re-solve handles assignments. It consumes intervention time and energy but no body spare. It requires a valid alternative placement compatible with already fixed geometry. The scene-tree edit can be undone before work occurs at the relocated destinations by restoring the prior transforms; after cargo is deposited or assembly proceeds there, reversal may require physical transport or disassembly and is not generally free.",
+ "body_names": [
+  "relocate_zone_blocked_goal_geometry!"
+ ],
+ "params": {},
+ "calls": [
+  {
+   "primitive": "relocate_zone_blocked_goal_geometry!",
+   "args": {}
+  }
+ ],
+ "impl_name": "relocate_zone_blocked_goal_geometry!",
+ "impl_code": "function relocate_zone_blocked_goal_geometry!(env)\n    zone_keys = Symbol[p.first for p in active_restriction_zones()]\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n    if before.n_blocked > 0 || before.project_blocked === true\n        restaged = restage_all_blocked!(\n            env;\n            zone_keys = zone_keys,\n            resume = false,\n            verbose = false,\n        )\n\n        after_restage = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        restage_incomplete = restaged.status in (:infeasible, :partial, :residual_blocked)\n        still_blocked = after_restage.n_blocked > 0 || after_restage.project_blocked === true\n\n        if restage_incomplete || still_blocked\n            translated = translate_whole_build!(\n                env;\n                zone_keys = zone_keys,\n                resume = false,\n                verbose = false,\n            )\n            after_translate = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n\n            if translated.status in (:infeasible, :no_staging, :residual_blocked) ||\n               after_translate.n_blocked > 0 ||\n               after_translate.project_blocked === true\n                error(\"no valid scene-tree relocation clears every required navigation goal\")\n            end\n        end\n    end\n\n    return (; status = :success)\nend",
+ "surface": "scene_tree",
+ "reversible": true,
+ "wrote": true,
+ "_provenance": {
+  "stream": "streams/tractor__router_zone_z3.jsonl",
+  "stream_sha256_16": "10cfb4095024b075",
+  "attempt": "first",
+  "note": "sweep 2026-09-06 router lane, first-attempt body"
+ }
+}
