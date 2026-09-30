@@ -77,6 +77,7 @@ try
             @test d.router["router_axis"] == "low_confidence"
             @test d.router["target"] == "dspy"
             @test haskey(d.router, "ood_features")               # 학습 행의 원천 (spec §11.4)
+            @test d.router["valid_menu"] isa AbstractVector      # 학습 행의 valid_mask 원천 (plan Task 9)
         end
         @testset "DEFER:no_arm 도 같다" begin
             _SURRO_ERR[] = "DEFER:no_arm"; empty!(_LANES_SEEN)

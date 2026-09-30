@@ -2693,6 +2693,8 @@ function decide_all(env, truth; nl::AbstractString = "")
     # 이 읽는 것과 정확히 같아야 한다.
     local _f = try ood_features(env, truth) catch; Dict{String,Any}() end
     rt["ood_features"] = _f      # selfimprove 학습 행의 원천 (spec §11.4)
+    # selfimprove 학습 행의 valid_mask 원천 (plan Task 9). `[]` = 전용 메뉴 없음 = kind 기본표(:413 규약).
+    rt["valid_menu"] = try valid_macros(env, truth) catch; nothing end
     local narrative = try
         narrate_event(Dict{String,Any}(
             "kind"          => get(_f, "kind", string(typeof(truth).name.name)),

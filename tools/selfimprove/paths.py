@@ -17,3 +17,6 @@ def state_dir(exp):
 
 def version_dir(exp, v):
     return os.path.join(data_dir(exp), "versions", v)
+
+# config 의 모델 이름 → render 엔진이 받는 모델 파일 (campaign `--model`)
+MODEL_FILES = {"tractor": "tractor.mpd", "xwing": "30051-1 - X-wing Fighter - Mini.mpd"}
