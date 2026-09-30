@@ -821,6 +821,7 @@ end
 # (`has_zone` 술어, `record_decision!` 쌍둥이). `enact.jl` 은 최상위 부작용이 없다.
 include(joinpath(@__DIR__, "enact.jl"))
 include(joinpath(@__DIR__, "libarm.jl"))   # selfimprove 라이브러리 팔 (spec §9.1) — enact.jl 의 minted_handled 를 쓴다
+include(joinpath(@__DIR__, "invariants.jl"))   # selfimprove 불변식 I1–I4 (spec §9.3) — 판 끝 `[invariant]` 한 줄
 # ---- 원장 신원 (2026-09-22, retry-body 보존 Phase 1 / Task 4) ---------------------------------
 # 🔴 서비스는 seed·레인·판을 모른다(요청에 없었다). 여기서 한 번 채우면 `/decide` 가 매 요청에
 #    싣는다(`policy.jl::_stamp_identity!`). 기동 때 **한 번** 계산한다 — 도중에 코드·설정이
@@ -894,6 +895,7 @@ function policy_producer(env, event)
     #     존 사건을 받으면(지연/라이브 존) `certification_unavailable` 기록. 세계는 안 건드린다(결정은 아래 pi0 그대로).
     truth isa CB.ZoneTruth && isdefined(Main, :RepairBranchWorker) &&
         Base.invokelatest(getfield(Main, :RepairBranchWorker).zone_dispatch_note, String(event))
+    truth isa CB.ZoneTruth && snapshot_zones!()     # selfimprove I1b: 사건 시점 구역 (첫 zone 결정만)
     decision = decide_all(env, truth; nl = rec.nl)   # nl = LLM 이 읽을 자연어 관찰
     # ---- 결정 시점의 **에너지 상태와 그 가격**을 레코드에 싣는다 (2026-08-14) ----------------
     # 요구: "UI 에서 목적함수에 energy 가 고려된 제어를 본다". 화면의 OBJECTIVE 스트립이
@@ -1006,6 +1008,7 @@ end
 #   집행 대상이 접지를 거친다는 성질은 그대로다.
 
 pre = function (env)
+    snapshot_t0!(env)      # selfimprove 불변식의 t₀ (spec §9.3) — 존 주입·어떤 수리보다 **먼저**
     # 배터리 물리는 run_demo.jl(:482 부근)과 **같아야 한다** — 두 엔진이 다른 물리를 쓰면
     # 대시보드에 보이는 판과 논문 표의 근거(results_4pol)가 다른 세계가 된다.
     # 용량 축소(shrink)는 하지 않는다: 스펙 2.3 kWh 가 최대부하에서 2.30시간이라 실제
@@ -1411,6 +1414,13 @@ try let e = render_env
               string(" n_blocked=", zb.n_blocked, " n_nav_goals=", zb.n_nav_goals,
                      " n_engulfed=", zb.n_engulfed, " n_agent_trapped=", zb.n_agent_trapped,
                      " project_blocked=", zb.project_blocked))
+    # selfimprove 불변식 (spec §9.3). I4 는 라이브러리 팔이 집행된 판에서만 이 판의 스트림을 읽는다.
+    println(try
+        invariant_line(e; enacted_at = LIBARM_ENACTED_AT[],
+                       frames = LIBARM_ENACTED_AT[] === nothing ? nothing : inv_stream_frames(stream_path))
+    catch ex
+        "[invariant] unavailable: " * first(split(sprint(showerror, ex), "\n"))
+    end)
 end
 finally
     print_ablation_line!()      # `[score]` 뒤 — `[score]` 가 던져도 한 줄

@@ -697,4 +697,8 @@ end
     @testset "selfimprove libarm" begin
         include("selfimprove_libarm.jl")
     end
+    # plan Task 7: 불변식 I1–I4 음성 대조(부품+목표 동시 이동 · 구역 삭제 · 경로 절단 · 노드 삭제).
+    @testset "selfimprove invariants" begin
+        include("selfimprove_invariants.jl")
+    end
 end
