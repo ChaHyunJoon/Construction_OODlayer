@@ -210,6 +210,24 @@ def reform_exhausted(txt, ctx):
     return False if isinstance(ctx, dict) and "config_env" in ctx else None
 
 
+def rewrite_outcome(h):
+    """결정 기록 하나의 `respec.attempts` → 시도마다 판정 dict (selfimprove 수확과 `attempt_counts` 공용).
+
+    `installed` = 왕복 ok · wrote · 설치 거절 없음 · 재집행 흔적(steps/steps_ref) — **실제로 설치되어
+    굴러간** rewrite body 다. `install_why` 는 처음부터 nothing 이다(enact.jl `_open_attempt!`) — 설치
+    없이 돌아온 칸(impl 이 문자열이 아닌 판)과 가르려면 재집행 흔적이 있어야 한다."""
+    out = []
+    for a in (h.get("attempts") or []) if isinstance(h, dict) else []:
+        if not isinstance(a, dict):
+            continue
+        reenacted = isinstance(a.get("steps"), list) or a.get("steps_ref") is not None
+        rt, w = a.get("roundtrip"), a.get("wrote")
+        out.append({"record_id": a.get("record_id"), "attempt": a.get("attempt"), "roundtrip": rt,
+                    "wrote": w, "install_why": a.get("install_why"), "reenacted": reenacted,
+                    "installed": rt == "ok" and w is True and a.get("install_why") is None and reenacted})
+    return out
+
+
 def attempt_counts(hist):
     """`respec.attempts` 를 칸으로 가른다. 🔴 LM 호출 수가 아니다 — "LM 호출" 로 부를 수 있는
     것은 roundtrip=="ok" 뿐이고 그것도 provider 재시도는 모른다."""
@@ -220,22 +238,17 @@ def attempt_counts(hist):
                        "rewrite_installed", "rewrite_install_rejected",
                        "rewrite_wrote_not_installed", "rewrite_enacted"), 0)
     for h in hist or []:
-        for a in (h.get("attempts") or []) if isinstance(h, dict) else []:
-            if not isinstance(a, dict):
-                continue
+        for o in rewrite_outcome(h):
             c["attempts_total"] += 1
-            rt = a.get("roundtrip")
-            reenacted = isinstance(a.get("steps"), list) or a.get("steps_ref") is not None
+            rt = o["roundtrip"]
             if rt == "ok":
                 c["rewrite_roundtrip_ok"] += 1
-                w = a.get("wrote")
+                w = o["wrote"]
                 if w is True:
                     c["rewrite_wrote"] += 1
-                    # `install_why` 는 처음부터 nothing 이다(enact.jl `_open_attempt!`) — 설치 없이
-                    # 돌아온 칸(impl 이 문자열이 아닌 판)과 가르려면 재집행 흔적이 있어야 한다.
-                    if a.get("install_why") is not None:
+                    if o["install_why"] is not None:
                         c["rewrite_install_rejected"] += 1
-                    elif reenacted:
+                    elif o["reenacted"]:
                         c["rewrite_installed"] += 1
                     else:
                         c["rewrite_wrote_not_installed"] += 1
@@ -251,7 +264,7 @@ def attempt_counts(hist):
                 c["rewrite_skipped_not_rewritable"] += 1
             elif rt is None:
                 c["rewrite_roundtrip_null"] += 1      # 열렸는데 안 채워졌다(검증기 attempt_open)
-            if reenacted:
+            if o["reenacted"]:
                 c["rewrite_enacted"] += 1
     return c
 

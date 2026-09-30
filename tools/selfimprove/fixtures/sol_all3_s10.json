@@ -1,0 +1,132 @@
+{
+ "source": "results/2026-09-23-router-sol (tractor all3 s10), trimmed for tools/selfimprove/test_harvest.py",
+ "decide": {
+  "row_type": "decide",
+  "record_id": "b09c996bb2428ab330bdf6e5",
+  "parent_record_id": null,
+  "attempt": 1,
+  "kind": "zone",
+  "impl_name": "relocate_blocked_navigation_goal!",
+  "impl_code": "function relocate_blocked_navigation_goal!(env)\n    zones = collect(active_restriction_zones())\n    isempty(zones) && error(\"no active restriction zone\")\n    zone_keys = [first(z) for z in zones]\n\n    report = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    target = nothing\n    for b in report.blocked\n        if b.status === :engulfed && !(b.vtx in env.cache.closed_set)\n            pred = env.sched.nodes[b.vtx].node\n            if pred isa ConstructionBots.TransportUnitGo || pred isa ConstructionBots.RobotGo\n                cfg = goal_config(env.sched.nodes[b.vtx])\n                if cfg isa ConstructionBots.TransformNode\n                    target = (blocked = b, config = cfg)\n                    break\n                end\n            end\n        end\n    end\n    target === nothing && error(\"no unfinished engulfed navigating goal was found\")\n\n    delta = nothing\n    for z in zones\n        key = first(z)\n        local_report = zone_blockage(env; zone_keys = [key], check_paths = true)\n        responsible = any(b -> b.id == target.blocked.id && b.status === :engulfed,\n                          local_report.blocked)\n        if responsible\n            diagnosis = zone_diagnosis(env, key)\n            if diagnosis.relocate_feasible && diagnosis.relocate_delta !== nothing\n                delta = diagnosis.relocate_delta\n                break\n            end\n        end\n    end\n    delta === nothing && error(\"no lawful relocation was found for the blocked goal\")\n\n    old_transform = global_transform(target.config)\n    dz = length(delta) >= 3 ? delta[3] : 0.0\n    translated = CoordinateTransformations.Translation(delta[1], delta[2], dz) ∘ old_transform\n    set_desired_global_transform!(target.config, translated)\n\n    valid = false\n    try\n        after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n        target_still_blocked = any(b -> b.id == target.blocked.id, after.blocked)\n        valid = !target_still_blocked && !after.project_blocked\n    catch err\n        set_desired_global_transform!(target.config, old_transform)\n        rethrow(err)\n    end\n\n    if !valid\n        set_desired_global_transform!(target.config, old_transform)\n        error(\"candidate relocation did not clear the required navigation goal\")\n    end\n\n    return (; status = :success)\nend",
+  "calls": [
+   {
+    "primitive": "relocate_blocked_navigation_goal!",
+    "args": {}
+   }
+  ],
+  "params": {},
+  "surface": "scene_tree",
+  "reversible": true,
+  "body_names": [
+   "relocate_blocked_navigation_goal!"
+  ],
+  "logged_at": "2026-09-23T15:20:57.306502+00:00",
+  "response_id": "41f22bf618774db09ce50dfe104dee6c",
+  "trigger": "first",
+  "wrote": true,
+  "run_ctx": {
+   "campaign_id": "rsol-tractor-20260923",
+   "run_id": "router__all3__s10",
+   "model": "tractor",
+   "seed": 10
+  },
+  "raw_lm": {
+   "observe": [
+    {
+     "model": "gpt-5.6-sol",
+     "cost": 0.0081772
+    }
+   ],
+   "design": [
+    {
+     "model": "gpt-5.6-sol",
+     "cost": 0.035627000000000006
+    }
+   ],
+   "compose": [
+    {
+     "model": "gpt-5.6-sol",
+     "cost": 0.16356700000000002
+    }
+   ]
+  }
+ },
+ "rewrite": {
+  "row_type": "rewrite",
+  "record_id": "a0da704d444f29b0a0db03f4",
+  "parent_record_id": "b09c996bb2428ab330bdf6e5",
+  "attempt": 2,
+  "impl_name": "relocate_blocked_navigation_goal!",
+  "impl_code": "function relocate_blocked_navigation_goal!(env;)\n    zones = collect(active_restriction_zones())\n    isempty(zones) && error(\"no active restriction zone\")\n    zone_keys = [first(z) for z in zones]\n\n    before = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    before.n_blocked == 0 && error(\"no blocked navigation goal was found\")\n\n    result = translate_whole_build!(env; zone_keys = zone_keys)\n    if result.status === :infeasible\n        error(\"no lawful relocation was found for the blocked goal\")\n    elseif result.status === :no_staging\n        error(\"the required containing assembly could not be relocated\")\n    elseif result.status === :residual_blocked\n        error(\"candidate relocation left navigation goals blocked\")\n    elseif result.status === :already_clear\n        error(\"relocation produced no world edit\")\n    elseif result.status !== :translated\n        error(\"unexpected relocation result\")\n    end\n\n    after = zone_blockage(env; zone_keys = zone_keys, check_paths = true)\n    (after.n_blocked == 0 && !after.project_blocked) ||\n        error(\"candidate relocation did not clear the required navigation goal\")\n\n    return (; status = :success)\nend",
+  "calls": [
+   {
+    "primitive": "relocate_blocked_navigation_goal!",
+    "args": {}
+   }
+  ],
+  "params": {},
+  "surface": "scene_tree and staging_circles",
+  "reversible": true,
+  "logged_at": "2026-09-23T15:21:51.857796+00:00",
+  "response_id": "e0439c0e98f04639b3a024896b047c33",
+  "trigger": "noop",
+  "wrote": true,
+  "impl_rejected_why": "enact_noop: the body ran to completion and raised no error; its own returned status was relocate_blocked_navigation_goal!=success. The world was measured immediately before the body ran and again immediately after, and every measured axis was identical: closed=0 active=0 n_edges=0 n_binding_changed=0 n_weights_changed=0 n_staging_moved=0. n_binding_changed is a lower bound. These six axes are the only part of the world that was measured, so this is an observation about them and not a claim that nothing at all happened.",
+  "run_ctx": {
+   "campaign_id": "rsol-tractor-20260923",
+   "run_id": "router__all3__s10",
+   "model": "tractor",
+   "seed": 10
+  },
+  "raw_lm": {
+   "rewrite": [
+    {
+     "model": "gpt-5.6-sol",
+     "cost": 0.11727200000000002
+    }
+   ]
+  }
+ },
+ "decision": {
+  "at": 54,
+  "verdict": "ROUTED→dspy (ood_kind) · ADMITTED · dspy:gpt-5.6-sol",
+  "steps": [
+   {
+    "name": "relocate_blocked_navigation_goal!",
+    "status": "threw",
+    "detail": "no blocked navigation goal was found"
+   }
+  ],
+  "attempts": [
+   {
+    "attempt": 2,
+    "record_id": "a0da704d444f29b0a0db03f4",
+    "parent_record_id": "b09c996bb2428ab330bdf6e5",
+    "roundtrip": "ok",
+    "wrote": true,
+    "install_why": null,
+    "steps": [
+     "relocate_blocked_navigation_goal!:threw(no blocked navigation goal was found)"
+    ],
+    "steps_ref": null,
+    "trigger": "noop"
+   }
+  ],
+  "input": {
+   "enacted": "dspy",
+   "router": {
+    "routing_kind": "unknown:zone",
+    "router_axis": "ood_kind",
+    "target": "dspy",
+    "descriptors": [
+     1.0,
+     0.23107569721115537,
+     0.0,
+     0.3076923076923077,
+     0.17704918032786884,
+     0.6
+    ]
+   }
+  }
+ }
+}
