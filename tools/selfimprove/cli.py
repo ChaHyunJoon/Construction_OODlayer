@@ -50,10 +50,66 @@ def cmd_init(exp):
     versions.activate(exp, "v0")
     print("[selfimprove] %s initialised at v0" % exp)
 
+def cmd_status(exp):
+    from . import library, watch
+    v, sha = versions.read_current(exp)
+    q = watch._jsonl(os.path.join(paths.state_dir(exp), "queue.jsonl"))
+    print(json.dumps({"current": v, "manifest_sha256": sha, "status": versions.status(exp, v),
+                      "queue": len(q), "queue_dspy_complete": sum(1 for r in q if r.get("lane") == "dspy" and r.get("complete")),
+                      "cycles": {c["cycle"]: c["state"] for c in watch._cycles(exp)},
+                      "library": [r["arm_id"] for r in library.read(exp)]}, indent=1, ensure_ascii=False))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="selfimprove")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("init"); p.add_argument("--exp", required=True)
+    for name in ("init", "watch", "status", "verify", "verify-chain", "deploy", "rollback", "online", "cycle", "review"):
+        p = sub.add_parser(name)
+        p.add_argument("--exp", required=True)
+        if name == "watch":
+            p.add_argument("--poll-s", type=int, default=60); p.add_argument("--once", action="store_true")
+        if name == "online":
+            p.add_argument("--n", type=int, default=None)
+        if name in ("verify", "deploy"):
+            p.add_argument("--version", required=(name == "deploy"))
+        if name == "rollback":
+            p.add_argument("--to", required=True)
+        if name == "cycle":
+            p.add_argument("c"); p.add_argument("--from", dest="from_stage")
+        if name == "review":
+            p.add_argument("c"); g = p.add_mutually_exclusive_group(required=True)
+            g.add_argument("--approve", action="store_true"); g.add_argument("--reject", action="store_true")
+            p.add_argument("--reviewer", required=True); p.add_argument("--reason", required=True)
+            p.add_argument("--R1", default="yes"); p.add_argument("--R2", default="none"); p.add_argument("--R3", default="yes")
+            p.add_argument("--psi-rows-added", nargs="*", default=[])
     a = ap.parse_args(argv)
     if a.cmd == "init":
         cmd_init(a.exp)
+    elif a.cmd == "status":
+        cmd_status(a.exp)
+    elif a.cmd == "verify":
+        v = a.version or versions.read_current(a.exp)[0]
+        probs = versions.verify_version(a.exp, v)
+        print(json.dumps({"version": v, "problems": probs})); sys.exit(1 if probs else 0)
+    elif a.cmd == "verify-chain":
+        from . import library
+        probs = library.verify_chain(a.exp, load_config(a.exp)["a0_sha256"])
+        print(json.dumps({"problems": probs})); sys.exit(1 if probs else 0)
+    elif a.cmd == "deploy":
+        from . import service
+        print(json.dumps(service.deploy(a.exp, a.version)))
+    elif a.cmd == "rollback":
+        versions.rollback(a.exp, a.to); print("[selfimprove] pointer -> %s" % a.to)
+    elif a.cmd == "online":
+        from . import online
+        online.run(a.exp, a.n)
+    elif a.cmd == "watch":
+        from . import watch
+        watch.run(a.exp, a.poll_s, a.once)
+    elif a.cmd == "cycle":
+        from . import cycle
+        cycle.run(a.exp, a.c, a.from_stage)
+    elif a.cmd == "review":
+        from . import review
+        print(review.record_decision(a.exp, a.c, "approve" if a.approve else "reject", a.reviewer, a.reason,
+                                     a.R1, a.R2, a.R3, a.psi_rows_added))

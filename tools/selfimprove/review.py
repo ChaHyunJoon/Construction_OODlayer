@@ -25,7 +25,8 @@ def write_packet(exp, c):
     cy, cand = _load(os.path.join(d, "cycle.json")), _load(os.path.join(d, "candidate.json"))
     s0, s1 = _load(os.path.join(d, "s0.json"), {}), _load(os.path.join(d, "s1", "report.json"), {})
     s3 = _load(os.path.join(d, "s3_summary.json"), {})
-    body, arm = cand["body"], cand["arm"]
+    body = cand["body"]
+    arm = cand.get("arm") or _load(os.path.join(d, "arms", "candidate.json"))
     sha = hashlib.sha256(body["impl_code"].encode()).hexdigest()
     diff = list(difflib.unified_diff(body["impl_code"].splitlines(), arm["impl_code"].splitlines(),
                                      "ledger", "arm", lineterm=""))
