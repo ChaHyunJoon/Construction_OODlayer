@@ -439,10 +439,20 @@ _MACRO_NAME_SPECS = {
 }
 
 
+# selfimprove 라이브러리 팔 (spec §11.3): 레지스트리 항목에 `library_arm` 이 있으면 ψ 를 primitive
+# 번역이 아니라 **그 항목의 `psi`** 에서 읽는다 — 주조 팔은 DSL 원시가 아니라 world-interface 함수를
+# 부르고, 그 ψ 는 승격 때 `tools/selfimprove/psi_calc.py` 가 실험 ψ 표로 계산해 레지스트리에 싣는다.
+_LIBRARY_PSI = {}
+
+
 def _macro_specs_from_registry():
     """레지스트리의 {id: name} 을 {id: [primitive 이름]} 으로 번역한다. 모르는 이름은 에러."""
     out = {}
     for i, nm in _reg.MACRO_NAME.items():
+        m = _reg.REGISTRY[i]
+        if "library_arm" in m:
+            _LIBRARY_PSI[i] = {k: float(m["psi"][k]) for k in PSI_AXES}   # 축이 빠지면 KeyError
+            continue
         if nm not in _MACRO_NAME_SPECS:
             raise ValueError(
                 "action_registry.json 의 매크로 %d(%r) 에 대응하는 primitive 번역이 없다 -- "
@@ -476,6 +486,8 @@ def psi(action):
         names = list(action)
     else:
         mid = int(action)
+        if mid in _LIBRARY_PSI:
+            return dict(_LIBRARY_PSI[mid])
         # 🔴 `.get(mid, [])` 였다 (2026-08-27 수정). 그러면 바로 아래 `if not names:` 가
         #    **"원시연산 0개인 진짜 NOOP"(레지스트리 0번)** 과 **"레지스트리에 없는 id"** 를
         #    같은 분기로 무너뜨려 둘 다 NOOP 의 ψ 를 받았다. 실측: psi(99) == psi(0) 이 True.
@@ -516,6 +528,13 @@ def psi(action):
                 "돌려주지 않는다. 현행 이름 공간: %s. 합성 레인의 생성 원시라면 ψ 를 묻지 "
                 "말 것 — 2026-09-03 부로 합성 기록에서 ψ 를 뺐다."
                 % (n, sorted(_PRIMITIVE_TABLE)))
+    return aggregate_psi(v)
+
+
+def aggregate_psi(rows):
+    """9-튜플(`_PRIMITIVE_TABLE` 과 같은 열 순서) 목록 → ψ dict. 규칙은 `psi` docstring 그대로.
+    selfimprove 의 `psi_calc` 가 world-interface 함수 행에 같은 규칙을 쓰려고 뽑았다."""
+    v = [tuple(r) for r in rows]
     cols = list(zip(*v))                           # 축별 열
     out = {
         "a_cost":              float(sum(cols[0])),
