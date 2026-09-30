@@ -506,7 +506,10 @@ def native_fc_active(signature=None):
 # 보고 경로에 도달조차 못 했다. 파일을 되살려도 결과는 같다 — 그 세대에는 `vocab` 열이 없어
 # `require_vocab_stamps` 가 거부한다. v4-3arms 라벨셋을 가리킨다.
 # ---------------------------------------------------------------------------------------------
-SURRO_DATA = oracle_datasets.abspath(oracle_datasets.ORACLE_DATASET)
+# selfimprove(spec §5.1): 버전마다 다른 데이터셋으로 띄운다. 없으면 현행 라벨셋.
+SURRO_DATA = os.environ.get("SURRO_DATA") or oracle_datasets.abspath(oracle_datasets.ORACLE_DATASET)
+# selfimprove 조건 ②③(spec §5.3, §0.0 R2). 0 = 둘 다 끔 — 기본 서비스의 동작이 바뀌지 않는다.
+SURRO_TAU = float(os.environ.get("SURRO_TAU", "0"))
 # 배포 결정 규칙. Task 6 의 4규칙 비교에서 모든 2차 지표의 최선(exact match 0.819 ·
 # 베이스라인 대비 개선 50 / 악화 9 · battery regret 0.349). 규칙 자체는 `SurrogateV2.choose`
 # 안에 한 번만 정의돼 있고 여기서는 이름으로만 고른다 — 재구현하면 배포와 평가가 갈린다.
@@ -528,7 +531,42 @@ SURRO_DATA = oracle_datasets.abspath(oracle_datasets.ORACLE_DATASET)
 # `{0,1,8}` 의 신호를 맞힌다(Replace 5 · Swap 10, 최빈답 오라클 일치). 그러나 이것은
 # **트레이드오프이지 우세가 아니다** — kind 일반화를 근거로 이 규칙을 인용하지 말 것.
 # 근거·전체 표: wm4spacecraft_manufacturing/md/RESULTS_SURROGATE_REBUILD_2026-08-14.md §3.
-SURRO_RULE = "deadband_Jbar"
+SURRO_RULE = os.environ.get("SURRO_RULE", "deadband_Jbar")
+
+
+def _check_selfimprove_manifest(model, rows, meta):
+    """`SELFIMPROVE_MANIFEST` 가 있으면 이 프로세스가 그 버전의 정책인지 확인한다 (spec §5.4 규칙 6, R8).
+
+    불일치는 `[selfimprove]` 예외 — `_load_surrogate` 가 다시 던져 기동을 실패시킨다."""
+    man = os.environ.get("SELFIMPROVE_MANIFEST")
+    if not man:
+        return
+    import hashlib
+    from surrogate_probe import probe_sha256
+    raw = open(man, "rb").read()
+    msha = hashlib.sha256(raw).hexdigest()
+    m = json.loads(raw)
+    sha = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+    bad = []
+    if open(os.path.join(os.path.dirname(man), "manifest.sha256")).read().strip() != msha:
+        bad.append("manifest.sha256")
+    if sha(SURRO_DATA) != m["dataset_sha256"]:
+        bad.append("dataset")
+    reg = os.environ.get("ACTION_REGISTRY")
+    if not reg or sha(reg) != m["registry_sha256"]:
+        bad.append("registry")
+    if SURRO_TAU != float(m["surro_tau"]):
+        bad.append("surro_tau")
+    if SURRO_RULE != m["surro_rule"]:
+        bad.append("surro_rule")
+    if meta["objective_hash"] != m["objective_hash"]:
+        bad.append("objective_hash")
+    psha = probe_sha256(model, rows)
+    if psha != m["model_probe_sha256"]:
+        bad.append("model_probe")
+    if bad:
+        raise RuntimeError("[selfimprove] service identity mismatch: %s" % bad)
+    _state.update(agent_version=m["version"], manifest_sha256=msha, model_probe_sha256=psha)
 
 
 def _load_surrogate():
@@ -570,6 +608,7 @@ def _load_surrogate():
         # 355행짜리 적합이 0.58s -> 132.6s 로 늘어난다(Task 6 실측 227배). 결과는 안 바뀐다.
         with threadpool_limits(limits=1):
             model = SurrogateV2().fit(rows)
+        _check_selfimprove_manifest(model, rows, meta)
         # **학습 근거가 있는 매크로 집합**을 같이 기록한다. 여기 없는 값을 예측하는 것은 근거 없는
         # 외삽이고, 조용히 점수를 내면 UI 가 "surrogate 가 NOOP 을 골랐다"로 보이지만 사실은
         # "고를 수조차 없었다"이다. 이 구분이 곧 라우터(낯선 것은 LLM)의 존재 이유다.
@@ -593,6 +632,8 @@ def _load_surrogate():
             prev = _state.get("surro_error")
             _state["surro_error"] = ("%s; %s" % (prev, kind_err)) if prev else kind_err
     except (Exception, SystemExit) as e:
+        if "[selfimprove]" in str(e):
+            raise                     # 버전 신원 불일치는 보고가 아니라 기동 실패다(spec §5.4 규칙 6)
         # 🔴 여기 오면 kind 도 **못 쟀다.** 낡은 값을 남기면 /health 가 지난 세대의 kind 집합을
         #    현행이라고 주장하고, 라우터가 그것으로 레인을 고른다.
         _state["surro_kinds"] = None
@@ -999,14 +1040,25 @@ def surrogate_rank(req: "MacroRequest", valid: List[str]):
         noop_id = name2id.get("NOOP")
         if unsupported and all(m == noop_id for m in scorable):
             return None, "UNSUPPORTED:" + ",".join(unsupported)
+        # ---- selfimprove 조건 ② (spec §5.3). τ=0(기본)이면 꺼진다 — 위 주석의 {NOOP} 규약 유지 --
+        if SURRO_TAU > 0 and not [m for m in scorable if m != noop_id]:
+            return None, "DEFER:no_arm"
         rows = [_surro_row(req, m) for m in scorable]
+        ps = [float(x) for x in model.predict_complete_proba(rows)]
+        # ---- selfimprove 조건 ③ (spec §0.0 R2): P̂(a) ≥ τ 인 팔만 선택 후보 -------------------
+        #      "max P̂ ≥ τ" 만 보면 규칙이 P̂ < τ 인 팔을 고를 수 있다(검토 2).
+        if SURRO_TAU > 0:
+            keep = [i for i, p in enumerate(ps) if p >= SURRO_TAU]
+            if not keep:
+                return None, "DEFER:low_confidence:%.4f" % max(ps)
+            rows, ps = [rows[i] for i in keep], [ps[i] for i in keep]
         pick = int(model.choose(rows, rule=SURRO_RULE)[_SURRO_INSTANCE])
         # 표시·margin 용 점수. NOOP 이 legal 이면 그 팔이 정확히 0 이 되어 읽기 쉽다
         # ("이 개입은 아무것도 안 하는 것보다 ΔĴ 만큼 낫다/나쁘다").
         dj = model.predict_delta_J(rows, ref_macro=0)
         order = sorted(range(len(rows)),
                        key=lambda i: (int(rows[i]["macro"]) != pick, float(dj[i])))
-        scored = [(MN[int(rows[i]["macro"])], float(dj[i])) for i in order]
+        scored = [(MN[int(rows[i]["macro"])], float(dj[i]), ps[i]) for i in order]
         # 근거 없는 매크로는 점수 대신 **없다는 사실**을 돌려준다(호출부가 UI 에 그대로 표시).
         return scored, (None if not unsupported else
                         "UNSUPPORTED:" + ",".join(unsupported))
@@ -1509,6 +1561,11 @@ def health():
             # [] 는 "쟀는데 비었다" 로 다른 사건이다(삼상 규약, `surro_support` 와 같다).
             "surro_kinds": (None if _state.get("surro_kinds") is None
                             else sorted(_state["surro_kinds"])),
+            # selfimprove 버전 신원 (spec §5.4 규칙 6). 버전 없이 뜨면 None.
+            "agent_version": _state.get("agent_version"),
+            "manifest_sha256": _state.get("manifest_sha256"),
+            "model_probe_sha256": _state.get("model_probe_sha256"),
+            "surro_tau": SURRO_TAU, "surro_rule": SURRO_RULE,
             # ---- 세대 도장 (2026-09-03) ------------------------------------------------
             # 🔴 왜: 08-30/08-31 기동 uvicorn 다섯이 사흘째 200 을 냈고 그중 어느 것도
             #    `synthesize_multi`(09-02 도입)를 안 갖고 있었다. 둘은 cwd 가 삭제된
@@ -2309,12 +2366,15 @@ def decide(req: MacroRequest):
         # 아닐 수 있다. 그러면 분모가 실제 폭보다 작아져 margin 이 1 을 넘는다
         # (실측: 점수 [+5, −7, 0] 에서 2.4). 아래 형태면 |top−runner| ≤ max−min 이 항상
         # 성립하므로 0..1 불변식이 정의상 복원된다.
-        _vals = [s for _, s in scored]
+        _vals = [s for _, s, _p in scored]
         spread = max(max(_vals) - min(_vals), 1e-9)
         out["surrogate"] = {
             "chosen": scored[0][0],
-            "ranking": [m for m, _ in scored],
-            "scores": {m: round(s, 2) for m, s in scored},
+            "ranking": [m for m, _, _p in scored],
+            "scores": {m: round(s, 2) for m, s, _p in scored},
+            # selfimprove(spec §5.3): 고른 팔의 P̂ 와 τ 필터 뒤 남은 팔
+            "surro_p_selected": round(scored[0][2], 4),
+            "surro_eligible": [m for m, _, _p in scored],
             # margin = 1·2위 점수차를 전체 점수 폭으로 정규화한 0..1 값(0 이면 사실상 동점).
             "margin": round(abs(top - runner) / spread, 3),
             # 점수는 냈지만 **일부 유효 매크로는 학습 근거가 없어 아예 못 본** 경우를 그대로 싣는다.
